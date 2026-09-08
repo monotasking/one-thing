@@ -20,20 +20,26 @@
  * 微动幅度 1px、**只动横向**(竖向一动就可能跨进「放到标签上」那条带,那是另一形),
  * 采样在两发 move 之间,于是读到的每一格都是「手还在动的那一刻屏幕上真有的东西」。
  *
- * ── 九个场景(派工令 §11 那七条 + U1 2026-09-08 新添两条)──────────────────
+ * ── 十个场景(派工令 §11 那七条 + U1 两条 + U2 一条,2026-09-08)────────────
  *  ① 三种来源(会话行 / 文件行 / 标签)到标签条**每一个位置**:一律是**空位**
  *     (U1:「落到某一格正中 = 描圈二合一」那一档退役,条上只剩一种落点),
  *     浮影下那行字非空;而且**一趟扫过去再扫回来**期间挂 MutationObserver:
  *     占位是**同一个元素**、只被 `insertBefore` 挪位、`style.width` 从不回 0、
  *     `data-pair-hot` 零次 —— 用户报的「拖到顶栏标签正中闪烁」量的就是这几个数
- *  ② 按下即切换、松手不动无事、横向 6px 才浮起、竖向出带才撕下
+ *  ② 按下即切换、松手不动无事、横向 6px 才浮起、竖向出带才撕下;
+ *     **只有主键才切**(U2:右键 / 中键按在非活动标签上不换活动位,右键照开菜单)
  *  ③ 换序最左 / 最右 / 中间三处:顺序与活动位正确;松手有 150ms 的位移过渡
- *     (读 `transition` 与非零起始位移);Esc 顺序不变、无残留;
+ *     (读 `transition` 与非零起始位移);**取消那三条路(Esc / pointercancel /
+ *     窗口失焦)顺序不变、无残留,而且各自都是一段 150ms 的滑回**(U2 —— 从前
+ *     三条都是瞬移:5ms 到家、`data-settle` 一次都没挂过);
  *     **全程标签条 / 内容区 / 其它标签三处底色逐字不变**;
  *     **刚抬起那一帧邻居一个都不动**;**最宽的那一格拖得到末位**;
  *     **右邻居恰在「被拖右缘 = 它中心」那一刻让位**(中心对中心在这里当场红)
- *  ④ 「放到标签上」带:横着拖停 1s **不误并**;压到条底缘下 6–24px 才描圈;
- *     回到条内回到换序;松手并成两格;压在空白上是空动作;两格标签压下去是拒绝态
+ *  ④ **条底缘下 6–24px 那条带整段并回了换序**(U2:「放到标签上」删掉 —— 真机量到
+ *     那一圈被抬起的标签盖住 92%):横着拖停 1s 不误并;压到条底缘下 12px 仍是换序
+ *     (邻居仍让位、零 `data-pair-hot`、浮影提示行不出现);压在末格之后的空白上
+ *     松手 = **挪到末位**(从前那一站断的是「空动作」—— 这是一条行为变化);
+ *     两格的标签拖下去同样是换序,不是拒绝态
  *  ⑤ 从架子拖文件到聊天区中间 = 新标签,右带 = 二合一;浮窗不接住自己
  *  ⑥ 零重挂:换序 / 二合一 / 拆开 / 换比例四步,内容根节点同一个 DOM
  *  ⑦ 拒绝态:光标 not-allowed + 一句理由;松手弹回,树一个字不变
@@ -42,6 +48,10 @@
  *  ⑨ **边带只对没有架子的那一边成立,而且只有 12px**(U1;用户报的「莫名钉边」):
  *     右缘 20px = 叶的右带(板),6px = 边带(膜);松手长出右架子;再拖一行到
  *     同一点,这一次落的是架子自己;左边(已经有架子)6px 处压根没有边带
+ *  ⑩ **自己的外扩带不许赢过别人的条**(U2):顶栏那条条的 24px 下沿外扩盖住左右
+ *     架子标签条的上半截,而从前「自己的带」先判 —— 于是把顶栏一格标签拖到架子
+ *     条的上半截被判回换序。站在架子条 top + 8(仍在顶栏条的外扩里)上量:架子
+ *     那条条腾出空位、提示「放到第 n 位」,松手那一格进了左架子
  *
  * ── 手势怎么派:CDP `Input.dispatchMouseEvent`,一根手指都不碰用户的机器 ───
  * 09-01 判例(系统级合成输入干扰用户用电脑,用户被迫杀掉全部任务)立的法:
@@ -82,20 +92,23 @@ const OWNER_WID = 'default'
 /** 判据这一头的几个数,与产品源码里的常量同源(改一边这道门当场说话)。 */
 const DRAG_START_X = 6
 const SETTLE_MS = 150
-/**
- * 「放到标签上」那条带:条底缘 + 6(`ONTO_FROM_PX`)到 + 24(`TEAR_OFF_DISTANCE`)。
- * 门站在带的**正中**(+12)上量:贴着任一沿量的话,一次舍入就能把这一站推到
- * 邻居那一形去,而那种红是门自己的抖,不是产品的。
- */
-const ONTO_FROM_PX = 6
 const TEAR_OFF_DISTANCE = 24
+/**
+ * **条底缘往下 12px:U2 之前是「放到标签上」,今天仍是换序**。
+ *
+ * 那条带(条底缘 + 6 到 + 24)整段并回了换序 —— 用户 09-08 裁定删掉二合一那一档,
+ * 判词在 `src/ui/drag/constants.ts` 的 `ONTO_FROM_PX` 退役段。门仍旧站在**同一点**
+ * 上量,只是断言反过来了:这里要读到的是让位、空提示行与零描圈。站在正中而不是
+ * 贴着任一沿,理由没变 —— 贴着量的话一次舍入就能把这一站推到邻居那一形去,而那种
+ * 红是门自己的抖。
+ */
+const BELOW_STRIP_OFFSET = 12
 /**
  * 「在这条边上生一条新架子」那条带有多宽(`workbench/drop.ts` 的 `NEW_SHELF_BAND`)。
  * 它**不是**形态机那个 `SNAP_BAND` 24 —— 两者是两件事,判词在产品源码那一格上;
  * 场景 ⑨ 站在 6(带内)与 20(带外)两点上量,3px 的舍入预算两边都够。
  */
 const NEW_SHELF_BAND = 12
-const ONTO_Y_OFFSET = (ONTO_FROM_PX + TEAR_OFF_DISTANCE) / 2
 /**
  * 「边越过中心」那一条断言两侧各让 3px。
  *
@@ -265,6 +278,105 @@ async function strokeOn(cdp, from, to, opts = {}) {
     })
     await delay(stepDelay)
   }
+}
+
+/** 一发**非主键**的按下松开(右键 2 / 中键 1)。右键那一发同时是 contextmenu 的来源。 */
+async function altClick(cdp, at, button) {
+  const buttons = button === 'right' ? 2 : 4
+  await cdp.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed', x: Math.round(at.x), y: Math.round(at.y), button, buttons, clickCount: 1,
+  })
+  await delay(40)
+  await cdp.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased', x: Math.round(at.x), y: Math.round(at.y), button, buttons: 0, clickCount: 1,
+  })
+  await delay(260)
+}
+
+/** 此刻屏幕上开着的那张菜单里的文案(没开就是空表)。 */
+function menuItemsNow(page) {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll('[role="menuitem"], [role="menuitemradio"]')).map((el) =>
+      (el.textContent ?? '').trim(),
+    ),
+  )
+}
+
+/**
+ * **菜单开着才按 Esc**。这道门的夹具里一直开着一扇总览浮窗(场景 ⑤ 要它),
+ * 而一发没人接的 Esc 会沿响应链一路退到那扇窗上把它关掉 —— 门第一版就是这样
+ * 把 ⑤⑥⑦ 一起带红的。
+ */
+async function closeMenuIfOpen(page) {
+  if ((await menuItemsNow(page)).length === 0) return
+  await page.keyboard.press('Escape')
+  await delay(260)
+}
+
+/** 按文案点菜单里那一项;点不到就答 false(并把菜单收掉,免得挡住后面的场景)。 */
+async function clickMenuItem(page, re) {
+  const hit = await page.evaluate((source) => {
+    const rx = new RegExp(source)
+    const el = Array.from(document.querySelectorAll('[role="menuitem"], [role="menuitemradio"]'))
+      .find((node) => rx.test((node.textContent ?? '').trim()))
+    if (el instanceof HTMLElement && el.getAttribute('aria-disabled') !== 'true') {
+      el.click()
+      return true
+    }
+    return false
+  }, re.source)
+  await delay(400)
+  // 点不着也**不**自己按 Esc:那一发会顺手关掉夹具那扇浮窗(判词在 `closeMenuIfOpen`)。
+  if (!hit) await closeMenuIfOpen(page)
+  return hit
+}
+
+/**
+ * **把活动那一格与它右边那格并成两格**,走的是**动作单产地**那张右键菜单
+ * (`workbench.pairRight`),不是拖拽。
+ *
+ * U2 之前这件事在门里走的是「压到条底缘下 6–24px 再松手」那条路;那一档删掉之后,
+ * 拖拽这一头的二合一只剩「拖到内容区左右带」,而内容区此刻被总览那扇浮窗盖着一段
+ * (场景 ⑤ 为此专门挑点)。这里要的只是**一格两格标签**这个前置条件,不是二合一
+ * 本身的手感,所以走菜单那一口 —— 它与拖拽落定调的是同一只 `pairIntoIndex`
+ * (`LeafActions` 上的判词:三条路一个产地)。
+ */
+async function pairActiveRight(page, cdp, tab) {
+  /*
+   * **先真的激活那一格**:那张表作用在**活动**标签上(`LeafActions` 的
+   * `leaf.tabs[leaf.active + 1]`),而 U2 之后右键**不再顺手激活** —— 所以这里
+   * 补一次纯点击(按下松开、位移 0)。这一句本身也是 U2 那条裁定的注脚:
+   * 「右键开的是哪一格的表」今天由活动位说了算,不由右键落在谁身上说了算。
+   */
+  await press(cdp, { x: tab.cx, y: tab.cy })
+  await releaseAt(cdp, { x: tab.cx, y: tab.cy })
+  await altClick(cdp, { x: tab.cx, y: tab.cy }, 'right')
+  await clickMenuItem(page, /二合一|Join with the tab on the right/)
+  /*
+   * 答的是**结果**而不是「点着了没有」:菜单项禁灰时点一下什么也不会发生。
+   * 而且问的是**活动那一格现在是不是两格** —— 不是「条上有没有 pair」:条上早就
+   * 可能有一格别的场景并出来的两格标签,拿它当读数是一次假绿(门第三版当场量到:
+   * 右邻本身就是一格两格标签,`canPairRight` 禁灰、这一下什么都没发生,而断言看着
+   * 上一场留下的那一格答了「并成了」,红留给了下一步「杆够不着」)。
+   */
+  return page.evaluate(() =>
+    String(
+      document.querySelector('[role="tab"][aria-selected="true"]')?.getAttribute('data-tab-id') ?? '',
+    ).startsWith('pair:'),
+  )
+}
+
+/**
+ * 条上第一格「自己与右邻都是普通标签」的下标 —— 那才是**并得起来**的一对
+ * (两格的标签不能再并,§6 末行)。没有就答 -1。
+ */
+function firstPairableAt(tabs) {
+  return tabs.findIndex(
+    (t, i) =>
+      !String(t.id).startsWith('pair:')
+      && i + 1 < tabs.length
+      && !String(tabs[i + 1].id).startsWith('pair:'),
+  )
 }
 
 /**
@@ -591,6 +703,61 @@ function shelvesNow(page) {
   )
 }
 
+/**
+ * **顶栏那条条上一个「底下没有别的条」的 x**(U2)。
+ *
+ * 架子那条檐从 y≈44 起,而顶栏那条条的下沿外扩正好 24px —— 两者在屏幕上是叠着的,
+ * 而且左架子横向占 [0, ~343],顶栏标签也从 80 起排。U2 之后**指针真的落在别人那条
+ * 条上时自己的外扩让开**(那正是场景 ⑩ 要的),所以凡是要量「条底缘下这一片仍是
+ * 换序」的站点,横坐标必须先躲开每一条架子条的跨度 —— 不躲的话量到的是场景 ⑩ 那
+ * 一形,而那是**另一条断言**的地。
+ *
+ * 挑法:先试给的那几个候选(通常是几格标签的中心),都被盖住就在条的矩形里从右往左
+ * 找。找不到答 null(调用方自己判 —— 那说明这台夹具上没有可量的地方)。
+ */
+async function clearOfShelvesX(page, strip, candidates = []) {
+  const spans = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('[data-shelf] [data-pane-chrome] [role="tablist"]')).map((el) => {
+      const r = el.getBoundingClientRect()
+      return { left: Math.round(r.left), right: Math.round(r.left + r.width) }
+    }),
+  )
+  const free = (x) => !spans.some((sp) => x >= sp.left && x <= sp.right)
+  for (const x of candidates) {
+    if (Number.isFinite(x) && free(x)) return Math.round(x)
+  }
+  const right = strip.rect.left + strip.rect.width
+  for (let x = right - 8; x > strip.rect.left; x -= 8) {
+    if (free(x)) return Math.round(x)
+  }
+  return null
+}
+
+/**
+ * **某一条架子上那条标签条**(U2 场景 ⑩)。与 `topStrip` 同形,只是宿主换成
+ * `[data-shelf="<side>"]` —— 场景 ⑩ 要站在「它的上半截」上量,而那一片正好落在
+ * 顶栏那条条的 24px 下沿外扩里。
+ */
+function shelfStrip(page, side) {
+  return page.evaluate((want) => {
+    const chrome = document.querySelector(`[data-shelf="${want}"] [data-pane-chrome]`)
+    const list = chrome?.querySelector('[role="tablist"]')
+    if (!chrome || !list) return null
+    const r = list.getBoundingClientRect()
+    return {
+      leafId: chrome.getAttribute('data-pane-chrome'),
+      rect: {
+        left: Math.round(r.left), top: Math.round(r.top),
+        width: Math.round(r.width), height: Math.round(r.height),
+      },
+      tabs: Array.from(list.querySelectorAll('[data-tab-id]')).map((el) => {
+        const box = el.getBoundingClientRect()
+        return { id: el.getAttribute('data-tab-id'), left: Math.round(box.left), width: Math.round(box.width) }
+      }),
+    }
+  }, side)
+}
+
 /** 顶栏那条条(中央区那片叶)。这一串场景几乎都在它身上量。 */
 function topStrip(page) {
   return page.evaluate(() => {
@@ -886,7 +1053,7 @@ async function main() {
     }
 
     /* ══ 场景 ②:按下即切换 / 松手不动无事 / 6px / 出带才撕 ═══════════ */
-    scenario('按下即切换、松手不动无事、横向 6px 才浮起、出带才撕下')
+    scenario('按下即切换(只认主键)、松手不动无事、横向 6px 才浮起、出带才撕下')
     {
       const strip = await fillStrip(3)
       const active = strip.tabs.find((_, i) => i === 0)
@@ -924,17 +1091,25 @@ async function main() {
         '条内换序时**浮影一个节点都不画**(拖的就是标签本身)',
       )
 
-      // 竖向:带内仍是换序,出了带才折。
-      await moveTo(cdp, { x: target.cx, y: target.cy + 20 })
+      /*
+       * 竖向:带内仍是换序,出了带才折。
+       *
+       * **横坐标先躲开架子那条条**(U2):条底缘往下那一片正好是左架子檐所在的地,
+       * 而 U2 之后指针真的落在别人那条条上时自己的外扩让开 —— 那是场景 ⑩ 的地,
+       * 不是这一条要问的事(判词在 `clearOfShelvesX` 上)。
+       */
+      const downX = (await clearOfShelvesX(page, strip, [target.cx])) ?? target.cx
+      await strokeOn(cdp, { x: target.cx + 8, y: target.cy }, { x: downX, y: target.cy }, { steps: 4 })
+      await moveTo(cdp, { x: downX, y: target.cy + 20 })
       await delay(40)
       read = await stripOrder(page, strip.leafId)
       assert(!read.some((t) => t.torn), '竖向 20px 还在带里,是换序不是撕下', JSON.stringify(read.map((t) => t.torn)))
-      await strokeOn(cdp, { x: target.cx, y: target.cy + 20 }, { x: target.cx, y: target.cy + 120 }, { steps: 6 })
+      await strokeOn(cdp, { x: downX, y: target.cy + 20 }, { x: downX, y: target.cy + 120 }, { steps: 6 })
       read = await stripOrder(page, strip.leafId)
       assert(read.some((t) => t.torn), '出了带那一格折成 0 宽(元素还在)', JSON.stringify(read.map((t) => `${t.id}:${t.torn}`)))
       assert((await feedbackNow(page)).card, '撕下之后浮影卡片接手')
       await page.keyboard.press('Escape')
-      await releaseAt(cdp, { x: target.cx, y: target.cy + 120 })
+      await releaseAt(cdp, { x: downX, y: target.cy + 120 })
       assert((await treeShape(page)) === before, 'Esc 之后树逐字不变')
 
       // 一次纯点击:按下松开,位移 0。
@@ -944,6 +1119,56 @@ async function main() {
       await delay(40)
       await releaseAt(cdp, { x: t2.cx, y: t2.cy })
       assert((await treeShape(page)) === beforeClick, '按下松开不动 = 一次点击,树一个字不变')
+
+      /*
+       * **只有主键才切**(U2,2026-09-08;W6-c 交卷时那条待拍就此了结)。
+       *
+       * 从前 `LeafStrip.onTabDown` 对**任何**按钮都 `select` —— 右键一格非活动标签
+       * 会先把它切过来再开表,中键也切。Chrome 与 VS Code 都不切:右键是「对这一格
+       * 做点什么」,不是「我要看它」;连带激活的代价是用户为了看一眼某格的菜单,
+       * 当前那格的内容当场没了。
+       *
+       * 断的是两半:活动位一个字不变 **且** 菜单真的开着 —— 只断前一半的话,
+       * 「右键整个不接了」也会绿,而那是把病治成了另一种病。
+       */
+      const s6 = await topStrip(page)
+      const onNow = (await stripOrder(page, s6.leafId)).find((t) => t.on)?.id
+      const idle = s6.tabs.find((t) => t.id !== onNow)
+      assert(Boolean(idle), '条上有一格非活动标签可以右键', JSON.stringify({ onNow, tabs: s6.tabs.map((t) => t.id) }))
+      if (idle) {
+        await altClick(cdp, { x: idle.cx, y: idle.cy }, 'right')
+        const items = await menuItemsNow(page)
+        assert(
+          (await stripOrder(page, s6.leafId)).find((t) => t.on)?.id === onNow,
+          '右键按在非活动标签上:活动位一个字不变',
+          `${onNow} → ${(await stripOrder(page, s6.leafId)).find((t) => t.on)?.id}`,
+        )
+        assert(items.length > 0, '而且菜单真的开着(不是把右键整个不接了)', JSON.stringify(items.slice(0, 4)))
+        /*
+         * **只在菜单真开着的时候按 Esc**:这道门的夹具里还开着一扇总览浮窗
+         * (场景 ⑤ 要它),而一发没人接的 Esc 会顺手把它关掉 —— 门第一版就是这样
+         * 把后面三个场景一起带红的。收菜单改成「点一下空处」也不行:那一下会落在
+         * 某块面上。所以判据是**它在不在**。
+         */
+        await closeMenuIfOpen(page)
+
+        await altClick(cdp, { x: idle.cx, y: idle.cy }, 'middle')
+        assert(
+          (await stripOrder(page, s6.leafId)).find((t) => t.on)?.id === onNow,
+          '中键按在非活动标签上:活动位同样一个字不变',
+          `${onNow} → ${(await stripOrder(page, s6.leafId)).find((t) => t.on)?.id}`,
+        )
+        assert((await menuItemsNow(page)).length === 0, '中键什么都不开', JSON.stringify(await menuItemsNow(page)))
+        await closeMenuIfOpen(page)
+      }
+      /*
+       * **把指针停到条外,再等 hover 那段过渡跑完**:下一个场景的底色基线是「逐字
+       * 比较」,而 `.tab` 的底色带一段过渡 —— 指针停在某一格标签上离场的话,基线会
+       * 采在淡入淡出的中途,后面每一帧都与它不同(门第一版当场量到:基线那一格是
+       * `oklab(… / 0.0064)`,一个正在消失的悬停底)。
+       */
+      await moveTo(cdp, { x: 8, y: 8 })
+      await delay(500)
     }
 
     /* ══ 场景 ③:换序三处 + 150ms 滑入 + Esc + 底色逐字不变 ═══════════ */
@@ -1078,22 +1303,87 @@ async function main() {
       const order3 = (await stripOrder(page, strip.leafId)).map((t) => t.id)
       assert(order3[1] === order2[0], '拖到中间:它排到了第二位', `${order2.join(' | ')} → ${order3.join(' | ')}`)
 
-      // Esc:顺序不变、无残留。
-      const s4 = await topStrip(page)
-      const escSrc = s4.tabs[0]
-      await press(cdp, { x: escSrc.cx, y: escSrc.cy })
-      await strokeOn(cdp, { x: escSrc.cx, y: escSrc.cy }, { x: s4.tabs[2].cx, y: escSrc.cy }, { steps: 10 })
-      await page.keyboard.press('Escape')
-      await delay(120)
-      await releaseAt(cdp, { x: s4.tabs[2].cx, y: escSrc.cy })
-      const order4 = await stripOrder(page, strip.leafId)
-      assert(order4.map((t) => t.id).join('|') === order3.join('|'), 'Esc 之后顺序一个字不变', order4.map((t) => t.id).join(' | '))
-      assert(
-        order4.every((t) => !t.lift && !t.torn && t.shift === ''),
-        'Esc 之后抬起 / 折起 / 让位三样都清干净',
-        JSON.stringify(order4),
-      )
-      assert(!(await feedbackNow(page)).ghost, 'Esc 之后浮影没了')
+      /*
+       * **取消那三条路:顺序不变、无残留,而且都是一段 150ms 的滑回**(U2)。
+       *
+       * 设计 §4.2 末行写的就是「任何态 ── Esc / pointercancel / 窗口失焦 ──▶ 滑回
+       * 原位(150ms),树一字不变」。U2 之前**三条都是瞬移**:`useTabDrag.endGesture`
+       * 只 `reset()` 不 `settle()`,一摘 transform 那一格 5ms 就到家、连一次
+       * `data-settle` 都没挂过(09-08 离屏探针的读数)。
+       *
+       * 读法与松手滑入**同一套**(上面那一段):不等,当场轮询 `[data-settle]`,
+       * 读它的 `transition`(含 transform 与 150ms)与起始 `transform`(非零 ——
+       * 它真的从手上那个位置滑过来)。三条路各跑一遍:两条走 window 上那两发
+       * (`DragSession` 监听的就是它们),Esc 走响应链那一口。
+       */
+      const cancelPaths = [
+        ['Esc', async () => { await page.keyboard.press('Escape') }],
+        ['pointercancel', async () => {
+          await page.evaluate(() => window.dispatchEvent(new Event('pointercancel')))
+        }],
+        ['窗口失焦', async () => {
+          await page.evaluate(() => window.dispatchEvent(new Event('blur')))
+        }],
+      ]
+      let orderBefore = order3
+      for (const [label, fire] of cancelPaths) {
+        const s4 = await topStrip(page)
+        const escSrc = s4.tabs[0]
+        await press(cdp, { x: escSrc.cx, y: escSrc.cy })
+        await strokeOn(cdp, { x: escSrc.cx, y: escSrc.cy }, { x: s4.tabs[2].cx, y: escSrc.cy }, { steps: 10 })
+        await fire()
+        // **不等** —— 滑回那 150ms 要当场量(与松手滑入逐字同一套读法)。
+        let slid = null
+        const until = Date.now() + SETTLE_MS + 120
+        while (Date.now() < until) {
+          const row = await page.evaluate(() => {
+            const el = document.querySelector('[data-settle]')
+            if (!el) return null
+            const style = getComputedStyle(el)
+            return {
+              id: el.getAttribute('data-tab-id'),
+              transition: style.transitionProperty + ' ' + style.transitionDuration,
+              transform: style.transform,
+            }
+          })
+          if (row) {
+            slid = row
+            break
+          }
+          await delay(12)
+        }
+        assert(Boolean(slid), `${label} 之后那一格挂上了滑回态(data-settle)`, JSON.stringify(slid))
+        assert(
+          slid && slid.id === escSrc.id,
+          `${label}:滑回的正是被拖那一格`,
+          `${slid?.id} vs ${escSrc.id}`,
+        )
+        assert(
+          slid && /transform/.test(slid.transition) && /0\.15s|150ms/.test(slid.transition),
+          `${label}:滑回是一段 ${SETTLE_MS}ms 的位移过渡(从前这里是瞬移)`,
+          slid?.transition,
+        )
+        assert(
+          slid && slid.transform !== 'none' && !/matrix\(1, 0, 0, 1, 0, 0\)/.test(slid.transform),
+          `${label}:首帧位移非零 —— 它真的从手上那个位置滑回来`,
+          slid?.transform,
+        )
+        await releaseAt(cdp, { x: s4.tabs[2].cx, y: escSrc.cy })
+        await delay(SETTLE_MS + 200)
+        const after = await stripOrder(page, strip.leafId)
+        assert(
+          after.map((t) => t.id).join('|') === orderBefore.join('|'),
+          `${label} 之后顺序一个字不变`,
+          after.map((t) => t.id).join(' | '),
+        )
+        assert(
+          after.every((t) => !t.lift && !t.torn && t.shift === '' && !t.settle),
+          `${label} 之后抬起 / 折起 / 让位 / 收笔四样都清干净`,
+          JSON.stringify(after),
+        )
+        assert(!(await feedbackNow(page)).ghost, `${label} 之后浮影没了`)
+        orderBefore = after.map((t) => t.id)
+      }
 
       /*
        * **(b) 最宽的那一格也拖得到末位**(§4.2:「中心对中心时宽标签要整个越过窄
@@ -1154,8 +1444,8 @@ async function main() {
       await releaseAt(cdp, from7)
     }
 
-    /* ══ 场景 ④:「放到标签上」那条带 ═══════════════════════════════════ */
-    scenario('放到标签上:横拖停 1s 不误并;压到条底缘下才描圈;回条内回换序;并 / 空白 / 拒绝')
+    /* ══ 场景 ④:条底缘下那条带整段并回了换序(U2)══════════════════════ */
+    scenario('条底缘下 6–24px 仍是换序:停 1s 不误并;零描圈零提示行;空白上松手 = 挪到末位;两格标签同理')
     {
       const strip = await fillStrip(3, { singles: true })
       const src = strip.tabs[0]
@@ -1164,15 +1454,15 @@ async function main() {
        * 这一整场的坐标全部取自**按下之前**那一次 `topStrip`:拖拽期间那几格带着
        * transform,活矩形早就不是它们的槽位了(编舞读的也正是抬起那一刻的基准)。
        */
-      const ontoY = Math.round(strip.rect.top + strip.rect.height + ONTO_Y_OFFSET)
-      const order0 = (await stripOrder(page, strip.leafId)).map((t) => t.id)
+      const belowY = Math.round(strip.rect.top + strip.rect.height + BELOW_STRIP_OFFSET)
 
       /*
        * **(a) 换序途中停住 1s,一个字都不许发生。**
        *
        * 这一条就是用户报的那句「换序途中稍一停顿就误并」的反证 —— 按时间判的那一版
-       * (在邻居正中停够 300ms 就并)在这里必红。停的是**横向**:1px 的抖动只走 x,
-       * 竖向一动就跨进带里去了,那是下一条要量的另一形。
+       * (在邻居正中停够 300ms 就并)在这里必红。停的是**横向**:1px 的抖动只走 x。
+       * U2 之后竖向那一头也不再有第二形,但这一条一个字不用改:它守的是「换序途中
+       * 不许自己变成别的动作」,而那句话现在**更强**了。
        */
       await press(cdp, { x: src.cx, y: src.cy })
       await strokeOn(cdp, { x: src.cx, y: src.cy }, { x: host.cx, y: src.cy }, { steps: 10 })
@@ -1199,110 +1489,142 @@ async function main() {
       )
 
       /*
-       * **(b) 压到条底缘下 6–24px:描圈 + 提示行,卡片不画,让位全清零。**
+       * **(b) 压到条底缘下 12px:仍是换序**(U2 —— 这一站的断言整个反过来了)。
+       *
+       * 从前这里是「放到标签上」:邻居的让位全部清零、指针底下那一格描一圈、浮影
+       * 下多一行「与 X 二合一」。真机(09-08 离屏探针)量到那一圈**被抬起的那一格
+       * 盖住 92%** —— 抬起那格 `z-index: 2`、底不透明,而这一形里它照旧跟手,于是
+       * 它正压在指针底下那一格上,用户只剩提示行能看。用户裁定整条带删掉。
+       *
+       * 所以今天这一站要读到的是三件事:邻居**仍在让位**、`data-pair-hot` 零、
+       * 提示行为空(条内换序全程不画浮影也不写字,W7-c 裁定 5)。
        */
-      await strokeOn(cdp, { x: host.cx, y: src.cy }, { x: host.cx, y: ontoY }, { steps: 6 })
-      await moveTo(cdp, { x: host.cx + 1, y: ontoY })
+      /*
+       * **横坐标先躲开架子那条条**(U2,判词在 `clearOfShelvesX` 上):条底缘往下
+       * 那一片正好是左架子檐所在的地,而指针真的落在别人那条条上时自己的外扩让开
+       * —— 那是场景 ⑩ 的地。这一条问的是「没有别人的条时,这一片是不是仍然换序」。
+       */
+      const belowX = (await clearOfShelvesX(page, strip, [host.cx])) ?? host.cx
+      await strokeOn(cdp, { x: host.cx, y: src.cy }, { x: belowX, y: src.cy }, { steps: 4 })
+      await strokeOn(cdp, { x: belowX, y: src.cy }, { x: belowX, y: belowY }, { steps: 6 })
+      await moveTo(cdp, { x: belowX + 1, y: belowY })
       await delay(60)
-      const onto = await stripProbe(page, strip.leafId)
+      const below = await stripProbe(page, strip.leafId)
       assert(
-        onto.pairHot === host.id,
-        `压到条底缘下 ${ONTO_Y_OFFSET}px:指针底下那一格描了圈`,
-        `${onto.pairHot} vs ${host.id}`,
+        below.pairHot === null,
+        `压到条底缘下 ${BELOW_STRIP_OFFSET}px:谁都不描圈(那条带 U2 整段删掉了)`,
+        JSON.stringify(below.pairHot),
       )
-      assert(onto.hint !== '', '提示行说得出「与谁二合一」', onto.hint)
-      assert(!onto.card, '**卡片仍旧不画**:屏幕上动的还是只有那一格标签', JSON.stringify(onto.card))
-      const stillShifted = Object.entries(onto.shifts).filter(([, v]) => v !== '' && v !== 'LIFTED')
+      assert(below.hint === '', '浮影下那行字**不出现** —— 这一形仍是条内换序', below.hint)
+      assert(!below.card, '卡片也不画:屏幕上动的还是只有那一格标签', JSON.stringify(below.card))
+      const shiftedBelow = Object.entries(below.shifts).filter(([, v]) => v !== '' && v !== 'LIFTED')
       assert(
-        stillShifted.length === 0,
-        'onto 态里邻居的让位**全部清零**(§4.2:邻居不再让位)',
-        JSON.stringify(onto.shifts),
+        shiftedBelow.length > 0,
+        '而且邻居**仍在让位** —— 它就是换序,不是第二形',
+        JSON.stringify(below.shifts),
+      )
+      assert(
+        Object.values(below.shifts).includes('LIFTED'),
+        '被拖那一格照旧抬着(它没被折起来 —— 这一片仍在带里)',
+        JSON.stringify(below.shifts),
       )
 
-      /* **(c) 回到条内:圈灭,让位恢复。** */
-      await strokeOn(cdp, { x: host.cx + 1, y: ontoY }, { x: host.cx, y: src.cy }, { steps: 6 })
-      await moveTo(cdp, { x: host.cx + 1, y: src.cy })
+      /* **(c) 回到条内:照旧是换序,一个跃迁都没发生过。** */
+      await strokeOn(cdp, { x: belowX + 1, y: belowY }, { x: belowX, y: src.cy }, { steps: 6 })
+      await moveTo(cdp, { x: belowX + 1, y: src.cy })
       await delay(60)
       const back = await stripProbe(page, strip.leafId)
-      assert(back.pairHot === null, '回到条内(y ≤ 底缘 + 6):圈没了', JSON.stringify(back.pairHot))
+      assert(back.pairHot === null, '回到条内:照旧谁都不描圈', JSON.stringify(back.pairHot))
       assert(
-        (back.shifts[host.id] ?? '') !== '',
-        '而且让位恢复了 —— 又是换序',
+        Object.entries(back.shifts).filter(([, v]) => v !== '' && v !== 'LIFTED').length > 0,
+        '让位照旧在 —— 上下走这一趟没有任何一次形态跃迁',
         JSON.stringify(back.shifts),
       )
-
-      /* **(d) 再压下去松手 = 二合一。** */
-      await strokeOn(cdp, { x: host.cx + 1, y: src.cy }, { x: host.cx, y: ontoY }, { steps: 6 })
-      await releaseAt(cdp, { x: host.cx, y: ontoY })
-      const after = await stripOrder(page, strip.leafId)
-      assert(
-        after.length === order0.length - 1,
-        '松手之后条上少了一格(两格并成了一格)',
-        `${order0.length} → ${after.length}`,
-      )
-      const slotsNow = await page.evaluate((want) => {
-        const root = document.querySelector(
-          `[data-pane-chrome="${want.replace(/["\\]/g, '\\$&')}"] [role="tablist"]`,
-        )
-        return Array.from(root?.querySelectorAll('[role="tab"]') ?? []).map((el) =>
-          el.getAttribute('data-tab-slots'),
-        )
-      }, strip.leafId)
-      assert(
-        slotsNow.includes('2'),
-        '并出来的那一格自述装着两份(data-tab-slots = 2)',
-        JSON.stringify(slotsNow),
-      )
+      await page.keyboard.press('Escape')
+      await releaseAt(cdp, { x: belowX, y: src.cy })
+      await delay(SETTLE_MS + 200)
 
       /*
-       * **(e) 压下去,但 x 落在所有标签右侧的空白上 = 空动作。**
-       * 那一行字仍旧不空(§5 贯穿规则 2:没有落点就写「松手放回」)。
+       * **(d) 压在末格之后的空白上松手 = 挪到末位**(U2 的**行为变化**,门要改口)。
+       *
+       * 从前这一站断的是「空动作」:那一形是 onto,而 onto 在空白上没有目标,树一个
+       * 字不变。今天那条带就是换序,末格之后的空白 x 落在条的矩形里(U1 起顶栏那一组
+       * 的条铺到标签带的右缘),所以判据答的是「插到末尾」—— 与在条里横着拖到最右
+       * 逐字同一件事。
        */
       const s2 = await topStrip(page)
       const lastTab = s2.tabs[s2.tabs.length - 1]
-      const blankX = lastTab.left + lastTab.width + 8
-      const ontoY2 = Math.round(s2.rect.top + s2.rect.height + ONTO_Y_OFFSET)
-      const hasBlank = blankX < s2.rect.left + s2.rect.width - 2
+      // 同一条纪律:这一站也要躲开架子那条条(判词在 `clearOfShelvesX` 上)。
+      // 兜底扫的是条的右段,而那一段本来就在末格右边 —— 仍旧是「末格之后的空白」。
+      const blankX = (await clearOfShelvesX(page, s2, [lastTab.left + lastTab.width + 8]))
+        ?? (lastTab.left + lastTab.width + 8)
+      const belowY2 = Math.round(s2.rect.top + s2.rect.height + BELOW_STRIP_OFFSET)
+      const hasBlank = blankX > lastTab.left + lastTab.width && blankX < s2.rect.left + s2.rect.width - 2
       assert(hasBlank, '条上末格之后还有空白可压', JSON.stringify({ blankX, right: s2.rect.left + s2.rect.width }))
       const mover = s2.tabs.find((t) => !String(t.id).startsWith('pair:')) ?? s2.tabs[0]
       const before2 = (await stripOrder(page, s2.leafId)).map((t) => t.id)
-      if (hasBlank) {
+      if (hasBlank && mover.id !== before2[before2.length - 1]) {
         await press(cdp, { x: mover.cx, y: mover.cy })
-        await strokeOn(cdp, { x: mover.cx, y: mover.cy }, { x: blankX, y: ontoY2 }, { steps: 10 })
-        await moveTo(cdp, { x: blankX + 1, y: ontoY2 })
+        await strokeOn(cdp, { x: mover.cx, y: mover.cy }, { x: blankX, y: belowY2 }, { steps: 10 })
+        await moveTo(cdp, { x: blankX + 1, y: belowY2 })
         await delay(60)
         const blank = await stripProbe(page, s2.leafId)
         assert(blank.pairHot === null, '压在末格之后的空白上:谁都不描圈', JSON.stringify(blank.pairHot))
-        assert(blank.hint !== '', '但浮影下那行字仍旧不空(「松手放回」)', blank.hint)
-        await releaseAt(cdp, { x: blankX, y: ontoY2 })
+        assert(blank.hint === '', '也不写字(条内换序不画浮影那一套)', blank.hint)
+        await releaseAt(cdp, { x: blankX, y: belowY2 })
+        await delay(SETTLE_MS + 240)
+        const after2 = (await stripOrder(page, s2.leafId)).map((t) => t.id)
         assert(
-          (await stripOrder(page, s2.leafId)).map((t) => t.id).join('|') === before2.join('|'),
-          '松手之后次序一个字不变(空动作)',
-          before2.join(' | '),
+          after2[after2.length - 1] === mover.id,
+          '松手 = **挪到末位**(U2 行为变化:从前这一站是空动作)',
+          `${before2.join(' | ')} → ${after2.join(' | ')}`,
         )
+      } else {
+        assert(false, '条上有一格不在末位的普通标签可以拖', JSON.stringify({ mover: mover.id, before2 }))
       }
 
       /*
-       * **(f) 拖一格已经是两格的标签压下去 = 拒绝态**(§6 末行:两格的标签不能再并)。
-       * 结构化拒绝,不静默(裁定 7):光标 not-allowed + 一句理由,谁都不描圈。
+       * **(e) 两格的标签拖下去,同样是换序,不是拒绝态**(U2)。
+       *
+       * 从前那一形是 onto 的拒绝态(§6 末行:两格的标签不能再并)—— 而那条拒绝
+       * 只在「压下去 = 要并」这个前提下才成立。带删掉之后前提没有了:一格两格标签
+       * 在自己那条条上换个位置,与普通标签逐字相同。
+       *
+       * 那一格两格标签走**动作单产地**那张右键菜单造出来(判词在 `pairActiveRight`
+       * 上):这里要的是前置条件,不是二合一本身的手感。
        */
-      const s3 = await topStrip(page)
-      const pairTab = s3.tabs.find((t) => String(t.id).startsWith('pair:'))
-      const other = s3.tabs.find((t) => t.id !== pairTab?.id)
-      const ontoY3 = Math.round(s3.rect.top + s3.rect.height + ONTO_Y_OFFSET)
-      assert(Boolean(pairTab && other), '条上有一格两格标签、还有另一格可以压上去', JSON.stringify(s3.tabs.map((t) => t.id)))
+      const s3 = await fillStrip(3, { singles: true })
+      // 种子:自己与右邻都得是普通标签(判词在 `firstPairableAt` 上)。
+      const seedAt = firstPairableAt(s3.tabs)
+      const seed = seedAt >= 0 ? s3.tabs[seedAt] : null
+      const paired = seed ? await pairActiveRight(page, cdp, seed) : false
+      assert(paired, '菜单里那一项把活动格与右邻并成了两格', JSON.stringify(s3.tabs.map((t) => t.id)))
+      const s4 = await topStrip(page)
+      const pairTab = s4.tabs.find((t) => String(t.id).startsWith('pair:'))
+      const other = s4.tabs.find((t) => t.id !== pairTab?.id)
+      const belowY3 = Math.round(s4.rect.top + s4.rect.height + BELOW_STRIP_OFFSET)
+      assert(Boolean(pairTab && other), '条上有一格两格标签、还有另一格', JSON.stringify(s4.tabs.map((t) => t.id)))
       if (pairTab && other) {
-        const treeBefore = await treeShape(page)
+        // 同一条纪律:躲开架子那条条(不躲的话这一下落的是架子,那是场景 ⑩ 的地)。
+        const belowX3 = (await clearOfShelvesX(page, s4, [other.cx])) ?? other.cx
         await press(cdp, { x: pairTab.cx, y: pairTab.cy })
-        await strokeOn(cdp, { x: pairTab.cx, y: pairTab.cy }, { x: other.cx, y: ontoY3 }, { steps: 10 })
-        await moveTo(cdp, { x: other.cx + 1, y: ontoY3 })
+        await strokeOn(cdp, { x: pairTab.cx, y: pairTab.cy }, { x: belowX3, y: pairTab.cy }, { steps: 6 })
+        await strokeOn(cdp, { x: belowX3, y: pairTab.cy }, { x: belowX3, y: belowY3 }, { steps: 6 })
+        await moveTo(cdp, { x: belowX3 + 1, y: belowY3 })
         await delay(60)
-        const refused = await stripProbe(page, s3.leafId)
-        assert(refused.cursorRefuse, '两格标签压下去:光标 not-allowed', JSON.stringify(refused.cursorRefuse))
-        assert(refused.hint !== '', '而且给得出一句理由', refused.hint)
-        assert(refused.pairHot === null, '谁都不描圈(它并不进去)', JSON.stringify(refused.pairHot))
-        await releaseAt(cdp, { x: other.cx, y: ontoY3 })
-        assert((await treeShape(page)) === treeBefore, '松手之后树一个字不变')
+        const dragged = await stripProbe(page, s4.leafId)
+        assert(!dragged.cursorRefuse, '两格标签拖到条底缘下:**不是**拒绝态了', JSON.stringify(dragged.cursorRefuse))
+        assert(dragged.pairHot === null, '谁都不描圈', JSON.stringify(dragged.pairHot))
+        assert(
+          Object.values(dragged.shifts).includes('LIFTED'),
+          '而且它就是换序 —— 那一格还抬着(没被折起来交给浮影)',
+          JSON.stringify(dragged.shifts),
+        )
+        assert(!dragged.card, '卡片不画', JSON.stringify(dragged.card))
+        await releaseAt(cdp, { x: belowX3, y: belowY3 })
+        await delay(SETTLE_MS + 240)
+        const after3 = (await stripOrder(page, s4.leafId)).map((t) => t.id)
+        assert(after3.includes(pairTab.id), '松手之后那一格两格标签还在条上(换序,不是被吃掉)', after3.join(' | '))
       }
     }
 
@@ -1437,19 +1759,34 @@ async function main() {
       await delay(SETTLE_MS + 200)
       assert(await stampSurvives(page, bodySel, 'body-node'), '换序之后内容根还是同一个节点')
 
-      // ② 二合一(走「放到标签上」那条路:压到条底缘下 6–24px 再松手)。
-      const s2 = await fillStrip(2, { singles: true })
-      const single = s2.tabs.filter((t) => !t.id.startsWith('pair:'))
-      if (single.length >= 2) {
-        const ontoY = Math.round(s2.rect.top + s2.rect.height + ONTO_Y_OFFSET)
-        await press(cdp, { x: single[0].cx, y: single[0].cy })
-        await strokeOn(cdp, { x: single[0].cx, y: single[0].cy }, { x: single[1].cx, y: ontoY }, { steps: 10 })
-        await moveTo(cdp, { x: single[1].cx + 1, y: ontoY })
-        await delay(60)
-        await releaseAt(cdp, { x: single[1].cx, y: ontoY })
+      /*
+       * ② 二合一。**U2 改走动作单产地那张右键菜单**:从前这里走的是「压到条底缘下
+       * 6–24px 再松手」,而那条带整段删掉了(判词在 `pairActiveRight` 上)。这一条
+       * 断的是「二合一之后内容根还是同一个节点」,与它由哪条路触发无关 —— 三条路
+       * (菜单 / 拖到内容区左右带 / 从前那条带)调的本来就是同一只 `pairIntoIndex`。
+       */
+      let s2 = await fillStrip(2, { singles: true })
+      /*
+       * **先保证条上真有并排的两格普通标签**:走到这一步时条上多半已经有一两格
+       * 两格标签(⑤ 与本场景自己并出来的),而两格的标签不能再并 —— 于是「有两格
+       * 普通标签」不等于「有并排的两格普通标签」。补一格没开过的文件(它接在末尾,
+       * 与末位那格普通标签相邻),这一条才有对象可量。
+       */
+      if (firstPairableAt(s2.tabs) < 0) {
+        const spare = `[data-file-path="${path.join(cwd, 'delta.ts')}"]`
+        if (await page.evaluate((css) => Boolean(document.querySelector(css)), spare)) {
+          await clickSelector(page, spare)
+          await delay(360)
+          s2 = await topStrip(page)
+        }
+      }
+      const pairableAt = firstPairableAt(s2.tabs)
+      if (pairableAt >= 0) {
+        const paired = await pairActiveRight(page, cdp, s2.tabs[pairableAt])
+        assert(paired, '菜单里那一项把两格并成了一格(而且它成了活动那一格)', JSON.stringify(s2.tabs.map((t) => t.id)))
         assert(await stampSurvives(page, bodySel, 'body-node'), '二合一之后内容根还是同一个节点')
       } else {
-        assert(false, '条上有两格普通标签可以并', JSON.stringify(s2.tabs.map((t) => t.id)))
+        assert(false, '条上有并排的两格普通标签可以并', JSON.stringify(s2.tabs.map((t) => t.id)))
       }
 
       /*
@@ -1462,13 +1799,44 @@ async function main() {
        * 的那块会话总览浮面(实测 y≈204–689)。三样都在,于是这一下按在别人身上,
        * 杆一动没动 —— 而旧断言只问「内容根还是同一个节点」,对空动作是绿的。
        */
-      const seam = await centerOf(page, '[data-testid^="pair-splitter"]')
+      /*
+       * **屏幕上那条杆,不是 DOM 里第一条**(U2 修)。条上可能同时有好几格两格标签
+       * (⑤ 并出来的、本场景并出来的),而后台那几格的内容层是 `inert` / 不可见的
+       * —— `querySelector` 取到的第一条很可能属于一格**没在屏幕上**的标签,于是
+       * 「杆上有没有鼠标够得着的一段」恒为 null。判据换成:在**所有**杆里找第一条
+       * 真的接得到指针的,后面几步都对着它那一条问。
+       */
+      const seamPick = await page.evaluate(() => {
+        const bars = Array.from(document.querySelectorAll('[data-testid^="pair-splitter"]'))
+        for (let i = 0; i < bars.length; i += 1) {
+          const bar = bars[i]
+          const r = bar.getBoundingClientRect()
+          if (r.width <= 0 || r.height <= 0) continue
+          /*
+           * x 也要扫:那条 6px 的抓手**有意溢出**到 1px 的缝两边
+           * (`Splitter.module.css`「抓手比列宽」),而右边那格是它的后一个兄弟、
+           * 又是 `position: relative` —— 于是抓手的右半边被右格盖着,只有左半边
+           * 真的接得到指针。y 也要扫:B7 那颗拆开小把手压在正中,而这道门此刻还
+           * 开着的那块会话总览把杆的中段整个盖住。
+           */
+          for (let y = r.top + 8; y < r.top + r.height - 8; y += 12) {
+            for (const x of [r.left + 1, r.left + Math.round(r.width / 2), r.left + r.width - 1]) {
+              const top = document.elementFromPoint(Math.round(x), Math.round(y))
+              if (top === bar || (top && bar.contains(top))) {
+                return { index: i, grab: { x: Math.round(x), y: Math.round(y) } }
+              }
+            }
+          }
+        }
+        return null
+      })
+      const seam = seamPick
       const ratioNow = () =>
-        page.evaluate(() => {
-          const el = document.querySelector('[data-testid^="pair-splitter"]')
+        page.evaluate((i) => {
+          const el = document.querySelectorAll('[data-testid^="pair-splitter"]')[i]
           const now = Number(el?.getAttribute('aria-valuenow'))
           return Number.isFinite(now) ? now : null
-        })
+        }, seamPick?.index ?? 0)
       if (seam) {
         const before = await ratioNow()
         /*
@@ -1479,23 +1847,7 @@ async function main() {
          * 「一动没动」是绿的)。所以沿杆自上而下找第一段**顶上真的是它自己**的
          * 位置;一段都找不到 = 这条杆鼠标够不着,那本身就是一条红。
          */
-        const grabAt = await page.evaluate((rect) => {
-          const bar = document.querySelector('[data-testid^="pair-splitter"]')
-          if (!bar) return null
-          /*
-           * x 也要扫:那条 6px 的抓手**有意溢出**到 1px 的缝两边
-           * (`Splitter.module.css`「抓手比列宽」),而右边那格是它的后一个兄弟、
-           * 又是 `position: relative` —— 于是抓手的右半边被右格盖着,只有左半边
-           * 真的接得到指针。
-           */
-          for (let y = rect.top + 8; y < rect.top + rect.height - 8; y += 12) {
-            for (const x of [rect.left + 1, rect.left + Math.round(rect.width / 2), rect.left + rect.width - 1]) {
-              const top = document.elementFromPoint(x, y)
-              if (top === bar || (top && bar.contains(top))) return { x, y }
-            }
-          }
-          return null
-        }, seam.rect)
+        const grabAt = seam.grab
         assert(grabAt !== null, '这条杆身上有鼠标够得着的一段(把手只吃掉中间一小截)')
         if (grabAt !== null) {
           const grab = grabAt
@@ -1510,7 +1862,7 @@ async function main() {
         }
         assert(await stampSurvives(page, bodySel, 'body-node'), '换比例之后内容根还是同一个节点')
       } else {
-        assert(false, '两格标签里有一根分隔杆', 'pair-splitter 不在 DOM 里')
+        assert(false, '屏幕上那一格两格标签里有一根够得着的分隔杆', 'pair-splitter 一条都没接到指针')
       }
       // ④ 拆开 —— W7-t / B7 起它是**缝中点那颗小把手**(格头上换成了只关这一格的 ✕)。
       const unpaired = await page.evaluate(() => {
@@ -1726,6 +2078,68 @@ async function main() {
         await releaseAt(cdp, leftPoint)
       } else {
         assert(false, '左缘那一点与一行文件都量得到', JSON.stringify({ leftPoint, row3: Boolean(row3) }))
+      }
+    }
+
+    /* ══ 场景 ⑩:自己的外扩带不许赢过别人的条(U2)═══════════════════════ */
+    scenario('把顶栏一格标签拖到左架子标签条的上半截:落的是架子那条条,不是回换序')
+    {
+      /*
+       * ── 病历(用户 09-08)────────────────────────────────────────────────
+       * 顶栏那条标签条的**下沿 24px 外扩**(`bandSlack = TEAR_OFF_DISTANCE`,
+       * 「离条这么近仍算在带里」)盖住左右架子标签条的上半截 —— 架子檐从 y≈44 起、
+       * 条 34px 高,两者在屏幕上就是叠着的。而从前「自己的带」先判(`useContentDrag`
+       * 那句 `wants = inline && band.phase === 'inside'`),于是指针明明压在架子那条
+       * 条上,这一帧仍被判成条内换序:架子那条条一动不动,松手什么也没发生。
+       *
+       * 修法是 W7-c 那条「落在条上的赢过只是够得着的」的**对偶**:指针**真的落在**
+       * (不算任何外扩)另一条条的矩形上时,自己那条外扩让开
+       * (`useContentDrag.onForeignStrip`)。
+       *
+       * ── 反证 ────────────────────────────────────────────────────────────
+       * 把 `wants` 那一行的 `&& !onForeignStrip(...)` 挖掉,这一条当场红:
+       * 架子那条条上没有空位、提示行为空、松手之后那一格还在顶栏。
+       */
+      const strip = await fillStrip(3, { singles: true })
+      const shelf = await shelfStrip(page, 'left')
+      assert(Boolean(shelf), '左架子那条标签条在场', JSON.stringify(shelf))
+      const mover = strip.tabs.find((t) => !String(t.id).startsWith('pair:')) ?? strip.tabs[0]
+      if (shelf && mover) {
+        /*
+         * **上半截**:架子条 top + 8。它同时满足两件事 —— 落在架子那条条的矩形里
+         * (0 ≤ 8 < 34),而且落在顶栏那条条的下沿外扩里(顶栏条底缘 ~44,+24 = 68)。
+         * 这一点正是病历里那一片。
+         */
+        const target = { x: Math.round(shelf.rect.left + shelf.rect.width / 2), y: shelf.rect.top + 8 }
+        const overlaps = target.y <= strip.rect.top + strip.rect.height + TEAR_OFF_DISTANCE
+        assert(
+          overlaps,
+          `这一点确实落在顶栏那条条的 ${TEAR_OFF_DISTANCE}px 下沿外扩里(不然这一条没有对象可量)`,
+          JSON.stringify({ target, topBottom: strip.rect.top + strip.rect.height }),
+        )
+        const seen = await stroke(cdp, { x: mover.cx, y: mover.cy }, target, {
+          steps: 14,
+          holdMs: 220,
+          sample: () => feedbackNow(page),
+        })
+        const read = seen[seen.length - 1]
+        assert((read.gapWidth ?? 0) > 0, '架子那条条上腾出了一格空位', JSON.stringify(read))
+        assert(/放到第|Drop at position/.test(read.hint), '提示行说的是「放到第 n 位」', read.hint)
+        const shelfIdsBefore = shelf.tabs.map((t) => t.id)
+        await releaseAt(cdp, target)
+        await delay(SETTLE_MS + 300)
+        const shelfAfter = await shelfStrip(page, 'left')
+        const topAfter = await topStrip(page)
+        assert(
+          Boolean(shelfAfter) && shelfAfter.tabs.some((t) => t.id === mover.id),
+          '松手之后那一格进了左架子',
+          JSON.stringify({ before: shelfIdsBefore, after: shelfAfter?.tabs.map((t) => t.id) }),
+        )
+        assert(
+          !topAfter.tabs.some((t) => t.id === mover.id),
+          '而且它不在顶栏那条条上了(是搬过去,不是复制)',
+          JSON.stringify(topAfter.tabs.map((t) => t.id)),
+        )
       }
     }
 

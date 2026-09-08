@@ -128,10 +128,11 @@
    * JS 镜像见 components/motion.ts(三个各有一个收尾定时器跟着走),三条都由
    * __tests__/motion-tokens.test.ts 钉着。
    *
-   * **第四个(300ms,二合一的时间门槛)已退役**(W6-b 二修):二合一不再由
-   * 「停住多久」判,改由「指针压到条底缘下 6–24px」判(ONTO_FROM_PX,产地
-   * ui/drag/constants.ts)。位置判据不是时长,没有 token 可言;删它同时删掉了
-   * 「动效档要不要清零它」那一整个问题。 */
+   * **第四个(300ms,二合一的时间门槛)已退役**(W6-b 二修):二合一先是改成
+   * 由「指针压到条底缘下 6–24px」判,**U2(2026-09-08)连那条带也删了** ——
+   * 标签条上今天一格「二合一」的判据都不剩,它只在内容区左右带成立(判词在
+   * ui/drag/constants.ts 的 ONTO_FROM_PX 退役段)。两次退役都不留 token:位置
+   * 判据不是时长;删它同时删掉了「动效档要不要清零它」那一整个问题。 */
   --dur-neighbor: 120ms;
   --dur-settle: 150ms;
   --dur-land: 180ms;
@@ -234,10 +235,14 @@
   /* 窗口边带那一档薄膜(叶身不再画色块 —— 它换成了一圈细环与一根杠)。 */
   --drop-band-face: var(--accent-soft);
   --drop-band-line: var(--accent);
-  /* 并入环:`--accent-ring` 是焦点环那一档(0.18α),画在叶内一圈几乎看不见
-   * (W3-b 真机读数:暗色下环 (67,75,82) vs 底 (63,62,60));落区反馈要一眼可辨,
-   * 走 accent 本色兑 30% 透明,与分屏那根杠同一族色。 */
-  --drop-ring-line: color-mix(in srgb, var(--accent) 70%, transparent);
+  /*
+   * **`--drop-ring-line` 随 U2 退役**(2026-09-08)。它是「二合一目标那一圈」的
+   * 线色;U1 之后它唯一的读者是 `ui/Tabs.module.css` 的 `[data-pair-hot]`,而
+   * 那一格随「放到标签上」那条带一起删掉了(真机量到:那一圈被抬起的标签盖住
+   * 92%,判词在 `ui/drag/constants.ts` 的 `ONTO_FROM_PX` 退役段)。
+   * **这里不留登记** —— 与 `--drop-ambient` 同一条:一格没人读的落区色留在册上,
+   * 下一个人照着它把那圈种回来只要一行。`drop-tokens.test.ts` 守着这一条。
+   */
   --drop-refuse-face: transparent;
   --drop-refuse-line: var(--line-2);
   --drop-band-r: var(--r-2);
@@ -620,6 +625,16 @@
   --tab-shoulder: 9px;
   --tab-sep-inset: 10px;
   --tab-joined-ink: var(--text-1);
+  /*
+   * **非活动标签悬停时的底**(U2,2026-09-08 用户报「顶栏标签悬停看不见」)。
+   *
+   * 它不读 `--st-hover`(6% 的墨):那一族画在 `--surface-*` 的纸上,而这一档的
+   * 底下是**透明的檐**(顶栏组要让顶栏自己的底透出来),隔壁又是内容区的纸色 ——
+   * 三样挤在一个很窄的明度区间里,6% 悬上去看不出来。10% 是这一档自己的数,
+   * 所以它自己一格:改 `--st-hover` 等于为了标签条把全壳几十处的悬停一起加深。
+   * 字色那一半由规则就地读 `--text-1`(非活动标签的常态是 `--text-3`)。
+   */
+  --tab-joined-hover-face: color-mix(in srgb, var(--text-1) 10%, transparent);
 
   /* ── 两格标签(W6-a,设计 `workbench-tabs-2026-09.md` §6)──────────────────
    * 一个标签最多装两格,每格顶上一条小檐(**格头**):这格的名字 + 一颗「拆开」。

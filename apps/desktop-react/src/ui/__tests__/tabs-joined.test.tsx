@@ -224,61 +224,49 @@ describe('条内换序:纯判据(下标表驱动)', () => {
   })
 
   /**
-   * **`hover()`:「放到标签上」那一形答的是「指针 x 底下是哪一格」**(W6-b 二修,
-   * §4.2 的 onto 带)。按标签**整宽**判 —— 手这时已经压到条的下面,再要求它对准
-   * 一格「正中」是让人在空中描准头。U1(2026-09-08)之后这是「压到某一格上」的
-   * **唯一**一条判据:`workbench/drop.ts` 那一档「外来来源落在正中 44%」已经退役
-   * (判词在 `ui/drag/constants.ts` 的 `TAB_MIDDLE` 退役段上)。
+   * **`lifted()` 答「此刻抬着的是哪一格」**(U2,2026-09-08)。
+   *
+   * 它是取消那条路(Esc / pointercancel / 窗口失焦)分两种收法的判据:抬着 =
+   * 还在带里 = 150ms 滑回原位;折着 = 已经撕下 = 原位展回。消费方自己存一格
+   * 布尔就是「第二条会话」,而这句话的答案本来就在编舞手上。
+   *
+   * ── `hover()` / `markPair()` 的两条用例随 U2 一起删掉 ────────────────────
+   * 那两只是「放到标签上」那条带的一帧与它的描圈。真机量到那一圈被抬起的标签
+   * 盖住 92%,用户裁定整条带删掉(判词在 `ui/drag/constants.ts` 的 `ONTO_FROM_PX`
+   * 退役段)。删的是**被测的东西**,不是一条碍事的断言。
    */
-  it('hover 按整宽答「指针底下是谁」,自己与条外的空白都答 null', () => {
+  it('lifted:抬起答那一格的 id,撕下 / reset 之后答 null', () => {
     const { container } = renderTabs('joined')
     const list = container.querySelector<HTMLElement>('[role="tablist"]')!
     stubLayout(list)
     const choreo = tabStripChoreo(list)
+    expect(choreo.lifted()).toBeNull()
     choreo.lift('a', 60)
-    // b 占 [120,240):左缘、正中、右缘边上都算数(44% 那一档在这里不适用)。
-    expect(choreo.hover(121)).toBe('b')
-    expect(choreo.hover(180)).toBe('b')
-    expect(choreo.hover(239)).toBe('b')
-    expect(choreo.hover(250)).toBe('c')
-    // 抬起那一格自己不算数(拖回自己身上不是一次并,§2.3 不变量 3)。
-    expect(choreo.hover(60)).toBeNull()
-    // 末格之后的空白:松手什么都不该发生。
-    expect(choreo.hover(400)).toBeNull()
+    expect(choreo.lifted()).toBe('a')
+    // 撕下 = 已经不在带里了 —— 取消那条路要走「原位展回」而不是「滑回」。
+    choreo.tear('a')
+    expect(choreo.lifted()).toBeNull()
+    choreo.reset()
+    expect(choreo.lifted()).toBeNull()
   })
 
-  /**
-   * **onto 态里邻居的让位全部清零,而被拖那格照旧跟手**(§4.2「邻居不再让位」)。
-   * 这一条是「压下去之后条上还在让位」那个长相的守门人。
-   */
-  it('hover:邻居让位清零,被拖那一格照旧夹在两端之内跟手', () => {
+  /** 那条带删掉之后,`[data-pair-hot]` 谁都写不动了 —— 编舞上没有那一口。 */
+  it('编舞上没有 hover / markPair 那两口(U2 退役)', () => {
     const { container } = renderTabs('joined')
     const list = container.querySelector<HTMLElement>('[role="tablist"]')!
     stubLayout(list)
-    const choreo = tabStripChoreo(list)
-    choreo.lift('a', 60)
-    choreo.track(310)
-    const [a, b, c] = Array.from(list.querySelectorAll<HTMLElement>('[role="tab"]'))
-    expect(b.style.transform).toBe('translateX(-120px)')
-
-    choreo.hover(310)
-    expect(b.style.transform).toBe('')
-    expect(c.style.transform).toBe('')
-    expect(b.dataset.shift).toBeUndefined()
-    expect(c.dataset.shift).toBeUndefined()
-    // 跟手照旧夹紧:left = clamp(310 - 60, 0, 360 - 120) = 240。
-    expect(a.style.transform).toBe('translateX(240px)')
-    expect(a.dataset.lift).toBe('')
+    const choreo = tabStripChoreo(list) as unknown as Record<string, unknown>
+    expect(choreo.hover).toBeUndefined()
+    expect(choreo.markPair).toBeUndefined()
   })
 
-  /** 没抬起过就没有基准矩形 —— 两只都答 null,而不是拿零矩形算一个假答案。 */
-  it('没 lift 过时 track / hover 都答 null', () => {
+  /** 没抬起过就没有基准矩形 —— 答 null,而不是拿零矩形算一个假答案。 */
+  it('没 lift 过时 track 答 null', () => {
     const { container } = renderTabs('joined')
     const list = container.querySelector<HTMLElement>('[role="tablist"]')!
     stubLayout(list)
     const choreo = tabStripChoreo(list)
     expect(choreo.track(180)).toBeNull()
-    expect(choreo.hover(180)).toBeNull()
   })
 
   /** 让位落定后必须**清零** —— 留着的话下一次渲染那几格会长在错位上。 */

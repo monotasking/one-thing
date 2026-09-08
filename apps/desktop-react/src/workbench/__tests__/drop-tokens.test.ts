@@ -80,6 +80,44 @@ describe('落点几何:token 登记与判据镜像必须相等', () => {
   })
 
   /**
+   * **二合一那一圈随 U2 退役**(2026-09-08,用户裁定「压到标签上」整条带删掉)。
+   *
+   * 与 `--drop-ambient` 同一种守卫:`--drop-ring-line` 唯一的读者是
+   * `ui/Tabs.module.css` 的 `[data-pair-hot]`,那一格与它一起删干净。真机量到的是
+   * **那一圈被抬起的标签盖住 92%**(抬起那格 `z-index: 2`、底不透明、还在跟手),
+   * 所以留一格没人读的落区色在册上,下一个人照着它把那圈种回来只要一行。
+   * 编舞那一头的 `hover()` / `markPair()` 一并没了(`tabs-joined.test.tsx` 守着)。
+   */
+  it('--drop-ring-line 与 [data-pair-hot] 一起删干净', () => {
+    expect(tokens).not.toMatch(/--drop-ring-line\s*:/)
+    const css = readFileSync(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), '../../ui/Tabs.module.css'),
+      'utf-8',
+    ).replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(css).not.toMatch(/data-pair-hot/)
+    expect(css).not.toMatch(/--drop-ring-line/)
+  })
+
+  /**
+   * **非活动标签的悬停有自己一格底**(U2;用户报「顶栏标签悬停看不见」)。
+   *
+   * 它不许再读 `--st-hover`:那一族 6% 的墨画在 `--surface-*` 的纸上,而这一档
+   * 底下是**透明的檐**、隔壁是内容区的纸色,三样挤在一个很窄的明度区间里。
+   * 这条断言守的是两头 —— 册上真有这一格,而那条规则真的读它(不是又退回 6%)。
+   */
+  it('joined 档非活动标签的悬停底读自己那一格 token', () => {
+    expect(tokens).toMatch(/--tab-joined-hover-face\s*:/)
+    const css = readFileSync(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), '../../ui/Tabs.module.css'),
+      'utf-8',
+    ).replace(/\/\*[\s\S]*?\*\//g, '')
+    const rule = /\.bar\[data-look='joined'\] \.tab:not\(\.tabOn\):hover \{[^}]*\}/.exec(css)
+    expect(rule, 'joined 档有那条悬停规则').toBeTruthy()
+    expect(rule?.[0]).toMatch(/background:\s*var\(--tab-joined-hover-face\)/)
+    expect(rule?.[0]).toMatch(/color:\s*var\(--text-1\)/)
+  })
+
+  /**
    * **边带分屏退役了,但登记留着**(W6-b)。留着的理由是设计册要答得出这两个数;
    * 判据那一头**必须零读者** —— 这条断言守的正是「有人把边带分屏偷偷种回来」。
    */

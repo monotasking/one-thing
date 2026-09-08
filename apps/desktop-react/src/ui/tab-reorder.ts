@@ -34,9 +34,10 @@ import s from './Tabs.module.css'
  *    CSS 把整条的 hover 底关掉 —— 换序全程标签条、内容区、其它标签一律不变色。
  *    (这一句不是靠「指针恰好压在被拖那格上」侥幸成立的:抬起那格横扫时指针
  *    一格一格经过邻居的上方,而 pointer capture 不冻结 `:hover` 的命中测试。)
- * ③ **同一个节点在挪**:空位只有一个,落点变了只是 `insertBefore` 到别处;
- *    描圈的目标换人只是把属性从一格挪到另一格。任何按帧拆掉重建的东西都会
- *    被看成闪烁。
+ * ③ **同一个节点在挪**:空位只有一个,落点变了只是 `insertBefore` 到别处。
+ *    任何按帧拆掉重建的东西都会被看成闪烁。(从前这句还有后半句「描圈的目标换人
+ *    只是把属性从一格挪到另一格」—— 那格描圈随 U2 与「放到标签上」那条带一起
+ *    退役了,见 `lifted()` 上的判词。)
  *
  * ── 三张状态表 ①:生命周期 ───────────────────────────────────────────────
  *   造      一次拖拽起手,消费方拿到这条条的 tablist 元素
@@ -44,9 +45,6 @@ import s from './Tabs.module.css'
  *           矩形**(整场只量这一次 —— 见 `track()` 的判词),条上挂 `data-reorder`
  *   换序    `track(x)` 每帧一次:抬起那格写 `transform`(**夹在条的两端之内**),
  *           邻居按「被拖的那条边越过谁的中心」写各自的让位量,答此刻的落点下标
- *   压下去  `hover(x)` 每帧一次:指针压到条底缘下 6–24px 那一形 —— 抬起那格
- *           照旧跟手,但**邻居的让位全部清零**,答「指针 x 底下是哪一格」
- *   描圈    `markPair(tabId | null)`:那一格描一圈(消费方在压下去那一形叫)
  *   撕下    `tear(id)`:抬起清掉,那一格挂 `data-torn` 折成 0 宽(元素不卸载)
  *   腾位    `gapAt(index, width)`:在**任何**一条条上插一格 `.ph`
  *   收笔    `settle(tabId, fromLeft)`:树已经改完,让那一格从抬起时的位置
@@ -57,7 +55,6 @@ import s from './Tabs.module.css'
  * ── ②:UI 生命状态 ───────────────────────────────────────────────────────
  *   闲      什么都没写过(刚造出来 / reset 之后)
  *   抬起中  条内换序:一格浮着、邻居让位、条不变色
- *   压下去  抬起中 + 邻居的让位全清零 + 某一格描着圈(它是二合一的目标)
  *   折起    已经撕出去:原位是一道 0 宽的缝
  *   有空位  某条条上撑开了一格
  *   收笔中  `data-settle`:一格正在滑向新槽(150ms),随后闪一圈(`data-land`)
@@ -185,29 +182,23 @@ export interface TabStripChoreo {
    */
   track(x: number): number | null
   /**
-   * **「放到标签上」**那一形的一帧(§4.2 的 onto 带):指针压到标签条底缘下
-   * `ONTO_FROM_PX`–`TEAR_OFF_DISTANCE` 之间时每帧叫。答「**指针 x** 底下是哪一格」,
-   * 没有就 null。没抬起过也答 null。
+   * **此刻抬起的是哪一格**,没抬起过答 null。
    *
-   * 它与 `track()` 只差两件事,其余(跟手、夹紧、读基准矩形)逐字相同:
-   *  ① **邻居的让位全部清零** —— 这一形不是换序,条上一格都不该让开(§4.2
-   *     「邻居不再让位」)。清零走的是同一批节点的同一格属性,**不重建任何东西**
-   *     (§4.5 第 3 条);已经是零的那几格一个字都不写,免得白白惊动样式表。
-   *  ② 答的是**指针**底下那一格,而不是抬起那格的中心停在谁头上;而且按标签
-   *     **整宽**判。理由:手这时已经压到条的下面,再要求它同时对准一格「正中」
-   *     是让人在空中描准头。
-   *     **U1(2026-09-08)之后这是「压到某一格上」的唯一一条判据**:从前
-   *     `workbench/drop.ts` 还有一档「外来来源落在某一格的正中 44%
-   *     (`TAB_MIDDLE`)= 与它二合一」,而那一档与「插到它旁边」在同一条条上按
-   *     28% 线交替,每交替一次占位就被删掉重插 —— 用户报的「拖到标签正中闪烁」。
-   *     它连同那个常量一起退役;从外面拖东西进来时条上只剩「插到第 n 格」。
+   * 它是这条编舞**自己那格状态**的读口,加它是为了取消那条路(U2):Esc /
+   * pointercancel / 窗口失焦要分两种收法 —— 还在带里(抬起着)是 150ms 滑回原位,
+   * 已经撕下(折着)是原位展回。消费方自己存一格「我此刻在不在带里」就是**第二条
+   * 会话**(那正是 `DragBandState` 文件头点名的那条病),而这句话的答案本来就在
+   * 这只编舞手上:抬起 / 撕下都只有它写得动。
+   *
+   * ── `hover()` / `markPair()` 随 U2 退役(2026-09-08)──────────────────────
+   * 那两只是「放到标签上」那条带(条底缘下 6–24px)的一帧与它的描圈。真机量出来
+   * 的是:**描圈被抬起的那一格盖住 92%** —— 抬起那格 `z-index: 2`、底不透明,
+   * 而这一形里它照旧跟手,于是它正压在指针底下那一格上。用户裁定整条带删掉,
+   * 二合一只剩内容区左右带那**一种**手势。判词全文在
+   * `ui/drag/constants.ts` 的 `ONTO_FROM_PX` 退役段;`[data-pair-hot]` 与
+   * `--drop-ring-line` 同批退役。
    */
-  hover(x: number): string | null
-  /**
-   * 给某一格描一圈(二合一的目标)。传 null = 谁都不描。**幂等**,而且
-   * **同一个节点在挪**:换目标只是把属性从一格摘到另一格,不重建任何东西。
-   */
-  markPair(tabId: string | null): void
+  lifted(): string | null
   /**
    * 撕下:抬起清掉,**那一格折成 0 宽**。幂等。
    *
@@ -271,7 +262,6 @@ export function tabStripChoreo(list: HTMLElement): TabStripChoreo {
   let torn: HTMLElement | null = null
   let ph: HTMLElement | null = null
   let phAt: number | null = null
-  let paired: HTMLElement | null = null
   /** 收笔那两拍的计时器(滑入跑完摘属性、闪圈跑完摘属性)。`reset()` 收。 */
   const timers = new Set<ReturnType<typeof setTimeout>>()
 
@@ -291,10 +281,10 @@ export function tabStripChoreo(list: HTMLElement): TabStripChoreo {
   }
 
   /**
-   * **抬起那一格的横向跟手**,答夹紧之后的左缘。换序(`track`)与「放到标签上」
-   * (`hover`)两形共用它 —— 两形里那一格的跟手是**同一件事**,差别全在后面那一半
-   * (让位还是清零)。抽出来是为了它只有一处:两份跟手迟早会在夹紧上说岔,而
-   * 「拖到头那一格的落位差几个像素」在屏幕上就是抖。
+   * **抬起那一格的横向跟手**,答夹紧之后的左缘。U2 之前它由两形共用(换序
+   * `track` 与「放到标签上」`hover`);那条带退役之后只剩 `track` 一个调用方,
+   * 但它仍旧抽在这里 —— 夹紧那句话该只有一处,而「拖到头那一格的落位差几个像素」
+   * 在屏幕上就是抖。
    *
    * ── 1:1 跟手(§4.5 第 1 条)────────────────────────────────────────────
    * 每帧直接写 `transform`,不节流、不缓动;那一格的过渡在 CSS 里被关掉。
@@ -396,39 +386,7 @@ export function tabStripChoreo(list: HTMLElement): TabStripChoreo {
       return next <= index ? next : next + 1
     },
 
-    hover(x) {
-      if (!lifted) return null
-      const { index, boxes } = lifted
-      follow(lifted, x)
-      /*
-       * **邻居的让位全部清零**(§4.2「onto:邻居不再让位」)。已经是零的那几格
-       * 一个字都不写:这一形每帧都走这里,而给一格空着的 `transform` 再写一次空
-       * 字符串,屏幕上什么都不会变、样式表却白挨一次 —— 这是 §4.5 第 3 条
-       * (「同一个节点在挪」)的另一半:不重建,也不空写。
-       */
-      boxes.forEach((box, i) => {
-        if (i === index || box.el.dataset.shift === undefined) return
-        box.el.style.transform = ''
-        delete box.el.dataset.shift
-      })
-      /*
-       * **指针 x 底下是哪一格**:读抬起那一刻的基准矩形(理由与落点同一条 ——
-       * 邻居的活矩形正走在收回让位的过渡里),按标签**整宽**判,自己除外
-       * (拖回自己身上不是一次并 —— 设计 §2.3 不变量 3)。
-       */
-      return (
-        boxes.find((box, i) => i !== index && x >= box.left && x < box.left + box.width)?.id
-        ?? null
-      )
-    },
-
-    markPair(tabId) {
-      const want = tabId ? tabById(list, tabId) : null
-      if (paired === want) return
-      if (paired) delete paired.dataset.pairHot
-      paired = want
-      if (paired) paired.dataset.pairHot = ''
-    },
+    lifted: () => lifted?.boxes[lifted.index].id ?? null,
 
     tear(tabId) {
       if (lifted) {
@@ -437,7 +395,6 @@ export function tabStripChoreo(list: HTMLElement): TabStripChoreo {
         clearShifts()
         lifted = null
       }
-      choreo.markPair(null)
       delete list.dataset.reorder
       torn ??= tabById(list, tabId)
       if (torn) torn.dataset.torn = ''
@@ -519,7 +476,6 @@ export function tabStripChoreo(list: HTMLElement): TabStripChoreo {
         delete torn.dataset.torn
         torn = null
       }
-      choreo.markPair(null)
       delete list.dataset.reorder
       clearShifts()
       choreo.clearGap()

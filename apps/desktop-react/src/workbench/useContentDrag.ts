@@ -73,6 +73,25 @@ export interface ContentDragSpec {
   bandSlack?: number
   /** 带内那一形。给了 `band` 才有意义。 */
   inline?: InlineDragHandlers
+  /**
+   * **来源自己那条标签条是哪一片叶的**(U2,2026-09-08)。缺席 / 答 null =
+   * 「我没有自己的条」,于是下面那条让路规则对这一次拖拽不成立(与 U2 之前逐字
+   * 相同)。今天只有 tab 那一种来源答得出:它答 `leaf.id`。
+   *
+   * ── 它治的是什么:**自己的外扩带不许赢过别人的条** ──────────────────────
+   * 带的上下外扩是 `TEAR_OFF_DISTANCE` 24(「离条这么近仍算在带里」)。顶栏那条
+   * 标签条的 24px 下沿外扩**盖住了左右架子标签条的上半截** —— 架子檐从 y≈44 起,
+   * 条 34px 高,两者在屏幕上就是叠着的。于是拖一格顶栏标签到架子条的上半截时,
+   * 「自己的带」先判,这一帧被判成**回换序**,而用户看见的是指针明明压在架子那条
+   * 条上、那条条却一动不动。
+   *
+   * 修法与 `drop.stripAt` 的 W7-c 那条「落在条上的赢过只是够得着的」是**一对**:
+   * 那一条在条与条之间排序(先找真的含住这一点的,没有再找够得着的),这一条在
+   * 「自己的带」与「别人的条」之间排同一个序 —— 指针**真的落在**(不算外扩)另一条
+   * 条的矩形上时,自己的外扩这一帧让开,走统一那条路;`dropTargetAt` 的两遍扫描
+   * 随后会把它判成那条条的 `strip`。两处是同一句话的两个方向,所以判词互相指认。
+   */
+  ownStripLeafId?(): string | null
   /** 浮影画什么。缺席 = 问种类表(名字与图标都是它自述的)。 */
   ghost?(ref: ContentRef): DragGhostSpec
   /** 这次拖拽自己的规矩(分不分屏 / 哪些落点不收)。 */
@@ -106,8 +125,18 @@ export interface ContentDragSpec {
   /**
    * 这一场结束了(落定 / Esc / 指针没了,**三条路都叫**,在闸开之后、落定之前)。
    * 来源在这里收拾自己画过的东西。幂等 —— 它是「每条结束路径都先走它」的那一只。
+   *
+   * **`reason` 是 U2 加的**(2026-09-08):三条路收拾的东西一样,但**那一格来源
+   * 怎么回去**不一样 —— 落定那条路它有新槽位可去(来源自己在 `inline.drop` 里
+   * 排好了滑入),取消那两条路它要**滑回原位**。从前这里不分,于是取消 = 一摘
+   * transform 的**瞬移**(设计 §4.2 写的是 150ms 滑回,真机探针读到 5ms 到家、
+   * 连 `data-settle` 都没挂过)。分成两个理由码而不是加第二口回调:收拾这件事
+   * 仍旧只有一处、仍旧幂等。
+   *
+   *   `drop`    松手落定(带内自己落定的那一形也算 —— 它先跑,见 `onDrop` 的次序)
+   *   `cancel`  Esc / pointercancel / 窗口失焦,**三条都是它**
    */
-  onEnd?(): void
+  onEnd?(reason: 'drop' | 'cancel'): void
 }
 
 interface DragHeld {
@@ -200,7 +229,15 @@ export function useContentDrag(spec: ContentDragSpec): (e: ReactPointerEvent<Ele
   const onMove = useCallback(
     (pointer: { x: number; y: number }, held: DragHeld, band: DragBandState) => {
       const inline = specRef.current.inline
-      const wants = Boolean(inline) && band.phase === 'inside'
+      /*
+       * **带内那一形还要问一句:指针是不是真的落在别人那条条上**(U2)。
+       * 判词整段在 `ContentDragSpec.ownStripLeafId` 上 —— 一句话:自己的外扩带
+       * 不许赢过一条指针真的落在上面的条。
+       */
+      const wants =
+        Boolean(inline)
+        && band.phase === 'inside'
+        && !onForeignStrip(pointer, held, specRef.current.ownStripLeafId?.() ?? null)
       if (wants && inline) {
         /*
          * **带内:整条交给来源**。浮影一个节点都不画(`inline`),落区高亮也不画
@@ -285,7 +322,7 @@ export function useContentDrag(spec: ContentDragSpec): (e: ReactPointerEvent<Ele
        * 就是「闸一开就得先收干净」)。
        */
       const settle = inBand ? inline?.drop(pointer) === true : false
-      specRef.current.onEnd?.()
+      specRef.current.onEnd?.('drop')
       if (settle) return
       if (specRef.current.onDrop?.(target, held.ref) === true) return
       dropRef(held.ref, target, { pointer })
@@ -296,7 +333,7 @@ export function useContentDrag(spec: ContentDragSpec): (e: ReactPointerEvent<Ele
   const onCancel = useCallback(
     (held: DragHeld) => {
       finish(held)
-      specRef.current.onEnd?.()
+      specRef.current.onEnd?.('cancel')
     },
     [finish],
   )
@@ -327,6 +364,44 @@ export function useContentDrag(spec: ContentDragSpec): (e: ReactPointerEvent<Ele
     bandSlack: specRef.current.bandSlack,
     threshold: specRef.current.threshold,
   })
+}
+
+/**
+ * **指针是不是真的落在「别人那条条」上**(U2,2026-09-08)。
+ *
+ * 「真的落在」= 不算任何外扩,矩形闭区间含住这一点;「别人的」= `leafId` 不是
+ * 来源自述的那一条(`ContentDragSpec.ownStripLeafId`)。答 `true` 的那一帧,
+ * 来源自己那条带让开,这一帧走统一那条路。
+ *
+ * ── 它是 `drop.stripAt` 那条两遍扫描的**对偶** ─────────────────────────────
+ * 那一条排的是「条 vs 条」:先找真的含住这一点的,没有再找够得着的(W7-c,起因
+ * 是顶栏标签改成从红绿灯右边起排之后与左架子那条条横向重叠了)。这一条排的是
+ * 「自己的带 vs 别人的条」,判据逐字相同 —— **落在上面的赢过只是够得着的**。
+ * 两条都不许用「把外扩改小」来躲:那是拿一个魔法数去躲另一个,而这两条带各自
+ * 都有正当的理由(24 是撕下的门槛,同时也是「瞄准附近也算」)。
+ *
+ * 扫描按 DOM 逆序,与 `scanStrips` 同一条纪律(条重叠时靠后的盖在上面)——
+ * 虽然这里只答一个布尔,序仍旧照着写:哪天它要答「是哪一条」,不必再改一次判据。
+ *
+ * 缺 `ownLeafId`(来源没有自己的条,如文件行 / 会话行 / Dock 瓦)= 这条规则对
+ * 这一次拖拽不成立,恒答 false;它们本来就没有带,`band.phase` 恒 `outside`。
+ */
+function onForeignStrip(
+  pointer: { x: number; y: number },
+  held: DragHeld,
+  ownLeafId: string | null,
+): boolean {
+  const strips = held.geometry.strips
+  if (!strips || !ownLeafId) return false
+  for (let i = strips.length - 1; i >= 0; i -= 1) {
+    const box = strips[i]
+    if (box.leafId === ownLeafId) continue
+    const r = box.rect
+    if (pointer.x < r.left || pointer.x > r.left + r.width) continue
+    if (pointer.y < r.top || pointer.y > r.top + r.height) continue
+    return true
+  }
+  return false
 }
 
 /**

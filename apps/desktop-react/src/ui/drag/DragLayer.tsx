@@ -37,8 +37,11 @@ export function DragLayer() {
    * 而是屏幕上**同时有两个**「拖着的东西」。所以这一档不是「浮影跟着 tab 走」,
    * 是浮影**不存在**:拖着的那个东西就是那格 tab 自己。
    *
-   * `hint` 是它的**一格例外而不是第三种形**:仍旧只有那格 tab 在动,只是下面
-   * 多一行「与「X」二合一」—— 卡片照旧不画(`card={false}`)。
+   * 从前这里还有第三档 `hint`(仍是那格 tab 在动、卡片不画、只留下面一行
+   * 「与「X」二合一」),那是「放到标签上」那条带的画法。**U2 随那条带一起
+   * 退役**(判词在 `ui/drag/constants.ts` 的 `ONTO_FROM_PX` 退役段),所以这里
+   * 也不再有 `card={…}` 那一格开关:走到这一句下面的只剩 `ghost` 一档,而
+   * `ghost` 恒画卡片。
    */
   if (!drag || drag.presentation === 'inline') return null
   const landing = drag.landing
@@ -62,7 +65,6 @@ export function DragLayer() {
         ghost={drag.ghost}
         hint={landing ? undefined : drag.drop?.hint}
         refused={refused}
-        card={drag.presentation !== 'hint'}
         flip={flip && !landing}
         landing={Boolean(landing)}
       />

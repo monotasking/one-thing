@@ -39,11 +39,12 @@
  * 仍看得清底下的字 —— 这是 W3-b 那条「落点反馈改轻」在新落点上的兑现,不是它的
  * 倒退:那次砍掉的是「色块 + 边框 + 一句文字」三样一起上。
  *
- * **两格 token 沿用 `--drop-half-*` 这个名字**(U1 的取舍,记在这里):它们同时
- * 是 `ui/Tabs.module.css` 里 `[data-pair-hot]` 那一格的底色 —— 条**内**那一形
- * (手压到条下面的 onto 带)描的那一圈,与这块板读同一格色,「它会占这儿」在
- * 两处说的是同一种话。改名要连那一头一起改,而那一头归下一单(U2 的标签自身
- * 手势),这一单不碰。 */
+ * **两格 token 沿用 `--drop-half-*` 这个名字**(U1 的取舍,记在这里)。U1 时它们
+ * 还有第二个读者 —— `ui/Tabs.module.css` 的 `[data-pair-hot]`(条内那一形描的那
+ * 一圈);**U2 把那一格连同「放到标签上」整条带一起删了**(真机量到那一圈被抬起
+ * 的标签盖住 92%,判词在 `ui/drag/constants.ts` 的 `ONTO_FROM_PX` 退役段),线色
+ * `--drop-ring-line` 随之从册上摘掉,面色 `--drop-half-face` 今天只剩这一个读者。
+ * 名字仍旧没改:改名是一次纯粹的更名,与这两单要治的病无关。 */
 .band[data-shape='slab'] {
   border: var(--bw-1) solid var(--drop-half-line);
   border-radius: var(--drop-band-r);

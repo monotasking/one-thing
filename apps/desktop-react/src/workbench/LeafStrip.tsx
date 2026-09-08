@@ -156,10 +156,24 @@ export function LeafStrip({
    * 与内容区 —— 被按住的那个元素必须还在手里,不然后面每一发 pointermove 都
    * 落在一个已经不存在的节点上(样例第一版就是在这里失手的)。
    * `gate:drag` 场景 ② 断言「按下前后是同一个 DOM 节点」钉着这一条。
+   *
+   * ── **只有主键才激活**(U2,2026-09-08;W6-c 交卷时那条待拍就此了结)────────
+   * 从前这一句对**任何**按钮都跑:右键一格非活动标签会先把它切过来再开菜单,
+   * 中键(粘贴 / 关闭那一族的键)也切。Chrome 与 VS Code 都不切 —— 右键是「对
+   * 这一格做点什么」,而不是「我要看它」;把它连带激活的代价是用户为了看一眼某格
+   * 的菜单,当前那格的内容当场没了。
+   *
+   * 手势那一口(`onTabPointerDown` → `useTabDrag` → `DragSession`)**照旧无条件
+   * 递出去**:它自己第一句就是 `if (e.button !== 0) return`(判词在 `Tabs` 的
+   * `onTabMenu` 上:「那边让开,这边接住」)。在这里再判一次等于两处判据,而这一格
+   * 判的是**激活**、那一格判的是**拖拽**,两件事。
+   *
+   * 右键那一路仍旧只做一件事:开菜单(`Tabs` 的 `onContextMenu` 一个字没动)。
+   * 中键什么都不做 —— 它既不激活也不拖,与这台壳里别的地方一致。
    */
   const onTabDown = useCallback(
     (id: string, e: ReactPointerEvent<HTMLElement>) => {
-      select(id)
+      if (e.button === 0) select(id)
       onTabPointerDown?.(id, e)
     },
     [onTabPointerDown, select],

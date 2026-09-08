@@ -6,7 +6,7 @@
  * 的事。这只 barrel 里**没有一个业务名字**(grep `workbench` / `leaf` / `region`
  * 在整个 `ui/drag/` 目录里零命中),那是「它不认识拼贴台」这句话的自证。
  */
-export { DRAG_START_PX, DRAG_START_X, ONTO_FROM_PX } from './constants'
+export { DRAG_START_PX, DRAG_START_X } from './constants'
 export { DragGhost } from './DragGhost'
 export { DragLayer } from './DragLayer'
 export { DropOverlay } from './DropOverlay'

@@ -83,8 +83,10 @@ describe('JS 侧的时长常量与 tokens.css 逐条相等', () => {
     ['--dur-card-flip', CARD_FLIP_MS],
     /* 拖拽的三拍(W6-b,设计 `docs/workbench-tabs-2026-09.md` §4.1)。三个都是动画
      * (让位 / 滑入新槽 / 卡片飞入),各有一个 JS 收尾定时器跟着走。
-     * 从前还有第四行,镜像那个「停多久算我要二合一」的时长 —— 二合一改成位置
-     * 判据(ONTO_FROM_PX,`ui/drag/constants.ts`)之后,token 与 JS 常量一起没了。 */
+     * 从前还有第四行,镜像那个「停多久算我要二合一」的时长 —— 二合一先改成位置
+     * 判据(条底缘下 6–24px),token 与 JS 常量当时就一起没了;U2(2026-09-08)
+     * 又把那条带整段删掉(判词在 `ui/drag/constants.ts` 的 `ONTO_FROM_PX` 退役段),
+     * 标签条上从此没有这件事,这一行更没有回来的理由。 */
     ['--dur-neighbor', NEIGHBOR_MS],
     ['--dur-settle', SETTLE_MS],
     ['--dur-land', LAND_MS],

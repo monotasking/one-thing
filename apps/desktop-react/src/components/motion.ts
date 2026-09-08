@@ -71,10 +71,11 @@ export const DOCK_LENS_MS = 140
  *
  * ── 第四拍已退役(W6-b 二修)─────────────────────────────────────────────
  * 从前这里还有一个 300ms 的门槛(它自己那格 token 也一起没了):停住多久算
- * 「我要二合一」。二合一
- * 现在由**位置**判 —— 指针压到标签条底缘下 6–24px(`ONTO_FROM_PX`,产地
- * `ui/drag/constants.ts`)。位置判据身后没有计时器,所以它既不在这张表里,也不再
- * 需要一个 token。`DOCK_WAKE_DWELL_MS` 是 Dock 那件事,与它无关,照旧在上面。 */
+ * 「我要二合一」。它先是改成由**位置**判(指针压到标签条底缘下 6–24px),
+ * **U2(2026-09-08)连那条带也删了** —— 标签条上今天没有「二合一」这件事,它只在
+ * 内容区左右带成立(判词在 `ui/drag/constants.ts` 的 `ONTO_FROM_PX` 退役段)。
+ * 两条路身后都没有计时器,所以它既不在这张表里,也不再需要一个 token。
+ * `DOCK_WAKE_DWELL_MS` 是 Dock 那件事,与它无关,照旧在上面。 */
 export const NEIGHBOR_MS = 120 // --dur-neighbor
 export const SETTLE_MS = 150 // --dur-settle
 export const LAND_MS = 180 // --dur-land
