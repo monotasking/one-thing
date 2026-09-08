@@ -1,0 +1,740 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>拖拽方案 · 一种东西在动、一种标记在指、三种落点</title>
+<style>
+  :root {
+    --paper: #f7f5f0; --paper-2: #fdfcfa; --paper-3: #efece5;
+    --ink: #2b2a26; --ink-2: #5d5a52; --ink-3: #8f8b81; --line: #e4e0d7; --line-2: #d3cec3;
+    --accent: #c9683a; --accent-soft: rgba(201,104,58,.12); --ok: #4f8a5b; --warn: #b8852a; --bad: #b5443a;
+    --r: 12px; --r-s: 8px; --sh: 0 8px 24px rgba(43,42,38,.10), 0 1px 2px rgba(43,42,38,.06);
+    --dur: 120ms; --settle: 150ms; --ease: cubic-bezier(.2,.7,.2,1);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.65 -apple-system, "PingFang SC", "Helvetica Neue", "Noto Sans CJK SC", sans-serif; -webkit-font-smoothing: antialiased; }
+  main { max-width: 1080px; margin: 0 auto; padding: 48px 32px 96px; }
+  h1 { font-size: 30px; line-height: 1.25; margin: 0 0 8px; letter-spacing: -.01em; }
+  h2 { font-size: 20px; margin: 48px 0 12px; }
+  p { margin: 8px 0; max-width: 72ch; }
+  .lede { color: var(--ink-2); font-size: 16px; max-width: 70ch; }
+  .card { background: var(--paper-2); border: 1px solid var(--line); border-radius: var(--r); padding: 18px 20px; }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--paper-2); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; font-size: 14px; }
+  th, td { text-align: left; vertical-align: top; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  th { background: var(--paper-3); font-weight: 600; color: var(--ink-2); font-size: 13px; }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { width: 22%; font-weight: 600; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; margin-left: 4px; vertical-align: 1px; }
+  .tag.ok { background: rgba(79,138,91,.14); color: var(--ok); }
+  .tag.todo { background: rgba(181,68,58,.12); color: var(--bad); }
+  ul { padding-left: 20px; max-width: 76ch; } li { margin: 6px 0; }
+  code { font: 13px/1.4 ui-monospace, "JetBrains Mono", Menlo, monospace; background: var(--paper-3); padding: 1px 5px; border-radius: 5px; }
+  .rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+  .rules .card b { display: block; font-size: 15px; margin-bottom: 4px; }
+  .rules .card p { font-size: 14px; color: var(--ink-2); margin: 0; }
+  .cut { background: rgba(181,68,58,.06); border-color: rgba(181,68,58,.25); }
+
+  /* ── 样例 ─────────────────────────────────────────────── */
+  .demoWrap { position: relative; }
+  .toolbar { display: flex; align-items: center; gap: 14px; margin: 12px 0; flex-wrap: wrap; }
+  .seg { display: inline-flex; background: var(--paper-3); border-radius: 999px; padding: 3px; }
+  .seg button { border: 0; background: transparent; padding: 6px 16px; border-radius: 999px; font: inherit; font-size: 14px; color: var(--ink-2); cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--paper-2); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); font-weight: 600; }
+  .note { font-size: 13px; color: var(--ink-3); }
+  .win { position: relative; width: 100%; height: 560px; background: var(--paper); border: 1px solid var(--line-2); border-radius: 14px; overflow: hidden; box-shadow: var(--sh); user-select: none; -webkit-user-select: none; }
+  .win[data-dragging] { cursor: grabbing; }
+  .win[data-dragging][data-refuse] { cursor: not-allowed; }
+  .win[data-dragging] .tab, .win[data-dragging] .row, .win[data-dragging] .float .x, .win[data-dragging] .shBtn, .win[data-dragging] .rail { pointer-events: none; }
+  .topbar { position: absolute; left: 0; right: 0; top: 0; height: 44px; background: var(--paper-3); display: flex; align-items: flex-end; padding-left: 84px; z-index: 3; }
+  .lights { position: absolute; left: 14px; top: 15px; display: flex; gap: 8px; }
+  .lights i { width: 12px; height: 12px; border-radius: 50%; background: #d9d4ca; display: block; }
+  .strip { display: flex; align-items: flex-end; height: 34px; padding: 0 8px; position: relative; }
+  .tab { position: relative; display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; margin-bottom: -1px; border-radius: 9px 9px 0 0; font-size: 13.5px; color: var(--ink-2); white-space: nowrap; cursor: pointer; flex: none; transition: background var(--dur) var(--ease), color var(--dur) var(--ease); }
+  .tab .ic { width: 14px; height: 14px; border-radius: 4px; background: var(--ink-3); opacity: .55; flex: none; }
+  .tab.home .ic { background: var(--accent); opacity: 1; }
+  .tab.panel .ic { border-radius: 50%; }
+  .tab .x { width: 16px; height: 16px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: var(--ink-3); opacity: 0; transition: opacity var(--dur); }
+  .tab:hover .x { opacity: 1; } .tab .x:hover { background: rgba(43,42,38,.1); color: var(--ink); }
+  .tab[data-locked] .x { display: none; }
+  .tab.on { background: var(--pane-face, var(--paper)); color: var(--ink); }
+  .win[data-mode="plan"] .tab:not(.on):hover { background: rgba(43,42,38,.10); color: var(--ink); }
+  .win[data-mode="today"] .tab:not(.on):hover { background: rgba(43,42,38,.06); }
+  .tab[data-lift] { z-index: 5; transition: none; box-shadow: 0 6px 16px rgba(43,42,38,.18); will-change: transform; }
+  .tab[data-shift] { transition: transform var(--dur) var(--ease); }
+  .tab[data-settle] { transition: transform var(--settle) var(--ease); z-index: 5; }
+  .tab[data-torn] { max-width: 0; padding: 0; overflow: hidden; opacity: 0; transition: max-width var(--dur) var(--ease), padding var(--dur) var(--ease), opacity var(--dur); }
+  .tab[data-land] { animation: land 240ms var(--ease) forwards; }
+  @keyframes land { 0%{ box-shadow: inset 0 0 0 2px var(--accent);} 100%{ box-shadow: inset 0 0 0 0 transparent;} }
+  .tab[data-pair-hot] { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-soft); }
+  .gap { flex: none; align-self: flex-end; height: 34px; border-radius: 9px 9px 0 0; background: rgba(43,42,38,.10); margin-bottom: -1px; width: 0; transition: width var(--dur) var(--ease); pointer-events: none; }
+  .win[data-mode="plan"] .gap { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .chip { position: absolute; right: 14px; top: 9px; height: 26px; padding: 0 10px; border-radius: 999px; background: var(--paper-2); border: 1px solid var(--line); font-size: 12px; display: flex; align-items: center; color: var(--ink-2); }
+  .content { position: absolute; background: var(--paper); padding: 26px 28px; overflow: hidden; }
+  .content .title { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+  .content .body { color: var(--ink-2); font-size: 14px; max-width: 50ch; }
+  .lines i { display: block; height: 10px; border-radius: 5px; background: var(--paper-3); margin: 10px 0; }
+  .pairView { display: grid; grid-template-columns: 1fr 1fr; gap: 0; height: 100%; }
+  .pairView > div { padding: 0 14px; min-width: 0; } .pairView > div + div { border-left: 1px solid var(--line-2); }
+  /* 架子:四边同一件。一片叶 = 一条标签条 + 一块内容,与顶栏同一套标签语言 */
+  .sh { position: absolute; background: var(--paper-2); display: none; flex-direction: column; --pane-face: #ffffff; z-index: 2; }
+  .sh[data-on] { display: flex; }
+  .sh[data-side="left"] { border-right: 1px solid var(--line); } .sh[data-side="right"] { border-left: 1px solid var(--line); }
+  .sh[data-side="top"] { border-bottom: 1px solid var(--line); } .sh[data-side="bottom"] { border-top: 1px solid var(--line); }
+  .sh[data-collapsed] > * { display: none; } .sh[data-collapsed] .rail { display: flex; }
+  .rail { display: none; position: absolute; inset: 0; align-items: center; justify-content: center; cursor: pointer; color: var(--ink-3); font-size: 11px; }
+  .rail:hover { background: rgba(43,42,38,.06); }
+  .shHead { display: flex; align-items: flex-end; background: var(--paper-3); border-bottom: 1px solid var(--line); height: 34px; flex: none; }
+  .shHead .strip { flex: 1; min-width: 0; overflow: hidden; }
+  .shBtn { flex: none; width: 26px; height: 26px; margin: 0 4px 4px 0; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: var(--ink-3); cursor: pointer; font-size: 13px; }
+  .shBtn:hover { background: rgba(43,42,38,.08); color: var(--ink); }
+  .shBody { flex: 1; min-height: 0; padding: 14px 14px; background: #fff; overflow: hidden; }
+  .shBody .title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .shBody .body { font-size: 13px; color: var(--ink-2); }
+  .row { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: 8px; font-size: 13.5px; cursor: pointer; }
+  .row:hover { background: rgba(43,42,38,.06); }
+  .row .dot { width: 6px; height: 6px; border-radius: 50%; background: transparent; flex: none; }
+  .row[data-open] .dot { background: var(--accent); }
+  .row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row[data-ghosted] { opacity: .45; }
+  .float { position: absolute; width: 300px; height: 190px; background: var(--paper-2); border: 1px solid var(--line-2); border-radius: 12px; box-shadow: var(--sh); z-index: 20; overflow: hidden; }
+  .float .ttl { height: 34px; display: flex; align-items: center; padding: 0 10px 0 12px; font-size: 13px; background: var(--paper-3); cursor: grab; gap: 8px; }
+  .float .ttl b { flex: 1; font-weight: 600; } .float .ttl .x { width: 18px; height: 18px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink-3); }
+  .float .ttl .x:hover { background: rgba(43,42,38,.1); color: var(--ink); }
+  .float .bd { padding: 12px; font-size: 13px; color: var(--ink-2); }
+  .ind { position: absolute; pointer-events: none; z-index: 25; border-radius: 10px; display: none; }
+  .ind[data-shape="slab"] { display: block; background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .ind[data-shape="ring"] { display: block; box-shadow: inset 0 0 0 2px var(--accent); border-radius: 10px; }
+  .ind[data-shape="outline"] { display: block; border: 1.5px dashed var(--accent); }
+  .ind[data-shape="film"] { display: block; background: rgba(201,104,58,.18); box-shadow: inset 0 0 0 2px var(--accent); border-radius: 0; }
+  .ambient { position: absolute; pointer-events: none; z-index: 24; background: rgba(201,104,58,.06); display: none; }
+  .win[data-mode="today"][data-dragging="ghost"] .ambient { display: block; }
+  .ghost { position: absolute; z-index: 40; pointer-events: none; display: none; flex-direction: column; gap: 6px; align-items: flex-start; }
+  .ghost[data-on] { display: flex; }
+  .ghost .cardg { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 9px; background: var(--paper-2); box-shadow: var(--sh); font-size: 13.5px; border: 1px solid transparent; transform: rotate(-2deg); }
+  .ghost[data-refuse] .cardg { border: 1px dashed var(--line-2); opacity: .55; }
+  .ghost .hintg { font-size: 12px; padding: 3px 8px; border-radius: 6px; background: var(--ink); color: #fff; box-shadow: var(--sh); white-space: nowrap; }
+  .ghost[data-refuse] .hintg { background: var(--ink-3); }
+  .ghost[data-nocard] .cardg { display: none; }
+  .toast { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 8px 14px; border-radius: 999px; font-size: 13px; opacity: 0; transition: opacity var(--dur); z-index: 50; pointer-events: none; white-space: nowrap; }
+  .toast[data-on] { opacity: 1; }
+  .menu { position: absolute; z-index: 60; background: var(--paper-2); border: 1px solid var(--line-2); border-radius: 10px; box-shadow: var(--sh); padding: 6px; min-width: 190px; display: none; font-size: 13.5px; }
+  .menu[data-on] { display: block; } .menu div { padding: 6px 10px; border-radius: 6px; cursor: pointer; } .menu div:hover { background: rgba(43,42,38,.06); }
+  .menu .sep { height: 1px; background: var(--line); margin: 4px 6px; padding: 0; }
+  .try { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; margin-top: 14px; }
+  .try .card { padding: 12px 14px; font-size: 14px; } .try .card b { display: block; margin-bottom: 2px; }
+  .try .card span { color: var(--ink-2); }
+  .files { margin-top: 10px; }
+  .files li { font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>拖拽方案:一种东西在动、一种标记在指、三种落点</h1>
+  <p class="lede">2026-09-08。对着你 09-08 报的六处难用,先把每一处的根因对到代码,再把整套拖拽收成三句话。下面的样例是能拖的,顶部那个开关可以在「今天的做法」与「方案」之间切,同一个动作两边各做一遍,差别就在手上。</p>
+
+  <h2>一、你报的六处,各自是什么病</h2>
+  <table>
+    <thead><tr><th>你说的</th><th>今天为什么会这样</th><th>方案怎么改</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>tab 悬停时和背景色一样<span class="tag ok">已定位</span></td>
+        <td>顶栏那组标签的底是透明的,悬停只铺一层 6% 的墨色;活动标签的底色又正好等于内容区的纸色。三种颜色挤在一个很窄的明度区间里,悬停等于没画。</td>
+        <td>悬停改成一层看得见的圆角面(10% 墨 + 字变深),活动标签保留「与内容区连成一块」的画法。只动两格 token,不动结构。</td>
+      </tr>
+      <tr>
+        <td>一拖整个窗口的颜色和 UI 都变了<span class="tag ok">已定位</span></td>
+        <td>起拖那一刻先把「所有能放的地方」各铺一层 6% 主题色(设计里叫氛围层),再按落点分别画薄膜、描圈、半边、虚线轮廓四种高亮。五种画法同时在屏幕上,看起来就是整窗变色、有的加深有的描框。</td>
+        <td><b>氛围层整层删掉</b>。拖拽期间屏幕上只允许两样东西:跟手的那一个,和指着落点的那一个标记。标记只有三种形:条上的一格空位、内容区的一块半透明板、一圈虚线窗轮廓。</td>
+      </tr>
+      <tr>
+        <td>从 sessions 长按能放进面板,放进去之后关不掉<span class="tag ok">已定位</span></td>
+        <td>「会话标签至少要留一格、不可关」这条规矩是给中央区定的,但代码里按<b>每棵树</b>各数一次(<code>canDetachTab</code> 数的是当前那棵树里的会话数)。拖进架子或浮窗的会话在那棵树里是唯一一格会话,于是它被当成不可关。</td>
+        <td>「至少留一格会话」只对中央区成立,其余区域的会话标签一律可关。判据从「这棵树」改成「中央区那棵树」,一行改动。</td>
+      </tr>
+      <tr>
+        <td>拖拽莫名变成了钉到边上(pin)<span class="tag ok">已定位</span></td>
+        <td>窗口四条边各有 24px 的「边带」,拖任何东西经过那里松手就会钉成一条架子,而且它优先于内容区落点。从浮窗里拖一行会话出来,手一靠边就进了这条带。</td>
+        <td><b>边带收窄、退后、说清楚</b>:只有 12px 宽(原来 24),只在那一边<b>还没有</b>架子时出现(有架子就直接落进架子的条或内容区),排在标签条之后、内容区之前,带一层薄膜和一句「钉成右侧架子」。想不小心钉上得把手压到窗口最边上 12px 里。拖浮窗标题栏到边上、右键「钉到 ▸」两条路照旧。</td>
+      </tr>
+      <tr>
+        <td>浮窗顶到上栏,被窗口拖拽区挡住拖不动<span class="tag ok">已定位</span></td>
+        <td>浮窗矩形的钳位允许 y 到 0(<code>clampFloatRect</code>),而顶栏是 Electron 的原生窗口拖拽区,它在原生层拦截、不看 z-index,也不接受别的分支上的 no-drag(07-21 实测过的规则)。浮窗标题栏一旦压进那 44px,就永远点不到。</td>
+        <td>浮窗的活动范围从顶栏底缘起算:钳位、撕出落位、边上弹回三处都读同一个上界。浮窗永远不可能进那条带。</td>
+      </tr>
+      <tr>
+        <td>关掉之后 sessions 上还显示没关<span class="tag todo">待复现</span></td>
+        <td>Dock 瓦上的「开着」小点读的是形态机自己的摆放表(<code>placements</code>),而会话内容是拼贴树里的一格,两本账各记各的。你那一串操作(拖出、钉边、关掉)走完之后,两本账很可能已经对不上。这一条我还没在真机上复现出完整链路,先按两本账不同源立案。</td>
+        <td>「开着没有」只有一个来源:拼贴树里有没有一片叶装着它。Dock 的小点、会话列表的小点都从树上算,不另记。</td>
+      </tr>
+      <tr>
+        <td>从 sessions 拖到标签正中会闪<span class="tag ok">已复现</span></td>
+        <td>外来来源落到同一条条上有两种落点在交替:正中 44% 是「二合一」(描圈),两侧各 28% 是「插到第 n 位」(空位)。每过一次 28% 那条线,空位就被删掉再重新插一个新的(从 0 宽起动画),右边所有标签整排跳一格宽;而判据读的是起拖时的基准几何,空位一开活布局就和基准差一格宽,圈还常常落到指针右边那一格。</td>
+        <td>外来来源落到标签上一律是「插到旁边」,删掉「标签正中二合一」这一档;空位只挪不删;条上的下标按活几何判(活几何加「空位插在第 n 格之前」是自稳的,左边的标签永远不动,右边的中线永远在指针右侧)。</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="note" style="margin-top:8px">上一轮真机还确认了三条与这些同源的:二合一那一形目标标签的描圈被抬起的标签盖住 92%;换序途中按 Esc 是瞬移不是滑回;右键按在非活动标签上会先切标签。三条都并进下面的方案。</p>
+
+  <h2>二、方案:三句话</h2>
+  <div class="rules">
+    <div class="card"><b>1. 一种东西在动</b><p>条内换序时动的是标签本身;离开条之后动的是一张卡片,卡片下面挂一行「松手会怎样」。屏幕上任何时候只有这一样东西在跟手,其它一律不变色。</p></div>
+    <div class="card"><b>2. 一种标记在指</b><p>落点只用一个标记指出来,而且是同一个节点在挪:在条上是一格空位,在内容区是一块半透明板(整块 = 开成新标签,左右半块 = 与它并排),在空白处是一圈虚线窗轮廓。没有薄膜、没有描圈、没有氛围。</p></div>
+    <div class="card"><b>3. 三种落点,外加一条窄边</b><p>插到条上、与内容并排、撕成浮窗。还没有架子的那一边,窗口最边上 12px 是「钉成新架子」,排在最后、有薄膜有字;「压到标签上二合一」那条带删掉,二合一只有一种手势:拖到内容区左右两侧。</p></div>
+    <div class="card"><b>4. 按下即激活,但只认主键</b><p>左键按下当场切标签,松手不动就是一次点击;右键只开菜单不切标签;中键什么都不做。Esc 与失焦都是 150ms 滑回,不瞬移。</p></div>
+    <div class="card"><b>5. 关得掉、算得清</b><p>只有中央区必须留一格会话;别处的会话标签都可关。「开着没有」只从拼贴树上算。浮窗永远在顶栏之下。</p></div>
+    <div class="card cut"><b>删掉的</b><p>氛围层、24px 抢先于内容区的边带、标签下压二合一(onto 带)、标签正中二合一(pairTab)、描圈这种画法、右键与中键的激活。删的比加的多。</p></div>
+  </div>
+
+  <h2>三、架子:四边都能有,每一条都是一片叶</h2>
+  <p>架子(钉在窗口四边的面板)在这套方案里只有一句定义:<b>架子就是一片叶,一条标签条加一块内容,和顶栏那条标签条讲同一套话</b>。左、右、上、下四边都能有,规则一样,于是它的一切行为都从上面三句话推出来,不另立规矩:</p>
+  <ul>
+    <li><b>架子怎么生出来</b>:三条路。拖一扇浮窗的标题栏到窗口任一边 24px 内松手,浮窗塌成那一边的架子;在标签 / 浮窗的右键菜单里选「钉到 ▸ 左 / 右 / 上 / 下」;或者把一格标签、一行会话拖到<b>还没有架子的那一边</b>窗口最边上 12px 里,薄膜亮起、写着「钉成右侧架子」,松手就有了。第三条是从前那条 24px 边带的收窄版:窄一半、只在没架子时出现、排在标签条之后,所以你 09-08 那句「莫名进了 pin 模式」在结构上不会再发生 —— 从前是手一靠边就钉,现在得把手压到最边上那 12px 里、还得先看见薄膜。</li>
+    <li><b>内容怎么进架子</b>:架子已经在了,它的标签条就是一条普通标签条,内容区就是一块普通内容区。拖到它的标签条上是插到第 n 位,拖到它内容区中间是开成新标签,拖到左右两侧是与它并排。标记也是同一个:空位、半透明板。面板(比如会话列表、目录树)也是架子里的一格标签,可以和文件、会话并排住在同一条架子上。</li>
+    <li><b>内容怎么出架子</b>:架子上的标签按下即激活,横拖换序,竖拖撕下;撕下之后的三种落点与顶栏的标签完全相同,包括拖到另一条架子上。最后一格被拖走或关掉,架子自己消失。</li>
+    <li><b>架子自己的三件事不变</b>:收起成一根细梁、点梁展开、拖分隔杆改厚度。这三件今天就有,方案不动,只补一条:它们和分隔杆、浮窗一样要接 Esc 与窗口失焦,拖到一半切走应用不该留下一根卡住的杆。</li>
+    <li><b>会话进架子关得掉</b>:「至少留一格会话」只对中央区数,架子里的会话标签照常可关。</li>
+  </ul>
+
+  <h2>四、样例:同一个动作,两边各做一遍</h2>
+  <div class="toolbar">
+    <div class="seg" role="group" aria-label="对照">
+      <button id="mPlan" aria-pressed="true">方案</button>
+      <button id="mToday" aria-pressed="false">今天的做法</button>
+    </div>
+    <span class="note">鼠标操作。标签横拖换序、竖拖撕下;会话行按住 8px 起拖;右键标签看菜单;拖拽中按 Esc。左侧那条架子里的「Sessions」是面板,也是一格标签。</span>
+    <button id="reset" class="note" style="margin-left:auto;background:none;border:1px solid var(--line-2);border-radius:999px;padding:4px 12px;cursor:pointer">重置样例</button>
+  </div>
+  <div class="demoWrap">
+    <div class="win" id="win" data-mode="plan">
+      <div class="topbar">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <div class="strip" id="strip" data-leaf="center"></div>
+        <div class="chip">Agent · Claude</div>
+      </div>
+      <div class="content" id="content" data-leaf="center"></div>
+      <div id="shelves"></div>
+      <div class="ambient" id="amb1"></div><div class="ambient" id="amb2"></div><div class="ambient" id="amb3"></div><div class="ambient" id="amb4"></div><div class="ambient" id="amb5"></div><div class="ambient" id="amb6"></div>
+      <div class="ind" id="ind"></div>
+      <div class="menu" id="menu"></div>
+      <div class="toast" id="toast"></div>
+    </div>
+    <div class="ghost" id="ghost"><div class="cardg"><span class="ic" style="width:12px;height:12px;border-radius:3px;background:var(--ink-3)"></span><span id="ghostLabel"></span></div><div class="hintg" id="ghostHint"></div></div>
+  </div>
+  <p class="note">样例窗口外面的纸面就当作「窗外」:把东西拖出窗口松手,就是撕成浮窗。</p>
+  <div class="try">
+    <div class="card"><b>悬停</b><span>把鼠标放到非活动标签上。「今天」那边几乎看不出来。</span></div>
+    <div class="card"><b>换序 + Esc</b><span>横向拖一格标签到别处,松手前按 Esc。方案滑回,「今天」瞬移。</span></div>
+    <div class="card"><b>撕下看标记</b><span>竖着拖出标签条,再在内容区左右两侧、中间、条上各停一下。方案只有一个标记在换形;「今天」整窗铺色、条上描圈、边上薄膜。</span></div>
+    <div class="card"><b>边带宽窄</b><span>拖着标签或会话行往窗口右缘走。「今天」离边 24px 就变钉边、抢在内容区前面;方案要压到最边上 12px 才亮薄膜,而且右边已经有架子时这条带不出现,直接落进架子。</span></div>
+    <div class="card"><b>四边生架子</b><span>三条路都试试:把会话行拖到右缘 12px 里;先撕出一扇浮窗再把标题栏拖到任一边;右键标签「钉到 ▸」。</span></div>
+    <div class="card"><b>顶栏空白</b><span>把会话行拖到顶栏最后一格右边的空白处,那是「插到末尾」,不是不能放。</span></div>
+    <div class="card"><b>架子的标签条</b><span>把别的标签、会话行拖到任一条架子的标签条或内容区;再把架子里的标签拖回顶栏,或拖到另一条架子。同一套空位和半透明板。</span></div>
+    <div class="card"><b>面板也是标签</b><span>左侧架子里的「Sessions」就是一格标签:把一个文件标签拖到它旁边,两者并排住在左架子上;把「Sessions」拖到顶栏,它就成了中央区的一格。</span></div>
+    <div class="card"><b>会话开成标签再关掉</b><span>把一行会话拖到内容区中间,再点它标签上的 ✕。两边都关得掉,但「今天」会话列表那颗小点不灭(两本账);方案里小点跟着灭。</span></div>
+    <div class="card"><b>撕成浮窗后关不掉</b><span>把一行会话拖出样例窗口外面松手,撕成浮窗,再点浮窗的 ✕。「今天」被「最后一格会话」那条规矩拦住;方案关得掉。</span></div>
+    <div class="card"><b>浮窗顶到上栏</b><span>把那扇浮窗往上拖。「今天」它会钻进顶栏,然后标题栏点不到;方案在顶栏底缘停住。</span></div>
+    <div class="card"><b>右键</b><span>右键一格非活动标签。「今天」先切过去再开菜单;方案只开菜单。</span></div>
+  </div>
+
+  <h2>五、落到代码上是哪几处</h2>
+  <ul class="files">
+    <li><b>删氛围层、改边带</b>:<code>workbench/drop.ts</code> 去掉 <code>ambientRectsOf</code>,<code>useContentDrag.ts</code> 不再 <code>setDropAmbient</code>;边带那一支改成 12px、只对<b>没有架子的那一边</b>成立(读 <code>regions</code> 里有没有 <code>edge:&lt;side&gt;</code>)、判定次序从「④ 窗口边带优先于叶」挪到叶之后;<code>DropOverlay</code> 的 <code>ring</code> 退役,只剩 <code>slab</code>(整块与半块)、<code>film</code>(边带)与 <code>outline</code>。顶栏那条 tablist 的矩形铺满到右端动作组之前(今天 <code>measureDropGeometry</code> 量的是 tablist 自己的盒,末格右边的空白不在里面)。</li>
+    <li><b>删 onto 带与 pairTab</b>:<code>useTabDrag.ts</code> 的 <code>mode: 'onto'</code> 分支与 <code>tab-reorder.ts</code> 的 <code>hover()</code> / <code>markPair()</code> 一起删,<code>ONTO_FROM_PX</code> / <code>TAB_MIDDLE</code> 退役;<code>drop.ts</code> 的 <code>pairTab</code> 落点删掉,外来来源落到标签上一律是「插到旁边」。</li>
+    <li><b>条上下标按活几何</b>:<code>drop.ts</code> 的 <code>stripIndexAt</code> 改读那条条此刻的标签矩形(不含占位),<code>useContentDrag.paintStrip</code> 只在离开这条条时 <code>clearGap</code>。</li>
+    <li><b>悬停</b>:<code>ui/Tabs.module.css</code> 非活动标签悬停改读一格新 token(10% 墨),顶栏组不再把它压成透明。</li>
+    <li><b>只认主键</b>:<code>LeafStrip.tsx</code> 的 <code>onTabDown</code> 判 <code>e.button === 0</code> 才 <code>select</code>。</li>
+    <li><b>Esc 滑回</b>:<code>useTabDrag.ts</code> 的取消路径先量位置再 <code>settle()</code>,与松手空动作同一只。</li>
+    <li><b>会话可关</b>:<code>workbench/store.ts</code> 的 <code>canDetachTab</code> 只对 <code>regions.center</code> 数常驻种类。</li>
+    <li><b>浮窗上界</b>:<code>stage/transitions.ts</code> 的 <code>clampFloatRect</code> / <code>floatRectForGrab</code> 读 <code>--topbar-h</code> 作 y 的下限。</li>
+    <li><b>三处手写拖拽补 Esc / 失焦</b>:<code>ui/Splitter</code>、<code>EdgeShelf</code> 厚度杆、<code>FloatWindow</code> 拖窗与改大小,接到 <code>DragSession</code> 同一套取消路径。</li>
+    <li><b>开着没有</b>:Dock 与会话列表的小点改读拼贴树(<code>regionOfRefIn</code>),<code>placements</code> 不再作为「开着」的来源。这一条要先把你那串操作在真机上复现一遍再动。</li>
+  </ul>
+</main>
+
+<script>
+(() => {
+  const win = document.getElementById('win')
+  const ind = document.getElementById('ind')
+  const ghost = document.getElementById('ghost')
+  const ghostLabel = document.getElementById('ghostLabel')
+  const ghostHint = document.getElementById('ghostHint')
+  const toastEl = document.getElementById('toast')
+  const menuEl = document.getElementById('menu')
+  const shelvesEl = document.getElementById('shelves')
+  const TOPBAR = 44, RAIL = 16
+  const SIZE = { left: 230, right: 280, top: 170, bottom: 170 }
+  const SIDES = ['left', 'right', 'top', 'bottom']
+  const SIDE_NAME = { left: '左', right: '右', top: '上', bottom: '下' }
+  const DRAG_X = 6, DRAG_Y = 24, DRAG_ANY = 8, ONTO_FROM = 6, EDGE = 24, PAIR_BAND = .28
+
+  /* 五片叶:中央(条在顶栏)与四边架子(条在架子头上)。全部读同一套代码。 */
+  const LEAF = { center: { strip: document.getElementById('strip'), content: document.getElementById('content') } }
+  for (const side of SIDES) {
+    const el = document.createElement('aside')
+    el.className = 'sh'; el.dataset.side = side
+    el.innerHTML = `<div class="shHead"><div class="strip" data-leaf="${side}"></div><span class="shBtn" title="收起">${side === 'left' ? '«' : side === 'right' ? '»' : side === 'top' ? '︿' : '﹀'}</span></div><div class="shBody" data-leaf="${side}"></div><div class="rail">${side === 'left' ? '»' : side === 'right' ? '«' : side === 'top' ? '﹀' : '︿'}</div>`
+    shelvesEl.appendChild(el)
+    LEAF[side] = { el, strip: el.querySelector('.strip'), content: el.querySelector('.shBody') }
+    el.querySelector('.shBtn').addEventListener('click', () => { S.collapsed[side] = true; render() })
+    el.querySelector('.rail').addEventListener('click', () => { S.collapsed[side] = false; render() })
+  }
+  const ALL = ['left', 'right', 'top', 'bottom', 'center']
+
+  let mode = 'plan'
+  const initial = () => ({
+    leaves: {
+      center: { tabs: [
+        { id: 's1', title: 'drag-gate', kind: 'session' },
+        { id: 'f1', title: 'alpha.ts', kind: 'file' },
+        { id: 'f2', title: 'beta.ts', kind: 'file' },
+        { id: 'f3', title: 'gamma.ts', kind: 'file' },
+      ], active: 's1' },
+      left: { tabs: [{ id: 'sessions', title: 'Sessions', kind: 'panel' }], active: 'sessions' },
+      right: null, top: null, bottom: null,
+    },
+    collapsed: { left: false, right: false, top: false, bottom: false },
+    sessions: [
+      { id: 's1', title: 'drag-gate' }, { id: 's2', title: '检索重建方案' }, { id: 's3', title: '浮窗几何收账' }, { id: 's4', title: '标签条 v3' },
+    ],
+    floats: [],
+    staleOpen: new Set(['s1']),
+  })
+  let S = initial()
+
+  const leafOf = (id) => S.leaves[id]
+  const contains = (tab, id) => tab.id === id || (tab.pair && tab.pair.some((p) => p.id === id))
+  function isOpen(id) {
+    if (mode === 'today') return S.staleOpen.has(id)
+    return ALL.some((k) => S.leaves[k] && S.leaves[k].tabs.some((t) => contains(t, id))) || S.floats.some((f) => f.id === id)
+  }
+  /* 一格标签能不能撕走 / 关掉:只有中央区必须留一格会话 */
+  function lockedIn(leafId, tab) {
+    if (!tab || tab.kind !== 'session') return false
+    const sessions = leafOf(leafId).tabs.filter((t) => t.kind === 'session').length
+    if (mode === 'today') return sessions <= 1            // 今天:每棵树各数一次
+    return leafId === 'center' && sessions <= 1            // 方案:只对中央区数
+  }
+  const visible = (leafId) => Boolean(leafOf(leafId)) && !(leafId !== 'center' && S.collapsed[leafId])
+
+  /* ── 布局:四边架子各占一条,中央吃剩下的 ─────────────── */
+  function layout() {
+    const W = win.clientWidth, H = win.clientHeight
+    const th = (side) => (leafOf(side) ? (S.collapsed[side] ? RAIL : SIZE[side]) : 0)
+    const l = th('left'), r = th('right'), t = th('top'), b = th('bottom')
+    const set = (el, o) => { for (const k of Object.keys(o)) el.style[k] = o[k] + 'px' }
+    set(LEAF.left.el, { left: 0, top: TOPBAR, width: l, height: H - TOPBAR })
+    set(LEAF.right.el, { left: W - r, top: TOPBAR, width: r, height: H - TOPBAR })
+    set(LEAF.top.el, { left: l, top: TOPBAR, width: W - l - r, height: t })
+    set(LEAF.bottom.el, { left: l, top: H - b, width: W - l - r, height: b })
+    set(LEAF.center.content, { left: l, top: TOPBAR + t, width: W - l - r, height: H - TOPBAR - t - b })
+  }
+
+  /* ── 渲染 ───────────────────────────────────────────── */
+  function renderStrip(leafId) {
+    const l = leafOf(leafId); const el = LEAF[leafId].strip
+    el.innerHTML = ''
+    if (!l) return
+    for (const t of l.tabs) {
+      const tab = document.createElement('div')
+      tab.className = 'tab' + (t.id === l.active ? ' on' : '') + (t.kind === 'session' ? ' home' : '') + (t.kind === 'panel' ? ' panel' : '')
+      tab.dataset.id = t.id
+      if (lockedIn(leafId, t)) tab.dataset.locked = ''
+      tab.innerHTML = `<span class="ic"></span><span>${t.title}</span><span class="x" title="关闭">✕</span>`
+      tab.querySelector('.x').addEventListener('pointerdown', (e) => e.stopPropagation())
+      tab.querySelector('.x').addEventListener('click', (e) => { e.stopPropagation(); closeTab(leafId, t.id) })
+      tab.addEventListener('pointerdown', (e) => onTabDown(e, leafId, t.id))
+      tab.addEventListener('contextmenu', (e) => { e.preventDefault(); openMenu(e.clientX, e.clientY, leafId, t.id) })
+      el.appendChild(tab)
+    }
+  }
+  function renderContent(leafId) {
+    const l = leafOf(leafId); const el = LEAF[leafId].content
+    if (!l) { el.innerHTML = ''; return }
+    const a = l.tabs.find((t) => t.id === hostId(leafId)) ?? l.tabs[0]
+    if (!a) { el.innerHTML = ''; return }
+    const lines = '<div class="lines"><i style="width:80%"></i><i style="width:60%"></i><i style="width:70%"></i></div>'
+    if (a.pair) {
+      el.innerHTML = `<div class="pairView">${a.pair.map((p) => `<div>${paneHtml(p, leafId, lines)}</div>`).join('')}</div>`
+      bindRows(el); return
+    }
+    el.innerHTML = paneHtml(a, leafId, lines)
+    bindRows(el)
+  }
+  function paneHtml(a, leafId, lines) {
+    if (a.kind === 'panel') {
+      return `<div class="title" style="font-size:12px;color:var(--ink-3);letter-spacing:.04em">SESSIONS</div>` + S.sessions.map((s) => `<div class="row" data-id="${s.id}"${isOpen(s.id) ? ' data-open' : ''}><span class="dot"></span><span class="nm">${s.title}</span></div>`).join('')
+    }
+    const body = leafId === 'center'
+      ? `<div class="body">${a.kind === 'session' ? '这是一条会话。把另一条会话拖到这块内容区的左右两侧,就是两条会话并排。' : '这是一个文件。拖到内容区中间是「开成新标签」,拖到左右两侧是「与当前标签并排」。'}</div>`
+      : `<div class="body">架子里的一格。它的标签条和顶栏那条讲同一套话。</div>`
+    return `<div class="title">${a.title}</div>${body}${lines}`
+  }
+  function bindRows(el) {
+    for (const r of el.querySelectorAll('.row')) {
+      const s = S.sessions.find((x) => x.id === r.dataset.id)
+      r.addEventListener('pointerdown', (e) => onRowDown(e, s))
+    }
+  }
+  function render() {
+    layout()
+    for (const k of ALL) { renderStrip(k); renderContent(k) }
+    for (const side of SIDES) { LEAF[side].el.toggleAttribute('data-on', Boolean(leafOf(side))); LEAF[side].el.toggleAttribute('data-collapsed', Boolean(leafOf(side)) && S.collapsed[side]) }
+    for (const f of document.querySelectorAll('.float')) f.remove()
+    for (const f of S.floats) {
+      const el = document.createElement('div')
+      el.className = 'float'; el.dataset.id = f.id
+      el.style.left = f.x + 'px'; el.style.top = f.y + 'px'
+      el.innerHTML = `<div class="ttl"><span class="ic" style="width:12px;height:12px;border-radius:3px;background:var(--accent)"></span><b>${f.title}</b><span class="x">✕</span></div><div class="bd">一扇浮窗。按住标题栏拖到窗口任一边 24px 内松手,它就塌成那一边的架子;往上拖看它在顶栏那儿是停住还是钻进去。</div>`
+      el.querySelector('.x').addEventListener('pointerdown', (e) => e.stopPropagation())
+      el.querySelector('.x').addEventListener('click', () => {
+        if (mode === 'today' && f.kind === 'session') { toast('这一格关不掉 —— 它是这扇窗里最后一格会话(规矩按每棵树数了一遍)'); return }
+        S.floats = S.floats.filter((x) => x !== f); render()
+      })
+      el.querySelector('.ttl').addEventListener('pointerdown', (e) => onFloatDown(e, f, el))
+      win.appendChild(el)
+    }
+  }
+  function removeEverywhere(id) {
+    for (const k of ALL) { const l = S.leaves[k]; if (!l) continue; l.tabs = l.tabs.filter((t) => t.id !== id); if (!l.tabs.find((t) => t.id === l.active)) l.active = l.tabs[0]?.id ?? null }
+    S.floats = S.floats.filter((f) => f.id !== id)
+    for (const side of SIDES) if (S.leaves[side] && S.leaves[side].tabs.length === 0) S.leaves[side] = null
+  }
+  function closeTab(leafId, id) {
+    const l = leafOf(leafId); const t = l.tabs.find((x) => x.id === id)
+    if (lockedIn(leafId, t)) { toast(mode === 'plan' ? '这一格关不掉:它是中央区最后一格会话' : '这一格关不掉 —— 它是这儿最后一格同类'); return }
+    removeEverywhere(id); render()
+  }
+  let toastT = null
+  function toast(msg) { toastEl.textContent = msg; toastEl.dataset.on = ''; clearTimeout(toastT); toastT = setTimeout(() => delete toastEl.dataset.on, 2000) }
+  function openMenu(x, y, leafId, id) {
+    const w = win.getBoundingClientRect()
+    const rows = [['撕成浮窗', () => tearToFloat(leafId, id)]]
+    for (const side of SIDES) if (side !== leafId) rows.push([`钉到${SIDE_NAME[side]}侧架子`, () => moveLeaf(leafId, id, side)])
+    if (leafId !== 'center') rows.push(['移回顶栏', () => moveLeaf(leafId, id, 'center')])
+    rows.push(['sep'], ['关闭', () => closeTab(leafId, id)])
+    menuEl.innerHTML = ''
+    for (const [label, fn] of rows) { const d = document.createElement('div'); if (label === 'sep') { d.className = 'sep' } else { d.textContent = label; d.addEventListener('click', () => { close(); fn && fn() }) } menuEl.appendChild(d) }
+    menuEl.style.left = (x - w.left) + 'px'; menuEl.style.top = (y - w.top) + 'px'; menuEl.dataset.on = ''
+    const close = (ev) => { if (ev && menuEl.contains(ev.target)) return; delete menuEl.dataset.on; window.removeEventListener('pointerdown', close, true) }
+    setTimeout(() => window.addEventListener('pointerdown', close, true))
+  }
+  function tearToFloat(leafId, id) {
+    const t = leafOf(leafId).tabs.find((x) => x.id === id); if (lockedIn(leafId, t)) { toast('中央区要留一格会话'); return }
+    removeEverywhere(id); S.floats.push({ ...t, x: 360, y: TOPBAR + 40 }); render()
+  }
+  function moveLeaf(from, id, to) {
+    const t = leafOf(from).tabs.find((x) => x.id === id); if (lockedIn(from, t)) { toast('中央区要留一格会话'); return }
+    removeEverywhere(id); ensureLeaf(to); leafOf(to).tabs.push(t); leafOf(to).active = t.id; render(); flash(to, t.id)
+  }
+  function ensureLeaf(id) { if (id !== 'center' && !S.leaves[id]) { S.leaves[id] = { tabs: [], active: null }; S.collapsed[id] = false } }
+  const local = (e) => { const w = win.getBoundingClientRect(); return { x: e.clientX - w.left, y: e.clientY - w.top } }
+  const rectL = (el) => { const w = win.getBoundingClientRect(); const r = el.getBoundingClientRect(); return { left: r.left - w.left, top: r.top - w.top, width: r.width, height: r.height, right: r.right - w.left, bottom: r.bottom - w.top } }
+
+  /* ── 一条拖拽会话 ───────────────────────────────────── */
+  let D = null
+  function hostId(leafId) {
+    const l = leafOf(leafId); if (!l) return null
+    if (D && D.kind === 'tab' && D.leaf === leafId && D.phase === 'drag' && !D.inBand && D.id === l.active) {
+      const i = l.tabs.findIndex((t) => t.id === D.id)
+      const n = l.tabs[i + 1] ?? l.tabs[i - 1]
+      return n ? n.id : l.active
+    }
+    return l.active
+  }
+  function setInd(shape, r) {
+    if (!shape) { ind.removeAttribute('data-shape'); ind.style.display = 'none'; return }
+    ind.dataset.shape = shape; ind.style.display = 'block'
+    ind.style.left = r.left + 'px'; ind.style.top = r.top + 'px'; ind.style.width = r.width + 'px'; ind.style.height = r.height + 'px'
+  }
+  let gapEl = null, gapLeaf = null, gapAt = null
+  function gap(leafId, at, width) {
+    if (leafId === null) { gapEl?.remove(); gapEl = null; gapLeaf = null; gapAt = null; return }
+    const strip = LEAF[leafId].strip
+    if (!gapEl) { gapEl = document.createElement('div'); gapEl.className = 'gap' }
+    const tabs = [...strip.querySelectorAll('.tab')]
+    if (gapLeaf === leafId && gapAt === at && gapEl.parentElement === strip) return
+    const fresh = gapEl.parentElement !== strip
+    strip.insertBefore(gapEl, tabs[at] ?? null)
+    if (fresh) { gapEl.style.width = '0px'; void gapEl.getBoundingClientRect() }
+    gapEl.style.width = width + 'px'; gapLeaf = leafId; gapAt = at
+  }
+  function markPair(leafId, id) {
+    for (const t of win.querySelectorAll('[data-pair-hot]')) delete t.dataset.pairHot
+    if (id) LEAF[leafId].strip.querySelector(`.tab[data-id="${id}"]`)?.setAttribute('data-pair-hot', '')
+  }
+  function paintAmbient(on) {
+    const ambs = [...document.querySelectorAll('.ambient')]
+    if (!on) { ambs.forEach((a) => (a.style.display = 'none')); return }
+    const c = rectL(LEAF.center.content), s = rectL(LEAF.center.strip), W = win.clientWidth, H = win.clientHeight
+    const rects = [c, s, { left: 0, top: 0, width: EDGE, height: H }, { left: W - EDGE, top: 0, width: EDGE, height: H }, { left: 0, top: 0, width: W, height: EDGE }, { left: 0, top: H - EDGE, width: W, height: EDGE }]
+    rects.forEach((r, i) => { const a = ambs[i]; a.style.display = 'block'; a.style.left = r.left + 'px'; a.style.top = r.top + 'px'; a.style.width = r.width + 'px'; a.style.height = r.height + 'px' })
+  }
+  function ghostAt(p, label, hint, opt = {}) {
+    ghost.dataset.on = ''; ghostLabel.textContent = label; ghostHint.textContent = hint
+    ghost.toggleAttribute('data-refuse', !!opt.refuse); ghost.toggleAttribute('data-nocard', !!opt.nocard)
+    const flip = p.x > win.clientWidth - 240
+    ghost.style.left = flip ? 'auto' : (p.x + 12) + 'px'
+    ghost.style.right = flip ? (win.clientWidth - p.x + 12) + 'px' : 'auto'
+    ghost.style.alignItems = flip ? 'flex-end' : 'flex-start'
+    ghost.style.top = (p.y + 10) + 'px'
+  }
+  function ghostOff() { delete ghost.dataset.on }
+
+  const chipEl = win.querySelector('.chip')
+  /* 一条条的矩形:顶栏那条铺满整段顶栏(到右上角芯片为止)—— 末格右边的空白本来就是「插到末尾」 */
+  function stripRectOf(leafId) {
+    const s = rectL(LEAF[leafId].strip)
+    if (leafId !== 'center') return s
+    const chip = rectL(chipEl)
+    return { ...s, right: chip.left - 8, width: chip.left - 8 - s.left }
+  }
+  function stripBandOf(leafId) {
+    if (!visible(leafId)) return null
+    const s = stripRectOf(leafId)
+    return { ...s, top: s.top - 24, bottom: s.bottom + 24 }
+  }
+  const inRect = (p, r) => p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom
+  function stripIndexAt(leafId, p) {
+    const tabs = [...LEAF[leafId].strip.querySelectorAll('.tab')].filter((t) => !t.hasAttribute('data-torn'))
+    let at = 0; for (const t of tabs) { const r = rectL(t); if (p.x > r.left + r.width / 2) at++ }
+    return at
+  }
+  const contentRectOf = (leafId) => (visible(leafId) ? rectL(LEAF[leafId].content) : null)
+  /* 上边那条带从顶栏底缘起算(方案里浮窗到不了顶栏里);「今天」照旧从窗口顶起 */
+  const topBase = () => (mode === 'plan' ? TOPBAR : 0)
+  const edgeAt = (p, band = EDGE) => { const W = win.clientWidth, H = win.clientHeight; const dy = p.y - topBase(); const d = Math.min(p.x, W - p.x, dy, H - p.y); if (d > band || d < 0 || p.x < 0 || p.x > W || p.y > H) return null; return d === p.x ? 'left' : d === W - p.x ? 'right' : d === dy ? 'top' : 'bottom' }
+  const edgeRect = (side, band = EDGE) => { const W = win.clientWidth, H = win.clientHeight; return { left: { left: 0, top: 0, width: band, height: H }, right: { left: W - band, top: 0, width: band, height: H }, top: { left: 0, top: topBase(), width: W, height: band }, bottom: { left: 0, top: H - band, width: W, height: band } }[side] }
+  /* 方案里的「钉成新架子」带:12px、只在那一边还没有架子时出现、排在标签条之后 */
+  const NEW_SHELF_BAND = 12
+
+  /* 落点判据:方案三种;「今天」多两种(边带、标签正中)。 */
+  function targetAt(p, dragged) {
+    const W = win.clientWidth, H = win.clientHeight
+    if (p.x < 0 || p.y < 0 || p.x > W || p.y > H) return { kind: 'float', hint: '松手成新浮窗' }
+    /* 条:先找指针真的落在上面的,再找 24px 内够得着的 —— 顶栏条的下沿外扩会盖住左右架子条的上半截,
+     * 不分两遍的话指针明明在架子条上,却被判成顶栏 */
+    const onStrip = ALL.find((l) => visible(l) && inRect(p, stripRectOf(l)))
+    const nearStrip = onStrip ?? ALL.find((l) => { const b = stripBandOf(l); return b && inRect(p, b) })
+    for (const leafId of nearStrip ? [nearStrip] : []) {
+      const tabs = [...LEAF[leafId].strip.querySelectorAll('.tab')].filter((t) => !t.hasAttribute('data-torn'))
+      if (mode === 'today') {
+        for (const t of tabs) { const r = rectL(t); const side = r.width * .28; if (t.dataset.id !== dragged && p.x >= r.left + side && p.x <= r.right - side) { const name = t.textContent.replace('✕', '').trim(); return { kind: 'pairTab', leaf: leafId, id: t.dataset.id, hint: `与「${name}」二合一` } } }
+      }
+      const at = stripIndexAt(leafId, p)
+      return { kind: 'strip', leaf: leafId, at, hint: `放到第 ${at + 1} 位` }
+    }
+    if (p.y < TOPBAR) return { kind: 'refuse', hint: '这里不能放' }
+    if (mode === 'today') { const side = edgeAt(p); if (side) return { kind: 'edge', side, hint: `钉到${SIDE_NAME[side]}侧架子` } }
+    else { const side = edgeAt(p, NEW_SHELF_BAND); if (side && !leafOf(side)) return { kind: 'edge', side, band: NEW_SHELF_BAND, hint: `钉成${SIDE_NAME[side]}侧架子` } }
+    for (const leafId of ALL) {
+      const c = contentRectOf(leafId); if (!c || !inRect(p, c)) continue
+      const l = leafOf(leafId)
+      const host = l.tabs.find((t) => t.id === hostId(leafId))
+      if (dragged && dragged === hostId(leafId)) return { kind: 'back', hint: '松手放回' }
+      const fx = (p.x - c.left) / c.width
+      if (host && !host.pair) {
+        if (fx >= 1 - PAIR_BAND) return { kind: 'pair', leaf: leafId, side: 'right', hint: `与「${host.title}」并排 · 放在右侧` }
+        if (fx <= PAIR_BAND) return { kind: 'pair', leaf: leafId, side: 'left', hint: `与「${host.title}」并排 · 放在左侧` }
+      }
+      return { kind: 'open', leaf: leafId, hint: leafId === 'center' ? '开成新标签' : `在${SIDE_NAME[leafId]}侧架子里开成新标签` }
+    }
+    return { kind: 'refuse', hint: '这里不能放' }
+  }
+  function paintTarget(t, p) {
+    if (t.kind !== 'strip') gap(null, null, 0)
+    markPair(null, null)
+    win.toggleAttribute('data-refuse', t.kind === 'refuse')
+    if (t.kind === 'strip') { setInd(null); const sample = LEAF[t.leaf].strip.querySelector('.tab:not([data-torn])') ?? LEAF.center.strip.querySelector('.tab'); gap(t.leaf, t.at, sample ? Math.min(rectL(sample).width, 110) : 90); return }
+    if (t.kind === 'pairTab') { setInd(null); markPair(t.leaf, t.id); return }
+    if (t.kind === 'open') { const c = contentRectOf(t.leaf); setInd(mode === 'plan' ? 'slab' : 'ring', { left: c.left + 8, top: c.top + 8, width: c.width - 16, height: c.height - 16 }); return }
+    if (t.kind === 'pair') { const c = contentRectOf(t.leaf); setInd('slab', { left: t.side === 'left' ? c.left + 8 : c.left + c.width / 2, top: c.top + 8, width: c.width / 2 - 8, height: c.height - 16 }); return }
+    if (t.kind === 'edge') { setInd('film', edgeRect(t.side, t.band ?? EDGE)); return }
+    if (t.kind === 'float') { setInd('outline', { left: Math.max(4, Math.min(p.x - 150, win.clientWidth - 304)), top: Math.max(mode === 'plan' ? TOPBAR + 4 : 4, p.y - 17), width: 300, height: 190 }); return }
+    setInd(null)
+  }
+  function commit(t, item, p) {
+    if (t.kind === 'refuse' || t.kind === 'back') return
+    if (t.kind === 'strip') {
+      const l = leafOf(t.leaf); let at = t.at
+      const was = l.tabs.findIndex((x) => x.id === item.id)
+      removeEverywhere(item.id); ensureLeaf(t.leaf)
+      if (was >= 0 && was < at) at--
+      leafOf(t.leaf).tabs.splice(at, 0, item); leafOf(t.leaf).active = item.id; flash(t.leaf, item.id); return
+    }
+    if (t.kind === 'open') { removeEverywhere(item.id); ensureLeaf(t.leaf); leafOf(t.leaf).tabs.push(item); leafOf(t.leaf).active = item.id; flash(t.leaf, item.id); return }
+    if (t.kind === 'pair' || t.kind === 'pairTab') {
+      const l = leafOf(t.leaf); const host = t.kind === 'pair' ? l.tabs.find((x) => x.id === hostId(t.leaf)) : l.tabs.find((x) => x.id === t.id)
+      removeEverywhere(item.id)
+      const left = t.kind === 'pair' && t.side === 'left'
+      const pair = { id: 'pair:' + host.id + '|' + item.id, title: left ? `${item.title} ⫽ ${host.title}` : `${host.title} ⫽ ${item.title}`, kind: host.kind === 'session' || item.kind === 'session' ? 'session' : 'file', pair: left ? [item, host] : [host, item] }
+      const i = l.tabs.indexOf(host); l.tabs.splice(i, 1, pair); l.active = pair.id; flash(t.leaf, pair.id); return
+    }
+    if (t.kind === 'edge') { removeEverywhere(item.id); ensureLeaf(t.side); leafOf(t.side).tabs.push(item); leafOf(t.side).active = item.id; flash(t.side, item.id); if (mode === 'today') toast(`钉到了${SIDE_NAME[t.side]}侧架子 —— 你多半没打算这么做`); return }
+    if (t.kind === 'float') { removeEverywhere(item.id); S.floats.push({ ...item, x: Math.max(4, Math.min(p.x - 150, win.clientWidth - 304)), y: Math.max(mode === 'plan' ? TOPBAR + 4 : 4, p.y - 17) }); S.staleOpen.add(item.id); return }
+  }
+  function flash(leafId, id) { requestAnimationFrame(() => { const el = LEAF[leafId]?.strip.querySelector(`.tab[data-id="${id}"]`); if (!el) return; el.dataset.land = ''; setTimeout(() => delete el.dataset.land, 260) }) }
+
+  /* ── 标签手势(五片叶同一套) ─────────────────────────── */
+  function onTabDown(e, leafId, id) {
+    const l = leafOf(leafId)
+    if (mode === 'today' || e.button === 0) { if (l.active !== id) { l.active = id; render() } }
+    if (e.button !== 0) return
+    const el = LEAF[leafId].strip.querySelector(`.tab[data-id="${id}"]`)
+    D = { kind: 'tab', leaf: leafId, id, title: l.tabs.find((t) => t.id === id)?.title ?? id, el, p0: local(e), phase: 'idle', boxes: null, index: -1, grabDx: 0, bounds: null, at: null, onto: null, inBand: true }
+    window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onCancel); window.addEventListener('keydown', onKey, true)
+  }
+  function lift() {
+    const strip = LEAF[D.leaf].strip
+    const tabs = [...strip.querySelectorAll('.tab')]
+    D.boxes = tabs.map((t) => ({ el: t, id: t.dataset.id, ...rectL(t) })); D.index = tabs.indexOf(D.el)
+    D.grabDx = D.p0.x - D.boxes[D.index].left; const s = rectL(strip); D.bounds = { left: s.left + 8, right: s.right - 8 }
+    D.el.dataset.lift = ''; win.dataset.dragging = 'inline'
+  }
+  function track(p) {
+    const self = D.boxes[D.index], w = self.width
+    const left = Math.max(D.bounds.left, Math.min(p.x - D.grabDx, D.bounds.right - w))
+    D.el.style.transform = `translateX(${left - self.left}px)`
+    let next = 0
+    D.boxes.forEach((b, i) => { if (i === D.index) return; const c = b.left + b.width / 2; if (i < D.index ? left >= c : left + w > c) next++ })
+    D.boxes.forEach((b, i) => { if (i === D.index) return; const j = i < D.index ? i : i - 1; const shift = i < D.index ? (j >= next ? w : 0) : (j >= next ? 0 : -w); if (shift === 0) { b.el.style.transform = ''; delete b.el.dataset.shift } else { b.el.dataset.shift = ''; b.el.style.transform = `translateX(${shift}px)` } })
+    D.at = next <= D.index ? next : next + 1
+  }
+  function unlift() { if (!D.boxes) return; D.boxes.forEach((b) => { b.el.style.transform = ''; delete b.el.dataset.shift; delete b.el.dataset.lift }); D.boxes = null; markPair(null, null) }
+  function tear() { unlift(); D.el.dataset.torn = ''; D.inBand = false; win.dataset.dragging = 'ghost'; paintAmbient(mode === 'today'); renderContent(D.leaf) }
+  function untear() { delete D.el.dataset.torn; D.inBand = true; ghostOff(); setInd(null); gap(null, null, 0); paintAmbient(false); win.removeAttribute('data-refuse'); lift(); renderContent(D.leaf) }
+
+  function onMove(e) {
+    if (!D || D.phase === 'cancelled') return
+    const p = local(e)
+    if (D.phase === 'idle') {
+      const dx = Math.abs(p.x - D.p0.x), dy = Math.abs(p.y - D.p0.y)
+      if (D.kind === 'tab') { if (dx < DRAG_X && dy < DRAG_Y) return; D.phase = 'drag'; lift() }
+      else { if (dx < DRAG_ANY && dy < DRAG_ANY) return; D.phase = 'drag'; win.dataset.dragging = 'ghost'; D.el.dataset.ghosted = ''; paintAmbient(mode === 'today') }
+    }
+    if (D.kind === 'tab') {
+      const band = stripBandOf(D.leaf)
+      // 自己条的外扩带不许赢过指针真的落在上面的另一条条(同上面那条两遍扫描的理由)
+      const onOther = ALL.some((l) => l !== D.leaf && visible(l) && inRect(p, stripRectOf(l)))
+      const inBand = band ? inRect(p, band) && !onOther : false
+      const tab = leafOf(D.leaf).tabs.find((t) => t.id === D.id)
+      if (!inBand && lockedIn(D.leaf, tab) && mode === 'plan') {
+        if (!D.inBand) return
+        win.setAttribute('data-refuse', ''); ghostAt(p, '', '中央区要留一格会话,它撕不走', { nocard: true, refuse: true }); return
+      } else if (lockedIn(D.leaf, tab) && mode === 'plan') { win.removeAttribute('data-refuse'); ghostOff() }
+      if (inBand && !D.inBand) untear()
+      if (!inBand && D.inBand) tear()
+      if (inBand) {
+        const s = rectL(LEAF[D.leaf].strip)
+        if (mode === 'today' && p.y > s.bottom + ONTO_FROM) {
+          const left = p.x - D.grabDx; D.el.style.transform = `translateX(${Math.max(D.bounds.left, Math.min(left, D.bounds.right - D.boxes[D.index].width)) - D.boxes[D.index].left}px)`
+          D.boxes.forEach((b, i) => { if (i !== D.index) { b.el.style.transform = ''; delete b.el.dataset.shift } })
+          const under = D.boxes.find((b, i) => i !== D.index && p.x >= b.left && p.x < b.left + b.width)
+          D.onto = under ? under.id : null; markPair(D.leaf, D.onto); D.at = null
+          ghostAt(p, '', under ? `与「${under.el.textContent.replace('✕', '').trim()}」二合一` : '松手放回', { nocard: true })
+          return
+        }
+        D.onto = null; markPair(null, null); ghostOff(); track(p); return
+      }
+    }
+    const t = targetAt(p, D.id)
+    D.target = t
+    paintTarget(t, p)
+    ghostAt(p, D.title, t.hint, { refuse: t.kind === 'refuse' })
+  }
+  function settleTab(leafId, id, fromLeft) {
+    requestAnimationFrame(() => {
+      const el = LEAF[leafId].strip.querySelector(`.tab[data-id="${id}"]`); if (!el) return
+      const delta = fromLeft - rectL(el).left
+      if (Math.abs(delta) < 1) return
+      el.style.transition = 'none'; el.style.transform = `translateX(${delta}px)`; void el.getBoundingClientRect()
+      el.style.transition = ''; el.dataset.settle = ''; el.style.transform = ''
+      setTimeout(() => { delete el.dataset.settle }, 160)
+    })
+  }
+  function end() {
+    window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onCancel); window.removeEventListener('keydown', onKey, true)
+    win.removeAttribute('data-dragging'); win.removeAttribute('data-refuse'); setInd(null); gap(null, null, 0); markPair(null, null); paintAmbient(false)
+    if (D?.el) delete D.el.dataset.ghosted
+  }
+  function onUp(e) {
+    if (!D) return
+    const d = D; const p = local(e)
+    if (d.phase === 'idle' || d.phase === 'cancelled') { end(); D = null; ghostOff(); return }
+    if (d.kind === 'tab' && d.inBand) {
+      const l = leafOf(d.leaf)
+      const liveLeft = rectL(d.el).left
+      if (mode === 'today' && d.onto && p.y > rectL(LEAF[d.leaf].strip).bottom + ONTO_FROM) {
+        unlift(); end(); const item = l.tabs.find((x) => x.id === d.id); commit({ kind: 'pairTab', leaf: d.leaf, id: d.onto }, item, p); render(); D = null; ghostOff(); return
+      }
+      unlift(); end(); ghostOff()
+      const from = l.tabs.findIndex((x) => x.id === d.id); let at = d.at
+      if (at !== null && at !== from && at !== from + 1) { const [item] = l.tabs.splice(from, 1); if (from < at) at--; l.tabs.splice(at, 0, item); render(); settleTab(d.leaf, d.id, liveLeft); setTimeout(() => flash(d.leaf, d.id), 160) }
+      else { render(); settleTab(d.leaf, d.id, liveLeft) }
+      D = null; return
+    }
+    const t = d.target ?? { kind: 'refuse' }
+    end(); ghostOff()
+    if (d.kind === 'tab') delete d.el.dataset.torn
+    const item = d.kind === 'tab' ? leafOf(d.leaf).tabs.find((x) => x.id === d.id) : { id: d.id, title: d.title, kind: 'session' }
+    if (d.kind === 'tab' && lockedIn(d.leaf, item) && mode === 'plan' && t.kind !== 'back') { render(); D = null; return }
+    if (d.kind === 'row' && t.kind !== 'refuse' && t.kind !== 'float' && t.kind !== 'back') S.staleOpen.add(d.id)
+    if (d.kind === 'row' && isOpen(d.id) && mode === 'plan' && t.kind !== 'refuse') { toast('它已经开着了 —— 切过去'); activate(d.id); render(); D = null; return }
+    commit(t, item, p); render(); D = null
+  }
+  function activate(id) { for (const k of ALL) { const l = S.leaves[k]; if (!l) continue; const t = l.tabs.find((x) => contains(x, id)); if (t) l.active = t.id } }
+  function onCancel() { cancelDrag(false) }
+  function onKey(e) { if (e.key === 'Escape' && D && D.phase === 'drag') { e.stopPropagation(); cancelDrag(true) } }
+  function cancelDrag(slide) {
+    const d = D; if (!d) return
+    if (d.kind === 'tab') {
+      const liveLeft = rectL(d.el).left
+      if (d.inBand) { unlift(); if (slide && mode === 'plan') settleTab(d.leaf, d.id, liveLeft) }
+      else delete d.el.dataset.torn
+    }
+    d.phase = 'cancelled'; end(); ghostOff(); render()
+  }
+
+  /* ── 会话行手势 ─────────────────────────────────────── */
+  function onRowDown(e, s) {
+    if (e.button !== 0) return
+    const el = e.currentTarget
+    D = { kind: 'row', id: s.id, title: s.title, el, p0: local(e), phase: 'idle', target: null }
+    window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); window.addEventListener('pointercancel', onCancel); window.addEventListener('keydown', onKey, true)
+  }
+
+  /* ── 浮窗拖动:顶栏那条带,以及唯一一条钉边的路(四边) ───────── */
+  function onFloatDown(e, f, el) {
+    if (e.button !== 0) return
+    const p0 = local(e); const start = { x: f.x, y: f.y }
+    if (mode === 'today' && p0.y < TOPBAR) { toast('标题栏压在窗口拖拽区里 —— 原生层拦截,这一下点不到浮窗'); return }
+    let snap = null
+    const mv = (ev) => {
+      const p = local(ev); const minY = mode === 'plan' ? TOPBAR : 0
+      f.x = Math.max(-200, Math.min(start.x + p.x - p0.x, win.clientWidth - 60)); f.y = Math.max(minY, Math.min(start.y + p.y - p0.y, win.clientHeight - 30))
+      el.style.left = f.x + 'px'; el.style.top = f.y + 'px'
+      snap = edgeAt(p)
+      if (snap === 'top' && mode === 'plan' && p.y < TOPBAR) snap = null
+      if (snap) setInd('film', edgeRect(snap)); else setInd(null)
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('keydown', esc, true); setInd(null)
+      if (snap) { S.floats = S.floats.filter((x) => x !== f); ensureLeaf(snap); leafOf(snap).tabs.push({ id: f.id, title: f.title, kind: f.kind ?? 'session' }); leafOf(snap).active = f.id; render(); flash(snap, f.id); toast(`浮窗塌成了${SIDE_NAME[snap]}侧架子`) }
+    }
+    const esc = (ev) => { if (ev.key !== 'Escape') return; ev.stopPropagation(); f.x = start.x; f.y = start.y; el.style.left = f.x + 'px'; el.style.top = f.y + 'px'; snap = null; up() }
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); window.addEventListener('keydown', esc, true)
+  }
+
+  /* ── 开关 ────────────────────────────────────────────── */
+  const setMode = (m) => { mode = m; win.dataset.mode = m; document.getElementById('mPlan').setAttribute('aria-pressed', String(m === 'plan')); document.getElementById('mToday').setAttribute('aria-pressed', String(m === 'today')); render() }
+  document.getElementById('mPlan').addEventListener('click', () => setMode('plan'))
+  document.getElementById('mToday').addEventListener('click', () => setMode('today'))
+  document.getElementById('reset').addEventListener('click', () => { S = initial(); render() })
+  window.addEventListener('blur', () => { if (D) cancelDrag(false) })
+  window.addEventListener('resize', () => layout())
+  window.__dragDebug = () => (D ? { kind: D.kind, phase: D.phase, inBand: D.inBand, leaf: D.leaf, id: D.id, target: D.target?.kind ?? null } : null)
+  render()
+})()
+</script>
+</body>
+</html>
