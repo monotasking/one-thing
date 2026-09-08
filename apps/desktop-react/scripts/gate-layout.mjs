@@ -439,9 +439,18 @@ const mouse = (cdp, type, at, extra = {}) =>
     ...extra,
   })
 
-/** 从 `from` 拖到 `to`(逐步真到达 blink),松手后等落定跑完。 */
-async function dragTo(cdp, from, to, steps = 12) {
-  await mouse(cdp, 'mousePressed', from, { clickCount: 1 })
+/**
+ * 一次拖拽拆成三口:按下 / 走一段 / 松手。
+ *
+ * ⑦ 要**在半路插一件事**(窗口失焦 / Esc),而 `dragTo` 那一整口按下就走到松手,
+ * 中间没有缝。所以三口是产地,`dragTo` 改成它们的组合 —— 一次手势的事件序因此
+ * 只有一份,⑤c 与 ⑦ 不会因为「谁多派了一发 mouseMoved」而对不上。
+ */
+async function pressAt(cdp, at) {
+  await mouse(cdp, 'mousePressed', at, { clickCount: 1 })
+}
+
+async function moveAlong(cdp, from, to, steps = 12) {
   for (let i = 1; i <= steps; i += 1) {
     await mouse(cdp, 'mouseMoved', {
       x: from.x + ((to.x - from.x) * i) / steps,
@@ -449,8 +458,18 @@ async function dragTo(cdp, from, to, steps = 12) {
     })
     await delay(12)
   }
-  await mouse(cdp, 'mouseReleased', to, { clickCount: 1 })
+}
+
+async function releaseAt(cdp, at) {
+  await mouse(cdp, 'mouseReleased', at, { clickCount: 1 })
   await delay(320)
+}
+
+/** 从 `from` 拖到 `to`(逐步真到达 blink),松手后等落定跑完。 */
+async function dragTo(cdp, from, to, steps = 12) {
+  await pressAt(cdp, from)
+  await moveAlong(cdp, from, to, steps)
+  await releaseAt(cdp, to)
 }
 
 /**
@@ -475,6 +494,96 @@ const floatDragBlank = (page, id) =>
     }
     return null
   }, id)
+
+/**
+ * 一条架子那根**厚度杆**上按得下去的那一点(⑦a)。
+ *
+ * 与 `floatDragBlank` 同一条纪律:**「谁在最上面」交给 `elementFromPoint` 回答**
+ * —— 杆是 `<aside>` 的直接子元素(树里的分屏杆也是 separator,所以必须用
+ * `:scope >` 限定),而它上半截可能被别的层盖住。答不出就是 null(调用方报红)。
+ */
+const shelfHandleGrab = (page, side) =>
+  page.evaluate((sd) => {
+    const aside = document.querySelector(`[data-shelf="${sd}"]`)
+    const bar = aside?.querySelector(':scope > [role="separator"]')
+    if (!(bar instanceof HTMLElement)) return null
+    const r = bar.getBoundingClientRect()
+    if (r.width <= 0 || r.height <= 0) return null
+    const vertical = sd === 'left' || sd === 'right'
+    const along = vertical
+      ? { from: r.top + 12, to: r.bottom - 12, at: Math.round(r.left + r.width / 2) }
+      : { from: r.left + 12, to: r.right - 12, at: Math.round(r.top + r.height / 2) }
+    for (let v = along.from; v < along.to; v += 16) {
+      const point = vertical ? { x: along.at, y: Math.round(v) } : { x: Math.round(v), y: along.at }
+      const top = document.elementFromPoint(point.x, point.y)
+      if (top === bar || (top && bar.contains(top))) return point
+    }
+    return null
+  }, side)
+
+/**
+ * 一条架子此刻**屏幕上**有多厚,以及它身上还挂没挂那格拖拽态的皮肤(⑦a)。
+ *
+ * 类名读的是 `/(^|_)dragging(_|$)/` 而不是一个写死的哈希:CSS Modules 生成的名字
+ * 带哈希,但**本名一定在里面**(与 `gate-dock-wake.mjs` 那条 `hidden` 逐字同一法)。
+ */
+const shelfDragState = (page, side) =>
+  page.evaluate((sd) => {
+    const aside = document.querySelector(`[data-shelf="${sd}"]`)
+    if (!(aside instanceof HTMLElement)) return null
+    const r = aside.getBoundingClientRect()
+    return {
+      extent: sd === 'left' || sd === 'right' ? Math.round(r.width) : Math.round(r.height),
+      dragging: [...aside.classList].some((c) => /(^|_)dragging(_|$)/.test(c)),
+    }
+  }, side)
+
+/**
+ * 屏幕上**真接得到指针**的那条二合一分隔杆,连同它此刻那格活比例(⑦c)。
+ *
+ * 量法照 `gate-drag.mjs` 场景 ⑥:条上可能同时有好几格两格标签,而后台那几格的
+ * 内容层是 `inert` / 不可见的,`querySelector` 取到的第一条很可能属于一格没在屏幕上
+ * 的标签。x 与 y 都要扫 —— 那条 6px 的抓手有意溢出到缝两边(右半边被右格盖着),
+ * 缝正中还压着一颗「拆开」小把手。
+ *
+ * **活比例读的是那格 CSS 变量,不是 `aria-valuenow`**:拖拽期间零 React 重渲是这件
+ * 库件的定律(判词在 `ui/Splitter` 文件头),`aria-valuenow` 跟着 store 那份走 ——
+ * 拿它当「拖到一半」的读数,读到的永远是拖之前那个数,这一档会空过。
+ */
+const pairSeamGrab = (page) =>
+  page.evaluate(() => {
+    const bars = Array.from(document.querySelectorAll('[data-testid^="pair-splitter"]'))
+    for (const bar of bars) {
+      const r = bar.getBoundingClientRect()
+      if (r.width <= 0 || r.height <= 0) continue
+      for (let y = r.top + 8; y < r.bottom - 8; y += 12) {
+        for (const x of [r.left + 1, r.left + Math.round(r.width / 2), r.left + r.width - 1]) {
+          const top = document.elementFromPoint(Math.round(x), Math.round(y))
+          if (top === bar || (top && bar.contains(top))) {
+            const box = bar.closest('[data-testid^="pair:"]')
+            return {
+              grab: { x: Math.round(x), y: Math.round(y) },
+              testId: bar.getAttribute('data-testid'),
+              boxTestId: box?.getAttribute('data-testid') ?? null,
+            }
+          }
+        }
+      }
+    }
+    return null
+  })
+
+/** 那格二合一此刻的**活比例**(inline 变量)/ 落定比例(aria)/ 拖拽态属性。 */
+const pairSeamState = (page, testId, boxTestId) =>
+  page.evaluate(([bid, sid]) => {
+    const box = document.querySelector(`[data-testid="${bid}"]`)
+    const bar = document.querySelector(`[data-testid="${sid}"]`)
+    return {
+      live: box instanceof HTMLElement ? box.style.getPropertyValue('--pair-split') : null,
+      committed: bar?.getAttribute('aria-valuenow') ?? null,
+      splitting: document.querySelectorAll('[data-splitting]').length,
+    }
+  }, [boxTestId, testId])
 
 async function shut(handle) {
   if (!handle) return
@@ -1330,16 +1439,203 @@ async function sceneSummon(store, udd, sessions) {
   }
 }
 
+/**
+ * ⑦ **拖到一半作废,三处一起还原**(拖拽 v4 U5,2026-09-08)。
+ *
+ * ── 它守的是什么 ────────────────────────────────────────────────────────
+ * 壳里「按下即拖」那一族(调一个数:分隔杆 / 架子厚度 / 浮窗)从前是三处各自
+ * 手写的,三处**都只有两条结束路径**(pointerup / pointercancel),而且监听挂在
+ * **元素上**、不在 window 上。后果:拖到一半 Cmd-Tab 切走应用、或系统弹框抢走
+ * 指针,capture 一丢那几条监听就再也收不到事件 —— `data-splitting` / 活厚度 /
+ * 活窗位一直挂着,直到下一次恰好在同一个元素上松手;Esc 也取消不了。
+ * 今天三处一起接 `ui/drag` 的 `PointerTrack`(判词整段在 `pointer-track.ts`)。
+ *
+ * ── 为什么这三条只有真机量得到 ──────────────────────────────────────────
+ * jsdom 那一层(`ui/__tests__/pointer-track.test.ts` + 三处消费方各一条)证得了
+ * 「回调接对了没有」,证不了**屏幕上那块地真的回去了**:比例 / 厚度 / 窗位这三样
+ * 都要真实排版才量得到(getBoundingClientRect 在 jsdom 里一律答零),而且
+ * 「Esc 走的是响应链那唯一的派发器」也只有真键盘派得出来。
+ *
+ * ── 纪律 ────────────────────────────────────────────────────────────────
+ * 失焦那一下是 `window.dispatchEvent(new Event('blur'))`,**不是**真去切一次应用:
+ * 后者会抢用户的机器(09-01 判例)。它派进的是这扇窗自己的输入管线,与产品收到
+ * 的那一发逐字同形 —— 产品那一头监听的就是 window 的 `blur`。
+ *
+ * 每一站都先量**拖到一半**那一格读数(屏幕上真的动了),不然「取消之后没变」会被
+ * 一次空动作蒙混过去:指针压根没走,那当然没变。
+ */
+async function sceneCancel(store, udd, sessions) {
+  scene('⑦ 按下即拖那一族:拖到一半失焦 / Esc,屏幕与档案一起回到拖之前(U5)')
+  const handle = await launch(store, udd)
+  try {
+    const { page, app, cdp } = handle
+    await setSize(app, page, 1400, 900)
+
+    /*
+     * ── ⑦a **架子厚度杆:拖到一半窗口失焦** ──────────────────────────────
+     * 反证:把 `EdgeShelf.onHandleDown` 里那只 `cancel` 回调挖掉 → 「厚度回去了」
+     * 与「dragging 摘掉了」两条一起红(屏幕停在拖到一半那个数上)。
+     */
+    await pickFromTileMenu(page, 'terminal', /^Left$/)
+    const shelfBefore = await shelfDragState(page, 'left')
+    check('前提:左架子在,量得到它的厚度', Boolean(shelfBefore), JSON.stringify(shelfBefore))
+    const shelfGrab = await shelfHandleGrab(page, 'left')
+    check('抓得到左架子那根厚度杆', Boolean(shelfGrab), JSON.stringify(shelfGrab))
+    if (shelfBefore && shelfGrab) {
+      const to = { x: shelfGrab.x + 120, y: shelfGrab.y }
+      await pressAt(cdp, shelfGrab)
+      await moveAlong(cdp, shelfGrab, to)
+      const mid = await shelfDragState(page, 'left')
+      check(
+        '拖到一半:屏幕上这条架子真的变厚了,而且挂上了拖拽态',
+        Boolean(mid) && mid.extent > shelfBefore.extent && mid.dragging,
+        `${shelfBefore.extent} → ${mid?.extent} dragging=${mid?.dragging}`,
+      )
+      await page.evaluate(() => window.dispatchEvent(new Event('blur')))
+      await delay(200)
+      const cancelled = await shelfDragState(page, 'left')
+      check(
+        `失焦:厚度回到拖之前那个数(${shelfBefore.extent})`,
+        Boolean(cancelled) && cancelled.extent === shelfBefore.extent,
+        `${mid?.extent} → ${cancelled?.extent}`,
+      )
+      check('失焦:拖拽态那格皮肤摘掉了(不留残影)', cancelled?.dragging === false, JSON.stringify(cancelled))
+      // 手指还按着 —— 松开它,这一场早已经死了,不许在这里补落一次。
+      await releaseAt(cdp, to)
+      const settled = await shelfDragState(page, 'left')
+      check(
+        '松手:一场已经作废的手势不会补落定',
+        Boolean(settled) && settled.extent === shelfBefore.extent && !settled.dragging,
+        `${JSON.stringify(settled)}`,
+      )
+      const persisted = (await read(page)).persist.stageShelves?.left?.thickness
+      check(
+        '档案里那格厚度也一个字没写',
+        persisted === undefined || persisted === shelfBefore.extent,
+        `persist=${persisted} 屏幕=${shelfBefore.extent}`,
+      )
+    }
+
+    /*
+     * ── ⑦b **浮窗标题栏:拖到一半按 Esc** ────────────────────────────────
+     * Esc 走的是响应链那**唯一的派发器**(不变量 I2:keydown 监听全仓只住在
+     * `src/focus/`),这一场在起手时登记了一格瞬态口,派发器在问活动路径之前先问它。
+     * 反证:把 `FloatWindow.begin` 里那只 `cancel: clearLive` 挖掉 → 「窗子回去了」
+     * 当场红(它停在拖到一半那个位置上)。
+     */
+    await pickFromTileMenu(page, 'providers', /^Float$/)
+    const floatRect = (layout) => layout.floats.find((f) => f.id === 'providers')?.rect ?? null
+    const winBefore = floatRect(await read(page))
+    const winGrab = await floatDragBlank(page, 'providers')
+    check('抓得到那扇浮窗的标题栏空白处', Boolean(winGrab), JSON.stringify(winGrab))
+    if (winBefore && winGrab) {
+      /* 往**左下**走:躲开 `SNAP_BAND`(落在带里松手 = 钉成架子,那是另一件事)。 */
+      const to = { x: winGrab.x - 160, y: winGrab.y + 120 }
+      await pressAt(cdp, winGrab)
+      await moveAlong(cdp, winGrab, to)
+      const mid = floatRect(await read(page))
+      check(
+        '拖到一半:屏幕上那扇窗真的挪开了',
+        Boolean(mid) && (mid.x !== winBefore.x || mid.y !== winBefore.y),
+        `${JSON.stringify(winBefore)} → ${JSON.stringify(mid)}`,
+      )
+      await page.keyboard.press('Escape')
+      await delay(200)
+      const cancelled = floatRect(await read(page))
+      check(
+        'Esc:窗子**逐字**滑回按下那一刻',
+        rectEq(cancelled, winBefore),
+        `${JSON.stringify(mid)} → ${JSON.stringify(cancelled)}`,
+      )
+      await releaseAt(cdp, to)
+      check(
+        '松手:一场已经作废的手势不会补落定',
+        rectEq(floatRect(await read(page)), winBefore),
+        JSON.stringify(floatRect(await read(page))),
+      )
+      const memory = (await read(page)).persist.stageMemory?.providers?.rect
+      check(
+        '档案里那扇窗的记忆也一个字没写',
+        !memory || rectEq(memory, winBefore),
+        `persist=${JSON.stringify(memory)} 屏幕=${JSON.stringify(winBefore)}`,
+      )
+    }
+
+    /*
+     * ── ⑦c **二合一那根分隔杆:拖到一半按 Esc** ──────────────────────────
+     * 布景与 ⑥c 同一条路(会话行的「在右侧打开」= 二合一),那是这台产品里唯一
+     * 不靠拖拽就造得出一格 `pair:` 的手势。
+     * 反证:把 `ui/Splitter.onPointerDown` 里那只 `cancel` 回调挖掉 → 「比例回去了」
+     * 与「data-splitting 摘掉了」两条一起红。
+     */
+    /*
+     * 布景两件:①把 ⑦b 那扇浮窗关掉 —— 它 640×480 就压在中央区正中,而缝正好在
+     * 它底下,留着它 `pairSeamGrab` 一个点都挑不出来(那会红在「够得着」上,
+     * 说的却不是本站要守的事);②`⌘E` 唤出会话总览 —— 二合一那条路的开口是会话行
+     * 的右键菜单(与 ⑥c 同一条,那是这台产品里唯一不靠拖拽就造得出一格 `pair:`
+     * 的手势)。
+     */
+    const closed = await page.evaluate(() => {
+      const body = document.querySelector('[data-float-body="providers"]')
+      const btn = body?.closest('[role="dialog"]')?.querySelector('[aria-label="Close this window"]')
+      if (!(btn instanceof HTMLElement)) return false
+      btn.click()
+      return true
+    })
+    check('布景:把 ⑦b 那扇浮窗关掉(它压在中央区正中,缝就在它底下)', closed)
+    await delay(600)
+    await page.keyboard.press('Meta+e')
+    await delay(900)
+    await clickSessionRow(page, sessions[0])
+    if (!(await pickFromSessionRowMenu(page, sessions[2], /^Open to the right$|在右侧打开|在右边打开/))) {
+      throw new Error('会话行菜单里没有「Open to the right」那一行')
+    }
+    const seam = await pairSeamGrab(page)
+    check('屏幕上那格二合一有一根够得着的分隔杆', Boolean(seam), JSON.stringify(seam))
+    if (seam) {
+      const before = await pairSeamState(page, seam.testId, seam.boxTestId)
+      const to = { x: seam.grab.x - 80, y: seam.grab.y }
+      await pressAt(cdp, seam.grab)
+      await moveAlong(cdp, seam.grab, to, 8)
+      const mid = await pairSeamState(page, seam.testId, seam.boxTestId)
+      check(
+        '拖到一半:活比例真的变小了,而且容器挂上了 data-splitting',
+        Number(mid.live) < Number(before.live) && mid.splitting === 1,
+        `${before.live} → ${mid.live} splitting=${mid.splitting}`,
+      )
+      await page.keyboard.press('Escape')
+      await delay(200)
+      const cancelled = await pairSeamState(page, seam.testId, seam.boxTestId)
+      check(
+        `Esc:比例回到按下那一刻(${before.live})`,
+        cancelled.live === before.live,
+        `${mid.live} → ${cancelled.live}`,
+      )
+      check('Esc:data-splitting 摘掉了(分栏的过渡该回来了)', cancelled.splitting === 0, `splitting=${cancelled.splitting}`)
+      await releaseAt(cdp, to)
+      const settled = await pairSeamState(page, seam.testId, seam.boxTestId)
+      check(
+        '松手:一场已经作废的手势不会补落定(落定那份比例也没动)',
+        settled.live === before.live && settled.committed === before.committed && settled.splitting === 0,
+        `${JSON.stringify(before)} → ${JSON.stringify(settled)}`,
+      )
+    }
+  } finally {
+    await shut(handle)
+  }
+}
+
 /* ── main ──────────────────────────────────────────────────────────────── */
 
 /*
- * `node scripts/gate-layout.mjs --only <restart|full|budget|floats|summon>` —— 只跑那一
- * 组场景。立这个口子的理由与 `verify.mjs` 的 `--only` 逐字相同:**反证纪律**要求每条
- * 守卫至少真跑一次「拆掉即红」,而拆一处跑整道门是五个场景陪跑一个。
- * 它只认这五个名字,不是通用的分步执行器。`restart` 与 `full` 是同一次进程接力
- * (②要②之前那一步钉好的右架子),所以 `--only full` 连带跑 ①。
+ * `node scripts/gate-layout.mjs --only <restart|full|budget|floats|spawn|summon|cancel>`
+ * —— 只跑那一组场景。立这个口子的理由与 `verify.mjs` 的 `--only` 逐字相同:
+ * **反证纪律**要求每条守卫至少真跑一次「拆掉即红」,而拆一处跑整道门是六个场景陪跑
+ * 一个。它只认 `ONLY_SCENES` 里那几个名字,不是通用的分步执行器。
+ * `restart` 与 `full` 是同一次进程接力(②要②之前那一步钉好的右架子),
+ * 所以 `--only full` 连带跑 ①。
  */
-const ONLY_SCENES = ['restart', 'full', 'budget', 'floats', 'spawn', 'summon']
+const ONLY_SCENES = ['restart', 'full', 'budget', 'floats', 'spawn', 'summon', 'cancel']
 const onlyIndex = process.argv.indexOf('--only')
 const only = onlyIndex === -1 ? null : process.argv[onlyIndex + 1]
 if (only !== null && !ONLY_SCENES.includes(only)) {
@@ -1410,6 +1706,7 @@ async function main() {
     if (wants('floats')) await sceneFloats(store, await newUdd())
     if (wants('spawn')) await sceneSpawn(store, await newUdd())
     if (wants('summon')) await sceneSummon(store, await newUdd(), sessions)
+    if (wants('cancel')) await sceneCancel(store, await newUdd(), sessions)
   } finally {
     for (const app of [...live.apps]) {
       try {
@@ -1446,7 +1743,7 @@ async function main() {
     process.exit(1)
   }
   process.stdout.write(
-    '[gate:layout] ok —— 重启 / 全屏 + A9 / 架子预算 + 拒绝播报 + 细梁 / 三档挤压 / 浮窗锚与层叠 / 点瓦开窗 / 召唤两条路 + 二合一\n',
+    '[gate:layout] ok —— 重启 / 全屏 + A9 / 架子预算 + 拒绝播报 + 细梁 / 三档挤压 / 浮窗锚与层叠 / 点瓦开窗 / 召唤两条路 + 二合一 / 三处按下即拖的取消路\n',
   )
 }
 

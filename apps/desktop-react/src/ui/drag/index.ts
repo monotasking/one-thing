@@ -10,6 +10,13 @@ export { DRAG_START_PX, DRAG_START_X } from './constants'
 export { DragGhost } from './DragGhost'
 export { DragLayer } from './DragLayer'
 export { DropOverlay } from './DropOverlay'
+/**
+ * 「按下即拖」那一族的指针跟踪(U5)。它与 `DragSession` 是同一条纪律下的两件:
+ * 这一件管「指针在不在、这一下要不要作废」,那一件管「算不算一次拖、浮影画什么」
+ * —— 分工与「为什么 DragSession 不吃它」的判词整段写在 `pointer-track.ts` 文件头。
+ */
+export { PointerTrack } from './pointer-track'
+export type { PointerTrackCancelReason, PointerTrackRun } from './pointer-track'
 export {
   resetDragSession,
   setDragPresentation,

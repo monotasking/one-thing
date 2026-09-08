@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createRef } from 'react'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { Splitter, SPLITTER_STEP } from '../Splitter'
+import { focusTree } from '../../focus/registry'
 
 /**
  * **Splitter(第 19 件)的规格测试** —— 09-01 报障「file open 之后,没办法调整宽度」。
@@ -151,5 +152,50 @@ describe('Splitter:钳制与跟手', () => {
     const { containerRef } = setup()
     fireEvent(screen.getByTestId('splitter'), pointer('pointerdown', 2))
     expect(containerRef.current?.getAttribute('data-splitting')).toBeNull()
+  })
+
+  /*
+   * **取消不落定**(U5,2026-09-08)。三条取消路(Esc / pointercancel / 窗口失焦)
+   * 由 `ui/drag` 的 `PointerTrack` 统一收,消费方这一头只做一件事:**还原到按下
+   * 那一刻**,`onCommit` 一个字都不落。
+   *
+   * 从前这条杆压根没有 Esc、也收不到失焦(监听挂在杆自己身上,capture 一丢就聋),
+   * 所以拖到一半切走应用会把 `data-splitting` 永远挂在容器上。
+   * 反证:把 `onPointerDown` 里那只 `cancel` 回调挖掉 → 三条全红(属性还挂着)。
+   */
+  const cancelPaths: Array<[string, () => void]> = [
+    ['窗口失焦', () => window.dispatchEvent(new Event('blur'))],
+    ['pointercancel', () => screen.getByTestId('splitter').dispatchEvent(pointer('pointercancel'))],
+    [
+      'Esc(经 focus 树的瞬态口)',
+      () => {
+        const all = focusTree.transientEscapeHandlers()
+        all[all.length - 1]?.()
+      },
+    ],
+  ]
+  /** 取消那一下会 setState(出拖拽态),所以进 act —— 否则读到的是上一帧。 */
+  const fireIn = (run: () => void) => act(() => { run() })
+  for (const [name, fire] of cancelPaths) {
+    it(`拖到一半${name}:摘掉 data-splitting、比例画回按下那一刻、不落 commit`, () => {
+      const { onCommit, containerRef } = setup({ value: 45 })
+      const bar = screen.getByTestId('splitter')
+      act(() => { fireEvent(bar, pointer('pointerdown')) })
+      bar.dispatchEvent(pointer('pointermove'))
+      expect(containerRef.current?.getAttribute('data-splitting')).toBe('true')
+      fireIn(fire)
+      expect(containerRef.current?.getAttribute('data-splitting')).toBeNull()
+      expect(containerRef.current?.style.getPropertyValue('--x')).toBe('45')
+      expect(onCommit).not.toHaveBeenCalled()
+    })
+  }
+
+  it('取消之后再来一发 pointerup,仍旧不落 commit(这一场真的死了)', () => {
+    const { onCommit } = setup()
+    const bar = screen.getByTestId('splitter')
+    act(() => { fireEvent(bar, pointer('pointerdown')) })
+    fireIn(() => window.dispatchEvent(new Event('blur')))
+    fireIn(() => bar.dispatchEvent(pointer('pointerup')))
+    expect(onCommit).not.toHaveBeenCalled()
   })
 })

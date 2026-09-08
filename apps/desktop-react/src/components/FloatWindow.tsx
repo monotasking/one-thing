@@ -15,6 +15,7 @@ import { FocusScope } from '../focus/FocusScope'
 import { useT } from '../i18n'
 import { MenuItem, MenuSeparator, Submenu } from '../ui/Menu'
 import { IconButton } from '../ui/IconButton'
+import { PointerTrack } from '../ui/drag'
 import { X } from './icons'
 import { exitMs } from './motion'
 import { SHELF_SIDE_CHOICES } from '../stage/types'
@@ -123,15 +124,19 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
   /** 「钉到边 / 放大」那两颗只对**瓦**说得通(见 `placement.ts` 的判词)。 */
   const activeItemId = useMemo(() => activeItemOf(shownTree), [shownTree])
 
+  /**
+   * 拖窗 / 拉把手。**三条结束路径由 `ui/drag` 的 `PointerTrack` 收**(U5,
+   * 2026-09-08):从前这里只挂 pointerup / pointercancel、而且挂在**按下的那个
+   * 元素上** —— 拖到一半 Cmd-Tab 切走应用、或系统弹框抢走指针,capture 一丢那
+   * 两条就再也收不到事件,活矩形与吸边预示会一直挂着(病历整段在
+   * `pointer-track.ts`);Esc 也取消不了。松手那条路一个字没改。
+   */
   const begin = useCallback(
     (e: ReactPointerEvent<HTMLElement>, dir: ResizeDir | null) => {
       if (e.button !== 0 || !rect) return
       e.preventDefault()
       focusFloat(id)
       const el = e.currentTarget
-      // 捕获失败(如 pen 抬笔竞态、合成指针)不放弃拖拽:capture 只是锦上添花,
-      // 监听本来就挂在元素上,丢 capture 最多丢"指针滑出元素后的帧"。
-      try { el.setPointerCapture(e.pointerId) } catch { /* 不阻断 */ }
       const from = rect
       const startX = e.clientX
       const startY = e.clientY
@@ -139,40 +144,48 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
       // 只有「拖着整扇窗走」才谈吸附;拉把手改身量与落到哪条边无关。
       let landing: ShelfSide | null = null
 
-      const move = (ev: PointerEvent) => {
-        const dx = ev.clientX - startX
-        const dy = ev.clientY - startY
-        const next = clampFloatRect(
-          dir ? resizeFrom(from, dir, dx, dy) : { ...from, x: from.x + dx, y: from.y + dy },
-          vp,
-        )
-        liveRef.current = next
-        setLive(next)
-        if (dir) return
-        landing = snapSideAt({ x: ev.clientX, y: ev.clientY }, vp)
-        setSnapSide(landing)
-      }
-      const up = () => {
-        el.removeEventListener('pointermove', move)
-        el.removeEventListener('pointerup', up)
-        el.removeEventListener('pointercancel', up)
-        const final = liveRef.current
+      /** 逐帧预示与落定共用的那一口清场(取消也走它,只是后面不落定)。 */
+      const clearLive = () => {
         liveRef.current = null
         setLive(null)
         setSnapSide(null)
-        if (!final) return
-        if (dir) {
-          resizeFloat(id, final)
-          return
-        }
-        // 松手在热带里 = 钉上去(浮窗塌进架子,那一次形变走 --dur-enter);
-        // 不在热带里就照常落位 —— 高亮散了不改变松手的语义。
-        if (landing) floatToEdge(id, landing)
-        else moveFloat(id, final.x, final.y)
       }
-      el.addEventListener('pointermove', move)
-      el.addEventListener('pointerup', up)
-      el.addEventListener('pointercancel', up)
+
+      PointerTrack.open(el, e.pointerId, {
+        move: (ev) => {
+          const dx = ev.clientX - startX
+          const dy = ev.clientY - startY
+          const next = clampFloatRect(
+            dir ? resizeFrom(from, dir, dx, dy) : { ...from, x: from.x + dx, y: from.y + dy },
+            vp,
+          )
+          liveRef.current = next
+          setLive(next)
+          if (dir) return
+          landing = snapSideAt({ x: ev.clientX, y: ev.clientY }, vp)
+          setSnapSide(landing)
+        },
+        end: () => {
+          const final = liveRef.current
+          clearLive()
+          if (!final) return
+          if (dir) {
+            resizeFloat(id, final)
+            return
+          }
+          // 松手在热带里 = 钉上去(浮窗塌进架子,那一次形变走 --dur-enter);
+          // 不在热带里就照常落位 —— 高亮散了不改变松手的语义。
+          if (landing) floatToEdge(id, landing)
+          else moveFloat(id, final.x, final.y)
+        },
+        /*
+         * **取消 = 只清场**(U5):活矩形与吸边预示一起归零,`moveFloat` /
+         * `resizeFloat` / `floatToEdge` 一个都不叫 —— 渲染当场回到 `stored`
+         * 那份,窗子滑回按下那一刻的位置与身量。`focusFloat` 那一下不撤:
+         * 它是「按了这扇窗」的后果,与「这一下拖不算数」是两件事。
+         */
+        cancel: clearLive,
+      })
     },
     [rect, id, focusFloat, moveFloat, resizeFloat, floatToEdge],
   )

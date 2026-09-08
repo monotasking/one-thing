@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { AppShell } from '../AppShell'
 import { useStageStore } from '../../stage/store'
-import { initialStageState } from '../../stage/transitions'
+import { initialStageState, SHELF_DEFAULT_THICKNESS } from '../../stage/transitions'
 import { useWorkbenchStore } from '../../workbench/store'
 import type { ShelfSide } from '../../stage/types'
 import { focusTree } from '../../focus/registry'
@@ -31,6 +31,14 @@ afterEach(() => {
 function openOnEdge(id: string, side: ShelfSide) {
   act(() => useStageStore.getState().openAs(id, { kind: 'edge', side }))
 }
+
+/**
+ * 一发带 `button` / `clientX` 的指针事件。jsdom 没有 `PointerEvent` 构造器,
+ * `fireEvent.pointerDown` 派出来的裸 `Event` 的 `button` 是 undefined,会被
+ * 「只认主键」那条闸挡掉(判据与 `ui/__tests__/drag-session.test.tsx` 同源)。
+ */
+const pointerAt = (type: string, x = 0, y = 0) =>
+  new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y })
 
 const NAME: Record<ShelfSide, string> = {
   left: '左侧栏',
@@ -263,4 +271,75 @@ describe('同组 tab 是 keep-alive 的', () => {
     expect(document.querySelector('[data-shelf="right"]')).toBeNull()
     expect(layer('files')).toBeTruthy()
   })
+})
+
+/**
+ * **厚度把手:取消不落定**(U5,2026-09-08)。
+ *
+ * 三条取消路(Esc / pointercancel / 窗口失焦)由 `ui/drag` 的 `PointerTrack` 统一收;
+ * 这一头的取消动作只有一句 `setLiveThickness(null)` —— 渲染当场回到 store 那份,
+ * `setShelfThickness` 一个字都不落。从前这条把手压根没有 Esc、也收不到窗口失焦
+ * (监听挂在把手自己身上,capture 一丢就聋):拖到一半 Cmd-Tab 切走应用,那格活厚度
+ * 就一直挂着,直到下一次恰好在同一个把手上松手。
+ *
+ * **断言两头都要问**:取消这条路本来就不写 store,只问 store 的话「一句 cancel 都
+ * 没有」也是绿的 —— 那时活厚度仍旧挂着,屏幕上这条架子就停在半路。所以既问
+ * 屏幕上那条 `<aside>` 有多厚,也问 store 那一格。
+ * **还要与松手那条路对照着看**:只断「取消之后厚度没变」会被一次空动作蒙混过去
+ * (指针没走、厚度本来就没变),所以第一条先证明同一串手势在松手时**真的**改了厚度。
+ * 反证:把 `cancel` 换成 `end` 那一只 → 三条全红;把 `cancel` 整只挖掉 → 同样三条红
+ * (屏幕上那条架子停在 300px 上)。
+ */
+describe('厚度把手的三条结束路径', () => {
+  afterEach(() => setViewport(1024, 768))
+
+  /** 起一条左侧架子并按住它的厚度把手,答那颗把手。 */
+  function grabHandle() {
+    setViewport(1600, 1100)
+    render(<AppShell />)
+    openOnEdge('files', 'left')
+    const handle = screen.getByRole('separator', { name: '调整左侧栏厚度' })
+    act(() => {
+      fireEvent(handle, pointerAt('pointerdown'))
+      handle.dispatchEvent(pointerAt('pointermove', 300))
+    })
+    return handle
+  }
+
+  const thicknessNow = () => useStageStore.getState().shelves.left.thickness
+  /** **屏幕上**这条架子此刻有多厚 —— 取消要还原的正是它(store 那一份从没被碰过)。 */
+  const paintedNow = () => screen.getByRole('complementary', { name: NAME.left }).style.width
+
+  it('松手 = 落定:store 里那格厚度换成了指针给的那个数', () => {
+    const handle = grabHandle()
+    act(() => { handle.dispatchEvent(pointerAt('pointerup', 300)) })
+    expect(thicknessNow()).toBe(300)
+    expect(paintedNow()).toBe('300px')
+  })
+
+  const cancels: Array<[string, (handle: HTMLElement) => void]> = [
+    ['窗口失焦', () => window.dispatchEvent(new Event('blur'))],
+    ['pointercancel', (handle) => handle.dispatchEvent(pointerAt('pointercancel', 300))],
+    [
+      'Esc(经 focus 树的瞬态口)',
+      () => {
+        const all = focusTree.transientEscapeHandlers()
+        all[all.length - 1]?.()
+      },
+    ],
+  ]
+  for (const [name, fire] of cancels) {
+    it(`拖到一半${name}:屏幕与 store 一起回到拖之前那个数`, () => {
+      const handle = grabHandle()
+      // 拖到一半:屏幕上已经不是 store 那一份了(不然下面那条断言是空的)。
+      expect(paintedNow()).toBe('300px')
+      act(() => { fire(handle) })
+      expect(paintedNow()).toBe(`${SHELF_DEFAULT_THICKNESS}px`)
+      expect(thicknessNow()).toBe(SHELF_DEFAULT_THICKNESS)
+      // 而且这一场真的死了:再来一发 pointerup 也不会补落一次。
+      act(() => { handle.dispatchEvent(pointerAt('pointerup', 300)) })
+      expect(paintedNow()).toBe(`${SHELF_DEFAULT_THICKNESS}px`)
+      expect(thicknessNow()).toBe(SHELF_DEFAULT_THICKNESS)
+    })
+  }
 })

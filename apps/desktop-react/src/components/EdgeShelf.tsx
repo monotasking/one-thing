@@ -18,6 +18,7 @@ import { useT } from '../i18n'
 import type { MessageKey } from '../i18n'
 import type { PaneHostChrome } from '../workbench/PaneLeaf'
 import { ButtonBase } from '../ui/ButtonBase'
+import { PointerTrack } from '../ui/drag'
 import { IconButton } from '../ui/IconButton'
 import { MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
 import { ChevronsDown, ChevronsLeft, ChevronsRight, ChevronsUp } from './icons'
@@ -169,6 +170,12 @@ export function EdgeShelf({ side }: Props) {
   /**
    * 厚度把手。跟手定律:过程中零过渡、逐帧写**本地** state,松手才落 store,
    * 两处共用同一个钳制纯函数,所以「拖着看到的」与「存下来的」逐像素相同。
+   *
+   * **三条结束路径由 `ui/drag` 的 `PointerTrack` 收**(U5,2026-09-08):从前这里
+   * 只挂 pointerup / pointercancel、而且挂在**把手自己身上** —— 拖到一半切走应用
+   * 或系统弹框抢走指针,那格活厚度会一直挂着(病历整段在 `pointer-track.ts`)。
+   * **取消 = 清掉活厚度、不 `setShelfThickness`**:渲染当场回到 store 那份,
+   * 屏幕上等于这一下没发生过。松手那条路一个字没改。
    */
   const onHandleDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -177,9 +184,6 @@ export function EdgeShelf({ side }: Props) {
       const el = e.currentTarget
       const box = asideRef.current?.getBoundingClientRect()
       if (!box) return
-      // 捕获失败(如 pen 抬笔竞态、合成指针)不放弃拖拽:capture 只是锦上添花,
-      // 监听本来就挂在元素上,丢 capture 最多丢"指针滑出元素后的帧"。
-      try { el.setPointerCapture(e.pointerId) } catch { /* 不阻断 */ }
       // 外缘在整个拖拽期间不动,所以只测这一次。
       const outer = outerEdgeOf(side, box)
       /*
@@ -192,24 +196,22 @@ export function EdgeShelf({ side }: Props) {
       const budget = shelfThicknessBudget(useStageStore.getState(), side, vp)
       let last = shelf.thickness
 
-      const move = (ev: PointerEvent) => {
-        last = clampShelfThickness(
-          thicknessFromPointer(side, { x: ev.clientX, y: ev.clientY }, outer),
-          extent,
-          budget,
-        )
-        setLiveThickness(last)
-      }
-      const up = () => {
-        el.removeEventListener('pointermove', move)
-        el.removeEventListener('pointerup', up)
-        el.removeEventListener('pointercancel', up)
-        setLiveThickness(null)
-        setShelfThickness(side, last)
-      }
-      el.addEventListener('pointermove', move)
-      el.addEventListener('pointerup', up)
-      el.addEventListener('pointercancel', up)
+      PointerTrack.open(el, e.pointerId, {
+        move: (ev) => {
+          last = clampShelfThickness(
+            thicknessFromPointer(side, { x: ev.clientX, y: ev.clientY }, outer),
+            extent,
+            budget,
+          )
+          setLiveThickness(last)
+        },
+        end: () => {
+          setLiveThickness(null)
+          setShelfThickness(side, last)
+        },
+        // 只清活值:渲染自动回到 store 那份厚度(两者此刻就是拖之前那个数)。
+        cancel: () => setLiveThickness(null),
+      })
     },
     [side, shelf.thickness, setShelfThickness],
   )

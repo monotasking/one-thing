@@ -1,12 +1,13 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { AppShell } from '../AppShell'
 import { useStageStore } from '../../stage/store'
 import { useWorkbenchStore } from '../../workbench/store'
 import { refId } from '../../workbench/kinds'
 import { initialStageState } from '../../stage/transitions'
+import { focusTree } from '../../focus/registry'
 
 /**
  * 浮窗的挂载路径:形态机说「它是 float」,外壳就该画出一扇有标题、有三个控件的窗,
@@ -157,4 +158,100 @@ describe('浮窗檐:只剩 ✕,钉边与上舞台进叶菜单', () => {
     })
     expect(useStageStore.getState().placements.files).toEqual({ kind: 'edge', side: 'right' })
   })
+})
+
+/**
+ * **拖窗:取消不落定**(U5,2026-09-08)。
+ *
+ * 三条取消路(Esc / pointercancel / 窗口失焦)由 `ui/drag` 的 `PointerTrack` 统一收;
+ * 这一头的取消动作只有一句清场(`liveRef` / `live` / `setSnapSide` 归零),
+ * `moveFloat` / `resizeFloat` / `floatToEdge` 一个都不叫 —— 渲染当场回到 `stored`
+ * 那份,窗子滑回按下那一刻。从前这扇窗压根没有 Esc、也收不到窗口失焦
+ * (监听挂在按下的那个元素上,capture 一丢就聋):拖到一半 Cmd-Tab 切走应用,
+ * 那格活矩形与吸边预示会一直挂着 —— **屏幕上那扇窗就停在半路**,而 store 里
+ * 那一份从头到尾没被碰过。
+ *
+ * **所以断言必须落在屏幕上那份矩形上,不能只问 store**:取消这条路本来就不写
+ * store,只问 store 的话「一句 cancel 都没有」也是绿的(第一版当场被反证抓到:
+ * 把 `cancel: clearLive` 整只挖掉,12 条全绿)。今天两头都问 ——
+ * 屏幕回到拖前那一份 ∧ store 一个字没动。
+ *
+ * **与松手那条路对照着量**:只断「取消之后位置没变」会被一次空动作蒙混过去,
+ * 所以第一条先证明同一串手势在松手时**真的**把窗挪走了。
+ * 反证:把 `begin` 里那只 `cancel: clearLive` 挖掉 → 三条取消路全红(屏幕上那扇窗
+ * 停在 560,340 那一程上)。
+ */
+describe('拖窗的三条结束路径', () => {
+  /** 视口要够大 —— `clampFloatRect` 会把窗钳回视口,窗子挪不动就量不到东西。 */
+  function setViewport(w: number, h: number) {
+    Object.defineProperty(window, 'innerWidth', { value: w, configurable: true })
+    Object.defineProperty(window, 'innerHeight', { value: h, configurable: true })
+  }
+  afterEach(() => setViewport(1024, 768))
+
+  const pointerAt = (type: string, x = 0, y = 0) =>
+    new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y })
+
+  /** 起一扇浮窗、按住它的标题栏空白处、往右下走一段。答那条檐。 */
+  function grabChrome() {
+    setViewport(1600, 1100)
+    render(<AppShell />)
+    openFloat('files')
+    const win = screen.getByRole('dialog', { name: '目录' })
+    const chrome = win.querySelector('[data-pane-chrome]') as HTMLElement
+    act(() => {
+      fireEvent(chrome, pointerAt('pointerdown', 500, 300))
+      chrome.dispatchEvent(pointerAt('pointermove', 560, 340))
+    })
+    return chrome
+  }
+
+  const rectNow = () => useStageStore.getState().floats.files
+  /** **屏幕上**那扇窗此刻画在哪 —— 取消要还原的正是它(store 那一份从没被碰过)。 */
+  const paintedNow = () => {
+    const win = screen.getByRole('dialog', { name: '目录' })
+    return { left: win.style.left, top: win.style.top, width: win.style.width, height: win.style.height }
+  }
+  const paintedOf = (r: { x: number; y: number; w: number; h: number }) => ({
+    left: `${r.x}px`,
+    top: `${r.y}px`,
+    width: `${r.w}px`,
+    height: `${r.h}px`,
+  })
+
+  it('松手 = 落定:store 里那扇窗真的挪到了指针走过的那一段', () => {
+    const chrome = grabChrome()
+    const before = rectNow()
+    act(() => { chrome.dispatchEvent(pointerAt('pointerup', 560, 340)) })
+    const after = rectNow()
+    expect(after.x).not.toBe(before.x)
+    expect(after.y).not.toBe(before.y)
+  })
+
+  const cancels: Array<[string, (chrome: HTMLElement) => void]> = [
+    ['窗口失焦', () => window.dispatchEvent(new Event('blur'))],
+    ['pointercancel', (chrome) => chrome.dispatchEvent(pointerAt('pointercancel', 560, 340))],
+    [
+      'Esc(经 focus 树的瞬态口)',
+      () => {
+        const all = focusTree.transientEscapeHandlers()
+        all[all.length - 1]?.()
+      },
+    ],
+  ]
+  for (const [name, fire] of cancels) {
+    it(`拖到一半${name}:屏幕上那扇窗滑回拖之前那一份,一个字都不落 store`, () => {
+      const chrome = grabChrome()
+      const before = rectNow()
+      // 拖到一半:屏幕上已经不是 store 那一份了(不然下面那条断言是空的)。
+      expect(paintedNow()).not.toEqual(paintedOf(before))
+      act(() => { fire(chrome) })
+      expect(paintedNow()).toEqual(paintedOf(before))
+      expect(rectNow()).toEqual(before)
+      // 而且这一场真的死了:再来一发 pointerup 也不会补落一次。
+      act(() => { chrome.dispatchEvent(pointerAt('pointerup', 560, 340)) })
+      expect(paintedNow()).toEqual(paintedOf(before))
+      expect(rectNow()).toEqual(before)
+    })
+  }
 })

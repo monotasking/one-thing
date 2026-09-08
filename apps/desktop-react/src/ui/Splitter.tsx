@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, RefObject } from 'react'
+import { PointerTrack } from './drag'
 import s from './Splitter.module.css'
 
 /**
@@ -112,6 +113,16 @@ export function Splitter({
     [paint, onCommit],
   )
 
+  /**
+   * 按下即拖。**三条结束路径由 `ui/drag` 的 `PointerTrack` 收**(U5,2026-09-08):
+   * 从前这里只挂 pointerup / pointercancel、而且挂在**杆自己身上** —— 拖到一半
+   * Cmd-Tab 切走应用、或系统弹框抢走指针,capture 一丢那两条就再也收不到事件,
+   * `data-splitting` 与那格活比例会一直挂着(判词与病历整段在 `pointer-track.ts`)。
+   *
+   * **取消 = 还原到按下那一刻**:把比例画回 `before`、摘掉 `data-splitting`、
+   * 出拖拽态,**一个字都不 `onCommit`** —— 「这一下不算数」的意思就是 store 里
+   * 那个数从没被碰过。松手那条路一个字没改。
+   */
   const onPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return
@@ -119,37 +130,38 @@ export function Splitter({
       const el = e.currentTarget
       const box = containerRef.current?.getBoundingClientRect()
       if (!box) return
-      // 捕获失败(pen 抬笔竞态 / 合成指针)不放弃拖拽:capture 只是锦上添花,
-      // 监听本来就挂在元素上(与 EdgeShelf 那条把手逐字同一条判例)。
-      try {
-        el.setPointerCapture(e.pointerId)
-      } catch {
-        /* 不阻断 */
-      }
       const container = containerRef.current
       container?.setAttribute('data-splitting', 'true')
       setDragging(true)
+      /** 按下那一刻的值 —— 取消时还原到它(store 里此刻正是它,所以两边咬合)。 */
+      const before = value
       last.current = value
-
-      const move = (ev: PointerEvent) => {
-        const ratio =
-          orientation === 'vertical'
-            ? ((ev.clientX - box.left) / box.width) * 100
-            : ((ev.clientY - box.top) / box.height) * 100
-        last.current = clamp(ratio)
-        paint(last.current)
-      }
-      const up = () => {
-        el.removeEventListener('pointermove', move)
-        el.removeEventListener('pointerup', up)
-        el.removeEventListener('pointercancel', up)
+      /** 出拖拽态。落定与取消都要走,所以只有一处。 */
+      const stop = () => {
         container?.removeAttribute('data-splitting')
         setDragging(false)
-        onCommit(last.current)
       }
-      el.addEventListener('pointermove', move)
-      el.addEventListener('pointerup', up)
-      el.addEventListener('pointercancel', up)
+
+      PointerTrack.open(el, e.pointerId, {
+        move: (ev) => {
+          const ratio =
+            orientation === 'vertical'
+              ? ((ev.clientX - box.left) / box.width) * 100
+              : ((ev.clientY - box.top) / box.height) * 100
+          last.current = clamp(ratio)
+          paint(last.current)
+        },
+        end: () => {
+          stop()
+          onCommit(last.current)
+        },
+        cancel: () => {
+          // 画回按下那一刻:活值与 store 那份此刻相等,屏幕上等于这一下没发生过。
+          last.current = before
+          paint(before)
+          stop()
+        },
+      })
     },
     [containerRef, orientation, value, clamp, paint, onCommit],
   )
