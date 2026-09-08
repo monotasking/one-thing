@@ -472,3 +472,98 @@ describe('mutation 的忙态是逐格的', () => {
     await expect(m.run(undefined)).resolves.toBeUndefined()
   })
 })
+
+/* ══ 撤回:同一格上后一发发车时,前一发的信号被拉 ════════════════════════ */
+
+/**
+ * 09-07 事故第四条修的 kernel 一半:一发取数被顶掉之后,它可能正让后端去扫一整棵
+ * 目录树(真机上那是两条 462% CPU 的 `rg`)。kernel 说不出「该等多久」,但它说得出
+ * **「这一发的答案已经没人要了」** —— 那就是 `FetchContext.signal`。
+ *
+ * 三条边界一起钉:①律①②③ 一格不变(在飞的那一发照旧跑完、答案照旧落地);
+ * ②被顶掉的那一发**不留 error**;③`reset()` 也拉。
+ */
+describe('FetchContext.signal(撤回)', () => {
+  it('同格连发两次:第一发的 signal 被 abort,第二发的没有', async () => {
+    const gates = [deferred<string[]>(), deferred<string[]>()]
+    const signals: AbortSignal[] = []
+    let call = 0
+    const q = createQuery<string[]>('t.abort', (ctx) => {
+      signals.push(ctx.signal!)
+      return gates[call++].promise
+    })
+
+    const soft = q.ensure()
+    // 「刷新」= 第二发真的发车(这是今天唯一一种不被折叠的连发)。
+    const hard = q.refetch()
+    /*
+     * 反证:把 `start` 里那句 `running.abort.abort(SUPERSEDED)` 注掉 →
+     * 这一条当场红(第一发的信号一直是 false),而真机上那两条 rg 就是这么活下来的。
+     */
+    expect(signals[0].aborted).toBe(true)
+
+    gates[0].resolve(['old'])
+    await soft
+    gates[1].resolve(['new'])
+    await hard
+
+    expect(signals).toHaveLength(2)
+    expect(signals[1].aborted).toBe(false)
+    // 律②③ 一格不变:两发都跑完,后一发的答案落地。
+    expect(q.get().data).toEqual(['new'])
+    expect(q.get().error).toBeUndefined()
+  })
+
+  it('被顶掉的那一发抛出来也**不留 error**(那句 abort 是 kernel 自己让它说的)', async () => {
+    const gates = [deferred<string[]>(), deferred<string[]>()]
+    let call = 0
+    const q = createQuery<string[]>('t.abort2', async (ctx) => {
+      const at = call++
+      try {
+        return await gates[at].promise
+      } catch (error) {
+        // 认信号的 fetcher 在被撤回时抛的就是这一句。
+        if (ctx.signal?.aborted) throw new Error('aborted')
+        throw error
+      }
+    })
+
+    const soft = q.ensure()
+    const hard = q.refetch()
+    gates[0].reject(new Error('cancelled'))
+    await soft
+    expect(q.get().error).toBeUndefined()
+    gates[1].resolve(['new'])
+    await hard
+    expect(q.get().data).toEqual(['new'])
+  })
+
+  it('不认这一格的 fetcher 行为逐字不变(纯加参数)', async () => {
+    const gates = [deferred<string[]>(), deferred<string[]>()]
+    let call = 0
+    const q = createQuery<string[]>('t.abort3', () => gates[call++].promise)
+    const soft = q.ensure()
+    const hard = q.refetch()
+    gates[0].resolve(['old'])
+    await soft
+    gates[1].resolve(['new'])
+    await hard
+    expect(q.get().data).toEqual(['new'])
+    expect(call).toBe(2)
+  })
+
+  it('`reset()` 也拉信号:回到出厂 = 在飞那一发的答案也不要了', async () => {
+    const gate = deferred<string[]>()
+    let seen: AbortSignal | undefined
+    const q = createQuery<string[]>('t.abort4', (ctx) => {
+      seen = ctx.signal
+      return gate.promise
+    })
+    const flying = q.ensure()
+    expect(seen?.aborted).toBe(false)
+    q.reset()
+    expect(seen?.aborted).toBe(true)
+    gate.resolve(['x'])
+    await flying
+  })
+})

@@ -11,6 +11,7 @@ import { IPC_CHANNELS } from '@shared/ipc/channels.js'
 import type { RpcRequest, RpcResponse } from '@shared/ipc/rpc.js'
 import type { SessionEventEnvelope, SessionStreamPayload } from '@shared/events/index.js'
 import type { AppSettings } from '@shared/ipc/settings.js'
+import type { RouteCallOptions } from '@onething/core/ipc'
 import type { RuntimeHostCapabilities } from '@onething/core/runtime-facade'
 
 /**
@@ -79,8 +80,15 @@ export interface TransportEventsOptions {
 }
 
 export interface Transport {
-  /** 一条 RPC 信封(`@shared/ipc/rpc`)。失败是 `{ ok:false }`,不是 reject。 */
-  invoke(request: RpcRequest): Promise<RpcResponse>
+  /**
+   * 一条 RPC 信封(`@shared/ipc/rpc`)。失败是 `{ ok:false }`,不是 reject。
+   *
+   * 第二格 `options.signal`(2026-09-07 加)是**调用方撤回这一发**:实现把它交给
+   * 底下那条请求。撤回是唯一一种会让这个方法**抛**的情况(`AbortError`)——
+   * 那不是「这个方法失败了」,是「这一发不作数了」,而喊停的正是调用方自己。
+   * 收不了这一格的传输(内存替身)忽略它即可:那种传输本来也没有可撤的在途工作。
+   */
+  invoke(request: RpcRequest, options?: RouteCallOptions): Promise<RpcResponse>
   /** 推送流。实现负责断线重连;消费者只管 `for await`。 */
   events(options?: TransportEventsOptions): AsyncIterable<TransportEvent>
   capabilities(): Promise<HostCapabilities>

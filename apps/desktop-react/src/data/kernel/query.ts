@@ -62,6 +62,21 @@ export interface FetchContext<T = unknown> {
    * 所以重试时它仍然是上次成功那份。
    */
   readonly previous?: T
+  /**
+   * **这一发还作不作数**(2026-09-07 加)。
+   *
+   * 它在两种时刻 abort:①同一格上后一发**真的发车**时(今天只有「在飞的是一发
+   * 非强制、这次是用户按了刷新」这一种,别的都被折叠了)——前一发的答案已经没人
+   * 要,而它可能正让后端去扫一整棵目录树;②`reset()`(这一格回到出厂)。
+   *
+   * 三件事说清楚:
+   *  · **不认这一格的 fetcher 行为一格不变** —— 它照跑到底,答案照落地(被顶掉的
+   *    那一发不写 `error`,见 `start` 里那句判据),所以这是纯加参数;
+   *  · 它**不是超时**:kernel 不给任何一发定寿命,只是把「没人要了」说出来;
+   *  · 收了它的 fetcher 抛 `AbortError` 时**不算失败** —— 那句话是 kernel 自己让它
+   *    说的,记进 `error` 会在屏上冒出一句用户没做过的事的原话。
+   */
+  readonly signal?: AbortSignal
 }
 
 export type QueryFetcher<T> = (ctx: FetchContext<T>) => Promise<T>
@@ -146,6 +161,12 @@ function freshEntry<T>(): Entry<T> {
 }
 
 /**
+ * kernel 自己拉信号时给的理由(2026-09-07)。**一句话,不是一个错误类**:
+ * 它永远不会走到 `error` 那一格上(被顶掉的那一发不留话),只在排障时露脸。
+ */
+const SUPERSEDED = 'superseded by a newer fetch on the same key'
+
+/**
  * 一格的实现。闭包而不是 class —— 它交出去的是一个**只有六口的面**,
  * 内部那几个字段谁都够不着,也就不会有人绕过 emit 去改它们。
  */
@@ -163,7 +184,7 @@ function createEntryQuery<T>(
   notifyFamily: () => void = () => undefined,
 ): Query<T> {
   let state = freshEntry<T>()
-  let running: { promise: Promise<void>; force: boolean } | undefined
+  let running: { promise: Promise<void>; force: boolean; abort: AbortController } | undefined
   let inflight = false
   const listeners = new Set<() => void>()
 
@@ -235,30 +256,44 @@ function createEntryQuery<T>(
        * 在飞的是一发**非强制**,而这次是用户按了「刷新」。折进去就等于把
        * 「重来一次」这个意图静默吞掉(后端那一口有自己的缓存,非强制那发
        * 很可能原样回一份旧的)。所以排在它后面再来一发真的。
+       *
+       * **顺手把前一发的信号拉掉**(2026-09-07):它的答案已经不作数了,而它
+       * 可能正让后端去扫一整棵目录树。认信号的 fetcher 因此当场收工;不认的
+       * 照旧跑完(时序一格没变,它仍然排在前面)。
        */
+      running.abort.abort(SUPERSEDED)
       return running.promise.then(() => start(true))
     }
 
+    const abort = new AbortController()
     const promise = (async () => {
       inflight = true
       emit()
       try {
         // `previous` 在**发车这一刻**取,不是在 settle 那一刻 —— 中途别人 patch 了
         // 这一格,那份补丁属于下一发的回放依据,不属于已经出发的这一发。
-        const value = await fetcher({ key, force, previous: state.data })
+        const value = await fetcher({ key, force, previous: state.data, signal: abort.signal })
         settle(value)
       } catch (error) {
-        // **不动 data**:错误与旧答案共存,屏幕上该同时看得见「这是上次的」
-        // 和「这次没拿到,原话是这句」。
-        state = { ...state, error: messageOf(error), dirty: false }
+        /*
+         * 被顶掉的那一发**不留话**:那句 abort 是 kernel 自己让它说的,记进
+         * `error` 会在屏幕上冒出一句用户没做过的事的原话(而且紧跟着就有新答案
+         * 落地)。别的错照旧 —— **不动 data**:错误与旧答案共存,屏幕上该同时
+         * 看得见「这是上次的」和「这次没拿到,原话是这句」。
+         */
+        if (!abort.signal.aborted) {
+          state = { ...state, error: messageOf(error), dirty: false }
+        }
       } finally {
+        // 收摊照旧无条件:被顶掉那一发的 `.then(() => start(true))` 排在这之后,
+        // 所以这一刻 `running` 一定还是自己(时序与加信号之前逐字相同)。
         running = undefined
         inflight = false
         emit()
       }
     })()
 
-    running = { promise, force }
+    running = { promise, force, abort }
     return promise
   }
 
@@ -309,6 +344,8 @@ function createEntryQuery<T>(
       else emit()
     },
     reset() {
+      // 回到出厂 = 在飞那一发的答案也不要了(同上:认信号的 fetcher 当场收工)。
+      running?.abort.abort(SUPERSEDED)
       state = freshEntry<T>()
       running = undefined
       inflight = false

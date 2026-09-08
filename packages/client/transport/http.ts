@@ -29,6 +29,7 @@ import type {
   TransportEvent,
   TransportEventsOptions,
 } from './types.js'
+import type { RouteCallOptions } from '@onething/core/ipc'
 import type { RpcRequest, RpcResponse } from '@shared/ipc/rpc.js'
 
 export type FetchLike = (
@@ -112,12 +113,25 @@ class HttpTransport implements Transport {
     }
   }
 
-  async invoke(request: RpcRequest): Promise<RpcResponse> {
+  async invoke(request: RpcRequest, options?: RouteCallOptions): Promise<RpcResponse> {
+    /*
+     * 两条信号,谁先来算谁(2026-09-07):**这条传输的寿命**(`close()` 拆掉一切
+     * 在途工作)与**这一发自己的撤回**(调用方换词了)。`AbortSignal.any` 在
+     * Node 20+ / 今天的浏览器上都有;没有它的运行时退回只认寿命那条 —— 那与加这
+     * 一格之前逐字相同(多跑一趟,不出错)。
+     */
+    const perCall = options?.signal
+    const anyOf = (AbortSignal as unknown as { any?: (list: AbortSignal[]) => AbortSignal }).any
+    const signal = perCall === undefined
+      ? this.lifetime.signal
+      : typeof anyOf === 'function'
+        ? anyOf([this.lifetime.signal, perCall])
+        : perCall
     const response = await this.fetchImpl(joinUrl(this.options.baseUrl, '/api/rpc'), {
       method: 'POST',
       headers: this.headers({ 'content-type': 'application/json' }),
       body: JSON.stringify(request),
-      signal: this.lifetime.signal,
+      signal,
     })
     // server 的 `/api/rpc` **永远** 200 + `RpcResponse`(处理者失败也是 `{ok:false}`),
     // 所以非 2xx 一定是传输层的事(401 未授权 / 502 代理),照实抛 —— 把它塞成

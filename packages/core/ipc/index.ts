@@ -72,9 +72,24 @@ export type RouteHandlers<T extends DomainRoutes, Ctx = unknown> = {
   [K in keyof T]: (input: T[K]['input'], context?: Ctx) => Promise<T[K]['output']>
 }
 
+/**
+ * 一次调用的**传输级**选项(2026-09-07 加)。
+ *
+ * 「传输级」是判据:这里只放与**这一发怎么送出去**有关的东西,不放载荷 ——
+ * 载荷永远在 `input` 里,由域契约说了算。今天只有一格。
+ */
+export interface RouteCallOptions {
+  /**
+   * 撤回这一发。传输把它交给底下那条请求(HTTP 是 `fetch` 的 `signal`),
+   * 宿主再据此铸出 `RpcDispatchContext.signal`,于是「调用方不要了」这件事
+   * 一路传得到处理者手里。缺席 = 这一发送出去就等到底(与从前逐字相同)。
+   */
+  signal?: AbortSignal
+}
+
 /** Client API type for a router */
 export type RouteAPI<T extends DomainRoutes> = {
-  [K in keyof T]: (input: T[K]['input']) => Promise<T[K]['output']>
+  [K in keyof T]: (input: T[K]['input'], options?: RouteCallOptions) => Promise<T[K]['output']>
 }
 
 function toKebab(str: string): string {

@@ -19,10 +19,10 @@
  * 改成从这里再导出是 C2 的事,那之前两份并存,原件的注释里那句"渲染层"是它自己
  * 的语境,不是这份的。
  */
-import type { DomainRoutes, RouteAPI, Router } from '@onething/core/ipc'
+import type { DomainRoutes, RouteAPI, RouteCallOptions, Router } from '@onething/core/ipc'
 import type { RpcRequest, RpcResponse } from '@shared/ipc/rpc.js'
 
-export type RpcInvoke = (request: RpcRequest) => Promise<RpcResponse>
+export type RpcInvoke = (request: RpcRequest, options?: RouteCallOptions) => Promise<RpcResponse>
 
 /** Error thrown for a failed RPC. `code` is set only when the request never reached a handler. */
 export class RpcError extends Error {
@@ -39,10 +39,13 @@ export function createRouterClient<T extends DomainRoutes>(
   router: Router<T>,
   invoke: RpcInvoke,
 ): RouteAPI<T> {
-  const api = {} as Record<string, (input: unknown) => Promise<unknown>>
+  const api = {} as Record<string, (input: unknown, options?: RouteCallOptions) => Promise<unknown>>
   for (const method of router.methods) {
-    api[method] = async (payload: unknown) => {
-      const response = await invoke({ domain: router.domain, method, payload })
+    // 第二格**只透传**:这一层不解释 `signal`,也不替调用方兜住 abort ——
+    // 被撤回的 `fetch` 抛出来的仍然是 fetch 自己那条 `AbortError`(调用方本来就
+    // 是那个 abort 的人,它认得出自己干了什么)。
+    api[method] = async (payload: unknown, options?: RouteCallOptions) => {
+      const response = await invoke({ domain: router.domain, method, payload }, options)
       if (!response || typeof response !== 'object' || !('ok' in response)) {
         throw new RpcError(
           `Malformed RPC response for ${router.domain}.${method}`,

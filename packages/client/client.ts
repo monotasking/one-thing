@@ -50,7 +50,10 @@ export function createOnethingClient(
   options: CreateOnethingClientOptions,
 ): OnethingClient {
   const { transport } = options
-  const invoke = (request: Parameters<Transport['invoke']>[0]) => transport.invoke(request)
+  const invoke = (
+    request: Parameters<Transport['invoke']>[0],
+    callOptions?: Parameters<Transport['invoke']>[1],
+  ) => transport.invoke(request, callOptions)
   // `Router<DomainRoutes>` 做键、`RouteAPI<DomainRoutes>` 做值:两边都在 `api()`
   // 的签名里按具体 T 收窄回去,外面看不见这层擦除。
   const cache = new WeakMap<object, unknown>()
