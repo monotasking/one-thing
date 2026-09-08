@@ -1130,6 +1130,21 @@ S1 与 S0 并行;S2 依赖 S1;S3 依赖 S0 + S2;S4 依赖 S3;S5 依赖 S4;S6 依
 
 ## 13. 留账
 
+### 13.x 09-08 rg 失控事故与四条修(61293235 / f7101be0 / 9e0221b8)
+
+用户真机搜「all」:两个 `rg` 462% CPU、415 GB 虚存,清词不死,整发无结果。复盘 `shell-*.jsonl.gz` 里 `[Ripgrep] Spawning / cwd / closed` 三行:每次搜索 files 路对 31 个目录各起一个 `rg --files --follow --no-ignore`,`/Users/yitiansong/data/code`(18 GB,16 个 node_modules)三次没有 close。四个根因,四条修,都已入库:
+
+| # | 根因 | 修 |
+| --- | --- | --- |
+| 1 | `wiring/search/index.ts` 把授权全集 `access.fileRoots`(所有 492 个会话的 workingDirectory + 笔记目录 + 接入目录)接成了扫盘根列表(S4b 回归) | 扫盘表退回 `getSearchDirs` = 当前会话 cwd + 用户 / 工作笔记目录 + 会话归属 space 的接入目录;`fileRoots` 只喂 `assertPath`;`getSearchDirectories` 端口删 |
+| 2 | files `budget.timeoutMs: 0`(`capabilities/files.ts` 文件头曾写「扫描型不设超时」,**本条推翻**) | 3000ms;超时交已扫到的并标 `partial`,`runLadder` 对带 partial 的答复不判 timeout |
+| 3 | `files/ripgrep.ts listOnethingRipgrepFiles` 不收 signal、无 finally、从不 kill;`--follow --no-ignore` 钻符号链接环与 node_modules | 收 `signal`,abort 即 `kill()` 不再 yield,`try/finally` 兜住一切退出路;去 `--follow`,files 路 `noIgnore:false`,`--max-depth` 默认 8(0 = 不限) |
+| 4 | `all` 一发等所有路落地;壳 → core 无 AbortSignal | `fanout.deferInAll`:`kind:'scan'` 在 all 档零 I/O 答 `deferred: true`,壳按块单发去取(壳正本 §5.3);client / kernel / server 三段 AbortSignal 贯通 |
+
+**推翻的旧判词**:`files.ts` 里「扫描型不设超时,换成索引型(S8)之后再钉真预算」→ 现在就钉 3s 并交部分结果;§7.2「全部档 = 分组总览」对扫盘型改成「总览里占位(`deferred`)、壳按块补取」,§7.1 的预算表对 scan 型在 all 档不再生效。真机门 `gate:search-scan`(壳 `scripts/gate-search-scan.mjs`,PATH 前置一个永远列不完的 `rg` 慢壳,量的是进程管理不是 ripgrep 快慢):会话块 110ms 先上屏 / 文件块 3.1s 标未扫完 / 清词后 200ms `rg --files` 为零 / 零孤儿。
+
+**留账**:① AI `search` 工具的 all 档因 deferred 拿不到文件名命中(`kind:'files'` 明说才有),要不要给工具补一发单类是可感知行为变化,待用户拍;② S8 文件名进索引(启动时 `rg --files` 一次写库 + fs.watch 增量),文件也变查表;③ `--max-depth 8` 是编排者拍的默认值,超过 8 层的文件搜不到不报错。
+
 - 归档今天没有总线事件,拍点甲 b 下靠 `metaRev` + 目录监视兜住(~1s);若将来要毫秒级,给归档写口补一条总线事件是一处改动,不进账本。
 - 跨类混排若将来要做:每路给 0–1 置信度 + 类别先验,在 `merge` 换一个实现即可,骨架不动。
 - 读者模式(§5.6)下自己写的消息要等写者的目录监视,延迟 ~1s;壳在 `status.mode === 'reader'` 时「索引更新中」那行改画「由 <host> 维护」,不装成实时。

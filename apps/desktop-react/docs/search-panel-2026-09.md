@@ -503,6 +503,10 @@ export function moreStateOf(b: SearchBlock, pending: boolean, inflight: boolean)
 | `error` | 「没加载出来 · 再试一次」 | item,在 | 是(同一 cursor) |
 | `end` | 「共 N 条」(拍点 J 落地时去掉后半句;`gate-search.mjs` 照过 —— 门读的是数,不是那半句话) | `role="presentation"` 读数,不在 | — |
 | `none` | 不画 | 不在;`reconcile` 把停在 `more:<cap>` 上的活动位挪到本次追加首行 | — |
+| `scanning`(09-08 加) | 「扫描中…」+ `aria-busy`(`data-more-state="scanning"`) | item,在 | 按下无效 |
+| `partial`(09-08 加) | 「已扫描 N 条 · 未扫完」(`data-readout="partial"`) | `role="presentation"` 读数,不在;永不说「共 N 条」 | — |
+
+**09-08 追加(扫盘型不与索引型同节奏,起因见仓根 `docs/design/search-index-2026-09.md` §13 rg 失控事故)**:`all` 档对 `manifest.kind === 'scan'` 的能力不跑,回执里那一块 `deferred: true`;壳的 fetcher 把它造成 `{rows: [], scanning: true}` 先入清单(块尾一条「扫描中…」),补扫由 `useSearchListing` 的 effect 在数据进格**之后**对该能力发一发单类请求(fetcher 里发会被 settle 整份盖掉),落地 `landScan` 只换这一块;换键时 `abortScansOtherThan(key)`,AbortError 不落 error。扫盘超时交已扫到的那些并标 `partial`。`moreStateOf` 的判据序:`scanning` → `none` → `loading` → `error` → `partial` → `end` → `more`。
 
 给不出 cursor 的能力**按取尽画**;要浏览态可翻页是让 `chats` 的 `recentSessions`(`capabilities/sessions.ts:118-140`)经 `paginate` 产位置 cursor——填的是既有 `SearchResponse.cursor`,不是契约新格。`transitions.ts:244-248` 「回来的 < 要的」那条退路删除。
 
@@ -675,7 +679,7 @@ export function useQueryHeld<T>(query: Query<T>): HeldSnapshot<T>
 | 4 | `all` 首页与第二页出自两张预算策略,放宽 `level` 若不同则第 21 行有缝 | 第 ① 步 `gate:search-index` 第九步先跑;不匹配由闸③ 兜住不死循环 | 第九步绿(第二页非空 / 不重 / 两页合起来不漏);两条路共用同一阶梯的事**没做**,留账 |
 | 5 | `useQueryHeld` stale 行用旧词高亮、点它打开的是旧结果 | 格里带 `query`;`data-stale` 降一档文字色 | 照做(`SearchListing.query`,列表根 `data-stale`) |
 | 6 | `useQueryHeld` 进 kernel 公共面,「上一把键」按 hook 实例记 | 单读者;将来多读者改成 store `shownKey` | 照做,单读者仍是 `useSearchListing` |
-| 7 | abort 缺席:换词快时多发请求 | transport 收 `AbortSignal` 是跨包一批 | **仍然如此** → 留账 |
+| 7 | abort 缺席:换词快时多发请求 | transport 收 `AbortSignal` 是跨包一批 | **已结**(09-08 f7101be0:`@onething/client` `RouteCallOptions.signal` → fetch;kernel `FetchContext.signal` 同格后一发顶掉前一发即 abort;后端 `server/request-abort.ts` 把请求中断铸进 `SearchContext.signal`) |
 | 8 | 历史与多选耦合:条目记 `activeId` 不记 `picked` | 有意 | 照做 |
 | 9 | LRU `drop` 掉的格 ⌘[ 回来只有第一页 | 如实 | 照做 |
 | 10 | 同一能力同一 id 出现两次让两行共用键 | 能力内 id 唯一是契约义务 | 照做;`golden-snapshot` 那条断言**没加** → 留账 |
@@ -693,7 +697,7 @@ export function useQueryHeld<T>(query: Query<T>): HeldSnapshot<T>
 | --- | --- | --- | --- |
 | 1 | 拍点 E 的另一半:索引推送 | 查询回执的 `index` 已经带回来,读数跟着最近一次答复走;**推送没有**,页脚也没有「索引已更新 · 重新搜索」那句文字动作 | 一次可感知的行为裁定(会不会在用户翻到第 5 页时改行集),要用户点头再做 |
 | 2 | 拍点 F 的建议半条:钉边常驻不收 | ⏎ 之后恒 `closeToDock('search')` | 同上,是行为裁定 |
-| 3 | abort | 换词快时多发请求,靠「上一发落在它自己那一格」不上屏 | `@onething/client` 的 http Transport 收 `AbortSignal`,跨包一批 |
+| 3 | abort | **已结**(09-08 f7101be0,见上表第 7 行) | — |
 | 4 | 语义召回设置开关不热生效 | `settings.search.semantic.enabled` 在装配时读一次;页脚现在会说「下载中 / 建向量中(剩 n)」,但改开关要等下一次 core 启动 | 归检索方案 §13 留账(后端的事) |
 | 5 | `gate:perf` 的「20 页累加后 heap 增量」读数 | 没加(风险 1 里许过) | 归 perf 线 |
 | 6 | `golden-snapshot` 的「能力内 id 唯一」断言 | 没加(风险 10 里许过) | 一行断言,归后端 |
