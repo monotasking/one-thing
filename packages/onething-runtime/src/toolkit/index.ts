@@ -106,6 +106,7 @@ export type {
   SearchInput,
   SearchToolAdapters,
   SearchToolHit,
+  SearchToolIncomplete,
   SearchToolPage,
   SearchToolPrincipal,
   SearchToolQuery,

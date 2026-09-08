@@ -51,6 +51,23 @@ export interface SearchToolHit {
   time?: number
 }
 
+/**
+ * **有一类没答完**(09-08:`docs/design/search-index-2026-09.md` §13.x 留账①)。
+ *
+ * 两种没答完,末行分开说:
+ *  - `partial` —— 那一路的预算到点,交的是**已经扫到的那些**(core `SearchPage.partial`);
+ *  - `error` —— 那一路根本没搜成(组级 `error`)。
+ *
+ * 为什么非说不可:两种情况下那一类的结果都是空的或短的,而工具的末行只报 `total`。
+ * 不说,模型读到的就是「这一类没有」——把「没扫完」与「没有」画成一件事,正是
+ * §13.x 那张表第 2 行判过的病。这一格里的 `capability` 是**数据**(响应里带回来的
+ * 那个 id),这个文件照旧一个能力名都不认识。
+ */
+export interface SearchToolIncomplete {
+  capability: string
+  reason: 'partial' | 'error'
+}
+
 export interface SearchToolPage {
   hits: SearchToolHit[]
   /** 授权之后的真数(§6.4b);答不出就缺席,工具照实不印这一格。 */
@@ -59,6 +76,8 @@ export interface SearchToolPage {
   relaxed?: number
   /** 索引还欠着几把钥匙(§8);缺席 = 问不出来。 */
   pending?: number
+  /** 哪几类没答完;缺席 / 空 = 每一类都答完了。 */
+  incomplete?: readonly SearchToolIncomplete[]
 }
 
 export interface SearchToolQuery {
@@ -70,6 +89,16 @@ export interface SearchToolQuery {
   since?: number
   until?: number
   limit: number
+  /**
+   * 这次工具调用的取消口(`ctx.abort.signal`)。
+   *
+   * 检索一路到 `SearchContext.signal` 是**唯一**能真的停下一次外部枚举的东西
+   * (09-08 事故第 3、4 条修:`fanout` 由它派生每一路的超时信号,扫盘那一路
+   * abort 即 `kill()`)。工具的 abort scope 本来就有这条信号,不递等于这条路上
+   * 只有工具自己知道该停了。缺席 = 不认取消(单测 / 老调用方),`createSearchContext`
+   * 照旧兜一条永不 abort 的。
+   */
+  signal?: AbortSignal
 }
 
 /** 一次调用的坐标 —— 授权用的那三格(§14.3)。 */
@@ -150,7 +179,7 @@ export function searchDescription(kinds: readonly string[]): string {
 - kind restricts the search to one class of thing. Available kinds: ${list}. Omit it to search all of them.
 - scope narrows, it never widens. "session" = this conversation only; "space" (default) and "all" are both bounded by what you are allowed to see, which is the non-collaborative sessions in your current space plus the rooms you are a member of — "all" does not mean every space.
 - Results come back as [ref] lines. Pass a ref back as "expand" to read the full context around that hit instead of searching again.
-- The last line reports the true totals: how many matched, whether the query had to be relaxed to find anything, and whether the index is still catching up.`
+- The last line reports the true totals: how many matched, whether the query had to be relaxed to find anything, whether the index is still catching up, and whether a kind came back "incomplete" (only part of it was looked at) or "failed" (that kind could not be searched at all) — in either case its absence from the results is not evidence that nothing is there.`
 }
 
 /* ── 输出 ────────────────────────────────────────────────────────────────── */
@@ -172,7 +201,18 @@ function tallyLine(page: SearchToolPage): string {
   const parts = [`total ${page.total ?? page.hits.length}`]
   if (page.relaxed !== undefined && page.relaxed > 0) parts.push(`relaxed ${page.relaxed}`)
   if (page.pending !== undefined && page.pending > 0) parts.push(`index pending ${page.pending}`)
+  // 没答完的那几类排在最后,一类一格。同一条判词:只在**真的发生了**时才印。
+  for (const note of page.incomplete ?? []) {
+    parts.push(`${note.capability} ${note.reason === 'partial' ? 'incomplete' : 'failed'}`)
+  }
   return parts.join(' · ')
+}
+
+/** 末行那几格的 JSON 形(details 里的 `incomplete`)。 */
+function incompleteDetails(page: SearchToolPage): JsonObject {
+  const notes = page.incomplete ?? []
+  if (notes.length === 0) return {}
+  return { incomplete: notes.map(note => ({ capability: note.capability, reason: note.reason })) }
 }
 
 /**
@@ -343,6 +383,7 @@ export class SearchTool extends ReadOnlyTool<SearchInput> {
       ...(withValue('since', parseSearchTime(input.since, now))),
       ...(withValue('until', parseSearchTime(input.until, now))),
       limit,
+      signal: ctx.abort.signal,
     }
 
     ctx.emit({
@@ -365,7 +406,12 @@ export class SearchTool extends ReadOnlyTool<SearchInput> {
         ctx,
         'Search · 0 条',
         `Nothing matched.\n${tallyLine(page)}`,
-        { ok: true, returned: 0, ...(page.total === undefined ? {} : { total: page.total }) },
+        {
+          ok: true,
+          returned: 0,
+          ...(page.total === undefined ? {} : { total: page.total }),
+          ...incompleteDetails(page),
+        },
       )
     }
 
@@ -378,6 +424,7 @@ export class SearchTool extends ReadOnlyTool<SearchInput> {
         returned: page.hits.length,
         ...(page.total === undefined ? {} : { total: page.total }),
         ...(page.relaxed === undefined ? {} : { relaxed: page.relaxed }),
+        ...incompleteDetails(page),
       },
     )
   }
