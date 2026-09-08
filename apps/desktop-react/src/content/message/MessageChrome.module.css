@@ -88,9 +88,19 @@
   padding: 0 var(--sp-1);
 }
 
-.ghost:hover {
+.ghost:hover:not(:disabled) {
   background: var(--st-hover);
   color: var(--text-1);
+}
+
+/*
+ * 禁灰配方与 ui/Button · ui/IconButton 逐字同源:**只降透明度,不换色**
+ * (`--btn-disabled-o`),`cursor: default` 已经由 ButtonBase 的基座给了。
+ * hover 那一格因此要挂 `:not(:disabled)` —— 不挂的话禁着的钮悬停还会亮底,
+ * 那正是「这颗点得动」的回执,与灰色说的话相反。
+ */
+.ghost:disabled {
+  opacity: var(--btn-disabled-o);
 }
 
 .ghost:focus-visible {

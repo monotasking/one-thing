@@ -652,6 +652,12 @@ export const en: Record<MessageKey, string> = {
   'notify.copied': 'Copied this reply',
   'notify.copyFailed': 'Could not copy',
   'notify.retryFailed': 'Retry did not go out',
+  'notify.retryRejected': 'Core rejected the retry',
+  'notify.retryBusy': 'A run is still going, stop it before retrying',
+  'notify.retryBusyHint':
+    'Retry deletes this reply and regenerates it; nothing is sent while the engine is busy.',
+  'notify.retryStuck': 'Retry went out, core has not started a new run',
+  'notify.retryStuckHint': 'Core accepted the command, but no new run appeared on the ledger.',
 
   /* ── files panel (D5: content/FilesPanel.tsx) ─────────────────────────
    * The panel title reuses 'item.files'. Paths, directory/file names and the

@@ -10,9 +10,11 @@ import {
   ABORT_SETTLE_MS,
   chatSources,
   REFOLD_THROTTLE_MS,
+  RETRY_SETTLE_MS,
   selectEngineBusy,
   useChatSource,
 } from './chat-source'
+import { t } from '../i18n'
 
 /**
  * 聊天数据源的判据 —— 全是纯逻辑,所以这里一台 core 都不起:端口换成假的,
@@ -589,6 +591,151 @@ describe('停止:忙判据只有一个产地,发出去之后壳不动屏幕', ()
 
     await new Promise((resolve) => setTimeout(resolve, ABORT_SETTLE_MS + 20))
     expect(useNotifyStore.getState().items).toEqual([])
+  })
+})
+
+/**
+ * 重试:两道闸 + 三条清闩路(2026-09-08 事故 ef079fd7)。
+ *
+ * 事故的形状:一条请求 129 秒零回包,用户连点十几下重试,每一下 core 都答
+ * `success`,引擎只回一条 `stream:error` —— 屏幕上零反馈。所以这里钉的是
+ * 「什么时候一个字节都不发」与「发出去之后那格闩怎么落、怎么清」。
+ */
+describe('重试:两道闸与三条清闩路', () => {
+  /** 一轮跑完了的会话 —— 引擎闲着,重试该走得通。 */
+  async function idleSession() {
+    const h = harness([
+      created(1),
+      userMessage(2, 'm1', '你好'),
+      runStart(3, 'r1', 'a1'),
+      chunks(4, 'r1', 'a1', ['好的']),
+      runEnd(5, 'r1'),
+    ])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+    return h
+  }
+
+  /** 一轮**还在跑**的会话(run/start 立着、run/end 没来)。 */
+  async function busySession() {
+    const h = harness([created(1), userMessage(2, 'm1', '跑一个')])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+    h.emitLedger(runStart(3, 'r1', 'a1'))
+    await settle()
+    return h
+  }
+
+  const streamError = (error: string): SessionEventEnvelope => ({
+    sessionId: SESSION,
+    sequence: 99,
+    timestamp: T0,
+    event: { type: SESSION_EVENT_TYPES.STREAM_ERROR, data: { error } } as never,
+  })
+
+  it('闸 a:引擎在跑 → 一个字节都不发,只说一句 warn', async () => {
+    const h = await busySession()
+    useNotifyStore.getState().clear()
+
+    expect(state().regenerate('a1')).toBe(false)
+    await settle()
+
+    expect(h.retried).toEqual([])
+    const record = useNotifyStore.getState().items.find((r) => r.source === 'chat.retry')
+    expect(record?.level).toBe('warn')
+    expect(record?.title).toBe(t('notify.retryBusy'))
+    expect(record?.body).toBe(t('notify.retryBusyHint'))
+  })
+
+  it('闸 b:上一条还没见回音 → 第二下返回 false,命令只发出去一次且不再飞通知', async () => {
+    const h = await idleSession()
+    expect(state().regenerate('a1')).toBe(true)
+    await settle()
+    expect(state().retryPending?.messageId).toBe('a1')
+    useNotifyStore.getState().clear()
+
+    expect(state().regenerate('a1')).toBe(false)
+    await settle()
+
+    expect(h.retried).toEqual(['a1'])
+    // 钮那边已经禁灰了,这道闸只挡命令 —— 再飞一条 toast 就是噪音。
+    expect(useNotifyStore.getState().items).toEqual([])
+  })
+
+  it('清闩路 ①:账本开了新一轮(活牌从无到有)→ 闩当场清掉', async () => {
+    const h = await idleSession()
+    state().regenerate('a1')
+    await settle()
+    expect(state().retryPending).toBeDefined()
+
+    h.emitLedger(runStart(6, 'r2', 'a2'))
+    await settle()
+
+    expect(selectEngineBusy(state())).toBe(true)
+    expect(state().retryPending).toBeUndefined()
+  })
+
+  it('清闩路 ②:闩在时收到 stream:error → 那条就是回音,error 档带上引擎那句话', async () => {
+    const h = await idleSession()
+    state().regenerate('a1')
+    await settle()
+    useNotifyStore.getState().clear()
+
+    h.emitEvent(streamError('Message not found'))
+    await settle()
+
+    expect(state().retryPending).toBeUndefined()
+    const record = useNotifyStore.getState().items.find((r) => r.source === 'chat.retry')
+    expect(record?.level).toBe('error')
+    expect(record?.title).toBe(t('notify.retryRejected'))
+    expect(record?.body).toBe('Message not found')
+
+    // 回音已经到了,那只保险丝不许再响一次。
+    useNotifyStore.getState().clear()
+    await new Promise((resolve) => setTimeout(resolve, RETRY_SETTLE_MS + 20))
+    expect(useNotifyStore.getState().items).toEqual([])
+  })
+
+  it('闩不在时的 stream:error 一字不改:不飞通知(账本上那条 run 自己会说)', async () => {
+    const h = await idleSession()
+    useNotifyStore.getState().clear()
+
+    h.emitEvent(streamError('provider 超时'))
+    await settle()
+
+    expect(useNotifyStore.getState().items).toEqual([])
+  })
+
+  it('清闩路 ③:过了宽限两条回音都没来 → 清闩 + 一句 warn,**不重发**', async () => {
+    const h = await idleSession()
+    state().regenerate('a1')
+    await settle()
+    useNotifyStore.getState().clear()
+    expect(useNotifyStore.getState().items).toEqual([])
+
+    await new Promise((resolve) => setTimeout(resolve, RETRY_SETTLE_MS + 20))
+
+    expect(state().retryPending).toBeUndefined()
+    const record = useNotifyStore.getState().items.find((r) => r.source === 'chat.retry')
+    expect(record?.level).toBe('warn')
+    expect(record?.title).toBe(t('notify.retryStuck'))
+    expect(record?.body).toBe(t('notify.retryStuckHint'))
+    // 只说不做:超时不许再送一条命令上账本。
+    expect(h.retried).toEqual(['a1'])
+  })
+
+  it('闩清掉之后重试重新走得通(闸 b 不是一次性的门)', async () => {
+    const h = await idleSession()
+    state().regenerate('a1')
+    await settle()
+    h.emitEvent(streamError('Message not found'))
+    await settle()
+
+    expect(state().regenerate('a1')).toBe(true)
+    await settle()
+    expect(h.retried).toEqual(['a1', 'a1'])
   })
 })
 

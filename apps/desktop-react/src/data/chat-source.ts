@@ -78,6 +78,13 @@ import { t } from '../i18n'
  * ── 节拍 ──────────────────────────────────────────────────────────────
  * 组合与推屏**按帧合并**(rAF):一帧之内来多少条 delta / 账本行,只组合一次树。
  * 合并是**按实例**的 —— 两条会话同时在流,各推各的屏。
+ *
+ * ── 重试的两道闸(2026-09-08 事故立)────────────────────────────────────
+ * 这只文件里所有的忙态都是派生的,只有 `retryPending` 那一格是自己记的账 ——
+ * 它说的正是「账本上还什么都没有」,而那段真空按定义推导不出来(为什么它不能是
+ * 派生量,写在 `ChatSourceState.retryPending` 上)。两道闸与三条清闩路的全文在
+ * `regenerate` 的注里;`stream:error` 为什么只在闩在时被当成回音、闩不在时为什么
+ * 一个字都不改,写在 `onEvent` 的终止分支上。
  */
 
 /**
@@ -104,6 +111,17 @@ export const REFOLD_THROTTLE_MS = 3000
  * —— 收尾归账本(`run/end` 会到),壳这边做乐观清理就是画一个和事实不符的屏幕。
  */
 export const ABORT_SETTLE_MS = 3000
+
+/**
+ * 按了重试、core 收下之后,等账本长出新一轮的宽限。与 `ABORT_SETTLE_MS` 并排,
+ * 判据也逐条同源:超时**只说一句话**(warn),不重发、不改屏幕 —— 新一轮开没开
+ * 是账本说了算(`run/start`),壳这边乐观地画一个「在跑」就是画一个和事实不符的屏幕。
+ *
+ * 它同时是那道在飞闩的**保险丝**:三条清闩路里只有这一条不依赖 core 再说一句话,
+ * 所以 core 收下命令之后一声不吭(2026-09-08 那条 129 秒的 deepseek 请求就是这一形)
+ * 时,重试钮不会永远灰着。
+ */
+export const RETRY_SETTLE_MS = 3000
 
 export type ChatSourceStatus = 'idle' | 'loading' | 'ready' | 'error'
 
@@ -142,6 +160,22 @@ export interface ChatSourceState {
    * `undefined`:调用方该退到 `run/start` 的时刻,而不是拿 0 当「刚刚」。
    */
   lastDeltaAt?: number
+  /**
+   * **「我发出去一条重试,还没见回音」**(2026-09-08 立)。
+   *
+   * ── 为什么它是一格事实,不是派生量 ──────────────────────────────────────
+   * 这台机器身上别的忙态(`selectEngineBusy`)全是派生的,判据在账本上 —— 而这一格
+   * 恰恰说的是「账本上**还什么都没有**」:命令已经离开壳、core 也收下了(`success`),
+   * 但账本上既没有新的 `run/start`、也没有任何一条 `stream:error`。这段真空**没有任何
+   * 账本事实可以推导它**,所以它只能是一格自己记的账。
+   *
+   * 事故背书:会话 ef079fd7 一条请求发出去 129 秒一个字节没回,用户连点了十几次重试,
+   * 每一下都变成一条 core 当场答 `success` 的命令 —— 而引擎要么在忙、要么目标消息已被
+   * 上一次重试删掉,只回一条 `stream:error`,壳这边零反馈。
+   *
+   * 三条清闩路写在 `regenerate` 的注里,`RETRY_SETTLE_MS` 是其中的保险丝。
+   */
+  retryPending?: { messageId: string; at: number }
 
   /**
    * **换「当前会话」**(兼容口,不是这台机器的方法)。
@@ -165,8 +199,11 @@ export interface ChatSourceState {
    * 与上面那个 `retry` 是两件事,名字因此不同:`retry` 修的是「这句话没交出去」
    * (overlay 车道,还没进账本),这一条说的是「这条回答我不满意,再跑一次」
    * —— 消息在账本上好好的,重跑由引擎负责。
+   *
+   * 返回 `true` = 这一下真的交出去了(命令离开了壳)。`false` 的两种意思都是
+   * 「被闸挡住了,一个字节都没发」:引擎在跑,或者上一条重试还没见回音。
    */
-  regenerate: (messageId: string) => void
+  regenerate: (messageId: string) => boolean
   /** 丢弃一条 overlay(失败后不想再试 / 关掉提示)。 */
   dismiss: (entryId: string) => void
   /** 挂一条本地提示(说的正是"这件事没有进账本")。 */
@@ -331,6 +368,11 @@ export function createChatSource(sessionId: string): ChatSource {
   let pendingLedger: Array<Record<string, unknown>> = []
   /** 「按了停止,还在等收尾」的那只表。实例字段 —— 它不是可渲染状态。 */
   let abortWatch: ReturnType<typeof setTimeout> | undefined
+  /**
+   * 「按了重试,还在等账本开新一轮」的那只表。与 `abortWatch` 同款:实例字段,
+   * 因为**表本身**不是可渲染状态 —— 屏幕要的是 `retryPending` 那一格,不是这只表。
+   */
+  let retryWatch: ReturnType<typeof setTimeout> | undefined
   /** 起底 / 重折的防串号闸(也是 `dispose` 作废在飞回调的那一手)。 */
   let openSeq = 0
   let pushScheduled = false
@@ -406,6 +448,15 @@ export function createChatSource(sessionId: string): ChatSource {
      * 消息,其余全部命中上一帧的成品 —— 于是这一帧的代价与抄本长度脱钩。
      * 打点埋在这里而不是 `schedulePush`:要量的是「组一次屏要多久」,不是排队。
      */
+    /**
+     * 停掉那只「等新一轮」的表。三条清闩路各自调它一次 —— 表与 `retryPending`
+     * 那一格同生共死,少停一次就是一发过期的 warn 飞出去。
+     */
+    function clearRetryWatch(): void {
+      if (retryWatch) clearTimeout(retryWatch)
+      retryWatch = undefined
+    }
+
     function compose(): void {
       if (!fold || fold.pending) return
       perfSpan('chat.compose', () => {
@@ -419,6 +470,16 @@ export function createChatSource(sessionId: string): ChatSource {
         const base = projected.messages
         const overlay = reconcileOverlay(get().overlay, base)
         const activeMessageId = projected.activeRun?.messageId
+        /*
+         * **清闩路 ①:账本开了新一轮**。「重试真的落地了」这件事在账本上就是活牌
+         * 从无到有(`run/start`),而活牌的产地只有这一处(见 `selectEngineBusy` 的注)
+         * —— 判「它变没变」就该守在同一处,守在 `feedLedger` 里是开第二个会分叉的产地。
+         */
+        const opensNewRun =
+          get().activeMessageId === undefined &&
+          activeMessageId !== undefined &&
+          get().retryPending !== undefined
+        if (opensNewRun) clearRetryWatch()
         set({
           status: 'ready',
           error: undefined,
@@ -435,6 +496,8 @@ export function createChatSource(sessionId: string): ChatSource {
               ? lastDelta.at
               : undefined,
           overlay,
+          // 条件展开而不是恒写 undefined:恒写就是每一帧都把闩清一遍。
+          ...(opensNewRun ? { retryPending: undefined } : {}),
         })
       })
     }
@@ -722,6 +785,8 @@ export function createChatSource(sessionId: string): ChatSource {
         toolCallId?: string
         toolName?: string
         toolCall?: { timestamp?: number }
+        /** `StreamErrorData`(`@shared/events/session-events`)—— 清闩路 ② 读它那句人话。 */
+        data?: { error?: string }
       }
       if (event?.type === SESSION_EVENT_TYPES.SESSION_LEDGER_EVENT) {
         feedLedger(event.record)
@@ -774,6 +839,31 @@ export function createChatSource(sessionId: string): ChatSource {
         const settledMessageId = (event as { messageId?: string }).messageId
         if (settledMessageId) water?.clearMessage(settledMessageId)
         else water?.clear()
+        /*
+         * **清闩路 ②:这条 `stream:error` 就是那次重试的回音**。
+         *
+         * 闩在的时候才这么读它,理由是一句话:**闩不在时这条事件早就有人替它说话了**。
+         * 一轮真跑失败的 run 在账本上留着 `run/end`(outcome error),屏幕上那条消息
+         * 自己会显示出错 —— 这时候再飞一条 toast 就是同一件事播报两遍。而闩在的时候
+         * 账本上什么都没有:引擎要么在忙、要么目标消息已被上一次重试删掉(真机上那句
+         * 是 "Message not found"),core 只回这一条 —— 不接住它,屏幕上就是**零反馈**,
+         * 正是 2026-09-08 那次事故里用户连点十几下的直接原因。
+         *
+         * 所以闩不在时这条分支上面那几句(丢尾巴、清水位)一个字不改。
+         */
+        if (event?.type === SESSION_EVENT_TYPES.STREAM_ERROR && get().retryPending) {
+          const reason = event.data?.error
+          clearRetryWatch()
+          set({ retryPending: undefined })
+          notify({
+            level: 'error',
+            source: 'chat.retry',
+            // 不是「没发出去」:这一下发出去了,是 core 拒的 —— 标题要说对是谁的事。
+            title: t('notify.retryRejected'),
+            // 引擎没给出那句人话时不编一句 —— 标题已经说清了发生什么事。
+            ...(reason ? { body: reason, detail: reason } : {}),
+          })
+        }
         schedulePush()
       }
     }
@@ -946,6 +1036,7 @@ export function createChatSource(sessionId: string): ChatSource {
       // 这一句只在同一台机器上重新起底时用得着(拆机器那口在 dispose 里)。
       if (abortWatch) clearTimeout(abortWatch)
       abortWatch = undefined
+      clearRetryWatch()
       const token = (openSeq += 1)
       fold = newFold()
       water = new StreamWater()
@@ -954,7 +1045,16 @@ export function createChatSource(sessionId: string): ChatSource {
       tailLens = undefined
       tailReceived = undefined
       pendingLedger = []
-      set({ sessionId, status: 'loading', error: undefined, messages: [], activeMessageId: undefined, overlay: [] })
+      set({
+        sessionId,
+        status: 'loading',
+        error: undefined,
+        messages: [],
+        activeMessageId: undefined,
+        overlay: [],
+        // 重新起底 = 上一次重试的回音已经没有意义了(那棵树整份要重画)。
+        retryPending: undefined,
+      })
 
       // 先订上再拉:拉的那一刻起的事件不能漏(与 D0 / D1 同一条理由)。
       await chatSources.ensureSubscribed()
@@ -1003,6 +1103,8 @@ export function createChatSource(sessionId: string): ChatSource {
       disposed = true
       if (abortWatch) clearTimeout(abortWatch)
       abortWatch = undefined
+      // 那只等新一轮的表跟着走 —— 留着它就是一发对着已拆机器的 warn。
+      clearRetryWatch()
       // 号一动,在飞的 `refold` / `scheduleRefold` 回来时全部作废。
       openSeq += 1
       // 在飞的那一次起底作废(它自己会在 token 那道闸上掉头);别把它的 promise
@@ -1137,10 +1239,43 @@ export function createChatSource(sessionId: string): ChatSource {
        *  2. 信封**一个字段都不多给**(见 chat-port 的注);
        *  3. 发不出去(网断 / core 拒收)是 error 档:人按了重试而它没跑,
        *     这件事必须让人知道,而且不该自动飘走。
+       *
+       * ── 两道闸(2026-09-08,事故 ef079fd7)──────────────────────────────
+       * 「core 收下 = 这次重试成了」是假的:`retry-message` 的 `success` 只说明命令
+       * 上了总线,**引擎在不在忙、目标消息还在不在**都要等它自己跑到才知道。真机上
+       * 一条 129 秒没有任何回包的请求期间,用户连点十几下重试,每一下 core 都答
+       * `success`,而引擎只回一条 `stream:error` —— 屏幕上零反馈。所以:
+       *
+       *  a. **引擎在跑就不发**。重试的语义是「删掉这条回复重新生成」,而正在跑的
+       *     那一轮首先该被停止 —— 说一句话(warn)比堆一条注定被拒的命令诚实;
+       *  b. **上一条重试还没见回音就不发**(`retryPending`)。这是兜底 ——
+       *     钮那边已经禁灰了,这里挡的是「禁灰之前那一下」与非组件调用路。
+       *
+       * ── 闩怎么清(三条路,少一条它就会永远灰着)────────────────────────
+       *  ① 账本开了新一轮(`activeMessageId` 从无到有)—— 落点在 `compose()`,
+       *     因为活牌的产地在那里;
+       *  ② 收到 `stream:error` 且闩在 —— 那条就是这次重试的回音,清闩 + error 档
+       *     通知(落点在 `onEvent` 的终止分支);
+       *  ③ 过了 `RETRY_SETTLE_MS` 前两条都没来 —— 清闩 + warn 档「core 收下了但
+       *     账本上没长出新 run」。表过期的判据照抄 `abortWatch`:机器拆了 / 换了
+       *     会话就闭嘴。
        */
       regenerate: (messageId) => {
         const target = get().sessionId
-        if (!target || !messageId) return
+        if (!target || !messageId) return false
+        // 闸 a:引擎在跑。判据用那唯一的产地,不另立忙态。
+        if (selectEngineBusy(get())) {
+          notify({
+            level: 'warn',
+            source: 'chat.retry',
+            title: t('notify.retryBusy'),
+            body: t('notify.retryBusyHint'),
+          })
+          return false
+        }
+        // 闸 b:上一条还在飞。不发、不通知 —— 钮已经灰了,再飞一条 toast 是噪音。
+        if (get().retryPending) return false
+
         void (async () => {
           let failure: string | undefined
           try {
@@ -1150,15 +1285,43 @@ export function createChatSource(sessionId: string): ChatSource {
           } catch (error) {
             failure = error instanceof Error ? error.message : String(error)
           }
-          if (!failure) return
-          notify({
-            level: 'error',
-            source: 'chat.retry',
-            title: t('notify.retryFailed'),
-            body: failure,
-            detail: failure,
-          })
+          if (failure) {
+            notify({
+              level: 'error',
+              source: 'chat.retry',
+              title: t('notify.retryFailed'),
+              body: failure,
+              detail: failure,
+            })
+            return
+          }
+          // 机器拆了 / 换了会话:这一次的回音已经没有收件人了。
+          const now = get()
+          if (disposed || now.sessionId !== target) return
+          /*
+           * 账本比这只 promise 跑得快的那一格:`run/start` 已经到了(SSE 与 RPC 应答
+           * 是两条路,谁先到不一定)。回音已经拿到手,闩就不该再立 —— 立了就只能等
+           * ③ 那条保险丝去清,钮白灰 3 秒。
+           */
+          if (selectEngineBusy(now)) return
+          set({ retryPending: { messageId, at: Date.now() } })
+          clearRetryWatch()
+          retryWatch = setTimeout(() => {
+            retryWatch = undefined
+            const later = get()
+            // 表过期的三种样子:机器拆了、换了会话、闩早被 ①② 清掉了。
+            if (disposed || later.sessionId !== target) return
+            if (later.retryPending?.messageId !== messageId) return
+            set({ retryPending: undefined })
+            notify({
+              level: 'warn',
+              source: 'chat.retry',
+              title: t('notify.retryStuck'),
+              body: t('notify.retryStuckHint'),
+            })
+          }, RETRY_SETTLE_MS)
         })()
+        return true
       },
 
       dismiss: (entryId) => {

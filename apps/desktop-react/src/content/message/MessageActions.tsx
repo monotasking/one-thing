@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Copy, RotateCcw } from '../../components/icons'
 import { COPY_FEEDBACK_MS } from '../../components/motion'
-import { useChatSourceOf } from '../../data/chat-source'
+import { selectEngineBusy, useChatSourceOf } from '../../data/chat-source'
 import { useT } from '../../i18n'
 import { announce } from '../../ui/a11y/live-region'
 import { ButtonBase } from '../../ui/ButtonBase'
@@ -61,6 +61,20 @@ export function MessageActions({
   const t = useT()
   const regenerate = useChatSourceOf(sessionId, (st) => st.regenerate)
   /**
+   * **重试钮什么时候点不动**(2026-09-08 事故 ef079fd7)。
+   *
+   * 两格,两个意思:引擎在跑(重试的第一步是删掉这条回复,那要先停这一轮),
+   * 或者上一条重试还没见回音(`retryPending`)。两格都是数据源那边的判据 ——
+   * 这里只是把它们读出来,不在这块面上另立一个忙布尔(粒度病 B 的病根)。
+   *
+   * 走原生 `disabled` 而不是 `aria-disabled`:后者还要各消费方自己记得别响应
+   * (与 `ui/Menu.MenuItem` 的禁灰同一条判例)。**不配 Tooltip** —— 禁灰的理由
+   * 由灰色本身承担(09-08 判例);真按下去时那句话由通知说(闸 a 的 warn)。
+   */
+  const busy = useChatSourceOf(sessionId, selectEngineBusy)
+  const retryPending = useChatSourceOf(sessionId, (st) => st.retryPending !== undefined)
+  const retryDisabled = busy || retryPending
+  /**
    * 复制的就地反馈(08-31 拍板:复制不走通知 —— 高频小动作,每按一下飞一条
    * toast 是噪音)。按下的这颗钮换字说「已复制 / 没能复制」一拍,同时进播报口
    * (读屏的回音);COPY_FEEDBACK_MS 后换回。
@@ -103,7 +117,12 @@ export function MessageActions({
       <ButtonBase
         className={s.ghost}
         data-testid="chat-action-retry"
-        onClick={() => regenerate(messageId)}
+        disabled={retryDisabled}
+        onClick={() => {
+          // 禁着的时候连命令都不组:原生 disabled 已经挡掉点击,这一句是它的同款声明。
+          if (retryDisabled) return
+          regenerate(messageId)
+        }}
       >
         <RotateCcw className={s.ghostIcon} strokeWidth={1.9} aria-hidden="true" />
         {t('chat.retry')}

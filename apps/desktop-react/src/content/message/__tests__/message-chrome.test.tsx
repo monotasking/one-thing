@@ -219,6 +219,53 @@ describe('④⑤⑥ 三颗钮真的接在那三条线上', () => {
   })
 })
 
+/**
+ * 重试钮的禁灰(2026-09-08 事故 ef079fd7)。
+ *
+ * 事故的形状:一条请求 129 秒零回包,那期间**上一条已经落账的回复**底下那颗重试钮
+ * 照常点得动,用户连点了十几下,每一下都变成一条 core 当场答 success 的命令。
+ * 所以判据不是「这条消息在不在流」,而是**这条会话的引擎在不在跑** —— 一条早就跑完
+ * 的消息底下那颗钮,在别人跑着的时候也不该点得动。
+ *
+ * 走原生 `disabled`:jsdom 与浏览器一样不给禁着的钮派 click,所以「点不动」与
+ * 「点了不派发」是同一条断言的两面。
+ */
+describe('重试钮:引擎在跑时禁灰', () => {
+  /** a1 已经收摊(动作行在场),同一条会话上另起了一轮 r2(引擎在跑)。 */
+  const busyAgainLedger = (): Ledger[] => [...settledLedger(), runStart(6, 'r2', 'a2')]
+
+  it('引擎闲着:钮点得动', async () => {
+    await mount(settledLedger())
+    const button = screen.getByTestId('chat-action-retry') as HTMLButtonElement
+    expect(button.disabled).toBe(false)
+  })
+
+  it('引擎在跑:钮禁着,点下去一条命令都不发', async () => {
+    await mount(busyAgainLedger())
+    const button = screen.getByTestId('chat-action-retry') as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+
+    await act(async () => {
+      fireEvent.click(button)
+    })
+    expect(retried).toHaveLength(0)
+  })
+
+  it('复制钮不受牵连(禁的是重试这一件事,不是整行)', async () => {
+    await mount(busyAgainLedger())
+    expect((screen.getByTestId('chat-action-copy') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('禁灰配方与库件同源:只降透明度,hover 那一格挂 :not(:disabled)', () => {
+    const rules = readFileSync(
+      path.resolve(__dirname, '../MessageChrome.module.css'),
+      'utf-8',
+    ).replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(rules).toMatch(/\.ghost:disabled\s*\{[^}]*opacity:\s*var\(--btn-disabled-o\)/)
+    expect(rules).toMatch(/\.ghost:hover:not\(:disabled\)/)
+  })
+})
+
 describe('⑦ 耗时的口径', () => {
   /*
    * 09-05:这里量的从此是**毫秒**,不是字符串 —— 怎么写出来收进了

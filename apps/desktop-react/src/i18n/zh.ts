@@ -786,6 +786,11 @@ export const zh = {
   'notify.copied': '已复制这条回复',
   'notify.copyFailed': '没能复制',
   'notify.retryFailed': '重试没有发出去',
+  'notify.retryRejected': '重试被 core 拒了',
+  'notify.retryBusy': '这一轮还在跑,先停止再重试',
+  'notify.retryBusyHint': '重试会删掉这条回复重新生成;引擎忙的时候不发。',
+  'notify.retryStuck': '重试发出去了,core 还没开新一轮',
+  'notify.retryStuckHint': '命令已经被 core 收下,但账本上没长出新的 run。',
 
   /* ── 文件面板(D5:content/FilesPanel.tsx)────────────────────────────────
    * 面板标题不另起一个键:它就是 'item.files' 那两个字(与通知中心复用
