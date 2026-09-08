@@ -925,9 +925,13 @@ export const zh = {
   'drag.hint.edgeRight': '钉成右侧架子',
   'drag.hint.edgeTop': '钉成上方架子',
   'drag.hint.edgeBottom': '钉成下方架子',
-  /* 拒绝两句(§5 第一行 + §6「不允许」)。 */
+  /* 拒绝三句(§5 第一行 + §6「不允许」+ U3 的「家不许空着」)。 */
   'drag.refuseHere': '这里不能放',
   'drag.refusePairNest': '两格的标签不能再并',
+  /* U3:中央区最后一格常驻内容撕不走。**不点种类名** —— 判据认的是种类自述的
+   * `resident.region`,而这句话是拒绝行里的固定一句(`DropRules.accepts` 只交
+   * 一个 key,交不了变量),所以用壳自己的词说「中央区」与「一格」。 */
+  'drag.refuseResidentLeave': '中央区要留一格,这一格挪不走',
   'drag.sideLeft': '左侧',
   'drag.sideRight': '右侧',
   'drag.sideTop': '上方',

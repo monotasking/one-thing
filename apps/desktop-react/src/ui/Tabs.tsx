@@ -421,6 +421,11 @@ export function Tabs({
               <span
                 className={s.close}
                 aria-hidden="true"
+                /* 一格**门用的把手**(U3):`data-tab-close`,与旁边那颗未保存丸的
+                 * `data-tab-dirty` 同一体例。`gate:drag` 要问「这一格画不画 ✕、
+                 * 按下去关不关得掉」,而那颗 ✕ 刻意不是控件、也没有名字 ——
+                 * 按 CSS Module 的哈希类名去认它是把门钉在样式上。 */
+                data-tab-close=""
                 // 两处都要拦:click 不拦会顺手把这条 tab 选中(它现在在 tab 里面),
                 // pointerdown 不拦会被宿主的拖拽处理器当成「按住这条 tab 要拖」。
                 onClick={(e) => {

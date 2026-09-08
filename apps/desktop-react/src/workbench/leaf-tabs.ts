@@ -51,7 +51,7 @@ export function useCloseLeafTab(leaf: PaneLeafNode): (index: number) => Promise<
       const before = useWorkbenchStore.getState()
       const beforeRegion = regionOfLeaf(before.regions, leaf.id)
       const beforeTree = beforeRegion ? before.regions[beforeRegion] : undefined
-      if (beforeTree && !canDetachTab(beforeTree, leaf.id, index)) {
+      if (beforeTree && !canDetachTab(beforeTree, leaf.id, index, beforeRegion)) {
         announce(t('workbench.tabNotClosable'))
         return
       }
@@ -90,13 +90,39 @@ export function useLeafTabSpecs(leaf: PaneLeafNode): TabSpec[] {
   )
 }
 
-/** 这一格画不画 ✕。判据整件在 `store.canDetachTab`(种类自述,不是种类名)。 */
-function canDetachTabIn(leaf: PaneLeafNode, ref: ContentRef): boolean {
-  const state = useWorkbenchStore.getState()
-  const region = regionOfLeaf(state.regions, leaf.id)
-  const tree = region ? state.regions[region] : undefined
+/**
+ * **「这一格挪得走吗」的那一句读法**(U3-b 从下面 `canDetachTabIn` 里抬出来)。
+ *
+ * 判据本身整件在 `store.canDetachTab`(种类自述,不是种类名);这一只只做它
+ * 前面那两步 —— **这片叶在哪个区域、那个区域是哪棵树**。抬出来是因为它有了
+ * 第二个消费方(`LeafActions` 那张右键表要按同一条判据禁灰),而两处各查一遍
+ * 「区域 + 树」正是判据分叉的第一个入口:少交一个 `region`,一条被拖进架子的
+ * 会话就会在架子上被判成「最后一格常驻」(09-08 报障「放进去之后关不掉」)。
+ *
+ * 交的是 `regions` 整张表而不是读 `getState()`:调用方可以把它塞进一格 zustand
+ * 选择器里(菜单要的是**活的**答案 —— 树在菜单开着时变了,那三项要跟着解禁)。
+ * 树都找不到 = 这片叶不在任何区域上,不拦(与修前逐字同一答案)。
+ */
+export function canDetachTabAt(
+  regions: Readonly<Record<string, PaneNode>>,
+  leafId: string,
+  index: number,
+): boolean {
+  const region = regionOfLeaf(regions, leafId)
+  const tree = region ? regions[region] : undefined
   if (!tree) return true
-  return canDetachTab(tree, leaf.id, leaf.tabs.indexOf(ref))
+  return canDetachTab(tree, leafId, index, region)
+}
+
+/**
+ * 这一格画不画 ✕。判据整件在 `store.canDetachTab`(种类自述,不是种类名)——
+ * **区域一起交过去**(U3):那条守卫只对常驻那一种自己的家成立,而「这片叶在
+ * 哪个区域」只有这里查得出(判词整段在 `canDetachTab` 上)。少了这一格,一条
+ * 被拖进架子的会话会在架子上被判成「最后一格常驻」,✕ 就此不画 —— 那正是
+ * 09-08 报障「放进去之后关不掉」。
+ */
+function canDetachTabIn(leaf: PaneLeafNode, ref: ContentRef): boolean {
+  return canDetachTabAt(useWorkbenchStore.getState().regions, leaf.id, leaf.tabs.indexOf(ref))
 }
 
 /** 这片叶住在哪个区域。 */

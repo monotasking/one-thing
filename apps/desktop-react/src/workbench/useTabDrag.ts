@@ -3,10 +3,13 @@ import type { PointerEvent as ReactPointerEvent } from 'react'
 import { TEAR_OFF_DISTANCE } from '../stage/transitions'
 import { DRAG_START_X } from '../ui/drag'
 import { tabStripChoreo } from '../ui/tab-reorder'
-import { useContentDrag } from './useContentDrag'
+import { regionOfTarget, useContentDrag } from './useContentDrag'
 import { reorderTab } from './drop-commit'
 import { parseRefId, refId } from './kinds'
+import { canDetachTab, regionOfLeafIn, useWorkbenchStore } from './store'
+import type { MessageKey } from '../i18n'
 import type { TabStripChoreo } from '../ui/tab-reorder'
+import type { DropTarget } from './drop'
 import type { PaneLeafNode } from './tree'
 
 /**
@@ -165,6 +168,27 @@ export function useTabDrag(leaf: PaneLeafNode): (id: string, e: ReactPointerEven
      */
     ownStripLeafId: () => leafRef.current.id,
 
+    /**
+     * **这一场自己的规矩:常驻那一格不许被撕出它的家**(U3,2026-09-08)。
+     *
+     * 判据**不新写** —— `store.canDetachTab` 那一只(种类自述的 `resident`,
+     * 加上 U3 那第四个参数「这片叶在哪个区域」)。「关得掉」与「挪得走」问的是
+     * 同一句话:**这个区域里这一种还剩不剩第二格**;两处各写一遍就是两条会漂的
+     * 判据,而漂开的那一天屏幕上会出现「✕ 画不出来,却拖得走」。
+     *
+     * 产地在这里是因为**只有这一层知道拖的是一格标签**:五种来源共用的那一只
+     * (`useContentDrag`)手上只有一个 `ref`,答不出「它此刻是哪片叶的第几格」。
+     *
+     * 三档:
+     *   落回自己那片叶(`back`)     → 放行(空动作,连拖都不算数)
+     *   落点仍在**本区域**          → 放行(条内换序、同区域另一片叶,都不动家)
+     *   其余(架子 / 浮窗 / 别的条) → 拒绝,一句 `drag.refuseResidentLeave`
+     *
+     * 落点算不出区域(`null`)一律当**离开**:一个我们指不出地方的落点,不该被
+     * 当成「还在原地」放过去。
+     */
+    rules: { accepts: (target) => residentRefusal(leafRef.current, pending.current?.id ?? null, target) },
+
     inline: {
       enter: (pointer) => {
         const held = pending.current
@@ -246,6 +270,30 @@ export function useTabDrag(leaf: PaneLeafNode): (id: string, e: ReactPointerEven
     },
     [start],
   )
+}
+
+/**
+ * **这一下会不会把常驻那一格撕出它的家**(U3;判词整段在 `rules` 那一格上)。
+ *
+ * 纯读:store 只 `getState()` 不订阅 —— 落点判据跑在 pointermove 里,那是事件
+ * 不是渲染。拖拽期间树被 `dragging` 那道闸冻住,所以这一读与起拖那一刻逐字相同。
+ */
+export function residentRefusal(
+  leaf: PaneLeafNode,
+  draggedId: string | null,
+  target: DropTarget,
+): MessageKey | null {
+  if (!draggedId || target.kind === 'back') return null
+  const regions = useWorkbenchStore.getState().regions
+  const region = regionOfLeafIn(regions, leaf.id)
+  const tree = region ? regions[region] : undefined
+  if (!region || !tree) return null
+  const index = leaf.tabs.findIndex((tab) => refId(tab) === draggedId)
+  if (index < 0) return null
+  // 关得掉 = 挪得走。这一只是那句话的唯一产地(`store.canDetachTab`)。
+  if (canDetachTab(tree, leaf.id, index, region)) return null
+  const to = regionOfTarget(target, (id) => regionOfLeafIn(regions, id))
+  return to === region ? null : 'drag.refuseResidentLeave'
 }
 
 /** 那一格 tab 此刻在手上的左缘(收笔那一程的起点)。摘不到就答 null。 */

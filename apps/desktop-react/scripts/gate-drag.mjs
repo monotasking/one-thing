@@ -778,6 +778,14 @@ function topStrip(page) {
           left: Math.round(r.left), width: Math.round(r.width),
           cx: Math.round(r.left + r.width / 2),
           cy: Math.round(r.top + r.height / 2),
+          /*
+           * **这一格摘不摘得走**(U3)。屏幕上那颗 ✕ 就是 `canDetachTab` 的读数
+           * (「一颗按不动的 ✕ 与『按了没反应』在屏幕上是同一件事」),而 U3 之后
+           * 它同时是「撕得走吗」的读数 —— 中央区最后一格常驻内容两样都不行。
+           * 凡是要拿一格标签当**拖拽来源**去量别的事的场景,靶子都得先问这一格:
+           * 挑到那一格反而会量成 U3 的拒绝态(场景 ① 第一版就这样红过)。
+           */
+          closable: Boolean(el.querySelector('[data-tab-close]')),
         }
       }),
     }
@@ -1022,7 +1030,10 @@ async function main() {
        * 所以这里挑一条**不含被拖那一格**的条(架子上文件面板那条)去扫。
        */
       const now = await topStrip(page)
-      const tabFrom = now?.tabs[0]
+      /* **靶子得是一格摘得走的标签**(U3):中央区最后一格常驻内容今天撕出去是
+       * 拒绝态,拿它当来源量到的是 U3 那一条,不是这一条(判词在 `topStrip` 的
+       * `closable` 上)。 */
+      const tabFrom = now?.tabs.find((t) => t.closable) ?? now?.tabs[0]
       const foreign = await page.evaluate((mine) => {
         for (const chrome of Array.from(document.querySelectorAll('[data-pane-chrome]'))) {
           const id = chrome.getAttribute('data-pane-chrome')
@@ -2140,6 +2151,161 @@ async function main() {
           '而且它不在顶栏那条条上了(是搬过去,不是复制)',
           JSON.stringify(topAfter.tabs.map((t) => t.id)),
         )
+      }
+    }
+
+    /* ══ 场景 ⑪:常驻内容的家(U3)═══════════════════════════════════════ */
+    scenario('拖进架子的会话关得掉;中央区最后一格会话撕不走、有两格时撕得走')
+    {
+      /*
+       * ── 病历(用户 09-08)────────────────────────────────────────────────
+       * 「从 sessions 长按能放进面板,放进去之后关不掉」。`canDetachTab` 按**传进来
+       * 的那棵树**数常驻种类,于是被拖进架子 / 浮窗的会话在那棵树里是唯一一格会话,
+       * 当场被判成「最后一格常驻」:✕ 不画、⌘W 播报「关不掉」,而中央区还好好地
+       * 站着一格会话。
+       *
+       * U3 的修法是把「区域」交给判据:守卫只对**那一种自述的家**
+       * (`resident.region`)成立。同一条判据反过来还堵住了另一半 —— 中央区最后
+       * 一格会话**撕不走**,而且要说出口(不是静默地把家搬空)。
+       *
+       * ── 反证 ────────────────────────────────────────────────────────────
+       *  · 把 `canDetachTab` 里那句 `?.resident?.region === region` 换回
+       *    `?.resident` → ①b 红(架子上那一格画不出 ✕);
+       *  · 把 `useTabDrag` 那一格 `rules` 整格删掉 → ②a/②b/②c 红(撕出去被判成放行,
+       *    松手之后中央区真的空了)。
+       */
+      /** 拒绝那句话取自字典,门里不再抄一份中文(与场景 ⑨ 的边带提示同一体例)。 */
+      const REFUSE_RE = /中央区要留一格|The center must keep one tab/
+
+      // 总览可能被前面几场挤到后面 —— 点一下瓦把它叫回前台(与场景 ① 同一句)。
+      await clickSelector(page, '[data-testid="dock-tile-sessions"]')
+      await delay(500)
+      const shelf = await shelfStrip(page, 'left')
+      const row = await centerOf(page, '[data-session-id]:not([aria-selected="true"])')
+      assert(
+        Boolean(shelf && row),
+        '① 左架子那条条与总览里另一条会话都在场',
+        JSON.stringify({ shelf: shelf?.leafId, row: Boolean(row) }),
+      )
+      if (shelf && row) {
+        const onStrip = {
+          x: Math.round(shelf.rect.left + shelf.rect.width / 2),
+          y: Math.round(shelf.rect.top + shelf.rect.height / 2),
+        }
+        await stroke(cdp, { x: row.x, y: row.y }, onStrip, { steps: 14, holdMs: 160, release: true })
+        await delay(SETTLE_MS + 300)
+        const landedStrip = await shelfStrip(page, 'left')
+        const landed = (landedStrip?.tabs ?? []).find((t) => String(t.id).startsWith('session:'))
+        assert(
+          Boolean(landed),
+          '①a 那一行落进了左架子,成了一格会话标签',
+          JSON.stringify(landedStrip?.tabs.map((t) => t.id)),
+        )
+        if (landed) {
+          const closable = await page.evaluate(
+            (id) =>
+              Boolean(
+                document
+                  .querySelector(`[data-shelf="left"] [data-tab-id="${id}"]`)
+                  ?.querySelector('[data-tab-close]'),
+              ),
+            landed.id,
+          )
+          assert(closable, '①b 架子上那一格会话画得出 ✕(守卫只在它自述的家里成立)', landed.id)
+          await page.evaluate((id) => {
+            const el = document.querySelector(
+              `[data-shelf="left"] [data-tab-id="${id}"] [data-tab-close]`,
+            )
+            if (el instanceof HTMLElement) el.click()
+          }, landed.id)
+          await delay(500)
+          const gone = await shelfStrip(page, 'left')
+          assert(
+            !(gone?.tabs ?? []).some((t) => t.id === landed.id),
+            '①c 点那颗 ✕ 真的关掉了,树里没有它了',
+            JSON.stringify(gone?.tabs.map((t) => t.id)),
+          )
+        }
+      }
+
+      // ── ② 中央区最后一格会话往下撕到左架子的内容区 = 拒绝态,树一字不变 ──
+      const shelfNow = await shelfStrip(page, 'left')
+      const centerStrip = await topStrip(page)
+      const centerSessions = (centerStrip?.tabs ?? []).filter((t) =>
+        String(t.id).startsWith('session:'),
+      )
+      assert(
+        centerSessions.length === 1,
+        '② 前提:此刻中央区恰好一格会话(不然这一条量的是另一件事)',
+        JSON.stringify(centerStrip?.tabs.map((t) => t.id)),
+      )
+      /*
+       * **落点取架子条正下方 80px** —— 那是架子那片叶的内容区(不是条),所以判据
+       * 走的是 §5 的 ④⑤⑥ 那几档而不是 `strip`。三档都会把这一格搬进 `edge:left`,
+       * 而 U3 的判据问的正是「区域变不变」,不是「哪一档落点」。
+       */
+      const intoShelfBody = shelfNow
+        ? {
+          x: Math.round(shelfNow.rect.left + shelfNow.rect.width / 2),
+          y: Math.round(shelfNow.rect.top + shelfNow.rect.height + 80),
+        }
+        : null
+      if (shelfNow && intoShelfBody && centerSessions.length === 1) {
+        const before = await treeShape(page)
+        const seen = await stroke(
+          cdp,
+          { x: centerSessions[0].cx, y: centerSessions[0].cy },
+          intoShelfBody,
+          { steps: 14, holdMs: 240, sample: () => feedbackNow(page) },
+        )
+        const read = seen[seen.length - 1]
+        assert(read.cursorRefuse === true, '②a 根上挂着 data-drag-refuse', JSON.stringify(read))
+        assert(read.refused === true, '②b 浮影自己也是拒绝的形', JSON.stringify(read))
+        assert(REFUSE_RE.test(read.hint), '②c 而且说得出理由(不是静默拒绝)', read.hint)
+        await releaseAt(cdp, intoShelfBody)
+        await delay(SETTLE_MS + 300)
+        assert((await treeShape(page)) === before, '②d 松手之后树一个字不变')
+
+        // ── ③ 中央区有两格会话时,同一个手势放行(读数不是恒真)──────────────
+        const row2 = await centerOf(page, '[data-session-id]:not([aria-selected="true"])')
+        const bar = await topStrip(page)
+        if (row2 && bar) {
+          const ontoTop = {
+            x: Math.round(bar.rect.left + bar.rect.width - 8),
+            y: Math.round(bar.rect.top + bar.rect.height / 2),
+          }
+          await stroke(cdp, { x: row2.x, y: row2.y }, ontoTop, { steps: 14, holdMs: 160, release: true })
+          await delay(SETTLE_MS + 400)
+        }
+        const twoUp = await topStrip(page)
+        const twoSessions = (twoUp?.tabs ?? []).filter((t) => String(t.id).startsWith('session:'))
+        assert(
+          twoSessions.length >= 2,
+          '③ 前提:中央区此刻有两格会话',
+          JSON.stringify(twoUp?.tabs.map((t) => t.id)),
+        )
+        if (twoSessions.length >= 2) {
+          const seen2 = await stroke(
+            cdp,
+            { x: twoSessions[0].cx, y: twoSessions[0].cy },
+            intoShelfBody,
+            { steps: 14, holdMs: 240, sample: () => feedbackNow(page) },
+          )
+          const read2 = seen2[seen2.length - 1]
+          assert(
+            read2.cursorRefuse === false && !REFUSE_RE.test(read2.hint),
+            '③a 同一个手势这次放行(读数不是恒为拒绝)',
+            JSON.stringify(read2),
+          )
+          await releaseAt(cdp, intoShelfBody)
+          await delay(SETTLE_MS + 300)
+          const shelfEnd = await shelfStrip(page, 'left')
+          assert(
+            (shelfEnd?.tabs ?? []).some((t) => String(t.id).startsWith('session:')),
+            '③b 松手之后它真的进了左架子',
+            JSON.stringify(shelfEnd?.tabs.map((t) => t.id)),
+          )
+        }
       }
     }
 

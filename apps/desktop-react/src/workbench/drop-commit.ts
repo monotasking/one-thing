@@ -338,7 +338,7 @@ export function closePairSide(leafId: string, index: number, side: 'left' | 'rig
   if (!tab || !parts || parts.length < 2) return
   const going = side === 'left' ? parts[0] : parts[1]
   const staying = side === 'left' ? parts[1] : parts[0]
-  if (!canClosePairSide(tree, leafId, index, side)) {
+  if (!canClosePairSide(tree, leafId, index, side, region)) {
     announce(t('workbench.tabNotClosable'))
     return
   }
@@ -389,11 +389,19 @@ export function canClosePairSide(
   leafId: string,
   index: number,
   side: 'left' | 'right',
+  region: string | null,
 ): boolean {
   const tab = findLeaf(tree, leafId)?.tabs[index]
   const parts = tab ? partsOfContent(tab) : null
   if (!tab || !parts || parts.length < 2) return false
-  return canDetachTab(T.unpair(tree, leafId, index), leafId, side === 'left' ? index : index + 1)
+  return canDetachTab(
+    T.unpair(tree, leafId, index),
+    leafId,
+    side === 'left' ? index : index + 1,
+    /* **区域一起借过去**(U3):守卫只对常驻那一种自己的家成立,而这只函数拿到的
+     * 是一棵假想的树 —— 它自己答不出「这棵树是哪个区域的」,只能由调用方交代。 */
+    region,
+  )
 }
 
 /** 一格内容此刻的名字(活的盖静的 —— 与标签条读的是同一份)。 */

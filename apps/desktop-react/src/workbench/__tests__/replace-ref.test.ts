@@ -155,9 +155,9 @@ describe('resident.seed():延迟铸 key', () => {
 
   it('最后一格常驻关不掉那条判据一个字没改(key 换了它照样成立)', () => {
     useWorkbenchStore.getState().replaceRef(onlyLeaf().id, home('main'), home('s-1'))
-    expect(canDetachTab(center(), onlyLeaf().id, 0)).toBe(false)
+    expect(canDetachTab(center(), onlyLeaf().id, 0, CENTER_REGION)).toBe(false)
     useWorkbenchStore.getState().openRef(home('s-2'))
-    expect(canDetachTab(center(), onlyLeaf().id, 0)).toBe(true)
+    expect(canDetachTab(center(), onlyLeaf().id, 0, CENTER_REGION)).toBe(true)
   })
 })
 

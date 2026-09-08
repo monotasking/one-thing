@@ -376,9 +376,10 @@ const PaneLeafStrip = memo(function PaneLeafStrip({
    *
    * `preventDefault` 由 `ui/Tabs` 那一口自己发(它是量点的那一头,也是收事件的那一头)。
    */
+  /* **表作用在被右键的那一格**(U3;判词在 `LeafMenuAt.tabId`)。 */
   const onTabMenu = useCallback(
-    (_id: string, at: { x: number; y: number }) => {
-      openLeafMenuAt(leaf.id, at)
+    (id: string, at: { x: number; y: number }) => {
+      openLeafMenuAt(leaf.id, at, id)
     },
     [leaf.id],
   )

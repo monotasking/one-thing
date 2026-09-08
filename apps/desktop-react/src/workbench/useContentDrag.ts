@@ -542,13 +542,29 @@ function regionRefusal(
   allowed: readonly RegionId[],
   geometry: DropGeometry,
 ): MessageKey | null {
-  const region = regionOfTarget(target, geometry)
+  const region = regionOfTarget(target, leafRegionIn(geometry))
   if (region === null) return null
   return allowed.includes(region) ? null : 'drag.regionRefused'
 }
 
 /**
+ * **「这片叶住在哪个区域」的一种答法:问起拖时量的那份几何**(每一格 `leaves`
+ * 都自带 `region`)。它与 store 那一只(`store.regionOfLeafIn`)在拖拽期间答的
+ * 是同一份东西 —— 树被 `dragging` 那道闸冻住了 —— 差别只在**谁手上有**:
+ * 这一层有几何,来源那一层(`useTabDrag`)只有 store。
+ */
+const leafRegionIn = (geometry: DropGeometry) => (leafId: string): RegionId | null =>
+  geometry.leaves.find((leaf) => leaf.leafId === leafId)?.region ?? null
+
+/**
  * 一个落点最终会把内容放进哪个区域。`refuse` 已经是拒绝,不必再问一次。
+ *
+ * ── 它为什么收一只 `leafRegion` 而不是那份几何(U3,2026-09-08)──────────────
+ * 「落点 → 区域」这句话有了**第二个**读者:`useTabDrag` 的 `rules.accepts` 要拿它
+ * 答「这一下会不会把内容带离本区域」,而那一层手上没有几何(它是**来源**,几何
+ * 住在这一层的 payload 里)。同一句话写两遍就是两条会漂的判据 —— 所以把「叶住在
+ * 哪个区域」抽成一只回调:这一层交几何那一份(`leafRegionIn`),来源那一层交
+ * store 那一份(拖拽期间树冻着,两份逐字相同)。
  *
  * **标签条那一支是 W3-b×W5-b 的合树接缝**:`strip` 这一种落点是 W3-b 才有的,
  * 它只带 `leafId` 不带区域 —— 而「插到那条条的第 n 格」最终就是把这一格放进
@@ -558,12 +574,15 @@ function regionRefusal(
  * 「松手了,没反应,也没人说为什么」—— 裁定 8 要杀的就是这个。
  * 叶的区域从起拖时量好的那份几何里查(`leaves` 每一格都自带 `region`)。
  */
-function regionOfTarget(target: DropTarget, geometry: DropGeometry): RegionId | null {
+export function regionOfTarget(
+  target: DropTarget,
+  leafRegion: (leafId: string) => RegionId | null,
+): RegionId | null {
   if (target.kind === 'open' || target.kind === 'pair') {
     return target.region
   }
   if (target.kind === 'strip') {
-    return geometry.leaves.find((leaf) => leaf.leafId === target.leafId)?.region ?? null
+    return leafRegion(target.leafId)
   }
   if (target.kind === 'edge') return edgeRegion(target.side)
   // 撕成浮窗:窗号是落定那一刻才铸的,所以这里问的是「浮窗**这一类**收不收」。

@@ -559,19 +559,38 @@ export function normalizeHiddenShape(hidden: HiddenEntry[]): HiddenEntry[] {
 }
 
 /**
- * 这一格关得掉 / 藏得掉吗。**判据问的是种类的自述**,不是种类的名字
+ * 这一格关得掉 / 藏得掉 / 挪得走吗。**判据问的是种类的自述**,不是种类的名字
  * (T0 拍点 2 的落地,理由写在 `ContentKind.resident` 上)。
+ *
+ * ── `region` 是第四个参数,而且它不是装饰(U3,2026-09-08 用户报障)────────
+ * 报障原话:「从 sessions 长按能放进面板,放进去之后关不掉」。病根是这条守卫
+ * **对着传进来的那棵树**数常驻种类:一条会话被拖进左架子 / 一扇浮窗之后,它在
+ * 那棵树里是唯一一格会话,`countKindDeep(tree, 'session') > 1` 当场为假 ——
+ * 于是 ✕ 不画、⌘W 播报「关不掉」,而屏幕上中央区还好好地站着一格会话。
+ *
+ * 「最后一格常驻的不许走」这句话**只对那一种自己的家说得通**:播种
+ * (`seedResidents`)只往 `resident.region` 里补格,所以只有在那个区域里,
+ * 「关掉最后一格」才等于「这个区域从此空着」。别的区域里那一格是客,关掉它
+ * 什么也不缺 —— 家还在中央区。
+ *
+ * 判据仍旧一个种类名都不点:问的是**这一种自述的家是不是这里**
+ * (`resident.region === region`),与 `seedResidents` 读的是同一格自述。
+ * `region` 答 null(这片叶不在任何一棵树上)= 没有家可言,守卫不成立。
+ *
+ * 复合那一格问的是**它装着的那几格**:`pair(会话, 文件)` 里的会话在中央区同样
+ * 受这条保护(判词与 `countKindDeep` 同源)。
  */
-export function canDetachTab(tree: PaneNode, leafId: string, index: number): boolean {
+export function canDetachTab(
+  tree: PaneNode,
+  leafId: string,
+  index: number,
+  region: string | null,
+): boolean {
   const leaf = T.findLeaf(tree, leafId)
   const ref = leaf?.tabs[index]
   if (!ref) return false
-  /*
-   * 复合那一格问的是**它装着的那几格**:`pair(会话, 文件)` 里的会话同样受
-   * 「这个区域里最后一格常驻的关不掉」那条保护(判词与 `countKindDeep` 同源)。
-   */
   const kinds = new Set(flattenContent(ref).map((part) => part.kind))
-  const guarded = [...kinds].filter((id) => contentKindOf(id)?.resident)
+  const guarded = [...kinds].filter((id) => contentKindOf(id)?.resident?.region === region)
   if (guarded.length === 0) return true
   return guarded.every((id) => countKindDeep(tree, id) > 1)
 }
@@ -852,7 +871,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           const region = regionOfLeaf(s.regions, leafId)
           if (!region) return
           const tree = s.regions[region]
-          if (!canDetachTab(tree, leafId, index)) return
+          if (!canDetachTab(tree, leafId, index, region)) return
           const ref = T.findLeaf(tree, leafId)?.tabs[index]
           writeRegion(region, T.removeTab(tree, leafId, index))
           // **关掉 = 丢实例**(隐藏不丢)。种类自己清它自己的状态。
@@ -865,7 +884,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           const region = regionOfLeaf(s.regions, leafId)
           if (!region) return
           const tree = s.regions[region]
-          if (!canDetachTab(tree, leafId, index)) return
+          if (!canDetachTab(tree, leafId, index, region)) return
           const ref = T.findLeaf(tree, leafId)?.tabs[index]
           if (!ref) return
           const id = refId(ref)

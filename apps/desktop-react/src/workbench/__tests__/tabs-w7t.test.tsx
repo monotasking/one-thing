@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, renderHook, screen } from '@testing-library/react'
 import { CenterRegion } from '../CenterRegion'
-import { CENTER_REGION } from '../regions'
+import { CENTER_REGION, edgeRegion } from '../regions'
 import { focusIntoRef } from '../focus-into'
 import { closePairSide, canClosePairSide, unpairTab } from '../drop-commit'
 import { tabSpecOf } from '../LeafStrip'
@@ -14,7 +14,7 @@ import {
   focusIntoScopeOf,
 } from '../kinds'
 import { startWorkbench, useWorkbenchStore } from '../store'
-import { leavesOf, refIdsOf } from '../tree'
+import { leavesOf, makeLeaf, refIdsOf } from '../tree'
 import { useLiveTitleStore } from '../../stage/live-title'
 import { useStageStore } from '../../stage/store'
 import { focusTree } from '../../focus/registry'
@@ -235,8 +235,31 @@ describe('B7 / B11:两格标签的关与拆', () => {
      * **反证**:把 `canClosePairSide` 换成 `() => true` → 下面第一句变绿,
      * 而屏幕上那条唯一的会话会被一颗 ✕ 关掉。
      */
-    expect(canClosePairSide(center(), leafId, at, 'left')).toBe(false)
-    expect(canClosePairSide(center(), leafId, at, 'right')).toBe(true)
+    expect(canClosePairSide(center(), leafId, at, 'left', CENTER_REGION)).toBe(false)
+    expect(canClosePairSide(center(), leafId, at, 'right', CENTER_REGION)).toBe(true)
+  })
+
+  /*
+   * ── U3(2026-09-08 报障「放进去之后关不掉」)──────────────────────────────
+   * 同一格两格标签,搬到架子上就**两格都关得掉** —— 守卫只在常驻那一种自述的家
+   * (中央区)里成立,架子上那一格是客。
+   *
+   * **反证**:把 `canDetachTab` 里那句 `?.resident?.region === region` 换回
+   * `?.resident` → 下面第一句当场红(架子上那格会话被判成「最后一格常驻」)。
+   */
+  it('同一格两格标签搬到架子上就两格都关得掉(U3:守卫只在家里成立)', () => {
+    const shelf = edgeRegion('left')
+    act(() => {
+      useWorkbenchStore.setState((s) => ({
+        regions: {
+          ...s.regions,
+          [shelf]: makeLeaf('SL1', [pairRefOf(talk('guest'), doc('z'))], 0),
+        },
+      }))
+    })
+    const tree = useWorkbenchStore.getState().regions[shelf]
+    expect(canClosePairSide(tree, 'SL1', 0, 'left', shelf)).toBe(true)
+    expect(canClosePairSide(tree, 'SL1', 0, 'right', shelf)).toBe(true)
   })
 
   it('拆开之后焦点进**左格**(它留在原标签)', () => {

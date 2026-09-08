@@ -187,7 +187,7 @@ describe('常驻那一种的最后一格关不掉(T0 拍点 2)', () => {
   it('判据是**同种还剩几个**,不是「它是不是那一种」', () => {
     const tree = center()
     const leafId = onlyLeaf().id
-    expect(canDetachTab(tree, leafId, 0)).toBe(false)
+    expect(canDetachTab(tree, leafId, 0, CENTER_REGION)).toBe(false)
     useWorkbenchStore.getState().closeTab(leafId, 0)
     useWorkbenchStore.getState().hideTab(leafId, 0)
     // 关不掉也藏不掉 —— 两条路同一条判据。
@@ -207,12 +207,37 @@ describe('常驻那一种的最后一格关不掉(T0 拍点 2)', () => {
         ]),
       },
     })
-    expect(canDetachTab(center(), 'L1', 0)).toBe(true)
+    expect(canDetachTab(center(), 'L1', 0, CENTER_REGION)).toBe(true)
   })
 
   it('没自述 `resident` 的那一种随便关', () => {
     useWorkbenchStore.getState().openRef(doc('a'))
-    expect(canDetachTab(center(), onlyLeaf().id, 1)).toBe(true)
+    expect(canDetachTab(center(), onlyLeaf().id, 1, CENTER_REGION)).toBe(true)
+  })
+
+  /*
+   * ── U3(2026-09-08 报障:「从 sessions 长按能放进面板,放进去之后关不掉」)──
+   * 守卫只对**那一种自述的家**成立(`resident.region`)。架子 / 浮窗里那一格是客,
+   * 家还在中央区,所以它关得掉、撕得走。
+   *
+   * 反证:把 `canDetachTab` 里那句 `?.resident?.region === region` 换回
+   * `?.resident` → 下面第一条当场红(架子上唯一那格 `home` 被判成关不掉)。
+   */
+  it('架子里唯一一格常驻内容关得掉 —— 守卫只在它自述的家里成立(U3)', () => {
+    useWorkbenchStore.setState({
+      regions: {
+        [CENTER_REGION]: makeLeaf('L1', [{ kind: 'home', key: 'main' }]),
+        'edge:left': makeLeaf('L2', [{ kind: 'home', key: 'guest' }]),
+      },
+    })
+    const shelf = useWorkbenchStore.getState().regions['edge:left']
+    expect(canDetachTab(shelf, 'L2', 0, 'edge:left')).toBe(true)
+    // 中央区那一格照旧是它的家,一个字没松。
+    expect(canDetachTab(center(), 'L1', 0, CENTER_REGION)).toBe(false)
+  })
+
+  it('区域答不出来(这片叶不在任何一棵树上)= 没有家可言,守卫不成立(U3)', () => {
+    expect(canDetachTab(center(), onlyLeaf().id, 0, null)).toBe(true)
   })
 })
 

@@ -157,11 +157,12 @@ function PairPane({ contentRef }: { contentRef: ContentRef }) {
   const closable = useWorkbenchStore((st) => {
     const seat = seatOfPair(st.regions, id)
     if (!seat) return 0
-    const tree = st.regions[regionOfLeafIn(st.regions, seat.leafId) ?? '']
+    const region = regionOfLeafIn(st.regions, seat.leafId)
+    const tree = st.regions[region ?? '']
     if (!tree) return 0
     return (
-      (canClosePairSide(tree, seat.leafId, seat.index, 'left') ? 1 : 0)
-      | (canClosePairSide(tree, seat.leafId, seat.index, 'right') ? 2 : 0)
+      (canClosePairSide(tree, seat.leafId, seat.index, 'left', region) ? 1 : 0)
+      | (canClosePairSide(tree, seat.leafId, seat.index, 'right', region) ? 2 : 0)
     )
   })
 

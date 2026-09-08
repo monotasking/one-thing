@@ -40,6 +40,23 @@ import { create } from 'zustand'
 export interface LeafMenuAt {
   /** 开在哪一片叶的动作表上。`LeafActions` 拿自己的叶 id 与它比。 */
   leafId: string
+  /**
+   * **被右键的是哪一格**(U3,2026-09-08;`refId`,缺席 = 没有指名)。
+   *
+   * ── 它为什么是这张表的一部分 ──────────────────────────────────────────
+   * U2 之前「右键先激活」把这件事盖住了:右键那一发 `pointerdown` 顺手把那一格
+   * 点成活动的,于是「表作用在活动格」与「表作用在被右键那格」永远同一个答案。
+   * U2 按用户裁定让**右键不再切标签**(`LeafStrip.onTabDown` 只认主键)之后,
+   * 右键一格**非活动**标签开出来的表仍旧作用在活动那一格 —— 关闭关错人、
+   * 「与右边的标签二合一」并的是别人的右邻。Chrome / VS Code 的表都作用在被右键
+   * 的那一格,所以这不是新裁定,是把 U2 顺手带走的那个行为接回来。
+   *
+   * 缺席的两个来源同样是**指名**的对立面,不是遗漏:顶栏右端那颗 ⋯ 与右键檐上
+   * 的空白处说的是「这片叶」,没有哪一格可指 —— 那时表落回 `leaf.active`
+   * (判词在 `LeafActions` 的目标那一格上)。键盘 `Shift+F10` / ContextMenu 键
+   * 反而**有**:`ui/Tabs` 从焦点那一格量点,顺手把它的 id 一起交出来。
+   */
+  tabId?: string
   /** 视口坐标(点锚)。 */
   x: number
   y: number
@@ -47,15 +64,15 @@ export interface LeafMenuAt {
 
 interface LeafMenuStore {
   at: LeafMenuAt | null
-  /** 在这一点上开那一片叶的动作菜单(右键一格标签 / 按檐上那颗钮,同一口)。 */
-  openLeafMenu: (leafId: string, x: number, y: number) => void
+  /** 在这一点上开那一片叶的动作菜单(右键一格标签 / 右键檐上空白,同一口)。 */
+  openLeafMenu: (leafId: string, x: number, y: number, tabId?: string) => void
   /** 关掉。幂等 —— 已经关着时不写,免得白惊动订阅者。 */
   closeLeafMenu: () => void
 }
 
 export const useLeafMenuStore = create<LeafMenuStore>((set) => ({
   at: null,
-  openLeafMenu: (leafId, x, y) => set({ at: { leafId, x, y } }),
+  openLeafMenu: (leafId, x, y, tabId) => set({ at: { leafId, x, y, tabId } }),
   closeLeafMenu: () => set((st) => (st.at === null ? st : { at: null })),
 }))
 
@@ -74,10 +91,17 @@ export function useLeafMenuAt(leafId: string): LeafMenuAt | null {
  * 最清楚(它手上有那一格的矩形)—— 所以量点的活留在 `ui/Tabs`,这只函数只收结果。
  * 收事件的话第二个来源就得伪造一发 MouseEvent,那是把「谁该量」答错了。
  *
- * **它不选中那一格**:选中这件事已经在 `LeafStrip.onTabDown` 里发生过了
- * (按下即激活,W6-b —— `pointerdown` 对右键一样派得出来),键盘那条路更是本来
- * 就站在那一格上;而那张表说的正是「这一格活动标签能做什么」。
+ * **它不选中那一格**(U2 起这句话有了它真正的分量)。W6-b 时理由是「选中已经在
+ * `LeafStrip.onTabDown` 里发生过了」;U2 按用户裁定让右键**不再**切标签,于是
+ * 它成了一句真的承诺:右键一格标签不动活动位,只开表。
+ *
+ * 表因此要自己知道**说的是哪一格** —— 那就是第三个参数 `tabId`(U3;判词整段在
+ * `LeafMenuAt.tabId` 上)。缺席 = 没有指名,表落回这片叶的活动格。
  */
-export function openLeafMenuAt(leafId: string, at: { x: number; y: number }): void {
-  useLeafMenuStore.getState().openLeafMenu(leafId, at.x, at.y)
+export function openLeafMenuAt(
+  leafId: string,
+  at: { x: number; y: number },
+  tabId?: string,
+): void {
+  useLeafMenuStore.getState().openLeafMenu(leafId, at.x, at.y, tabId)
 }

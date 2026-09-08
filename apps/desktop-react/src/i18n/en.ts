@@ -776,6 +776,7 @@ export const en: Record<MessageKey, string> = {
   'drag.hint.edgeBottom': 'Pin as a new bottom shelf',
   'drag.refuseHere': "This can't go here",
   'drag.refusePairNest': 'A paired tab cannot be paired again',
+  'drag.refuseResidentLeave': 'The center must keep one tab, so this one cannot move out',
   'drag.sideLeft': 'the left',
   'drag.sideRight': 'the right',
   'drag.sideTop': 'the top',

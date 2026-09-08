@@ -42,10 +42,13 @@ const B: ContentRef = { kind: 'parity-b', key: 'b' }
  * 用例里没有真的标签条(它只渲染 `LeafActions` 一件),所以走**那个唯一的产地**:
  * `workbench/leaf-menu` 那一格 store。真机上右键 / Shift+F10 / 右键檐上的空白
  * 三条路调的都是它 —— 这一句因此不是「测试专用后门」,是那三条路的同一句话。
+ *
+ * `tabId` 缺席 = **没有指名**(右键檐上的空白 / 顶栏那颗 ⋯ 就是这一形),表落回
+ * 这片叶的活动格 —— 本文件既有那几组走的都是它,U3 之后逐字不变。
  */
-function openLeafMenu(leafId: string): void {
+function openLeafMenu(leafId: string, tabId?: string): void {
   act(() => {
-    openLeafMenuAt(leafId, { x: 10, y: 10 })
+    openLeafMenuAt(leafId, { x: 10, y: 10 }, tabId)
   })
 }
 
@@ -583,5 +586,191 @@ describe('分屏 ▸:只在多叶区域,四向各与 splitLeaf 平局', () => {
     openLeafMenu(leaf.id)
     const texts = screen.getAllByRole('menuitem').map((el) => (el.textContent ?? '').trim())
     expect(texts.filter((x) => /^(分屏|Split)$/.test(x))).toEqual([])
+  })
+})
+
+/**
+ * **这张表说的是被右键的那一格**(U3,2026-09-08)。
+ *
+ * ── 它为什么是一条回归而不是一条新裁定 ──────────────────────────────────
+ * U2 之前「右键先激活」把这件事盖住了:右键那一发 `pointerdown` 顺手把那一格点成
+ * 活动的,于是「作用在活动格」与「作用在被右键那格」永远同一个答案。U2 按用户裁定
+ * 让右键**不再切标签**之后,那两者可以是两格 —— 而这张表从 W6-c 起一直写死
+ * `leaf.active`:右键一格非活动标签,关掉的是别人、并进去的是别人的右邻。
+ * Chrome / VS Code 的表都作用在被右键的那一格。
+ *
+ * **反证**:把 `LeafActions` 里那句 `const at = …menuAt?.tabId…` 换回
+ * `const at = leaf.active` → 这一组三条全红。
+ */
+describe('右键非活动格:表的目标是那一格(U3)', () => {
+  const C: ContentRef = { kind: 'parity-a', key: 'c' }
+
+  /** 一片叶三格 [A, B, C],活动 = 第三格(**不是**下面要右键的那一格)。 */
+  function seedThree(): PaneLeafNode {
+    const leaf = makeLeaf('leaf-u3', [A, B, C], 2)
+    useWorkbenchStore.setState({
+      regions: { [CENTER_REGION]: leaf },
+      hidden: [],
+      focusLeafId: leaf.id,
+      dragging: false,
+    })
+    return leaf
+  }
+
+  it('「关闭」关的是被右键的那一格,不是活动格', async () => {
+    const leaf = seedThree()
+    render(<LeafActions leaf={leaf} />)
+    openLeafMenu(leaf.id, refId(B))
+    clickItem(/^(关闭|Close)$/)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10)
+    })
+    expect(refIdsOf(leafNow('leaf-u3'))).toEqual([refId(A), refId(C)])
+  })
+
+  it('「与右边的标签二合一」并的是它与**它的**右邻', () => {
+    const leaf = seedThree()
+    render(<LeafActions leaf={leaf} />)
+    // 右键第 0 格 A —— 它的右邻是 B,而活动格是 C(它没有右邻,这一项在它身上是禁灰的)。
+    openLeafMenu(leaf.id, refId(A))
+    clickItem(/与右边的标签二合一|Join with the tab on the right/)
+    expect(refIdsOf(leafNow('leaf-u3'))).toEqual([refId(pairRefOf(A, B)), refId(C)])
+  })
+
+  it('「拆开」按被右键那一格是不是两格来出现,不看活动格', () => {
+    const leaf = makeLeaf('leaf-u3', [pairRefOf(A, B), C], 1)
+    useWorkbenchStore.setState({
+      regions: { [CENTER_REGION]: leaf },
+      hidden: [],
+      focusLeafId: leaf.id,
+      dragging: false,
+    })
+    render(<LeafActions leaf={leaf} />)
+    // 活动格是 C(普通标签),被右键的是第 0 格那一格两格标签。
+    openLeafMenu(leaf.id, refId(pairRefOf(A, B)))
+    const texts = () => screen.getAllByRole('menuitem').map((el) => (el.textContent ?? '').trim())
+    expect(texts().filter((x) => /^(拆开|Split apart)$/.test(x))).toHaveLength(1)
+    clickItem(/^(拆开|Split apart)$/)
+    expect(refIdsOf(leafNow('leaf-u3'))).toEqual([refId(A), refId(B), refId(C)])
+  })
+
+  it('没指名(右键檐上的空白)= 落回活动格 —— U2 之前那一形一个字没变', async () => {
+    const leaf = seedThree()
+    render(<LeafActions leaf={leaf} />)
+    openLeafMenu(leaf.id)
+    clickItem(/^(关闭|Close)$/)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10)
+    })
+    expect(refIdsOf(leafNow('leaf-u3'))).toEqual([refId(A), refId(B)])
+  })
+})
+
+/**
+ * **「挪得走吗」:菜单三项与拖拽同一条判据、禁灰而不是点下去再拒绝**(U3-b,
+ * 2026-09-08)。
+ *
+ * U3 把「中央区至少留一格常驻内容」收成了一只 `store.canDetachTab`,拖拽那条路
+ * (`useTabDrag.residentRefusal`)与 `closeTab` / `hideTab` 都已经按它拒绝 ——
+ * 唯独这张表上「撕成浮窗」「移到架子 ▸」两项调 `dropRef` 时不问它,于是菜单仍能
+ * 把中央区最后一格会话搬走,中央区当场空掉(`pruneRegions` 铸一片空叶、叶 id
+ * 换人 = 整台聊天区重挂)。「关闭」那一项也只是 `disabled={!target}`,点下去才由
+ * `closeAt` 播报一句「关不掉」—— 而屏幕上那颗 ✕ 对这一格本来就不画。
+ *
+ * 三项一起断言,不是只挑「移到架子」:守的是**同一条判据、同一只产地**
+ * (`leaf-tabs.canDetachTabAt` → `store.canDetachTab`),而一张按格算的表最可能
+ * 的错法就是三格里漏一格。
+ *
+ * **反证**:把这三项的 `disabled` 换回 `!target` → 「中央区唯一一格常驻」那三条
+ * 断言全红(它们此刻有 `target`,只是挪不走);再把 onClick 里那句
+ * `if (!detachable || !target) return` 换回 `if (!target) return` →
+ * 「按不动就是真按不动」那一条红(强行派发的那一下会把它搬到架子上)。
+ */
+describe('挪得走吗:三项与拖拽同一条判据(U3-b)', () => {
+  const HOME = 'parity-home'
+
+  /** 常驻那一种(中央区的家)。判据问的是**这一格自述**,不是种类名。 */
+  function seedResidentKind(): void {
+    registerContentKind({
+      id: HOME,
+      singleton: false,
+      title: (ref) => ({ text: ref.key }),
+      icon: () => 'File',
+      render: () => null,
+      resident: { region: CENTER_REGION, seed: () => 'main' },
+    })
+  }
+
+  function home(key: string): ContentRef {
+    return { kind: HOME, key }
+  }
+
+  /** 被守的那三项。名字取自字典(与檐上、与 `gate:a11y` 那一屏说的是同一个词)。 */
+  const GUARDED: readonly { name: string; re: RegExp }[] = [
+    { name: '撕成浮窗', re: /撕成浮窗|Tear off/ },
+    { name: '移到架子 ▸', re: /^(移到架子|Move to shelf)$/ },
+    { name: '关闭', re: /^(关闭|Close)$/ },
+  ]
+
+  /** 这三项此刻按不按得动。走的是原生 `disabled`(`ui/Menu` 的既有禁灰形)。 */
+  function guardedDisabled(): Record<string, boolean> {
+    const out: Record<string, boolean> = {}
+    for (const row of GUARDED) {
+      const el = menuItem(row.re) as HTMLButtonElement
+      out[row.name] = el.disabled
+    }
+    return out
+  }
+
+  /** 一片叶开一张表(用例里没有真的标签条,走那个唯一的产地)。 */
+  function openOn(region: string, tabs: ContentRef[]): PaneLeafNode {
+    const leaf = makeLeaf('leaf-guard', tabs, 0)
+    useWorkbenchStore.setState({
+      regions: { [region]: leaf },
+      hidden: [],
+      focusLeafId: leaf.id,
+      dragging: false,
+    })
+    render(<LeafActions leaf={leaf} />)
+    openLeafMenu(leaf.id)
+    return leaf
+  }
+
+  beforeEach(() => {
+    seedResidentKind()
+  })
+
+  it('中央区唯一一格常驻内容:三项全禁灰(还在表里,不是消失)', () => {
+    openOn(CENTER_REGION, [home('main')])
+    expect(guardedDisabled()).toEqual({ '撕成浮窗': true, '移到架子 ▸': true, '关闭': true })
+  })
+
+  it('中央区两格常驻内容:三项全可用(还剩一格,搬得走)', () => {
+    openOn(CENTER_REGION, [home('main'), home('other')])
+    expect(guardedDisabled()).toEqual({ '撕成浮窗': false, '移到架子 ▸': false, '关闭': false })
+  })
+
+  it('架子上唯一一格常驻内容:三项全可用 —— 那条守卫只对它自己的家成立', () => {
+    /*
+     * 与 ✕ 画不画那一格逐字同源(U3 的 `canDetachTabIn` 把 `region` 一起交过去):
+     * 少了区域这一格,一条被拖进架子的会话会在架子上被判成「最后一格常驻」,
+     * 那正是 09-08 报障「放进去之后关不掉」。
+     */
+    openOn(edgeRegion('right'), [home('main')])
+    expect(guardedDisabled()).toEqual({ '撕成浮窗': false, '移到架子 ▸': false, '关闭': false })
+  })
+
+  it('按不动就是真按不动:强行派发那一下也搬不走它', () => {
+    /*
+     * jsdom 里 `HTMLElement.click()` 对 `disabled` 的钮照样把事件送上去(浏览器不会),
+     * 所以 onClick 里那句 `if (!detachable || !target) return` 不是装饰 —— 它是
+     * 「禁灰」在运行时的那一半。断言的是**树一个字没动**,不是「某只函数没被调」。
+     */
+    openOn(CENTER_REGION, [home('main')])
+    const before = snapshot()
+    act(() => {
+      fireEvent.click(menuItem(/撕成浮窗|Tear off/))
+    })
+    expect(snapshot()).toBe(before)
   })
 })

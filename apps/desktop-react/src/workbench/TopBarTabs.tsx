@@ -168,9 +168,11 @@ const LeafTabGroup = memo(function LeafTabGroup({
    * 上面那句 `onPointerDownCapture` 已经把焦点叶指过来了(右键的 pointerdown 一样派得出),
    * 所以尾格此刻画的正是这片叶的表。
    */
+  /* **表作用在被右键的那一格**(U3):`id` 一路交到表上,不再落在 `leaf.active`
+   * 上 —— U2 让右键不再切标签之后,那两者不再恒等(判词在 `LeafMenuAt.tabId`)。 */
   const onTabMenu = useCallback(
-    (_id: string, at: { x: number; y: number }) => {
-      openLeafMenuAt(leaf.id, at)
+    (id: string, at: { x: number; y: number }) => {
+      openLeafMenuAt(leaf.id, at, id)
     },
     [leaf.id],
   )

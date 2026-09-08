@@ -14,7 +14,7 @@ import { useT } from '../i18n'
 import { dropRef, pairIntoIndex, unpairTab } from './drop-commit'
 import { useLeafMenuAt, useLeafMenuStore } from './leaf-menu'
 import { useLeafOverflow } from './leaf-overflow'
-import { useCloseLeafTab } from './leaf-tabs'
+import { canDetachTabAt, useCloseLeafTab } from './leaf-tabs'
 import { contentKindOf, partsOfContent, refId } from './kinds'
 import {
   hiddenInRegion,
@@ -92,7 +92,8 @@ import s from './LeafActions.module.css'
  * ② UI 生命状态:**有够不着的标签**(看不见的 ∪ 隐藏的;⋯ 才画 —— 一颗永远按不动
  *    的钮是纯噪音)/ **两格并排**(表里多「拆开」一项)/ **多叶区域**(架子 / 浮窗:
  *    表里多「分屏 ▸」一节)/ **宿主自带几项**(架子 / 浮窗:表尾多它们那一节)/
- *    只有一格 tab(二合一两项禁灰而不消失)。
+ *    只有一格 tab(二合一两项禁灰而不消失)/ **这一格挪不走**(中央区最后一格
+ *    常驻内容:撕成浮窗 / 移到架子 ▸ / 关闭 三项禁灰而不消失,U3-b)。
  * ③ UI 交互状态:那颗 ⋯ 随 `ui/IconButton`(rest/hover/focus/active/disabled 全套);
  *    菜单项随 `ui/Menu`,子菜单随 `ui/Menu` 的 `Submenu`。
  */
@@ -139,7 +140,48 @@ export function LeafActions({ leaf, hostMenuRows }: { leaf: PaneLeafNode; hostMe
    */
   const menuAt = useLeafMenuAt(leaf.id)
   const closeMenu = useLeafMenuStore((st) => st.closeLeafMenu)
-  const active = leaf.tabs[leaf.active] ?? null
+  /**
+   * **这张表说的是哪一格**(U3,2026-09-08)。
+   *
+   * 被右键的那一格(`menuAt.tabId`)优先,指不着时才落回这片叶的活动格。两个
+   * 「指不着」都是正当的:右键檐上的空白处说的是「这片叶」,而一格刚被别处关掉
+   * 的标签当然找不回下标 —— 两种都退回活动格,那正是 U2 之前的行为。
+   *
+   * 它为什么非有不可:U2 按用户裁定让**右键不再切标签**,于是「被右键的」与
+   * 「活动的」从此可以是两格 —— 而这张表从 W6-c 起一直写死 `leaf.active`,
+   * 结果是右键一格非活动标签,关掉的是别人、并进去的是别人的右邻。
+   * Chrome / VS Code 的表都作用在被右键的那一格。
+   */
+  const at = useMemo(() => {
+    const named = menuAt?.tabId
+      ? leaf.tabs.findIndex((ref) => refId(ref) === menuAt.tabId)
+      : -1
+    return named >= 0 ? named : leaf.active
+  }, [menuAt?.tabId, leaf.tabs, leaf.active])
+  const target = leaf.tabs[at] ?? null
+  /**
+   * **这一格挪得走吗**(U3-b,2026-09-08)。
+   *
+   * 「中央区至少留一格常驻内容」那条守卫在 U3 收成了一只 `store.canDetachTab`,
+   * 拖拽(`useTabDrag.residentRefusal`)与关一格(`closeTab` / `hideTab` /
+   * `useCloseLeafTab`)都已经按它拒绝 —— 唯独这张右键表上「撕成浮窗」「移到架子 ▸」
+   * 两项调 `dropRef` 时不问它,于是菜单还能把中央区最后一格会话搬走:`pruneRegions`
+   * 当场铸一片空叶、叶 id 换人 = 整台聊天区重挂(而 `normalizeRegions` 不在这一拍跑)。
+   * **菜单与拖拽是同一个动作,那就得是同一条判据、同一只产地**——这一格因此不新写
+   * 判据,读的是 `leaf-tabs.canDetachTabAt`(✕ 画不画走的也是它)。
+   *
+   * 禁**灰**,不是点下去再拒绝:禁令区那条「一颗按不动的钮与『按了没反应』在屏幕上
+   * 是同一件事」说的是**没有提示的空动作**,而 `ui/Menu` 的 `disabled` 形本身就是
+   * 那句提示(原生 `disabled` + 灰底,读屏念得出来)。**不加 Tooltip** —— 菜单项上
+   * 挂浮层是这张表里的第一份,不是这一批该开的口。播报那条路留在键盘那一侧
+   * (`useCloseLeafTab` 的 `workbench.tabNotClosable`):那里没有屏幕上的灰可看。
+   *
+   * 读成一格**选择器**而不是 `getState()`:表开着的时候树可能变(别处开了第二条
+   * 会话),那三项要当场解禁。选出来的是**布尔**,整张 `regions` 不进依赖。
+   */
+  const detachable = useWorkbenchStore(
+    (st) => target !== null && canDetachTabAt(st.regions, leaf.id, at),
+  )
   /*
    * **单叶政策**(W6-a,设计 §2.1 / §9):中央区不画「分屏 ▸」——
    * 那里一条标签条,一个标签最多两格,而那件事由「二合一 / 拆开」三项说。
@@ -158,12 +200,12 @@ export function LeafActions({ leaf, hostMenuRows }: { leaf: PaneLeafNode; hostMe
    * 判据一个种类名都不点:「这一格是不是已经两格了」问的是**种类自述**
    * (`partsOfContent`),不是 `active.kind === 'pair'`。
    */
-  const isPair = active !== null && partsOfContent(active) !== null
-  const canPairLeft = !isPair && leaf.active > 0 && partsOfContent(leaf.tabs[leaf.active - 1]) === null
+  const isPair = target !== null && partsOfContent(target) !== null
+  const canPairLeft = !isPair && at > 0 && partsOfContent(leaf.tabs[at - 1]) === null
   const canPairRight
     = !isPair
-      && leaf.active < leaf.tabs.length - 1
-      && partsOfContent(leaf.tabs[leaf.active + 1]) === null
+      && at < leaf.tabs.length - 1
+      && partsOfContent(leaf.tabs[at + 1]) === null
 
   return (
     <div className={s.actions} data-testid="leaf-actions" data-pane-actions={leaf.id}>
@@ -257,17 +299,19 @@ export function LeafActions({ leaf, hostMenuRows }: { leaf: PaneLeafNode; hostMe
          */
         <Menu x={menuAt.x} y={menuAt.y} onClose={closeMenu} label={t('workbench.tabActions')}>
           {/*
-            **二合一 / 拆开**(W6-a,设计 §7)。三项作用在**这一格活动 tab** 上,
+            **二合一 / 拆开**(W6-a,设计 §7)。三项作用在**这张表的目标格**上
+            (U3:被右键的那一格,指不着才是活动格 —— 判词在上面 `at` 那一格),
             调的是拖拽落定同一只动作。播报一句(与换序那一句同一条纪律:
             播报是**落定**的一部分)。
           */}
           <MenuItem
             disabled={!canPairRight}
             onClick={() => {
-              if (!canPairRight || !active) return
+              if (!canPairRight || !target) return
               /* **同一只落定动作**(W6-b):拖拽落定 /「放到标签上」松手 / 这一项走的都是它,
-               * 播报那一句也在它里面 —— 三处各写一遍,迟早说岔。 */
-              pairIntoIndex(leaf.tabs[leaf.active + 1], leaf.id, leaf.active, 'right')
+               * 播报那一句也在它里面 —— 三处各写一遍,迟早说岔。
+               * 「右边」以**目标格**为准(U3):被右键的那一格的右邻,不是活动格的。 */
+              pairIntoIndex(leaf.tabs[at + 1], leaf.id, at, 'right')
               closeMenu()
             }}
           >
@@ -279,8 +323,8 @@ export function LeafActions({ leaf, hostMenuRows }: { leaf: PaneLeafNode; hostMe
           <MenuItem
             disabled={!canPairLeft}
             onClick={() => {
-              if (!canPairLeft || !active) return
-              pairIntoIndex(leaf.tabs[leaf.active - 1], leaf.id, leaf.active, 'left')
+              if (!canPairLeft || !target) return
+              pairIntoIndex(leaf.tabs[at - 1], leaf.id, at, 'left')
               closeMenu()
             }}
           >
@@ -300,7 +344,7 @@ export function LeafActions({ leaf, hostMenuRows }: { leaf: PaneLeafNode; hostMe
               onClick={() => {
                 /* **同一只拆开动作**(W6-c):格缝中点那颗把手走的也是它,播报那一句
                  * 在它里面 —— 修前这里自己念一句,而那颗把手一声不吭。 */
-                unpairTab(leaf.id, leaf.active)
+                unpairTab(leaf.id, at)
                 closeMenu()
               }}
             >
@@ -312,17 +356,20 @@ export function LeafActions({ leaf, hostMenuRows }: { leaf: PaneLeafNode; hostMe
           )}
 
           {/*
-            **撕成浮窗 / 移到架子 ▸**(W3 裁定 9)。两组都作用在**这一格活动 tab**
+            **撕成浮窗 / 移到架子 ▸**(W3 裁定 9)。两组都作用在**这张表的目标格**
             上,调的是拖拽落定那同一只 `dropRef` —— 所以「移到右侧栏」在菜单里与
             拖过去结果逐字相同,包括架子展开、位置记忆与落定后的焦点跟随。
-            没有活动 tab(空叶,屏幕上停不到一帧)时整组禁灰而不消失。
+            没有活动 tab(空叶,屏幕上停不到一帧)、**或者这一格挪不走**(中央区
+            最后一格常驻内容,U3-b 的 `detachable`)时整组禁灰而不消失 ——
+            「此刻不行」是禁灰,与「这个区域里不存在这件事」(分屏 / 拆开那两处
+            的不画)是两句不同的话。
           */}
           <MenuSeparator />
           <MenuItem
-            disabled={!active}
+            disabled={!detachable}
             onClick={() => {
-              if (!active) return
-              dropRef(active, { kind: 'float' })
+              if (!detachable || !target) return
+              dropRef(target, { kind: 'float' })
               announce(t('drag.movedToFloat'))
               closeMenu()
             }}
@@ -336,13 +383,13 @@ export function LeafActions({ leaf, hostMenuRows }: { leaf: PaneLeafNode; hostMe
             四条边折成一格子菜单(W7-c):八行平铺是「菜单太多」的一半。
             折叠那件事本身是库件(`ui/Menu` 的 `Submenu`),这里只交出**表**。
           */}
-          <Submenu label={t('drag.menuMoveTo')} disabled={!active}>
+          <Submenu label={t('drag.menuMoveTo')} disabled={!detachable}>
             {EDGE_CHOICES.map((choice) => (
               <MenuItem
                 key={choice.side}
                 onClick={() => {
-                  if (!active) return
-                  dropRef(active, { kind: 'edge', side: choice.side })
+                  if (!detachable || !target) return
+                  dropRef(target, { kind: 'edge', side: choice.side })
                   announce(t('drag.movedToEdge', { side: t(choice.sideKey) }))
                   closeMenu()
                 }}
@@ -381,13 +428,17 @@ export function LeafActions({ leaf, hostMenuRows }: { leaf: PaneLeafNode; hostMe
             **关闭这一格**(W7-c 裁定 3 的第六项)。它走的是与 tab 上那颗 ✕、
             与 `⌘W` **同一只** `useCloseLeafTab` —— 那一口自己会先问种类
             (`beforeClose`,脏文件那一问)、自己会在关不掉时播报。
+            禁灰的判据与上面两项是**同一格**(U3-b):关不掉的那一格,屏幕上那颗 ✕
+            本来就不画(`ui/Tabs` 那句「一颗按不动的 ✕ 与『按了没反应』是同一件事」),
+            表里再摆一行按下去只播报一句「关不掉」的项,说的是同一句自相矛盾的话。
+            那句播报没有删 —— 它归键盘那条路(⌘W / Delete),那里没有灰可看。
           */}
           <MenuSeparator />
           <MenuItem
-            disabled={!active}
+            disabled={!detachable}
             onClick={() => {
-              if (!active) return
-              void closeAt(leaf.active)
+              if (!detachable || !target) return
+              void closeAt(at)
               closeMenu()
             }}
           >

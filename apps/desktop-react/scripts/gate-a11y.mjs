@@ -219,10 +219,17 @@ const failures = []
  * `Shift+F10` 两个开口)。这只函数走右键那一条 —— 键盘那一条在 [7e] 里单测。
  *
  * 返回 false = 顶栏上没有标签(跳过那一屏,不是红)。
+ *
+ * `detachableOnly`(U3-b,2026-09-08):开在**挪得走的**那一格上。中央区最后一格
+ * 常驻内容(会话)身上,「撕成浮窗 / 移到架子 ▸ / 关闭」三项按 `canDetachTab`
+ * 禁灰 —— 一格禁灰的 `Submenu` 是开不出子表的,而下面那一步要的正是「真把一格
+ * 搬到架子上」。「挪得走」这一格读的是**它画不画得出 ✕**(`data-tab-close`),
+ * 与 [8f] 挑靶子那一句逐字同一条:两处都不新写判据。
  */
-async function openTabMenuByContext(page) {
-  const ok = await page.evaluate(() => {
-    const tab = document.querySelector('[data-topbar-leaf] [data-tab-id]')
+async function openTabMenuByContext(page, { detachableOnly = false } = {}) {
+  const ok = await page.evaluate((only) => {
+    const tabs = Array.from(document.querySelectorAll('[data-topbar-leaf] [data-tab-id]'))
+    const tab = only ? tabs.find((el) => el.querySelector('[data-tab-close]')) : tabs[0]
     if (!(tab instanceof HTMLElement)) return false
     const box = tab.getBoundingClientRect()
     tab.dispatchEvent(
@@ -234,7 +241,7 @@ async function openTabMenuByContext(page) {
       }),
     )
     return true
-  })
+  }, detachableOnly)
   if (ok) await delay(400)
   return ok
 }
@@ -1160,6 +1167,15 @@ async function main() {
                 texts: items.map((x) => (x.textContent ?? '').trim()),
                 named: items.every((x) => (x.textContent ?? '').trim().length > 0),
                 zeroes: items.filter((x) => x instanceof HTMLElement && x.tabIndex === 0).length,
+                /* U3-b:每一项按不按得动(`ui/Menu` 走的是原生 `disabled`)。 */
+                off: items
+                  .filter((x) => x instanceof HTMLButtonElement && x.disabled)
+                  .map((x) => (x.textContent ?? '').trim()),
+                /* 这张表开在哪一格上、那一格挪不挪得走 —— 判据是**它画不画得出 ✕**
+                 * (与 [8f] 挑靶子那一句逐字同一条)。下面那条断言的前提就是它。 */
+                lastResident: !document
+                  .querySelector('[data-topbar-leaf] [data-tab-id]')
+                  ?.querySelector('[data-tab-close]'),
               }
             })
             assert(menu.open, '右键一格标签开得出动作表')
@@ -1204,8 +1220,143 @@ async function main() {
               menu.zeroes === 1,
               `整组只占一个 Tab 位(实测 ${menu.zeroes} 项 tabIndex=0)`,
             )
+            /*
+             * ── **挪不走的那一格:三项禁灰,不是点下去再拒绝**(U3-b)───────────
+             * 这张表此刻开在顶栏第一格上,而那一格是中央区那条常驻会话 —— 这个区域
+             * 里只剩它一条,于是「撕成浮窗 / 移到架子 ▸ / 关闭」按 `canDetachTab`
+             * 全部禁灰(**菜单与拖拽同一条判据、同一只产地**;拖那条路的拒绝在
+             * `gate:drag` 里)。修前这三项只问 `!target`,于是菜单能把最后一格会话
+             * 搬走,中央区当场空掉(`pruneRegions` 铸一片空叶、叶 id 换人 = 整台
+             * 聊天区重挂)。**项还在表里**——上面「恰好 5 项」那一条就是它的另一半:
+             * 禁灰说的是「此刻不行」,与「这里不存在这件事」(分屏 / 拆开的不画)
+             * 是两句不同的话。
+             *
+             * 前提写成读数而不是假设:第一格万一画得出 ✕(将来夹具里多一条会话),
+             * 这一站自己跳过,而不是红在一句不成立的前提上。
+             *
+             * 反证:把 `LeafActions` 那三项的 `disabled` 换回 `!target` → 当场红
+             * (实测三项一条不灰)。
+             */
+            if (!menu.lastResident) {
+              console.log(`  · 跳过禁灰那一站:顶栏第一格挪得走(它画得出 ✕)`)
+            } else {
+              const GUARDED = [
+                /撕成浮窗|Tear off/,
+                /^(移到架子|Move to shelf)$/,
+                /^(关闭|Close)$/,
+              ]
+              const notOff = GUARDED.filter((re) => !menu.off.some((text) => re.test(text)))
+              assert(
+                notOff.length === 0,
+                '中央区最后一格常驻内容:搬走类的三项全禁灰'
+                  + `(灰的:${menu.off.join(' / ') || '—'};没灰的:${notOff.join(' / ') || '—'})`,
+              )
+            }
             await settle(page, '标签动作表')
             await scanAxe(page, '标签动作表', '[role="menu"]')
+
+            /*
+             * **[8f] 排在「移到架子 ▸」那一步之前**:那一步会把一格标签搬到架子上,
+             * 顶栏于是只剩一格 —— 而这一站要的正是「**非活动**的那一格」。站完把表
+             * 重新开一次,后面几步的前提(表开着)一个字不变。
+             */
+            await page.keyboard.press('Escape')
+            await delay(250)
+            /*
+             * ── [8f] **右键一格非活动标签:表作用在被右键的那一格**(U3)──────
+             *
+             * U2 按用户裁定让右键**不再切标签**之后,「被右键的」与「活动的」可以是
+             * 两格 —— 而这张表从 W6-c 起一直写死 `leaf.active`:右键一格非活动标签,
+             * 点「关闭」关掉的是**别人**。Chrome / VS Code 的表都作用在被右键的那一格,
+             * 所以这是把 U2 顺手带走的行为接回来,不是一条新裁定。
+             *
+             * 上面那一屏([8c+8e])量的是**活动格**上两个开口逐字相同,它一个字没改;
+             * 这一站补的是**非活动格**那一形。两条一起才说得完整。
+             *
+             * 反证:把 `LeafActions` 里那句 `const at = …menuAt?.tabId…` 换回
+             * `const at = leaf.active` → 「关掉的是被右键的那一格」当场红。
+             */
+            console.log('\n[8f/11] 右键非活动标签:表作用在被右键的那一格')
+            const readStrip = () =>
+              page.evaluate(() => {
+                const tabs = Array.from(document.querySelectorAll('[data-topbar-leaf] [data-tab-id]'))
+                return {
+                  ids: tabs.map((el) => el.getAttribute('data-tab-id')),
+                  active:
+                    tabs
+                      .find((el) => el.getAttribute('aria-selected') === 'true')
+                      ?.getAttribute('data-tab-id') ?? null,
+                  /* 只挑**画得出 ✕** 的那些当靶子:关不掉的那一格(中央区最后一格
+                   * 常驻内容)走的是另一条路(播报「关不掉」),不是这一站的对象。 */
+                  closable: tabs
+                    .filter((el) => el.querySelector('[data-tab-close]'))
+                    .map((el) => el.getAttribute('data-tab-id')),
+                }
+              })
+            const beforeStrip = await readStrip()
+            const victim = beforeStrip.closable.find((id) => id !== beforeStrip.active) ?? null
+            if (!victim) {
+              console.log(
+                `  · 跳过:顶栏上没有「非活动且关得掉」的第二格(实测 ${beforeStrip.ids.join(' / ') || '—'})`,
+              )
+            } else {
+              await page.evaluate((id) => {
+                const el = document.querySelector(`[data-topbar-leaf] [data-tab-id="${id}"]`)
+                if (!(el instanceof HTMLElement)) return
+                const box = el.getBoundingClientRect()
+                el.dispatchEvent(
+                  new MouseEvent('contextmenu', {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: Math.round(box.left + box.width / 2),
+                    clientY: Math.round(box.top + box.height / 2),
+                  }),
+                )
+              }, victim)
+              await delay(400)
+              const clicked = await page.evaluate(() => {
+                const hit = Array.from(
+                  document.querySelectorAll('[role="menu"] [role="menuitem"]'),
+                ).find((el) => /^(关闭|Close)$/.test((el.textContent ?? '').trim()))
+                if (hit instanceof HTMLElement && hit.getAttribute('aria-disabled') !== 'true') {
+                  hit.click()
+                  return true
+                }
+                return false
+              })
+              await delay(600)
+              const afterStrip = await readStrip()
+              assert(clicked, '右键非活动标签开出的表里「关闭」按得动')
+              assert(
+                !afterStrip.ids.includes(victim),
+                `关掉的是**被右键的那一格**(靶子 ${victim};剩 ${afterStrip.ids.join(' / ') || '—'})`,
+              )
+              assert(
+                afterStrip.active === beforeStrip.active,
+                `活动格一个字没动(前 ${beforeStrip.active} / 后 ${afterStrip.active})`,
+              )
+            }
+            /*
+             * **把这一态还回去**(与 [7d] 那句「收尾:拆回去,别把这一态留给下一屏」
+             * 同一条纪律):上面那一站真的关掉了一格,而下面「移到架子 ▸」那一步还要
+             * 再搬走一格 —— 不还,顶栏会空掉,`Shift+F10` 那一条就没有对象可量了。
+             * 还的方式是用户自己那条路:打开方式此刻是「主区域」([8b] 设的),
+             * 点一下那行文件它就回到顶栏。
+             *
+             * **重开时开在挪得走的那一格上**(U3-b):顶栏第一格是中央区那条常驻会话,
+             * 而它此刻是这个区域里的最后一条 —— 三项搬走类的动作在它身上按
+             * `canDetachTab` 禁灰(菜单与拖拽同一条判据),子表因此开不出来。
+             * 这不是把断言放水:下面那一步量的是「四条边全在、项名带宾语、落定要
+             * 播报」,那些话只在**真搬得动**的那一格上说得成立;开在搬不走的那一格
+             * 上,量到的其实是「禁灰生效了」——那件事归 [7d]/单测,不归这一步。
+             * 上一行那句「先把文件那一格点回来」正是「先补一格再搬」的现成夹具。
+             */
+            if (fileRow) {
+              await clickSelector(page, fileRow)
+              await delay(600)
+            }
+            const reopened = await openTabMenuByContext(page, { detachableOnly: true })
+            if (!reopened) console.log('  · 表没能重新开出来 —— 下面几步会自己跳过')
 
             /*
              * **「移到架子 ▸」是一格子菜单**(W7-c:四行平铺是「菜单太多」的一半)。
@@ -1308,6 +1459,7 @@ async function main() {
             )
             await page.keyboard.press('Escape')
             await delay(250)
+
           }
         }
       }
