@@ -72,6 +72,23 @@ export const SHELF_RAIL = 12
  * 它盖住标签条的右半截,`gate:drag` 场景①③当场红(指针按在「最右那格标签」上,
  * 落到的是那扇窗)。四条边的厚度从**顶栏之下**起算(判词见 `thicknessFromPointer`
  * 那句「顶架子的外缘不是 0」),所以这一格与它们相加,不是相减。
+ *
+ * ── **它同时是浮窗顶边的硬地板**(09-08 修单,用户真机报障)────────────────
+ * 报障原话:「浮窗顶着上栏,被窗口的拖拽区挡住无法拖动,关掉之后 sessions 上还
+ * 显示没关」。前半句的真因不在浮窗,在**顶栏是 Electron 的原生窗口拖拽区**
+ * (`TopBar.module.css` 的 `-webkit-app-region: drag`):原生层在网页命中测试之前
+ * 就把这条带里的指针收走,它**不看 z-index**,也**不接受别的 DOM 分支上的
+ * `no-drag`**(07-21 实测立的规:no-drag 只对同一分支的子孙生效)。所以浮窗的
+ * 标题栏一旦压进这 44px,它就**永远点不到** —— 用户只剩「关掉」这一条路。
+ *
+ * 于是这不是一条审美界,是一条**能不能操作**的界:凡是会产出浮窗顶边的算式
+ * (`clampFloatRect` 手势与落定 / `fitFloatRect` 视口重钳与开机回放 /
+ * `resizeFrom` 北把手),纵向下界一律是这一格,没有第二种说法、也没有第二个 44。
+ *
+ * **被推翻的旧判词**(改写成事实,不删):`clampFloatRect` 从前写着「纵向下界是 0
+ * 而不是『露出 40px』—— 标题栏被推出屏顶就再也拖不回来了」。那句话的**理由**今天
+ * 依旧成立(拖不回来的东西不许存在),它的**读数**错了 —— 屏顶那 44px 与屏幕外
+ * 一样抓不住,所以下界从 0 抬到这里。
  */
 export const TOP_CHROME = 44
 
@@ -636,12 +653,16 @@ export function resolveOpen(
  *
  *  | 尺 | 谁在用 | 位置口径 |
  *  | --- | --- | --- |
- *  | `clampFloatRect` | **手势与落定**:拖移 / 缩放(`moveFloat`/`resizeFloat`/`FloatWindow` 的逐帧预览)、开窗(`defaultFloatRect`)、按记忆还原(`openFromMemory`/`floatRectForGrab`) | **旧口径一字不动**:允许出界,只保证至少 FLOAT_KEEP=40 那么一截留在视口里(纵向下界 0) |
- *  | `fitFloatRect`   | **重钳**:视口变了 / 档案是别的尺寸的窗存下的(`reclampAll` → store 的 `reclampFloats` 与 persist 的 `merge`) | **整扇拉回视口内**,两端各留 FLOAT_MARGIN;塞不下才退回上面那条 KEEP |
+ *  | `clampFloatRect` | **手势与落定**:拖移 / 缩放(`moveFloat`/`resizeFloat`/`FloatWindow` 的逐帧预览)、开窗(`defaultFloatRect`)、按记忆还原(`openFromMemory`/`floatRectForGrab`) | 横向口径一字不动:允许出界,只保证至少 FLOAT_KEEP=40 那么一截留在视口里。**纵向下界是 TOP_CHROME**(09-08 修单,从 0 抬上来 —— 判词在那格常量上) |
+ *  | `fitFloatRect`   | **重钳**:视口变了 / 档案是别的尺寸的窗存下的(`reclampAll` → store 的 `reclampFloats` 与 persist 的 `merge`) | **整扇拉回视口内**,横向两端各留 FLOAT_MARGIN、**纵向上端留 TOP_CHROME**;塞不下才退回上面那条 KEEP |
  *
  * 两把尺**共用身量那一格**(`clampFloatSize`):`w ∈ [FLOAT_MIN_W, vp.w - 2*MARGIN]`,
- * 高同理 —— 这是本批唯一加在手势那条路上的新约束(从前 w 只有下界,于是 1400 宽的窗里
- * 拉出来的 1300 宽浮窗换到 1100 的窗里怎么钳都出界)。
+ * `h ∈ [FLOAT_MIN_H, vp.h - TOP_CHROME - MARGIN]` —— 上界是 09-04 §4 加的新约束
+ * (从前 w 只有下界,于是 1400 宽的窗里拉出来的 1300 宽浮窗换到 1100 的窗里怎么钳
+ * 都出界);纵向那一格 09-08 从 `2*MARGIN` 改成「顶栏 + 一道气口」,理由是**竖轴
+ * 可用的地本来就是 `[TOP_CHROME, vp.h - MARGIN]`**:不同改的话,一扇高到
+ * `vp.h - 2*MARGIN` 的窗顶边被抬到 44 之后底边必然探出屏幕,`fitFloatRect` 的
+ * 「整扇拉回视口内」当场变成一句空话。
  *
  * **留账:拖拽是否也改认 MARGIN(即拖窗不再能推出屏幕边缘)待用户拍板。** 本批按
  * 「缺省保旧」只让重钳这条路认 MARGIN;要统一成一把尺的话,删掉 clampFloatRect 里
@@ -651,18 +672,25 @@ export function resolveOpen(
 /**
  * 身量钳制:两把尺共用的那一格。上界是 09-04 §4 新加的 —— 只有下界的话,
  * 从宽屏存下来的身量在窄窗里无论怎么摆都出界(报障现场:1100 宽的窗里躺着 w=879)。
+ *
+ * 竖轴的上界扣的是 **`TOP_CHROME + MARGIN`** 而不是两道气口:竖轴上端那条界不是
+ * 气口,是顶栏那条原生拖拽带(判词在 `TOP_CHROME` 上),窗子伸不进去。
  */
 function clampFloatSize(rect: FloatRect, viewport: Viewport): { w: number; h: number } {
   return {
     w: clamp(Math.round(rect.w), FLOAT_MIN_W, viewport.w - 2 * FLOAT_MARGIN),
-    h: clamp(Math.round(rect.h), FLOAT_MIN_H, viewport.h - 2 * FLOAT_MARGIN),
+    h: clamp(Math.round(rect.h), FLOAT_MIN_H, viewport.h - TOP_CHROME - FLOAT_MARGIN),
   }
 }
 
 /**
- * **手势与落定那把尺**(位置口径 09-04 之前一字不动):身量不小于最小档、不大于
- * 视口减两道气口,且至少 FLOAT_KEEP 那么一截留在视口里。
- * 纵向下界是 0 而不是「露出 40px」—— 标题栏被推出屏顶就再也拖不回来了。
+ * **手势与落定那把尺**:身量不小于最小档、不大于视口减气口,横向至少 FLOAT_KEEP
+ * 那么一截留在视口里。
+ *
+ * **纵向下界是 `TOP_CHROME`**(09-08 修单)。旧判词是「下界是 0 而不是『露出 40px』
+ * —— 标题栏被推出屏顶就再也拖不回来了」:那句话的理由今天照旧,读数被真机推翻 ——
+ * 屏顶那 44px 是 Electron 的原生窗口拖拽区,压进去的标题栏与推到屏幕外一样抓不住
+ * (全文在 `TOP_CHROME` 那格常量上)。
  */
 export function clampFloatRect(rect: FloatRect, viewport: Viewport): FloatRect {
   const { w, h } = clampFloatSize(rect, viewport)
@@ -670,7 +698,7 @@ export function clampFloatRect(rect: FloatRect, viewport: Viewport): FloatRect {
     w,
     h,
     x: clamp(Math.round(rect.x), FLOAT_KEEP - w, viewport.w - FLOAT_KEEP),
-    y: clamp(Math.round(rect.y), 0, viewport.h - FLOAT_KEEP),
+    y: clamp(Math.round(rect.y), TOP_CHROME, viewport.h - FLOAT_KEEP),
   }
 }
 
@@ -685,6 +713,12 @@ export function clampFloatRect(rect: FloatRect, viewport: Viewport): FloatRect {
  * `clampFloatRect` 那条 KEEP 老规矩** —— 「放不下」= 视口比 `FLOAT_MIN_W + 2*MARGIN`
  * 还窄,那是最小档窗子都塞不进去的视口,「整扇留在里面」根本无解,只能保「还看得见、
  * 还抓得住」。
+ *
+ * **两条轴的下界不一样**(09-08 修单):横向是气口 `FLOAT_MARGIN`,纵向是顶栏那条
+ * 原生拖拽带 `TOP_CHROME`。**这一条同时就是开机回放那一趟的清洗**:老档案里 y=0
+ * 的浮窗从 persist 的 `merge` → `reclampAll` → 这里过一遍就被抬回 44,不另开一条
+ * 清洗路(judgement 见 `reclampFloatMap`:活位置永远是「记忆在此刻这扇窗里的样子」,
+ * 所以界一改,存量数据下一次开机就自动合法)。
  */
 export function fitFloatRect(rect: FloatRect, viewport: Viewport): FloatRect {
   const { w, h } = clampFloatSize(rect, viewport)
@@ -693,14 +727,24 @@ export function fitFloatRect(rect: FloatRect, viewport: Viewport): FloatRect {
     w,
     h,
     x: fitFloatAxis(Math.round(rect.x), w, viewport.w, keep.x),
-    y: fitFloatAxis(Math.round(rect.y), h, viewport.h, keep.y),
+    y: fitFloatAxis(Math.round(rect.y), h, viewport.h, keep.y, TOP_CHROME),
   }
 }
 
-/** 一条轴:放得下认 MARGIN(整扇在内),放不下就交回 KEEP 那把尺已经算好的值。 */
-function fitFloatAxis(pos: number, size: number, extent: number, fallback: number): number {
+/**
+ * 一条轴:放得下认下界(整扇在内),放不下就交回 KEEP 那把尺已经算好的值。
+ * `min` 缺省是气口;纵向传 `TOP_CHROME`——「放得下」那句问的也是它,不然一扇高窗
+ * 会被判成放得下、再被 clamp 到 44 之后底边探出去。
+ */
+function fitFloatAxis(
+  pos: number,
+  size: number,
+  extent: number,
+  fallback: number,
+  min: number = FLOAT_MARGIN,
+): number {
   const inside = extent - FLOAT_MARGIN - size
-  return inside >= FLOAT_MARGIN ? clamp(pos, FLOAT_MARGIN, inside) : fallback
+  return inside >= min ? clamp(pos, min, inside) : fallback
 }
 
 /**
@@ -843,6 +887,11 @@ export function freshFloatRect(
  * 存量调用点,而它们要的都只是**多大**:`workbench/drop-commit` 的
  * 「这扇窗还没有矩形时先按默认身量落」与 `workbench/useContentDrag` 的
  * 「从指针位置反推撕出来那扇窗的矩形」(位置由指针给,不由锚点给)。
+ *
+ * 它的参考系是**整个视口**(顶栏也在里面),所以它算出来的锚 y = 24 会落进顶栏那条
+ * 带 —— 收笔那一句 `clampFloatRect` 把它抬回 `TOP_CHROME`(09-08 修单)。「顶栏在哪」
+ * 全壳只有 `TOP_CHROME` 一个说法:`freshFloatRect` 那条路由 `centerRectOf` 切掉它,
+ * 这条兜底由那把尺兜住,两条路读的是同一格常量。
  */
 export function defaultFloatRect(viewport: Viewport, min?: FloatMinSize): FloatRect {
   return floatRectAt(viewport, { left: 0, top: 0, right: viewport.w, bottom: viewport.h }, 0, min)
@@ -953,6 +1002,16 @@ export type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 /**
  * 从一个把手拖出 (dx, dy) 之后的矩形。拖北/西两边时最小档卡住的是**身量**,
  * 坐标要跟着回推,否则窗子会一边缩到最小一边继续往外跑。
+ *
+ * ── 北把手那条顶边的地板(09-08 修单)──────────────────────────────────────
+ * 顶边这条线是原生拖拽区的硬边界(判词整段在 `TOP_CHROME`),所以它属于**每一处
+ * 产出顶边的算式**,不只是位移那一条。这里必须自己认一次而不是交给
+ * `clampFloatRect` 收:那把尺只钳坐标、不动身量,于是北把手往上拉过线时顶边停在
+ * 44 而 `h` 继续长 —— 屏幕上是「上边卡住了,下边自己往下滑」。这里按线收身量,
+ * **底边一像素不动**,才是拉不动就是拉不动。
+ *
+ * 横向没有对偶:左右两边允许出界(`clampFloatRect` 的 KEEP 口径),那儿没有一条
+ * 抢指针的原生带。
  */
 export function resizeFrom(rect: FloatRect, dir: ResizeDir, dx: number, dy: number): FloatRect {
   let { x, y, w, h } = rect
@@ -964,6 +1023,7 @@ export function resizeFrom(rect: FloatRect, dir: ResizeDir, dx: number, dy: numb
   }
   if (dir.includes('n')) {
     h = Math.max(FLOAT_MIN_H, rect.h - dy)
+    if (rect.y + rect.h - h < TOP_CHROME) h = Math.max(FLOAT_MIN_H, rect.y + rect.h - TOP_CHROME)
     y = rect.y + rect.h - h
   }
   return { x, y, w, h }
@@ -1344,6 +1404,10 @@ export function shouldTearOff(
 /**
  * 刚被撕下来的那扇窗落在哪:指针是**标题栏的中心**(横向居中、纵向落在标题栏一半高处),
  * 所以手指底下那一点仍然是「用户抓着的地方」。身量由调用方给(有记忆就用记忆)。
+ *
+ * 顶栏那条地板不在这里写第二遍:它就在下面那句 `clampFloatRect` 里(09-08 修单 ——
+ * 撕到顶栏带里松手,落位 y 被抬回 `TOP_CHROME`)。撕拽途中画的那圈轮廓走的是**同一只**
+ * 函数(`workbench/useContentDrag`),所以「看到的落点」与「落下的落点」逐像素相同。
  */
 export function floatRectForGrab(
   pointer: Point,

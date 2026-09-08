@@ -24,8 +24,14 @@ import { DEFAULT_SPACE_ID } from '../../workspace/types'
  * `components/__tests__/dock-lens-hook.test.tsx` 那一手)。
  */
 
-/** 报障那一份逐字:1400 宽的窗里摆好的 880 浮窗,搬进 1100 宽的窗里右缘在屏幕外。 */
-const OVERFLOW = { x: 260, y: 40, w: 879, h: 700 }
+/**
+ * 报障那一份逐字:1400 宽的窗里摆好的 880 浮窗,搬进 1100 宽的窗里右缘在屏幕外。
+ *
+ * y 由报障里的 40 改成 60(09-08 修单):这一族用例量的是**横轴**那条界,而 40 落在
+ * 顶栏那条原生拖拽带里、从此会被钳成 44 —— 拿一份纵向非法的夹具去做「一格没动」的
+ * 恒等断言,红的是别的事。纵向那条界自己的用例在 `transitions.test.ts`。
+ */
+const OVERFLOW = { x: 260, y: 60, w: 879, h: 700 }
 
 function setViewport(w: number, h: number): void {
   Object.defineProperty(window, 'innerWidth', { value: w, configurable: true, writable: true })

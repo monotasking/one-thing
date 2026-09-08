@@ -676,7 +676,7 @@ describe('浮窗', () => {
    * 09-04 §4 之后**这条口径一字未改**:拖拽走的是 `clampFloatRect` 那把尺,位置照旧
    * 允许出界、只保证露出 FLOAT_KEEP。重钳那把尺(fitFloatRect)另有一组用例在下面。
    */
-  it('拖移钳制:横向至少留 40px 在视口内,纵向不许推出屏顶', () => {
+  it('拖移钳制:横向至少留 40px 在视口内,纵向顶边停在顶栏之下', () => {
     const st = openAs(base, 'files', FLOAT, VP)
     const far = moveFloat(st, 'files', 9999, 9999, VP)
     expect(far.floats.files.x).toBe(VP.w - FLOAT_KEEP)
@@ -684,7 +684,12 @@ describe('浮窗', () => {
 
     const near = moveFloat(st, 'files', -9999, -9999, VP)
     expect(near.floats.files.x).toBe(FLOAT_KEEP - FLOAT_DEFAULT_W)
-    expect(near.floats.files.y).toBe(0)
+    /*
+     * **纵向下界 = TOP_CHROME**(09-08 修单;从前这里是 0)。顶栏是 Electron 的原生
+     * 窗口拖拽区,压进去的标题栏点不到 —— 判词全文在那格常量上。
+     * 反证:把 `clampFloatRect` 的 y 下界换回 0 → 这一条(与下面 fit 那两条)当场红。
+     */
+    expect(near.floats.files.y).toBe(TOP_CHROME)
   })
 
   it('拖移不改身量,也不动别的窗', () => {
@@ -736,34 +741,68 @@ describe('浮窗', () => {
     expect(resizeFloat(base, 'files', { x: 0, y: 0, w: 500, h: 400 }, VP)).toBe(base)
   })
 
-  it('视口比默认身量还小:新窗取视口减掉两道气口(位置口径未动,仍从 0 起算)', () => {
+  it('视口比默认身量还小:横向减两道气口、竖向减顶栏 + 一道,顶边落在顶栏之下', () => {
     const small: Viewport = { w: 500, h: 400 }
-    // 09-04 §4 只加了**身量上界**这一格:从前是 500×400(整个视口),现在留出两道气口。
-    // x/y 仍是 0 —— 拖拽那把尺的位置口径一字没改,居中算出来是 0 就是 0。
-    // W7-p 裁定 5:锚从「居中」换成「右上角内缩 24」,而这一档视口连一格身量都
-    // 塞不下,`clampFloatRect` 的 KEEP 口径把它按回 0 —— 位置口径仍旧一字没改。
+    /*
+     * 09-04 §4 加的是**身量上界**这一格:从前是 500×400(整个视口)。
+     * 09-08 修单改了竖轴的两个读数,横轴一个字没动:
+     *  · 高的上界从 `2*MARGIN` 换成 `TOP_CHROME + MARGIN` —— 竖轴可用的地是
+     *    `[TOP_CHROME, vp.h - MARGIN]`,顶上那 44 是原生拖拽带不是气口;
+     *  · y 从 `FLOAT_SPAWN_INSET`(24,这条兜底的参考系是整个视口,所以锚就落在顶栏
+     *    带里)被 `clampFloatRect` 抬到 `TOP_CHROME`。
+     * 反证:把 `clampFloatSize` 的 h 换回 `2*MARGIN` → 高读到 368;把 y 下界换回 0
+     * → y 读到 24(两条各红各的,所以这里逐格写死而不是写不等式)。
+     */
     expect(defaultFloatRect(small)).toEqual({
       x: 500 - FLOAT_SPAWN_INSET - (500 - 2 * FLOAT_MARGIN),
-      y: FLOAT_SPAWN_INSET,
+      y: TOP_CHROME,
       w: 500 - 2 * FLOAT_MARGIN,
-      h: 400 - 2 * FLOAT_MARGIN,
+      h: 400 - TOP_CHROME - FLOAT_MARGIN,
     })
   })
 
   it('clampFloatRect 是纯算术,两处(拖拽预览与落库)共用同一把尺', () => {
-    expect(clampFloatRect({ x: 10, y: 10, w: 900, h: 700 }, VP)).toEqual({
+    // 合法的矩形是恒等变换(y 取 60 而不是 10:10 在顶栏那条带里,下一条专管它)。
+    expect(clampFloatRect({ x: 10, y: 60, w: 900, h: 700 }, VP)).toEqual({
       x: 10,
-      y: 10,
+      y: 60,
       w: 900,
       h: 700,
     })
   })
 
-  it('身量上界是本批唯一加在手势那条路上的新约束:比视口还宽的窗子拉不出来', () => {
-    // 反证:把 clampFloatSize 里 w 那一句改回 Math.max(FLOAT_MIN_W, …) → 这条红。
+  it('顶边压不进顶栏那条原生拖拽带:手势那把尺把它抬回 TOP_CHROME', () => {
+    /*
+     * 09-08 报障:「浮窗顶着上栏,被窗口的拖拽区挡住无法拖动」。顶栏那 44px 是
+     * Electron 的原生拖拽区,它在网页命中测试之前收走指针、不看 z-index,所以
+     * 压进去的标题栏永远点不到 —— 这条界不是审美,是能不能操作。
+     * 反证:把 `clampFloatRect` 的 y 下界换回 0 → 这两条都读到 0。
+     */
+    expect(clampFloatRect({ x: 10, y: 10, w: 900, h: 700 }, VP).y).toBe(TOP_CHROME)
+    expect(clampFloatRect({ x: 10, y: -9999, w: 900, h: 700 }, VP).y).toBe(TOP_CHROME)
+  })
+
+  it('身量上界:比视口还宽的窗子拉不出来;竖轴扣的是顶栏 + 一道气口', () => {
+    // 反证:把 clampFloatSize 里 w 那一句改回 Math.max(FLOAT_MIN_W, …) → 第一条红;
+    // 把 h 那一句换回 `2 * FLOAT_MARGIN` → 第二条红(读到 968)。
     const rect = clampFloatRect({ x: 0, y: 0, w: 9999, h: 9999 }, VP)
     expect(rect.w).toBe(VP.w - 2 * FLOAT_MARGIN)
-    expect(rect.h).toBe(VP.h - 2 * FLOAT_MARGIN)
+    expect(rect.h).toBe(VP.h - TOP_CHROME - FLOAT_MARGIN)
+    // 这一格与位置那一格咬合:顶边落在 44、底边正好停在下面那道气口上。
+    expect(rect.y + rect.h).toBe(VP.h - FLOAT_MARGIN)
+  })
+
+  it('北把手把顶边拉过线:收身量、**底边一像素不动**(不是顶边卡住、下边自己滑)', () => {
+    const from = { x: 100, y: 200, w: 400, h: 300 }
+    const n = resizeFrom(from, 'n', 0, -9999)
+    expect(n.y).toBe(TOP_CHROME)
+    expect(n.y + n.h).toBe(from.y + from.h)
+    /*
+     * 反证:把 `resizeFrom` 里那句 `if (rect.y + rect.h - h < TOP_CHROME)` 挖掉 →
+     * `y` 读到 -9499(交给 `clampFloatRect` 收也只治 y:顶边停在 44 而 h 照长,
+     * 屏幕上就是「上边卡住了,下边自己往下滑」),第二条当场红。
+     */
+    expect(clampFloatRect(n, VP)).toEqual(n)
   })
 
   /* ── 视口重钳(09-04 §4;宿主那一半在 __tests__/viewport-reclamp.test.tsx)── */
@@ -782,7 +821,9 @@ describe('浮窗', () => {
 
     const near = fitFloatRect({ x: -9999, y: -9999, w: 600, h: 400 }, VP)
     expect(near.x).toBe(FLOAT_MARGIN)
-    expect(near.y).toBe(FLOAT_MARGIN)
+    // **两条轴的下界不一样**(09-08 修单):横向是气口,纵向是顶栏那条原生拖拽带。
+    // 反证:把 `fitFloatRect` 那句 `TOP_CHROME` 去掉(退回缺省 min)→ 读到 16。
+    expect(near.y).toBe(TOP_CHROME)
   })
 
   it('fitFloatRect:视口窄到塞不下最小档时退回 KEEP 那把尺,窗子还看得见、还抓得住', () => {
@@ -793,8 +834,9 @@ describe('浮窗', () => {
     expect(far.y).toBe(narrow.h - FLOAT_KEEP)
     const near = fitFloatRect({ x: -9999, y: -9999, w: 280, h: 200 }, narrow)
     expect(near.x).toBe(FLOAT_KEEP - 280)
-    // 纵向下界仍是 0:标题栏被推出屏顶就再也拖不回来了。
-    expect(near.y).toBe(0)
+    // 退回 KEEP 那把尺,而 KEEP 的纵向下界 09-08 起就是 TOP_CHROME —— 塞不下的
+    // 视口里「还抓得住」也得抓得住:压进顶栏那条原生拖拽带的标题栏一样点不到。
+    expect(near.y).toBe(TOP_CHROME)
   })
 
   it('宽窗里存下的浮窗落进 1100 视口:先钳身量再钳位置,右缘不出界', () => {
@@ -821,9 +863,33 @@ describe('浮窗', () => {
      */
     expect(next.memory.sessions).toEqual({ kind: 'float', rect: { x: 260, y: 40, w: 879, h: 700 } })
 
-    // 变窄再变宽:活矩形从**同一份记忆**重算,所以逐字回到原样(裁定 4 的正题)。
+    /*
+     * 变窄再变宽:活矩形从**同一份记忆**重算,所以逐字回到原样(裁定 4 的正题)。
+     * y 是唯一的例外,而它是 09-08 修单的正题:记忆里那份 40 落在顶栏那条原生拖拽带
+     * 里,两台视口下都被抬回 `TOP_CHROME` —— 「逐字回原样」说的是「不被上一次窄屏
+     * 改写」,不是「非法的读数也照发」。
+     */
     const back = reclampAll(next, { w: 1600, h: 900 })
-    expect(back.floats.sessions).toEqual({ x: 260, y: 40, w: 879, h: 700 })
+    expect(back.floats.sessions).toEqual({ x: 260, y: TOP_CHROME, w: 879, h: 700 })
+  })
+
+  it('**开机回放的清洗就是这一趟**:档案里 y=0 的老浮窗被抬回顶栏之下', () => {
+    /*
+     * 09-08 报障的存量数据那一半:界改之前存下来的矩形可以是 y=0(整扇顶在上栏上)。
+     * 清洗不另开一条路 —— persist 的 `merge` 本来就调 `reclampAll`,而 `reclampAll`
+     * 走 `fitFloatRect`,界一改存量下一次开机就自动合法(判词在 `fitFloatRect` 上)。
+     * 反证:把 `fitFloatRect` 的纵向下界换回 `FLOAT_MARGIN` → 读到 16;换回 0 → 读到 0。
+     */
+    const vp: Viewport = { w: 1600, h: 1000 }
+    const stale = { x: 200, y: 0, w: 640, h: 480 }
+    const st = {
+      ...base,
+      floats: { sessions: stale },
+      memory: { sessions: { kind: 'float' as const, rect: stale } },
+    }
+    expect(reclampAll(st, vp).floats.sessions.y).toBe(TOP_CHROME)
+    // 记忆照旧一个字不动(重钳只写活位置 —— 裁定 4)。
+    expect(reclampAll(st, vp).memory.sessions).toEqual({ kind: 'float', rect: stale })
   })
 
   it('账上每个空间那一格家具也钳(切回去不会露出同一个病)', () => {
@@ -1464,10 +1530,15 @@ describe('tab 从架子上撕下来的阈值', () => {
     expect(rect).toEqual({ x: 400, y: 280, w: 400, h: 300 })
   })
 
-  it('撕下来的矩形也过浮窗钳制(不许一半在屏外)', () => {
+  it('撕下来的矩形也过浮窗钳制(不许一半在屏外,顶边不许压进顶栏)', () => {
     const rect = floatRectForGrab({ x: 10, y: 10 }, { w: 400, h: 300 }, { w: 1000, h: 800 }, 40)
     expect(rect.x).toBeGreaterThanOrEqual(FLOAT_KEEP - rect.w)
-    expect(rect.y).toBeGreaterThanOrEqual(0)
+    /*
+     * 09-08 修单:撕到顶栏那条带里松手,落位 y 被抬回 `TOP_CHROME` —— 不然那扇窗的
+     * 标题栏落在原生拖拽区底下,一撕出来就再也拖不动(报障原话「浮窗顶着上栏」)。
+     * 反证:把 `clampFloatRect` 的 y 下界换回 0 → 读到 -10。
+     */
+    expect(rect.y).toBe(TOP_CHROME)
   })
 })
 
@@ -1656,8 +1727,10 @@ describe('位置记忆:落定即写', () => {
     let st = openAs(base, 'browser', FLOAT, VP)
     st = moveFloat(st, 'browser', 200, 150, VP)
     expect(st.memory.browser).toEqual({ kind: 'float', rect: st.floats.browser })
-    st = resizeFloat(st, 'browser', { x: 10, y: 20, w: 640, h: 480 }, VP)
-    expect(st.memory.browser).toEqual({ kind: 'float', rect: { x: 10, y: 20, w: 640, h: 480 } })
+    // y 取 60:20 在顶栏那条原生拖拽带里,落定那把尺会把它抬到 44(09-08 修单),
+    // 而这一条量的是「落定当场写进记忆」,不是那条界(那条界另有用例)。
+    st = resizeFloat(st, 'browser', { x: 10, y: 60, w: 640, h: 480 }, VP)
+    expect(st.memory.browser).toEqual({ kind: 'float', rect: { x: 10, y: 60, w: 640, h: 480 } })
   })
 
   it('记忆里的矩形是**钳制之后**的那一个,不是「本来想放但没放成」的数', () => {

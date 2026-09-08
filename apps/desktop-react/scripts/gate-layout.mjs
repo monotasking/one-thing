@@ -88,8 +88,15 @@ const FLOAT_DEFAULT_W = num('FLOAT_DEFAULT_W')
 const FLOAT_DEFAULT_H = num('FLOAT_DEFAULT_H')
 const FLOAT_SPAWN_INSET = num('FLOAT_SPAWN_INSET')
 const FLOAT_CASCADE_STEP = num('FLOAT_CASCADE_STEP')
-/** 顶栏那条带(`--topbar-h`)。中央区从它**之下**起算 —— 标签条就长在顶栏里。 */
+/**
+ * 顶栏那条带(`--topbar-h`)。中央区从它**之下**起算 —— 标签条就长在顶栏里。
+ * 09-08 起它同时是**浮窗顶边的地板**:那条带是 Electron 的原生窗口拖拽区,
+ * 压进去的标题栏点不到(判词全文在 `transitions.ts` 的那格常量上)。
+ * 两处同源的对账就在下面那道 `token('topbar-h') !== TOP_CHROME`。
+ */
 const TOP_CHROME = num('TOP_CHROME')
+/** 吸边热带:松手落在它里面 = 钉成架子。⑤c 要**避开**它才量得到「落位」。 */
+const SNAP_BAND = num('SNAP_BAND')
 /** 收起来的架子还占着的那条细梁。两侧同源由 `transitions.test.ts` 那组对账钉着。 */
 const SHELF_RAIL = num('SHELF_RAIL')
 if (token('topbar-h') !== TOP_CHROME || token('shelf-rail') !== SHELF_RAIL) {
@@ -409,8 +416,65 @@ async function launch(store, userDataDir) {
     page.evaluate(() => Boolean(document.querySelector('[data-testid^="dock-tile-"]'))),
   )
   await delay(900)
-  return { app, page }
+  // `cdp` 交出去:⑤c 的指针路要经它派(见 `dragBy` 上的判词)。
+  return { app, page, cdp }
 }
+
+/* ── 指针(CDP,一根手指都不碰用户的机器)──────────────────────────────────
+ *
+ * 与 `gate-drag.mjs` 同一条纪律、同一套三发事件:`Input.dispatchMouseEvent` 只进
+ * 这个窗口自己的输入管线,不动真光标、不抢前台焦点(09-01 判例)。
+ *
+ * **它量不到的那一半要说出口**:CDP 直接派进渲染进程,绕过了原生命中测试,所以
+ * 这道门**证不了**「原生拖拽区把指针收走了」——那是 CSS 与 Electron 的事实。
+ * 它证的是**几何**:顶边落在那条带之外,于是原生层根本碰不到那条标题栏。
+ */
+const mouse = (cdp, type, at, extra = {}) =>
+  cdp.send('Input.dispatchMouseEvent', {
+    type,
+    x: Math.round(at.x),
+    y: Math.round(at.y),
+    button: 'left',
+    buttons: 1,
+    ...extra,
+  })
+
+/** 从 `from` 拖到 `to`(逐步真到达 blink),松手后等落定跑完。 */
+async function dragTo(cdp, from, to, steps = 12) {
+  await mouse(cdp, 'mousePressed', from, { clickCount: 1 })
+  for (let i = 1; i <= steps; i += 1) {
+    await mouse(cdp, 'mouseMoved', {
+      x: from.x + ((to.x - from.x) * i) / steps,
+      y: from.y + ((to.y - from.y) * i) / steps,
+    })
+    await delay(12)
+  }
+  await mouse(cdp, 'mouseReleased', to, { clickCount: 1 })
+  await delay(320)
+}
+
+/**
+ * 一扇浮窗的标题栏上**按得下去的那一点**。
+ *
+ * 判据与产品同一条(`FloatWindow.isDragBlank`:按在 tab 或钮上是别的意思),而
+ * 「谁在最上面」交给 `elementFromPoint` 回答 —— 层叠开着好几扇窗时,拿矩形自己
+ * 算会挑到被别人盖住的一点,按下去拖的是另一扇窗。答不出就是 null(调用方报红)。
+ */
+const floatDragBlank = (page, id) =>
+  page.evaluate((fid) => {
+    const body = document.querySelector(`[data-float-body="${fid}"]`)
+    const chrome = body?.querySelector('[role="tablist"]')?.parentElement?.parentElement
+    if (!(chrome instanceof HTMLElement)) return null
+    const box = chrome.getBoundingClientRect()
+    const y = Math.round(box.y + box.height / 2)
+    for (let x = Math.round(box.right - 8); x > box.left; x -= 4) {
+      const el = document.elementFromPoint(x, y)
+      if (!(el instanceof HTMLElement) || !chrome.contains(el)) continue
+      if (el.closest('button,[role="tab"]')) continue
+      return { x, y }
+    }
+    return null
+  }, id)
 
 async function shut(handle) {
   if (!handle) return
@@ -772,10 +836,10 @@ async function sceneBudget(store, udd) {
  * 把 `defaultFloatRect` 的 `opts` 拿掉(退回恒定居中)→ 「四扇两两不同」红。
  */
 async function sceneFloats(store, udd) {
-  scene('④⑤ 浮窗:变窄再变宽逐字恢复;连开四扇有锚有层叠(裁定 4·5 / A5·A6)')
+  scene('④⑤ 浮窗:变窄再变宽逐字恢复;连开四扇有锚有层叠;顶边压不进顶栏(裁定 4·5 / A5·A6 / 09-08 修单)')
   const handle = await launch(store, udd)
   try {
-    const { page, app } = handle
+    const { page, app, cdp } = handle
     await setSize(app, page, SIZES[0].w, SIZES[0].h)
     await pickFromTileMenu(page, 'providers', /^Float$/)
     const wide = await read(page)
@@ -886,6 +950,106 @@ async function sceneFloats(store, udd) {
         && inViewport(sessionsWin.rect, withMin.vp)
         && !intersects(sessionsWin.rect, withMin.topBar),
       `topBar=${JSON.stringify(withMin.topBar)}`,
+    )
+
+    /*
+     * ── ⑤c **往上拖不过顶栏那条带**(09-08 修单)────────────────────────────
+     *
+     * 用户报障原话:「浮窗顶着上栏,被窗口的拖拽区挡住无法拖动,关掉之后 sessions
+     * 上还显示没关」。前半句的真因是顶栏那 44px 是 **Electron 的原生窗口拖拽区**:
+     * 它在网页命中测试之前收走指针、不看 z-index、也不认别的 DOM 分支上的
+     * `no-drag`(07-21 判例)。标题栏一压进去,那扇窗就只剩「关掉」一条路。
+     *
+     * **松手点挑在 `SNAP_BAND` 之外**(带里 = 钉成架子,那是另一件事,量不到落位)。
+     * 这一档因此只落在 (24, 44] 这条缝里 —— 缝存在本身就是它量得到的原因。
+     *
+     * 反证:把 `clampFloatRect` 的纵向下界换回 0 → 顶边读到 ~10,这两条一起红。
+     */
+    const beforeUp = (await read(page)).floats.find((f) => f.id === 'sessions')
+    const grab = await floatDragBlank(page, 'sessions')
+    check('抓得到那扇窗的标题栏空白处', Boolean(grab), JSON.stringify(grab))
+    if (grab) {
+      await dragTo(cdp, grab, { x: grab.x, y: SNAP_BAND + 6 })
+      const up = await read(page)
+      const pushed = up.floats.find((f) => f.id === 'sessions')
+      check(
+        `一路往上拖过顶栏再松手:顶边停在 ${TOP_CHROME}(不是 ${beforeUp?.rect.y} 也不是 0)`,
+        Boolean(pushed) && pushed.rect.y >= TOP_CHROME,
+        `rect=${JSON.stringify(pushed?.rect)}`,
+      )
+      check(
+        '而且整条标题栏都在那条带之外(原生拖拽区碰不到它)',
+        Boolean(pushed) && !intersects(pushed.rect, up.topBar),
+        `topBar=${JSON.stringify(up.topBar)}`,
+      )
+      /*
+       * 「还接得到指针」这句话在这道门里只能量**几何**那一半:CDP 直接派进渲染
+       * 进程,原生拦截根本不在它的路上(判词写在 `dragTo` 上)。所以这一条量的是
+       * 「停稳之后的标题栏仍旧发得起一次拖拽」—— 它同时守住 ⑤c 的另一半:钳完之后
+       * 那条檐还在原处,没有被钳成一条抓不着的缝。
+       */
+      const again = await floatDragBlank(page, 'sessions')
+      check('停稳之后仍抓得到那条标题栏', Boolean(again), JSON.stringify(again))
+      if (again) {
+        const from = (await read(page)).floats.find((f) => f.id === 'sessions')
+        await dragTo(cdp, again, { x: again.x, y: again.y + 120 })
+        const moved = (await read(page)).floats.find((f) => f.id === 'sessions')
+        check(
+          '再拖一下:窗子真的跟着走了(标题栏没被钳死在带边上)',
+          Boolean(moved) && Math.abs(moved.rect.y - (from.rect.y + 120)) <= 2,
+          `${from?.rect.y} → ${moved?.rect.y}`,
+        )
+      }
+    }
+
+    /*
+     * ── ⑤d **档案里那份顶着上栏的老矩形,开机回放时被抬回带外** ──────────────
+     *
+     * 报障的另一半:界是今天才立的,**用户机器上已经存着**一份 y 落在带里的浮窗
+     * (那正是他关掉都关不利索的那扇)。清洗不另开一条路 —— persist 的 `merge`
+     * 本来就调 `reclampAll` → `fitFloatRect`,界一改存量下一次开机就自动合法。
+     * 所以这一档直接改档案再重载,量的是**开机那条路**,不是又一次手势。
+     *
+     * ── 为什么不是「从架子撕一块瓦到带里松手」──────────────────────────────
+     * 那一站在这台产品上**量不出东西**:①一块瓦撕成浮窗时,`placement.placeRef`
+     * 看见 `panelIdOf(ref)` 不是 null 就转给 `placeAs(id, {kind:'float'})`,落位来自
+     * 唯一那只产地 `freshFloatRect` —— 它的参考系是 `centerRectOf`,W7-p 起就已经
+     * 把顶栏切掉了(上面「新窗不压着顶栏上的标签条」那一条守的就是它),指针给的
+     * 矩形根本不参与;②顶栏那 44px 里也**落不下一格 `{kind:'float'}`**:每一点要么
+     * 是 `data-nodrop`(红绿灯 / 尾格),要么是中央区那条标签条,要么是最上面 12px
+     * 的新架子边带。两条合起来 = 那一站无论改不改代码都恒绿,而恒绿的断言是谎话。
+     * 指针那条路(`floatRectForGrab`)真正吃得到这条界的是**非瓦**的 ref,它的用例
+     * 在 `transitions.test.ts`(撕下来的矩形也过浮窗钳制)。
+     *
+     * 反证:把 `fitFloatRect` 的纵向下界换回 `FLOAT_MARGIN` → 读到 16;换回 0 → 读到 0。
+     */
+    const seeded = await page.evaluate(() => {
+      const blob = JSON.parse(localStorage.getItem('onething.stage') ?? 'null')
+      const space = blob?.state?.byWorkspace?.default ?? blob?.state
+      const rect = space?.floats?.sessions
+      if (!rect) return null
+      rect.y = 0
+      if (space.memory?.sessions?.rect) space.memory.sessions.rect.y = 0
+      localStorage.setItem('onething.stage', JSON.stringify(blob))
+      return { ...rect }
+    })
+    check('把档案里那扇窗改成 y=0(界立之前存得下来的形)', seeded?.y === 0, JSON.stringify(seeded))
+    await page.reload()
+    await waitFor('重载之后 Dock 就位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid^="dock-tile-"]'))),
+    )
+    await delay(900)
+    const replayed = await read(page)
+    const revived = replayed.floats.find((f) => f.id === 'sessions')
+    check(
+      `开机回放:y=0 的老矩形被抬回 ${TOP_CHROME}`,
+      Boolean(revived) && revived.rect.y >= TOP_CHROME,
+      `rect=${JSON.stringify(revived?.rect)}`,
+    )
+    check(
+      '回放出来的标题栏同样不与顶栏那条带相交',
+      Boolean(revived) && !intersects(revived.rect, replayed.topBar),
+      `topBar=${JSON.stringify(replayed.topBar)}`,
     )
   } finally {
     await shut(handle)
