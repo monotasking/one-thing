@@ -107,11 +107,13 @@ export function dropRef(ref: ContentRef, target: DropTarget, opts: DropCommitOpt
     return
   }
 
-  /** **落到某一格标签正中 = 与它二合一**(§5 的「标签正中 44%」)。 */
-  if (target.kind === 'pairTab') {
-    pairIntoIndex(ref, target.leafId, target.at, 'right')
-    return
-  }
+  /*
+   * **`pairTab` 那一档随 U1 退役**(2026-09-08)。从外面拖一样东西过来时,落到
+   * 一条标签条上只有一种结果:插到第 n 格。「与某一格二合一」今天有两条路,
+   * 一条都没少 —— **条内**那一形(把一格标签压到另一格上,`useTabDrag` 的 onto 带)
+   * 与**内容区左右带**(`pair`),两条走的都是 `pairIntoIndex` / `pairIntoActive`
+   * 这两只现成的落定,产地一个没动。判词整段在 `workbench/drop.ts` 的文件头。
+   */
 
   /** **内容区中间 = 在那条条的末尾开成一格新标签**(§5)。 */
   if (target.kind === 'open') {

@@ -104,23 +104,30 @@ export interface DragGhostSpec {
 }
 
 /**
- * **高亮长什么样**(W3-b 裁定 7:落点反馈改轻)。
+ * **高亮长什么样**(W3-b 裁定 7:落点反馈改轻;U1 2026-09-08 并档)。
  *
- * 四档,一个开放的枚举而不是几个布尔 —— 「铺一层膜」「描一圈环」「画一根杠」
- * 「画一圈虚线轮廓」是**互斥**的四种画法,两个布尔表达不了互斥。
+ * 三档,一个开放的枚举而不是几个布尔 —— 「铺一层膜」「铺一块半透明板」「画一圈
+ * 虚线轮廓」是**互斥**的三种画法,两个布尔表达不了互斥。
  *
- *   `film`     一层薄膜 + 一圈实线(窗口边带那一档,W3 的原样)
- *   `ring`     只在那块矩形里描一圈细环,里面什么都不画 —— **并入一片叶**
- *              (用户原话:色块 + 边框 + 文字盖在内容上太重)
- *   `half`     **落下后占的那一半**亮出来(W6-b,设计 v3 §5 的「内容区右带 28%」)。
- *              它是唯一一档要铺面的:ring 与 half 说的是两件不同的事(整格并进去 /
- *              与它并排占一半),只描边的话两者在屏幕上长得一模一样。
+ *   `film`     一层薄膜 + 一圈实线 —— 窗口边带那一档(那条 12px 的带子上本来就
+ *              没有内容,而架子会长在那里:薄膜正是它的预示)
+ *   `slab`     **一块半透明板**(最淡的面 + 1px 线):落下后它会占的地方。
+ *              整片叶(`open`,开成新标签)与半片叶(`pair`,与它并排)读的是
+ *              同一档 —— 两者说的是同一句话「松手之后它占这块地方」,差的只是
+ *              这块地方有多大,而那件事**矩形自己说得清清楚楚**。
  *   `outline`  一圈虚线轮廓、里面是空的 —— 撕成浮窗时那扇窗的预示
  *
+ * ── 退役 ────────────────────────────────────────────────────────────────
  * `bar`(贴边那根 4px 的杠)随**边带分屏**一起退役(W6-b:单叶政策之下叶的四带
- * 不再切一刀,左右两带改判「二合一」,画的是 half)。
+ * 不再切一刀)。
+ *
+ * `ring`(只描一圈、里面一个像素都不画)随 U1 退役,`half` 同时改名 `slab`。
+ * 理由是那条分工从来没有立住:ring 说「整格并进去」、half 说「占这一半」——
+ * 可**并进哪一格**是矩形说的,不是描边还是铺面说的。屏幕上真实的落差是「一块
+ * 板子有多大」,而不是「有没有面」;两种画法只让同一个层在落点之间跳一次质感,
+ * 用户读成的是「闪了一下」。今天两档同一种板,矩形一换就是一次干净的平移。
  */
-export type DropShape = 'film' | 'ring' | 'half' | 'outline'
+export type DropShape = 'film' | 'slab' | 'outline'
 
 /** 落点反馈:消费方每一帧算出来交回来的那一句结论。 */
 export interface DropFeedback {
@@ -145,7 +152,7 @@ export interface DropFeedback {
   shape?: DropShape
 }
 
-/** 一块矩形(视口坐标)。落区、氛围、落定的落点用的是同一个形。 */
+/** 一块矩形(视口坐标)。落区与落定的落点用的是同一个形。 */
 export interface DragRect {
   left: number
   top: number
@@ -177,16 +184,6 @@ export interface DragSessionState {
   pointer: { x: number; y: number }
   drop: DropFeedback | null
   presentation: DragPresentation
-  /**
-   * **氛围**(W6-b,设计 v3 §5 贯穿规则 1:「从外面拖东西进来时,起拖那一刻所有
-   * 能放的地方先淡淡亮一层……悬到的那一处再亮到实」)。
-   *
-   * 它是一**组**矩形而不是一个布尔或一格属性,理由是这一层仍旧不认识拼贴台:
-   * 「哪些地方能放」只有消费方知道,它把那几块矩形交回来,这一层照画。
-   * 空数组 = 不铺 —— **条内换序恒为空**(§4.5 第 2 条:换序时屏幕上只有那一格
-   * 标签在动),从外面拖进来才由来源交进来。
-   */
-  ambient: readonly DragRect[]
   /**
    * **落定/弹回时那张卡片飞去哪儿**(W6-b,§5「落定卡片飞入空位」)。
    *
@@ -251,23 +248,10 @@ export function setDropFeedback(drop: DropFeedback | null): void {
   emit({ ...current, drop })
 }
 
-/** 这一帧「能放的地方」有哪几块(见 `DragSessionState.ambient` 的判词)。 */
-export function setDropAmbient(rects: readonly DragRect[]): void {
-  if (!current) return
-  if (sameRects(current.ambient, rects)) return
-  emit({ ...current, ambient: rects })
-}
-
 function toggleRefuseCursor(on: boolean): void {
   if (typeof document === 'undefined') return
   if (on) document.documentElement.setAttribute(DRAG_REFUSE_ATTR, '')
   else document.documentElement.removeAttribute(DRAG_REFUSE_ATTR)
-}
-
-function sameRects(a: readonly DragRect[], b: readonly DragRect[]): boolean {
-  if (a === b) return true
-  if (a.length !== b.length) return false
-  return a.every((rect, i) => sameRect(rect, b[i]))
 }
 
 function sameRect(a: DragRect | null, b: DragRect | null): boolean {
@@ -562,7 +546,6 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
           pointer,
           drop: null,
           presentation: 'ghost',
-          ambient: [],
           landing: null,
         })
         /*
@@ -665,8 +648,8 @@ function settleGhost(landing: DragRect | null): void {
     emit(null)
     return
   }
-  // 落定动作马上要改树,那一刻不该还有人在读这一格的落区与氛围 —— 只留卡片。
-  emit({ ...current, drop: null, ambient: [], landing })
+  // 落定动作马上要改树,那一刻不该还有人在读这一格的落区 —— 只留卡片。
+  emit({ ...current, drop: null, landing })
   landingTimer = setTimeout(() => {
     landingTimer = null
     if (current?.landing === landing) emit(null)

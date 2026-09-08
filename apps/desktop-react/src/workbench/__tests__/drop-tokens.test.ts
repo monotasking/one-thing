@@ -2,9 +2,9 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { PAIR_BAND } from '../drop'
+import { NEW_SHELF_BAND, PAIR_BAND } from '../drop'
 import { GHOST_FLIP_PX } from '../../ui/drag/DragLayer'
-import { TAB_MIDDLE } from '../../ui/drag/constants'
+import { SNAP_BAND } from '../../stage/transitions'
 
 /**
  * **两处各一份同一个数,由这只文件钉成相等**(W3-b)。
@@ -22,11 +22,16 @@ import { TAB_MIDDLE } from '../../ui/drag/constants'
  * 翻面)。它与从前那两条同一条理由 —— CSS 那一头要它当登记,JS 那一头非有不可
  * (翻面是一格属性,只有 JS 写得动)。
  *
- * **两条比例不进这张表**:`TAB_MIDDLE` 44% 与 `PAIR_BAND` 28% 在 CSS 里没有对应
- * 的 token,因为**没有一条 CSS 规则读得到它们** —— 它们是判据里的分界线,屏幕上
- * 画出来的是判完之后那块矩形。给它们造一格 token 就是造一个没有读者的变量
- * (W3 那条「不登记」判词说的正是这一形)。这里只钉住它们**互相自洽**:
- * 两侧各 28% + 正中 44% = 100%,标签上与内容区上是同一张比例表。
+ * **比例不进这张表**:`PAIR_BAND` 28% 在 CSS 里没有对应的 token,因为**没有一条
+ * CSS 规则读得到它** —— 它是判据里的分界线,屏幕上画出来的是判完之后那块矩形。
+ * 给它造一格 token 就是造一个没有读者的变量(W3 那条「不登记」判词说的正是
+ * 这一形)。
+ *
+ * **U1 换掉一条**:「28 + 44 + 28 = 100」那条自洽随 `TAB_MIDDLE` 一起退役 ——
+ * 标签上那条 44% 的线没有了(条上只剩一种落点),这张比例表只剩 `PAIR_BAND`
+ * 一格,没有第二条线要对齐。换上来的是 `NEW_SHELF_BAND` 与 `SNAP_BAND`
+ * **必须不相等**:两者是两件事(落点判据 / 形态机),判词在 `drop.NEW_SHELF_BAND`
+ * 上,而它们一旦被谁并成一个数,「手一靠边就误钉」当场回来。
  */
 
 const tokens = readFileSync(
@@ -47,11 +52,31 @@ describe('落点几何:token 登记与判据镜像必须相等', () => {
   })
 
   /*
-   * 标签上「正中 44% / 两侧各 28%」与内容区上「中间 44% / 左右各 28%」是**同一张
-   * 比例表**:用户在两处学的是同一件事。这条等式一旦不成立,两处的手感就分家了。
+   * **两条带,两个数,禁合并**(U1):`NEW_SHELF_BAND` 量的是「从外面拖东西过来
+   * 时,离窗口边多近算要在这条边上生一条新架子」;`SNAP_BAND` 量的是「拖着一扇
+   * 浮窗靠边多近算要钉上去」。合并之后调其中一头会连带改掉另一头,而后者正是
+   * U1 治的那条报障(「莫名钉边」)。
    */
-  it('正中与两侧凑满一整格(标签与内容区读同一张比例表)', () => {
-    expect(TAB_MIDDLE + PAIR_BAND * 2).toBeCloseTo(1, 10)
+  it('新架子那条带与形态机的吸边带是两个数', () => {
+    expect(NEW_SHELF_BAND).toBeGreaterThan(0)
+    expect(NEW_SHELF_BAND).not.toBe(SNAP_BAND)
+    // 内容区左右带那 28% 仍是判据里的一条线,CSS 里没有它的登记(见文件头)。
+    expect(PAIR_BAND).toBeGreaterThan(0)
+    expect(PAIR_BAND).toBeLessThan(0.5)
+  })
+
+  /**
+   * **氛围层随 U1 退役**(用户报障「一拖整窗变色」)。与下面那条 `--drop-edge`
+   * 同一种守卫,只是方向反过来:这一格 token **不许再存在** —— 它的读者
+   * (`.ambient` 与 `ambientRectsOf`)已经删干净,留一格没人读的 6% 主题色在册上,
+   * 下一个人照着它把整窗淡亮种回来只要一行。
+   */
+  it('--drop-ambient 与 ambientRectsOf 一起删干净', async () => {
+    expect(pxOf('drop-ambient')).toBeNull()
+    expect(tokens).not.toMatch(/--drop-ambient\s*:/)
+    const drop = (await import('../drop')) as Record<string, unknown>
+    expect(drop.ambientRectsOf).toBeUndefined()
+    expect(drop.tabMiddleAt).toBeUndefined()
   })
 
   /**

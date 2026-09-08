@@ -1,13 +1,13 @@
 import { useCallback, useRef } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
-import { setDragPresentation, setDropAmbient, setDropFeedback, useDragSource } from '../ui/drag'
+import { setDragPresentation, setDropFeedback, useDragSource } from '../ui/drag'
 import { useT } from '../i18n'
 import { floatMinOfItem } from '../stage/items'
 import { useLiveTitleStore } from '../stage/live-title'
 import { panelIdOf } from '../stage/panel-ref'
 import { defaultFloatRect, floatRectForGrab, FALLBACK_VIEWPORT } from '../stage/transitions'
 import { dropRef } from './drop-commit'
-import { ambientRectsOf, dropTargetAt, targetRectOf } from './drop'
+import { dropTargetAt, targetRectOf } from './drop'
 import { measureDropGeometry } from './drop-geometry'
 import { tabStripChoreo } from '../ui/tab-reorder'
 import { contentKindOf, parseRefId, partsOfContent, refId } from './kinds'
@@ -15,7 +15,7 @@ import { edgeRegion, floatRegion } from './regions'
 import { useWorkbenchStore } from './store'
 import type { DragBandState, DragGhostSpec, DragRect } from '../ui/drag'
 import type { TabStripChoreo } from '../ui/tab-reorder'
-import type { DropGeometry, DropRules, DropTarget } from './drop'
+import type { DropGeometry, DropLive, DropRules, DropTarget } from './drop'
 import type { ContentRef } from './kinds'
 import type { RegionId } from './regions'
 import type { MessageKey } from '../i18n'
@@ -136,7 +136,13 @@ interface DragHeld {
    * 标签条上时屏幕上什么都不出现** —— 判据答得好好的「插到第 3 位」,用户看不见。
    * 真机门当场量到:七站全是 `gapWidth: null`。搬到这一层之后五种来源一次全通。
    */
-  strip: { list: HTMLElement; choreo: TabStripChoreo } | null
+  strip: {
+    leafId: string
+    list: HTMLElement
+    choreo: TabStripChoreo
+    /** 那格空位此刻插在第几格、有多宽 —— 下一帧判据的 `DropLive.gap` 就是它。 */
+    gap: { at: number; width: number } | null
+  } | null
   /** 收拾这一场留下的一切。落定 / 取消都先走它,幂等。 */
   cleanup(): void
 }
@@ -218,15 +224,14 @@ export function useContentDrag(spec: ContentDragSpec): (e: ReactPointerEvent<Ele
          * ——「进入换序」这件事发生一次,写一次;带内之后这三样归来源管
          * (它的 `leaveOnto()` 自己会把它们写回 inline / null)。
          *
-         * 换序期间什么都不变色(§4.5 第 2 条):落区不画,氛围也撤掉 ——
-         * 后者是「从外面拖进来」才有的东西,而这一形拖的是条自己的一格。
+         * 换序期间什么都不变色(§4.5 第 2 条):落区不画 —— 这一形拖的是条自己
+         * 的一格,它挪到哪儿眼睛直接看得见。
          */
         if (!held.inBand) {
           held.inBand = true
           clearStrip(held)
           setDragPresentation('inline')
           setDropFeedback(null)
-          setDropAmbient(EMPTY_RECTS)
           inline.enter(pointer)
         }
         inline.move(pointer)
@@ -236,8 +241,6 @@ export function useContentDrag(spec: ContentDragSpec): (e: ReactPointerEvent<Ele
       if (held.inBand && inline) {
         held.inBand = false
         inline.leave()
-        // 回到「从外面拖」那一形:氛围重新铺上(它整场是同一批矩形,同值不惊动订阅者)。
-        paintAmbient(held)
       }
       setDragPresentation('ghost')
       /*
@@ -245,16 +248,15 @@ export function useContentDrag(spec: ContentDragSpec): (e: ReactPointerEvent<Ele
        * 内容自述的 `regions`**(W5-b 裁定 8)。带内那一形不经过这里 —— 换序
        * 压根不换区域,没有区域可判。
        */
-      const target = dropTargetAt(pointer, held.geometry, held.rules)
+      /*
+       * **判据吃上一帧那格空位的位移**(U1,判词整段在 `drop.stripIndexAt` 上)。
+       * 次序是「先按上一帧的空位判,再按这一帧的落点挪空位」—— 反过来的话判据
+       * 读到的是它自己这一帧刚造出来的位移,那才是真会自激的一环。
+       * `stripIndexAt` 是个幂等的夹取算子,所以这条环在同一个 x 上收敛,不来回。
+       */
+      const target = dropTargetAt(pointer, held.geometry, held.rules, liveOf(held))
       held.target = target
       setDropFeedback(feedbackOf(target, held.geometry, pointer, held.ref, t))
-      /*
-       * **氛围每帧交一次**(同值不惊动订阅者,判词在 `setDropAmbient` 上)。
-       * 它**不能**在 `onStart` 里铺:那一刻 `DragSession` 还没 `emit` 出这一场
-       * (`onStart` 的返回值才是它开场的原料),写进去当场被 `if (!current) return`
-       * 吃掉 —— 真机门量到的读数是 `ambient: 0`。
-       */
-      paintAmbient(held)
       paintStrip(held, target)
       specRef.current.onTarget?.(target)
     },
@@ -327,28 +329,41 @@ export function useContentDrag(spec: ContentDragSpec): (e: ReactPointerEvent<Ele
   })
 }
 
-/** 一格空数组的常量:同值不惊动订阅者(见 `setDropAmbient`)。 */
-const EMPTY_RECTS: readonly DragRect[] = []
-
-/** 把「能放的地方」铺一遍(见 `onMove` 里那段判词)。 */
-function paintAmbient(held: DragHeld): void {
-  setDropAmbient(ambientRectsOf(held.geometry, held.rules))
+/**
+ * **此刻活布局与那份基准差了什么**(U1)。今天只差那一格空位;它不在条上时
+ * 交一个空对象 —— 判据于是逐字按基准算,与 U1 之前相同。
+ */
+function liveOf(held: DragHeld): DropLive {
+  const strip = held.strip
+  if (!strip?.gap) return {}
+  return { gap: { leafId: strip.leafId, at: strip.gap.at, width: strip.gap.width } }
 }
 
 /**
- * **标签条上那一格空位 / 那一圈**(W6-b:五种来源统一,设计 v3 §9 落差表那一行)。
+ * **标签条上那一格空位**(W6-b:五种来源统一;U1 收成一档)。
  *
- * 两档,一张表:
- *   `strip`   那条条的第 `at` 格之前腾一个空位(宽照那条条上第一格的宽 ——
- *             「它落进来会占多少」问的是**目标条**的尺寸,不是卡片自己的)
- *   `pairTab` 那一格描一圈(与叶身上 `ring` 那一档同一句话、同一格色)
- * 别的落点两样都收掉。
+ * 一档,一句话:`strip` 那一档在目标条的第 `at` 格之前腾一个空位(宽照那条条上
+ * 第一格的宽 ——「它落进来会占多少」问的是**目标条**的尺寸,不是卡片自己的);
+ * 别的落点收掉。
  *
  * **同一个节点在挪**(§4.5 第 3 条):条换人才重造编舞,落点在同一条条上变来变去
- * 只是把那格空位 `insertBefore` 到别处 —— `tabStripChoreo.gapAt` 自己认这件事。
+ * 只是把那格空位 `insertBefore` 到别处 —— `tabStripChoreo.gapAt` 自己认这件事
+ * (同下标当场 no-op,换下标只挪不重建,宽度不回 0)。
+ *
+ * ── U1 删掉的两档,以及为什么 ────────────────────────────────────────────
+ * `pairTab`(那一格描一圈)整件没了 —— 从外面拖东西进来时条上只剩一种落点,
+ * 判词在 `drop.ts` 的文件头。它一走,「空位与圈按 28% 线交替、每交替一次就
+ * `clearGap()` + 重插」这条链在结构上就不存在了,那正是用户报的「拖到标签正中
+ * 闪烁」。
+ *
+ * `open`(内容区中间那一档,从前也在条的末尾腾一格)也不在这里画了。它与设计
+ * §5 那一行的后半句「标签条末尾腾空位」出入,记在交卷报里:今天落到内容区中间
+ * 时屏幕上只有内容区那块板,条上一动不动 —— 一个落点画在**两处**正是这一批治的
+ * 「同一件事说两遍」,而且空位只在「落点真的是条」时存在,`DropLive.gap` 那条
+ * 回环因此只有一种解释。
  */
 function paintStrip(held: DragHeld, target: DropTarget): void {
-  if (target.kind !== 'strip' && target.kind !== 'pairTab' && target.kind !== 'open') {
+  if (target.kind !== 'strip') {
     clearStrip(held)
     return
   }
@@ -361,26 +376,12 @@ function paintStrip(held: DragHeld, target: DropTarget): void {
   }
   if (held.strip?.list !== list) {
     held.strip?.choreo.reset()
-    held.strip = { list, choreo: tabStripChoreo(list) }
+    held.strip = { leafId: target.leafId, list, choreo: tabStripChoreo(list), gap: null }
   }
-  const { choreo } = held.strip
-  if (target.kind === 'pairTab') {
-    choreo.clearGap()
-    // 那一格的 id 从**起拖时量好的那份几何**里取 —— 与判据读的是同一张表。
-    const id = held.geometry.strips?.find((row) => row.leafId === target.leafId)?.tabs[target.at]?.id
-    choreo.markPair(id ?? null)
-    return
-  }
-  choreo.markPair(null)
   const sample = list.querySelector<HTMLElement>('[data-tab-id]')
   const width = sample?.getBoundingClientRect().width ?? 0
-  /*
-   * **内容区中间那一档,条的末尾也腾一格**(设计 v3 §5 那一行的原话:
-   * 「内容区描一圈;**标签条末尾腾空位**」)。两处一起说的是同一句话 ——
-   * 「它会成为这条条上的一格新标签」:环说落进哪片叶,空位说它排在第几位。
-   */
-  const at = target.kind === 'open' ? list.querySelectorAll('[data-tab-id]').length : target.at
-  choreo.gapAt(at, width)
+  held.strip.choreo.gapAt(target.at, width)
+  held.strip.gap = { at: target.at, width }
 }
 
 /** 收掉这一层画在条上的东西。幂等 —— 每条结束路径与「进带」那一发都走它。 */
@@ -483,7 +484,7 @@ function regionRefusal(
  * 叶的区域从起拖时量好的那份几何里查(`leaves` 每一格都自带 `region`)。
  */
 function regionOfTarget(target: DropTarget, geometry: DropGeometry): RegionId | null {
-  if (target.kind === 'open' || target.kind === 'pair' || target.kind === 'pairTab') {
+  if (target.kind === 'open' || target.kind === 'pair') {
     return target.region
   }
   if (target.kind === 'strip') {
@@ -504,13 +505,13 @@ function ghostOf(ref: ContentRef): DragGhostSpec {
 /**
  * 一个落点该怎么画、下面那行字说什么(W6-b,设计 v3 §5 那张表的后两列)。
  *
- * 八种落点,一张表:
- *   标签正中 `pairTab`  **不画高亮**(那一格上的圈由 `ui/tab-reorder` 描),
- *                       字 = 「与「X」二合一」/「替换「X 的右格」」
- *   标签之间 `strip`    **不画高亮**(预示是那条条腾出来的一格空位),字 = 「放到第 n 位」
- *   窗口边带 `edge`     `film`:一层薄膜(架子会长在那儿,薄膜正是它的预示)
- *   内容区左右 `pair`   `half`:落下后占的那一半亮出来
- *   内容区中间 `open`   `ring`:叶的四边描一圈细环,里面一个像素都不盖
+ * 七种落点,一张表:
+ *   标签条 `strip`      **不画高亮**(预示是那条条腾出来的一格空位),字 = 「放到第 n 位」
+ *   窗口边带 `edge`     `film`:一层 12px 的薄膜(架子会长在那儿,薄膜正是它的预示),
+ *                       字 = 「钉成左侧架子」—— 它只在那条边**还没有架子**时出现
+ *   内容区左右 `pair`   `slab`:落下后它会占的那一半
+ *   内容区中间 `open`   `slab`:整片叶 —— 与上一档**同一种板**,差的只是矩形有多大
+ *                       (U1 并档,判词在 `ui/drag` 的 `DropShape` 上)
  *   自己那片叶 `back`   不画,字 = 「松手放回」
  *   撕成浮窗 `float`    `outline`:那扇窗将来的轮廓(`floatRectForGrab` —— 与从架子上
  *                       撕一块瓦、与落定时那一句**同一只函数**,所以预示的位置就是
@@ -536,10 +537,6 @@ function feedbackOf(
   }
   if (target.kind === 'strip') {
     return { rect: null, tone: 'accept' as const, hint: t('drag.hint.strip', { at: target.at + 1 }) }
-  }
-  if (target.kind === 'pairTab') {
-    const host = hostTabAt(target.leafId, target.at, geometry)
-    return { rect: null, tone: 'accept' as const, hint: pairHint(host, 'right', t) }
   }
   if (target.kind === 'float') {
     const viewport =
@@ -568,9 +565,9 @@ function feedbackOf(
   if (target.kind === 'pair') {
     const strip = geometry.strips?.find((row) => row.leafId === target.leafId)
     const host = strip && strip.activeAt >= 0 ? (strip.tabs[strip.activeAt] ?? null) : null
-    return { rect, tone: 'accept' as const, hint: pairHint(host, target.side, t), shape: 'half' as const }
+    return { rect, tone: 'accept' as const, hint: pairHint(host, target.side, t), shape: 'slab' as const }
   }
-  return { rect, tone: 'accept' as const, hint: t('drag.hint.open'), shape: 'ring' as const }
+  return { rect, tone: 'accept' as const, hint: t('drag.hint.open'), shape: 'slab' as const }
 }
 
 /** 一格标签的名字 —— 提示行要说「与**谁**二合一」,而名字只有活的那一份算数。 */
@@ -581,11 +578,6 @@ function tabTitle(id: string | undefined): string {
   const parsed = parseRefId(id)
   const still = parsed ? contentKindOf(parsed.kind)?.title(parsed) : null
   return still?.text ?? parsed?.key ?? id
-}
-
-function hostTabAt(leafId: string, at: number, geometry: DropGeometry) {
-  const strip = geometry.strips?.find((row) => row.leafId === leafId)
-  return strip?.tabs[at] ?? null
 }
 
 /**

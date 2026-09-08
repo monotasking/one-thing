@@ -1,29 +1,31 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ambientRectsOf,
   dropTargetAt,
   edgeRectOf,
   pairRectOf,
+  NEW_SHELF_BAND,
   PAIR_BAND,
   stripIndexAt,
-  tabMiddleAt,
   targetRectOf,
 } from '../drop'
 import type { DropGeometry, DropRules, DropTarget, StripBox } from '../drop'
 
 /**
  * **落点判据的表驱动守卫**(W3 交付 2;W6-b 按设计
- * `apps/desktop-react/docs/workbench-tabs-2026-09.md` §5 那张表重写)。
+ * `apps/desktop-react/docs/workbench-tabs-2026-09.md` §5 那张表重写;U1 2026-09-08
+ * 按用户拍板的拖拽 v4 再改三处)。
  *
  * 这只文件里一个 DOM、一个 store、一个 React 都没有 —— 判据本来就该这样测:
  * 「指针在这儿、屏幕上有这几块矩形、拖的这一格装了几份,松手会发生什么」是一句
  * 纯粹的算术。
  *
- * W6-b 换掉的是**表本身**:W3-b 的「叶身并入 + 贴边 16px 分屏」整段退役
- * (单叶政策),换成 §5 那九行 —— 拒绝区 / 标签正中 / 标签之间 / 窗口边带 /
- * 内容区右带 / 左带 / 中间 / 自己 / 窗外。每一行在这里各有一条,外加四条边界:
- * **次序即语义**(先命中先赢)、**叶重叠取最上**、**两格的不能再并**、
- * **浮窗不接住自己**。
+ * U1 换掉的三格:
+ *  · 「标签正中 44% = 与它二合一」(`pairTab` / `tabMiddleAt`)整段删掉 —— 外来
+ *    来源落到条上只剩一种落点。换上来的是**空位位移下的下标自稳**那一组:同一趟
+ *    扫描把上一帧的空位喂回去,下标只能单调走,同一个 x 上不许来回。
+ *  · 窗口边带从 24 收到 12(`NEW_SHELF_BAND`),而且**只对还没有架子的那一边**
+ *    成立 —— 用户报的「莫名钉边」。
+ *  · 「氛围」那一组(`ambientRectsOf`)整段删掉 —— 用户报的「一拖整窗变色」。
  */
 
 /** 一块 1000×800 的窗口,中间摆一片 900×700 的叶(四周各留 50 —— 出了边带)。 */
@@ -47,6 +49,8 @@ const geometry: DropGeometry = {
   window: WINDOW,
   leaves: [{ region: 'center', leafId: 'leaf-a', rect: LEAF }],
   strips: [STRIP],
+  // 这台夹具四条边都还没有架子 —— 于是四条 12px 的窄带全都成立。
+  shelves: [],
 }
 
 /** 叶的中心那一点(条只有 34 高,中心离它远得很)。 */
@@ -78,38 +82,31 @@ describe('①拒绝区 —— 先命中先赢,而且赢得最硬', () => {
   })
 })
 
-describe('②标签正中 44% = 与它二合一', () => {
-  it('落在某一格的正中 = pairTab,带着那一格的下标', () => {
+/**
+ * **外来来源落到标签条上只有一种落点**(U1)。
+ *
+ * 反证:把 `pairTab` 那一档种回 `stripAt`(正中 44% 判成「与它二合一」),
+ * 第一条当场红 —— 而它红的正是用户报的那件事:同一条条上两种落点按 28% 线交替,
+ * 每交替一次宿主就删掉占位再插一格新的。
+ */
+describe('②标签条 = 插到第几格(条上不再有第二种落点)', () => {
+  it('落在某一格的正中,答的也是「插到它旁边」而不是「并进它」', () => {
     const target = dropTargetAt(middleOf(2), geometry, OUTSIDER)
-    expect(target).toEqual({ kind: 'pairTab', region: 'center', leafId: 'leaf-a', at: 2 })
+    // 第 2 格正中(x=350)已经越过第 0/1 格的中线,还没越过它自己的 → 插到第 2 位。
+    expect(target).toEqual({ kind: 'strip', leafId: 'leaf-a', at: 2 })
   })
 
-  it('落在两侧 28% = 落到它旁边,不是并进它', () => {
-    // 第 2 格左缘 +10px:在它的左侧 28% 里。
+  it('落在两侧照旧是「插到它旁边」—— 两处答的是同一种落点,不再有那条 28% 线', () => {
+    // 第 2 格左缘 +10px:从前这里是「两侧 28%」那一档,今天与正中同一档。
     const target = dropTargetAt({ x: 180, y: 60 }, geometry, OUTSIDER)
     expect(target.kind).toBe('strip')
   })
 
-  it('**被拖的自己除外**:拖到自己头上是换序,不是并', () => {
-    const target = dropTargetAt(middleOf(1), geometry, { dragged: { id: 'b', slots: 1 } })
+  it('两格的标签落到条上照旧收 —— 条上没有「并」,也就没有「不能再并」', () => {
+    const target = dropTargetAt(middleOf(2), geometry, { dragged: { id: 'x', slots: 2 } })
     expect(target.kind).toBe('strip')
   })
 
-  it('**两格的标签不能再并**:说得出理由,不是静默改判', () => {
-    const target = dropTargetAt(middleOf(2), geometry, { dragged: { id: 'x', slots: 2 } })
-    expect(target).toEqual({ kind: 'refuse', reasonKey: 'drag.refusePairNest' })
-  })
-
-  it('tabMiddleAt:正中的边界两头都算,两侧不算', () => {
-    const side = (1 - 0.44) / 2
-    const tab = STRIP.tabs[0]
-    expect(tabMiddleAt(tab.left + tab.width * side, STRIP)).toBe(0)
-    expect(tabMiddleAt(tab.left + tab.width * (1 - side), STRIP)).toBe(0)
-    expect(tabMiddleAt(tab.left + tab.width * side - 1, STRIP)).toBe(-1)
-  })
-})
-
-describe('③标签之间 = 插到第几格', () => {
   it('条优先于叶 —— 条压在叶身里,先问叶的话它永远吸不到东西', () => {
     const target = dropTargetAt({ x: 600, y: 60 }, geometry, OUTSIDER)
     expect(target).toEqual({ kind: 'strip', leafId: 'leaf-a', at: 3 })
@@ -128,17 +125,145 @@ describe('③标签之间 = 插到第几格', () => {
   })
 })
 
-describe('④窗口边带优先于叶', () => {
-  it('贴着窗口左缘 = 钉到左架子,不是落进那片叶', () => {
-    expect(dropTargetAt({ x: 6, y: 400 }, geometry, OUTSIDER)).toEqual({ kind: 'edge', side: 'left' })
+/**
+ * **空位位移下的下标自稳**(U1 —— 这一批新立的那条判据,判词整段在
+ * `drop.stripIndexAt` 上)。
+ *
+ * 病历:空位一插进去,它右边那几格标签整体右移一个空位宽;而判据从前一律按
+ * 起拖时那份**基准**量。于是屏幕上指针明明压在第 2 格上,读数说「放到第 3 位」
+ * —— 差的正好是一个空位宽。
+ *
+ * 修法是把那一格位移当成入参算进去。这一组钉的是它**不会因此自激**:
+ *  ① 同一个 x 上把结果喂回去再算一次,答案不动(幂等 = 一帧一次来回不可能);
+ *  ② 一路往右扫,下标只增不减;一路往左扫,只减不增。
+ *
+ * 反证(真跑过):把 `stripIndexAt` 里的 `shift` 挖掉(退回基准),① 仍绿而
+ * ③「屏幕上压在哪一格」那一条当场红 —— 它是这条判据存在的理由。
+ */
+describe('空位位移下的下标自稳(U1)', () => {
+  /** 一条 4 格条,每格 100 宽,从 x=0 起排;空位宽 = 一格宽。 */
+  const FOUR: StripBox = {
+    region: 'center',
+    leafId: 'leaf-a',
+    rect: { left: 0, top: 0, width: 800, height: 34 },
+    tabs: [0, 1, 2, 3].map((i) => ({
+      left: i * 100,
+      top: 0,
+      width: 100,
+      height: 34,
+      id: `t${i}`,
+      slots: 1,
+    })),
+    activeAt: 0,
+  }
+  const GAP_W = 100
+  /** 一帧:拿上一帧的空位下标当输入,算出这一帧的。 */
+  const step = (x: number, at: number) => stripIndexAt(x, FOUR, { at, width: GAP_W })
+
+  it('①同一个 x 上算两次答案不动(幂等 —— 那正是「不会来回」)', () => {
+    for (let at = 0; at <= FOUR.tabs.length; at += 1) {
+      for (let x = 0; x <= 900; x += 1) {
+        const once = step(x, at)
+        expect(step(x, once), `x=${x} at=${at}`).toBe(once)
+      }
+    }
   })
 
-  it('离边 24 以外就轮到叶了', () => {
-    expect(dropTargetAt({ x: 60, y: 400 }, geometry, OUTSIDER).kind).toBe('pair')
+  it('②从左扫到右再扫回来:去程只增、回程只减,一次翻转都没有', () => {
+    let at = 0
+    const forward: number[] = []
+    for (let x = 0; x <= 900; x += 1) {
+      at = step(x, at)
+      forward.push(at)
+    }
+    for (let i = 1; i < forward.length; i += 1) {
+      expect(forward[i], `去程 x=${i}`).toBeGreaterThanOrEqual(forward[i - 1])
+    }
+    const back: number[] = []
+    for (let x = 900; x >= 0; x -= 1) {
+      at = step(x, at)
+      back.push(at)
+    }
+    for (let i = 1; i < back.length; i += 1) {
+      expect(back[i], `回程 x=${900 - i}`).toBeLessThanOrEqual(back[i - 1])
+    }
+    // 一趟走完回到原点,下标也回到 0 —— 没有攒下任何漂移。
+    expect(back[back.length - 1]).toBe(0)
+  })
+
+  it('③读数与屏幕一致:指针压在活位置的第 2 格上,答的就是第 2 位', () => {
+    /*
+     * 空位开在第 1 格之前,于是屏幕上:t0 在 [0,100)、空位 [100,200)、
+     * t1 在 [200,300)、t2 在 [300,400)。指针站在 t2 的活中线左边一点(x=340)
+     * —— 眼睛看到的是「插在 t2 之前」= 第 2 位。
+     */
+    expect(step(340, 1)).toBe(2)
+    // 反证的读数:按基准量的话 t2 的中线在 250,340 已经越过 → 答 3,差一格。
+    expect(stripIndexAt(340, FOUR)).toBe(3)
   })
 })
 
-describe('⑤⑥⑦内容区三档', () => {
+/**
+ * **窗口边带:12px,而且只对那一边还没有架子时成立**(U1)。
+ *
+ * 病历两条,一条修:24px 的四条带排在叶之前,于是任何一次贴边经过都判「钉边」;
+ * 而左边明明开着文件架子时,那条带说的「钉成左侧架子」更是无处可去 —— 用户报的
+ * 「莫名钉边」。
+ */
+describe('③新架子那条窄边带(U1)', () => {
+  /**
+   * 这一组要在**边带与叶重叠**的地方量,所以叶铺满整扇窗(上面那台夹具的叶四周
+   * 各留 50 —— 边带外面是空地,量不出「谁赢了谁」)。
+   */
+  const FULL_LEAF = { left: 0, top: 0, width: 1000, height: 800 }
+  const FULL: DropGeometry = {
+    window: WINDOW,
+    leaves: [{ region: 'center', leafId: 'leaf-a', rect: FULL_LEAF }],
+    strips: [{ ...STRIP, rect: { left: 0, top: 0, width: 1000, height: 34 } }],
+    shelves: [],
+  }
+
+  it('离左缘 6px 且左边没有架子 = 在那条边上生一条架子', () => {
+    expect(dropTargetAt({ x: 6, y: 400 }, FULL, OUTSIDER)).toEqual({
+      kind: 'edge',
+      side: 'left',
+    })
+  })
+
+  it('离边 12 以外就轮到叶了(24 那一版在这里还答 edge)', () => {
+    expect(dropTargetAt({ x: 20, y: 400 }, FULL, OUTSIDER).kind).toBe('pair')
+  })
+
+  it('**那条边上已经有架子 = 这条带不存在**,落的是底下那片叶', () => {
+    const withLeftShelf: DropGeometry = { ...FULL, shelves: ['left'] }
+    expect(dropTargetAt({ x: 6, y: 400 }, withLeftShelf, OUTSIDER).kind).toBe('pair')
+    // 别的边不受影响 —— 它是一张按边逐条的表,不是一个总开关。
+    expect(dropTargetAt({ x: 994, y: 400 }, withLeftShelf, OUTSIDER)).toEqual({
+      kind: 'edge',
+      side: 'right',
+    })
+  })
+
+  it('**边带排在条之后、叶之前**:条上那一点仍归条,叶上那一点归边带', () => {
+    /*
+     * 一条铺满窗口顶部的条,它的左端压在左边那 12px 里 —— 这一点两者都够得着,
+     * 而条先问。这条断言拆掉次序(把边带提到条前面)当场红。
+     */
+    const topStrip: StripBox = {
+      region: 'center',
+      leafId: 'leaf-a',
+      rect: { left: 0, top: 0, width: 1000, height: 34 },
+      tabs: [{ left: 0, top: 0, width: 120, height: 34, id: 'a', slots: 1 }],
+      activeAt: 0,
+    }
+    const geo: DropGeometry = { ...geometry, strips: [topStrip] }
+    expect(dropTargetAt({ x: 4, y: 17 }, geo, OUTSIDER).kind).toBe('strip')
+    // 同一条边,离开条之后就是边带(它排在叶之前)。
+    expect(dropTargetAt({ x: 4, y: 400 }, geo, OUTSIDER)).toEqual({ kind: 'edge', side: 'left' })
+  })
+})
+
+describe('④⑤⑥内容区三档', () => {
   it('右带 28% = 与活动标签并排,放右', () => {
     const x = LEAF.left + LEAF.width * (1 - PAIR_BAND / 2)
     expect(dropTargetAt({ x, y: center.y }, geometry, OUTSIDER)).toEqual({
@@ -194,13 +319,13 @@ describe('⑤⑥⑦内容区三档', () => {
   })
 
   it('没有条 = 没有 host = 只剩「开成新标签」', () => {
-    const bare: DropGeometry = { window: WINDOW, leaves: geometry.leaves }
+    const bare: DropGeometry = { window: WINDOW, leaves: geometry.leaves, shelves: [] }
     const x = LEAF.left + LEAF.width * (1 - PAIR_BAND / 2)
     expect(dropTargetAt({ x, y: center.y }, bare, OUTSIDER).kind).toBe('open')
   })
 })
 
-describe('⑧自己的内容区 = 放回', () => {
+describe('⑦自己的内容区 = 放回', () => {
   it('拖的就是这片叶的活动标签 —— 整片叶都是 back,左右带也不例外', () => {
     const self: DropRules = { dragged: { id: 'b', slots: 1 } }
     expect(dropTargetAt(center, geometry, self)).toEqual({ kind: 'back' })
@@ -209,7 +334,7 @@ describe('⑧自己的内容区 = 放回', () => {
   })
 })
 
-describe('⑨窗外 / 什么都没碰到 = 撕成浮窗', () => {
+describe('⑧窗外 / 什么都没碰到 = 撕成浮窗', () => {
   it('出了窗', () => {
     expect(dropTargetAt({ x: 500, y: 900 }, geometry, OUTSIDER)).toEqual({ kind: 'float' })
   })
@@ -273,47 +398,34 @@ describe('rules.accepts —— 来源自述的复核,它说了算', () => {
 })
 
 describe('高亮矩形:与判据同源', () => {
-  it('open = 整片叶(ring 在它里面描一圈)', () => {
+  it('open = 整片叶(slab 铺满它)', () => {
     const target: DropTarget = { kind: 'open', region: 'center', leafId: 'leaf-a' }
     expect(targetRectOf(target, geometry)).toEqual(LEAF)
   })
 
-  it('pair = 落下后占的那一半', () => {
+  it('pair = 落下后占的那一半(与 open 同一种板,差的只是矩形)', () => {
     const right: DropTarget = { kind: 'pair', region: 'center', leafId: 'leaf-a', side: 'right' }
     expect(targetRectOf(right, geometry)).toEqual(pairRectOf(LEAF, 'right'))
     expect(pairRectOf(LEAF, 'right')).toEqual({ left: 500, top: 50, width: 450, height: 700 })
     expect(pairRectOf(LEAF, 'left')).toEqual({ left: 50, top: 50, width: 450, height: 700 })
   })
 
-  it('条上那三档故意不答矩形(预示是条自己腾出来的空位 / 那一格上的圈)', () => {
+  it('条上那一档故意不答矩形(预示是条自己腾出来的空位)', () => {
     expect(targetRectOf({ kind: 'strip', leafId: 'leaf-a', at: 1 }, geometry)).toBeNull()
-    expect(
-      targetRectOf({ kind: 'pairTab', region: 'center', leafId: 'leaf-a', at: 1 }, geometry),
-    ).toBeNull()
     expect(targetRectOf({ kind: 'back' }, geometry)).toBeNull()
     expect(targetRectOf({ kind: 'float' }, geometry)).toBeNull()
   })
 
-  it('edge = 贴那条边的一条 24 宽的带', () => {
+  it('edge = 贴那条边的一条 12 宽的带(与判据读同一个 NEW_SHELF_BAND)', () => {
     expect(targetRectOf({ kind: 'edge', side: 'left' }, geometry)).toEqual(
-      edgeRectOf(WINDOW, 'left'),
+      edgeRectOf(WINDOW, 'left', NEW_SHELF_BAND),
     )
-    expect(edgeRectOf(WINDOW, 'right')).toEqual({ left: 976, top: 0, width: 24, height: 800 })
-  })
-})
-
-describe('氛围:能放的地方有哪几块(§5 贯穿规则 1)', () => {
-  it('叶 + 条 + 四条边带', () => {
-    const rects = ambientRectsOf(geometry)
-    expect(rects).toContainEqual(LEAF)
-    expect(rects).toContainEqual(STRIP.rect)
-    expect(rects).toContainEqual(edgeRectOf(WINDOW, 'left'))
-    expect(rects).toHaveLength(1 + 1 + 4)
-  })
-
-  it('挡掉的叶不进这张表 —— 说「这里能放」而落不进去比不说更糟', () => {
-    const rects = ambientRectsOf(geometry, { excludeLeaves: ['leaf-a'] })
-    expect(rects).not.toContainEqual(LEAF)
+    expect(edgeRectOf(WINDOW, 'right', NEW_SHELF_BAND)).toEqual({
+      left: 1000 - NEW_SHELF_BAND,
+      top: 0,
+      width: NEW_SHELF_BAND,
+      height: 800,
+    })
   })
 })
 
@@ -347,14 +459,21 @@ describe('两条条挨着时:落在上面的赢过只是够得着的(W7-c)', () 
     tabs: [{ left: 4, top: 44, width: 120, height: 28, id: 's', slots: 1 }],
     activeAt: 0,
   }
-  const geo: DropGeometry = { window: WINDOW, leaves: [], strips: [topbar, shelf], nodrop: [] }
+  const geo: DropGeometry = {
+    window: WINDOW,
+    leaves: [],
+    strips: [topbar, shelf],
+    nodrop: [],
+    // 屏幕上真有一条左架子(它那条条就在这儿)—— 左边那 12px 因此不是边带。
+    shelves: ['left'],
+  }
 
-  it('指针在顶栏那一格的正中 → 与它二合一,而不是插进架子那条条', () => {
+  it('指针在顶栏那一格的正中 → 插进顶栏那条条,而不是插进架子那条条', () => {
     // DOM 逆序里架子排在后面(它盖在上面),所以一遍扫描时它先被问到。
     expect(dropTargetAt({ x: 149, y: 22 }, geo, {})).toEqual({
-      kind: 'pairTab',
-      region: 'center',
+      kind: 'strip',
       leafId: 'leaf-center',
+      // 149 恰好是第 0 格的中线,还没越过 —— 插到它前面。要紧的是**哪条条**。
       at: 0,
     })
   })

@@ -1,3 +1,5 @@
+import { SHELF_SIDES } from '../stage/transitions'
+import type { ShelfSide } from '../stage/types'
 import type { DropGeometry, LeafBox, Rect, StripBox, TabBox } from './drop'
 import type { RegionId } from './regions'
 
@@ -23,6 +25,10 @@ import type { RegionId } from './regions'
  *   `[aria-selected]`     哪一格是活动的(`ui/Tabs` 本来就有的 ARIA 语义)
  *   `[data-nodrop]`       **这块地方一律不收**(W6-b:红绿灯 / 顶栏尾格 / Dock
  *                         各自在自己身上写一格 —— 判据因此不认识这三样东西)
+ *   `[data-shelf]`        **这条边上此刻有一条架子**(U1;值 = 那条边。收起成
+ *                         细梁的架子照旧带着它 —— 它仍旧站在那条边上)
+ *   `[data-testid=       中央那一组标签所在的**顶栏标签带**(U1:条的右缘铺到
+ *    "topbar-tabs"]`      它的右缘,见 `stripRectOf`)
  * 于是「有哪些区域」这件事仍旧只有一个产地,拖拽不必再开一份名册。
  *
  * ── 条**不在**叶的子树里,所以它单独量一遍(W3-b)────────────────────────
@@ -40,6 +46,7 @@ export function measureDropGeometry(): DropGeometry {
   const leaves: LeafBox[] = []
   const strips: StripBox[] = []
   const nodrop: Rect[] = []
+  const shelves: ShelfSide[] = []
   if (typeof document !== 'undefined') {
     for (const host of Array.from(document.querySelectorAll('[data-pane-region]'))) {
       const region = host.getAttribute('data-pane-region')
@@ -62,7 +69,7 @@ export function measureDropGeometry(): DropGeometry {
        */
       const list = chrome.querySelector('[role="tablist"]')
       if (!list) continue
-      const rect = rectOf(list)
+      const rect = stripRectOf(chrome, list)
       if (rect.width <= 0 || rect.height <= 0) continue
       const cells = Array.from(list.querySelectorAll('[data-tab-id]'))
       strips.push({
@@ -86,8 +93,53 @@ export function measureDropGeometry(): DropGeometry {
       if (rect.width <= 0 || rect.height <= 0) continue
       nodrop.push(rect)
     }
+    /*
+     * **哪几条边上已经有架子了**(U1)。判据拿它答一句话:那条边的 12px 窄带
+     * 还成不成立(判词在 `drop.NEW_SHELF_BAND` 与 `drop.DropGeometry.shelves`)。
+     *
+     * 量的是 `[data-shelf]` 这格**架子自己写的**属性,而不是去问形态机的
+     * `shelves` 那张表 —— 后者里一条空架子也占一行(`EdgeShelf` 对空树直接
+     * `return null`,屏幕上一个像素都没有),按它判会得出「左边有架子」而用户
+     * 眼里那条边空空如也。屏幕上有没有,只有 DOM 答得准。收起成细梁的那一形
+     * 照旧带着这格属性 —— 它确实还站在那条边上。
+     */
+    for (const el of Array.from(document.querySelectorAll('[data-shelf]'))) {
+      const side = el.getAttribute('data-shelf') as ShelfSide | null
+      if (!side || !SHELF_SIDES.includes(side) || shelves.includes(side)) continue
+      shelves.push(side)
+    }
   }
-  return { window: windowRect(), leaves, strips, nodrop }
+  return { window: windowRect(), leaves, strips, nodrop, shelves }
+}
+
+/**
+ * 一条标签条**收东西的那块地**。
+ *
+ * 缺省就是 tablist 自己的矩形。**中央区那一组多一句**(U1):它的右缘铺到所在的
+ * 顶栏标签带(`[data-testid="topbar-tabs"]`,`TopBarTabs` 的 `.band`)的右缘。
+ *
+ * ── 这一句今天不改变任何读数,它是把一条**巧合**钉成**保证**(施工时真机量过)──
+ * 顶栏那条 tablist 此刻**恰好**已经铺满了整条带(实测 band 80→1086、tablist
+ * 80→1086),而它靠的是 `ui/Tabs.module.css` 里 `.bar { flex: none }` 被
+ * `LeafStrip.module.css` 的 `.tabs > * { flex: 1 }` 压过 —— 一句写在另外两只文件里、
+ * 特异性打平、只靠层叠次序分胜负的规则。于是「末格右边那片空白收不收东西」这件事
+ * 今天是由**两条 CSS 的先后**决定的,而拖拽这一头看不见它。
+ *
+ * 把它写在这里,「条收东西的地 = 那条带」就成了量法自己说的一句话:哪天有人给
+ * `.bar` 加回 `flex: none`(或者顶栏换一种排法),末格右边那片空白照旧收得住东西
+ * —— 而不是像用户 09-08 报的那样,在那儿看见「这里不能放」。`gate:drag` 场景 ⑧
+ * 从行为那一头钉着同一句话。
+ *
+ * 铺过去一个像素都不会吃到动作组:那条带子自己止于顶栏尾格的左缘,而尾格是
+ * `data-nodrop`、排在条前面。判据那一头也一个字不用改:「插到第几格」问的是越过了
+ * 几条中线,末格右边没有中线,所以整片空白答的都是同一个数 = 格数。
+ */
+function stripRectOf(chrome: Element, list: Element): Rect {
+  const rect = rectOf(list)
+  const band = chrome.closest('[data-testid="topbar-tabs"]')
+  if (!band) return rect
+  const right = band.getBoundingClientRect().right
+  return { ...rect, width: Math.max(rect.width, right - rect.left) }
 }
 
 /**

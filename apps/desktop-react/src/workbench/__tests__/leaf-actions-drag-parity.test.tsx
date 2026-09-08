@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { LeafActions } from '../LeafActions'
-import { dropRef, reorderTab, unpairTab } from '../drop-commit'
+import { dropRef, pairIntoIndex, reorderTab, unpairTab } from '../drop-commit'
 import { openLeafMenuAt } from '../leaf-menu'
 import { CENTER_REGION, edgeRegion } from '../regions'
 import { registerContentKind, refId, resetContentKinds } from '../kinds'
@@ -333,7 +333,7 @@ describe('条内换序:键盘命令与拖拽是同一个动作', () => {
  * (侧别换一边),第二条断言当场红(两格的次序反过来)。
  */
 describe('二合一:菜单与拖拽是同一个动作', () => {
-  it('菜单「与右边的标签二合一」与 dropRef(pairTab) 交出同一棵树', () => {
+  it('菜单「与右边的标签二合一」与拖拽那条路的落定交出同一棵树', () => {
     /*
      * ── 等价的那一下是**哪一下**(施工时当场量出来的一处真差别)──────────────
      * 「二合一」这件事里,**谁是宿主**决定了两格的左右次序:`pairIntoIndex` 把
@@ -346,10 +346,22 @@ describe('二合一:菜单与拖拽是同一个动作', () => {
      * 第一版按 `A → B` 写,当场红并打出 `pair:parity-a:a…` vs `pair:parity-b:b…`
      * —— 那不是分叉,是把两个手势当成了一个。
      */
-    // ① 拖拽那条路:把 B 放到左边那格 A 上(§5「标签正中 = 与它二合一」)。
+    /*
+     * ── **拖拽那条路的入口 U1 换过一次**(2026-09-08)────────────────────────
+     * 从前它是 `dropRef({kind:'pairTab'})`(外来来源落到某一格标签正中);那一档
+     * 随拖拽 v4 退役,「把一格标签压到另一格上」今天只剩**条内**那一形
+     * (`useTabDrag` 的 onto 带,手压到条底缘下 6–24px 松手)。它的落定那一句
+     * 就是 `pairIntoIndex(dragged, leafId, hostIndex, 'right')` —— 所以这一组
+     * 比的仍旧是**同一下手势的结果**,只是从「模拟一个已经不存在的落点」改成
+     * 「叫那条路真正调的那一只」。
+     *
+     * 比的东西一个字没变:**结果**(树 + 形态机),不是「谁调了哪只函数」。
+     * 反证仍旧成立 —— 把 `LeafActions` 那一项的 side 换一边,第二条断言当场红。
+     */
+    // ① 拖拽那条路:把 B 压到左边那格 A 上。
     seedTwo()
     act(() => {
-      dropRef(B, { kind: 'pairTab', region: CENTER_REGION, leafId: 'leaf-reorder', at: 0 })
+      pairIntoIndex(B, 'leaf-reorder', 0, 'right')
     })
     const viaDrag = snapshot()
     // 顺带钉住它真的并成了一格 —— 两边都空转的话平局那一句也会绿。

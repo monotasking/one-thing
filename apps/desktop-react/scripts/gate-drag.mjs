@@ -20,9 +20,12 @@
  * 微动幅度 1px、**只动横向**(竖向一动就可能跨进「放到标签上」那条带,那是另一形),
  * 采样在两发 move 之间,于是读到的每一格都是「手还在动的那一刻屏幕上真有的东西」。
  *
- * ── 七个场景(派工令 §11 那七条)─────────────────────────────────────────
- *  ① 三种来源(会话行 / 文件行 / 标签)到标签条**每一个位置**:空位或描圈,
- *     而且浮影下那行字非空
+ * ── 九个场景(派工令 §11 那七条 + U1 2026-09-08 新添两条)──────────────────
+ *  ① 三种来源(会话行 / 文件行 / 标签)到标签条**每一个位置**:一律是**空位**
+ *     (U1:「落到某一格正中 = 描圈二合一」那一档退役,条上只剩一种落点),
+ *     浮影下那行字非空;而且**一趟扫过去再扫回来**期间挂 MutationObserver:
+ *     占位是**同一个元素**、只被 `insertBefore` 挪位、`style.width` 从不回 0、
+ *     `data-pair-hot` 零次 —— 用户报的「拖到顶栏标签正中闪烁」量的就是这几个数
  *  ② 按下即切换、松手不动无事、横向 6px 才浮起、竖向出带才撕下
  *  ③ 换序最左 / 最右 / 中间三处:顺序与活动位正确;松手有 150ms 的位移过渡
  *     (读 `transition` 与非零起始位移);Esc 顺序不变、无残留;
@@ -34,6 +37,11 @@
  *  ⑤ 从架子拖文件到聊天区中间 = 新标签,右带 = 二合一;浮窗不接住自己
  *  ⑥ 零重挂:换序 / 二合一 / 拆开 / 换比例四步,内容根节点同一个 DOM
  *  ⑦ 拒绝态:光标 not-allowed + 一句理由;松手弹回,树一个字不变
+ *  ⑧ **顶栏末格右边那片空白 = 插到末尾**(U1;从前它不在条的矩形里,于是那片
+ *     空白上判据一路问到了别的落点 —— 用户报的「顶栏末格右边空白不能放」)
+ *  ⑨ **边带只对没有架子的那一边成立,而且只有 12px**(U1;用户报的「莫名钉边」):
+ *     右缘 20px = 叶的右带(板),6px = 边带(膜);松手长出右架子;再拖一行到
+ *     同一点,这一次落的是架子自己;左边(已经有架子)6px 处压根没有边带
  *
  * ── 手势怎么派:CDP `Input.dispatchMouseEvent`,一根手指都不碰用户的机器 ───
  * 09-01 判例(系统级合成输入干扰用户用电脑,用户被迫杀掉全部任务)立的法:
@@ -81,6 +89,12 @@ const SETTLE_MS = 150
  */
 const ONTO_FROM_PX = 6
 const TEAR_OFF_DISTANCE = 24
+/**
+ * 「在这条边上生一条新架子」那条带有多宽(`workbench/drop.ts` 的 `NEW_SHELF_BAND`)。
+ * 它**不是**形态机那个 `SNAP_BAND` 24 —— 两者是两件事,判词在产品源码那一格上;
+ * 场景 ⑨ 站在 6(带内)与 20(带外)两点上量,3px 的舍入预算两边都够。
+ */
+const NEW_SHELF_BAND = 12
 const ONTO_Y_OFFSET = (ONTO_FROM_PX + TEAR_OFF_DISTANCE) / 2
 /**
  * 「边越过中心」那一条断言两侧各让 3px。
@@ -382,9 +396,87 @@ function feedbackNow(page) {
       bandRect: bandRect
         ? { left: Math.round(bandRect.left), width: Math.round(bandRect.width) }
         : null,
+      /*
+       * **氛围层随 U1 退役**(用户报障「一拖整窗变色」)。这一格留着不是遗迹:
+       * 它是那次退役的**读数** —— 场景 ⑤ 断言它恒为 0,谁把整窗淡亮种回来当场红。
+       */
       ambient: document.querySelectorAll('[data-testid="drop-ambient"]').length,
     }
   })
+}
+
+/**
+ * **一趟扫过去再扫回来,那格空位是不是同一个元素**(U1 场景 ①)。
+ *
+ * 病历(用户 09-08 真机):从会话行拖到顶栏标签的正中会闪 —— 病根是那条条上
+ * 从前有**两种**落点按 28% 线交替(正中描圈 / 两侧空位),每交替一次宿主就
+ * `clearGap()` 删掉占位再插一个新的,新占位的宽度从 0 起动画,右侧标签整排
+ * 跳一格宽。三个来回量到 18 次 DOM 变动。
+ *
+ * 所以这道门量的不是「屏幕上有没有空位」(那一条 W6-b 就有了),是**那格空位
+ * 在整趟扫描里换没换过身**:
+ *   `distinct`     被插进这条条的占位**元素**有几个 —— 只许 1
+ *   `zeroRestarts` 「宽度从 0 重新起动」发生了几次 —— 只许 ≤ 1(头一次插进来
+ *                  那一发是正当的:`gapAt` 故意先 0 宽落地再写真宽,好让宽度过渡
+ *                  有起点。第二次就是「重建」)
+ *   `pairHot`      有几次给某一格描了圈 —— U1 之后从外面拖进来一次都不该有
+ *
+ * 读法是 MutationObserver 而不是逐帧快照:重建发生在两帧之间,快照量不到。
+ * 断开之前先 `takeRecords()` 走一遍回调 —— 回调是微任务,最后那几条不这样会漏。
+ */
+function startGapProbe(page, leafId) {
+  return page.evaluate((want) => {
+    const list = document.querySelector(
+      `[data-pane-chrome="${want.replace(/["\\]/g, '\\$&')}"] [role="tablist"]`,
+    )
+    if (!list) return false
+    const state = { adds: 0, distinct: 0, zeroRestarts: 0, pairHot: 0 }
+    const seen = new Set()
+    const handle = (records) => {
+      for (const r of records) {
+        if (r.type === 'childList') {
+          for (const node of Array.from(r.addedNodes)) {
+            if (node.nodeType !== 1 || !node.hasAttribute('data-tab-placeholder')) continue
+            state.adds += 1
+            seen.add(node)
+            state.distinct = seen.size
+          }
+          continue
+        }
+        if (r.attributeName === 'data-pair-hot' && r.target.hasAttribute('data-pair-hot')) {
+          state.pairHot += 1
+        }
+        if (
+          r.attributeName === 'style'
+          && r.target.hasAttribute('data-tab-placeholder')
+          && String(r.oldValue ?? '').includes('width: 0px')
+        ) {
+          state.zeroRestarts += 1
+        }
+      }
+    }
+    const obs = new MutationObserver(handle)
+    obs.observe(list, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeOldValue: true,
+      attributeFilter: ['style', 'data-pair-hot'],
+    })
+    window.__gapProbe = {
+      state,
+      stop: () => {
+        handle(obs.takeRecords())
+        obs.disconnect()
+        return state
+      },
+    }
+    return true
+  }, leafId)
+}
+
+function readGapProbe(page) {
+  return page.evaluate(() => window.__gapProbe?.stop() ?? null)
 }
 
 /** 一条条此刻的次序 + 那几格拖拽属性。 */
@@ -452,6 +544,51 @@ function palette(page, leafId) {
       })),
     }
   }, leafId)
+}
+
+/**
+ * 给一个 x,在**中央那片叶**里找一个 y,使这一点不被任何浮窗或拒绝区盖住。
+ *
+ * 与场景 ⑤ 那只 `pointIn` 同一条判词,只是横坐标由调用方点名(场景 ⑨ 要站在
+ * 「离右缘 6px」这种精确的地方,不是一个比例)。**顺带避开 `[data-nodrop]`**:
+ * Dock 与顶栏那两块自述不收,站上去量到的是拒绝态,而那不是这几条要问的事。
+ */
+function freePointAt(page, x) {
+  return page.evaluate((wantX) => {
+    const slot = document.querySelector('[data-pane-region="center"] [data-pane-slot]')
+    if (!slot) return null
+    const r = slot.getBoundingClientRect()
+    const blockers = [
+      ...Array.from(document.querySelectorAll('[data-float-body]')).map((el) =>
+        (el.closest('[role="dialog"]') ?? el).getBoundingClientRect(),
+      ),
+      ...Array.from(document.querySelectorAll('[data-nodrop]')).map((el) => el.getBoundingClientRect()),
+    ]
+    for (const t of [0.5, 0.72, 0.86, 0.3, 0.2, 0.94]) {
+      const y = Math.round(r.top + r.height * t)
+      if (!blockers.some((b) => wantX >= b.left && wantX <= b.right && y >= b.top && y <= b.bottom)) {
+        return { x: Math.round(wantX), y }
+      }
+    }
+    return null
+  }, x)
+}
+
+/** 顶栏那条**标签带**(不是 tablist):它的右缘就是顶栏尾格的左缘。 */
+function topBand(page) {
+  return page.evaluate(() => {
+    const el = document.querySelector('[data-testid="topbar-tabs"]')
+    if (!el) return null
+    const r = el.getBoundingClientRect()
+    return { left: Math.round(r.left), right: Math.round(r.right) }
+  })
+}
+
+/** 此刻屏幕上有哪几条架子(判据读的是同一格 `data-shelf`)。 */
+function shelvesNow(page) {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll('[data-shelf]')).map((el) => el.getAttribute('data-shelf')),
+  )
 }
 
 /** 顶栏那条条(中央区那片叶)。这一串场景几乎都在它身上量。 */
@@ -603,88 +740,74 @@ async function main() {
     console.log('[3/3] 逐个场景')
 
     /* ══ 场景 ①:三种来源 × 标签条上每一个位置 ══════════════════════════ */
-    scenario('三种来源拖到标签条的每个位置:都有空位或描圈,提示行都非空')
+    scenario('三种来源拖到标签条的每个位置:一律是空位、提示非空,占位从头到尾同一个节点')
     {
       assert(pinnedLeft, '文件面板在左架子上(出厂摆法,W6-a §8)')
       const strip = await fillStrip(3)
       assert(strip && strip.tabs.length >= 3, '中央那条条上有三格', JSON.stringify(strip?.tabs.map((t) => t.id)))
 
-      /** 一种来源走一趟:落在每一格的正中、每两格之间,各采一次读数。 */
+      /**
+       * 一种来源走一趟:落在每一格的正中、每两格之间,各采一次读数;
+       * 走到末格再**原路扫回来**,全程挂着 `startGapProbe`。
+       *
+       * **U1 起每一站要的都是空位**(从前正中那几站要的是描圈):条上只剩一种
+       * 落点。这句话的读数不只是「每一站有空位」——`gapProbe` 那三格数才是它的
+       * 硬证:占位从头到尾是同一个元素、宽度只从 0 起动过一次、`data-pair-hot`
+       * 零次。反证:把 `pairTab` 那一档种回判据,`distinct` 当场变成一串,
+       * `zeroRestarts` 与 `pairHot` 同时不为 0。
+       */
       const sweep = async (label, from) => {
         const now = await topStrip(page)
         const stops = []
         now.tabs.forEach((tab, i) => {
-          stops.push({ where: `第 ${i} 格正中`, at: { x: tab.cx, y: tab.cy }, want: 'ring' })
-          stops.push({ where: `第 ${i} 格左缘`, at: { x: tab.left + 3, y: tab.cy }, want: 'gap' })
+          stops.push({ where: `第 ${i} 格正中`, at: { x: tab.cx, y: tab.cy } })
+          stops.push({ where: `第 ${i} 格左缘`, at: { x: tab.left + 3, y: tab.cy } })
         })
         stops.push({
           where: '末格之后的空白',
           at: { x: now.rect.left + now.rect.width - 8, y: now.tabs[0].cy },
-          want: 'gap',
         })
         // **一趟走完,中间一次都不松手**:按下之后一路扫过去,每一站采一次。
         await press(cdp, from)
         await strokeOn(cdp, from, stops[0].at, { steps: 6 })
+        /*
+         * 探针**在到位之后才开**:从来源走到条上这一段里,落点会依次经过架子的叶、
+         * 边带、中央叶……占位本来就该跟着建了又收。那几下不是「重建」,是落点真的
+         * 换了类。要量的是**停在同一条条上来回走**时它换不换身。
+         */
+        const probeOn = await startGapProbe(page, now.leafId)
+        assert(probeOn, `${label}:MutationObserver 挂上了那条条`)
         const seen = []
-        let stampedGap = false
-        let gapIdentity = null
+        let at = stops[0].at
         for (const stop of stops) {
-          await strokeOn(cdp, seen.length ? stops[seen.length - 1].at : stops[0].at, stop.at, { steps: 4 })
+          await strokeOn(cdp, at, stop.at, { steps: 4 })
+          at = stop.at
           // 微动一下再读 —— 手停住的那一帧不算数(见文件头的量法)。
           await moveTo(cdp, { x: stop.at.x + 1, y: stop.at.y })
           await delay(24)
           seen.push({ ...stop, read: await feedbackNow(page) })
-          /*
-           * **同一个节点在挪**(§4.5 第 3 条)。头一次见到空位就给它打一格戳,
-           * 后面每次落点变了再问一遍「戳还在吗」—— 属性跟着重建一起没,所以
-           * 戳还在 = 那格空位从头到尾就是它。这是反证三(「空位改每帧重建」)
-           * 咬得住的那一条。
-           */
-          /*
-           * 答的是 `{present, mark}` 两格,**不是**一个可空的 mark(反证 A 第一版
-           * 就栽在这儿):空位被重建时那格戳跟着没,返回 null;而 null 同时也是
-           * 「屏幕上压根没有空位」的答案 —— 两件事挤在一个值里,断言于是把
-           * 「重建了」读成「这一站没有空位」,当场绿了。分成两格之后,
-           * **有空位但戳没了 = 重建了**,那正是这一条要抓的。
-           */
-          const gap = await page.evaluate((first) => {
-            const ph = document.querySelector('[data-tab-placeholder]')
-            if (!ph) return { present: false, mark: null }
-            if (first) ph.setAttribute('data-gate-gap', 'gap-node')
-            return { present: true, mark: ph.getAttribute('data-gate-gap') }
-          }, !stampedGap)
-          /*
-           * 判的是「**空位一直在,却换了个节点**」——§4.5 第 3 条的字面:
-           * 「空位是同一格只在落点变化时换位置」。空位**消失**不算违例:落点从
-           * 「标签之间」变成「标签正中」时该画的是那一格上的圈,空位本就该收掉
-           * (第一版没分这两件事,于是在描圈那几站上自己红了一次)。
-           * 所以空位一没,戳就跟着作废,下一次出现重新打。
-           */
-          if (!gap.present) {
-            stampedGap = false
-          } else if (!stampedGap) {
-            stampedGap = true
-          } else if (gap.mark !== 'gap-node') {
-            gapIdentity = false
-          } else if (gapIdentity === null) {
-            gapIdentity = true
-          }
         }
+        // **再扫回来**:同一条条上从末格走回第 1 格,一次都不松手。
+        for (let i = stops.length - 2; i >= 0; i -= 1) {
+          await strokeOn(cdp, at, stops[i].at, { steps: 4 })
+          at = stops[i].at
+          await moveTo(cdp, { x: stops[i].at.x + 1, y: stops[i].at.y })
+          await delay(20)
+          seen.push({ ...stops[i], where: `${stops[i].where}(回程)`, read: await feedbackNow(page) })
+        }
+        const probe = await readGapProbe(page)
         /*
          * **走完一趟一律 Esc 取消**:这一条量的是「过程里屏幕上有没有东西」,
          * 落定与它无关 —— 而真落一次会把夹具改掉(总览那扇浮窗盖在中央区上,
          * 松手在那儿等于把这一格丢进总览),后面几条当场没有对象可量。
          */
         await page.keyboard.press('Escape')
-        await releaseAt(cdp, stops[stops.length - 1].at)
-        const missing = seen.filter((row) => {
-          const ok = row.want === 'ring' ? row.read.pairHot !== null : (row.read.gapWidth ?? 0) > 0
-          return !ok
-        })
+        await releaseAt(cdp, at)
+        const missing = seen.filter((row) => !((row.read.gapWidth ?? 0) > 0))
         const blank = seen.filter((row) => row.read.hint === '')
         assert(
           missing.length === 0,
-          `${label}:每一站都有空位或描圈`,
+          `${label}:每一站(去程 + 回程)都是一格空位 —— 条上不再有第二种落点`,
           missing.length ? missing.map((r) => `${r.where}=${JSON.stringify(r.read)}`).join(' | ') : `${seen.length} 站`,
         )
         assert(
@@ -693,9 +816,19 @@ async function main() {
           blank.length ? blank.map((r) => r.where).join(' | ') : seen.map((r) => r.read.hint).join(' / '),
         )
         assert(
-          gapIdentity !== false,
-          `${label}:落点换来换去,那格空位**始终是同一个 DOM 节点**(不是每帧重建)`,
-          String(gapIdentity),
+          probe !== null && probe.distinct === 1,
+          `${label}:整趟只有**一个**占位元素(它只被 insertBefore 挪位,不重建)`,
+          JSON.stringify(probe),
+        )
+        assert(
+          probe !== null && probe.zeroRestarts <= 1,
+          `${label}:占位的宽度从不回到 0 重新起动(头一发落地那次除外)`,
+          JSON.stringify(probe),
+        )
+        assert(
+          probe !== null && probe.pairHot === 0,
+          `${label}:整趟 data-pair-hot 一次都没有(外来来源不再描圈)`,
+          JSON.stringify(probe),
         )
       }
 
@@ -745,7 +878,7 @@ async function main() {
         await moveTo(cdp, { x: foreign.x + 1, y: foreign.y })
         await delay(40)
         const read = await feedbackNow(page)
-        assert((read.gapWidth ?? 0) > 0 || read.pairHot !== null, '标签:落到别人那条条上有空位或描圈', JSON.stringify(read))
+        assert((read.gapWidth ?? 0) > 0, '标签:落到别人那条条上腾出一格空位(U1 起不再有描圈那一档)', JSON.stringify(read))
         assert(read.hint !== '', '标签:提示行非空', read.hint)
         await page.keyboard.press('Escape')
         await releaseAt(cdp, { x: foreign.x, y: foreign.y })
@@ -1224,8 +1357,8 @@ async function main() {
         const mid = { x: midPoint.x, y: midPoint.y }
         const seen = await stroke(cdp, row, mid, { steps: 12, holdMs: 200, sample: () => feedbackNow(page) })
         const last = seen[seen.length - 1]
-        assert(last.shape === 'ring', '中间那一档画的是一圈环', JSON.stringify(last))
-        assert(last.ambient > 0, '**从外面拖进来时能放的地方先淡亮一层**(氛围)', String(last.ambient))
+        assert(last.shape === 'slab', '中间那一档画的是一块铺满整片叶的板', JSON.stringify(last))
+        assert(last.ambient === 0, '**氛围层随 U1 退役**:屏幕上没有一块淡亮(用户报的「一拖整窗变色」)', String(last.ambient))
         assert(last.hint !== '', '提示行说的是「开成新标签」这一档', last.hint)
         await releaseAt(cdp, mid)
         const strip2 = await topStrip(page)
@@ -1242,7 +1375,7 @@ async function main() {
         if (row2) {
           const seen2 = await stroke(cdp, row2, rightBand, { steps: 12, holdMs: 160, sample: () => feedbackNow(page) })
           const r2 = seen2[seen2.length - 1]
-          assert(r2.shape === 'half', '右带那一档画的是「落下后占的那一半」', JSON.stringify(r2))
+          assert(r2.shape === 'slab', '右带那一档画的是「落下后占的那一半」(与中间同一种板,差的只是矩形)', JSON.stringify(r2))
           assert(
             r2.bandRect && Math.abs(r2.bandRect.width - Math.round(leaf.rect.width / 2)) <= 2,
             '而且那一半就是叶的一半宽',
@@ -1424,6 +1557,175 @@ async function main() {
         await releaseAt(cdp, trailing)
       } else {
         assert(false, '顶栏尾格量得到', JSON.stringify(trailing?.rect))
+      }
+    }
+
+    /* ══ 场景 ⑧:顶栏末格右边那片空白 = 插到末尾(U1)══════════════════ */
+    scenario('顶栏末格右边的空白 = 插到末尾(U1;它今天靠两条 CSS 的先后成立)')
+    {
+      /*
+       * 用户 09-08 报的是「顶栏末格右边那片空白不能放」。**施工时真机量下来,
+       * 那片空白今天是收得住的** —— 顶栏那条 tablist 恰好铺满了整条标签带
+       * (`LeafStrip.module.css` 的 `.tabs > * { flex: 1 }` 压过了 `ui/Tabs` 自己的
+       * `.bar { flex: none }`,两条特异性打平、只靠层叠次序分胜负)。也就是说这件
+       * 事今天是由**两条写在别处的 CSS 的先后**决定的,而拖拽那一头看不见它。
+       *
+       * 所以 U1 做了两件事:量法那一头把它写成保证(`drop-geometry.stripRectOf`:
+       * 条收东西的地 = 那条带),这道门从**行为**那一头钉住同一句话 —— 那片空白上
+       * 有没有空位、说的是不是「放到第 n 位」、松手接不接在末尾。
+       * 真正会在那儿答「这里不能放」的只剩顶栏**尾格**(`data-nodrop`,设计 §5
+       * 第一行的拒绝区),场景 ⑦ 量的就是它。
+       */
+      const strip = await topStrip(page)
+      const band = await topBand(page)
+      const lastRight = strip.tabs[strip.tabs.length - 1].left + strip.tabs[strip.tabs.length - 1].width
+      /*
+       * 量的是**末格右缘到那条带右缘**之间那片地,不是 tablist 的右缘 —— 后者
+       * 今天恰好与带子右缘重合(`.tabs > * { flex: 1 }` 压过了 `.bar { flex: none }`),
+       * 而这一条要问的是「用户眼里那片空白」,它的左界永远是最后一格标签。
+       */
+      assert(
+        Boolean(band) && band.right - lastRight > 24,
+        '末格右边到顶栏动作组之间真有一片空白(不然这一条没有对象可量)',
+        JSON.stringify({ lastRight, band }),
+      )
+      let row = await centerOf(page, '[data-session-id]:not([aria-selected="true"])')
+      if (!row) {
+        await clickSelector(page, '[data-testid="dock-tile-sessions"]')
+        await delay(500)
+        row = await centerOf(page, '[data-session-id]:not([aria-selected="true"])')
+      }
+      assert(Boolean(row), '总览里有另一条会话可拖', JSON.stringify(Boolean(row)))
+      if (band && row && band.right - lastRight > 24) {
+        const blank = { x: Math.round((lastRight + band.right) / 2), y: strip.tabs[0].cy }
+        const want = strip.tabs.length + 1
+        const beforeIds = strip.tabs.map((t) => t.id)
+        const seen = await stroke(cdp, row, blank, { steps: 12, holdMs: 200, sample: () => feedbackNow(page) })
+        const read = seen[seen.length - 1]
+        assert((read.gapWidth ?? 0) > 0, '那片空白上腾出一格空位', JSON.stringify(read))
+        assert(
+          read.hint.includes(String(want)),
+          `提示行说的是「放到第 ${want} 位」(n = 格数 + 1)`,
+          `${read.hint}`,
+        )
+        const gapAtEnd = await page.evaluate((leafId) => {
+          const list = document.querySelector(
+            `[data-pane-chrome="${leafId.replace(/["\\]/g, '\\$&')}"] [role="tablist"]`,
+          )
+          const ph = list?.querySelector('[data-tab-placeholder]')
+          if (!ph) return null
+          return ph.nextElementSibling === null
+        }, strip.leafId)
+        assert(gapAtEnd === true, '那格空位排在**末尾**(它后面一个兄弟都没有)', String(gapAtEnd))
+        await releaseAt(cdp, blank)
+        const after = await topStrip(page)
+        const added = after.tabs.filter((t) => !beforeIds.includes(t.id)).map((t) => t.id)
+        assert(added.length === 1, '松手之后条上多了一格', JSON.stringify({ beforeIds, now: after.tabs.map((t) => t.id) }))
+        assert(
+          added.length === 1 && after.tabs[after.tabs.length - 1].id === added[0],
+          '而且它**接在末尾**,不是插在中间',
+          after.tabs.map((t) => t.id).join(' | '),
+        )
+      }
+    }
+
+    /* ══ 场景 ⑨:边带 —— 12px,而且只对没有架子的那一边(U1)════════════ */
+    scenario('边带:12px 窄带、只在那边还没有架子时出现;松手长出新架子')
+    {
+      /*
+       * 病历(用户 09-08 真机):24px 的四条边带排在叶之前,于是**任何**一次贴边
+       * 经过都判「钉边」;而左边明明开着文件架子时,那条带说的「钉到左侧架子」
+       * 更是无处可去 —— 用户原话「莫名钉边」。两条修一起量:带收到 12,而且
+       * 只对**还没有架子**的那一边成立。
+       */
+      const before = await shelvesNow(page)
+      assert(before.includes('left'), '夹具出厂:左架子(files)在', JSON.stringify(before))
+      assert(!before.includes('right'), '夹具出厂:右架子还没有', JSON.stringify(before))
+      const width = await page.evaluate(() => window.innerWidth)
+      const nearRight = await freePointAt(page, width - 20)
+      const onRightEdge = await freePointAt(page, width - 6)
+      /*
+       * 拖的是**从没开过的那一份**(`delta.ts`)。拖一份此刻正当着中央叶活动标签
+       * 的文件过去,整片叶答的是 `back`(「松手放回」,设计 §5 最后一行)——
+       * 判据是对的,而这一条要量的是右带与边带,那就得挑一份不触发它的。
+       * 门第一版拖的是 `beta.ts`,而前面几场恰好把它留成了活动标签,当场红。
+       */
+      const row = await centerOf(page, `[data-file-path="${path.join(cwd, 'delta.ts')}"]`)
+      assert(
+        Boolean(nearRight && onRightEdge && row),
+        '右缘那两点与一行文件都量得到',
+        JSON.stringify({ nearRight, onRightEdge }),
+      )
+      if (nearRight && onRightEdge && row && !before.includes('right')) {
+        // (a) 离右缘 20px:**带外** —— 该是叶的右带那块板,不是膜。
+        await press(cdp, row)
+        await strokeOn(cdp, row, nearRight, { steps: 12 })
+        await moveTo(cdp, { x: nearRight.x + 1, y: nearRight.y })
+        await delay(40)
+        const outside = await feedbackNow(page)
+        assert(
+          outside.shape === 'slab',
+          `离右缘 20px(> ${NEW_SHELF_BAND})是叶的右带:一块板,不是边带那层膜`,
+          JSON.stringify(outside),
+        )
+        assert(
+          !/钉成|Pin as a new/.test(outside.hint),
+          '而且那行字说的不是「钉成架子」',
+          outside.hint,
+        )
+        // (b) 离右缘 6px:**带内** —— 一层 12 宽的膜 + 「钉成右侧架子」。
+        await strokeOn(cdp, nearRight, onRightEdge, { steps: 6 })
+        await moveTo(cdp, { x: onRightEdge.x, y: onRightEdge.y + 1 })
+        await delay(40)
+        const inside = await feedbackNow(page)
+        assert(inside.shape === 'film', '离右缘 6px 是边带:一层膜', JSON.stringify(inside))
+        assert(
+          inside.bandRect !== null && Math.abs(inside.bandRect.width - NEW_SHELF_BAND) <= 1,
+          `而且那条膜就是 ${NEW_SHELF_BAND} 宽(24 那一版在这里读 24)`,
+          JSON.stringify(inside.bandRect),
+        )
+        assert(/钉成|Pin as a new/.test(inside.hint), '那行字说的是「钉成右侧架子」', inside.hint)
+        await releaseAt(cdp, onRightEdge)
+        await delay(400)
+        const grown = await shelvesNow(page)
+        assert(grown.includes('right'), '松手之后右架子长出来了', JSON.stringify(grown))
+        const holds = await page.evaluate(
+          (want) =>
+            Boolean(
+              document.querySelector(`[data-shelf="right"] [data-tab-id="${want.replace(/["\\]/g, '\\$&')}"]`),
+            ),
+          `file:${path.join(cwd, 'delta.ts')}`,
+        )
+        assert(holds, '而且它装着刚拖过去的那一格', String(holds))
+      }
+
+      // (c) 右架子在了 —— 同一点上边带**不再出现**,落的是架子自己。
+      const after = await shelvesNow(page)
+      const row2 = await centerOf(page, `[data-file-path="${path.join(cwd, 'alpha.ts')}"]`)
+      const againEdge = await freePointAt(page, width - 6)
+      if (after.includes('right') && row2 && againEdge) {
+        const seen = await stroke(cdp, row2, againEdge, { steps: 12, holdMs: 160, sample: () => feedbackNow(page) })
+        const read = seen[seen.length - 1]
+        assert(read.shape !== 'film', '那条边已经有架子了 —— 同一点上不再是边带', JSON.stringify(read))
+        assert(!/钉成|Pin as a new/.test(read.hint), '那行字也不再说「钉成架子」', read.hint)
+        await page.keyboard.press('Escape')
+        await releaseAt(cdp, againEdge)
+      } else {
+        assert(false, '右架子在场且还有一行文件可拖', JSON.stringify({ after, row2: Boolean(row2) }))
+      }
+
+      // (d) 左边本来就有架子:6px 处照旧不是边带。
+      const leftPoint = await freePointAt(page, 6)
+      const row3 = await centerOf(page, `[data-file-path="${path.join(cwd, 'gamma.ts')}"]`)
+      if (leftPoint && row3) {
+        const seen = await stroke(cdp, row3, leftPoint, { steps: 12, holdMs: 160, sample: () => feedbackNow(page) })
+        const read = seen[seen.length - 1]
+        assert(read.shape !== 'film', '左边那 6px 落在左架子身上,不是边带', JSON.stringify(read))
+        assert(!/钉成|Pin as a new/.test(read.hint), '那行字也不说「钉成左侧架子」', read.hint)
+        await page.keyboard.press('Escape')
+        await releaseAt(cdp, leftPoint)
+      } else {
+        assert(false, '左缘那一点与一行文件都量得到', JSON.stringify({ leftPoint, row3: Boolean(row3) }))
       }
     }
 

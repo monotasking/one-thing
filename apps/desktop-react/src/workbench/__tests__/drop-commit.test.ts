@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { dropRef, reorderTab } from '../drop-commit'
+import { dropRef, pairIntoIndex, reorderTab } from '../drop-commit'
 import { refIdsOf, leavesOf, makeLeaf } from '../tree'
 import { CENTER_REGION, edgeRegion } from '../regions'
 import { partsOfContent, refId } from '../kinds'
@@ -111,7 +111,15 @@ describe('落到一片叶(W6-b:§5 那张表的后四行)', () => {
     expect(partsOfContent(tabs[0])?.map(refId)).toEqual([refId(A), refId(C)])
   })
 
-  it('落到某一格标签正中 = 与**那一格**并,不是与活动那一格并', () => {
+  /*
+   * **U1 起这条路的入口不再是一个落点,而是 `pairIntoIndex` 本身**(2026-09-08)。
+   * `dropRef({kind:'pairTab'})` 那一档随「外来来源落到标签正中 = 二合一」一起
+   * 退役(判词在 `workbench/drop.ts` 的文件头);今天走这条路的是**条内**那一形
+   * 的 onto 带(`useTabDrag` 松手那一句)与菜单「与右边的标签二合一」,两者调的
+   * 都是这一只。这条断言守的东西一个字没变:并的是**点名的那一格**,不是活动
+   * 那一格。
+   */
+  it('并进点名的那一格 = 与**那一格**并,不是与活动那一格并', () => {
     // 两格标签的叶,活动的是第 0 格;落点点名第 1 格。
     useWorkbenchStore.setState({
       regions: { [CENTER_REGION]: makeLeaf('leaf-1', [A, B], 0) },
@@ -123,7 +131,7 @@ describe('落到一片叶(W6-b:§5 那张表的后四行)', () => {
         [edgeRegion('right')]: makeLeaf('leaf-2', [C], 0),
       },
     })
-    dropRef(C, { kind: 'pairTab', region: CENTER_REGION, leafId: 'leaf-1', at: 1 })
+    pairIntoIndex(C, 'leaf-1', 1, 'right')
     const tabs = leavesOf(centerTree())[0].tabs
     expect(tabs).toHaveLength(2)
     expect(refId(tabs[0])).toBe(refId(A))

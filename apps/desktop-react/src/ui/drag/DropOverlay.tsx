@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react'
 import { useFloatPosition } from '../float'
 import { useDragState } from './DragSession'
-import type { DragRect, DropFeedback } from './DragSession'
+import type { DropFeedback } from './DragSession'
 import s from './DropOverlay.module.css'
 
 /**
@@ -29,14 +29,22 @@ import s from './DropOverlay.module.css'
  * ── ②:UI 生命状态 ───────────────────────────────────────────────────────
  *   无     没在拖 / 这一帧没有落区(`feedback.rect === null`)—— 落在一条标签条
  *          上就是这一形:那一档的预示是**条自己腾出来的空位**,不是盖一块高亮
- *   薄膜   `film`:窗口边带那一档(一层膜 + 一圈实线 + 一句话),W3 的原样
- *   细环   `ring`:并入一片叶 —— 只描一圈,叶里一个像素都不盖(W3-b 裁定 7)
- *   杠     `bar`:在这一侧分屏 —— 那块矩形本身就是一根 4px 的杠
+ *   薄膜   `film`:窗口边带那一档(一层膜 + 一圈实线),W3 的原样
+ *   板     `slab`:落下后它会占的地方 —— 整片叶(开成新标签)与半片叶(与它并排)
+ *          同一档,差的只是矩形有多大(U1 并档,判词在 `DragSession.DropShape`)
  *   轮廓   `outline`:只画一圈虚线边不铺面 —— 撕成浮窗时那扇窗的预示
  *   拒绝   不换底、只留一圈虚线灰边(裁定 7:说得出「这里落不下去」)
  *
  * ── ③:UI 交互状态 ───────────────────────────────────────────────────────
  * 与浮影同理,这一列恒为空:它 `pointer-events: none`,不接指针。
+ *
+ * ── 氛围层随 U1 退役(2026-09-08)────────────────────────────────────────
+ * 从前这一层还画一批**淡亮**:起拖那一刻把「所有能放的地方」各铺一层 6% 的主题色
+ * (设计 §5 贯穿规则 1)。用户真机原话是「一拖整窗变色」—— 屏幕上同时亮五六块,
+ * 读成的不是「这些地方能放」而是「出问题了」,而且它整场不变,等于一直在说一句
+ * 与指针无关的话。今天这一层只画**这一帧真的会落进去的那一处**:一个节点,
+ * 一块矩形,换落点就是一次平移。`AmbientBand` / `DragSessionState.ambient` /
+ * `setDropAmbient` / `--drop-ambient` 一并删掉。
  *
  * ── 挤压纪律:高亮不撑破叶 ───────────────────────────────────────────────
  * 它的身量**就是**锚矩形(`cover` 档交回来的两个数),而锚矩形是那片叶自己的
@@ -45,38 +53,8 @@ import s from './DropOverlay.module.css'
  */
 export function DropOverlay() {
   const drag = useDragState()
-  if (!drag) return null
-  return (
-    <>
-      {/*
-        **氛围**(W6-b,设计 v3 §5 贯穿规则 1)。它排在实亮那一块**之前** ——
-        两者同一档 z(`--z-drag`),谁在上由 DOM 序决定,而「悬到的那一处亮到实」
-        这句话要求实亮的那块盖在淡亮之上。
-        它们是**同一批节点在挪**而不是每帧重建:`key` 取那块矩形的四个数
-        (氛围只在起拖那一刻算一次,整场不变),所以 React 一次都不会拆掉重建。
-      */}
-      {drag.ambient.map((rect) => (
-        <AmbientBand key={`${rect.left},${rect.top},${rect.width},${rect.height}`} rect={rect} />
-      ))}
-      {drag.drop?.rect ? <DropBand feedback={drag.drop} /> : null}
-    </>
-  )
-}
-
-/**
- * 一块**淡亮**(§5:「所有能放的地方先淡淡亮一层」)。它与 `DropBand` 是两只
- * 组件而不是一格 `tone`,理由与那边分家同源:这一块**不跟随、不换矩形**
- * (起拖时算一次),所以它不必每帧跑一次 `useFloatPosition`。
- */
-function AmbientBand({ rect }: { rect: DragRect }) {
-  return (
-    <div
-      className={s.ambient}
-      data-testid="drop-ambient"
-      style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
-      aria-hidden="true"
-    />
-  )
+  if (!drag?.drop?.rect) return null
+  return <DropBand feedback={drag.drop} />
 }
 
 /**
