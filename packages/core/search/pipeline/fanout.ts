@@ -11,6 +11,7 @@
  * ③ 授权在调 `search()` **之前**算好塞进 filters(§6.4b)。
  * ④ **一个能力只收它自述里声明过的过滤键**(见 `narrowToDeclaredFacets`)。
  * ⑤ 谁先答完谁先 yield;失败 / 超时 = 该组 `{ error }`,不拖死别组。
+ * ⑥ **不挑那一档不等去外部枚举的那些路**(09-07 事故;见 `deferInAll`)。
  */
 
 import type {
@@ -48,15 +49,41 @@ export function fanout(
   budgets: BudgetPolicy = defaultBudgetPolicy,
 ): Fanout {
   return async function* run(ctx, query, options = {}) {
-    const capabilities = selectCapabilities(registry, query, ctx)
-    if (capabilities.length === 0) return
+    const selected = selectCapabilities(registry, query, ctx)
+    if (selected.length === 0) return
 
+    // ⑥:不挑那一档里,自述说「我去外部枚举」的那几路**这一次不问**(见 `deferInAll`)。
+    const askedForAll = (query.capability ?? ALL_CAPABILITIES) === ALL_CAPABILITIES
+    const deferred = askedForAll ? selected.filter(deferInAll) : []
+    const capabilities = deferred.length === 0
+      ? selected
+      : selected.filter(capability => !deferInAll(capability))
+
+    // 先出「这一组没跑」——它一个字节的 I/O 都不做,让消费方最早知道该自己去问一次。
+    for (const capability of deferred) yield { capability: capability.manifest.id, deferred: true }
+
+    if (capabilities.length === 0) return
     const table = budgets(query, capabilities)
     const inFlight = capabilities.map(capability =>
       runLadder(capability, query, ctx, table[capability.manifest.id], options))
 
     for await (const group of settleInArrivalOrder(inFlight)) yield group
   }
+}
+
+/**
+ * **不挑那一档不等它**(硬规矩 ⑥;`docs/design/search-index-2026-09.md` §7.1)。
+ *
+ * 判据是自述里那格 `kind`:`'scan'` 说的是「我不是查索引,我是去外部枚举」——
+ * 一次枚举有多大是外部世界说了算,不是这台机器说了算(09-07 那一次是 18GB、
+ * 16 个 node_modules 与一圈符号链接)。一次「不挑」的搜索要把全部组收齐才答得出
+ * 分组总览,于是这样一路能把整发钉死。
+ *
+ * 这里**没有任何能力的名字**,加一路 scan 型能力不用改这一行;而单类档
+ * (用户明确挑了这一档)照常真跑 —— 那时用户要的就是这一路,等它是应该的。
+ */
+function deferInAll(capability: SearchCapability): boolean {
+  return capability.manifest.kind === 'scan'
 }
 
 export function selectCapabilities(
@@ -116,8 +143,18 @@ async function runLadder(
       }
       // 上游已经喊停就别再往下放宽了 —— 换词那一刻在飞的全都不作数。
       if (ctx.signal.aborted) break
-      // 预算用完就收场。有结果的话上面早返回了,所以这里只可能是「空页 + 超时」。
-      if (derived.timedOut) return { capability: id, error: 'timeout' }
+      /*
+       * 预算用完就收场。有结果的话上面早返回了,所以这里只可能是「空页 + 超时」。
+       *
+       * **除非那一页自报 `partial`**:那句话的意思是「我知道自己被打断了,这是
+       * 我扫到的部分」—— 它答过了,只是没答完,而「一条都没扫到」与「没搜成」是
+       * 两件事(09-07 事故的第三条修)。这里认的是页上那一格,不是任何一个能力。
+       */
+      if (derived.timedOut) {
+        return last?.partial === true
+          ? { capability: id, page: last }
+          : { capability: id, error: 'timeout' }
+      }
     }
   } finally {
     derived.dispose()

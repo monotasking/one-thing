@@ -80,6 +80,20 @@ export interface RpcDispatchContext {
 	 * to unconfined (fail-closed; see `resolveRpcSandbox`).
 	 */
 	sandboxRoot?: string;
+	/**
+	 * **调用方已经不要这个答案了**(09-07 事故第四条修)。
+	 *
+	 * 与这张表上别的格同一条规矩:**由宿主铸,永远不从信封上读** —— 它不是载荷里
+	 * 的一个字段(信封上根本没有可以放它的地方),而是宿主对「这条连接还在不在」
+	 * 的观察。HTTP 面在客户端断开(`fetch` 被 abort → socket 关掉而响应还没写完)
+	 * 时喊停;没有这种观察能力的宿主**不给这一格**,处理者照旧跑到底 —— 缺席 =
+	 * 「没人能告诉你调用方走了」,不是「调用方还在」。
+	 *
+	 * 处理者**只把它当加速器**:收到就早点收工,不收到也必须自己有边界(检索面那
+	 * 一路的边界是能力自述里的 `budget.timeoutMs`)。它不是权限、不是身份,
+	 * 所以不占 `transport:gate` 那本账。
+	 */
+	signal?: AbortSignal;
 }
 
 /**

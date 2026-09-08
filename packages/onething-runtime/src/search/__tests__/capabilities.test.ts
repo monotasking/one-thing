@@ -178,9 +178,13 @@ describe('内置检索能力(静态 / 扫描那三类)', () => {
       expect(manifest.id).toBe(testCase.id)
       expect(manifest.labelKey).toBe(`search.capability.${testCase.id}`)
       expect(manifest.budget.default).toBeGreaterThan(0)
-      // 扫描型不设超时(真去扫盘,钉预算会把慢盘变成「没搜成」);静态型是内存表,
-      // 2000 这个数永远碰不到。
-      expect(manifest.budget.timeoutMs).toBe(manifest.kind === 'scan' ? 0 : 2000)
+      /*
+       * 扫描型 3000ms(09-07 事故第二/三条修:从前是 `0` = 不设限,真机上换来
+       * 「一次搜索永不落地」);静态型是内存表,2000 这个数永远碰不到。
+       * 钉预算不再等于把慢盘判死 —— 超时那一刻它交已扫到的部分并标 `partial`
+       * (见下面「扫描型的预算」那一组)。
+       */
+      expect(manifest.budget.timeoutMs).toBe(manifest.kind === 'scan' ? 3000 : 2000)
       expect(manifest.order).toBeGreaterThan(0)
       // scan / static / remote 型不吃放宽阶梯(§6.2 末句)。
       expect(manifest.relax).toBe(false)
@@ -609,40 +613,54 @@ describe('files 的扫描根 `dir`(S4b)', () => {
   })
 })
 
-describe('扫描型的预算(不许多一道刹车)', () => {
-  /** 慢到比「原本那个 2000ms 预算」还久的一路扫描。 */
-  const SLOW_SCAN_MS = 2500
+describe('扫描型的预算(有边界,但超时不等于作废)', () => {
+  /** 比 3000ms 预算还慢的一路扫描。 */
+  const SLOW_SCAN_MS = 5000
 
+  /**
+   * 一只**认信号**的慢扫描:被打断时交它已经扫到的那些,并说自己没扫完。
+   * 这正是 `capabilities/files.ts` 里 `searchFiles` 的形状。
+   */
   function slowFilesCapability() {
     return scanBackedCapability({
       manifest: filesSearchManifest,
-      run: async () => {
-        await new Promise<void>(resolve => setTimeout(resolve, SLOW_SCAN_MS))
-        return [{ id: 'f-slow', type: 'file' as const, title: 'alpha 慢慢来', filePath: '/tmp/alpha' }]
+      run: async (_query, _limit, _filters, ctx) => {
+        const scanned = [{ id: 'f-slow', type: 'file' as const, title: 'alpha 慢慢来', filePath: '/tmp/alpha' }]
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, SLOW_SCAN_MS)
+          ctx.signal.addEventListener('abort', () => {
+            clearTimeout(timer)
+            resolve()
+          }, { once: true })
+        })
+        return ctx.signal.aborted ? { items: scanned, partial: true } : { items: scanned }
       },
       supports: () => true,
       target: result => ({ kind: 'file', payload: { filePath: result.filePath ?? '' } }),
     })
   }
 
-  it('扫描型的 files:timeoutMs 是 0 —— core 的 deriveSignal 于是一个计时器都不装', () => {
+  it('扫描型的 files:timeoutMs 是 3000 —— 一次搜索的等待有一个说得出口的上限', () => {
     const manifest = createFilesSearchCapability(makeAdapters()).manifest
     expect(manifest.kind).toBe('scan')
-    expect(manifest.budget.timeoutMs).toBe(0)
+    expect(manifest.budget.timeoutMs).toBe(3000)
   })
 
-  it('files:扫 2.5s 也照样出结果,而不是 error: timeout(这一路本来就没有超时)', async () => {
+  it('files:预算到点交已扫到的那些并标 partial,而不是 error: timeout', async () => {
     vi.useFakeTimers()
     try {
       const service = new OnethingSearchService()
       service.register(slowFilesCapability())
       const pending = service.query({ query: 'alpha', category: 'files', limit: 5 })
-      // 先放一拍让那只慢扫描把自己的计时器装上,再把时间推过 2.5s。
+      // 先放一拍让 `deriveSignal` 把 3000ms 那只计时器装上,再把时间推过去。
       await vi.advanceTimersByTimeAsync(0)
-      await vi.advanceTimersByTimeAsync(SLOW_SCAN_MS)
+      await vi.advanceTimersByTimeAsync(3000)
       const response = await pending
-      // 把 timeoutMs 改回 2000 → 派生信号在 2000ms 掐掉扫描,这一格变成空页 + error:'timeout'。
+      // 反证:把 `runLadder` 里那句 `last?.partial === true` 拆掉 → 这里当场变成
+      // `success:false` + `error: 'timeout'`(整块作废),两条断言一起红。
+      expect(response.success).toBe(true)
       expect(response.results.map(result => result.id)).toEqual(['f-slow'])
+      expect(response.partial).toBe(true)
     } finally {
       vi.useRealTimers()
     }

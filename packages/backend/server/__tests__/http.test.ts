@@ -2007,6 +2007,9 @@ describe('createOnethingHttpServer', () => {
         ownerUid: 'alice',
         workspaceId: 'rpc-workspace',
         sandboxRoot: join(serverRuntime.workspaceRoot, 'alice', 'rpc-workspace'),
+        // 「调用方还在不在」也是宿主铸的一格(09-07 事故第四条修)——它由这条
+        // 连接的 `response` 观察出来,同样不可能从信封上读到。
+        signal: expect.any(AbortSignal),
         // context 里一个函数都没有(工单 4 C3):能力走第三个参数。
       }, expect.objectContaining({ workspaceWatch: expect.any(Object) }))
 
@@ -2022,6 +2025,7 @@ describe('createOnethingHttpServer', () => {
         ownerUid: 'alice',
         workspaceId: 'rpc-workspace',
         sandboxRoot: join(serverRuntime.workspaceRoot, 'alice', 'rpc-workspace'),
+        signal: expect.any(AbortSignal),
       }, expect.objectContaining({ workspaceWatch: expect.any(Object) }))
 
       await expect(post({ domain: 'nope', method: 'echo', payload: {} })).resolves.toEqual({

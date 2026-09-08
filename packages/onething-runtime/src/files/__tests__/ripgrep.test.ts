@@ -7,21 +7,46 @@ import {
 } from '../ripgrep.js'
 
 describe('runtime ripgrep helpers', () => {
+  /**
+   * 两条边界立在参数上(09-07 事故第三条修):**没有 `--follow`**(符号链接环
+   * 是那 415GB 虚拟内存的来源),**默认 `--max-depth=8`**。
+   */
   it('builds file listing args with hidden files and git excluded by default', () => {
     expect(buildOnethingRipgrepFileListArgs({ glob: ['*.ts'], noIgnore: true })).toEqual([
       '--files',
-      '--follow',
       '--hidden',
       '--no-ignore',
+      '--max-depth=8',
       '--glob=!.git/*',
       '--glob=*.ts',
     ])
 
     expect(buildOnethingRipgrepFileListArgs({ hidden: false })).toEqual([
       '--files',
-      '--follow',
+      '--max-depth=8',
       '--glob=!.git/*',
     ])
+  })
+
+  it('深度可以覆盖,`0` 是明说的「不设限」', () => {
+    expect(buildOnethingRipgrepFileListArgs({ hidden: false, maxDepth: 2 })).toEqual([
+      '--files',
+      '--max-depth=2',
+      '--glob=!.git/*',
+    ])
+    expect(buildOnethingRipgrepFileListArgs({ hidden: false, maxDepth: 0 })).toEqual([
+      '--files',
+      '--glob=!.git/*',
+    ])
+  })
+
+  it('`--follow` 一个字都不许回来(符号链接环 = 415GB 虚拟内存那一次)', () => {
+    for (const options of [
+      { hidden: false },
+      { hidden: true, noIgnore: true, maxDepth: 0, glob: ['*.md'] },
+    ]) {
+      expect(buildOnethingRipgrepFileListArgs(options)).not.toContain('--follow')
+    }
   })
 
   it('builds search args and preserves literal glob order', () => {

@@ -100,6 +100,25 @@ export interface ResultBackedCandidate extends Candidate {
 /** 一条结果 → 它的目标形(§4.1 `target`,开放:形由能力自己定义并导出类型)。 */
 export type ResultTargetOf = (result: SearchServiceResult) => { kind: string; payload: unknown }
 
+/**
+ * 匹配器交回来的东西:**一张表,或者「一张表 + 我没扫完」**(09-07 事故第三条修)。
+ *
+ * 交数组是绝大多数匹配器的写法,一个字都不用改;只有会被预算打断的那种(去枚举
+ * 外部资源的)才需要多说一句 `partial` —— 那一格最终落在 `SearchPage.partial` 上,
+ * 由 `fanout` 认成「它答过了,只是没答完」,而不是一句「没搜成」。
+ */
+export interface ScanRunOutcome {
+  items: readonly SearchServiceResult[]
+  /** 真的被打断了才给 `true`;缺席 = 这一趟走完了。 */
+  partial?: boolean
+}
+
+function outcomeOf(
+  value: readonly SearchServiceResult[] | ScanRunOutcome,
+): ScanRunOutcome {
+  return Array.isArray(value) ? { items: value } : (value as ScanRunOutcome)
+}
+
 export interface ResultBackedCapabilityOptions {
   manifest: CapabilityManifest
   /**
@@ -115,7 +134,10 @@ export interface ResultBackedCapabilityOptions {
     limit: number,
     filters: Readonly<Record<string, FacetFilter>>,
     context: SearchContext,
-  ): Promise<readonly SearchServiceResult[]> | readonly SearchServiceResult[]
+  ):
+    | Promise<readonly SearchServiceResult[] | ScanRunOutcome>
+    | readonly SearchServiceResult[]
+    | ScanRunOutcome
   target: ResultTargetOf
   /** 缺省 = 恒真(这一类在 `all` 档里被无条件问到)。 */
   supports?(query: SearchQuery): boolean
@@ -219,8 +241,21 @@ export function scanBackedCapability(options: ResultBackedCapabilityOptions): Se
     manifest,
     supports,
     async search(query: SearchQuery, page, ctx: SearchContext) {
-      const rows = await options.run(query.raw, page.limit, query.filters, ctx)
+      const outcome = outcomeOf(await options.run(query.raw, page.limit, query.filters, ctx))
+      const rows = outcome.items
       const candidates = toCandidates(manifest.id, rows, options.target, options.preview)
+      /*
+       * **切页这一步不看信号**(09-07 事故第三条修)。
+       *
+       * `scanCapability` 每取一条就问一次 `ctx.signal.aborted` —— 那条判据是给
+       * **真在扫**的基座写的:还没扫的别扫了。而到了这里,活已经干完了,手上是一张
+       * 内存里的表,剩下的只是切一页 + 编个游标(微秒级、零 I/O)。带着已经 abort
+       * 的信号进去,结果是「扫到的 30 条一条都不交」—— 预算到点等于全部作废,
+       * 正是 `partial` 这一格要根治的那件事。
+       *
+       * 所以这里递一条**没被拉过的**信号,别的格逐字照旧。「没扫完」由 `partial`
+       * 说,不由「把扫到的丢掉」表演。
+       */
       const scanned = await scanCapability<ResultBackedCandidate>({
         manifest,
         supports,
@@ -229,8 +264,10 @@ export function scanBackedCapability(options: ResultBackedCapabilityOptions): Se
         },
         match: () => candidate => candidate,
         positionOf: candidate => candidate.id,
-      }).search(query, page, ctx)
-      return withActions(scanned, options.actions?.(query, rows))
+      }).search(query, page, { ...ctx, signal: new AbortController().signal })
+      // 「没扫完」原样上交:`fanout` 据它把「空页 + 超时」判成答复而不是失败。
+      const page2 = outcome.partial === true ? { ...scanned, partial: true } : scanned
+      return withActions(page2, options.actions?.(query, rows))
     },
   }
 }
@@ -244,7 +281,9 @@ export function staticBackedCapability(options: ResultBackedCapabilityOptions): 
     manifest,
     supports,
     async search(query: SearchQuery, page, ctx: SearchContext) {
-      const rows = await options.run(query.raw, STATIC_FULL_LIMIT, query.filters, ctx)
+      const rows = outcomeOf(
+        await options.run(query.raw, STATIC_FULL_LIMIT, query.filters, ctx),
+      ).items
       const candidates = toCandidates(manifest.id, rows, options.target, options.preview)
       const paged = await staticCapability<ResultBackedCandidate>({
         manifest,

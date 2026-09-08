@@ -204,8 +204,17 @@ export async function createAppSearchService(
   overrides: AppSearchServiceOverrides = {},
 ): Promise<AppSearchServiceHandle> {
   const adapters = createAppSearchProvidersAdapters()
+  /*
+   * `access.fileRoots` **只喂授权**(`assertPath`),不喂扫盘 —— 09-07 事故第一条。
+   *
+   * 这里曾经有一行 `adapters.getSearchDirectories = access.fileRoots`,把「谁准看
+   * 哪些路径」那张全集接成了「这一次去哪几个目录扫」。真机读数:492 条会话 →
+   * 31 个扫描根 → 一次搜索 31 条 `rg --files --follow --no-ignore`,扎进
+   * `~/data/code`(18GB / 16 个 node_modules)的那几条三次都没有 close。
+   * 扫哪儿是 files 能力自己的语义(`capabilities/files.ts` 的 `getSearchDirs`),
+   * 那个端口连同这一行一起没了。
+   */
   const access = createAppSearchAuthorization(adapters)
-  adapters.getSearchDirectories = access.fileRoots
   const indexService = await startSearchIndexService(adapters, overrides)
   const unsubscribes = indexService === undefined ? [] : subscribeLedger(indexService)
 

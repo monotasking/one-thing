@@ -32,7 +32,26 @@ export interface OnethingRipgrepListFilesOptions {
   glob?: string[]
   hidden?: boolean
   noIgnore?: boolean
+  /**
+   * **往下最多几层**(09-07 事故第三条修)。缺席 = `DEFAULT_LIST_FILES_MAX_DEPTH`。
+   *
+   * 没有它的时候,一个 18GB、带 16 个 node_modules 的目录能让 `rg --files` 跑到
+   * 462% CPU、415GB 虚拟内存还不回来。给一个上限,是让「列文件」这件事的代价与
+   * 目录有多深脱钩;`0` 表示不设限(调用方明说要整棵树时才用)。
+   */
+  maxDepth?: number
+  /**
+   * 上游喊停(换词 / 预算到点)。**收到就杀进程**,不是「不再读它的输出」——
+   * 后者会把一条 462% CPU 的 rg 留在机器上。
+   */
+  signal?: AbortSignal
 }
+
+/**
+ * 默认深度。8 层盖得住一份普通仓库的源码树(`src/a/b/c/d/e/f/g`),盖不住
+ * `node_modules` 里那种深度 —— 而那正是要挡的东西。
+ */
+export const DEFAULT_LIST_FILES_MAX_DEPTH = 8
 
 export interface OnethingRipgrepSearchOptions {
   cwd: string
@@ -264,8 +283,20 @@ export async function getOnethingRipgrepPath(
   return cachedRgPath
 }
 
-export function buildOnethingRipgrepFileListArgs(options: Pick<OnethingRipgrepListFilesOptions, 'glob' | 'hidden' | 'noIgnore'>): string[] {
-  const args = ['--files', '--follow']
+/**
+ * `rg --files` 的参数。**两条边界是这里立的**(09-07 事故第三条修):
+ *
+ *  · **不再 `--follow`** —— 跟符号链接会绕环。真机上那两条挂死的 rg 吃到 415GB
+ *    虚拟内存,就是沿着链接在同一棵树里转圈;`--files` 本来也没有「必须跟链接」
+ *    的语义,想看链接指向的东西就把那个目录本身当根。
+ *  · **`--max-depth` 缺省 8**(`DEFAULT_LIST_FILES_MAX_DEPTH`),`maxDepth: 0`
+ *    才是不设限。
+ *
+ * `--no-ignore` 这一格照旧由调用方说了算,但**默认不给** —— 尊重 `.gitignore`
+ * 的那一路自然绕开 `node_modules`,这是最便宜的那条边界。
+ */
+export function buildOnethingRipgrepFileListArgs(options: Pick<OnethingRipgrepListFilesOptions, 'glob' | 'hidden' | 'noIgnore' | 'maxDepth'>): string[] {
+  const args = ['--files']
 
   if (options.hidden !== false) {
     args.push('--hidden')
@@ -273,6 +304,11 @@ export function buildOnethingRipgrepFileListArgs(options: Pick<OnethingRipgrepLi
 
   if (options.noIgnore) {
     args.push('--no-ignore')
+  }
+
+  const maxDepth = options.maxDepth ?? DEFAULT_LIST_FILES_MAX_DEPTH
+  if (maxDepth > 0) {
+    args.push(`--max-depth=${maxDepth}`)
   }
 
   args.push('--glob=!.git/*')
@@ -329,11 +365,31 @@ export function parseOnethingRipgrepSearchOutput(stdout: string): OnethingRipgre
   return results
 }
 
+/**
+ * 列一个目录下的文件(一行一条相对路径)。
+ *
+ * ## 这只生成器**一定会杀掉它起的进程**(09-07 事故第三条修)
+ *
+ * 从前它既不收 `signal`、也没有 `finally`、从不 `kill`:消费方 `break`(拿够了)、
+ * 抛错、或者上游换词,它都只是不再读 stdout —— 而 `rg` 还在那儿跑。真机上两条这样
+ * 的孤儿吃到 462% CPU / 415GB 虚拟内存,清空输入框也不死,因为**没有人握着它**。
+ *
+ * 现在三条一起成立:
+ *  ① `signal` 一 abort 就 `kill()` 并且**不再 yield**;
+ *  ② `try/finally` 兜住消费方的一切退出方式(`break` / `return` / `throw` 都会让
+ *     `for await` 调生成器的 `return()`,于是 `finally` 一定跑);
+ *  ③ `kill()` 是幂等的(进程已退出时是 no-op),所以正常走完也照调不误。
+ *
+ * **上限不在这里**:`--files` 没有 `--max-count` 这回事(那是搜内容的参数)。
+ * 「够了」由消费方 `break` 表达,而 `break` 现在等于杀进程 —— 这就是上限。
+ */
 export async function* listOnethingRipgrepFiles(
   options: OnethingRipgrepListFilesOptions,
   adaptersOverride: OnethingRipgrepRuntimeAdapters = {},
 ): AsyncGenerator<string> {
   const adapters = adaptersWith(adaptersOverride)
+  const signal = options.signal
+  if (signal?.aborted) return
   const rgPath = await getOnethingRipgrepPath(adapters)
   const args = buildOnethingRipgrepFileListArgs(options)
 
@@ -375,22 +431,67 @@ export async function* listOnethingRipgrepFiles(
     if (closeResolve) closeResolve()
   })
 
-  let buffer = ''
-
-  for await (const chunk of proc.stdout!) {
-    buffer += chunk.toString()
-    const lines = buffer.split(/\r?\n/)
-    buffer = lines.pop() || ''
-
-    for (const line of lines) {
-      if (line) yield line
+  /**
+   * 杀。**幂等**:进程已经退出时 `kill()` 是 no-op,所以哪条路上都无脑调。
+   *
+   * **只杀,不 `destroy()` stdout**:杀掉进程本身就会让管道 EOF,那条
+   * `for await` 于是**正常结束**;主动 destroy 一条正在被异步迭代的流,Node 会
+   * 把它判成 `ERR_STREAM_PREMATURE_CLOSE` 抛给消费方 —— 上游换个词换出一个异常,
+   * 那是自己给自己造的错。destroy 留给 `finally` 那一次兜底(那时循环已经出来了)。
+   */
+  const kill = (): void => {
+    try {
+      if (!processClosed) proc.kill()
+    } catch {
+      // 已经没了。
     }
   }
 
-  if (buffer) yield buffer
+  // 上游喊停 = 当场杀,不等这一轮 chunk 读完。
+  const onAbort = (): void => kill()
+  signal?.addEventListener('abort', onAbort, { once: true })
 
-  if (!processClosed) {
-    await closePromise
+  try {
+    let buffer = ''
+
+    try {
+      for await (const chunk of proc.stdout!) {
+        // 被打断的那一刻起**一条都不再交** —— 交出去的行会被上游当成「这次的结果」。
+        if (signal?.aborted) return
+        buffer += chunk.toString()
+        const lines = buffer.split(/\r?\n/)
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (signal?.aborted) return
+          if (line) yield line
+        }
+      }
+    } catch (error) {
+      /*
+       * 是我们自己把进程按掉才让这条流断的 —— 那不是一个要往上抛的错误,
+       * 而是「这一趟到此为止」。别的读流错照抛。
+       */
+      if (!signal?.aborted) throw error
+      return
+    }
+
+    if (signal?.aborted) return
+    if (buffer) yield buffer
+
+    if (!processClosed) {
+      await closePromise
+    }
+  } finally {
+    // 消费方 break / 抛错 / 上游 abort / 正常走完 —— 四条路都到这里。
+    signal?.removeEventListener('abort', onAbort)
+    kill()
+    try {
+      // 这一句在循环之外,所以不会再变成 premature close;它只是把管道收干净。
+      proc.stdout?.destroy()
+    } catch {
+      // 已经没了。
+    }
   }
 }
 

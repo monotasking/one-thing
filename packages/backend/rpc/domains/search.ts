@@ -196,8 +196,19 @@ export const searchRpcHandlers: RpcRouteHandlers<SearchRoutes> = {
     }
     const response = await requireSearchService().query(
       request as SearchServiceRequest,
-      // 「谁在问」由宿主铸的 dispatch context 造,永远不从信封上读(§6.4b + RPC 判例)。
-      { principal: { kind: 'user', id: requestSessionOwner(context).userId! }, executionContext: requestSessionOwner(context) },
+      {
+        // 「谁在问」由宿主铸的 dispatch context 造,永远不从信封上读(§6.4b + RPC 判例)。
+        principal: { kind: 'user', id: requestSessionOwner(context).userId! },
+        executionContext: requestSessionOwner(context),
+        /*
+         * **「还要不要」也由宿主说**(09-07 事故第四条修)。壳换词 / 清词时
+         * abort 那一发 fetch,HTTP 面据此喊停,这条信号一路传到 `fanout` 派生的
+         * 那条上,扫盘那一路收到就把它起的 `rg` 杀掉。宿主给不出观察(IPC 直调、
+         * 单测)时这一格缺席,`createSearchContext` 照旧兜一条永不 abort 的 ——
+         * 与从前逐字相同。
+         */
+        ...(context.signal === undefined ? {} : { signal: context.signal }),
+      },
     )
     return response as SearchResponse
   },

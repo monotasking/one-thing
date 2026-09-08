@@ -114,7 +114,7 @@ export function createOnethingServerRequestHandler(
       runtime: options.runtime,
       corsOrigin,
       requestContext,
-      rpcContext: createServerRpcDispatchContext(options.workspaceRoot, requestContext),
+      rpcContext: createServerRpcDispatchContext(options.workspaceRoot, requestContext, response),
       rpcPorts: createServerRpcDispatchPorts(options.runtime.files),
     })
     void (options.runRequest ? options.runRequest(executeRequest) : executeRequest()).catch(error => {

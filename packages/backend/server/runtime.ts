@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { ServerResponse } from "node:http";
+import { watchClientDisconnect } from './request-abort.js'
 import { tenantDirectory, tenantKey } from './tenant-paths.js'
 import { sessionDeletion } from '../session/deletion.js'
 import { sessionAccess, createSessionAccess } from '../session/access.js'
@@ -4090,6 +4092,15 @@ function workspaceSandboxRoot(
 export function createServerRpcDispatchContext(
 	workspaceRoot: string | undefined,
 	context: RuntimeRequestContext,
+	/**
+	 * 这一发的响应对象 —— 用来观察「调用方还在不在」(09-07 事故第四条修;
+	 * 判据与理由都在 `request-abort.ts`)。**可选**:铸不出这个观察的调用方
+	 * (单测、进程内直调)不给,于是 `signal` 缺席 = 「没人能告诉你调用方走了」。
+	 *
+	 * 它铸在这里而不是在路由处理者里,理由与这张表上别的格逐字相同:
+	 * **身份与处境由宿主一次铸齐**,处理者只读,不自己去看连接。
+	 */
+	response?: ServerResponse,
 ): RpcDispatchContext {
 	return {
 		transport: "http",
@@ -4098,6 +4109,9 @@ export function createServerRpcDispatchContext(
 		sandboxRoot: workspaceRoot
 			? workspaceSandboxRoot(workspaceRoot, context)
 			: undefined,
+		...(response === undefined
+			? {}
+			: { signal: watchClientDisconnect(response) }),
 	};
 }
 

@@ -16,7 +16,7 @@ import type {
   SearchContext,
 } from '@onething/core/search'
 import type { OnethingSearchProvidersAdapters } from '../providers.js'
-import { scanBackedCapability, type SearchServiceResult } from './scan-adapter.js'
+import { scanBackedCapability, type ScanRunOutcome, type SearchServiceResult } from './scan-adapter.js'
 import { expandPath, matchRangesOf, normalizeSearchQuery } from './text-match.js'
 import {
   firstCandidate,
@@ -55,9 +55,17 @@ const DIR_FACET = 'dir'
  * 这一档默认搜哪几个根:当前会话的工作目录 + 两个笔记根 + 接入目录,去重后按序。
  *
  * 去重是 `add` 自带的,所以某个根与会话工作目录重合时不会搜两遍。
+ *
+ * ── **它不是授权用的那张表**(09-07 事故第一条修)────────────────────────
+ * S4b 之后有一阵子这张表被换成了 `access.fileRoots` —— 那是**授权**用的全集
+ * (每一条可见会话的 workingDirectory + 笔记目录 + 接入目录)。真机上 492 条会话
+ * 于是变成 31 个扫描根,其中一个是 18GB 带 16 个 node_modules 的目录,一次搜索
+ * 起 31 条 `rg`,三条永不回来。**两张表回答的是两个问题**:
+ *  · 「这一档去哪几个目录扫」= 这里这一张(当前语境),
+ *  · 「这条路径准不准看」= `assertPath(fileRoots)`(全集)。
+ * 用全集回答第一个问题,就是把一次检索变成一次全盘遍历。
  */
-function getSearchDirs(adapters: OnethingSearchProvidersAdapters, context?: SearchContext): string[] {
-  if (context && adapters.getSearchDirectories) return adapters.getSearchDirectories(context)
+function getSearchDirs(adapters: OnethingSearchProvidersAdapters): string[] {
   const seen = new Set<string>()
   const dirs: string[] = []
 
@@ -95,19 +103,34 @@ export async function searchFiles(
   adapters: OnethingSearchProvidersAdapters,
   dir?: string,
   context?: SearchContext,
-): Promise<SearchServiceResult[]> {
-  const dirs = dir ? [expandPath(dir)] : getSearchDirs(adapters, context)
-  if (dirs.length === 0) return []
+): Promise<ScanRunOutcome> {
+  const dirs = dir ? [expandPath(dir)] : getSearchDirs(adapters)
+  if (dirs.length === 0) return { items: [] }
 
   const q = normalizeSearchQuery(query)
-  if (!q) return []
+  if (!q) return { items: [] }
   const results: SearchServiceResult[] = []
+  /**
+   * 上游那条(`fanout` 用 `budget.timeoutMs` 派生的)信号。它到了就是
+   * 「时间到 / 换词了」—— **交已经扫到的那些并标 partial**,不抛、不作废。
+   */
+  const signal = context?.signal
+  const aborted = (): boolean => signal?.aborted === true
 
   for (const cwd of dirs) {
-    if (results.length >= limit) break
+    if (results.length >= limit || aborted()) break
     try {
-      for await (const relPath of adapters.listFiles({ cwd, hidden: false, noIgnore: true })) {
-        if (results.length >= limit) break
+      for await (const relPath of adapters.listFiles({
+        cwd,
+        hidden: false,
+        // **不再 `--no-ignore`**(09-07 事故第三条修):尊重 `.gitignore` 是最便宜
+        // 的那条边界 —— 用户仓库里 node_modules / build 产物本来就不该出现在
+        // 「按名找文件」的结果里,而它们正是让一次扫描从毫秒变成分钟的东西。
+        noIgnore: false,
+        ...(signal === undefined ? {} : { signal }),
+      })) {
+        // 拿够了就 break —— 而 `break` 现在会把那条 rg 杀掉(见 `listOnethingRipgrepFiles`)。
+        if (results.length >= limit || aborted()) break
         // 相对路径整条参与匹配(文件名与目录名都算命中)。
         if (!relPath.toLowerCase().includes(q)) continue
 
@@ -127,7 +150,9 @@ export async function searchFiles(
       // 目录可以不存在。
     }
   }
-  return results
+  // 被打断 = 这一趟没走完。**只在真被打断时说** —— 拿够了 `limit` 是走完了一页,
+  // 不是没扫完(那由 `cursor` 说)。
+  return aborted() ? { items: results, partial: true } : { items: results }
 }
 
 export const filesSearchManifest: CapabilityManifest = {
@@ -138,10 +163,19 @@ export const filesSearchManifest: CapabilityManifest = {
   // 扫描型唯一认的一格。声明它 = `fanout` 的 `narrowToDeclaredFacets` 才会把
   // 这个键递到这一路上(别的键与它无关,一格都收不到)。
   facets: [{ key: DIR_FACET, type: 'enum' }],
-  // 扫描型不设超时(`0` = core `deriveSignal` 只在 `timeoutMs > 0` 时才装计时器):
-  // 这一路是真去扫盘的,钉一个预算会让慢盘 / 大目录从「出结果」变成「没搜成」。
-  // 文件那一路换成索引型(S8,§13)之后再钉真预算。
-  budget: { default: 10, timeoutMs: 0 },
+  /*
+   * **3 秒**(09-07 事故第二/三条修)。
+   *
+   * 从前这里是 `0`(= 不装计时器),理由写着「钉一个预算会让慢盘从『出结果』变成
+   * 『没搜成』」。那句话在当时是对的,但它假设的是「超时 = 整组作废」——真机上
+   * 换来的是更坏的东西:一次扫描永不落地,而「不挑」那一档要收齐所有组才答,于是
+   * **整发搜索一个结果都不出**,两条 rg 挂在 462% CPU 上。
+   *
+   * 现在超时有第三种结局:`searchFiles` 交已经扫到的那些并标 `partial`,`fanout`
+   * 据此判成「答过了,没答完」而不是错误(见 `core/search/pipeline/fanout.ts`)。
+   * 于是钉预算不再等于把慢盘判死 —— 它只是把「等多久」变成一个说得出口的数。
+   */
+  budget: { default: 10, timeoutMs: 3000 },
   order: 4,
   orderWhenIntent: { actions: 5 },
   relax: false,

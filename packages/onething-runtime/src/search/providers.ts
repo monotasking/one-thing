@@ -24,7 +24,6 @@
  * 那一侧的取材面是 per-owner 的,组不出进程单例。
  */
 
-import type { SearchContext } from '@onething/core/search'
 
 export interface OnethingSearchSessionMeta {
   ownerUserId?: string
@@ -106,11 +105,28 @@ export interface OnethingSearchListFilesOptions {
   glob?: string[]
   hidden?: boolean
   noIgnore?: boolean
+  /** 往下最多几层;缺席 = 实现自己的缺省(`0` = 不设限)。 */
+  maxDepth?: number
+  /**
+   * 上游喊停(换词 / 这一路的预算到点)。**实现收到就该停掉它起的进程** ——
+   * 09-07 事故里少的就是这一格:清空输入框之后两条 `rg` 照样在 462% CPU 上跑。
+   */
+  signal?: AbortSignal
 }
 
 export interface OnethingSearchProvidersAdapters {
-  /** Host-authorized roots for this captured request, before file enumeration. */
-  getSearchDirectories?(context: SearchContext): string[]
+  /*
+   * **这里没有 `getSearchDirectories`**(09-07 事故第一条修,故意留这段碑文)。
+   *
+   * 它曾经是「宿主替这次请求算好的根列表」,而宿主接进来的是**授权**那张全集
+   * (`backend/wiring/search/authorization.ts` 的 `fileRoots`:每一条可见会话的
+   * workingDirectory + 笔记目录 + 接入目录)。492 条会话 → 31 个扫描根 → 一次
+   * 「不挑」的搜索起 31 条 `rg`,其中扎进 18GB 目录的三条永不返回。
+   *
+   * 判据:**「去哪几个目录扫」是 files 这一类自己的语义**,别的能力一个都不问它,
+   * 宿主也不该替它答;「这条路径准不准看」才是宿主的事,那条走 `assertPath`。
+   * 要让某一次只扫一个目录,递 `filters.dir`(files 在自述里声明的那一格)。
+   */
   getSessionsList(): OnethingSearchSessionMeta[]
   /**
    * 按会话取消息(`messages` 那一类的**预览**要读命中那条前后各两条)。

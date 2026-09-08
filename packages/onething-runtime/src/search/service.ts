@@ -82,6 +82,17 @@ export interface SearchServiceGroup {
   relaxed?: RelaxLevel
   /** 这一块自报的动作(不在 `results` 里、不计进 `total`)。 */
   actions?: SearchServiceAction[]
+  /**
+   * **这一块这一次没问**(09-07 事故第二条修;core 的 `GroupResult.deferred`)。
+   *
+   * 「不挑」那一档不等去外部枚举的那几路。调用方要么单独去问一次这一档
+   * (壳就是这么做的:随即发一发单类请求,落地补进这一块),要么如实说这次没参与。
+   * `results` 恒空、`total` 恒 0 —— 它们说的不是「一条都没有」,而是「还没问」,
+   * 这两件事由这一格分开。
+   */
+  deferred?: boolean
+  /** 这一块只扫到一半(预算到点交的部分);缺席 = 这一页是完整的。 */
+  partial?: boolean
 }
 
 /**
@@ -121,6 +132,8 @@ export interface SearchServiceResponse {
    * 壳按它查字典画一句人话(R12),原话进日志。
    */
   error?: string
+  /** 单类档:这一页只扫到一半(预算到点交的部分);缺席 = 完整的一页。 */
+  partial?: boolean
 }
 
 /**
@@ -509,6 +522,7 @@ export class OnethingSearchService {
       total: page?.total,
       cursor: page?.cursor,
       relaxed: page?.relaxed,
+      ...(page?.partial === true ? { partial: true } : {}),
       ...(actions.length === 0 ? {} : { actions }),
     }
   }
@@ -520,12 +534,23 @@ export class OnethingSearchService {
     const projected: SearchServiceGroup[] = groups.map(group => {
       const page = group.page
       const actions = (page?.actions ?? []).map(OnethingSearchService.actionDto)
+      // 「这一次没问它」:结果空、总数 0,而 `deferred` 说清楚这个 0 不是「没有」。
+      if (group.deferred === true) {
+        return {
+          capability: group.capability,
+          label: labels.get(group.capability) ?? group.capability,
+          total: 0,
+          results: [],
+          deferred: true,
+        }
+      }
       return {
         capability: group.capability,
         label: labels.get(group.capability) ?? group.capability,
         total: page?.total,
         results: (page?.items ?? []).map(searchResultOf),
         error: group.error,
+        ...(page?.partial === true ? { partial: true } : {}),
         // **这三格是全部档从前丢掉的东西**(检索面终稿 §4)。`fanout` 本来就按
         // `{limit, cursor}` 跑、`page.ts` 给满即产游标 —— 缺的只是这一次投影。
         ...(page?.cursor === undefined ? {} : { cursor: page.cursor }),

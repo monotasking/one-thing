@@ -127,6 +127,14 @@ export interface SearchResponse {
    * 缺席 = 这一次没有动作可做。旧壳不读这一格,于是它看见的只是「少了一行假结果」。
    */
   actions?: SearchActionDescriptor[]
+  /**
+   * **这一页只扫到一半**(09-07 事故第三条修)。
+   *
+   * 一路去枚举外部资源的能力(今天是 `files`)有预算;预算到点时它交**已经扫到的
+   * 那些**并标这一格,而不是整发作废。壳据此在块尾画「已扫描的部分 · 未扫完」。
+   * 缺席 = 这一页是完整的;旧壳不读它,看见的就是一页正常结果。
+   */
+  partial?: boolean
   /** `category: 'all'` 时的分组总览(§7.2);单类档缺席。 */
   groups?: Array<{
     capability: string
@@ -148,6 +156,21 @@ export interface SearchResponse {
     relaxed?: 0 | 1 | 2 | 3
     /** 这一块自报的动作(同 `SearchResponse.actions`,只是归属到块)。 */
     actions?: SearchActionDescriptor[]
+    /**
+     * **这一块这一次没问**(09-07 事故第二条修)。
+     *
+     * 不挑那一档不等去外部枚举的那几路(自述 `kind: 'scan'`)——真机上一次
+     * 「all」搜索因为文件那一路扎进 18GB 目录而**整发不回**,一个结果都没有。
+     * 现在那一路在这一档里当场答一句「没问」,别的块照常上屏;调用方随即对这一档
+     * 发一发单类请求把它补上(单类档照常真跑,那时用户要的就是它)。
+     *
+     * `results` 恒空、`total` 恒 0 —— 它们说的不是「一条都没有」而是「还没问」,
+     * 这一格就是把这两件事分开的那一格。缺席 = 这一块问过了(旧壳看见的仍然是
+     * 一个空组,与从前某一类零命中时逐字相同)。
+     */
+    deferred?: boolean
+    /** 这一块只扫到一半(同 `SearchResponse.partial`,只是归属到块)。 */
+    partial?: boolean
   }>
 }
 
