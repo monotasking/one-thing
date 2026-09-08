@@ -1,6 +1,7 @@
 import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
 import {
   getContextCompactReason,
+  resolveCompactOutputTokens,
   shouldSkipAutoCompactForProviderUsageMismatch,
   type CoreCompactMessage,
   type CoreCompactSession,
@@ -827,6 +828,45 @@ export function resolveAgentLoopContextBudgetValues(input: {
     reservedOutputTokens,
     thresholdPercent: input.contextCompactThreshold ?? 85,
   }
+}
+
+/**
+ * 发请求那一刻的第二道夹(2026-09-08 事故的聊天侧同病):
+ * `resolveAgentLoopContextBudgetValues` 只按「注册上限的一半」算预留量,它不看
+ * 这一轮真的塞了多少输入 —— 窗口 1048576 的模型上,384000 的一半 192000 加上
+ * 701297 的输入照样越窗。所以在把 `maxTokens` 交给 provider 之前,用压缩侧
+ * **同一个纯函数**按当前输入 token 再夹一次。
+ *
+ * 输入读数用 `buildContextUsageSnapshot` 的 `providerInputTokens` 口径
+ * (= max(contextSize, lastInputTokens),provider 上一次自己报的数)。
+ * **触发判定一字不碰** —— 压缩只认百分比(2026-08-23 裁定),这里改的只是
+ * 请求参数。
+ *
+ * 夹不出结果(注册上限未知 / 窗口已被输入吃满)就原样返回预留量:本函数只
+ * 负责往下夹,不负责编一个更大的数,也不负责替调用方决定塞不下时怎么办。
+ */
+export function clampAgentLoopRequestMaxTokens(input: {
+  budget: CoreAgentLoopContextBudget
+  providerInputTokens: number
+}): number {
+  const reserved = input.budget.reservedOutputTokens
+  const clamped = resolveCompactOutputTokens({
+    modelContextLength: input.budget.modelContextLength,
+    registeredMaxOutputTokens: reserved,
+    inputTokens: input.providerInputTokens,
+  })
+  return clamped ?? reserved
+}
+
+/** `buildContextUsageSnapshot` 的 providerInputTokens 口径,单独拿出来复用。 */
+export function providerReportedInputTokens(
+  session: Pick<CoreCompactSession, 'contextSize' | 'lastInputTokens'> | null | undefined,
+): number {
+  return Math.max(
+    0,
+    Math.floor(session?.contextSize ?? 0),
+    Math.floor(session?.lastInputTokens ?? 0),
+  )
 }
 
 export async function resolveAgentLoopContextBudgetWithRegistry(

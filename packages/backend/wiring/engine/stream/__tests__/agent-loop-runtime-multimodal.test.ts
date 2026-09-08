@@ -398,6 +398,50 @@ describe('agent loop stream runtime multimodal input', () => {
     }
   })
 
+  it('发请求那一刻按 provider 报的输入再夹一次 max_tokens(2026-09-08 事故的聊天侧)', async () => {
+    // 窗口 128000、注册输出上限 8192 → 预留 4096。provider 上一次报的输入是
+    // 120000,4096 的输出加上去就越窗(事故里是 384000 + 701297 越 1048576)。
+    const original = mocks.getSession.getMockImplementation()
+    mocks.getSession.mockImplementation(() => ({
+      id: 's1',
+      name: 'Session',
+      messages: [],
+      createdAt: 1,
+      updatedAt: 1,
+      workingDirectory: '/tmp/project',
+      contextSize: 120_000,
+    }))
+
+    try {
+      const prepared = await buildAgentLoopRuntimeFromStreamContext(ctx(), [
+        { role: 'user', content: 'hello' },
+      ] satisfies HistoryMessage[])
+
+      expect(prepared.supported).toBe(true)
+      if (!prepared.supported) return
+
+      // 预算本身不动(它是「这个模型能要多少」),被夹的是这一条请求的参数。
+      expect(prepared.reservedOutputTokens).toBe(4096)
+      // 128000 − 120000 − 4000 = 4000。
+      expect(prepared.runtime.maxTokens).toBe(4000)
+      // 触发判定一字不碰:压缩只认百分比(2026-08-23 裁定)。
+      expect(mocks.getContextCompactReason).not.toHaveBeenCalled()
+    } finally {
+      if (original) mocks.getSession.mockImplementation(original)
+    }
+  })
+
+  it('provider 没报过输入 → max_tokens 就是预留量原样(夹法只往下夹,不编数)', async () => {
+    const prepared = await buildAgentLoopRuntimeFromStreamContext(ctx(), [
+      { role: 'user', content: 'hello' },
+    ] satisfies HistoryMessage[])
+
+    expect(prepared.supported).toBe(true)
+    if (!prepared.supported) return
+    expect(prepared.runtime.maxTokens).toBe(prepared.reservedOutputTokens)
+    expect(prepared.runtime.maxTokens).toBe(4096)
+  })
+
   it('rejects agent provider runtimes that do not implement a turn execution interface', async () => {
     vi.mocked(createAgentProviderFromRuntime).mockReturnValueOnce({ id: 'incomplete-provider' })
 

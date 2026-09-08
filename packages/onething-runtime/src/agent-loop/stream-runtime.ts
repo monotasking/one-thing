@@ -22,12 +22,14 @@ import {
 	agentLoopInitSkills,
 	agentLoopSkillContexts,
 	buildAgentLoopDirectToolsWithAdapters,
+	clampAgentLoopRequestMaxTokens,
 	createCoreId,
 	getAgentLoopTransientTail,
 	maybeCompactAgentLoopContextWithAdapters,
 	planAgentLoopPromptBuildOptions,
 	planAgentLoopRuntimePreparation,
 	planAgentLoopTools,
+	providerReportedInputTokens,
 	resolveAgentLoopContextBudgetWithRegistry,
 	injectPendingAgentLoopMessagesWithAdapters,
 	runAgentLoopAfterTurnWithAdapters,
@@ -997,7 +999,17 @@ export async function buildOnethingAgentLoopStreamRuntime<
 			ctx.agentProfile?.maxTurns ??
 			ctx.settings.chat?.maxTurns ??
 			DEFAULT_CHAT_MAX_TURNS,
-		maxTokens: budget.reservedOutputTokens,
+		// 发请求那一刻按当前输入再夹一次(2026-09-08):`budget.reservedOutputTokens`
+		// 只知道模型的注册上限,不知道这一轮塞了多少输入 —— 窗口 1048576 的
+		// deepseek-v4-pro 上,输入 701297 + 预留 384000 就是一条 400。读数用
+		// provider 上一次自己报的输入 token(压缩触发判定读的也是它),压缩侧与
+		// 这里共用同一个纯函数。触发阈值不受影响。
+		maxTokens: clampAgentLoopRequestMaxTokens({
+			budget,
+			providerInputTokens: providerReportedInputTokens(
+				adapters.getSession(ctx.sessionId),
+			),
+		}),
 		thinking: thinkingOptions.thinking,
 		reasoningEffort: thinkingOptions.reasoningEffort,
 		// 服务端 prompt 缓存的路由键(OpenAI/xAI/Kimi/OpenRouter 的

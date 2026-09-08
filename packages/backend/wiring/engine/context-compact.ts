@@ -16,6 +16,7 @@ import {
   buildContextCompactFailedContent,
   buildContextCompactSummaryMessages,
   buildContextUsageSnapshot,
+  CompactTokenBudget,
   createCoreId,
   createContextCompactMessage,
   DEFAULT_KEEP_RECENT_TURNS,
@@ -24,7 +25,7 @@ import {
   formatMessagesForSummary,
   mergeCompactFileOperations,
   normalizeContextCompactError,
-  resolveCompactChunkChars,
+  providerReportedInputTokens,
   resolveContextCompactChunkTimeoutMs,
   selectCompactPlan,
   stripCompactFileOperations,
@@ -344,11 +345,15 @@ async function computeRetainedContextSizeAfterCompact(options: {
 }
 
 /**
- * 摘要请求的输出上限 = 模型自己的物理上限(2026-08-15 拍板:不设人为限制,
- * 链上任何地方都不许藏一个 4096)。注册表严格查询:查得到就原样传,查不到就
- * 不传,让 provider 走自家默认(Anthropic 会自己报 max_tokens 必填 —— 真实错误
- * 比编的数诚实)。1600/4096 那两个常量都曾在 deepseek-v4-pro 上把思考+正文的
- * 共池喝干,正文空手而归。
+ * 摘要请求的输出上限 **起点** = 模型自己的物理上限(2026-08-15 拍板:不设人为
+ * 限制,链上任何地方都不许藏一个 4096)。注册表严格查询:查得到就交给
+ * `CompactTokenBudget` 去按窗口夹,查不到就不传,让 provider 走自家默认
+ * (Anthropic 会自己报 max_tokens 必填 —— 真实错误比编的数诚实)。1600/4096 那两
+ * 个常量都曾在 deepseek-v4-pro 上把思考+正文的共池喝干,正文空手而归。
+ *
+ * 2026-09-08:原样透传这个数是事故根因之一 —— deepseek-v4-pro 的注册上限是
+ * 384000,窗口是 1048576,一份 701297 的输入加上去就是一条 400。夹法归
+ * `CompactTokenBudget.outputAllowanceForChars`,这里只负责查。
  */
 async function resolveSummaryMaxTokens(model: string, providerId: string): Promise<number | undefined> {
   try {
@@ -368,7 +373,7 @@ async function summarizeInChunks(options: {
   previousSummary?: string
   onChunkComplete?: (progress: { chunk: number; totalChunks: number }) => Promise<void>
 }): Promise<string> {
-  const maxTokens = await resolveSummaryMaxTokens(options.configWithApiKey.model, options.providerId)
+  const registeredMaxOutputTokens = await resolveSummaryMaxTokens(options.configWithApiKey.model, options.providerId)
   // 单块超时来自设置(默认 300s,夹在 [30s, 30min]);总预算闸在 core 引擎里同源计算。
   const chunkTimeoutMs = resolveContextCompactChunkTimeoutMs(
     options.settings.chat?.contextCompactChunkTimeoutSeconds,
@@ -390,10 +395,21 @@ async function summarizeInChunks(options: {
     )
     modelContextLength = undefined
   }
-  const maxChunkChars = resolveCompactChunkChars({
+
+  // chars/token 用 provider 刚报回来的真数校准(2026-09-08):估算器只认
+  // 「中文 1.8 字/token、其余 4 字/token」,对真实转录(JSON 工具参数、代码、
+  // 路径)实测低估 1.33×(估 528k、真 701k),照它切出来的块必然超窗口。
+  // 校准的分子是**这次压缩的转录字符数**、分母是**整份请求**的 provider 读数
+  // —— 转录里工具结果被截到 6000 字,所以转录字符 ≤ 请求字符,算出的
+  // chars/token 偏小、折出来的 token 偏高:方向是保守的(块更小、留的输出余量
+  // 更多),不会再撞窗口。session 上没有真数时退回估算器,行为与从前一致。
+  const session = sessionReads.getSession(options.sessionId)
+  const providerInputTokens = providerReportedInputTokens(session)
+  const budget = new CompactTokenBudget({
     transcript: options.messages,
     modelContextLength,
-    reservedOutputTokens: maxTokens ?? 8_192,
+    registeredMaxOutputTokens,
+    calibration: { chars: options.messages.length, tokens: providerInputTokens },
   })
 
   // 批级中止:任一块失败就把在途的其余块一起掐掉 —— map-reduce 里剩下的块
@@ -403,12 +419,18 @@ async function summarizeInChunks(options: {
   const summarizeContextInChunksOptions: SummarizeContextInChunksOptions = {
     messages: options.messages,
     previousSummary: options.previousSummary,
-    maxChunkChars,
+    maxChunkChars: budget.maxChunkChars,
     onPlanned: ({ totalChunks, maxChunkChars: plannedChunkChars }) => {
       log.debug('compact chunking', {
         sessionId: options.sessionId,
         transcriptChars: options.messages.length,
         modelContextLength,
+        registeredMaxOutputTokens,
+        // 比值从哪来(provider 真数 / 估算器)与算出来的值 —— 事故复盘时第一
+        // 眼要看的就是这两个。
+        calibrationSource: budget.calibrationSource,
+        charsPerToken: Number(budget.charsPerToken.toFixed(3)),
+        providerInputTokens,
         maxChunkChars: plannedChunkChars,
         chunks: totalChunks,
       })
@@ -438,6 +460,24 @@ async function summarizeInChunks(options: {
       let finishReason: string | undefined
       try {
         const messages = buildContextCompactSummaryMessages(request)
+        // 输出上限按**这一条请求自己的**输入算,不是整次压缩一个数:多块压缩里
+        // 每块的输入不一样,合并请求的输入更是另一个量级。字数取已经拼好的
+        // 请求正文(提示词包含在内),budget 再减一次固定开销 —— 重复计一次开销
+        // 是有意的保守。
+        const requestChars = messages.reduce((total, message) => total + message.content.length, 0)
+        const allowance = budget.outputAllowanceForChars(requestChars)
+        const maxTokens = allowance.maxTokens
+        if (allowance.overflow) {
+          // 本笔不做缩块重试(留给 A3):照传注册上限,让 provider 说真话。
+          log.warn('compact chunk exceeds the model context window', {
+            sessionId: options.sessionId,
+            purpose: request.kind === 'merge' ? 'compact-merge' : 'compact-chunk',
+            requestChars,
+            inputTokens: budget.inputTokensForChars(requestChars),
+            modelContextLength,
+            registeredMaxOutputTokens,
+          })
+        }
         const text = await runAuxiliaryModelRequest({
           sessionId: options.sessionId,
           purpose: request.kind === 'merge' ? 'compact-merge' : 'compact-chunk',
@@ -474,8 +514,8 @@ async function summarizeInChunks(options: {
         if (finishReason === 'length') {
           throw new Error(
             maxTokens !== undefined
-              ? `Context compact output was truncated by max_tokens (${maxTokens}, the model's registered max output).`
-              : 'Context compact output was truncated by the provider\'s default max_tokens (no model max output is registered for this model).',
+              ? `Context compact output was truncated by max_tokens (${maxTokens}, ${allowance.provenance}).`
+              : `Context compact output was truncated by ${allowance.provenance}.`,
           )
         }
         return text

@@ -10,7 +10,11 @@ import {
   formatMessagesForSummary,
   normalizeContextCompactError,
   normalizeContextSummaryOutput,
+  CompactTokenBudget,
+  COMPACT_PROMPT_OVERHEAD_TOKENS,
+  resolveCompactCharsPerToken,
   resolveCompactChunkChars,
+  resolveCompactOutputTokens,
   selectCompactPlan,
   shouldAutoCompactBeforeSend,
   summarizeContextInChunks,
@@ -294,6 +298,122 @@ describe('core context compact helpers', () => {
       reservedOutputTokens: 8_192,
     })
     expect(cjk).toBeLessThan(large)
+  })
+
+  it('resolveCompactOutputTokens:按窗口夹住摘要请求的 max_tokens(2026-09-08 事故)', () => {
+    // 事故现场:deepseek-v4-pro,窗口 1048576、注册输出上限 384000,而这次压缩
+    // 的输入被 provider 报成 701297 —— 原样透传 384000 就是 provider 那条
+    // 「requested 1085297 tokens」的 400。
+    expect(resolveCompactOutputTokens({
+      modelContextLength: 1_048_576,
+      registeredMaxOutputTokens: 384_000,
+      inputTokens: 701_297,
+    })).toBe(343_279)
+    // 1048576 − 701297 − 4000 = 343279:开销就是 COMPACT_PROMPT_OVERHEAD_TOKENS。
+    expect(1_048_576 - 701_297 - COMPACT_PROMPT_OVERHEAD_TOKENS).toBe(343_279)
+
+    // 输入很小 → 夹不动,注册上限原样(不许把上限往下编)。
+    expect(resolveCompactOutputTokens({
+      modelContextLength: 1_048_576,
+      registeredMaxOutputTokens: 384_000,
+      inputTokens: 10_000,
+    })).toBe(384_000)
+
+    // 注册表查不到上限 → undefined,不传,让 provider 自报错(2026-08-15 裁定)。
+    expect(resolveCompactOutputTokens({
+      modelContextLength: 1_048_576,
+      inputTokens: 701_297,
+    })).toBeUndefined()
+    expect(resolveCompactOutputTokens({
+      modelContextLength: 1_048_576,
+      registeredMaxOutputTokens: 0,
+      inputTokens: 10,
+    })).toBeUndefined()
+
+    // 窗口未知 → 没什么可夹的,注册上限原样。
+    expect(resolveCompactOutputTokens({
+      registeredMaxOutputTokens: 384_000,
+      inputTokens: 701_297,
+    })).toBe(384_000)
+
+    // 输入已经把窗口吃满 → undefined = 「这块太大」,由调用方处置。
+    expect(resolveCompactOutputTokens({
+      modelContextLength: 100_000,
+      registeredMaxOutputTokens: 8_192,
+      inputTokens: 100_000,
+    })).toBeUndefined()
+  })
+
+  it('resolveCompactCharsPerToken:有 provider 真数就用真数,没有才回退估算器', () => {
+    const transcript = '压缩上下文的摘要请求'.repeat(500)
+
+    // 校准生效:比值就是 chars / tokens,不再问估算器。
+    const calibrated = resolveCompactCharsPerToken({
+      transcript,
+      calibration: { chars: 10_000, tokens: 5_000 },
+    })
+    expect(calibrated.source).toBe('provider')
+    expect(calibrated.charsPerToken).toBe(2)
+
+    // 回退:两个数任一不正就当没有(0 tokens 会直接除爆)。
+    const fallback = resolveCompactCharsPerToken({ transcript })
+    expect(fallback.source).toBe('estimator')
+    expect(fallback.charsPerToken).toBeCloseTo(1.8, 1)
+    expect(resolveCompactCharsPerToken({ transcript, calibration: { chars: 10_000, tokens: 0 } }))
+      .toEqual(fallback)
+
+    // 同一份转录,provider 报的 token 比估算器多 → 比值更小 → 块更小。
+    const chars = transcript.length
+    const optimistic = resolveCompactChunkChars({ transcript, modelContextLength: 200_000, reservedOutputTokens: 8_192 })
+    const honest = resolveCompactChunkChars({
+      transcript,
+      modelContextLength: 200_000,
+      reservedOutputTokens: 8_192,
+      calibration: { chars, tokens: Math.round(chars / 1.8 * 1.33) },
+    })
+    expect(honest).toBeLessThan(optimistic)
+  })
+
+  it('CompactTokenBudget:四个数收在一处,块与 max_tokens 读的是同一个比值', () => {
+    const transcript = 'x'.repeat(1_000_000)
+    const budget = new CompactTokenBudget({
+      transcript,
+      modelContextLength: 1_048_576,
+      registeredMaxOutputTokens: 384_000,
+      calibration: { chars: transcript.length, tokens: 701_297 },
+    })
+
+    expect(budget.calibrationSource).toBe('provider')
+    expect(budget.charsPerToken).toBeCloseTo(1_000_000 / 701_297, 6)
+    // 折回去就是 provider 报的那个数(向上取整)。
+    expect(budget.inputTokensForChars(transcript.length)).toBe(701_297)
+
+    const allowance = budget.outputAllowanceForChars(transcript.length)
+    expect(allowance.maxTokens).toBe(343_279)
+    expect(allowance.overflow).toBe(false)
+    expect(allowance.provenance).toBe('clamped to window 1048576 \u2212 input 701297 \u2212 overhead 4000')
+
+    // 小块 → 夹不动,来历说的是注册上限。
+    const small = budget.outputAllowanceForChars(1_000)
+    expect(small.maxTokens).toBe(384_000)
+    expect(small.provenance).toBe("the model's registered max output")
+
+    // 注册表查不到上限 → 不传,来历说清是 provider 默认。
+    const unregistered = new CompactTokenBudget({ transcript, modelContextLength: 1_048_576 })
+    const none = unregistered.outputAllowanceForChars(transcript.length)
+    expect(none.maxTokens).toBeUndefined()
+    expect(none.provenance).toContain('no model max output is registered')
+
+    // 输入吃满窗口 → overflow,照传注册上限(本笔不缩块重试)。
+    const tight = new CompactTokenBudget({
+      transcript,
+      modelContextLength: 100_000,
+      registeredMaxOutputTokens: 8_192,
+      calibration: { chars: transcript.length, tokens: 200_000 },
+    })
+    const over = tight.outputAllowanceForChars(transcript.length)
+    expect(over.overflow).toBe(true)
+    expect(over.maxTokens).toBe(8_192)
   })
 
   it('selects older messages while keeping the configured recent user turns', () => {

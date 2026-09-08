@@ -63,6 +63,9 @@ vi.mock('../../../session/reads.js', async importOriginal => ({
     listMessages: () => ({ messages: sessionRef.current?.messages ?? [], changed: false }),
     getMessage: (_sessionId: string, messageId: string) =>
       sessionRef.current?.messages.find((message: { id: string }) => message.id === messageId),
+    // 2026-09-08:切块的 chars/token 比要拿 provider 真数(contextSize /
+    // lastInputTokens)校准,读的也是这个门面。
+    getSession: () => sessionRef.current,
   },
 }))
 vi.mock('../../../store.js', () => ({
@@ -89,7 +92,8 @@ function makeSession(): ChatSession {
     name: 'Test',
     createdAt: 0,
     updatedAt: 0,
-    contextSize: 1000,
+    // 没有 provider 真数:chars/token 回退估算器,与 2026-09-08 校准之前
+    // 逐字同行为。要走校准那条路的用例自己往 sessionRef 上写 contextSize。
     messages: [
       message(1, 'user'), message(2, 'assistant'),
       message(3, 'user'), message(4, 'assistant'),

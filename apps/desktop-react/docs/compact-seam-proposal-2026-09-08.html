@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>压缩折痕 · 样例</title>
+<style>
+  :root{
+    --paper:#faf8f4; --paper-2:#f3f0ea; --text-1:#2b2926; --text-2:#6b665f; --text-3:#9a948b;
+    --line-1:#e6e1d8; --line-2:#d8d2c7; --accent:#c9782a; --accent-soft:rgba(201,120,42,.14);
+    --danger:#b8412f; --tint-danger:rgba(184,65,47,.08); --st-sel:#efe9df;
+    --r-2:12px; --sp-2:6px; --sp-3:10px; --sp-4:14px;
+    --fs-micro:11.5px; --fs-meta:12.5px; --pr-fs:15px; --pr-lh:1.65;
+    --dur-enter:70ms; --dur-release:260ms; --dur-tool-pulse:900ms; --dur-seam-sweep:1600ms;
+    --ease-out:cubic-bezier(.2,.7,.2,1);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--text-1);font:14px/1.5 -apple-system,"PingFang SC","Helvetica Neue",sans-serif}
+  main{max-width:720px;margin:0 auto;padding:32px 24px 80px}
+  h1{font-size:20px;margin:0 0 4px} h2{font-size:13px;color:var(--text-2);font-weight:600;letter-spacing:.02em;margin:40px 0 12px;text-transform:uppercase}
+  p.note{color:var(--text-2);font-size:13px;margin:0 0 16px}
+  .col{display:flex;flex-direction:column;gap:18px}
+  .user{align-self:flex-end;max-width:80%;padding:var(--sp-3) var(--sp-4);border-radius:var(--r-2);background:var(--st-sel);font-size:var(--pr-fs);line-height:var(--pr-lh)}
+  .prose{font-size:var(--pr-fs);line-height:var(--pr-lh);color:var(--text-1)}
+  .prose p{margin:0 0 .6em}
+
+  /* ── 折痕 ─────────────────────────────────────────────── */
+  .seam{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;margin:6px 0}
+  .seam .line{position:relative;height:1px;background:var(--line-1);overflow:hidden;border-radius:1px}
+  .seam .line::after{content:"";position:absolute;inset:0;background:var(--accent);transform-origin:left;transform:scaleX(var(--seam-fill,0));transition:transform var(--dur-release) var(--ease-out)}
+  .seam .line::before{content:"";position:absolute;top:0;bottom:0;width:38%;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:0;transform:translateX(-100%)}
+  .seam[data-state="compacting"] .line::before{opacity:.9;animation:seamSweep var(--dur-seam-sweep) ease-in-out infinite alternate}
+  .seam[data-state="compacting"] .line:last-child::before{animation-delay:calc(var(--dur-seam-sweep) * -1)}
+  .seam[data-state="completed"] .line::after{transform:scaleX(0)}
+  .seam[data-state="failed"] .line{background:var(--danger);opacity:.55}
+  .seam .label{display:inline-flex;align-items:center;gap:8px;font-size:var(--fs-micro);color:var(--text-2);padding:3px 10px;border-radius:999px;white-space:nowrap;background:transparent;border:0;font:inherit;font-size:var(--fs-micro);cursor:default}
+  .seam[data-state="completed"] .label{cursor:pointer;color:var(--text-2)}
+  .seam[data-state="completed"] .label:hover{background:var(--paper-2);color:var(--text-1)}
+  .seam[data-state="failed"] .label{color:var(--danger);background:var(--tint-danger);cursor:default}
+  .seam .kn{font-variant-numeric:tabular-nums;color:var(--text-3)}
+  .seam .arrow{color:var(--text-3)}
+  .chev{width:12px;height:12px;transition:transform var(--dur-release) var(--ease-out)}
+  [aria-expanded="true"] .chev{transform:rotate(180deg)}
+  .retry{margin-left:4px;padding:1px 6px;border:0;background:transparent;font:inherit;font-size:var(--fs-micro);color:var(--danger);text-decoration:underline;text-underline-offset:2px;cursor:pointer;border-radius:6px}
+  .retry:hover{background:rgba(184,65,47,.12)}
+  .failsent{display:block;grid-column:1/-1;text-align:center;font-size:var(--fs-meta);color:var(--text-2);margin-top:2px;white-space:pre-wrap}
+
+  /* 折叠正文(ui/Fold) */
+  .fold{margin:6px 0 0;padding:var(--sp-3) var(--sp-4);border:1px solid var(--line-1);border-radius:var(--r-2);background:var(--paper-2);font-size:var(--fs-meta);line-height:1.6;color:var(--text-2);animation:settle var(--dur-release) var(--ease-out)}
+  .fold h4{margin:0 0 4px;font-size:var(--fs-micro);color:var(--text-3);text-transform:uppercase;letter-spacing:.04em}
+  .fold ul{margin:0 0 10px;padding-left:18px} .fold li{margin:2px 0}
+
+  /* 上下文更新 chip */
+  .delta{align-self:flex-end;display:flex;flex-direction:column;align-items:flex-end;gap:4px;margin-top:-10px;max-width:80%}
+  .delta .chip{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;font:inherit;font-size:var(--fs-micro);color:var(--text-3);padding:2px 6px;border-radius:6px;cursor:pointer}
+  .delta .chip:hover{color:var(--text-2);background:var(--paper-2)}
+  .delta .dot{color:var(--line-2)}
+  .delta .fold{width:100%;text-align:left;margin-top:2px}
+  .delta .row{display:grid;grid-template-columns:72px 1fr;gap:10px;padding:4px 0;border-top:1px dashed var(--line-1)} .delta .row:first-of-type{border-top:0}
+  .delta .k{color:var(--text-3);font-size:var(--fs-micro)} .delta .v{white-space:pre-wrap;color:var(--text-1);font-family:ui-monospace,Menlo,monospace;font-size:12px}
+  .delta .v.rm{text-decoration:line-through;color:var(--text-3)}
+
+  /* 对照:物件卡 */
+  .card{padding:var(--sp-3) var(--sp-4);border:1px solid var(--line-1);border-radius:var(--r-2);background:var(--paper-2);display:flex;flex-direction:column;gap:4px}
+  .card .t{font-size:var(--fs-micro);color:var(--text-3)} .card .b{font-size:var(--fs-meta);color:var(--text-1)}
+
+  /* 读数环 */
+  .bar{display:flex;align-items:center;gap:18px;padding:10px 14px;border:1px solid var(--line-1);border-radius:14px;background:#fff8}
+  .ring{position:relative;display:inline-flex}
+  .ring svg{transform:rotate(-90deg)}
+  .ring .arc{transition:stroke-dasharray var(--dur-release) var(--ease-out)}
+  .ring[data-compacting] .arc{animation:toolPulse var(--dur-tool-pulse) ease-in-out infinite alternate}
+  .ring .tip{position:absolute;left:28px;top:-6px;white-space:nowrap;font-size:var(--fs-micro);color:var(--text-2);background:var(--paper-2);border:1px solid var(--line-1);border-radius:8px;padding:6px 10px;line-height:1.5}
+  .ring .tip b{color:var(--text-1);font-weight:500}
+  .demo{margin-left:auto;display:flex;gap:8px}
+  .demo button{font:inherit;font-size:12px;padding:5px 10px;border:1px solid var(--line-2);background:#fff;border-radius:8px;cursor:pointer}
+  .demo button:hover{background:var(--paper-2)}
+  .cap{font-size:var(--fs-micro);color:var(--text-3);margin:6px 0 0}
+
+  @keyframes seamSweep{from{transform:translateX(-100%)}to{transform:translateX(265%)}}
+  @keyframes toolPulse{from{opacity:.35}to{opacity:1}}
+  @keyframes settle{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.seam .line::before,.ring[data-compacting] .arc{animation:none!important}.seam[data-state="compacting"] .line::before{opacity:.5;transform:none;width:100%}}
+</style>
+</head>
+<body>
+<main>
+  <h1>压缩折痕 · 上下文更新 · 读数环</h1>
+  <p class="note">推荐形态。折痕是流里的一道线,不是一件物件;动效只在线上走,不转圈。样例里的数字取自 09-08 那条事故会话。</p>
+
+  <h2>① 进行中 · 单块</h2>
+  <div class="col">
+    <div class="prose"><p>…上一轮回答的最后一段。工具结果占了请求的大头,这一轮结束时窗口用到 85% 以上,自动压缩起手。</p></div>
+    <div class="seam" data-state="compacting"><span class="line"></span><span class="label">正在压缩上下文</span><span class="line"></span></div>
+  </div>
+
+  <h2>② 进行中 · 多块 2 / 5</h2>
+  <div class="col">
+    <div class="seam" data-state="compacting" style="--seam-fill:.4"><span class="line"></span><span class="label">正在压缩上下文 <span class="kn">2 / 5</span></span><span class="line"></span></div>
+  </div>
+  <p class="cap">线从左往右按块填色,光束继续扫;单块没有 k/N,只有光。</p>
+
+  <h2>③ 完成 · 折叠(默认)</h2>
+  <div class="col">
+    <div class="seam" data-state="completed"><span class="line"></span>
+      <button class="label" aria-expanded="false" onclick="toggle(this,'sum1')">已压缩 42 条 <span class="dot">·</span> <span class="kn">701k <span class="arrow">→</span> 96k</span>
+        <svg class="chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 4.5 6 8l3.5-3.5"/></svg></button>
+      <span class="line"></span></div>
+    <div id="sum1" class="fold" hidden>
+      <h4>Goal</h4><ul><li>把 compact 请求的 max_tokens 改成按窗口剩余空间夹,聊天侧共用同一个函数。</li></ul>
+      <h4>Progress</h4><ul><li>根因定位:摘要请求填了模型物理上限 384k;估算器对中文低估 1.33×。</li><li>方案文档已写:docs/design/context-compact-budget-and-cards-2026-09.md</li></ul>
+      <h4>Files</h4><ul><li>packages/backend/wiring/engine/context-compact.ts · packages/core/engine/context-compact.ts</li></ul>
+    </div>
+    <div class="prose"><p>接着这条线往下是压缩后的第一轮回答……</p></div>
+  </div>
+  <p class="cap">点标签展开摘要;展开的正文是 ui/Fold,与思考段同一件基础件。</p>
+
+  <h2>④ 失败</h2>
+  <div class="col">
+    <div class="seam" data-state="failed"><span class="line"></span>
+      <span class="label">压缩失败 <button class="retry">重试</button></span>
+      <span class="line"></span>
+      <span class="failsent">deepseek: maximum context length is 1048576 tokens, requested 1085297 (701297 in the messages, 384000 in the completion)</span>
+    </div>
+  </div>
+  <p class="cap">provider 那句原样,不改写;重试骑 /compact 同一条口,引擎忙时禁灰。不飞 toast。</p>
+
+  <h2>⑤ 用户消息下的「上下文更新」</h2>
+  <div class="col">
+    <div class="user">现在没办法 compact,给我一个方案;另外 compact 更新和 context 更新我都需要在页面上能够看到。</div>
+    <div class="delta">
+      <button class="chip" aria-expanded="false" onclick="toggle(this,'d1')">上下文更新 <span class="dot">·</span> 变量 2 <span class="dot">·</span> 待办 1
+        <svg class="chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 4.5 6 8l3.5-3.5"/></svg></button>
+      <div id="d1" class="fold" hidden>
+        <div class="row"><span class="k">datetime</span><span class="v">2026-09-08 14:32 (Asia/Shanghai)</span></div>
+        <div class="row"><span class="k">workdir</span><span class="v">~/data/code/start-electron/apps/desktop-react</span></div>
+        <div class="row"><span class="k">todo</span><span class="v">- [ ] A1 摘要 max_tokens 夹窗口
+- [x] 方案文档</span></div>
+        <div class="row"><span class="k">skills</span><span class="v rm">onething-self-evolution(移除)</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="cap">没有 delta 的消息不出 chip。计数是文字读数,不是徽标。</p>
+
+  <h2>⑥ 读数环:压缩中脉动,压完缩回去</h2>
+  <div class="bar">
+    <span class="ring" id="ring">
+      <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+        <circle cx="9" cy="9" r="7" fill="none" stroke="var(--line-1)" stroke-width="2.6"/>
+        <circle class="arc" id="arc" cx="9" cy="9" r="7" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round"/>
+      </svg>
+      <span class="tip" id="tip"><b>上下文</b> 701k / 1.05M · 67%</span>
+    </span>
+    <span style="font-size:12px;color:var(--text-3)">deepseek-v4-pro</span>
+    <span class="demo">
+      <button onclick="setRing(.67,false,'<b>上下文</b> 701k / 1.05M · 67%')">静态</button>
+      <button onclick="setRing(.67,true,'<b>上下文</b> 701k / 1.05M · 67%<br>正在压缩 · 2 / 5')">压缩中</button>
+      <button onclick="setRing(.09,false,'<b>上下文</b> 96k / 1.05M · 9%')">压完</button>
+      <button onclick="setRing(.71,false,'<b>上下文</b> 745k / 1.05M · 71%')">下一轮</button>
+    </span>
+  </div>
+  <p class="cap">弧从「跳变」改成「滑到新值」,每一轮 run/end 都能看见它长一格;这条过渡就是「context 更新看得到」。压失败时弧不动,失败在折痕上说。</p>
+
+  <h2>对照 · 物件卡(不推荐)</h2>
+  <div class="col">
+    <div class="card"><span class="t">上下文已压缩</span><span class="b">压缩了 42 条消息,剩余 96k。</span></div>
+  </div>
+  <p class="cap">它把「折了 42 条」说成「多了一件东西」,与错误卡同形,读者会以为出了事。</p>
+</main>
+<script>
+  function toggle(btn,id){const el=document.getElementById(id);const open=el.hidden;el.hidden=!open;btn.setAttribute('aria-expanded',String(open));}
+  const C=2*Math.PI*7;
+  function setRing(p,compacting,tip){const a=document.getElementById('arc');a.setAttribute('stroke-dasharray',`${C*p} ${C}`);const r=document.getElementById('ring');if(compacting)r.setAttribute('data-compacting','');else r.removeAttribute('data-compacting');document.getElementById('tip').innerHTML=tip;}
+  setRing(.67,false,'<b>上下文</b> 701k / 1.05M · 67%');
+</script>
+</body>
+</html>

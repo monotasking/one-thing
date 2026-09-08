@@ -47,10 +47,13 @@ vi.mock('../../providers/index.js', () => ({
 // 块大小随模型窗口走(2026-08-21):窗口大 → 单块;想逼出多块就把窗口调小。
 let modelContextLength = 200_000
 
+// 注册输出上限也做成活的:2026-09-08 的夹法只有在「上限接近窗口」时才看得见。
+let registeredMaxOutputTokens = 8_192
+
 vi.mock('../../providers/model-registry.js', () => ({
   getModelContextLength: async () => modelContextLength,
-  getModelMaxOutputTokens: async () => 8_192,
-  getKnownModelMaxOutputTokens: async () => 8_192,
+  getModelMaxOutputTokens: async () => registeredMaxOutputTokens,
+  getKnownModelMaxOutputTokens: async () => registeredMaxOutputTokens,
 }))
 
 const sessionRef: { current: ChatSession } = { current: null as unknown as ChatSession }
@@ -71,6 +74,9 @@ vi.mock('../../../session/reads.js', async importOriginal => ({
     listMessages: () => ({ messages: sessionRef.current?.messages ?? [], changed: false }),
     getMessage: (_sessionId: string, messageId: string) =>
       sessionRef.current?.messages.find((message: { id: string }) => message.id === messageId),
+    // 2026-09-08:切块的 chars/token 比要拿 provider 真数(contextSize /
+    // lastInputTokens)校准,读的也是这个门面。
+    getSession: () => sessionRef.current,
   },
 }))
 vi.mock('../../../store.js', () => ({
@@ -103,7 +109,8 @@ function makeSession(): ChatSession {
     name: 'Test',
     createdAt: 0,
     updatedAt: 0,
-    contextSize: 1000,
+    // 没有 provider 真数:chars/token 回退估算器,与 2026-09-08 校准之前
+    // 逐字同行为。要走校准那条路的用例自己往 sessionRef 上写 contextSize。
     messages: [
       message(1, 'user'), message(2, 'assistant'),
       message(3, 'user'), message(4, 'assistant'),
@@ -141,6 +148,7 @@ beforeEach(() => {
   summaryWrites.length = 0
   contentWrites.length = 0
   modelContextLength = 200_000
+  registeredMaxOutputTokens = 8_192
   sessionRef.current = makeSession()
 })
 
@@ -479,6 +487,69 @@ describe('空摘要闸(2026-08-15)', () => {
     expect(sessionRef.current.summary).toBe('## Goal\nOLD SUMMARY')
     const marker = sessionRef.current.messages[sessionRef.current.messages.length - 1]
     expect(parseContent(marker.content as string).status).toBe('failed')
+  })
+
+  it('有 provider 真数 → 块按真比值切,请求 max_tokens 按窗口夹(2026-09-08 事故)', async () => {
+    // ① 比值:同一份 120k 字符的转录,估算器把它当 30k token(4 字/token),
+    // provider 说是 300k token —— 照真数切就是多块,照估算器切是一块
+    // (「200k 窗口下 120k 字符仍是单块」那条用例证的就是后者)。
+    sessionRef.current.messages[0].content = 'x'.repeat(120_000)
+    sessionRef.current.contextSize = 300_000
+    await compactSessionContext(baseOptions)
+    expect(generateChatResponse.mock.calls.length).toBeGreaterThan(1)
+
+    // ② 夹法:上限接近窗口时,请求的 max_tokens 不再是注册上限,而是
+    // 窗口 − 这一块的输入 − 开销。事故里这个数是 384000 原样透传。
+    generateChatResponse.mockClear()
+    sessionRef.current = makeSession()
+    registeredMaxOutputTokens = 190_000
+    sessionRef.current.messages[0].content = 'x'.repeat(10_000)
+    sessionRef.current.contextSize = 100_000
+
+    await compactSessionContext(baseOptions)
+
+    const options = generateChatResponse.mock.calls[0]?.[3] as { maxTokens?: number }
+    expect(options.maxTokens).toBeGreaterThan(0)
+    expect(options.maxTokens).toBeLessThan(190_000)
+    // 窗口 200000 − 输入 − 开销 4000:输入至少是 provider 报的那 100k 量级。
+    expect(options.maxTokens).toBeLessThan(200_000 - 100_000 - 4_000 + 1)
+  })
+
+  it('没有 provider 真数 → 回退估算器,块与 max_tokens 与从前逐字一致', async () => {
+    // makeSession 不带 contextSize / lastInputTokens:这条钉的是「校准缺席」
+    // 那条路 —— 120k 字符仍是单块,max_tokens 仍是注册上限原样。
+    sessionRef.current.messages[0].content = 'x'.repeat(120_000)
+
+    const result = await compactSessionContext(baseOptions)
+
+    expect(result.success).toBe(true)
+    expect(generateChatResponse).toHaveBeenCalledTimes(1)
+    const options = generateChatResponse.mock.calls[0]?.[3] as { maxTokens?: number }
+    expect(options.maxTokens).toBe(8_192)
+  })
+
+  it('被 max_tokens 截断的文案说清这个数是怎么来的(夹的 / 注册上限)', async () => {
+    generateChatResponse.mockImplementation(
+      async (_p: string, _c: unknown, _m: unknown, options: { onFinish?: (i: { finishReason?: string }) => void }) => {
+        options.onFinish?.({ finishReason: 'length' })
+        return '## Goal\nhalf a summ'
+      },
+    )
+
+    // 夹过的:文案里带窗口 / 输入 / 开销三段算式。
+    registeredMaxOutputTokens = 190_000
+    sessionRef.current.messages[0].content = 'x'.repeat(10_000)
+    sessionRef.current.contextSize = 100_000
+    const clamped = await compactSessionContext(baseOptions)
+    expect(clamped.success).toBe(false)
+    expect(clamped.error).toContain('clamped to window 200000')
+    expect(clamped.error).toContain('overhead 4000')
+
+    // 没夹的:文案说的是注册上限。
+    registeredMaxOutputTokens = 8_192
+    sessionRef.current = makeSession()
+    const registered = await compactSessionContext(baseOptions)
+    expect(registered.error).toContain("truncated by max_tokens (8192, the model's registered max output)")
   })
 
   it('摘要请求显式关思考、按 compact 记账、输出上限=模型物理上限(不设人为限制)', async () => {
