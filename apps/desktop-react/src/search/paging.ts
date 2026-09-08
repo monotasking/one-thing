@@ -32,7 +32,9 @@ const log = getLogger('search.listing')
  * | --- | --- | --- | --- |
  * | `more` | 「加载更多」/ total 已知时「已显示 a / 共 b」 | 在 | 是 |
  * | `loading` | 「加载中…」+ `aria-busy` | **在**(免得焦点途中蒸发) | 按下无效,**不 disabled** |
+ * | `scanning` | 「扫描中…」+ `aria-busy` | **在**(同上) | 按下无效 |
  * | `error` | 「没加载出来 · 再试一次」 | 在 | 是(重发**同一个** cursor) |
+ * | `partial` | 「已扫描的部分 · 未扫完」 | 不在 | — |
  * | `end` | 「共 N 条 · 已全部显示」 | 不在 | — |
  * | `none` | 不画 | 不在 | — |
  */
@@ -41,6 +43,17 @@ export type MoreState =
   | { kind: 'loading' }
   | { kind: 'error' }
   | { kind: 'end'; total: number }
+  /**
+   * **这一块还没问**(09-07 事故第二条修)。「不挑」那一档不等去外部枚举的那几路,
+   * 壳随即单独去问一次 —— 这一格是那段时间里屏上的样子:一块只有块尾一条
+   * 「扫描中…」的块。它是 item(在 ↑↓ 序列里,免得焦点途中蒸发),但按下无效。
+   */
+  | { kind: 'scanning' }
+  /**
+   * **扫到一半就到点了**(同上第三条修)。行照画,块尾换成一句诚实的读数:
+   * 「已扫描的部分 · 未扫完」—— 不是 item,因为没有「再来一页」这回事可按。
+   */
+  | { kind: 'partial'; shown: number }
   | { kind: 'none' }
 
 /**
@@ -59,9 +72,20 @@ export type MoreState =
  * 冒充总数(「已显示 20 / 共 20」却还能再翻,那是谎话)。
  */
 export function moreStateOf(block: SearchBlock, pending: boolean, inflight: boolean): MoreState {
+  /*
+   * **「还没问」排在「零命中不占行」前面**(09-07 事故第二条修)。
+   *
+   * 两件事长得一样(都是零行),而屏上必须分得开:R2 那条规矩说的是「问过了,
+   * 没有」—— 那样的块一个像素都不占;这一块是「这一次没问它,正在去问」,
+   * 它得留一条「扫描中…」在屏上,否则文件那一档会在半秒里凭空出现,
+   * 用户读到的是「刚才它撒谎说没有」。
+   */
+  if (block.scanning === true) return { kind: 'scanning' }
   if (block.rows.length === 0) return { kind: 'none' }
   if (pending || inflight) return { kind: 'loading' }
   if (block.pageError !== undefined) return { kind: 'error' }
+  // 只扫到一半:没有「下一页」可要(游标也确实没有),但也不许说「共 N 条」。
+  if (block.partial === true) return { kind: 'partial', shown: block.rows.length }
   if (block.exhausted) return { kind: 'end', total: block.total ?? block.rows.length }
   return { kind: 'more', shown: block.rows.length, total: block.total ?? null }
 }
@@ -132,6 +156,58 @@ export function appendPage(
     pages: block.pages + 1,
   }
   return withBlock(prev, capability, next)
+}
+
+/* ── 补扫那一块怎么落地 ────────────────────────────────────────────────── */
+
+/**
+ * 「不挑」那一档没问的那一块,壳单独问回来了(09-07 事故第二条修的壳侧一半)。
+ *
+ * 它不是 `appendPage`:那一只是**追加**(闸①按 `fromCursor` 判过期),而这一发
+ * 补的是一块**空块的第一页** —— 没有游标可对,行也不该去重(本来就没有行)。
+ * 两件事分开写,不是把 `appendPage` 掰出一条 if。
+ *
+ * 三格一起翻面:`scanning` 摘掉、行填上、游标按这一页说的填(于是块尾那条项从
+ * 「扫描中…」变成「加载更多」或「共 N 条」)。这一块已经不在了(换词换出去的旧格)
+ * 就是恒等变换。
+ */
+export function landScan(
+  prev: SearchListing | undefined,
+  capability: string,
+  page: SearchPage,
+): SearchListing | undefined {
+  if (prev === undefined) return prev
+  const block = prev.blocks.find(b => b.capability === capability)
+  if (block === undefined) return prev
+  const { scanning: _scanning, error: _error, pageError: _pageError, ...rest } = block
+  return withBlock(prev, capability, {
+    ...rest,
+    rows: page.rows,
+    ...(page.cursor === undefined ? {} : { cursor: page.cursor }),
+    ...(page.total === undefined ? {} : { total: page.total }),
+    ...(page.relaxed === undefined ? {} : { relaxed: page.relaxed }),
+    ...(page.partial === true ? { partial: true } : {}),
+    ...(page.actions === undefined ? {} : { actions: page.actions }),
+    exhausted: page.cursor === undefined,
+    pages: 1,
+  })
+}
+
+/**
+ * 那一发补扫塌了。落 `error` 而不是 `pageError` —— 这一块**一行都没有**,
+ * 它塌的是头页,而头页的失败归页脚那一行「<能力名>没搜成 · 重试」(R2)。
+ * `scanning` 同时摘掉:再画「扫描中…」就是在说谎。
+ */
+export function landScanError(
+  prev: SearchListing | undefined,
+  capability: string,
+  message: string,
+): SearchListing | undefined {
+  if (prev === undefined) return prev
+  const block = prev.blocks.find(b => b.capability === capability)
+  if (block === undefined) return prev
+  const { scanning: _scanning, ...rest } = block
+  return withBlock(prev, capability, { ...rest, error: message })
 }
 
 /**

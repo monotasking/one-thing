@@ -46,9 +46,14 @@ export function SearchBlockRows({
   view,
   t,
 }: SearchBlockRowsProps) {
-  // R2:零命中(含头页塌了的那一块)整块不渲染。
-  if (block.rows.length === 0) return null
   const more = view.moreStateOf(block.capability)
+  /*
+   * R2:零命中(含头页塌了的那一块)整块不渲染 —— **除了「还没问」那一块**
+   * (09-07 事故第二条修)。「问过了,没有」与「这一次没问它」在屏上必须分得开:
+   * 后者留一条「扫描中…」,否则文件那一档会在半秒后凭空冒出来,而用户刚刚读到的
+   * 是「它说没有」。判据在 `moreStateOf` 一处,这里只是照着画。
+   */
+  if (block.rows.length === 0 && more.kind !== 'scanning') return null
   return (
     <>
       {items.map(item => {
@@ -79,6 +84,20 @@ export function SearchBlockRows({
           data-block={block.capability}
         >
           <span className={s.moreText}>{t('search.totalCount', { total: more.total })}</span>
+        </p>
+      )}
+      {/*
+        * 只扫到一半:同一条读数位,换一句诚实的话。**不说「共 N 条」** ——
+        * 那会把「我扫到的」冒充成「一共有的」,而这一路恰恰不知道后者。
+        */}
+      {more.kind === 'partial' && (
+        <p
+          className={s.end}
+          role="presentation"
+          data-readout="partial"
+          data-block={block.capability}
+        >
+          <span className={s.moreText}>{t('search.partialScan', { shown: more.shown })}</span>
         </p>
       )}
     </>

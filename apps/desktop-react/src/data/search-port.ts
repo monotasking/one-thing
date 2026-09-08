@@ -66,6 +66,13 @@ export interface SearchPort {
      * **递**:哪一块的游标、什么时候递,是数据层的判据。
      */
     cursor?: string,
+    /**
+     * **撤回这一发**(09-07 事故第四条修)。换词 / 清词时数据层拉它,
+     * `@onething/client` 交给 `fetch`,HTTP 面据此铸出 `RpcDispatchContext.signal`,
+     * 一路传到扫盘那一路手里 —— 那正是「清了输入框,`rg` 还在 462% CPU 上跑」
+     * 缺的那条线。缺席 = 这一发送出去就等到底(与从前逐字相同)。
+     */
+    signal?: AbortSignal,
   ): Promise<SearchResponse>
   /** 有哪些能力(tab / 图标 / 次序 / 有哪几颗过滤片全从它算)。 */
   capabilities(surface?: string): Promise<SearchCapabilityManifestDto[]>
@@ -109,17 +116,21 @@ async function realPort(): Promise<SearchPort> {
   const searchApi = client.api(searchRouter)
   return {
     ready: () => whenConnected(),
-    query: async (query, category, limit, filters, cursor) => {
-      const response = await searchApi.query({
-        query,
-        category,
-        limit,
-        // 缺席与空表是两回事:一格过滤都没有时**不发这个键**,而不是发一个 `{}`
-        // —— 后端那边 `filters: {}` 与缺席同义,但线上少一格总比多一格诚实。
-        ...(filters === undefined || Object.keys(filters).length === 0 ? {} : { filters }),
-        // 同一条判据:没有游标就不发这个键(缺席 = 从第一页起)。
-        ...(cursor === undefined ? {} : { cursor }),
-      })
+    query: async (query, category, limit, filters, cursor, signal) => {
+      const response = await searchApi.query(
+        {
+          query,
+          category,
+          limit,
+          // 缺席与空表是两回事:一格过滤都没有时**不发这个键**,而不是发一个 `{}`
+          // —— 后端那边 `filters: {}` 与缺席同义,但线上少一格总比多一格诚实。
+          ...(filters === undefined || Object.keys(filters).length === 0 ? {} : { filters }),
+          // 同一条判据:没有游标就不发这个键(缺席 = 从第一页起)。
+          ...(cursor === undefined ? {} : { cursor }),
+        },
+        // 传输级那一格与载荷分开摆(`RouteCallOptions`):撤回不是查询条件。
+        signal === undefined ? undefined : { signal },
+      )
       return { ...response, results: response.results ?? [] }
     },
     preview: (items, mode, query) => searchApi.preview({

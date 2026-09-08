@@ -21,6 +21,7 @@
     "gate:files": "node scripts/gate-files.mjs",
     "gate:search": "node scripts/gate-search.mjs",
     "gate:search-messages": "node scripts/gate-search-messages.mjs",
+    "gate:search-scan": "node scripts/gate-search-scan.mjs",
     "gate:monotone": "node scripts/gate-stream-monotone.mjs",
     "gate:stream-structure": "node scripts/gate-stream-structure.mjs",
     "gate:stream-structure:desktop": "node scripts/gate-stream-structure.mjs --owner=desktop",

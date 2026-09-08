@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { SearchResult } from '@shared/ipc/search'
 import type { SearchBlock, SearchListing, SearchPage } from '../data/search-listing-source'
-import { appendPage, markPageError, moreStateOf } from './paging'
+import { appendPage, landScan, landScanError, markPageError, moreStateOf } from './paging'
 
 /**
  * **分页**那一台机的判据(检索面终稿 附录 B §5.2–§5.3)。
@@ -147,5 +147,80 @@ describe('markPageError(行留着)', () => {
     expect(markPageError(undefined, 'messages', 'boom')).toBeUndefined()
     const before = listing(block())
     expect(markPageError(before, 'files', 'boom')).toBe(before)
+  })
+})
+
+/* ── 09-07 事故第二/三条修:两个新态 ───────────────────────────────────── */
+
+describe('moreStateOf 的两个新态(scanning / partial)', () => {
+  it('`scanning` 排在「零命中不占行」前面 —— 「还没问」不是「问过了没有」', () => {
+    const scanning = block({ capability: 'files', rows: [], cursor: undefined, scanning: true })
+    /*
+     * 反证:把 `moreStateOf` 里 `if (block.scanning === true)` 那一行挪到
+     * `rows.length === 0` 后面 → 这里当场变成 `none`,屏上那一块整块不画,
+     * 文件那一档于是在半秒后凭空冒出来(用户刚读到的是「它说没有」)。
+     */
+    expect(moreStateOf(scanning, false, false)).toEqual({ kind: 'scanning' })
+  })
+
+  it('`scanning` 压过忙态:整格在重拉时它仍然说「扫描中」', () => {
+    const scanning = block({ capability: 'files', rows: [], cursor: undefined, scanning: true })
+    expect(moreStateOf(scanning, true, true)).toEqual({ kind: 'scanning' })
+  })
+
+  it('`partial`:说手上有几条,**不说总数**(这一路答不出总数)', () => {
+    const partial = block({ rows: [row('a'), row('b')], cursor: undefined, partial: true })
+    expect(moreStateOf(partial, false, false)).toEqual({ kind: 'partial', shown: 2 })
+  })
+
+  it('`partial` 压过 `end`:取尽了也不许画「共 N 条」', () => {
+    const partial = block({ rows: [row('a')], cursor: undefined, partial: true, total: 99 })
+    expect(moreStateOf(partial, false, false).kind).toBe('partial')
+  })
+
+  it('没标 partial 的那一页照旧走 `end`(行为零变化)', () => {
+    expect(moreStateOf(block({ cursor: undefined }), false, false))
+      .toEqual({ kind: 'end', total: 2 })
+  })
+})
+
+describe('landScan / landScanError(补扫怎么落地)', () => {
+  it('落地:摘 `scanning`、填行、按这一页的游标定取尽', () => {
+    const before = listing(block({ capability: 'files', rows: [], cursor: undefined, scanning: true }))
+    const after = landScan(before, 'files', page(['f1', 'f2'], 'c1'))
+    const one = blockOf(after, 'files')
+    expect(one?.scanning).toBeUndefined()
+    expect(one?.rows.map(r => r.id)).toEqual(['f1', 'f2'])
+    expect(one?.cursor).toBe('c1')
+    expect(one?.exhausted).toBe(false)
+    expect(one?.pages).toBe(1)
+  })
+
+  it('落地也带 `partial`(扫了一半就到点的那一页)', () => {
+    const before = listing(block({ capability: 'files', rows: [], cursor: undefined, scanning: true }))
+    const after = landScan(before, 'files', { rows: [row('f1')], partial: true })
+    expect(blockOf(after, 'files')?.partial).toBe(true)
+    expect(blockOf(after, 'files')?.exhausted).toBe(true)
+  })
+
+  it('别的块**对象引用不换**(律④)', () => {
+    const other = block({ capability: 'chats' })
+    const before = listing(other, block({ capability: 'files', rows: [], cursor: undefined, scanning: true }))
+    const after = landScan(before, 'files', page(['f1']))
+    expect(blockOf(after, 'chats')).toBe(other)
+  })
+
+  it('这一块已经不在了(换词换出去的旧格)= 恒等变换', () => {
+    const before = listing(block({ capability: 'chats' }))
+    expect(landScan(before, 'files', page(['f1']))).toBe(before)
+    expect(landScanError(before, 'files', 'boom')).toBe(before)
+  })
+
+  it('塌了落 `error`(头页的失败归页脚那一行),`scanning` 同时摘掉', () => {
+    const before = listing(block({ capability: 'files', rows: [], cursor: undefined, scanning: true }))
+    const after = landScanError(before, 'files', 'rg gone')
+    expect(blockOf(after, 'files')?.error).toBe('rg gone')
+    expect(blockOf(after, 'files')?.scanning).toBeUndefined()
+    expect(blockOf(after, 'files')?.pageError).toBeUndefined()
   })
 })

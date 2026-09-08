@@ -1025,3 +1025,132 @@ describe('面域局部键:⌘[ / ⌘](§4.6 的查询历史)', () => {
     await waitFor(() => expect(document.querySelector('[data-filter="scope"]')).toBeTruthy())
   })
 })
+
+/* ── 09-07 事故第二条修:「不挑」那一档不等扫盘型 ──────────────────────── */
+
+/**
+ * 真机原样:搜「all」之后文件那一路扎进 18GB 目录永不落地,而整发要收齐所有组
+ * 才答 —— 屏幕上**一个结果都没有**。修完之后后端在 `all` 里对那一路当场答
+ * `groups[].deferred`,别的块立刻上屏,壳随即自己去问一次那一档。
+ */
+describe('deferred 块(不挑那一档不等扫盘型)', () => {
+  /** `all` 那一发答「files 这次没问」;单类那一发慢慢答。 */
+  function serveDeferred(options: { holdFiles?: boolean } = {}): {
+    asks: string[]
+    releaseFiles: (rows: SearchResult[]) => void
+  } {
+    const asks: string[] = []
+    let release: ((rows: SearchResult[]) => void) | undefined
+    serve(async (ask) => {
+      asks.push(ask.category)
+      if (ask.category === 'files') {
+        if (options.holdFiles !== true) {
+          return { success: true, results: [hit({ id: 'f1', type: 'file', title: 'note.ts' })] }
+        }
+        const rows = await new Promise<SearchResult[]>((resolve) => { release = resolve })
+        return { success: true, results: rows }
+      }
+      return {
+        success: true,
+        results: [chatHit()],
+        groups: [
+          { capability: 'chats', label: '', results: [chatHit()] },
+          { capability: 'files', label: '', results: [], total: 0, deferred: true },
+        ],
+      }
+    })
+    return { asks, releaseFiles: rows => release?.(rows) }
+  }
+
+  it('会话那一块先上屏,文件那一块只有一条「扫描中…」', async () => {
+    const { asks } = serveDeferred({ holdFiles: true })
+    render(<SearchPanel />)
+    type('note')
+    // 别的块**不等它**。
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    expect(rows()[0].getAttribute('data-capability')).toBe('chats')
+    const scanning = moreItems().find(el => el.getAttribute('data-block') === 'files')
+    expect(scanning?.getAttribute('data-more-state')).toBe('scanning')
+    expect(scanning?.textContent).toContain(translate('zh', 'search.scanning'))
+    // 壳自己去问了那一档(同词同片同页大小)。
+    await waitFor(() => expect(asks).toContain('files'))
+  })
+
+  it('那一发落地:只有文件那一块长出行,会话那一块一行不动', async () => {
+    serveDeferred()
+    render(<SearchPanel />)
+    type('note')
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    const caps = rows().map(el => el.getAttribute('data-capability'))
+    expect(caps).toEqual(['chats', 'files'])
+    // 「扫描中…」那条项换成了取尽读数(那一发没给游标)。
+    expect(moreItems().some(el => el.getAttribute('data-block') === 'files')).toBe(false)
+  })
+
+  it('还在扫的时候**不许画「无结果」**(那是一句会自我否定的话)', async () => {
+    serve(async (ask) => {
+      if (ask.category === 'files') {
+        await new Promise<void>(() => undefined)
+        return { success: true, results: [] }
+      }
+      return {
+        success: true,
+        results: [],
+        groups: [{ capability: 'files', label: '', results: [], total: 0, deferred: true }],
+      }
+    })
+    render(<SearchPanel />)
+    type('note')
+    await waitFor(() => {
+      expect(document.querySelector('[data-more-state="scanning"]')).not.toBeNull()
+    })
+    expect(document.querySelector('[data-readout="empty"]')).toBeNull()
+  })
+
+  it('那一发塌了 = 页脚一行「文件没搜成 · 重试」,列表其余不受影响', async () => {
+    serve(async (ask) => {
+      if (ask.category === 'files') return { success: false, results: [], error: 'rg gone' }
+      return {
+        success: true,
+        results: [chatHit()],
+        groups: [
+          { capability: 'chats', label: '', results: [chatHit()] },
+          { capability: 'files', label: '', results: [], total: 0, deferred: true },
+        ],
+      }
+    })
+    render(<SearchPanel />)
+    type('note')
+    await waitFor(() => {
+      expect(document.querySelector('[data-readout="block-errors"]')).not.toBeNull()
+    })
+    expect(document.querySelector('[data-readout="block-errors"]')?.textContent)
+      .toContain(translate('zh', 'search.blockFailed', { name: '文件' }))
+    // 原话不上屏(R6 的同一条纪律:块级失败说的是人话)。
+    expect(document.body.textContent).not.toContain('rg gone')
+    expect(rows()).toHaveLength(1)
+  })
+
+  it('只扫到一半:行照画,块尾说「已扫描 N 条 · 未扫完」而不是「共 N 条」', async () => {
+    serve(async (ask) => {
+      if (ask.category === 'files') {
+        return {
+          success: true,
+          results: [hit({ id: 'f1', type: 'file', title: 'note.ts' })],
+          partial: true,
+        }
+      }
+      return {
+        success: true,
+        results: [],
+        groups: [{ capability: 'files', label: '', results: [], total: 0, deferred: true }],
+      }
+    })
+    render(<SearchPanel />)
+    type('note')
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    const readout = document.querySelector('[data-readout="partial"]')
+    expect(readout?.textContent).toBe(translate('zh', 'search.partialScan', { shown: 1 }))
+    expect(document.querySelector('[data-readout="end"]')).toBeNull()
+  })
+})

@@ -26,15 +26,25 @@ export const moreItemKind: SearchItemKind = {
   Render({ item, active, view }) {
     const capability = item.block ?? ''
     const state = view.moreStateOf(capability)
-    // 只有这三态是 item(`end` 是读数、`none` 什么都不画,两者都不进序列)。
-    if (state.kind !== 'more' && state.kind !== 'loading' && state.kind !== 'error') return null
+    // 只有这四态是 item(`end` / `partial` 是读数、`none` 什么都不画,都不进序列)。
+    if (
+      state.kind !== 'more'
+      && state.kind !== 'loading'
+      && state.kind !== 'scanning'
+      && state.kind !== 'error'
+    ) return null
+    const busy = state.kind === 'loading' || state.kind === 'scanning'
     const text = state.kind === 'loading'
       ? view.t('search.loading')
-      : state.kind === 'error'
-        ? view.t('search.loadFailed')
-        : state.total === null
-          ? view.t('search.loadMore')
-          : view.t('search.loadMoreCount', { shown: state.shown, total: state.total })
+      // 「扫描中…」与「加载中…」是**两句话**:前者说的是这一类还没被问过
+      // (屏上这一块此刻一行都没有),后者说的是已有的行后面还在长。
+      : state.kind === 'scanning'
+        ? view.t('search.scanning')
+        : state.kind === 'error'
+          ? view.t('search.loadFailed')
+          : state.total === null
+            ? view.t('search.loadMore')
+            : view.t('search.loadMoreCount', { shown: state.shown, total: state.total })
     return (
       <ButtonBase
         role="option"
@@ -45,7 +55,7 @@ export const moreItemKind: SearchItemKind = {
         data-item-id={item.id}
         data-block={capability}
         data-more-state={state.kind}
-        {...(state.kind === 'loading' ? { 'aria-busy': true } : {})}
+        {...(busy ? { 'aria-busy': true } : {})}
         className={active ? `${s.more} ${s.rowOn}` : s.more}
         onMouseDown={(event) => event.preventDefault()}
         onClick={(event) => view.onPointer(item, event)}
@@ -84,6 +94,9 @@ export const moreItemKind: SearchItemKind = {
   survivesGrowth(item, next) {
     if (next === undefined || item.block === undefined) return false
     const block = next.blocks.find(b => b.capability === item.block)
-    return block !== undefined && block.rows.length > 0 && !block.exhausted
+    if (block === undefined) return false
+    // 还没问的那一块:这条项就是屏上唯一的那一行,当然还在。
+    if (block.scanning === true) return true
+    return block.rows.length > 0 && !block.exhausted && block.partial !== true
   },
 }

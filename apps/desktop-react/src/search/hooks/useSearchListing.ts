@@ -1,9 +1,10 @@
-import { useCallback, useLayoutEffect, useMemo } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo } from 'react'
 import { useMutation } from '../../data/kernel'
 import type { HeldSnapshot } from '../../data/kernel'
 import {
   searchLoadMore,
   searchLoadMoreKey,
+  searchScanBlock,
   useSearchListing as useListingQuery,
 } from '../../data/search-listing-source'
 import type { SearchBlock, SearchListing } from '../../data/search-listing-source'
@@ -106,6 +107,32 @@ export function useSearchListing(): SearchListingView {
   useLayoutEffect(() => {
     reconcile(sequence)
   }, [sequence, reconcile])
+
+  /*
+   * ── **「不挑」那一档没问的那几块,在这里补上**(09-07 事故第二条修)──────
+   *
+   * 后端在 `all` 里对去外部枚举的那几路当场答一句「这次没问」(`groups[].deferred`),
+   * 别的块因此立刻上屏;壳随即对那一档发一发**单类**请求(同词同片同页大小),
+   * 落地 `patch` 填进那一块。
+   *
+   * **为什么落在这只 hook 里,而不是 fetcher 里**:fetcher 是在格 `settle` 之前
+   * 跑的,它当场发出去的那一发有可能先落地 —— 那时 `patch` 打在上一份数据上,
+   * 紧接着 settle 把它整份盖掉,补扫就凭空消失。effect 跑在数据已经进格之后,
+   * 这条竞态在结构上不存在。顺带还有一条好处:面板收起来(这只 hook 卸载)之后
+   * 不会再有新的扫盘发出去。
+   *
+   * 三道闸都不是纪律:①`scanning` 由 `landScan` / `landScanError` 摘掉,落地一次
+   * 就不会再触发;②mutation 按 `key#capability` 折叠同键并发(律③),重复渲染
+   * 只发一次;③换词换键 = 换了 `committedKey`,旧格的补扫在 `ensureSearchListing`
+   * 里被 abort,落地的补丁也只会打在没人看的旧格上。
+   */
+  useEffect(() => {
+    for (const block of blocks) {
+      if (block.scanning !== true) continue
+      if (pendingKeys.has(searchLoadMoreKey(committedKey, block.capability))) continue
+      void searchScanBlock.run({ key: committedKey, capability: block.capability })
+    }
+  }, [blocks, committedKey, pendingKeys])
 
   return { key: committedKey, held, blocks, sequence, moreStateOf: stateOf, canLoadMore }
 }

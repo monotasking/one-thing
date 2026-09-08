@@ -120,7 +120,19 @@ export function SearchList({
    * 那一刻画的是「搜索中…」而不是「无结果」(拍点 K:后者是一句谎话)。
    */
   const searching = held.inflight || held.stale || (!answered && held.error === undefined)
-  const empty = answered && !held.stale && rowCount === 0 && failed.length === 0 && !held.inflight
+  /**
+   * **还在扫的那几块不算「没有」**(09-07 事故第二条修)。
+   *
+   * 「不挑」那一档不等去外部枚举的那一路,壳正在单独去问 —— 这一刻行数可以是 0,
+   * 但答案还没齐。画「没有和「…」匹配的结果」就是一句会在半秒后自我否定的话。
+   */
+  const scanning = blocks.some(block => block.scanning === true)
+  const empty = answered
+    && !held.stale
+    && rowCount === 0
+    && failed.length === 0
+    && !held.inflight
+    && !scanning
 
   return (
     <div

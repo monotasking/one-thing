@@ -4,7 +4,7 @@ import type {
   SearchResponse,
   SearchResult,
 } from '@shared/ipc/search'
-import { appendPage, markPageError } from '../search/paging'
+import { appendPage, landScan, landScanError, markPageError } from '../search/paging'
 import { getLogger } from '../services/log'
 import { createMutation, createQueryFamily, useQueryHeld } from './kernel'
 import type { HeldSnapshot } from './kernel'
@@ -134,6 +134,22 @@ export interface SearchBlock {
   /** 这一块零命中后放宽了几级;0 / 缺席 = 严格档就中了。 */
   readonly relaxed?: number
   /**
+   * **这一块后端这一次没问,壳正在单独去问**(09-07 事故第二条修)。
+   *
+   * 「不挑」那一档不等去外部枚举的那几路(契约 `groups[].deferred`)。屏上它是一块
+   * **只有块尾一条「扫描中…」的块** —— 与「零命中不占行」不冲突:那条规矩说的是
+   * 「问过了,没有」,这一格说的是「还没问」,两件事。
+   *
+   * 它由 `searchScanBlock` 那只 mutation 落地时清掉(成功补进 `rows`,失败落
+   * `error` → 页脚一行「<能力名>没搜成 · 重试」)。
+   */
+  readonly scanning?: boolean
+  /**
+   * **只扫到一半**(预算到点交的部分;契约 `groups[].partial` / `SearchResponse.partial`)。
+   * 块尾读数据它说「已扫描的部分 · 未扫完」,而不是谎称「共 N 条」。
+   */
+  readonly partial?: boolean
+  /**
    * 取尽了。**与 `cursor` 是同一件事的两半**,恒等式 `exhausted === (cursor === undefined)`
    * 由 `blockOf` 这一处产地保住 —— 屏上那条块尾项读的是这一格(它说的是结论),
    * 翻页读的是 `cursor`(它说的是手段)。
@@ -168,6 +184,8 @@ export interface SearchPage {
   readonly cursor?: string
   readonly total?: number
   readonly relaxed?: number
+  /** 这一页只扫到一半(契约 `SearchResponse.partial`)。 */
+  readonly partial?: boolean
   readonly actions?: readonly SearchActionDescriptor[]
 }
 
@@ -180,6 +198,8 @@ interface BlockInput {
   actions?: readonly SearchActionDescriptor[]
   error?: string
   pageError?: string
+  scanning?: boolean
+  partial?: boolean
   pages: number
 }
 
@@ -197,18 +217,21 @@ export function blockOf(input: BlockInput): SearchBlock {
     ...(input.relaxed === undefined ? {} : { relaxed: input.relaxed }),
     ...(input.error === undefined ? {} : { error: input.error }),
     ...(input.pageError === undefined ? {} : { pageError: input.pageError }),
+    ...(input.scanning === true ? { scanning: true } : {}),
+    ...(input.partial === true ? { partial: true } : {}),
     exhausted: input.cursor === undefined,
     pages: input.pages,
   }
 }
 
-/** 一次回执 → 一页。`SearchResponse` 那几格里翻页真正要的就这五格。 */
+/** 一次回执 → 一页。`SearchResponse` 那几格里翻页真正要的就这六格。 */
 function pageOf(response: SearchResponse): SearchPage {
   return {
     rows: response.results,
     ...(response.cursor === undefined ? {} : { cursor: response.cursor }),
     ...(response.total === undefined ? {} : { total: response.total }),
     ...(response.relaxed === undefined ? {} : { relaxed: response.relaxed }),
+    ...(response.partial === true ? { partial: true } : {}),
     ...(response.actions === undefined ? {} : { actions: response.actions }),
   }
 }
@@ -250,8 +273,9 @@ async function fetchOne(
   capability: string,
   query: string,
   filters: SearchFilters,
+  signal?: AbortSignal,
 ): Promise<SearchListing> {
-  const response = await port.query(query, capability, SEARCH_LISTING_PAGE, filters)
+  const response = await port.query(query, capability, SEARCH_LISTING_PAGE, filters, undefined, signal)
   /*
    * `success:false` **抛**出去而不是回一份空结果 —— 失败与「一条都没搜到」是两件事。
    * 抛出去之后 kernel 把原话放进 `error` 那一格,而 `data` 照旧是上一次那份(律②):
@@ -267,16 +291,29 @@ async function fetchOne(
     return {
       mode: 'overview',
       query,
-      blocks: response.groups.map(group => blockOf({
-        capability: group.capability,
-        rows: group.results,
-        ...(group.cursor === undefined ? {} : { cursor: group.cursor }),
-        ...(group.total === undefined ? {} : { total: group.total }),
-        ...(group.relaxed === undefined ? {} : { relaxed: group.relaxed }),
-        ...(group.actions === undefined ? {} : { actions: group.actions }),
-        ...(group.error === undefined ? {} : { error: group.error }),
-        pages: 1,
-      })),
+      blocks: response.groups.map(group => (
+        /*
+         * **「这一次没问它」是一种块,不是一块空结果**(09-07 事故第二条修)。
+         *
+         * 这一块带着 `scanning` 进清单 —— 屏上是一条「扫描中…」的块尾项;
+         * `useSearchListing` 看见它就发一发单类请求把它补上(`searchScanBlock`)。
+         * 后端那一格 `total: 0` **一个字都不收**:它说的不是「零命中」,收下来
+         * 块尾读数就会画出一句「共 0 条」的谎话。
+         */
+        group.deferred === true
+          ? blockOf({ capability: group.capability, rows: [], scanning: true, pages: 1 })
+          : blockOf({
+            capability: group.capability,
+            rows: group.results,
+            ...(group.cursor === undefined ? {} : { cursor: group.cursor }),
+            ...(group.total === undefined ? {} : { total: group.total }),
+            ...(group.relaxed === undefined ? {} : { relaxed: group.relaxed }),
+            ...(group.actions === undefined ? {} : { actions: group.actions }),
+            ...(group.error === undefined ? {} : { error: group.error }),
+            ...(group.partial === true ? { partial: true } : {}),
+            pages: 1,
+          })
+      )),
       ...(response.total === undefined ? {} : { total: response.total }),
       ...(response.relaxed === undefined ? {} : { relaxed: response.relaxed }),
       ...(response.index === undefined ? {} : { index: response.index }),
@@ -317,10 +354,11 @@ async function fetchBrowse(
   capabilities: readonly string[],
   query: string,
   filters: SearchFilters,
+  signal?: AbortSignal,
 ): Promise<SearchListing> {
   const blocks = await Promise.all(capabilities.map(async (capability) => {
     try {
-      const response = await port.query(query, capability, SEARCH_LISTING_PAGE, filters)
+      const response = await port.query(query, capability, SEARCH_LISTING_PAGE, filters, undefined, signal)
       if (!response.success) throw new Error(response.error ?? 'search failed')
       return blockOf({ capability, ...pageOf(response), pages: 1 })
     } catch (error) {
@@ -352,6 +390,7 @@ async function replay(
   head: SearchListing,
   parsed: ParsedKey,
   previous: SearchListing | undefined,
+  signal?: AbortSignal,
 ): Promise<SearchListing> {
   if (previous === undefined) return head
   let listing = head
@@ -370,6 +409,7 @@ async function replay(
           SEARCH_LISTING_PAGE,
           parsed.filters,
           cursor,
+          signal,
         )
       } catch (error) {
         log.warn('replay page failed; keeping what we walked', {
@@ -395,10 +435,12 @@ async function fetchListing(ctx: FetchContext<SearchListing>): Promise<SearchLis
   }
   const port = await searchPort()
   await port.ready()
+  // kernel 在同一格上后一发发车时拉这条(`FetchContext.signal`);它一路递到 fetch。
+  const signal = ctx.signal
   const head = parsed.capabilities.length > 1
-    ? await fetchBrowse(port, parsed.capabilities, parsed.query, parsed.filters)
-    : await fetchOne(port, parsed.capabilities[0], parsed.query, parsed.filters)
-  return await replay(port, head, parsed, ctx.previous)
+    ? await fetchBrowse(port, parsed.capabilities, parsed.query, parsed.filters, signal)
+    : await fetchOne(port, parsed.capabilities[0], parsed.query, parsed.filters, signal)
+  return await replay(port, head, parsed, ctx.previous, signal)
 }
 
 /* ── `equals`:逐字相同就不换引用(律④)────────────────────────────────── */
@@ -435,6 +477,8 @@ function listingEquals(a: SearchListing, b: SearchListing): boolean {
       && block.pages === other.pages
       && block.total === other.total
       && block.relaxed === other.relaxed
+      && block.scanning === other.scanning
+      && block.partial === other.partial
       && sameActions(block.actions, other.actions)
       && block.rows.length === other.rows.length
       && block.rows.every((row, j) => row.id === other.rows[j].id)
@@ -501,10 +545,97 @@ export const searchLoadMore = createMutation<SearchLoadMoreInput, SearchPage>('s
   },
 })
 
+/* ── 补上「不挑」那一档没问的那一块 ────────────────────────────────────── */
+
+/**
+ * 在飞的那几发扫描,按 `key#capability` 记着 —— **为了能杀掉它们**。
+ *
+ * 为什么要一本自己的账,而不是靠 kernel:这几发不是 query 的取数,是 mutation
+ * (它们往一个已经落地的格里打补丁),而 mutation 没有 kernel 给的信号。
+ * 而这一路恰恰是最需要杀的那一路:它在后端会去起 `rg`。
+ */
+const scansInFlight = new Map<string, AbortController>()
+
+function abortScan(id: string): void {
+  const controller = scansInFlight.get(id)
+  if (controller === undefined) return
+  scansInFlight.delete(id)
+  controller.abort(new Error('search scan superseded'))
+}
+
+/** 换键时把**别的键**上那几发扫描全杀掉(换词 / 清词 / 换档都走这里)。 */
+function abortScansOtherThan(key: string): void {
+  for (const id of [...scansInFlight.keys()]) {
+    if (!id.startsWith(`${key}#`)) abortScan(id)
+  }
+}
+
+/**
+ * 「后端说这一块它没问,壳自己去问一次」(09-07 事故第二条修的壳侧一半)。
+ *
+ * 同词、同片、同页大小 —— 与那一块出现在单类档时**逐字同一发**,所以后端那边
+ * 没有第二条路径要维护。落地走 `patch`:成功就把行填进那一块并清掉 `scanning`,
+ * 失败落 `error` → 页脚一行「<能力名>没搜成 · 重试」(与头页塌了同一条口)。
+ *
+ * **忙态与翻页共用一把键**(`key#capability`,律③):于是块尾那条项在扫描期间
+ * 本来就按 `loading` 画,`canLoadMore` 也自然是假 —— 不必再发明第二套忙态。
+ */
+export const searchScanBlock = createMutation<{ key: string; capability: string }, SearchPage>(
+  'search.scanBlock',
+  {
+    key: ({ key, capability }) => searchLoadMoreKey(key, capability),
+    run: async ({ key, capability }) => {
+      const parsed = parseKey(key)
+      const id = searchLoadMoreKey(key, capability)
+      abortScan(id)
+      const controller = new AbortController()
+      scansInFlight.set(id, controller)
+      try {
+        const port = await searchPort()
+        await port.ready()
+        const response = await port.query(
+          parsed.query,
+          capability,
+          SEARCH_LISTING_PAGE,
+          parsed.filters,
+          undefined,
+          controller.signal,
+        )
+        if (!response.success) throw new Error(response.error ?? 'search failed')
+        return pageOf(response)
+      } finally {
+        if (scansInFlight.get(id) === controller) scansInFlight.delete(id)
+      }
+    },
+    settle: (page, { key, capability }) => {
+      searchListingQuery.get(key).patch(prev => landScan(prev, capability, page))
+    },
+    onError: (error, { key, capability }) => {
+      /*
+       * **被自己人杀掉的那一发不算失败**(换词了 —— 用户没做错什么,屏上也不该
+       * 冒出一句「文件没搜成」)。判据是这一发是不是 abort 出来的;别的错照旧
+       * 落进这一块的 `error`,由页脚说一句人话 + 一个「重试」。
+       */
+      if (error.name === 'AbortError' || /abort/i.test(error.message)) return
+      searchListingQuery.get(key).patch(prev => landScanError(prev, capability, error.message))
+    },
+  },
+)
+
 /* ── 五口 ──────────────────────────────────────────────────────────────── */
 
 /** 「问一次这把键」。幂等(`ensure` 的语义),去抖副作用可以无脑调。 */
 export function ensureSearchListing(key: string): Promise<void> {
+  /*
+   * **换主语 = 杀掉别的主语手上那几发扫描**(09-07 事故第四条修的壳侧一半)。
+   *
+   * 这一句排在最前面,连「这把键认不认」都不看:清空输入框那一下会把键换成
+   * 浏览态那一把(甚至换成一把空的),而那一刻正是最需要把在飞的扫盘停掉的时候
+   * —— 报障原话是「清了词那两条 rg 也不死」。这一发 abort 会一路传到后端:
+   * fetch 断开 → HTTP 面 `response.close` → `ctx.signal` → `fanout` 派生信号 →
+   * `listOnethingRipgrepFiles` 的 `finally` → `proc.kill()`。
+   */
+  abortScansOtherThan(key)
   if (parseKey(key).capabilities.length === 0) return Promise.resolve()
   remember(key)
   return searchListingQuery.get(key).ensure()
@@ -536,6 +667,9 @@ export function useSearchListing(key: string): HeldSnapshot<SearchListing> {
 export function resetSearchListing(): void {
   searchListingQuery.reset()
   searchLoadMore.reset()
+  searchScanBlock.reset()
+  // 回到出厂 = 一发在途的扫盘都不留(它们在后端各有一条 `rg`)。
+  for (const id of [...scansInFlight.keys()]) abortScan(id)
   recent.length = 0
 }
 

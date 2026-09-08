@@ -63,7 +63,8 @@ export const FAKE_CAPABILITY_MANIFESTS: SearchCapabilityManifestDto[] = [
     labelKey: 'search.capability.files',
     icon: 'FolderTree',
     kind: 'scan',
-    budget: { default: 10, timeoutMs: 0 },
+    // 09-07 事故第二/三条修:扫描型现在有 3s 预算(从前是 0 = 不设限)。
+    budget: { default: 10, timeoutMs: 3000 },
     order: 4,
     // 扫描根(S4b):壳把当前会话的工作目录当缺省递进来,「在此目录内搜」也落在它上。
     facets: [{ key: 'dir', type: 'enum' }],

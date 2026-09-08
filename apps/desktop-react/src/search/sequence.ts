@@ -116,7 +116,13 @@ export function sequenceOf(
       })
     }
     const state = more(block)
-    if (state.kind === 'more' || state.kind === 'loading' || state.kind === 'error') {
+    // `scanning` 与 `loading` 同一条理由进序列:焦点不该在等待途中蒸发。
+    if (
+      state.kind === 'more'
+      || state.kind === 'loading'
+      || state.kind === 'scanning'
+      || state.kind === 'error'
+    ) {
       items.push({
         id: moreItemId(block.capability),
         kind: SEARCH_ITEM_KINDS.more,

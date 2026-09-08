@@ -12,6 +12,7 @@ import {
   rowOfItem,
   sequenceOf,
 } from './sequence'
+import { moreStateOf } from './paging'
 
 /**
  * **序列**的判据(检索面终稿 附录 B §1 / §5.4 ②)。
@@ -134,5 +135,30 @@ describe('反查(项 → 它指的那件东西)', () => {
     expect(indexOfItem(seq, seq[0].id)).toBe(0)
     expect(indexOfItem(seq, 'row:nope:x')).toBe(-1)
     expect(indexOfItem(seq, null)).toBe(-1)
+  })
+})
+
+/* ── 09-07 事故第二条修:还没问的那一块也在序列里 ──────────────────────── */
+
+describe('scanning 块的块尾项', () => {
+  it('零行的 `scanning` 块**产一条块尾项** —— 焦点不该在等待途中蒸发', () => {
+    const one = listing([block('files', [], { cursor: undefined, scanning: true })])
+    /*
+     * 反证:把 `sequenceOf` 里那句 `|| state.kind === 'scanning'` 删掉 →
+     * 序列空了,↑↓ 走不到它,而屏上那条「扫描中…」还画着(两处判据分家)。
+     */
+    expect(sequenceOf(one, b => moreStateOf(b, false, false)).map(item => item.id))
+      .toEqual([moreItemId('files')])
+  })
+
+  it('零行且**没在扫**的块照旧一格都不占(R2 一个字没改)', () => {
+    const one = listing([block('files', [], { cursor: undefined })])
+    expect(sequenceOf(one, b => moreStateOf(b, false, false))).toBe(EMPTY_SEQUENCE)
+  })
+
+  it('`partial` 是读数不是 item:行在,块尾不进序列', () => {
+    const one = listing([block('files', ['f1'], { cursor: undefined, partial: true })])
+    expect(sequenceOf(one, b => moreStateOf(b, false, false)).map(item => item.id))
+      .toEqual([rowItemId('files', 'f1')])
   })
 })

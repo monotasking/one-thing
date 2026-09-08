@@ -365,6 +365,15 @@ export const en: Record<MessageKey, string> = {
   'search.loadMoreCount': 'Load more · showing {shown} / {total}',
   'search.loading': 'Loading…',
   'search.loadFailed': "Didn't load · try again",
+  /* The "all" scope does not wait for capabilities that enumerate an external
+   * source (files); the shell asks that one on its own right after, and this is
+   * what its block says meanwhile. NOT "Loading…": that one means "more rows are
+   * coming after the ones you see"; this one means "this kind has not been asked
+   * yet", and the block below it is empty. */
+  'search.scanning': 'Scanning…',
+  /* The scan ran out of budget. Says what we have, and admits what we don't:
+   * the total is unknowable here, so we never print one. */
+  'search.partialScan': '{shown} scanned · not finished',
   /* ── Bottom status lines (§9). Four readouts; none of them merge. ── */
   'search.totalCount': '{total} in total',
   /* Three sentences, one per ladder rung (core/search/pipeline/plan.ts):

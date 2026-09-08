@@ -10,6 +10,7 @@ import {
   searchListingKey,
   searchLoadMore,
   searchLoadMoreKey,
+  searchScanBlock,
   useSearchListing,
 } from './search-listing-source'
 import type { SearchBlock, SearchListing } from './search-listing-source'
@@ -336,5 +337,116 @@ describe('reset', () => {
     expect(view.listing()).toBeUndefined()
     await land(key)
     expect(seen).toHaveLength(2)
+  })
+})
+
+/* ── 「不挑」那一档没问的那一块,壳自己补 ───────────────────────────────── */
+
+/**
+ * 09-07 事故第二条修的壳侧一半。后端在 `all` 里对扫盘型能力当场答
+ * `groups[].deferred`,别的组因此立刻上屏;壳随即对那一档发一发单类请求补上。
+ */
+describe('deferred 块(壳补扫)', () => {
+  /** 一台 `all` 档答「files 这次没问」的假 core;单类档照常真答。 */
+  function deferringPort(options: {
+    /** 单类那一发怎么答;缺省给一行。 */
+    single?: () => Promise<SearchResponse>
+  } = {}): { calls: string[] } {
+    const calls: string[] = []
+    configureSearchPort(fakeSearchPort({
+      query: async (_q, capability) => {
+        calls.push(capability)
+        if (capability !== 'all') {
+          return await (options.single?.() ?? Promise.resolve(pageOf(['f1'])))
+        }
+        return {
+          success: true,
+          results: [row('a')],
+          groups: [
+            { capability: 'chats', label: '', results: [row('a')], cursor: 'c1' },
+            // 后端这一格:结果空、total 0、deferred 真。
+            { capability: 'files', label: '', results: [], total: 0, deferred: true },
+          ],
+        }
+      },
+    }))
+    return { calls }
+  }
+
+  it('deferred 块进清单时是 `scanning`,别的块照常带着行上屏', async () => {
+    const { calls } = deferringPort()
+    const key = searchListingKey('all', 'jira')
+    const view = mount(key)
+    await land(key)
+    // 别的块**不等它**:头一发回来就有行。
+    expect(view.block('chats')?.rows.map(r => r.id)).toEqual(['a'])
+    expect(view.block('files')?.scanning).toBe(true)
+    expect(view.block('files')?.rows).toEqual([])
+    // 后端那个 `total: 0` 一个字都没收下 —— 它说的不是「零命中」。
+    expect(view.block('files')?.total).toBeUndefined()
+    // 这一步只发了 `all` 那一发(补扫由 `useSearchListing` 的 effect 起)。
+    expect(calls).toEqual(['all'])
+  })
+
+  it('补扫落地:只有那一块变,别的块**对象引用都不换**', async () => {
+    deferringPort()
+    const key = searchListingKey('all', 'jira')
+    const view = mount(key)
+    await land(key)
+    const chatsBefore = view.block('chats')
+    await act(async () => {
+      await searchScanBlock.run({ key, capability: 'files' })
+    })
+    expect(view.block('files')?.scanning).toBeUndefined()
+    expect(view.block('files')?.rows.map(r => r.id)).toEqual(['f1'])
+    expect(view.block('files')?.exhausted).toBe(true)
+    // 律④:没变的块连引用都不换。
+    expect(view.block('chats')).toBe(chatsBefore)
+  })
+
+  it('补扫塌了 = 这一块的 `error`(页脚那一行「没搜成 · 重试」),`scanning` 摘掉', async () => {
+    deferringPort({ single: async () => ({ success: false, results: [], error: 'rg gone' }) })
+    const key = searchListingKey('all', 'jira')
+    const view = mount(key)
+    await land(key)
+    await act(async () => {
+      await searchScanBlock.run({ key, capability: 'files' }).catch(() => undefined)
+    })
+    expect(view.block('files')?.error).toBe('rg gone')
+    expect(view.block('files')?.scanning).toBeUndefined()
+  })
+
+  it('换词之后旧那一发补扫**落地也不作数**(它打在没人看的旧格上)', async () => {
+    let release: ((response: SearchResponse) => void) | undefined
+    const calls: string[] = []
+    configureSearchPort(fakeSearchPort({
+      query: async (_q, capability) => {
+        calls.push(capability)
+        if (capability === 'files') {
+          return await new Promise<SearchResponse>((resolve) => { release = resolve })
+        }
+        if (capability !== 'all') return pageOf(['x'])
+        return {
+          success: true,
+          results: [],
+          groups: [{ capability: 'files', label: '', results: [], total: 0, deferred: true }],
+        }
+      },
+    }))
+    const first = searchListingKey('all', 'jira')
+    const second = searchListingKey('all', 'jiral')
+    const view = mount(first)
+    await land(first)
+    const flying = searchScanBlock.run({ key: first, capability: 'files' })
+    // 换词:新键上车,旧键那一发被 abort(真机上这一下就是把 rg 杀掉)。
+    await land(second)
+    await act(async () => {
+      release?.(pageOf(['late']))
+      await flying.catch(() => undefined)
+    })
+    // 屏上那一把键是 `second`;`first` 那一格里的补丁没人看得见。
+    const shown = mount(second)
+    expect(shown.block('files')?.rows.map(r => r.id) ?? []).not.toContain('late')
+    void view
   })
 })
