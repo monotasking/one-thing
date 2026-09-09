@@ -13,7 +13,9 @@
  *   ⑤ §10.2「已注销」那一行:摘掉之后再调,回到「未登记」(`ResourceSchemeUnknownError`);
  *   ⑥ 一个 scheme 只能有一个主人 —— 另一扇壳、以及 core 自己那份同名自述,都是
  *      `scheme-taken`;
- *   ⑦ `ui_change` 不弹卡(经真 `PermissionAuthorizer`,不是一次对策略表的断言)。
+ *   ⑦ `ui_change` 不弹卡(经真 `PermissionAuthorizer`,不是一次对策略表的断言);
+ *   ⑧ (K2b-2b)§10.3 那三条通用事件名的入口 `emit`:壳报的事实骑 K2a 那条既有的路
+ *      上总线,而「谁能替谁说话」在 core 判 —— 一扇壳发不出别人命名空间的事实。
  *
  * store 隔离与全动态 import 的写法照 `resource-kernel.test.ts` /
  * `assembly-lifecycle.test.ts`:`stores/sessions.ts` 在 **import 期**就解析 store 根。
@@ -327,7 +329,35 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
     expect(Object.keys(backend.resources.registry.get('workbench')?.ops ?? {}).sort()).toEqual(['close', 'open'])
   })
 
-  it('三条壳面都走得通 RPC 域,而且未认证的联网调用方一条都用不了', async () => {
+  it('§10.3 emit:壳报一条事实,骑 K2a 那条既有的路上总线;越权与陌生壳都抛', async () => {
+    const seen: Array<{ ref: string; event: string; payload: unknown }> = []
+    const stop = backend.eventBus.onGlobal('resource:event', envelope => {
+      seen.push(envelope.event as unknown as { ref: string; event: string; payload: unknown })
+    })
+    try {
+      backend.shellResources.emitEvent(SHELL, 'workbench:center', 'opened', { ref: 'session:x' })
+      await vi.waitFor(() => expect(seen).toHaveLength(1))
+      expect(seen[0]).toMatchObject({
+        ref: 'workbench:center',
+        event: 'opened',
+        payload: { ref: 'session:x' },
+      })
+    } finally {
+      stop()
+    }
+
+    // 归属:这扇壳交的是 `workbench`,`session:` 不是它的 —— 它替不了别人说话。
+    expect(() => backend.shellResources.emitEvent(SHELL, `session:${sessionId}`, 'deleted', {}))
+      .toThrow(/does not own/)
+    // 陌生壳:与 `shellResult` 同一句话。
+    expect(() => backend.shellResources.emitEvent('nobody', 'workbench:center', 'opened', {}))
+      .toThrow(/No shell is registered/)
+    // 地址不成形 / 事件名为空:壳交上来的东西不成形,是错不是结局。
+    expect(() => backend.shellResources.emitEvent(SHELL, 'not-a-ref', 'opened', {})).toThrow(/well-formed ref/)
+    expect(() => backend.shellResources.emitEvent(SHELL, 'workbench:center', '', {})).toThrow(/non-empty event/)
+  })
+
+  it('四条壳面都走得通 RPC 域,而且未认证的联网调用方一条都用不了', async () => {
     const { dispatchRpc } = await import('../rpc/registry.js')
     const { configureHostLocalTrust, resetHostLocalTrustForTests } = await import('../server/host-trust.js')
 
@@ -337,6 +367,7 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
       ['mountShell', { shellId: 'http-shell', spec: { ...WORKBENCH_SPEC, scheme: 'drill' } }],
       ['unmountShell', { shellId: 'http-shell' }],
       ['shellResult', { shellId: SHELL, callId: 'x', result: { kind: 'ok', text: 'x' } }],
+      ['emit', { shellId: SHELL, ref: 'workbench:center', event: 'opened', payload: {} }],
     ] as const) {
       const answer = await dispatchRpc({ domain: 'resources', method, payload }, { transport: 'http' })
       expect(answer.ok).toBe(false)
@@ -371,6 +402,14 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
       })
       expect(settled.ok && settled.data).toEqual({ ok: true })
       expect((await pending as { data: { kind: string } }).data.kind).toBe('ok')
+
+      // `emit` 也走同一扇门:事实进 core 之后骑 K2a 那条既有的路。
+      const emitted = await dispatchRpc({
+        domain: 'resources',
+        method: 'emit',
+        payload: { shellId: 'rpc-shell', ref: 'drill:1', event: 'opened', payload: {} },
+      })
+      expect(emitted.ok && emitted.data).toEqual({ ok: true })
 
       const unmounted = await dispatchRpc({
         domain: 'resources',

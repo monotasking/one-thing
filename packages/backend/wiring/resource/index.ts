@@ -33,6 +33,7 @@ export {
   DEFAULT_SHELL_HEARTBEAT_MS,
   ShellMountRegistry,
   ShellMountShapeError,
+  ShellSchemeNotOwnedError,
   UnknownShellError,
 } from './shell-registry.js'
 export type { ShellMountRegistryOptions } from './shell-registry.js'

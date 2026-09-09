@@ -11,6 +11,7 @@ import { useAgentsSource } from './data/agents-source'
 import { useModelsSource } from './data/models-source'
 import { useWorkspaceStore } from './workspace/store'
 import { startThemeSource } from './theme/theme-source'
+import { startShellResources } from './resources/shell-host'
 import { startReadingAxes } from './reading/apply'
 import { startWorkspaceApply } from './workspace/apply'
 import { startPerSpaceLayout } from './workspace/layout-scope'
@@ -96,6 +97,14 @@ void whenConnected().finally(() => {
   // D2:颜色从主题管道来。同样是异步的 —— 变量表到之前,palette.css 的静态值
   // 先顶着(浏览器直开 / 没连上 core 时它就是最终值,见 theme-source 文件头)。
   void startThemeSource()
+  /*
+   * **这扇壳把自己交给 core**(原子 K2b-2b,`docs/design/atom-2026-09.md` §5 /
+   * §10.2)。它排在这里而不是模块作用域里,理由与上面几条逐字相同:登记要一个
+   * 连通之后才存在的客户端。**幂等**;连不上 / 登记被拒都不挡任何事 —— 那时这台
+   * 壳照常用,只是 core 那边没有 `workbench` 这个命名空间(AI 开不了面板,别的
+   * 一切照旧)。拆卸(含 HMR)在 `resources/shell-host.ts` 自己那一段。
+   */
+  startShellResources()
   // 工作区列表同理:连通之后拉一次。拉不到不挡任何事 —— 瓦面退成兜底图标,
   // 总览上一句「读不到」加后端原话(与 agent 名册那条同一口径)。
   // **当前是哪个工作区**不在这一步:它读的是 localStorage,上面 startWorkspaceApply()

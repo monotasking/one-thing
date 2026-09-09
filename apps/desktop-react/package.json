@@ -48,7 +48,8 @@
     "gate:focus": "node scripts/gate-focus.mjs",
     "gate:drag-region": "node scripts/gate-drag-region.mjs",
     "gate:drag": "node scripts/gate-drag.mjs",
-    "gate:layout": "node scripts/gate-layout.mjs"
+    "gate:layout": "node scripts/gate-layout.mjs",
+    "gate:resources": "node scripts/gate-resources.mjs"
   },
   "dependencies": {
     "lucide-react": "latest",

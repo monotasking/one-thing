@@ -44,7 +44,7 @@
  * 重投影。所以自述**变了**才走「先注销再登记」,没变就只是盖一个时刻。
  */
 
-import { ResourceSchemeTakenError, type ResourceKernel } from '@onething/core/resource'
+import { parseRef, ResourceSchemeTakenError, type ResourceKernel } from '@onething/core/resource'
 import type { MountShellResourceResponse, SerializedResourceSpec, ShellCommandResult } from '@shared/ipc/resources.js'
 import type { ShellCommandDispatch } from './shell-dispatch.js'
 import { ShellResourceProvider, resourceSpecFromShell } from './shell-provider.js'
@@ -68,11 +68,39 @@ export class UnknownShellError extends Error {
   }
 }
 
+/**
+ * 一扇登记过的壳拿着一个**不归它**的 scheme 说话(K2b-2b 的 `emit`)。
+ *
+ * 与 `UnknownShellError` 分开,因为那一条说的是「你压根没登记过」,这一条说的是
+ * 「你登记过,但 `session:` 不是你的命名空间」。合成一句,一次配置错(壳的自述里
+ * 少交了一个 scheme)就与一次越权说话读起来一模一样。
+ */
+export class ShellSchemeNotOwnedError extends Error {
+  readonly shellId: string
+  readonly scheme: string
+
+  constructor(shellId: string, scheme: string) {
+    super(`Shell ${JSON.stringify(shellId)} does not own the ${JSON.stringify(scheme)} namespace`)
+    this.name = 'ShellSchemeNotOwnedError'
+    this.shellId = shellId
+    this.scheme = scheme
+  }
+}
+
 interface ShellMount {
   /** scheme → 摘它的那个闭包(内核 `mount` 给的,异步)。登记顺序即插入顺序。 */
   readonly unmounts: Map<string, () => Promise<void>>
   /** scheme → 上一次收到的那份自述的字面。续命时用它判「自述变没变」。 */
   readonly specs: Map<string, string>
+  /**
+   * scheme → 装上去的那只 provider。
+   *
+   * 记它是为了 `emit`:一条壳报上来的事实要经**那一只**的 `emit()` 才进得了
+   * `ResourceEventHub`(hub 是 `attach` 那一刻交给 provider 的,注册表这一侧拿不到)。
+   * 反面写法是让登记簿自己持一份 hub —— 那就有两个人能对同一个 scheme 发事实,
+   * 而「谁发的」在总线那一头是看不出来的。
+   */
+  readonly providers: Map<string, ShellResourceProvider>
   lastSeen: number
 }
 
@@ -132,7 +160,7 @@ export class ShellMountRegistry {
     const owner = this.dispatch.ownerOf(scheme)
     if (owner !== undefined && owner !== shellId) return { ok: false, reason: 'scheme-taken' }
 
-    const entry = this.shells.get(shellId) ?? { unmounts: new Map(), specs: new Map(), lastSeen: 0 }
+    const entry = this.shells.get(shellId) ?? { unmounts: new Map(), specs: new Map(), providers: new Map(), lastSeen: 0 }
     entry.lastSeen = this.now()
     this.shells.set(shellId, entry)
 
@@ -149,14 +177,16 @@ export class ShellMountRegistry {
     if (previous) {
       entry.unmounts.delete(scheme)
       entry.specs.delete(scheme)
+      entry.providers.delete(scheme)
       this.dispatch.release(scheme, shellId)
       await previous()
     }
 
     const spec = resourceSpecFromShell(serialized)
+    const provider = new ShellResourceProvider(shellId, spec, this.dispatch)
     let unmount: () => Promise<void>
     try {
-      unmount = this.kernel.mount(new ShellResourceProvider(shellId, spec, this.dispatch))
+      unmount = this.kernel.mount(provider)
     } catch (error) {
       // core 自己就有一份同名自述(`session`),或者别处先装上了 —— 与「另一扇壳先到」
       // 是同一句话,所以是同一个结局。别的登记错(自述不合规矩)照抛。
@@ -166,6 +196,7 @@ export class ShellMountRegistry {
     this.dispatch.claim(scheme, shellId)
     entry.unmounts.set(scheme, unmount)
     entry.specs.set(scheme, fingerprint)
+    entry.providers.set(scheme, provider)
     this.startSweeping()
     return { ok: true }
   }
@@ -182,6 +213,7 @@ export class ShellMountRegistry {
     for (const unmount of [...entry.unmounts.values()].reverse()) await unmount()
     entry.unmounts.clear()
     entry.specs.clear()
+    entry.providers.clear()
 
     if (this.shells.size === 0) this.stopSweeping()
   }
@@ -198,6 +230,34 @@ export class ShellMountRegistry {
     if (!entry) throw new UnknownShellError(shellId)
     entry.lastSeen = this.now()
     return this.dispatch.settle(shellId, callId, result)
+  }
+
+  /**
+   * 一条壳报上来的**事实**(K2b-2b;§10.3 的 `opened` / `closed` / `deleted` 就是它)。
+   *
+   * 两道判定,与 `settleResult` 同一条纪律但问的是两件事:这扇壳登记过没有,以及
+   * 这个 `ref` 的命名空间**归不归它**。第二道是这条通道存在的理由 —— 少了它,
+   * 一扇壳可以替 `session:` 编一条 `deleted`,而总线那一头看不出这条事实是谁发的。
+   *
+   * 事实往下走的是 K2a 那条既有的路(provider.emit → hub → 事件桥 → 全局事件),
+   * 这里一条新通道都不开。
+   *
+   * 顺手续一次命:一扇正在报事实的壳显然活着(同 `settleResult`)。
+   */
+  emitEvent(shellId: string, ref: string, event: string, payload: unknown): void {
+    const entry = this.shells.get(shellId)
+    if (!entry) throw new UnknownShellError(shellId)
+    const parsed = parseRef(ref)
+    // 地址不成形是**壳交上来的东西不成形**,与 `mountShell` 收到一份没有 scheme 的
+    // 自述是同一族的错 —— 不是一种结局。
+    if (!parsed) throw new ShellMountShapeError(`emit needs a well-formed ref, got ${JSON.stringify(ref)}`)
+    if (typeof event !== 'string' || event.length === 0) {
+      throw new ShellMountShapeError('emit needs a non-empty event name')
+    }
+    const provider = entry.providers.get(parsed.scheme)
+    if (!provider) throw new ShellSchemeNotOwnedError(shellId, parsed.scheme)
+    entry.lastSeen = this.now()
+    provider.emit(parsed.path, event, payload)
   }
 
   /** 关机:每扇壳走一遍完整的注销,再把派发器清干净。幂等。 */

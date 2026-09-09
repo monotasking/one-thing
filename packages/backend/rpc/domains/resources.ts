@@ -30,6 +30,7 @@ import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js
 import type {
   DescribeResourceRequest,
   DoResourceRequest,
+  EmitShellResourceEventRequest,
   ListResourcesResponse,
   MountShellResourceRequest,
   MountShellResourceResponse,
@@ -259,6 +260,25 @@ export const resourcesRpcHandlers: RpcRouteHandlers<ResourcesRoutes> = {
   ): Promise<ShellAckResponse> {
     principalOf(context)
     shells().settleResult(request?.shellId ?? '', request?.callId ?? '', request?.result)
+    return { ok: true }
+  },
+
+  /**
+   * 一条壳报上来的**事实**(K2b-2b,§10.3 的 `opened` / `closed` / `deleted`)。
+   *
+   * 与 `shellResult` 同两道判定(铸主体 + `shellId` 登记过),多一道:`ref` 的
+   * 命名空间要**归这扇壳** —— 判据在 `ShellMountRegistry.emitEvent` 里,因为
+   * 「谁交了哪几个 scheme」这本账只有它有。这里照旧只做转手。
+   *
+   * 事实进 core 之后骑的是 K2a 那条既有的路(provider → hub → 事件桥 →
+   * 全局事件 `resource:event` → SSE),一条新通道都不开。
+   */
+  async emit(
+    request: EmitShellResourceEventRequest,
+    context: RpcDispatchContext = DESKTOP_RPC_CONTEXT,
+  ): Promise<ShellAckResponse> {
+    principalOf(context)
+    shells().emitEvent(request?.shellId ?? '', request?.ref ?? '', request?.event ?? '', request?.payload)
     return { ok: true }
   },
 }

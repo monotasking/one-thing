@@ -175,7 +175,39 @@ export interface ShellResultRequest {
 	result: ShellCommandResult;
 }
 
-/** 三条壳面里两条的回答:收到了。没有第二种结局。 */
+/**
+ * 一扇壳报一条**事实**(原子 K2b-2b,`docs/design/atom-2026-09.md` §10.3
+ * 「`opened` / `closed` / `deleted` 是资源事件的三条通用名,每个 scheme 都发」)。
+ *
+ * ## 它为什么与 `shellResult` 是两条,不是一条
+ *
+ * `shellResult` 是**回执**:某一次命令的结局,由 `callId` 缝合,有且只有一个收件人
+ * (那次调用)。这一条是**事实**:没有人问过,它就是发生了 —— 一格标签被用户用鼠标
+ * 关掉了,没有任何一次 `do` 与它对应。两者合成一条就得为「没有 callId 的回执」
+ * 造一档特例,而那正是「一件事两条路」的反面写法。
+ *
+ * ## 它不新开通道
+ *
+ * 事实进 core 之后走的仍是 K2a 那条既有的路:provider 的 `emit()` → `ResourceEventHub`
+ * → `wiring/resource/event-bridge.ts` → 全局事件 `resource:event` → SSE。这条 RPC
+ * 只是把「壳这一侧的 hub 入口」接出来。
+ *
+ * ## 两道判定都在 core
+ *
+ * `shellId` 要登记过(与 `shellResult` 同一条:这条通道不给陌生人用),而且 `ref` 的
+ * scheme 必须**归这扇壳**——否则一扇壳可以替 `session:` 编造一条 `deleted`,而
+ * 「谁能替谁说话」从来不由说话的人自己声明。
+ */
+export interface EmitShellResourceEventRequest {
+	shellId: string;
+	/** 地址,`<scheme>:<path>`。scheme 必须是这扇壳交上来的那几个之一。 */
+	ref: string;
+	/** 自述 `events` 里的名字(`opened` / `closed` / `deleted` 或这个 scheme 自己的)。 */
+	event: string;
+	payload?: unknown;
+}
+
+/** 四条壳面里三条的回答:收到了。没有第二种结局。 */
 export interface ShellAckResponse {
 	ok: true;
 }
@@ -197,6 +229,7 @@ export type ResourcesRoutes = {
 		output: ShellAckResponse;
 	};
 	shellResult: { input: ShellResultRequest; output: ShellAckResponse };
+	emit: { input: EmitShellResourceEventRequest; output: ShellAckResponse };
 };
 
 export const resourcesRouter = defineRouter<ResourcesRoutes>("resources", [
@@ -207,4 +240,5 @@ export const resourcesRouter = defineRouter<ResourcesRoutes>("resources", [
 	"mountShell",
 	"unmountShell",
 	"shellResult",
+	"emit",
 ]);
