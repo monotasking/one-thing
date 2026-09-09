@@ -163,11 +163,18 @@ export interface FoldBodyProps extends HTMLAttributes<HTMLElement> {
 }
 
 /**
- * 跟着开合的正文。关闭态**只加 `hidden` 属性**:不卸载(常驻铁律 —— 再展开
- * 时里面的滚动位置、选区、子组件状态都还在),也不写 `display` 内联样式
- * (那会把「藏起来」这件事从属性搬进样式,消费方想换成别的收法就得先跟内联打架)。
+ * 跟着开合的正文。关闭态加 `hidden` 属性 **并且** 内联 `display: none`;不卸载
+ * (常驻铁律 —— 再展开时里面的滚动位置、选区、子组件状态都还在)。
+ *
+ * 为什么还要内联那一句(2026-09-09 真机报障「收缩不了、默认就是展开」):
+ * 浏览器给 `[hidden]` 的 `display: none` 只是 UA 样式,消费方皮肤里一句
+ * `.body { display: flex }` 就把它盖掉了 —— 折痕摘要与上下文更新 chip 两处正文
+ * 皮肤都写了 display,于是 `hidden` 挂着、东西照样在屏上,点标签只换了
+ * `aria-expanded`。第一版这里刻意不写内联,理由是「藏起来应归属性不归样式」;
+ * 那条理由成立,读数被真机推翻:属性说了不算,只有内联样式任何皮肤都盖不过。
+ * 只在关闭态写,展开态把消费方自己的 `style` 原样交回去。
  */
-export function FoldBody({ as = 'div', children, ...rest }: FoldBodyProps) {
+export function FoldBody({ as = 'div', children, style, ...rest }: FoldBodyProps) {
   const { open, bodyId, registerBody } = useFold('FoldBody')
   const Tag = as
 
@@ -177,7 +184,7 @@ export function FoldBody({ as = 'div', children, ...rest }: FoldBodyProps) {
   }, [registerBody])
 
   return (
-    <Tag id={bodyId} hidden={!open} {...rest}>
+    <Tag id={bodyId} hidden={!open} style={open ? style : { ...style, display: 'none' }} {...rest}>
       {children}
     </Tag>
   )

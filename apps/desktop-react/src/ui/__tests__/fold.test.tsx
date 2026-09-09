@@ -109,15 +109,18 @@ describe('ui/Fold:aria 与正文', () => {
     expect(trigger().hasAttribute('aria-controls')).toBe(false)
   })
 
-  it('关闭态是 hidden 属性,不是卸载 —— 里面的东西一直在场', () => {
+  it('关闭态是 hidden 属性 + 内联 display:none,不是卸载 —— 里面的东西一直在场', () => {
     render(<Sample />)
     const body = screen.getByTestId('body')
     expect(body.hasAttribute('hidden')).toBe(true)
-    expect(body.hasAttribute('style')).toBe(false)
+    // 09-09 真机报障:消费方皮肤一句 `display: flex` 就盖掉 UA 的 `[hidden]`,
+    // 所以关闭态必须有一句任何皮肤都盖不过的内联 display。
+    expect(body.style.display).toBe('none')
     fireEvent.click(trigger())
-    // 同一个 DOM 节点,不是重挂的新节点。
+    // 同一个 DOM 节点,不是重挂的新节点;展开态不留内联 display,皮肤说了算。
     expect(screen.getByTestId('body')).toBe(body)
     expect(body.hasAttribute('hidden')).toBe(false)
+    expect(body.style.display).toBe('')
   })
 })
 
