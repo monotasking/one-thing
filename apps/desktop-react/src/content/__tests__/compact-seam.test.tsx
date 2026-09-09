@@ -17,6 +17,11 @@ import { useStageStore } from '../../stage/store'
  * 摘要开不开得了、失败句是不是原样、那颗钮什么时候点不动。至于「光沿线扫」
  * 「线从左填色」—— 那是排版与动效,jsdom 不排版:填色只验那格自定义属性的值,
  * 动效由 `motion-gate`(写法)与 `gate:motion`(真机)两边管。
+ *
+ * **`data-state` 读的是折痕自己的词,不是压缩的词**(09-09 抽基座):
+ * `content/seam/` 里不许出现「压缩」两个字,所以三态在这一侧翻译成
+ * compacting → `running` / completed → `settled` / failed → `danger`。
+ * 这几条断言跟着改了词,判据一个字没动 —— 屏幕上的 testid / aria / 文案全同。
  */
 
 const SESSION = 's-seam'
@@ -53,7 +58,7 @@ const label = () => screen.getByTestId('compact-seam-label')
 describe('进行中:光在线上走,k/N 只有多块才出', () => {
   it('单块 —— 一句话,没有 k/N,也没有 --seam-fill(半个进度不是进度)', () => {
     render(<CompactSeam marker={marker({ status: 'compacting', compactedMessageCount: 0 })} ctx={CTX} />)
-    expect(seam().dataset.state).toBe('compacting')
+    expect(seam().dataset.state).toBe('running')
     expect(label().textContent).toBe('正在压缩上下文')
     expect(seam().getAttribute('style')).toBeNull()
   })
@@ -150,7 +155,7 @@ describe('失败:provider 那句原话,加一颗行内重试', () => {
 
   it('原句一字不改地摆着(不改写、不总结)', () => {
     render(<CompactSeam marker={failed()} ctx={CTX} />)
-    expect(seam().dataset.state).toBe('failed')
+    expect(seam().dataset.state).toBe('danger')
     expect(label().textContent).toBe('压缩失败重试')
     expect(screen.getByTestId('compact-seam-error').textContent).toBe(
       'deepseek: maximum context length is 1048576 tokens, requested 1085297 (701297 in the messages, 384000 in the completion)',
@@ -185,7 +190,7 @@ describe('失败:provider 那句原话,加一颗行内重试', () => {
         ctx={CTX}
       />,
     )
-    expect(seam().dataset.state).toBe('failed')
+    expect(seam().dataset.state).toBe('danger')
     expect(screen.getByTestId('compact-seam-error').textContent).toBe(
       'Context compact was interrupted before completion.',
     )
@@ -221,6 +226,6 @@ describe('SegmentView:compact 段有人画', () => {
         ctx={CTX}
       />,
     )
-    expect(seam().dataset.state).toBe('compacting')
+    expect(seam().dataset.state).toBe('running')
   })
 })

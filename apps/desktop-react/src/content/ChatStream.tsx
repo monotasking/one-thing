@@ -6,7 +6,7 @@ import { useT, type TFn } from '../i18n'
 import { resolveIcon } from '../components/icons'
 import { ButtonBase } from '../ui/ButtonBase'
 import { assembleMessage, segmentKey } from './assemble'
-import { ContextDeltaChip } from './ContextDeltaChip'
+import { ContextDeltaSeam, hasContextDelta } from './ContextDeltaSeam'
 import type { SegmentModel } from './model/segments'
 import { MessageActions } from './message/MessageActions'
 import { StopNotice } from './message/StopNotice'
@@ -166,22 +166,47 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
               <p className={s.empty}>{t('chat.empty')}</p>
             )}
 
-            {messages.map((message) => (
-              <MessageRow
-                key={message.id}
-                t={t}
-                sessionId={sessionId}
-                message={message}
-                streaming={message.id === activeMessageId}
-                flash={message.id === flashMessageId}
-                /*
-                 * 活性读数只交给**正在跑的那一条**。其余每一行拿到的都是 `undefined`
-                 * —— 一个恒定的值,所以 `memo` 的浅比照旧短路(流式期间除活消息外
-                 * 全篇不重渲那条纪律一格没动)。
-                 */
-                lastActivityAt={message.id === activeMessageId ? lastActivityAt : undefined}
-              />
-            ))}
+            {messages.flatMap((message) => {
+              const row = (
+                <MessageRow
+                  key={message.id}
+                  t={t}
+                  sessionId={sessionId}
+                  message={message}
+                  streaming={message.id === activeMessageId}
+                  flash={message.id === flashMessageId}
+                  /*
+                   * 活性读数只交给**正在跑的那一条**。其余每一行拿到的都是 `undefined`
+                   * —— 一个恒定的值,所以 `memo` 的浅比照旧短路(流式期间除活消息外
+                   * 全篇不重渲那条纪律一格没动)。
+                   */
+                  lastActivityAt={message.id === activeMessageId ? lastActivityAt : undefined}
+                />
+              )
+              /*
+               * ── 上下文更新那一道折痕(U5,09-09 裁定)────────────────────────
+               * `turnContext` 是**宿主在这一回合开始时补给模型的上下文** —— 是回合的事,
+               * 不是用户说的话。数据照旧存在用户消息上(它是发给模型的那条消息的一部分,
+               * 账本一个字不动),**呈现**却不该挂在气泡下面:挂在那里读起来像
+               * 「用户还说了这些」。所以它是用户那一行**之后**、下一行**之前**的独立一行,
+               * 与压缩折痕同属「系统在两回合之间做的事」这一族。
+               *
+               * 它**不带 `data-message-id`** —— 那个属性是 TOC / `locate-message` 找消息的
+               * 唯一接缝,多一个不是消息的元素挂上去,钢琴键就会落到一行折痕上。
+               * 它报的是 `data-context-of`:这道折痕说的是**哪条消息**那一回合的事。
+               *
+               * `flatMap` 而不是包一层 `<Fragment key>`:后者会把 MessageRow 挪进一层新的
+               * 键空间,而这一行的整篇 memo 短路(60 万 token 会话 3–4fps 那笔账)
+               * 全靠它的 key 与位置一格不动。
+               */
+              if (message.role !== 'user' || !hasContextDelta(message.turnContext)) return [row]
+              return [
+                row,
+                <article key={`${message.id}#context`} className={s.row} data-context-of={message.id}>
+                  <ContextDeltaSeam turnContext={message.turnContext} />
+                </article>,
+              ]
+            })}
 
             {overlay.map((entry) => (
               <OverlayRow key={entry.id} t={t} entry={entry} sessionId={sessionId} />
@@ -442,13 +467,6 @@ const MessageRow = memo(function MessageRow({
   return (
     <article className={className} data-message-id={message.id} data-role={role}>
       {role === 'user' && <div className={s.user}>{message.content}</div>}
-      {/*
-        气泡底下那一行「上下文更新」(U3)。这一轮的 `<context-update>` 尾块变了
-        哪些块,是**这条用户消息自己的字段**(`turnContext`),所以摆在它的气泡下面
-        而不是流的别处。没有 delta 时组件自己返回 null —— 绝大多数消息走那一支,
-        这里因此不写第二份判据(判据两处就会分叉)。
-      */}
-      {role === 'user' && <ContextDeltaChip turnContext={message.turnContext} />}
 
       {/* data-prose:节奏表的钩子 —— 错误卡是一件东西,按物件档留白(节奏表在
           ChatStream.module.css)。 */}

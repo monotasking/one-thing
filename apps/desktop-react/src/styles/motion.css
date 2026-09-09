@@ -452,7 +452,7 @@
   --dur-dots: 0ms;
   --dur-dots-step: 0ms;
   /* 折痕的光束:动效档「无」下**一条静止的线**。与三个点同一手 —— 时长归 0 让
-   * 「档位只换 --dur 族」这条纪律成立,SegmentView.module.css 里那条
+   * 「档位只换 --dur 族」这条纪律成立,content/seam/Seam.module.css 里那条
    * `animation: none` 保证停在哪一帧有承诺。**填色与 settle 不跟着关**:
    * 它们说的是状态(压到第几块 / 这条线已经实了),不是装饰(设计正本 §3.1 末句)。 */
   --dur-seam-sweep: 0ms;

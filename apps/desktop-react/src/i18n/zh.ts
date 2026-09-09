@@ -562,7 +562,7 @@ export const zh = {
   /* ── 压缩折痕(U2)────────────────────────────────────────────────────
    * 「重试」不在这里 —— 它复用 `chat.retry`(同一件事在同一台上不该有两种叫法)。
    * provider 那句失败原文是**数据**,原样显示,不进字典。
-   * 分隔号 `·` 是排版,拼在代码里(与 contextDelta 那一行同一手)。 */
+   * 分隔号 `·` 是排版,拼在代码里(与上下文更新折痕那一行同一手)。 */
   'chat.compactRunning': '正在压缩上下文',
   'chat.compactProgress': '{chunk} / {total}',
   'chat.compactDone': '已压缩 {n} 条',

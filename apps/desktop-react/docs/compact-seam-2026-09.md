@@ -19,14 +19,20 @@ ChatStream
    └─ assembleMessage → segment { kind:'compact', marker }     ← 装配管线按内容自述分类,MessageRow 不加分支
       └─ SegmentView case 'compact'
          └─ CompactSeam                                          content/CompactSeam.tsx
-            ├─ .line(progress fill via --seam-fill)             进行中:光扫 + 填色;完成:实线;失败:danger 线
-            ├─ .label                                            文字 + k/N | 条数 + 前→后 | 失败句
-            │  └─ 重试(ButtonBase ③ 行内微型动作,仅失败态)     骑 commandsPort.compactContext
-            └─ ui/Fold(仅完成态,折叠的摘要正文)                 新基础件,ThinkingSegment 同批迁上去
+            └─ Seam(data-state=running|settled|danger)          content/seam/Seam.tsx(09-09 抽的 content 级基座)
+               ├─ SeamLine(progress fill via --seam-fill)       running:光扫 + 填色;settled:实线;danger:danger 线
+               ├─ SeamLabel                                     文字 + SeamCount(k/N | 前→后)| SeamSentence(失败句)
+               │  └─ 重试(ButtonBase ③ 行内微型动作,仅失败态)  骑 commandsPort.compactContext
+               ├─ SeamBody(仅完成态,折叠的摘要正文)            ui/Fold 的 body 皮肤
+               └─ SeamFoot「收起摘要」
 └─ MessageRow(role=user)
-   ├─ .user 气泡
-   └─ ContextDeltaChip(有 turnContext delta 才出)              content/ContextDeltaChip.tsx
-      └─ ui/Fold → 每块一行:块名 · set/removed · 正文
+   └─ .user 气泡
+└─ article[data-context-of=<用户消息 id>]  ← 独立一行,不在 MessageRow 里(09-09 推翻)
+   └─ ContextDeltaSeam(有 turnContext delta 才出这一行)        content/ContextDeltaSeam.tsx
+      └─ Seam(data-state="settled")                            content/seam/Seam.tsx
+         ├─ SeamLine / SeamLabel(FoldTrigger)「上下文更新 · 变量 2 · 待办 1」+ chevron / SeamLine
+         ├─ SeamBody → 每块一行:块名 · set/removed · 正文
+         └─ SeamFoot「收起」
 Composer
 └─ ContextRing                                                   composer/components/MeterCard.tsx
    ├─ 弧:transition stroke-dasharray --dur-release             每次 context 更新都滑
@@ -53,12 +59,20 @@ Composer
 
 reduced-motion:光扫与脉动关闭,填色与 settle 保留(它们是状态,不是装饰)。
 
-### 3.2 ContextDeltaChip
+### 3.2 ContextDeltaSeam(U3 时叫 ContextDeltaChip)
+
+**09-09 推翻**:不挂气泡下,改为**用户消息与下一条之间的一道折痕行**
+(`article[data-context-of]`,`content/ContextDeltaSeam.tsx`)。理由 = `turnContext` 是
+**宿主在这一回合开始时补给模型的上下文**,是**回合**的事、不是用户说的话;数据照旧
+存在用户消息上(账本不动),只有呈现改族 —— 它与压缩折痕同属「系统在两回合之间做的事」。
+下表的「呈现」一列原文不删,读的时候按这一行改判。
+出场那一下走 `--kf-settle`(报障:回合一开始它凭空冒出来、把用户那行顶高);**根治不在壳** ——
+它在引擎写 `turnContext` 的时机(`buildPrompt` 之后),壳只能让它出现得不突兀。
 
 | 态 | 判据 | 呈现 | 交互 |
 | --- | --- | --- | --- |
 | 无 delta | `message.turnContext` 缺或 set/removed 皆空 | 不出 | — |
-| 折叠 | 有 delta | 气泡下一行 fs-micro,右对齐随气泡:「上下文更新 · 变量 2 · 待办 1」(块名按 set 的键分组计数;removed 单列「移除 1」)+ chevron | 点/Enter 展开 |
+| 折叠 | 有 delta | ~~气泡下一行 fs-micro,右对齐随气泡~~ → 09-09 推翻:折痕行,居中标签:「上下文更新 · 变量 2 · 待办 1」(块名按 set 的键分组计数;removed 单列「移除 1」)+ chevron | 点/Enter 展开 |
 | 展开 | 用户点开 | ui/Fold 内每块一行:块名 + 正文(pre-wrap,最多 `--block-clamp-h` 后 clamp,走 BlockShell 的展开);removed 行划线 | 再点收回;选区非空不切换(同 ThinkingSegment) |
 | 流式中 | 该用户消息的回合还在跑 | 与折叠态同,不动效 | 同上 |
 
@@ -88,6 +102,7 @@ reduced-motion:光扫与脉动关闭,填色与 settle 保留(它们是状态,不
 | U1 | `ui/Fold` 基础件 + ThinkingSegment 迁上去(行为字节不变) | Fold 单测;ThinkingSegment 既有测试原样绿;`ui:consume` 基线内 |
 | U2 | 装配管线 `compact` 段 + `CompactSeam` 三态 + i18n + motion.css 加 `seamSweep` 与 `--dur-seam-sweep` | `assemble` 单测(system 非 compact 正文仍走 rich-text);jsdom 六态;`motion-gate` 0 新增手写 keyframes |
 | U3 | `ContextDeltaChip` | jsdom 四态;无后端改动 |
+| U5 | 折痕抽成 content 级基座 `content/seam/`(`Seam` 族,状态词通用化 running/settled/danger)+ `ContextDeltaChip` → `ContextDeltaSeam` 折痕行 | `compact-seam.test.tsx` 原样绿(只有 `data-state` 三个词跟着基座改);`context-delta-seam.test.tsx` 加落点两条(折痕行紧跟用户行、用户行里没有它);`ui:consume` / `motion-gate`(0 新 keyframes)/ `squeeze-gate` |
 | U4 | 环:dasharray 过渡 + `[data-compacting]` 脉动 + Tooltip 行;后端 marker 加 `contextSizeBefore` | MeterCard 测试 +3;`gate:a11y` 加一屏「折痕 + 环」 |
 
 留账:折痕以上的消息不变灰(先看真机,变灰是第二步);摘要正文里的文件清单不做可点(消息引用那条线另有单);

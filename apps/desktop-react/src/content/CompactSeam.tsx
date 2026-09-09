@@ -1,17 +1,17 @@
 import { useMemo, type CSSProperties } from 'react'
-import { ChevronDown } from '../components/icons'
 import { selectEngineBusy, useChatSourceOf } from '../data/chat-source'
 import { commandsPort } from '../data/commands-port'
 import { formatQuantity } from '../format/quantity'
 import { useT, type TFn } from '../i18n'
 import { getLogger } from '../services/log'
 import { ButtonBase } from '../ui/ButtonBase'
-import { Fold, FoldBody, FoldFoot, FoldTrigger } from '../ui/Fold'
+import { Fold } from '../ui/Fold'
 import { blockKey } from './assemble'
 import { markdownToFrame } from './assemble/markdown'
 import { BlockView } from './blocks/BlockView'
 import type { BlockCtx } from './blocks/registry'
 import type { CompactMarker } from './compact/marker'
+import { Seam, SeamBody, SeamCount, SeamFoot, SeamLabel, SeamLine, SeamSentence, type SeamState } from './seam/Seam'
 import s from './SegmentView.module.css'
 
 /**
@@ -23,6 +23,11 @@ import s from './SegmentView.module.css'
  * 标签**,不画成一张卡:卡是「一件东西」,而这里发生的事是「上面那些不见了」。
  * 起因是 09-08 那次事故 —— 压缩失败落进会话里的是一条 system 消息的原始 JSON,
  * 而压缩进行中、压完之后屏幕上一个像素都没有。
+ *
+ * ── 形不归这个文件(09-09 抽基座)────────────────────────────────────────
+ * 线 / 标签 / 正文盒子 / 底把手整套皮肤住在 `content/seam/`,这里只说**压缩**这件事:
+ * 三态怎么翻译成折痕自己的三个词、标签上写什么、失败态多一颗什么钮。同一批里
+ * 「上下文更新」也改成了折痕(`content/ContextDeltaSeam.tsx`),两者共用那一份形。
  *
  * ── 动效只在线上走,不转圈 ──────────────────────────────────────────────
  * 进行中是一束光沿折痕来回扫(`--kf-seam-sweep`),多块时线本身按 k/N 从左填色。
@@ -65,14 +70,11 @@ export function CompactSeam({ marker, ctx }: { marker: CompactMarker; ctx: Block
     : undefined
 
   return (
-    <div
-      className={s.seam}
-      /* 三态的**唯一**开关:线怎么画、标签什么色,全挂在这一格上(CSS 那边一条
-         `[data-state=…]` 一句话),组件里不拼 className 字符串。 */
-      data-state={marker.status}
-      /* 节奏表的钩子(表在 content/ChatStream.module.css):折痕按**物件**档留白,
-         与错误卡同一档 —— 它上下都该有一口气,而不是像一段字那样贴着。 */
-      data-prose="object"
+    <Seam
+      /* 三态的**唯一**开关:线怎么画、标签什么色,全挂在这一格上(基座那边一条
+         `[data-state=…]` 一句话),组件里不拼 className 字符串。
+         `data-prose="object"` 由基座自带 —— 折痕按物件档留白是这种形态的属性。 */
+      data-state={SEAM_STATE[marker.status]}
       data-testid="compact-seam"
       style={fill === undefined ? undefined : ({ '--seam-fill': String(fill) } as CSSProperties)}
     >
@@ -83,8 +85,20 @@ export function CompactSeam({ marker, ctx }: { marker: CompactMarker; ctx: Block
       ) : (
         <RunningSeam marker={marker} t={t} />
       )}
-    </div>
+    </Seam>
   )
+}
+
+/**
+ * 压缩这件事的三个词 → 折痕自己的三个词。
+ *
+ * 基座里不许出现「压缩」两个字(第三种折痕进来时它一行不改),所以翻译在**这一侧**:
+ * 正在压 = 这道折痕在跑,压完了 = 它落定了,压失败 = 它出事了。
+ */
+const SEAM_STATE: Readonly<Record<CompactMarker['status'], SeamState>> = {
+  compacting: 'running',
+  completed: 'settled',
+  failed: 'danger',
 }
 
 /**
@@ -95,19 +109,19 @@ export function CompactSeam({ marker, ctx }: { marker: CompactMarker; ctx: Block
 function RunningSeam({ marker, t }: { marker: CompactMarker; t: TFn }) {
   return (
     <>
-      <span className={s.seamLine} />
-      <span className={s.seamLabel} data-testid="compact-seam-label">
+      <SeamLine />
+      <SeamLabel data-testid="compact-seam-label">
         {t('chat.compactRunning')}
         {marker.progress && (
-          <span className={s.seamCount}>
+          <SeamCount>
             {t('chat.compactProgress', {
               chunk: marker.progress.chunk,
               total: marker.progress.totalChunks,
             })}
-          </span>
+          </SeamCount>
         )}
-      </span>
-      <span className={s.seamLine} />
+      </SeamLabel>
+      <SeamLine />
     </>
   )
 }
@@ -128,35 +142,25 @@ function CompletedSeam({ marker, ctx, t }: { marker: CompactMarker; ctx: BlockCt
   if (!marker.summary) {
     return (
       <>
-        <span className={s.seamLine} />
-        <span className={s.seamLabel} data-testid="compact-seam-label">
-          {label}
-        </span>
-        <span className={s.seamLine} />
+        <SeamLine />
+        <SeamLabel data-testid="compact-seam-label">{label}</SeamLabel>
+        <SeamLine />
       </>
     )
   }
   return (
     <Fold>
-      <span className={s.seamLine} />
-      <FoldTrigger
-        as="span"
-        className={`${s.seamLabel} ${s.seamLabelFold}`}
-        data-testid="compact-seam-label"
-      >
+      <SeamLine />
+      <SeamLabel fold data-testid="compact-seam-label">
         {label}
-        <ChevronDown className={s.seamChevron} strokeWidth={1.9} aria-hidden="true" />
-      </FoldTrigger>
-      <span className={s.seamLine} />
-      <FoldBody className={s.seamSummary} data-testid="compact-seam-summary">
+      </SeamLabel>
+      <SeamLine />
+      <SeamBody data-testid="compact-seam-summary">
         <CompactSummary text={marker.summary} ctx={ctx} />
-      </FoldBody>
+      </SeamBody>
       {/* 底把手:摘要往往几屏长,读到底还得滚回顶上那枚标签才能收 —— 这颗只在
-          展开态出场,按下合上并把标签送回视野(行为在 ui/Fold,这里只有皮肤)。 */}
-      <FoldFoot as="span" className={s.seamFoot} data-testid="compact-seam-foot">
-        <ChevronDown className={s.seamFootChevron} strokeWidth={1.9} aria-hidden="true" />
-        {t('chat.compactCollapse')}
-      </FoldFoot>
+          展开态出场,按下合上并把标签送回视野(行为在 ui/Fold,皮肤在基座)。 */}
+      <SeamFoot data-testid="compact-seam-foot">{t('chat.compactCollapse')}</SeamFoot>
     </Fold>
   )
 }
@@ -208,19 +212,18 @@ function FailedSeam({
 }) {
   return (
     <>
-      <span className={s.seamLine} />
-      <span className={`${s.seamLabel} ${s.seamLabelFailed}`} data-testid="compact-seam-label">
+      <SeamLine />
+      {/* danger 的色调不在这里拼 class —— 它由根上那格 `data-state` 说了算(基座)。 */}
+      <SeamLabel data-testid="compact-seam-label">
         {t('chat.compactFailed')}
         {/* 没有会话上下文(查看器回放)就不画这颗钮 —— 见 BlockCtx.sessionId 的注。 */}
         {sessionId !== undefined && sessionId !== '' && (
           <CompactRetry sessionId={sessionId} t={t} />
         )}
-      </span>
-      <span className={s.seamLine} />
+      </SeamLabel>
+      <SeamLine />
       {marker.error && (
-        <span className={s.seamSentence} data-testid="compact-seam-error">
-          {marker.error}
-        </span>
+        <SeamSentence data-testid="compact-seam-error">{marker.error}</SeamSentence>
       )}
     </>
   )
@@ -292,7 +295,7 @@ async function retryCompact(sessionId: string): Promise<void> {
  *    老会话的 marker 里没有它)。
  *
  * 进位走 `format/quantity.formatQuantity`(全壳唯一产地),不在这里手写 k / M。
- * 分隔号 `·` 与 ContextDeltaChip 那一行同一手:拼在代码里,不进字典 —— 它是**排版**,
+ * 分隔号 `·` 与上下文更新折痕那一行同一手:拼在代码里,不进字典 —— 它是**排版**,
  * 不是一句要翻译的话。
  */
 export function completedLabel(t: TFn, marker: CompactMarker): string {

@@ -1,25 +1,38 @@
 import { useLayoutEffect, useRef, useState } from 'react'
-import { ChevronDown } from '../components/icons'
 import type { ProjectedMessage } from '../data/chat-fold'
 import { useT, type MessageKey, type TFn } from '../i18n'
 import { ButtonBase } from '../ui/ButtonBase'
-import { Fold, FoldBody, FoldFoot, FoldTrigger } from '../ui/Fold'
+import { Fold } from '../ui/Fold'
 import { clampMeasurer } from './blocks/shell/clamp-measurer'
-import s from './ChatStream.module.css'
+import { Seam, SeamBody, SeamFoot, SeamLabel, SeamLine } from './seam/Seam'
+import c from './ContextDeltaSeam.module.css'
 
 /**
- * **上下文更新 chip**(U3,设计正本 `docs/compact-seam-2026-09.md` §3.2)。
+ * **上下文更新折痕**(U5,设计正本 `docs/compact-seam-2026-09.md` §3.2;
+ * 09-09 用户裁定推翻了 U3 那版「气泡下的一枚 chip」)。
  *
  * ── 它说的是什么 ──────────────────────────────────────────────────────
  * 提示词的「回合通道」把会话级 / 回合级的事实写在**最新那条用户消息的
  * `<context-update>` 尾块**里(`docs/design/prompt-channels-2026-08.md`),
  * 并把这一轮真正变过的块记在消息的 `turnContext { set, removed }` 上。
  * 那是一份**已经发生的事实**:模型这一轮多看到 / 不再看到哪些块。
- * 从前壳上没有任何元素说这件事 —— 用户报的「context 更新我要在页面上看得到」
- * 的另一半(前一半是读数环)。
  *
- * 这枚 chip 就是那份事实的显形:**气泡下一行、右对齐随气泡**,折叠态一行读数,
- * 展开逐块列出。**没有 delta 的消息一个像素都不占**(返回 null,不是画一个空壳)。
+ * ── 为什么是折痕,不是气泡下的 chip(09-09 裁定)───────────────────────
+ * `turnContext` 是**宿主在这一回合开始时补给模型的上下文** —— 它是**回合**的事,
+ * 不是用户说的话。数据照旧存在用户消息上(它是发给模型的那条消息的一部分,
+ * 账本一个字不动),但**呈现**不该挂在用户的气泡下面:挂在那里读起来像是
+ * 「用户还说了这些」。所以它与压缩折痕同属「系统在两回合之间做的事」这一族,
+ * 画成同一种形 —— 一道细线 + 一枚居中的标签(基座 `content/seam/`),
+ * 落在**用户那一行与下一行之间**的独立一行里(摆放在 `ChatStream.tsx`)。
+ *
+ * ── 出场那一下(09-09 报障一:「突然冒出来,用户自己那行事后变高」)────────
+ * 这一行**必然是事后出现的**:发送那一刻它还不存在,`turnContext` 要等引擎走到
+ * `buildPrompt` 之后才落账,回合一开始它就凭空多出一行。
+ * **根治不在壳** —— 它在引擎写 `turnContext` 的时机(`buildPrompt` 之后);
+ * 壳这一侧唯一能做的是让它**软着陆**:淡入(`--kf-settle`,不新增 keyframes),
+ * 并按节奏表的物件档留白(`data-prose="object"` 由折痕基座自带)。
+ * 预留空位是做不到的反面写法:发送那一刻壳不知道这一轮会不会有 delta,
+ * 预留等于给绝大多数回合凭空加一段空白。
  *
  * ── 为什么是读数而不是徽标 ─────────────────────────────────────────────
  * 「变量 1 · 待办 1」是**文字读数**。壳的计数禁令只禁 tab / 列表 / 组头挂徽,
@@ -37,16 +50,17 @@ import s from './ChatStream.module.css'
  * ── 三张状态表(施工纪律「状态先行」)──────────────────────────────────
  * ① 生命周期:纯展示件,不取数、不订阅、无模块级副作用(那只 `clampMeasurer` 是
  *    全壳共用的单例,本文件只登记 / 注销)→ **不需要 HMR dispose**。它只有一种
- *    宿主:用户消息那一行的 flex 列;换会话 = 换一份 `message` prop。
- * ② UI 生命状态:无 empty(没有 delta 就不存在)、无 loading、无 error;
- *    **超量**两处 —— 头部读数一行只截断不换行(结构行);正文按
+ *    宿主:消息流里它自己那一行(`article[data-context-of]`);换会话 = 换一份
+ *    `turnContext` prop。
+ * ② UI 生命状态:无 empty(没有 delta 就不存在这一行)、无 loading、无 error;
+ *    **超量**两处 —— 标签一行只截断不换行(结构行,归基座);正文按
  *    `--block-clamp-h` 钳住 + 展开(与内容块同一把尺,复用 `clampMeasurer`)。
  * ③ UI 交互状态:折叠头 rest / hover(`--st-hover`)/ focus(全局环)/ 展开;
  *    圈选守卫与键盘 ↵ / Space 由 `ui/Fold` 提供,本件不写第二份。
  *    没有 disabled 档 —— 它是一份已经落账的事实,不存在「此刻不能看」。
  *
- * 流式中**不做动效**:唯一的过渡是 chevron 跟着用户自己那一下点击转,
- * 它是操作的回声,不是这一行在说话。
+ * 流式中**不做动效**:出场那一下的淡入之外,唯一的过渡是 chevron 跟着用户自己
+ * 那一下点击转,它是操作的回声,不是这一行在说话。
  */
 
 /** 消息上那格 delta 的形状(从投影类型上取,不另立一份)。 */
@@ -104,6 +118,22 @@ export function contextDeltaEntries(delta: TurnContextDelta | undefined): Contex
 }
 
 /**
+ * 「这条消息后面要不要出那一行」—— `contextDeltaEntries(…).length > 0` 的**不分配**写法。
+ *
+ * 判据必须与 `contextDeltaEntries` 逐字一致(两处分叉 = 出一行空折痕,或者该出的
+ * 不出),所以它俩挨着放、由同一组用例一起钉。**为什么不直接调那只函数**:这一句
+ * 由 `ChatStream` 在 `messages.map` 里问,而那张 map 在流式期间**每帧**跑一遍整篇
+ * 抄本(MessageRow 靠 memo 短路,这一句短路不了)—— 每帧给每条用户消息造一个
+ * 数组是 09-01 那次 3–4fps 的同款账。
+ */
+export function hasContextDelta(delta: TurnContextDelta | undefined): boolean {
+  if (!delta) return false
+  if (delta.removed !== undefined && delta.removed.length > 0) return true
+  for (const _ in delta.set ?? {}) return true
+  return false
+}
+
+/**
  * 折叠头那一行字:「上下文更新 · 变量 1 · 待办 1 · 移除 1」。
  *
  * 按**名字**归并计数(所以三个插件块读作「插件 3」,而不是三段各说一遍);
@@ -125,32 +155,30 @@ export function contextDeltaSummary(t: TFn, rows: readonly ContextDeltaEntry[]):
   return [t('chat.contextDeltaTitle'), ...parts].join(' · ')
 }
 
-export function ContextDeltaChip({ turnContext }: { turnContext?: TurnContextDelta }) {
+export function ContextDeltaSeam({ turnContext }: { turnContext?: TurnContextDelta }) {
   const t = useT()
   const rows = contextDeltaEntries(turnContext)
-  // 没有 delta 就没有这件东西 —— 不占位、不画空壳。绝大多数用户消息走这一支。
+  // 没有 delta 就没有这件东西 —— 不占位、不画空壳。摆它的那一层同样问一遍
+  // (`hasContextDelta`),那一句省的是外面那个 `<article>`;这一句是本件自己的底。
   if (rows.length === 0) return null
 
   return (
     <Fold>
-      <div className={s.ctxDelta}>
-        <FoldTrigger className={s.ctxDeltaHead} data-testid="context-delta-chip">
-          {/* 结构行:只截断不换行(挤压纪律)。省略号由 CSS 画,不截字符串。 */}
-          <span className={s.ctxDeltaSummary}>{contextDeltaSummary(t, rows)}</span>
-          <ChevronDown className={s.ctxDeltaChevron} strokeWidth={1.75} aria-hidden="true" />
-        </FoldTrigger>
-        <FoldBody className={s.ctxDeltaBody} data-testid="context-delta-body">
+      {/* 上下文更新是**已经发生完**的事,恒 `settled` —— 没有「正在更新」这一档:
+          它是回合开张时一次性落的账,壳看见它的时候早已经完成了。 */}
+      <Seam data-state="settled" className={c.seam} data-testid="context-delta-seam">
+        <SeamLine />
+        <SeamLabel fold data-testid="context-delta-label">
+          {contextDeltaSummary(t, rows)}
+        </SeamLabel>
+        <SeamLine />
+        <SeamBody className={c.body} data-testid="context-delta-body">
           {rows.map((row) => (
             <DeltaRow key={`${row.kind}:${row.id}`} t={t} row={row} />
           ))}
-        </FoldBody>
-        {/* 底把手:块正文一长,收起的把手就跑到视野外了。只在展开态出场,
-            与头同一副皮肤(右对齐随气泡),行为归 ui/Fold。 */}
-        <FoldFoot className={`${s.ctxDeltaHead} ${s.ctxDeltaFoot}`} data-testid="context-delta-foot">
-          <ChevronDown className={s.ctxDeltaFootChevron} strokeWidth={1.75} aria-hidden="true" />
-          {t('chat.contextDeltaCollapse')}
-        </FoldFoot>
-      </div>
+        </SeamBody>
+        <SeamFoot data-testid="context-delta-foot">{t('chat.contextDeltaCollapse')}</SeamFoot>
+      </Seam>
     </Fold>
   )
 }
@@ -185,27 +213,27 @@ function DeltaRow({ t, row }: { t: TFn; row: ContextDeltaEntry }) {
   }, [expanded, removed])
 
   const textClass = expanded
-    ? `${s.ctxDeltaText} ${s.ctxDeltaTextOpen}`
+    ? `${c.text} ${c.textOpen}`
     : overflows
-      ? `${s.ctxDeltaText} ${s.ctxDeltaTextClamped}`
-      : s.ctxDeltaText
+      ? `${c.text} ${c.textClamped}`
+      : c.text
 
   return (
     <div
-      className={s.ctxDeltaEntry}
+      className={c.entry}
       /* 墓碑行整行划线(名字也划)—— 它说的是「这一块不在了」,不是「它的值变了」。 */
       data-removed={removed ? '' : undefined}
       data-block-id={row.id}
     >
-      <span className={s.ctxDeltaName}>{contextDeltaBlockName(t, row.id)}</span>
-      <div className={s.ctxDeltaValue}>
+      <span className={c.name}>{contextDeltaBlockName(t, row.id)}</span>
+      <div className={c.value}>
         <div ref={outer} className={textClass}>
           <div ref={inner}>{removed ? t('chat.contextDeltaGone') : row.text}</div>
         </div>
         {overflows && (
           /* ③ 类:行内微型文字动作,皮肤本地、清 UA 归基座(与内容块的展开钮同判)。
              词表与内容块共用 `block.expand` / `block.collapse` —— 同一件事不许有两套说法。 */
-          <ButtonBase className={s.ctxDeltaExpand} onClick={() => setExpanded((open) => !open)}>
+          <ButtonBase className={c.expand} onClick={() => setExpanded((open) => !open)}>
             {t(expanded ? 'block.collapse' : 'block.expand')}
           </ButtonBase>
         )}

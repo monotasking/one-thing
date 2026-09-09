@@ -1,0 +1,107 @@
+/*
+ * 「上下文更新」折痕**自己的内容皮肤**(09-09;前身是 `ChatStream.module.css` 的
+ * `.ctxDelta*` 段,那时它是气泡下的一枚 chip)。
+ *
+ * ── 这个文件里该有什么 ──────────────────────────────────────────────────
+ * 折痕的**形**(线 / 标签 / 正文盒子 / 底把手)归基座 `content/seam/`;这里只有
+ * **这一件装在盒子里的东西**长什么样:逐块表的两列、块正文的钳高与展开钮。
+ * 同一条判据让压缩折痕的那颗「重试」留在了它自己那边 —— 折痕皮肤归基座,
+ * 内容皮肤归那一件。
+ *
+ * 皮肤从 `ChatStream.module.css` 搬出来的原因也在这条:从前它是「用户气泡的下一行」,
+ * 皮肤跟着气泡那块纸走才对;09-09 用户裁定它不再挂在气泡下(`turnContext` 是**回合**
+ * 的事,不是用户说的话),它于是不再是气泡的附属物,而是流里独立的一行。
+ */
+
+/*
+ * ── 出场:软着陆(09-09 报障一)────────────────────────────────────────
+ * 这一行**必然是事后出现的**:用户按下发送时屏上只有气泡,`turnContext` 要等引擎
+ * 走到 `buildPrompt` 之后才落账,于是它在回合开始那一下凭空冒出来、把用户自己那行
+ * 往上顶。**根治不在壳**(见组件文件头),壳能做的只有让它出现得不突兀:淡入,
+ * 走既有的 `--kf-settle`,不新增 keyframes。
+ *
+ * 预留空位是**做不到**的反面写法:发送那一刻壳不知道这一轮会不会有 delta,
+ * 预留就是给绝大多数回合凭空加一段空白。
+ *
+ * 动效档由 motion.css 的档位表管(`--dur-release` 在「无」档是 0ms),这里不另写
+ * reduced-motion 块 —— 写了就是第二份真相。
+ */
+.seam {
+  animation: var(--kf-settle) var(--dur-release) var(--ease-out);
+}
+
+/*
+ * 盒子里装的是一张表,不是几段文字:表自己用虚线分行,基座那格 `gap` 会在虚线
+ * 之外再加一口气,读起来是「几件东西」而不是「一张表」。
+ */
+.body {
+  gap: 0;
+  text-align: left;
+}
+
+.entry {
+  display: grid;
+  grid-template-columns: var(--ctx-delta-name) minmax(0, 1fr);
+  gap: var(--sp-3);
+  padding-block: var(--sp-1);
+  border-block-start: 1px dashed var(--line-1);
+}
+
+.entry:first-child {
+  border-block-start: 0;
+}
+
+/* 墓碑行整行划线(名字也划)—— 它说的是「这一块不在了」,不是「它的值变了」。 */
+.entry[data-removed] {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+.value {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* 块正文是**原样的字**(提示词里那一段),所以等宽 + pre-wrap;
+ * max-height 无条件写在这儿,遮罩与展开钮才是条件的(见组件里的注)。 */
+.text {
+  max-width: 100%;
+  max-height: var(--block-clamp-h);
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  line-height: var(--pr-lh);
+  color: var(--text-1);
+}
+
+.textClamped {
+  mask-image: linear-gradient(to bottom, var(--surface-2) calc(100% - var(--sp-6)), transparent);
+}
+
+.textOpen {
+  max-height: none;
+}
+
+.expand {
+  padding-block: var(--sp-1);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  transition: color var(--dur) var(--ease);
+}
+
+.expand:hover {
+  color: var(--text-1);
+}

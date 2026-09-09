@@ -1,0 +1,260 @@
+/*
+ * **折痕**的皮肤(09-09 抽基座,原产地 `content/SegmentView.module.css` 的
+ * `.seam*` 段 —— 那一段整段搬到这里,一条规则没改内容,只把状态词换成通用词)。
+ *
+ * ── 为什么它住 content/ 不住 ui/ ────────────────────────────────────────
+ * 折痕不是一件通用控件,它是**聊天流专有的一种形态**:一条贯穿整行的细线加一枚
+ * 居中的标签,说的是「这条线上发生过一件系统的事」。`ui/` 里的件要在任何一块面上
+ * 都讲得通(按钮、菜单、浮层);折痕离开消息流没有意义。
+ *
+ * ── 状态词是通用的,不是压缩的 ──────────────────────────────────────────
+ * `data-state` 三档 `running` / `settled` / `danger`:**这道折痕自己**在跑 / 已经落定 /
+ * 出事了。压缩折痕把 compacting → running、completed → settled、failed → danger 映
+ * 射过来,上下文更新折痕恒 `settled`。基座里不许出现「压缩」这两个字 —— 那正是
+ * 「加功能不许改骨架」那条法在这一小块上的形状:第三种折痕进来时,这个文件一行不改。
+ *
+ * ── 三列 grid ───────────────────────────────────────────────────────────
+ * 线 / 居中标签 / 线,整行宽的东西(失败句、正文、底把手)各自 `grid-column: 1 / -1`。
+ *
+ * 中间那列是 `minmax(0, auto)` 而不是 `auto`:`auto` 轨道的上限是 max-content,
+ * 标签一长(「已压缩 128 条 · 1.1M → 96k」)它会把两条线挤没、甚至顶出行外。
+ * minmax(0, auto) 给它一个可收缩的下界,配合标签自己的 `min-width: 0` + 省略号,
+ * 窄下来是**截断**而不是压别人(挤压纪律律一:一行一个弯腰件,结构行只截断不换行)。
+ */
+
+.seam {
+  display: grid;
+  grid-template-columns: 1fr minmax(0, auto) 1fr;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+}
+
+/*
+ * 那条线本身。三层叠在一格里,各说一件事:
+ *  · 底色 `--line-1` = 这条折痕在;
+ *  · `::after` = **进度**(scaleX 从左填 accent,`--seam-fill` 由消费方按 k/N 给);
+ *  · `::before` = **那束光**(仅 running 在动)。
+ * 进度走 transform 而不是宽度:宽度会触发排版,而这条线横贯整行、每刷一次就动一次。
+ */
+.seamLine {
+  position: relative;
+  height: var(--bw-1);
+  border-radius: var(--bw-1);
+  background: var(--line-1);
+  overflow: hidden;
+}
+
+.seamLine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  transform-origin: left;
+  transform: scaleX(var(--seam-fill, 0));
+  transition: transform var(--dur-release) var(--ease-out);
+}
+
+.seamLine::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  /* 束宽与 motion.css 里 seamSweep 的终点 265% 是**一对数**(见那段注)。 */
+  width: 38%;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0;
+  transform: translateX(-100%);
+}
+
+.seam[data-state='running'] .seamLine::before {
+  opacity: 0.9;
+  animation: var(--kf-seam-sweep) var(--dur-seam-sweep) var(--ease-soft) infinite alternate;
+}
+
+/* 右半边那条线错开半程:两束光于是像**一件事从中间往两头推**,而不是两条各扫各的。 */
+.seam[data-state='running'] .seamLine:last-child::before {
+  animation-delay: calc(var(--dur-seam-sweep) * -1);
+}
+
+/*
+ * 落定:进度层退场,线回到一条实线 —— 「已经折好了」不该还留着一段高亮。
+ *
+ * **这就是设计正本 §3.1 那格「进入时 `--kf-settle`」在这台上的真身**:折痕从
+ * running 走到 settled 时 DOM 元素是**同一个**(段种没变,React 打补丁不重挂
+ * —— 常驻铁律),而 `@keyframes` 只在元素首次显形时播一次,挂在这里根本不会响。
+ * 会响的是这一条:accent 那层从 `scaleX(k/N)` 收回 `scaleX(0)`,走
+ * `--dur-release` 的过渡 —— 肉眼看见的正是「那段高亮缩回去、线实了」。
+ * 正文展开时的 settle 是另一件事,挂在 `.seamBody` 上(那一格真的是从无到有)。
+ */
+.seam[data-state='settled'] .seamLine::after {
+  transform: scaleX(0);
+}
+
+/* 出事:整条线换成 danger 的淡版。它是**这道折痕自己**的颜色,不是给谁上底色。 */
+.seam[data-state='danger'] .seamLine {
+  background: var(--danger);
+  opacity: 0.55;
+}
+
+/* ── 标签:居中那一枚 ─────────────────────────────────────────────────── */
+
+.seamLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-full);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  /* 结构行:只截断不换行(挤压纪律)。 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 可点的那一档(`SeamLabel fold`,ui/Fold 的触发器)。不折叠的标签不是钮,
+ * 所以 hover 一律不给回应 —— 一块会亮的东西按下去什么都不发生是在撒谎。 */
+.seamLabelFold {
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.seamLabelFold:hover {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+.seamLabelFold:focus-visible {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 2px;
+}
+
+/*
+ * danger 档的标签色调。**由根上那一格状态说了算,不是消费方递一个 class**
+ * (原产地是 `.seamLabelFailed`,消费方得记得拼上去 —— 记得填的东西迟早忘)。
+ */
+.seam[data-state='danger'] .seamLabel {
+  color: var(--danger);
+  background: var(--tint-danger);
+}
+
+/* 「2 / 5」与「701k → 96k」那几格数字:tabular-nums,换位时不推着前面那句话动。 */
+.seamCount {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+}
+
+.seamChevron {
+  width: var(--fs-meta);
+  height: var(--fs-meta);
+  flex: none;
+  color: var(--text-3);
+  transition: transform var(--dur-release) var(--ease-out);
+}
+
+[aria-expanded='true'] > .seamChevron {
+  transform: rotate(180deg);
+}
+
+/* ── 整行宽的那一句(失败原话之类):居中,原样 ─────────────────────────── */
+
+.seamSentence {
+  grid-column: 1 / -1;
+  text-align: center;
+  font-size: var(--fs-meta);
+  line-height: 1.6;
+  color: var(--text-2);
+  /* 原句里的换行照实留着 —— 不改写、不总结、也不重排。 */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ── 正文(ui/Fold 的 body):线下面那个盒子 ────────────────────────────── */
+
+.seamBody {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+  padding: var(--sp-3) var(--sp-4);
+  border: var(--bw-1) solid var(--line-1);
+  border-radius: var(--r-2);
+  background: var(--surface-1);
+  font-size: var(--fs-meta);
+  line-height: 1.6;
+  color: var(--text-2);
+  animation: var(--kf-settle) var(--dur-release) var(--ease-out);
+}
+
+/*
+ * 里面装的东西常自带 UA 边距(`<p>` 的 `margin-block: 1em`),而 ChatStream 那张
+ * 节奏表只清 `.row` 的**直接子项** —— 这些是孙辈,清不到。间距由上面那格 gap
+ * 一处说了算(与思考段 `.thoughtBody` 清 UA 边距是同一条判例、同一个理由)。
+ */
+.seamBody > * {
+  margin-block: 0;
+}
+
+/* ── 底把手:只在展开态出场,居中一行,行为在 ui/Fold ─────────────────────── */
+
+.seamFoot {
+  grid-column: 1 / -1;
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-top: var(--sp-1);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-1);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.seamFoot:hover {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+.seamFoot:focus-visible {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 2px;
+}
+
+/* 箭头朝上:它说的是「收回去」,与头上那枚展开态的 chevron 同一个方向。 */
+.seamFootChevron {
+  width: 12px;
+  height: 12px;
+  transform: rotate(180deg);
+}
+
+/*
+ * 不动的那两种情形,同一份降级:光束停下、摊平成一条**均匀的淡光**(不是消失 ——
+ * 「这条线在跑」这件事仍然要说得出来)。填色与 settle **不关**:它们是状态,不是装饰
+ * (设计正本 §3.1 末句)。两条规则内容一模一样,因为 CSS 没法把媒体查询与属性
+ * 选择器并进同一个条件里(与 .cursor 同一手)。
+ */
+@media (prefers-reduced-motion: reduce) {
+  .seam[data-state='running'] .seamLine::before {
+    animation: none;
+    opacity: 0.5;
+    width: 100%;
+    transform: none;
+  }
+
+  .seamChevron,
+  .seamLabelFold {
+    transition: none;
+  }
+}
+
+:root[data-motion-tier='none'] .seam[data-state='running'] .seamLine::before {
+  animation: none;
+  opacity: 0.5;
+  width: 100%;
+  transform: none;
+}
