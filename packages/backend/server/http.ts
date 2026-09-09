@@ -2,6 +2,7 @@ import { createReadStream } from 'node:fs'
 import { type IncomingMessage, type ServerResponse } from 'node:http'
 import { createManagedHttpServer, type ManagedHttpServer } from './http-lifecycle.js'
 import { bindSessionSseDelivery, writeSse, type SseDelivery } from './sse-delivery.js'
+import { subscribeNonSessionEvents } from './global-event-delivery.js'
 import { createHttpRequestIdentity, readHeader, type HttpIdentityOptions } from './http-identity.js'
 import type {
   JsonObject,
@@ -487,7 +488,9 @@ function handleEvents(context: RouteContext): void {
   context.response.write(': connected\n\n')
 
   unsubs.push(subscribeLiveSessionEvents(context, sessionId, options))
-  subscribeSettingsEvents(context, unsubs)
+  // 非会话的那一半(设置变更 + 全局事件)住在 `global-event-delivery.ts`:同一条
+  // 路由、同一批订阅者,但它们不进合批器、不带 `id:`,`?after=` 也不回放它们。
+  subscribeNonSessionEvents(context, unsubs)
 }
 
 function subscribeLiveSessionEvents(context: RouteContext, sessionId: string, options?: { afterSeq: number }): RuntimeUnsubscribe {
@@ -519,19 +522,6 @@ function subscribeLiveSessionEvents(context: RouteContext, sessionId: string, op
   return () => {
     for (const unsubscribe of unsubs) unsubscribe()
     coalescer.dispose()
-  }
-}
-
-function subscribeSettingsEvents(context: RouteContext, unsubs: RuntimeUnsubscribe[]): void {
-  // 设置变更(E 批):**骑这条已有的 SSE**,不新开 `/api/settings/events` ——
-  // 它不是会话事件,所以不进合批器、不占 `session:event` 的 seq(重连的
-  // Last-Event-ID 只对会话事件序号有意义)。载荷是脱敏过的整份设置,与
-  // `settings.getSettings` 在 http 分叉上交出去的逐字同形。
-  const settingsAdapter = context.runtime.settings
-  if (settingsAdapter?.subscribeChanged) {
-    unsubs.push(settingsAdapter.subscribeChanged((settings: unknown) => {
-      writeSse(context, 'settings:changed', settings)
-    }, context.requestContext))
   }
 }
 

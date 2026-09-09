@@ -764,6 +764,8 @@ renderer (React) → client.api(sessionCommandRouter).emit({ sessionId, command:
 
 Both fan-outs share **`SessionStreamCoalescer`** (`packages/backend/events/stream-coalescer.ts`): text/reasoning/tool-input deltas batched on a 16ms ordered buffer, active stream's `messageId` stamped onto every chunk, and pending deltas flushed before any session event goes out. Consumers: `apps/electron/src/main/bridges/ipc-bridge.ts` and `packages/backend/server/http.ts` (per-SSE-connection instance).
 
+That same `GET /api/events` also carries the **non-session** pushes (`packages/backend/server/global-event-delivery.ts`): `settings:changed`, and since 原子 K2a' every global event whose row in `@shared/events`'s `GLOBAL_EVENT_LEAVES_PROCESS` says it may leave the process (`resource:event` among them) — one frame per event, `event` name = the event's `type`. They do **not** enter the coalescer, carry no `id:`, and `?after=` never replays them: sequence numbers and ring buffers are per session, and a global event has no session.
+
 **Tool Call + Permission Flow:**
 
 ```

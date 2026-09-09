@@ -31,6 +31,7 @@
     "./providers": "./providers/index.ts",
     "./permission": "./permission/index.ts",
     "./resource": "./resource/index.ts",
+    "./resource/ref": "./resource/ref.ts",
     "./runtime-facade": "./runtime-facade.ts",
     "./storage": "./storage/index.ts",
     "./toolkit": "./toolkit/index.ts",

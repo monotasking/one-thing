@@ -153,3 +153,51 @@ export type GlobalEvent =
   | PluginErrorEvent
   | PluginNotificationEvent
   | ResourceEventOccurredEvent
+
+// ── 出网名单(原子 K2a')────────────────────────────
+
+/**
+ * **每一种全局事件自己说要不要出网。**
+ *
+ * K2a 留了一笔账:`/api/events` 上没有全局事件的出口,于是 `resource:event` 只到
+ * 得了进程内的订阅者。K2a' 在那条既有 SSE 上开了一条**通用**出口 ——「通用」的意思
+ * 是转发那一侧不认识任何一种事件的名字,它读这张表(`backend/server/
+ * global-event-delivery.ts`)。加一种全局事件 = 在上面的联合里加一支、在这张表里
+ * 加一行;`Record<GlobalEvent['type'], …>` 让 `tsc` 逼你做这个决定,而不是默认
+ * 出网或默认不出网 —— 两个默认都会在某天悄悄错一次。
+ *
+ * `false` 的四行,理由各写在行上。判据只有一条:**这条事件的载荷会不会把本机的
+ * 路径、命令行或凭证带出进程**,或者**它在这条 SSE 上已经有另一种载荷形状了**。
+ * 与 `mcp` / `settings` 两域 `payloadLeavesProcess` 那两处脱敏是同一条判据。
+ */
+export const GLOBAL_EVENT_LEAVES_PROCESS: Readonly<Record<GlobalEvent['type'], boolean>> = Object.freeze({
+  'app:initialized': true,
+  'app:quitting': true,
+  /**
+   * **不出网 —— 它在这条 SSE 上已经有一条同名帧了**,而且那一条的载荷是脱敏过的
+   * 整份设置(共享层读侧补齐 E 批)。总线上这一条只带 `changedKeys`。两种载荷形状
+   * 挂在同一个事件名下,客户端就得先猜自己收到的是哪一种。
+   */
+  'settings:changed': false,
+  'session:created': true,
+  'session:switched': true,
+  'session:deleted': true,
+  'mcp:server-connected': true,
+  'mcp:server-disconnected': true,
+  /**
+   * **不出网 —— `error` 是自由文本**,来自一台 MCP server 的连接/握手失败:stdio
+   * 那一档里它带的是本机路径与命令行,而 MCP 配置的 `args` / `env` 里常常坐着
+   * API key。`mcp` 域已经为同一个理由在出界时脱敏,这里不该开一条绕过它的路。
+   */
+  'mcp:server-error': false,
+  'plugin:loaded': true,
+  /** **不出网 —— 同上**:插件加载失败的自由文本带的是本机插件目录的绝对路径。 */
+  'plugin:error': false,
+  /**
+   * **不出网 —— 它已经有自己的推送通道**(`PLUGINS_NOTIFICATION`),而插件宿主
+   * 今天只在桌面上。让它同时走两条路是「一件事两条路」;真要让浏览器收到插件
+   * 通知,该做的是把那条手写通道退成这里的一行,不是两条并存。
+   */
+  'plugin:notification': false,
+  'resource:event': true,
+})

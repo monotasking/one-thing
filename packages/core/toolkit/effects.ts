@@ -17,8 +17,10 @@ import type { JsonObject } from '../json.js'
 
 /**
  * 效果类。前 9 个与 `core/tools/tool-effect.ts` 的 `ToolEffectKind` 逐字对应
- * (这是唯一一处已经"按效果"思考的旧代码,不重命名它);后 4 个是 §10.2-② 决议
- * 新增的,命名沿用下划线风格。
+ * (这是唯一一处已经"按效果"思考的旧代码,不重命名它);其余是后来各期在这张表里
+ * 加的行(§10.2-② 四条、R3a 的 `plugin_exec`、R4b 的 `external-agent`、原子 K2a' 的
+ * `ui_change`),命名沿用下划线风格 —— `external-agent` 那一条的连字符有它自己的
+ * 理由,写在它那一行上。
  */
 export type EffectClass =
   | 'read'
@@ -36,6 +38,7 @@ export type EffectClass =
   | 'session_spawn'
   | 'plugin_exec'
   | 'external-agent'
+  | 'ui_change'
 
 /**
  * 默认处置:
@@ -107,6 +110,22 @@ const ROWS: readonly EffectPolicyRow[] = [
    * 工具一样可能写盘/跑命令,认不出内容时按最强的那一档排队。
    */
   { kind: 'external-agent', policy: 'ask', prompt: 'Run an external agent tool', barrier: true },
+  /**
+   * K2b-1 留账的拍点(`docs/design/atom-2026-09.md` §6):壳里开一格、激活一格、
+   * 移动一格、把一格撕成浮窗 —— 这类做法的效果类。
+   *
+   * **它不是「没有副作用」,是「副作用只在界面上,而且主体本来就拥有它」。** 那扇
+   * 窗是这个人的窗;为「把面板挪到右边」弹一张权限卡,与 08-18「弹卡是噪音」那条
+   * 判例是同一件事。所以 `silent`,而且 `barrier: false` —— 两条界面动作彼此无关,
+   * 排队没有任何东西可保护(资源上的做法要串行是 `ResourceTool` 自己说的事)。
+   * silent 不等于不留痕:它照样落 `tool/audit`,照样发事件。
+   *
+   * **`close` 这类可能丢掉未保存内容的动作不另立一类。** 立 `ui_destructive` 要的
+   * 事实是「这一格里有没有没保存的东西」,而那个事实**只有壳知道** —— core 的效果
+   * 表里再多一行也说不出它,只能变成一个恒真或恒假的标签。那道闸留在壳侧的
+   * `beforeClose` 确认上,那里才有那个事实。
+   */
+  { kind: 'ui_change', policy: 'silent', prompt: 'Change the interface', barrier: false },
 ]
 
 export const EFFECT_POLICY: Readonly<Record<EffectClass, EffectPolicyRow>> = Object.freeze(

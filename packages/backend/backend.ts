@@ -824,7 +824,15 @@ export class OnethingBackend implements BackendHandle {
       validator,
     }))
     this.resourceKernel = resourceKernel
-    this.own(() => { this.resourceKernel = undefined }, 'resourceKernel')
+    /*
+     * K2a' §10.1 —— 关机时**内核在飞的「做」必须以 `Outcome.aborted` 收场,不许
+     * 悬着**。`dispose()` 拉内核那只 `AbortController`、等在飞收场、再注销全部
+     * provider。
+     *
+     * 它登记在 `mountBuiltinResources` **之前**,所以关机链上跑在它**之后** ——
+     * 设计正本 §10.1 的原话是「先撤 provider、再撤内核」,而 `own()` 是逆序跑的。
+     */
+    this.own(async () => { await resourceKernel.dispose(); this.resourceKernel = undefined }, 'resourceKernel')
     this.own(mountBuiltinResources(resourceKernel), 'builtinResources')
     /*
      * K2a ③ —— 资源事件转发上总线。**单向**:装配层订阅 hub,hub 不认识总线

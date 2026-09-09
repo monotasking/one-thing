@@ -351,7 +351,8 @@ import type { OnethingPromptStoreAdapters } from '@onething/runtime/prompts/stor
 import type { RuntimeCapabilitiesAdapter, RuntimeSessionsAdapter, RuntimeMessagesAdapter, RuntimePermissionsAdapter, RuntimeFilesAdapter, RuntimeTodoPlanAdapter, RuntimeScratchpadAdapter, RuntimeOAuthAdapter, RuntimeVoiceAdapter } from '@onething/core/runtime-facade'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingPluginIpcLogger } from '@onething/runtime/plugins/ipc-operations'
-import type { RuntimeSearchAdapter, RuntimeMutationResult, RuntimeSettingsAdapter } from '@onething/core/runtime-facade'
+import type { RuntimeGlobalEventsAdapter, RuntimeSearchAdapter, RuntimeMutationResult, RuntimeSettingsAdapter } from '@onething/core/runtime-facade'
+import { GLOBAL_EVENT_LEAVES_PROCESS } from '@shared/events/index.js'
 
 const log = getLogger('server.runtime')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
@@ -2276,6 +2277,34 @@ async function createServerRuntimeOverServerBackend(
 			return resolveSearchActionForContext(actionId, context);
 		},
 	};
+	/**
+	 * 全局(非会话)事件的推送面(原子 K2a')。
+	 *
+	 * 名单来自 `@shared/events` 的 `GLOBAL_EVENT_LEAVES_PROCESS` —— **这里逐条
+	 * `onGlobal` 而不是挂一个"什么都收"的钩子**:`EventBus` 只有按类型的订阅面,
+	 * 而为转发在总线上新开一个通配钩子,等于给一个只有一个读者的需求加一种机制。
+	 * 名单是数据(加一种事件在那张表上加一行),这一句循环里没有任何事件的名字。
+	 *
+	 * 过滤在**这一头**做一次(哪些出得了进程),SSE 那头(`global-event-delivery.ts`)
+	 * 再读同一张表做一次:一次是"不订阅",一次是"不写帧"。两处读同一张表,不是两份
+	 * 名单 —— 别的宿主将来装自己的 `globalEvents` 端口时,SSE 那一道仍然在。
+	 */
+	const globalEventsPort: RuntimeGlobalEventsAdapter = {
+		subscribe(handler: (event: unknown) => void): RuntimeUnsubscribe {
+			const unsubs: RuntimeUnsubscribe[] = [];
+			for (const [type, leaves] of Object.entries(GLOBAL_EVENT_LEAVES_PROCESS)) {
+				if (!leaves) continue;
+				unsubs.push(
+					eventBus.onGlobal(type as never, (envelope: { event: unknown }) => {
+						handler(envelope.event);
+					}),
+				);
+			}
+			return () => {
+				for (const unsubscribe of unsubs.splice(0)) unsubscribe();
+			};
+		},
+	};
 	let shutdownPromise: Promise<void> | undefined;
 	const runtime = createOnethingRuntimeFacade<
 		unknown,
@@ -2300,6 +2329,9 @@ async function createServerRuntimeOverServerBackend(
 		// updateMessageThinkingTime)随 `chatRouter` 走 —— 两个宿主从此是同一条
 		// 实现,这里不再留第二份。
 		events: liveSessionDelivery.events,
+		// K2a':全局事件的推送面。会话事件那一格一个字没动 —— 全局事件没有会话
+		// 坐标,也就没有环形缓冲与 `?after=` 回放,它是另一格而不是那一格的参数。
+		globalEvents: globalEventsPort,
 		streams: liveSessionDelivery.streams,
 		permissions: permissionsPort,
 		// P4c 第十一批:`settings` / `network` 两格 adapter 整只没了 —— 四条数据面

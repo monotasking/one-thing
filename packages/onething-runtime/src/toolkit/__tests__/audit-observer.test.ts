@@ -51,6 +51,8 @@ describe('AuditProjector', () => {
       callId: 'call-1',
       toolId: 'write',
       sessionId: 'session-1',
+      // K2a':主体原样转手 —— 无会话的那一档没有会话可回溯,这一格是唯一的线索。
+      principal: { kind: 'user', userId: 'local' },
       messageId: 'message-1',
       // 效果**类**去重,条数如实报 —— 索引看类,细节在 preview。
       effects: ['file_write', 'external_directory'],

@@ -580,6 +580,7 @@ export type {
   RuntimeEventEnvelope,
   RuntimeEventsAdapter,
   RuntimeEventSubscribeOptions,
+  RuntimeGlobalEventsAdapter,
   RuntimeHostCapabilities,
   RuntimeMessagesAdapter,
   RuntimeMutationResult,

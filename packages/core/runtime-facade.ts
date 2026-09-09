@@ -137,6 +137,24 @@ export interface RuntimeEventsAdapter<TEvent = unknown> {
   ): RuntimeUnsubscribe
 }
 
+/**
+ * 全局(非会话)事件的推送面(原子 K2a')。
+ *
+ * `RuntimeEventsAdapter` 只送**会话**事件:它按 `sessionId` 订阅、带序号、可用
+ * `?after=` 回放。全局事件没有会话坐标,自然也没有会话的环形缓冲,所以它是另一格
+ * ——而不是往会话那一格里塞一个假的 sessionId。
+ *
+ * 这一格是**通用**的:它不认识任何一种全局事件的名字。哪些事件出得了进程由
+ * `@shared/events` 的 `GLOBAL_EVENT_LEAVES_PROCESS` 说了算,实现那一侧读表。
+ * core 这一层连那张表都不该认识(`@shared` 不能进 core),所以事件是 `unknown`。
+ */
+export interface RuntimeGlobalEventsAdapter<TGlobalEvent = unknown> {
+  subscribe(
+    handler: (event: TGlobalEvent) => void,
+    context?: RuntimeRequestContext,
+  ): RuntimeUnsubscribe
+}
+
 export interface RuntimeStreamsAdapter<TChunk = unknown> {
   subscribe(
     sessionId: string,
@@ -324,6 +342,7 @@ export interface OnethingRuntimeFacadeOptions<
   sessions: RuntimeSessionsAdapter<TSessionList, TSession, TCreateSessionInput, TSessionPatch>
   messages?: RuntimeMessagesAdapter<TMessagePageRequest, TMessagePageResponse, TUserMarkersResponse>
   events: RuntimeEventsAdapter<TEvent>
+  globalEvents?: RuntimeGlobalEventsAdapter
   streams?: RuntimeStreamsAdapter<TChunk>
   permissions?: RuntimePermissionsAdapter<TPermissionResponse>
   settings?: RuntimeSettingsAdapter
@@ -359,6 +378,7 @@ export interface OnethingRuntimeFacade<
   readonly sessions: RuntimeSessionsAdapter<TSessionList, TSession, TCreateSessionInput, TSessionPatch>
   readonly messages?: RuntimeMessagesAdapter<TMessagePageRequest, TMessagePageResponse, TUserMarkersResponse>
   readonly events: RuntimeEventsAdapter<TEvent>
+  readonly globalEvents?: RuntimeGlobalEventsAdapter
   readonly streams?: RuntimeStreamsAdapter<TChunk>
   readonly permissions?: RuntimePermissionsAdapter<TPermissionResponse>
   readonly settings?: RuntimeSettingsAdapter
@@ -429,6 +449,7 @@ export function createOnethingRuntimeFacade<
     sessions: Object.freeze({ ...options.sessions }),
     messages: options.messages ? Object.freeze({ ...options.messages }) : undefined,
     events: Object.freeze({ ...options.events }),
+    globalEvents: options.globalEvents ? Object.freeze({ ...options.globalEvents }) : undefined,
     streams: options.streams ? Object.freeze({ ...options.streams }) : undefined,
     permissions: options.permissions ? Object.freeze({ ...options.permissions }) : undefined,
     settings: options.settings ? Object.freeze({ ...options.settings }) : undefined,

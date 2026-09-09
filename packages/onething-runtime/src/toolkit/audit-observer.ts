@@ -10,6 +10,7 @@
  * 七事件流)与评估轨迹。这里只定形状与时机,不认识 fs。
  */
 
+import type { Principal } from '@onething/core/permission'
 import type {
   Decision,
   EffectClass,
@@ -25,6 +26,16 @@ export interface ToolAuditRecord {
   readonly callId: string
   readonly toolId: string
   readonly sessionId: string
+  /**
+   * 谁动的手(K2a',§10.5 对 K2a 的补充)。
+   *
+   * 它是 `Invocation.principal` 的原样转手。有会话的调用还能靠会话回溯到「哪一轮
+   * 里发生的」;**无会话的那一档没有会话可回溯**(调度、deeplink、CLI、界面上一个
+   * 与当前会话无关的按钮 —— 它们落 `<store>/audit/resource.jsonl`),于是主体是这条
+   * 记录里唯一能回答「谁」的那一格。它必填:一次没有主体的调用在管线里本来就不
+   * 存在(`Invocation.principal` 是必填的)。
+   */
+  readonly principal: Principal
   readonly messageId?: string
   /** 计划里报的效果类(去重)。资源级细节不进审计索引 —— 它们在 preview 里。 */
   readonly effects: readonly EffectClass[]
@@ -104,6 +115,7 @@ export class AuditProjector implements Observer {
       callId: invocation.callId,
       toolId: invocation.toolId,
       sessionId: invocation.sessionId,
+      principal: invocation.principal,
       messageId: invocation.messageId,
       effects: [...new Set(effects.map(effect => effect.kind))],
       effectCount: effects.length,

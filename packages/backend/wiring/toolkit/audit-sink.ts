@@ -52,6 +52,9 @@ function projectAuditRecord(record: ToolAuditRecord): SessionToolAuditEventData 
   return {
     callId: record.callId,
     toolId: record.toolId,
+    // K2a' §10.5:**主体进两条落点**。无会话那本账没有会话可回溯,主体是它唯一的
+    // 线索;有会话那一侧照样带,不然同一条 `tool/audit` 换个落点就换一份口径。
+    principal: record.principal,
     effects: [...record.effects],
     effectCount: record.effectCount,
     ...(record.previewTitle !== undefined ? { previewTitle: record.previewTitle } : {}),

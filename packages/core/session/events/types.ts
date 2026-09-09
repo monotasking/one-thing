@@ -20,6 +20,8 @@
  *    不存第二份文本 —— 这一条由本文件末尾的类型级门钉住。
  */
 
+import type { Principal } from '../../permission/principal.js'
+
 // ============ 记录外壳 ============
 
 /**
@@ -328,6 +330,14 @@ export interface SessionToolAnnotateEventData {
 export interface SessionToolAuditEventData {
   callId: string
   toolId: string
+  /**
+   * 谁动的手(K2a',`docs/design/atom-2026-09.md` §10.5)。
+   *
+   * **可选**,因为它是后加的一格:在此之前写下的每一条 `tool/audit` 都没有它,
+   * 而账本是 append-only 的 —— 把它写成必填等于说谎(读旧行时那一格并不存在)。
+   * 新写的每一行都带:管线只接受带主体的调用(`Invocation.principal` 必填)。
+   */
+  principal?: Principal
   effects: string[]
   effectCount: number
   previewTitle?: string

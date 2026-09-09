@@ -24,6 +24,18 @@
  * 因为 `mount` 是一件**成对**的事:登记自述、建工具、把总线交给实现,注销时三样
  * 一起撤。让调用方分别调三次 = 三次都有可能漏掉一次(尤其是注销那一半)。
  * 与组合根法条同一句话:谁起的,谁给出收尾。
+ *
+ * ── K2a' 生命周期(`docs/design/atom-2026-09.md` §10.1 / §10.2)───────────────
+ * 这台内核有两条收尾路径,它们是同一句话的两个粒度:
+ *
+ *   · `dispose()`  —— 整台关掉。先拉内核那只 `AbortController`,在飞的全部以
+ *     `Outcome.aborted` 收场(走的是 `ToolRunner` 已有的那条路,不是这里另判),
+ *     等它们真的收完,再注销所有 provider、清空表。幂等。
+ *   · `mount()` 返回的注销 —— 一种资源摘掉。同样先掐、后等、再摘,只不过范围是
+ *     这一个 scheme。因此它是**异步**的:§10.2 那张表要求「不许摘了之后 apply
+ *     还在写」,而一个同步函数说不出这句话。
+ *
+ * 两条都只等 `Outcome`,不等 `abort()` 返回 —— 「信号发出去了」不等于「不再写了」。
  */
 
 import type { Outcome } from '../toolkit/outcome.js'
@@ -79,6 +91,31 @@ export interface ResourceKernelOptions {
  */
 export const NO_ORIGIN_SESSION = '@no-origin'
 
+/**
+ * 一种已登记的资源:工具 + 撤销它那两次登记的闭包 + **它自己那只取消源**。
+ *
+ * 取消源按 scheme 一只而不是按调用一只:注销要掐的正好是「这个 scheme 的全部
+ * 在飞」,而卸一个插件不该把另一个命名空间正在跑的一次「做」也掐了。重新登记
+ * 同一个 scheme 会拿到一只新的 —— 上一轮的取消不该跟到下一轮。
+ */
+interface MountedResource {
+  readonly tool: ResourceTool
+  readonly unregister: () => void
+  readonly unclaim?: () => void
+  readonly abort: AbortController
+}
+
+/**
+ * 一次在飞的调用(§10.2「在飞」)。
+ *
+ * `done` 记的是 `Outcome`,不是 `abort()`:注销与关机要等的是「apply 不再写了」,
+ * 而不是「信号发出去了」。`scheme` 让等待能只等自己那一份。
+ */
+interface InflightCall {
+  readonly scheme: string
+  done?: Promise<unknown>
+}
+
 /** 一次调用的坐标。与 `Invocation` 里那几格同名同义,是一次转手不是翻译。 */
 export interface ResourceCallOptions {
   readonly principal: Principal
@@ -97,7 +134,16 @@ export class ResourceKernel {
 
   private readonly runner: ToolRunner
   private readonly options: ResourceKernelOptions
-  private readonly tools_ = new Map<string, ResourceTool>()
+  private readonly mounted = new Map<string, MountedResource>()
+  /**
+   * 内核级取消源(§10.1):`dispose()` 拉它,于是**每一条**在飞的调用当场收到
+   * 取消信号。它合成进每次 `run` 的 signal,所以 `Outcome.aborted` 是
+   * `ToolRunner` 已有的那条路走出来的,不是这里另判一次。
+   */
+  private readonly control = new AbortController()
+  /** 在飞表(§10.2「在飞」那一行):注销与关机都要先让这些收场,再摘。 */
+  private readonly inflight = new Set<InflightCall>()
+  private disposing: Promise<void> | undefined
   private seq = 0
 
   constructor(registry: ResourceRegistry, runner: ToolRunner, options: ResourceKernelOptions = {}) {
@@ -113,27 +159,86 @@ export class ResourceKernel {
    *
    * 自述非法(`ResourceSpecError`)或 scheme 已被占(`ResourceSchemeTakenError`)时
    * 由注册表抛,而且是在写表之前抛 —— 所以一次失败的 `mount` 不会留下半张表。
+   *
+   * ## 注销为什么是异步的(§10.2 的「在飞」那一行)
+   *
+   * 表上写着:**`unmount` 撞上在飞,先让在飞的走完或被中止,再摘;不许摘了之后
+   * apply 还在写。** 一个同步的注销函数说不出这句话 —— 它只能摘表然后走人,而
+   * provider 的 `apply` 还在往会话里写。所以注销先掐掉属于这个 scheme 的在飞、
+   * 等它们收场,再摘那三样;调用方拿到的 promise resolve 的那一刻,这个 provider
+   * 已经安静了。
+   *
+   * 同步调用方(`own()` 那一路)不必改写法:`OnethingBackend.own` 收的 disposer
+   * 本来就允许返回 promise,关机链会等它。
    */
-  mount<Payload>(provider: ResourceProvider<Payload>): () => void {
+  mount<Payload>(provider: ResourceProvider<Payload>): () => Promise<void> {
     const unregister = this.registry.register(provider.spec)
     const scheme = provider.spec.scheme
     const tool = new ResourceTool<Payload>(
       provider,
       this.options.shell ? { shell: this.options.shell } : {},
     )
-    this.tools_.set(scheme, tool as ResourceTool)
     // 生成的入参契约认领给校验者(K2a)。它与建工具是**同一拍** —— 那坨 schema 就是
     // 这一行上面刚造出来的,再晚一步就得靠别人去猜「这份 schema 是谁的」。
     const unclaim = this.options.validator?.register(tool.spec.input, provider.spec)
+    const record: MountedResource = { tool: tool as ResourceTool, unregister, unclaim, abort: new AbortController() }
+    this.mounted.set(scheme, record)
     provider.attach?.(this.events)
 
-    return () => {
+    return async () => {
+      // 身份判等,与 `registry.ts` 的注销同一个理由:同一个 scheme 可能已经被
+      // 另一个提供者装上了(插件重装、MCP 重连),旧闭包不该把后来者摘掉,更不该
+      // 去掐后来者的在飞。幂等也靠这一句:摘过一次之后表里已经不是它了。
+      if (this.mounted.get(scheme) !== record) return
+      record.abort.abort()
+      await this.settle(call => call.scheme === scheme)
+      // 排干期间新来的调用骑的仍是这个 provider,内核不为它们再等一轮:与一次
+      // 注销赛跑的调用方,顺序本来就不是内核能替它定的(要一道「排空闸」得为
+      // unmount 一个读者新开一格状态,§10.2 那张表里没有这一格)。
+      this.mounted.delete(scheme)
       unregister()
       unclaim?.()
-      // 身份判等,与 `registry.ts` 的注销同一个理由:同一个 scheme 可能已经被
-      // 另一个提供者装上了(插件重装、MCP 重连),旧闭包不该把后来者摘掉。
-      if (this.tools_.get(scheme) === (tool as ResourceTool)) this.tools_.delete(scheme)
     }
+  }
+
+  /**
+   * 关掉这台内核(§10.1「进程」那一行:**内核里任何在飞的「做」在 dispose 时
+   * 必须以 `Outcome.aborted` 收场,不许悬着**)。
+   *
+   * 三步,顺序不能换:先拉取消源(在飞的当场收到信号)、再等它们全部收场、
+   * 最后注销全部 provider 并清空两张表。幂等 —— 第二次调用等的是第一次那条链,
+   * 不是重跑一遍。
+   *
+   * 关掉之后再来的 `do` / `read` 落回「未登记」那一行(表空了 →
+   * `ResourceSchemeUnknownError`),与 §10.2 表上「已注销」那一格逐字一致。
+   */
+  dispose(): Promise<void> {
+    if (this.disposing) return this.disposing
+    this.disposing = (async () => {
+      this.control.abort()
+      await this.settle(() => true)
+      // 逆序注销:登记顺序反过来,与 `mountBuiltinResources` / `own()` 同一条纪律
+      // (将来一种资源依赖另一种先在场时,顺序已经是对的)。
+      for (const [scheme, record] of [...this.mounted].reverse()) {
+        this.mounted.delete(scheme)
+        record.unregister()
+        record.unclaim?.()
+      }
+    })()
+    return this.disposing
+  }
+
+  /**
+   * 等选中的在飞收场。**只等,不掐** —— 掐是调用方(`dispose` 拉内核那只、注销拉
+   * scheme 那只)先做完的事,这里等的是它的后果:「信号发出去了」与「apply 不再
+   * 写了」是两件事,§10.2 要的是后者。
+   */
+  private async settle(match: (call: InflightCall) => boolean): Promise<void> {
+    const waiting: Array<Promise<unknown>> = []
+    for (const call of [...this.inflight]) {
+      if (match(call) && call.done) waiting.push(call.done)
+    }
+    if (waiting.length > 0) await Promise.allSettled(waiting)
   }
 
   /**
@@ -145,14 +250,14 @@ export class ResourceKernel {
   tools(): readonly ResourceTool[] {
     const out: ResourceTool[] = []
     for (const spec of this.registry.list()) {
-      const tool = this.tools_.get(spec.scheme)
+      const tool = this.mounted.get(spec.scheme)?.tool
       if (tool) out.push(tool)
     }
     return out
   }
 
   toolFor(scheme: string): ResourceTool | undefined {
-    return this.tools_.get(scheme)
+    return this.mounted.get(scheme)?.tool
   }
 
   /** 做一件事。与 AI 走的是同一个 `ToolRunner.run`。 */
@@ -175,8 +280,8 @@ export class ResourceKernel {
     // 没有工具就没有管线可走。工具选定之后的每一句判定都在管线里(`ResourceTool`
     // 的 plan),这里不多判一个字。
     if (!parsed) return OutcomeOps.failed(new ResourceSchemeUnknownError(ref))
-    const tool = this.tools_.get(parsed.scheme)
-    if (!tool) return OutcomeOps.failed(new ResourceSchemeUnknownError(parsed.scheme))
+    const mounted = this.mounted.get(parsed.scheme)
+    if (!mounted) return OutcomeOps.failed(new ResourceSchemeUnknownError(parsed.scheme))
 
     const invocation: Invocation = {
       callId: this.mintCallId(),
@@ -186,7 +291,25 @@ export class ResourceKernel {
       principal: options.principal,
       ...(options.messageId !== undefined ? { messageId: options.messageId } : {}),
     }
-    return this.runner.run(tool, invocation, options.signal)
+
+    // 三个取消源合成一个:这台内核的关机、这个 scheme 的注销、调用方自己的。
+    // 合成而不是各自查一遍 —— `ToolRunner` 只认一个 signal,而「谁掐的」是归因,
+    // 归因是 `Outcome` 的事(`AbortScope` 的头注释写着这一条)。
+    const call: InflightCall = { scheme: parsed.scheme }
+    const sources = [this.control.signal, mounted.abort.signal]
+    if (options.signal) sources.push(options.signal)
+    this.inflight.add(call)
+    const settled = (async () => {
+      try {
+        return await this.runner.run(mounted.tool, invocation, AbortSignal.any(sources))
+      } finally {
+        this.inflight.delete(call)
+      }
+    })()
+    // 先起跑再记 promise:`run` 是 async 函数,第一个 await 之前不会让出,所以
+    // 这一行一定跑在 `finally` 之前 —— 记的不会是一条已经被删掉的在飞。
+    call.done = settled
+    return settled
   }
 
   private mintCallId(): string {

@@ -19,7 +19,7 @@
  * store 隔离与全动态 import 的写法照 `assembly-lifecycle.test.ts`:
  * `stores/sessions.ts` / `stores/settings.ts` 在 **import 期**就解析 store 根。
  */
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -293,7 +293,8 @@ describe('资源内核在真装配里(K1)', () => {
     })
     const outcome = await backend.resources.do('drill:1', 'poke', {}, callOptions(sessionId))
     stop()
-    unmount()
+    // K2a':注销是异步的(先让在飞的收场,再摘 —— §10.2 那张表的「在飞」一行)。
+    await unmount()
 
     expect(outcome.kind).toBe('ok')
     expect(seen).toEqual([
@@ -327,6 +328,9 @@ describe('资源内核在真装配里(K1)', () => {
       type: 'tool/audit',
       toolId: 'session',
       outcome: 'ok',
+      // K2a' §10.5:**主体是这本账唯一的线索** —— 它没有会话可回溯,少了这一格
+      // 就只知道「有人改过」。
+      principal: { kind: 'user', userId: 'local' },
     })
     expect(typeof rows[rows.length - 1].at).toBe('number')
     // 它在 `log/` **之外** —— 日志管家(LogDirJanitor)那棵树碰不到它。
@@ -406,6 +410,50 @@ describe('资源内核在真装配里(K1)', () => {
     // 读也没发生过。
     const { sessionReads } = await import('../session/reads.js')
     expect(sessionReads.getSession(sessionId)?.name).toBe('Via RPC')
+  })
+
+  /**
+   * K2a' §10.1 —— **关机时内核在飞的「做」以 `Outcome.aborted` 收场,而且关机不悬着。**
+   *
+   * 它跑在真装配上而不是单测里,因为要证的正是「`backend.dispose()` 到得了
+   * `resourceKernel.dispose()`」这条接线:内核那一侧的行为由
+   * `core/resource/__tests__/kernel.test.ts` 钉,这里钉的是 `own()` 那一格真的登记了。
+   */
+  it('backend.dispose():内核里在飞的做被掐成 aborted,关机不悬着(K2a\')', async () => {
+    const { planFromSpec } = await import('@onething/core/resource')
+    const spec = {
+      scheme: 'drill',
+      title: 'Drill things',
+      reads: {},
+      ops: {
+        hang: {
+          title: 'Hang until aborted',
+          params: { type: 'object', properties: {}, required: [] },
+          effects: [] as const,
+          home: 'core' as const,
+        },
+      },
+      events: {},
+    }
+    let applied = false
+    backend.resources.mount({
+      spec,
+      read: async () => ({}),
+      plan: async (op: string, ref: never) => planFromSpec(spec, op, ref, null),
+      // 只在收到取消信号之后才回来 —— 不这么写就测不出区别:一个正常返回的 apply
+      // 无论内核有没有拉那只 AbortController 都会按时收场。
+      apply: async (_op: string, _intent: never, ctx: { abort: { onAbort: (cb: () => void) => void } }) =>
+        new Promise(resolve => {
+          applied = true
+          ctx.abort.onAbort(() => resolve({ kind: 'text', text: 'aborted' }))
+        }),
+    } as never)
+
+    const inflight = backend.resources.do('drill:1', 'hang', {}, callOptions(sessionId))
+    await vi.waitFor(() => expect(applied).toBe(true))
+
+    await backend.dispose()
+    expect((await inflight).kind).toBe('aborted')
   })
 
   it('dispose 之后 backend.resources 抛', async () => {

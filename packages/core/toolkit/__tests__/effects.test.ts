@@ -84,6 +84,21 @@ describe('EffectClass 目录与默认策略表', () => {
     expect(requiresAuthorization([makeEffect('plugin_exec', ['plugin:demo:echo'])])).toBe(true)
   })
 
+  /**
+   * 原子 K2a' 新增的第六个 kind(`docs/design/atom-2026-09.md` §6)。
+   *
+   * 它不是「没有副作用」,是「副作用只在界面上,而且主体本来就拥有它」——— 那扇窗是
+   * 这个人的窗。所以 silent 且**不带屏障**:两条界面动作彼此无关,排队没有东西可保护。
+   * silent 不等于不留痕:它照样落 `tool/audit`。
+   */
+  it('ui_change:silent、不带屏障,但仍是一条认得出来的效果', () => {
+    expect(EFFECT_POLICY.ui_change.policy).toBe('silent')
+    expect(EFFECT_POLICY.ui_change.barrier).toBe(false)
+    expect(isKnownEffectClass('ui_change')).toBe(true)
+    expect(requiresAuthorization([makeEffect('ui_change', ['workbench:tab/1'])])).toBe(false)
+    expect(isBarrierEffect(makeEffect('ui_change', ['workbench:tab/1']))).toBe(false)
+  })
+
   it('未知 kind 兜底为 ask,绝不静默放行', () => {
     const row = effectPolicyFor('quantum_teleport')
     expect(row.policy).toBe('ask')

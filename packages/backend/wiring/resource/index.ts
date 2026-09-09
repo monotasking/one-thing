@@ -60,10 +60,13 @@ export function createResourceKernel(
  *
  * 逆序不是仪式:注销顺序与注册顺序相反是 `own()` 那条纪律的形状,一种资源将来若
  * 依赖另一种先在场(K3 的音乐依赖目录),顺序就已经是对的。
+ *
+ * K2a':注销是**异步**的(内核的 `mount` 返回 `() => Promise<void>` —— §10.2 要求
+ * 摘之前先让在飞的收场),而且**逐个 await**:并发摘会让「逆序」这句话失效。
  */
-export function mountBuiltinResources(kernel: ResourceKernel): () => void {
+export function mountBuiltinResources(kernel: ResourceKernel): () => Promise<void> {
   const disposers = [kernel.mount(new SessionResourceProvider())]
-  return () => {
-    for (const dispose of [...disposers].reverse()) dispose()
+  return async () => {
+    for (const dispose of [...disposers].reverse()) await dispose()
   }
 }
