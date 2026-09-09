@@ -117,7 +117,7 @@
         <div class="head"><span class="n">my-qwen3-235b</span><span class="i">my-qwen3-235b · 手填</span></div>
         <div class="field">
           <label>上下文窗口</label>
-          <div class="inputWrap"><input class="input" inputmode="numeric" placeholder="128k(默认)" data-ctx="a"><span class="unit">token</span></div>
+          <div class="inputWrap"><input class="input" placeholder="128k(默认)" data-ctx="a"><span class="unit">token</span></div>
           <span class="hint" data-ctxhint="a">目录没填这一型;不填按 128k 算,压缩阈值也按它算。</span>
         </div>
         <div class="field">
@@ -151,7 +151,7 @@
         <div class="head"><span class="n">my-qwen3-235b</span><span class="i">my-qwen3-235b · 手填</span></div>
         <div class="field">
           <label>上下文窗口</label>
-          <div class="inputWrap"><input class="input" inputmode="numeric" placeholder="128k(默认)" value="200000" data-ctx="b"><span class="unit">token</span></div>
+          <div class="inputWrap"><input class="input" placeholder="128k(默认)" value="200000" data-ctx="b"><span class="unit">token</span></div>
           <span class="hint" data-ctxhint="b">自定 200k。清空回到默认 128k。</span>
         </div>
         <div class="field">
@@ -185,7 +185,7 @@
         <div class="head"><span class="n">DeepSeek V4 Pro</span><span class="i">deepseek-v4-pro</span></div>
         <div class="field">
           <label>上下文窗口</label>
-          <div class="inputWrap"><input class="input" inputmode="numeric" placeholder="1,048,576(目录)" data-ctx="c"><span class="unit">token</span></div>
+          <div class="inputWrap"><input class="input" placeholder="1,048,576(目录)" data-ctx="c"><span class="unit">token</span></div>
           <span class="hint" data-ctxhint="c">目录给的是 1,048,576。</span>
         </div>
         <div class="field">
@@ -218,8 +218,8 @@
         <div class="head"><span class="n">my-qwen3-235b</span><span class="i">my-qwen3-235b · 手填</span></div>
         <div class="field">
           <label>上下文窗口</label>
-          <div class="inputWrap"><input class="input" inputmode="numeric" value="200k" aria-invalid="true" data-ctx="d"><span class="unit">token</span></div>
-          <span class="err" data-ctxhint="d">填整数,不带单位:200000</span>
+          <div class="inputWrap"><input class="input" value="200 tokens" aria-invalid="true" data-ctx="d"><span class="unit">token</span></div>
+          <span class="err" data-ctxhint="d">填正数,可带 K / M:200000、200K、1M</span>
         </div>
         <div class="field">
           <label>工具调用</label>
@@ -268,7 +268,7 @@
                                             ▼
 ModelOverridePopover (new, providers/components/)   ← 消费 ui/Popover
 ├── head: name + id (+ 手填)
-├── Field「上下文窗口」 → Input(inputmode=numeric) + hint | error
+├── Field「上下文窗口」 → Input(认 200K / 1M / 200,000,parseQuantity 一处) + hint | error
 ├── Field「工具调用」  → Segmented(跟目录 / 开 / 关) + hint
 └── foot: 「改了就存」 + link「恢复目录值」
 
@@ -311,7 +311,7 @@ ModelOverridePopover (new, providers/components/)   ← 消费 ui/Popover
       const raw = inp.value.trim()
       const hint = document.querySelector(`[data-ctxhint="${k}"]`)
       if (raw === '') { state[k].ctx = null; inp.removeAttribute('aria-invalid'); hint.className='hint'; render(k); return }
-      if (!/^\d+$/.test(raw) || Number(raw) <= 0) { inp.setAttribute('aria-invalid','true'); hint.className='err'; hint.textContent='填整数,不带单位:200000'; return }
+      if (!/^\d+$/.test(raw) || Number(raw) <= 0) { inp.setAttribute('aria-invalid','true'); hint.className='err'; hint.textContent='填正数,可带 K / M:200000、200K、1M'; return }
       inp.removeAttribute('aria-invalid'); hint.className='hint'
       state[k].ctx = Number(raw); render(k)
     }

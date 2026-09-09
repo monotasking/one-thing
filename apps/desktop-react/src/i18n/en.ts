@@ -1095,7 +1095,7 @@ export const en: Record<MessageKey, string> = {
   'providers.overrideContextHintCustom': 'Custom {value}. Clear it to go back to the catalog’s {fallback}.',
   'providers.overrideContextHintCustomDefault':
     'Custom {value}. Clear it to go back to the default {fallback}.',
-  'providers.overrideContextInvalid': 'Whole number, no unit: 200000',
+  'providers.overrideContextInvalid': 'A positive number, K / M allowed: 200000, 200K, 1M',
   'providers.overrideToolsLabel': 'Tool calling',
   'providers.overrideToolsInherit': 'Follow catalog',
   'providers.overrideToolsOn': 'On',

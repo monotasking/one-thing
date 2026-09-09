@@ -6,7 +6,7 @@ import { Popover } from '../../ui/Popover'
 import { Segmented } from '../../ui/Segmented'
 import { useT } from '../../i18n'
 import type { MessageKey, TFn } from '../../i18n'
-import { formatQuantity } from '../../format/quantity'
+import { formatQuantity, parseQuantity } from '../../format/quantity'
 import { CATALOG_CONTEXT_FALLBACK } from '../types'
 import type { CatalogRow, ModelOverridePatch } from '../types'
 import s from './ModelOverridePopover.module.css'
@@ -63,6 +63,16 @@ import s from './ModelOverridePopover.module.css'
  * 只挡打错」。与退役的 Vue 壳同一个数。
  */
 export const MAX_CONTEXT_OVERRIDE = 100_000_000
+
+/**
+ * 框里回显一个已写进去的数。**能短写就短写**(`200000` → `200k`),但只在短写
+ * 能一字不差解析回同一个数时 —— `1048576` 短写成 `1M` 就成了另一个数,
+ * 那种就原样写整数。框里的字与盘上的数任何时候都得是同一个。
+ */
+function draftOf(value: number): string {
+  const short = formatQuantity(value)
+  return parseQuantity(short) === value ? short : String(value)
+}
 
 /** 分段器那三格。`inherit` = 不覆盖(删键),不是「第三种值」。 */
 type ToolsChoice = 'inherit' | 'on' | 'off'
@@ -149,7 +159,7 @@ export function ModelOverridePopover({
    * 乐观更新说了算,不是这里再记一遍。
    */
   const [draft, setDraft] = useState(() =>
-    row.override.contextLength != null ? String(row.override.contextLength) : '',
+    row.override.contextLength != null ? draftOf(row.override.contextLength) : '',
   )
   const [invalid, setInvalid] = useState(false)
 
@@ -160,9 +170,10 @@ export function ModelOverridePopover({
 
   /**
    * 提交一次上下文。**失焦与 ↵ 各调一次**,中间打字一个请求都不发。
-   * 三条出口,一条都不许合并:空 = 删键;非纯数字 / 非正数 = 不写并报错;
+   * 三条出口,一条都不许合并:空 = 删键;认不出来 / 非正数 = 不写并报错;
    * 合法 = 夹上限后写(夹完把框里的字换成真写进去的那个数 —— 屏幕上留着一个
-   * 没被采纳的数就是在说谎)。
+   * 没被采纳的数就是在说谎)。认什么写法由 `parseQuantity` 一处说了算
+   * (`200k` / `1M` / `200,000` 都行,09-09 用户要的)。
    */
   function commitContext() {
     const raw = draft.trim()
@@ -172,13 +183,14 @@ export function ModelOverridePopover({
       if (row.override.contextLength != null) onWrite({ contextLength: null })
       return
     }
-    if (!/^\d+$/.test(raw) || Number(raw) <= 0) {
+    const parsed = parseQuantity(raw)
+    if (parsed === null) {
       setInvalid(true)
       return
     }
     setInvalid(false)
-    const next = Math.min(Number(raw), MAX_CONTEXT_OVERRIDE)
-    setDraft(String(next))
+    const next = Math.min(parsed, MAX_CONTEXT_OVERRIDE)
+    setDraft(draftOf(next))
     if (next === row.override.contextLength) return
     onWrite({ contextLength: next })
   }
@@ -300,8 +312,7 @@ function ContextInput({
       disabled={disabled}
       invalid={invalid}
       placeholder={placeholder}
-      /* 只影响软键盘的形,不当校验用 —— 真校验在 `commitContext` 那三条出口上。 */
-      inputMode="numeric"
+      /* 不给 inputMode="numeric":那副软键盘上没有 k / M,而这一格就是要认它们。 */
       data-testid="model-override-context"
       suffix={<span className={s.unit}>{unit}</span>}
       onBlur={onCommit}

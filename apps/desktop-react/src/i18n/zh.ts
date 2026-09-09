@@ -1296,7 +1296,7 @@ export const zh = {
   'providers.overrideContextHintCustom': '自定 {value}。清空回到目录 {fallback}。',
   'providers.overrideContextHintCustomDefault': '自定 {value}。清空回到默认 {fallback}。',
   /* 例子就写在句子里 —— 「格式不对」这种话谁都改不对自己那一行。 */
-  'providers.overrideContextInvalid': '填整数,不带单位:200000',
+  'providers.overrideContextInvalid': '填正数,可带 K / M:200000、200K、1M',
   'providers.overrideToolsLabel': '工具调用',
   /* 第一格叫「跟目录」而不是「默认」:目录没填时它跟的是**按名字猜**,
    * 下面那句 overrideToolsHintGuess 把这一点说出来,不藏。 */

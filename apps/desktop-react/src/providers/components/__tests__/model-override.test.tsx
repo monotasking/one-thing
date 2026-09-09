@@ -159,29 +159,62 @@ describe('上下文窗口那一格', () => {
     expect(onWriteOverride).toHaveBeenCalledWith('a', { contextLength: 999 })
   })
 
+  it('「200K」「1M」「200,000」都认 —— 认法由 parseQuantity 一处说了算', async () => {
+    const onWriteOverride = vi.fn()
+    renderCatalog([row('a')], { onWriteOverride })
+    await openOverride('a')
+
+    for (const [typed, want] of [
+      ['200K', 200_000],
+      ['1M', 1_000_000],
+      ['1.5m', 1_500_000],
+      ['200,000', 200_000],
+    ] as const) {
+      onWriteOverride.mockClear()
+      fireEvent.change(contextBox(), { target: { value: typed } })
+      fireEvent.keyDown(contextBox(), { key: 'Enter' })
+      expect(onWriteOverride, typed).toHaveBeenCalledWith('a', { contextLength: want })
+    }
+  })
+
+  it('提交后框里回显短写(200000 → 200k),短写对不上原数时留整数', async () => {
+    renderCatalog([row('a')], { onWriteOverride: vi.fn() })
+    await openOverride('a')
+
+    fireEvent.change(contextBox(), { target: { value: '200000' } })
+    fireEvent.keyDown(contextBox(), { key: 'Enter' })
+    expect(contextBox().value).toBe('200k')
+
+    // 1048576 短写是「1M」,那是另一个数 —— 框里的字与盘上的数得是同一个。
+    fireEvent.change(contextBox(), { target: { value: '1048576' } })
+    fireEvent.keyDown(contextBox(), { key: 'Enter' })
+    expect(contextBox().value).toBe('1048576')
+  })
+
   it('清空 = 删键', async () => {
     const onWriteOverride = vi.fn()
     renderCatalog([row('a', { override: { contextLength: 200_000 } })], { onWriteOverride })
     await openOverride('a')
-    expect(contextBox().value).toBe('200000')
+    // 打开时读一次设置,回显的也是短写。
+    expect(contextBox().value).toBe('200k')
 
     fireEvent.change(contextBox(), { target: { value: '   ' } })
     fireEvent.keyDown(contextBox(), { key: 'Enter' })
     expect(onWriteOverride).toHaveBeenCalledWith('a', { contextLength: null })
   })
 
-  it('「200k」写不进去:aria-invalid + 错误句,而且**一发都不发**', async () => {
+  it('「200 tokens」写不进去:aria-invalid + 错误句,而且**一发都不发**', async () => {
     const onWriteOverride = vi.fn()
     renderCatalog([row('a')], { onWriteOverride })
     await openOverride('a')
 
-    fireEvent.change(contextBox(), { target: { value: '200k' } })
+    fireEvent.change(contextBox(), { target: { value: '200 tokens' } })
     fireEvent.keyDown(contextBox(), { key: 'Enter' })
     expect(onWriteOverride).not.toHaveBeenCalled()
     expect(contextBox().getAttribute('aria-invalid')).toBe('true')
-    expect(screen.getByText('填整数,不带单位:200000')).toBeTruthy()
+    expect(screen.getByText('填正数,可带 K / M:200000、200K、1M')).toBeTruthy()
     // 输入框里那几个字**留着** —— 让人看得见自己刚打的是什么。
-    expect(contextBox().value).toBe('200k')
+    expect(contextBox().value).toBe('200 tokens')
   })
 
   it('占位符与提示行说的是「今天实际生效的数与它的来源」', async () => {

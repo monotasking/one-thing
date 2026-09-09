@@ -15,6 +15,27 @@ export function formatQuantity(n: number): string {
   return `${sign}${trim(m.toFixed(1))}M`
 }
 
+/**
+ * `formatQuantity` 的反向:把人写的读数解析回整数。**同一份进位规则的另一半**,
+ * 所以住在同一个文件里 —— k / M 的倍数在两处各写一遍就是两处会漂开。
+ *
+ * 认的写法:`200000`、`200,000`、`200k` / `200K`、`1M` / `1m`、`1.5M`;
+ * 大小写不分(`formatQuantity` 写小写 k 大写 M,人打的时候没人记得住这条)。
+ * 倍数是十进制(k = 1000,M = 1 000 000):目录里 deepseek 那种 1 048 576 是
+ * 二进制的账,但人说「1M」的时候指的是一百万,不是 2 的 20 次方。
+ *
+ * 认不出来、乘完不是整数、或 ≤ 0,一律 `null` —— 「0.0005k」不是半个 token。
+ */
+export function parseQuantity(raw: string): number | null {
+  const m = /^(\d+(?:\.\d+)?)\s*([kKmM])?$/.exec(raw.trim().replace(/,/g, ''))
+  if (!m) return null
+  const unit = m[2]?.toLowerCase()
+  const factor = unit === 'k' ? 1_000 : unit === 'm' ? 1_000_000 : 1
+  const n = Number(m[1]) * factor
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) return null
+  return n
+}
+
 export function formatDuration(ms: number): string {
   const safe = Number.isFinite(ms) && ms > 0 ? ms : 0
   if (safe < 60_000) return `${(safe / 1000).toFixed(1)}s`

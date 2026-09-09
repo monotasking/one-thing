@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatDuration, formatQuantity } from '../quantity'
+import { formatDuration, formatQuantity, parseQuantity } from '../quantity'
 
 /**
  * §5.7 收口之前有**两个产地**在各写各的:`composer/transitions.ts` 的 `formatCount`
@@ -55,5 +55,34 @@ describe('时间:只到 0.1s,永不写毫秒', () => {
     [-1, '0.0s'],
   ])('%i ms → %s', (ms, want) => {
     expect(formatDuration(ms)).toBe(want)
+  })
+})
+
+describe('parseQuantity —— formatQuantity 的反向', () => {
+  it.each([
+    ['200000', 200_000],
+    ['200,000', 200_000],
+    ['200k', 200_000],
+    ['200K', 200_000],
+    [' 1M ', 1_000_000],
+    ['1m', 1_000_000],
+    ['1.5M', 1_500_000],
+    ['0.5k', 500],
+    ['999', 999],
+  ])('%s → %d', (raw, want) => {
+    expect(parseQuantity(raw)).toBe(want)
+  })
+
+  it.each(['', 'abc', '200 tokens', '-1', '0', '0.0005k', '1e6', '1.2.3M', '200kb'])(
+    '%s 认不出来 → null',
+    (raw) => {
+      expect(parseQuantity(raw)).toBeNull()
+    },
+  )
+
+  it('formatQuantity 写出来的短写能一字不差解析回去(整千 / 整十万)', () => {
+    for (const n of [1000, 200_000, 1_000_000, 1_500_000, 12_300]) {
+      expect(parseQuantity(formatQuantity(n))).toBe(n)
+    }
   })
 })
