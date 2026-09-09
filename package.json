@@ -89,6 +89,7 @@
 		"@anthropic-ai/claude-agent-sdk": "^0.3.214",
 		"@deepseek-ai/cordis": "4.0.1",
 		"@modelcontextprotocol/client": "^2.0.0",
+		"@modelcontextprotocol/server": "^2.0.0",
 		"@huggingface/transformers": "^3.7.6",
 		"@zip.js/zip.js": "^2.8.11",
 		"culori": "^4.0.2",

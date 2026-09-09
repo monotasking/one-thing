@@ -408,7 +408,15 @@ export const resourceStateVariableGateway: ResourceStateVariableGateway = {
       if (!states) continue
       for (const name of Object.keys(states).sort()) {
         const state = states[name]
-        const base = { scheme: spec.scheme, name, title: state.title, volatility: state.volatility }
+        // `schema` 原样转述:它是这格状态**进提示词的键集**,投影按它减
+        // (`projectDeclaredState`)。这里不读它、不解释它 —— 键名归自述,不归接线。
+        const base = {
+          scheme: spec.scheme,
+          name,
+          title: state.title,
+          volatility: state.volatility,
+          schema: state.schema,
+        }
         const ref = state.volatility === 'turn' ? stateRef(spec.scheme, state.scope, sessionId) : null
         if (!ref) {
           // 值一格都不读:非 turn 的读法未必是纯内存的(`music.nowPlaying`),而

@@ -109,6 +109,42 @@ const SESSION_SUMMARY_SCHEMA: JsonSchema = {
 }
 
 /**
+ * `state.current` 进提示词的**键集**(K4-a')。
+ *
+ * ## 它为什么不是 `SESSION_SUMMARY_SCHEMA`
+ *
+ * `state` 的 schema 就是这格状态进提示词的键集 —— 投影方按这张 `properties` 过滤
+ * `read` 交回来的值,没声明的键一格都不进板。所以它与 `get` 的结果**不是别名**,
+ * 这里的减法是有意的:
+ *
+ *   · `messageCount` —— 每回合都在动。变量板整块是**一个** section(`variables`),
+ *     尾块的去重按 section 比字节,于是只要这一格在板上,这块板就每回合重发一次。
+ *     「这条会话有多少条消息」模型从抄本本身就看得见,为它每回合付几百字节的重复
+ *     不成比例。要数,问 `get`。
+ *   · `createdAt` —— 不动,但也不该逐回合出现在提示词里:一条会话是什么时候建的
+ *     与「这一回合发生在哪条会话里」无关,它是问出来的事实,不是喂进去的事实。
+ *
+ * 剩下的七格都是「这一回合发生在哪」的一部分,而且**在一条会话的一生里几乎不动**
+ * ——这正是它们值得每回合白喂一次的理由。
+ *
+ * 减法在这里而不在投影方,是「能力自述、别人读表」那条:将来任何一种资源都靠
+ * 自己这一格控制自己进提示词的字节,而投影方不认识任何键名。
+ */
+const SESSION_STATE_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'string' },
+    title: { type: 'string', description: 'The session name shown in the sidebar.' },
+    workingDirectory: { type: 'string', description: 'Sandbox root for this session, if any.' },
+    pinned: { type: 'boolean', description: 'Pinned to the top of the sidebar.' },
+    archived: { type: 'boolean', description: 'Archived out of the sidebar.' },
+    model: { type: 'string', description: 'Which model this session last ran on, as "provider/model".' },
+    agent: { type: 'string', description: 'The agent this session is bound to.' },
+  },
+  required: ['id', 'title', 'pinned', 'archived'],
+}
+
+/**
  * 一条会话的完整记录(`record` 的结果)。**故意写得松**:它就是这台宿主的
  * `ChatSession`,那份形状的权威在共享契约那一包里,在这里抄一份齐全的等于立刻
  * 有两张会漂移的表。列出来的几格是「每一条会话都一定有」的那几个,其余原样带过。
@@ -470,16 +506,17 @@ export const sessionResourceSpec: ResourceSpec = {
    * 那一行 = 变量系统,不另立)。现在写下来,是因为「哪些状态值得主动喂」是**自述**
    * 的一部分 —— 等到接的时候再补,那一刻就会有人想在提示词那一侧按 scheme 枚举。
    *
-   * **喂的是这份摘要**,而摘要自 K3-a' 起又是 `get` 交出的那一份(K2c-2 一度让
-   * `get` 交整条记录,那半句被 `get` 那一格上的注释推翻了)。所以这一格与 `get`
-   * 现在同形同源 —— 但它仍然自己带 schema,不写成「`get` 的别名」:喂进提示词的
-   * 是**状态**,状态该长什么样是这一格自己的话;`get` 哪天要多一格,不该因为一句
-   * 别名就自动多喂给模型一格。K4 接双通道时要的仍然是这份摘要,不是 `record`。
+   * **值从 `get` 那条读法来,但键集是这一格自己的**(K4-a')。K1 写的是「喂的是这
+   * 份摘要」,K4-a' 把那半句坐实成一张**独立的** schema(`SESSION_STATE_SCHEMA`):
+   * 状态该长什么样是这一格自己的话,`get` 哪天多一格,不该因为一句别名就自动多喂
+   * 给模型一格 —— 而 `messageCount` 正是那个反例,它每回合都动,一格就让整块变量板
+   * 每回合重发。减了哪两格、为什么减,写在那张 schema 上。K4 接双通道时要的仍然是
+   * 这一份,不是 `record`。
    */
   state: {
     current: {
       title: 'The session this turn is happening in',
-      schema: SESSION_SUMMARY_SCHEMA,
+      schema: SESSION_STATE_SCHEMA,
       volatility: 'turn',
       /**
        * K4-a:两格取址的话,两格都是这份自述自己说的。

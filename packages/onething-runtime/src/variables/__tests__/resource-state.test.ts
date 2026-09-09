@@ -8,6 +8,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   ResourceStateProvider,
+  projectDeclaredState,
   resourceStateVariableName,
   stableStateValue,
   type ResourceStateFact,
@@ -109,12 +110,83 @@ describe('ResourceStateProvider(K4-a)', () => {
     expect(() => provider.onExternalChange(() => {})()).not.toThrow()
   })
 
+  /**
+   * **反证③**(K4-a'):把 `list` 里那句 `projectDeclaredState` 拆掉(直接
+   * `stableStateValue(fact.value)`),这一例与装配级那条「追一条消息后逐字不变」
+   * 一起红。
+   */
+  it("K4-a':schema 声明了哪些键就只投哪些键 —— 多余的一格都不进板", async () => {
+    const provider = new ResourceStateProvider(gatewayOf([{
+      ...TURN_FACT,
+      schema: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string' } } },
+      // `messageCount` 每回合都在动,自述没声明它,于是它一个字节都不进板。
+      value: { id: 's1', title: 'Hello', messageCount: 7, createdAt: 1 },
+    }]))
+    const variables = await provider.list({ sessionId: 's1' })
+    expect(variables[0].value).toBe('{"id":"s1","title":"Hello"}')
+  })
+
+  it("K4-a':schema 没有 properties(或者压根没 schema)时,整值原样投", async () => {
+    const value = { id: 's1', title: 'Hello', extra: 1 }
+    const expected = '{"extra":1,"id":"s1","title":"Hello"}'
+    // 没 schema:这台 gateway 没有键集可交,投影方不替它做主。
+    const bare = new ResourceStateProvider(gatewayOf([{ ...TURN_FACT, value }]))
+    expect((await bare.list({ sessionId: 's1' }))[0].value).toBe(expected)
+    // 有 schema 但没对键集表态。
+    const loose = new ResourceStateProvider(gatewayOf([
+      { ...TURN_FACT, schema: { type: 'object' }, value },
+    ]))
+    expect((await loose.list({ sessionId: 's1' }))[0].value).toBe(expected)
+  })
+
+  it("K4-a':声明了但值里没有的键不补空,空 properties 是「一个键都不要」", async () => {
+    const partial = new ResourceStateProvider(gatewayOf([{
+      ...TURN_FACT,
+      schema: { type: 'object', properties: { id: {}, title: {}, agent: {} } },
+      value: { id: 's1', title: 'Hello' },
+    }]))
+    expect((await partial.list({ sessionId: 's1' }))[0].value).toBe('{"id":"s1","title":"Hello"}')
+
+    // `{}` 与「没说」不是同一句话:它是照字面办的「一个键都不要」。
+    const empty = new ResourceStateProvider(gatewayOf([{
+      ...TURN_FACT,
+      schema: { type: 'object', properties: {} },
+      value: { id: 's1' },
+    }]))
+    expect((await empty.list({ sessionId: 's1' }))[0].value).toBe('{}')
+  })
+
   it('认领整条前缀 —— 认领了才拿得到 READONLY 那句实话', () => {
     const provider = new ResourceStateProvider(gatewayOf([TURN_FACT]))
     expect(provider.claims('resource_session_current')).toBe(true)
     expect(provider.claims('resource_anything_at_all')).toBe(true)
     expect(provider.claims('goal')).toBe(false)
     expect(provider.claims('session_current')).toBe(false)
+  })
+})
+
+describe("按自述的键集过滤(K4-a')", () => {
+  it('值不是对象时 properties 对它无话可说,原样交回', () => {
+    const schema = { type: 'object', properties: { id: {} } }
+    expect(projectDeclaredState('plain', schema)).toBe('plain')
+    expect(projectDeclaredState(7, schema)).toBe(7)
+    expect(projectDeclaredState(null, schema)).toBe(null)
+    expect(projectDeclaredState([{ id: 1, other: 2 }], schema)).toEqual([{ id: 1, other: 2 }])
+  })
+
+  it('properties 不是对象(写歪了)也走原样投,不是当场丢一半键', () => {
+    const value = { id: 's1', other: 1 }
+    expect(projectDeclaredState(value, { properties: null })).toBe(value)
+    expect(projectDeclaredState(value, { properties: ['id'] })).toBe(value)
+    expect(projectDeclaredState(value, undefined)).toBe(value)
+  })
+
+  it('只过一层:嵌套值原样带过,不去认识 items / oneOf 那一套', () => {
+    const value = { id: 's1', nested: { keep: 1, drop: 2 }, other: 3 }
+    expect(projectDeclaredState(value, { properties: { id: {}, nested: {} } })).toEqual({
+      id: 's1',
+      nested: { keep: 1, drop: 2 },
+    })
   })
 })
 

@@ -36,9 +36,13 @@
  * 序列化出同样的字节」;**同一格状态在两个回合之间值变不变,是那种资源自己的事**
  * ——`datetime` 把时间压到小时粒度、`music-radio` 不带进度与时长,都是那种资源
  * 各自付的账。今天已知的一笔:会话摘要带 `messageCount`,它每回合都在动,于是
- * 只要这一格在板上,`variables` 这个 section 就每回合重发。要不要为此给
- * `state.current` 一份「不含计数」的摘要(自述里 state 本来就自带 schema,与 `get`
- * 不是别名),归拍板,不归这只文件。
+ * 只要这一格在板上,`variables` 这个 section 就每回合重发。
+ *
+ * **K4-a' 把那笔账还了,办法是「自述说了算」**:`state` 的 schema 从此就是这格状态
+ * 进提示词的**键集**,投影只取 `properties` 里声明过的键(`projectDeclaredState`)。
+ * 会话那份自述因此给 `state.current` 自己列了一张表(不再引用 `get` 的那份),把
+ * `messageCount` 与 `createdAt` 减掉。这只文件仍然不认识任何键名 —— 减法住在能力
+ * 那一侧,投影方只读表。
  *
  * ── 值为什么一律走 JSON ────────────────────────────────────────────────────
  * `format.ts` 的渲染只取值的**第一行**(其余折成 `(+N more lines)`),所以一格会
@@ -52,6 +56,15 @@ import { RESOURCE_STATE_VARIABLE_PREFIX } from '../types.js'
 import type { ContextVariable, VariableContext, VariableProvider } from '../types.js'
 
 /**
+ * 一份 JSON Schema,**在这只文件里只有一格有意义**:`properties`。
+ *
+ * 写成结构类型而不是 `import type { JsonSchema }`,是因为这一层真的只需要那一格 ——
+ * 投影方不校验、不解释、不认识任何键名,它只问「这份自述对键集表过态没有」。索引
+ * 签名是那句「其余的格子照旧原样带过,不是我的事」。
+ */
+export type StateKeySchema = { readonly properties?: unknown; readonly [key: string]: unknown }
+
+/**
  * 一格状态的事实。**带 `volatility`**:哪一档能进提示词是这只 provider 的判断
  * (它才认识提示词双通道),而 gateway 只负责把注册表上的话原样转述过来。
  */
@@ -62,6 +75,12 @@ export interface ResourceStateFact {
   /** 自述里那句人话,直接当变量的 `description`。 */
   readonly title: string
   readonly volatility: 'stable' | 'turn' | 'live'
+  /**
+   * 这格状态的 schema(自述 `StateSpec.schema` 原样转述)。**它是键集**:投影只取
+   * 这张 `properties` 里声明过的键 —— 见 `projectDeclaredState`。缺席 = 这台 gateway
+   * 没有 schema 可交,值原样投。
+   */
+  readonly schema?: StateKeySchema
   /**
    * 读回来的值。`undefined` = 这一格这一回合**没有值**(没去读、读失败、或者
    * 这条会话上就没有它)—— 变量随之不出现,而不是出现一格 `undefined`。
@@ -101,6 +120,40 @@ export interface ResourceStateVariableGateway {
  */
 export function resourceStateVariableName(scheme: string, state: string): string {
   return `${RESOURCE_STATE_VARIABLE_PREFIX}${scheme.replace(/-/g, '_')}_${state}`
+}
+
+/**
+ * 按自述的 schema 过滤一个状态值:**只留 `properties` 里声明过的键**(K4-a')。
+ *
+ * 这是「能力自述、别人读表」在提示词这一侧的落点。`state` 的 schema 从此不只是
+ * 一份文档,它**就是**这格状态进提示词的键集 —— 一种资源想少喂几格(会话那份自述
+ * 减掉每回合都在动的 `messageCount`,理由写在它自己那张 schema 上),改的是它自己
+ * 的自述;投影方这一侧一个键名都不认识,新接一种资源时这只函数一个字都不用改。
+ *
+ * 三条边界,都是「说不出话就别装作听懂了」:
+ *   · schema 没有 `properties`(或者压根没 schema)—— 那份自述没有对键集表过态,
+ *     整值原样投。空对象 `{}` 与「没说」不同,它是「一个键都不要」,照字面办。
+ *   · 值不是对象(标量、数组、null)—— `properties` 对它无话可说,原样投。
+ *   · 声明了但值里没有的键 —— 不补 `undefined`,缺席就是缺席(与 provider 那一侧
+ *     「一格没值就不出现」同一条)。
+ *
+ * **只过一层**:嵌套要过滤就得认识 `items` / `oneOf` / `$ref` 那一整套,那是校验器
+ * 的活。今天的状态 schema 都是一层平表,真出现要过滤嵌套的那一天,该长的是校验器
+ * 的一次复用,不是在这里手抄半个 JSON Schema。
+ */
+export function projectDeclaredState(
+  value: unknown,
+  schema: StateKeySchema | undefined,
+): unknown {
+  const properties = schema?.properties
+  if (properties === null || typeof properties !== 'object' || Array.isArray(properties)) return value
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return value
+  const record = value as Record<string, unknown>
+  const out: Record<string, unknown> = {}
+  for (const key of Object.keys(properties as Record<string, unknown>)) {
+    if (Object.prototype.hasOwnProperty.call(record, key)) out[key] = record[key]
+  }
+  return out
 }
 
 /**
@@ -166,7 +219,8 @@ export class ResourceStateProvider implements VariableProvider {
       if (fact.value === undefined) continue
       out.push({
         name: resourceStateVariableName(fact.scheme, fact.name),
-        value: stableStateValue(fact.value),
+        // 先按自述的键集减,再序列化 —— 没声明的键一个字节都不进板。
+        value: stableStateValue(projectDeclaredState(fact.value, fact.schema)),
         readonly: true,
         state: true,
         description: fact.title,

@@ -58,6 +58,7 @@ import { sessionReads } from '../../session/reads.js'
 import { getStreamEngine } from '../engine/index.js'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import { localUserPrincipal } from '@onething/core/permission'
+import type { Principal } from '@onething/core/permission'
 import {
   serializeOutcome,
   serializeReadOutcome,
@@ -429,13 +430,19 @@ export class HeadlessBackend {
    * 四只转发口,加起来做**两件事**:铸主体、把调用交给 `backend.resources`,
    * 然后按 RPC 域那三只 `serialize*` 投一次影。
    *
-   * ## 主体:`localUserPrincipal()`
+   * ## 主体:缺省 `localUserPrincipal()`,可由调用方顶掉(K4-c)
    *
    * CLI 是**本机进程** —— 它拿的是 `<store>/run/daemon.sock`(0600)上的一条连接,
    * 能连上就已经是这台机器上的那个人。这与 `rpc/principal.ts` 第一条判据
    * (`isHostLocallyTrusted()` → `localUserPrincipal()`)说的是同一句话,只是
    * daemon 走的不是 HTTP 面、没有 `RpcDispatchContext` 可问,所以不复用那只函数
    * (复用它得先给它编一个假 context —— 那是把「谁在做」变成一次伪造练习)。
+   *
+   * **那条理由对 MCP 出口不成立**(K4-c,`onething mcp`):连 socket 的仍然是这台
+   * 机器上的人,下指令的却是外面那个 agent。所以读 / 做的最后一格是可选的
+   * `principal`,由调用方顶掉缺省值;`apps/cli/src/daemon-server.ts` 的
+   * `readOptionalSystemPrincipal` 只让它是 `system` 一支,`user` / `agent` 当场拒 ——
+   * 判据放在被调用的那一侧,改一行桥绕不过去。
    *
    * ## 投影复用 RPC 域那三只
    *
@@ -471,9 +478,10 @@ export class HeadlessBackend {
     name: string,
     query: Record<string, unknown> = {},
     sessionId?: string,
+    principal: Principal = localUserPrincipal(),
   ): Promise<ResourceReadView> {
     const outcome = await this.ownedBackend.resources.read(ref, name, query, {
-      principal: localUserPrincipal(),
+      principal,
       ...(sessionId ? { sessionId } : {}),
     })
     return serializeReadOutcome(outcome)
@@ -484,9 +492,10 @@ export class HeadlessBackend {
     op: string,
     params: Record<string, unknown> = {},
     sessionId?: string,
+    principal: Principal = localUserPrincipal(),
   ): Promise<ResourceOutcomeView> {
     const outcome = await this.ownedBackend.resources.do(ref, op, params, {
-      principal: localUserPrincipal(),
+      principal,
       ...(sessionId ? { sessionId } : {}),
     })
     return serializeOutcome(outcome)

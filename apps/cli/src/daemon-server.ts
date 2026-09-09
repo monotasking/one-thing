@@ -5,6 +5,7 @@ import type { Socket } from 'node:net'
 import type {
   DaemonEvent,
   DaemonRequest,
+  DaemonResourcePrincipal,
   DaemonResponse,
   DaemonStatus,
   DaemonFrame,
@@ -256,6 +257,7 @@ export class DaemonServer {
           requiredString(params, 'name'),
           params?.query ?? {},
           params?.sessionId,
+          readOptionalSystemPrincipal(request.params),
         )
       }
       case 'resource.do': {
@@ -267,6 +269,7 @@ export class DaemonServer {
           requiredString(params, 'op'),
           params?.params ?? {},
           params?.sessionId,
+          readOptionalSystemPrincipal(request.params),
         )
       }
       default:
@@ -360,6 +363,35 @@ function requiredString(params: unknown, key: string): string {
   const value = (params as Record<string, unknown> | undefined)?.[key]
   if (typeof value !== 'string' || !value.trim()) throw namedError('ERR_VALIDATION', `${key} is required`)
   return value
+}
+
+/**
+ * `resource.read` / `resource.do` 上那格可选的主体(原子 K4-c)。
+ *
+ * ## 为什么这里判,而不是让调用方自觉
+ *
+ * 缺省(不给)= K4-b 那条:本机用户。给了,就**只能是 `system` 一支** —— 今天唯一
+ * 会填它的是 `onething mcp` 那条桥,它替外面的 agent 说话,而那个 agent 不是这台
+ * 机器上的人。允许它自称 `user`,等于让任何一个连得上 socket 的进程一句话拿到用户
+ * 主体,K3-a' 那条「效果按主体定」的分档(`removeMessage`:用户 `[]`,其余
+ * `session_destructive`)当场作废。
+ *
+ * 所以 `user` / `agent` 是**当场拒**,不是悄悄降级成 system:一次伪造该有回声,
+ * 而一个被静默改写的主体只会让下一个人以为这条路是通的。判据放在**被调用的这一侧**
+ * —— 桥自己判等于没判,改一行桥就绕过去了。
+ */
+function readOptionalSystemPrincipal(params: unknown): DaemonResourcePrincipal | undefined {
+  const value = (params as { principal?: unknown } | undefined)?.principal
+  if (value === undefined || value === null) return undefined
+  const record = typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined
+  const component = record?.component
+  if (record?.kind !== 'system' || typeof component !== 'string' || !component.trim()) {
+    throw namedError(
+      'ERR_VALIDATION',
+      'principal must be { kind: "system", component: "<name>" } — this door does not mint user or agent principals',
+    )
+  }
+  return { kind: 'system', component }
 }
 
 function randomClientId(): string {

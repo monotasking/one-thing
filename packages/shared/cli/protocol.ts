@@ -1,3 +1,4 @@
+import type { Principal } from '@onething/core/permission'
 import type { PermissionMode } from '../ipc/tools.js'
 
 export type CliPlatformSupport = 'unix-socket'
@@ -80,6 +81,21 @@ export type DaemonMethod =
   | 'resource.describe'
   | 'resource.read'
   | 'resource.do'
+
+/**
+ * `resource.read` / `resource.do` 上那格可选的主体(原子 K4-c)。
+ *
+ * daemon 缺省把每次调用铸成本机用户(K4-b:能连上 0600 的 socket 就已经是这台
+ * 机器上的那个人)。**MCP 出口是那条理由的例外**:连 socket 的仍然是本机的人,
+ * 下指令的却是外面那个 agent,所以它必须能把自己报上来。
+ *
+ * 类型上只开 `system` 这一支 —— 从 `Principal` 里**取**而不是重写,这样将来
+ * `Principal` 变形,这条线当场跟着变。开这一支的代价与收益都写在
+ * `apps/cli/src/daemon-server.ts` 的 `readOptionalSystemPrincipal` 上:一个能自称
+ * 「我是本机用户」的出口,等于把「效果按主体定」的分档一次废掉,所以 `user` /
+ * `agent` 在 daemon 侧是当场拒,不是悄悄降级。
+ */
+export type DaemonResourcePrincipal = Extract<Principal, { kind: 'system' }>
 
 export interface AskRequest {
   prompt: string

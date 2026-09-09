@@ -75,6 +75,9 @@ async function main(): Promise<void> {
     case 'resource':
       await runResourceCommand(command, rest, parsed)
       break
+    case 'mcp':
+      await runMcpCommand(parsed)
+      break
     case 'trace': {
       // 第二个不经 daemon 的 scope(理由见 trace-command.ts 的头注):轨迹的
       // 事实是一个纯追加文件,读它不该要求引擎活着 —— 排障时引擎往往正是
@@ -110,6 +113,33 @@ async function main(): Promise<void> {
  * `0` 时不写 `process.exitCode` —— 写 `0` 与不写在语义上相同,但不写才不会把
  * 一个别处已经置过的失败码抹掉。
  */
+/**
+ * `onething mcp` —— stdio MCP 服务端出口(原子 K4-c)。
+ *
+ * **动态 import,量出来的**(与 `trace-command` / `plugin-command` 同一条,理由却
+ * 不同):`mcp-command.ts` 的静态闭包里有 `@onething/backend/wiring/resource`
+ * (还原函数)与 `wiring/logging`(日志门面),两者一求值就把装配层的脊柱拉起来
+ * —— 静态引进来之后 `onething --help` 从 **0.13s 变成 1.3s**(五次取中位数,
+ * 12MB 的单文件 cjs)。改成动态之后回到 0.13s,而 `onething mcp` 自己照付不误
+ * (它本来就要连 daemon)。MCP server SDK(连着一份内嵌 ajv)在 `mcpCommand` 里
+ * 还有第二层动态 import,同一条理由。
+ *
+ * 与其余 scope 的两处不同,都是 stdio 协议逼出来的:
+ *   · **它不关连接**。服务器活到对面关掉 stdin 为止,`mcpCommand` 在那之前不返回;
+ *     `client.close()` 放在 finally 里,那一刻进程也该走了。
+ *   · **它一个字都不往 stdout 写**(`stdout()` 在 `mcp-command.ts` 里是禁用的)——
+ *     那条管子是 JSON-RPC 信道,多一行就是一次协议解析失败。
+ */
+async function runMcpCommand(parsed: ParsedArgs): Promise<void> {
+  const client = await ensureDaemon({ storePath: parsed.storePath })
+  try {
+    const { mcpCommand } = await import('./mcp-command.js')
+    await mcpCommand({ ...(parsed.storePath ? { storePath: parsed.storePath } : {}) }, client)
+  } finally {
+    client.close()
+  }
+}
+
 async function runResourceCommand(command: string | undefined, rest: string[], parsed: ParsedArgs): Promise<void> {
   const client = await ensureDaemon({ storePath: parsed.storePath })
   try {
@@ -673,6 +703,7 @@ Usage:
   onething resource describe <scheme>
   onething resource read <ref> <name> [--query '<json>'] [--session <id>] [--json]
   onething resource do <ref> <op> [--params '<json>'] [--session <id>] [--json]
+  onething mcp [--store <path>]        # stdio MCP server: every resource, for any agent
 
 Global:
   --store <path>  Use a non-default store directory
