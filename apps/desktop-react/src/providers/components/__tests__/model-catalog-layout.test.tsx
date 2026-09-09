@@ -147,6 +147,17 @@ describe('七列表的轨道:单产地 + 每一档都排得下', () => {
   })
 })
 
+describe('行尾动作组:✕ 的位置每一行都占着(09-09 报障:手填行错位)', () => {
+  it('.slot 与 ✕ 同宽(--icon-btn-sm),.actions 仍是右对齐 flex 而不是内层 grid', () => {
+    const slot = /\.slot\s*\{([^}]*)\}/.exec(css)?.[1] ?? ''
+    expect(slot).toMatch(/width:\s*var\(--icon-btn-sm\)/)
+    expect(slot).toMatch(/flex:\s*none/)
+    const actions = /\.actions\s*\{([^}]*)\}/.exec(css)?.[1] ?? ''
+    // 轨道声明只长在 .grid 上(上面那组守卫);动作组不许自己开一张 grid。
+    expect(actions).not.toMatch(/grid-template-columns/)
+  })
+})
+
 describe('目录不自己滚:滚动收敛在详情列那一层(报障⑤)', () => {
   function block(selector: string): string {
     const at = css.indexOf(`${selector} {`)

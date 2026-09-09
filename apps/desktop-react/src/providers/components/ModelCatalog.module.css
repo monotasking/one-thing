@@ -312,6 +312,12 @@
   text-overflow: ellipsis;
 }
 
+/*
+ * 行尾动作组:右对齐的 flex,**但 ✕ 那一格每一行都占着**(09-09 报障:手填行多一颗 ✕,
+ * 右对齐把「设为当前」与滑杆钮整体推左,与别的行错开)。没有 ✕ 的行摆一个
+ * `.slot` 空位(宽 = `--icon-btn-sm`,与 ✕ 同宽),于是滑杆钮在每一行落在同一个 x 上。
+ * 不用内层 grid:本表「轨道声明只长在 .grid 上」是门里钉着的单产地,不为一个空位破例。
+ */
 .actions {
   display: flex;
   align-items: center;
@@ -320,8 +326,30 @@
   min-width: 0;
 }
 
+/* ✕ 的空位。零外观、零交互,只占宽。 */
+.slot {
+  flex: none;
+  width: var(--icon-btn-sm);
+}
+
+/*
+ * 「当前模型」那格读数。**穿「设为当前」那颗钮的几何,不当钮**(09-09 用户要求
+ * 「current model 能不能和 set current 的 UI 一致」):同高 / 同内边距 / 同圆角 /
+ * 同描边,字用 accent —— 整列看过去是一个形,读的时候一眼分得出「这是选中的那一颗」。
+ * 不可点、无 hover、无焦点:它是读数,不是禁用的按钮(禁用态说的是「不能按」,
+ * 而这一格要说的是「就是它」)。几何 token 与 `ui/Button.module.css` 的 `.btn` 同源,
+ * 那边改了这边跟着变。
+ */
 .current {
-  font-size: var(--fs-micro);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  height: var(--btn-sm);
+  padding: 0 var(--btn-pad-x);
+  border: var(--bw-1) solid var(--line-1);
+  border-radius: var(--r-1);
+  font-size: var(--fs-meta);
   color: var(--accent);
   white-space: nowrap;
 }

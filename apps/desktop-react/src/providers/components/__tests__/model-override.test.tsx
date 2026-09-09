@@ -95,6 +95,22 @@ describe('行尾第三颗钮', () => {
     expect(screen.getByTestId('configure-ghost')).toBeTruthy()
   })
 
+  it('✕ 的位置每一行都占着:手填行是 ✕,别的行是同宽空位(09-09 报障:手填行错位)', () => {
+    renderCatalog([row('a'), row('ghost', { manual: true, catalog: NO_CATALOG_FACTS })])
+    const remove = screen.getByTestId('remove-ghost')
+    const slot = screen.getByTestId('remove-slot-a')
+    expect(remove.tagName).toBe('BUTTON')
+    expect(slot.getAttribute('aria-hidden')).toBe('true')
+    expect(screen.queryByTestId('remove-slot-ghost')).toBeNull()
+    expect(screen.queryByTestId('remove-a')).toBeNull()
+    // 两行动作组里的**件数一样**:三件,顺序 [设为当前 | 滑杆 | ✕ 或空位]。
+    const cellOf = (id: string) => screen.getByTestId(`configure-${id}`).parentElement!
+    expect(cellOf('a').children.length).toBe(3)
+    expect(cellOf('ghost').children.length).toBe(3)
+    expect(cellOf('a').lastElementChild).toBe(slot)
+    expect(cellOf('ghost').lastElementChild).toBe(remove)
+  })
+
   it('点开 = role=dialog 的附属浮层 + 钮上 aria-expanded 翻面', async () => {
     renderCatalog([row('a')])
     const button = screen.getByTestId('configure-a')

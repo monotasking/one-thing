@@ -3,7 +3,7 @@ import { Button } from '../../ui/Button'
 import { Checkbox } from '../../ui/Checkbox'
 import { IconButton } from '../../ui/IconButton'
 import { Tooltip } from '../../ui/Tooltip'
-import { Brain, Image, ImagePlus, Mic, SlidersHorizontal, Wrench } from '../../components/icons'
+import { Brain, Image, ImagePlus, Mic, SlidersHorizontal, Wrench, X } from '../../components/icons'
 import type { LucideIcon } from '../../components/icons'
 import type { MessageKey, TFn } from '../../i18n'
 import { formatQuantity } from '../../format/quantity'
@@ -283,17 +283,24 @@ export function ModelCatalogRow({
             onWrite={(patch) => onWriteOverride(row.id, patch)}
           />
         )}
-        {row.manual && (
-          <Button
+        {/*
+          ✕ 只有手填行才有,但它的**位置**每一行都占着:09-09 报障「手填那一行的
+          Set current 与滑杆钮比别的行靠左」—— 右对齐的 flex 里多一件就把前面两件
+          整体推左。没有 ✕ 的行摆一个同宽的空位(`.slot`),滑杆钮就在每一行落在
+          同一个 x 上。同批把 ✕ 从 `ui/Button iconOnly`(28 方)换成 `ui/IconButton`
+          (22 方):同一行上两颗图标钮两种尺寸,空位也没法按一个数占。
+        */}
+        {row.manual ? (
+          <IconButton
             size="sm"
-            variant="ghost"
-            iconOnly
+            icon={X}
+            label={t('providers.removeModel', { model: row.id })}
             disabled={pending}
             onClick={() => onRemoveManual(row.id)}
-            aria-label={t('providers.removeModel', { model: row.id })}
-          >
-            ✕
-          </Button>
+            testId={`remove-${row.id}`}
+          />
+        ) : (
+          <span className={s.slot} aria-hidden="true" data-testid={`remove-slot-${row.id}`} />
         )}
       </span>
     </div>
