@@ -12,6 +12,7 @@
  * 两张表合了」都会当场红,而合表是一次用户可感知的变化,归拍板不归接线。
  */
 import { describe, expect, it } from 'vitest'
+import { EFFECT_POLICY } from '../../toolkit/effects.js'
 import { decidePermission } from '../permission-policy.js'
 
 function decide(kind: string) {
@@ -37,6 +38,19 @@ describe('静默效果类', () => {
     for (const kind of ['net_fetch', 'user_ask', 'session_message', 'session_spawn']) {
       expect(decide(kind).decision, kind).toBe('ask')
     }
+  })
+
+  /**
+   * K3-a —— 新加的破坏性类。它是**两张表都说 ask** 的第一类:策略表写 `ask`,而
+   * 判定核这一侧「`read` / `ui_change` 之外都要问」也把它判成 ask。两张表并存的存量
+   * 债照旧在(归拍板),但这一类不因此含糊。
+   */
+  it('session_destructive 要问 —— 删掉的东西没有第二个地方还留着', () => {
+    // 两张表都得说 ask。**判定核这一侧才是行为的产地**:把策略表那一行改成
+    // `silent` 不会改变任何事(这条用例照绿),真正的杠杆是上面那个集合 ——
+    // 这正是 K2a' 留账的「两张表并存」那笔债的形状,写在这里好让下一个人看见。
+    expect(EFFECT_POLICY.session_destructive.policy).toBe('ask')
+    expect(decide('session_destructive').decision).toBe('ask')
   })
 
   it('写盘与跑命令当然还是要问', () => {

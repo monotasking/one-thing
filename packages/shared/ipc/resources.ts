@@ -128,6 +128,27 @@ export type ResourceOutcomeView =
 	| { kind: "failed"; error: { name: string; message: string } };
 
 /**
+ * `ReadOutcome` 的可序列化投影(原子 K2c-2)。四支,判别键与
+ * `core/resource/read-outcome.ts` 一一对应。
+ *
+ * ## 它与 `ResourceOutcomeView` 的差别只有一处,而那一处就是本单
+ *
+ * `ok` 带的是 **`value`(读到的那个值)**,不是 `text`。K1 时读也走「做」那条管线,
+ * 于是一页消息要先 `JSON.stringify` 成文本、过一遍 4000 行 / 256KB 的输出预算、再由
+ * 调用方 `JSON.parse` 回来 —— 真店实测一页 20 条消息就能越界,越界之后交给壳的是
+ * 一段带 `<truncation>` 的文本而不是那一页。读有自己的路之后,值原样过 JSON 信封
+ * (`RpcResponse` 本来就是 JSON),往返消失、截断消失。
+ *
+ * **少了 `aborted` 那一支**:读没有那一档(理由在 `read-outcome.ts` 的文件头 ——
+ * 一次被掐断的读与一次没读成在调用方那里是同一件事)。
+ */
+export type ResourceReadView =
+	| { kind: "ok"; value: unknown }
+	| { kind: "invalid"; message: string }
+	| { kind: "denied"; reason: string }
+	| { kind: "failed"; error: { name: string; message: string } };
+
+/**
  * 一扇壳把它的 `home: 'shell'` 资源交上来(原子 K2b-2,`docs/design/atom-2026-09.md`
  * §10.2「**home 在 shell 的**寿命 = 那扇壳的连接」)。
  *
@@ -218,7 +239,7 @@ export type ResourcesRoutes = {
 		input: DescribeResourceRequest;
 		output: SerializedResourceSpec;
 	};
-	read: { input: ReadResourceRequest; output: ResourceOutcomeView };
+	read: { input: ReadResourceRequest; output: ResourceReadView };
 	do: { input: DoResourceRequest; output: ResourceOutcomeView };
 	mountShell: {
 		input: MountShellResourceRequest;

@@ -36,6 +36,7 @@ export type EffectClass =
   | 'user_ask'
   | 'session_message'
   | 'session_spawn'
+  | 'session_destructive'
   | 'plugin_exec'
   | 'external-agent'
   | 'ui_change'
@@ -89,6 +90,29 @@ const ROWS: readonly EffectPolicyRow[] = [
    * 「不惊动人」与「不留痕迹」是两件事,策略表管前者,审计管后者。
    */
   { kind: 'session_spawn', policy: 'silent', prompt: 'Start a sub-session', barrier: true },
+  /**
+   * K3-a —— **拿掉会话账本里已经存在的东西**:删一条消息、删一条会话、清空一段
+   * 抄本(`docs/design/atom-2026-09.md` §9 K3;`app-intents-2026-09.md` §7 盲点 3
+   * 「破坏性动作(删邮件、发消息、清空歌单)走 `ask`」)。
+   *
+   * ## 为什么它不是 `session_message` 的一档
+   *
+   * `session_message` 说的是「往会话里写一条消息」,而写与删在授权上不是同一件事:
+   * 前者今天全仓都不打扰人(插件信使、`/files` 补一条系统消息),后者动的是**账本
+   * 本身** —— `events.jsonl` 是这个产品唯一的事实来源(F 线三定律),删掉的东西
+   * 没有第二个地方还留着。硬套过去会让「补一条」与「删一条」在权限卡、grant 表和
+   * 审计账里长成同一句话,而账本是要被人读的(`plugin_exec` 不复用 `mcp` 的同一
+   * 条理由)。
+   *
+   * ## `ask` 而不是 `never-grantable`
+   *
+   * `never-grantable` 留给「改变系统自己能够到哪里」那一档(`capability_change`)。
+   * 删一条消息是这个人自己的数据、在这个人自己的会话里,他说一次「这类总是可以」
+   * 应该算数。真正不可逆到该进 `never-grantable` 的(清空账户那种)今天没有产地。
+   *
+   * `barrier: true`:它与同一条会话上并发的读 / 写在账本上抢同一批坐标。
+   */
+  { kind: 'session_destructive', policy: 'ask', prompt: 'Remove session content', barrier: true },
   // R3a:跑一段**插件**写的代码。旧路把这句话写成 `permissionGuard:
   // 'permission-gated'`(`app/plugins/api.ts` 写死,插件填什么都会被覆盖:
   // "插件不能给自己发免检通行证")。新树里 guard 是派生值,所以那句话必须由

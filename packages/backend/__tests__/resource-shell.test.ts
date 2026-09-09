@@ -235,7 +235,9 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
 
     const outcome = await pending
     expect(outcome.kind).toBe('ok')
-    if (outcome.kind === 'ok') expect(JSON.parse(outcome.result.content[0]?.text ?? '')).toEqual({ tiles: 2 })
+    // K2c-2:读的结局带的是**值**。壳那一侧的回执仍然是一段 JSON 文本(那条通道
+    // 只走得了文本),解开它的是 `ShellResourceProvider.read`,不再是调用方。
+    if (outcome.kind === 'ok') expect(outcome.value).toEqual({ tiles: 2 })
   })
 
   it('壳说没跑成:结局是 failed(ShellCommandFailedError),不是 ok', async () => {
@@ -285,6 +287,32 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
     expect(backend.resources.registry.list().map(spec => spec.scheme)).toEqual(['session'])
     const outcome = await backend.resources.do('workbench:center', 'open', {}, callOptions(sessionId))
     expect(outcome.kind === 'failed' && outcome.error.name).toBe('ResourceSchemeUnknownError')
+  })
+
+  /**
+   * K3-a —— §10.4 的露面规则在**壳资源**上的样子:provider 随连接来,工具就随连接
+   * 进工具目录;壳断线(`unmountShell`)之后它当场不在面上。
+   *
+   * 这一条就是反证①的落点:拆掉 `wiring/resource/catalog-sync.ts` 对账里的
+   * `catalog.unregister`,第二句断言红 —— 目录里会留着一只调不动的 `workbench`。
+   */
+  it('K3-a 露面:mountShell 之后 workbench 在工具目录里,unmountShell 之后不在', async () => {
+    const { getToolkitCatalog } = await import('@onething/runtime/toolkit/host')
+    const catalog = getToolkitCatalog()!
+    // 上一条用例把这扇壳摘掉了 —— 所以此刻它本来就不该在目录里。
+    expect(catalog.has('workbench')).toBe(false)
+
+    expect(await backend.shellResources.mountShell(SHELL, WORKBENCH_SPEC)).toEqual({ ok: true })
+    // 对账排在一个微任务上(理由写在 catalog-sync.ts 的头注释里)。
+    await Promise.resolve()
+    expect(catalog.has('workbench')).toBe(true)
+    // 它不进「这台宿主注册了哪些工具」那份清单 —— 与 session 同一条判据。
+    const { toolkitCatalogToolDefinitions } = await import('@onething/runtime/toolkit/catalog-projection.wiring')
+    expect((toolkitCatalogToolDefinitions() ?? []).map(tool => tool.id)).not.toContain('workbench')
+
+    await backend.shellResources.unmountShell(SHELL)
+    await Promise.resolve()
+    expect(catalog.has('workbench')).toBe(false)
   })
 
   it('超时:壳不回执,结局也是 ResourceHomeUnavailableError —— 家不在了,不是跑得慢', async () => {

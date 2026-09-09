@@ -90,6 +90,7 @@ import {
   createResourceKernel,
   forwardResourceEventsToBus,
   mountBuiltinResources,
+  syncResourceToolsIntoCatalog,
   ShellCommandDispatch,
   ShellMountRegistry,
 } from './wiring/resource/index.js'
@@ -815,7 +816,8 @@ export class OnethingBackend implements BackendHandle {
     //
     // `feature_*` 与插件工具**不在这里**:前者由 self-evolution feature 在 mount 时
     // 自己装进目录,后者由 `api.registerTool` 装 —— 两者的寿命都不是"一档目录"的寿命。
-    buildToolkitCatalog(options.toolRegistry ?? 'headless')
+    const toolRegistryTier = options.toolRegistry ?? 'headless'
+    const toolkitCatalog = buildToolkitCatalog(toolRegistryTier)
     // §13.7 裁定 5:服务器工具面变了就重算目录。挂在既有的唯一通知点上,
     // 不顶掉宿主自己那个 handler(它注册的是另一个口子)。
     configureToolkitMCPCapabilitiesChangedHandler(() => refreshToolkitMcpTools())
@@ -834,7 +836,7 @@ export class OnethingBackend implements BackendHandle {
      * 调度、脚本),它们没有 IPC 投影器可接 —— 但每一次「做」都必须落
      * `tool/audit`,那正是「界面点按钮也走管线」这句话唯一看得见的证据。
      *
-     * 资源工具进不进工具目录、在哪种场子露面归 K3,本单不注册。
+     * 资源工具进不进工具目录、在哪种场子露面归 K3-a,见下面那条对账。
      */
     /*
      * K2b-2 —— `home: 'shell'` 的做法往哪儿派。
@@ -879,6 +881,24 @@ export class OnethingBackend implements BackendHandle {
      * 都不出现;退订随实例走。
      */
     this.own(forwardResourceEventsToBus(resourceKernel, eventBus), 'resourceEventBridge')
+    /*
+     * K3-a —— 资源工具(加元工具 `resources`)进工具目录,跟着注册表来去
+     * (`docs/design/atom-2026-09.md` §4「AI 工具」、§10.4 第三行:provider 在 =
+     * 露面)。规则住在 `wiring/resource/catalog-sync.ts`,这里只有一行接线 ——
+     * 这只文件里照旧一个 scheme 名都没有。
+     *
+     * 登记在壳登记簿**之后**,所以关机链上跑在它**之前**:先把目录里那批投影摘掉,
+     * 再去撤壳交上来的自述 —— 反过来的话,中间那一拍目录里会留着一只已经没有实现
+     * 的工具。
+     *
+     * K3-a':递的是这台宿主建目录时用的那一档。「哪一档不给资源工具」的判据住在
+     * 对账那只文件里(`readonly` 一只都不给,理由写在它头上)—— 这里照旧不认识
+     * 任何一档的含义,也照旧一个 scheme 名都没有。
+     */
+    this.own(
+      syncResourceToolsIntoCatalog(resourceKernel, toolkitCatalog, { tier: toolRegistryTier }),
+      'resourceCatalogTools',
+    )
 
     /*
      * 工具跑出去的进程要收回来。挂在工具目录这一步:没有目录就没有工具,也就

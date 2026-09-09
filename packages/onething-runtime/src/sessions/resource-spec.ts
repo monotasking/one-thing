@@ -50,6 +50,29 @@
  * 只退写面。读面要退,先要给「读」一条能装结构化值、且不进审计账的路 —— 那是
  * 一次机制拍板,不是一次接线,留账给 K2c-2。
  *
+ * ── K2c-2:那次拍板做完了,读面这一批跟着退 ────────────────────────────────
+ * `ResourceKernel.read` 不再走 `ToolRunner`(`core/resource/read-outcome.ts` 的文件头
+ * 是那次修正的全文):读有自己的短路径、返回 `ReadOutcome`(`ok` 装的是**值**)、
+ * 不落审计不吃预算。上面那三条硬伤因此一条不剩,`sessions` 域六条读面
+ * (`get` / `getMessages` / `getMessagesPage` / `getUserMarkers` / `getSegments` /
+ * `getTokenUsage`)退成这份自述的投影,对外契约一个字不改。
+ *
+ * 自述这一侧的账:补 `markers` / `segments` / `tokenUsage` 三条读法,`messages`
+ * 长出分页那四格(整份与一页是**同一条读法**,判据是「说没说分页的话」),
+ * `get` 的返回值从摘要改成会话记录 —— 那一条是 K1 口径的推翻,理由写在它自己
+ * 那一格上。
+ *
+ * ── K3-a':资源工具进了目录,于是自述要为「模型也读得到它」负责 ───────────────
+ * K3-a 把资源工具放进工具目录(provider 在注册表里 = 那只工具在目录里),这份
+ * 自述从此**不再只有界面读**。两处因此改口:
+ *
+ *   ① `get` 还给摘要,整份记录另立一条 `record`(K2c-2 那半句被推翻,理由写在
+ *      `get` 那一格上)—— 合成一条之后模型每问一次「我在哪条会话里」都会拉回整份
+ *      抄本再被预算截断;
+ *   ② `removeMessage.effects` 从空数组改成 `['session_destructive']`,那是**上界**;
+ *      真发给授权者的按主体分档,住在 provider 的 `plan` 里 —— 用户删自己的消息
+ *      不问,AI 删必须问。
+ *
  * ── 为什么没有 `appendSystemMessage` ───────────────────────────────────────
  * 它对应域的 `addSystemMessage`,效果类只能是 `session_message`(往会话里写一条
  * 消息)。而 `core/permission/permission-policy.ts` 的 `SILENT_EFFECT_KINDS` 今天
@@ -61,7 +84,14 @@
 
 import type { JsonSchema, ResourceSpec } from '@onething/core/resource'
 
-/** 一条会话的元数据形状(`get` 的结果 / `current` 状态共用同一份 schema)。 */
+/**
+ * 一条会话的元数据形状(`get` 的结果 / `current` 状态共用同一份 schema)。
+ *
+ * K3-a' 把 `get` 还给它之后又长了四格(`pinned` / `archived` / `model` / `agent`):
+ * 那是「这条会话此刻是什么状态」里,读一句标题的人下一句就会问的四件事,而它们
+ * 一格都不带抄本。`model` 写成 `provider/model` 一整串 —— 与 `setModel` 那条做法
+ * 自己的 `describe` 逐字同形,不为同一件事造两种写法。
+ */
 const SESSION_SUMMARY_SCHEMA: JsonSchema = {
   type: 'object',
   properties: {
@@ -70,8 +100,48 @@ const SESSION_SUMMARY_SCHEMA: JsonSchema = {
     workingDirectory: { type: 'string', description: 'Sandbox root for this session, if any.' },
     createdAt: { type: 'number' },
     messageCount: { type: 'number' },
+    pinned: { type: 'boolean', description: 'Pinned to the top of the sidebar.' },
+    archived: { type: 'boolean', description: 'Archived out of the sidebar.' },
+    model: { type: 'string', description: 'Which model this session last ran on, as "provider/model".' },
+    agent: { type: 'string', description: 'The agent this session is bound to.' },
   },
-  required: ['id', 'title', 'createdAt', 'messageCount'],
+  required: ['id', 'title', 'createdAt', 'messageCount', 'pinned', 'archived'],
+}
+
+/**
+ * 一条会话的完整记录(`record` 的结果)。**故意写得松**:它就是这台宿主的
+ * `ChatSession`,那份形状的权威在共享契约那一包里,在这里抄一份齐全的等于立刻
+ * 有两张会漂移的表。列出来的几格是「每一条会话都一定有」的那几个,其余原样带过。
+ */
+const SESSION_RECORD_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'string' },
+    name: { type: 'string', description: 'The session name shown in the sidebar.' },
+    workingDirectory: { type: 'string', description: 'Sandbox root for this session, if any.' },
+    createdAt: { type: 'number' },
+    messages: { type: 'array', description: 'The transcript, as the shell renders it.' },
+  },
+  required: ['id', 'name'],
+}
+
+/**
+ * 消息读法的结果:一页消息 + 这一页在整份抄本里的位置。
+ *
+ * 分页那几格是**可选**的 —— 整份抄本那一支没有「下一页」可言。格名与
+ * `GetSessionMessagesPageResponse` 逐字相同。
+ */
+const MESSAGES_PAGE_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    messages: { type: 'array', description: 'The messages, oldest first.' },
+    nextCursor: { type: 'string', description: 'Ask for the page before this one with it.' },
+    backwardsCursor: { type: 'string' },
+    hasMoreBefore: { type: 'boolean' },
+    hasMoreAfter: { type: 'boolean' },
+    totalCount: { type: 'number', description: 'How many messages the whole transcript holds.' },
+  },
+  required: ['messages'],
 }
 
 export const SESSION_RESOURCE_SCHEME = 'session'
@@ -80,43 +150,162 @@ export const sessionResourceSpec: ResourceSpec = {
   scheme: SESSION_RESOURCE_SCHEME,
   title: 'Sessions',
   reads: {
-    /** 元数据,**不带消息** —— 一份会话的抄本动辄几 MB,读一句标题不该拖着它走。 */
+    /**
+     * 一条会话的摘要 —— **不带消息**。
+     *
+     * ## 两条读法是两件事,不是一件事的两种详略(K3-a')
+     *
+     * K1 写的是摘要;K2c-2 把它改成整份记录,理由是「域的 `sessions.get` 契约要
+     * `ChatSession`,给界面另开一条读法就是同一件事两条读法」。K3-a' 推翻那半句:
+     * 它们本来就**不是**同一件事,判据是「谁问、问来干什么」——
+     *
+     *   · `get` 是**认领身份**:标题、目录、多少条、钉没钉、归没归档、跑在哪个模型
+     *     上。命令面板列一屏会话问它,提示词的 `state.current` 喂的是它,模型想
+     *     知道「我在哪条会话里」问的也是它。它必须小到能一屏列一百条。
+     *   · `record` 是**取那份记录**:壳要渲染这条会话,它要的就是 `ChatSession`
+     *     本人(带 `messages`)。那是一件真实存在的、只有壳需要的事。
+     *
+     * 合成一条的代价是实测出来的:合并之后模型每问一次「这是哪条会话」都会拉回
+     * 整份抄本(真店 0.03 – 48.6 MB),然后被 `OutputBudget` 截成一段带
+     * `<truncation>` 的文本 —— 答非所问,还烧掉这一回合的预算。「读者不同、大小
+     * 差三个数量级」是两条读法而不是两个参数的判据,与 `messages` 那一格恰好相反
+     * (整份与一页读者相同、只差参数,所以它是一条)。
+     */
     get: {
-      title: 'Read the session metadata (no messages)',
+      title: 'Read the session summary: who this session is, without the transcript',
       query: { type: 'object', properties: {}, required: [] },
       result: SESSION_SUMMARY_SCHEMA,
     },
+    /**
+     * 一条会话的完整记录(`ChatSession` 本人,带抄本)。壳渲染一条会话时问它 ——
+     * 域的 `sessions.get` 走的就是这一条(它的契约 `SwitchSessionResponse.session`
+     * 要的正是 `ChatSession`)。
+     *
+     * 为什么模型也看得见它:因为它不是秘密,而「一次读多少」有专门的机制管
+     * ——`ResourceTool` 那条路过 `OutputBudget`,超了就截断。给读法加一格「只有
+     * 界面能调」等于在自述里长出主体判据,那是授权该管的事,不是自述该管的事。
+     */
+    record: {
+      title: 'Read the whole session record, transcript included',
+      query: { type: 'object', properties: {}, required: [] },
+      result: SESSION_RECORD_SCHEMA,
+    },
+    /**
+     * 消息:**整份或一页,同一条读法**(K2c-2)。
+     *
+     * 判据只有一条 ——「这次说了分页的话没有」:`cursor` / `anchor` / `limit` /
+     * `direction` 四格一个都没给 = 整份抄本(域的 `getMessages`);给了任意一格 =
+     * 一页(域的 `getMessagesPage`,它总是至少带一个 `anchor`)。
+     *
+     * 为什么不拆成两条读法:那样「读这条会话的消息」在自述里会有两个名字,命令
+     * 面板、MCP 出口、提示词三处都要各自解释两者的差别,而它们的差别只是参数。
+     * 四格的名字与 `GetSessionMessagesPageRequest` 逐字相同 —— 是一次转手不是翻译。
+     */
     messages: {
-      title: 'Read one page of messages, newest last',
+      title: 'Read the messages of the session: the whole transcript, or one page',
       query: {
         type: 'object',
         properties: {
-          limit: { type: 'number', description: 'How many messages to return (default 20).' },
-          before: { type: 'string', description: 'Return the page that ends just before this message id.' },
+          /**
+           * K3-a':缺省 20、一次最多 100 —— 这句话是**写给模型看的**,也只对模型
+           * 生效(provider 在读的时候按主体夹,见它那只 `messages`)。壳不读
+           * description,它读的是 `GetSessionMessagesPageRequest` 那份契约,而那一
+           * 条的分页由 pager 自己的上限管(300),本单一格不动。
+           */
+          limit: { type: 'number', description: 'How many messages one page holds. Default 20, at most 100.' },
+          cursor: { type: 'string', description: 'Continue from a cursor a previous page handed back.' },
+          direction: {
+            type: 'string',
+            enum: ['older', 'newer'],
+            description: 'Which way to walk from the cursor (default older).',
+          },
+          anchor: {
+            description: '"tail" for the newest page, or { messageId | seq, before, after } to centre on one message.',
+          },
         },
         required: [],
       },
+      result: MESSAGES_PAGE_SCHEMA,
+    },
+    /** 用户消息的锚点(会话目录 / 跳转用)。 */
+    markers: {
+      title: 'Read the user-message markers of the session',
+      query: { type: 'object', properties: {}, required: [] },
       result: {
         type: 'array',
         items: {
           type: 'object',
           properties: {
             id: { type: 'string' },
-            role: { type: 'string' },
+            seq: { type: 'number' },
+            timestamp: { type: 'number' },
             preview: { type: 'string', description: 'Plain-text preview, collapsed to one line.' },
-            createdAt: { type: 'number' },
           },
+          required: ['id', 'seq', 'timestamp', 'preview'],
         },
+      },
+    },
+    /** 会话目录(TOC)的段落。 */
+    segments: {
+      title: 'Read the table of contents of the session',
+      query: { type: 'object', properties: {}, required: [] },
+      result: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            kind: { type: 'string' },
+            title: { type: 'string' },
+            detail: { type: 'string' },
+            startedAt: { type: 'number' },
+            turnCount: { type: 'number' },
+          },
+          required: ['id', 'title'],
+        },
+      },
+    },
+    /**
+     * 这条会话烧了多少 token。
+     *
+     * **不判会话在不在**(与上面几条不同,是刻意的):域那一侧对一条查无此会的
+     * 会话答的是一份全零读数而不是「查无此会话」,而本单的硬约束是对外契约一个字
+     * 不改。一份零读数在这里是诚实的 —— 没记过账与记过一笔零,对读数的消费者
+     * (那条进度条)是同一件事。
+     */
+    tokenUsage: {
+      title: 'Read the token usage of the session',
+      query: { type: 'object', properties: {}, required: [] },
+      result: {
+        type: 'object',
+        properties: {
+          totalInputTokens: { type: 'number' },
+          totalOutputTokens: { type: 'number' },
+          totalTokens: { type: 'number' },
+          maxTokens: { type: 'number' },
+          lastInputTokens: { type: 'number' },
+          contextSize: { type: 'number' },
+        },
+        required: [
+          'totalInputTokens',
+          'totalOutputTokens',
+          'totalTokens',
+          'maxTokens',
+          'lastInputTokens',
+          'contextSize',
+        ],
       },
     },
   },
   ops: {
     /**
-     * 七条做法的 `effects` 都是**空数组**,这是想清楚的,不是省事:效果表管的是
+     * 前六条做法的 `effects` 都是**空数组**,这是想清楚的,不是省事:效果表管的是
      * 「这次调用会不会碰到人不知道的东西」(写盘、跑命令、连网、动系统能力)。
      * 改一条会话自己的名字或工作目录,主体本来就拥有这条会话 —— 为它弹一张权限卡
      * 是把审批变成噪音(与 `session_spawn` 从 ask 改回 silent 那次复盘同一条判据)。
      * **空效果不等于不留痕迹**:它照样落 `tool/audit`、照样发事件。
+     *
+     * 第七条 `removeMessage` 不在这句话里:它动的是账本本身,理由写在它自己那一格上。
      */
     rename: {
       title: 'Rename the session',
@@ -222,16 +411,20 @@ export const sessionResourceSpec: ResourceSpec = {
         required: ['messageId'],
       },
       /**
-       * **空效果,而且这一条是留账不是结论**(K2c-1)。删一条消息不是改一格会话
-       * 元数据:它动的是账本本身。效果表(`core/toolkit/effects.ts`)十五类里没有
-       * 一类装得下它 —— `session_message` 说的是「往会话里写一条消息」,不是删;
-       * 硬套过去会让「补一条系统消息」与「删掉一条消息」在授权上变成同一件事。
+       * **那笔留账在 K3-a' 还上了。**
        *
-       * 今天填空数组,是因为这条做法的**唯一调用方是域**(壳上那个删除按钮),
-       * 而域这一路今天不弹卡 —— 空数组保住的是「退成投影不改行为」。等效果表为
-       * 它开一格(或裁定它归 `session_message`),这里改一行,授权自然跟上。
+       * K2c-1 填的是空数组,理由是「效果表里没有一类装得下删,而这条做法唯一的
+       * 调用方是壳上那个删除按钮,弹卡就是改行为」。K3-a 给效果表开了
+       * `session_destructive` 那一格(policy `ask`),K3-a 又把资源工具放进了工具
+       * 目录 —— 于是空数组当场变成一个洞:模型拿到 `session` 工具之后可以不问一声
+       * 删掉一条消息。
+       *
+       * 这里写的是**上界**(自述说的从来是「这条做法最多会做到什么」)。真正发给
+       * 授权者的那一条按**主体**分档,判据住在 provider 的 `plan` 里:用户删自己
+       * 的消息不问(主体本来就拥有它),AI / 系统 / 插件删必须问。为什么分档在
+       * provider 而不在权限核:见那只 `plan` 的注释。
        */
-      effects: [],
+      effects: ['session_destructive'],
       home: 'core',
       entity: 'message',
       describe: params => `remove message ${String((params as { messageId?: unknown }).messageId ?? '')}`,
@@ -272,10 +465,16 @@ export const sessionResourceSpec: ResourceSpec = {
     },
   },
   /**
-   * K1 **只声明不投影**:这一格说的是「`get` 这条读法值得在每一回合喂进
+   * K1 **只声明不投影**:这一格说的是「这条会话的身份值得在每一回合喂进
    * `<context-update>` 尾块」,而真的把它接到提示词双通道上是 K4 的事(§4「提示词」
    * 那一行 = 变量系统,不另立)。现在写下来,是因为「哪些状态值得主动喂」是**自述**
    * 的一部分 —— 等到接的时候再补,那一刻就会有人想在提示词那一侧按 scheme 枚举。
+   *
+   * **喂的是这份摘要**,而摘要自 K3-a' 起又是 `get` 交出的那一份(K2c-2 一度让
+   * `get` 交整条记录,那半句被 `get` 那一格上的注释推翻了)。所以这一格与 `get`
+   * 现在同形同源 —— 但它仍然自己带 schema,不写成「`get` 的别名」:喂进提示词的
+   * 是**状态**,状态该长什么样是这一格自己的话;`get` 哪天要多一格,不该因为一句
+   * 别名就自动多喂给模型一格。K4 接双通道时要的仍然是这份摘要,不是 `record`。
    */
   state: {
     current: {

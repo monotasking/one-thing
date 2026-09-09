@@ -58,11 +58,6 @@ import {
   createOnethingSessionForIpc,
   deleteOnethingSessionForIpc,
   describeInvalidOnethingCreateSessionRequestForIpc,
-  getOnethingSessionForIpc,
-  getOnethingSessionMessagesForIpc,
-  getOnethingSessionMessagesPageForIpc,
-  getOnethingSessionTokenUsageForIpc,
-  listOnethingSessionUserMarkersForIpc,
   ONETHING_SESSION_NOT_FOUND,
   removeOnethingSystemMarkerMessageForIpc,
   switchOnethingSessionForIpc,
@@ -71,11 +66,18 @@ import {
 import { isValidSpaceId } from '@onething/runtime/spaces/types'
 import { collectSessionCascadeDeleteIds } from '@onething/core/session'
 import { SESSION_RESOURCE_SCHEME } from '@onething/runtime/sessions/resource-spec'
-import type { ChatMessage, ChatSession, GetSessionMessagesPageRequest, PermissionMode } from '@shared/ipc.js'
+import type {
+  ChatMessage,
+  ChatSession,
+  GetSessionMessagesPageResponse,
+  PermissionMode,
+  UserMessageMarker,
+} from '@shared/ipc.js'
+import type { SessionSegment } from '@shared/ipc/toc.js'
+import type { SessionTokenUsageReadout } from '@shared/ipc/sessions.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { SessionMutationResponse, SessionsRoutes } from '@shared/ipc/sessions.js'
 import * as store from '../../store.js'
-import { sessionReads } from '../../session/reads.js'
 import { listSessions } from '../../session/index.js'
 import { sessionCommands } from '../../session/commands.js'
 import { sessionDeletion } from '../../session/deletion.js'
@@ -88,16 +90,16 @@ import {
 } from '../../wiring/collab/index.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import { Permission } from '../../wiring/permission/index.js'
-import { readSessionSegments } from '../../wiring/toc/index.js'
 import { deleteSessionAiTodo, notifyTodoPlanActiveSessionChanged } from '../../wiring/todo-plan/store.js'
 import { resolveInsideSandbox, resolveRpcSandbox } from '../sandbox.js'
-import { foldOutcomeToEnvelope } from '../resource-envelope.js'
+import { foldOutcomeToEnvelope, foldReadOutcomeToEnvelope } from '../resource-envelope.js'
 import { principalOf } from '../principal.js'
 import { BackendNotAssembledError, getCurrentBackendInstance } from '../../current.js'
 import { SessionNotFoundError } from '../../wiring/resource/session-provider.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import type { CreateOnethingBranchSessionAdapters } from '@onething/runtime/sessions/branching'
+import type { ReadOutcome } from '@onething/core/resource'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingSessionsIpcLogger } from '@onething/runtime/sessions/ipc-operations'
 
@@ -198,6 +200,34 @@ function describeSessionError(error: Error): string | undefined {
   return error instanceof SessionNotFoundError ? ONETHING_SESSION_NOT_FOUND : undefined
 }
 
+/**
+ * 拼参数 → **读那条路** → 折回信封。六条读面共用的那三句话(K2c-2)。
+ *
+ * `backend.resources.read` 不经 `ToolRunner`:读不落审计、不吃输出预算、`ok` 带的是
+ * **值**而不是一段文本(理由在 `core/resource/read-outcome.ts` 的文件头)。所以这一
+ * 条与下面 `doSessionOp` 那一条形状相同、路径不同 —— 那正是本单的整句话。
+ *
+ * 日志:原文那批投影函数(`*ForIpc`)对**意料之外**的失败会记一行再把消息交出去;
+ * 「查无此会话」不在其中 —— 它是一条正常分支,从来不进日志,这里逐字照旧。
+ */
+async function readSession(
+  context: RpcDispatchContext,
+  sessionId: string,
+  name: string,
+  query: Record<string, unknown> = {},
+): Promise<ReadOutcome> {
+  const outcome = await resources().read(
+    `${SESSION_RESOURCE_SCHEME}:${sessionId}`,
+    name,
+    query,
+    callOptions(context),
+  )
+  if (outcome.kind === 'failed' && !(outcome.error instanceof SessionNotFoundError)) {
+    log.error('read session resource failed', { sessionId, read: name }, outcome.error)
+  }
+  return outcome
+}
+
 /** 拼参数 → 管线 → 折回信封。七条写面共用的那三句话。 */
 async function doSessionOp(
   context: RpcDispatchContext,
@@ -229,34 +259,34 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
       logger: consoleLog,
     })
   },
-  async getMessages(request) {
-    return getOnethingSessionMessagesForIpc({
-      sessionId: request.sessionId,
-      // S2b:主读路径收口到读门面,事件投影因此能到 UI(`listMessages` 自己在
-      // `fromEvents()` 上取投影;批 6b 之后那是唯一路)。唯一要补的形状差:读门面把
-      // “查无此会话”折成 `[]`,而本域的契约是回 NOT_FOUND —— 空结果时用仓库那句
-      // `undefined` 信号把它还原,与 S2b 前逐字相同。
-      getSessionMessages: (id): ChatMessage[] | undefined => {
-        // 读门面交出的是 `readonly` 视图;投影只读它再产出新数组(不改原数组),
-        // 这里回到可变签名是安全的。
-        const messages = sessionReads.listMessages(id).messages as ChatMessage[]
-        if (messages.length > 0) return messages
-        return store.getSessionMessages(id) === undefined ? undefined : messages
-      },
-      logger: consoleLog,
+  async getMessages(request, context = DESKTOP_RPC_CONTEXT) {
+    // 整份抄本 = `messages` **不带分页那四格**(自述 `messages` 那一格的判据)。
+    // 「查无此会话折成 NOT_FOUND、投影折不出消息但会话在册折成空数组」那条 S2b 的
+    // 形状差没有消失,它搬进了 provider —— 判据与端口逐字未变。
+    return foldReadOutcomeToEnvelope(await readSession(context, request.sessionId, 'messages'), {
+      project: value => ({ messages: (value as { messages?: ChatMessage[] }).messages }),
+      describeError: describeSessionError,
     })
   },
-  async getMessagesPage(request) {
+  async getMessagesPage(request, context = DESKTOP_RPC_CONTEXT) {
     const start = performance.now()
-    const response = await getOnethingSessionMessagesPageForIpc({
-      request,
-      // S2b:同 getMessages,分页也收口到读门面(`pageMessages` 按读模式在
-      // `fromEvents()` 上分叉;messages 模式逐字走 `getSessionMessagesPage`,同一份
-      // 页信封 hasMoreBefore/After / totalCount / cursor,与旧路同一个函数)。
-      getSessionMessagesPage: nextRequest =>
-        sessionReads.pageMessages(nextRequest as GetSessionMessagesPageRequest),
-      logger: consoleLog,
-    })
+    const response = foldReadOutcomeToEnvelope(
+      await readSession(context, request.sessionId, 'messages', {
+        // **总是带一个 anchor**:它是「给我一页」与「给我整份」的判别(同一条读法,
+        // 判据是说没说分页的话)。`'tail'` 与 anchor 缺席在 pager 里走的是同一支
+        // (`core/session/storage/jsonl/pager.ts`),所以这一行不改任何行为。
+        anchor: request.anchor ?? 'tail',
+        ...(request.cursor ? { cursor: request.cursor } : {}),
+        ...(request.limit !== undefined ? { limit: request.limit } : {}),
+        ...(request.direction !== undefined ? { direction: request.direction } : {}),
+      }),
+      {
+        // 页信封原样上抬:`messages` / 两只游标 / `hasMoreBefore` / `hasMoreAfter` /
+        // `totalCount` 都是 pager 给的,域一格都不重算。
+        project: value => value as Omit<GetSessionMessagesPageResponse, 'success'>,
+        describeError: describeSessionError,
+      },
+    )
     if (response.success) {
       log.debug('session messages page served', {
         sessionId: request.sessionId,
@@ -273,20 +303,19 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
     }
     return response
   },
-  async getUserMarkers(request) {
-    return listOnethingSessionUserMarkersForIpc({
-      sessionId: request.sessionId,
-      getSessionUserMessageMarkers: id => store.getSessionUserMessageMarkers(id),
-      logger: consoleLog,
+  async getUserMarkers(request, context = DESKTOP_RPC_CONTEXT) {
+    return foldReadOutcomeToEnvelope(await readSession(context, request.sessionId, 'markers'), {
+      project: value => ({ markers: value as UserMessageMarker[] }),
+      describeError: describeSessionError,
     })
   },
-  async getSegments(request) {
-    try {
-      return { success: true, segments: await readSessionSegments(request.sessionId) }
-    } catch (error) {
-      log.error('read session segments failed', { sessionId: request.sessionId }, error)
-      return { success: false, segments: [] }
-    }
+  async getSegments(request, context = DESKTOP_RPC_CONTEXT) {
+    const outcome = await readSession(context, request.sessionId, 'segments')
+    if (outcome.kind === 'ok') return { success: true, segments: outcome.value as SessionSegment[] }
+    // 这一条的契约里**没有 error 那一格**(`GetSessionSegmentsResponse` 只有
+    // `success` + `segments`),所以失败折成一份空目录 —— 与原文逐字相同,那句话
+    // `readSession` 已经记进日志了。
+    return { success: false, segments: [] }
   },
   async create(request, context = DESKTOP_RPC_CONTEXT) {
     const { name, sessionId, workspaceId, kind, room } = request
@@ -356,11 +385,13 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
       logger: consoleLog,
     })
   },
-  async get(request) {
-    return getOnethingSessionForIpc({
-      sessionId: request.sessionId,
-      getSession: id => store.getSession(id),
-      logger: consoleLog,
+  async get(request, context = DESKTOP_RPC_CONTEXT) {
+    // K3-a':读的是 `record`,不是 `get`。这一条的契约要的是 `ChatSession` 本人
+    // (带抄本),而 `get` 自 K3-a' 起是不带抄本的摘要 —— 两条读法是两件事,理由
+    // 写在 `runtime/sessions/resource-spec.ts` 的 `get` 那一格上。信封一个字不变。
+    return foldReadOutcomeToEnvelope(await readSession(context, request.sessionId, 'record'), {
+      project: value => ({ session: value as ChatSession }),
+      describeError: describeSessionError,
     })
   },
   async delete(request, context = DESKTOP_RPC_CONTEXT) {
@@ -495,11 +526,10 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
     store.invalidateSessionCache(request.sessionId)
     return { success: true }
   },
-  async getTokenUsage(request) {
-    return getOnethingSessionTokenUsageForIpc({
-      sessionId: request.sessionId,
-      getSessionTokenUsage: id => store.getSessionTokenUsage(id),
-      logger: consoleLog,
+  async getTokenUsage(request, context = DESKTOP_RPC_CONTEXT) {
+    return foldReadOutcomeToEnvelope(await readSession(context, request.sessionId, 'tokenUsage'), {
+      project: value => ({ usage: value as SessionTokenUsageReadout }),
+      describeError: describeSessionError,
     })
   },
   async addSystemMessage(request) {

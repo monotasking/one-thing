@@ -3,9 +3,9 @@
  * (`docs/design/atom-2026-09.md` §2 不变量 2:「每一次『做』经过同一条管线……
  * **没有第二条路**,界面点按钮也走它」)。
  *
- * 这只文件是那句话的**证据**。它对外的两个方法 `do` / `read` 做的全部事情是:把
- * 一次调用摆成一条 `Invocation`,然后调 `ToolRunner.run(tool, invocation)` —— 与
- * agent-loop 调一只工具时走的是**同一个 run**。所以:
+ * 这只文件是那句话的**证据**。`do` 做的全部事情是:把一次调用摆成一条
+ * `Invocation`,然后调 `ToolRunner.run(tool, invocation)` —— 与 agent-loop 调一只
+ * 工具时走的是**同一个 run**。所以:
  *
  *   · 授权:同一个 `Authorizer`,同一张效果表,同一批 grant;
  *   · 审计:同一条 `lifecycle:finished` 证词,进同一本 `events.jsonl`;
@@ -14,6 +14,14 @@
  * 反过来说,这只文件里**没有**任何一句「如果是界面调的就……」。一旦这里长出那样
  * 一句 if,§2 不变量 2 就当场失效了 —— 那正是今天「24 个 RPC 域各写各的授权」这笔
  * 债的形状,K2 要还的就是它。
+ *
+ * ── `read` 不在那句话里(K2c-2)────────────────────────────────────────────
+ * 上面那一段说的是**做**。§2 不变量二的原文是「每一次**做**经过同一条管线」——
+ * 读从来不在它的要求里,K1 让读也拼成 `Invocation` 走 runner 是一条捷径,K2c-1 在
+ * 真店上量出它对界面是错的(预算截断 / 只装得下文本 / 每读一次落一条审计)。
+ * 所以 `read` 有自己的短路径,返回自己的 `ReadOutcome`(`read-outcome.ts`),
+ * 详见那个方法的注释。两条路仍然共用校验判据与取消源的合成 —— 共用的是**判据**,
+ * 不是管线。
  *
  * ── 为什么 `do` / `read` 返回 `Outcome` 而不抛 ──────────────────────────────
  * `Outcome` 已经是一个五态的判别联合(ok / invalid / denied / aborted / failed),
@@ -40,17 +48,24 @@
 
 import type { Outcome } from '../toolkit/outcome.js'
 import { Outcome as OutcomeOps } from '../toolkit/outcome.js'
+import type { Clock, SandboxPolicy } from '../toolkit/ports.js'
 import type { Invocation } from '../toolkit/run-context.js'
 import type { ToolRunner } from '../toolkit/runner.js'
 import type { Principal } from '../permission/principal.js'
 import { ResourceSchemeUnknownError } from './errors.js'
 import { ResourceEventHub } from './events.js'
 import type { ResourceProvider } from './provider.js'
-import { parseRef } from './ref.js'
+import { ReadOutcome } from './read-outcome.js'
+import type { ReadOutcome as ReadOutcomeValue } from './read-outcome.js'
+import { parseRef, type ResourceRef } from './ref.js'
 import type { ResourceRegistry } from './registry.js'
-import { RESOURCE_OP_KEY, RESOURCE_READ_KEY, RESOURCE_REF_KEY } from './schema.js'
+import { RESOURCE_OP_KEY, RESOURCE_REF_KEY } from './schema.js'
 import { ResourceTool, type ShellDispatch } from './tool.js'
-import type { ResourceInputValidator } from './validator.js'
+import {
+  describeResourceRefProblem,
+  describeUnknownResourceReadProblem,
+  type ResourceInputValidator,
+} from './validator.js'
 
 export interface ResourceKernelOptions {
   /** `home: 'shell'` 的做法往哪儿派。缺席 = 这台宿主没有界面(结构化降级)。 */
@@ -68,6 +83,47 @@ export interface ResourceKernelOptions {
    * 缺席 = 这台宿主没配那位校验者,plan 期那几只具名错原样兜底(K1 的行为)。
    */
   readonly validator?: ResourceInputValidator
+  /**
+   * 读的守卫(K2c-2)。缺席 = 一律放行。
+   *
+   * 它是**将来命名空间许可与 owner 归属的落点**,本单只立口:读不进权限管线(读
+   * 无效果,授权者恒静默放行),所以「这条 ref 归不归你」「这台宿主准不准读这个
+   * 命名空间」如果不在这里问,就只能在每一个 provider 里各问一遍 —— 那正是 24 域
+   * 各写各的授权那笔债的形状。
+   *
+   * 它只对**内核这条读路**成立(界面 / 脚本 / 调度)。模型那条路的读仍然走
+   * `ResourceTool`,那一侧的把关归 `Authorizer` 与场子面 —— 两侧要合成一句话是
+   * 一次单独的拍板,不是这只端口的默认语义。
+   */
+  readonly readGuard?: ReadGuard
+  /**
+   * 沙箱。给了就随每一次读交给实现(`ResourceReadContext.sandbox`)——「一条读法
+   * 能不能读这个路径」是实现的判据,而路径的解析与判定归宿主(`SandboxPolicy`
+   * 的整句话)。缺席 = 这台宿主没有沙箱,实现自己决定怎么退。
+   */
+  readonly sandbox?: SandboxPolicy
+  /** 时钟。缺席 = `Date.now()`,与 `RunContext.now()` 同一条默认。 */
+  readonly clock?: Clock
+}
+
+/** 守卫的答案。两支 —— 放行没有理由可说,拒绝必须说得出一句人话。 */
+export type ReadVerdict =
+  | { readonly kind: 'allow' }
+  | { readonly kind: 'deny'; readonly reason: string }
+
+/**
+ * 读的守卫(见 `ResourceKernelOptions.readGuard`)。
+ *
+ * 三个参数正是「谁、要读什么、读哪一个」——**没有 query**:一条读法自己的参数由
+ * 实现解释(内核不解释 `params`,与 `OpSpec.describe` 同一条),让守卫按 query 判
+ * 会逼它去认识每一种资源的参数形状。
+ */
+export interface ReadGuard {
+  decide(
+    ref: ResourceRef,
+    name: string,
+    principal: Principal,
+  ): ReadVerdict | Promise<ReadVerdict>
 }
 
 /**
@@ -265,9 +321,76 @@ export class ResourceKernel {
     return this.invoke(ref, { [RESOURCE_OP_KEY]: op, ...params }, options)
   }
 
-  /** 读一件事。同上,只是判别字段换一个。 */
-  read(ref: string, name: string, query: Record<string, unknown>, options: ResourceCallOptions): Promise<Outcome> {
-    return this.invoke(ref, { [RESOURCE_READ_KEY]: name, ...query }, options)
+  /**
+   * 读一件事。**它不走 `ToolRunner`**(K2c-2)。
+   *
+   * K1 把读也拼成一条 `Invocation` 交给 runner,理由是「一条管线」。K2c-1 在真店上
+   * 量出那是一条捷径:§2 不变量二说的是「每一次**做**经过同一条管线」,读从来不在
+   * 那句话的要求里,而管线的三样东西对读全是错的 —— 输出预算会把一页消息截断成
+   * 一段带 `<truncation>` 的文本、`Outcome.ok` 只装得下文本(结构化值要 `JSON` 往返
+   * 且 `undefined` 会消失)、每读一次落一条 `tool/audit`(那本账的流量假设是「人点
+   * 一次按钮」,不是界面每翻一页)。完整读数在
+   * `runtime/sessions/resource-spec.ts` 的文件头。
+   *
+   * 所以读有自己的路,而这条路刻意是短的:
+   *
+   *   解析地址 → 找 provider → 校验(读法名在自述里、地址是本 scheme 的)→
+   *   守卫(可选)→ `provider.read` → `ReadOutcome`
+   *
+   * **不落审计、不吃预算、不发事件** —— 读是查询,它不产生事实。
+   *
+   * 与「做」共用的只有两样,而且是刻意共用的:①校验的**判据**(`validator.ts` 的
+   * 那两只纯函数,模型那条路的 `Validator` 用的是同一对),②取消源的**合成**
+   * (内核关机 / 这个 scheme 注销 / 调用方自己,与 `do` 同一套),于是 §10.1 /
+   * §10.2 那两行对读一样成立:关机与注销要等的是「读不跑了」,不是「信号发出去了」。
+   */
+  async read(
+    ref: string,
+    name: string,
+    query: Record<string, unknown>,
+    options: ResourceCallOptions,
+  ): Promise<ReadOutcomeValue> {
+    const parsed = parseRef(ref)
+    // 与 `do` 逐字同一条:地址与 scheme 决定的是「问谁」,没有 provider 就没有读法
+    // 可言,所以它们仍然是 `failed`(「没人认领这个地址」不是一次参数写错)。
+    if (!parsed) return ReadOutcome.failed(new ResourceSchemeUnknownError(ref))
+    const mounted = this.mounted.get(parsed.scheme)
+    if (!mounted) return ReadOutcome.failed(new ResourceSchemeUnknownError(parsed.scheme))
+
+    const spec = mounted.tool.provider.spec
+    const problem = describeUnknownResourceReadProblem(spec, name)
+      ?? describeResourceRefProblem(spec, ref)
+    if (problem) return ReadOutcome.invalid(problem)
+
+    const guard = this.options.readGuard
+    if (guard) {
+      const verdict = await guard.decide(parsed, name, options.principal)
+      if (verdict.kind === 'deny') return ReadOutcome.denied(verdict.reason)
+    }
+
+    const signal = this.abortSignalFor(mounted, options)
+    const call: InflightCall = { scheme: parsed.scheme }
+    this.inflight.add(call)
+    const settled = (async (): Promise<ReadOutcomeValue> => {
+      try {
+        const value = await mounted.tool.provider.read(name, parsed, query, {
+          principal: options.principal,
+          sessionId: options.sessionId ?? NO_ORIGIN_SESSION,
+          signal,
+          ...(this.options.sandbox ? { sandbox: this.options.sandbox } : {}),
+          now: () => this.now(),
+        })
+        return ReadOutcome.ok(value)
+      } catch (error) {
+        // 取消也落在这里(见 `read-outcome.ts` 的文件头:读没有 `aborted` 那一支)。
+        return ReadOutcome.failed(error)
+      } finally {
+        this.inflight.delete(call)
+      }
+    })()
+    // 与 `invoke` 同一句:先起跑再记 promise,记的不会是一条已经被删掉的在飞。
+    call.done = settled
+    return settled
   }
 
   private async invoke(
@@ -292,16 +415,13 @@ export class ResourceKernel {
       ...(options.messageId !== undefined ? { messageId: options.messageId } : {}),
     }
 
-    // 三个取消源合成一个:这台内核的关机、这个 scheme 的注销、调用方自己的。
-    // 合成而不是各自查一遍 —— `ToolRunner` 只认一个 signal,而「谁掐的」是归因,
-    // 归因是 `Outcome` 的事(`AbortScope` 的头注释写着这一条)。
+    // 取消源的合成与 `read` 共用一处(`abortSignalFor`)。
     const call: InflightCall = { scheme: parsed.scheme }
-    const sources = [this.control.signal, mounted.abort.signal]
-    if (options.signal) sources.push(options.signal)
+    const signal = this.abortSignalFor(mounted, options)
     this.inflight.add(call)
     const settled = (async () => {
       try {
-        return await this.runner.run(mounted.tool, invocation, AbortSignal.any(sources))
+        return await this.runner.run(mounted.tool, invocation, signal)
       } finally {
         this.inflight.delete(call)
       }
@@ -310,6 +430,24 @@ export class ResourceKernel {
     // 这一行一定跑在 `finally` 之前 —— 记的不会是一条已经被删掉的在飞。
     call.done = settled
     return settled
+  }
+
+  /**
+   * 三个取消源合成一个:这台内核的关机、这个 scheme 的注销、调用方自己的。
+   *
+   * **一处合成,两条路共用**(`do` 与 `read`)—— 写第二份的下场是某一天有人给
+   * 其中一条加了第四个源,而另一条不知道。合成而不是各自查一遍:下游只认一个
+   * signal,而「谁掐的」是归因,归因是结局的事(`AbortScope` 的头注释)。
+   */
+  private abortSignalFor(mounted: MountedResource, options: ResourceCallOptions): AbortSignal {
+    const sources = [this.control.signal, mounted.abort.signal]
+    if (options.signal) sources.push(options.signal)
+    return AbortSignal.any(sources)
+  }
+
+  /** 现在几点。与 `RunContext.now()` 同一条默认(`systemClock`),不另立时间源。 */
+  private now(): number {
+    return this.options.clock ? this.options.clock.now() : Date.now()
   }
 
   private mintCallId(): string {

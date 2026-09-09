@@ -182,6 +182,18 @@ function titleForEffect(input: EnforcePermissionPolicyInput, effect: PermissionE
     const target = String(effect.metadata?.variable || input.toolName)
     return `Repoint ${target} to: ${String(effect.metadata?.value || effect.resources[0] || '')}`
   }
+  /**
+   * K3-a —— 破坏性会话操作。资源上的效果带的是**地址**(`planFromSpec` 把 `ref`
+   * 摊进 `resources`),所以卡上说得出「删的是哪一条」;没有地址时退回效果类自己
+   * 那句默认话,不编一个具体对象出来。
+   *
+   * 它排在 `titleForEffect` 的 `preview?.title` **之后**(那一句在函数第一行):
+   * 一条做法自己写了 `describe(params)` 的人话,永远比这里的通用句子准。
+   */
+  if (effect.kind === 'session_destructive') {
+    const target = effect.resources[0]
+    return target ? `Remove session content: ${target}` : 'Remove session content'
+  }
   if (effect.kind === 'external_directory') return `Access directory outside project: ${effect.resources[0] || ''}`
   if (effect.kind === 'sensitive_file_read') return `Read sensitive file: ${String(effect.metadata?.path || effect.resources[0] || '')}`
   if (effect.kind === 'file_write') return `Write file: ${String(effect.metadata?.path || effect.resources[0] || '')}`

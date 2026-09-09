@@ -84,7 +84,22 @@ describe('没有第二条路', () => {
     expect(kernelSide.provider.calls).toEqual(['plan:rename', 'apply:rename'])
   })
 
-  it('读也一样:一条不带效果的 Intent,同一条生命周期', async () => {
+  /**
+   * **读是那句话的例外,而且是有意的**(K2c-2)。
+   *
+   * §2 不变量二的原文是「每一次**做**经过同一条管线」—— 读不在它的要求里。K1 让读
+   * 也走 runner,于是一页消息要过 4000 行 / 256KB 的输出预算、序列化成文本再解回来、
+   * 每读一次落一条审计;K2c-1 在真店上量到那三条对界面全是错的。所以这一例问的
+   * 不再是「两条路一样」,而是**它们该不一样的那一格**:
+   *
+   *   · 两条路读到的**是同一个值**(provider 只有一个,判据没有分叉);
+   *   · 模型那条路照旧走完整条生命周期(有观察事件 = 有审计的产地);
+   *   · 内核那条路**一条观察事件都不落** —— 这就是「不进审计账」在测试里的样子。
+   *
+   * 反证(施工时跑过):把 `ResourceKernel.read` 改回拼 `Invocation` 走
+   * `runner.run`,最后那条 `toEqual([])` 当场红。
+   */
+  it('读不走那条管线:值一样,但内核这条路一条观察事件都不落', async () => {
     const viaKernel = new Trace()
     const kernelSide = makeKernel(viaKernel)
     const kernelOutcome = await kernelSide.kernel.read(`${DEMO_SCHEME}:42`, 'get', {}, CALL_OPTIONS)
@@ -99,8 +114,87 @@ describe('没有第二条路', () => {
       principal: PRINCIPAL,
     })
 
-    expect(kernelOutcome).toEqual(modelOutcome)
-    expect(viaKernel.rows).toEqual(viaModel.rows)
+    // 同一个值。模型那一侧仍然拿到它的文本投影(那是工具面的事),内核这一侧拿到
+    // 的是值本身 —— 解开文本之后两者逐字相等。
+    expect(kernelOutcome).toEqual({ kind: 'ok', value: { name: 'get', ref: '42', query: {} } })
+    expect(modelOutcome.kind).toBe('ok')
+    if (modelOutcome.kind === 'ok') {
+      expect(JSON.parse(modelOutcome.result.content[0]?.text ?? '')).toEqual(
+        (kernelOutcome as { kind: 'ok'; value: unknown }).value,
+      )
+    }
+    // provider 两侧都被问了一次,且问的是同一条读法。
+    expect(kernelSide.provider.calls).toEqual(['read:get'])
+    expect(modelSide.provider.calls).toEqual(['read:get'])
+
+    // 而账不是同一本:模型那条路留下整条生命周期,内核这条路一行都没有。
+    expect(viaModel.rows.length).toBeGreaterThan(0)
+    expect(viaKernel.rows).toEqual([])
+  })
+
+  it('读的四支:点不出的读法是 invalid,没人认领的地址仍是 failed', async () => {
+    const { kernel } = makeKernel(new Trace())
+
+    const unknownRead = await kernel.read(`${DEMO_SCHEME}:42`, 'nope', {}, CALL_OPTIONS)
+    expect(unknownRead.kind).toBe('invalid')
+    // 措辞与模型那条路上校验者说的**是同一句**(判据抽成了一只纯函数)。
+    expect(unknownRead.kind === 'invalid' && unknownRead.message).toContain('has no read "nope"')
+
+    const stranger = await kernel.read('other:1', 'get', {}, CALL_OPTIONS)
+    expect(stranger.kind === 'failed' && stranger.error.name).toBe('ResourceSchemeUnknownError')
+  })
+
+  it('读的守卫:说不就是 denied,而且 provider 根本没被问到', async () => {
+    const resourceValidator = new ResourceInputValidator()
+    const provider = new DemoProvider()
+    const kernel = new ResourceKernel(
+      new ResourceRegistry(),
+      new ToolRunner({
+        authorizer: allowAuthorizer,
+        observer: new Trace(),
+        validator: combineValidators([resourceValidator], passthroughValidator),
+      }),
+      {
+        validator: resourceValidator,
+        readGuard: { decide: () => ({ kind: 'deny', reason: 'not yours' }) },
+      },
+    )
+    kernel.mount(provider)
+
+    const outcome = await kernel.read(`${DEMO_SCHEME}:42`, 'get', {}, CALL_OPTIONS)
+    expect(outcome).toEqual({ kind: 'denied', reason: 'not yours' })
+    expect(provider.calls).toEqual([])
+  })
+
+  it('读的上下文带 sandbox 与 now —— 两格都由内核注入,实现不自己读时钟', async () => {
+    const resourceValidator = new ResourceInputValidator()
+    const sandbox = {
+      root: () => '/tmp/root',
+      resolve: (target: string) => target,
+      contains: () => true,
+      isSensitive: () => false,
+    }
+    const seen: Array<{ root: string | undefined; now: number; sessionId: string }> = []
+    const provider = new DemoProvider({
+      read: async (_name, _ref, _query, ctx) => {
+        seen.push({ root: ctx.sandbox?.root(), now: ctx.now(), sessionId: ctx.sessionId })
+        return null
+      },
+    })
+    const kernel = new ResourceKernel(
+      new ResourceRegistry(),
+      new ToolRunner({
+        authorizer: allowAuthorizer,
+        observer: new Trace(),
+        validator: combineValidators([resourceValidator], passthroughValidator),
+      }),
+      { validator: resourceValidator, sandbox, clock: { now: () => 4242 } },
+    )
+    kernel.mount(provider)
+
+    // 不给发起会话时坐标是那个保留值,不是随手编的一条 id(K2a 的同一条判例)。
+    await kernel.read(`${DEMO_SCHEME}:42`, 'get', {}, { principal: PRINCIPAL })
+    expect(seen).toEqual([{ root: '/tmp/root', now: 4242, sessionId: NO_ORIGIN_SESSION }])
   })
 })
 

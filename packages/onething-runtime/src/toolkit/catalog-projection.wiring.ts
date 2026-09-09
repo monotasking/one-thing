@@ -51,9 +51,29 @@ export function toolDefinitionFromToolkitTool(tool: Tool): ToolDefinition {
   }) as ToolDefinition
 }
 
+/**
+ * 这只工具进不进「工具清单」这个出口(K3-a)。
+ *
+ * 判据是 `ToolSpec.projection` 这一格数据,**不是** `instanceof ResourceTool`:那样
+ * 产品层就得反向 import core 的资源实现类,而它今天只认识 `ToolSpec`;而且元工具
+ * `resources` 不是 `ResourceTool`,却与它们同族同去留,一个类名判据答不了它。
+ *
+ * 为什么资源那一族不进这份清单:这份清单答的是「这台宿主注册了哪些工具」(设置页
+ * 的工具列表、CLI 的 `listTools`),而资源的呈现 —— 图标、标题、每个应用一格
+ * 「允许 AI 操作」的许可 —— 归应用登记表(`docs/design/app-intents-2026-09.md` §4)。
+ * K1 的审查打回记的就是这一条:资源工具进目录时这份清单凭空多出一行,是一次没人
+ * 裁定过的、用户可感知的变化。
+ *
+ * **它只减这一个出口**:模型的回合面照旧看得见资源工具(露面规则是
+ * `docs/design/atom-2026-09.md` §10.4 的四个事实 + 每只工具自己的 `visibleIn`)。
+ */
+function listedInToolInventory(tool: Tool): boolean {
+  return tool.spec.projection === undefined
+}
+
 /** 一整档目录的投影。次序 = 注册次序(§14.4-7 记过这一条)。 */
 export function toolDefinitionsFromCatalog(catalog: Catalog): ToolDefinition[] {
-  return catalog.all().map(toolDefinitionFromToolkitTool)
+  return catalog.all().filter(listedInToolInventory).map(toolDefinitionFromToolkitTool)
 }
 
 /**

@@ -128,27 +128,64 @@ describe('资源内核在真装配里(K1)', () => {
     )
   })
 
-  it('工具目录里没有 session —— 资源工具的注册归 K3,今天的工具清单一字不变', async () => {
-    // 直接问产品层那台目录端口(设置页工具清单与 CLI listTools 读的就是它),
-    // 而不是 backend 私有的 `getOrBuildToolkitCatalog`:这样断言的是**用户看得见
-    // 的那一份**,不是装配的内部账。
+  it('K3-a:资源工具与元工具在工具目录里(模型看得见),而工具清单那个出口一字不变', async () => {
+    // 直接问产品层那台目录端口(回合面 `Surface.resolve` 与设置页工具清单读的都是
+    // 它),而不是 backend 私有的 `getOrBuildToolkitCatalog`:这样断言的是**用户与
+    // 模型真正看见的那一份**,不是装配的内部账。
     const { getToolkitCatalog } = await import('@onething/runtime/toolkit/host')
+    const { toolkitCatalogToolDefinitions } = await import('@onething/runtime/toolkit/catalog-projection.wiring')
     const catalog = getToolkitCatalog()
     expect(catalog).toBeTruthy()
-    expect(catalog?.has('session')).toBe(false)
+    // 露面规则(§10.4 第三行):provider 在注册表里 = 那只工具在目录里。
+    expect(catalog?.has('session')).toBe(true)
+    expect(catalog?.has('resources')).toBe(true)
+
+    // 但「这台宿主注册了哪些工具」那份清单(设置页 / CLI listTools)一行都没多 ——
+    // K1 审查打回的就是这一条,判据是 `ToolSpec.projection` 那一格。
+    const listed = toolkitCatalogToolDefinitions() ?? []
+    expect(listed.map(tool => tool.id)).not.toContain('session')
+    expect(listed.map(tool => tool.id)).not.toContain('resources')
+    expect(listed.length).toBe(catalog!.all().length - 2)
   })
 
-  it('read 拿到的是真会话的元数据', async () => {
+  it('K3-a:元工具 resources 列的是注册表当下的样子(它自己不认识任何命名空间)', async () => {
+    const { getToolkitCatalog } = await import('@onething/runtime/toolkit/host')
+    const meta = getToolkitCatalog()?.get('resources')
+    expect(meta).toBeTruthy()
+    const intent = await meta!.plan({ list: true }, { invocation: { sessionId } } as never)
+    const result = await meta!.apply(intent, { invocation: { sessionId } } as never)
+    expect(result.content[0]?.text).toContain('session — Sessions')
+  })
+
+  /**
+   * K2c-2:读走的是**读自己那条路**,所以 `ok` 带的是值,不是一段要 `JSON.parse`
+   * 回来的文本。这一例因此从「解开那段 JSON」改成「直接读那个值」——判据没变
+   * (读到的是真会话),变的是它到手时是不是还包着一层。
+   *
+   * K3-a':`get` 还给摘要,整份记录另立一条 `record`。两条一起断言 —— 本单要证的
+   * 正是它们**是两件事**:一条不带抄本、一条带。
+   */
+  it('read get 拿到的是摘要(不带抄本),record 拿到的是整份记录', async () => {
     const store = await import('../store.js')
     const created = store.createSession(`resource-k1-${Date.now()}`, 'First name')
     sessionId = created.id
 
-    const outcome = await backend.resources.read(`session:${sessionId}`, 'get', {}, callOptions(sessionId))
-    expect(outcome.kind).toBe('ok')
-    if (outcome.kind !== 'ok') return
-    const summary = JSON.parse(outcome.result.content[0]?.text ?? '')
-    expect(summary).toMatchObject({ id: sessionId, title: 'First name', messageCount: 0 })
-    expect(typeof summary.createdAt).toBe('number')
+    const summary = await backend.resources.read(`session:${sessionId}`, 'get', {}, callOptions(sessionId))
+    expect(summary.kind).toBe('ok')
+    if (summary.kind !== 'ok') return
+    const value = summary.value as Record<string, unknown>
+    expect(value).toMatchObject({ id: sessionId, title: 'First name', pinned: false, archived: false })
+    expect(typeof value.createdAt).toBe('number')
+    expect(value.messageCount).toBe(0)
+    // 摘要里没有抄本 —— 那正是 K3-a' 把 `get` 从整份记录还回来的整句话。
+    expect(value).not.toHaveProperty('messages')
+
+    const record = await backend.resources.read(`session:${sessionId}`, 'record', {}, callOptions(sessionId))
+    expect(record.kind).toBe('ok')
+    if (record.kind !== 'ok') return
+    const full = record.value as { id: string; name: string; messages: unknown[] }
+    expect(full).toMatchObject({ id: sessionId, name: 'First name' })
+    expect(Array.isArray(full.messages)).toBe(true)
   })
 
   it('读一条不存在的会话,如实说不存在(不是一个空对象)', async () => {
@@ -304,6 +341,79 @@ describe('资源内核在真装配里(K1)', () => {
     expect(seen).toEqual([
       expect.objectContaining({ type: 'resource:event', ref: 'drill:1', event: 'poked' }),
     ])
+  })
+
+  /**
+   * K3-a' —— **同一条 `removeMessage`,效果按主体分档**,在真授权者上验一遍。
+   *
+   * K3-a 那一版拿一个陌生命名空间 `shred:` 试 `session_destructive` 是不是 `ask`,
+   * 因为当时 `removeMessage.effects` 还是空数组(理由:那条做法唯一的调用方是界面
+   * 上的删除按钮,给它换上这一类会让界面当场多一张卡)。K3-a 把资源工具放进工具
+   * 目录之后那个前提没了 —— 模型现在也拿得到这只 `session` 工具,空效果就是一个
+   * 「AI 不问一声删消息」的洞。所以这一例改成真会话上的真做法,一次说两句话:
+   *
+   *   ① `user` 主体(= 界面那个删除按钮)删自己的消息:**一张卡都不弹**,直接 ok;
+   *   ② `agent` 主体(= 模型调那只工具)删同一条会话里的另一条:停在一张真
+   *      `session_destructive` 卡上,答 allow 才 ok、答 reject 就是 `denied`。
+   *
+   * 反证①的落点就是这里:把 provider `plan` 里那句主体分叉拆掉(恒 `[]`),②
+   * 的「停在卡上」当场红;把 `session_destructive` 那一行的 policy 改成 `silent`,
+   * 红的也是同一句。
+   */
+  it("K3-a':removeMessage 按主体分档 —— 用户删不弹卡,AI 删停在真权限卡上", async () => {
+    const { Permission } = await import('../wiring/permission/index.js')
+    const { sessionCommands } = await import('../session/commands.js')
+    const { sessionReads } = await import('../session/reads.js')
+
+    const message = (id: string) => ({ id, role: 'system' as const, content: 'k3a2', timestamp: Date.now() })
+    for (const id of ['k3a2-user', 'k3a2-ai', 'k3a2-refused']) {
+      sessionCommands.appendMessage(sessionId, { message: message(id) as never })
+    }
+
+    // ① 用户主体:零效果 → 授权者静默放行,一张卡都没有。
+    const byUser = await backend.resources.do(
+      `session:${sessionId}`,
+      'removeMessage',
+      { messageId: 'k3a2-user' },
+      callOptions(sessionId),
+    )
+    expect(byUser.kind).toBe('ok')
+    expect(Permission.getPendingPrompts(sessionId)).toHaveLength(0)
+
+    // ② AI 主体:顶格 `session_destructive`(policy `ask`)→ 真的停在一张卡上。
+    const agent = { principal: { kind: 'agent' as const, agentId: 'k3a2-agent' }, sessionId }
+    const allowed = backend.resources.do(
+      `session:${sessionId}`,
+      'removeMessage',
+      { messageId: 'k3a2-ai' },
+      agent,
+    )
+    await vi.waitFor(() => expect(Permission.getPendingPrompts(sessionId)).toHaveLength(1))
+    const card = Permission.getPendingPrompts(sessionId)[0]
+    expect(card.type).toBe('session_destructive')
+    // 卡上那句话是 `Intent.preview.title`(它盖过效果表那句通用的 `Remove session
+    // content`)—— 所以人看得见删的是**哪一条消息**,不只是「有人要删点什么」。
+    expect(card.title).toBe('Remove message k3a2-ai')
+    // `'once'` = 这一次同意(`Permission.Response` 的四支里最保守的那一支)。
+    Permission.respond({ sessionId, permissionId: card.id, response: 'once' })
+    expect((await allowed).kind).toBe('ok')
+
+    // ③ 答「不」→ denied,不是 failed:被拒绝是一个正常结局,而且那条消息还在。
+    const refused = backend.resources.do(
+      `session:${sessionId}`,
+      'removeMessage',
+      { messageId: 'k3a2-refused' },
+      agent,
+    )
+    await vi.waitFor(() => expect(Permission.getPendingPrompts(sessionId)).toHaveLength(1))
+    const second = Permission.getPendingPrompts(sessionId)[0]
+    Permission.respond({ sessionId, permissionId: second.id, response: 'reject' })
+    expect((await refused).kind).toBe('denied')
+
+    const ids = sessionReads.listMessages(sessionId).messages.map(m => m.id)
+    expect(ids).not.toContain('k3a2-user')
+    expect(ids).not.toContain('k3a2-ai')
+    expect(ids).toContain('k3a2-refused')
   })
 
   it('无会话的 do:管线照跑,审计落 <store>/audit/resource.jsonl,会话账本一行不多(K2a)', async () => {

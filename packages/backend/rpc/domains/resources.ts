@@ -36,6 +36,7 @@ import type {
   MountShellResourceResponse,
   ReadResourceRequest,
   ResourceOutcomeView,
+  ResourceReadView,
   ResourcesRoutes,
   SerializedEventSpec,
   SerializedOpSpec,
@@ -45,7 +46,7 @@ import type {
   ShellResultRequest,
   UnmountShellResourcesRequest,
 } from '@shared/ipc/resources.js'
-import type { ResourceKernel, ResourceSpec } from '@onething/core/resource'
+import type { ReadOutcome, ResourceKernel, ResourceSpec } from '@onething/core/resource'
 import type { Outcome, Result } from '@onething/core/toolkit'
 import { resultToText } from '@onething/core/toolkit'
 import { BackendNotAssembledError, getCurrentBackendInstance } from '../../current.js'
@@ -157,6 +158,20 @@ function serializeOutcome(outcome: Outcome): ResourceOutcomeView {
   }
 }
 
+/** `ReadOutcome` → 可序列化投影(K2c-2)。四支,`ok` 直接带值。 */
+function serializeReadOutcome(outcome: ReadOutcome): ResourceReadView {
+  switch (outcome.kind) {
+    case 'ok':
+      return { kind: 'ok', value: outcome.value }
+    case 'invalid':
+      return { kind: 'invalid', message: outcome.message }
+    case 'denied':
+      return { kind: 'denied', reason: outcome.reason }
+    case 'failed':
+      return { kind: 'failed', error: { name: outcome.error.name, message: outcome.message } }
+  }
+}
+
 /**
  * 一次调用的坐标。**`sessionId` 缺席就是缺席** —— 不拿 `ref` 里那条会话顶上:
  * 那样审计会读成「A 自己改了自己」(K1 留账,K2a 的答案是保留坐标 +
@@ -195,17 +210,25 @@ export const resourcesRpcHandlers: RpcRouteHandlers<ResourcesRoutes> = {
     return serializeSpec(spec)
   },
 
+  /**
+   * 读(K2c-2:它不再走「做」那条管线)。
+   *
+   * 处理器这一侧因此比 `do` 还短:`ReadOutcome` 的四支**本来就是纯数据**,只有
+   * `failed` 那一支带着一只 `Error` 要摊平(名字给判定读、消息给人读、堆栈一个字
+   * 不过网络,与 `serializeOutcome` 逐字同一条)。`ok` 直接带 `value` —— 读到的那个
+   * 值原样进 JSON 信封,不再序列化成文本再让调用方解回来。
+   */
   async read(
     request: ReadResourceRequest,
     context: RpcDispatchContext = DESKTOP_RPC_CONTEXT,
-  ): Promise<ResourceOutcomeView> {
+  ): Promise<ResourceReadView> {
     const outcome = await kernel().read(
       request?.ref ?? '',
       request?.name ?? '',
       request?.query ?? {},
       callOptions(context, request?.sessionId),
     )
-    return serializeOutcome(outcome)
+    return serializeReadOutcome(outcome)
   },
 
   async do(

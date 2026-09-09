@@ -217,7 +217,9 @@ async function main() {
       name: 'layout',
     })
     assert(read.kind === 'ok', `读的结局是 ok(${read.kind})`)
-    const layout = JSON.parse(read.text)
+    // K2c-2:读走的是读自己那条路,`ok` 带的是**值**不是一段要解回来的文本
+    // (`ResourceReadView`,`@shared/ipc/resources.ts`)。
+    const layout = read.value
     const tabs = (layout.regions ?? []).flatMap((region) => region.leaves.flatMap((leaf) => leaf.tabs))
     assert(tabs.includes(target), `layout 读数里含 ${target}(共 ${tabs.length} 格)`)
 

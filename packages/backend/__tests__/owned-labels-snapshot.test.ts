@@ -102,6 +102,9 @@ const OWNED_LABELS = [
   // (壳交的资源先按 §10.2 收场,再轮到内置的和内核本身)。
   'shellResources',
   'resourceEventBridge',
+  // K3-a:资源工具(加元工具 `resources`)在工具目录里的那份投影。登记在壳登记簿
+  // 之后 → 关机链上先摘目录、再撤壳交上来的自述。
+  'resourceCatalogTools',
   'killAllTerminals',
   'killTrackedDetachedChildren',
   'searchService',

@@ -37,10 +37,12 @@ import {
   ResourceHomeUnavailableError,
   ResourceOpUnavailableError,
   ResourceOpUnknownError,
+  ResourceReadUnknownError,
   ResourceRefError,
 } from './errors.js'
 import type { ResourceProvider } from './provider.js'
 import { parseRef, type ResourceRef } from './ref.js'
+import { describeUnknownResourceReadProblem } from './validator.js'
 import {
   RESOURCE_OP_KEY,
   RESOURCE_READ_KEY,
@@ -129,6 +131,15 @@ export class ResourceTool<Payload = unknown> extends Tool<unknown, ResourceCall<
       // 资源上的做法会改同一份状态(连着两条重命名),所以恒串行。等某种资源真的
       // 证明得了自己的做法两两无关时,再由那份自述自己说 —— 不在这里开天窗。
       concurrency: 'sequential',
+      /*
+       * K3-a —— 这只工具是**一份自述的投影**,不是一件独立注册的工具。
+       *
+       * 它只影响一个出口:「这台宿主注册了哪些工具」那份清单(设置页 / CLI
+       * `listTools`)不列它,因为资源的呈现归应用登记表。**回合面不受影响** ——
+       * 模型照常看得见(露面规则见 `docs/design/atom-2026-09.md` §10.4)。
+       * 完整理由写在 `../toolkit/spec.ts` 的 `ToolSpec.projection` 上。
+       */
+      projection: 'resource',
     }
   }
 
@@ -141,6 +152,12 @@ export class ResourceTool<Payload = unknown> extends Tool<unknown, ResourceCall<
     const ref = this.resolveRef(input)
 
     if (read !== undefined) {
+      // 读法名的判据与 `ResourceKernel.read` 共用**同一只函数**(K2c-2):模型这条
+      // 路上它通常已经被 `Validator` 判过一次,但那位校验者是宿主注入的端口 ——
+      // 没配它的宿主上,「点了一条不存在的读法」从前要等到 provider 里才被发现,
+      // 而每个 provider 各写一句自己的措辞。判据只有一处,措辞因此也只有一句。
+      const problem = describeUnknownResourceReadProblem(this.provider.spec, read)
+      if (problem) throw new ResourceReadUnknownError(this.provider.spec.scheme, read, problem)
       // **读无效果,结构性成立**:这一支永远造 `Intent.none`,连一条 `read` 效果
       // 都不报。授权者因此恒静默放行,而拦截 / 预算 / 审计照旧走完。
       return Intent.none<ResourceCall<Payload>>({
@@ -190,6 +207,10 @@ export class ResourceTool<Payload = unknown> extends Tool<unknown, ResourceCall<
         principal: ctx.principal,
         sessionId: ctx.invocation.sessionId,
         signal: ctx.abort.signal,
+        // 两格从 `RunContext` 原样转手(K2c-2):实现看到的读上下文,两条路上是同一
+        // 份东西 —— 一条按沙箱收窄的读法,不该因为是模型问的就换一把尺子。
+        ...(ctx.sandbox ? { sandbox: ctx.sandbox } : {}),
+        now: () => ctx.now(),
       })
       // 读的结果投影成文本 = JSON。**不往 `details` 里再塞一份**:那一格的类型是
       // `JsonObject`,而一条读法完全可以返回一个数组或一个标量 —— 为了填满一格

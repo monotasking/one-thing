@@ -34,8 +34,36 @@
  * 因为管线的答案是 `Outcome` 而不是信封,而 `Outcome.failed` 原样带着这句话 ——
  * 域那一侧再折回同一个信封(`rpc/resource-envelope.ts`)。
  *
+ * ── K2c-2:读面也退了,而且读走的是**读自己那条路** ─────────────────────────
+ * `ResourceKernel.read` 不再经 `ToolRunner`(理由在 `core/resource/read-outcome.ts`
+ * 的文件头),于是域那六条读面(`get` / `getMessages` / `getMessagesPage` /
+ * `getUserMarkers` / `getSegments` / `getTokenUsage`)也能退成这只 provider 的投影。
+ *
+ * 纪律与做法那一批逐字相同:**采用域今天那一只端口**,不另写一份。所以
+ * `markers` 问的是 `store.getSessionUserMessageMarkers`(不是读门面的
+ * `listUserMarkers` —— 域今天问的是仓那一口,换一口就是改行为)、`segments` 问的是
+ * `wiring/toc` 的 `readSessionSegments`、`tokenUsage` 问的是
+ * `store.getSessionTokenUsage` + 运行时那只归一化函数;`messages` 的两支各自对应
+ * `sessionReads.listMessages` / `sessionReads.pageMessages`。
+ *
+ * 失败的说法也照抄:查无此会话抛 `SessionNotFoundError`(域折成那句
+ * `Session not found`),pager 说不抛 `SessionPageError` 带着它自己那句话。
+ *
  * ── 露面规则 ────────────────────────────────────────────────────────────────
  * 资源工具进不进工具目录、在哪种场子露面归 K3,本单不注册。
+ *
+ * ── K3-a':模型也拿得到这只工具了,于是这只文件多了一个维度:**谁在调** ────────
+ * K3-a 把资源工具放进工具目录,`session` 从此不再只有界面调。两处因此按主体分档,
+ * 而两处的分档都住在这里(自述只说上界,权限核不读主体 —— 理由各写在那两段注释上):
+ *
+ *   · `plan('removeMessage')` —— `user` 零效果(人刚按下的那一次不再问一遍人),
+ *     其余顶格 `session_destructive`(policy `ask`);
+ *   · `read('messages')` —— 非 `user` 的翻页夹在 100 条以内、缺省 20;界面那 200
+ *     条一格不动。
+ *
+ * 这两处是这只文件里**仅有**的两句「如果是谁调的就……」。内核里一句都不许有
+ * (`core/resource/kernel.ts` 的文件头写着那条),而在这里它们不是绕过管线的暗门:
+ * 分出来的档是一份**更诚实的 `Intent`**,照样交给同一位授权者去判。
  */
 
 import fs from 'node:fs/promises'
@@ -46,19 +74,24 @@ import type {
 } from '@onething/core/resource'
 import { planFromSpec } from '@onething/core/resource'
 import type { ResourceRef } from '@onething/core/resource'
-import type { Intent, PlanContext, Result, RunContext } from '@onething/core/toolkit'
-import { textResult } from '@onething/core/toolkit'
+import type { PlanContext, Result, RunContext } from '@onething/core/toolkit'
+import { Intent, textResult } from '@onething/core/toolkit'
+import type { Principal } from '@onething/core/permission'
 import { SESSION_EVENT_TYPES, emitCoreSessionEventSafely } from '@onething/core/events'
 import { sessionResourceSpec } from '@onething/runtime/sessions/resource-spec'
 import {
+  normalizeOnethingSessionTokenUsage,
   renameOnethingSessionForIpc,
   removeOnethingMessageForIpc,
+  sanitizeOnethingMessagesForRenderer,
+  sanitizeOnethingSessionForRenderer,
   updateOnethingSessionAgent,
   updateOnethingSessionArchivedForIpc,
   updateOnethingSessionModel,
   updateOnethingSessionPinForIpc,
 } from '@onething/runtime/sessions'
 import { updateOnethingSessionWorkingDirectory } from '@onething/runtime/sessions/working-directory'
+import type { ChatMessage, GetSessionMessagesPageRequest } from '@shared/ipc.js'
 import * as store from '../../store.js'
 import { sessionCommands } from '../../session/commands.js'
 import { sessionReads } from '../../session/reads.js'
@@ -66,6 +99,7 @@ import { getEventBus } from '../../events/index.js'
 import { DEFAULT_AGENT_ID, agentExists } from '../agents/index.js'
 import { consolePort, getLogger } from '../logging/index.js'
 import { workdirGateway } from '../variables/gateways.js'
+import { readSessionSegments } from '../toc/index.js'
 
 const log = getLogger('resource.session')
 /** 投影层收的是鸭子 logger —— 与域里那一只同一个位置、同一个形状。 */
@@ -122,8 +156,70 @@ export type SessionOpPayload =
   | { readonly op: 'setAgent'; readonly sessionId: string; readonly agentId?: string }
   | { readonly op: 'removeMessage'; readonly sessionId: string; readonly messageId: string }
 
-const DEFAULT_MESSAGE_PAGE = 20
-const PREVIEW_LIMIT = 120
+/**
+ * 分页那本册子说不(游标解不开、锚点不在那条会话里)。
+ *
+ * 具名的理由与 `SessionOpRefusedError` 逐字相同:判定读类名,而它带的那句话是
+ * pager 自己写的 —— 域折回信封时原样用它,所以「退成投影」不改一个字。
+ */
+export class SessionPageError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'SessionPageError'
+  }
+}
+
+/**
+ * 这次读消息说的是「一页」还是「整份」(K2c-2)。
+ *
+ * 判据是**说没说分页的话**:四格一个都没给 = 整份(回 `undefined`);给了任意一格
+ * = 一页。域那一侧的 `getMessagesPage` 总是至少带一个 `anchor`(缺省 `'tail'`,
+ * 与 pager 对 `anchor` 缺席时走的分支逐字同一支),所以两条入口分得开。
+ */
+function pageRequestOf(sessionId: string, query: unknown): GetSessionMessagesPageRequest | undefined {
+  const raw = (query ?? {}) as Record<string, unknown>
+  const cursor = typeof raw.cursor === 'string' ? raw.cursor : undefined
+  const limit = typeof raw.limit === 'number' ? raw.limit : undefined
+  const direction = raw.direction === 'older' || raw.direction === 'newer' ? raw.direction : undefined
+  const anchor = raw.anchor as GetSessionMessagesPageRequest['anchor'] | undefined
+  if (cursor === undefined && limit === undefined && direction === undefined && anchor === undefined) {
+    return undefined
+  }
+  return {
+    sessionId,
+    ...(cursor !== undefined ? { cursor } : {}),
+    ...(limit !== undefined ? { limit } : {}),
+    ...(direction !== undefined ? { direction } : {}),
+    ...(anchor !== undefined ? { anchor } : {}),
+  }
+}
+
+/** 模型一次翻多少条(自述 `messages` 的 `limit` 那一格上写着同样两个数)。 */
+const MODEL_PAGE_LIMIT_DEFAULT = 20
+const MODEL_PAGE_LIMIT_MAX = 100
+
+/**
+ * 模型翻页的上限(K3-a')。**只夹非 `user` 的主体**。
+ *
+ * 为什么不无条件夹:壳一次要 200 条是它的正常工作量(那正是 K2c-2 证明「整页
+ * 原样到达、没有 `<truncation>`」的那一例),无条件夹等于把界面的分页从 200 砍成
+ * 100 —— 一次没人裁定过的、用户可感知的变化,而本单要堵的洞与界面无关。
+ *
+ * 为什么要夹:资源工具自 K3-a 起在工具目录里,模型可以自己写 `limit`。它一次翻
+ * 一千条不会失败,只会把这一回合的预算烧在一段被截断的抄本上 —— 与 `get` 那一格
+ * 的推翻理由是同一句话。
+ *
+ * 整份那一支(`page === undefined`)不动:那是「说没说分页的话」这条判据的另一半,
+ * 模型走它拿到的是整份抄本过 `OutputBudget`,由预算说了算。
+ */
+function clampPageForPrincipal(
+  page: GetSessionMessagesPageRequest | undefined,
+  principal: Principal,
+): GetSessionMessagesPageRequest | undefined {
+  if (!page || principal.kind === 'user') return page
+  const asked = page.limit ?? MODEL_PAGE_LIMIT_DEFAULT
+  return { ...page, limit: Math.max(1, Math.min(MODEL_PAGE_LIMIT_MAX, Math.floor(asked))) }
+}
 
 function requireSessionId(ref: ResourceRef | null, member: string): string {
   if (!ref || !ref.path) throw new SessionRefRequiredError(member)
@@ -166,12 +262,6 @@ function settle(result: { success: boolean; error?: string }, fallback: string):
   if (!result.success) throw new SessionOpRefusedError(result.error ?? fallback)
 }
 
-/** 一条消息的一行预览。与列表投影那一格同一个口径:折成一行、砍到 120 字。 */
-function previewOf(content: string): string {
-  const collapsed = content.replace(/\s+/g, ' ').trim()
-  return collapsed.length > PREVIEW_LIMIT ? `${collapsed.slice(0, PREVIEW_LIMIT)}…` : collapsed
-}
-
 export class SessionResourceProvider implements ResourceProvider<SessionOpPayload> {
   readonly spec = sessionResourceSpec
 
@@ -181,16 +271,28 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
     this.hub = hub
   }
 
-  async read(name: string, ref: ResourceRef | null, query: unknown, _ctx: ResourceReadContext): Promise<unknown> {
+  async read(name: string, ref: ResourceRef | null, query: unknown, ctx: ResourceReadContext): Promise<unknown> {
     const sessionId = requireSessionId(ref, name)
     switch (name) {
       case 'get':
         return this.summary(sessionId)
+      case 'record':
+        return this.record(sessionId)
       case 'messages':
-        return this.messages(sessionId, query)
+        return this.messages(sessionId, query, ctx.principal)
+      case 'markers':
+        return this.markers(sessionId)
+      case 'segments':
+        return readSessionSegments(sessionId)
+      case 'tokenUsage':
+        // **不判会话在不在**:域那一侧对查无此会的会话答的是一份全零读数,而本单
+        // 的硬约束是契约一个字不改(理由写在自述那一格上)。
+        return normalizeOnethingSessionTokenUsage(store.getSessionTokenUsage(sessionId))
       default:
-        // 走不到:`ResourceTool` 只在自述里有这条读法时才调进来。留一句诚实的错,
-        // 而不是返回 `undefined` 让调用方去猜「这条会话是空的还是这条读法不存在」。
+        // 走不到:两条路(`ResourceTool` / `ResourceKernel.read`)都先查过读法名在不在
+        // 自述里(`describeUnknownResourceReadProblem`,K2c-2 起是同一只函数)。留一句
+        // 诚实的错,而不是返回 `undefined` 让调用方去猜「这条会话是空的还是这条读法
+        // 不存在」。
         throw new TypeError(`Session resource has no read named ${JSON.stringify(name)}`)
     }
   }
@@ -199,7 +301,7 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
     op: string,
     ref: ResourceRef | null,
     params: unknown,
-    _ctx: PlanContext,
+    ctx: PlanContext,
   ): Promise<Intent<SessionOpPayload>> {
     const sessionId = requireSessionId(ref, op)
     // 存在性在 plan 期就判:一次注定改不动的做法不该走到 apply 才发现目标不在。
@@ -241,9 +343,36 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
           `Bind session to ${agentId || DEFAULT_AGENT_ID}`,
         )
       }
+      /**
+       * **同一条做法,效果按主体分档**(K3-a')。
+       *
+       * 自述里 `removeMessage.effects` 是 `['session_destructive']` —— 那是**上界**,
+       * 「这条做法最多会做到什么」。真发给授权者的这一条按谁在做分档:
+       *
+       *   · `user` —— 界面上那个删除按钮。主体本来就拥有这条会话与这条消息,人刚
+       *     按下的那一次不该再问一遍人;弹卡在这里是噪音,不是保护(与
+       *     `session_spawn` 从 ask 改回 silent 那次复盘同一条判据)。零效果**不等于
+       *     不留痕迹**:照样落 `tool/audit`、照样发 `messageRemoved`。
+       *   · 其余(`agent` / `system`,以及经它们进来的插件)—— 顶格,`ask`。K3-a 把
+       *     资源工具放进了工具目录,模型从此拿得到这只 `session` 工具;不分这一档,
+       *     它可以不问一声删掉一条消息。
+       *
+       * ## 为什么分档在 provider 的 `plan` 里,而不是动权限核
+       *
+       * 因为「按主体分叉」在权限核里是另一片地:`decidePermission` 至今不读主体,
+       * 而让它开始读主体 = 凭证级主体那一片(09-03 用户搁置,`docs/audit/
+       * backend-architecture-review-2026-09-02.md`),不是一次接线单能拍的。
+       * 而在这里它不是一条新规则:`plan` 的整个职责就是「说清楚这一次将要做什么」,
+       * 而这一次将要做什么本来就取决于谁在做 —— 与「读一个越界路径要报
+       * `external_directory` 而不是 `read`」是同一种按现场分档,`planFromSpec` 的
+       * 注释写着它自己不做这种判断。
+       */
       case 'removeMessage': {
         const messageId = stringParam(params, 'messageId', op)
-        return plan({ op, sessionId, messageId }, `Remove message ${messageId}`)
+        const payload = { op, sessionId, messageId } as const
+        const preview = { title: `Remove message ${messageId}` }
+        if (ctx.principal.kind === 'user') return Intent.of({ effects: [], payload, preview })
+        return plan(payload, preview.title)
       }
       default:
         throw new TypeError(`Session resource has no op named ${JSON.stringify(op)}`)
@@ -379,6 +508,16 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
     this.hub?.emit({ scheme: this.spec.scheme, path: sessionId }, event, payload)
   }
 
+  /**
+   * 摘要 —— 「这条会话是谁」,一格抄本都没有(自述 `get` 那一格说的就是这件事)。
+   *
+   * 问的是 `sessionReads.getSession`(读面)而不是 `store.getSession`:摘要的每一格
+   * 都是会话自己的元数据,读面是它们的正门。`messageCount` 问 `countMessages` ——
+   * 数一遍比拉回整份再取 `.length` 便宜,而且它本来就是读面的一条方法。
+   *
+   * 缺席的格子**不出现**,不写成 `null` / `''`:一份「没绑 agent」的摘要与一份
+   * 「绑了空字符串」的摘要在读者眼里不该是同一件事。
+   */
   private summary(sessionId: string): unknown {
     const session = sessionReads.getSession(sessionId)
     if (!session) throw new SessionNotFoundError(sessionId)
@@ -388,29 +527,55 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
       ...(session.workingDirectory ? { workingDirectory: session.workingDirectory } : {}),
       createdAt: session.createdAt,
       messageCount: sessionReads.countMessages(sessionId),
+      pinned: session.isPinned === true,
+      archived: session.isArchived === true,
+      // `provider/model` 一整串:与 `setModel` 那条做法自己的 `describe` 同形。
+      ...(session.lastModel ? { model: `${session.lastProvider ?? ''}/${session.lastModel}` } : {}),
+      ...(session.agentId ? { agent: session.agentId } : {}),
     }
   }
 
-  private messages(sessionId: string, query: unknown): unknown {
-    if (!sessionReads.hasSessionInStore(sessionId)) throw new SessionNotFoundError(sessionId)
-    const options = (query ?? {}) as { limit?: unknown; before?: unknown }
-    const limit = typeof options.limit === 'number' && options.limit > 0 ? Math.floor(options.limit) : DEFAULT_MESSAGE_PAGE
-    const all = sessionReads.listMessages(sessionId).messages
+  /**
+   * 一条会话的记录 —— 域的 `get` 一直交出去的那一份(`store.getSession` +
+   * renderer 脱敏),**带抄本**。自述里它叫 `record`,与摘要那一条为什么是两条读法
+   * 而不是一条读法的两种详略,写在自述 `get` 那一格上。
+   */
+  private record(sessionId: string): unknown {
+    const session = store.getSession(sessionId)
+    if (!session) throw new SessionNotFoundError(sessionId)
+    return sanitizeOnethingSessionForRenderer(session)
+  }
 
-    // `before` 是「这一页结束在那条消息之前」。找不到那条 id 时**不静默退回末页**:
-    // 那会让翻页的人以为自己回到了开头。
-    let end = all.length
-    if (typeof options.before === 'string') {
-      const at = all.findIndex(message => message.id === options.before)
-      if (at < 0) throw new TypeError(`No such message in this session: ${options.before}`)
-      end = at
+  /**
+   * 消息:整份或一页,**判据是「这次说了分页的话没有」**(自述 `messages` 那一格)。
+   *
+   * 两支各自对应域今天那一只端口,逐字不换:
+   *   · 整份 = `sessionReads.listMessages`(投影),存在性问 `store.getSessionMessages`
+   *     —— 「投影折不出消息」与「查无此会话」是两件事,后者才是 NOT_FOUND;
+   *   · 一页 = `sessionReads.pageMessages`(分页在事件账本的 pager 上),页信封原样
+   *     带出来,只把 `success` 那一格摘掉(它在资源这一层由 `ReadOutcome` 说)。
+   */
+  private messages(sessionId: string, query: unknown, principal: Principal): unknown {
+    const page = clampPageForPrincipal(pageRequestOf(sessionId, query), principal)
+    if (!page) {
+      const messages = sessionReads.listMessages(sessionId).messages as ChatMessage[]
+      if (messages.length === 0 && store.getSessionMessages(sessionId) === undefined) {
+        throw new SessionNotFoundError(sessionId)
+      }
+      return { messages: sanitizeOnethingMessagesForRenderer(messages) }
     }
 
-    return all.slice(Math.max(0, end - limit), end).map(message => ({
-      id: message.id,
-      role: message.role,
-      preview: previewOf(message.content ?? ''),
-      createdAt: message.timestamp,
-    }))
+    const response = sessionReads.pageMessages(page)
+    // pager 说不(游标解不开、锚点不在)—— 那句话原样抛出去,域折回信封时用的就是
+    // 它(`rpc/resource-envelope.ts`),所以这条路上一个字都没被改写。
+    if (!response.success) throw new SessionPageError(response.error ?? 'Failed to get message page')
+    const { success: _success, messages, ...rest } = response
+    return { ...rest, messages: sanitizeOnethingMessagesForRenderer(messages) }
+  }
+
+  private markers(sessionId: string): unknown {
+    const markers = store.getSessionUserMessageMarkers(sessionId)
+    if (!markers) throw new SessionNotFoundError(sessionId)
+    return markers
   }
 }

@@ -34,6 +34,29 @@ export class ResourceOpUnknownError extends Error {
 }
 
 /**
+ * 这个 scheme 上没有这条读法(K2c-2)。
+ *
+ * 它与 `ResourceOpUnknownError` 是同一句话的另一半,分成两只是因为「你点的读法
+ * 不存在」与「你点的做法不存在」在出口那里要给出两张不同的清单(reads 还是 ops)。
+ *
+ * **措辞由构造它的人给**,不是在这里拼的:同一条判据有两个读者(`ResourceTool`
+ * 的读支与 `ResourceKernel.read`),而判据与它的措辞一起住在
+ * `validator.ts` 的 `describeUnknownResourceReadProblem` 里 —— 这只错在这里再拼一遍
+ * 就会有第二种说法。
+ */
+export class ResourceReadUnknownError extends Error {
+  readonly scheme: string
+  readonly read: string
+
+  constructor(scheme: string, read: string, message: string) {
+    super(message)
+    this.name = 'ResourceReadUnknownError'
+    this.scheme = scheme
+    this.read = read
+  }
+}
+
+/**
  * 这次调用既没说读哪一条,也没说做哪一条。
  *
  * 生成的 schema 是一个 `oneOf` 可辨识联合,每一支都把判别字段写进 `required` ——

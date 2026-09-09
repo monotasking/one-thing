@@ -18,15 +18,20 @@
  *
  * ── `read` 为什么不进管线的两拍 ────────────────────────────────────────────
  * 读无效果(§2 不变量 1),这是**结构性**的:`ReadSpec` 里没有 effects 这一格,
- * `ResourceProvider.read` 也没有 plan 阶段。它仍然走完整条管线(拦截 → 校验 → 授权 →
- * 预算),只是 plan 出来的 `Intent` 恒无效果,于是授权者恒静默放行。「读也走管线」
- * 不是仪式:插件拦截、输出预算、审计三样对读同样要成立。
+ * `ResourceProvider.read` 也没有 plan 阶段。
+ *
+ * **同一只 `read` 有两个调用方**(K2c-2):模型那条路经 `ResourceTool` 走完整条
+ * 管线(拦截 → 校验 → 授权 → 预算),plan 出来的 `Intent` 恒无效果、授权者恒静默
+ * 放行,读到的值最后投影成一段文本;界面 / 脚本那条路经 `ResourceKernel.read`,
+ * 短路径、拿到的是**值本身**、不落审计不吃预算(理由在 `read-outcome.ts` 的文件
+ * 头)。实现这一侧对两者一视同仁 —— 它只管答,答给谁不是它的判据。
  */
 
 import { Intent } from '../toolkit/intent.js'
 import type { Result } from '../toolkit/result.js'
 import type { PlanContext, RunContext } from '../toolkit/run-context.js'
 import type { Scene } from '../toolkit/spec.js'
+import type { SandboxPolicy } from '../toolkit/ports.js'
 import type { Effect, EffectClass } from '../toolkit/effects.js'
 import type { Principal } from '../permission/principal.js'
 import { ResourceOpUnknownError } from './errors.js'
@@ -47,6 +52,15 @@ export interface ResourceReadContext {
   readonly principal: Principal
   readonly sessionId: string
   readonly signal: AbortSignal
+  /**
+   * 沙箱(K2c-2)。可选 —— 缺席 = 这台宿主没有沙箱这一格,不是「随便读」:
+   * 一条要判越界的读法在缺席时该自己决定怎么退(结构化降级或拒绝),而不是把
+   * `undefined` 当成放行。路径的解析与判定归宿主,内核既不认识 fs 也不认识仓库根
+   * (`toolkit/ports.ts` 的 `SandboxPolicy` 那句话)。
+   */
+  readonly sandbox?: SandboxPolicy
+  /** 现在几点。与 `PlanContext.now()` 同名同义 —— 实现不自己读 `Date.now()`。 */
+  now(): number
 }
 
 /**

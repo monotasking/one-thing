@@ -1,5 +1,5 @@
 /**
- * K2c-1 —— **`sessions` 域的写面真的退成了投影,不是双写。**
+ * K2c-1 / K2c-2 —— **`sessions` 域真的退成了投影,不是双写。**
  *
  * `sessions-domain.test.ts` 那 25 例证的是「对外契约一个字没变」;这一组证的是
  * 另一半,而那一半在信封上看不出来:**域这一路与直接调资源面走的是同一条管线**。
@@ -278,6 +278,172 @@ describe('sessions 域的写面 = 资源投影(K2c-1)', () => {
     const ids = sessionReads.listMessages(sessionId).messages.map(m => m.id)
     expect(ids).not.toContain('k2c1-a')
     expect(ids).not.toContain('k2c1-b')
+  })
+
+  /**
+   * K2c-2 —— **六条读面也退成了投影,而且读走的是读自己那条路。**
+   *
+   * 判据两条,与上面写面那一组一半相同、一半刻意相反:
+   *
+   *   ① 同一条会话、同一组参数,域这一路与直调 `backend.resources.read` 拿到的是
+   *      **同一个答案**(信封的载荷 ↔ `ReadOutcome.value`);
+   *   ② 两条路**一行审计都不落** —— 这是本单的核心断言。写面那一组要的是「两行
+   *      长得一样」(证明同一条管线),读面要的是「一行都没有」(证明读**不**走
+   *      那条管线)。读是查询,它不产生事实,而 `audit/resource.jsonl` 的流量假设
+   *      写在 `wiring/toolkit/audit-sink.ts` 上:人点一次按钮的量级,不是界面
+   *      每翻一页。
+   *
+   * 反证(施工时跑过):把 `ResourceKernel.read` 改回拼 `Invocation` 走
+   * `runner.run`,② 当场红(每条读面各多落一行);而 ① 仍然绿 —— 契约门看不见
+   * 这个差别,正是这一组用例存在的理由。
+   */
+  describe('六条读面 = 资源投影(K2c-2)', () => {
+    /** 够大的一页:**同时**越过 4000 行与 256KB 两条预算线。 */
+    const BIG_LINES = 40
+    const bigContent = (index: number) => {
+      const head = Array.from({ length: BIG_LINES }, (_, line) => `message ${index} line ${line}`).join('\n')
+      return `${head}\n${'x'.repeat(2000)}`
+    }
+    const PAGE_SIZE = 200
+    let bigSessionId = ''
+
+    beforeAll(async () => {
+      const store = await import('../../store.js')
+      const { sessionCommands } = await import('../../session/commands.js')
+      bigSessionId = store.createSession(`k2c2-${Date.now()}`, 'Big transcript').id
+      for (let index = 0; index < PAGE_SIZE; index++) {
+        sessionCommands.appendMessage(bigSessionId, {
+          message: {
+            id: `k2c2-${index}`,
+            role: index % 2 === 0 ? 'user' : 'assistant',
+            content: bigContent(index),
+            timestamp: 1_700_000_000_000 + index,
+          } as never,
+        })
+      }
+    }, 180_000)
+
+    /** 一条读面跑两遍:先经域,再直调读路。两遍都数审计行。 */
+    async function bothReads(
+      method: string,
+      payload: Record<string, unknown>,
+      name: string,
+      query: Record<string, unknown> = {},
+    ) {
+      const { dispatchRpc } = await import('../registry.js')
+
+      const before = resourceAuditRows().length
+      const viaDomain = await dispatchRpc({ domain: 'sessions', method, payload })
+      const afterDomain = resourceAuditRows().length
+      const viaKernel = await backend.resources.read(`session:${payload.sessionId}`, name, query, {
+        principal: PRINCIPAL,
+      })
+      const afterKernel = resourceAuditRows().length
+
+      return {
+        data: (viaDomain as { ok: boolean; data: Record<string, unknown> }).data,
+        viaKernel,
+        domainRows: afterDomain - before,
+        kernelRows: afterKernel - afterDomain,
+      }
+    }
+
+    /**
+     * K3-a':域的 `get` 读的是 **`record`**(它的契约要 `ChatSession` 本人),
+     * 而自述里的 `get` 是不带抄本的摘要 —— 两条读法是两件事。所以这一例比的是
+     * 域 ↔ `record`,并顺手钉住「`get` 不是它」:那一句才是本单改口的证据。
+     */
+    it('get:域交出的 session 就是 record 交出的那个值,而 get 是不带抄本的摘要', async () => {
+      const seen = await bothReads('get', { sessionId }, 'record')
+      expect(seen.data.success).toBe(true)
+      expect(seen.viaKernel.kind).toBe('ok')
+      expect(seen.data.session).toEqual((seen.viaKernel as { value: unknown }).value)
+      expect(seen.domainRows).toBe(0)
+      expect(seen.kernelRows).toBe(0)
+
+      const summary = await backend.resources.read(`session:${sessionId}`, 'get', {}, { principal: PRINCIPAL })
+      expect(summary.kind).toBe('ok')
+      expect((summary as { value: Record<string, unknown> }).value).not.toHaveProperty('messages')
+      expect((summary as { value: Record<string, unknown> }).value).toMatchObject({ id: sessionId })
+    })
+
+    it('getMessages:整份抄本 = messages 不带分页,两条路零审计', async () => {
+      const seen = await bothReads('getMessages', { sessionId: bigSessionId }, 'messages')
+      expect(seen.data.success).toBe(true)
+      const messages = seen.data.messages as Array<{ id: string }>
+      expect(messages).toHaveLength(PAGE_SIZE)
+      expect(messages).toEqual((seen.viaKernel as { value: { messages: unknown } }).value.messages)
+      expect(seen.domainRows).toBe(0)
+      expect(seen.kernelRows).toBe(0)
+    })
+
+    it('getUserMarkers / getSegments / getTokenUsage:同值,零审计', async () => {
+      const markers = await bothReads('getUserMarkers', { sessionId: bigSessionId }, 'markers')
+      expect(markers.data.markers).toEqual((markers.viaKernel as { value: unknown }).value)
+      expect(markers.domainRows + markers.kernelRows).toBe(0)
+
+      const segments = await bothReads('getSegments', { sessionId: bigSessionId }, 'segments')
+      expect(segments.data.segments).toEqual((segments.viaKernel as { value: unknown }).value)
+      expect(segments.domainRows + segments.kernelRows).toBe(0)
+
+      const usage = await bothReads('getTokenUsage', { sessionId: bigSessionId }, 'tokenUsage')
+      expect(usage.data.usage).toEqual((usage.viaKernel as { value: unknown }).value)
+      expect(usage.domainRows + usage.kernelRows).toBe(0)
+    })
+
+    /**
+     * **真店那种规模的一页整份到达,一个字都没被截掉。**
+     *
+     * 200 条 × 41 行 × ~2KB 同时越过 `OutputBudget` 的两条线(4000 行 / 256KB)。
+     * K1 那条路上这一页会变成一段带 `<truncation>` 的文本 —— 那是 K2c-1 在真店上
+     * 量到、并因此把读面留给本单的那条硬伤。拆掉这一例,那条硬伤就再也没有门。
+     */
+    it('getMessagesPage:200 条的一页原样到达,没有 <truncation>,零审计', async () => {
+      const seen = await bothReads(
+        'getMessagesPage',
+        { sessionId: bigSessionId, limit: PAGE_SIZE },
+        'messages',
+        { anchor: 'tail', limit: PAGE_SIZE },
+      )
+      expect(seen.data.success).toBe(true)
+      const messages = seen.data.messages as Array<{ id: string; content: string }>
+      expect(messages).toHaveLength(PAGE_SIZE)
+      // 每一条都是完整的那一份,不是被截过的开头。
+      expect(messages[0].content).toBe(bigContent(0))
+      expect(messages[PAGE_SIZE - 1].content).toBe(bigContent(PAGE_SIZE - 1))
+      expect(JSON.stringify(seen.data)).not.toContain('<truncation>')
+      // 页信封那几格原样上抬。
+      expect(seen.data.totalCount).toBe(PAGE_SIZE)
+      expect(seen.data.hasMoreBefore).toBe(false)
+      expect(seen.domainRows).toBe(0)
+      expect(seen.kernelRows).toBe(0)
+    })
+
+    /**
+     * K3-a' —— **模型翻页夹在 100 条以内,界面那 200 条一格不动。**
+     *
+     * 上一例证的是界面那一半(200 条原样到达);这一例证的是另一半,而两例必须
+     * 同时绿:无条件夹会让上一例红(那是 K2c-2 的判例,不许回退),不夹则模型可以
+     * 一次要走整份抄本再被预算截断。判据是主体,与 `removeMessage` 那一处同一个维度。
+     */
+    it('模型主体翻页:要 500 条只给 100,缺省给 20;界面那一路不受影响', async () => {
+      const agent = { principal: { kind: 'agent' as const, agentId: 'k3a2-agent' } }
+      const ref = `session:${bigSessionId}`
+
+      const capped = await backend.resources.read(ref, 'messages', { anchor: 'tail', limit: 500 }, agent)
+      expect(capped.kind).toBe('ok')
+      expect((capped as { value: { messages: unknown[] } }).value.messages).toHaveLength(100)
+
+      // 说了分页的话但没说要多少 —— 缺省 20(自述 `limit` 那一格上写着同一个数)。
+      const defaulted = await backend.resources.read(ref, 'messages', { anchor: 'tail' }, agent)
+      expect((defaulted as { value: { messages: unknown[] } }).value.messages).toHaveLength(20)
+
+      // 同一组参数,用户主体拿到的是它要的那 200 条。
+      const shell = await backend.resources.read(ref, 'messages', { anchor: 'tail', limit: 500 }, {
+        principal: PRINCIPAL,
+      })
+      expect((shell as { value: { messages: unknown[] } }).value.messages).toHaveLength(PAGE_SIZE)
+    })
   })
 
   /**

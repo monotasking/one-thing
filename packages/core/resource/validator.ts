@@ -64,6 +64,43 @@ function invalid<T>(message: string): ValidationResult<T> {
   return { ok: false, message }
 }
 
+/**
+ * 「这份自述里有没有这条读法」—— **判据抽成纯函数,因为它有两个读者**(K2c-2)。
+ *
+ * 一个是下面这位校验者(模型那条路:参数先过 `Validator`),另一个是
+ * `ResourceKernel.read`(界面 / 脚本那条路:读不进管线,所以也没有 `Validator` 替
+ * 它把关)。两处各写一遍的代价不是重复几行,是**两条路对同一个问题给不同的答案**
+ * —— 那正是原子要消灭的形状。
+ *
+ * 回 `undefined` = 没问题;回一句话 = 那句话就是 `invalid` 的措辞。
+ */
+export function describeUnknownResourceReadProblem(spec: ResourceSpec, name: unknown): string | undefined {
+  if (typeof name !== 'string' || !own(spec.reads, name)) {
+    return `${spec.scheme} has no read ${JSON.stringify(name)}. Reads: ${names(spec.reads)}.`
+  }
+  return undefined
+}
+
+/**
+ * 地址那一格。缺席合法(「这一次说的是整个命名空间」,与 `ResourceTool` 同一口径),
+ * 给了就必须是合法地址、而且是**本 scheme** 的 —— 拿别人的地址来调这只工具,
+ * 得到的是一次按错误坐标系执行的做法,而它会安静地成功。
+ *
+ * 与上面那只同一个理由抽出来:校验者与内核的读路共用它(K2c-2)。
+ */
+export function describeResourceRefProblem(spec: ResourceSpec, raw: unknown): string | undefined {
+  if (raw === undefined) return undefined
+  if (typeof raw !== 'string') {
+    return `${spec.scheme}: ${RESOURCE_REF_KEY} must be a string like "${spec.scheme}:<path>".`
+  }
+  const parsed = parseRef(raw)
+  if (!parsed) return `${spec.scheme}: ${JSON.stringify(raw)} is not a resource address.`
+  if (parsed.scheme !== spec.scheme) {
+    return `${spec.scheme}: address ${JSON.stringify(raw)} belongs to another resource.`
+  }
+  return undefined
+}
+
 export class ResourceInputValidator implements PartialValidator {
   private readonly specs = new WeakMap<object, ResourceSpec>()
 
@@ -112,36 +149,19 @@ export class ResourceInputValidator implements PartialValidator {
       )
     }
 
-    if (namesRead && !own(spec.reads, read)) {
-      return invalid(`${spec.scheme} has no read ${JSON.stringify(read)}. Reads: ${names(spec.reads)}.`)
+    if (namesRead) {
+      const readProblem = describeUnknownResourceReadProblem(spec, read)
+      if (readProblem) return invalid(readProblem)
     }
     if (namesOp && !own(spec.ops, op)) {
       return invalid(`${spec.scheme} has no op ${JSON.stringify(op)}. Ops: ${names(spec.ops)}.`)
     }
 
-    const refProblem = this.checkRef(spec, fields[RESOURCE_REF_KEY])
+    const refProblem = describeResourceRefProblem(spec, fields[RESOURCE_REF_KEY])
     if (refProblem) return invalid(refProblem)
 
     // 认领了,而且过了。载荷原样交出去 —— 这位校验者不改参数(改参数是拦截器的活,
     // 而拦截有自己的归因字段;一个悄悄改过参数的「校验」在审计里看不出是谁改的)。
     return { ok: true, value: input as T }
-  }
-
-  /**
-   * 地址那一格。缺席合法(「这一次说的是整个命名空间」,与 `ResourceTool` 同一口径),
-   * 给了就必须是合法地址、而且是**本 scheme** 的 —— 拿别人的地址来调这只工具,
-   * 得到的是一次按错误坐标系执行的做法,而它会安静地成功。
-   */
-  private checkRef(spec: ResourceSpec, raw: unknown): string | undefined {
-    if (raw === undefined) return undefined
-    if (typeof raw !== 'string') {
-      return `${spec.scheme}: ${RESOURCE_REF_KEY} must be a string like "${spec.scheme}:<path>".`
-    }
-    const parsed = parseRef(raw)
-    if (!parsed) return `${spec.scheme}: ${JSON.stringify(raw)} is not a resource address.`
-    if (parsed.scheme !== spec.scheme) {
-      return `${spec.scheme}: address ${JSON.stringify(raw)} belongs to another resource.`
-    }
-    return undefined
   }
 }

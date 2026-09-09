@@ -33,6 +33,7 @@
  * 把一次失败洗成一次别的东西)—— 所以回调收到的是 `Error` 对象本身。
  */
 
+import type { ReadOutcome } from '@onething/core/resource'
 import { TOOL_CANCELLED_MESSAGE, type Outcome } from '@onething/core/toolkit'
 
 /** 本仓那批写面共用的回执形状(`@shared/ipc/sessions.ts` 的 `SessionMutationResponse` 等)。 */
@@ -62,6 +63,42 @@ export function foldOutcomeToEnvelope(
       return { success: false, error: outcome.reason }
     case 'aborted':
       return { success: false, error: outcome.reason ?? TOOL_CANCELLED_MESSAGE }
+    case 'failed':
+      return { success: false, error: options.describeError?.(outcome.error) ?? outcome.message }
+  }
+}
+
+/**
+ * `ReadOutcome` → 域信封(K2c-2)。
+ *
+ * ## 它为什么不是上面那只函数的一个分支
+ *
+ * 因为读的成功那一支**带着东西**:一页消息、一份记录、一张读数表。写面的 `ok` 折成
+ * `{ success: true }` 就完了(回执没有载荷),读面的 `ok` 必须让域说出「这个值在我
+ * 的契约里叫什么」——`messages` 还是 `markers` 还是 `segments`。那句话只有域知道,
+ * 所以它是一个回调(`project`),与 `describeError` 是同一条理由:一个通用件不认识
+ * 任何一个域。
+ *
+ * 失败那三支与写面**逐字同一套口径**(`invalid` 用校验者的话、`denied` 用守卫的话、
+ * `failed` 先问域再退回管线那句),所以两条路上同一次失败在客户端看到的是同一句话。
+ * 读没有 `aborted` 那一支(`core/resource/read-outcome.ts` 的文件头)。
+ */
+export interface FoldReadOutcomeOptions<T extends object> extends FoldOutcomeOptions {
+  /** 读到的值 → 这个域的信封载荷。只在 `ok` 那一支被调用。 */
+  readonly project: (value: unknown) => T
+}
+
+export function foldReadOutcomeToEnvelope<T extends object>(
+  outcome: ReadOutcome,
+  options: FoldReadOutcomeOptions<T>,
+): ({ success: true } & T) | { success: false; error: string } {
+  switch (outcome.kind) {
+    case 'ok':
+      return { success: true, ...options.project(outcome.value) }
+    case 'invalid':
+      return { success: false, error: outcome.message }
+    case 'denied':
+      return { success: false, error: outcome.reason }
     case 'failed':
       return { success: false, error: options.describeError?.(outcome.error) ?? outcome.message }
   }

@@ -71,6 +71,27 @@ export interface ToolSpec {
   readonly concurrency: 'parallel' | 'sequential'
   readonly prompt?: CoreToolPromptContribution
   readonly budget?: ToolBudgetHint
+  /**
+   * 这只工具是**别的东西的投影**,不是一件独立注册的工具(K3-a)。
+   *
+   * 今天唯一的值是 `'resource'`,唯一的产地是 `core/resource/`(一个命名空间一只
+   * `ResourceTool`,加一只元工具 `resources`)。
+   *
+   * 它答的问题只有一个:**这只工具进不进「工具清单」那个出口** —— 设置页的工具
+   * 列表与 CLI 的 `listTools` 读的那一份(`runtime/toolkit/catalog-projection.wiring.ts`)。
+   * 那份清单答的是「这台宿主注册了哪些工具」,而资源的呈现(图标、标题、每个应用
+   * 一格的许可)归应用登记表,不归工具清单;K1 的审查打回记的就是这一条:资源
+   * 工具进目录时那份清单凭空多出一行 `session`,是一次没人裁定过的、用户可感知的
+   * 变化(08-18 判例:默认保持旧行为)。
+   *
+   * **它与「露不露面」无关**:模型照常看得见这些工具,回合面的判据是 §10.4 那四个
+   * 事实加每只工具自己的 `visibleIn`。一个出口的减法不许顺手变成另一个出口的减法。
+   *
+   * 为什么是一格数据而不是让读点去 `instanceof ResourceTool`:投影层(产品层)那样
+   * 就得反向 import core 的资源实现类,而它今天只认识 `ToolSpec`。一格枚举是值,
+   * 一条 import 是依赖。
+   */
+  readonly projection?: 'resource'
 }
 
 /**
