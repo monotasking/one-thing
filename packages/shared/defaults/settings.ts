@@ -28,7 +28,9 @@ type ProviderConfigWithLocalAddress = ProviderConfig & { localAddress?: string }
 // ============================================================================
 
 export const DEFAULT_TEMPERATURE = 0.7
-export const DEFAULT_MAX_TOKENS = 4096
+// `DEFAULT_MAX_TOKENS = 4096` 于 2026-09-09 删除:它是「输出上限未知」时最后
+// 一个还能编出数来的地方。裁定是不知道就不传 `max_tokens`,所以 chat.maxTokens
+// 缺省即缺席 —— 用户在设置里填了才有数。
 export const DEFAULT_CONTEXT_LENGTH = 128000
 
 export const DEFAULT_EDITOR_SETTINGS: Required<EditorSettings> = {
@@ -230,7 +232,6 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
 
 export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   temperature: DEFAULT_TEMPERATURE,
-  maxTokens: DEFAULT_MAX_TOKENS,
   topP: 1,
   presencePenalty: 0,
   frequencyPenalty: 0,

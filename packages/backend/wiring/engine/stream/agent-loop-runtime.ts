@@ -161,7 +161,10 @@ function createAgentLoopRuntimeAdapters(
     getSkillsForSession,
     createProvider: createAgentProviderFromRuntime,
     resolveModelContextLength: modelRegistry.getModelContextLength,
-    resolveModelMaxOutputTokens: modelRegistry.getModelMaxOutputTokens,
+    // strict 变体(2026-09-09):目录 / 用户覆盖里查不到就交出 undefined,
+    // 下游据此**不传** `max_tokens`。换回非 strict 的那只就等于把「不知道」
+    // 译成 4096 —— 那正是 fe5261d9 那条 `length` 收场的产地。
+    resolveModelMaxOutputTokens: modelRegistry.getKnownModelMaxOutputTokens,
     getMCPToolDefinitionsForModel,
     getAgentToolAllowlist: (agentId: string | undefined, session?: unknown) => {
       // Fallback only: a run with a resolved profile reads the snapshot

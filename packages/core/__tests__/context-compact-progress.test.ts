@@ -86,7 +86,6 @@ function createHarness(options: { compactReasons?: Array<string | null> } = {}) 
 		},
 		models: {
 			getModelContextLength: async () => 200_000,
-			getModelMaxOutputTokens: async () => 8_192,
 		},
 		history: {
 			buildMessages: () => [],

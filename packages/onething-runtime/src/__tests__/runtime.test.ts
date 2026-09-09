@@ -168,7 +168,6 @@ function createHarness() {
     },
     models: {
       getModelContextLength: async () => 128000,
-      getModelMaxOutputTokens: async () => 4096,
     },
     history: {
       buildMessages: messages => [...messages],

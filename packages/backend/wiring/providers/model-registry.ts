@@ -16,7 +16,6 @@ import {
 	getOnethingModelContextLength,
 	getOnethingModelDisplayName,
 	getOnethingKnownModelMaxOutputTokens,
-	getOnethingModelMaxOutputTokens,
 	getOnethingModelNameAliases,
 	getOnethingModelsForProvider,
 	onethingCapabilityEntryToOpenRouterModel,
@@ -507,24 +506,16 @@ export async function getModelContextLength(
 	);
 }
 
-/** Strict: real max output or undefined — never an invented 4096. */
+/**
+ * 模型的真实输出上限,或 undefined —— 不知道就说不知道。
+ * 非 strict 的那只(`getOnethingModelMaxOutputTokens`,末尾 `|| 4096`)已于
+ * 2026-09-09 连同它的产地一起删除:上限未知时下游不传 `max_tokens`。
+ */
 export async function getKnownModelMaxOutputTokens(
 	modelId: string,
 	providerId?: string,
 ): Promise<number | undefined> {
 	return getOnethingKnownModelMaxOutputTokens(
-		getProviderConfigs(),
-		modelId,
-		providerId,
-		queryOptions(),
-	);
-}
-
-export async function getModelMaxOutputTokens(
-	modelId: string,
-	providerId?: string,
-): Promise<number> {
-	return getOnethingModelMaxOutputTokens(
 		getProviderConfigs(),
 		modelId,
 		providerId,

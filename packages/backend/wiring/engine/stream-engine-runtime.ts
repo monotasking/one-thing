@@ -131,8 +131,6 @@ export function createMainStreamEngineRuntime(): MainStreamEngineRuntime {
 	const modelsPort: StreamEngineModelRegistryAdapter = {
 		getModelContextLength: (model, providerId) =>
 			modelRegistry.getModelContextLength(model, providerId),
-		getModelMaxOutputTokens: (model, providerId) =>
-			modelRegistry.getModelMaxOutputTokens(model, providerId),
 	};
 	return createOnethingProductStreamRuntimeFromHostAdapters<
 		AppSettings,

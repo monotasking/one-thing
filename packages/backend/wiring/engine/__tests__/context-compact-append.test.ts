@@ -52,7 +52,6 @@ let registeredMaxOutputTokens = 8_192
 
 vi.mock('../../providers/model-registry.js', () => ({
   getModelContextLength: async () => modelContextLength,
-  getModelMaxOutputTokens: async () => registeredMaxOutputTokens,
   getKnownModelMaxOutputTokens: async () => registeredMaxOutputTokens,
 }))
 
@@ -587,7 +586,7 @@ describe('空摘要闸(2026-08-15)', () => {
     }
     expect(options.thinking).toBe(false)
     expect(typeof options.onUsage).toBe('function')
-    // 上面 model-registry mock 里 getModelMaxOutputTokens = 8_192:原样透传,不是 1600/4096。
+    // 上面 model-registry mock 里 getKnownModelMaxOutputTokens = 8_192:原样透传,不是 1600/4096。
     expect(options.maxTokens).toBe(8_192)
   })
 })

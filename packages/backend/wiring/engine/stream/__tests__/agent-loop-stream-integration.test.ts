@@ -177,7 +177,7 @@ const mocks = vi.hoisted(() => ({
 	senderSend: vi.fn(),
 	modelSupportsImageGeneration: vi.fn(async () => false),
 	getModelContextLength: vi.fn(async () => 128000),
-	getModelMaxOutputTokens: vi.fn(async () => 4096),
+	getKnownModelMaxOutputTokens: vi.fn(async () => 4096),
 	requiredAppFetch: vi.fn<typeof globalThis.fetch>(),
 	processImageGenerationStream: vi.fn(async () => true),
 	buildPrompt: vi.fn(async ({ historyMessages }) => ({
@@ -253,7 +253,7 @@ vi.mock('../../../../session/commands.js', async importOriginal => ({
 vi.mock("../../../providers/model-registry.js", () => ({
 	modelSupportsImageGeneration: mocks.modelSupportsImageGeneration,
 	getModelContextLength: mocks.getModelContextLength,
-	getModelMaxOutputTokens: mocks.getModelMaxOutputTokens,
+	getKnownModelMaxOutputTokens: mocks.getKnownModelMaxOutputTokens,
 }));
 
 vi.mock("../../../../provider-binding/bound-fetch.js", () => ({

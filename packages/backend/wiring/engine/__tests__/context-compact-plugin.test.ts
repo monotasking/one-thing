@@ -38,7 +38,6 @@ vi.mock('../../providers/index.js', () => ({
 }))
 vi.mock('../../providers/model-registry.js', () => ({
   getModelContextLength: async () => 200_000,
-  getModelMaxOutputTokens: async () => 8_192,
   getKnownModelMaxOutputTokens: async () => 8_192,
 }))
 vi.mock('../stream/message-helpers.js', () => ({

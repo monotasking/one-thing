@@ -6,6 +6,7 @@ import {
   buildAgentLoopContextCompactEventPlan,
   buildAgentLoopDirectToolsWithAdapters,
   buildPendingAgentLoopMessageInjections,
+  clampAgentLoopRequestMaxTokens,
   configWithApiKey,
   createAgentLoopCompactState,
   getAgentLoopTransientTail,
@@ -416,7 +417,9 @@ describe('core agent-loop runtime helpers', () => {
     expect(calls).toEqual([])
   })
 
-  it('falls back when injected model registry lookup fails', async () => {
+  // 解析出错 = 我们没问出这个模型的上限 = 不知道(2026-09-09 裁定)。
+  // 从前这里回 `chatMaxTokens || 4096`,等于在兜底里替模型编一个上限。
+  it('falls back when injected model registry lookup fails: 预留量缺席,不编数', async () => {
     const result = await resolveAgentLoopContextBudgetWithRegistry({
       providerId: 'deepseek',
       capabilities: {},
@@ -430,10 +433,58 @@ describe('core agent-loop runtime helpers', () => {
 
     expect(result.budget).toEqual({
       modelContextLength: 128000,
-      reservedOutputTokens: 2048,
       thresholdPercent: 75,
     })
+    expect(result.budget.reservedOutputTokens).toBeUndefined()
     expect(result.error).toBeInstanceOf(Error)
+  })
+
+  // 事故 fe5261d9(2026-09-09):`deepseek-v4.1-flash-expires-on-0910` 不在目录里,
+  // 从前一路编成 4096 → 对半 2048 → reasoning 吃光后 `length` 收场。
+  it('目录没有 + 无覆盖 + chat.maxTokens 缺席 ⇒ 预留量缺席(不传 max_tokens)', async () => {
+    const result = await resolveAgentLoopContextBudgetWithRegistry({
+      providerId: 'deepseek',
+      providerConfig: { model: 'deepseek-v4.1-flash-expires-on-0910' },
+      resolveModelContextLength: async () => 128000,
+      resolveModelMaxOutputTokens: async () => undefined,
+    })
+    expect(result.budget.reservedOutputTokens).toBeUndefined()
+    expect(clampAgentLoopRequestMaxTokens({
+      budget: result.budget,
+      providerInputTokens: 1000,
+    })).toBeUndefined()
+    // 上限未知时不拿窗口余量另造一个数 —— 128000 − 1000 也不算数。
+    expect(clampAgentLoopRequestMaxTokens({
+      budget: result.budget,
+      providerInputTokens: 0,
+    })).toBeUndefined()
+  })
+
+  it('目录没有、但用户在 maxOutputByModel 里写了 3000 ⇒ 3000(写了就是「知道」)', async () => {
+    const result = await resolveAgentLoopContextBudgetWithRegistry({
+      providerId: 'deepseek',
+      providerConfig: {
+        model: 'deepseek-v4.1-flash-expires-on-0910',
+        maxOutputByModel: { 'deepseek-v4.1-flash-expires-on-0910': 3000 },
+      },
+      resolveModelContextLength: async () => 128000,
+      resolveModelMaxOutputTokens: async () => undefined,
+    })
+    expect(result.budget.reservedOutputTokens).toBe(3000)
+    expect(clampAgentLoopRequestMaxTokens({
+      budget: result.budget,
+      providerInputTokens: 1000,
+    })).toBe(3000)
+  })
+
+  it('目录知道 384000 ⇒ 对半 192000,已知上限的行为一字不变', async () => {
+    const result = await resolveAgentLoopContextBudgetWithRegistry({
+      providerId: 'deepseek',
+      providerConfig: { model: 'deepseek-v4-pro' },
+      resolveModelContextLength: async () => 1048576,
+      resolveModelMaxOutputTokens: async () => 384000,
+    })
+    expect(result.budget.reservedOutputTokens).toBe(192000)
   })
 
   it('keeps the current in-memory tool turn tail when rebuilding compacted messages', () => {
@@ -785,6 +836,7 @@ describe('core agent-loop runtime helpers', () => {
       thresholdPercent: 85,
     })
 
+    // 上限未知但用户在设置里填了数:那个数照用(填了也是一种「知道」)。
     expect(resolveAgentLoopContextBudgetValues({
       providerConfig: {
         model: 'custom-small',
@@ -793,6 +845,14 @@ describe('core agent-loop runtime helpers', () => {
     })).toEqual({
       modelContextLength: 128000,
       reservedOutputTokens: 2048,
+      thresholdPercent: 85,
+    })
+
+    // 上限未知、设置里也没填 ⇒ 预留量缺席(2026-09-09;从前这里是 4096)。
+    expect(resolveAgentLoopContextBudgetValues({
+      providerConfig: { model: 'custom-small' },
+    })).toEqual({
+      modelContextLength: 128000,
       thresholdPercent: 85,
     })
   })

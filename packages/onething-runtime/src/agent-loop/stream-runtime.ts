@@ -585,7 +585,8 @@ export type BuildOnethingAgentLoopStreamRuntimeResult<
 			hasTools: boolean;
 			supportsTools: boolean;
 			modelContextLength: number;
-			reservedOutputTokens: number;
+			/** 缺席 = 模型输出上限未知 = 这一轮不传 `max_tokens`(2026-09-09)。 */
+			reservedOutputTokens?: number;
 	  };
 
 export async function maybeCompactOnethingAgentLoopContext<

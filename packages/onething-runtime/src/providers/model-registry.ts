@@ -128,6 +128,12 @@ export interface OnethingProviderModelConfig extends OnethingQwenEndpointConfig 
 	modelCapabilitiesByModel?: Record<string, OnethingModelCapabilityOverride>;
 	/** Per-model context-window override, keyed by model id. */
 	contextLengthByModel?: Record<string, number>;
+	/**
+	 * Per-model max-output override, keyed by model id. 与上面那格同一把尺:
+	 * 目录里没有的模型全靠用户自己填,而「填了」是 strict 变体判定「知道上限」
+	 * 的两个来源之一(2026-09-09)。
+	 */
+	maxOutputByModel?: Record<string, number>;
 }
 
 export type OnethingProviderModelConfigs = Record<
@@ -926,24 +932,21 @@ export function getOnethingKnownModelMaxOutputTokens(
 	providerId?: string,
 	options: OnethingModelRegistryQueryOptions = {},
 ): number | undefined {
+	// User override wins, exactly as `getOnethingModelContextLength` does it for
+	// the window: 2026-09-08 的模型覆盖浮层给「最大输出」开了一格,用户写了就是
+	// 「知道」—— 目录里没有的自建 / 临时模型全靠这一格,而下游把「不知道」译成
+	// 「不传 max_tokens」,读漏这里就等于把用户填的数扔了。
+	const override = providerId
+		? providers?.[providerId]?.maxOutputByModel?.[modelId]
+		: undefined;
+	if (typeof override === "number" && Number.isFinite(override) && override > 0)
+		return Math.floor(override);
+
 	const entry = getModelEntry(providers, modelId, providerId);
 	if (entry?.maxOutputTokens) return entry.maxOutputTokens;
 	const fallback = options.getFallbackModel?.(modelId, providerId);
 	const known = fallback?.top_provider?.max_completion_tokens;
 	return known && known > 0 ? known : undefined;
-}
-
-export function getOnethingModelMaxOutputTokens(
-	providers: OnethingProviderModelConfigs | undefined,
-	modelId: string,
-	providerId?: string,
-	options: OnethingModelRegistryQueryOptions = {},
-): number {
-	const entry = getModelEntry(providers, modelId, providerId);
-	if (entry?.maxOutputTokens) return entry.maxOutputTokens;
-
-	const fallback = options.getFallbackModel?.(modelId, providerId);
-	return fallback?.top_provider?.max_completion_tokens || 4096;
 }
 
 export function onethingModelSupportsTools(

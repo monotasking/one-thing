@@ -127,7 +127,9 @@ export interface StreamEngineProviderAdapter<TSettings = unknown, TProviderConfi
 
 export interface StreamEngineModelRegistryAdapter {
   getModelContextLength(model: string, providerId: string): Promise<number>
-  getModelMaxOutputTokens(model: string, providerId: string): Promise<number>
+  // `getModelMaxOutputTokens` 这一格 2026-09-09 删除:没有任何读者(引擎的
+  // 输出预留量走 `resolveAgentLoopContextBudgetWithRegistry` 的 strict 口),
+  // 而它的实现末尾是 `|| 4096` —— 留着就是留一条把「不知道」译成 4096 的活路。
 }
 
 export interface StreamEngineStreamsAdapter<THistoryMessage = unknown, TStreamResult = unknown> {

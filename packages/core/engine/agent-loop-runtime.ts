@@ -28,7 +28,17 @@ import { toLogger, type CompatLogger } from '../logging/index.js'
 
 export interface CoreAgentLoopContextBudget {
   modelContextLength: number
-  reservedOutputTokens: number
+  /**
+   * 这一轮打算要多少输出 token。**缺席 = 这个模型的输出上限没人知道,于是
+   * 不传 `max_tokens`**(2026-09-09 用户裁定,事故:目录里没有的
+   * `deepseek-v4.1-flash-expires-on-0910` 被编造成 4096、对半成 2048,
+   * reasoning 吃光后 `length` 收场)。
+   *
+   * 「知道」只有两个来源:模型目录里有这一条,或用户在
+   * `providers[p].maxOutputByModel[model]` 里自己写了。两者都没有就是不知道
+   * —— 不许在任何读者处补一个默认数,让 provider 自己说它的默认值是多少。
+   */
+  reservedOutputTokens?: number
   thresholdPercent: number
 }
 
@@ -812,15 +822,21 @@ export function resolveAgentLoopContextBudgetValues(input: {
   const modelContextLength = positiveTokenLimit(input.capabilities?.maxInputTokens)
     ?? positiveTokenLimit(input.registeredModelContextLength)
     ?? 128000
+  // 上限未知就是 undefined,**不再 `?? 0`**(2026-09-09 裁定):0 会一路走到
+  // 「按 chatMaxTokens 编一个数」那条岔路上,而那正是 4096 的老产地。
   const modelMaxOutputTokens = positiveTokenLimit(input.capabilities?.maxOutputTokens)
     ?? positiveTokenLimit(input.registeredModelMaxOutputTokens)
-    ?? 0
-  const configuredMaxTokens = input.chatMaxTokens || 4096
-  const perModelOverride = input.providerConfig.maxOutputByModel?.[input.providerConfig.model]
-  const halfDefault = modelMaxOutputTokens > 0 ? Math.max(1, Math.floor(modelMaxOutputTokens / 2)) : 0
-  const requested = perModelOverride ?? (halfDefault > 0 ? halfDefault : configuredMaxTokens)
-  const reservedOutputTokens = modelMaxOutputTokens > 0
-    ? Math.min(requested, modelMaxOutputTokens)
+  const perModelOverride = positiveTokenLimit(
+    input.providerConfig.maxOutputByModel?.[input.providerConfig.model],
+  )
+  const halfDefault = modelMaxOutputTokens !== undefined
+    ? Math.max(1, Math.floor(modelMaxOutputTokens / 2))
+    : undefined
+  // 已知上限时的行为一字不变:用户覆盖优先,否则对半,再按上限夹。
+  // 上限未知时只剩用户在设置里填的那个数;它也缺席就是 undefined = 不传。
+  const requested = perModelOverride ?? halfDefault ?? positiveTokenLimit(input.chatMaxTokens)
+  const reservedOutputTokens = modelMaxOutputTokens !== undefined
+    ? Math.min(requested ?? modelMaxOutputTokens, modelMaxOutputTokens)
     : requested
 
   return {
@@ -844,12 +860,17 @@ export function resolveAgentLoopContextBudgetValues(input: {
  *
  * 夹不出结果(注册上限未知 / 窗口已被输入吃满)就原样返回预留量:本函数只
  * 负责往下夹,不负责编一个更大的数,也不负责替调用方决定塞不下时怎么办。
+ *
+ * 预留量本身缺席(= 输出上限没人知道,2026-09-09 裁定)就回 `undefined`:
+ * 不知道上限时**不**拿窗口余量另造一个数,这与 `resolveCompactOutputTokens`
+ * 对未注册模型回 undefined 是同一条(2026-08-15)。
  */
 export function clampAgentLoopRequestMaxTokens(input: {
   budget: CoreAgentLoopContextBudget
   providerInputTokens: number
-}): number {
+}): number | undefined {
   const reserved = input.budget.reservedOutputTokens
+  if (reserved === undefined) return undefined
   const clamped = resolveCompactOutputTokens({
     modelContextLength: input.budget.modelContextLength,
     registeredMaxOutputTokens: reserved,
@@ -872,9 +893,10 @@ export function providerReportedInputTokens(
 export async function resolveAgentLoopContextBudgetWithRegistry(
   options: ResolveAgentLoopContextBudgetOptions,
 ): Promise<CoreAgentLoopContextBudgetResolution> {
+  // 解析出错 = 我们没问出这个模型的上限,那就是不知道:`reservedOutputTokens`
+  // 缺席(2026-09-09 裁定),别在兜底里偷偷塞回 4096。
   const fallbackBudget: CoreAgentLoopContextBudget = {
     modelContextLength: positiveTokenLimit(options.capabilities?.maxInputTokens) ?? 128000,
-    reservedOutputTokens: options.chatMaxTokens || 4096,
     thresholdPercent: options.contextCompactThreshold ?? 85,
   }
 

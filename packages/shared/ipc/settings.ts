@@ -171,7 +171,12 @@ export interface UserProfileSettings {
 // Chat settings for model parameters
 export interface ChatSettings {
 	temperature: number; // 0-2, default 0.7
-	maxTokens: number; // Maximum output tokens, default 4096
+	/**
+	 * 这一轮要多少输出 token。**缺席 = 没人指定**,而不是 4096
+	 * (2026-09-09 裁定):模型目录知道上限时按上限对半算,目录与本字段都
+	 * 缺席时请求里干脆不带 `max_tokens`,由 provider 用它自己的默认值。
+	 */
+	maxTokens?: number;
 	topP?: number; // Nucleus sampling, 0-1, default 1
 	presencePenalty?: number; // -2 to 2, default 0
 	frequencyPenalty?: number; // -2 to 2, default 0

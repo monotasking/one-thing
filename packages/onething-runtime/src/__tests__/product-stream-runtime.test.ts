@@ -69,7 +69,6 @@ describe('createOnethingProductStreamRuntime', () => {
       },
       models: {
         getModelContextLength: async () => 128_000,
-        getModelMaxOutputTokens: async () => 4_096,
       },
       history: {
         buildMessages: messages => messages,
@@ -147,7 +146,6 @@ describe('createOnethingProductStreamRuntime', () => {
       },
       models: {
         getModelContextLength: async () => 128_000,
-        getModelMaxOutputTokens: async () => 4_096,
       },
       buildHistoryMessages,
       buildResumeHistoryAfterToolConfirmation,

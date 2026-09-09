@@ -158,7 +158,7 @@ const mocks = vi.hoisted(() => ({
   getMCPRouterToolDefinition: vi.fn<() => ToolDefinition | null>(() => null),
   getMCPToolDefinitionsForModel: vi.fn<() => ToolDefinition[]>(() => []),
   getModelContextLength: vi.fn(async () => 128000),
-  getModelMaxOutputTokens: vi.fn(async () => 8192),
+  getKnownModelMaxOutputTokens: vi.fn<() => Promise<number | undefined>>(async () => 8192),
   getEnabledToolsAsync: vi.fn<() => Promise<ToolDefinition[]>>(async () => []),
   initializeAsyncTools: vi.fn(async () => undefined),
   setInitContext: vi.fn(),
@@ -181,7 +181,7 @@ vi.mock('@onething/runtime/mcp/index.wiring', () => ({
 
 vi.mock('../../../providers/model-registry.js', () => ({
   getModelContextLength: mocks.getModelContextLength,
-  getModelMaxOutputTokens: mocks.getModelMaxOutputTokens,
+  getKnownModelMaxOutputTokens: mocks.getKnownModelMaxOutputTokens,
   getModelCapabilityEntry: vi.fn(() => undefined),
 }))
 
@@ -392,7 +392,7 @@ describe('agent loop stream runtime multimodal input', () => {
       expect(prepared.reservedOutputTokens).toBe(1000)
       expect(prepared.runtime.maxTokens).toBe(1000)
       expect(mocks.getModelContextLength).not.toHaveBeenCalled()
-      expect(mocks.getModelMaxOutputTokens).not.toHaveBeenCalled()
+      expect(mocks.getKnownModelMaxOutputTokens).not.toHaveBeenCalled()
     } finally {
       ;mocks.visionProvider.capabilities = originalCapabilities
     }
@@ -440,6 +440,43 @@ describe('agent loop stream runtime multimodal input', () => {
     if (!prepared.supported) return
     expect(prepared.runtime.maxTokens).toBe(prepared.reservedOutputTokens)
     expect(prepared.runtime.maxTokens).toBe(4096)
+  })
+
+  // 事故 fe5261d9(2026-09-09 裁定):目录里没有这个模型、用户也没在
+  // `maxOutputByModel` 里写过 —— 从前编成 4096 再对半成 2048,reasoning
+  // 吃光后 `length` 收场。现在整条请求干脆不带 `max_tokens`。
+  it('输出上限未知 ⇒ 预留量与 runtime.maxTokens 都缺席(不传 max_tokens)', async () => {
+    mocks.getKnownModelMaxOutputTokens.mockResolvedValueOnce(undefined)
+
+    const prepared = await buildAgentLoopRuntimeFromStreamContext(ctx(), [
+      { role: 'user', content: 'hello' },
+    ] satisfies HistoryMessage[])
+
+    expect(prepared.supported).toBe(true)
+    if (!prepared.supported) return
+    expect(prepared.reservedOutputTokens).toBeUndefined()
+    expect(prepared.runtime.maxTokens).toBeUndefined()
+  })
+
+  it('目录未知、但用户填了最大输出 ⇒ 那个数原样上路(填了就是「知道」)', async () => {
+    // strict 变体在真链路里先读 `maxOutputByModel`;这里 mock 掉注册表,
+    // 用 providerConfig 上的同一张表走 core 的覆盖分支。
+    mocks.getKnownModelMaxOutputTokens.mockResolvedValueOnce(undefined)
+
+    const prepared = await buildAgentLoopRuntimeFromStreamContext(
+      {
+        ...ctx(),
+        providerConfig: testProviderConfig({
+          maxOutputByModel: { 'vision-model': 3000 },
+        }),
+      },
+      [{ role: 'user', content: 'hello' }] satisfies HistoryMessage[],
+    )
+
+    expect(prepared.supported).toBe(true)
+    if (!prepared.supported) return
+    expect(prepared.reservedOutputTokens).toBe(3000)
+    expect(prepared.runtime.maxTokens).toBe(3000)
   })
 
   it('rejects agent provider runtimes that do not implement a turn execution interface', async () => {

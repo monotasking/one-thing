@@ -12,7 +12,6 @@ import {
   getOnethingModelById,
   getOnethingModelContextLength,
   getOnethingKnownModelMaxOutputTokens,
-  getOnethingModelMaxOutputTokens,
   getOnethingModelsForProvider,
   mergeOnethingModelsById,
   onethingModelServesImageOutputInLoop,
@@ -96,14 +95,32 @@ describe('onething model registry helpers', () => {
       custom: { models: { 'no-limit': entry('no-limit', 'custom', 64000, 0) } },
     }
     expect(getOnethingKnownModelMaxOutputTokens(withUnknown, 'no-limit', 'custom')).toBeUndefined()
-    // the lenient getter keeps its historic 4096 for the chat path — the two are
-    // deliberately different functions so a caller must choose.
-    expect(getOnethingModelMaxOutputTokens(withUnknown, 'no-limit', 'custom')).toBe(4096)
+    // 2026-09-09:宽松的那只(末尾 `|| 4096`)已删除,不再有第二个答案可选。
+  })
+
+  it('用户在 maxOutputByModel 里填的数就是「知道」(2026-09-09,目录里没有的模型全靠这一格)', () => {
+    const overridden: OnethingProviderModelConfigs = {
+      custom: { maxOutputByModel: { 'never-heard-of': 3000 }, models: {} },
+    }
+    expect(getOnethingKnownModelMaxOutputTokens(overridden, 'never-heard-of', 'custom')).toBe(3000)
+    // 覆盖压过目录:与 contextLengthByModel 同一手。
+    const both: OnethingProviderModelConfigs = {
+      custom: {
+        maxOutputByModel: { 'shared-model': 1234 },
+        models: { 'shared-model': entry('shared-model', 'custom', 64000, 8192) },
+      },
+    }
+    expect(getOnethingKnownModelMaxOutputTokens(both, 'shared-model', 'custom')).toBe(1234)
+    // 非正数不算填过。
+    const zero: OnethingProviderModelConfigs = {
+      custom: { maxOutputByModel: { 'never-heard-of': 0 }, models: {} },
+    }
+    expect(getOnethingKnownModelMaxOutputTokens(zero, 'never-heard-of', 'custom')).toBeUndefined()
   })
 
   it('keeps provider-scoped lookups isolated when model IDs collide', () => {
     expect(getOnethingModelContextLength(providers, 'shared-model', 'custom')).toBe(64000)
-    expect(getOnethingModelMaxOutputTokens(providers, 'shared-model', 'custom')).toBe(8192)
+    expect(getOnethingKnownModelMaxOutputTokens(providers, 'shared-model', 'custom')).toBe(8192)
     expect(getOnethingModelContextLength(providers, 'shared-model', 'openai')).toBe(32000)
     expect(getOnethingModelById(providers, 'openai-only', 'custom')).toBeUndefined()
   })

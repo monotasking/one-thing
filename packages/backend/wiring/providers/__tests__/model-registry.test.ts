@@ -15,7 +15,7 @@ vi.mock('../../../stores/settings.js', () => ({
 const {
   getModelById,
   getModelContextLength,
-  getModelMaxOutputTokens,
+  getKnownModelMaxOutputTokens,
   modelSupportsImageGeneration,
 } = await import('../model-registry.js')
 
@@ -71,7 +71,7 @@ describe('model registry metadata lookups', () => {
 
   it('prefers the current provider when model ids collide', async () => {
     await expect(getModelContextLength('shared-model', 'custom')).resolves.toBe(64000)
-    await expect(getModelMaxOutputTokens('shared-model', 'custom')).resolves.toBe(8192)
+    await expect(getKnownModelMaxOutputTokens('shared-model', 'custom')).resolves.toBe(8192)
     await expect(getModelContextLength('shared-model', 'openai')).resolves.toBe(32000)
   })
 
@@ -95,7 +95,7 @@ describe('model registry metadata lookups', () => {
 
   it('uses provider-direct fallback metadata when models are not in settings', async () => {
     await expect(getModelContextLength('gpt-4.1', 'github-copilot')).resolves.toBe(1000000)
-    await expect(getModelMaxOutputTokens('gpt-5.3-codex', 'codex')).resolves.toBe(65536)
+    await expect(getKnownModelMaxOutputTokens('gpt-5.3-codex', 'codex')).resolves.toBe(65536)
     await expect(getModelById('gpt-5.3-codex', 'codex')).resolves.toMatchObject({
       context_length: 192000,
     })
