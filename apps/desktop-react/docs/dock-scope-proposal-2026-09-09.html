@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dock 作用域样例</title>
+<style>
+  :root{
+    --paper:#faf8f3;--paper-2:#f3efe6;--paper-3:#ebe6da;--ink:#37352f;--ink-2:#6f6b63;--ink-3:#a39e94;
+    --line:#e4dfd3;--accent:#c9612b;--accent-soft:#f6e3d6;--ok:#4f8a5b;--warn:#b7791f;
+    --app:#5b6fb5;--app-soft:#e3e8f7;--r:10px;--r-s:6px;
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-size:13px;line-height:1.5}
+  header{padding:14px 18px 10px;border-bottom:1px solid var(--line);display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  header h1{font-size:15px;margin:0;font-weight:600}
+  header .sub{color:var(--ink-2);font-size:12px}
+  .toggles{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+  .tg{display:flex;align-items:center;gap:6px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:3px 4px 3px 10px;font-size:12px;color:var(--ink-2)}
+  .tg b{color:var(--ink);font-weight:500}
+  .tg .opt{display:flex;border-radius:999px;background:var(--paper-3);padding:2px}
+  .tg .opt button{border:0;background:transparent;border-radius:999px;padding:2px 9px;font-size:12px;color:var(--ink-2);cursor:pointer}
+  .tg .opt button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+
+  .shell{display:grid;grid-template-columns:230px 1fr 190px;grid-template-rows:38px 1fr;height:calc(100vh - 62px - 150px - 84px);min-height:420px}
+  .topbar{grid-column:1/4;display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--paper-2)}
+  .topbar .lbl{color:var(--ink-3);font-size:11px;letter-spacing:.04em}
+  .ws{display:flex;gap:4px}
+  .ws button{border:1px solid transparent;background:transparent;border-radius:var(--r-s);padding:3px 10px;font-size:12px;cursor:pointer;color:var(--ink-2)}
+  .ws button.on{background:#fff;border-color:var(--line);color:var(--ink);font-weight:500}
+  .focus{margin-left:auto;font-size:11px;color:var(--ink-2)}
+  .focus b{color:var(--accent);font-weight:500}
+
+  aside.left{border-right:1px solid var(--line);display:grid;grid-template-rows:auto 1fr;overflow:hidden}
+  .dock{padding:10px 10px 8px;border-bottom:1px solid var(--line)}
+  .dock .cap,.sess .cap,.shelf .cap{font-size:11px;color:var(--ink-3);margin:0 0 6px 4px;letter-spacing:.04em}
+  .tiles{display:flex;flex-wrap:wrap;gap:6px}
+  .tile{position:relative;width:46px;height:46px;border-radius:var(--r);border:1px solid var(--line);background:#fff;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:10px;color:var(--ink-2);user-select:none}
+  .tile:hover{background:var(--paper-2)}
+  .tile .ic{font-size:16px;line-height:1}
+  .tile .dot{position:absolute;bottom:4px;width:5px;height:5px;border-radius:50%;background:var(--ink-3);opacity:0}
+  .tile.lit .dot{opacity:1;background:var(--accent)}
+  .tile.app{border-color:var(--app-soft);background:linear-gradient(#fff,var(--app-soft))}
+  .tile .lv{position:absolute;top:3px;right:5px;font-size:8px;color:var(--app);font-weight:600;letter-spacing:.05em}
+  .sep{flex-basis:100%;height:1px;background:var(--line);margin:2px 0}
+  .sess{padding:10px;overflow:auto}
+  .srow{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--r-s);cursor:pointer;border:1px solid transparent}
+  .srow:hover{background:var(--paper-2)}
+  .srow.on{background:var(--accent-soft);border-color:#ecd0bf}
+  .srow .t{font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .srow .cwd{font-size:10px;color:var(--ink-3);font-family:ui-monospace,Menlo,monospace}
+  .srow .cwd.none{font-style:italic;font-family:inherit}
+
+  main{display:grid;grid-template-rows:auto 1fr;overflow:hidden;position:relative}
+  .tabs{display:flex;gap:2px;padding:6px 8px 0;border-bottom:1px solid var(--line);background:var(--paper-2);min-height:34px;overflow-x:auto}
+  .tab{display:flex;align-items:center;gap:6px;padding:5px 8px 5px 10px;border:1px solid transparent;border-bottom:0;border-radius:var(--r-s) var(--r-s) 0 0;font-size:12px;color:var(--ink-2);cursor:pointer;white-space:nowrap;background:transparent}
+  .tab.on{background:var(--paper);border-color:var(--line);color:var(--ink);font-weight:500;margin-bottom:-1px}
+  .tab .k{font-size:9px;padding:1px 4px;border-radius:4px;background:var(--paper-3);color:var(--ink-2);font-weight:400}
+  .tab .k.app{background:var(--app-soft);color:var(--app)}
+  .tab .x,.tab .mv{border:0;background:transparent;color:var(--ink-3);cursor:pointer;font-size:11px;padding:0 2px;border-radius:3px}
+  .tab .x:hover,.tab .mv:hover{background:var(--paper-3);color:var(--ink)}
+  .content{padding:16px 18px;overflow:auto}
+  .content h2{font-size:14px;margin:0 0 4px;font-weight:600}
+  .content .meta{font-size:11px;color:var(--ink-3);margin-bottom:12px;font-family:ui-monospace,Menlo,monospace}
+  .empty{color:var(--ink-3);text-align:center;padding:60px 0;font-size:12px}
+  .frow{display:flex;gap:8px;align-items:center;padding:5px 8px;border-radius:var(--r-s);cursor:pointer;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+  .frow:hover{background:var(--paper-2)}
+  .frow .add{color:var(--ok)}.frow .del{color:#b4543a}
+  .note{font-size:12px;color:var(--ink-2);background:var(--paper-2);border-radius:var(--r-s);padding:8px 10px;margin-top:14px;max-width:520px}
+
+  .floats{position:absolute;inset:40px 0 0 0;pointer-events:none}
+  .float{position:absolute;width:250px;background:#fff;border:1px solid var(--line);border-radius:var(--r);box-shadow:0 8px 24px rgba(40,30,10,.12);pointer-events:auto;overflow:hidden}
+  .float .bar{display:flex;align-items:center;gap:6px;padding:6px 8px 6px 10px;background:var(--paper-2);border-bottom:1px solid var(--line);font-size:12px;cursor:pointer}
+  .float .bar .k{font-size:9px;padding:1px 4px;border-radius:4px;background:var(--paper-3);color:var(--ink-2)}
+  .float .bar .k.app{background:var(--app-soft);color:var(--app)}
+  .float .bar .sp{flex:1}
+  .float .bar button{border:0;background:transparent;color:var(--ink-3);cursor:pointer;font-size:11px;border-radius:3px}
+  .float .bar button:hover{background:var(--paper-3);color:var(--ink)}
+  .float .body{padding:10px 12px;font-size:12px;color:var(--ink-2);min-height:54px}
+  .float.top .bar{background:var(--accent-soft)}
+
+  aside.shelf{border-left:1px solid var(--line);padding:10px;overflow:auto;background:var(--paper-2)}
+  .shelf .item{display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:var(--r-s);cursor:pointer;font-size:12px;color:var(--ink-2)}
+  .shelf .item.on{background:#fff;color:var(--ink);border:1px solid var(--line)}
+  .shelf .item .k{font-size:9px;padding:1px 4px;border-radius:4px;background:var(--paper-3)}
+  .shelf .item .k.app{background:var(--app-soft);color:var(--app)}
+  .shelf .item .sp{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .shelf .item button{border:0;background:transparent;color:var(--ink-3);cursor:pointer;font-size:11px;border-radius:3px}
+  .shelf .item button:hover{background:var(--paper-3);color:var(--ink)}
+  .shelf .hint{font-size:11px;color:var(--ink-3);margin-top:10px;line-height:1.5}
+
+  .log{height:150px;border-top:1px solid var(--line);background:#fff;display:grid;grid-template-columns:1fr 1fr}
+  .log > div{padding:8px 14px;overflow:auto}
+  .log .cap{font-size:11px;color:var(--ink-3);letter-spacing:.04em;margin-bottom:4px;position:sticky;top:0;background:#fff}
+  .log p{margin:0 0 3px;font-size:12px;color:var(--ink-2)}
+  .log p b{color:var(--ink);font-weight:500}
+  .log p.rule{color:var(--accent)}
+  .log .steps li{margin:0 0 3px;font-size:12px;color:var(--ink-2)}
+  .log .steps{margin:0;padding-left:18px}
+  .guide{border-bottom:1px solid var(--line);background:#fff;padding:10px 18px;display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:center}
+  .guide .n{font-size:11px;color:var(--ink-3);white-space:nowrap}
+  .guide .n b{display:block;font-size:20px;color:var(--accent);font-weight:600;line-height:1.1}
+  .guide .txt p{margin:0 0 2px;font-size:13px}
+  .guide .txt p span{display:inline-block;width:64px;color:var(--ink-3);font-size:11px}
+  .guide .txt p.why{color:var(--ink-2)}
+  .guide .btns{display:flex;gap:6px}
+  .guide .btns button{border:1px solid var(--line);background:#fff;border-radius:var(--r-s);padding:6px 14px;font-size:13px;cursor:pointer;color:var(--ink)}
+  .guide .btns button.go{background:var(--accent);border-color:var(--accent);color:#fff}
+  .guide .btns button:disabled{opacity:.4;cursor:default}
+  kbd{font-family:ui-monospace,Menlo,monospace;font-size:11px;background:var(--paper-3);padding:0 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Dock 作用域样例 <span class="sub">— 全局 / 本区、单例 / 多开、跟随会话,三件事在同一台假壳上跑</span></h1>
+    <div class="sub">按下面的「下一步」一步步走,每步写明你做了什么、看到什么、为什么。走完之后随便点。</div>
+  </div>
+  <div class="toggles" id="toggles"></div>
+</header>
+
+<div class="guide" id="guide"></div>
+
+<div class="shell">
+  <div class="topbar">
+    <span class="lbl">工作区</span>
+    <div class="ws" id="ws"></div>
+    <span class="focus" id="focus"></span>
+  </div>
+  <aside class="left">
+    <div class="dock"><div class="cap">DOCK</div><div class="tiles" id="dock"></div></div>
+    <div class="sess"><div class="cap">会话(点 = 切换环境会话)</div><div id="sess"></div></div>
+  </aside>
+  <main>
+    <div class="tabs" id="tabs"></div>
+    <div class="content" id="content"></div>
+    <div class="floats" id="floats"></div>
+  </main>
+  <aside class="shelf"><div class="cap">右架子(收着)</div><div id="shelf"></div>
+    <div class="hint">标签上 <kbd>▸</kbd> 钉到架子,<kbd>⧉</kbd> 撕成浮窗,<kbd>✕</kbd> 关闭。架子里 <kbd>◂</kbd> 回中央。</div>
+  </aside>
+</div>
+
+<div class="log">
+  <div><div class="cap">壳做了什么</div><div id="log"></div></div>
+  <div><div class="cap">名词对照</div>
+    <ol class="steps">
+      <li><b>全局</b>(蓝角标)= 跨工作区,换工作区它跟着人走;<b>本区</b> = 只属于这个工作区。</li>
+      <li><b>单例</b> = 同一样东西这个工作区里只一份,再点是把它叫到前面,不是再开一份。</li>
+      <li><b>多开</b> = 目录 / 文件 / 改动按「哪个目录、哪个文件」各一份;同一个目录还是只一份。</li>
+      <li><b>跟随</b> = 切会话时,壳去找「根等于新会话 workdir」的那一份目录 / 改动面板。</li>
+      <li>上面的导览按「下一步」自动做;导览走完可以随便点。</li>
+    </ol>
+  </div>
+</div>
+
+<script>
+// ───────── 拍点(可翻)─────────
+const opts = {
+  follow: 'many',      // many | one
+  notif: 'app',        // app | space
+  diffFollow: 'on',    // on | off
+  dockGroup: 'level',  // level | legacy
+}
+const TOGGLES = [
+  ['follow','目录跟随',[['many','多份·切到对应那份'],['one','只一份·换根']]],
+  ['notif','通知瓦',[['app','app'],['space','space']]],
+  ['diffFollow','改动跟随',[['on','跟'],['off','不跟']]],
+  ['dockGroup','Dock 分组',[['level','按 level'],['legacy','旧 session/global']]],
+]
+
+// ───────── 瓦表(瓦自述 level;launcher 决定开出什么 ref)─────────
+const TILES = [
+  {id:'workspace', title:'工作区', ic:'▦', level:'app',   legacy:'global'},
+  {id:'settings',  title:'设置',   ic:'⚙', level:'app',   legacy:'global'},
+  {id:'apps',      title:'应用',   ic:'⋯', level:'app',   legacy:'global'},
+  {id:'notifications', title:'通知', ic:'◔', level:()=>opts.notif, legacy:'global'},
+  {id:'sessions',  title:'总览',   ic:'☰', level:'space', legacy:'session'},
+  {id:'search',    title:'检索',   ic:'⌕', level:'space', legacy:'session'},
+  {id:'providers', title:'模型',   ic:'◈', level:'space', legacy:'session'},
+  {id:'terminal',  title:'终端',   ic:'▮', level:'space', legacy:'session'},
+  {id:'files',     title:'目录',   ic:'▤', level:'space', legacy:'session', kind:'files-root'},
+  {id:'diff',      title:'改动',   ic:'±', level:'space', legacy:'session', kind:'diff'},
+]
+const tileOf = id => TILES.find(t=>t.id===id)
+const tileLevel = t => typeof t.level==='function' ? t.level() : t.level
+
+// ───────── 内容种类登记表(核心层只读这张表,不认识任何一种)─────────
+const KINDS = {
+  'panel':      { level: ref => tileLevel(tileOf(ref.key)), singleton: true },
+  'files-root': { level: 'space', singleton: false, follow: { keyOf: s => s.cwd } },
+  'file':       { level: 'space', singleton: false },
+  'diff':       { level: 'space', singleton: false, follow: { keyOf: s => opts.diffFollow==='on' ? s.cwd : null } },
+}
+const parseRef = ref => { const i = ref.indexOf(':'); return { kind: ref.slice(0,i), key: ref.slice(i+1) } }
+const levelOf = ref => { const r = parseRef(ref); const l = KINDS[r.kind].level; return typeof l==='function' ? l(r) : l }
+const isSingleton = ref => KINDS[parseRef(ref).kind].singleton
+const base = p => p.split('/').filter(Boolean).pop() || p
+const lvName = lv => lv==='app'?'全局':'本区'
+const labelOf = ref => {
+  const r = parseRef(ref)
+  if (r.kind==='panel') return tileOf(r.key).title
+  if (r.kind==='files-root') return base(r.key)
+  if (r.kind==='file') return base(r.key)
+  if (r.kind==='diff') return '改动 · '+base(r.key)
+  return ref
+}
+
+// ───────── 工作区与家具(全部 per-space;app 级格靠携带)─────────
+const SPACES = {
+  A: { name:'onething', sessions:[
+        {id:'a1', title:'重试钮闸门', cwd:'~/code/start-electron'},
+        {id:'a2', title:'personal-site 首页', cwd:'~/code/personal-site'},
+        {id:'a3', title:'TransReader 待办', cwd:null},
+      ], tree:{center:[], shelf:[], floats:[], activeCenter:null, activeShelf:null}, env:'a1' },
+  B: { name:'personal-site', sessions:[
+        {id:'b1', title:'博客列表页', cwd:'~/code/personal-site'},
+        {id:'b2', title:'部署脚本', cwd:'~/code/personal-site/deploy'},
+      ], tree:{center:['panel:sessions'], shelf:[], floats:[], activeCenter:'panel:sessions', activeShelf:null}, env:'b1' },
+  C: { name:'TransReader', sessions:[
+        {id:'c1', title:'菜单栏翻译', cwd:'~/code/transreader'},
+      ], tree:{center:[], shelf:[], floats:[], activeCenter:null, activeShelf:null}, env:'c1' },
+}
+const FILES = {
+  '~/code/start-electron': ['apps/desktop-react/src/stage/Dock.tsx','apps/desktop-react/src/content/kinds/files-root.tsx','CLAUDE.md'],
+  '~/code/personal-site': ['src/pages/index.tsx','src/components/Header.tsx','TASK.md'],
+  '~/code/personal-site/deploy': ['deploy.sh','nginx.conf'],
+  '~/code/transreader': ['app.py','menubar.py'],
+}
+const INITIAL = JSON.stringify(SPACES)
+let cur = 'A'
+let focus = { where:'输入框', of:'重试钮闸门' }
+let floatTop = null
+const space = () => SPACES[cur]
+const tree = () => space().tree
+const envSession = () => space().sessions.find(s=>s.id===space().env)
+
+// ───────── 日志 ─────────
+const logEl = document.getElementById('log')
+let quiet=false
+function log(msg, rule){ if(quiet) return; const p=document.createElement('p'); if(rule) p.className='rule'; p.innerHTML=msg; logEl.prepend(p); while(logEl.children.length>40) logEl.lastChild.remove() }
+
+// ───────── 树操作(核心层:不认识种类)─────────
+const regionOf = ref => { const t=tree(); if(t.center.includes(ref)) return 'center'; if(t.shelf.includes(ref)) return 'shelf'; if(t.floats.includes(ref)) return 'float'; return null }
+function activate(ref, {raiseFloat=true, moveFocus=true}={}){
+  const t=tree(); const rg=regionOf(ref)
+  if(rg==='center') t.activeCenter=ref
+  else if(rg==='shelf') t.activeShelf=ref
+  else if(rg==='float' && raiseFloat) floatTop=ref
+  if(moveFocus){ focus={where:'面板', of:labelOf(ref)} }
+}
+function openIn(region, ref, {after=null}={}){
+  const t=tree()
+  if(region==='center'){ const i = after? t.center.indexOf(after)+1 : t.center.length; t.center.splice(i,0,ref); t.activeCenter=ref }
+  else if(region==='shelf'){ t.shelf.push(ref); t.activeShelf=ref }
+  else { t.floats.push(ref); floatTop=ref }
+}
+function remove(ref){
+  const t=tree()
+  for(const rg of ['center','shelf','floats']){ const i=t[rg].indexOf(ref); if(i>=0) t[rg].splice(i,1) }
+  if(t.activeCenter===ref) t.activeCenter=t.center[t.center.length-1]||null
+  if(t.activeShelf===ref) t.activeShelf=t.shelf[t.shelf.length-1]||null
+  if(floatTop===ref) floatTop=t.floats[t.floats.length-1]||null
+}
+function move(ref, region){ const t=tree(); remove(ref); openIn(region, ref); log(`「${labelOf(ref)}」→ ${ {center:'中央区',shelf:'右架子',float:'浮窗'}[region] };焦点跟着落定`); focus={where:'面板',of:labelOf(ref)}; render() }
+function close(ref){ remove(ref); log(`关闭「${labelOf(ref)}」,焦点回打开它的地方`); focus={where:'输入框',of:envSession().title}; render() }
+
+// ───────── 召唤(瓦点一下)─────────
+function summon(ref){
+  const rg=regionOf(ref)
+  if(rg){ activate(ref); log(`「${labelOf(ref)}」已在${ {center:'中央区',shelf:'架子',float:'浮窗'}[rg] } → <b>召唤</b>(激活,不多开)${isSingleton(ref)?' — 单例':' — 同 key 只一份'}`) ; return }
+  openIn('center', ref)
+  focus={where:'面板',of:labelOf(ref)}
+  log(`开出「${labelOf(ref)}」(<b>${lvName(levelOf(ref))}</b>),焦点进它`)
+}
+function clickTile(id){
+  const t=tileOf(id)
+  if(!t.kind){ summon('panel:'+id); render(); return }
+  const s=envSession()
+  if(!s.cwd){
+    if(t.kind==='diff'){ log(`「改动」瓦:环境会话「${s.title}」没绑目录 → <b>开不了</b>(没有仓就没有改动面;瓦上说一句,不开 ~)`); render(); return }
+    log(`「${t.title}」瓦:环境会话「${s.title}」没绑目录 → 开出 <b>~</b>(根 = 家目录,今天的行为)`); summon(t.kind+':~'); render(); return }
+  summon(t.kind+':'+s.cwd); render()
+}
+
+// ───────── 跟随:一条壳级投影,读 KINDS 表,不点名 ─────────
+function followSession(prev){
+  const s=envSession()
+  for(const [kind,def] of Object.entries(KINDS)){
+    if(!def.follow) continue
+    const key=def.follow.keyOf(s)
+    const t=tree()
+    const all=[...t.center,...t.shelf,...t.floats].filter(r=>parseRef(r).kind===kind)
+    const name = kind==='files-root'?'目录面板':'改动面板'
+    if(key==null){ if(all.length) log(`${name}:会话「${s.title}」没绑目录 → <b>不动</b>`,true); continue }
+    if(!all.length){ log(`${name}:这个工作区里一份都没有 → <b>不开</b>`,true); continue }
+    const hit=all.find(r=>parseRef(r).key===key)
+    if(hit){ activate(hit,{raiseFloat:false,moveFocus:false}); log(`${name}:有同根「${base(key)}」→ <b>激活</b>(架子不展开、浮窗不提前、不搬焦点)`,true); continue }
+    if(opts.follow==='one'){
+      const first=all[0]; const rg=regionOf(first); const idx=tree()[rg==='float'?'floats':rg].indexOf(first)
+      tree()[rg==='float'?'floats':rg][idx]=kind+':'+key
+      if(tree().activeCenter===first) tree().activeCenter=kind+':'+key
+      if(tree().activeShelf===first) tree().activeShelf=kind+':'+key
+      if(floatTop===first) floatTop=kind+':'+key
+      log(`${name}:没同根 → 拍点 4 的另一条:<b>第一份换根</b>成「${base(key)}」,不开新标签`,true); continue
+    }
+    const first=all[0]; const rg=regionOf(first)
+    openIn(rg==='float'?'float':rg, kind+':'+key, {after: rg==='center'?first:null})
+    if(rg==='center') tree().activeCenter=kind+':'+key
+    log(`${name}:有面板但没同根 → 在第一份旁边<b>开一份</b>「${base(key)}」并激活,焦点不动`,true)
+  }
+}
+function selectSession(id){
+  const prev=space().env; if(prev===id) return
+  space().env=id
+  const s=envSession()
+  focus={where:'输入框',of:s.title}
+  log(`环境会话 → 「${s.title}」${s.cwd?'('+s.cwd+')':'(没绑目录)'}`)
+  followSession(prev); render()
+}
+
+// ───────── 换工作区:进场树剥掉 app 残影 + 从离场活树携带 ─────────
+function switchSpace(id){
+  if(id===cur) return
+  const out=tree()
+  const carried={center:[],shelf:[],floats:[]}
+  for(const rg of ['center','shelf','floats']) carried[rg]=out[rg].filter(r=>levelOf(r)==='app')
+  cur=id
+  const t=tree()
+  let stripped=0
+  for(const rg of ['center','shelf','floats']){ const before=t[rg].length; t[rg]=t[rg].filter(r=>levelOf(r)!=='app'); stripped+=before-t[rg].length; t[rg].push(...carried[rg]) }
+  if(!t.center.includes(t.activeCenter)) t.activeCenter=t.center[t.center.length-1]||null
+  if(!t.shelf.includes(t.activeShelf)) t.activeShelf=t.shelf[t.shelf.length-1]||null
+  floatTop=t.floats[t.floats.length-1]||null
+  const n=carried.center.length+carried.shelf.length+carried.floats.length
+  const names=[...carried.center,...carried.shelf,...carried.floats].map(labelOf).join('、')
+  log(`切到工作区「${space().name}」:<b>跟着人走 ${n} 格</b>${n?'('+names+')':''};其余全部换成这边的账(这边账上残留的 ${stripped} 格全局旧影先清掉)`)
+  focus={where:'输入框',of:envSession().title}
+  render()
+}
+
+
+// ───────── 导览 ─────────
+const STEPS = [
+  {do:()=>{}, you:'开机。', see:'工作区「onething」,焦点在会话「重试钮闸门」的输入框。Dock 上带蓝角标「全局」的四块瓦是跨工作区的,其余是这个工作区自己的。', why:'哪块瓦是全局、哪块是本区,由瓦自己说,Dock 只是照着分两组。'},
+  {do:()=>clickTile('files'), you:'点 Dock 上的「目录」瓦。', see:'中央区开出一格目录面板,根是当前会话的 workdir「start-electron」。焦点进了这块面板。', why:'「目录」瓦开的永远是当前会话 workdir 那一份。'},
+  {do:()=>clickTile('files'), you:'再点一次「目录」瓦。', see:'没有多开第二格,只是把已有的那格叫到前面。', why:'同一个目录在一个工作区里只一份。多开指的是不同目录各一份。'},
+  {do:()=>selectSession('a2'), you:'点会话「personal-site 首页」(它的 workdir 是 personal-site)。', see:'目录面板旁边多了一格「personal-site」并变成当前格;焦点还在输入框,没被抢走。', why:'切会话时壳去找「根等于新会话 workdir」的目录面板。没找到,就在已有那格旁边开一份。'},
+  {do:()=>selectSession('a1'), you:'点回会话「重试钮闸门」。', see:'当前格切回「start-electron」,没有再开新的。', why:'找到了同根的那格,就只是激活它。'},
+  {do:()=>selectSession('a3'), you:'点会话「TransReader 待办」(没绑目录)。', see:'目录面板一格都没动。', why:'会话没有 workdir,就没有「对应的目录」,壳什么都不做。'},
+  {do:()=>{selectSession('a1'); summon('file:~/code/start-electron/CLAUDE.md'); summon('file:~/code/start-electron/apps/desktop-react/src/stage/Dock.tsx')}, you:'切回「重试钮闸门」,在目录面板里点开两个文件。', see:'两格文件查看器并排开着。', why:'文件查看器按文件多开;同一个文件再点还是那一格。'},
+  {do:()=>{clickTile('diff'); selectSession('a2')}, you:'点「改动」瓦,再切到「personal-site 首页」。', see:'先开出一份「改动 · start-electron」,切会话后旁边又开出「改动 · personal-site」。', why:'改动面板一个仓一份,跟随会话的规则和目录面板一模一样。(右上角「改动跟随」翻到「不跟」就不会自动开。)'},
+  {do:()=>{clickTile('workspace'); move('panel:workspace','float'); clickTile('settings'); move('panel:settings','shelf')}, you:'点「工作区」瓦并撕成浮窗;点「设置」瓦并钉到右架子。', see:'一扇浮窗、架子里一条,两个都带蓝色「全局」标。', why:'它们是全局的:这台壳只有一份,不属于任何工作区。'},
+  {do:()=>switchSpace('B'), you:'切到工作区「personal-site」。', see:'中央区换成了那边自己的东西(只有一格总览);浮窗里的「工作区」和架子里的「设置」跟着来了,位置都没变。', why:'换工作区 = 本区的全部收起来换成那边的账,全局的几格从旧工作区搬过来。'},
+  {do:()=>switchSpace('A'), you:'切回工作区「onething」。', see:'目录、文件、改动全部按原样回来;「工作区」浮窗和「设置」还在。', why:'本区的账原样摊开,全局的再搬回来。'},
+  {do:()=>{ for(const r of [...tree().center,...tree().shelf,...tree().floats]) if(parseRef(r).kind==='files-root') remove(r); log('关掉全部目录面板'); selectSession('a3'); selectSession('a2') }, you:'关掉全部目录面板,再切两次会话。', see:'一份目录面板都没有开出来。', why:'一份都不剩说明用户把这个功能关了,壳不替他重新开。'},
+  {do:()=>{ opts.follow='one'; clickTile('files'); selectSession('a1') }, you:'把右上角「目录跟随」翻到「只一份·换根」,点「目录」瓦,再切会话。', see:'只有一格目录面板,切会话时它自己换了根,没有新标签。', why:'这是拍点 4 的另一条路:标签不累积,但每个目录的树状态混在一格里。按你原话「多个、切到对应的」,方案取的是多份。'},
+]
+let step = 0
+function reset(){ Object.assign(SPACES, JSON.parse(INITIAL)); cur='A'; floatTop=null; focus={where:'输入框',of:'重试钮闸门'}; opts.follow='many'; opts.diffFollow='on'; logEl.innerHTML='' }
+function gotoStep(n){
+  reset(); quiet=true
+  for(let i=0;i<n;i++) STEPS[i].do()
+  quiet=false; step=n; STEPS[n].do(); render()
+}
+function renderGuide(){
+  const g=document.getElementById('guide'); const st=STEPS[step]
+  g.innerHTML=`<div class="n">第<b>${step+1}</b>/ ${STEPS.length} 步</div>
+    <div class="txt"><p><span>你做的</span>${st.you}</p><p><span>看到的</span>${st.see}</p><p class="why"><span>为什么</span>${st.why}</p></div>
+    <div class="btns"><button id="prev" ${step===0?'disabled':''}>上一步</button><button id="next" class="go" ${step===STEPS.length-1?'disabled':''}>下一步</button></div>`
+  g.querySelector('#prev').onclick=()=>gotoStep(step-1)
+  g.querySelector('#next').onclick=()=>gotoStep(step+1)
+}
+
+// ───────── 渲染 ─────────
+function render(){
+  renderGuide()
+  // toggles
+  const tg=document.getElementById('toggles'); tg.innerHTML=''
+  for(const [k,label,vals] of TOGGLES){
+    const d=document.createElement('div'); d.className='tg'; d.innerHTML=`<b>${label}</b><span class="opt"></span>`
+    for(const [v,t] of vals){ const b=document.createElement('button'); b.textContent=t; if(opts[k]===v) b.className='on'; b.onclick=()=>{opts[k]=v; log(`拍点「${label}」→ ${t}`); render()}; d.querySelector('.opt').append(b) }
+    tg.append(d)
+  }
+  // workspaces
+  const ws=document.getElementById('ws'); ws.innerHTML=''
+  for(const [id,s] of Object.entries(SPACES)){ const b=document.createElement('button'); b.textContent=s.name; if(id===cur) b.className='on'; b.onclick=()=>switchSpace(id); ws.append(b) }
+  document.getElementById('focus').innerHTML=`焦点:<b>${focus.where}</b> · ${focus.of}`
+  // dock
+  const dock=document.getElementById('dock'); dock.innerHTML=''
+  const groupKey = t => opts.dockGroup==='level' ? tileLevel(t) : t.legacy
+  const order = opts.dockGroup==='level' ? ['app','space'] : ['session','global']
+  const t=tree(); const all=[...t.center,...t.shelf,...t.floats]
+  order.forEach((g,gi)=>{
+    if(gi>0){ const s=document.createElement('div'); s.className='sep'; dock.append(s) }
+    for(const tile of TILES.filter(x=>groupKey(x)===g)){
+      const d=document.createElement('div'); d.className='tile'+(tileLevel(tile)==='app'?' app':'')
+      const kind=tile.kind||'panel'
+      const lit = all.some(r=>{const p=parseRef(r); return p.kind===kind && (kind!=='panel' || p.key===tile.id)})
+      if(lit) d.classList.add('lit')
+      d.innerHTML=`<span class="ic">${tile.ic}</span><span>${tile.title}</span><span class="dot"></span>${tileLevel(tile)==='app'?'<span class="lv">全局</span>':''}`
+      d.title=`${tile.title} · ${lvName(tileLevel(tile))} · ${tile.kind? '多开':'单例'}`
+      d.onclick=()=>clickTile(tile.id); dock.append(d)
+    }
+  })
+  // sessions
+  const se=document.getElementById('sess'); se.innerHTML=''
+  for(const s of space().sessions){ const d=document.createElement('div'); d.className='srow'+(s.id===space().env?' on':''); d.innerHTML=`<span class="t">${s.title}</span><span class="cwd${s.cwd?'':' none'}">${s.cwd?base(s.cwd):'没绑目录'}</span>`; d.onclick=()=>selectSession(s.id); se.append(d) }
+  // tabs
+  const tabs=document.getElementById('tabs'); tabs.innerHTML=''
+  for(const ref of t.center){
+    const d=document.createElement('div'); d.className='tab'+(ref===t.activeCenter?' on':'')
+    const lv=levelOf(ref)
+    d.innerHTML=`<span>${labelOf(ref)}</span><span class="k${lv==='app'?' app':''}">${lvName(lv)}</span><button class="mv" title="钉到架子">▸</button><button class="mv" title="撕成浮窗">⧉</button><button class="x" title="关闭">✕</button>`
+    d.onclick=e=>{ if(e.target.tagName==='BUTTON') return; activate(ref); render() }
+    const [mv1,mv2,x]=d.querySelectorAll('button'); mv1.onclick=e=>{e.stopPropagation();move(ref,'shelf')}; mv2.onclick=e=>{e.stopPropagation();move(ref,'float')}; x.onclick=e=>{e.stopPropagation();close(ref)}
+    tabs.append(d)
+  }
+  // content
+  const c=document.getElementById('content'); c.innerHTML=''
+  const a=t.activeCenter
+  if(!a){ c.innerHTML='<div class="empty">中央区空着。点 Dock 上的瓦,或点一条会话。</div>' }
+  else{
+    const r=parseRef(a)
+    if(r.kind==='files-root'){
+      c.innerHTML=`<h2>${labelOf(a)}</h2><div class="meta">目录面板 · ${r.key}</div>`
+      for(const f of (FILES[r.key]||['(空)'])){ const d=document.createElement('div'); d.className='frow'; d.textContent=f; d.onclick=()=>{ summon('file:'+r.key+'/'+f); render() }; c.append(d) }
+      c.insertAdjacentHTML('beforeend','<div class="note">点一个文件 = 开一格文件查看器。这一格目录面板的根不会变;切会话时,壳去找根等于新会话 workdir 的那一格目录面板。</div>')
+    } else if(r.kind==='diff'){
+      c.innerHTML=`<h2>${labelOf(a)}</h2><div class="meta">改动面板 · ${r.key} · 一个仓一份</div>`
+      for(const f of (FILES[r.key]||[])){ const d=document.createElement('div'); d.className='frow'; d.innerHTML=`<span class="add">+12</span><span class="del">−3</span><span>${f}</span>`; c.append(d) }
+    } else if(r.kind==='file'){
+      c.innerHTML=`<h2>${labelOf(a)}</h2><div class="meta">文件查看器 · ${r.key} · 不同文件各一份,同一个文件只一份</div><pre style="font-size:11px;color:var(--ink-2)">// 文件内容 …</pre>`
+    } else {
+      const tile=tileOf(r.key); const lv=tileLevel(tile)
+      c.innerHTML=`<h2>${tile.title}</h2><div class="meta">${lvName(lv)} · 单例</div><div class="note">${lv==='app'?'全局:换工作区时它跟着人走——在哪个区域、什么位置都原样带过去;在别处关掉,回来也不在。':'本区:这个工作区的账;换出去收进账,回来摊开。同一工作区里再点瓦 = 把这一格叫到前面,不会开第二份。'}</div>`
+    }
+  }
+  // floats
+  const fl=document.getElementById('floats'); fl.innerHTML=''
+  t.floats.forEach((ref,i)=>{
+    const d=document.createElement('div'); d.className='float'+(ref===floatTop?' top':''); d.style.right=(16+i*28)+'px'; d.style.top=(24+i*28)+'px'; d.style.zIndex=ref===floatTop?10:1
+    const lv=levelOf(ref)
+    d.innerHTML=`<div class="bar"><span>${labelOf(ref)}</span><span class="k${lv==='app'?' app':''}">${lvName(lv)}</span><span class="sp"></span><button title="回中央">◂</button><button title="关闭">✕</button></div><div class="body">${parseRef(ref).kind==='panel'?'浮窗的位置和大小记在账上;全局的连位置一起带去别的工作区。':'浮着的 '+parseRef(ref).kind+' 面板'}</div>`
+    d.querySelector('.bar').onclick=e=>{ if(e.target.tagName==='BUTTON') return; activate(ref); render() }
+    const [bk,x]=d.querySelectorAll('button'); bk.onclick=e=>{e.stopPropagation();move(ref,'center')}; x.onclick=e=>{e.stopPropagation();close(ref)}
+    fl.append(d)
+  })
+  // shelf
+  const sh=document.getElementById('shelf'); sh.innerHTML=''
+  if(!t.shelf.length) sh.innerHTML='<div class="hint">空。把标签 ▸ 过来。</div>'
+  for(const ref of t.shelf){
+    const d=document.createElement('div'); d.className='item'+(ref===t.activeShelf?' on':'')
+    const lv=levelOf(ref)
+    d.innerHTML=`<span class="sp">${labelOf(ref)}</span><span class="k${lv==='app'?' app':''}">${lvName(lv)}</span><button title="回中央">◂</button><button title="关闭">✕</button>`
+    d.onclick=e=>{ if(e.target.tagName==='BUTTON') return; activate(ref); render() }
+    const [bk,x]=d.querySelectorAll('button'); bk.onclick=e=>{e.stopPropagation();move(ref,'center')}; x.onclick=e=>{e.stopPropagation();close(ref)}
+    sh.append(d)
+  }
+}
+log('开机:工作区「onething」,当前会话「重试钮闸门」,焦点在输入框')
+render()
+</script>
+</body>
+</html>
