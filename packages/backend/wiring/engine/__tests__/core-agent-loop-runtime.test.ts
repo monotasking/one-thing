@@ -378,7 +378,6 @@ describe('core agent-loop runtime helpers', () => {
         model: 'deepseek-chat',
         maxOutputByModel: { 'deepseek-chat': 900 },
       },
-      chatMaxTokens: 4096,
       contextCompactThreshold: 70,
       resolveModelContextLength: async () => 32000,
       resolveModelMaxOutputTokens: async () => 8192,
@@ -398,7 +397,6 @@ describe('core agent-loop runtime helpers', () => {
         maxOutputTokens: 12000,
       },
       providerConfig: { model: 'deepseek-reasoner' },
-      chatMaxTokens: 4096,
       resolveModelContextLength: async () => {
         calls.push('context')
         return 32000
@@ -418,13 +416,12 @@ describe('core agent-loop runtime helpers', () => {
   })
 
   // 解析出错 = 我们没问出这个模型的上限 = 不知道(2026-09-09 裁定)。
-  // 从前这里回 `chatMaxTokens || 4096`,等于在兜底里替模型编一个上限。
+  // 从前这里回「设置里的那个数 || 4096」,等于在兜底里替模型编一个上限。
   it('falls back when injected model registry lookup fails: 预留量缺席,不编数', async () => {
     const result = await resolveAgentLoopContextBudgetWithRegistry({
       providerId: 'deepseek',
       capabilities: {},
       providerConfig: { model: 'deepseek-chat' },
-      chatMaxTokens: 2048,
       contextCompactThreshold: 75,
       resolveModelContextLength: async () => {
         throw new Error('registry unavailable')
@@ -441,7 +438,7 @@ describe('core agent-loop runtime helpers', () => {
 
   // 事故 fe5261d9(2026-09-09):`deepseek-v4.1-flash-expires-on-0910` 不在目录里,
   // 从前一路编成 4096 → 对半 2048 → reasoning 吃光后 `length` 收场。
-  it('目录没有 + 无覆盖 + chat.maxTokens 缺席 ⇒ 预留量缺席(不传 max_tokens)', async () => {
+  it('目录没有 + 无覆盖 ⇒ 预留量缺席(不传 max_tokens)', async () => {
     const result = await resolveAgentLoopContextBudgetWithRegistry({
       providerId: 'deepseek',
       providerConfig: { model: 'deepseek-v4.1-flash-expires-on-0910' },
@@ -808,7 +805,6 @@ describe('core agent-loop runtime helpers', () => {
       },
       registeredModelContextLength: 64000,
       registeredModelMaxOutputTokens: 8192,
-      chatMaxTokens: 4096,
       contextCompactThreshold: 90,
     })).toEqual({
       modelContextLength: 64000,
@@ -829,26 +825,14 @@ describe('core agent-loop runtime helpers', () => {
       },
       registeredModelContextLength: 64000,
       registeredModelMaxOutputTokens: 8192,
-      chatMaxTokens: 4096,
     })).toEqual({
       modelContextLength: 200000,
       reservedOutputTokens: 12000,
       thresholdPercent: 85,
     })
 
-    // 上限未知但用户在设置里填了数:那个数照用(填了也是一种「知道」)。
-    expect(resolveAgentLoopContextBudgetValues({
-      providerConfig: {
-        model: 'custom-small',
-      },
-      chatMaxTokens: 2048,
-    })).toEqual({
-      modelContextLength: 128000,
-      reservedOutputTokens: 2048,
-      thresholdPercent: 85,
-    })
-
-    // 上限未知、设置里也没填 ⇒ 预留量缺席(2026-09-09;从前这里是 4096)。
+    // 上限未知 + 无覆盖 ⇒ 预留量缺席(2026-09-09;从前这里是 4096,
+    // 中途还短暂读过设置里的 chat.maxTokens,那一格已整格退役)。
     expect(resolveAgentLoopContextBudgetValues({
       providerConfig: { model: 'custom-small' },
     })).toEqual({
@@ -866,7 +850,6 @@ describe('core agent-loop runtime helpers', () => {
       providerConfig: { model: 'grok-4.5' },
       registeredModelContextLength: 500000,
       registeredModelMaxOutputTokens: 500000,
-      chatMaxTokens: 4096,
       contextCompactThreshold: 90,
     })
     expect(budget).toEqual({

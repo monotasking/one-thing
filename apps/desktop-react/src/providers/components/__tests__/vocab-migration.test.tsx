@@ -199,7 +199,6 @@ function renderCatalog(rows: readonly CatalogRow[], query = '') {
       query={query}
       pendingModelIds={new Set<string>()}
       write={undefined}
-      chatMaxTokens={undefined}
       onQuery={vi.fn()}
       onRefresh={vi.fn()}
       onToggle={vi.fn()}

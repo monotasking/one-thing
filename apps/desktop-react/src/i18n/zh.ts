@@ -1318,20 +1318,17 @@ export const zh = {
    * **那个上限的一半**(`resolveAgentLoopContextBudgetValues` 的 halfDefault),
    * 填了覆盖就直接当 max_tokens。那个「一半」必须说出来 —— 不说,「目录 16,384」
    * 会被读成「一次能吐 16,384」。
-   * **目录没填这一型时分两句**(09-09 裁定):设置里的 chat.maxTokens 填了就按那个
-   * 数**原样**发(不对半 —— 对半只对目录有上限的模型),两边都没填就**不带上限**,
-   * 由服务商用它自己的默认值。从前这里说「兜底 4,096 的一半」,而那个 4096 是引擎
-   * 编的:它同日连同产地一起删了,壳上也就没有这个数可说。
+   * **目录没填这一型时只有一句**(09-09 裁定):**不带上限**,由服务商用它自己的
+   * 默认值。从前这里说「兜底 4,096 的一半」,而那个 4096 是引擎编的:它同日连同
+   * 产地一起删了;同日全局 `chat.maxTokens` 也整格退役(两个设置管一个值,只留
+   * 按模型这一格),所以这一档从两句收回一句 —— 壳上再没有第二个数可说。
    * 这一族的数一律写全位不进位:四五位的数,8,192 与 8.2k 差的是真 token。 */
   'providers.overrideOutputLabel': '最大输出',
   'providers.overrideOutputPlaceholderCatalog': '{n}(目录 {catalog} 的一半)',
-  'providers.overrideOutputPlaceholderDefault': '{n}(设置)',
-  'providers.overrideOutputPlaceholderUnset': '由服务商决定',
+  'providers.overrideOutputPlaceholderNoCatalog': '由服务商决定',
   'providers.overrideOutputHintCatalog': '目录上限 {n};不填按它的一半发。',
-  'providers.overrideOutputHintDefault':
-    '目录没填这一型;不填按设置里的 {n} 发(聊天 · 最大输出),不对半。',
-  'providers.overrideOutputHintUnset':
-    '目录没填这一型,设置里也没填;不填就不带上限,由服务商用它自己的默认值。',
+  'providers.overrideOutputHintNoCatalog':
+    '目录没填这一型;不填就不带上限,由服务商用它自己的默认值。',
   'providers.overrideOutputHintCustom': '自定 {value};不再对半砍,只受模型上限夹。',
   'providers.overrideToolsLabel': '工具调用',
   /* 第一格叫「跟目录」而不是「默认」:目录没填时它跟的是**按名字猜**,
@@ -1352,8 +1349,7 @@ export const zh = {
   'providers.overrideContext': '自定 {value}(目录 {catalog})',
   'providers.overrideContextNoCatalog': '自定 {value}(目录没填,默认 {fallback})',
   'providers.overrideOutput': '自定 {value}(目录 {catalog})',
-  'providers.overrideOutputNoCatalog': '自定 {value}(目录没填,默认 {fallback})',
-  'providers.overrideOutputNoCatalogUnset': '自定 {value}(目录没填,不填则由服务商决定)',
+  'providers.overrideOutputNoCatalog': '自定 {value}(目录没填,不填则由服务商决定)',
   'providers.overrideToolsOnTipCatalogOn': '自定:支持工具调用(目录:支持)',
   'providers.overrideToolsOnTipCatalogOff': '自定:支持工具调用(目录:不支持)',
   'providers.overrideToolsOnTipUnknown': '自定:支持工具调用(目录没填)',

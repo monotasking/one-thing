@@ -174,7 +174,6 @@ export interface ResolveAgentLoopContextBudgetOptions {
   capabilities?: CoreAgentLoopModelLimits
   providerId: string
   providerConfig: CoreAgentLoopProviderConfig
-  chatMaxTokens?: number
   contextCompactThreshold?: number
   resolveModelContextLength?: (model: string, providerId: string) => number | undefined | Promise<number | undefined>
   resolveModelMaxOutputTokens?: (model: string, providerId: string) => number | undefined | Promise<number | undefined>
@@ -816,14 +815,13 @@ export function resolveAgentLoopContextBudgetValues(input: {
   registeredModelContextLength?: number
   registeredModelMaxOutputTokens?: number
   providerConfig: CoreAgentLoopProviderConfig
-  chatMaxTokens?: number
   contextCompactThreshold?: number
 }): CoreAgentLoopContextBudget {
   const modelContextLength = positiveTokenLimit(input.capabilities?.maxInputTokens)
     ?? positiveTokenLimit(input.registeredModelContextLength)
     ?? 128000
   // 上限未知就是 undefined,**不再 `?? 0`**(2026-09-09 裁定):0 会一路走到
-  // 「按 chatMaxTokens 编一个数」那条岔路上,而那正是 4096 的老产地。
+  // 「替模型编一个数」那条岔路上,而那正是 4096 的老产地。
   const modelMaxOutputTokens = positiveTokenLimit(input.capabilities?.maxOutputTokens)
     ?? positiveTokenLimit(input.registeredModelMaxOutputTokens)
   const perModelOverride = positiveTokenLimit(
@@ -833,8 +831,9 @@ export function resolveAgentLoopContextBudgetValues(input: {
     ? Math.max(1, Math.floor(modelMaxOutputTokens / 2))
     : undefined
   // 已知上限时的行为一字不变:用户覆盖优先,否则对半,再按上限夹。
-  // 上限未知时只剩用户在设置里填的那个数;它也缺席就是 undefined = 不传。
-  const requested = perModelOverride ?? halfDefault ?? positiveTokenLimit(input.chatMaxTokens)
+  // 上限未知且无覆盖 = undefined = 不传 max_tokens(2026-09-09 裁定:请求侧
+  // 只认这两个来源,全局设置那一格已退役)。
+  const requested = perModelOverride ?? halfDefault
   const reservedOutputTokens = modelMaxOutputTokens !== undefined
     ? Math.min(requested ?? modelMaxOutputTokens, modelMaxOutputTokens)
     : requested
@@ -918,7 +917,6 @@ export async function resolveAgentLoopContextBudgetWithRegistry(
         registeredModelContextLength,
         registeredModelMaxOutputTokens,
         providerConfig: options.providerConfig,
-        chatMaxTokens: options.chatMaxTokens,
         contextCompactThreshold: options.contextCompactThreshold,
       }),
     }

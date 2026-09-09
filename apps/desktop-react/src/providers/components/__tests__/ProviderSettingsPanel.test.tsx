@@ -387,38 +387,3 @@ describe('忙态逐格', () => {
     )
   })
 })
-
-describe('chat.maxTokens 从设置一路走到覆盖浮层(09-09)', () => {
-  /*
-   * 这条守的是**接线那一根线**:`ProviderSettingsPanel` → `ModelCatalog` →
-   * `ModelCatalogRow` → `ModelOverridePopover` 的 `chatMaxTokens`。
-   * 浮层自己那几条用例直接给它喂 prop,所以线掉了它们照绿 —— 而线一掉,
-   * 屏幕就会对一台设置里明明填了 8,192 的机器说「由服务商决定」。
-   */
-  it('目录没填最大输出时,浮层占位符读的是设置里那个数', async () => {
-    installPort({
-      readSettings: vi.fn(async () => ({
-        success: true,
-        settings: { ...settings(), chat: { maxTokens: 8_192 } } as unknown as AppSettings,
-      })),
-      // `max_completion_tokens: 0` = 目录没填这一型(`maxOutputOf` 的 positive 判据)。
-      listModels: vi.fn(async () => ({
-        success: true,
-        models: [
-          {
-            ...model('claude-sonnet-4', 'Claude Sonnet 4'),
-            top_provider: { context_length: 200_000, max_completion_tokens: 0, is_moderated: false },
-          },
-        ],
-      })),
-    })
-    render(<>{renderContent(PROVIDERS_ITEM_ID)}</>)
-    await screen.findByTestId('model-row-claude-sonnet-4')
-
-    fireEvent.click(screen.getByTestId('configure-claude-sonnet-4'))
-    await waitFor(() => expect(screen.getByTestId('model-override')).toBeTruthy())
-    expect(
-      (screen.getByTestId('model-override-output') as HTMLInputElement).getAttribute('placeholder'),
-    ).toBe(`${(8_192).toLocaleString()}(设置)`)
-  })
-})

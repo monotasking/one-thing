@@ -1257,7 +1257,6 @@ async function resolveOnethingAgentLoopContextBudget<
 		capabilities,
 		providerId: ctx.providerId,
 		providerConfig: ctx.providerConfig,
-		chatMaxTokens: ctx.settings.chat?.maxTokens,
 		contextCompactThreshold: ctx.settings.chat?.contextCompactThreshold,
 		resolveModelContextLength: adapters.resolveModelContextLength,
 		resolveModelMaxOutputTokens: adapters.resolveModelMaxOutputTokens,

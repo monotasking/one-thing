@@ -373,7 +373,6 @@ export function ProviderSettingsPanel() {
               query={modelQuery[mode.providerId] ?? ''}
               pendingModelIds={pendingModelIds}
               write={settingsMutation}
-              chatMaxTokens={settings?.chat?.maxTokens}
               onQuery={(value) => setModelQuery(mode.providerId, value)}
               onRefresh={() => void catalogQuery.get(mode.providerId).refetch()}
               onToggle={(modelId, selected) => void toggleModel(mode.providerId, modelId, selected)}

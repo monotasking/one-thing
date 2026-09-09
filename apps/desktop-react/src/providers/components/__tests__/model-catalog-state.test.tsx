@@ -67,7 +67,6 @@ function catalog(props: Partial<Parameters<typeof ModelCatalog>[0]> = {}) {
       query=""
       pendingModelIds={NO_PENDING}
       write={undefined}
-      chatMaxTokens={undefined}
       onQuery={vi.fn()}
       onRefresh={vi.fn()}
       onToggle={vi.fn()}

@@ -219,18 +219,19 @@ export const CATALOG_CONTEXT_FALLBACK = 128_000
  * 而这正是那次事故的形状(用户把最大输出填成 10000,屏幕说默认 4,096,
  * 请求真被 `min(10000, 4096)` 夹成 4096)。
  *
- * 今天目录没填这一型时,屏幕要说的是两句话之一,判据是 `settings.chat.maxTokens`
- * 填没填(见 `ModelOverridePopover` 的 `maxOutputHint`):填了就是那个数原样发,
- * 没填就是**请求里根本不带上限**、由服务商用它自己的默认值。
+ * 今天目录没填这一型时,屏幕只说一句(见 `ModelOverridePopover` 的
+ * `maxOutputHint`):**请求里根本不带上限**、由服务商用它自己的默认值。
+ * (09-09 晚:全局 `chat.maxTokens` 整格退役 —— 两个设置管一个值,只留按模型
+ * 这一格 —— 所以这一档的第二句连同它的判据一起没了。)
  */
 
 /**
  * 没有覆盖时,**今天这一发请求实际会要多长**。**只给目录有上限的那一档用** ——
- * 目录没填时无数可半,那一档读的是 `settings.chat.maxTokens`(不对半)。
+ * 目录没填时无数可半,那一档根本不带 `max_tokens`,没有数可画。
  *
  * 引擎 `packages/core/engine/agent-loop-runtime.ts` 的
- * `resolveAgentLoopContextBudgetValues`:`perModelOverride ?? halfDefault ??
- * chatMaxTokens`。注册上限在场时 `halfDefault = max(1, floor(注册上限 / 2))`,
+ * `resolveAgentLoopContextBudgetValues`:`perModelOverride ?? halfDefault`
+ * (**只有这两个来源**)。注册上限在场时 `halfDefault = max(1, floor(注册上限 / 2))`,
  * 而 `maxOutputByModel[m]` 一旦填了就**直接当请求的 max_tokens**
  * (只再受模型物理上限夹一次)。
  * 壳只**复述**这条算术 —— 屏幕上要把「不填会发多少」说给用户听,不然

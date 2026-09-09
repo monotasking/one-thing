@@ -29,8 +29,9 @@ type ProviderConfigWithLocalAddress = ProviderConfig & { localAddress?: string }
 
 export const DEFAULT_TEMPERATURE = 0.7
 // `DEFAULT_MAX_TOKENS = 4096` 于 2026-09-09 删除:它是「输出上限未知」时最后
-// 一个还能编出数来的地方。裁定是不知道就不传 `max_tokens`,所以 chat.maxTokens
-// 缺省即缺席 —— 用户在设置里填了才有数。
+// 一个还能编出数来的地方。同日 `ChatSettings.maxTokens` 整格退役 —— 请求侧的
+// max_tokens 只认按模型覆盖与目录上限的一半,两个都缺席就不带。老设置文件里
+// 残留的 `chat.maxTokens` 值没人读,留在那里即可。
 export const DEFAULT_CONTEXT_LENGTH = 128000
 
 export const DEFAULT_EDITOR_SETTINGS: Required<EditorSettings> = {
