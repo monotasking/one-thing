@@ -38,18 +38,55 @@ import { parseRef } from './ref.js'
 import type { ResourceRegistry } from './registry.js'
 import { RESOURCE_OP_KEY, RESOURCE_READ_KEY, RESOURCE_REF_KEY } from './schema.js'
 import { ResourceTool, type ShellDispatch } from './tool.js'
+import type { ResourceInputValidator } from './validator.js'
 
 export interface ResourceKernelOptions {
   /** `home: 'shell'` 的做法往哪儿派。缺席 = 这台宿主没有界面(结构化降级)。 */
   readonly shell?: ShellDispatch
   /** callId 的产地。缺席时用实例自己的计数器 —— 内核不认识 uuid,也不该认识。 */
   readonly callIds?: () => string
+  /**
+   * 认得生成 schema 的那位校验者(K2a)。给了,`mount` 就把这个 scheme 的入参契约
+   * 认领进去,于是未知 op / 形状不对走 `Outcome.invalid` 而不是 `failed`。
+   *
+   * 它在**这里**而不是在 runner 的构造参数里,是因为只有 `mount` 同时知道两件事:
+   * 这坨 schema 是刚造出来的哪一份、它属于哪份自述。装配层把同一个实例既交给这里
+   * 又串进 runner 的 `Validator`(`backend/wiring/resource/index.ts`)。
+   *
+   * 缺席 = 这台宿主没配那位校验者,plan 期那几只具名错原样兜底(K1 的行为)。
+   */
+  readonly validator?: ResourceInputValidator
 }
+
+/**
+ * 「这次调用不是从任何一条会话里发起的」——调度、deeplink、CLI、界面上一个与当前
+ * 会话无关的按钮(K2a)。
+ *
+ * 它是一个**保留坐标**,不是某条会话的 id:`Invocation.sessionId` 在 toolkit 里是
+ * 必填的(它是审计与取消的坐标,不是可选的元数据),而「没有发起会话」是一个真实
+ * 存在的答案。给它一个具名的值,好过让每个无会话调用方随手编一条 id —— 那样审计
+ * 会落进一条不存在的会话,或者更糟,落进**被改的那一条**(K1 留账说的正是这个:
+ * 重命名会话 A 时若拿 A 当发起坐标,审计就变成了「A 自己改了自己」)。
+ *
+ * `@` 开头是刻意的:id 是 uuid,字母表里没有 `@`,所以它与任何真 id 都撞不上,而且
+ * 一眼看得出不是 id。谁读到这个坐标,谁负责把审计落到别处 —— 今天唯一的读者是
+ * `backend/wiring/toolkit/audit-sink.ts`(落 `<store>/audit/resource.jsonl`)。
+ *
+ * 字面量里**不写出那个命名空间的名字**:内核不认识任何 scheme(§2 不变量 3),
+ * 而 `__tests__/stranger.test.ts` 按词边界扫本目录来执法 —— 这一条是它当场抓出来的,
+ * 而且抓对了:一个叫 `@no-origin-<某个 scheme 名>` 的保留坐标,读起来像是那种资源
+ * 的特例,而它不是。
+ */
+export const NO_ORIGIN_SESSION = '@no-origin'
 
 /** 一次调用的坐标。与 `Invocation` 里那几格同名同义,是一次转手不是翻译。 */
 export interface ResourceCallOptions {
   readonly principal: Principal
-  readonly sessionId: string
+  /**
+   * 从哪条会话里发起的。**可选**(K2a):不给 = `NO_ORIGIN_SESSION`,见上。
+   * 它是发起坐标,不是操作对象 —— 操作对象在 `ref` 里。
+   */
+  readonly sessionId?: string
   readonly signal?: AbortSignal
   readonly messageId?: string
 }
@@ -85,10 +122,14 @@ export class ResourceKernel {
       this.options.shell ? { shell: this.options.shell } : {},
     )
     this.tools_.set(scheme, tool as ResourceTool)
+    // 生成的入参契约认领给校验者(K2a)。它与建工具是**同一拍** —— 那坨 schema 就是
+    // 这一行上面刚造出来的,再晚一步就得靠别人去猜「这份 schema 是谁的」。
+    const unclaim = this.options.validator?.register(tool.spec.input, provider.spec)
     provider.attach?.(this.events)
 
     return () => {
       unregister()
+      unclaim?.()
       // 身份判等,与 `registry.ts` 的注销同一个理由:同一个 scheme 可能已经被
       // 另一个提供者装上了(插件重装、MCP 重连),旧闭包不该把后来者摘掉。
       if (this.tools_.get(scheme) === (tool as ResourceTool)) this.tools_.delete(scheme)
@@ -141,7 +182,7 @@ export class ResourceKernel {
       callId: this.mintCallId(),
       toolId: parsed.scheme,
       input: { ...input, [RESOURCE_REF_KEY]: ref },
-      sessionId: options.sessionId,
+      sessionId: options.sessionId ?? NO_ORIGIN_SESSION,
       principal: options.principal,
       ...(options.messageId !== undefined ? { messageId: options.messageId } : {}),
     }

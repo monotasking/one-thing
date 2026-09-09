@@ -23,6 +23,11 @@
  *   · `kernel.ts`   非 AI 调用方(RPC / 调度 / 测试)进那条管线的门;
  *   · `errors.ts`   运行期会说的几句「不」(登记期的那一族在 `contract.ts`)。
  *
+ * K2a 补了一件 K1 明说留账的东西(`errors.ts` 头注释的最后一段):
+ *   · `validator.ts` 认得生成 schema 的 `PartialValidator` —— 未知 op / 形不对从
+ *                    `failed` 改判 `invalid`,而**不是**在内核里给 plan 开一个能返回
+ *                    `Outcome` 的后门。
+ *
  * 出口是 K2–K4,都不在这里。零依赖、零 node 导入、**零 scheme 名** ——
  * 内核不认识任何一个具体的命名空间 —— 会话、文件、音乐、邮件,一个都不认识
  * (§2 不变量 3)。这一条由
@@ -81,8 +86,10 @@ export type { ResourceCall, ResourceToolOptions, ShellDispatch } from './tool.js
 export { ResourceEventHub } from './events.js'
 export type { ResourceEvent, ResourceEventListener } from './events.js'
 
-export { ResourceKernel } from './kernel.js'
+export { NO_ORIGIN_SESSION, ResourceKernel } from './kernel.js'
 export type { ResourceCallOptions, ResourceKernelOptions } from './kernel.js'
+
+export { ResourceInputValidator } from './validator.js'
 
 export {
   ResourceCallShapeError,

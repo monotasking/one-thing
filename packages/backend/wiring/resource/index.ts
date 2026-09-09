@@ -19,11 +19,13 @@
  * `sessions/` 里,不新开一棵同名树。
  */
 
-import { ResourceKernel, ResourceRegistry } from '@onething/core/resource'
+import { ResourceInputValidator, ResourceKernel, ResourceRegistry } from '@onething/core/resource'
 import type { ResourceKernelOptions } from '@onething/core/resource'
-import type { ToolRunner } from '@onething/core/toolkit'
+import { combineValidators, type ToolRunner, type Validator } from '@onething/core/toolkit'
+import { ZodValidator } from '@onething/runtime/toolkit'
 import { SessionResourceProvider } from './session-provider.js'
 
+export { forwardResourceEventsToBus } from './event-bridge.js'
 export { SessionResourceProvider, SessionNotFoundError, SessionRefRequiredError } from './session-provider.js'
 export type { SessionOpPayload } from './session-provider.js'
 
@@ -31,9 +33,26 @@ export type { SessionOpPayload } from './session-provider.js'
  * 一台资源内核。注册表是**新建**的(不是进程单例):谁要一张表谁自己 new 一个,
  * `OnethingBackend` 把它当字段持有 —— 与 `registry.ts` 头注释里那条组合根法条
  * 逐字同义。
+ *
+ * ## 为什么收的是**造 runner 的配方**而不是一台造好的 runner(K2a)
+ *
+ * 因为这台 runner 的 `Validator` 必须认得这台内核生成的入参契约,而那份契约是内核
+ * `mount` 的时候才造出来的 —— 先造 runner 再造内核,校验器就永远晚一步。收配方之后
+ * 两件事在同一处扣上:这里先造 `ResourceInputValidator`,串成组合校验器交给配方,
+ * 再把**同一个实例**交给内核去认领每个 scheme 的契约。结果是**结构性**的:
+ * 建不出一台"runner 不认识自己工具契约"的资源内核。
+ *
+ * 组合的次序是「先问资源校验器,它不认领的交给 zod」。次序不能反:`ZodValidator`
+ * 对认不出的 schema 是 `passthrough`(那对插件 / MCP 是对的 —— 替远端把关不是本地
+ * 校验者的事),而一个 passthrough 排在前面就等于后面那位永远轮不上。
  */
-export function createResourceKernel(runner: ToolRunner, options: ResourceKernelOptions = {}): ResourceKernel {
-  return new ResourceKernel(new ResourceRegistry(), runner, options)
+export function createResourceKernel(
+  makeRunner: (validator: Validator) => ToolRunner,
+  options: ResourceKernelOptions = {},
+): ResourceKernel {
+  const resourceValidator = new ResourceInputValidator()
+  const runner = makeRunner(combineValidators([resourceValidator], new ZodValidator()))
+  return new ResourceKernel(new ResourceRegistry(), runner, { ...options, validator: resourceValidator })
 }
 
 /**

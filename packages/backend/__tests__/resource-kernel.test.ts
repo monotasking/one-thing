@@ -92,6 +92,17 @@ async function auditRowsFor(sessionId: string): Promise<Array<Record<string, unk
   return readAuditRows(sessionId)
 }
 
+/** 无会话那本账(`<store>/audit/resource.jsonl`)。同步写,所以不用 flush。 */
+function readResourceAuditRows(): Array<Record<string, unknown>> {
+  const ledger = path.join(storeRoot, 'audit', 'resource.jsonl')
+  if (!fs.existsSync(ledger)) return []
+  return fs
+    .readFileSync(ledger, 'utf-8')
+    .split('\n')
+    .filter(Boolean)
+    .map(line => JSON.parse(line) as Record<string, unknown>)
+}
+
 function readAuditRows(sessionId: string): Array<Record<string, unknown>> {
   const ledger = path.join(storeRoot, 'sessions', sessionId, 'events.jsonl')
   if (!fs.existsSync(ledger)) return []
@@ -215,6 +226,186 @@ describe('资源内核在真装配里(K1)', () => {
       callOptions(sessionId),
     )
     expect(viaModel).toEqual(viaKernel)
+  })
+
+  it('资源事件转发上事件总线:do 之后总线收到一条 resource:event(K2a)', async () => {
+    const seen: Array<Record<string, unknown>> = []
+    const stop = backend.eventBus.onGlobal('resource:event', envelope => {
+      seen.push(envelope.event as unknown as Record<string, unknown>)
+    })
+
+    const before = Date.now()
+    const outcome = await backend.resources.do(
+      `session:${sessionId}`,
+      'rename',
+      { title: 'Bus name' },
+      callOptions(sessionId),
+    )
+    stop()
+
+    expect(outcome.kind).toBe('ok')
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({
+      type: 'resource:event',
+      ref: `session:${sessionId}`,
+      event: 'renamed',
+      payload: { title: 'Bus name' },
+    })
+    // 时刻由**装配层**盖(hub 有意没有时刻)—— 所以它得是一个真的当下,不是 0。
+    expect(typeof seen[0].at).toBe('number')
+    expect(seen[0].at as number).toBeGreaterThanOrEqual(before)
+  })
+
+  it('转发的订阅名单来自注册表,不是写死的 scheme 名(K2a)', async () => {
+    // 装一个 core 从没听说过的命名空间,不碰装配一行代码 —— 它的事件照样上总线。
+    // 这是 §8 陌生能力演练在**事件**这一侧的那半句。
+    const { planFromSpec } = await import('@onething/core/resource')
+    const { textResult } = await import('@onething/core/toolkit')
+    const spec = {
+      scheme: 'drill',
+      title: 'Drill things',
+      reads: {},
+      ops: {
+        poke: {
+          title: 'Poke it',
+          params: { type: 'object', properties: {}, required: [] },
+          effects: [] as const,
+          home: 'core' as const,
+        },
+      },
+      events: { poked: { title: 'It was poked', payload: { type: 'object' } } },
+    }
+    let hub: { emit: (ref: string, event: string, payload: unknown) => void } | undefined
+    const unmount = backend.resources.mount({
+      spec,
+      attach: (h: never) => { hub = h },
+      read: async () => ({}),
+      plan: async (op: string, ref: never) => planFromSpec(spec, op, ref, null),
+      apply: async (op: string) => {
+        hub?.emit('drill:1', 'poked', { op })
+        return textResult('poked')
+      },
+    } as never)
+
+    const seen: Array<Record<string, unknown>> = []
+    const stop = backend.eventBus.onGlobal('resource:event', envelope => {
+      seen.push(envelope.event as unknown as Record<string, unknown>)
+    })
+    const outcome = await backend.resources.do('drill:1', 'poke', {}, callOptions(sessionId))
+    stop()
+    unmount()
+
+    expect(outcome.kind).toBe('ok')
+    expect(seen).toEqual([
+      expect.objectContaining({ type: 'resource:event', ref: 'drill:1', event: 'poked' }),
+    ])
+  })
+
+  it('无会话的 do:管线照跑,审计落 <store>/audit/resource.jsonl,会话账本一行不多(K2a)', async () => {
+    const auditBefore = (await auditRowsFor(sessionId)).length
+    const ledgerBefore = readResourceAuditRows().length
+
+    const outcome = await backend.resources.do(
+      `session:${sessionId}`,
+      'rename',
+      { title: 'From nowhere' },
+      // **不给 sessionId** —— 调度 / deeplink / CLI / 一个与当前会话无关的按钮。
+      { principal: PRINCIPAL },
+    )
+
+    expect(outcome.kind).toBe('ok')
+    const { sessionReads } = await import('../session/reads.js')
+    expect(sessionReads.getSession(sessionId)?.name).toBe('From nowhere')
+
+    // 被改的那条会话的抄本里**一行都没多**:它是操作对象,不是发起方。
+    // (K1 留账说的正是这件事:借它的坐标,审计就读成「A 自己改了自己」。)
+    expect((await auditRowsFor(sessionId)).length).toBe(auditBefore)
+
+    const rows = readResourceAuditRows()
+    expect(rows.length).toBe(ledgerBefore + 1)
+    expect(rows[rows.length - 1]).toMatchObject({
+      type: 'tool/audit',
+      toolId: 'session',
+      outcome: 'ok',
+    })
+    expect(typeof rows[rows.length - 1].at).toBe('number')
+    // 它在 `log/` **之外** —— 日志管家(LogDirJanitor)那棵树碰不到它。
+    expect(fs.existsSync(path.join(storeRoot, 'audit', 'resource.jsonl'))).toBe(true)
+  })
+
+  it('resources RPC 域:list / describe / read / do 都通,而且是通用的(K2a)', async () => {
+    const { dispatchRpc } = await import('../rpc/registry.js')
+    // 本机可信 = 桌面那条路,主体铸成本机用户(`rpc/principal.ts` 第一条)。
+    const { configureHostLocalTrust, resetHostLocalTrustForTests } = await import('../server/host-trust.js')
+    const restore = configureHostLocalTrust({ origin: 'desktop-embedded' })
+
+    try {
+      const list = await dispatchRpc({ domain: 'resources', method: 'list', payload: {} })
+      expect(list.ok && (list.data as { schemes: Array<{ scheme: string }> }).schemes.map(s => s.scheme))
+        .toEqual(['session'])
+
+      const described = await dispatchRpc({
+        domain: 'resources',
+        method: 'describe',
+        payload: { scheme: 'session' },
+      })
+      expect(described.ok).toBe(true)
+      const spec = (described as { data: Record<string, unknown> }).data
+      expect(Object.keys(spec.ops as object).sort()).toEqual(['rename', 'setWorkingDirectory'])
+      // 函数没过线,但「带不带场子闸」这件事说得出口(会话这两条都不带)。
+      expect(JSON.stringify(spec)).not.toContain('function')
+      expect((spec.ops as Record<string, { whenGated?: boolean }>).rename.whenGated).toBeUndefined()
+
+      const read = await dispatchRpc({
+        domain: 'resources',
+        method: 'read',
+        payload: { ref: `session:${sessionId}`, name: 'get' },
+      })
+      expect(read.ok).toBe(true)
+      expect((read as { data: { kind: string; text: string } }).data.kind).toBe('ok')
+
+      const done = await dispatchRpc({
+        domain: 'resources',
+        method: 'do',
+        payload: { ref: `session:${sessionId}`, op: 'rename', params: { title: 'Via RPC' } },
+      })
+      expect((done as { data: { kind: string } }).data.kind).toBe('ok')
+      const { sessionReads } = await import('../session/reads.js')
+      expect(sessionReads.getSession(sessionId)?.name).toBe('Via RPC')
+
+      // 未知 op 走**校验器**那条路:是 invalid,不是 failed,而且不是一次异常 ——
+      // 五态是结局,不是错误(`ok:true` 的信封里装着一个 `invalid`)。
+      const bogus = await dispatchRpc({
+        domain: 'resources',
+        method: 'do',
+        payload: { ref: `session:${sessionId}`, op: 'nope' },
+      })
+      expect(bogus.ok).toBe(true)
+      expect((bogus as { data: { kind: string } }).data.kind).toBe('invalid')
+    } finally {
+      restore()
+      resetHostLocalTrustForTests()
+    }
+  })
+
+  it('未认证的联网调用方:四条面一律说不出自己是谁(K2a)', async () => {
+    const { dispatchRpc } = await import('../rpc/registry.js')
+    const { resetHostLocalTrustForTests } = await import('../server/host-trust.js')
+    resetHostLocalTrustForTests()
+
+    for (const [method, payload] of [
+      ['list', {}],
+      ['describe', { scheme: 'session' }],
+      ['read', { ref: `session:${sessionId}`, name: 'get' }],
+      ['do', { ref: `session:${sessionId}`, op: 'rename', params: { title: 'nope' } }],
+    ] as const) {
+      const answer = await dispatchRpc({ domain: 'resources', method, payload }, { transport: 'http' })
+      expect(answer.ok).toBe(false)
+      expect(answer.ok === false && answer.error.message).toContain('no identity')
+    }
+    // 读也没发生过。
+    const { sessionReads } = await import('../session/reads.js')
+    expect(sessionReads.getSession(sessionId)?.name).toBe('Via RPC')
   })
 
   it('dispose 之后 backend.resources 抛', async () => {

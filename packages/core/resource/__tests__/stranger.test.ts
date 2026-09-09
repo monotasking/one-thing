@@ -63,6 +63,7 @@ const KERNEL_FILES = [
   'schema.ts',
   'spec.ts',
   'tool.ts',
+  'validator.ts',
 ]
 
 const strangerSpec: ResourceSpec = {

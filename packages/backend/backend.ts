@@ -86,7 +86,7 @@ import { configureToolkitMCPCapabilitiesChangedHandler } from '@onething/runtime
 import { buildToolkitCatalog, refreshToolkitMcpTools } from './wiring/toolkit/wiring.js'
 import { createAppToolRunner } from './wiring/toolkit/runner.js'
 import { toolkitAuditSink } from './wiring/toolkit/audit-sink.js'
-import { createResourceKernel, mountBuiltinResources } from './wiring/resource/index.js'
+import { createResourceKernel, forwardResourceEventsToBus, mountBuiltinResources } from './wiring/resource/index.js'
 import type { ResourceKernel } from '@onething/core/resource'
 import { ToolExecutionRegistry } from './wiring/toolkit/executions.js'
 import { configureEvalsTaskOwner, EvalsTaskOwner } from './wiring/evals/task-owner.js'
@@ -816,14 +816,22 @@ export class OnethingBackend implements BackendHandle {
      *
      * 资源工具进不进工具目录、在哪种场子露面归 K3,本单不注册。
      */
-    const resourceRunner = createAppToolRunner({
+    const resourceKernel = createResourceKernel(validator => createAppToolRunner({
       observer: { on: () => {} },
       audit: toolkitAuditSink,
-    })
-    const resourceKernel = createResourceKernel(resourceRunner)
+      // K2a:认得生成 schema 的那位校验者由 `createResourceKernel` 串好递进来 ——
+      // 收配方而不是收 runner,是为了让「runner 认识自己工具的契约」结构性成立。
+      validator,
+    }))
     this.resourceKernel = resourceKernel
     this.own(() => { this.resourceKernel = undefined }, 'resourceKernel')
     this.own(mountBuiltinResources(resourceKernel), 'builtinResources')
+    /*
+     * K2a ③ —— 资源事件转发上总线。**单向**:装配层订阅 hub,hub 不认识总线
+     * (K1 留账写死的方向)。订阅名单问注册表、跟着注册表变,这里一个 scheme 名
+     * 都不出现;退订随实例走。
+     */
+    this.own(forwardResourceEventsToBus(resourceKernel, eventBus), 'resourceEventBridge')
 
     /*
      * 工具跑出去的进程要收回来。挂在工具目录这一步:没有目录就没有工具,也就

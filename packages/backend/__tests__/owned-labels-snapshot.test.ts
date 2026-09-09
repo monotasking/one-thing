@@ -96,6 +96,9 @@ const OWNED_LABELS = [
   // 关机链上反着跑(先注销内置资源,再清内核那一格)。资源工具进不进工具目录归 K3。
   'resourceKernel',
   'builtinResources',
+  // K2a:资源事件单向转发上总线。登记在两条资源登记之后 —— 关机链上它先撤,
+  // 于是内核还在的时候订阅已经摘干净了。
+  'resourceEventBridge',
   'killAllTerminals',
   'killTrackedDetachedChildren',
   'searchService',

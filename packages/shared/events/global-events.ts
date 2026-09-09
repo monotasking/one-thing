@@ -110,6 +110,33 @@ export interface PluginNotificationEvent {
   sound?: PluginNotifySound
 }
 
+// ── Resources (原子 K2a) ────────────────────────
+
+/**
+ * 一条资源事件出了内核(`docs/design/atom-2026-09.md` §2 的 `Watch`)。
+ *
+ * **它是转发,不是第二种事实。** 真身在 `ResourceEventHub`(纯内存、按前缀订阅);
+ * 装配层单向订阅一次,把每条转成这一条全局事件放上总线 —— hub 不反向认识总线
+ * (K1 留账写死的方向)。
+ *
+ * `ref` / `event` / `payload` 与 hub 那条逐字同名同义;`at` 是**装配层盖的**:
+ * hub 有意不带时刻(`events.ts` 头注释:内核里的"现在几点"要么是一处不可测的隐式
+ * 依赖,要么是一个为没人读的值加的构造参数),时刻由落账的那一层盖。
+ *
+ * `payload` 的形状由那种资源自己的 `ResourceSpec.events[name].payload` 说了算 ——
+ * 总线不解释它,这里也不该给它一个假的类型。
+ */
+export interface ResourceEventOccurredEvent {
+  type: 'resource:event'
+  /** `<scheme>:<path>` —— 出事的那个资源。 */
+  ref: string
+  /** 自述 `events` 里的名字。 */
+  event: string
+  payload: unknown
+  /** epoch ms,装配层盖。 */
+  at: number
+}
+
 // ── Union ───────────────────────────────────────
 
 export type GlobalEvent =
@@ -125,3 +152,4 @@ export type GlobalEvent =
   | PluginLoadedEvent
   | PluginErrorEvent
   | PluginNotificationEvent
+  | ResourceEventOccurredEvent

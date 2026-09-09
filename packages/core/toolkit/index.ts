@@ -86,13 +86,14 @@ export { Catalog } from './catalog.js'
 export { normalizeLegacyAllowlist, Surface } from './surface.js'
 export type { SurfaceResolveInput } from './surface.js'
 
-export { systemClock, withUserToolSettings } from './ports.js'
+export { combineValidators, systemClock, withUserToolSettings } from './ports.js'
 export type {
   Authorizer,
   Clock,
   InterceptVerdict,
   Interceptor,
   Observer,
+  PartialValidator,
   SandboxPolicy,
   ToolUserSetting,
   ValidationResult,

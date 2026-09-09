@@ -19,6 +19,7 @@ import type {
   SandboxPolicy,
   SessionSnapshot,
   SpillPort,
+  Validator,
 } from '@onething/core/toolkit'
 import { ZodValidator } from '@onething/runtime/toolkit'
 import { classifySensitiveFile } from '@onething/runtime/tools/sensitive-files'
@@ -102,6 +103,17 @@ export interface AppToolRunnerOptions {
   readonly sandbox?: SandboxPolicy
   readonly spill?: SpillPort
   readonly session?: (invocation: Invocation) => SessionSnapshot | undefined
+  /**
+   * 契约解释权(K2a)。缺省是 `ZodValidator` —— 产品层的工具用 zod 写契约,那张
+   * WeakMap 反查得回来。
+   *
+   * 资源那台 runner 传的是一位**组合**校验者(`wiring/resource/index.ts`):生成的
+   * 资源契约不在 zod 那张表里,反查失败就 passthrough,于是未知 op 只能等到 plan
+   * 期抛、判成 `failed`。给它配一位认得生成 schema 的校验者,是 K1 在
+   * `core/resource/errors.ts` 头注释里写明的正路(而不是在内核里给 plan 开一个能
+   * 返回 `Outcome` 的后门)。
+   */
+  readonly validator?: Validator
 }
 
 export function createAppToolRunner(options: AppToolRunnerOptions): ToolRunner {
@@ -112,7 +124,7 @@ export function createAppToolRunner(options: AppToolRunnerOptions): ToolRunner {
   return new ToolRunner({
     authorizer: options.authorizer ?? createPermissionAuthorizer(),
     observer,
-    validator: new ZodValidator(),
+    validator: options.validator ?? new ZodValidator(),
     interceptor: options.interceptor,
     jobs: options.jobs ?? new BackgroundJobRegistry(),
     sandbox: options.sandbox ?? createSandboxPolicy(),

@@ -12,7 +12,7 @@ import { makeEffect } from '../../toolkit/effects.js'
 import { textResult } from '../../toolkit/result.js'
 import { ToolRunner } from '../../toolkit/runner.js'
 import type { Outcome } from '../../toolkit/outcome.js'
-import type { Authorizer } from '../../toolkit/ports.js'
+import { combineValidators, type Authorizer, type Validator } from '../../toolkit/ports.js'
 import {
   allowAuthorizer,
   makeInvocation,
@@ -20,21 +20,52 @@ import {
   RecordingObserver,
 } from '../../toolkit/__tests__/fakes.js'
 import { ResourceTool, type ShellDispatch } from '../tool.js'
+import { ResourceInputValidator } from '../validator.js'
 import { DEMO_SCHEME, DemoProvider, demoSpec } from './fakes.js'
 
-function makeRunner(authorizer: Authorizer = allowAuthorizer) {
+/**
+ * K2a —— 这些用例跑的是**装配层真正在用的那位校验者**:先问认得生成 schema 的
+ * `ResourceInputValidator`,它不认领的交给兜底(生产里是 `ZodValidator`,这里是
+ * 那个 passthrough 假件)。
+ *
+ * 为什么要换:K1 的时候资源工具的 `spec.input` 是现造的一坨 JSON Schema,`ZodValidator`
+ * 那张 WeakMap 反查不到它,于是一律 passthrough —— 参数错只能等到 `plan` 期抛,判成
+ * `failed`。K1 把这一条当**取舍**记在 `core/resource/errors.ts` 的头注释里,并指明了
+ * 正路:给这份生成 schema 配一个认得它的 Validator。K2a 兑现了那句话,所以下面
+ * 「说不出口的那几种」整组从 `failed` 改判 `invalid`。
+ */
+function resourceValidator(tool: ResourceTool): Validator {
+  const resource = new ResourceInputValidator()
+  // 生产里这一句在 `ResourceKernel.mount` 里(那是唯一同时知道"哪坨 schema、哪份
+  // 自述"的地方);这里直接建工具,所以自己认领一次。
+  resource.register(tool.spec.input, tool.provider.spec)
+  return combineValidators([resource], passthroughValidator)
+}
+
+function makeRunner(authorizer: Authorizer = allowAuthorizer, validator: Validator = passthroughValidator) {
   const observer = new RecordingObserver()
-  return { runner: new ToolRunner({ authorizer, observer, validator: passthroughValidator }), observer }
+  return { runner: new ToolRunner({ authorizer, observer, validator }), observer }
 }
 
 function run(tool: ResourceTool, input: unknown, authorizer?: Authorizer): Promise<Outcome> {
-  const { runner } = makeRunner(authorizer)
+  const { runner } = makeRunner(authorizer, resourceValidator(tool))
+  return runner.run(tool, makeInvocation({ toolId: DEMO_SCHEME, input }))
+}
+
+/** 没配那位校验者的宿主走的那条路 —— plan 期的具名错仍然是第二道防线。 */
+function runWithoutResourceValidator(tool: ResourceTool, input: unknown): Promise<Outcome> {
+  const { runner } = makeRunner()
   return runner.run(tool, makeInvocation({ toolId: DEMO_SCHEME, input }))
 }
 
 /** 结局是 failed 时那只错误的名字 —— 判定读类名,不 match 措辞。 */
 function failureName(outcome: Outcome): string | undefined {
   return outcome.kind === 'failed' ? outcome.error.name : undefined
+}
+
+/** 结局是 invalid 时那句话。 */
+function invalidMessage(outcome: Outcome): string | undefined {
+  return outcome.kind === 'invalid' ? outcome.message : undefined
 }
 
 describe('ResourceTool 的 spec', () => {
@@ -156,37 +187,65 @@ describe('做:两拍都是 provider 的', () => {
   })
 })
 
-describe('做:说不出口的那几种', () => {
-  it('没有这条做法 → ResourceOpUnknownError,provider 一次都没被叫', async () => {
+describe('做:说不出口的那几种(K2a 之后是 invalid)', () => {
+  it('没有这条做法 → invalid,而且话里带得出有哪些做法;provider 一次都没被叫', async () => {
     const provider = new DemoProvider()
     const outcome = await run(new ResourceTool(provider), { op: 'nope', ref: `${DEMO_SCHEME}:1` })
-    expect(failureName(outcome)).toBe('ResourceOpUnknownError')
+    expect(outcome.kind).toBe('invalid')
+    expect(invalidMessage(outcome)).toContain('has no op "nope"')
+    // 「有哪些」是这条判定唯一比 plan 期那只具名错多出来的东西:校验者手上有整份
+    // 自述,而 plan 期抛出去的错只说得出"你点的那条不存在"。
+    expect(invalidMessage(outcome)).toContain('rename')
     expect(provider.calls).toEqual([])
   })
 
   it('原型链上的名字不算做法(op 名来自外面)', async () => {
     const outcome = await run(new ResourceTool(new DemoProvider()), { op: 'toString' })
-    expect(failureName(outcome)).toBe('ResourceOpUnknownError')
+    expect(outcome.kind).toBe('invalid')
   })
 
-  it('既没点读法也没点做法 → ResourceCallShapeError(与「点错了」分开说)', async () => {
+  it('既没点读法也没点做法 → invalid(与「点错了」分开说)', async () => {
     const outcome = await run(new ResourceTool(new DemoProvider()), { ref: `${DEMO_SCHEME}:1` })
-    expect(failureName(outcome)).toBe('ResourceCallShapeError')
+    expect(outcome.kind).toBe('invalid')
+    expect(invalidMessage(outcome)).toContain('names neither a read nor an op')
+  })
+
+  it('两支都点名 → invalid(oneOf 的字面意思:恰好一支)', async () => {
+    const outcome = await run(new ResourceTool(new DemoProvider()), { read: 'get', op: 'rename' })
+    expect(outcome.kind).toBe('invalid')
+    expect(invalidMessage(outcome)).toContain('names both')
   })
 
   it('when 说此刻不该露面 → ResourceOpUnavailableError,plan 不跑', async () => {
+    // 这一条**不是**校验者的活:`when` 要场子上下文,而校验者只读自述。所以它照旧
+    // 是 plan 期的具名错、照旧判 failed —— K2a 只把"参数错"那一族抬成 invalid。
     const provider = new DemoProvider()
     const outcome = await run(new ResourceTool(provider), { op: 'hidden' })
     expect(failureName(outcome)).toBe('ResourceOpUnavailableError')
     expect(provider.calls).toEqual([])
   })
 
-  it('地址不合语法 / 属于另一种资源 → ResourceRefError', async () => {
+  it('地址不合语法 / 属于另一种资源 → invalid,两句话分得开', async () => {
     const tool = new ResourceTool(new DemoProvider())
     const syntax = await run(tool, { op: 'rename', ref: 'not-an-address', title: 'x' })
-    expect(failureName(syntax)).toBe('ResourceRefError')
+    expect(syntax.kind).toBe('invalid')
+    expect(invalidMessage(syntax)).toContain('is not a resource address')
 
     const foreign = await run(tool, { op: 'rename', ref: 'other:42', title: 'x' })
+    expect(foreign.kind).toBe('invalid')
+    expect(invalidMessage(foreign)).toContain('belongs to another resource')
+  })
+
+  it('第二道防线还在:没配那位校验者的宿主,plan 期照旧抛具名错', async () => {
+    // 校验者是**注入**的端口,不是保证。所以 `ResourceTool.plan` 里那几只具名错
+    // 一条都没删 —— 一台没串上资源校验者的 runner(或者手搓 Intent 直接调 apply 的
+    // 调用方)仍然拦得住,只是结局读成 failed。
+    const tool = new ResourceTool(new DemoProvider())
+    expect(failureName(await runWithoutResourceValidator(tool, { op: 'nope' })))
+      .toBe('ResourceOpUnknownError')
+    expect(failureName(await runWithoutResourceValidator(tool, { ref: `${DEMO_SCHEME}:1` })))
+      .toBe('ResourceCallShapeError')
+    const foreign = await runWithoutResourceValidator(tool, { op: 'rename', ref: 'other:42', title: 'x' })
     expect(failureName(foreign)).toBe('ResourceRefError')
     if (foreign.kind === 'failed') {
       expect((foreign.error as { reason?: string }).reason).toBe('scheme')
@@ -277,7 +336,7 @@ describe('它就是一只普通工具', () => {
   it('自述空到只有读法时,工具照样建得出来(上界为空,做法一条都调不到)', async () => {
     const tool = new ResourceTool(new DemoProvider({ spec: demoSpec({ ops: {} }) }))
     expect(tool.spec.effects).toEqual([])
-    expect(failureName(await run(tool, { op: 'rename', title: 'x' }))).toBe('ResourceOpUnknownError')
+    expect((await run(tool, { op: 'rename', title: 'x' })).kind).toBe('invalid')
     expect((await run(tool, { read: 'get' })).kind).toBe('ok')
   })
 })

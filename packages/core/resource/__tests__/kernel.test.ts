@@ -14,9 +14,11 @@ import { ToolRunner } from '../../toolkit/runner.js'
 import type { ObservedEvent } from '../../toolkit/events.js'
 import type { Invocation } from '../../toolkit/run-context.js'
 import type { Observer } from '../../toolkit/ports.js'
+import { combineValidators } from '../../toolkit/ports.js'
 import { allowAuthorizer, passthroughValidator } from '../../toolkit/__tests__/fakes.js'
-import { ResourceKernel } from '../kernel.js'
+import { NO_ORIGIN_SESSION, ResourceKernel } from '../kernel.js'
 import { ResourceRegistry } from '../registry.js'
+import { ResourceInputValidator } from '../validator.js'
 import { DEMO_SCHEME, DemoProvider } from './fakes.js'
 
 const PRINCIPAL = { kind: 'user', userId: 'local' } as const
@@ -31,9 +33,22 @@ class Trace implements Observer {
   }
 }
 
+/**
+ * K2a —— 与装配层同形:同一个 `ResourceInputValidator` 实例既串进 runner 的
+ * `Validator`,又交给内核去认领每个 mount 的入参契约。生产里这两半由
+ * `backend/wiring/resource/index.ts` 的 `createResourceKernel` 一处扣上。
+ */
 function makeKernel(observer: Observer, provider = new DemoProvider()) {
-  const runner = new ToolRunner({ authorizer: allowAuthorizer, observer, validator: passthroughValidator })
-  const kernel = new ResourceKernel(new ResourceRegistry(), runner, { callIds: () => 'fixed-call' })
+  const resourceValidator = new ResourceInputValidator()
+  const runner = new ToolRunner({
+    authorizer: allowAuthorizer,
+    observer,
+    validator: combineValidators([resourceValidator], passthroughValidator),
+  })
+  const kernel = new ResourceKernel(new ResourceRegistry(), runner, {
+    callIds: () => 'fixed-call',
+    validator: resourceValidator,
+  })
   return { kernel, runner, provider, unmount: kernel.mount(provider) }
 }
 
@@ -131,6 +146,38 @@ describe('没人认领的地址', () => {
 
     const unmounted = await kernel.read('other:1', 'get', {}, CALL_OPTIONS)
     expect(unmounted.kind === 'failed' && unmounted.error.name).toBe('ResourceSchemeUnknownError')
+  })
+
+  it('认得出 scheme、点不出做法 → invalid,不是 failed(K2a)', async () => {
+    // 「没人登记过这个 scheme」在**进管线之前**判(那决定的是调哪只工具),所以它
+    // 仍然是 failed;「这只工具没有这条做法」是参数错,K2a 之后由校验者判 invalid。
+    // 两者是两句不同的话,分开是有意的。
+    const { kernel } = makeKernel(new Trace())
+    const outcome = await kernel.do(`${DEMO_SCHEME}:1`, 'nope', {}, CALL_OPTIONS)
+    expect(outcome.kind).toBe('invalid')
+  })
+})
+
+describe('无会话的调用方(K2a)', () => {
+  it('不给 sessionId,管线照跑,而 Invocation 上的坐标是那个保留值', async () => {
+    const seen: string[] = []
+    const { kernel } = makeKernel({
+      on(invocation) {
+        seen.push(invocation.sessionId)
+      },
+    })
+    const outcome = await kernel.do(`${DEMO_SCHEME}:42`, 'rename', { title: 'x' }, { principal: PRINCIPAL })
+    expect(outcome.kind).toBe('ok')
+    // 审计与取消都读这一格,所以它必须是**一个具名的值**而不是某条会话的 id ——
+    // 借一条会话的坐标,审计就会读成「那条会话自己改了自己」(K1 留账)。
+    expect([...new Set(seen)]).toEqual([NO_ORIGIN_SESSION])
+  })
+
+  it('保留坐标不是某条会话的 id,也不是空串', () => {
+    // 空串会被下游当"没填"处理(而不是"没有发起会话"),那是两件事。
+    expect(NO_ORIGIN_SESSION.length).toBeGreaterThan(0)
+    // 会话 id 是 uuid,字母表里没有 `@` —— 撞不上,而且一眼看得出不是 id。
+    expect(NO_ORIGIN_SESSION.startsWith('@')).toBe(true)
   })
 })
 

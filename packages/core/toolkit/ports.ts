@@ -66,6 +66,43 @@ export interface Validator {
   parse<T = unknown>(schema: JsonSchema, input: unknown): ValidationResult<T>
 }
 
+/**
+ * 一位**可能不认识这份 schema** 的校验者(K2a)。
+ *
+ * `undefined` 的含义是「这份契约不是我生产的,问下一位」——它与 `{ ok: true }`
+ * 是两件事:后者是「我看过了,没问题」。今天 `ZodValidator` 把这两件事合成了一件
+ * (认不出的 schema 一律 `{ ok: true }` 放行),那对它是对的(插件 / MCP 的契约由
+ * 对面把关),但**合并之后就没法再串第二位** —— 第一位一放行,第二位永远轮不上。
+ * 所以「不认识」得有自己的答案。
+ */
+export interface PartialValidator {
+  parse<T = unknown>(schema: JsonSchema, input: unknown): ValidationResult<T> | undefined
+}
+
+/**
+ * 串成一位 `Validator`:按顺序问 `parts`,第一个**认领**的说了算;都不认领就交给
+ * `fallback` 兜底。写法与 `combineObservers` 同形 —— 内核的端口都是单槽,要多位
+ * 就在装配层折成一位。
+ *
+ * 与 `combineObservers` 的一处**不同**:这里不吞异常。观察者是旁观者,炸了不该影响
+ * 调用;校验者是判定者,一位校验者炸了却被吞掉,结果是「没校验过」被当成「校验通过」
+ * —— 那是一次静默免检。让它抛,由 Runner 判成一次失败。
+ */
+export function combineValidators(
+  parts: readonly PartialValidator[],
+  fallback: Validator,
+): Validator {
+  return {
+    parse<T = unknown>(schema: JsonSchema, input: unknown): ValidationResult<T> {
+      for (const part of parts) {
+        const claimed = part.parse<T>(schema, input)
+        if (claimed) return claimed
+      }
+      return fallback.parse<T>(schema, input)
+    },
+  }
+}
+
 /** 沙箱。路径的解析与判定归宿主,内核既不认识 fs 也不认识仓库根。 */
 export interface SandboxPolicy {
   root(): string | undefined

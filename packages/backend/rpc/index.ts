@@ -42,6 +42,7 @@ import { pluginsRouter } from '@shared/ipc/plugins.js'
 import { practiceRouter } from '@shared/ipc/practice.js'
 import { projectDirsRouter } from '@shared/ipc/project-dirs.js'
 import { promptsRouter } from '@shared/ipc/prompts.js'
+import { resourcesRouter } from '@shared/ipc/resources.js'
 import { filesRouter } from '@shared/ipc/files.js'
 import { gatewayRouter } from '@shared/ipc/gateway.js'
 import { interactionRouter } from '@shared/ipc/interaction.js'
@@ -92,6 +93,7 @@ import { pluginsRpcHandlers } from './domains/plugins.js'
 import { practiceRpcHandlers } from './domains/practice.js'
 import { projectDirsRpcHandlers } from './domains/project-dirs.js'
 import { promptsRpcHandlers } from './domains/prompts.js'
+import { resourcesRpcHandlers } from './domains/resources.js'
 import { providersRpcHandlers } from './domains/providers.js'
 import { schedulerRpcHandlers } from './domains/scheduler.js'
 import { searchRpcHandlers } from './domains/search.js'
@@ -359,6 +361,17 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // 装的就是从前 `POST /api/search/query` 背后的同一个闭包)。`executeAction` 与
   // `SEARCH_ACTION` 不在这里(前者是窗口活,在 searchWindowRouter 上;后者是推送)。
   { id: 'rpc:search', mount: ctx => { ctx.registerRpcDomain(searchRouter, searchRpcHandlers) } },
+  /*
+   * 原子 K2a(`docs/design/atom-2026-09.md` §4「所有出口都是投影」的「RPC 域」那一行)。
+   *
+   * **一个通用域,零个 scheme 名**:`list` / `describe` / `read` / `do` 对会话、文件、
+   * 音乐、邮件说的是同一句话,加一种资源不改这一行、也不改域文件一个字 ——
+   * 那正是 §8 陌生能力演练要的答案。它与今天那 24 个手写域的差别不是"少写了几行",
+   * 是授权归属:授权在管线里(`ToolRunner`),域不再各写。
+   *
+   * 位置在最后:它要资源内核(装配缝 4.1,排在工具目录之后)。
+   */
+  { id: 'rpc:resources', mount: ctx => { ctx.registerRpcDomain(resourcesRouter, resourcesRpcHandlers) } },
   selfEvolutionFeature,
 ]
 

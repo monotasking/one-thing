@@ -215,6 +215,32 @@ export function getOnethingToolOutputsDir(
 	return path.join(getOnethingStorePath(options), "tool-outputs");
 }
 
+/**
+ * 审计账本的目录(K2a,`docs/design/atom-2026-09.md` §9 K2)。
+ *
+ * `<store>/audit/` 住的是**没有发起会话**的那些「做」的证词:调度、deeplink、CLI、
+ * 界面上一个与当前会话无关的按钮。有会话的照旧落 `sessions/<id>/events.jsonl` ——
+ * 那本账才是会话自己的账,把一次与它无关的操作记进去是在污染抄本。
+ *
+ * **它不是日志。** `log/` 那棵树有唯一一个管家(`LogDirJanitor` + `LOG_DIR_POLICY`,
+ * 会按份数 / 天数 / 总量删归档),而这里是产品数据、append-only、谁都不许替它做
+ * 保留策略 —— 与 `sessions/<id>/events.jsonl`、`usage/*.jsonl`、调度日志同一档
+ * (CLAUDE.md 那句「事件账本是产品数据,不是日志,管家永远不碰」)。它落在
+ * `log/` 之外正是为了让这件事**结构性**成立,而不是靠管家自觉绕开。
+ */
+export function getOnethingAuditDir(
+	options: OnethingStorePathOptions = {},
+): string {
+	return path.join(getOnethingStorePath(options), "audit");
+}
+
+/** 无会话「做」的那一本(一行一条 `ToolAuditRecord`)。 */
+export function getOnethingResourceAuditPath(
+	options: OnethingStorePathOptions = {},
+): string {
+	return path.join(getOnethingAuditDir(options), "resource.jsonl");
+}
+
 export function getOnethingFileMutationsDir(
 	options: OnethingStorePathOptions = {},
 ): string {
