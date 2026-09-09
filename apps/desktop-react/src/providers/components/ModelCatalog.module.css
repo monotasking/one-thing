@@ -253,6 +253,47 @@
   letter-spacing: var(--pv-caps-ls);
 }
 
+/*
+ * ── 「这个读数是人填的」(09-09 逐型覆盖)────────────────────────────────
+ * 覆盖过的格子**换的是笔迹不是颜色**:虚线下划 + 墨色抬到 --text-1,
+ * 原值挂在 `ui/Tooltip` 上(禁 native title=)。不上状态色 —— 「我改过它」
+ * 不是一种状态,是一句出处;上了 accent 会和「当前模型」那一格打架。
+ */
+.ovr {
+  color: var(--text-1);
+  text-decoration: underline dotted var(--text-3);
+  text-underline-offset: var(--pv-ovr-underline-offset);
+}
+
+/* 能力那一格是图标不是字,下划线画不到它身上 —— 换成一条下边线,语义同一句。 */
+.cap.ovr {
+  color: var(--text-1);
+  text-decoration: none;
+  border-bottom: var(--bw-1) dotted var(--text-3);
+}
+
+/*
+ * 被关掉的那一枚:**划掉,不是拿走**(拿走 = 「不知道」,划掉 = 「人说不」)。
+ *
+ * 划的那一道用伪元素画,不用 `text-decoration: line-through`:这一格是
+ * `display: inline-flex` 且**里面一个字都没有**(身子是一枚 svg),
+ * text-decoration 既不传进这个格式化上下文,也没有文本盒可以横穿 ——
+ * 样例页上看着对,是因为那份 demo 的 span 不是 inline-flex。
+ */
+.cap.capOff {
+  position: relative;
+  opacity: var(--pv-cap-off-o);
+}
+
+.cap.capOff::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: var(--bw-1) solid currentColor;
+}
+
 /* 两个容量数(上下文 / 最大输出)长得一样。`.out` 只是**给最窄那一档一个把手**,
  * 好让它连同它的列头一起退场 —— 与 `.price` / `.colPrice` 那一对逐字同款。 */
 .num,
@@ -419,7 +460,7 @@
  * **改的时候两处一起改**,而且要照 tokens.css 里那三行把入场宽重算一遍 ——
  * 08-31 那条重叠报障的一半原因就是旧阈值(640)定在了七列入场宽(728)之下。
  */
-@container catalog (max-width: 728px) {
+@container catalog (max-width: 754px) {
   .grid {
     grid-template-columns:
       var(--pv-col-check) minmax(var(--pv-col-name-min), 1fr)
@@ -433,7 +474,7 @@
   }
 }
 
-@container catalog (max-width: 604px) {
+@container catalog (max-width: 630px) {
   .grid {
     grid-template-columns:
       var(--pv-col-check) minmax(var(--pv-col-name-min), 1fr)

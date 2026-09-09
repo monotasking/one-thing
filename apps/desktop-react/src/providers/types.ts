@@ -135,7 +135,73 @@ export interface CatalogRow {
    * 它就是「勾了但目录不认识」这一个事实的名字。
    */
   manual: boolean
+  /**
+   * 用户覆盖(settings 那两张按模型的表:`contextLengthByModel[id]` 与
+   * `modelCapabilitiesByModel[id].tools`)。**缺席 = 没覆盖**;行上按它画
+   * 虚线下划与划掉的扳手。
+   *
+   * 它与上面几格的关系是「**谁说的**」而不是「值是多少」:`contextLength` /
+   * `caps` 交出去的一律是**生效值**(覆盖优先,与引擎
+   * `model-registry.ts:895/949` 同一条读法),这一格只回答「这个数是人填的吗」。
+   * 两件事合成一格的话,屏幕就没法把「目录说 1M」和「我说 1M」画成两样。
+   *
+   * **判据只读 settings 这两张表**(单产地):后端交出来的目录条目
+   * (`onethingCapabilityEntryToOpenRouterModel`)读的是注册表 entry,压根没有
+   * 把覆盖折进 `supported_parameters` / `context_length` —— 就算哪天折了,
+   * 从目录条目反推「有没有被覆盖」也是猜,不是事实。
+   */
+  override: ModelOverride
+  /**
+   * **目录自己说的那一份**(未经覆盖)。上面几格交的是生效值,覆盖一旦在场,
+   * 目录原本给的数就再也读不回来了 —— 而屏幕上恰恰要说「自定 200k(目录 1.0M)」。
+   *
+   * `null` 一律读作**目录没填这一型**:手填行压根没有目录条目,而一条目录条目
+   * 里没写 `context_length` 与「写了 0」在 `contextOf` 那把尺下同义。
+   * `tools` 的 `null` 同理(手填行),`false` 是目录条目里**没列** `tools`
+   * —— 那就是目录在说「不支持」,与今天这张表不画扳手是同一句话。
+   */
+  catalog: CatalogFacts
 }
+
+/** 目录对这一型说过的那两句。`null` = 没说过。 */
+export interface CatalogFacts {
+  contextLength: number | null
+  tools: boolean | null
+}
+
+/** 目录什么都没说(手填行)。共享冻结对象,理由同 `NO_MODEL_OVERRIDE`。 */
+export const NO_CATALOG_FACTS: CatalogFacts = Object.freeze({
+  contextLength: null,
+  tools: null,
+})
+
+/** 一个模型上的两格覆盖。两格都缺席 = 这一型没被动过。 */
+export interface ModelOverride {
+  /** 上下文窗口。正数才算数(0 / 负数 / 非数按「没覆盖」处理)。 */
+  contextLength?: number
+  /** 工具调用。`false` 是**一句话**(「人说不支持」),不是「不知道」。 */
+  tools?: boolean
+}
+
+/** 覆盖的写补丁。`null` = 删掉这一格;缺席 = 这一格不动。 */
+export interface ModelOverridePatch {
+  contextLength?: number | null
+  tools?: boolean | null
+}
+
+/** 没覆盖。共享同一个冻结对象 —— 每行现造一个空对象会让行的引用每帧都变。 */
+export const NO_MODEL_OVERRIDE: ModelOverride = Object.freeze({})
+
+/**
+ * 目录没填上下文窗口时,引擎实际按多少算。
+ *
+ * **来源是 `packages/onething-runtime/src/providers/model-registry.ts:914`**
+ * (`getOnethingModelContextLength` 的最后一行 `|| 128000`)——壳上要把这个数
+ * 说给用户听(占位符「128k(默认)」与提示行「不填按 128k 算,压缩阈值也按
+ * 它算」),所以它在这里立一个有名字的常量,而不是在两处各写一遍字面量。
+ * 后端改了那一格,这里跟着改一处。
+ */
+export const CATALOG_CONTEXT_FALLBACK = 128_000
 
 /**
  * 一个厂牌组。OpenRouter 那种 300+ 行的目录不平铺 —— 按 id 的 `vendor/` 前缀

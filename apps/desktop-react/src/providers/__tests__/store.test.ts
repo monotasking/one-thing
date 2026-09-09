@@ -336,6 +336,130 @@ describe('setCurrentModel / addManualModel / removeManualModel', () => {
   })
 })
 
+/* ── 逐型覆盖(09-09):两张按模型的表,整张换,删要删干净 ─────────────────── */
+
+describe('setModelOverride', () => {
+  /** 一份已经带着两格覆盖(外加一格别人的能力键)的空间设置。 */
+  function overridden(): SpaceProviderSettings {
+    return {
+      provider: 'claude',
+      providers: {
+        claude: {
+          model: 'claude-opus-5',
+          selectedModels: ['claude-opus-5', 'ghost'],
+          contextLengthByModel: { 'claude-opus-5': 300_000, ghost: 200_000 },
+          modelCapabilitiesByModel: {
+            'claude-opus-5': { tools: false, vision: true },
+            ghost: { tools: true },
+          },
+        },
+      },
+      customProviders: [],
+    } as unknown as SpaceProviderSettings
+  }
+
+  it('写一格:上下文进 contextLengthByModel,别的格原样', async () => {
+    const port = installPort()
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().setModelOverride('claude', 'ghost', {
+      contextLength: 200_000,
+    })
+    const sent = vi.mocked(port.writeProviderSettings).mock.calls[0][0]
+    expect(sent.ai.providers.claude.contextLengthByModel).toEqual({ ghost: 200_000 })
+    expect(sent.ai.providers.claude.selectedModels).toEqual(['claude-opus-5'])
+  })
+
+  it('忙态打在被配置的那一行上,不是打在整面上', async () => {
+    // 这一发要闸住才看得见忙态:`setModelOverride` 第一句是 `ensureSettingsLoaded`
+    // 的 await,所以记账不是同步发生的(与 `setThinkingEffort` 同一形)。
+    let release: (() => void) | undefined
+    installPort({
+      writeProviderSettings: vi.fn(async (request) => {
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+        return { success: true, ai: request.ai }
+      }),
+    })
+    await useProviderSettings.getState().start()
+    const flight = useProviderSettings.getState().setModelOverride('claude', 'ghost', {
+      tools: false,
+    })
+    await vi.waitFor(() =>
+      expect([...settingsMutation.get().pendingKeys]).toEqual([
+        settingsKey.model('claude', 'ghost'),
+      ]),
+    )
+    expect(settingsMutation.isPending(settingsKey.model('claude', 'claude-opus-5'))).toBe(false)
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+    release?.()
+    await flight
+    expect(settingsMutation.get().pendingKeys.size).toBe(0)
+  })
+
+  it('别的能力键(vision 等)一格不动 —— 这块面只开了 tools 一格', async () => {
+    const port = installPort({ readProviderSettings: vi.fn(async () => ({ success: true, ai: overridden() })) })
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().setModelOverride('claude', 'claude-opus-5', {
+      tools: true,
+    })
+    const sent = vi.mocked(port.writeProviderSettings).mock.calls[0][0]
+    expect(sent.ai.providers.claude.modelCapabilitiesByModel).toEqual({
+      'claude-opus-5': { tools: true, vision: true },
+      ghost: { tools: true },
+    })
+  })
+
+  it('清一格:那个键**从表里消失**,同表里别的模型留着', async () => {
+    const port = installPort({ readProviderSettings: vi.fn(async () => ({ success: true, ai: overridden() })) })
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().setModelOverride('claude', 'ghost', {
+      contextLength: null,
+    })
+    const table = vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.providers.claude
+      .contextLengthByModel
+    expect(table).toEqual({ 'claude-opus-5': 300_000 })
+    expect(Object.keys(table ?? {})).not.toContain('ghost')
+  })
+
+  it('清最后一格:整张表也删掉 —— 发出去的 payload 里连键都没有', async () => {
+    const single = {
+      provider: 'claude',
+      providers: {
+        claude: {
+          model: 'claude-opus-5',
+          selectedModels: ['claude-opus-5'],
+          contextLengthByModel: { 'claude-opus-5': 300_000 },
+          modelCapabilitiesByModel: { 'claude-opus-5': { tools: false } },
+        },
+      },
+      customProviders: [],
+    } as unknown as SpaceProviderSettings
+    const port = installPort({ readProviderSettings: vi.fn(async () => ({ success: true, ai: single })) })
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().setModelOverride('claude', 'claude-opus-5', {
+      contextLength: null,
+      tools: null,
+    })
+    const config = vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.providers.claude
+    /*
+     * `toEqual` 会把 `{ k: undefined }` 当成没有 k —— 这一条要证的恰恰是**键
+     * 真的不在**(留一个 `{}` 或一个 undefined 值在盘上是一句「配置过」的假话),
+     * 所以按 `Object.keys` 数,不按 toEqual。
+     */
+    expect(Object.keys(config)).not.toContain('contextLengthByModel')
+    expect(Object.keys(config)).not.toContain('modelCapabilitiesByModel')
+    expect(config.selectedModels).toEqual(['claude-opus-5'])
+  })
+
+  it('空补丁一发都不发', async () => {
+    const port = installPort()
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().setModelOverride('claude', 'ghost', {})
+    expect(port.writeProviderSettings).not.toHaveBeenCalled()
+  })
+})
+
 /* ── 批二:凭证池 ────────────────────────────────────────────────────────── */
 
 const POOL = {

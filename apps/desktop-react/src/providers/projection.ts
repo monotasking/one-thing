@@ -5,7 +5,7 @@ import type {
   SpaceCredentialEntrySummary,
   SpaceProviderCredentialSummary,
 } from '@shared/ipc/spaces'
-import { OTHER_GROUP, UNKNOWN_CREDENTIALS } from './types'
+import { NO_CATALOG_FACTS, NO_MODEL_OVERRIDE, OTHER_GROUP, UNKNOWN_CREDENTIALS } from './types'
 import type {
   CatalogGroup,
   CatalogRow,
@@ -14,6 +14,7 @@ import type {
   GroupedCatalog,
   ModeTab,
   ModelCap,
+  ModelOverride,
   ProviderFamilyView,
   ProviderMode,
   ProviderModeKind,
@@ -423,6 +424,42 @@ export function formatPrice(value: number): string {
 }
 
 /**
+ * 一个模型上的用户覆盖。**唯一产地**:settings 那两张按模型的表。
+ *
+ *  · `contextLengthByModel[id]` —— `positive()` 那条同一把尺(0 / 负数 / 非有限数
+ *    = 这一格没填 = 没覆盖),与引擎 `model-registry.ts:905` 的 `> 0` 判据同义;
+ *  · `modelCapabilitiesByModel[id].tools` —— **只认布尔**。`undefined` 是「没说过」,
+ *    `false` 是「人说不支持」,两者在屏幕上差得远(消失 vs 划掉)。
+ *
+ * 都没有就交回同一个冻结常量:每行现造一个 `{}` 会让行的引用每帧都变。
+ */
+export function overrideOf(config: ProviderConfig | undefined, id: string): ModelOverride {
+  const context = config?.contextLengthByModel?.[id]
+  const tools = config?.modelCapabilitiesByModel?.[id]?.tools
+  const hasContext = typeof context === 'number' && Number.isFinite(context) && context > 0
+  const hasTools = typeof tools === 'boolean'
+  if (!hasContext && !hasTools) return NO_MODEL_OVERRIDE
+  return {
+    ...(hasContext ? { contextLength: context } : {}),
+    ...(hasTools ? { tools } : {}),
+  }
+}
+
+/**
+ * 能力串里 tools 那一位的**生效值**:`override.tools ?? 目录说的`。
+ *
+ * 覆盖成 `false` 时这一串里**不含** tools —— `caps` 是「这一型此刻支持什么」,
+ * 关掉了就是不支持。行上那枚划掉的扳手不从这里来,它从 `override.tools === false`
+ * 来(「不知道」画不出来,「人说不」才画得出来)。两件事分开,是因为它们回答的
+ * 是两个问题:能力串答「支持吗」,覆盖答「谁说的」。
+ */
+function capsWithOverride(base: readonly ModelCap[], override: ModelOverride): ModelCap[] {
+  if (override.tools === undefined) return [...base]
+  const rest = base.filter((cap) => cap !== 'tools')
+  return override.tools ? [...rest, 'tools'] : rest
+}
+
+/**
  * 目录 → 行。
  *
  * **勾过但目录里没有的模型照样出现**(排在最前):它正在被聊天用着,列表里找不到
@@ -435,33 +472,48 @@ export function buildCatalogRows(
 ): CatalogRow[] {
   const selected = new Set(config?.selectedModels ?? [])
   const current = (config?.model ?? '').trim()
-  const rows: CatalogRow[] = models.map((model) => ({
-    id: model.id,
-    name: (model.name ?? '').trim() || model.id,
-    selected: selected.has(model.id),
-    current: current === model.id,
-    contextLength: contextOf(model),
-    maxOutput: maxOutputOf(model),
-    caps: capsOf(model),
-    price: priceOf(model),
-    manual: false,
-  }))
+  const rows: CatalogRow[] = models.map((model) => {
+    const override = overrideOf(config, model.id)
+    const baseCaps = capsOf(model)
+    return {
+      id: model.id,
+      name: (model.name ?? '').trim() || model.id,
+      selected: selected.has(model.id),
+      current: current === model.id,
+      // **交生效值**:覆盖优先,与引擎 `getOnethingModelContextLength` 同一条读法。
+      contextLength: override.contextLength ?? contextOf(model),
+      maxOutput: maxOutputOf(model),
+      caps: capsWithOverride(baseCaps, override),
+      price: priceOf(model),
+      manual: false,
+      override,
+      catalog: { contextLength: contextOf(model), tools: baseCaps.includes('tools') },
+    }
+  })
 
   const known = new Set(rows.map((r) => r.id))
   const orphans: CatalogRow[] = [...selected]
     .filter((id) => !known.has(id))
-    .map((id) => ({
-      id,
-      name: id,
-      selected: true,
-      current: current === id,
-      contextLength: null,
-      maxOutput: null,
-      caps: [],
-      price: null,
-      // 「勾了但目录不认识」= 手填。这不是另一份存储,是同一个事实的名字。
-      manual: true,
-    }))
+    .map((id) => {
+      // 手填的行也读这两张表 —— 覆盖恰恰是给「目录没填」准备的,把它写死成
+      // null/[] 等于说「手填的永远不知道」,而用户刚刚才亲手告诉过我们。
+      const override = overrideOf(config, id)
+      return {
+        id,
+        name: id,
+        selected: true,
+        current: current === id,
+        contextLength: override.contextLength ?? null,
+        maxOutput: null,
+        caps: capsWithOverride([], override),
+        price: null,
+        // 「勾了但目录不认识」= 手填。这不是另一份存储,是同一个事实的名字。
+        manual: true,
+        override,
+        // 目录不认识它,所以目录**什么都没说过** —— 两格都是 null,不是 0/false。
+        catalog: NO_CATALOG_FACTS,
+      }
+    })
 
   const all = [...orphans, ...rows]
   const needle = query.trim().toLowerCase()

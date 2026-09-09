@@ -1,13 +1,16 @@
+import { useRef } from 'react'
 import { Button } from '../../ui/Button'
 import { Checkbox } from '../../ui/Checkbox'
+import { IconButton } from '../../ui/IconButton'
 import { Tooltip } from '../../ui/Tooltip'
-import { Brain, Image, ImagePlus, Mic, Wrench } from '../../components/icons'
+import { Brain, Image, ImagePlus, Mic, SlidersHorizontal, Wrench } from '../../components/icons'
 import type { LucideIcon } from '../../components/icons'
 import type { MessageKey, TFn } from '../../i18n'
 import { formatQuantity } from '../../format/quantity'
 import { formatPrice } from '../projection'
-import { MODEL_CAPS } from '../types'
-import type { CatalogRow, ModelCap } from '../types'
+import { CATALOG_CONTEXT_FALLBACK, MODEL_CAPS } from '../types'
+import type { CatalogRow, ModelCap, ModelOverridePatch } from '../types'
+import { ModelOverridePopover } from './ModelOverridePopover'
 import s from './ModelCatalog.module.css'
 
 /**
@@ -29,9 +32,19 @@ import s from './ModelCatalog.module.css'
  *   UI 生命状态:每一格都可能是「不知道」—— 目录没填就画破折号,不画 0、
  *             不画「免费」;能力一项都没有画破折号而不是五个灰图标
  *             (不知道 ≠ 都不支持);手填的行标出来(它的容量是**没人给过**的)。
- *   UI 交互状态:rest / hover(行底,CSS 画)/ focus(勾选框与两颗钮各自的
+ *             **第四种读数(09-09):人填的**——上下文格换笔迹(虚线下划)+
+ *             悬停出目录原值;工具那一枚被关掉时**画出来但划掉**。
+ *             三者不能混:破折号 = 不知道,正常读数 = 目录说的,虚线 = 人说的。
+ *   UI 交互状态:rest / hover(行底,CSS 画)/ focus(勾选框与三颗钮各自的
  *             全局焦点环)/ **pending 逐行**(只禁这一行,别的行一个都不许动)/
- *             当前模型那一行没有「设为当前」钮,画的是读数。
+ *             当前模型那一行没有「设为当前」钮,画的是读数 /
+ *             滑杆钮多一格 `aria-expanded`(覆盖浮层开着没有)。
+ *
+ * ── 09-09 加了第三颗钮,而 DOM 层级与 key 一个字没动 ──────────────────────
+ * 覆盖浮层由 `ui/Popover` portal 到 body,所以它在这一行的 DOM 里不占任何位置;
+ * 加进 `.actions` 的只有那一颗 `ui/IconButton`。零重挂断言因此照旧绿
+ * (`__tests__/model-catalog-state.test.tsx`:同一个 `model-row-a` 节点)。
+ * 动作列的宽跟着从 116 加到 142(账在 tokens.css,连同两条 @container 阈值一起重算)。
  */
 
 /** 能力 → 图标 + 全名。**字母缩写退役** —— 「V T R」谁都读不懂(08-31 报障)。 */
@@ -66,32 +79,75 @@ function formatCatalogTokens(value: number | null): string | null {
   return value === null ? null : formatQuantity(value)
 }
 
-function CapIcon({ cap, label }: { cap: ModelCap; label: string }) {
+function CapIcon({ cap, label, skin }: { cap: ModelCap; label: string; skin?: string }) {
   const Icon = CAP_ICONS[cap]
   return (
     <Tooltip content={label}>
       {/* **不进 Tab 序**:一行五枚、一屏几十行,把它们都变成落焦点就等于
           把键盘走一遍这张表的成本乘以六。名字给读屏的人靠 aria-label,
           那一路本来就不需要焦点。 */}
-      <span className={s.cap} role="img" aria-label={label}>
+      <span
+        className={skin ? `${s.cap} ${skin}` : s.cap}
+        role="img"
+        aria-label={label}
+        data-testid={`cap-${cap}`}
+      >
         <Icon size={14} aria-hidden="true" />
       </span>
     </Tooltip>
   )
 }
 
+/**
+ * 工具那一枚被**人**说过话时,它的名字(= aria-label = Tooltip 一句话)。
+ * 六句整话:自定开 / 自定关 × 目录支持 / 目录不支持 / 目录没填。
+ * 拼装不得 —— 「目录:支持」在英文里是 `catalog says yes`,语序与括号都不同。
+ */
+function toolsOverrideTipKey(custom: boolean, catalog: boolean | null): MessageKey {
+  if (custom) {
+    if (catalog === null) return 'providers.overrideToolsOnTipUnknown'
+    return catalog
+      ? 'providers.overrideToolsOnTipCatalogOn'
+      : 'providers.overrideToolsOnTipCatalogOff'
+  }
+  if (catalog === null) return 'providers.overrideToolsOffTipUnknown'
+  return catalog
+    ? 'providers.overrideToolsOffTipCatalogOn'
+    : 'providers.overrideToolsOffTipCatalogOff'
+}
+
+/**
+ * 这一行的能力串**画哪几枚**。与 `row.caps` 差的只有一格:`override.tools === false`
+ * 时 tools 不在 `caps` 里(它此刻真的不支持),但那一位仍要**画一枚划掉的扳手**
+ * —— 「消失」是不知道,「划掉」是人说不。顺序仍照 `MODEL_CAPS`,一行五枚
+ * 从同一条竖线起笔。
+ */
+function capsDrawnOf(row: CatalogRow): ModelCap[] {
+  return MODEL_CAPS.filter((cap) =>
+    cap === 'tools'
+      ? row.caps.includes('tools') || row.override.tools === false
+      : row.caps.includes(cap),
+  )
+}
+
 export function ModelCatalogRow({
   t,
   row,
+  providerId,
   included,
   pending,
   skip,
+  overrideOpen,
   onToggle,
   onSetCurrent,
   onRemoveManual,
+  onOverrideOpen,
+  onWriteOverride,
 }: {
   t: TFn
   row: CatalogRow
+  /** 这一坑是谁。只往覆盖浮层里传 —— 这一行自己不用它。 */
+  providerId: string
   included: boolean
   /**
    * **这一行**此刻在写吗。只禁这一行 —— 别的行一个都不许动
@@ -101,10 +157,34 @@ export function ModelCatalogRow({
   pending: boolean
   /** 长组里的行跳过视口外排版。 */
   skip: boolean
+  /** 这一行的覆盖浮层开着吗。**一次只开一个**,所以状态住在目录那一层。 */
+  overrideOpen: boolean
   onToggle: (modelId: string, selected: boolean) => void
   onSetCurrent: (modelId: string) => void
   onRemoveManual: (modelId: string) => void
+  onOverrideOpen: (open: boolean) => void
+  onWriteOverride: (modelId: string, patch: ModelOverridePatch) => void
 }) {
+  /* 覆盖浮层的锚 = 行尾那颗滑杆钮的活矩形(矩锚跟滚,见 ui/float 的裁定)。 */
+  const configureRef = useRef<HTMLButtonElement>(null)
+
+  const custom = row.override.contextLength
+  const contextTip =
+    custom == null
+      ? undefined
+      : row.catalog.contextLength != null
+        ? t('providers.overrideContext', {
+            value: formatQuantity(custom),
+            catalog: formatQuantity(row.catalog.contextLength),
+          })
+        : t('providers.overrideContextNoCatalog', {
+            value: formatQuantity(custom),
+            fallback: formatQuantity(CATALOG_CONTEXT_FALLBACK),
+          })
+
+  const capsDrawn = capsDrawnOf(row)
+  const contextText = formatCatalogTokens(row.contextLength) ?? t('providers.unknownValue')
+
   return (
     <div
       className={`${s.grid} ${s.row} ${skip ? s.rowSkip : ''}`}
@@ -125,15 +205,36 @@ export function ModelCatalogRow({
         </span>
       </span>
       <span className={s.caps}>
-        {row.caps.length === 0 ? (
+        {capsDrawn.length === 0 ? (
           <span className={s.capNone}>{t('providers.unknownValue')}</span>
         ) : (
-          MODEL_CAPS.filter((cap) => row.caps.includes(cap)).map((cap) => (
-            <CapIcon key={cap} cap={cap} label={t(CAP_LABELS[cap])} />
-          ))
+          capsDrawn.map((cap) => {
+            // 工具那一位被人说过话时换名字换皮肤;别的四位一个字不动。
+            const custom = cap === 'tools' ? row.override.tools : undefined
+            if (custom === undefined) return <CapIcon key={cap} cap={cap} label={t(CAP_LABELS[cap])} />
+            return (
+              <CapIcon
+                key={cap}
+                cap={cap}
+                label={t(toolsOverrideTipKey(custom, row.catalog.tools))}
+                skin={custom ? s.ovr : `${s.ovr} ${s.capOff}`}
+              />
+            )
+          })
         )}
       </span>
-      <span className={s.num}>{formatCatalogTokens(row.contextLength) ?? t('providers.unknownValue')}</span>
+      {/* 「这个数是人填的」= 换笔迹(虚线下划)+ 悬停出目录原值。禁 native title=。 */}
+      {contextTip ? (
+        <Tooltip content={contextTip}>
+          <span className={`${s.num} ${s.ovr}`} data-testid={`ctx-${row.id}`}>
+            {contextText}
+          </span>
+        </Tooltip>
+      ) : (
+        <span className={s.num} data-testid={`ctx-${row.id}`}>
+          {contextText}
+        </span>
+      )}
       <span className={s.out}>{formatCatalogTokens(row.maxOutput) ?? t('providers.unknownValue')}</span>
       <span className={s.price}>
         {included
@@ -155,6 +256,32 @@ export function ModelCatalogRow({
           >
             {t('providers.setCurrent')}
           </Button>
+        )}
+        {/*
+          逐型配置。**所有行都有** —— 覆盖是给「目录没填」与「目录说错了」两种
+          情况准备的,不只给手填(转发站把不支持工具的型标成支持,是后一种)。
+          浮层 portal 出去,所以这一行的 DOM 层级与 key 一个字没变(零重挂断言)。
+        */}
+        <IconButton
+          ref={configureRef}
+          size="sm"
+          icon={SlidersHorizontal}
+          label={t('providers.configureModel', { model: row.name })}
+          disabled={pending}
+          aria-haspopup="dialog"
+          aria-expanded={overrideOpen}
+          onClick={() => onOverrideOpen(!overrideOpen)}
+          testId={`configure-${row.id}`}
+        />
+        {overrideOpen && (
+          <ModelOverridePopover
+            row={row}
+            providerId={providerId}
+            anchor={() => configureRef.current?.getBoundingClientRect() ?? null}
+            pending={pending}
+            onClose={() => onOverrideOpen(false)}
+            onWrite={(patch) => onWriteOverride(row.id, patch)}
+          />
         )}
         {row.manual && (
           <Button

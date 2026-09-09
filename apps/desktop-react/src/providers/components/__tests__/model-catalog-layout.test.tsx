@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { useStageStore } from '../../../stage/store'
 import { ModelCatalog } from '../ModelCatalog'
+import { NO_CATALOG_FACTS, NO_MODEL_OVERRIDE } from '../../types'
 import type { CatalogRow } from '../../types'
 
 /**
@@ -182,6 +183,8 @@ function row(id: string): CatalogRow {
     caps: [],
     price: { input: 3, output: 15 },
     manual: false,
+    override: NO_MODEL_OVERRIDE,
+    catalog: NO_CATALOG_FACTS,
   }
 }
 
@@ -204,6 +207,7 @@ describe('列头与行同源:格子数一样多', () => {
         onSetCurrent={vi.fn()}
         onAddManual={vi.fn()}
         onRemoveManual={vi.fn()}
+        onWriteOverride={vi.fn()}
       />,
     )
 

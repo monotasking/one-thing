@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { FocusScope } from '../focus/FocusScope'
 import { useFloatDismiss, useFloatPosition } from './float'
+import type { FloatAnchor } from './float'
 import s from './Popover.module.css'
 
 /**
@@ -40,14 +41,43 @@ interface PopoverProps {
   children: ReactNode
   /** 挂在浮层根上的测试取件口(门与单测按它取,不按文案)。 */
   testId?: string
+  /**
+   * 给了它就换一档锚:浮层贴着这个**活矩形**的下缘,并且**跟着它滚**
+   * (矩锚跟滚,点锚不跟滚 —— 两档的裁定写在 ui/float 的 `FloatAnchor` 上)。
+   * 不给就是老行为:那一对坐标摆一次,不跟滚。
+   *
+   * 这一档与 `ui/Menu` 的**逐字同形**:同一件事(贴着一个元素开出去)不该在
+   * 两件浮层上长出两套 prop 名 —— 产地越多越漂,那正是 09-01 库自审立
+   * 「浮层行为单产地 = ui/float」时点名的病。
+   */
+  anchor?: () => DOMRect | null
+  /**
+   * `anchor` 档的对齐边。缺省 `below-start`(贴锚点下缘左对齐)。
+   * **锚点自己贴着右边线时给 `below-end`** —— 一行尾巴上的钮左对齐开出去,
+   * 浮层整个探到那块面外面(判例:密钥池的行菜单,09-02 批 12)。
+   */
+  anchorPlace?: 'below-start' | 'below-end'
 }
 
-export function Popover({ x, y, onClose, label, children, testId }: PopoverProps) {
+export function Popover({
+  x,
+  y,
+  onClose,
+  label,
+  children,
+  testId,
+  anchor,
+  anchorPlace = 'below-start',
+}: PopoverProps) {
   const ref = useRef<HTMLDivElement>(null)
 
   // 定位(按锚点画一帧、量到身量后同帧 clamp)与点外关两件与 Menu 同源:
   // 行为与判例见 ui/float。Esc 与 Tab 归响应链(同 Menu)。
-  const pos = useFloatPosition(ref, { kind: 'point', x, y })
+  // x/y 在 anchor 在场时只当首帧兜底:矩形量得到就一次都用不上。
+  const floatAnchor: FloatAnchor = anchor
+    ? { kind: 'rect', get: anchor, place: anchorPlace }
+    : { kind: 'point', x, y }
+  const pos = useFloatPosition(ref, floatAnchor, { fallback: { left: x, top: y } })
   useFloatDismiss(ref, onClose)
 
   return createPortal(

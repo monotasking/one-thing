@@ -1081,6 +1081,46 @@ export const en: Record<MessageKey, string> = {
   'providers.capReasoning': 'Reasoning',
   'providers.capImageOut': 'Image output',
   'providers.capAudioIn': 'Audio input',
+
+  /* Per-model overrides (09-09). Whole sentences, never assembled from
+   * translated fragments — the catalog clause reorders across languages. */
+  'providers.configureModel': 'Configure {model}',
+  'providers.overrideContextLabel': 'Context window',
+  'providers.overrideContextUnit': 'token',
+  'providers.overrideContextPlaceholderCatalog': '{n} (catalog)',
+  'providers.overrideContextPlaceholderDefault': '{n} (default)',
+  'providers.overrideContextHintCatalog': 'The catalog says {n}.',
+  'providers.overrideContextHintDefault':
+    'The catalog has nothing for this model; left blank it counts as {n}, and so does the compaction threshold.',
+  'providers.overrideContextHintCustom': 'Custom {value}. Clear it to go back to the catalog’s {fallback}.',
+  'providers.overrideContextHintCustomDefault':
+    'Custom {value}. Clear it to go back to the default {fallback}.',
+  'providers.overrideContextInvalid': 'Whole number, no unit: 200000',
+  'providers.overrideToolsLabel': 'Tool calling',
+  'providers.overrideToolsInherit': 'Follow catalog',
+  'providers.overrideToolsOn': 'On',
+  'providers.overrideToolsOff': 'Off',
+  'providers.overrideToolsHintCatalogOn': 'The catalog says “supported”.',
+  'providers.overrideToolsHintCatalogOff': 'The catalog says “not supported”.',
+  'providers.overrideToolsHintGuess':
+    'The catalog has nothing for this model; it is read as “supported” from the name.',
+  'providers.overrideToolsHintOn': 'Set to “supported”.',
+  'providers.overrideToolsHintOffCatalogOn':
+    'The catalog says “supported”; you turned it off. Requests for this model no longer carry the tool list.',
+  'providers.overrideToolsHintOffCatalogOff':
+    'The catalog says “not supported”; you turned it off. Requests for this model no longer carry the tool list.',
+  'providers.overrideToolsHintOffUnknown':
+    'The catalog has nothing for this model; you turned it off. Requests for this model no longer carry the tool list.',
+  'providers.overrideFoot': 'Saved as you change it — no save button',
+  'providers.overrideReset': 'Restore catalog values',
+  'providers.overrideContext': 'Custom {value} (catalog {catalog})',
+  'providers.overrideContextNoCatalog': 'Custom {value} (catalog empty, default {fallback})',
+  'providers.overrideToolsOnTipCatalogOn': 'Custom: tool calling on (catalog: supported)',
+  'providers.overrideToolsOnTipCatalogOff': 'Custom: tool calling on (catalog: not supported)',
+  'providers.overrideToolsOnTipUnknown': 'Custom: tool calling on (catalog empty)',
+  'providers.overrideToolsOffTipCatalogOn': 'Custom: tool calling off (catalog: supported)',
+  'providers.overrideToolsOffTipCatalogOff': 'Custom: tool calling off (catalog: not supported)',
+  'providers.overrideToolsOffTipUnknown': 'Custom: tool calling off (catalog empty)',
   'providers.saveFailed': 'Settings were not saved',
 
   /* ── Workspace switcher (v1, 08-31) ────────────────────────────────────

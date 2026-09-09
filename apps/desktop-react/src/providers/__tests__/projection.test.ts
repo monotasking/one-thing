@@ -24,7 +24,7 @@ import {
   vendorPrefixOf,
 } from '../projection'
 import type { CredentialFacts } from '../types'
-import { OTHER_GROUP } from '../types'
+import { NO_CATALOG_FACTS, NO_MODEL_OVERRIDE, OTHER_GROUP } from '../types'
 
 /**
  * 名册投影。这一组守的是这块面**最容易说谎的那一格**:
@@ -321,6 +321,77 @@ describe('buildCatalogRows', () => {
     expect(buildCatalogRows(models, config(), 'a').map((r) => r.id)).toEqual(['a'])
     expect(buildCatalogRows(models, config(), 'zzz')).toHaveLength(0)
   })
+
+  /* ── 逐型覆盖(09-09)—— 交出去的是**生效值**,`override` 只答「谁说的」── */
+
+  it('手填行也读那两张表 —— 覆盖恰恰是给「目录没填」准备的', () => {
+    const rows = buildCatalogRows(
+      models,
+      config({
+        selectedModels: ['ghost'],
+        contextLengthByModel: { ghost: 200_000 },
+        modelCapabilitiesByModel: { ghost: { tools: true } },
+      }),
+    )
+    expect(rows[0]).toMatchObject({
+      id: 'ghost',
+      manual: true,
+      contextLength: 200_000,
+      caps: ['tools'],
+      override: { contextLength: 200_000, tools: true },
+      // 目录不认识它 —— 两格都是 null,不是 0/false。
+      catalog: { contextLength: null, tools: null },
+    })
+  })
+
+  it('目录行:覆盖优先,而目录原本说的那一份仍然读得回来', () => {
+    const rows = buildCatalogRows(models, config({ contextLengthByModel: { a: 1_048_576 } }))
+    const row = rows.find((r) => r.id === 'a')!
+    expect(row.contextLength).toBe(1_048_576)
+    expect(row.override.contextLength).toBe(1_048_576)
+    // 屏幕上要说「自定 1.0M(目录 200k)」,所以目录那个数不能被覆盖吃掉。
+    expect(row.catalog.contextLength).toBe(200_000)
+  })
+
+  it('tools:false —— caps 里没有它(真的不支持),而 override 记着「人说不」', () => {
+    const withTools = [model('a', { supported_parameters: ['tools'] })]
+    const on = buildCatalogRows(withTools, config())
+    expect(on[0].caps).toContain('tools')
+    expect(on[0].catalog.tools).toBe(true)
+
+    const off = buildCatalogRows(
+      withTools,
+      config({ modelCapabilitiesByModel: { a: { tools: false } } }),
+    )
+    expect(off[0].caps).not.toContain('tools')
+    expect(off[0].override.tools).toBe(false)
+    // 「不知道」与「人说不」是两件事:目录那一格照旧说 true。
+    expect(off[0].catalog.tools).toBe(true)
+  })
+
+  it('tools:true 能给目录没列 tools 的那一型补上', () => {
+    const rows = buildCatalogRows(
+      models,
+      config({ modelCapabilitiesByModel: { a: { tools: true } } }),
+    )
+    expect(rows.find((r) => r.id === 'a')!.caps).toContain('tools')
+    expect(rows.find((r) => r.id === 'a')!.catalog.tools).toBe(false)
+  })
+
+  it('0 / 负数 / 非数一律视为没覆盖(与引擎那条 `> 0` 同一把尺)', () => {
+    for (const bad of [0, -1, Number.NaN, '200000' as unknown as number]) {
+      const rows = buildCatalogRows(models, config({ contextLengthByModel: { a: bad } }))
+      const row = rows.find((r) => r.id === 'a')!
+      expect(row.override.contextLength).toBeUndefined()
+      // 没覆盖 = 照目录画。
+      expect(row.contextLength).toBe(200_000)
+    }
+  })
+
+  it('`tools` 只认布尔 —— 缺席是「没说过」,不是「不支持」', () => {
+    const rows = buildCatalogRows(models, config({ modelCapabilitiesByModel: { a: {} } }))
+    expect(rows.find((r) => r.id === 'a')!.override.tools).toBeUndefined()
+  })
 })
 
 /* ── 批二:厂牌折叠 ──────────────────────────────────────────────────────── */
@@ -342,6 +413,8 @@ describe('groupCatalog', () => {
           caps: [],
           price: null,
           manual: false,
+          override: NO_MODEL_OVERRIDE,
+          catalog: NO_CATALOG_FACTS,
         })
       }
     }

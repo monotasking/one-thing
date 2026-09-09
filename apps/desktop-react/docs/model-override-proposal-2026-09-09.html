@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>模型覆盖 · 样例</title>
+<style>
+  :root{
+    --paper:#faf8f4; --paper-2:#f3f0ea; --surface:#fffdf9; --text-1:#2b2926; --text-2:#6b665f; --text-3:#9a948b;
+    --line-1:#e6e1d8; --line-2:#d8d2c7; --accent:#c9782a; --accent-soft:rgba(201,120,42,.14);
+    --danger:#b8412f; --tint-danger:rgba(184,65,47,.08); --st-sel:#efe9df; --st-hover:#f5f1ea;
+    --r-1:6px; --r-2:12px; --sp-1:4px; --sp-2:6px; --sp-3:10px; --sp-4:14px;
+    --fs-ext:10.5px; --fs-micro:11.5px; --fs-meta:12.5px; --fs-body:13.5px;
+    --dur-enter:70ms; --dur-release:200ms; --ease-out:cubic-bezier(.2,.7,.2,1);
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--text-1);font:14px/1.5 -apple-system,"PingFang SC","Helvetica Neue",sans-serif}
+  main{max-width:860px;margin:0 auto;padding:32px 24px 120px}
+  h1{font-size:20px;margin:0 0 4px}
+  h2{font-size:13px;color:var(--text-2);font-weight:600;letter-spacing:.02em;margin:40px 0 12px;text-transform:uppercase}
+  p.note{color:var(--text-2);font-size:13px;margin:0 0 16px;max-width:680px}
+  p.cap{font-size:var(--fs-micro);color:var(--text-3);margin:8px 0 0;max-width:680px}
+  code{font-family:var(--mono);font-size:12px;background:var(--paper-2);padding:0 4px;border-radius:4px}
+
+  /* ── 目录表(照 ModelCatalog.module.css 的七列轨)──────────────── */
+  .catalog{position:relative;transition:margin-bottom var(--dur-release) var(--ease-out);}
+  .catalog.open{margin-bottom:262px}
+  .catalog{border:1px solid var(--line-1);border-radius:var(--r-2);background:var(--surface);overflow:visible}
+  .grid{display:grid;grid-template-columns:28px minmax(150px,1fr) minmax(64px,96px) 62px 62px 84px 128px;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3)}
+  .columns{font-size:var(--fs-micro);color:var(--text-2);border-bottom:1px solid var(--line-1)}
+  .columns>*{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .row{border-bottom:1px solid var(--line-1);position:relative}
+  .row:last-child{border-bottom:0}
+  .row:hover{background:var(--st-hover)}
+  .cell{min-width:0;display:flex;flex-direction:column}
+  .name{font-size:var(--fs-body);color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .idLine{display:flex;align-items:center;gap:var(--sp-1);min-width:0}
+  .id{font-family:var(--mono);font-size:var(--fs-ext);color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .manual{flex:none;padding:0 var(--sp-1);border:1px solid var(--line-1);border-radius:var(--r-1);font-size:var(--fs-ext);color:var(--text-2);white-space:nowrap}
+  .caps{display:flex;gap:4px;align-items:center;min-width:0;overflow:hidden}
+  .cap{display:inline-flex;color:var(--text-2)}
+  .cap svg{width:14px;height:14px}
+  .capNone,.num,.out,.price{font-size:var(--fs-meta);color:var(--text-2);white-space:nowrap}
+  .price{font-family:var(--mono)}
+  .actions{display:flex;align-items:center;justify-content:flex-end;gap:var(--sp-1);min-width:0}
+  .current{font-size:var(--fs-micro);color:var(--accent);white-space:nowrap}
+  .chk{width:14px;height:14px;border:1px solid var(--line-2);border-radius:4px;background:#fff;display:inline-block;position:relative}
+  .chk.on{background:var(--accent);border-color:var(--accent)}
+  .chk.on::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid #fff;border-width:0 1.5px 1.5px 0;transform:rotate(45deg)}
+
+  /* 改过的读数:虚线下划,悬停出目录原值 */
+  .ovr{text-decoration:underline dotted var(--text-3);text-underline-offset:3px;color:var(--text-1);cursor:default}
+  .cap.ovr{text-decoration:none;color:var(--text-1);border-bottom:1px dotted var(--text-3)}
+
+  .btn{font:inherit;font-size:var(--fs-micro);padding:3px 8px;border:0;background:transparent;color:var(--text-2);border-radius:var(--r-1);cursor:pointer;white-space:nowrap}
+  .btn:hover{background:var(--paper-2);color:var(--text-1)}
+  .btn.icon{padding:3px;display:inline-flex;align-items:center}
+  .btn.icon svg{width:14px;height:14px}
+  .btn.icon[aria-expanded="true"]{background:var(--st-sel);color:var(--text-1)}
+  .btn.primary{background:var(--accent);color:#fff}
+  .btn.primary:hover{background:#b46a22;color:#fff}
+
+  /* ── 浮层(ui/Popover 形)──────────────────────────────────────── */
+  .pop{position:absolute;right:var(--sp-3);top:calc(100% - 4px);z-index:5;width:300px;padding:var(--sp-3) var(--sp-4) var(--sp-4);border:1px solid var(--line-1);border-radius:var(--r-2);background:var(--surface);box-shadow:0 8px 24px rgba(43,41,38,.10),0 1px 2px rgba(43,41,38,.06);animation:settle var(--dur-enter) var(--ease-out)}
+  .pop[hidden]{display:none}
+  .pop .head{display:flex;flex-direction:column;gap:1px;margin-bottom:var(--sp-3)}
+  .pop .head .n{font-size:var(--fs-body);color:var(--text-1)}
+  .pop .head .i{font-family:var(--mono);font-size:var(--fs-ext);color:var(--text-3)}
+  .field{display:flex;flex-direction:column;gap:4px;margin-top:var(--sp-3)}
+  .field label{font-size:var(--fs-micro);color:var(--text-2)}
+  .field .hint{font-size:var(--fs-ext);color:var(--text-3)}
+  .field .err{font-size:var(--fs-ext);color:var(--danger)}
+  .inputWrap{display:flex;align-items:center;gap:6px}
+  .input{flex:1;min-width:0;font:inherit;font-size:var(--fs-meta);padding:5px 8px;border:1px solid var(--line-2);border-radius:var(--r-1);background:#fff;color:var(--text-1);font-variant-numeric:tabular-nums}
+  .input::placeholder{color:var(--text-3)}
+  .input:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .input[aria-invalid="true"]{border-color:var(--danger)}
+  .unit{font-size:var(--fs-ext);color:var(--text-3)}
+  .seg{display:inline-grid;grid-auto-flow:column;grid-auto-columns:1fr;border:1px solid var(--line-2);border-radius:var(--r-1);background:#fff;padding:2px;gap:2px;width:100%}
+  .seg button{font:inherit;font-size:var(--fs-micro);padding:3px 0;border:0;border-radius:4px;background:transparent;color:var(--text-2);cursor:pointer}
+  .seg button[aria-checked="true"]{background:var(--st-sel);color:var(--text-1)}
+  .seg button:hover:not([aria-checked="true"]){background:var(--paper-2)}
+  .pop .foot{display:flex;justify-content:space-between;align-items:center;margin-top:var(--sp-4);font-size:var(--fs-ext);color:var(--text-3)}
+  .pop .foot .link{color:var(--text-2);text-decoration:underline dotted;text-underline-offset:2px;background:none;border:0;font:inherit;font-size:var(--fs-ext);cursor:pointer;padding:0}
+  .pop .foot .link:hover{color:var(--text-1)}
+  .pop .foot .link[disabled]{opacity:.4;cursor:default;text-decoration:none}
+
+  @keyframes settle{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+
+  /* ── 状态表 ─────────────────────────────────────────────────── */
+  table{border-collapse:collapse;width:100%;font-size:12.5px;margin:8px 0 0}
+  th,td{text-align:left;vertical-align:top;padding:6px 8px;border-bottom:1px solid var(--line-1)}
+  th{color:var(--text-2);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.02em}
+  td:first-child{white-space:nowrap;color:var(--text-1)}
+  td{color:var(--text-2)}
+  pre.tree{font-family:var(--mono);font-size:12px;line-height:1.55;background:var(--paper-2);padding:12px 14px;border-radius:var(--r-2);margin:8px 0 0;color:var(--text-1);overflow:auto}
+</style>
+</head>
+<body>
+<main>
+  <h1>模型覆盖 · 上下文窗口与工具调用</h1>
+  <p class="note">每一行动作列里一颗滑杆钮,点开一张锚在钮下的浮层,只装两格:上下文窗口、工具调用。手填的与目录里有的都能开 —— 覆盖是给「目录没填」和「目录说错了」两种情况的,不只给手填。下面三张表可以真点:钮开合、分段切换、数字框输入。</p>
+
+  <h2>① 手填模型 · 什么都没填过</h2>
+  <div class="catalog">
+    <div class="grid columns"><span></span><span>模型</span><span>能力</span><span>上下文</span><span>最大输出</span><span>单价</span><span></span></div>
+    <div class="grid row" data-demo="a">
+      <span class="chk on"></span>
+      <span class="cell"><span class="name">my-qwen3-235b</span><span class="idLine"><span class="id">my-qwen3-235b</span><span class="manual">手填</span></span></span>
+      <span class="caps"><span class="capNone" data-slot="caps">—</span></span>
+      <span class="num" data-slot="ctx">—</span>
+      <span class="out">—</span>
+      <span class="price">—</span>
+      <span class="actions"><button class="btn">设为当前</button><button class="btn icon" data-open="a" aria-expanded="true" aria-label="配置 my-qwen3-235b">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></button><button class="btn icon" aria-label="移除">✕</button></span>
+      <div class="pop" data-pop="a">
+        <div class="head"><span class="n">my-qwen3-235b</span><span class="i">my-qwen3-235b · 手填</span></div>
+        <div class="field">
+          <label>上下文窗口</label>
+          <div class="inputWrap"><input class="input" inputmode="numeric" placeholder="128k(默认)" data-ctx="a"><span class="unit">token</span></div>
+          <span class="hint" data-ctxhint="a">目录没填这一型;不填按 128k 算,压缩阈值也按它算。</span>
+        </div>
+        <div class="field">
+          <label>工具调用</label>
+          <div class="seg" role="radiogroup" data-seg="a">
+            <button role="radio" aria-checked="true" data-v="inherit">跟目录</button>
+            <button role="radio" aria-checked="false" data-v="on">开</button>
+            <button role="radio" aria-checked="false" data-v="off">关</button>
+          </div>
+          <span class="hint" data-seghint="a">目录没填这一型;按名字判为「支持」。</span>
+        </div>
+        <div class="foot"><span>改了就存,没有保存钮</span><button class="link" data-reset="a" disabled>恢复目录值</button></div>
+      </div>
+    </div>
+  </div>
+  <p class="cap">数字框空着 = 跟目录;占位符写的是今天实际生效的数与它的来源。分段第一格叫「跟目录」而不是「默认」—— 目录没填时它就是「按名字猜」,提示行把这一点说出来,不藏。</p>
+
+  <h2>② 手填模型 · 填了 200k、工具开</h2>
+  <div class="catalog">
+    <div class="grid columns"><span></span><span>模型</span><span>能力</span><span>上下文</span><span>最大输出</span><span>单价</span><span></span></div>
+    <div class="grid row" data-demo="b">
+      <span class="chk on"></span>
+      <span class="cell"><span class="name">my-qwen3-235b</span><span class="idLine"><span class="id">my-qwen3-235b</span><span class="manual">手填</span></span></span>
+      <span class="caps" data-slot="caps"><span class="cap ovr" title="自定:支持工具调用(目录没填)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span></span>
+      <span class="num ovr" data-slot="ctx" title="自定:200k(目录没填,默认 128k)">200k</span>
+      <span class="out">—</span>
+      <span class="price">—</span>
+      <span class="actions"><span class="current">当前</span><button class="btn icon" data-open="b" aria-expanded="false" aria-label="配置 my-qwen3-235b">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></button><button class="btn icon" aria-label="移除">✕</button></span>
+      <div class="pop" data-pop="b" hidden>
+        <div class="head"><span class="n">my-qwen3-235b</span><span class="i">my-qwen3-235b · 手填</span></div>
+        <div class="field">
+          <label>上下文窗口</label>
+          <div class="inputWrap"><input class="input" inputmode="numeric" placeholder="128k(默认)" value="200000" data-ctx="b"><span class="unit">token</span></div>
+          <span class="hint" data-ctxhint="b">自定 200k。清空回到默认 128k。</span>
+        </div>
+        <div class="field">
+          <label>工具调用</label>
+          <div class="seg" role="radiogroup" data-seg="b">
+            <button role="radio" aria-checked="false" data-v="inherit">跟目录</button>
+            <button role="radio" aria-checked="true" data-v="on">开</button>
+            <button role="radio" aria-checked="false" data-v="off">关</button>
+          </div>
+          <span class="hint" data-seghint="b">自定为「支持」。</span>
+        </div>
+        <div class="foot"><span>改了就存,没有保存钮</span><button class="link" data-reset="b">恢复目录值</button></div>
+      </div>
+    </div>
+  </div>
+  <p class="cap">浮层关上之后行上就是这样:上下文格从「—」变成 200k,能力格亮一枚扳手;两格都带虚线下划,悬停出「自定 …(目录 …)」。行上不再另写「自定」两个字 —— 手填标签已经在那儿,再叠一个标签是两套语汇。</p>
+
+  <h2>③ 目录里有的模型 · 目录说错了,把工具关掉</h2>
+  <div class="catalog">
+    <div class="grid columns"><span></span><span>模型</span><span>能力</span><span>上下文</span><span>最大输出</span><span>单价</span><span></span></div>
+    <div class="grid row" data-demo="c">
+      <span class="chk on"></span>
+      <span class="cell"><span class="name">DeepSeek V4 Pro</span><span class="idLine"><span class="id">deepseek-v4-pro</span></span></span>
+      <span class="caps" data-slot="caps"><span class="cap" title="推理"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44A2.5 2.5 0 0 1 4.5 17.5 2.5 2.5 0 0 1 3 13a2.5 2.5 0 0 1 .5-4.5A2.5 2.5 0 0 1 7 4.5 2.5 2.5 0 0 1 9.5 2z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.54-2.44A2.5 2.5 0 0 0 21 13a2.5 2.5 0 0 0-.5-4.5A2.5 2.5 0 0 0 17 4.5 2.5 2.5 0 0 0 14.5 2z"/></svg></span><span class="cap ovr" style="text-decoration:line-through;opacity:.55" title="自定:关闭工具调用(目录:支持)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span></span>
+      <span class="num" data-slot="ctx">1.0M</span>
+      <span class="out">384k</span>
+      <span class="price">$0.6 / $2.4</span>
+      <span class="actions"><button class="btn">设为当前</button><button class="btn icon" data-open="c" aria-expanded="true" aria-label="配置 DeepSeek V4 Pro">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></button></span>
+      <div class="pop" data-pop="c">
+        <div class="head"><span class="n">DeepSeek V4 Pro</span><span class="i">deepseek-v4-pro</span></div>
+        <div class="field">
+          <label>上下文窗口</label>
+          <div class="inputWrap"><input class="input" inputmode="numeric" placeholder="1,048,576(目录)" data-ctx="c"><span class="unit">token</span></div>
+          <span class="hint" data-ctxhint="c">目录给的是 1,048,576。</span>
+        </div>
+        <div class="field">
+          <label>工具调用</label>
+          <div class="seg" role="radiogroup" data-seg="c">
+            <button role="radio" aria-checked="false" data-v="inherit">跟目录</button>
+            <button role="radio" aria-checked="false" data-v="on">开</button>
+            <button role="radio" aria-checked="true" data-v="off">关</button>
+          </div>
+          <span class="hint" data-seghint="c">目录说「支持」,已自定为关。这一型的请求不再带工具表。</span>
+        </div>
+        <div class="foot"><span>改了就存,没有保存钮</span><button class="link" data-reset="c">恢复目录值</button></div>
+      </div>
+    </div>
+  </div>
+  <p class="cap">目录说支持、实际端点不支持(转发站常见)—— 关掉之后扳手图标划掉而不是消失:消失是「不知道」,划掉是「人说不」。「恢复目录值」只在有覆盖时能按。</p>
+
+  <h2>④ 填错了</h2>
+  <div class="catalog">
+    <div class="grid columns"><span></span><span>模型</span><span>能力</span><span>上下文</span><span>最大输出</span><span>单价</span><span></span></div>
+    <div class="grid row" data-demo="d">
+      <span class="chk on"></span>
+      <span class="cell"><span class="name">my-qwen3-235b</span><span class="idLine"><span class="id">my-qwen3-235b</span><span class="manual">手填</span></span></span>
+      <span class="caps"><span class="capNone" data-slot="caps">—</span></span>
+      <span class="num" data-slot="ctx">—</span>
+      <span class="out">—</span>
+      <span class="price">—</span>
+      <span class="actions"><button class="btn">设为当前</button><button class="btn icon" data-open="d" aria-expanded="true" aria-label="配置"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></button><button class="btn icon" aria-label="移除">✕</button></span>
+      <div class="pop" data-pop="d">
+        <div class="head"><span class="n">my-qwen3-235b</span><span class="i">my-qwen3-235b · 手填</span></div>
+        <div class="field">
+          <label>上下文窗口</label>
+          <div class="inputWrap"><input class="input" inputmode="numeric" value="200k" aria-invalid="true" data-ctx="d"><span class="unit">token</span></div>
+          <span class="err" data-ctxhint="d">填整数,不带单位:200000</span>
+        </div>
+        <div class="field">
+          <label>工具调用</label>
+          <div class="seg" role="radiogroup" data-seg="d">
+            <button role="radio" aria-checked="true" data-v="inherit">跟目录</button>
+            <button role="radio" aria-checked="false" data-v="on">开</button>
+            <button role="radio" aria-checked="false" data-v="off">关</button>
+          </div>
+          <span class="hint" data-seghint="d">目录没填这一型;按名字判为「支持」。</span>
+        </div>
+        <div class="foot"><span>改了就存,没有保存钮</span><button class="link" data-reset="d" disabled>恢复目录值</button></div>
+      </div>
+    </div>
+  </div>
+  <p class="cap">写不进去的值不存也不改行上的读数;边线转 danger,错误一句替换提示行。失焦或 ↵ 才提交,不逐字打后端。</p>
+
+  <h2>三张状态表</h2>
+  <table>
+    <tr><th style="width:120px">生命周期</th><th></th></tr>
+    <tr><td>浮层</td><td>点钮挂载,关了卸载(Popover 的既有行为);换 provider 时目录整表重挂,浮层随之消失。无订阅、无计时器。</td></tr>
+    <tr><td>草稿</td><td>只活在浮层里。打开时从设置读一次:数字框 value = 覆盖值或空;分段 = 覆盖值或「跟目录」。</td></tr>
+    <tr><td>写</td><td>数字框失焦 / ↵ 提交一次,分段点一下提交一次;都走 <code>writeProviders</code> 把那一家的 <code>contextLengthByModel</code> / <code>modelCapabilitiesByModel</code> 整张表换掉(删键时删干净,不留空对象)。忙态挂在这一行的 key 上,只禁这一行。</td></tr>
+  </table>
+  <table>
+    <tr><th style="width:120px">UI 生命状态</th><th></th></tr>
+    <tr><td>无覆盖</td><td>行上读数照目录;数字框空、占位符写生效值与来源;分段在「跟目录」;「恢复目录值」禁用。</td></tr>
+    <tr><td>有覆盖</td><td>行上对应格换成覆盖值 + 虚线下划 + title 写目录原值;工具关 = 扳手划掉;「恢复目录值」可按。</td></tr>
+    <tr><td>目录没填</td><td>占位符说「128k(默认)」,分段提示说「按名字判为 …」——  让人知道「跟目录」跟的是猜。</td></tr>
+    <tr><td>填错</td><td>边线 danger、错误句替换提示、不写、行上不变。</td></tr>
+    <tr><td>在写</td><td>这一行的钮与浮层控件禁用;别的行不动。</td></tr>
+  </table>
+  <table>
+    <tr><th style="width:120px">UI 交互状态</th><th></th></tr>
+    <tr><td>滑杆钮</td><td>rest / hover / focus 环 / 展开(底色 st-sel,aria-expanded)。不进 Tab 序之外的任何序;是行上第三颗钮,与「设为当前」「✕」并排。</td></tr>
+    <tr><td>数字框</td><td>rest / hover / focus / invalid;Esc 还原草稿并关浮层。</td></tr>
+    <tr><td>分段</td><td>三格 radio,←→ 换格,当前格 st-sel。</td></tr>
+  </table>
+
+  <h2>组件树</h2>
+<pre class="tree">ModelCatalogRow
+├── …既有六格
+└── .actions
+    ├── Button「设为当前」 | .current
+    ├── IconButton(Sliders) aria-expanded ─┐   ← 新增,所有行都有
+    └── Button ✕(仅手填)                   │
+                                            ▼
+ModelOverridePopover (new, providers/components/)   ← 消费 ui/Popover
+├── head: name + id (+ 手填)
+├── Field「上下文窗口」 → Input(inputmode=numeric) + hint | error
+├── Field「工具调用」  → Segmented(跟目录 / 开 / 关) + hint
+└── foot: 「改了就存」 + link「恢复目录值」
+
+数据:projection.ts 读 contextLengthByModel / modelCapabilitiesByModel
+      → CatalogRow 加 override: { contextLength?: number; tools?: boolean }
+      → 行上按它画虚线与划掉;store.ts 加 setModelOverride(providerId, modelId, patch)</pre>
+
+  <h2>没做的</h2>
+  <p class="note">最大输出、视觉、推理、生图、文件输入这四个能力开关后端都有,这次不开 —— 设置只暴露必填项。要开的时候是分段多一行,不改骨架。手填模型改名(Vue 壳当年会一并迁三张表的键)也不做:今天删了重填就是改名。</p>
+
+<script>
+  const fmt = n => n >= 1e6 ? (n/1e6).toFixed(1).replace(/\.0$/,'') + 'M' : n >= 1e3 ? Math.round(n/1e3) + 'k' : String(n)
+  const WRENCH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>'
+  // 每张表的「目录事实」
+  const catalog = {
+    a: { ctx: null, tools: null, guess: true, def: 128000 },
+    b: { ctx: null, tools: null, guess: true, def: 128000 },
+    c: { ctx: 1048576, tools: true, guess: false, def: 128000, extraCaps: true },
+    d: { ctx: null, tools: null, guess: true, def: 128000 },
+  }
+  const state = { a:{ctx:null,tools:'inherit'}, b:{ctx:200000,tools:'on'}, c:{ctx:null,tools:'off'}, d:{ctx:null,tools:'inherit'} }
+
+  document.querySelectorAll('[data-open]').forEach(btn => btn.addEventListener('click', () => {
+    const k = btn.dataset.open, pop = document.querySelector(`[data-pop="${k}"]`)
+    const open = pop.hidden
+    pop.hidden = !open
+    btn.setAttribute('aria-expanded', String(open))
+    btn.closest('.catalog').classList.toggle('open', open)
+  }))
+  document.querySelectorAll('[data-seg]').forEach(seg => seg.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return
+    const k = seg.dataset.seg
+    seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-checked', String(x === b)))
+    state[k].tools = b.dataset.v
+    render(k)
+  }))
+  document.querySelectorAll('[data-ctx]').forEach(inp => {
+    const k = inp.dataset.ctx
+    const commit = () => {
+      const raw = inp.value.trim()
+      const hint = document.querySelector(`[data-ctxhint="${k}"]`)
+      if (raw === '') { state[k].ctx = null; inp.removeAttribute('aria-invalid'); hint.className='hint'; render(k); return }
+      if (!/^\d+$/.test(raw) || Number(raw) <= 0) { inp.setAttribute('aria-invalid','true'); hint.className='err'; hint.textContent='填整数,不带单位:200000'; return }
+      inp.removeAttribute('aria-invalid'); hint.className='hint'
+      state[k].ctx = Number(raw); render(k)
+    }
+    inp.addEventListener('blur', commit)
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); commit() } })
+  })
+  document.querySelectorAll('[data-reset]').forEach(b => b.addEventListener('click', () => {
+    const k = b.dataset.reset
+    state[k] = { ctx:null, tools:'inherit' }
+    const inp = document.querySelector(`[data-ctx="${k}"]`); inp.value=''; inp.removeAttribute('aria-invalid')
+    document.querySelectorAll(`[data-seg="${k}"] button`).forEach(x => x.setAttribute('aria-checked', String(x.dataset.v==='inherit')))
+    render(k)
+  }))
+
+  function render(k){
+    const c = catalog[k], s = state[k]
+    const row = document.querySelector(`[data-demo="${k}"]`)
+    const ctxEl = row.querySelector('[data-slot="ctx"]')
+    const capsEl = row.querySelector('[data-slot="caps"]')
+    const ctxHint = document.querySelector(`[data-ctxhint="${k}"]`)
+    const segHint = document.querySelector(`[data-seghint="${k}"]`)
+    const reset = document.querySelector(`[data-reset="${k}"]`)
+    const inp = document.querySelector(`[data-ctx="${k}"]`)
+    // 上下文
+    if (s.ctx) { ctxEl.textContent = fmt(s.ctx); ctxEl.className = 'num ovr'; ctxEl.title = `自定:${fmt(s.ctx)}(${c.ctx ? '目录 '+fmt(c.ctx) : '目录没填,默认 '+fmt(c.def)})`
+      if (ctxHint.className==='hint') ctxHint.textContent = `自定 ${fmt(s.ctx)}。清空回到${c.ctx?'目录 '+fmt(c.ctx):'默认 '+fmt(c.def)}。` }
+    else { ctxEl.textContent = c.ctx ? fmt(c.ctx) : '—'; ctxEl.className = 'num'; ctxEl.removeAttribute('title')
+      if (ctxHint.className==='hint') ctxHint.textContent = c.ctx ? `目录给的是 ${c.ctx.toLocaleString()}。` : `目录没填这一型;不填按 ${fmt(c.def)} 算,压缩阈值也按它算。` }
+    inp.placeholder = c.ctx ? `${c.ctx.toLocaleString()}(目录)` : `${fmt(c.def)}(默认)`
+    // 工具
+    const effective = s.tools === 'inherit' ? (c.tools ?? true) : s.tools === 'on'
+    let html = ''
+    if (c.extraCaps) html += '<span class="cap" title="推理"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44A2.5 2.5 0 0 1 4.5 17.5 2.5 2.5 0 0 1 3 13a2.5 2.5 0 0 1 .5-4.5A2.5 2.5 0 0 1 7 4.5 2.5 2.5 0 0 1 9.5 2z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.54-2.44A2.5 2.5 0 0 0 21 13a2.5 2.5 0 0 0-.5-4.5A2.5 2.5 0 0 0 17 4.5 2.5 2.5 0 0 0 14.5 2z"/></svg></span>'
+    if (s.tools === 'on') html += `<span class="cap ovr" title="自定:支持工具调用(${c.tools===null?'目录没填':'目录:'+(c.tools?'支持':'不支持')})">${WRENCH}</span>`
+    else if (s.tools === 'off') html += `<span class="cap ovr" style="text-decoration:line-through;opacity:.55" title="自定:关闭工具调用(${c.tools===null?'目录没填':'目录:'+(c.tools?'支持':'不支持')})">${WRENCH}</span>`
+    else if (c.tools === true) html += `<span class="cap" title="工具调用">${WRENCH}</span>`
+    if (!html) html = '<span class="capNone">—</span>'
+    capsEl.innerHTML = html
+    segHint.textContent = s.tools === 'inherit'
+      ? (c.tools === null ? '目录没填这一型;按名字判为「支持」。' : `目录说「${c.tools?'支持':'不支持'}」。`)
+      : s.tools === 'on' ? '自定为「支持」。' : `${c.tools===null?'目录没填':'目录说「'+(c.tools?'支持':'不支持')+'」'},已自定为关。这一型的请求不再带工具表。`
+    reset.disabled = !(s.ctx || s.tools !== 'inherit')
+  }
+  Object.keys(state).forEach(render)
+  document.querySelectorAll('.pop:not([hidden])').forEach(p => p.closest('.catalog').classList.add('open'))
+</script>
+</main>
+</body>
+</html>

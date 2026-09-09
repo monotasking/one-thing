@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { translate } from '../../../i18n'
 import type { MessageKey, MessageVars, TFn } from '../../../i18n'
-import { OTHER_GROUP } from '../../types'
+import { NO_CATALOG_FACTS, NO_MODEL_OVERRIDE, OTHER_GROUP } from '../../types'
 import type { CatalogGroup, CatalogRow } from '../../types'
 import {
   SKIP_ROWS_FROM,
@@ -33,6 +33,8 @@ function row(id: string): CatalogRow {
     caps: [],
     price: null,
     manual: false,
+    override: NO_MODEL_OVERRIDE,
+    catalog: NO_CATALOG_FACTS,
   }
 }
 

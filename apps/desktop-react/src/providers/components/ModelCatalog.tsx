@@ -11,7 +11,7 @@ import { useT } from '../../i18n'
 import type { AsyncSource } from '../../data/kernel'
 import type { QueryPhase } from '../../data/kernel'
 import { formatFetchedAt, groupCatalog, priceIsIncluded } from '../projection'
-import type { CatalogRow, ProviderModeKind } from '../types'
+import type { CatalogRow, ModelOverridePatch, ProviderModeKind } from '../types'
 import { AddModelRow } from './AddModelRow'
 import { ModelCatalogRow } from './ModelCatalogRow'
 import { catalogEmptyLine, groupLabel, groupNote, shouldSkipRows } from './model-catalog-transitions'
@@ -91,6 +91,7 @@ export function ModelCatalog({
   onSetCurrent,
   onAddManual,
   onRemoveManual,
+  onWriteOverride,
 }: {
   /** 这一坑是谁。换一坑要把「展开了哪些组」忘掉 —— 那是上一坑的事。 */
   providerId: string
@@ -122,6 +123,8 @@ export function ModelCatalog({
   /** 手填一个目录里没有的 id。返回一句错误原文 = 没加上。 */
   onAddManual: (modelId: string) => string | undefined
   onRemoveManual: (modelId: string) => void
+  /** 写一个模型的覆盖(上下文窗口 / 工具调用)。`null` = 删那一格。 */
+  onWriteOverride: (modelId: string, patch: ModelOverridePatch) => void
 }) {
   const t = useT()
   const fetched = formatFetchedAt(fetchedAt)
@@ -150,6 +153,13 @@ export function ModelCatalog({
 
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
   const [adding, setAdding] = useState(false)
+  /*
+   * 逐型覆盖那张浮层**一次只开一个**(09-09)。所以它住在这里而不是每行自持一个
+   * 布尔:住在行里的话,点开第二行的钮之前得先有人去关第一行 —— 那个「有人」
+   * 只能是这一层,于是状态本来就在这一层,行里那份只是它的影子。
+   * 行收 `overrideOpen` + `onOverrideOpen`,一格自己的开合状态都不留。
+   */
+  const [openOverride, setOpenOverride] = useState<string | null>(null)
 
   const headRef = useRef<HTMLDivElement>(null)
   const topMark = useRef<HTMLDivElement>(null)
@@ -166,6 +176,9 @@ export function ModelCatalog({
   useEffect(() => {
     setExpanded(new Set())
     setAdding(false)
+    // 换坑 = 换一份目录。上一坑开着的那张覆盖浮层跟着走没有任何意义 ——
+    // 它锚在一行上,而那一行马上就不在了。
+    setOpenOverride(null)
   }, [providerId])
 
   const emptyLine = catalogEmptyLine(t, {
@@ -301,12 +314,16 @@ export function ModelCatalog({
               key={row.id}
               t={t}
               row={row}
+              providerId={providerId}
               included={included}
               pending={pendingModelIds.has(row.id)}
               skip={false}
+              overrideOpen={openOverride === row.id}
               onToggle={onToggle}
               onSetCurrent={onSetCurrent}
               onRemoveManual={onRemoveManual}
+              onOverrideOpen={(open) => setOpenOverride(open ? row.id : null)}
+              onWriteOverride={onWriteOverride}
             />
           ))}
 
@@ -346,12 +363,16 @@ export function ModelCatalog({
                       key={row.id}
                       t={t}
                       row={row}
+                      providerId={providerId}
                       included={included}
                       pending={pendingModelIds.has(row.id)}
                       skip={skip}
+                      overrideOpen={openOverride === row.id}
                       onToggle={onToggle}
                       onSetCurrent={onSetCurrent}
                       onRemoveManual={onRemoveManual}
+                      onOverrideOpen={(open) => setOpenOverride(open ? row.id : null)}
+                      onWriteOverride={onWriteOverride}
                     />
                   ))}
               </div>

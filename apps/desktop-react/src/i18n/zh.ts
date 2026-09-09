@@ -1281,6 +1281,46 @@ export const zh = {
   'providers.capReasoning': '推理',
   'providers.capImageOut': '图像输出',
   'providers.capAudioIn': '音频输入',
+
+  /* ── 逐型覆盖(09-09,设计正本 docs/model-override-proposal-2026-09-09.html)──
+   * 后端早有这两格(contextLengthByModel / modelCapabilitiesByModel[m].tools),
+   * 这一族是壳上那张嘴。**提示行与悬停一律整句成键,不拿翻译过的词去拼**:
+   * 「目录:支持」在英文里是另一套语序与括号,拼装等于换一门语言就赌一次。 */
+  'providers.configureModel': '配置 {model}',
+  'providers.overrideContextLabel': '上下文窗口',
+  'providers.overrideContextUnit': 'token',
+  'providers.overrideContextPlaceholderCatalog': '{n}(目录)',
+  'providers.overrideContextPlaceholderDefault': '{n}(默认)',
+  'providers.overrideContextHintCatalog': '目录给的是 {n}。',
+  'providers.overrideContextHintDefault': '目录没填这一型;不填按 {n} 算,压缩阈值也按它算。',
+  'providers.overrideContextHintCustom': '自定 {value}。清空回到目录 {fallback}。',
+  'providers.overrideContextHintCustomDefault': '自定 {value}。清空回到默认 {fallback}。',
+  /* 例子就写在句子里 —— 「格式不对」这种话谁都改不对自己那一行。 */
+  'providers.overrideContextInvalid': '填整数,不带单位:200000',
+  'providers.overrideToolsLabel': '工具调用',
+  /* 第一格叫「跟目录」而不是「默认」:目录没填时它跟的是**按名字猜**,
+   * 下面那句 overrideToolsHintGuess 把这一点说出来,不藏。 */
+  'providers.overrideToolsInherit': '跟目录',
+  'providers.overrideToolsOn': '开',
+  'providers.overrideToolsOff': '关',
+  'providers.overrideToolsHintCatalogOn': '目录说「支持」。',
+  'providers.overrideToolsHintCatalogOff': '目录说「不支持」。',
+  'providers.overrideToolsHintGuess': '目录没填这一型;按名字判为「支持」。',
+  'providers.overrideToolsHintOn': '自定为「支持」。',
+  'providers.overrideToolsHintOffCatalogOn': '目录说「支持」,已自定为关。这一型的请求不再带工具表。',
+  'providers.overrideToolsHintOffCatalogOff':
+    '目录说「不支持」,已自定为关。这一型的请求不再带工具表。',
+  'providers.overrideToolsHintOffUnknown': '目录没填这一型,已自定为关。这一型的请求不再带工具表。',
+  'providers.overrideFoot': '改了就存,没有保存钮',
+  'providers.overrideReset': '恢复目录值',
+  'providers.overrideContext': '自定 {value}(目录 {catalog})',
+  'providers.overrideContextNoCatalog': '自定 {value}(目录没填,默认 {fallback})',
+  'providers.overrideToolsOnTipCatalogOn': '自定:支持工具调用(目录:支持)',
+  'providers.overrideToolsOnTipCatalogOff': '自定:支持工具调用(目录:不支持)',
+  'providers.overrideToolsOnTipUnknown': '自定:支持工具调用(目录没填)',
+  'providers.overrideToolsOffTipCatalogOn': '自定:关闭工具调用(目录:支持)',
+  'providers.overrideToolsOffTipCatalogOff': '自定:关闭工具调用(目录:不支持)',
+  'providers.overrideToolsOffTipUnknown': '自定:关闭工具调用(目录没填)',
   'providers.saveFailed': '设置没保存上',
 
   /* ── 工作区切换器(08-31 v1) ─────────────────────────────────────────────

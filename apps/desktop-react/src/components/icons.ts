@@ -22,6 +22,7 @@ import {
   FileLock,
   Pencil,
   Wrench,
+  SlidersHorizontal,
   Globe,
   Settings,
   LayoutGrid,
@@ -96,6 +97,9 @@ const REGISTRY: Record<string, LucideIcon> = {
   FileLock,
   Pencil,
   Wrench,
+  /* 「配置这一型」的滑杆(模型目录行尾第三颗钮)。Settings 那枚齿轮在这套词汇
+     里已经是「设置面」本身,拿它当行内的逐型配置口会被读成「打开设置」。 */
+  SlidersHorizontal,
   Globe,
   Settings,
   LayoutGrid,
@@ -160,6 +164,7 @@ export {
   Mic,
   Pencil,
   Wrench,
+  SlidersHorizontal,
   Plus,
   X,
   Pin,

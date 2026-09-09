@@ -10,6 +10,7 @@ import groupHeadCss from '../../../ui/GroupHead.module.css'
 import statusDotCss from '../../../ui/StatusDot.module.css'
 import { IDLE_AUTH_FLOW } from '../../auth'
 import type { PoolView } from '../../projection'
+import { NO_CATALOG_FACTS, NO_MODEL_OVERRIDE } from '../../types'
 import type { CatalogRow, ProviderMode, RailRow, StatusTone } from '../../types'
 import { CredentialPool } from '../CredentialPool'
 import { CustomProviderDialog } from '../CustomProviderDialog'
@@ -174,6 +175,8 @@ function catalogRow(id: string, over: Partial<CatalogRow> = {}): CatalogRow {
     caps: [],
     price: { input: 3, output: 15 },
     manual: false,
+    override: NO_MODEL_OVERRIDE,
+    catalog: NO_CATALOG_FACTS,
     ...over,
   }
 }
@@ -202,6 +205,7 @@ function renderCatalog(rows: readonly CatalogRow[], query = '') {
       onSetCurrent={vi.fn()}
       onAddManual={vi.fn()}
       onRemoveManual={vi.fn()}
+      onWriteOverride={vi.fn()}
     />,
   )
 }

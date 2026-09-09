@@ -1,0 +1,95 @@
+/*
+ * 逐型覆盖浮层的**内容**皮肤。浮层自己那一层(面、圆角、投影、层级、入场、
+ * 点外关、Esc、Tab 圈禁)全归 `ui/Popover` —— 这里一格都不重画。
+ * 几何全部来自 tokens.css,这个文件里一个字面值都没有。
+ */
+.body {
+  display: flex;
+  flex-direction: column;
+  width: var(--pv-override-w);
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+}
+
+/* 头:名 + id。两行都截断 —— 一个 300 宽的浮层装不下 openrouter 那种长 id。 */
+.head {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.name {
+  font-size: var(--fs-body);
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* id 是**标识不是句子**,走 mono(与目录行里那一格同一手)。 */
+.ident {
+  font-family: var(--font-mono);
+  font-size: var(--fs-ext);
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * 一格。类名不叫 `.field` —— 那是这套壳的**共享视觉词汇**(ui-consume 的
+ * `shared-vocab-css` 盯着它的产地数),而这一格的形本来就归 `ui/Field`,
+ * 这里只管它在这根竖列里怎么坐。
+ */
+.grp {
+  margin-top: var(--sp-3);
+}
+
+/* 输入框右槽那个单位。装饰,不进无障碍树(`ui/Input` 的 suffix 自己包 hidden)。 */
+.unit {
+  font-size: var(--fs-ext);
+  color: var(--text-3);
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+  font-size: var(--fs-ext);
+  color: var(--text-3);
+}
+
+.footNote {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/*
+ * 「恢复目录值」= **③ 类行内微型文字动作**(09-02 批 6 的边界:无边无底、
+ * 与正文同行 → 走 `ui/ButtonBase` 保本地皮肤,换成 28px 描边的 `ui/Button`
+ * 是改版不是等价迁移)。虚线下划与行上那个「人填的」读数同一个 offset token
+ * —— 同一种「点一下能改」的暗示不该有两种画法。
+ */
+.reset {
+  flex: none;
+  font-size: var(--fs-ext);
+  color: var(--text-2);
+  text-decoration: underline dotted;
+  text-underline-offset: var(--pv-ovr-underline-offset);
+  white-space: nowrap;
+  transition: color var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+
+.reset:hover:not(:disabled) {
+  color: var(--text-1);
+}
+
+/* 没覆盖时它无事可做。禁着就**不画那条虚线** —— 虚线是「点我」的暗示。 */
+.reset:disabled {
+  opacity: var(--btn-disabled-o);
+  text-decoration: none;
+  cursor: default;
+}

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type {
   CustomProviderConfig,
+  ModelCapabilityOverride,
   ProviderConfig,
   ProviderInfo,
   ProviderUsageResponse,
@@ -47,7 +48,7 @@ import {
   splitSpaceProviderSettings,
 } from './space-settings'
 import { currentSpaceId, subscribeCurrentSpace } from '../workspace/current'
-import type { CredentialFacts, ProviderFamilyView } from './types'
+import type { CredentialFacts, ModelOverridePatch, ProviderFamilyView } from './types'
 
 /** 新建自定义家的表单。字段名与 `CustomProviderConfig` 对齐,不另起一套。 */
 export interface CustomProviderForm {
@@ -208,6 +209,24 @@ export interface ProviderSettingsState {
   addManualModel: (providerId: string, modelId: string) => string | undefined
   /** 删掉一个手填模型。最后一条不删(与生产 `toggleSpaceModelSelection` 同一守则)。 */
   removeManualModel: (providerId: string, modelId: string) => Promise<void>
+  /**
+   * 一个模型的**用户覆盖**(09-09):上下文窗口 `contextLengthByModel[m]` 与
+   * 工具调用 `modelCapabilitiesByModel[m].tools`。后端早有这两格(引擎读法
+   * `model-registry.ts:895` / `:949`,覆盖优先),缺的只是壳上的写面。
+   *
+   * `patch` 的三态是**明码**:某一格给数 / 布尔 = 写它,给 `null` = **删这个键**,
+   * 缺席 = 这一格不动。`null` 不写成 `undefined` 是因为 `undefined` 在一个可选
+   * 字段上说不清「没传」与「删掉」——而这两件事在这里天天发生。
+   *
+   * 删要**删干净**:表里最后一个键被删掉时整张表也删掉,不留一个 `{}`
+   * (`modelCapabilitiesByModel[m]` 空了先删那一格,再看整表空没空)。
+   * 一个空对象在盘上是一句「这一型被配置过」的假话。
+   */
+  setModelOverride: (
+    providerId: string,
+    modelId: string,
+    patch: ModelOverridePatch,
+  ) => Promise<void>
 
   /* ── 凭证池 ─────────────────────────────────────────────────────────── */
   /** 追加一条密钥(**不带 entryId** = 追加)。 */
@@ -552,7 +571,18 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     if (!base) return
     const nextProviders: Record<string, ProviderConfig> = { ...(base.ai?.providers ?? {}) }
     for (const [providerId, delta] of Object.entries(patch)) {
-      nextProviders[providerId] = { ...EMPTY_CONFIG, ...nextProviders[providerId], ...delta }
+      const merged = { ...EMPTY_CONFIG, ...nextProviders[providerId], ...delta } as ProviderConfig
+      /*
+       * **delta 里显式的 `undefined` = 删掉这个键**(09-09,`setModelOverride`
+       * 的需要)。展开合并留下的是一个「键在、值是 undefined」的格子:
+       * `JSON.stringify` 会把它丢掉,而这一层交出去的对象**不一定经过 JSON**
+       * (夹具里的假端口直接读它,后端那一侧也不该依赖序列化的副作用)。
+       * 所以在唯一那口写路上就地删干净 —— 「盘上到底有没有这个键」不该由
+       * 传输层顺手决定。
+       */
+      const bag = merged as unknown as Record<string, unknown>
+      for (const key of Object.keys(bag)) if (bag[key] === undefined) delete bag[key]
+      nextProviders[providerId] = merged
     }
     const next = { ...base, ai: { ...base.ai, providers: nextProviders } } as AppSettings
     await commitSettings(base, next, key, extra)
@@ -950,6 +980,44 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
         },
         settingsKey.model(providerId, modelId),
       )
+    },
+
+    /**
+     * 两张按模型的覆盖表,**整张换**(`writeProviders` 是浅合并:
+     * 只递一个键的话另一半会被原样留着,而我们要的正是「删掉某一个键」)。
+     *
+     * 忙态打在**被配置的那一行**上(`settingsKey.model`)—— 与勾选 / 设为当前
+     * 同一格,所以浮层与那一行的三颗钮一起禁,别的行一个都不动。
+     */
+    setModelOverride: async (providerId, modelId, patch) => {
+      await ensureSettingsLoaded()
+      const config = get().settings?.ai?.providers?.[providerId]
+      const delta: Partial<ProviderConfig> = {}
+
+      if (patch.contextLength !== undefined) {
+        const table: Record<string, number> = { ...(config?.contextLengthByModel ?? {}) }
+        if (patch.contextLength === null) delete table[modelId]
+        else table[modelId] = patch.contextLength
+        // 空表就是没有这张表 —— 留一个 `{}` 是在盘上说「配置过」。
+        delta.contextLengthByModel = Object.keys(table).length > 0 ? table : undefined
+      }
+
+      if (patch.tools !== undefined) {
+        const table: Record<string, ModelCapabilityOverride> = {
+          ...(config?.modelCapabilitiesByModel ?? {}),
+        }
+        // **别的能力键(vision / reasoning / …)一格不动**:这块面只开了 tools
+        // 一格,把整条记录换掉就等于替用户把没露过面的开关也答了一遍。
+        const entry: ModelCapabilityOverride = { ...(table[modelId] ?? {}) }
+        if (patch.tools === null) delete entry.tools
+        else entry.tools = patch.tools
+        if (Object.keys(entry).length > 0) table[modelId] = entry
+        else delete table[modelId]
+        delta.modelCapabilitiesByModel = Object.keys(table).length > 0 ? table : undefined
+      }
+
+      if (Object.keys(delta).length === 0) return
+      await writeProviders({ [providerId]: delta }, settingsKey.model(providerId, modelId))
     },
 
     /* ── 凭证池 ───────────────────────────────────────────────────────── */

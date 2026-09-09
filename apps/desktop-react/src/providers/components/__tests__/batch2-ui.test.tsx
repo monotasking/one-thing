@@ -9,6 +9,7 @@ import { UsageCard } from '../UsageCard'
 import { CustomProviderDialog } from '../CustomProviderDialog'
 import { ModeCard } from '../ModeCard'
 import { IDLE_AUTH_FLOW } from '../../auth'
+import { NO_CATALOG_FACTS, NO_MODEL_OVERRIDE } from '../../types'
 import type { CatalogRow, ProviderMode } from '../../types'
 import type { PoolView } from '../../projection'
 import poolCss from '../CredentialPool.module.css'
@@ -35,6 +36,8 @@ function row(id: string, over: Partial<CatalogRow> = {}): CatalogRow {
     caps: [],
     price: { input: 3, output: 15 },
     manual: false,
+    override: NO_MODEL_OVERRIDE,
+    catalog: NO_CATALOG_FACTS,
     ...over,
   }
 }
@@ -57,6 +60,7 @@ function catalog(props: Partial<Parameters<typeof ModelCatalog>[0]> = {}) {
       onSetCurrent={vi.fn()}
       onAddManual={vi.fn()}
       onRemoveManual={vi.fn()}
+      onWriteOverride={vi.fn()}
       {...props}
     />
   )

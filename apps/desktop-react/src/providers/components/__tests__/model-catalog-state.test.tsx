@@ -4,6 +4,7 @@ import { useStageStore } from '../../../stage/store'
 import { ModelCatalog } from '../ModelCatalog'
 import { createQuery } from '../../../data/kernel'
 import { GROUP_MIN_ROWS, SEARCH_ROW_CAP } from '../../projection'
+import { NO_CATALOG_FACTS, NO_MODEL_OVERRIDE } from '../../types'
 import type { CatalogRow } from '../../types'
 
 /**
@@ -34,6 +35,8 @@ function row(id: string, over: Partial<CatalogRow> = {}): CatalogRow {
     caps: [],
     price: { input: 3, output: 15 },
     manual: false,
+    override: NO_MODEL_OVERRIDE,
+    catalog: NO_CATALOG_FACTS,
     ...over,
   }
 }
@@ -70,6 +73,7 @@ function catalog(props: Partial<Parameters<typeof ModelCatalog>[0]> = {}) {
       onSetCurrent={vi.fn()}
       onAddManual={vi.fn()}
       onRemoveManual={vi.fn()}
+      onWriteOverride={vi.fn()}
       {...props}
     />
   )
