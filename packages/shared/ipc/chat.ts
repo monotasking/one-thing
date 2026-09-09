@@ -17,6 +17,14 @@ import type { VoiceTranscriptMetadata } from './voice.js'
 import type { MessageOrigin } from './channel-identity.js'
 import type { SessionGoal } from './goal.js'
 import type { JsonObject } from '../json.js'
+/*
+ * `ProjectedStopKind` 从 core 那张表**引进来**,不在这里抄一份联合
+ * (与 `ipc/logs.ts` 的 `LogLevel` 同一手):表里加一档新 kind 时,契约层跟着
+ * 变宽是自动的,而抄一份的那种写法要么忘了改、要么改成了另一套名字。
+ * reason 的字面量一个都不进这一层 —— 那是 core 的私事。
+ */
+import type { ProjectedStopKind } from '@onething/core/session/projection/stop-reasons'
+export type { ProjectedStopKind } from '@onething/core/session/projection/stop-reasons'
 import { defineRouter } from './router.js'
 import type { SessionAccessOperation } from '../contracts/session-access.js'
 
@@ -571,6 +579,19 @@ export interface ChatMessage {
   turnContext?: {
     set?: Record<string, string>
     removed?: string[]
+  }
+  /**
+   * 这一轮**最后一条请求为什么提前结束**(2026-09-09)。投影独家产出
+   * (`core/session/projection/{stop-reasons,reducer}.ts`),正常 `stop` /
+   * `tool_calls` 收场时缺席,流式期间也缺席 —— 它是这一轮的**结局**,
+   * `run/end` 之后才成立。壳按 `kind` 查文案表,不读 `reason` 做判断。
+   */
+  stop?: {
+    kind: ProjectedStopKind
+    reason: string
+    maxTokens?: number
+    outputTokens?: number
+    reasoningTokens?: number
   }
   // Token usage for this message (for assistant messages)
   usage?: {

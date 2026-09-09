@@ -3926,3 +3926,89 @@ describe('§16.15 F1 回归:被别人的截断溅到的 tool/result', () => {
     }))
   })
 })
+
+/**
+ * **这一轮为什么提前结束**(2026-09-09,真店会话 `fe5261d9…` 的形状)。
+ *
+ * 事故:三次重试都以 `request/end.stopReason = 'length'` 收场(2048 的
+ * `maxTokens` 全花在 reasoning 上),runner 对 `length` 没有特判 → `run/end`
+ * 照旧 `completed` → 屏幕上什么都不说。缺的不是事实,是投影 + 渲染。
+ *
+ * 三条用例各钉一格:**join 得对**、**正常收场不说话**、**结局没成立之前不说话**。
+ * 反证:把 `materializeStop` 里那句 `surfacedStopKind` 换成恒真(或直接返回
+ * `lastStop`),第 ② 条当场红 —— 那正是「哪些 reason 上屏」这张表的存在理由。
+ */
+describe('2026-09-09:length 截断上屏(message.stop)', () => {
+  it('① recipe 的 maxTokens + response 的 usage + end 的 length,join 成一格 stop', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r1', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2, type: 'request/recipe',
+      data: {
+        runId: 'r1', requestIndex: 1, systemPromptHash: 'h', toolsHash: 't', messages: [],
+        params: { maxTokens: 2048, temperature: 1 },
+      },
+    })
+    line.push({
+      time: 3, type: 'request/response',
+      data: {
+        runId: 'r1', requestIndex: 1, messageId: 'a1', finishReason: 'length',
+        // 真店那一份:产出全是推理,正文一个字都没有。
+        usage: { inputTokens: 100, outputTokens: 2048, totalTokens: 2148, reasoningTokens: 2048 },
+      },
+    })
+    line.push({
+      time: 4, type: 'request/end',
+      // `request/end.usage` 那份**不带** reasoningTokens(events/types.ts 上写着),
+      // 所以 token 数要从 response 那条取 —— 这里故意给一个不同的 outputTokens,
+      // 取错了当场看得出来。
+      data: { runId: 'r1', requestIndex: 1, stopReason: 'length', usage: { inputTokens: 100, outputTokens: 7 } },
+    })
+    line.push({ time: 5, type: 'run/end', data: { runId: 'r1', outcome: 'completed' } })
+
+    const message = projectChatMessages(line.events).messages[0]
+    expect(message.stop).toEqual({
+      kind: 'output-limit',
+      reason: 'length',
+      maxTokens: 2048,
+      outputTokens: 2048,
+      reasoningTokens: 2048,
+    })
+  })
+
+  it('② 中间轮 tool_calls、最后一轮 stop:一格 stop 都不产出', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r1', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2, type: 'request/recipe',
+      data: { runId: 'r1', requestIndex: 1, systemPromptHash: 'h', toolsHash: 't', messages: [], params: { maxTokens: 2048 } },
+    })
+    line.push({
+      time: 3, type: 'request/response',
+      data: { runId: 'r1', requestIndex: 1, messageId: 'a1', usage: { inputTokens: 10, outputTokens: 20 } },
+    })
+    line.push({ time: 4, type: 'request/end', data: { runId: 'r1', requestIndex: 1, stopReason: 'tool_calls' } })
+    line.push({
+      time: 5, type: 'request/recipe',
+      data: { runId: 'r1', requestIndex: 2, systemPromptHash: 'h', toolsHash: 't', messages: [], params: { maxTokens: 2048 } },
+    })
+    line.push({ time: 6, type: 'request/end', data: { runId: 'r1', requestIndex: 2, stopReason: 'stop' } })
+    line.push({ time: 7, type: 'run/end', data: { runId: 'r1', outcome: 'completed' } })
+
+    expect(projectChatMessages(line.events).messages[0].stop).toBeUndefined()
+  })
+
+  it('③ 只到 request/end(length)、run/end 还没来:仍是流式,不说结局', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r1', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push({
+      time: 2, type: 'request/recipe',
+      data: { runId: 'r1', requestIndex: 1, systemPromptHash: 'h', toolsHash: 't', messages: [], params: { maxTokens: 2048 } },
+    })
+    line.push({ time: 3, type: 'request/end', data: { runId: 'r1', requestIndex: 1, stopReason: 'length' } })
+
+    const message = projectChatMessages(line.events).messages[0]
+    expect(message.isStreaming).toBe(true)
+    expect(message.stop).toBeUndefined()
+  })
+})

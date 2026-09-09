@@ -52,6 +52,34 @@ const toolCall = (seq: number, runId: string, messageId: string): Ledger => ({
   type: 'tool/call',
   data: { runId, messageId, callId: 'c1', name: 'read', argumentsRaw: '{}' },
 })
+/**
+ * 收场那三条(2026-09-09):配方带定稿后的 maxTokens、响应带用量(**只有它带
+ * reasoningTokens**)、`request/end` 带归一后的 stopReason。三条一起才 join 得出
+ * 「这一轮为什么提前结束」。
+ */
+const recipe = (seq: number, runId: string, maxTokens: number): Ledger => ({
+  seq,
+  time: T0,
+  type: 'request/recipe',
+  data: { runId, requestIndex: 1, systemPromptHash: 'h', toolsHash: 't', messages: [], params: { maxTokens } },
+})
+const response = (
+  seq: number,
+  runId: string,
+  messageId: string,
+  usage: { outputTokens: number; reasoningTokens?: number },
+): Ledger => ({
+  seq,
+  time: T0,
+  type: 'request/response',
+  data: { runId, requestIndex: 1, messageId, usage: { inputTokens: 10, ...usage } },
+})
+const requestEnd = (seq: number, runId: string, stopReason: string): Ledger => ({
+  seq,
+  time: T0,
+  type: 'request/end',
+  data: { runId, requestIndex: 1, stopReason },
+})
 const runEnd = (seq: number, runId: string): Ledger => ({
   seq,
   time: T0,
@@ -537,5 +565,85 @@ describe('跟随丸', () => {
       view.rerender(<ChatStream sessionId="" scrollRef={ref} />)
     })
     expect(screen.queryByTestId('chat-follow-pill')).toBeNull()
+  })
+})
+
+/**
+ * 收场通知(2026-09-09 `length` 事故:三次重试都把 2048 的额度花在推理上,
+ * 屏幕上一个字不说)。这一层只钉**屏幕上到底出现了什么**——「哪些收场值得说」
+ * 与「结局成没成立」两道闸的反证在 core 那只合同测试里。
+ *
+ * 素材一律经真的折叠器进来,所以这三条同时也证明了 `message.stop` 这一格是
+ * 真的从账本折出来的,不是这里手塞的。
+ */
+describe('收场通知:这一轮为什么提前结束', () => {
+  it('有正文、撞上 maxTokens = 「回复被截断」,数字按全壳唯一进位写', async () => {
+    await mount([
+      created(1),
+      userMessage(2, 'm1', '写点什么'),
+      runStart(3, 'r1', 'a1'),
+      recipe(4, 'r1', 2048),
+      chunks(5, 'r1', 'a1', ['开了个头']),
+      response(6, 'r1', 'a1', { outputTokens: 2048, reasoningTokens: 1900 }),
+      requestEnd(7, 'r1', 'length'),
+      runEnd(8, 'r1'),
+    ])
+    const notice = screen.getByTestId('chat-stop-notice')
+    expect(notice.getAttribute('data-kind')).toBe('output-limit')
+    expect(notice.getAttribute('role')).toBe('status')
+    expect(notice.textContent).toBe('输出达到上限 2k token,回复被截断')
+  })
+
+  it('一个字都没回、产出全是推理 = 换一句话说(想完就没额度了)', async () => {
+    await mount([
+      created(1),
+      userMessage(2, 'm1', '写点什么'),
+      runStart(3, 'r1', 'a1'),
+      recipe(4, 'r1', 2048),
+      response(5, 'r1', 'a1', { outputTokens: 2048, reasoningTokens: 2048 }),
+      requestEnd(6, 'r1', 'length'),
+      runEnd(7, 'r1'),
+    ])
+    expect(screen.getByTestId('chat-stop-notice').textContent)
+      .toBe('输出达到上限 2k token,思考还没结束就被截断,没有生成回复')
+  })
+
+  it('正常收场(tool_calls / stop)一个字都不说', async () => {
+    await mount([
+      created(1),
+      userMessage(2, 'm1', '写点什么'),
+      runStart(3, 'r1', 'a1'),
+      recipe(4, 'r1', 2048),
+      chunks(5, 'r1', 'a1', ['写完了']),
+      response(6, 'r1', 'a1', { outputTokens: 12 }),
+      requestEnd(7, 'r1', 'stop'),
+      runEnd(8, 'r1'),
+    ])
+    expect(screen.queryByTestId('chat-stop-notice')).toBeNull()
+  })
+
+  /**
+   * 防御:活消息按定义拿不到这一格(投影的两道闸在 run/end 之后才放行),
+   * 所以这条用例得**手动**把活消息那一格拨回去。它钉的是壳侧那句 `!streaming`
+   * ——尾巴合成那条路哪天把一条带 stop 的消息重新算成活的,屏幕上不许当场
+   * 冒出一句「这一轮结束了」。
+   */
+  it('这条消息又变回活的 = 通知当场撤下', async () => {
+    await mount([
+      created(1),
+      userMessage(2, 'm1', '写点什么'),
+      runStart(3, 'r1', 'a1'),
+      recipe(4, 'r1', 2048),
+      chunks(5, 'r1', 'a1', ['开了个头']),
+      response(6, 'r1', 'a1', { outputTokens: 2048, reasoningTokens: 1900 }),
+      requestEnd(7, 'r1', 'length'),
+      runEnd(8, 'r1'),
+    ])
+    expect(screen.getByTestId('chat-stop-notice')).toBeTruthy()
+
+    await act(async () => {
+      sessionSource().setState({ activeMessageId: 'a1' })
+    })
+    expect(screen.queryByTestId('chat-stop-notice')).toBeNull()
   })
 })

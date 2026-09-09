@@ -584,6 +584,23 @@ export const zh = {
   'chat.streamStalled': '已 {silent} 没有新内容 · {d}',
   'chat.streamStuck': '可能卡住了',
   'chat.stop': '停止',
+  /* ── 收场通知(2026-09-09 `length` 事故)────────────────────────────────
+   * 这一轮**为什么提前结束**。事实全在账本里(`request/end.stopReason` + 同一条
+   * 请求的配方与用量),这几句只是把它说成人话。
+   * 「哪些收场原因值得占屏幕」不在这里 —— 那是 core 的 `stop-reasons.ts` 那张表,
+   * 壳按它交出来的 `kind` 查这几个键。表里加一档而这里还没有对应句子时,落到
+   * `chat.stopGeneric`(原样摆出 provider 的词),不会说错话。
+   * 四句 output-limit 的分法:有没有可见正文 × 知不知道上限是多少。没有正文而
+   * 产出几乎全是推理,那不是「被截断」,是「想完就没额度了,一个字没回」——
+   * 用户要做的事不一样(前者续写,后者调上限 / 少让它想)。
+   * `{max}` 已经带着进位(`format/quantity`),模板里不再补单位以外的东西。 */
+  'chat.stopOutputLimit': '输出达到上限 {max} token,回复被截断',
+  'chat.stopOutputLimitNoLimit': '输出达到上限,回复被截断',
+  'chat.stopOutputLimitThinking': '输出达到上限 {max} token,思考还没结束就被截断,没有生成回复',
+  'chat.stopOutputLimitThinkingNoLimit': '输出达到上限,思考还没结束就被截断,没有生成回复',
+  'chat.stopContentFilter': '回复被内容过滤截断',
+  /* provider 报的那个词是**数据**,原样摆出来,不进字典。 */
+  'chat.stopGeneric': '回复提前结束({reason})',
   'chat.copy': '复制',
   /* 幽灵动作行整条的名字(读屏软件读它,眼睛看到的是两个字钮)。 */
   'chat.messageActions': '这条回复的动作',

@@ -32,6 +32,7 @@ import {
   materializeOrphanSteps,
   materializeOrphanToolCalls,
   materializePartText,
+  materializeStop,
   materializeSteps,
   materializeToolCalls,
   materializeTopReasoning,
@@ -145,6 +146,10 @@ function materializeAssistantNode(
   // 只在 placement 是 'top' 时被调用,inline 的那些留在 contentParts 里。
   const reasoning = materializeTopReasoning(node, options)
   const thinkingTime = deriveThinkingTime(node)
+  // **这一轮为什么提前结束**(2026-09-09):`request/end.stopReason` + 同一条请求的
+  // 配方与用量,经 `stop-reasons.ts` 那张表筛过。流式期间与被 steering 接手的那条
+  // 消息上一律缺席 —— 两道闸都在 `materializeStop` 里,判据不在这儿抄第二份。
+  const stop = materializeStop(node)
 
   // 图片 / provider-data part 的正文也住在 blob 里 —— 与附件同一个函数换回来
   // (`{blob}` → `{data}`)。宿主从前在投影**之外**补这一刀,于是每个消费者
@@ -182,6 +187,7 @@ function materializeAssistantNode(
     ...(node.skillUsed ? { skillUsed: node.skillUsed } : {}),
     ...(thinkingTime !== undefined ? { thinkingTime } : {}),
     ...(node.ended ? {} : { isStreaming: true as const }),
+    ...(stop ? { stop } : {}),
     ...(node.errorDetails ? { errorDetails: node.errorDetails } : {}),
     ...node.patch,
     // 消息这条路上换不回来的引用**照实留着**(A2 / provider-data 的既有口径),

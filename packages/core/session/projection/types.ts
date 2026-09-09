@@ -8,6 +8,7 @@
  */
 
 import type { CoreStepType } from '../../engine/tool-step.js'
+import type { ProjectedStopKind } from './stop-reasons.js'
 
 export type ProjectedToolCallStatus =
   | 'pending'
@@ -144,6 +145,30 @@ export type ProjectedContentPart =
   | { type: 'provider-data'; providerData: unknown; turnIndex?: number }
   | { type: 'provider-data'; blob: { hash: string; bytes: number; mime?: string }; turnIndex?: number }
 
+/**
+ * **这一轮为什么提前结束**(2026-09-09)。
+ *
+ * 产地是账本上这次执行**最后一条** `request/end.stopReason`,附上同一条请求的
+ * 配方与用量(`request/recipe.params.maxTokens` / `request/response.usage`)——
+ * 三条事件早就有,缺的只是把它们 join 起来。哪些 reason 值得占屏幕由
+ * `stop-reasons.ts` 那一张表说;这里只装结果。
+ *
+ * **正常收场时缺席**:`stop` / `tool_calls` 不进这一格(见那张表的理由)。
+ * 流式期间也缺席 —— 这是「这一轮的结局」,run/end 之前它还不成立。
+ */
+export interface ProjectedMessageStop {
+  /** 壳按它查文案表;壳里不出现 reason 的字面量。 */
+  kind: ProjectedStopKind
+  /** 归一后的原字面量。壳只在兜底句里原样摆出来,不拿它做判断。 */
+  reason: string
+  /** 这条请求发出去时定稿的 `maxTokens`。配方里没有就缺席,不猜。 */
+  maxTokens?: number
+  /** 这条请求真的产出了多少 token。 */
+  outputTokens?: number
+  /** 其中花在推理上的。它 ≥ outputTokens 时 = 「想完就没额度了」。 */
+  reasoningTokens?: number
+}
+
 export interface ProjectedTurnContext {
   set?: Record<string, string>
   removed?: string[]
@@ -168,6 +193,8 @@ export interface ProjectedChatMessage {
   /** G5:派生的思考时长(ms) —— 推理段的首尾差,没有推理时是首 token 的等待。 */
   thinkingTime?: number
   turnContext?: ProjectedTurnContext
+  /** 这一轮最后一条请求为什么提前结束;正常 stop / tool_calls 时缺席。 */
+  stop?: ProjectedMessageStop
   usage?: ProjectedStepUsage
   /** 事件坐标:这条消息由哪条事件开头(§3.2 `ChatMessage.seq` 退役后的身份)。 */
   eventSeq?: number

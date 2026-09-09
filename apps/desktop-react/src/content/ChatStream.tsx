@@ -9,6 +9,7 @@ import { assembleMessage, segmentKey } from './assemble'
 import { ContextDeltaChip } from './ContextDeltaChip'
 import type { SegmentModel } from './model/segments'
 import { MessageActions } from './message/MessageActions'
+import { StopNotice } from './message/StopNotice'
 import { StreamReadout } from './message/StreamReadout'
 import { MessageSourceFoot } from './research/SourceFoot'
 import { SegmentView } from './SegmentView'
@@ -371,6 +372,22 @@ interface RowProps {
 }
 
 /**
+ * **这条消息此刻画得出正文吗** —— 收场通知挑句子要问的那一句(见 StopNotice)。
+ *
+ * 判据是**装配管线的产物**,不是 `message.content`:同一个问题在这个文件里已经
+ * 有一个答案(第一个字之前那三颗点用的 `segments.length === 0`),那个答案问的是
+ * 「屏幕上有没有东西」。这里问得更窄一格 —— 有没有**正文**:一条只有工具活儿的
+ * 消息段序列非空,但它确实一个字都没回。
+ *
+ * 图片算正文:它是这一轮真的产出的东西。思考段不算 —— 「想完了但没回话」正是
+ * 收场通知要区分的那一种。
+ */
+function hasVisibleProse(segments: readonly SegmentModel[]): boolean {
+  return segments.some(segment =>
+    (segment.kind === 'rich-text' && segment.blocks.length > 0) || segment.kind === 'image')
+}
+
+/**
  * 一条消息一行。
  *
  * ── 为什么包 `memo`(09-01 P0,60 万 token 长会话流式期 3–4fps)──────────
@@ -474,6 +491,18 @@ const MessageRow = memo(function MessageRow({
             user 的动作是编辑重发,那是另一件事(留账)。
           */}
           {streaming && <StreamReadout startedAt={message.timestamp} lastDeltaAt={lastDeltaAt} />}
+          {/*
+            收场通知(2026-09-09):这一轮**为什么提前结束**。它与动作行同时在场 ——
+            读数行那条「同一个位置只有一个」说的是「生成中 vs 生成完」这两态,而这
+            一行属于生成完的那一态,是动作行上面的一句陈述,不是第三态。
+            判据只有一个 `message.stop`:投影已经把「哪些收场值得说」与「结局成没
+            成立」两道闸都判完了(`core/session/projection/stop-reasons.ts` +
+            `materializeStop`),壳这边**不再抄第二份判据**。`!streaming` 这一问是
+            防御(活消息按定义拿不到这一格),留着是因为壳上还有尾巴合成那条路。
+          */}
+          {!streaming && message.stop && (
+            <StopNotice stop={message.stop} hasVisibleText={hasVisibleProse(segments)} />
+          )}
           {!streaming && role === 'assistant' && (
             <MessageActions
               sessionId={sessionId}

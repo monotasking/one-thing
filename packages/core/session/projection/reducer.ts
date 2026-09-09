@@ -53,6 +53,7 @@ import {
   type ProjectionMaterializeOptions,
 } from './blobs.js'
 import { SurfaceIndex } from './surface.js'
+import { surfacedStopKind } from './stop-reasons.js'
 
 /**
  * 有结局的三态 —— 与 `sessions/session-dehydrate.ts` 的冷加载补算同一张表
@@ -61,6 +62,7 @@ import { SurfaceIndex } from './surface.js'
 const TERMINAL_STEP_STATUSES = new Set<ProjectedStepStatus>(['completed', 'failed', 'cancelled'])
 import type {
   ProjectedContentPart,
+  ProjectedMessageStop,
   ProjectedStep,
   ProjectedStepStatus,
   ProjectedStepUsage,
@@ -286,6 +288,34 @@ export interface AssistantNode extends BaseNode {
    * 一格都没有。投影按同一条闸(§10.14 第 7 类)。
    */
   settledRequests: Set<number>
+  /**
+   * requestIndex → 这条请求发出去时**定稿的** `maxTokens`
+   * (`request/recipe.params.maxTokens`,见执行器的 `getRequestParams`:档位、
+   * 能力门控、per-model 覆盖都已经算完)。
+   *
+   * 只记**有限正数**:配方里那一格是 `Record<string, unknown>`,记一个 NaN /
+   * 0 / 负数进来,屏幕上就会出现「输出达到上限 0 token」这种假话。
+   */
+  requestMaxTokens: Map<number, number>
+  /**
+   * **这次执行最后一条请求的收场**(2026-09-09)。后到的 `request/end` 覆盖前一条
+   * —— 屏幕上要说的是「这一轮最后怎么停的」,中间那几轮的 `tool_calls` 是过程。
+   *
+   * `outputTokens` / `reasoningTokens` 优先取同一条 `request/response.usage`
+   * (它先到,而且**只有它带 reasoningTokens**;`request/end.usage` 那份没有
+   * 这一格,见 events/types.ts 上那句「比 request/end 的那份多两格」),
+   * 取不到才退回 `request/end.usage.outputTokens`。
+   */
+  lastStop?: { requestIndex: number; reason: string; outputTokens?: number; reasoningTokens?: number }
+  /**
+   * 上一条 `request/response` 报的用量,连它属于哪条请求一起记。
+   *
+   * 只留一格而不是一张表:它唯一的消费者是紧随其后的那条 `request/end`
+   * (一次执行里请求是串行的:recipe → response → end → 下一条 recipe),
+   * 而 `lastStop` 本来就只认最后一条。requestIndex 对不上就当没有 —— 宁可
+   * 少一格 token 数,不肯把别的请求的数安到这一条头上。
+   */
+  lastResponse?: { requestIndex: number; outputTokens?: number; reasoningTokens?: number }
   /**
    * **已结算**的插件/后台状态行(`plugin/status`,带 `durationMs`)。
    *
@@ -530,6 +560,10 @@ export function reduceSessionProjection(
         // 与回合号同一条理由:steering 换的是消息不是执行,前一条 run 已经收齐的
         // 那几轮在接手的这条上照样是"收齐了的"。
         settledRequests: new Set(continued?.settledRequests ?? []),
+        // 与回合号 / 已结算请求同一条理由:steering 换的是**消息**不是执行,
+        // 前几轮的配方与收场属于同一次执行,接着往下数。
+        requestMaxTokens: new Map(continued?.requestMaxTokens ?? []),
+        ...(continued?.lastStop ? { lastStop: continued.lastStop } : {}),
         ...(continued?.usage ? { usage: continued.usage } : {}),
         ...(continuesRunId ? { continuesRunId } : {}),
       }
@@ -562,8 +596,23 @@ export function reduceSessionProjection(
       const run = forWrite(state.runs.get(event.data.runId))
       if (!run) break
       turnOf(run, event.data.requestIndex)
+      // 配方里那一格是这次请求**定稿后**的 maxTokens(执行器的 `getRequestParams`)。
+      // 只收有限正数:0 / 负数 / NaN 说不出「上限是多少」这句话。
+      if (event.type === 'request/recipe') {
+        const maxTokens = event.data.params?.maxTokens
+        if (typeof maxTokens === 'number' && Number.isFinite(maxTokens) && maxTokens > 0) {
+          run.requestMaxTokens.set(event.data.requestIndex, maxTokens)
+        }
+      }
       if (event.type === 'request/response' && event.data.usage) {
         const usage = normalizeUsage(event.data.usage)
+        // 留给紧随其后的 `request/end`(见 `lastResponse` 的说明):它是唯一
+        // 带 reasoningTokens 的那一份账。
+        run.lastResponse = {
+          requestIndex: event.data.requestIndex,
+          ...(usage.outputTokens !== undefined ? { outputTokens: usage.outputTokens } : {}),
+          ...(usage.reasoningTokens !== undefined ? { reasoningTokens: usage.reasoningTokens } : {}),
+        }
         run.usage = addUsage(run.usage, usage)
         // §13.9:引擎把这份 usage 记到哪个回合的 step 上,由账本说 —— 老文件
         // 没有那一格时退回按请求数推(= 修复前的行为,也是普通 provider 上的
@@ -780,7 +829,25 @@ export function reduceSessionProjection(
     case 'request/end': {
       // 这一轮走到了 `turn-end` —— 引擎正是在这一刻把它的 part 落到消息上。
       const run = forWrite(resolveRun(state, event.data.runId, undefined))
-      if (run) run.settledRequests.add(event.data.requestIndex)
+      if (!run) break
+      run.settledRequests.add(event.data.requestIndex)
+      // **这一轮为什么停**(2026-09-09)。后到的覆盖前一条:中间几轮的
+      // `tool_calls` 是过程,屏幕上要说的是最后那一下。哪些 reason 上屏由
+      // `stop-reasons.ts` 决定 —— 折叠这一侧一格都不筛,它只负责记事实。
+      if (event.data.stopReason !== undefined) {
+        const response = run.lastResponse?.requestIndex === event.data.requestIndex
+          ? run.lastResponse
+          : undefined
+        const outputTokens = response?.outputTokens ?? event.data.usage?.outputTokens
+        run.lastStop = {
+          requestIndex: event.data.requestIndex,
+          reason: event.data.stopReason,
+          ...(outputTokens !== undefined ? { outputTokens } : {}),
+          ...(response?.reasoningTokens !== undefined
+            ? { reasoningTokens: response.reasoningTokens }
+            : {}),
+        }
+      }
       break
     }
 
@@ -1676,6 +1743,32 @@ export function deriveThinkingTime(run: AssistantNode): number | undefined {
   // 0 与"没量到"是同一件事(单条 delta 的推理段没有跨度可言),所以不产出 0 ——
   // 与 `canonicalChatMessage` 对 `isStreaming:false` 的处置同一条理由。
   return span !== undefined && span > 0 ? span : undefined
+}
+
+/**
+ * **这一轮为什么提前结束**(2026-09-09)——`lastStop` + 同一条请求的配方,
+ * 经 `surfacedStopKind` 那张表筛一道。
+ *
+ * 两道闸,各有各的理由:
+ *  - `run.ended` —— 这是**这一轮的结局**,`run/end` 之前它还不成立。流式期间
+ *    最后一条 `request/end` 可能是中间那一轮的 `tool_calls`,拿它上屏就是拿
+ *    过程冒充结局。
+ *  - `!run.continuedByRunId` —— 被 steering 接手的那条消息不带这次执行的收场
+ *    (与 `usage` 逐字同一条闸):整次执行的结局落在接手的那条消息上。
+ */
+export function materializeStop(run: AssistantNode): ProjectedMessageStop | undefined {
+  if (!run.ended || run.continuedByRunId) return undefined
+  const last = run.lastStop
+  const kind = surfacedStopKind(last?.reason)
+  if (!last || !kind) return undefined
+  const maxTokens = run.requestMaxTokens.get(last.requestIndex)
+  return {
+    kind,
+    reason: last.reason,
+    ...(maxTokens !== undefined ? { maxTokens } : {}),
+    ...(last.outputTokens !== undefined ? { outputTokens: last.outputTokens } : {}),
+    ...(last.reasoningTokens !== undefined ? { reasoningTokens: last.reasoningTokens } : {}),
+  }
 }
 
 /**

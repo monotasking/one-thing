@@ -46,6 +46,7 @@
     "./session/projection/canonical": "./session/projection/canonical.ts",
     "./session/projection/chat-messages": "./session/projection/chat-messages.ts",
     "./session/projection/reducer": "./session/projection/reducer.ts",
+    "./session/projection/stop-reasons": "./session/projection/stop-reasons.ts",
     "./session/render-anchors": "./session/render-anchors.ts",
     "./session/storage": "./session/storage/index.ts",
     "./session/storage/json-message-page-file": "./session/storage/json-message-page-file.ts",
