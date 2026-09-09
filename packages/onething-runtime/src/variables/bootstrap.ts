@@ -8,6 +8,10 @@ import { GoalProvider, type GoalVariableGateway } from './providers/goal.js'
 import { KeyedStoreProvider, type KeyedStoreGateway } from './providers/keyed-store.js'
 import { MusicRadioProvider, type MusicRadioGateway } from './providers/music-radio.js'
 import { NotesProvider, type NotesGateway } from './providers/notes.js'
+import {
+  ResourceStateProvider,
+  type ResourceStateVariableGateway,
+} from './providers/resource-state.js'
 import { SessionStoreProvider, type SessionStoreGateway } from './providers/session-store.js'
 import type { VariableRegistry } from './registry.js'
 
@@ -26,6 +30,11 @@ export interface StandardVariableProviderGateways {
   musicRadio?: MusicRadioGateway
   /** Agent 自我状态(卡/房/私聊);宿主没有协作子系统就不给,三个变量随之消失。 */
   agentSelf?: AgentSelfStateGateway
+  /**
+   * 资源自述 `state` 的投影(K4-a)。宿主没有资源内核就不给,那批变量随之消失 ——
+   * 与 goal / musicRadio 同一条「gateway 在才装」。
+   */
+  resourceState?: ResourceStateVariableGateway
   /** Agent-scoped custom variables (keyed by the session's agent id). */
   agentStore?: KeyedStoreGateway
   /** Project-scoped custom variables (keyed by the active workdir's project id). */
@@ -54,6 +63,9 @@ export function registerStandardVariableProviders(
   }
   if (gateways.agentSelf) {
     registry.register(new AgentSelfProvider(gateways.agentSelf))
+  }
+  if (gateways.resourceState) {
+    registry.register(new ResourceStateProvider(gateways.resourceState))
   }
   registry.register(new NotesProvider(gateways.notes))
   registry.register(new GlobalStoreProvider(gateways.globalStore))

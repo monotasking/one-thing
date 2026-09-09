@@ -14,6 +14,19 @@
  * 与 `plugin-command.ts` 同样的打包纪律:下面这些必须是**静态** import ——
  * cli 与 Electron 主进程在同一张 rollup 图里,动态 import 会把整个主进程包
  * 拽进纯 node 进程。
+ *
+ * **这条规矩说的是「这只文件自己的 import」,不是「谁来 import 这只文件」。**
+ * `index.ts` 反过来是**动态** import 这只文件的,那不是漏了一处 —— 它是一笔量过的
+ * 启动开销:cli 的产物是单文件 CJS 包(11.5MB),两种写法的包大小差 382 字节
+ * (动态那一版反而大一点,多的是 esbuild 的惰性壳),但静态之后
+ * `node dist/cli/main.cjs --help` 从 ~0.12s 变成 ~0.15s —— 每一次 `onething`
+ * (含 `daemon status`、`--help`)都要先把 `@onething/backend/session/*` 与它拖着的
+ * 会话仓储 / 存储驱动的模块体跑一遍。命令模块按需加载,它们的 import 才必须是静态的:
+ * 前者省的是**每次启动**,后者防的是**打包图**,两件事。(2026-09-09 K4-b 实测)
+ *
+ * `resource-command.ts` 是这条判据的反面例子,所以它在 `index.ts` 里是静态 import:
+ * 它的 import 闭包只有 `@shared/ipc/resources`(纯类型,编译后什么都不剩)与
+ * `./stdout.js`,静态引它一个模块体都不多跑。
  */
 import {
   readSessionTrace,

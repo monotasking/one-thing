@@ -481,6 +481,18 @@ export const sessionResourceSpec: ResourceSpec = {
       title: 'The session this turn is happening in',
       schema: SESSION_SUMMARY_SCHEMA,
       volatility: 'turn',
+      /**
+       * K4-a:两格取址的话,两格都是这份自述自己说的。
+       *
+       *   · `read: 'get'` —— 状态叫 `current`,给出那份摘要的读法叫 `get`。同名
+       *     约定是缺省(`StateSpec.read` 的注释),而这一条正是它不够用的第一个
+       *     现场:改读法的名字去迁就投影方是本末倒置。
+       *   · `scope: 'turn-origin'` —— 一条会话一个实例,而该喂的那一个就是**这一
+       *     回合发起自的那一条**。地址由投影方按这句话拼(`<scheme>:<发起坐标>`),
+       *     所以这份自述里一个地址字面量都没有。
+       */
+      read: 'get',
+      scope: 'turn-origin',
     },
   },
 }

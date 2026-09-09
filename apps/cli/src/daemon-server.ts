@@ -235,6 +235,40 @@ export class DaemonServer {
       }
       case 'permission.mode.set':
         return this.backend.setPermissionMode(requiredString(request.params, 'mode') as never)
+      /*
+       * 资源:读 / 做 / 看(原子 K4-b)。四支**通用**方法 —— 这张表里一个 scheme
+       * 名都没有,加一种资源不改这个文件一个字(与 `resources` RPC 域同规)。
+       *
+       * 校验只做形状(必填的字符串在不在),**不判「这条读法存不存在」** ——
+       * 那是自述说了算的事,内核会回一句 `invalid`;在这里再判一次就是第二份
+       * 判据,而两份判据早晚说两句话。
+       */
+      case 'resource.list':
+        return this.backend.listResources()
+      case 'resource.describe':
+        return this.backend.describeResource(requiredString(request.params, 'scheme'))
+      case 'resource.read': {
+        const params = request.params as {
+          ref?: string; name?: string; query?: Record<string, unknown>; sessionId?: string
+        } | undefined
+        return this.backend.readResource(
+          requiredString(params, 'ref'),
+          requiredString(params, 'name'),
+          params?.query ?? {},
+          params?.sessionId,
+        )
+      }
+      case 'resource.do': {
+        const params = request.params as {
+          ref?: string; op?: string; params?: Record<string, unknown>; sessionId?: string
+        } | undefined
+        return this.backend.doResource(
+          requiredString(params, 'ref'),
+          requiredString(params, 'op'),
+          params?.params ?? {},
+          params?.sessionId,
+        )
+      }
       default:
         throw namedError('ERR_METHOD_NOT_FOUND', `Unknown daemon method: ${request.method}`)
     }

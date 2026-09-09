@@ -20,6 +20,8 @@ import {
   isLocalPlugin,
 } from './loader.js'
 import { createPluginSessionHostPorts } from './sessions.js'
+import { createPluginResourceHostPorts, type PluginResourceAccess } from './resources.js'
+import { getCurrentBackendInstance } from '../../current.js'
 import { capturePluginLlmScope, type PluginLlmScope } from './llm.js'
 import { forgetPluginNotifySoundThrottle, resolvePluginNotifySound } from './notify-sound.js'
 import { clearPluginBackgroundParams, setPluginBackgroundParams } from './background.js'
@@ -206,6 +208,16 @@ export interface CreatePluginAPIOptions {
   /** manifest contributes.permissions 原文(N1);同上,参数只为注入/测试留着。 */
   declaredPermissions?: string[]
   /**
+   * 这个进程当下那台资源内核(原子 K4-b)。
+   *
+   * 不传就现取当前装配实例的 `backend.resources` —— 与 `declaredPanelIds` 那一族
+   * 同一条:清单/内核本来就是唯一权威,这个参数只为注入/测试留着。
+   *
+   * 类型是**结构接口**而不是 `ResourceKernel`:`api.resources` 只用得到三格,
+   * 让这个参数的形状就说出这句话,顺手也让测试不必拉起一整台内核。
+   */
+  resources?: () => PluginResourceAccess | undefined
+  /**
    * core 的 API builder 自己那条日志出口(声明门拒绝、storage 拒绝、超时…)。
    * 不传就是 `plugins` 命名空间下按 pluginId 绑好的子 logger;参数只为注入/测试留着。
    */
@@ -232,6 +244,26 @@ export function narrowApiForLocalPlugin(api: PluginAPI): PluginAPI {
       : value
   }
   return narrowed as unknown as PluginAPI
+}
+
+/**
+ * 当前装配实例上那台资源内核,拿不到就 `undefined`(原子 K4-b)。
+ *
+ * 走 `getCurrentBackendInstance()` 而不是 `getCurrentBackendSafe()`,理由与
+ * `rpc/domains/resources.ts` 的 `kernel()` 逐字相同:内核是**实例字段**,不在
+ * `BackendHandle` 那张窄句柄上。`backend.resources` 在还没装到那一步时**抛**
+ * (`BackendNotAssembledError`),而这条路的调用方要的是「有就用」——
+ * 于是这里把那一抛折成 `undefined`,由 `createPluginResourceHostPorts` 回一句
+ * 结构化的「这台宿主没有资源内核」。
+ */
+function currentResourceKernel(): PluginResourceAccess | undefined {
+  const backend = getCurrentBackendInstance()
+  if (!backend) return undefined
+  try {
+    return backend.resources
+  } catch {
+    return undefined
+  }
 }
 
 export function createPluginAPI(
@@ -475,6 +507,15 @@ export function createPluginAPI(
       if (!llmScope) throw new PluginLlmError('unsupported', 'plugin model service is not bound to a backend')
       return llmScope.complete(options)
     },
+    /**
+     * 原子 K4-b:读 / 做 / 看三个动词。实现在 `./resources.ts` —— 主体
+     * (`system:plugin:<id>`)、预算、熔断四步套全在那里,core 只做声明门。
+     *
+     * 内核**现取**而不是构造期抓一份:它的寿命是一次装配,而插件跨得过它。
+     */
+    ...createPluginResourceHostPorts({
+      resources: options?.resources ?? currentResourceKernel,
+    }),
     /**
      * 横幅 + 可选一声(M1)。
      *

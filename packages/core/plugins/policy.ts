@@ -105,6 +105,13 @@ export const pluginScope = {
    * 哪一个在坏;降级则折成同一个 `credential-strategy:<policy>` surface。
    */
   credentialStrategy: (policy: string) => brand(`credentialStrategy:${policy}`),
+  /**
+   * 一次 `api.resources.read` / `.do`(原子 K4-b)。address = **scheme**,不是整条
+   * ref:连败要分得清是「这个插件碰 `session:` 这一族在持续坏」,而不是「它碰
+   * `session:abc` 这一条在坏」—— 后者会让每一个新地址都拿到一条崭新的连败账,
+   * 熔断永远攒不满(与 `searchProvide` 按 providerId 而不是按 query 记账同理)。
+   */
+  resourceCall: (scheme: string) => brand(`resourceCall:${scheme}`),
 } as const
 
 /**
@@ -200,6 +207,7 @@ export const PLUGIN_SCOPE_FAMILIES = [
   'search-provide',
   'deep-link',
   'credential-strategy',
+  'resource-call',
 ] as const
 
 export type PluginScopeFamily = (typeof PLUGIN_SCOPE_FAMILIES)[number]
@@ -348,6 +356,21 @@ export const PLUGIN_SEVERITY_TABLE: Record<PluginScopeFamily, PluginSeverityRule
       + '用户存下的 policy 字段也原样保留 —— 插件回来自动生效。没有"用户点重试"的'
       + '逃生口,靠时间半开(PLUGIN_SURFACE_PROBE_INTERVAL_MS)。',
   },
+  'resource-call': {
+    threshold: CORE_PLUGIN_FAILURE_THRESHOLD,
+    remedy: 'degrade-surface',
+    rationale: '插件对一个命名空间的读 / 做(原子 K4-b)坏掉只影响那一个命名空间:'
+      + '它对别的资源、以及它的工具/命令/面板/定时任务照常,整体禁用会把一次调用'
+      + '故障放大成插件故障。**这一族只记「压根没拿到结局」那种失败** —— 调用抛了、'
+      + '或者 30s 预算烧完(`PLUGIN_RESOURCE_CALL_TIMEOUT_MS`);内核回的 '
+      + '`Outcome.failed` / `denied` / `invalid` 一律**不记**,它们是管线给出的**答案**,'
+      + '插件当场看得见,而「读一条不存在的会话」这种稳态本来就该长期回 failed,'
+      + '把它算进连败等于让一个正常的轮询把自己关掉。连败三次说明这条路在持续'
+      + '拿不出答案,再让它每次吃满 30s 只是在给插件的每一次调用加延迟 —— 停掉'
+      + '**这一个命名空间**。闸不在请求通道上,而在装配层的调用口(与深链动作、'
+      + '凭证策略同规);没有"用户点重试"这种逃生口,靠时间半开'
+      + '(PLUGIN_SURFACE_PROBE_INTERVAL_MS)。',
+  },
 }
 
 /**
@@ -388,6 +411,9 @@ export function classifyPluginScope(scope: string): PluginScopeFamily | null {
   // 凭证策略(批 E):`credentialStrategy:` 与上面任何一个都不撞前缀
   // (`connector` / `register` 都不同头),放最后即可。
   if (scope.startsWith('credentialStrategy:')) return 'credential-strategy'
+  // 资源调用(原子 K4-b):`resourceCall:` 与上面任何一个都不撞前缀
+  // (`registration` 的 `register` 与它不同头),放最后即可。
+  if (scope.startsWith('resourceCall:')) return 'resource-call'
   return null
 }
 
@@ -488,7 +514,23 @@ export function describePluginSurface(scope: string): string {
   if (scope.startsWith('credentialStrategy:')) {
     return `credential-strategy:${scope.slice('credentialStrategy:'.length)}`
   }
+  // 资源调用(原子 K4-b):`resourceCall:<scheme>` 折成 `resource:<scheme>` —— 与
+  // pluginResourceSurface 是同一把尺,装配层的调用口据它短路(灰掉这个插件对这
+  // 一个命名空间的读 / 做,别的命名空间照常)。read 与 do 共用同一个 surface:
+  // 一个命名空间就是一块能力,坏了一起停 —— 与面板 render/action 折叠同理。
+  if (scope.startsWith('resourceCall:')) return `resource:${scope.slice('resourceCall:'.length)}`
   return scope
+}
+
+/**
+ * 一个插件对某个命名空间的读 / 做面(原子 K4-b)。
+ *
+ * 与 `pluginDeepLinkSurface` 同款:调用口据它问「灰着没有」,而 `describePluginSurface`
+ * 据 scope 折出同一个字符串 —— 两把尺必须是一把,否则降级写在 A 名下、短路查的是
+ * B 名,熔断就成了一条永远不生效的规则。
+ */
+export function pluginResourceSurface(scheme: string): string {
+  return `resource:${scheme}`
 }
 
 // ── 表二:注册表的拆除语义 ──────────────────────

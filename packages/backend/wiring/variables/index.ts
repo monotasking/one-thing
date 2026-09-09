@@ -38,6 +38,7 @@ import {
 	agentStoreGateway,
 	agentSelfGateway,
 	projectStoreGateway,
+	resourceStateVariableGateway,
 } from "./gateways.js";
 import {
 	formatStateVariablesForPrompt,
@@ -107,6 +108,10 @@ export function bootstrapVariableSystem(): () => Promise<void> {
 		goal: goalVariableGateway,
 		musicRadio: musicRadioGateway,
 		agentSelf: agentSelfGateway,
+		// K4-a:资源自述的 `state` 投影成只读 state 变量。gateway **晚绑定** ——
+		// 这一行跑在资源内核装配**之前**(`backend.ts` 里 :806 vs :852),所以它
+		// 读内核是在每次 `list()` 里读的,不是在这里抓一次句柄。
+		resourceState: resourceStateVariableGateway,
 		agentStore: agentStoreGateway,
 		projectStore: projectStoreGateway,
 		core: corePort,

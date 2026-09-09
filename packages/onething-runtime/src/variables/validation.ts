@@ -1,4 +1,9 @@
-import { RESERVED_NAMES, VARIABLE_LIMITS, VariableError, type ReservedName } from './types.js'
+import {
+  RESERVED_NAMES,
+  RESOURCE_STATE_VARIABLE_PREFIX,
+  VARIABLE_LIMITS,
+  VariableError,
+} from './types.js'
 
 const NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/
 
@@ -20,8 +25,19 @@ export function assertValidName(name: string): void {
   }
 }
 
-export function isReservedName(name: string): name is ReservedName {
+/**
+ * 系统占着的名字。两条判据,不是一条:
+ *   ① `RESERVED_NAMES` 那张静态表(名字是写死的:`workdir` / `goal` / …);
+ *   ② `RESOURCE_STATE_VARIABLE_PREFIX` 那条**前缀规则**(K4-a:名字按命名空间与
+ *      状态名现生成,静态表登记不了)。
+ *
+ * 返回值不再是 `name is ReservedName` 类型守卫:前缀命中的名字**不是**那个字面量
+ * 联合的成员,继续声明成守卫就是让类型说一句假话。全仓调用点(两处 store provider
+ * 的 `claims`、`channel-guard` 的过滤、`assertNotReserved`)读的都只是布尔。
+ */
+export function isReservedName(name: string): boolean {
   return (RESERVED_NAMES as readonly string[]).includes(name)
+    || name.startsWith(RESOURCE_STATE_VARIABLE_PREFIX)
 }
 
 export function assertNotReserved(name: string): void {

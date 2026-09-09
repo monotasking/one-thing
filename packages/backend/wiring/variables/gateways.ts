@@ -12,7 +12,11 @@
  */
 
 import type { ContextVariable } from '@shared/ipc.js'
+import type { ResourceKernel, StateScope } from '@onething/core/resource'
+import { systemPrincipal } from '@onething/core/permission'
 import * as store from '../../store.js'
+import { getCurrentBackendInstance } from '../../current.js'
+import { getEventBus } from '../../events/index.js'
 import { getProjectsStore } from '../project-dirs/index.js'
 import { resolveSessionSpaceId } from '../../stores/sessions.js'
 import { expandPath } from '../tools/core/sandbox.js'
@@ -24,6 +28,10 @@ import type { GlobalStoreGateway } from '@onething/runtime/variables/providers/g
 import type { GoalVariableGateway } from '@onething/runtime/variables/providers/goal'
 import type { KeyedStoreGateway } from '@onething/runtime/variables/providers/keyed-store'
 import type { MusicRadioGateway } from '@onething/runtime/variables/providers/music-radio'
+import type {
+  ResourceStateFact,
+  ResourceStateVariableGateway,
+} from '@onething/runtime/variables/providers/resource-state'
 import type { SessionStoreGateway } from '@onething/runtime/variables/providers/session-store'
 import type { WorkdirGateway } from '@onething/runtime/variables/providers/core'
 import type { NoteVarName, NotesGateway } from '@onething/runtime/variables/providers/notes'
@@ -347,6 +355,107 @@ export const agentSelfGateway: AgentSelfStateGateway = {
     }
 
     return { cards, rooms, dms }
+  },
+}
+
+// ── 资源自述 state → 变量(K4-a)──────────────────────
+// 它住在装配层因为只有这里认识那台资源内核;它**不认识任何命名空间** —— 名单、
+// 读法名、取址规则三样全从注册表上的自述现读。
+
+/**
+ * 这一格状态该读哪个地址。规则由自述的 `scope` 说(`core/resource/spec.ts` 的
+ * `StateScope`),这里只是把那句话拼成地址:
+ *
+ *   · `turn-origin` → `<scheme>:<这一回合的 sessionId>`;
+ *   · `singleton`(缺省)→ **拿不出地址**,回 `null`。单例的地址是那种资源自己取的
+ *     名字(`music:player`),不是一条能推导的规则,而 `ResourceKernel.read` 要一个
+ *     完整地址(`parseRef` 拒绝空路径)。今天零个 `singleton` + `turn` 的状态,所以
+ *     这条路是留账不是缺口 —— 见 `StateScope` 的注释。
+ */
+function stateRef(scheme: string, scope: StateScope | undefined, sessionId: string): string | null {
+  if (scope !== 'turn-origin') return null
+  return sessionId ? `${scheme}:${sessionId}` : null
+}
+
+/**
+ * 当前进程那台资源内核,或 `null`。
+ *
+ * **晚绑定是硬要求**:变量系统在 `backend.ts` 里装配于资源内核**之前**
+ * (`bootstrapVariableSystem()` 在 :806,`createResourceKernel` 在 :852),所以在
+ * 注册这只 gateway 的那一刻内核还不存在。装配期抓一次句柄 = 永远抓到 `undefined`。
+ */
+function resourceKernelOrNull(): ResourceKernel | null {
+  const backend = getCurrentBackendInstance()
+  if (!backend) return null
+  try {
+    return backend.resources
+  } catch {
+    // 装配还没走到那一步(或者已经 dispose 了)。变量板照常出,少这一批而已。
+    return null
+  }
+}
+
+export const resourceStateVariableGateway: ResourceStateVariableGateway = {
+  async listStates(sessionId) {
+    const kernel = resourceKernelOrNull()
+    if (!kernel) return []
+    const facts: ResourceStateFact[] = []
+    // `registry.list()` 已按 scheme 字典序;状态名再排一次 —— 同一台机器上这批变量
+    // 的产出顺序必须与装配顺序、与对象字面量的书写顺序都无关(变量板的逐字去重
+    // 是按整块比字节的)。
+    for (const spec of kernel.registry.list()) {
+      const states = spec.state
+      if (!states) continue
+      for (const name of Object.keys(states).sort()) {
+        const state = states[name]
+        const base = { scheme: spec.scheme, name, title: state.title, volatility: state.volatility }
+        const ref = state.volatility === 'turn' ? stateRef(spec.scheme, state.scope, sessionId) : null
+        if (!ref) {
+          // 值一格都不读:非 turn 的读法未必是纯内存的(`music.nowPlaying`),而
+          // 「provider 每回合跑,绝不能花一次子进程」是那条硬约束。声明照样交上去,
+          // 哪一档进提示词由 provider 判 —— 两处过滤各管一件事,不是同一条写了两遍。
+          facts.push(base)
+          continue
+        }
+        const outcome = await kernel.read(ref, state.read ?? name, {}, {
+          principal: systemPrincipal('variables'),
+          sessionId,
+        })
+        // 读不到就不投这一格(会话刚被删、守卫拒了、实现抛了)。一格读失败不该把
+        // 整块变量板连坐掉,所以这里既不抛也不落 error —— `ReadOutcome` 已经把
+        // 「为什么没有」说清楚了,而变量板要的答案只是「有没有」。
+        facts.push(outcome.kind === 'ok' ? { ...base, value: outcome.value } : base)
+      }
+    }
+    return facts
+  },
+
+  /**
+   * 状态变了就叫一声。
+   *
+   * 订的是**总线上的 `resource:event`**,不是内核那只 hub:注册这只 gateway 的时刻
+   * 内核还不存在(见 `resourceKernelOrNull`),而事件总线已经在了。事实是同一份 ——
+   * `wiring/resource/event-bridge.ts` 把 hub 上每一条原样转发上总线。
+   *
+   * 谁要重算,由**自述**说:地址的 scheme 上如果有 `turn-origin` 的 turn 状态,
+   * 那条地址的 path 就是会话 id(那正是 `turn-origin` 的定义),只重算那一条会话;
+   * 否则广播。这里因此仍然没有一个 scheme 名。
+   */
+  onChange(emit) {
+    let bus: ReturnType<typeof getEventBus> | undefined
+    try { bus = getEventBus() } catch { return () => {} }
+    return bus.onGlobal('resource:event', envelope => {
+      const ref = envelope.event.ref
+      const at = typeof ref === 'string' ? ref.indexOf(':') : -1
+      if (at <= 0) return
+      const scheme = ref.slice(0, at)
+      const path = ref.slice(at + 1)
+      const states = resourceKernelOrNull()?.registry.get(scheme)?.state
+      if (!states) return
+      const turnStates = Object.values(states).filter(state => state.volatility === 'turn')
+      if (turnStates.length === 0) return
+      emit(turnStates.every(state => state.scope === 'turn-origin') && path ? path : undefined)
+    })
   },
 }
 

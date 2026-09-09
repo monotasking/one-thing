@@ -74,6 +74,12 @@ export type DaemonMethod =
   | 'collab.setBudgets'
   | 'collab.roomUpdate'
   | 'collab.transcript'
+  // 原子 K4-b(`docs/design/atom-2026-09.md` §4「deeplink / CLI」):四支通用方法,
+  // **零个 scheme 名** —— 加一种资源不动这张表一个字,与 `resources` RPC 域同规。
+  | 'resource.list'
+  | 'resource.describe'
+  | 'resource.read'
+  | 'resource.do'
 
 export interface AskRequest {
   prompt: string

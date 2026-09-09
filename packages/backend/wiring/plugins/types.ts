@@ -155,6 +155,9 @@ export interface PluginAPI
  * `sendMessage` / `sessions` / `isIdle` / `llm`(sessions:* / llm:complete)、
  * `interceptInput` / `interceptToolCall` / `interceptToolResult`(input/toolcall/toolresult:intercept)、
  * `registerWorkspacePanel` / `registerUiSlot` / `theme`(面板 / 锚点块 / 外观靠声明定位)、
+ * `resources`(原子 K4-b 的读 / 做 / 看:三条 `resources:*` 声明门都在 manifest 里,
+ * 本地脚本没有清单去声明,于是这一格连挂都不挂 —— 它是"靠声明门的能力物理不挂"
+ * 这条规矩最新的一行,不是一次遗漏)、
  * `registerSearchProvider`(search:provide)、`registerIMConnector`(试点注册表)、
  * `registerRequestHandler` / `settings`(与 UI/清单面绑定)、`steer` / `followUp` /
  * 生命周期钩子 / prompt-context / skill root。

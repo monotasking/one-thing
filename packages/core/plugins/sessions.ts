@@ -28,6 +28,7 @@ import {
   PLUGIN_CREDENTIAL_STRATEGY_PERMISSION_NOTE,
   PLUGIN_PERMISSION_CREDENTIAL_STRATEGY,
 } from './credential-strategy.js'
+import { PLUGIN_RESOURCE_PERMISSION_NOTES } from './resources.js'
 
 /* ── 声明门(manifest contributes.permissions)───────────────────────────── */
 
@@ -165,6 +166,10 @@ export const PLUGIN_STORAGE_EXTERNAL_ROOT_PERMISSION_NOTE =
  */
 export const PLUGIN_PERMISSION_NOTES: Readonly<Record<string, string>> = {
   ...PLUGIN_SESSION_PERMISSION_NOTES,
+  // 原子 K4-b:读 / 做 / 看三条。事实源在 `resources.ts`(它也是零依赖叶子);
+  // 这里只把它并进聚合表 —— 那张表是渲染层 `describePluginPermission` 的唯一入口,
+  // 新权限加进来,装前确认页一行不用改就把它念给用户听。
+  ...PLUGIN_RESOURCE_PERMISSION_NOTES,
   [PLUGIN_PERMISSION_INPUT_INTERCEPT]: PLUGIN_INPUT_INTERCEPT_PERMISSION_NOTE,
   [PLUGIN_PERMISSION_TOOLCALL_INTERCEPT]: PLUGIN_TOOLCALL_INTERCEPT_PERMISSION_NOTE,
   [PLUGIN_PERMISSION_TOOLRESULT_INTERCEPT]: PLUGIN_TOOLRESULT_INTERCEPT_PERMISSION_NOTE,

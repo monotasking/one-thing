@@ -122,11 +122,65 @@ export interface EventSpec {
  */
 export type StateVolatility = 'stable' | 'turn' | 'live'
 
+/**
+ * 一格状态的地址从哪来(K4-a)。
+ *
+ * `state` 说的是「这种资源的哪一格值得主动喂给提示词」,而喂之前投影方得知道
+ * **喂哪一个实例的**。两种答案,不是两个开关:
+ *
+ *   · `singleton`   —— 这台机器上只有一个(播放器、剪贴板、一台电台)。地址由这种
+ *                      资源自己的坐标系说了算,投影方拿不出来 —— 见下面那段。
+ *   · `turn-origin` —— 一个实例对应一条会话,而**这一回合是从哪条会话里发起的**
+ *                      (`ResourceCallOptions.sessionId`,内核自己管它叫「发起坐标」,
+ *                      见 `kernel.ts` 的 `NO_ORIGIN_SESSION`)就是该喂的那一个。
+ *                      地址 = `<scheme>:<那条发起坐标>`。
+ *
+ * 缺省是 `singleton`,理由与 `ResourceSpec.state` 本身可选同一条:绝大多数资源
+ * 只有一个,让它们为一件不成立的事写一格是噪音。
+ *
+ * ## 为什么名字里不出现任何一种资源
+ *
+ * 第一版这一格叫「按会话分」,把那三个字直译成英文写进字面量,当场被
+ * `__tests__/stranger.test.ts` 抓红:那个词的后半截**逐字就是今天第一个真命名空间
+ * 的名字**,而内核不许提任何能力的名字(§2 不变量 3)。这不是误伤 —— 一个叫
+ * 「按 xxx 分」的枚举值,读起来就是内核认识 xxx。`turn-origin` 说的是同一件事,
+ * 用的是内核**自己**的词(发起坐标,见 `kernel.ts` 的 `NO_ORIGIN_SESSION`)。
+ *
+ * 同理这一格不叫「要不要 ref」:那是按**投影方**的坐标系命名的
+ * (「要不要塞一个会话 id 进去」),于是每加一种取址方式就要在内核的类型里多一个
+ * 枚举值。这一格反过来 —— 它说的是**这种资源自己**的实例学(一个,还是一条会话
+ * 一个),取址是读表的人按这句话推出来的。
+ *
+ * ## `singleton` + `turn` 今天喂不出去,而这是自觉的
+ *
+ * `ResourceKernel.read` 要一个**完整地址**(`parseRef` 拒绝空路径),而 `singleton`
+ * 这句话本身不含路径 —— 一种单例资源的地址是它自己取的那个名字,那是它的坐标系,
+ * 不是一条能被内核推导的规则。所以今天的投影只喂 `turn-origin` 的那一档;第一个
+ * `singleton` + `turn` 的状态出现时,该补的是「这种资源的单例地址是什么」这一格,
+ * 而不是让投影方去猜。今天零个这样的状态,所以这是留账不是缺口 —— K4-a 的装配级
+ * 用例把这句话钉住了。
+ */
+export type StateScope = 'singleton' | 'turn-origin'
+
 /** 哪些读法值得主动喂给提示词,以及多勤地喂。 */
 export interface StateSpec {
   readonly title: string
   readonly schema: JsonSchema
   readonly volatility: StateVolatility
+  /**
+   * 用**哪一条读法**把这格状态的值取回来。缺席 = 与这格状态同名的那条读法。
+   *
+   * 这一格在 K4-a 之前不存在,于是「`state` 里写着 `current`,值从哪来」只有一个
+   * 答案:同名的读法。会话那份自述当场证明那不够 —— 它的状态叫 `current`,而给出
+   * 那份摘要的读法叫 `get`。同名约定继续当缺省(绝大多数资源会让两者同名),但
+   * 「不同名」必须说得出口,否则那种资源就只能改自己读法的名字去迁就投影方。
+   *
+   * 契约校验会查它**指向一条真实存在的读法**:一个指空的 `read` 在登记时是可查的
+   * 拼写错误,到了投影期就只剩一格安静消失的状态。
+   */
+  readonly read?: string
+  /** 这格状态属于哪一个实例(见 `StateScope`)。缺省 `singleton`。 */
+  readonly scope?: StateScope
 }
 
 /**

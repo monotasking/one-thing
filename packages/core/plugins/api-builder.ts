@@ -106,6 +106,17 @@ import type {
   CorePluginToolDefinition,
   CorePluginToolResult,
 } from './types.js'
+import {
+  PLUGIN_PERMISSION_RESOURCES_DO,
+  PLUGIN_PERMISSION_RESOURCES_READ,
+  PLUGIN_PERMISSION_RESOURCES_WATCH,
+  type PluginResourcesApi,
+} from './resources.js'
+import type { ResourceEvent } from '../resource/events.js'
+import { ReadOutcome } from '../resource/read-outcome.js'
+import type { ReadOutcome as ReadOutcomeValue } from '../resource/read-outcome.js'
+import { Outcome } from '../toolkit/outcome.js'
+import type { Outcome as OutcomeValue } from '../toolkit/outcome.js'
 
 /** @deprecated 统一为 `Logger`(§8.3 区 ①);过渡期仍收老鸭子形状。 */
 export type CorePluginAPILogger = CompatLogger
@@ -266,6 +277,36 @@ export interface CorePluginAPIHost<
    * `api.llm.complete` 抛 `PluginLlmError('unsupported')`,而不是静默假装成功。
    */
   llmComplete?(pluginId: string, options: PluginLlmCompleteOptions): Promise<PluginLlmCompleteResult>
+  /**
+   * 原子三个动词的落点(K4-b)。**三个都可缺席** —— 缺席 = 这台宿主没有资源内核
+   * (headless / server / 测试替身),core 据此回结构化拒绝而不是静默假装成功。
+   *
+   * core 在这一层只做三件事:晚到闸、声明门、把地址原样递下去。**主体、超时、
+   * 熔断、命名空间许可一个字都不在这里** —— 它们各自要认识的东西(`Principal` 的
+   * 铸法、内核的 `ResourceCallOptions`、健康账本)全住在装配层,与
+   * `registerDeepLinkAction` / `llmComplete` 逐字同一条分工。
+   *
+   * 特别地:core **不解析 `ref`**。地址语法归 `core/resource/ref.ts`,而这只
+   * 插件面连一个 scheme 名都不该认识(§2 不变量 3 在插件出口上的同一句话)。
+   */
+  readResource?(
+    pluginId: string,
+    ref: string,
+    name: string,
+    query: Record<string, unknown>,
+  ): Promise<ReadOutcomeValue>
+  doResource?(
+    pluginId: string,
+    ref: string,
+    op: string,
+    params: Record<string, unknown>,
+  ): Promise<OutcomeValue>
+  /** 返回退订函数。前缀非法时**抛** —— 见 `api.resources.watch` 的注释。 */
+  watchResources?(
+    pluginId: string,
+    prefix: string,
+    listener: (event: ResourceEvent) => void,
+  ): () => void
 }
 
 export interface CreateCorePluginAPIOptions<
@@ -884,6 +925,111 @@ export function createCorePluginAPI<
         })
       },
     },
+
+    /**
+     * 原子的三个动词(K4-b)。
+     *
+     * 这一段刻意**短**:它做的全部事情是「晚到闸 → 声明门 → 转手」。没有一句
+     * 「如果是 session 就……」,没有一处 `ref.split(':')` —— 插件面与内核同一条
+     * 纪律(§2 不变量 3:内核不认识任何 scheme)。
+     *
+     * 拒绝一律用内核自己的词(`denied`),理由写在 `resources.ts` 的
+     * `PluginResourcesApi` 注释里:同一次「规则不让」在插件眼里不该有两个名字。
+     */
+    resources: {
+      async read(
+        ref: string,
+        name: string,
+        query: Record<string, unknown> = {},
+      ): Promise<ReadOutcomeValue> {
+        if (rejectLateCall('resources.read')) {
+          return ReadOutcome.denied('plugin was disposed')
+        }
+        if (!declaredPermissions.has(PLUGIN_PERMISSION_RESOURCES_READ)) {
+          logger.error(
+            `[Plugin:${pluginId}] resources.read requires "${PLUGIN_PERMISSION_RESOURCES_READ}" in `
+            + 'contributes.permissions (plugin.json). Declare it first — the install page shows it to the user.',
+            undefined,
+          )
+          return ReadOutcome.denied(PLUGIN_PERMISSION_RESOURCES_READ)
+        }
+        if (!host.readResource) {
+          return ReadOutcome.denied('this host has no resource kernel')
+        }
+        // 转手之后**不 try/catch**:装配层那一侧已经把抛出物折成结局(它同时要
+        // 记熔断,而记账要在离故障最近的地方做)。这里再包一层只会让同一次失败
+        // 有两个产地,而其中一个不记账。
+        return host.readResource(pluginId, String(ref ?? ''), String(name ?? ''), query ?? {})
+      },
+      async do(
+        ref: string,
+        op: string,
+        params: Record<string, unknown> = {},
+      ): Promise<OutcomeValue> {
+        if (rejectLateCall('resources.do')) {
+          return Outcome.denied('plugin was disposed')
+        }
+        if (!declaredPermissions.has(PLUGIN_PERMISSION_RESOURCES_DO)) {
+          logger.error(
+            `[Plugin:${pluginId}] resources.do requires "${PLUGIN_PERMISSION_RESOURCES_DO}" in `
+            + 'contributes.permissions (plugin.json) — it changes the user\'s things, so it is its own '
+            + 'declaration and the install page reads it out.',
+            undefined,
+          )
+          return Outcome.denied(PLUGIN_PERMISSION_RESOURCES_DO)
+        }
+        if (!host.doResource) {
+          return Outcome.denied('this host has no resource kernel')
+        }
+        return host.doResource(pluginId, String(ref ?? ''), String(op ?? ''), params ?? {})
+      },
+      /**
+       * 看住一个前缀。
+       *
+       * 前缀非法时事件总线是**抛**的(它的头注释:「一个静默失效的订阅是最难查的
+       * 那种 bug」)。插件面不把这句抛给插件 —— `api.*` 的既有口径是不抛错 ——
+       * 但也不能把它变成沉默:记一条按插件归因的 `error`,返回一个诚实的空退订。
+       * 于是插件作者在日志里第一时间看得见,而它的 entry 不会因此炸掉。
+       *
+       * **不计熔断**:前缀写错是作者的一次笔误,与声明门同规。
+       */
+      watch(prefix: string, listener: (event: ResourceEvent) => void): () => void {
+        if (rejectLateCall('resources.watch')) return () => {}
+        if (!declaredPermissions.has(PLUGIN_PERMISSION_RESOURCES_WATCH)) {
+          logger.error(
+            `[Plugin:${pluginId}] resources.watch requires "${PLUGIN_PERMISSION_RESOURCES_WATCH}" in `
+            + 'contributes.permissions (plugin.json).',
+            undefined,
+          )
+          return () => {}
+        }
+        if (!host.watchResources) {
+          logger.error(`[Plugin:${pluginId}] resources.watch: this host has no resource kernel.`, undefined)
+          return () => {}
+        }
+        if (typeof listener !== 'function') {
+          logger.error(`[Plugin:${pluginId}] resources.watch: listener must be a function.`, undefined)
+          return () => {}
+        }
+        try {
+          const unsub = host.watchResources(pluginId, String(prefix ?? ''), event => {
+            // 与 `api.on` 逐字同一条:拆除之后到达的事实不再进插件。退订本身排在
+            // `unsubs` 里由拆除流程撤,这一句挡的是「撤销之前最后那几毫秒」。
+            if (state.disposed) return
+            try {
+              listener(event)
+            } catch (error) {
+              logger.error(`[Plugin:${pluginId}] resources.watch listener error:`, undefined, error)
+            }
+          })
+          unsubs.push(unsub)
+          return unsub
+        } catch (error) {
+          logger.error(`[Plugin:${pluginId}] resources.watch(${String(prefix)}) was refused:`, undefined, error)
+          return () => {}
+        }
+      },
+    } satisfies PluginResourcesApi,
 
     registerCommand(name: string, options: TCommandOptions): void {
       if (rejectLateCall('registerCommand')) return

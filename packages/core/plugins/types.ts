@@ -18,6 +18,7 @@ import type {
   PluginSessionPeekLite,
 } from './sessions.js'
 import type { PluginLlmCompleteOptions, PluginLlmCompleteResult } from './llm.js'
+import type { PluginResourcesApi } from './resources.js'
 
 /**
  * 声明先于代码(设计文档 §4.2 宪法第 3 条)。
@@ -518,6 +519,20 @@ export interface CorePluginAPI<
   llm: {
     complete(options: PluginLlmCompleteOptions): Promise<PluginLlmCompleteResult>
   }
+  /**
+   * 原子的三个动词(K4-b,`docs/design/atom-2026-09.md` §4「调度 / 网关 / 插件」)。
+   *
+   * 它与上面那一串**不是同级的一条**:`sendMessage` / `sessions` / `isIdle` 是
+   * 「会话」这一种资源被手写出来的三只口,而 `resources` 是**任何**一种资源的
+   * 三个动词 —— 邮件、目录、音乐、别的插件贡献的命名空间,一个新方法都不加。
+   * 手写的那几只留着不动(它们的语义比 `do(session:…, 'send')` 更窄也更准),
+   * 但从这里之后,新能力不该再长出第四只手写口。
+   *
+   * 三条声明门(`resources:read` / `resources:do` / `resources:watch`)各管一个
+   * 动词;未声明 = 结构化拒绝(`denied`),不抛错、不计熔断。宿主没接这条线
+   * (headless / server)时同样是结构化拒绝,而不是静默假装成功。
+   */
+  resources: PluginResourcesApi
   registerCommand(name: string, options: TCommandOptions): void
   registerPromptContextProvider(id: string, provider: TPromptContextProvider): void
   beforeContextCompact(id: string, hook: TBeforeContextCompactHook): void

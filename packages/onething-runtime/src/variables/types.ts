@@ -135,6 +135,21 @@ export function isCapabilityVariable(name: string): boolean {
   return (CAPABILITY_VARIABLE_NAMES as readonly string[]).includes(name.trim())
 }
 
+/**
+ * 资源自述 `state` 投影出来的变量名前缀(K4-a,`docs/design/atom-2026-09.md` §4
+ * 「提示词」那一行)。
+ *
+ * 这些变量的名字是**按命名空间与状态名现生成**的(`resource_session_current`),
+ * 所以下面那张 `RESERVED_NAMES` 静态表登记不了它们 —— 登记得了的只有这条**前缀
+ * 规则**。它挡的是一次真实的事故形状:用户或模型自建一个同名变量,`registry.list`
+ * 当场以 `PROVIDER_CONFLICT` 抛出,整块变量板连带没了。
+ *
+ * 为什么是一个独立的字面前缀,而不是「以某个已登记的 scheme 名打头」:后者要校验
+ * 器去认识注册表(产品层的一只纯函数去问装配层的一张表),而且会顺手把
+ * `session_notes` 这种正当的用户变量一起判死。一个前缀,一条规则,零个 scheme 名。
+ */
+export const RESOURCE_STATE_VARIABLE_PREFIX = 'resource_'
+
 export const RESERVED_NAMES = Object.freeze([
   'workdir',
   'cwd',

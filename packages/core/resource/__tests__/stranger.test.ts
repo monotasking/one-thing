@@ -82,6 +82,16 @@ const strangerSpec: ResourceSpec = {
       query: { type: 'object', properties: { id: { type: 'string' } } },
       result: { type: 'object' },
     },
+    /**
+     * K4-a:`state` 那一格说的是「哪些**读法**值得主动喂给提示词」,所以它得指得到
+     * 一条真读法(契约现在查这一句)。演练题因此长出这一条 —— 那仍然是**能力自己
+     * 模块里的一行**,内核零改动,§8 的答案没变。
+     */
+    unread: {
+      title: 'How many unread messages there are',
+      query: { type: 'object', properties: {} },
+      result: { type: 'number' },
+    },
   },
   ops: {
     send: {
@@ -104,6 +114,8 @@ const strangerSpec: ResourceSpec = {
     received: { title: 'A message arrived', payload: { type: 'object' } },
   },
   state: {
+    // `read` 缺席 = 与状态同名的那条读法(上面那条);`scope` 缺席 = `singleton`
+    // —— 一个邮箱一台机器上只有一个,不必写。两个缺省都在这里被真的用上。
     unread: { title: 'Unread count', schema: { type: 'number' }, volatility: 'turn' },
   },
 }

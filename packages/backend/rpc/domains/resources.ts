@@ -84,10 +84,15 @@ function shells(): ShellMountRegistry {
  * 一份自述 → 可序列化投影。函数(`when` / `describe`)在这里被丢掉,只留一格
  * `whenGated` —— 理由在 `@shared/ipc/resources.ts` 的头注释。
  *
+ * **导出而不是私有**(K4-b):CLI 那条出口(daemon 的四支 `resource.*`)投的是
+ * 同一份形状。§4 那张表要求每个出口都是**同一份自述的投影**,而两份手抄的投影
+ * 早晚会在某一格上分岔 —— 到那天壳看得见 `keymap` 而 CLI 看不见,而没有任何一道
+ * 门会红。所以这三只是三个出口共用的一份,不是 RPC 域私有的。
+ *
  * 键按字典序遍历,与 `schema.ts` 生成 AI 工具契约时同一个理由:同一份自述换个
  * 书写顺序不该换一份投影(那会让命令面板的排序取决于谁先敲了哪一行)。
  */
-function serializeSpec(spec: ResourceSpec): SerializedResourceSpec {
+export function serializeSpec(spec: ResourceSpec): SerializedResourceSpec {
   const reads: Record<string, SerializedReadSpec> = {}
   for (const name of Object.keys(spec.reads).sort()) {
     const read = spec.reads[name]
@@ -139,7 +144,7 @@ function textOf(result: Result): string {
   return resultToText(result)
 }
 
-function serializeOutcome(outcome: Outcome): ResourceOutcomeView {
+export function serializeOutcome(outcome: Outcome): ResourceOutcomeView {
   switch (outcome.kind) {
     case 'ok':
       return { kind: 'ok', text: textOf(outcome.result) }
@@ -159,7 +164,7 @@ function serializeOutcome(outcome: Outcome): ResourceOutcomeView {
 }
 
 /** `ReadOutcome` → 可序列化投影(K2c-2)。四支,`ok` 直接带值。 */
-function serializeReadOutcome(outcome: ReadOutcome): ResourceReadView {
+export function serializeReadOutcome(outcome: ReadOutcome): ResourceReadView {
   switch (outcome.kind) {
     case 'ok':
       return { kind: 'ok', value: outcome.value }

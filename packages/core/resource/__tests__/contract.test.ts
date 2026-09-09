@@ -55,7 +55,11 @@ describe('resource spec contract', () => {
         },
       },
       events: { changed: { title: 'Changed', payload: anySchema } },
-      state: { count: { title: 'Count', schema: anySchema, volatility: 'turn' } },
+      // K4-a:`read` / `scope` 两格也算「fully populated」。`read` 指着上面那条
+      // `get` —— 状态名与读法名不同名正是这一格存在的理由。
+      state: {
+        count: { title: 'Count', schema: anySchema, volatility: 'turn', read: 'get', scope: 'turn-origin' },
+      },
     }
     expect(describeResourceSpecProblem(spec)).toBeNull()
   })
@@ -204,6 +208,57 @@ describe('resource spec contract', () => {
     ).toEqual({ kind: 'bad-volatility', scheme: 'demo', name: 'count', volatility: 'hot' })
   })
 
+  /**
+   * K4-a —— 一格状态必须**指得到一条真读法**,缺席时那条读法与状态同名。
+   *
+   * 为什么是硬错而不是「投影期悄悄跳过」:`StateSpec` 说的就是「哪些**读法**值得
+   * 主动喂给提示词」,一格指不到读法的状态是一句自相矛盾的自述。登记时它是一次
+   * 可查的拼写错误;放到投影期,它只剩一格安静消失的变量。
+   */
+  it('reports bad-state-read: an explicit read that names nothing, a non-string, and the missing same-name default', () => {
+    const reads = { get: { title: 'Get one', query: anySchema, result: anySchema } }
+    const state = (extra: Record<string, unknown>) => ({
+      count: { title: 'C', schema: anySchema, volatility: 'turn', ...extra },
+    })
+    expect(describeResourceSpecProblem(baseSpec({ reads, state: state({ read: 'nope' }) }))).toEqual({
+      kind: 'bad-state-read', scheme: 'demo', name: 'count', read: 'nope',
+    })
+    expect(describeResourceSpecProblem(baseSpec({ reads, state: state({ read: 7 }) }))).toEqual({
+      kind: 'bad-state-read', scheme: 'demo', name: 'count', read: 7,
+    })
+    // 缺席的 `read` = 「与状态同名的那条读法」,而这份自述里没有 `count`。
+    expect(describeResourceSpecProblem(baseSpec({ reads, state: state({}) }))).toEqual({
+      kind: 'bad-state-read', scheme: 'demo', name: 'count', read: undefined,
+    })
+    // 同名的读法在,就不必写 `read`。
+    expect(
+      describeResourceSpecProblem(
+        baseSpec({
+          reads: { count: { title: 'Count', query: anySchema, result: anySchema } },
+          state: state({}),
+        }),
+      ),
+    ).toBeNull()
+    // 原型链上的名字不算读法(`opOf` / `readOf` 那条 own-property 判据的同一句话)。
+    expect(describeResourceSpecProblem(baseSpec({ reads, state: state({ read: 'toString' }) }))).toEqual({
+      kind: 'bad-state-read', scheme: 'demo', name: 'count', read: 'toString',
+    })
+  })
+
+  it('reports bad-state-scope, and accepts both members plus absence', () => {
+    const reads = { count: { title: 'Count', query: anySchema, result: anySchema } }
+    const withScope = (scope?: unknown) => baseSpec({
+      reads,
+      state: { count: { title: 'C', schema: anySchema, volatility: 'turn', ...(scope === undefined ? {} : { scope }) } },
+    })
+    expect(describeResourceSpecProblem(withScope('per-window'))).toEqual({
+      kind: 'bad-state-scope', scheme: 'demo', name: 'count', scope: 'per-window',
+    })
+    expect(describeResourceSpecProblem(withScope('singleton'))).toBeNull()
+    expect(describeResourceSpecProblem(withScope('turn-origin'))).toBeNull()
+    expect(describeResourceSpecProblem(withScope())).toBeNull()
+  })
+
   it('reports only the first problem, in an order that does not depend on how the spec was written', () => {
     // spec 本体的问题排在成员之前。
     expect(
@@ -254,11 +309,13 @@ describe('resource spec contract', () => {
       { kind: 'bad-home', scheme: 'demo', name: 'act', home: 'server' },
       { kind: 'bad-volatility', scheme: 'demo', name: 'count', volatility: 'hot' },
       { kind: 'bad-hook', scheme: 'demo', name: 'act', field: 'when' },
+      { kind: 'bad-state-read', scheme: 'demo', name: 'count', read: 'nope' },
+      { kind: 'bad-state-scope', scheme: 'demo', name: 'count', scope: 'per-window' },
     ] as const
     for (const problem of problems) {
       expect(formatResourceSpecProblem(problem), problem.kind).toBeTruthy()
     }
-    // 十支 = 联合的全部分支。少一支这条就该改。
-    expect(new Set(problems.map(item => item.kind)).size).toBe(10)
+    // 十二支 = 联合的全部分支。少一支这条就该改。
+    expect(new Set(problems.map(item => item.kind)).size).toBe(12)
   })
 })

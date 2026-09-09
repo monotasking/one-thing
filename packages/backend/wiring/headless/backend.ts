@@ -57,6 +57,18 @@ import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { sessionReads } from '../../session/reads.js'
 import { getStreamEngine } from '../engine/index.js'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
+import { localUserPrincipal } from '@onething/core/permission'
+import {
+  serializeOutcome,
+  serializeReadOutcome,
+  serializeSpec,
+} from '../../rpc/domains/resources.js'
+import type {
+  ListResourcesResponse,
+  ResourceOutcomeView,
+  ResourceReadView,
+  SerializedResourceSpec,
+} from '@shared/ipc/resources.js'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import type { BindableOnethingStreamSender } from '@onething/runtime/stream-sender'
@@ -409,6 +421,75 @@ export class HeadlessBackend {
     await layer.deletion.delete(sessionId, ids, targets => {
       layer.access.resolveAll(DESKTOP_RPC_CONTEXT, targets, 'delete')
     })
+  }
+
+  // ── 资源:读 / 做 / 看(原子 K4-b,`docs/design/atom-2026-09.md` §4 「CLI」一行)──
+
+  /*
+   * 四只转发口,加起来做**两件事**:铸主体、把调用交给 `backend.resources`,
+   * 然后按 RPC 域那三只 `serialize*` 投一次影。
+   *
+   * ## 主体:`localUserPrincipal()`
+   *
+   * CLI 是**本机进程** —— 它拿的是 `<store>/run/daemon.sock`(0600)上的一条连接,
+   * 能连上就已经是这台机器上的那个人。这与 `rpc/principal.ts` 第一条判据
+   * (`isHostLocallyTrusted()` → `localUserPrincipal()`)说的是同一句话,只是
+   * daemon 走的不是 HTTP 面、没有 `RpcDispatchContext` 可问,所以不复用那只函数
+   * (复用它得先给它编一个假 context —— 那是把「谁在做」变成一次伪造练习)。
+   *
+   * ## 投影复用 RPC 域那三只
+   *
+   * §4 那张表要求每个出口都是**同一份自述的投影**。两份手抄的投影早晚在某一格上
+   * 分岔,而没有任何一道门会红 —— 所以这里 import 的是 `rpc/domains/resources.ts`
+   * 导出的同一批函数,不是抄一份。
+   *
+   * ## 发起坐标缺席
+   *
+   * `sessionId` 是**发起坐标**,不是操作对象。`onething resource do session:<id> rename`
+   * 不是从任何一条会话里发起的,拿 ref 里那条顶上就是 K1 留账那个病(审计读成
+   * 「A 自己改了自己」)。`--session` 给了才带 —— 那是「我这次是替某条会话做的」。
+   */
+
+  listResources(): ListResourcesResponse {
+    return {
+      schemes: this.ownedBackend.resources.registry
+        .list()
+        .map(spec => ({ scheme: spec.scheme, title: spec.title })),
+    }
+  }
+
+  describeResource(scheme: string): SerializedResourceSpec {
+    const spec = this.ownedBackend.resources.registry.get(scheme)
+    // 抛而不是回 null,与 RPC 域逐字同一条:「没有这种资源」与「有,但它什么都
+    // 不能做」是两件事,后者是一份空表。NDJSON 那一层把它折成 `{type:'error'}`。
+    if (!spec) throw new Error(`No resource is registered for scheme: ${scheme}`)
+    return serializeSpec(spec)
+  }
+
+  async readResource(
+    ref: string,
+    name: string,
+    query: Record<string, unknown> = {},
+    sessionId?: string,
+  ): Promise<ResourceReadView> {
+    const outcome = await this.ownedBackend.resources.read(ref, name, query, {
+      principal: localUserPrincipal(),
+      ...(sessionId ? { sessionId } : {}),
+    })
+    return serializeReadOutcome(outcome)
+  }
+
+  async doResource(
+    ref: string,
+    op: string,
+    params: Record<string, unknown> = {},
+    sessionId?: string,
+  ): Promise<ResourceOutcomeView> {
+    const outcome = await this.ownedBackend.resources.do(ref, op, params, {
+      principal: localUserPrincipal(),
+      ...(sessionId ? { sessionId } : {}),
+    })
+    return serializeOutcome(outcome)
   }
 
   // ── Collab (multi-agent rooms) — docs/design/multi-agent-collab.md ──

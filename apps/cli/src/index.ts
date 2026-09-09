@@ -9,6 +9,11 @@ import type { AskOutputEvent, DaemonStreamEvent } from '@shared/cli/protocol.js'
 import { ensureDaemon, tryConnect, spawnDaemon } from './daemon-client.js'
 import { assertSupportedPlatform, ensureRuntimeDirs, getCliRuntimePaths } from './paths.js'
 import { stdout, stderr } from './stdout.js'
+// 静态 import,与 `trace-command` / `plugin-command` 的纪律同一条(见那两个文件的
+// 头注):cli 与 Electron 主进程在同一张 rollup 图里,动态 import 会把整个主进程包
+// 拽进这个纯 node 进程。`resource-command.ts` 只吃 `@shared/ipc/resources`(纯类型)
+// 与 `./stdout.js`,静态引它一个字节都不多带。
+import { resourceCommand } from './resource-command.js'
 
 interface ParsedArgs {
   args: string[]
@@ -67,6 +72,9 @@ async function main(): Promise<void> {
     case 'collab':
       await collabCommand(command, rest, parsed)
       break
+    case 'resource':
+      await runResourceCommand(command, rest, parsed)
+      break
     case 'trace': {
       // 第二个不经 daemon 的 scope(理由见 trace-command.ts 的头注):轨迹的
       // 事实是一个纯追加文件,读它不该要求引擎活着 —— 排障时引擎往往正是
@@ -88,6 +96,32 @@ async function main(): Promise<void> {
       break
     default:
       throw new Error(`Unknown command: ${scope}`)
+  }
+}
+
+/**
+ * 资源:读 / 做 / 看(原子 K4-b)。
+ *
+ * 走 daemon:资源内核是**装配产物**(`backend.resources`),不是一个能在进程外读的
+ * 文件 —— 与 `trace` / `plugin` 那两个离线 scope 不同,这一条天然要求引擎活着
+ * (读一条会话的摘要就是要那台内核)。
+ *
+ * 退出码由 `resourceCommand` 说:一次被拒的 `do` 要让 `&& 下一条` 停下来。
+ * `0` 时不写 `process.exitCode` —— 写 `0` 与不写在语义上相同,但不写才不会把
+ * 一个别处已经置过的失败码抹掉。
+ */
+async function runResourceCommand(command: string | undefined, rest: string[], parsed: ParsedArgs): Promise<void> {
+  const client = await ensureDaemon({ storePath: parsed.storePath })
+  try {
+    const code = await resourceCommand(command, rest, {
+      ...(parsed.flags.json ? { json: true } : {}),
+      ...(stringFlag(parsed, 'query') !== undefined ? { query: stringFlag(parsed, 'query') } : {}),
+      ...(stringFlag(parsed, 'params') !== undefined ? { params: stringFlag(parsed, 'params') } : {}),
+      ...(stringFlag(parsed, 'session') !== undefined ? { session: stringFlag(parsed, 'session') } : {}),
+    }, client)
+    if (code !== 0) process.exitCode = code
+  } finally {
+    client.close()
   }
 }
 
@@ -635,6 +669,10 @@ Usage:
   onething plugin list
   onething plugin uninstall <id | package name>
   onething trace <sessionId> [--run <id> | --last] [--json] [--response <requestIndex>]
+  onething resource list
+  onething resource describe <scheme>
+  onething resource read <ref> <name> [--query '<json>'] [--session <id>] [--json]
+  onething resource do <ref> <op> [--params '<json>'] [--session <id>] [--json]
 
 Global:
   --store <path>  Use a non-default store directory
@@ -648,6 +686,12 @@ Notes:
   trace reads <store>/sessions/<id>/events.jsonl directly (no daemon needed) and
   never writes. --response prints the assistant text of one request, folded from
   the recorded chunks.
+
+  resource is the one generic surface over every namespace (session, dir, music,
+  …): list names them, describe prints one namespace's reads/ops/events, and
+  read/do go through the same pipeline the UI and the model use — so a do can ask
+  for permission and is written to the audit ledger. --json prints exactly what
+  the RPC face returns. A non-ok read/do exits 1.
 
   plugin commands only edit the npm ledger under <store>/plugins — plugins run on
   the desktop host, so a running desktop app needs Settings → Plugins → Refresh

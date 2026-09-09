@@ -83,6 +83,10 @@ export type ResourceSpecProblem =
       readonly name: string
       readonly field: 'when' | 'describe'
     }
+  /** `state.read` 不是字符串,或者指着一条这份自述里没有的读法。 */
+  | { readonly kind: 'bad-state-read'; readonly scheme: string; readonly name: string; readonly read: unknown }
+  /** `state.scope` 不是 `singleton` / `turn-origin`。 */
+  | { readonly kind: 'bad-state-scope'; readonly scheme: string; readonly name: string; readonly scope: unknown }
 
 export class ResourceSpecError extends Error {
   readonly problem: ResourceSpecProblem
@@ -120,6 +124,10 @@ export function formatResourceSpecProblem(problem: ResourceSpecProblem): string 
       return `resource spec ${problem.scheme}: state ${problem.name}.volatility must be 'stable', 'turn' or 'live'`
     case 'bad-hook':
       return `resource spec ${problem.scheme}: op ${problem.name}.${problem.field} must be a function`
+    case 'bad-state-read':
+      return `resource spec ${problem.scheme}: state ${problem.name}.read ${JSON.stringify(problem.read)} names no read of this resource`
+    case 'bad-state-scope':
+      return `resource spec ${problem.scheme}: state ${problem.name}.scope must be 'singleton' or 'turn-origin'`
   }
 }
 
@@ -173,7 +181,7 @@ export function describeResourceSpecProblem(spec: unknown): ResourceSpecProblem 
   if (state !== undefined) {
     if (!isJsonObject(state)) return { kind: 'not-object', where: 'state' }
     for (const name of sortedKeys(state)) {
-      const problem = checkState(scheme, name, state[name])
+      const problem = checkState(scheme, name, state[name], reads)
       if (problem) return problem
     }
   }
@@ -227,7 +235,12 @@ function checkOp(scheme: string, name: string, entry: unknown): ResourceSpecProb
   return null
 }
 
-function checkState(scheme: string, name: string, entry: unknown): ResourceSpecProblem | null {
+function checkState(
+  scheme: string,
+  name: string,
+  entry: unknown,
+  reads: Record<string, unknown>,
+): ResourceSpecProblem | null {
   const shared = checkEntry(scheme, 'state', name, entry, ['schema'])
   if (shared) return shared
   const record = entry as Record<string, unknown>
@@ -235,6 +248,25 @@ function checkState(scheme: string, name: string, entry: unknown): ResourceSpecP
   if (volatility !== 'stable' && volatility !== 'turn' && volatility !== 'live') {
     return { kind: 'bad-volatility', scheme, name, volatility }
   }
+
+  // K4-a:`read` 缺席 = 与状态同名的那条读法,所以「缺席」与「写了个存在的名字」
+  // 是同一件事的两种写法,两种都要真的指得到一条读法。一个指空的 `read` 在登记时
+  // 是拼写错误,到了投影期就只剩一格安静消失的状态 —— 与 `unknown-effect` 那条
+  // 「不许一份说谎的自述长期存在」同一条纪律。
+  const read = record.read
+  if (read !== undefined) {
+    if (typeof read !== 'string' || !Object.prototype.hasOwnProperty.call(reads, read)) {
+      return { kind: 'bad-state-read', scheme, name, read }
+    }
+  } else if (!Object.prototype.hasOwnProperty.call(reads, name)) {
+    return { kind: 'bad-state-read', scheme, name, read: undefined }
+  }
+
+  const scope = record.scope
+  if (scope !== undefined && scope !== 'singleton' && scope !== 'turn-origin') {
+    return { kind: 'bad-state-scope', scheme, name, scope }
+  }
+
   return null
 }
 

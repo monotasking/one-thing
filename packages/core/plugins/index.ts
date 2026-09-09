@@ -157,6 +157,15 @@ export type {
   PluginSessionState,
 } from './sessions.js'
 export {
+  PLUGIN_PERMISSION_RESOURCES_DO,
+  PLUGIN_PERMISSION_RESOURCES_READ,
+  PLUGIN_PERMISSION_RESOURCES_WATCH,
+  PLUGIN_RESOURCE_CALL_TIMEOUT_MS,
+  PLUGIN_RESOURCE_PERMISSIONS,
+  PLUGIN_RESOURCE_PERMISSION_NOTES,
+} from './resources.js'
+export type { PluginResourcePermission, PluginResourcesApi } from './resources.js'
+export {
   PLUGIN_PERMISSION_LLM_COMPLETE,
   PLUGIN_LLM_COMPLETE_PERMISSION_NOTE,
   PLUGIN_LLM_COMPLETE_TIMEOUT_MS,
@@ -445,6 +454,7 @@ export {
   classifyPluginScope,
   describePluginSurface,
   pluginLoadLabel,
+  pluginResourceSurface,
   pluginScope,
   resolvePluginScopeSeverity,
 } from './policy.js'

@@ -63,6 +63,7 @@ export type {
   OpSpec,
   ReadSpec,
   ResourceSpec,
+  StateScope,
   StateSpec,
   StateVolatility,
 } from './spec.js'

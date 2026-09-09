@@ -233,6 +233,7 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       pluginScope.searchProvide('emoji'),
       pluginScope.deepLinkAction('plugin:trans:translate'),
       pluginScope.credentialStrategy('plugin:b:least-used'),
+      pluginScope.resourceCall('session'),
     ]
     // 工厂数量与样本数量对齐 —— 加了工厂却忘了在这里取样,这条会红。
     expect(samples).toHaveLength(Object.keys(pluginScope).length)
@@ -298,6 +299,10 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       // 从来就有一个可用的默认答案(内置 priority-failover),所以罚则只能是
       // 降级、绝不能是整体禁用。生产者在策略调用口(app/providers/credential-strategy)。
       { factory: 'credentialStrategy', scope: pluginScope.credentialStrategy('plugin:b:least-used'), family: 'credential-strategy' },
+      // 原子 K4-b:插件对一个命名空间的读 / 做自成一族 —— 记的只有「压根没拿到
+      // 结局」那种失败(内核回的 failed / denied / invalid 是**答案**,不是故障),
+      // 罚则只停这一个命名空间。生产者在调用口(backend/wiring/plugins/resources.ts)。
+      { factory: 'resourceCall', scope: pluginScope.resourceCall('session'), family: 'resource-call' },
     ]
 
     // 声明本身要对。
