@@ -60,9 +60,19 @@ export function elapsedMs(startedAt: number, now: number): number {
  * **活性读数**(§6.6,拍点 ⑩ 用户补的真需求:「不展开也行,反正我要分得清它是在
  * 接收流式还是卡住了」)—— 一句话由静默时长说了算。
  *
- * 判据是**静默**(上一次收到 delta 到此刻),不是总耗时:一轮跑十分钟但每秒都在
- * 吐字是正常的,跑三十秒一个字没来才是异常。`lastDeltaAt` 缺席(这一轮一个 delta
- * 都还没到)时退到 `startedAt` —— 从开张那一刻起算,而不是当成「刚刚收到过」。
+ * 判据是**静默**(上一次**有东西到达**到此刻),不是总耗时:一轮跑十分钟但一直在
+ * 动是正常的,跑三十秒什么都没来才是异常。「有东西到达」四类来源(产地在
+ * `data/chat-source.ts` 的 `markActivity`,四个调用点各写了为什么):三种裸 delta、
+ * 工具进度快照、活 run 的工具账本行(`tool/*`、`assistant/first-token`、
+ * `assistant/part-end`)、`tool:input-start`。
+ *
+ * **2026-09-09 从「上一次收到 delta」放宽到这里**:真店 fe5261d9 那一轮模型不到
+ * 1 秒就发了工具调用,bash 跑了 7 秒、卡片一直在刷输出,而读数行说「已 7.0s 没有
+ * 新内容」—— 屏幕上明明在动。用户裁定:工具进度计入活性。放宽的是**这一行的**判据,
+ * 跟随状态机那格 `lastDeltaAt` 语义一个字没动(工具跑着不是模型又说了话)。
+ *
+ * `lastActivityAt` 缺席(这一轮什么都还没到)时退到 `startedAt` —— 从开张那一刻
+ * 起算,而不是当成「刚刚收到过」。
  *
  * 纯函数,不碰 DOM 也不碰 i18n:它只答「此刻该说哪一句、静默了多久」,
  * 句子长什么样归字典。
@@ -84,12 +94,15 @@ function useNow(tickMs: number): number {
   return now
 }
 
-export function StreamReadout({ startedAt, lastDeltaAt }: { startedAt: number; lastDeltaAt?: number }) {
+export function StreamReadout({
+  startedAt,
+  lastActivityAt,
+}: { startedAt: number; lastActivityAt?: number }) {
   const t = useT()
   const now = useNow(READOUT_TICK_MS)
 
   const elapsed = formatDuration(elapsedMs(startedAt, now))
-  const silentMs = elapsedMs(lastDeltaAt ?? startedAt, now)
+  const silentMs = elapsedMs(lastActivityAt ?? startedAt, now)
   const tone = readoutTone(silentMs)
   /*
    * 三句话共一行:活着时只说耗时;软阈值起**改说静默**(陈述事实,不下结论);

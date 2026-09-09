@@ -528,6 +528,33 @@ describe('跟随丸', () => {
     expect(screen.getByTestId('chat-follow-pill').textContent).toBe('↓ 已发送')
   })
 
+  /**
+   * **`lastActivityAt` 单独变化不是一次「回复到达」**(2026-09-09 两格分家的守卫)。
+   *
+   * 工具跑着那几秒里活性一直在推,而模型一个字都没说 —— 跟随状态机那一拍问的是
+   * 「回复到了没有」,不是「这一轮还活着吗」。少了这条,一轮里的每一次工具进度都会
+   * 把「已发送」解闩成「回到最新」,而屏幕上根本还没有一句新回复可看。
+   *
+   * 走的是与上面那条正序用例同一条链,只把喂进去的那一格换成 `lastActivityAt`。
+   */
+  it('只有 lastActivityAt 在动(工具跑着)不算回复到达 —— 「已发送」原样留着', async () => {
+    const ref = await mountWithRef(LEDGER)
+    await scrollUp(ref.current!)
+    await act(async () => {
+      sessionSource().getState().send('再问一句')
+    })
+    expect(screen.getByTestId('chat-follow-pill').textContent).toBe('↓ 已发送')
+
+    // 回复开张,但到达的只有工具那几类事实:`lastDeltaAt` 一格没动。
+    await act(async () => {
+      sessionSource().setState({ activeMessageId: 'a2', lastActivityAt: T0 + 7_000 })
+    })
+    await act(async () => {
+      sessionSource().setState({ activeMessageId: undefined, lastActivityAt: undefined })
+    })
+    expect(screen.getByTestId('chat-follow-pill').textContent).toBe('↓ 已发送')
+  })
+
   it('点丸 = 回到底 + 丸当场卸载(不等滚动动画)', async () => {
     const ref = await mountWithRef(LEDGER)
     const el = ref.current!
@@ -645,5 +672,64 @@ describe('收场通知:这一轮为什么提前结束', () => {
       sessionSource().setState({ activeMessageId: 'a1' })
     })
     expect(screen.queryByTestId('chat-stop-notice')).toBeNull()
+  })
+})
+
+/**
+ * **流式读数行的静默判据是「最近一次有东西到达」**(2026-09-09 用户裁定:工具进度
+ * 计入活性)。事故:真店 fe5261d9 那一轮模型不到 1 秒就发了工具调用,bash 跑了 7 秒、
+ * 卡片一直在刷输出,读数行却说「已 7.0s 没有新内容」。
+ *
+ * 这一层只钉**屏幕上到底写着哪一句** —— 「什么算一次活动」的判据在
+ * `data/chat-source.test.ts` 那一组里,`readoutTone` 的阈值表在
+ * `message/__tests__/message-chrome.test.tsx` 里。
+ */
+describe('流式读数行:静默按「最近一次有东西到达」算', () => {
+  /** 一轮**还在跑**的对话(有 run/start、没有 run/end),开张时刻由调用方给。 */
+  const streamingLedger = (startedAt: number): Ledger[] => [
+    created(1),
+    userMessage(2, 'm1', '跑一下'),
+    {
+      seq: 3,
+      time: T0,
+      type: 'run/start',
+      data: { runId: 'r1', kind: 'chat', assistantMessageId: 'a1', timestamp: startedAt },
+    },
+    chunks(4, 'r1', 'a1', ['好的,我来跑']),
+  ]
+
+  it('工具跑着(活性 6s 比吐字新):读数行说耗时,不说静默', async () => {
+    const now = Date.now()
+    await mount(streamingLedger(now - 8_000))
+    await act(async () => {
+      // 模型 7 秒前吐完最后一个字就去调工具了,而工具 1 秒前还在刷输出。
+      sessionSource().setState({ lastDeltaAt: now - 7_000, lastActivityAt: now - 1_000 })
+    })
+    const readout = screen.getByTestId('chat-readout')
+    expect(readout.getAttribute('data-tone')).toBe('live')
+    expect(readout.textContent).toMatch(/^正在生成 · /)
+    expect(readout.textContent).not.toContain('没有新内容')
+  })
+
+  it('两格都停在 6s 前(真的什么都没来):读数行改说静默', async () => {
+    const now = Date.now()
+    await mount(streamingLedger(now - 8_000))
+    await act(async () => {
+      sessionSource().setState({ lastDeltaAt: now - 6_000, lastActivityAt: now - 6_000 })
+    })
+    const readout = screen.getByTestId('chat-readout')
+    expect(readout.getAttribute('data-tone')).toBe('stalled')
+    expect(readout.textContent).toContain('没有新内容')
+  })
+
+  /**
+   * 这一轮什么都还没到:退到 `startedAt` 起算,而不是当成「刚刚收到过」。
+   * (`lastActivityAt` 缺席那一支 —— 与从前 `lastDeltaAt` 缺席时同一条规矩。)
+   */
+  it('一格活性都还没有:静默从开张那一刻起算', async () => {
+    await mount(streamingLedger(Date.now() - 6_000))
+    const readout = screen.getByTestId('chat-readout')
+    expect(readout.getAttribute('data-tone')).toBe('stalled')
+    expect(readout.textContent).toContain('没有新内容')
   })
 })

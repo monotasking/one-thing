@@ -860,6 +860,144 @@ describe('工具进度活流(C2-b)', () => {
 })
 
 /**
+ * **活性与「模型又吐了一段」是两格事实**(2026-09-09 用户裁定:工具进度计入活性)。
+ *
+ * 事故:真店 fe5261d9 那一轮模型不到 1 秒就发了工具调用,bash 跑了 7 秒、卡片一直
+ * 在刷输出,读数行却说「已 7.0s 没有新内容」—— 活性只认三种文字 delta。
+ *
+ * 这一组钉的正是分家之后的三件事:工具那几类事实推得动 `lastActivityAt`、推不动
+ * `lastDeltaAt`;不属于活 run 的账本行两格都推不动。
+ */
+describe('活性读数:工具进度算活着,但不算「模型又吐了一段」', () => {
+  const toolCall = (seq: number, runId: string, messageId: string, callId: string): Ledger => ({
+    seq,
+    time: T0,
+    type: 'tool/call',
+    data: { callId, name: 'bash', argumentsRaw: '{"command":"seq 1 20"}', messageId, runId },
+  })
+
+  const annotate = (seq: number, runId: string, callId: string): Ledger => ({
+    seq,
+    time: T0,
+    type: 'tool/annotate',
+    // **只有 callId + runId,没有 messageId** —— 这正是活性的判据必须用 runId 的原因。
+    data: { callId, runId, title: '跑着' },
+  })
+
+  /** 一轮**还在跑**的对话:run/start 有、run/end 没有,所以 `activeRun` 立着。 */
+  const ledger = (): Ledger[] => [
+    created(1),
+    userMessage(2, 'm1', '跑一下'),
+    runStart(3, 'r1', 'a1'),
+    toolCall(4, 'r1', 'a1', 'c1'),
+  ]
+
+  /**
+   * 墙钟由我们说了算 —— 两格记的都是 `Date.now()`,真跑的话同一毫秒里两次调用会
+   * 记出相同的数,「推动了没有」就断不出来。只 stub `Date.now`:`settle()` 那 20ms
+   * 走的是真的 setTimeout,不受影响。
+   */
+  let clock = T0
+  const tick = (ms: number) => {
+    clock += ms
+  }
+
+  beforeEach(() => {
+    clock = T0
+    vi.spyOn(Date, 'now').mockImplementation(() => clock)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  /** 先喂一条裸 delta,把 `lastDeltaAt` 立起来(否则「没被推动」无从断起)。 */
+  async function withFirstDelta(h: Harness) {
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+    h.emitStream({ sessionId: SESSION, chunk: stamped('a1', 0, '好') as never })
+    await settle()
+    const at = state().lastDeltaAt
+    expect(at).toBe(T0)
+    return at as number
+  }
+
+  it('工具进度到了:活性推到此刻,而「吐字」那一格一动不动', async () => {
+    const h = harness(ledger())
+    const deltaAt = await withFirstDelta(h)
+
+    tick(7_000)
+    h.emitStream({
+      sessionId: SESSION,
+      chunk: { type: 'tool-progress', toolCallId: 'c1', messageId: 'a1', outputTail: '19\n20' } as never,
+    })
+    await settle()
+
+    expect(state().lastActivityAt).toBe(deltaAt + 7_000)
+    expect(state().lastDeltaAt).toBe(deltaAt)
+  })
+
+  it('账本 `tool/annotate`(活 run):同上 —— 它只带 callId + runId,按 messageId 认会整类漏掉', async () => {
+    const h = harness(ledger())
+    const deltaAt = await withFirstDelta(h)
+
+    tick(3_000)
+    h.emitLedger(annotate(5, 'r1', 'c1'))
+    await settle()
+
+    expect(state().lastActivityAt).toBe(deltaAt + 3_000)
+    expect(state().lastDeltaAt).toBe(deltaAt)
+  })
+
+  it('不是活 run 的那一条账本行:两格都不动(别人那一轮的回声不算这一轮活着)', async () => {
+    const h = harness(ledger())
+    const deltaAt = await withFirstDelta(h)
+
+    tick(3_000)
+    h.emitLedger(annotate(5, 'r-other', 'c1'))
+    await settle()
+
+    expect(state().lastActivityAt).toBe(deltaAt)
+    expect(state().lastDeltaAt).toBe(deltaAt)
+  })
+
+  it('`tool:input-start` 也算活着(它比账本上的 tool/call 早几百毫秒)', async () => {
+    const h = harness(ledger())
+    const deltaAt = await withFirstDelta(h)
+
+    tick(500)
+    h.emitEvent({
+      sessionId: SESSION,
+      sequence: 5,
+      timestamp: T0,
+      event: {
+        type: SESSION_EVENT_TYPES.TOOL_INPUT_START,
+        messageId: 'a1',
+        toolCallId: 'c2',
+        toolName: 'bash',
+      } as never,
+    })
+    await settle()
+
+    expect(state().lastActivityAt).toBe(deltaAt + 500)
+    expect(state().lastDeltaAt).toBe(deltaAt)
+  })
+
+  it('裸 delta 两格一起推(它既是 delta 也是一次活动)', async () => {
+    const h = harness(ledger())
+    const deltaAt = await withFirstDelta(h)
+
+    tick(1_000)
+    h.emitStream({ sessionId: SESSION, chunk: stamped('a1', 1, '的') as never })
+    await settle()
+
+    expect(state().lastDeltaAt).toBe(deltaAt + 1_000)
+    expect(state().lastActivityAt).toBe(deltaAt + 1_000)
+  })
+})
+
+/**
  * **W5-a:一条会话一台机器 + 一张注册表。**
  *
  * 上面那一整篇钉的是「一台机器折得对不对」;这一组钉的是**多台同时活着**时那三件

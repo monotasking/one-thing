@@ -105,7 +105,14 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
    * 号的产地在 `chat-source.send()`,与那条 overlay 同一次 `set`。
    */
   const sentTick = useChatSourceOf(sessionId, (st) => st.sentTick)
+  /*
+   * **两格事实,两个消费者**(2026-09-09):`lastDeltaAt` 说「模型又吐了一段」,
+   * 只喂下面那只跟随 hook 的「回复到了」;`lastActivityAt` 说「这一轮最近一次有
+   * 东西到达」(delta ∪ 工具进度 ∪ 活 run 的工具账本行 ∪ `tool:input-start`),
+   * 只喂读数行。工具跑着不该点亮跟随丸那张脸,所以这两格不许合并回一格。
+   */
   const lastDeltaAt = useChatSourceOf(sessionId, (st) => st.lastDeltaAt)
+  const lastActivityAt = useChatSourceOf(sessionId, (st) => st.lastActivityAt)
   /*
    * `lastDeltaAt` / `activeMessageId` 两格**传进 hook**,不在这一层派发。
    * 理由是产地唯一:跟随事件今天六种,六种全在 `useFollowBottom` 里发 —— 那只
@@ -172,7 +179,7 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
                  * —— 一个恒定的值,所以 `memo` 的浅比照旧短路(流式期间除活消息外
                  * 全篇不重渲那条纪律一格没动)。
                  */
-                lastDeltaAt={message.id === activeMessageId ? lastDeltaAt : undefined}
+                lastActivityAt={message.id === activeMessageId ? lastActivityAt : undefined}
               />
             ))}
 
@@ -367,8 +374,14 @@ interface RowProps {
   message: ProjectedMessage
   streaming: boolean
   flash: boolean
-  /** 这一轮上一次收到 delta 的时刻;只有活消息拿得到(其余恒 undefined)。 */
-  lastDeltaAt?: number
+  /**
+   * 这一轮上一次**有东西到达**的时刻;只有活消息拿得到(其余恒 undefined)。
+   *
+   * 2026-09-09 从 `lastDeltaAt` 换成这一格:读数行问的是「还活着吗」,而工具跑着
+   * 的那几秒里没有一条裸 delta。跟随状态机要的那一格不经这条 prop —— 它在
+   * `ChatStream` 顶层直接读 store 喂给 `useFollowBottom`,所以这里不留一格死 prop。
+   */
+  lastActivityAt?: number
 }
 
 /**
@@ -407,7 +420,7 @@ const MessageRow = memo(function MessageRow({
   message,
   streaming,
   flash,
-  lastDeltaAt,
+  lastActivityAt,
 }: RowProps) {
   const role = message.role
   const className = [s.row, flash && s.flash].filter(Boolean).join(' ')
@@ -490,7 +503,7 @@ const MessageRow = memo(function MessageRow({
             只有 assistant 有动作:system(压缩卡)不是"一条回答",没有重跑一说;
             user 的动作是编辑重发,那是另一件事(留账)。
           */}
-          {streaming && <StreamReadout startedAt={message.timestamp} lastDeltaAt={lastDeltaAt} />}
+          {streaming && <StreamReadout startedAt={message.timestamp} lastActivityAt={lastActivityAt} />}
           {/*
             收场通知(2026-09-09):这一轮**为什么提前结束**。它与动作行同时在场 ——
             读数行那条「同一个位置只有一个」说的是「生成中 vs 生成完」这两态,而这

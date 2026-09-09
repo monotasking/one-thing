@@ -152,14 +152,35 @@ export interface ChatSourceState {
    */
   sentTick: number
   /**
-   * **正在生成的那条消息上一次收到 delta 的时刻**(§6.6 活性读数的产地)。
+   * **正在生成的那条消息上一次收到 delta 的时刻**(§6.6)。
    *
    * 与 `messages` 同一次 `set` 写出去 —— 也就是说它跟着按帧合并的推屏走,
    * 每条 delta 各推一次 store 那种事不会发生(那正是这个文件把活折留在实例上、
    * 不塞进 store 的理由)。没有在跑的 run、或者这一轮一个 delta 都还没到时是
    * `undefined`:调用方该退到 `run/start` 的时刻,而不是拿 0 当「刚刚」。
+   *
+   * **它说的是「模型又吐了一段」,不是「这一轮还活着」**(2026-09-09 分家):
+   * 唯一的消费者是跟随状态机那一拍「回复到了」(`ChatStream` 的 `useFollowBottom`)
+   * —— 工具跑着不该点亮跟随丸的那张脸。「还活着吗」由下面的 `lastActivityAt` 答。
    */
   lastDeltaAt?: number
+  /**
+   * **这一轮最近一次有东西到达的时刻**(2026-09-09 立,活性读数的产地)。
+   *
+   * ── 为什么它与 `lastDeltaAt` 是两格 ──────────────────────────────────────
+   * 事故:真店会话 fe5261d9 的一轮里模型不到 1 秒就发了工具调用,bash 跑了 7 秒、
+   * 卡片一直在刷输出,读数行却说「已 7.0s 没有新内容」—— 因为那一格只认三种文字
+   * delta,工具执行期间到达的东西一件都不算。用户裁定:**工具进度计入活性**。
+   * 但「回复到了」那一拍不能跟着改语义(工具跑着不是模型又说了话),所以不是把
+   * `lastDeltaAt` 放宽,而是另立这一格:两件事实,各有各的唯一消费者。
+   *
+   * 算数的四类来源(全部经 `markActivity` 这一只帮手写):三种裸 delta ∪
+   * `tool-progress` 快照 ∪ 活 run 的工具账本事件 ∪ `tool:input-start`。
+   *
+   * 其余与 `lastDeltaAt` 逐字相同:跟着按帧合并的推屏走;不是此刻活消息的就交
+   * `undefined`(调用方退到 `run/start` 的时刻,而不是拿 0 当「刚刚」)。
+   */
+  lastActivityAt?: number
   /**
    * **「我发出去一条重试,还没见回音」**(2026-09-08 立)。
    *
@@ -344,6 +365,14 @@ export function createChatSource(sessionId: string): ChatSource {
    */
   let lastDelta: { messageId: string; at: number } | undefined
   /**
+   * **上一次「有东西到达」的时刻**(按消息记,2026-09-09)。与 `lastDelta` 同样
+   * 是实例字段、同样由 `compose()` 一帧最多搬一次 —— 理由逐字相同(工具进度在
+   * 长输出上比正文 delta 还密,每条各推一次 store 就是每条一次全体订阅者重算)。
+   *
+   * 写点只有 `markActivity` 一处;`lastDelta` 那一格照旧只由三种裸 delta 写。
+   */
+  let lastActivity: { messageId: string; at: number } | undefined
+  /**
    * **活水位**(R2,`data/stream-water.ts`)。与 `fold` 同生共死:一条打开着的会话
    * 一份 —— 它是个值,不是模块里的那一个(审查条 4)。
    */
@@ -494,6 +523,11 @@ export function createChatSource(sessionId: string): ChatSource {
           lastDeltaAt:
             activeMessageId !== undefined && lastDelta?.messageId === activeMessageId
               ? lastDelta.at
+              : undefined,
+          // 同一条闸,同一条理由 —— 两格事实分家的只是「什么算一次」,不是「归谁」。
+          lastActivityAt:
+            activeMessageId !== undefined && lastActivity?.messageId === activeMessageId
+              ? lastActivity.at
               : undefined,
           overlay,
           // 条件展开而不是恒写 undefined:恒写就是每一帧都把闩清一遍。
@@ -740,6 +774,19 @@ export function createChatSource(sessionId: string): ChatSource {
     }
 
     /**
+     * **活性的唯一写点**(2026-09-09)。四个调用点各写了一句「为什么这一条算活动」;
+     * 这里只答两件事:记 `messageId`(换一条消息就是换一轮,上一轮的静默时长对这一轮
+     * 没有意义)、用 `Date.now()`(读数要和账本上的 `run/start` 相减,时基不能混)。
+     *
+     * 收成一只帮手而不是四处各写一句 `lastActivity = …`:判据「什么算一次活动」写在
+     * 调用点上(它们本来就各不相同),而「怎么记一次活动」只该有一处 —— 第五类来源
+     * 长出来时加的是第五个调用点,不是第二种记法。
+     */
+    function markActivity(messageId: string): void {
+      lastActivity = { messageId, at: Date.now() }
+    }
+
+    /**
      * 账本活事件来了一条。三种情况(与从前逐条相同):
      *  - **接得上**(`seq === lastSeq + 1`):当场折进去;
      *  - **旧行**(`seq <= lastSeq`):重折之后追上来的回声,丢掉(幂等);
@@ -763,6 +810,33 @@ export function createChatSource(sessionId: string): ChatSource {
       }
       mine.state = reduceSessionProjection(mine.state, record as never)
       mine.lastSeq = seq
+      /*
+       * 调用点 ③:**账本上这一轮的工具活儿也算活动**。工具执行期间流分片可能一条
+       * 都没有(不刷输出的工具就是这样),而账本照旧在动:`tool/call` `tool/annotate`
+       * `tool/audit` `tool/result` 一条条落 —— 事故里读数说「7 秒没新内容」,账本
+       * 那几秒里其实一直有行。`assistant/first-token` / `assistant/part-end` 一起算:
+       * 它们是「引擎这一轮确实在推进」的账本证据(重放 / 旁路正文没有裸 delta,
+       * 全靠它们)。
+       *
+       * **判据是 runId,不是 messageId**:`tool/annotate` 只带 callId + runId
+       * (见 core 归约器 `tool/annotate` 那一支),按 messageId 认会把它整类漏掉。
+       * 认活 run 就够了 —— 活牌的产地只有折叠产物那一处,别的 run 的回声(重折追上来
+       * 的旧行、别人那一轮)在这道闸上当场掉队。
+       */
+      const activeRun = mine.state.activeRun
+      if (activeRun) {
+        const type = (record as { type?: unknown }).type
+        const runId = (record as { data?: { runId?: unknown } }).data?.runId
+        if (
+          typeof type === 'string' &&
+          runId === activeRun.runId &&
+          (type.startsWith('tool/') ||
+            type === 'assistant/first-token' ||
+            type === 'assistant/part-end')
+        ) {
+          markActivity(activeRun.messageId)
+        }
+      }
       // R2 第六不变式:**打包行到达那一帧只清格,不画画**。账本对这一段画得出来的
       // 长度追平水位,那一格就退役 —— 清格不改 `max` 的结果,所以屏幕零像素变化。
       if (STREAM_R2) settleWater(mine.state, mine)
@@ -804,6 +878,13 @@ export function createChatSource(sessionId: string): ChatSource {
        */
       if (event?.type === SESSION_EVENT_TYPES.TOOL_INPUT_START) {
         if (!event.messageId || !event.toolCallId || !event.toolName) return
+        /*
+         * 调用点 ④:**一次调用刚开张也算活动**。它带 messageId,所以不必问活牌。
+         * 记在两条车道分叉之前,理由与上面 tool-progress 那一处相同:分的是「这一截
+         * 归水位还是归活尾巴」,两条路要的是同一份读数。它比账本上的 `tool/call` 早
+         * 几百毫秒(真机 1693ms vs 1929ms),漏掉它读数就会在那段空窗里往上爬。
+         */
+        markActivity(event.messageId)
         if (STREAM_R2) {
           water?.openTool(
             event.messageId,
@@ -897,11 +978,11 @@ export function createChatSource(sessionId: string): ChatSource {
       const messageId = chunk?.messageId
       if (!messageId) return
       /*
-       * **活性读数的唯一产地**(§6.6):三种裸 delta 就是「还在往外吐字」的全部证据。
-       * 记在这里而不是在下面两条岔路(R2 / 旧路)里各记一次 —— 岔路会长,产地不该
-       * 跟着长;判据也只有一句「这一条是不是那三种之一」,与它后面被谁怎么处理无关
-       * (没盖章被 R2 丢掉的那种也算 —— 引擎确实在吐字,读数问的正是这件事)。
-       * `Date.now()` 而不是 `performance.now()`:读数要和账本上的 `run/start`
+       * **「模型又吐了一段」的唯一产地**(§6.6):三种裸 delta 就是「还在往外吐字」
+       * 的全部证据。记在这里而不是在下面两条岔路(R2 / 旧路)里各记一次 —— 岔路会
+       * 长,产地不该跟着长;判据也只有一句「这一条是不是那三种之一」,与它后面被谁
+       * 怎么处理无关(没盖章被 R2 丢掉的那种也算 —— 引擎确实在吐字)。
+       * `Date.now()` 而不是 `performance.now()`:两格都要和账本上的 `run/start`
        * (墙钟毫秒)相减,两个时基不能混。
        */
       if (
@@ -910,6 +991,9 @@ export function createChatSource(sessionId: string): ChatSource {
         chunk.type === 'tool-input-delta'
       ) {
         lastDelta = { messageId, at: Date.now() }
+        // 调用点 ①:**delta 既是 delta 也是活动**。两格在这一处一起写,是因为这一
+        // 类事件同时满足两个判据 —— 不是因为它们是一件事(其余三个调用点只写活性)。
+        markActivity(messageId)
       }
       /*
        * ── C2-b 工具进度:**两条车道之前分流** ────────────────────────────
@@ -931,6 +1015,10 @@ export function createChatSource(sessionId: string): ChatSource {
         }
         if (STREAM_R2) water?.feedToolProgress(messageId, chunk.toolCallId, progress)
         else tail = applyToolProgress(tail, messageId, chunk.toolCallId, progress)
+        // 调用点 ②:**工具正在刷输出 = 这一轮活着**(2026-09-09 用户裁定)。
+        // 它不是正文,所以 `lastDelta` 一个字不动;而事故里那 7 秒屏幕上一直在变的
+        // 正是这一条。`messageId` 那道闸在上面 —— 合批器的直送分支替它盖了章。
+        markActivity(messageId)
         schedulePush()
         return
       }
@@ -1028,6 +1116,8 @@ export function createChatSource(sessionId: string): ChatSource {
           messages: [],
           activeMessageId: undefined,
           lastDeltaAt: undefined,
+          // 两格事实同生共死:清一格留一格,下一轮会顶着上一轮的读数开张。
+          lastActivityAt: undefined,
         })
         return
       }
@@ -1041,6 +1131,8 @@ export function createChatSource(sessionId: string): ChatSource {
       fold = newFold()
       water = new StreamWater()
       lastDelta = undefined
+      // 两格一起清:留着上一轮那一格,新一轮开张时读数会顶着别人的静默秒数。
+      lastActivity = undefined
       tail = undefined
       tailLens = undefined
       tailReceived = undefined
@@ -1116,6 +1208,8 @@ export function createChatSource(sessionId: string): ChatSource {
       tailLens = undefined
       tailReceived = undefined
       lastDelta = undefined
+      // 两格一起清:留着上一轮那一格,新一轮开张时读数会顶着别人的静默秒数。
+      lastActivity = undefined
       pendingLedger = []
       pushScheduled = false
       blobs.clear()
