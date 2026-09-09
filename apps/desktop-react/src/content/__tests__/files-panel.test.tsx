@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { FilesDirectoryEntry } from '@shared/ipc/files'
 import { FilesPanel, retargetFilesRoot } from '../FilesPanel'
-import { filesRootRef, FILES_ROOT_KIND } from '../kinds/files-root-ref'
+import { dirRef, DIR_KIND } from '../kinds/dir-ref'
 import { openSessionDirectory } from '../files-launcher'
 import { configureFilesPort } from '../../data/files-port'
 import type { FilesPort } from '../../data/files-port'
@@ -122,7 +122,7 @@ afterEach(() => {
  */
 /**
  * **这块面的根由树说**(W6-a):文件面板不再是一块面(`panel:files` 退役),
- * 而是**一族**面 —— 一个目录一份 `files-root:<绝对路径>`。所以夹具先在中央区
+ * 而是**一族**面 —— 一个目录一份 `dir:<绝对路径>`。所以夹具先在中央区
  * 摆一格那样的 tab,再照真机那样**从树上读根**渲染它:面包屑回跳换的是那一格
  * tab 的 ref,而屏幕跟着换 —— 那条链在夹具里也得是真的,不然回跳那两条用例
  * 量的是一台不存在的机器。
@@ -133,7 +133,7 @@ function FilesHarness() {
     // 哪个区域都认(启动瓦出厂落**左架子**,而 `renderFiles` 落中央区)。
     for (const tree of Object.values(regions)) {
       for (const leaf of leavesOf(tree)) {
-        for (const tab of leaf.tabs) if (tab.kind === FILES_ROOT_KIND) return tab.key
+        for (const tab of leaf.tabs) if (tab.kind === DIR_KIND) return tab.key
       }
     }
     return null
@@ -143,7 +143,7 @@ function FilesHarness() {
 
 function renderFiles(root: string = ROOT) {
   act(() => {
-    useWorkbenchStore.getState().openRef(filesRootRef(root))
+    useWorkbenchStore.getState().openRef(dirRef(root))
   })
   return render(
     <>
@@ -155,7 +155,7 @@ function renderFiles(root: string = ROOT) {
 
 /**
  * 走**那块启动瓦**那条路开出来的一份(W6-a):它先问「这条会话的工作目录是哪儿」
- * (会话没绑就展 `~`),再开一格 `files-root:<那个目录>`。告知条(没绑工作目录)
+ * (会话没绑就展 `~`),再开一格 `dir:<那个目录>`。告知条(没绑工作目录)
  * 的在场判据要它 —— 那句话只在**会话自己那一棵**上说。
  */
 async function renderSessionFiles() {
@@ -177,6 +177,9 @@ async function renderSessionFiles() {
  * **取件口是 `data-root` 而不是 textContent**:面包屑的中段现在会折成 `…`,
  * 折过之后屏幕上那串字就不再逐字等于路径了。屏幕说「我在哪儿」,属性说
  * 「那条路径本身」—— 这里问的是后者。
+ *
+ * **`files-root` 这个 testid 不跟着种类改名走**(K2b-1):种类叫 `dir` 了,但这一格
+ * 是 DOM 把手 —— 三条真机门也按它取件。把手与种类名是两件事,改它只会白白动脚本。
  */
 function shownRoot(): string {
   return screen.getByTestId('files-root').getAttribute('data-root') ?? ''
@@ -220,7 +223,7 @@ async function closeViaMenu(path: string): Promise<void> {
 
 /** 内容表那一格换人了没有 —— 这条在 FilesMock 还挂着时必红。 */
 describe('内容表:files 这一格是真面板', () => {
-  it('`files-root` 那一种画的是真树,不是写死的三行', async () => {
+  it('`dir` 那一种画的是真树,不是写死的三行', async () => {
     installPort()
     renderFiles()
     await waitFor(() => expect(screen.getByText('packages')).toBeTruthy())
@@ -244,18 +247,18 @@ describe('内容表:files 这一格是真面板', () => {
  *
  * 「会话的工作目录是哪儿」这件事只问一次,而且是**那块启动瓦**问的
  * (`content/files-launcher.openSessionDirectory`):问完开一格
- * `files-root:<那个目录>`。这一组因此从「面板会不会跟着会话换根」改成
+ * `dir:<那个目录>`。这一组因此从「面板会不会跟着会话换根」改成
  * 「那块瓦开出来的是不是那个目录」。
  */
 describe('根:目录那块启动瓦开出来的那一格', () => {
-  it('点瓦 = 开一格 `files-root:<活跃会话的工作目录>`,面板头上如实显示', async () => {
+  it('点瓦 = 开一格 `dir:<活跃会话的工作目录>`,面板头上如实显示', async () => {
     const port = installPort()
     await renderSessionFiles()
     await waitFor(() => expect(shownRoot()).toBe(ROOT))
     // 出厂摆法是**左架子**(W6-a §8),所以那一格落在 `edge:left` 那棵树上。
     const allRefs = Object.values(useWorkbenchStore.getState().regions)
       .flatMap((tree) => refIdsOf(tree))
-    expect(allRefs).toContain(`${FILES_ROOT_KIND}:${ROOT}`)
+    expect(allRefs).toContain(`${DIR_KIND}:${ROOT}`)
     expect(port.listDirectory).toHaveBeenCalledWith(ROOT)
     // 会话带着工作目录 = 不必问后端展 `~`。
     expect(port.stat).not.toHaveBeenCalled()
@@ -1111,10 +1114,10 @@ describe('详情:附属浮层(不是打断式对话框)', () => {
   /**
    * **「进这一格 = 进哪块面」由种类自述**(与会话那一种同一条:`ContentKind.focusInto`)。
    * 不声明的话 `focusIntoRef` 只能退回 `leaf` 那一层,能不能穿到这块面里要看那一刻
-   * 它登记好了没有。反证:把 `files-root` 那格 `focusInto` 删掉 → 这一条当场红。
+   * 它登记好了没有。反证:把 `dir` 那格 `focusInto` 删掉 → 这一条当场红。
    */
-  it('W7-c:`files-root` 自述 focusInto = files', () => {
-    expect(focusIntoScopeOf(filesRootRef('/x'))).toBe('files')
+  it('W7-c:`dir` 自述 focusInto = files', () => {
+    expect(focusIntoScopeOf(dirRef('/x'))).toBe('files')
   })
 
   it('一行都没拿焦点时 ⌘I **不接** —— 交不出处理器,这一下原样落给全局命令表', async () => {
@@ -1552,7 +1555,7 @@ describe('面板内分栏:单击文件 = 在此打开', () => {
     it('脏文件先问一句:「取消」不关,「不保存」才关', async () => {
       installPort()
       act(() => {
-        useWorkbenchStore.getState().openRef(filesRootRef(ROOT))
+        useWorkbenchStore.getState().openRef(dirRef(ROOT))
       })
       render(
         <>

@@ -36,7 +36,7 @@ import { NoWorkdirNotice } from './files/NoWorkdirNotice'
 import { RootCrumbs } from './files/RootCrumbs'
 import { TreeEntryRow, depthVar } from './files/TreeEntryRow'
 import { useContentDrag } from '../workbench/useContentDrag'
-import { filesRootRef } from './kinds/files-root-ref'
+import { dirRef } from './kinds/dir-ref'
 import type { EntryRow } from './files/TreeEntryRow'
 import { useRowWindow } from './files/useRowWindow'
 import { FileViewer } from './viewer/FileViewer'
@@ -184,7 +184,7 @@ const NOTE_LABELS: Record<'empty' | FileFailure, MessageKey> = {
 /**
  * **一块以某个目录为根的文件面板**(W6-a:`root` 从「全应用一格」变成一格 prop)。
  *
- * 它是 `files-root:<绝对路径>` 那一种内容的身子(`content/kinds/files-root.tsx`
+ * 它是 `dir:<绝对路径>` 那一种内容的身子(`content/kinds/dir.tsx`
  * 只是它的登记)。**不复制第二份**:面包屑 / 全部收起 / 重新读取 / 行菜单 /
  * 打开点列 / 分栏查看器全部原样,变的只有「根是谁说了算」这一句 —— 从前是
  * `useFilesSource.root`(全应用一份,跟着活跃会话走),现在是这一格 prop。
@@ -329,10 +329,10 @@ export function FilesPanel({ root }: { root: string }) {
   }, [menuAt, detail, splitOpen, closeViewer])
 
   /*
-   * **根不再跟着会话走**(W6-a):它是这一格内容的身份(`files-root:<路径>`),
+   * **根不再跟着会话走**(W6-a):它是这一格内容的身份(`dir:<路径>`),
    * 由 prop 给定。从前这里有一发 `setRoot(cwd)` —— 那是「全应用一棵树」时代的
    * 接线,而「会话的工作目录是哪儿」这件事现在由**目录那块启动瓦**问一次
-   * (`content/files-launcher.tsx`),问完开一格 `files-root:<那个目录>`。
+   * (`content/files-launcher.tsx`),问完开一格 `dir:<那个目录>`。
    *
    * 剩下的那半件仍旧要做:**把根那一层拉回来**。从前它顺带在 `setRoot` 里
    * (那一句末尾的 `dirsQuery.get(root).ensure()`);现在由这块面自己发 ——
@@ -358,7 +358,7 @@ export function FilesPanel({ root }: { root: string }) {
    * (它不认识文件树)—— 所以按下时先记一格路径,起拖时读它。判词与
    * `workbench/useTabDrag` 那一格逐字同型。
    *
-   * **目录拖出去的是 `files-root:<path>`**(设计 §3.1 第一行的括号):一个目录
+   * **目录拖出去的是 `dir:<path>`**(设计 §3.1 第一行的括号):一个目录
    * 摆进区域里,要的是「以它为根的一棵文件树」,不是一份内容。这一句是这块面
    * 的知识,不是拖拽的知识,所以它写在这里。
    */
@@ -367,7 +367,7 @@ export function FilesPanel({ root }: { root: string }) {
     ref: () => {
       const row = dragRow.current
       if (!row) return null
-      return row.type === 'directory' ? filesRootRef(row.path) : fileRef(row.path)
+      return row.type === 'directory' ? dirRef(row.path) : fileRef(row.path)
     },
   })
 
@@ -508,7 +508,11 @@ export function FilesPanel({ root }: { root: string }) {
         <div {...scopeProps} className={s.panel} data-testid="files-panel">
           <div className={s.head} data-panel-head="">
             {/*
-             * `data-testid="files-root"` 留在原地不动。**但取件口从 textContent 换成了
+             * `data-testid="files-root"` 留在原地不动 —— **它是 DOM 把手,不是种类名**:
+             * 09-09 那一种内容从 `files-root` 改名 `dir`(K2b-1),而这一格字符串是
+             * 单测与三条真机门(`gate-files` / `gate-workspace` / `gate-layout`)取件用的
+             * 名字,与「这一种叫什么」不是同一件事。改它 = 无缘无故动三个脚本的取件口,
+             * 换不来任何一致性。**但取件口从 textContent 换成了
              * `data-root`**:面包屑的中段现在会折成 `…`(深路径下平铺一排会把整条头
              * 挤成一条滚轨),折过之后 textContent 就不再逐字等于那条路径了。
              * 屏幕上说的是「我在哪儿」(可折),`data-root` 说的是「那条路径本身」
@@ -783,7 +787,7 @@ export function FilesPanel({ root }: { root: string }) {
  * **面包屑回跳:把这一格 tab 换成那个祖先目录**(W6-a)。
  *
  * 它是一次**动作**(事件处理器里的一下),不是要渲染的值 —— 所以走 `getState()`。
- * 找哪一格:整棵树上那一格 `files-root:<from>`;找不到(这块面此刻不在任何一棵
+ * 找哪一格:整棵树上那一格 `dir:<from>`;找不到(这块面此刻不在任何一棵
  * 树上 —— 它是被别的宿主直接渲染的)就什么都不做。
  *
  * 换的是 ref 而不是「关一格再开一格」:后者会把叶剪掉重建,整块面连同兄弟一起
@@ -792,12 +796,12 @@ export function FilesPanel({ root }: { root: string }) {
 export function retargetFilesRoot(from: string, to: string): void {
   if (!to || to === from) return
   const store = useWorkbenchStore.getState()
-  const fromRef = filesRootRef(from)
+  const fromRef = dirRef(from)
   const id = refId(fromRef)
   for (const tree of Object.values(store.regions)) {
     for (const leaf of leavesOf(tree)) {
       if (!leaf.tabs.some((tab) => refId(tab) === id)) continue
-      store.replaceRef(leaf.id, fromRef, filesRootRef(to))
+      store.replaceRef(leaf.id, fromRef, dirRef(to))
       store.rememberRoot(to)
       return
     }

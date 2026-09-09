@@ -2,7 +2,7 @@ import { registerContentKind } from '../../workbench/kinds'
 import { baseNameOf } from '../../data/files-source'
 import { FilesPanel } from '../FilesPanel'
 import { disambiguatedDirName } from '../files/dir-names'
-import { FILES_ROOT_KIND } from './files-root-ref'
+import { DIR_KIND } from './dir-ref'
 import type { ContentRef } from '../../workbench/kinds'
 
 /**
@@ -38,7 +38,7 @@ import type { ContentRef } from '../../workbench/kinds'
 
 registerContentKind(
   {
-    id: FILES_ROOT_KIND,
+    id: DIR_KIND,
     // 同一个目录可以在两片叶里各开一棵(与 `file` 同一条:它不是单例)。
     singleton: false,
     title: (ref: ContentRef) => ({

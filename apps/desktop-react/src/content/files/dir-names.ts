@@ -2,7 +2,7 @@ import { baseNameOf } from '../../data/files-source'
 import { flattenContent, refId } from '../../workbench/kinds'
 import { useWorkbenchStore } from '../../workbench/store'
 import { leavesOf } from '../../workbench/tree'
-import { FILES_ROOT_KIND } from '../kinds/files-root-ref'
+import { DIR_KIND } from '../kinds/dir-ref'
 
 /**
  * **目录面板的名字**(W6-a,设计 `workbench-tabs-2026-09.md` §3)。
@@ -54,7 +54,7 @@ export function openDirRoots(): string[] {
          * 文件不认识「两格」这个概念,只认识「一格标签可能装着好几格内容」。
          */
         for (const part of flattenContent(tab)) {
-          if (part.kind === FILES_ROOT_KIND) out.add(part.key)
+          if (part.kind === DIR_KIND) out.add(part.key)
         }
       }
     }
@@ -68,4 +68,4 @@ export function disambiguatedDirName(path: string): string {
 }
 
 /** 这个目录面板的 refId(给门与用例的取件口)。 */
-export const dirRefId = (path: string): string => refId({ kind: FILES_ROOT_KIND, key: path })
+export const dirRefId = (path: string): string => refId({ kind: DIR_KIND, key: path })

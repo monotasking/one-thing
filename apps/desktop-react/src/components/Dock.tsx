@@ -142,7 +142,7 @@ export function Dock() {
   const startTileDrag = useContentDrag({
     /*
      * **启动瓦拖出去的不是它自己**(W6-a):「目录」那块瓦拖出来的是
-     * `files-root:<当前会话的工作目录>`,不是 `panel:files`(那块面已经不存在了)。
+     * `dir:<当前会话的工作目录>`,不是 `panel:files`(那块面已经不存在了)。
      * 判据**读表不写 if**(`stage/launchers.ts`):表上没有这块瓦就照旧 `panelRef`。
      */
     ref: () => {

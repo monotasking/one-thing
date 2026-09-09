@@ -1264,7 +1264,7 @@ async function sceneSummon(store, udd, sessions) {
     await clickTile(page, 'files')
     await delay(900)
     const opened = await read(page)
-    const filesTab = opened.shelves.left?.tabs.find((t) => t.id?.startsWith('files-root:'))
+    const filesTab = opened.shelves.left?.tabs.find((t) => t.id?.startsWith('dir:'))
     check(
       '点「目录」瓦:目录面板落在左架子(它的出厂档 `defaultPlacement`)',
       Boolean(filesTab),
@@ -1276,7 +1276,7 @@ async function sceneSummon(store, udd, sessions) {
     const orderBefore = stacked.shelves.left?.tabs.map((t) => t.id) ?? []
     check(
       '前提:目录那一格此刻不是露脸的那一格',
-      stacked.shelves.left?.tabs.find((t) => t.id?.startsWith('files-root:'))?.on === false,
+      stacked.shelves.left?.tabs.find((t) => t.id?.startsWith('dir:'))?.on === false,
       JSON.stringify(orderBefore),
     )
     await clickTile(page, 'files')
@@ -1284,7 +1284,7 @@ async function sceneSummon(store, udd, sessions) {
     const orderAfter = summoned.shelves.left?.tabs.map((t) => t.id) ?? []
     check(
       '点「目录」瓦:原地点名那一格(不是再摆一次)',
-      summoned.shelves.left?.tabs.find((t) => t.id?.startsWith('files-root:'))?.on === true,
+      summoned.shelves.left?.tabs.find((t) => t.id?.startsWith('dir:'))?.on === true,
       JSON.stringify(summoned.shelves.left?.tabs),
     )
     check(
@@ -1306,7 +1306,7 @@ async function sceneSummon(store, udd, sessions) {
     check('点「目录」瓦:收着的架子被展开了', revealed.shelves.left?.collapsed === false)
     check(
       '点「目录」瓦:露脸的正是目录那一格',
-      revealed.shelves.left?.tabs.find((t) => t.id?.startsWith('files-root:'))?.on === true,
+      revealed.shelves.left?.tabs.find((t) => t.id?.startsWith('dir:'))?.on === true,
       JSON.stringify(revealed.shelves.left?.tabs),
     )
 

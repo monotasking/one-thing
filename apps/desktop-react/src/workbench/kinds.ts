@@ -1,4 +1,6 @@
+import { formatRef, parseRef, sameRef as sameResourceRef } from '@onething/core/resource'
 import type { ReactNode } from 'react'
+import type { ResourceRef } from '@onething/core/resource'
 import type { PanelVisibility } from '../content/visibility'
 import type { FocusScopeId } from '../focus/types'
 import type { LiveTitle } from '../stage/live-title'
@@ -9,6 +11,9 @@ import type { RegionId } from './regions'
  *
  * 一句话:**屏幕上任何一块能看的东西都是一个「内容引用」**;引用住在某棵拼贴树的
  * 叶子里;每棵树归一个区域持有(`./regions.ts`)。
+ *
+ * **地址与 core 的 `Ref` 同一套语法,唯一产地在 core**(K2b-1,`packages/core/resource/
+ * ref.ts`;判词整段在下面 `ContentRef` 之上)。壳这边不再自己写切法与 scheme 语法。
  *
  * ── 这只文件里为什么一个种类名都没有 ──────────────────────────────────────
  * 「加功能不许改骨架」那条法在这里的字面落地:核心层只认 `{kind, key}` 两个
@@ -27,9 +32,31 @@ import type { RegionId } from './regions'
  * 并排各占一片叶)。三种各在自己的模块里,谁都不认识谁。
  */
 
+/*
+ * ── 地址合一:这里的 ref 与 core 的 `Ref` 是**同一套语法**(K2b-1)────────────
+ * `docs/design/atom-2026-09.md` §7 盲点 2:「壳的 `ContentRef` 与 core 的 `Ref` 必须
+ * 是同一套语法、同一张 scheme 表,否则又是『一种东西两个名字』」。
+ *
+ * **语法的唯一产地从此在 core**(`packages/core/resource/ref.ts`):切法(第一个冒号)、
+ * scheme 语法(`^[a-z][a-z0-9-]*$`)、往返保证,壳这边一个字都不再自己写 —— 下面三只
+ * (`refId` / `parseRefId` / `sameRef`)全是**委托**。可见的行为变化只有一条:
+ * `Demo:x` / `1a:x` / `a_b:x` 从今天起**不是**合法 ref(从前壳这边只判「有没有冒号」)。
+ *
+ * ── 为什么 `ContentRef` 不是 `ResourceRef` 的裸别名 ──────────────────────────
+ * 两边字段名不同:壳叫 `{kind, key}`,core 叫 `{scheme, path}`。`type ContentRef =
+ * ResourceRef` 会让壳里几百处 `.kind` / `.key` 当场编译不过 —— 那是一次改名战役,
+ * 不是「地址合一」这一单要办的事(合的是**语法**,不是字段名)。所以这一格留成壳
+ * 自己的接口,合流点收在下面那**一对转换**上:全仓只有这两只函数知道 `kind ↔ scheme`
+ * / `key ↔ path` 的对应,别处一个字都不许再写这层翻译。
+ *
+ * 字段名的统一(以及 `ContentRefId` 收紧成 core 的 `Ref` 模板字面量类型)留给
+ * 后续那一单;今天它是纯粹的机械改名,与本单的判据无关。
+ */
+
 /**
- * 一块内容的身份。`kind` 是种类名,`key` 是这一种里的哪一个。
- * 核心层只认这两个字符串 —— 它不知道 `key` 是路径、瓦 id 还是会话 id。
+ * 一块内容的身份。`kind` 是种类名(= core 的 `scheme`),`key` 是这一种里的哪一个
+ * (= core 的 `path`)。核心层只认这两个字符串 —— 它不知道 `key` 是路径、瓦 id
+ * 还是会话 id。
  */
 export interface ContentRef {
   readonly kind: string
@@ -39,20 +66,27 @@ export interface ContentRef {
 /** `refId` 是这块内容在全应用的唯一名字:memo 的 key、live-title 的键、树里的定位都用它。 */
 export type ContentRefId = string
 
-export const refId = (ref: ContentRef): ContentRefId => `${ref.kind}:${ref.key}`
+/* ── 壳的 `{kind, key}` ⇄ core 的 `{scheme, path}`。全仓唯一一处这层翻译。 ────── */
+const asResource = (ref: ContentRef): ResourceRef => ({ scheme: ref.kind, path: ref.key })
+const fromResource = (ref: ResourceRef): ContentRef => ({ kind: ref.scheme, key: ref.path })
+
+export const refId = (ref: ContentRef): ContentRefId => formatRef(asResource(ref))
 
 /**
  * `refId` 的逆。**在第一个冒号处切**(`key` 里允许有冒号 —— Windows 的
- * `C:\…` 与将来的 `web:https://…` 都会带),切不出来就回 null。
+ * `C:\…` 与将来的 `web:https://…` 都会带),切不出合法的两半就回 null。
+ *
+ * 判据整个来自 core 的 `parseRef`,包括那条**新生效**的 scheme 语法闸:
+ * 大写、数字开头、带下划线的种类名从此解析不出来(种类注册那一头由
+ * `__tests__/ref-syntax.test.ts` 对着 `contentKindList()` 逐个核)。
  */
 export function parseRefId(id: string): ContentRef | null {
-  const at = id.indexOf(':')
-  if (at <= 0 || at === id.length - 1) return null
-  return { kind: id.slice(0, at), key: id.slice(at + 1) }
+  const parsed = parseRef(id)
+  return parsed ? fromResource(parsed) : null
 }
 
 export function sameRef(a: ContentRef, b: ContentRef): boolean {
-  return a.kind === b.kind && a.key === b.key
+  return sameResourceRef(asResource(a), asResource(b))
 }
 
 /**

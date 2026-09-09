@@ -99,8 +99,14 @@ export function shelfToggleCommandId(side: ShelfSide): CommandId {
   return `shelf.${side}.toggle`
 }
 
-/** 架子命令 id → 哪一侧。认不出就是 null —— 派发器据此放行,不去猜。 */
-export function shelfSideOfCommand(id: CommandId): ShelfSide | null {
+/**
+ * 架子命令 id → 哪一侧。认不出就是 null —— 派发器据此放行,不去猜。
+ *
+ * 收 `string` 而不是 `CommandId`(K2b-1 放宽):它是**反解**,而反解的入参按定义
+ * 是「还不知道是不是一条命令」的串 —— 收 `CommandId` 就等于要求调用方先知道答案。
+ * 判据与 `run-command.ts` 的 `runShellCommand` 逐字相同,写在那只函数头上。
+ */
+export function shelfSideOfCommand(id: string): ShelfSide | null {
   const found = SHELF_TOGGLE_LABELS.find((row) => shelfToggleCommandId(row.side) === id)
   return found?.side ?? null
 }

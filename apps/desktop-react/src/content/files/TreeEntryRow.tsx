@@ -125,7 +125,7 @@ export function TreeEntryRow({
   onRestore?: () => void
   /**
    * **按住这一行 = 拖它**(W3,设计 §3.1 第一行:文件树一行 → `file:<path>`,
-   * 目录 → `files-root:<path>`)。
+   * 目录 → `dir:<path>`)。
    *
    * 这一行自己**不认识拖拽**:它只把「按下了」连同事件递出去,拖成什么、能落到
    * 哪儿由面板那一层说了算(`content/FilesPanel` 的 `useContentDrag`)——与

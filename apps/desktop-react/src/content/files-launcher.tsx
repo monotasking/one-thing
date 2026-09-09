@@ -10,7 +10,7 @@ import { useStageStore } from '../stage/store'
 import { CENTER_REGION, edgeRegion, floatRegion } from '../workbench/regions'
 import { refId } from '../workbench/kinds'
 import { regionOfRefIn, useWorkbenchStore } from '../workbench/store'
-import { FILES_ROOT_KIND, filesRootRef } from './kinds/files-root-ref'
+import { DIR_KIND, dirRef } from './kinds/dir-ref'
 import { useOpenDirDialog } from './files/open-dir-hub'
 import type { PlacementMemory } from '../stage/types'
 import type { ContentRef } from '../workbench/kinds'
@@ -25,7 +25,7 @@ import type { RegionId } from '../workbench/regions'
  * 那块瓦降格成**启动瓦**:
  *  · 点它    = 打开**当前会话的工作目录**那份面板;
  *  · 右键    = 最近打开过的那几个目录 + 「打开目录…」;
- *  · 拖它    = 拖出来的是 `files-root:<当前会话的工作目录>`,不再是 `panel:files`。
+ *  · 拖它    = 拖出来的是 `dir:<当前会话的工作目录>`,不再是 `panel:files`。
  *
  * ── 它为什么不是 Dock 里的一句 `if` ──────────────────────────────────────
  * 「加功能不许改骨架」:Dock 若为这块瓦写一句 if,下一块特殊的瓦就会写第二句。
@@ -83,7 +83,7 @@ function regionForLauncher(ref: ContentRef): RegionId {
  */
 export function openDirectoryPanel(path: string): void {
   if (!path) return
-  const ref = filesRootRef(path)
+  const ref = dirRef(path)
   useWorkbenchStore.getState().rememberRoot(path)
   useStageStore.getState().placeRef(ref, regionForLauncher(ref))
 }
@@ -149,7 +149,7 @@ registerStageLauncher(
      */
     dragRef: () => {
       const cwd = sessionDirOf()
-      return cwd ? filesRootRef(cwd) : null
+      return cwd ? dirRef(cwd) : null
     },
     /*
      * **答不出 `dragRef` 时的退一步**(W7-c 裁定 6)。会话没绑目录时上面那一口
@@ -157,7 +157,7 @@ registerStageLauncher(
      * 交出去的是一个**种类名**,查找归 `workbench/tree.firstRefOfKindIn`(判词在
      * `stage/open-item.residentRefOf`):这块瓦只自述自己开的是哪一种。
      */
-    residentKind: FILES_ROOT_KIND,
+    residentKind: DIR_KIND,
     MenuRows: FilesLauncherMenuRows,
   },
   import.meta.hot,

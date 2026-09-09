@@ -710,6 +710,41 @@ export function fullStillStands(
   return regionOfRefIn(regions, refId(full.ref)) !== null
 }
 
+/* ── persist 迁移 ──────────────────────────────────────────────────────── */
+
+/**
+ * persist 档案版本。改这个数就必须在 `migrateWorkbenchPersisted` 里加一段,
+ * 两者同生共死(体例与 `keymap/transitions.ts` 的 `KEYMAP_PERSIST_VERSION` 相同)。
+ *
+ * v1 = W1 的形(树按 Workspace 记,常驻那一格是 `chat:main`);
+ * v2 = **W5-b 会话多开**:`chat` 改名 `session`,`key` 从死的 `main` 换成会话 id;
+ * v3 = **W6-a 单叶 + 预览退役**:中央区那棵树折成一片叶,`preview` 那一格抹掉;
+ * v4 = **K2b-1 地址合一**:目录那一种 `files-root` 改名 `dir`
+ *      (`docs/design/atom-2026-09.md` §7 盲点 2)。
+ */
+export const WORKBENCH_PERSIST_VERSION = 4
+
+/**
+ * **每一级串着跑**(v1 的档案要先翻名字、再折叶、再翻一次名字):按版本从低到高
+ * 逐级过,不是 `if/else` 二选一 —— 一份 v1 档案跳过 v3 那一遍的话,它的中央区会带
+ * 着一棵多叶树进 merge,而那时 `sanitize` 洗不掉它(洗形状不是折叶,判词在
+ * `normalizeRegions`)。
+ *
+ * 它从 persist 的选项里提出来是为了**能被单测直接问**:反证「把 `version < 4` 那条
+ * 拆掉 → 迁移用例当场红」在选项字面量里跑不了。
+ *
+ * v2 与 v4 共用同一只改写器(`rewriteLegacyContentRef` 是种类改名的**唯一**产地),
+ * 所以一份 v1 档案会经过它两遍 —— 而它幂等,第二遍原样交回同一个对象。
+ */
+export function migrateWorkbenchPersisted(persisted: unknown, version: number): unknown {
+  if (!persisted || typeof persisted !== 'object') return persisted
+  let out = persisted as Record<string, unknown>
+  if (version < 2) out = rewriteRefsInPersisted(out, rewriteLegacyContentRef)
+  if (version < 3) out = foldRegionsInPersisted(out, SINGLE_LEAF_REGIONS)
+  if (version < 4) out = rewriteRefsInPersisted(out, rewriteLegacyContentRef)
+  return out
+}
+
 /* ── store ────────────────────────────────────────────────────────────── */
 
 export const useWorkbenchStore = create<WorkbenchState>()(
@@ -1293,20 +1328,9 @@ export const useWorkbenchStore = create<WorkbenchState>()(
        * v3 = **W6-a 单叶 + 预览退役**:中央区那棵树按阅读序折成一片叶(比例随
        *      split 节点一起丢掉),每一片叶身上那格 `preview` 抹掉。两件事一起
        *      走一遍,判词与幂等 / 引用恒等两条要求写在 `persist-migrate.ts` 上。
-       *
-       * **两级迁移串着跑**(v1 的档案要先翻名字再折叶):`migrate` 里按版本从低
-       * 到高逐级过,不是 `if/else` 二选一 —— 一份 v1 档案跳过 v3 那一遍的话,
-       * 它的中央区会带着一棵多叶树进 merge,而那时 `sanitize` 洗不掉它
-       * (洗形状不是折叶,判词在 `normalizeRegions`)。
        */
-      version: 3,
-      migrate: (persisted, version) => {
-        if (!persisted || typeof persisted !== 'object') return persisted
-        let out = persisted as Record<string, unknown>
-        if (version < 2) out = rewriteRefsInPersisted(out, rewriteLegacyContentRef)
-        if (version < 3) out = foldRegionsInPersisted(out, SINGLE_LEAF_REGIONS)
-        return out
-      },
+      version: WORKBENCH_PERSIST_VERSION,
+      migrate: migrateWorkbenchPersisted,
       storage: createJSONStorage(() => localStorage),
       /*
        * merge 是**同步**的、发生在 store 建出来那一刻,所以第一帧画的就是这个空间

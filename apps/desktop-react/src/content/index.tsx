@@ -33,7 +33,7 @@ const RENDERERS: Record<string, () => ReactNode> = {
   /*
    * **`files` 那一行撤了**(W6-a,设计 `workbench-tabs-2026-09.md` §3)。
    * 文件面板不再是「一块面」,而是**一族**面:一个目录一份
-   * `files-root:<绝对路径>`(`content/kinds/files-root.tsx`)。Dock 上那块瓦
+   * `dir:<绝对路径>`(`content/kinds/dir.tsx`)。Dock 上那块瓦
    * 因此从「一块面」降格成**启动瓦**(`stage/launchers.ts` + `content/files-launcher.tsx`):
    * 点它 = 开当前会话那个目录,右键 = 最近开过的那几个 + 「打开目录…」。
    */

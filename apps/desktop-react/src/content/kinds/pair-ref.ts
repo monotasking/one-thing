@@ -6,7 +6,7 @@ import type { ContentRef } from '../../workbench/kinds'
  * `apps/desktop-react/docs/workbench-tabs-2026-09.md` §2.1)。
  *
  * ── 这几行为什么单独一个文件 ──────────────────────────────────────────────
- * 与 `stage/panel-ref.ts` / `./files-root-ref.ts` 逐字同一条理由:它是**两层之间
+ * 与 `stage/panel-ref.ts` / `./dir-ref.ts` 逐字同一条理由:它是**两层之间
  * 那条缝**。菜单、拖拽落定、会话投影都要认得出「这一格是两格并起来的」,而它们
  * 都不该 import 那一种内容的**实现**(`./pair.tsx` 的 import 闭包里有查看器、
  * 聊天流、Splitter)。种类实现自己也从这里取 id 与那两只纯函数,所以

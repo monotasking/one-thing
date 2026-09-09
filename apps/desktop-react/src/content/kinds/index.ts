@@ -23,6 +23,6 @@ import './file'
 import './session'
 /* W3:项目行拖进区域时变成的那一种 —— 以某个目录为根的一棵文件树(设计 §3.1)。
  * W6-a 起它是**文件面板唯一的形态**(`panel:files` 退役)。 */
-import './files-root'
+import './dir'
 /* W6-a:一个标签装两格 —— 「二合一」并出来的那一种(设计 `workbench-tabs-2026-09.md` §2.1)。 */
 import './pair'

@@ -15,7 +15,7 @@ import {
 } from '../scopes'
 import { useExposeStore } from '../store'
 import { useContentDrag } from '../../workbench/useContentDrag'
-import { filesRootRef } from '../../content/kinds/files-root-ref'
+import { dirRef } from '../../content/kinds/dir-ref'
 import type { ProjectScope } from '../types'
 import s from './Rail.module.css'
 
@@ -48,7 +48,7 @@ interface RailItem {
   label: string
   icon: string
   /**
-   * 这一档拖出去是什么(W3 裁定 6:项目一行 → `files-root:<path>`)。
+   * 这一档拖出去是什么(W3 裁定 6:项目一行 → `dir:<path>`)。
    * **固定那几档没有**(「全部」「协作」「无项目」不是一个目录,拖不出东西),
    * 所以这一格是可选的 —— 它同时就是「这一行能不能拖」的判据,没有第二个布尔。
    */
@@ -91,7 +91,7 @@ export function Rail() {
    */
   const dragPath = useRef<string | null>(null)
   const startDrag = useContentDrag({
-    ref: () => (dragPath.current ? filesRootRef(dragPath.current) : null),
+    ref: () => (dragPath.current ? dirRef(dragPath.current) : null),
   })
   const onItemPointerDown = useCallback(
     (item: RailItem, e: ReactPointerEvent<HTMLElement>) => {

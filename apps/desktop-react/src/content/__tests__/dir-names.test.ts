@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { disambiguate, disambiguatedDirName, openDirRoots, parentNameOf } from '../files/dir-names'
-import { filesRootRef } from '../kinds/files-root-ref'
+import { dirRef } from '../kinds/dir-ref'
 import { pairRefOf } from '../kinds/pair-ref'
 import { pairContentKind } from '../kinds/pair'
 import { CENTER_REGION } from '../../workbench/regions'
@@ -21,7 +21,7 @@ import { FACTORY_FILE_OPEN_MODE, useFileOpenMode } from '../../data/file-open-mo
 beforeEach(() => {
   resetContentKinds()
   registerContentKind({
-    id: 'files-root',
+    id: 'dir',
     singleton: false,
     title: (ref) => ({ text: ref.key }),
     icon: () => 'FolderTree',
@@ -57,9 +57,9 @@ describe('名字 = 目录名;同名带父目录', () => {
 
 describe('「此刻开着哪些目录」问的是树,而且**看进两格标签里**', () => {
   it('普通标签与两格标签里的那一格都算在场', () => {
-    const pair = pairRefOf(filesRootRef('/b/docs'), { kind: 'files-root', key: '/c/notes' })
+    const pair = pairRefOf(dirRef('/b/docs'), { kind: 'dir', key: '/c/notes' })
     useWorkbenchStore.setState({
-      regions: { [CENTER_REGION]: makeLeaf('L1', [filesRootRef('/a/docs'), pair]) },
+      regions: { [CENTER_REGION]: makeLeaf('L1', [dirRef('/a/docs'), pair]) },
     })
     expect(openDirRoots().sort()).toEqual(['/a/docs', '/b/docs', '/c/notes'])
     // 于是同名那两个各自带上父目录 —— 两格标签里的那一格也画在屏幕上。
