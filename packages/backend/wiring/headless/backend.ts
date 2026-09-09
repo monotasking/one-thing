@@ -58,6 +58,7 @@ import { sessionReads } from '../../session/reads.js'
 import { getStreamEngine } from '../engine/index.js'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import { localUserPrincipal } from '@onething/core/permission'
+import { markHostUnattended } from '@onething/runtime/permissions/unattended'
 import type { Principal } from '@onething/core/permission'
 import {
   serializeOutcome,
@@ -115,50 +116,70 @@ export class HeadlessBackend {
   async start(options: { storePath?: string; logging?: OnethingBackendOptions['logging'] } = {}): Promise<void> {
     if (this.started) return
 
-    this.backend = await createOnethingBackend({
-      owner: 'daemon',
-      storePath: options.storePath,
-      logging: options.logging,
-      /*
-       * A1:宿主能力一次交清。CLI daemon 除了下载目录之外一件宿主能力都没有
-       * (它没有窗口、没有托盘、没有 Keychain 身份),十四个 `null` 就是这里的
-       * 事实清单(数目随表长:B3 加了 `terminal` 与 `localTrust` 两格)。
-       * `storePath: {}` 与从前从不调 `configureStorePathHost` 时的缺省逐字相同。
-       */
-      host: {
-        storePath: {},
-        sandbox: {
-          getPath(name) {
-            if (name === 'downloads') return path.join(os.homedir(), 'Downloads')
-            if (name === 'home') return os.homedir()
-            return os.homedir()
+    /*
+     * K4-d:**这台进程上没有人可以答一张权限卡**,守护进程自己说这一句。
+     *
+     * 下面 `startPermissionTimeout` 那条既有的 60 秒自动拒只接在 `chat.ask` 的活流
+     * 上;经 daemon / `onething mcp` 桥进来的资源 `do` 没有流,卡会一直挂着(K4-c
+     * 留账 1)。声明之后,`system` 主体的 ask 由 `permission-policy.ts` 的
+     * `unattendedHostBridge` 在 60 秒后经 `Permission.respond` 答掉。
+     *
+     * 声明**先于**装配:装配途中(`mcpAcp: true` 会真的把 MCP 拉起来)万一有人问
+     * 权限,那时也已经没人能答。装配失败就地收回,免得一台没起来的后端在进程里
+     * 留下一句「无人值守」。成功之后交给 `own()` —— 关机清单归装配层一处,这里不
+     * 再多记一个字段(A2 那条:手抄的清单会抄漏)。
+     */
+    const releaseUnattendedHost = markHostUnattended('cli-daemon')
+    try {
+      this.backend = await createOnethingBackend({
+        owner: 'daemon',
+        storePath: options.storePath,
+        logging: options.logging,
+        /*
+         * A1:宿主能力一次交清。CLI daemon 除了下载目录之外一件宿主能力都没有
+         * (它没有窗口、没有托盘、没有 Keychain 身份),十四个 `null` 就是这里的
+         * 事实清单(数目随表长:B3 加了 `terminal` 与 `localTrust` 两格)。
+         * `storePath: {}` 与从前从不调 `configureStorePathHost` 时的缺省逐字相同。
+         */
+        host: {
+          storePath: {},
+          sandbox: {
+            getPath(name) {
+              if (name === 'downloads') return path.join(os.homedir(), 'Downloads')
+              if (name === 'home') return os.homedir()
+              return os.homedir()
+            },
           },
+          auth: null,
+          logging: null,
+          shell: null,
+          voice: null,
+          terminal: null,
+          // CLI daemon 不分发 RPC(它走自己那套 NDJSON 命令),没有"可信的 HTTP
+          // 调用方"这回事 —— 六个信任判据在它这里一条都到不了。
+          localTrust: null,
+          skillsEnvironment: null,
+          todoPlan: null,
+          scratchpad: null,
+          plugins: null,
+          gateway: null,
+          settings: null,
+          evals: null,
+          mcp: null,
         },
-        auth: null,
-        logging: null,
-        shell: null,
-        voice: null,
-        terminal: null,
-        // CLI daemon 不分发 RPC(它走自己那套 NDJSON 命令),没有"可信的 HTTP
-        // 调用方"这回事 —— 六个信任判据在它这里一条都到不了。
-        localTrust: null,
-        skillsEnvironment: null,
-        todoPlan: null,
-        scratchpad: null,
-        plugins: null,
-        gateway: null,
-        settings: null,
-        evals: null,
-        mcp: null,
-      },
-      toolRegistry: 'headless',
-      sessionSkills: true,
-      mcpAcp: true,
-      // Multi-agent rooms work headless too: the sender below is bound, so
-      // the coordinator's hasCommandTarget gate passes and drives flow.
-      collab: true,
-      sender: this.sender,
-    })
+        toolRegistry: 'headless',
+        sessionSkills: true,
+        mcpAcp: true,
+        // Multi-agent rooms work headless too: the sender below is bound, so
+        // the coordinator's hasCommandTarget gate passes and drives flow.
+        collab: true,
+        sender: this.sender,
+      })
+    } catch (error) {
+      releaseUnattendedHost()
+      throw error
+    }
+    this.backend.own(releaseUnattendedHost, 'unattendedHost')
     this.started = true
   }
 

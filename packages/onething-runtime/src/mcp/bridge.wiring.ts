@@ -6,6 +6,7 @@
  */
 
 import { MCPManager } from './manager.js'
+import { notifyMCPToolTableChanged } from './capabilities-changed.js'
 import type { MCPToolInfo, MCPToolCallResult } from './types.js'
 import type { ToolDefinition } from '@shared/ipc.js'
 import {
@@ -181,6 +182,20 @@ export function getMCPToolsForAI(
  * 无关:刷新 flat id 的映射表(每次执行都要解析它),以及 router 档下生成目录文件。
  */
 export async function registerMCPTools(): Promise<void> {
+  /*
+   * K5-a —— 「工具表可能变了」的广播,**第一行**。
+   *
+   * 这只函数是那件事唯一的汇合点:connect / disconnect / refresh / update /
+   * remove / 设置保存 / 服务器推来的 list_changed,每一条路的收尾都调它
+   * (`mcp/server-orchestration.ts` 的六只、`McpSubsystem.start` / `applySettings`、
+   * `settings-save.ts`)。资源面的 MCP 投影驱动订的就是它。
+   *
+   * 放在**三处 early-return 之前**:`plan.mode === 'none'` 是「MCP 关掉了 / 一台都
+   * 没连上」,而那恰恰是订阅方最需要知道的一次变化 —— 该把已经挂上去的命名空间全
+   * 摘了。放在后面等于「关掉 MCP 之后那些 scheme 永远留在注册表里」。
+   */
+  notifyMCPToolTableChanged()
+
   const plan = coreMCPBridgeRuntime.planToolRegistration([])
 
   if (plan.mode === 'none') {

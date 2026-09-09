@@ -690,13 +690,19 @@ export function resolveMCPRouterAction(
  * Attach the readable rendering of an MCP result before it reaches the agent
  * loop.
  *
+ * Exported (K5-a) so the resource-side projection of an MCP server
+ * (`backend/wiring/resource/mcp-provider.ts`) renders a call result through the
+ * *same* function `executeMCPBridgeTool` uses below. A second rendering would
+ * drift, and the shape of that drift is exactly the bug this function exists to
+ * prevent.
+ *
  * `toolOutputToText` (core/agent-loop/tools.ts) JSON.stringifies any payload
  * that has no `output` string. For a result carrying an image part that meant
  * the base64 was inlined into the tool message text *and* attached again as a
  * real image part — the same bytes charged twice. The summary keeps binary
  * parts as `[image: image/png]` while `content` still carries the real parts.
  */
-function withMCPResultOutputText(result: MCPToolCallResult): MCPToolCallResult {
+export function withMCPResultOutputText(result: MCPToolCallResult): MCPToolCallResult {
   if (!result.success) return result
   return { ...result, output: mcpContentToString(result.content) }
 }

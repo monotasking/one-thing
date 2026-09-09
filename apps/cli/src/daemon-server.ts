@@ -245,31 +245,23 @@ export class DaemonServer {
        * 判据,而两份判据早晚说两句话。
        */
       case 'resource.list':
+        // 它今天不收参数,仍然过一遍解析器:四支的参数只有一个产地,没有例外。
+        parseResourceParams('resource.list', request.params)
         return this.backend.listResources()
-      case 'resource.describe':
-        return this.backend.describeResource(requiredString(request.params, 'scheme'))
+      case 'resource.describe': {
+        const parsed = parseResourceParams('resource.describe', request.params)
+        return this.backend.describeResource(parsed.scheme)
+      }
       case 'resource.read': {
-        const params = request.params as {
-          ref?: string; name?: string; query?: Record<string, unknown>; sessionId?: string
-        } | undefined
+        const parsed = parseResourceParams('resource.read', request.params)
         return this.backend.readResource(
-          requiredString(params, 'ref'),
-          requiredString(params, 'name'),
-          params?.query ?? {},
-          params?.sessionId,
-          readOptionalSystemPrincipal(request.params),
+          parsed.ref, parsed.name, parsed.query, parsed.sessionId, parsed.principal,
         )
       }
       case 'resource.do': {
-        const params = request.params as {
-          ref?: string; op?: string; params?: Record<string, unknown>; sessionId?: string
-        } | undefined
+        const parsed = parseResourceParams('resource.do', request.params)
         return this.backend.doResource(
-          requiredString(params, 'ref'),
-          requiredString(params, 'op'),
-          params?.params ?? {},
-          params?.sessionId,
-          readOptionalSystemPrincipal(request.params),
+          parsed.ref, parsed.op, parsed.params, parsed.sessionId, parsed.principal,
         )
       }
       default:
@@ -363,6 +355,117 @@ function requiredString(params: unknown, key: string): string {
   const value = (params as Record<string, unknown> | undefined)?.[key]
   if (typeof value !== 'string' || !value.trim()) throw namedError('ERR_VALIDATION', `${key} is required`)
   return value
+}
+
+/** 四支 `resource.*` 的方法名。参数解析器按它分支。 */
+export type ResourceMethod = 'resource.list' | 'resource.describe' | 'resource.read' | 'resource.do'
+
+/** 解析后的参数:每一支一格,字段已经是**带类型**的,调用点不再 `as`。 */
+export type ParsedResourceParams =
+  | { method: 'resource.list' }
+  | { method: 'resource.describe'; scheme: string }
+  | {
+      method: 'resource.read'
+      ref: string
+      name: string
+      query: Record<string, unknown>
+      sessionId?: string
+      principal?: DaemonResourcePrincipal
+    }
+  | {
+      method: 'resource.do'
+      ref: string
+      op: string
+      params: Record<string, unknown>
+      sessionId?: string
+      principal?: DaemonResourcePrincipal
+    }
+
+/**
+ * 四支 `resource.*` 的参数解析,**一只纯函数**(K4-d,还 K4-c 留账 5)。
+ *
+ * 从前每一支自己写一遍 `request.params as { … }`、再 `requiredString` 逐格挖、再
+ * `readOptionalSystemPrincipal(request.params)` 第三遍过同一个对象 —— 同一份形状
+ * 判据摊在四处,加一格(比如将来的 `timeoutMs`)要改四处,而漏改一处没有任何一道
+ * 门看得见。收拢之后:形状判据一处,调用点只剩「把解析结果递给转发口」。
+ *
+ * 纪律没变,只是搬了家:
+ *  - **只判形状**(必填的字符串在不在、可选的那几格是不是该有的类型),**不判
+ *    「这条读法 / 做法存不存在」** —— 那是自述说了算的事,内核会回一句 `invalid`;
+ *    在这里再判一次就是第二份判据,而两份判据早晚说两句话。
+ *  - 错误是**结构化**的 `ERR_VALIDATION`(`namedError`),由 `handleRequest` 折成
+ *    NDJSON 的 `{type:'error', code}`,与从前逐字相同。
+ *  - `resource.list` 不收参数。它仍然走这只函数,是为了「四支的参数只有一个产地」
+ *    这句话没有例外 —— 将来它真长出一格参数时,家在这里。
+ *
+ * 泛型返回是为了让调用点拿到**那一支**的结构(`parsed.scheme` / `parsed.ref` 直接
+ * 有类型)。实现里那一次 `as` 是把「按 method 分支」这件事告诉类型系统的代价,
+ * 换掉的是四个调用点上的四次 `as`。
+ */
+export function parseResourceParams<M extends ResourceMethod>(
+  method: M,
+  params: unknown,
+): Extract<ParsedResourceParams, { method: M }> {
+  return parseResourceParamsByMethod(method, params) as Extract<ParsedResourceParams, { method: M }>
+}
+
+function parseResourceParamsByMethod(method: ResourceMethod, params: unknown): ParsedResourceParams {
+  switch (method) {
+    case 'resource.list':
+      return { method }
+    case 'resource.describe':
+      return { method, scheme: requiredString(params, 'scheme') }
+    case 'resource.read':
+      return {
+        method,
+        ref: requiredString(params, 'ref'),
+        name: requiredString(params, 'name'),
+        query: optionalRecord(params, 'query'),
+        ...optionalSessionId(params),
+        ...optionalPrincipal(params),
+      }
+    case 'resource.do':
+      return {
+        method,
+        ref: requiredString(params, 'ref'),
+        op: requiredString(params, 'op'),
+        params: optionalRecord(params, 'params'),
+        ...optionalSessionId(params),
+        ...optionalPrincipal(params),
+      }
+  }
+}
+
+function fieldOf(params: unknown, key: string): unknown {
+  return (params as Record<string, unknown> | undefined)?.[key]
+}
+
+/** 不给就是**空表**,不是 `undefined` 穿到内核。给了就得是个对象。 */
+function optionalRecord(params: unknown, key: string): Record<string, unknown> {
+  const value = fieldOf(params, key)
+  if (value === undefined || value === null) return {}
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw namedError('ERR_VALIDATION', `${key} must be an object`)
+  }
+  return value as Record<string, unknown>
+}
+
+/**
+ * 发起坐标。缺席就是缺席 —— 不拿 `ref` 里那条会话顶上(K1 留账那个病:审计读成
+ * 「A 自己改了自己」)。给了就得是个非空字符串。
+ */
+function optionalSessionId(params: unknown): { sessionId?: string } {
+  const value = fieldOf(params, 'sessionId')
+  if (value === undefined || value === null) return {}
+  if (typeof value !== 'string' || !value.trim()) {
+    throw namedError('ERR_VALIDATION', 'sessionId must be a non-empty string')
+  }
+  return { sessionId: value }
+}
+
+function optionalPrincipal(params: unknown): { principal?: DaemonResourcePrincipal } {
+  const principal = readOptionalSystemPrincipal(params)
+  return principal ? { principal } : {}
 }
 
 /**

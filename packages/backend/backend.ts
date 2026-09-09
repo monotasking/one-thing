@@ -90,6 +90,7 @@ import {
   createResourceKernel,
   forwardResourceEventsToBus,
   mountBuiltinResources,
+  mountMcpResources,
   syncResourceToolsIntoCatalog,
   ShellCommandDispatch,
   ShellMountRegistry,
@@ -975,7 +976,6 @@ export class OnethingBackend implements BackendHandle {
       settings: () => getSettings().acp || { enabled: true, agents: [] },
     })
     this.acpSubsystem = acp
-
     /*
      * ── 关机链的**头**七件,一处登记、显式反序 ──
      * (C1 之前是六件 —— `'mcpAcp'` 那一格拆成了 `'mcp'` / `'acp'` 两格。)
@@ -1011,6 +1011,25 @@ export class OnethingBackend implements BackendHandle {
      * 仍然是先 acp 后 mcp,与 C1 之前逐字相同。
      */
     this.own(() => mcp.dispose(), 'mcp')
+    /*
+     * K5-a —— MCP 投影驱动(`docs/design/atom-2026-09.md` §9 K5「外部」:把一台
+     * 已连接的 server 投影成一个命名空间)。
+     *
+     * 它接在这里而不是缝 4.1 里,因为它同时要**内核**(缝 4.1 建的)与**这台进程的
+     * MCP 客户端**(上面那只子系统管着的那一台)。规则住在
+     * `wiring/resource/mcp-mount.ts` —— 这只文件里照旧一个 scheme 名都没有,连
+     * 「哪些档挂它」的判据都没有:MCP 子系统在哪些档存在,它就在哪些档投影,不另加
+     * 一条档判据。
+     *
+     * **紧跟在 `'mcp'` 之后登记**,于是逆序跑出来是「先摘掉那几个投影出来的命名空间
+     * (§10.2 三步:掐在飞 → 等收场 → 摘表),再关客户端」。反过来的话,中间那一拍
+     * 注册表里会留着一批打不通电话的命名空间。内核本身在缝 4.1 登记,所以它比这两件
+     * 都晚拆 —— 摘的时候内核还在。
+     */
+    this.own(
+      mountMcpResources({ kernel: resourceKernel, manager: MCPManager }),
+      'mcpResources',
+    )
     this.own(() => acp.dispose(), 'acp')
     this.own(externalAgents.dispose, 'externalAgents')
     this.own(() => engineLayer.engine.abortAll(), 'engineAbortAll', 'drain')

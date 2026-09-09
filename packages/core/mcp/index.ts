@@ -27,6 +27,7 @@ export {
   planMCPToolsCatalogWrite,
   resolveMCPRouterAction,
   resolveMCPRouterReference,
+  withMCPResultOutputText,
 } from './router.js'
 export {
   normalizeMCPContent,

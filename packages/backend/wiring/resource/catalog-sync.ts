@@ -32,6 +32,17 @@
  * 微任务而不是定时器:`mount` 是同步函数,它返回之前不会让出;所以任何 `await` 之后
  * 目录都已经是对的,调用方不必等一个不确定的时长。
  *
+ * ## 一份自述可以说「模型面不要我」(K5-a)
+ *
+ * 上面那句「provider 在 = 工具在」有**一个**例外,而它写在自述里、不写在这只文件
+ * 里:`exposure.aiTool === false` 的 scheme 不进目录。今天唯一这么声明的是 MCP 投影
+ * 驱动 —— 那台 server 的工具**已经**以 `McpTool` 在目录里了,再进一次就是同一件事
+ * 两只工具(两个名字、两张权限卡,而模型会两条都试)。
+ *
+ * 判据读的是表,不是名单:这只文件里照旧一个 scheme 名都没有,加第二种这样的资源
+ * 不必回来改它(§2 不变量 3)。它只关掉**这一份**投影 —— 元工具 `resources` 的
+ * `list` 照列它(它读的是注册表,不是目录),RPC / CLI / 内核照旧。
+ *
  * ## 摘的时候按**登记过的那份清单**摘
  *
  * K1 踩过这个坑:关机链上内核先被 `dispose()`(表空了),再轮到别人去摘,于是
@@ -99,7 +110,11 @@ export function syncResourceToolsIntoCatalog(
     scheduled = false
     if (stopped) return
     const live = new Map<string, Tool>([[meta.spec.id, meta]])
-    for (const tool of kernel.tools()) live.set(tool.spec.id, tool)
+    for (const tool of kernel.tools()) {
+      // K5-a —— 自述说了不进模型面就不进。缺席 = 进(见文件头)。
+      if (tool.provider.spec.exposure?.aiTool === false) continue
+      live.set(tool.spec.id, tool)
+    }
     for (const id of [...registered]) {
       if (live.has(id)) continue
       catalog.unregister(id)

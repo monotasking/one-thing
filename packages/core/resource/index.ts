@@ -50,8 +50,10 @@ export {
   isRefPrefix,
   isRefScheme,
   matchesRefPrefix,
+  normalizeSchemeSegment,
   parseRef,
   sameRef,
+  uniqueName,
 } from './ref.js'
 export type { Ref, ResourceRef } from './ref.js'
 
@@ -62,6 +64,7 @@ export type {
   OpHome,
   OpSpec,
   ReadSpec,
+  ResourceExposure,
   ResourceSpec,
   StateScope,
   StateSpec,

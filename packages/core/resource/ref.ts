@@ -94,6 +94,58 @@ export function sameRef(a: ResourceRef, b: ResourceRef): boolean {
 }
 
 /**
+ * 把一个**外来的**名字归一成一段合法的 scheme 语法(K5-a)。
+ *
+ * 为什么这一只住在内核里:scheme 的语法(`SCHEME_PATTERN`)是这只文件定的,而
+ * 「一个外面来的 id 怎么变成合法 scheme」是同一条语法的另一半。让每个把外部系统
+ * 投影成命名空间的驱动各写一份,等于同一条语法有 N 份可以互相漂移的实现 —— 而
+ * 漂移的下场是某一个驱动造出一个 `parseRef` 认不出的地址,直到运行时才发现。
+ *
+ * 判据四条,逐条对应一种真实的外部 id:
+ *   · 大写折成小写(`MyServer` → `myserver`);
+ *   · `[a-z0-9]` 以外的每一个字符换成连字符(下划线、点、空格、中文、emoji);
+ *   · 连续的连字符收成一个,首尾的去掉(`__a__b__` → `a-b`);
+ *   · 什么都没剩下 → `null`。**不编一个名字出来** —— 一个由内核凭空造的 scheme
+ *     谁都指不着它,调用方拿到 `null` 时该做的是跳过这一项并说出来。
+ *
+ * 它返回的是**尾段**,不是完整 scheme:结果可能以数字开头(`2fa` → `2fa`),而
+ * `SCHEME_PATTERN` 要求首字符是字母。调用方本来就要加自己的前缀(投影驱动一律
+ * 是 `<驱动名>-<外部 id>`),前缀那个字母正好把这一条补上;由这只函数替调用方
+ * 决定"没有前缀时补个什么字母"是替它做主。加完前缀记得再过一次 `isRefScheme`。
+ */
+export function normalizeSchemeSegment(value: string): string | null {
+  const replaced = Array.from(value.toLowerCase(), character =>
+    /[a-z0-9]/.test(character) ? character : '-').join('')
+  const collapsed = replaced.replace(/-+/g, '-').replace(/^-+/, '').replace(/-+$/, '')
+  return collapsed.length > 0 ? collapsed : null
+}
+
+/**
+ * 一个还没被占用的名字:撞了就在后面接 `<separator><n>`,`n` 从 2 起(K5-a)。
+ *
+ * 归一是**多对一**的(`My Server` 与 `my-server` 归一成同一段),所以凡是归一就
+ * 会撞名;而撞名的两边都是真实存在的东西,丢掉一个不是选项。
+ *
+ * `separator` 是参数而不是写死的连字符,因为同一条判据要服务两种字母表:scheme
+ * 允许连字符(`a-2`),而成员名(`contract.ts` 的 lowerCamelCase)不允许,只能接
+ * 数字(`a2`)。写两份实现的下场是有一天有人给其中一份加了「大小写不敏感地判撞」
+ * 而另一份不知道。
+ *
+ * **结果只由 `base` 与 `taken` 决定,与调用顺序无关** —— 调用方按一个稳定的次序
+ * (通常是外部 id 的字典序)逐个要名字,同一份输入就永远得到同一份分配。
+ */
+export function uniqueName(base: string, taken: ReadonlySet<string>, separator = ''): string {
+  if (!taken.has(base)) return base
+  let n = 2
+  let candidate = `${base}${separator}${n}`
+  while (taken.has(candidate)) {
+    n += 1
+    candidate = `${base}${separator}${n}`
+  }
+  return candidate
+}
+
+/**
  * 一个前缀合不合法。前缀只有两种形状,别的一律不是前缀:
  *
  *   · `scheme:`        —— 整个命名空间(「看住所有邮件」);

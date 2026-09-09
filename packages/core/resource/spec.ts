@@ -184,6 +184,40 @@ export interface StateSpec {
 }
 
 /**
+ * 这份自述往哪些出口投影(K5-a)。
+ *
+ * §4「所有出口都是投影」的默认是**每个出口都投**:一份自述交上来,AI 工具、RPC、
+ * 命令面板、CLI、MCP 出口各自读表生成自己那一份。这一格是那句默认的**例外声明**,
+ * 而它存在的理由只有一条:**一件事不许有两只工具**。
+ *
+ * 具体到今天:外部驱动把一个已经在别处被投影成工具的东西(一台外部 server 的工具
+ * 表)再投影成一个命名空间,于是模型面上会同时出现「那只旧工具」与「这个新命名
+ * 空间的工具」——同一件事两条路,权限卡上两个名字,而模型会两条都试。声明
+ * `aiTool: false` 的意思是:这一 scheme 的 RPC / CLI / 插件 / 出口那几条路照常,
+ * **只有模型面那一份投影不生成**。
+ *
+ * 它不是「隐藏」:元工具 `resources` 的 `list` 照列它(它确实是一种资源,而且
+ * 模型经元工具点名之后仍然够得着它),RPC 的 `describe` 照答,注册表照登记。
+ *
+ * ── 为什么是一格自述,而不是出口那一侧的一张名单 ────────────────────────────
+ * 名单是「按能力枚举」的形状:每加一种这样的资源,`catalog-sync.ts` 里就要多一行
+ * 它的名字,而内核与出口都不许认识任何 scheme(§2 不变量 3)。写在自述里,出口
+ * 读的仍然是表。
+ *
+ * 缺席 = 全都投(`aiTool` 缺席同理)。绝大多数资源不需要这一格,给它们强行写一个
+ * `exposure: {}` 是噪音 —— 与 `state` 可选同一条理由。
+ */
+export interface ResourceExposure {
+  /**
+   * 进不进模型面的工具目录。缺省 `true`。
+   *
+   * `false` 只关掉「一个 scheme 一只 `ResourceTool`」那一份投影;元工具的清单、
+   * RPC、CLI、内核的 `do` / `read` 全都不受影响。
+   */
+  readonly aiTool?: boolean
+}
+
+/**
  * 一种资源的自述。这就是 §5 说的「一个命名空间的资源表」——
  * 上一篇 `app-intents-2026-09.md` 的整张能力面,在本文里退化成它加几格登记。
  *
@@ -200,4 +234,6 @@ export interface ResourceSpec {
   readonly ops: Readonly<Record<string, OpSpec>>
   readonly events: Readonly<Record<string, EventSpec>>
   readonly state?: Readonly<Record<string, StateSpec>>
+  /** 这份自述往哪些出口投影。缺席 = 全都投,见 {@link ResourceExposure}。 */
+  readonly exposure?: ResourceExposure
 }

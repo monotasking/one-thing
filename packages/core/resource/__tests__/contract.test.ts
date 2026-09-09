@@ -311,11 +311,56 @@ describe('resource spec contract', () => {
       { kind: 'bad-hook', scheme: 'demo', name: 'act', field: 'when' },
       { kind: 'bad-state-read', scheme: 'demo', name: 'count', read: 'nope' },
       { kind: 'bad-state-scope', scheme: 'demo', name: 'count', scope: 'per-window' },
+      { kind: 'bad-exposure', scheme: 'demo', field: 'aiTool', value: 'no' },
     ] as const
     for (const problem of problems) {
       expect(formatResourceSpecProblem(problem), problem.kind).toBeTruthy()
     }
-    // 十二支 = 联合的全部分支。少一支这条就该改。
-    expect(new Set(problems.map(item => item.kind)).size).toBe(12)
+    // 十三支 = 联合的全部分支。少一支这条就该改。
+    expect(new Set(problems.map(item => item.kind)).size).toBe(13)
+  })
+
+  /**
+   * K5-a —— 出口声明。契约只查**形状**:一格拼错的 `aiTool: 'no'` 按真值算的话,
+   * 一次拼错会静默地变成「照常投影」。
+   */
+  describe('exposure', () => {
+    it('accepts absence, an empty table, and either boolean', () => {
+      expect(describeResourceSpecProblem(baseSpec())).toBeNull()
+      expect(describeResourceSpecProblem(baseSpec({ exposure: {} }))).toBeNull()
+      expect(describeResourceSpecProblem(baseSpec({ exposure: { aiTool: false } }))).toBeNull()
+      expect(describeResourceSpecProblem(baseSpec({ exposure: { aiTool: true } }))).toBeNull()
+    })
+
+    it('refuses a non-object exposure', () => {
+      expect(describeResourceSpecProblem(baseSpec({ exposure: 'none' }))).toEqual({
+        kind: 'not-object',
+        where: 'exposure',
+      })
+    })
+
+    it('refuses a truthy-looking string instead of reading it as true', () => {
+      expect(describeResourceSpecProblem(baseSpec({ exposure: { aiTool: 'no' } }))).toEqual({
+        kind: 'bad-exposure',
+        scheme: 'demo',
+        field: 'aiTool',
+        value: 'no',
+      })
+      expect(describeResourceSpecProblem(baseSpec({ exposure: { aiTool: 0 } }))).toEqual({
+        kind: 'bad-exposure',
+        scheme: 'demo',
+        field: 'aiTool',
+        value: 0,
+      })
+    })
+
+    it('is judged as part of the spec body — before the member tables', () => {
+      // 顺序稳定的那条纪律:`exposure` 与 scheme / title 同属 spec 本体,所以它比
+      // 一条写坏的做法先报。
+      const problem = describeResourceSpecProblem(
+        baseSpec({ exposure: { aiTool: 'no' }, ops: { Act: goodOp() } }),
+      )
+      expect(problem?.kind).toBe('bad-exposure')
+    })
   })
 })

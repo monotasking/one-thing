@@ -110,6 +110,9 @@ const OWNED_LABELS = [
   'searchService',
   'pluginManager',
   'mcp',
+  // K5-a:MCP 投影驱动。紧跟在 `mcp` 之后登记 → 关机链上先摘那几个投影出来的命名
+  // 空间,再关客户端(反过来的话中间那一拍注册表里留着打不通电话的命名空间)。
+  'mcpResources',
   'acp',
   'externalAgents',
   'engineAbortAll',

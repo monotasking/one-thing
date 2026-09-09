@@ -20,7 +20,7 @@
  * 每一条做法的定位字段都在说一个不存在的命名空间)。
  * 顺序稳定的做法是**键排序后遍历**,不是按字面量里的书写顺序:同一份自述换个书写
  * 顺序就换一条报错,会让测试与人的记忆同时失效。检查次序是
- * spec 本体 → reads → ops → events → state,每张表内按键的字典序。
+ * spec 本体(含 `exposure`)→ reads → ops → events → state,每张表内按键的字典序。
  */
 
 import { isJsonObject } from '../json.js'
@@ -87,6 +87,8 @@ export type ResourceSpecProblem =
   | { readonly kind: 'bad-state-read'; readonly scheme: string; readonly name: string; readonly read: unknown }
   /** `state.scope` 不是 `singleton` / `turn-origin`。 */
   | { readonly kind: 'bad-state-scope'; readonly scheme: string; readonly name: string; readonly scope: unknown }
+  /** `exposure` 里某一格不是布尔(K5-a)。 */
+  | { readonly kind: 'bad-exposure'; readonly scheme: string; readonly field: string; readonly value: unknown }
 
 export class ResourceSpecError extends Error {
   readonly problem: ResourceSpecProblem
@@ -128,6 +130,8 @@ export function formatResourceSpecProblem(problem: ResourceSpecProblem): string 
       return `resource spec ${problem.scheme}: state ${problem.name}.read ${JSON.stringify(problem.read)} names no read of this resource`
     case 'bad-state-scope':
       return `resource spec ${problem.scheme}: state ${problem.name}.scope must be 'singleton' or 'turn-origin'`
+    case 'bad-exposure':
+      return `resource spec ${problem.scheme}: exposure.${problem.field} must be a boolean`
   }
 }
 
@@ -155,6 +159,18 @@ export function describeResourceSpecProblem(spec: unknown): ResourceSpecProblem 
   if (!isNonEmptyString(scheme) || !isRefScheme(scheme)) return { kind: 'scheme-grammar', scheme }
 
   if (!isNonEmptyString(candidate.title)) return { kind: 'bad-title', scheme, where: 'spec' }
+
+  // K5-a —— 出口声明。只查**形状**(是个对象、那一格是布尔),不查语义:「不进模型
+  // 面对不对」是写自述的人的判断,契约门只保证读表的人不会读到一个 `'no'` 字符串
+  // 然后按真值算(那会让一次拼错静默地变成「照常投影」)。
+  const exposure = candidate.exposure
+  if (exposure !== undefined) {
+    if (!isJsonObject(exposure)) return { kind: 'not-object', where: 'exposure' }
+    const flags = exposure as Record<string, unknown>
+    if (flags.aiTool !== undefined && typeof flags.aiTool !== 'boolean') {
+      return { kind: 'bad-exposure', scheme, field: 'aiTool', value: flags.aiTool }
+    }
+  }
 
   const reads = candidate.reads
   if (!isJsonObject(reads)) return { kind: 'not-object', where: 'reads' }

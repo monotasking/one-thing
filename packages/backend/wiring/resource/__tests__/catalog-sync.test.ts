@@ -15,6 +15,9 @@
  *   ④ 「先注销再登记」的重挂(同一个 scheme 换一份自述)在目录里是那份**新**自述。
  *
  * K3-a' 加第五句:⑤ `readonly` 档一只都不给(那一档的契约是零本地副作用工具)。
+ *
+ * K5-a 加第六句:⑥ 自述里写了 `exposure.aiTool: false` 的那一份**不进目录**,而它
+ * 仍然在注册表里 —— 判据读的是表(自述那一格),不是这只文件里的一张名单。
  */
 
 import { describe, expect, it } from 'vitest'
@@ -156,5 +159,60 @@ describe('资源工具与工具目录的对账(K3-a)', () => {
     kernel.registry.register(gadgetSpec())
     await Promise.resolve()
     expect(ids(catalog)).toEqual([])
+  })
+
+  /**
+   * K5-a —— 一份自述可以说「模型面不要我」。
+   *
+   * 反证①(拆掉 `exposure.aiTool` 的判据)咬的就是第一条:那一只会出现在目录里。
+   */
+  describe('exposure.aiTool(K5-a)', () => {
+    it('声明 false 的不进目录,但注册表里有它', async () => {
+      const kernel = makeKernel()
+      const catalog = new Catalog()
+      const stop = syncResourceToolsIntoCatalog(kernel, catalog)
+
+      kernel.mount(gadgetProvider({ ...gadgetSpec(), exposure: { aiTool: false } }))
+      await Promise.resolve()
+
+      // 目录里只有元工具 —— 模型看不见这一 scheme 的专属工具。
+      expect(ids(catalog)).toEqual(['resources'])
+      // 但它确实是一种资源:注册表里在,于是 `resources` 元工具的 list 照列它,
+      // RPC / CLI / 内核的 do 照旧。
+      expect(kernel.registry.list().map(spec => spec.scheme)).toEqual([SCHEME])
+      expect(kernel.toolFor(SCHEME)).toBeDefined()
+
+      stop()
+    })
+
+    it('缺席与显式 true 都进目录', async () => {
+      const kernel = makeKernel()
+      const catalog = new Catalog()
+      const stop = syncResourceToolsIntoCatalog(kernel, catalog)
+
+      kernel.mount(gadgetProvider({ ...gadgetSpec(), exposure: { aiTool: true } }))
+      await Promise.resolve()
+      expect(ids(catalog)).toEqual(['gadget', 'resources'])
+
+      stop()
+    })
+
+    it('元工具的 list 里有它 —— 不进目录不等于藏起来', async () => {
+      const kernel = makeKernel()
+      const catalog = new Catalog()
+      const stop = syncResourceToolsIntoCatalog(kernel, catalog)
+      kernel.mount(gadgetProvider({ ...gadgetSpec(), exposure: { aiTool: false } }))
+      await Promise.resolve()
+
+      const meta = catalog.get('resources')!
+      const outcome = await meta.apply(
+        await meta.plan({ list: true } as never, {} as never),
+        { emit: () => {} } as never,
+      )
+      const text = outcome.content.map(part => part.text ?? '').join('\n')
+      expect(text).toContain(SCHEME)
+
+      stop()
+    })
   })
 })

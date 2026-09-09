@@ -88,8 +88,17 @@ export const MCP_SERVER_VERSION = '1.1.7'
  * 同一个数:守护进程里一张没人答的权限卡,60 秒之后自动拒。差别在于那条降级只
  * 装在 `chat.ask` 的活流上,资源调用没有流,于是这条桥自己数这 60 秒 —— 但它
  * **只能停止等待,答不了那张卡**(答卡是 `Permission.respond`,那是 core 的事,
- * 不是一条 CLI 桥该伸手的地方)。超时之后 daemon 里那张卡仍然挂着,直到有人答它
- * 或守护进程重启。这一条写进了留账。
+ * 不是一条 CLI 桥该伸手的地方)。
+ *
+ * **K4-d 之后这一格是双保险,不再是唯一的止损**(那条留账已还):守护进程装配时
+ * 声明自己无人值守(`markHostUnattended`),于是 `system` 主体的 ask 由
+ * `packages/backend/wiring/tools/core/permission-policy.ts` 的 `unattendedHostBridge`
+ * 在同样的 60 秒后经 `Permission.respond` **真的答掉**。两个 60 秒谁先跑赢由调度
+ * 决定,而两种次序的结局都是对的:
+ *  - 桥先超时 → 它回一句「需要审批,无人应答」,daemon 那边稍后把卡答掉,不留 pending;
+ *  - 那边先答掉 → 这条 `do` 收到的是一个正常的 `denied` 结局,桥的计时器空转后清掉。
+ * 桥这一格因此只解决「不无限等」,而「卡不留下」归被调用的那一侧 —— 判据放在
+ * 被调方的同一条纪律(见 `readOptionalSystemPrincipal`)。
  */
 export const DO_TIMEOUT_MS = 60_000
 

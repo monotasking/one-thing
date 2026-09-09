@@ -58,6 +58,14 @@ export {
 export type { DirEntryKind, DirOpPayload, DirRefusalReason } from './dir-provider.js'
 export { createLocalOnlyReadGuard } from './read-guard.js'
 export type { LocalOnlyReadGuardOptions } from './read-guard.js'
+export { mountMcpResources } from './mcp-mount.js'
+export type { McpResourceManagerPort, McpResourceMountOptions } from './mcp-mount.js'
+export {
+  McpResourceCallFailedError,
+  McpResourceProvider,
+  McpResourceRefMismatchError,
+} from './mcp-provider.js'
+export type { McpOpPayload, McpResourceCallPort } from './mcp-provider.js'
 export {
   createMusicResourceProvider,
   MusicCommandFailedError,
