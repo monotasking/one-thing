@@ -6,6 +6,7 @@ import { useT, type TFn } from '../i18n'
 import { resolveIcon } from '../components/icons'
 import { ButtonBase } from '../ui/ButtonBase'
 import { assembleMessage, segmentKey } from './assemble'
+import { ContextDeltaChip } from './ContextDeltaChip'
 import type { SegmentModel } from './model/segments'
 import { MessageActions } from './message/MessageActions'
 import { StreamReadout } from './message/StreamReadout'
@@ -408,6 +409,13 @@ const MessageRow = memo(function MessageRow({
   return (
     <article className={className} data-message-id={message.id} data-role={role}>
       {role === 'user' && <div className={s.user}>{message.content}</div>}
+      {/*
+        气泡底下那一行「上下文更新」(U3)。这一轮的 `<context-update>` 尾块变了
+        哪些块,是**这条用户消息自己的字段**(`turnContext`),所以摆在它的气泡下面
+        而不是流的别处。没有 delta 时组件自己返回 null —— 绝大多数消息走那一支,
+        这里因此不写第二份判据(判据两处就会分叉)。
+      */}
+      {role === 'user' && <ContextDeltaChip turnContext={message.turnContext} />}
 
       {/* data-prose:节奏表的钩子 —— 错误卡是一件东西,按物件档留白(节奏表在
           ChatStream.module.css)。 */}

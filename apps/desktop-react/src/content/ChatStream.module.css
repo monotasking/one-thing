@@ -363,3 +363,141 @@
   color: var(--text-4);
   overflow-wrap: anywhere;
 }
+
+/* ── 上下文更新 chip(U3,`docs/compact-seam-2026-09.md` §3.2)──────────────
+ *
+ * 皮肤住在这里而不是自带一份 module:它是**用户气泡的下一行**,而气泡的几何
+ * (右对齐、80% 上限、节奏)整份在这个文件里。分成两个 module 之后「chip 跟不跟
+ * 得住气泡」就变成了两处的口径问题(与 ThinkingSegment 的皮肤住 SegmentView
+ * 同一条理由:皮肤跟着它所在的那块纸走)。
+ *
+ * 组件在 `content/ContextDeltaChip.tsx`。
+ */
+
+/* 气泡与 chip 之间是**同一件事的两截**,不吃默认段距(节奏表 ① 是 0-2-0,
+ * 这条 0-3-0 压过它;摆在文件末尾也就摆在了那张表之后)。 */
+.row > .user + .ctxDelta {
+  margin-block-start: var(--sp-1);
+}
+
+.ctxDelta {
+  /* 随气泡:同一条右缘、同一个 80% 上限。 */
+  align-self: flex-end;
+  max-width: 80%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.ctxDeltaHead {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: 100%;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-1);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  cursor: pointer;
+  transition:
+    color var(--dur) var(--ease),
+    background-color var(--dur) var(--ease);
+}
+
+.ctxDeltaHead:hover {
+  color: var(--text-2);
+  background: var(--st-hover);
+}
+
+/* 结构行:只截断不换行(挤压纪律)。min-width:0 是让它能缩到 min-content 以下的
+ * 那一句 —— 没有它,长读数会把 chevron 顶出气泡的右缘。 */
+.ctxDeltaSummary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ctxDeltaChevron {
+  flex: none;
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+  transition: transform var(--dur-release) var(--ease);
+}
+
+.ctxDeltaHead[aria-expanded='true'] .ctxDeltaChevron {
+  transform: rotate(180deg);
+}
+
+/* 正文靠左读:头部是右对齐的读数,展开的内容是一张表 —— 表不跟着头走。 */
+.ctxDeltaBody {
+  width: 100%;
+  margin-block-start: var(--sp-1);
+  text-align: left;
+}
+
+.ctxDeltaEntry {
+  display: grid;
+  grid-template-columns: var(--ctx-delta-name) minmax(0, 1fr);
+  gap: var(--sp-3);
+  padding-block: var(--sp-1);
+  border-block-start: 1px dashed var(--line-1);
+}
+
+.ctxDeltaEntry:first-child {
+  border-block-start: 0;
+}
+
+.ctxDeltaEntry[data-removed] {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+
+.ctxDeltaName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+.ctxDeltaValue {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* 块正文是**原样的字**(提示词里那一段),所以等宽 + pre-wrap;
+ * max-height 无条件写在这儿,遮罩与展开钮才是条件的(见组件里的注)。 */
+.ctxDeltaText {
+  max-width: 100%;
+  max-height: var(--block-clamp-h);
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  line-height: var(--pr-lh);
+  color: var(--text-1);
+}
+
+.ctxDeltaTextClamped {
+  mask-image: linear-gradient(to bottom, var(--surface-2) calc(100% - var(--sp-6)), transparent);
+}
+
+.ctxDeltaTextOpen {
+  max-height: none;
+}
+
+.ctxDeltaExpand {
+  padding-block: var(--sp-1);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  transition: color var(--dur) var(--ease);
+}
+
+.ctxDeltaExpand:hover {
+  color: var(--text-1);
+}
