@@ -121,7 +121,7 @@ export interface CatalogRow {
   current: boolean
   /** 上下文窗口。null = 目录没填 = **不知道**,那一格留空,不写 0。 */
   contextLength: number | null
-  /** 最大输出。null 同上。 */
+  /** 最大输出。null 同上;有覆盖时交的是**生效值**(与上一格同一条读法)。 */
   maxOutput: number | null
   caps: ModelCap[]
   /**
@@ -136,16 +136,16 @@ export interface CatalogRow {
    */
   manual: boolean
   /**
-   * 用户覆盖(settings 那两张按模型的表:`contextLengthByModel[id]` 与
-   * `modelCapabilitiesByModel[id].tools`)。**缺席 = 没覆盖**;行上按它画
-   * 虚线下划与划掉的扳手。
+   * 用户覆盖(settings 那三张按模型的表:`contextLengthByModel[id]`、
+   * `maxOutputByModel[id]` 与 `modelCapabilitiesByModel[id].tools`)。
+   * **缺席 = 没覆盖**;行上按它画虚线下划与划掉的扳手。
    *
    * 它与上面几格的关系是「**谁说的**」而不是「值是多少」:`contextLength` /
    * `caps` 交出去的一律是**生效值**(覆盖优先,与引擎
    * `model-registry.ts:895/949` 同一条读法),这一格只回答「这个数是人填的吗」。
    * 两件事合成一格的话,屏幕就没法把「目录说 1M」和「我说 1M」画成两样。
    *
-   * **判据只读 settings 这两张表**(单产地):后端交出来的目录条目
+   * **判据只读 settings 这三张表**(单产地):后端交出来的目录条目
    * (`onethingCapabilityEntryToOpenRouterModel`)读的是注册表 entry,压根没有
    * 把覆盖折进 `supported_parameters` / `context_length` —— 就算哪天折了,
    * 从目录条目反推「有没有被覆盖」也是猜,不是事实。
@@ -163,22 +163,27 @@ export interface CatalogRow {
   catalog: CatalogFacts
 }
 
-/** 目录对这一型说过的那两句。`null` = 没说过。 */
+/** 目录对这一型说过的那三句。`null` = 没说过。 */
 export interface CatalogFacts {
   contextLength: number | null
+  /** 最大输出。目录条目里的 `top_provider.max_completion_tokens`。 */
+  maxOutput: number | null
   tools: boolean | null
 }
 
 /** 目录什么都没说(手填行)。共享冻结对象,理由同 `NO_MODEL_OVERRIDE`。 */
 export const NO_CATALOG_FACTS: CatalogFacts = Object.freeze({
   contextLength: null,
+  maxOutput: null,
   tools: null,
 })
 
-/** 一个模型上的两格覆盖。两格都缺席 = 这一型没被动过。 */
+/** 一个模型上的三格覆盖。三格都缺席 = 这一型没被动过。 */
 export interface ModelOverride {
   /** 上下文窗口。正数才算数(0 / 负数 / 非数按「没覆盖」处理)。 */
   contextLength?: number
+  /** 最大输出。同一把尺(正数才算数)。 */
+  maxOutput?: number
   /** 工具调用。`false` 是**一句话**(「人说不支持」),不是「不知道」。 */
   tools?: boolean
 }
@@ -186,6 +191,7 @@ export interface ModelOverride {
 /** 覆盖的写补丁。`null` = 删掉这一格;缺席 = 这一格不动。 */
 export interface ModelOverridePatch {
   contextLength?: number | null
+  maxOutput?: number | null
   tools?: boolean | null
 }
 
@@ -202,6 +208,29 @@ export const NO_MODEL_OVERRIDE: ModelOverride = Object.freeze({})
  * 后端改了那一格,这里跟着改一处。
  */
 export const CATALOG_CONTEXT_FALLBACK = 128_000
+
+/**
+ * 目录没填**最大输出**时,引擎按多少算。
+ *
+ * **来源是 `packages/onething-runtime/src/providers/model-registry.ts:946`**
+ * (`getOnethingModelMaxOutputTokens` 的最后一行 `|| 4096`)。与上下文那一格
+ * 同一条道理:这个数要说给用户听,所以在这里立一个有名字的常量。
+ */
+export const CATALOG_MAX_OUTPUT_FALLBACK = 4_096
+
+/**
+ * 没有覆盖时,**今天这一发请求实际会要多长**。
+ *
+ * 引擎 `packages/core/engine/agent-loop-runtime.ts:821` 的对半规则:
+ * 注册上限在场时 `max(1, floor(注册上限 / 2))`,而 `maxOutputByModel[m]` 一旦
+ * 填了就**直接当请求的 max_tokens**(只再受模型物理上限夹一次)。
+ * 壳只**复述**这条算术 —— 屏幕上要把「不填会发多少」说给用户听,不然
+ * 「注册上限 16,384」这个数会被读成「一次能吐 16,384」,而实际只有 8,192。
+ * 规则改了这里跟着改一处。
+ */
+export function requestedMaxOutputOf(registered: number): number {
+  return Math.max(1, Math.floor(registered / 2))
+}
 
 /**
  * 一个厂牌组。OpenRouter 那种 300+ 行的目录不平铺 —— 按 id 的 `vendor/` 前缀

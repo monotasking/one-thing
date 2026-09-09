@@ -156,6 +156,23 @@ describe('行尾动作组:✕ 的位置每一行都占着(09-09 报障:手填行
     // 轨道声明只长在 .grid 上(上面那组守卫);动作组不许自己开一张 grid。
     expect(actions).not.toMatch(/grid-template-columns/)
   })
+
+  /*
+   * 09-09 用户报障「对齐」:同一列上下相邻的两颗药丸 ——「设为当前」那颗钮与
+   * 「当前模型」那格读数 —— 左边线对不上(英文标签一长一短)。修法是两处共读
+   * **同一个** token 的 min-width。这条断言守的是那个「同一个」:两处各写一个
+   * 数就是两处会漂开,而那正是这条报障的下一个形态。
+   */
+  it('「设为当前」与「当前模型」共读 --pv-btn-current-w 的宽下限', () => {
+    const setCurrent = /\.setCurrent\s*\{([^}]*)\}/.exec(css)?.[1] ?? ''
+    const current = /\.current\s*\{([^}]*)\}/.exec(css)?.[1] ?? ''
+    expect(setCurrent).toMatch(/min-width:\s*var\(--pv-btn-current-w\)/)
+    expect(current).toMatch(/min-width:\s*var\(--pv-btn-current-w\)/)
+    // 动作列装得下它:110 + 4 + 22 + 4 + 22 = 162,一格余量都没有了。
+    expect(px('--pv-col-current')).toBe(
+      px('--pv-btn-current-w') + 2 * px('--sp-1') + 2 * px('--icon-btn-sm'),
+    )
+  })
 })
 
 describe('目录不自己滚:滚动收敛在详情列那一层(报障⑤)', () => {

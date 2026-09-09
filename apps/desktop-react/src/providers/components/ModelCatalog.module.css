@@ -333,6 +333,16 @@
 }
 
 /*
+ * 「设为当前」那颗钮的**宽下限**。它与下面 `.current` 那格读数上下相邻(同一列
+ * 里一行画钮、一行画读数),两句话长度不同 —— `Current model` 比 `Set current`
+ * 长一截,于是两颗药丸的左边线对不上,整列看过去是锯齿(09-09 用户报障「对齐」)。
+ * 两处读**同一个** `--pv-btn-current-w`:一处漂另一处跟,不许各写各的数。
+ */
+.setCurrent {
+  min-width: var(--pv-btn-current-w);
+}
+
+/*
  * 「当前模型」那格读数。**穿「设为当前」那颗钮的几何,不当钮**(09-09 用户要求
  * 「current model 能不能和 set current 的 UI 一致」):同高 / 同内边距 / 同圆角 /
  * 同描边,字用 accent —— 整列看过去是一个形,读的时候一眼分得出「这是选中的那一颗」。
@@ -345,6 +355,7 @@
   align-items: center;
   justify-content: center;
   flex: none;
+  min-width: var(--pv-btn-current-w);
   height: var(--btn-sm);
   padding: 0 var(--btn-pad-x);
   border: var(--bw-1) solid var(--line-1);
@@ -488,7 +499,7 @@
  * **改的时候两处一起改**,而且要照 tokens.css 里那三行把入场宽重算一遍 ——
  * 08-31 那条重叠报障的一半原因就是旧阈值(640)定在了七列入场宽(728)之下。
  */
-@container catalog (max-width: 754px) {
+@container catalog (max-width: 774px) {
   .grid {
     grid-template-columns:
       var(--pv-col-check) minmax(var(--pv-col-name-min), 1fr)
@@ -502,7 +513,7 @@
   }
 }
 
-@container catalog (max-width: 630px) {
+@container catalog (max-width: 650px) {
   .grid {
     grid-template-columns:
       var(--pv-col-check) minmax(var(--pv-col-name-min), 1fr)

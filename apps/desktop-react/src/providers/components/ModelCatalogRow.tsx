@@ -8,7 +8,7 @@ import type { LucideIcon } from '../../components/icons'
 import type { MessageKey, TFn } from '../../i18n'
 import { formatQuantity } from '../../format/quantity'
 import { formatPrice } from '../projection'
-import { CATALOG_CONTEXT_FALLBACK, MODEL_CAPS } from '../types'
+import { CATALOG_CONTEXT_FALLBACK, CATALOG_MAX_OUTPUT_FALLBACK, MODEL_CAPS } from '../types'
 import type { CatalogRow, ModelCap, ModelOverridePatch } from '../types'
 import { ModelOverridePopover } from './ModelOverridePopover'
 import s from './ModelCatalog.module.css'
@@ -32,8 +32,8 @@ import s from './ModelCatalog.module.css'
  *   UI 生命状态:每一格都可能是「不知道」—— 目录没填就画破折号,不画 0、
  *             不画「免费」;能力一项都没有画破折号而不是五个灰图标
  *             (不知道 ≠ 都不支持);手填的行标出来(它的容量是**没人给过**的)。
- *             **第四种读数(09-09):人填的**——上下文格换笔迹(虚线下划)+
- *             悬停出目录原值;工具那一枚被关掉时**画出来但划掉**。
+ *             **第四种读数(09-09):人填的**——上下文格与最大输出格换笔迹
+ *             (虚线下划)+ 悬停出目录原值;工具那一枚被关掉时**画出来但划掉**。
  *             三者不能混:破折号 = 不知道,正常读数 = 目录说的,虚线 = 人说的。
  *   UI 交互状态:rest / hover(行底,CSS 画)/ focus(勾选框与三颗钮各自的
  *             全局焦点环)/ **pending 逐行**(只禁这一行,别的行一个都不许动)/
@@ -44,7 +44,9 @@ import s from './ModelCatalog.module.css'
  * 覆盖浮层由 `ui/Popover` portal 到 body,所以它在这一行的 DOM 里不占任何位置;
  * 加进 `.actions` 的只有那一颗 `ui/IconButton`。零重挂断言因此照旧绿
  * (`__tests__/model-catalog-state.test.tsx`:同一个 `model-row-a` 节点)。
- * 动作列的宽跟着从 116 加到 142(账在 tokens.css,连同两条 @container 阈值一起重算)。
+ * 动作列的宽跟着从 116 加到 142(账在 tokens.css,连同两条 @container 阈值一起重算);
+ * 09-09 再晚一笔又到 162 —— 「设为当前」与「当前模型」共读 `--pv-btn-current-w`
+ * 的宽下限(用户报障「对齐」:同一列上下相邻的两颗药丸左边线对不上)。
  */
 
 /** 能力 → 图标 + 全名。**字母缩写退役** —— 「V T R」谁都读不懂(08-31 报障)。 */
@@ -182,8 +184,30 @@ export function ModelCatalogRow({
             fallback: formatQuantity(CATALOG_CONTEXT_FALLBACK),
           })
 
+  /*
+   * 最大输出那一格与上下文那一格**同一手**:人填过就换笔迹 + 悬停说出目录原话。
+   * 目录没填时括号里说的是**兜底值**(4,096,`model-registry.ts:946`),不编一个
+   * 目录值出来 —— 与上一格的 `overrideContextNoCatalog` 逐字同形。
+   * 注意 `.out` 在最窄那一档**整列退场**,这枚标记跟着它一起走,不另找地方画:
+   * 一列已经不在了,还在别处画它的覆盖标记就是把一个读不到的数说成正在生效。
+   */
+  const customOut = row.override.maxOutput
+  const outTip =
+    customOut == null
+      ? undefined
+      : row.catalog.maxOutput != null
+        ? t('providers.overrideOutput', {
+            value: formatQuantity(customOut),
+            catalog: formatQuantity(row.catalog.maxOutput),
+          })
+        : t('providers.overrideOutputNoCatalog', {
+            value: formatQuantity(customOut),
+            fallback: formatQuantity(CATALOG_MAX_OUTPUT_FALLBACK),
+          })
+
   const capsDrawn = capsDrawnOf(row)
   const contextText = formatCatalogTokens(row.contextLength) ?? t('providers.unknownValue')
+  const outText = formatCatalogTokens(row.maxOutput) ?? t('providers.unknownValue')
 
   return (
     <div
@@ -235,7 +259,17 @@ export function ModelCatalogRow({
           {contextText}
         </span>
       )}
-      <span className={s.out}>{formatCatalogTokens(row.maxOutput) ?? t('providers.unknownValue')}</span>
+      {outTip ? (
+        <Tooltip content={outTip}>
+          <span className={`${s.out} ${s.ovr}`} data-testid={`out-${row.id}`}>
+            {outText}
+          </span>
+        </Tooltip>
+      ) : (
+        <span className={s.out} data-testid={`out-${row.id}`}>
+          {outText}
+        </span>
+      )}
       <span className={s.price}>
         {included
           ? t('providers.priceIncluded')
@@ -252,6 +286,7 @@ export function ModelCatalogRow({
             variant="ghost"
             disabled={pending}
             onClick={() => onSetCurrent(row.id)}
+            className={s.setCurrent}
             data-testid={`set-current-${row.id}`}
           >
             {t('providers.setCurrent')}

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -37,7 +37,7 @@ function row(id: string, over: Partial<CatalogRow> = {}): CatalogRow {
     price: { input: 3, output: 15 },
     manual: false,
     override: NO_MODEL_OVERRIDE,
-    catalog: { contextLength: 200_000, tools: false },
+    catalog: { contextLength: 200_000, maxOutput: 32_768, tools: false },
     ...over,
   }
 }
@@ -81,6 +81,7 @@ async function openOverride(id: string) {
 }
 
 const contextBox = () => screen.getByTestId('model-override-context') as HTMLInputElement
+const outBox = () => screen.getByTestId('model-override-output') as HTMLInputElement
 
 /** 浮层此刻挂在哪一型上(落点自己的身份,写在浮层内容那一层)。 */
 const openModelId = () =>
@@ -244,6 +245,104 @@ describe('上下文窗口那一格', () => {
   })
 })
 
+/* ══ 第三格:最大输出 ═════════════════════════════════════════════════════ */
+
+describe('最大输出那一格', () => {
+  it('它真的在,而且与上下文那一格是两个框', async () => {
+    renderCatalog([row('a')])
+    await openOverride('a')
+    // 「最大输出」这四个字表头上也有一份 —— 这里问的是**浮层里**那一份。
+    expect(within(screen.getByTestId('model-override')).getByText('最大输出')).toBeTruthy()
+    expect(outBox()).not.toBe(contextBox())
+  })
+
+  it('↵ 提交一个合法值,写的是 maxOutput 这一格', async () => {
+    const onWriteOverride = vi.fn()
+    renderCatalog([row('a')], { onWriteOverride })
+    await openOverride('a')
+
+    fireEvent.change(outBox(), { target: { value: '32768' } })
+    fireEvent.keyDown(outBox(), { key: 'Enter' })
+    expect(onWriteOverride).toHaveBeenCalledWith('a', { maxOutput: 32_768 })
+  })
+
+  it('「32k」也认 —— 两个框同一把 parseQuantity 的尺', async () => {
+    const onWriteOverride = vi.fn()
+    renderCatalog([row('a')], { onWriteOverride })
+    await openOverride('a')
+
+    fireEvent.change(outBox(), { target: { value: '32k' } })
+    fireEvent.blur(outBox())
+    expect(onWriteOverride).toHaveBeenCalledWith('a', { maxOutput: 32_000 })
+  })
+
+  it('清空 = 删键', async () => {
+    const onWriteOverride = vi.fn()
+    renderCatalog([row('a', { override: { maxOutput: 8_192 } })], { onWriteOverride })
+    await openOverride('a')
+    expect(outBox().value).toBe('8192')
+
+    fireEvent.change(outBox(), { target: { value: '' } })
+    fireEvent.keyDown(outBox(), { key: 'Enter' })
+    expect(onWriteOverride).toHaveBeenCalledWith('a', { maxOutput: null })
+  })
+
+  it('写不进去的值:aria-invalid + 错误句,而且一发都不发', async () => {
+    const onWriteOverride = vi.fn()
+    renderCatalog([row('a')], { onWriteOverride })
+    await openOverride('a')
+
+    fireEvent.change(outBox(), { target: { value: '8192 tokens' } })
+    fireEvent.keyDown(outBox(), { key: 'Enter' })
+    expect(onWriteOverride).not.toHaveBeenCalled()
+    expect(outBox().getAttribute('aria-invalid')).toBe('true')
+    // 上一格**不跟着变红**:两格各自一份 invalid。
+    expect(contextBox().getAttribute('aria-invalid')).not.toBe('true')
+  })
+
+  it('占位符与提示行说的是「今天实际会发多少、为什么是这个数」', async () => {
+    renderCatalog([row('a')])
+    await openOverride('a')
+    // 目录上限 32,768 → 今天实际发它的一半(agent-loop-runtime.ts:821)。
+    expect(outBox().getAttribute('placeholder')).toBe(
+      `${(16_384).toLocaleString()}(目录 ${(32_768).toLocaleString()} 的一半)`,
+    )
+    expect(screen.getByText(`目录上限 ${(32_768).toLocaleString()};不填按它的一半发。`)).toBeTruthy()
+  })
+
+  it('目录没填这一型:占位符是 2,048,提示行说清它是兜底 4,096 的一半', async () => {
+    renderCatalog([row('ghost', { manual: true, maxOutput: null, catalog: NO_CATALOG_FACTS })])
+    await openOverride('ghost')
+    expect(outBox().getAttribute('placeholder')).toBe(`${(2_048).toLocaleString()}(默认)`)
+    expect(
+      screen.getByText(
+        `目录没填这一型;不填按 ${(2_048).toLocaleString()} 发(兜底 ${(4_096).toLocaleString()} 的一半)。`,
+      ),
+    ).toBeTruthy()
+  })
+
+  it('人填过之后,提示行改口说「不再对半砍」', async () => {
+    renderCatalog([row('a', { maxOutput: 65_536, override: { maxOutput: 65_536 } })])
+    await openOverride('a')
+    expect(
+      screen.getByText(`自定 ${(65_536).toLocaleString()};不再对半砍,只受模型上限夹。`),
+    ).toBeTruthy()
+  })
+
+  it('两格各自提交,互不影响 —— 改上下文时 maxOutput 一个字不进补丁', async () => {
+    const onWriteOverride = vi.fn()
+    renderCatalog([row('a', { override: { maxOutput: 8_192 } })], { onWriteOverride })
+    await openOverride('a')
+
+    fireEvent.change(contextBox(), { target: { value: '300k' } })
+    fireEvent.keyDown(contextBox(), { key: 'Enter' })
+    expect(onWriteOverride).toHaveBeenCalledWith('a', { contextLength: 300_000 })
+    // 另一格的草稿原样留着,也没被顺手写一遍。
+    expect(outBox().value).toBe('8192')
+    expect(onWriteOverride).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('工具调用那一格', () => {
   it('点「关」写 tools:false', async () => {
     const onWriteOverride = vi.fn()
@@ -272,20 +371,34 @@ describe('工具调用那一格', () => {
 })
 
 describe('恢复目录值', () => {
-  it('两个键一起删', async () => {
+  it('三个键一起删', async () => {
     const onWriteOverride = vi.fn()
-    renderCatalog([row('a', { override: { contextLength: 300_000, tools: false } })], {
-      onWriteOverride,
-    })
+    renderCatalog(
+      [row('a', { override: { contextLength: 300_000, maxOutput: 8_192, tools: false } })],
+      { onWriteOverride },
+    )
     await openOverride('a')
     fireEvent.click(screen.getByTestId('model-override-reset'))
-    expect(onWriteOverride).toHaveBeenCalledWith('a', { contextLength: null, tools: null })
+    expect(onWriteOverride).toHaveBeenCalledWith('a', {
+      contextLength: null,
+      maxOutput: null,
+      tools: null,
+    })
+    // 两个框都清空 —— 屏幕上不许留着一个已经被删掉的数。
+    expect(contextBox().value).toBe('')
+    expect(outBox().value).toBe('')
   })
 
   it('没覆盖时禁用 —— 它无事可做', async () => {
     renderCatalog([row('a')])
     await openOverride('a')
     expect((screen.getByTestId('model-override-reset') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('只有最大输出被人填过时,它照样可按(第三格也算覆盖)', async () => {
+    renderCatalog([row('a', { override: { maxOutput: 8_192 } })])
+    await openOverride('a')
+    expect((screen.getByTestId('model-override-reset') as HTMLButtonElement).disabled).toBe(false)
   })
 })
 
@@ -362,6 +475,32 @@ describe('行上的覆盖读数', () => {
   it('没覆盖的那一行不画虚线(反面)', () => {
     renderCatalog([row('a')])
     expect(screen.getByTestId('ctx-a').className).not.toContain('ovr')
+    expect(screen.getByTestId('out-a').className).not.toContain('ovr')
+  })
+
+  it('最大输出格同一手:换笔迹 + 悬停出目录原值,禁 native title=', async () => {
+    renderCatalog([row('a', { maxOutput: 8_192, override: { maxOutput: 8_192 } })])
+    const cell = screen.getByTestId('out-a')
+    expect(cell.className).toContain('ovr')
+    expect(cell.getAttribute('title')).toBeNull()
+
+    fireEvent.mouseEnter(cell)
+    await waitFor(() => expect(screen.getByRole('tooltip').textContent).toBe('自定 8.2k(目录 32.8k)'))
+  })
+
+  it('最大输出:目录没填时说的是兜底 4.1k,不编一个目录值', async () => {
+    renderCatalog([
+      row('ghost', {
+        manual: true,
+        maxOutput: 8_192,
+        override: { maxOutput: 8_192 },
+        catalog: NO_CATALOG_FACTS,
+      }),
+    ])
+    fireEvent.mouseEnter(screen.getByTestId('out-ghost'))
+    await waitFor(() =>
+      expect(screen.getByRole('tooltip').textContent).toBe('自定 8.2k(目录没填,默认 4.1k)'),
+    )
   })
 
   it('目录没填时那句话说的是「默认 128k」,不是编一个目录值', async () => {
@@ -381,7 +520,11 @@ describe('行上的覆盖读数', () => {
 
   it('tools:false —— 扳手**画出来但划掉**(消失是不知道,划掉是人说不)', () => {
     renderCatalog([
-      row('a', { caps: [], override: { tools: false }, catalog: { contextLength: 200_000, tools: true } }),
+      row('a', {
+        caps: [],
+        override: { tools: false },
+        catalog: { contextLength: 200_000, maxOutput: 32_768, tools: true },
+      }),
     ])
     const wrench = screen.getByTestId('cap-tools')
     expect(wrench.className).toContain('capOff')

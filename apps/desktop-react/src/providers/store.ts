@@ -210,9 +210,11 @@ export interface ProviderSettingsState {
   /** 删掉一个手填模型。最后一条不删(与生产 `toggleSpaceModelSelection` 同一守则)。 */
   removeManualModel: (providerId: string, modelId: string) => Promise<void>
   /**
-   * 一个模型的**用户覆盖**(09-09):上下文窗口 `contextLengthByModel[m]` 与
-   * 工具调用 `modelCapabilitiesByModel[m].tools`。后端早有这两格(引擎读法
-   * `model-registry.ts:895` / `:949`,覆盖优先),缺的只是壳上的写面。
+   * 一个模型的**用户覆盖**(09-09):上下文窗口 `contextLengthByModel[m]`、
+   * 最大输出 `maxOutputByModel[m]` 与工具调用
+   * `modelCapabilitiesByModel[m].tools`。后端早有这三格(引擎读法
+   * `model-registry.ts:895` / `agent-loop-runtime.ts:819` / `model-registry.ts:949`,
+   * 覆盖优先),缺的只是壳上的写面。
    *
    * `patch` 的三态是**明码**:某一格给数 / 布尔 = 写它,给 `null` = **删这个键**,
    * 缺席 = 这一格不动。`null` 不写成 `undefined` 是因为 `undefined` 在一个可选
@@ -983,7 +985,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     },
 
     /**
-     * 两张按模型的覆盖表,**整张换**(`writeProviders` 是浅合并:
+     * 三张按模型的覆盖表,**整张换**(`writeProviders` 是浅合并:
      * 只递一个键的话另一半会被原样留着,而我们要的正是「删掉某一个键」)。
      *
      * 忙态打在**被配置的那一行**上(`settingsKey.model`)—— 与勾选 / 设为当前
@@ -1000,6 +1002,20 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
         else table[modelId] = patch.contextLength
         // 空表就是没有这张表 —— 留一个 `{}` 是在盘上说「配置过」。
         delta.contextLengthByModel = Object.keys(table).length > 0 ? table : undefined
+      }
+
+      /*
+       * 最大输出走**与上一格同一手**:同一种「按模型的数字表」,删键删干净、
+       * 空表删整表。引擎读它的地方是
+       * `packages/core/engine/agent-loop-runtime.ts:819` —— 填了就直接当请求的
+       * max_tokens,所以这张表写错的后果与上一张一样是**发出去的请求变形**,
+       * 不是屏幕上一个读数变形。
+       */
+      if (patch.maxOutput !== undefined) {
+        const table: Record<string, number> = { ...(config?.maxOutputByModel ?? {}) }
+        if (patch.maxOutput === null) delete table[modelId]
+        else table[modelId] = patch.maxOutput
+        delta.maxOutputByModel = Object.keys(table).length > 0 ? table : undefined
       }
 
       if (patch.tools !== undefined) {

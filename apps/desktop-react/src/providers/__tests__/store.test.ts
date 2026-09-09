@@ -348,6 +348,7 @@ describe('setModelOverride', () => {
           model: 'claude-opus-5',
           selectedModels: ['claude-opus-5', 'ghost'],
           contextLengthByModel: { 'claude-opus-5': 300_000, ghost: 200_000 },
+          maxOutputByModel: { 'claude-opus-5': 32_768, ghost: 8_192 },
           modelCapabilitiesByModel: {
             'claude-opus-5': { tools: false, vision: true },
             ghost: { tools: true },
@@ -367,6 +368,50 @@ describe('setModelOverride', () => {
     const sent = vi.mocked(port.writeProviderSettings).mock.calls[0][0]
     expect(sent.ai.providers.claude.contextLengthByModel).toEqual({ ghost: 200_000 })
     expect(sent.ai.providers.claude.selectedModels).toEqual(['claude-opus-5'])
+  })
+
+  it('写最大输出:进 maxOutputByModel,另外两张表一格不动', async () => {
+    const port = installPort({
+      readProviderSettings: vi.fn(async () => ({ success: true, ai: overridden() })),
+    })
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().setModelOverride('claude', 'ghost', {
+      maxOutput: 16_384,
+    })
+    const config = vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.providers.claude
+    expect(config.maxOutputByModel).toEqual({ 'claude-opus-5': 32_768, ghost: 16_384 })
+    // 三张表各写各的:这一发只碰了一张。
+    expect(config.contextLengthByModel).toEqual({ 'claude-opus-5': 300_000, ghost: 200_000 })
+    expect(config.modelCapabilitiesByModel).toEqual({
+      'claude-opus-5': { tools: false, vision: true },
+      ghost: { tools: true },
+    })
+  })
+
+  it('清最大输出的最后一格:整张表也删掉,别的两张留着', async () => {
+    const single = {
+      provider: 'claude',
+      providers: {
+        claude: {
+          model: 'claude-opus-5',
+          selectedModels: ['claude-opus-5'],
+          contextLengthByModel: { 'claude-opus-5': 300_000 },
+          maxOutputByModel: { 'claude-opus-5': 32_768 },
+        },
+      },
+      customProviders: [],
+    } as unknown as SpaceProviderSettings
+    const port = installPort({
+      readProviderSettings: vi.fn(async () => ({ success: true, ai: single })),
+    })
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().setModelOverride('claude', 'claude-opus-5', {
+      maxOutput: null,
+    })
+    const config = vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.providers.claude
+    // 留一个 `{}` 在盘上是一句「这一型被配置过」的假话 —— 按 Object.keys 数。
+    expect(Object.keys(config)).not.toContain('maxOutputByModel')
+    expect(config.contextLengthByModel).toEqual({ 'claude-opus-5': 300_000 })
   })
 
   it('忙态打在被配置的那一行上,不是打在整面上', async () => {

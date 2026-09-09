@@ -1096,6 +1096,15 @@ export const en: Record<MessageKey, string> = {
   'providers.overrideContextHintCustomDefault':
     'Custom {value}. Clear it to go back to the default {fallback}.',
   'providers.overrideContextInvalid': 'A positive number, K / M allowed: 200000, 200K, 1M',
+  'providers.overrideOutputLabel': 'Max output',
+  'providers.overrideOutputPlaceholderCatalog': '{n} (half of the catalog’s {catalog})',
+  'providers.overrideOutputPlaceholderDefault': '{n} (default)',
+  'providers.overrideOutputHintCatalog':
+    'The catalog caps this model at {n}; left blank, a request asks for half of that.',
+  'providers.overrideOutputHintDefault':
+    'The catalog has nothing for this model; left blank, a request asks for {n} — half of the {fallback} fallback.',
+  'providers.overrideOutputHintCustom':
+    'Custom {value}. It is sent as written — no halving; only the model’s own ceiling still clamps it.',
   'providers.overrideToolsLabel': 'Tool calling',
   'providers.overrideToolsInherit': 'Follow catalog',
   'providers.overrideToolsOn': 'On',
@@ -1115,6 +1124,8 @@ export const en: Record<MessageKey, string> = {
   'providers.overrideReset': 'Restore catalog values',
   'providers.overrideContext': 'Custom {value} (catalog {catalog})',
   'providers.overrideContextNoCatalog': 'Custom {value} (catalog empty, default {fallback})',
+  'providers.overrideOutput': 'Custom {value} (catalog {catalog})',
+  'providers.overrideOutputNoCatalog': 'Custom {value} (catalog empty, default {fallback})',
   'providers.overrideToolsOnTipCatalogOn': 'Custom: tool calling on (catalog: supported)',
   'providers.overrideToolsOnTipCatalogOff': 'Custom: tool calling on (catalog: not supported)',
   'providers.overrideToolsOnTipUnknown': 'Custom: tool calling on (catalog empty)',

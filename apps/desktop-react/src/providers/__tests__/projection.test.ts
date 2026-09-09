@@ -353,6 +353,51 @@ describe('buildCatalogRows', () => {
     expect(row.catalog.contextLength).toBe(200_000)
   })
 
+  it('最大输出也读那张表 —— 交生效值,目录原话仍读得回来', () => {
+    const rows = buildCatalogRows(models, config({ maxOutputByModel: { a: 8_192 } }))
+    const row = rows.find((r) => r.id === 'a')!
+    expect(row.maxOutput).toBe(8_192)
+    expect(row.override.maxOutput).toBe(8_192)
+    // 屏幕上要说「自定 8.2k(目录 32.8k)」,所以目录那个数不能被覆盖吃掉。
+    expect(row.catalog.maxOutput).toBe(32_768)
+    // 没被动过的那一行照旧读目录。
+    expect(rows.find((r) => r.id === 'b')!.maxOutput).toBe(32_768)
+    expect(rows.find((r) => r.id === 'b')!.override.maxOutput).toBeUndefined()
+  })
+
+  it('手填行的最大输出也能人填 —— 目录那一格仍是「什么都没说过」', () => {
+    const rows = buildCatalogRows(
+      models,
+      config({ selectedModels: ['ghost'], maxOutputByModel: { ghost: 16_384 } }),
+    )
+    expect(rows[0]).toMatchObject({
+      id: 'ghost',
+      manual: true,
+      maxOutput: 16_384,
+      override: { maxOutput: 16_384 },
+      catalog: { maxOutput: null },
+    })
+  })
+
+  it('最大输出的 0 / 负数 / 非数一律视为没覆盖(与上下文同一把尺)', () => {
+    for (const bad of [0, -1, Number.NaN, '8192' as unknown as number]) {
+      const rows = buildCatalogRows(models, config({ maxOutputByModel: { a: bad } }))
+      const row = rows.find((r) => r.id === 'a')!
+      expect(row.override.maxOutput).toBeUndefined()
+      // 没覆盖 = 照目录画。
+      expect(row.maxOutput).toBe(32_768)
+    }
+  })
+
+  it('三格互不干涉:只写最大输出时,另外两格照旧「没说过」', () => {
+    const row = buildCatalogRows(models, config({ maxOutputByModel: { a: 8_192 } })).find(
+      (r) => r.id === 'a',
+    )!
+    expect(row.override.contextLength).toBeUndefined()
+    expect(row.override.tools).toBeUndefined()
+    expect(row.contextLength).toBe(200_000)
+  })
+
   it('tools:false —— caps 里没有它(真的不支持),而 override 记着「人说不」', () => {
     const withTools = [model('a', { supported_parameters: ['tools'] })]
     const on = buildCatalogRows(withTools, config())

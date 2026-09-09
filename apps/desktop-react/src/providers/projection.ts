@@ -424,23 +424,27 @@ export function formatPrice(value: number): string {
 }
 
 /**
- * 一个模型上的用户覆盖。**唯一产地**:settings 那两张按模型的表。
+ * 一个模型上的用户覆盖。**唯一产地**:settings 那三张按模型的表。
  *
  *  · `contextLengthByModel[id]` —— `positive()` 那条同一把尺(0 / 负数 / 非有限数
  *    = 这一格没填 = 没覆盖),与引擎 `model-registry.ts:905` 的 `> 0` 判据同义;
+ *  · `maxOutputByModel[id]` —— 同一把尺。引擎
+ *    `packages/core/engine/agent-loop-runtime.ts:819` 读它,**填了就直接当请求的
+ *    max_tokens**(不再对半砍,只受模型物理上限夹);
  *  · `modelCapabilitiesByModel[id].tools` —— **只认布尔**。`undefined` 是「没说过」,
  *    `false` 是「人说不支持」,两者在屏幕上差得远(消失 vs 划掉)。
  *
  * 都没有就交回同一个冻结常量:每行现造一个 `{}` 会让行的引用每帧都变。
  */
 export function overrideOf(config: ProviderConfig | undefined, id: string): ModelOverride {
-  const context = config?.contextLengthByModel?.[id]
+  const context = positive(config?.contextLengthByModel?.[id])
+  const maxOutput = positive(config?.maxOutputByModel?.[id])
   const tools = config?.modelCapabilitiesByModel?.[id]?.tools
-  const hasContext = typeof context === 'number' && Number.isFinite(context) && context > 0
   const hasTools = typeof tools === 'boolean'
-  if (!hasContext && !hasTools) return NO_MODEL_OVERRIDE
+  if (context === null && maxOutput === null && !hasTools) return NO_MODEL_OVERRIDE
   return {
-    ...(hasContext ? { contextLength: context } : {}),
+    ...(context !== null ? { contextLength: context } : {}),
+    ...(maxOutput !== null ? { maxOutput } : {}),
     ...(hasTools ? { tools } : {}),
   }
 }
@@ -482,12 +486,16 @@ export function buildCatalogRows(
       current: current === model.id,
       // **交生效值**:覆盖优先,与引擎 `getOnethingModelContextLength` 同一条读法。
       contextLength: override.contextLength ?? contextOf(model),
-      maxOutput: maxOutputOf(model),
+      maxOutput: override.maxOutput ?? maxOutputOf(model),
       caps: capsWithOverride(baseCaps, override),
       price: priceOf(model),
       manual: false,
       override,
-      catalog: { contextLength: contextOf(model), tools: baseCaps.includes('tools') },
+      catalog: {
+        contextLength: contextOf(model),
+        maxOutput: maxOutputOf(model),
+        tools: baseCaps.includes('tools'),
+      },
     }
   })
 
@@ -495,7 +503,7 @@ export function buildCatalogRows(
   const orphans: CatalogRow[] = [...selected]
     .filter((id) => !known.has(id))
     .map((id) => {
-      // 手填的行也读这两张表 —— 覆盖恰恰是给「目录没填」准备的,把它写死成
+      // 手填的行也读这三张表 —— 覆盖恰恰是给「目录没填」准备的,把它写死成
       // null/[] 等于说「手填的永远不知道」,而用户刚刚才亲手告诉过我们。
       const override = overrideOf(config, id)
       return {
@@ -504,13 +512,13 @@ export function buildCatalogRows(
         selected: true,
         current: current === id,
         contextLength: override.contextLength ?? null,
-        maxOutput: null,
+        maxOutput: override.maxOutput ?? null,
         caps: capsWithOverride([], override),
         price: null,
         // 「勾了但目录不认识」= 手填。这不是另一份存储,是同一个事实的名字。
         manual: true,
         override,
-        // 目录不认识它,所以目录**什么都没说过** —— 两格都是 null,不是 0/false。
+        // 目录不认识它,所以目录**什么都没说过** —— 三格都是 null,不是 0/false。
         catalog: NO_CATALOG_FACTS,
       }
     })

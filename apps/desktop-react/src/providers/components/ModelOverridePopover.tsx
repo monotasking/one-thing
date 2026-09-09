@@ -7,22 +7,29 @@ import { Segmented } from '../../ui/Segmented'
 import { useT } from '../../i18n'
 import type { MessageKey, TFn } from '../../i18n'
 import { formatQuantity, parseQuantity } from '../../format/quantity'
-import { CATALOG_CONTEXT_FALLBACK } from '../types'
+import {
+  CATALOG_CONTEXT_FALLBACK,
+  CATALOG_MAX_OUTPUT_FALLBACK,
+  requestedMaxOutputOf,
+} from '../types'
 import type { CatalogRow, ModelOverridePatch } from '../types'
 import s from './ModelOverridePopover.module.css'
 
 /**
  * **逐型覆盖**(09-09,设计正本 `docs/model-override-proposal-2026-09-09.html`)。
  *
- * 后端早就有这两格 —— `settings.ai.providers[pid].contextLengthByModel[m]` 与
- * `modelCapabilitiesByModel[m].tools`,引擎读它们的地方是
- * `model-registry.ts:895`(上下文,覆盖优先于目录、优先于 128k 兜底)与 `:949`
- * (工具,覆盖优先于目录条目、优先于按名字猜)。缺的一直只是壳上的写面:
- * 手填进来的模型只能进 `selectedModels`,它的窗口有多大、支不支持工具,
- * 用户明明知道却没地方说。这块浮层就是那张嘴,**后端零改动**。
+ * 后端早就有这三格 —— `settings.ai.providers[pid].contextLengthByModel[m]`、
+ * `maxOutputByModel[m]` 与 `modelCapabilitiesByModel[m].tools`,引擎读它们的地方是
+ * `model-registry.ts:895`(上下文,覆盖优先于目录、优先于 128k 兜底)、
+ * `packages/core/engine/agent-loop-runtime.ts:819`(最大输出,**填了就直接当请求的
+ * max_tokens**;没填则按注册上限的一半发,注册上限也没有时兜底 4096 → 一次只发
+ * 2048)与 `model-registry.ts:949`(工具,覆盖优先于目录条目、优先于按名字猜)。
+ * 缺的一直只是壳上的写面:手填进来的模型只能进 `selectedModels`,它的窗口有多大、
+ * 一次能吐多长、支不支持工具,用户明明知道却没地方说。这块浮层就是那张嘴,
+ * **后端零改动**。
  *
  * ── 它为什么不是一张对话框 ──────────────────────────────────────────────
- * 两格设置,贴着被配置的那一行开出来,背后那张表照旧能看能滚 —— 那正是
+ * 三格设置,贴着被配置的那一行开出来,背后那张表照旧能看能滚 —— 那正是
  * `ui/Popover` 的语义(附属,不打断)。做成 Dialog 会压一层遮罩,把「顺手改
  * 一格」变成「答一道题」。定位走 Popover 的**矩锚档**(本批给它补的,
  * 与 `ui/Menu` 逐字同形)+ `below-end`:锚点是行尾那颗钮,左对齐会把整张浮层
@@ -31,8 +38,10 @@ import s from './ModelOverridePopover.module.css'
  * ── 三张状态表(这件那一份)──────────────────────────────────────────────
  *
  * ① 生命周期
- *   挂载   点行尾那颗滑杆钮。**开的那一刻从设置读一次**:数字框的草稿 = 覆盖值
- *          或空,分段器不用草稿(它每一下都当场写,自己没有中间态)。
+ *   挂载   点行尾那颗滑杆钮。**开的那一刻从设置读一次**:两个数字框各自的草稿 =
+ *          自己那一格的覆盖值或空,分段器不用草稿(它每一下都当场写,自己没有
+ *          中间态)。两个数字框**各自独立提交**(各自的 blur / ↵),
+ *          改一格不动另一格 —— 它们是两张表,不是一次表单。
  *   卸载   关浮层 / 换模式换坑(开合状态住在 `ModelCatalog`,换坑那一发
  *          `useEffect` 把它归零)/ 这一行被折叠起来。
  *   换宿主 只有一种落点:锚在那颗钮下面的一块浮层。没有第二种形。
@@ -42,27 +51,29 @@ import s from './ModelOverridePopover.module.css'
  *   无覆盖   数字框空 + 占位符写**生效值与它的来源**;分段在「跟目录」;
  *            「恢复目录值」禁用。
  *   有覆盖   数字框是那个数;分段在开/关;「恢复目录值」可按。
- *   目录没填 占位符与提示行都说「默认 128k」,并且说清「跟目录」跟的是**猜**
- *            (按名字判,规则在 `model-registry.ts:958-972` —— 壳不复刻那张表,
- *            只如实说出这件事)。
- *   填错     边线转 danger + 错误句**替换**提示行;不写、行上一格不动。
- *   在写     这一行的三颗钮与浮层里的三件控件一起禁;别的行一个都不许动。
+ *   目录没填 占位符与提示行都说默认值(上下文 128k / 最大输出 2,048 = 兜底 4,096
+ *            的一半),并且说清「跟目录」跟的是**猜**(按名字判,规则在
+ *            `model-registry.ts:958-972` —— 壳不复刻那张表,只如实说出这件事)。
+ *   填错     边线转 danger + 错误句**替换**那一格自己的提示行;不写、行上一格不动。
+ *            **两格各自一份 invalid** —— 上一格填错不该把下一格也判红。
+ *   在写     这一行的三颗钮与浮层里的四件控件一起禁;别的行一个都不许动。
  *
  * ③ UI 交互状态
  *   数字框 rest / hover / focus / invalid / disabled;**失焦与 ↵ 才提交**
  *          (不逐字打后端);Esc 归响应链(`ui/Popover` 声明的 `onEscape`),
- *          草稿随浮层一起丢掉。
+ *          草稿随浮层一起丢掉。两格同一件 `QuantityInput`,只是各自一份 state。
  *   分段器 三格 radio,←→ 换格(`ui/Segmented` 的 roving),**点一下就写**。
  *   恢复钮 rest / hover / disabled(没覆盖时)。
  */
 
 /**
- * 覆盖值的上限。**不是校验口味,是防手滑**:一个多按了几个零的窗口会让压缩
- * 阈值算在一个根本不存在的量级上(引擎那侧只判 `> 0`,不封顶)。
+ * 两个数字框共用的上限。**不是校验口味,是防手滑**:一个多按了几个零的窗口会让
+ * 压缩阈值算在一个根本不存在的量级上(引擎那侧只判 `> 0`,不封顶),而一个多按
+ * 了几个零的最大输出会**直接进请求的 max_tokens**。
  * 1 亿 token 比今天任何一个真实窗口都大两个数量级,夹在这里等于「不挡真值,
- * 只挡打错」。与退役的 Vue 壳同一个数。
+ * 只挡打错」。与退役的 Vue 壳同一个数(那时它只管上下文,叫 `MAX_CONTEXT_OVERRIDE`)。
  */
-export const MAX_CONTEXT_OVERRIDE = 100_000_000
+export const MAX_QUANTITY_OVERRIDE = 100_000_000
 
 /**
  * 框里回显一个已写进去的数。**能短写就短写**(`200000` → `200k`),但只在短写
@@ -117,6 +128,47 @@ function contextPlaceholder(t: TFn, row: CatalogRow): string {
       })
 }
 
+/**
+ * 最大输出那一格的提示行。三句整话。
+ *
+ * 这一格与上下文那一格**读法不同**,所以话也不同:引擎对上下文是「覆盖优先,
+ * 否则用目录的数」,对最大输出是「**填了就直接当请求的 max_tokens**,没填则按
+ * 注册上限的**一半**发」(`agent-loop-runtime.ts:821` 的 `halfDefault`)。
+ * 那个「一半」是这一格最容易被误读的事实 —— 不说出来,用户会把「目录 16,384」
+ * 读成「一次能吐 16,384」,而实际只发 8,192。
+ */
+function maxOutputHint(t: TFn, row: CatalogRow): string {
+  const custom = row.override.maxOutput
+  const catalog = row.catalog.maxOutput
+  if (custom != null) {
+    return t('providers.overrideOutputHintCustom', { value: custom.toLocaleString() })
+  }
+  return catalog != null
+    ? t('providers.overrideOutputHintCatalog', { n: catalog.toLocaleString() })
+    : t('providers.overrideOutputHintDefault', {
+        n: requestedMaxOutputOf(CATALOG_MAX_OUTPUT_FALLBACK).toLocaleString(),
+        fallback: CATALOG_MAX_OUTPUT_FALLBACK.toLocaleString(),
+      })
+}
+
+/**
+ * 最大输出的占位符 —— 与上一格同一条合同:写的是**今天实际会发出去的数与它的
+ * 来源**。所以这里写的不是目录那个数,而是它的一半(那才是请求里真出现的数)。
+ * 数一律写全位(`toLocaleString`)不进位:这一档的数只有四五位,而
+ * 「8.2k」与「8,192」之间那 8 个 token 在 max_tokens 上是真的差别。
+ */
+function maxOutputPlaceholder(t: TFn, row: CatalogRow): string {
+  const catalog = row.catalog.maxOutput
+  return catalog != null
+    ? t('providers.overrideOutputPlaceholderCatalog', {
+        n: requestedMaxOutputOf(catalog).toLocaleString(),
+        catalog: catalog.toLocaleString(),
+      })
+    : t('providers.overrideOutputPlaceholderDefault', {
+        n: requestedMaxOutputOf(CATALOG_MAX_OUTPUT_FALLBACK).toLocaleString(),
+      })
+}
+
 /** 工具那一格的提示行。五态,同样是整话。 */
 function toolsHintKey(choice: ToolsChoice, catalog: boolean | null): MessageKey {
   if (choice === 'on') return 'providers.overrideToolsHintOn'
@@ -162,9 +214,17 @@ export function ModelOverridePopover({
     row.override.contextLength != null ? draftOf(row.override.contextLength) : '',
   )
   const [invalid, setInvalid] = useState(false)
+  /* 第二个数字框自己的一份 —— 同一件控件,两份互不相干的 state。 */
+  const [outDraft, setOutDraft] = useState(() =>
+    row.override.maxOutput != null ? draftOf(row.override.maxOutput) : '',
+  )
+  const [outInvalid, setOutInvalid] = useState(false)
 
   const choice = toolsChoiceOf(row.override.tools)
-  const hasOverride = row.override.contextLength != null || row.override.tools !== undefined
+  const hasOverride =
+    row.override.contextLength != null ||
+    row.override.maxOutput != null ||
+    row.override.tools !== undefined
 
   const rect = anchor()
 
@@ -189,10 +249,34 @@ export function ModelOverridePopover({
       return
     }
     setInvalid(false)
-    const next = Math.min(parsed, MAX_CONTEXT_OVERRIDE)
+    const next = Math.min(parsed, MAX_QUANTITY_OVERRIDE)
     setDraft(draftOf(next))
     if (next === row.override.contextLength) return
     onWrite({ contextLength: next })
+  }
+
+  /**
+   * 提交一次最大输出。**与上面那一条逐字同形**(三条出口、同一把 `parseQuantity`
+   * 的尺、同一个上限、同样夹完回显),差的只有写哪一个键 —— 两格是两张表,
+   * 各自 blur / ↵、各自提交,改一格不动另一格。
+   */
+  function commitMaxOutput() {
+    const raw = outDraft.trim()
+    if (raw === '') {
+      setOutInvalid(false)
+      if (row.override.maxOutput != null) onWrite({ maxOutput: null })
+      return
+    }
+    const parsed = parseQuantity(raw)
+    if (parsed === null) {
+      setOutInvalid(true)
+      return
+    }
+    setOutInvalid(false)
+    const next = Math.min(parsed, MAX_QUANTITY_OVERRIDE)
+    setOutDraft(draftOf(next))
+    if (next === row.override.maxOutput) return
+    onWrite({ maxOutput: next })
   }
 
   function pickTools(value: ToolsChoice) {
@@ -226,18 +310,45 @@ export function ModelOverridePopover({
           hint={invalid ? undefined : contextHint(t, row)}
           error={invalid ? t('providers.overrideContextInvalid') : undefined}
         >
-          <ContextInput
+          <QuantityInput
             draft={draft}
             invalid={invalid}
             disabled={pending}
             placeholder={contextPlaceholder(t, row)}
             unit={t('providers.overrideContextUnit')}
+            testId="model-override-context"
             onDraft={(value) => {
               setDraft(value)
               // 一边打字一边把上一次那句错误抹掉:它是对上一次提交说的。
               setInvalid(false)
             }}
             onCommit={commitContext}
+          />
+        </Field>
+
+        {/*
+          最大输出。放在上下文之后、工具之前 —— 两个「数」挨着,一个「开关」在后,
+          而不是把同一族的两格拆到分段器两边。
+        */}
+        <Field
+          size="sm"
+          className={s.grp}
+          label={t('providers.overrideOutputLabel')}
+          hint={outInvalid ? undefined : maxOutputHint(t, row)}
+          error={outInvalid ? t('providers.overrideContextInvalid') : undefined}
+        >
+          <QuantityInput
+            draft={outDraft}
+            invalid={outInvalid}
+            disabled={pending}
+            placeholder={maxOutputPlaceholder(t, row)}
+            unit={t('providers.overrideContextUnit')}
+            testId="model-override-output"
+            onDraft={(value) => {
+              setOutDraft(value)
+              setOutInvalid(false)
+            }}
+            onCommit={commitMaxOutput}
           />
         </Field>
 
@@ -259,8 +370,8 @@ export function ModelOverridePopover({
           <span className={s.footNote}>{t('providers.overrideFoot')}</span>
           {/*
             ③ 类行内微型文字动作 → `ui/ButtonBase`(只清 UA,皮肤归本地)。
-            点它 = **两个键一起删**:这颗钮说的是「恢复目录值」,只删一个就是
-            半句话 —— 而另外半句留在盘上,屏幕上还照旧画着虚线。
+            点它 = **三个键一起删**:这颗钮说的是「恢复目录值」,只删一个就是
+            半句话 —— 而剩下那些留在盘上,屏幕上还照旧画着虚线。
           */}
           <ButtonBase
             className={s.reset}
@@ -269,7 +380,9 @@ export function ModelOverridePopover({
             onClick={() => {
               setDraft('')
               setInvalid(false)
-              onWrite({ contextLength: null, tools: null })
+              setOutDraft('')
+              setOutInvalid(false)
+              onWrite({ contextLength: null, maxOutput: null, tools: null })
             }}
           >
             {t('providers.overrideReset')}
@@ -281,16 +394,21 @@ export function ModelOverridePopover({
 }
 
 /**
- * 数字框那一件。**单独一件是因为 hook 只能在组件里调**:`useFieldControlProps()`
- * 拿的是 `<Field>` 往下发的 context,在 Field 外面那一层调只会拿到空对象
+ * 数字框那一件,**两格共用一件**(上下文窗口 / 最大输出)。认什么写法、怎么回显、
+ * 什么时候提交,两格逐字同一套 —— 复制第二份的下场是两个框慢慢认起不同的写法。
+ * 各自不同的只有四样,全部走参数:占位符、`testId`、草稿、提交时写哪个键。
+ *
+ * **单独一件是因为 hook 只能在组件里调**:`useFieldControlProps()` 拿的是
+ * `<Field>` 往下发的 context,在 Field 外面那一层调只会拿到空对象
  * (id / aria-describedby / aria-invalid 全丢)—— 与 `AddModelRow` 同一手。
  */
-function ContextInput({
+function QuantityInput({
   draft,
   invalid,
   disabled,
   placeholder,
   unit,
+  testId,
   onDraft,
   onCommit,
 }: {
@@ -299,6 +417,7 @@ function ContextInput({
   disabled: boolean
   placeholder: string
   unit: string
+  testId: string
   onDraft: (value: string) => void
   onCommit: () => void
 }) {
@@ -313,7 +432,7 @@ function ContextInput({
       invalid={invalid}
       placeholder={placeholder}
       /* 不给 inputMode="numeric":那副软键盘上没有 k / M,而这一格就是要认它们。 */
-      data-testid="model-override-context"
+      data-testid={testId}
       suffix={<span className={s.unit}>{unit}</span>}
       onBlur={onCommit}
       onKeyDown={(event) => {

@@ -1297,6 +1297,16 @@ export const zh = {
   'providers.overrideContextHintCustomDefault': '自定 {value}。清空回到默认 {fallback}。',
   /* 例子就写在句子里 —— 「格式不对」这种话谁都改不对自己那一行。 */
   'providers.overrideContextInvalid': '填正数,可带 K / M:200000、200K、1M',
+  /* 最大输出。这一格的话与上一格不同,因为引擎的读法不同:没填时它发的是
+   * **注册上限的一半**(agent-loop-runtime.ts:821),填了就直接当 max_tokens。
+   * 那个「一半」必须说出来 —— 不说,「目录 16,384」会被读成「一次能吐 16,384」。
+   * 这一族的数一律写全位不进位:四五位的数,8,192 与 8.2k 差的是真 token。 */
+  'providers.overrideOutputLabel': '最大输出',
+  'providers.overrideOutputPlaceholderCatalog': '{n}(目录 {catalog} 的一半)',
+  'providers.overrideOutputPlaceholderDefault': '{n}(默认)',
+  'providers.overrideOutputHintCatalog': '目录上限 {n};不填按它的一半发。',
+  'providers.overrideOutputHintDefault': '目录没填这一型;不填按 {n} 发(兜底 {fallback} 的一半)。',
+  'providers.overrideOutputHintCustom': '自定 {value};不再对半砍,只受模型上限夹。',
   'providers.overrideToolsLabel': '工具调用',
   /* 第一格叫「跟目录」而不是「默认」:目录没填时它跟的是**按名字猜**,
    * 下面那句 overrideToolsHintGuess 把这一点说出来,不藏。 */
@@ -1315,6 +1325,8 @@ export const zh = {
   'providers.overrideReset': '恢复目录值',
   'providers.overrideContext': '自定 {value}(目录 {catalog})',
   'providers.overrideContextNoCatalog': '自定 {value}(目录没填,默认 {fallback})',
+  'providers.overrideOutput': '自定 {value}(目录 {catalog})',
+  'providers.overrideOutputNoCatalog': '自定 {value}(目录没填,默认 {fallback})',
   'providers.overrideToolsOnTipCatalogOn': '自定:支持工具调用(目录:支持)',
   'providers.overrideToolsOnTipCatalogOff': '自定:支持工具调用(目录:不支持)',
   'providers.overrideToolsOnTipUnknown': '自定:支持工具调用(目录没填)',
