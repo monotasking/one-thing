@@ -30,6 +30,7 @@
     "./plugins/sessions": "./plugins/sessions.ts",
     "./providers": "./providers/index.ts",
     "./permission": "./permission/index.ts",
+    "./resource": "./resource/index.ts",
     "./runtime-facade": "./runtime-facade.ts",
     "./storage": "./storage/index.ts",
     "./toolkit": "./toolkit/index.ts",
