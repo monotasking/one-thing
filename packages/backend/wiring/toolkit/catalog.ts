@@ -29,7 +29,6 @@ import {
   createHistoryTool,
   createNotebookTool,
   createPracticeTool,
-  createRadioTool,
   createReadTool,
   createSearchTool,
   createSendMessageTool,
@@ -151,6 +150,11 @@ export interface CatalogAdapters {
   readonly task?: TaskToolPorts
   readonly askUser?: AskUserToolAdapters
   readonly practice?: PracticeToolAdapters
+  /**
+   * K3-b:`radio` 那只工具退役了,但这一格留着 —— 它今天的读者是资源面那只
+   * `MusicResourceProvider`(经 `radioAdapters()`),而 `resolve()` 里的缺省
+   * 一行是那份契约唯一的产地。
+   */
   readonly radio?: RadioToolAdapters
   readonly sendMessage?: SendMessageToolAdapters
   readonly board?: BoardToolAdapters
@@ -193,7 +197,6 @@ export function createDesktopCatalog(adapters: CatalogAdapters = {}): Catalog {
     .register(createReadTool(resolved.read))
     .register(createWriteTool(resolved.mutatingFile))
     .register(createVariableTool(resolved.variable))
-    .register(createRadioTool(resolved.radio))
     .register(createPracticeTool(resolved.practice))
     .register(createTaskTool(resolved.task))
     .register(createAskUserTool(resolved.askUser))

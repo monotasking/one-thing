@@ -31,7 +31,24 @@ const consoleLog = consolePort(log)
 import { MusicWorkOwner } from './lifetime.js'
 import { getCurrentBackend } from '../../current.js'
 
-export function createMusicServiceScope(options: { storePath: string; assertOwned?: () => void }) {
+export function createMusicServiceScope(options: {
+  storePath: string
+  assertOwned?: () => void
+  /**
+   * 一条**扇出**的 now-playing 观察口(K3-b)。
+   *
+   * 它不是第二个 `setMusicSampleListener`:那一格是单槽、归电台指挥台独占(见下面
+   * 那段注释),而且它是**每一次成功轮询**都响 —— 用来看队列水位,不是「变了」。
+   * 这一格挂在 `emit` 上,也就是 watcher 自己的**变化检测之后**,语义正好是
+   * 「现在放的东西变了」,而这正是 `music:player` 那条 `nowPlayingChanged` 事件的
+   * 定义。缺席 = 没人看,与今天逐字一样。
+   *
+   * 为什么收一个回调而不是在这里自己开一张监听表:这只作用域随音乐 provider 切换
+   * 整代重建(`MusicSubsystem.switchProvider`),表放在这里的话,换一次 CLI 订阅就
+   * 全丢了。所以表归子系统(它的寿命是 backend 的寿命),这里只负责把事实递上去。
+   */
+  onNowPlaying?: (nowPlaying: OnethingMusicNowPlaying | null) => void
+}) {
   const owner = new MusicWorkOwner(options.assertOwned)
   const runner = createElectronMusicProcessRunner({ env: { ONETHING_STORE_PATH: options.storePath }, signal: owner.signal })
   const setups = new Set<MusicSetupService>()
@@ -172,6 +189,14 @@ function getNowPlayingWatcher(): NowPlayingWatcher {
         channel: IPC_CHANNELS.MUSIC_NOW_PLAYING,
         payload: nowPlaying,
       })
+      // 一个坏掉的观察者不该把这次推送撤销掉,也不该把 watcher 的这一拍炸掉
+      // (与 `now-playing.ts` 对 `onSample` 的处理、`ResourceEventHub.emit` 对监听器
+      // 的处理是同一句话)。
+      try {
+        options.onNowPlaying?.(nowPlaying)
+      } catch (error) {
+        log.warn('now-playing observer failed', {}, error)
+      }
     },
     onSample: nowPlaying => { if (!owner.signal.aborted) sampleListener?.(nowPlaying) },
     logger: consoleLog,

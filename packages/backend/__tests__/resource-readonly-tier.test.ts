@@ -78,12 +78,21 @@ describe("readonly 档不给资源工具(K3-a')", () => {
     const { getToolkitCatalog } = await import('@onething/runtime/toolkit/host')
     const catalog = getToolkitCatalog()
     expect(catalog).toBeTruthy()
-    expect(catalog?.has('session')).toBe(false)
     expect(catalog?.has('resources')).toBe(false)
 
+    /*
+     * 判据是「**注册表里的每一个** scheme 都不在目录里」,不是一张写死的名单
+     * (K3-c 改法):这只测试要证的是那一档的契约 —— 零本地副作用 —— 而那句话对
+     * 「今天有哪几种资源」不该有任何依赖。写死名单的下场是每加一种内置资源就要回来
+     * 改一次断言,而漏改的那一次**不会红**在该红的地方:它会红在名单上,读起来像是
+     * 「多了一种资源」而不是「那一档漏进了一只工具」。
+     */
+    const schemes = backend.resources.registry.list().map(spec => spec.scheme)
+    expect(schemes.length).toBeGreaterThan(0)
+    for (const scheme of schemes) expect(catalog?.has(scheme)).toBe(false)
+
     // provider 照样挂着 —— 缺席的是那份**投影**,不是那种资源。
-    expect(backend.resources.registry.list().map(spec => spec.scheme)).toEqual(['session'])
-    expect(backend.resources.tools().map(tool => tool.spec.id)).toEqual(['session'])
+    expect(backend.resources.tools().map(tool => tool.spec.id)).toEqual(schemes)
   })
 
   it('RPC 那条路不受影响:界面照样读得到、做得动', async () => {

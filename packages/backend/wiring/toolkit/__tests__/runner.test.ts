@@ -64,11 +64,13 @@ function invocationFor(toolId: string, input: unknown, dir: string): Invocation 
 }
 
 describe('三档目录', () => {
-  it('桌面 / headless / readonly 各装得起来(R3a 二十只 + S6 的 search)', () => {
+  // K3-b:full 档少一只 `radio`(音乐退成 `music` 这个资源 scheme,它的工具由
+  // 注册表对账进目录,不是这一档手写注册的)。
+  it('桌面 / headless / readonly 各装得起来(R3a 二十只 + S6 的 search − K3-b 的 radio)', () => {
     expect(createDesktopCatalog().all().map(tool => tool.spec.id).sort())
       .toEqual([
         'ask_user', 'bash', 'board', 'edit', 'goal', 'history', 'notebook', 'practice',
-        'radio', 'read', 'search', 'send_message', 'task', 'time', 'variable', 'web_open',
+        'read', 'search', 'send_message', 'task', 'time', 'variable', 'web_open',
         'web_search', 'write',
       ])
     expect(createHeadlessCatalog().all().map(tool => tool.spec.id).sort())
@@ -82,7 +84,7 @@ describe('三档目录', () => {
   })
 
   it('createCatalogForTier 三个档位都对得上,未知档位退回 headless', () => {
-    expect(createCatalogForTier('full').size).toBe(18)
+    expect(createCatalogForTier('full').size).toBe(17)
     expect(createCatalogForTier('headless').size).toBe(12)
     expect(createCatalogForTier('readonly').size).toBe(5)
   })

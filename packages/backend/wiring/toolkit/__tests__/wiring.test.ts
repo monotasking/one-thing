@@ -413,7 +413,8 @@ describe('R2b 缝 1:工具面由 Surface 解析', () => {
       session: { id: SESSION_ID, kind: 'chat', workingDirectory: workspace },
       enabledSkillNames: [],
       allowlist: null,
-      toolSettings: { radio: { enabled: false } },
+      // K3-b:`radio` 退役,这条判据换一只同样「普通对话里可见」的工具来证。
+      toolSettings: { practice: { enabled: false } },
     })
     expect(surface).toBeDefined()
 
@@ -430,7 +431,7 @@ describe('R2b 缝 1:工具面由 Surface 解析', () => {
     expect(plan.toolNames).not.toContain('board')
     expect(plan.toolNames).not.toContain('goal')
     // 设置页关掉的工具根本不进面。
-    expect(plan.toolNames).not.toContain('radio')
+    expect(plan.toolNames).not.toContain('practice')
   })
 
   it('空白名单 = 不限制(旧路语义,归一门在接线处过一次)', async () => {

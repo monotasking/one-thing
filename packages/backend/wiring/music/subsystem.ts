@@ -1,4 +1,4 @@
-import { listMusicProviderDescriptors } from '@onething/runtime/music'
+import { listMusicProviderDescriptors, type OnethingMusicNowPlaying } from '@onething/runtime/music'
 import { DEFAULT_MUSIC_SETTINGS } from '@shared/defaults/settings.js'
 import { getSettings, saveSettings } from '../../stores/settings.js'
 import { createMusicServiceScope } from './service.js'
@@ -20,14 +20,41 @@ export class MusicSubsystem {
   private generation: MusicGeneration
   private readonly generations = new Set<MusicGeneration>()
   private changes: Promise<unknown> = Promise.resolve()
+  /**
+   * 谁在看「现在放的东西变了」(K3-b:`music:player` 的 `nowPlayingChanged`)。
+   *
+   * 表住在**子系统**而不是那只服务作用域上,因为作用域随 provider 切换整代重建
+   * (`switchProvider`)而这张表的寿命是 backend 的寿命 —— 换一次音乐 CLI 不该让
+   * 订阅者悄悄失聪。每一代作用域拿到的是同一只扇出闭包。
+   */
+  private readonly nowPlayingListeners = new Set<(nowPlaying: OnethingMusicNowPlaying | null) => void>()
 
   constructor(private readonly options: { storePath: string; assertOwned: () => void }) {
     this.owner = new MusicWorkOwner(options.assertOwned)
     this.generation = this.createGeneration()
   }
 
+  /**
+   * 订阅「现在放的东西变了」。返回退订(幂等)。
+   *
+   * 判据是 watcher 自己的变化检测(标题 / 状态 / 时长任一变了),不是每一拍轮询 ——
+   * 位置每秒都在动,把它也算成「变了」会让每个订阅者都得自己再去一次抖动。
+   */
+  onNowPlayingChanged(listener: (nowPlaying: OnethingMusicNowPlaying | null) => void): () => void {
+    this.nowPlayingListeners.add(listener)
+    return () => {
+      this.nowPlayingListeners.delete(listener)
+    }
+  }
+
   private createGeneration(): MusicGeneration {
-    const service = createMusicServiceScope(this.options)
+    const service = createMusicServiceScope({
+      ...this.options,
+      onNowPlaying: nowPlaying => {
+        // 拷一份再遍历:监听器在回调里退订是正常操作(一次 unmount)。
+        for (const listener of [...this.nowPlayingListeners]) listener(nowPlaying)
+      },
+    })
     const djVoice = createDjVoiceScope(this.options.assertOwned)
     const radio = createRadioScope({ ...this.options, service, djVoice })
     const operations = createMusicOperationsScope({ ...this.options, service, radio })

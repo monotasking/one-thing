@@ -24,7 +24,6 @@ import { createGoalTool } from '../builtin/goal.js'
 import { createHistoryTool } from '../builtin/history.js'
 import { createNotebookTool } from '../builtin/notebook.js'
 import { createPracticeTool } from '../builtin/practice.js'
-import { createRadioTool } from '../builtin/radio.js'
 import { createSendMessageTool } from '../builtin/send-message.js'
 import { createTaskTool } from '../builtin/task.js'
 import { createTimeTool } from '../builtin/time.js'
@@ -89,9 +88,6 @@ function fullCatalog(): Catalog {
   catalog.register(createTimeTool())
   catalog.register(createWebSearchTool())
   catalog.register(createWebOpenTool())
-  catalog.register(createRadioTool({
-    open: noop as never, close: noop as never, status: noop as never, request: noop as never,
-  }))
   catalog.register(createPracticeTool({ log: noop as never, query: noop as never, recent: noop as never }))
   catalog.register(createTaskTool({ dispatch: noop as never }))
   catalog.register(createAskUserTool({ ask: noop as never, abort: noop as never }))

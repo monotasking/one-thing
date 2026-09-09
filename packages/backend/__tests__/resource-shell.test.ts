@@ -147,7 +147,13 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
     const lying = { ...WORKBENCH_SPEC, ops: { open: { ...WORKBENCH_SPEC.ops.open, home: 'core' as const } } }
     expect(await backend.shellResources.mountShell(SHELL, lying)).toEqual({ ok: true })
 
-    expect(backend.resources.registry.list().map(spec => spec.scheme)).toEqual(['session', 'workbench'])
+    /*
+     * 问的是「`workbench` 在不在表里」,不是「表里正好有哪几个」(K3-c 改法):
+     * 这只文件证的是**壳交上来的自述**进没进同一台内核,内置资源有几种与它无关 ——
+     * 写死一张全表,每加一种内置资源就要回来改一次,而那次改动读起来像是这条壳的
+     * 用例出了问题。
+     */
+    expect(backend.resources.registry.list().map(spec => spec.scheme)).toContain('workbench')
     expect(backend.shellResources.schemesOf(SHELL)).toEqual(['workbench'])
     expect(backend.resources.registry.get('workbench')?.ops.open?.home).toBe('shell')
 
@@ -284,7 +290,8 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
   })
 
   it('§10.2 已注销:摘掉之后再调,回到「未登记」那一行', async () => {
-    expect(backend.resources.registry.list().map(spec => spec.scheme)).toEqual(['session'])
+    // 同上:摘干净的判据是「`workbench` 不在表里了」,不是内置资源的名单。
+    expect(backend.resources.registry.list().map(spec => spec.scheme)).not.toContain('workbench')
     const outcome = await backend.resources.do('workbench:center', 'open', {}, callOptions(sessionId))
     expect(outcome.kind === 'failed' && outcome.error.name).toBe('ResourceSchemeUnknownError')
   })

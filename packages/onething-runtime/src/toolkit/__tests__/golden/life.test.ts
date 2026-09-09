@@ -1,6 +1,11 @@
 /**
- * `practice` / `radio` 的行为金标(R3a 起的对拍 suite,R4b 转成金标 —— 见
- * time.test.ts 的头注释)。
+ * `practice` 的行为金标(R3a 起的对拍 suite,R4b 转成金标 —— 见 time.test.ts 的
+ * 头注释)。
+ *
+ * K3-b:`radio` 那一族金标随那只工具一起退役 —— 音乐成了一个资源 scheme,同一批
+ * 用例(五条做法 / 两条参数校验 / 状态读法)逐条迁到
+ * `packages/backend/wiring/resource/__tests__/music-provider.test.ts`。金标必须跟着
+ * 实现走:留一份对着已删工具的快照,只会在下一个人跑 `-u` 的时候被静默清掉。
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -8,7 +13,6 @@ import { zodToJsonSchema } from '../../contract.js'
 import type { OnethingPracticeBucket, OnethingPracticeSummaryResult } from '../../../practice/summary.js'
 import type { OnethingPracticeLedgerRecord } from '../../../practice/types.js'
 import { createPracticeTool, PracticeInputSchema, type PracticeToolAdapters } from '../../builtin/practice.js'
-import { createRadioTool, RadioInputSchema, type RadioToolAdapters, type RadioToolStatus } from '../../builtin/radio.js'
 import { annotationsOf, modelTextOf, normalizeDetails, runNewTool } from '../support.js'
 
 const RECORD: OnethingPracticeLedgerRecord = {
@@ -105,66 +109,6 @@ describe('golden: practice', () => {
     const controller = new AbortController()
     controller.abort()
     const run = await runNewTool(createPracticeTool(practiceAdapters()), { action: 'query' }, { signal: controller.signal })
-    expect(run.outcome.kind).toBe('aborted')
-  })
-})
-
-describe('golden: radio', () => {
-  const STATUS: RadioToolStatus = { active: true, intent: '安静的中文民谣', programmeLength: 5, nowPlayingTitle: '晴天' }
-
-  function radioAdapters(overrides: Partial<RadioToolAdapters> = {}): RadioToolAdapters {
-    return {
-      open: async () => STATUS,
-      close: async () => ({ ...STATUS, active: false, programmeLength: 0 }),
-      status: () => STATUS,
-      request: async () => ({ success: true, title: '晴天 周杰伦' }),
-      ...overrides,
-    }
-  }
-
-  it('spec 钉住', () => {
-    const tool = createRadioTool(radioAdapters())
-    expect(tool.spec.description).toMatchSnapshot('description')
-    expect(tool.spec.input).toEqual(zodToJsonSchema(RadioInputSchema))
-    expect(tool.spec.concurrency).toBe('sequential')
-    expect(tool.spec.effects).toEqual([])
-  })
-
-  const FIXTURES: Array<{ name: string; args: Record<string, unknown>; adapters?: RadioToolAdapters }> = [
-    { name: '正常:open', args: { action: 'open', intent: '下雨天,安静的中文民谣' } },
-    { name: '正常:retune', args: { action: 'retune', intent: '换成爵士' } },
-    { name: '正常:status', args: { action: 'status' } },
-    { name: '正常:close', args: { action: 'close' } },
-    { name: '正常:request', args: { action: 'request', song: '晴天 周杰伦' } },
-    { name: '边界:intent 只有一个字', args: { action: 'open', intent: 'x' } },
-    { name: '边界:request 缺 song', args: { action: 'request' } },
-    {
-      name: '错误:点歌失败',
-      args: { action: 'request', song: '不存在的歌' },
-      adapters: radioAdapters({ request: async () => ({ success: false, error: '找不到这首歌' }) }),
-    },
-  ]
-
-  for (const fixture of FIXTURES) {
-    it(`模型文本与渲染信息钉住:${fixture.name}`, async () => {
-      const adapters = fixture.adapters ?? radioAdapters()
-      const run = await runNewTool(createRadioTool(adapters), fixture.args)
-      expect(run.outcome.kind).toBe('ok')
-      expect(modelTextOf(run.outcome)).toMatchSnapshot('model text')
-      expect(annotationsOf(run).at(-1)?.title).toMatchSnapshot('title')
-      expect(normalizeDetails(annotationsOf(run).at(-1)?.details)).toMatchSnapshot('metadata')
-    })
-  }
-
-  it('错误:action 不合契约', async () => {
-    const run = await runNewTool(createRadioTool(radioAdapters()), { action: 'shuffle' })
-    expect(run.outcome.kind).toBe('invalid')
-  })
-
-  it('取消:信号先响,结局恒为 aborted', async () => {
-    const controller = new AbortController()
-    controller.abort()
-    const run = await runNewTool(createRadioTool(radioAdapters()), { action: 'status' }, { signal: controller.signal })
     expect(run.outcome.kind).toBe('aborted')
   })
 })

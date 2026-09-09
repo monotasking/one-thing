@@ -23,7 +23,14 @@ import { ResourceInputValidator, ResourceKernel, ResourceRegistry } from '@oneth
 import type { ResourceKernelOptions } from '@onething/core/resource'
 import { combineValidators, type ToolRunner, type Validator } from '@onething/core/toolkit'
 import { ZodValidator } from '@onething/runtime/toolkit'
+import { DIR_RESOURCE_SCHEME } from '@onething/runtime/files/resource-spec'
+import { isHostLocallyTrusted } from '../../server/host-trust.js'
+import { createSandboxPolicy } from '../toolkit/runner.js'
+import { DirResourceProvider } from './dir-provider.js'
+import { createMusicResourceProvider } from './music-provider.js'
+import { createLocalOnlyReadGuard } from './read-guard.js'
 import { SessionResourceProvider } from './session-provider.js'
+import type { ToolCatalogTier } from '../toolkit/catalog.js'
 
 export { forwardResourceEventsToBus } from './event-bridge.js'
 export { syncResourceToolsIntoCatalog } from './catalog-sync.js'
@@ -41,6 +48,26 @@ export {
 export type { ShellMountRegistryOptions } from './shell-registry.js'
 export { SessionResourceProvider, SessionNotFoundError, SessionRefRequiredError } from './session-provider.js'
 export type { SessionOpPayload } from './session-provider.js'
+export {
+  DirOperationFailedError,
+  DirOutsideSandboxError,
+  DirRefRequiredError,
+  DirResourceProvider,
+  DirShellUnavailableError,
+} from './dir-provider.js'
+export type { DirEntryKind, DirOpPayload, DirRefusalReason } from './dir-provider.js'
+export { createLocalOnlyReadGuard } from './read-guard.js'
+export type { LocalOnlyReadGuardOptions } from './read-guard.js'
+export {
+  createMusicResourceProvider,
+  MusicCommandFailedError,
+  MusicIntentRequiredError,
+  MusicRefMismatchError,
+  MusicResourceProvider,
+  MusicSongRequiredError,
+  musicPlayerAdapters,
+} from './music-provider.js'
+export type { MusicOpPayload, MusicPlayerAdapters } from './music-provider.js'
 
 /**
  * 一台资源内核。注册表是**新建**的(不是进程单例):谁要一张表谁自己 new 一个,
@@ -65,7 +92,31 @@ export function createResourceKernel(
 ): ResourceKernel {
   const resourceValidator = new ResourceInputValidator()
   const runner = makeRunner(combineValidators([resourceValidator], new ZodValidator()))
-  return new ResourceKernel(new ResourceRegistry(), runner, { ...options, validator: resourceValidator })
+  return new ResourceKernel(new ResourceRegistry(), runner, {
+    /*
+     * K3-c —— **沙箱与工具 runner 同一把尺子**。
+     *
+     * `createAppToolRunner` 的缺省就是这一只(`wiring/toolkit/runner.ts` 的
+     * `createSandboxPolicy()`),所以模型经 `read` 工具读一个路径、与经资源面读
+     * 同一个路径,判的是同一条边界。两把尺子是「一个洞会在两处之一悄悄张开」的
+     * 标准形状。
+     *
+     * 它在这里而不在 `backend.ts`:那只文件里不许出现任何资源的名字,而「资源的读
+     * 要按哪把尺子判」正是这一层的事。宿主真要换一把,`options.sandbox` 盖得住。
+     */
+    sandbox: createSandboxPolicy(),
+    /*
+     * K3-c —— 读的守卫。名单在这里给,判据在 `./read-guard.ts`(它自己不认识任何
+     * 一个命名空间)。今天名单上只有 `dir`,理由与退场条件写在那只文件的头上:
+     * 资源面还没有 per-caller 的沙箱根,所以非本机可信的进程上目录读一律拒。
+     */
+    readGuard: createLocalOnlyReadGuard({
+      schemes: [DIR_RESOURCE_SCHEME],
+      isTrusted: () => isHostLocallyTrusted(),
+    }),
+    ...options,
+    validator: resourceValidator,
+  })
 }
 
 /**
@@ -77,8 +128,50 @@ export function createResourceKernel(
  * K2a':注销是**异步**的(内核的 `mount` 返回 `() => Promise<void>` —— §10.2 要求
  * 摘之前先让在飞的收场),而且**逐个 await**:并发摘会让「逆序」这句话失效。
  */
-export function mountBuiltinResources(kernel: ResourceKernel): () => Promise<void> {
-  const disposers = [kernel.mount(new SessionResourceProvider())]
+export interface MountBuiltinResourcesOptions {
+  /**
+   * 这台宿主建工具目录时用的那一档(K3-b)。缺席 = 不按档减。
+   *
+   * **只有 `music` 读它**,而且只认 `'full'`:那是旧 `radio` 工具的注册条件逐字
+   * 搬过来的(它只在桌面档 `createDesktopCatalog` 里注册)。判据不是「桌面才有
+   * 喇叭」——server 也可能有,而是**这一档以外的宿主今天根本没有音乐子系统的
+   * 消费者**:CLI daemon 上没有电台,给它挂一个能开台的命名空间,等于凭空多出一个
+   * 没有人验收过的出口。
+   *
+   * 「不 mount」比「mount 了但工具目录里不给」严一档,这是刻意的:后者(`readonly`
+   * 那条规则)只让模型看不见,RPC 那条路照旧;前者连 `resources` 域也没有它 ——
+   * 与今天 CLI 上没有 `radio` 一致。
+   */
+  readonly tier?: ToolCatalogTier
+}
+
+export function mountBuiltinResources(
+  kernel: ResourceKernel,
+  options: MountBuiltinResourcesOptions = {},
+): () => Promise<void> {
+  const disposers: Array<() => void | Promise<void>> = [
+    kernel.mount(new SessionResourceProvider()),
+    /*
+     * K3-c —— 目录。**所有档都装**(含 `readonly`):它只有读与「在文件管理器里
+     * 定位」,一格写面都没有,所以那一档「零本地副作用」的契约它不违。
+     * `readonly` 档看不见它的是**工具目录**那份投影(`catalog-sync.ts` 对那一档一只
+     * 都不给),而不是这台内核 —— RPC 那条路照旧。
+     */
+    kernel.mount(new DirResourceProvider()),
+  ]
+  /*
+   * K3-b —— 音乐,**只在 `full` 档**(理由写在 `MountBuiltinResourcesOptions.tier`
+   * 那一格上)。
+   *
+   * 两次 push 的顺序是有意的:退订先 push、注销后 push,于是逆序跑的时候是
+   * 「先摘掉这个 scheme(等在飞收场)、再退掉 now-playing 那条订阅」——§10.2
+   * 「不许摘了之后 apply 还在写」的另一半:也不许摘了之后还有事件往一台已经没人
+   * 听的 hub 上发。`ResourceProvider` 没有 detach 钩子,所以这一步归登记方收。
+   */
+  if (options.tier === 'full') {
+    const music = createMusicResourceProvider()
+    disposers.push(() => music.dispose(), kernel.mount(music))
+  }
   return async () => {
     for (const dispose of [...disposers].reverse()) await dispose()
   }

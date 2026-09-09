@@ -121,8 +121,9 @@ describe('资源内核在真装配里(K1)', () => {
   it('装配之后内核在位,内置资源已登记,内核自己交得出那只 session 工具', { timeout: 180_000 }, async () => {
     backend = await assemble()
     expect(backend.resources).toBeTruthy()
-    expect(backend.resources.registry.list().map(spec => spec.scheme)).toEqual(['session'])
-    expect(backend.resources.tools().map(tool => tool.spec.id)).toEqual(['session'])
+    // 不按全表断言:第二种资源(dir / music / workbench …)落地时这条不该跟着红。
+    expect(backend.resources.registry.list().map(spec => spec.scheme)).toContain('session')
+    expect(backend.resources.tools().map(tool => tool.spec.id)).toContain('session')
     expect(backend.ownedLabels()).toEqual(
       expect.arrayContaining(['resourceKernel', 'builtinResources']),
     )
@@ -145,7 +146,8 @@ describe('资源内核在真装配里(K1)', () => {
     const listed = toolkitCatalogToolDefinitions() ?? []
     expect(listed.map(tool => tool.id)).not.toContain('session')
     expect(listed.map(tool => tool.id)).not.toContain('resources')
-    expect(listed.length).toBe(catalog!.all().length - 2)
+    // 少掉的正好是「全部资源工具 + 一只元工具」,不写死几只。
+    expect(listed.length).toBe(catalog!.all().length - (backend.resources.tools().length + 1))
   })
 
   it('K3-a:元工具 resources 列的是注册表当下的样子(它自己不认识任何命名空间)', async () => {
@@ -251,7 +253,8 @@ describe('资源内核在真装配里(K1)', () => {
   it('AI 路径(直接 run 那只工具)与 do 拿到同形的 Outcome', async () => {
     const { createAppToolRunner } = await import('../wiring/toolkit/runner.js')
     const runner = createAppToolRunner({ observer: { on: () => {} } })
-    const tool = backend.resources.tools()[0]
+    // `tools()` 按 scheme 字典序,不能拿 [0] 当 session。
+    const tool = backend.resources.toolFor('session')!
 
     const viaModel = await runner.run(tool, {
       callId: 'ai-path-1',
@@ -460,7 +463,7 @@ describe('资源内核在真装配里(K1)', () => {
     try {
       const list = await dispatchRpc({ domain: 'resources', method: 'list', payload: {} })
       expect(list.ok && (list.data as { schemes: Array<{ scheme: string }> }).schemes.map(s => s.scheme))
-        .toEqual(['session'])
+        .toContain('session')
 
       const described = await dispatchRpc({
         domain: 'resources',

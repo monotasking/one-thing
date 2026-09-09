@@ -173,8 +173,13 @@ export {
   PracticeTool,
 } from './builtin/practice.js'
 export type { PracticeInput, PracticeToolAdapters } from './builtin/practice.js'
-export { createRadioTool, RADIO_DESCRIPTION, RadioInputSchema, RadioTool } from './builtin/radio.js'
-export type { RadioInput, RadioToolAdapters, RadioToolStatus } from './builtin/radio.js'
+/*
+ * K3-b —— `radio` 这只工具退役了(音乐成了一个 scheme,`music/resource-spec.ts`),
+ * 但**它的适配器形状留下来**:那四条端口(开台 / 关台 / 状态 / 点歌)是装配层与
+ * 音乐子系统之间既有的一份契约,`radioAdapters()` 与新的 `MusicResourceProvider`
+ * 吃的都是它。类型搬到 `./radio-adapters.js`(纯类型,没有工具了)。
+ */
+export type { RadioToolAdapters, RadioToolStatus } from './radio-adapters.js'
 export {
   createSendMessageTool,
   SEND_MESSAGE_DESCRIPTION,

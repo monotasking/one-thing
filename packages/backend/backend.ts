@@ -866,7 +866,11 @@ export class OnethingBackend implements BackendHandle {
      * 设计正本 §10.1 的原话是「先撤 provider、再撤内核」,而 `own()` 是逆序跑的。
      */
     this.own(async () => { await resourceKernel.dispose(); this.resourceKernel = undefined }, 'resourceKernel')
-    this.own(mountBuiltinResources(resourceKernel), 'builtinResources')
+    /*
+     * K3-b:递的是这台宿主建目录时用的那一档。「哪一档挂哪些内置资源」的判据住在
+     * `mountBuiltinResources` 里 —— 这里照旧一个资源的名字都不出现。
+     */
+    this.own(mountBuiltinResources(resourceKernel, { tier: toolRegistryTier }), 'builtinResources')
     /*
      * K2b-2 —— 壳侧提供者的登记簿。登记在内置资源**之后**,所以关机链上跑在它
      * **之前**:壳交的那几种资源要先按 §10.2 的三步收场(断路由 → 在飞以

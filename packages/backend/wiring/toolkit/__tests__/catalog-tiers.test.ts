@@ -19,10 +19,15 @@ import {
   registerFeatureTools,
 } from '../catalog.js'
 
-/** 桌面档(full)。S6 起多一只 `search`(检索重建 §14.3:三档都给)。 */
+/**
+ * 桌面档(full)。S6 起多一只 `search`(检索重建 §14.3:三档都给);
+ * K3-b 起**少一只 `radio`** —— 音乐退成一个资源 scheme(`music`),它的工具是那份
+ * 自述的投影,由 `wiring/resource/catalog-sync.ts` 按注册表对账进目录,不在这三档
+ * 清单里(这里列的是「这一档手写注册了哪几只」)。
+ */
 const FULL_IDS = [
   'ask_user', 'bash', 'board', 'edit', 'goal', 'history', 'notebook', 'practice',
-  'radio', 'read', 'search', 'send_message', 'task', 'time', 'variable', 'web_open',
+  'read', 'search', 'send_message', 'task', 'time', 'variable', 'web_open',
   'web_search', 'write',
 ].sort()
 
