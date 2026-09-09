@@ -6,7 +6,7 @@ import { formatQuantity } from '../format/quantity'
 import { useT, type TFn } from '../i18n'
 import { getLogger } from '../services/log'
 import { ButtonBase } from '../ui/ButtonBase'
-import { Fold, FoldBody, FoldTrigger } from '../ui/Fold'
+import { Fold, FoldBody, FoldFoot, FoldTrigger } from '../ui/Fold'
 import { blockKey } from './assemble'
 import { markdownToFrame } from './assemble/markdown'
 import { BlockView } from './blocks/BlockView'
@@ -151,6 +151,12 @@ function CompletedSeam({ marker, ctx, t }: { marker: CompactMarker; ctx: BlockCt
       <FoldBody className={s.seamSummary} data-testid="compact-seam-summary">
         <CompactSummary text={marker.summary} ctx={ctx} />
       </FoldBody>
+      {/* 底把手:摘要往往几屏长,读到底还得滚回顶上那枚标签才能收 —— 这颗只在
+          展开态出场,按下合上并把标签送回视野(行为在 ui/Fold,这里只有皮肤)。 */}
+      <FoldFoot as="span" className={s.seamFoot} data-testid="compact-seam-foot">
+        <ChevronDown className={s.seamFootChevron} strokeWidth={1.9} aria-hidden="true" />
+        {t('chat.compactCollapse')}
+      </FoldFoot>
     </Fold>
   )
 }

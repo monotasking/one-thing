@@ -430,6 +430,19 @@
 }
 
 /* 正文靠左读:头部是右对齐的读数,展开的内容是一张表 —— 表不跟着头走。 */
+/* 底把手与头同一副皮肤(.ctxDeltaHead),只多两句:右对齐随气泡、箭头朝上。展开态才在场。 */
+.ctxDeltaFoot {
+  align-self: flex-end;
+  margin-block-start: var(--sp-1);
+}
+
+.ctxDeltaFootChevron {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  transform: rotate(180deg);
+}
+
 .ctxDeltaBody {
   width: 100%;
   margin-block-start: var(--sp-1);

@@ -3,7 +3,7 @@ import { ChevronDown } from '../components/icons'
 import type { ProjectedMessage } from '../data/chat-fold'
 import { useT, type MessageKey, type TFn } from '../i18n'
 import { ButtonBase } from '../ui/ButtonBase'
-import { Fold, FoldBody, FoldTrigger } from '../ui/Fold'
+import { Fold, FoldBody, FoldFoot, FoldTrigger } from '../ui/Fold'
 import { clampMeasurer } from './blocks/shell/clamp-measurer'
 import s from './ChatStream.module.css'
 
@@ -144,6 +144,12 @@ export function ContextDeltaChip({ turnContext }: { turnContext?: TurnContextDel
             <DeltaRow key={`${row.kind}:${row.id}`} t={t} row={row} />
           ))}
         </FoldBody>
+        {/* 底把手:块正文一长,收起的把手就跑到视野外了。只在展开态出场,
+            与头同一副皮肤(右对齐随气泡),行为归 ui/Fold。 */}
+        <FoldFoot className={`${s.ctxDeltaHead} ${s.ctxDeltaFoot}`} data-testid="context-delta-foot">
+          <ChevronDown className={s.ctxDeltaFootChevron} strokeWidth={1.75} aria-hidden="true" />
+          {t('chat.contextDeltaCollapse')}
+        </FoldFoot>
       </div>
     </Fold>
   )

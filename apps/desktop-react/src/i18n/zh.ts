@@ -548,6 +548,7 @@ export const zh = {
   'chat.contextDeltaCount': '{name} {n}',
   'chat.contextDeltaRemoved': '移除 {n}',
   'chat.contextDeltaGone': '已移除',
+  'chat.contextDeltaCollapse': '收起',
   'chat.contextDeltaBlockVariables': '变量',
   'chat.contextDeltaBlockTodo': '待办',
   'chat.contextDeltaBlockSkills': '技能',
@@ -568,6 +569,7 @@ export const zh = {
   'chat.compactSize': '{before} → {after}',
   'chat.compactRetained': '剩 {after}',
   'chat.compactFailed': '压缩失败',
+  'chat.compactCollapse': '收起摘要',
   /* 流式读数行(台一定稿):一句话说完「还活着 + 跑了多久」。
    * tokens 那一格**不在这句话里** —— 壳今天没有活的 token 产地,详见汇报的留账。
    * 09-05:`{s}s` 改成 `{d}` —— 值由 `format/quantity.formatDuration` 交出来时

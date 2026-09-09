@@ -119,6 +119,19 @@ describe('完成:那句话三种写法,缺一格就少说一句,不编', () => {
     expect(body.querySelector('h2')?.textContent).toBe('已完成')
   })
 
+  it('底部也能收:展开后摘要下面出一枚「收起摘要」,按下合上、底把手退场', () => {
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1)
+    render(<CompactSeam marker={done()} ctx={CTX} />)
+    expect(screen.queryByTestId('compact-seam-foot')).toBeNull()
+    fireEvent.click(label())
+    const foot = screen.getByTestId('compact-seam-foot')
+    expect(foot.textContent).toBe('收起摘要')
+    fireEvent.click(foot)
+    expect(label().getAttribute('aria-expanded')).toBe('false')
+    expect(screen.getByTestId('compact-seam-summary').style.display).toBe('none')
+    expect(screen.queryByTestId('compact-seam-foot')).toBeNull()
+  })
+
   it('摘要为空 —— 退成一枚普通标签(没有正文的折叠头是在撒谎)', () => {
     render(<CompactSeam marker={done({ summary: '' })} ctx={CTX} />)
     expect(label().getAttribute('aria-expanded')).toBeNull()

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { Fold, FoldBody, FoldTrigger } from '../Fold'
+import { Fold, FoldBody, FoldFoot, FoldTrigger } from '../Fold'
 
 /**
  * 折叠基座的规格。画皮肤的那一半不在这里(这件一个像素都不画),
@@ -30,6 +30,50 @@ function Sample({ withBody = true }: { withBody?: boolean }) {
     </Fold>
   )
 }
+
+function WithFoot() {
+  return (
+    <Fold>
+      <FoldTrigger data-testid="head">头</FoldTrigger>
+      <FoldBody data-testid="body">正文</FoldBody>
+      <FoldFoot data-testid="foot">收起</FoldFoot>
+    </Fold>
+  )
+}
+
+describe('ui/Fold:底把手 FoldFoot', () => {
+  it('合着时不在场;展开后出场,按下合上、焦点交回头把手、头把手滚回视野', () => {
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      cb(0)
+      return 1
+    })
+    render(<WithFoot />)
+    expect(screen.queryByTestId('foot')).toBeNull()
+    fireEvent.click(screen.getByTestId('head'))
+    const foot = screen.getByTestId('foot')
+    expect(foot.getAttribute('aria-controls')).toBe(screen.getByTestId('body').id)
+    // 底把手不报开合状态 —— 一个折叠只有头把手说 aria-expanded。
+    expect(foot.hasAttribute('aria-expanded')).toBe(false)
+    fireEvent.click(foot)
+    expect(screen.getByTestId('head').getAttribute('aria-expanded')).toBe('false')
+    expect(screen.getByTestId('body').style.display).toBe('none')
+    expect(screen.queryByTestId('foot')).toBeNull()
+    expect(document.activeElement).toBe(screen.getByTestId('head'))
+    expect(scroll).toHaveBeenCalledWith({ block: 'nearest' })
+  })
+
+  it('Enter / Space 同样收起;圈着字也收(底把手不是正文,按它不可能是在圈字)', () => {
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1)
+    render(<WithFoot />)
+    fireEvent.click(screen.getByTestId('head'))
+    selectSomething()
+    const swallowed = fireEvent.keyDown(screen.getByTestId('foot'), { key: ' ' })
+    expect(swallowed).toBe(false)
+    expect(screen.getByTestId('head').getAttribute('aria-expanded')).toBe('false')
+  })
+})
 
 describe('ui/Fold:自持档', () => {
   it('缺省是合的,点一下开、再点一下合', () => {

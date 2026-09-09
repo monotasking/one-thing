@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useId, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from 'react'
 import type { HTMLAttributes, KeyboardEvent, MouseEvent, ReactNode } from 'react'
 
 /**
@@ -53,6 +53,10 @@ interface FoldCtx {
   toggle: (fromPointer: boolean) => void
   bodyId: string
   registerBody: (present: boolean) => void
+  /** 头把手的元素(`FoldTrigger` 挂载时登记),`FoldFoot` 收起后要把它送回视野并接过焦点。 */
+  headRef: React.MutableRefObject<HTMLElement | null>
+  /** 从底部收起:合上 + 把头把手滚回视野 + 焦点交给它(底把手自己随即卸载,焦点不能掉在 body 上)。 */
+  collapseFromFoot: () => void
 }
 
 const Ctx = createContext<FoldCtx | null>(null)
@@ -84,6 +88,7 @@ export function Fold({ open, defaultOpen = false, onOpenChange, children }: Fold
   const [selfOpen, setSelfOpen] = useState(defaultOpen)
   const [hasBody, setHasBody] = useState(false)
   const bodyId = useId()
+  const headRef = useRef<HTMLElement | null>(null)
   const controlled = open !== undefined
   const isOpen = controlled ? open : selfOpen
 
@@ -96,8 +101,29 @@ export function Fold({ open, defaultOpen = false, onOpenChange, children }: Fold
     onOpenChange?.(next)
   }
 
+  const collapseFromFoot = () => {
+    if (!isOpen) return
+    if (!controlled) setSelfOpen(false)
+    onOpenChange?.(false)
+    // 合上之后正文塌掉,头把手很可能已经在视野上方(读到底才按的底把手)。
+    // 等这一帧排完再滚:`nearest` 在它本来就可见时是恒等操作,不会乱跳。
+    // 焦点先交过去(preventScroll,滚动只由下一句说了算)—— 底把手马上卸载,
+    // 不交的话焦点掉到 body 上,键盘用户下一下 Tab 从头开始。
+    const head = headRef.current
+    if (!head) return
+    // ui-consume-allow: focus-outside-focus — 同一个折叠内从底把手挪回头把手,作用域内部的移动、
+    // 不跨作用域(与 I3 放行 roving / list-selection / inline-edit 的同一条理由);底把手随即卸载,
+    // 不接过去焦点会掉到 body,而结构性归还(规则 5)只回到作用域一级,回不到这枚标签。
+    head.focus({ preventScroll: true })
+    requestAnimationFrame(() => {
+      head.scrollIntoView({ block: 'nearest' })
+    })
+  }
+
   return (
-    <Ctx.Provider value={{ open: isOpen, toggle, bodyId, registerBody: setHasBody }}>
+    <Ctx.Provider
+      value={{ open: isOpen, toggle, bodyId, registerBody: setHasBody, headRef, collapseFromFoot }}
+    >
       <HasBodyCtx.Provider value={hasBody}>{children}</HasBodyCtx.Provider>
     </Ctx.Provider>
   )
@@ -121,9 +147,17 @@ export interface FoldTriggerProps extends HTMLAttributes<HTMLElement> {
  * 键鼠两路都通向同一次 `toggle`。
  */
 export function FoldTrigger({ as = 'div', onClick, onKeyDown, children, ...rest }: FoldTriggerProps) {
-  const { open, toggle, bodyId } = useFold('FoldTrigger')
+  const { open, toggle, bodyId, headRef } = useFold('FoldTrigger')
   const hasBody = useContext(HasBodyCtx)
   const Tag = as
+  // 头把手登记自己:`FoldFoot` 收起后要找它。多个 FoldTrigger 时最后挂载的说了算 ——
+  // 今天没有这种消费方,真有再答「送回哪一个」。
+  const register = useCallback(
+    (el: HTMLElement | null) => {
+      headRef.current = el
+    },
+    [headRef],
+  )
 
   const handleClick = (event: MouseEvent<HTMLElement>) => {
     onClick?.(event)
@@ -142,9 +176,61 @@ export function FoldTrigger({ as = 'div', onClick, onKeyDown, children, ...rest 
 
   return (
     <Tag
+      ref={register}
       role="button"
       tabIndex={0}
       aria-expanded={open}
+      aria-controls={hasBody ? bodyId : undefined}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      {...rest}
+    >
+      {children}
+    </Tag>
+  )
+}
+
+type FootTag = 'div' | 'span'
+
+export interface FoldFootProps extends HTMLAttributes<HTMLElement> {
+  as?: FootTag
+  children?: ReactNode
+}
+
+/**
+ * **底把手**(09-09 报障「展开后太长,底部也要能关」):只在展开态出场,按下 =
+ * 合上 + 头把手滚回视野 + 焦点交给头把手。它是一个动作,不是正文,所以合上就
+ * 卸载(常驻铁律管的是「装着东西的容器」,这颗钮里什么都不装)。
+ *
+ * 不做圈选守卫:底把手是一颗独立的小钮,按它不可能是在圈字 —— 那条守卫的原产地
+ * 是「整块正文都是把手」的思考段,防的是「圈到一半这块自己关了」。
+ * 不带 `aria-expanded`:一个折叠只该有一处报开合状态(头把手);这颗钮报的是
+ * 「按我收起」,用 `aria-controls` 指向正文就够。皮肤照旧一个像素不画。
+ */
+export function FoldFoot({ as = 'div', onClick, onKeyDown, children, ...rest }: FoldFootProps) {
+  const { open, bodyId, collapseFromFoot } = useFold('FoldFoot')
+  const hasBody = useContext(HasBodyCtx)
+  const Tag = as
+  if (!open) return null
+
+  const handleClick = (event: MouseEvent<HTMLElement>) => {
+    onClick?.(event)
+    if (event.defaultPrevented) return
+    collapseFromFoot()
+  }
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    onKeyDown?.(event)
+    if (event.defaultPrevented) return
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    collapseFromFoot()
+  }
+
+  return (
+    <Tag
+      role="button"
+      tabIndex={0}
       aria-controls={hasBody ? bodyId : undefined}
       onClick={handleClick}
       onKeyDown={handleKeyDown}

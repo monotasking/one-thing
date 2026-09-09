@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { ContextDeltaChip, contextDeltaEntries, contextDeltaSummary } from '../ContextDeltaChip'
 import { t } from '../../i18n'
@@ -71,6 +71,21 @@ describe('折叠头:文字读数,不是徽标', () => {
     render(<ContextDeltaChip turnContext={{ set: { todo: '- [ ] A1' } }} />)
     expect(chip()?.getAttribute('aria-expanded')).toBe('false')
     expect(screen.getByTestId('context-delta-body').hasAttribute('hidden')).toBe(true)
+  })
+})
+
+describe('底部收起', () => {
+  it('展开后正文下面出一枚「收起」,按下合上、底把手退场', () => {
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1)
+    render(<ContextDeltaChip turnContext={{ set: { variables: 'cwd=/tmp' } }} />)
+    expect(screen.queryByTestId('context-delta-foot')).toBeNull()
+    fireEvent.click(chip()!)
+    const foot = screen.getByTestId('context-delta-foot')
+    expect(foot.textContent).toBe('收起')
+    fireEvent.click(foot)
+    expect(chip()!.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.getByTestId('context-delta-body').style.display).toBe('none')
+    expect(screen.queryByTestId('context-delta-foot')).toBeNull()
   })
 })
 

@@ -260,6 +260,40 @@
   margin-block: 0;
 }
 
+/* ── 底把手:只在展开态出场,居中一行「收起摘要」,行为在 ui/Fold ───────────── */
+
+.seamFoot {
+  grid-column: 1 / -1;
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-top: var(--sp-1);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-1);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.seamFoot:hover {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+.seamFoot:focus-visible {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 2px;
+}
+
+/* 箭头朝上:它说的是「收回去」,与头上那枚展开态的 chevron 同一个方向。 */
+.seamFootChevron {
+  width: 12px;
+  height: 12px;
+  transform: rotate(180deg);
+}
+
 /* ── 行内那颗重试:③ 类微型文字动作(ButtonBase 保本地皮肤)──────────────── */
 
 .seamRetry {
