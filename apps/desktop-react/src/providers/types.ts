@@ -209,21 +209,30 @@ export const NO_MODEL_OVERRIDE: ModelOverride = Object.freeze({})
  */
 export const CATALOG_CONTEXT_FALLBACK = 128_000
 
-/**
- * 目录没填**最大输出**时,引擎按多少算。
+/*
+ * 这里**没有**「目录没填最大输出时的兜底数」这个常量(2026-09-09 删)。
  *
- * **来源是 `packages/onething-runtime/src/providers/model-registry.ts:946`**
- * (`getOnethingModelMaxOutputTokens` 的最后一行 `|| 4096`)。与上下文那一格
- * 同一条道理:这个数要说给用户听,所以在这里立一个有名字的常量。
+ * 它曾经是 `CATALOG_MAX_OUTPUT_FALLBACK = 4_096`,抄的是
+ * `getOnethingModelMaxOutputTokens` 末尾那句 `|| 4096`。那句连同它的函数一起
+ * 在同日被删掉:**输出上限不知道就是不知道**,引擎不再编一个数出来。所以壳上
+ * 也不该有一个「默认 4,096」可以说 —— 说了就是把一个不存在的数画在屏幕上,
+ * 而这正是那次事故的形状(用户把最大输出填成 10000,屏幕说默认 4,096,
+ * 请求真被 `min(10000, 4096)` 夹成 4096)。
+ *
+ * 今天目录没填这一型时,屏幕要说的是两句话之一,判据是 `settings.chat.maxTokens`
+ * 填没填(见 `ModelOverridePopover` 的 `maxOutputHint`):填了就是那个数原样发,
+ * 没填就是**请求里根本不带上限**、由服务商用它自己的默认值。
  */
-export const CATALOG_MAX_OUTPUT_FALLBACK = 4_096
 
 /**
- * 没有覆盖时,**今天这一发请求实际会要多长**。
+ * 没有覆盖时,**今天这一发请求实际会要多长**。**只给目录有上限的那一档用** ——
+ * 目录没填时无数可半,那一档读的是 `settings.chat.maxTokens`(不对半)。
  *
- * 引擎 `packages/core/engine/agent-loop-runtime.ts:821` 的对半规则:
- * 注册上限在场时 `max(1, floor(注册上限 / 2))`,而 `maxOutputByModel[m]` 一旦
- * 填了就**直接当请求的 max_tokens**(只再受模型物理上限夹一次)。
+ * 引擎 `packages/core/engine/agent-loop-runtime.ts` 的
+ * `resolveAgentLoopContextBudgetValues`:`perModelOverride ?? halfDefault ??
+ * chatMaxTokens`。注册上限在场时 `halfDefault = max(1, floor(注册上限 / 2))`,
+ * 而 `maxOutputByModel[m]` 一旦填了就**直接当请求的 max_tokens**
+ * (只再受模型物理上限夹一次)。
  * 壳只**复述**这条算术 —— 屏幕上要把「不填会发多少」说给用户听,不然
  * 「注册上限 16,384」这个数会被读成「一次能吐 16,384」,而实际只有 8,192。
  * 规则改了这里跟着改一处。

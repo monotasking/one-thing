@@ -1104,11 +1104,14 @@ export const en: Record<MessageKey, string> = {
   'providers.overrideContextInvalid': 'A positive number, K / M allowed: 200000, 200K, 1M',
   'providers.overrideOutputLabel': 'Max output',
   'providers.overrideOutputPlaceholderCatalog': '{n} (half of the catalog’s {catalog})',
-  'providers.overrideOutputPlaceholderDefault': '{n} (default)',
+  'providers.overrideOutputPlaceholderDefault': '{n} (from settings)',
+  'providers.overrideOutputPlaceholderUnset': 'Up to the provider',
   'providers.overrideOutputHintCatalog':
     'The catalog caps this model at {n}; left blank, a request asks for half of that.',
   'providers.overrideOutputHintDefault':
-    'The catalog has nothing for this model; left blank, a request asks for {n} — half of the {fallback} fallback.',
+    'The catalog has nothing for this model; left blank, a request asks for the {n} set under Chat · Max output — as written, not halved.',
+  'providers.overrideOutputHintUnset':
+    'The catalog has nothing for this model and neither do your settings; left blank, requests carry no limit at all and the provider uses its own default.',
   'providers.overrideOutputHintCustom':
     'Custom {value}. It is sent as written — no halving; only the model’s own ceiling still clamps it.',
   'providers.overrideToolsLabel': 'Tool calling',
@@ -1132,6 +1135,8 @@ export const en: Record<MessageKey, string> = {
   'providers.overrideContextNoCatalog': 'Custom {value} (catalog empty, default {fallback})',
   'providers.overrideOutput': 'Custom {value} (catalog {catalog})',
   'providers.overrideOutputNoCatalog': 'Custom {value} (catalog empty, default {fallback})',
+  'providers.overrideOutputNoCatalogUnset':
+    'Custom {value} (catalog empty; clear it and the provider decides)',
   'providers.overrideToolsOnTipCatalogOn': 'Custom: tool calling on (catalog: supported)',
   'providers.overrideToolsOnTipCatalogOff': 'Custom: tool calling on (catalog: not supported)',
   'providers.overrideToolsOnTipUnknown': 'Custom: tool calling on (catalog empty)',

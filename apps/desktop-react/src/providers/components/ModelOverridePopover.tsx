@@ -7,11 +7,7 @@ import { Segmented } from '../../ui/Segmented'
 import { useT } from '../../i18n'
 import type { MessageKey, TFn } from '../../i18n'
 import { formatQuantity, parseQuantity } from '../../format/quantity'
-import {
-  CATALOG_CONTEXT_FALLBACK,
-  CATALOG_MAX_OUTPUT_FALLBACK,
-  requestedMaxOutputOf,
-} from '../types'
+import { CATALOG_CONTEXT_FALLBACK, requestedMaxOutputOf } from '../types'
 import type { CatalogRow, ModelOverridePatch } from '../types'
 import s from './ModelOverridePopover.module.css'
 
@@ -20,10 +16,13 @@ import s from './ModelOverridePopover.module.css'
  *
  * 后端早就有这三格 —— `settings.ai.providers[pid].contextLengthByModel[m]`、
  * `maxOutputByModel[m]` 与 `modelCapabilitiesByModel[m].tools`,引擎读它们的地方是
- * `model-registry.ts:895`(上下文,覆盖优先于目录、优先于 128k 兜底)、
- * `packages/core/engine/agent-loop-runtime.ts:819`(最大输出,**填了就直接当请求的
- * max_tokens**;没填则按注册上限的一半发,注册上限也没有时兜底 4096 → 一次只发
- * 2048)与 `model-registry.ts:949`(工具,覆盖优先于目录条目、优先于按名字猜)。
+ * `model-registry.ts` 的 `getOnethingModelContextLength`(上下文,覆盖优先于目录、
+ * 优先于 128k 兜底)、`packages/core/engine/agent-loop-runtime.ts` 的
+ * `resolveAgentLoopContextBudgetValues`(最大输出,**填了就直接当请求的 max_tokens**;
+ * 没填则按注册上限的一半发,**注册上限也没有时看 `settings.chat.maxTokens`,
+ * 它也没有就不带 `max_tokens`** —— 09-09 之前这里兜底 4096 再对半成 2048,
+ * 那个编出来的数连同它的产地一起在同日删掉了)与 `onethingModelSupportsTools`
+ * (工具,覆盖优先于目录条目、优先于按名字猜)。
  * 缺的一直只是壳上的写面:手填进来的模型只能进 `selectedModels`,它的窗口有多大、
  * 一次能吐多长、支不支持工具,用户明明知道却没地方说。这块浮层就是那张嘴,
  * **后端零改动**。
@@ -51,9 +50,11 @@ import s from './ModelOverridePopover.module.css'
  *   无覆盖   数字框空 + 占位符写**生效值与它的来源**;分段在「跟目录」;
  *            「恢复目录值」禁用。
  *   有覆盖   数字框是那个数;分段在开/关;「恢复目录值」可按。
- *   目录没填 占位符与提示行都说默认值(上下文 128k / 最大输出 2,048 = 兜底 4,096
- *            的一半),并且说清「跟目录」跟的是**猜**(按名字判,规则在
- *            `model-registry.ts:958-972` —— 壳不复刻那张表,只如实说出这件事)。
+ *   目录没填 占位符与提示行都说生效值(上下文 128k;最大输出**分两态** ——
+ *            `settings.chat.maxTokens` 填了就是那个数原样,没填就没有数可说,
+ *            写「由服务商决定」),并且说清「跟目录」跟的是**猜**(按名字判,规则在
+ *            `model-registry.ts` 的 `onethingModelSupportsTools` —— 壳不复刻那张表,
+ *            只如实说出这件事)。
  *   填错     边线转 danger + 错误句**替换**那一格自己的提示行;不写、行上一格不动。
  *            **两格各自一份 invalid** —— 上一格填错不该把下一格也判红。
  *   在写     这一行的三颗钮与浮层里的四件控件一起禁;别的行一个都不许动。
@@ -129,44 +130,59 @@ function contextPlaceholder(t: TFn, row: CatalogRow): string {
 }
 
 /**
- * 最大输出那一格的提示行。三句整话。
+ * 最大输出那一格的提示行。**四**句整话(09-09 由三句加到四句)。
  *
  * 这一格与上下文那一格**读法不同**,所以话也不同:引擎对上下文是「覆盖优先,
- * 否则用目录的数」,对最大输出是「**填了就直接当请求的 max_tokens**,没填则按
- * 注册上限的**一半**发」(`agent-loop-runtime.ts:821` 的 `halfDefault`)。
- * 那个「一半」是这一格最容易被误读的事实 —— 不说出来,用户会把「目录 16,384」
- * 读成「一次能吐 16,384」,而实际只发 8,192。
+ * 否则用目录的数,再不行按 128k 算」——那一格**永远有一个数**;而最大输出这一格
+ * 的算式是 `perModelOverride ?? halfDefault ?? chatMaxTokens`
+ * (`resolveAgentLoopContextBudgetValues`),三个都缺席时结果是 **undefined**,
+ * 请求里**干脆不带 `max_tokens`**。所以这一格有一句上下文那格没有的话:
+ * 「由服务商决定」。
+ *
+ * 四句各自要说出的那件事:
+ *   自定    填了就直接当 max_tokens,不对半,只受模型物理上限夹一次。
+ *   目录有  按目录上限的**一半**发。那个「一半」是这一格最容易被误读的事实 ——
+ *           不说出来,用户会把「目录 16,384」读成「一次能吐 16,384」,而实际只发 8,192。
+ *   目录空 + 设置里填了  按设置里那个数**原样**发(**不对半** —— 对半只对目录有上限的
+ *           模型;这两档的算术不同,所以话也不同)。
+ *   目录空 + 设置也空    不带上限。09-09 之前这里说的是「兜底 4,096 的一半 = 2,048」,
+ *           而那个 4096 是引擎编出来的:它同日连同产地一起删了,屏幕上也就不再有
+ *           这个数可说 —— 说了就是把一个不存在的数画给用户看,而用户填 10000 被夹成
+ *           4096 那次事故正是这么来的。
  */
-function maxOutputHint(t: TFn, row: CatalogRow): string {
+function maxOutputHint(t: TFn, row: CatalogRow, chatMaxTokens: number | undefined): string {
   const custom = row.override.maxOutput
   const catalog = row.catalog.maxOutput
   if (custom != null) {
     return t('providers.overrideOutputHintCustom', { value: custom.toLocaleString() })
   }
-  return catalog != null
-    ? t('providers.overrideOutputHintCatalog', { n: catalog.toLocaleString() })
-    : t('providers.overrideOutputHintDefault', {
-        n: requestedMaxOutputOf(CATALOG_MAX_OUTPUT_FALLBACK).toLocaleString(),
-        fallback: CATALOG_MAX_OUTPUT_FALLBACK.toLocaleString(),
-      })
+  if (catalog != null) {
+    return t('providers.overrideOutputHintCatalog', { n: catalog.toLocaleString() })
+  }
+  return chatMaxTokens != null
+    ? t('providers.overrideOutputHintDefault', { n: chatMaxTokens.toLocaleString() })
+    : t('providers.overrideOutputHintUnset')
 }
 
 /**
  * 最大输出的占位符 —— 与上一格同一条合同:写的是**今天实际会发出去的数与它的
- * 来源**。所以这里写的不是目录那个数,而是它的一半(那才是请求里真出现的数)。
+ * 来源**。目录有数时写的不是目录那个数,而是它的一半(那才是请求里真出现的数);
+ * 目录没数时写的是设置里那个数(原样,不对半);两处都没有就没有数可写,
+ * 写的是那件事本身:「由服务商决定」。
  * 数一律写全位(`toLocaleString`)不进位:这一档的数只有四五位,而
  * 「8.2k」与「8,192」之间那 8 个 token 在 max_tokens 上是真的差别。
  */
-function maxOutputPlaceholder(t: TFn, row: CatalogRow): string {
+function maxOutputPlaceholder(t: TFn, row: CatalogRow, chatMaxTokens: number | undefined): string {
   const catalog = row.catalog.maxOutput
-  return catalog != null
-    ? t('providers.overrideOutputPlaceholderCatalog', {
-        n: requestedMaxOutputOf(catalog).toLocaleString(),
-        catalog: catalog.toLocaleString(),
-      })
-    : t('providers.overrideOutputPlaceholderDefault', {
-        n: requestedMaxOutputOf(CATALOG_MAX_OUTPUT_FALLBACK).toLocaleString(),
-      })
+  if (catalog != null) {
+    return t('providers.overrideOutputPlaceholderCatalog', {
+      n: requestedMaxOutputOf(catalog).toLocaleString(),
+      catalog: catalog.toLocaleString(),
+    })
+  }
+  return chatMaxTokens != null
+    ? t('providers.overrideOutputPlaceholderDefault', { n: chatMaxTokens.toLocaleString() })
+    : t('providers.overrideOutputPlaceholderUnset')
 }
 
 /** 工具那一格的提示行。五态,同样是整话。 */
@@ -190,6 +206,7 @@ export function ModelOverridePopover({
   providerId,
   anchor,
   pending,
+  chatMaxTokens,
   onClose,
   onWrite,
 }: {
@@ -200,6 +217,16 @@ export function ModelOverridePopover({
   anchor: () => DOMRect | null
   /** **这一行**此刻在写吗。只禁这一行的控件。 */
   pending: boolean
+  /**
+   * `settings.chat.maxTokens`,**目录没填这一型时最大输出那一格的生效值**。
+   *
+   * `undefined` = 用户在设置里也没填,那就是**没有上限可发**(引擎请求里不带
+   * `max_tokens`),不是 4096 —— 这一格是 prop 而不是就地订阅,是因为这件与
+   * `ModelCatalogRow` 一样是纯 props 件(状态表第一行:无订阅、无计时器),
+   * 而这个数在 `ProviderSettingsPanel` 那一层**已经订阅过一次**了,不必为它
+   * 在叶子上再开 N 份。
+   */
+  chatMaxTokens: number | undefined
   onClose: () => void
   onWrite: (patch: ModelOverridePatch) => void
 }) {
@@ -334,14 +361,14 @@ export function ModelOverridePopover({
           size="sm"
           className={s.grp}
           label={t('providers.overrideOutputLabel')}
-          hint={outInvalid ? undefined : maxOutputHint(t, row)}
+          hint={outInvalid ? undefined : maxOutputHint(t, row, chatMaxTokens)}
           error={outInvalid ? t('providers.overrideContextInvalid') : undefined}
         >
           <QuantityInput
             draft={outDraft}
             invalid={outInvalid}
             disabled={pending}
-            placeholder={maxOutputPlaceholder(t, row)}
+            placeholder={maxOutputPlaceholder(t, row, chatMaxTokens)}
             unit={t('providers.overrideContextUnit')}
             testId="model-override-output"
             onDraft={(value) => {

@@ -8,7 +8,7 @@ import type { LucideIcon } from '../../components/icons'
 import type { MessageKey, TFn } from '../../i18n'
 import { formatQuantity } from '../../format/quantity'
 import { formatPrice } from '../projection'
-import { CATALOG_CONTEXT_FALLBACK, CATALOG_MAX_OUTPUT_FALLBACK, MODEL_CAPS } from '../types'
+import { CATALOG_CONTEXT_FALLBACK, MODEL_CAPS } from '../types'
 import type { CatalogRow, ModelCap, ModelOverridePatch } from '../types'
 import { ModelOverridePopover } from './ModelOverridePopover'
 import s from './ModelCatalog.module.css'
@@ -140,6 +140,7 @@ export function ModelCatalogRow({
   pending,
   skip,
   overrideOpen,
+  chatMaxTokens,
   onToggle,
   onSetCurrent,
   onRemoveManual,
@@ -161,6 +162,14 @@ export function ModelCatalogRow({
   skip: boolean
   /** 这一行的覆盖浮层开着吗。**一次只开一个**,所以状态住在目录那一层。 */
   overrideOpen: boolean
+  /**
+   * `settings.chat.maxTokens`。**目录没填最大输出时的生效值**,`undefined` =
+   * 设置里也没填 = 引擎请求里不带 `max_tokens`(09-09 裁定)。
+   * 这一行自己只在最大输出那枚覆盖标记的 Tooltip 里用它一次,其余原样往浮层里传。
+   * 走 prop 不走订阅:这件是纯 props 件(状态表第一行「无订阅」),而这个数在
+   * `ProviderSettingsPanel` 已经订阅过一次 —— 一屏几百行,每行再订一份是白开销。
+   */
+  chatMaxTokens: number | undefined
   onToggle: (modelId: string, selected: boolean) => void
   onSetCurrent: (modelId: string) => void
   onRemoveManual: (modelId: string) => void
@@ -186,8 +195,10 @@ export function ModelCatalogRow({
 
   /*
    * 最大输出那一格与上下文那一格**同一手**:人填过就换笔迹 + 悬停说出目录原话。
-   * 目录没填时括号里说的是**兜底值**(4,096,`model-registry.ts:946`),不编一个
-   * 目录值出来 —— 与上一格的 `overrideContextNoCatalog` 逐字同形。
+   * 目录没填时括号里说的是**清空这一格会发生什么**,而这一格与上一格不同:
+   * 上下文永远有个 128k 可说,最大输出**可能一个数都没有** —— 目录没填、
+   * 设置里的 `chat.maxTokens` 也没填时,引擎请求里干脆不带 `max_tokens`
+   * (09-09 裁定,那个编出来的 4096 连同产地一起删了)。所以这一档分两句。
    * 注意 `.out` 在最窄那一档**整列退场**,这枚标记跟着它一起走,不另找地方画:
    * 一列已经不在了,还在别处画它的覆盖标记就是把一个读不到的数说成正在生效。
    */
@@ -200,10 +211,12 @@ export function ModelCatalogRow({
             value: formatQuantity(customOut),
             catalog: formatQuantity(row.catalog.maxOutput),
           })
-        : t('providers.overrideOutputNoCatalog', {
-            value: formatQuantity(customOut),
-            fallback: formatQuantity(CATALOG_MAX_OUTPUT_FALLBACK),
-          })
+        : chatMaxTokens != null
+          ? t('providers.overrideOutputNoCatalog', {
+              value: formatQuantity(customOut),
+              fallback: formatQuantity(chatMaxTokens),
+            })
+          : t('providers.overrideOutputNoCatalogUnset', { value: formatQuantity(customOut) })
 
   const capsDrawn = capsDrawnOf(row)
   const contextText = formatCatalogTokens(row.contextLength) ?? t('providers.unknownValue')
@@ -314,6 +327,7 @@ export function ModelCatalogRow({
             providerId={providerId}
             anchor={() => configureRef.current?.getBoundingClientRect() ?? null}
             pending={pending}
+            chatMaxTokens={chatMaxTokens}
             onClose={() => onOverrideOpen(false)}
             onWrite={(patch) => onWriteOverride(row.id, patch)}
           />

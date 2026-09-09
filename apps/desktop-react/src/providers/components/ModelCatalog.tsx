@@ -85,6 +85,7 @@ export function ModelCatalog({
   query,
   pendingModelIds,
   write,
+  chatMaxTokens,
   onQuery,
   onRefresh,
   onToggle,
@@ -115,6 +116,14 @@ export function ModelCatalog({
   pendingModelIds: ReadonlySet<string>
   /** 手填提交那颗钮绑的那件异步事(设置写路那一发 mutation)。 */
   write: AsyncSource | undefined
+  /**
+   * `settings.chat.maxTokens`,原样传给每一行。这块面自己一个字不用它 ——
+   * 它是**目录没填最大输出**那一档的生效值,只有行上的覆盖标记与覆盖浮层要说出来。
+   * `undefined` = 设置里也没填 = 引擎请求里不带 `max_tokens`(09-09 裁定)。
+   * 订阅那一发在 `ProviderSettingsPanel`(它本来就订着整份 settings),
+   * 这条链上没有第二个订阅者。
+   */
+  chatMaxTokens: number | undefined
   onQuery: (value: string) => void
   onRefresh: () => void
   onToggle: (modelId: string, selected: boolean) => void
@@ -319,6 +328,7 @@ export function ModelCatalog({
               pending={pendingModelIds.has(row.id)}
               skip={false}
               overrideOpen={openOverride === row.id}
+              chatMaxTokens={chatMaxTokens}
               onToggle={onToggle}
               onSetCurrent={onSetCurrent}
               onRemoveManual={onRemoveManual}
@@ -368,6 +378,7 @@ export function ModelCatalog({
                       pending={pendingModelIds.has(row.id)}
                       skip={skip}
                       overrideOpen={openOverride === row.id}
+                      chatMaxTokens={chatMaxTokens}
                       onToggle={onToggle}
                       onSetCurrent={onSetCurrent}
                       onRemoveManual={onRemoveManual}

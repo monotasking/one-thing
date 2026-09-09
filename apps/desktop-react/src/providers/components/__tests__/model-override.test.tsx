@@ -61,6 +61,7 @@ function renderCatalog(
         query=""
         pendingModelIds={NO_PENDING}
         write={undefined}
+        chatMaxTokens={undefined}
         onQuery={vi.fn()}
         onRefresh={vi.fn()}
         onToggle={vi.fn()}
@@ -310,15 +311,37 @@ describe('最大输出那一格', () => {
     expect(screen.getByText(`目录上限 ${(32_768).toLocaleString()};不填按它的一半发。`)).toBeTruthy()
   })
 
-  it('目录没填这一型:占位符是 2,048,提示行说清它是兜底 4,096 的一半', async () => {
-    renderCatalog([row('ghost', { manual: true, maxOutput: null, catalog: NO_CATALOG_FACTS })])
+  /*
+   * ── 目录没填这一型:分两态,判据是 `settings.chat.maxTokens` 填没填(09-09)──
+   *
+   * 事故 fe5261d9:手填的模型不在目录里,引擎从前给它编一个 4096 的上限,于是
+   * 屏幕上写「默认 2,048(兜底 4,096 的一半)」,而用户在这一格填的 10000 真被
+   * `min(10000, 4096)` 夹成 4096。那个编出来的 4096 已连同产地一起删除,壳上
+   * 也就**没有这个数可说** —— 这两条守的正是「屏幕不再说出一个不存在的数」。
+   */
+  it('目录没填这一型 + 设置里填了 8,192:占位符与提示行都读那个数,且不对半', async () => {
+    renderCatalog([row('ghost', { manual: true, maxOutput: null, catalog: NO_CATALOG_FACTS })], {
+      chatMaxTokens: 8_192,
+    })
     await openOverride('ghost')
-    expect(outBox().getAttribute('placeholder')).toBe(`${(2_048).toLocaleString()}(默认)`)
+    // 8,192 而不是 4,096:目录没填这一档**不对半**,对半只对目录有上限的模型。
+    expect(outBox().getAttribute('placeholder')).toBe(`${(8_192).toLocaleString()}(设置)`)
     expect(
       screen.getByText(
-        `目录没填这一型;不填按 ${(2_048).toLocaleString()} 发(兜底 ${(4_096).toLocaleString()} 的一半)。`,
+        `目录没填这一型;不填按设置里的 ${(8_192).toLocaleString()} 发(聊天 · 最大输出),不对半。`,
       ),
     ).toBeTruthy()
+  })
+
+  it('目录没填这一型 + 设置里也没填:屏幕上一个数都没有,说「由服务商决定」', async () => {
+    renderCatalog([row('ghost', { manual: true, maxOutput: null, catalog: NO_CATALOG_FACTS })])
+    await openOverride('ghost')
+    expect(outBox().getAttribute('placeholder')).toBe('由服务商决定')
+    expect(
+      screen.getByText('目录没填这一型,设置里也没填;不填就不带上限,由服务商用它自己的默认值。'),
+    ).toBeTruthy()
+    // 那个编出来的数不许以任何形式回到屏幕上。
+    expect(screen.queryByText(/4,096|2,048/)).toBeNull()
   })
 
   it('人填过之后,提示行改口说「不再对半砍」', async () => {
@@ -436,6 +459,7 @@ describe('在写(pending 逐行)', () => {
           query=""
           pendingModelIds={new Set(['a'])}
           write={undefined}
+          chatMaxTokens={undefined}
           onQuery={vi.fn()}
           onRefresh={vi.fn()}
           onToggle={vi.fn()}
@@ -488,7 +512,26 @@ describe('行上的覆盖读数', () => {
     await waitFor(() => expect(screen.getByRole('tooltip').textContent).toBe('自定 8.2k(目录 32.8k)'))
   })
 
-  it('最大输出:目录没填时说的是兜底 4.1k,不编一个目录值', async () => {
+  it('最大输出:目录没填 + 设置里填了,括号里说的是设置那个数,不编一个目录值', async () => {
+    renderCatalog(
+      [
+        row('ghost', {
+          manual: true,
+          maxOutput: 8_192,
+          override: { maxOutput: 8_192 },
+          catalog: NO_CATALOG_FACTS,
+        }),
+      ],
+      { chatMaxTokens: 16_384 },
+    )
+    fireEvent.mouseEnter(screen.getByTestId('out-ghost'))
+    await waitFor(() =>
+      expect(screen.getByRole('tooltip').textContent).toBe('自定 8.2k(目录没填,默认 16.4k)'),
+    )
+  })
+
+  /* 上一格永远有个 128k 可说,这一格可能一个数都没有 —— 那就说那件事本身。 */
+  it('最大输出:目录没填 + 设置里也没填,括号里说的是「由服务商决定」而不是一个数', async () => {
     renderCatalog([
       row('ghost', {
         manual: true,
@@ -499,7 +542,7 @@ describe('行上的覆盖读数', () => {
     ])
     fireEvent.mouseEnter(screen.getByTestId('out-ghost'))
     await waitFor(() =>
-      expect(screen.getByRole('tooltip').textContent).toBe('自定 8.2k(目录没填,默认 4.1k)'),
+      expect(screen.getByRole('tooltip').textContent).toBe('自定 8.2k(目录没填,不填则由服务商决定)'),
     )
   })
 

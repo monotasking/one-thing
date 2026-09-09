@@ -229,6 +229,7 @@ describe('列头与行同源:格子数一样多', () => {
         query=""
         pendingModelIds={new Set<string>()}
         write={undefined}
+        chatMaxTokens={undefined}
         onQuery={vi.fn()}
         onRefresh={vi.fn()}
         onToggle={vi.fn()}
