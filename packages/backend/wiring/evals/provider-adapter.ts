@@ -153,7 +153,11 @@ export function createEvalsModelCaller(
 				}
 				return base;
 			}),
-			max_tokens: opts.maxTokens ?? 2048,
+			// 输出上限只有场景明确给了才发(2026-09-09 用户裁定,与聊天链路同一条:
+			// 不知道就不传,让服务商按自己的上限跑)。从前这里 `?? 2048` 是评估台自己
+			// 藏的一个默认 —— 重放一条真会话时,思考模型把 2048 花在推理上就被截断,
+			// 评估结果因此说的是「上限太小」而不是被评的那条提示词。
+			...(opts.maxTokens !== undefined ? { max_tokens: opts.maxTokens } : {}),
 		};
 
 		// Mirror the production deepseek rule: thinking-enabled requests carry
