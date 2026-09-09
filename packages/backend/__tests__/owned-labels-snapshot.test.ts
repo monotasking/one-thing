@@ -92,6 +92,10 @@ const OWNED_LABELS = [
   'goalRetryDrain',
   'goalUsage',
   'projectDirs',
+  // K1(`docs/design/atom-2026-09.md`):资源内核两格,排在工具目录之后 ——
+  // 关机链上反着跑(先注销内置资源,再清内核那一格)。资源工具进不进工具目录归 K3。
+  'resourceKernel',
+  'builtinResources',
   'killAllTerminals',
   'killTrackedDetachedChildren',
   'searchService',

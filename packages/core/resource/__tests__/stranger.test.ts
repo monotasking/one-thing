@@ -14,6 +14,23 @@
  *      里不出现任何能力的名字」不是一句愿望。第二条才是门:第一条只要写得出实现
  *      就会绿,第二条会在有人往 `spec.ts` 里加一行 `if (scheme === 'xxx')` 的那天
  *      变红。
+ *
+ * ── K1 扩了什么 ────────────────────────────────────────────────────────────
+ * ① 扫描名单跟着 K1 新增的五只文件长(`errors` / `events` / `kernel` / `provider` /
+ *    `schema` / `tool`)—— 名单是**写死的**而不是「扫到几个算几个」,理由与它自己
+ *    那句注释一样:一个扫了零个文件的门永远是绿的,而一个「扫到什么算什么」的门在
+ *    有人把违规代码放进一个新文件时同样是绿的。
+ * ② 第二个陌生 scheme:**`session`**。K1 里第一个真 scheme 就是它,而它的自述与
+ *    实现分别住在产品层(`runtime/src/sessions/resource-spec.ts`)与装配层
+ *    (`backend/wiring/resource/session-provider.ts`)—— core 里一个字都不该有。
+ *    这一条是「§8 演练的答案是能力自己的模块 + 一行注册」在**真**能力上的复核。
+ *
+ * ── 为什么词边界扫描放得过 `sessionId` ─────────────────────────────────────
+ * `\bsession\b` 要求 `session` 后面紧跟一个非词字符,而 `sessionId` 后面是 `I`。
+ * 这不是漏网,是判据本身:`Invocation.sessionId` / `ResourceReadContext.sessionId`
+ * 是**调用坐标**的字段名(哪一条会话的回合里发生的),core/toolkit 早就有它;
+ * 它与「内核认识 `session` 这种资源」是两件事。会被抓住的是真正的命中:字面量
+ * `'session'`、`scheme === 'session'`、`session.rename`。
  */
 
 import { readdirSync, readFileSync } from 'node:fs'
@@ -26,6 +43,27 @@ import type { ResourceSpec } from '../spec.js'
 
 /** 一个 core 从没听说过的命名空间。它只活在这只文件里。 */
 const STRANGER_SCHEME = 'mail'
+
+/**
+ * 内核不许提名字的 scheme 全表:演练题那个,加上 K1 真的接上来的第一个。
+ * 加一种资源就往这里加一行 —— 这张表是「core 里不出现任何能力的名字」的清单。
+ */
+const FORBIDDEN_SCHEMES = [STRANGER_SCHEME, 'session'] as const
+
+/** 本目录里该有哪些非测试文件。写死,理由见文件头②。 */
+const KERNEL_FILES = [
+  'contract.ts',
+  'errors.ts',
+  'events.ts',
+  'index.ts',
+  'kernel.ts',
+  'provider.ts',
+  'ref.ts',
+  'registry.ts',
+  'schema.ts',
+  'spec.ts',
+  'tool.ts',
+]
 
 const strangerSpec: ResourceSpec = {
   scheme: STRANGER_SCHEME,
@@ -108,13 +146,18 @@ describe('stranger capability drill: a namespace core has never heard of', () =>
       .map(entry => entry.name)
 
     // 先确认真的扫到了东西 —— 一个扫了零个文件的门永远是绿的。
-    expect(files.sort()).toEqual(['contract.ts', 'index.ts', 'ref.ts', 'registry.ts', 'spec.ts'])
+    expect(files.sort()).toEqual(KERNEL_FILES)
 
     // 按**词**扫而不是裸子串:裸子串会把 `email` 这种正常英文单词也算成命中,
     // 一道会因为写文档而变红的门,人只会去关掉它。词边界既拦得住真正的命中
     // (`'mail'` 字面量、`scheme === 'mail'`、`mail.archive`),又不碰路过的散文。
-    const named = new RegExp(`\\b${STRANGER_SCHEME}\\b`, 'i')
-    const hits = files.filter(name => named.test(readFileSync(join(dir, name), 'utf-8')))
+    const hits: string[] = []
+    for (const scheme of FORBIDDEN_SCHEMES) {
+      const named = new RegExp(`\\b${scheme}\\b`, 'i')
+      for (const name of files) {
+        if (named.test(readFileSync(join(dir, name), 'utf-8'))) hits.push(`${name}:${scheme}`)
+      }
+    }
     expect(hits).toEqual([])
   })
 })

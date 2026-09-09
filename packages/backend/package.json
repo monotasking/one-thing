@@ -65,6 +65,7 @@
     "./wiring/providers/index.js": "./wiring/providers/index.ts",
     "./wiring/providers/model-registry.js": "./wiring/providers/model-registry.ts",
     "./wiring/providers/registry.js": "./wiring/providers/registry.ts",
+    "./wiring/resource/index.js": "./wiring/resource/index.ts",
     "./wiring/scheduler/user-tasks.js": "./wiring/scheduler/user-tasks.ts",
     "./wiring/search/providers.js": "./wiring/search/providers.ts",
     "./wiring/skills/index.js": "./wiring/skills/index.ts",

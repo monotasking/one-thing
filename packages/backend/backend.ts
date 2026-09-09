@@ -84,6 +84,10 @@ import { bootstrapProjectDirs } from './wiring/project-dirs/index.js'
 import { createAppSearchService } from './wiring/search/index.js'
 import { configureToolkitMCPCapabilitiesChangedHandler } from '@onething/runtime/mcp/capabilities-changed'
 import { buildToolkitCatalog, refreshToolkitMcpTools } from './wiring/toolkit/wiring.js'
+import { createAppToolRunner } from './wiring/toolkit/runner.js'
+import { toolkitAuditSink } from './wiring/toolkit/audit-sink.js'
+import { createResourceKernel, mountBuiltinResources } from './wiring/resource/index.js'
+import type { ResourceKernel } from '@onething/core/resource'
 import { ToolExecutionRegistry } from './wiring/toolkit/executions.js'
 import { configureEvalsTaskOwner, EvalsTaskOwner } from './wiring/evals/task-owner.js'
 import { registerAppRpcDomains } from './rpc/index.js'
@@ -218,7 +222,7 @@ export interface OnethingBackendOptions {
  */
 export class OnethingBackend implements BackendHandle {
   private readonly parts: BackendHandleParts = {}
-  private readonly resources: BackendResources
+  private readonly lifecycle: BackendResources
   private lease: StoreLease | undefined
   private readonly activeTasks = new Map<Promise<unknown>, string>()
   private disposing: Promise<void> | null = null
@@ -247,12 +251,21 @@ export class OnethingBackend implements BackendHandle {
   private pluginModelService: PluginLlmService | undefined
   private credentialStrategyService: CredentialStrategyService | undefined
   private todoPlanRuntime: TodoPlanRuntime | undefined
+  /**
+   * 资源内核(K1,`docs/design/atom-2026-09.md`)。**实例字段,不是模块槽** ——
+   * 与 `assembly:gate` 那把尺子同一句话:装配期的状态住在实例上、由 `own()` 收尾。
+   *
+   * (私有的那台 `BackendResources` 因此改名叫 `lifecycle`:它本来就是
+   * `./lifecycle.js` 里那只「关机清单」,而 `resources` 这个名字属于原子那一层的
+   * 「资源」。两件同名的东西住在一个类里,读代码的人迟早会读错一次。)
+   */
+  private resourceKernel: ResourceKernel | undefined
 
   readonly options: Readonly<OnethingBackendOptions>
 
   private constructor(options: OnethingBackendOptions) {
     this.options = options
-    this.resources = new BackendResources(options.shutdownTimeoutMs, failure => {
+    this.lifecycle = new BackendResources(options.shutdownTimeoutMs, failure => {
       log.error('backend disposer failed', { step: failure.step }, failure.cause)
     })
     this.own(async () => {
@@ -266,7 +279,7 @@ export class OnethingBackend implements BackendHandle {
     return this.lease
   }
 
-  get isShuttingDown(): boolean { return this.resources.isClosing }
+  get isShuttingDown(): boolean { return this.lifecycle.isClosing }
 
   get pluginModels(): PluginLlmService {
     if (!this.pluginModelService) throw new BackendNotAssembledError()
@@ -283,13 +296,24 @@ export class OnethingBackend implements BackendHandle {
     return this.credentialStrategyService
   }
 
+  /**
+   * 资源内核 —— 界面 / 调度 / 脚本 / 测试进「读、做、看」那条管线的门(K1)。
+   *
+   * 它与 AI 走的是**同一台 `ToolRunner`**,所以授权、审计、预算、取消四样同源。
+   * K2 的 RPC 通用 `read` / `do` 处理器接的就是这一格。
+   */
+  get resources(): ResourceKernel {
+    if (!this.resourceKernel) throw new BackendNotAssembledError()
+    return this.resourceKernel
+  }
+
   get mediaLibrary(): MediaLibraryService { return requireBackendField(this.parts, 'mediaLibrary') }
   get toolExecutions(): ToolExecutionRegistry { return requireBackendField(this.parts, 'toolExecutions') }
   get practice(): PracticeService { return requireBackendField(this.parts, 'practice') }
   get music(): MusicSubsystem { return requireBackendField(this.parts, 'music') }
   get collabDigests(): CollabDigestRunner { return requireBackendField(this.parts, 'collabDigests') }
 
-  assertActive(): void { this.resources.assertActive() }
+  assertActive(): void { this.lifecycle.assertActive() }
 
   /** Every accepted transport operation remains owned until its work settles. */
   runTask<T>(label: string, run: () => T | Promise<T>): Promise<T> {
@@ -369,7 +393,7 @@ export class OnethingBackend implements BackendHandle {
    * try/catch 同口径。
    */
   own(disposer: () => void | Promise<void>, label = 'anonymous', phase: BackendShutdownPhase = 'resources'): void | Promise<void> {
-    return this.resources.own(disposer, label, phase)
+    return this.lifecycle.own(disposer, label, phase)
   }
 
   /**
@@ -385,7 +409,7 @@ export class OnethingBackend implements BackendHandle {
     // 之后才赋回 `this.disposing`,而 `own()` 的守卫在那之前就得说得出话。
     this.disposeStarted = true
     this.disposing = (async () => {
-      await this.resources.dispose(reason)
+      await this.lifecycle.dispose(reason)
       /*
        * C0 R10:装配产物那五格也清掉。
        *
@@ -413,7 +437,7 @@ export class OnethingBackend implements BackendHandle {
    * 返回的是拷贝 —— 没人能从这里改清单。
    */
   ownedLabels(): readonly string[] {
-    return this.resources.labels()
+    return this.lifecycle.labels()
   }
 
   /**
@@ -775,6 +799,31 @@ export class OnethingBackend implements BackendHandle {
     // §13.7 裁定 5:服务器工具面变了就重算目录。挂在既有的唯一通知点上,
     // 不顶掉宿主自己那个 handler(它注册的是另一个口子)。
     configureToolkitMCPCapabilitiesChangedHandler(() => refreshToolkitMcpTools())
+
+    /*
+     * 缝 4.1 —— 资源内核(K1,`docs/design/atom-2026-09.md` §9)。
+     *
+     * 排在工具目录**之后**:它要一台 `ToolRunner`,而 runner 要沙箱、权限、审计
+     * 这些已经在位的东西。
+     *
+     * 两件事,两个 `own()`,顺序反着登记:
+     *   ① 内核本身(实例字段,不是模块槽);
+     *   ② 内置资源的注册(`mountBuiltinResources` —— 加一种资源只改那只文件)。
+     *
+     * **观察者是 noop,审计是真的**:这台 runner 服务的是非 AI 调用方(K2 的 RPC、
+     * 调度、脚本),它们没有 IPC 投影器可接 —— 但每一次「做」都必须落
+     * `tool/audit`,那正是「界面点按钮也走管线」这句话唯一看得见的证据。
+     *
+     * 资源工具进不进工具目录、在哪种场子露面归 K3,本单不注册。
+     */
+    const resourceRunner = createAppToolRunner({
+      observer: { on: () => {} },
+      audit: toolkitAuditSink,
+    })
+    const resourceKernel = createResourceKernel(resourceRunner)
+    this.resourceKernel = resourceKernel
+    this.own(() => { this.resourceKernel = undefined }, 'resourceKernel')
+    this.own(mountBuiltinResources(resourceKernel), 'builtinResources')
 
     /*
      * 工具跑出去的进程要收回来。挂在工具目录这一步:没有目录就没有工具,也就
