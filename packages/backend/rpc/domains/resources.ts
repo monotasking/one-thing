@@ -31,6 +31,8 @@ import type {
   DescribeResourceRequest,
   DoResourceRequest,
   ListResourcesResponse,
+  MountShellResourceRequest,
+  MountShellResourceResponse,
   ReadResourceRequest,
   ResourceOutcomeView,
   ResourcesRoutes,
@@ -38,12 +40,16 @@ import type {
   SerializedOpSpec,
   SerializedReadSpec,
   SerializedResourceSpec,
+  ShellAckResponse,
+  ShellResultRequest,
+  UnmountShellResourcesRequest,
 } from '@shared/ipc/resources.js'
 import type { ResourceKernel, ResourceSpec } from '@onething/core/resource'
 import type { Outcome, Result } from '@onething/core/toolkit'
 import { resultToText } from '@onething/core/toolkit'
 import { BackendNotAssembledError, getCurrentBackendInstance } from '../../current.js'
 import { principalOf } from '../principal.js'
+import type { ShellMountRegistry } from '../../wiring/resource/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
 
 /**
@@ -61,6 +67,15 @@ function kernel(): ResourceKernel {
   // 有这么一格。
   if (!backend) throw new BackendNotAssembledError()
   return backend.resources
+}
+
+/**
+ * 这个进程当前那本壳侧登记簿(K2b-2)。与 `kernel()` 同一条读法、同一句「还没装配」。
+ */
+function shells(): ShellMountRegistry {
+  const backend = getCurrentBackendInstance()
+  if (!backend) throw new BackendNotAssembledError()
+  return backend.shellResources
 }
 
 /**
@@ -203,5 +218,47 @@ export const resourcesRpcHandlers: RpcRouteHandlers<ResourcesRoutes> = {
       callOptions(context, request?.sessionId),
     )
     return serializeOutcome(outcome)
+  },
+
+  /**
+   * 一扇壳交自述(K2b-2,§10.2「home 在 shell 的寿命 = 那扇壳的连接」)。
+   *
+   * 铸主体的规则与 `do` 逐字相同 —— 「这台机器上多一种能力」本身就是一次改动,
+   * 一个说不出自己是谁的联网调用方不该做得成。`shellId` 是**坐标不是身份**:
+   * 它决定命令往哪儿发,决定不了谁能做什么。
+   */
+  async mountShell(
+    request: MountShellResourceRequest,
+    context: RpcDispatchContext = DESKTOP_RPC_CONTEXT,
+  ): Promise<MountShellResourceResponse> {
+    principalOf(context)
+    return shells().mountShell(request?.shellId ?? '', request?.spec as SerializedResourceSpec)
+  },
+
+  /** 撤掉这扇壳的全部 scheme。幂等 —— 撤一扇已经不在的壳是成功。 */
+  async unmountShell(
+    request: UnmountShellResourcesRequest,
+    context: RpcDispatchContext = DESKTOP_RPC_CONTEXT,
+  ): Promise<ShellAckResponse> {
+    principalOf(context)
+    await shells().unmountShell(request?.shellId ?? '')
+    return { ok: true }
+  },
+
+  /**
+   * 一条壳命令的回执。
+   *
+   * 两道判定,一道都不能省:铸主体(与 `do` 同规则),以及 `shellId` 登记过没有 ——
+   * 命令是**广播**出去的(SSE 没有定向投递),所以「谁能替这次调用收场」必须在这里
+   * 判一次。对不上账的 `callId` 不是错(超时之后才回来的回执是正常的),陌生的
+   * `shellId` 是错。
+   */
+  async shellResult(
+    request: ShellResultRequest,
+    context: RpcDispatchContext = DESKTOP_RPC_CONTEXT,
+  ): Promise<ShellAckResponse> {
+    principalOf(context)
+    shells().settleResult(request?.shellId ?? '', request?.callId ?? '', request?.result)
+    return { ok: true }
   },
 }

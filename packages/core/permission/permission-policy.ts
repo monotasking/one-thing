@@ -91,6 +91,28 @@ function isAutoAcceptedEditEffect(effect: PermissionEffect): boolean {
     effect.kind === 'file_destructive_edit'
 }
 
+/**
+ * 不打扰人的效果类(原子 K2b-2,`docs/design/atom-2026-09.md` §6)。
+ *
+ * ## 为什么这里有第二张表
+ *
+ * `core/toolkit/effects.ts` 的 `EFFECT_POLICY` 已经给每一类效果写了
+ * `silent | ask | never-grantable`,而这里又判一次 —— 那是**存量**,不是新增的:
+ * 判定核这一侧从 R0 之前就写死了「`read` 之外都要问」,两张表管同一个问题。
+ * 把这里改成读 `EFFECT_POLICY` 是对的方向,但那会顺手改掉 `net_fetch` /
+ * `user_ask` / `session_message` / `session_spawn` 四类今天真会弹卡的行为 ——
+ * 那是一次用户可感知的变化,归拍板,不归一次接线单(K2a' 留账写的就是这条)。
+ *
+ * ## 为什么 `ui_change` 可以现在就进来
+ *
+ * 它是 K2a' 新加的一类,**今天全仓零产地**,所以加进来不改任何既有类的行为:
+ * 差别只在「壳侧资源提供者一上线之后,移动一格面板会不会弹一张权限卡」。
+ * 那扇窗是这个人的窗,为它弹卡与 08-18「弹卡是噪音」那条判例是同一件事。
+ *
+ * 写成一张**集合**而不是再串一个 `&&`:第三类进来时改的是数据,不是判定式。
+ */
+const SILENT_EFFECT_KINDS: ReadonlySet<string> = new Set(['read', 'ui_change'])
+
 function effectPattern(effect: PermissionEffect): string | string[] {
   return effect.resources.length === 0 ? effect.kind : effect.resources
 }
@@ -107,7 +129,7 @@ export function decidePermission(input: PermissionPolicyInput): PermissionPolicy
   }
 
   const promptEffects = input.effects.filter(
-    effect => effect.kind !== 'read' && !isCapabilityCovered(effect),
+    effect => !SILENT_EFFECT_KINDS.has(effect.kind) && !isCapabilityCovered(effect),
   )
   if (promptEffects.length === 0) return { decision: 'allow' }
 

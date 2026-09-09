@@ -137,6 +137,52 @@ export interface ResourceEventOccurredEvent {
   at: number
 }
 
+/**
+ * 一条**壳命令**出了 core(原子 K2b-2,`docs/design/atom-2026-09.md` §5「资源的家在
+ * 哪就去哪跑」/ §10.2「home 在 shell 的寿命 = 那扇壳的连接」)。
+ *
+ * ## 它为什么不塞进 `resource:event`
+ *
+ * 那一条的语义是**事实**(「这件事发生了」)。这一条是**命令**(「请你做这件事」)。
+ * 把命令混进事实里,任何一个订阅事实的旁观者都会开始执行它 —— 而事件的既有纪律
+ * 恰恰是「一个坏掉的观察者不该把事实撤销掉」,那条纪律只对旁观者成立。
+ *
+ * ## 它为什么带 `shellId`
+ *
+ * **SSE 是广播。** `/api/events` 上的每一帧发给每一个连着的客户端,而这条命令只该
+ * 由一扇壳执行 —— 两扇壳同时跑一次「把面板挪到右边」就是挪了两次。所以坐标写在
+ * 载荷里,收到的一方自己对 `shellId`,不匹配就当没看见。这是 K2a' 留账的第一个坑:
+ * HTTP 侧今天不填 `RpcDispatchContext.callerId`,所以定向投递这条路走不了。
+ *
+ * ## 断线窗口里的命令就是丢了
+ *
+ * 全局事件不进任何一条会话的环形缓冲,`?after=` 不回放它们(`global-event-delivery.ts`
+ * 纪律 2)。所以一条在壳断线的瞬间发出的命令没有人会执行 —— 它由 core 这一侧的
+ * 超时兜住,落成 `ResourceHomeUnavailableError`(不是超时,§10.2 明说),而不是
+ * 让内核为每一种事件都存一本回放账。
+ */
+export interface ResourceShellCommandEvent {
+  type: 'resource:shell-command'
+  /** 哪扇壳该执行。别的壳读到这条要当没看见。 */
+  shellId: string
+  /** 对账坐标。壳跑完拿它调 `resources.shellResult`。 */
+  callId: string
+  /**
+   * 做一件事,还是读一件事。
+   *
+   * 读也走这条通道,因为一个 `home: 'shell'` 的命名空间**整个**住在壳里 ——
+   * 它的读法同样只有那扇壳答得出来。给读另开一种事件等于为同一条往返造第二条路。
+   */
+  kind: 'op' | 'read'
+  /** `<scheme>:<path>`,整个命名空间时为 `null`。 */
+  ref: string | null
+  /** `kind: 'op'` 时是做法名,`kind: 'read'` 时是读法名。 */
+  op: string
+  params: Record<string, unknown>
+  /** epoch ms,装配层盖(同 `resource:event`)。 */
+  at: number
+}
+
 // ── Union ───────────────────────────────────────
 
 export type GlobalEvent =
@@ -153,6 +199,7 @@ export type GlobalEvent =
   | PluginErrorEvent
   | PluginNotificationEvent
   | ResourceEventOccurredEvent
+  | ResourceShellCommandEvent
 
 // ── 出网名单(原子 K2a')────────────────────────────
 
@@ -200,4 +247,11 @@ export const GLOBAL_EVENT_LEAVES_PROCESS: Readonly<Record<GlobalEvent['type'], b
    */
   'plugin:notification': false,
   'resource:event': true,
+  /**
+   * **出网 —— 它整条命就是为了出网。** 一条 `home: 'shell'` 的做法在 core 里走完
+   * 校验与授权之后,`apply` 那一步要经这条 SSE 到得了壳(§5)。载荷里没有本机
+   * 路径也没有凭证:`ref` 是一个资源地址,`params` 是调用方(壳自己 / 模型)刚
+   * 递进来的那一坨,原路返回。
+   */
+  'resource:shell-command': true,
 })

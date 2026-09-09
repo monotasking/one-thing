@@ -24,6 +24,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { SerializedResourceSpec } from '@shared/ipc/resources.js'
 import { createOnethingHttpServer } from '../http.js'
 import type { OnethingServerRuntime } from '../runtime.js'
 import { createAppServerRuntime } from './test-helpers.js'
@@ -35,6 +36,22 @@ const originalStorePath = process.env.ONETHING_STORE_PATH
 
 const SESSION = '5c6d7e8f-9a0b-4c1d-8e2f-3a4b5c6d7e8f'
 const PRINCIPAL = { kind: 'user', userId: 'local' } as const
+
+/** 一份假的壳自述(K2b-2)。装配、内核、RPC 域里一个 `workbench` 字都没有。 */
+const WORKBENCH_SPEC: SerializedResourceSpec = {
+  scheme: 'workbench',
+  title: 'Workbench',
+  reads: {},
+  ops: {
+    open: {
+      title: 'Open a tile',
+      params: { type: 'object', properties: {}, required: [] },
+      effects: ['ui_change'],
+      home: 'shell',
+    },
+  },
+  events: {},
+}
 
 beforeEach(async () => {
   const dir = await mkdtemp(join(tmpdir(), 'onething-global-events-sse-'))
@@ -143,6 +160,41 @@ describe('全局事件走既有的 GET /api/events', () => {
     })
     // 不占会话事件的序号:这一帧没有 `id:` 行(`?after=` 也就不会回放它)。
     expect(sseFrame(text, 'resource:event')).not.toContain('id: ')
+  })
+
+  /**
+   * K2b-2 —— **壳命令是这条出口今天唯一的「非事实」乘客**,所以它单独钉一条。
+   *
+   * `resource:event` 证的是「一条事实出得了网」;这一条证的是往**反方向**的那一半:
+   * 一条 `home: 'shell'` 的做法在 core 里走完管线之后,`apply` 那一步真的到得了壳
+   * (§5「资源的家在哪就去哪跑」)。整条往返都在这里跑一遍 —— 命令骑 SSE 出去,
+   * 回执骑 `shellResult` 回来,`do` 拿到 `ok`。
+   */
+  it('一条 home:shell 的做法:命令出得了网,回执回得来', async () => {
+    const serverRuntime = await startRuntime()
+    const backend = serverRuntime.backend
+    expect(backend).toBeTruthy()
+    expect(await backend!.shellResources.mountShell('sse-shell', WORKBENCH_SPEC)).toEqual({ ok: true })
+    const server = await listen(createOnethingHttpServer({ runtime: serverRuntime.runtime }))
+
+    const stream = await fetch(`${baseUrl(server)}/api/events`)
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    const pending = backend!.resources.do('workbench:center', 'open', {}, { principal: PRINCIPAL })
+    const text = await readUntil(stream, value => value.includes('event: resource:shell-command'))
+    const command = sseData(text, 'resource:shell-command') as { shellId: string; callId: string; kind: string }
+    expect(command).toMatchObject({
+      type: 'resource:shell-command',
+      shellId: 'sse-shell',
+      kind: 'op',
+      ref: 'workbench:center',
+      op: 'open',
+    })
+    // 全局事件不占会话事件的序号,所以这一帧也没有 `id:`。
+    expect(sseFrame(text, 'resource:shell-command')).not.toContain('id: ')
+
+    backend!.shellResources.settleResult('sse-shell', command.callId, { kind: 'ok', text: 'opened' })
+    expect((await pending).kind).toBe('ok')
   })
 
   it('出网名单说不出网的,一帧都不发', async () => {

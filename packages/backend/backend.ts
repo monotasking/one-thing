@@ -86,7 +86,13 @@ import { configureToolkitMCPCapabilitiesChangedHandler } from '@onething/runtime
 import { buildToolkitCatalog, refreshToolkitMcpTools } from './wiring/toolkit/wiring.js'
 import { createAppToolRunner } from './wiring/toolkit/runner.js'
 import { toolkitAuditSink } from './wiring/toolkit/audit-sink.js'
-import { createResourceKernel, forwardResourceEventsToBus, mountBuiltinResources } from './wiring/resource/index.js'
+import {
+  createResourceKernel,
+  forwardResourceEventsToBus,
+  mountBuiltinResources,
+  ShellCommandDispatch,
+  ShellMountRegistry,
+} from './wiring/resource/index.js'
 import type { ResourceKernel } from '@onething/core/resource'
 import { ToolExecutionRegistry } from './wiring/toolkit/executions.js'
 import { configureEvalsTaskOwner, EvalsTaskOwner } from './wiring/evals/task-owner.js'
@@ -260,6 +266,7 @@ export class OnethingBackend implements BackendHandle {
    * 「资源」。两件同名的东西住在一个类里,读代码的人迟早会读错一次。)
    */
   private resourceKernel: ResourceKernel | undefined
+  private shellResourceRegistry: ShellMountRegistry | undefined
 
   readonly options: Readonly<OnethingBackendOptions>
 
@@ -305,6 +312,19 @@ export class OnethingBackend implements BackendHandle {
   get resources(): ResourceKernel {
     if (!this.resourceKernel) throw new BackendNotAssembledError()
     return this.resourceKernel
+  }
+
+  /**
+   * 壳侧自述的登记簿(K2b-2)—— `home: 'shell'` 的那半边资源住在这里。
+   *
+   * 它与 `resources` 是同一台内核的两个面:`resources` 是**调用**面(读 / 做 / 看),
+   * 这一格是**供给**面(哪扇壳交了哪几种资源、它还活着没有)。分成两格而不是把
+   * `mountShell` 挂到内核上,是因为「一扇壳的连接」这个寿命概念内核不该知道 ——
+   * 内核只认 provider(§2 不变量 3)。
+   */
+  get shellResources(): ShellMountRegistry {
+    if (!this.shellResourceRegistry) throw new BackendNotAssembledError()
+    return this.shellResourceRegistry
   }
 
   get mediaLibrary(): MediaLibraryService { return requireBackendField(this.parts, 'mediaLibrary') }
@@ -816,13 +836,24 @@ export class OnethingBackend implements BackendHandle {
      *
      * 资源工具进不进工具目录、在哪种场子露面归 K3,本单不注册。
      */
+    /*
+     * K2b-2 —— `home: 'shell'` 的做法往哪儿派。
+     *
+     * 派发器在内核**之前**造:它是内核的构造参数(`ResourceKernelOptions.shell`),
+     * 而登记簿在内核**之后**造(它要 `kernel.mount`)。三者的依赖是一条直线,不是
+     * 一个环 —— 派发器不认识内核,登记簿两头都认识,内核两头都不认识。
+     *
+     * 路由表(scheme → 哪扇壳)住在派发器里,登记簿(shellId → 有哪几个 scheme)
+     * 住在注册表里,唯一的写者是注册表。
+     */
+    const shellDispatch = new ShellCommandDispatch({ emit: event => eventBus.emitGlobal(event) })
     const resourceKernel = createResourceKernel(validator => createAppToolRunner({
       observer: { on: () => {} },
       audit: toolkitAuditSink,
       // K2a:认得生成 schema 的那位校验者由 `createResourceKernel` 串好递进来 ——
       // 收配方而不是收 runner,是为了让「runner 认识自己工具的契约」结构性成立。
       validator,
-    }))
+    }), { shell: shellDispatch })
     this.resourceKernel = resourceKernel
     /*
      * K2a' §10.1 —— 关机时**内核在飞的「做」必须以 `Outcome.aborted` 收场,不许
@@ -834,6 +865,14 @@ export class OnethingBackend implements BackendHandle {
      */
     this.own(async () => { await resourceKernel.dispose(); this.resourceKernel = undefined }, 'resourceKernel')
     this.own(mountBuiltinResources(resourceKernel), 'builtinResources')
+    /*
+     * K2b-2 —— 壳侧提供者的登记簿。登记在内置资源**之后**,所以关机链上跑在它
+     * **之前**:壳交的那几种资源要先按 §10.2 的三步收场(断路由 → 在飞以
+     * `ResourceHomeUnavailableError` 收场 → 逆序摘),再轮到内置的和内核本身。
+     */
+    const shellResources = new ShellMountRegistry(resourceKernel, shellDispatch)
+    this.shellResourceRegistry = shellResources
+    this.own(async () => { await shellResources.dispose(); this.shellResourceRegistry = undefined }, 'shellResources')
     /*
      * K2a ③ —— 资源事件转发上总线。**单向**:装配层订阅 hub,hub 不认识总线
      * (K1 留账写死的方向)。订阅名单问注册表、跟着注册表变,这里一个 scheme 名

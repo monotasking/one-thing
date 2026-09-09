@@ -127,6 +127,59 @@ export type ResourceOutcomeView =
 	| { kind: "aborted"; reason?: string; partial?: string }
 	| { kind: "failed"; error: { name: string; message: string } };
 
+/**
+ * 一扇壳把它的 `home: 'shell'` 资源交上来(原子 K2b-2,`docs/design/atom-2026-09.md`
+ * §10.2「**home 在 shell 的**寿命 = 那扇壳的连接」)。
+ *
+ * `shellId` 是那扇壳给自己起的名字,后端只拿它当**坐标**用:命令往哪扇壳发、
+ * 断线时该撤哪一批自述、一条回执认不认。它不是身份 —— 身份是主体
+ * (`rpc/principal.ts` 铸的那一个),两者不可互相替代。
+ *
+ * `spec` 是 `describe` 交出去的那一份投影的**反方向**:函数字段过不了进程边界,
+ * 所以壳交上来的自述里没有 `when` / `describe`,`whenGated` 交上来也会被忽略
+ * (「此刻露不露面」的判据在 core,壳不判 —— §5)。
+ */
+export interface MountShellResourceRequest {
+	shellId: string;
+	spec: SerializedResourceSpec;
+}
+
+/**
+ * 登记的结局。**「这个 scheme 已经被别人占了」是一个正常结局,不是异常** ——
+ * 与 `ResourceOutcomeView` 里 `denied` 不是 `failed` 是同一条纪律:一次被拒绝的
+ * 登记(另一扇壳先到、或者 core 自己就有一份同名自述)是调用方要处理的分支,
+ * 不是一次要写进错误日志的意外。
+ */
+export type MountShellResourceResponse =
+	| { ok: true }
+	| { ok: false; reason: "scheme-taken" };
+
+/** 撤掉这扇壳交上来的**全部** scheme。幂等 —— 撤一扇已经不在的壳是成功。 */
+export interface UnmountShellResourcesRequest {
+	shellId: string;
+}
+
+/**
+ * 一条壳命令的回执。两支,与 `Outcome` 的五支**不**一一对应,是刻意的:
+ * 授权、取消、参数校验四件事都已经在 core 里发生完了,壳只回答「我跑了,结果是
+ * 这个」或者「我没跑成,因为这个」。让壳能回一个 `denied` 等于把授权权交给它,
+ * 而「授权永远在 core 里做」是 §5 的整句话。
+ */
+export type ShellCommandResult =
+	| { kind: "ok"; text: string }
+	| { kind: "failed"; message: string };
+
+export interface ShellResultRequest {
+	shellId: string;
+	callId: string;
+	result: ShellCommandResult;
+}
+
+/** 三条壳面里两条的回答:收到了。没有第二种结局。 */
+export interface ShellAckResponse {
+	ok: true;
+}
+
 export type ResourcesRoutes = {
 	list: { input: Record<string, never>; output: ListResourcesResponse };
 	describe: {
@@ -135,6 +188,15 @@ export type ResourcesRoutes = {
 	};
 	read: { input: ReadResourceRequest; output: ResourceOutcomeView };
 	do: { input: DoResourceRequest; output: ResourceOutcomeView };
+	mountShell: {
+		input: MountShellResourceRequest;
+		output: MountShellResourceResponse;
+	};
+	unmountShell: {
+		input: UnmountShellResourcesRequest;
+		output: ShellAckResponse;
+	};
+	shellResult: { input: ShellResultRequest; output: ShellAckResponse };
 };
 
 export const resourcesRouter = defineRouter<ResourcesRoutes>("resources", [
@@ -142,4 +204,7 @@ export const resourcesRouter = defineRouter<ResourcesRoutes>("resources", [
 	"describe",
 	"read",
 	"do",
+	"mountShell",
+	"unmountShell",
+	"shellResult",
 ]);

@@ -26,6 +26,16 @@ import { ZodValidator } from '@onething/runtime/toolkit'
 import { SessionResourceProvider } from './session-provider.js'
 
 export { forwardResourceEventsToBus } from './event-bridge.js'
+export { DEFAULT_SHELL_COMMAND_TIMEOUT_MS, ShellCommandDispatch, ShellCommandFailedError } from './shell-dispatch.js'
+export type { ShellCommandDispatchOptions } from './shell-dispatch.js'
+export { ShellResourceProvider, resourceSpecFromShell } from './shell-provider.js'
+export {
+  DEFAULT_SHELL_HEARTBEAT_MS,
+  ShellMountRegistry,
+  ShellMountShapeError,
+  UnknownShellError,
+} from './shell-registry.js'
+export type { ShellMountRegistryOptions } from './shell-registry.js'
 export { SessionResourceProvider, SessionNotFoundError, SessionRefRequiredError } from './session-provider.js'
 export type { SessionOpPayload } from './session-provider.js'
 

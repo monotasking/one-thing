@@ -119,6 +119,10 @@ export const GLOBAL_PLUGIN_EVENT_TYPES = new Set([
   // 插件订阅它拿到的是「哪个资源上发生了什么」,与 `api.watch` 那条正式出口是同一件
   // 事实的两个投影 —— 正式出口是 K4 的事,这一行只是让名单与联合保持一一对应。
   'resource:event',
+  // 原子 K2b-2:一条**壳命令**(不是事实)。名单与联合一一对应是这张表的整条命
+  // (漏一个,插件订阅它就会被静默挂到会话面上);但它对插件没有用 —— 执行它的
+  // 是那扇 `shellId` 指着的壳,别人读到要当没看见。
+  'resource:shell-command',
 ])
 
 /** 插件自定义事件:`plugin:<pluginId>:<name>`,三段以上。 */

@@ -98,6 +98,9 @@ const OWNED_LABELS = [
   'builtinResources',
   // K2a:资源事件单向转发上总线。登记在两条资源登记之后 —— 关机链上它先撤,
   // 于是内核还在的时候订阅已经摘干净了。
+  // K2b-2:壳侧提供者的登记簿。登记在内置资源之后 → 关机链上跑在它之前
+  // (壳交的资源先按 §10.2 收场,再轮到内置的和内核本身)。
+  'shellResources',
   'resourceEventBridge',
   'killAllTerminals',
   'killTrackedDetachedChildren',
