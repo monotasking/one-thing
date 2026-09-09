@@ -6,6 +6,7 @@ import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 import { Field, useFieldControlProps } from '../ui/Field'
+import { Fold, FoldBody, FoldTrigger } from '../ui/Fold'
 import { GroupHead } from '../ui/GroupHead'
 import { StatusDot } from '../ui/StatusDot'
 import { IconButton } from '../ui/IconButton'
@@ -751,6 +752,18 @@ export function Gallery() {
               </Reveal>
             </span>
             <Note>占位常驻只动 opacity;判据挂在作用域上,:focus-within 与 hover 同权</Note>
+          </Section>
+
+          <Section name="Fold">
+            <div className={s.wide}>
+              <Fold>
+                <FoldTrigger>点这一行开合(role=button / aria-expanded / ↵ / Space)</FoldTrigger>
+                <FoldBody>关起来是 hidden 属性,不是卸载 —— 里面的东西一直在场。</FoldBody>
+              </Fold>
+            </div>
+            <Note>一个像素都不画(照 ButtonBase 的哲学):皮肤归消费方,它只管开合 / 键鼠 / aria</Note>
+            <Note>展开态圈着字点一下不收(选区守卫);键盘 ↵ 不受这条约束</Note>
+            <Note>不给 FoldBody = 「整块就是开关、正文两态都在」那一族(思考段)</Note>
           </Section>
 
           <Section name="useInlineEdit">
