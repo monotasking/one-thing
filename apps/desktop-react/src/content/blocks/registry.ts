@@ -28,6 +28,20 @@ export interface BlockCtx {
   messageId: string
   /** 这条消息此刻是不是正在生成(流式契约 §6 的输入)。 */
   streaming: boolean
+  /**
+   * **这条消息属于哪条会话**(U2 加的一格)。
+   *
+   * 有它才谈得上「对这条会话做一件事」—— 今天唯一的消费者是压缩折痕失败态那颗
+   * 重试(`commandsPort.compactContext(sessionId)` + `selectEngineBusy` 都按会话问)。
+   * 会话多开之后「当前会话」说不清这件事:一片没获得焦点的会话叶里那颗钮按下去
+   * 必须重压**它自己**那条(与 `MessageActions` 收 `sessionId` 是同一条判例),
+   * 所以它从壳递进来,而不是让段去读全局 store(见本接口开头那句)。
+   *
+   * **可缺席**:块也长在没有会话的地方(查看器里回放一份 markdown,
+   * `viewer/kinds/markdown.tsx`)。缺席的含义是「这里没有会话」——
+   * 于是那颗按会话动手的钮整个不画,而不是画一颗按下去不知道打给谁的钮。
+   */
+  sessionId?: string
 }
 
 /** 动作词表 —— **封闭**(§4.2)。加一格是拍板件,不是随手件。 */

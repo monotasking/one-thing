@@ -401,9 +401,12 @@ const MessageRow = memo(function MessageRow({
   // 装配是纯函数 + 按消息引用 memo,所以这一句在非活跃消息上是一次 WeakMap 命中。
   const prose = role === 'assistant' || role === 'system'
   const segments = prose ? assembleMessage(message) : EMPTY_SEGMENTS
+  // `sessionId` 进 ctx(U2):段里唯一按会话动手的那件事(压缩折痕失败态的重试)
+  // 要知道打给谁,而「当前会话」在会话多开时说不清这件事 —— 判据与 MessageActions
+  // 收 sessionId 逐字同源。它对其余每一种段都是一格没人读的字段,零行为变化。
   const ctx = useMemo(
-    () => ({ messageId: message.id, streaming }),
-    [message.id, streaming],
+    () => ({ messageId: message.id, streaming, sessionId }),
+    [message.id, streaming, sessionId],
   )
 
   return (

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ProjectedMessage } from '../../../data/chat-fold'
 import type { BlockModel } from '../../model/blocks'
+import { buildContextCompactContent } from '@onething/core/engine'
 import { assembleMessage, blockKey, segmentKey } from '..'
 import { defaultToolPresenter } from '../../tools/presenter'
 
@@ -230,5 +231,48 @@ describe('思考段的 live 粒度(现状记录,等拍板)', () => {
     // 它后面确实还有别的段 —— 也就是说「这一段推理」按事实早就结束了。
     expect(segments.findIndex((s) => s.kind === 'thinking')).toBe(0)
     expect(segments.length).toBeGreaterThan(1)
+  })
+})
+
+/**
+ * ⓪ **按内容自述分类**(U2):一条 system 消息说自己是压缩标记,就产一个 compact 段。
+ *
+ * 判据整件不在这个文件里 —— 它住 `content/compact/marker.ts`,这里验的是**接得对不对**:
+ * 认出来的走折痕(而不是把一坨 JSON 交给 markdown 那一步,09-08 事故屏幕上的那一坨),
+ * 认不出来的照常走 rich-text(降级是「照实把正文摆出来」,不是吞掉这条消息)。
+ */
+describe('压缩标记:system 消息按内容自述分类', () => {
+  const compactContent = buildContextCompactContent({
+    status: 'completed',
+    compactedMessageCount: 42,
+    summary: '## 已完成\n\n- 修了那条夹法',
+    retainedContextSize: 96_000,
+    contextSizeBefore: 701_297,
+  })
+
+  it('压缩标记 → 一个 compact 段(正文里那坨 JSON 一个字都不上屏)', () => {
+    const segments = assembleMessage(
+      message({ id: 'sys-1', role: 'system', content: compactContent }),
+    )
+    expect(segments).toHaveLength(1)
+    expect(segments[0].kind).toBe('compact')
+    expect(segments[0].kind === 'compact' && segments[0].marker).toMatchObject({
+      status: 'completed',
+      compactedMessageCount: 42,
+      contextSizeBefore: 701_297,
+      retainedContextSize: 96_000,
+    })
+    // 正文那串 JSON 没有变成任何一个 rich-text 段。
+    expect(segments.some((s) => s.kind === 'rich-text')).toBe(false)
+  })
+
+  it('别的 system 消息照常走 rich-text —— 分类不是「system 一律不画字」', () => {
+    const segments = assembleMessage(
+      message({ id: 'sys-2', role: 'system', content: '会话已从 deepseek 切到 claude。' }),
+    )
+    expect(segments.map((s) => s.kind)).toEqual(['rich-text'])
+    expect(segments[0].kind === 'rich-text' && segments[0].blocks[0]).toMatchObject({
+      kind: 'paragraph',
+    })
   })
 })

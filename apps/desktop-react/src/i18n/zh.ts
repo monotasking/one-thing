@@ -558,6 +558,16 @@ export const zh = {
   'chat.contextDeltaBlockPlugins': '插件',
   'chat.retry': '重试',
   'chat.discard': '不发了',
+  /* ── 压缩折痕(U2)────────────────────────────────────────────────────
+   * 「重试」不在这里 —— 它复用 `chat.retry`(同一件事在同一台上不该有两种叫法)。
+   * provider 那句失败原文是**数据**,原样显示,不进字典。
+   * 分隔号 `·` 是排版,拼在代码里(与 contextDelta 那一行同一手)。 */
+  'chat.compactRunning': '正在压缩上下文',
+  'chat.compactProgress': '{chunk} / {total}',
+  'chat.compactDone': '已压缩 {n} 条',
+  'chat.compactSize': '{before} → {after}',
+  'chat.compactRetained': '剩 {after}',
+  'chat.compactFailed': '压缩失败',
   /* 流式读数行(台一定稿):一句话说完「还活着 + 跑了多久」。
    * tokens 那一格**不在这句话里** —— 壳今天没有活的 token 产地,详见汇报的留账。
    * 09-05:`{s}s` 改成 `{d}` —— 值由 `format/quantity.formatDuration` 交出来时

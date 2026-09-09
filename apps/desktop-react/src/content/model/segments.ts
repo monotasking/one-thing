@@ -1,5 +1,6 @@
 import type { ProjectedMessage } from '../../data/chat-fold'
 import type { MessageKey, MessageVars } from '../../i18n'
+import type { CompactMarker } from '../compact/marker'
 import type { BlockModel } from './blocks'
 
 /**
@@ -267,6 +268,17 @@ export type SegmentModel =
    */
   | { kind: 'tool-group'; card: ToolCardModel }
   | { kind: 'research'; episode: ResearchEpisodeModel }
+  /**
+   * **压缩折痕**(U2,设计正本 `docs/compact-seam-2026-09.md`)。
+   *
+   * 账本上它只是一条 system 消息,正文是一段 JSON;装配管线**按内容自述**把它认出来
+   * (`content/compact/marker.ts` 的 `parseCompactMarker`),于是「这条 system 消息
+   * 是不是压缩标记」这个判断有且只有一个产地,MessageRow 与 SegmentView 都不加分支。
+   *
+   * 段里装的是**已经解析好的事实**,不是那串 JSON:折痕不自己解析,读数环读的也是
+   * 同一只函数 —— 两个消费方各 `JSON.parse` 一次就是两份对协议的理解。
+   */
+  | { kind: 'compact'; marker: CompactMarker }
   | { kind: 'image'; blob: BlobRef }
   | { kind: 'stream-cursor' }
 

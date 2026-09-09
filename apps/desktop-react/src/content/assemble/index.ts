@@ -2,6 +2,7 @@ import { perfSpan } from '../../services/perf'
 import type { ProjectedMessage } from '../../data/chat-fold'
 import { messageStamp } from '../../data/chat-materialize'
 import type { SegmentModel } from '../model/segments'
+import { parseCompactMarker } from '../compact/marker'
 import { anchorMessage } from './anchor'
 import { groupNodes } from './group'
 import { markdownToFrame } from './markdown'
@@ -12,7 +13,8 @@ import { presentResearchEpisode } from '../research/episode'
  * 装配管线 —— **一条消息 → 一串段**(§2)。
  *
  * 五步纯函数,各住一个文件:① anchor(锚点归位)② group(归组)③ present
- * (工具呈现)④ markdown(文本→块)⑤ key(稳定 key,由渲染侧调用)。
+ * (工具呈现)④ markdown(文本→块)⑤ key(稳定 key,由渲染侧调用),前面另有
+ * 一步 ⓪ 分类(`compact/marker.ts`:这条消息自己说它是什么)。
  * 这个文件只负责把它们串起来,自己不做任何判断 —— 加一步 / 换一步的代价因此
  * 是「改一个文件」。
  *
@@ -91,6 +93,21 @@ if (import.meta.hot) {
 }
 
 function runPipeline(message: ProjectedMessage): SegmentModel[] {
+  /*
+   * ── 第 ⓪ 步:**按内容自述分类**(U2)────────────────────────────────────
+   *
+   * 一次上下文压缩在账本上只是一条 system 消息,正文是后端写的一段 JSON。它不是
+   * 「一段要读的字」——把它交给 markdown 那一步,屏幕上就是 09-08 事故里那坨原始
+   * JSON。所以在跑节点循环**之前**先问一句「这条消息自己说它是什么」。
+   *
+   * 判据整件住在 `content/compact/marker.ts`(角色 + 正文里的 `type`),这里一个
+   * 字段名都不出现:哪天后端多写一格,改那一处。认不出来(不是压缩标记、或者正文
+   * 半途被截断解析不了)就返回 null,消息照常往下走 rich-text —— **降级是「照实
+   * 把正文摆出来」**,不是吞掉这条消息。
+   */
+  const compact = parseCompactMarker(message)
+  if (compact) return [{ kind: 'compact', marker: compact }]
+
   const segments: SegmentModel[] = []
 
   for (const node of groupNodes(anchorMessage(message))) {

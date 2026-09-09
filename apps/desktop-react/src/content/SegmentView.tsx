@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { blockKey } from './assemble'
 import { BlockView } from './blocks/BlockView'
 import type { BlockCtx } from './blocks/registry'
+import { CompactSeam } from './CompactSeam'
 import type { SegmentModel } from './model/segments'
 import { ResearchSegment } from './research/ResearchSegment'
 import { ThinkingSegment } from './ThinkingSegment'
@@ -52,6 +53,11 @@ export const SegmentView = memo(function SegmentView({
           ))}
         </>
       )
+
+    case 'compact':
+      // 折痕(U2)。它是**流里的一道线**,不是一件物件 —— 所以和别的段一样
+      // 只渲染一个元素、不加包裹层,横贯整行由它自己的 grid 说了算。
+      return <CompactSeam marker={segment.marker} ctx={ctx} />
 
     case 'tool-group':
       return <ToolCard card={segment.card} ctx={ctx} />
