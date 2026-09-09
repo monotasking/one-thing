@@ -50,7 +50,6 @@
  *     不在场(独立 `server:start` 不装配 collab)拒,文案逐字沿用旧 REST。判据与
  *     `/api/capabilities` 下发的 `collabRooms` 同源,UI 与后端不会半开。
  */
-import fs from 'node:fs/promises'
 import { v4 as uuidv4 } from 'uuid'
 import {
   activateOnethingSessionForIpc,
@@ -64,23 +63,17 @@ import {
   getOnethingSessionMessagesPageForIpc,
   getOnethingSessionTokenUsageForIpc,
   listOnethingSessionUserMarkersForIpc,
-  removeOnethingMessageForIpc,
+  ONETHING_SESSION_NOT_FOUND,
   removeOnethingSystemMarkerMessageForIpc,
-  renameOnethingSessionForIpc,
   switchOnethingSessionForIpc,
-  updateOnethingSessionAgent,
-  updateOnethingSessionArchivedForIpc,
-  updateOnethingSessionModel,
-  updateOnethingSessionPinForIpc,
   updateOnethingSessionPermissionMode,
-  updateOnethingSessionWorkingDirectory,
 } from '@onething/runtime/sessions'
 import { isValidSpaceId } from '@onething/runtime/spaces/types'
-import { SESSION_EVENT_TYPES, emitCoreSessionEventSafely } from '@onething/core/events'
 import { collectSessionCascadeDeleteIds } from '@onething/core/session'
+import { SESSION_RESOURCE_SCHEME } from '@onething/runtime/sessions/resource-spec'
 import type { ChatMessage, ChatSession, GetSessionMessagesPageRequest, PermissionMode } from '@shared/ipc.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
-import type { SessionsRoutes } from '@shared/ipc/sessions.js'
+import type { SessionMutationResponse, SessionsRoutes } from '@shared/ipc/sessions.js'
 import * as store from '../../store.js'
 import { sessionReads } from '../../session/reads.js'
 import { listSessions } from '../../session/index.js'
@@ -88,7 +81,6 @@ import { sessionCommands } from '../../session/commands.js'
 import { sessionDeletion } from '../../session/deletion.js'
 import { requestSessionOwner, sessionAccess, SessionAccessError, type SessionOwnershipRecord } from '../../session/access.js'
 import { getEventBus, getStreamChannel } from '../../events/index.js'
-import { DEFAULT_AGENT_ID, agentExists } from '../../wiring/agents/index.js'
 import {
   ensureCollabGroupRoom,
   isCollabV3RuntimeRunning,
@@ -98,12 +90,13 @@ import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import { Permission } from '../../wiring/permission/index.js'
 import { readSessionSegments } from '../../wiring/toc/index.js'
 import { deleteSessionAiTodo, notifyTodoPlanActiveSessionChanged } from '../../wiring/todo-plan/store.js'
-import { workdirGateway } from '../../wiring/variables/gateways.js'
 import { resolveInsideSandbox, resolveRpcSandbox } from '../sandbox.js'
+import { foldOutcomeToEnvelope } from '../resource-envelope.js'
+import { principalOf } from '../principal.js'
+import { BackendNotAssembledError, getCurrentBackendInstance } from '../../current.js'
+import { SessionNotFoundError } from '../../wiring/resource/session-provider.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import type { RpcRouteHandlers } from '../registry.js'
-import type { UpdateOnethingSessionWorkingDirectoryOptions } from '@onething/runtime/sessions/working-directory'
-import type { UpdateOnethingSessionAgentOptions } from '@onething/runtime/sessions/session-updates'
 import type { CreateOnethingBranchSessionAdapters } from '@onething/runtime/sessions/branching'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingSessionsIpcLogger } from '@onething/runtime/sessions/ipc-operations'
@@ -150,6 +143,75 @@ function releaseServedSession(sessionId: string): void {
   Permission.clearSession(sessionId)
   getEventBus().destroySession(sessionId)
   getStreamChannel().destroySession(sessionId)
+}
+
+/**
+ * ## 七条写面已经退成资源投影(原子 K2c-1)
+ *
+ * `rename` / `updateWorkingDirectory` / `updatePin` / `updateArchived` /
+ * `updateModel` / `updateAgent` / `removeMessage` 这七条处理器里**不再有实现**:
+ * 它们拼参数、交给 `backend.resources.do`、把 `Outcome` 折回原来那个信封
+ * (`rpc/resource-envelope.ts`)。规则书、端口、事件全都搬进了
+ * `wiring/resource/session-provider.ts` —— 与 AI 走的是同一台 `ToolRunner`,
+ * 于是授权、审计、取消、预算四样第一次真的同源(`docs/design/atom-2026-09.md`
+ * §2 不变量 2:「没有第二条路,界面点按钮也走它」)。
+ *
+ * **对外契约一个字没变**:入参、回执、发不发事件、失败文案逐字照旧 ——
+ * `__tests__/sessions-domain.test.ts` 那 25 例是这句话的门,
+ * `__tests__/sessions-projection.test.ts` 证的是「域这一路与直调资源面产出同一个
+ * 结果、同一条 `tool/audit`」(也就是它真的退成了投影,不是双写)。
+ *
+ * **没退的那些**,理由各自写在自述里(`runtime/sessions/resource-spec.ts` 文件头):
+ * 五条读面被管线的输出预算、`Outcome` 只装得下文本、以及「每读一次落一条审计」
+ * 三件事挡住(留账 K2c-2);`addSystemMessage` 一退就会多出一张权限卡;
+ * `list` / `create` / `delete` / `activate` / `switch` / `createBranch` /
+ * `updatePermissionMode` / 缓存那两条 / 两条标记消息归 K2c-2。
+ */
+
+/** 这个进程当前那台资源内核。与 `rpc/domains/resources.ts` 同一条读法、同一句「还没装配」。 */
+function resources() {
+  const backend = getCurrentBackendInstance()
+  if (!backend) throw new BackendNotAssembledError()
+  return backend.resources
+}
+
+/**
+ * 一次调用的坐标。
+ *
+ * **不带 `sessionId`**:那一格是「从哪条会话里发起的」,不是操作对象。界面上改一条
+ * 会话的名字与那条会话正在跑的回合无关,拿它顶上去,审计就读成「A 自己改了自己」
+ * (K1 留账,K2a 的答案是保留坐标 + `<store>/audit/resource.jsonl`)。
+ */
+function callOptions(context: RpcDispatchContext) {
+  return {
+    principal: principalOf(context),
+    ...(context.signal ? { signal: context.signal } : {}),
+  }
+}
+
+/**
+ * 「这次失败在本域的契约里叫什么」。**只有一条**:二十六条方法共用的那句
+ * `Session not found`(`ONETHING_SESSION_NOT_FOUND`)。其余原样交出管线那句话 ——
+ * 域不发明文案。判据是类不是消息串。
+ */
+function describeSessionError(error: Error): string | undefined {
+  return error instanceof SessionNotFoundError ? ONETHING_SESSION_NOT_FOUND : undefined
+}
+
+/** 拼参数 → 管线 → 折回信封。七条写面共用的那三句话。 */
+async function doSessionOp(
+  context: RpcDispatchContext,
+  sessionId: string,
+  op: string,
+  params: Record<string, unknown>,
+): Promise<SessionMutationResponse> {
+  const outcome = await resources().do(
+    `${SESSION_RESOURCE_SCHEME}:${sessionId}`,
+    op,
+    params,
+    callOptions(context),
+  )
+  return foldOutcomeToEnvelope(outcome, { describeError: describeSessionError })
 }
 
 export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
@@ -328,60 +390,22 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
       logger: consoleLog,
     })
   },
-  async rename(request) {
-    const result = await renameOnethingSessionForIpc({
-      sessionId: request.sessionId,
-      newName: request.newName,
-      renameSession: (id, nextName) => store.renameSession(id, nextName),
-      logger: consoleLog,
-    })
-    // **显式改名也要有推送**。从前这条路改完盘就结束了:别的客户端(浏览器那一份、
-    // 另一扇窗)对着旧名字,只能等下一次整表重拉才看得见 —— 而列表这一层根本没有
-    // 定时重拉。
-    //
-    // 载荷与**自动起题**那一发逐字同形(`packages/core/engine/core-stream-engine.ts`
-    // 的 `generateAndApplySessionTitle`:`eventBus.emit(sessionId, { type:
-    // SESSION_RENAMED, name })`)。两处产地形状相同不是巧合也不是抄写:说的是同一
-    // 件事(这条会话现在叫什么),走的也是**同一条总线** —— 引擎手里那只 `eventBus`
-    // 就是 `wiring/engine/index.ts` 注进去的 `getEventBus()`,而扇出是通用的
-    // (IPCBridge 的 `onAnySessionAny` → `session:event`,SSE 同名),一发同时到桌面
-    // 与浏览器。引擎那一发在 core 的私有方法里,RPC 域拿不到那个句柄,所以这里用
-    // 装配层现成的出口 `getEventBus()` 发同一形状的第二个产地,而**不是**第二份载荷
-    // 语义:`{ type, name }` 两格,消费方(`apps/desktop-react` 的 sessions-source
-    // 判据 b、renderer 的 chat store)只认这两格。
-    //
-    // `name` 原样带出请求里那个字符串:仓的改名没有归一化(core 的 `applySessionName`
-    // 就是一句赋值),所以事件里的名字与盘上的名字是同一个字符串。
-    //
-    // **失败不发**:`success: false` = 仓抛了 = 盘上没变,这时候推一条改名出去就是
-    // 让别的客户端显示一个不存在的名字。
-    if (result.success) {
-      await emitCoreSessionEventSafely({
-        sessionId: request.sessionId,
-        event: { type: SESSION_EVENT_TYPES.SESSION_RENAMED, name: request.newName },
-        eventBus: getEventBus(),
-        logger: consoleLog,
-        errorLabel: '[SessionsRPC] EventBus emit failed:',
-      })
-    }
-    return result
+  async rename(request, context = DESKTOP_RPC_CONTEXT) {
+    // 那一发 `session:renamed` 现在由 provider 在 apply 里发(成功才发)—— 搬上去
+    // 的理由是 AI 经资源面改名与界面改名是同一件事,而从前只有界面那一路推。
+    return doSessionOp(context, request.sessionId, 'rename', { title: request.newName })
   },
-  async updatePin(request) {
-    return updateOnethingSessionPinForIpc({
-      sessionId: request.sessionId,
-      isPinned: request.isPinned,
-      updateSessionPin: (id, nextPinned) => store.updateSessionPin(id, nextPinned),
-      logger: consoleLog,
-    })
+  async updatePin(request, context = DESKTOP_RPC_CONTEXT) {
+    return doSessionOp(context, request.sessionId, 'setPinned', { pinned: request.isPinned })
   },
-  async updateArchived(request) {
-    return updateOnethingSessionArchivedForIpc({
-      sessionId: request.sessionId,
-      isArchived: request.isArchived,
-      archivedAt: request.archivedAt ?? undefined,
-      updateSessionArchived: (id, nextArchived, nextArchivedAt) =>
-        store.updateSessionArchived(id, nextArchived, nextArchivedAt),
-      logger: consoleLog,
+  async updateArchived(request, context = DESKTOP_RPC_CONTEXT) {
+    // 契约里 `archivedAt` 是 `number | null`,而自述那一格只收 `number`:
+    // 「清掉这个时刻」与「没说」在仓那一层是同一件事,`null` 在这里折成缺席
+    // (与从前 `request.archivedAt ?? undefined` 逐字同义)。
+    const archivedAt = request.archivedAt ?? undefined
+    return doSessionOp(context, request.sessionId, 'setArchived', {
+      archived: request.isArchived,
+      ...(archivedAt !== undefined ? { archivedAt } : {}),
     })
   },
   async updateWorkingDirectory(request, context: RpcDispatchContext = DESKTOP_RPC_CONTEXT) {
@@ -410,34 +434,25 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
       if (!inside) return WORKDIR_SANDBOX_ERROR
       workingDirectory = inside
     }
-    const updateOnethingSessionWorkingDirectoryOptions: UpdateOnethingSessionWorkingDirectoryOptions = {
-      sessionId: request.sessionId,
-      workingDirectory,
-      isDirectory: async path => (await fs.stat(path)).isDirectory(),
-      writeWorkingDirectory: (id, nextWorkingDirectory) =>
-        workdirGateway.write(id, nextWorkingDirectory),
-    };
-    return updateOnethingSessionWorkingDirectory(updateOnethingSessionWorkingDirectoryOptions)
-  },
-  async updateModel(request) {
-    return updateOnethingSessionModel({
-      sessionId: request.sessionId,
-      provider: request.provider,
-      model: request.model,
-      updateSessionModel: (id, nextProvider, nextModel) =>
-        store.updateSessionModel(id, nextProvider, nextModel),
+    // 目录存不存在、是不是目录、清空怎么算,全在 provider 那一路的规则书里
+    // (`updateOnethingSessionWorkingDirectory`)—— AI 走资源面时判据一模一样。
+    // 清空(null / '')在自述里就是空串:它是一条合法的值,不是缺席。
+    return doSessionOp(context, request.sessionId, 'setWorkingDirectory', {
+      path: workingDirectory ?? '',
     })
   },
-  async updateAgent(request) {
-    const updateOnethingSessionAgentOptions: UpdateOnethingSessionAgentOptions = {
-      sessionId: request.sessionId,
-      agentId: request.agentId,
-      defaultAgentId: DEFAULT_AGENT_ID,
-      agentExists,
-      getSessionKind: (id) => store.getSession(id)?.kind,
-      updateSessionAgent: (id, nextAgentId) => store.updateSessionAgent(id, nextAgentId),
-    };
-    return updateOnethingSessionAgent(updateOnethingSessionAgentOptions)
+  async updateModel(request, context = DESKTOP_RPC_CONTEXT) {
+    return doSessionOp(context, request.sessionId, 'setModel', {
+      provider: request.provider,
+      model: request.model,
+    })
+  },
+  async updateAgent(request, context = DESKTOP_RPC_CONTEXT) {
+    // 三条守卫(room 会话不许直接绑、未知 agent、缺席即默认)一条也没搬到这里:
+    // 它们在 `updateOnethingSessionAgent` 那本规则书上,由 provider 递形状。
+    return doSessionOp(context, request.sessionId, 'setAgent', {
+      ...(request.agentId !== undefined ? { agentId: request.agentId } : {}),
+    })
   },
   async updatePermissionMode(request) {
     return updateOnethingSessionPermissionMode<PermissionMode>({
@@ -513,12 +528,7 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
       logger: consoleLog,
     })
   },
-  async removeMessage(request) {
-    return removeOnethingMessageForIpc({
-      sessionId: request.sessionId,
-      messageId: request.messageId,
-      deleteMessage: (id, messageId) => sessionCommands.deleteMessage(id, { messageId }),
-      logger: consoleLog,
-    })
+  async removeMessage(request, context = DESKTOP_RPC_CONTEXT) {
+    return doSessionOp(context, request.sessionId, 'removeMessage', { messageId: request.messageId })
   },
 }

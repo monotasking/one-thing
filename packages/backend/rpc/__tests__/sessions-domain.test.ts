@@ -99,7 +99,37 @@ const eventsReads = vi.hoisted(() => ({
   eventsPageMessages: vi.fn(),
 }))
 
+/**
+ * K2c-1:七条写面已经退成资源投影,所以域现在要问「这个进程当前那台资源内核」。
+ * 这一格是它 —— `beforeEach` 里装一台真内核(真注册表 + 真 `ResourceTool` + 真
+ * `SessionResourceProvider`),只有 runner 的三个端口是最小实现(恒放行的
+ * authorizer、不作声的 observer、`createResourceKernel` 自己串好的校验者)。
+ *
+ * **为什么不是把 `backend.resources` 也桩掉**:那样这组用例就退化成「域调了一个
+ * 假的 do」,而它要证的恰恰是「域把参数拼对了、provider 把端口接对了、信封折回来
+ * 一个字没变」。管线自己的行为(授权 / 审计 / 取消)由真装配那条门证
+ * (`packages/backend/__tests__/resource-kernel.test.ts` 与
+ * `rpc/__tests__/sessions-projection.test.ts`),不在这里重证一遍。
+ */
+const kernelSlot = vi.hoisted(() => ({ current: undefined as unknown }))
+
 vi.mock('../../store.js', () => store)
+vi.mock('../../current.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../current.js')>(),
+  // 只换这一口:`installSessionLayerForTest` 用的 `setCurrentBackend` /
+  // `createBackendHandle` 仍是真的(那只窄句柄上没有资源内核这一格 —— 它是
+  // `OnethingBackend` 的实例字段,见 `rpc/domains/resources.ts` 的 `kernel()`)。
+  getCurrentBackendInstance: () => kernelSlot.current,
+}))
+/**
+ * 主体铸在 RPC 边界(K2a 的 `principalOf`),规则与它自己的用例在
+ * `rpc/__tests__/` 的主体那一门里。这组用例的题目是「域把端口接对了」,所以这里
+ * 给一个固定主体 —— 否则每一条走默认 ipc context 的用例都得先声明本机可信,
+ * 而那句声明正是**另外两条**用例(工作目录夹持)要来回扳的东西。
+ */
+vi.mock('../principal.js', () => ({
+  principalOf: () => ({ kind: 'user', userId: 'local-user' }),
+}))
 vi.mock('../../stores/sessions.js', () => storesSessions)
 vi.mock('../../session/events-reads.js', async importOriginal => ({
   ...await importOriginal<typeof import('../../session/events-reads.js')>(),
@@ -137,6 +167,7 @@ async function loadDomain() {
 describe('sessions RPC domain', () => {
   const ownership = new Map<string, import('../../session/access.js').SessionOwnershipRecord>()
   let dispose: (() => void) | undefined
+  let unmountResources: (() => Promise<void>) | undefined
   let fixture: ReturnType<typeof installSessionLayerForTest>
 
   beforeEach(async () => {
@@ -181,6 +212,29 @@ describe('sessions RPC domain', () => {
     permission.clearSession.mockReset()
     variables.workdirGateway.write.mockReset().mockResolvedValue(undefined)
 
+    const [{ createResourceKernel, SessionResourceProvider }, { ToolRunner }] = await Promise.all([
+      import('../../wiring/resource/index.js'),
+      import('@onething/core/toolkit'),
+    ])
+    const resourceKernel = createResourceKernel(validator => new ToolRunner({
+      authorizer: { decide: async () => ({ kind: 'allow' as const }) },
+      observer: { on: () => {} },
+      validator,
+    }))
+    unmountResources = resourceKernel.mount(new SessionResourceProvider())
+    kernelSlot.current = {
+      resources: resourceKernel,
+      // `dispatchRpc` 自己会问这一口(`rpc/registry.ts`:有实例就把处理器包成一格
+      // 在途任务,好让关机等它)。这里直接跑 —— 关机账不是这组用例的题目。
+      runTask: <T,>(_label: string, run: () => T | Promise<T>) => Promise.resolve(run()),
+      own: () => {},
+    }
+    // 每条写面都先问「这条会话在不在」(provider 的 plan 期判定,走
+    // `hasSessionInStore` → `stores/sessions.ts` 的 `getSessionMessages`)。这些
+    // 用例说的都是"对一条**在册**的会话做点什么",所以默认摆成在册;
+    // "改一条不存在的会话"那一例自己把仓那句「没改到」的布尔扳回去。
+    storesSessions.getSessionMessages.mockReturnValue([])
+
     const { resetRpcRegistryForTests, registerRouterHandlers, sessionsRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
     dispose = registerRouterHandlers(sessionsRouter, sessionsRpcHandlers)
@@ -189,6 +243,10 @@ describe('sessions RPC domain', () => {
   afterEach(async () => {
     dispose?.()
     dispose = undefined
+    await unmountResources?.()
+    unmountResources = undefined
+    kernelSlot.current = undefined
+    storesSessions.getSessionMessages.mockReset()
     const { resetRpcRegistryForTests } = await loadDomain()
     resetRpcRegistryForTests()
     vi.restoreAllMocks()

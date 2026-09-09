@@ -190,7 +190,11 @@ describe('资源内核在真装配里(K1)', () => {
     const stop = backend.resources.events.watch(`session:${sessionId}`.concat('/'), () => seen.push('nested'))
     const stopAll = backend.resources.events.watch('session:', event => seen.push(event.event))
 
+    // K2c-1:这条做法的实现改走域今天那一只端口(`workdirGateway.write`),而那条
+    // 路上的规则书(`updateOnethingSessionWorkingDirectory`)会先判「是不是一个真
+    // 存在的目录」—— AI 走资源面从此与界面同判据,所以这里得真的有这个目录。
     const target = path.join(storeRoot, 'a-project')
+    fs.mkdirSync(target, { recursive: true })
     const outcome = await backend.resources.do(
       `session:${sessionId}`,
       'setWorkingDirectory',
@@ -355,7 +359,17 @@ describe('资源内核在真装配里(K1)', () => {
       })
       expect(described.ok).toBe(true)
       const spec = (described as { data: Record<string, unknown> }).data
-      expect(Object.keys(spec.ops as object).sort()).toEqual(['rename', 'setWorkingDirectory'])
+      // K2c-1:域退成投影那一批把会话的写面补齐到七条(自述里为什么只有做法没有
+      // 读法,理由在 `runtime/sessions/resource-spec.ts` 文件头)。
+      expect(Object.keys(spec.ops as object).sort()).toEqual([
+        'removeMessage',
+        'rename',
+        'setAgent',
+        'setArchived',
+        'setModel',
+        'setPinned',
+        'setWorkingDirectory',
+      ])
       // 函数没过线,但「带不带场子闸」这件事说得出口(会话这两条都不带)。
       expect(JSON.stringify(spec)).not.toContain('function')
       expect((spec.ops as Record<string, { whenGated?: boolean }>).rename.whenGated).toBeUndefined()
