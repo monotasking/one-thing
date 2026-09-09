@@ -404,12 +404,18 @@ export function buildContextCompactCompletedContent(
 	summary: string,
 	compactedMessageCount: number,
 	compactedThroughMessageId?: string,
+	/** 压缩**开始那一刻**的 provider 输入读数;写者在开始处取一次存住(见内容类型的注)。 */
+	contextSizeBefore?: number,
+	/** 压完之后还看得见的读数;写者算出来之后再拼这条内容(见内容类型的注)。 */
+	retainedContextSize?: number,
 ): string {
 	return buildContextCompactContent({
 		status: "completed",
 		summary,
 		compactedMessageCount,
 		compactedThroughMessageId,
+		contextSizeBefore,
+		retainedContextSize,
 	});
 }
 

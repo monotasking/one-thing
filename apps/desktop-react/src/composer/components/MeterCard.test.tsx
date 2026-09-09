@@ -7,6 +7,8 @@ import { useModelsSource } from '../../data/models-source'
 import { catalogQuery } from '../../providers/catalog-query'
 import { openRouterModel } from '../../data/__fixtures__/models'
 import { useSessionsSource } from '../../data/sessions-source'
+import { chatSources } from '../../data/chat-source'
+import type { ChatSourceState } from '../../data/chat-source'
 import { useStageStore } from '../../stage/store'
 import type { SessionSummary } from '../../expose/types'
 
@@ -83,6 +85,24 @@ function stage(window: number | null): void {
   seedFacts({ sessionId: 's1', tokens: TOKENS, usage: USAGE })
 }
 
+/**
+ * 往**那条会话自己的**账本上摆一条压缩标记(正文的形状与后端
+ * `buildContextCompactContent` 逐字同源)。环问的是 `useMeterSource.sessionId`
+ * 那台机器,所以摆的地方必须是 `chatSources.ensure('s1')` —— 不是「当前会话」那台。
+ */
+function seedCompacting(status: string, progress?: { chunk: number; totalChunks: number }): void {
+  const content = JSON.stringify({
+    type: 'context-compact',
+    status,
+    summary: '',
+    compactedMessageCount: 42,
+    ...(progress ? { progress } : {}),
+  })
+  chatSources.ensure('s1').store.setState({
+    messages: [{ id: 'm1', role: 'system', content, timestamp: NOW }],
+  } as unknown as Partial<ChatSourceState>)
+}
+
 beforeEach(() => {
   useStageStore.setState({ locale: 'zh' })
   useModelsSource.getState().reset()
@@ -91,6 +111,7 @@ beforeEach(() => {
   catalogQuery.reset()
   useMeterSource.getState().reset()
   useSessionsSource.setState({ sessions: [] })
+  chatSources.resetAll()
 })
 
 /*
@@ -102,6 +123,7 @@ afterEach(() => {
     useModelsSource.getState().reset()
     catalogQuery.reset()
     useMeterSource.getState().reset()
+    chatSources.resetAll()
   })
 })
 
@@ -128,6 +150,27 @@ describe('读数环', () => {
     const { container } = render(<ContextRing onEnter={() => {}} onLeave={() => {}} />)
     expect(screen.getByRole('img', { name: '上下文用量未知' })).toBeTruthy()
     expect(container.querySelectorAll('circle')).toHaveLength(1)
+  })
+
+  /*
+   * 压缩中那一格(U4)。判据在账本上(`content/compact/marker.ts` 的 selectCompacting),
+   * 所以这里摆的是**一条真的压缩标记**,不是一个假的开关 —— 与「造忙态就写
+   * activeMessageId」同一条纪律:真实现里唯一的开关是什么,测试就掀什么。
+   */
+  it('压缩中:环带上 data-compacting,读屏软件也听见「正在压缩」', () => {
+    stage(200_000)
+    seedCompacting('compacting', { chunk: 2, totalChunks: 5 })
+    const { container } = render(<ContextRing onEnter={() => {}} onLeave={() => {}} />)
+    expect(container.querySelector('[data-compacting]')).toBeTruthy()
+    expect(screen.getByRole('img', { name: '上下文用量 · 正在压缩' })).toBeTruthy()
+  })
+
+  it('压完:那一格自己消失 —— 同一条 marker 的正文被刷成 completed', () => {
+    stage(200_000)
+    seedCompacting('completed')
+    const { container } = render(<ContextRing onEnter={() => {}} onLeave={() => {}} />)
+    expect(container.querySelector('[data-compacting]')).toBeNull()
+    expect(screen.getByRole('img', { name: '上下文用量' })).toBeTruthy()
   })
 })
 
@@ -205,5 +248,26 @@ describe('明细卡', () => {
     useMeterSource.setState({ sessionId: 's2' })
     render(<MeterCard open />)
     expect(screen.getByText('还没有读数')).toBeTruthy()
+  })
+
+  it('压缩中多一行;多块带 k/N,单块不编「1 / 1」;不压缩时这一行不存在', () => {
+    stage(200_000)
+    // ① 不压缩:一行都没有
+    const idle = render(<MeterCard open />)
+    expect(idle.queryByText(/正在压缩/)).toBeNull()
+    idle.unmount()
+
+    // ② 多块:带 k/N
+    seedCompacting('compacting', { chunk: 2, totalChunks: 5 })
+    const many = render(<MeterCard open />)
+    expect(many.getByText('正在压缩 · 2 / 5')).toBeTruthy()
+    many.unmount()
+
+    // ③ 单块(后端不写 progress):只说「正在压缩」
+    seedCompacting('compacting')
+    const one = render(<MeterCard open />)
+    expect(one.getByText('正在压缩')).toBeTruthy()
+    // 「2 / 5」那半句一个字都没有(上下文那行本来就带 /,所以判据是这一行的全文)
+    expect(one.queryByText(/正在压缩 ·/)).toBeNull()
   })
 })

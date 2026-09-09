@@ -76,6 +76,8 @@ export const en: Record<MessageKey, string> = {
   'composer.noMatch': 'No match',
   'composer.context': 'Context usage',
   'composer.contextUnknown': 'Context usage unknown',
+  'composer.contextCompacting': 'Context usage · compacting',
+  'composer.contextUnknownCompacting': 'Context usage unknown · compacting',
 
   /* ── readouts ─────────────────────────────────────────────────────── */
   'meter.context': 'Context',
@@ -89,6 +91,9 @@ export const en: Record<MessageKey, string> = {
   'meter.costProvider': 'Provider quoted',
   'meter.cache': 'Cache hits',
   'meter.cacheValue': '{pct}%',
+  'meter.compact': 'Compaction',
+  'meter.compacting': 'Compacting',
+  'meter.compactingProgress': 'Compacting · {chunk} / {total}',
 
   /* ── status bar / run drawer ──────────────────────────────────────── */
   'status.toggle': 'Run status',
@@ -454,6 +459,18 @@ export const en: Record<MessageKey, string> = {
   'chat.errorCard': 'Something went wrong',
   'chat.thought': 'Thinking',
   'chat.streaming': 'Generating',
+  'chat.contextDeltaTitle': 'Context update',
+  'chat.contextDeltaCount': '{name} {n}',
+  'chat.contextDeltaRemoved': 'Removed {n}',
+  'chat.contextDeltaGone': 'Removed',
+  'chat.contextDeltaBlockVariables': 'Variables',
+  'chat.contextDeltaBlockTodo': 'To-do',
+  'chat.contextDeltaBlockSkills': 'Skills',
+  'chat.contextDeltaBlockActiveProject': 'Active project',
+  'chat.contextDeltaBlockKnownProjects': 'Known projects',
+  'chat.contextDeltaBlockAgentsMd': 'Project rules',
+  'chat.contextDeltaBlockVoice': 'Voice',
+  'chat.contextDeltaBlockPlugins': 'Plugins',
   'chat.retry': 'Retry',
   'chat.discard': 'Discard',
   'chat.streamReadout': 'Generating · {d}',

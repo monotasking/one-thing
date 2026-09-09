@@ -1,7 +1,11 @@
+import { useShallow } from 'zustand/react/shallow'
 import { useT } from '../../i18n'
 import type { TFn } from '../../i18n'
-import { useMeterView } from '../../data/meter-source'
+import { useMeterSource, useMeterView } from '../../data/meter-source'
 import type { MeterView } from '../../data/meter-source'
+import { useChatSourceOf } from '../../data/chat-source'
+import { selectCompactingReadout } from '../../content/compact/marker'
+import type { CompactingReadout } from '../../content/compact/marker'
 import { formatQuantity } from '../../format/quantity'
 import { formatUsd, percent, ringDash, ringUnknownDash } from '../transitions'
 import s from './Composer.module.css'
@@ -10,6 +14,19 @@ import s from './Composer.module.css'
 const RING_BOX = 18
 const RING_R = 7
 const RING_W = 2.6
+
+/**
+ * **「这条会话此刻在压缩吗」的订阅口。**
+ *
+ * 判据一个字都不在这里 —— 它在 `content/compact/marker.ts`(账本上最新一条压缩
+ * 标记的 status)。这只 hook 做的只有两件:问的是**读数自己开着的那条会话**
+ * (与 `useMeterView` 同源,不就地再读一次总览 —— 那会多一条会漂的读法),
+ * 以及用 `useShallow` 把那份**扁平**读数变成可比的快照(三个原始值,一次订阅)。
+ */
+function useCompacting(): CompactingReadout {
+  const sessionId = useMeterSource((st) => st.sessionId)
+  return useChatSourceOf(sessionId, useShallow(selectCompactingReadout))
+}
 
 /**
  * context 圆环 + 悬停出来的读数明细卡。
@@ -24,6 +41,7 @@ const RING_W = 2.6
 export function ContextRing({ onEnter, onLeave }: { onEnter: () => void; onLeave: () => void }) {
   const t = useT()
   const view = useMeterView()
+  const compacting = useCompacting()
   const pct =
     view.contextUsed === null || view.contextMax === null
       ? null
@@ -32,6 +50,9 @@ export function ContextRing({ onEnter, onLeave }: { onEnter: () => void; onLeave
   return (
     <span
       className={s.ctxRing}
+      /* 压缩中:弧脉动(皮肤在 CSS 里,这里只说事实)。压完 / 失败这一格自己消失 ——
+       * 判据是账本上那条 marker 的 status,不需要谁来「关掉」它。 */
+      data-compacting={compacting.on ? '' : undefined}
       /* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex --
        * 刻意的。这个圆环是「悬停出读数明细」的那个把手,role="img" 说的是它**画的是什么**
        * (一圈用量),tabIndex=0 给的是**键盘用户同样的那一眼**(onFocus/onBlur 与
@@ -40,8 +61,17 @@ export function ContextRing({ onEnter, onLeave }: { onEnter: () => void; onLeave
        * 报成按钮是对读屏软件说谎。 */
       tabIndex={0}
       role="img"
-      /* 读屏软件听见的也得是实话:不知道用量时说的是「未知」,不是「0%」。 */
-      aria-label={pct === null ? t('composer.contextUnknown') : t('composer.context')}
+      /* 读屏软件听见的也得是实话:不知道用量时说的是「未知」,不是「0%」;
+       * 压缩中那一句也要说出来 —— 脉动是给眼睛看的,读屏软件得听见同一件事。 */
+      aria-label={
+        compacting.on
+          ? pct === null
+            ? t('composer.contextUnknownCompacting')
+            : t('composer.contextCompacting')
+          : pct === null
+            ? t('composer.contextUnknown')
+            : t('composer.context')
+      }
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
       onFocus={onEnter}
@@ -66,6 +96,9 @@ export function ContextRing({ onEnter, onLeave }: { onEnter: () => void; onLeave
         />
         {pct !== null && (
           <circle
+            /* 弧自己有一份皮肤:读数变化时 dasharray 滑过去(不再跳变),
+             * 压缩中脉动。两条都在 `.ctxArc` / `[data-compacting] .ctxArc` 里。 */
+            className={s.ctxArc}
             cx={RING_BOX / 2}
             cy={RING_BOX / 2}
             r={RING_R}
@@ -93,11 +126,27 @@ interface MeterRow {
  * 六格事实 → 卡上的行。**算不出来的行不出现**,只有两种例外各出一行诚实的话:
  *  - 整份读数缺席(草稿态 / 两口都没答上话)→ 一行「还没有读数」;
  *  - 用量有、窗口不知道 → 上下文那行只写用量,并说明窗口未知。
+ *
+ * 压缩中多**一行**,排在最前面:它说的是「下面这些数马上要变」,
+ * 是一件正在发生的事,不是第七格读数。不在压缩时这一行连同它的判据一起不存在
+ * (`compacting` 缺省 = 没人问过压缩这件事,例如 `meterRowsOf` 的既有调用方)。
  */
-export function meterRowsOf(view: MeterView, t: TFn): MeterRow[] {
-  if (!view.present) return [{ key: t('meter.context'), value: t('meter.empty'), dim: true }]
+export function meterRowsOf(view: MeterView, t: TFn, compacting?: CompactingReadout): MeterRow[] {
+  const compactRow: MeterRow[] = compacting?.on
+    ? [{
+        key: t('meter.compact'),
+        // k/N 只有多块压缩才有(后端单块不写 progress)—— 编一个「1 / 1」是撒谎。
+        value: compacting.totalChunks > 0
+          ? t('meter.compactingProgress', { chunk: compacting.chunk, total: compacting.totalChunks })
+          : t('meter.compacting'),
+      }]
+    : []
 
-  const rows: MeterRow[] = []
+  if (!view.present) {
+    return [...compactRow, { key: t('meter.context'), value: t('meter.empty'), dim: true }]
+  }
+
+  const rows: MeterRow[] = [...compactRow]
 
   if (view.contextUsed !== null) {
     const pct = view.contextMax === null ? null : percent(view.contextUsed, view.contextMax)
@@ -155,7 +204,7 @@ export function meterRowsOf(view: MeterView, t: TFn): MeterRow[] {
 export function MeterCard({ open }: { open: boolean }) {
   const t = useT()
   const view = useMeterView()
-  const rows = meterRowsOf(view, t)
+  const rows = meterRowsOf(view, t, useCompacting())
 
   return (
     <div className={open ? `${s.meterCard} ${s.meterOn}` : s.meterCard}>

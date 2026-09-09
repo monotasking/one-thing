@@ -35,6 +35,22 @@ export interface CoreContextCompactContent {
 	 * P3:多块摘要的进度(每块完成后刷一次 marker)。单块压缩不写,不多发事件。
 	 */
 	progress?: CoreContextCompactProgress;
+	/**
+	 * U4(2026-09-08):压缩**开始那一刻**的 provider 输入读数(tokens)。
+	 *
+	 * 只有 `completed` 带它,而且必须在开始处取一次存住 —— 压缩结束时会话上那格
+	 * `contextSize` 已经被改写成压完之后的数,那时再读就是把「后」当成「前」。
+	 * 壳上那句「701k → 96k」的前半截只有这里说得出来:压完的读数账本上有,
+	 * 压之前的读数**这一刻之后就没人记得了**。可选、旧标记没有,照常渲染。
+	 */
+	contextSizeBefore?: number;
+	/**
+	 * 压完之后模型还看得见的上下文读数(`computeRetainedContextSizeAfterCompact`),
+	 * 与 `contextSizeBefore` 对称:壳上那句「701k → 96k」的后半截。账本事件
+	 * `session/compacted` 也带同一个数,标记上再写一份是为了折痕不必回账本对。
+	 * 只有 `completed` 带它;可选,旧标记没有。
+	 */
+	retainedContextSize?: number;
 }
 
 export interface CoreContextCompactMessage {
@@ -51,6 +67,8 @@ export function buildContextCompactContent(input: {
 	error?: string;
 	compactedThroughMessageId?: string;
 	progress?: CoreContextCompactProgress;
+	contextSizeBefore?: number;
+	retainedContextSize?: number;
 }): string {
 	const content: CoreContextCompactContent = {
 		type: "context-compact",
@@ -66,6 +84,12 @@ export function buildContextCompactContent(input: {
 	}
 	if (input.progress) {
 		content.progress = input.progress;
+	}
+	if (typeof input.contextSizeBefore === "number" && input.contextSizeBefore > 0) {
+		content.contextSizeBefore = input.contextSizeBefore;
+	}
+	if (typeof input.retainedContextSize === "number" && input.retainedContextSize > 0) {
+		content.retainedContextSize = input.retainedContextSize;
 	}
 	return JSON.stringify(content);
 }

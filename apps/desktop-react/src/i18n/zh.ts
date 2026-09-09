@@ -107,6 +107,9 @@ export const zh = {
   'composer.context': '上下文用量',
   /* 窗口大小拿不到时读屏软件听见的那句 —— 不能说成 0%。 */
   'composer.contextUnknown': '上下文用量未知',
+  /* 压缩中:那圈脉动给眼睛看,这两句给读屏软件听 —— 说的是同一件事。 */
+  'composer.contextCompacting': '上下文用量 · 正在压缩',
+  'composer.contextUnknownCompacting': '上下文用量未知 · 正在压缩',
 
   /* ── 读数明细(数来自账本,句子在这里) ───────────────────────────── */
   'meter.context': '上下文',
@@ -124,6 +127,10 @@ export const zh = {
   'meter.cache': '缓存命中',
   /* 「省 $x」在整仓没有产地,D2 波一连同那半句一起删了 —— 不编省钱数字。 */
   'meter.cacheValue': '{pct}%',
+  /* 压缩中才出现的那一行。k/N 只有多块才有 —— 单块编一个「1 / 1」是撒谎。 */
+  'meter.compact': '压缩',
+  'meter.compacting': '正在压缩',
+  'meter.compactingProgress': '正在压缩 · {chunk} / {total}',
 
   /* ── 状态条 / 执行抽屉 ────────────────────────────────────────────── */
   'status.toggle': '执行状态',
@@ -533,6 +540,22 @@ export const zh = {
   'chat.errorCard': '出错了',
   'chat.thought': '思考',
   'chat.streaming': '正在生成',
+  /* ── 上下文更新 chip(U3)──────────────────────────────────────────────
+   * 块名是**回合通道片段 id 的人话名**,不是这里发明的分类:改名要去产地
+   * (prompts/builder.ts 的 turn 片段 / variable-board.ts / plugin-context.ts)。
+   * 壳不认识的块 id **原样显示 id**,不进字典 —— 那是数据不是文案。 */
+  'chat.contextDeltaTitle': '上下文更新',
+  'chat.contextDeltaCount': '{name} {n}',
+  'chat.contextDeltaRemoved': '移除 {n}',
+  'chat.contextDeltaGone': '已移除',
+  'chat.contextDeltaBlockVariables': '变量',
+  'chat.contextDeltaBlockTodo': '待办',
+  'chat.contextDeltaBlockSkills': '技能',
+  'chat.contextDeltaBlockActiveProject': '当前项目',
+  'chat.contextDeltaBlockKnownProjects': '项目清单',
+  'chat.contextDeltaBlockAgentsMd': '项目约定',
+  'chat.contextDeltaBlockVoice': '语音',
+  'chat.contextDeltaBlockPlugins': '插件',
   'chat.retry': '重试',
   'chat.discard': '不发了',
   /* 流式读数行(台一定稿):一句话说完「还活着 + 跑了多久」。

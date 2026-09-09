@@ -793,6 +793,26 @@
 }
 
 /*
+ * 那一段弧自己的皮肤(U4,2026-09-08)。
+ *
+ * ① **读数变化时滑过去,不跳变** —— 每轮 run/end 读数一到,dasharray 换一个数,
+ *    从前是一帧之内跳完。这是「context 更新在页面上看得到」的唯一落点。
+ * ② **压缩中脉动** —— 配方与工具行「运行中」那枚呼吸图标同源
+ *    (`content/tools/ToolCard.module.css` 的 `--kf-tool-pulse`),不新增 keyframes,
+ *    也**不是** spinner(壳的禁令:spinner 只许在按钮内或状态栏)。
+ *    压完 / 失败脉动自己停:`data-compacting` 那一格由账本上 marker 的 status 说了算。
+ * 动效档「无」把 --dur-release / --dur-tool-pulse 一起归零(motion.css 的档位表),
+ * 于是过渡与脉动同时静止 —— 这一处不写第二套 reduce 判据。
+ */
+.ctxArc {
+  transition: stroke-dasharray var(--dur-release) var(--ease-out);
+}
+
+.ctxRing[data-compacting] .ctxArc {
+  animation: var(--kf-tool-pulse) var(--dur-tool-pulse) var(--ease) infinite alternate;
+}
+
+/*
  * **签名件皮肤**(09-01 批 3.5 收编)——底座是 `ui/ButtonBase`(只清 UA),
  * 这一份 accent 实底圆的配方留在本地。编排拍定:**发送键不进 IconButton,
  * IconButton 不长实底家族** —— 那件是「檐上那种钮」(无边框、无实底、

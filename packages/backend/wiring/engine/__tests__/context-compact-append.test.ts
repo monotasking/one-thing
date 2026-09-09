@@ -137,6 +137,8 @@ function parseContent(content: string) {
     error?: string
     compactedThroughMessageId?: string
     progress?: { chunk: number; totalChunks: number }
+    contextSizeBefore?: number
+    retainedContextSize?: number
   }
 }
 
@@ -513,6 +515,30 @@ describe('空摘要闸(2026-08-15)', () => {
     expect(options.maxTokens).toBeLessThan(190_000)
     // 窗口 200000 − 输入 − 开销 4000:输入至少是 provider 报的那 100k 量级。
     expect(options.maxTokens).toBeLessThan(200_000 - 100_000 - 4_000 + 1)
+  })
+
+  it('completed marker 带上压缩**开始那一刻**的 provider 读数(不是压完之后那个)', async () => {
+    // 单块那一档(与上一条的 ② 同一组数),把注意力留给「读的是哪一刻」。
+    sessionRef.current.messages[0].content = 'x'.repeat(10_000)
+    sessionRef.current.contextSize = 100_000
+    // 压缩过程中会话上那格被改写成压完之后的数 —— 结尾再读就会把「后」当成「前」。
+    generateChatResponse.mockImplementation(async () => {
+      sessionRef.current.contextSize = 9_600
+      return '## Goal\nHOST SUMMARY'
+    })
+
+    const result = await compactSessionContext(baseOptions)
+
+    expect(result.success).toBe(true)
+    const marker = sessionRef.current.messages[sessionRef.current.messages.length - 1]
+    const content = parseContent(marker.content as string)
+    expect(content.status).toBe('completed')
+    expect(content.contextSizeBefore).toBe(100_000)
+    // 「后」那格与账本事件 `session/compacted` 带的是同一个数:压完后还看得见的读数,
+    // 一定小于压前,且标记上必须有(折痕那句「前 → 后」不回账本对)。
+    expect(typeof content.retainedContextSize).toBe('number')
+    expect(content.retainedContextSize!).toBeGreaterThan(0)
+    expect(content.retainedContextSize!).toBeLessThan(100_000)
   })
 
   it('没有 provider 真数 → 回退估算器,块与 max_tokens 与从前逐字一致', async () => {

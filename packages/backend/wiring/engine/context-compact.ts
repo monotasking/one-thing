@@ -103,6 +103,15 @@ export async function compactSessionContext(options: {
     }
   }
 
+  /*
+   * U4(2026-09-08):压缩**开始那一刻**的 provider 输入读数,就地取一次存住。
+   *
+   * 不能等到结尾再读:那时 `updateSessionContextSize` / 账本落格已经把会话上那格
+   * 改写成**压完之后**的数,读出来的「前」其实是「后」,壳上那句「701k → 96k」
+   * 会变成「96k → 96k」。这一刻之后,压之前的读数在这个进程里没有第二个人记得。
+   */
+  const contextSizeBefore = providerReportedInputTokens(session)
+
   const compactMessage = createContextCompactMessage({
     id: createCoreId(),
     timestamp: Date.now(),
@@ -216,20 +225,23 @@ export async function compactSessionContext(options: {
     }
     summary = `${summaryBody}${formatCompactFileOperations(fileOperations)}`
 
-    const finalContent = buildContextCompactCompletedContent(
-      summary,
-      plan.messagesToSummarize.length,
-      plan.cutoffMessage.id,
-    )
-
     store.updateSessionSummary(options.sessionId, summary, plan.cutoffMessage.id)
-    store.updateMessageContent(options.sessionId, compactMessage.id, finalContent)
+    // 「后」那个数要先算出来再拼标记(它读的是刚写进去的新摘要),所以摘要落格
+    // 在前、标记落格在后;账本事件与标记带的是同一个 retainedContextSize。
     const retainedContextSize = await computeRetainedContextSizeAfterCompact({
       sessionId: options.sessionId,
       providerId: options.providerId,
       configWithApiKey: options.configWithApiKey,
       settings: options.settings,
     })
+    const finalContent = buildContextCompactCompletedContent(
+      summary,
+      plan.messagesToSummarize.length,
+      plan.cutoffMessage.id,
+      contextSizeBefore,
+      retainedContextSize,
+    )
+    store.updateMessageContent(options.sessionId, compactMessage.id, finalContent)
     await options.onMessageUpdated?.(compactMessage.id, { content: finalContent })
 
     // S1a(§10.6 第 5 条):压缩是 surface 上的一次 replace —— 被压掉的那一段
