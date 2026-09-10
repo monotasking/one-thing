@@ -5,6 +5,7 @@ import { FocusScope } from '../focus/FocusScope'
 import { useT } from '../i18n'
 import { claimContentSlot, registerContentHolder, unregisterContentHolder } from './content-slots'
 import { useFullSlot } from './full-slot'
+import { useKeptContents } from './kept-contents'
 import { flattenContent, partsOfContent, refId } from './kinds'
 import { LeafActions } from './LeafActions'
 import { openLeafMenuAt } from './leaf-menu'
@@ -142,20 +143,44 @@ export const PaneLeaf = memo(function PaneLeaf({
   const active = leaf.tabs[leaf.active] ?? null
 
   /**
+   * **这片叶额外要挂、但没有标签的那几格**(组件级停靠,2026-09-10)。
+   * 表在 `./kept-contents.ts`,写它的是能力自己(会话那一种:`content/session-park`)
+   * —— 这只文件读表,不认识任何能力的名字。
+   */
+  const kept = useKeptContents(leaf.id)
+  /**
+   * **这片叶要挂的全集** = 标签 ∪ 停靠。标签优先(同一格两边都在时只算一次:
+   * 停靠那一头的对账下一拍会把它摘掉,而屏幕上不许有中间那一帧的两层)。
+   */
+  const held = useMemo(() => {
+    if (kept.length === 0) return leaf.tabs
+    const seen = new Set(leaf.tabs.flatMap((ref) => flattenContent(ref)).map(refId))
+    const extra = kept.filter((ref) => !seen.has(refId(ref)))
+    return extra.length === 0 ? leaf.tabs : [...leaf.tabs, ...extra]
+  }, [leaf.tabs, kept])
+  /**
    * 这片叶里那几格**内容**(复合的摊开)。判词在 `./content-slots.ts`:
    * 二合一改的是标签的身份,内容那一格的身份一个字都不该跟着变。
    */
-  const contents = useMemo(
-    () => leaf.tabs.flatMap((ref) => flattenContent(ref)),
-    [leaf.tabs],
-  )
+  const contents = useMemo(() => held.flatMap((ref) => flattenContent(ref)), [held])
   /** 此刻活着(= 属于活动那一格标签)的那几格内容。 */
   const liveIds = useMemo(
     () => new Set((active ? flattenContent(active) : []).map(refId)),
     [active],
   )
-  /** 画法层的排法(出生序,判词在 `useFrameOrder` 上)与「哪一格是活动的」。 */
-  const frames = useFrameOrder(leaf.tabs)
+  /** **有标签的那几格**(停靠的没有)—— 两层的取件口按它分叉,见 `PaneContentLayer`。 */
+  const tabbedIds = useMemo(
+    () => new Set(leaf.tabs.flatMap((ref) => flattenContent(ref)).map(refId)),
+    [leaf.tabs],
+  )
+  /**
+   * 画法层的排法(出生序,判词在 `useFrameOrder` 上)与「哪一格是活动的」。
+   *
+   * **喂的是全集**:一格从标签变成停靠(原位换会话)时它仍旧在这张表上、仍旧
+   * 在出生序里的老位置,于是 React 只翻一个 `on` —— 层不重挂、槽不换、
+   * `content-slots` 连试一次配对都不必。那正是「切回 = 改属性」的落点。
+   */
+  const frames = useFrameOrder(held)
   const activeId = active ? refId(active) : null
 
   /** 檐在不在这片叶身上。**唯一判据**,见文件头那张区域表。 */
@@ -306,6 +331,7 @@ export const PaneLeaf = memo(function PaneLeaf({
                   refKind={ref.kind}
                   refKey={ref.key}
                   on={liveIds.has(refId(ref))}
+                  tabbed={tabbedIds.has(refId(ref))}
                 />
               ))}
             </>,
@@ -454,10 +480,18 @@ const PaneContentLayer = memo(function PaneContentLayer({
   refKind,
   refKey,
   on,
+  tabbed,
 }: {
   refKind: string
   refKey: string
   on: boolean
+  /**
+   * **这一格此刻有没有标签**(组件级停靠,2026-09-10)。没有 = 它是一格
+   * **停靠**的内容:照旧挂着、照旧走这一层的 `inert` 两遍,只是取件口画的是
+   * `data-pane-kept` 而不是 `data-pane-tab` —— 判词整段在
+   * `./kept-contents.ts` 的「排出去的那一格是有意的」。
+   */
+  tabbed: boolean
 }) {
   const id = `${refKind}:${refKey}`
   const contentRef = useMemo<ContentRef>(() => ({ kind: refKind, key: refKey }), [refKind, refKey])
@@ -505,9 +539,17 @@ const PaneContentLayer = memo(function PaneContentLayer({
             <div
               {...scopeProps}
               className={on ? s.layer : `${s.layer} ${s.layerHidden}`}
-              data-pane-tab={id}
+              data-pane-tab={tabbed ? id : undefined}
+              data-pane-kept={tabbed ? undefined : id}
               data-pane-on={on || undefined}
               inert={!on || undefined}
+              /*
+               * `inert` 已经把这一层从辅助树上摘掉了(规范如此),这一句是**说第二遍**
+               * —— 与上面「`inert` 说两遍」同一条纪律的第三面:浏览器实现漂移时
+               * 辅助技术仍旧读不到后台那一层。停靠的会话叶在读屏器里必须是不存在的,
+               * 不是「存在但读不到」。`gate:a11y` 的口径不变(它扫的是活动那一层)。
+               */
+              aria-hidden={!on || undefined}
             >
               {renderRef(contentRef, visibility)}
             </div>
@@ -545,6 +587,12 @@ const PaneContentLayer = memo(function PaneContentLayer({
  * 一格 `useRef` 存这张表 —— 它是**这只组件实例**的缓存(不是模块级状态,没有跨模块
  * 存活的东西,不需要 HMR dispose)。渲染中改 ref 在这里是安全的:同样的输入跑两遍
  * 得到同样的输出(StrictMode 的双渲染因此无感),而且它只决定次序,不决定画什么。
+ *
+ * ── 2026-09-10:收的是「标签 ∪ 停靠」的全集,不再只是标签 ──────────────────
+ * 组件级停靠靠的正是这条出生序:一格从标签变成停靠(原位换会话)时它在这张表上
+ * **一格没动**,于是那一层连同它的槽、槽里那块内容的身子全都留在原处 ——
+ * 「切回 = 改属性」这句话如果没有出生序就不成立(按 `leaf.tabs` 排的话,换会话
+ * 会把那一层从名单里摘掉再补一个新的,正是上面那段病历的形状)。
  */
 function useFrameOrder(tabs: readonly ContentRef[]): readonly ContentRef[] {
   const born = useRef<string[]>([])

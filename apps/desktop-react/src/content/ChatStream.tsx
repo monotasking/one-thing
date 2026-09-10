@@ -33,6 +33,7 @@ import { StreamReadout } from './message/StreamReadout'
 import { MessageSourceFoot } from './research/SourceFoot'
 import { SegmentView } from './SegmentView'
 import { FocusScope } from '../focus/FocusScope'
+import { usePanelVisibility } from './visibility'
 import { Dots } from '../ui/Dots'
 import { FollowPill } from './FollowPill'
 import {
@@ -359,7 +360,12 @@ function useTailWindow(
   const grow = useCallback(
     (nextStart: number) => {
       const el = scrollRef?.current
-      if (el) pending.current = { top: el.scrollTop, height: el.scrollHeight }
+      // 停靠中照旧扩窗(后台把窗补全,切回来就是全量),但**不留补偿**:
+      // 那时几何全是 0,记下来的「原位 + 长高了多少」是一份假账,下一拍会被
+      // 拿去写 `scrollTop`。位置由取回那一拍统一恢复(见 `useParkedScroll`)。
+      pending.current = el && el.clientHeight > 0
+        ? { top: el.scrollTop, height: el.scrollHeight }
+        : undefined
       const changed = growChatWindow(sessionId, nextStart)
       if (!changed) pending.current = undefined
     },
@@ -379,6 +385,8 @@ function useTailWindow(
     pending.current = undefined
     const el = scrollRef?.current
     if (!captured || !el) return
+    // 捕获之后、提交之前被切走了 —— 那一格补偿此刻算不出来,也不需要算。
+    if (el.clientHeight === 0) return
     const delta = el.scrollHeight - captured.height
     if (delta === 0) return
     el.scrollTop = captured.top + delta
@@ -488,10 +496,19 @@ function useFollowBottom(
     setFollow(next)
   }, [])
 
-  /** 贴底。**唯一**一处写 `scrollTop`,三个调用点(进场 / 长高 / 点丸)都经它。 */
+  /**
+   * 贴底。**唯一**一处写 `scrollTop`,三个调用点(进场 / 长高 / 点丸)都经它。
+   *
+   * **停靠中不写**(2026-09-10 组件级停靠):`content-visibility: hidden` 的子树
+   * 里没有盒子,`scrollHeight` 与 `clientHeight` 一律报 0,赋一次 `scrollTop = 0`
+   * 就是把这条会话的位置抹掉 —— 而人只是切去看了别的会话。判据用几何
+   * (`clientHeight === 0`)而不是「宿主说我看不见」:它对任何一种藏法都成立,
+   * 与 `tools/card-heights` 那句 `height <= 0` / clamp-measurer 同一把尺子。
+   */
   const stick = useCallback(() => {
     const el = scrollRef?.current
     if (!el) return
+    if (el.clientHeight === 0) return
     el.scrollTop = el.scrollHeight
   }, [scrollRef])
 
@@ -509,6 +526,21 @@ function useFollowBottom(
    * 三个写点:进场落定、滚动停下、RO 回调 —— 也就是 gap 会变的全部三条路。
    */
   const lastGapRef = useRef(0)
+
+  /**
+   * **停靠之前人停在第几像素**(2026-09-10 组件级停靠)。写点只有一处:滚动
+   * 回调(判词在那儿)。读点只有一处:取回那一拍(`useParkedScroll`)。
+   * `undefined` = 这次挂载里人一次都没滚过 —— 那时缺省的 pinned 会去贴底,
+   * 不需要它。
+   */
+  const lastTopRef = useRef<number | undefined>(undefined)
+  /**
+   * **取回那一拍要对的位**(在场 = 「刚被拿回来,还没对过」)。立它的是
+   * `useParkedScroll`(零几何读),消它的是下面那只观察者 —— 判词在两处。
+   */
+  const unparkTopRef = useRef<number | undefined>(undefined)
+  /** 宿主说这一份此刻在不在屏上(`content/visibility.ts`)。 */
+  const { visible } = usePanelVisibility()
 
   /**
    * **进场落回锚点还没落稳的那一格**(2026-09-10)。在场 = 「这一批尺寸变化说的是
@@ -540,7 +572,9 @@ function useFollowBottom(
     anchorTimer.current = window.setTimeout(() => {
       anchorTimer.current = undefined
       const el = scrollRef?.current
-      if (el) saveSessionScrollAnchor(sessionId, measureScrollAnchor(el))
+      // 去抖那一发可能落在**已经被停靠**之后:那时容器没有排版,量出来的
+      // 「离底 0」是假的(判词在 `measureScrollAnchor` 的 0 高度那一句上)。
+      if (el && el.clientHeight > 0) saveSessionScrollAnchor(sessionId, measureScrollAnchor(el))
     }, SCROLL_ANCHOR_SETTLE_MS)
   }, [scrollRef, sessionId])
 
@@ -692,6 +726,32 @@ function useFollowBottom(
     lastHeightRef.current = column.getBoundingClientRect().height
     lastGapRef.current = el.scrollHeight - el.clientHeight - el.scrollTop
     const observer = new ResizeObserver((entries) => {
+      /*
+       * ── 停靠中这一批不是读数(2026-09-10 组件级停靠)────────────────────────
+       * 一格会话被切走时它那一层挂上 `content-visibility: hidden`,子树里的盒子
+       * 当场消失 —— 观察者因此会收到一批「高度 0」的变化。那不是「内容变矮了」,
+       * 是**这棵树此刻没有排版**;照常往下走的话:`lastHeightRef` 被 0 冲掉
+       * (切回来第一次真高就成了「长高」)、`stick()` 把位置抹平、丸乱亮。
+       * 一句判据管住整批 —— 与上面 `stick` 用的是同一把尺子。
+       * RO 回调跑在排版之后,读 `clientHeight` 不会逼出第二次排版。
+       */
+      if (el.clientHeight === 0) return
+      /*
+       * ── 刚被拿回来那一批(2026-09-10 组件级停靠)────────────────────────────
+       * 这一批尺寸变化说的是「这棵树重新有排版了」,不是「下面长出了东西」。
+       * 兜底对位落在这儿而不是那只 layout effect 里,理由(与那 44ms 的读数)
+       * 整段写在 `useParkedScroll` 上:RO 回调跑在排版之后,这里读几何是白拿的。
+       * 真机上浏览器已经把位置留住了,所以这两句今天恒是一次恒等。
+       */
+      const wantTop = unparkTopRef.current
+      if (wantTop !== undefined) {
+        unparkTopRef.current = undefined
+        const browsing = !followShouldStick(followRef.current)
+        if (browsing && Math.abs(el.scrollTop - wantTop) > AT_BOTTOM_EPS) el.scrollTop = wantTop
+        lastGapRef.current = el.scrollHeight - el.clientHeight - el.scrollTop
+        // 跟底档照旧往下走(停靠期间长出来的那几段要跟);浏览档到此为止。
+        if (browsing) return
+      }
       let contentGrew = false
       let containerChanged = false
       for (const entry of entries) {
@@ -811,6 +871,14 @@ function useFollowBottom(
       // gap 会变的三条路之一(另两条是进场落定与 RO)—— 基准跟着走,
       // 否则「往上翻两屏」会被下一次 RO 读成一次「下面长出了东西」。
       lastGapRef.current = gap
+      /*
+       * **人此刻停在第几像素**(2026-09-10 组件级停靠)。取回那一拍要用它把位置
+       * 摆回去,而那一拍读不到它 —— 停靠期间容器没有排版,`scrollTop` 报 0。
+       * 记在滚动这一头是白拿的:这只回调本来就在读同一批几何。
+       * (与锚点表分工:锚点按**消息**记、跨挂载留着,给冷载入与被逐出那条路用;
+       *  这一格按**像素**记、只活在这次挂载里,给「同一棵树藏起来再拿出来」用。)
+       */
+      lastTopRef.current = el.scrollTop
       dispatch({ type: 'scrolled', gap })
     }
     // 停稳之后记一笔「看到哪儿」——这里只重排计时器,量在停下来那一下(见上)。
@@ -818,7 +886,56 @@ function useFollowBottom(
     onScroll?.()
   }, [scrollRef, onScroll, dispatch, scheduleAnchorSave])
 
+  /*
+   * **拿回来那一拍**(2026-09-10 组件级停靠)。判词整段在 `useParkedScroll` 上;
+   * 它要的那两格镜像是这只 hook 的内脏,所以调用点在这里,不在组件层。
+   */
+  useParkedScroll(visible, lastTopRef, unparkTopRef)
+
   return { follow, jumpToBottom, onScrollWithFollow }
+}
+
+/**
+ * **「这一拍被拿回来了」这件事本身**(2026-09-10 组件级停靠)。
+ *
+ * 它**一格几何都不读**,只在取回那一拍立一格待办;真正的对位由下面那只
+ * ResizeObserver 顺手做掉 —— 判词见「为什么不在这里动手」。
+ *
+ * ── 判据用的是「宿主说我看不见」,不是几何 ──────────────────────────────
+ * 与那三处守卫(`stick` / RO / 锚点去抖)分工:守卫问的是「此刻能不能量」,
+ * 几何自己答得出;这里问的是「哪一拍**从**看不见变成看得见」,而那是一次
+ * **变化**,几何答不出(停靠期间它恒为 0,取回之后恒不为 0,没有边沿)。
+ * `usePanelVisibility` 正是宿主为这句话立的口子(`PaneLeaf` 每一层都在报它)。
+ *
+ * ── 为什么不在这里动手(2026-09-10 真机读数,官方夹具 50.9MB / 400 条)──────
+ * 第一版在这只 layout effect 里当场读 `scrollTop` / `scrollHeight` 再对位。
+ * 那一读**排在点击那一个同步任务里**,而此刻那棵树刚从 `content-visibility:
+ * hidden` 里放出来 —— 一读就是一次 400 行 / 115,207px 的强制排版:
+ * `gate:chat-layout --prod` 的 A#2(第一次切回一棵停靠着的大树)
+ * **clickSync 68ms、首帧 77ms**;把这一读拆掉,同一档是 **24ms / 27ms**,
+ * 而 ⑨(切回来停在离开时那一行)**两档都是 0px 漂移**。
+ *
+ * 后半句正是这一批要真机回答的那个问题:**`content-visibility: hidden` 在
+ * Chromium 上确实把内层滚动容器的 `scrollTop` 留住了**(拆掉对位之后 ⑨ 仍旧
+ * 逐字落回原行原位)。所以对位在今天是一次恒等 —— 但它不是规范承诺,
+ * 所以这一格**留着当兜底**,只是搬到了不要钱的地方:RO 的回调**跑在排版之后**,
+ * 那里读几何不逼第二次排版。
+ *
+ * 跟底档不必立待办:内容在停靠期间长高了多少,RO 那一头本来就要跟(它拿的是
+ * 停靠前那一格 `lastHeightRef`,取回那一批变化于是如实读成一次长高)。
+ */
+function useParkedScroll(
+  visible: boolean,
+  lastTopRef: RefObject<number | undefined>,
+  unparkTopRef: RefObject<number | undefined>,
+): void {
+  /** 上一拍是不是看得见。首挂那一次不算「取回」—— 进场那只 effect 管着它。 */
+  const wasVisible = useRef(visible)
+  useLayoutEffect(() => {
+    const came = visible && !wasVisible.current
+    wasVisible.current = visible
+    if (came) unparkTopRef.current = lastTopRef.current
+  }, [visible, lastTopRef, unparkTopRef])
 }
 
 /** 不装配的那两种角色共用同一个空数组 —— 每次新造一个会让下游的浅比全部落空。 */

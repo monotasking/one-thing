@@ -7,6 +7,7 @@ import {
   startCompanionUpkeep,
   stopCompanionUpkeep,
 } from './session-companions'
+import { parkedSessionIds, reconcileSessionParks, stopSessionParks } from './session-park'
 import {
   currentSessionOf,
   leafHoldsSession,
@@ -38,8 +39,11 @@ import type { ContentRef } from '../workbench/kinds'
  *    ⌘N 继承哪个项目,都不该因为你点了一下旁边那个文件而换掉。
  *    两片会话叶并排时它们真的会分家:焦点从 B 移到一片文件叶,`currentSessionId`
  *    按梯子回落到阅读序第一片(A),而 `envSessionId` 仍然停在 B;
- *  ③ 数据机器那本**引用账** —— 「树里 ∪ 隐藏表里」有哪些会话,就 `acquire`
- *    哪些,不在的松手。它不是一格状态,是一次集合差。
+ *  ③ 数据机器那本**引用账** —— 「树里 ∪ 隐藏表里 ∪ 视图停靠池里」有哪些会话,
+ *    就 `acquire` 哪些,不在的松手。它不是一格状态,是一次集合差。
+ *    第三项是 2026-09-10 组件级停靠加的:一格停靠着的会话叶**照旧挂在屏幕上**
+ *    (只是 `content-visibility: hidden`),它当然该继续收流 —— 与「hidden 的
+ *    会话叶实例留着」逐字同一条理由,只是这一份不在树上也不在隐藏表里。
  *
  * ── 引用账为什么是集合差,而不是挂在组件挂载上 ──────────────────────────
  * 派工规格写的是「关闭才 release(`ContentKind.dispose`)」。真按 `dispose`
@@ -72,12 +76,18 @@ function liveSessionIds(): Set<string> {
 /**
  * 按此刻的树算一次投影,该写就写。**唯一产地**。
  *
- * 三件事一次做完(它们读的是同一份树,分三条订阅只会让它们在同一拍里各算一遍):
- * 写 `currentSessionId` / `envSessionId`、把「当前会话」那一格告诉数据机器注册表、
- * 对齐引用账。没变就不 `set` —— 一次无谓的 set 会让列表、输入框、agent 徽全重渲。
+ * 四件事一次做完(它们读的是同一份树,分四条订阅只会让它们在同一拍里各算一遍):
+ * 对齐视图停靠池、写 `currentSessionId` / `envSessionId`、把「当前会话」那一格
+ * 告诉数据机器注册表、对齐引用账。没变就不 `set` —— 一次无谓的 set 会让列表、
+ * 输入框、agent 徽全重渲。
+ *
+ * **视图停靠池排在最前**:它的对账会把「已经变成标签的」「叶没了的」那几格摘掉,
+ * 而下面那本引用账要读它的结果(`parkedSessionIds()`)。反过来排的话,一格刚被
+ * 摘掉的停靠会在这一拍里多按一次引用,下一拍才松手 —— 不是错,但没有必要。
  */
 export function syncSessionProjection(): void {
   const workbench = useWorkbenchStore.getState()
+  reconcileSessionParks(workbench.regions)
   const next = currentSessionOf(workbench.regions, workbench.focusLeafId)
   const state = useExposeStore.getState()
   /*
@@ -125,8 +135,8 @@ export function syncSessionProjection(): void {
    */
   chatSources.setCurrent(next)
 
-  // 引用账:树上有的持一份并起底,不在的松手。幂等 —— 差集为空时零动作。
-  reconcileSessionRefs(open)
+  // 引用账:树上有的、停靠着的持一份并起底,都不在的松手。幂等 —— 差集为空时零动作。
+  reconcileSessionRefs([...open, ...parkedSessionIds()])
 }
 
 /**
@@ -202,6 +212,11 @@ export function stopSessionProjection(): void {
   stopRoster = null
   // 接上过没有都要收一次:队里那一条待办的寿命也是这个模块实例。
   stopCompanionUpkeep()
+  /*
+   * 视图停靠池的寿命与这条投影逐字相同(它是在这一遍里被对账的),所以退役
+   * 一起收 —— 留着的话热更之后旧模块那几棵停靠的树还挂在 `kept-contents` 表上。
+   */
+  stopSessionParks()
   for (const id of [...held]) {
     held.delete(id)
     chatSources.release(id)

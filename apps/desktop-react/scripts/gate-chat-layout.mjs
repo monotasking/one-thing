@@ -234,9 +234,23 @@ async function installProbe(page) {
      * (`content-visibility: auto`)还可能一格都没画;也不判「任意一行可见」:
      * 切换前屏幕上是另一条会话的行,那也叫「有行可见」。
      */
+    /**
+     * **在屏那一片聊天区**(2026-09-10 组件级停靠之后)。
+     *
+     * 停靠起来的会话叶**照旧挂在 DOM 上**(`content-visibility: hidden` + inert),
+     * 所以 `document.querySelector('[data-testid="chat-stream"]')` 会命中它们里面
+     * 的任意一片 —— 而画法层按**出生序**排,先开的那条排在前面,于是「第一个」
+     * 恰恰常常是藏起来的那一片。判据因此收窄到活动那一层(`[data-pane-on]`);
+     * 拼贴台之外的宿主(舞台 / 浮窗)不画这个属性,所以留一格退路。
+     */
+    const liveStream = () =>
+      document.querySelector('[data-pane-on] [data-testid="chat-stream"]')
+      ?? document.querySelector('[data-testid="chat-stream"]')
+
     const visible = (messageId) => {
-      const scroll = document.querySelector('[data-testid="chat-stream"]')
-      const row = messageId ? document.querySelector(`[data-message-id="${messageId}"]`) : null
+      const scroll = liveStream()
+      // 行也要限定在**这一片**里找:停靠的那几片装着别的会话的行,一路同名。
+      const row = messageId && scroll ? scroll.querySelector(`[data-message-id="${messageId}"]`) : null
       if (!(scroll instanceof HTMLElement) || !row) return false
       const box = scroll.getBoundingClientRect()
       const rect = row.getBoundingClientRect()
@@ -300,9 +314,13 @@ async function harvest(page, mark) {
 
 function readView(page) {
   return page.evaluate(() => {
-    const scroll = document.querySelector('[data-testid="chat-stream"]')
+    // 在屏那一片(判词与页内探针的 `liveStream` 逐字同源 —— 组件级停靠之后
+    // DOM 上同时挂着好几片聊天区,量错一片读数就全错)。
+    const scroll =
+      document.querySelector('[data-pane-on] [data-testid="chat-stream"]')
+      ?? document.querySelector('[data-testid="chat-stream"]')
     if (!(scroll instanceof HTMLElement)) return { rowCount: 0 }
-    const rows = [...document.querySelectorAll('[data-message-id]')]
+    const rows = [...scroll.querySelectorAll('[data-message-id]')]
     const base = scroll.getBoundingClientRect().top
     /** 视口里最上面那条还露着的消息 —— 与 `measureScrollAnchor` 同一条判据。 */
     let anchor
@@ -537,15 +555,50 @@ async function main() {
       )
     }
     readings.switches = switches
-    readings.dom = await page.evaluate(() => ({
-      domNodes: document.querySelectorAll('*').length,
-      messages: document.querySelectorAll('[data-message-id]').length,
-      toolCards: document.querySelectorAll('[class*="toolCard"]').length,
-      contentHeight: Math.round(
-        document.querySelector('[data-testid="chat-stream"]')?.firstElementChild?.getBoundingClientRect().height ?? 0,
-      ),
-    }))
+    readings.dom = await page.evaluate(() => {
+      const live =
+        document.querySelector('[data-pane-on] [data-testid="chat-stream"]')
+        ?? document.querySelector('[data-testid="chat-stream"]')
+      return {
+        domNodes: document.querySelectorAll('*').length,
+        // **在屏那一片**的行数;`parkedStreams` 才是「藏着几片」。
+        messages: live?.querySelectorAll('[data-message-id]').length ?? 0,
+        toolCards: document.querySelectorAll('[class*="toolCard"]').length,
+        contentHeight: Math.round(live?.firstElementChild?.getBoundingClientRect().height ?? 0),
+        /** 组件级停靠此刻藏着几棵树(0 = 这一档没有停靠,与改前逐字相同)。 */
+        parkedStreams: document.querySelectorAll('[data-pane-kept] [data-testid="chat-stream"]').length,
+      }
+    })
     console.log(`      现场:${JSON.stringify(readings.dom)}(真店对照:37470 节点 / 269803px)`)
+
+    /*
+     * ── ⑫ 停靠 N 棵树之后的渲染进程 JS 堆(2026-09-10 组件级停靠)──────────────
+     *
+     * 停靠是拿**堆**换**时间**:切回来不重挂,代价是那几棵树的 DOM 与 fiber 一直
+     * 占着。所以这一格与 ①④ 同批量出来,读数摆在一起才看得出这笔交易划不划算。
+     *
+     * 量法用 CDP 的 `Runtime.getHeapUsage`(`performance.memory` 在渲染进程里被
+     * 粒度化到 MB 级,而且它报的是「上一次 GC 之后」的数,分辨不出这几棵树)。
+     * 先 `HeapProfiler.collectGarbage` 逼一次真 GC:不逼的话读到的是「还没回收的
+     * 垃圾 + 活对象」,那个数与「停了几棵树」没有关系。
+     */
+    try {
+      await cdp.send('HeapProfiler.enable').catch(() => undefined)
+      await cdp.send('HeapProfiler.collectGarbage')
+      await delay(500)
+      const usage = await cdp.send('Runtime.getHeapUsage')
+      readings.heap = {
+        usedMB: Math.round((usage.usedSize / 1024 / 1024) * 10) / 10,
+        totalMB: Math.round((usage.totalSize / 1024 / 1024) * 10) / 10,
+        parkedStreams: readings.dom.parkedStreams,
+      }
+      console.log(
+        `      ⑫ 停靠 ${readings.heap.parkedStreams} 棵树之后的 JS 堆:`
+        + `${readings.heap.usedMB}MB / ${readings.heap.totalMB}MB(GC 之后)`,
+      )
+    } catch (error) {
+      readings.heap = { error: String(error?.message ?? error) }
+    }
 
     const byLabel = (name) => switches.find((s) => s.label === name)
     const cold = byLabel('cold-A')
@@ -735,6 +788,8 @@ function renderTable(r) {
     ['⑨ 锚点漂移', r.anchor?.before && r.anchor?.after ? `${Math.abs(r.anchor.after.offset - r.anchor.before.offset)} px` : '—'],
     ['⑩ resize 最长帧', r.resize ? `${r.resize.longestFrame} ms` : '—'],
     ['⑪ 流完离底', r.stream ? `${r.stream.gap} px` : '—'],
+    ['⑫ 停靠棵数', r.dom ? `${r.dom.parkedStreams ?? 0} 棵(视图停靠池)` : '—'],
+    ['⑫ JS 堆(GC 后)', r.heap?.usedMB !== undefined ? `${r.heap.usedMB} MB / 总 ${r.heap.totalMB} MB` : (r.heap?.error ?? '—')],
   ]
   const width = Math.max(...rows.map(([k]) => k.length))
   return rows.map(([k, v]) => `  ${k.padEnd(width)}  ${v}`).join('\n')

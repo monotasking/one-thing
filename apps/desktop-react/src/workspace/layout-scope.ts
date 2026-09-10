@@ -5,6 +5,7 @@ import { SESSION_OPEN_MODE_PER_SPACE, useSessionOpenMode } from '../data/session
 import { EXPOSE_PER_SPACE, useExposeStore } from '../expose/store'
 import { WORKBENCH_PER_SPACE, useWorkbenchStore } from '../workbench/store'
 import { swapFilesForSpace } from '../data/files-source'
+import { clearSessionParks } from '../content/session-park'
 import { bindPerSpace } from './per-space'
 import { subscribeCurrentSpace } from './current'
 
@@ -80,6 +81,23 @@ export function startPerSpaceLayout(): () => void {
      * 捡出来放进进场的树(判词整段在那儿)。**接线一个字没加** —— 携带是规格里
      * 的一格,不是这里的一条新订阅。
      */
+    /*
+     * **换空间时视图停靠池整个清掉**(2026-09-10 组件级停靠)。与上面 `exitFull`
+     * 那一条同族、同一条次序理由:**排在拼贴树换装之前**。
+     *
+     * 为什么要清:停靠着的那几棵 React 树属于**上一个空间**的叶,而整棵树下一句
+     * 就被换掉了 —— 留着等于让另一个空间的几万个 DOM 节点在新空间里白占着堆。
+     * 排在换装之前,是为了不让屏幕上出现「新空间的树 + 旧空间那几层停靠」那一帧
+     * (`kept-contents` 是按叶 id 记的,新旧两棵树的叶 id 撞上的概率不为零)。
+     *
+     * 为什么不必怕**碰到 app 级携带**:`WORKBENCH_PER_SPACE.carry` 搬的是 app 级
+     * 的那几格(Dock 上的面),而会话不是 app 级格 —— 停靠池里只可能有会话
+     * (判词在 `session-park.parkable`),两者结构上不相交。
+     *
+     * **数据那一侧照旧留着**:C1 那个 8 格数据停靠池换工作区不清(d22f5865 的
+     * 判例),所以切回去仍旧零 `listRaw`,只是要重渲一屏。
+     */
+    subscribeCurrentSpace(clearSessionParks),
     bindPerSpace(useWorkbenchStore, WORKBENCH_PER_SPACE),
     subscribeCurrentSpace(swapFilesForSpace),
     /*

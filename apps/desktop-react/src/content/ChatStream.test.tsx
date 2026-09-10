@@ -12,6 +12,7 @@ import {
   type ScrollAnchor,
 } from '../data/session-view-state'
 import { CHAT_TAIL_WINDOW, CHAT_WINDOW_STEP, resetChatWindows } from './chat-window'
+import { PanelVisibilityContext } from './visibility'
 
 import { useExposeStore } from '../expose/store'
 import { useStageStore } from '../stage/store'
@@ -1372,5 +1373,222 @@ describe('消息按屏进:尾窗 + 空闲扩窗', () => {
     // 记条数的话后缀会往前滑一格,顶上那条被摘掉 —— 人正在看的内容当场往上跳。
     expect(ids[0]).toBe(firstBefore)
     expect(ids.length).toBe(CHAT_TAIL_WINDOW + 1)
+  })
+})
+
+/**
+ * **组件级停靠**(2026-09-10,交互预算第三单)。
+ *
+ * 切走的那片会话**不卸载**,只是它那一层挂上 `content-visibility: hidden` ——
+ * 于是这棵树还在,而它脚下的排版没了。这一组钉的是那三样量几何的活计当场停手
+ * (停手的判据是**容器此刻有没有排版**,不是宿主说了什么),外加取回那一拍
+ * 位置怎么回来。
+ *
+ * 屏幕那一半(同一个 DOM 节点、inert + aria-hidden、上限、真删)在
+ * `content/__tests__/session-park.test.tsx`。
+ */
+describe('组件级停靠:藏起来的那棵树停手,取回来位置不丢', () => {
+  const TURNS = 40
+  const ROW_H = 100
+  const VIEWPORT = 300
+
+  /** 「这一层此刻藏起来了吗」—— 几何桩照它作答(真机上由浏览器作答)。 */
+  let parked = false
+  let restore: (() => void)[] = []
+  let idleSlots: { cb: () => void; cancelled: boolean }[] = []
+
+  function bigLedger(turns: number): Ledger[] {
+    const out: Ledger[] = [created(1)]
+    let seq = 1
+    for (let turn = 0; turn < turns; turn += 1) {
+      out.push(userMessage((seq += 1), `pm${turn}`, `第 ${turn} 问`))
+      out.push(runStart((seq += 1), `pr${turn}`, `pa${turn}`))
+      out.push(chunks((seq += 1), `pr${turn}`, `pa${turn}`, [`第 ${turn} 答`]))
+      out.push(runEnd((seq += 1), `pr${turn}`))
+    }
+    return out
+  }
+
+  const renderedIds = () =>
+    [...document.querySelectorAll('[data-message-id]')].map((row) => row.getAttribute('data-message-id'))
+
+  /** 一格可控的「空闲」——与上面那一组同一手(判词写在那儿)。 */
+  function installFakeIdle(): () => void {
+    const target = window as unknown as Record<string, unknown>
+    const hadRequest = 'requestIdleCallback' in target
+    const originalRequest = target.requestIdleCallback
+    const originalCancel = target.cancelIdleCallback
+    target.requestIdleCallback = (cb: () => void) => {
+      idleSlots.push({ cb, cancelled: false })
+      return idleSlots.length
+    }
+    target.cancelIdleCallback = (handle: number) => {
+      const slot = idleSlots[handle - 1]
+      if (slot) slot.cancelled = true
+    }
+    return () => {
+      idleSlots = []
+      if (hadRequest) {
+        target.requestIdleCallback = originalRequest
+        target.cancelIdleCallback = originalCancel
+      } else {
+        Reflect.deleteProperty(target, 'requestIdleCallback')
+        Reflect.deleteProperty(target, 'cancelIdleCallback')
+      }
+    }
+  }
+
+  async function runIdle() {
+    const batch = idleSlots
+    idleSlots = []
+    await act(async () => {
+      for (const slot of batch) if (!slot.cancelled) slot.cb()
+    })
+  }
+
+  /**
+   * 一片装在**宿主可见性**里的聊天区(产品里那一格由 `PaneLeaf` 报,
+   * 见 `content/visibility.ts`)。答一口「翻面」。
+   */
+  async function mountParked(): Promise<{
+    el: HTMLDivElement
+    writes: { count: () => number; restore: () => void }
+    setVisible: (next: boolean) => Promise<void>
+  }> {
+    configureChatPort(port(bigLedger(TURNS)))
+    useExposeStore.setState({ currentSessionId: SESSION })
+    /*
+     * **先把树装好再渲** —— 与 `mountBig` 同一手:停靠要治的正是「池命中」那条路
+     * (机器没被扔掉,进场第一次提交树上就已经有消息了),而冷载入那条路上第一帧
+     * 树是空的、窗口从 0 起,两者的窗口行为本来就不同(判词在 `chat-window.ts`)。
+     */
+    chatSources.acquire(SESSION)
+    await waitFor(() => expect(sessionSource().getState().messages.length).toBe(TURNS * 2))
+    const ref = createRef<HTMLDivElement>()
+    const view = { current: null as null | ReturnType<typeof render> }
+    const tree = (visible: boolean) => (
+      <PanelVisibilityContext.Provider value={{ visible, interactive: visible }}>
+        <ChatStream sessionId={SESSION} scrollRef={ref} />
+      </PanelVisibilityContext.Provider>
+    )
+    await act(async () => {
+      view.current = render(tree(true))
+    })
+    await waitFor(() => expect(sessionSource().getState().status).toBe('ready'))
+    const el = ref.current as HTMLDivElement
+    const writes = countScrollWrites(el)
+    return {
+      el,
+      writes,
+      setVisible: async (next: boolean) => {
+        // 真机上这两件事在同一次提交里发生:类名换成 `.layerHidden`,排版当场消失。
+        parked = !next
+        await act(async () => {
+          view.current?.rerender(tree(next))
+        })
+      },
+    }
+  }
+
+  beforeEach(() => {
+    parked = false
+    resetChatWindows()
+    resetSessionViewStates()
+    restore.push(installFakeIdle())
+    restore.push(installFakeResizeObserver())
+    const rows = () => document.querySelectorAll('[data-message-id]').length
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight')
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      // 停靠中整棵子树没有盒子 —— 浏览器报 0,这里照办。
+      get: () => (parked ? 0 : rows() * ROW_H),
+    })
+    restore.push(() => {
+      if (originalScrollHeight) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', originalScrollHeight)
+      else Reflect.deleteProperty(HTMLElement.prototype, 'scrollHeight')
+    })
+    const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get: () => (parked ? 0 : VIEWPORT),
+    })
+    restore.push(() => {
+      if (originalClientHeight) Object.defineProperty(HTMLElement.prototype, 'clientHeight', originalClientHeight)
+      else Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight')
+    })
+  })
+
+  afterEach(() => {
+    for (const undo of restore) undo()
+    restore = []
+    parked = false
+    resetChatWindows()
+    resetSessionViewStates()
+  })
+
+  it('停靠中 ResizeObserver 派一发,一次 `scrollTop` 都不写(不是读数,是没有排版)', async () => {
+    const { el, writes, setVisible } = await mountParked()
+    await setVisible(false)
+    const before = writes.count()
+    // 藏起来那一下浏览器真的会派一发「高度 0」—— 照常往下走的话 `stick()` 会
+    // 把这条会话的位置抹平,而人只是切去看了别的会话。
+    await fireContentGrew(el, 0)
+    expect(writes.count()).toBe(before)
+    writes.restore()
+  })
+
+  it('停靠中**空闲扩窗照跑** —— 后台把窗补全,切回来就是全量', async () => {
+    const { writes, setVisible } = await mountParked()
+    expect(renderedIds().length).toBe(CHAT_TAIL_WINDOW)
+    await setVisible(false)
+    await runIdle()
+    expect(renderedIds().length).toBe(CHAT_TAIL_WINDOW + CHAT_WINDOW_STEP)
+    writes.restore()
+  })
+
+  it('停靠中那一发去抖的锚点不当一次读数(容器没有排版,量出来的「在底」是假的)', async () => {
+    const { el, writes, setVisible } = await mountParked()
+    // 人停在某一行上,记了一笔真锚点。
+    el.scrollTop = 900
+    await act(async () => {
+      fireEvent.scroll(el)
+    })
+    await setVisible(false)
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, SCROLL_ANCHOR_SETTLE_MS + 20))
+    })
+    // 拆掉那一格守卫的话这里是 `'bottom'`(0 − 0 − 0 ≤ EPS),真读数被冲掉。
+    expect(readSessionScrollAnchor(SESSION)).not.toBe('bottom')
+    writes.restore()
+  })
+
+  it('取回那一拍**不在点击那条同步路上读几何**(对位挪进了 RO,读数见判词)', async () => {
+    const { el, writes, setVisible } = await mountParked()
+    el.scrollTop = 900
+    await act(async () => {
+      fireEvent.scroll(el)
+    })
+    const before = writes.count()
+    await setVisible(false)
+    // 浏览器没把位置留住的那一档(真机上它**留住了** —— 判词与读数在
+    // `useParkedScroll` 上;这里假设最坏,好让兜底那一格有得可测)。
+    el.scrollTop = 0
+    await setVisible(true)
+    // 取回那一帧本身零写:那一读会逼一次 400 行的强排版,正是被搬走的 44ms。
+    expect(writes.count()).toBe(before + 1) // 只有用例自己那句 `el.scrollTop = 0`
+    // 对位落在紧接着的那一批尺寸变化里(真机上由浏览器自己派)。
+    await fireContentGrew(el, 40 * 2 * ROW_H)
+    expect(el.scrollTop).toBe(900)
+    writes.restore()
+  })
+
+  it('取回那一拍:跟底档不看记的那个数,当场贴底(位置是算出来的)', async () => {
+    const { el, writes, setVisible } = await mountParked()
+    await setVisible(false)
+    el.scrollTop = 0
+    await setVisible(true)
+    await fireContentGrew(el, 40 * 2 * ROW_H)
+    expect(el.scrollTop).toBe(el.scrollHeight)
+    writes.restore()
   })
 })

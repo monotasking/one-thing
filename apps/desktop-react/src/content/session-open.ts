@@ -4,6 +4,7 @@ import { CENTER_REGION } from '../workbench/regions'
 import { regionOfLeafIn, useWorkbenchStore } from '../workbench/store'
 import { leavesOf, previewIndexOf, seatOfRefIn } from '../workbench/tree'
 import { refId } from '../workbench/kinds'
+import { parkSessionSwap } from './session-park'
 import {
   leafSessionOf,
   leafSessionTabOf,
@@ -39,8 +40,10 @@ import type { PaneLeafNode, PaneNode } from '../workbench/tree'
  * 不是「覆盖」这个行为本身,所以三档齐备之后 09-10 用户把缺省判回了覆盖那一档
  * (原话与理由整段在 `data/session-open-mode.ts` 文件头):
  *
- *   `replace`(出厂) 原位换 ref。被换掉的那条留在 C1 的停靠池里,换回去不重载,
- *                    所以「覆盖」只是屏幕上少一格标签,不是把它丢了;
+ *   `replace`(出厂) 原位换 ref。被换掉的那条**两个池子各留一份** —— C1 的数据
+ *                    停靠池留着它折出来的树(不重载),视图停靠池留着它那棵已经
+ *                    造好的 React 树(不重挂,`content/session-park.ts`),所以
+ *                    「覆盖」只是屏幕上少一格标签,不是把它丢了;
  *   `newTab`         永远在焦点会话叶**末尾**新开一格;
  *   `preview`        这片叶至多一格**预览位**:有就原位换它(叶不重挂,标记留着);
  *                    没有就在活动格**旁边**开一格并标成预览。预览格**转正**之后
@@ -102,6 +105,11 @@ function openIntoSessionLeaf(
   // 保留键那一格三档一律原位换(判词在文件头)。`preview` 档里它就是那格预览位。
   const seed = placeholderIndexOf(host)
   if (seed >= 0) {
+    /*
+     * 保留键那一格**不进视图停靠池**:它里面没有任何人做过任何事,停一棵空树
+     * 只是白占堆(判词在 `session-park.parkable` 上)。
+     */
+    parkSessionSwap(host.id, null, ref)
     store.replaceRef(host.id, host.tabs[seed], ref)
     if (mode === 'preview') store.previewTab(host.id, seed)
     return true
@@ -113,6 +121,7 @@ function openIntoSessionLeaf(
   if (mode === 'preview') {
     const at = previewSeatOf(host)
     if (at !== null) {
+      parkSessionSwap(host.id, host.tabs[at], ref)
       store.replaceRef(host.id, host.tabs[at], ref)
       return true
     }
@@ -123,6 +132,12 @@ function openIntoSessionLeaf(
   }
   const current = leafSessionTabOf(host)
   if (!current) return false
+  /*
+   * **`replace` 那一档的落点**(C2′ 之后是出厂缺省)。停靠只从这三处进来 ——
+   * 关掉 / 新开一格标签 / 拖一格过来一格都不产生停靠,判词整段在
+   * `content/session-park.ts` 的「为什么『切走』是显式的」。
+   */
+  parkSessionSwap(host.id, current, ref)
   store.replaceRef(host.id, current, ref)
   return true
 }
@@ -184,6 +199,12 @@ export function openNewSessionPlaceholder(): (() => void) | null {
   if (!host || !current) return null
   const placeholder = sessionRefOf('')
   if (current.kind === placeholder.kind && current.key === placeholder.key) return null
+  /*
+   * ⌘N 也是一次原位换会话 —— 被换掉的那条进停靠池,于是「按了 ⌘N 又想回去看
+   * 刚才那条」不必重渲一遍(那条路上返回的那口「换回去」调的是 `replaceRef`,
+   * 它换回来时对账会把那一格从池子里摘掉,层照旧不重挂)。
+   */
+  parkSessionSwap(host.id, current, placeholder)
   store.replaceRef(host.id, current, placeholder)
   return () => {
     const now = useWorkbenchStore.getState()
