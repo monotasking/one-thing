@@ -1,4 +1,14 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import {
+  memo,
+  startTransition,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react'
 import { chatSources, useChatSourceOf } from '../data/chat-source'
 import {
   applyScrollAnchor,
@@ -7,6 +17,7 @@ import {
   saveSessionScrollAnchor,
   type ScrollAnchor,
 } from '../data/session-view-state'
+import { CHAT_WINDOW_STEP, growChatWindow, useChatWindowStart } from './chat-window'
 import { sessionRefIdOf } from './session-ref'
 import type { OverlayEntry, ProjectedMessage } from '../data/chat-fold'
 import { useT, type TFn } from '../i18n'
@@ -99,6 +110,38 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
   const overlay = useChatSourceOf(sessionId, (st) => st.overlay)
 
   /*
+   * ── 进场那一格窗口的两个入参(2026-09-10「响应先行」)────────────────────
+   *
+   * `anchor` 只在**进场第一帧树上就有消息**时给 —— 那正是停靠池命中那条路,
+   * 也正是下面那只 layout effect 会真的落回锚点的那一次,所以窗口必须一次性
+   * 扩到包含那一行(判词全文在 `chat-window.ts` 的 `seedWindowStart` 上)。
+   * 冷载入第一帧树是空的,锚点这一次用不上,给 `undefined` = 老实尾窗。
+   *
+   * 写在渲染期而不是进 effect:它要在**第一次渲染**就说得出话(effect 跑的时候
+   * 那一帧已经画出去了)。守着会话 id 重算,所以「换会话不重挂」那条路也对 ——
+   * 与下面 `messageCountRef` 那一手同源。
+   */
+  const entryRef = useRef<{ sid: string; anchor: ScrollAnchor | undefined } | undefined>(undefined)
+  if (!entryRef.current || entryRef.current.sid !== sessionId) {
+    entryRef.current = {
+      sid: sessionId,
+      anchor: messages.length > 0 ? readSessionScrollAnchor(sessionId) : undefined,
+    }
+  }
+  const windowStart = useChatWindowStart(sessionId, messages, entryRef.current.anchor)
+  /**
+   * **这一帧真的摆出去的那几条**(= 消息数组的一个后缀)。
+   *
+   * 全量到齐(`windowStart === 0`)之后与从前逐字相同 —— 连数组对象都是原来那个,
+   * 所以下游那些按引用短路的 memo 一格没动。
+   */
+  const visible = useMemo(
+    () => (windowStart <= 0 ? messages : messages.slice(windowStart)),
+    [messages, windowStart],
+  )
+  const expandOnScroll = useTailWindow(scrollRef, sessionId, messages.length, windowStart)
+
+  /*
    * **起底这条会话**(幂等)。W5-a 时这条 effect 还顺手宣布了一句「当前会话」——
    * **W5-b 把那一句撤了**:「当前」由焦点叶投影说了算(`content/session-projection.ts`),
    * 一片没获得焦点的会话叶不该替全局改那一格。
@@ -139,6 +182,16 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
    * 就得同时看两处才知道状态机被谁推过,而 `dispatch` / `followRef` 那对镜像也得
    * 跟着漏出去(它们是 hook 的内脏)。
    */
+  /*
+   * 滚动那一路上串着两件事:**扩窗**(翻到窗口顶部附近就当场补一批,不等空闲)
+   * 与摆这片叶的人自己那口(目录同步)。串在这里而不是塞进 `useFollowBottom` ——
+   * 那只 hook 的自述是「跟随事件的六种产地全在我这儿」,扩窗不是跟随事件。
+   */
+  const onScrollOutward = useCallback(() => {
+    expandOnScroll()
+    onScroll?.()
+  }, [expandOnScroll, onScroll])
+
   const { follow, jumpToBottom, onScrollWithFollow } = useFollowBottom(
     scrollRef,
     foldedSessionId,
@@ -146,7 +199,7 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
     sentTick,
     lastDeltaAt,
     activeMessageId,
-    onScroll,
+    onScrollOutward,
   )
 
   /*
@@ -185,7 +238,12 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
               <p className={s.empty}>{t('chat.empty')}</p>
             )}
 
-            {messages.flatMap((message) => {
+            {/*
+              * **摆的是窗口里那几条,不是整份**(2026-09-10)。窗口是消息数组的一个
+              * 后缀,起点只减不增(判词在 `chat-window.ts`),所以这里一格特判都没有:
+              * 全量到齐时 `visible === messages`,与从前逐字相同。
+              */}
+            {visible.flatMap((message) => {
               const row = (
                 <MessageRow
                   key={message.id}
@@ -246,6 +304,125 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
       )}
     </FocusScope>
   )
+}
+
+/**
+ * 「人翻到窗口顶部附近了」的判据 —— **离顶不足这么多屏**就当场补一批,不等空闲。
+ *
+ * 它是一个**倍数**(乘的是视口高),不是时长也不是像素,所以既不进
+ * `components/motion.ts` 也不进 tokens —— 与 `ANCHOR_RESETTLE_ROUNDS` 同一族。
+ * 两屏:一次惯性滚动大约能吃掉一屏多,留两屏才来得及在人撞到顶之前补上。
+ */
+const CHAT_NEAR_TOP_SCREENS = 2
+
+/**
+ * **消息按屏进**(2026-09-10「响应先行」,规范第 5 轴)。
+ *
+ * 这只 hook 只做三件事,窗口那一格本身住在 `content/chat-window.ts`:
+ *  ① **空闲往前补** —— 每批 `CHAT_WINDOW_STEP` 条,`requestIdleCallback`(没有就
+ *     `setTimeout 0`)里排,包在 `startTransition` 里所以可被打断;窗口一变这条
+ *     effect 重跑,于是自己接着排下一批,直到 `windowStart === 0`(全量到齐);
+ *  ② **翻到窗口顶部附近就当场补** —— 不等空闲(空闲可能一直不来,而人已经翻到顶了);
+ *  ③ **扩窗不许让视口跳** —— 见下面那只布局 effect。
+ *
+ * ── 为什么不给 `requestIdleCallback` 加 timeout ──────────────────────────
+ * 「一直没有空闲」在这台上基本只有一种情况:**正在流**。而流式期间本来就不该
+ * 抢主线程去补历史 —— 人此刻在看的是最新那一条。所以没有 timeout 不是漏掉,
+ * 是这一格的语义:**闲下来再补**。人真要往前看,走的是 ② 那条路,不必等空闲。
+ */
+function useTailWindow(
+  scrollRef: RefObject<HTMLDivElement | null> | undefined,
+  sessionId: string,
+  total: number,
+  windowStart: number,
+): () => void {
+  /**
+   * **扩窗之前那一刻的位置与总高**。扩窗是 prepend —— 上面凭空长出一截,
+   * `scrollTop` 一动不动,于是人正在看的内容当场往下掉一截。
+   *
+   * 浏览器自己的滚动锚定(`overflow-anchor`,Chromium 缺省开,这条链上没有
+   * 任何一处把它关掉)本来该接住这一下,但**跳渲的行**(`content-visibility: auto`)
+   * 让它变得不可靠:新 prepend 的行报的是估高,锚定按估高补一次,行渲出真高
+   * 之后又差一截。所以这里**绝对赋值**而不是 `+=`:`scrollTop = 原位 + 长高了多少`
+   * —— 浏览器补没补过都不影响结果(它不改 `scrollHeight`),这一手是幂等的。
+   */
+  const pending = useRef<{ top: number; height: number } | undefined>(undefined)
+  /**
+   * 窗口起点的**镜像**。滚动回调在 React 之外跑,它要的是「此刻摆在哪」而不是
+   * 「上一次渲染时摆在哪」—— 与 `followRef` 同一条理由(而且身份稳定,滚动回调
+   * 不会因为窗口变了就换一只,`useFollowBottom` 那边的监听也就不必重挂)。
+   */
+  const windowStartRef = useRef(windowStart)
+  windowStartRef.current = windowStart
+
+  /** 扩一批。**捕获在写 state 之前** —— 那一刻的几何才是「扩窗之前」。 */
+  const grow = useCallback(
+    (nextStart: number) => {
+      const el = scrollRef?.current
+      if (el) pending.current = { top: el.scrollTop, height: el.scrollHeight }
+      const changed = growChatWindow(sessionId, nextStart)
+      if (!changed) pending.current = undefined
+    },
+    [scrollRef, sessionId],
+  )
+
+  /**
+   * 扩窗提交之后把视口补回原处。**这是这个文件第三处写 `scrollTop`**
+   * (另两处:`stick` 贴底、`applyScrollAnchor` 落锚点),写点纪律照旧 ——
+   * 三处各自答一个问题,谁都不兼职。
+   *
+   * 排在布局阶段(绘制之前)所以人看不见中间那一帧;读一次 `scrollHeight` 要付
+   * 一次排版,但那是**一批扩窗一次**,不是从前那种「每次提交一次」。
+   */
+  useLayoutEffect(() => {
+    const captured = pending.current
+    pending.current = undefined
+    const el = scrollRef?.current
+    if (!captured || !el) return
+    const delta = el.scrollHeight - captured.height
+    if (delta === 0) return
+    el.scrollTop = captured.top + delta
+  }, [windowStart, scrollRef])
+
+  /* ① 空闲往前补一批。窗口一变这条 effect 重跑 —— 于是它自己排下一批。 */
+  useEffect(() => {
+    if (windowStart <= 0 || total === 0) return
+    let cancelled = false
+    const run = () => {
+      if (cancelled) return
+      // 可打断:补历史永远让位给人此刻的输入与正在流的那一条。
+      startTransition(() => grow(windowStart - CHAT_WINDOW_STEP))
+    }
+    const idle = (window as IdleWindow).requestIdleCallback
+    if (typeof idle === 'function') {
+      const handle = idle(run)
+      return () => {
+        cancelled = true
+        ;(window as IdleWindow).cancelIdleCallback?.(handle)
+      }
+    }
+    const handle = window.setTimeout(run, 0)
+    return () => {
+      cancelled = true
+      window.clearTimeout(handle)
+    }
+  }, [windowStart, total, grow])
+
+  /* ② 翻到窗口顶部附近:当场补一批,不等空闲。 */
+  return useCallback(() => {
+    const el = scrollRef?.current
+    if (!el) return
+    if (el.scrollTop > el.clientHeight * CHAT_NEAR_TOP_SCREENS) return
+    const start = windowStartRef.current
+    if (start <= 0) return
+    grow(start - CHAT_WINDOW_STEP)
+  }, [scrollRef, grow])
+}
+
+/** `requestIdleCallback` 在 TS 的 DOM 库里是可选的(jsdom / 老 Safari 没有)。 */
+type IdleWindow = Window & {
+  requestIdleCallback?: (cb: () => void) => number
+  cancelIdleCallback?: (handle: number) => void
 }
 
 /**

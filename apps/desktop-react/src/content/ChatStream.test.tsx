@@ -9,7 +9,9 @@ import {
   readSessionScrollAnchor,
   resetSessionViewStates,
   saveSessionScrollAnchor,
+  type ScrollAnchor,
 } from '../data/session-view-state'
+import { CHAT_TAIL_WINDOW, CHAT_WINDOW_STEP, resetChatWindows } from './chat-window'
 
 import { useExposeStore } from '../expose/store'
 import { useStageStore } from '../stage/store'
@@ -1110,5 +1112,265 @@ describe('进场落点:切回来停在离开时那一行', () => {
     await fireContentGrew(ref.current!, CONTENT_H)
     expect(ref.current!.scrollTop).toBe(CONTENT_H)
     expect(readSessionScrollAnchor(SESSION)).toBeDefined()
+  })
+})
+
+/**
+ * **消息按屏进**(2026-09-10「响应先行」,规范第 5 轴「交互预算」)。
+ *
+ * 病:点一行会话 = 一次紧急更新同步造出全部 388 条消息 / 37,470 个节点,列表高亮、
+ * 标签标题、内容在 1–2s 后同一帧一起换。治法是把「摆什么」从整份改成一个后缀:
+ * 进场只摆尾窗,其余空闲往前补 —— 判据与常数在 `content/chat-window.ts`。
+ *
+ * 这一节量**组件那一端**:摆了几条、什么时候摆更多、扩窗会不会让视口跳、
+ * 锚点在窗外时先扩再落、流式追加落不落在窗里。纯函数那一半在
+ * `__tests__/chat-window.test.ts`。
+ */
+describe('消息按屏进:尾窗 + 空闲扩窗', () => {
+  /** 60 轮 = 120 条消息 —— 尾窗 24、每批 48,正好三批扩到全量。 */
+  const TURNS = 60
+  const TOTAL = TURNS * 2
+  const ROW_H = 100
+  const VIEWPORT = 300
+  const TOP = 50
+
+  function bigLedger(turns: number): Ledger[] {
+    const out: Ledger[] = [created(1)]
+    let seq = 1
+    for (let turn = 0; turn < turns; turn += 1) {
+      out.push(userMessage((seq += 1), `bm${turn}`, `第 ${turn} 问`))
+      out.push(runStart((seq += 1), `br${turn}`, `ba${turn}`))
+      out.push(chunks((seq += 1), `br${turn}`, `ba${turn}`, [`第 ${turn} 答`]))
+      out.push(runEnd((seq += 1), `br${turn}`))
+    }
+    return out
+  }
+
+  /* ── 可控的假 requestIdleCallback ──────────────────────────────────────
+   *
+   * 空闲扩窗排在 `requestIdleCallback`(jsdom 没有,产品里退 `setTimeout 0`)。
+   * 要量「进场只摆 24 条」就必须让那一批**还没跑**,所以这里把它换成一格队列,
+   * 由用例自己决定「空闲」发生在哪一拍 —— 与上面那只假 ResizeObserver 同一手。
+   */
+  interface IdleSlot {
+    cb: () => void
+    cancelled: boolean
+  }
+  let idleSlots: IdleSlot[] = []
+
+  function installFakeIdle(): () => void {
+    const target = window as unknown as Record<string, unknown>
+    const hadRequest = 'requestIdleCallback' in target
+    const hadCancel = 'cancelIdleCallback' in target
+    const originalRequest = target.requestIdleCallback
+    const originalCancel = target.cancelIdleCallback
+    target.requestIdleCallback = (cb: () => void) => {
+      idleSlots.push({ cb, cancelled: false })
+      return idleSlots.length
+    }
+    target.cancelIdleCallback = (handle: number) => {
+      const slot = idleSlots[handle - 1]
+      if (slot) slot.cancelled = true
+    }
+    return () => {
+      idleSlots = []
+      if (hadRequest) target.requestIdleCallback = originalRequest
+      else Reflect.deleteProperty(target, 'requestIdleCallback')
+      if (hadCancel) target.cancelIdleCallback = originalCancel
+      else Reflect.deleteProperty(target, 'cancelIdleCallback')
+    }
+  }
+
+  /** 「机器闲下来了」—— 把此刻排着的那一批跑掉(取消掉的不跑)。 */
+  async function runIdle() {
+    const batch = idleSlots
+    idleSlots = []
+    await act(async () => {
+      for (const slot of batch) if (!slot.cancelled) slot.cb()
+    })
+  }
+
+  const renderedIds = () =>
+    [...document.querySelectorAll('[data-message-id]')].map((row) => row.getAttribute('data-message-id'))
+
+  let restore: (() => void)[] = []
+
+  beforeEach(() => {
+    resetChatWindows()
+    resetSessionViewStates()
+    restore.push(installFakeIdle())
+    restore.push(installFakeResizeObserver())
+    /*
+     * 几何桩是**由 DOM 自己算的**,所以它对「窗口变了」是自洽的:
+     * 内容总高 = 摆出来的行数 × 行高,每一行的位置 = 它在**摆出来那一列**里的
+     * 下标 × 行高。往前扩窗 = 上面凭空多出几行 = 总高变大、下面每一行的坐标
+     * 整体下移 —— 正是真机上要补偿的那一下。
+     */
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight')
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get: () => document.querySelectorAll('[data-message-id]').length * ROW_H,
+    })
+    restore.push(() => {
+      if (originalScrollHeight) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', originalScrollHeight)
+      else Reflect.deleteProperty(HTMLElement.prototype, 'scrollHeight')
+    })
+    const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get: () => VIEWPORT,
+    })
+    restore.push(() => {
+      if (originalClientHeight) Object.defineProperty(HTMLElement.prototype, 'clientHeight', originalClientHeight)
+      else Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight')
+    })
+    const originalRect = HTMLElement.prototype.getBoundingClientRect
+    HTMLElement.prototype.getBoundingClientRect = function rect(this: HTMLElement) {
+      const scroller = document.querySelector('[data-testid="chat-stream"]')
+      const scrollTop = scroller instanceof HTMLElement ? scroller.scrollTop : 0
+      const rows = [...document.querySelectorAll('[data-message-id]')]
+      const seat = rows.indexOf(this)
+      if (seat >= 0) {
+        return {
+          top: TOP + seat * ROW_H - scrollTop,
+          bottom: TOP + (seat + 1) * ROW_H - scrollTop,
+          height: ROW_H,
+        } as DOMRect
+      }
+      return { top: TOP, bottom: TOP + VIEWPORT, height: VIEWPORT } as DOMRect
+    }
+    restore.push(() => {
+      HTMLElement.prototype.getBoundingClientRect = originalRect
+    })
+  })
+
+  afterEach(() => {
+    for (const undo of restore) undo()
+    restore = []
+    resetChatWindows()
+    resetSessionViewStates()
+  })
+
+  /**
+   * **先把机器烘热再挂** —— 停靠池命中那条路的形状:进场第一次提交树上就已经有
+   * 全部消息。这一节量的正是那一次提交摆了几条。
+   */
+  async function mountBig(anchor?: ScrollAnchor) {
+    configureChatPort(port(bigLedger(TURNS)))
+    chatSources.acquire(SESSION)
+    await waitFor(() => expect(sessionSource().getState().messages.length).toBe(TOTAL))
+    if (anchor) saveSessionScrollAnchor(SESSION, anchor)
+    const ref = createRef<HTMLDivElement>()
+    await act(async () => {
+      render(<ChatStream sessionId={SESSION} scrollRef={ref} />)
+    })
+    if (!ref.current) throw new Error('滚动容器没到手')
+    return ref
+  }
+
+  it('进场只摆尾窗那几条 —— 不是一次性造出整份', async () => {
+    await mountBig()
+    const ids = renderedIds()
+    expect(ids.length).toBe(CHAT_TAIL_WINDOW)
+    // 摆的是**最后**那几条(窗口是后缀),最后一行仍然是账本上最后一条。
+    expect(ids.at(-1)).toBe(`ba${TURNS - 1}`)
+    // 反证的秤:拆掉尾窗(窗口 = 全量)这一条当场红。
+    expect(ids.length).toBeLessThan(TOTAL)
+  })
+
+  it('空闲里一批一批往前补,直到全量 —— 补齐之后与从前逐字相同', async () => {
+    await mountBig()
+    expect(renderedIds().length).toBe(CHAT_TAIL_WINDOW)
+
+    await runIdle()
+    expect(renderedIds().length).toBe(CHAT_TAIL_WINDOW + CHAT_WINDOW_STEP)
+
+    for (let round = 0; round < 6 && renderedIds().length < TOTAL; round += 1) await runIdle()
+    expect(renderedIds()).toEqual(sessionSource().getState().messages.map((message) => message.id))
+
+    // 到齐了就不再排下一批(排了就是每一帧白跑一次 setState)。
+    await runIdle()
+    expect(renderedIds().length).toBe(TOTAL)
+  })
+
+  it('人翻到窗口顶部附近:当场补一批,不等空闲', async () => {
+    const ref = await mountBig()
+    const el = ref.current!
+    expect(renderedIds().length).toBe(CHAT_TAIL_WINDOW)
+    // 离顶不足两屏 —— 这一下就是「快撞到窗口顶了」。
+    await act(async () => {
+      el.scrollTop = VIEWPORT
+      fireEvent.scroll(el)
+    })
+    expect(renderedIds().length).toBe(CHAT_TAIL_WINDOW + CHAT_WINDOW_STEP)
+    // 空闲那一批一个字没跑过 —— 这一格证明它走的是滚动那条路。
+    expect(idleSlots.length).toBeGreaterThan(0)
+  })
+
+  it('还在窗口中段往下滚:不提前扩(不为不用的东西付造 DOM 的钱)', async () => {
+    const ref = await mountBig()
+    const el = ref.current!
+    await act(async () => {
+      el.scrollTop = VIEWPORT * 5
+      fireEvent.scroll(el)
+    })
+    expect(renderedIds().length).toBe(CHAT_TAIL_WINDOW)
+  })
+
+  it('往前扩窗不让视口跳:锚点行的矩形一像素不动', async () => {
+    const ref = await mountBig()
+    const el = ref.current!
+    // 人停在窗口中间某一行上(不在底,所以不会被跟底那一手带走)。
+    await act(async () => {
+      el.scrollTop = ROW_H * 8
+      fireEvent.scroll(el)
+    })
+    const watched = document.querySelector(`[data-message-id="${renderedIds()[10]}"]`) as HTMLElement
+    const before = watched.getBoundingClientRect().top
+    const heightBefore = el.scrollHeight
+    const topBefore = el.scrollTop
+
+    await runIdle()
+
+    expect(el.scrollHeight).toBe(heightBefore + CHAT_WINDOW_STEP * ROW_H)
+    // 补偿是绝对赋值「原位 + 长高了多少」,所以那一行落回原处。
+    expect(el.scrollTop).toBe(topBefore + CHAT_WINDOW_STEP * ROW_H)
+    expect(watched.getBoundingClientRect().top).toBe(before)
+  })
+
+  it('锚点在尾窗外:进场那一帧就把窗口扩到它,当场落位(不先画别处再跳)', async () => {
+    // `bm4` = 第 5 轮那句问话,远在尾窗(第 96 条起)之外。
+    const ref = await mountBig({ messageId: 'bm4', offset: -30 })
+    const ids = renderedIds()
+    // 窗口一次性扩到了它(还带上了上面那一段回旋余地 —— 这里锚点靠开头,夹到 0)。
+    expect(ids).toContain('bm4')
+    expect(ids.length).toBeGreaterThan(CHAT_TAIL_WINDOW)
+    // 而且真的落在了它身上:那一行的上缘离容器上缘 −30px,就是离开时记的那个偏移。
+    const row = document.querySelector('[data-message-id="bm4"]') as HTMLElement
+    const base = ref.current!.getBoundingClientRect().top
+    expect(Math.round(row.getBoundingClientRect().top - base)).toBe(-30)
+  })
+
+  it('锚点在尾窗里:窗口一格不多摆(与从前逐字相同)', async () => {
+    await mountBig({ messageId: `ba${TURNS - 2}`, offset: -20 })
+    expect(renderedIds().length).toBe(CHAT_TAIL_WINDOW)
+  })
+
+  it('流式追加落在窗里,而且窗口顶上那一条不动(窗口记的是起点不是条数)', async () => {
+    await mountBig()
+    const firstBefore = renderedIds()[0]
+    await act(async () => {
+      const store = sessionSource()
+      const grown = [
+        ...store.getState().messages,
+        { id: 'new-1', role: 'assistant', content: '刚长出来的一条', timestamp: T0 },
+      ]
+      store.setState({ messages: grown as never })
+    })
+    const ids = renderedIds()
+    expect(ids.at(-1)).toBe('new-1')
+    // 记条数的话后缀会往前滑一格,顶上那条被摘掉 —— 人正在看的内容当场往上跳。
+    expect(ids[0]).toBe(firstBefore)
+    expect(ids.length).toBe(CHAT_TAIL_WINDOW + 1)
   })
 })

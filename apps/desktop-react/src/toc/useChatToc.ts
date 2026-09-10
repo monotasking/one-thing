@@ -3,6 +3,7 @@ import type { RefObject } from 'react'
 import { TOC_FLASH_MS } from '../components/motion'
 import { useChatSourceOf } from '../data/chat-source'
 import { useSessionMarkers } from '../data/sessions-source'
+import { reachChatWindow, useChatWindowVersion } from '../content/chat-window'
 import { useLocateMessage } from '../content/locate-message'
 import { useT } from '../i18n'
 import { notify } from '../services/notify'
@@ -82,24 +83,46 @@ function measureAnchors(
 }
 
 /**
+ * 落点这一下的结局。**「够不到」与「没有这条消息」是两回事** —— 前者只是它此刻
+ * 还没渲出来(消息按屏进,见 `content/chat-window.ts`),等窗口扩过去就落得下;
+ * 后者是这棵树上真的没有它(被删 / 被压缩折进去了),那一句得说给人听。
+ */
+type LandOutcome =
+  /** 落成了 */
+  | 'done'
+  /** 那条消息在,但此刻还没渲出来 —— 已经为它扩了窗,下一次提交再落 */
+  | 'pending'
+  /** 这棵树上没有这条消息 */
+  | 'absent'
+
+/**
  * 滚过去 + 点亮。**这一手在这只 hook 里只有一个产地** —— `pickTurn`(点键)与
  * 「落到某条消息」(检索面点一条正文命中)是同一件事的两个入口,只是**怎么找到
  * 那条消息**不同:一个按锚点列的下标,一个直接拿 messageId。
  *
  * 09-02 抽出来之前它长在 `pickTurn` 里,于是「落到消息」那一路只能抄一遍 ——
  * 抄的那一份迟早会漏掉「先清再点」那句(同一个类名不换,CSS 动画不会重放)。
+ *
+ * ── 消息按屏进之后多了一格(2026-09-10)──────────────────────────────────
+ * 聊天区只渲染消息数组的一个后缀(尾窗 + 空闲往前补),所以「锚点不在树上」从此
+ * 有两个意思。判据搬到**数据**那一侧:`reachChatWindow` 问的是「这份消息里有没有
+ * 这条」—— 有就一定渲得出来(窗口是数据的后缀,够过去就有),于是记一格待办,
+ * 等窗口扩过去 / 树重画之后再落一次;没有才是 `absent`,与从前那句「如实回 false,
+ * 不去滚一个最近的位置」逐字同一条纪律。
  */
 function useScrollToMessage(
   scrollRef: RefObject<HTMLDivElement | null>,
   setFlashMessageId: (id: string | null) => void,
   flashTimer: RefObject<ReturnType<typeof setTimeout> | null>,
-): (messageId: string) => boolean {
-  return useCallback(
+  sessionId: string,
+  messages: readonly { readonly id: string }[],
+  windowVersion: number,
+): (messageId: string) => LandOutcome {
+  /** 真正那一手:此刻树上有就落,没有就答 false。它一个字没改。 */
+  const land = useCallback(
     (messageId: string) => {
       const el = scrollRef.current
       const node = el ? anchorNodes(el).get(messageId) : undefined
-      // 锚点不在树上 = 这一下办不成。**如实回 false**,不去滚一个最近的位置 ——
-      // 滚到别的地方再点亮别人,比什么都不做更像在说谎。
       if (!el || !node) return false
       // jsdom 里没有 scrollTo;守一手,免得测试环境把渲染层拖红。
       if (typeof el.scrollTo === 'function') {
@@ -121,6 +144,41 @@ function useScrollToMessage(
     },
     [scrollRef, setFlashMessageId, flashTimer],
   )
+
+  /** 还没落成的那一条(至多一格 —— 后一次点击顶掉前一次,与人的意思一致)。 */
+  const pending = useRef<string | null>(null)
+
+  const request = useCallback(
+    (messageId: string): LandOutcome => {
+      if (land(messageId)) {
+        pending.current = null
+        return 'done'
+      }
+      if (reachChatWindow(sessionId, messages, messageId) === 'absent') {
+        pending.current = null
+        return 'absent'
+      }
+      pending.current = messageId
+      return 'pending'
+    },
+    [land, sessionId, messages],
+  )
+
+  /*
+   * 窗口又扩了一次 / 树重画过一次 —— 该再试一次那格待办了。
+   * 两个依赖各说一件事:`windowVersion` 说「按屏进那一侧摆出来的更多了」,
+   * `messages` 说「折叠器那一侧又推了一次屏」。
+   */
+  useEffect(() => {
+    const id = pending.current
+    if (!id) return
+    if (land(id)) pending.current = null
+  }, [windowVersion, messages, land])
+
+  // 换会话 = 那格待办作废(它说的是上一条会话里的某一行)。
+  useEffect(() => () => void (pending.current = null), [sessionId])
+
+  return request
 }
 
 /**
@@ -135,7 +193,21 @@ export function useChatToc(
   const [currentIndex, setCurrentIndex] = useState(0)
   const [flashMessageId, setFlashMessageId] = useState<string | null>(null)
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const scrollToMessage = useScrollToMessage(scrollRef, setFlashMessageId, flashTimer)
+  /*
+   * 落点那一手要的两格事实:**这条会话的消息**(判「有没有这条」)与**窗口版本**
+   * (「按屏进那一侧又摆出来一批了」)。它们读在这里而不是在下面那条 locate
+   * effect 旁边,因为 `useScrollToMessage` 是两个入口共用的那一只。
+   */
+  const foldMessages = useChatSourceOf(sessionId, (st) => st.messages)
+  const windowVersion = useChatWindowVersion(sessionId)
+  const scrollToMessage = useScrollToMessage(
+    scrollRef,
+    setFlashMessageId,
+    flashTimer,
+    sessionId,
+    foldMessages,
+    windowVersion,
+  )
 
   // 键与锚点同源:两边都是这条会话的用户消息锚点列(TocPanel 读的是同一份)。
   const markerSource = useSessionMarkers(sessionId).data
@@ -249,16 +321,19 @@ export function useChatToc(
   const settleLocate = useLocateMessage((st) => st.settleLocate)
   const foldSessionId = useChatSourceOf(sessionId, (st) => st.sessionId)
   const foldStatus = useChatSourceOf(sessionId, (st) => st.status)
-  const foldMessages = useChatSourceOf(sessionId, (st) => st.messages)
   useEffect(() => {
     if (!locate) return
     if (sessionId !== locate.sessionId) return
     if (foldSessionId !== locate.sessionId || foldStatus !== 'ready') return
-    if (scrollToMessage(locate.messageId)) {
-      settleLocate(locate.token)
-      return
-    }
+    /*
+     * 待办这一格**当场消掉**,三种结局都一样:落成了自不必说;`pending` 是
+     * 「那条消息在,窗口正在够过去」—— 落点那一手自己记着,一定会落下去,
+     * 不该把跨组件那格待办也留着(留着的话下一次树重画会再跑一遍整条判断)。
+     * 只有 `absent` 才多说一句:进是进来了,那条消息不在这棵树上。
+     */
+    const outcome = scrollToMessage(locate.messageId)
     settleLocate(locate.token)
+    if (outcome !== 'absent') return
     notify({
       level: 'info',
       source: 'search.open',
