@@ -12,8 +12,9 @@
  * 治法两件(§5.1 停靠池 + §5.2 视图状态按会话记),这道门量的是它们合起来
  * 在**真的排版**之下成不成立:
  *
- *  ① **零重载** —— 从「切走」那一刻起,`sessionEvents.listRaw` 对这条会话
- *     **一发都不许打**。判据是**数请求次数,不是量时间**:量时间会把一台慢机器
+ *  ① **零重载** —— 从「切走」那一刻起,**起底那一发**(第 5 单之后是
+ *     `resources.read(session:<id>, 'page')`,读不成才退回 `sessionEvents.listRaw`)
+ *     对这条会话**一发都不许打**。判据是**数请求次数,不是量时间**:量时间会把一台慢机器
  *     判成回归、把一次真重载判成通过(与检索面分页那条「反证要数指令次数、
  *     不量位移」是同一条纪律)。
  *  ② **停在离开时那一行** —— 切回来之后滚动位置与切走前一致(容差一行)。
@@ -152,10 +153,12 @@ async function clickTestId(page, testId) {
  * **数请求**:在页面里把 `window.fetch` 包一层,记下每一发 `/api/rpc` 的
  * `domain.method` 与它问的会话。
  *
- * 为什么数 `sessionEvents.listRaw` 而不是别的:那**就是**重载那一发 ——
- * `data/chat-port.ts` 的 `listRaw` 是聊天区起底唯一的请求,`runLoad()` 里
- * 「先订上再拉」拉的就是它。别的域(sessions.getMessages / getUserMarkers …)
- * 是列表与目录的事,它们照打不误也不是这条病。
+ * 为什么数**起底那一发**:它就是重载。第 5 单(72e4f76c)之后起底换了路 ——
+ * 冷载走的是 `resources.read(ref='session:<id>', name='page')` 那条尾页读,
+ * `sessionEvents.listRaw` 只在页读不成时兜底。**两条都要数**:只数 listRaw 的话
+ * 这道门今天恒等于 0,红不起来 —— 那不是「治好了」,是尺子量的东西已经不在了。
+ * 别的域(sessions.getMessages / getUserMarkers …)是列表与目录的事,它们照打
+ * 不误也不是这条病。
  *
  * 包一层而不是读 devtools 的网络面板:判据要的是**次数**,而一个计数器比一份
  * 事后 harvest 的列表少一层「有没有漏录」的怀疑。
@@ -174,6 +177,9 @@ async function installRpcCounter(page) {
             domain: body?.domain,
             method: body?.method,
             sessionId: body?.payload?.sessionId,
+            // 资源面那条路上「问的是哪条会话」写在 ref 里,不在 sessionId 上。
+            ref: body?.payload?.ref,
+            name: body?.payload?.name,
           })
         }
       } catch {
@@ -184,17 +190,30 @@ async function installRpcCounter(page) {
   })
 }
 
+/**
+ * 一发 RPC 算不算「把这条会话起底了一次」。
+ * 两条产地:尾页读(今天的那条)与整份账本(兜底那条)。判据写在页面里跑,
+ * 所以它得是一段自足的源码 —— 见 `loadsSince` 里那句 `new Function`。
+ */
+const IS_SESSION_LOAD = `(call, id) => (
+  (call.domain === 'sessionEvents' && call.method === 'listRaw' && call.sessionId === id)
+  || (call.domain === 'resources' && call.method === 'read'
+      && call.ref === 'session:' + id && call.name === 'page')
+)`
+
 /** 从某个记号之后,这条会话被起底过几次。 */
 async function loadsSince(page, mark, sessionId) {
   return page.evaluate(
-    ([from, id]) =>
-      (window.__rpcCalls ?? [])
+    ([from, id, judgeSource]) => {
+      const isSessionLoad = new Function('return ' + judgeSource)()
+      return (window.__rpcCalls ?? [])
         .slice(from)
         .filter(
           (call) =>
-            call.domain === 'sessionEvents' && call.method === 'listRaw' && call.sessionId === id,
-        ).length,
-    [mark, sessionId],
+            isSessionLoad(call, id),
+        ).length
+    },
+    [mark, sessionId, IS_SESSION_LOAD],
   )
 }
 
@@ -206,8 +225,15 @@ const rpcMark = (page) => page.evaluate(() => (window.__rpcCalls ?? []).length)
  */
 function readView(page) {
   return page.evaluate(() => {
-    const scroll = document.querySelector('[data-testid="chat-stream"]')
-    const rows = Array.from(document.querySelectorAll('[data-message-id]'))
+    /*
+     * **显示中的那一片**优先(`[data-pane-on]`)。停靠着的那几棵树(视图池 3)
+     * 也在 DOM 上,裸选择器会随手拿到隔壁那一片 —— 读的就不是屏幕上这一条了。
+     * 判词与 `gate:chat-layout` 的取件逐字同源。
+     */
+    const scroll =
+      document.querySelector('[data-pane-on] [data-testid="chat-stream"]')
+      ?? document.querySelector('[data-testid="chat-stream"]')
+    const rows = Array.from(scroll?.querySelectorAll('[data-message-id]') ?? [])
     const active = document.activeElement
     /*
      * **视口里最上面那条还露着的消息**(与 `measureScrollAnchor` / gate-chat-layout
@@ -291,12 +317,27 @@ function seedLedgers(store, entries) {
   return out
 }
 
-/** 进一条会话 = 在总览里点它那一行(与用户的手势同一条路:`enterSessionInWorkbench`)。 */
-async function enterSession(page, sessionId, expectRows) {
+/**
+ * 进一条会话 = 在总览里点它那一行(与用户的手势同一条路:`enterSessionInWorkbench`)。
+ *
+ * ── 等的是**哪一行在不在**,不是「行数够不够」(09-10,第 6 单收的一条真红)──
+ * 从前这里等 `rowCount >= 夹具的消息条数`。那句话里藏着一个前提:**壳手里有
+ * 整条会话**。第 5 单(72e4f76c)之后不再成立 —— 冷载拉的是尾页(24 条),更早
+ * 的由上翻按需补,于是这道门等 400 行等到超时,**而那不是回归,是新的正确行为**。
+ * 判词与 `gate:chat-layout` 的 `sessionTreeUp` 逐字同源;判「在 DOM 上」而不是
+ * 「在视口里」,理由也一样:这道门的 ② 恰恰要它**不**落在底(停在离开时那一行)。
+ */
+async function enterSession(page, sessionId, lastMessageId) {
   await clickTestId(page, `session-row-${sessionId}`)
-  return waitFor(`会话 ${sessionId} 上屏(${expectRows} 行)`, async () => {
-    const view = await readView(page)
-    return view.rowCount >= expectRows ? view : undefined
+  return waitFor(`会话 ${sessionId} 的树立起来(${lastMessageId} 在树上)`, async () => {
+    const up = await page.evaluate((id) => {
+      const scroll =
+        document.querySelector('[data-pane-on] [data-testid="chat-stream"]')
+        ?? document.querySelector('[data-testid="chat-stream"]')
+      const row = scroll?.querySelector(`[data-message-id="${id}"]`)
+      return Boolean(row && row.getBoundingClientRect().height > 0)
+    }, lastMessageId)
+    return up ? await readView(page) : undefined
   })
 }
 
@@ -409,7 +450,7 @@ async function main() {
         [idA, idB],
       ),
     )
-    await enterSession(page, idA, seeded.A.messages)
+    await enterSession(page, idA, seeded.A.lastMessageId)
     await delay(400)
 
     console.log('\n[3/4] 在甲里滚到中间,记下此刻的位置')
@@ -433,9 +474,9 @@ async function main() {
 
     console.log('\n[4/4] 切到乙,再切回甲 —— ①零重载 ②位置一致 ③焦点在输入框')
     const mark = await rpcMark(page)
-    await enterSession(page, idB, seeded.B.messages)
+    await enterSession(page, idB, seeded.B.lastMessageId)
     await delay(300)
-    await enterSession(page, idA, seeded.A.messages)
+    await enterSession(page, idA, seeded.A.lastMessageId)
     // 起底真要发生的话,它排在进场那几帧里;多等一会儿,免得「还没来得及打」
     // 被当成「一发都没打」。
     await delay(800)
@@ -444,7 +485,7 @@ async function main() {
     const reloadsA = await loadsSince(page, mark, idA)
     assert(
       reloadsA === 0,
-      `① 切回甲**零重载**:从切走那一刻起 sessionEvents.listRaw(甲)打了 ${reloadsA} 发`,
+      `① 切回甲**零重载**:从切走那一刻起,甲的起底(尾页读 / listRaw)打了 ${reloadsA} 发`,
     )
 
     /*

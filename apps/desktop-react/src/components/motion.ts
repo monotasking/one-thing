@@ -173,3 +173,17 @@ export const MIN_BUSY_MS = 250
  * 相等由 __tests__/motion-tokens.test.ts 与 tokens.css 逐条比对。
  */
 export const CARD_FLIP_MS = 180
+
+/**
+ * 会话列表行上**悬停多久才去预取那条会话**(第 6 单)。
+ *
+ * 它是**读认窗口不是动画**:答的是「这只手是路过还是真在看这一行」,
+ * 动效档(none)不清零它,所以它没有 CSS token —— 与 `DOCK_WAKE_DWELL_MS` /
+ * `ESC_STOP_WINDOW_MS` / `SCROLL_ANCHOR_SETTLE_MS` 同处一族。
+ *
+ * 180ms 与 `DOCK_WAKE_DWELL_MS` 同一个数不是巧合:两者问的是同一句话 ——
+ * 「一次有意的停顿」。它比一次穿越(20–30ms)大一个量级,所以扫过整张列表
+ * 一发都不会打;又比 `TOOLTIP_DELAY_MS` 的 300ms 短 —— 预取要赶在那一下点击
+ * 之前出发才有意义,慢过读一句提示就白等了。
+ */
+export const SESSION_PREFETCH_HOVER_MS = 180

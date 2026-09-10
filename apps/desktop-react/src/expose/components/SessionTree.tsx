@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useT } from '../../i18n'
 import { useSessionsList, useSessionsSource } from '../../data/sessions-source'
+import { hoverSessionRow, leaveSessionRow } from '../../data/chat-prefetch'
 import { buildListModel, treeNodeDomId } from '../list-model'
 import { projectNameOf } from '../projection'
 import { useExposeStore } from '../store'
@@ -154,6 +155,28 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
       useWorkbenchStore.getState().restoreHidden(`session:${sessionId}`),
     [],
   )
+  /*
+   * ── 悬停预取(第 6 单)—— 委托在**树容器**上,不长在行上 ──────────────────
+   *
+   * 与那条 `scrollIntoView` 的 effect 同一条理由(见 SessionRow 文件头第 ③ 笔):
+   * 一屏 400 行,而「指针此刻停在哪一行」永远只有**一行**。挂在行上就是 400 份
+   * 监听 + 两格新 prop,而那两格 prop 会连着 memo 的稳定性一起还债 —— 冷开预算
+   * 是一行一行乘出来的。所以这里与键盘走同一条路:事件委托,行本身一个字不动。
+   *
+   * 用 `pointerover` / `pointerleave` 而不是 `pointerenter` / `pointerout`:
+   * 前者一对是**冒泡的**(委托要的正是这个)与**只在真的离开容器时发一次**;
+   * `pointerenter` 压根不冒泡到这里,`pointerout` 则会在行内每换一个子元素时
+   * 各发一次,拿它当「离开」用就是每走过一个图标撤一次单。
+   *
+   * **它不碰 active,也不碰焦点**(hover ≠ active 两态纪律):`hoverSessionRow`
+   * 全部的作用是起一只表,到点了去 `chat-source` 的注册表里把那条会话捂热。
+   */
+  const onTreePointerOver = useCallback((e: ReactPointerEvent<HTMLElement>) => {
+    const row = (e.target as HTMLElement | null)?.closest?.('[data-session-id]')
+    const sessionId = row?.getAttribute('data-session-id')
+    if (sessionId) hoverSessionRow(sessionId)
+    else leaveSessionRow()
+  }, [])
   const onMenu = useCallback(
     (sessionId: string, point: { x: number; y: number }) => {
       const title = currentSessionsTitle(sessionId)
@@ -300,6 +323,8 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
         aria-label={t('item.sessions')}
         aria-activedescendant={activeId ? treeNodeDomId(activeId) : undefined}
         data-testid="expose-tree"
+        onPointerOver={onTreePointerOver}
+        onPointerLeave={leaveSessionRow}
       >
         {renderBody()}
       </div>

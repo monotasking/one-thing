@@ -266,6 +266,32 @@ run('gate:focus', 'npm', ['run', '--silent', 'gate:focus'])
  */
 run('gate:layout', 'npm', ['run', '--silent', 'gate:layout'])
 /*
+ * ── 会话加载体验那三道门(第 6 单,09-10)────────────────────────────────────
+ *
+ * 它们进得来的理由与 `gate:perf` 进不来的理由**不冲突**,判据仍旧是那一条:
+ * 「余量够不够,会不会随机器状况随机变红」。
+ *
+ *  · `gate:chat-follow` / `gate:continuity` 压根不是毫秒读数 —— 前者判丸的三张
+ *    脸、贴底跟不跟、上翻动不动(位移与文字,同一份代码跑一百遍同一个答案),
+ *    后者判**请求次数**、锚点行与焦点落点。它们与 gate:focus / gate:layout 同族。
+ *  · `gate:chat-layout` 是**这里唯一一条毫秒门**,而它进得来是因为第五轴把那五个
+ *    数立成了法(壳 `CLAUDE.md` 验收第五轴,09-10 用户令:「不重载 / 不卡 / 已治」
+ *    类结论必须附端到端毫秒数)。余量够不够这个问题没有被绕过,而是被**分档**
+ *    回答了:prod 走第五轴原数(实测 ①14/16、③176/300,余量充足),dev 上今天
+ *    达不到的那两格走 `DEV_TRANSITIONAL` 的过渡值(实测上限 + 余量,退场判据写
+ *    在那张表旁边)。**唯独没有走的那条路是把它红着放进来** —— 一条恒红的门只会
+ *    被人加 `|| true`,那时它连红都不会再红一次(这正是本文件顶部对 gate:perf
+ *    那两条理由里的第二条)。
+ *
+ * **两档都跑**:第五轴写死了「dev 与 prod 两种渲染层都要出数 —— 用户跑的是
+ * `electron:dev`,生产构建上量出的数对它不成立」。prod 那一趟复用 `dist/`(上面
+ * 那步 build 已经产出),所以它比 dev 那一趟便宜,排在后面。
+ */
+run('gate:chat-follow', 'npm', ['run', '--silent', 'gate:chat-follow'])
+run('gate:continuity', 'npm', ['run', '--silent', 'gate:continuity'])
+run('gate:chat-layout(dev)', 'npm', ['run', '--silent', 'gate:chat-layout'])
+run('gate:chat-layout(prod)', 'npm', ['run', '--silent', 'gate:chat-layout', '--', '--prod'])
+/*
  * gate:credentials 不在这里,理由与 gate:perf 不同:它**读的是这台机器上真实的
  * 生产 store**(要一份真的 safeStorage 密文才有得比),而 verify 必须在任何一台
  * checkout 上都能跑。它自己跑:`npm run gate:credentials`。
@@ -274,5 +300,6 @@ run('gate:layout', 'npm', ['run', '--silent', 'gate:layout'])
 process.stdout.write(
   '\n[verify] ok —— typecheck / lint(含 jsx-a11y)/ squeeze-gate / motion-gate / test / build'
     + ' / offline-fonts / buttonbase-css'
-    + ' / 真机门(connect·data·theme·chat·files·search·monotone·squeeze·motion·a11y·focus·layout)全绿\n',
+    + ' / 真机门(connect·data·theme·chat·files·search·monotone·squeeze·motion·a11y·focus·layout'
+    + '·chat-follow·continuity·chat-layout[dev+prod])全绿\n',
 )

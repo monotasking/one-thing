@@ -11,6 +11,9 @@ import { openSessionIds } from './__fixtures__/open-sessions'
 import { useWorkbenchStore } from '../../workbench/store'
 import { initialExposeState } from '../transitions'
 import { FocusDispatchHarness } from '../../test/focus-harness'
+import { SESSION_PREFETCH_HOVER_MS } from '../../components/motion'
+import { chatSources } from '../../data/chat-source'
+import { resetChatPrefetch } from '../../data/chat-prefetch'
 import { ExposeView } from './ExposeView'
 
 /**
@@ -29,6 +32,9 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  // 悬停预取那只表与它捂热的机器都是进程级的,不收就会漏进下一条用例。
+  resetChatPrefetch()
+  chatSources.resetAll()
   sessionMutation.reset()
   resetLiveRegions()
   vi.restoreAllMocks()
@@ -246,7 +252,7 @@ describe('活动行:aria-activedescendant 只在键盘会话里指人', () => {
    * 指针没动却换了脚下的行 → 浏览器补一发 mouseenter)在行距更小的列表上更难被
    * 看成是自己按错了。
    */
-  it('mouseenter / mouseover 不改锚点:鼠标扫过整屏,键盘位一格不动', () => {
+  it('mouseenter / mouseover / pointerover 不改锚点:鼠标扫过整屏,键盘位一格不动', () => {
     render(<ExposeView />)
     lightUp('os-toolkit')
     const all = [...tree().querySelectorAll<HTMLElement>('[role="treeitem"]')]
@@ -254,8 +260,38 @@ describe('活动行:aria-activedescendant 只在键盘会话里指人', () => {
     for (const el of all) {
       fireEvent.mouseEnter(el)
       fireEvent.mouseOver(el)
+      // `pointerover` 是第 6 单新接的那一条(悬停预取的委托口)。它进这个循环
+      // 不是顺手 —— 新长出来的指针路径正是这条法最容易被重新违反的地方。
+      fireEvent.pointerOver(el)
     }
     expect(useExposeStore.getState().focusId).toBe('os-toolkit')
+  })
+
+  /*
+   * 悬停预取的**委托口**(第 6 单):停满读认窗口之后,那条会话的数据机器活起来。
+   * 这一条测的是 `SessionTree` 那一半 —— 从事件目标 `closest('[data-session-id]')`
+   * 认出是哪一行、行与行之间的空当算「离开」;窗口、速率闸与预热在
+   * `data/chat-prefetch.test.ts` 里各有各的判据。
+   */
+  it('指针在一行上停满读认窗口 → 那条会话的机器活起来;停在空当上不算', async () => {
+    render(<ExposeView />)
+    const row = screen.getByTestId('session-row-os-provider')
+    fireEvent.pointerOver(row)
+    // 还没停满:一台机器都没有。
+    expect(chatSources.get('os-provider')).toBeUndefined()
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, SESSION_PREFETCH_HOVER_MS + 20))
+    })
+    expect(chatSources.get('os-provider')).toBeDefined()
+
+    // 走到行与行之间的空当(树自己):`closest` 认不出行 = 一次「离开」,表被掐掉。
+    fireEvent.pointerOver(tree())
+    fireEvent.pointerOver(screen.getByTestId('session-row-os-toolkit'))
+    fireEvent.pointerOver(tree())
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, SESSION_PREFETCH_HOVER_MS + 20))
+    })
+    expect(chatSources.get('os-toolkit')).toBeUndefined()
   })
 
   /*
