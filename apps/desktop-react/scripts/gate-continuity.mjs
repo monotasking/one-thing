@@ -56,16 +56,24 @@ import {
   fakeProviderAiSettings,
   FAKE_PROVIDER_ENV,
 } from '../../../scripts/lib/gate-fake-provider.mjs'
+import { seedLargeLedger } from './lib/seed-large-ledger.mjs'
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(appRoot, '../..')
 const serverEntry = path.join(repoRoot, 'dist/server/main.js')
 const mainEntry = path.join(appRoot, 'dist-electron/main.cjs')
 
-/** A 要够长才有「中间」可停 —— 一次种子 = 一问一答两条。 */
-const SEED_A = 12
-/** B 短一点就行,它只是「切走去哪儿」。 */
-const SEED_B = 3
+/*
+ * ── 夹具(09-10 换掉了「真的发消息种」那一版)────────────────────────────
+ *
+ * 甲要够长才有「中间」可停,而且**要够大**:这道门证的是「切走再切回不重载、
+ * 停在原处」,而只有在真店那个量级上,「重载」与「不重载」才是用户分得出来的
+ * 两件事(24 行的树上重载一次也不过几毫秒)。两条会话都由
+ * `lib/seed-large-ledger.mjs` 直接写账本 —— 见下面「种子为什么不再走 provider」。
+ */
+const FIXTURE_A = { messages: 400 }
+/** B 小一档就行,它只是「切走去哪儿」。 */
+const FIXTURE_B = { messages: 120, targetBytes: 0, targetToolCalls: 0, largeResults: 2, images: 2 }
 const REPLY_TEXT = 'C1 连续性门 · 假 provider 的流式回答。'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -127,14 +135,6 @@ async function rpc(record, domain, method, payload = {}) {
     throw new Error(`rpc ${domain}.${method} 失败:${JSON.stringify(body?.error ?? body)}`)
   }
   return body.data
-}
-
-async function waitForLedger(record, sessionId, count) {
-  return waitFor(`账本落到 ${count} 条`, async () => {
-    const got = await rpc(record, 'sessions', 'getMessages', { sessionId })
-    const n = got?.messages?.length ?? 0
-    return n >= count ? n : undefined
-  })
 }
 
 /** 点一个 testid(理由见 gate-data.mjs 顶部:不用 page.click,不动真光标)。 */
@@ -209,7 +209,26 @@ function readView(page) {
     const scroll = document.querySelector('[data-testid="chat-stream"]')
     const rows = Array.from(document.querySelectorAll('[data-message-id]'))
     const active = document.activeElement
+    /*
+     * **视口里最上面那条还露着的消息**(与 `measureScrollAnchor` / gate-chat-layout
+     * 的 ⑨ 同一条判据)。它与 `scrollTop` 回答的不是同一个问题:前者是「眼睛看到
+     * 的还是那一行吗」,后者是「滚动条停在同一个数吗」——在一棵屏外行走
+     * `content-visibility: auto`(报**估高**)的大树上,后者会随 `scrollHeight`
+     * 重新估算而漂,前者不会。两个都读出来,红的时候才分得清是哪一种。
+     */
+    let anchor = null
+    if (scroll) {
+      const base = scroll.getBoundingClientRect().top
+      for (const row of rows) {
+        const rect = row.getBoundingClientRect()
+        if (rect.bottom <= base) continue
+        anchor = { id: row.getAttribute('data-message-id'), offset: Math.round(rect.top - base) }
+        break
+      }
+    }
     return {
+      anchor,
+      scrollHeight: scroll ? Math.round(scroll.scrollHeight) : null,
       scrollTop: scroll ? scroll.scrollTop : null,
       gap: scroll ? scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop : null,
       rowCount: rows.length,
@@ -222,19 +241,54 @@ function readView(page) {
   })
 }
 
-async function seedSession(record, name, turns) {
+/**
+ * 建一条空会话(`meta.json` 因此是产品自己写的那一份)。账本**不在这里种** ——
+ * 要趁 core 停着写,见下面 `seedLedgers`。
+ */
+async function createSession(record, name) {
   const made = await rpc(record, 'sessions', 'create', { name })
   const sessionId = made?.session?.id
   if (!sessionId) throw new Error(`sessions.create 没给出会话 id(${name})`)
-  for (let i = 0; i < turns; i += 1) {
-    await rpc(record, 'session-command', 'emit', {
-      sessionId,
-      command: { type: 'command:send-message', content: `${name} 第 ${i + 1} 句 —— 起底要够长` },
-    })
-    // 一问一答落完账再发下一条:趁上一轮还在跑就发下一条走的是插话那条路。
-    await waitForLedger(record, sessionId, (i + 1) * 2)
-  }
   return sessionId
+}
+
+/*
+ * ── 种子为什么不再走 provider(09-10,一条真 bug 的收尸)──────────────────
+ *
+ * 从前这道门是**真的发消息**种会话:`command:send-message` 一条,然后等
+ * `sessions.getMessages` 的条数涨到 `(i+1)*2`,再发下一条。它三次里红两次,
+ * 崩在同一句:`超时(20000ms)等待:账本落到 4 条`。
+ *
+ * **真因不是慢,是等的信号不对。** 崩住那一份账本的事件序列是:
+ *
+ *   user/message → run/start → … → request/end → **user/message** →
+ *   auxiliary-model/result → **run/end**
+ *
+ * 两件事叠在一起:
+ *  ① `getMessages` 的条数在 **`run/start`** 那一刻就到位 —— 助手消息是**先建
+ *     空壳、再往里流**的,所以「条数够了」证明的是「这一轮开始了」,**不是**
+ *     「这一轮跑完了」;
+ *  ② 这一轮的 `run/end` 还被**辅助模型**(会话自动起名)那一发拖在后面,它也
+ *     打同一台假 provider。
+ * 于是下一条 `send-message` 落在**还开着**的那条 run 上,走的是**插话**那条路
+ * —— 不再产生新的一对消息,条数永远停在 3,等到 20 秒超时为止。是不是踩中,
+ * 取决于起名那一发比轮询快还是慢,所以它「时红时绿」。
+ *
+ * 修法不是把 20 秒改成 60 秒(那只是把骰子多摇几次),也不是去等 `run/end`
+ * (那要再引一套 SSE 订阅进这道门,而它要证的根本不是引擎)。修法是**根本不发
+ * 消息**:趁 core 停着直接写真编码的账本,再把 core 起回来冷读一遍 —— 与
+ * `gate:chat-layout` 同一手。种子阶段一次 provider 往返都不发,这条竞态在结构上
+ * 消失,顺带把夹具从 24 行抬到真店量级。
+ *
+ * 假 provider 仍然起着:`settings.json` 里要有一份指向本机的 `ai` 配置,免得
+ * 任何一条路径不小心真的打到网上去。它在这道门里从头到尾一次都不会被调用。
+ */
+function seedLedgers(store, entries) {
+  const out = {}
+  for (const [key, sessionId, fixture] of entries) {
+    out[key] = seedLargeLedger(store, sessionId, fixture)
+  }
+  return out
 }
 
 /** 进一条会话 = 在总览里点它那一行(与用户的手势同一条路:`enterSessionInWorkbench`)。 */
@@ -264,7 +318,7 @@ async function main() {
   let server
   let app
   try {
-    console.log('\n[1/4] 起假 provider + 一台 core,种两条会话')
+    console.log('\n[1/4] 起假 provider + 一台 core,建两条会话并写真店规模的账本')
     mockProvider = await startFakeProvider(0, REPLY_TEXT)
     const mockPort = mockProvider.address().port
     writeFileSync(
@@ -280,23 +334,48 @@ async function main() {
         2,
       ),
     )
-    server = spawn(process.execPath, [serverEntry], {
-      env: { ...process.env, ...FAKE_PROVIDER_ENV, ONETHING_STORE_PATH: store },
-      cwd: repoRoot,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    const serverErr = []
-    server.stderr.on('data', (chunk) => serverErr.push(chunk.toString()))
-    const record = await waitFor('core 写出发现文件', () => {
-      const found = readDiscovery(store)
-      return found && found.pid === server.pid ? found : undefined
-    }).catch((error) => {
-      throw new Error(`${error.message}\nserver stderr:\n${serverErr.join('')}`)
-    })
-    if (!(await portConnects(record.host, record.port))) throw new Error('core 端口连不上')
+    /** 起一台 core,等它写出发现文件。种子要停一次再起,所以这一段是个函数。 */
+    const startCore = async () => {
+      const child = spawn(process.execPath, [serverEntry], {
+        env: { ...process.env, ...FAKE_PROVIDER_ENV, ONETHING_STORE_PATH: store },
+        cwd: repoRoot,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+      const serverErr = []
+      child.stderr.on('data', (chunk) => serverErr.push(chunk.toString()))
+      const found = await waitFor('core 写出发现文件', () => {
+        const got = readDiscovery(store)
+        return got && got.pid === child.pid ? got : undefined
+      }).catch((error) => {
+        throw new Error(`${error.message}\nserver stderr:\n${serverErr.join('')}`)
+      })
+      if (!(await portConnects(found.host, found.port))) throw new Error('core 端口连不上')
+      return { child, record: found }
+    }
+    const stopCore = async (child) => {
+      if (!child) return
+      child.kill('SIGTERM')
+      await delay(1200)
+      if (!child.killed) child.kill('SIGKILL')
+      await delay(300)
+    }
 
-    const idA = await seedSession(record, 'C1 门 · 会话甲', SEED_A)
-    const idB = await seedSession(record, 'C1 门 · 会话乙', SEED_B)
+    let core = await startCore()
+    server = core.child
+    const idA = await createSession(core.record, 'C1 门 · 会话甲')
+    const idB = await createSession(core.record, 'C1 门 · 会话乙')
+
+    // 趁 core 停着写账本:冷启一次全读,不碰「外来写手」那道闸。
+    await stopCore(server)
+    const seeded = seedLedgers(store, [['A', idA, FIXTURE_A], ['B', idB, FIXTURE_B]])
+    for (const [name, stat] of Object.entries(seeded)) {
+      console.log(
+        `      ${name}:${(stat.bytes / 1024 / 1024).toFixed(1)}MB / ${stat.messages} 条 / `
+        + `${stat.toolCalls} 张卡 / ${stat.blobs} 个 blob`,
+      )
+    }
+    core = await startCore()
+    server = core.child
 
     console.log('[2/4] 拉起应用(离屏 · 独立 --user-data-dir),进会话甲')
     app = await electron.launch({
@@ -330,7 +409,7 @@ async function main() {
         [idA, idB],
       ),
     )
-    await enterSession(page, idA, SEED_A * 2)
+    await enterSession(page, idA, seeded.A.messages)
     await delay(400)
 
     console.log('\n[3/4] 在甲里滚到中间,记下此刻的位置')
@@ -354,9 +433,9 @@ async function main() {
 
     console.log('\n[4/4] 切到乙,再切回甲 —— ①零重载 ②位置一致 ③焦点在输入框')
     const mark = await rpcMark(page)
-    await enterSession(page, idB, SEED_B * 2)
+    await enterSession(page, idB, seeded.B.messages)
     await delay(300)
-    await enterSession(page, idA, SEED_A * 2)
+    await enterSession(page, idA, seeded.A.messages)
     // 起底真要发生的话,它排在进场那几帧里;多等一会儿,免得「还没来得及打」
     // 被当成「一发都没打」。
     await delay(800)
@@ -368,11 +447,25 @@ async function main() {
       `① 切回甲**零重载**:从切走那一刻起 sessionEvents.listRaw(甲)打了 ${reloadsA} 发`,
     )
 
-    const tolerance = Math.max(before.rowHeight ?? 0, 1)
-    const drift = Math.abs((after.scrollTop ?? -1) - (before.scrollTop ?? 0))
+    /*
+     * ② 的判据是**锚点行 + 行内偏移**,不是裸 `scrollTop`(09-10 换大夹具时改的):
+     * 屏外行走 `content-visibility: auto` 只按估高占位,切走再切回来那一路里屏外行
+     * 重新估高会让整棵树矮几千像素,`scrollTop` 跟着变而**用户眼里的那一行一像素
+     * 没动**(实测同一行同一偏移、树高 121156 → 114748、scrollTop 差 2770)。
+     * 用户看见的是行,门就判行 —— 与 `gate:chat-layout` ⑨ 同一把尺子。
+     */
+    const ANCHOR_DRIFT_PX = 8
+    const anchorDrift =
+      before.anchor?.id !== undefined && before.anchor?.id === after.anchor?.id
+        ? Math.abs((after.anchor?.offset ?? 0) - (before.anchor?.offset ?? 0))
+        : Number.POSITIVE_INFINITY
+    console.log(
+      `      锚点:${before.anchor?.id}@${before.anchor?.offset}px → ${after.anchor?.id}@${after.anchor?.offset}px;`
+      + `树高 ${before.scrollHeight} → ${after.scrollHeight}px;scrollTop ${before.scrollTop} → ${after.scrollTop}`,
+    )
     assert(
-      drift <= tolerance,
-      `② 停在离开时那一行:scrollTop ${before.scrollTop} → ${after.scrollTop}(差 ${drift.toFixed(1)}px ≤ 一行 ${tolerance.toFixed(1)}px)`,
+      anchorDrift <= ANCHOR_DRIFT_PX,
+      `② 停在离开时那一行:锚点行 ${before.anchor?.id} → ${after.anchor?.id},行内偏移差 ${Number.isFinite(anchorDrift) ? anchorDrift.toFixed(1) : '∞'}px ≤ ${ANCHOR_DRIFT_PX}px`,
     )
     assert(
       after.rowCount === before.rowCount && after.firstRowId === before.firstRowId,

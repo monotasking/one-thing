@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * **聊天树的排版账**(2026-09-10)—— 这道门问的不是「对不对」,是**一次排版要多少钱**。
+ * **聊天树的排版账 + 交互预算**(2026-09-10)—— 这道门问的不是「对不对」,是
+ * **一次交互要多少钱、用户什么时候看得见**。
  *
  * ── 病历(它为什么存在)────────────────────────────────────────────────────
  * 两轮真机 CPU profile 坐实:388 条消息 / 37,470 个节点 / 内容列 269,803px 的会话,
@@ -12,36 +13,57 @@
  *   · 拖窗口每一步 110ms,而那一步里 JS 只有 0.38ms —— 全是浏览器在排版;
  *   · 流式期间每一段 delta 一次提交 = 一次 stick = 一次全树排版。
  *
- * 两笔修:**A** 拆掉「每一次提交都贴底」那只 effect(跟底改由 ResizeObserver 派);
- * **B** 消息行挂 `content-visibility: auto` + `contain-intrinsic-block-size`,
- * 让首次排版与 resize 从「按整份账本计价」变成「按视口计价」。
+ * 09-10 用户把病根说成了法(`CLAUDE.md` 验收第五轴):**「一次交互对应一个长
+ * 任务」是结构性违例,不是性能债** —— 列表高亮、标题、内容在最后一帧一起换,
+ * 就是全有或全无。所以这道门从「量排版」扩成「量**用户看得见的那几个时刻**」。
  *
- * ── 这道门量什么、不量什么 ────────────────────────────────────────────────
- * 量:①切会话往返五次的 click 同步 JS 与长帧;②进场就在底;③切走再切回停在
- * 离开时那一行(跳渲的行只报估高,落位会漂 —— 所以这一条正是 B 的验收);
- * ④拖窗口十步的长帧;⑤大会话上真流一轮之后仍然在底(A 没把跟底弄丢)。
+ * ── 这道门量什么 ──────────────────────────────────────────────────────────
+ * **五条交互预算**(第五轴那张表,在 ≥50MB 的真店规模夹具上量):
+ *   ① 点会话行后**第一帧**有可见变化(列表高亮换行)      ≤ 16ms
+ *   ② 池命中,内容上屏(那条会话的最后一条消息进视口)     ≤ 100ms
+ *   ③ 冷载,首屏上屏                                      ≤ 300ms
+ *   ④ 来回切 A→B→A(两边都在池里,三跳各自的上屏)        ≤ 50ms
+ *   ⑤ 流式 20 段 delta 期间                               零 ≥50ms 长帧
+ * **五条排版账**(这道门原有的,一条不减):
+ *   ⑥ 切回大会话的 click 同步 JS;⑦ 五次切换里最长的那一帧;⑧ 进场就在底;
+ *   ⑨ 切走再切回停在离开时那一行(锚点漂移 ≤ 8px);⑩ 拖窗口十步的长帧;
+ *   ⑪ 大会话上真流一轮之后仍然在底。
  *
- * **不量**:丸的三张脸、发送三态、玻璃几何 —— 那些在 `gate:chat-follow` 里,
- * 而**那道门正是「A 没把跟底弄丢」的另一半证据**(它接真假 provider、逐条注入、
- * 每长一条都断言仍在底)。两道门一起跑,不在这里抄第二份。
+ * **不量**:丸的三张脸、发送三态、玻璃几何 —— 那些在 `gate:chat-follow` 里。
+ * **也不量**「标题换了没有」那半条 ①:壳今天没有一个稳定的 host 标题 testid,
+ * 而 `aria-selected` 那半条正是第五轴点名的「列表高亮」——**报得出的才断言**,
+ * 报不出的写进留账,不拿一个猜出来的选择器充数。
  *
- * ── 种子:直接写账本,不走一百九十轮真回答 ────────────────────────────────
- * 会话经 `sessions.create` 建(meta.json 因此是产品自己写的那一份),**趁 core
+ * ── 夹具:`scripts/lib/seed-large-ledger.mjs` ─────────────────────────────
+ * 从前这道门自己身上带一段种子(190 轮 × 5 次工具,**1.7MB**)—— 那是真店的
+ * 三十分之一,拿它量出来的「绿」什么都不证明。现在两条会话都由生成器造:
+ * 真编码、参数化、同参数逐字节可复现,缺省 ≥50MB / 400 条消息 / 900 张工具卡。
+ * 会话经 `sessions.create` 建(`meta.json` 因此是产品自己写的那一份),**趁 core
  * 停着**把事件追进 `events.jsonl`,再把 core 起回来 —— 冷启一次全读,不碰
- * 「外来写手」那道闸。这样几秒钟就能种出与报障现场同量级的一棵树,而不必等
- * 一百九十轮假回答。
+ * 「外来写手」那道闸。
+ *
+ * ── 两条渲染层都要跑 ──────────────────────────────────────────────────────
+ * **缺省跑 dev**(现起一台 vite,端口另挑,绝不碰用户的 5175),`--prod` 跑
+ * `dist/` 产物。理由是第五轴那一句:用户跑的是 `electron:dev`,生产构建上量出来
+ * 的数对它不成立(09-10 判例:prod 215ms 的池命中路在 dev 上是它的数倍)。
+ * `ONETHING_GATE_DIST=1` 与 `--prod` 等价。
  *
  * ── 纪律 ──────────────────────────────────────────────────────────────────
  * 隔离 store + 独立 `--user-data-dir`,`ONETHING_GATE_HEADLESS=1` 离屏起窗(不 show、
- * 不进 Dock、不抢前台),一切输入走 CDP,`finally` 里逐个收尸。**绝不连
- * `~/.onething`**,一个字节都不写用户的机器。
+ * 不进 Dock、不抢前台),一切输入走 CDP `Input.dispatch*`(不动真光标),
+ * `finally` 里逐个收尸并自查残留。**绝不连 `~/.onething`、绝不连 5175**,
+ * 一个字节都不写用户的机器。
  *
- * 跑法:`node scripts/gate-chat-layout.mjs`
- * (仓根先 `bun run server:build`,本目录先 `npm run app:build`)。
- * `--json` 只打读数表不判红绿(调参用)。
+ * 跑法:
+ *   `npm run gate:chat-layout`            —— dev 渲染层,判红绿
+ *   `npm run gate:chat-layout -- --prod`  —— prod 渲染层
+ *   `... -- --report`                     —— 只报读数不判红绿(出基线用)
+ *   `... -- --json`                       —— 只打读数表(机器读)
+ * (仓根先 `bun run server:build`;`--prod` 还要先 `npm run app:build`,
+ *  dev 档只要 `npm run electron:build` —— 主进程那一份产物两档都要。)
  */
 import { spawn } from 'node:child_process'
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -49,52 +71,67 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { _electron as electron } from 'playwright'
 import electronBinary from 'electron'
-import {
-  startFakeProvider,
-  fakeProviderAiSettings,
-  FAKE_PROVIDER_ENV,
-} from '../../../scripts/lib/gate-fake-provider.mjs'
+import { seedLargeLedger } from './lib/seed-large-ledger.mjs'
+import { startChunkedFakeProvider } from './lib/gate-stream-provider.mjs'
+import { fakeProviderAiSettings, FAKE_PROVIDER_ENV } from '../../../scripts/lib/gate-fake-provider.mjs'
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(appRoot, '../..')
 const serverEntry = path.join(repoRoot, 'dist/server/main.js')
 const mainEntry = path.join(appRoot, 'dist-electron/main.cjs')
-const JSON_ONLY = process.argv.includes('--json')
 
-/*
- * ── 种子的量级(对着报障现场取)──────────────────────────────────────────
- * 真机那条会话:388 条消息 / 916 张工具卡。一问一答两条,所以 190 轮 ≈ 380 条;
- * 每轮 5 次工具调用 ≈ 950 张卡。乙会话小一档 —— 「切回甲」那一下的代价才是
- * 这道门的主角,乙只负责把甲挤下屏。
+const JSON_ONLY = process.argv.includes('--json')
+const REPORT_ONLY = JSON_ONLY || process.argv.includes('--report')
+const PROD = process.argv.includes('--prod') || process.env.ONETHING_GATE_DIST === '1'
+const LANE = PROD ? 'prod' : 'dev'
+
+/**
+ * dev 档的 vite 端口。**不是 5175** —— 那是用户自己的 `app:dev` 占着的口
+ * (`vite.config.ts` 里 `strictPort: true`),抢它就是抢用户的机器。
  */
-const A_TURNS = 190
-const A_TOOLS_PER_TURN = 5
-const B_TURNS = 60
-const B_TOOLS_PER_TURN = 2
+const DEV_PORT = Number(process.env.ONETHING_GATE_VITE_PORT ?? 5197)
+
+/* ── 夹具的量级(对着真店取)──────────────────────────────────────────────
+ *
+ * 甲 = 真店那一条的量级(生成器的缺省档:≥50MB / 400 条 / 900 张卡)。
+ * 乙小一档 —— 「切回甲」那一下的代价才是主角,乙只负责把甲挤下屏。
+ */
+const FIXTURE_A = {}
+const FIXTURE_B = { messages: 120, targetBytes: 0, targetToolCalls: 0, largeResults: 2, images: 2 }
 
 /**
  * ── 预算 ──────────────────────────────────────────────────────────────────
- * 都是**这一批之前量到的读数**加一段余量,不是凭空拍的数(逐条来历见上面的病历)。
- * 它们是**上限**不是目标:门要抓的是「回到按整份账本计价」那种量级的回归,
- * 而不是把每一次抖动都判红。
+ * ①–⑤ 是 `CLAUDE.md` 验收第五轴那张表(用户 09-10 立的),⑥–⑪ 是这一批之前
+ * 量到的读数加一段余量。它们是**上限**不是目标:门要抓的是「回到按整份账本
+ * 计价」那种量级的回归,而不是把每一次抖动都判红。
  */
 const BUDGET = {
-  /** 切回一条已在池里的大会话,click 的同步 JS。改前 1027 / 923ms。 */
+  /** ① 点下去到列表高亮换行(第一帧 = 一次 rAF)。 */
+  firstPaintMs: 16,
+  /** ② 池命中:点下去到那条会话的最后一条消息真的进视口。 */
+  poolHitMs: 100,
+  /** ③ 冷载:同一条判据,只是这一次它不在池里。 */
+  coldLoadMs: 300,
+  /** ④ 两边都在池里的来回切,三跳各自的上屏。 */
+  warmSwitchMs: 50,
+  /** ⑤ 流式期间不许出现的长帧门槛。 */
+  streamLongFrameMs: 50,
+  /** ⑥ 切回一条已在池里的大会话,click 的同步 JS。改前 1027 / 923ms。 */
   switchClickSyncMs: 300,
-  /** 同一下里最长的那一帧(long-animation-frame)。改前 1101 / 988ms。 */
+  /** ⑦ 同一下里最长的那一帧(long-animation-frame)。改前 1101 / 988ms。 */
   switchLongestFrameMs: 400,
-  /** 拖窗口十步里最长的那一帧。改前每步 110ms(其中 JS 0.38ms)。 */
+  /** ⑩ 拖窗口十步里最长的那一帧。改前每步 110ms(其中 JS 0.38ms)。 */
   resizeLongestFrameMs: 90,
-  /** 「在底」的容差 —— 与 `content/follow.ts` 的 `AT_BOTTOM_EPS` 同一个数。 */
+  /** ⑧⑪「在底」的容差 —— 与 `content/follow.ts` 的 `AT_BOTTOM_EPS` 同一个数。 */
   atBottomEps: 2,
-  /** 切走再切回来,锚点那一行落在原位的容差(px)。 */
+  /** ⑨ 切走再切回来,锚点那一行落在原位的容差(px)。 */
   anchorDriftPx: 8,
 }
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const failures = []
-const readings = {}
+const readings = { lane: LANE, budget: BUDGET }
 function assert(ok, message) {
   console.log(`  ${ok ? '✓' : '✗'} ${message}`)
   if (!ok) failures.push(message)
@@ -122,7 +159,7 @@ function portConnects(host, port) {
   })
 }
 
-async function waitFor(label, predicate, timeoutMs = 60_000) {
+async function waitFor(label, predicate, timeoutMs = 120_000) {
   const deadline = Date.now() + timeoutMs
   let last
   while (Date.now() < deadline) {
@@ -148,84 +185,21 @@ async function rpc(record, domain, method, payload = {}) {
   return body.data
 }
 
-/* ── 种子:直接往账本里追事件 ─────────────────────────────────────────────
+/* ── 页内探针 ─────────────────────────────────────────────────────────────
  *
- * 事件形与真账本逐字同形(`user/message` / `run/start` / `assistant/chunks` /
- * `tool/call` / `tool/result` / `run/end`)。正文长度取「一条正常回答」的量级 ——
- * 这道门要还原的是排版的**总量**,不是某一种块的画法。
+ * 两件事,一次注入:
+ *  · **长帧与事件耗时**(`long-animation-frame` / `event`)—— ⑥⑦⑩⑤ 读它;
+ *  · **一次交互的三个时刻**(按下 / 第一帧可见变化 / 内容上屏)—— ①②③④ 读它。
+ *
+ * 时刻的产地是**页内的 `performance.now()`**,不是脚本这一侧的墙钟:CDP 一发
+ * `Input.dispatchMouseEvent` 的往返本身就有几毫秒,拿它当 t0 会把 16ms 的预算
+ * 吃掉一小半。t0 取**捕获相位的 `mousedown`**(合成事件真的到达页面那一刻),
+ * 与用户按下鼠标那一刻是同一件事。
  */
-const PARAGRAPH =
-  '这一段是种子正文,长度取一条正常回答的量级:它要在屏幕上真的占掉几行,' +
-  '这样整棵树的高度才与报障现场同量级。排版的钱花在行盒与块盒上,而不是花在字符本身,' +
-  '所以这里不追求内容像不像,只追求行数与块数像。'
-
-function seedEvents(sessionId, turns, toolsPerTurn, startSeq, t0) {
-  const lines = []
-  let seq = startSeq
-  const push = (type, data) => {
-    lines.push(JSON.stringify({ seq: (seq += 1), time: t0 + seq, type, data }))
-  }
-  for (let turn = 0; turn < turns; turn += 1) {
-    const userId = `seed-u-${turn}`
-    const runId = `seed-r-${turn}`
-    const assistantId = `seed-a-${turn}`
-    push('user/message', {
-      message: { id: userId, role: 'user', content: `第 ${turn + 1} 问 —— ${PARAGRAPH.slice(0, 60)}`, timestamp: t0 + seq },
-    })
-    push('run/start', { runId, kind: 'send', assistantMessageId: assistantId, triggerMessageId: userId, timestamp: t0 + seq })
-    const text = [`## 第 ${turn + 1} 答\n\n`, PARAGRAPH, '\n\n', PARAGRAPH, '\n\n', PARAGRAPH]
-    push('assistant/chunks', {
-      runId,
-      requestIndex: 1,
-      messageId: assistantId,
-      partIndex: 0,
-      kind: 'text',
-      time0: t0 + seq,
-      dt: text.map((_, i) => i),
-      text,
-    })
-    for (let tool = 0; tool < toolsPerTurn; tool += 1) {
-      const callId = `seed-c-${turn}-${tool}`
-      push('tool/call', {
-        callId,
-        name: 'read',
-        argumentsRaw: JSON.stringify({ path: `/seed/turn-${turn}/file-${tool}.md` }),
-        messageId: assistantId,
-        runId,
-      })
-      push('tool/result', {
-        callId,
-        isError: false,
-        resultPreview: `${PARAGRAPH}\n${PARAGRAPH}`,
-        result: { text: `${PARAGRAPH}\n${PARAGRAPH}` },
-      })
-    }
-    push('run/end', { runId, outcome: 'completed' })
-  }
-  return { text: `${lines.join('\n')}\n`, lastSeq: seq }
-}
-
-/** 账本里最后一条的 seq —— 追加要从它往后接。 */
-function lastSeqOf(ledgerPath) {
-  if (!existsSync(ledgerPath)) return 0
-  const lines = readFileSync(ledgerPath, 'utf-8').trim().split('\n').filter(Boolean)
-  for (let i = lines.length - 1; i >= 0; i -= 1) {
-    try {
-      const seq = JSON.parse(lines[i]).seq
-      if (typeof seq === 'number') return seq
-    } catch {
-      /* 半行就往前找 */
-    }
-  }
-  return 0
-}
-
-/* ── 页内探针:交互读数 + 长帧 ───────────────────────────────────────────── */
-
 async function installProbe(page) {
   await page.evaluate(() => {
     if (window.__layoutProbe) return
-    const P = (window.__layoutProbe = { events: [], loaf: [] })
+    const P = (window.__layoutProbe = { events: [], loaf: [], run: null })
     try {
       new PerformanceObserver((list) => {
         for (const entry of list.getEntries()) {
@@ -246,6 +220,63 @@ async function installProbe(page) {
     } catch (error) {
       P.loafErr = String(error)
     }
+
+    /** 「列表高亮此刻在哪一行」—— ① 的判据(第五轴点名的那一半)。 */
+    const highlight = () =>
+      document.querySelector('[data-testid^="session-row-"][aria-selected="true"]')
+        ?.getAttribute('data-testid') ?? ''
+
+    /**
+     * 「那条会话的内容真的在屏幕上了吗」—— ②③④ 的判据。
+     *
+     * 判的是**指名道姓的那一行**(夹具给出的 `lastMessageId`)与滚动容器的可视
+     * 矩形有没有交叠。不判「行数够了」:行数够只说明 React 提交过,跳渲的行
+     * (`content-visibility: auto`)还可能一格都没画;也不判「任意一行可见」:
+     * 切换前屏幕上是另一条会话的行,那也叫「有行可见」。
+     */
+    const visible = (messageId) => {
+      const scroll = document.querySelector('[data-testid="chat-stream"]')
+      const row = messageId ? document.querySelector(`[data-message-id="${messageId}"]`) : null
+      if (!(scroll instanceof HTMLElement) || !row) return false
+      const box = scroll.getBoundingClientRect()
+      const rect = row.getBoundingClientRect()
+      if (rect.height <= 0) return false
+      return rect.bottom > box.top && rect.top < box.bottom
+    }
+
+    /**
+     * 布一次「等这一下交互」的岗。**先布岗再点**,岗自己在捕获相位接住 mousedown
+     * 盖时刻,所以 t0 与「合成事件到达页面」逐帧对齐。
+     */
+    P.arm = (wantMessageId) => {
+      const run = {
+        wantMessageId,
+        baseline: highlight(),
+        t0: null,
+        firstPaintMs: null,
+        contentMs: null,
+        frames: 0,
+        done: false,
+      }
+      P.run = run
+      const onDown = () => {
+        run.t0 = performance.now()
+        const tick = () => {
+          if (run.done) return
+          run.frames += 1
+          const now = performance.now()
+          if (run.firstPaintMs === null && highlight() !== run.baseline) run.firstPaintMs = now - run.t0
+          if (run.contentMs === null && visible(run.wantMessageId)) run.contentMs = now - run.t0
+          if ((run.firstPaintMs !== null && run.contentMs !== null) || now - run.t0 > 20_000) {
+            run.done = true
+            return
+          }
+          requestAnimationFrame(tick)
+        }
+        requestAnimationFrame(tick)
+      }
+      window.addEventListener('mousedown', onDown, { capture: true, once: true })
+    }
   })
 }
 
@@ -262,6 +293,7 @@ async function harvest(page, mark) {
       topSync: Math.round(Math.max(0, ...events.map((e) => e.sync))),
       longestFrame: Math.round(Math.max(0, ...loaf.map((l) => l.dur))),
       frames: loaf.length,
+      longFrames: loaf.map((l) => Math.round(l.dur)).filter((d) => d >= 50),
     }
   }, mark)
 }
@@ -308,13 +340,50 @@ async function clickTestId(cdp, page, testId) {
   await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...common, buttons: 0 })
 }
 
+/**
+ * 一次「点会话行 → 它上屏」的完整量法:布岗 → 点 → 等两个时刻齐了 → 收。
+ *
+ * 同时收 `harvest` 的那一份(⑥⑦ 用),所以一次交互只走一遍。
+ */
+async function measureSwitch(cdp, page, { label, sessionId, lastMessageId, wantRows }) {
+  const mark = await probeMark(page)
+  await page.evaluate((id) => window.__layoutProbe.arm(id), lastMessageId)
+  await clickTestId(cdp, page, `session-row-${sessionId}`)
+  const run = await waitFor(`${label} 的内容上屏`, async () => {
+    const value = await page.evaluate(() => {
+      const r = window.__layoutProbe.run
+      return r ? { ...r } : null
+    })
+    return value && value.t0 !== null && value.contentMs !== null ? value : undefined
+  })
+  // 长帧要等这一下彻底停稳才收得全(跳渲的行是一帧一帧补上来的)。
+  await delay(2500)
+  const cost = await harvest(page, mark)
+  const view = await readView(page)
+  return {
+    label,
+    firstPaintMs: run.firstPaintMs === null ? null : Math.round(run.firstPaintMs),
+    contentMs: Math.round(run.contentMs),
+    rafFrames: run.frames,
+    clickSync: cost.clickSync,
+    longestFrame: cost.longestFrame,
+    rowCount: view.rowCount,
+    gap: view.gap,
+    wantRows,
+  }
+}
+
 async function main() {
   if (!existsSync(serverEntry)) {
     console.error(`[chat-layout] 找不到 ${path.relative(repoRoot, serverEntry)} —— 先在仓根跑 \`bun run server:build\``)
     process.exit(1)
   }
-  if (!existsSync(mainEntry) || !existsSync(path.join(appRoot, 'dist/index.html'))) {
-    console.error('[chat-layout] 找不到构建产物 —— 先跑 `npm run app:build`')
+  if (!existsSync(mainEntry)) {
+    console.error('[chat-layout] 找不到主进程产物 —— 先跑 `npm run electron:build`')
+    process.exit(1)
+  }
+  if (PROD && !existsSync(path.join(appRoot, 'dist/index.html'))) {
+    console.error('[chat-layout] --prod 档找不到 `dist/index.html` —— 先跑 `npm run app:build`')
     process.exit(1)
   }
 
@@ -323,6 +392,7 @@ async function main() {
   let mockProvider
   let server
   let app
+  let vite
 
   /** 起一台 core,等它写出发现文件。 */
   const startCore = async () => {
@@ -351,8 +421,15 @@ async function main() {
   }
 
   try {
-    console.log('\n[1/6] 起假 provider + 一台 core,建两条空会话')
-    mockProvider = await startFakeProvider(0, '门跑完了,这一句是假 provider 吐的回答。')
+    console.log(`\n[chat-layout] 渲染层档位:${LANE}${REPORT_ONLY ? ' · 只报不判' : ''}`)
+
+    console.log('\n[1/7] 起假 provider + 一台 core,建两条空会话')
+    // 20 段:⑤ 那一条要的是 20 次真的到达、20 次真的提交。
+    mockProvider = await startChunkedFakeProvider(
+      0,
+      '门跑完了,这一句是假 provider 吐的回答:它要够长,好切成二十段真的流一遍,让每一段都逼出一次提交、一次排版,长帧才藏不住。',
+      { pieces: 20, gapMs: 40 },
+    )
     writeFileSync(
       path.join(store, 'settings.json'),
       JSON.stringify(
@@ -367,34 +444,52 @@ async function main() {
     )
     let core = await startCore()
     server = core.child
-    const idA = (await rpc(core.record, 'sessions', 'create', { name: '排版账 · 甲(大)' }))?.session?.id
+    const idA = (await rpc(core.record, 'sessions', 'create', { name: '排版账 · 甲(真店规模)' }))?.session?.id
     const idB = (await rpc(core.record, 'sessions', 'create', { name: '排版账 · 乙(小)' }))?.session?.id
     if (!idA || !idB) throw new Error('会话没建出来')
 
-    console.log('[2/6] 停 core,把种子事件追进账本,再把 core 起回来')
+    console.log('[2/7] 停 core,用生成器把两份账本写进去,再把 core 起回来')
     await stopCore(server)
-    const t0 = Date.now() - 86_400_000
-    for (const [id, turns, tools] of [
-      [idA, A_TURNS, A_TOOLS_PER_TURN],
-      [idB, B_TURNS, B_TOOLS_PER_TURN],
-    ]) {
-      const ledger = path.join(store, 'sessions', id, 'events.jsonl')
-      const seeded = seedEvents(id, turns, tools, lastSeqOf(ledger), t0)
-      appendFileSync(ledger, seeded.text)
-      console.log(`      ${id.slice(0, 8)}:${turns} 轮 × ${tools} 次工具,账本 ${(readFileSync(ledger).length / 1024).toFixed(0)}KB`)
+    const seeded = {
+      A: seedLargeLedger(store, idA, FIXTURE_A),
+      B: seedLargeLedger(store, idB, FIXTURE_B),
+    }
+    readings.fixture = seeded
+    for (const [name, s] of Object.entries(seeded)) {
+      console.log(
+        `      ${name} ${s.idPrefix}:${(s.bytes / 1024 / 1024).toFixed(1)}MB / ${s.messages} 条 / `
+        + `${s.toolCalls} 张卡(每张 ${(s.toolResultBytes / 1024).toFixed(0)}KB)/ ${s.blobs} 个 blob / `
+        + `${s.recipeRows} 条配方行`,
+      )
     }
     core = await startCore()
     server = core.child
     const record = core.record
 
-    console.log('[3/6] 拉起应用(离屏 · 独立 --user-data-dir)')
+    let rendererUrl = ''
+    if (!PROD) {
+      console.log(`[3/7] 起 vite dev(端口 ${DEV_PORT},**不是用户的 5175**)`)
+      const { createServer } = await import('vite')
+      vite = await createServer({
+        configFile: path.join(appRoot, 'vite.config.ts'),
+        server: { port: DEV_PORT, strictPort: true },
+        logLevel: 'warn',
+      })
+      await vite.listen()
+      rendererUrl = vite.resolvedUrls?.local?.[0] ?? `http://127.0.0.1:${DEV_PORT}/`
+      console.log(`      ${rendererUrl}`)
+    } else {
+      console.log('[3/7] prod 档:直接吃 `dist/` 产物,不起 vite')
+    }
+
+    console.log('[4/7] 拉起应用(离屏 · 独立 --user-data-dir)')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
         ONETHING_STORE_PATH: store,
-        ONETHING_REACT_DEV_SERVER_URL: '',
+        ONETHING_REACT_DEV_SERVER_URL: rendererUrl,
         ONETHING_GATE_HEADLESS: '1',
       },
     })
@@ -413,32 +508,33 @@ async function main() {
     await waitFor('总览画出两行', () =>
       page.evaluate(
         ([a, b]) =>
-          Boolean(document.querySelector(`[data-testid="session-row-${a}"]`)) &&
-          Boolean(document.querySelector(`[data-testid="session-row-${b}"]`)),
+          Boolean(document.querySelector(`[data-testid="session-row-${a}"]`))
+          && Boolean(document.querySelector(`[data-testid="session-row-${b}"]`)),
         [idA, idB],
       ),
     )
 
-    console.log('\n[4/6] ① 切会话往返:cold-A → B#1 → A#2 → B#2 → A#3')
+    console.log('\n[5/7] ①②③④⑥⑦ 切会话往返:cold-A → B#1 → A#2 → B#2 → A#3')
+    const plan = [
+      ['cold-A', idA, seeded.A],
+      ['B#1', idB, seeded.B],
+      ['A#2', idA, seeded.A],
+      ['B#2', idB, seeded.B],
+      ['A#3', idA, seeded.A],
+    ]
     const switches = []
-    for (const [label, id, want] of [
-      ['cold-A', idA, A_TURNS * 2],
-      ['B#1', idB, B_TURNS * 2],
-      ['A#2', idA, A_TURNS * 2],
-      ['B#2', idB, B_TURNS * 2],
-      ['A#3', idA, A_TURNS * 2],
-    ]) {
-      const mark = await probeMark(page)
-      await clickTestId(cdp, page, `session-row-${id}`)
-      await waitFor(`${label} 的消息上屏`, async () => {
-        const view = await readView(page)
-        return view.rowCount >= want ? view : undefined
+    for (const [label, id, fixture] of plan) {
+      const got = await measureSwitch(cdp, page, {
+        label,
+        sessionId: id,
+        lastMessageId: fixture.lastMessageId,
+        wantRows: fixture.messages,
       })
-      await delay(2500)
-      const got = await harvest(page, mark)
-      const view = await readView(page)
-      switches.push({ label, ...got, gap: view.gap, rowCount: view.rowCount })
-      console.log(`      ${label}: clickSync=${got.clickSync}ms 最长帧=${got.longestFrame}ms 行=${view.rowCount} 离底=${view.gap}px`)
+      switches.push(got)
+      console.log(
+        `      ${label}: 首帧=${got.firstPaintMs ?? '—'}ms 上屏=${got.contentMs}ms `
+        + `clickSync=${got.clickSync}ms 最长帧=${got.longestFrame}ms 行=${got.rowCount} 离底=${got.gap}px`,
+      )
     }
     readings.switches = switches
     readings.dom = await page.evaluate(() => ({
@@ -449,26 +545,46 @@ async function main() {
         document.querySelector('[data-testid="chat-stream"]')?.firstElementChild?.getBoundingClientRect().height ?? 0,
       ),
     }))
-    console.log(`      现场:${JSON.stringify(readings.dom)}`)
+    console.log(`      现场:${JSON.stringify(readings.dom)}(真店对照:37470 节点 / 269803px)`)
 
-    const warm = switches.filter((s) => s.label === 'A#2' || s.label === 'A#3')
-    const worstWarm = Math.max(...warm.map((s) => s.clickSync))
+    const byLabel = (name) => switches.find((s) => s.label === name)
+    const cold = byLabel('cold-A')
+    const poolHit = byLabel('A#2')
+    const warm = [byLabel('B#2'), byLabel('A#3')]
+    const worstFirstPaint = Math.max(...switches.map((s) => s.firstPaintMs ?? Number.POSITIVE_INFINITY))
+    assert(
+      Number.isFinite(worstFirstPaint) && worstFirstPaint <= BUDGET.firstPaintMs,
+      `① 点下去第一帧列表高亮就换了:五次里最慢 ${Number.isFinite(worstFirstPaint) ? `${worstFirstPaint}ms` : '(有一次压根没换)'} ≤ ${BUDGET.firstPaintMs}ms`,
+    )
+    assert(
+      poolHit.contentMs <= BUDGET.poolHitMs,
+      `② 池命中,内容上屏 ${poolHit.contentMs}ms ≤ ${BUDGET.poolHitMs}ms`,
+    )
+    assert(
+      cold.contentMs <= BUDGET.coldLoadMs,
+      `③ 冷载,首屏上屏 ${cold.contentMs}ms ≤ ${BUDGET.coldLoadMs}ms`,
+    )
+    const worstWarm = Math.max(...warm.map((s) => s.contentMs))
+    assert(
+      worstWarm <= BUDGET.warmSwitchMs,
+      `④ 来回切 A→B→A(两边都在池里)最慢一跳 ${worstWarm}ms ≤ ${BUDGET.warmSwitchMs}ms`,
+    )
+
+    const warmClicks = [poolHit, ...warm].filter((s) => s.label.startsWith('A'))
+    const worstClickSync = Math.max(...warmClicks.map((s) => s.clickSync))
     const worstFrame = Math.max(...switches.map((s) => s.longestFrame))
     assert(
-      worstWarm <= BUDGET.switchClickSyncMs,
-      `切回大会话的 click 同步 JS ${worstWarm}ms ≤ ${BUDGET.switchClickSyncMs}ms(改前 1027 / 923ms)`,
+      worstClickSync <= BUDGET.switchClickSyncMs,
+      `⑥ 切回大会话的 click 同步 JS ${worstClickSync}ms ≤ ${BUDGET.switchClickSyncMs}ms(改前 1027 / 923ms)`,
     )
     assert(
       worstFrame <= BUDGET.switchLongestFrameMs,
-      `五次切换里最长的那一帧 ${worstFrame}ms ≤ ${BUDGET.switchLongestFrameMs}ms(改前 1101ms)`,
+      `⑦ 五次切换里最长的那一帧 ${worstFrame}ms ≤ ${BUDGET.switchLongestFrameMs}ms(改前 1101ms)`,
     )
 
-    console.log('\n[5/6] ② 进场就在底 / ③ 切走再切回停在离开时那一行')
+    console.log('\n[6/7] ⑧ 进场就在底 / ⑨ 切走再切回停在离开时那一行')
     const entered = await readView(page)
-    assert(
-      entered.gap <= BUDGET.atBottomEps,
-      `进场就在底(离底 ${entered.gap}px ≤ ${BUDGET.atBottomEps}px)`,
-    )
+    assert(entered.gap <= BUDGET.atBottomEps, `⑧ 进场就在底(离底 ${entered.gap}px ≤ ${BUDGET.atBottomEps}px)`)
 
     // 滚到中间某一条,记住它;去乙,再回甲。
     await page.evaluate(() => {
@@ -482,13 +598,13 @@ async function main() {
     await clickTestId(cdp, page, `session-row-${idB}`)
     await waitFor('乙上屏', async () => {
       const view = await readView(page)
-      return view.rowCount >= B_TURNS * 2 ? view : undefined
+      return view.rowCount >= seeded.B.messages ? view : undefined
     })
     await delay(1200)
     await clickTestId(cdp, page, `session-row-${idA}`)
     await waitFor('甲回来', async () => {
       const view = await readView(page)
-      return view.rowCount >= A_TURNS * 2 ? view : undefined
+      return view.rowCount >= seeded.A.messages ? view : undefined
     })
     await delay(1500)
     const after = await readView(page)
@@ -496,62 +612,92 @@ async function main() {
     const sameRow = Boolean(before.anchor && after.anchor && before.anchor.id === after.anchor.id)
     const drift = sameRow ? Math.abs(after.anchor.offset - before.anchor.offset) : Number.NaN
     console.log(`      回来后:锚点 ${after.anchor?.id} offset=${after.anchor?.offset}px`)
-    assert(sameRow, `切回来还是离开时那一行(${before.anchor?.id} → ${after.anchor?.id})`)
+    assert(sameRow, `⑨ 切回来还是离开时那一行(${before.anchor?.id} → ${after.anchor?.id})`)
     assert(
       sameRow && drift <= BUDGET.anchorDriftPx,
-      `那一行落在原位 ±${BUDGET.anchorDriftPx}px(实测漂 ${Number.isNaN(drift) ? '—' : drift}px)`,
+      `⑨ 那一行落在原位 ±${BUDGET.anchorDriftPx}px(实测漂 ${Number.isNaN(drift) ? '—' : drift}px)`,
     )
 
-    console.log('\n[6/6] ④ 拖窗口十步 / ⑤ 大会话上真流一轮仍然在底')
+    console.log('\n[7/7] ⑩ 拖窗口十步 / ⑤ 流式 20 段 / ⑪ 流完仍然在底')
     const base = await readView(page)
-    const mark = await probeMark(page)
+    const resizeMark = await probeMark(page)
     for (let step = 0; step < 10; step += 1) {
       const width = base.w - (step + 1) * 24
       await cdp.send('Emulation.setDeviceMetricsOverride', { width, height: base.h, deviceScaleFactor: 0, mobile: false })
       await delay(220)
     }
     await delay(1200)
-    const resized = await harvest(page, mark)
+    const resized = await harvest(page, resizeMark)
     await cdp.send('Emulation.clearDeviceMetricsOverride')
     await delay(1200)
     readings.resize = resized
     console.log(`      resize ×10:最长帧=${resized.longestFrame}ms(共 ${resized.frames} 个长帧)`)
     assert(
       resized.longestFrame <= BUDGET.resizeLongestFrameMs,
-      `拖窗口十步里最长的那一帧 ${resized.longestFrame}ms ≤ ${BUDGET.resizeLongestFrameMs}ms(改前每步 110ms)`,
+      `⑩ 拖窗口十步里最长的那一帧 ${resized.longestFrame}ms ≤ ${BUDGET.resizeLongestFrameMs}ms(改前每步 110ms)`,
     )
 
-    // 回到底,再让假 provider 真跑一轮 —— 流完必须还在底(A 的跟底没丢)。
+    // 回到底,再让假 provider 真跑一轮 —— 流的**每一段**都在这一棵大树上提交。
     await page.evaluate(() => {
       const el = document.querySelector('[data-testid="chat-stream"]')
       el.scrollTop = el.scrollHeight
       el.dispatchEvent(new Event('scroll'))
     })
     await delay(600)
-    const wantRows = A_TURNS * 2 + 2
+    const wantRows = seeded.A.messages + 2
+    const streamMark = await probeMark(page)
     await rpc(record, 'session-command', 'emit', {
       sessionId: idA,
-      command: { type: 'command:send-message', content: '排版账门:这一条要让 388 条的树上真跑一轮' },
+      command: { type: 'command:send-message', content: '排版账门:这一条要在四百条的树上真流二十段' },
     })
     const streamed = await waitFor('那一轮上屏', async () => {
       const view = await readView(page)
       return view.rowCount >= wantRows ? view : undefined
     })
     await delay(2500)
+    const streamCost = await harvest(page, streamMark)
     const settled = await readView(page)
-    readings.stream = { rowCount: settled.rowCount, gap: settled.gap, sawRows: streamed.rowCount }
-    console.log(`      真流一轮之后:行=${settled.rowCount} 离底=${settled.gap}px`)
+    readings.stream = {
+      rowCount: settled.rowCount,
+      gap: settled.gap,
+      sawRows: streamed.rowCount,
+      longFrames: streamCost.longFrames,
+      longestFrame: streamCost.longestFrame,
+    }
+    console.log(
+      `      流式期间:≥${BUDGET.streamLongFrameMs}ms 的帧 ${streamCost.longFrames.length} 个`
+      + `${streamCost.longFrames.length ? `(${streamCost.longFrames.join(', ')}ms)` : ''};流完离底=${settled.gap}px`,
+    )
+    assert(
+      streamCost.longFrames.length === 0,
+      `⑤ 流式 20 段期间零 ≥${BUDGET.streamLongFrameMs}ms 长帧(实测 ${streamCost.longFrames.length} 个,最长 ${streamCost.longestFrame}ms)`,
+    )
     assert(
       settled.gap <= BUDGET.atBottomEps,
-      `大会话上真跑一轮,流完仍然在底(离底 ${settled.gap}px ≤ ${BUDGET.atBottomEps}px)`,
+      `⑪ 大会话上真跑一轮,流完仍然在底(离底 ${settled.gap}px ≤ ${BUDGET.atBottomEps}px)`,
     )
   } finally {
     if (app) await app.close().catch(() => undefined)
+    if (vite) await vite.close().catch(() => undefined)
     await stopCore(server)
-    if (mockProvider) mockProvider.close()
+    if (mockProvider) {
+      // keep-alive 的套接字会让 close() 一直等 —— 先掐断,收尸才收得干净。
+      mockProvider.closeAllConnections?.()
+      await new Promise((resolve) => mockProvider.close(resolve))
+    }
     await rm(store, { recursive: true, force: true }).catch(() => undefined)
     await rm(userDataDir, { recursive: true, force: true }).catch(() => undefined)
-    console.log(`\n[收尸] store / udd 已删;core pid=${server?.pid} killed=${server?.killed}`)
+    const leftovers = [
+      server && !server.killed ? `core pid=${server.pid}` : null,
+      existsSync(store) ? `store ${store}` : null,
+      existsSync(userDataDir) ? `udd ${userDataDir}` : null,
+      mockProvider?.listening ? `假 provider :${mockProvider.address()?.port}` : null,
+      !PROD && (await portConnects('127.0.0.1', DEV_PORT)) ? `vite :${DEV_PORT}` : null,
+    ].filter(Boolean)
+    console.log(
+      `\n[收尸] store / udd 已删;core killed=${server?.killed ?? '(没起)'}`
+      + `${leftovers.length ? `;**残留**:${leftovers.join('、')}` : ';残留自查:干净'}`,
+    )
   }
 
   if (JSON_ONLY) {
@@ -559,12 +705,39 @@ async function main() {
     return
   }
   console.log('')
+  if (REPORT_ONLY) {
+    console.log(`[chat-layout · ${LANE}] 只报不判 —— ${failures.length} 条超出预算(基线用,不判红绿):`)
+    for (const line of failures) console.log(`  · ${line}`)
+    console.log(`\n${renderTable(readings)}`)
+    return
+  }
   if (failures.length > 0) {
-    console.error(`[chat-layout] 红 —— ${failures.length} 条不达标:`)
+    console.error(`[chat-layout · ${LANE}] 红 —— ${failures.length} 条不达标:`)
     for (const line of failures) console.error(`  · ${line}`)
     process.exit(1)
   }
-  console.log('[chat-layout] 绿 —— 聊天树的排版账在预算内')
+  console.log(`[chat-layout · ${LANE}] 绿 —— 交互预算与排版账都在预算内`)
+}
+
+/** `--report` 的基线表:一屏能抄进方案里的那种。 */
+function renderTable(r) {
+  const rows = [
+    ['渲染层', r.lane],
+    ['夹具 甲', r.fixture ? `${(r.fixture.A.bytes / 1024 / 1024).toFixed(1)}MB / ${r.fixture.A.messages} 条 / ${r.fixture.A.toolCalls} 卡 / ${r.fixture.A.blobs} blob` : '—'],
+    ['折出来', r.dom ? `${r.dom.domNodes} 节点 / ${r.dom.messages} 行 / ${r.dom.contentHeight}px(真店 37470 / 269803px)` : '—'],
+    ['① 首帧可见变化', r.switches ? `${r.switches.map((s) => s.firstPaintMs ?? '—').join(' / ')} ms(五次)` : '—'],
+    ['② 池命中上屏', r.switches ? `${r.switches.find((s) => s.label === 'A#2')?.contentMs} ms` : '—'],
+    ['③ 冷载上屏', r.switches ? `${r.switches.find((s) => s.label === 'cold-A')?.contentMs} ms` : '—'],
+    ['④ 来回切', r.switches ? `${r.switches.filter((s) => ['B#2', 'A#3'].includes(s.label)).map((s) => s.contentMs).join(' / ')} ms` : '—'],
+    ['⑤ 流式长帧', r.stream ? `${r.stream.longFrames.length} 个 ≥50ms(最长 ${r.stream.longestFrame}ms)` : '—'],
+    ['⑥ clickSync', r.switches ? `${r.switches.map((s) => s.clickSync).join(' / ')} ms` : '—'],
+    ['⑦ 切换最长帧', r.switches ? `${Math.max(...r.switches.map((s) => s.longestFrame))} ms` : '—'],
+    ['⑨ 锚点漂移', r.anchor?.before && r.anchor?.after ? `${Math.abs(r.anchor.after.offset - r.anchor.before.offset)} px` : '—'],
+    ['⑩ resize 最长帧', r.resize ? `${r.resize.longestFrame} ms` : '—'],
+    ['⑪ 流完离底', r.stream ? `${r.stream.gap} px` : '—'],
+  ]
+  const width = Math.max(...rows.map(([k]) => k.length))
+  return rows.map(([k, v]) => `  ${k.padEnd(width)}  ${v}`).join('\n')
 }
 
 main().catch((error) => {
