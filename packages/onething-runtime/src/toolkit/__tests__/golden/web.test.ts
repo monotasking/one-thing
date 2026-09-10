@@ -75,6 +75,9 @@ describe('golden: web_search', () => {
       // 权限输入:一条 net_fetch,资源就是归一化后的 query 列表
       expect(run.intent.effects.map(effect => effect.kind)).toEqual(['net_fetch'])
       expect(run.intent.effects[0]?.resources.length).toBeGreaterThan(0)
+      // 合表后按效果表(2026-09-10):`net_fetch` 是 silent,查一次资料不弹卡。
+      // 合表之前判定核另有一份只认 read / ui_change 的名单,这一句是假的。
+      expect(run.intent.requiresAuthorization).toBe(false)
 
       // 渲染信息:两个标题(搜索中 + 结果)与最终 metadata 都在
       expect(annotationsOf(run).map(entry => entry.title)).toMatchSnapshot('annotation titles')

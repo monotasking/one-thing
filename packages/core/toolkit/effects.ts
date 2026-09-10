@@ -2,11 +2,20 @@
  * §3 内核 —— EffectClass 目录 + 默认策略表(§10.2-② 列为 R0 的第一件事)。
  *
  * 权限只认效果、不认工具。既然如此,「有哪些效果类」和「每一类默认怎么处理」
- * 就必须是**一张表**,而不是散在判定函数里的一串 if —— 今天
- * `core/permission/permission-policy.ts` 逐 kind 写死的口径就是那串 if 的样子:
- * `read` 静默、写/bash/mcp 询问、`capability_change` 永不可授。那份口径原样搬到
- * 这里,同目录的测试钉住「每个 kind 都有策略行」以及「与 core 的 barrier 判定
- * 不矛盾」。
+ * 就必须是**一张表**,而不是散在判定函数里的一串 if —— `read` 静默、写/bash/mcp
+ * 询问、`capability_change` 永不可授。
+ *
+ * **合表(2026-09-10 用户拍板):这张表是唯一真相。** 在此之前
+ * `core/permission/permission-policy.ts` 还留着一份自己的 `SILENT_EFFECT_KINDS`
+ * 名单、`permission-grants.ts` 还留着一份自己的 `NEVER_GRANTABLE_TYPES` 名单,三处
+ * 管同一个问题而**行为的产地是那两处**:这张表里写 `silent` 的类照样弹卡。合表把
+ * 那两张名单删掉,两处都改读这里的 `policy`。于是「加一个效果类」= 在这张表里加
+ * 一行,不需要再去别处补名单;而「某一类要不要问」有且只有一个答案。
+ *
+ * 同目录的测试钉住「每个 kind 都有策略行」以及「与 core 的 barrier 判定不矛盾」;
+ * `core/permission/__tests__/silent-effects.test.ts` 钉住「只有一张表」本身 ——
+ * 它遍历 `EFFECT_CLASSES` 比对 `decidePermission` 的实际静默集合与这一列,任何一次
+ * 「在判定核里偷偷加回一个名单」都会当场红。
  *
  * 纪律(§9 风险 2 的处理):kind 名沿用 core 现有的 9 个,**只许新增不许改名**;
  * 新增一个 kind = 在这张表里加一行(policy + 权限卡文案),没有行就等于这个效果
@@ -71,25 +80,51 @@ const ROWS: readonly EffectPolicyRow[] = [
   { kind: 'sensitive_file_read', policy: 'ask', prompt: 'Read sensitive file', barrier: false },
   // 它改的是"助手能够到哪里",提议可以由助手发起,但答案永远不进 grant 表。
   { kind: 'capability_change', policy: 'never-grantable', prompt: 'Repoint capability', barrier: true },
-  // 以下四行是新增 kind。它们默认静默,因为今天 web_search / ask_user / 跨会话
-  // 投递都不弹权限卡 —— 按 §9"未知=恒 ask"处理会凭空多出三张卡,那是退步。
+  /**
+   * ## 合表(2026-09-10 拍板)——「要不要问」从此**只有这一列**
+   *
+   * 在此之前权限核那一侧还有第二张表(`core/permission/permission-policy.ts` 的
+   * `SILENT_EFFECT_KINDS = {read, ui_change}`),两张表管同一个问题,而**行为的产地
+   * 是那一张**:这四行写着 `silent`,真跑起来照样弹卡 —— 表说的话不作数。合表把那
+   * 张名单删掉、改读这里的 `policy`,于是合表本身先要回答「这四类到底该不该问」:
+   *
+   *  - `net_fetch` —— 出网取一份**只读**的东西(web_search 发几条 query、web_open
+   *    抓一页)。它不动这台机器上的任何东西,而每查一次资料弹一张卡就是把审批变成
+   *    噪音(08-18「弹卡是噪音」判例)。**silent** —— 这是合表带来的真实行为变化:
+   *    web_search / web_open 从此不再弹卡。
+   *  - `user_ask` —— 这只工具要问用户一句话。它**本身就是一次询问**,为「我要问你
+   *    一个问题」先弹一张「准不准我问你」的卡,是同一件事问两遍,而且第二遍还挡在
+   *    第一遍前面。**silent** —— 同样是合表带来的行为变化。
+   *
+   * `silent` 不等于不留痕:两类照样落 `tool/audit`,照样发事件。
+   */
   { kind: 'net_fetch', policy: 'silent', prompt: 'Fetch a URL', barrier: false },
   { kind: 'user_ask', policy: 'silent', prompt: 'Ask the user a question', barrier: false },
-  { kind: 'session_message', policy: 'silent', prompt: 'Post a message to a session', barrier: false },
   /**
-   * 开一条子会话。**silent,不是 ask**(R3a 复盘裁定)。
+   * 往**另一条会话**里投一条消息。合表后 `ask` —— **是表跟上了行为,不是行为变了**
+   * (判定核这一侧从 R0 之前就在问它,这一行的 `silent` 只是一句不作数的话)。
    *
-   * R0 把它定成 `ask` 时的理由是「让另一个主体开始花钱和动手」。但派工的**本义**
-   * 就是"派出去继续干" —— 为它弹一张卡等于让用户为「要不要开始」点一次同意,再
-   * 为那条会话里的每一次真实副作用点第二次。真正的风险由两道既有的闸兜住:
-   * 每条会话的并发上限(`TASK_MAX_CONCURRENT_PER_SESSION`),以及子会话自己的
-   * 权限卡(它继承调用方的权限模式,每一次写盘/跑命令照常审批)。
-   *
-   * 效果**保留**而不是删掉:barrier 仍然为真(两次并发登记会把并发闸算错),
-   * 而且它是审计里唯一能回答「这一回合派出去过一条会话」的那条证词。
-   * 「不惊动人」与「不留痕迹」是两件事,策略表管前者,审计管后者。
+   * 理由与 `session_destructive` 同源:它动的是**别处**。收件人是另一条会话里的那个
+   * 人 / 那个 agent,投出去就收不回来,而这一行是唯一能在投出去之前把它拦下来的
+   * 地方。`barrier: false` 照旧 —— 两条投递之间没有共享坐标可保护。
    */
-  { kind: 'session_spawn', policy: 'silent', prompt: 'Start a sub-session', barrier: true },
+  { kind: 'session_message', policy: 'ask', prompt: 'Post a message to a session', barrier: false },
+  /**
+   * 开一条子会话。合表后 `ask` —— 同样是**表跟上行为**,今天派工就在弹卡。
+   *
+   * R3a 复盘曾把这一行改成 `silent`,理由是「派工的本义就是派出去继续干,为它弹卡
+   * 等于让用户为『要不要开始』点一次同意,再为那条会话里的每一次真实副作用点第二
+   * 次」。那条理由只在**两张表已经合了**的世界里才有意义 —— 在真实的树里它一天都
+   * 没有生效过(判定核照旧问),所以它不是「今天的行为」,而是一个从未兑现的意图。
+   * 2026-09-10 合表时用户按「往别的会话发消息、开子会话是真有后果的」拍回 `ask`:
+   * 派工会让另一个主体开始花钱和动手,这一下值一次同意;至于那条子会话里后续的每
+   * 一次写盘 / 跑命令,由它自己的权限卡照常兜住(它继承调用方的权限模式),两道闸
+   * 不是重复而是各管一段。
+   *
+   * `barrier: true` 与合表无关,照旧:两次并发登记会把并发闸
+   * (`TASK_MAX_CONCURRENT_PER_SESSION`)算错。
+   */
+  { kind: 'session_spawn', policy: 'ask', prompt: 'Start a sub-session', barrier: true },
   /**
    * K3-a —— **拿掉会话账本里已经存在的东西**:删一条消息、删一条会话、清空一段
    * 抄本(`docs/design/atom-2026-09.md` §9 K3;`app-intents-2026-09.md` §7 盲点 3

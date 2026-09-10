@@ -41,7 +41,13 @@ describe('EffectClass 目录与默认策略表', () => {
     for (const kind of LEGACY_KINDS) expect(isKnownEffectClass(kind)).toBe(true)
   })
 
-  it('与 core/permission/permission-policy.ts 今天的逐 kind 判定不矛盾', () => {
+  /**
+   * 合表之后 `core/permission/permission-policy.ts` 不再有自己的逐 kind 口径 ——
+   * 它读的就是这张表。所以这条用例的角色从「两处不矛盾」变成「这张表自己的取值
+   * 不许被人顺手改掉」;两处一致由 `permission/__tests__/silent-effects.test.ts`
+   * 那条遍历量。
+   */
+  it('这张表的取值:根内读静默,越界读 / 敏感读 / 写 / 命令 / MCP 要问', () => {
     // read 在根内静默;越界读/敏感读是另外两个 kind,它们要问。
     expect(EFFECT_POLICY.read.policy).toBe('silent')
     expect(EFFECT_POLICY.external_directory.policy).toBe('ask')
@@ -61,15 +67,29 @@ describe('EffectClass 目录与默认策略表', () => {
     }
   })
 
-  it('新增的四个 kind 都不会凭空多弹权限卡', () => {
+  /**
+   * 合表(2026-09-10 用户拍板)。这四行原本一律 `silent`,而判定核那一侧有第二张
+   * 表、四类真跑起来照样弹卡 —— 表说的话不作数。合表把那张名单删掉、判定核改读
+   * 这一列,于是这四行必须先说真话:
+   *
+   *  - `net_fetch` / `user_ask` 留 `silent`(只读的出网取材;以及「我要问你一个
+   *    问题」不该先问一次「准不准我问你」)—— 这是**真的行为变化**,两只工具从此
+   *    不弹卡;
+   *  - `session_message` / `session_spawn` 改 `ask`(往别的会话发消息、开子会话是
+   *    真有后果的)—— **行为没变**,是表跟上了行为。
+   */
+  it('合表后按效果表:出网与提问静默,跨会话投递与派工要问', () => {
     expect(EFFECT_POLICY.net_fetch.policy).toBe('silent')
     expect(EFFECT_POLICY.user_ask.policy).toBe('silent')
-    expect(EFFECT_POLICY.session_message.policy).toBe('silent')
-    // R3a 复盘裁定:派工的本义就是"派出去继续干",风险由并发上限与子会话自己的
-    // 权限卡兜住;效果保留(且仍是屏障)是为了审计里那条证词。
-    expect(EFFECT_POLICY.session_spawn.policy).toBe('silent')
+    expect(requiresAuthorization([makeEffect('net_fetch', ['https://x'])])).toBe(false)
+    expect(requiresAuthorization([makeEffect('user_ask', ['call-1'])])).toBe(false)
+
+    expect(EFFECT_POLICY.session_message.policy).toBe('ask')
+    expect(EFFECT_POLICY.session_spawn.policy).toBe('ask')
+    expect(requiresAuthorization([makeEffect('session_spawn', ['s1'])])).toBe(true)
+    // 屏障与合表无关,照旧:两次并发登记会把并发闸算错。
     expect(EFFECT_POLICY.session_spawn.barrier).toBe(true)
-    expect(requiresAuthorization([makeEffect('session_spawn', ['s1'])])).toBe(false)
+    expect(EFFECT_POLICY.session_message.barrier).toBe(false)
   })
 
   /**

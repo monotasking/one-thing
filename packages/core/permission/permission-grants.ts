@@ -1,20 +1,30 @@
 import * as crypto from 'node:crypto'
 import * as path from 'node:path'
 import type { JsonObject } from '../json.js'
+import { effectPolicyFor } from '../toolkit/effects.js'
 
 export type PermissionGrantScope = 'session' | 'workspace'
 
 /**
- * Effect kinds that must never turn into a standing grant. Approving one of
- * these is always a one-time answer — "yes, this change, now" — never "yes, and
- * stop asking". A capability change repoints something the system itself acts
- * on, so a standing grant would hand the assistant a way to widen its own reach
- * without being asked again.
+ * Can approving this effect kind turn into a standing grant?
+ *
+ * Some kinds may only ever get a one-time answer — "yes, this change, now",
+ * never "yes, and stop asking". A capability change repoints something the
+ * system itself acts on, so a standing grant would hand the assistant a way to
+ * widen its own reach without being asked again.
+ *
+ * 合表(2026-09-10 用户拍板):**这里不再自带名单**。哪些类永不可授,与「哪些类
+ * 要问」是同一个问题的两档,答案在 `core/toolkit/effects.ts` 的 `EFFECT_POLICY`
+ * 那一列 `policy` 上;这里曾经有一份 `NEVER_GRANTABLE_TYPES = {capability_change}`
+ * 与策略表的 `never-grantable` 行逐字重复,而一份重复的名单迟早只被改一半。
+ * 今天两侧成员相同,所以改读表不改变任何行为;往后加一个 never-grantable 的类,
+ * 加的是表里那一行,不是这里。
+ *
+ * 未知 kind 照旧可授:`effectPolicyFor` 给不认识的名字兜底成 `ask`,而 `ask` 的答案
+ * 本来就能被记住 —— 与旧名单「不在集合里就是可授」逐字同义。
  */
-const NEVER_GRANTABLE_TYPES: ReadonlySet<string> = new Set(['capability_change'])
-
 export function isGrantableType(type: string): boolean {
-  return !NEVER_GRANTABLE_TYPES.has(type)
+  return effectPolicyFor(type).policy !== 'never-grantable'
 }
 
 export interface PermissionGrant {

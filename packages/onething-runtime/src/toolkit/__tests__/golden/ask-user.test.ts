@@ -78,6 +78,9 @@ describe('golden: ask_user', () => {
     const run = await runNewTool(createAskUserTool(adaptersFor('answered')), ARGS)
     expect(run.intent.preview?.title).toBe('向用户提问:先修 A 还是 B?')
     expect(run.intent.effects.map(effect => effect.kind)).toEqual(['user_ask'])
+    // 合表后按效果表(2026-09-10):`user_ask` 是 silent —— 为「我要问你一个问题」
+    // 先弹一张「准不准我问你」的卡是同一件事问两遍。合表之前这一句是假的。
+    expect(run.intent.requiresAuthorization).toBe(false)
   })
 
   it('错误:questions 空数组不合契约', async () => {

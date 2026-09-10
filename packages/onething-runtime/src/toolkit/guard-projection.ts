@@ -73,17 +73,18 @@ export function deriveLegacyPermissionGuard(
   if (effects.includes('plugin_exec')) return 'permission-gated'
   // 开一个新会话 = 让另一个主体开始花钱和动手,与写文件同档。
   //
-  // 注意它与策略表的**分工**:`session_spawn` 在策略表里是 `silent`(派工不弹卡,
-  // 见 `core/toolkit/effects.ts` 的注释),而这里派生的是旧契约层那个字符串。
-  // 两者不矛盾 —— 前者答「要不要惊动人」,后者答「这只工具在旧目录里算哪一档」,
-  // 而五个值里 `safe/sandboxed/internal-check/permission-gated` 四个在
-  // `CORE_INJECTABLE_*` 与 `CORE_AUTO_EXECUTE_*` 两张表里**完全同权**,派生值落在
-  // 其中哪一格都不改变任何行为。
+  // 注意它与策略表的**分工**:这里派生的是旧契约层那个字符串,策略表答的是「要不要
+  // 惊动人」,两个问题各有各的答案,不许互相推。合表(2026-09-10)合的是「要不要
+  // 问」那两张表,**这一张不在其中**——那五个值里 `safe/sandboxed/internal-check/
+  // permission-gated` 四个在 `CORE_INJECTABLE_*` 与 `CORE_AUTO_EXECUTE_*` 两张表里
+  // **完全同权**,派生值落在其中哪一格都不改变任何行为,所以它跟着策略表动只会白白
+  // 改掉一个契约层字符串。今天的分歧样本是 `session_message`:策略表 `ask`,这里
+  // `safe`(旧目录里 send_message 就是这一档)。
   if (effects.includes('session_spawn')) return 'permission-gated'
   /**
    * **重指助手够得着的东西 = permission-gated。**(R3a 复盘裁定)
    *
-   * `capability_change` 是 core `NEVER_GRANTABLE_TYPES` 里唯一的成员:每次都问,
+   * `capability_change` 是 策略表(`core/toolkit/effects.ts`)里唯一一行 `never-grantable`:每次都问,
    * 答案永不可记住。一个 never-grantable 的效果**不可能**派生出 `safe` —— 那两句话
    * 直接互斥。
    *
@@ -107,7 +108,8 @@ export function deriveLegacyPermissionGuard(
   // 只读面 = 旧的 `sandboxed`(read)。
   if (effects.some(kind => READ_FAMILY.has(kind))) return 'sandboxed'
 
-  // 剩下的全是策略表里 `silent` 的那几类(net_fetch / user_ask / session_message)
-  // —— 今天 web_search / ask_user / 跨会话投递都不弹卡,旧值也都是 `safe`。
+  // 剩下的是 net_fetch / user_ask / session_message —— web_search / ask_user /
+  // 跨会话投递,旧值都是 `safe`。(合表之后前两类在策略表里也是 `silent`,
+  // session_message 是 `ask`;这一张表不跟着动,理由见 session_spawn 那一段。)
   return 'safe'
 }

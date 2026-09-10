@@ -15,7 +15,8 @@
  *     history 的 `resolveSelfAgentId`、notebook 的 `appendNote`),四份手写里
  *     漏一份就是一个静默的授权洞 —— 收成一处。
  *  3. **效果**。`send_message` 是唯一真的把东西送出去的那个,报一条
- *     `session_message`(策略表里 `silent`,与今天不弹卡逐字一致)。board /
+ *     `session_message`(策略表里 `ask` —— 合表 2026-09-10;判定核一直在问它,
+ *     与今天弹卡逐字一致)。board /
  *     history / notebook **不报任何效果**:旧实现没有 `analyze`,权限层今天
  *     看到的就是空的;为它们发明一个 `collab_board_write` kind 会是一个"功能
  *     形状的洞"(§10.2-② 的纪律:新增 kind 必须同 commit 给策略行 + 文案 +

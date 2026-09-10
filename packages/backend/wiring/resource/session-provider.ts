@@ -350,8 +350,8 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
        * 「这条做法最多会做到什么」。真发给授权者的这一条按谁在做分档:
        *
        *   · `user` —— 界面上那个删除按钮。主体本来就拥有这条会话与这条消息,人刚
-       *     按下的那一次不该再问一遍人;弹卡在这里是噪音,不是保护(与
-       *     `session_spawn` 从 ask 改回 silent 那次复盘同一条判据)。零效果**不等于
+       *     按下的那一次不该再问一遍人;弹卡在这里是噪音,不是保护(08-18
+       *     「弹卡是噪音」判例)。零效果**不等于
        *     不留痕迹**:照样落 `tool/audit`、照样发 `messageRemoved`。
        *   · 其余(`agent` / `system`,以及经它们进来的插件)—— 顶格,`ask`。K3-a 把
        *     资源工具放进了工具目录,模型从此拿得到这只 `session` 工具;不分这一档,

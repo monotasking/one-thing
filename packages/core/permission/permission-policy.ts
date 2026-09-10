@@ -3,6 +3,7 @@ import * as PermissionGrants from './permission-grants.js'
 import { coversAll } from './capability-registry.js'
 import { principalId, type Principal } from './principal.js'
 import { parseRef } from '../resource/ref.js'
+import { effectPolicyFor } from '../toolkit/effects.js'
 import { toJsonObject } from '../json.js'
 
 export type PermissionPolicyMode = Permission.Mode
@@ -93,26 +94,32 @@ function isAutoAcceptedEditEffect(effect: PermissionEffect): boolean {
 }
 
 /**
- * 不打扰人的效果类(原子 K2b-2,`docs/design/atom-2026-09.md` §6)。
+ * 这一条效果要不要惊动人 —— **判据只有策略表一处**(合表,2026-09-10 用户拍板)。
  *
- * ## 为什么这里有第二张表
+ * ## 这里曾经有第二张表
  *
- * `core/toolkit/effects.ts` 的 `EFFECT_POLICY` 已经给每一类效果写了
- * `silent | ask | never-grantable`,而这里又判一次 —— 那是**存量**,不是新增的:
- * 判定核这一侧从 R0 之前就写死了「`read` 之外都要问」,两张表管同一个问题。
- * 把这里改成读 `EFFECT_POLICY` 是对的方向,但那会顺手改掉 `net_fetch` /
- * `user_ask` / `session_message` / `session_spawn` 四类今天真会弹卡的行为 ——
- * 那是一次用户可感知的变化,归拍板,不归一次接线单(K2a' 留账写的就是这条)。
+ * 判定核从 R0 之前就写死了「`read` 之外都要问」,K2b-2 把它整理成一张集合
+ * `SILENT_EFFECT_KINDS = {read, ui_change}`。而 `core/toolkit/effects.ts` 的
+ * `EFFECT_POLICY` 早就给每一类写了 `silent | ask | never-grantable` —— 两张表管同一
+ * 个问题,且**行为的产地是这一侧**:策略表里写 `silent` 的 `net_fetch` / `user_ask`
+ * / `session_message` / `session_spawn` 四类,真跑起来照样弹卡。一个 kind 的策略要
+ * 在两个文件里各说一遍,而其中一遍不作数,这本身就是「按能力枚举」的形状。
  *
- * ## 为什么 `ui_change` 可以现在就进来
+ * 合表把这张名单删掉,判据改成向策略表要答案。落到用户身上的变化只有两类
+ * (另外两类在这一侧本来就在问,是策略表那一行跟上了行为):
  *
- * 它是 K2a' 新加的一类,**今天全仓零产地**,所以加进来不改任何既有类的行为:
- * 差别只在「壳侧资源提供者一上线之后,移动一格面板会不会弹一张权限卡」。
- * 那扇窗是这个人的窗,为它弹卡与 08-18「弹卡是噪音」那条判例是同一件事。
+ *  - `net_fetch`(web_search / web_open 抓页)**从此不弹卡** —— 只读的出网取材,
+ *    每查一次资料一张卡是把审批变成噪音。
+ *  - `user_ask`(ask_user)**从此不弹卡** —— 它本身就是一次询问,为「我要问你」
+ *    先问一次「准不准我问你」是同一件事问两遍。
  *
- * 写成一张**集合**而不是再串一个 `&&`:第三类进来时改的是数据,不是判定式。
+ * 未知 kind 的口径一字未变:`effectPolicyFor` 给不认识的名字兜底成 `ask`,所以拼错
+ * 的效果名、插件/MCP 送进来的将来效果、以及授权者合成的那条一次性
+ * `tool_manual_approval`,全都照旧落进询问。
  */
-const SILENT_EFFECT_KINDS: ReadonlySet<string> = new Set(['read', 'ui_change'])
+function isSilentEffect(effect: PermissionEffect): boolean {
+  return effectPolicyFor(effect.kind).policy === 'silent'
+}
 
 function effectPattern(effect: PermissionEffect): string | string[] {
   return effect.resources.length === 0 ? effect.kind : effect.resources
@@ -124,8 +131,8 @@ function effectPattern(effect: PermissionEffect): string | string[] {
  *
  * 判据三条,全是结构性的,没有一条按名字枚举:
  *
- *  ① 类型可授权。`capability_change` 这一族永远只能答「这一次」
- *     (`permission-grants.ts` 的 `NEVER_GRANTABLE_TYPES`),给它画一个「始终」
+ *  ① 类型可授权。`capability_change` 这一族永远只能答「这一次」(策略表里那一行
+ *     写着 `never-grantable`,`isGrantableType` 读的就是它),给它画一个「始终」
  *     的键是在教用户点一个点不动的按钮。
  *  ② 每一条 resource 都是一个**合法地址**(`core/resource/ref.ts` 的语法)。
  *     裸路径(`/Users/x/a.ts`)、一串 bash 命令、一个工具名 —— 它们都不是地址,
@@ -163,7 +170,7 @@ export function decidePermission(input: PermissionPolicyInput): PermissionPolicy
   }
 
   const promptEffects = input.effects.filter(
-    effect => !SILENT_EFFECT_KINDS.has(effect.kind) && !isCapabilityCovered(effect),
+    effect => !isSilentEffect(effect) && !isCapabilityCovered(effect),
   )
   if (promptEffects.length === 0) return { decision: 'allow' }
 

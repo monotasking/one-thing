@@ -4,7 +4,7 @@
  * 描述、参数、每一条教学式报错、成功回执逐字沿用旧
  * `app/features/builtin/self-evolution.ts`。
  *
- * 效果:一条 `capability_change`(core `NEVER_GRANTABLE_TYPES` 里唯一的成员 ——
+ * 效果:一条 `capability_change`(策略表(`core/toolkit/effects.ts`)里唯一一行 `never-grantable` ——
  * 每挂一次问一次,答案永不可记住)。**没有新增 effect kind**:加一个
  * `feature_mount` kind 就是 D3 第一条禁止的「功能形状的洞」。
  *

@@ -75,11 +75,11 @@
  *
  * ── 为什么没有 `appendSystemMessage` ───────────────────────────────────────
  * 它对应域的 `addSystemMessage`,效果类只能是 `session_message`(往会话里写一条
- * 消息)。而 `core/permission/permission-policy.ts` 的 `SILENT_EFFECT_KINDS` 今天
- * 只有 `read` / `ui_change`,`session_message` 落在 ask 那一支(那只文件的注释自己
- * 写着这四类「今天真会弹卡」)—— 于是同一个「/files 往会话里补一条系统消息」的
- * 动作,退成投影之后会当场多出一张权限卡。那是用户可感知的行为变化,归拍板,
- * 不归一次接线单,所以这一条不进第一批。
+ * 消息),而 `session_message` 在策略表(`core/toolkit/effects.ts`)里是 `ask` ——
+ * 合表(2026-09-10)之后那是唯一一处判据,答案与合表之前逐字相同(判定核一直在
+ * 问它)。于是同一个「/files 往会话里补一条系统消息」的动作,退成投影之后会当场
+ * 多出一张权限卡。那是用户可感知的行为变化,归拍板,不归一次接线单,所以这一条
+ * 不进第一批。
  */
 
 import type { JsonSchema, ResourceSpec } from '@onething/core/resource'
@@ -338,7 +338,7 @@ export const sessionResourceSpec: ResourceSpec = {
      * 前六条做法的 `effects` 都是**空数组**,这是想清楚的,不是省事:效果表管的是
      * 「这次调用会不会碰到人不知道的东西」(写盘、跑命令、连网、动系统能力)。
      * 改一条会话自己的名字或工作目录,主体本来就拥有这条会话 —— 为它弹一张权限卡
-     * 是把审批变成噪音(与 `session_spawn` 从 ask 改回 silent 那次复盘同一条判据)。
+     * 是把审批变成噪音(08-18「弹卡是噪音」判例)。
      * **空效果不等于不留痕迹**:它照样落 `tool/audit`、照样发事件。
      *
      * 第七条 `removeMessage` 不在这句话里:它动的是账本本身,理由写在它自己那一格上。

@@ -69,7 +69,7 @@ describe('deriveLegacyPermissionGuard', () => {
   /**
    * R3a 复盘裁定:按**真相**派生。
    *
-   * `capability_change` 是 core `NEVER_GRANTABLE_TYPES` 里唯一的成员(每次都问、
+   * `capability_change` 是 策略表(`core/toolkit/effects.ts`)里唯一一行 `never-grantable`(每次都问、
    * 答案永不可记住),它不可能同时是 `safe` —— 那两句话直接互斥。
    *
    * **这是修复,不是回归。** variable 旧的 `permissionGuard: 'safe'` 与它 `analyze`
@@ -125,21 +125,24 @@ describe('deriveLegacyPermissionGuard', () => {
   })
 
   /**
-   * 派生表与策略表**分工不同**,不该互相推。
+   * 派生表与策略表**分工不同**,不该互相推 —— 合表(2026-09-10)合的是「要不要问」
+   * 那两张表(策略表 + 判定核那份名单),**这一张不在其中**:它回答的是「这只工具
+   * 在旧契约的五个字符串里算哪一档」,而那五个值里
+   * `safe/sandboxed/internal-check/permission-gated` 四个在 `CORE_INJECTABLE_*` 与
+   * `CORE_AUTO_EXECUTE_*` 两张表里完全同权,派生值落哪一格都不改变行为。
    *
-   * `session_spawn` 在策略表里是 `silent`(派工不弹卡),在派生表里是
-   * `permission-gated`(旧目录里的档位)。这两句话同时为真,因为它们回答的是
-   * 两个不同的问题:要不要惊动人 vs 这只工具在旧契约里算哪一档。
+   * `session_message` 是最干脆的证据:策略表里是 `ask`(往别人的会话投递要问),
+   * 派生表里是 `safe`(旧目录里 send_message 就是这一档)。两句话同时为真。
    */
   it('派生值与策略表可以不同档 —— 它们回答的不是同一个问题', () => {
-    expect(deriveLegacyPermissionGuard({ effects: ['session_spawn'] })).toBe('permission-gated')
-    expect(EFFECT_POLICY.session_spawn.policy).toBe('silent')
+    expect(deriveLegacyPermissionGuard({ effects: ['session_message'] })).toBe('safe')
+    expect(EFFECT_POLICY.session_message.policy).toBe('ask')
     // 反过来也成立:capability_change 是 never-grantable,派生同样是 permission-gated。
     expect(EFFECT_POLICY.capability_change.policy).toBe('never-grantable')
     expect(deriveLegacyPermissionGuard({ effects: ['capability_change'] })).toBe('permission-gated')
   })
 
-  it('策略表里 silent 的那几类仍是 safe', () => {
+  it('出网 / 提问 / 跨会话投递在旧契约里仍是 safe(合表不动这一张表)', () => {
     expect(deriveLegacyPermissionGuard({ effects: ['net_fetch'] })).toBe('safe')
     expect(deriveLegacyPermissionGuard({ effects: ['user_ask', 'session_message'] })).toBe('safe')
   })

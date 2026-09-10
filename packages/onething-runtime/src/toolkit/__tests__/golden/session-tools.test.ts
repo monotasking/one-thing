@@ -117,19 +117,21 @@ describe('golden: task', () => {
   })
 
   /**
-   * 派工报一条 `session_spawn`,而它在策略表里是 **`silent`**(R3a 复盘裁定):
-   * 派工的本义就是"派出去继续干",风险由并发上限与子会话自己的权限卡兜住。
-   * 所以这条效果**不改变用户看到的东西** —— 它存在是为了让审计能回答"这一回合
-   * 派出去过一条会话",而旧路里那件事只留在日志里。
+   * 派工报一条 `session_spawn`,而它在策略表里是 **`ask`**(合表,2026-09-10 用户
+   * 拍板:「开子会话是真有后果的」)—— 派工会让另一个主体开始花钱和动手,这一下
+   * 值一次同意;那条子会话里后续的每一次写盘 / 跑命令,由它自己的权限卡照常兜住。
+   *
+   * **这不是行为变化**:R3a 复盘曾把这一行写成 `silent`,但判定核那一侧当时另有
+   * 一份名单、派工照旧弹卡,那句 `silent` 一天都没生效过。合表删掉那份名单,顺带
+   * 让这一行说真话。
    */
-  it('派工报一条 session_spawn,但它是 silent —— 不弹卡,只进审计', async () => {
+  it('派工报一条 session_spawn,合表后它是 ask —— 弹一次卡,并进审计', async () => {
     const run = await runNewTool(createTaskTool(ports(OK)), { prompt: '去把 X 做了' })
     expect(run.intent.effects.map(effect => effect.kind)).toEqual(['session_spawn'])
     expect(run.intent.preview?.title).toContain('Dispatch a background task')
-    // 关键的一句:这一组效果不需要惊动任何人(与旧 permissionGuard 'safe' 同效)。
-    expect(EFFECT_POLICY.session_spawn.policy).toBe('silent')
-    expect(run.intent.requiresAuthorization).toBe(false)
-    // 屏障保留:两次并发登记会把并发闸算错。
+    expect(EFFECT_POLICY.session_spawn.policy).toBe('ask')
+    expect(run.intent.requiresAuthorization).toBe(true)
+    // 屏障保留(与合表无关):两次并发登记会把并发闸算错。
     expect(run.intent.effects[0]?.barrier).toBe(true)
   })
 

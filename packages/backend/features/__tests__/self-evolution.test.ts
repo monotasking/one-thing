@@ -181,7 +181,7 @@ describe('self-evolution feature', () => {
   /**
    * 权限接法的**判定级**断言。
    *
-   * `capability_change` 是 core 的 `NEVER_GRANTABLE_TYPES` 里唯一的成员：每次
+   * `capability_change` 是 策略表(`core/toolkit/effects.ts`)里唯一一行 `never-grantable`：每次
    * 都问、答案永不可记住。挑它不是凑数 —— 挂载一个 feature 就是「改变助手够得
    * 着什么」，与该 kind 的定义原文逐字对上。
    */
