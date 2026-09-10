@@ -21,14 +21,15 @@ beforeEach(() => {
 })
 
 describe('三档与出厂', () => {
-  it('三档一张表,次序即菜单与设置页的次序', () => {
-    expect([...SESSION_OPEN_MODES]).toEqual(['preview', 'newTab', 'replace'])
+  it('三档一张表,次序即菜单与设置页的次序,**缺省那一档排第一**', () => {
+    expect([...SESSION_OPEN_MODES]).toEqual(['replace', 'newTab', 'preview'])
+    expect(SESSION_OPEN_MODES[0]).toBe(FACTORY_SESSION_OPEN_MODE)
   })
 
-  it('出厂 = 预览(拍点 3)', () => {
-    expect(FACTORY_SESSION_OPEN_MODE).toBe('preview')
-    expect(SESSION_OPEN_MODE_PER_SPACE.factory()).toEqual({ mode: 'preview' })
-    expect(useSessionOpenMode.getState().mode).toBe('preview')
+  it('出厂 = 替换(拍点 3 的第二版,09-10 用户改判)', () => {
+    expect(FACTORY_SESSION_OPEN_MODE).toBe('replace')
+    expect(SESSION_OPEN_MODE_PER_SPACE.factory()).toEqual({ mode: 'replace' })
+    expect(useSessionOpenMode.getState().mode).toBe('replace')
   })
 
   it('每一档都说得出自己的名字(三档都有 i18n 键,漏一档 typecheck 就红)', () => {
@@ -71,9 +72,26 @@ describe('清洗:认不出的档落回出厂', () => {
     expect(merged.byWorkspace['ws-c'].mode).toBe(FACTORY_SESSION_OPEN_MODE)
   })
 
+  /**
+   * **换缺省不许改写存量档案**(09-10:出厂从 `preview` 改成 `replace`)。
+   * 账上存着 `preview` 的那一格是用户自己选过的,清洗判的是「认不认得」不是
+   * 「是不是今天的缺省」—— 拆掉 `clampMode` 里的 `includes` 改成「等于出厂才留」,
+   * 这一条当场红,而真机上的形状是「升级一次,所有人选过的预览档被静默抹掉」。
+   */
+  it('存量档案里选过的 `preview` 原样留着,不被新缺省改写', () => {
+    const merged = merge({
+      byWorkspace: { [DEFAULT_SPACE_ID]: { mode: 'preview' }, 'ws-a': { mode: 'preview' } },
+    })
+    expect(merged.byWorkspace[DEFAULT_SPACE_ID].mode).toBe('preview')
+    expect(merged.byWorkspace['ws-a'].mode).toBe('preview')
+    expect(merged.mode).toBe('preview')
+  })
+
   it('merge 把当前空间那一格**同步摊开** —— 第一帧就是对的', () => {
-    const merged = merge({ byWorkspace: { [DEFAULT_SPACE_ID]: { mode: 'replace' } } })
-    expect(merged.mode).toBe('replace')
+    // 存的这一档**不能是出厂那一档**:否则摊开与不摊开答案一样,这条用例会空过。
+    const merged = merge({ byWorkspace: { [DEFAULT_SPACE_ID]: { mode: 'newTab' } } })
+    expect(merged.mode).toBe('newTab')
+    expect(merged.mode).not.toBe(FACTORY_SESSION_OPEN_MODE)
   })
 
   it('档案里什么都没有 → 出厂那一格', () => {
@@ -92,14 +110,15 @@ describe('它是 per-space 家具', () => {
   })
 
   it('落盘的是账,不是活状态(`partialize` 走的就是 `stashSpace`)', () => {
-    useSessionOpenMode.getState().setMode('replace')
+    // 同上:设一档**不是出厂**的,否则「收没收进账」这一问答案恒真。
+    useSessionOpenMode.getState().setMode('preview')
     const ledger = stashSpace(
       useSessionOpenMode.getState(),
       useSessionOpenMode.getState().byWorkspace,
       SESSION_OPEN_MODE_PER_SPACE,
       DEFAULT_SPACE_ID,
     )
-    expect(ledger[DEFAULT_SPACE_ID]).toEqual({ mode: 'replace' })
+    expect(ledger[DEFAULT_SPACE_ID]).toEqual({ mode: 'preview' })
     expect(spreadSpace(ledger, SESSION_OPEN_MODE_PER_SPACE, 'ws-never')).toEqual({
       mode: FACTORY_SESSION_OPEN_MODE,
     })

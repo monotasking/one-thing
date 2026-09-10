@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { seedSessionsSource } from '../../data/__fixtures__/sessions'
 import { resetComposerDrafts, saveComposerDraft } from '../../composer/drafts'
-import { useSessionOpenMode } from '../../data/session-open-mode'
+import { FACTORY_SESSION_OPEN_MODE, useSessionOpenMode } from '../../data/session-open-mode'
 import { useExposeStore } from '../../expose/store'
 import { initialExposeState } from '../../expose/transitions'
 import { CENTER_REGION } from '../../workbench/regions'
@@ -41,7 +41,9 @@ beforeEach(() => {
   seedSessionsSource()
   resetComposerDrafts()
   useExposeStore.setState({ ...initialExposeState })
-  useSessionOpenMode.setState({ mode: 'preview', byWorkspace: {} })
+  // 缺省那一档(09-10 起是 `replace`)。每条用例自己 `mode(...)` 声明要问的那一档,
+  // 这里只保证每条之间不串味 —— 复位到出厂,不是复位到某一个写死的档。
+  useSessionOpenMode.setState({ mode: FACTORY_SESSION_OPEN_MODE, byWorkspace: {} })
   useWorkbenchStore.getState().reset()
   useWorkbenchStore.getState().seed()
 })
@@ -57,8 +59,22 @@ describe('三档', () => {
    * `session-open.ts` 文件头)。所以这三条用例的第一下点击在三档里长得一样,
    * 差别从**第二下**开始。
    */
-  it('`replace`:一直原位换,标签永远一格(今天的行为)', () => {
+  it('`replace`(出厂):一直原位换,标签永远一格', () => {
     mode('replace')
+    enterSessionInWorkbench(A)
+    expect(ids()).toEqual([`session:${A}`])
+    enterSessionInWorkbench(B)
+    expect(ids()).toEqual([`session:${B}`])
+    expect(previewIndexOf(leaf())).toBeUndefined()
+  })
+
+  /**
+   * **缺省 = 原位换**(09-10 用户改判)。上面那一条自己声明了 `replace`,这一条
+   * **一个字都不声明** —— 它问的是「什么都没设过的人点一行会怎样」。
+   * 反证:把 `FACTORY_SESSION_OPEN_MODE` 改回 `'preview'` → 第二下之后这里会剩
+   * `[session:B]` 但叶上多一格预览标记,`previewIndexOf` 那一句当场红。
+   */
+  it('缺省(谁都没设过)= 原位换,标签永远一格', () => {
     enterSessionInWorkbench(A)
     expect(ids()).toEqual([`session:${A}`])
     enterSessionInWorkbench(B)
@@ -77,7 +93,7 @@ describe('三档', () => {
     expect(previewIndexOf(leaf())).toBeUndefined()
   })
 
-  it('`preview`(出厂):**复用同一格预览位**,来回切着看标签不增', () => {
+  it('`preview`:**复用同一格预览位**,来回切着看标签不增', () => {
     mode('preview')
     enterSessionInWorkbench(A)
     expect(ids()).toEqual([`session:${A}`])

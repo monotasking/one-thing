@@ -49,7 +49,9 @@ function furnish(mark: string): void {
   useSplitPrefs.getState().setRatio('files', mark === 'A' ? 30 : 70)
   useFileOpenMode.getState().setMode(mark === 'A' ? 'panel' : 'float')
   // C2:「点会话时」那一格也是这个空间的家具(判词在 data/session-open-mode.ts)。
-  useSessionOpenMode.getState().setMode(mark === 'A' ? 'newTab' : 'replace')
+  // 两边摆的都**不能是出厂那一档**(09-10 起是 `replace`):摆成出厂的话
+  // 「切过去读到的是 B 摆的」与「切过去读到的是出厂」两种结局长得一样,这一格空过。
+  useSessionOpenMode.getState().setMode(mark === 'A' ? 'newTab' : 'preview')
   // 09-04:折叠组退役,总览这一面的家具换成范围与展开的房间(见 expose/store.ts)。
   useExposeStore.setState({ expandedRooms: [`room-${mark}`] })
   useFilesSource.setState({ expanded: { [`/p/${mark}`]: true } })
@@ -111,8 +113,8 @@ describe('六个面一起换装', () => {
     expect(inB.ratio).toBeUndefined()
     // W6-a:出厂档从 `panel` 改成 `stage`(主区域新标签,设计 §9 那张落差表)。
     expect(inB.openMode).toBe('stage')
-    // C2 出厂档 = 预览(拍点 3)。
-    expect(inB.sessionOpenMode).toBe('preview')
+    // C2 出厂档 = 替换(拍点 3 的第二版,09-10 用户改判;初版是「预览」)。
+    expect(inB.sessionOpenMode).toBe('replace')
     expect(inB.expandedRooms).toEqual([])
     expect(inB.expanded).toEqual([])
   })
