@@ -1,10 +1,9 @@
 import { companionSeedOf, isCompanionRef, refId } from './kinds'
-import { regionReadRank } from './regions'
 import * as T from './tree'
 import { nextLeafId } from './ids'
-import type { CompanionEnv, ContentRef, ContentRefId } from './kinds'
+import type { CompanionEnv, ContentRefId } from './kinds'
 import type { RegionId } from './regions'
-import type { PaneNode } from './tree'
+import type { PaneNode, PaneSeat } from './tree'
 
 /**
  * **伴随面:收 / 放 / 继承三件事的纯函数半边**(C3,正本
@@ -40,13 +39,16 @@ import type { PaneNode } from './tree'
  *    (第一次离场时才会被收进账)。
  */
 
-/** 一格伴随面此刻坐在哪(区域 + 叶 + 叶内位次)。 */
-export interface CompanionSeat {
-  readonly ref: ContentRef
-  readonly region: RegionId
-  readonly leafId: string
-  readonly index: number
-}
+/**
+ * 一格伴随面此刻坐在哪(区域 + 叶 + 叶内位次)。
+ *
+ * **它就是 `tree.PaneSeat`**(S1 合流):全局瓦按人携带问的是同一句话 ——
+ * 「这几格在哪儿,摘下来,再原样放回另一份 regions」。摘与放两件因此只有一个
+ * 产地(`tree.withoutSeats` / `tree.withSeats`),这里留的是**这条路自己的判据**
+ * (收谁 / 什么算「最后看的那一格」)。名字跟着它的账走:这份坐标落盘在
+ * `sessionCompanions` 里。
+ */
+export type CompanionSeat = PaneSeat
 
 /**
  * 一条会话的伴随面记录。
@@ -111,36 +113,14 @@ export function companionSeatsIn(
 }
 
 /**
- * **把这些格从树上摘掉**。
- *
- * 摘的次序是**每片叶内下标从大到小** —— 逐格从小往大摘会让后面那些的下标一路
- * 往前塌,摘的就成了别人(与 `store.hideRegion` 那段「先按原状折下来再一次性
- * 摘掉」是同一个坑的两种写法)。
- *
- * **不 prune**:剪不剪由调用方决定(中央区那棵永远至少一片叶,而那句话住在 store)。
- * 一格都没摘到时原样交回同一份 regions。
+ * **把这些格从树上摘掉**。判据整件(下标从大到小、不 prune、一格没摘就引用恒等)
+ * 在 `tree.withoutSeats` 上 —— 与全局瓦携带共用同一只。
  */
 export function withoutCompanionSeats(
   regions: Readonly<Record<string, PaneNode>>,
   seats: readonly CompanionSeat[],
 ): Record<string, PaneNode> {
-  if (seats.length === 0) return regions as Record<string, PaneNode>
-  const out: Record<string, PaneNode> = { ...regions }
-  const byRegion = new Map<string, CompanionSeat[]>()
-  for (const seat of seats) {
-    const rows = byRegion.get(seat.region) ?? []
-    rows.push(seat)
-    byRegion.set(seat.region, rows)
-  }
-  for (const [region, rows] of byRegion) {
-    let tree = out[region]
-    if (!tree) continue
-    for (const seat of [...rows].sort((a, b) => b.index - a.index)) {
-      tree = T.removeTab(tree, seat.leafId, seat.index)
-    }
-    out[region] = tree
-  }
-  return out
+  return T.withoutSeats(regions, seats)
 }
 
 /* ── ② 进场放 ─────────────────────────────────────────────────────────── */
@@ -148,46 +128,16 @@ export function withoutCompanionSeats(
 /**
  * **按记录逐格放回**,并把 `activeId` 那一格点亮。
  *
- * 四条判据:
- *  · **同一格只放一份**(设计 §3.4「两条会话同 workdir」):这份内容已经在树上
- *    (被钉住的那一格、或者刚放回去的同一格)就跳过 —— 一个内容在一个区域里
- *    只出现一次是不变量 1,而两条会话记着同一棵目录树是常态;
- *  · **原区域原位次**:`insertTab` 自己会把下标钳进范围;
- *  · **叶没了 → 落到同区域第一片叶末尾**(设计 §3.3);
- *  · **区域没了 → 当场建回来**(与 `store.restoreHidden` 那句「区域没了就把它
- *    建回来」逐字同一条:关掉一扇浮窗之后再切回这条会话,它该回到一扇浮窗里,
- *    而不是凭空掉进中央区)。
- *
- * **不碰焦点叶** —— 设计 §3.3 末句「焦点不动(还在 B 的输入框)」。
- * 一格都没放时原样交回同一份 regions(引用恒等)。
+ * 四条落位判据(同一格只放一份 / 原区域原位次 / 叶没了落第一片叶末尾 /
+ * 区域没了当场建回来)与**不碰焦点叶**那一条,整件在 `tree.withSeats` 上 ——
+ * 与全局瓦携带共用同一只;叶 id 的产地由这一侧递进去(`nextLeafId`)。
  */
 export function withCompanionSeats(
   regions: Readonly<Record<string, PaneNode>>,
   seats: readonly CompanionSeat[],
   activeId: ContentRefId | null,
 ): Record<string, PaneNode> {
-  if (seats.length === 0) return regions as Record<string, PaneNode>
-  let changed = false
-  const out: Record<string, PaneNode> = { ...regions }
-  // 位次小的先插:后面那些的落点是按**放回之后**那张表说的。
-  for (const seat of [...seats].sort((a, b) => a.index - b.index)) {
-    const id = refId(seat.ref)
-    if (locate(out, id)) continue
-    const tree = out[seat.region] ?? T.makeLeaf(nextLeafId())
-    const leaf = T.findLeaf(tree, seat.leafId) ?? T.leavesOf(tree)[0]
-    if (!leaf) continue
-    const at = leaf.id === seat.leafId ? seat.index : undefined
-    // `activate: false` —— 放回来不该顺手把每一片叶露脸的那一格换掉;
-    // 该点亮的只有 `activeId` 那一格,下面统一点一次。
-    out[seat.region] = T.insertTab(tree, leaf.id, seat.ref, { at, activate: false })
-    changed = true
-  }
-  if (!changed) return regions as Record<string, PaneNode>
-  if (activeId) {
-    const at = locate(out, activeId)
-    if (at) out[at.region] = T.activate(out[at.region], at.leafId, at.index)
-  }
-  return out
+  return T.withSeats(regions, seats, activeId, nextLeafId)
 }
 
 /* ── ③ 继承:种类跟过去,内容不跟 ───────────────────────────────────────── */
@@ -307,21 +257,7 @@ function sameRecord(a: CompanionRecord | undefined, b: CompanionRecord): boolean
 
 /** 区域的阅读序(中央 → 四条边 → 浮窗)。判据在 `regions.regionReadRank` 上。 */
 function readOrder(regions: Readonly<Record<string, PaneNode>>): string[] {
-  return [...Object.keys(regions)].sort((a, b) => regionReadRank(a) - regionReadRank(b))
-}
-
-/** 这个 refId 此刻在哪一格。**顶层标签**那一层就够了(伴随面不进复合标签的内层)。 */
-function locate(
-  regions: Readonly<Record<string, PaneNode>>,
-  id: ContentRefId,
-): { region: string; leafId: string; index: number } | null {
-  for (const region of readOrder(regions)) {
-    const tree = regions[region]
-    if (!tree) continue
-    const at = T.locateRef(tree, region as RegionId, id)
-    if (at) return { region, leafId: at.leafId, index: at.index }
-  }
-  return null
+  return T.regionsInReadOrder(regions)
 }
 
 /*

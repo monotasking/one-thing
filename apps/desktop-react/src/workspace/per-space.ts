@@ -50,6 +50,31 @@ export interface PerSpaceSpec<S, F> {
   pick(state: S): F
   /** 出厂布局 —— 首次进入某个空间时摊开的就是它。 */
   factory(): F
+  /**
+   * **换装那一拍:进场这份家具接住离场的活状态**(S1,正本
+   * `apps/desktop-react/docs/dock-scope-2026-09.md` §2.3)。缺席 = 原样摊开(今天
+   * 四个 store 里三个如此)。
+   *
+   * 起因是「有些东西不属于哪个工作区,是这台壳的」:那几格该**随人走** ——
+   * 换空间那一拍从离场的活状态里捡出来,原样放进进场这一份(进场那份要先把
+   * 自己账上残留的同类剥掉,那是**上一次离场时留下的旧影**)。
+   *
+   * ── 这只文件仍然不认识树、不认识瓦 ──────────────────────────────────────
+   * 它只知道「有这么一口」与「什么时候调」;**剥什么、携带什么**由各 store 在
+   * 自己那份规格里说(判据一律经内容自述,不是核心层点名)。与 `pick` 的分工是
+   * 一句话:`pick` 答「什么算家具」,`carry` 答「哪几格不归这个空间」。
+   *
+   * ── 时机:只在**真有离场方**时跑 ─────────────────────────────────────────
+   * 它挂在 `swapSpace` 上,而 `swapSpace` 只由 `bindPerSpace` 的订阅调 —— 开机
+   * 那一路走的是 `spreadSpace`(persist 的 merge / 首进某空间),碰不到这一口。
+   * 这是**结构保证**,不是一句 if:开机那一刻当前空间的账在 `partialize` 时就是
+   * 活树,随人走的那几格存在里面,那正是要恢复的东西;剥只在有人来接班时做,
+   * 才不会两份。
+   *
+   * `outgoingLive` 是**离场那一侧的活状态**(不是它刚被收进账的那一份)——
+   * 两者内容相同,但活状态是调用方手上现成的那一个,少一次从账里取。
+   */
+  carry?(incoming: F, outgoingLive: S): F
 }
 
 /**
@@ -94,7 +119,15 @@ export function swapSpace<S, F extends object>(
   previous: string,
 ): PerSpaceState<F> & F {
   const byWorkspace = stashSpace(state, state.byWorkspace, spec, previous)
-  return { byWorkspace, ...spreadSpace(byWorkspace, spec, next) }
+  const incoming = spreadSpace(byWorkspace, spec, next)
+  /*
+   * **携带排在「收进账 → 摊开新的」之间**(S1)。次序即语义,三条:
+   *  · 排在 `stashSpace` **之后** —— 离场那个空间的账里要留着那几格随人走的
+   *    (它此刻还是那个空间落盘的真相;下一次进它时由它自己的 `carry` 剥掉);
+   *  · 排在 `spreadSpace` **之后** —— 携带的落点是**进场那份家具**,先得有它;
+   *  · 收账用的是 `state`(离场的活状态),携带读的也是它,同一份,不会分叉。
+   */
+  return { byWorkspace, ...(spec.carry ? spec.carry(incoming, state) : incoming) }
 }
 
 /** 能被 `bindPerSpace` 接上的最小 store 形状(zustand 的 vanilla 面)。 */

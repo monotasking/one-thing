@@ -117,7 +117,8 @@ export const STAGE_ITEMS: StageItemSpec[] = [
   {
     id: 'files',
     titleKey: 'item.dirs',
-    scope: 'session',
+    level: 'space',
+    dockGroup: 'session',
     icon: 'FolderTree',
     defaultPlacement: { kind: 'edge', side: 'left' },
   },
@@ -136,11 +137,11 @@ export const STAGE_ITEMS: StageItemSpec[] = [
    * `file` 那一种内容 —— 回访入口是文件树,落点是拼贴树的叶。
    * 理由与两个残留消费者写在 VIEWER_ITEM_ID 上。
    */
-  { id: 'diff', titleKey: 'item.diff', scope: 'session', icon: 'GitCompare' },
-  { id: 'terminal', titleKey: 'item.terminal', scope: 'session', icon: 'Terminal' },
-  { id: 'browser', titleKey: 'item.browser', scope: 'global', icon: 'Globe' },
+  { id: 'diff', titleKey: 'item.diff', level: 'space', dockGroup: 'session', icon: 'GitCompare' },
+  { id: 'terminal', titleKey: 'item.terminal', level: 'space', dockGroup: 'session', icon: 'Terminal' },
+  { id: 'browser', titleKey: 'item.browser', level: 'space', dockGroup: 'global', icon: 'Globe' },
   // 检索是一块普通的瓦:参与 Placement 全套(⌘P 也只是"按它的打开方式开一下")。
-  { id: 'search', titleKey: 'item.search', scope: 'global', icon: 'Search' },
+  { id: 'search', titleKey: 'item.search', level: 'space', dockGroup: 'global', icon: 'Search' },
   // 会话总览同样是一块普通的瓦(08-29 拍板去接管化):它有内容、有落点、有打开方式,
   // 和别的瓦逐字走同一条路 —— 「换一整屏」那种特权形态已经退役。
   /* 出厂摆法 = 左架子(W6-a,设计 §8:浮窗仍是合法落点,但不再是任何面板的出厂档
@@ -151,23 +152,24 @@ export const STAGE_ITEMS: StageItemSpec[] = [
   {
     id: SESSIONS_ITEM_ID,
     titleKey: 'item.sessions',
-    scope: 'global',
+    level: 'space',
+    dockGroup: 'global',
     icon: 'MessagesSquare',
     defaultPlacement: { kind: 'edge', side: 'left' },
     floatMin: EXPOSE_FLOAT_MIN,
   },
   // 未读**不在这张表里**:表是静态声明,未读是当下的事实(住在 services/notify-store)。
   // Dock 渲染时才把两者对上 —— 表里写死一个 dot 就等于让声明冒充状态。
-  { id: NOTIFICATIONS_ITEM_ID, titleKey: 'item.notifications', scope: 'global', icon: 'Bell' },
+  { id: NOTIFICATIONS_ITEM_ID, titleKey: 'item.notifications', level: 'space', dockGroup: 'global', icon: 'Bell' },
   // 模型服务是**另一块瓦**,不是设置页里的一节:它有自己的左栏名册与右面分坑,
   // 而设置页的版式是「分区不分页的单列表单」(见 content/SettingsMock.tsx 顶部)。
   // 把一块两栏的面塞进那张单列表单,等于让两种版式在同一页里打架。
-  { id: PROVIDERS_ITEM_ID, titleKey: 'item.providers', scope: 'global', icon: 'Boxes' },
+  { id: PROVIDERS_ITEM_ID, titleKey: 'item.providers', level: 'space', dockGroup: 'global', icon: 'Boxes' },
   // 工作区切换器。icon 是**常态**(08-31 用户否决字标瓦面:字当图标与这套风格不符)——
   // 瓦面画的是「色底 + 这枚图标」:**色**承载「我在哪」,**形**承载「这是什么」。
   // 列表还没读到时就只剩这枚图标,那时候确实没有「我在哪」可画。
   // 首字母没有退役,只是退回它本来该在的地方:右键快切表与总览卡上的小色点。
-  { id: WORKSPACE_ITEM_ID, titleKey: 'item.workspace', scope: 'global', icon: 'Layers' },
+  { id: WORKSPACE_ITEM_ID, titleKey: 'item.workspace', level: 'app', dockGroup: 'global', icon: 'Layers' },
   /*
    * 音乐(音乐收尾 · 壳半边,2026-09-10)。**一块普通的瓦,走 `panel` 那条既有路**
    * —— 一行声明 + `content/index.tsx` 一行渲染,形态机 / Dock / 拼贴树一个字不动。
@@ -181,25 +183,33 @@ export const STAGE_ITEMS: StageItemSpec[] = [
    * 与资源地址结构上撞不上;而 `panel` 那一种本来就是「Dock 上那些瓦」的登记处,
    * 单例、标题读 `item.music`、图标读这一行 —— 一格都不必自己写。
    *
-   * `scope: 'global'`:这台机器上只有一个电台、一个播放器(自述里它们是恒在的
+   * `dockGroup: 'global'`:这台机器上只有一个电台、一个播放器(自述里它们是恒在的
    * 单例),音乐不随会话换 —— 与浏览器 / 检索 / 通知同一档。
+   * `level: 'space'`:S1 的 app 级只给 §2.2 表上那三块(工作区 / 设置 / 所有应用),
+   * 其余一律 space —— 缺省 = 保持今天的行为,不顺手替用户改一格。
    */
-  { id: 'music', titleKey: 'item.music', scope: 'global', icon: 'Music' },
-  { id: 'settings', titleKey: 'item.settings', scope: 'global', icon: 'Settings' },
+  { id: 'music', titleKey: 'item.music', level: 'space', dockGroup: 'global', icon: 'Music' },
+  { id: 'settings', titleKey: 'item.settings', level: 'app', dockGroup: 'global', icon: 'Settings' },
   // 「所有应用」排在最后:它是**管理**入口,不是又一块日常要点的面。
   // 两条特殊都在这一行上,不散在代码里 —— 见 APPS_ITEM_ID 的注释。
   {
     id: APPS_ITEM_ID,
     titleKey: 'item.apps',
-    scope: 'global',
+    level: 'app',
+    dockGroup: 'global',
     icon: 'LayoutGrid',
     alwaysInDock: true,
     defaultPlacement: { kind: 'full' },
   },
 ]
 
-export const SESSION_ITEMS = STAGE_ITEMS.filter((i) => i.scope === 'session')
-export const GLOBAL_ITEMS = STAGE_ITEMS.filter((i) => i.scope === 'global')
+/*
+ * **Dock 那条分隔线的两组**(拍点 1)。它们读的是 `dockGroup`(纯视觉),
+ * **不是** `level`(作用域)—— 两件事两个字段,判词在 `StageItemSpec.dockGroup` 上。
+ * 名字保持不动:值就是 `'session'` / `'global'`,组名与值同源。
+ */
+export const SESSION_ITEMS = STAGE_ITEMS.filter((i) => i.dockGroup === 'session')
+export const GLOBAL_ITEMS = STAGE_ITEMS.filter((i) => i.dockGroup === 'global')
 
 export function findItem(id: string | null): StageItemSpec | undefined {
   if (!id) return undefined

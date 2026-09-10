@@ -70,9 +70,21 @@ type PaneNode =
 | 打开方式 `onething.files.openMode` 的 `mode` | 阅读轴 `onething.reading`(字号 / 密度 / 列宽 / 动效) |
 | 总览折叠态 `onething.expose` 的 `collapsedGroups`(组 id 就是本空间的项目目录) | 通知环 `onething.notify`(它是事件记录,不是家具) |
 | 文件树展开态(内存,不落盘) | 主题 / 当前空间本身 |
+| **例外一行:`level: 'app'` 的内容 —— 携带**(S1,2026-09-10;正本 `dock-scope-2026-09.md` §2) | |
 
 判据一句话:**它是不是「用户在这个空间里摆好的东西」**。Dock 贴哪条边、界面语言、
 键位、字号都是**这台机器的偏好** —— 换个工作区不该跟着变。
+
+**那张表的第三列(S1,2026-09-10 加):`level: 'app'` 的内容既不是「跟着空间走」也不是
+「跨空间共享」,而是**携带**。** 它住在**每个空间自己的那棵树**里(所以持久化零改动、
+零新 key),但换空间那一拍:进场那棵树先把自己账上残留的 app 级格**剥掉**(那是上一次
+离场时留下的旧影),再从离场的活树里把它们**连区域、连叶内位次、连浮窗 rect、连
+`floatOrder` 位次、连位置记忆、连隐藏记录**一起搬过来。用户看到的是「『工作区』这块瓦
+在 A 是右架子第二条,切到 B 还是右架子第二条;在 B 关掉它,回到 A 它也不在」。
+
+今天三块瓦是 app 级:「工作区」「设置」「所有应用」。判据是**内容自述**
+(`ContentKind.level`),核心层只读表 —— `workbench/tree.ts` / `workspace/per-space.ts` /
+`stage/residency.ts` / `stage/transitions.ts` 里连 `'app'` / `'space'` 这两个字面量都没有。
 
 **形**:一本账 + 一份活状态(`workspace/per-space.ts`)。落盘的是
 `byWorkspace: Record<workspaceId, Furniture>`,store 顶层那几个字段只是当前空间

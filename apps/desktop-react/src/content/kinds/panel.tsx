@@ -27,6 +27,15 @@ registerContentKind(
     // 那条缝;两处各写一个 `'panel'` 字面量迟早分叉)。
     id: PANEL_KIND,
     singleton: true,
+    /**
+     * **层级转问瓦表**(S1,dock-scope §2.2 / §2.4)。12 块瓦整体登记成这一种,
+     * 而「工作区 / 设置 / 所有应用是 app 级、其余是 space 级」是**逐瓦**的事实 ——
+     * 所以这一格是个函数,答案在 `stage/items.ts` 那张表的 `level` 一列上。
+     *
+     * 认不得的 key(存量档案里退役的瓦、手改过的档案)答 `space`:**缺省 = 今天的
+     * 行为**,而「随人走」这种事不该由一格问不出主的 ref 白拿。
+     */
+    level: (ref: ContentRef) => findItem(ref.key)?.level ?? 'space',
     // 标题读的是瓦表上那个静态名;活标题(浏览器瓦的当前网页名之类)由
     // `stage/live-title` 盖在上面 —— 两半的分工写在 `ContentKind.title` 上。
     title: (ref: ContentRef) => {

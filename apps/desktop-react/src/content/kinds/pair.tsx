@@ -7,7 +7,7 @@ import { Splitter } from '../../ui/Splitter'
 import { Tooltip } from '../../ui/Tooltip'
 import { ContentSlot } from '../../workbench/PaneLeaf'
 import { canClosePairSide, closePairSide, unpairTab } from '../../workbench/drop-commit'
-import { contentKindOf, refId, registerContentKind } from '../../workbench/kinds'
+import { contentKindOf, refId, registerContentKind, residencyLevelOf } from '../../workbench/kinds'
 import {
   PAIR_RATIO_DEFAULT,
   PAIR_RATIO_MAX,
@@ -289,13 +289,19 @@ export const pairContentKind: ContentKind = {
   composite: {
     parts: (ref) => pairPartsOf(ref) ?? [],
     /**
-     * 并得起来吗。**两条拒绝**,都是设计 §2.3 / §6 的字面落地:
+     * 并得起来吗。**三条拒绝**,前两条是设计 §2.3 / §6 的字面落地:
      *  · 任一格自己就是两格的(「两格的标签不能再并」);
-     *  · 两格是同一格(「两格标签里两格不同」)。
+     *  · 两格是同一格(「两格标签里两格不同」);
+     *  · **两格的层级不同**(S1,dock-scope §2.5 / 拍点 7)—— 一格随人走、一格
+     *    归这个工作区,并成一格之后换空间那一拍它整格只能挑一边:跟着走就把
+     *    space 级那一半偷渡进了别的工作区,留下就把 app 级那一半锁在这里。
+     *    两种都是**静默地把用户的东西搬到他没放过的地方**,所以当场答 `null`。
+     *    判据经 `kinds.residencyLevelOf` 问 —— 这里同样一个瓦名都不点。
      */
     compose: (a, b) => {
       if (a.kind === PAIR_KIND || b.kind === PAIR_KIND) return null
       if (a.kind === b.kind && a.key === b.key) return null
+      if (residencyLevelOf(a) !== residencyLevelOf(b)) return null
       return pairRefOf(a, b)
     },
   },
@@ -318,6 +324,19 @@ export const pairContentKind: ContentKind = {
       // 提示给两条全名(标签上那格窄,而 260px 装不下两个长名字)。
       tip: `${a.tip ?? a.text}${JOIN}${b.tip ?? b.text}`,
     }
+  },
+  /**
+   * **这一格的层级 = 它两格的层级**(S1,dock-scope §2.5「同级的 `pair`,level
+   * 等于它的格」)。`compose` 已经拒了跨级,所以两格必然同级,问左格即可
+   * (与 `icon` 取左格同一条:左格是这一格的主)。拆不出两格 = `space`,
+   * 与「缺省 = 今天的行为」同一句。
+   *
+   * 核心层照旧不判这件事:它只问 `kinds.residencyLevelOf`,而那一只把问题
+   * 转回这里 —— 复合怎么算层级是**复合自己的事**。
+   */
+  level: (ref) => {
+    const left = pairPartsOf(ref)?.[0]
+    return left ? residencyLevelOf(left) : 'space'
   },
   /** 左格那一枚(标签上只画得下一枚,而左格是这一格的主)。 */
   icon: (ref) => {

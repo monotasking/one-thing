@@ -141,17 +141,58 @@ export interface ContentCompanion {
 }
 
 /**
+ * **一格家具记在哪一本账上**(S1,dock-scope §2.1)。判词整段在 `ContentKind.level` 上。
+ *
+ * 这个联合可以被枚举而内容种类不可以,理由与 `RegionId` 那一段逐字同源:账本只有
+ * 两本(这台壳的 / 这个工作区的),而那是**壳的家具**数得出来的封闭小集合。
+ */
+export type ResidencyLevel = 'app' | 'space'
+
+/**
  * 一种内容的**自述**。每一种在自己的模块里 register 一次,核心层只读表。
  */
 export interface ContentKind {
   id: string
   /**
-   * 单例种类(今天的 12 块瓦):同一个 `key` 全应用只许一个实例,再打开一次 =
-   * 激活既有的那一份。`file` 与 `session` 都**不是**单例 —— 同一份文件可以在两片
-   * 叶里各开一个(W3「拖一份到旁边对照着看」),两条会话可以并排各占一片叶
-   * (W5-b「会话多开」)。
+   * 单例:同一个 `key` **在它那一层的账上**至多一格,再打开一次 = 激活既有的那一份。
+   * `file` 与 `session` 都**不是**单例 —— 同一份文件可以在两片叶里各开一个
+   * (W3「拖一份到旁边对照着看」),两条会话可以并排各占一片叶(W5-b「会话多开」)。
+   *
+   * ── 它为什么许**按 key 答**(S1,dock-scope §2.4 / §3)────────────────────
+   * 从前这一格是种类级的布尔,读法是 `isSingletonContentKind(id)`。dock-scope
+   * §6 演练三问的是「『搜索』瓦想同一空间开两份并排」:那是**一块瓦**的事,而
+   * 12 块瓦整体登记成 `panel` 一种 —— 种类级布尔答不出「这一种里只有这一个可以
+   * 多开」,于是那条能力就得去动 `tree.sanitize` 的去重,也就是**惊动核心层**。
+   * 放宽成「许按 ref 答」之后,那条能力是 `panel.tsx` 一行 + 瓦表一格。
+   *
+   * 今天**没有任何一种用到函数形**(`panel` 全 `true`,`file` / `dir` / `session` /
+   * `pair` 全 `false`),放宽只是把口留在自述这一侧。读法一律 `isSingletonContent(ref)`。
    */
-  singleton: boolean
+  singleton: boolean | ((ref: ContentRef) => boolean)
+  /**
+   * **这一格家具记在哪一本账上**(S1,正本 `apps/desktop-react/docs/dock-scope-2026-09.md`
+   * §2)。缺席 = `space`,也就是今天全部内容的行为。
+   *
+   *  · `space` —— 实例、位置、记忆都在**这个工作区**的账上:换空间收进账、回来摊开;
+   *  · `app`   —— **这一格内容随人走**。它在哪棵树、哪片叶、浮窗多大,换到任何工作区
+   *    都一样;在 B 空间关掉它,回到 A 它也不在。对用户的意思是「这东西不属于哪个
+   *    工作区,是这台壳的」。
+   *
+   * 机制是**换装时剥离再携带**(dock-scope §2.3):树照旧全部 per-space,换空间那一拍
+   * 把 app 级的格从离场的活树里捡出来,原样放进进场的树(进场那棵先把自己账上残留的
+   * app 级格剥掉 —— 它们是上一次离场时留下的旧影)。两只纯函数在 `./tree.ts`,
+   * 接线在 `./store.ts` 与 `../stage/store.ts` 各一处 `carry`。
+   *
+   * 与 `singleton` 同族许**按 ref 答**:12 块瓦整体登记成 `panel` 一种,而「工作区 /
+   * 设置 / 所有应用是 app 级、其余是 space 级」是**逐瓦**的事实(`panel.tsx` 转问瓦表)。
+   *
+   * **一种内容只有一个 level**(dock-scope §6 演练四):它是内容的自述,不是空间的
+   * 属性 —— 「在 A 空间是 app 级、在 B 空间不是」答不出来,也明确不支持。
+   *
+   * **与 `resident` 互斥**:常驻说的是「这个**区域**里至少留一格」,而区域是某个
+   * 工作区的地。判据落在 `registerContentKind` 的那一句抛上(见那儿)。
+   */
+  level?: ResidencyLevel | ((ref: ContentRef) => ResidencyLevel)
   /**
    * **常驻**:出厂就在这个区域里有一格,而且**至少要留一格**(关不掉、藏不掉)。
    *
@@ -282,6 +323,20 @@ const REGISTRY = new Map<string, ContentKind>()
 export function registerContentKind(kind: ContentKind, hot?: ImportMetaHot): () => void {
   const now = REGISTRY.get(kind.id)
   if (now && now !== kind) throw new Error(`content kind 重复注册:${kind.id}`)
+  /*
+   * **常驻与层级互斥**(S1,dock-scope §2.5)。常驻说的是「**这个区域**里至少留
+   * 一格」,而区域是某个工作区的地 —— 一种既要「随人走」又要「这个区域里必须
+   * 在场」的内容,在换空间那一拍要么被剥掉(违背常驻),要么被播种成第二格
+   * (违背单例),两条路都说不通。所以在**登记时**抛,而不是在换装那一拍
+   * 静默挑一边:自述互相打架是写码的人可以当场看见的错。
+   *
+   * 判据宽到「常驻的不许自述层级」:函数形的 `level` 在登记这一刻答不出来
+   * (它要一格 ref 才答得出),而一条**判不出来**的互斥等于没有互斥。显式写
+   * `level: 'space'` 是恒等声明,放行。
+   */
+  if (kind.resident && kind.level !== undefined && kind.level !== 'space') {
+    throw new Error(`content kind 常驻与 level:'app' 互斥:${kind.id}`)
+  }
   REGISTRY.set(kind.id, kind)
   const off = () => {
     // 只摘「确实是我登记的那一格」—— 别人已经换上去了就不动它。
@@ -387,9 +442,27 @@ export function companionSeedOf(kindId: string, env: CompanionEnv): ContentRef |
   return REGISTRY.get(kindId)?.companion?.seed?.(env) ?? null
 }
 
-/** 这个种类是不是单例。`tree.sanitize` 拿它去重。 */
-export function isSingletonContentKind(id: string): boolean {
-  return REGISTRY.get(id)?.singleton === true
+/**
+ * **这一格是不是单例**(S1 起按 ref 答,取代从前的 `isSingletonContentKind(id)`)。
+ * `tree.sanitize` 拿它去重,`store.openRef` 拿它判「已经开着就激活」。
+ * 判词与「为什么许按 key 答」整段在 `ContentKind.singleton` 上。
+ */
+export function isSingletonContent(ref: ContentRef): boolean {
+  const declared = REGISTRY.get(ref.kind)?.singleton
+  return typeof declared === 'function' ? declared(ref) === true : declared === true
+}
+
+/**
+ * **这一格记在哪一本账上**(S1)。没登记 / 没自述 = `space`(今天全部内容的行为)。
+ *
+ * `workbench/tree` 的两只携带纯函数、`workbench/store` 与 `stage/store` 的两处
+ * `carry` 只经这一只问 —— 于是它们里面一个种类名、一个瓦名都不出现。
+ * 判词整段在 `ContentKind.level` 上。
+ */
+export function residencyLevelOf(ref: ContentRef): ResidencyLevel {
+  const declared = REGISTRY.get(ref.kind)?.level
+  if (declared === undefined) return 'space'
+  return typeof declared === 'function' ? declared(ref) : declared
 }
 
 /** 按登记序。 */

@@ -4,7 +4,7 @@ import { focusTree } from '../focus/registry'
 import { useWorkbenchStore } from '../workbench/store'
 import { STAGE_ITEMS, findItem } from './items'
 import { panelRef } from './panel-ref'
-import { refId } from '../workbench/kinds'
+import { refId, residencyLevelOf } from '../workbench/kinds'
 import {
   LAYER_SCOPE_OF,
   requestFocusOnOpen,
@@ -164,6 +164,25 @@ interface StageStore extends StageState, StageSettings, PerSpaceState<T.StageFur
 export const STAGE_PER_SPACE: PerSpaceSpec<StageStore, T.StageFurniture> = {
   pick: T.pickStageFurniture,
   factory: T.factoryStageFurniture,
+  /**
+   * **全局瓦携带,几何这一半**(S1,dock-scope §2.4 那张表的 stage 一行)。
+   *
+   * 拼贴台那一侧搬的是「它在哪棵树、哪片叶」;这一侧搬的是「那扇窗多大、
+   * 排在第几、上次是怎么打开的」。两侧各自在自己的 `carry` 里做,`layout-scope`
+   * 的次序一个字不动(workbench 换装 → stage 换装 → `syncStageResidency` 重算投影)。
+   *
+   * 判据是**这块瓦的 `panelRef` 的 level**,经 `kinds.residencyLevelOf` 问 ——
+   * 于是 stage 这一层同样不点名任何一块瓦。`floats` / `memory` 的键有两种来路:
+   * 一块瓦浮出来时窗 id **就是**瓦 id(判词在 `residency.regionOfPlacement` 上),
+   * 别的内容浮出来时是现铸的窗号 —— 后者在瓦表上查无此人,`panel` 那一种的
+   * `level` 自述答 `space`,不搬,正确。
+   */
+  carry: (incoming, outgoing) =>
+    T.carryStageFurniture(
+      incoming,
+      T.pickStageFurniture(outgoing),
+      (id) => residencyLevelOf(panelRef(id)) === 'app',
+    ),
 }
 
 /**

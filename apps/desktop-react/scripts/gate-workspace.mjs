@@ -5,7 +5,7 @@
  * 用户裁定:「workspace 的切换现在是假的,真正实现 workspace 的切换」。
  * 这条门证的就是那句话的反面 —— 切换之后**世界真的换了**,而且换得干净。
  *
- * ── 它证什么(十条) ──────────────────────────────────────────────────────
+ * ── 它证什么(十一条) ────────────────────────────────────────────────────
  *  ① **会话列表按空间过滤**:两个空间各有自己的会话,切过去只看得见本空间那些,
  *     另一个空间的一条都不在 DOM 里。
  *  ② **新会话归属正确**:在空间 B 里从界面上建一条,回到 core 侧读 `listMeta`,
@@ -28,6 +28,11 @@
  *     设置换成全局那份。
  *  ⑩ **建完看得见**(09-01 报障 ②):建一个工作区之后总览还开着、新卡在屏上
  *     并标着「当前」——「建」与「切」绑成一步,但切换不该把人正看着的那块面收走。
+ *  ⑪ **全局瓦携带**(S1,09-10;正本 `docs/dock-scope-2026-09.md` §2):
+ *     ⑧ 说的是「整套换新」,这一条说的是它的**例外** —— 「工作区」这块瓦是
+ *     `level: 'app'`,它不属于哪个工作区,是这台壳的。所以开着的那扇浮窗切过去
+ *     **同区域同矩形**;而在新空间把它关掉、切回来它**也不在**(进场那棵树上
+ *     那格旧影被剥掉了)。两句缺一不可:只证前一句的话,「端过去但不剥」也是绿的。
  *
  * ── 为什么这一半必须真机 ─────────────────────────────────────────────────
  * 单元测试换掉的是端口,证的是「壳往哪条口上打」;这里证的是**盘上那几个文件
@@ -252,6 +257,35 @@ function readStagePersist(page) {
   })
 }
 
+/** 落盘那份拼贴台档案(`onething.workbench`)。与 `readStagePersist` 同一体例。 */
+function readWorkbenchPersist(page) {
+  return page.evaluate(() => {
+    try {
+      return JSON.parse(localStorage.getItem('onething.workbench') || '{}')
+    } catch {
+      return {}
+    }
+  })
+}
+
+/**
+ * 某个空间那一格账里,这个 refId 坐在哪个区域(不在任何一棵树上 = null)。
+ *
+ * 读的是**盘上那份账**而不是屏幕:携带这件事的事实就落在 `byWorkspace[空间].regions`
+ * 里,而屏幕只画当前空间那一份 —— 「它在 B 里也在右架子上」这句话要两个空间各读一次。
+ */
+function regionOfRefIn(persisted, spaceId, refId) {
+  const regions = persisted?.state?.byWorkspace?.[spaceId]?.regions
+  if (!regions) return null
+  const walk = node => {
+    if (!node) return false
+    if (node.kind === 'leaf') return (node.tabs || []).some(t => `${t.kind}:${t.key}` === refId)
+    return walk(node.a) || walk(node.b)
+  }
+  for (const [region, tree] of Object.entries(regions)) if (walk(tree)) return region
+  return null
+}
+
 /** 某个空间那一格里,四条架子各自收起了没有。 */
 function collapsedOf(persisted, spaceId) {
   const shelves = persisted?.state?.byWorkspace?.[spaceId]?.shelves
@@ -300,13 +334,13 @@ async function main() {
   try {
     await mkdir(shotDir, { recursive: true })
 
-    console.log('\n[1/11] 在磁盘上种出两个空间各自的工作目录')
+    console.log('\n[1/12] 在磁盘上种出两个空间各自的工作目录')
     for (const [key, dir] of Object.entries(dirs)) {
       await mkdir(dir, { recursive: true })
       await writeFile(path.join(dir, `${key}-only.txt`), 'gate\n')
     }
 
-    console.log('\n[2/11] 起一台 core,建第二个空间 + 两边各自的会话 / 设置 / 凭证')
+    console.log('\n[2/12] 起一台 core,建第二个空间 + 两边各自的会话 / 设置 / 凭证')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: {
@@ -374,7 +408,7 @@ async function main() {
     }
     if (credentialsSeeded) assert(true, '两个空间各种了一把假 key(尾号不同)')
 
-    console.log('\n[3/11] 拉起应用(默认空间),会话列表只该有默认空间那两条')
+    console.log('\n[3/12] 拉起应用(默认空间),会话列表只该有默认空间那两条')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -401,7 +435,7 @@ async function main() {
       '① 另一个空间的会话**一条都不在 DOM 里**(不是藏起来,是根本没画)',
     )
 
-    console.log('\n[4/11] 切到第二个空间:面板开合也是家具;两边都开着时零重挂 + 一帧就位')
+    console.log('\n[4/12] 切到第二个空间:面板开合也是家具;两边都开着时零重挂 + 一帧就位')
     /*
      * 切换走 **⌘2**(全局档的工作区序号直达),页面内 DOM 派发 —— 不动真光标、
      * 不抢前台焦点,与本门其余的 `element.click()` 同一条纪律。
@@ -494,7 +528,7 @@ async function main() {
     await delay(120)
     await page.screenshot({ path: path.join(shotDir, 'workspace-switched.png') })
 
-    console.log('\n[5/11] 进这个空间的会话,文件面的根跟着换')
+    console.log('\n[5/12] 进这个空间的会话,文件面的根跟着换')
     /*
      * 文件根**不是**按空间取的,它按**活跃会话的工作目录**取
      * (`files-source.useSessionCwd`)—— 而会话跟着空间走,所以根是被带过来的。
@@ -522,7 +556,7 @@ async function main() {
       '⑥ 而且不是默认空间那个目录 —— 根真的被带过来了,不是没动',
     )
 
-    console.log('\n[6/11] 在第二个空间里从界面上建一条会话,回 core 侧核归属')
+    console.log('\n[6/12] 在第二个空间里从界面上建一条会话,回 core 侧核归属')
     const before = new Set((await rpc(record, 'sessions', 'listMeta', {})).sessions.map(s => s.id))
     // 上一步开了文件面,会话面让位给了它 —— 先把会话面开回来,那颗「+」才在 DOM 里。
     /* 09-04 方向 A:组头那颗 `+` 随项目组退役,「新会话」搬到工具栏。 */
@@ -538,7 +572,7 @@ async function main() {
       `② 新会话落在第二个空间上(workspaceId=${fresh.workspaceId})—— 这一格是壳与引擎唯一的接缝`,
     )
 
-    console.log('\n[7/11] 模型服务面:provider 设置与凭证池跟着空间走')
+    console.log('\n[7/12] 模型服务面:provider 设置与凭证池跟着空间走')
     const spaceAiNow = await rpc(record, 'spaces', 'getProviderSettings', { id: workId })
     assert(
       spaceAiNow?.ai?.provider === 'zhipu',
@@ -576,7 +610,7 @@ async function main() {
     }
 
 
-    console.log('\n[8/11] 四条架子的快捷键:⌘⌥←/→/↓/↑ 各开各收')
+    console.log('\n[8/12] 四条架子的快捷键:⌘⌥←/→/↓/↑ 各开各收')
     /*
      * 读数口是**盘上那份 stage 档案**(`onething.stage` 的 byWorkspace),不是
      * 页面里的探针变量:它同时证「键真的接上了」与「状态真的落进了当前空间那一格」。
@@ -614,7 +648,7 @@ async function main() {
       '⑦ 同一个键再按一次就展开 —— 语义是收/展,可逆',
     )
 
-    console.log('\n[9/11] 家具按空间隔离:切过去是出厂,切回来原样')
+    console.log('\n[9/12] 家具按空间隔离:切过去是出厂,切回来原样')
     const furnishedInDefault = collapsedOf(await readStagePersist(page), DEFAULT_SPACE_ID)
     console.log('  · 默认空间此刻的四条架子:', JSON.stringify(furnishedInDefault))
     assert(
@@ -645,7 +679,7 @@ async function main() {
     )
     await page.screenshot({ path: path.join(shotDir, 'workspace-furniture.png') })
 
-    console.log('\n[10/11] 空间自己配的 provider 不被全局盖掉(报障 ① 的另一半)')
+    console.log('\n[10/12] 空间自己配的 provider 不被全局盖掉(报障 ① 的另一半)')
     /*
      * 报障 ① 的病根是 e389473b 漏掉的**未迁移态**:一台还没跑过 C2 搬迁的机器盘上
      * 没有 `workspaces/<id>/providers.json`,而
@@ -682,7 +716,7 @@ async function main() {
       '⑨ 而且不是默认空间配的 deepseek-chat —— 回落没有撬开空间隔离',
     )
 
-    console.log('\n[11/11] 建一个工作区:建完看得见(报障 ②)')
+    console.log('\n[11/12] 建一个工作区:建完看得见(报障 ②)')
     /*
      * 报障(截图 I-ws-after-create.png):建完总览当场关掉、屏幕回到空壳,
      * 用户看不到自己刚建的那张卡。病根是「建」与「切」绑成一步,而切换换整套家具
@@ -721,10 +755,81 @@ async function main() {
     assert(madeCard.current, '⑩ 新卡标着「当前」:确实切过去了,不是靠不切换换来的')
     await page.screenshot({ path: path.join(shotDir, 'workspace-after-create.png') })
 
+    console.log('\n[12/12] 全局瓦携带:开着的「工作区」浮窗跟着人走(S1,正本 docs/dock-scope-2026-09.md §2)')
+    /*
+     * 用户原话:「切工作区时,『工作区』这块瓦该在哪一段(浮窗 / 架子 / 中央)就还在
+     * 哪一段,两个工作区里它不能一个在这一个在那」。这一屏证两句话,而且**两句缺一
+     * 不可** —— 只证第一句的话,「换空间时把 app 级的格原样端过去、但进场那棵树上
+     * 那格旧影一个字不剥」也是绿的,而那种实现下「在 B 关掉、切回 A 它又冒出来」:
+     *
+     *  ① 在 A 把它开成一扇浮窗 → 切到 B:**同一个区域、同一个矩形**;
+     *  ② 在 B 把它关回 Dock → 切回 A:**它不在任何一棵树上**(旧影被剥了)。
+     *
+     * 落点为什么用「先钉记忆再点瓦」而不是走右键菜单:菜单里那几行「打开方式」身上
+     * 没有 testid,而这一步要的是一个**确定的落点**,不是「菜单点得开」这件事本身
+     * (那是 gate:dock 的地盘)。位置记忆是产品自己的真路 —— 用户亲手浮过一次之后
+     * 盘上留下的就是这一格,所以这不是绕开产品,是把那一次手势的**结果**直接摆好。
+     */
+    await pressCombo(page, '1', { meta: true })
+    await delay(200)
+    await page.evaluate(spaceId => {
+      const raw = JSON.parse(localStorage.getItem('onething.stage') || '{}')
+      const ledger = raw?.state?.byWorkspace ?? {}
+      const slot = ledger[spaceId] ?? {}
+      ledger[spaceId] = { ...slot, memory: { ...(slot.memory ?? {}), workspace: { kind: 'float' } } }
+      raw.state = { ...(raw.state ?? {}), byWorkspace: ledger }
+      localStorage.setItem('onething.stage', JSON.stringify(raw))
+    }, DEFAULT_SPACE_ID)
+    await page.reload()
+    await waitFor('Dock 回来了', async () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-workspace"]'))))
+
+    await openPanel(page, 'workspace', '[data-testid^="workspace-switch-"]')
+    await delay(250)
+    const seatInA = regionOfRefIn(await readWorkbenchPersist(page), DEFAULT_SPACE_ID, 'panel:workspace')
+    const rectInA = (await readStagePersist(page))?.state?.byWorkspace?.[DEFAULT_SPACE_ID]?.floats?.workspace
+    console.log('  · 在 A:', seatInA, JSON.stringify(rectInA))
+    assert(
+      typeof seatInA === 'string' && seatInA.startsWith('float:'),
+      `⑫ 前提:它在 A 里开着,而且是一扇浮窗(读到 ${seatInA})`,
+    )
+    assert(Boolean(rectInA), '⑫ 前提:那扇窗有一份矩形')
+
+    await pressCombo(page, '2', { meta: true })
+    await delay(300)
+    const seatInB = regionOfRefIn(await readWorkbenchPersist(page), workId, 'panel:workspace')
+    const rectInB = (await readStagePersist(page))?.state?.byWorkspace?.[workId]?.floats?.workspace
+    console.log('  · 切到 B:', seatInB, JSON.stringify(rectInB))
+    assert(seatInB === seatInA, `⑫ 切过去**还在同一段**(${seatInA} → ${seatInB})`)
+    assert(
+      JSON.stringify(rectInB) === JSON.stringify(rectInA),
+      '⑫ **连 rect 一起搬** —— 同一个角、同样大小',
+    )
+    await page.screenshot({ path: path.join(shotDir, 'workspace-carry-in-b.png') })
+
+    // 在 B 关掉它(瓦是开关:再点一次 = 收回 Dock)。
+    await clickSelector(page, '[data-testid="dock-tile-workspace"]')
+    await delay(250)
+    assert(
+      regionOfRefIn(await readWorkbenchPersist(page), workId, 'panel:workspace') === null,
+      '⑫ 前提:在 B 里它确实被关掉了',
+    )
+
+    await pressCombo(page, '1', { meta: true })
+    await delay(300)
+    const backInA = regionOfRefIn(await readWorkbenchPersist(page), DEFAULT_SPACE_ID, 'panel:workspace')
+    console.log('  · 切回 A:', backInA)
+    assert(
+      backInA === null,
+      '⑫ **在 B 关掉、切回 A 它也不在** —— 进场那棵树上那格旧影被剥掉了(反证:拆掉 `stripByLevel` 这一条当场红)',
+    )
+    await page.screenshot({ path: path.join(shotDir, 'workspace-carry-closed.png') })
+
     await app.close()
     app = undefined
     console.log(
-      `\n[workspace-gate] ok —— 切换真的换世界(列表 / 归属 / provider 设置 / 凭证 / 零重挂 / 家具 / 四条架子键)`
+      `\n[workspace-gate] ok —— 切换真的换世界(列表 / 归属 / provider 设置 / 凭证 / 零重挂 / 家具 / 四条架子键`
+        + ` / 全局瓦携带)`
         + `(截图:${path.relative(appRoot, shotDir)}/)`,
     )
   } finally {

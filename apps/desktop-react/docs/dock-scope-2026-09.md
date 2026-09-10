@@ -1,6 +1,7 @@
 # Dock 瓦与内容的作用域(2026-09-08 方案)
 
-> 状态:**方案,未动手**。用户 09-08 原话:「dock 的 item 需要做成分作用域的:workspace 是全局的(跨 workspace);file viewer 可以创建多个(同一 workspace 下);有些同一 workspace 下只能有一个窗口;directories(Dock 上的「目录」瓦)也要同一 workspace 下多个,和 session 的 workdir 绑定,切换 session 会切到对应的 directory。会根据作用域有不同的行为。」
+> 状态:**S1(全局瓦携带)已落地(2026-09-10)**,S2 / S3 仍是方案。落地记录在 §1;
+> 逐批结账在 §8 那张表里。用户 09-08 原话:「dock 的 item 需要做成分作用域的:workspace 是全局的(跨 workspace);file viewer 可以创建多个(同一 workspace 下);有些同一 workspace 下只能有一个窗口;directories(Dock 上的「目录」瓦)也要同一 workspace 下多个,和 session 的 workdir 绑定,切换 session 会切到对应的 directory。会根据作用域有不同的行为。」
 >
 > 09-08 追补:第一稿把「目录」写成了后端的 project dir 名册,用户纠正:**说的是 Dock 上那块「目录」瓦(`files` 瓦 → `files-root` 面板),与后端 `projectDirs` 域无关**。§4 按此重写。
 >
@@ -25,16 +26,48 @@
 | file viewer 同一工作区可多开 | `space` | `false`(已是) | 无 |
 | 目录面板同一工作区多个、绑会话 workdir、切会话切到对应那份 | `space` | `false`(已是) | `keyOf = 会话的 workdir`:切会话激活同根那份,没有就在旁边开一份 |
 
-## 1. 现状(调研 09-08,file:line 见调研稿)
+## 1. 现状 →**S1 落地记录**(调研 09-08;施工 09-10)
 
-1. `StageItemSpec.scope: 'session' | 'global'`(`stage/types.ts:97`)**没有注释、没有行为**:唯一消费者是 `Dock.tsx:44-54`,把两组排开、中间画一条分隔线。名字被占了,语义是空的。
-2. 11 块瓦全部登记成 `panel` 一种(`content/kinds/panel.tsx:29`,`singleton: true`)。「能不能多开」今天落在**种类**这一级,没有逐瓦的口。
-3. 家具全按 workspace 换装(`workspace/layout-scope.ts:44-81` 五个 store + 文件树),`hiddenItems` 是全局偏好(`stage/transitions.ts:271-273`),`memory`(每块瓦的位置记忆)是家具。所以「一块瓦在这个工作区里开着」今天**天然就是 per-space** —— 它是树的投影(`stage/residency.ts`)。换工作区时**没有任何东西跟着人走**,开着的 workspace 总览也会随旧空间一起收进账。
-4. `floats[id]` / `floatOrder` / `memory[id]` / `placements[id]` 全部以**瓦 id** 为键(`residency.ts:68-72`)。
-5. `files-root:<绝对路径>` 已是多实例内容(`content/kinds/files-root.tsx:43`),但**根在开出来那一刻冻结**(`FilesPanel.tsx:331-343`);「跟随会话」只发生在点瓦那一下(`files-launcher.tsx:96-102` 问一次 `envSessionId` 的 cwd 再开一份钉住的)。
-6. `envSessionId`(`content/session-projection.ts:26-37`)已经是「文件树的根、检索的 cwd、⌘N 继承哪个项目」的单产地,带粘性(焦点落到文件叶不换)。跟随要读的就是它,不必再立一格。
-7. 「目录」瓦(`files`,`item.dirs`)是启动瓦:点 = 问一次环境会话的 workdir 开一份 `files-root:<那个目录>`,右键 = 最近目录(`workbench.recentRoots`,per-space,20 条)+「打开目录…」。**与后端 `projectDirs` 域、`connectedDirectories` 接入目录都无关**,那两个是权限面与名册,本方案一个字不碰。
-8. 既有的「瓦自述、Dock 读表」扩展点是 `stage/launchers.ts` 的 `StageLauncher`(`open` / `dragRef` / `residentKind` / `MenuRows`)。Dock 里没被它收编的 `if` 只剩 `workspace` 瓦两处(`Dock.tsx:263, 309`)。
+调研那八条里,**前四条已经被 S1 改掉**,后四条原样成立。逐条结账:
+
+1. ~~`StageItemSpec.scope: 'session' | 'global'` 没有注释、没有行为,唯一消费者是 Dock
+   的分隔线~~ → **改名 `level: 'app' | 'space'` 并写上判词**,分隔线那件纯视觉的事分家
+   到新的一格 `dockGroup: 'session' | 'global'`(拍点 1 按缺省定:**分组一字不改**,
+   `SESSION_ITEMS` / `GLOBAL_ITEMS` 改按 `dockGroup` 派生)。名字被占的那一格从此归位。
+2. ~~11 块瓦全部登记成 `panel` 一种(`singleton: true`),「能不能多开」落在种类这一级~~
+   → `ContentKind.singleton` 放宽成 `boolean | ((ref) => boolean)`,读法从
+   `isSingletonContentKind(id)` 换成 **`isSingletonContent(ref)`**(`tree.sanitize` 的去重、
+   `store.openRef` 的两处判据跟改)。**今天没有任何一种用到函数形**——放宽只是把口留在
+   自述这一侧,好让 §6 演练三那条能力不必惊动核心层。
+3. ~~换工作区时没有任何东西跟着人走~~ → `ContentKind.level` + `kinds.residencyLevelOf(ref)`
+   + `tree.stripByLevel` / `tree.carryByLevel` 两只纯函数 + `PerSpaceSpec.carry` 一口
+   + workbench / stage 两处 `carry` 实现。**「工作区」「设置」「所有应用」三块瓦是 `app` 级**
+   (§2.2 表;`notifications` 按拍点 2 的缺省留在 `space`),连区域、连浮窗 rect、连
+   `floatOrder` 位次、连位置记忆、连隐藏记录一起随人走。
+4. ~~`floats[id]` / `floatOrder` / `memory[id]` / `placements[id]` 全部以瓦 id 为键~~ →
+   照旧;`STAGE_PER_SPACE.carry` 就是按这几张表逐格搬的,判据由壳那一侧递进去
+   (`(id) => residencyLevelOf(panelRef(id)) === 'app'`),形态机里照旧一个瓦名都没有。
+5. `dir:<绝对路径>` 已是多实例内容,但根在开出来那一刻冻结 —— 原样(跟随那条轴归 S2,
+   而 S2 本身已被 `session-continuity-2026-09.md` §3 取代)。
+6. `envSessionId` 是「文件树的根、检索的 cwd、⌘N 继承哪个项目」的单产地 —— 原样。
+7. 「目录」瓦(`files`,`item.dirs`)是启动瓦 —— 原样,S1 一个字不碰。
+8. 「瓦自述、Dock 读表」的扩展点是 `stage/launchers.ts` 的 `StageLauncher`;Dock 里没被它
+   收编的 `if` 只剩 `workspace` 瓦两处 —— 原样,收进 `StageLauncher.face` 是 **S3**。
+
+**S1 落地的判据自证**:`grep "'app'\|'space'"` 在 `workbench/tree.ts` /
+`workspace/per-space.ts` / `stage/residency.ts` / `stage/transitions.ts` 上**零命中**
+(层级在 `tree.ts` 里是一格类型参数,不是字面量),`workbench/store.ts` 上三条 —— 全是
+「剥 + 携带 app 级」那两句接线本身。核心层里的种类名 / 瓦名照旧零命中。
+
+**S1 三处与本文原稿不同的地方**(逐条写在代码判词里,这里只记账):
+- **落位复用伴随面那一只**:`tree.withSeats` / `tree.withoutSeats` / `tree.PaneSeat` 是从
+  `workbench/companions.ts` 抽出来的**同一份**摘与放(C3 那边改成两行委托)。两条路问的
+  是同一句话,判词分家:落位规则归 `tree`,「收谁 / 什么时候收」归各自。
+- **`pairRatios` 也携带**:一格 app 级的复合标签搬过去之后,它那条分隔杆的比例落在离场
+  空间的账里 —— 不带上就变回默认 50。判据是「携带之后树上有它、而进场账里没有」。
+- **`exitFull` 那条订阅前移**:`workspace/layout-scope.ts` 里它从拼贴树换装**之后**挪到
+  **之前**,兑现 §2.5「全屏着换空间 → 先 `exitFull` 再携带」。终态无差(全屏不动树),
+  差的是中间那一帧:排在后面时屏幕上会有一拍是「新空间的树 + 旧空间那一格全屏」。
 
 ## 2. 层级 `level`:`app` 与 `space`
 
@@ -51,7 +84,7 @@
 | `workspace` | **app** | 用户点名。它就是切换器,切过去它还在才对 |
 | `settings` | **app** | 设置页本身是这台机器的(空间覆盖层在页里分区,不是分页) |
 | `apps` | **app** | 「所有应用」是恢复入口,与 `hiddenItems` 同为全局 |
-| `notifications` | **app**(拍点 2) | 未读是机器级事实,不按空间分 |
+| `notifications` | **space**(拍点 2,09-10 按**缺省**定) | 建议过 app(「未读是机器级事实」),但拍点的缺省是「保持旧行为」,所以落地取 space。改成 app 是瓦表那一行改一个字 |
 | `providers` | space | 模型表有 per-space 覆盖层(`SpaceOverlayPayload.selectedModels`) |
 | `sessions` | space | 总览本来就按空间过滤 |
 | `search` | space | cwd / 会话范围都是空间的 |
@@ -178,27 +211,27 @@ key 为 null                                → 什么都不做
 
 ## 7. 拍点(用户可感知的行为变化,缺省 = 保持旧行为)
 
-| # | 变化 | 缺省 | 建议 |
-| --- | --- | --- | --- |
-| 1 | Dock 分隔线改按 `level` 分组 | 保持今天的分组 | 改按 level:分隔线从此说的是真话(「左边的随空间、右边的随人」) |
-| 2 | `notifications` 是 `app` 还是 `space` | space | app |
-| 3 | 总览 / 所有应用里标「跨工作区」 | 不标 | 不标(Dock 分隔线已说明) |
-| 4 | 切会话时目录面板跟着切(§4.3):有同根激活、没同根在旁边开、一份都没有不开 | 今天 = 不跟 | 如 §4.3。另一条路是「只一份、换根不开新标签」(第一稿),标签不累积但每份目录的树状态混在一格里;按用户「多个 + 切到对应的」的原话取多份 |
-| 5 | 会话没绑目录时切过去,目录面板不动(§4.3 ④) | — | 不动;要它显示 `~` 就是又一份 `~` 面板,没意义 |
-| 8 | `diff` 多实例 + 跟随会话(与目录面板同一 `keyOf`) | 今天 mock 单例 | 多实例是用户 09-09 追加;跟随是我加的一句(不跟的改动面看的不是当前仓),不要就删 `follow` 一行 |
-| 6 | 启动瓦运行点按种类亮(§4.3) | 永不亮 | 改 |
-| 7 | 跨级二合一拒绝(§2.5) | — (新行为) | 拒绝 |
+**1 / 2 / 3 / 7 已于 09-10 按缺省拍定并随 S1 落地**(下表「已定」列);4 / 5 / 8 属 S2,而 S2 已被 `session-continuity-2026-09.md` §3 取代;6 属 S3。
 
-拍完才动手。1 / 2 / 3 只是表里一格,施工序不依赖它们。
+| # | 变化 | 缺省 | 建议 | 已定 |
+| --- | --- | --- | --- | --- |
+| 1 | Dock 分隔线改按 `level` 分组 | 保持今天的分组 | 改按 level:分隔线从此说的是真话(「左边的随空间、右边的随人」) | **保持**(分组读新的一格 `dockGroup`,与 `level` 分家) |
+| 2 | `notifications` 是 `app` 还是 `space` | space | app | **space** |
+| 3 | 总览 / 所有应用里标「跨工作区」 | 不标 | 不标(Dock 分隔线已说明) | **不标** |
+| 4 | 切会话时目录面板跟着切(§4.3):有同根激活、没同根在旁边开、一份都没有不开 | 今天 = 不跟 | 如 §4.3。另一条路是「只一份、换根不开新标签」(第一稿),标签不累积但每份目录的树状态混在一格里;按用户「多个 + 切到对应的」的原话取多份 | — 已被 `session-continuity` §3 取代 |
+| 5 | 会话没绑目录时切过去,目录面板不动(§4.3 ④) | — | 不动;要它显示 `~` 就是又一份 `~` 面板,没意义 | — 同上 |
+| 8 | `diff` 多实例 + 跟随会话(与目录面板同一 `keyOf`) | 今天 mock 单例 | 多实例是用户 09-09 追加;跟随是我加的一句(不跟的改动面看的不是当前仓),不要就删 `follow` 一行 | — 同上 |
+| 6 | 启动瓦运行点按种类亮(§4.3) | 永不亮 | 改 | — 排 S3 |
+| 7 | 跨级二合一拒绝(§2.5) | — (新行为) | 拒绝 | **拒绝**(`pair.compose` 第三条,答 `null`,沿用既有那条静默的「并不了」) |
 
 ## 8. 分批与门
 
 | 批 | 内容 | 门 |
 | --- | --- | --- |
-| S1 · 自述 + 携带 | `kinds.ts` 两口读法、`tree.ts` 两只纯函数、`per-space.ts` 的 `carry`、workbench / stage 两份 `carry`、`panel.tsx` 转问瓦表、瓦表改名 | 单测:剥 / 携带 / 开机不剥 / float 连 rect 搬 / hidden 携带 / resident+app 登记抛。`gate:workspace` 加一屏:开着 workspace 总览浮窗切空间,它在原位;在新空间关掉,切回来它不在 |
+| ~~S1 · 自述 + 携带~~ **已落地 2026-09-10** | `kinds.ts` 两口读法(`residencyLevelOf` / `isSingletonContent`)+ 登记时的常驻互斥抛、`tree.ts` 两只纯函数(`stripByLevel` / `carryByLevel`)+ 抽出来的落位三件(`PaneSeat` / `withSeats` / `withoutSeats`)、`per-space.ts` 的 `carry`、workbench / stage 两份 `carry`、`panel.tsx` 与 `pair.tsx` 两处自述、瓦表 `scope` → `level` + `dockGroup` | 单测 **34 例两组**:`workbench/__tests__/carry.test.ts`(19:剥 / 携带 / 落位四条 / 引用恒等 / 常驻互斥三条 / 跨级 pair)+ `workspace/__tests__/carry-scope.test.ts`(15:换空间真接上、开机不剥、hidden 携带、float 连 rect 搬、memory 携带、全屏先退、伴随面账不被碰、Dock 分组逐字同今天)。反证两条都真跑过:拆 `stripByLevel` → 「在 B 关掉切回 A 它不在」红 2 条;`residencyLevelOf` 恒答 space → 红 20 条。`gate:workspace` 第 ⑫ 屏**已写**(浮窗同区域同矩形 + 在 B 关掉切回 A 不在),**本单未跑真机** |
 | S2 · 跟随 | `kinds.ts` 加 `follow` + 读法 `followKeyOf(kind, session)`;新 `content/session-follow.ts`(订 `envSessionId` 与会话 `projectId`,四条规则);`files-root.tsx` 自述 `keyOf`;`workbench/store` 若缺「在某叶 append 并激活但不搬焦点」这一口则补 | 单测四条规则各一例 + 摊开 pair + 同根两份取第一。`gate:files` 加一屏:两条会话不同 workdir,开一份目录面板 → 切会话 → 旁边多一格标签且激活、焦点仍在输入框 → 切回 → 激活回第一格、不多开 → 关掉两份再切 → 零新标签 |
 | S3 · Dock 收尾 | 拍点 1 / 6、`workspace` 瓦两处 `if` 收进 `StageLauncher.face` | `gate:a11y` 既有九屏零违例;grep `Dock.tsx` 零 `=== WORKSPACE_ITEM_ID` |
-| 文档 | 本文 §1 现状改成落地记录;`workbench-2026-09.md` §1.1 `singleton` 那句改;`pane-tree-2026-09.md` §五 分界表加「app 级内容:携带」一行 | — |
+| 文档 | ~~本文 §1 现状改成落地记录;`workbench-2026-09.md` §1.1 `singleton` 那句改;`pane-tree-2026-09.md` §五 分界表加「app 级内容:携带」一行~~ **三处都已改(09-10)** | — |
 
 自证:S1 结束时 `grep -c "'app'\|'space'" workbench/tree.ts workspace/per-space.ts stage/residency.ts` 只许命中 `residencyLevelOf` 的调用与类型字面量,零种类名;这一条并进既有的种类名零命中自证。
 
@@ -211,3 +244,18 @@ key 为 null                                → 什么都不做
 - **`diff` / `terminal` / `browser` 仍是 mock。** 表里给它们的 level 是占位,真做那天各自在自己模块里自述。
 - **携带的落位是「同名区域 append」。** 进场树的那片叶正在全屏、或那条边的架子收着,携带来的格就在里面等着;不替用户展开。
 - **`memory` 携带的是 app 级瓦的那几条。** 若将来 `memory` 整体改成偏好(全局),这几条携带就成了空转,删掉即可。
+- **叶内位次只在叶 id 活下来时才保得住**(S1 施工留账)。两个空间各有自己的一棵树、
+  自己的一套叶 id,所以 §2.3 那条「同名区域存在就 append 到那片叶」在**大多数真实
+  切换里就是 append**,而 `session-continuity-2026-09.md` §2 那句「在 A 是右架子第二条,
+  到 B 还是第二条」只在那条边恰好只有一片叶、且它是唯一住户时逐字成立。要真的保住位次,
+  得让携带按「第几格」而不是「哪片叶」落位 —— 那是另一条判据(而且它与「进场那棵树上
+  本来就有几格」会打架),本单不做。
+- **钉住(`PaneLeafNode.pinned`)不随携带走**:钉住记的是「这片叶上的这一格」
+  (判词在那一格上),而携带换的正是叶。今天没有人钉一块 app 级的瓦,真要支持得先
+  回答「钉住到底属于叶还是属于内容」。
+- **`gate:workspace` 第 ⑫ 屏写了没跑**(派工令明写「只写不跑」)。它依赖两件事:
+  ⌘1 / ⌘2 那两个空间键,以及「先把位置记忆钉成浮窗、reload、再点瓦」这条摆落点的路。
+- **`residencyLevelOf` 对没登记的种类答 `space`**。水合那一刻种类表可能还是空的
+  (`hydration-kinds.test.ts` 那条判例),那时**一格都不会被判成 app 级** —— 携带只发生在
+  真换空间那一拍,而那时表早已填好,所以这条缺省今天碰不到;写下来是因为它是一条
+  沉默的缺省。

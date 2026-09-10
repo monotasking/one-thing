@@ -94,7 +94,32 @@ export interface StageItemSpec {
   id: string
   /** 瓷砖名是界面文案,所以 item 只持有 key —— 和 icon 只持有名字同一个理由。 */
   titleKey: MessageKey
-  scope: 'session' | 'global'
+  /**
+   * **这块瓦记在哪一本账上**(S1,正本 `apps/desktop-react/docs/dock-scope-2026-09.md`
+   * §2.2)。`space` = 每个工作区各一套(今天全部瓦的行为);`app` = 跨工作区,
+   * 换空间它连位置一起跟着人走。
+   *
+   * ── 它是 `scope: 'session' | 'global'` 改名来的,而那一格从来没有行为 ────────
+   * 旧那一格(`stage/types.ts`,W1 起)**没有注释、没有消费者**,唯一读它的是
+   * `Dock` 把两组排开中间画一条线 —— 名字被占了,语义是空的。S1 要的正是这个词,
+   * 所以它归位:**作用域这一轴由这一格说**,而分隔线那件纯视觉的事改由下面的
+   * `dockGroup` 说(拍点 1:分组一字不变)。两件事从此两个字段,不再同名。
+   *
+   * 谁读它:`content/kinds/panel.tsx` 的 `level` 自述转问这里,于是
+   * `workbench/tree` 的携带、`workbench/store` 与 `stage/store` 的两处 `carry`
+   * 一律经 `kinds.residencyLevelOf` 问 —— 它们里面一个瓦名都不出现。
+   */
+  level: 'app' | 'space'
+  /**
+   * **Dock 上的视觉分组**(拍点 1,09-10 按缺省定:**保持今天的分组**)。
+   * 唯一的消费者是 `components/Dock.tsx` 那条分隔线的落点。
+   *
+   * 它**不与 `level` 同名、也不与它同值**,这是有意的:照 `level` 画的话分组会从
+   * 「files diff terminal ｜ 其余」变成「其余 ｜ notifications workspace settings apps」,
+   * 那是一次用户可感知的变化,而缺省 = 保持旧行为。哪天要让分隔线说真话
+   * (「左边的随空间、右边的随人」),改的是 `Dock` 读哪一格,这张表一个字不动。
+   */
+  dockGroup: 'session' | 'global'
   /** lucide 图标名 */
   icon: string
   badge?: StageBadge

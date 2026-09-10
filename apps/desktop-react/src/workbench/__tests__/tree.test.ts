@@ -188,7 +188,7 @@ describe('sanitize:存量档案的入口闸', () => {
       a: T.makeLeaf('L1', [solo]),
       b: T.makeLeaf('L2', [solo, B]),
     }
-    const clean = T.sanitize(tree, { known: () => true, singleton: (k) => k === 'solo' })!
+    const clean = T.sanitize(tree, { known: () => true, singleton: (r) => r.kind === 'solo' })!
     expect(T.refIdsOf(clean)).toEqual(['solo:one', 'k:b'])
   })
 

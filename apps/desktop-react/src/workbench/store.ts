@@ -7,9 +7,10 @@ import {
   flattenContent,
   isCompositeContent,
   isKnownContentKind,
-  isSingletonContentKind,
+  isSingletonContent,
   partsOfContent,
   refId,
+  residencyLevelOf,
   sameRef,
 } from './kinds'
 import { nextLeafId, nextSplitId } from './ids'
@@ -470,6 +471,87 @@ export const WORKBENCH_PER_SPACE: PerSpaceSpec<WorkbenchState, WorkbenchFurnitur
     sessionCompanions: s.sessionCompanions,
   }),
   factory: factoryFurniture,
+  /*
+   * **全局瓦携带**(S1,正本 `apps/desktop-react/docs/dock-scope-2026-09.md` §2.3)。
+   *
+   * 用户原话:「切工作区时,『工作区』这块瓦该在哪一段(浮窗 / 架子 / 中央)就还在
+   * 哪一段,两个工作区里它不能一个在这一个在那」。机制不是另立一棵全局树(架子是
+   * 一条边一棵树,没法半棵全局半棵空间 —— 那条路 §2.3 否决了),而是**换装时剥离
+   * 再携带**:树照旧全部 per-space,换空间那一拍把 app 级的格从离场的活树里捡出来,
+   * 原样放进进场的树。
+   *
+   * 两步的次序即语义,**先剥后携**:进场账上那几格 app 级的是**上一次离场时留下的
+   * 旧影**,不先剥就会有两份(反证:拆掉 `stripByLevel` 那一句 → 「在 B 关掉它、
+   * 切回 A 它不在」当场红,A 账上那格旧影会把它变出来)。
+   *
+   * 这一段里**一个种类名、一个瓦名都没有**:判据全经 `kinds.residencyLevelOf`
+   * (内容自述、别人读表),剥与携带两只纯函数在 `./tree.ts`。
+   */
+  carry: (incoming, outgoing) => {
+    const stripped = T.stripByLevel(incoming.regions, 'app')
+    const regions = T.carryByLevel(outgoing.regions, stripped, 'app', nextLeafId)
+    const hidden = carriedHidden(incoming.hidden, outgoing.hidden)
+    const pairRatios = carriedPairRatios(regions, incoming.pairRatios, outgoing.pairRatios)
+    if (
+      regions === incoming.regions
+      && hidden === incoming.hidden
+      && pairRatios === incoming.pairRatios
+    ) return incoming
+    /*
+     * **剪一遍**:剥掉那几格之后进场那棵树可能留下空叶(那一格是它唯一的住户)。
+     * 剪不剪不是纯函数的事(中央区永远至少一片叶),所以它在这里 —— 与
+     * `swapCompanions` 里那一句 `pruneRegions` 逐字同一条。
+     */
+    return {
+      ...incoming,
+      // 树没动过就一个字不写(`pruneRegions` 每次都造一个新的外层对象)。
+      regions: regions === incoming.regions ? regions : pruneRegions(regions),
+      hidden,
+      pairRatios,
+    }
+  },
+}
+
+/**
+ * **藏着的 app 级格也携带**(S1,dock-scope §2.5「隐藏」)。
+ *
+ * 进场账上那几条 app 级的隐藏记录同样是旧影,剥掉;离场活状态里那几条搬过来。
+ * 「藏起来」是用户对**这一格内容**的处置,而这一格内容随人走 —— 换个工作区就把
+ * 它变回来,等于替人撤销了一次操作。
+ *
+ * 一条都没动时原样交回同一份(引用恒等,判据与 `withCompanionRecord` 同源)。
+ */
+function carriedHidden(incoming: HiddenEntry[], outgoing: HiddenEntry[]): HiddenEntry[] {
+  const isApp = (entry: HiddenEntry) => residencyLevelOf(entry.ref) === 'app'
+  const kept = incoming.filter((entry) => !isApp(entry))
+  const carried = outgoing.filter(isApp)
+  if (kept.length === incoming.length && carried.length === 0) return incoming
+  return [...kept, ...carried]
+}
+
+/**
+ * **携带来的那几格标签,把自己那条分隔杆也带上**(S1)。
+ *
+ * `pairRatios` 是按 refId 记的一张表(判词在 `WorkbenchFurniture.pairRatios` 上),
+ * 而一格 app 级的复合标签(两块 app 级瓦并成一格)搬过去之后,它的比例落在离场
+ * 那个空间的账里 —— 不带上就变回默认 50,而「这一格宽多少」正是用户亲手摆的。
+ *
+ * 判据不是「哪几格是 app 级」而是**「携带之后树上有它、而进场账里没有」**:
+ * 比例是树的附属账,跟着树上那一格走就一定对,不必第二次去问层级。
+ */
+function carriedPairRatios(
+  regions: Record<string, PaneNode>,
+  incoming: Record<ContentRefId, number>,
+  outgoing: Record<ContentRefId, number>,
+): Record<ContentRefId, number> {
+  let out: Record<ContentRefId, number> | null = null
+  for (const [id, ratio] of Object.entries(outgoing)) {
+    if (id in incoming) continue
+    if (!T.locateSeatIn(regions, id)) continue
+    out = out ?? { ...incoming }
+    out[id] = ratio
+  }
+  return out ?? incoming
 }
 
 /**
@@ -494,7 +576,8 @@ export const RECENT_ROOTS_MAX = 20
 
 const SANITIZE_OPTIONS: T.SanitizeOptions = {
   known: isKnownContentKind,
-  singleton: isSingletonContentKind,
+  // S1 起按 ref 问(判词在 `kinds.ContentKind.singleton` 上)。
+  singleton: isSingletonContent,
 }
 
 /**
@@ -952,7 +1035,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           if (kind?.regions && !kind.regions.includes(region)) return
           const id = refId(ref)
           // 单例已经开着 = 激活它,不再插一格(单例的定义就是全应用一份)。
-          const at = kind?.singleton ? T.locateRef(tree, region, id) : null
+          const at = isSingletonContent(ref) ? T.locateRef(tree, region, id) : null
           if (at) {
             set({ regions: { ...s.regions, [region]: T.activate(tree, at.leafId, at.index) }, focusLeafId: at.leafId })
             return
@@ -962,7 +1045,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
            * 「全应用一份」这句话是跨区域的 —— 不先摘掉,一块瓦就会在右架子和
            * 一扇浮窗里各活一份,而它们背后是同一个实例。
            */
-          const elsewhere = kind?.singleton ? regionOfRefIn(s.regions, id) : null
+          const elsewhere = isSingletonContent(ref) ? regionOfRefIn(s.regions, id) : null
           const regions = elsewhere && elsewhere !== region
             ? withoutRef(s.regions, id)
             : s.regions

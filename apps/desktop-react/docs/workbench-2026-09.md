@@ -86,8 +86,20 @@ export const refId = (r: ContentRef): string => `${r.kind}:${r.key}`
 /** 一种内容的自述。每一种在自己的模块里 register 一次,核心层只读表。 */
 export interface ContentKind {
   id: string
-  /** 单例种类(今天的 12 块瓦):同一个 key 全应用只许一个实例;file/session 不是。 */
-  singleton: boolean
+  /**
+   * 单例:同一个 key **在它那一层的账上**至多一格;file/session 不是。
+   * **S1(2026-09-10)起许按 ref 答** —— `boolean | ((ref) => boolean)`,读法
+   * `isSingletonContent(ref)`(取代 `isSingletonContentKind(id)`)。今天没有任何
+   * 一种用到函数形;放宽是为了让「某一块瓦想同一空间开两份」不必去动
+   * `tree.sanitize` 的去重。判词整段在 `workbench/kinds.ts` 那一格上。
+   */
+  singleton: boolean | ((ref: ContentRef) => boolean)
+  /**
+   * **这一格家具记在哪一本账上**(S1;正本 `dock-scope-2026-09.md` §2)。
+   * 缺席 = `space`(今天全部内容的行为);`app` = 换工作区它连位置一起跟着人走。
+   * 读法 `residencyLevelOf(ref)`;`panel` 那一种转问瓦表的 `level` 一列。
+   */
+  level?: 'app' | 'space' | ((ref: ContentRef) => 'app' | 'space')
   /** 身份由内容自答:文件名 + 未保存丸 + 全路径提示。走既有 stage/live-title。 */
   title(ref: ContentRef): LiveTitle
   icon(ref: ContentRef): LucideIcon

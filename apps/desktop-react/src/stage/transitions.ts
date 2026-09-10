@@ -330,6 +330,64 @@ export function pickStageFurniture(state: StageState): StageFurniture {
   }
 }
 
+/**
+ * **换装那一拍:把随人走的那几块瓦的几何一起搬过去**(S1,正本
+ * `apps/desktop-react/docs/dock-scope-2026-09.md` §2.3 / §2.4)。
+ *
+ * 三张表按**瓦 id / 窗 id** 记(`floats[id]` 的矩形、`floatOrder` 的置顶序、
+ * `memory[id]` 的位置记忆),而「这一格随不随人走」是**内容**的自述 —— 形态机
+ * 答不出,也不该认识任何一块瓦。所以判据**由调用方递进来**:`carried(id)`。
+ * 这与 `floatMinOfItem` / `freshFloatRect` 那条「形态机只收一对数、壳那侧读表」
+ * 是逐字同一个体例,于是这只文件里照旧一个瓦名都没有。
+ *
+ * 三格各自的规矩:
+ *  · `floats` / `memory` —— 进场账上那几条随人走的是**旧影**(上一次离场时留下的),
+ *    剥掉;离场活状态里那几条搬过来。**浮窗于是连 rect 一起搬**:在 A 是左上角
+ *    880×520,到 B 还是同一个角同样大小(session-continuity §2 的字面要求);
+ *  · `floatOrder` —— 先滤掉进场账上那几条,再把离场那几条按**它们在离场那条序里的
+ *    下标**插回去(越界就落末位)。z 序在两个空间之间没有可比的绝对位置,能保的是
+ *    「它在自己那一摞里的相对深浅」;
+ *  · `shelves` —— **不搬**。厚度与收展是**一条边**的属性,不是哪一块瓦的
+ *    (判词在 `pickStageFurniture` 上:「一条边只有一个厚度,让每块瓦都记一份,
+ *    就等于让最后关掉的那块瓦说了算」)。
+ *
+ * 一格都没动时**原样交回同一份**(引用恒等)—— 与 `pickStageFurniture` 的纪律同源:
+ * 换装那一句是一次 `set`,多写一格就多推一次订阅、多跑一遍投影。
+ */
+export function carryStageFurniture(
+  incoming: StageFurniture,
+  outgoing: StageFurniture,
+  carried: (id: string) => boolean,
+): StageFurniture {
+  const movedIn = Object.keys(outgoing.floats).filter(carried)
+  const movedMemory = Object.keys(outgoing.memory).filter(carried)
+  const strippedFloats = Object.keys(incoming.floats).filter(carried)
+  const strippedMemory = Object.keys(incoming.memory).filter(carried)
+  const orderChanges =
+    incoming.floatOrder.some(carried) || outgoing.floatOrder.some(carried)
+  if (
+    movedIn.length === 0 && movedMemory.length === 0
+    && strippedFloats.length === 0 && strippedMemory.length === 0
+    && !orderChanges
+  ) return incoming
+
+  const floats = { ...incoming.floats }
+  for (const id of strippedFloats) delete floats[id]
+  for (const id of movedIn) floats[id] = outgoing.floats[id]
+
+  const memory = { ...incoming.memory }
+  for (const id of strippedMemory) delete memory[id]
+  for (const id of movedMemory) memory[id] = outgoing.memory[id]
+
+  const floatOrder = incoming.floatOrder.filter((id) => !carried(id))
+  for (const id of outgoing.floatOrder.filter(carried)) {
+    const at = outgoing.floatOrder.indexOf(id)
+    floatOrder.splice(Math.min(at, floatOrder.length), 0, id)
+  }
+
+  return { ...incoming, floats, memory, floatOrder }
+}
+
 /** 四条边逐条过一遍同一个函数。**唯一一处**「按边循环」的写法。 */
 function mapShelves(
   shelves: Record<ShelfSide, ShelfState>,

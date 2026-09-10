@@ -56,21 +56,31 @@ export function startPerSpaceLayout(): () => void {
     bindPerSpace(useSessionOpenMode, SESSION_OPEN_MODE_PER_SPACE),
     bindPerSpace(useExposeStore, EXPOSE_PER_SPACE),
     /*
-     * 拼贴树(W1,T0 拍点 3「树按 Workspace 记」)。它是最后一条 `bindPerSpace` —— 与前几条同型:
-     * 一棵树、一张隐藏表,都是「用户在这个空间里摆好的东西」。
-     * 瞬态那几格(焦点叶 / 分栏路径 / 全屏)不进 `pick`,与 stage 摘掉舞台那条
-     * placement 同一条判据。
-     */
-    bindPerSpace(useWorkbenchStore, WORKBENCH_PER_SPACE),
-    /*
      * **换空间时全屏那一格清零**(W2)。它是瞬态,不在 `pick` 里,所以换装那一句
      * 不会碰它 —— 而不清零的下场是:在 A 空间把一个文件铺满,切到 B,全屏层还在,
      * 里面装的却是一格 B 空间根本没有的内容(那棵树刚被整个换掉了)。
      *
      * 它单独一条订阅而不是塞进 `bindPerSpace`:那只原语管的是**家具的换装**
      * (收进账、摊开新的),而这一句说的是「此刻在看什么」——两件事,两条判据。
+     *
+     * **它排在拼贴树换装之前**(S1,dock-scope §2.5「全屏」:「app 级格全屏着
+     * 换空间 → 先 `exitFull` 再携带,它落回原叶」)。次序在今天的终态上无差
+     * (全屏不动树,所以携带找得到那一格),差的是**中间那一帧**:排在后面的话,
+     * 屏幕上会有一拍是「新空间的树 + 旧空间那一格全屏」——`FullLayer` 那一拍
+     * 投影的可能是一格已经不在任何树上的内容。先退再换,那一帧不存在。
      */
     subscribeCurrentSpace(() => useWorkbenchStore.getState().exitFull()),
+    /*
+     * 拼贴树(W1,T0 拍点 3「树按 Workspace 记」)。它是最后一条 `bindPerSpace` —— 与前几条同型:
+     * 一棵树、一张隐藏表,都是「用户在这个空间里摆好的东西」。
+     * 瞬态那几格(焦点叶 / 分栏路径 / 全屏)不进 `pick`,与 stage 摘掉舞台那条
+     * placement 同一条判据。
+     *
+     * S1 起它多一件事:`WORKBENCH_PER_SPACE.carry` 把 app 级的格从离场的活树里
+     * 捡出来放进进场的树(判词整段在那儿)。**接线一个字没加** —— 携带是规格里
+     * 的一格,不是这里的一条新订阅。
+     */
+    bindPerSpace(useWorkbenchStore, WORKBENCH_PER_SPACE),
     subscribeCurrentSpace(swapFilesForSpace),
     /*
      * **换完两份家具之后把投影重算一遍**(W4)。`placements` /

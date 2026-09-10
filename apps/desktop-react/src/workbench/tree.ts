@@ -1,6 +1,6 @@
-import { flattenContent, partsOfContent, refId, sameRef } from './kinds'
+import { flattenContent, partsOfContent, refId, residencyLevelOf, sameRef } from './kinds'
 import { regionReadRank } from './regions'
-import type { ContentRef, ContentRefId } from './kinds'
+import type { ContentRef, ContentRefId, ResidencyLevel } from './kinds'
 import type { RegionId } from './regions'
 
 /**
@@ -300,6 +300,15 @@ export function locateRef(
   return null
 }
 
+/**
+ * **一份 regions 的阅读序**(中央 → 四条边 → 浮窗)。判据在 `regions.regionReadRank`
+ * 上,这只是那句话在「一张区域表」上的唯一写法 —— 三处查找、伴随面的收、
+ * 携带的捡都读它,`Object.keys` 的次序从来不是判据。
+ */
+export function regionsInReadOrder(regions: Readonly<Record<string, PaneNode>>): string[] {
+  return [...Object.keys(regions)].sort((a, b) => regionReadRank(a) - regionReadRank(b))
+}
+
 /* ── 座位:一格内容此刻坐在全壳的哪儿 ─────────────────────────────────────── */
 
 /**
@@ -337,8 +346,7 @@ export function seatOfRefIn(
   regions: Readonly<Record<string, PaneNode>>,
   id: ContentRefId,
 ): RefSeat | null {
-  const order = [...Object.keys(regions)].sort((a, b) => regionReadRank(a) - regionReadRank(b))
-  for (const region of order) {
+  for (const region of regionsInReadOrder(regions)) {
     const tree = regions[region]
     if (!tree) continue
     for (const leaf of leavesOf(tree)) {
@@ -377,8 +385,7 @@ export function firstRefOfKindIn(
   regions: Readonly<Record<string, PaneNode>>,
   kind: string,
 ): ContentRef | null {
-  const order = [...Object.keys(regions)].sort((a, b) => regionReadRank(a) - regionReadRank(b))
-  for (const region of order) {
+  for (const region of regionsInReadOrder(regions)) {
     const tree = regions[region]
     if (!tree) continue
     for (const leaf of leavesOf(tree)) {
@@ -704,13 +711,187 @@ export function prune(node: PaneNode): PaneNode | null {
   return { ...node, a, b }
 }
 
+/* ── 座位:把几格连坐标摘下来、再原样放回去 ─────────────────────────────── */
+
+/**
+ * **一格内容此刻坐在哪**(区域 + 叶 + 叶内位次)。
+ *
+ * 它是**两条路共用的一种坐标**:伴随面按会话收放(C3,`./companions.ts`)与全局瓦
+ * 按人携带(S1,下面那两只)问的是同一句话 —— 「这几格在哪儿,把它们摘下来,
+ * 再原样放回另一份 regions 里」。所以摘与放两件只有**一个产地**,住在这只文件里
+ * (纯函数、不认识任何一种内容);两条路各自的**判据**(收谁、什么时候收)留在
+ * 各自那儿,那才是它们真正不同的地方。
+ *
+ * `CompanionSeat` 是它的别名(那份坐标要落盘,名字跟着它的账走)。
+ */
+export interface PaneSeat {
+  readonly ref: ContentRef
+  readonly region: RegionId
+  readonly leafId: string
+  readonly index: number
+}
+
+/**
+ * **把这些格从树上摘掉**。
+ *
+ * 摘的次序是**每片叶内下标从大到小** —— 逐格从小往大摘会让后面那些的下标一路
+ * 往前塌,摘的就成了别人。
+ *
+ * **不 prune**:剪不剪由调用方决定(中央区那棵永远至少一片叶,而那句话住在 store)。
+ * 一格都没摘到时原样交回同一份 regions(引用恒等)。
+ */
+export function withoutSeats(
+  regions: Readonly<Record<string, PaneNode>>,
+  seats: readonly PaneSeat[],
+): Record<string, PaneNode> {
+  if (seats.length === 0) return regions as Record<string, PaneNode>
+  const out: Record<string, PaneNode> = { ...regions }
+  const byRegion = new Map<string, PaneSeat[]>()
+  for (const seat of seats) {
+    const rows = byRegion.get(seat.region) ?? []
+    rows.push(seat)
+    byRegion.set(seat.region, rows)
+  }
+  for (const [region, rows] of byRegion) {
+    let tree = out[region]
+    if (!tree) continue
+    for (const seat of [...rows].sort((a, b) => b.index - a.index)) {
+      tree = removeTab(tree, seat.leafId, seat.index)
+    }
+    out[region] = tree
+  }
+  return out
+}
+
+/**
+ * **按坐标逐格放回**,并把 `activeId` 那一格点亮(`null` = 谁都不点)。
+ *
+ * 四条判据:
+ *  · **同一格只放一份**:这份内容已经在树上就跳过 —— 一个内容在一个区域里只出现
+ *    一次是不变量,而两条会话记着同一棵目录树是常态;
+ *  · **原区域原位次**:`insertTab` 自己会把下标钳进范围;
+ *  · **叶没了 → 落到同区域第一片叶末尾**(dock-scope §2.3「同名区域存在就 append
+ *    到那片叶」/ session-continuity §3.3);
+ *  · **区域没了 → 当场建回来**(关掉一扇浮窗之后再切回来,它该回到一扇浮窗里,
+ *    而不是凭空掉进中央区)。叶 id 由调用方铸(`makeLeafId`)—— 这只文件是纯的,
+ *    而那台计数器有它自己的寿命(`./ids.ts`)。
+ *
+ * **不碰焦点叶**。一格都没放时原样交回同一份 regions(引用恒等)。
+ */
+export function withSeats(
+  regions: Readonly<Record<string, PaneNode>>,
+  seats: readonly PaneSeat[],
+  activeId: ContentRefId | null,
+  makeLeafId: () => string,
+): Record<string, PaneNode> {
+  if (seats.length === 0) return regions as Record<string, PaneNode>
+  let changed = false
+  const out: Record<string, PaneNode> = { ...regions }
+  // 位次小的先插:后面那些的落点是按**放回之后**那张表说的。
+  for (const seat of [...seats].sort((a, b) => a.index - b.index)) {
+    const id = refId(seat.ref)
+    if (locateSeatIn(out, id)) continue
+    const tree = out[seat.region] ?? makeLeaf(makeLeafId())
+    const leaf = findLeaf(tree, seat.leafId) ?? leavesOf(tree)[0]
+    if (!leaf) continue
+    const at = leaf.id === seat.leafId ? seat.index : undefined
+    // `activate: false` —— 放回来不该顺手把每一片叶露脸的那一格换掉;
+    // 该点亮的只有 `activeId` 那一格,下面统一点一次。
+    out[seat.region] = insertTab(tree, leaf.id, seat.ref, { at, activate: false })
+    changed = true
+  }
+  if (!changed) return regions as Record<string, PaneNode>
+  if (activeId) {
+    const at = locateSeatIn(out, activeId)
+    if (at) out[at.region] = activate(out[at.region], at.leafId, at.index)
+  }
+  return out
+}
+
+/**
+ * 这个 refId 此刻在哪一格。**顶层标签**那一层就够了(收放的都是顶层那一格;
+ * 复合标签里面那一侧由复合自己持有)。
+ */
+export function locateSeatIn(
+  regions: Readonly<Record<string, PaneNode>>,
+  id: ContentRefId,
+): { region: string; leafId: string; index: number } | null {
+  for (const region of regionsInReadOrder(regions)) {
+    const tree = regions[region]
+    if (!tree) continue
+    const at = locateRef(tree, region as RegionId, id)
+    if (at) return { region, leafId: at.leafId, index: at.index }
+  }
+  return null
+}
+
+/* ── 层级:剥离与携带(S1,正本 `docs/dock-scope-2026-09.md` §2.3)─────────── */
+
+/**
+ * **这一层的格此刻坐在哪几处**,按阅读序。判据只经 `kinds.residencyLevelOf` ——
+ * 所以这一族三只函数里一个种类名、一个瓦名都不出现。
+ */
+function seatsAtLevel(
+  regions: Readonly<Record<string, PaneNode>>,
+  level: ResidencyLevel,
+): PaneSeat[] {
+  const seats: PaneSeat[] = []
+  for (const region of regionsInReadOrder(regions)) {
+    const tree = regions[region]
+    if (!tree) continue
+    for (const leaf of leavesOf(tree)) {
+      leaf.tabs.forEach((ref, index) => {
+        if (residencyLevelOf(ref) !== level) return
+        seats.push({ ref, region: region as RegionId, leafId: leaf.id, index })
+      })
+    }
+  }
+  return seats
+}
+
+/**
+ * **剥**:把这一层的格从这份 regions 里全部摘掉。
+ *
+ * 换空间那一拍它作用在**进场**那棵树上:账上那几格 app 级的是**上一次离场时留下
+ * 的旧影**,真正该在场的那一份此刻还在离场的活树里。不先剥就会有两份。
+ *
+ * **不 prune**(与 `withoutSeats` 同一条):剪空叶、保中央区那句话住在 store。
+ * 一格都没剥到时原样交回同一份 regions。
+ */
+export function stripByLevel(
+  regions: Readonly<Record<string, PaneNode>>,
+  level: ResidencyLevel,
+): Record<string, PaneNode> {
+  return withoutSeats(regions, seatsAtLevel(regions, level))
+}
+
+/**
+ * **携带**:把离场那棵树上这一层的格,连区域坐标一起放进进场那棵树。
+ *
+ * `to` 必须**已经剥干净**(调用方先 `stripByLevel`)—— 两件分开是因为它们是两条
+ * 独立的判据,而合成一只之后「开机不剥」那一条就没有地方表达了:开机根本不走
+ * 携带这条路(`swapSpace` 只在真有离场方时才跑,判词在 `workspace/per-space.ts`)。
+ *
+ * 落位规则整件在 `withSeats` 上(同名区域 append、叶没了落第一片叶、区域没了建回来)。
+ * **不点亮任何一格**:携带不是「打开」,进场那棵树里每片叶露脸的是谁不该被它改写
+ * (焦点同理不搬 —— dock-scope §2.5)。
+ */
+export function carryByLevel(
+  from: Readonly<Record<string, PaneNode>>,
+  to: Readonly<Record<string, PaneNode>>,
+  level: ResidencyLevel,
+  makeLeafId: () => string,
+): Record<string, PaneNode> {
+  return withSeats(to, seatsAtLevel(from, level), null, makeLeafId)
+}
+
 /* ── 存量档案的入口闸 ──────────────────────────────────────────────────── */
 
 export interface SanitizeOptions {
   /** 认不认得这个种类名。认不得的 tab **整格丢掉**(见下)。 */
   known(kind: string): boolean
-  /** 这个种类是不是单例。单例的同一个 refId 在整棵树上只留第一格。 */
-  singleton(kind: string): boolean
+  /** 这一格是不是单例。单例的同一个 refId 在整棵树上只留第一格。 */
+  singleton(ref: ContentRef): boolean
   /**
    * **这一格背后那个东西还在吗**(第三口,W5-b 裁定 5)。缺席 = 一律当还在。
    *
@@ -763,7 +944,7 @@ function scrub(node: PaneNode, opts: SanitizeOptions, seen: Set<ContentRefId>): 
         if (!opts.known(tab.kind)) return false
         // 背后那个东西没了(被删掉的会话)= 这一格整个丢掉。缺席 = 不问。
         if (opts.alive && !opts.alive(tab)) return false
-        if (!opts.singleton(tab.kind)) return true
+        if (!opts.singleton(tab)) return true
         const id = refId(tab)
         if (seen.has(id)) return false
         seen.add(id)
