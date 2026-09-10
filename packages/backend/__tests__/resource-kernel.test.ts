@@ -472,14 +472,20 @@ describe('资源内核在真装配里(K1)', () => {
       })
       expect(described.ok).toBe(true)
       const spec = (described as { data: Record<string, unknown> }).data
-      // K2c-1:域退成投影那一批把会话的写面补齐到七条(自述里为什么只有做法没有
-      // 读法,理由在 `runtime/sessions/resource-spec.ts` 文件头)。
+      // K2c-1 把会话的写面补齐到七条;K2c-3 再补三条(`delete` /
+      // `setPermissionMode` / `appendSystemMessage`)—— 域剩下那批退成投影时长出来的。
+      // 哪几条没进来、为什么(`create` / `createBranch` 卡在归属印上,`activate` /
+      // `switch` 是视图状态,缓存那两条是进程内务),写在
+      // `runtime/sessions/resource-spec.ts` 的文件头。
       expect(Object.keys(spec.ops as object).sort()).toEqual([
+        'appendSystemMessage',
+        'delete',
         'removeMessage',
         'rename',
         'setAgent',
         'setArchived',
         'setModel',
+        'setPermissionMode',
         'setPinned',
         'setWorkingDirectory',
       ])

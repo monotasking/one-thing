@@ -19,7 +19,7 @@
  * `stores/sessions.ts` / `stores/settings.ts` 在 import 期就解析 store 根,所以
  * 环境变量要在任何 import 之前钉好,并且全程动态 import。
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -154,6 +154,9 @@ describe('sessions 域的写面 = 资源投影(K2c-1)', () => {
     ['updateArchived', { isArchived: true, archivedAt: 1234 }, 'setArchived', { archived: true, archivedAt: 1234 }],
     ['updateModel', { provider: 'deepseek', model: 'deepseek-chat' }, 'setModel', { provider: 'deepseek', model: 'deepseek-chat' }],
     ['updateAgent', {}, 'setAgent', {}],
+    // K2c-3。`capability_change` 是 `never-grantable`,但用户主体在 provider 的 plan 里
+    // 拿到的是零效果 —— 所以这一条与上面五条一样,一张卡都没有、审计行也一样。
+    ['updatePermissionMode', { permissionMode: 'auto-accept-edits' }, 'setPermissionMode', { permissionMode: 'auto-accept-edits' }],
   ]
 
   for (const [method, payload, op, params] of CONVERTED) {
@@ -443,6 +446,187 @@ describe('sessions 域的写面 = 资源投影(K2c-1)', () => {
         principal: PRINCIPAL,
       })
       expect((shell as { value: { messages: unknown[] } }).value.messages).toHaveLength(PAGE_SIZE)
+    })
+  })
+
+  /**
+   * K2c-3 —— **域剩下那批也退了**,三种形状各钉一条。
+   *
+   * 与前面两组的判据一脉相承:写面「两条路各留一行同形的审计」、读面「两条路一行
+   * 审计都不落」。本组多出的第三种形状是**回执里带着东西**(`deletedCount` /
+   * `removedId`):它们从 `Result.details` 上抬,而 `Outcome.ok` 只装文本这条 K2c-1
+   * 量出来的硬伤对它们不成立 —— 回执是三五个字段,不是一页抄本。
+   */
+  describe('剩下那批 = 资源投影(K2c-3)', () => {
+    it('addSystemMessage:两条路各写进一条系统消息,同一形状的审计', async () => {
+      const { dispatchRpc } = await import('../registry.js')
+      const { sessionReads } = await import('../../session/reads.js')
+      const message = (id: string) => ({ id, role: 'system' as const, content: '{"type":"note"}', timestamp: 1 })
+
+      const before = resourceAuditRows().length
+      const viaDomain = await dispatchRpc({
+        domain: 'sessions',
+        method: 'addSystemMessage',
+        payload: { sessionId, message: message('k2c3-domain') },
+      })
+      const afterDomain = resourceAuditRows()
+      const viaKernel = await backend.resources.do(
+        `session:${sessionId}`,
+        'appendSystemMessage',
+        { message: message('k2c3-kernel') },
+        { principal: PRINCIPAL },
+      )
+      const afterKernel = resourceAuditRows()
+
+      expect(viaDomain).toEqual({ ok: true, data: { success: true } })
+      expect(viaKernel.kind).toBe('ok')
+      expect(afterDomain.length - before).toBe(1)
+      expect(afterKernel.length - afterDomain.length).toBe(1)
+      expect(comparableAudit(afterDomain[afterDomain.length - 1]))
+        .toEqual(comparableAudit(afterKernel[afterKernel.length - 1]))
+
+      const ids = sessionReads.listMessages(sessionId).messages.map(m => m.id)
+      expect(ids).toContain('k2c3-domain')
+      expect(ids).toContain('k2c3-kernel')
+    })
+
+    /**
+     * 两条标记消息的删除 = `removeMessage` 的 `marker` 那一格,而回执里那个
+     * `removedId` 走 `Result.details`。
+     *
+     * 三件事一起钉:①真的按标记找到了那一条(`removedId` 是它的 id);②本来就没有
+     * 那条标记时是 `{ success: true, removedId: null }` 而不是一次失败;③域这一路与
+     * 直调资源面拿到同一个 `removedId`。
+     */
+    it('removeFilesChangedMessage / removeGitStatusMessage:按标记删,removedId 从 details 上抬', async () => {
+      const { dispatchRpc } = await import('../registry.js')
+      const { sessionCommands } = await import('../../session/commands.js')
+      const marked = (id: string, type: string) =>
+        ({ id, role: 'system' as const, content: `{"type":"${type}","files":[]}`, timestamp: 2 })
+      sessionCommands.appendMessage(sessionId, { message: marked('k2c3-files', 'files-changed') as never })
+      sessionCommands.appendMessage(sessionId, { message: marked('k2c3-git', 'git-status') as never })
+
+      await expect(dispatchRpc({
+        domain: 'sessions',
+        method: 'removeFilesChangedMessage',
+        payload: { sessionId },
+      })).resolves.toEqual({ ok: true, data: { success: true, removedId: 'k2c3-files' } })
+
+      // 删过一次就没有第二条了 —— 「本来就没有」是成功,不是失败。
+      await expect(dispatchRpc({
+        domain: 'sessions',
+        method: 'removeFilesChangedMessage',
+        payload: { sessionId },
+      })).resolves.toEqual({ ok: true, data: { success: true, removedId: null } })
+
+      // 直调资源面:同一条做法、另一种标记,`details` 里是同一格。
+      const viaKernel = await backend.resources.do(
+        `session:${sessionId}`,
+        'removeMessage',
+        { marker: 'git-status' },
+        { principal: PRINCIPAL },
+      )
+      expect(viaKernel.kind).toBe('ok')
+      expect(viaKernel.kind === 'ok' && viaKernel.result.details).toEqual({ removedId: 'k2c3-git' })
+    })
+
+    /**
+     * 列表:读法 `list`,地址是那个**保留坐标**。两条路同值、**零审计**(读不落账),
+     * 而归属过滤留在域适配器里 —— 这台宿主上调用方就是那个本机主人,所以两边给出的
+     * 是同一批行,这一例证的正是「域没有在投影之外再挑一遍字段」。
+     */
+    it('list / listMeta:域这一路与 session:@all 的 list 同值,两条路零审计', async () => {
+      const { dispatchRpc } = await import('../registry.js')
+
+      const before = resourceAuditRows().length
+      const viaDomain = await dispatchRpc({ domain: 'sessions', method: 'listMeta', payload: {} })
+      const afterDomain = resourceAuditRows().length
+      const viaKernel = await backend.resources.read('session:@all', 'list', {}, { principal: PRINCIPAL })
+      const afterKernel = resourceAuditRows().length
+
+      const data = (viaDomain as { data: { success: boolean; sessions: Array<{ id: string }> } }).data
+      expect(data.success).toBe(true)
+      expect(viaKernel.kind).toBe('ok')
+      expect(data.sessions).toEqual((viaKernel as { value: { sessions: unknown } }).value.sessions)
+      expect(data.sessions.map(row => row.id)).toContain(sessionId)
+      expect(afterDomain - before).toBe(0)
+      expect(afterKernel - afterDomain).toBe(0)
+
+      // 一条会话的地址问集合级读法 = 说不清楚的请求,不是一份空列表。
+      const misaddressed = await backend.resources.read(`session:${sessionId}`, 'list', {}, { principal: PRINCIPAL })
+      expect(misaddressed.kind).toBe('failed')
+      expect(misaddressed.kind === 'failed' && misaddressed.error.name)
+        .toBe('SessionCollectionRefRequiredError')
+    })
+
+    /**
+     * **删,在真装配上,按主体分档。**
+     *
+     * 这是本单最值钱的一条:`delete` 从前整串副作用只长在域的处理器里,于是只有界面
+     * 删得掉会话。退成投影之后 AI 也删得掉 —— 所以它必须**停在一张真权限卡上**。
+     *
+     * 一次说四句话:①用户主体删,一张卡都不弹;②AI 主体删同一形状的另一条会话,停在
+     * 一张 `session_destructive` 卡上,答 allow 才真删;③删掉之后索引里真的没有它了;
+     * ④那条会话的 AI todo 跟着走(它按会话 id 记账,不清就是永远留在盘上的孤儿)。
+     *
+     * 反证①的落点就是这里:把 provider `plan` 里 `delete` 那句主体分叉拆掉(恒 `[]`),
+     * ②的「停在卡上」当场红。
+     */
+    it('delete:用户删不弹卡,AI 删停在真权限卡上;删完索引没了、AI todo 也没了', async () => {
+      const { Permission } = await import('../../wiring/permission/index.js')
+      const store = await import('../../store.js')
+      const { dispatchRpc } = await import('../registry.js')
+
+      const byUser = store.createSession(`k2c3-user-${Date.now()}`, 'Deleted by the user').id
+      const byAgent = store.createSession(`k2c3-agent-${Date.now()}`, 'Deleted by the model').id
+      // 发起坐标:审计与权限卡都挂在「从哪条会话里发起的」那一条上,而删的是另一条。
+      const origin = store.createSession(`k2c3-origin-${Date.now()}`, 'Where the model is working').id
+
+      // 那条会话的 AI todo —— 删完必须跟着走。
+      const todoPath = backend.todoPlans.store.sessionAiTodoPath(byAgent)
+      fs.mkdirSync(path.dirname(todoPath), { recursive: true })
+      fs.writeFileSync(todoPath, '# AI Todo\n\n- [ ] something\n', 'utf-8')
+
+      const seen: Array<{ event: string; payload: unknown }> = []
+      const stop = backend.resources.events.watch('session:', event => {
+        if (event.event === 'deleted') seen.push({ event: event.event, payload: event.payload })
+      })
+
+      try {
+        // ① 用户主体(= 侧栏那个删除按钮):零效果 → 一张卡都没有。
+        await expect(dispatchRpc({ domain: 'sessions', method: 'delete', payload: { sessionId: byUser } }))
+          .resolves.toEqual({ ok: true, data: { success: true, deletedCount: 1 } })
+        expect(Permission.getPendingPrompts(origin)).toHaveLength(0)
+
+        // ② AI 主体:顶格 `session_destructive`(policy `ask`)→ 真的停在一张卡上。
+        const deleting = backend.resources.do(`session:${byAgent}`, 'delete', {}, {
+          principal: { kind: 'agent', agentId: 'k2c3-agent' },
+          sessionId: origin,
+        })
+        await vi.waitFor(() => expect(Permission.getPendingPrompts(origin)).toHaveLength(1))
+        const card = Permission.getPendingPrompts(origin)[0]
+        expect(card.type).toBe('session_destructive')
+        // 卡上那句话说的是**整条会话**,不是「有人要删点什么」。
+        expect(card.title).toBe('Delete the session and its branches')
+        Permission.respond({ sessionId: origin, permissionId: card.id, response: 'once' })
+        expect((await deleting).kind).toBe('ok')
+
+        // ③ 索引里真的没有它们了。
+        const ids = store.getSessionsList().map(meta => meta.id)
+        expect(ids).not.toContain(byUser)
+        expect(ids).not.toContain(byAgent)
+
+        // ④ AI todo 跟着会话走(它是 fire-and-forget 的,所以等一下)。
+        await vi.waitFor(() => expect(fs.existsSync(todoPath)).toBe(false))
+
+        // 两条路各发一发 `deleted`,载荷里是这次真删掉的那几条(§10.3 的通用名)。
+        expect(seen).toEqual([
+          { event: 'deleted', payload: { cascadedSessionIds: [byUser] } },
+          { event: 'deleted', payload: { cascadedSessionIds: [byAgent] } },
+        ])
+      } finally {
+        stop()
+      }
     })
   })
 

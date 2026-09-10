@@ -69,13 +69,26 @@ export type { McpOpPayload, McpResourceCallPort } from './mcp-provider.js'
 export {
   createMusicResourceProvider,
   MusicCommandFailedError,
+  MusicCommandValueError,
   MusicIntentRequiredError,
+  MusicProgrammeActionRequiredError,
+  MusicProviderIdRequiredError,
   MusicRefMismatchError,
   MusicResourceProvider,
+  MusicSearchQueryRequiredError,
+  MusicSetupActionError,
   MusicSongRequiredError,
+  musicBackendAdapters,
   musicPlayerAdapters,
+  musicStationAdapters,
 } from './music-provider.js'
-export type { MusicOpPayload, MusicPlayerAdapters } from './music-provider.js'
+export type {
+  MusicBackendAdapters,
+  MusicOpPayload,
+  MusicPlayerAdapters,
+  MusicResourceAdapters,
+  MusicStationAdapters,
+} from './music-provider.js'
 
 /**
  * 一台资源内核。注册表是**新建**的(不是进程单例):谁要一张表谁自己 new 一个,

@@ -33,6 +33,7 @@
  * 把一次失败洗成一次别的东西)—— 所以回调收到的是 `Error` 对象本身。
  */
 
+import type { JsonObject } from '@onething/core/json'
 import type { ReadOutcome } from '@onething/core/resource'
 import { TOOL_CANCELLED_MESSAGE, type Outcome } from '@onething/core/toolkit'
 
@@ -101,5 +102,76 @@ export function foldReadOutcomeToEnvelope<T extends object>(
       return { success: false, error: outcome.reason }
     case 'failed':
       return { success: false, error: options.describeError?.(outcome.error) ?? outcome.message }
+  }
+}
+
+/**
+ * `Outcome` → **带载荷的**域信封(K2c-3)。
+ *
+ * ## 它为什么不是 `foldOutcomeToEnvelope` 的一个可选参数
+ *
+ * 因为那只函数答的是一句完整的话:「写面的 `ok` 折成 `{ success: true }`,回执没有
+ * 载荷」—— 本仓那批写面绝大多数逐条如此。给它加一个可选的 `project` 会让这句话变成
+ * 「回执可能有载荷也可能没有」,而读它的人再也说不出哪个域是哪一种。两只函数,
+ * 两句话,各自成立。
+ *
+ * ## 谁需要它
+ *
+ * 少数写面的回执**带着做法自己算出来的事实**,而那些事实调用方算不出来:
+ * `sessions.delete` 的 `deletedCount`(级联删掉了几条),两条标记消息删除的
+ * `removedId`(按标记找回来的那条消息是哪一条)。
+ *
+ * ## 载荷从哪来:`Result.details`,不是 `content`
+ *
+ * `Outcome.ok` 带的是一份 `Result`,而 `Result` 有两半:`content` 是给模型看的那段
+ * 话,`details` 是结构化的那一份(`core/toolkit/result.ts` 上写着它的用途是「渲染器 /
+ * 审计用的结构化载荷,对内核不透明」,而 `OutputBudget` 只裁 `content`,`details`
+ * 原样过)。域要的永远是后者 —— 从 `content` 里把 JSON 解析回来,是把一次调用做成
+ * 「一次往返、一次形状损失」(`undefined` 会在那趟往返里消失,K2c-1 在真店上量到过)。
+ *
+ * 所以 provider 的责任是**把结构化的那一份放进 `details`**,这只函数的责任只是把它
+ * 交给域。失败那四支与 `foldOutcomeToEnvelope` 逐字同一套口径。
+ */
+export interface FoldDetailedOutcomeOptions<T extends object> extends FoldOutcomeOptions {
+  /** 这次调用的 `Result.details` → 这个域的信封载荷。只在 `ok` 那一支被调用。 */
+  readonly project: (details: JsonObject | undefined) => T
+}
+
+export function foldOutcomeToDetailedEnvelope<T extends object>(
+  outcome: Outcome,
+  options: FoldDetailedOutcomeOptions<T>,
+): ({ success: true } & T) | { success: false; error: string } {
+  if (outcome.kind === 'ok') return { success: true, ...options.project(outcome.result.details) }
+  return foldOutcomeToEnvelope(outcome, options) as { success: false; error: string }
+}
+
+/**
+ * `ReadOutcome` → **一个裸值**(音乐收尾这一单)。
+ *
+ * ## 它为什么不是 `foldReadOutcomeToEnvelope` 的一个分支
+ *
+ * 因为有些域的读面契约上**根本没有 `success` 那一格**:`music.getNowPlaying` 答的是
+ * `MusicNowPlaying | null`、`music.getRadio` 答的是一份简报、`music.getLyrics` 答的是
+ * 歌词或者 `null`。它们从前就是「调一只函数,它抛就让派发器去接」,所以退成投影之后
+ * 也只能是同一句话 —— 折进一个信封等于悄悄改了这些方法的返回形状,而对外契约一个字
+ * 不许改是这一批的硬约束。
+ *
+ * 非 `ok` 一律**抛**,而且 `failed` 那一支抛的是管线交回来的**那只错本身**,不是一个
+ * 新造的:判据读类不读消息串(`core/tools/abort.ts` 那条判例),而域的派发器接住之后
+ * 答的仍是它一直在答的那个 `{ ok:false, error }`。域想给这次失败起个自己的名字时,
+ * `describeError` 与另外两只函数逐字同一格。
+ */
+export function unwrapReadOutcome<T>(outcome: ReadOutcome, options: FoldOutcomeOptions = {}): T {
+  switch (outcome.kind) {
+    case 'ok':
+      return outcome.value as T
+    case 'invalid':
+      throw new Error(outcome.message)
+    case 'denied':
+      throw new Error(outcome.reason)
+    case 'failed': {
+      const named = options.describeError?.(outcome.error)
+      throw named ? new Error(named) : outcome.error
+    }
   }
 }

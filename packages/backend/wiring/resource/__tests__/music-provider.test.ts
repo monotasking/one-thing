@@ -11,6 +11,7 @@
  * 界面经 `ResourceKernel.do` 调它是同一条路。假的只有那八条端口。
  */
 import { describe, expect, it, vi } from 'vitest'
+import type { Principal } from '@onething/core/permission'
 import { ToolRunner } from '@onething/core/toolkit'
 import type { Outcome, ToolEvent } from '@onething/core/toolkit'
 import { ResourceEventHub, ResourceTool } from '@onething/core/resource'
@@ -19,7 +20,13 @@ import { ZodValidator } from '@onething/runtime/toolkit'
 import type { RadioToolAdapters, RadioToolStatus } from '@onething/runtime/toolkit'
 import type { OnethingMusicNowPlaying } from '@onething/runtime/music'
 import { allowAuthorizer, RecordingObserver } from '../../../../core/toolkit/__tests__/fakes.js'
-import { MusicResourceProvider, type MusicPlayerAdapters } from '../music-provider.js'
+import {
+  MusicResourceProvider,
+  type MusicBackendAdapters,
+  type MusicPlayerAdapters,
+  type MusicResourceAdapters,
+  type MusicStationAdapters,
+} from '../music-provider.js'
 
 const STATUS: RadioToolStatus = {
   active: true,
@@ -38,6 +45,27 @@ const NOW_PLAYING: OnethingMusicNowPlaying = {
   currentIndex: 1,
 }
 
+const BRIEF = {
+  active: true,
+  intent: '安静的中文民谣',
+  programmeLength: 5,
+  canResume: true,
+  upNext: '稻香',
+  volume: 62,
+}
+
+const PROGRAMME = { entries: [{ encryptedId: '1', title: '稻香' }], onDeck: '晴天' }
+
+const LYRICS = { title: '晴天 - 周杰伦', lines: [{ at: 12, text: '故事的小黄花' }] }
+
+const RUNTIME_STATE = {
+  setupStage: 'ready' as const,
+  configured: true,
+  loggedIn: true,
+  playerBackend: 'mpv' as const,
+  source: 'fm' as const,
+}
+
 function radioAdapters(overrides: Partial<RadioToolAdapters> = {}): RadioToolAdapters {
   return {
     open: async () => STATUS,
@@ -52,9 +80,49 @@ function playerAdapters(overrides: Partial<MusicPlayerAdapters> = {}): MusicPlay
   return {
     command: async () => ({ success: true }),
     nowPlaying: () => NOW_PLAYING,
+    lyrics: () => LYRICS,
     watchNowPlaying: () => () => {},
     ...overrides,
   }
+}
+
+function stationAdapters(overrides: Partial<MusicStationAdapters> = {}): MusicStationAdapters {
+  return {
+    brief: () => BRIEF,
+    programme: () => PROGRAMME,
+    programmeAction: () => ({ success: true }),
+    ...overrides,
+  }
+}
+
+function backendAdapters(overrides: Partial<MusicBackendAdapters> = {}): MusicBackendAdapters {
+  return {
+    state: () => RUNTIME_STATE,
+    setup: async () => ({ success: true, state: RUNTIME_STATE }),
+    stopKeepalive: () => {},
+    providers: () => ({ providers: [], activeId: 'ncm-cli' }),
+    search: async () => ({ success: true, records: [{ title: '晴天', artist: '周杰伦', playFlag: true }] }),
+    setProvider: async () => ({ success: true }),
+    ...overrides,
+  }
+}
+
+/**
+ * 四族端口装成一台 provider。位置参数从两个变成一个对象(理由在 provider 的文件
+ * 头),这只 helper 让既有那十四个调用点只改一个名字。
+ */
+function makeProvider(
+  radio: RadioToolAdapters = radioAdapters(),
+  player: MusicPlayerAdapters = playerAdapters(),
+  overrides: Partial<MusicResourceAdapters> = {},
+): MusicResourceProvider {
+  return new MusicResourceProvider({
+    radio,
+    player,
+    station: stationAdapters(),
+    backend: backendAdapters(),
+    ...overrides,
+  })
 }
 
 /** 一次失败的说法。`Outcome.failed` 带 `error` 与 `message` 两格,比的是同一句话。 */
@@ -68,7 +136,11 @@ interface Run {
   titles: string[]
 }
 
-async function run(provider: MusicResourceProvider, input: Record<string, unknown>): Promise<Run> {
+async function run(
+  provider: MusicResourceProvider,
+  input: Record<string, unknown>,
+  principal: Principal = { kind: 'user', userId: 'local' },
+): Promise<Run> {
   const observer = new RecordingObserver()
   const runner = new ToolRunner({
     authorizer: allowAuthorizer,
@@ -82,7 +154,7 @@ async function run(provider: MusicResourceProvider, input: Record<string, unknow
     input,
     sessionId: 'music-session',
     messageId: 'music-message',
-    principal: { kind: 'user', userId: 'local' },
+    principal,
   })
   const text =
     outcome.kind === 'ok'
@@ -101,7 +173,7 @@ async function run(provider: MusicResourceProvider, input: Record<string, unknow
 describe('music resource provider —— 电台四条(旧 radio 的 action 逐条对应)', () => {
   it('open:把意图递给端口,回执带 DJ 编排那段话,并发 radioOpened', async () => {
     const open = vi.fn(async () => STATUS)
-    const provider = new MusicResourceProvider(radioAdapters({ open }), playerAdapters())
+    const provider = makeProvider(radioAdapters({ open }), playerAdapters())
     const hub = new ResourceEventHub()
     const seen: ResourceEvent[] = []
     hub.watch('music:', event => seen.push(event))
@@ -123,7 +195,7 @@ describe('music resource provider —— 电台四条(旧 radio 的 action 逐�
 
   it('retune:同一只端口,只是 clearProgramme 为真', async () => {
     const open = vi.fn(async () => STATUS)
-    const provider = new MusicResourceProvider(radioAdapters({ open }), playerAdapters())
+    const provider = makeProvider(radioAdapters({ open }), playerAdapters())
     const done = await run(provider, { op: 'retune', intent: '换成爵士' })
 
     expect(done.outcome.kind).toBe('ok')
@@ -133,7 +205,7 @@ describe('music resource provider —— 电台四条(旧 radio 的 action 逐�
 
   it('close:关台并发 radioClosed', async () => {
     const close = vi.fn(async () => ({ ...STATUS, active: false, programmeLength: 0 }))
-    const provider = new MusicResourceProvider(radioAdapters({ close }), playerAdapters())
+    const provider = makeProvider(radioAdapters({ close }), playerAdapters())
     const hub = new ResourceEventHub()
     const seen: ResourceEvent[] = []
     hub.watch('music:', event => seen.push(event))
@@ -149,7 +221,7 @@ describe('music resource provider —— 电台四条(旧 radio 的 action 逐�
 
   it('request:插队成功,回执报完整歌名', async () => {
     const request = vi.fn(async () => ({ success: true, title: '晴天 周杰伦' }))
-    const provider = new MusicResourceProvider(radioAdapters({ request }), playerAdapters())
+    const provider = makeProvider(radioAdapters({ request }), playerAdapters())
     const done = await run(provider, { op: 'request', song: '晴天 周杰伦' })
 
     expect(request).toHaveBeenCalledWith('晴天 周杰伦', undefined)
@@ -158,7 +230,7 @@ describe('music resource provider —— 电台四条(旧 radio 的 action 逐�
   })
 
   it('request 失败:仍然是一次成功的回执,带端口自己那句话(旧 radio 的口径)', async () => {
-    const provider = new MusicResourceProvider(
+    const provider = makeProvider(
       radioAdapters({ request: async () => ({ success: false, error: '找不到这首歌' }) }),
       playerAdapters(),
     )
@@ -171,10 +243,10 @@ describe('music resource provider —— 电台四条(旧 radio 的 action 逐�
 })
 
 describe('music resource provider —— 参数校验(旧 radio 的两条边界)', () => {
-  it('open 的 intent 只有一个字:落 failed,措辞照抄 radio', async () => {
+  it('模型给的 intent 只有一个字:落 failed,措辞照抄 radio', async () => {
     const open = vi.fn(async () => STATUS)
-    const provider = new MusicResourceProvider(radioAdapters({ open }), playerAdapters())
-    const done = await run(provider, { op: 'open', intent: 'x' })
+    const provider = makeProvider(radioAdapters({ open }), playerAdapters())
+    const done = await run(provider, { op: 'open', intent: 'x' }, { kind: 'agent', agentId: 'dj' })
 
     expect(done.outcome.kind).toBe('failed')
     expect(failureOf(done.outcome)).toContain(
@@ -184,9 +256,23 @@ describe('music resource provider —— 参数校验(旧 radio 的两条边界)
     expect(open).not.toHaveBeenCalled()
   })
 
+  /**
+   * 碎屑那条判据**按主体分档**(音乐收尾这一单)。它从头到尾是冲着模型来的;人这
+   * 一侧空简报是一句成立的话(「你来挑」),而界面那条路今天就允许它 —— 退成投影
+   * 不许把它弄丢。
+   */
+  it('人给的空简报:照跑,而且递给端口的就是空串(「你来挑」)', async () => {
+    const open = vi.fn(async () => STATUS)
+    const provider = makeProvider(radioAdapters({ open }), playerAdapters())
+    const done = await run(provider, { op: 'open', intent: '' })
+
+    expect(done.outcome.kind).toBe('ok')
+    expect(open).toHaveBeenCalledWith('', { clearProgramme: false }, undefined)
+  })
+
   it('request 的 song 是空白:落 failed,措辞照抄 radio', async () => {
     const request = vi.fn(async () => ({ success: true, title: 'x' }))
-    const provider = new MusicResourceProvider(radioAdapters({ request }), playerAdapters())
+    const provider = makeProvider(radioAdapters({ request }), playerAdapters())
     const done = await run(provider, { op: 'request', song: '   ' })
 
     expect(done.outcome.kind).toBe('failed')
@@ -203,17 +289,17 @@ describe('music resource provider —— 播放器四条', () => {
     ['like', '已红心'],
   ])('%s 走 MusicCommand 词表里的同名命令', async (op, title) => {
     const command = vi.fn(async () => ({ success: true }))
-    const provider = new MusicResourceProvider(radioAdapters(), playerAdapters({ command }))
+    const provider = makeProvider(radioAdapters(), playerAdapters({ command }))
     const done = await run(provider, { op })
 
     expect(done.outcome.kind).toBe('ok')
-    expect(command).toHaveBeenCalledWith(op, undefined)
+    expect(command).toHaveBeenCalledWith({ command: op }, undefined)
     expect(done.titles.at(-1)).toBe(title)
     expect(done.text).toContain('晴天 - 周杰伦')
   })
 
   it('播放命令说不 = failed,带回执自己那句话(与点歌那一条刻意不同)', async () => {
-    const provider = new MusicResourceProvider(
+    const provider = makeProvider(
       radioAdapters(),
       playerAdapters({ command: async () => ({ success: false, error: '当前无播放进程' }) }),
     )
@@ -226,7 +312,7 @@ describe('music resource provider —— 播放器四条', () => {
 
 describe('music resource provider —— 两条读法', () => {
   it('radio:交出来的就是 RadioToolStatus 那份形状', async () => {
-    const provider = new MusicResourceProvider(radioAdapters(), playerAdapters())
+    const provider = makeProvider(radioAdapters(), playerAdapters())
     const done = await run(provider, { read: 'radio' })
 
     expect(done.outcome.kind).toBe('ok')
@@ -234,7 +320,7 @@ describe('music resource provider —— 两条读法', () => {
   })
 
   it('nowPlaying:折成自述那份 schema;没有播放器在跑 = 一份「停着」的读数', async () => {
-    const provider = new MusicResourceProvider(radioAdapters(), playerAdapters())
+    const provider = makeProvider(radioAdapters(), playerAdapters())
     expect(JSON.parse((await run(provider, { read: 'nowPlaying' })).text)).toEqual({
       playing: true,
       status: 'playing',
@@ -246,7 +332,7 @@ describe('music resource provider —— 两条读法', () => {
       currentIndex: 1,
     })
 
-    const silent = new MusicResourceProvider(radioAdapters(), playerAdapters({ nowPlaying: () => null }))
+    const silent = makeProvider(radioAdapters(), playerAdapters({ nowPlaying: () => null }))
     expect(JSON.parse((await run(silent, { read: 'nowPlaying' })).text)).toEqual({
       playing: false,
       status: 'stopped',
@@ -261,7 +347,7 @@ describe('music resource provider —— nowPlayingChanged 的转发', () => {
   it('attach 时订一次,产地一响就转成 music:player 上的事件;dispose 之后不再订', async () => {
     let push: ((nowPlaying: OnethingMusicNowPlaying | null) => void) | undefined
     const unwatch = vi.fn()
-    const provider = new MusicResourceProvider(
+    const provider = makeProvider(
       radioAdapters(),
       playerAdapters({
         watchNowPlaying: listener => {
@@ -306,7 +392,7 @@ describe('music resource provider —— nowPlayingChanged 的转发', () => {
 describe('music resource provider —— 地址', () => {
   it('缺席就按做法自己补;指着另一个单例就当场说不', async () => {
     const command = vi.fn(async () => ({ success: true }))
-    const provider = new MusicResourceProvider(radioAdapters(), playerAdapters({ command }))
+    const provider = makeProvider(radioAdapters(), playerAdapters({ command }))
 
     // 显式给对的那一个:照跑。
     expect((await run(provider, { op: 'pause', ref: 'music:player' })).outcome.kind).toBe('ok')
@@ -314,5 +400,132 @@ describe('music resource provider —— 地址', () => {
     const wrong = await run(provider, { op: 'pause', ref: 'music:radio' })
     expect(wrong.outcome.kind).toBe('failed')
     expect(failureOf(wrong.outcome)).toContain('music:player')
+  })
+})
+
+/**
+ * ── 音乐收尾:补齐的那一批 ────────────────────────────────────────────────
+ *
+ * 十四条 RPC 方法退成投影时长出来的读法与做法。它们与上面那一批走的是同一条路,
+ * 所以这里只钉各自**特有**的那一句话。
+ */
+describe('music resource provider —— 补齐的读法', () => {
+  it.each([
+    ['brief', BRIEF],
+    ['programme', PROGRAMME],
+    ['lyrics', LYRICS],
+    ['state', RUNTIME_STATE],
+    ['providers', { providers: [], activeId: 'ncm-cli' }],
+  ])('%s:交出来的就是端口那份结构化值', async (read, expected) => {
+    const done = await run(makeProvider(), { read })
+    expect(done.outcome.kind).toBe('ok')
+    expect(JSON.parse(done.text)).toEqual(expected)
+  })
+
+  it('search:空词与端口说不,两句话各有各的产地', async () => {
+    const blank = await run(makeProvider(), { read: 'search', query: '  ' })
+    expect(blank.outcome.kind).toBe('failed')
+    expect(failureOf(blank.outcome)).toBe('query is required')
+
+    const broken = makeProvider(undefined, undefined, {
+      backend: backendAdapters({ search: async () => ({ success: false, error: '搜索失败:超时' }) }),
+    })
+    expect(failureOf((await run(broken, { read: 'search', query: '晴天' })).outcome)).toBe('搜索失败:超时')
+  })
+})
+
+describe('music resource provider —— 补齐的做法', () => {
+  it('seek / volume:缺一个数与给一个非数说的是同一句话(产地是端口那张 argv 表)', async () => {
+    for (const [op, key] of [['seek', 'position'], ['volume', 'level']] as const) {
+      expect(failureOf((await run(makeProvider(), { op })).outcome)).toBe(`${op} 需要一个数值参数`)
+      expect(failureOf((await run(makeProvider(), { op, [key]: Number.POSITIVE_INFINITY })).outcome))
+        .toBe(`${op} 需要一个数值参数`)
+    }
+
+    const command = vi.fn(async () => ({ success: true }))
+    const done = await run(makeProvider(radioAdapters(), playerAdapters({ command })), { op: 'seek', position: 42 })
+    expect(done.outcome.kind).toBe('ok')
+    // 整只请求原样递给端口:`value` 的钳位与 argv 的拼法只有它知道。
+    expect(command).toHaveBeenCalledWith({ command: 'seek', value: 42 }, undefined)
+  })
+
+  it.each([
+    ['prev', 'prev'],
+    ['radioResume', 'radio-resume'],
+    ['radioStop', 'radio-stop'],
+  ])('%s 走 MusicCommand 词表里的 %s', async (op, wire) => {
+    const command = vi.fn(async () => ({ success: true }))
+    const done = await run(makeProvider(radioAdapters(), playerAdapters({ command })), { op })
+    expect(done.outcome.kind).toBe('ok')
+    expect(command).toHaveBeenCalledWith({ command: wire }, undefined)
+  })
+
+  it('programmeAction:形状不对 = 「没给动作」;端口说不 = failed', async () => {
+    expect(failureOf((await run(makeProvider(), { op: 'programmeAction' })).outcome)).toBe('action is required')
+    expect(failureOf((await run(makeProvider(), { op: 'programmeAction', action: { kind: 'move', encryptedId: 'e1' } })).outcome))
+      .toBe('action is required')
+
+    const refused = makeProvider(undefined, undefined, {
+      station: stationAdapters({ programmeAction: () => ({ success: false, error: '这一条已经播过了' }) }),
+    })
+    expect(failureOf((await run(refused, { op: 'programmeAction', action: { kind: 'remove', encryptedId: 'e1' } })).outcome))
+      .toBe('这一条已经播过了')
+  })
+
+  it('setup:词表外的动作当场说不;成功时回执带整份状态,并按判据决定动不动保活播放器', async () => {
+    expect(failureOf((await run(makeProvider(), { op: 'setup', action: 'rm -rf' })).outcome)).toBe('未知的配置操作')
+
+    const stopKeepalive = vi.fn()
+    const ready = makeProvider(undefined, undefined, { backend: backendAdapters({ stopKeepalive }) })
+    const done = await run(ready, { op: 'setup', action: 'check-env' })
+    expect(done.outcome.kind).toBe('ok')
+    expect(done.outcome.kind === 'ok' ? done.outcome.result.details?.state : undefined).toEqual(RUNTIME_STATE)
+    // ready + mpv:那台离屏 TUI 还有用,不停。
+    expect(stopKeepalive).not.toHaveBeenCalled()
+
+    const halfway = makeProvider(undefined, undefined, {
+      backend: backendAdapters({
+        stopKeepalive,
+        setup: async () => ({ success: true, state: { ...RUNTIME_STATE, setupStage: 'login' as const } }),
+      }),
+    })
+    await run(halfway, { op: 'setup', action: 'logout' })
+    expect(stopKeepalive).toHaveBeenCalledTimes(1)
+  })
+
+  it('setProvider:换成了才发 providerChanged,而且发的地址是 music:provider', async () => {
+    const provider = makeProvider()
+    const hub = new ResourceEventHub()
+    const seen: ResourceEvent[] = []
+    hub.watch('music:', event => seen.push(event))
+    provider.attach(hub)
+
+    expect((await run(provider, { op: 'setProvider', providerId: 'spotify-cli' })).outcome.kind).toBe('ok')
+    expect(seen).toEqual([
+      { ref: 'music:provider', event: 'providerChanged', payload: { providerId: 'spotify-cli' } },
+    ])
+
+    const refused = makeProvider(undefined, undefined, {
+      backend: backendAdapters({ setProvider: async () => ({ success: false, error: '未知的音乐 CLI:spotify' }) }),
+    })
+    const failed = await run(refused, { op: 'setProvider', providerId: 'spotify' })
+    expect(failureOf(failed.outcome)).toBe('未知的音乐 CLI:spotify')
+  })
+
+  /**
+   * **效果按主体分档**(与 K3-a' 的 `removeMessage` 同一种形状)。判据直接问 `plan`
+   * —— 效果是计划的一格,而「这一次将要做什么」本来就取决于谁在做。
+   */
+  it.each([
+    ['setup', { action: 'logout' }],
+    ['setProvider', { providerId: 'ncm-cli' }],
+  ])('%s:人自己按的那一次零效果,模型 / 插件顶格 capability_change', async (op, params) => {
+    const provider = makeProvider()
+    const planWith = async (principal: Principal) =>
+      (await provider.plan(op, null, params, { principal } as never)).effects.map(effect => effect.kind)
+
+    expect(await planWith({ kind: 'user', userId: 'local' })).toEqual([])
+    expect(await planWith({ kind: 'agent', agentId: 'dj' })).toEqual(['capability_change'])
+    expect(await planWith({ kind: 'system', component: 'plugin:radio-skin' })).toEqual(['capability_change'])
   })
 })

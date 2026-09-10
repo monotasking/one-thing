@@ -73,13 +73,36 @@
  *      真发给授权者的按主体分档,住在 provider 的 `plan` 里 —— 用户删自己的消息
  *      不问,AI 删必须问。
  *
- * ── 为什么没有 `appendSystemMessage` ───────────────────────────────────────
- * 它对应域的 `addSystemMessage`,效果类只能是 `session_message`(往会话里写一条
- * 消息),而 `session_message` 在策略表(`core/toolkit/effects.ts`)里是 `ask` ——
- * 合表(2026-09-10)之后那是唯一一处判据,答案与合表之前逐字相同(判定核一直在
- * 问它)。于是同一个「/files 往会话里补一条系统消息」的动作,退成投影之后会当场
- * 多出一张权限卡。那是用户可感知的行为变化,归拍板,不归一次接线单,所以这一条
- * 不进第一批。
+ * ── K2c-3:剩下的十三条,以及那笔「多一张权限卡」的账怎么还的 ────────────────
+ * `sessions` 域到 K2c-2 为止还剩十三条。本单把其中**七条**退成这份自述的投影,
+ * 另外六条留在域里,理由分两种,各写在下面。
+ *
+ * **退了的七条**:`list` / `listMeta`(→ 读法 `list`)、`delete`(→ 做法 `delete`)、
+ * `updatePermissionMode`(→ `setPermissionMode`)、`addSystemMessage`(→
+ * `appendSystemMessage`)、`removeFilesChangedMessage` / `removeGitStatusMessage`
+ * (→ `removeMessage` 的 `marker` 那一格,**不各占一格**:它们是「按标记找那一条再删」
+ * 的同一条做法的两个参数值,给每种标记开一条做法等于让自述随标记种类线性长)。
+ *
+ * **`appendSystemMessage` 那笔留账还了**:上一版这里写着「它退成投影会当场多出一张
+ * 权限卡,归拍板」。合表(2026-09-10)之后 `session_message` 在策略表里是 `ask`,
+ * 这句话仍然成立 —— 但答案不是「不退」,而是 K3-a' 已经立好的那个形:**效果按主体
+ * 分档**。自述这一格写的是上界 `['session_message']`,而真发给授权者的那一条由
+ * provider 的 `plan` 按谁在做定:界面上 `/files` 补一条系统消息的是**用户**,零效果
+ * 零卡片,与今天逐字相同;模型往一条会话里塞一条系统消息才顶格问。同一句话也是
+ * `delete` / `setPermissionMode` 这一批的判据 —— 一条做法的效果从来就取决于谁在做。
+ *
+ * **没退的六条,两种理由**:
+ *   · `create` / `createBranch` —— **卡在归属印上**。每建一条会话都要盖一个
+ *     `initialOwner`,而那是**调用方身份**(`requestSessionOwner(context)` 读的是
+ *     `context.ownerUid` / `workspaceId`);资源面的 `Invocation` 上只有 `Principal`,
+ *     两套身份词汇今天对不上(本机可信主体的 `userId` 是 `'local'`,而会话归属那一侧
+ *     是 `'local-user'`),照着 `Principal` 铸一个归属印会让新建的会话**归属不上任何
+ *     人、于是对谁都不可见**。把 owner 塞进 params 更不行 —— 那正是
+ *     `RpcDispatchContext` 头注禁的「身份从信封上读」。这是 09-03 搁置的凭证级主体
+ *     那一片地,不归一次接线单,留账。
+ *   · `activate` / `switch` / `getCacheStats` / `evictCache` —— **不是资源的事**。
+ *     前两条改的是「界面此刻摆着哪条会话」(§6 视图状态),后两条是这个进程里那只
+ *     LRU 的内务。理由逐条写在域的处理器上。
  */
 
 import type { JsonSchema, ResourceSpec } from '@onething/core/resource'
@@ -182,10 +205,72 @@ const MESSAGES_PAGE_SCHEMA: JsonSchema = {
 
 export const SESSION_RESOURCE_SCHEME = 'session'
 
+/**
+ * 「所有会话」那一个**保留坐标**(K2c-3)。
+ *
+ * ## 为什么需要它
+ *
+ * 内核的读要一个完整地址(`ResourceKernel.read(ref, name, …)`),而「列出会话」不
+ * 落在任何一条会话上。三条路里选了第三条:
+ *
+ *   · `session:*` —— **不行**。`parseRef` 对 path 一个字符都不解释(它自己的文件头
+ *     写着「冒号、斜杠、空格都随它去」),`*` 在那里不是通配符,只是一条叫 `*` 的
+ *     会话。给内核加一条通配语法 = 内核开始解释 path,那是 §2 不变量三的反面。
+ *   · 省略地址(`ref === null`)—— 也不行。AI 那条路表达得出来,而 RPC / CLI / MCP
+ *     三个出口收的都是一个 ref 字符串,表达不出「没有地址」(K4-c 已经为此留过账)。
+ *   · **一个保留坐标** —— 就是这一条。写法与 `NO_ORIGIN_SESSION` 同族:一个不可能
+ *     与真 id 相撞的字面量(会话 id 是 UUID v4,`@` 不在它的字符集里),而且**值里
+ *     不含 scheme 名** —— 拼地址的是别人,这里只说那半截路径。
+ *
+ * provider 的 `list` 只认这个坐标,别的读法不认它;两边各自报各自的错。
+ */
+export const SESSION_COLLECTION_PATH = '@all'
+
+/**
+ * 这条会话按哪种档位问权限。**这份自述就是那张表的产地** —— 域从前把这三个字面量
+ * 抄在自己的处理器里,退成投影之后它们只剩这一处。
+ */
+export const SESSION_PERMISSION_MODES = ['normal', 'auto-accept-edits', 'dangerously-allow-all'] as const
+
 export const sessionResourceSpec: ResourceSpec = {
   scheme: SESSION_RESOURCE_SCHEME,
   title: 'Sessions',
   reads: {
+    /**
+     * 有哪些会话(K2c-3)。**这一条不落在一条会话上** —— 它的地址是那个保留坐标
+     * `SESSION_COLLECTION_PATH`,理由写在那只常量上。
+     *
+     * 交出去的是**索引元数据原样**,不是这里挑过一遍的字段:域那一层从来就没有投影
+     * (`listMeta` 就是索引本身),而在自述里列一张字段表,等于给索引开第二份会漂移
+     * 的形状说明 —— `isPinned` / `kind` / `lastMessagePreview` 正是那样悄悄消失的
+     * (`rpc/__tests__/sessions-domain.test.ts` 里那条用例说的就是这件事)。所以
+     * `result.sessions` 是一个不带 `items` 的数组。
+     *
+     * **它不做归属过滤**:那是「谁能看见哪几条」,而资源面今天还没有 per-caller 的
+     * 归属这一格(与 `record` / `messages` 同一笔留账 —— 那两条对任意 id 也一样答)。
+     * RPC 那条路照旧在域适配器里按调用方过滤,与从前逐字相同。
+     */
+    list: {
+      title: 'List the sessions: the sidebar index, one row per session',
+      query: {
+        type: 'object',
+        properties: {
+          workspaceId: { type: 'string', description: 'Only sessions of this product space.' },
+          /**
+           * **缺席 = 不过滤**(与 `workspaceId` 同一条约定)。写成「默认不过滤」而不是
+           * 「默认藏起归档的」,是因为域那一路今天交出的就是整张索引 —— 一个默认值
+           * 就足以让 `listMeta` 少给壳几行。
+           */
+          includeArchived: { type: 'boolean', description: 'False drops archived sessions. Absent keeps them.' },
+        },
+        required: [],
+      },
+      result: {
+        type: 'object',
+        properties: { sessions: { type: 'array', description: 'One index row per session, as the store keeps it.' } },
+        required: ['sessions'],
+      },
+    },
     /**
      * 一条会话的摘要 —— **不带消息**。
      *
@@ -443,8 +528,28 @@ export const sessionResourceSpec: ResourceSpec = {
       title: 'Remove one message from the session',
       params: {
         type: 'object',
-        properties: { messageId: { type: 'string', description: 'The message to remove.' } },
-        required: ['messageId'],
+        properties: {
+          messageId: { type: 'string', description: 'The message to remove.' },
+          /**
+           * **K2c-3:按标记找那一条**,`messageId` 的另一种说法,二选一(两格都给 /
+           * 两格都不给都是 `invalid`)。
+           *
+           * 它对应域的 `removeFilesChangedMessage` / `removeGitStatusMessage` —— 那两条
+           * 从前是**两条**手写通道,而它们的差别只是一个字符串:斜杠命令往会话里补的
+           * 那条系统消息带着 `{"type":"<marker>"}`,删的时候按它找回来。给每种标记开
+           * 一条做法,自述就会随「将来还有哪些标记」线性长,而模型要读四段几乎一样的
+           * 描述才知道它们是同一件事。
+           *
+           * 找不到那条标记**不是失败**:回执里 `removedId` 是 null,与域那两条从前的
+           * 语义逐字相同(「本来就没有」不是一次错)。
+           */
+          marker: {
+            type: 'string',
+            enum: ['files-changed', 'git-status'],
+            description: 'Remove the system marker message of this kind instead of a message id.',
+          },
+        },
+        required: [],
       },
       /**
        * **那笔留账在 K3-a' 还上了。**
@@ -463,7 +568,90 @@ export const sessionResourceSpec: ResourceSpec = {
       effects: ['session_destructive'],
       home: 'core',
       entity: 'message',
-      describe: params => `remove message ${String((params as { messageId?: unknown }).messageId ?? '')}`,
+      describe: params => {
+        const value = params as { messageId?: unknown; marker?: unknown }
+        return typeof value.marker === 'string'
+          ? `remove the ${value.marker} marker message`
+          : `remove message ${String(value.messageId ?? '')}`
+      },
+    },
+    /**
+     * 删掉这条会话,连同从它分出去的每一条(K2c-3)。
+     *
+     * `effects` 是**上界**,与 `removeMessage` 同一个形:真发给授权者的按主体分档
+     * (用户按下侧栏那个删除按钮不再问一遍人;AI / 系统 / 插件顶格 `ask`),判据住在
+     * provider 的 `plan` 里。用的是既有的 `session_destructive` 那一类,**不新立** ——
+     * 「删掉一条消息」与「删掉整条会话」在授权上是同一句话的两种量级,而效果类答的是
+     * 「这次会不会碰到人不知道的东西」,不是「碰得有多狠」;狠到什么程度由卡片上那句
+     * `preview.title` 说。
+     *
+     * **没有参数**:删哪一条由地址说。级联到哪几条不是参数而是事实 —— 由这条会话的
+     * 分支关系算出来(`collectSessionCascadeDeleteIds`),删完在 `deleted` 事件里报。
+     */
+    delete: {
+      title: 'Delete the session and everything branched from it',
+      params: { type: 'object', properties: {}, required: [] },
+      effects: ['session_destructive'],
+      home: 'core',
+      entity: 'session',
+      keymap: true,
+      describe: () => 'delete the session',
+    },
+    /**
+     * 这条会话按哪种档位问权限。
+     *
+     * 效果类是 **`capability_change`**(`never-grantable`),而不是那几条 `[]`:改的不是
+     * 这条会话的一格元数据,而是**它自己将来还问不问**。被授权方去改自己的授权档位是
+     * 一次提权,所以它连「记住这次」都不给 —— 每一次都得问,授权者答完这一次不代表
+     * 答了下一次(`core/toolkit/effects.ts` 里那一行的注释就是这条)。
+     *
+     * 用户主体照旧零卡片:设置里那个下拉是人自己在改自己的档位。
+     */
+    setPermissionMode: {
+      title: 'Change how this session asks for permission',
+      params: {
+        type: 'object',
+        properties: {
+          permissionMode: {
+            type: 'string',
+            enum: [...SESSION_PERMISSION_MODES],
+            description: 'normal asks; auto-accept-edits skips file edits; dangerously-allow-all skips everything.',
+          },
+        },
+        required: ['permissionMode'],
+      },
+      effects: ['capability_change'],
+      home: 'core',
+      entity: 'session',
+      describe: params =>
+        `switch permission mode to ${String((params as { permissionMode?: unknown }).permissionMode ?? '')}`,
+    },
+    /**
+     * 往这条会话的抄本里补一条**系统**消息 —— 斜杠命令(`/files`、git 状态)交给
+     * 界面渲染的那种。
+     *
+     * 上界 `['session_message']`(合表 2026-09-10 之后它在策略表里是 `ask`),真发给
+     * 授权者的按主体分档:界面那一路是用户自己在补自己会话里的一条注记,零卡片;
+     * 模型往一条会话里塞一条系统消息要问 —— 系统消息在渲染上与产品自己写的那些
+     * 长得一样,而模型能写的那条路本来只有 `send_message`(它带着房间、跳数、频率
+     * 三道闸)。
+     */
+    appendSystemMessage: {
+      title: 'Append one system message to the session transcript',
+      params: {
+        type: 'object',
+        properties: {
+          message: {
+            type: 'object',
+            description: 'The message record: id, role, content, timestamp — as the shell renders them.',
+          },
+        },
+        required: ['message'],
+      },
+      effects: ['session_message'],
+      home: 'core',
+      entity: 'message',
+      describe: () => 'append a system message',
     },
   },
   events: {
@@ -498,6 +686,40 @@ export const sessionResourceSpec: ResourceSpec = {
     messageRemoved: {
       title: 'A message was removed from the session',
       payload: { type: 'object', properties: { messageId: { type: 'string' } }, required: ['messageId'] },
+    },
+    systemMessageAppended: {
+      title: 'A system message was appended to the session',
+      payload: { type: 'object', properties: { messageId: { type: 'string' } }, required: ['messageId'] },
+    },
+    permissionModeChanged: {
+      title: 'The session switched to another permission mode',
+      payload: {
+        type: 'object',
+        properties: { permissionMode: { type: 'string' } },
+        required: ['permissionMode'],
+      },
+    },
+    /**
+     * §10.3 的三条通用名之一(`opened` / `closed` / `deleted`)。会话这一 scheme 今天
+     * 只发得出 `deleted` —— 「打开」是壳的事,那两条由 `workbench` 发,一条会话在账本
+     * 里存在与壳里有没有摆着它是两件事(§10.3「存在未打开」那一行)。
+     *
+     * 载荷带的是**这次真的删掉了哪几条**:删一条会话会级联到从它分出去的分支,而
+     * 「删除中」那一格(`session/deletion.ts` 的三相位)对同地址的并发做是**拒**
+     * (`SessionClosingError`),所以这一发到达时,名单上每一条都已经不在了。
+     */
+    deleted: {
+      title: 'The session was deleted',
+      payload: {
+        type: 'object',
+        properties: {
+          cascadedSessionIds: {
+            type: 'array',
+            description: 'Every session id this delete actually removed, this one included.',
+          },
+        },
+        required: ['cascadedSessionIds'],
+      },
     },
   },
   /**

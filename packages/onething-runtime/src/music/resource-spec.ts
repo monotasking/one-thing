@@ -36,9 +36,22 @@
  * 键更糟**。词表里没有它,这里也没有。
  * (那只契约文件的路径这里**故意不写全**:产品层禁止依赖跨进程契约包,而边界门是
  * 按字面扫的 —— 它连注释里的一条路径都算,这是对的。)
- * (`seek` / `volume` / `prev` / `radio-resume` / `radio-stop` 也不在这一批:前两条
- * 带数值参数、后三条是音乐条自己的手势,它们今天没有任何一条模型路径,而
- * 「先给能力面开一格,再去找调用方」正好是反的。留账。)
+ * (K3-b 那一批把 `seek` / `volume` / `prev` / `radio-resume` / `radio-stop` 留了账,
+ * 理由是「它们今天没有任何一条模型路径,先给能力面开一格再去找调用方正好是反的」。
+ * **音乐收尾这一单把那笔账还了**,而且还的理由正是当初留账时缺的那一半:调用方
+ * 出现了 —— 音乐条上那几个按钮从今天起走的就是这条路(那十四条 RPC 方法逐条退成
+ * 了这份自述的投影),所以「先有调用方,再开能力面」的次序没有被破坏。)
+ *
+ * ── 音乐收尾:三个单例,而不是两个 ─────────────────────────────────────────
+ * K3-b 只认电台与播放器两个单例,因为它只服务模型那一条路,而模型只会开台、点歌、
+ * 暂停、切歌。十四条 RPC 方法退成投影时冒出来的另一半是**音乐后端自己**:哪一只
+ * CLI 在跑、装没装好、登没登录、能搜到什么。它既不是电台也不是播放器 —— 电台关着
+ * 的时候它照样要回答「ncm-cli 装了没有」,播放器没起的时候它照样搜得到歌。所以
+ * 它是第三个单例 `music:provider`。
+ *
+ * 名字跟着这个仓库自己的词走(设置里那一格叫 `music.provider`、契约里那份描述符叫
+ * 「provider descriptor」、RPC 那两条叫 `listProviders` / `setProvider`),而不是另
+ * 发明一个 —— 同一件东西在两处两个名字,是文档写得再清楚也拦不住的误读。
  */
 
 import type { JsonSchema, ResourceSpec } from '@onething/core/resource'
@@ -49,6 +62,8 @@ export const MUSIC_RESOURCE_SCHEME = 'music'
 export const MUSIC_RADIO_PATH = 'radio'
 /** 播放器这个单例的路径。地址是 `music:player`。 */
 export const MUSIC_PLAYER_PATH = 'player'
+/** 音乐后端(那只 CLI)这个单例的路径。地址是 `music:provider`。 */
+export const MUSIC_PROVIDER_PATH = 'provider'
 
 /**
  * 现在在放什么(`nowPlaying` 的结果 / `nowPlayingChanged` 的载荷 / `state.nowPlaying`
@@ -111,6 +126,252 @@ const INTENT_PARAMS: JsonSchema = {
   required: ['intent'],
 }
 
+/**
+ * 音乐条要的那份电台简报。
+ *
+ * ## 为什么它与 `radio` 是**两条读法**,而不是一条
+ *
+ * 同一个单例上两条读法通常是异味,这一处不是:它们答的不是同一个问题。
+ *   · `radio`(旧 `radio(action:"status")`)答的是**电台自己的状态** —— 开没开、
+ *     简报是什么、还剩几首、出没出错。模型要的正是这四件事。
+ *   · `brief` 答的是**那条音乐条画一帧要的全部事实**,而那里面有三格根本不属于
+ *     电台:`volume` 是播放器的音量(从 CLI 自己的 prefs 文件里读出来的)、
+ *     `canResume` 是「续播键要不要点得亮」、`starting` 是「换歌中还是卡住了」。
+ *
+ * 把它们并成一条,代价是二选一:要么模型每次问状态都顺带付一次读 prefs 文件的钱,
+ * 要么音乐条自己去补那三格 —— 后者就是「出口自己算事实」,正是原子要消灭的形状。
+ */
+const RADIO_BRIEF_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    active: { type: 'boolean', description: 'Is the station on.' },
+    intent: { type: 'string', description: "The station's current brief." },
+    lastError: { type: 'string' },
+    starting: {
+      type: 'string',
+      description:
+        'Title of the song a start is in flight for — this is what tells a bar "changing song" apart from "the radio stalled".',
+    },
+    programmeLength: { type: 'number' },
+    canResume: { type: 'boolean', description: 'Whether radioResume has anything to play.' },
+    upNext: { type: 'string', description: 'What plays next, when that is knowable at all.' },
+    volume: { type: 'number', description: "The player's persisted volume, 0-100, when the CLI keeps one." },
+  },
+  required: ['active', 'intent', 'programmeLength', 'canResume'],
+}
+
+/** 一首歌的定时歌词。没有歌词 = `null`,不是一次失败(氛围少一样,不是错)。 */
+const LYRICS_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    title: { type: 'string', description: 'Matches nowPlaying.title — read it before showing.' },
+    lines: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          at: { type: 'number', description: 'Seconds from the song start.' },
+          text: { type: 'string' },
+        },
+        required: ['at', 'text'],
+      },
+    },
+  },
+  required: ['title', 'lines'],
+}
+
+/** 节目单:还排着的那些歌,以及此刻在台上的那一首。 */
+const PROGRAMME_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    entries: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          encryptedId: { type: 'string', description: "The catalogue id this entry is addressed by." },
+          title: { type: 'string' },
+          say: { type: 'string', description: "The DJ's patter for this entry." },
+          note: { type: 'string', description: 'e.g. 点歌 for a song the listener asked for.' },
+          playFlag: { type: 'boolean', description: 'false = rights-restricted; the conductor skips it.' },
+        },
+        required: ['encryptedId', 'title'],
+      },
+    },
+    onDeck: { type: 'string', description: 'Title of the song the station started last.' },
+  },
+  required: ['entries'],
+}
+
+/**
+ * 音乐后端此刻的状态 —— 装到哪一步了、登没登录、用哪个播放器。
+ *
+ * 它就是安装向导每一步回来的那一份(旧 `getState` / `setup` 共用的回执),照实
+ * 抄:`setupStage` 是向导停在哪一格,`env` 是那几件工具在不在这台机器上。
+ */
+const RUNTIME_STATE_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    setupStage: {
+      type: 'string',
+      enum: ['env', 'credentials', 'login', 'ready'],
+      description: 'Which step of the setup wizard this machine is standing on.',
+    },
+    configured: { type: 'boolean', description: 'Credentials were written into the CLI\'s own config.' },
+    loggedIn: { type: 'boolean' },
+    playerBackend: { type: 'string', description: "Which player plays the sound (the CLI's own, or a desktop app)." },
+    source: { type: 'string', description: 'Which catalogue feed the station draws from.' },
+    lastError: { type: 'string' },
+    env: {
+      type: 'object',
+      description: 'Which of the required tools are installed on this machine.',
+      properties: {
+        tools: { type: 'object', description: "Keyed by the provider's own tool ids." },
+        npmAvailable: { type: 'boolean' },
+        brewAvailable: { type: 'boolean' },
+      },
+    },
+  },
+  required: ['setupStage', 'configured', 'loggedIn', 'playerBackend', 'source'],
+}
+
+/** 这台机器上有哪几只音乐 CLI 可选,现在用的是哪一只。 */
+const PROVIDERS_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    providers: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          label: { type: 'string' },
+          binary: { type: 'string' },
+          setupStages: { type: 'array', items: { type: 'string' } },
+          loginKind: { type: 'string' },
+        },
+        required: ['id', 'label', 'binary'],
+      },
+    },
+    activeId: { type: 'string' },
+  },
+  required: ['providers', 'activeId'],
+}
+
+/** 搜一首歌。**读**:它不改这台机器上任何一格,而且同一个词搜两遍答案一样。 */
+const SEARCH_QUERY: JsonSchema = {
+  type: 'object',
+  properties: {
+    query: { type: 'string', description: '「歌名 歌手」-ish free text.' },
+  },
+  required: ['query'],
+}
+
+const SEARCH_RESULT_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    records: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          artist: { type: 'string' },
+          playFlag: { type: 'boolean', description: 'false = rights-restricted; it will not play.' },
+        },
+        required: ['title'],
+      },
+    },
+  },
+  required: ['records'],
+}
+
+/**
+ * 节目单的一次编辑。参数**保持嵌一层**(`{ action: { kind, … } }`),不摊平 ——
+ * 两个理由,都不是风格:
+ *   ① 这个联合在契约里就叫 `action`,而拒绝的那句话是「action is required」;摊成
+ *      `kind` 之后那句话就开始说谎(它要的是 `kind`,却说要 `action`);
+ *   ② 三个 kind 的必填项不同(`move` 多一格 `toIndex`),嵌一层之后这份差异写在
+ *      同一处,摊平之后它会散进三条做法或者一条谁都不必填的做法。
+ */
+const PROGRAMME_ACTION_PARAMS: JsonSchema = {
+  type: 'object',
+  properties: {
+    action: {
+      type: 'object',
+      description: 'remove doubles as the strongest taste signal — it steers the next batch away.',
+      properties: {
+        kind: { type: 'string', enum: ['remove', 'promote', 'move'] },
+        encryptedId: { type: 'string', description: "The entry's catalogue id (from the programme read)." },
+        toIndex: { type: 'number', description: 'move only: where in the queue it goes.' },
+      },
+      required: ['kind', 'encryptedId'],
+    },
+  },
+  required: ['action'],
+}
+
+/**
+ * `seek` / `volume` 的数值参数。
+ *
+ * **不写 `required`**,这一格是刻意的:缺一个数值与给错一个数值(NaN / Infinity)
+ * 在旧路上是**同一句话**(`「seek 需要一个数值参数」`),而契约校验者只看判别键、
+ * 不解释 params(`core/resource/validator.ts` 的文件头)。所以两种都由 `plan` 判、
+ * 由 `plan` 说那一句 —— 写成 `required` 只会让「缺」与「错」分头走两条路、说两句话。
+ */
+const SEEK_PARAMS: JsonSchema = {
+  type: 'object',
+  properties: {
+    position: { type: 'number', description: 'Target position in seconds from the song start.' },
+  },
+}
+
+const VOLUME_PARAMS: JsonSchema = {
+  type: 'object',
+  properties: {
+    level: { type: 'number', description: 'Absolute volume, 0-100.' },
+  },
+}
+
+/**
+ * 安装 / 配置向导的一步。
+ *
+ * 每一步都回**整份** `RUNTIME_STATE_SCHEMA`(向导停在哪一格也在里面)—— 这是旧
+ * `setup` 的口径,原样带过来:一次配置操作之后「现在到哪一步了」是调用方唯一真正
+ * 要问的事,让它再问一遍等于给一个必然的往返。
+ */
+const SETUP_PARAMS: JsonSchema = {
+  type: 'object',
+  properties: {
+    action: {
+      type: 'string',
+      enum: [
+        'check-env',
+        'install-tool',
+        'set-credentials',
+        'set-player',
+        'login-start',
+        'login-cancel',
+        'login-check',
+        'logout',
+      ],
+    },
+    tool: { type: 'string', description: 'install-tool: which tool to install.' },
+    appId: { type: 'string', description: 'set-credentials: written straight into the CLI\'s own encrypted config.' },
+    privateKey: { type: 'string', description: 'set-credentials: never persisted by this app.' },
+    player: { type: 'string', description: 'set-player: which player plays the sound.' },
+  },
+  required: ['action'],
+}
+
+const SET_PROVIDER_PARAMS: JsonSchema = {
+  type: 'object',
+  properties: {
+    providerId: { type: 'string', description: 'One of the ids the providers read lists.' },
+  },
+  required: ['providerId'],
+}
+
 export const musicResourceSpec: ResourceSpec = {
   scheme: MUSIC_RESOURCE_SCHEME,
   title: 'Music — the personal radio station and the player',
@@ -137,6 +398,53 @@ export const musicResourceSpec: ResourceSpec = {
       title: 'Read the station state: what is playing, songs left, problems',
       query: NO_PARAMS,
       result: RADIO_STATUS_SCHEMA,
+    },
+    /** 音乐条画一帧要的那一份。与 `radio` 为什么是两条,写在 schema 那一格上。 */
+    brief: {
+      title: 'Read the bar brief: station state plus resume-ability, up-next and volume',
+      query: NO_PARAMS,
+      result: RADIO_BRIEF_SCHEMA,
+    },
+    /** 排在后面的那些歌。`programmeAction` 编辑的就是这一份。 */
+    programme: {
+      title: 'Read the programme: the songs still queued, and the one on deck',
+      query: NO_PARAMS,
+      result: PROGRAMME_SCHEMA,
+    },
+    /** 当前这首歌的定时歌词。没有 = `null`。 */
+    lyrics: {
+      title: 'Read the timed lyrics of the song that is playing',
+      query: NO_PARAMS,
+      result: LYRICS_SCHEMA,
+    },
+    /**
+     * 音乐后端装到哪一步了。
+     *
+     * **它是读不是做**,判据用的是 §6 那一条「换一个 principal 说不说得通」:一台
+     * 网关会话、一只插件、一个脚本来问「这台机器上的音乐 CLI 装好了没有」,句子
+     * 是成立的,而且问一百遍这台机器一格都不会变。反过来 `setup` 换谁来问都是在
+     * **动**这台机器,所以它在 ops 里。
+     */
+    state: {
+      title: 'Read the music backend state: setup stage, which tools are installed, logged in or not',
+      query: NO_PARAMS,
+      result: RUNTIME_STATE_SCHEMA,
+    },
+    /** 有哪几只音乐 CLI,现在用的是哪一只。 */
+    providers: {
+      title: 'Read the available music CLI backends and which one is active',
+      query: NO_PARAMS,
+      result: PROVIDERS_SCHEMA,
+    },
+    /**
+     * 搜歌。**读**,尽管它会去问一次服务器:读的判据是「改不改这台机器」,不是
+     * 「花不花时间」(`ReadSpec` 结构性没有 effects 那一格,正是这条不变量的类型层
+     * 落点)。它与 `request` 的分工也因此干净:搜是看有什么,点歌是让它响。
+     */
+    search: {
+      title: 'Search the catalogue for a song (looking only — requesting it is an op)',
+      query: SEARCH_QUERY,
+      result: SEARCH_RESULT_SCHEMA,
     },
   },
   ops: {
@@ -235,6 +543,109 @@ export const musicResourceSpec: ResourceSpec = {
       keymap: true,
       describe: () => 'heart the current song',
     },
+    /**
+     * ── 音乐条那几个手势(音乐收尾这一单补齐)───────────────────────────────
+     *
+     * `prev` / `seek` / `volume` / `radioResume` / `radioStop` 与上面四条**同一个
+     * 词表**(共享契约里的 `MusicCommand`)、同一只端口,只是 K3-b 那一批没有调用方
+     * 所以先留了账。现在调用方就是音乐条 —— 而音乐条从今天起也走这条路,所以它们
+     * 必须在表上,否则「界面点按钮也走它」那句话在音乐上只成立一半。
+     *
+     * `effects` 同样一律 `[]`(文件头那条裁定管这一族全部十三条)。
+     */
+    prev: {
+      title: 'Previous track. With the station on there is no player queue to step back through, so this replays the current song from the top — like a physical back button.',
+      params: NO_PARAMS,
+      effects: [],
+      home: 'core',
+      entity: 'player',
+      keymap: true,
+      describe: () => 'previous song',
+    },
+    seek: {
+      title: 'Jump to a position inside the song that is playing.',
+      params: SEEK_PARAMS,
+      effects: [],
+      home: 'core',
+      entity: 'player',
+      describe: params => `seek to ${String((params as { position?: unknown }).position ?? '')}s`,
+    },
+    volume: {
+      title: 'Set the playback volume (absolute, 0-100).',
+      params: VOLUME_PARAMS,
+      effects: [],
+      home: 'core',
+      entity: 'player',
+      describe: params => `set volume to ${String((params as { level?: unknown }).level ?? '')}`,
+    },
+    /**
+     * 续播:守护进程走了(那正是这个按钮存在的理由),所以它不是一条传输命令,
+     * 而是走保活重启那条路 —— 全仓唯一实测可行的冷启动路径。
+     */
+    radioResume: {
+      title: 'Resume a silent-but-active station from its programme (restarts the player daemon when it went away).',
+      params: NO_PARAMS,
+      effects: [],
+      home: 'core',
+      entity: 'station',
+      keymap: true,
+      describe: () => 'resume the radio',
+    },
+    /**
+     * 与 `close` 是**同一件事的两个回执**,不是两条路:两条都落到同一只
+     * `radioToolClose()` 上。差别只在交出去的那句话 —— `close` 交的是给模型看的
+     * 电台状态,`radioStop` 交的是给音乐条看的那份 now-playing 读数。真要合并,
+     * 合的该是回执的形状,而那要先有一个会读它的界面。
+     */
+    radioStop: {
+      title: 'Full stop from the bar: cut the patter, stop the music, close the station. The programme is kept for a later re-open.',
+      params: NO_PARAMS,
+      effects: [],
+      home: 'core',
+      entity: 'station',
+      describe: () => 'stop the radio',
+    },
+    /** 节目单的一次编辑。参数为什么嵌一层,写在 schema 那一格上。 */
+    programmeAction: {
+      title: 'Edit the programme: drop an entry (also the strongest taste signal), promote it to the front, or move it.',
+      params: PROGRAMME_ACTION_PARAMS,
+      effects: [],
+      home: 'core',
+      entity: 'station',
+      describe: params => {
+        const action = (params as { action?: { kind?: unknown; encryptedId?: unknown } }).action
+        return `programme ${String(action?.kind ?? '')} ${String(action?.encryptedId ?? '')}`.trim()
+      },
+    },
+    /**
+     * ── 两条动这台机器的能力的做法 ────────────────────────────────────────
+     *
+     * `setup` 与 `setProvider` 的 `effects` 是 `['capability_change']`,而上面那十三
+     * 条是 `[]` —— 这不是给音乐分了两等,是因为它们**做的事根本不同类**:上面十三
+     * 条改的是「现在放什么」,这两条改的是「这台机器上音乐这件事由谁来做、装没装
+     * 好、拿谁的账号登录」。装一个 npm 包、写一份凭据、换一只 CLI,是换能力。
+     *
+     * 那是**静态上界**;真发给授权者的按主体分档(见 provider 的 `plan`,与 K3-a'
+     * 的 `removeMessage` 逐字同形):设置页上那个按钮是人自己按的,再问一遍是噪音;
+     * 模型 / 插件 / 脚本要动它,顶格问,而且 `capability_change` 在效果表里是
+     * never-grantable —— 每一次都得有人点头,授权不了「以后都行」。
+     */
+    setup: {
+      title: 'Run one step of the music backend setup: check the environment, install a tool, write credentials, pick the player, log in or out.',
+      params: SETUP_PARAMS,
+      effects: ['capability_change'],
+      home: 'core',
+      entity: 'provider',
+      describe: params => `music setup: ${String((params as { action?: unknown }).action ?? '')}`,
+    },
+    setProvider: {
+      title: 'Switch the music CLI backend that drives everything (binary, parsers, setup wizard). The station is torn down and re-tuned.',
+      params: SET_PROVIDER_PARAMS,
+      effects: ['capability_change'],
+      home: 'core',
+      entity: 'provider',
+      describe: params => `switch the music backend to ${String((params as { providerId?: unknown }).providerId ?? '')}`,
+    },
   },
   /**
    * ── `opened` / `closed` / `deleted` 这三条通用名在音乐上的填法(§10.3)──────
@@ -264,6 +675,19 @@ export const musicResourceSpec: ResourceSpec = {
     nowPlayingChanged: {
       title: 'What is playing changed',
       payload: NOW_PLAYING_SCHEMA,
+    },
+    /**
+     * 换了音乐后端。它是**事实**不是命令:发的时候切换已经做完了(旧的一代排干了、
+     * 设置写下了、新的一代起来了),读到它的人要做的是重新拉一次自己那份读数,
+     * 而不是去做点什么。
+     */
+    providerChanged: {
+      title: 'The active music CLI backend changed',
+      payload: {
+        type: 'object',
+        properties: { providerId: { type: 'string' } },
+        required: ['providerId'],
+      },
     },
   },
   /**

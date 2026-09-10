@@ -53,24 +53,20 @@
 import { v4 as uuidv4 } from 'uuid'
 import {
   activateOnethingSessionForIpc,
-  addOnethingSystemMessageForIpc,
   createOnethingBranchSessionForIpc,
   createOnethingSessionForIpc,
-  deleteOnethingSessionForIpc,
   describeInvalidOnethingCreateSessionRequestForIpc,
   ONETHING_SESSION_NOT_FOUND,
-  removeOnethingSystemMarkerMessageForIpc,
   switchOnethingSessionForIpc,
-  updateOnethingSessionPermissionMode,
 } from '@onething/runtime/sessions'
 import { isValidSpaceId } from '@onething/runtime/spaces/types'
 import { collectSessionCascadeDeleteIds } from '@onething/core/session'
-import { SESSION_RESOURCE_SCHEME } from '@onething/runtime/sessions/resource-spec'
+import { SESSION_COLLECTION_PATH, SESSION_RESOURCE_SCHEME } from '@onething/runtime/sessions/resource-spec'
 import type {
   ChatMessage,
   ChatSession,
   GetSessionMessagesPageResponse,
-  PermissionMode,
+  SessionMeta,
   UserMessageMarker,
 } from '@shared/ipc.js'
 import type { SessionSegment } from '@shared/ipc/toc.js'
@@ -78,21 +74,20 @@ import type { SessionTokenUsageReadout } from '@shared/ipc/sessions.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { SessionMutationResponse, SessionsRoutes } from '@shared/ipc/sessions.js'
 import * as store from '../../store.js'
-import { listSessions } from '../../session/index.js'
-import { sessionCommands } from '../../session/commands.js'
-import { sessionDeletion } from '../../session/deletion.js'
 import { requestSessionOwner, sessionAccess, SessionAccessError, type SessionOwnershipRecord } from '../../session/access.js'
-import { getEventBus, getStreamChannel } from '../../events/index.js'
 import {
   ensureCollabGroupRoom,
   isCollabV3RuntimeRunning,
   type CollabGroupRoomInput,
 } from '../../wiring/collab/index.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
-import { Permission } from '../../wiring/permission/index.js'
-import { deleteSessionAiTodo, notifyTodoPlanActiveSessionChanged } from '../../wiring/todo-plan/store.js'
+import { notifyTodoPlanActiveSessionChanged } from '../../wiring/todo-plan/store.js'
 import { resolveInsideSandbox, resolveRpcSandbox } from '../sandbox.js'
-import { foldOutcomeToEnvelope, foldReadOutcomeToEnvelope } from '../resource-envelope.js'
+import {
+  foldOutcomeToDetailedEnvelope,
+  foldOutcomeToEnvelope,
+  foldReadOutcomeToEnvelope,
+} from '../resource-envelope.js'
 import { principalOf } from '../principal.js'
 import { BackendNotAssembledError, getCurrentBackendInstance } from '../../current.js'
 import { SessionNotFoundError } from '../../wiring/resource/session-provider.js'
@@ -100,6 +95,7 @@ import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import type { CreateOnethingBranchSessionAdapters } from '@onething/runtime/sessions/branching'
 import type { ReadOutcome } from '@onething/core/resource'
+import type { JsonObject } from '@onething/core/json'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingSessionsIpcLogger } from '@onething/runtime/sessions/ipc-operations'
 
@@ -126,28 +122,6 @@ const WORKDIR_SANDBOX_ERROR = {
 }
 
 /**
- * 删会话时,联网宿主要做的那三件收尾 —— 从被删掉的 server adapter 逐字搬:
- * 中止活流、清权限询问、拆掉这条会话的事件/流通道。
- *
- * 「中止排在拆通道之前」是原文的顺序,理由也写在原文里:通道一拆,那条终结
- * 事件可能就再也发不出来了。`getController` 是原文 `activeStreamSessions.has`
- * 的等价问法 —— 没有活流就不去碰引擎(`abort` 顺带清的 steering / follow-up
- * 队列对一条正在被删的会话无所谓,但不惊动 `onSessionCleared` 更接近原文)。
- *
- * B2(方案 §2.2「面」)起**两条传输都走这里**:这四步各自带守卫(没有活流就不
- * 碰引擎,没有 pending 就不清,通道不在就不拆),一条没有任何进程内活计的会话上
- * 整段是 no-op —— 所以它从来就不是「联网宿主专属」,只是当初没给桌面接。桌面因此
- * 多出一个**修正**:删掉一条还在生成的会话时,那条流会被中止(从前它会继续跑到
- * 底,往一个已经不存在的会话上写)。
- */
-function releaseServedSession(sessionId: string): void {
-  // Cancellation and its settled result precede physical deletion in SessionDeletion.
-  Permission.clearSession(sessionId)
-  getEventBus().destroySession(sessionId)
-  getStreamChannel().destroySession(sessionId)
-}
-
-/**
  * ## 七条写面已经退成资源投影(原子 K2c-1)
  *
  * `rename` / `updateWorkingDirectory` / `updatePin` / `updateArchived` /
@@ -163,11 +137,23 @@ function releaseServedSession(sessionId: string): void {
  * `__tests__/sessions-projection.test.ts` 证的是「域这一路与直调资源面产出同一个
  * 结果、同一条 `tool/audit`」(也就是它真的退成了投影,不是双写)。
  *
- * **没退的那些**,理由各自写在自述里(`runtime/sessions/resource-spec.ts` 文件头):
- * 五条读面被管线的输出预算、`Outcome` 只装得下文本、以及「每读一次落一条审计」
- * 三件事挡住(留账 K2c-2);`addSystemMessage` 一退就会多出一张权限卡;
- * `list` / `create` / `delete` / `activate` / `switch` / `createBranch` /
- * `updatePermissionMode` / 缓存那两条 / 两条标记消息归 K2c-2。
+ * ## K2c-3:二十六条里,二十条是投影
+ *
+ * K2c-2 退了六条读面,本单退掉剩下十三条里的七条:`list` / `listMeta`(读法 `list`,
+ * 地址是保留坐标 `session:@all`)、`delete`、`updatePermissionMode`、
+ * `addSystemMessage`、`removeFilesChangedMessage` / `removeGitStatusMessage`
+ * (与 `removeMessage` 合成**一条**做法的三种指法)。
+ *
+ * **`delete` 是本单唯一一条把副作用整串搬走的**:三相位删除、AI todo 跟着走、把这条
+ * 会话在这个进程里的活收干净 —— 从前它们只长在这个处理器里,于是「删一条会话」在
+ * 仓库里只有界面那一条路。留在这里的只有归属校验(前置),理由写在那条处理器上。
+ *
+ * **剩下六条不退,两种理由,各写在自己的处理器上**:
+ *   · `create` / `createBranch` 卡在**归属印**上(调用方身份,`Invocation` 上没有);
+ *   · `activate` / `switch` 是视图状态,`getCacheStats` / `evictCache` 是进程内务。
+ *
+ * 回执带东西的两条(`delete` 的 `deletedCount`、两条标记消息的 `removedId`)走
+ * `Result.details` 上抬 —— 那一格 `OutputBudget` 不裁,理由在 `rpc/resource-envelope.ts`。
  */
 
 /** 这个进程当前那台资源内核。与 `rpc/domains/resources.ts` 同一条读法、同一句「还没装配」。 */
@@ -212,45 +198,105 @@ function describeSessionError(error: Error): string | undefined {
  */
 async function readSession(
   context: RpcDispatchContext,
-  sessionId: string,
+  path: string,
   name: string,
   query: Record<string, unknown> = {},
 ): Promise<ReadOutcome> {
   const outcome = await resources().read(
-    `${SESSION_RESOURCE_SCHEME}:${sessionId}`,
+    `${SESSION_RESOURCE_SCHEME}:${path}`,
     name,
     query,
     callOptions(context),
   )
   if (outcome.kind === 'failed' && !(outcome.error instanceof SessionNotFoundError)) {
-    log.error('read session resource failed', { sessionId, read: name }, outcome.error)
+    log.error('read session resource failed', { path, read: name }, outcome.error)
   }
   return outcome
 }
 
-/** 拼参数 → 管线 → 折回信封。七条写面共用的那三句话。 */
+/** 拼参数 → 管线 → 折回信封。写面共用的那三句话。 */
 async function doSessionOp(
   context: RpcDispatchContext,
   sessionId: string,
   op: string,
   params: Record<string, unknown>,
 ): Promise<SessionMutationResponse> {
-  const outcome = await resources().do(
-    `${SESSION_RESOURCE_SCHEME}:${sessionId}`,
-    op,
-    params,
-    callOptions(context),
-  )
-  return foldOutcomeToEnvelope(outcome, { describeError: describeSessionError })
+  return foldOutcomeToEnvelope(await runSessionOp(context, sessionId, op, params), {
+    describeError: describeSessionError,
+  })
+}
+
+/**
+ * 同上,但**回执里带着东西**(K2c-3):`delete` 的 `deletedCount`、两条标记消息的
+ * `removedId`。那两格是做法自己算出来的事实,不是调用方递进去的参数,所以域再算
+ * 一遍是不可能的 —— 它们从 `Result.details` 上抬,理由写在
+ * `rpc/resource-envelope.ts` 的 `foldOutcomeToDetailedEnvelope` 上。
+ */
+async function doSessionOpWithDetails<T extends object>(
+  context: RpcDispatchContext,
+  sessionId: string,
+  op: string,
+  params: Record<string, unknown>,
+  project: (details: JsonObject) => T,
+): Promise<({ success: true } & T) | { success: false; error: string }> {
+  return foldOutcomeToDetailedEnvelope(await runSessionOp(context, sessionId, op, params), {
+    describeError: describeSessionError,
+    project: details => project(details ?? {}),
+  })
+}
+
+function runSessionOp(
+  context: RpcDispatchContext,
+  sessionId: string,
+  op: string,
+  params: Record<string, unknown>,
+) {
+  return resources().do(`${SESSION_RESOURCE_SCHEME}:${sessionId}`, op, params, callOptions(context))
+}
+
+/**
+ * 两条标记消息删除的回执载荷。**`null` 不是 `undefined`**:契约那一格是
+ * `removedId?: string | null`,而「本来就没有那条标记」要说得出口 —— 缺席读起来像
+ * 「这次没提这件事」,`null` 才是「没有可删的」。
+ */
+function removedIdOf(details: JsonObject): { removedId: string | null } {
+  return { removedId: typeof details.removedId === 'string' ? details.removedId : null }
 }
 
 export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
+  /**
+   * K2c-3:列表也退成投影,而它的地址是那个**保留坐标**(`session:@all`)——「列出
+   * 会话」不落在任何一条会话上,理由与另外两种写法为什么被否掉,写在自述的
+   * `SESSION_COLLECTION_PATH` 上。
+   *
+   * **归属过滤留在这里**,而且是**后置**的(与 `updateWorkingDirectory` 的沙箱夹持
+   * 前置是同一条过渡理由:管线的 `Invocation` 上没有 per-caller 的归属这一格)。
+   * 前置 / 后置在这里不改答案:两格都是过滤,先按空间筛还是先按主人筛,交出来的是
+   * 同一批行、同一个顺序 —— `sessions-domain.test.ts` 那条「同一条 workspace 查询对
+   * 两个别名两条传输都一样」逐字钉着它。
+   */
   async list(request, context = DESKTOP_RPC_CONTEXT) {
-    return listSessions(request, context)
+    return foldReadOutcomeToEnvelope(
+      await readSession(context, SESSION_COLLECTION_PATH, 'list', {
+        ...(request.workspaceId !== undefined ? { workspaceId: request.workspaceId } : {}),
+      }),
+      {
+        project: value => ({
+          sessions: sessionAccess.filter(context, (value as { sessions: SessionMeta[] }).sessions),
+        }),
+      },
+    )
   },
   async listMeta(request, context = DESKTOP_RPC_CONTEXT) {
     return sessionsRpcHandlers.list(request, context)
   },
+  /**
+   * **不进自述,而且是想清楚的**(K2c-3):`activate` 改的不是这条会话,是**界面此刻
+   * 摆着哪一条** —— 它写进程级的 `currentSessionId` 并叫醒那扇独立的 todo 窗。
+   * `docs/design/atom-2026-09.md` §6 把这一档叫视图状态:同一条会话在两扇窗里可以
+   * 一开一关,而资源面答的是「这条会话是什么」,不是「谁正看着它」。要给它一个地址,
+   * 该长在壳那一侧的 `workbench` scheme 上(留账),不是在 `session:` 上。
+   */
   async activate(request) {
     return activateOnethingSessionForIpc({
       sessionId: request.sessionId,
@@ -317,6 +363,24 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
     // `readSession` 已经记进日志了。
     return { success: false, segments: [] }
   },
+  /**
+   * **没退成投影,而且这一条是被施工现场证伪的**(K2c-3)。
+   *
+   * 建一条会话要盖一个**归属印**(`initialOwner: requestSessionOwner(context)`),而
+   * 那是**调用方身份** —— 它从 `context.ownerUid` / `context.workspaceId` 来。资源面的
+   * `Invocation` 上只有 `Principal`,而两套身份词汇今天对不上:本机可信主体是
+   * `{ kind: 'user', userId: 'local' }`(`core/permission/principal.ts` 的
+   * `LOCAL_USER_ID`),会话归属那一侧的本机主人是 `'local-user'`
+   * (`session/access.ts` 的 `DEFAULT_SESSION_OWNER`)。照着 `Principal` 铸一个归属印,
+   * 新建的会话就归给了一个谁都不是的人 —— `ownsSessionRecord` 对不上,那条会话对它的
+   * 创建者当场隐身。把 owner 塞进 `params` 更不行:那正是 `RpcDispatchContext` 头注
+   * 禁死的「身份从信封上读」,一个模型就能替别人建会话。
+   *
+   * 这是 09-03 用户搁置的**凭证级主体**那一片地,不归一次接线单。留账:per-caller 的
+   * 归属进 `Invocation` 之后,`create` / `createBranch` 与 `delete` 的归属前置一起还。
+   *
+   * `kind: 'room'` 那一支另有一条理由,写在下面那段里(它拖着整本协作规则书)。
+   */
   async create(request, context = DESKTOP_RPC_CONTEXT) {
     const { name, sessionId, workspaceId, kind, room } = request
     // **建房要 in-process 的 collab v3 actor 运行时**。P4 终态批 B(拍板 #12)
@@ -377,6 +441,7 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
     })
     return result
   },
+  /** `activate` 的孪生条 —— 同一条理由,见上面那一段。 */
   async switch(request) {
     return switchOnethingSessionForIpc({
       sessionId: request.sessionId,
@@ -394,32 +459,29 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
       describeError: describeSessionError,
     })
   },
+  /**
+   * K2c-3:删也退成投影。三相位删除、AI todo 跟着走、把这条会话在这个进程里的活收
+   * 干净 —— 整串副作用搬进了 `wiring/resource/session-provider.ts`,一步没换顺序。
+   * 搬的理由与 `rename` 那一发广播逐字相同:AI / CLI / 调度删一条会话与界面删是同一
+   * 件事,而从前只有界面那一路做收尾。
+   *
+   * **留在这里的只有归属校验**,而且是**前置**的:级联到的每一条都必须属于这个调用
+   * 方,一条不合格整次拒(在中止任何活流、动任何盘之前)。它不能下沉,因为归属是
+   * 调用方身份而管线的 `Invocation` 上只有 `Principal` —— 与 `updateWorkingDirectory`
+   * 的沙箱夹持同一条过渡理由,留账同一笔。
+   *
+   * 级联名单在这里算一遍(为了校验),provider 里再算一遍(为了删)。**不是重复**:
+   * 中间隔着一次授权与三相位的等待,删除层自己就要在开工那一刻重算并比对
+   * (`session/deletion.ts` 的 `verify`:变过就拒)。这里这一份只用来判「能不能」,
+   * 那一份才是「删哪几条」。
+   */
   async delete(request, context = DESKTOP_RPC_CONTEXT) {
-    const authorizedIds = sessionAccess.resolveAll(context,
+    sessionAccess.resolveAll(context,
       collectSessionCascadeDeleteIds(store.getSessionsList(), request.sessionId), 'delete')
-    return deleteOnethingSessionForIpc({
-      sessionId: request.sessionId,
-      deleteSession: async (id) => {
-        const result = await sessionDeletion.delete(id, authorizedIds,
-          ids => { sessionAccess.resolveAll(context, ids, 'delete') })
-        // The AI todo is keyed by session id, so it goes with the session
-        // — including any children the delete cascaded to.
-        for (const deletedId of result.deletedIds) {
-          deleteSessionAiTodo(deletedId).catch(error => {
-            log.error('delete session AI todo failed', { sessionId: deletedId }, error)
-          })
-        }
-        // 把这条会话在**这个进程里**的“活”收干净 —— 中止活流、清权限询问、
-        // 拆事件/流通道。名单用的是原文那份(`deletedIds` 空时退回请求里那一个),
-        // 不是上面 AI todo 的那份。B2 起无条件跑(见 `releaseServedSession` 的注释)。
-        const teardownIds = result.deletedIds.length ? result.deletedIds : [id]
-        for (const deletedId of teardownIds) releaseServedSession(deletedId)
-        // 原文在循环之后又清了一次请求里那条 —— 逐字保留(级联名单里没有它时才有意义)。
-        Permission.clearSession(id)
-        return result
-      },
-      logger: consoleLog,
-    })
+    return doSessionOpWithDetails(context, request.sessionId, 'delete', {}, details => ({
+      deletedCount: (details.deletedCount as number | undefined) ?? 0,
+      ...(typeof details.parentSessionId === 'string' ? { parentSessionId: details.parentSessionId } : {}),
+    }))
   },
   async rename(request, context = DESKTOP_RPC_CONTEXT) {
     // 那一发 `session:renamed` 现在由 provider 在 apply 里发(成功才发)—— 搬上去
@@ -485,15 +547,17 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
       ...(request.agentId !== undefined ? { agentId: request.agentId } : {}),
     })
   },
-  async updatePermissionMode(request) {
-    return updateOnethingSessionPermissionMode<PermissionMode>({
-      sessionId: request.sessionId,
+  async updatePermissionMode(request, context = DESKTOP_RPC_CONTEXT) {
+    // 「哪几档合法」那张表现在只有一处产地(自述的 `SESSION_PERMISSION_MODES`)——
+    // 从前这三个字面量抄在这一行里。判定与文案还在同一本规则书上,provider 递形状。
+    return doSessionOp(context, request.sessionId, 'setPermissionMode', {
       permissionMode: request.permissionMode,
-      allowedPermissionModes: ['normal', 'auto-accept-edits', 'dangerously-allow-all'],
-      updateSessionPermissionMode: (id, nextPermissionMode) =>
-        store.updateSessionPermissionMode(id, nextPermissionMode),
     })
   },
+  /**
+   * **没退成投影,与 `create` 同一个理由**(K2c-3):建一条分支会话同样要盖一个
+   * `initialOwner`,而那是调用方身份 —— 见 `create` 上面那一段。
+   */
   async createBranch(request, context = DESKTOP_RPC_CONTEXT) {
     const adaptersPort: CreateOnethingBranchSessionAdapters<ChatSession, ChatMessage, ChatSession> = {
       createId: uuidv4,
@@ -514,6 +578,12 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
       logger: consoleLog,
     })
   },
+  /**
+   * **不进自述**(K2c-3):这两条问的不是「这条会话是什么」,而是**这个进程里那只
+   * LRU 此刻装着什么**(`stores/sessions.ts` 的内存缓存,桌面页签上那枚 “cached”
+   * 徽标的数据源)。它是进程内务,换一台宿主问同一条会话答案就不同 —— 而一份自述
+   * 说的是这种资源的事实,不是某台机器的当下。
+   */
   async getCacheStats(_request, context = DESKTOP_RPC_CONTEXT) {
     const stats = store.getSessionCacheStats()
     const cachedSessionIds = stats.cachedSessionIds.filter(id => {
@@ -532,31 +602,22 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
       describeError: describeSessionError,
     })
   },
-  async addSystemMessage(request) {
-    return addOnethingSystemMessageForIpc({
-      sessionId: request.sessionId,
-      message: request.message,
-      addMessage: (id, message) => sessionCommands.appendMessage(id, { message, stampCollab: true }),
-      logger: consoleLog,
-    })
+  async addSystemMessage(request, context = DESKTOP_RPC_CONTEXT) {
+    return doSessionOp(context, request.sessionId, 'appendSystemMessage', { message: request.message })
   },
-  async removeFilesChangedMessage(request) {
-    return removeOnethingSystemMarkerMessageForIpc({
-      sessionId: request.sessionId,
-      markerType: 'files-changed',
-      getSession: id => store.getSession(id),
-      deleteMessage: (id, messageId) => sessionCommands.deleteMessage(id, { messageId }),
-      logger: consoleLog,
-    })
+  /**
+   * 这两条与 `removeMessage` 是**同一条做法的三种指法**(K2c-3):按 id、按
+   * `files-changed` 标记、按 `git-status` 标记。自述里因此只有一条 `removeMessage`,
+   * 差别是一个参数 —— 理由写在自述那一格上。
+   *
+   * 回执里的 `removedId` 从 `Result.details` 上抬:找不到那条标记不是失败,是
+   * `removedId: null`(与从前逐字相同)。
+   */
+  async removeFilesChangedMessage(request, context = DESKTOP_RPC_CONTEXT) {
+    return doSessionOpWithDetails(context, request.sessionId, 'removeMessage', { marker: 'files-changed' }, removedIdOf)
   },
-  async removeGitStatusMessage(request) {
-    return removeOnethingSystemMarkerMessageForIpc({
-      sessionId: request.sessionId,
-      markerType: 'git-status',
-      getSession: id => store.getSession(id),
-      deleteMessage: (id, messageId) => sessionCommands.deleteMessage(id, { messageId }),
-      logger: consoleLog,
-    })
+  async removeGitStatusMessage(request, context = DESKTOP_RPC_CONTEXT) {
+    return doSessionOpWithDetails(context, request.sessionId, 'removeMessage', { marker: 'git-status' }, removedIdOf)
   },
   async removeMessage(request, context = DESKTOP_RPC_CONTEXT) {
     return doSessionOp(context, request.sessionId, 'removeMessage', { messageId: request.messageId })

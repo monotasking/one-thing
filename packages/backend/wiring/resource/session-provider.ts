@@ -64,6 +64,27 @@
  * 这两处是这只文件里**仅有**的两句「如果是谁调的就……」。内核里一句都不许有
  * (`core/resource/kernel.ts` 的文件头写着那条),而在这里它们不是绕过管线的暗门:
  * 分出来的档是一份**更诚实的 `Intent`**,照样交给同一位授权者去判。
+ *
+ * ── K2c-3:域剩下的那批也退了,于是「按主体分档」从一条长到四条 ─────────────────
+ * 本单退的七条里有四条带效果(`delete` / `setPermissionMode` / `appendSystemMessage`,
+ * 以及 `removeMessage` 的 `marker` 那一支),四条走的是 K3-a' 立好的同一个形:自述说
+ * 上界,`plan` 按主体定这一次真发出去的那一份。于是这只文件里那句「如果是谁调的」
+ * 从两处变成六处 —— 但它仍然是**同一句话**,所以它被收成了一只
+ * `planByPrincipal(...)`:界面/人 = 零效果,其余 = 顶格。多一条做法就是多一行调用,
+ * 不是多一段判断。
+ *
+ * 本单还搬进来两件从前住在域里的东西,理由都是「AI 走这条路也要有」:
+ *   · **删的那一串副作用** —— 级联名单、三相位删除、AI todo 跟着走、把这条会话在这个
+ *     进程里的活收干净(`releaseServedSession`)。它们从前住在 `rpc/domains/sessions.ts`
+ *     的 `delete` 处理器里,于是「删会话」在仓库里只有界面那一条路。
+ *   · **一张自述自己的表**:哪几种权限档位合法(`SESSION_PERMISSION_MODES`)。域从前
+ *     把那三个字面量抄在自己的处理器里。
+ *
+ * **本单没搬的那一格,写清楚**:`sessionDeletion.delete` 的第三个参数是「删到一半再
+ * 验一次归属」的回调,而归属是**调用方身份**(`ownerUid` / `workspaceId`),资源面的
+ * `Invocation` 上没有这一格 —— 与 `updateWorkingDirectory` 的沙箱夹持留在域适配器是
+ * 同一条过渡理由。所以这里递的是一只不作声的回调,归属校验由 RPC 边界**前置**做掉;
+ * 目标集合有没有中途变过那一半(`ports.targets` 比对)一个字没动,它不依赖调用方。
  */
 
 import fs from 'node:fs/promises'
@@ -78,26 +99,39 @@ import type { PlanContext, Result, RunContext } from '@onething/core/toolkit'
 import { Intent, textResult } from '@onething/core/toolkit'
 import type { Principal } from '@onething/core/permission'
 import { SESSION_EVENT_TYPES, emitCoreSessionEventSafely } from '@onething/core/events'
-import { sessionResourceSpec } from '@onething/runtime/sessions/resource-spec'
+import { collectSessionCascadeDeleteIds } from '@onething/core/session'
 import {
+  SESSION_COLLECTION_PATH,
+  SESSION_PERMISSION_MODES,
+  sessionResourceSpec,
+} from '@onething/runtime/sessions/resource-spec'
+import {
+  addOnethingSystemMessageForIpc,
+  deleteOnethingSessionForIpc,
   normalizeOnethingSessionTokenUsage,
   renameOnethingSessionForIpc,
   removeOnethingMessageForIpc,
+  removeOnethingSystemMarkerMessageForIpc,
   sanitizeOnethingMessagesForRenderer,
   sanitizeOnethingSessionForRenderer,
   updateOnethingSessionAgent,
   updateOnethingSessionArchivedForIpc,
   updateOnethingSessionModel,
+  updateOnethingSessionPermissionMode,
   updateOnethingSessionPinForIpc,
 } from '@onething/runtime/sessions'
 import { updateOnethingSessionWorkingDirectory } from '@onething/runtime/sessions/working-directory'
+import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
 import type { ChatMessage, GetSessionMessagesPageRequest } from '@shared/ipc.js'
 import * as store from '../../store.js'
 import { sessionCommands } from '../../session/commands.js'
+import { sessionDeletion } from '../../session/deletion.js'
 import { sessionReads } from '../../session/reads.js'
-import { getEventBus } from '../../events/index.js'
+import { getEventBus, getStreamChannel } from '../../events/index.js'
 import { DEFAULT_AGENT_ID, agentExists } from '../agents/index.js'
 import { consolePort, getLogger } from '../logging/index.js'
+import { Permission } from '../permission/index.js'
+import { deleteSessionAiTodo } from '../todo-plan/store.js'
 import { workdirGateway } from '../variables/gateways.js'
 import { readSessionSegments } from '../toc/index.js'
 
@@ -141,6 +175,24 @@ export class SessionRefRequiredError extends Error {
   }
 }
 
+/**
+ * 拿一条会话的地址去问集合级的那条读法(或反过来)。
+ *
+ * 具名而不是复用上面那只:两句话说的不是同一件事,而调用方(壳 / 模型 / CLI)看到
+ * 「需要一个会话地址」与「需要那个集合坐标」时该改的东西完全不同。
+ */
+export class SessionCollectionRefRequiredError extends Error {
+  constructor(member: string) {
+    super(`${member} needs the collection address "${sessionResourceSpec.scheme}:${SESSION_COLLECTION_PATH}"`)
+    this.name = 'SessionCollectionRefRequiredError'
+  }
+}
+
+/** 这次删的是哪一条:一个消息 id,还是「那种标记的那一条」。 */
+export type SessionMessageTarget =
+  | { readonly kind: 'message'; readonly messageId: string }
+  | { readonly kind: 'marker'; readonly marker: string }
+
 /** `plan` 交给 `apply` 的载荷:已经解析好的目标与参数。 */
 export type SessionOpPayload =
   | { readonly op: 'rename'; readonly sessionId: string; readonly title: string }
@@ -154,7 +206,10 @@ export type SessionOpPayload =
     }
   | { readonly op: 'setModel'; readonly sessionId: string; readonly provider: string; readonly model: string }
   | { readonly op: 'setAgent'; readonly sessionId: string; readonly agentId?: string }
-  | { readonly op: 'removeMessage'; readonly sessionId: string; readonly messageId: string }
+  | { readonly op: 'removeMessage'; readonly sessionId: string; readonly target: SessionMessageTarget }
+  | { readonly op: 'delete'; readonly sessionId: string }
+  | { readonly op: 'setPermissionMode'; readonly sessionId: string; readonly permissionMode: string }
+  | { readonly op: 'appendSystemMessage'; readonly sessionId: string; readonly message: ChatMessage }
 
 /**
  * 分页那本册子说不(游标解不开、锚点不在那条会话里)。
@@ -247,6 +302,29 @@ function booleanParam(params: unknown, key: string, member: string): boolean {
   return value
 }
 
+function objectParam(params: unknown, key: string, member: string): Record<string, unknown> {
+  const value = params && typeof params === 'object' ? (params as Record<string, unknown>)[key] : undefined
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError(`${member} needs an object ${key}`)
+  }
+  return value as Record<string, unknown>
+}
+
+/**
+ * `removeMessage` 的两格二选一(K2c-3)。
+ *
+ * 判据写在这里而不是在 schema 里:JSON Schema 表达得出 `oneOf`,但那份 schema 同时是
+ * 模型看到的工具入参契约,而 `oneOf` 嵌在一条做法的 `params` 里会让整只 `session` 工具
+ * 的入参从「一层可辨识联合」变成两层 —— 换来的只是把这四行挪个地方。
+ */
+function messageTargetOf(params: unknown, member: string): SessionMessageTarget {
+  const marker = optionalStringParam(params, 'marker')
+  const messageId = optionalStringParam(params, 'messageId')
+  if (marker && messageId) throw new TypeError(`${member} takes either a messageId or a marker, not both`)
+  if (marker) return { kind: 'marker', marker }
+  return { kind: 'message', messageId: stringParam(params, 'messageId', member) }
+}
+
 function optionalStringParam(params: unknown, key: string): string | undefined {
   const value = params && typeof params === 'object' ? (params as Record<string, unknown>)[key] : undefined
   return typeof value === 'string' ? value : undefined
@@ -262,6 +340,35 @@ function settle(result: { success: boolean; error?: string }, fallback: string):
   if (!result.success) throw new SessionOpRefusedError(result.error ?? fallback)
 }
 
+/**
+ * 删会话时,把这条会话在**这个进程里**的「活」收干净 —— 清权限询问、拆掉它的事件
+ * 与流通道。K2c-3 从 `rpc/domains/sessions.ts` 逐字搬上来(那三步连同它的判据都没改)。
+ *
+ * 它必须住在这里的理由与 `rename` 那一发广播逐字相同:AI / CLI / 调度删一条会话与
+ * 界面删是同一件事,而从前只有界面那一条路会收尾 —— 留下的是一条对着已删会话还在
+ * 派事件的通道。
+ *
+ * 三步各自带守卫(没有 pending 就不清,通道不在就不拆),所以一条没有任何进程内活计
+ * 的会话上整段是 no-op。中止活流不在这里:它排在物理删除之前,由删除层自己的
+ * `abortAndDrain` 端口做(`session/deletion.ts` 的三相位)。
+ */
+function releaseServedSession(sessionId: string): void {
+  Permission.clearSession(sessionId)
+  getEventBus().destroySession(sessionId)
+  getStreamChannel().destroySession(sessionId)
+}
+
+/**
+ * 「删到一半再验一次归属」那一格今天是空的。
+ *
+ * 具名的常量而不是一个匿名 `() => {}`:它是一处**留账**,不是一句省略。归属是调用方
+ * 身份(`ownerUid` / `workspaceId`),而资源面的 `Invocation` 上只有 `Principal`;
+ * 归属校验因此由 RPC 边界**前置**做掉(`rpc/domains/sessions.ts` 的 `delete`)。
+ * 删除层自己那一半 —— 「目标集合中途变过没有」—— 一个字没动,它不依赖调用方。
+ * per-caller 的归属进 `Invocation` 之后,这一格换成真的那一句。
+ */
+const CALLER_AUTHORIZATION_IS_PRE_CHECKED = (): void => {}
+
 export class SessionResourceProvider implements ResourceProvider<SessionOpPayload> {
   readonly spec = sessionResourceSpec
 
@@ -272,6 +379,11 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
   }
 
   async read(name: string, ref: ResourceRef | null, query: unknown, ctx: ResourceReadContext): Promise<unknown> {
+    // 集合级的那一条先分出去:它的地址是保留坐标,不是一条会话(K2c-3)。
+    if (name === 'list') {
+      if (!ref || ref.path !== SESSION_COLLECTION_PATH) throw new SessionCollectionRefRequiredError(name)
+      return this.list(query)
+    }
     const sessionId = requireSessionId(ref, name)
     switch (name) {
       case 'get':
@@ -305,10 +417,40 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
   ): Promise<Intent<SessionOpPayload>> {
     const sessionId = requireSessionId(ref, op)
     // 存在性在 plan 期就判:一次注定改不动的做法不该走到 apply 才发现目标不在。
-    if (!sessionReads.hasSessionInStore(sessionId)) throw new SessionNotFoundError(sessionId)
+    //
+    // **`delete` 例外,而且是有意的**:删一条已经不在的会话在域那条老路上是一次成功
+    // 的空删(`deletedCount: 0`),不是一次失败 —— 删是幂等的,壳上连点两下删除、或者
+    // 两扇窗同时删同一条,不该第二下报「查无此会话」。本单的硬约束是契约一字不改,
+    // 所以这一条按老路的答案办。
+    if (op !== 'delete' && !sessionReads.hasSessionInStore(sessionId)) throw new SessionNotFoundError(sessionId)
 
     const plan = (payload: SessionOpPayload, title: string): Intent<SessionOpPayload> =>
       planFromSpec<SessionOpPayload>(this.spec, op, ref, payload, { title })
+
+    /**
+     * **同一条做法,效果按主体分档**(K3-a' 立的形,K2c-3 起有四条做法用它)。
+     *
+     * 自述里那条 `effects` 是**上界**——「这条做法最多会做到什么」。真发给授权者的
+     * 这一条按谁在做分档:
+     *
+     *   · `user` —— 界面上那个按钮。主体本来就拥有这条会话,人刚按下的那一次不该再问
+     *     一遍人;弹卡在这里是噪音,不是保护(08-18「弹卡是噪音」判例)。零效果**不等于
+     *     不留痕迹**:照样落 `tool/audit`、照样发事件。
+     *   · 其余(`agent` / `system`,以及经它们进来的插件)—— 顶格,按策略表问。
+     *
+     * ## 为什么分档在 provider 的 `plan` 里,而不是动权限核
+     *
+     * 因为「按主体分叉」在权限核里是另一片地:`decidePermission` 至今不读主体,而让它
+     * 开始读主体 = 凭证级主体那一片(09-03 用户搁置,`docs/audit/
+     * backend-architecture-review-2026-09-02.md`),不是一次接线单能拍的。而在这里它
+     * 不是一条新规则:`plan` 的整个职责就是「说清楚这一次将要做什么」,而这一次将要
+     * 做什么本来就取决于谁在做 —— 与「读一个越界路径要报 `external_directory` 而不是
+     * `read`」是同一种按现场分档,`planFromSpec` 的注释写着它自己不做这种判断。
+     */
+    const planByPrincipal = (payload: SessionOpPayload, title: string): Intent<SessionOpPayload> =>
+      ctx.principal.kind === 'user'
+        ? Intent.of({ effects: [], payload, preview: { title } })
+        : plan(payload, title)
 
     switch (op) {
       case 'rename': {
@@ -344,35 +486,34 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
         )
       }
       /**
-       * **同一条做法,效果按主体分档**(K3-a')。
-       *
-       * 自述里 `removeMessage.effects` 是 `['session_destructive']` —— 那是**上界**,
-       * 「这条做法最多会做到什么」。真发给授权者的这一条按谁在做分档:
-       *
-       *   · `user` —— 界面上那个删除按钮。主体本来就拥有这条会话与这条消息,人刚
-       *     按下的那一次不该再问一遍人;弹卡在这里是噪音,不是保护(08-18
-       *     「弹卡是噪音」判例)。零效果**不等于
-       *     不留痕迹**:照样落 `tool/audit`、照样发 `messageRemoved`。
-       *   · 其余(`agent` / `system`,以及经它们进来的插件)—— 顶格,`ask`。K3-a 把
-       *     资源工具放进了工具目录,模型从此拿得到这只 `session` 工具;不分这一档,
-       *     它可以不问一声删掉一条消息。
-       *
-       * ## 为什么分档在 provider 的 `plan` 里,而不是动权限核
-       *
-       * 因为「按主体分叉」在权限核里是另一片地:`decidePermission` 至今不读主体,
-       * 而让它开始读主体 = 凭证级主体那一片(09-03 用户搁置,`docs/audit/
-       * backend-architecture-review-2026-09-02.md`),不是一次接线单能拍的。
-       * 而在这里它不是一条新规则:`plan` 的整个职责就是「说清楚这一次将要做什么」,
-       * 而这一次将要做什么本来就取决于谁在做 —— 与「读一个越界路径要报
-       * `external_directory` 而不是 `read`」是同一种按现场分档,`planFromSpec` 的
-       * 注释写着它自己不做这种判断。
+       * 删一条消息 —— **一条做法,两种指法**(K2c-3):一个消息 id,或者「那种标记
+       * 的那一条」(`/files` / git 状态往会话里补的系统消息)。两格二选一,两格都给
+       * 或都不给都是一次说不清楚的请求,当场拒。
        */
       case 'removeMessage': {
-        const messageId = stringParam(params, 'messageId', op)
-        const payload = { op, sessionId, messageId } as const
-        const preview = { title: `Remove message ${messageId}` }
-        if (ctx.principal.kind === 'user') return Intent.of({ effects: [], payload, preview })
-        return plan(payload, preview.title)
+        const target = messageTargetOf(params, op)
+        const payload = { op, sessionId, target } as const
+        return planByPrincipal(
+          payload,
+          target.kind === 'message'
+            ? `Remove message ${target.messageId}`
+            : `Remove the ${target.marker} marker message`,
+        )
+      }
+      /**
+       * 删整条会话。级联到哪几条**不在 plan 期算** —— 那是删除层自己要在开工的那一刻
+       * 重算并比对的东西(`session/deletion.ts` 的 `verify`:目标集合中途变过就拒),
+       * 在这里先算一遍只会多出一份会过期的名单。
+       */
+      case 'delete':
+        return planByPrincipal({ op, sessionId }, 'Delete the session and its branches')
+      case 'setPermissionMode': {
+        const permissionMode = stringParam(params, 'permissionMode', op)
+        return planByPrincipal({ op, sessionId, permissionMode }, `Switch permission mode to ${permissionMode}`)
+      }
+      case 'appendSystemMessage': {
+        const message = objectParam(params, 'message', op) as unknown as ChatMessage
+        return planByPrincipal({ op, sessionId, message }, 'Append a system message')
       }
       default:
         throw new TypeError(`Session resource has no op named ${JSON.stringify(op)}`)
@@ -486,17 +627,114 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
         return textResult(`Session is now bound to ${bound}`)
       }
       case 'removeMessage': {
+        if (payload.target.kind === 'message') {
+          const { messageId } = payload.target
+          settle(
+            await removeOnethingMessageForIpc({
+              sessionId: payload.sessionId,
+              messageId,
+              deleteMessage: (id, nextMessageId) => sessionCommands.deleteMessage(id, { messageId: nextMessageId }),
+              logger: consoleLog,
+            }),
+            'Failed to remove message',
+          )
+          this.emit(payload.sessionId, 'messageRemoved', { messageId })
+          // 回执里那一格是**删掉了哪一条** —— 两种指法交出同一种形状,于是域折信封时
+          // 不必知道这次是按 id 还是按标记(`RemoveSystemMarkerMessageResponse.removedId`)。
+          return textResult(`Removed message ${messageId}`, { removedId: messageId })
+        }
+        // 按标记删:规则书(找不到 = 成功且没删到)在 `removeOnethingSystemMarkerMessage`
+        // 里,与域从前递的端口逐字相同 —— 存在性问的仍然是 `store.getSession`。
+        const removed = await removeOnethingSystemMarkerMessageForIpc({
+          sessionId: payload.sessionId,
+          markerType: payload.target.marker,
+          getSession: id => store.getSession(id),
+          deleteMessage: (id, messageId) => sessionCommands.deleteMessage(id, { messageId }),
+          logger: consoleLog,
+        })
+        settle(removed, 'Failed to remove message')
+        const removedId = removed.success ? removed.removedId ?? null : null
+        // 本来就没有那条标记 = 没删掉任何东西 = **不发事件**。
+        if (removedId) this.emit(payload.sessionId, 'messageRemoved', { messageId: removedId })
+        return textResult(
+          removedId
+            ? `Removed the ${payload.target.marker} marker message`
+            : `No ${payload.target.marker} marker message to remove`,
+          { removedId },
+        )
+      }
+      /**
+       * 删整条会话 —— **域从前那一串副作用逐字搬上来**(K2c-3),顺序一步没换:
+       * 三相位删除(中止活流 → 落盘 flush → 封存 → 物理删)→ AI todo 跟着走 →
+       * 把每一条在这个进程里的活收干净 → 请求里那一条再清一次询问。
+       *
+       * 最后那一次 `Permission.clearSession` 是原文里就有的:级联名单里没有请求那一条
+       * 的时候(删除层交白卷)它才有意义,逐字保留。
+       */
+      case 'delete': {
+        let cascadedSessionIds: string[] = []
+        const done = await deleteOnethingSessionForIpc({
+          sessionId: payload.sessionId,
+          deleteSession: async (id) => {
+            const result = await sessionDeletion.delete(
+              id,
+              collectSessionCascadeDeleteIds(store.getSessionsList(), id),
+              CALLER_AUTHORIZATION_IS_PRE_CHECKED,
+            )
+            cascadedSessionIds = [...result.deletedIds]
+            // AI todo 按会话 id 记账,所以它跟着会话走 —— 级联到的每一条都算。
+            for (const deletedId of result.deletedIds) {
+              deleteSessionAiTodo(deletedId).catch(error => {
+                log.error('delete session AI todo failed', { sessionId: deletedId }, error)
+              })
+            }
+            const teardownIds = result.deletedIds.length ? result.deletedIds : [id]
+            for (const deletedId of teardownIds) releaseServedSession(deletedId)
+            Permission.clearSession(id)
+            return result
+          },
+          logger: consoleLog,
+        })
+        settle(done, 'Failed to delete session')
+        this.emit(payload.sessionId, 'deleted', { cascadedSessionIds })
+        return textResult(
+          `Deleted ${cascadedSessionIds.length || 1} session(s)`,
+          {
+            deletedCount: done.success ? done.deletedCount : 0,
+            ...(done.success && done.parentSessionId ? { parentSessionId: done.parentSessionId } : {}),
+          },
+        )
+      }
+      case 'setPermissionMode': {
+        // 「哪几档合法」那张表在自述里(`SESSION_PERMISSION_MODES`),判定与文案
+        // (`Invalid permission mode` / `Session not found`)在运行时那本规则书里 ——
+        // 这里只递形状,与域从前那几行逐字同义。
         settle(
-          await removeOnethingMessageForIpc({
+          await updateOnethingSessionPermissionMode({
             sessionId: payload.sessionId,
-            messageId: payload.messageId,
-            deleteMessage: (id, messageId) => sessionCommands.deleteMessage(id, { messageId }),
+            permissionMode: payload.permissionMode,
+            allowedPermissionModes: [...SESSION_PERMISSION_MODES],
+            updateSessionPermissionMode: (id, next) => store.updateSessionPermissionMode(id, next as never),
+          }),
+          'Failed to update the session permission mode',
+        )
+        this.emit(payload.sessionId, 'permissionModeChanged', { permissionMode: payload.permissionMode })
+        return textResult(`Session now asks in ${payload.permissionMode} mode`)
+      }
+      case 'appendSystemMessage': {
+        // `stampCollab: true` 是域那一路带着的 —— 一条补进会话的系统消息在群房里也要
+        // 有发言人。摘掉它就是改行为。
+        settle(
+          await addOnethingSystemMessageForIpc({
+            sessionId: payload.sessionId,
+            message: payload.message,
+            addMessage: (id, message) => sessionCommands.appendMessage(id, { message, stampCollab: true }),
             logger: consoleLog,
           }),
-          'Failed to remove message',
+          'Failed to add message',
         )
-        this.emit(payload.sessionId, 'messageRemoved', { messageId: payload.messageId })
-        return textResult(`Removed message ${payload.messageId}`)
+        this.emit(payload.sessionId, 'systemMessageAppended', { messageId: payload.message.id })
+        return textResult('Appended a system message')
       }
       default:
         // 类型上到不了(payload 是判别联合),运行时留一句 —— `apply` 是公开方法。
@@ -506,6 +744,37 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
 
   private emit(sessionId: string, event: string, payload: unknown): void {
     this.hub?.emit({ scheme: this.spec.scheme, path: sessionId }, event, payload)
+  }
+
+  /**
+   * 有哪些会话(K2c-3)。
+   *
+   * 与别的读法同一条纪律:**采用域今天那一只端口**(`store.getSessionsList()`),
+   * 索引里有什么就交出什么 —— 域那一层从来没有投影,在这里长出一层挑字段的投影就是
+   * 让 `isPinned` / `kind` / `lastMessagePreview` 悄悄消失的那条路。
+   *
+   * 两格过滤各自的判据:
+   *   · `workspaceId` —— 产品空间。它与调用方是谁无关,所以留在这里;缺席不过滤,
+   *     空串是一次写错的请求(文案与 `session/queries.ts` 那句逐字相同,那是它今天
+   *     的产地)。老会话没有这一格,按缺省空间算 —— 与域那一路同一条规矩。
+   *   · `includeArchived` —— 缺席 = 不过滤。
+   *
+   * **不做归属过滤**:理由写在自述那一格上(资源面还没有 per-caller 的归属),
+   * RPC 那条路仍然在域适配器里按调用方过滤。
+   */
+  private list(query: unknown): unknown {
+    const raw = (query ?? {}) as Record<string, unknown>
+    const workspaceId = raw.workspaceId
+    if (workspaceId !== undefined && (typeof workspaceId !== 'string' || !workspaceId)) {
+      throw new TypeError('workspaceId must be a nonempty string')
+    }
+    let sessions: readonly Record<string, unknown>[] =
+      store.getSessionsList() as unknown as Record<string, unknown>[]
+    if (workspaceId !== undefined) {
+      sessions = sessions.filter(meta => (meta.workspaceId ?? DEFAULT_SPACE_ID) === workspaceId)
+    }
+    if (raw.includeArchived === false) sessions = sessions.filter(meta => meta.isArchived !== true)
+    return { sessions }
   }
 
   /**
