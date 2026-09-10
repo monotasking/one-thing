@@ -44,8 +44,14 @@ const centerTabs = (out: unknown) =>
 const hiddenOf = (out: unknown) => (out as ReturnType<typeof v3>).byWorkspace.default.hidden
 
 describe('v4:`files-root` → `dir`', () => {
-  it('版本号就是 4(改这个数必须在 migrate 里加一段)', () => {
-    expect(WORKBENCH_PERSIST_VERSION).toBe(4)
+  /*
+   * 这一行是**今天的版本号**,每加一级迁移就跟着改一次 —— 它守的正是
+   * `WORKBENCH_PERSIST_VERSION` 上那句「改这个数就必须在 migrate 里加一段」:
+   * 改数而不加段的话,改这一行的人会先撞见 `migrateWorkbenchPersisted` 里没有
+   * 对应的那一句。今天是 5(C3 的 `sessionCompanions`,用例在 `companions.test.ts`)。
+   */
+  it('版本号与 migrate 里的级数同生共死(今天是 5)', () => {
+    expect(WORKBENCH_PERSIST_VERSION).toBe(5)
   })
 
   it('tab 与 hidden 两处都翻,**key 一个字不动**', () => {
@@ -71,13 +77,15 @@ describe('v4:`files-root` → `dir`', () => {
             [CENTER_REGION]: { kind: 'leaf', id: 'L1', tabs: [{ kind: 'dir', key: '/x' }], active: 0 },
           },
           hidden: [],
+          // C3:v5 起这一格也是「今天这一形」的一部分,少了它就该被补上(那不是恒等)。
+          sessionCompanions: {},
         },
       },
     }
     expect(migrateWorkbenchPersisted(clean, V3)).toBe(clean)
   })
 
-  it('已经是 v4 的档案根本不过这一遍(版本闸)', () => {
+  it('已经是今天版本的档案根本不过这一遍(版本闸)', () => {
     const stale = v3()
     expect(migrateWorkbenchPersisted(stale, WORKBENCH_PERSIST_VERSION)).toBe(stale)
   })

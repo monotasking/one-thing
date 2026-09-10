@@ -997,6 +997,13 @@ export const zh = {
    * 这一句给读屏软件听);`tabKeep` 是右键表里那一行「转正」。 */
   'workbench.tabPreview': '预览',
   'workbench.tabKeep': '保留',
+  /* 钉住那一行(C3,设计 §3.4)。一个开关两句话,同一行轮流说 —— 判词在
+   * `LeafActions` 的 `isCompanion` 那一格上。播报是**落定**的一部分,
+   * 所以「已钉住 / 已取消钉住」跟着动作走,不是菜单的装饰。 */
+  'workbench.tabPin': '钉住(不随会话收放)',
+  'workbench.tabUnpin': '取消钉住',
+  'workbench.tabPinned': '已钉住 —— 换会话时它留在原处',
+  'workbench.tabUnpinned': '已取消钉住 —— 它跟着会话收放',
   'workbench.pairRight': '与右边的标签二合一',
   'workbench.pairLeft': '与左边的标签二合一',
   'workbench.unpair': '拆开',

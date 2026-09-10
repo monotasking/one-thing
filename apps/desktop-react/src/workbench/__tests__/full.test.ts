@@ -143,7 +143,14 @@ describe('③ 它是瞬态:不进家具账、不落盘、reset 归零', () => {
     st().openRef(doc('a'))
     st().toggleFull()
     const furniture = WORKBENCH_PER_SPACE.pick(st())
-    expect(Object.keys(furniture).sort()).toEqual(['hidden', 'pairRatios', 'recentRoots', 'regions'])
+    expect(Object.keys(furniture).sort()).toEqual([
+      'hidden',
+      'pairRatios',
+      'recentRoots',
+      'regions',
+      // C3:伴随面的账是家具(判词在 `WorkbenchFurniture.sessionCompanions` 上)。
+      'sessionCompanions',
+    ])
     expect('full' in furniture).toBe(false)
   })
 

@@ -335,7 +335,14 @@ describe('per-space:换装的次序即语义', () => {
     useWorkbenchStore.getState().openInPanel('/repo/a.ts')
     useWorkbenchStore.getState().setFocusLeaf('L-whatever')
     const picked = WORKBENCH_PER_SPACE.pick(useWorkbenchStore.getState())
-    expect(Object.keys(picked).sort()).toEqual(['hidden', 'pairRatios', 'recentRoots', 'regions'])
+    expect(Object.keys(picked).sort()).toEqual([
+      'hidden',
+      'pairRatios',
+      'recentRoots',
+      'regions',
+      // C3:伴随面的账是家具 —— 判词在 `WorkbenchFurniture.sessionCompanions` 上。
+      'sessionCompanions',
+    ])
   })
 })
 

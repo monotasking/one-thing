@@ -549,6 +549,26 @@ export function onSessionsRemoved(listener: SessionsRemovedListener): () => void
   return () => removedListeners.delete(listener)
 }
 
+const deletedListeners = new Set<SessionsRemovedListener>()
+
+/**
+ * 订阅「有会话**真的被删了**」(C3)。返回退订函数。
+ *
+ * ── 它为什么不是 `onSessionsRemoved` 的一个用法 ──────────────────────────
+ * 上面那条把「被删」与「离开这个工作区」**说成同一句话**,而且那是对的:对形态机
+ * 而言两者一模一样(那张卡不在序列里了)。但对**按工作区各持一份的账**而言它们
+ * 是相反的两件事 —— 换工作区那一拍,`bindPerSpace` 正把那本账**收进** `byWorkspace`
+ * 留着切回来用,而这条通知如果也到,收进去的那一份会当场被清空:切回去伴随面全没了。
+ *
+ * 所以这一条只从 `onLifecycle`(`deleted` 那一支)发,`onSpaceChanged` **不发**。
+ * 两条通知面各说各的一句话,这正是那句「多一条通知面就多一个会跟它走散的规则」
+ * 的反面用法:它们本来就不是一句话,合并才是走散的开始。
+ */
+export function onSessionsDeleted(listener: SessionsRemovedListener): () => void {
+  deletedListeners.add(listener)
+  return () => deletedListeners.delete(listener)
+}
+
 /**
  * 一条会话的三份按需缓存一起丢掉(`drop` 对没建过的键是恒等变换,
  * 所以级联名单里那些从来没人问过的 id 不会在这里各建一格)。
@@ -875,6 +895,8 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
     // 否则「焦点退到新序列首」会退到一张马上就要消失的卡上。
     // 哪怕这一条对我们是恒等变换也照发 —— 屏幕上可能正开着它的 Quick Look。
     for (const listener of removedListeners) listener([...gone])
+    // 「真的被删」那一条只在这里发(判词在 `onSessionsDeleted` 上)。
+    for (const listener of deletedListeners) listener([...gone])
   }
 
   /**

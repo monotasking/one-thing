@@ -13,8 +13,24 @@ import {
   sameRef,
 } from './kinds'
 import { nextLeafId, nextSplitId } from './ids'
-import { foldRegionsInPersisted, rewriteRefsInPersisted } from './persist-migrate'
+import {
+  defaultFurnitureFieldInPersisted,
+  foldRegionsInPersisted,
+  rewriteRefsInPersisted,
+} from './persist-migrate'
 import { CENTER_REGION } from './regions'
+import {
+  companionSeatsIn,
+  EMPTY_COMPANION_RECORD,
+  inheritedCompanionSeats,
+  normalizeCompanionLedger,
+  withCompanionRecord,
+  withCompanionSeats,
+  withoutCompanionRecords,
+  withoutCompanionSeats,
+} from './companions'
+import type { CompanionLedger } from './companions'
+import type { CompanionEnv } from './kinds'
 /*
  * **这一句是这只文件里唯一一条指向内容层的边,而且它一个种类名都读不到**:
  * 翻译表住在内容层(`content/legacy-refs.ts` —— 种类名的地盘),走档案那一遍
@@ -121,6 +137,26 @@ export interface WorkbenchFurniture {
    * 里翻过哪些目录是这个空间的事)。
    */
   recentRoots: string[]
+  /**
+   * **每条会话的伴随面记录**(C3,设计 `session-continuity-2026-09.md` §3.2)。
+   *
+   * 键 = 会话 id;值 = 「它离场时挂着哪几格目录 / 文件、各在哪、最后看的是哪一格」。
+   * 判词、形状与那几件纯函数在 `./companions.ts` 上。
+   *
+   * ── 它为什么是**家具**,而且**落盘** ────────────────────────────────────
+   * `per-space.ts` 那句判据「它是不是**用户在这个空间里摆好的东西**」对它答的是
+   * **是**:「我在甲会话里翻着那棵目录树、停在那个文件上」正是他摆出来的东西,
+   * 而用户报的原话就是「切回去还能回到我看到哪个文件」——那句话跨一次重启同样成立
+   * (与预览格那一格恰好相反:那一格的语义是「随手翻翻」,所以 `pick` 把它剥掉)。
+   * 于是它与 `regions` 同一本账、同一次换装:换工作区 = 伴随面连同记录一起收放,
+   * 与 dock-scope 的「全局瓦携带」互不相干(设计 §3.4 末条)。
+   *
+   * ── 「没有这一格」与「记着一张空表」是两句话 ──────────────────────────
+   * 前者 = 这条会话**从来没被收过**,进场时按**种类**继承(§3.3);
+   * 后者 = 它上次离场时伴随面被关光了,进场时**什么都不开**(§3.4「关掉一格
+   * 伴随面 = 切回来不会再冒出来」)。所以收那一下即使一格都没收到也照写一条空记录。
+   */
+  sessionCompanions: CompanionLedger
 }
 
 export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
@@ -128,6 +164,7 @@ export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
   hidden: HiddenEntry[]
   pairRatios: Record<ContentRefId, number>
   recentRoots: string[]
+  sessionCompanions: CompanionLedger
   /**
    * 焦点叶 —— 「新标签开在哪一片」的答案。**瞬态**(不落盘):它是「此刻在哪」,
    * 不是「摆好的东西」,与 stage 摘掉舞台那条 placement 同一条判据。
@@ -258,6 +295,39 @@ export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
   unpairAt(leafId: string, index: number): void
   /** 两格标签里那条分隔杆落定。`ratio` = 左格占的百分比,钳在 20–80。 */
   setPairRatio(id: ContentRefId, ratio: number): void
+  /**
+   * **钉住 / 取消钉住这片叶的第 `index` 格**(C3,设计 §3.4)。
+   *
+   * 钉住的格**不算伴随面**,于是它不随会话收放 —— 并排两片叶时右叶想常看自己的
+   * 目录,把那格钉住就行。判据本体是纯函数 `tree.setPinnedAt`(标记为什么记
+   * `refId`、为什么搬走就不钉了,整段写在 `PaneLeafNode.pinned` 上);这里只
+   * 负责一次 `set`,而且**这一下什么都没换时不写**(引用恒等)。
+   */
+  setTabPinned(leafId: string, index: number, on: boolean): void
+  /**
+   * **切会话那一拍:离场收、进场放**(C3,设计 §3.3)。全壳唯一一只。
+   *
+   * 收 = 把树上所有**没被钉住**的伴随面连坐标记进 `sessionCompanions[from]`
+   * (一格都没收到也照记一条空的 —— 那与「从来没记过」不是一句话),再从树上摘掉;
+   * 放 = `to` 有记录就逐格放回原区域原位次并点亮记着的那一格,没记录就**继承种类
+   * 不继承内容**(离场开着目录 → 给它开一格**它自己 workdir** 的目录;文件不继承;
+   * 没 workdir 就什么都不开)。**焦点一个字不动。**
+   *
+   * `env` 由发起那一拍注入(`content/session-companions.ts` 从会话名册上取)——
+   * 「那条会话的工作目录是什么」这件事住在数据源那一侧,与 `sweepRefs(alive)`
+   * 逐字同一条理由。
+   *
+   * 幂等:`from === to` 空动作;一格都没动、账也逐字没变时**引用恒等**(不 set)。
+   */
+  swapCompanions(from: string, to: string, env: CompanionEnv): void
+  /**
+   * **这几条会话没了 —— 记录一起没**(设计 §3.4)。一条都没删到时引用恒等。
+   *
+   * 接的是「**真的被删**」那条接缝,不是「离开这个工作区」:后者只是把家具连同
+   * 这张账一起收进 `byWorkspace`,切回去还要原样摊开(判词在
+   * `data/sessions-source.onSessionsDeleted` 上)。
+   */
+  forgetCompanions(sessionIds: readonly string[]): void
   /** 记一条「最近打开过的目录」。已经在表上的提到最前;最多留 20 条。 */
   rememberRoot(path: string): void
   setFocusLeaf(leafId: string): void
@@ -357,6 +427,7 @@ function factoryFurniture(): WorkbenchFurniture {
     hidden: [],
     pairRatios: {},
     recentRoots: [],
+    sessionCompanions: {},
   }
 }
 
@@ -390,6 +461,13 @@ export const WORKBENCH_PER_SPACE: PerSpaceSpec<WorkbenchState, WorkbenchFurnitur
     hidden: s.hidden,
     pairRatios: s.pairRatios,
     recentRoots: s.recentRoots,
+    /*
+     * **伴随面的账进家具**(C3)。它与上面那一句 `strippedRegions` 恰好是同一条
+     * 判据的两个答案:预览格是「随手翻翻」所以剥掉,而「我在那条会话里翻着哪棵
+     * 目录树」是用户摆好的东西,该活过一次重启与一次换工作区。判词在
+     * `WorkbenchFurniture.sessionCompanions` 上。
+     */
+    sessionCompanions: s.sessionCompanions,
   }),
   factory: factoryFurniture,
 }
@@ -768,9 +846,10 @@ export function fullStillStands(
  * v2 = **W5-b 会话多开**:`chat` 改名 `session`,`key` 从死的 `main` 换成会话 id;
  * v3 = **W6-a 单叶 + 预览退役**:中央区那棵树折成一片叶,`preview` 那一格抹掉;
  * v4 = **K2b-1 地址合一**:目录那一种 `files-root` 改名 `dir`
- *      (`docs/design/atom-2026-09.md` §7 盲点 2)。
+ *      (`docs/design/atom-2026-09.md` §7 盲点 2);
+ * v5 = **C3 伴随面**:每个空间多一格 `sessionCompanions`(老档案没有这一格 → 空表)。
  */
-export const WORKBENCH_PERSIST_VERSION = 4
+export const WORKBENCH_PERSIST_VERSION = 5
 
 /**
  * **每一级串着跑**(v1 的档案要先翻名字、再折叶、再翻一次名字):按版本从低到高
@@ -790,6 +869,19 @@ export function migrateWorkbenchPersisted(persisted: unknown, version: number): 
   if (version < 2) out = rewriteRefsInPersisted(out, rewriteLegacyContentRef)
   if (version < 3) out = foldRegionsInPersisted(out, SINGLE_LEAF_REGIONS)
   if (version < 4) out = rewriteRefsInPersisted(out, rewriteLegacyContentRef)
+  /*
+   * v5(C3):**老档案没有伴随面这一格,给它一张空表**。
+   *
+   * 它不是「可以省掉的一步」—— 少了它,一份 v4 档案里每个空间那格家具的形状与
+   * 今天的 `WorkbenchFurniture` 差一个字段,而 `partialize` 下一次写盘会把这一格
+   * 补上。补是补得上,但补上去的时刻取决于「谁先写盘」,而迁移的价值恰恰是
+   * **让档案的形状与版本号说的是同一句话**(判例:v3 抹 `preview` 那一段)。
+   *
+   * 「空表」与「压根没有这一格」在**运行期**是同一件事(merge 那句
+   * `normalizeCompanionLedger` 对两者都答 `{}`),所以这一步是一次纯粹的形状对齐,
+   * 不改任何行为 —— 也正因为如此,它必须**幂等**且**引用恒等**(用例钉着两条)。
+   */
+  if (version < 5) out = defaultFurnitureFieldInPersisted(out, 'sessionCompanions', () => ({}))
   return out
 }
 
@@ -841,6 +933,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
               hidden: normalizeHidden(s.hidden),
               pairRatios: normalizePairRatios(regions, s.pairRatios),
               recentRoots: normalizeRecentRoots(s.recentRoots),
+              sessionCompanions: normalizeCompanionLedger(s.sessionCompanions),
             }
           }),
 
@@ -1219,6 +1312,89 @@ export const useWorkbenchStore = create<WorkbenchState>()(
             return { pairRatios: { ...s.pairRatios, [id]: next } }
           }),
 
+        setTabPinned: (leafId, index, on) => {
+          const s = get()
+          const region = regionOfLeaf(s.regions, leafId)
+          if (!region) return
+          const tree = s.regions[region]
+          if (!tree) return
+          const next = T.setPinnedAt(tree, leafId, index, on)
+          // 引用恒等 = 本来就是这个样子 / 下标越界 —— 不惊动订阅者。
+          if (next === tree) return
+          set({ regions: { ...s.regions, [region]: next } })
+        },
+
+        /*
+         * **一次 `set`,四步**(判词整段在 `WorkbenchState.swapCompanions` 与
+         * `./companions.ts` 上)。分几次写的话,中间那一拍屏幕上是「甲的目录已经
+         * 收走、乙的还没放回来」——而订阅者(投影 / 焦点跟随 / 顶栏标签组)看得见
+         * 那一帧,会把它读成「用户关掉了几格」。
+         *
+         * **不受拖拽那道闸管**:那道闸挡的是「拖拽期间别人改树形」,而这一下的
+         * 发起点是**环境会话换了**,指针被 capture 住的两秒里它不可能发生;反过来
+         * 被闸掉的那一次会让账与树当场对不上(收没收成,记录却写了),那比几何过期
+         * 严重得多。判词留在这里,不留在闸上。
+         */
+        swapCompanions: (from, to, env) => {
+          const s = get()
+          if (from === to) return
+
+          // ① 离场收(`from` 是空串 = 还没绑会话 —— 没有归属就没有可记的账,
+          //    那时**一格都不收**:摘掉一份没人认领的目录树是一次静默的丢失)。
+          const taken = from
+            ? companionSeatsIn(s.regions, s.focusLeafId)
+            : { seats: [], active: null }
+          const stripped = taken.seats.length > 0
+            ? pruneRegions(withoutCompanionSeats(s.regions, taken.seats))
+            : s.regions
+
+          // ② 进场放:有记录按记录,没记录按种类继承(`to` 是空串 = 什么都不放)。
+          const record = to ? s.sessionCompanions[to] : undefined
+          const incoming = to
+            ? (record ? record.seats : inheritedCompanionSeats(taken.seats, env))
+            : []
+          /*
+           * 继承那一路没有「最后看的是哪一格」可言 —— 它是新开出来的。取第一格
+           * 点亮,与「Dock 上点一下目录瓦」的落点一致(那一路也会把它点亮)。
+           */
+          const activeId = record
+            ? record.active
+            : (incoming[0] ? refId(incoming[0].ref) : null)
+          const regions = withCompanionSeats(stripped, incoming, activeId)
+
+          /*
+           * ③ 记账。两句,次序即语义:
+           *
+           *  · 记 `from`(一格都没收到也照写一条空的 —— 判词在 `sessionCompanions` 上);
+           *  · **`to` 那一条当场销掉**。这一句不是打扫,是**不变量**:一条记录只
+           *    描述**此刻不在场**的那条会话,在场的那条由**树**自己说。
+           *    留着它的下场是一次真的双份 —— 甲离场时记下目录 X,切回甲(X 放回来),
+           *    关掉 X 改开目录 Y,然后**退出应用**:树上落盘的是 Y,而账上那条
+           *    还写着 X。下次启动第一拍把 X 也放回来,屏幕上同时挂着 X 和 Y,
+           *    而用户只开过一棵。
+           */
+          let ledger = from
+            ? withCompanionRecord(
+              s.sessionCompanions,
+              from,
+              taken.seats.length === 0 && taken.active === null
+                ? EMPTY_COMPANION_RECORD
+                : { seats: taken.seats, active: taken.active },
+            )
+            : s.sessionCompanions
+          if (to) ledger = withoutCompanionRecords(ledger, [to])
+
+          // ④ 空表不动:树没动、账也逐字没变 → 一个字不写(不惊动任何订阅者)。
+          if (regions === s.regions && ledger === s.sessionCompanions) return
+          set({ regions, sessionCompanions: ledger, ...fullPatch(s, regions) })
+        },
+
+        forgetCompanions: (sessionIds) =>
+          set((s) => {
+            const next = withoutCompanionRecords(s.sessionCompanions, sessionIds)
+            return next === s.sessionCompanions ? s : { sessionCompanions: next }
+          }),
+
         rememberRoot: (path) =>
           set((s) => {
             if (!path) return s
@@ -1433,6 +1609,11 @@ export const useWorkbenchStore = create<WorkbenchState>()(
         merged.hidden = normalizeHiddenShape(merged.hidden ?? [])
         merged.pairRatios = normalizePairRatios(merged.regions, merged.pairRatios ?? {})
         merged.recentRoots = normalizeRecentRoots(merged.recentRoots)
+        /*
+         * **只洗形状,不问种类**(与上面几句同一条,C3):这一刻种类表必定是空的,
+         * 拿 `isCompanionRef` 去筛会把整张账清空 —— 那正是 W7-p 裁定 1 治的病。
+         */
+        merged.sessionCompanions = normalizeCompanionLedger(merged.sessionCompanions)
         // 瞬态那几格永远从零开始(它们不落盘,但 merge 收到的 current 里有)。
         merged.focusLeafId = null
         merged.panelPath = null

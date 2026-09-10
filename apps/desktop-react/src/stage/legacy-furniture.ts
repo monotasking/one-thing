@@ -146,6 +146,9 @@ export function foldLegacyStageFurniture(newLeafId: () => string): void {
       hidden: now?.hidden ?? [],
       pairRatios: now?.pairRatios ?? {},
       recentRoots: now?.recentRoots ?? [],
+      // C3:这一格是「每条会话挂着哪些伴随面」。v6 之前的档案里当然没有 ——
+      // 那时连按会话记这件事都不存在,所以空表就是它诚实的样子。
+      sessionCompanions: now?.sessionCompanions ?? {},
     }
     if (space === here) liveRegions = { ...grown, ...liveRegions }
     touched = true

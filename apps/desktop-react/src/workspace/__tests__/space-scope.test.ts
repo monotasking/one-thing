@@ -5,6 +5,7 @@ import { configureSpacesPort } from '../../data/spaces-port'
 import { configureSessionsPort, type SessionsPort } from '../../data/sessions-port'
 import {
   REFRESH_THROTTLE_MS,
+  onSessionsDeleted,
   onSessionsRemoved,
   sessionsQuery,
   useSessionsSource,
@@ -201,6 +202,25 @@ describe('会话列表按空间投影', () => {
     const stop = onSessionsRemoved((ids) => batches.push([...ids]))
     useWorkspaceStore.getState().switchTo('ws-work')
     expect(batches).toEqual([['legacy', 'in-default']])
+    stop()
+  })
+
+  /*
+   * **换工作区不发「被删」那一条**(C3)。两条通知面各说各的一句话,而这一条是
+   * 它们必须分家的**理由本身**:伴随面的账是 per-space 家具,换空间那一拍
+   * `bindPerSpace` 正把它收进 `byWorkspace` 留着切回来用 —— 那一刻若也收到
+   * 「这些会话没了」,收进去的那一份会当场被清空,切回去伴随面全没了。
+   *
+   * 反证:把 `sessions-source.onSpaceChanged` 里也补一句 `deletedListeners` 广播
+   * → 这一条当场红。
+   */
+  it('换工作区**不**发 onSessionsDeleted —— 那是「离场」不是「被删」', async () => {
+    await loadSpaces()
+    await useSessionsSource.getState().start()
+    const deleted: string[][] = []
+    const stop = onSessionsDeleted((ids) => deleted.push([...ids]))
+    useWorkspaceStore.getState().switchTo('ws-work')
+    expect(deleted).toEqual([])
     stop()
   })
 

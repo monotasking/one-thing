@@ -3,6 +3,11 @@ import { currentSessions, onSessionsRemoved, useSessionsSource } from '../data/s
 import { useExposeStore } from '../expose/store'
 import { useWorkbenchStore } from '../workbench/store'
 import {
+  scheduleCompanionSwap,
+  startCompanionUpkeep,
+  stopCompanionUpkeep,
+} from './session-companions'
+import {
   currentSessionOf,
   leafHoldsSession,
   openSessionIdsIn,
@@ -99,6 +104,18 @@ export function syncSessionProjection(): void {
 
   if (state.currentSessionId !== next || state.envSessionId !== env) {
     useExposeStore.setState({ currentSessionId: next, envSessionId: env })
+    /*
+     * **环境会话换了那一拍 = 伴随面收放那一拍**(C3,设计 §3.3)。
+     *
+     * 它挂在这里而不是别处,理由与 `envSessionId` 自己住在这里是同一句:这只文件
+     * 是那格事实的**唯一产地**,而「上一条是谁」只有写它的那一瞬才知道
+     * (`state.envSessionId` 是**换之前**那一格 —— 上面那句 `setState` 已经把
+     * 新的写进去了,所以这一行必须读上面捕获的那份旧 state,不能再 `getState()`)。
+     *
+     * 真正的收放排在微任务里(判词在 `./session-companions.ts`),所以这一句
+     * 不会在投影里再引一次投影。
+     */
+    if (state.envSessionId !== env) scheduleCompanionSwap(state.envSessionId, env)
   }
 
   /*
@@ -163,9 +180,16 @@ export function startSessionProjection(): () => void {
     hadRoster = has
   })
   const offRemoved = onSessionsRemoved(() => sweepDeadSessions())
+  /*
+   * 「会话被删 → 它的伴随面记录一起删」(C3,设计 §3.4)。它接的是**另一条**
+   * 接缝(`onSessionsDeleted`,只从 `deleted` 那一支发),理由整段在那只文件上:
+   * 换工作区不该清这本账 —— 它正被收进 `byWorkspace` 留着切回来用。
+   */
+  const offCompanions = startCompanionUpkeep()
   stopRoster = () => {
     offRoster()
     offRemoved()
+    offCompanions()
   }
   if (hadRoster) sweepDeadSessions()
   return stopSessionProjection
@@ -176,6 +200,8 @@ export function stopSessionProjection(): void {
   stopSubscription = null
   stopRoster?.()
   stopRoster = null
+  // 接上过没有都要收一次:队里那一条待办的寿命也是这个模块实例。
+  stopCompanionUpkeep()
   for (const id of [...held]) {
     held.delete(id)
     chatSources.release(id)

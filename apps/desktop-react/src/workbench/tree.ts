@@ -47,6 +47,29 @@ export interface PaneLeafNode {
    * 而插 / 摘 / 换序时这个下标要跟着走」。所以这只文件照旧一个种类名都不出现。
    */
   previewIndex?: number
+  /**
+   * **钉住的那几格**(C3,设计 `session-continuity-2026-09.md` §3.4)。缺席 = 一格都没钉。
+   *
+   * ── 它为什么记 `refId` 而不是像 `previewIndex` 那样记下标 ────────────────
+   * 两者是同一层的两格标记(都住在叶上、都落盘 —— 除了预览那一格被 `pick` 剥掉),
+   * 但它们答的问题不同:预览格**只有一个座**,而钉住是**一格一格**的;一张下标
+   * 表要在每一次插 / 摘 / 换序里跟着重算,而那正是 `previewAfterInsert` /
+   * `previewAfterRemove` 那两只小函数存在的理由 —— 复制一份多元素版出来,是给
+   * 每一条改树的路各多一处能漏的账。`refId` 天生不动,而「这一格还在不在这片叶
+   * 上」在**读**的那一刻一问便知(`pinnedIdsOf` 就是那道闸,与 `previewIndexOf`
+   * 把越界读成「没有」逐字同一体例)。
+   *
+   * ── 搬走 = 不再钉住,这是有意的 ────────────────────────────────────────
+   * 把一格钉住的标签拖到另一片叶去,源叶留下一个指不着任何 tab 的 id(读的时候
+   * 被滤掉),目标叶上它不是钉住的。这与「拖走预览格 = 把它转正」是同一句话:
+   * **标记说的是「这片叶上的这一格」,而不是「这份内容」**。
+   *
+   * ── 它落盘 ──────────────────────────────────────────────────────────────
+   * 与 `previewIndex` 相反:`WORKBENCH_PER_SPACE.pick` 剥的只有预览那一格。
+   * 「我把这棵目录树钉在这儿了」是**用户摆好的东西**,该活过一次重启 ——
+   * 判据就是 `per-space.ts` 那句「它是不是用户在这个空间里摆好的东西」。
+   */
+  pinned?: readonly ContentRefId[]
 }
 
 export interface PaneSplitNode {
@@ -151,6 +174,99 @@ export function stripPreviewIndex(node: PaneNode): PaneNode {
   const b = stripPreviewIndex(node.b)
   if (a === node.a && b === node.b) return node
   return { ...node, a, b }
+}
+
+/* ── 钉住:一片叶上的一张 refId 名单(C3)────────────────────────────────── */
+
+/**
+ * 这片叶此刻真正钉着哪几格。**指不着任何一格 tab 的 id 一律不算** ——
+ * 与 `previewIndexOf` 把越界读成「没有」逐字同一条:读者不必各判一遍,而一份
+ * 被手改过的档案(或者一次把钉住的标签拖走之后留下的残渣)只会「少一格钉住」,
+ * 不会让屏幕上画出一枚指向空气的图钉。**次序照 tab 的次序**,不照名单的次序:
+ * 名单是一个集合,而屏幕上的东西有左右。
+ */
+export function pinnedIdsOf(leaf: PaneLeafNode): readonly ContentRefId[] {
+  const raw = leaf.pinned
+  if (!Array.isArray(raw) || raw.length === 0) return EMPTY_PINNED
+  const want = new Set(raw.filter((id): id is ContentRefId => typeof id === 'string'))
+  if (want.size === 0) return EMPTY_PINNED
+  const out: ContentRefId[] = []
+  for (const tab of leaf.tabs) {
+    const id = refId(tab)
+    if (want.has(id) && !out.includes(id)) out.push(id)
+  }
+  return out.length === 0 ? EMPTY_PINNED : out
+}
+
+/** 同一个空数组 —— 「没钉住」这句话在每一次读里都是同一个对象,memo 才短路得掉。 */
+const EMPTY_PINNED: readonly ContentRefId[] = []
+
+/** 这片叶第 `index` 格钉住了吗。越界 = false。 */
+export function isPinnedAt(leaf: PaneLeafNode, index: number): boolean {
+  const tab = leaf.tabs[index]
+  return tab !== undefined && pinnedIdsOf(leaf).includes(refId(tab))
+}
+
+/**
+ * 换掉一片叶的钉住名单。`undefined` / 空 = **把那一格键整个删掉**(不是留一个
+ * 空数组):判据与 `withPreview` 逐字同一条 —— 引用恒等是逐字段比对出来的,
+ * 而一份档案里躺着一个谁都不读的键是下一个人的陷阱。值没变时原样交回同一个对象。
+ */
+function withPinned(leaf: PaneLeafNode, next: readonly ContentRefId[] | undefined): PaneLeafNode {
+  const now = leaf.pinned
+  const empty = !next || next.length === 0
+  if (empty) {
+    if (now === undefined) return leaf
+    const { pinned: _drop, ...rest } = leaf
+    void _drop
+    return rest
+  }
+  if (
+    Array.isArray(now)
+    && now.length === next.length
+    && now.every((id, at) => id === next[at])
+  ) return leaf
+  return { ...leaf, pinned: next }
+}
+
+/**
+ * 换完一批 tab 之后名单该剩什么。**摘掉的那一格顺带不再钉住** —— 不清的话,
+ * 一格关掉又重开的同名内容会「自己带着图钉回来」,那是用户没做过的一次钉住。
+ * 一格都没掉时原样交回同一个数组(引用恒等)。
+ */
+function pinnedAfterTabs(
+  leaf: PaneLeafNode,
+  tabs: readonly ContentRef[],
+): readonly ContentRefId[] | undefined {
+  const raw = leaf.pinned
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const live = new Set(tabs.map(refId))
+  const next = raw.filter((id) => live.has(id))
+  if (next.length === 0) return undefined
+  return next.length === raw.length ? raw : next
+}
+
+/**
+ * **钉住 / 取消钉住这片叶的第 `index` 格**。下标越界 / 叶不在 / 这一下什么都没换
+ * = 恒等(整棵树原样交回,不惊动任何订阅者)。
+ */
+export function setPinnedAt(
+  node: PaneNode,
+  leafId: string,
+  index: number,
+  on: boolean,
+): PaneNode {
+  return mapLeaf(node, leafId, (leaf) => {
+    const tab = leaf.tabs[index]
+    if (!tab) return leaf
+    const id = refId(tab)
+    const now = pinnedIdsOf(leaf)
+    // 已经是要的那个样子 —— **原样交回**,不顺手把名单里的残渣清掉:
+    // 那是一次没人要过的写,而读那一头(`pinnedIdsOf`)本来就滤得干净。
+    if (on === now.includes(id)) return leaf
+    const next = on ? [...now, id] : now.filter((row) => row !== id)
+    return withPinned(leaf, next)
+  })
 }
 
 /* ── 查询 ─────────────────────────────────────────────────────────────── */
@@ -386,7 +502,9 @@ export function removeTab(node: PaneNode, leafId: string, index: number): PaneNo
      * (`store.moveRefIntoLeaf`)与同叶换序(`tree.moveTab`)都是「摘一格再插
      * 一格」,摘的那一下标记就没了,插的那一下不会再标回来。
      */
-    return withPreview({ ...leaf, tabs, active }, previewAfterRemove(previewIndexOf(leaf), index))
+    const next = withPreview({ ...leaf, tabs, active }, previewAfterRemove(previewIndexOf(leaf), index))
+    // 摘掉的那一格顺带不再钉住(判词在 `pinnedAfterTabs` 上)。
+    return withPinned(next, pinnedAfterTabs(leaf, tabs))
   })
 }
 
@@ -420,16 +538,22 @@ export function replaceRef(
     if (already >= 0) {
       const tabs = leaf.tabs.filter((_, i) => i !== at)
       const active = clampActive(tabs, already > at ? already - 1 : already)
-      // 合并那一支**真的少了一格**,所以预览标记按「摘掉第 at 格」重算(C2)。
-      return withPreview({ ...leaf, tabs, active }, previewAfterRemove(previewIndexOf(leaf), at))
+      // 合并那一支**真的少了一格**,所以预览标记按「摘掉第 at 格」重算(C2),
+      // 钉住名单同理少掉那一格(C3)。
+      const merged = withPreview({ ...leaf, tabs, active }, previewAfterRemove(previewIndexOf(leaf), at))
+      return withPinned(merged, pinnedAfterTabs(leaf, tabs))
     }
     const tabs = [...leaf.tabs]
     tabs[at] = to
     /*
      * 原位换那一支**格数没变**,所以预览标记一个字不动 —— 那正是「预览格里原来
      * 那条被换掉」(设计 §4.1)成立的地方:换的是这一格代表谁,它还是预览格。
+     *
+     * 钉住那一格**不跟着换**(C3):名单记的是 `refId`,而这一格代表的已经是
+     * 另一份内容 —— 换进来的那一份没被谁钉过。旧的那个 id 由 `pinnedAfterTabs`
+     * 当场落掉,不留残渣。
      */
-    return { ...leaf, tabs }
+    return withPinned({ ...leaf, tabs }, pinnedAfterTabs(leaf, tabs))
   })
 }
 

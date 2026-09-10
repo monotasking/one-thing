@@ -2,7 +2,7 @@ import { registerContentKind } from '../../workbench/kinds'
 import { baseNameOf } from '../../data/files-source'
 import { FilesPanel } from '../FilesPanel'
 import { disambiguatedDirName } from '../files/dir-names'
-import { DIR_KIND } from './dir-ref'
+import { DIR_KIND, dirRef } from './dir-ref'
 import type { ContentRef } from '../../workbench/kinds'
 
 /**
@@ -59,6 +59,23 @@ registerContentKind(
      * 一句说进去之后站哪儿。
      */
     focusInto: 'files',
+    /*
+     * **它是伴随面**(C3,设计 `session-continuity-2026-09.md` §3)。用户原话:
+     * 「切会话时上一条会话挂着的目录要留着;切回去还能回到我看到哪个文件」。
+     *
+     * `seed` 是「没记录时按**种类**继承」那一句(§3.3 / 拍点 2):离场那条会话
+     * 开着目录树 → 给进场那条开一格**它自己 workdir** 的目录树。开的是 `dirRef`
+     * 而不是 `openDirectoryPanel` —— 后者还要算落点、记一笔最近目录,而这一下
+     * 的落点是**离场那一格坐的地方**(判词在 `workbench/companions.ts`),
+     * 「最近打开过」也不该被一次自动继承污染。
+     *
+     * 会话没绑工作目录 = 答 `null` = **什么都不开**(§3.3 末句)。退到 `~` 那条
+     * 路是「点那块瓦」才有的语义(它要一次后端往返展开 `~`,而这一下是同步的);
+     * 自动继承时给人开一格主目录树是一次没人要过的打开。
+     */
+    companion: {
+      seed: (env) => (env.workdir ? dirRef(env.workdir) : null),
+    },
   },
   import.meta.hot,
 )

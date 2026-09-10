@@ -4,6 +4,7 @@ import {
   Ellipsis,
   PictureInPicture2,
   Pin,
+  PinOff,
   Rows2,
   Unlink,
   X,
@@ -16,8 +17,8 @@ import { dropRef, pairIntoIndex, unpairTab } from './drop-commit'
 import { useLeafMenuAt, useLeafMenuStore } from './leaf-menu'
 import { useLeafOverflow } from './leaf-overflow'
 import { canDetachTabAt, useCloseLeafTab } from './leaf-tabs'
-import { contentKindOf, partsOfContent, refId } from './kinds'
-import { previewIndexOf } from './tree'
+import { contentKindOf, isCompanionRef, partsOfContent, refId } from './kinds'
+import { isPinnedAt, previewIndexOf } from './tree'
 import {
   SESSION_OPEN_MODE_LABELS,
   SESSION_OPEN_MODES,
@@ -212,6 +213,20 @@ export function LeafActions({ leaf, hostMenuRows }: { leaf: PaneLeafNode; hostMe
   const previewAt = previewIndexOf(leaf)
   const isPreview = previewAt !== undefined && previewAt === at
   const promoteTab = useWorkbenchStore((st) => st.promoteTab)
+  /*
+   * ── 钉住那一行(C3,设计 `session-continuity-2026-09.md` §3.4)────────────
+   * 「钉住 / 取消钉住」**只在伴随面上出现**,与「拆开」「保留」逐字同一条判据
+   * (W7-c 裁定 3):禁灰说的是「此刻做不了」,而一格会话标签上「钉住」
+   * **没有对象** —— 会话本来就不随会话收放。判据问的是**种类自述**
+   * (`kinds.isCompanionRef`),不是 `target.kind === 'dir'`:这只组件一个种类名
+   * 都不认识,而改动面板自述那天这里一个字不改。
+   *
+   * 它是这张表在 §4.2 之外唯一新增的标签动作(设计 §3.4 明写),落点仍是
+   * **右键上下文菜单**这个单产地 —— 不给它一颗檐上的钮(那是 W7-c 刚做完的减法)。
+   */
+  const isCompanion = target !== null && isCompanionRef(target)
+  const pinned = isCompanion && isPinnedAt(leaf, at)
+  const setTabPinned = useWorkbenchStore((st) => st.setTabPinned)
   const openMode = useSessionOpenMode((st) => st.mode)
   const setOpenMode = useSessionOpenMode((st) => st.setMode)
   /*
@@ -392,6 +407,30 @@ export function LeafActions({ leaf, hostMenuRows }: { leaf: PaneLeafNode; hostMe
               <span className={s.menuLine}>
                 <Pin className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />
                 <span className={s.menuMain}>{t('workbench.tabKeep')}</span>
+              </span>
+            </MenuItem>
+          )}
+
+          {/*
+            **钉住 / 取消钉住**(C3)。判词整段在上面 `isCompanion` 那一格。
+            两句话共用一行:它是一个开关,而一行「钉住」加一行「取消钉住」里
+            总有一行永远是灰的 —— 那正是禁令区说的纯噪音。
+          */}
+          {isCompanion && (
+            <MenuItem
+              onClick={() => {
+                setTabPinned(leaf.id, at, !pinned)
+                announce(t(pinned ? 'workbench.tabUnpinned' : 'workbench.tabPinned'))
+                closeMenu()
+              }}
+            >
+              <span className={s.menuLine}>
+                {pinned
+                  ? <PinOff className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />
+                  : <Pin className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />}
+                <span className={s.menuMain}>
+                  {t(pinned ? 'workbench.tabUnpin' : 'workbench.tabPin')}
+                </span>
               </span>
             </MenuItem>
           )}

@@ -112,6 +112,35 @@ export interface ContentComposite {
 }
 
 /**
+ * **进场会话的坐标**(C3)。伴随面的「继承种类不继承内容」要问它:
+ * 「给**这一条**会话开一格它自己的目录树」这句话里,目录是哪一个。
+ *
+ * 它由**发起那一拍注入**(`content/session-companions.ts` 从会话名册上取),
+ * 与 `tree.SanitizeOptions.alive` 逐字同一条理由:核心层答不出「那条会话的
+ * 工作目录是什么」,而那本账住在数据源那一侧。
+ */
+export interface CompanionEnv {
+  readonly sessionId: string
+  /** 这条会话绑的工作目录。没绑 = null(那时该开的东西开不出来,**就不开**)。 */
+  readonly workdir: string | null
+}
+
+/** 一种内容「我是伴随面」的自述(判词在 `ContentKind.companion` 上)。 */
+export interface ContentCompanion {
+  /**
+   * 这**一格** ref 算不算伴随面。缺席 = 这一种全部都算。
+   * (`panel` 那一种要用它把 `diff` 一格挑出来 —— 见 `ContentKind.companion`。)
+   */
+  matches?(ref: ContentRef): boolean
+  /**
+   * **没记录时按种类继承**:给进场会话开哪一格。答 `null` = 开不出来(那条会话
+   * 没有 workdir),缺席 = **这一种不继承**(文件查看器:那是上一条会话在看的
+   * 文件,与进场这条无关)。
+   */
+  seed?(env: CompanionEnv): ContentRef | null
+}
+
+/**
  * 一种内容的**自述**。每一种在自己的模块里 register 一次,核心层只读表。
  */
 export interface ContentKind {
@@ -209,6 +238,19 @@ export interface ContentKind {
    * 与「送不进去不追」同一条纪律。
    */
   focusInto?: FocusScopeId
+  /**
+   * **这一种是不是伴随面**(C3,设计 `session-continuity-2026-09.md` §3)。缺席 = 不是。
+   *
+   * 伴随面 = 「它不是工作区的家具,是**某条会话的**」:切会话那一拍它跟着收放。
+   * 判据照旧是**能力自述、别人读表** —— `workbench/companions.ts` 与 store 里
+   * 因此一个 `'dir'` / `'file'` / `'diff'` 都不出现,它们只问这一格。
+   *
+   * 两只口的分工在 `ContentCompanion` 上。**给 `diff` 留的口就是 `matches`**:
+   * 改动面板今天还是一块单例瓦(`panel:diff`),而 `panel` 那一种下面装着十几块
+   * 面 —— 「这一种全算」说不通,所以判据必须能落到**一格 ref** 上。它自述那天
+   * 要改的是 `content/kinds/panel.tsx`(或它自己那时的模块)一行,核心层一个字不动。
+   */
+  companion?: ContentCompanion
   /**
    * **这一种在标签条上要更宽的上限**(W7-t / B6,设计 v3 §6:「最大宽度 260px」)。
    * 缺席 = 常规上限。它经 `LeafStrip.tabSpecOf` 变成 `TabSpec.wide` 那一格事实;
@@ -325,6 +367,24 @@ export function isKnownContentKind(id: string): boolean {
  */
 export function focusIntoScopeOf(ref: ContentRef): FocusScopeId | undefined {
   return REGISTRY.get(ref.kind)?.focusInto
+}
+
+/**
+ * **这一格是不是伴随面**(C3)。`workbench/companions.ts` 只经这一只问 ——
+ * 于是它里面一个种类名都不出现。
+ */
+export function isCompanionRef(ref: ContentRef): boolean {
+  const companion = REGISTRY.get(ref.kind)?.companion
+  if (!companion) return false
+  return companion.matches ? companion.matches(ref) === true : true
+}
+
+/**
+ * **这一种给进场会话开哪一格**(C3 的「继承种类不继承内容」)。
+ * 不是伴随面 / 没自述 `seed` / 这条会话开不出来 → `null`,一律「什么都不开」。
+ */
+export function companionSeedOf(kindId: string, env: CompanionEnv): ContentRef | null {
+  return REGISTRY.get(kindId)?.companion?.seed?.(env) ?? null
 }
 
 /** 这个种类是不是单例。`tree.sanitize` 拿它去重。 */

@@ -64,6 +64,18 @@ registerContentKind(
     ),
     beforeClose: (ref) => askViewerClose(ref.key),
     dispose: (ref) => useViewerSource.getState().dispose(ref.key),
+    /*
+     * **它是伴随面,但不继承**(C3,设计 §3.3 / 拍点 2)。
+     *
+     * 「是」= 切会话时它跟着收放:用户在甲会话里停在 `Dock.tsx` 第 120 行,切去乙
+     * 再切回来,那格查看器还在原位、还在第 120 行(行号与滚动位住在
+     * `viewer-source` 的 `instances[path]` / `scrolls[path]`,而收放走的是「摘一格」
+     * 不是「关一格」—— 上面那句 `dispose` 只在**关闭**那条路上跑,所以实例一路留着)。
+     *
+     * 「不继承」= **不自述 `seed`**:那是甲在看的文件,与乙无关。这一格空着是判据
+     * 本身,不是漏写 —— 判词在 `ContentCompanion.seed` 上(缺席 = 这一种不继承)。
+     */
+    companion: {},
   },
   import.meta.hot,
 )

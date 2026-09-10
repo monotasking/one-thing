@@ -200,6 +200,37 @@ function foldNode(node: unknown): unknown {
   return folded === node ? node : folded
 }
 
+/* ── v5(C3):每个空间补一格家具字段 ────────────────────────────────────────
+ *
+ * 「加一格家具」这件事此后每一批都会再来一次(C3 是 `sessionCompanions`),所以
+ * 它是**一只通用的**而不是一段专用代码 —— 与这只文件里另外两只同一个体例:
+ * 知道**档案长什么形**(`byWorkspace` → 每个空间一份家具),但**一个字段的含义
+ * 都不知道**(叫什么、缺省是什么,由调用方递进来)。
+ *
+ * 两条硬要求照旧:**幂等**(已经有那一格的原样放行 —— 存量实例的写盘会带着新
+ * 版本号落旧值,那时 migrate 不再跑)与**引用恒等**(一格都没补到时原样交回
+ * 同一个对象,免得每次启动都写回一份「内容相同、身份不同」的档案)。
+ */
+export function defaultFurnitureFieldInPersisted(
+  persisted: Record<string, unknown>,
+  key: string,
+  make: () => unknown,
+): Record<string, unknown> {
+  const spaces = persisted.byWorkspace
+  if (!spaces || typeof spaces !== 'object') return persisted
+  let changed = false
+  const next: Record<string, unknown> = {}
+  for (const [spaceId, furniture] of Object.entries(spaces as Record<string, unknown>)) {
+    if (!furniture || typeof furniture !== 'object' || key in (furniture as object)) {
+      next[spaceId] = furniture
+      continue
+    }
+    changed = true
+    next[spaceId] = { ...(furniture as object), [key]: make() }
+  }
+  return changed ? { ...persisted, byWorkspace: next } : persisted
+}
+
 function isPersistedNode(value: unknown): value is PaneNode {
   if (!value || typeof value !== 'object') return false
   const node = value as Partial<PaneNode>

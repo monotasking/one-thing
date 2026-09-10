@@ -831,6 +831,11 @@ export const en: Record<MessageKey, string> = {
   /* Preview tab (C2): the screen-reader-only status word, and the menu row that keeps it. */
   'workbench.tabPreview': 'Preview',
   'workbench.tabKeep': 'Keep open',
+  /* Pinning (C3, design §3.4): one switch, one row, two readings. */
+  'workbench.tabPin': "Pin here (don't follow the session)",
+  'workbench.tabUnpin': 'Unpin',
+  'workbench.tabPinned': 'Pinned — it stays put when you switch sessions',
+  'workbench.tabUnpinned': 'Unpinned — it now follows the session',
   'workbench.pairRight': 'Join with the tab on the right',
   'workbench.pairLeft': 'Join with the tab on the left',
   'workbench.unpair': 'Split apart',
