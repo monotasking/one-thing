@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { act, renderHook } from '@testing-library/react'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
 import type { GetSessionUsageResponse } from '@shared/ipc/usage'
@@ -12,7 +13,11 @@ import {
   meterQuery,
   meterViewOf,
   useMeterSource,
+  useMeterView,
 } from './meter-source'
+import { prefsQuery, useModelsSource } from './models-source'
+import { providerModelPrefs } from './__fixtures__/models'
+import { currentSpaceId } from '../workspace/current'
 
 /**
  * 读数四真(D2 波一)。两块各自钉死:
@@ -194,6 +199,54 @@ describe('四行的缺席态', () => {
 
   it('两口都没答上话 → present 为 false', () => {
     expect(meterViewOf({ sessionId: 's1', tokens: null, usage: null }, 200_000).present).toBe(false)
+  })
+})
+
+/*
+ * 09-10 报障:用户在模型覆盖浮层里给一个**手填模型**填了 context window,
+ * 读数环仍写「上下文用量未知」。上面那几条钉的是纯函数 `meterViewOf`,而病根
+ * 不在它 —— 它拿到的 `windowTokens` 一直是 null,因为窗口那一句只查了目录。
+ * 所以这一条必须**从 hook 那一头量**:整条链路(设置窄投影 → 覆盖优先 →
+ * `useModelWindow` → `useMeterView`)接上了没有。
+ */
+describe('窗口:手填模型的用户覆盖', () => {
+  it('目录一条都没有,但设置里填过窗口 → contextMax 是那个数,环不再是缺席态', () => {
+    useModelsSource.getState().reset()
+    prefsQuery.get(currentSpaceId()).patch({
+      prefs: {
+        defaultProvider: 'my-llm',
+        configs: {
+          'my-llm': providerModelPrefs({
+            model: 'qwen-max',
+            selectedModels: ['qwen-max'],
+            contextLength: { 'qwen-max': 200_000 },
+          }),
+        },
+      },
+      custom: [{ id: 'my-llm', name: '自建' }],
+    })
+    useMeterSource.setState({ sessionId: 's1' })
+    meterQuery.get('s1').patch({
+      sessionId: 's1',
+      tokens: {
+        totalInputTokens: 48_200,
+        totalOutputTokens: 12_600,
+        totalTokens: 60_800,
+        maxTokens: 0,
+        lastInputTokens: 110_000,
+        contextSize: 124_000,
+      },
+      usage: usageResponse(),
+    })
+
+    const { result, unmount } = renderHook(() => useMeterView())
+    expect(result.current.contextMax).toBe(200_000)
+    expect(result.current.contextUsed).toBe(124_000)
+    expect(result.current.present).toBe(true)
+    unmount()
+    act(() => {
+      useModelsSource.getState().reset()
+    })
   })
 })
 

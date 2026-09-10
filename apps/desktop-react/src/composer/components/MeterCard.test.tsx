@@ -3,9 +3,10 @@ import { act, render, screen } from '@testing-library/react'
 import { ContextRing, MeterCard } from './MeterCard'
 import { meterQuery, useMeterSource } from '../../data/meter-source'
 import type { MeterFacts } from '../../data/meter-source'
-import { useModelsSource } from '../../data/models-source'
+import { prefsQuery, useModelsSource } from '../../data/models-source'
 import { catalogQuery } from '../../providers/catalog-query'
-import { openRouterModel } from '../../data/__fixtures__/models'
+import { openRouterModel, providerModelPrefs } from '../../data/__fixtures__/models'
+import { currentSpaceId } from '../../workspace/current'
 import { useSessionsSource } from '../../data/sessions-source'
 import { chatSources } from '../../data/chat-source'
 import type { ChatSourceState } from '../../data/chat-source'
@@ -86,6 +87,33 @@ function stage(window: number | null): void {
 }
 
 /**
+ * 09-10 报障的那个现场:一台只配了**手填 / 自建**模型的机器 —— 目录里一条都没有,
+ * 窗口只写在设置的 `contextLengthByModel` 里。从前这一屏与 `stage(null)` 长得一样
+ * (环画点线、卡上写「窗口未知」),而用户明明已经填过那个数。
+ */
+function stageOverride(window: number): void {
+  useSessionsSource.setState({
+    sessions: [session({ id: 's1', model: 'qwen-max', provider: 'my-llm' })],
+  })
+  // 目录那一格**一发都不 patch** —— 手填模型永远不在目录里,那正是这一屏的形状。
+  prefsQuery.get(currentSpaceId()).patch({
+    prefs: {
+      defaultProvider: '',
+      configs: {
+        'my-llm': providerModelPrefs({
+          model: 'qwen-max',
+          selectedModels: ['qwen-max'],
+          contextLength: { 'qwen-max': window },
+        }),
+      },
+    },
+    custom: [{ id: 'my-llm', name: '自建' }],
+  })
+  useMeterSource.setState({ sessionId: 's1' })
+  seedFacts({ sessionId: 's1', tokens: TOKENS, usage: USAGE })
+}
+
+/**
  * 往**那条会话自己的**账本上摆一条压缩标记(正文的形状与后端
  * `buildContextCompactContent` 逐字同源)。环问的是 `useMeterSource.sessionId`
  * 那台机器,所以摆的地方必须是 `chatSources.ensure('s1')` —— 不是「当前会话」那台。
@@ -153,6 +181,19 @@ describe('读数环', () => {
   })
 
   /*
+   * 上面三条的**反面**(09-10 报障):目录里查不到 ≠ 不知道 —— 用户在设置里
+   * 填过窗口时,环该照旧画那一段弧,读屏软件听见的也不该有「未知」两个字。
+   */
+  it('目录里没有但用户填过窗口:照旧画弧,读屏软件听不到「未知」', () => {
+    stageOverride(200_000)
+    const { container } = render(<ContextRing onEnter={() => {}} onLeave={() => {}} />)
+    const ring = screen.getByRole('img')
+    expect(ring.getAttribute('aria-label')).toBe('上下文用量')
+    expect(ring.getAttribute('aria-label')).not.toContain('未知')
+    expect(container.querySelectorAll('circle')).toHaveLength(2)
+  })
+
+  /*
    * 压缩中那一格(U4)。判据在账本上(`content/compact/marker.ts` 的 selectCompacting),
    * 所以这里摆的是**一条真的压缩标记**,不是一个假的开关 —— 与「造忙态就写
    * activeMessageId」同一条纪律:真实现里唯一的开关是什么,测试就掀什么。
@@ -185,6 +226,13 @@ describe('明细卡', () => {
     stage(null)
     render(<MeterCard open />)
     expect(screen.getByText('124k · 窗口未知')).toBeTruthy()
+  })
+
+  it('目录里没有但用户填过窗口:那一行给全三格,不写「窗口未知」', () => {
+    stageOverride(200_000)
+    render(<MeterCard open />)
+    expect(screen.getByText('124k / 200k · 62%')).toBeTruthy()
+    expect(screen.queryByText('124k · 窗口未知')).toBeNull()
   })
 
   it('缓存分母为 0(这条会话什么都还没送过):整行不画', () => {

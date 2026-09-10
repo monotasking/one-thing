@@ -62,7 +62,18 @@ export function modelOption(
   return { model, ...readings }
 }
 
-/** 设置的窄投影里一家的那几格。思考两张表缺席 = 没设过。 */
+/**
+ * 设置的窄投影里一家的那几格。四张按模型的表缺席 = 没设过
+ * (思考开关 / 思考档 / 窗口覆盖 / 最大输出覆盖)。
+ */
 export function providerModelPrefs(partial: Partial<ProviderModelPrefs> = {}): ProviderModelPrefs {
-  return { selectedModels: [], model: '', thinking: {}, thinkingEffort: {}, ...partial }
+  return {
+    selectedModels: [],
+    model: '',
+    thinking: {},
+    thinkingEffort: {},
+    contextLength: {},
+    maxOutput: {},
+    ...partial,
+  }
 }

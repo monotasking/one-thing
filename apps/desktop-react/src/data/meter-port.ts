@@ -14,13 +14,17 @@ import { usageRouter, type GetSessionUsageResponse } from '@shared/ipc/usage'
  *  - `sessionsRouter` 的 `sessions.getTokenUsage` —— 会话上的 token 读数
  *    (contextSize / lastInputTokens / maxTokens)。
  *
- * 第三个产地(模型窗口)**不在这条端口上**:它是 provider 目录里的
- * `context_length`,归 models-source 管(`contextWindowOf`)。同一个数字有两个
- * 取数口就会有两份缓存,而其中一份一定会陈。
+ * 模型窗口**不在这条端口上**:它归 models-source 管(`contextWindowOf`)。
+ * 同一个数字有两个取数口就会有两份缓存,而其中一份一定会陈。
  *
  * ── 留账:窗口上限不问 `SessionTokenUsageReadout.maxTokens` ───────────────
  * 那一格也叫 max,但它不是「这个模型的上下文窗口」——读数环画的是
- * 「这一轮送进去的 token 占模型窗口的几成」,窗口的产地只有 provider 目录一个。
+ * 「这一轮送进去的 token 占模型窗口的几成」。
+ *
+ * 窗口本身有**两个**产地(09-10 改口;从前这里写的是「只有 provider 目录一个」):
+ * 用户在设置里给这一型填的 `contextLengthByModel[模型]` 优先,provider 目录的
+ * `context_length` 其次 —— 与引擎 `getOnethingModelContextLength` 同序。两者都在
+ * models-source 里合流(`contextWindowOf` 一处折),这条端口一格都不碰。
  */
 export interface MeterPort {
   /** 传输面就绪(D0 的 whenConnected);浏览器直开时它也会 resolve。 */
