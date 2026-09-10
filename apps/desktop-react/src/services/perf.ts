@@ -127,6 +127,65 @@ function titleFor(entry: PerfEntry, ms: number): string {
   return t('perf.slowEvent', { name: entry.name, ms })
 }
 
+/* ── 一批落账只吵一次(P4:通知不许自伤)──────────────────────────────────────
+ *
+ * 09-10 真机:一帧慢 → 那一帧里三十条读数全部超预算 → 每条各走一次
+ * `notify()` → zustand 写 → **persist 同步序列化整个 200 条环写 localStorage** +
+ * 通知中心面板重渲 —— 于是落账这一步自己变成 50–124ms 的长帧,下一次交互又慢,
+ * 又三十条。正反馈的那一环就在这里。
+ *
+ * 修法不是「少记」,是**少吵**:一批落账里同一 kind 的超预算读数合成一句话 ——
+ * 标题给最重的那条(它就是这一批里值得看的那条),detail 是它的完整现场,
+ * 后面缀一行清单交代同批的其余几条(名字 / 毫秒 / 目标各一行)。
+ * 记账那一半(`record` 进日志环)一条不少:环是纯内存,便宜。
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/** 本批攒着的超预算读数,按 kind 分组。null = 不在批里(手工打点那条路)。 */
+let batchNotify: Map<PerfKind, PerfEntry[]> | null = null
+
+/** 在批里就攒着(返回 true = 这条的通知由 flush 统一说)。 */
+function collectBatchNotify(entry: PerfEntry): boolean {
+  if (!batchNotify) return false
+  const list = batchNotify.get(entry.kind)
+  if (list) list.push(entry)
+  else batchNotify.set(entry.kind, [entry])
+  return true
+}
+
+/** 清单里的一行:名字 + 毫秒 + 目标(有就带)。一条一行,给人扫的。 */
+function oneLineOf(entry: PerfEntry): string {
+  const ms = Math.round(entry.ms)
+  return entry.target ? `${entry.name} ${ms}ms ${entry.target}` : `${entry.name} ${ms}ms`
+}
+
+/** 收批:每个 kind 至多一条通知。批里一条都没有就一个字都不说。 */
+function flushBatchNotify(): void {
+  const pending = batchNotify
+  batchNotify = null
+  if (!pending) return
+  pending.forEach((list, kind) => {
+    let heaviest = list[0]
+    for (const item of list) if (item.ms > heaviest.ms) heaviest = item
+    const ms = Math.round(heaviest.ms)
+    const rest = list.length - 1
+    const head = titleFor(heaviest, ms)
+    const detail = formatPerfDetail(heaviest)
+    notify({
+      level: 'silent',
+      source: `perf.${kind}`,
+      title: rest > 0 ? `${head}${t('perf.batchMore', { count: rest })}` : head,
+      detail: rest > 0
+        ? [
+            detail,
+            '',
+            t('perf.batchRest', { count: rest }),
+            ...list.filter((x) => x !== heaviest).map(oneLineOf),
+          ].join('\n')
+        : detail,
+    })
+  })
+}
+
 function push(entry: PerfEntry): void {
   ring.push(entry)
   if (ring.length > PERF_RING_CAPACITY) ring.splice(0, ring.length - PERF_RING_CAPACITY)
@@ -135,6 +194,14 @@ function push(entry: PerfEntry): void {
   if (entry.ms > limitFor(entry.kind)) {
     const ms = Math.round(entry.ms)
     record('warn', `perf.${entry.kind}`, `${ms}ms`, [entry])
+    /*
+     * 一批落账里超预算的可能有十几条(卡的那一帧里每条交互都超标)。日志环便宜,
+     * 所以 `record` 照旧**逐条**;通知不便宜(zustand 写 → 落盘 → 面板重渲),
+     * 所以它**每批每 kind 只说一句**(见 `flushBatchNotify`)。
+     * 批外那条路(perfSpan / perfMark 手工打点)照旧逐条 —— 那是人自己埋的点,
+     * 一次调用就该有一次回音。
+     */
+    if (collectBatchNotify(entry)) return
     /*
      * 超预算走 **silent**:它进通知中心存档,但一个字都不弹。
      *
@@ -273,12 +340,69 @@ function truncate(text: string, max = TARGET_TEXT_MAX): string {
 }
 
 /**
+ * 一次目标描述最多走几个节点。
+ *
+ * **为什么必须有这一格**(09-10 真机):`textContent` 的代价是**整棵子树**。
+ * 事件条目的 target 常常是 `body` / `main` / 整条聊天列 —— 一次划过嵌套容器,
+ * 浏览器给每一层祖先各报一条,于是「读一遍整篇文档的文字」被做了三十遍。
+ * 而这句描述只要 48 个字符:它是给人认路的一句话,不是一份摘录。
+ * 64 个节点足够把任何按钮 / 行 / 卡的可见文字凑够 48 个字符,再多都是白读。
+ */
+export const TARGET_SCAN_NODE_CAP = 64
+
+/** 扫描时的字符预算。留 4 倍余量给空白折叠,收够就停,最后仍按 `truncate` 截。 */
+const TARGET_SCAN_CHAR_BUDGET = TARGET_TEXT_MAX * 4
+
+type TextishNode = {
+  nodeType?: number
+  nodeValue?: string | null
+  childNodes?: ArrayLike<unknown>
+}
+
+/**
+ * 有界地收一个元素下的可见文字。**不碰 `textContent`** —— 那一口没有上限。
+ *
+ * 显式栈的**深度优先、按文档序**遍历,两道闸各管一件事:走过的节点数(`nodeCap`)
+ * 与收到的字符数(`charBudget`)。压栈时也照剩余额度截 —— 否则一个有一万个子节点
+ * 的容器,光是把孩子推进栈就已经是一万次操作,闸就形同虚设。
+ *
+ * 返回 `visited` 不是为了好看:它是这条上界的**可断言面**(用例拿它证「一万个
+ * 文本节点也只走 64 个」)。
+ */
+export function collectTargetText(
+  root: unknown,
+  nodeCap = TARGET_SCAN_NODE_CAP,
+  charBudget = TARGET_SCAN_CHAR_BUDGET,
+): { text: string; visited: number } {
+  let out = ''
+  let visited = 0
+  const stack: unknown[] = [root]
+  while (stack.length > 0 && visited < nodeCap && out.length < charBudget) {
+    const node = stack.pop() as TextishNode
+    visited += 1
+    if (!node || typeof node !== 'object') continue
+    if (node.nodeType === 3) {
+      out += (node.nodeValue ?? '').slice(0, charBudget - out.length)
+      continue
+    }
+    if (node.nodeType !== 1) continue
+    const kids = node.childNodes
+    if (!kids) continue
+    const take = Math.min(kids.length, nodeCap - visited)
+    for (let i = take - 1; i >= 0; i -= 1) stack.push(kids[i])
+  }
+  return { text: out.replace(/\s+/g, ' ').trim(), visited }
+}
+
+/**
  * 事件目标 → 一句人话。**排障时「哪个元素」比「哪个事件」有用得多**:
  * 「click 96ms」谁都不知道点的是什么,「button[data-testid="dock-tile-sessions"] click 96ms」
  * 当场就能复现。
  *
  * 三选一,按可复现性排序:testid(门与测试就是拿它定位的)> aria-label(人读得懂)
  * > 截断的可见文字(总比只有标签名强)。三个都没有就只给标签名。
+ *
+ * 最后那一档走 `collectTargetText` 的**有界**扫描,不读 `textContent`(见上)。
  */
 export function describeTarget(node: unknown): string | undefined {
   const el = node as Element | null | undefined
@@ -291,7 +415,7 @@ export function describeTarget(node: unknown): string | undefined {
   if (testId) return `${tag}[data-testid="${truncate(testId)}"]`
   const label = attr('aria-label')
   if (label) return `${tag}[aria-label="${truncate(label)}"]`
-  const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim()
+  const { text } = collectTargetText(el)
   return text ? `${tag} "${truncate(text)}"` : tag
 }
 
@@ -560,10 +684,53 @@ const QK_EVENT = 1
 const qEntry: (PerformanceEntry | undefined)[] = new Array(QUEUE_CAPACITY).fill(undefined)
 const qKind = new Uint8Array(QUEUE_CAPACITY)
 const qTs = new Float64Array(QUEUE_CAPACITY)
+/** 每格上那条交互的分组号(0 = 这格不是交互条目)。去重表指回这里对账。 */
+const qInteraction = new Int32Array(QUEUE_CAPACITY)
 let qHead = 0
 let qCount = 0
 let qDropped = 0
+let qFiltered = 0
 let drainScheduled = false
+
+/* ── 入队那道闸(P4:三十条 hover 一条都不许进来)────────────────────────────
+ *
+ * 09-10 真机:**一次鼠标划过嵌套容器 = 30+ 条 Event Timing 条目** ——
+ * pointerenter / pointerleave / pointerover / pointerout / mouseover / mouseout
+ * 对每一层祖先各报一条。它们的 `interactionId` 一律是 0:规范说得很清楚,
+ * 只有**真的一次交互**(点、按键、拖)才拿得到分组号。而页面一卡,这些条目
+ * 每一条的端到端时长都会越过 40ms 的订阅线,于是「越卡进来的越多」。
+ *
+ * 两条规则,都是 O(1),都在入队这一刻判(判晚一步,那三十份 `describeTarget`
+ * 与三十次落账就已经付过钱了):
+ *  ① `interactionId === 0` 不进来 —— 它不是一次交互,INP 也不数它;
+ *     指针 / 鼠标的 over·out·enter·leave·move 另有一张**明写的**名单,
+ *     不靠「它恰好没有分组号」这个副作用成立:规则要写下来才守得住。
+ *  ② 同一个 `interactionId` 只留**一条**,留**时长最大**的那条 ——
+ *     一次点击浏览器会给 pointerdown / pointerup / click 三条同号条目,
+ *     而 INP 的定义就是取同组里最长的那条。留最长 = 与 INP 同口径,
+ *     也正是三条里唯一值得看的那条(另外两条是同一次交互的碎片)。
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * 明写的非交互事件名单。它们**本来**就拿不到 `interactionId`,所以这张表在
+ * 今天的浏览器上是重复的一道闸 —— 留着是因为规则该写成规则:哪天某个引擎给
+ * hover 族发了分组号,这道闸仍然拦得住,而不是靠一个副作用侥幸成立。
+ */
+const NON_INTERACTION_EVENTS = new Set([
+  'pointerover', 'pointerout', 'pointerenter', 'pointerleave', 'pointermove',
+  'mouseover', 'mouseout', 'mouseenter', 'mouseleave', 'mousemove',
+])
+
+/** interactionId → 它此刻占着队列哪一格。留最长那条要靠它找回原位改写。 */
+const eventSlot = new Map<number, number>()
+
+/** 把某一格上的交互登记从去重表里摘掉(落账或被挤掉时)。 */
+function forgetInteraction(idx: number): void {
+  const id = qInteraction[idx]
+  if (id === 0) return
+  if (eventSlot.get(id) === idx) eventSlot.delete(id)
+  qInteraction[idx] = 0
+}
 
 /**
  * 观察器回调自身耗时的读数环(**用它自己量自己**)。
@@ -589,6 +756,8 @@ export interface PerfObserverCost {
   max: number
   /** 队列满了丢掉几条 —— 丢了要说。 */
   dropped: number
+  /** 入队那道闸拦下几条(非交互事件 + 同号只留一条)—— 拦了同样要说。 */
+  filtered: number
   /** 此刻还压在队里没落账的条数。 */
   pending: number
 }
@@ -605,6 +774,7 @@ export function perfObserverCost(): PerfObserverCost {
     p99: round1(percentile(sorted, 99)),
     max: round1(sorted.length ? sorted[sorted.length - 1] : 0),
     dropped: qDropped,
+    filtered: qFiltered,
     pending: qCount,
   }
 }
@@ -612,10 +782,14 @@ export function perfObserverCost(): PerfObserverCost {
 /** 只给测试用:清空自计时与队列。 */
 export function __resetPerfQueueForTests(): void {
   qEntry.fill(undefined)
+  qInteraction.fill(0)
+  eventSlot.clear()
   qHead = 0
   qCount = 0
   qDropped = 0
+  qFiltered = 0
   drainScheduled = false
+  batchNotify = null
   observerCostIdx = 0
   observerCostCount = 0
 }
@@ -647,18 +821,32 @@ const DRAIN_BATCH = 16
 
 function drainQueue(deadline?: { timeRemaining(): number }): void {
   drainScheduled = false
-  let done = 0
-  while (qCount > 0 && done < DRAIN_BATCH) {
-    // 空闲片用完了就收手(没有 deadline 的降级路按满批算)。
-    if (deadline && done > 0 && deadline.timeRemaining() <= 1) break
-    const idx = qHead
-    qHead = (qHead + 1) % QUEUE_CAPACITY
-    qCount -= 1
-    const raw = qEntry[idx]
-    qEntry[idx] = undefined // 放掉引用:别让一条队列钉住一棵 DOM 子树
-    if (!raw) continue
-    settleQueued(qKind[idx], raw, qTs[idx])
-    done += 1
+  batchNotify = new Map()
+  try {
+    let done = 0
+    while (qCount > 0 && done < DRAIN_BATCH) {
+      /*
+       * 空闲片用完了就收手 —— **每一条都问一次,第一条也不例外**。
+       * 从前这里写着 `done > 0`:「至少硬做一条」。可这些读数恰恰是主线程最忙的
+       * 时候产生的,`timeout` 逼出来的那次落账多半剩余时间就是 0,于是「至少一条」
+       * 在最坏的时刻变成了「插队做一条」—— 而一条落账要解析归因、拼现场文本、
+       * 写日志环,正是 09-10 那串 50–124ms 空闲长帧的底料。
+       * 排到下一次不会丢:队列是环,`scheduleDrain` 的 timeout 保证最迟 500ms 再来。
+       */
+      if (deadline && deadline.timeRemaining() <= 1) break
+      const idx = qHead
+      qHead = (qHead + 1) % QUEUE_CAPACITY
+      qCount -= 1
+      const raw = qEntry[idx]
+      qEntry[idx] = undefined // 放掉引用:别让一条队列钉住一棵 DOM 子树
+      forgetInteraction(idx)
+      if (!raw) continue
+      settleQueued(qKind[idx], raw, qTs[idx])
+      done += 1
+    }
+  } finally {
+    // 这一批攒下的超预算读数,每个 kind 说一句就走(见 flushBatchNotify)。
+    flushBatchNotify()
   }
   if (qCount > 0) scheduleDrain()
 }
@@ -690,8 +878,32 @@ function settleQueued(kind: number, raw: PerformanceEntry, ts: number): void {
   })
 }
 
-/** 回调里唯一允许发生的事。三个 O(1) 的写,零分配、零字符串、零 DOM。 */
+/** 回调里唯一允许发生的事。几个 O(1) 的写,零分配、零字符串、零 DOM。 */
 function enqueue(kind: number, entry: PerformanceEntry): void {
+  let interaction = 0
+  if (kind === QK_EVENT) {
+    interaction = (entry as EventEntry).interactionId || 0
+    // ① 不是一次交互(hover 族与其它非交互事件)—— 一步都不往下走。
+    if (interaction === 0 || NON_INTERACTION_EVENTS.has(entry.name)) {
+      qFiltered += 1
+      return
+    }
+    // ② 同号的已经在队里:留时长最大的那条(与 INP 同口径),不占第二格。
+    const slot = eventSlot.get(interaction)
+    if (slot !== undefined) {
+      const held = qEntry[slot]
+      if (held && qInteraction[slot] === interaction) {
+        if (entry.duration > held.duration) {
+          qEntry[slot] = entry
+          qTs[slot] = Date.now()
+        }
+        qFiltered += 1
+        return
+      }
+      // 那一格已经落账 / 被挤掉了,登记是陈的 —— 清掉,照新的一条走下去。
+      eventSlot.delete(interaction)
+    }
+  }
   const idx = (qHead + qCount) % QUEUE_CAPACITY
   if (qCount === QUEUE_CAPACITY) {
     // 满了丢最老的 —— 新读数比旧读数有用(正在卡的是现在)。
@@ -700,9 +912,14 @@ function enqueue(kind: number, entry: PerformanceEntry): void {
   } else {
     qCount += 1
   }
+  forgetInteraction(idx) // 这一格上如果还压着一条交互的登记,先摘干净
   qEntry[idx] = entry
   qKind[idx] = kind
   qTs[idx] = Date.now()
+  if (interaction !== 0) {
+    qInteraction[idx] = interaction
+    eventSlot.set(interaction, idx)
+  }
   scheduleDrain()
 }
 

@@ -3,6 +3,7 @@ import { NOTIFY_FATE, notify } from '../notify'
 import {
   NOTIFY_PERSIST_LIMIT,
   NOTIFY_RING_CAPACITY,
+  flushNotifyPersist,
   unreadOf,
   useNotifyStore,
 } from '../notify-store'
@@ -190,9 +191,45 @@ describe('环形上限', () => {
       throw new Error('QuotaExceededError')
     })
     expect(() => notify({ level: 'info', title: 'a', source: 's' })).not.toThrow()
+    // 落盘是**攒批**的(09-10),所以要先结账才看得到那一次写 —— 而它照样炸得无声。
+    expect(() => flushNotifyPersist()).not.toThrow()
     expect(boom).toHaveBeenCalled()
     expect(items().length).toBe(1)
     boom.mockRestore()
+  })
+})
+
+/**
+ * **落盘攒批**(09-10,性能探针自伤那一批的第五条)。
+ *
+ * `localStorage.setItem` 是同步的,而 persist 每次 `push` 都把整份存档序列化重写。
+ * 通知成串来的时候(一帧慢 → 十几条性能读数)这一步自己就是主线程上的长帧,
+ * 而它写的东西下一毫秒又被覆盖。攒批 = 一个窗口只落最后那一份。
+ */
+describe('落盘攒批', () => {
+  it('连写 10 次只落一次,flush 之后落的是**最新**那一份', () => {
+    flushNotifyPersist() // 先把上一条用例可能攒着的那份结清
+    const write = vi.spyOn(Storage.prototype, 'setItem')
+    for (let i = 0; i < 10; i += 1) notify({ level: 'silent', title: `#${i}`, source: 'perf' })
+
+    // 十条通知在内存里全都在……
+    expect(items().length).toBe(10)
+    // ……但一次盘都没落。
+    expect(write).not.toHaveBeenCalled()
+
+    flushNotifyPersist()
+    expect(write).toHaveBeenCalledTimes(1)
+    expect(String(write.mock.calls[0][1])).toContain('#9')
+    write.mockRestore()
+  })
+
+  it('flush 之后再 flush 不重复写 —— 没攒着东西就什么都不做(幂等)', () => {
+    notify({ level: 'silent', title: 'once', source: 'perf' })
+    flushNotifyPersist()
+    const write = vi.spyOn(Storage.prototype, 'setItem')
+    flushNotifyPersist()
+    expect(write).not.toHaveBeenCalled()
+    write.mockRestore()
   })
 })
 

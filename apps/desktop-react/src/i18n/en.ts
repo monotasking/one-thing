@@ -659,6 +659,8 @@ export const en: Record<MessageKey, string> = {
   'perf.report': 'Report',
   'perf.reportHint': 'Aggregate by name into p50/p95/max, print to console',
   'perf.rowDetail': 'Expand full attribution for this entry',
+  'perf.batchMore': ' (+{count} more in this batch)',
+  'perf.batchRest': '{count} more over budget in the same batch:',
 
   /* ── notifications (08-30 batch) ─────────────────────────────────── */
   'notify.filterAll': 'All',

@@ -121,6 +121,49 @@ export function unreadOf(items: readonly NotifyRecord[]): number {
   return n
 }
 
+/**
+ * 落盘的**攒批窗口**(毫秒)。
+ *
+ * 起因(09-10 真机):`localStorage.setItem` 是**同步**的,而 persist 每收到一次
+ * `push` 就把整份存档序列化再写一遍 —— 100 条带 detail(每条几 KB 的现场文本)
+ * 一次就是几百 KB 的 JSON。性能读数成串来的时候(一帧慢 → 十几条超预算),
+ * 这一步自己就成了主线程上的长帧,而它写的东西下一毫秒又会被覆盖掉。
+ *
+ * 500ms 不取自动效表:**这不是动画**,它是一次 I/O 的攒批窗口,与
+ * `motion.ts` 里那些「人眼看得见的时长」不是一件事(动效档也因此不该管它)。
+ * 取 500ms 的理由是它足够长到把一串通知合成一次写,又足够短到用户手动关窗口
+ * 之前基本已经落过盘 —— 而真赶上没落的那一次,由下面 `beforeunload` / `pagehide`
+ * 的 flush 兜底。
+ */
+export const NOTIFY_PERSIST_DEBOUNCE_MS = 500
+
+let pendingWrite: { key: string; value: string } | null = null
+let writeTimer: ReturnType<typeof setTimeout> | undefined
+
+/** 真的写一次(把攒着的那一份写掉)。落盘炸了也不许连累通知本身。 */
+function writePending(): void {
+  if (writeTimer !== undefined) {
+    clearTimeout(writeTimer)
+    writeTimer = undefined
+  }
+  const pending = pendingWrite
+  pendingWrite = null
+  if (!pending) return
+  try {
+    localStorage?.setItem(pending.key, pending.value)
+  } catch {
+    // 配额满 / 隐私模式:这一份不落盘,内存里照样在。
+  }
+}
+
+/**
+ * 立刻把攒着的那一份写掉。页面要走了(`beforeunload` / `pagehide`)时调,
+ * 测试里也拿它断言「flush 之后落的是最新那一份」。没有攒着的就什么都不做。
+ */
+export function flushNotifyPersist(): void {
+  writePending()
+}
+
 /** 每个口都吞异常:存档是锦上添花,炸了也不许连累通知本身。 */
 const safeStorage = createJSONStorage(() => ({
   getItem: (key: string) => {
@@ -130,14 +173,24 @@ const safeStorage = createJSONStorage(() => ({
       return null
     }
   },
+  /**
+   * 攒批:只留**最后**那一份,窗口到了写一次。
+   *
+   * 计时器**不因新的一次写而重排**(不是那种「一直写就一直不落」的防抖)——
+   * 通知本来就可能连着来好几分钟,重排会让存档在最需要它的那段时间里一直不落盘。
+   * 所以第一次写起一个窗口,窗口内后来的写只换掉待写的那份内容,到点落最新的一份。
+   */
   setItem: (key: string, value: string) => {
-    try {
-      localStorage?.setItem(key, value)
-    } catch {
-      // 配额满 / 隐私模式:这一条不落盘,内存里照样在。
-    }
+    pendingWrite = { key, value }
+    if (writeTimer === undefined) writeTimer = setTimeout(writePending, NOTIFY_PERSIST_DEBOUNCE_MS)
   },
   removeItem: (key: string) => {
+    // 先把攒着的那份丢掉 —— 否则清空之后那次延迟写会把它原样写回来。
+    pendingWrite = null
+    if (writeTimer !== undefined) {
+      clearTimeout(writeTimer)
+      writeTimer = undefined
+    }
     try {
       localStorage?.removeItem(key)
     } catch {
@@ -233,4 +286,31 @@ export const useNotifyStore = create<NotifyCenter>()(
 /** 组件用的未读数。返回的是个数字,所以选择器每次重算也不会白白重渲染。 */
 export function useUnreadCount(): number {
   return useNotifyStore((st) => unreadOf(st.items))
+}
+
+/*
+ * ── 攒批的代价:页面要走了得先把账结了 ────────────────────────────────────
+ * 攒批把「每条一次写」换成「一个窗口一次写」,代价是**窗口里那一份还没落盘**。
+ * 页面关掉 / 前后台切换那一刻结账,窗口就不会吃掉最后几条通知。
+ * 两个事件都听:`beforeunload` 在桌面 Electron 上稳,`pagehide` 是移动端与
+ * bfcache 唯一保证到的那个 —— 两次都调也无妨,`flushNotifyPersist` 是幂等的。
+ */
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', flushNotifyPersist)
+  window.addEventListener('pagehide', flushNotifyPersist)
+}
+
+/*
+ * ── 模块级副作用的 HMR 退役(CLAUDE.md 施工纪律)──────────────────────────
+ * 这个模块在模块作用域里起了两样活东西:两个 window 监听,和一个攒着待写内容的
+ * `setTimeout`。热更之后旧模块那份定时器仍会到点开火,写的是旧模块攒下的那份
+ * JSON —— 于是新模块刚落盘的存档被一份陈的覆盖掉。
+ * 退役 = 先结账(那份内容还是要落盘的,它是真的通知)再摘监听。
+ */
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    flushNotifyPersist()
+    window.removeEventListener('beforeunload', flushNotifyPersist)
+    window.removeEventListener('pagehide', flushNotifyPersist)
+  })
 }

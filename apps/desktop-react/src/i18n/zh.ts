@@ -802,6 +802,8 @@ export const zh = {
   'perf.report': '聚合',
   'perf.reportHint': '按名字聚成 p50/p95/max,打进控制台',
   'perf.rowDetail': '展开这条的完整现场',
+  'perf.batchMore': ',本批另有 {count} 条',
+  'perf.batchRest': '本批另有 {count} 条超预算:',
 
   /* ── 通知系统(08-30 批)────────────────────────────────────────────────
    * 面板标题不另起一个键:它就是 'item.notifications' 那两个字,

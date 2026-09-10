@@ -20,12 +20,24 @@ import {
   perfObserverCost,
   startPerfProbe,
   stopPerfProbe,
+  collectTargetText,
+  TARGET_SCAN_NODE_CAP,
   __resetPerfQueueForTests,
 } from '../perf'
+import { notify } from '../notify'
+
+/*
+ * `notify` 在这个文件里被替身掉:这一批要断的正是**它被叫了几次**
+ * (09-10 的正反馈里,一帧慢会让它被叫三十次)。环、日志、HUD 那三条出口
+ * 都是真的,只有「说给用户听」这一口是替身。
+ */
+vi.mock('../notify', () => ({ notify: vi.fn(() => 'nid') }))
+const notifyMock = vi.mocked(notify)
 
 beforeEach(() => {
   __resetPerfForTests()
   __resetPerfQueueForTests()
+  notifyMock.mockClear()
 })
 
 describe('预算表', () => {
@@ -438,6 +450,10 @@ function installFakeObserver() {
     feedLoaf(entries: PerformanceEntry[]) {
       callbacks[0]?.({ getEntries: () => entries })
     },
+    /** 喂一批 Event Timing 条目给**第二个**观察器(event 那路)。 */
+    feedEvent(entries: PerformanceEntry[]) {
+      callbacks[1]?.({ getEntries: () => entries })
+    },
     /** 放行排着的空闲任务;不给 deadline = 当作时间管够。 */
     runIdle(timeRemaining = 50) {
       const queued = idle.splice(0, idle.length)
@@ -525,12 +541,37 @@ describe('观察器回调只入队,归因与上报挪到空闲', () => {
     vi.unstubAllGlobals()
   })
 
-  it('空闲片用完就收手,不硬把这一批做完', () => {
+  it('空闲片用完就收手,不硬把这一批做完 —— **第一条也不例外**', () => {
     const fake = installFakeObserver()
     startPerfProbe()
     fake.feedLoaf(Array.from({ length: 16 }, () => loaf(60)))
-    fake.runIdle(0.5) // 剩余时间不够:落一条就该停
-    expect(dumpPerf()).toHaveLength(1)
+    /*
+     * 09-10 改判:从前这里写的是「至少硬做一条」,断言落 1 条。可这些读数正是
+     * 主线程最忙时产生的,`timeout` 逼出来的那次落账剩余时间常常就是 0 ——
+     * 「至少一条」在最坏的时刻变成插队干活,而一条落账要解析归因 + 拼现场文本。
+     * 现在每一条都问一次 deadline,不够就一条都不做,整批排到下一次。
+     */
+    fake.runIdle(0.5) // 剩余时间不够:一条都不该落
+    expect(dumpPerf()).toHaveLength(0)
+    expect(perfObserverCost().pending).toBe(16)
+    expect(fake.idleCount()).toBe(1) // 但一定重排,读数不会丢
+
+    fake.runIdle() // 时间管够,照落
+    expect(dumpPerf()).toHaveLength(16)
+
+    stopPerfProbe()
+    vi.unstubAllGlobals()
+  })
+
+  it('`timeRemaining` 恒 0 时一条不做,并且重排下一次 —— 不插队干活', () => {
+    const fake = installFakeObserver()
+    startPerfProbe()
+    fake.feedLoaf(Array.from({ length: 5 }, () => loaf(60)))
+
+    fake.runIdle(0)
+    expect(dumpPerf()).toHaveLength(0)
+    expect(perfObserverCost().pending).toBe(5)
+    expect(fake.idleCount()).toBe(1)
 
     stopPerfProbe()
     vi.unstubAllGlobals()
@@ -553,6 +594,200 @@ describe('观察器回调只入队,归因与上报挪到空闲', () => {
     // 「回调返回时环是空的」不是因为环坏了。
     __pushPerfForTests({ ts: 0, kind: 'longFrame', ms: 120, name: 'frame', scripts: [] })
     expect(dumpPerf()).toHaveLength(1)
+  })
+})
+
+/* ══ P4:入队那道闸 + 一批只吵一次(09-10 真机自伤)═══════════════════════ */
+
+/** 一条 Event Timing 条目。`interactionId` 0 = 不是一次交互(hover 族就是这一形)。 */
+function evt(name: string, ms: number, interactionId = 0): PerformanceEntry {
+  return {
+    entryType: 'event',
+    name,
+    startTime: 0,
+    duration: ms,
+    processingStart: 1,
+    processingEnd: 2,
+    interactionId,
+    target: null,
+    toJSON: () => ({}),
+  } as unknown as PerformanceEntry
+}
+
+describe('入队那道闸:只有真交互进得来,同一次交互只留一条', () => {
+  it('一次划过嵌套容器的 30 条 hover 条目,一条都不进队(也不排空闲任务)', () => {
+    const fake = installFakeObserver()
+    startPerfProbe()
+
+    const hover = ['pointerover', 'pointerout', 'pointerenter', 'pointerleave', 'mouseover', 'mouseout']
+    fake.feedEvent(
+      Array.from({ length: 30 }, (_, i) => evt(hover[i % hover.length], 60 + i, 0)),
+    )
+
+    expect(perfObserverCost().pending).toBe(0)
+    expect(perfObserverCost().filtered).toBe(30)
+    // 一条都没进来,连一次空闲任务都不该排 —— 那才是「不自伤」的完整含义。
+    expect(fake.idleCount()).toBe(0)
+
+    stopPerfProbe()
+    vi.unstubAllGlobals()
+  })
+
+  it('interactionId 为 0 的**非** hover 事件同样拦住 —— 判据是分组号,不是名单', () => {
+    const fake = installFakeObserver()
+    startPerfProbe()
+    fake.feedEvent([evt('scroll', 90, 0), evt('wheel', 80, 0)])
+    expect(perfObserverCost().pending).toBe(0)
+    expect(perfObserverCost().filtered).toBe(2)
+    stopPerfProbe()
+    vi.unstubAllGlobals()
+  })
+
+  it('同一个 interactionId 的三条只留一条,留**最长**那条(与 INP 同口径)', () => {
+    const fake = installFakeObserver()
+    startPerfProbe()
+    // 浏览器对一次点击给三条同号条目:按下 / 抬起 / click。
+    fake.feedEvent([evt('pointerdown', 50, 7), evt('pointerup', 96, 7), evt('click', 71, 7)])
+
+    expect(perfObserverCost().pending).toBe(1)
+    expect(perfObserverCost().filtered).toBe(2)
+
+    fake.runIdle()
+    const rows = dumpPerf()
+    expect(rows).toHaveLength(1)
+    expect(rows[0].name).toBe('pointerup')
+    expect(rows[0].ms).toBe(96)
+
+    stopPerfProbe()
+    vi.unstubAllGlobals()
+  })
+
+  it('不同 interactionId 各占一格 —— 去重只在同一次交互内部', () => {
+    const fake = installFakeObserver()
+    startPerfProbe()
+    fake.feedEvent([evt('click', 60, 1), evt('keydown', 61, 2), evt('click', 62, 3)])
+    expect(perfObserverCost().pending).toBe(3)
+    expect(perfObserverCost().filtered).toBe(0)
+    stopPerfProbe()
+    vi.unstubAllGlobals()
+  })
+
+  it('落账之后同号再来的算新的一条 —— 去重表不许把陈登记留成黑洞', () => {
+    const fake = installFakeObserver()
+    startPerfProbe()
+    fake.feedEvent([evt('click', 60, 9)])
+    fake.runIdle()
+    expect(dumpPerf()).toHaveLength(1)
+
+    fake.feedEvent([evt('click', 70, 9)])
+    fake.runIdle()
+    expect(dumpPerf()).toHaveLength(2)
+
+    stopPerfProbe()
+    vi.unstubAllGlobals()
+  })
+})
+
+describe('describeTarget 有界:不读 textContent', () => {
+  it('一万个文本节点的容器,只走到上限就停 —— 而且一次 textContent 都不读', () => {
+    const host = document.createElement('div')
+    for (let i = 0; i < 10000; i += 1) host.appendChild(document.createTextNode('x'))
+
+    // 这一条是**反证的正面**:旧写法整段就是一句 `el.textContent`。
+    const textContentGet = vi.spyOn(Node.prototype, 'textContent', 'get')
+    const out = describeTarget(host)
+    expect(textContentGet).not.toHaveBeenCalled()
+    textContentGet.mockRestore()
+
+    expect(out?.startsWith('div "')).toBe(true)
+    // 走过的节点数有上界(根 + 若干孩子),与那一万个没关系。
+    expect(collectTargetText(host).visited).toBeLessThanOrEqual(TARGET_SCAN_NODE_CAP)
+  })
+
+  it('压栈也照剩余额度截 —— 否则「把一万个孩子推进栈」本身就是那笔钱', () => {
+    const host = document.createElement('div')
+    for (let i = 0; i < 5000; i += 1) host.appendChild(document.createTextNode('y'))
+    // 收 8 个节点的额度:根 + 7 个孩子,一个不多。
+    expect(collectTargetText(host, 8).visited).toBe(8)
+  })
+
+  it('深树同样按文档序收,收够字符就停', () => {
+    const host = document.createElement('div')
+    host.innerHTML = '<span>前</span><b>中</b><i>后</i>'
+    expect(collectTargetText(host).text).toBe('前中后')
+  })
+})
+
+describe('一批落账只吵一次(通知不许自伤)', () => {
+  it('12 条超预算长帧 → notify 一次,标题带「另有 N 条」,清单在 detail 里', () => {
+    const fake = installFakeObserver()
+    startPerfProbe()
+    fake.feedLoaf(Array.from({ length: 12 }, (_, i) => loaf(60 + i)))
+    fake.runIdle()
+
+    // 12 条读数照旧全进环(记账那一半一条不少)……
+    expect(dumpPerf()).toHaveLength(12)
+    // ……但只说了一句话。
+    expect(notifyMock).toHaveBeenCalledTimes(1)
+    const said = notifyMock.mock.calls[0][0]
+    expect(said.level).toBe('silent')
+    expect(said.source).toBe('perf.longFrame')
+    expect(said.title).toContain('11') // 最重那条 + 本批另有 11 条
+    expect(said.title).toContain('71') // 最重那条就是 60+11
+    // detail 首段是最重那条的完整现场,后面缀同批其余各一行。
+    expect(said.detail).toContain('frame 71ms')
+    expect(said.detail).toContain('frame 60ms')
+
+    stopPerfProbe()
+    vi.unstubAllGlobals()
+  })
+
+  it('20 条(跨两批)是 2 次,不是 20 次 —— 正反馈的那一环被掐在这里', () => {
+    const fake = installFakeObserver()
+    startPerfProbe()
+    fake.feedLoaf(Array.from({ length: 20 }, (_, i) => loaf(60 + i)))
+    fake.runIdle()
+    fake.runIdle()
+    expect(dumpPerf()).toHaveLength(20)
+    expect(notifyMock).toHaveBeenCalledTimes(2)
+
+    stopPerfProbe()
+    vi.unstubAllGlobals()
+  })
+
+  it('长帧与交互在同一批里各说各的 —— 每个 kind 至多一条', () => {
+    const fake = installFakeObserver()
+    startPerfProbe()
+    fake.feedLoaf([loaf(80), loaf(90)])
+    fake.feedEvent([evt('click', 120, 4), evt('keydown', 130, 5)])
+    fake.runIdle()
+
+    expect(notifyMock).toHaveBeenCalledTimes(2)
+    expect(notifyMock.mock.calls.map((c) => c[0].source).sort()).toEqual([
+      'perf.interaction',
+      'perf.longFrame',
+    ])
+
+    stopPerfProbe()
+    vi.unstubAllGlobals()
+  })
+
+  it('批外那条路(手工打点)照旧逐条 —— 人自己埋的点,一次调用一次回音', () => {
+    __pushPerfForTests({ ts: 0, kind: 'longFrame', ms: 120, name: 'frame', scripts: [] })
+    __pushPerfForTests({ ts: 0, kind: 'longFrame', ms: 130, name: 'frame', scripts: [] })
+    expect(notifyMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('批里没有超预算的读数就一个字都不说', () => {
+    const fake = installFakeObserver()
+    startPerfProbe()
+    fake.feedLoaf([loaf(40), loaf(30)]) // 都在长帧线以下
+    fake.runIdle()
+    expect(dumpPerf()).toHaveLength(2)
+    expect(notifyMock).not.toHaveBeenCalled()
+
+    stopPerfProbe()
+    vi.unstubAllGlobals()
   })
 })
 
