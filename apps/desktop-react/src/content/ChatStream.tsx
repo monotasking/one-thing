@@ -1,5 +1,11 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { chatSources, useChatSourceOf } from '../data/chat-source'
+import {
+  applyScrollAnchor,
+  measureScrollAnchor,
+  readSessionScrollAnchor,
+  saveSessionScrollAnchor,
+} from '../data/session-view-state'
 import { sessionRefIdOf } from './session-ref'
 import type { OverlayEntry, ProjectedMessage } from '../data/chat-fold'
 import { useT, type TFn } from '../i18n'
@@ -250,6 +256,11 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
  *    (ResizeObserver),长高一次就再落一次 —— 流式跟底吃的是同一只观察者。
  * ③ **没有计时器、没有「这一下是我自己滚的」标志位**(判据的全文写在 follow.ts
  *    的文件头)。我们自己落底那几下正正好在底,人往上翻才会离底。
+ *
+ * ── 它还管一件事:进场落在哪儿(C1 · §5.2)────────────────────────────────
+ * 缺省落底照旧;记着锚点、而且那条消息此刻真在树上时改落回锚点,离场时把锚点
+ * 交给 `data/session-view-state`。「哪一条 + 差多少」的量法与用法都在那只文件里,
+ * 这里只说**什么时候**问它、什么时候交给它(判词见下面那只 layout effect)。
  */
 function useFollowBottom(
   scrollRef: RefObject<HTMLDivElement | null> | undefined,
@@ -284,10 +295,47 @@ function useFollowBottom(
     el.scrollTop = el.scrollHeight
   }, [scrollRef])
 
-  // 换会话 = 一次新的进场。写在 layout 阶段,好让同一次提交里下面那些 effect 看到它。
+  /*
+   * 换会话 = 一次新的进场。写在 layout 阶段,好让同一次提交里下面那些 effect 看到它。
+   *
+   * ── 进场时先问一句「上次看到哪儿」(C1 · §5.2)────────────────────────────
+   * 缺省仍旧是**落底**(`enter` → pinned),这一格只在两件事同时成立时改写它:
+   * 记着一个消息锚点,**而且**那条消息此刻真的在树上。后半句正是停靠池命中
+   * 的那条路 —— 机器没被扔掉,所以进场第一次提交树上就已经有消息了
+   * (`chat-source` 那边 `open()` 撞上 `if (fold) return`,一发 `listRaw` 都没打)。
+   * 冷载入时树是空的,`applyScrollAnchor` 如实回 false,于是老实落底 ——
+   * 「先贴底再跳一次」与「首帧就在底,不许先画顶部再跳」相悖,留账写在
+   * `data/session-view-state.ts` 末尾。
+   *
+   * 落成了之后**补一发 `scrolled`**:那是状态机认得的那句「滚动停下来了,此刻
+   * 离底这么远」,它自己会把状态翻成 browsing。不新开一个 `restore` 事件 ——
+   * 事件多一个,`follow.ts` 那张转移表就要多一行,而这一下与人自己滚上去
+   * 在语义上逐字相同(判据只有位置与意图,见 follow.ts 文件头)。
+   *
+   * 离场(换会话 / 这片叶卸载)时把此刻的锚点交上去。cleanup 跑在 React 的
+   * mutation 相位、宿主节点摘下来**之前**,所以那时量到的还是活的排版;
+   * 万一不是(容器已经离场),`measureScrollAnchor` 答 undefined,而
+   * `saveSessionScrollAnchor` 拿 undefined 不当一次写 —— 不拿垃圾冲掉真读数。
+   */
   useLayoutEffect(() => {
     dispatch({ type: 'enter' })
-  }, [sessionId, dispatch])
+    const el = scrollRef?.current
+    const anchor = readSessionScrollAnchor(sessionId)
+    if (el && anchor && anchor !== 'bottom' && applyScrollAnchor(el, anchor)) {
+      dispatch({ type: 'scrolled', gap: el.scrollHeight - el.clientHeight - el.scrollTop })
+    }
+    /*
+     * 收在**进场那一刻的那个节点**上,不在 cleanup 里重读 `ref.current`。
+     * 这不是为了让 lint 闭嘴 —— 它在这里恰好是对的:滚动容器是这片聊天自己的
+     * 根,进场时它已经挂上(ref 在 layout effect 之前就绑好了),而它的寿命
+     * 与这条 effect 逐字相同(换会话 = 这一格重挂,叶卸载 = 它一起走)。
+     * 所以「进场那个」与「离场那个」是同一个节点,反倒是 cleanup 里重读会
+     * 读到下一轮那一个(换 ref 时 React 先绑新的再跑旧的 cleanup)。
+     */
+    return () => {
+      if (el) saveSessionScrollAnchor(sessionId, measureScrollAnchor(el))
+    }
+  }, [sessionId, dispatch, scrollRef])
 
   /*
    * 每一次提交:pinned 就贴底。

@@ -27,6 +27,7 @@ import {
   type Tail,
 } from './chat-fold'
 import { chatPort } from './chat-port'
+import { onSessionsRemoved } from './sessions-source'
 import { notify } from '../services/notify'
 import { perfCount, perfSpan } from '../services/perf'
 import { t } from '../i18n'
@@ -48,9 +49,12 @@ import { t } from '../i18n'
  *  · `createChatSource(sessionId)` —— **一条会话的数据机器**。上面那 15 格全部
  *    收进实例;它只认自己那条会话,不需要任何过滤;
  *  · `chatSources` —— **生命周期**。按会话 id 引用计数(`acquire` / `release`),
- *    归零后延迟一拍(微任务)再 dispose,所以「同一次提交里先卸后挂」(React
- *    StrictMode / 换 key)不会把机器拆了重建 —— 判据是**次序**不是时间窗
- *    (与 `focus/registry.ts` 的 `pendingUnregister` 同一条判例);
+ *    归零后延迟一拍(微任务)再收 —— 所以「同一次提交里先卸后挂」(React
+ *    StrictMode / 换 key)不会把机器拆了重建,判据是**次序**不是时间窗
+ *    (与 `focus/registry.ts` 的 `pendingUnregister` 同一条判例)。
+ *    **那一拍收走的去处是停靠池,不是 `dispose`**(C1 · §5.1,见下面「停靠池」
+ *    那一节):最近看过的几条留在内存里照收事件,切回来零加载;
+ *    真正的拆卸只发生在被挤出池、会话没了、或整表重置的时候;
  *  · **推送订阅全进程只有一对**,住在注册表上,按 `envelope.sessionId` 分发到
  *    实例。从前每次 `open()` 退订重订一次(而且订的是「当前这条」),多开时
  *    那条路会让后开的那条把先开的那条挤掉。
@@ -1455,8 +1459,94 @@ interface RegistryEntry {
 }
 
 const entries = new Map<string, RegistryEntry>()
-/** 归零之后排着的那一拍拆卸(键 = sessionId)—— 见 `release` 的注。 */
+/** 归零之后排着的那一拍**停靠**(键 = sessionId)—— 见 `release` 的注。 */
 const sweeping = new Set<string>()
+
+/* ── 停靠池:归零之后不拆,先停一会儿(C1 · §5.1)────────────────────────
+ *
+ * ── 病与真因 ────────────────────────────────────────────────────────────
+ * 用户原话:「tab 切换 session 我还需要 load session」。真因不在网络也不在 core:
+ * 一片叶换掉会话 ref → 旧会话的引用归零 → 下一拍把**整台机器**拆了;切回来
+ * `acquire` 重新 `runLoad`,从 core 再拉一遍账本。**不是网络慢,是壳把它扔了。**
+ *
+ * 所以归零之后不 `dispose`,改成**停靠**:机器原样活着(那对推送订阅是全进程
+ * 共用的一对,停靠的机器照样在 `find` 的收件人表上,所以内容仍旧跟着核心走),
+ * 只是没人持有它。切回来 `acquire` 把它从池里取回,`open()` 撞上 `runLoad` 那句
+ * `if (fold) return` 当场返回 —— 一发 `listRaw` 都不打。
+ *
+ * ── 为什么有上限,为什么是 8 ────────────────────────────────────────────
+ * 一台机器手里攥着那条会话的**整棵折出来的树**。单条会话可以很大:07 月那次
+ * 事故里一条会话脱水前 14.6MB(脱水后 567KB),而这里停着的是折完的活树。
+ * 所以池是 **LRU 且有封顶**,不是「留着不管」:最近看过的几条零加载,更早的
+ * 那些老老实实拆掉。8 是拍点 ④ 的缺省 —— 够覆盖「在几条会话之间来回切」这个
+ * 真实用法,又不至于把八条以上的大树全钉在内存里。改这个数是一次拍板。
+ *
+ * ── 出池的三条路 ────────────────────────────────────────────────────────
+ *  · 被取回(`acquire` / `retain` / `ensure` 命中)—— 机器回到在册那一头;
+ *  · 挤出去(池满,最早停的那条真 `dispose`);
+ *  · 会话没了(`forget`,接在名册那条 `onSessionsRemoved` 上)。
+ */
+
+/** 停靠池上限(拍点 ④)。**Map 的插入序就是 LRU 序**:最早停的排在最前。 */
+export const CHAT_SOURCE_DOCK_LIMIT = 8
+
+const docked = new Map<string, ChatSource>()
+
+/** 停一台。已经在池里就挪到队尾(重新算「最近」),满了从队首挤。 */
+function dock(id: string, source: ChatSource): void {
+  ensureRosterHook()
+  docked.delete(id)
+  docked.set(id, source)
+  while (docked.size > CHAT_SOURCE_DOCK_LIMIT) {
+    const oldest = docked.keys().next()
+    if (oldest.done) break
+    evict(oldest.value)
+  }
+}
+
+/** 挤出去 = 这一台**真的**拆掉。池里没有它就是一次恒等。 */
+function evict(id: string): void {
+  const parked = docked.get(id)
+  if (!parked) return
+  docked.delete(id)
+  parked.dispose()
+}
+
+/** 取回。池里没有 = undefined(调用方去造一台新的)。 */
+function undock(id: string): ChatSource | undefined {
+  const parked = docked.get(id)
+  if (!parked) return undefined
+  docked.delete(id)
+  return parked
+}
+
+/**
+ * 一批会话离场 —— 停靠池里那几台立刻拆掉。
+ *
+ * 名册那条接缝(`onSessionsRemoved`)**把「被删」与「离开这个工作区」说成同一
+ * 句话**(产地是 `sessions-source` 的 `onLifecycle` 与 `onSpaceChanged`)。两者
+ * 一起当出池处理是**保守的那一侧**:换空间再换回来最坏是重载一次(与本批之前
+ * 的行为逐字相同,不是回归),而一台**为一条已经删掉的会话活着的机器**是真漏
+ * —— 它还挂在收件人表上收事件,不可观测,直到内存长起来。
+ * 要把两者分开得让 chat 端口自己认得 `onSessionLifecycle` 的 `deleted`,那是
+ * 一次端口形状的改动,记在本批留账里。
+ *
+ * **在册的那些一格不动**:它们有人持有着(屏幕上正开着),该由引用账收走。
+ */
+function forget(sessionIds: readonly string[]): void {
+  for (const id of sessionIds) evict(id)
+}
+
+/**
+ * 接上名册那条接缝。**惰性**(第一次真的停靠时才接)—— 模块作用域里接线会在
+ * 这台壳那条存量 import 环上读到 TDZ(判例写在 `content/session-projection.ts`
+ * 头上),而第一次停靠一定发生在整棵树跑起来之后。
+ */
+let stopRoster: (() => void) | undefined
+function ensureRosterHook(): void {
+  if (stopRoster) return
+  stopRoster = onSessionsRemoved(forget)
+}
 /** **全进程只有这一对**推送订阅(见文件头)。 */
 let unsubEvent: (() => void) | undefined
 let unsubStream: (() => void) | undefined
@@ -1470,10 +1560,18 @@ function notifyCurrent(): void {
   for (const listener of [...currentListeners]) listener()
 }
 
+/**
+ * 在册的那一台;没有就**先问停靠池**,还没有才造一台新的。
+ *
+ * 问池那一句就是「不重载」的全部入口:取回的是**同一个对象**,它的折叠状态、
+ * 水位、活尾巴一格没动,所以随后那一句 `open()` 撞上 `runLoad` 的 `if (fold) return`
+ * 当场返回。造一台新的才会有 `listRaw`。
+ */
 function ensure(id: string): ChatSource {
   const hit = entries.get(id)
   if (hit) return hit.source
-  const source = createChatSource(id)
+  const parked = undock(id)
+  const source = parked ?? createChatSource(id)
   entries.set(id, { source, refs: 0 })
   return source
 }
@@ -1508,6 +1606,9 @@ function acquire(id: string): ChatSource {
  *
  * 判据是**次序**不是时间窗:一次重挂的卸载与再挂载排在同一个宏任务里,微任务一定
  * 排在它们之后 —— 这与 `focus/registry.ts` 的 `pendingUnregister` 是同一条判例。
+ *
+ * **归零之后是停靠,不是拆卸**(C1 · §5.1)。那一拍到了、还是没人要,机器从在册
+ * 那一头挪进停靠池;真正的 `dispose` 只发生在被挤出池或会话没了的时候。
  */
 function release(id: string): void {
   const entry = entries.get(id)
@@ -1521,7 +1622,7 @@ function release(id: string): void {
     const still = entries.get(id)
     if (!still || still.refs > 0) return
     entries.delete(id)
-    still.source.dispose()
+    dock(id, still.source)
   })
 }
 
@@ -1537,17 +1638,27 @@ function ensureSubscribed(): Promise<void> {
 }
 
 /**
+ * 这条会话此刻**活着的**那一台 —— 在册的,或者停靠着的。
+ *
+ * 停靠的机器与在册的机器在这里**没有区别**:两者都是活的,区别只在有没有人
+ * 持有着。这一句是「停靠期间内容仍旧跟着核心走」的全部实现(C1 · §5.1)。
+ */
+function find(id: string): ChatSource | undefined {
+  return entries.get(id)?.source ?? docked.get(id)
+}
+
+/**
  * **分发 —— 从前那两处 `!== get().sessionId` 的过滤,现在是这一句查表**。
  *
- * 收件人不在表上(那条会话没人在看)= 丢掉,和从前一模一样;区别是从前只有
- * 「当前那一条」能收,现在每一条打开着的会话各收各的。
+ * 收件人不在表上(那条会话既没人在看、也没停在池里)= 丢掉,和从前一模一样;
+ * 区别是从前只有「当前那一条」能收,现在每一条活着的会话各收各的。
  */
 function dispatchSessionEvent(envelope: SessionEventEnvelope): void {
-  entries.get(envelope.sessionId)?.source.handleEvent(envelope)
+  find(envelope.sessionId)?.handleEvent(envelope)
 }
 
 function dispatchSessionStream(payload: SessionStreamPayload): void {
-  entries.get(payload.sessionId)?.source.handleStream(payload)
+  find(payload.sessionId)?.handleStream(payload)
 }
 
 function unsubscribeAll(): void {
@@ -1571,8 +1682,8 @@ export const chatSources = {
   /** 「我只是要读它」:拿一份但不起底(见 `retain` 的注),用完 `release`。 */
   retain,
   release,
-  /** 只看不持有:表上没有就是 undefined(不造)。 */
-  get: (id: string): ChatSource | undefined => entries.get(id)?.source,
+  /** 只看不持有:在册的或停靠着的那一台,都没有就是 undefined(不造)。 */
+  get: (id: string): ChatSource | undefined => find(id),
   /** 造一台但不持有 —— 渲染期要有东西可读,持有那一份由 effect 补上。 */
   ensure,
   ensureSubscribed,
@@ -1608,18 +1719,29 @@ export const chatSources = {
   },
   /** 兼容口:换当前会话并等它起底(`ChatSourceState.open` 的落点)。 */
   openCurrent: (id: string): Promise<void> => chatSources.setCurrent(id).open(),
-  /** 测试用:整张表回到未启动的干净态(退订 + 拆掉每一台机器)。 */
+  /**
+   * **会话没了 → 停靠池里那几台立刻拆掉**。名册那条接缝自己会调它;
+   * 导出这一口是为了让它可被直接反证(见 `forget` 头上的注)。
+   */
+  forget,
+  /** 测试用:整张表回到未启动的干净态(退订 + 拆掉每一台机器,含停靠着的)。 */
   resetAll: (): void => {
     unsubscribeAll()
     for (const entry of [...entries.values()]) entry.source.dispose()
     entries.clear()
+    for (const parked of [...docked.values()]) parked.dispose()
+    docked.clear()
+    stopRoster?.()
+    stopRoster = undefined
     sweeping.clear()
     currentRef = undefined
     currentId = ''
     notifyCurrent()
   },
-  /** 只读快照:表上此刻有哪几条会话(测试与排障用)。 */
+  /** 只读快照:**在册**(有人持有着)的是哪几条会话(测试与排障用)。 */
   ownedIds: (): string[] => [...entries.keys()],
+  /** 只读快照:**停靠池**里此刻是哪几条,队首 = 最早停的那条(测试与排障用)。 */
+  dockedIds: (): string[] => [...docked.keys()],
 }
 
 /* ── React 那半边 ─────────────────────────────────────────────────────── */

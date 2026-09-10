@@ -1,8 +1,14 @@
+import { createRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { ChatStream } from './ChatStream'
 import { configureChatPort, type ChatPort } from '../data/chat-port'
 import { chatSources } from '../data/chat-source'
+import {
+  readSessionScrollAnchor,
+  resetSessionViewStates,
+  saveSessionScrollAnchor,
+} from '../data/session-view-state'
 
 import { useExposeStore } from '../expose/store'
 import { useStageStore } from '../stage/store'
@@ -304,7 +310,12 @@ describe('进场落底与流式跟底', () => {
       const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, name)
       Object.defineProperty(HTMLElement.prototype, name, { configurable: true, get: () => value })
       restore.push(() => {
+        // `scrollHeight` / `clientHeight` 本来长在 **Element**.prototype 上,
+        // 所以这里取到的 original 是 undefined —— 那时**必须删掉自己按上去的
+        // 那一格**,否则这两个假读数会漏给整只文件后面每一条用例(2026-09-10
+        // 逮到:后面新写的用例读到 scrollHeight=1000,量的是别人的世界)。
         if (original) Object.defineProperty(HTMLElement.prototype, name, original)
+        else Reflect.deleteProperty(HTMLElement.prototype, name)
       })
     }
   })
@@ -413,7 +424,12 @@ describe('跟随丸', () => {
       const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, name)
       Object.defineProperty(HTMLElement.prototype, name, { configurable: true, get: () => value })
       restore.push(() => {
+        // `scrollHeight` / `clientHeight` 本来长在 **Element**.prototype 上,
+        // 所以这里取到的 original 是 undefined —— 那时**必须删掉自己按上去的
+        // 那一格**,否则这两个假读数会漏给整只文件后面每一条用例(2026-09-10
+        // 逮到:后面新写的用例读到 scrollHeight=1000,量的是别人的世界)。
         if (original) Object.defineProperty(HTMLElement.prototype, name, original)
+        else Reflect.deleteProperty(HTMLElement.prototype, name)
       })
     }
   })
@@ -731,5 +747,154 @@ describe('流式读数行:静默按「最近一次有东西到达」算', () => 
     const readout = screen.getByTestId('chat-readout')
     expect(readout.getAttribute('data-tone')).toBe('stalled')
     expect(readout.textContent).toContain('没有新内容')
+  })
+})
+
+
+/**
+ * **切走再切回,停在离开时那一行**(C1 · §5.2)。
+ *
+ * ── jsdom 证得了什么、证不了什么 ──────────────────────────────────────────
+ * jsdom 不排版,所以这里把整套几何按在原型上(与上面「进场落底」那一组同一手,
+ * 只是多按一格 `getBoundingClientRect` —— 锚点的判据是矩形,不是高度)。
+ * 于是这两件钉得住:
+ *  ① 离场那一拍真的把此刻的锚点交给了 `data/session-view-state`;
+ *  ② 进场那一拍真的把它读回来、并且**交给了滚动逻辑**(容器的 `scrollTop` 落在
+ *    锚点算出来的那个数上,而不是落底那个数)。
+ * 「眼睛看到的还是那一行」归真机门 `scripts/gate-continuity.mjs`(本批只写不跑)。
+ * 算术本身(哪一条算「还露着」、offset 怎么算)在 `data/session-view-state.test.ts`。
+ */
+describe('进场落点:切回来停在离开时那一行', () => {
+  const CONTENT_H = 2000
+  const VIEWPORT = 400
+  const TOP = 100
+  /** 这三条消息在**内容里**的位置(矩形由 scrollTop 现算,所以桩是物理自洽的)。 */
+  const ROWS: Record<string, { contentTop: number; height: number }> = {
+    m1: { contentTop: 0, height: 120 },
+    a1: { contentTop: 120, height: 200 },
+    m2: { contentTop: 320, height: 120 },
+  }
+
+  const LEDGER = [
+    created(1),
+    userMessage(2, 'm1', '第一句'),
+    runStart(3, 'r1', 'a1'),
+    chunks(4, 'r1', 'a1', ['第一答']),
+    runEnd(5, 'r1'),
+    userMessage(6, 'm2', '第二句'),
+  ]
+
+  let restore: (() => void)[] = []
+
+  beforeEach(() => {
+    for (const [name, value] of [
+      ['scrollHeight', CONTENT_H],
+      ['clientHeight', VIEWPORT],
+    ] as const) {
+      const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, name)
+      Object.defineProperty(HTMLElement.prototype, name, { configurable: true, get: () => value })
+      restore.push(() => {
+        if (original) Object.defineProperty(HTMLElement.prototype, name, original)
+        else Reflect.deleteProperty(HTMLElement.prototype, name)
+      })
+    }
+    const originalRect = HTMLElement.prototype.getBoundingClientRect
+    HTMLElement.prototype.getBoundingClientRect = function rect(this: HTMLElement) {
+      const scroller = document.querySelector('[data-testid="chat-stream"]')
+      const scrollTop = scroller instanceof HTMLElement ? scroller.scrollTop : 0
+      const row = ROWS[this.getAttribute('data-message-id') ?? '']
+      if (row) {
+        return {
+          top: TOP + row.contentTop - scrollTop,
+          bottom: TOP + row.contentTop + row.height - scrollTop,
+        } as DOMRect
+      }
+      return { top: TOP, bottom: TOP + VIEWPORT } as DOMRect
+    }
+    restore.push(() => {
+      HTMLElement.prototype.getBoundingClientRect = originalRect
+    })
+  })
+
+  afterEach(() => {
+    for (const undo of restore) undo()
+    restore = []
+    resetSessionViewStates()
+  })
+
+  /**
+   * **先把机器烘热再挂** —— 这正是「切回来」那条路的形状:停靠池里那台机器
+   * 早就折好了,所以进场**第一次提交树上就已经有消息**,锚点当场用得上。
+   * 冷载入(`prewarm: false`)时第一帧树是空的,锚点落不下去 —— 那一格由最后
+   * 一条用例钉,理由写在 `data/session-view-state.ts` 末尾的留账 ②。
+   */
+  async function mountWithRef({ prewarm = true } = {}) {
+    configureChatPort(port(LEDGER))
+    if (prewarm) {
+      chatSources.acquire(SESSION)
+      await waitFor(() => expect(sessionSource().getState().messages.length).toBe(3))
+    }
+    const ref = createRef<HTMLDivElement>()
+    let view!: ReturnType<typeof render>
+    await act(async () => {
+      view = render(<ChatStream sessionId={SESSION} scrollRef={ref} />)
+    })
+    await waitFor(() => expect(sessionSource().getState().status).not.toBe('loading'))
+    if (!ref.current) throw new Error('滚动容器没到手')
+    return { ref, view }
+  }
+
+  it('离场时把「停在哪一条、差多少」交上去', async () => {
+    const { ref, view } = await mountWithRef()
+    // 人往上翻到 160:a1 的上缘落在容器上缘之上 40px,它就是「我在看的那一条」。
+    await act(async () => {
+      ref.current!.scrollTop = 160
+    })
+    view.unmount()
+    expect(readSessionScrollAnchor(SESSION)).toEqual({ messageId: 'a1', offset: -40 })
+  })
+
+  it('贴底离场:记的是 bottom,不是「停在最后一条上」', async () => {
+    const { ref, view } = await mountWithRef()
+    await act(async () => {
+      ref.current!.scrollTop = CONTENT_H - VIEWPORT
+    })
+    view.unmount()
+    expect(readSessionScrollAnchor(SESSION)).toBe('bottom')
+  })
+
+  /**
+   * **反证 ②(拆掉进场那一段回写即红)**:落点是锚点算出来的 160,
+   * 而不是缺省贴底那个 `scrollHeight`。两个数差得够远,不会互相冒充。
+   */
+  it('进场时读回锚点,并且真的交给了滚动逻辑', async () => {
+    saveSessionScrollAnchor(SESSION, { messageId: 'a1', offset: -40 })
+    const { ref } = await mountWithRef()
+    expect(ref.current!.scrollTop).toBe(160)
+  })
+
+  it('锚点指着一条不在树上的消息:老实落底,不滚到一个差不多的位置', async () => {
+    saveSessionScrollAnchor(SESSION, { messageId: '被压缩折进去的那一条', offset: -40 })
+    const { ref } = await mountWithRef()
+    expect(ref.current!.scrollTop).toBe(CONTENT_H)
+  })
+
+  it('记着 bottom 时照旧贴底(缺省那条路一格没动)', async () => {
+    saveSessionScrollAnchor(SESSION, 'bottom')
+    const { ref } = await mountWithRef()
+    expect(ref.current!.scrollTop).toBe(CONTENT_H)
+  })
+
+  /**
+   * **冷载入不落锚点**(留账 ②,故意的):第一帧树是空的,锚点指的那条还不在,
+   * 于是老实落底。要治它得等消息到齐再落一次 —— 那是一次肉眼可见的跳,与
+   * 「首帧就在底,不许先画顶部再跳」相悖,所以本批不做,而是**把它钉成用例**,
+   * 免得哪天有人以为它坏了。
+   */
+  it('冷载入(机器不在池里)照旧落底,锚点留着下次用', async () => {
+    saveSessionScrollAnchor(SESSION, { messageId: 'a1', offset: -40 })
+    const { ref } = await mountWithRef({ prewarm: false })
+    expect(ref.current!.scrollTop).toBe(CONTENT_H)
+    expect(readSessionScrollAnchor(SESSION)).toBeDefined()
   })
 })

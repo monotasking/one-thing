@@ -9,6 +9,7 @@ import { useNotifyStore } from '../services/notify-store'
 import {
   ABORT_SETTLE_MS,
   chatSources,
+  CHAT_SOURCE_DOCK_LIMIT,
   REFOLD_THROTTLE_MS,
   RETRY_SETTLE_MS,
   selectEngineBusy,
@@ -1022,6 +1023,12 @@ describe('多开:一条会话一台机器,注册表按会话分发', () => {
     port: ChatPort
     /** 此刻挂着几对推送订阅 —— 「全进程只有一对」与「退订退干净了」都靠它。 */
     subs: () => number
+    /**
+     * 这条会话被拉过几次全量账本。**「不重载」这条法只能靠数它** ——
+     * 量时间会把一台慢机器判成回归、把一次真重载判成通过(检索面分页那条
+     * 「反证要数指令次数不量位移」的同一条纪律)。
+     */
+    loads: (sessionId: string) => number
     emitLedger(sessionId: string, record: Ledger): void
     emitStream(payload: SessionStreamPayload): void
   }
@@ -1030,11 +1037,16 @@ describe('多开:一条会话一台机器,注册表按会话分发', () => {
   function multiHarness(ledgers: Record<string, Ledger[]>): MultiHarness {
     const eventSubs: ((envelope: SessionEventEnvelope) => void)[] = []
     const streamSubs: ((payload: SessionStreamPayload) => void)[] = []
+    const loadCounts = new Map<string, number>()
     return {
       subs: () => eventSubs.length + streamSubs.length,
+      loads: (sessionId) => loadCounts.get(sessionId) ?? 0,
       port: {
         ready: async () => undefined,
-        listRaw: async (sessionId) => ({ events: [...(ledgers[sessionId] ?? [])] as never }),
+        listRaw: async (sessionId) => {
+          loadCounts.set(sessionId, (loadCounts.get(sessionId) ?? 0) + 1)
+          return { events: [...(ledgers[sessionId] ?? [])] as never }
+        },
         readBlob: async () => ({}),
         onSessionEvent: (callback) => {
           eventSubs.push(callback)
@@ -1105,7 +1117,14 @@ describe('多开:一条会话一台机器,注册表按会话分发', () => {
     expect(h.subs()).toBe(2)
   })
 
-  it('归还到零:那台机器拆掉,注册表不再把事件分发给它', async () => {
+  /**
+   * **C1 · §5.1 的第一条**:归零之后那台机器**不拆**,进停靠池。
+   *
+   * 本批之前这只用例的名字是「归还到零:那台机器拆掉,注册表不再把事件分发给
+   * 它」——它钉的正是用户报的那条病(「切走再切回来还要 load」)的机制。
+   * 现在钉反过来的那一句:离册了,但还活着、还在收件人表上。
+   */
+  it('归还到零:那台机器进停靠池 —— 不拆,而且照样收流', async () => {
     const h = multiHarness({
       [A]: [createdIn(1, A), userMessage(2, 'ua', '甲问'), runStart(3, 'r1', 'a1')],
       [B]: [createdIn(1, B), userMessage(2, 'ub', '乙问'), runStart(3, 'r1', 'b1')],
@@ -1114,18 +1133,92 @@ describe('多开:一条会话一台机器,注册表按会话分发', () => {
     expect(chatSources.ownedIds()).toContain(A)
 
     chatSources.release(A)
-    // 拆卸排在下一拍(微任务)——「同一次提交里先卸后挂」在那之前就把引用加回来了。
-    expect(chatSources.get(A)).toBeDefined()
+    // 收走排在下一拍(微任务)——「同一次提交里先卸后挂」在那之前就把引用加回来了。
+    expect(chatSources.dockedIds()).not.toContain(A)
     await Promise.resolve()
-    expect(chatSources.get(A)).toBeUndefined()
+    // 离册了(没人持有),但**停在池里活着**。
     expect(chatSources.ownedIds()).not.toContain(A)
+    expect(chatSources.dockedIds()).toContain(A)
+    expect(chatSources.get(A)).toBeDefined()
 
-    // 分发照旧对 B 成立,对 A 是**没有收件人**(而不是"发给了一台已经拆了的机器")。
+    // 停靠期间内容仍旧跟着核心走 —— 这正是「切回来的那一帧就是最新的」的前提。
     h.emitStream({ sessionId: A, chunk: stamped('a1', 0, '甲答') as never })
     h.emitStream({ sessionId: B, chunk: stamped('b1', 0, '乙答') as never })
     await settle()
-    expect(chatSources.get(A)).toBeUndefined()
+    expect(contentOf(A, 'a1')).toBe('甲答')
     expect(contentOf(B, 'b1')).toBe('乙答')
+  })
+
+  /**
+   * **反证 ①(拆掉停靠池即红)**:切走再切回来,`listRaw` **一发都不许多打**。
+   *
+   * 数的是请求次数,不是时间 —— 判据见 `MultiHarness.loads` 上的注。
+   */
+  it('切走再切回:命中停靠池,一发 listRaw 都不打', async () => {
+    const h = multiHarness({ [A]: [createdIn(1, A), userMessage(2, 'ua', '甲问')] })
+    configureChatPort(h.port)
+    const first = chatSources.acquire(A)
+    await settle()
+    expect(h.loads(A)).toBe(1)
+
+    // 切走:这片叶换掉了会话 ref,引用归零。
+    chatSources.release(A)
+    await Promise.resolve()
+    expect(chatSources.dockedIds()).toContain(A)
+
+    // 切回来:同一台机器回到在册那一头,起底那一句撞上 `if (fold) return`。
+    const again = chatSources.acquire(A)
+    await settle()
+    expect(again).toBe(first)
+    expect(h.loads(A)).toBe(1)
+    expect(chatSources.dockedIds()).not.toContain(A)
+    // 树也还是原来那棵(不是重新折出来的一棵一模一样的)。
+    expect(again.getState().messages.map((message) => message.id)).toEqual(['ua'])
+  })
+
+  /** **上限是真的**:第 9 条停进来,最早停的那条被挤出去并**真的**拆掉。 */
+  it('停靠池 LRU:超过上限时挤掉最早停的那一条', async () => {
+    const ids = Array.from({ length: CHAT_SOURCE_DOCK_LIMIT + 1 }, (_, i) => `dock-${i}`)
+    const h = multiHarness(Object.fromEntries(ids.map((id) => [id, [createdIn(1, id)]])))
+    configureChatPort(h.port)
+    for (const id of ids) chatSources.acquire(id)
+    await settle()
+
+    // 逐条切走 —— 停靠序 = 归还序。
+    for (const id of ids) {
+      chatSources.release(id)
+      await Promise.resolve()
+    }
+    expect(chatSources.dockedIds()).toHaveLength(CHAT_SOURCE_DOCK_LIMIT)
+    // 最早停的那条被挤了;其余原样停着。
+    expect(chatSources.dockedIds()).not.toContain(ids[0])
+    expect(chatSources.dockedIds()).toEqual(ids.slice(1))
+
+    // 被挤掉的那条**真的**拆了:再取回来要重拉一次账本。
+    expect(chatSources.get(ids[0])).toBeUndefined()
+    chatSources.acquire(ids[0])
+    await settle()
+    expect(h.loads(ids[0])).toBe(2)
+    // 没被挤的那条相反:取回来一发都不打。
+    chatSources.acquire(ids[1])
+    await settle()
+    expect(h.loads(ids[1])).toBe(1)
+  })
+
+  /** **会话没了 → 立刻出池**:一台为已删会话活着的机器是真漏(见 `forget` 头上的注)。 */
+  it('会话被摘掉:停靠池里那一台立刻拆掉,在册的那些一格不动', async () => {
+    const h = multiHarness({ [A]: [createdIn(1, A)], [B]: [createdIn(1, B)] })
+    await bothOpen(h)
+    chatSources.release(A)
+    await Promise.resolve()
+    expect(chatSources.dockedIds()).toContain(A)
+
+    chatSources.forget([A, B])
+    expect(chatSources.dockedIds()).not.toContain(A)
+    expect(chatSources.get(A)).toBeUndefined()
+    // B 还有人持有着 —— 出池那一手不碰在册的,它该由引用账收走。
+    expect(chatSources.ownedIds()).toContain(B)
+    expect(chatSources.get(B)).toBeDefined()
   })
 
   it('归还之后同一拍又被取走:机器原样留着,不拆了重建', async () => {
@@ -1212,6 +1305,9 @@ describe('多开:一条会话一台机器,注册表按会话分发', () => {
 
     chatSources.resetAll()
     expect(chatSources.ownedIds()).toEqual([])
+    // 停靠池也归零 —— 它与在册那张表是同一次拆卸的两半,漏一半就是热更后
+    // 旧模块那几台停靠着的机器照收事件(那正是 09-01 立这条法的病形)。
+    expect(chatSources.dockedIds()).toEqual([])
     expect(h.subs()).toBe(0)
     expect(chatSources.currentSessionId()).toBe('')
   })
