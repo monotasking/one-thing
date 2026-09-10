@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { TOC_HOVER_MS } from '../components/motion'
+import { whenFirstScreen } from '../data/first-screen'
 import { useSessionChapters, useSessionMarkers, useSessionsSource } from '../data/sessions-source'
 import { useT } from '../i18n'
 import { PianoKeys } from './PianoKeys'
@@ -73,22 +74,39 @@ export function TocPanel({ sessionId, currentIndex, onPick }: Props) {
    * 所以这里改的是**时机**不是内容:rail 的素材照旧取、取的还是那一份,只是
    * 让出第一屏那一拍。目录是「看完这一屏之后才会用到的东西」,晚一个空闲周期
    * 出现在屏幕上,与 `ChatStream` 那条「空闲往前补一批」是同一条纪律。
+   *
+   * ── 光排进空闲**不够**(2026-09-10 工单 6 ①)────────────────────────────
+   * 上面那一段写完之后真机仍然量到 ③ 偶发 989ms。病根:`requestIdleCallback`
+   * 管得住「什么时候发」,管不住「core 那边排在谁后面」—— 页那一发在飞的时候
+   * 主线程正好是**空的**(它在等网络),于是空闲回调准时开火,两发一起挤进 core
+   * 的单线程队列,而这一发要把整份账本折一遍。
+   *
+   * 所以要等的是**页回来了**(`whenFirstScreen`),不是**这一帧闲了**;两件事
+   * 都要:先让路(次序),再排空闲(不抢首屏那几帧的排版)。
    */
   useEffect(() => {
     if (!sessionId) return
+    let cancelled = false
+    let handle: number | undefined
+    let idleHandle: number | undefined
     const run = () => {
+      if (cancelled) return
       void ensureChapters(sessionId)
       void ensureMarkers(sessionId)
     }
-    // `requestIdleCallback` 在 jsdom / 老 Safari 上缺席 —— 退到一发宏任务,
-    // 它同样排在这一帧的提交之后(判词与 `ChatStream` 的空闲扩窗同源)。
-    const idle = (window as IdleWindow).requestIdleCallback
-    if (typeof idle === 'function') {
-      const handle = idle(run)
-      return () => (window as IdleWindow).cancelIdleCallback?.(handle)
+    void whenFirstScreen(sessionId).then(() => {
+      if (cancelled) return
+      // `requestIdleCallback` 在 jsdom / 老 Safari 上缺席 —— 退到一发宏任务,
+      // 它同样排在这一帧的提交之后(判词与 `ChatStream` 的空闲扩窗同源)。
+      const idle = (window as IdleWindow).requestIdleCallback
+      if (typeof idle === 'function') idleHandle = idle(run)
+      else handle = window.setTimeout(run, 0)
+    })
+    return () => {
+      cancelled = true
+      if (idleHandle !== undefined) (window as IdleWindow).cancelIdleCallback?.(idleHandle)
+      if (handle !== undefined) window.clearTimeout(handle)
     }
-    const handle = window.setTimeout(run, 0)
-    return () => window.clearTimeout(handle)
   }, [sessionId, ensureChapters, ensureMarkers])
 
   const markers = useMemo(() => markerSource ?? [], [markerSource])

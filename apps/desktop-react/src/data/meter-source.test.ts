@@ -4,6 +4,7 @@ import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
 import type { GetSessionUsageResponse } from '@shared/ipc/usage'
 import { configureChatPort } from './chat-port'
+import { markFirstScreenLanded, markFirstScreenPending, resetFirstScreen } from './first-screen'
 import { configureMeterPort } from './meter-port'
 import {
   EMPTY_VIEW,
@@ -91,6 +92,7 @@ beforeEach(() => {
   gate = undefined
   openGate = undefined
   useMeterSource.getState().reset()
+  resetFirstScreen()
 
   configureChatPort({
     ready: async () => undefined,
@@ -146,6 +148,7 @@ afterEach(() => {
   configureChatPort(undefined)
   configureMeterPort(undefined)
   useMeterSource.getState().reset()
+  resetFirstScreen()
 })
 
 describe('这一轮送进去多少', () => {
@@ -262,6 +265,34 @@ describe('刷新时机', () => {
     await useMeterSource.getState().open('s1')
     expect(fetches).toEqual({ usage: 1, tokens: 1 })
     expect(meterQuery.get('s1').get().data?.sessionId).toBe('s1')
+  })
+
+  /**
+   * 工单 6 ①:**首屏那一页先走**。
+   *
+   * core 是单线程的,读数这两口(`usage.getSession` + `sessions.getTokenUsage`)
+   * 与首屏那一页抢同一根线程 —— 真机上挤在前面就是把 55ms 的第一屏推到几百
+   * 毫秒后。判的是「页在飞的时候一发都没出门」,不是「早晚会拉到」。
+   */
+  it('页在飞的时候一发不发,页落地才拉(工单 6 ①)', async () => {
+    markFirstScreenPending('s1')
+    const opening = useMeterSource.getState().open('s1')
+    await flush()
+    expect(fetches).toEqual({ usage: 0, tokens: 0 })
+
+    markFirstScreenLanded('s1')
+    await opening
+    expect(fetches).toEqual({ usage: 1, tokens: 1 })
+  })
+
+  it('让路的那一段里切走了:这一发作废,新那条自己去拉', async () => {
+    markFirstScreenPending('s1')
+    const opening = useMeterSource.getState().open('s1')
+    await flush()
+    useMeterSource.setState({ sessionId: 's2' })
+    markFirstScreenLanded('s1')
+    await opening
+    expect(fetches).toEqual({ usage: 0, tokens: 0 })
   })
 
   it('run/end 与 session/compacted 再拉;别的账本行不拉', async () => {

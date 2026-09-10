@@ -7,6 +7,7 @@ import type { SessionEventEnvelope } from '@shared/events/envelope'
 import { createQueryFamily, useQuery } from './kernel'
 import { chatPort } from './chat-port'
 import { meterPort } from './meter-port'
+import { whenFirstScreen } from './first-screen'
 import { useCurrentModelSelection, useModelWindow } from './models-source'
 
 /**
@@ -46,8 +47,11 @@ import { useCurrentModelSelection, useModelWindow } from './models-source'
  *
  *  · 挂载    —— 模块被 import 的那一刻只建了一族空 query,**零往返、零订阅**;
  *  · 首载    —— `open(sessionId)`:等传输面 ready → 订上 `onSessionEvent` →
- *                `ensure()` 拉一次。先订后拉,不是随手排的:拉的那一刻起的
- *                `run/end` 不能漏(与 chat-source 同一条理由);
+ *                **让首屏那一页先走**(`whenFirstScreen`,工单 6 ①)→ `ensure()`
+ *                拉一次。先订后拉,不是随手排的:拉的那一刻起的 `run/end` 不能漏
+ *                (与 chat-source 同一条理由);而让路让的是**那一发请求**不是那条
+ *                订阅 —— 读数是缺席态起步的东西,晚一拍没人看得出来,插在首屏
+ *                前面却要花掉它几百毫秒(判据在 `data/first-screen.ts` 头上);
  *  · 换宿主  —— 换会话就是这条线唯一的一次「换宿主」:`open(next)` 退掉旧订阅、
  *                订上新的、`ensure()` 新那一格。**旧那一格的数留在它自己的格里**
  *                (键控),既不会串到新会话头上,回去时也还在;
@@ -287,6 +291,20 @@ export const useMeterSource = create<MeterSourceState>()((set, get) => {
       unsubscribe?.()
       unsubscribe = port.onSessionEvent(onEvent)
       wiredFor = next
+      /*
+       * **让首屏那一页先走**(工单 6 ①,判据在 `data/first-screen.ts` 头上)。
+       *
+       * 读数是**缺席态起步**的东西:环画点线、卡上一句「还没有读数」,晚一拍
+       * 出现在屏幕上没有任何人看得出来。而它这两口(`usage.getSession` +
+       * `sessions.getTokenUsage`)与首屏那一页抢的是**同一根线程** —— core 单线程,
+       * 挤在前面就是把 55ms 的第一屏推到几百毫秒后。
+       *
+       * 订阅**不**让路:订上是免费的,而且「拉之前先订」那条纪律一格不能动 ——
+       * 让路让的是那一发请求,不是那条线。
+       */
+      await whenFirstScreen(next)
+      // 让路的这一段里又换了一条:这一发作废(与上面 `ready` 那一段同一条判据)。
+      if (get().sessionId !== next) return
       await meterQuery.get(next).ensure()
     },
 

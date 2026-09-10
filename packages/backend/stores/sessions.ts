@@ -730,8 +730,11 @@ function sessionTokenUsageSnapshot(sessionId: string): {
 	lastInputTokens: number;
 	contextSize: number;
 } | null {
-	const session = sessionRepository.getSession(sessionId);
-	return session ? getSessionTokenUsageSnapshot(session) : null;
+	// 工单 6 ②a:五格住在会话壳上,**问壳不问消息**。走 `getSession()` 的那个版本
+	// 为了这五个数把整份账本读两遍、折一遍、把 400 条消息物化一遍(真店夹具
+	// 53MB 上 835ms),而 core 是单线程的 —— 首屏那一页就排在它后面。
+	const usage = sessionRepository.getSessionUsageFields(sessionId);
+	return usage ? getSessionTokenUsageSnapshot(usage) : null;
 }
 
 // Update session token usage (does not affect sort order)

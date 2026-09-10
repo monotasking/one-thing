@@ -42,6 +42,7 @@ import {
 } from './page-results'
 import { onSessionsDeleted } from './sessions-source'
 import { readSessionScrollAnchor } from './session-view-state'
+import { markFirstScreenLanded, markFirstScreenPending } from './first-screen'
 import { notify } from '../services/notify'
 import { perfCount, perfSpan } from '../services/perf'
 import { t } from '../i18n'
@@ -1605,13 +1606,22 @@ export function createChatSource(sessionId: string): ChatSource {
      */
     /**
      * 起底(幂等)。**在飞的那一次由所有调用者共享同一个 promise** —— 见 `opening`。
+     *
+     * 首屏那一页的**两条边**在这里宣布(工单 6 ①,判据见 `data/first-screen.ts`):
+     * 出发一条、落地一条,面板类的读排在这两条之间让路。**产地只有这一处**;
+     * 落地那一句挂在 `finally` 上 —— 成(页 / 整份都算)、败、池命中当场返回、
+     * 没有会话,四种收场是同一件事:「首屏那棵树此刻已经有底了,后面的人可以
+     * 出门了」。写在 `runLoad` 里面反而会漏掉「已经起过底所以直接 return」那一支,
+     * 而那正是池命中最常走的那一支。
      */
     function load(): Promise<void> {
       if (opening) return opening
+      markFirstScreenPending(sessionId)
       const started = runLoad()
       opening = started
       void started.finally(() => {
         if (opening === started) opening = undefined
+        markFirstScreenLanded(sessionId)
       })
       return started
     }

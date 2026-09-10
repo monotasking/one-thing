@@ -278,6 +278,65 @@ describe('onething session repository', () => {
     expect(step.toolCall?.id).toBe('tc1')
   })
 
+  /**
+   * 工单 6 ②a:用量五格住在**会话壳**上,读它不该惊动消息那一格。
+   *
+   * 真机上被惊动的代价不是一次多余的函数调用:补水源一动就是把整份账本读一遍、
+   * 折一遍、把全部消息物化一遍(53MB 夹具上 835ms),而交出去的只有 159 个字节。
+   * 所以这条用例判的是**补水源一次都没被叫过**,不是"数对不对"—— 数对了但路走
+   * 错了,正是修之前的样子。
+   */
+  it('reads the usage fields off the shell without waking the hydration source', async () => {
+    const sessionsDir = createTempSessionsDir()
+    let currentSessionId = ''
+    const hydrate = vi.fn<() => TestMessage[] | undefined>(() => undefined)
+    const repository = createOnethingSessionRepository<
+      TestSession,
+      TestMessage,
+      TestMeta,
+      CoreSessionDetails,
+      UserMessageMarker
+    >({
+      defaultAgentId: 'default-agent',
+      getSessionsDir: () => sessionsDir,
+      getSessionPath: sessionId => path.join(sessionsDir, `${sessionId}.json`),
+      readJsonFile,
+      writeJsonFile,
+      writeJsonFileAsync,
+      deleteJsonFile: filePath => fs.rmSync(filePath, { force: true }),
+      getCurrentSessionId: () => currentSessionId,
+      setCurrentSessionId: sessionId => {
+        currentSessionId = sessionId
+      },
+      hydrateMessagesFromProjection: hydrate,
+    })
+
+    const session = repository.createSession('s1', 'First')
+    repository.updateSessionTokenUsage('s1', { inputTokens: 12, outputTokens: 34, totalTokens: 46 }, { inputTokens: 12, outputTokens: 34 })
+    repository.updateSessionContextSize('s1', 789)
+    repository.saveSessionToFile('s1', session)
+    await repository.flushSessionSave('s1')
+
+    repository.clearAllSessionCache()
+    hydrate.mockClear()
+
+    expect(repository.getSessionUsageFields('s1')).toMatchObject({
+      totalInputTokens: 12,
+      totalOutputTokens: 34,
+      totalTokens: 46,
+      // `updateSessionContextSize` 把这一格一起推到 789(`applySessionContextSize`
+      // 的既有口径),这里如实写它此刻的值 —— 用例判的是"读得到、路走对",
+      // 不是替那条写口径重新拍板。
+      lastInputTokens: 789,
+      contextSize: 789,
+    })
+    expect(hydrate).not.toHaveBeenCalled()
+
+    // 删掉的会话仍然答"读不到" —— 两道删除判据留在壳这条路上。
+    await repository.deleteSession('s1')
+    expect(repository.getSessionUsageFields('s1')).toBeUndefined()
+  })
+
   it('owns session metadata and side-effect mutations behind repository adapters', () => {
     const sessionsDir = createTempSessionsDir()
     let currentSessionId = ''

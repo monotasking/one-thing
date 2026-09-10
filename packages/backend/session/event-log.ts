@@ -41,6 +41,7 @@ import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { BackendNotAssembledError, getCurrentBackendSafe } from '../current.js'
 import {
+  decodeSessionLogEventLine,
   encodeSessionLogEventLine,
   collectSessionBlobRefHashes,
   parseSessionLogEventLog,
@@ -393,10 +394,36 @@ function reloadCounters(state: SessionEventLogState, logPath: string): void {
     state.lastRequestIndex = counters.lastRequestIndex
   }
   state.expectedBytes = Buffer.byteLength(text, 'utf8')
-  for (const event of parseSessionLogEventLog(text)) {
+  for (const line of text.split('\n')) {
+    if (!lineMayCarryBlobRef(line)) continue
+    const event = decodeSessionLogEventLine(line)
+    if (!event) continue
     const hashes = collectEventBlobDependencies(event)
     if (hashes.size) state.blobDependencies.set(event.seq, hashes)
   }
+}
+
+/**
+ * 这一行**有没有可能**带 blob 引用 —— 冷启用时的预筛(工单 6 ②b)。
+ *
+ * 从前这里是 `parseSessionLogEventLog(text)`:整份账本每一行都 `JSON.parse` 一遍,
+ * 再对每一条 `JSON.stringify(event.data)` 跑一次正则。真店夹具(53MB / 27,085 行 /
+ * 28 个 blob)上这两件事一起要 343ms,而**其中 27,057 行结构上不可能带引用**。
+ * 更贵的是它花在谁身上:`tryEnable` 是**任何一次读**冷触这条会话都会走到的路
+ * (`ensureState` ← `isSessionEventLogEnabled` ← 活投影的 `prepare`),于是一份
+ * 写入侧的耐久性账被记在了读的账上,而 core 是单线程的。
+ *
+ * 判据不是启发式,是两种编码各自的**结构后果**,一条也没有第三种写法:
+ *  · `BlobRef` 是个带 `hash` 字段的对象(`isBlobRef` 的第一道判据就是它),
+ *    JSON 编码之后那个键必然逐字出现为 `"hash"`;
+ *  · 正文里内嵌的那种(合成图片)必然是 `onething-blob://<16 位十六进制>`。
+ * 两样都不含 = `collectEventBlobDependencies` 只可能交出空集,解析它是白解析。
+ * 反过来不成立也没关系:`"hash"` 出现在正文里只是多解析一行(多做的功,不是错
+ * 答案)。判官仍然只有一位 —— 命中的行照旧交给 `collectEventBlobDependencies`,
+ * 这里一个 hash 都不自己认。
+ */
+function lineMayCarryBlobRef(line: string): boolean {
+  return line.includes('"hash"') || line.includes('onething-blob://')
 }
 
 function collectEventBlobDependencies(event: SessionLogEventRecord, encoded?: string): Set<string> {

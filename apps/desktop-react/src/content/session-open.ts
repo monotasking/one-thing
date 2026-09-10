@@ -1,4 +1,5 @@
 import { hasComposerDraft } from '../composer/drafts'
+import { markFirstScreenPending } from '../data/first-screen'
 import { useSessionOpenMode } from '../data/session-open-mode'
 import { CENTER_REGION } from '../workbench/regions'
 import { regionOfLeafIn, useWorkbenchStore } from '../workbench/store'
@@ -73,6 +74,20 @@ import type { PaneLeafNode, PaneNode } from '../workbench/tree'
 
 /** 进一条会话:按上面那三档办。答「落在哪片叶上」(答不出 = 什么都没做)。 */
 export function enterSessionInWorkbench(sessionId: string): string | null {
+  /*
+   * **首屏在路上**(工单 6 ①,判据在 `data/first-screen.ts` 头上)——「谁宣布要给
+   * 这条会话开首屏」在这只壳里恰好有两个时刻,这是**早的那一个**:
+   *
+   *  · 这里(点一条会话 / 打开一条会话)—— 同步跑在点击那一刻的处理函数里;
+   *  · `chat-source` 的 `load()` —— 那台机器自己起底(开机复原、预取)。
+   *
+   * 两句是同一个陈述,`markFirstScreenPending` 幂等,所以不是两个产地是两个时刻。
+   * **这一句不能省**:内容切换是标了 transition 的(第五轴铁律①),于是摆首屏的
+   * 那片叶的 effect 排在 Composer 的 effect **之后**几拍 —— 只在 `load()` 里宣布的话,
+   * 读数那两口在「还没有人说要开首屏」的窗口里就出门了,让路当场落空(实测:
+   * `usage.getSession` / `sessions.getTokenUsage` 与页同时发,而不是排在它后面)。
+   */
+  markFirstScreenPending(sessionId)
   const store = useWorkbenchStore.getState()
   const ref = sessionRefOf(sessionId)
   const seat = seatOfRefIn(store.regions, refId(ref))

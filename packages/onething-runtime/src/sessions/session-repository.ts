@@ -41,6 +41,7 @@ import {
   type CoreSessionMessageWithUsage,
   type CoreSessionMeta,
   type CoreSessionTokenUsage,
+  type CoreSessionUsageFields,
   type CoreTimelineSession,
   type CoreContextVariableInput,
   type GetSessionMessagesPageRequest,
@@ -308,16 +309,48 @@ export class OnethingSessionRepository<
    * 与会话级时间线元数据那几格仍然只有它管。
    */
   private loadStoredSession(sessionId: string): TSession | undefined {
+    const stored = this.loadStoredSessionShell(sessionId)
+    if (!stored) return undefined
+    const projected = this.options.hydrateMessagesFromProjection?.(sessionId)
+    // 整体替换用展开(命令面 COW 的同一条纪律:`session.messages = …` 不许)。
+    const hydrated = projected && projected.length > 0 ? { ...stored, messages: projected } : stored
+    return rehydrateSessionFromStorage(hydrated)
+  }
+
+  /**
+   * 盘上那层**外壳**(meta.json),**不补水、不折叠**(工单 6 ②a)。
+   *
+   * 抽出来不是为了少写两行:上面那口的每一次调用都会把整份账本读一遍、折一遍、
+   * 把全部消息物化一遍(真店 53MB 账本上实测 835ms),而会话壳上有一整排
+   * **与消息无关的标量**(用量五格就是其中一排)—— 为了交出几个数付那一折,
+   * 是这条路上最贵的一次误伤。删除判据(墓碑 / `isSessionDeleted` 两道,含
+   * `storageGeneration` 那道)留在这里,所以"读得到读不到"两条路答案恒同。
+   */
+  private loadStoredSessionShell(sessionId: string): TSession | undefined {
     if (this.deletionTombstones.has(sessionId) || this.options.isSessionDeleted?.(sessionId)) return undefined
     const stored = this.options.storageDriver
       ? this.options.storageDriver.load(sessionId)
       : this.options.readJsonFile<TSession | null>(this.options.getSessionPath(sessionId), null) ?? undefined
     if (!stored) return undefined
     if (this.options.isSessionDeleted?.(sessionId, (stored as TSession & { storageGeneration?: string }).storageGeneration)) return undefined
-    const projected = this.options.hydrateMessagesFromProjection?.(sessionId)
-    // 整体替换用展开(命令面 COW 的同一条纪律:`session.messages = …` 不许)。
-    const hydrated = projected && projected.length > 0 ? { ...stored, messages: projected } : stored
-    return rehydrateSessionFromStorage(hydrated)
+    return stored
+  }
+
+  /**
+   * 会话壳上的**用量五格**(工单 6 ②a)。
+   *
+   * `getSessionTokenUsageSnapshot` 读的是 `totalInputTokens` / `totalOutputTokens` /
+   * `totalTokens` / `lastInputTokens` / `contextSize` —— 五个住在 `meta.json` 上的
+   * 标量,**消息那一格它一眼都不看**。而这一口从前走 `getSession()`:为了交出
+   * 159 个字节,53MB 的账本被读了两遍、折了一遍、400 条消息被物化一遍
+   * (冷 core 上 835ms),而 core 是单线程的 —— 首屏那一页就排在它后面。
+   *
+   * 缓存里有就用缓存里那一份,而且**故意不走换装点**(`getCachedSession` 会把
+   * 消息换成折叠产物):换装点换的是消息,五格不在消息里。缓存里没有就只读壳。
+   */
+  getSessionUsageFields(sessionId: string): CoreSessionUsageFields | undefined {
+    const session = this.sessionCache.get(sessionId) ?? this.loadStoredSessionShell(sessionId)
+    return session as CoreSessionUsageFields | undefined
   }
 
   invalidateSessionCache(sessionId: string): void {
