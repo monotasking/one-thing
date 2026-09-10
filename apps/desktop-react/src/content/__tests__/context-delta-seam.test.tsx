@@ -236,6 +236,8 @@ async function mountStream() {
     sendMessage: async () => ({ success: true }),
     abort: async () => ({ success: true }),
     retryMessage: async () => ({ success: true }),
+    listPendingPermissions: async () => ({ success: true, pending: [] }),
+    respondPermission: async () => ({ success: true }),
   })
   useExposeStore.setState({ currentSessionId: SESSION })
   let view!: ReturnType<typeof render>

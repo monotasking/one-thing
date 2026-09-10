@@ -3,11 +3,16 @@ import type {
   ReadSessionBlobResponse,
 } from '@shared/ipc/session-events'
 import type { SessionCommandEmitResult } from '@shared/ipc/session-command'
+import type {
+  PermissionGetPendingResponse,
+  PermissionResponse,
+} from '@shared/ipc/permissions'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
 import type { SessionStreamPayload } from '@shared/events/envelope'
 import { IPC_CHANNELS } from '@shared/ipc/channels'
 import { sessionEventsRouter } from '@shared/ipc/session-events'
 import { sessionCommandRouter } from '@shared/ipc/session-command'
+import { permissionRouter } from '@shared/ipc/permissions'
 import { expandFileTokens } from '@onething/runtime/prompts/prompt-references'
 
 /**
@@ -77,6 +82,39 @@ export interface ChatPort {
    * 自己的解析链走,那正是"照原样再跑一次"该有的语义。
    */
   retryMessage(sessionId: string, messageId: string): Promise<SessionCommandEmitResult>
+  /**
+   * 这条会话此刻**挂着的审批**(`permission.getPending`)。
+   *
+   * ── 为什么它在这条端口上 ─────────────────────────────────────────────────
+   * 判据与 `/compact` 那一段逐字同源:**谁按下它**。权限卡长在工具卡里、答它的手
+   * 就在聊天区那一屏,所以它归这里;账页(列/撤)是设置页的事,归
+   * `data/permission-grants-port.ts`。
+   *
+   * ── 为什么需要它(活卡明明由事件送来)────────────────────────────────────
+   * 活卡从 `permission:request` 拿,**重载之后从这一口拿**(a50d4f99 留账原话)。
+   * 一次冷载 / 一次缺号重折都会让壳错过那条事件,而卡是「引擎在等一个人回答」的
+   * 唯一出口 —— 少画一张卡,屏幕上就是一个永远停在「执行中」的工具与一台在等的
+   * 引擎。所以它与 `listRaw` 一样是**对账口**:写就地更新,重拉对账。
+   */
+  listPendingPermissions(sessionId: string): Promise<PermissionGetPendingResponse>
+  /**
+   * 答一张权限卡(`command:permission-respond`)。
+   *
+   * 与 `abort` / `retryMessage` 逐条同惯例:同一条命令总线,**一个字段都不多给**。
+   *  · 不带 `channel` —— 缺席时 http 面会 `采纳那次 ask 记下的 targetChannel`
+   *    (仓根 CLAUDE.md「Chat Message Flow」那一段的原话),壳替它拍板就是在两处
+   *    定义同一件事;
+   *  · 不带 `requestId`,带 `toolCallId` —— 后者是契约上那格**耐久相关键**
+   *    (`session-commands.ts` 的原话:应答方不必看见过那个易逝的 requestId),
+   *    而卡的地址本来就是工具调用;
+   *  · `decision: 'always'` **没有第五个字段**(a50d4f99 留账):scheme 由后端从
+   *    那次 ask 上取,壳回传等于让发送方指定许可范围。
+   */
+  respondPermission(
+    sessionId: string,
+    toolCallId: string,
+    decision: PermissionResponse,
+  ): Promise<SessionCommandEmitResult>
 }
 
 let port: ChatPort | undefined
@@ -101,6 +139,7 @@ async function realPort(): Promise<ChatPort> {
   const client = await onethingClient()
   const sessionEventsApi = client.api(sessionEventsRouter)
   const sessionCommands = client.api(sessionCommandRouter)
+  const permissionApi = client.api(permissionRouter)
   const { SESSION_COMMAND_TYPES } = await import('@shared/events/session-commands')
   return {
     ready: () => whenConnected(),
@@ -125,6 +164,12 @@ async function realPort(): Promise<ChatPort> {
       sessionCommands.emit({
         sessionId,
         command: { type: SESSION_COMMAND_TYPES.RETRY_MESSAGE, messageId },
+      }),
+    listPendingPermissions: (sessionId) => permissionApi.getPending({ sessionId }),
+    respondPermission: (sessionId, toolCallId, decision) =>
+      sessionCommands.emit({
+        sessionId,
+        command: { type: SESSION_COMMAND_TYPES.PERMISSION_RESPOND, toolCallId, decision },
       }),
   }
 }

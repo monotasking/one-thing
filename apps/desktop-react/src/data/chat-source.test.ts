@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
 import type { SessionStreamPayload } from '@shared/events/envelope'
+import type { PermissionInfo } from '@shared/ipc/permissions'
 import { configureChatPort, type ChatPort } from './chat-port'
 import { useNotifyStore } from '../services/notify-store'
 import {
@@ -113,6 +114,13 @@ interface Harness {
   sendResult: () => Promise<{ success: boolean; error?: string }>
   abortResult: () => Promise<{ success: boolean; error?: string }>
   retryResult: () => Promise<{ success: boolean; error?: string }>
+  /** `permission.getPending` 交回去的那一份(对账口的夹具)。 */
+  pending: PermissionInfo[]
+  /** 对账口被问过几次 —— 「起底之后对一次账」靠它钉。 */
+  pendingCalls: number
+  /** 端口收到的每一次应答的载荷。**「无新字段」那条反证读的就是它。** */
+  responded: { toolCallId: string; decision: string }[]
+  respondResult: () => Promise<{ success: boolean; error?: string }>
   emitEvent(envelope: SessionEventEnvelope): void
   emitLedger(record: Ledger): void
   emitStream(payload: SessionStreamPayload): void
@@ -130,6 +138,10 @@ function harness(initial: Ledger[]): Harness {
     sendResult: async () => ({ success: true }),
     abortResult: async () => ({ success: true }),
     retryResult: async () => ({ success: true }),
+    pending: [],
+    pendingCalls: 0,
+    responded: [],
+    respondResult: async () => ({ success: true }),
     port: {
       ready: async () => undefined,
       listRaw: async () => {
@@ -156,6 +168,14 @@ function harness(initial: Ledger[]): Harness {
       retryMessage: async (_sessionId, messageId) => {
         h.retried.push(messageId)
         return h.retryResult()
+      },
+      listPendingPermissions: async () => {
+        h.pendingCalls += 1
+        return { success: true, pending: [...h.pending] }
+      },
+      respondPermission: async (_sessionId, toolCallId, decision) => {
+        h.responded.push({ toolCallId, decision })
+        return h.respondResult()
       },
     },
     emitEvent: (envelope) => eventSubs.forEach((fn) => fn(envelope)),
@@ -1057,6 +1077,8 @@ describe('多开:一条会话一台机器,注册表按会话分发', () => {
           return () => void streamSubs.splice(streamSubs.indexOf(callback), 1)
         },
         sendMessage: async () => ({ success: true }),
+        listPendingPermissions: async () => ({ success: true, pending: [] }),
+        respondPermission: async () => ({ success: true }),
         abort: async () => ({ success: true }),
         retryMessage: async () => ({ success: true }),
       },
@@ -1310,5 +1332,251 @@ describe('多开:一条会话一台机器,注册表按会话分发', () => {
     expect(chatSources.dockedIds()).toEqual([])
     expect(h.subs()).toBe(0)
     expect(chatSources.currentSessionId()).toBe('')
+  })
+})
+
+/* ── 审批车道(应用级许可 · 壳半边,2026-09-10)──────────────────────────── */
+
+/**
+ * 权限卡的**数据那一半**。屏幕那一半在
+ * `src/content/permission/__tests__/PermissionCard.test.tsx`。
+ *
+ * 钉住四件事,每件都有出处:
+ *  ① 活事件折进车道(反证 ②:拆掉那一支 → 「卡按 toolCallId 落位」当场红);
+ *  ② 起底之后经 `permission.getPending` **对一次账**(重载之后卡还在);
+ *  ③ 应答的载荷**逐字**:`{ toolCallId, decision }`,`always` 没有第五个字段;
+ *  ④ 答出去之后先置「已答」,由 `permission:settled` 收尾 —— 不由那一发的应答收尾。
+ */
+
+const permissionRequest = (over: Record<string, unknown> = {}) => ({
+  type: SESSION_EVENT_TYPES.PERMISSION_REQUEST,
+  requestId: 'req-1',
+  targetChannel: 'ipc',
+  toolCallId: 'call-1',
+  messageId: 'a1',
+  permissionType: 'session_destructive',
+  title: 'Remove session content: session:s1',
+  pattern: 'session:s1',
+  metadata: {},
+  alwaysScope: { scheme: 'session' },
+  ...over,
+})
+
+/** 权限事件骑的是会话事件那条面,不是账本行 —— 所以它自己一个 envelope。 */
+const emitPermission = (h: Harness, event: Record<string, unknown>) =>
+  h.emitEvent({
+    sessionId: SESSION,
+    sequence: 0,
+    timestamp: T0,
+    event: event as never,
+  })
+
+const pendingInfo = (over: Partial<PermissionInfo> = {}): PermissionInfo => ({
+  id: 'req-1',
+  type: 'session_destructive',
+  pattern: 'session:s1',
+  sessionId: SESSION,
+  messageId: 'a1',
+  callId: 'call-1',
+  title: 'Remove session content: session:s1',
+  metadata: {},
+  createdAt: T0,
+  alwaysScope: { scheme: 'session' },
+  ...over,
+})
+
+describe('审批车道:活事件就地折,重载经 getPending 对账', () => {
+  async function opened(h: Harness) {
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+  }
+
+  it('**反证 ②**:`permission:request` 折进车道,卡按 toolCallId 落位', async () => {
+    const h = harness([created(1)])
+    await opened(h)
+    expect(state().permissions).toEqual({})
+
+    emitPermission(h, permissionRequest())
+    await settle()
+
+    const ask = state().permissions['call-1']
+    expect(ask).toBeTruthy()
+    expect(ask.permissionId).toBe('req-1')
+    expect(ask.type).toBe('session_destructive')
+    expect(ask.alwaysScope).toEqual({ scheme: 'session' })
+    expect(ask.canRespond).toBe(true)
+    expect(ask.permissionQueued).toBe(false)
+  })
+
+  it('`permission:queued` 画等待态、不给键;后到的 request 顶掉它', async () => {
+    const h = harness([created(1)])
+    await opened(h)
+
+    emitPermission(h, {
+      type: SESSION_EVENT_TYPES.PERMISSION_QUEUED,
+      requestId: 'req-0',
+      toolCallId: 'call-2',
+      messageId: 'a1',
+    })
+    await settle()
+    expect(state().permissions['call-2'].permissionQueued).toBe(true)
+    expect(state().permissions['call-2'].canRespond).toBe(false)
+
+    emitPermission(h, permissionRequest({ requestId: 'req-2', toolCallId: 'call-2' }))
+    await settle()
+    expect(state().permissions['call-2'].permissionQueued).toBe(false)
+    expect(state().permissions['call-2'].canRespond).toBe(true)
+  })
+
+  it('`permission:settled` 把头卡与被归并的跟随者一起收走', async () => {
+    const h = harness([created(1)])
+    await opened(h)
+    emitPermission(h, permissionRequest())
+    emitPermission(h, permissionRequest({ requestId: 'req-2', toolCallId: 'call-2' }))
+    await settle()
+    expect(Object.keys(state().permissions).sort()).toEqual(['call-1', 'call-2'])
+
+    emitPermission(h, {
+      type: SESSION_EVENT_TYPES.PERMISSION_SETTLED,
+      requestId: 'req-1',
+      toolCallIds: ['call-1', 'call-2'],
+      decision: 'allowed',
+    })
+    await settle()
+    expect(state().permissions).toEqual({})
+  })
+
+  it('`permission:timeout` 按 requestId 收走', async () => {
+    const h = harness([created(1)])
+    await opened(h)
+    emitPermission(h, permissionRequest())
+    await settle()
+
+    emitPermission(h, { type: SESSION_EVENT_TYPES.PERMISSION_TIMEOUT, requestId: 'req-1' })
+    await settle()
+    expect(state().permissions).toEqual({})
+  })
+
+  it('起底之后对一次账 —— 重载(壳错过那条事件)卡照样在', async () => {
+    const h = harness([created(1)])
+    h.pending = [pendingInfo()]
+    await opened(h)
+
+    expect(h.pendingCalls).toBe(1)
+    expect(state().permissions['call-1']?.permissionId).toBe('req-1')
+  })
+
+  it('对账认得 `promptState: queued`,也丢掉交不出地址的那些', async () => {
+    const h = harness([created(1)])
+    h.pending = [
+      pendingInfo({ promptState: 'queued' }),
+      pendingInfo({ id: 'req-9', callId: undefined }),
+    ]
+    await opened(h)
+
+    expect(Object.keys(state().permissions)).toEqual(['call-1'])
+    expect(state().permissions['call-1'].permissionQueued).toBe(true)
+    expect(state().permissions['call-1'].canRespond).toBe(false)
+  })
+
+  it('对账**拉不到就一格不动**(把「问不到」画成「没有审批」是造事实)', async () => {
+    const h = harness([created(1)])
+    await opened(h)
+    emitPermission(h, permissionRequest())
+    await settle()
+
+    h.port.listPendingPermissions = async () => ({ success: false, error: '断了' })
+    // 一次缺号 → 重折 → 对账;那一发失败,车道原样。
+    h.ledger.push(userMessage(9, 'm9', '缺号'))
+    h.emitLedger(userMessage(9, 'm9', '缺号'))
+    await new Promise((r) => setTimeout(r, REFOLD_THROTTLE_MS + 60))
+    expect(state().permissions['call-1']).toBeTruthy()
+  })
+})
+
+describe('审批车道:应答', () => {
+  async function withCard(h: Harness) {
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+    emitPermission(h, permissionRequest())
+    await settle()
+  }
+
+  it('**载荷逐字**:`{ toolCallId, decision }`,`always` 没有第五个字段', async () => {
+    const h = harness([created(1)])
+    await withCard(h)
+
+    state().respondPermission('call-1', 'always')
+    await settle()
+
+    expect(h.responded).toEqual([{ toolCallId: 'call-1', decision: 'always' }])
+  })
+
+  it('答出去之后先置「已答」,连点第二下不再发', async () => {
+    const h = harness([created(1)])
+    await withCard(h)
+
+    state().respondPermission('call-1', 'once')
+    // 同步那一拍就该变 —— 律③的进行中反馈不许等一次往返。
+    expect(state().permissions['call-1'].answered).toBe('once')
+    expect(state().permissions['call-1'].canRespond).toBe(false)
+
+    state().respondPermission('call-1', 'reject')
+    await settle()
+    expect(h.responded).toEqual([{ toolCallId: 'call-1', decision: 'once' }])
+  })
+
+  it('收尾归 `permission:settled`,不归那一发的应答', async () => {
+    const h = harness([created(1)])
+    await withCard(h)
+
+    state().respondPermission('call-1', 'session')
+    await settle()
+    // 命令早就回来了,卡**还在**:核心没说结算,壳不许自己把它抹掉。
+    expect(state().permissions['call-1'].answered).toBe('session')
+
+    emitPermission(h, {
+      type: SESSION_EVENT_TYPES.PERMISSION_SETTLED,
+      requestId: 'req-1',
+      toolCallIds: ['call-1'],
+      decision: 'allowed',
+    })
+    await settle()
+    expect(state().permissions).toEqual({})
+  })
+
+  it('命令没离开壳:那一格退回去,人还能再点一次', async () => {
+    const h = harness([created(1)])
+    await withCard(h)
+    h.respondResult = async () => ({ success: false, error: '断了' })
+
+    state().respondPermission('call-1', 'once')
+    await settle()
+
+    expect(state().permissions['call-1'].answered).toBeUndefined()
+    expect(state().permissions['call-1'].canRespond).toBe(true)
+    expect(useNotifyStore.getState().items.some((item) => item.source === 'chat.permission')).toBe(
+      true,
+    )
+  })
+
+  it('排队中的卡答不动(发一条打空的应答只会在核那头留一句 warn)', async () => {
+    const h = harness([created(1)])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+    emitPermission(h, {
+      type: SESSION_EVENT_TYPES.PERMISSION_QUEUED,
+      requestId: 'req-0',
+      toolCallId: 'call-2',
+      messageId: 'a1',
+    })
+    await settle()
+
+    state().respondPermission('call-2', 'once')
+    await settle()
+    expect(h.responded).toEqual([])
   })
 })

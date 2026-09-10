@@ -24,6 +24,7 @@ import { useSystemReducedMotion } from '../reading/useSystemReducedMotion'
 import type { MotionTier, ReadingColumn, ReadingDensity, ReadingFontSize } from '../reading/types'
 import { FocusScope } from '../focus/FocusScope'
 import { KeymapSettings } from './KeymapSettings'
+import { PermissionGrants } from './settings/PermissionGrants'
 import s from './mocks.module.css'
 
 /**
@@ -378,6 +379,17 @@ export function SettingsMock() {
                   label={t('sessions.openMode')}
                 />
               </div>
+            </Section>
+
+            {/*
+              「已授权」自成一区(应用级许可 · 壳半边,2026-09-10)。这一页的分区
+              判据是「用户想改的是哪件事」—— 这一件是「这台机器替我记住了什么、
+              我要把哪一条收回来」,与语言 / Dock / 打开方式 / 快捷键都不是同一件。
+              排在快捷键之前:它与「打开方式」一样是关于**这台机器怎么替我做事**
+              的决定,而快捷键是最后那一节键位表。
+            */}
+            <Section titleKey="settings.sectionPermissions">
+              <PermissionGrants />
             </Section>
 
             <Section titleKey="settings.sectionKeymap">

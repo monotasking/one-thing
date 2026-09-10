@@ -43,6 +43,9 @@ export type FocusScopeId =
   // 消息流。**同一个 id 会有好几份实例**(W5-b 会话多开):一片会话叶一份,
   // owner = 那一格的 refId —— 与 `leaf` 那一格同一个样板(见下)。
   | 'chat'
+  // 一张权限卡(应用级许可 · 壳半边)。**同一个 id 会有好几份实例** —— 一次调用
+  // 一张卡,owner = 那次调用的 toolCallId;声明这一头与实例份数无关(§4.8)。
+  | 'permission'
   | 'settings'
   | 'dock'
   // 拼贴树里的一片叶(W1)。同一个 id 会有**好几份实例**:叶根一份(owner = 叶 id,

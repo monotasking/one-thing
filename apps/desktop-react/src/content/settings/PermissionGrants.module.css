@@ -1,0 +1,90 @@
+/*
+ * 设置页「已授权」那一节(应用级许可 · 壳半边,2026-09-10)。
+ *
+ * 颜色纪律:零字面色值。这一节一个状态色都不用 —— 一条已经记下的许可不是
+ * 警告也不是错误,它就是一条事实。
+ *
+ * 挤压纪律:行是**结构行,只截断不换行**;一行只有一个弯腰件(中间那格资源串),
+ * 左边的效果类与右边的钮各自 `flex: none`,所以窄面上先被吃掉的永远是那一格。
+ */
+
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* 组头:应用名 + 右端「全部撤销」。**不挂计数徽**(壳规范的计数禁令)。 */
+.grantHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.groupName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  min-height: var(--tool-row-h);
+}
+
+.row + .row {
+  border-top: 1px solid var(--line-1);
+}
+
+.effect {
+  flex: none;
+  font-size: var(--fs-label);
+  color: var(--text-1);
+}
+
+/* 一行里唯一的弯腰件。 */
+.resource {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+.meta {
+  flex: none;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}

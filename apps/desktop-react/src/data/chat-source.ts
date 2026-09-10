@@ -10,6 +10,7 @@ import { StreamWater } from './stream-water'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
 import type { SessionStreamPayload } from '@shared/events/envelope'
+import type { PermissionResponse } from '@shared/ipc/permissions'
 import { coreRenderMessageHasToolWork } from '@onething/core/session/render-anchors'
 import {
   appendTail,
@@ -26,6 +27,12 @@ import {
   type ProjectedMessage,
   type Tail,
 } from './chat-fold'
+import {
+  askFromPendingInfo,
+  askFromRequestEvent,
+  NO_PERMISSION_ASKS,
+  type PermissionAsk,
+} from './permission-ask'
 import { chatPort } from './chat-port'
 import { onSessionsRemoved } from './sessions-source'
 import { notify } from '../services/notify'
@@ -142,6 +149,17 @@ export interface ChatSourceState {
   /** overlay 车道:待送出 / 送不出去的消息,加本地提示。 */
   overlay: OverlayEntry[]
   /**
+   * **审批车道**:此刻挂在这条会话上的权限卡,按 `toolCallId` 对齐
+   * (为什么它不长在折叠产物的 toolCall 上,写在 `data/permission-ask.ts` 头上)。
+   *
+   * 两个进料口,一条纪律(**写就地更新,重拉对账**):活事件
+   * (`permission:request` / `queued` / `settled` / `timeout`)就地改这一格;
+   * 每一次起底与每一次缺号重折之后,`permission.getPending` 整份对一次账 ——
+   * 冷载与断线补发都会让壳错过那条活事件,而漏掉一张卡的样子是「工具永远停在
+   * 执行中、引擎在那头一直等」。
+   */
+  permissions: Readonly<Record<string, PermissionAsk>>
+  /**
    * **「自己刚发出去一条」的那一拍**(C1 §5.1「发送」那一格的产地)。
    *
    * 一个只增不减的号,不是一条消息、不是一个布尔。跟随状态机要的是**事件**
@@ -229,6 +247,19 @@ export interface ChatSourceState {
    * 「被闸挡住了,一个字节都没发」:引擎在跑,或者上一条重试还没见回音。
    */
   regenerate: (messageId: string) => boolean
+  /**
+   * 答一张权限卡。`decision` 的五档与 `Permission.Response` 逐字同形。
+   *
+   * 三条纪律,每条都有出处:
+   *  1. **发出去之前先把卡置成「已答」**(交互稳定律③:异步动作必有进行中反馈)。
+   *     卡上那一排键当场变成一句「已允许 / 已拒绝」,连点第二下点不着;
+   *  2. **收尾归事件,不归这一发的应答** —— `permission:settled` 才是「核心认下了」
+   *     的唯一凭据,而它同样会在**别人**答掉(网关回 1/2/3、超时自结算)时到达。
+   *     拿 emit 的返回值清卡等于把「命令送到了」当成「审批结算了」;
+   *  3. 命令**发不出去**(网断 / core 拒收)才回滚这一格并说一句 —— 人点了允许而
+   *     它没允许,这件事必须让人知道(与 `abort` 那一段逐字同判)。
+   */
+  respondPermission: (toolCallId: string, decision: PermissionResponse) => void
   /** 丢弃一条 overlay(失败后不想再试 / 关掉提示)。 */
   dismiss: (entryId: string) => void
   /** 挂一条本地提示(说的正是"这件事没有进账本")。 */
@@ -283,6 +314,40 @@ export function selectEngineBusy(state: ChatSourceState): boolean {
 
 /** 攒的上限 —— 一次重折的在飞窗口里攒过这个数属病态,清掉靠下一次重折兜底。 */
 const PENDING_LEDGER_CAP = 1024
+
+/**
+ * 对账回来的那一份与屏幕上这一份**说的是不是同一件事**。
+ *
+ * 存在的理由只有一条:律④(身份稳定)。`getPending` 每次都造一批新对象,直接
+ * `set` 会让每一次重折都把整条车道换一遍身份 —— 而九成的重折里审批一格没变。
+ * 逐格比六个可比的标量(`pattern` 是数组时按逐字序列比,它由后端原样给出、
+ * 同一次 ask 的两次投影必然同序)。
+ */
+function samePermissionLane(
+  a: Readonly<Record<string, PermissionAsk>>,
+  b: Readonly<Record<string, PermissionAsk>>,
+): boolean {
+  const keys = Object.keys(a)
+  if (keys.length !== Object.keys(b).length) return false
+  for (const key of keys) {
+    const x = a[key]
+    const y = b[key]
+    if (!y) return false
+    if (
+      x.permissionId !== y.permissionId ||
+      x.title !== y.title ||
+      x.type !== y.type ||
+      x.permissionQueued !== y.permissionQueued ||
+      x.canRespond !== y.canRespond ||
+      x.answered !== y.answered ||
+      x.alwaysScope?.scheme !== y.alwaysScope?.scheme ||
+      String(x.pattern) !== String(y.pattern)
+    ) {
+      return false
+    }
+  }
+  return true
+}
 
 function newFold(): LiveFold {
   return {
@@ -408,6 +473,12 @@ export function createChatSource(sessionId: string): ChatSource {
   let retryWatch: ReturnType<typeof setTimeout> | undefined
   /** 起底 / 重折的防串号闸(也是 `dispose` 作废在飞回调的那一手)。 */
   let openSeq = 0
+  /**
+   * **审批车道改过几次** —— 对账那一发的防串号闸(判据写在 `patchPermissions` 与
+   * `reconcilePermissions` 上)。实例字段而不是 store 字段:没有任何控件读它,
+   * 它是这台机器的簿记,不是可渲染状态。
+   */
+  let permissionRev = 0
   let pushScheduled = false
   let entrySeq = 0
   let disposed = false
@@ -761,6 +832,12 @@ export function createChatSource(sessionId: string): ChatSource {
         for (const record of drained) feedLedger(record)
         // 起底完成 = 屏幕那棵树此刻才有底,马上推一次(不推的话打开会话是空白)。
         compose()
+        /*
+         * 审批车道跟着对一次账。**不 await**:它是另一条链上的事实(引擎内存里
+         * 挂着的 prompt),让它去拖住起底那一发的 promise,就是让「消息上屏」
+         * 等一件与消息无关的往返。理由与 mutation 的 `settle` 不被 await 同源。
+         */
+        void reconcilePermissions(token)
       } catch (error) {
         // 重折失败:保持 pending,下一条缺号会再排一次(节流仍然生效)。
         if (token !== openSeq || disposed) return
@@ -852,6 +929,141 @@ export function createChatSource(sessionId: string): ChatSource {
     }
 
     /**
+     * 审批车道的**唯一写点**:交出下一份表,身份没变就原样交回(律④)。
+     *
+     * 顺手推 `permissionRev` —— 那一格是对账那一发的**防串号闸**(见
+     * `reconcilePermissions`),与 `openSeq` 之于重折是同一条判例:一次往返回来时
+     * 手里那份快照是不是还说得上话,由号说,不由时间说。
+     */
+    function patchPermissions(
+      next: (prev: Readonly<Record<string, PermissionAsk>>) => Readonly<Record<string, PermissionAsk>>,
+    ): void {
+      const prev = get().permissions
+      const after = next(prev)
+      if (after === prev) return
+      permissionRev += 1
+      set({ permissions: after })
+    }
+
+    /** 一批 toolCallId 出局(结算 / 超时 / 会话清理)。一个都不在表上就是恒等。 */
+    function dropAsks(pick: (ask: PermissionAsk) => boolean): void {
+      patchPermissions((prev) => {
+        const doomed = Object.values(prev).filter(pick)
+        if (doomed.length === 0) return prev
+        const after = { ...prev }
+        for (const ask of doomed) delete after[ask.toolCallId]
+        return after
+      })
+    }
+
+    /**
+     * **审批事件的折**(应用级许可 · 壳半边)。认得下这一条就答 `true`,
+     * 由调用方当场 return —— 与上面账本行那一支同一种写法。
+     *
+     * 四条事件各管一件事,一条都不许合并:
+     *  · `request` —— 一张**能答**的卡;它同时会顶掉同一次调用上的排队态
+     *    (轮到它了);
+     *  · `queued`  —— 排在别人后面。画等待态、不给键;**已经有一张能答的卡时
+     *    不许倒退**(内核会把后来的 ask 归并到在前的那一张上,那时先到的那条
+     *    `request` 才是事实);
+     *  · `settled` —— 头一张卡与所有被归并的跟随者一起出局。**它是收尾的唯一
+     *    凭据**:远端答掉、超时自结算这两条路上壳一下都没点过,而卡照样得消失;
+     *  · `timeout` —— 那次 ask 到点了,按 `permissionId` 出局。
+     *
+     * 推屏走 `schedulePush()` 而不是当场 `compose()`:这条车道与消息树在同一次
+     * `set` 之外,但屏幕上它们同框 —— 跟着那一拍走,一帧只重算一次。
+     */
+    function foldPermissionEvent(event: { type?: string }): boolean {
+      if (event?.type === SESSION_EVENT_TYPES.PERMISSION_REQUEST) {
+        const ask = askFromRequestEvent(event as never)
+        if (!ask.toolCallId) return true
+        patchPermissions((prev) => ({ ...prev, [ask.toolCallId]: ask }))
+        return true
+      }
+      if (event?.type === SESSION_EVENT_TYPES.PERMISSION_QUEUED) {
+        const queued = event as { toolCallId?: string; requestId?: string; messageId?: string }
+        const id = queued.toolCallId
+        if (!id) return true
+        patchPermissions((prev) => {
+          // 已经有一张能答的卡了 —— 这条 queued 说的是**别人**排在它后面。
+          if (prev[id]?.canRespond) return prev
+          const before = prev[id]
+          return {
+            ...prev,
+            [id]: {
+              toolCallId: id,
+              permissionId: queued.requestId ?? before?.permissionId ?? '',
+              title: before?.title ?? '',
+              type: before?.type ?? '',
+              ...(before?.pattern !== undefined ? { pattern: before.pattern } : {}),
+              ...(before?.alwaysScope ? { alwaysScope: before.alwaysScope } : {}),
+              permissionQueued: true,
+              canRespond: false,
+            },
+          }
+        })
+        return true
+      }
+      if (event?.type === SESSION_EVENT_TYPES.PERMISSION_SETTLED) {
+        const ids = new Set((event as { toolCallIds?: string[] }).toolCallIds ?? [])
+        dropAsks((ask) => ids.has(ask.toolCallId))
+        return true
+      }
+      if (event?.type === SESSION_EVENT_TYPES.PERMISSION_TIMEOUT) {
+        const requestId = (event as { requestId?: string }).requestId
+        if (requestId) dropAsks((ask) => ask.permissionId === requestId)
+        return true
+      }
+      return false
+    }
+
+    /**
+     * **对账**:`permission.getPending` 整份换掉这条车道。
+     *
+     * 排在每一次 `refold` 的末尾 —— 冷载与缺号重折走的是同一条路,而这两次
+     * 恰恰是壳可能错过那条活事件的全部时机(第一次进会话时事件早就飞过了;
+     * 断线期间的事件 SSE 不重放,`?after=` 只补账本行)。
+     *
+     * **整份换而不是逐条合并**:后端交出来的就是「此刻挂着的全部」,合并只会让
+     * 一张早已结算掉的卡因为壳这边没收到 `settled` 而永远留在屏幕上。
+     * 「已答等确认」那一格因此也会被这一发抹掉 —— 那正是对的:表上还有它,
+     * 说明核心还没结算,卡该回到能答的样子(与「重拉后台对账」逐字同义)。
+     *
+     * 拉不到就**一格不动**(不清空):把「问不到」画成「没有审批在等」是造事实。
+     */
+    async function reconcilePermissions(token: number): Promise<void> {
+      const rev = permissionRev
+      try {
+        const port = await chatPort()
+        const response = await port.listPendingPermissions(sessionId)
+        if (token !== openSeq || disposed) return
+        if (!response?.success) return
+        /*
+         * **在飞期间车道被就地改过 —— 这份快照过期了,一格不动。**
+         *
+         * 快照定格在服务端应答那一刻;窗口里到达的 `permission:request` 不在它
+         * 里面,而「整份换」会把那张刚到的、用户正看着的卡抹掉,此后**再没有任何
+         * 事件会把它送回来**(`settled` 只会删)—— 屏幕上是一个永远停在执行中的
+         * 工具,引擎在那头一直等。反过来,留着就地那一份最坏是多留一张早已结算的
+         * 卡(点下去核心结构化忽略),下一次重折就把它收走。两种错法不对等,
+         * 所以这一句偏向就地那一份。
+         */
+        if (permissionRev !== rev) return
+        const next: Record<string, PermissionAsk> = {}
+        for (const info of response.pending ?? []) {
+          const ask = askFromPendingInfo(info)
+          if (ask) next[ask.toolCallId] = ask
+        }
+        const prev = get().permissions
+        if (samePermissionLane(prev, next)) return
+        permissionRev += 1
+        set({ permissions: next })
+      } catch {
+        // 问不到就保持上一份(律②:重拉期间旧内容保留在屏)。
+      }
+    }
+
+    /**
      * 会话事件到了一条。**没有 `sessionId` 的比对** —— 分发是注册表的活,
      * 到这里的每一条按定义就是这条会话的(单例时代那道过滤是税,不是判据)。
      */
@@ -870,6 +1082,7 @@ export function createChatSource(sessionId: string): ChatSource {
         feedLedger(event.record)
         return
       }
+      if (foldPermissionEvent(envelope.event as { type?: string })) return
       /*
        * 一次调用开始收参数 —— **活尾巴的第三条车道**(09-01 P1)。
        *
@@ -1148,6 +1361,8 @@ export function createChatSource(sessionId: string): ChatSource {
         messages: [],
         activeMessageId: undefined,
         overlay: [],
+        // 起底 = 整棵树重画,车道跟着回到空;真相由这一趟末尾的 `getPending` 说。
+        permissions: NO_PERMISSION_ASKS,
         // 重新起底 = 上一次重试的回音已经没有意义了(那棵树整份要重画)。
         retryPending: undefined,
       })
@@ -1203,6 +1418,8 @@ export function createChatSource(sessionId: string): ChatSource {
       clearRetryWatch()
       // 号一动,在飞的 `refold` / `scheduleRefold` 回来时全部作废。
       openSeq += 1
+      // 同一手:在飞的那一发对账回来时手里那份快照当场作废。
+      permissionRev += 1
       // 在飞的那一次起底作废(它自己会在 token 那道闸上掉头);别把它的 promise
       // 留给下一个 `open()` —— 那会让「等这一次起底办完」等到一次已经被作废的。
       opening = undefined
@@ -1229,6 +1446,7 @@ export function createChatSource(sessionId: string): ChatSource {
       status: 'idle',
       messages: [],
       overlay: [],
+      permissions: NO_PERMISSION_ASKS,
       sentTick: 0,
 
       // 「换当前会话」是注册表的活,不是这台机器的(见类型上的注)。
@@ -1420,6 +1638,54 @@ export function createChatSource(sessionId: string): ChatSource {
           }, RETRY_SETTLE_MS)
         })()
         return true
+      },
+
+      respondPermission: (toolCallId, decision) => {
+        const target = get().sessionId
+        if (!target) return
+        const ask = get().permissions[toolCallId]
+        // 没有这张卡 / 排队中 / 已经答过 —— 三种情况都是**恒等**:发一条打空的
+        // 应答只会在核那头多一次「no pending request」的 warn(与 `abort` 那条
+        // 「没在跑就什么都不做」同判)。
+        if (!ask || !ask.canRespond || ask.answered) return
+        /*
+         * **先把卡置成「已答」再发** —— 律③那一拍。它同时是这一格的连点闸:
+         * `canRespond` 当场变假,第二下点不着。
+         */
+        patchPermissions((prev) => {
+          const current = prev[toolCallId]
+          if (!current) return prev
+          return { ...prev, [toolCallId]: { ...current, canRespond: false, answered: decision } }
+        })
+        void (async () => {
+          let failure: string | undefined
+          try {
+            const port = await chatPort()
+            const result = await port.respondPermission(target, toolCallId, decision)
+            if (!result?.success) failure = result?.error || 'session-command.emit 未成功'
+          } catch (error) {
+            failure = error instanceof Error ? error.message : String(error)
+          }
+          if (!failure) return
+          /*
+           * 命令**没离开壳**(网断 / core 拒收)—— 把那一格退回去,人才有第二次
+           * 机会点它。真正结算了的那条路不走这里:那由 `permission:settled` 收尾。
+           */
+          if (disposed || get().sessionId !== target) return
+          patchPermissions((prev) => {
+            const current = prev[toolCallId]
+            if (!current || current.answered !== decision) return prev
+            const { answered: _answered, ...rest } = current
+            return { ...prev, [toolCallId]: { ...rest, canRespond: true } }
+          })
+          notify({
+            level: 'error',
+            source: 'chat.permission',
+            title: t('notify.permissionFailed'),
+            body: failure,
+            detail: failure,
+          })
+        })()
       },
 
       dismiss: (entryId) => {
@@ -1829,6 +2095,23 @@ export function pushChatNotice(kind: 'ask-rejected', sessionId?: string): void {
 /** 同上,给输入面板那条接缝(composer/sink.ts)用的非组件写法。 */
 export function abortChatRun(sessionId?: string): void {
   sourceFor(sessionId)?.getState().abort()
+}
+
+/**
+ * 答一张权限卡的**非组件写法**(权限卡那颗键的落点)。
+ *
+ * 为什么是自由函数而不是让卡自己 `useChatSourceOf(sessionId, s => s.respondPermission)`:
+ * 那是**第二格订阅**。壳里一条长会话可以有两百张工具卡,每一张挂一个槽 ——
+ * 槽已经为「我这一次调用有没有卡」订着一格(它靠 `Object.is` 恒等在九成的帧里
+ * 不重渲染),再为一个**身份恒定的动作**订第二格,是白付两百份订阅的钱。
+ * 与 `sendChatMessage` / `abortChatRun` 同一条判例、同一种形状。
+ */
+export function respondChatPermission(
+  toolCallId: string,
+  decision: PermissionResponse,
+  sessionId?: string,
+): void {
+  sourceFor(sessionId)?.getState().respondPermission(toolCallId, decision)
 }
 
 /** 缺省 = 当前会话那一台;显式给了 id 就只认表上那一台(没有就什么都不做)。 */

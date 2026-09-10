@@ -255,6 +255,7 @@ export const en: Record<MessageKey, string> = {
    *    (a11y.appTitle · viewer.label · item.* · dock.label). */
   'focus.scope.composer': 'Composer',
   'focus.scope.chat': 'Message stream',
+  'focus.scope.permission': 'Permission card',
   'focus.scope.leaf': 'Tab group',
   'focus.scope.stageLayer': 'Stage',
   'focus.scope.floatLayer': 'Float window',
@@ -695,6 +696,55 @@ export const en: Record<MessageKey, string> = {
     'Retry deletes this reply and regenerates it; nothing is sent while the engine is busy.',
   'notify.retryStuck': 'Retry went out, core has not started a new run',
   'notify.retryStuckHint': 'Core accepted the command, but no new run appeared on the ledger.',
+  'notify.permissionFailed': 'Approval did not go out',
+
+  /* ── permission card + granted ledger (application-level grants, 2026-09-10)
+   * The 17 effect-class names are an explicit backend-enum → dict-key table
+   * (see content/permission/effect-label.ts): keys are never assembled, and an
+   * unknown class shows its raw enum — that is the fact; inventing a phrase is
+   * a guess. Resource strings (paths, refs, commands) are DATA, never here. */
+  'permission.waiting': 'Waiting for approval: {title}',
+  'permission.queuedLabel': 'Queued for approval: {title}',
+  'permission.queued': 'Queued behind another approval',
+  'permission.allowOnce': 'Allow once',
+  'permission.allowSession': 'This session',
+  'permission.allowWorkdir': 'This directory',
+  'permission.allowAlways': 'Always allow “{app}”',
+  'permission.reject': 'Deny',
+  'permission.sending': 'Sending…',
+  'permission.answeredAllow': 'Allowed — waiting for core',
+  'permission.answeredReject': 'Denied — waiting for core',
+  'permission.effect.read': 'Read',
+  'permission.effect.file_edit': 'Edit file',
+  'permission.effect.file_write': 'Write file',
+  'permission.effect.file_destructive_edit': 'Overwrite file',
+  'permission.effect.bash': 'Run command',
+  'permission.effect.mcp': 'Call MCP tool',
+  'permission.effect.external_directory': 'Access directory outside the project',
+  'permission.effect.sensitive_file_read': 'Read sensitive file',
+  'permission.effect.capability_change': 'Repoint capability',
+  'permission.effect.net_fetch': 'Reach the network',
+  'permission.effect.user_ask': 'Ask you a question',
+  'permission.effect.session_message': 'Post into a session',
+  'permission.effect.session_spawn': 'Start a session',
+  'permission.effect.session_destructive': 'Remove session content',
+  'permission.effect.plugin_exec': 'Run a plugin',
+  'permission.effect.external-agent': 'Call an external agent',
+  'permission.effect.ui_change': 'Change the interface',
+  'settings.sectionPermissions': 'Granted',
+  'permissions.hint':
+    'What got remembered when you answered “this session”, “this directory” or “always allow”.',
+  'permissions.empty': 'Nothing remembered yet — every action still asks you.',
+  'permissions.loadFailed': 'Could not load the grant ledger',
+  'permissions.revokeFailed': 'Revoke did not succeed',
+  'permissions.ungrouped': 'Single grants',
+  'permissions.revoke': 'Revoke',
+  'permissions.revoking': 'Revoking…',
+  'permissions.revokeApp': 'Revoke all',
+  'permissions.scopeSession': 'This session',
+  'permissions.scopeWorkspace': 'This directory',
+  'permissions.revokeOne': 'Revoke “{what}”',
+  'permissions.revokeAppOf': 'Revoke every grant for “{app}”',
 
   /* ── files panel (D5: content/FilesPanel.tsx) ─────────────────────────
    * The panel title reuses 'item.files'. Paths, directory/file names and the

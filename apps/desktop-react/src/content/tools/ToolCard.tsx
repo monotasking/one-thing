@@ -29,6 +29,7 @@ import {
   type StallLevel,
   type ToolProgress,
 } from './card'
+import { PermissionSlot } from '../permission/PermissionSlot'
 import { ToolDrawer } from './ToolDrawer'
 import { EXPANDABLE_STATUSES, toolStatusLabel, toolTone, type ToolTone } from './status'
 import s from './ToolCard.module.css'
@@ -129,6 +130,7 @@ export const ToolCard = memo(function ToolCard({
    * 那个 `structure` —— 它不是「结构变化」,量高会白白多一次强排版)。
    */
   const ratio = cardProgressRatio(card.steps)
+  const sessionId = ctx.sessionId
 
   return (
     /*
@@ -173,6 +175,24 @@ export const ToolCard = memo(function ToolCard({
         * 只改 `width`(合成器上的一格),不改任何参与布局的属性 —— §6.5 第 1 条
         * 「零重挂」在这一格上的落点是:同一个节点从 12% 走到 87%,不换元素。
         */}
+      {/*
+        * **审批槽**(应用级许可 · 壳半边,2026-09-10)。
+        *
+        * 落点在行列之外、进度条之前:一张等着人答的卡在**收起态也必须看得见**,
+        * 而行在收起态是 `hidden` 的(§6.5 第 1 条)。一步一格槽,理由(订阅粒度)
+        * 写在 `PermissionSlot` 头上;没有审批时它画 `null`,一个 DOM 节点都不多。
+        *
+        * `ctx.sessionId` 缺席 = **这里没有会话**(查看器里回放一份 markdown 也会
+        * 长出工具卡)。那时整格不画 —— 画一颗按下去不知道打给谁的键,比不画糟。
+        */}
+      {sessionId !== undefined &&
+        card.steps.map((step) => (
+          <PermissionSlot
+            key={step.row.callId}
+            sessionId={sessionId}
+            toolCallId={step.row.callId}
+          />
+        ))}
       {ratio !== undefined && (
         <div
           className={s.tbar}

@@ -86,6 +86,8 @@ function port(ledger: Ledger[]): ChatPort {
       retried.push({ sessionId, messageId })
       return { success: true }
     },
+    listPendingPermissions: async () => ({ success: true, pending: [] }),
+    respondPermission: async () => ({ success: true }),
   }
 }
 

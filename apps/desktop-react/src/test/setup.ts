@@ -85,6 +85,8 @@ configureChatPort({
   sendMessage: async () => ({ success: true }),
   abort: async () => ({ success: true }),
   retryMessage: async () => ({ success: true }),
+  listPendingPermissions: async () => ({ success: true, pending: [] }),
+  respondPermission: async () => ({ success: true }),
 })
 
 /**

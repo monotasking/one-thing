@@ -659,7 +659,7 @@ async function main() {
   let server
   let app
   try {
-    console.log('\n[1/11] 起一台 core')
+    console.log('\n[1/12] 起一台 core')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: { ...process.env, ONETHING_STORE_PATH: store },
@@ -691,7 +691,7 @@ async function main() {
     }
     console.log(`  ✓ core 起来了,种了 ${seeded.length} 条会话`)
 
-    console.log('\n[2/11] 拉起应用(独立 --user-data-dir)')
+    console.log('\n[2/12] 拉起应用(独立 --user-data-dir)')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -721,7 +721,7 @@ async function main() {
     )
     console.log('  ✓ 外壳画出来了')
 
-    console.log('\n[3/11] 产品外壳:axe 全页扫描 + Tab 序走查')
+    console.log('\n[3/12] 产品外壳:axe 全页扫描 + Tab 序走查')
     // 这一屏从前是裸扫的 —— 而颜色恰恰是最后才到的那样东西(见 settle 的文件头)。
     await settle(page, '外壳')
     await scanAxe(page, '外壳')
@@ -741,7 +741,7 @@ async function main() {
      * (`composer/components/Composer.test.tsx` 的「庚」那一族,按 role=radio 取的)。
      * 反证:把 `RadioGroup` 的 `label` 拆掉 → 那一族单测当场红。
      */
-    console.log('\n[4/11] 模型抽屉:开一格再扫一次')
+    console.log('\n[4/12] 模型抽屉:开一格再扫一次')
     await clickSelector(page, '[data-testid="composer-panel"] button[aria-expanded]')
     await waitFor('模型抽屉就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-focus-scope="drawer"]'))),
@@ -766,7 +766,7 @@ async function main() {
      * 反证:把家头那枚 Switch 的 `label` 拆掉 → 这一屏当场 critical button-name 红
      * (2026-08-31 真跑过一轮)。
      */
-    console.log('\n[5/11] 模型服务面:开一块面再扫一次')
+    console.log('\n[5/12] 模型服务面:开一块面再扫一次')
     await clickSelector(page, '[data-testid="dock-tile-providers"]')
     await waitFor('模型服务面就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid^="provider-row-"]'))),
@@ -789,7 +789,7 @@ async function main() {
      * 反证:把 `SearchList` 里那句 `aria-label={t('search.resultsLabel')}` 拆掉 →
      * 这一屏当场 `aria-input-field-name` / `region` 类违例。
      */
-    console.log('\n[6/11] 检索面:开一块面再扫一次')
+    console.log('\n[6/12] 检索面:开一块面再扫一次')
     await clickSelector(page, '[data-testid="dock-tile-search"]')
     await waitFor('检索面就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="search-panel"] input'))),
@@ -816,7 +816,7 @@ async function main() {
      * 反证:把 AppsPanel 里 Switch 的 `label` 拆掉 → 这一屏当场 critical
      * button-name 红(每一行都是,因为那颗 <button role="switch"> 只有一个空 span)。
      */
-    console.log('\n[7/11] 所有应用面(全屏形态):开一块面再扫一次')
+    console.log('\n[7/12] 所有应用面(全屏形态):开一块面再扫一次')
     await clickSelector(page, '[data-testid="dock-tile-apps"]')
     await waitFor('所有应用面就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid^="apps-row-"]'))),
@@ -841,7 +841,7 @@ async function main() {
      * 由 gate:files 那道门验(它自己建了一棵真目录树)—— 两道门各扫各的那一半,
      * 不在这里再造一次目录树。
      */
-    console.log('\n[8/11] 文件查看器 + 叶檐:走文件树开一个文件再扫一次')
+    console.log('\n[8/12] 文件查看器 + 叶檐:走文件树开一个文件再扫一次')
     /*
      * **先进那条带工作目录的会话**:文件树的根跟着「当前会话的工作目录」走,
      * 而当前会话是内存态 —— 不进去的话树会退回主目录(那时树上有什么就不由
@@ -961,7 +961,7 @@ async function main() {
      * 改成「主区域」,**开着的那份当场搬进中央叶**(选档即生效),于是那一组是
      * 「聊天 + 文件」两格。
      */
-    console.log('\n[8b/11] 顶栏标签组(tab 条 + 动作组):开进中央区再扫一次')
+    console.log('\n[8b/12] 顶栏标签组(tab 条 + 动作组):开进中央区再扫一次')
     if (!fileRow) {
       console.log('  · 跳过:上一屏没开出文件')
     } else {
@@ -1043,7 +1043,7 @@ async function main() {
            * `aria-grabbed` 已废弃,这一屏一个字都不问它(裁定 9 末句)。
            */
           /*
-           * ── [8d/11] **两格并排那一屏**(W6-a,设计 §6 / §7)────────────────
+           * ── [8d/12] **两格并排那一屏**(W6-a,设计 §6 / §7)────────────────
            *
            * 它进这道门的理由与叶檐那一屏逐字相同:**外壳那一屏看不见它**,
            * 而它自带三件新语义 —— 两格各是一格**有名字的 region**(格头那条不是
@@ -1051,7 +1051,7 @@ async function main() {
            * 「拆开」、中间一条 `ui/Splitter`(APG 的 window splitter:
            * role=separator + aria-valuenow/min/max + 可聚焦)。
            */
-          console.log('\n[8d/11] 两格并排:格头 region 有名 + 拆开钮有 label + 分隔杆报 APG')
+          console.log('\n[8d/12] 两格并排:格头 region 有名 + 拆开钮有 label + 分隔杆报 APG')
           const paired = await openTabMenuByContext(page)
           const joined = await page.evaluate(() => {
             const items = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]'))
@@ -1153,7 +1153,7 @@ async function main() {
            *
            * 反证:把 `ui/Tabs` 的 `onTabMenu` 那一口摘掉 → ① 与 ⑤ 一起红。
            */
-          console.log('\n[8c+8e/11] 标签动作表:右键 / Shift+F10 开同一张六项表,顶栏右端只两件')
+          console.log('\n[8c+8e/12] 标签动作表:右键 / Shift+F10 开同一张六项表,顶栏右端只两件')
           const openedByContext = await openTabMenuByContext(page)
           if (!openedByContext) {
             console.log('  · 跳过:顶栏上没有标签')
@@ -1276,7 +1276,7 @@ async function main() {
              * 反证:把 `LeafActions` 里那句 `const at = …menuAt?.tabId…` 换回
              * `const at = leaf.active` → 「关掉的是被右键的那一格」当场红。
              */
-            console.log('\n[8f/11] 右键非活动标签:表作用在被右键的那一格')
+            console.log('\n[8f/12] 右键非活动标签:表作用在被右键的那一格')
             const readStrip = () =>
               page.evaluate(() => {
                 const tabs = Array.from(document.querySelectorAll('[data-topbar-leaf] [data-tab-id]'))
@@ -1495,7 +1495,7 @@ async function main() {
     }, seeded[1])
     await delay(500)
 
-    console.log('\n[9/11] 会话总览(树形列表):开一块面再扫一次 + Tab 序走查')
+    console.log('\n[9/12] 会话总览(树形列表):开一块面再扫一次 + Tab 序走查')
     /*
      * **先看它在不在,再决定点不点**(W6-a)。会话总览的出厂摆法从浮窗改成了
      * 左架子(设计 §8),而钉在架子上的面进一条会话**不会收回 Dock**
@@ -1613,9 +1613,52 @@ async function main() {
       page.evaluate(() => !document.querySelector('[data-focus-scope="expose"]')),
     )
 
+    /*
+     * **权限卡**那一屏(应用级许可 · 壳半边,2026-09-10)。
+     *
+     * 它进这道门的理由与前面几屏逐字相同 —— **外壳那一屏看不见它**:一张权限卡
+     * 只在「某一次工具调用要审批、而且轮到它了」那一刻才长出来。而它恰恰是这批
+     * 新件里语义最要紧的一块:一个 `role="group"` 加最多五颗真按钮,组的名字得
+     * 说得出**在等什么**(「等待授权:<标题>」),漏了这一句读屏软件只能念出
+     * 「组,允许一次,本会话,……」——五个动词,没有宾语。
+     *
+     * ── 这一屏为什么是**条件扫**,而不是自己造一张卡 ────────────────────────
+     * 造一张真卡要一台会发工具调用的假 provider + 缺省权限档 + 一次真的工具循环。
+     * 那整套支架**已经有一份**,在 `npm run gate:permission` 里(它的活就是从卡
+     * 出现一路点到设置页撤销),那道门自己会对卡跑一遍 axe。这一屏因此只做两件事:
+     * 卡在场就扫它 + 量那句可访问名;不在场就打印一行说清由谁负责,**不判红** ——
+     * 与总览那一屏「找不到会话行打印跳过」同一条纪律。
+     */
+    console.log('\n[10/12] 权限卡:在场就扫(造卡那一半归 `npm run gate:permission`)')
+    const permissionCard = await page.evaluate(() => {
+      const el = document.querySelector('[data-permission-card]')
+      if (!el) return null
+      return {
+        name: (el.getAttribute('aria-label') ?? '').trim(),
+        role: el.getAttribute('role'),
+        scope: el.getAttribute('data-focus-scope'),
+        keys: [...el.querySelectorAll('button')].length,
+      }
+    })
+    if (permissionCard) {
+      await settle(page, '权限卡')
+      await scanAxe(page, '权限卡', '[data-permission-card]')
+      assert(permissionCard.role === 'group', '权限卡是一个 group')
+      assert(
+        permissionCard.scope === 'permission',
+        '权限卡接在响应链上(data-focus-scope="permission")',
+      )
+      assert(
+        permissionCard.name.length > 0 && /[:：]/.test(permissionCard.name),
+        `权限卡的可访问名说得出在等什么(实为「${permissionCard.name}」)`,
+      )
+    } else {
+      console.log('  · 此刻屏上没有权限卡 —— 跳过(造卡那一半在 `gate:permission` 里,不是红)')
+    }
+
     // 28 = `src/dev/Gallery.tsx` 今天的 <Section> 展位数(25 件组件 +
     // useScrolledPast / useSettlePulse / useInlineEdit 三件 hook)。日志读数,不是断言。
-    console.log('\n[10/11] 组件规格页(?gallery):28 个展位一次全在场')
+    console.log('\n[11/12] 组件规格页(?gallery):28 个展位一次全在场')
     /*
      * 生产窗口是 loadFile 读本地文件,没有 router —— 换页靠改 location.search
      * 再等一次重载(App.tsx 读的就是这个查询参数)。
@@ -1635,7 +1678,7 @@ async function main() {
     await settle(page, '规格页')
     await scanAxe(page, '规格页')
 
-    console.log('\n[11/11] 键盘走查:Dialog 圈禁与返还、Menu 方向键循环')
+    console.log('\n[12/12] 键盘走查:Dialog 圈禁与返还、Menu 方向键循环')
     await checkDialog(page)
     await checkMenu(page)
 
@@ -1655,7 +1698,8 @@ async function main() {
     process.exit(1)
   }
   console.log(
-    '\n[a11y-gate] ok —— 九屏 axe 零违例(W3 添的是拖拽落点菜单那一屏,W6-a 添的是两格并排);'
+    '\n[a11y-gate] ok —— 九屏 axe 零违例(W3 添的是拖拽落点菜单那一屏,W6-a 添的是两格并排,'
+      + '权限卡那一屏在场才扫);'
       + '键盘走查全绿(W6-c 添的是标签右键菜单那一档:右键与钮开出同一张表)',
   )
 }

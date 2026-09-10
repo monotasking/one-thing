@@ -1,0 +1,84 @@
+/*
+ * 权限卡(应用级许可 · 壳半边,2026-09-10)。
+ *
+ * ── 颜色纪律(四轴第一条)─────────────────────────────────────────────────
+ * 零字面色值。等待授权那一档用 `--warn` —— 而且**只上左缘那一道与图标点**,
+ * 底一律 `--surface-1`:状态色只上图标 / 线,永不换底。「拒绝」那颗钮的红也
+ * 只上字,配方随 `ui/Button` 的 `danger` 档走,这里一个像素都不补。
+ *
+ * ── 几何(挤压纪律)───────────────────────────────────────────────────────
+ * 标题与资源行**只截断不换行**(结构行纪律);键行 `flex-wrap` 允许折 —— 它是
+ * 一排真按钮而不是结构行,窄面上折成两排比把「本工作目录」截成「本工作…」诚实。
+ * 卡整体不设 `max-height`:它不是列表,五个键与两行字就是它的全部身量。
+ *
+ * ── 焦点 ─────────────────────────────────────────────────────────────────
+ * 一行没有。焦点环走全局 `:focus-visible`(`styles/global.css`),作用域根
+ * 不画环那条例外规则在 `focus/focus-scope.css` 里。
+ */
+
+.permCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--line-1);
+  background: var(--surface-1);
+  /* 等着人答的那一道:左缘一条 warn,不换底。 */
+  box-shadow: inset var(--perm-edge-w) 0 0 0 var(--warn);
+}
+
+/* 排队态没有人在等这一面回答 —— 那道 warn 缘收掉,只留一句实话。 */
+.permCard[data-queued='true'] {
+  box-shadow: none;
+}
+
+/* 已经答出去了:等核心确认,同样不该继续举着「快来答我」那道缘。 */
+.permCard[data-answered='true'] {
+  box-shadow: none;
+}
+
+.title {
+  font-size: var(--fs-card);
+  font-weight: 600;
+  color: var(--text-1);
+  /* 结构行:只截断不换行。全称由 Tooltip 给。 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+}
+
+.effect {
+  flex: none;
+  font-weight: 600;
+}
+
+.resource {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  color: var(--text-3);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+}
+
+/* 排队 / 已答那两档共用的一句只念不看的实话。 */
+.state {
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}

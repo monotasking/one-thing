@@ -136,6 +136,19 @@ export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
    * 声明这一头一个字没改:owner 是**实例**的事,不是声明的事(§4.8)。
    */
   chat: { id: 'chat', kind: 'region', labelKey: 'focus.scope.chat' },
+  /*
+   * 一张**权限卡**(应用级许可 · 壳半边,2026-09-10)。一次调用一份实例,
+   * owner = 那次调用的 `toolCallId`。
+   *
+   * 行为档是 `region` 而不是 `float`:`float` 的缺省 Esc 是「关自己」,而一张
+   * 权限卡**关不掉** —— 那头有一台引擎在等一个答案,把卡收起来只会让人以为
+   * 这件事过去了。它因此也**不声明 `onEscape`**(不传 = 根本不进 Esc 候选表),
+   * Esc 照旧穿过去交给外面那一层(消息流 / 叶 / 全屏)。
+   *
+   * 它没有局部键:五个答案各是一颗真按钮,走的是 Tab + ↵ / Space 那套结构键语义
+   * (数字快捷键 1/2/3 是另一次拍板,本单不做,留账在回报里)。
+   */
+  permission: { id: 'permission', kind: 'region', labelKey: 'focus.scope.permission' },
   settings: { id: 'settings', kind: 'region', labelKey: 'item.settings' },
   dock: { id: 'dock', kind: 'region', labelKey: 'dock.label' },
   /*

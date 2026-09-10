@@ -19,6 +19,7 @@
     "gate:chat": "node scripts/gate-chat.mjs",
     "gate:chat-follow": "node scripts/gate-chat-follow.mjs",
     "gate:continuity": "node scripts/gate-continuity.mjs",
+    "gate:permission": "node scripts/gate-permission.mjs",
     "gate:files": "node scripts/gate-files.mjs",
     "gate:search": "node scripts/gate-search.mjs",
     "gate:search-messages": "node scripts/gate-search-messages.mjs",
