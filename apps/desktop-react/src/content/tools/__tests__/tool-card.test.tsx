@@ -728,3 +728,95 @@ describe('C2-b 工具进度活流:执行中那一行在动', () => {
     expect(row.textContent).not.toContain('ZZZ-tail-line')
   })
 })
+
+/* ═══ §6.5 第 8 条 FLIP:量高的次序 ═══════════════════════════════════════ */
+
+/**
+ * **量高这件事的次序**(病历在 `ToolCard.tsx` 文件头:切会话 908ms,其中 715ms
+ * 全是这一只 layout effect 的强制排版)。
+ *
+ * 这里数的是**卡自己那一格 `offsetHeight` 被读了几次、什么时候读的** ——
+ * jsdom 不排版,所以「快不快」它证不了;但「读没读、在哪一拍读」它证得了,
+ * 而病根恰恰是次序:读排在判据前面 + 首帧同步读 = 916 次全量排版。
+ */
+describe('§6.5 第 8 条 FLIP:挂载那一次不许强排版', () => {
+  let reads = 0
+  let cardHeight = 100
+  let frames: FrameRequestCallback[] = []
+  let undo: Array<() => void> = []
+
+  beforeEach(() => {
+    reads = 0
+    cardHeight = 100
+    frames = []
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight')
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      configurable: true,
+      get(this: HTMLElement) {
+        // 只数**卡自己**那一格:别的元素读高与这条纪律无关。
+        if (!this.hasAttribute('data-tool-card')) return 0
+        reads += 1
+        return cardHeight
+      },
+    })
+    undo.push(() => {
+      if (original) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', original)
+      else Reflect.deleteProperty(HTMLElement.prototype, 'offsetHeight')
+    })
+    // rAF 换成「记下来」,好让「排到了下一帧」与「压根没读」分得开。
+    const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      frames.push(cb)
+      return frames.length
+    })
+    undo.push(() => raf.mockRestore())
+  })
+
+  afterEach(() => {
+    for (const back of undo) back()
+    undo = []
+    document.documentElement.removeAttribute('data-motion-tier')
+  })
+
+  /** 攒着的那些帧真的跑一遍。 */
+  async function runFrames() {
+    const pending = frames
+    frames = []
+    await act(async () => {
+      for (const cb of pending) cb(0)
+    })
+  }
+
+  const single = () => draw([call('c1', 'read', { result: 'x' })])
+
+  /**
+   * **反证 ①**:把 `el.offsetHeight` 那一句挪回判据前面(= 修之前的样子),
+   * 这一条当场红 —— 它数的就是「提交那一拍读了几次」。
+   */
+  it('挂载时一次 offsetHeight 都不读 —— 基线读排到了下一帧', async () => {
+    await single()
+    expect(reads).toBe(0)
+    // 但基线不是被丢了:它排队了,下一帧照取(916 张卡的这一发落在同一帧里)。
+    expect(frames.length).toBe(1)
+  })
+
+  it('结构真变了(有「改前」)那一次才同步量,并且当场 FLIP', async () => {
+    const { container } = await single()
+    await runFrames()
+    expect(reads).toBe(1) // 上一帧那一发基线,不在提交的关键路上
+
+    cardHeight = 140
+    await open(rowOf(container, 'c1')) // 抽屉拉开 = structure 变了
+    expect(reads).toBeGreaterThan(1)
+    const card = container.querySelector('[data-tool-card]') as HTMLElement
+    expect(card.style.height).toBe('140px')
+  })
+
+  it('动效档 none:整段不做,所以连基线都不量(判据排在读之前)', async () => {
+    document.documentElement.setAttribute('data-motion-tier', 'none')
+    const { container } = await single()
+    expect(reads).toBe(0)
+    expect(frames.length).toBe(0)
+    await open(rowOf(container, 'c1'))
+    expect(reads).toBe(0)
+  })
+})

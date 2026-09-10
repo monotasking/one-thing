@@ -58,6 +58,28 @@ import s from './ToolCard.module.css'
  *  8. **结构变化走 FLIP**:`useFlipHeight`,180ms,动效档 none 直切。
  *  9. **读数定宽**:同第 2 条;头行那一叠图标只在**工具种类**集合变化时才换
  *     (`head.icons` 由种类推导,种类没变它逐字相同,React 不动那几个节点)。
+ *
+ * ── 病历:切会话点击同步 908ms,715ms 全在这一只卡的 FLIP 里(2026-09-10)──
+ *
+ * 真会话(388 条消息、场上 916 张工具卡)在停靠池命中那条路上复现:切过去的
+ * 那一下 click 同步 908ms,CPU 自调 715ms 落在 `useFlipHeight` 的 layout effect。
+ * 病不在 FLIP 本身 —— 是**它无条件先读一次 `el.offsetHeight` 再判要不要做**。
+ *
+ * 切会话是整片叶卸载重挂,916 张卡在**同一次提交**里挂上来,每张都在 React 刚
+ * 改完 DOM 之后逼浏览器把 27 万像素的文档全量排一次版:微基准 0.34–0.41ms/张
+ * × 916 = 315–372ms 纯排版;而布局干净时同样这 916 次读只要 0.8–1.5ms。
+ * 「读一个几何属性」这件事本身不要钱,**在脏布局上读**才要 ——
+ * 一次读 + 一次改 + 再一次读,就是一次强制同步排版(layout thrashing)。
+ *
+ * 所以判据挪到读之前,而且**首帧一次都不许同步量**:首帧压根没有「改前」,
+ * 那一次读量到的高只是**下一次**的起点,晚一帧拿到与当场拿到完全等价。
+ * 把它排进 `requestAnimationFrame`:916 张卡的回调落在同一帧、布局已经算好,
+ * 第一个读的把版排一次,其余 915 个白拿 —— 从 O(n) 次排版回到 O(1) 次。
+ *
+ * **为什么是 rAF 不是 ResizeObserver**:RO 报的是「这个盒子的尺寸变了」,
+ * 而这里要的是「**这一次提交之后**它多高」——不变也得有个数(下一次 FLIP 的
+ * 起点),RO 在没变时一声不吭。rAF 的语义正好是「这一帧的活干完了」,
+ * 而且零新观察者、零常驻订阅,卸载时一句 `cancelAnimationFrame` 就干净。
  */
 export const ToolCard = memo(function ToolCard({
   card,
@@ -607,6 +629,13 @@ export function outcomeText(t: TFn, outcome: ToolOutcomeModel): string {
  *
  * 只在 `structure` 变了时跑:逐帧的文字补丁不改高度,量它只是每 100ms 白白强排一次版。
  * 动效档 `none` 直切(不是「快一点」,是压根不做)。
+ *
+ * **三条次序纪律**(病历在文件头,读数 715ms/916 张卡):
+ *  ① 判据排在读之前 —— `none` 档整段不做,那就一个几何属性都不该碰;
+ *  ② 首帧(`before` 为 0)没有「改前」,基线读排进 `requestAnimationFrame`
+ *     ——晚一帧拿到与当场拿到等价,而当场拿到是一次强制同步排版;
+ *  ③ 只有真有「改前」的那一次照旧**同步**量并当场 FLIP —— 那一次非同步不可
+ *     (要在浏览器绘制之前把起点钉住),而它一次只发生在一张卡上。
  */
 function useFlipHeight(ref: React.RefObject<HTMLDivElement | null>, structure: string): void {
   const lastHeight = useRef(0)
@@ -614,11 +643,28 @@ function useFlipHeight(ref: React.RefObject<HTMLDivElement | null>, structure: s
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
+    // ① none 档压根不做这件事 —— 连基线都不必量(读在前判在后,就是 916 次白排版)。
+    if (currentMotionTier() === 'none') return
+
     const before = lastHeight.current
+    if (!before) {
+      /*
+       * ② 首帧:只取下一次的起点。没有 rAF 的宿主(jsdom 非 visual / SSR)
+       * 也就没有帧可动,基线索性不取 —— 下一次结构变化照旧当首帧处理,
+       * 结果是「不做 FLIP」,而不是「在脏布局上补一次同步读」。
+       */
+      if (typeof requestAnimationFrame !== 'function') return
+      const frame = requestAnimationFrame(() => {
+        const node = ref.current
+        if (node) lastHeight.current = node.offsetHeight
+      })
+      return () => cancelAnimationFrame(frame)
+    }
+
+    // ③ 真有「改前」:同步量「改后」,当场把两头钉住。
     const after = el.offsetHeight
     lastHeight.current = after
-    // 首帧(before 为 0)没有「改前」可言;高度没变就没有形变;none 档直切。
-    if (!before || before === after || currentMotionTier() === 'none') return
+    if (before === after) return
 
     el.style.transition = 'none'
     el.style.height = `${before}px`

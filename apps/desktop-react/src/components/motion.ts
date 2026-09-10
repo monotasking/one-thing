@@ -48,6 +48,21 @@ export const ESC_STOP_WINDOW_MS = 2000
 export const COPY_FEEDBACK_MS = 1500
 
 /**
+ * 滚动**停下来**多久算「停稳了,可以记一笔看到哪儿」(C1 · §5.2 的写点,
+ * 正本 `docs/session-continuity-2026-09.md`)。
+ *
+ * 锚点从前只在离场那一拍量,而离场那一拍容器已经被 React 摘下树、几何全 0,
+ * 于是这张表永远是空的(病历在 `content/ChatStream.tsx` 里那只 layout effect)。
+ * 改成滚动停下来就量一次 —— **量的是还活着的那个节点**。
+ *
+ * 这是**读认窗口不是动画**:它答的是「人停手了没有」,动效档(none)不清零它,
+ * 与 ESC_STOP_WINDOW_MS / COPY_FEEDBACK_MS 同处一族,所以没有 CSS token。
+ * 120ms 的量级:比一次惯性滚动的帧间隔(16ms)大一个量级(连滚不会各量一次),
+ * 比人「停下来看一眼」的反应短得多(松手到切走之间一定量得到)。
+ */
+export const SCROLL_ANCHOR_SETTLE_MS = 120
+
+/**
  * --dur-dock-lens:Dock 磁性放大的**镜头开合**时长 —— 手落进条里那格
  * `--dock-amount` 从 0 走到 1、手离开时从 1 回到 0,各花这么久。
  * **它不是跟手的快慢**:跟手期那格恒为 1,几何每次 pointermove 直接写、零插值

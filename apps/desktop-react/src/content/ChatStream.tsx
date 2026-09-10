@@ -10,6 +10,7 @@ import { sessionRefIdOf } from './session-ref'
 import type { OverlayEntry, ProjectedMessage } from '../data/chat-fold'
 import { useT, type TFn } from '../i18n'
 import { resolveIcon } from '../components/icons'
+import { SCROLL_ANCHOR_SETTLE_MS } from '../components/motion'
 import { ButtonBase } from '../ui/ButtonBase'
 import { assembleMessage, segmentKey } from './assemble'
 import { ContextDeltaSeam, hasContextDelta } from './ContextDeltaSeam'
@@ -296,6 +297,33 @@ function useFollowBottom(
   }, [scrollRef])
 
   /*
+   * 「看到哪儿」的写点 —— **尾随去抖**(C1 · §5.2;判词在下面那只进场 effect 里)。
+   *
+   * 每一次滚动重排计时器,停稳 `SCROLL_ANCHOR_SETTLE_MS` 之后量一次、记一笔。
+   * 连滚一百下只在最后停下来那一次量,而量的是**还挂在文档上**的那个容器。
+   *
+   * 不设「这一下是不是我自己滚的」标志位 —— 与 `onScrollWithFollow` 同一条纪律
+   * (理由全文在 follow.ts 文件头)。我们自己贴底那几下量出来就是 `'bottom'`,
+   * 而那句话恰好是真的:此刻人就在最新处。代价是**冷载入那条路上**消息到齐后
+   * 的自动贴底会把上一次记的锚点改写成 `'bottom'`(留账 ② 说的「锚点留着下次用」
+   * 到此为止)—— 那不是说谎,是这一帧的事实;真要保住它得先治「冷载入不落锚点」
+   * 那一格,那是另一单。
+   *
+   * `measureScrollAnchor` 的量法:在底当场答 `'bottom'`(不扫);不在底才从上往下
+   * 扫 `[data-message-id]` 到第一条露脸的 —— 388 条的会话最坏扫满全表,但布局
+   * 干净时 `getBoundingClientRect` 是微秒级,而去抖之后每次停手只量这一次。
+   */
+  const anchorTimer = useRef<number | undefined>(undefined)
+  const scheduleAnchorSave = useCallback(() => {
+    if (anchorTimer.current !== undefined) window.clearTimeout(anchorTimer.current)
+    anchorTimer.current = window.setTimeout(() => {
+      anchorTimer.current = undefined
+      const el = scrollRef?.current
+      if (el) saveSessionScrollAnchor(sessionId, measureScrollAnchor(el))
+    }, SCROLL_ANCHOR_SETTLE_MS)
+  }, [scrollRef, sessionId])
+
+  /*
    * 换会话 = 一次新的进场。写在 layout 阶段,好让同一次提交里下面那些 effect 看到它。
    *
    * ── 进场时先问一句「上次看到哪儿」(C1 · §5.2)────────────────────────────
@@ -312,10 +340,19 @@ function useFollowBottom(
    * 事件多一个,`follow.ts` 那张转移表就要多一行,而这一下与人自己滚上去
    * 在语义上逐字相同(判据只有位置与意图,见 follow.ts 文件头)。
    *
-   * 离场(换会话 / 这片叶卸载)时把此刻的锚点交上去。cleanup 跑在 React 的
-   * mutation 相位、宿主节点摘下来**之前**,所以那时量到的还是活的排版;
-   * 万一不是(容器已经离场),`measureScrollAnchor` 答 undefined,而
-   * `saveSessionScrollAnchor` 拿 undefined 不当一次写 —— 不拿垃圾冲掉真读数。
+   * ── 锚点在**节点还活着**的时候量(2026-09-10 修正)──────────────────────
+   * 这里从前写着「cleanup 跑在 React 的 mutation 相位、宿主节点摘下来**之前**,
+   * 所以那时量到的还是活的排版」。**那句话对子树删除不成立** —— 换会话 /
+   * 这片叶卸载走的是整棵子树的删除,React 先把宿主根从文档上摘掉再逐个跑
+   * destroy,cleanup 里读到的容器 `isConnected === false`、几何全 0。于是
+   * `measureScrollAnchor` 如实答 undefined、`saveSessionScrollAnchor` 不当一次写,
+   * 表里**永远是空的**,进场缺省落底,`applyScrollAnchor` 全程一次没被调用过 ——
+   * 「切回来滚动位丢」的真因不是量错了,是**根本没量到**。
+   *
+   * 所以写点搬到还活着的时候:滚动停稳一拍(`SCROLL_ANCHOR_SETTLE_MS`)记一笔,
+   * 进场落回锚点成功之后也记一笔(此刻的就是真的)。离场那一拍的量**留着当兜底**
+   * ——依赖变化(而不是子树删除)那条路上容器确实还连着,量得到就是白拿一笔;
+   * 量不到照旧不写,不拿垃圾冲掉真读数。
    */
   useLayoutEffect(() => {
     dispatch({ type: 'enter' })
@@ -323,6 +360,8 @@ function useFollowBottom(
     const anchor = readSessionScrollAnchor(sessionId)
     if (el && anchor && anchor !== 'bottom' && applyScrollAnchor(el, anchor)) {
       dispatch({ type: 'scrolled', gap: el.scrollHeight - el.clientHeight - el.scrollTop })
+      // 落成了 —— 此刻量到的就是真的,当场记一笔,不等这条会话被人再滚一次。
+      saveSessionScrollAnchor(sessionId, measureScrollAnchor(el))
     }
     /*
      * 收在**进场那一刻的那个节点**上,不在 cleanup 里重读 `ref.current`。
@@ -333,6 +372,12 @@ function useFollowBottom(
      * 读到下一轮那一个(换 ref 时 React 先绑新的再跑旧的 cleanup)。
      */
     return () => {
+      // 还没到点的那一发不能跨会话开火 —— 它闭包着**上一条**会话的 id,
+      // 而此刻容器里已经是下一条会话的几何了。
+      if (anchorTimer.current !== undefined) {
+        window.clearTimeout(anchorTimer.current)
+        anchorTimer.current = undefined
+      }
       if (el) saveSessionScrollAnchor(sessionId, measureScrollAnchor(el))
     }
   }, [sessionId, dispatch, scrollRef])
@@ -426,8 +471,10 @@ function useFollowBottom(
   const onScrollWithFollow = useCallback(() => {
     const el = scrollRef?.current
     if (el) dispatch({ type: 'scrolled', gap: el.scrollHeight - el.clientHeight - el.scrollTop })
+    // 停稳之后记一笔「看到哪儿」——这里只重排计时器,量在停下来那一下(见上)。
+    scheduleAnchorSave()
     onScroll?.()
-  }, [scrollRef, onScroll, dispatch])
+  }, [scrollRef, onScroll, dispatch, scheduleAnchorSave])
 
   return { follow, jumpToBottom, onScrollWithFollow }
 }

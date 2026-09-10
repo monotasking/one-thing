@@ -2,6 +2,7 @@ import { createRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { ChatStream } from './ChatStream'
+import { SCROLL_ANCHOR_SETTLE_MS } from '../components/motion'
 import { configureChatPort, type ChatPort } from '../data/chat-port'
 import { chatSources } from '../data/chat-source'
 import {
@@ -787,8 +788,17 @@ describe('进场落点:切回来停在离开时那一行', () => {
   ]
 
   let restore: (() => void)[] = []
+  /** 容器**自己**的矩形被读了几次 = `measureScrollAnchor` 量了几次(见去抖那条用例)。 */
+  let containerRects = 0
 
   beforeEach(() => {
+    containerRects = 0
+    /*
+     * 进场也清一次:RTL 自己那口 cleanup(卸载上一条用例的树)与本文件的
+     * `afterEach` 谁先跑不由我们说了算 —— 它后跑时,那一次卸载的兜底会把
+     * 锚点又写回刚清空的表里,下一条用例开局就带着上一条的读数。
+     */
+    resetSessionViewStates()
     for (const [name, value] of [
       ['scrollHeight', CONTENT_H],
       ['clientHeight', VIEWPORT],
@@ -811,6 +821,7 @@ describe('进场落点:切回来停在离开时那一行', () => {
           bottom: TOP + row.contentTop + row.height - scrollTop,
         } as DOMRect
       }
+      if (this.getAttribute('data-testid') === 'chat-stream') containerRects += 1
       return { top: TOP, bottom: TOP + VIEWPORT } as DOMRect
     }
     restore.push(() => {
@@ -846,23 +857,89 @@ describe('进场落点:切回来停在离开时那一行', () => {
     return { ref, view }
   }
 
-  it('离场时把「停在哪一条、差多少」交上去', async () => {
+  /** 滚一下 —— 人的滚动是**事件**,`scrollTop = x` 只是把数字改了。 */
+  async function scrollTo(el: HTMLElement, top: number) {
+    await act(async () => {
+      el.scrollTop = top
+      fireEvent.scroll(el)
+    })
+  }
+
+  /** 等它「停稳」。写点在停下来那一拍,不在滚动的每一帧。 */
+  async function settle() {
+    await act(async () => {
+      await new Promise((done) => setTimeout(done, SCROLL_ANCHOR_SETTLE_MS + 20))
+    })
+  }
+
+  /**
+   * **这一批治的病**(09-10):锚点从前只在离场那一拍量,而换会话走的是整棵
+   * 子树的删除 —— React 先摘宿主根再逐个跑 destroy,cleanup 里容器
+   * `isConnected === false`、几何全 0,`measureScrollAnchor` 如实答 undefined,
+   * 表里**永远是空的**,`applyScrollAnchor` 全程一次没被调用过。
+   *
+   * 所以这一条把那一拍如实复现:量在滚动停稳时(节点还活着),离场那一拍容器
+   * 已经被摘下来 —— 表里那一笔照旧在,重挂回得去。
+   */
+  it('滚动停稳就记一笔;离场那一拍容器已经被摘掉也回得去', async () => {
     const { ref, view } = await mountWithRef()
     // 人往上翻到 160:a1 的上缘落在容器上缘之上 40px,它就是「我在看的那一条」。
+    await scrollTo(ref.current!, 160)
+    await settle()
+    expect(readSessionScrollAnchor(SESSION)).toEqual({ messageId: 'a1', offset: -40 })
+
+    // 离场那一拍的形:宿主根先离场,cleanup 再跑 —— 那时什么都量不到。
+    const detached = ref.current!
+    view.container.remove()
+    expect(detached.isConnected).toBe(false)
+    view.unmount()
+    expect(readSessionScrollAnchor(SESSION)).toEqual({ messageId: 'a1', offset: -40 })
+
+    // 切回来:落点是锚点算出来的 160,不是落底那个数。
+    const { ref: back } = await mountWithRef()
+    expect(back.current!.scrollTop).toBe(160)
+  })
+
+  it('贴底时表里是 bottom,不是「停在最后一条上」', async () => {
+    const { ref } = await mountWithRef()
+    await scrollTo(ref.current!, CONTENT_H - VIEWPORT)
+    await settle()
+    expect(readSessionScrollAnchor(SESSION)).toBe('bottom')
+  })
+
+  /**
+   * **去抖**:惯性滚动一秒能发几十发,每一发都量一次就是几十次全量排版
+   * (病 ① 教的那一课:几何要在布局干净的时候读)。判据数的是**量了几次**,
+   * 不是表里最后是什么 —— 后者连滚一次和连滚十次都一样,分不出去抖有没有拆掉。
+   *
+   * 一次 `measureScrollAnchor` 在「不在底」这条路上恰好读一次**容器自己的**矩形
+   * (行的矩形读在行上),所以容器矩形的读数 = 量了几次。
+   */
+  it('连滚十下只在停下来那一次量', async () => {
+    const { ref } = await mountWithRef()
+    containerRects = 0
+    for (let i = 1; i <= 10; i += 1) await scrollTo(ref.current!, 100 + i * 4)
+    expect(containerRects).toBe(0)
+
+    await settle()
+    expect(containerRects).toBe(1)
+    // 停在 140:a1 上缘在容器上缘之上 20px。量的是**最后**停下的那一处。
+    expect(readSessionScrollAnchor(SESSION)).toEqual({ messageId: 'a1', offset: -20 })
+  })
+
+  /**
+   * 兜底那一格没退役:**依赖变化**(不是子树删除)那条路上容器确实还连着,
+   * cleanup 量得到就是白拿一笔。这里 `scrollTop` 直接改、不发事件,所以去抖
+   * 那条路一次都没走 —— 表里那一笔只可能来自 cleanup。
+   */
+  it('兜底:容器还连着时,离场那一拍照旧量得到', async () => {
+    const { ref, view } = await mountWithRef()
     await act(async () => {
       ref.current!.scrollTop = 160
     })
+    expect(readSessionScrollAnchor(SESSION)).toBeUndefined()
     view.unmount()
     expect(readSessionScrollAnchor(SESSION)).toEqual({ messageId: 'a1', offset: -40 })
-  })
-
-  it('贴底离场:记的是 bottom,不是「停在最后一条上」', async () => {
-    const { ref, view } = await mountWithRef()
-    await act(async () => {
-      ref.current!.scrollTop = CONTENT_H - VIEWPORT
-    })
-    view.unmount()
-    expect(readSessionScrollAnchor(SESSION)).toBe('bottom')
   })
 
   /**

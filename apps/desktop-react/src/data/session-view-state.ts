@@ -142,6 +142,12 @@ function anchorNodeOf(container: HTMLElement, messageId: string): HTMLElement | 
  *
  * 容器不在文档上(卸载正在进行、还没挂上)时**答 undefined**:那时读到的矩形
  * 全是 0,记下去就是一份说谎的锚点。
+ *
+ * **它答 undefined 的那一次曾经是全部**(2026-09-10):换会话走的是整棵子树的
+ * 删除,React 先摘宿主根再逐个跑 destroy,所以离场那一拍的 cleanup 里容器
+ * `isConnected` 恒为 false —— 这只函数一直在如实作答,而调用方一直在如实地
+ * 什么都不记。写点因此搬到了「滚动停稳」那一拍(`content/ChatStream.tsx`),
+ * 这一格降为兜底:依赖变化那条路上容器确实还连着,量得到就是白拿一笔。
  */
 export function measureScrollAnchor(container: HTMLElement): ScrollAnchor | undefined {
   if (!container.isConnected) return undefined
@@ -195,4 +201,18 @@ if (import.meta.hot) import.meta.hot.dispose(() => resetSessionViewStates())
  *    命中的那条路,也正是 C1 要治的那条)。冷启动第一帧树是空的,此时落回锚点
  *    会先贴底再跳一次 —— 与「首帧就在底,不许先画顶部再跳」相悖,所以这一批
  *    老实落底,锚点留着下次用。要治它得等消息到齐再落一次,那是一次可见的跳。
+ *    **09-10 补一句**:写点改成「滚动停稳就记」之后,冷载入那条路上消息到齐后
+ *    的自动贴底会发一次真滚动,于是把留着的那份锚点改写成 `'bottom'` ——
+ *    「留着下次用」到此为止。不给它加「这一下是不是我自己滚的」标志位是有意的
+ *    (follow.ts 文件头那条纪律),真要保住它得先治这一格本身。
+ *
+ * ③ **切会话是整片叶卸载重挂**(09-10,更根上的那一条):停靠池保住的是**数据
+ *    机器**,没保住 **React 组件树** —— 换会话时 916 张工具卡连同整片聊天一起
+ *    卸载再重挂。①(折叠态没有键)与「滚动位得靠一张外挂表来回搬」都是它的
+ *    后果,ToolCard 那 715ms 的 FLIP 强排版也是它放大的。治法是**组件级停靠**
+ *    (藏起来而不是卸载),那是独立一单,不在本批。
+ *
+ * ④ **`npm run gate:continuity` 今天守不住任何断言**(09-10):它的种子阶段
+ *    「账本落到 4 条」20s 超时崩,整条门跑不到断言那一步。本批因此只跑单测,
+ *    不跑那条真机门 —— 修门是另一单。
  */
