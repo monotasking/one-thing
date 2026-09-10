@@ -23,7 +23,7 @@
 // 那一个纯序列化函数。
 import { buildContextCompactContent } from '../../engine/context-compact-content.js'
 import type { SessionLogEventRecord } from '../events/types.js'
-import { resolveHistoryBlobRefs, type ProjectionMaterializeOptions } from './blobs.js'
+import { projectionBlobReplay, resolveHistoryBlobRefs, type ProjectionMaterializeOptions } from './blobs.js'
 import type { AssistantNode, CompactedNode, MessageNode, ProjectionNode, SessionProjectionState } from './reducer.js'
 import {
   createSessionProjectionState,
@@ -121,6 +121,7 @@ function materializeMessageNode(
     seq: _droppedPositionSeq,
     ...carried
   } = node.message as Record<string, unknown>
+  const replay = projectionBlobReplay(options)
   return resolveHistoryBlobRefs({
     ...carried,
     ...(node.turnContext ? { turnContext: node.turnContext } : {}),
@@ -128,7 +129,7 @@ function materializeMessageNode(
     eventSeq: node.eventSeq,
     // 消息这条路上换不回来的引用**照实留着**(A2 / provider-data 的既有口径),
     // 不像模型历史那样摘掉 —— 屏幕上那一格是个占位,而那就是事实。
-  } as ProjectedChatMessage, options.resolveBlob, options.onIssue, 'keep')
+  } as ProjectedChatMessage, replay.resolveBlob, replay.onIssue, 'keep')
 }
 
 function materializeAssistantNode(
@@ -154,6 +155,7 @@ function materializeAssistantNode(
   // 图片 / provider-data part 的正文也住在 blob 里 —— 与附件同一个函数换回来
   // (`{blob}` → `{data}`)。宿主从前在投影**之外**补这一刀,于是每个消费者
   // 各记得一次;现在物化出去的那一份就已经是完整的。
+  const replay = projectionBlobReplay(options)
   return resolveHistoryBlobRefs({
     id: node.messageId,
     role: 'assistant',
@@ -192,7 +194,7 @@ function materializeAssistantNode(
     ...node.patch,
     // 消息这条路上换不回来的引用**照实留着**(A2 / provider-data 的既有口径),
     // 不像模型历史那样摘掉 —— 屏幕上那一格是个占位,而那就是事实。
-  } as ProjectedChatMessage, options.resolveBlob, options.onIssue, 'keep')
+  } as ProjectedChatMessage, replay.resolveBlob, replay.onIssue, 'keep')
 }
 
 /**

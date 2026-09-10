@@ -335,6 +335,72 @@ export class SurfaceIndex {
   firstSeq(): number | undefined {
     return this.order.length > 0 ? this.order[0] : undefined
   }
+
+  /**
+   * 这份索引的**全部内部状态**,一格不落(投影检查点用)。
+   *
+   * 为什么由它自己写而不是由检查点编解码器去翻它的私有字段:七格里有 `Map` /
+   * `Set` / 两张互相指着的表(`shadowSpans` 与 `shadowSpanIndexBySeq` 的下标),
+   * 谁都不该在这个类之外重新理解它们。加一格状态的人改的是这只文件,而
+   * `SURFACE_CHECKPOINT_FIELDS` 那道形状门当场变红 —— 检查点因此不会静默漏掉
+   * 新的一格(漏掉的后果是"折出来少遮了一段历史",最难查的那一类)。
+   *
+   * `snapshot()` 不能替它:那是**对外的观测**(三格,排过序、复制过),这是
+   * **可还原的全部**。两者故意不是同一个东西。
+   */
+  toCheckpoint(): SurfaceCheckpoint {
+    return {
+      order: [...this.order],
+      shadowed: [...this.shadowed],
+      violations: this.violations.map(violation => ({ ...violation })),
+      seqByMessageId: [...this.seqByMessageId],
+      messageNodeSeqs: [...this.messageNodeSeqs],
+      shadowSpans: this.shadowSpans.map(span => ({ ...span })),
+      shadowSpanIndexBySeq: [...this.shadowSpanIndexBySeq],
+    }
+  }
+
+  /** `toCheckpoint()` 的逆。形状不对就抛 —— 上层据此丢掉检查点从头折。 */
+  static fromCheckpoint(payload: SurfaceCheckpoint): SurfaceIndex {
+    const index = new SurfaceIndex()
+    if (!Array.isArray(payload?.order)) throw new TypeError('Surface checkpoint has no order')
+    index.order = [...payload.order]
+    for (const seq of payload.shadowed ?? []) index.shadowed.add(seq)
+    for (const violation of payload.violations ?? []) index.violations.push({ ...violation })
+    for (const [id, seq] of payload.seqByMessageId ?? []) index.seqByMessageId.set(id, seq)
+    for (const seq of payload.messageNodeSeqs ?? []) index.messageNodeSeqs.add(seq)
+    for (const span of payload.shadowSpans ?? []) index.shadowSpans.push({ ...span })
+    for (const [seq, at] of payload.shadowSpanIndexBySeq ?? []) index.shadowSpanIndexBySeq.set(seq, at)
+    return index
+  }
+}
+
+/**
+ * `SurfaceIndex` 内部状态的字段名 —— **形状门的判据**。
+ *
+ * 它与 `toCheckpoint()` 的返回值必须逐格对得上;类上多一格私有状态而这里没跟着
+ * 加,`__tests__/projection-checkpoint.test.ts` 当场红。这是检查点唯一的防漂手段:
+ * 编解码器是结构性的(不认识字段名),只有这个类的内部状态需要一张点名表。
+ */
+export const SURFACE_CHECKPOINT_FIELDS = [
+  'messageNodeSeqs',
+  'order',
+  'seqByMessageId',
+  'shadowSpanIndexBySeq',
+  'shadowSpans',
+  'shadowed',
+  'violations',
+] as const
+
+/** `SurfaceIndex` 的可还原全状态(纯数据,`Map`/`Set` 摊成数组)。 */
+export interface SurfaceCheckpoint {
+  order: number[]
+  shadowed: number[]
+  violations: SurfaceViolation[]
+  seqByMessageId: Array<[string, number]>
+  messageNodeSeqs: number[]
+  shadowSpans: Array<{ from: number; to: number }>
+  shadowSpanIndexBySeq: Array<[number, number]>
 }
 
 export function foldSurface(events: readonly SessionLogEventRecord[]): SurfaceSnapshot {

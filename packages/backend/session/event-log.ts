@@ -332,6 +332,20 @@ export function getSessionBlobsDirPath(sessionId: string): string {
   return path.join(sessionDirPath(sessionId), 'blobs')
 }
 
+/** 派生文件名:投影检查点(工单 4 B)。路径的法与账本 / blob 同一处。 */
+export const SESSION_PROJECTION_CHECKPOINT_FILENAME = 'projection.checkpoint'
+
+/**
+ * `<store>/sessions/<id>/projection.checkpoint` —— **派生物**,删了自己重建。
+ *
+ * 它与账本同目录不是为了看着像一家人:会话删除是**整目录**删的,派生物跟着走
+ * 才不会留下一份指着已删会话的孤儿(`plugin-data/legacy-backup/` 那类孤儿是
+ * 有前科的)。
+ */
+export function getSessionProjectionCheckpointPath(sessionId: string): string {
+  return path.join(sessionDirPath(sessionId), SESSION_PROJECTION_CHECKPOINT_FILENAME)
+}
+
 /**
  * 事件日志只往**已经存在**的会话目录里追加。
  *
@@ -1053,6 +1067,36 @@ export function readSessionLogEventsSync(sessionId: string, options?: { strict?:
   } catch (error) {
     if (options?.strict) throw error
     return []
+  }
+}
+
+/**
+ * 账本的**尾段**:从 `fromByte`(行首)读到 EOF 再解析(工单 4 B)。
+ *
+ * 检查点那条冷载路径唯一要的新读法。`fromByte` 必须是**行首** —— 判定不在这里,
+ * 而在 `checkpoint-file.ts` 那道「末字节是 `\n`」的守卫上:那一条同时是写检查点
+ * 的前提与读检查点的判据,一处说清好过两处各判一半。
+ *
+ * `fromByte <= 0` 时等价于整份读(冷载没有检查点的老路)。读不出来一律空数组,
+ * 与 `readSessionLogEventsSync` 同口径。
+ */
+export function readSessionLogEventsSyncFrom(sessionId: string, fromByte: number): SessionLogEventRecord[] {
+  if (!Number.isFinite(fromByte) || fromByte <= 0) return readSessionLogEventsSync(sessionId)
+  let fd: number | undefined
+  try {
+    const logPath = sessionLogPathFor(sessionId)
+    const size = fs.statSync(logPath).size
+    if (fromByte >= size) return []
+    fd = fs.openSync(logPath, 'r')
+    const buffer = Buffer.allocUnsafe(size - fromByte)
+    const read = fs.readSync(fd, buffer, 0, buffer.length, fromByte)
+    return parseSessionLogEventLog(buffer.subarray(0, read).toString('utf8'))
+  } catch {
+    return []
+  } finally {
+    if (fd !== undefined) {
+      try { fs.closeSync(fd) } catch { /* 关不上也不该再制造第二条错误路径 */ }
+    }
   }
 }
 

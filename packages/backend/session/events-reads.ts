@@ -27,6 +27,7 @@ import {
   materializeNode,
   materializeChatMessages,
   pageEventMessages,
+  readLedgerWatermark,
   userMarkersFromProjected,
   type ProjectedChatMessage,
   type SessionEventByteReader,
@@ -88,13 +89,34 @@ interface MessageViewCache {
   nodes: WeakMap<ProjectionNode, { rev: number; message: ChatMessage }>
   lists: WeakMap<SessionProjectionState, ChatMessage[]>
 }
+
+/**
+ * 物化的两档 —— **正文** 还是 **引用**(工单 4 A)。
+ *
+ * 两档各有一份记忆:同一个节点在两档下物化出来的消息不是同一份(一个带
+ * base64,一个带 `{hash,bytes}`),混用一份缓存就是"上一次谁读的决定这一次你
+ * 看见什么"。缓存是 `WeakMap`,多一档不多留一份历史。
+ */
+type MessageBlobMode = 'inline' | 'reference'
 // Owned by this read layer, one cache per session. Nodes and projection
 // generations are weak keys, so eviction does not retain history.
-const messageViews = new Map<string, MessageViewCache>()
-function messageView(sessionId: string): MessageViewCache {
-  let cache = messageViews.get(sessionId)
-  if (!cache) { cache = { nodes: new WeakMap(), lists: new WeakMap() }; messageViews.set(sessionId, cache) }
-  return cache
+const messageViews = new Map<string, Record<MessageBlobMode, MessageViewCache>>()
+function messageView(sessionId: string, mode: MessageBlobMode): MessageViewCache {
+  let caches = messageViews.get(sessionId)
+  if (!caches) {
+    caches = {
+      inline: { nodes: new WeakMap(), lists: new WeakMap() },
+      reference: { nodes: new WeakMap(), lists: new WeakMap() },
+    }
+    messageViews.set(sessionId, caches)
+  }
+  return caches[mode]
+}
+
+/** 这一档的物化选项。`reference` = 不读 blob、也不记退化(见 core 的 `blobs` 那一格)。 */
+function materializeFor(sessionId: string, mode: MessageBlobMode) {
+  const options = ports.materializeOptions(sessionId)
+  return mode === 'reference' ? { ...options, blobs: 'reference' as const } : options
 }
 
 /**
@@ -140,10 +162,27 @@ function toChatMessage(_sessionId: string, message: ProjectedChatMessage): ChatM
 
 /** 这条会话的全部**可见**消息(投影)。折不出节点 = 事件里没有它的历史。 */
 function eventsListMessages(sessionId: string): ChatMessage[] | undefined {
-  const state = ports.projections.getLiveSessionProjection(sessionId)
+  return messagesFromState(sessionId, ports.projections.getLiveSessionProjection(sessionId), 'inline')
+}
+
+/**
+ * 一份**已经在手**的投影 → 可见消息(工单 4 A 把它从 `eventsListMessages` 里
+ * 分出来的)。
+ *
+ * 分出来的唯一理由是**原子性**:尾页那条读法要把「这一页」与「账本水位」
+ * (`state.lastSeq`)从**同一个 state 对象**上取。让它自己去调
+ * `getLiveSessionProjection` 就意味着页与水位是两次取,而"两次同步调用之间不
+ * 可能有事件插进来"是一句关于 JS 事件环的**巧合**,不是这段代码说得出口的判据。
+ * 收成一个参数之后,想分两拍取都做不到。
+ */
+function messagesFromState(
+  sessionId: string,
+  state: SessionProjectionState,
+  mode: MessageBlobMode,
+): ChatMessage[] | undefined {
   if (state.nodes.length === 0) return undefined
-  const cache = messageView(sessionId)
-  const options = ports.materializeOptions(sessionId)
+  const cache = messageView(sessionId, mode)
+  const options = materializeFor(sessionId, mode)
   const messages: ChatMessage[] = []
   for (const node of state.nodes) {
     // Visibility is independent of rev and must be checked on every read.
@@ -324,6 +363,78 @@ function pageFromMemory(
   }
 }
 
+/**
+ * 一页消息 + 这一页对应的**账本水位**(工单 4 A)。
+ *
+ * ## 水位是什么,壳拿它做什么
+ *
+ * 水位 = 「这一页是账本折到第几条时算出来的」。壳把这一页当作首屏的底稿,然后
+ * 从 SSE 上接着折 —— **只折 `seq > 水位` 的那些**。所以水位必须与这一页出自
+ * **同一个快照**:
+ *
+ *  · 水位比页新一条 → 那一条既不在页里、也会被壳跳过 = 一条消息永远消失;
+ *  · 水位比页旧一条 → 那一条在页里有、SSE 上又来一次 = 同一段正文折两遍。
+ *
+ * 两种都是静默的。所以这只函数不给调用方留"分两拍取"的余地:
+ *
+ *  · **内存路**:`getLiveSessionProjection` 只调一次,页与 `state.lastSeq` 从
+ *    同一个 state 对象上取(`messagesFromState` 收 state 做参数正是为了这个);
+ *  · **文件路**:`withEventReader` 只开一次 —— reader 在打开的那一刻就把 `size`
+ *    定格,页与 `readLedgerWatermark` 都只看得见那些字节,后面追加的一个也看不见。
+ *
+ * ## blob:带引用,不带正文
+ *
+ * 首屏这一页走 `blobs: 'reference'`:附件的 base64、超 64KB 的工具结果一律留
+ * `{hash,bytes}` 引用。判据是**这一页是拿来上屏的**,而屏幕上那几格要的是"有
+ * 一张图"这件事,不是那 3MB 字节 —— 真要看内容,壳按 hash 单独取(`blobs/` 本来
+ * 就是按内容寻址的)。整份抄本那条读法(`record` / `messages`)一格不动,它的
+ * 读者(模型历史、导出)要的就是正文。
+ */
+function eventsPageMessagesAtWatermark(
+  request: GetSessionMessagesPageRequest,
+): { page: GetSessionMessagesPageResponse; watermark: number } | undefined {
+  if (ports.projections.hasLiveSessionProjection(request.sessionId)) {
+    const state = ports.projections.getLiveSessionProjection(request.sessionId)
+    const messages = messagesFromState(request.sessionId, state, 'reference')
+    if (messages) return { page: pageFromMemory(request, messages), watermark: state.lastSeq }
+  }
+
+  const snapshot = withEventReader(request.sessionId, reader => ({
+    page: pageEventMessages(reader, request, {
+      materialize: { ...ports.materializeOptions(request.sessionId), blobs: 'reference' as const },
+      resolveAnchor: anchor => {
+        const index = jumpIndexOf(request.sessionId)
+        if (!index) return undefined
+        if (anchor.messageId) return index.byMessageId.get(anchor.messageId)
+        if (anchor.seq !== undefined) {
+          const offset = index.offsetBySeq.get(anchor.seq)
+          return offset === undefined ? undefined : { seq: anchor.seq, offset }
+        }
+        return undefined
+      },
+    }),
+    // 同一个 reader —— 见上面「原子性」那一节。
+    watermark: readLedgerWatermark(reader),
+  }))
+  if (!snapshot) return undefined
+  const { watermark } = snapshot
+  const paged = snapshot.page
+  if (!paged.success) return { page: paged as unknown as GetSessionMessagesPageResponse, watermark }
+  if ((paged.messages?.length ?? 0) === 0 && !paged.hasMoreBefore) {
+    // 折不出任何消息 = 事件里没有这条会话的历史(老会话)。交回给上层。
+    return undefined
+  }
+  // `seq` ← `eventSeq`,与 `eventsPageMessages` 逐字同一句(§11.1)。
+  return {
+    page: {
+      ...paged,
+      messages: (paged.messages ?? []).map(message =>
+        toChatMessage(request.sessionId, message as unknown as ProjectedChatMessage)),
+    } as GetSessionMessagesPageResponse,
+    watermark,
+  }
+}
+
   return {
     resetSessionEventReadCache,
     eventsListMessages,
@@ -335,6 +446,7 @@ function pageFromMemory(
     eventsLastMessageOfRole,
     eventsListUserMarkers,
     eventsPageMessages,
+    eventsPageMessagesAtWatermark,
     dispose() { resetSessionEventReadCache() },
   }
 }
@@ -351,3 +463,4 @@ export const eventsGetMessageIndex: SessionEventReads['eventsGetMessageIndex'] =
 export const eventsLastMessageOfRole: SessionEventReads['eventsLastMessageOfRole'] = (...args) => currentReads().eventsLastMessageOfRole(...args)
 export const eventsListUserMarkers: SessionEventReads['eventsListUserMarkers'] = (...args) => currentReads().eventsListUserMarkers(...args)
 export const eventsPageMessages: SessionEventReads['eventsPageMessages'] = (...args) => currentReads().eventsPageMessages(...args)
+export const eventsPageMessagesAtWatermark: SessionEventReads['eventsPageMessagesAtWatermark'] = (...args) => currentReads().eventsPageMessagesAtWatermark(...args)

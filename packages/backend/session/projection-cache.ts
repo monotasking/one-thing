@@ -49,11 +49,28 @@ import type { sessionProjectionOptions } from './projection-blobs.js'
 import { getCurrentBackend } from '../current.js'
 
 export interface SessionProjectionPorts {
-  readEvents(sessionId: string): SessionLogEventRecord[]
+  /**
+   * 这条会话的事件。`fromByte` 在场 = 只要账本从那个**行首**往后的那一段
+   * (工单 4 B 的检查点冷载路);缺席 = 整份(没有检查点的老路)。
+   */
+  readEvents(sessionId: string, fromByte?: number): SessionLogEventRecord[]
   drainTail: typeof import('./event-log.js').drainSessionLogEventTail
   prepareOnce(sessionId: string): void
   materializeOptions: typeof sessionProjectionOptions
   observe(observer: SessionLogEventAppendObserver): () => void
+  /**
+   * **投影检查点**(工单 4 B):上一次折到哪、从账本第几个字节接着折。
+   *
+   * 缺席(端口没接 / 这条会话没有检查点 / 检查点与账本对不上)= 从头折,与
+   * 本单之前逐字相同。判据全在 `checkpoint-file.ts` 那四道门里,这一层只认
+   * "给没给我一份"。
+   */
+  restore?(sessionId: string): {
+    state: SessionProjectionState
+    account: SessionAccountState
+    lastSeq: number
+    fromByte: number
+  } | undefined
 }
 
 interface LiveProjection {
@@ -163,13 +180,23 @@ function getLiveSessionProjection(sessionId: string): SessionProjectionState {
     // 进程死亡留下的未闭合 run 收掉。它自己每会话只真的跑一次,合成出来的事件
     // 走写入口那条尾巴,下面的 drain 会把它们折进来。
     ports.prepareOnce(sessionId)
-    live = {
-      state: createSessionProjectionState(),
-      account: createSessionAccountState(),
-      lastSeq: 0,
-      aheadDeltas: 0,
-    }
-    for (const event of ports.readEvents(sessionId)) {
+    // **检查点**(工单 4 B):有一份对得上的备忘就从它接着折,没有就从头折。
+    // `prepareOnce` 排在它前面不是可有可无 —— 那一步可能往账本追加"收尾未闭合
+    // run"的合成事件,而检查点的字节数判据问的正是账本此刻多大;先补完再问,
+    // 补出来的那几条才会被算成"检查点之后的那一段"。
+    const restored = ports.restore?.(sessionId)
+    live = restored
+      ? { state: restored.state, account: restored.account, lastSeq: restored.lastSeq, aheadDeltas: 0 }
+      : {
+        state: createSessionProjectionState(),
+        account: createSessionAccountState(),
+        lastSeq: 0,
+        aheadDeltas: 0,
+      }
+    for (const event of ports.readEvents(sessionId, restored?.fromByte)) {
+      // 检查点覆盖到的那一段本来就不该再出现在这里(`fromByte` 是行首,读的是
+      // 它**之后**),这一句是第二道:重折一条已经折过的事件 = 同一段正文进两次。
+      if (event.seq <= live.lastSeq) continue
       foldRecord(sessionId, live, event)
       live.lastSeq = Math.max(live.lastSeq, event.seq)
     }

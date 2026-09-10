@@ -145,6 +145,37 @@ export function scanEventsBackward(
   return { reachedHead: true }
 }
 
+/**
+ * 这份账本**此刻**折到哪一条 seq —— 也就是「水位」(工单 4 A)。
+ *
+ * 它必须与那一页出自**同一个 reader**:reader 在打开的那一刻就把 `size` 定格,
+ * 之后追加的字节它一个也看不见。页取自 t1、水位取自 t2 的写法在真机上必然漏事件
+ * —— 壳按水位接 SSE(只折 `seq > 水位` 的那些),水位比页新一条,那一条就永远
+ * 补不上;水位比页旧一条,那一条会被折两遍。所以这只函数只收 reader,不收会话 id、
+ * 不自己开文件:调用方想分两拍取都做不到。
+ *
+ * 代价是一次倒读到**第一条解得开的行**为止 —— 通常就是最后一行(几百字节)。
+ * 末尾那半行(崩溃截断)解不开会被跳过,与 `scanEventsBackward` 同口径:
+ * 半行不是事件,它的字节还不算数。
+ *
+ * 空文件 / 一行都解不开 → `0`(= "还没有任何事件",与投影的 `lastSeq` 初值同值)。
+ */
+export function readLedgerWatermark(
+  reader: SessionEventByteReader,
+  options: { chunkSize?: number } = {},
+): number {
+  let watermark = 0
+  scanEventsBackward(
+    reader,
+    { ...(options.chunkSize !== undefined ? { chunkSize: options.chunkSize } : {}) },
+    ({ record }) => {
+      watermark = record.seq
+      return true
+    },
+  )
+  return watermark
+}
+
 interface ForwardScanOptions {
   /** 从这个偏移(**含**)往后读。 */
   fromOffset?: number

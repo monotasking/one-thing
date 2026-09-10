@@ -190,6 +190,63 @@ describe('资源内核在真装配里(K1)', () => {
     expect(Array.isArray(full.messages)).toBe(true)
   })
 
+  /**
+   * 工单 4 A —— **首屏那一页**经真管线(`kernel.read` 一条路)。
+   *
+   * 它要证的是三句在单测里说不出口的话:
+   *   ① `page` 这条读法在**真自述**里,经**真内核**答得出来(不是 provider 上的
+   *      一个方法);
+   *   ② 交出来的是**折好的**消息 + `hasMoreBefore` + `nextBefore` + **水位**,
+   *      而水位与这一页是同一时刻的事实;
+   *   ③ 拿 `nextBefore` 往上翻,翻得到头。
+   *
+   * 反证:把 provider 的 `page` 那一支删掉 → 「读法不在自述里」当场红;把水位
+   * 那一格摘掉 → ② 红。
+   */
+  it('工单 4 A:read page 给出尾页 + 水位,nextBefore 往上翻得到头', async () => {
+    const { sessionCommands } = await import('../session/commands.js')
+    const store = await import('../store.js')
+    const created = store.createSession(`resource-page-${Date.now()}`, 'Paged')
+
+    for (let index = 1; index <= 7; index++) {
+      sessionCommands.appendMessage(created.id, {
+        message: { id: `p${index}`, role: 'system' as const, content: `line ${index}`, timestamp: index } as never,
+      })
+    }
+
+    const first = await backend.resources.read(`session:${created.id}`, 'page', { limit: 3 }, callOptions(created.id))
+    expect(first.kind).toBe('ok')
+    if (first.kind !== 'ok') return
+    const page = first.value as {
+      messages: Array<{ id: string }>
+      hasMoreBefore: boolean
+      nextBefore?: string
+      watermark: number
+    }
+    // 缺省就是尾页:最后三条,最旧在前。
+    expect(page.messages.map(message => message.id)).toEqual(['p5', 'p6', 'p7'])
+    expect(page.hasMoreBefore).toBe(true)
+    expect(typeof page.nextBefore).toBe('string')
+    // 水位 = 这一页折到账本第几条。它至少要盖住页里最新那条消息,否则壳会把
+    // 它当成"还没折过"的新事件再折一遍。
+    expect(page.watermark).toBeGreaterThanOrEqual(7)
+
+    // 往上翻:`nextBefore` 就是"上面那一页从哪要"。
+    const seen = [...page.messages.map(message => message.id)]
+    let cursor = page.nextBefore
+    for (let guard = 0; cursor && guard < 10; guard++) {
+      const next = await backend.resources.read(
+        `session:${created.id}`, 'page', { limit: 3, before: cursor }, callOptions(created.id),
+      )
+      expect(next.kind).toBe('ok')
+      if (next.kind !== 'ok') break
+      const older = next.value as { messages: Array<{ id: string }>; hasMoreBefore: boolean; nextBefore?: string }
+      seen.unshift(...older.messages.map(message => message.id))
+      cursor = older.hasMoreBefore ? older.nextBefore : undefined
+    }
+    expect(seen).toEqual(['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7'])
+  })
+
   it('读一条不存在的会话,如实说不存在(不是一个空对象)', async () => {
     const outcome = await backend.resources.read('session:nope', 'get', {}, callOptions('nope'))
     expect(outcome.kind === 'failed' && outcome.error.name).toBe('SessionNotFoundError')

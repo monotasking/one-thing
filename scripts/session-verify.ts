@@ -35,7 +35,11 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
+  createSessionProjectionState,
   decodeJsonlLine,
+  decodeSessionProjectionCheckpoint,
+  materializeChatMessages,
+  reduceSessionProjection,
   SurfaceIndex,
   // 引用扫描的**单一判据**(§15.12):GC 的孤儿判定与这里的引用完整性检查问的是
   // 同一张表的两侧,判据分家迟早会分出一边删掉另一边认的东西。
@@ -51,7 +55,7 @@ import {
 import { dehydrateProjectedMessages } from '@onething/runtime/sessions/session-dehydrate'
 
 export interface SessionVerifyIssue {
-  kind: 'seq' | 'surface' | 'projection' | 'blob' | 'unclosed-run' | 'messages'
+  kind: 'seq' | 'surface' | 'projection' | 'blob' | 'unclosed-run' | 'messages' | 'checkpoint'
   detail: string
 }
 
@@ -238,9 +242,53 @@ export function verifySession(
     }
   }
 
+  const hasEventHistory = nodes > 0
+
+  // 7. 投影检查点(工单 4 B):**有它与没它,折出同一份**。
+  //
+  // 检查点是派生物,账本才是真相 —— 所以这道门问的正是那句话:拿检查点接着折
+  // 剩下那一段,结果必须与整份从头折逐字相同。两条路除了"从哪儿开始"之外没有
+  // 任何共享,与 refold 那道耐久门的哲学同源。
+  //
+  // 不在这里重验落盘那四道判据(版本 / 会话 id / 字节数 / 末行指纹):那是
+  // `packages/backend/session/checkpoint-file.ts` 那一处的法,抄第二份就是让
+  // 两份判据各自演化。这里只读信封的 `lastSeq` 与 `payload`(格名的产地也在
+  // 那只文件上),真有一份**过了那四道门却折不出同一份**的检查点,恰恰是这道
+  // 门该抓的东西。
+  const checkpointText = readTextIfExists(path.join(dir, 'projection.checkpoint'))
+  if (checkpointText && hasEventHistory) {
+    try {
+      const file = JSON.parse(checkpointText) as { lastSeq?: number; payload?: never }
+      if (typeof file.lastSeq !== 'number' || !file.payload) {
+        issues.push({ kind: 'checkpoint', detail: 'projection.checkpoint has no lastSeq/payload' })
+      } else {
+        const restored = decodeSessionProjectionCheckpoint(file.payload)
+        let resumed = restored.state
+        for (const event of events) {
+          if (event.seq <= file.lastSeq) continue
+          resumed = reduceSessionProjection(resumed, event)
+        }
+        let whole = createSessionProjectionState()
+        for (const event of events) whole = reduceSessionProjection(whole, event)
+
+        const canonicalOf = (state: typeof whole): string => stableStringify(
+          materializeChatMessages(state, {}).messages.map(message =>
+            canonicalChatMessage(message as unknown as Record<string, unknown>)),
+        )
+        if (canonicalOf(resumed) !== canonicalOf(whole)) {
+          issues.push({ kind: 'checkpoint', detail: `resuming from seq ${file.lastSeq} folds a different history` })
+        }
+        if (stableStringify(resumed.surface.snapshot()) !== stableStringify(whole.surface.snapshot())) {
+          issues.push({ kind: 'checkpoint', detail: `resuming from seq ${file.lastSeq} folds a different surface` })
+        }
+      }
+    } catch (error) {
+      issues.push({ kind: 'checkpoint', detail: `projection.checkpoint unusable: ${String(error)}` })
+    }
+  }
+
   // 6. 与 messages.jsonl 对一遍(有的话)
   const transcript = readTextIfExists(path.join(dir, 'messages.jsonl'))
-  const hasEventHistory = nodes > 0
   let coverage: string | undefined
   if (transcript && hasEventHistory) {
     const real = messagesFromTranscript(transcript)

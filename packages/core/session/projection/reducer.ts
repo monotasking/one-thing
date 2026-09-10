@@ -943,6 +943,30 @@ function register(state: SessionProjectionState, node: ProjectionNode): void {
   state.byMessageId.set(node.messageId, node)
 }
 
+/**
+ * 三张**派生索引**(`byEventSeq` / `byMessageId` / `runs`)按 `nodes` 重建。
+ *
+ * 它住在这里、紧挨着 `register`,理由只有一条:**登记的法只许有一本**。检查点
+ * (`checkpoint.ts`)不落这三张表 —— 它们的值全是 `nodes` 里那些对象本身,落进去
+ * 就是同一份历史存三遍,而且还原时对象身份必然对不上(投影是就地改的,身份一散
+ * 就是"改了一处、另一处没跟上")。所以还原时重建,而重建的口径必须与登记逐字
+ * 相同,否则检查点会悄悄换掉一条"按 id 找得到哪个节点"的答案。
+ *
+ * **顺序即胜负**:同一个 `messageId` 可能有两个节点(压缩把占位那一格隐藏、
+ * 新节点 `splice` 在它**之后**),按 `nodes` 正序后写覆盖先写,与登记那一刻的
+ * 次序恰好同结果。
+ */
+export function rebuildSessionProjectionIndexes(state: SessionProjectionState): void {
+  state.byEventSeq.clear()
+  state.byMessageId.clear()
+  state.runs.clear()
+  for (const node of state.nodes) {
+    state.byEventSeq.set(node.eventSeq, node)
+    state.byMessageId.set(node.messageId, node)
+    if (node.kind === 'assistant') state.runs.set(node.runId, node)
+  }
+}
+
 function addMessageNode(
   state: SessionProjectionState,
   eventSeq: number,

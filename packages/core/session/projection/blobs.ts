@@ -41,6 +41,23 @@ export interface ProjectionIssue {
 export type ProjectionBlobResolver = (ref: BlobRef) => string | undefined
 
 /**
+ * 这一次物化的**回放口**(读口 + 留痕),按 `blobs` 那一格分档。
+ *
+ * `resolveHistoryBlobRefs` 收的是散开的三个参数(它同时服务模型历史那条路),
+ * 所以"要引用"这件事在那条签名上表达不出来 —— 由这只函数在**唯一一处**折成
+ * 「读口与留痕一起摘掉」。摘掉留痕是重点:留引用是点的菜,不是一次退化。
+ */
+export function projectionBlobReplay(
+  options: ProjectionMaterializeOptions,
+): { resolveBlob?: ProjectionBlobResolver; onIssue?: (issue: ProjectionIssue) => void } {
+  if (options.blobs === 'reference') return {}
+  return {
+    ...(options.resolveBlob ? { resolveBlob: options.resolveBlob } : {}),
+    ...(options.onIssue ? { onIssue: options.onIssue } : {}),
+  }
+}
+
+/**
  * 投影**物化**阶段的注入口。
  *
  * 折叠(`reduceSessionProjection`)一个字节都不需要它 —— 事件里存的就是引用;
@@ -49,6 +66,23 @@ export type ProjectionBlobResolver = (ref: BlobRef) => string | undefined
  */
 export interface ProjectionMaterializeOptions {
   resolveBlob?: ProjectionBlobResolver
+  /**
+   * 这一次物化要**正文**还是要**引用**(工单 4 A,首屏尾页那条读路)。
+   *
+   *  - `'inline'`(缺省,今天所有读路):有 `resolveBlob` 就换回正文,换不回来
+   *    是**退化**,记一条 `blob-missing`;
+   *  - `'reference'`:压根不去读 —— 把 `BlobRef` / `onething-blob://` 原样交出去,
+   *    而且**不记 issue**。留引用是这次点的菜,不是一次失败。
+   *
+   * 为什么要有这一格,而不是"不传 `resolveBlob` 就等于要引用":两者在字节上
+   * 恰好同形(都留引用),在**账**上正相反 —— 后者会给每一格附件记一条退化、
+   * 每条会话 warn 一次,把首屏那一页染成一片假红(F6 那道留痕正是为了让真红
+   * 显出来)。一次读要不要正文是读者说的话,必须说得出口。
+   *
+   * 判据只有一条,写在这里也只写这一遍:`'reference'` 时两只回放函数直接返回
+   * 原值,连 `resolveBlob` 在不在都不问。
+   */
+  blobs?: 'inline' | 'reference'
   /** 每一次退化调一次(F6)。不传 = 照旧退化,只是没人看见。 */
   onIssue?: (issue: ProjectionIssue) => void
   /**
@@ -104,6 +138,8 @@ export function resolveProjectionBlobText(
   messageId?: string,
 ): string {
   if (!text || !hasProjectionBlobUrl(text)) return text
+  // 要引用的那一档:占位符本来就是引用,原样留着,不记退化。
+  if (options.blobs === 'reference') return text
   return text.replace(BLOB_URL_PATTERN, (whole, hash: string) => {
     const resolved = options.resolveBlob?.({ hash, bytes: 0 })
     if (resolved !== undefined) return resolved
@@ -125,6 +161,9 @@ export function resolveProjectionBlobRef(
   messageId?: string,
 ): string | undefined {
   if (!isBlobRef(ref)) return undefined
+  // 要引用的那一档:不读、不记 —— 调用方拿到 undefined 走各自的"留引用"分支
+  // (`resolveBlobList` 的 `onMissing:'keep'`),与退化那一支字节同形、账不同。
+  if (options.blobs === 'reference') return undefined
   const resolved = options.resolveBlob?.(ref)
   if (resolved !== undefined) return resolved
   options.onIssue?.({ kind: 'blob-missing', where, hash: ref.hash, ...(messageId ? { messageId } : {}) })

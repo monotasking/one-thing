@@ -254,6 +254,14 @@ const MODEL_PAGE_LIMIT_DEFAULT = 20
 const MODEL_PAGE_LIMIT_MAX = 100
 
 /**
+ * 首屏那一页缺省几条(自述 `page` 的 `limit` 那一格上写着同一个数)。
+ *
+ * 24 而不是 20:20 是**模型**一次读多少的数(它按预算算),24 是**一屏**的数
+ * —— 两个数各有各的产地,凑成一个只会让下一个人改错那一头。
+ */
+const TAIL_PAGE_LIMIT_DEFAULT = 24
+
+/**
  * 模型翻页的上限(K3-a')。**只夹非 `user` 的主体**。
  *
  * 为什么不无条件夹:壳一次要 200 条是它的正常工作量(那正是 K2c-2 证明「整页
@@ -392,6 +400,8 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
         return this.record(sessionId)
       case 'messages':
         return this.messages(sessionId, query, ctx.principal)
+      case 'page':
+        return this.page(sessionId, query, ctx.principal)
       case 'markers':
         return this.markers(sessionId)
       case 'segments':
@@ -840,6 +850,52 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
     if (!response.success) throw new SessionPageError(response.error ?? 'Failed to get message page')
     const { success: _success, messages, ...rest } = response
     return { ...rest, messages: sanitizeOnethingMessagesForRenderer(messages) }
+  }
+
+  /**
+   * **首屏那一页 + 账本水位**(工单 4 A;自述 `page` 那一格上写着它为什么与
+   * `messages` 是两条读法)。
+   *
+   * 这里一行折法都没有:请求折成 pager 认得的那个形状,交给
+   * `sessionReads.pageMessagesAtWatermark`,回来的页原样带出去。两点判据:
+   *
+   *  · **`before` → 游标**:`before` 就是上一页交回来的 `nextBefore`,而
+   *    `nextBefore` 就是 pager 的 `nextCursor` —— 同一个游标换了一个说得出口的
+   *    名字,不是第二套游标语言。缺席 = `anchor:'tail'`(最后 `limit` 条),
+   *    与 pager 对 `anchor` 缺席时走的分支是同一支;
+   *  · **`direction` 只有一个取值**:`'older'`。屏幕只往上翻,所以这条读法根本
+   *    不收方向 —— 要往下翻的读者去用 `messages`(它四格入参俱全)。
+   *
+   * 主体分档与 `messages` 那条逐字同源(非 `user` 夹 100),缺省不同:界面缺省
+   * 24 条(一屏),模型缺省 20 条(它那条读法自己的数)。
+   */
+  private page(sessionId: string, query: unknown, principal: Principal): unknown {
+    const raw = (query ?? {}) as Record<string, unknown>
+    const before = typeof raw.before === 'string' && raw.before.length > 0 ? raw.before : undefined
+    const asked = typeof raw.limit === 'number' ? raw.limit : TAIL_PAGE_LIMIT_DEFAULT
+    const limit = principal.kind === 'user'
+      ? Math.max(1, Math.floor(asked))
+      : Math.max(1, Math.min(MODEL_PAGE_LIMIT_MAX, Math.floor(asked)))
+    const request: GetSessionMessagesPageRequest = before
+      ? { sessionId, limit, cursor: before, direction: 'older' }
+      : { sessionId, limit, anchor: 'tail' }
+
+    const snapshot = sessionReads.pageMessagesAtWatermark(request)
+    if (!snapshot) {
+      // 折不出这条会话的历史。与 `messages` 整份那一支同一条判据:「投影折不出
+      // 消息」与「查无此会话」是两件事,后者才是 NOT_FOUND。
+      if (store.getSessionMessages(sessionId) === undefined) throw new SessionNotFoundError(sessionId)
+      return { messages: [], hasMoreBefore: false, watermark: 0 }
+    }
+    const { page, watermark } = snapshot
+    if (!page.success) throw new SessionPageError(page.error ?? 'Failed to get message page')
+    return {
+      messages: sanitizeOnethingMessagesForRenderer((page.messages ?? []) as ChatMessage[]),
+      hasMoreBefore: page.hasMoreBefore ?? false,
+      // `nextCursor` 指着这一页**第一条**,往更旧的方向 —— 正是「上面那一页」。
+      ...(page.hasMoreBefore && page.nextCursor ? { nextBefore: page.nextCursor } : {}),
+      watermark,
+    }
   }
 
   private markers(sessionId: string): unknown {

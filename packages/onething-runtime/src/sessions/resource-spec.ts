@@ -203,6 +203,39 @@ const MESSAGES_PAGE_SCHEMA: JsonSchema = {
   required: ['messages'],
 }
 
+/**
+ * 尾页那条读法的结果(工单 4 A)。
+ *
+ * 与 `MESSAGES_PAGE_SCHEMA` 是**两张表而不是一张**,判据与 `get` / `record` 那对
+ * 逐字同源:读者不同、拿它去干的事不同。
+ *
+ *  · `messages` 那张是**分页信封**,格名与 `GetSessionMessagesPageRequest/Response`
+ *    逐字相同(它就是域那条契约的转手),六格里有四格是给"往两个方向翻"用的;
+ *  · 这一张是**上屏用的底稿**:一页 + 「还有更旧的吗」 + 「更旧的那页从哪要」 +
+ *    **水位**。它只往一个方向翻(更旧),因为屏幕只往一个方向长。
+ *
+ * 多出来、也是它存在的全部理由的那一格是 `watermark`。
+ */
+const SESSION_TAIL_PAGE_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    messages: {
+      type: 'array',
+      description: 'The folded messages of this page, oldest first. Blobs stay as references.',
+    },
+    hasMoreBefore: { type: 'boolean', description: 'True when older messages exist above this page.' },
+    nextBefore: {
+      type: 'string',
+      description: 'Pass it back as "before" to get the page just above this one. Absent at the top.',
+    },
+    watermark: {
+      type: 'number',
+      description: 'The ledger seq this page was folded through. Keep folding events newer than it.',
+    },
+  },
+  required: ['messages', 'hasMoreBefore', 'watermark'],
+}
+
 export const SESSION_RESOURCE_SCHEME = 'session'
 
 /**
@@ -347,6 +380,53 @@ export const sessionResourceSpec: ResourceSpec = {
         required: [],
       },
       result: MESSAGES_PAGE_SCHEMA,
+    },
+    /**
+     * **首屏那一页**(工单 4 A)—— 尾页优先,带账本水位。
+     *
+     * ## 它与 `messages` 不是一件事的两个参数
+     *
+     * `messages` 是分页信封的转手:四格入参、两个方向、两个游标,它回答的是
+     * 「这条抄本的第 X 段是什么」。这一条回答的是另一个问题 ——
+     * 「**把这条会话画到屏幕上,先给我最后那几十条,并告诉我从哪儿接着听**」。
+     *
+     * 判据仍然是那句老话:读者不同、拿它干的事不同。屏幕上那位读者的诉求是三样
+     * 一起到手(一页 + 还有没有更旧的 + 从哪一条接着折 SSE),缺一样它就得再问
+     * 一次,而**再问一次就意味着两个时刻**——两个时刻正是这条读法要根治的病。
+     *
+     * ## 水位:这条读法的全部理由
+     *
+     * `watermark` = 「这一页是账本折到第几条时算出来的」。壳拿它当接缝:SSE 上
+     * `seq > watermark` 的事件接着往这一页上折,`<=` 的丢掉(它们已经在页里了)。
+     * 它与页出自**同一个快照**,这一条由实现保证(装配层那只
+     * `pageMessagesAtWatermark`:内存路只取一次 state,文件路只开一次 reader)。
+     *
+     * ## 缺省就是尾页
+     *
+     * `before` 缺席 = 最后 `limit` 条。这是唯一一条**缺省有偏好**的读法,而偏好
+     * 的产地是屏幕:打开一条会话,人要看的永远是最后那几句。
+     *
+     * ## blob 带引用不带正文
+     *
+     * 一页里的附件 / 大工具结果留 `{hash,bytes}`,不带 base64。判据写在这里而不是
+     * 参数上:**上屏这件事本身**不需要那 3MB 字节,真要看内容按 hash 单独取
+     * (`blobs/` 是按内容寻址的)。要正文的读者去问 `messages` / `record`,那两条
+     * 一格没动。
+     */
+    page: {
+      title: 'Read the newest page of the session: what to put on screen, plus where to keep listening',
+      query: {
+        type: 'object',
+        properties: {
+          limit: { type: 'number', description: 'How many messages this page holds. Default 24, at most 100.' },
+          before: {
+            type: 'string',
+            description: 'A "nextBefore" from an earlier page: give me the page just above it. Absent = the newest page.',
+          },
+        },
+        required: [],
+      },
+      result: SESSION_TAIL_PAGE_SCHEMA,
     },
     /** 用户消息的锚点(会话目录 / 跳转用)。 */
     markers: {

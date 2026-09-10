@@ -52,6 +52,7 @@ export {
   isSessionEventNodeStart,
   listEventUserMessageMarkers,
   pageEventMessages,
+  readLedgerWatermark,
   scanEventsBackward,
   toPagedEventMessage,
   userMarkersFromProjected,

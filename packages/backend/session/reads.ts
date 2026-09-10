@@ -113,7 +113,7 @@ export function configureSessionHistoryBuilder(builder: SessionHistoryBuilder | 
 
 export interface SessionReadPorts {
   store: Pick<typeof SessionStore, 'getSession' | 'getSessionMessages' | 'getSessionMessagesPage' | 'getSessionRaw' | 'getSessionUserMessageMarkers' | 'getSessions' | 'readSessionTranscriptFile'>
-  events: Pick<SessionEventReads, 'eventsCountMessages' | 'eventsGetMessage' | 'eventsGetMessageIndex' | 'eventsLastMessageOfRole' | 'eventsListMessages' | 'eventsListUserMarkers' | 'eventsPageMessages'>
+  events: Pick<SessionEventReads, 'eventsCountMessages' | 'eventsGetMessage' | 'eventsGetMessageIndex' | 'eventsLastMessageOfRole' | 'eventsListMessages' | 'eventsListUserMarkers' | 'eventsPageMessages' | 'eventsPageMessagesAtWatermark'>
   getProjection: SessionProjectionCache['getLiveSessionProjection']
   materializeOptions: typeof sessionProjectionOptions
   getSessionsDir(): string
@@ -239,6 +239,25 @@ export function createSessionReads(ports: SessionReadPorts, initialHistoryBuilde
   pageMessages(request: GetSessionMessagesPageRequest): GetSessionMessagesPageResponse {
     return fromEvents(() => ports.events.eventsPageMessages(request))
       ?? ports.store.getSessionMessagesPage(request)
+  },
+
+  /**
+   * **尾页 + 账本水位**(工单 4 A)—— 首屏那条读法。
+   *
+   * 与 `pageMessages` 的差别只有两样,而两样都不在"折法"上:
+   *  ① 多一格 `watermark`(这一页对应到账本第几条),与页**同一个快照**取;
+   *  ② 这一页里的 blob 带引用不带正文(见 `eventsPageMessagesAtWatermark`)。
+   *
+   * 折法一个字没变 —— 页仍然是 `pageEventMessages` / `pageFromMemory` 那两条
+   * 既有的路折出来的,`canonical.ts` 那位判官管的还是它们。这里**故意没有**
+   * `?? store.getSessionMessagesPage(...)` 那条右边:仓那口给不出水位,给一个
+   * 编出来的水位比不给更坏(壳会按它跳过真实事件)。折不出来就交回 `undefined`,
+   * 调用方走自己的空会话语义。
+   */
+  pageMessagesAtWatermark(
+    request: GetSessionMessagesPageRequest,
+  ): { page: GetSessionMessagesPageResponse; watermark: number } | undefined {
+    return fromEvents(() => ports.events.eventsPageMessagesAtWatermark(request))
   },
 
   /** 用户消息锚点(会话目录 / 跳转用)。右边同 `pageMessages`:空会话的形状口。 */
@@ -429,6 +448,7 @@ export const sessionReads: Omit<SessionReads, 'configureHistoryBuilder' | 'dispo
   listMessages: (...args) => currentReads().listMessages(...args),
   hasSessionInStore: (...args) => currentReads().hasSessionInStore(...args),
   pageMessages: (...args) => currentReads().pageMessages(...args),
+  pageMessagesAtWatermark: (...args) => currentReads().pageMessagesAtWatermark(...args),
   listUserMarkers: (...args) => currentReads().listUserMarkers(...args),
   getMessage: (...args) => currentReads().getMessage(...args),
   findMessage: (...args) => currentReads().findMessage(...args),

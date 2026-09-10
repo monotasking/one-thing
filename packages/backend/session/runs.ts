@@ -22,6 +22,7 @@ import { writeSessionEvent } from './event-writer.js'
 import { prepareSessionEventsOnce } from './prepare.js'
 import { flushSessionEventLog } from './event-log.js'
 import { scheduleSessionRefold } from './refold.js'
+import { scheduleSessionProjectionCheckpoint } from './checkpoint.js'
 import { bumpSessionShadowStats, isSessionShadowEnabled } from './event-stats.js'
 import { getLogger } from '../wiring/logging/index.js'
 
@@ -329,6 +330,11 @@ export async function endSessionRun(
       // S3w-2(§14.3-B):耐久层这道门要的前提是"文件字节此刻是全的",而那只有
       // 在语义检查点之后成立。自己按会话采样,不是每个 run 都跑。
       scheduleSessionRefold(sessionId, handle.runId)
+      // 工单 4 B:检查点的**兜底**挂点。排在 refold 之后不是次序上的讲究 ——
+      // refold 采到的那一次会先把检查点写掉(它手里那份还带证明),这里再问
+      // 一次节流判据就已经不满足了,于是不会重复写。refold 没采 / 关着时,
+      // 这一次就是唯一的写点。
+      scheduleSessionProjectionCheckpoint(sessionId)
     })
     .catch(error => log.error('session run follow-up skipped or failed', { sessionId, runId: handle.runId }, error))
 

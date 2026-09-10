@@ -68,6 +68,7 @@ import {
 } from './projection-cache.js'
 import { sessionProjectionOptions } from './projection-blobs.js'
 import { appendSessionShadowLine, deepEqual, summarizeShadowDiff } from './shadow.js'
+import { recordRefoldedProjectionCheckpoint } from './checkpoint.js'
 import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('sessions.refold')
@@ -220,7 +221,15 @@ export async function checkSessionRefold(
     bumpSessionShadowStats({ refoldChecks: 1 })
     const messagesMatch = await deepEqualPairsSliced(a, b, deepEqual, gate)
     const accountMatch = liveAccount === undefined || deepEqual(refoldedAccount, liveAccount)
-    if (messagesMatch && accountMatch) return 'match'
+    if (messagesMatch && accountMatch) {
+      // 工单 4 B:这一份 `refolded` 刚从账本的**文件字节**折出来,而且上面那两句
+      // 刚证明它与内存活投影逐字相同 —— 它正是一份检查点该有的样子,白捡的。
+      // 判据(账本末行的 seq 必须还等于 `cursor`)由写入口自己再验一遍:采样与
+      // 写之间又落了事件的话结局是"不写",不是写错。
+      // 与这道门的第一条纪律同款:检查点写不成绝不影响对账的结论。
+      recordRefoldedProjectionCheckpoint(sessionId, refolded, refoldedAccount, cursor)
+      return 'match'
+    }
 
     const { diff, truncated } = messagesMatch
       ? summarizeShadowDiff(refoldedAccount, liveAccount)
