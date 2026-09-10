@@ -28,6 +28,26 @@
  * 都真的跑出一轮回复:种子是一问一答,④⑤ 长出来的也是一问一答,而 ⑥ 量的是
  * **丸那三张脸的先后**(`content/follow.ts` 的 `reply` 事件那条链,真机这一头)。
  *
+ * ── 种子为什么不再走 provider(09-10;流式那几屏一个字没动)──────────────
+ * **起底那一段**从前也是真的发消息:`command:send-message` 一条,等
+ * `sessions.getMessages` 的条数涨到 `(i+1)*2`,再发下一条。它时红时绿,崩在
+ * 「超时(20000ms)等待:账本落到 4 条」。真因由 `gate-continuity.mjs` 那一单
+ * (bd016d42)查明并整段写在那只文件的「种子为什么不再走 provider」上,一句话:
+ * **等的信号不对** —— `getMessages` 的条数在 `run/start` 那一刻就到位(助手消息
+ * 先建空壳再往里流),而这一轮的 `run/end` 还被辅助模型(会话自动起名 / TOC)
+ * 那一发拖在后面;下一条 `send-message` 落在**还开着**的那条 run 上走的是**插话**,
+ * 不再产生新的一对,条数停在 3 等到超时。踩不踩中取决于起名那一发比轮询快还是慢。
+ *
+ * 修法与那一单同一手:**起底不发消息** —— 趁 core 停着直接写真编码的账本
+ * (`scripts/lib/seed-large-ledger.mjs`),再把 core 起回来冷读一遍,竞态在结构上
+ * 消失。**流式那几屏仍旧是真流**:④⑤⑥⑧ 每一条都还在走
+ * `command:send-message` → 假 provider → SSE → 上屏那条整链,一个环节都没换成
+ * 假的 —— 换掉的只是「起底」这段布景,而布景本来就不该由引擎跑出来。
+ *
+ * 那几屏为什么不受同一条竞态影响:它们**每次只发一条**,而且在下一条之前先等
+ * 「那一对都上屏」;起名那一发只在这条会话的第一轮开销上,而第一轮此刻是账本里
+ * 写好的,不经过引擎。
+ *
  * ── 这道门**说不出**什么 ──────────────────────────────────────────────────
  * 「流式 200 段、每一帧都在底」。假 provider 一句话只切三片,量的是链路通不通,
  * 不是吞吐;要造长流得搬主仓 `sessions:shadow-battery` 那套场景矩阵,那是另一件事。
@@ -57,6 +77,7 @@ import {
   fakeProviderAiSettings,
   FAKE_PROVIDER_ENV,
 } from '../../../scripts/lib/gate-fake-provider.mjs'
+import { seedLargeLedger } from './lib/seed-large-ledger.mjs'
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(appRoot, '../..')
@@ -65,10 +86,24 @@ const mainEntry = path.join(appRoot, 'dist-electron/main.cjs')
 
 const SESSION_NAME = 'C1 门 · 聊天跟随'
 /**
- * 起底要够长 —— 不长过一屏就没有「底」可言,整道门都不成立。
- * 接上假 provider 之后**一次种子 = 一问一答两条**,所以条数减半、屏上的行数不变。
+ * 起底那一段的**轮**数(一问一答两条)。够长 —— 不长过一屏就没有「底」可言,
+ * 整道门都不成立。09-10 起它是**直写账本**的轮数,不再是「发几条消息」
+ * (为什么见下面 `SEED_FIXTURE`)。
  */
 const SEED_COUNT = 12
+/**
+ * 起底那一段的账本长相。小一档就够 —— 这道门量的是**几何与跟随**,不是排版账
+ * (那是 `gate:chat-layout` 的活),所以尺寸解算、大结果与图片一律关掉,
+ * 每轮留一次工具调用让行高像真的。与 `gate-continuity.mjs` 的 `FIXTURE_B` 同型。
+ */
+const SEED_FIXTURE = {
+  messages: SEED_COUNT * 2,
+  toolCallsPerTurn: [1, 1],
+  targetBytes: 0,
+  targetToolCalls: 0,
+  largeResults: 0,
+  images: 0,
+}
 /** 跟底那一段一条条注进去的条数(同样各带一条回答)。 */
 const FOLLOW_COUNT = 6
 /** 假 provider 每次吐的那句话 —— 够短,三片就走完;够特别,肉眼一看就知道是它。 */
@@ -328,36 +363,60 @@ async function main() {
         2,
       ),
     )
-    server = spawn(process.execPath, [serverEntry], {
-      // 钥匙走环境变量,不落进 settings.json(与 gate-web-shell 同一手)。
-      env: { ...process.env, ...FAKE_PROVIDER_ENV, ONETHING_STORE_PATH: store },
-      cwd: repoRoot,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    const serverErr = []
-    server.stderr.on('data', (chunk) => serverErr.push(chunk.toString()))
-    const record = await waitFor('core 写出发现文件', () => {
-      const found = readDiscovery(store)
-      return found && found.pid === server.pid ? found : undefined
-    }).catch((error) => {
-      throw new Error(`${error.message}\nserver stderr:\n${serverErr.join('')}`)
-    })
-    if (!(await portConnects(record.host, record.port))) throw new Error('core 端口连不上')
+    /** 起一台 core,等它写出发现文件。种子要停一次再起,所以这一段是个函数。 */
+    const startCore = async () => {
+      const child = spawn(process.execPath, [serverEntry], {
+        // 钥匙走环境变量,不落进 settings.json(与 gate-web-shell 同一手)。
+        env: { ...process.env, ...FAKE_PROVIDER_ENV, ONETHING_STORE_PATH: store },
+        cwd: repoRoot,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+      const serverErr = []
+      child.stderr.on('data', (chunk) => serverErr.push(chunk.toString()))
+      const found = await waitFor('core 写出发现文件', () => {
+        const got = readDiscovery(store)
+        return got && got.pid === child.pid ? got : undefined
+      }).catch((error) => {
+        throw new Error(`${error.message}\nserver stderr:\n${serverErr.join('')}`)
+      })
+      if (!(await portConnects(found.host, found.port))) throw new Error('core 端口连不上')
+      return { child, record: found }
+    }
+    const stopCore = async (child) => {
+      if (!child) return
+      child.kill('SIGTERM')
+      await delay(1200)
+      if (!child.killed) child.kill('SIGKILL')
+      await delay(300)
+    }
 
-    const made = await rpc(record, 'sessions', 'create', { name: SESSION_NAME })
+    let core = await startCore()
+    server = core.child
+    const made = await rpc(core.record, 'sessions', 'create', { name: SESSION_NAME })
     const sessionId = made?.session?.id
     if (!sessionId) throw new Error(`sessions.create 没给出会话 id`)
-    for (let i = 0; i < SEED_COUNT; i += 1) {
-      await rpc(record, 'session-command', 'emit', {
-        sessionId,
-        command: { type: 'command:send-message', content: `C1 种子第 ${i + 1} 条 —— 起底要够长` },
-      })
-      /*
-       * **一问一答落完账再发下一条**。接上 provider 之后,趁上一轮还在跑就发下一条
-       * 走的是插话(steering)那条路 —— 那是另一件事,种子阶段不该顺手把它掺进来。
-       */
-      await waitForLedger(record, sessionId, (i + 1) * 2)
-    }
+
+    /*
+     * **趁 core 停着写账本**:活着的 core 会按字节大小认出「外来写手」并抛
+     * `SessionEventWriteError`;停一次再起 = 冷读一遍,那道闸压根不碰。
+     * 会话本身仍旧由 `sessions.create` 建(`meta.json` 是产品自己写的那一份)。
+     */
+    await stopCore(server)
+    const seeded = seedLargeLedger(store, sessionId, SEED_FIXTURE)
+    core = await startCore()
+    server = core.child
+    const record = core.record
+    /**
+     * 起底那一段落了多少条 —— 后面每一条断言都从**这个读数**往上数,不从
+     * `SEED_COUNT` 推:生成器按轮取整,写下来的条数由它说了算,门只负责数。
+     */
+    const seededMessages = seeded.messages
+    console.log(
+      `      起底:${(seeded.bytes / 1024).toFixed(0)}KB / ${seededMessages} 条 / `
+      + `${seeded.toolCalls} 张卡(直写账本,零 provider 往返)`,
+    )
+    // 冷读一遍,证明这份账本 core 认得(顺带把它读进内存,后面才有得跟)。
+    await waitForLedger(record, sessionId, seededMessages)
 
     console.log('[2/5] 拉起应用(离屏 · 独立 --user-data-dir),进那条会话')
     app = await electron.launch({
@@ -393,7 +452,7 @@ async function main() {
     // 一问一答 —— 屏上该有的行数是种子条数的两倍。
     await waitFor('聊天区起底出足够多的消息', async () => {
       const geo = await readGeometry(page)
-      return geo.rowCount >= SEED_COUNT * 2 ? geo : undefined
+      return geo.rowCount >= seededMessages ? geo : undefined
     })
     await delay(400)
 
@@ -450,10 +509,10 @@ async function main() {
         command: { type: 'command:send-message', content: `C1 跟底第 ${i + 1} 条` },
       })
       // 一问一答两条都上屏(而且回答已经流完)才量 —— 流到一半的高度不是终值。
-      await waitForLedger(record, sessionId, (SEED_COUNT + i + 1) * 2)
+      await waitForLedger(record, sessionId, seededMessages + (i + 1) * 2)
       const seen = await waitFor(`第 ${i + 1} 条上屏`, async () => {
         const geo = await readGeometry(page)
-        return geo.rowCount >= (SEED_COUNT + i + 1) * 2 ? geo : undefined
+        return geo.rowCount >= seededMessages + (i + 1) * 2 ? geo : undefined
       })
       await delay(200)
       const after = await readGeometry(page)
@@ -485,7 +544,7 @@ async function main() {
       `丸亮了,说的是「${browsing.pillLabel}」(「回到最新」或「正在生成」那一族)`,
     )
     // 这一轮跑完再往下走 —— 下一段要从「没有轮次在跑」这个干净的起点开始。
-    await waitForLedger(record, sessionId, (SEED_COUNT + FOLLOW_COUNT + 1) * 2)
+    await waitForLedger(record, sessionId, seededMessages + (FOLLOW_COUNT + 1) * 2)
 
     console.log('\n[5/5] ⑥⑦ 发送三态 / 点丸回底')
     await scrollTo(page, 'top')
@@ -496,7 +555,7 @@ async function main() {
     const beforeSend = await readGeometry(page)
     await clickTestId(page, 'composer-send')
     // 自己那条 + 它的回答都落账 = 这一轮收场了。丸此刻该换第三张脸。
-    await waitForLedger(record, sessionId, (SEED_COUNT + FOLLOW_COUNT + 2) * 2)
+    await waitForLedger(record, sessionId, seededMessages + (FOLLOW_COUNT + 2) * 2)
     await delay(600)
     const labels = await stopPillRecorder(page)
     const afterSend = await readGeometry(page)

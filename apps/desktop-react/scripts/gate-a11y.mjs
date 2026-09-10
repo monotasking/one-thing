@@ -1169,8 +1169,8 @@ async function main() {
            *
            * 这一屏问六件,一件都不能少:
            *  ① 右键一格标签**开得出**那张表(不是浏览器 / 宿主的缺省菜单);
-           *  ② **恰好六项**,而且**项名逐字**是裁定 3 那六句 —— 「六项」是这一批
-           *    的全部内容,数错一项就是减法没做干净或者做过头了;
+           *  ② **恰好六项**,而且**项名逐字**是裁定 3 那五句加 C2 添的「点会话时 ▸」
+           *    —— 「六项」是这一批的全部内容,数错一项就是减法没做干净或者做过头了;
            *  ③ 「拆开」**不在**普通标签的表里(裁定 3:它只在两格标签上出现,
            *    不是灰掉)—— 上面 [7d] 那一屏已经证过并起来之后它在;
            *  ④ **顶栏右端只有两件可达**:那颗 ⋯(有够不着的标签时才画)与 AgentChip。
@@ -1214,11 +1214,20 @@ async function main() {
             )
             assert(menu.named, '菜单里每一项都说得出名字(零空项)')
             /*
-             * **六项,逐字**(裁定 3)。中央区那一档没有「分屏 ▸」(单叶政策),
-             * 也没有「拆开」(这一格不是两格并排),所以屏上是:
-             *   与右边的标签二合一 / 与左边的标签二合一 / 撕成浮窗 / 移到架子 ▸ / 关闭
-             * —— 五项;「拆开」是第六项,它在 [7d] 那一屏(并起来之后)出现。
+             * **六项,逐字**。中央区那一档没有「分屏 ▸」(单叶政策),也没有「拆开」
+             * (这一格不是两格并排),所以屏上是:
+             *   与右边的标签二合一 / 与左边的标签二合一 / 撕成浮窗 / 移到架子 ▸ /
+             *   关闭 / 点会话时 ▸
+             * —— 六项;「拆开」是第七项,它在 [7d] 那一屏(并起来之后)出现。
              * 数字与名单一起断言:只数数目的话「二合一那两项被换成别的两项」照样绿。
+             *
+             * **末一项是 C2 添的**(22845854,设计 `docs/session-continuity-2026-09.md`
+             * §4.2):「点会话时 ▸」的三档 `替换 / 新标签 / 预览` 就摆在这张表里 ——
+             * 判词是**动作单产地 = 右键上下文菜单**(09-01),一件作用在标签条上的
+             * 设置,它的家在标签的右键表里。它是一格 `Submenu`,所以在这一层扫出来
+             * 的是父行那一句话(子表要开一次才画),与「移到架子 ▸」同形。
+             * 09-10 之前这道门写的是「恰好五项」—— 那是 C2 落地时没跟的一条,
+             * 不是产品多长了一项。
              */
             const WANTED = [
               /与右边的标签二合一|Join with the tab on the right/,
@@ -1226,6 +1235,7 @@ async function main() {
               /撕成浮窗|Tear off/,
               /^(移到架子|Move to shelf)$/,
               /^(关闭|Close)$/,
+              /^(点会话时|Clicking a session)$/,
             ]
             assert(
               menu.texts.length === WANTED.length,
@@ -1256,7 +1266,7 @@ async function main() {
              * 全部禁灰(**菜单与拖拽同一条判据、同一只产地**;拖那条路的拒绝在
              * `gate:drag` 里)。修前这三项只问 `!target`,于是菜单能把最后一格会话
              * 搬走,中央区当场空掉(`pruneRegions` 铸一片空叶、叶 id 换人 = 整台
-             * 聊天区重挂)。**项还在表里**——上面「恰好 5 项」那一条就是它的另一半:
+             * 聊天区重挂)。**项还在表里**——上面「恰好 6 项」那一条就是它的另一半:
              * 禁灰说的是「此刻不行」,与「这里不存在这件事」(分屏 / 拆开的不画)
              * 是两句不同的话。
              *
@@ -1596,44 +1606,78 @@ async function main() {
     await clickSelector(page, '[data-focus-scope="expose"] [data-section-id]')
 
     /*
-     * **预览标签说得出自己是预览**(C2,设计 `docs/session-continuity-2026-09.md`
-     * §4 + 拍点 5)。它接在这一屏而不是另开一屏,是因为造出一格预览标签的**唯一
-     * 一条用户路**就在这块面上:在会话列表里点一行。缺省档 `preview` 于是把顶栏
-     * 那一格标成预览格 —— 屏幕上是**斜体**,而斜体读屏软件看不见。
+     * **点会话列表一行 = 原位换,不多长一格标签**(C2′ b0a5940b:出厂档从
+     * `preview` 改成 `replace`;正本 `docs/session-continuity-2026-09.md` §4.2 +
+     * `src/data/session-open-mode.ts` 文件头)。它接在这一屏而不是另开一屏,是因为
+     * 「在会话列表里点一行」这条用户路只在这块面上。
      *
-     * 所以这里量的是那句**只念不看**的状态词(`.visually-hidden`,进这一格 tab
-     * 的可访问名),不是量字形:「屏幕上看得出、读屏软件也说得出」是两件事,
-     * 而这道门查的是后者。`data-tab-preview` 那一格只用来定位。
+     * ── 这一条 09-10 换过判据,记在这里 ────────────────────────────────────
+     * C2 立 `preview` 为缺省时,这里量的是那格预览标签**只念不看**的状态词
+     * (`.visually-hidden`)。用户 09-10 改判:「tab 只是为了分屏或其他用处,对
+     * session 来说没那么重要,重要的是加载的速度」—— 缺省于是回到 `replace`,
+     * 而 `preview` 只在用户自己去右键表 / 设置页里选过之后才产生预览格。所以
+     * **出厂状态下这道门再也造不出一格预览标签**:继续断言它在,断言的是一句
+     * 今天不成立的话。改成判今天的真行为,不是把那两条放宽 —— 数目、落座、活动
+     * 三格都量,而且多了一格「屏幕上一格预览标签都没有」的反面证据。
+     *
+     * 那句状态词本身**没有退役**(`ui/Tabs.tsx` 里 `tab.preview` 那一支一个字没
+     * 动),它归 `preview` 档;真要把它量回来,得先在这道门里把档位切过去 ——
+     * 而切档是写用户偏好(`onething.sessions.openMode`),与这一屏「只读不写」的
+     * 体例不合,所以留给 C2 那条路自己的门。**留账**:预览格的可访问名今天在真机
+     * 门上没有产地。
+     *
+     * 三格断言各自守什么:
+     *  ① **零预览格** —— 出厂档不是 `preview` 的直接读数;
+     *  ② **标签数一格没涨** —— `replace` 的全部内容就是这一句(`newTab` 那一档
+     *    会 +1,第三档兜底 `openRef` 也会 +1,所以这一格同时守着「没退到兜底」);
+     *  ③ **点的那一条落了座、而且是活动格** —— 光「没涨」不够:一格都没换也满足
+     *    它。座位 id 是 `session:<会话 id>`(`content/session-ref.ts` 那一对翻译
+     *    函数的唯一形),`aria-selected` 是 `ui/Tabs` 画的。
      *
      * 点完这一行,浮窗形的总览会自己收回 Dock(「进入 = 活干完了」,判词在
      * `expose/store` 上)—— 下面那一句 Esc 因此多半是恒等,留着是为了另一条路
      * (钉在架子上时它不收)。
      *
-     * **反证**:把 `ui/Tabs.tsx` 里那句 `{tab.preview && <span
-     * className="visually-hidden">…}` 拆掉 → 这一条当场红(`data-tab-preview`
-     * 还在,可访问名里那个词没了)。
+     * **反证**:把 `content/session-open.ts` 那一支 `replace` 换成 `openRef`
+     * (= 每点一行新开一格)→ ② 当场红。
      */
-    const rowClicked = await page.evaluate(() => {
+    const clicked = await page.evaluate(() => {
       const row = document.querySelector('[data-focus-scope="expose"] [data-session-id]')
-      if (!(row instanceof HTMLElement)) return false
+      if (!(row instanceof HTMLElement)) return null
+      const id = row.getAttribute('data-session-id') ?? ''
+      const before = document.querySelectorAll('[data-topbar-leaf] [data-tab-id]').length
       row.click()
-      return true
+      return { id, before }
     })
-    if (rowClicked) {
+    if (clicked && clicked.id) {
       await delay(600)
-      const preview = await page.evaluate(() => {
-        const tab = document.querySelector('[data-topbar-leaf] [data-tab-preview]')
-        if (!tab) return null
-        const word = tab.querySelector('.visually-hidden')
-        return { text: (word?.textContent ?? '').trim() }
-      })
-      assert(preview !== null, '点会话列表一行之后,顶栏上有一格预览标签(缺省档 = 预览)')
+      const seat = await page.evaluate((id) => {
+        const tabs = Array.from(
+          document.querySelectorAll('[data-topbar-leaf] [data-tab-id]'),
+        )
+        const mine = tabs.find((el) => el.getAttribute('data-tab-id') === `session:${id}`)
+        return {
+          count: tabs.length,
+          ids: tabs.map((el) => el.getAttribute('data-tab-id') ?? ''),
+          seated: Boolean(mine),
+          active: mine?.getAttribute('aria-selected') === 'true',
+          previews: document.querySelectorAll('[data-topbar-leaf] [data-tab-preview]').length,
+        }
+      }, clicked.id)
       assert(
-        preview !== null && /^(预览|Preview)$/.test(preview.text),
-        `预览标签带一句只念不看的状态词(实为「${preview?.text ?? '—'}」)`,
+        seat.previews === 0,
+        `出厂档是「替换」,所以顶栏上一格预览标签都没有(实测 ${seat.previews} 格)`,
+      )
+      assert(
+        seat.count === clicked.before,
+        `点会话列表一行:原位换,标签数一格没涨(点前 ${clicked.before} → 点后 ${seat.count}:${seat.ids.join(' / ')})`,
+      )
+      assert(
+        seat.seated && seat.active,
+        `点的那一条落了座、而且是活动格(找 session:${clicked.id};落座=${seat.seated} 活动=${seat.active};实测 ${seat.ids.join(' / ')})`,
       )
     } else {
-      console.log('  · 总览上没有会话行 —— 跳过预览标签那一条(不是红)')
+      console.log('  · 总览上没有会话行 —— 跳过原位换那三条(不是红)')
     }
 
     // 收回它(Esc 走退层链,最上面那扇浮窗),免得它挡住下一屏。
