@@ -172,6 +172,7 @@ describe('没有第二条路', () => {
       root: () => '/tmp/root',
       resolve: (target: string) => target,
       contains: () => true,
+      readable: () => true,
       isSensitive: () => false,
     }
     const seen: Array<{ root: string | undefined; now: number; sessionId: string }> = []

@@ -9,12 +9,15 @@
  *      `node_modules` / `.git` 由共用那只列目录函数跳过 —— 这一条同时是「没有复制
  *      一份列目录代码」的证据:那两个名字这只 provider 里一个字都没写;
  *   ② `stat` 一个文件答 `kind: 'file'` 且带回展开后的绝对路径;
- *   ③ 越界拒(反证①:拆掉 provider 的 `contains` 判,这一条红);
+ *   ③ 越界拒(反证①:拆掉 provider 的 `readable` 判,这一条红);
  *   ④ 敏感路径拒(`.env`,判据是产品层那只分类器);
  *   ⑤ **没有沙箱一律拒** —— 缺席不是放行(反证②在装配那一层:
  *      `packages/backend/__tests__/resource-dir.test.ts`);
  *   ⑥ 没有外壳宿主时 `reveal` 在 **plan** 期就结构化降级(不是等到 apply);
- *   ⑦ 守卫两条:本机可信放行 / 不可信拒,而名单外的 scheme 它不管。
+ *   ⑦ 守卫两条:本机可信放行 / 不可信拒,而名单外的 scheme 它不管;
+ *   ⑧ **写根之外、读根之内的目录列得出**(2026-09-10 的读根那一格):真装配里
+ *      那批是接入目录 / 笔记根 / 下载目录 —— 用户亲手接入的目录一直**能改**,
+ *      却因为判的是写根而列不出来。这一条同时钉住 `contains` 没有跟着放宽。
  */
 
 import { afterEach, beforeAll, afterAll, describe, expect, it } from 'vitest'
@@ -37,6 +40,9 @@ beforeAll(() => {
   fs.mkdirSync(path.join(root, 'project', 'node_modules'), { recursive: true })
   fs.writeFileSync(path.join(root, 'project', 'readme.md'), '# hi\n')
   fs.writeFileSync(path.join(root, 'project', '.env'), 'SECRET=1\n')
+  // 写根之外的一棵树 —— 真装配里它是用户在设置里接入的那种目录。
+  fs.mkdirSync(path.join(root, 'connected'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'connected', 'notes.md'), 'hello\n')
 })
 
 afterAll(() => {
@@ -51,11 +57,15 @@ afterEach(() => {
  * 沙箱:**产品层那三只函数**,只把根换成这个临时目录。假的只有「根在哪」——
  * 判据要是也假的,这只测试就只在证明自己写的那几行 if。
  */
-function sandboxAt(boundary: string): SandboxPolicy {
+function sandboxAt(boundary: string, readRoots: readonly string[] = []): SandboxPolicy {
+  const inside = (rootPath: string, target: string) => isCorePathContained(rootPath, target)
   return {
     root: () => boundary,
     resolve: target => resolveCoreToolPath(target, { workingDirectory: boundary }),
-    contains: target => isCorePathContained(boundary, target),
+    // 写根:单根,一个字没动。
+    contains: target => inside(boundary, target),
+    // 读根:写根 ∪ 额外读根 —— 与产品层 `getCoreReadSandboxRoots` 的并法同形。
+    readable: target => inside(boundary, target) || readRoots.some(rootPath => inside(rootPath, target)),
     isSensitive: target => classifySensitiveFile(target).sensitive,
   }
 }
@@ -111,7 +121,7 @@ describe('dir provider(K3-c)', () => {
     expect(value).toMatchObject({ path: target, kind: 'file', size: 5 })
   })
 
-  it('③ 越界的路径拒(反证①:拆掉 provider 的 contains 判,这一条红)', async () => {
+  it('③ 越界的路径拒(反证①:拆掉 provider 的 readable 判,这一条红)', async () => {
     const outside = path.join(root, 'project')
     // 沙箱根收到 `project/src`,于是它的父目录就在界外了。
     const sandbox = sandboxAt(path.join(root, 'project', 'src'))
@@ -154,6 +164,24 @@ describe('dir provider(K3-c)', () => {
     // 越界的 reveal 仍然是越界文案,不是「这台宿主没有外壳能力」(先夹后降级)。
     await expect(provider.plan('reveal', ref, {}, planContext(sandboxAt(path.join(root, 'project', 'src')))))
       .rejects.toThrowError(DirOutsideSandboxError)
+  })
+
+  it('⑧ 写根之外、读根之内的目录列得出,而写根本身没有跟着放宽', async () => {
+    const connected = path.join(root, 'connected')
+    // 写根收到 `project/src`;`connected` 只在读根那张表里。
+    const sandbox = sandboxAt(path.join(root, 'project', 'src'), [connected])
+
+    // 前提:这个路径**不在写根里** —— 否则这一条证不到读根那一格。
+    expect(sandbox.contains(path.join(connected, 'notes.md'))).toBe(false)
+    expect(sandbox.readable(path.join(connected, 'notes.md'))).toBe(true)
+
+    const value = await provider.read('list', { scheme: 'dir', path: connected }, {}, readContext(sandbox))
+    expect((value as { entries: DirEntryView[] }).entries.map(entry => entry.name)).toEqual(['notes.md'])
+
+    // 定位同一把尺子:列得出的目录在访达里指得出来。
+    configureShellHost({ revealPath: () => {} })
+    const intent = await provider.plan('reveal', { scheme: 'dir', path: connected }, {}, planContext(sandbox))
+    expect(intent.payload).toEqual({ op: 'reveal', path: connected })
   })
 })
 

@@ -2,7 +2,7 @@
  * K3-c —— 目录这一 scheme 在**真装配**里的门(`docs/design/atom-2026-09.md` §9 K3)。
  *
  * 单测那一半(`wiring/resource/__tests__/dir-provider.test.ts`)摆布的是一台假沙箱;
- * 这只文件要证的四句话没有一句在那里说得出口 —— 它们全都关乎「装配把什么递给了
+ * 这只文件要证的五句话没有一句在那里说得出口 —— 它们全都关乎「装配把什么递给了
  * 内核」:
  *
  *   ① 装配之后注册表里有 `dir`,工具目录里也有那只工具;
@@ -10,7 +10,10 @@
  *      本身就是读数:资源内核拿到的沙箱正是工具 runner 那一把(进程边界 =
  *      `process.cwd()`,因为这台临时 store 没有配默认工作目录);
  *   ③ `read('dir:/','list')` → `failed` —— 沙箱外一律拒;
- *   ④ AI 那条路(直接 `runner.run` 那只工具)读得到同一份东西的文本投影。
+ *   ④ AI 那条路(直接 `runner.run` 那只工具)读得到同一份东西的文本投影;
+ *   ⑤ 设置里**接入**一个写根之外的目录,它就列得出来(2026-09-10 的读根那一格,
+ *      K3-c 留账第 3 条还的)—— 同一条读在接入之前是 `failed`,之后是 `ok`,
+ *      两句断言在同一个用例里,所以它证的是**这一次设置**,不是「什么都读得到」。
  *
  * **反证②(缺席不是放行)**:把 `wiring/resource/index.ts` 里
  * `createResourceKernel` 的 `sandbox: createSandboxPolicy()` 那一行拆掉,②当场红 ——
@@ -139,6 +142,46 @@ describe('目录资源在真装配里(K3-c)', () => {
     const { resultToText } = await import('@onething/core/toolkit')
     const text = outcome.kind === 'ok' ? resultToText(outcome.result) : ''
     expect(text).toContain('dir-provider.ts')
+  })
+
+  it('⑤ 接入目录在写根之外,但它读得出来', async () => {
+    // 这棵树在 `os.tmpdir()` 下 —— 沙箱写根是 `process.cwd()`,它在界外。
+    const connected = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onething-connected-dir-')))
+    fs.writeFileSync(path.join(connected, 'note.md'), '# hi\n')
+
+    const { getSettings, updateSettingsInMemory } = await import('../stores/settings.js')
+    const before = getSettings()
+    try {
+      // 接入之前:写根之外,拒。
+      const denied = await backend.resources.read(`dir:${connected}`, 'list', {}, { principal: PRINCIPAL })
+      expect(denied.kind).toBe('failed')
+      expect(denied.kind === 'failed' && denied.error.name).toBe('DirOutsideSandboxError')
+
+      // 用户在设置里把它接进来(唯一读点是 `stores/connected-directories.ts`,
+      // 这里写的正是它读的那一格)。
+      updateSettingsInMemory({
+        ...before,
+        tools: { ...before.tools, connectedDirectories: [connected] },
+      })
+
+      // 接入之后:同一条读,`ok`。**改前这一句红** —— provider 判的是 `contains`
+      // (写根),而接入目录不在写根里。
+      const outcome = await backend.resources.read(`dir:${connected}`, 'list', {}, { principal: PRINCIPAL })
+      expect(outcome.kind).toBe('ok')
+      const entries = outcome.kind === 'ok'
+        ? (outcome.value as { entries: Array<{ name: string; kind: string }> }).entries
+        : []
+      expect(entries.map(entry => entry.name)).toEqual(['note.md'])
+
+      // 写根没有跟着放宽:同一个路径,`read` 工具那条路照旧报 `external_directory`
+      // 的判据(`findSandboxRootForPath` 命中与否)不在这里断言,但沙箱端口的
+      // `contains` 就在手边,直接问它。
+      const { createSandboxPolicy } = await import('../wiring/toolkit/runner.js')
+      expect(createSandboxPolicy().contains(path.join(connected, 'note.md'))).toBe(false)
+    } finally {
+      updateSettingsInMemory(before)
+      fs.rmSync(connected, { recursive: true, force: true })
+    }
 
     await backend.dispose()
   })

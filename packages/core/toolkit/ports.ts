@@ -103,11 +103,38 @@ export function combineValidators(
   }
 }
 
-/** 沙箱。路径的解析与判定归宿主,内核既不认识 fs 也不认识仓库根。 */
+/**
+ * 沙箱。路径的解析与判定归宿主,内核既不认识 fs 也不认识仓库根。
+ *
+ * ## 两把尺子,不是一把(2026-09-10 拍板)
+ *
+ * `contains` 是**写根**那把:单根、紧,「改这个路径要不要先问人」照它判。
+ * `readable` 是**读根**那把:宽,除了写根还含用户在设置里亲手接入的目录、笔记根、
+ * 下载目录 —— 那批目录用户已经明说过「这些我给它看」。
+ *
+ * 一把尺子干两件事的后果是一条自相矛盾的权限面:接入目录**能写**(它进
+ * `getCoreSandboxRoots`),却因为 `contains` 说不在界内而**列不出来**。所以读得
+ * 自己有一格,而不是把写根放宽 —— 放宽写根会让 `auto-accept-edits` 顺带放行一片
+ * 用户没有授权过的树。
+ *
+ * 谁提供实现谁决定这两句话怎么算;内核只问,不解释。
+ */
 export interface SandboxPolicy {
   root(): string | undefined
   resolve(target: string, cwd?: string): string
+  /** 这条路径在**写根**之内吗。 */
   contains(target: string): boolean
+  /**
+   * 这条路径在**读根**之内吗。
+   *
+   * `scope` 是一个**不透明的作用域键**:内核既不生产它也不解析它,只把调用方给的
+   * 那个字符串原样递给实现。它存在的理由是「读根是分组的」——同一台进程上,不同
+   * 的调用坐标看得见的接入目录可以不一样(本仓今天按会话归属的 space 分)。把那个
+   * 概念的**名字**写进这个端口就等于让内核认识它,所以这里只有一个中性的键。
+   *
+   * 缺席 = 没有作用域语境,由实现给出它的诚实缺省(本仓:退回全局那一层)。
+   */
+  readable(target: string, scope?: string): boolean
   isSensitive(target: string): boolean
 }
 

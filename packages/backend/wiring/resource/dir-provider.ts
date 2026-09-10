@@ -27,10 +27,16 @@
  * `dir` 资源列它的父目录,判的是同一条边界 —— 两把尺子是「一个洞会在两处之一悄悄
  * 张开」的标准形状。
  *
- * **`contains` 是写根那把尺子**(`getSandboxBoundary` 的单根),读根那把更宽
- * (`getOnethingDefaultReadRoots` 还含接入目录 / 笔记根 / 下载目录)。本单选紧的那把:
- * 放宽要给 `SandboxPolicy` 加一格「读得到吗」,那是端口形状的一次拍板,不是接线。
- * 留账写在交卷里。
+ * **判的是读根那把尺子,不是写根那把**(2026-09-10 拍板,K3-c 留账第 3 条还的):
+ * `contains` 是 `getSandboxBoundary` 的单根 —— 用它判,用户在设置里亲手接入的目录
+ * 就落在界外,于是那些目录**能改却列不出来**。`SandboxPolicy.readable` 是为此加的
+ * 一格,判据是 `read` 工具判 `external_directory` 用的同一张读根表(写根 ∪ 接入目录
+ * ∪ 笔记根 ∪ 下载目录)。`contains` 的语义一个字没动:写面(`K3-c'` 的三条)将来
+ * 照旧问它。
+ *
+ * `readable` 的第二参是不透明的作用域键,这里递的是**发起会话** —— 接入目录是
+ * per-space 的,取哪一份由会话归属决定(`ctx.sessionId` / `ctx.invocation.sessionId`,
+ * 两条路各有各的那一格)。
  *
  * ── 授权诚实账(K2c-1 / K2c-2 留下的那一格)────────────────────────────────
  * `files.listDirectory` 对**非本机可信**的调用方还有一层 per-caller 的
@@ -130,7 +136,7 @@ export class DirResourceProvider implements ResourceProvider<DirOpPayload> {
   readonly spec = dirResourceSpec
 
   async read(name: string, ref: ResourceRef | null, _query: unknown, ctx: ResourceReadContext): Promise<unknown> {
-    const target = resolveInsideSandbox(requireDirPath(ref, name), ctx.sandbox)
+    const target = resolveInsideSandbox(requireDirPath(ref, name), ctx.sandbox, ctx.sessionId)
     switch (name) {
       case 'list':
         return this.list(target)
@@ -147,7 +153,7 @@ export class DirResourceProvider implements ResourceProvider<DirOpPayload> {
     if (op !== 'reveal') throw new TypeError(`Dir resource has no op named ${JSON.stringify(op)}`)
     // 沙箱与读那一条同一句话、同一把尺子:**先夹后降级** —— 越界的答案是越界,
     // 不是「这台宿主没有外壳能力」(与 `rpc/domains/files.ts` 的 `reveal` 逐字同序)。
-    const target = resolveInsideSandbox(requireDirPath(ref, op), ctx.sandbox)
+    const target = resolveInsideSandbox(requireDirPath(ref, op), ctx.sandbox, ctx.invocation.sessionId)
     // 宿主口缺席在 **plan** 期就判,与 `ResourceTool` 对 `home: 'shell'` 的那一句
     // 同一个理由:一次注定跑不了的做法不该先去弹一张权限卡问人。
     if (!hasShellHost()) throw new DirShellUnavailableError()
@@ -214,11 +220,23 @@ export class DirResourceProvider implements ResourceProvider<DirOpPayload> {
  *
  * 三关,顺序是想清楚的:**没有沙箱 → 越界 → 敏感**。先说宿主缺能力(那与这个路径
  * 无关),再说这个路径在不在界内(界外的东西不必再问它敏不敏感)。
+ *
+ * 界 = **读根**(`sandbox.readable`),不是写根。`scope` 是发起会话,由两条路各自
+ * 从自己的上下文里取(读那条是 `ResourceReadContext.sessionId`,做那条是
+ * `PlanContext.invocation.sessionId`)。
+ *
+ * `reveal` 也按读根判,不按写根:它没有一格效果(只是把文件管理器叫到前台),
+ * 而「看得见 / 列得出的目录能不能在访达里指给我看」若与「列得出」不是同一个答案,
+ * 用户看到的就是一条列得出来却定位不了的目录。
  */
-function resolveInsideSandbox(rawPath: string, sandbox: SandboxPolicy | undefined): string {
+function resolveInsideSandbox(
+  rawPath: string,
+  sandbox: SandboxPolicy | undefined,
+  scope: string | undefined,
+): string {
   if (!sandbox) throw new DirOutsideSandboxError(rawPath, 'no-sandbox')
   const resolved = sandbox.resolve(rawPath)
-  if (!sandbox.contains(resolved)) throw new DirOutsideSandboxError(resolved, 'outside')
+  if (!sandbox.readable(resolved, scope)) throw new DirOutsideSandboxError(resolved, 'outside')
   if (sandbox.isSensitive(resolved)) throw new DirOutsideSandboxError(resolved, 'sensitive')
   return resolved
 }

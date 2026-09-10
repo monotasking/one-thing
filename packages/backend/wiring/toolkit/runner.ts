@@ -30,10 +30,12 @@ import {
   getOnethingToolOutputsDir,
 } from '@onething/runtime/storage'
 import {
+  findReadSandboxRootForPath,
   getSandboxBoundary,
   isPathContained,
   resolveToolPath,
 } from '../tools/core/sandbox.js'
+import { getConnectedDirectoriesForSession } from '../../stores/connected-directories.js'
 import { createPermissionAuthorizer } from './authorizer.js'
 import { AuditProjector, combineObservers, type ToolAuditSink } from '@onething/runtime/toolkit/audit-observer'
 import { BackgroundJobRegistry } from './jobs.js'
@@ -64,6 +66,31 @@ export function createSandboxPolicy(cwd?: () => string | undefined): SandboxPoli
     root: () => getSandboxBoundary(workingDirectory()),
     resolve: (target, at) => resolveToolPath(target, at ?? workingDirectory()),
     contains: target => isPathContained(getSandboxBoundary(workingDirectory()), target),
+    /**
+     * 「读得到吗」(2026-09-10)。判据是 `read` 工具判 `external_directory` 用的
+     * **那一张读根表**,不是第二份:`findReadSandboxRootForPath` → 产品层的
+     * `getOnethingDefaultReadRoots`(笔记根 + 接入目录 + 应用产物目录 + 下载目录)
+     * 并上写根。所以模型经 `read` 读一个文件、与界面 / 脚本经 `dir` 资源列它的父
+     * 目录,认的是同一批目录 —— 两张表是「用户接入了一个目录,却发现能改不能列」
+     * 这种自相矛盾权限面的标准形状。
+     *
+     * `scope` 在这台宿主上被解释成**发起会话**:接入目录是 per-space 的,取哪一份
+     * 由会话归属决定(批 B2 / 设计盲点 1 —— A 空间的会话在跑时用户切到 B,那条流
+     * 仍然该看见 A 的目录)。缺席退回全局层,与
+     * `getConnectedDirectoriesForSession` 自己那句诚实降级逐字同义,绝不去猜
+     * 「用户现在在看哪个空间」。
+     *
+     * 少一格:`workingDirectoryRoots`。`read` 工具从 `Invocation` 上拿得到它,而
+     * 资源那条路的坐标里今天没有 cwd 也没有根列表(`Invocation` 只有 principal +
+     * sessionId,与 per-caller 沙箱根同一笔留账)。少的是**额外**的根,方向是更紧,
+     * 不是更松。
+     */
+    readable: (target, scope) => findReadSandboxRootForPath(
+      target,
+      workingDirectory(),
+      undefined,
+      { getConnectedDirectories: () => getConnectedDirectoriesForSession(scope) },
+    ) !== undefined,
     isSensitive: target => classifySensitiveFile(target).sensitive,
   }
 }
