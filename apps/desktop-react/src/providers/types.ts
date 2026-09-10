@@ -99,17 +99,56 @@ export interface ModeTab {
   state: Fact
 }
 
-/** 能力五格。字面缩写在字典里,不在这里。 */
-export type ModelCap = 'vision' | 'tools' | 'reasoning' | 'imageOut' | 'audioIn'
+/** 能力六格。字面缩写在字典里,不在这里。 */
+export type ModelCap = 'vision' | 'tools' | 'reasoning' | 'imageOut' | 'fileIn' | 'audioIn'
 
-/** 顺序固定:视 工 推 出 音 —— 每一行的能力串都从同一条竖线起笔,列表才扫得动。 */
+/**
+ * 顺序固定:视 工 推 出 文件 音 —— 每一行的能力串都从同一条竖线起笔,列表才扫得动。
+ *
+ * 09-10 加进第六枚 `fileIn`(文件输入)。它不是 vision 的搭头:引擎那侧
+ * `runtime/src/providers/model-capability.ts` 的 `fileInput` 是**独立一格**
+ * (`FILE_INPUT_MODALITIES = ['pdf', 'file']`,判词 "ruling #12, not a vision rider"),
+ * 而覆盖表 `ModelCapabilityOverride.fileInput` 早就在后端存在,缺的只是壳这张嘴。
+ */
 export const MODEL_CAPS: readonly ModelCap[] = [
   'vision',
   'tools',
   'reasoning',
   'imageOut',
+  'fileIn',
   'audioIn',
 ]
+
+/**
+ * **能覆盖的那五项**。它是 `@shared/ipc/providers` 的 `ModelCapabilityOverride`
+ * 里壳今天开面的那五个键(那张表还有一个 `audio`,壳不开 —— 目录侧的 `audioIn`
+ * 只读不写,开一格写面就要连同「音频输出」一起想清楚,今天没有需求)。
+ *
+ * 顺序**跟着 `MODEL_CAPS` 走**,不另立一张顺序表:同一屏上行里的图标串与浮层里的
+ * 五行说的是同一件事,两处漂开就是「同一条竖线」那条判据自己打自己。
+ */
+export type CapabilityKey = 'vision' | 'tools' | 'reasoning' | 'imageOutput' | 'fileInput'
+
+/**
+ * 覆盖键 → 能力图标位。两套名字是**两层的合同**:左边是后端 settings 表里的键
+ * (`modelCapabilitiesByModel[m].imageOutput`),右边是这张表里那一枚图标的位置
+ * (`imageOut`)。壳不改后端的键名,也不把图标位改成后端那套 —— 中间摆一张表,
+ * 而不是在十几处各写一次 `key === 'imageOutput' ? 'imageOut' : key`。
+ */
+export const CAP_OF_KEY: Record<CapabilityKey, ModelCap> = Object.freeze({
+  vision: 'vision',
+  tools: 'tools',
+  reasoning: 'reasoning',
+  imageOutput: 'imageOut',
+  fileInput: 'fileIn',
+})
+
+/** 五项覆盖键,**照 `MODEL_CAPS` 的顺序**排好(单产地:由那张表现算)。 */
+export const CAPABILITY_KEYS: readonly CapabilityKey[] = Object.freeze(
+  MODEL_CAPS.map((cap) =>
+    (Object.keys(CAP_OF_KEY) as CapabilityKey[]).find((key) => CAP_OF_KEY[key] === cap),
+  ).filter((key): key is CapabilityKey => key !== undefined),
+)
 
 /** 模型行。能力五格是**判据的结果**,不是原始字段。 */
 export interface CatalogRow {
@@ -137,7 +176,7 @@ export interface CatalogRow {
   manual: boolean
   /**
    * 用户覆盖(settings 那三张按模型的表:`contextLengthByModel[id]`、
-   * `maxOutputByModel[id]` 与 `modelCapabilitiesByModel[id].tools`)。
+   * `maxOutputByModel[id]` 与 `modelCapabilitiesByModel[id]` 的五个能力键)。
    * **缺席 = 没覆盖**;行上按它画虚线下划与划掉的扳手。
    *
    * 它与上面几格的关系是「**谁说的**」而不是「值是多少」:`contextLength` /
@@ -157,46 +196,64 @@ export interface CatalogRow {
    *
    * `null` 一律读作**目录没填这一型**:手填行压根没有目录条目,而一条目录条目
    * 里没写 `context_length` 与「写了 0」在 `contextOf` 那把尺下同义。
-   * `tools` 的 `null` 同理(手填行),`false` 是目录条目里**没列** `tools`
-   * —— 那就是目录在说「不支持」,与今天这张表不画扳手是同一句话。
+   * `caps` 里那五格的 `null` 同理(手填行),`false` 是目录条目里**没列**这一项
+   * —— 那就是目录在说「不支持」,与这张表不画那一枚图标是同一句话。
    */
   catalog: CatalogFacts
 }
 
-/** 目录对这一型说过的那三句。`null` = 没说过。 */
+/** 目录对这一型说过的那几句。`null` = 没说过。 */
 export interface CatalogFacts {
   contextLength: number | null
   /** 最大输出。目录条目里的 `top_provider.max_completion_tokens`。 */
   maxOutput: number | null
-  tools: boolean | null
+  /**
+   * 五项能力,目录自己那一份。`null` = **目录没填这一型**(手填行没有目录条目);
+   * `false` = 目录条目里**没列**这一项,那就是目录在说「不支持」。
+   * 两者在屏幕上差得远:「目录:没填」与「目录:不支持」是两句话。
+   */
+  caps: Record<CapabilityKey, boolean | null>
 }
 
 /** 目录什么都没说(手填行)。共享冻结对象,理由同 `NO_MODEL_OVERRIDE`。 */
 export const NO_CATALOG_FACTS: CatalogFacts = Object.freeze({
   contextLength: null,
   maxOutput: null,
-  tools: null,
+  caps: Object.freeze({
+    vision: null,
+    tools: null,
+    reasoning: null,
+    imageOutput: null,
+    fileInput: null,
+  }),
 })
 
-/** 一个模型上的三格覆盖。三格都缺席 = 这一型没被动过。 */
+/** 一个模型上的覆盖:两个数 + 五项能力。全缺席 = 这一型没被动过。 */
 export interface ModelOverride {
   /** 上下文窗口。正数才算数(0 / 负数 / 非数按「没覆盖」处理)。 */
   contextLength?: number
   /** 最大输出。同一把尺(正数才算数)。 */
   maxOutput?: number
-  /** 工具调用。`false` 是**一句话**(「人说不支持」),不是「不知道」。 */
-  tools?: boolean
+  /**
+   * 五项能力,**只认布尔**。某一键缺席 = 「没说过」,`false` 是「人说不支持」
+   * —— 两者在屏幕上是消失 vs 划掉。这一格恒在(可能是空表),所以读它的人
+   * 不必先判 `override.caps` 在不在。
+   */
+  caps: Partial<Record<CapabilityKey, boolean>>
 }
 
-/** 覆盖的写补丁。`null` = 删掉这一格;缺席 = 这一格不动。 */
+/** 覆盖的写补丁。`null` = 删掉这一格;缺席 = 这一格不动(能力逐键同此)。 */
 export interface ModelOverridePatch {
   contextLength?: number | null
   maxOutput?: number | null
-  tools?: boolean | null
+  caps?: Partial<Record<CapabilityKey, boolean | null>>
 }
 
+/** 一项能力都没被说过。与 `NO_MODEL_OVERRIDE` 共享,理由同下。 */
+export const NO_OVERRIDE_CAPS: Partial<Record<CapabilityKey, boolean>> = Object.freeze({})
+
 /** 没覆盖。共享同一个冻结对象 —— 每行现造一个空对象会让行的引用每帧都变。 */
-export const NO_MODEL_OVERRIDE: ModelOverride = Object.freeze({})
+export const NO_MODEL_OVERRIDE: ModelOverride = Object.freeze({ caps: NO_OVERRIDE_CAPS })
 
 /**
  * 目录没填上下文窗口时,引擎实际按多少算。

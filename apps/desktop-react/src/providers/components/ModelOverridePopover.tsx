@@ -7,29 +7,39 @@ import { Segmented } from '../../ui/Segmented'
 import { useT } from '../../i18n'
 import type { MessageKey, TFn } from '../../i18n'
 import { formatQuantity, parseQuantity } from '../../format/quantity'
-import { CATALOG_CONTEXT_FALLBACK, requestedMaxOutputOf } from '../types'
-import type { CatalogRow, ModelOverridePatch } from '../types'
+import { CAPABILITY_KEYS, CAP_OF_KEY, CATALOG_CONTEXT_FALLBACK, requestedMaxOutputOf } from '../types'
+import type { CapabilityKey, CatalogRow, ModelOverridePatch } from '../types'
+import { CAP_ICONS, CAP_LABELS } from './model-capability-icons'
 import s from './ModelOverridePopover.module.css'
 
 /**
  * **逐型覆盖**(09-09,设计正本 `docs/model-override-proposal-2026-09-09.html`)。
  *
- * 后端早就有这三格 —— `settings.ai.providers[pid].contextLengthByModel[m]`、
- * `maxOutputByModel[m]` 与 `modelCapabilitiesByModel[m].tools`,引擎读它们的地方是
+ * 后端早就有这三张表 —— `settings.ai.providers[pid].contextLengthByModel[m]`、
+ * `maxOutputByModel[m]` 与 `modelCapabilitiesByModel[m]`,引擎读它们的地方是
  * `model-registry.ts` 的 `getOnethingModelContextLength`(上下文,覆盖优先于目录、
  * 优先于 128k 兜底)、`packages/core/engine/agent-loop-runtime.ts` 的
  * `resolveAgentLoopContextBudgetValues`(最大输出,**填了就直接当请求的 max_tokens**;
  * 没填则按注册上限的一半发,**注册上限也没有就不带 `max_tokens`** —— 09-09 之前
  * 这里兜底 4096 再对半成 2048,那个编出来的数连同它的产地一起在同日删掉了;
  * 全局 `settings.chat.maxTokens` 也在同日整格退役,请求侧只剩这两个来源)
- * 与 `onethingModelSupportsTools`
- * (工具,覆盖优先于目录条目、优先于按名字猜)。
+ * 与 `runtime/src/providers/model-capability.ts` 的 `resolveOnethingModelCapabilities`
+ * (五项能力,覆盖优先于目录条目、优先于按名字猜的规则表)。
  * 缺的一直只是壳上的写面:手填进来的模型只能进 `selectedModels`,它的窗口有多大、
  * 一次能吐多长、支不支持工具,用户明明知道却没地方说。这块浮层就是那张嘴,
  * **后端零改动**。
  *
+ * ── 09-10:能力从一格开到五格 ───────────────────────────────────────────
+ * 用户原话「模型能力也要配置,现在只有 tool call」。后端那张
+ * `ModelCapabilityOverride` 从第一天起就是六个键,壳只接了 `tools` 一个 ——
+ * 于是「这一型其实看得懂图 / 收得下 PDF」这句话在壳上无处可说。
+ * 本批把它开成 `vision / tools / reasoning / imageOutput / fileInput` 五行
+ * (第六个键 `audio` 不开面,见 `types.ts` 的 `CapabilityKey` 注)。
+ * 随之退役的是工具那一格从前那五句随状态换的提示语 —— 五格照抄就是二十五句,
+ * 而它们真正在说的「目录说了什么」现在由每一行右边的三态小字如实说出来。
+ *
  * ── 它为什么不是一张对话框 ──────────────────────────────────────────────
- * 三格设置,贴着被配置的那一行开出来,背后那张表照旧能看能滚 —— 那正是
+ * 几格设置,贴着被配置的那一行开出来,背后那张表照旧能看能滚 —— 那正是
  * `ui/Popover` 的语义(附属,不打断)。做成 Dialog 会压一层遮罩,把「顺手改
  * 一格」变成「答一道题」。定位走 Popover 的**矩锚档**(本批给它补的,
  * 与 `ui/Menu` 逐字同形)+ `below-end`:锚点是行尾那颗钮,左对齐会把整张浮层
@@ -39,32 +49,38 @@ import s from './ModelOverridePopover.module.css'
  *
  * ① 生命周期
  *   挂载   点行尾那颗滑杆钮。**开的那一刻从设置读一次**:两个数字框各自的草稿 =
- *          自己那一格的覆盖值或空,分段器不用草稿(它每一下都当场写,自己没有
- *          中间态)。两个数字框**各自独立提交**(各自的 blur / ↵),
- *          改一格不动另一格 —— 它们是两张表,不是一次表单。
+ *          自己那一格的覆盖值或空,五只分段器不用草稿(它们每一下都当场写,
+ *          自己没有中间态)。两个数字框**各自独立提交**(各自的 blur / ↵),
+ *          改一格不动另一格 —— 它们是两张表,不是一次表单;五项能力同理,
+ *          点一行只写那一键。
  *   卸载   关浮层 / 换模式换坑(开合状态住在 `ModelCatalog`,换坑那一发
  *          `useEffect` 把它归零)/ 这一行被折叠起来。
- *   换宿主 只有一种落点:锚在那颗钮下面的一块浮层。没有第二种形。
+ *   换宿主 只有一种落点:锚在那颗钮下面的一块浮层。没有第二种形。**滚动归浮层**
+ *          (`ui/Popover` 自带 `max-height` + `overflow:auto`)—— 能力开成五行
+ *          之后这块浮层能长到接近一屏高,那条既有约束是它不溢出屏幕的唯一保证。
  *   副作用 无订阅、无计时器、无模块级副作用 → 不需要 HMR dispose。
  *
  * ② UI 生命状态
- *   无覆盖   数字框空 + 占位符写**生效值与它的来源**;分段在「跟目录」;
+ *   无覆盖   数字框空 + 占位符写**生效值与它的来源**;五行分段都在「跟目录」;
  *            「恢复目录值」禁用。
- *   有覆盖   数字框是那个数;分段在开/关;「恢复目录值」可按。
+ *   有覆盖   数字框是那个数;被动过的那一行分段在开/关;「恢复目录值」可按。
  *   目录没填 占位符与提示行都说生效值(上下文 128k;最大输出**没有数可说** ——
- *            请求里根本不带 `max_tokens`,写「由服务商决定」),
- *            并且说清「跟目录」跟的是**猜**(按名字判,规则在
- *            `model-registry.ts` 的 `onethingModelSupportsTools` —— 壳不复刻那张表,
- *            只如实说出这件事)。
+ *            请求里根本不带 `max_tokens`,写「由服务商决定」);能力那五行
+ *            右边的小字说「目录:没填」,而分段**仍是三格** —— 目录没填不等于
+ *            不能覆盖,覆盖恰恰是给这一档准备的。
  *   填错     边线转 danger + 错误句**替换**那一格自己的提示行;不写、行上一格不动。
  *            **两格各自一份 invalid** —— 上一格填错不该把下一格也判红。
- *   在写     这一行的三颗钮与浮层里的四件控件一起禁;别的行一个都不许动。
+ *            能力那一组**没有错误态**:分段是封闭集合,填不错。
+ *   超量     能力恒五行(`CAPABILITY_KEYS` 是编译期常量),不随数据涨。
+ *   在写     这一行的三颗钮与浮层里的七件控件一起禁;别的行一个都不许动。
  *
  * ③ UI 交互状态
  *   数字框 rest / hover / focus / invalid / disabled;**失焦与 ↵ 才提交**
  *          (不逐字打后端);Esc 归响应链(`ui/Popover` 声明的 `onEscape`),
  *          草稿随浮层一起丢掉。两格同一件 `QuantityInput`,只是各自一份 state。
  *   分段器 三格 radio,←→ 换格(`ui/Segmented` 的 roving),**点一下就写**。
+ *          五只各自一份值,`aria-label` 是自己那一项的能力名。
+ *   能力名 / 目录小字 纯读数,不可交互(它们是事实不是控件)。
  *   恢复钮 rest / hover / disabled(没覆盖时)。
  */
 
@@ -88,12 +104,18 @@ function draftOf(value: number): string {
 }
 
 /** 分段器那三格。`inherit` = 不覆盖(删键),不是「第三种值」。 */
-type ToolsChoice = 'inherit' | 'on' | 'off'
+type CapChoice = 'inherit' | 'on' | 'off'
 
 /** 覆盖 → 分段器的格。`undefined`(没覆盖)才是「跟目录」。 */
-function toolsChoiceOf(override: boolean | undefined): ToolsChoice {
+function capChoiceOf(override: boolean | undefined): CapChoice {
   if (override === undefined) return 'inherit'
   return override ? 'on' : 'off'
+}
+
+/** 目录对这一项说过什么。三句整话,不拼装(「目录:没填」不是「目录:」+「没填」)。 */
+function catalogFactKey(catalog: boolean | null): MessageKey {
+  if (catalog === null) return 'providers.overrideCatalogUnset'
+  return catalog ? 'providers.overrideCatalogYes' : 'providers.overrideCatalogNo'
 }
 
 /**
@@ -180,22 +202,6 @@ function maxOutputPlaceholder(t: TFn, row: CatalogRow): string {
   return t('providers.overrideOutputPlaceholderNoCatalog')
 }
 
-/** 工具那一格的提示行。五态,同样是整话。 */
-function toolsHintKey(choice: ToolsChoice, catalog: boolean | null): MessageKey {
-  if (choice === 'on') return 'providers.overrideToolsHintOn'
-  if (choice === 'off') {
-    if (catalog === null) return 'providers.overrideToolsHintOffUnknown'
-    return catalog
-      ? 'providers.overrideToolsHintOffCatalogOn'
-      : 'providers.overrideToolsHintOffCatalogOff'
-  }
-  // 「跟目录」而目录没填 —— 跟的是**按名字猜**,这件事得说出来,不能藏。
-  if (catalog === null) return 'providers.overrideToolsHintGuess'
-  return catalog
-    ? 'providers.overrideToolsHintCatalogOn'
-    : 'providers.overrideToolsHintCatalogOff'
-}
-
 export function ModelOverridePopover({
   row,
   providerId,
@@ -231,11 +237,10 @@ export function ModelOverridePopover({
   )
   const [outInvalid, setOutInvalid] = useState(false)
 
-  const choice = toolsChoiceOf(row.override.tools)
   const hasOverride =
     row.override.contextLength != null ||
     row.override.maxOutput != null ||
-    row.override.tools !== undefined
+    CAPABILITY_KEYS.some((key) => row.override.caps[key] !== undefined)
 
   const rect = anchor()
 
@@ -290,9 +295,13 @@ export function ModelOverridePopover({
     onWrite({ maxOutput: next })
   }
 
-  function pickTools(value: ToolsChoice) {
-    if (value === choice) return
-    onWrite({ tools: value === 'inherit' ? null : value === 'on' })
+  /**
+   * 改一项能力。**只写这一键**(`caps` 里就一格)—— 五行是五张各自的嘴,
+   * 点开图像输入不该顺手把工具调用也答一遍。`inherit` = 删键,不是第三种值。
+   */
+  function pickCap(key: CapabilityKey, value: CapChoice) {
+    if (value === capChoiceOf(row.override.caps[key])) return
+    onWrite({ caps: { [key]: value === 'inherit' ? null : value === 'on' } })
   }
 
   return (
@@ -363,26 +372,28 @@ export function ModelOverridePopover({
           />
         </Field>
 
+        {/*
+          能力五行。**一组一句 hint,一行一句目录事实** —— 从前工具那一格有五句
+          随状态换的整话,五格照抄就是二十五句;而那五句里真正随状态变的只有
+          「目录说了什么」,它现在由每一行右边的小字如实说出来(三态),
+          剩下那半句「关了会怎样」对五项是同一句,归组上那一句 hint。
+        */}
         <Field
           size="sm"
           className={s.grp}
-          label={t('providers.overrideToolsLabel')}
-          hint={t(toolsHintKey(choice, row.catalog.tools))}
+          label={t('providers.overrideCapsLabel')}
+          hint={t('providers.overrideCapsHint')}
         >
-          <ToolsSegmented
-            value={choice}
-            disabled={pending}
-            label={t('providers.overrideToolsLabel')}
-            onPick={pickTools}
-          />
+          <CapabilityGroup row={row} disabled={pending} onPick={pickCap} />
         </Field>
 
         <div className={s.foot}>
           <span className={s.footNote}>{t('providers.overrideFoot')}</span>
           {/*
             ③ 类行内微型文字动作 → `ui/ButtonBase`(只清 UA,皮肤归本地)。
-            点它 = **三个键一起删**:这颗钮说的是「恢复目录值」,只删一个就是
-            半句话 —— 而剩下那些留在盘上,屏幕上还照旧画着虚线。
+            点它 = **七个键一起删**(两个数 + 五项能力):这颗钮说的是「恢复
+            目录值」,只删一部分就是半句话 —— 而剩下那些留在盘上,屏幕上还照旧
+            画着虚线。`audio` 不在这七个里:壳没让用户设过它,也就没资格替他删。
           */}
           <ButtonBase
             className={s.reset}
@@ -393,7 +404,11 @@ export function ModelOverridePopover({
               setInvalid(false)
               setOutDraft('')
               setOutInvalid(false)
-              onWrite({ contextLength: null, maxOutput: null, tools: null })
+              onWrite({
+                contextLength: null,
+                maxOutput: null,
+                caps: Object.fromEntries(CAPABILITY_KEYS.map((key) => [key, null])),
+              })
             }}
           >
             {t('providers.overrideReset')}
@@ -456,36 +471,78 @@ function QuantityInput({
 }
 
 /**
- * 分段器那一件。同样是为了 `useFieldControlProps()` —— 它把 `aria-labelledby`
- * 与 `aria-describedby` 接到 radiogroup 上,读屏软件才念得出这一组叫什么、
- * 下面那句提示说了什么。
+ * 能力五行。同样是为了 `useFieldControlProps()` —— 但摊的地方与另外两格不同:
+ *
+ * 那两格是「一个 Field 一件控件」,`{...field}` 直接摊在控件上。这一组里有**五只**
+ * 分段器,五只都摊就是五个同 id 的元素(axe 的 `duplicate-id`),而且 Field 那句
+ * 「能力」也不该同时当五只 radiogroup 的名字。所以摊的是**组自己**:
+ * 一个 `role="group"` 的容器吃下 id / `aria-labelledby`(那句「能力」)/
+ * `aria-describedby`(那句 hint)—— 正是 `ui/Field` 文件头「不可标注的控件走
+ * aria-labelledby」那一档;每只分段器再各自带自己的 `label`(= 能力名),
+ * 读屏软件念出来是「能力,分组 → 图像输入,单选组」。
+ *
+ * 行的形是**两行**不是一行:分段器那三格在英文里是「Follow catalog / On / Off」,
+ * 一只就 ≈215px,而这张浮层内容宽只有 268px —— 与能力名同一行就得让名字弯腰到
+ * 看不见。挤压纪律(一行一个弯腰件)在这里的答案是**不挤**:名字与目录事实占
+ * 第一行(名字弯腰,目录事实定宽),分段器独占第二行。
  */
-function ToolsSegmented({
-  value,
+function CapabilityGroup({
+  row,
   disabled,
-  label,
   onPick,
 }: {
-  value: ToolsChoice
+  row: CatalogRow
   disabled: boolean
-  label: string
-  onPick: (value: ToolsChoice) => void
+  onPick: (key: CapabilityKey, value: CapChoice) => void
 }) {
   const t = useT()
   const field = useFieldControlProps()
   return (
-    <Segmented<ToolsChoice>
-      {...field}
-      value={value}
-      disabled={disabled}
-      label={label}
-      data-testid="model-override-tools"
-      options={[
-        { value: 'inherit', label: t('providers.overrideToolsInherit') },
-        { value: 'on', label: t('providers.overrideToolsOn') },
-        { value: 'off', label: t('providers.overrideToolsOff') },
-      ]}
-      onChange={onPick}
-    />
+    <div {...field} role="group" className={s.caps} data-testid="model-override-caps">
+      {CAPABILITY_KEYS.map((key) => (
+        <CapabilityRow key={key} capKey={key} row={row} disabled={disabled} onPick={onPick} t={t} />
+      ))}
+    </div>
+  )
+}
+
+/** 一项能力:`[图标 + 名字] [目录事实]` / `[跟目录 | 开 | 关]`。 */
+function CapabilityRow({
+  capKey,
+  row,
+  disabled,
+  onPick,
+  t,
+}: {
+  capKey: CapabilityKey
+  row: CatalogRow
+  disabled: boolean
+  onPick: (key: CapabilityKey, value: CapChoice) => void
+  t: TFn
+}) {
+  const cap = CAP_OF_KEY[capKey]
+  const Icon = CAP_ICONS[cap]
+  const name = t(CAP_LABELS[cap])
+  return (
+    <div className={s.capRow}>
+      <span className={s.capHead}>
+        <Icon size={14} aria-hidden="true" className={s.capIcon} />
+        {/* 名字**画出来**,不只当 aria-label:这一行没有别的东西说得出它是谁。 */}
+        <span className={s.capName}>{name}</span>
+        <span className={s.capFact}>{t(catalogFactKey(row.catalog.caps[capKey]))}</span>
+      </span>
+      <Segmented<CapChoice>
+        value={capChoiceOf(row.override.caps[capKey])}
+        disabled={disabled}
+        label={name}
+        data-testid={`model-override-cap-${capKey}`}
+        options={[
+          { value: 'inherit', label: t('providers.overrideCapInherit') },
+          { value: 'on', label: t('providers.overrideCapOn') },
+          { value: 'off', label: t('providers.overrideCapOff') },
+        ]}
+        onChange={(value) => onPick(capKey, value)}
+      />
+    </div>
   )
 }

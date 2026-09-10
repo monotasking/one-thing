@@ -1363,13 +1363,18 @@ export const zh = {
   'providers.current': '当前模型',
   'providers.setCurrent': '设为当前',
   'providers.pickModel': '勾选 {model}',
-  /* 能力:**全名**。从前这五格是「视 工 推 出 音」五个单字缩写,08-31 报障
-   * 「谁都读不懂」—— 屏幕上改画图标,这五句成了图标的名字(悬停提示 +
-   * aria-label 同一句,两路同源)。缩写连同它的图例句一起退役。 */
+  /* 能力:**全名**。从前这几格是「视 工 推 出 音」几个单字缩写,08-31 报障
+   * 「谁都读不懂」—— 屏幕上改画图标,这几句成了图标的名字(悬停提示 +
+   * aria-label 同一句,两路同源)。缩写连同它的图例句一起退役。
+   * 09-10 加了第六格「文件输入」:它在引擎那侧是独立一格(收不收得下 PDF /
+   * 附件),不是「图像输入」的搭头,所以名字也各说各的。
+   * 这几句 09-10 起还有第二个读者 —— 覆盖浮层「能力」那五行的行名与
+   * 那六句 Tooltip 里的 `{cap}`,所以它们必须能**当句子里的一个名词短语用**。 */
   'providers.capVision': '图像输入',
   'providers.capTools': '工具调用',
   'providers.capReasoning': '推理',
   'providers.capImageOut': '图像输出',
+  'providers.capFileIn': '文件输入',
   'providers.capAudioIn': '音频输入',
 
   /* ── 逐型覆盖(09-09,设计正本 docs/model-override-proposal-2026-09-09.html)──
@@ -1403,32 +1408,37 @@ export const zh = {
   'providers.overrideOutputHintNoCatalog':
     '目录没填这一型;不填就不带上限,由服务商用它自己的默认值。',
   'providers.overrideOutputHintCustom': '自定 {value};不再对半砍,只受模型上限夹。',
-  'providers.overrideToolsLabel': '工具调用',
-  /* 第一格叫「跟目录」而不是「默认」:目录没填时它跟的是**按名字猜**,
-   * 下面那句 overrideToolsHintGuess 把这一点说出来,不藏。 */
-  'providers.overrideToolsInherit': '跟目录',
-  'providers.overrideToolsOn': '开',
-  'providers.overrideToolsOff': '关',
-  'providers.overrideToolsHintCatalogOn': '目录说「支持」。',
-  'providers.overrideToolsHintCatalogOff': '目录说「不支持」。',
-  'providers.overrideToolsHintGuess': '目录没填这一型;按名字判为「支持」。',
-  'providers.overrideToolsHintOn': '自定为「支持」。',
-  'providers.overrideToolsHintOffCatalogOn': '目录说「支持」,已自定为关。这一型的请求不再带工具表。',
-  'providers.overrideToolsHintOffCatalogOff':
-    '目录说「不支持」,已自定为关。这一型的请求不再带工具表。',
-  'providers.overrideToolsHintOffUnknown': '目录没填这一型,已自定为关。这一型的请求不再带工具表。',
+  /* 能力五行(09-10。从前这里只有「工具调用」一格,连同它那五句随状态换的
+   * 提示语一起退役:五格照抄就是二十五句,而那五句真正在说的「目录说了什么」
+   * 现在由每一行右边的三态小字说,「关了会怎样」对五项是同一句 → 归组上的 hint)。
+   * 第一格叫「跟目录」而不是「默认」:目录没填时它跟的是引擎按名字猜的那张
+   * 规则表(`runtime/src/providers/model-capability.ts`),而「跟目录」这三个字
+   * 至少没有把「有个数在」这件事说死。 */
+  'providers.overrideCapsLabel': '能力',
+  'providers.overrideCapsHint': '关 = 这一型的请求不再带这项能力;开 = 目录说不支持也照发。',
+  'providers.overrideCapInherit': '跟目录',
+  'providers.overrideCapOn': '开',
+  'providers.overrideCapOff': '关',
+  /* 目录事实三态。**整句成键**:它是行尾那一小格的全部文字,不是「目录:」加一个词。 */
+  'providers.overrideCatalogYes': '目录:支持',
+  'providers.overrideCatalogNo': '目录:不支持',
+  'providers.overrideCatalogUnset': '目录:没填',
   'providers.overrideFoot': '改了就存,没有保存钮',
   'providers.overrideReset': '恢复目录值',
   'providers.overrideContext': '自定 {value}(目录 {catalog})',
   'providers.overrideContextNoCatalog': '自定 {value}(目录没填,默认 {fallback})',
   'providers.overrideOutput': '自定 {value}(目录 {catalog})',
   'providers.overrideOutputNoCatalog': '自定 {value}(目录没填,不填则由服务商决定)',
-  'providers.overrideToolsOnTipCatalogOn': '自定:支持工具调用(目录:支持)',
-  'providers.overrideToolsOnTipCatalogOff': '自定:支持工具调用(目录:不支持)',
-  'providers.overrideToolsOnTipUnknown': '自定:支持工具调用(目录没填)',
-  'providers.overrideToolsOffTipCatalogOn': '自定:关闭工具调用(目录:支持)',
-  'providers.overrideToolsOffTipCatalogOff': '自定:关闭工具调用(目录:不支持)',
-  'providers.overrideToolsOffTipUnknown': '自定:关闭工具调用(目录没填)',
+  /* 行上那一枚被人说过话的能力图标,它的名字(= aria-label = Tooltip)。
+   * 六句整话,只有能力名走 `{cap}` —— 括号里那半句在英文里是另一套语序,
+   * 拿翻译过的词去拼等于换一门语言就赌一次;而能力名在两门语言里都只是
+   * 句中的一个名词短语,它是这六句里唯一能安全变的那一格。 */
+  'providers.overrideCapOnTipCatalogOn': '自定:支持{cap}(目录:支持)',
+  'providers.overrideCapOnTipCatalogOff': '自定:支持{cap}(目录:不支持)',
+  'providers.overrideCapOnTipUnknown': '自定:支持{cap}(目录没填)',
+  'providers.overrideCapOffTipCatalogOn': '自定:关闭{cap}(目录:支持)',
+  'providers.overrideCapOffTipCatalogOff': '自定:关闭{cap}(目录:不支持)',
+  'providers.overrideCapOffTipUnknown': '自定:关闭{cap}(目录没填)',
   'providers.saveFailed': '设置没保存上',
 
   /* ── 工作区切换器(08-31 v1) ─────────────────────────────────────────────

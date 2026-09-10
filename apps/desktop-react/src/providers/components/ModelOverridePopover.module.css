@@ -50,6 +50,64 @@
   color: var(--text-3);
 }
 
+/*
+ * 能力五行(09-10)。一列,行与行之间比组内两行**松一档** —— 同一行的
+ * 「名字 / 分段器」是一件事的两半,行与行才是并列关系。
+ */
+.caps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/*
+ * 一行两截。**分段器为什么独占第二行**:它那三格在英文里是
+ * 「Follow catalog / On / Off」,一只 ≈215px,而这张浮层的内容宽只有
+ * `--pv-override-w` 减两边内边距。与能力名同一行就得让名字弯腰到看不见 ——
+ * 挤压纪律(一行一个弯腰件、结构行只截断不换行)在这里的答案是**不挤**。
+ */
+.capRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+/* 第一行:图标 + 名字(弯腰件)+ 目录事实(定宽,不弯)。 */
+.capHead {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.capIcon {
+  flex: none;
+  color: var(--text-3);
+}
+
+/* 这一行**唯一**的弯腰件:窄了就截断,不换行(结构行的规矩)。 */
+.capName {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--fs-meta);
+  color: var(--text-1);
+}
+
+/*
+ * 目录自己那一句。**推到行尾**、不弯腰:它是三句定长的整话
+ * (支持 / 不支持 / 没填),截了就成了「目录:不支…」这种谁也读不准的字。
+ */
+.capFact {
+  flex: none;
+  margin-left: auto;
+  font-size: var(--fs-ext);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
 .foot {
   display: flex;
   align-items: center;

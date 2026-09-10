@@ -48,7 +48,12 @@ import {
   splitSpaceProviderSettings,
 } from './space-settings'
 import { currentSpaceId, subscribeCurrentSpace } from '../workspace/current'
-import type { CredentialFacts, ModelOverridePatch, ProviderFamilyView } from './types'
+import type {
+  CapabilityKey,
+  CredentialFacts,
+  ModelOverridePatch,
+  ProviderFamilyView,
+} from './types'
 
 /** 新建自定义家的表单。字段名与 `CustomProviderConfig` 对齐,不另起一套。 */
 export interface CustomProviderForm {
@@ -210,15 +215,18 @@ export interface ProviderSettingsState {
   /** 删掉一个手填模型。最后一条不删(与生产 `toggleSpaceModelSelection` 同一守则)。 */
   removeManualModel: (providerId: string, modelId: string) => Promise<void>
   /**
-   * 一个模型的**用户覆盖**(09-09):上下文窗口 `contextLengthByModel[m]`、
-   * 最大输出 `maxOutputByModel[m]` 与工具调用
-   * `modelCapabilitiesByModel[m].tools`。后端早有这三格(引擎读法
-   * `model-registry.ts:895` / `agent-loop-runtime.ts:819` / `model-registry.ts:949`,
-   * 覆盖优先),缺的只是壳上的写面。
+   * 一个模型的**用户覆盖**(09-09;09-10 能力从一格开到五格):上下文窗口
+   * `contextLengthByModel[m]`、最大输出 `maxOutputByModel[m]` 与
+   * `modelCapabilitiesByModel[m]` 的五个能力键(vision / tools / reasoning /
+   * imageOutput / fileInput)。后端早有这三张表(引擎读法
+   * `model-registry.ts:895` / `agent-loop-runtime.ts:819` /
+   * `runtime/src/providers/model-capability.ts` 的 `resolveOnethingModelCapabilities`,
+   * 覆盖一律优先于目录条目),缺的只是壳上的写面。
    *
    * `patch` 的三态是**明码**:某一格给数 / 布尔 = 写它,给 `null` = **删这个键**,
    * 缺席 = 这一格不动。`null` 不写成 `undefined` 是因为 `undefined` 在一个可选
    * 字段上说不清「没传」与「删掉」——而这两件事在这里天天发生。
+   * `caps` 那一格里**逐键**同此三态。
    *
    * 删要**删干净**:表里最后一个键被删掉时整张表也删掉,不留一个 `{}`
    * (`modelCapabilitiesByModel[m]` 空了先删那一格,再看整表空没空)。
@@ -1018,18 +1026,28 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
         delta.maxOutputByModel = Object.keys(table).length > 0 ? table : undefined
       }
 
-      if (patch.tools !== undefined) {
-        const table: Record<string, ModelCapabilityOverride> = {
-          ...(config?.modelCapabilitiesByModel ?? {}),
+      /*
+       * 能力那张表:**逐键**改,不是整条换。09-10 从一格 `tools` 泛化到五格
+       * (`CAPABILITY_KEYS`),而那条判据一个字没变 —— **这块面没露过面的键
+       * 一格不动**:今天那是 `audio`(壳不开写面),明天后端再加一格也是它。
+       * 把整条记录换掉就等于替用户把没见过的开关也答了一遍。
+       */
+      if (patch.caps !== undefined) {
+        const changes = Object.entries(patch.caps).filter(([, value]) => value !== undefined) as
+          Array<[CapabilityKey, boolean | null]>
+        if (changes.length > 0) {
+          const table: Record<string, ModelCapabilityOverride> = {
+            ...(config?.modelCapabilitiesByModel ?? {}),
+          }
+          const entry: ModelCapabilityOverride = { ...(table[modelId] ?? {}) }
+          for (const [key, value] of changes) {
+            if (value === null) delete entry[key]
+            else entry[key] = value
+          }
+          if (Object.keys(entry).length > 0) table[modelId] = entry
+          else delete table[modelId]
+          delta.modelCapabilitiesByModel = Object.keys(table).length > 0 ? table : undefined
         }
-        // **别的能力键(vision / reasoning / …)一格不动**:这块面只开了 tools
-        // 一格,把整条记录换掉就等于替用户把没露过面的开关也答了一遍。
-        const entry: ModelCapabilityOverride = { ...(table[modelId] ?? {}) }
-        if (patch.tools === null) delete entry.tools
-        else entry.tools = patch.tools
-        if (Object.keys(entry).length > 0) table[modelId] = entry
-        else delete table[modelId]
-        delta.modelCapabilitiesByModel = Object.keys(table).length > 0 ? table : undefined
       }
 
       if (Object.keys(delta).length === 0) return

@@ -1154,6 +1154,7 @@ export const en: Record<MessageKey, string> = {
   'providers.capTools': 'Tool calling',
   'providers.capReasoning': 'Reasoning',
   'providers.capImageOut': 'Image output',
+  'providers.capFileIn': 'File input',
   'providers.capAudioIn': 'Audio input',
 
   /* Per-model overrides (09-09). Whole sentences, never assembled from
@@ -1179,21 +1180,19 @@ export const en: Record<MessageKey, string> = {
     'The catalog has nothing for this model; left blank, requests carry no limit at all and the provider uses its own default.',
   'providers.overrideOutputHintCustom':
     'Custom {value}. It is sent as written — no halving; only the model’s own ceiling still clamps it.',
-  'providers.overrideToolsLabel': 'Tool calling',
-  'providers.overrideToolsInherit': 'Follow catalog',
-  'providers.overrideToolsOn': 'On',
-  'providers.overrideToolsOff': 'Off',
-  'providers.overrideToolsHintCatalogOn': 'The catalog says “supported”.',
-  'providers.overrideToolsHintCatalogOff': 'The catalog says “not supported”.',
-  'providers.overrideToolsHintGuess':
-    'The catalog has nothing for this model; it is read as “supported” from the name.',
-  'providers.overrideToolsHintOn': 'Set to “supported”.',
-  'providers.overrideToolsHintOffCatalogOn':
-    'The catalog says “supported”; you turned it off. Requests for this model no longer carry the tool list.',
-  'providers.overrideToolsHintOffCatalogOff':
-    'The catalog says “not supported”; you turned it off. Requests for this model no longer carry the tool list.',
-  'providers.overrideToolsHintOffUnknown':
-    'The catalog has nothing for this model; you turned it off. Requests for this model no longer carry the tool list.',
+  /* Capabilities, five rows (09-10; the single "Tool calling" field and its five
+   * state-dependent hint sentences retired with it — five fields would have
+   * meant twenty-five of them, and the only thing those sentences really said
+   * is what the catalog claims, which each row now states on its own). */
+  'providers.overrideCapsLabel': 'Capabilities',
+  'providers.overrideCapsHint':
+    'Off = requests for this model stop carrying that capability; On = it is sent even when the catalog says no.',
+  'providers.overrideCapInherit': 'Follow catalog',
+  'providers.overrideCapOn': 'On',
+  'providers.overrideCapOff': 'Off',
+  'providers.overrideCatalogYes': 'Catalog: supported',
+  'providers.overrideCatalogNo': 'Catalog: not supported',
+  'providers.overrideCatalogUnset': 'Catalog: empty',
   'providers.overrideFoot': 'Saved as you change it — no save button',
   'providers.overrideReset': 'Restore catalog values',
   'providers.overrideContext': 'Custom {value} (catalog {catalog})',
@@ -1201,12 +1200,14 @@ export const en: Record<MessageKey, string> = {
   'providers.overrideOutput': 'Custom {value} (catalog {catalog})',
   'providers.overrideOutputNoCatalog':
     'Custom {value} (catalog empty; clear it and the provider decides)',
-  'providers.overrideToolsOnTipCatalogOn': 'Custom: tool calling on (catalog: supported)',
-  'providers.overrideToolsOnTipCatalogOff': 'Custom: tool calling on (catalog: not supported)',
-  'providers.overrideToolsOnTipUnknown': 'Custom: tool calling on (catalog empty)',
-  'providers.overrideToolsOffTipCatalogOn': 'Custom: tool calling off (catalog: supported)',
-  'providers.overrideToolsOffTipCatalogOff': 'Custom: tool calling off (catalog: not supported)',
-  'providers.overrideToolsOffTipUnknown': 'Custom: tool calling off (catalog empty)',
+  /* Whole sentences with the capability name as the one variable — the clause
+   * in parentheses reorders across languages, the noun phrase does not. */
+  'providers.overrideCapOnTipCatalogOn': 'Custom: {cap} on (catalog: supported)',
+  'providers.overrideCapOnTipCatalogOff': 'Custom: {cap} on (catalog: not supported)',
+  'providers.overrideCapOnTipUnknown': 'Custom: {cap} on (catalog empty)',
+  'providers.overrideCapOffTipCatalogOn': 'Custom: {cap} off (catalog: supported)',
+  'providers.overrideCapOffTipCatalogOff': 'Custom: {cap} off (catalog: not supported)',
+  'providers.overrideCapOffTipUnknown': 'Custom: {cap} off (catalog empty)',
   'providers.saveFailed': 'Settings were not saved',
 
   /* ── Workspace switcher (v1, 08-31) ────────────────────────────────────

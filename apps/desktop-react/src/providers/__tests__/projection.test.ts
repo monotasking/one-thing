@@ -254,20 +254,20 @@ function model(id: string, over: Partial<OpenRouterModel> = {}): OpenRouterModel
 }
 
 describe('capsOf / priceOf / format', () => {
-  it('五格能力全从目录字段来,一格都不猜', () => {
+  it('六格能力全从目录字段来,一格都不猜(顺序 视 工 推 出 文件 音)', () => {
     expect(
       capsOf(
         model('m', {
           architecture: {
             modality: 'text',
-            input_modalities: ['text', 'image', 'audio'],
+            input_modalities: ['text', 'image', 'pdf', 'audio'],
             output_modalities: ['text', 'image'],
             tokenizer: 'x',
           },
           supported_parameters: ['tools', 'reasoning'],
         }),
       ),
-    ).toEqual(['vision', 'tools', 'reasoning', 'imageOut', 'audioIn'])
+    ).toEqual(['vision', 'tools', 'reasoning', 'imageOut', 'fileIn', 'audioIn'])
     expect(capsOf(model('m'))).toEqual([])
   })
 
@@ -338,9 +338,9 @@ describe('buildCatalogRows', () => {
       manual: true,
       contextLength: 200_000,
       caps: ['tools'],
-      override: { contextLength: 200_000, tools: true },
-      // 目录不认识它 —— 两格都是 null,不是 0/false。
-      catalog: { contextLength: null, tools: null },
+      override: { contextLength: 200_000, caps: { tools: true } },
+      // 目录不认识它 —— 每一格都是 null,不是 0/false。
+      catalog: { contextLength: null, caps: { tools: null, vision: null } },
     })
   })
 
@@ -394,7 +394,7 @@ describe('buildCatalogRows', () => {
       (r) => r.id === 'a',
     )!
     expect(row.override.contextLength).toBeUndefined()
-    expect(row.override.tools).toBeUndefined()
+    expect(row.override.caps).toEqual({})
     expect(row.contextLength).toBe(200_000)
   })
 
@@ -402,16 +402,16 @@ describe('buildCatalogRows', () => {
     const withTools = [model('a', { supported_parameters: ['tools'] })]
     const on = buildCatalogRows(withTools, config())
     expect(on[0].caps).toContain('tools')
-    expect(on[0].catalog.tools).toBe(true)
+    expect(on[0].catalog.caps.tools).toBe(true)
 
     const off = buildCatalogRows(
       withTools,
       config({ modelCapabilitiesByModel: { a: { tools: false } } }),
     )
     expect(off[0].caps).not.toContain('tools')
-    expect(off[0].override.tools).toBe(false)
+    expect(off[0].override.caps.tools).toBe(false)
     // 「不知道」与「人说不」是两件事:目录那一格照旧说 true。
-    expect(off[0].catalog.tools).toBe(true)
+    expect(off[0].catalog.caps.tools).toBe(true)
   })
 
   it('tools:true 能给目录没列 tools 的那一型补上', () => {
@@ -420,7 +420,101 @@ describe('buildCatalogRows', () => {
       config({ modelCapabilitiesByModel: { a: { tools: true } } }),
     )
     expect(rows.find((r) => r.id === 'a')!.caps).toContain('tools')
-    expect(rows.find((r) => r.id === 'a')!.catalog.tools).toBe(false)
+    expect(rows.find((r) => r.id === 'a')!.catalog.caps.tools).toBe(false)
+  })
+
+  /* ── 09-10:能力从一格开到五格 ─────────────────────────────────────────── */
+
+  it('五键各自覆盖优先 —— 每一键都能把目录那一句盖掉,而目录原话仍读得回来', () => {
+    const rich = [
+      model('a', {
+        architecture: {
+          modality: 'text',
+          input_modalities: ['text', 'image', 'pdf'],
+          output_modalities: ['text', 'image'],
+          tokenizer: 'x',
+        },
+        supported_parameters: ['tools', 'reasoning'],
+      }),
+    ]
+    // 目录说这五项全支持。
+    expect(buildCatalogRows(rich, config())[0].catalog.caps).toEqual({
+      vision: true,
+      tools: true,
+      reasoning: true,
+      imageOutput: true,
+      fileInput: true,
+    })
+
+    for (const [key, cap] of [
+      ['vision', 'vision'],
+      ['tools', 'tools'],
+      ['reasoning', 'reasoning'],
+      ['imageOutput', 'imageOut'],
+      ['fileInput', 'fileIn'],
+    ] as const) {
+      const off = buildCatalogRows(rich, config({ modelCapabilitiesByModel: { a: { [key]: false } } }))
+      expect(off[0].caps, key).not.toContain(cap)
+      expect(off[0].override.caps[key], key).toBe(false)
+      // 覆盖不吃掉目录原话 —— 屏幕上要说「自定:关闭 X(目录:支持)」。
+      expect(off[0].catalog.caps[key], key).toBe(true)
+      // 别的四位一个都没被动过。
+      expect(Object.keys(off[0].override.caps), key).toEqual([key])
+    }
+  })
+
+  it('能力串的顺序照 MODEL_CAPS —— 覆盖开出来的那一位也归位,不追加在末尾', () => {
+    const rows = buildCatalogRows(
+      [model('a', { architecture: { modality: 'text', input_modalities: ['text', 'audio'], output_modalities: ['text'], tokenizer: 'x' } })],
+      config({ modelCapabilitiesByModel: { a: { vision: true, tools: true } } }),
+    )
+    expect(rows[0].caps).toEqual(['vision', 'tools', 'audioIn'])
+  })
+
+  it('`fileIn` 从 input_modalities 推:`pdf` 与 `file` 两种说法都认(与引擎同一张表)', () => {
+    const modalities = (input: string[]) =>
+      capsOf(
+        model('m', {
+          architecture: {
+            modality: 'text',
+            input_modalities: input,
+            output_modalities: ['text'],
+            tokenizer: 'x',
+          },
+        }),
+      )
+    expect(modalities(['text', 'pdf'])).toContain('fileIn')
+    expect(modalities(['text', 'FILE'])).toContain('fileIn')
+    expect(modalities(['text', 'image'])).not.toContain('fileIn')
+  })
+
+  it('`catalog.caps` 三态:目录说支持 / 目录没列 / 手填行整张没填', () => {
+    const rows = buildCatalogRows(
+      [model('a', { supported_parameters: ['tools'] })],
+      config({ selectedModels: ['ghost'] }),
+    )
+    const listed = rows.find((r) => r.id === 'a')!
+    expect(listed.catalog.caps.tools).toBe(true)
+    // 目录条目里**没列**这一项 = 目录在说「不支持」,不是「没填」。
+    expect(listed.catalog.caps.vision).toBe(false)
+    // 手填行压根没有目录条目 —— 五格全 null。
+    expect(rows.find((r) => r.id === 'ghost')!.catalog.caps).toEqual({
+      vision: null,
+      tools: null,
+      reasoning: null,
+      imageOutput: null,
+      fileInput: null,
+    })
+  })
+
+  it('那张表里第六个键 `audio` 壳不读 —— 读了就得在屏幕上答一句,而没有那一格', () => {
+    const rows = buildCatalogRows(
+      models,
+      config({ modelCapabilitiesByModel: { a: { audio: true } } }),
+    )
+    const row = rows.find((r) => r.id === 'a')!
+    expect(row.override.caps).toEqual({})
+    expect(row.caps).not.toContain('audioIn')
   })
 
   it('0 / 负数 / 非数一律视为没覆盖(与引擎那条 `> 0` 同一把尺)', () => {
@@ -433,9 +527,10 @@ describe('buildCatalogRows', () => {
     }
   })
 
-  it('`tools` 只认布尔 —— 缺席是「没说过」,不是「不支持」', () => {
+  it('能力**只认布尔** —— 缺席是「没说过」,不是「不支持」', () => {
     const rows = buildCatalogRows(models, config({ modelCapabilitiesByModel: { a: {} } }))
-    expect(rows.find((r) => r.id === 'a')!.override.tools).toBeUndefined()
+    expect(rows.find((r) => r.id === 'a')!.override.caps.tools).toBeUndefined()
+    expect(rows.find((r) => r.id === 'a')!.override).toBe(NO_MODEL_OVERRIDE)
   })
 })
 

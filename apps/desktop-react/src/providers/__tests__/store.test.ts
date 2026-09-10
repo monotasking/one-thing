@@ -350,7 +350,9 @@ describe('setModelOverride', () => {
           contextLengthByModel: { 'claude-opus-5': 300_000, ghost: 200_000 },
           maxOutputByModel: { 'claude-opus-5': 32_768, ghost: 8_192 },
           modelCapabilitiesByModel: {
-            'claude-opus-5': { tools: false, vision: true },
+            // `audio` 是壳**没开写面**的那一键 —— 夹具里放着它,正是为了
+            // 让「没露过面的键一格不动」那条守得住。
+            'claude-opus-5': { tools: false, vision: true, audio: true },
             ghost: { tools: true },
           },
         },
@@ -383,7 +385,7 @@ describe('setModelOverride', () => {
     // 三张表各写各的:这一发只碰了一张。
     expect(config.contextLengthByModel).toEqual({ 'claude-opus-5': 300_000, ghost: 200_000 })
     expect(config.modelCapabilitiesByModel).toEqual({
-      'claude-opus-5': { tools: false, vision: true },
+      'claude-opus-5': { tools: false, vision: true, audio: true },
       ghost: { tools: true },
     })
   })
@@ -428,7 +430,7 @@ describe('setModelOverride', () => {
     })
     await useProviderSettings.getState().start()
     const flight = useProviderSettings.getState().setModelOverride('claude', 'ghost', {
-      tools: false,
+      caps: { tools: false },
     })
     await vi.waitFor(() =>
       expect([...settingsMutation.get().pendingKeys]).toEqual([
@@ -442,17 +444,107 @@ describe('setModelOverride', () => {
     expect(settingsMutation.get().pendingKeys.size).toBe(0)
   })
 
-  it('别的能力键(vision 等)一格不动 —— 这块面只开了 tools 一格', async () => {
+  it('这块面没露过面的键一格不动(今天是 `audio`)', async () => {
     const port = installPort({ readProviderSettings: vi.fn(async () => ({ success: true, ai: overridden() })) })
     await useProviderSettings.getState().start()
     await useProviderSettings.getState().setModelOverride('claude', 'claude-opus-5', {
-      tools: true,
+      caps: { tools: true },
     })
     const sent = vi.mocked(port.writeProviderSettings).mock.calls[0][0]
     expect(sent.ai.providers.claude.modelCapabilitiesByModel).toEqual({
-      'claude-opus-5': { tools: true, vision: true },
+      'claude-opus-5': { tools: true, vision: true, audio: true },
       ghost: { tools: true },
     })
+  })
+
+  /* ── 09-10:能力从一格开到五格 ─────────────────────────────────────────── */
+
+  it('写 vision:进 modelCapabilitiesByModel 的那一键,同条记录里 tools 一个字不动', async () => {
+    const port = installPort({ readProviderSettings: vi.fn(async () => ({ success: true, ai: overridden() })) })
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().setModelOverride('claude', 'ghost', {
+      caps: { vision: false },
+    })
+    const config = vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.providers.claude
+    expect(config.modelCapabilitiesByModel).toEqual({
+      'claude-opus-5': { tools: false, vision: true, audio: true },
+      ghost: { tools: true, vision: false },
+    })
+    // 两张数字表一格没碰。
+    expect(config.contextLengthByModel).toEqual({ 'claude-opus-5': 300_000, ghost: 200_000 })
+    expect(config.maxOutputByModel).toEqual({ 'claude-opus-5': 32_768, ghost: 8_192 })
+  })
+
+  it('清 vision 不动 tools —— 逐键三态,`null` 只删自己那一格', async () => {
+    const port = installPort({
+      readProviderSettings: vi.fn(async () => ({
+        success: true,
+        ai: {
+          provider: 'claude',
+          providers: {
+            claude: {
+              model: 'claude-opus-5',
+              selectedModels: ['claude-opus-5'],
+              modelCapabilitiesByModel: { 'claude-opus-5': { tools: false, vision: true } },
+            },
+          },
+          customProviders: [],
+        } as unknown as SpaceProviderSettings,
+      })),
+    })
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().setModelOverride('claude', 'claude-opus-5', {
+      caps: { vision: null },
+    })
+    const config = vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.providers.claude
+    expect(config.modelCapabilitiesByModel).toEqual({ 'claude-opus-5': { tools: false } })
+  })
+
+  it('五键一起清:这一型那条记录没了,整张表也跟着没了', async () => {
+    const port = installPort({
+      readProviderSettings: vi.fn(async () => ({
+        success: true,
+        ai: {
+          provider: 'claude',
+          providers: {
+            claude: {
+              model: 'claude-opus-5',
+              selectedModels: ['claude-opus-5'],
+              modelCapabilitiesByModel: {
+                'claude-opus-5': {
+                  tools: false,
+                  vision: true,
+                  reasoning: true,
+                  imageOutput: false,
+                  fileInput: true,
+                },
+              },
+            },
+          },
+          customProviders: [],
+        } as unknown as SpaceProviderSettings,
+      })),
+    })
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().setModelOverride('claude', 'claude-opus-5', {
+      caps: {
+        vision: null,
+        tools: null,
+        reasoning: null,
+        imageOutput: null,
+        fileInput: null,
+      },
+    })
+    const config = vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.providers.claude
+    // 留一个 `{}` 在盘上是一句「这一型被配置过」的假话 —— 按 Object.keys 数。
+    expect(Object.keys(config)).not.toContain('modelCapabilitiesByModel')
+  })
+
+  it('`caps` 是一张空表时一发都不发(空补丁的第二种形)', async () => {
+    const port = installPort()
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().setModelOverride('claude', 'ghost', { caps: {} })
+    expect(port.writeProviderSettings).not.toHaveBeenCalled()
   })
 
   it('清一格:那个键**从表里消失**,同表里别的模型留着', async () => {
@@ -484,7 +576,7 @@ describe('setModelOverride', () => {
     await useProviderSettings.getState().start()
     await useProviderSettings.getState().setModelOverride('claude', 'claude-opus-5', {
       contextLength: null,
-      tools: null,
+      caps: { tools: null },
     })
     const config = vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.providers.claude
     /*

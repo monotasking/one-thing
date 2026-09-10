@@ -6,7 +6,7 @@ import { useStageStore } from '../../../stage/store'
 import { FocusDispatchHarness } from '../../../test/focus-harness'
 import { ModelCatalog } from '../ModelCatalog'
 import { NO_CATALOG_FACTS, NO_MODEL_OVERRIDE } from '../../types'
-import type { CatalogRow } from '../../types'
+import type { CapabilityKey, CatalogRow, ModelOverride } from '../../types'
 
 /**
  * **逐型覆盖**(09-09,设计正本 `docs/model-override-proposal-2026-09-09.html`)。
@@ -25,6 +25,21 @@ beforeEach(() => {
   useStageStore.setState({ locale: 'zh' })
 })
 
+/** 一份覆盖。`caps` 恒在(某一项缺席 = 没说过),夹具里不必每处写一遍空表。 */
+function over(o: Partial<ModelOverride> = {}): ModelOverride {
+  return { caps: {}, ...o }
+}
+
+/**
+ * 目录说的那五项。**缺省全 false** —— 目录条目里没列这一项就是「目录说不支持」
+ * (与 `NO_CATALOG_FACTS` 的全 `null` = 手填行、目录没填这一型,是两件事)。
+ */
+function catalogCaps(
+  o: Partial<Record<CapabilityKey, boolean | null>> = {},
+): Record<CapabilityKey, boolean | null> {
+  return { vision: false, tools: false, reasoning: false, imageOutput: false, fileInput: false, ...o }
+}
+
 function row(id: string, over: Partial<CatalogRow> = {}): CatalogRow {
   return {
     id,
@@ -37,7 +52,7 @@ function row(id: string, over: Partial<CatalogRow> = {}): CatalogRow {
     price: { input: 3, output: 15 },
     manual: false,
     override: NO_MODEL_OVERRIDE,
-    catalog: { contextLength: 200_000, maxOutput: 32_768, tools: false },
+    catalog: { contextLength: 200_000, maxOutput: 32_768, caps: catalogCaps({ tools: false }) },
     ...over,
   }
 }
@@ -210,7 +225,7 @@ describe('上下文窗口那一格', () => {
 
   it('清空 = 删键', async () => {
     const onWriteOverride = vi.fn()
-    renderCatalog([row('a', { override: { contextLength: 200_000 } })], { onWriteOverride })
+    renderCatalog([row('a', { override: over({ contextLength: 200_000 }) })], { onWriteOverride })
     await openOverride('a')
     // 打开时读一次设置,回显的也是短写。
     expect(contextBox().value).toBe('200k')
@@ -278,7 +293,7 @@ describe('最大输出那一格', () => {
 
   it('清空 = 删键', async () => {
     const onWriteOverride = vi.fn()
-    renderCatalog([row('a', { override: { maxOutput: 8_192 } })], { onWriteOverride })
+    renderCatalog([row('a', { override: over({ maxOutput: 8_192 }) })], { onWriteOverride })
     await openOverride('a')
     expect(outBox().value).toBe('8192')
 
@@ -330,7 +345,7 @@ describe('最大输出那一格', () => {
   })
 
   it('人填过之后,提示行改口说「不再对半砍」', async () => {
-    renderCatalog([row('a', { maxOutput: 65_536, override: { maxOutput: 65_536 } })])
+    renderCatalog([row('a', { maxOutput: 65_536, override: over({ maxOutput: 65_536 }) })])
     await openOverride('a')
     expect(
       screen.getByText(`自定 ${(65_536).toLocaleString()};不再对半砍,只受模型上限夹。`),
@@ -339,7 +354,7 @@ describe('最大输出那一格', () => {
 
   it('两格各自提交,互不影响 —— 改上下文时 maxOutput 一个字不进补丁', async () => {
     const onWriteOverride = vi.fn()
-    renderCatalog([row('a', { override: { maxOutput: 8_192 } })], { onWriteOverride })
+    renderCatalog([row('a', { override: over({ maxOutput: 8_192 }) })], { onWriteOverride })
     await openOverride('a')
 
     fireEvent.change(contextBox(), { target: { value: '300k' } })
@@ -351,38 +366,110 @@ describe('最大输出那一格', () => {
   })
 })
 
-describe('工具调用那一格', () => {
-  it('点「关」写 tools:false', async () => {
+/* ══ 第四格:能力五行(09-10)═══════════════════════════════════════════ */
+
+/** 某一项那只分段器里的一格。五只同名三格,所以先按能力取组再在组里找。 */
+const capSeg = (key: CapabilityKey, name: string) =>
+  within(screen.getByTestId(`model-override-cap-${key}`)).getByRole('radio', { name })
+
+describe('能力那一组', () => {
+  it('五行都在,顺序照 MODEL_CAPS(视 工 推 出 文件),各带自己的名字', async () => {
+    renderCatalog([row('a')])
+    await openOverride('a')
+    const group = screen.getByTestId('model-override-caps')
+    const ids = [...group.querySelectorAll('[data-testid^="model-override-cap-"]')].map((el) =>
+      el.getAttribute('data-testid'),
+    )
+    expect(ids).toEqual([
+      'model-override-cap-vision',
+      'model-override-cap-tools',
+      'model-override-cap-reasoning',
+      'model-override-cap-imageOutput',
+      'model-override-cap-fileInput',
+    ])
+    // 每只分段器自己的名字 = 那一项的能力名(读屏软件靠它分得清五组)。
+    expect(screen.getByTestId('model-override-cap-vision').getAttribute('aria-label')).toBe(
+      '图像输入',
+    )
+    expect(screen.getByTestId('model-override-cap-fileInput').getAttribute('aria-label')).toBe(
+      '文件输入',
+    )
+  })
+
+  it('组是一只 role=group,名字与说明接在 Field 那一格上(五只分段器不各挂一份 id)', async () => {
+    renderCatalog([row('a')])
+    await openOverride('a')
+    const group = screen.getByTestId('model-override-caps')
+    expect(group.getAttribute('role')).toBe('group')
+    const labelId = group.getAttribute('aria-labelledby')
+    expect(labelId).toBeTruthy()
+    expect(document.getElementById(labelId!)?.textContent).toBe('能力')
+    const describedId = group.getAttribute('aria-describedby')
+    expect(document.getElementById(describedId!)?.textContent).toBe(
+      '关 = 这一型的请求不再带这项能力;开 = 目录说不支持也照发。',
+    )
+    // 全场**没有**第二个带同一个 id 的元素(五只分段器各自只有 aria-label)。
+    // 不用 `#id` 选择器:`useId` 造出来的 id 带冒号,jsdom 这一档没有 CSS.escape。
+    const sameId = [...document.querySelectorAll('[id]')].filter((el) => el.id === group.id)
+    expect(sameId).toHaveLength(1)
+  })
+
+  it('点「关」只写那一键 —— 别的四项一个字不进补丁', async () => {
     const onWriteOverride = vi.fn()
     renderCatalog([row('a')], { onWriteOverride })
     await openOverride('a')
 
-    fireEvent.click(screen.getByRole('radio', { name: '关' }))
-    expect(onWriteOverride).toHaveBeenCalledWith('a', { tools: false })
+    fireEvent.click(capSeg('vision', '关'))
+    expect(onWriteOverride).toHaveBeenCalledWith('a', { caps: { vision: false } })
+    expect(onWriteOverride).toHaveBeenCalledTimes(1)
   })
 
-  it('点回「跟目录」= 删键(inherit 不是第三种值)', async () => {
+  it('工具那一行还在,点「关」写的是 tools 这一键(它并进五行,没退役)', async () => {
     const onWriteOverride = vi.fn()
-    renderCatalog([row('a', { override: { tools: false } })], { onWriteOverride })
+    renderCatalog([row('a')], { onWriteOverride })
     await openOverride('a')
-    expect(screen.getByRole('radio', { name: '关' }).getAttribute('aria-checked')).toBe('true')
 
-    fireEvent.click(screen.getByRole('radio', { name: '跟目录' }))
-    expect(onWriteOverride).toHaveBeenCalledWith('a', { tools: null })
+    fireEvent.click(capSeg('tools', '关'))
+    expect(onWriteOverride).toHaveBeenCalledWith('a', { caps: { tools: false } })
   })
 
-  it('「跟目录」而目录没填时,提示说出「跟的是猜」—— 不藏', async () => {
+  it('点回「跟目录」= 删这一键(inherit 不是第三种值)', async () => {
+    const onWriteOverride = vi.fn()
+    renderCatalog([row('a', { override: over({ caps: { tools: false } }) })], { onWriteOverride })
+    await openOverride('a')
+    expect(capSeg('tools', '关').getAttribute('aria-checked')).toBe('true')
+    // 没被说过的那几行仍停在「跟目录」。
+    expect(capSeg('vision', '跟目录').getAttribute('aria-checked')).toBe('true')
+
+    fireEvent.click(capSeg('tools', '跟目录'))
+    expect(onWriteOverride).toHaveBeenCalledWith('a', { caps: { tools: null } })
+  })
+
+  it('每行右边那句小字说目录事实,三态各一句', async () => {
+    renderCatalog([
+      row('a', { catalog: { contextLength: null, maxOutput: null, caps: catalogCaps({ tools: true }) } }),
+    ])
+    await openOverride('a')
+    const body = within(screen.getByTestId('model-override'))
+    expect(body.getAllByText('目录:支持')).toHaveLength(1)
+    expect(body.getAllByText('目录:不支持')).toHaveLength(4)
+    expect(body.queryByText('目录:没填')).toBeNull()
+  })
+
+  it('手填行:五行都说「目录:没填」,而分段仍是三格(没填不等于不能覆盖)', async () => {
     renderCatalog([row('ghost', { manual: true, catalog: NO_CATALOG_FACTS })])
     await openOverride('ghost')
-    expect(screen.getByText('目录没填这一型;按名字判为「支持」。')).toBeTruthy()
+    const body = within(screen.getByTestId('model-override'))
+    expect(body.getAllByText('目录:没填')).toHaveLength(5)
+    expect(within(screen.getByTestId('model-override-cap-fileInput')).getAllByRole('radio')).toHaveLength(3)
   })
 })
 
 describe('恢复目录值', () => {
-  it('三个键一起删', async () => {
+  it('七个键一起删(两个数 + 五项能力)', async () => {
     const onWriteOverride = vi.fn()
     renderCatalog(
-      [row('a', { override: { contextLength: 300_000, maxOutput: 8_192, tools: false } })],
+      [row('a', { override: over({ contextLength: 300_000, maxOutput: 8_192, caps: { tools: false } }) })],
       { onWriteOverride },
     )
     await openOverride('a')
@@ -390,7 +477,13 @@ describe('恢复目录值', () => {
     expect(onWriteOverride).toHaveBeenCalledWith('a', {
       contextLength: null,
       maxOutput: null,
-      tools: null,
+      caps: {
+        vision: null,
+        tools: null,
+        reasoning: null,
+        imageOutput: null,
+        fileInput: null,
+      },
     })
     // 两个框都清空 —— 屏幕上不许留着一个已经被删掉的数。
     expect(contextBox().value).toBe('')
@@ -404,7 +497,7 @@ describe('恢复目录值', () => {
   })
 
   it('只有最大输出被人填过时,它照样可按(第三格也算覆盖)', async () => {
-    renderCatalog([row('a', { override: { maxOutput: 8_192 } })])
+    renderCatalog([row('a', { override: over({ maxOutput: 8_192 }) })])
     await openOverride('a')
     expect((screen.getByTestId('model-override-reset') as HTMLButtonElement).disabled).toBe(false)
   })
@@ -413,7 +506,7 @@ describe('恢复目录值', () => {
 describe('在写(pending 逐行)', () => {
   it('这一行的钮与浮层控件一起禁,而且写不出去', async () => {
     const onWriteOverride = vi.fn()
-    renderCatalog([row('a', { override: { contextLength: 300_000 } }), row('b')], {
+    renderCatalog([row('a', { override: over({ contextLength: 300_000 }) }), row('b')], {
       onWriteOverride,
       pendingModelIds: new Set(['a']),
     })
@@ -424,9 +517,9 @@ describe('在写(pending 逐行)', () => {
     expect((screen.getByTestId('configure-b') as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it('浮层开着时这一行忙起来:三件控件全禁,点了也不写', async () => {
+  it('浮层开着时这一行忙起来:七件控件全禁,点了也不写', async () => {
     const onWriteOverride = vi.fn()
-    const view = renderCatalog([row('a', { override: { contextLength: 300_000 } })], {
+    const view = renderCatalog([row('a', { override: over({ contextLength: 300_000 }) })], {
       onWriteOverride,
     })
     await openOverride('a')
@@ -436,7 +529,7 @@ describe('在写(pending 逐行)', () => {
         <FocusDispatchHarness />
         <ModelCatalog
           providerId="openrouter"
-          rows={[row('a', { override: { contextLength: 300_000 } })]}
+          rows={[row('a', { override: over({ contextLength: 300_000 }) })]}
           phase="ready"
           dataRev={1}
           refresh={undefined}
@@ -456,10 +549,13 @@ describe('在写(pending 逐行)', () => {
     )
 
     expect(contextBox().disabled).toBe(true)
-    expect((screen.getByRole('radio', { name: '关' }) as HTMLButtonElement).disabled).toBe(true)
+    // 五只分段器一只不落。
+    for (const key of ['vision', 'tools', 'reasoning', 'imageOutput', 'fileInput'] as const) {
+      expect((capSeg(key, '关') as HTMLButtonElement).disabled, key).toBe(true)
+    }
     expect((screen.getByTestId('model-override-reset') as HTMLButtonElement).disabled).toBe(true)
 
-    fireEvent.click(screen.getByRole('radio', { name: '关' }))
+    fireEvent.click(capSeg('tools', '关'))
     fireEvent.click(screen.getByTestId('model-override-reset'))
     expect(onWriteOverride).not.toHaveBeenCalled()
   })
@@ -469,7 +565,7 @@ describe('在写(pending 逐行)', () => {
 
 describe('行上的覆盖读数', () => {
   it('上下文格换笔迹(ovr)+ 悬停出目录原值,禁 native title=', async () => {
-    renderCatalog([row('a', { contextLength: 1_048_576, override: { contextLength: 1_048_576 } })])
+    renderCatalog([row('a', { contextLength: 1_048_576, override: over({ contextLength: 1_048_576 }) })])
     const cell = screen.getByTestId('ctx-a')
     expect(cell.className).toContain('ovr')
     expect(cell.getAttribute('title')).toBeNull()
@@ -487,7 +583,7 @@ describe('行上的覆盖读数', () => {
   })
 
   it('最大输出格同一手:换笔迹 + 悬停出目录原值,禁 native title=', async () => {
-    renderCatalog([row('a', { maxOutput: 8_192, override: { maxOutput: 8_192 } })])
+    renderCatalog([row('a', { maxOutput: 8_192, override: over({ maxOutput: 8_192 }) })])
     const cell = screen.getByTestId('out-a')
     expect(cell.className).toContain('ovr')
     expect(cell.getAttribute('title')).toBeNull()
@@ -502,7 +598,7 @@ describe('行上的覆盖读数', () => {
       row('ghost', {
         manual: true,
         maxOutput: 8_192,
-        override: { maxOutput: 8_192 },
+        override: over({ maxOutput: 8_192 }),
         catalog: NO_CATALOG_FACTS,
       }),
     ])
@@ -517,7 +613,7 @@ describe('行上的覆盖读数', () => {
       row('ghost', {
         manual: true,
         contextLength: 200_000,
-        override: { contextLength: 200_000 },
+        override: over({ contextLength: 200_000 }),
         catalog: NO_CATALOG_FACTS,
       }),
     ])
@@ -531,8 +627,8 @@ describe('行上的覆盖读数', () => {
     renderCatalog([
       row('a', {
         caps: [],
-        override: { tools: false },
-        catalog: { contextLength: 200_000, maxOutput: 32_768, tools: true },
+        override: over({ caps: { tools: false } }),
+        catalog: { contextLength: 200_000, maxOutput: 32_768, caps: catalogCaps({ tools: true }) },
       }),
     ])
     const wrench = screen.getByTestId('cap-tools')
@@ -541,11 +637,50 @@ describe('行上的覆盖读数', () => {
   })
 
   it('tools:true —— 目录没列它也画一枚,带虚线', () => {
-    renderCatalog([row('a', { caps: ['tools'], override: { tools: true } })])
+    renderCatalog([row('a', { caps: ['tools'], override: over({ caps: { tools: true } }) })])
     const wrench = screen.getByTestId('cap-tools')
     expect(wrench.className).toContain('ovr')
     expect(wrench.className).not.toContain('capOff')
     expect(wrench.getAttribute('aria-label')).toBe('自定:支持工具调用(目录:不支持)')
+  })
+
+  /* 09-10:这一手从工具一枚泛化到能覆盖的五枚,名字进句子里那一格。 */
+  it('vision:false —— 眼睛那一枚也画出来也划掉,名字换成「图像输入」', () => {
+    renderCatalog([
+      row('a', {
+        caps: [],
+        override: over({ caps: { vision: false } }),
+        catalog: { contextLength: 200_000, maxOutput: 32_768, caps: catalogCaps({ vision: true }) },
+      }),
+    ])
+    const eye = screen.getByTestId('cap-vision')
+    expect(eye.className).toContain('capOff')
+    expect(eye.getAttribute('aria-label')).toBe('自定:关闭图像输入(目录:支持)')
+  })
+
+  it('fileIn 那一枚(09-10 新)从 modalities 推,人开了也画得出来', () => {
+    renderCatalog([row('a', { caps: ['fileIn'] })])
+    expect(screen.getByTestId('cap-fileIn').getAttribute('aria-label')).toBe('文件输入')
+
+    renderCatalog([
+      row('ghost', {
+        manual: true,
+        caps: ['fileIn'],
+        override: over({ caps: { fileInput: true } }),
+        catalog: NO_CATALOG_FACTS,
+      }),
+    ])
+    const clips = screen.getAllByTestId('cap-fileIn')
+    const custom = clips[clips.length - 1]
+    expect(custom.className).toContain('ovr')
+    expect(custom.getAttribute('aria-label')).toBe('自定:支持文件输入(目录没填)')
+  })
+
+  it('`audioIn` 没有覆盖键 —— 它永远只听目录的,画不出虚线', () => {
+    renderCatalog([row('a', { caps: ['audioIn'], override: over({ caps: { vision: false } }) })])
+    const mic = screen.getByTestId('cap-audioIn')
+    expect(mic.className).not.toContain('ovr')
+    expect(mic.getAttribute('aria-label')).toBe('音频输入')
   })
 
   it('那道划痕真的画得出来 —— 伪元素画的,不是 text-decoration', () => {

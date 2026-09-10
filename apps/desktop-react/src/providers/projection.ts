@@ -5,8 +5,18 @@ import type {
   SpaceCredentialEntrySummary,
   SpaceProviderCredentialSummary,
 } from '@shared/ipc/spaces'
-import { NO_CATALOG_FACTS, NO_MODEL_OVERRIDE, OTHER_GROUP, UNKNOWN_CREDENTIALS } from './types'
+import {
+  CAPABILITY_KEYS,
+  CAP_OF_KEY,
+  MODEL_CAPS,
+  NO_CATALOG_FACTS,
+  NO_MODEL_OVERRIDE,
+  NO_OVERRIDE_CAPS,
+  OTHER_GROUP,
+  UNKNOWN_CREDENTIALS,
+} from './types'
 import type {
+  CapabilityKey,
   CatalogGroup,
   CatalogRow,
   CredentialFacts,
@@ -353,7 +363,14 @@ export function filterRailRows(
 
 /* ── 模型目录 ──────────────────────────────────────────────────────────── */
 
-/** 五格能力的判据。全部来自目录记录本身,一格都不猜。 */
+/**
+ * 六格能力的判据。全部来自目录记录本身,一格都不猜。
+ *
+ * `fileIn` 那一格(09-10 加)的判据抄的是引擎那条,**同一张表**:
+ * `runtime/src/providers/model-capability.ts` 的 `FILE_INPUT_MODALITIES`
+ * = `['pdf', 'file']`(models.dev 说 `pdf`,少数 OpenRouter 条目说 `file`)。
+ * 两处写的是同一件事 —— 那侧改了,这里跟着改一处。
+ */
 export function capsOf(model: OpenRouterModel): ModelCap[] {
   const input = model.architecture?.input_modalities ?? []
   const output = model.architecture?.output_modalities ?? []
@@ -363,9 +380,13 @@ export function capsOf(model: OpenRouterModel): ModelCap[] {
   if (params.includes('tools')) caps.push('tools')
   if (params.includes('reasoning')) caps.push('reasoning')
   if (output.includes('image')) caps.push('imageOut')
+  if (input.some((m) => FILE_INPUT_MODALITIES.includes(m.toLowerCase()))) caps.push('fileIn')
   if (input.includes('audio')) caps.push('audioIn')
   return caps
 }
+
+/** 「这一型收得下附件」在目录里的两种说法。产地见 `capsOf` 的注。 */
+const FILE_INPUT_MODALITIES = ['pdf', 'file']
 
 /** 正数才算数。0 / 负数 / 非有限数 = 这一格没填 = **不知道**。 */
 function positive(value: unknown): number | null {
@@ -431,36 +452,57 @@ export function formatPrice(value: number): string {
  *  · `maxOutputByModel[id]` —— 同一把尺。引擎
  *    `packages/core/engine/agent-loop-runtime.ts:819` 读它,**填了就直接当请求的
  *    max_tokens**(不再对半砍,只受模型物理上限夹);
- *  · `modelCapabilitiesByModel[id].tools` —— **只认布尔**。`undefined` 是「没说过」,
- *    `false` 是「人说不支持」,两者在屏幕上差得远(消失 vs 划掉)。
+ *  · `modelCapabilitiesByModel[id]` 的**五个能力键**(`CAPABILITY_KEYS`)——
+ *    每一键**只认布尔**。`undefined` 是「没说过」,`false` 是「人说不支持」,
+ *    两者在屏幕上差得远(消失 vs 划掉)。那张表里第六个键 `audio` 壳不开面,
+ *    所以这里连读都不读 —— 读了就得在屏幕上答一句,而今天没有那一格。
  *
  * 都没有就交回同一个冻结常量:每行现造一个 `{}` 会让行的引用每帧都变。
  */
 export function overrideOf(config: ProviderConfig | undefined, id: string): ModelOverride {
   const context = positive(config?.contextLengthByModel?.[id])
   const maxOutput = positive(config?.maxOutputByModel?.[id])
-  const tools = config?.modelCapabilitiesByModel?.[id]?.tools
-  const hasTools = typeof tools === 'boolean'
-  if (context === null && maxOutput === null && !hasTools) return NO_MODEL_OVERRIDE
+  const entry = config?.modelCapabilitiesByModel?.[id]
+  const caps: Partial<Record<CapabilityKey, boolean>> = {}
+  for (const key of CAPABILITY_KEYS) {
+    const value = entry?.[key]
+    if (typeof value === 'boolean') caps[key] = value
+  }
+  const hasCaps = Object.keys(caps).length > 0
+  if (context === null && maxOutput === null && !hasCaps) return NO_MODEL_OVERRIDE
   return {
     ...(context !== null ? { contextLength: context } : {}),
     ...(maxOutput !== null ? { maxOutput } : {}),
-    ...(hasTools ? { tools } : {}),
+    caps: hasCaps ? caps : NO_OVERRIDE_CAPS,
   }
 }
 
 /**
- * 能力串里 tools 那一位的**生效值**:`override.tools ?? 目录说的`。
+ * 能力串的**生效值**:逐键 `override.caps[key] ?? 目录说的`。
  *
- * 覆盖成 `false` 时这一串里**不含** tools —— `caps` 是「这一型此刻支持什么」,
- * 关掉了就是不支持。行上那枚划掉的扳手不从这里来,它从 `override.tools === false`
+ * 覆盖成 `false` 时这一串里**不含**那一位 —— `caps` 是「这一型此刻支持什么」,
+ * 关掉了就是不支持。行上那枚划掉的图标不从这里来,它从 `override.caps[key] === false`
  * 来(「不知道」画不出来,「人说不」才画得出来)。两件事分开,是因为它们回答的
  * 是两个问题:能力串答「支持吗」,覆盖答「谁说的」。
+ *
+ * 交出去的顺序照 `MODEL_CAPS`(不是「原样保留再往末尾追加」):同一串在两处
+ * 被读,顺序漂开就是两份事实。`audioIn` 没有覆盖键,所以它永远只听目录的。
  */
 function capsWithOverride(base: readonly ModelCap[], override: ModelOverride): ModelCap[] {
-  if (override.tools === undefined) return [...base]
-  const rest = base.filter((cap) => cap !== 'tools')
-  return override.tools ? [...rest, 'tools'] : rest
+  const forced = new Map<ModelCap, boolean>()
+  for (const key of CAPABILITY_KEYS) {
+    const value = override.caps[key]
+    if (typeof value === 'boolean') forced.set(CAP_OF_KEY[key], value)
+  }
+  if (forced.size === 0) return MODEL_CAPS.filter((cap) => base.includes(cap))
+  return MODEL_CAPS.filter((cap) => forced.get(cap) ?? base.includes(cap))
+}
+
+/** 目录自己那五句(未经覆盖)。目录行一律是布尔;手填行走 `NO_CATALOG_FACTS`。 */
+function catalogCapsOf(base: readonly ModelCap[]): Record<CapabilityKey, boolean | null> {
+  const caps = {} as Record<CapabilityKey, boolean | null>
+  for (const key of CAPABILITY_KEYS) caps[key] = base.includes(CAP_OF_KEY[key])
+  return caps
 }
 
 /**
@@ -494,7 +536,7 @@ export function buildCatalogRows(
       catalog: {
         contextLength: contextOf(model),
         maxOutput: maxOutputOf(model),
-        tools: baseCaps.includes('tools'),
+        caps: catalogCapsOf(baseCaps),
       },
     }
   })
@@ -518,7 +560,7 @@ export function buildCatalogRows(
         // 「勾了但目录不认识」= 手填。这不是另一份存储,是同一个事实的名字。
         manual: true,
         override,
-        // 目录不认识它,所以目录**什么都没说过** —— 三格都是 null,不是 0/false。
+        // 目录不认识它,所以目录**什么都没说过** —— 每一格都是 null,不是 0/false。
         catalog: NO_CATALOG_FACTS,
       }
     })

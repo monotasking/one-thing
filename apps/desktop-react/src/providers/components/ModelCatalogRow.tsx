@@ -3,13 +3,13 @@ import { Button } from '../../ui/Button'
 import { Checkbox } from '../../ui/Checkbox'
 import { IconButton } from '../../ui/IconButton'
 import { Tooltip } from '../../ui/Tooltip'
-import { Brain, Image, ImagePlus, Mic, SlidersHorizontal, Wrench, X } from '../../components/icons'
-import type { LucideIcon } from '../../components/icons'
+import { SlidersHorizontal, X } from '../../components/icons'
 import type { MessageKey, TFn } from '../../i18n'
 import { formatQuantity } from '../../format/quantity'
 import { formatPrice } from '../projection'
-import { CATALOG_CONTEXT_FALLBACK, MODEL_CAPS } from '../types'
-import type { CatalogRow, ModelCap, ModelOverridePatch } from '../types'
+import { CAPABILITY_KEYS, CAP_OF_KEY, CATALOG_CONTEXT_FALLBACK, MODEL_CAPS } from '../types'
+import type { CapabilityKey, CatalogRow, ModelCap, ModelOverridePatch } from '../types'
+import { CAP_ICONS, CAP_LABELS } from './model-capability-icons'
 import { ModelOverridePopover } from './ModelOverridePopover'
 import s from './ModelCatalog.module.css'
 
@@ -30,10 +30,11 @@ import s from './ModelCatalog.module.css'
  *             没折叠),所以这件的卸载是常态而不是异常。无订阅、无计时器、
  *             无模块级副作用 → 不需要 HMR dispose。
  *   UI 生命状态:每一格都可能是「不知道」—— 目录没填就画破折号,不画 0、
- *             不画「免费」;能力一项都没有画破折号而不是五个灰图标
+ *             不画「免费」;能力一项都没有画破折号而不是六个灰图标
  *             (不知道 ≠ 都不支持);手填的行标出来(它的容量是**没人给过**的)。
  *             **第四种读数(09-09):人填的**——上下文格与最大输出格换笔迹
- *             (虚线下划)+ 悬停出目录原值;工具那一枚被关掉时**画出来但划掉**。
+ *             (虚线下划)+ 悬停出目录原值;被关掉的那一枚能力**画出来但划掉**
+ *             (09-10:从工具一枚泛化到能覆盖的五枚)。
  *             三者不能混:破折号 = 不知道,正常读数 = 目录说的,虚线 = 人说的。
  *   UI 交互状态:rest / hover(行底,CSS 画)/ focus(勾选框与三颗钮各自的
  *             全局焦点环)/ **pending 逐行**(只禁这一行,别的行一个都不许动)/
@@ -49,22 +50,15 @@ import s from './ModelCatalog.module.css'
  * 的宽下限(用户报障「对齐」:同一列上下相邻的两颗药丸左边线对不上)。
  */
 
-/** 能力 → 图标 + 全名。**字母缩写退役** —— 「V T R」谁都读不懂(08-31 报障)。 */
-const CAP_ICONS: Record<ModelCap, LucideIcon> = {
-  vision: Image,
-  tools: Wrench,
-  reasoning: Brain,
-  imageOut: ImagePlus,
-  audioIn: Mic,
-}
+/*
+ * 能力 → 图标 + 全名的那张表 09-10 出文件到 `./model-capability-icons`:
+ * 覆盖浮层的「能力」五行是它的第二个读者,两处必须是同一枚图标同一个名字。
+ */
 
-const CAP_LABELS: Record<ModelCap, MessageKey> = {
-  vision: 'providers.capVision',
-  tools: 'providers.capTools',
-  reasoning: 'providers.capReasoning',
-  imageOut: 'providers.capImageOut',
-  audioIn: 'providers.capAudioIn',
-}
+/** 能力图标位 → 它的覆盖键(没有覆盖键的那一位答 undefined,如 `audioIn`)。 */
+const KEY_OF_CAP: Partial<Record<ModelCap, CapabilityKey>> = Object.fromEntries(
+  CAPABILITY_KEYS.map((key) => [CAP_OF_KEY[key], key]),
+)
 
 /**
  * 一枚能力图标。**图标 + 悬停出全名** —— 图标自己说不出「图像输入」四个字,
@@ -85,7 +79,7 @@ function CapIcon({ cap, label, skin }: { cap: ModelCap; label: string; skin?: st
   const Icon = CAP_ICONS[cap]
   return (
     <Tooltip content={label}>
-      {/* **不进 Tab 序**:一行五枚、一屏几十行,把它们都变成落焦点就等于
+      {/* **不进 Tab 序**:一行六枚、一屏几十行,把它们都变成落焦点就等于
           把键盘走一遍这张表的成本乘以六。名字给读屏的人靠 aria-label,
           那一路本来就不需要焦点。 */}
       <span
@@ -101,35 +95,40 @@ function CapIcon({ cap, label, skin }: { cap: ModelCap; label: string; skin?: st
 }
 
 /**
- * 工具那一枚被**人**说过话时,它的名字(= aria-label = Tooltip 一句话)。
- * 六句整话:自定开 / 自定关 × 目录支持 / 目录不支持 / 目录没填。
- * 拼装不得 —— 「目录:支持」在英文里是 `catalog says yes`,语序与括号都不同。
+ * 一枚被**人**说过话的能力,它的名字(= aria-label = Tooltip 一句话)。
+ * 六句整话:自定开 / 自定关 × 目录支持 / 目录不支持 / 目录没填,能力名走 `{cap}`。
+ *
+ * 句子整着,只有**能力名**是变量 —— 「目录:支持」在英文里是另一套语序与括号,
+ * 拼装等于换一门语言就赌一次;而能力名在两门语言里都只是句中的一个名词短语,
+ * 它是这六句里唯一能安全变的那一格(09-10 从 tools 专用泛化到五项时的判据)。
  */
-function toolsOverrideTipKey(custom: boolean, catalog: boolean | null): MessageKey {
+function capOverrideTipKey(custom: boolean, catalog: boolean | null): MessageKey {
   if (custom) {
-    if (catalog === null) return 'providers.overrideToolsOnTipUnknown'
-    return catalog
-      ? 'providers.overrideToolsOnTipCatalogOn'
-      : 'providers.overrideToolsOnTipCatalogOff'
+    if (catalog === null) return 'providers.overrideCapOnTipUnknown'
+    return catalog ? 'providers.overrideCapOnTipCatalogOn' : 'providers.overrideCapOnTipCatalogOff'
   }
-  if (catalog === null) return 'providers.overrideToolsOffTipUnknown'
-  return catalog
-    ? 'providers.overrideToolsOffTipCatalogOn'
-    : 'providers.overrideToolsOffTipCatalogOff'
+  if (catalog === null) return 'providers.overrideCapOffTipUnknown'
+  return catalog ? 'providers.overrideCapOffTipCatalogOn' : 'providers.overrideCapOffTipCatalogOff'
 }
 
 /**
- * 这一行的能力串**画哪几枚**。与 `row.caps` 差的只有一格:`override.tools === false`
- * 时 tools 不在 `caps` 里(它此刻真的不支持),但那一位仍要**画一枚划掉的扳手**
- * —— 「消失」是不知道,「划掉」是人说不。顺序仍照 `MODEL_CAPS`,一行五枚
- * 从同一条竖线起笔。
+ * 这一行的能力串**画哪几枚**。与 `row.caps` 差的只有被关掉的那些:
+ * `override.caps[key] === false` 时那一位不在 `caps` 里(它此刻真的不支持),
+ * 但仍要**画一枚划掉的图标** —— 「消失」是不知道,「划掉」是人说不。
+ * 顺序仍照 `MODEL_CAPS`,一行六枚从同一条竖线起笔。
  */
 function capsDrawnOf(row: CatalogRow): ModelCap[] {
-  return MODEL_CAPS.filter((cap) =>
-    cap === 'tools'
-      ? row.caps.includes('tools') || row.override.tools === false
-      : row.caps.includes(cap),
-  )
+  return MODEL_CAPS.filter((cap) => {
+    if (row.caps.includes(cap)) return true
+    const key = KEY_OF_CAP[cap]
+    return key !== undefined && row.override.caps[key] === false
+  })
+}
+
+/** 这一枚上人说过什么。`undefined` = 没说过(照目录画);`audioIn` 恒 undefined。 */
+function overrideOnCap(row: CatalogRow, cap: ModelCap): boolean | undefined {
+  const key = KEY_OF_CAP[cap]
+  return key === undefined ? undefined : row.override.caps[key]
 }
 
 export function ModelCatalogRow({
@@ -232,14 +231,18 @@ export function ModelCatalogRow({
           <span className={s.capNone}>{t('providers.unknownValue')}</span>
         ) : (
           capsDrawn.map((cap) => {
-            // 工具那一位被人说过话时换名字换皮肤;别的四位一个字不动。
-            const custom = cap === 'tools' ? row.override.tools : undefined
-            if (custom === undefined) return <CapIcon key={cap} cap={cap} label={t(CAP_LABELS[cap])} />
+            // 被人说过话的那几位换名字换皮肤;没被说过的一个字不动。
+            const custom = overrideOnCap(row, cap)
+            const name = t(CAP_LABELS[cap])
+            if (custom === undefined) return <CapIcon key={cap} cap={cap} label={name} />
+            const key = KEY_OF_CAP[cap]
             return (
               <CapIcon
                 key={cap}
                 cap={cap}
-                label={t(toolsOverrideTipKey(custom, row.catalog.tools))}
+                label={t(capOverrideTipKey(custom, key ? row.catalog.caps[key] : null), {
+                  cap: name,
+                })}
                 skin={custom ? s.ovr : `${s.ovr} ${s.capOff}`}
               />
             )
