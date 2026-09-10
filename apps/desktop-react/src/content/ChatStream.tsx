@@ -5,6 +5,7 @@ import {
   measureScrollAnchor,
   readSessionScrollAnchor,
   saveSessionScrollAnchor,
+  type ScrollAnchor,
 } from '../data/session-view-state'
 import { sessionRefIdOf } from './session-ref'
 import type { OverlayEntry, ProjectedMessage } from '../data/chat-fold'
@@ -24,6 +25,7 @@ import { FocusScope } from '../focus/FocusScope'
 import { Dots } from '../ui/Dots'
 import { FollowPill } from './FollowPill'
 import {
+  AT_BOTTOM_EPS,
   FOLLOW_PINNED,
   followShouldStick,
   reduceFollow,
@@ -34,6 +36,16 @@ import s from './ChatStream.module.css'
 
 const ClipIcon = resolveIcon('Paperclip')
 const RetryIcon = resolveIcon('RotateCcw')
+
+/**
+ * 进场落回锚点之后**最多再对几轮**(2026-09-10)。
+ *
+ * 它不是一段时长(所以不进 `components/motion.ts` 那张时长镜像表),是一个
+ * **轮数上限**:一轮 = 一次尺寸变化回调,也就是「又有一批跳渲的行渲出了真高」。
+ * 六轮是「有界」这件事的落点 —— 停不下来就说明有别的东西在改排版,那时候老实
+ * 停手比跟着跑一辈子好。判词全文在下面那只 ResizeObserver 的落位分支里。
+ */
+const ANCHOR_RESETTLE_ROUNDS = 6
 
 interface Props {
   /**
@@ -255,6 +267,8 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
  * ② **落底要熬过内容自己长高**。代码高亮(shiki)与图(mermaid)是异步渲染的,
  *    落完之后那些块会把页面撑高几百像素。所以盯着**内容那一层**的高度变化
  *    (ResizeObserver),长高一次就再落一次 —— 流式跟底吃的是同一只观察者。
+ *    **2026-09-10 起它是跟底的唯一产地**(从前还有一只「每一次提交都贴底」的
+ *    无依赖 layout effect 在旁边顶着,那笔 834ms 的账见下面那段病历)。
  * ③ **没有计时器、没有「这一下是我自己滚的」标志位**(判据的全文写在 follow.ts
  *    的文件头)。我们自己落底那几下正正好在底,人往上翻才会离底。
  *
@@ -281,6 +295,14 @@ function useFollowBottom(
    */
   const followRef = useRef<FollowState>(FOLLOW_PINNED)
 
+  /*
+   * 「此刻树上有没有东西」的镜像。**它只有一个读者**:进场那一下要不要落底
+   * (空树时没有底可落)。写在渲染期而不是进依赖表 —— 进了依赖表就等于让
+   * 「消息变了」重跑一次进场,而那正是本批拆掉的那种耦合。
+   */
+  const messageCountRef = useRef(0)
+  messageCountRef.current = messages.length
+
   const dispatch = useCallback((event: FollowEvent) => {
     const next = reduceFollow(followRef.current, event)
     // 纯函数在「什么都没改」时返回同一个对象 —— 流式每帧那一次 `grew` 于是白送。
@@ -289,12 +311,34 @@ function useFollowBottom(
     setFollow(next)
   }, [])
 
-  /** 贴底。**唯一**一处写 `scrollTop`,三个调用点都经它。 */
+  /** 贴底。**唯一**一处写 `scrollTop`,三个调用点(进场 / 长高 / 点丸)都经它。 */
   const stick = useCallback(() => {
     const el = scrollRef?.current
     if (!el) return
     el.scrollTop = el.scrollHeight
   }, [scrollRef])
+
+  /** 「下面还有多少没露脸」。判据与 `follow.ts` 的 `scrolled` 用的是同一个式子。 */
+  const readGap = useCallback(() => {
+    const el = scrollRef?.current
+    if (!el) return 0
+    return el.scrollHeight - el.clientHeight - el.scrollTop
+  }, [scrollRef])
+
+  /**
+   * 上一次量到的 gap。**它的唯一用途是回答「刚长出来的那一截在不在视口下面」**
+   * (判词全文在下面那只 ResizeObserver 的注里):长在视口**上面**的内容会被
+   * 浏览器的滚动锚定(scroll anchoring)顶回去,gap 不变;长在下面的才让 gap 变大。
+   * 三个写点:进场落定、滚动停下、RO 回调 —— 也就是 gap 会变的全部三条路。
+   */
+  const lastGapRef = useRef(0)
+
+  /**
+   * **进场落回锚点还没落稳的那一格**(2026-09-10)。在场 = 「这一批尺寸变化说的是
+   * 跳渲的行渲出了真高,不是下面长出了东西」;`left` 是还能再对几轮(有界)。
+   * 立它的是进场那只 layout effect,消它的是下面那只观察者(或者换会话)。
+   */
+  const restoreRef = useRef<{ anchor: ScrollAnchor; left: number } | undefined>(undefined)
 
   /*
    * 「看到哪儿」的写点 —— **尾随去抖**(C1 · §5.2;判词在下面那只进场 effect 里)。
@@ -357,11 +401,43 @@ function useFollowBottom(
   useLayoutEffect(() => {
     dispatch({ type: 'enter' })
     const el = scrollRef?.current
+    /** 落定一次:把「此刻离底多远」交给状态机、记进 gap 基准、把锚点记一笔。 */
+    const settle = (container: HTMLElement) => {
+      const gap = container.scrollHeight - container.clientHeight - container.scrollTop
+      dispatch({ type: 'scrolled', gap })
+      lastGapRef.current = gap
+      // 落成了 —— 此刻量到的就是真的,当场记一笔,不等这条会话被人再滚一次。
+      saveSessionScrollAnchor(sessionId, measureScrollAnchor(container))
+    }
     const anchor = readSessionScrollAnchor(sessionId)
     if (el && anchor && anchor !== 'bottom' && applyScrollAnchor(el, anchor)) {
-      dispatch({ type: 'scrolled', gap: el.scrollHeight - el.clientHeight - el.scrollTop })
-      // 落成了 —— 此刻量到的就是真的,当场记一笔,不等这条会话被人再滚一次。
-      saveSessionScrollAnchor(sessionId, measureScrollAnchor(el))
+      settle(el)
+      /*
+       * ── 落完还要再对(2026-09-10,`content-visibility: auto` 的直接后果)──────
+       * 消息行现在是**跳渲**的:没进过视口的那些行占的是 `--msg-intrinsic-h` 那个
+       * 估高的位。于是这一下算出来的落点是「按估高摆出来的那张排版」里的落点 ——
+       * 赋完 `scrollTop`,锚点那一行连同它周围几行当场渲出真高,那张排版就变了,
+       * 锚点行跟着漂。真机读数:190 轮的会话上漂掉整整一条消息(切回来停在上一条
+       * 回答的中间,离原位 188px)。
+       *
+       * 所以这里只**立一格「还没落稳」**,真正再对由下面那只 ResizeObserver 做 ——
+       * 「跳渲的行渲出真高了」这件事在浏览器那一侧的唯一表现就是**尺寸变了**,
+       * 而那正是观察者的定义。不排 `requestAnimationFrame`:帧不是判据(离屏窗口
+       * 里它还可能压根不来),而「排一帧再看看」与「变了就再对一次」相比,前者
+       * 既可能来早(还没渲完)也可能来晚。
+       */
+      restoreRef.current = { anchor, left: ANCHOR_RESETTLE_ROUNDS }
+    } else if (el && messageCountRef.current > 0 && followShouldStick(followRef.current)) {
+      /*
+       * ── 进场落底(2026-09-10 从「每一次提交都贴底」那条 effect 手里接过来)──
+       * 缺省进场就是 pinned,这里当场落一次底。**这一次是不可避免的**:树刚挂上,
+       * 谁都还不知道它有多高,读 `scrollHeight` 必然逼出一次排版 —— 本单不治它,
+       * 治的是「每一次提交都再逼一次」(见下面那段病历)。
+       * **空树不落**:此刻 `scrollHeight` 就是视口高,落了等于什么都没做,而
+       * 冷载入那条路上消息到齐会让内容列长高 —— 那一发由下面那只观察者接住。
+       */
+      stick()
+      lastGapRef.current = readGap()
     }
     /*
      * 收在**进场那一刻的那个节点**上,不在 cleanup 里重读 `ref.current`。
@@ -378,26 +454,56 @@ function useFollowBottom(
         window.clearTimeout(anchorTimer.current)
         anchorTimer.current = undefined
       }
+      // 还没落稳的那一格同理:它闭包着上一条会话的锚点。
+      restoreRef.current = undefined
       if (el) saveSessionScrollAnchor(sessionId, measureScrollAnchor(el))
     }
-  }, [sessionId, dispatch, scrollRef])
+  }, [sessionId, dispatch, scrollRef, stick, readGap])
 
   /*
-   * 每一次提交:pinned 就贴底。
+   * ── 贴底的产地只有两处(2026-09-10 换轨)──────────────────────────────────
    *
-   * **没有依赖数组**是有意的 —— 「内容变了」在 React 这一侧的全部表现就是「又提交了
-   * 一次」,列个依赖数组等于挑几样东西代表它,而挑漏的那一样就是一次跟不住。
-   * 空树时不落:此刻 `scrollHeight` 就是视口高,落了等于什么都没做。
+   * **这里从前还有第三处**:一只**没有依赖数组**的 layout effect,判词写着
+   * 「每一次提交:pinned 就贴底 —— 『内容变了』在 React 这一侧的全部表现就是
+   * 『又提交了一次』」。那句话作为**判据**没错,作为**做法**是这块壳最贵的一笔:
+   * `stick()` 要读 `scrollHeight`,而 layout 相位刚改完 DOM,那一读就是一次
+   * **整棵树的强制排版**。真机 CPU profile(388 条消息 / 37,470 节点 / 269,803px,
+   * 隔离 store 两条真会话):
+   *   · 切回一条已在池里的会话,click 同步 JS **1027ms**,其中 `stick()` 自调
+   *     **834ms**,调用链 `commitLayoutEffects → ChatStream.tsx:392 → stick`;
+   *   · 开一个文件把聊天栏挤窄:76ms,其中 64ms 是同一只 `stick`;
+   *   · 流式期间**每一段 delta 一次提交 = 一次 stick = 一次全树排版**
+   *     (09-03「切会话卡死」同族的病)。
+   *
+   * 换轨之后「跟底」照旧,只是判据从「React 又提交了一次」换成**几何自己变了**:
+   *   ① **进场** —— 上面那只 layout effect,pinned 时落一次底(树刚挂上,这一次
+   *      排版躲不掉);
+   *   ② **长高 / 变矮** —— 下面这只 ResizeObserver。
+   * 流式跟底走的是 ②:一段 delta 让内容列长高 → RO → pinned 就贴底。**它不经过
+   * React**,所以「提交了几次」与「贴了几次底」从此是两个数 —— 这正是本单要的。
    */
-  useLayoutEffect(() => {
-    if (messages.length === 0) return
-    if (followShouldStick(followRef.current)) stick()
-  })
 
   /*
    * 纪律 ② 的落点:内容自己长高(异步高亮 / 图 / 流式 delta 的重排)不一定经过
    * React 的提交,所以盯 DOM。**只认长高**:收起一段思考、删一条消息都会让高度变小,
    * 那不是「下面长出了没看见的东西」,不该点亮丸。
+   *
+   * ── 盯两只,各回答一个问题(2026-09-10)──────────────────────────────────
+   * 「在底」这句话是 `scrollHeight − clientHeight − scrollTop ≤ EPS`,右边有**两个**
+   * 会变的量,所以只盯内容列会漏掉一半:
+   *   · **内容列**(`.column`)长高 → `scrollHeight` 变大 → 要跟。
+   *   · **滚动容器**(`.scroll`)变矮 → `clientHeight` 变小,`scrollTop` 一动不动,
+   *     于是**当场离底**,而且**不会发滚动事件**,谁都不知道。真机上它天天发生:
+   *     输入框多打一行就长高一截(`--composer-h`),拼舞台 / 开查看器会把聊天栏
+   *     挤矮。从前是那只「每次提交都贴底」的 effect 顺手盖住了它(容器变矮几乎
+   *     总伴随一次 React 提交),它一走这一格就露出来 —— 所以补的不是一条新机制,
+   *     是把它原本靠别人代劳的那一半接过来。
+   * 不用 `window` 的 `resize` 事件:它只说得出「窗子变了」,而上面那三个产地
+   * (输入框长高 / 拼舞台 / 开查看器)一个都不改窗子的尺寸。同一只观察者盯两个
+   * 目标,浏览器把这一批变化攒成一次回调,代价与从前一只时相同。
+   *
+   * **容器变矮不派 `grew`**:什么都没长出来,只是能看见的少了。派了的话人在上面
+   * 浏览时打一行字就会点亮丸,而下面并没有他没看过的东西。
    */
   const lastHeightRef = useRef(0)
   useLayoutEffect(() => {
@@ -407,15 +513,68 @@ function useFollowBottom(
     const column = el.firstElementChild
     if (!column) return
     lastHeightRef.current = column.getBoundingClientRect().height
+    lastGapRef.current = el.scrollHeight - el.clientHeight - el.scrollTop
     const observer = new ResizeObserver((entries) => {
-      const height = entries[0]?.contentRect.height ?? column.getBoundingClientRect().height
-      const grew = height > lastHeightRef.current
-      lastHeightRef.current = height
-      if (!grew) return
-      dispatch({ type: 'grew' })
-      if (followShouldStick(followRef.current)) stick()
+      let contentGrew = false
+      let containerChanged = false
+      for (const entry of entries) {
+        if (entry.target === el) {
+          containerChanged = true
+          continue
+        }
+        const height = entry.contentRect.height || column.getBoundingClientRect().height
+        if (height > lastHeightRef.current) contentGrew = true
+        lastHeightRef.current = height
+      }
+      /*
+       * ── 落位还没稳:这一批变化说的是「跳渲的行渲出真高了」──────────────────
+       * 所以照 `applyScrollAnchor` 再对一次,而不是问「要不要跟底」「要不要点亮丸」
+       * —— 那两个问题此刻问的都是一张还没定下来的排版。有界(`left`),而且
+       * **位置不再动就当场收手**:再对一次没有把 `scrollTop` 挪动超过一个
+       * `AT_BOTTOM_EPS`,说明这张排版已经稳了。
+       */
+      const restoring = restoreRef.current
+      if (restoring) {
+        restoring.left -= 1
+        const before = el.scrollTop
+        const landed =
+          !applyScrollAnchor(el, restoring.anchor) ||
+          Math.abs(el.scrollTop - before) <= AT_BOTTOM_EPS ||
+          restoring.left <= 0
+        if (landed) {
+          restoreRef.current = undefined
+          saveSessionScrollAnchor(sessionId, measureScrollAnchor(el))
+        }
+        lastGapRef.current = el.scrollHeight - el.clientHeight - el.scrollTop
+        return
+      }
+      if (!contentGrew && !containerChanged) return
+      /*
+       * ── 长出来的那一截在视口下面吗(2026-09-10,`content-visibility` 的第二个
+       *    后果)────────────────────────────────────────────────────────────
+       * 消息行跳渲之后,**往上翻**这个动作本身就会让内容列的高度变来变去:
+       * 一条没进过视口的消息第一次渲出来,高度从 `--msg-intrinsic-h` 那个估高
+       * 换成真高。照旧无条件派 `grew` 的话,人在一条**早就收了场**的会话里往上
+       * 翻两屏,丸就会跳出来说「回到最新」—— 下面根本没有他没看过的东西。
+       *
+       * 判据因此收窄一格:**gap 变大了才算**。长在视口上面的内容会被浏览器的
+       * 滚动锚定顶回去(`scrollTop` 跟着加,gap 不变),长在下面的才让 gap 变大。
+       * 这一格只管**丸**;贴底那一半一个字没动(pinned 时任何长高都跟)。
+       * 顺带把从前那条「异步高亮把上面某段撑高 → 丸亮起来」也治了,那本来也是
+       * 同一种谎。
+       */
+      const gap = el.scrollHeight - el.clientHeight - el.scrollTop
+      const grewBelow = gap - lastGapRef.current > AT_BOTTOM_EPS
+      if (followShouldStick(followRef.current)) {
+        stick()
+        lastGapRef.current = el.scrollHeight - el.clientHeight - el.scrollTop
+        return
+      }
+      lastGapRef.current = gap
+      if (contentGrew && grewBelow) dispatch({ type: 'grew' })
     })
     observer.observe(column)
+    observer.observe(el)
     return () => observer.disconnect()
   }, [scrollRef, sessionId, dispatch, stick])
 
@@ -470,7 +629,13 @@ function useFollowBottom(
    */
   const onScrollWithFollow = useCallback(() => {
     const el = scrollRef?.current
-    if (el) dispatch({ type: 'scrolled', gap: el.scrollHeight - el.clientHeight - el.scrollTop })
+    if (el) {
+      const gap = el.scrollHeight - el.clientHeight - el.scrollTop
+      // gap 会变的三条路之一(另两条是进场落定与 RO)—— 基准跟着走,
+      // 否则「往上翻两屏」会被下一次 RO 读成一次「下面长出了东西」。
+      lastGapRef.current = gap
+      dispatch({ type: 'scrolled', gap })
+    }
     // 停稳之后记一笔「看到哪儿」——这里只重排计时器,量在停下来那一下(见上)。
     scheduleAnchorSave()
     onScroll?.()

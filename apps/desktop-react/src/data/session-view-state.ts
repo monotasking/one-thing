@@ -172,6 +172,14 @@ export function measureScrollAnchor(container: HTMLElement): ScrollAnchor | unde
  *
  * 直接赋 `scrollTop`,不用 `scrollTo({behavior:'smooth'})`:**定位不是动效**
  * (动效档「无」下它照样得工作),这条与 `ChatStream` 里落底那一手同源。
+ *
+ * ── 一次可能落不准(2026-09-10)──────────────────────────────────────────
+ * 消息行挂上 `content-visibility: auto` 之后,**没进过视口的行**占的是估高的位。
+ * 于是这一手算出来的落点是「按估高摆出来的那张排版」里的落点:赋完 `scrollTop`,
+ * 锚点行连同它周围几行当场渲出真高,那张排版就变了,它跟着漂。
+ * **这只函数不为此负责** —— 它做的仍然是「按此刻的排版落到那一行」,这句话每一次
+ * 调用都是真的;要落准就再调一次。调用方(`content/ChatStream.tsx` 的进场
+ * layout effect)因此落完之后逐帧再对,直到位置不再动为止。
  */
 export function applyScrollAnchor(container: HTMLElement, anchor: ScrollAnchor): boolean {
   if (anchor === 'bottom') {

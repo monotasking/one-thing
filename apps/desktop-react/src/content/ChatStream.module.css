@@ -60,6 +60,40 @@
   border-radius: var(--r-2);
   outline: var(--focus-ring-w) solid transparent;
   outline-offset: var(--sp-2);
+  /*
+   * ── 看不见的消息不排版(2026-09-10)──────────────────────────────────────
+   *
+   * 病历(真机 CPU profile,隔离 store 里用户两条真会话的只读副本:388 条消息 /
+   * 37,470 个节点 / 内容列 269,803px):**排一次版就是 0.1–0.8s**,谁逼它只决定
+   * 这笔钱记在哪一栏 —— 切回一条已在池里的会话 click 同步 JS 1027ms(其中
+   * `stick()` 自调 834ms)、开一个文件把聊天栏挤窄 76ms、拖窗口每一步 110ms
+   * (那一步里 JS 只有 0.38ms,其余全是浏览器在排版)。也就是说:**这块壳一直在
+   * 按整份账本计价**,而屏幕上一次只看得见一屏。
+   *
+   * `content-visibility: auto` 把计价方式换成**按视口计价**:没进过视口的行,
+   * 浏览器跳过它的排版与绘制,只按 `contain-intrinsic-block-size` 给的估高占位。
+   *
+   * 三条读法:
+   * ① **`auto` 那一半是关键**(与 `providers/ModelCatalog` / `expose/SessionRow`
+   *    同一手):它让浏览器**记住**每一行渲过之后的真高,所以一行只在**第一次**
+   *    进视口时付一次排版钱,之后来回滚都不再变高。
+   * ② **只钳纵向**(`contain-intrinsic-block-size` 而不是 `contain-intrinsic-size`):
+   *    行的宽度是被父列拉满的(flex stretch),与内容无关 —— 连横向一起钳会让
+   *    跳渲的行凭空多出一个假宽度。这一手照抄 `viewer/FileViewer.module.css` 的
+   *    代码行。
+   * ③ **outline 不会被剪**:`content-visibility` 蕴含 `contain: paint`,而 paint
+   *    containment 剪的是「内容」,元素**自己**的边框与 outline 不在其中 ——
+   *    上面那圈 flash 高亮环是这一行自己画的,所以安全(判例与实测像素数在
+   *    `expose/components/SessionRow.module.css`)。行内浮层(⋯ 菜单 / Tooltip)
+   *    一律 `createPortal` 出去,也不受剪。
+   *
+   * 它会改变的两件事,都在别处接住了(不在这里靠 CSS 兜):
+   *   · 跳渲的行只报估高 → 进场落回锚点会漂 → `ChatStream.tsx` 落完再对几帧;
+   *   · 往上翻时内容列会长高 → 别把它读成「下面长出了没看见的东西」→ 同一文件
+   *     里那只 ResizeObserver 的 gap 判据。
+   */
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto var(--msg-intrinsic-h);
 }
 
 /* ── 节奏表:段与段之间隔多远 ───────────────────────────────────────────────

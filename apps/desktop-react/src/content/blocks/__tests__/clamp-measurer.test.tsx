@@ -179,6 +179,29 @@ describe('限高折叠:量尺搬出 commit', () => {
     expect(clampMeasurer.size).toBe(0)
   })
 
+  /**
+   * **滚出视口 = 没排版,不是「没溢出」**(2026-09-10,消息行挂上
+   * `content-visibility: auto` 之后的直接后果)。
+   *
+   * 跳渲的子树里元素没有排版,两个高度都量成 0;照字面算 `0 > 0 + 1` 为假,
+   * 于是每一条滚出视口的消息里的每一个限高块都会被报一次「没溢出」——
+   * 遮罩与展开钮当场消失,滚回来的下一帧才补上,顺带几百次白推的 React 更新。
+   * 拆掉量尺里那一句 `if (client <= 0) continue`,这一条当场红。
+   */
+  it('滚出视口(两个高度都量成 0)不当一次读数 —— 遮罩原样留着', () => {
+    const { container } = render(<BlockShell def={def} model={model()} ctx={ctx} />)
+    const { outer, inner } = boxes(container)
+    heights.set(outer, { scroll: 414, client: 320 })
+    observers[0].emit([inner])
+    expect(outer.className).toContain(shellStyles.bodyClamped)
+
+    // 跳渲:这一格此刻没有排版。RO 照旧派一次回调,量出来两个 0。
+    heights.set(outer, { scroll: 0, client: 0 })
+    observers[0].emit([inner])
+    expect(boxes(container).outer.className).toContain(shellStyles.bodyClamped)
+    expect(screen.getByText('展开')).toBeTruthy()
+  })
+
   it('内容后来才长高照旧管得住:第二次回调翻面(图渲完 / 高亮到货那一形)', () => {
     const { container } = render(<BlockShell def={def} model={model()} ctx={ctx} />)
     const { outer, inner } = boxes(container)

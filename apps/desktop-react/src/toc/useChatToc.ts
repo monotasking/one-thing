@@ -58,6 +58,14 @@ function anchorNodes(container: HTMLElement): Map<string, HTMLElement> {
  *
  * 用 getBoundingClientRect 而不是 offsetTop:后者依赖 offsetParent 是谁,
  * 聊天列包一层定位元素就会算错;前者只依赖当前渲染结果。
+ *
+ * ── 跳渲的行报的是估高(2026-09-10)────────────────────────────────────────
+ * 消息行挂上 `content-visibility: auto` 之后,**没进过视口的行**占的是
+ * `--msg-intrinsic-h` 那个估高的位,矩形因此不是它将来的真高。这一格**不受影响**,
+ * 而且是结构上的:`currentTurnIndex` 问的是「视口里最近的那一条是谁」,而视口里
+ * 那几条按定义都渲过了、报的都是真高。屏幕外那些的坐标偏一点,改不了这个答案。
+ * (会被它影响的是「按坐标落到某一条」那条路 —— 那一条走
+ * `scrollIntoView` / `applyScrollAnchor`,由它们各自负责落完再对一次。)
  */
 function measureAnchors(
   container: HTMLElement,

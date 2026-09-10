@@ -32,6 +32,7 @@
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
     "gate:perf": "node scripts/gate-perf.mjs",
+    "gate:chat-layout": "node scripts/gate-chat-layout.mjs",
     "gate:squeeze": "node scripts/gate-squeeze.mjs",
     "gate:motion": "node scripts/gate-motion.mjs",
     "squeeze-check": "node scripts/squeeze-check.mjs",

@@ -23,6 +23,71 @@ import { useStageStore } from '../stage/store'
 const T0 = 1_700_000_000_000
 const SESSION = 's1'
 
+/* ── 可控的假 ResizeObserver(2026-09-10)──────────────────────────────────
+ *
+ * jsdom 没有 ResizeObserver,而**跟底从这一批起只有一个产地就是它**
+ * (那只「每一次提交都贴底」的无依赖 layout effect 已经退役,病历在
+ * `ChatStream.tsx`)。所以要验「流式跟底」就必须把这只观察者摆出来 ——
+ * 从前那几条用例靠的是「推一次屏 = 贴一次底」,而那句话现在是假的,
+ * 它正是这一批要拆掉的东西。
+ *
+ * 假货只做一件事:把回调收起来,让用例自己决定「内容长高了」发生在哪一拍。
+ */
+let roCallbacks: ResizeObserverCallback[] = []
+
+class FakeResizeObserver implements ResizeObserver {
+  readonly #cb: ResizeObserverCallback
+  constructor(cb: ResizeObserverCallback) {
+    this.#cb = cb
+    roCallbacks.push(cb)
+  }
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {
+    roCallbacks = roCallbacks.filter((cb) => cb !== this.#cb)
+  }
+}
+
+/** 装上假货,返回卸载口(缺席时装回缺席,不留一个假的给别的用例)。 */
+function installFakeResizeObserver(): () => void {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'ResizeObserver')
+  Object.defineProperty(globalThis, 'ResizeObserver', {
+    configurable: true,
+    writable: true,
+    value: FakeResizeObserver,
+  })
+  return () => {
+    roCallbacks = []
+    if (original) Object.defineProperty(globalThis, 'ResizeObserver', original)
+    else Reflect.deleteProperty(globalThis as object, 'ResizeObserver')
+  }
+}
+
+/** 「内容列长高到 height」—— 真机上这一下由浏览器派,这里由用例派。 */
+async function fireContentGrew(el: HTMLDivElement, height: number) {
+  const column = el.firstElementChild
+  if (!column) throw new Error('滚动容器里没有内容列')
+  const entry = { target: column, contentRect: { height } } as unknown as ResizeObserverEntry
+  await act(async () => {
+    for (const cb of [...roCallbacks]) cb([entry], {} as ResizeObserver)
+  })
+}
+
+/** 数这只容器被写了几次 `scrollTop` —— 「提交次数 ≠ 贴底次数」那条反证的秤。 */
+function countScrollWrites(el: HTMLElement): { count: () => number; restore: () => void } {
+  let value = el.scrollTop
+  let writes = 0
+  Object.defineProperty(el, 'scrollTop', {
+    configurable: true,
+    get: () => value,
+    set: (next: number) => {
+      writes += 1
+      value = next
+    },
+  })
+  return { count: () => writes, restore: () => void Reflect.deleteProperty(el, 'scrollTop') }
+}
+
 /**
  * **这条会话那台机器**(W5-b)。从前这里写的是 `useChatSource`(= 注册表
  * `current` 槽指着的那一台)—— 那一格现在由**焦点叶投影**宣布
@@ -306,6 +371,7 @@ describe('进场落底与流式跟底', () => {
   let restore: (() => void)[] = []
 
   beforeEach(() => {
+    restore.push(installFakeResizeObserver())
     for (const [name, value] of [
       ['scrollHeight', HEIGHT],
       ['clientHeight', VIEWPORT],
@@ -349,6 +415,9 @@ describe('进场落底与流式跟底', () => {
 
   it('起底之后落在底部 —— 不是停在第一条', async () => {
     const ref = await mountWithRef(LEDGER)
+    // 冷载入:进场那一拍树还是空的(没有底可落),消息到齐把内容列撑高才落 ——
+    // 2026-09-10 起这一发由观察者派,不再由「又提交了一次」派。
+    await fireContentGrew(ref.current!, HEIGHT)
     expect(ref.current!.scrollTop).toBe(HEIGHT)
   })
 
@@ -377,11 +446,71 @@ describe('进场落底与流式跟底', () => {
     const ref = await mountWithRef(LEDGER)
     const el = ref.current!
     el.scrollTop = 0
-    // 换一份消息树引用 = 账本推进了。人没滚过,所以此刻仍是 pinned —— 要跟。
+    // 换一份消息树引用 = 账本推进了,而**长出来的那一截让内容列变高** ——
+    // 2026-09-10 起「要不要跟」问的就是后者(前者只是一次 React 提交,
+    // 而提交不再是贴底的判据)。人没滚过,所以此刻仍是 pinned —— 要跟。
     await act(async () => {
       sessionSource().setState({ messages: [...sessionSource().getState().messages] })
     })
+    await fireContentGrew(el, HEIGHT)
     expect(el.scrollTop).toBe(HEIGHT)
+  })
+
+  /**
+   * **提交次数 ≠ 贴底次数**(2026-09-10 换轨的反证)。
+   *
+   * 从前这两个数逐帧相等:一只**没有依赖数组**的 layout effect 每次提交都
+   * `stick()` 一次,而 `stick()` 要读 `scrollHeight` —— 刚改完 DOM 的那一读就是
+   * 一次整棵树的强制排版(真机上 388 条消息一次 834ms)。流式期间每一段 delta
+   * 一次提交,于是每一段 delta 都赔一次全树排版。
+   *
+   * 换轨之后贴底只有两个产地(进场 / 几何真的变了),所以这里**推屏而不长高**:
+   * `scrollTop` 一次都不该被写。把那只 effect 加回去,这一条当场红。
+   */
+  it('流式期间光是推屏不贴底 —— 判据是几何变了,不是「又提交了一次」', async () => {
+    const ref = await mountWithRef(LEDGER)
+    const el = ref.current!
+    const spy = countScrollWrites(el)
+    try {
+      for (let i = 0; i < 5; i += 1) {
+        await act(async () => {
+          sessionSource().setState({
+            messages: [...sessionSource().getState().messages],
+            lastActivityAt: T0 + i,
+          })
+        })
+      }
+      expect(spy.count()).toBe(0)
+      // 而内容真的长高时,照旧跟一次(跟底没丢,只是换了产地)。
+      await fireContentGrew(el, HEIGHT)
+      expect(spy.count()).toBe(1)
+    } finally {
+      spy.restore()
+    }
+  })
+
+  /**
+   * **容器变矮也要重新贴底**(2026-09-10 新补的那一半)。
+   *
+   * 「在底」= `scrollHeight − clientHeight − scrollTop ≤ EPS`,右边两个量都会变:
+   * 输入框多打一行、拼舞台、开查看器都会把这块滚动区挤矮,而 `scrollTop` 一动不动
+   * —— 当场离底,并且**不发滚动事件**,谁都不知道。从前是那只「每次提交都贴底」
+   * 顺手盖住的,它一走就必须由观察者自己接住。
+   */
+  it('滚动容器自己变矮 = 重新贴底(它不发滚动事件,没人替它说话)', async () => {
+    const ref = await mountWithRef(LEDGER)
+    const el = ref.current!
+    const spy = countScrollWrites(el)
+    try {
+      // 容器那一格:target 是滚动容器自己,不是内容列。
+      await act(async () => {
+        const entry = { target: el, contentRect: { height: VIEWPORT } } as unknown as ResizeObserverEntry
+        for (const cb of [...roCallbacks]) cb([entry], {} as ResizeObserver)
+      })
+      expect(spy.count()).toBe(1)
+    } finally {
+      spy.restore()
+    }
   })
 
   it('空会话不落底(此刻没有底可言,落了会把进场判成已完成)', async () => {
@@ -404,6 +533,7 @@ describe('进场落底与流式跟底', () => {
     await act(async () => {
       sessionSource().setState({ messages: [...sessionSource().getState().messages] })
     })
+    await fireContentGrew(el, HEIGHT)
     expect(el.scrollTop).toBe(HEIGHT)
   })
 })
@@ -793,6 +923,7 @@ describe('进场落点:切回来停在离开时那一行', () => {
 
   beforeEach(() => {
     containerRects = 0
+    restore.push(installFakeResizeObserver())
     /*
      * 进场也清一次:RTL 自己那口 cleanup(卸载上一条用例的树)与本文件的
      * `afterEach` 谁先跑不由我们说了算 —— 它后跑时,那一次卸载的兜底会把
@@ -819,10 +950,12 @@ describe('进场落点:切回来停在离开时那一行', () => {
         return {
           top: TOP + row.contentTop - scrollTop,
           bottom: TOP + row.contentTop + row.height - scrollTop,
+          height: row.height,
         } as DOMRect
       }
       if (this.getAttribute('data-testid') === 'chat-stream') containerRects += 1
-      return { top: TOP, bottom: TOP + VIEWPORT } as DOMRect
+      // `height` 也给上:内容列的高度是跟随那只观察者的初值,缺了它整条判据读到 NaN。
+      return { top: TOP, bottom: TOP + VIEWPORT, height: VIEWPORT } as DOMRect
     }
     restore.push(() => {
       HTMLElement.prototype.getBoundingClientRect = originalRect
@@ -973,6 +1106,8 @@ describe('进场落点:切回来停在离开时那一行', () => {
   it('冷载入(机器不在池里)照旧落底,锚点留着下次用', async () => {
     saveSessionScrollAnchor(SESSION, { messageId: 'a1', offset: -40 })
     const { ref } = await mountWithRef({ prewarm: false })
+    // 消息到齐把内容列撑高 —— 冷载入那条路的落底从此走观察者(见上一组同名判词)。
+    await fireContentGrew(ref.current!, CONTENT_H)
     expect(ref.current!.scrollTop).toBe(CONTENT_H)
     expect(readSessionScrollAnchor(SESSION)).toBeDefined()
   })

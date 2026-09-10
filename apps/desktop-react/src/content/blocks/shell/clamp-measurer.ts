@@ -73,8 +73,28 @@ export class ClampMeasurer {
     const measured: Array<[ClampEntry, boolean]> = []
     for (const entry of entries) {
       const record = this.#entries.get(entry.target)
+      if (!record) continue
       // 量的是 outer:被钳的是它,「下面还有没有」问的也是它。
-      if (record) measured.push([record, record.outer.scrollHeight > record.outer.clientHeight + 1])
+      const client = record.outer.clientHeight
+      /*
+       * ── 没排版的那一格报 0,而 0 不是一个读数(2026-09-10)────────────────
+       * 消息行从这一批起挂 `content-visibility: auto`(理由在
+       * `content/ChatStream.module.css`)。渲染被跳过的子树里,元素**没有排版**:
+       * ResizeObserver 照旧派回调(规范规定跳渲 / 复渲各派一次),而这一格量出来
+       * 是 0 —— 它说的是「此刻没有排版」,不是「没有溢出」。照字面算下去
+       * `0 > 0 + 1` 为假,于是每一条滚出视口的消息里的每一个限高块都会被报一次
+       * `overflows = false`:①雾遮罩与展开钮要等它滚回来的下一帧才补上(闪一下);
+       * ②几百个块各推一次 React 更新,滚动期间白烧一片 —— 而这一整批治的正是
+       * 「按整份账本计价」。
+       *
+       * 所以 0 一律不报:**上一次的读数原样留着**(遮罩与展开钮因此跨视口稳定),
+       * 等它真的排出来再报一次真值。判据取 outer 的 `clientHeight` 而不是
+       * `entry.contentRect`:接下来要读的就是 outer,它没排版的话这一读本来就
+       * 没有意义 —— 一个判据管住「能不能读」与「读什么」两件事。真·空块
+       * (高度就是 0)本来也不溢出,而 `overflows` 的初值就是 false,不欠它什么。
+       */
+      if (client <= 0) continue
+      measured.push([record, record.outer.scrollHeight > client + 1])
     }
     for (const [record, overflows] of measured) record.report(overflows)
   }
