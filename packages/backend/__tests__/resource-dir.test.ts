@@ -14,6 +14,11 @@
  *   ⑤ 设置里**接入**一个写根之外的目录,它就列得出来(2026-09-10 的读根那一格,
  *      K3-c 留账第 3 条还的)—— 同一条读在接入之前是 `failed`,之后是 `ok`,
  *      两句断言在同一个用例里,所以它证的是**这一次设置**,不是「什么都读得到」。
+ *   ⑥ **写面走的是真权限卡**(K3-c'):AI 主体 `do('dir:…','createDirectory')` 停在
+ *      一张 `file_write` 的卡上(那一类在效果表里是 `ask`),答 `once` 之后目录**真的
+ *      在盘上**;`delete` 同样停一张 `file_destructive_edit` 的卡,答完之后目录没了,
+ *      而 `deleted` 事件从**内核那条真总线**上到达。这一条同时证明写面与读面共用
+ *      同一台 runner —— 卡不是这只测试造的,是管线出的。
  *
  * **反证②(缺席不是放行)**:把 `wiring/resource/index.ts` 里
  * `createResourceKernel` 的 `sandbox: createSandboxPolicy()` 那一行拆掉,②当场红 ——
@@ -27,7 +32,7 @@
  * store 隔离与全动态 import 的写法照 `resource-kernel.test.ts`:
  * `stores/sessions.ts` / `stores/settings.ts` 在 **import 期**就解析 store 根。
  */
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -55,6 +60,9 @@ class NoopSender extends EventEmitter {
 type Backend = Awaited<ReturnType<typeof import('../backend.js')['createOnethingBackend']>>
 
 const PRINCIPAL = { kind: 'user', userId: 'local' } as const
+/** 会话里那个 AI。写面**不按主体分档**,所以人走这条路也一样会停卡 —— 用 AI 是因为
+ *  这条路在生产上主要是它在走(界面上删文件走的是 `files` 域)。 */
+const AI = { kind: 'agent', agentId: 'default' } as const
 
 /**
  * 读的目标是**这个仓库里**的一个目录,不是 store 里的一个 —— 因为沙箱边界是
@@ -181,6 +189,81 @@ describe('目录资源在真装配里(K3-c)', () => {
     } finally {
       updateSettingsInMemory(before)
       fs.rmSync(connected, { recursive: true, force: true })
+    }
+  })
+
+  /**
+   * ⑥ 写面(K3-c')。
+   *
+   * **写根挪到一个临时目录里**,而不是在这个仓库里建了又删:写根是
+   * `getSandboxBoundary()`,它读 `settings.tools.bash.defaultWorkingDirectory`,
+   * 缺席才退到 `process.cwd()`。把那一格填上,这只用例的写就落在 `os.tmpdir()` 下 ——
+   * 一次跑挂了也不会在别人的工作树里留下一个目录。**这不是绕开判据**:判据仍然是
+   * 「写根之内才写得进」,只是这次的写根是它自己起的那一棵。
+   */
+  it('⑥ AI 主体的写:createDirectory 停在真权限卡上,答完真建出来;delete 之后 deleted 到达', async () => {
+    const workRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onething-dir-write-')))
+    const { getSettings, updateSettingsInMemory } = await import('../stores/settings.js')
+    const before = getSettings()
+    const store = await import('../store.js')
+    const { Permission } = await import('../wiring/permission/index.js')
+    const sessionId = store.createSession(`resource-dir-${Date.now()}`, 'Dir').id
+    const target = path.join(workRoot, 'notes')
+
+    /** 等那张卡出现,读一句它说的话,答 `once`。 */
+    const answerOneCard = async (expectedType: string): Promise<string> => {
+      await vi.waitFor(() => expect(Permission.getPendingPrompts(sessionId)).toHaveLength(1))
+      const card = Permission.getPendingPrompts(sessionId)[0]!
+      expect(card.type).toBe(expectedType)
+      Permission.respond({ sessionId, permissionId: card.id, response: 'once' })
+      return card.title ?? ''
+    }
+
+    const seen: Array<{ ref: string; event: string; payload: unknown }> = []
+    const unwatch = backend.resources.events.watch('dir:', fact => {
+      seen.push({ ref: fact.ref, event: fact.event, payload: fact.payload })
+    })
+
+    try {
+      // `bash` 那一格是可选的,所以取它之前先问一句 —— 它不在,这一测就没有落点
+      // (写根会退回 `process.cwd()`,于是这一测会在这个仓库里建目录)。
+      const bashBefore = before.tools.bash
+      if (!bashBefore) throw new Error('settings.tools.bash is missing — the sandbox write root has nowhere to move')
+      updateSettingsInMemory({
+        ...before,
+        tools: { ...before.tools, bash: { ...bashBefore, defaultWorkingDirectory: workRoot } },
+      })
+
+      // 建目录:`file_write` 在效果表里是 `ask`,所以它停在一张真卡上。
+      const creating = backend.resources.do(
+        `dir:${workRoot}`,
+        'createDirectory',
+        { name: 'notes' },
+        { principal: AI, sessionId },
+      )
+      const createTitle = await answerOneCard('file_write')
+      expect(createTitle).toContain(target)
+
+      const created = await creating
+      expect(created.kind).toBe('ok')
+      expect(fs.statSync(target).isDirectory()).toBe(true)
+      expect(seen).toEqual([{ ref: `dir:${workRoot}`, event: 'created', payload: { path: target } }])
+
+      // 删目录:另一类效果、另一张卡。`once` 不是记住,所以它必须再问一次。
+      const deleting = backend.resources.do(`dir:${target}`, 'delete', {}, { principal: AI, sessionId })
+      await answerOneCard('file_destructive_edit')
+
+      const deleted = await deleting
+      expect(deleted.kind).toBe('ok')
+      expect(fs.existsSync(target)).toBe(false)
+      expect(seen).toEqual([
+        { ref: `dir:${workRoot}`, event: 'created', payload: { path: target } },
+        { ref: `dir:${target}`, event: 'deleted', payload: { path: target } },
+      ])
+    } finally {
+      unwatch()
+      updateSettingsInMemory(before)
+      fs.rmSync(workRoot, { recursive: true, force: true })
     }
 
     await backend.dispose()

@@ -373,6 +373,13 @@ export const filesRpcHandlers: RpcRouteHandlersWithPorts<FilesRoutes> = {
     })
   },
 
+  /*
+   * K3-c' —— 资源面有同一件事的另一条出口:`dir` 的 `createDirectory` 做法
+   * (`wiring/resource/dir-provider.ts`)。**这一条不退成它的投影**,理由与
+   * `updateWorkingDirectory` 同一笔:它对非本机可信的调用方有 per-caller 的
+   * `context.sandboxRoot` 夹持,而资源那条路的 `Invocation` 里今天没有这一格。
+   * 两条路调的是同一只纯函数,分叉只在夹持这一层。
+   */
   async createDirectory(request, context = DESKTOP_RPC_CONTEXT) {
     const path = clamp(context, request?.path)
     if (path === null) {
@@ -384,6 +391,10 @@ export const filesRpcHandlers: RpcRouteHandlersWithPorts<FilesRoutes> = {
     })
   },
 
+  /*
+   * K3-c' —— 资源面的对应做法是 `dir` 的 `rename`。同上,本单不退投影
+   * (per-caller 夹持这一格未到位)。两条路调的都是 `renameOnethingPath`。
+   */
   async rename(request, context = DESKTOP_RPC_CONTEXT) {
     const sandbox = resolveFilesSandbox(context)
     const oldPath = clampWith(sandbox, request?.oldPath)
@@ -394,6 +405,14 @@ export const filesRpcHandlers: RpcRouteHandlersWithPorts<FilesRoutes> = {
     return renameOnethingPath({ oldPath, newPath, renamePath: fs.rename })
   },
 
+  /*
+   * K3-c' —— 资源面的对应做法是 `dir` 的 `delete`,同上不退投影。
+   *
+   * **这两条的行为有一格有意的差别,不是漏改**:这里是 `recursive: true`(界面上
+   * 一个人看着文件树按下删除,他知道自己删的是一棵树),资源面是 `false`(那条路上
+   * 的调用方可能是模型 / 插件 / 脚本,而误删一个空目录可恢复,误删一棵树不可)。
+   * 理由的正本写在 `@onething/runtime/files/resource-spec` 的 `delete` 上。
+   */
   async delete(request, context = DESKTOP_RPC_CONTEXT) {
     const path = clamp(context, request?.path)
     if (path === null) {

@@ -38,6 +38,24 @@
  * per-space 的,取哪一份由会话归属决定(`ctx.sessionId` / `ctx.invocation.sessionId`,
  * 两条路各有各的那一格)。
  *
+ * ── 写面问的是写根,不是读根(K3-c',2026-09-10)─────────────────────────────
+ * `createDirectory` / `rename` / `delete` 判的是 `sandbox.contains` —— **写根那把
+ * 单根尺子**,一个字没动。读根比写根宽(它并上了用户亲手接入的目录、笔记根、下载
+ * 目录),而「列得出」与「改得动」本来就不是同一个答案:接入一个目录是让助手**看见**
+ * 它,不是把它交出去随便改。上一单(目录读根)放宽的是读那一侧,它的留账里那句
+ * 「写面将来照旧问 `contains`,别顺手抄 `readable`」说的就是这一刻。
+ *
+ * 于是这只文件里有两把尺子、两只解析函数,名字里就写着各自判的是哪一根
+ * (`resolveReadable` / `resolveWritable`),共用同一句「没有沙箱 → 越界 → 敏感」的
+ * 三关顺序与同一只错。
+ *
+ * ── 写面的三条调的是 `files` 域调的同一批纯函数 ─────────────────────────────
+ * `createOnethingDirectory` / `renameOnethingPath` / `deleteOnethingPath` —— 与
+ * `list` / `stat` / `reveal` 同一族、同一个理由:错误措辞与成功形状自动一致,不靠
+ * 某天有人回来对表。**唯一有意分叉的一格是 `delete` 不递归**(界面是
+ * `fs.rm(recursive: true)`,这里是 `false`),理由写在自述里那条做法上,而不是写在
+ * 这里 —— 它是一句关于「这条做法是什么」的话,不是一句关于接线的话。
+ *
  * ── 授权诚实账(K2c-1 / K2c-2 留下的那一格)────────────────────────────────
  * `files.listDirectory` 对**非本机可信**的调用方还有一层 per-caller 的
  * `context.sandboxRoot` 夹持,而资源那条路的 `Invocation` 里今天没有这一格 —— 于是
@@ -48,17 +66,26 @@
  */
 
 import fs from 'node:fs/promises'
+import path from 'node:path'
 import {
+  createOnethingDirectory,
+  deleteOnethingPath,
   listOnethingDirectory,
+  renameOnethingPath,
   revealOnethingPath,
   statOnethingPath,
   type OnethingDirectoryEntry,
 } from '@onething/runtime/files'
 import { getShellHost, hasShellHost, SHELL_HOST_UNAVAILABLE } from '@onething/runtime/shell/host-ports'
 import { dirResourceSpec } from '@onething/runtime/files/resource-spec'
-import { planFromSpec } from '@onething/core/resource'
-import type { ResourceProvider, ResourceReadContext, ResourceRef } from '@onething/core/resource'
-import type { PlanContext, Result, RunContext, SandboxPolicy } from '@onething/core/toolkit'
+import { formatRef, planFromSpec } from '@onething/core/resource'
+import type {
+  ResourceEventHub,
+  ResourceProvider,
+  ResourceReadContext,
+  ResourceRef,
+} from '@onething/core/resource'
+import type { Effect, PlanContext, Result, RunContext, SandboxPolicy } from '@onething/core/toolkit'
 import { Intent, textResult } from '@onething/core/toolkit'
 
 /** 一个目录项 / 一次 stat 交出去的「是什么」。与自述那两格逐字同名。 */
@@ -116,15 +143,73 @@ export class DirRefRequiredError extends Error {
   }
 }
 
-/** `plan` 交给 `apply` 的载荷:已经解析并判过界的那个绝对路径。 */
-export interface DirOpPayload {
-  readonly op: 'reveal'
-  readonly path: string
-}
+/**
+ * `plan` 交给 `apply` 的载荷:已经解析并判过界的那些绝对路径。
+ *
+ * 判界只发生在 `plan` 里 —— `apply` 拿到的每一格都已经过关。这不是省事,是
+ * 「计划一次、授权一次、照计划做一次」:授权者看见的那句话说的是哪个路径,
+ * 真动手的就必须是那个路径,`apply` 再解析一次就是给两者之间开一道缝。
+ */
+export type DirOpPayload =
+  | { readonly op: 'reveal'; readonly path: string }
+  /** `path` = 要建的那个子目录;`parent` = 被作用的那个地址,也是 `created` 发在哪。 */
+  | { readonly op: 'createDirectory'; readonly path: string; readonly parent: string }
+  | { readonly op: 'rename'; readonly path: string; readonly to: string }
+  | { readonly op: 'delete'; readonly path: string }
 
 function requireDirPath(ref: ResourceRef | null, member: string): string {
   if (!ref || !ref.path) throw new DirRefRequiredError(member)
   return ref.path
+}
+
+/**
+ * 一段目录名,**不是一条路径**。
+ *
+ * 地址已经说了在哪,所以这一格只许是一段名字:带分隔符或 `..` 的写法当场拒,而不是
+ * 交给沙箱去兜。沙箱确实兜得住(`contains` 会拦下 `../../etc`),但那样答出来的是
+ * 「越界」——一句关于边界的话,而调用方犯的错是「这一格填错了东西」。说准了它才
+ * 改得对。
+ */
+function directoryNameParam(params: unknown, member: string): string {
+  const value = params && typeof params === 'object' ? (params as Record<string, unknown>).name : undefined
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new TypeError(`${member} needs a non-empty name`)
+  }
+  if (value === '.' || value === '..' || value.includes('/') || value.includes('\\')) {
+    throw new TypeError(`${member} needs one plain directory name, not a path (got ${JSON.stringify(value)})`)
+  }
+  return value
+}
+
+/**
+ * 一条**绝对**路径参数。
+ *
+ * 不接受相对路径,而不是把它当成「相对于目标的父目录」或者「相对于工作目录」——
+ * 那两种解释都成立、都有人这么以为,于是 `rename` 收一个 `notes.md` 会安安静静地把
+ * 文件搬到某个没人打算搬去的地方(还在沙箱里,所以没有任何东西会红)。这条路上
+ * 一切地址都是绝对的,这一格跟着。`~` 放行 —— `sandbox.resolve` 认得它。
+ */
+function absolutePathParam(params: unknown, key: string, member: string): string {
+  const value = params && typeof params === 'object' ? (params as Record<string, unknown>)[key] : undefined
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new TypeError(`${member} needs a non-empty ${key}`)
+  }
+  if (!path.isAbsolute(value) && !value.startsWith('~')) {
+    throw new TypeError(
+      `${member} needs an absolute ${key}, e.g. "/Users/you/project/renamed" (got ${JSON.stringify(value)})`,
+    )
+  }
+  return value
+}
+
+/** 共用那批投影函数说不 → 抛。成功就什么都不做。 */
+function settle(response: { success: boolean; error?: string }, fallback: string): void {
+  if (!response.success) throw new DirOperationFailedError(response.error ?? fallback)
+}
+
+/** 这个路径上此刻有没有东西。`lstat` 而不是 `stat`:一条断掉的软链也会被盖掉。 */
+async function pathExists(target: string): Promise<boolean> {
+  return fs.lstat(target).then(() => true, () => false)
 }
 
 /** `'file' | 'directory'`(共用那只函数的词) → `'file' | 'dir'`(自述的词)。 */
@@ -135,8 +220,14 @@ function kindOf(type: OnethingDirectoryEntry['type'] | undefined): DirEntryKind 
 export class DirResourceProvider implements ResourceProvider<DirOpPayload> {
   readonly spec = dirResourceSpec
 
+  private hub: ResourceEventHub | undefined
+
+  attach(hub: ResourceEventHub): void {
+    this.hub = hub
+  }
+
   async read(name: string, ref: ResourceRef | null, _query: unknown, ctx: ResourceReadContext): Promise<unknown> {
-    const target = resolveInsideSandbox(requireDirPath(ref, name), ctx.sandbox, ctx.sessionId)
+    const target = resolveReadable(requireDirPath(ref, name), ctx.sandbox, ctx.sessionId)
     switch (name) {
       case 'list':
         return this.list(target)
@@ -149,35 +240,140 @@ export class DirResourceProvider implements ResourceProvider<DirOpPayload> {
     }
   }
 
-  async plan(op: string, ref: ResourceRef | null, _params: unknown, ctx: PlanContext): Promise<Intent<DirOpPayload>> {
-    if (op !== 'reveal') throw new TypeError(`Dir resource has no op named ${JSON.stringify(op)}`)
-    // 沙箱与读那一条同一句话、同一把尺子:**先夹后降级** —— 越界的答案是越界,
-    // 不是「这台宿主没有外壳能力」(与 `rpc/domains/files.ts` 的 `reveal` 逐字同序)。
-    const target = resolveInsideSandbox(requireDirPath(ref, op), ctx.sandbox, ctx.invocation.sessionId)
-    // 宿主口缺席在 **plan** 期就判,与 `ResourceTool` 对 `home: 'shell'` 的那一句
-    // 同一个理由:一次注定跑不了的做法不该先去弹一张权限卡问人。
-    if (!hasShellHost()) throw new DirShellUnavailableError()
-    return planFromSpec<DirOpPayload>(this.spec, op, ref, { op: 'reveal', path: target }, {
-      title: `Show ${target} in the file manager`,
-    })
+  async plan(op: string, ref: ResourceRef | null, params: unknown, ctx: PlanContext): Promise<Intent<DirOpPayload>> {
+    const scope = ctx.invocation.sessionId
+    switch (op) {
+      case 'reveal': {
+        // 沙箱与读那一条同一句话、同一把尺子(**读根** —— 列得出的目录指得出来):
+        // **先夹后降级** —— 越界的答案是越界,不是「这台宿主没有外壳能力」
+        // (与 `rpc/domains/files.ts` 的 `reveal` 逐字同序)。
+        const target = resolveReadable(requireDirPath(ref, op), ctx.sandbox, scope)
+        // 宿主口缺席在 **plan** 期就判,与 `ResourceTool` 对 `home: 'shell'` 的那一句
+        // 同一个理由:一次注定跑不了的做法不该先去弹一张权限卡问人。
+        if (!hasShellHost()) throw new DirShellUnavailableError()
+        return planFromSpec<DirOpPayload>(this.spec, op, ref, { op, path: target }, {
+          title: `Show ${target} in the file manager`,
+        })
+      }
+      case 'createDirectory': {
+        // 父目录与新目录都过写根 —— 后者其实被前者蕴含(孩子在父下面),两句都写是
+        // 因为敏感判据不蕴含:一个不敏感的目录底下照样可以有一个敏感的名字。
+        const parent = resolveWritable(requireDirPath(ref, op), ctx.sandbox)
+        const target = resolveWritable(path.join(parent, directoryNameParam(params, op)), ctx.sandbox)
+        return planFromSpec<DirOpPayload>(this.spec, op, ref, { op, path: target, parent }, {
+          title: `Create the directory ${target}`,
+        })
+      }
+      case 'rename': {
+        const from = resolveWritable(requireDirPath(ref, op), ctx.sandbox)
+        const to = resolveWritable(absolutePathParam(params, 'to', op), ctx.sandbox)
+        /*
+         * **按参数分档**(自述那两格是上界,理由写在 `resource-spec.ts` 的
+         * `rename` 上)。所以这里不用 `planFromSpec` —— 那只函数照上界顶格造,
+         * 于是每一次改名都会报「会覆盖」,而绝大多数改名不会。
+         *
+         * 判据是**此刻目标上有没有东西**,在 plan 期看一次。它与 apply 之间当然有
+         * 一个窗口(有人正好在这中间建了个同名的),那个窗口是 `plan` / `apply`
+         * 两拍这个结构自带的,不是这里独有;真要关掉它得让 rename 自己不覆盖
+         * (`renameat2(RENAME_NOREPLACE)`),而那是共用那只投影函数的事,不是这里
+         * 偷偷换一套写法的理由。
+         */
+        const resources = ref ? [formatRef(ref)] : []
+        const effects: Effect[] = [{ kind: 'file_write', resources }]
+        if (await pathExists(to)) effects.push({ kind: 'file_destructive_edit', resources })
+        return Intent.of({
+          effects,
+          payload: { op, path: from, to },
+          preview: {
+            title: effects.length > 1 ? `Rename ${from} to ${to}, replacing what is there` : `Rename ${from} to ${to}`,
+          },
+        })
+      }
+      case 'delete': {
+        const target = resolveWritable(requireDirPath(ref, op), ctx.sandbox)
+        return planFromSpec<DirOpPayload>(this.spec, op, ref, { op, path: target }, {
+          title: `Delete ${target}`,
+        })
+      }
+      default:
+        throw new TypeError(`Dir resource has no op named ${JSON.stringify(op)}`)
+    }
   }
 
   async apply(op: string, intent: Intent<DirOpPayload>, _ctx: RunContext): Promise<Result> {
     const payload = intent.payload
-    if (payload.op !== 'reveal') throw new TypeError(`Dir resource has no op named ${JSON.stringify(op)}`)
-    // 投影函数与注入**逐字抄自 `rpc/domains/files.ts` 的 `reveal`**:先 stat(路径
-    // 不在就是失败,不是一次静默的无操作),再经宿主口定位;未注入 = 抛,投影自己
-    // catch 成 `{ success:false, error }`。
-    const response = await revealOnethingPath({
-      path: payload.path,
-      stat: target => fs.stat(target),
-      revealPath: async target => {
-        const outcome = await getShellHost().revealPath(target)
-        if (!outcome.success) throw new Error(outcome.error ?? SHELL_HOST_UNAVAILABLE)
-      },
-    })
-    if (!response.success) throw new DirOperationFailedError(response.error ?? 'Failed to reveal path')
-    return textResult(`Showed ${payload.path} in the file manager`)
+    switch (payload.op) {
+      case 'reveal': {
+        // 投影函数与注入**逐字抄自 `rpc/domains/files.ts` 的 `reveal`**:先 stat(路径
+        // 不在就是失败,不是一次静默的无操作),再经宿主口定位;未注入 = 抛,投影自己
+        // catch 成 `{ success:false, error }`。
+        const response = await revealOnethingPath({
+          path: payload.path,
+          stat: target => fs.stat(target),
+          revealPath: async target => {
+            const outcome = await getShellHost().revealPath(target)
+            if (!outcome.success) throw new Error(outcome.error ?? SHELL_HOST_UNAVAILABLE)
+          },
+        })
+        settle(response, 'Failed to reveal path')
+        return textResult(`Showed ${payload.path} in the file manager`)
+      }
+      case 'createDirectory': {
+        // `recursive: false` 与 `files.createDirectory` 逐字相同:缺父目录是失败,
+        // 不是顺手把整条路径造出来(那会让一次拼错的地址安静地长出一棵树)。
+        const response = await createOnethingDirectory({
+          path: payload.path,
+          createDirectory: target => fs.mkdir(target, { recursive: false }).then(() => undefined),
+        })
+        settle(response, 'Failed to create directory')
+        this.emit(payload.parent, 'created', { path: payload.path })
+        return textResult(`Created ${payload.path}`)
+      }
+      case 'rename': {
+        const response = await renameOnethingPath({
+          oldPath: payload.path,
+          newPath: payload.to,
+          renamePath: fs.rename,
+        })
+        settle(response, 'Failed to rename path')
+        this.emit(payload.path, 'renamed', { path: payload.to })
+        return textResult(`Renamed ${payload.path} to ${payload.to}`)
+      }
+      case 'delete': {
+        /*
+         * **一个文件,或者一个空目录** —— 与 `files.delete`(界面那条,
+         * `fs.rm(recursive: true)`)有意分叉,理由写在自述里那条做法上。
+         *
+         * 注入不是一句 `fs.rm(recursive: false)`:那句话在 Node 里对**目录**是
+         * `ERR_FS_EISDIR`(`fs.rm` 不递归时等同 `unlink`),连空目录都删不掉,于是
+         * 「只删空目录」会变成「一个目录都删不掉」。分两支才是那句话的真实写法 ——
+         * `rmdir` 的语义**恰好就是**「删一个空目录」,非空时它自己答 `ENOTEMPTY`
+         * (那是一句准确的话:这里面还有东西),不需要这里先数一遍再判。
+         *
+         * `lstat` 而不是 `stat`:指向目录的软链要被 `unlink` 掉(删的是这条链),
+         * 不是 `rmdir` 它指的那个目录。路径不存在 → 抛 → 投影答失败,与
+         * `force: false` 想说的是同一句:删一个不存在的路径是失败,不是静默成功。
+         */
+        const response = await deleteOnethingPath({
+          path: payload.path,
+          deletePath: async target => {
+            const stats = await fs.lstat(target)
+            if (stats.isDirectory()) await fs.rmdir(target)
+            else await fs.rm(target, { force: false })
+          },
+        })
+        settle(response, 'Failed to delete path')
+        this.emit(payload.path, 'deleted', { path: payload.path })
+        return textResult(`Deleted ${payload.path}`)
+      }
+      default:
+        throw new TypeError(`Dir resource has no op named ${JSON.stringify(op)}`)
+    }
+  }
+
+  /** 事件发在**这条做法作用的那个地址**上(自述文件头「三条事件」那一段)。 */
+  private emit(target: string, event: string, payload: unknown): void {
+    this.hub?.emit({ scheme: this.spec.scheme, path: target }, event, payload)
   }
 
   private async list(target: string): Promise<unknown> {
@@ -215,28 +411,49 @@ export class DirResourceProvider implements ResourceProvider<DirOpPayload> {
 }
 
 /**
- * 一个地址 → 一个判过界的绝对路径。读与做共用这一只 —— 两条路上的边界必须是同一
- * 句话,写两遍的下场是某天有人只改了其中一条。
+ * 一个地址 → 一个判过界的绝对路径。三关,顺序是想清楚的:**没有沙箱 → 越界 →
+ * 敏感**。先说宿主缺能力(那与这个路径无关),再说这个路径在不在界内(界外的东西
+ * 不必再问它敏不敏感)。
  *
- * 三关,顺序是想清楚的:**没有沙箱 → 越界 → 敏感**。先说宿主缺能力(那与这个路径
- * 无关),再说这个路径在不在界内(界外的东西不必再问它敏不敏感)。
+ * 「在不在界内」这一句由调用方递进来 —— 这只文件有**两根界**,读的与写的,而三关
+ * 的顺序、那只错、那三句话只有一份。
+ */
+function resolveInside(
+  rawPath: string,
+  sandbox: SandboxPolicy | undefined,
+  inBounds: (policy: SandboxPolicy, resolved: string) => boolean,
+): string {
+  if (!sandbox) throw new DirOutsideSandboxError(rawPath, 'no-sandbox')
+  const resolved = sandbox.resolve(rawPath)
+  if (!inBounds(sandbox, resolved)) throw new DirOutsideSandboxError(resolved, 'outside')
+  if (sandbox.isSensitive(resolved)) throw new DirOutsideSandboxError(resolved, 'sensitive')
+  return resolved
+}
+
+/**
+ * 读那一根界:**读根**(`sandbox.readable`)—— 写根并上用户亲手接入的目录、笔记根、
+ * 下载目录。`scope` 是发起会话,由两条路各自从自己的上下文里取(读那条是
+ * `ResourceReadContext.sessionId`,做那条是 `PlanContext.invocation.sessionId`)。
  *
- * 界 = **读根**(`sandbox.readable`),不是写根。`scope` 是发起会话,由两条路各自
- * 从自己的上下文里取(读那条是 `ResourceReadContext.sessionId`,做那条是
- * `PlanContext.invocation.sessionId`)。
- *
- * `reveal` 也按读根判,不按写根:它没有一格效果(只是把文件管理器叫到前台),
+ * `reveal` 也走这一只,不走写的那只:它没有一格效果(只是把文件管理器叫到前台),
  * 而「看得见 / 列得出的目录能不能在访达里指给我看」若与「列得出」不是同一个答案,
  * 用户看到的就是一条列得出来却定位不了的目录。
  */
-function resolveInsideSandbox(
+function resolveReadable(
   rawPath: string,
   sandbox: SandboxPolicy | undefined,
   scope: string | undefined,
 ): string {
-  if (!sandbox) throw new DirOutsideSandboxError(rawPath, 'no-sandbox')
-  const resolved = sandbox.resolve(rawPath)
-  if (!sandbox.readable(resolved, scope)) throw new DirOutsideSandboxError(resolved, 'outside')
-  if (sandbox.isSensitive(resolved)) throw new DirOutsideSandboxError(resolved, 'sensitive')
-  return resolved
+  return resolveInside(rawPath, sandbox, (policy, resolved) => policy.readable(resolved, scope))
+}
+
+/**
+ * 写那一根界:**写根**(`sandbox.contains`,单根)。
+ *
+ * 没有 `scope` 这一格,而且这是一句关于语义的话不是省略:写根不是分组的 ——
+ * 接入目录之所以要按会话归属取,是因为「哪些目录被接进来了」是 per-space 的设置;
+ * 而写根只有一个,与哪条会话在问无关。
+ */
+function resolveWritable(rawPath: string, sandbox: SandboxPolicy | undefined): string {
+  return resolveInside(rawPath, sandbox, (policy, resolved) => policy.contains(resolved))
 }

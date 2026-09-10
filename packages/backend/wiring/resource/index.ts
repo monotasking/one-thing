@@ -173,10 +173,14 @@ export function mountBuiltinResources(
   const disposers: Array<() => void | Promise<void>> = [
     kernel.mount(new SessionResourceProvider()),
     /*
-     * K3-c —— 目录。**所有档都装**(含 `readonly`):它只有读与「在文件管理器里
-     * 定位」,一格写面都没有,所以那一档「零本地副作用」的契约它不违。
-     * `readonly` 档看不见它的是**工具目录**那份投影(`catalog-sync.ts` 对那一档一只
-     * 都不给),而不是这台内核 —— RPC 那条路照旧。
+     * K3-c / K3-c' —— 目录。**所有档都装**(含 `readonly`),与 `session` 同一条:
+     * `readonly` 那一档的契约由 `catalog-sync.ts` 执行 —— 它对那一档**一只工具都不
+     * 投**,于是模型看不见任何资源;内核本身照装,RPC 与脚本那条路照旧。
+     *
+     * K3-c 当时这一行的理由写的是「它一格写面都没有」,K3-c' 补上写面之后那句话不再
+     * 成立(`createDirectory` / `rename` / `delete` 是真的本地副作用),所以理由换成
+     * 上面这条 —— 它与 `session`(那只早就能改名、归档、删消息)是同一句话,而且
+     * 是那一档真正的判据。
      */
     kernel.mount(new DirResourceProvider()),
   ]
