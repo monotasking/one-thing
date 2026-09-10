@@ -295,7 +295,7 @@ function useSelectIntoContent(
 export function tabSpecOf(
   ref: ContentRef,
   titles: Record<string, LiveTitle>,
-  opts: { closable?: boolean; home?: boolean } = {},
+  opts: { closable?: boolean; home?: boolean; preview?: string } = {},
 ): TabSpec {
   const id = refId(ref)
   const kind = contentKindOf(ref.kind)
@@ -325,6 +325,13 @@ export function tabSpecOf(
      * 而下一种「天生装两个名字」的内容出现时它一个字都不用改。
      */
     wide: kind?.tabWide === true,
+    /*
+     * **这一格是不是预览格**(C2)。它与上面几格不同:判据**不问种类**,问的是
+     * **这片叶**(`PaneLeafNode.previewIndex`)—— 同一条会话可以在一片叶里是预览格、
+     * 在另一片叶里是普通标签。所以它由宿主算好之后连同那句状态词一起交进来,
+     * 这只函数照旧只搬运(判词在 `TabSpec.preview` 与 `leaf-tabs.useLeafTabSpecs`)。
+     */
+    preview: opts.preview,
   }
 }
 

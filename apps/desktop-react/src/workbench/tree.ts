@@ -27,6 +27,26 @@ export interface PaneLeafNode {
   tabs: ContentRef[]
   /** 活动 tab 的下标。空叶时是 0(没有意义,但不留 `null` 让每个读者判一次)。 */
   active: number
+  /**
+   * **预览格的下标**(C2,设计 `apps/desktop-react/docs/session-continuity-2026-09.md`
+   * §4.3)。缺席 = 这片叶此刻没有预览格。
+   *
+   * ── 它与 W6-a 删掉的那格 `preview: boolean` 不是同一件事 ──────────────────
+   * 那一格是**每格一个布尔**,而且是文件那一种的语义(「点一个文件先塞进预览格」),
+   * 用户 09-05 在真机上明确否决了它(「files 本身应该是一个可以打开多个的存在」)。
+   * 这一格是**一片叶最多一格**的下标,而且它的语义由**打开方式**那档偏好决定
+   * (`data/session-open-mode.ts`;缺省 `preview`)。判词写在那只文件与
+   * `content/session-open.ts` 上 —— 这里只负责一件事:**跟着下标动**。
+   *
+   * ── 它不落盘 ────────────────────────────────────────────────────────────
+   * `WORKBENCH_PER_SPACE.pick` 那一句 `stripPreviewIndex` 把它从家具账里剥掉
+   * (判词在 store 的 `pick` 上)。所以重启 / 换工作区回来,预览格**转正** ——
+   * 「随手翻翻」是一次会话内的事,不该跨越一次「我回来了」。
+   *
+   * 树自己**不认识**「预览」这个词的产品含义:它只知道「这片叶上有一格被标着,
+   * 而插 / 摘 / 换序时这个下标要跟着走」。所以这只文件照旧一个种类名都不出现。
+   */
+  previewIndex?: number
 }
 
 export interface PaneSplitNode {
@@ -53,6 +73,84 @@ export const DEFAULT_SPLIT_RATIO = 50
 
 export function makeLeaf(id: string, tabs: ContentRef[] = [], active = 0): PaneLeafNode {
   return { kind: 'leaf', id, tabs, active }
+}
+
+/* ── 预览格:一片叶最多一格标记(C2)────────────────────────────────────── */
+
+/**
+ * 这片叶的预览格在第几。**越界 / 不是整数 / 缺席一律答 `undefined`** ——
+ * 读者不必各判一遍,而一份被手改过的档案(或者将来某条漏了维护的路)只会
+ * 「没有预览格」,不会画出一格指向空气的斜体标签。
+ */
+export function previewIndexOf(leaf: PaneLeafNode): number | undefined {
+  const at = leaf.previewIndex
+  if (at === undefined) return undefined
+  if (!Number.isInteger(at) || at < 0 || at >= leaf.tabs.length) return undefined
+  return at
+}
+
+/**
+ * 换掉一片叶的预览标记。`undefined` = **把那一格键整个删掉**(不是留一个
+ * `previewIndex: undefined`):这只文件的引用恒等是逐字段比对出来的,而多留一个
+ * 谁都不读的键正是 persist v3 删 `preview` 时写下的那条判例。
+ * 值没变时原样交回同一个对象。
+ */
+function withPreview(leaf: PaneLeafNode, next: number | undefined): PaneLeafNode {
+  if (leaf.previewIndex === next) return leaf
+  if (next === undefined) {
+    const { previewIndex: _drop, ...rest } = leaf
+    void _drop
+    return rest
+  }
+  return { ...leaf, previewIndex: next }
+}
+
+/** 摘掉第 `removed` 格之后,预览标记落在哪。**摘掉的就是它 → 没有预览格了**。 */
+function previewAfterRemove(at: number | undefined, removed: number): number | undefined {
+  if (at === undefined || at === removed) return undefined
+  return at > removed ? at - 1 : at
+}
+
+/** 在第 `inserted` 格插一格之后,预览标记落在哪(插在它身上或它前面就往后挪)。 */
+function previewAfterInsert(at: number | undefined, inserted: number): number | undefined {
+  if (at === undefined) return undefined
+  return at >= inserted ? at + 1 : at
+}
+
+/**
+ * **标一格为预览格**(一片叶最多一格,所以这是「换」不是「加」)。
+ * 下标越界 / 叶不在 = 恒等。
+ */
+export function setPreviewIndex(node: PaneNode, leafId: string, index: number): PaneNode {
+  return mapLeaf(node, leafId, (leaf) =>
+    index < 0 || index >= leaf.tabs.length ? leaf : withPreview(leaf, index),
+  )
+}
+
+/**
+ * **转正**:清掉这片叶的预览标记。`index` 给了就只在它**恰好是**预览格时才清
+ * ——「保留这一格」说的是这一格,不是「把这片叶的预览格清掉」;两者在一片装着
+ * 两条会话的叶上不是一件事。不给 = 无条件清。
+ */
+export function clearPreviewIndex(node: PaneNode, leafId: string, index?: number): PaneNode {
+  return mapLeaf(node, leafId, (leaf) => {
+    const at = previewIndexOf(leaf)
+    if (at === undefined) return withPreview(leaf, undefined)
+    if (index !== undefined && index !== at) return leaf
+    return withPreview(leaf, undefined)
+  })
+}
+
+/**
+ * **把整棵树上的预览标记剥掉**(落盘那一侧唯一的调用点:`WORKBENCH_PER_SPACE.pick`)。
+ * 一格都没剥到时**原样交回同一个对象** —— 与 `persist-migrate` 那两条硬要求同源。
+ */
+export function stripPreviewIndex(node: PaneNode): PaneNode {
+  if (node.kind === 'leaf') return withPreview(node, undefined)
+  const a = stripPreviewIndex(node.a)
+  const b = stripPreviewIndex(node.b)
+  if (a === node.a && b === node.b) return node
+  return { ...node, a, b }
 }
 
 /* ── 查询 ─────────────────────────────────────────────────────────────── */
@@ -239,9 +337,9 @@ export function insertTab(
   node: PaneNode,
   leafId: string,
   ref: ContentRef,
-  opts: { at?: number; activate?: boolean } = {},
+  opts: { at?: number; activate?: boolean; preview?: boolean } = {},
 ): PaneNode {
-  const { at, activate = true } = opts
+  const { at, activate = true, preview = false } = opts
   return mapLeaf(node, leafId, (leaf) => {
     const already = indexOfRef(leaf, ref)
     if (already >= 0) {
@@ -259,7 +357,15 @@ export function insertTab(
     const active = activate
       ? index
       : clampActive(tabs, leaf.active >= index ? leaf.active + 1 : leaf.active)
-    return { ...leaf, tabs, active }
+    /*
+     * **预览标记跟着下标走**(C2)。`preview: true` = 新插的这一格**就是**预览格
+     * (一片叶最多一格,所以它顶掉原来那一格的标记 —— 那一格于是转正,而这正是
+     * 「预览格旁边再开一格预览」说不通的原因:预览位只有一个座)。
+     */
+    const nextPreview = preview
+      ? index
+      : previewAfterInsert(previewIndexOf(leaf), index)
+    return withPreview({ ...leaf, tabs, active }, nextPreview)
   })
 }
 
@@ -274,7 +380,13 @@ export function removeTab(node: PaneNode, leafId: string, index: number): PaneNo
      * 活动跟着往前挪一格,屏幕上不换内容。
      */
     const active = clampActive(tabs, leaf.active > index ? leaf.active - 1 : leaf.active)
-    return { ...leaf, tabs, active }
+    /*
+     * **摘掉的恰好是预览格 → 这片叶没有预览格了**(C2)。它顺带把「拖走预览格
+     * 就是把它转正」这条路(设计 §4.1 转正之三)变成结构保证:跨叶搬家
+     * (`store.moveRefIntoLeaf`)与同叶换序(`tree.moveTab`)都是「摘一格再插
+     * 一格」,摘的那一下标记就没了,插的那一下不会再标回来。
+     */
+    return withPreview({ ...leaf, tabs, active }, previewAfterRemove(previewIndexOf(leaf), index))
   })
 }
 
@@ -308,10 +420,15 @@ export function replaceRef(
     if (already >= 0) {
       const tabs = leaf.tabs.filter((_, i) => i !== at)
       const active = clampActive(tabs, already > at ? already - 1 : already)
-      return { ...leaf, tabs, active }
+      // 合并那一支**真的少了一格**,所以预览标记按「摘掉第 at 格」重算(C2)。
+      return withPreview({ ...leaf, tabs, active }, previewAfterRemove(previewIndexOf(leaf), at))
     }
     const tabs = [...leaf.tabs]
     tabs[at] = to
+    /*
+     * 原位换那一支**格数没变**,所以预览标记一个字不动 —— 那正是「预览格里原来
+     * 那条被换掉」(设计 §4.1)成立的地方:换的是这一格代表谁,它还是预览格。
+     */
     return { ...leaf, tabs }
   })
 }
@@ -430,7 +547,14 @@ export function foldLeaves(node: PaneNode): PaneLeafNode {
   const leaves = leavesOf(node)
   const first = leaves[0]
   const tabs = leaves.flatMap((leaf) => leaf.tabs)
-  return { kind: 'leaf', id: first.id, tabs, active: clampActive(tabs, first.active) }
+  /*
+   * **预览标记只留第一片那一格**(C2)。第一片的标签排在最前,所以它的下标折完
+   * 还指着同一格;后面几片的**转正**——一片叶最多一格预览位,折成一片之后那几格
+   * 抢同一个座,而「谁抢到」不是一句说得出理由的话。折叶是一次结构级的归一
+   * (persist v3 与 `normalizeRegions` 各跑一遍),让它把那几格一并转正是诚实的。
+   */
+  const folded: PaneLeafNode = { kind: 'leaf', id: first.id, tabs, active: clampActive(tabs, first.active) }
+  return withPreview(folded, previewIndexOf(first))
 }
 
 export function setRatio(node: PaneNode, splitId: string, ratio: number): PaneNode {
@@ -504,19 +628,41 @@ export function sanitize(node: PaneNode | null | undefined, opts: SanitizeOption
 
 function scrub(node: PaneNode, opts: SanitizeOptions, seen: Set<ContentRefId>): PaneNode | null {
   if (node.kind === 'leaf') {
-    const tabs = node.tabs.filter((tab) => {
-      if (!opts.known(tab.kind)) return false
-      // 背后那个东西没了(被删掉的会话)= 这一格整个丢掉。缺席 = 不问。
-      if (opts.alive && !opts.alive(tab)) return false
-      if (!opts.singleton(tab.kind)) return true
-      const id = refId(tab)
-      if (seen.has(id)) return false
-      seen.add(id)
-      return true
+    /*
+     * **留下来的那几格原本在第几**(C2)。清洗是一次逐格过滤,而预览标记是一个
+     * 下标 —— 不跟着重算的话,洗掉一格死会话之后那格斜体会落到隔壁头上。
+     * 记原下标而不是「减掉几个」是因为被滤掉的可能在它两边都有。
+     */
+    const kept: number[] = []
+    const tabs = node.tabs.filter((tab, at) => {
+      const ok = (() => {
+        if (!opts.known(tab.kind)) return false
+        // 背后那个东西没了(被删掉的会话)= 这一格整个丢掉。缺席 = 不问。
+        if (opts.alive && !opts.alive(tab)) return false
+        if (!opts.singleton(tab.kind)) return true
+        const id = refId(tab)
+        if (seen.has(id)) return false
+        seen.add(id)
+        return true
+      })()
+      if (ok) kept.push(at)
+      return ok
     })
     const active = clampActive(tabs, node.active)
-    if (tabs.length === node.tabs.length && active === node.active) return node
-    return { ...node, tabs, active }
+    /*
+     * 预览格自己被洗掉 = 没有预览格(`indexOf` 答 -1 → undefined)。
+     * **这里也是那格数值的入口闸**:`previewIndexOf` 先把越界 / 非整数拦下,
+     * 所以一份手改过的档案带进来的垃圾在这一遍就没了。
+     */
+    const wasPreview = previewIndexOf(node)
+    const at = wasPreview === undefined ? -1 : kept.indexOf(wasPreview)
+    const nextPreview = at >= 0 ? at : undefined
+    if (
+      tabs.length === node.tabs.length
+      && active === node.active
+      && nextPreview === node.previewIndex
+    ) return node
+    return withPreview({ ...node, tabs, active }, nextPreview)
   }
   const a = scrub(node.a, opts, seen)
   const b = scrub(node.b, opts, seen)

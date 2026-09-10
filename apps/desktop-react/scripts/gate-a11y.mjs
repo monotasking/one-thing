@@ -1565,6 +1565,48 @@ async function main() {
     await scanAxe(page, '会话总览(收起一节)', '[data-focus-scope="expose"]')
     // 展回去,别把这一态留给下一屏。
     await clickSelector(page, '[data-focus-scope="expose"] [data-section-id]')
+
+    /*
+     * **预览标签说得出自己是预览**(C2,设计 `docs/session-continuity-2026-09.md`
+     * §4 + 拍点 5)。它接在这一屏而不是另开一屏,是因为造出一格预览标签的**唯一
+     * 一条用户路**就在这块面上:在会话列表里点一行。缺省档 `preview` 于是把顶栏
+     * 那一格标成预览格 —— 屏幕上是**斜体**,而斜体读屏软件看不见。
+     *
+     * 所以这里量的是那句**只念不看**的状态词(`.visually-hidden`,进这一格 tab
+     * 的可访问名),不是量字形:「屏幕上看得出、读屏软件也说得出」是两件事,
+     * 而这道门查的是后者。`data-tab-preview` 那一格只用来定位。
+     *
+     * 点完这一行,浮窗形的总览会自己收回 Dock(「进入 = 活干完了」,判词在
+     * `expose/store` 上)—— 下面那一句 Esc 因此多半是恒等,留着是为了另一条路
+     * (钉在架子上时它不收)。
+     *
+     * **反证**:把 `ui/Tabs.tsx` 里那句 `{tab.preview && <span
+     * className="visually-hidden">…}` 拆掉 → 这一条当场红(`data-tab-preview`
+     * 还在,可访问名里那个词没了)。
+     */
+    const rowClicked = await page.evaluate(() => {
+      const row = document.querySelector('[data-focus-scope="expose"] [data-session-id]')
+      if (!(row instanceof HTMLElement)) return false
+      row.click()
+      return true
+    })
+    if (rowClicked) {
+      await delay(600)
+      const preview = await page.evaluate(() => {
+        const tab = document.querySelector('[data-topbar-leaf] [data-tab-preview]')
+        if (!tab) return null
+        const word = tab.querySelector('.visually-hidden')
+        return { text: (word?.textContent ?? '').trim() }
+      })
+      assert(preview !== null, '点会话列表一行之后,顶栏上有一格预览标签(缺省档 = 预览)')
+      assert(
+        preview !== null && /^(预览|Preview)$/.test(preview.text),
+        `预览标签带一句只念不看的状态词(实为「${preview?.text ?? '—'}」)`,
+      )
+    } else {
+      console.log('  · 总览上没有会话行 —— 跳过预览标签那一条(不是红)')
+    }
+
     // 收回它(Esc 走退层链,最上面那扇浮窗),免得它挡住下一屏。
     await page.keyboard.press('Escape')
     await waitFor('总览已收回', () =>

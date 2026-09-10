@@ -163,10 +163,34 @@ export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
   seed(): void
   /**
    * 打开一块内容。已经开着的话只激活并把焦点叶指过去 —— 不重复插。
-   * (W6-a:`preview` 那一档退役,判词写在 `tree.insertTab` 上。)
+   *
+   * `at` = 插在叶内第几格(缺席 = 末尾);`preview` = 新插的这一格**就是**这片叶
+   * 的预览格(C2,设计 `session-continuity-2026-09.md` §4.3;一片叶最多一格,
+   * 所以它顶掉原来那一格的标记)。两格都只是把 `tree.insertTab` 的同名参数
+   * 递下去 —— 判据本体在那只纯函数上,这里不写第二份。
+   *
+   * (W6-a 删掉的那格**逐 tab** `preview: boolean` 与这里的不是一回事,
+   * 两者的差别整段写在 `tree.PaneLeafNode.previewIndex` 上。)
    */
-  openRef(ref: ContentRef, opts?: { region?: RegionId; leafId?: string }): void
+  openRef(
+    ref: ContentRef,
+    opts?: { region?: RegionId; leafId?: string; at?: number; preview?: boolean },
+  ): void
   activateTab(leafId: string, index: number): void
+  /**
+   * **把这一格标成预览格**(C2)。一片叶最多一格,所以这是「换」不是「加」。
+   *
+   * 它与 `openRef({ preview: true })` 是同一件事的两个时刻:那一口是**插一格的
+   * 同时**标上,这一口是**已经在那儿的那一格**改标记(`replaceRef` 换掉保留键
+   * 之后那一下)。判据本体都在 `tree.setPreviewIndex` 上,这里不写第二份。
+   */
+  previewTab(leafId: string, index: number): void
+  /**
+   * **转正**:清掉这片叶的预览标记(C2,设计 §4.1「转正」四条路的落点)。
+   * `index` 给了就只在它**恰好是**预览格时才清 —— 判词在 `tree.clearPreviewIndex`。
+   * 没有预览标记时是恒等(不惊动任何订阅者)。
+   */
+  promoteTab(leafId: string, index?: number): void
   /**
    * 关掉一格(**不问 `beforeClose`** —— 那一问是界面那一层的事,见 `PaneLeaf`)。
    * 关不掉(常驻那一种的最后一格)时什么都不做。
@@ -336,9 +360,33 @@ function factoryFurniture(): WorkbenchFurniture {
   }
 }
 
+/**
+ * **预览标记不是家具**(C2,设计 `session-continuity-2026-09.md` §4.3)。
+ *
+ * `pick` 是「什么算家具」的单产地(判词在 `workspace/per-space.ts`),判据那句
+ * 「它是不是**用户在这个空间里摆好的东西**」对预览格答的是**不是**:预览的语义
+ * 就是「随手翻翻」,而一次重启 / 一次换工作区都是「我回来了」。所以这里把整棵树
+ * 上的标记剥掉,于是它既不落盘,也不随家具账过夜 —— **重启与换工作区回来,
+ * 预览格转正**。
+ *
+ * 剥的是**账上那一份**,活状态一个字不动(账与活状态是两份,判词同一只文件);
+ * 一格都没剥到时 `stripPreviewIndex` 原样交回同一棵树,所以没有预览格的常态下
+ * 这一句是零成本的恒等变换。
+ */
+function strippedRegions(regions: Record<string, PaneNode>): Record<string, PaneNode> {
+  let changed = false
+  const out: Record<string, PaneNode> = {}
+  for (const [region, tree] of Object.entries(regions)) {
+    const next = T.stripPreviewIndex(tree)
+    if (next !== tree) changed = true
+    out[region] = next
+  }
+  return changed ? out : regions
+}
+
 export const WORKBENCH_PER_SPACE: PerSpaceSpec<WorkbenchState, WorkbenchFurniture> = {
   pick: (s) => ({
-    regions: s.regions,
+    regions: strippedRegions(s.regions),
     hidden: s.hidden,
     pairRatios: s.pairRatios,
     recentRoots: s.recentRoots,
@@ -831,10 +879,37 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           const leaf = opts.leafId ? T.findLeaf(base, opts.leafId) : focusLeafOf(base, s.focusLeafId)
           if (!leaf) return
           set({
-            regions: { ...regions, [region]: T.insertTab(base, leaf.id, ref) },
+            regions: {
+              ...regions,
+              [region]: T.insertTab(base, leaf.id, ref, { at: opts.at, preview: opts.preview }),
+            },
             hidden: hidden.length === s.hidden.length ? s.hidden : hidden,
             focusLeafId: leaf.id,
           })
+        },
+
+        previewTab: (leafId, index) => {
+          const s = get()
+          const region = regionOfLeaf(s.regions, leafId)
+          if (!region) return
+          const tree = s.regions[region]
+          if (!tree) return
+          const next = T.setPreviewIndex(tree, leafId, index)
+          // 引用恒等 = 它本来就是那一格 / 下标越界 —— 不惊动订阅者。
+          if (next === tree) return
+          set({ regions: { ...s.regions, [region]: next } })
+        },
+
+        promoteTab: (leafId, index) => {
+          const s = get()
+          const region = regionOfLeaf(s.regions, leafId)
+          if (!region) return
+          const tree = s.regions[region]
+          if (!tree) return
+          const next = T.clearPreviewIndex(tree, leafId, index)
+          // 引用恒等 = 本来就没有这一格标记 —— 不惊动订阅者(转正是幂等的)。
+          if (next === tree) return
+          set({ regions: { ...s.regions, [region]: next } })
         },
 
         moveRef: (ref, region, opts = {}) => {

@@ -10,6 +10,7 @@ import {
   useCommandsSource,
 } from '../data/commands-source'
 import type { CommandEntry } from '../data/commands-source'
+import { promoteSessionSeat } from '../content/session-open'
 import { focusTree } from '../focus/registry'
 import { notify } from '../services/notify'
 import { ASK_DEMO_SPEC, DEV_COMMANDS } from './data'
@@ -160,6 +161,10 @@ export function useComposerSend({
   const sendPlain = useCallback(
     (text: string) => {
       if (send(text)) {
+        // **发了一句话 = 这一格不再是「随手翻翻」**(C2 转正之一,设计 §4.1)。
+        // 判据整件在 `content/session-open.promoteSessionSeat`(它自己会问那一格
+        // 是不是预览格);这里只提供**时刻** —— 全壳唯一一处「一句话真的交出去了」。
+        promoteSessionSeat(sessionId)
         inputRef.current?.clear()
         backToComposer()
         return
@@ -181,14 +186,18 @@ export function useComposerSend({
           const sessionId = await composerSink().startSession()
           // 没建成:编排点已经 notify(error) 过了,这里**不再加一条 toast**,
           // 也**不清输入框** —— 那句话还在人手里,人可以直接再按一次。
-          if (sessionId && send(text)) inputRef.current?.clear()
+          if (sessionId && send(text)) {
+            // 与上面那一句同一条(C2 转正之一):首开草稿态发出的第一句话同样算数。
+            promoteSessionSeat(sessionId)
+            inputRef.current?.clear()
+          }
         } finally {
           starting.current = false
           backToComposer()
         }
       })()
     },
-    [send, inputRef],
+    [send, inputRef, sessionId],
   )
 
   return useCallback(

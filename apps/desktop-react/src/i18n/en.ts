@@ -25,6 +25,12 @@ export const en: Record<MessageKey, string> = {
   'model.switchFailed': 'Could not switch model',
 
   'session.new': 'New session',
+  /* What clicking a row in the session list means (C2). */
+  'sessions.openMode': 'Clicking a session',
+  'sessions.openModeHint': 'Where a row from the session list opens',
+  'sessions.openMode.preview': 'Preview',
+  'sessions.openMode.newTab': 'New tab',
+  'sessions.openMode.replace': 'Replace',
 
   /* ── slash commands ───────────────────────────────────────────────── */
   'command.done': '{name} done',
@@ -770,6 +776,9 @@ export const en: Record<MessageKey, string> = {
   'workbench.pair': 'Two panes',
   /* Close this tab (W7-c ruling 3, the sixth entry) — the same thing the tab's ✕ and ⌘W do. */
   'workbench.tabClose': 'Close',
+  /* Preview tab (C2): the screen-reader-only status word, and the menu row that keeps it. */
+  'workbench.tabPreview': 'Preview',
+  'workbench.tabKeep': 'Keep open',
   'workbench.pairRight': 'Join with the tab on the right',
   'workbench.pairLeft': 'Join with the tab on the left',
   'workbench.unpair': 'Split apart',

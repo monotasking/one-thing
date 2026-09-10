@@ -33,6 +33,13 @@ export const zh = {
 
   /* ── 会话(新建那条命令的命令名;标题本身由后端落默认值,不进字典)──── */
   'session.new': '新建会话',
+  /* 点会话列表一行是什么意思(C2,设计 session-continuity-2026-09.md §4.2)。
+   * 三档的名字说的是**结果**不是机制 —— 用户看的是「点完屏幕上多不多一格」。 */
+  'sessions.openMode': '点会话时',
+  'sessions.openModeHint': '在左边的会话列表里点一行,那一下开在哪儿',
+  'sessions.openMode.preview': '预览',
+  'sessions.openMode.newTab': '新标签',
+  'sessions.openMode.replace': '替换',
 
   /* ── 斜杠命令(命令名 / 说明 / 用法都来自 core 的注册表,是**数据**不进字典;
    *    这里只有壳自己要说的那几句)────────────────────────────────────── */
@@ -933,6 +940,10 @@ export const zh = {
   /* 关这一格标签(W7-c 裁定 3 的第六项)。它与 tab 上那颗 ✕、与 ⌘W 是同一件事,
    * 所以句子只说动作、不带宾语 —— 宾语就是右键点中的那一格。 */
   'workbench.tabClose': '关闭',
+  /* 预览格那两句(C2)。`tabPreview` 是**只念不看**的状态词(斜体给眼睛看,
+   * 这一句给读屏软件听);`tabKeep` 是右键表里那一行「转正」。 */
+  'workbench.tabPreview': '预览',
+  'workbench.tabKeep': '保留',
   'workbench.pairRight': '与右边的标签二合一',
   'workbench.pairLeft': '与左边的标签二合一',
   'workbench.unpair': '拆开',

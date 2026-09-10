@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react'
 import { announce } from '../ui/a11y/live-region'
-import { t } from '../i18n'
+import { t, useT } from '../i18n'
+import { previewIndexOf } from './tree'
 import { useLiveTitleStore } from '../stage/live-title'
 import { contentKindOf, mayCloseContent, refId } from './kinds'
 import { tabSpecOf } from './LeafStrip'
@@ -74,19 +75,30 @@ export function useCloseLeafTab(leaf: PaneLeafNode): (index: number) => Promise<
  */
 export function useLeafTabSpecs(leaf: PaneLeafNode): TabSpec[] {
   const titles = useLiveTitleStore((st) => st.titles)
+  /*
+   * **预览格那句状态词**(C2)。在这一层读 i18n 而不是在 `ui/Tabs` 里,是那件库件
+   * 的纪律:`ui/` 不落界面文案(判词整段在 `TabSpec.preview` 上)。
+   */
+  const previewWord = useT()('workbench.tabPreview')
+  const previewAt = previewIndexOf(leaf)
   return useMemo(
     () =>
-      leaf.tabs.map((ref) =>
+      leaf.tabs.map((ref, index) =>
         tabSpecOf(ref, titles, {
           closable: canDetachTabIn(leaf, ref),
           // 「这一组的家」= 这一种自述自己是**常驻**的(设计 §2.2:会话标签的图标
           // 用主题色)。判据问的是种类的自述,不是种类名 —— W5 会话多开之后
           // 这一行一个字都不用改。
           home: Boolean(contentKindOf(ref.kind)?.resident),
+          /*
+           * 判据是**这片叶上的那个下标**,不是这一格装着谁(C2)—— 同一条会话
+           * 可以在一片叶里是预览格、在另一片叶里是普通标签,所以它问不到种类表上。
+           */
+          preview: index === previewAt ? previewWord : undefined,
         }),
       ),
     // `titles` 是整张表 —— 它变就重算,那正是「未保存丸 / 会话改名要跟着动」要的。
-    [leaf, titles],
+    [leaf, titles, previewAt, previewWord],
   )
 }
 

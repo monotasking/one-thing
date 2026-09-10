@@ -3,6 +3,7 @@ import {
   Columns2,
   Ellipsis,
   PictureInPicture2,
+  Pin,
   Rows2,
   Unlink,
   X,
@@ -16,6 +17,12 @@ import { useLeafMenuAt, useLeafMenuStore } from './leaf-menu'
 import { useLeafOverflow } from './leaf-overflow'
 import { canDetachTabAt, useCloseLeafTab } from './leaf-tabs'
 import { contentKindOf, partsOfContent, refId } from './kinds'
+import { previewIndexOf } from './tree'
+import {
+  SESSION_OPEN_MODE_LABELS,
+  SESSION_OPEN_MODES,
+  useSessionOpenMode,
+} from '../data/session-open-mode'
 import {
   hiddenInRegion,
   regionOfLeafIn,
@@ -193,6 +200,21 @@ export function LeafActions({ leaf, hostMenuRows }: { leaf: PaneLeafNode; hostMe
   const singleLeaf = region !== null && SINGLE_LEAF_REGIONS.includes(region)
   const canSplit = leaf.tabs.length > 1
   /*
+   * ── 预览格那两行(C2,设计 `session-continuity-2026-09.md` §4)──────────────
+   * 「保留」**只在这一格真的是预览格时才出现**,不禁灰 —— 与「拆开」逐字同一条
+   * 判据(W7-c 裁定 3):禁灰说的是「此刻做不了」,而一格普通标签上「保留」
+   * **没有对象**。
+   *
+   * 「点会话时 ▸」那一节是**这张表的常驻项**:动作单产地 = 右键菜单(09-01 判例),
+   * 而「点列表一行是什么意思」正是一件作用在标签条上的设置。它与设置页那一行读写
+   * 的是**同一格 store**(`data/session-open-mode.ts`),两处不是两份状态。
+   */
+  const previewAt = previewIndexOf(leaf)
+  const isPreview = previewAt !== undefined && previewAt === at
+  const promoteTab = useWorkbenchStore((st) => st.promoteTab)
+  const openMode = useSessionOpenMode((st) => st.mode)
+  const setOpenMode = useSessionOpenMode((st) => st.setMode)
+  /*
    * ── 二合一 / 拆开的键盘等价(W6-a,设计 §7 那张表)────────────────────────
    * 与「移到架子 ▸」逐字同一条纪律:菜单项调的是**拖拽落定同一只动作**
    * (`drop-commit.pairIntoIndex` / `.unpairTab`),两条路走两个动作迟早分叉。
@@ -354,6 +376,25 @@ export function LeafActions({ leaf, hostMenuRows }: { leaf: PaneLeafNode; hostMe
               </span>
             </MenuItem>
           )}
+          {/*
+            **保留**(C2,设计 §4.1 转正之四)。与「拆开」同一条判据:只在这一格
+            真的是预览格时出现,不禁灰 —— 一格普通标签上「保留」没有对象。
+            它调的是 `store.promoteTab`,与另外三条转正路(发一句话 / 有草稿 /
+            拖过标签)最终清的是同一格标记,不是第二套。
+          */}
+          {isPreview && (
+            <MenuItem
+              onClick={() => {
+                promoteTab(leaf.id, at)
+                closeMenu()
+              }}
+            >
+              <span className={s.menuLine}>
+                <Pin className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />
+                <span className={s.menuMain}>{t('workbench.tabKeep')}</span>
+              </span>
+            </MenuItem>
+          )}
 
           {/*
             **撕成浮窗 / 移到架子 ▸**(W3 裁定 9)。两组都作用在**这张表的目标格**
@@ -447,6 +488,34 @@ export function LeafActions({ leaf, hostMenuRows }: { leaf: PaneLeafNode; hostMe
               <span className={s.menuMain}>{t('workbench.tabClose')}</span>
             </span>
           </MenuItem>
+
+          {/*
+            **点会话时 ▸**(C2,设计 §4.2)。用户 09-09 报的正是「好像没有地方能够
+            控制」,而**动作单产地 = 右键上下文菜单**(09-01 判例)说的就是这件事:
+            一件作用在标签条上的设置,它的家在标签的右键表里。设置页那一行读写的是
+            **同一格 store**(`data/session-open-mode.ts`),不是第二份状态 ——
+            所以两处永远说同一句话。
+            三档的**次序与文案**都由那只文件那张表说(`SESSION_OPEN_MODES` /
+            `SESSION_OPEN_MODE_LABELS`),这里不许自己再排一次(与
+            `content/FileActionsMenu` 的「打开方式」逐字同一体例)。
+          */}
+          <MenuSeparator />
+          <Submenu label={t('sessions.openMode')}>
+            {SESSION_OPEN_MODES.map((option) => (
+              <MenuItem
+                key={option}
+                checked={option === openMode}
+                onClick={() => {
+                  setOpenMode(option)
+                  closeMenu()
+                }}
+              >
+                <span className={s.menuLine}>
+                  <span className={s.menuMain}>{t(SESSION_OPEN_MODE_LABELS[option])}</span>
+                </span>
+              </MenuItem>
+            ))}
+          </Submenu>
 
           {/*
             **宿主自己那几项**(W7-c 裁定 4)。架子交「弹出为浮窗 / 关闭整栏」,

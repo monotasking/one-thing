@@ -1,9 +1,19 @@
+import { hasComposerDraft } from '../composer/drafts'
+import { useSessionOpenMode } from '../data/session-open-mode'
 import { CENTER_REGION } from '../workbench/regions'
-import { useWorkbenchStore } from '../workbench/store'
-import { leavesOf, seatOfRefIn } from '../workbench/tree'
+import { regionOfLeafIn, useWorkbenchStore } from '../workbench/store'
+import { leavesOf, previewIndexOf, seatOfRefIn } from '../workbench/tree'
 import { refId } from '../workbench/kinds'
-import { leafSessionOf, leafSessionTabOf, regionReadOrder, sessionRefOf } from './session-ref'
+import {
+  leafSessionOf,
+  leafSessionTabOf,
+  regionReadOrder,
+  sessionIdOfRef,
+  sessionRefOf,
+} from './session-ref'
+import type { SessionOpenMode } from '../data/session-open-mode'
 import type { ContentRef } from '../workbench/kinds'
+import type { RegionId } from '../workbench/regions'
 import type { PaneLeafNode, PaneNode } from '../workbench/tree'
 
 /**
@@ -17,11 +27,42 @@ import type { PaneLeafNode, PaneNode } from '../workbench/tree'
  * ── 三档,次序即语义 ────────────────────────────────────────────────────
  *  ① 这条会话**已经开着**(某片叶里有它)→ 点亮那一格 + 焦点叶指过去。
  *    不去原位换:那会在两片叶里各留一份同一条会话,而用户的意思是「去看它」;
- *  ② 焦点叶(或者按同一条梯子回落到的那片会话叶)**装着会话** → **原位换 ref**
- *    (`workbench.replaceRef`)。这就是列表里点一行的语义:换的是这片叶看哪条,
- *    不是多开一片。叶不重挂,兄弟叶一动不动;
+ *  ② 焦点叶(或者按同一条梯子回落到的那片会话叶)装着会话 → **按打开方式那档
+ *    偏好办**(C2,下面那一节);
  *  ③ 全壳一片会话叶都没有(理论上到不了 —— 会话是常驻那一种)→ 在中央区
  *    开一格。
+ *
+ * ── 第二档的三档(C2,正本 `docs/session-continuity-2026-09.md` §4)───────
+ * 用户 09-09 原话:「点击一个 session 的行为还是覆盖,好像没有地方能够控制。」
+ * 从前第二档写死了「原位换 ref」,那正是他说的**覆盖**。今天它读
+ * `data/session-open-mode.ts` 那一格 per-space 偏好:
+ *
+ *   `preview`(出厂) 这片叶至多一格**预览位**:有就原位换它(叶不重挂,标记留着);
+ *                    没有就在活动格**旁边**开一格并标成预览。预览格**转正**之后
+ *                    下一次点别的会话会在它旁边新开一格预览;
+ *   `newTab`         永远在焦点会话叶**末尾**新开一格;
+ *   `replace`        今天的行为 —— 原位换 ref。
+ *
+ * ── 保留键那一格三档都**原位换**(不是三档各判一遍)────────────────────
+ * `session:new`(还没绑会话的那一格,判词在 `session-ref.ts`)是**播种出来的**,
+ * 不是谁打开的:它里面没有任何人做过任何事。所以三档一律先把它换掉,而不是在
+ * 它旁边再开一格 —— 否则每次冷启动点第一条会话都会留下一个点开是空脸的
+ * 「新会话」标签。`preview` 档里它顺带**就是**那一格预览位(「随手翻翻」的语义
+ * 对一格空脸恒成立),于是「只开着一条,在列表里来回切着看」标签不增。
+ *
+ * ── 转正的四条路(设计 §4.1)在代码里各自的落点 ──────────────────────────
+ *  ① **发了一句话** → `promoteSessionSeat`,由 `composer/useComposerSend` 在发送
+ *     成功那一点上调(那是全壳唯一一处「一句话真的交出去了」);
+ *  ② **输入框有草稿** → 下面 `previewSeatOf` 里那一句 `hasComposerDraft`:要换掉
+ *     预览格之前先问它,有稿就**先把它转正**再另开一格预览。**留账**:草稿只在
+ *     换会话 / 卸载那两拍才存进表(`composer/components/Composer.tsx`),所以
+ *     「刚打了字、一个字都还没存下来就点了别的会话」这一次仍旧会被换掉 ——
+ *     补它要一口「此刻输入框里有没有字」的活读口,而那一口的产地在输入面板
+ *     那只组件上(C1 的地盘),不在这一批里开;
+ *  ③ **把标签拖过** → **结构保证**,一行代码都没有:跨叶搬家与同叶换序都是
+ *     「摘一格再插一格」,而 `tree.removeTab` 摘掉预览格时标记当场就没了
+ *     (判词写在那只纯函数上);
+ *  ④ **右键「保留」** → `workbench/LeafActions` 那张表里的一行,调 `promoteTab`。
  */
 
 /** 进一条会话:按上面那三档办。答「落在哪片叶上」(答不出 = 什么都没做)。 */
@@ -34,13 +75,93 @@ export function enterSessionInWorkbench(sessionId: string): string | null {
     return seat.leafId
   }
   const host = focusSessionLeafOf(store.regions, store.focusLeafId)
-  const current = host ? leafSessionTabOf(host) : null
-  if (host && current) {
-    store.replaceRef(host.id, current, ref)
-    return host.id
+  if (host) {
+    const region = regionOfLeafIn(store.regions, host.id)
+    if (region && openIntoSessionLeaf(host, region, ref, useSessionOpenMode.getState().mode)) {
+      return host.id
+    }
   }
   store.openRef(ref, { region: CENTER_REGION })
   return useWorkbenchStore.getState().focusLeafId
+}
+
+/**
+ * 第二档的三档(判词在文件头)。答 `false` = 这片叶接不下(空叶 / 没有会话格),
+ * 由调用方退到第三档。
+ */
+function openIntoSessionLeaf(
+  host: PaneLeafNode,
+  region: RegionId,
+  ref: ContentRef,
+  mode: SessionOpenMode,
+): boolean {
+  const store = useWorkbenchStore.getState()
+  // 保留键那一格三档一律原位换(判词在文件头)。`preview` 档里它就是那格预览位。
+  const seed = placeholderIndexOf(host)
+  if (seed >= 0) {
+    store.replaceRef(host.id, host.tabs[seed], ref)
+    if (mode === 'preview') store.previewTab(host.id, seed)
+    return true
+  }
+  if (mode === 'newTab') {
+    store.openRef(ref, { region, leafId: host.id })
+    return true
+  }
+  if (mode === 'preview') {
+    const at = previewSeatOf(host)
+    if (at !== null) {
+      store.replaceRef(host.id, host.tabs[at], ref)
+      return true
+    }
+    // 没有预览位:在**活动格旁边**开一格并标成预览(不是排到末尾 ——
+    // 「刚点开的这一条」该紧挨着人此刻在看的那一条)。
+    store.openRef(ref, { region, leafId: host.id, at: host.active + 1, preview: true })
+    return true
+  }
+  const current = leafSessionTabOf(host)
+  if (!current) return false
+  store.replaceRef(host.id, current, ref)
+  return true
+}
+
+/**
+ * 这片叶那格「还没绑会话」的保留键在第几(没有 = -1)。
+ * 判据问的是 `session-ref` 那对翻译函数,这只文件不拼字符串。
+ */
+function placeholderIndexOf(leaf: PaneLeafNode): number {
+  return leaf.tabs.findIndex((tab) => sessionIdOfRef(tab) === '')
+}
+
+/**
+ * **这片叶此刻的预览位**(`preview` 档要换掉的那一格)。答 `null` = 没有,该另开一格。
+ *
+ * 里面藏着转正路径②:标着预览的那一格如果**已经有草稿**,它就不再是「随手翻翻」
+ * 的那一格了 —— 当场把它转正,并答 `null`(于是调用方另开一格预览,那一格稿子
+ * 连同它的标签一起留在屏幕上)。
+ */
+function previewSeatOf(leaf: PaneLeafNode): number | null {
+  const at = previewIndexOf(leaf)
+  if (at === undefined) return null
+  const occupant = sessionIdOfRef(leaf.tabs[at])
+  if (occupant && hasComposerDraft(occupant)) {
+    useWorkbenchStore.getState().promoteTab(leaf.id, at)
+    return null
+  }
+  return at
+}
+
+/**
+ * **转正:这条会话此刻坐的那一格不再是预览格**(设计 §4.1 转正之一)。
+ *
+ * 唯一调用点是 `composer/useComposerSend` 发送成功那一点 —— 「在它里面发了一句话」
+ * 这件事全壳只有那一处知道。它自己会先判「那一格是不是预览格」(`promoteTab` 的
+ * `index` 那一格),所以这里不必再问一遍;哪儿都没开着 = 恒等。
+ */
+export function promoteSessionSeat(sessionId: string): void {
+  const store = useWorkbenchStore.getState()
+  const seat = seatOfRefIn(store.regions, refId(sessionRefOf(sessionId)))
+  if (!seat) return
+  store.promoteTab(seat.leafId, seat.index)
 }
 
 /**

@@ -85,6 +85,19 @@
   white-space: nowrap;
 }
 
+/*
+ * **预览格 = 斜体标题**(C2 拍点 5;与 VS Code 同一约定)。
+ *
+ * 只动字形,**不动底色、不加徽**:底与字色是「活动 / 悬停」那两件事的语汇
+ * (与 `home` 那一格同一条判据),而计数徽在这台壳里是禁令。斜体是纯字形,
+ * 所以它与活动态、hover、未保存丸可以同屏而互不打架。
+ * `data-tab-preview` 说的是**这一格的档**,不是它装着谁 —— 这只文件照旧
+ * 一个内容种类名都不认识。
+ */
+.tab[data-tab-preview] .label {
+  font-style: italic;
+}
+
 /* × 的位子一直占着,只有 opacity 在变 —— hover 不引起重排。
  * 从前这里还有一句 `position: relative`,是为了压过 `.main::before` 那块整片 overlay
  * (不然 × 点不到)。overlay 随 role="tab" 上提一起退役了 —— 整块 .tab 现在自己就是

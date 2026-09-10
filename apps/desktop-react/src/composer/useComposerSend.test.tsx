@@ -2,6 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 import { useComposerSend } from './useComposerSend'
 import { useCommandsSource } from '../data/commands-source'
+import { useSessionOpenMode } from '../data/session-open-mode'
+import '../content/kinds'
+import { enterSessionInWorkbench } from '../content/session-open'
+import { CENTER_REGION } from '../workbench/regions'
+import { useWorkbenchStore } from '../workbench/store'
+import { leavesOf, previewIndexOf } from '../workbench/tree'
 import type { ComposerInputHandle } from './components/ComposerInput'
 
 /**
@@ -131,5 +137,53 @@ describe('发送的第二把闸:命令在飞时的第二下', () => {
       await Promise.resolve()
     })
     expect(sent).toHaveLength(2)
+  })
+})
+
+/**
+ * **发一句话 = 这一格转正**(C2 转正之一,正本
+ * `apps/desktop-react/docs/session-continuity-2026-09.md` §4.1)。
+ *
+ * 它测在这一层而不是在 `content/__tests__/session-open-mode.test.ts` 里,是因为
+ * 那一组问的是「转正之后屏幕上是什么样」,而这一条问的是**时刻**:「一句话真的
+ * 交出去了」这件事全壳只有这只 hook 知道,而那正是这一句唯一的产地。
+ *
+ * **反证**:把 `useComposerSend` 里那句 `promoteSessionSeat(sessionId)` 拆掉
+ * → 下面这条立刻红(标签还是预览格,人做过事的那一条会被下一次点击换掉)。
+ */
+describe('发一句话 → 预览格转正', () => {
+  const A = 'os-expose'
+  const leaf = () => leavesOf(useWorkbenchStore.getState().regions[CENTER_REGION])[0]
+
+  beforeEach(() => {
+    useSessionOpenMode.setState({ mode: 'preview', byWorkspace: {} })
+    useWorkbenchStore.getState().reset()
+    useWorkbenchStore.getState().seed()
+  })
+
+  it('`send` 答 true 的那一下就转正;答 false(空话)一个字都不动', () => {
+    const input = fakeInput()
+    let accept = false
+    enterSessionInWorkbench(A)
+    expect(previewIndexOf(leaf())).toBe(0)
+
+    const { result } = renderHook(() =>
+      useComposerSend({
+        allCommands: [],
+        sessionId: A,
+        inputRef: input.ref,
+        openAsk: () => {},
+        closeDrawer: () => {},
+        send: () => accept,
+      }),
+    )
+
+    // 空话交不出去 —— 那不是「发了一句话」,标记原样在。
+    act(() => result.current('   '))
+    expect(previewIndexOf(leaf())).toBe(0)
+
+    accept = true
+    act(() => result.current('真的发出去了'))
+    expect(previewIndexOf(leaf())).toBeUndefined()
   })
 })

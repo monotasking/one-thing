@@ -90,6 +90,21 @@ export interface TabSpec {
    * 分支:`.tab[data-tab-wide]` 说的是这一格的档,不是它装着谁。
    */
   wide?: boolean
+  /**
+   * **这一格是预览格吗**(C2,拍点 5:视觉 = 斜体标题,与 VS Code 同一约定;
+   * 不用计数徽、不换底色)。
+   *
+   * 它是**一个字符串而不是一个布尔**,而那个字符串就是**念给读屏软件听的状态词**
+   * (「预览」/「Preview」)。一格顶两件事,理由是这件库件的一条纪律:
+   * `ui/` 里不落任何界面文案(全仓只有 `ui/Dialog` 的 `ConfirmHost` 那种**宿主级**
+   * 组件才读 i18n)。收一个布尔就得再收一个 `previewLabel`,而两格分开的下场是
+   * 某个宿主给了布尔忘了给词 —— 屏幕上一格斜体,读屏软件一声不吭。
+   * 与 `tip` 同族:**在场即成立,而它的值就是那句话**。
+   *
+   * 斜体是**这一格的档**(`data-tab-preview`),不是「它装着谁」—— `ui/Tabs`
+   * 照旧认不得任何一种内容。
+   */
+  preview?: string
 }
 
 /**
@@ -335,6 +350,11 @@ export function Tabs({
              * 只在 `true` 时写:常规那一格的 DOM 与从前逐字相同。
              */
             data-tab-wide={tab.wide ? '' : undefined}
+            /*
+             * **预览格那一档**(C2,见 `TabSpec.preview`)。只在场时写:普通那一格
+             * 的 DOM 与从前逐字相同。皮肤(斜体)整件在 CSS 那一头,这里只声明档。
+             */
+            data-tab-preview={tab.preview ? '' : undefined}
             // roving 入组标记 + 初值。选中的那一条由 useRoving 改回 0 ——
             // 不给初值的话,一条八页的 tab 条要按八下 Tab 才走得出去。
             data-roving-item
@@ -395,6 +415,16 @@ export function Tabs({
                   <StatusDot tone="warn" size="sm" />
                 </span>
               )}
+              {/*
+                **状态词只念不看**(C2)。斜体是给眼睛的,读屏软件看不见字形 ——
+                所以那一格档位在这里还要有一句话。它进的是这一格 tab 的**可访问名**
+                (「会话标题 预览」),而不是 `aria-description`:后者是 ARIA 1.3 的
+                新格,今天的读屏软件支持面不齐,而这台壳里已经有一件现成的
+                「只念不看」(全局 `.visually-hidden`,`ui/Field` 的隐藏标签、
+                `AppShell` 的 h1 走的都是它)。
+                文案由宿主给(见 `TabSpec.preview`),这只组件一个字都不落。
+              */}
+              {tab.preview && <span className="visually-hidden">{tab.preview}</span>}
             </span>
             {closable && (
               /*

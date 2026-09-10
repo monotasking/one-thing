@@ -7,11 +7,15 @@ import { startPerSpaceLayout, stopPerSpaceLayout } from '../layout-scope'
 import { STAGE_PER_SPACE, useStageStore } from '../../stage/store'
 import { SPLIT_PER_SPACE, useSplitPrefs } from '../../data/split-prefs'
 import { OPEN_MODE_PER_SPACE, useFileOpenMode } from '../../data/file-open-mode'
+import {
+  SESSION_OPEN_MODE_PER_SPACE,
+  useSessionOpenMode,
+} from '../../data/session-open-mode'
 import { EXPOSE_PER_SPACE, useExposeStore } from '../../expose/store'
 import { useFilesSource } from '../../data/files-source'
 
 /**
- * 五个面**一起**换装(T-W1)。上一组(per-space.test)守的是原语本身,
+ * 六个面**一起**换装(T-W1;C2 添了「点会话时」那一格)。上一组(per-space.test)守的是原语本身,
  * 这一组守的是「真的接上了」—— 每一面各摆一样东西,切过去全变、切回来全复原。
  *
  * 为什么值得单独一组:接线出错的样子是**沉默的**(某一面忘了接,它就跨空间共享),
@@ -33,7 +37,7 @@ async function loadSpaces(): Promise<void> {
 }
 
 /**
- * 五个面各摆一样东西,好认。
+ * 六个面各摆一样东西,好认。
  *
  * stage 那一份**五格全摆到**(架子 / 落点 / 浮窗 + 次序 / 记忆)——
  * 反证跑出来的教训:只摆架子的话,`pickStageFurniture` 漏摘 `memory` 这类错
@@ -44,12 +48,14 @@ function furnish(mark: string): void {
   useStageStore.getState().openAs('diff', { kind: 'float' })
   useSplitPrefs.getState().setRatio('files', mark === 'A' ? 30 : 70)
   useFileOpenMode.getState().setMode(mark === 'A' ? 'panel' : 'float')
+  // C2:「点会话时」那一格也是这个空间的家具(判词在 data/session-open-mode.ts)。
+  useSessionOpenMode.getState().setMode(mark === 'A' ? 'newTab' : 'replace')
   // 09-04:折叠组退役,总览这一面的家具换成范围与展开的房间(见 expose/store.ts)。
   useExposeStore.setState({ expandedRooms: [`room-${mark}`] })
   useFilesSource.setState({ expanded: { [`/p/${mark}`]: true } })
 }
 
-/** 屏幕上此刻这五面各是什么样。**stage 的五格逐格读**(见 furnish 的注)。 */
+/** 屏幕上此刻这六面各是什么样。**stage 的五格逐格读**(见 furnish 的注)。 */
 function readFurniture() {
   const stage = useStageStore.getState()
   return {
@@ -60,6 +66,7 @@ function readFurniture() {
     memoryIds: Object.keys(stage.memory).sort(),
     ratio: useSplitPrefs.getState().ratios.files,
     openMode: useFileOpenMode.getState().mode,
+    sessionOpenMode: useSessionOpenMode.getState().mode,
     expandedRooms: [...useExposeStore.getState().expandedRooms],
     expanded: Object.keys(useFilesSource.getState().expanded),
   }
@@ -75,6 +82,7 @@ beforeEach(async () => {
   useExposeStore.setState({ ...EXPOSE_PER_SPACE.factory(), byWorkspace: {} })
   useSplitPrefs.setState({ ...SPLIT_PER_SPACE.factory(), byWorkspace: {} })
   useFileOpenMode.setState({ ...OPEN_MODE_PER_SPACE.factory(), byWorkspace: {} })
+  useSessionOpenMode.setState({ ...SESSION_OPEN_MODE_PER_SPACE.factory(), byWorkspace: {} })
   useStageStore.setState({ ...STAGE_PER_SPACE.factory(), byWorkspace: {} })
   await loadSpaces()
   startPerSpaceLayout()
@@ -86,7 +94,7 @@ afterEach(() => {
   useFilesSource.getState().reset()
 })
 
-describe('五个面一起换装', () => {
+describe('六个面一起换装', () => {
   it('A 空间摆好 → 切到 B = 全套出厂;**一面都不许漏**', () => {
     furnish('A')
     const inA = readFurniture()
@@ -103,6 +111,8 @@ describe('五个面一起换装', () => {
     expect(inB.ratio).toBeUndefined()
     // W6-a:出厂档从 `panel` 改成 `stage`(主区域新标签,设计 §9 那张落差表)。
     expect(inB.openMode).toBe('stage')
+    // C2 出厂档 = 预览(拍点 3)。
+    expect(inB.sessionOpenMode).toBe('preview')
     expect(inB.expandedRooms).toEqual([])
     expect(inB.expanded).toEqual([])
   })

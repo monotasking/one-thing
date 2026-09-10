@@ -13,6 +13,12 @@ import type {
   DockSize,
   ResolvedOpen,
 } from '../stage/types'
+import {
+  SESSION_OPEN_MODE_LABELS,
+  SESSION_OPEN_MODES,
+  useSessionOpenMode,
+} from '../data/session-open-mode'
+import type { SessionOpenMode } from '../data/session-open-mode'
 import { useReadingStore, effectiveMotionTier } from '../reading/store'
 import { useSystemReducedMotion } from '../reading/useSystemReducedMotion'
 import type { MotionTier, ReadingColumn, ReadingDensity, ReadingFontSize } from '../reading/types'
@@ -71,6 +77,16 @@ const OPEN_OPTIONS: Array<{ value: ResolvedOpen; labelKey: MessageKey }> = [
   { value: 'float', labelKey: 'dock.openFloat' },
   { value: 'pinned', labelKey: 'dock.openPinned' },
 ]
+
+/*
+ * 「点会话列表一行是什么意思」三档(C2)。
+ *
+ * **表在 `data/session-open-mode.ts`,这里只取次序与文案键** —— 与上面那几张
+ * 就地写死的表不同,这一张有第二个消费方(标签的右键菜单),而「三档是哪三档、
+ * 按什么次序排」只该有一个产地(判例:`FILE_OPEN_MODES` 与 `FileActionsMenu`)。
+ */
+const SESSION_OPEN_OPTIONS: Array<{ value: SessionOpenMode; labelKey: MessageKey }>
+  = SESSION_OPEN_MODES.map((value) => ({ value, labelKey: SESSION_OPEN_MODE_LABELS[value] }))
 
 /* ── 外观·阅读的四根轴 ────────────────────────────────────────────────────
  * 档值即写进 DOM 的属性值(src/reading/types.ts 是那张表的另一半),这里只配文案。
@@ -142,6 +158,8 @@ export function SettingsMock() {
   const setDefaultOpen = useStageStore((st) => st.setDefaultOpen)
   const locale = useStageStore((st) => st.locale)
   const setLocale = useStageStore((st) => st.setLocale)
+  const sessionOpenMode = useSessionOpenMode((st) => st.mode)
+  const setSessionOpenMode = useSessionOpenMode((st) => st.setMode)
 
   const readingFs = useReadingStore((st) => st.fontSize)
   const setReadingFs = useReadingStore((st) => st.setFontSize)
@@ -339,6 +357,27 @@ export function SettingsMock() {
                 />
               </div>
               <div className={s.settingRowNote}>{t('settings.defaultOpenNote')}</div>
+
+              {/*
+                「点会话列表一行」那三档(C2,设计 §4.2)。
+                **它归「打开方式」这一区**:这一页的分区判据是「用户想改的是哪件事」
+                (文件头那一段),而这一件想改的正是**打开方式** —— 只不过宾语从
+                「Dock 上那块瓦」换成了「会话列表里那一行」。为它单开一区会让这一页
+                多一个只有一行的领域,而那一行说的还是同一件事。
+                与标签右键菜单里那一节读写**同一格 store**,不是两份状态。
+              */}
+              <div className={s.settingRow}>
+                <div>
+                  <div className={s.settingRowLabel}>{t('sessions.openMode')}</div>
+                  <div className={s.settingRowHint}>{t('sessions.openModeHint')}</div>
+                </div>
+                <Segmented
+                  options={opts(SESSION_OPEN_OPTIONS)}
+                  value={sessionOpenMode}
+                  onChange={setSessionOpenMode}
+                  label={t('sessions.openMode')}
+                />
+              </div>
             </Section>
 
             <Section titleKey="settings.sectionKeymap">

@@ -73,6 +73,24 @@ export function readComposerDraft(sessionId: string): ComposerDraft {
 }
 
 /**
+ * **这条会话此刻有没有一份还没发出去的稿**(C2 转正之二的读口)。
+ *
+ * 它是**一句谓词**而不是让调用方自己去比 `readComposerDraft(id).html.trim()`:
+ * 「什么算空稿」在这只文件里已经有一个产地(`isEmpty` —— 存稿那一口也读它),
+ * 而外面再写一遍的下场是草稿多一格字段时两处判据分叉。
+ *
+ * 唯一调用点是 `content/session-open.previewSeatOf`:要换掉预览格之前先问一句
+ * ——「里面有人打了字」就把它转正,另开一格预览。**留账**:稿只在换会话 / 卸载
+ * 那两拍才进这张表(`components/Composer.tsx` 那两条 layout effect),所以
+ * 「刚打完字、一个字都还没存下来就点了别的会话」这一次问不到 —— 补它要一口
+ * 「输入框此刻有没有字」的**活**读口,那一口的产地在那只组件上。
+ */
+export function hasComposerDraft(sessionId: string): boolean {
+  const draft = DRAFTS.get(sessionId)
+  return draft !== undefined && !isEmpty(draft)
+}
+
+/**
  * 丢掉这条会话的稿(会话被关掉 / 稿被清空)。
  * **对象 URL 谁造谁销**:附件的 URL 是 `composer/store` 造的,这里只是它的
  * 第三个销点 —— 所以销那一句由调用方注入(`configureDraftRevoke`),
