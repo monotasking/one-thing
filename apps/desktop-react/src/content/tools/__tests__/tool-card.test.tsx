@@ -7,6 +7,7 @@ import type { BlockCtx } from '../../blocks/registry'
 import type { ProjectedToolCall } from '../../model/segments'
 import { presentToolCard } from '../../assemble/present'
 import { ToolCard } from '../ToolCard'
+import { cardHeights } from '../card-heights'
 
 /**
  * 工具卡的上屏测(C2-a)。**两份旧测并成一份** —— `tool-row.test.tsx`(A1 卡行 +
@@ -739,16 +740,66 @@ describe('C2-b 工具进度活流:执行中那一行在动', () => {
  * jsdom 不排版,所以「快不快」它证不了;但「读没读、在哪一拍读」它证得了,
  * 而病根恰恰是次序:读排在判据前面 + 首帧同步读 = 916 次全量排版。
  */
-describe('§6.5 第 8 条 FLIP:挂载那一次不许强排版', () => {
+describe('§6.5 第 8 条 FLIP:挂载那一批一个几何属性都不许读', () => {
+  /**
+   * 这一组钉的是**第三轮 profile 定下的那条纪律**(病历在 `ToolCard.tsx` 头上):
+   * 首帧基线不许逐卡读几何 —— 连排进 `requestAnimationFrame` 都不行,因为 rAF
+   * 回调与排版在同一帧里,916 张卡各读一次仍然是那一帧 74% 的钱,而且把
+   * `content-visibility: auto` 跳掉的行当场逼回来排版。
+   *
+   * 「改前」那一格改由共享 `ResizeObserver` 报(`card-heights.ts`),所以这里的
+   * 假 RO 是**被测对象的一部分**,不是脚手架:它模拟的正是「浏览器排完版之后
+   * 把尺寸交过来」这件事。
+   */
   let reads = 0
   let cardHeight = 100
   let frames: FrameRequestCallback[] = []
+  let observers: FakeResizeObserver[] = []
   let undo: Array<() => void> = []
+
+  /** 只记下谁在盯着谁 —— 尺寸什么时候「报」由用例自己说(`reportHeight`)。 */
+  class FakeResizeObserver {
+    readonly targets = new Set<Element>()
+    constructor(readonly callback: ResizeObserverCallback) {
+      observers.push(this)
+    }
+    observe(el: Element): void {
+      this.targets.add(el)
+    }
+    unobserve(el: Element): void {
+      this.targets.delete(el)
+    }
+    disconnect(): void {
+      this.targets.clear()
+    }
+  }
+
+  /**
+   * 让浏览器「报」一次这只盒子的高。**只报给盯着它的那一只观察者** ——
+   * 全壳还有另一只 RO(限高折叠的量尺),把这一发广播给它会把无关的
+   * React 更新拖进用例。
+   */
+  function reportHeight(el: Element, height: number): void {
+    for (const observer of observers) {
+      if (!observer.targets.has(el)) continue
+      observer.callback(
+        [
+          {
+            target: el,
+            borderBoxSize: [{ blockSize: height, inlineSize: 0 }],
+            contentRect: { height } as DOMRectReadOnly,
+          } as unknown as ResizeObserverEntry,
+        ],
+        observer as unknown as ResizeObserver,
+      )
+    }
+  }
 
   beforeEach(() => {
     reads = 0
     cardHeight = 100
     frames = []
+    observers = []
     const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight')
     Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
       configurable: true,
@@ -763,12 +814,28 @@ describe('§6.5 第 8 条 FLIP:挂载那一次不许强排版', () => {
       if (original) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', original)
       else Reflect.deleteProperty(HTMLElement.prototype, 'offsetHeight')
     })
-    // rAF 换成「记下来」,好让「排到了下一帧」与「压根没读」分得开。
+    // `getBoundingClientRect` 是同一件事的另一条口 —— 换一条读法绕过纪律也算违例。
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function readRect(this: HTMLElement) {
+        if (this.hasAttribute('data-tool-card')) reads += 1
+        return { height: cardHeight, width: 0, top: 0, left: 0 } as DOMRect
+      })
+    undo.push(() => rect.mockRestore())
+    // rAF 换成「记下来」:这一组要证的正是**连一帧都不该排**。
     const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
       frames.push(cb)
       return frames.length
     })
     undo.push(() => raf.mockRestore())
+
+    const previousRO = globalThis.ResizeObserver
+    globalThis.ResizeObserver = FakeResizeObserver as unknown as typeof ResizeObserver
+    undo.push(() => {
+      globalThis.ResizeObserver = previousRO
+      // 账本自己那口拆卸 —— 它缓存着上面那只假 RO,不退役会漏进下一个文件。
+      cardHeights.reset()
+    })
   })
 
   afterEach(() => {
@@ -777,7 +844,7 @@ describe('§6.5 第 8 条 FLIP:挂载那一次不许强排版', () => {
     document.documentElement.removeAttribute('data-motion-tier')
   })
 
-  /** 攒着的那些帧真的跑一遍。 */
+  /** 攒着的那些帧真的跑一遍(用来证「排到下一帧」也没有发生)。 */
   async function runFrames() {
     const pending = frames
     frames = []
@@ -787,36 +854,134 @@ describe('§6.5 第 8 条 FLIP:挂载那一次不许强排版', () => {
   }
 
   const single = () => draw([call('c1', 'read', { result: 'x' })])
+  const cardOf = (container: HTMLElement) =>
+    container.querySelector('[data-tool-card]') as HTMLElement
 
   /**
-   * **反证 ①**:把 `el.offsetHeight` 那一句挪回判据前面(= 修之前的样子),
-   * 这一条当场红 —— 它数的就是「提交那一拍读了几次」。
+   * 录下内联样式走过的每一步 —— FLIP 的**起点**只在中间那一笔上看得见
+   * (钉住起点、强排一次、再钉终点,三笔写在同一个同步块里)。
+   *
+   * 收集必须写在回调里:`takeRecords()` 只交**还没派发**的那些,而
+   * `await act(...)` 会把微任务冲掉,派发过的就再也拿不到了。
    */
-  it('挂载时一次 offsetHeight 都不读 —— 基线读排到了下一帧', async () => {
-    await single()
+  function watchStyle(el: HTMLElement): () => string[] {
+    const seen: string[] = []
+    const take = (records: MutationRecord[]) => {
+      for (const record of records) seen.push(record.oldValue ?? '')
+    }
+    const mo = new MutationObserver(take)
+    mo.observe(el, { attributes: true, attributeFilter: ['style'], attributeOldValue: true })
+    return () => {
+      take(mo.takeRecords())
+      mo.disconnect()
+      // 最后那一笔的「新值」没有下一条记录去当 oldValue,补上它。
+      return [...seen, el.getAttribute('style') ?? '']
+    }
+  }
+
+  /** 一次提交里挂 200 张卡 —— 真机上那一下是 916 张,病的形状一模一样。 */
+  async function drawMany(n: number) {
+    const view = render(
+      <>
+        {Array.from({ length: n }, (_, i) => (
+          <ToolCard key={i} card={presentToolCard([call(`m${i}`, 'read', { result: 'x' })])} ctx={ctx} />
+        ))}
+      </>,
+    )
+    await act(async () => undefined)
+    return view
+  }
+
+  /**
+   * **反证 ①**:把 rAF 里那句 `node.offsetHeight` 基线读加回去(= 修之前的样子),
+   * 这一条当场红 —— 它数的就是「挂这一批卡总共读了几次几何」,rAF 跑完之后也算。
+   */
+  it('一次提交挂 200 张卡:offsetHeight / getBoundingClientRect 一次都不读', async () => {
+    const { container } = await drawMany(200)
+    expect(container.querySelectorAll('[data-tool-card]')).toHaveLength(200)
     expect(reads).toBe(0)
-    // 但基线不是被丢了:它排队了,下一帧照取(916 张卡的这一发落在同一帧里)。
-    expect(frames.length).toBe(1)
+    // 也没有把账挪到下一帧:rAF 一发都没排(那正是第三轮 profile 判红的那一栏)。
+    expect(frames.length).toBe(0)
+    await runFrames()
+    expect(reads).toBe(0)
   })
 
-  it('结构真变了(有「改前」)那一次才同步量,并且当场 FLIP', async () => {
-    const { container } = await single()
-    await runFrames()
-    expect(reads).toBe(1) // 上一帧那一发基线,不在提交的关键路上
+  it('挂载那一次只上账不读数:RO 收到这张卡,几何读仍然是 0;卸载即销账', async () => {
+    const { container, unmount } = await single()
+    const card = cardOf(container)
+    expect(observers.some((o) => o.targets.has(card))).toBe(true)
+    expect(cardHeights.size).toBe(1)
+    expect(reads).toBe(0)
 
+    // 一本按元素记的账,漏销一格就是一条会话拆了之后还攥着 916 个 DOM 节点。
+    unmount()
+    expect(cardHeights.size).toBe(0)
+    expect(observers.some((o) => o.targets.has(card))).toBe(false)
+  })
+
+  it('RO 报过之后再变结构:FLIP 的起点就是 RO 报的那个高', async () => {
+    const { container } = await single()
+    const card = cardOf(container)
+    reportHeight(card, 100) // ← 浏览器排完版把尺寸交过来
+    expect(reads).toBe(0) // 收下来这一手不读任何几何
+
+    const seen = watchStyle(card)
     cardHeight = 140
     await open(rowOf(container, 'c1')) // 抽屉拉开 = structure 变了
-    expect(reads).toBeGreaterThan(1)
-    const card = container.querySelector('[data-tool-card]') as HTMLElement
+    const styles = seen()
+
+    // 「改后」同步量了一次(一次只发生在一张卡上,那一次非同步不可)。
+    expect(reads).toBeGreaterThan(0)
     expect(card.style.height).toBe('140px')
+    expect(styles.some((style) => style.includes('height: 100px'))).toBe(true)
   })
 
-  it('动效档 none:整段不做,所以连基线都不量(判据排在读之前)', async () => {
+  it('RO 报的是 0(卡在跳渲的子树里):账不被冲掉,起点还是上一次那个真值', async () => {
+    const { container } = await single()
+    const card = cardOf(container)
+    reportHeight(card, 100)
+    reportHeight(card, 0) // content-visibility 跳渲那一格报的就是 0
+
+    const seen = watchStyle(card)
+    cardHeight = 140
+    await open(rowOf(container, 'c1'))
+
+    expect(seen().some((style) => style.includes('height: 100px'))).toBe(true)
+  })
+
+  /** 挂载后第一次结构变化就来 —— 账上还没有数,那就**直切**,不补一次同步读当起点。 */
+  it('RO 一次都没报过就变结构:不做过渡,内联 height 一个字都不写', async () => {
+    const { container } = await single()
+    cardHeight = 140
+    await open(rowOf(container, 'c1'))
+    expect(cardOf(container).style.height).toBe('')
+  })
+
+  it('没有 ResizeObserver 的宿主(jsdom 缺省)同样直切,而不是退回同步读', async () => {
+    const previous = globalThis.ResizeObserver
+    Reflect.deleteProperty(globalThis, 'ResizeObserver')
+    cardHeights.reset()
+    try {
+      const { container } = await single()
+      expect(reads).toBe(0)
+      cardHeight = 140
+      await open(rowOf(container, 'c1'))
+      expect(cardOf(container).style.height).toBe('')
+    } finally {
+      globalThis.ResizeObserver = previous
+      cardHeights.reset()
+    }
+  })
+
+  it('动效档 none:整段不做,所以连账都不问(判据排在读之前)', async () => {
     document.documentElement.setAttribute('data-motion-tier', 'none')
     const { container } = await single()
+    const card = cardOf(container)
+    reportHeight(card, 100)
     expect(reads).toBe(0)
     expect(frames.length).toBe(0)
     await open(rowOf(container, 'c1'))
     expect(reads).toBe(0)
+    expect(card.style.height).toBe('')
   })
 })

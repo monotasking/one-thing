@@ -5,7 +5,14 @@ import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
 import type { SessionStreamPayload } from '@shared/events/envelope'
 import type { PermissionInfo } from '@shared/ipc/permissions'
+import type { SessionMeta } from '@shared/ipc/chat'
+import type { SessionLifecycleEvent } from '@onething/client/events/session-lifecycle'
 import { configureChatPort, type ChatPort } from './chat-port'
+import { configureSessionsPort } from './sessions-port'
+import { configureSpacesPort } from './spaces-port'
+import { useSessionsSource } from './sessions-source'
+import { useWorkspaceStore } from '../workspace/store'
+import { DEFAULT_SPACE_ID } from '../workspace/types'
 import { useNotifyStore } from '../services/notify-store'
 import {
   ABORT_SETTLE_MS,
@@ -1332,6 +1339,136 @@ describe('多开:一条会话一台机器,注册表按会话分发', () => {
     expect(chatSources.dockedIds()).toEqual([])
     expect(h.subs()).toBe(0)
     expect(chatSources.currentSessionId()).toBe('')
+  })
+})
+
+/**
+ * **停靠池订的是哪一条名册接缝**(09-10,C1 那条留账的结清)。
+ *
+ * C1 把 `forget` 接在 `onSessionsRemoved` 上,而那一条**把「被删」与「离开这个
+ * 工作区」说成同一句话**:于是换个工作区再换回来,整池八台机器一起
+ * `forget → evict → dispose`,每条会话重新拉一遍账本 —— 正是停靠池要治的病本身。
+ *
+ * 这一组走**真的** `sessions-source` + 工作区 store(不是手捏一发通知):两条
+ * 接缝的分家发生在那只文件里,只有真的换一次工作区才证得了它没走散。
+ *
+ * **反证**:把 `ensureRosterHook` 改回 `onSessionsRemoved` → 第一条当场红
+ * (机器不在池里了,而且切回来真的重拉一次)。
+ */
+describe('停靠池的出池口:换工作区不拆,会话真删才拆', () => {
+  const A = 'roster-a'
+  const B = 'roster-b'
+  const METAS = [
+    { id: A, name: '甲', createdAt: 1, updatedAt: 1, workspaceId: DEFAULT_SPACE_ID },
+    { id: B, name: '乙', createdAt: 2, updatedAt: 2, workspaceId: 'ws-work' },
+  ] as unknown as SessionMeta[]
+
+  let emitLifecycle: ((event: SessionLifecycleEvent) => void) | undefined
+  let loads: Map<string, number>
+
+  /** 只数 `listRaw`:「不重载」这条法只能靠数请求次数(判词在 `MultiHarness.loads` 上)。 */
+  function installPorts(): void {
+    loads = new Map()
+    emitLifecycle = undefined
+    configureChatPort({
+      ready: async () => undefined,
+      listRaw: async (sessionId) => {
+        loads.set(sessionId, (loads.get(sessionId) ?? 0) + 1)
+        return { events: [] as never }
+      },
+      readBlob: async () => ({}),
+      onSessionEvent: () => () => undefined,
+      onSessionStream: () => () => undefined,
+      sendMessage: async () => ({ success: true }),
+      abort: async () => ({ success: true }),
+      retryMessage: async () => ({ success: true }),
+      listPendingPermissions: async () => ({ success: true, pending: [] }),
+      respondPermission: async () => ({ success: true }),
+    })
+    configureSessionsPort({
+      ready: async () => undefined,
+      listMeta: async () => ({ success: true, sessions: METAS }),
+      getSegments: async () => ({ success: true, segments: [] }),
+      getMessagesPage: async () => ({ success: true, messages: [] }),
+      getUserMarkers: async () => ({ success: true, markers: [] }),
+      create: async () => ({ success: false, error: 'fake port' }),
+      updateWorkingDirectory: async () => ({ success: true }),
+      updatePin: async () => ({ success: true }),
+      onSessionEvent: () => () => undefined,
+      onSessionLifecycle: (callback) => {
+        emitLifecycle = callback
+        return () => void (emitLifecycle = undefined)
+      },
+    })
+    configureSpacesPort({
+      ready: async () => undefined,
+      list: async () => ({
+        success: true,
+        spaces: [
+          { id: DEFAULT_SPACE_ID, name: '默认', createdAt: 0 },
+          { id: 'ws-work', name: '工作', createdAt: 100 },
+        ],
+      }),
+      create: async () => ({ success: false, error: 'fake port' }),
+      update: async () => ({ success: true }),
+      remove: async () => ({ success: true, removed: true }),
+    })
+  }
+
+  /** 停一台在池里:开一次、松手、等那一拍微任务。 */
+  async function dockA(): Promise<void> {
+    chatSources.acquire(A)
+    await settle()
+    chatSources.release(A)
+    await Promise.resolve()
+    expect(chatSources.dockedIds()).toContain(A)
+    expect(loads.get(A)).toBe(1)
+  }
+
+  beforeEach(async () => {
+    chatSources.resetAll()
+    useSessionsSource.getState().reset()
+    useWorkspaceStore.getState().reset()
+    installPorts()
+    await useWorkspaceStore.getState().load()
+    await useSessionsSource.getState().start()
+  })
+
+  afterEach(() => {
+    chatSources.resetAll()
+    useSessionsSource.getState().reset()
+    useWorkspaceStore.getState().reset()
+  })
+
+  it('换到别的工作区再换回来:停靠的机器还在池里,一发 listRaw 都不打', async () => {
+    await dockA()
+
+    // 换世界:甲离场(它不在 ws-work 里)—— 形态机据此夹持焦点,但**机器不拆**。
+    useWorkspaceStore.getState().switchTo('ws-work')
+    expect(useSessionsSource.getState().sessions.map((s) => s.id)).toEqual([B])
+    expect(chatSources.dockedIds()).toContain(A)
+    expect(chatSources.get(A)).toBeDefined()
+
+    // 换回来再开:命中停靠池,起底那一句撞上 `if (fold) return`。
+    useWorkspaceStore.getState().switchTo(DEFAULT_SPACE_ID)
+    chatSources.acquire(A)
+    await settle()
+    expect(loads.get(A)).toBe(1)
+    expect(chatSources.dockedIds()).not.toContain(A)
+  })
+
+  it('会话**真的被删**:停靠池里那一台立刻拆掉', async () => {
+    await dockA()
+
+    expect(emitLifecycle).toBeDefined()
+    emitLifecycle!({ type: 'deleted', sessionId: A, cascadedSessionIds: [A] })
+    expect(chatSources.dockedIds()).not.toContain(A)
+    expect(chatSources.get(A)).toBeUndefined()
+
+    // 再开它就是一台新机器 —— 账本得重新拉。
+    chatSources.acquire(A)
+    await settle()
+    expect(loads.get(A)).toBe(2)
   })
 })
 

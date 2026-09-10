@@ -34,7 +34,7 @@ import {
   type PermissionAsk,
 } from './permission-ask'
 import { chatPort } from './chat-port'
-import { onSessionsRemoved } from './sessions-source'
+import { onSessionsDeleted } from './sessions-source'
 import { notify } from '../services/notify'
 import { perfCount, perfSpan } from '../services/perf'
 import { t } from '../i18n'
@@ -1747,10 +1747,14 @@ const sweeping = new Set<string>()
  * 那些老老实实拆掉。8 是拍点 ④ 的缺省 —— 够覆盖「在几条会话之间来回切」这个
  * 真实用法,又不至于把八条以上的大树全钉在内存里。改这个数是一次拍板。
  *
- * ── 出池的三条路 ────────────────────────────────────────────────────────
- *  · 被取回(`acquire` / `retain` / `ensure` 命中)—— 机器回到在册那一头;
- *  · 挤出去(池满,最早停的那条真 `dispose`);
- *  · 会话没了(`forget`,接在名册那条 `onSessionsRemoved` 上)。
+ * ── 出池的四条路,其中**三条会把机器拆掉** ─────────────────────────────
+ *  · 被取回(`acquire` / `retain` / `ensure` 命中)—— 机器回到在册那一头,
+ *    **不拆**,这是停靠池存在的全部理由;
+ *  · 池满逐出 —— 最早停的那条真 `dispose`(`dock` 里那个 while);
+ *  · 会话**真的被删** —— `forget`,接在名册的 `onSessionsDeleted` 上;
+ *  · 整张表归零 —— `resetAll()`(HMR 退役与测试的那一口,在册的与停靠的一起拆)。
+ *
+ * 名单到此为止:**换工作区不在里面**(C3 之前它在,病历见 `forget` 头上)。
  */
 
 /** 停靠池上限(拍点 ④)。**Map 的插入序就是 LRU 序**:最早停的排在最前。 */
@@ -1787,15 +1791,24 @@ function undock(id: string): ChatSource | undefined {
 }
 
 /**
- * 一批会话离场 —— 停靠池里那几台立刻拆掉。
+ * 一批会话**真的被删了** —— 停靠池里那几台立刻拆掉。
  *
- * 名册那条接缝(`onSessionsRemoved`)**把「被删」与「离开这个工作区」说成同一
- * 句话**(产地是 `sessions-source` 的 `onLifecycle` 与 `onSpaceChanged`)。两者
- * 一起当出池处理是**保守的那一侧**:换空间再换回来最坏是重载一次(与本批之前
- * 的行为逐字相同,不是回归),而一台**为一条已经删掉的会话活着的机器**是真漏
- * —— 它还挂在收件人表上收事件,不可观测,直到内存长起来。
- * 要把两者分开得让 chat 端口自己认得 `onSessionLifecycle` 的 `deleted`,那是
- * 一次端口形状的改动,记在本批留账里。
+ * ── 它订的为什么不是 `onSessionsRemoved`(C1 的留账,09-10 结清)────────
+ * 那一条**把「被删」与「离开这个工作区」说成同一句话**(两个产地:
+ * `sessions-source` 的 `onLifecycle` 与 `onSpaceChanged`),而对形态机来说两者
+ * 确实是同一件事(那张卡不在序列里了)。C1 落地时先接了它,理由是「保守的
+ * 那一侧:换空间再换回来最坏重载一次」—— 那句话低估了代价:换个工作区再换
+ * 回来,**整池八台机器一起被 `forget → evict → dispose`**,每一条会话都得重新
+ * 拉一遍账本,正是停靠池要治的那个病本身。
+ *
+ * C3(a9d8e7e2)为伴随面立的 `onSessionsDeleted` 正是缺的那一格:它只从
+ * `onLifecycle` 的 `deleted` 那一支发,`onSpaceChanged` 不发。停靠池与伴随面
+ * 要的是同一句话 —— **「这条会话没了」而不是「它不在这个屏幕上了」**,所以
+ * 两处订同一条,理由整段写在 `sessions-source.onSessionsDeleted` 上。
+ *
+ * 换工作区之后停靠池原样留着:那些机器还挂在收件人表上跟着核心走(全进程
+ * 共用的那一对推送订阅不按工作区分),切回去照旧零 `listRaw`。而一台**为一条
+ * 已经删掉的会话活着的机器**仍然当场拆 —— 它不可观测,只会让内存长起来。
  *
  * **在册的那些一格不动**:它们有人持有着(屏幕上正开着),该由引用账收走。
  */
@@ -1804,14 +1817,15 @@ function forget(sessionIds: readonly string[]): void {
 }
 
 /**
- * 接上名册那条接缝。**惰性**(第一次真的停靠时才接)—— 模块作用域里接线会在
+ * 接上名册那条「真的被删了」的接缝(**不是**「离场」那一条,判词在 `forget` 上)。
+ * **惰性**(第一次真的停靠时才接)—— 模块作用域里接线会在
  * 这台壳那条存量 import 环上读到 TDZ(判例写在 `content/session-projection.ts`
  * 头上),而第一次停靠一定发生在整棵树跑起来之后。
  */
 let stopRoster: (() => void) | undefined
 function ensureRosterHook(): void {
   if (stopRoster) return
-  stopRoster = onSessionsRemoved(forget)
+  stopRoster = onSessionsDeleted(forget)
 }
 /** **全进程只有这一对**推送订阅(见文件头)。 */
 let unsubEvent: (() => void) | undefined

@@ -29,6 +29,7 @@ import {
   type StallLevel,
   type ToolProgress,
 } from './card'
+import { cardHeights } from './card-heights'
 import { PermissionSlot } from '../permission/PermissionSlot'
 import { ToolDrawer } from './ToolDrawer'
 import { EXPANDABLE_STATUSES, toolStatusLabel, toolTone, type ToolTone } from './status'
@@ -73,13 +74,29 @@ import s from './ToolCard.module.css'
  *
  * 所以判据挪到读之前,而且**首帧一次都不许同步量**:首帧压根没有「改前」,
  * 那一次读量到的高只是**下一次**的起点,晚一帧拿到与当场拿到完全等价。
- * 把它排进 `requestAnimationFrame`:916 张卡的回调落在同一帧、布局已经算好,
- * 第一个读的把版排一次,其余 915 个白拿 —— 从 O(n) 次排版回到 O(1) 次。
+ * 第一版把它排进了 `requestAnimationFrame`(f13a9411)。
  *
- * **为什么是 rAF 不是 ResizeObserver**:RO 报的是「这个盒子的尺寸变了」,
- * 而这里要的是「**这一次提交之后**它多高」——不变也得有个数(下一次 FLIP 的
- * 起点),RO 在没变时一声不吭。rAF 的语义正好是「这一帧的活干完了」,
- * 而且零新观察者、零常驻订阅,卸载时一句 `cancelAnimationFrame` 就干净。
+ * ── 第三轮 profile:rAF 只是换了一栏记账,那 700ms 一点没少(2026-09-10)──
+ *
+ * 同一条路再量:click 的同步窗口确实从 908ms 掉到 215ms,**而同一次点击的长
+ * 动画帧是 prod 1041ms / dev 1600–2250ms**,其中 916 张卡在那只 rAF 回调里各读
+ * 一次 `offsetHeight` = prod 770ms / dev 750–990ms,占那一帧的 74%。
+ * rAF 回调与排版在**同一帧**里 —— 挪出 click 那一栏不等于活少了,用户看到的
+ * 仍然是一次一秒多的卡死(第 5 轴「交互预算」判的是长帧,不是同步 JS)。
+ *
+ * 而且它把上一批省下的钱又花了回去:消息行挂着 `content-visibility: auto`,
+ * 没进过视口的行浏览器本来跳过排版;**逐卡读一个几何属性把它们当场逼了回来**。
+ * A/B:摘掉这一发基线读,长帧 1589 → 961ms;关掉 `content-visibility` 反而
+ * 826 → 1514ms —— 它是药不是病。
+ *
+ * **修法:尺寸由浏览器报,不由我们问。** 「改前」那一格改由**全壳共享的一只
+ * `ResizeObserver`** 记账(`card-heights.ts`):RO 回调跑在排版**之后**,交出来
+ * 的数是刚算完的,读它不逼任何人重排,916 张卡攒成一次回调。挂载那一次因此
+ * 一个几何属性都不读;账上没数就直切,不做过渡。
+ *
+ * **rAF 那条理由错在哪**:当初说「RO 在尺寸没变时一声不吭,而我们不变也得有个
+ * 数」—— 但 RO 规范保证 `observe()` 之后**必派一次初始回调**,那一次给的正是
+ * 「此刻多高」。所需的那个数本来就在,只是当初没去接。
  */
 export const ToolCard = memo(function ToolCard({
   card,
@@ -624,46 +641,49 @@ export function outcomeText(t: TFn, outcome: ToolOutcomeModel): string {
 /**
  * 卡高从「改前」到「改后」做过渡(§6.5 第 8 条 FLIP)。
  *
- * 量两次(上一次提交后的高、这一次提交后的高),把内联 height 先钉回旧值、
- * 强制一次排版、再钉到新值让它自己走过去 —— 不突变。
+ * 把内联 height 先钉回旧值、强制一次排版、再钉到新值让它自己走过去 —— 不突变。
  *
  * 只在 `structure` 变了时跑:逐帧的文字补丁不改高度,量它只是每 100ms 白白强排一次版。
  * 动效档 `none` 直切(不是「快一点」,是压根不做)。
  *
- * **三条次序纪律**(病历在文件头,读数 715ms/916 张卡):
+ * **三条次序纪律**(病历在文件头,读数 916 张卡 × 一次 = prod 770ms):
  *  ① 判据排在读之前 —— `none` 档整段不做,那就一个几何属性都不该碰;
- *  ② 首帧(`before` 为 0)没有「改前」,基线读排进 `requestAnimationFrame`
- *     ——晚一帧拿到与当场拿到等价,而当场拿到是一次强制同步排版;
- *  ③ 只有真有「改前」的那一次照旧**同步**量并当场 FLIP —— 那一次非同步不可
- *     (要在浏览器绘制之前把起点钉住),而它一次只发生在一张卡上。
+ *  ② 「改前」那一格**不问,只收**:由共享 `ResizeObserver` 报过来
+ *     (`card-heights.ts`,回调跑在排版之后,916 张卡攒成一次)。挂载那一次
+ *     因此**一个几何属性都不读** —— 账上还是 0,那就不做过渡;
+ *  ③ 只有真有「改前」的那一次照旧**同步**量「改后」并当场 FLIP —— 那一次
+ *     非同步不可(要在浏览器绘制之前把起点钉住),而它一次只发生在一张卡上。
+ *
+ * 过渡跑的那 180ms 里 RO 会一路报中间高度,账上于是停在「它此刻真的多高」——
+ * 万一第二次结构变化压着上一次的过渡到,起点就是它当下的位置,而不是一个
+ * 早就不成立的旧值。那正是 FLIP 想要的语义,所以这里不去纠正它。
  */
 function useFlipHeight(ref: React.RefObject<HTMLDivElement | null>, structure: string): void {
-  const lastHeight = useRef(0)
+  // 挂载即上账,卸载即销账 —— 依赖表里没有 `structure`,一次结构变化不折腾观察者。
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    cardHeights.observe(el)
+    return () => cardHeights.unobserve(el)
+  }, [ref])
 
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
-    // ① none 档压根不做这件事 —— 连基线都不必量(读在前判在后,就是 916 次白排版)。
+    // ① none 档压根不做这件事 —— 连基线都不必问(读在前判在后,就是 916 次白排版)。
     if (currentMotionTier() === 'none') return
 
-    const before = lastHeight.current
-    if (!before) {
-      /*
-       * ② 首帧:只取下一次的起点。没有 rAF 的宿主(jsdom 非 visual / SSR)
-       * 也就没有帧可动,基线索性不取 —— 下一次结构变化照旧当首帧处理,
-       * 结果是「不做 FLIP」,而不是「在脏布局上补一次同步读」。
-       */
-      if (typeof requestAnimationFrame !== 'function') return
-      const frame = requestAnimationFrame(() => {
-        const node = ref.current
-        if (node) lastHeight.current = node.offsetHeight
-      })
-      return () => cancelAnimationFrame(frame)
-    }
+    /*
+     * ② 账上没有「改前」= 直切。三种情形合成这一句(逐条理由在 `card-heights.ts`
+     * 文件头):RO 还没报过(挂载后第一次结构变化就来)、这张卡此刻在
+     * `content-visibility` 跳渲的子树里、宿主压根没有 `ResizeObserver`。
+     * 没人看得见的卡不需要过渡 —— 而补一次同步读正是这一批要治的病。
+     */
+    const before = cardHeights.heightOf(el)
+    if (!before) return
 
     // ③ 真有「改前」:同步量「改后」,当场把两头钉住。
     const after = el.offsetHeight
-    lastHeight.current = after
     if (before === after) return
 
     el.style.transition = 'none'
