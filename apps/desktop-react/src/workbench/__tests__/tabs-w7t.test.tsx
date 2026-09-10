@@ -180,6 +180,143 @@ describe('B1:溢出名单是标签条自己的形', () => {
     store.forget('leaf-1')
     expect(useLeafOverflowStore.getState().byLeaf['leaf-1']).toBeUndefined()
   })
+
+  /*
+   * **观察器回调只读不写;量到的东西在下一帧交出去**(09-10 立法,病历见
+   * `ui/frame-coalescer.ts` 文件头:交名单会让宿主挂 ⋯ 钮、React 的同步冲刷还会
+   * 顺手提交别处排着的布局写,在 RO 派发循环里改布局 = 屏幕闪 + 一句
+   * `ResizeObserver loop completed with undelivered notifications`)。
+   *
+   * **反证**:把 `Tabs` 里那句 `new ResizeObserver(schedule)` 换回
+   * `new ResizeObserver(measure)`(或把 `schedule()` 写成直接 `measure()`)→
+   * 下面三条里的头一条当场红(RO 回调返回时 `seen` 已经有一份了)。
+   */
+  describe('RO 回调里量到的名单不在回调里交出去', () => {
+    /** 假 RO:只把回调收下来,由用例决定什么时候「派发」。 */
+    function stubResizeObserver(): { fire: () => void } {
+      const cbs: ResizeObserverCallback[] = []
+      class FakeRO {
+        constructor(cb: ResizeObserverCallback) {
+          cbs.push(cb)
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+      vi.stubGlobal('ResizeObserver', FakeRO)
+      return {
+        fire: () => {
+          for (const cb of cbs) cb([], {} as ResizeObserver)
+        },
+      }
+    }
+
+    /** 手动帧:`cancelAnimationFrame` 真的把待发那一发摘掉,`cancel` 才测得出来。 */
+    function stubFrames(): { flush: () => void } {
+      const frames = new Map<number, FrameRequestCallback>()
+      let next = 1
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+        const id = next++
+        frames.set(id, cb)
+        return id
+      })
+      vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+        frames.delete(id)
+      })
+      return {
+        flush: () => {
+          const pending = [...frames.values()]
+          frames.clear()
+          for (const cb of pending) cb(0)
+        },
+      }
+    }
+
+    const rect = (left: number, right: number) =>
+      ({
+        left,
+        right,
+        width: right - left,
+        top: 0,
+        bottom: 36,
+        height: 36,
+        x: left,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect
+
+    /**
+     * 给条与格喂真矩形。jsdom 里 `clientWidth` 恒 0 而 `clippedTabIds` 头一行就
+     * 按它答空,所以这一格也得种上 —— 不种就永远量不出越界的格。
+     */
+    function seedRects(bar: HTMLElement, clipped: string[]): void {
+      Object.defineProperty(bar, 'clientWidth', { value: 300, configurable: true })
+      bar.getBoundingClientRect = () => rect(0, 300)
+      for (const el of Array.from(bar.querySelectorAll<HTMLElement>('[data-tab-id]'))) {
+        const id = el.dataset.tabId ?? ''
+        el.getBoundingClientRect = () => (clipped.includes(id) ? rect(280, 400) : rect(0, 100))
+      }
+    }
+
+    function mount(seen: TabsOverflow[]) {
+      return render(
+        <Tabs
+          items={[
+            { id: 'a', label: 'a' },
+            { id: 'b', label: 'b' },
+            { id: 'c', label: 'c' },
+          ]}
+          activeId="a"
+          onSelect={() => {}}
+          onOverflow={(state) => seen.push(state)}
+        />,
+      )
+    }
+
+    afterEach(() => {
+      vi.unstubAllGlobals()
+    })
+
+    it('RO 派发那一刻一格都不交,下一帧恰好交一次', () => {
+      const frames = stubFrames()
+      const ro = stubResizeObserver()
+      const seen: TabsOverflow[] = []
+      mount(seen)
+      seedRects(screen.getByRole('tablist'), ['c'])
+      act(() => ro.fire())
+      // 派发循环里改 DOM 正是病根 —— 这一刻宿主什么都还没收到。
+      expect(seen).toHaveLength(0)
+      act(() => frames.flush())
+      expect(seen).toHaveLength(1)
+      expect(seen[0]?.ids).toEqual(['c'])
+    })
+
+    it('一帧里连派两次 RO 回调 → 只交一次', () => {
+      const frames = stubFrames()
+      const ro = stubResizeObserver()
+      const seen: TabsOverflow[] = []
+      mount(seen)
+      seedRects(screen.getByRole('tablist'), ['c'])
+      act(() => {
+        ro.fire()
+        ro.fire()
+      })
+      act(() => frames.flush())
+      expect(seen).toHaveLength(1)
+    })
+
+    it('帧还没到就卸载 → 一次都不交(cancel 生效)', () => {
+      const frames = stubFrames()
+      const ro = stubResizeObserver()
+      const seen: TabsOverflow[] = []
+      const view = mount(seen)
+      seedRects(screen.getByRole('tablist'), ['c'])
+      act(() => ro.fire())
+      view.unmount()
+      act(() => frames.flush())
+      expect(seen).toHaveLength(0)
+    })
+  })
 })
 
 describe('B7 / B11:两格标签的关与拆', () => {

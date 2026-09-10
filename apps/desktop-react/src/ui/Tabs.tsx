@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { resolveIcon, X } from '../components/icons'
+import { FrameCoalescer } from './frame-coalescer'
 import { StatusDot } from './StatusDot'
 import { Tooltip } from './Tooltip'
 import { useRoving } from './a11y/roving'
@@ -283,12 +284,27 @@ export function Tabs({
       seen.current = key
       onOverflow({ ids, reveal })
     }
+    /*
+     * **观察器回调只读不写;量到的东西在下一帧交出去**(09-10 立法,见
+     * `ui/frame-coalescer.ts` 文件头的完整病历)。`measure()` 交出去那一下会让宿主
+     * 挂上 / 卸下 ⋯ 钮(标签条随之变宽 18px),React 的同步冲刷还会把别处排着的
+     * 布局写(拖架子那一发 `setLiveThickness`)一并提交 —— 直接在 RO 回调里跑就是
+     * 在**派发循环内改布局**,Chrome 当场判「同深度未派送」,屏幕上是闪 + 一句
+     * `ResizeObserver loop completed with undelivered notifications`。
+     * 微任务不行(仍在那一趟里),所以是 rAF。
+     *
+     * **挂载那一次仍同步**:它不在任何派发循环里,而「条还没排出盒 → 一格都不报」
+     * 那条用例读的正是这一发。
+     */
+    const coalescer = new FrameCoalescer(measure)
+    const schedule = () => coalescer.schedule()
     measure()
-    el.addEventListener('scroll', measure, { passive: true })
-    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null
+    el.addEventListener('scroll', schedule, { passive: true })
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null
     ro?.observe(el)
     return () => {
-      el.removeEventListener('scroll', measure)
+      coalescer.cancel()
+      el.removeEventListener('scroll', schedule)
       ro?.disconnect()
     }
   }, [items, onOverflow, reveal])

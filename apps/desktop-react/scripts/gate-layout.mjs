@@ -13,6 +13,10 @@
  *    一律答零,「中央区还剩多高」「输入框压没压在架子上」根本不存在;
  *  ⑤ 浮窗层叠 —— 同上,四扇窗的矩形要真排版才量得到;
  *  ⑥ 召唤两条路 —— 焦点、架子展开、tab 次序,三样都要真 DOM。
+ *  ⑦ 按下即拖那一族拖到一半作废 —— 比例 / 厚度 / 窗位三样都要真实排版才量得到;
+ *  ⑧ 拖架子厚度时标签条量溢出 —— 病是浏览器判的「ResizeObserver loop completed
+ *    with undelivered notifications」,而 jsdom 里既没有布局也没有那条判据:
+ *    「观察器回调在派发循环里改了布局」这件事**只有真浏览器说得出来**。
  * 08-30 那条判例的原话:交互时序类改动必须真机对照,jsdom 的绿不算数。
  *
  * ── 纪律 ────────────────────────────────────────────────────────────────
@@ -53,6 +57,22 @@ const TRANSITIONS_SRC = readFileSync(path.join(appRoot, 'src/stage/transitions.t
 const TOKENS_SRC = readFileSync(path.join(appRoot, 'src/styles/tokens.css'), 'utf-8')
   // 读样式表源文本的门先剥注释(仓规):病历文本里写着这些数,不剥会读到注释里那个。
   .replace(/\/\*[\s\S]*?\*\//g, '')
+
+/**
+ * 「完全落在条里」的亚像素容差,**从 `src/ui/Tabs.tsx` 读**(⑧;与
+ * `gate-squeeze.mjs` 那一档逐字同源)。它是量子不是设计尺寸,而门抄一份的代价是
+ * 「产品改了门照样绿」—— 那边改了这边跟着走,那边没了这里当场抛。
+ */
+function tabClipEpsilonPx() {
+  const src = readFileSync(path.join(appRoot, 'src/ui/Tabs.tsx'), 'utf-8')
+  const hit = /export const TAB_CLIP_EPSILON_PX\s*=\s*(\d+(?:\.\d+)?)/.exec(src)
+  if (!hit) {
+    throw new Error(
+      'gate:layout 读不到 src/ui/Tabs.tsx 的 TAB_CLIP_EPSILON_PX —— 容差只有一个产地,改名了就把这里一起改',
+    )
+  }
+  return Number(hit[1])
+}
 
 /** 从 `transitions.ts` 读一格 `export const <名> = <数>`。 */
 function num(name) {
@@ -450,13 +470,18 @@ async function pressAt(cdp, at) {
   await mouse(cdp, 'mousePressed', at, { clickCount: 1 })
 }
 
-async function moveAlong(cdp, from, to, steps = 12) {
+/**
+ * `gapMs` 是**每两发 move 之间的间隔**,缺省 12(所有既有场景一个字不变)。
+ * ⑧ 要把它调密到一帧三发 —— 那一场判的是「一帧里被报了好几遍会不会出事」,
+ * 一帧一发的手势根本走不到那格病。
+ */
+async function moveAlong(cdp, from, to, steps = 12, gapMs = 12) {
   for (let i = 1; i <= steps; i += 1) {
     await mouse(cdp, 'mouseMoved', {
       x: from.x + ((to.x - from.x) * i) / steps,
       y: from.y + ((to.y - from.y) * i) / steps,
     })
-    await delay(12)
+    await delay(gapMs)
   }
 }
 
@@ -1625,17 +1650,143 @@ async function sceneCancel(store, udd, sessions) {
   }
 }
 
+/**
+ * ⑧ **拖架子厚度杆时,标签条量溢出不许在 RO 派发循环里改布局**(09-10;
+ * 报障原话「拖架子厚度把手时闪烁并弹 Something went wrong · ResizeObserver loop
+ * completed with undelivered notifications」)。
+ *
+ * ── 病历 ────────────────────────────────────────────────────────────────
+ * `ui/Tabs` 那只观察标签条自身的 `ResizeObserver` 从前**在回调里**就把溢出名单
+ * 交给宿主:`onOverflow` → zustand → `useSyncExternalStore` 让 React 在**同一个
+ * 派发循环**里同步提交,那一次提交挂上 / 卸下 ⋯ 钮(条随之变宽 18px),还顺手把
+ * `EdgeShelf` 排着的 `setLiveThickness` 一起冲了(`<aside>` 的宽在派发循环里变)
+ * —— 两条都是 Chrome 判「同深度未派送」的形。今天它经 `ui/frame-coalescer`
+ * 排到下一帧交出去(法与判词在那只文件的头上)。
+ *
+ * ── 为什么只有真机量得到 ────────────────────────────────────────────────
+ * 那句报错是**浏览器**在派发循环收场时判出来的,jsdom 里既没有布局也没有这条判据;
+ * 而「⋯ 钮该不该在」要真排版才有越界的格。所以 jsdom 那三条(`tabs-w7t` 的
+ * 「RO 回调里量到的名单不在回调里交出去」)证的是**排没排到下一帧**,
+ * 屏幕上到底还闪不闪只有这一场答得出来。
+ *
+ * ── 三条断言 ────────────────────────────────────────────────────────────
+ *  a 整场拖拽 `ResizeObserver loop` 一声都没有(window `error` 计数 + pageerror);
+ *  b 拖完停稳,⋯ 钮的在 / 不在与条上真越界的格数 >0 / =0 **一致** —— 治法不许
+ *    把机制治死(把 `onOverflow` 整个不调也能让报错归零,那是遮病);
+ *  c 拖拽期间那条架子确实挂着拖拽态 —— 证明手势真的落在厚度杆上,
+ *    不然 a 会因为「压根没拖动」而空过。
+ *
+ * 反证:把 `ui/Tabs` 里那句 `new ResizeObserver(schedule)` 换回
+ * `new ResizeObserver(measure)` → a 当场红(隔离探针上同一条手势报 4 声)。
+ */
+async function sceneShelfTabs(store, udd) {
+  scene('⑧ 拖架子厚度:标签条量溢出不进 RO 派发循环(09-10 RO loop 报障)')
+  const handle = await launch(store, udd)
+  try {
+    const { page, app, cdp } = handle
+    await setSize(app, page, 1400, 900)
+
+    /*
+     * 右架子摆四格 —— 三格不跨阈值,第四格才让 ⋯ 在拖拽途中真的进出。
+     * 四块瓦挑的是**菜单里有「Right」那一行**的那几块:`files`(目录)与
+     * `workspace` 的右键菜单是另一张表(「打开一个目录…」/ 空间清单),没有落点行。
+     */
+    for (const tile of ['diff', 'terminal', 'browser', 'search']) {
+      if (!(await pickFromTileMenu(page, tile, /^Right$/))) {
+        throw new Error(`Dock 菜单里没有「Right」那一行(瓦:${tile})`)
+      }
+    }
+    const tabCount = await page.evaluate(() => {
+      const aside = document.querySelector('[data-shelf="right"]')
+      return aside?.querySelectorAll('[role="tablist"] [data-tab-id]').length ?? 0
+    })
+    check('前提:右架子那条上真有四格标签', tabCount === 4, `tabs=${tabCount}`)
+
+    /*
+     * 报错这一头**两只耳朵**:窗口自己的 `error`(RO loop 是浏览器派给 window 的
+     * ErrorEvent,产品那只 `installCrashHandlers` 收的就是它)与 playwright 的
+     * `pageerror`。只听一只会漏 —— 而这一格恰恰是用户看见弹框的那条路。
+     */
+    const pageErrors = []
+    page.on('pageerror', (err) => pageErrors.push(String(err?.message ?? err)))
+    await page.evaluate(() => {
+      window.__roLoopHits = []
+      window.addEventListener('error', (e) => {
+        if (/ResizeObserver loop/.test(e?.message ?? '')) window.__roLoopHits.push(e.message)
+      })
+    })
+
+    const grab = await shelfHandleGrab(page, 'right')
+    check('抓得到右架子那根厚度杆', Boolean(grab), JSON.stringify(grab))
+    if (grab) {
+      /*
+       * 往主区拖 300px(右架子变厚)再拖回。步长 6px、每帧三发 —— 快到跨过
+       * 「⋯ 够不着的标签」那道阈值时,一帧里 RO 会把同一条条报好几遍,
+       * 那正是从前每跨一次就报一声的那一格。
+       */
+      const away = { x: grab.x - 300, y: grab.y }
+      await pressAt(cdp, grab)
+      await moveAlong(cdp, grab, away, 50, 5)
+      const mid = await shelfDragState(page, 'right')
+      check(
+        '拖拽期间:那条架子真的挂着拖拽态(手势落在厚度杆上)',
+        mid?.dragging === true,
+        JSON.stringify(mid),
+      )
+      await moveAlong(cdp, away, grab, 50, 5)
+      await releaseAt(cdp, grab)
+      await delay(400)
+    }
+
+    const hits = await page.evaluate(() => window.__roLoopHits ?? [])
+    const roLoopPageErrors = pageErrors.filter((m) => /ResizeObserver loop/.test(m))
+    check(
+      '整场拖拽:ResizeObserver loop 一声都没有',
+      hits.length === 0 && roLoopPageErrors.length === 0,
+      `window=${hits.length} pageerror=${roLoopPageErrors.length} ${JSON.stringify([...hits, ...roLoopPageErrors].slice(0, 3))}`,
+    )
+
+    /*
+     * 机制还活着这一头:⋯ 钮的在 / 不在必须与条上**真越界**的格数对得上。
+     * 容差从 `ui/Tabs.tsx` 的 `TAB_CLIP_EPSILON_PX` 读(与 gate:squeeze 同源,
+     * 门不许自己抄一个 1)。
+     */
+    const settled = await page.evaluate((eps) => {
+      const aside = document.querySelector('[data-shelf="right"]')
+      const bar = aside?.querySelector('[role="tablist"]')
+      if (!(bar instanceof HTMLElement)) return null
+      const box = bar.getBoundingClientRect()
+      let clipped = 0
+      for (const el of Array.from(bar.querySelectorAll('[data-tab-id]'))) {
+        const r = el.getBoundingClientRect()
+        if (r.left < box.left - eps || r.right > box.right + eps) clipped += 1
+      }
+      return {
+        clipped,
+        ell: Boolean(aside.querySelector('[data-testid^="pane-hidden:"]')),
+      }
+    }, tabClipEpsilonPx())
+    check(
+      '拖完停稳:⋯ 钮的在 / 不在与真越界的格数一致(治法没把机制治死)',
+      Boolean(settled) && settled.ell === (settled.clipped > 0),
+      JSON.stringify(settled),
+    )
+  } finally {
+    await shut(handle)
+  }
+}
+
 /* ── main ──────────────────────────────────────────────────────────────── */
 
 /*
- * `node scripts/gate-layout.mjs --only <restart|full|budget|floats|spawn|summon|cancel>`
+ * `node scripts/gate-layout.mjs --only <restart|full|budget|floats|spawn|summon|cancel|shelftabs>`
  * —— 只跑那一组场景。立这个口子的理由与 `verify.mjs` 的 `--only` 逐字相同:
  * **反证纪律**要求每条守卫至少真跑一次「拆掉即红」,而拆一处跑整道门是六个场景陪跑
  * 一个。它只认 `ONLY_SCENES` 里那几个名字,不是通用的分步执行器。
  * `restart` 与 `full` 是同一次进程接力(②要②之前那一步钉好的右架子),
  * 所以 `--only full` 连带跑 ①。
  */
-const ONLY_SCENES = ['restart', 'full', 'budget', 'floats', 'spawn', 'summon', 'cancel']
+const ONLY_SCENES = ['restart', 'full', 'budget', 'floats', 'spawn', 'summon', 'cancel', 'shelftabs']
 const onlyIndex = process.argv.indexOf('--only')
 const only = onlyIndex === -1 ? null : process.argv[onlyIndex + 1]
 if (only !== null && !ONLY_SCENES.includes(only)) {
@@ -1707,6 +1858,7 @@ async function main() {
     if (wants('spawn')) await sceneSpawn(store, await newUdd())
     if (wants('summon')) await sceneSummon(store, await newUdd(), sessions)
     if (wants('cancel')) await sceneCancel(store, await newUdd(), sessions)
+    if (wants('shelftabs')) await sceneShelfTabs(store, await newUdd())
   } finally {
     for (const app of [...live.apps]) {
       try {
@@ -1743,7 +1895,7 @@ async function main() {
     process.exit(1)
   }
   process.stdout.write(
-    '[gate:layout] ok —— 重启 / 全屏 + A9 / 架子预算 + 拒绝播报 + 细梁 / 三档挤压 / 浮窗锚与层叠 / 点瓦开窗 / 召唤两条路 + 二合一 / 三处按下即拖的取消路\n',
+    '[gate:layout] ok —— 重启 / 全屏 + A9 / 架子预算 + 拒绝播报 + 细梁 / 三档挤压 / 浮窗锚与层叠 / 点瓦开窗 / 召唤两条路 + 二合一 / 三处按下即拖的取消路 / 架子厚度拖拽下标签条不炸 RO\n',
   )
 }
 
