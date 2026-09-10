@@ -1,0 +1,191 @@
+/*
+ * 音乐面。三块竖着摞:正在放 / 电台 / 歌词。
+ * 三种形态(舞台 / 浮窗 / 架子)共用这一份,所以这里**不写任何与形态有关的尺寸**
+ * —— 与 NotificationsPanel 同一条。
+ */
+.panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface-2);
+}
+
+/* 一块。块与块之间只靠间距分,不画分隔线(线是账页画线风,已被否决)。 */
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* 块名:小字、灰、字距撑开 —— 与通知中心的天分组标同一种分量。 */
+.head {
+  margin: 0;
+  font-size: var(--fs-micro);
+  font-weight: 400;
+  letter-spacing: var(--ls-section);
+  text-transform: lowercase;
+  color: var(--text-3);
+}
+
+.subhead {
+  composes: head;
+  margin-top: var(--sp-2);
+}
+
+/* 一行控件。可伸缩的那件自己 min-width: 0(律一),这里给的是行的骨架。 */
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.controls {
+  composes: row;
+}
+
+/* 正在放的那一行:唱片字形 + 标题。标题吸剩余宽,只截断不换行。 */
+.track {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/*
+ * 「没有封面」那一格。它画的是一枚唱片字形,**不是一张占位图** ——
+ * 判词在 MusicPanel.tsx 的文件头上(这台机器上没有封面这件事实)。
+ */
+.artless {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tile-size-sm);
+  height: var(--tile-size-sm);
+  border-radius: var(--r-2);
+  background: var(--surface-1);
+  color: var(--text-3);
+}
+
+.artless svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-body);
+  color: var(--text-1);
+}
+
+/* 时间读数:等宽,免得秒数跳动时整行左右抖。 */
+.clock {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+}
+
+/* 一句灰色的事实(下一首 / 台上 / 换歌中 / 还有几首)。 */
+.meta {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 空态:一行灰字,别的什么都不画(与通知中心、检索面同一条判例)。 */
+.none {
+  margin: 0;
+  padding: var(--sp-2) 0;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+/* 一句坏消息。**只换字色不换底**(四轴:状态色永不换底)。 */
+.bad {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--danger);
+}
+
+/* 后端还没配好那一句:比错误弱一档 —— 它不是出错,是还没开始。 */
+.notice {
+  margin: 0;
+  padding: var(--sp-2);
+  border-radius: var(--r-2);
+  background: var(--surface-1);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+
+/*
+ * 节目单。**自带最大高度**:一张一百条的单子不该把歌词那一块挤出屏幕
+ * (浮层/抽屉列表必有最大高度约束 —— 同一条纪律,长列表同理)。
+ */
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: var(--music-list-max-h);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.entry {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  height: var(--list-row-h);
+}
+
+.entryTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+
+/* 「点歌」这类记号。文字读数,不是徽 —— 计数禁令那一族的同一条纪律。 */
+.entryNote {
+  flex: none;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+.lyrics {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: var(--music-list-max-h);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.lyricLine {
+  font-size: var(--fs-meta);
+  line-height: var(--pr-lh);
+  color: var(--text-2);
+}
+
+/*
+ * 折叠标题里那块可点的字。它是**结构性交互件**(三类判的第三类:视觉本该定制),
+ * 所以皮肤留在这里 —— 但它是 `ui/Fold` 的 FoldTrigger,清 UA 与 role/键盘语义
+ * 都由那件带,这里只说「它看起来可点」。
+ */
+.foldHead {
+  cursor: pointer;
+}

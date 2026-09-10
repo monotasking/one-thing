@@ -15,7 +15,8 @@
  *     八屏各扫一遍:产品外壳、模型抽屉、模型服务面(Dock 上点开的一块内容 —— 收着的面 axe
  *     一条都查不到,而它恰恰是表格 / 勾选框 / 分段器 / 禁用钮最密的一块)、
  *     所有应用面(08-31 加:一整列 `role="switch"` 加一整列打开钮,而且是这道门里
- *     唯一一屏 **真全屏**的面),**拖拽落点菜单**(W3 裁定 9 + W3-b 裁定 8 的
+ *     唯一一屏 **真全屏**的面),音乐面(09-10 加:这块壳里第一处 `role="slider"` ——
+ *     两条拖杆各要说得出名字、当前值与两头),**拖拽落点菜单**(W3 裁定 9 + W3-b 裁定 8 的
  *     左移 / 右移:拖拽的键盘等价 ——
  *     每个落点都能从既有 tab 菜单到达,落定后 `announce()` 播报),
  *     和 `?gallery` 那张组件规格页(28 个展位一次
@@ -659,7 +660,7 @@ async function main() {
   let server
   let app
   try {
-    console.log('\n[1/12] 起一台 core')
+    console.log('\n[1/13] 起一台 core')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: { ...process.env, ONETHING_STORE_PATH: store },
@@ -691,7 +692,7 @@ async function main() {
     }
     console.log(`  ✓ core 起来了,种了 ${seeded.length} 条会话`)
 
-    console.log('\n[2/12] 拉起应用(独立 --user-data-dir)')
+    console.log('\n[2/13] 拉起应用(独立 --user-data-dir)')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -721,7 +722,7 @@ async function main() {
     )
     console.log('  ✓ 外壳画出来了')
 
-    console.log('\n[3/12] 产品外壳:axe 全页扫描 + Tab 序走查')
+    console.log('\n[3/13] 产品外壳:axe 全页扫描 + Tab 序走查')
     // 这一屏从前是裸扫的 —— 而颜色恰恰是最后才到的那样东西(见 settle 的文件头)。
     await settle(page, '外壳')
     await scanAxe(page, '外壳')
@@ -741,7 +742,7 @@ async function main() {
      * (`composer/components/Composer.test.tsx` 的「庚」那一族,按 role=radio 取的)。
      * 反证:把 `RadioGroup` 的 `label` 拆掉 → 那一族单测当场红。
      */
-    console.log('\n[4/12] 模型抽屉:开一格再扫一次')
+    console.log('\n[4/13] 模型抽屉:开一格再扫一次')
     await clickSelector(page, '[data-testid="composer-panel"] button[aria-expanded]')
     await waitFor('模型抽屉就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-focus-scope="drawer"]'))),
@@ -766,7 +767,7 @@ async function main() {
      * 反证:把家头那枚 Switch 的 `label` 拆掉 → 这一屏当场 critical button-name 红
      * (2026-08-31 真跑过一轮)。
      */
-    console.log('\n[5/12] 模型服务面:开一块面再扫一次')
+    console.log('\n[5/13] 模型服务面:开一块面再扫一次')
     await clickSelector(page, '[data-testid="dock-tile-providers"]')
     await waitFor('模型服务面就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid^="provider-row-"]'))),
@@ -789,7 +790,7 @@ async function main() {
      * 反证:把 `SearchList` 里那句 `aria-label={t('search.resultsLabel')}` 拆掉 →
      * 这一屏当场 `aria-input-field-name` / `region` 类违例。
      */
-    console.log('\n[6/12] 检索面:开一块面再扫一次')
+    console.log('\n[6/13] 检索面:开一块面再扫一次')
     await clickSelector(page, '[data-testid="dock-tile-search"]')
     await waitFor('检索面就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="search-panel"] input'))),
@@ -800,6 +801,34 @@ async function main() {
     await clickSelector(page, '[data-testid="dock-tile-search"]')
     await waitFor('检索面已收回', () =>
       page.evaluate(() => !document.querySelector('[data-testid="search-panel"]')),
+    )
+
+    /*
+     * **音乐面**(音乐收尾 · 壳半边,2026-09-10)。进这道门的理由与模型服务面
+     * 逐字相同 —— **外壳那一屏看不见它**(面板收在 Dock 里)。而它是这块壳里
+     * 第一处 `role="slider"`:两条拖杆(进度、音量)各要说得出自己叫什么
+     * (`aria-label`)、现在是几(`aria-valuenow`)、两头在哪(`aria-valuemin/max`),
+     * 外加四颗只有图标的钮(上一首 / 播放暂停 / 下一首 / 红心)各要一个名字 ——
+     * 漏一个,读屏软件就只能念「滑块」和「按钮」。
+     *
+     * 这道门跑在一个全新的临时 store 上,那台机器上没有装过音乐 CLI,所以扫的是
+     * 「后端还没配好 + 播放器没在跑 + 电台没开」那一屏(三句空态 + 停用态的钮与杆)。
+     * 有真电台之后的形归 `npm run gate:music`(那一道**只写不跑**,见它自己的文件头)。
+     *
+     * 反证:把 `ui/Slider` 那两处 `aria-label` 拆掉 → 这一屏当场
+     * `aria-input-field-name` 类红(一个 `role="slider"` 没有名字)。
+     */
+    console.log('\n[7/13] 音乐面:开一块面再扫一次')
+    await clickSelector(page, '[data-testid="dock-tile-music"]')
+    await waitFor('音乐面就位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="music-panel"]'))),
+    )
+    await settle(page, '音乐面')
+    await scanAxe(page, '音乐面', '[data-testid="music-panel"]')
+    // 扫完把它收回去,别把它留给下一屏(Dock 上那颗瓦是开关)。
+    await clickSelector(page, '[data-testid="dock-tile-music"]')
+    await waitFor('音乐面已收回', () =>
+      page.evaluate(() => !document.querySelector('[data-testid="music-panel"]')),
     )
 
     /*
@@ -816,7 +845,7 @@ async function main() {
      * 反证:把 AppsPanel 里 Switch 的 `label` 拆掉 → 这一屏当场 critical
      * button-name 红(每一行都是,因为那颗 <button role="switch"> 只有一个空 span)。
      */
-    console.log('\n[7/12] 所有应用面(全屏形态):开一块面再扫一次')
+    console.log('\n[8/13] 所有应用面(全屏形态):开一块面再扫一次')
     await clickSelector(page, '[data-testid="dock-tile-apps"]')
     await waitFor('所有应用面就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid^="apps-row-"]'))),
@@ -841,7 +870,7 @@ async function main() {
      * 由 gate:files 那道门验(它自己建了一棵真目录树)—— 两道门各扫各的那一半,
      * 不在这里再造一次目录树。
      */
-    console.log('\n[8/12] 文件查看器 + 叶檐:走文件树开一个文件再扫一次')
+    console.log('\n[9/13] 文件查看器 + 叶檐:走文件树开一个文件再扫一次')
     /*
      * **先进那条带工作目录的会话**:文件树的根跟着「当前会话的工作目录」走,
      * 而当前会话是内存态 —— 不进去的话树会退回主目录(那时树上有什么就不由
@@ -1495,7 +1524,7 @@ async function main() {
     }, seeded[1])
     await delay(500)
 
-    console.log('\n[9/12] 会话总览(树形列表):开一块面再扫一次 + Tab 序走查')
+    console.log('\n[10/13] 会话总览(树形列表):开一块面再扫一次 + Tab 序走查')
     /*
      * **先看它在不在,再决定点不点**(W6-a)。会话总览的出厂摆法从浮窗改成了
      * 左架子(设计 §8),而钉在架子上的面进一条会话**不会收回 Dock**
@@ -1629,7 +1658,7 @@ async function main() {
      * 卡在场就扫它 + 量那句可访问名;不在场就打印一行说清由谁负责,**不判红** ——
      * 与总览那一屏「找不到会话行打印跳过」同一条纪律。
      */
-    console.log('\n[10/12] 权限卡:在场就扫(造卡那一半归 `npm run gate:permission`)')
+    console.log('\n[11/13] 权限卡:在场就扫(造卡那一半归 `npm run gate:permission`)')
     const permissionCard = await page.evaluate(() => {
       const el = document.querySelector('[data-permission-card]')
       if (!el) return null
@@ -1658,7 +1687,7 @@ async function main() {
 
     // 28 = `src/dev/Gallery.tsx` 今天的 <Section> 展位数(25 件组件 +
     // useScrolledPast / useSettlePulse / useInlineEdit 三件 hook)。日志读数,不是断言。
-    console.log('\n[11/12] 组件规格页(?gallery):28 个展位一次全在场')
+    console.log('\n[12/13] 组件规格页(?gallery):28 个展位一次全在场')
     /*
      * 生产窗口是 loadFile 读本地文件,没有 router —— 换页靠改 location.search
      * 再等一次重载(App.tsx 读的就是这个查询参数)。
@@ -1678,7 +1707,7 @@ async function main() {
     await settle(page, '规格页')
     await scanAxe(page, '规格页')
 
-    console.log('\n[12/12] 键盘走查:Dialog 圈禁与返还、Menu 方向键循环')
+    console.log('\n[13/13] 键盘走查:Dialog 圈禁与返还、Menu 方向键循环')
     await checkDialog(page)
     await checkMenu(page)
 

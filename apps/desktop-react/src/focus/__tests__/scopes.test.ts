@@ -24,6 +24,8 @@ const ALL_IDS: readonly FocusScopeId[] = [
   // 一张权限卡(应用级许可 · 壳半边,2026-09-10)。
   'permission',
   'settings',
+  // 音乐面(音乐收尾 · 壳半边,2026-09-10)。
+  'music',
   'dock',
   // 拼贴树里的一片叶(W1)。
   'leaf',
@@ -43,7 +45,7 @@ const ALL_IDS: readonly FocusScopeId[] = [
 ]
 
 describe('FOCUS_SCOPES 封闭表', () => {
-  it('23 格(权限卡是第 23 格),一格不多一格不少', () => {
+  it('24 格(音乐面是第 24 格),一格不多一格不少', () => {
     expect(FOCUS_SCOPE_LIST.map((s) => s.id).sort()).toEqual([...ALL_IDS].sort())
   })
 

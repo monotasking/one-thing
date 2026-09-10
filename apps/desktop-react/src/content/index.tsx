@@ -13,6 +13,7 @@ import { ExposeView } from '../expose/components/ExposeView'
 import { ProviderSettingsPanel } from '../providers/components/ProviderSettingsPanel'
 import { WorkspaceOverview } from '../workspace/components/WorkspaceOverview'
 import { AppsPanel } from './AppsPanel'
+import { MusicPanel } from './MusicPanel'
 import {
   APPS_ITEM_ID,
   NOTIFICATIONS_ITEM_ID,
@@ -42,6 +43,13 @@ const RENDERERS: Record<string, () => ReactNode> = {
   terminal: TerminalMock,
   settings: SettingsMock,
   search: SearchPanel,
+  /*
+   * 音乐(音乐收尾 · 壳半边)。它是一块**普通的瓦**:面里每一颗按钮走的都是
+   * `resources.do`(与模型调的同一条)。为什么它走 `panel` 这条路而不是自己
+   * 登记一种内容,判词写在 `stage/items.ts` 那一行上(refId 会与 core 的
+   * `music:` 资源地址撞名)。
+   */
+  music: MusicPanel,
   [NOTIFICATIONS_ITEM_ID]: NotificationsPanel,
   [SESSIONS_ITEM_ID]: ExposeView,
   [PROVIDERS_ITEM_ID]: ProviderSettingsPanel,

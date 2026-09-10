@@ -150,6 +150,18 @@ export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
    */
   permission: { id: 'permission', kind: 'region', labelKey: 'focus.scope.permission' },
   settings: { id: 'settings', kind: 'region', labelKey: 'item.settings' },
+  /*
+   * 音乐面(音乐收尾 · 壳半边)。**三件声明**里它只填两件:
+   *  · 落点(`restingTarget`)= 播放 / 暂停那颗钮 —— 进这块面第一件想做的事就是
+   *    让它响或者让它停;
+   *  · Esc **不声明**(不传 = 根本不进 Esc 候选表)。一块摆在架子上的内容面没有
+   *    「关自己」这回事(关一格 tab 是 ⌘W 那条显式的键),Esc 该穿过去交给外面
+   *    那一层 —— 与 `permission` 那一格不声明 `onEscape` 是同一句判词。
+   * 没有局部键:面上每一件都是一颗真按钮或一条 `role="slider"`,走的是 Tab + ↵ /
+   * Space / 方向键那套**结构键**语义(第三层,不进任何表)。
+   * labelKey 复用 Dock 瓦那一句(i18n 纪律:同一句话只该有一个键)。
+   */
+  music: { id: 'music', kind: 'region', labelKey: 'item.music' },
   dock: { id: 'dock', kind: 'region', labelKey: 'dock.label' },
   /*
    * 拼贴树里的一片叶(W1)。行为档 `region` —— 它是一块能接键盘的面,不是一层

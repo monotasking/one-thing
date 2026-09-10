@@ -1,0 +1,77 @@
+/*
+ * 拖杆。几何全部来自 tokens.css,这里一个字面值都没有。
+ *
+ * 形与 `ui/Splitter` 同一条思路:**线是视觉,抓手是手感**。轨只有 --slider-track-h
+ * 那么细(它是一条读数,不是一块地),而整条 `.slider` 有 --slider-hit 那么高 ——
+ * 一条 3px 的可拖区要用户瞄准,那是最典型的一种「难用但说不上哪儿不对」。
+ *
+ * 钮**平时不画**,悬停 / 聚焦 / 拖拽中才长出来:一条静止的进度条上多一个圆点,
+ * 会被读成「这里有个可点的东西」——而绝大多数时候用户只是在看进度。
+ */
+.slider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: var(--slider-hit);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.slider[aria-disabled='true'] {
+  cursor: default;
+  opacity: var(--btn-disabled-o);
+}
+
+/* 轨:整条底。 */
+.track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--slider-track-h);
+  border-radius: var(--r-full);
+  background: var(--line-1);
+}
+
+/* 已经走过的那一段。宽度就是那格活值 —— 拖拽期间由 JS 直接写它,不重渲。 */
+.fill {
+  position: absolute;
+  left: 0;
+  width: var(--slider-fill, 0%);
+  height: var(--slider-track-h);
+  border-radius: var(--r-full);
+  background: var(--accent);
+}
+
+/*
+ * 钮。它骑在 fill 的末端上;`translateX(-50%)` 让它在两头也不出界半个身子 ——
+ * `left` 用的是同一格活值,所以它与 fill 永远咬合,不会各画各的。
+ */
+.knob {
+  position: absolute;
+  left: var(--slider-fill, 0%);
+  width: var(--slider-knob);
+  height: var(--slider-knob);
+  border-radius: var(--r-full);
+  background: var(--accent);
+  transform: translateX(-50%) scale(0);
+  transition: transform var(--dur) var(--ease);
+}
+
+.slider:hover .knob,
+.slider:focus-visible .knob,
+.slider[data-sliding] .knob {
+  transform: translateX(-50%) scale(1);
+}
+
+/* 停用时连悬停都不长钮 —— 它现在不是一个能调的东西。 */
+.slider[aria-disabled='true']:hover .knob {
+  transform: translateX(-50%) scale(0);
+}
+
+/* 焦点环往里收一点:一条很扁的杆,环画在外面会压住上下两行。 */
+.slider:focus-visible {
+  outline-offset: calc(-1 * var(--focus-ring-w));
+  border-radius: var(--r-1);
+}

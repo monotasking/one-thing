@@ -168,6 +168,23 @@ export const STAGE_ITEMS: StageItemSpec[] = [
   // 列表还没读到时就只剩这枚图标,那时候确实没有「我在哪」可画。
   // 首字母没有退役,只是退回它本来该在的地方:右键快切表与总览卡上的小色点。
   { id: WORKSPACE_ITEM_ID, titleKey: 'item.workspace', scope: 'global', icon: 'Layers' },
+  /*
+   * 音乐(音乐收尾 · 壳半边,2026-09-10)。**一块普通的瓦,走 `panel` 那条既有路**
+   * —— 一行声明 + `content/index.tsx` 一行渲染,形态机 / Dock / 拼贴树一个字不动。
+   *
+   * ── 为什么它**不是**一种自己的内容(`content/kinds/music.tsx`)──────────
+   * K2b-1 起壳的 `ContentRef` 与 core 的 `Ref` 是**同一套语法、同一张 scheme 表**
+   * (判词整段在 `workbench/kinds.ts` 文件头)。登记一种叫 `music` 的内容,它的
+   * refId 就是 `music:<key>` —— 而 `music:radio` / `music:player` / `music:provider`
+   * 已经是 core 那三个资源单例的地址。同一串字符两个意思,正是那条法要消灭的
+   * 「一种东西两个名字」的镜像。走 `panel` 这条路,这块面的地址是 `panel:music`,
+   * 与资源地址结构上撞不上;而 `panel` 那一种本来就是「Dock 上那些瓦」的登记处,
+   * 单例、标题读 `item.music`、图标读这一行 —— 一格都不必自己写。
+   *
+   * `scope: 'global'`:这台机器上只有一个电台、一个播放器(自述里它们是恒在的
+   * 单例),音乐不随会话换 —— 与浏览器 / 检索 / 通知同一档。
+   */
+  { id: 'music', titleKey: 'item.music', scope: 'global', icon: 'Music' },
   { id: 'settings', titleKey: 'item.settings', scope: 'global', icon: 'Settings' },
   // 「所有应用」排在最后:它是**管理**入口,不是又一块日常要点的面。
   // 两条特殊都在这一行上,不散在代码里 —— 见 APPS_ITEM_ID 的注释。

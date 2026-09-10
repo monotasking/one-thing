@@ -262,6 +262,24 @@ configureSpacesPort({
 })
 
 /**
+ * 音乐面的端口:同一条理由,同一手 —— 默认是**一个什么都不回的假端口**。
+ *
+ * 不装的话,任何渲染了音乐面的用例都会经 `musicPort()` 动态 import 真的连通面,
+ * 进而在 jsdom 里发出 fetch / SSE。默认那份读一律答 `denied`(「这台机器上没有
+ * 音乐」是一个正常结局,不是一次失败 —— 与假会话端口的 `create` 默认不成功
+ * 同一档纪律:没有哪个用例该因为默认端口而凭空多出一台电台)。要验音乐的用例
+ * 自己 `configureMusicPort` 换一个。
+ */
+import { configureMusicPort } from '../data/music-port'
+
+configureMusicPort({
+  ready: async () => undefined,
+  read: async () => ({ kind: 'denied', reason: 'fake port' }),
+  do: async () => ({ kind: 'denied', reason: 'fake port' }),
+  onResourceEvent: () => () => undefined,
+})
+
+/**
  * 文字查询不看**播报口**(A11y 线 · A2)。
  *
  * `ui/a11y/live-region.ts` 在 body 末尾挂一块常驻的 visually-hidden 区,一条

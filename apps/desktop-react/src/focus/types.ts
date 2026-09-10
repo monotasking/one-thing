@@ -47,6 +47,9 @@ export type FocusScopeId =
   // 一张卡,owner = 那次调用的 toolCallId;声明这一头与实例份数无关(§4.8)。
   | 'permission'
   | 'settings'
+  // 音乐面(音乐收尾 · 壳半边)。一块普通的内容面:它有自己的落点(播放 / 暂停
+  // 那颗钮),没有局部键,不认 Esc。
+  | 'music'
   | 'dock'
   // 拼贴树里的一片叶(W1)。同一个 id 会有**好几份实例**:叶根一份(owner = 叶 id,
   // 它拿 ⌘W、也是跟焦的落点),每一格 tab 的内容层各一份(owner = refId,

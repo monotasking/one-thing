@@ -66,6 +66,13 @@ import {
   Columns2,
   Rows2,
   Unlink,
+  Music,
+  Disc3,
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Heart,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -151,6 +158,17 @@ const REGISTRY: Record<string, LucideIcon> = {
   /* 「拆开」(W6-a 两格标签的格头):一条断开的链 —— 说的是「这两格不再连在
      一起」,与分屏那两枚「切完的样子」正交。 */
   Unlink,
+  /* 音乐这一族(音乐收尾 · 壳半边)。逐枚说的都是**面里有什么**,不是它长什么样:
+     Music(那块瓦:一枚音符,面里就是音乐)/ Disc3(没有封面时那一格的字形 —— 见 MusicPanel 头上
+     「封面」那一段:这台上没有封面这件事实,所以画的是唱片本身不是一张假图)/
+     Play · Pause · SkipBack · SkipForward · Heart(播放器那五颗,全世界同一套形)。 */
+  Music,
+  Disc3,
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Heart,
 }
 
 export function resolveIcon(name: string): LucideIcon {
@@ -203,5 +221,12 @@ export {
   Columns2,
   Rows2,
   Unlink,
+  Music,
+  Disc3,
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Heart,
 }
 export type { LucideIcon }

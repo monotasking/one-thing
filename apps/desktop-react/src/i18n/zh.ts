@@ -211,6 +211,8 @@ export const zh = {
   'item.providers': '模型服务',
   'item.workspace': '工作区',
   'item.apps': '所有应用',
+  /* 音乐(音乐收尾 · 壳半边)。面里是电台 + 播放器 + 歌词三块。 */
+  'item.music': '音乐',
 
   /* ── 所有应用(Dock 露面管理)─────────────────────────────────────── */
   'apps.subtitle': '这台壳里能打开的全部。关掉一行,它的 Dock 瓦就不见了 —— 随时能从这里打开它。',
@@ -843,6 +845,8 @@ export const zh = {
   // 从前三处(查看器存盘、模型目录手填钮、总览新建卡)借的都是 `viewer.saving` ——
   // 一个域的键被别的域借用,改一个字就会在两个不相干的面上同时变。
   'common.saving': '正在保存…',
+  /* 任何一颗**不是在存东西**的异步钮的忙态话(音乐那十三条做法都是)。 */
+  'common.working': '进行中…',
   'notify.copied': '已复制这条回复',
   'notify.copyFailed': '没能复制',
   'notify.retryFailed': '重试没有发出去',
@@ -1477,5 +1481,41 @@ export const zh = {
   'workspace.color.amber': '琥珀',
   'workspace.color.rose': '玫瑰',
   'workspace.color.teal': '青',
+
+  /* ── 音乐面(音乐收尾 · 壳半边,2026-09-10)─────────────────────────────
+   * 面里每一颗按钮走的都是 `resources.do`(与模型调的同一条),所以这里的话
+   * 说的都是**做法自己的名字**,与自述 `runtime/src/music/resource-spec.ts` 上
+   * 那十三条一一对得上。歌名 / 简报正文 / 后端原话是**事实**不是界面文案,
+   * 不进字典 —— 它们由数据带过来,插在 {title} / {message} 那一格上。 */
+  'music.player': '正在放',
+  'music.radio': '电台',
+  'music.lyrics': '歌词',
+  'music.prev': '上一首',
+  'music.pause': '暂停',
+  'music.resume': '播放',
+  'music.next': '下一首',
+  'music.like': '红心',
+  'music.seekLabel': '播放进度',
+  'music.volumeLabel': '音量',
+  'music.untitled': '未知曲目',
+  'music.playerIdle': '播放器没在跑。',
+  'music.radioOff': '电台没开 —— 说一句想听什么就能开台。',
+  'music.intentPlaceholder': '想听点什么(例:下雨天,安静的中文民谣)',
+  'music.open': '开台',
+  'music.retune': '换台',
+  'music.close': '关台',
+  'music.radioResume': '续播',
+  'music.radioStop': '停止',
+  'music.requestPlaceholder': '点一首歌(歌名 歌手)',
+  'music.request': '点歌',
+  'music.programme': '节目单',
+  'music.programmeEmpty': '节目单空着。',
+  'music.onDeck': '台上:{title}',
+  'music.upNext': '下一首:{title}',
+  'music.starting': '换歌中:{title}',
+  'music.programmeMore': '还有 {count} 首没列出来',
+  'music.lyricsEmpty': '这首没有歌词。',
+  'music.backendNotReady': '音乐后端还没配好 —— 装好那只 CLI 并登录之后才放得出声。',
+  'music.backendError': '音乐后端报了一句:{message}',
 
 } as const
