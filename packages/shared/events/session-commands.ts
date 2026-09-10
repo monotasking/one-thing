@@ -140,7 +140,12 @@ export interface PermissionRespondCommand {
    * don't depend on having seen the ephemeral requestId.
    */
   toolCallId?: string
-  decision: 'once' | 'session' | 'workdir' | 'reject'
+  /**
+   * 与 `Permission.Response` 逐字同形(`packages/core/permission/index.ts`)。
+   * `'always'` = 本项目里始终允许这个应用做这一类事;只有当那次 ask 的
+   * `alwaysScope` 在场时它才是合法应答,否则内核结构化忽略。
+   */
+  decision: 'once' | 'session' | 'workdir' | 'always' | 'reject'
   /** Optional reason for rejection */
   rejectReason?: string
 }

@@ -336,7 +336,10 @@ import type { MCPServerConfig, MCPServerState } from "@shared/ipc/mcp.js";
 import type { AppSettings } from "@shared/ipc/settings.js";
 import type { SessionCommand } from "@shared/events/session-commands.js";
 import type { ToolCall } from "@shared/ipc/tools.js";
-import type { PermissionInfo } from "@shared/ipc/permissions.js";
+import type {
+	PermissionInfo,
+	PermissionResponse,
+} from "@shared/ipc/permissions.js";
 import { ServerMCPClient } from "./mcp-client.js";
 // P4c 第六批:MCP 私密字段的脱敏 / 合并规则搬到 `./mcp-secrets.js`;P4c 第十一批
 // 起设置面那半也搬到了 `./settings-projection.js`,两处都由域处理者的 http 分叉调用。
@@ -3735,7 +3738,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-type PermissionDecision = "once" | "session" | "workdir" | "reject";
+/**
+ * 第四份手抄的联合已经退役 —— 这里直接用契约那一份(它自己与核逐字相同,由
+ * `shared/ipc/__tests__/permission-response-mirrors.test.ts` 编译期钉住)。
+ */
+type PermissionDecision = PermissionResponse;
 
 interface NormalizedPermissionResponse {
 	decision: PermissionDecision;
@@ -3743,12 +3750,27 @@ interface NormalizedPermissionResponse {
 	rejectReason?: string;
 }
 
-const permissionDecisions = new Set<PermissionDecision>([
-	"once",
-	"session",
-	"workdir",
-	"reject",
-]);
+/**
+ * 收得下哪几种应答。写成 `satisfies Record<PermissionDecision, true>` 而不是一个
+ * 字面量数组:联合里多一支而这里忘了跟上,是**编译期**红,不是一条只在真机上
+ * 才现形的「Invalid permission response」。
+ */
+const PERMISSION_DECISIONS = {
+	once: true,
+	session: true,
+	workdir: true,
+	/**
+	 * 应用级许可(2026-09-10)。真引擎上由 core `Permission.respond` 落账 ——
+	 * 只有当那次 ask 带着 `alwaysScope` 时它才是合法应答,否则内核结构化忽略。
+	 * 下面那条回声路(假后端)不认识应用级许可,照旧只补 session / workdir 两档。
+	 */
+	always: true,
+	reject: true,
+} satisfies Record<PermissionDecision, true>;
+
+const permissionDecisions = new Set<PermissionDecision>(
+	Object.keys(PERMISSION_DECISIONS) as PermissionDecision[],
+);
 
 function toPendingPermissionInfo(
 	event: unknown,

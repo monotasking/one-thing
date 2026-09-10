@@ -91,6 +91,29 @@ export function sessionSnapshotFor(invocation: Invocation): SessionSnapshot | un
   }
 }
 
+/**
+ * 「这次调用跑在哪一棵树里」,在**调用坐标上没有 cwd 时**退到发起会话的工作目录。
+ *
+ * 为什么需要它:`PermissionAuthorizer` 的缺省判据是 `invocation.cwd ??
+ * invocation.workspaceRoot`,而模型那条路(`wiring/toolkit/wiring.ts` 拼 `Invocation`
+ * 的地方)两格都从执行上下文填了真值,资源内核那条路(`core/resource/kernel.ts`
+ * 的 `do` / `read`)**一格都没有** —— 它的坐标是 `principal` + `sessionId`,没有
+ * cwd 这个概念。后果不是"少一格信息"而是两件真事:
+ *   · 项目级的授权(`workdir` / `always`)落不下去(`addGrant` 对 workspace 档缺
+ *     root 会抛,所以在此之前那两档在资源面上根本不成立);
+ *   · 就算落下去了也匹配不上 —— `matchGrant` 只在 `workspaceRoot` 在场时才去翻
+ *     工作区那张表。
+ * 于是「在这个项目里始终允许这个应用」在资源面上会是一个点了没有反应的键。
+ *
+ * 判据用的是**发起会话**的工作目录,与 `sessionSnapshotFor` 读的同一格 ——
+ * 「这次调用属于哪个项目」在资源面上唯一说得清的答案就是发起它的那条会话在哪。
+ * 没有发起会话(`NO_ORIGIN_SESSION`)或那条会话没有工作目录时仍然是 `undefined`,
+ * 于是项目级的两档照旧不出现,而不是编一个根出来。
+ */
+export function sessionWorkspaceRootFor(invocation: Invocation): string | undefined {
+  return invocation.cwd ?? invocation.workspaceRoot ?? sessionSnapshotFor(invocation)?.workspaceRoot
+}
+
 export interface AppToolRunnerOptions {
   /** 事件流的出口。桌面接 `IpcProjector`,server 接 SSE 的那一个。 */
   readonly observer: Observer

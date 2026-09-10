@@ -84,7 +84,8 @@ import { bootstrapProjectDirs } from './wiring/project-dirs/index.js'
 import { createAppSearchService } from './wiring/search/index.js'
 import { configureToolkitMCPCapabilitiesChangedHandler } from '@onething/runtime/mcp/capabilities-changed'
 import { buildToolkitCatalog, refreshToolkitMcpTools } from './wiring/toolkit/wiring.js'
-import { createAppToolRunner } from './wiring/toolkit/runner.js'
+import { createAppToolRunner, sessionWorkspaceRootFor } from './wiring/toolkit/runner.js'
+import { createPermissionAuthorizer } from './wiring/toolkit/authorizer.js'
 import { toolkitAuditSink } from './wiring/toolkit/audit-sink.js'
 import {
   createResourceKernel,
@@ -853,6 +854,13 @@ export class OnethingBackend implements BackendHandle {
     const resourceKernel = createResourceKernel(validator => createAppToolRunner({
       observer: { on: () => {} },
       audit: toolkitAuditSink,
+      /*
+       * 2026-09-10 —— 资源内核拼的 `Invocation` 没有 cwd(它的坐标是主体 + 发起
+       * 会话),所以授权者要另有一条问路口才答得出「这次调用在哪个项目里」。判据
+       * 与理由都在 `sessionWorkspaceRootFor` 头上;没有它,项目级的两档授权
+       * (`workdir` / 应用级的 `always`)在资源面上是一个点不动的键。
+       */
+      authorizer: createPermissionAuthorizer({ workspaceRootOf: sessionWorkspaceRootFor }),
       // K2a:认得生成 schema 的那位校验者由 `createResourceKernel` 串好递进来 ——
       // 收配方而不是收 runner,是为了让「runner 认识自己工具的契约」结构性成立。
       validator,

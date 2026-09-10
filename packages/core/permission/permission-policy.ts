@@ -2,6 +2,7 @@ import { Permission } from './index.js'
 import * as PermissionGrants from './permission-grants.js'
 import { coversAll } from './capability-registry.js'
 import { principalId, type Principal } from './principal.js'
+import { parseRef } from '../resource/ref.js'
 import { toJsonObject } from '../json.js'
 
 export type PermissionPolicyMode = Permission.Mode
@@ -117,6 +118,39 @@ function effectPattern(effect: PermissionEffect): string | string[] {
   return effect.resources.length === 0 ? effect.kind : effect.resources
 }
 
+/**
+ * 这一条效果**认得出一个应用吗** —— 「始终允许这个应用做这一类事」这一档能不能
+ * 出现在卡上,由这只函数一处判定(2026-09-10 拍板)。
+ *
+ * 判据三条,全是结构性的,没有一条按名字枚举:
+ *
+ *  ① 类型可授权。`capability_change` 这一族永远只能答「这一次」
+ *     (`permission-grants.ts` 的 `NEVER_GRANTABLE_TYPES`),给它画一个「始终」
+ *     的键是在教用户点一个点不动的按钮。
+ *  ② 每一条 resource 都是一个**合法地址**(`core/resource/ref.ts` 的语法)。
+ *     裸路径(`/Users/x/a.ts`)、一串 bash 命令、一个工具名 —— 它们都不是地址,
+ *     解析回 `null`,于是这一档不出现。这正是「文件写不给应用级许可」的落点:
+ *     `file:` 那种以路径当身份的资源将来若真的进来,它带的会是 `file:/Users/…`,
+ *     那时判据仍然只有「解析得出 scheme」这一条,不用改这里。
+ *  ③ 全部落在**同一个** scheme 下。一条效果横跨两个应用时,「这个应用」是一句
+ *     没有主语的话;宁可不出现这一档,也不替用户把两个命名空间一起许了。
+ *
+ * 地址语法只有 `core/resource/ref.ts` 一份实现 —— 这里 `parseRef` 而不是自己写一次
+ * 「在第一个冒号处切」,理由写在那只文件的头上(同一条语法两份实现必然漂移)。
+ */
+function alwaysScopeOf(effect: PermissionEffect): { scheme: string } | undefined {
+  if (!PermissionGrants.isGrantableType(effect.kind)) return undefined
+  if (effect.resources.length === 0) return undefined
+  let scheme: string | undefined
+  for (const resource of effect.resources) {
+    const parsed = parseRef(resource)
+    if (!parsed) return undefined
+    if (scheme === undefined) scheme = parsed.scheme
+    else if (scheme !== parsed.scheme) return undefined
+  }
+  return scheme === undefined ? undefined : { scheme }
+}
+
 export function decidePermission(input: PermissionPolicyInput): PermissionPolicyResult {
   for (const effect of input.effects) {
     if (isHardDeny(effect)) {
@@ -223,6 +257,9 @@ export async function enforcePermissionPolicy(input: EnforcePermissionPolicyInpu
 
     if (result.decision === 'allow') continue
 
+    // 「始终允许这个应用」的出现条件由后端算好随 ask 交给壳(卡上第四个键)。
+    const alwaysScope = alwaysScopeOf(effect)
+
     await permission.ask({
       type: effect.kind,
       pattern: effectPattern(effect),
@@ -234,6 +271,7 @@ export async function enforcePermissionPolicy(input: EnforcePermissionPolicyInpu
       userId: input.userId,
       workspaceId: input.workspaceId,
       principal: input.principal,
+      ...(alwaysScope ? { alwaysScope } : {}),
       metadata: toJsonObject({
         toolName: input.toolName,
         // Mirrored into metadata so transports that only carry the JSON blob

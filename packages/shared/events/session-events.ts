@@ -383,6 +383,11 @@ export interface PermissionRequestEvent {
   title: string
   pattern?: string | string[]
   metadata: JsonObject
+  /**
+   * 卡上「始终允许这个应用」这一档的作用面(核那份是 `Permission.AlwaysScope`)。
+   * **缺席 = 不画那个键** —— 出现条件由后端在 ask 那一刻算好,壳只读这一格。
+   */
+  alwaysScope?: { scheme: string }
   userId?: string
   workspaceId?: string
   timeoutMs?: number

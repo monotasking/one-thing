@@ -37,6 +37,8 @@ export type PermissionBusEvent =
       metadata: JsonObject
       userId?: string
       workspaceId?: string
+      /** 卡上「始终允许这个应用」这一档的作用面;缺席 = 不画那个键。 */
+      alwaysScope?: { scheme: string }
     }
   | {
       type: typeof SESSION_EVENT_TYPES.PERMISSION_QUEUED
@@ -95,9 +97,42 @@ export namespace Permission {
      * boundary could not prove an actor", which reads as least privilege.
      */
     principal?: Principal
+    /**
+     * 「始终允许这个应用」这一档**能不能出现在卡上**,以及出现时覆盖谁。
+     *
+     * 缺席 = 这一次没有一个说得清的应用可以许可(裸路径的 `file_write`、一串
+     * bash 命令、`capability_change` 这种永不可授权的类)。**壳只读这一格**决定
+     * 要不要画那个键 —— 它不自己去解析 pattern 猜命名空间:谁能被许可是一条判定,
+     * 判定归后端,壳画的是后端已经算好的答案。
+     *
+     * 填这一格的唯一地方是 `permission-policy.ts` 拆效果进 ask 的那一处(它手里
+     * 同时有 `effect.kind` 与 `effect.resources`)。
+     */
+    alwaysScope?: AlwaysScope
   }
 
-  export type Response = 'once' | 'session' | 'workdir' | 'reject'
+  /**
+   * 一档应用级许可的作用面(2026-09-10 拍板)。
+   *
+   * 只有一格 `scheme`:一条许可 = **这个项目里** × **这个应用**(命名空间)×
+   * **这一类效果**。三个维度里前两个在这里,第三个是 ask 自己的 `type` ——
+   * `grantMatches` 要求 type 相等,所以点一次「始终」只覆盖当下这一类效果,换一类
+   * 还会再弹。这是有意的:一次点击不该代记一张用户没看过的清单。
+   */
+  export interface AlwaysScope {
+    /** 资源命名空间(= 应用 id)。许可落成 `<scheme>:*`。 */
+    scheme: string
+  }
+
+  /**
+   * - `'once'`   这一次
+   * - `'session'` 这条会话里都行(会话级 grant)
+   * - `'workdir'` 这个项目里,这一次问到的那些资源都行(工作区级 grant,pattern 照抄)
+   * - `'always'`  这个项目里,**这个应用**这一类事都行(工作区级 grant,pattern
+   *   `<scheme>:*`;只有 `Info.alwaysScope` 在场时才是一个合法应答)
+   * - `'reject'`  不
+   */
+  export type Response = 'once' | 'session' | 'workdir' | 'always' | 'reject'
   export type Mode = 'normal' | 'auto-accept-edits' | 'dangerously-allow-all'
 
   interface PendingSettler {
@@ -311,6 +346,7 @@ export namespace Permission {
       title: info.title,
       pattern: info.pattern,
       metadata: info.metadata,
+      ...(info.alwaysScope ? { alwaysScope: info.alwaysScope } : {}),
       userId: info.userId,
       workspaceId: info.workspaceId,
     }).catch(err => log.error('event emit failed', { sessionId, eventType: SESSION_EVENT_TYPES.PERMISSION_REQUEST }, err))
@@ -439,6 +475,7 @@ export namespace Permission {
     userId?: string
     workspaceId?: string
     principal?: Principal
+    alwaysScope?: AlwaysScope
   }): Promise<void> {
     const session = getSession(input.sessionId)
     const targetChannel = channelResolver ? channelResolver(input.sessionId) : 'ipc'
@@ -457,6 +494,7 @@ export namespace Permission {
       userId: input.userId,
       workspaceId: input.workspaceId,
       principal: input.principal,
+      ...(input.alwaysScope ? { alwaysScope: input.alwaysScope } : {}),
     }
 
     const equivalent = findEquivalentPending(session, info)
@@ -529,6 +567,28 @@ export namespace Permission {
 
     log.debug('permission responded', { sessionId: input.sessionId, requestId: input.permissionId, response })
 
+    /*
+     * 「始终允许这个应用」只有在这次 ask 真的**认得出一个应用**时才是一个合法
+     * 应答,而那一位由后端在 ask 那一刻算好写在 `alwaysScope` 上。答一个卡上根本
+     * 画不出来的键 = 一次结构错误的应答:**结构化拒绝**(返回 false,这条 ask 原封
+     * 不动地继续挂着),而不是抛 —— `respond` 今天对「没有这条 pending」的答法就是
+     * 这个形状,一个想不通的应答不该把调用方炸掉,更不该顺手把它当 `once` 放行。
+     *
+     * 三条判据缺一不可:
+     *  · `alwaysScope` 在场(有一个说得清的应用);
+     *  · `workingDirectory` 在场(许可是**项目级**的,没有项目就没有落点 ——
+     *    `addGrant` 对 workspace 档缺 root 会抛,那正是这里要挡在前面的东西);
+     *  · 类型可授权(`capability_change` 这类永不留存,见 permission-grants.ts)。
+     */
+    if (response === 'always' && !canGrantAlways(pending.info)) {
+      log.warn('always response on a prompt with no application scope, ignored', {
+        sessionId: input.sessionId,
+        requestId: input.permissionId,
+        permissionType: pending.info.type,
+      })
+      return false
+    }
+
     if (response === 'reject') {
       settlePendingReject(session, pending, new RejectedError(
         input.sessionId,
@@ -562,20 +622,36 @@ export namespace Permission {
         },
         metadata: pending.info.metadata,
       })
-      for (const other of Array.from(session.pending.values())) {
-        if (other.info.workingDirectory === pending.info.workingDirectory) {
-          const otherGrant = PermissionGrants.matchGrant({
-            type: other.info.type,
-            pattern: other.info.pattern,
-            sessionId: input.sessionId,
-            workspaceRoot: other.info.workingDirectory,
-            userId: other.info.userId,
-            workspaceId: other.info.workspaceId,
-          })
-          if (otherGrant) {
-            settlePendingResolve(session, other)
-          }
-        }
+      settleNewlyGrantedPending(input.sessionId, session)
+    }
+
+    /*
+     * **应用级许可**(2026-09-10):`<scheme>:*` 一条,scope 仍然是既有的
+     * `workspace` —— 跨项目的「始终」是量级不同的一次改动(grant 的归属维度要多一
+     * 层),本单不做,留账在回报里。
+     *
+     * 与 `'workdir'` 的差别只在 pattern:那一支照抄这次问到的具体资源
+     * (`session:<那条会话>`),这一支写整个命名空间(`session:*`)。type 不放宽 ——
+     * `grantMatches` 要求相等,所以一次点击 = 一个应用 × 一类效果。
+     */
+    if (response === 'always') {
+      const scope = pending.info.alwaysScope
+      if (scope) {
+        PermissionGrants.addGrant({
+          scope: 'workspace',
+          type: pending.info.type,
+          pattern: `${scope.scheme}:*`,
+          workspaceRoot: pending.info.workingDirectory,
+          userId: pending.info.userId,
+          workspaceId: pending.info.workspaceId,
+          createdFrom: {
+            messageId: pending.info.messageId,
+            toolCallId: pending.info.callId,
+            title: pending.info.title,
+          },
+          metadata: pending.info.metadata,
+        })
+        settleNewlyGrantedPending(input.sessionId, session)
       }
     }
 
@@ -594,23 +670,48 @@ export namespace Permission {
         },
         metadata: pending.info.metadata,
       })
-      for (const other of Array.from(session.pending.values())) {
-        const otherGrant = PermissionGrants.matchGrant({
-          type: other.info.type,
-          pattern: other.info.pattern,
-          sessionId: input.sessionId,
-          workspaceRoot: other.info.workingDirectory,
-          userId: other.info.userId,
-          workspaceId: other.info.workspaceId,
-        })
-        if (otherGrant) {
-          settlePendingResolve(session, other)
-        }
-      }
+      settleNewlyGrantedPending(input.sessionId, session)
     }
 
     emitNextPrompt(input.sessionId, session)
     return true
+  }
+
+  /** 这张卡上画不画得出「始终允许这个应用」。壳与内核问的是同一句。 */
+  function canGrantAlways(info: Info): boolean {
+    return Boolean(info.alwaysScope)
+      && Boolean(info.workingDirectory)
+      && PermissionGrants.isGrantableType(info.type)
+  }
+
+  /**
+   * 刚落下一条 grant 之后,把**其余还挂着的** ask 顺手结掉 —— 它们要问的事这条
+   * 新许可已经答过了,再弹一次就是同一个问题问两遍。
+   *
+   * 三支(`session` / `workdir` / `always`)共用这一份:判据全在 `matchGrant` 里,
+   * 三处各写一遍只会让其中一处有一天忘了跟上匹配算法。
+   *
+   * `workdir` 那一支从前在这个循环外面还多一道
+   * `other.info.workingDirectory === pending.info.workingDirectory` 的前置筛。它筛的
+   * 是 `matchGrant` 紧接着就要再判一次的同一件事(而且是**没归一化**的字符串比较,
+   * 比 `grantMatches` 里那次 `path.resolve` 之后的比较更严),所以去掉它只会让
+   * 「两个写法不同、指同一棵树的路径」也被正确结掉 —— 与 `session` 那一支本来的
+   * 行为对齐。
+   */
+  function settleNewlyGrantedPending(sessionId: string, session: SessionState): void {
+    for (const other of Array.from(session.pending.values())) {
+      const otherGrant = PermissionGrants.matchGrant({
+        type: other.info.type,
+        pattern: other.info.pattern,
+        sessionId,
+        workspaceRoot: other.info.workingDirectory,
+        userId: other.info.userId,
+        workspaceId: other.info.workspaceId,
+      })
+      if (otherGrant) {
+        settlePendingResolve(session, other)
+      }
+    }
   }
 
   /**

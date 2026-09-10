@@ -28,6 +28,14 @@ export interface PermissionInfo {
    * Absent from older backends; treat as 'actionable'.
    */
   promptState?: 'actionable' | 'queued'
+  /**
+   * 「始终允许这个应用」这一档能不能画在卡上,以及画出来覆盖谁
+   * (核那份是 `Permission.AlwaysScope`,这里是它跨进程的镜像)。
+   *
+   * **缺席 = 不画那个键**。壳只读这一格,不自己解析 `pattern` 猜命名空间:
+   * 谁能被许可是一条判定,判定归后端。
+   */
+  alwaysScope?: { scheme: string }
 }
 
 /**
@@ -35,9 +43,11 @@ export interface PermissionInfo {
  * - 'once': Allow this single operation only (本次)
  * - 'session': Allow for the duration of this session (本会话)
  * - 'workdir': Permanently allow in this working directory (本工作目录)
+ * - 'always': Always allow this application here (本项目 × 这个应用 × 这一类效果;
+ *   仅当 `PermissionInfo.alwaysScope` 在场时才是合法应答)
  * - 'reject': Deny the operation
  */
-export type PermissionResponse = 'once' | 'session' | 'workdir' | 'reject'
+export type PermissionResponse = 'once' | 'session' | 'workdir' | 'always' | 'reject'
 
 export interface PermissionRespondRequest {
   sessionId: string

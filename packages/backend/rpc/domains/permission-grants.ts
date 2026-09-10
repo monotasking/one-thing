@@ -35,6 +35,8 @@ import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingPermissionIpcLogger } from '@onething/runtime/permissions/permission-grants-presentation'
 import type { PermissionGrant } from '@onething/core/permission'
+import { isRefScheme } from '@onething/core/resource'
+import type { PermissionGrantProjection } from '@shared/ipc/permission-grants.js'
 import type { ListOnethingPermissionGrantsOptions } from '@onething/runtime/permissions/permission-grants-presentation'
 
 const log = getLogger('ipc.permission')
@@ -142,6 +144,31 @@ function canReachGrant(
   return false
 }
 
+/**
+ * 这条 grant 属于哪个应用(2026-09-10 的应用级许可)。
+ *
+ * 判据只有一条形状:pattern 就是**整个命名空间** `<scheme>:*`。那正是
+ * `Permission.respond('always')` 落下的形状,别的什么都不是应用级许可 ——
+ * 一条具体地址(`session:abc`)、一条路径、一个工具名一律回 `undefined`,于是
+ * 设置页照旧把它们逐条列出来,而不是替用户把「删这一条消息」说成「整个会话应用」。
+ *
+ * 它是**投影**不是存储:核的 `PermissionGrant` 上没有这一格,读的时候算一次。
+ * 加一格存起来意味着存量 grant 全部没有它,而且它会和 pattern 漂移。
+ */
+function applicationOf(pattern: PermissionGrant['pattern']): string | undefined {
+  const patterns = Array.isArray(pattern) ? pattern : [pattern]
+  if (patterns.length !== 1) return undefined
+  const only = patterns[0]
+  if (typeof only !== 'string' || !only.endsWith(':*')) return undefined
+  const scheme = only.slice(0, -2)
+  return isRefScheme(scheme) ? scheme : undefined
+}
+
+function projectGrant(grant: PermissionGrant): PermissionGrantProjection {
+  const app = applicationOf(grant.pattern)
+  return app === undefined ? grant : { ...grant, app }
+}
+
 export const permissionGrantsRpcHandlers: RpcRouteHandlers<PermissionGrantsRoutes> = {
   async list(request, context = DESKTOP_RPC_CONTEXT) {
     const sandbox = resolveRpcSandbox(context)
@@ -167,7 +194,13 @@ export const permissionGrantsRpcHandlers: RpcRouteHandlers<PermissionGrantsRoute
       listWorkspaceGrants: listWorkspaceGrantsForOwner,
       logger: consoleLog,
     };
-    return listOnethingPermissionGrantsForIpc(listOnethingPermissionGrantsOptions)
+    const listed = await listOnethingPermissionGrantsForIpc(listOnethingPermissionGrantsOptions)
+    if (!listed.success) return listed
+    return {
+      success: true,
+      sessionGrants: listed.sessionGrants.map(projectGrant),
+      workspaceGrants: listed.workspaceGrants.map(projectGrant),
+    }
   },
 
   async revoke(request, context = DESKTOP_RPC_CONTEXT) {
