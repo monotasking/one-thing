@@ -462,6 +462,14 @@ export const en: Record<MessageKey, string> = {
   /* ── chat stream (D3: body text / tool names / error text are DATA) ─── */
   'chat.noSession': 'No session selected yet',
   'chat.loading': 'Loading this session…',
+  // 列表顶端那一行读数(工单 5 ⑥)。三档都是**文字**——列表/卡的加载态禁 spinner。
+  'chat.olderMore': 'Older messages above',
+  'chat.olderLoading': 'Loading older messages…',
+  'chat.olderNone': 'Start of the conversation',
+  // 工具结果太大、还没取正文时,卡上那几句(工单 5 ②)。
+  'chat.tool.resultDeferred': 'Result is {size} — expand to load it',
+  'chat.tool.resultLoading': 'Loading the result…',
+  'chat.tool.resultFailed': 'Could not load this result',
   'chat.error': "Couldn't read this session",
   'chat.empty': 'This session has no messages yet',
   'chat.errorCard': 'Something went wrong',

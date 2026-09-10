@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatDuration, formatQuantity, parseQuantity } from '../quantity'
+import { formatBytes, formatDuration, formatQuantity, parseQuantity } from '../quantity'
 
 /**
  * §5.7 收口之前有**两个产地**在各写各的:`composer/transitions.ts` 的 `formatCount`
@@ -84,5 +84,15 @@ describe('parseQuantity —— formatQuantity 的反向', () => {
     for (const n of [1000, 200_000, 1_000_000, 1_500_000, 12_300]) {
       expect(parseQuantity(formatQuantity(n))).toBe(n)
     }
+  })
+})
+
+/** 从 `data/files-source.test.ts` 随函数一起搬过来的(2026-09-10 工单 5),断言逐字未改。 */
+describe('formatBytes', () => {
+  it('字节数', () => {
+    expect(formatBytes(0)).toBe('0 B')
+    expect(formatBytes(1023)).toBe('1023 B')
+    expect(formatBytes(1024)).toBe('1.0 KB')
+    expect(formatBytes(1024 * 1024 * 3.5)).toBe('3.5 MB')
   })
 })

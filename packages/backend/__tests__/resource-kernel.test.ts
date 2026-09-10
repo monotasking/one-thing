@@ -247,6 +247,41 @@ describe('资源内核在真装配里(K1)', () => {
     expect(seen).toEqual(['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7'])
   })
 
+  /**
+   * 工单 5 ①② —— **侧表与取正文那条读法**经真管线。
+   *
+   * 单测(`session/page-results.test.ts`)判的是抽取那只纯函数;这里判的是两句
+   * 只有真内核说得出的话:①页交出来的形状**带 `results` 这一格**(它进了自述的
+   * `required`,壳按它挂回三处);②`toolResult` 是**自述里的一条读法**,经
+   * `kernel.read` 答得出来 —— 而不是 provider 上一个谁都调不到的方法。
+   *
+   * 反证:把自述里 `toolResult` 那一条摘掉 → 第二段「读法不在自述里」当场红;
+   * 把 provider 的 `results` 那一格摘掉 → 第一段红。
+   */
+  it('工单 5 ①②:页带 results 侧表,toolResult 是自述里的一条读法', async () => {
+    const { sessionCommands } = await import('../session/commands.js')
+    const store = await import('../store.js')
+    const created = store.createSession(`resource-results-${Date.now()}`, 'Results')
+    sessionCommands.appendMessage(created.id, {
+      message: { id: 'q1', role: 'system' as const, content: 'one line', timestamp: 1 } as never,
+    })
+
+    const paged = await backend.resources.read(`session:${created.id}`, 'page', { limit: 3 }, callOptions(created.id))
+    expect(paged.kind).toBe('ok')
+    if (paged.kind !== 'ok') return
+    // 侧表恒在场(这一条会话里没有工具调用,所以它是空的 —— 空表与缺席不是
+    // 一件事:壳按它挂回三处,缺席就得在壳里加一格判空)。
+    expect((paged.value as { results: unknown }).results).toEqual({})
+
+    const body = await backend.resources.read(
+      `session:${created.id}`, 'toolResult', { toolCallId: 'never-called' }, callOptions(created.id),
+    )
+    expect(body.kind).toBe('ok')
+    if (body.kind !== 'ok') return
+    // 「这条会话在,但这一格结果不在」—— 如实说,不编一个空串。
+    expect(body.value).toMatchObject({ toolCallId: 'never-called', slot: 'result', found: false })
+  })
+
   it('读一条不存在的会话,如实说不存在(不是一个空对象)', async () => {
     const outcome = await backend.resources.read('session:nope', 'get', {}, callOptions('nope'))
     expect(outcome.kind === 'failed' && outcome.error.name).toBe('SessionNotFoundError')

@@ -223,6 +223,13 @@ const SESSION_TAIL_PAGE_SCHEMA: JsonSchema = {
       type: 'array',
       description: 'The folded messages of this page, oldest first. Blobs stay as references.',
     },
+    results: {
+      type: 'object',
+      description:
+        'Tool results lifted out of the messages, keyed by an id the three result slots point at. '
+        + 'Each entry is either {kind:"inline", value} or, past the page inline budget, '
+        + '{kind:"reference", toolCallId, slot, bytes, hash, preview} — read the body with "toolResult".',
+    },
     hasMoreBefore: { type: 'boolean', description: 'True when older messages exist above this page.' },
     nextBefore: {
       type: 'string',
@@ -232,8 +239,14 @@ const SESSION_TAIL_PAGE_SCHEMA: JsonSchema = {
       type: 'number',
       description: 'The ledger seq this page was folded through. Keep folding events newer than it.',
     },
+    activeMessageId: {
+      type: 'string',
+      description:
+        'Present when a run was still open at the watermark. Its deltas cannot be folded onto an '
+        + 'empty state, so a reader that resumes from the watermark must take the full-ledger path instead.',
+    },
   },
-  required: ['messages', 'hasMoreBefore', 'watermark'],
+  required: ['messages', 'results', 'hasMoreBefore', 'watermark'],
 }
 
 export const SESSION_RESOURCE_SCHEME = 'session'
@@ -427,6 +440,42 @@ export const sessionResourceSpec: ResourceSpec = {
         required: [],
       },
       result: SESSION_TAIL_PAGE_SCHEMA,
+    },
+    /**
+     * **一格工具结果的正文**(工单 5 ②)。
+     *
+     * `page` 里超过内联预算的那些结果只带 `{bytes, hash, preview}`;要正文的
+     * 时候(屏幕上那张卡被点开)按这一条取。地址是**调用的 id**,不是内容
+     * 地址 —— 16–64KB 那一段结果在账本里根本没有内容地址(它就写在事件行里),
+     * 所以 `readBlob(hash)` 那条路对它不成立;判据全文在实现那一侧。
+     *
+     * `slot` 说的是同一次调用身上那三处结果里的哪一处(`result` /
+     * `text` / `partial`),名字与页里那张侧表逐字同源。
+     */
+    toolResult: {
+      title: 'Read the body of one tool result that the newest page left as a reference',
+      query: {
+        type: 'object',
+        properties: {
+          toolCallId: { type: 'string', description: 'Which call. Same id the page reference carries.' },
+          slot: {
+            type: 'string',
+            enum: ['result', 'text', 'partial'],
+            description: 'Which of the three result slots. Default "result".',
+          },
+        },
+        required: ['toolCallId'],
+      },
+      result: {
+        type: 'object',
+        properties: {
+          toolCallId: { type: 'string' },
+          slot: { type: 'string' },
+          found: { type: 'boolean', description: 'False when this session no longer holds that result.' },
+          value: { description: 'The result itself. Absent when found is false.' },
+        },
+        required: ['toolCallId', 'slot', 'found'],
+      },
     },
     /** 用户消息的锚点(会话目录 / 跳转用)。 */
     markers: {

@@ -76,7 +76,12 @@ describe('预览格', () => {
       'utf8',
     )
     expect(gate).toContain('[data-topbar-leaf] [data-tab-preview]')
-    expect(gate).toContain('预览标签带一句只念不看的状态词')
+    /*
+     * 36f4df1c 起出厂档是 `replace`,那一屏量的是「零预览格」这条反面证据
+     * (预览格只在用户自己切到 `preview` 档之后才产生),状态词那一句归 `preview`
+     * 档、留账在门里。这里守的仍是「声明还在不在」,不是它此刻断言哪句话。
+     */
+    expect(gate).toContain('零预览格')
   })
 
   it('缺席就一件都不挂 —— 没有 `preview` 的条与从前逐字相同', () => {

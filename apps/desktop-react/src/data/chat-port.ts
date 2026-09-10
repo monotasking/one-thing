@@ -13,7 +13,9 @@ import { IPC_CHANNELS } from '@shared/ipc/channels'
 import { sessionEventsRouter } from '@shared/ipc/session-events'
 import { sessionCommandRouter } from '@shared/ipc/session-command'
 import { permissionRouter } from '@shared/ipc/permissions'
+import { resourcesRouter } from '@shared/ipc/resources'
 import { expandFileTokens } from '@onething/runtime/prompts/prompt-references'
+import type { PageResultSlot, SessionTailPage } from './page-results'
 
 /**
  * 聊天数据源与 core 的客户端(`@onething/client`)之间的那一层**端口**(D3,路线 A)。
@@ -37,6 +39,28 @@ import { expandFileTokens } from '@onething/runtime/prompts/prompt-references'
 export interface ChatPort {
   /** 传输面就绪(D0 的 whenConnected);浏览器直开时它也会 resolve。 */
   ready(): Promise<unknown>
+  /**
+   * **首屏那一页 + 账本水位**(工单 4 A 的 `session` 读法 `page`,工单 5 ③ 的
+   * 冷载入口)。
+   *
+   * 与 `listRaw` 的关系是**取代,不是并列**:冷载从此拉这一条(24 条折好的
+   * 消息 + 水位),不再把整份 55MB 账本搬进渲染进程再折一遍。`listRaw` 留下来
+   * 只服务一种情形 —— 水位那一刻有一条**开着的 run**(`activeMessageId` 在场):
+   * 它的 delta 在空状态上一条都折不下,那一次只能走整份。判据全文在
+   * `chat-source.ts` 的 `loadPage`。
+   *
+   * 经 `resources.read` 一条路,**不加具名 RPC 方法** —— 资源管线已在 RPC 域上,
+   * 再起一个 `sessions.getPage` 就是同一件事两个名字(工单 4 A 的原话)。
+   */
+  readPage(sessionId: string, query?: { limit?: number; before?: string }): Promise<SessionTailPage>
+  /**
+   * 一格**大结果**的正文(工单 5 ②)。页里超过内联预算的结果只带
+   * `{bytes, hash, preview}`,人点开工具卡的那一刻按这条取。
+   *
+   * 读不到(会话没了 / 那一格结果不在)一律 `undefined` —— 调用方画那句
+   * 「读不到」,而不是画一段空白的结果。
+   */
+  readToolResult(sessionId: string, toolCallId: string, slot: PageResultSlot): Promise<unknown>
   /** 会话事件账本的**全集原词汇**,按 seq 升序 —— 折叠器唯一的底。 */
   listRaw(sessionId: string): Promise<ListRawSessionEventsResponse>
   /** 账本里超 64KB 的正文只留 `BlobRef`,换回真身走这一条。 */
@@ -140,9 +164,32 @@ async function realPort(): Promise<ChatPort> {
   const sessionEventsApi = client.api(sessionEventsRouter)
   const sessionCommands = client.api(sessionCommandRouter)
   const permissionApi = client.api(permissionRouter)
+  const resources = client.api(resourcesRouter)
+
+  /** `session:<id>` 上的一条读法。结局是投影不是异常(`ResourceReadView` 四支)。 */
+  async function readSession(sessionId: string, name: string, query?: Record<string, unknown>): Promise<unknown> {
+    const view = await resources.read({
+      ref: `session:${sessionId}`,
+      name,
+      ...(query ? { query } : {}),
+    })
+    if (view.kind === 'ok') return view.value
+    // 三种「没读成」在这一层是同一件事:调用方拿不到那份数据。措辞照抄,
+    // 不在这里发明一句 —— 与 chat-source 别处的失败路逐条同判。
+    throw new Error(
+      view.kind === 'failed' ? view.error.message : view.kind === 'denied' ? view.reason : view.message,
+    )
+  }
   const { SESSION_COMMAND_TYPES } = await import('@shared/events/session-commands')
   return {
     ready: () => whenConnected(),
+    readPage: async (sessionId, query) =>
+      await readSession(sessionId, 'page', query as Record<string, unknown> | undefined) as SessionTailPage,
+    readToolResult: async (sessionId, toolCallId, slot) => {
+      const answer = await readSession(sessionId, 'toolResult', { toolCallId, slot }) as
+        { found?: boolean; value?: unknown } | undefined
+      return answer?.found ? answer.value : undefined
+    },
     listRaw: (sessionId) => sessionEventsApi.listRaw({ sessionId }),
     readBlob: (sessionId, hash) => sessionEventsApi.readBlob({ sessionId, hash }),
     onSessionEvent: (callback) => client.events.on(IPC_CHANNELS.SESSION_EVENT, callback),

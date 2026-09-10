@@ -8,7 +8,7 @@ import { Spinner } from '../../ui/Spinner'
  */
 import { ButtonBase } from '../../ui/ButtonBase'
 import type { TFn } from '../../i18n'
-import { formatBytes } from '../../data/files-source'
+import { formatBytes } from '../../format/quantity'
 import type { ViewerFile, ViewerView } from '../../data/viewer-source'
 import { listKeymaps } from './registry'
 import type { ViewerStatusItem } from './registry'

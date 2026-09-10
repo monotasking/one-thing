@@ -34,7 +34,14 @@ import {
   type PermissionAsk,
 } from './permission-ask'
 import { chatPort } from './chat-port'
+import {
+  applyToolResultBody,
+  pageResultKey,
+  rehangPageResults,
+  type PageResultReference,
+} from './page-results'
 import { onSessionsDeleted } from './sessions-source'
+import { readSessionScrollAnchor } from './session-view-state'
 import { notify } from '../services/notify'
 import { perfCount, perfSpan } from '../services/perf'
 import { t } from '../i18n'
@@ -116,6 +123,30 @@ function readStreamR2(): boolean {
 
 /** 缺号之后整份重折的最小间隔 —— 窗口内的多次缺号塌成一次。 */
 export const REFOLD_THROTTLE_MS = 3000
+
+/**
+ * **一页拉几条**(工单 5 ③)。
+ *
+ * 与 `content/chat-window.ts` 的 `CHAT_TAIL_WINDOW` 是**同一个数、两个产地**,
+ * 而这正是有意的:那一格说的是「这一帧摆几条 DOM」(渲染预算),这一格说的是
+ * 「一次往返带几条回来」(取数预算)。今天两者都是 24,凑成一个常量只会让下一个
+ * 人调错那一头 —— 判据与后端 `TAIL_PAGE_LIMIT_DEFAULT` 那一段逐字同源。
+ */
+export const CHAT_PAGE_LIMIT = 24
+
+/**
+ * 一次取页**最多翻几页**(工单 5 ⑤⑦)。
+ *
+ * 两个调用点共用它,因为它们要的是同一件事「往前够到某一条为止」:冷载够
+ * **锚点**(上次看到哪儿),缺号重取够**手里最老的那一条**(重取之后屏幕上此前
+ * 有的东西还得在)。
+ *
+ * 有封顶而不是翻到底:锚点可能指着几百条之前的消息,为了它把整条会话拉回来正是
+ * 本单在治的病。够不到就到此为止 —— 冷载那一次表现为落底(人回到的是最新那一屏),
+ * 重取那一次表现为屏幕上少了最前面几条(而它们由上翻取页随时补得回来)。
+ * 两种都是诚实的降级,不是失败。
+ */
+export const CHAT_PAGE_HUNT_LIMIT = 8
 
 /**
  * 按了停止之后,等这一轮收尾的宽限。超时只说一句话(warn),**不重发、不清尾巴**
@@ -219,6 +250,34 @@ export interface ChatSourceState {
    * 三条清闩路写在 `regenerate` 的注里,`RETRY_SETTLE_MS` 是其中的保险丝。
    */
   retryPending?: { messageId: string; at: number }
+  /**
+   * **已装载那一页之上还有没有更早的消息**(工单 5 ⑥)。
+   *
+   * 产地是页那条读法的 `hasMoreBefore`,不是「消息够不够多」—— 后者答不出这个
+   * 问题(一条 400 条的会话,本地手里那 24 条与「上面还有」是两件事)。
+   * 走整份账本那条老路时恒 `false`:那一次手里就是全部。
+   */
+  hasMoreBefore: boolean
+  /**
+   * **正在取上一页**。列表顶端那一行读数照它换措辞(**禁 spinner** —— 列表/卡的
+   * 加载态用文字,规范禁令第一条)。
+   */
+  loadingOlder: boolean
+  /**
+   * **又往前接了一页**(单调号)。与 `sentTick` 同族:订阅方要的是「刚刚发生了
+   * 一次 prepend」这件**事**,而 store 里只放得下状态。`ChatStream` 拿它当那一格
+   * 扩窗补偿的触发沿 —— 拿 `messages.length` 的差去猜是猜(账本追上来、overlay
+   * 认领、重折三条路都会让长度变)。
+   */
+  olderTick: number
+  /**
+   * **大结果此刻取到哪一步**,键与页里那张侧表同源(`pageResultKey`)。
+   *
+   * 只有两档在表上:`'loading'`(在飞)与 `'failed'`(读不到)。**取成功的那一格
+   * 不在这里** —— 它落在消息本身上(就地换掉那一格),而「已拉」这件事在屏幕上
+   * 的形状就是那段正文出现了。存两份迟早分叉(与 `selectEngineBusy` 那条同判)。
+   */
+  toolResults: Readonly<Record<string, 'loading' | 'failed'>>
 
   /**
    * **换「当前会话」**(兼容口,不是这台机器的方法)。
@@ -260,6 +319,20 @@ export interface ChatSourceState {
    *     它没允许,这件事必须让人知道(与 `abort` 那一段逐字同判)。
    */
   respondPermission: (toolCallId: string, decision: PermissionResponse) => void
+  /**
+   * **再往前接一页**(工单 5 ⑥)。幂等 —— 已经在取、或者上面没有了,就是恒等。
+   *
+   * 返回 `true` = 这一下真的发出去了(调用方据此知道要不要留一格补偿)。
+   */
+  loadOlder: () => boolean
+  /**
+   * **取一格大结果的正文**(工单 5 ②)。页里超过内联预算的结果只带
+   * `{bytes, hash, preview}`,工具卡被展开的那一刻调它。
+   *
+   * 幂等:同一格在飞时不重发,取回来过就当场返回。取回来之后**就地换掉**挂着
+   * 那枚引用的那几条消息(律①③:禁清屏),别的一格不动。
+   */
+  fetchToolResult: (ref: PageResultReference) => void
   /** 丢弃一条 overlay(失败后不想再试 / 关掉提示)。 */
   dismiss: (entryId: string) => void
   /** 挂一条本地提示(说的正是"这件事没有进账本")。 */
@@ -314,6 +387,25 @@ export function selectEngineBusy(state: ChatSourceState): boolean {
 
 /** 攒的上限 —— 一次重折的在飞窗口里攒过这个数属病态,清掉靠下一次重折兜底。 */
 const PENDING_LEDGER_CAP = 1024
+
+/**
+ * **自己会造节点**的那几类账本事件(工单 5 ③)。
+ *
+ * 判据抄的是 core 归约器里那几支 `register(state, node)` 的 case —— 它们不问
+ * 「这条 run/消息在不在」,所以在一份空状态上照样落得下。别的事件都指着一条
+ * 已经在的节点,判据见 `ledgerLandsOnFold`。
+ */
+const NODE_CREATING_LEDGER_TYPES = new Set([
+  'run/start',
+  'user/message',
+  'system/message',
+  'message/imported',
+  'user/message-edited',
+  'session/created',
+])
+
+/** 空表共用一只 —— 每次新造一个会让下游的浅比全部落空(与 `NO_PERMISSION_ASKS` 同款)。 */
+const NO_TOOL_RESULT_FETCHES: Readonly<Record<string, 'loading' | 'failed'>> = Object.freeze({})
 
 /**
  * 对账回来的那一份与屏幕上这一份**说的是不是同一件事**。
@@ -471,6 +563,29 @@ export function createChatSource(sessionId: string): ChatSource {
    * 因为**表本身**不是可渲染状态 —— 屏幕要的是 `retryPending` 那一格,不是这只表。
    */
   let retryWatch: ReturnType<typeof setTimeout> | undefined
+  /**
+   * **页那一路交下来的底稿**(工单 5 ③):core 侧折好的那一页消息。
+   *
+   * `undefined` = 这一台走的是整份账本那条老路(见 `loadPage` 里那道
+   * `activeMessageId` 闸),屏幕上那棵树全部来自活折。
+   *
+   * 它与活折的关系是**前缀与后缀**:底稿是水位那一刻为止的事实,活折是水位之后
+   * 长出来的那几条。合并规则一句话(`mergePageAndFold`):同 id 的以活折为准
+   * (它更新),活折里没有的按底稿的次序留着,底稿里没有的追加在后面。
+   */
+  let pageBase: ProjectedMessage[] | undefined
+  /** 上一页从哪要 + 上面还有没有(页那条读法交下来的两格,原样存)。 */
+  let pageCursor: { hasMoreBefore: boolean; nextBefore?: string } = { hasMoreBefore: false }
+  /** 正在取上一页(实例字段:屏幕要的是 store 那一格,不是这只闸)。 */
+  let loadingOlder = false
+  /**
+   * **已经取回来的大结果正文**,键与页里那张侧表逐字同源(`pageResultKey`)。
+   *
+   * 存在这一层而不是消息上:上翻取回来的那些页要重新挂一遍侧表,而「这一格
+   * 早就取过了」不该跟着页一起丢 —— 与 `blobs` 那张表同一条理由、同一个位置。
+   */
+  const resultBodies = new Map<string, unknown>()
+  const resultFetching = new Set<string>()
   /** 起底 / 重折的防串号闸(也是 `dispose` 作废在飞回调的那一手)。 */
   let openSeq = 0
   /**
@@ -561,6 +676,52 @@ export function createChatSource(sessionId: string): ChatSource {
       retryWatch = undefined
     }
 
+    /**
+     * **底稿 ∪ 活折**(工单 5 ③ 的接缝在数据这一侧的形状)。
+     *
+     * 冷载之后活折是空的,所以这一口当场返回底稿本体 —— **连数组对象都是原来
+     * 那个**,下游那些按引用短路的 memo 一格没 miss(律④)。SSE 长出新消息之后
+     * 才真的合一次:同 id 以活折为准(水位之后它更新),其余按底稿次序留着,
+     * 活折里的新面孔追加在后。
+     *
+     * 结果按 `(底稿, 活折)` 记一格 memo:`compose()` 挂在逐帧的推屏上,合并本身
+     * 不该每帧重造一个新数组(那等于把上面那句「引用短路」再毁一次)。
+     */
+    let mergeMemo: { base: readonly ProjectedMessage[] | undefined; folded: readonly ProjectedMessage[]; out: ProjectedMessage[] } | undefined
+    function mergePageAndFold(
+      base: ProjectedMessage[] | undefined,
+      folded: ProjectedMessage[],
+    ): ProjectedMessage[] {
+      if (!base) return folded
+      if (folded.length === 0) return base
+      if (mergeMemo && mergeMemo.base === base && mergeMemo.folded === folded) return mergeMemo.out
+      const byId = new Map(folded.map(message => [message.id, message]))
+      const out: ProjectedMessage[] = []
+      for (const message of base) {
+        const live = byId.get(message.id)
+        if (live) {
+          out.push(live)
+          byId.delete(message.id)
+        } else out.push(message)
+      }
+      for (const message of folded) if (byId.has(message.id)) out.push(message)
+      mergeMemo = { base, folded, out }
+      return out
+    }
+
+    /**
+     * 那张取件表上一格的进出。**空表共用一只**(下游浅比要它),没变就不推 ——
+     * 每次都造一个新对象等于每次都推一次全体订阅者。
+     */
+    function patchToolResultFetch(key: string, state: 'loading' | 'failed' | undefined): void {
+      const prev = get().toolResults
+      if (prev[key] === state) return
+      const next = { ...prev }
+      if (state === undefined) delete next[key]
+      else next[key] = state
+      set({ toolResults: Object.keys(next).length === 0 ? NO_TOOL_RESULT_FETCHES : next })
+    }
+
     function compose(): void {
       if (!fold || fold.pending) return
       perfSpan('chat.compose', () => {
@@ -571,7 +732,7 @@ export function createChatSource(sessionId: string): ChatSource {
           blobEpoch,
           STREAM_R2 ? water : undefined,
         )
-        const base = projected.messages
+        const base = mergePageAndFold(pageBase, projected.messages)
         const overlay = reconcileOverlay(get().overlay, base)
         const activeMessageId = projected.activeRun?.messageId
         /*
@@ -798,8 +959,98 @@ export function createChatSource(sessionId: string): ChatSource {
       if (diverged > 0) scheduleRefold(mine)
     }
 
+    /**
+     * 起底 / 缺号重取的**唯一入口**(工单 5 ③⑤)。
+     *
+     * 两条路,判据一句话:**页那条路走得通就走页**。
+     *
+     *  · 走得通 = core 给得出那一页,而且水位那一刻**没有一条开着的 run**
+     *    —— 后者是硬判据不是偏好:页交下来的是折好的消息,壳按水位接 SSE 是
+     *    「在一份空状态上接着折」,而一条**在水位之前就开张**的 run,它后面的
+     *    delta 在空状态上一条都落不下(归约器 `state.runs.get` 落空就 break)。
+     *    那一次只能整份折,所以那一次退回老路;
+     *  · 缺号重取按**已装载的范围**重取(而不是整份 `listRaw`):页边界靠
+     *    「必须盖住此刻手里最老的那一条」对齐 —— 游标是账本位置,新消息到达之后
+     *    尾页会往后滑,拿条数对齐会漏一截,拿**那一条消息**对齐不会。
+     */
+    async function resync(token: number): Promise<void> {
+      const mine = fold
+      if (!mine) return
+      mine.refoldScheduled = false
+      mine.lastRefoldAt = Date.now()
+      // 冷载盖锚点(⑦),缺号重取盖手里最老的那一条(⑤)。两次问的是同一个问题:
+      // 「重取回来之后,屏幕上此前有的东西还得在」。
+      if (await runPageLoad(token, pageBase?.[0]?.id ?? anchorMessageId())) return
+      if (token !== openSeq || fold !== mine || disposed) return
+      await refoldFromLedger(token)
+    }
+
+    /** 这一台此刻记着的锚点(冷载够页用)。`'bottom'` 与没有锚点是同一件事。 */
+    function anchorMessageId(): string | undefined {
+      const anchor = readSessionScrollAnchor(sessionId)
+      return anchor && anchor !== 'bottom' ? anchor.messageId : undefined
+    }
+
+    /**
+     * **拉页**:尾页,必要时再往前翻几页把 `cover` 那一条也盖进来。
+     *
+     * @returns `false` = 这一次页这条路不作数(有开着的 run / 读不到),调用方退回
+     *          整份账本那条老路。**一个字节都没写进这台机器**,所以退回去是干净的。
+     */
+    async function runPageLoad(token: number, cover: string | undefined): Promise<boolean> {
+      const mine = fold
+      if (!mine) return false
+      let collected: ProjectedMessage[] = []
+      let cursor: { hasMoreBefore: boolean; nextBefore?: string } = { hasMoreBefore: false }
+      let watermark = 0
+      try {
+        const port = await chatPort()
+        for (let hunted = 0; hunted < CHAT_PAGE_HUNT_LIMIT; hunted += 1) {
+          const before = hunted === 0 ? undefined : cursor.nextBefore
+          if (hunted > 0 && !before) break
+          const page = await port.readPage(sessionId, {
+            limit: CHAT_PAGE_LIMIT,
+            ...(before ? { before } : {}),
+          })
+          if (token !== openSeq || fold !== mine || disposed) return true
+          // 见 `resync` 的注:开着的 run 那一次页这条路不成立,而且**第一页就知道**。
+          if (page.activeMessageId) return false
+          const older = rehangPageResults(page.messages, page.results, resultBodies)
+          collected = hunted === 0 ? older : [...older, ...collected]
+          if (hunted === 0) watermark = page.watermark
+          cursor = {
+            hasMoreBefore: page.hasMoreBefore,
+            ...(page.nextBefore ? { nextBefore: page.nextBefore } : {}),
+          }
+          if (!cover || collected.some(message => message.id === cover)) break
+          if (!page.hasMoreBefore) break
+        }
+      } catch {
+        // 读不到就退回老路 —— 那一条路还是今天那一条,不是一次降级(它是全集)。
+        return false
+      }
+      if (token !== openSeq || fold !== mine || disposed) return true
+
+      pageBase = collected
+      pageCursor = cursor
+      mergeMemo = undefined
+      mine.state = createSessionProjectionState()
+      mine.lastSeq = watermark
+      mine.pending = false
+      // 与整份那条路逐字同一句:新折叠可能已经装下了尾巴前面那一截。
+      handOverTail(mine.state)
+      const drained = pendingLedger
+      pendingLedger = []
+      drained.sort((a, b) => ((a.seq as number) ?? 0) - ((b.seq as number) ?? 0))
+      for (const record of drained) feedLedger(record)
+      set({ hasMoreBefore: cursor.hasMoreBefore })
+      compose()
+      void reconcilePermissions(token)
+      return true
+    }
+
     /** 起底 / 重折:整份账本折一遍。`token` 是拆机器 / 再起底的防串号闸。 */
-    async function refold(token: number): Promise<void> {
+    async function refoldFromLedger(token: number): Promise<void> {
       const mine = fold
       if (!mine) return
       mine.refoldScheduled = false
@@ -818,6 +1069,12 @@ export function createChatSource(sessionId: string): ChatSource {
           const seq = (event as { seq?: number }).seq
           if (typeof seq === 'number' && seq > lastSeq) lastSeq = seq
         }
+        // 整份那条路手里就是全部 —— 底稿退场(留着就是同一棵树两个产地),
+        // 「上面还有更早的」跟着变成 false。
+        pageBase = undefined
+        pageCursor = { hasMoreBefore: false }
+        mergeMemo = undefined
+        set({ hasMoreBefore: false })
         mine.state = state
         mine.lastSeq = lastSeq
         mine.pending = false
@@ -851,7 +1108,7 @@ export function createChatSource(sessionId: string): ChatSource {
       mine.refoldScheduled = true
       const token = openSeq
       const wait = Math.max(0, mine.lastRefoldAt + REFOLD_THROTTLE_MS - Date.now())
-      setTimeout(() => void refold(token), wait)
+      setTimeout(() => void resync(token), wait)
     }
 
     /**
@@ -865,6 +1122,37 @@ export function createChatSource(sessionId: string): ChatSource {
      */
     function markActivity(messageId: string): void {
       lastActivity = { messageId, at: Date.now() }
+    }
+
+    /**
+     * **这一条落得到手里这份折叠上吗**(工单 5 ③ 接缝的另一半)。
+     *
+     * 走页那条路时活折是**空状态 + 水位**:它只装得下水位之后**自己造节点**的
+     * 那些事件(`run/start` 开一条 run、`user/message` 落一条消息)。一条指着
+     * 水位之前那条 run / 那条消息的事件(某条老 run 的 `run/end`、给一条老消息
+     * 打的 `message/patched`)在空状态上是**静默 no-op** —— 归约器 `.get()` 落空
+     * 就 break,不报错、不留痕,屏幕从此与账本分家。
+     *
+     * 所以这里在折之前先问一句。判据只认两格**明说出来的地址**(`runId` /
+     * `messageId`),认不出地址的一律放行 —— 认不出就说明它不指着任何一条,
+     * 折进去是安全的。
+     *
+     * 整份账本那条路上这只函数恒 `true`:那份状态里什么都有。
+     */
+    function ledgerLandsOnFold(mine: LiveFold, record: Record<string, unknown>): boolean {
+      if (!pageBase) return true
+      const type = record.type
+      if (typeof type !== 'string') return true
+      // 会话级重写(清空 / 压缩):它们改的是**整棵树**,不是某一格 —— 重取。
+      if (type === 'session/cleared' || type === 'session/compacted') return false
+      if (NODE_CREATING_LEDGER_TYPES.has(type)) return true
+      const data = record.data as Record<string, unknown> | undefined
+      const runId = data?.runId
+      if (typeof runId === 'string') return mine.state.runs.has(runId)
+      const messageId = data?.messageId
+        ?? (data?.message as Record<string, unknown> | undefined)?.id
+      if (typeof messageId === 'string') return mine.state.byMessageId.has(messageId)
+      return true
     }
 
     /**
@@ -886,6 +1174,12 @@ export function createChatSource(sessionId: string): ChatSource {
       }
       if (seq <= mine.lastSeq) return
       if (seq !== mine.lastSeq + 1) {
+        scheduleRefold(mine)
+        return
+      }
+      if (!ledgerLandsOnFold(mine, record as Record<string, unknown>)) {
+        // 这一条说的是**水位之前**的那一段(见 `ledgerLandsOnFold`)—— 折不下去,
+        // 重取一次页(节流)。丢掉它、或者硬折一遍,两种都是让屏幕与账本分家。
         scheduleRefold(mine)
         return
       }
@@ -1354,6 +1648,10 @@ export function createChatSource(sessionId: string): ChatSource {
       tailLens = undefined
       tailReceived = undefined
       pendingLedger = []
+      pageBase = undefined
+      pageCursor = { hasMoreBefore: false }
+      mergeMemo = undefined
+      loadingOlder = false
       set({
         sessionId,
         status: 'loading',
@@ -1365,12 +1663,15 @@ export function createChatSource(sessionId: string): ChatSource {
         permissions: NO_PERMISSION_ASKS,
         // 重新起底 = 上一次重试的回音已经没有意义了(那棵树整份要重画)。
         retryPending: undefined,
+        // 底稿还没到手 —— 「上面还有更早的」此刻是一句说不出口的话。
+        hasMoreBefore: false,
+        loadingOlder: false,
       })
 
       // 先订上再拉:拉的那一刻起的事件不能漏(与 D0 / D1 同一条理由)。
       await chatSources.ensureSubscribed()
       if (token !== openSeq || disposed) return
-      await refold(token)
+      await resync(token)
     }
 
     /** 真发送 —— 成败都落在那一格 overlay 上,认领由 `reconcileOverlay` 负责。 */
@@ -1416,7 +1717,7 @@ export function createChatSource(sessionId: string): ChatSource {
       abortWatch = undefined
       // 那只等新一轮的表跟着走 —— 留着它就是一发对着已拆机器的 warn。
       clearRetryWatch()
-      // 号一动,在飞的 `refold` / `scheduleRefold` 回来时全部作废。
+      // 号一动,在飞的 `resync` / `scheduleRefold` 回来时全部作废。
       openSeq += 1
       // 同一手:在飞的那一发对账回来时手里那份快照当场作废。
       permissionRev += 1
@@ -1432,6 +1733,12 @@ export function createChatSource(sessionId: string): ChatSource {
       // 两格一起清:留着上一轮那一格,新一轮开张时读数会顶着别人的静默秒数。
       lastActivity = undefined
       pendingLedger = []
+      pageBase = undefined
+      pageCursor = { hasMoreBefore: false }
+      mergeMemo = undefined
+      loadingOlder = false
+      resultBodies.clear()
+      resultFetching.clear()
       pushScheduled = false
       blobs.clear()
       blobsMissing.clear()
@@ -1448,6 +1755,10 @@ export function createChatSource(sessionId: string): ChatSource {
       overlay: [],
       permissions: NO_PERMISSION_ASKS,
       sentTick: 0,
+      hasMoreBefore: false,
+      loadingOlder: false,
+      olderTick: 0,
+      toolResults: NO_TOOL_RESULT_FETCHES,
 
       // 「换当前会话」是注册表的活,不是这台机器的(见类型上的注)。
       open: (next: string) => chatSources.openCurrent(next),
@@ -1685,6 +1996,83 @@ export function createChatSource(sessionId: string): ChatSource {
             body: failure,
             detail: failure,
           })
+        })()
+      },
+
+      /**
+       * **再往前接一页**(工单 5 ⑥)。判据三条,缺一条就是恒等:
+       * 底稿在(这一台走的是页那条路)、上面还有、此刻没有在飞的那一发。
+       */
+      loadOlder: () => {
+        const before = pageCursor.nextBefore
+        if (loadingOlder || !pageBase || !pageCursor.hasMoreBefore || !before) return false
+        loadingOlder = true
+        set({ loadingOlder: true })
+        const token = openSeq
+        void (async () => {
+          try {
+            const port = await chatPort()
+            const page = await port.readPage(sessionId, { limit: CHAT_PAGE_LIMIT, before })
+            if (token !== openSeq || disposed || !pageBase) return
+            const known = new Set(pageBase.map((message) => message.id))
+            // 游标那一条本身可能又回来一次(边界重叠)—— 按 id 去重,不按条数。
+            const older = rehangPageResults(page.messages, page.results, resultBodies)
+              .filter((message) => !known.has(message.id))
+            pageBase = [...older, ...pageBase]
+            pageCursor = {
+              hasMoreBefore: page.hasMoreBefore,
+              ...(page.nextBefore ? { nextBefore: page.nextBefore } : {}),
+            }
+            mergeMemo = undefined
+            set((prev) => ({ hasMoreBefore: page.hasMoreBefore, olderTick: prev.olderTick + 1 }))
+            compose()
+          } catch {
+            /*
+             * 取不到就**一格不动**:顶端那行读数回到「还有更早的」,人再翻一次就是
+             * 再发一次。不落 error、不清屏 —— 手里那几页是好的(律②)。
+             */
+          } finally {
+            if (token === openSeq && !disposed) {
+              loadingOlder = false
+              set({ loadingOlder: false })
+            }
+          }
+        })()
+        return true
+      },
+
+      /** 取一格大结果的正文(工单 5 ②)。判词在类型上。 */
+      fetchToolResult: (ref) => {
+        const key = pageResultKey(ref)
+        if (resultBodies.has(key) || resultFetching.has(key)) return
+        resultFetching.add(key)
+        patchToolResultFetch(key, 'loading')
+        const token = openSeq
+        void (async () => {
+          try {
+            const port = await chatPort()
+            const value = await port.readToolResult(sessionId, ref.toolCallId, ref.slot)
+            if (token !== openSeq || disposed) return
+            if (value === undefined) {
+              patchToolResultFetch(key, 'failed')
+              return
+            }
+            resultBodies.set(key, value)
+            patchToolResultFetch(key, undefined)
+            /*
+             * **就地换掉**挂着这枚引用的那几条消息(律①③:禁清屏)。底稿改了要
+             * 顺手作废合并 memo —— 不然下一帧还是上一份那个数组对象。
+             */
+            if (pageBase) {
+              pageBase = applyToolResultBody(pageBase, key, value)
+              mergeMemo = undefined
+            }
+            compose()
+          } catch {
+            if (token === openSeq && !disposed) patchToolResultFetch(key, 'failed')
+          } finally {
+            resultFetching.delete(key)
+          }
         })()
       },
 
@@ -2126,6 +2514,29 @@ export function respondChatPermission(
   sessionId?: string,
 ): void {
   sourceFor(sessionId)?.getState().respondPermission(toolCallId, decision)
+}
+
+/**
+ * **再往前接一页**的非组件写法(工单 5 ⑥)。
+ *
+ * 与 `sendChatMessage` / `respondChatPermission` 同一条判例:调用方是一个滚动
+ * 回调(`ChatStream` 的 `expandOnScroll`),它在 React 之外跑、要的是「此刻那台
+ * 机器」而不是一格订阅 —— 为一个身份恒定的动作订一格 store,是白付订阅的钱。
+ *
+ * 返回 `true` = 这一下真的发出去了(调用方据此决定要不要留那格补偿)。
+ */
+export function loadOlderChatMessages(sessionId?: string): boolean {
+  return sourceFor(sessionId)?.getState().loadOlder() ?? false
+}
+
+/**
+ * **取一格大结果的正文**的非组件写法(工单 5 ②)。
+ *
+ * 调用方是工具抽屉 —— 一条长会话里两百张卡,每张为一个身份恒定的动作订一格
+ * store 正是 `respondChatPermission` 那条判例在治的病,所以这里同样是自由函数。
+ */
+export function fetchChatToolResult(ref: PageResultReference, sessionId?: string): void {
+  sourceFor(sessionId)?.getState().fetchToolResult(ref)
 }
 
 /** 缺省 = 当前会话那一台;显式给了 id 就只认表上那一台(没有就什么都不做)。 */

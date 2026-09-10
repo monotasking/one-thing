@@ -58,11 +58,37 @@ export function TocPanel({ sessionId, currentIndex, onPick }: Props) {
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // 目录的素材属于「当前会话」,所以换会话就重取一次(两个 ensure 自己幂等)。
+  /*
+   * 目录的素材属于「当前会话」,所以换会话就重取一次(两个 ensure 自己幂等)。
+   *
+   * ── 为什么排在空闲里(2026-09-10 工单 5 ⑧)────────────────────────────
+   * `getUserMarkers` 要的是**整条会话的用户消息锚点** —— 后端拿不到它的捷径:
+   * 那份名单只有把整份账本折一遍才数得出来。真店夹具(50.8MB / 400 条)上单独
+   * 量:**900ms**(交出去的只有 30KB —— 贵的不是字节是那一折)。
+   *
+   * 而 core 是单线程的:这一折跑起来,聊天区那一页(`resources.read(page)`,
+   * 单独量 **59ms**)就排在它后面 —— 冷载首屏因此被拖到 1142ms,其中九成不是
+   * 首屏自己的活。
+   *
+   * 所以这里改的是**时机**不是内容:rail 的素材照旧取、取的还是那一份,只是
+   * 让出第一屏那一拍。目录是「看完这一屏之后才会用到的东西」,晚一个空闲周期
+   * 出现在屏幕上,与 `ChatStream` 那条「空闲往前补一批」是同一条纪律。
+   */
   useEffect(() => {
     if (!sessionId) return
-    void ensureChapters(sessionId)
-    void ensureMarkers(sessionId)
+    const run = () => {
+      void ensureChapters(sessionId)
+      void ensureMarkers(sessionId)
+    }
+    // `requestIdleCallback` 在 jsdom / 老 Safari 上缺席 —— 退到一发宏任务,
+    // 它同样排在这一帧的提交之后(判词与 `ChatStream` 的空闲扩窗同源)。
+    const idle = (window as IdleWindow).requestIdleCallback
+    if (typeof idle === 'function') {
+      const handle = idle(run)
+      return () => (window as IdleWindow).cancelIdleCallback?.(handle)
+    }
+    const handle = window.setTimeout(run, 0)
+    return () => window.clearTimeout(handle)
   }, [sessionId, ensureChapters, ensureMarkers])
 
   const markers = useMemo(() => markerSource ?? [], [markerSource])
@@ -118,4 +144,14 @@ export function TocPanel({ sessionId, currentIndex, onPick }: Props) {
       />
     </nav>
   )
+}
+
+/**
+ * `requestIdleCallback` 在 TS 的 DOM 库里是可选的(jsdom / 老 Safari 没有)。
+ * 与 `content/ChatStream.tsx` 里那一份逐字相同 —— 它是 TS lib 的一处缺口,
+ * 不是一件有主人的东西,所以两处各声明各的比让 toc/ 去引 content/ 干净。
+ */
+type IdleWindow = Window & {
+  requestIdleCallback?: (cb: () => void) => number
+  cancelIdleCallback?: (handle: number) => void
 }

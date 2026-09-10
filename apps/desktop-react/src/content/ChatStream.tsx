@@ -9,7 +9,7 @@ import {
   useState,
   type RefObject,
 } from 'react'
-import { chatSources, useChatSourceOf } from '../data/chat-source'
+import { chatSources, loadOlderChatMessages, useChatSourceOf } from '../data/chat-source'
 import {
   applyScrollAnchor,
   measureScrollAnchor,
@@ -109,6 +109,14 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
   const messages = useChatSourceOf(sessionId, (st) => st.messages)
   const activeMessageId = useChatSourceOf(sessionId, (st) => st.activeMessageId)
   const overlay = useChatSourceOf(sessionId, (st) => st.overlay)
+  /*
+   * ── 上翻取页那两格(2026-09-10 工单 5 ⑥)────────────────────────────────
+   * 本地那个窗口(`chat-window.ts`)管的是「这一帧摆几条 DOM」;这两格管的是
+   * 「手里这几条之上还有没有」。两件事,所以两张表:窗口用完了才轮到取页。
+   */
+  const hasMoreBefore = useChatSourceOf(sessionId, (st) => st.hasMoreBefore)
+  const loadingOlder = useChatSourceOf(sessionId, (st) => st.loadingOlder)
+  const olderTick = useChatSourceOf(sessionId, (st) => st.olderTick)
 
   /*
    * ── 进场那一格窗口的两个入参(2026-09-10「响应先行」)────────────────────
@@ -140,7 +148,14 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
     () => (windowStart <= 0 ? messages : messages.slice(windowStart)),
     [messages, windowStart],
   )
-  const expandOnScroll = useTailWindow(scrollRef, sessionId, messages.length, windowStart)
+  const expandOnScroll = useTailWindow(
+    scrollRef,
+    sessionId,
+    messages.length,
+    windowStart,
+    hasMoreBefore,
+    olderTick,
+  )
 
   /*
    * **起底这条会话**(幂等)。W5-a 时这条 effect 还顺手宣布了一句「当前会话」——
@@ -240,6 +255,24 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
             )}
 
             {/*
+              * ── 顶端那一行读数(2026-09-10 工单 5 ⑥)────────────────────────────
+              * 三档一句话:本地窗口还没摆完 **或** core 说上面还有 → 「还有更早的」;
+              * 正在取 → 「正在取更早的…」;两样都没有 → 「已到开头」。
+              *
+              * 只在**有内容**时画:空态那三行自己会说话,再叠一句「已到开头」是废话。
+              * 禁 spinner(规范禁令第一条:列表/卡的加载态用文字)。
+              */}
+            {sessionId && status === 'ready' && messages.length > 0 && (
+              <p className={s.olderMark}>
+                {loadingOlder
+                  ? t('chat.olderLoading')
+                  : windowStart > 0 || hasMoreBefore
+                    ? t('chat.olderMore')
+                    : t('chat.olderNone')}
+              </p>
+            )}
+
+            {/*
               * **摆的是窗口里那几条,不是整份**(2026-09-10)。窗口是消息数组的一个
               * 后缀,起点只减不增(判词在 `chat-window.ts`),所以这里一格特判都没有:
               * 全量到齐时 `visible === messages`,与从前逐字相同。
@@ -336,6 +369,10 @@ function useTailWindow(
   sessionId: string,
   total: number,
   windowStart: number,
+  /** 手里这几条之上还有没有(页那条读法说的,不是「本地够不够」)。 */
+  hasMoreBefore: boolean,
+  /** 又往前接了一页 —— 补偿那一格的触发沿(判词在 `ChatSourceState.olderTick`)。 */
+  olderTick: number,
 ): () => void {
   /**
    * **扩窗之前那一刻的位置与总高**。扩窗是 prepend —— 上面凭空长出一截,
@@ -355,6 +392,9 @@ function useTailWindow(
    */
   const windowStartRef = useRef(windowStart)
   windowStartRef.current = windowStart
+  /** 同一条理由的第二格镜像:滚动回调在 React 之外跑,要的是「此刻还有没有」。 */
+  const hasMoreBeforeRef = useRef(hasMoreBefore)
+  hasMoreBeforeRef.current = hasMoreBefore
 
   /** 扩一批。**捕获在写 state 之前** —— 那一刻的几何才是「扩窗之前」。 */
   const grow = useCallback(
@@ -390,7 +430,15 @@ function useTailWindow(
     const delta = el.scrollHeight - captured.height
     if (delta === 0) return
     el.scrollTop = captured.top + delta
-  }, [windowStart, scrollRef])
+    /*
+     * `olderTick` 一起进依赖表:**取回一页也是一次 prepend**,补的是同一件事
+     * (上面凭空长出一截),用的是同一手绝对赋值。差别只在捕获的时刻 ——
+     * 扩窗那一下几何捕在写 state 之前(同步),取页那一下捕在**发请求**的时候
+     * (`expandOnScroll` 里,那一刻本来就在读同一批几何)。中间这几十毫秒人还能
+     * 再滚一点,那点漂移由「绝对赋值是幂等的」兜住:浏览器自己的滚动锚定补没补过
+     * 都得同一个结果(它不改 `scrollHeight`)。
+     */
+  }, [windowStart, olderTick, scrollRef])
 
   /* ① 空闲往前补一批。窗口一变这条 effect 重跑 —— 于是它自己排下一批。 */
   useEffect(() => {
@@ -416,15 +464,27 @@ function useTailWindow(
     }
   }, [windowStart, total, grow])
 
-  /* ② 翻到窗口顶部附近:当场补一批,不等空闲。 */
+  /**
+   * ② 翻到窗口顶部附近:当场补一批,不等空闲。
+   *
+   * **本地那一批用完了(`start <= 0`)才轮到取页**(工单 5 ⑥):窗口是本地数据的
+   * 后缀,窗口到 0 说的正是「手里这几条全摆出来了」。此时上面还有,就去 core
+   * 要上一页 —— 几何捕在这里,理由与补偿那只 layout effect 的注逐字同源。
+   */
   return useCallback(() => {
     const el = scrollRef?.current
     if (!el) return
     if (el.scrollTop > el.clientHeight * CHAT_NEAR_TOP_SCREENS) return
     const start = windowStartRef.current
-    if (start <= 0) return
-    grow(start - CHAT_WINDOW_STEP)
-  }, [scrollRef, grow])
+    if (start > 0) {
+      grow(start - CHAT_WINDOW_STEP)
+      return
+    }
+    if (!hasMoreBeforeRef.current) return
+    pending.current = el.clientHeight > 0 ? { top: el.scrollTop, height: el.scrollHeight } : undefined
+    // 发不出去(在飞 / 上面没有了)就把那格补偿撤掉 —— 与 `grow` 那一句同判。
+    if (!loadOlderChatMessages(sessionId)) pending.current = undefined
+  }, [scrollRef, grow, sessionId])
 }
 
 /** `requestIdleCallback` 在 TS 的 DOM 库里是可选的(jsdom / 老 Safari 没有)。 */

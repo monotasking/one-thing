@@ -89,3 +89,23 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/*
+ * 正文还没到手时那段开头(工单 5 ②)。
+ *
+ * **它不是代码块也不是活输出**:代码块那层檐(复制 / 语言 / 展开)会让 200 字的
+ * 摘要冒充整份结果,活输出说的是「正在长」而这一段是**定的**。所以它是第三种
+ * 形——一段限高的素 mono 文本,几何与 `.liveOutput` 共用同一格变量(同是抽屉里
+ * 的多行 mono,两处高矮不一样只会显得随意),而颜色低一档说明它是引文不是正文。
+ */
+.deferredPreview {
+  max-height: var(--tool-progress-tail-max);
+  overflow: hidden;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  line-height: 1.6;
+  color: var(--text-4);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

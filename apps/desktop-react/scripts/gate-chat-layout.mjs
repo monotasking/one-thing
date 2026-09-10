@@ -221,6 +221,41 @@ async function installProbe(page) {
       P.loafErr = String(error)
     }
 
+    /*
+     * ⑧ **一次冷开发了哪些 RPC、各自多大**(2026-09-10 工单 5 ⑧)。
+     *
+     * 判据是「有没有人还在拉整份抄本」——那正是本单在治的病,而它在毫秒数上
+     * 常常看不出来(机器快的时候 55MB 也就几百毫秒),只有把**发数与字节**
+     * 摆出来才抓得住。
+     *
+     * 量法:包一层 `fetch`,**只包 `/api/rpc`** —— `/api/events` 是一条不会
+     * 结束的 SSE 流,`clone()` 它等于把整条流缓存在内存里直到进程结束。
+     * 大小取 `clone().text().length`(响应体字节);包一层的代价落在这条量测
+     * 泳道上,不进产品。
+     */
+    P.net = []
+    P.netOn = false
+    const rawFetch = window.fetch.bind(window)
+    window.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input?.url ?? ''
+      if (!P.netOn || !url.includes('/api/rpc')) return rawFetch(input, init)
+      let label = 'rpc'
+      try {
+        const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}')
+        label = `${body.domain}.${body.method}`
+        // 资源面只有一条方法名(`resources.read`),真正说了做什么的是读法名。
+        if (body?.payload?.name) label += `(${body.payload.name})`
+      } catch { /* 认不出就记成 rpc —— 量的是发数与字节,不是这一行文字。 */ }
+      const started = performance.now()
+      const response = await rawFetch(input, init)
+      let bytes = -1
+      try { bytes = (await response.clone().text()).length } catch { /* 读不出就记 -1 */ }
+      P.net.push({ label, bytes, ms: Math.round(performance.now() - started) })
+      return response
+    }
+    P.armNet = () => { P.net = []; P.netOn = true }
+    P.stopNet = () => { P.netOn = false; return P.net }
+
     /** 「列表高亮此刻在哪一行」—— ① 的判据(第五轴点名的那一半)。 */
     const highlight = () =>
       document.querySelector('[data-testid^="session-row-"][aria-selected="true"]')
@@ -343,6 +378,30 @@ function readView(page) {
   })
 }
 
+/**
+ * **「那条会话上屏了」的判据**(2026-09-10 工单 5 ③ 之后重写)。
+ *
+ * 从前这三处等的是 `rowCount >= 夹具的消息条数` —— 那句话里藏着一个前提:
+ * **壳手里有整条会话**。第 5 单之后不再成立:冷载拉的是尾页(24 条),更早的
+ * 由上翻取页按需补。等 400 行会等到天荒地老,而那不是回归,是新的正确行为。
+ *
+ * 换成**指名道姓的那一行在不在这棵树上**(夹具的 `lastMessageId`)。
+ *
+ * 注意判的是「在 DOM 上」而不是「在视口里」—— ①②③④ 那三处量的是「内容上屏」
+ * 所以要视口,而这两处等的是「这条会话的树立起来了」:⑨ 那一格恰恰要它**不**
+ * 落在底(锚点回到离开时那一行,最后一条消息在视口之外几千像素),拿视口当
+ * 判据会把这道门自己的题判成超时。
+ */
+function sessionTreeUp(page, messageId) {
+  return page.evaluate((id) => {
+    const scroll =
+      document.querySelector('[data-pane-on] [data-testid="chat-stream"]')
+      ?? document.querySelector('[data-testid="chat-stream"]')
+    const row = scroll?.querySelector(`[data-message-id="${id}"]`)
+    return Boolean(scroll instanceof HTMLElement && row && row.getBoundingClientRect().height > 0)
+  }, messageId)
+}
+
 async function clickTestId(cdp, page, testId) {
   const box = await page.evaluate((id) => {
     const el = document.querySelector(`[data-testid="${id}"]`)
@@ -363,9 +422,11 @@ async function clickTestId(cdp, page, testId) {
  *
  * 同时收 `harvest` 的那一份(⑥⑦ 用),所以一次交互只走一遍。
  */
-async function measureSwitch(cdp, page, { label, sessionId, lastMessageId, wantRows }) {
+async function measureSwitch(cdp, page, { label, sessionId, lastMessageId, wantRows, net = false }) {
   const mark = await probeMark(page)
   await page.evaluate((id) => window.__layoutProbe.arm(id), lastMessageId)
+  // ⑧ 只对冷开那一次记账:量的是「开一条会话要发哪些 RPC」,不是整场的流水。
+  if (net) await page.evaluate(() => window.__layoutProbe.armNet())
   await clickTestId(cdp, page, `session-row-${sessionId}`)
   const run = await waitFor(`${label} 的内容上屏`, async () => {
     const value = await page.evaluate(() => {
@@ -378,8 +439,10 @@ async function measureSwitch(cdp, page, { label, sessionId, lastMessageId, wantR
   await delay(2500)
   const cost = await harvest(page, mark)
   const view = await readView(page)
+  const netRows = net ? await page.evaluate(() => window.__layoutProbe.stopNet()) : undefined
   return {
     label,
+    ...(netRows ? { net: netRows } : {}),
     firstPaintMs: run.firstPaintMs === null ? null : Math.round(run.firstPaintMs),
     contentMs: Math.round(run.contentMs),
     rafFrames: run.frames,
@@ -547,12 +610,20 @@ async function main() {
         sessionId: id,
         lastMessageId: fixture.lastMessageId,
         wantRows: fixture.messages,
+        net: label === 'cold-A',
       })
       switches.push(got)
       console.log(
         `      ${label}: 首帧=${got.firstPaintMs ?? '—'}ms 上屏=${got.contentMs}ms `
         + `clickSync=${got.clickSync}ms 最长帧=${got.longestFrame}ms 行=${got.rowCount} 离底=${got.gap}px`,
       )
+      if (got.net) {
+        const total = got.net.reduce((sum, row) => sum + Math.max(0, row.bytes), 0)
+        console.log(`      ⑧ 冷开 RPC ${got.net.length} 发 / ${total.toLocaleString()} B:`)
+        for (const row of got.net) {
+          console.log(`         · ${row.label} — ${Math.max(0, row.bytes).toLocaleString()} B / ${row.ms}ms`)
+        }
+      }
     }
     readings.switches = switches
     readings.dom = await page.evaluate(() => {
@@ -649,16 +720,14 @@ async function main() {
     const before = await readView(page)
     console.log(`      离开时:锚点 ${before.anchor?.id} offset=${before.anchor?.offset}px`)
     await clickTestId(cdp, page, `session-row-${idB}`)
-    await waitFor('乙上屏', async () => {
-      const view = await readView(page)
-      return view.rowCount >= seeded.B.messages ? view : undefined
-    })
+    await waitFor('乙上屏', async () =>
+      (await sessionTreeUp(page, seeded.B.lastMessageId)) ? await readView(page) : undefined,
+    )
     await delay(1200)
     await clickTestId(cdp, page, `session-row-${idA}`)
-    await waitFor('甲回来', async () => {
-      const view = await readView(page)
-      return view.rowCount >= seeded.A.messages ? view : undefined
-    })
+    await waitFor('甲回来', async () =>
+      (await sessionTreeUp(page, seeded.A.lastMessageId)) ? await readView(page) : undefined,
+    )
     await delay(1500)
     const after = await readView(page)
     readings.anchor = { before: before.anchor, after: after.anchor }
@@ -697,7 +766,13 @@ async function main() {
       el.dispatchEvent(new Event('scroll'))
     })
     await delay(600)
-    const wantRows = seeded.A.messages + 2
+    /*
+     * 流那一轮长出来的是**两条新消息**(用户那句 + 助手那句)。判据因此是
+     * 「行比刚才多两条」而不是「行数到了 402」—— 手里存几条由页决定(第 5 单),
+     * 而这道门要判的是「这一轮真的在这棵大树上提交完了」。
+     */
+    const rowsBeforeStream = (await readView(page)).rowCount
+    const wantRows = rowsBeforeStream + 2
     const streamMark = await probeMark(page)
     await rpc(record, 'session-command', 'emit', {
       sessionId: idA,
@@ -772,6 +847,20 @@ async function main() {
   console.log(`[chat-layout · ${LANE}] 绿 —— 交互预算与排版账都在预算内`)
 }
 
+/**
+ * ⑧ 冷开那一次发了几发 RPC、一共多少字节(2026-09-10 工单 5 ⑧)。
+ *
+ * 它是这一族读数里**唯一不按毫秒计价**的一格,而那正是它存在的理由:拉整份
+ * 抄本在快机器上也就几百毫秒,只有把字节摆出来才看得见「谁还在按整份账本
+ * 计价」。
+ */
+function coldNet(r) {
+  const rows = r.switches?.find((s) => s.label === 'cold-A')?.net
+  if (!rows) return '—'
+  const total = rows.reduce((sum, row) => sum + Math.max(0, row.bytes), 0)
+  return `${rows.length} 发 / ${total.toLocaleString()} B(${rows.map((row) => row.label).join(', ')})`
+}
+
 /** `--report` 的基线表:一屏能抄进方案里的那种。 */
 function renderTable(r) {
   const rows = [
@@ -789,6 +878,7 @@ function renderTable(r) {
     ['⑩ resize 最长帧', r.resize ? `${r.resize.longestFrame} ms` : '—'],
     ['⑪ 流完离底', r.stream ? `${r.stream.gap} px` : '—'],
     ['⑫ 停靠棵数', r.dom ? `${r.dom.parkedStreams ?? 0} 棵(视图停靠池)` : '—'],
+    ['⑧ 冷开 RPC', coldNet(r)],
     ['⑫ JS 堆(GC 后)', r.heap?.usedMB !== undefined ? `${r.heap.usedMB} MB / 总 ${r.heap.totalMB} MB` : (r.heap?.error ?? '—')],
   ]
   const width = Math.max(...rows.map(([k]) => k.length))

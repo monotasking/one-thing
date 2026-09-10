@@ -258,3 +258,126 @@ describe('tail page — blobs travel as references', () => {
     expect(typeof whole.attachments[0].base64Data).toBe('string')
   })
 })
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * 工单 5 —— 页那一层的两格新形状。
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/**
+ * 一次落了结局的工具调用。三格结果(`toolCalls[].result` / `steps[].toolCall.result`
+ * / `steps[].result`)由投影**从这一条事件**折出来 —— 所以侧表那一手抽的是
+ * 真投影的产物,不是测试自己摆出来的三份字符串。
+ */
+async function turnWithTool(text: string): Promise<void> {
+  writeSessionEvent(SESSION, 'user/message', {
+    message: { id: 'u-tool', role: 'user', content: 'run it', timestamp: 1 },
+  } as never, { surfaceOp: 'append' })
+  writeSessionEvent(SESSION, 'run/start', {
+    runId: 'r-tool', kind: 'send', assistantMessageId: 'a-tool', timestamp: 2,
+  } as never, { surfaceOp: 'append' })
+  writeSessionEvent(SESSION, 'tool/call', {
+    runId: 'r-tool', callId: 'c-tool', name: 'bash', argumentsRaw: '{}', messageId: 'a-tool',
+  } as never)
+  writeSessionEvent(SESSION, 'tool/result', {
+    runId: 'r-tool', callId: 'c-tool', isError: false, result: { text },
+  } as never)
+  writeSessionEvent(SESSION, 'run/end', { runId: 'r-tool', outcome: 'completed' } as never)
+  await flushSessionEventLog(SESSION)
+}
+
+describe('tail page — the open-run seam guard', () => {
+  /**
+   * 水位那一刻**还开着**的那条 run(工单 5 ③)。
+   *
+   * 壳按水位接 SSE 是「在一份空状态上接着折」,而一条在水位之前就开张的 run,
+   * 它后面的 delta 在空状态上一条都落不下(归约器 `state.runs.get` 落空就 break)。
+   * 所以这一格不是读数是**判据**:在场 = 这一次壳只能走整份账本。
+   *
+   * 反证:把 `activeRun` 那一格摘掉 → 第一条断言红(而屏幕上的症状是「切回一条
+   * 正在跑的会话,后面的字一个都不上屏」——静默的)。
+   */
+  it('says a run was still open at the watermark, and stays silent once it closed', async () => {
+    writeSessionEvent(SESSION, 'user/message', {
+      message: { id: 'u-open', role: 'user', content: 'go', timestamp: 1 },
+    } as never, { surfaceOp: 'append' })
+    writeSessionEvent(SESSION, 'run/start', {
+      runId: 'r-open', kind: 'send', assistantMessageId: 'a-open', timestamp: 2,
+    } as never, { surfaceOp: 'append' })
+    await flushSessionEventLog(SESSION)
+
+    // 活投影在场(引擎正在跑这条会话)—— 那正是这一格答得出来的唯一场合。
+    getLiveSessionProjection(SESSION)
+    expect(tailPage(4)!.activeMessageId).toBe('a-open')
+
+    writeSessionEvent(SESSION, 'run/end', { runId: 'r-open', outcome: 'completed' } as never)
+    await flushSessionEventLog(SESSION)
+    expect(tailPage(4)!.activeMessageId).toBeUndefined()
+  })
+
+  /**
+   * 文件那一支恒缺席,而那**不是漏答**:没有活投影 = 这个进程里没有引擎在跑这条
+   * 会话 = 不会有属于它的 SSE 事件到达。
+   */
+  it('never claims an open run on the cold file path', async () => {
+    await conversation(2)
+    goCold()
+    expect(tailPage(4)!.activeMessageId).toBeUndefined()
+  })
+})
+
+describe('tool result — one call, three slots, one read', () => {
+  /**
+   * 工单 5 ②:页把大结果换成 `{bytes, hash}` 之后,正文由这条读法取回。
+   *
+   * 它按 **`callId`** 找那一只工具,只 `materializeStep` 它一步 —— 而不是像
+   * `getMessage` 那样把整条会话物化一遍。触发点是「人点开了一张工具卡」,
+   * 让一次展开付一次整会话物化正是本单在治的那类病。
+   */
+  it('hands back the body of each of the three slots by call id', async () => {
+    await turnWithTool('the whole output')
+    getLiveSessionProjection(SESSION)
+
+    expect(sessionReads.toolResult(SESSION, 'c-tool', 'result')?.value).toBeDefined()
+    // `text` 槽 = `step.result`,给人看的那段正文。
+    expect(sessionReads.toolResult(SESSION, 'c-tool', 'text')?.value).toBe('the whole output')
+  })
+
+  it('says nothing rather than an empty body when that call is not there', async () => {
+    await turnWithTool('the whole output')
+    getLiveSessionProjection(SESSION)
+    expect(sessionReads.toolResult(SESSION, 'no-such-call', 'result')).toBeUndefined()
+  })
+})
+
+describe('tail page — a brand-new session has an empty page, not a missing one', () => {
+  /**
+   * **账本在、只是还没有消息**(2026-09-10 工单 5 修的一条真 bug)。
+   *
+   * 刚建出来的会话账本里已经有 `session/created`(它不是一条消息)。从前这条
+   * 读法把「折不出消息」一律当成「没有账本」交回上层,上层于是答**水位 0** ——
+   * 而账本此刻在 seq 1。壳按 0 接 SSE,下一条事件是 seq 2,判成缺号、排一次
+   * 三秒节流的重取:屏幕上是「新会话里发第一句话,三秒不上屏」。
+   * `gate:chat-follow` 的「隔壁那片叶真的收到了流」就是它的形。
+   *
+   * 反证:把 `watermark <= 0` 那道判据改成恒真(= 回到从前一律交回上层)→
+   * 第一条断言红。
+   */
+  it('reports the real ledger watermark for a session whose ledger holds no messages yet', async () => {
+    writeSessionEvent(SESSION, 'session/created', { sessionId: SESSION } as never)
+    await flushSessionEventLog(SESSION)
+    goCold()
+
+    const snapshot = tailPage(24)
+    expect(snapshot).toBeDefined()
+    expect(snapshot!.page.messages).toEqual([])
+    // 账本在 —— 水位说的就是它此刻在哪儿,不是 0。
+    expect(snapshot!.watermark).toBe(ledgerLastSeq())
+    expect(snapshot!.watermark).toBeGreaterThan(0)
+  })
+
+  it('still hands the question back when there is no ledger at all (a legacy session)', () => {
+    goCold()
+    // 一个字都没写过 —— 这条读法答不了,交回给上层走化石那条路。
+    expect(tailPage(24)).toBeUndefined()
+  })
+})

@@ -1,3 +1,4 @@
+import { asToolResultRef, type PageResultReference } from '../../data/page-results'
 import type { ProjectedToolCall } from '../model/segments'
 
 /**
@@ -21,6 +22,22 @@ import type { ProjectedToolCall } from '../model/segments'
  * 这里所有函数都可能返回 `undefined`,而且**不许编一个默认值**。「取不到就空」是
  * 六轮定稿写死的:成果词是事实的复述,不是填空题。
  */
+
+/**
+ * **这一格结果此刻只是一枚引用吗**(工单 5 ②)。
+ *
+ * 首屏那一页里超过内联预算的结果不带正文,消息上挂的是
+ * `{'@toolResult': {toolCallId, slot, bytes, hash, preview}}` —— 它是**这台屏幕
+ * 此刻的事实**(有多大、是哪一份、开头长这样、正文还没取),不是一种结果形态。
+ *
+ * 所以它在这个文件里单占一口,而**不是** `toolOutputText` 的第四种形态:那三种
+ * 认的是「结果长什么样」,这一格认的是「结果在不在手上」。混进去的话,
+ * `preview` 那 200 字会被 read 的 presenter 当成整份文件画成一段代码块 ——
+ * 正是文件头那条「不许编一个默认值」在禁的事。
+ */
+export function toolResultReference(call: ProjectedToolCall): PageResultReference | undefined {
+  return asToolResultRef(call.result)
+}
 
 /** 结局里那段给人看的正文(bash 的输出、read 的文件内容)。 */
 export function toolOutputText(call: ProjectedToolCall): string | undefined {

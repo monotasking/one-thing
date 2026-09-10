@@ -127,6 +127,10 @@ import * as store from '../../store.js'
 import { sessionCommands } from '../../session/commands.js'
 import { sessionDeletion } from '../../session/deletion.js'
 import { sessionReads } from '../../session/reads.js'
+import {
+  extractSessionPageResults,
+  type SessionPageResultSlot,
+} from '../../session/page-results.js'
 import { getEventBus, getStreamChannel } from '../../events/index.js'
 import { DEFAULT_AGENT_ID, agentExists } from '../agents/index.js'
 import { consolePort, getLogger } from '../logging/index.js'
@@ -402,6 +406,8 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
         return this.messages(sessionId, query, ctx.principal)
       case 'page':
         return this.page(sessionId, query, ctx.principal)
+      case 'toolResult':
+        return this.toolResult(sessionId, query)
       case 'markers':
         return this.markers(sessionId)
       case 'segments':
@@ -885,17 +891,64 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
       // 折不出这条会话的历史。与 `messages` 整份那一支同一条判据:「投影折不出
       // 消息」与「查无此会话」是两件事,后者才是 NOT_FOUND。
       if (store.getSessionMessages(sessionId) === undefined) throw new SessionNotFoundError(sessionId)
-      return { messages: [], hasMoreBefore: false, watermark: 0 }
+      // 这条会话在,但事件那条路答不了它(老会话:历史只在化石里)。水位 0 在
+      // 这一支上**是真话** —— 没有账本就没有账本位置,壳据此走整份那条老路。
+      // `results` 空表照给:它进了自述的 `required`,缺席就得让壳加一格判空。
+      return { messages: [], results: {}, hasMoreBefore: false, watermark: 0 }
     }
-    const { page, watermark } = snapshot
+    const { page, watermark, activeMessageId } = snapshot
     if (!page.success) throw new SessionPageError(page.error ?? 'Failed to get message page')
+    /*
+     * 工单 5 ①②:工具结果**只出现一次**。抽进侧表在这里而不是在折法里 ——
+     * 折出来的那几只对象是投影 memo 缓存的本体,而侧表是**这条读法的形状**
+     * (判据全文在 `session/page-results.ts` 的文件头)。`canonical.ts` 那位
+     * 判官、`messages` / `record` / `listRaw` 三条老读法一格没动。
+     */
+    const { messages, results } = extractSessionPageResults(
+      sanitizeOnethingMessagesForRenderer((page.messages ?? []) as ChatMessage[]) ?? [],
+    )
     return {
-      messages: sanitizeOnethingMessagesForRenderer((page.messages ?? []) as ChatMessage[]),
+      messages,
+      results,
       hasMoreBefore: page.hasMoreBefore ?? false,
       // `nextCursor` 指着这一页**第一条**,往更旧的方向 —— 正是「上面那一页」。
       ...(page.hasMoreBefore && page.nextCursor ? { nextBefore: page.nextCursor } : {}),
       watermark,
+      ...(activeMessageId ? { activeMessageId } : {}),
     }
+  }
+
+  /**
+   * **一格大结果的正文**(工单 5 ②)。
+   *
+   * 页把超过 `SESSION_PAGE_INLINE_RESULT_BYTES` 的结果换成 `{bytes,hash}`;
+   * 屏幕上那张卡被人点开的那一刻,按这条路取回正文。
+   *
+   * ## 为什么是一条新读法,而不是复用 blob 那条
+   *
+   * `readBlob(hash)` 只服务**账本里真有内容地址**的那些正文(超 64KB,落在
+   * `sessions/<id>/blobs/`)。而页的阈值是 16KB —— 16–64KB 之间那一段结果就写在
+   * 事件行里,**它没有 hash,没有 blob 文件**,拿什么去 `readBlob` 都不存在。
+   * 两条线量的是两件事(一屏该带多少 / 账本行装得下多少),所以这一格的地址只能是
+   * 调用自己的 id,不能是内容地址。
+   *
+   * (页里那格 `hash` 因此是**缓存键**不是地址:壳拿它认「这一份取过了」,
+   * 不拿它去问任何人。)
+   */
+  private toolResult(sessionId: string, query: unknown): unknown {
+    const raw = (query ?? {}) as Record<string, unknown>
+    const toolCallId = stringParam(raw, 'toolCallId', 'session.toolResult')
+    const asked = raw.slot
+    const slot: SessionPageResultSlot =
+      asked === 'text' || asked === 'partial' ? asked : 'result'
+    const found = sessionReads.toolResult(sessionId, toolCallId, slot)
+    if (!found) {
+      if (store.getSessionMessages(sessionId) === undefined) throw new SessionNotFoundError(sessionId)
+      // 「这条会话在,但这一格结果不在」——如实说,不编一个空串:壳据此画
+      // 那句「读不到」,而不是画一段空白的结果。
+      return { toolCallId, slot, found: false }
+    }
+    return { toolCallId, slot, found: true, value: found.value }
   }
 
   private markers(sessionId: string): unknown {

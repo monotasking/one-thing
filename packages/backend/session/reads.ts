@@ -28,7 +28,8 @@ import {
 } from '@onething/core/session'
 import { sanitizeOnethingMessagesForRendererResult } from '@onething/runtime/sessions'
 import type * as SessionStore from '../stores/sessions.js'
-import type { SessionEventReads } from './events-reads.js'
+import type { SessionEventReads, SessionTailPageSnapshot } from './events-reads.js'
+import type { SessionPageResultSlot } from './page-results.js'
 import type { SessionProjectionCache } from './projection-cache.js'
 import { getCurrentBackend } from '../current.js'
 import { isSessionFreezeEnabled } from './freeze.js'
@@ -113,7 +114,7 @@ export function configureSessionHistoryBuilder(builder: SessionHistoryBuilder | 
 
 export interface SessionReadPorts {
   store: Pick<typeof SessionStore, 'getSession' | 'getSessionMessages' | 'getSessionMessagesPage' | 'getSessionRaw' | 'getSessionUserMessageMarkers' | 'getSessions' | 'readSessionTranscriptFile'>
-  events: Pick<SessionEventReads, 'eventsCountMessages' | 'eventsGetMessage' | 'eventsGetMessageIndex' | 'eventsLastMessageOfRole' | 'eventsListMessages' | 'eventsListUserMarkers' | 'eventsPageMessages' | 'eventsPageMessagesAtWatermark'>
+  events: Pick<SessionEventReads, 'eventsToolResult' | 'eventsCountMessages' | 'eventsGetMessage' | 'eventsGetMessageIndex' | 'eventsLastMessageOfRole' | 'eventsListMessages' | 'eventsListUserMarkers' | 'eventsPageMessages' | 'eventsPageMessagesAtWatermark'>
   getProjection: SessionProjectionCache['getLiveSessionProjection']
   materializeOptions: typeof sessionProjectionOptions
   getSessionsDir(): string
@@ -256,8 +257,22 @@ export function createSessionReads(ports: SessionReadPorts, initialHistoryBuilde
    */
   pageMessagesAtWatermark(
     request: GetSessionMessagesPageRequest,
-  ): { page: GetSessionMessagesPageResponse; watermark: number } | undefined {
+  ): SessionTailPageSnapshot | undefined {
     return fromEvents(() => ports.events.eventsPageMessagesAtWatermark(request))
+  },
+
+  /**
+   * 一次调用的一格结果正文(工单 5 ②)。
+   *
+   * **只有事件那条路**:带引用的大结果是页这一层的形状,而页只有事件路折得出来
+   * —— 仓那口(`messages.jsonl` 化石)压根没有这条读法要的那张调用表。
+   */
+  toolResult(
+    sessionId: string,
+    toolCallId: string,
+    slot: SessionPageResultSlot,
+  ): { value: unknown } | undefined {
+    return ports.events.eventsToolResult(sessionId, toolCallId, slot)
   },
 
   /** 用户消息锚点(会话目录 / 跳转用)。右边同 `pageMessages`:空会话的形状口。 */
@@ -449,6 +464,7 @@ export const sessionReads: Omit<SessionReads, 'configureHistoryBuilder' | 'dispo
   hasSessionInStore: (...args) => currentReads().hasSessionInStore(...args),
   pageMessages: (...args) => currentReads().pageMessages(...args),
   pageMessagesAtWatermark: (...args) => currentReads().pageMessagesAtWatermark(...args),
+  toolResult: (...args) => currentReads().toolResult(...args),
   listUserMarkers: (...args) => currentReads().listUserMarkers(...args),
   getMessage: (...args) => currentReads().getMessage(...args),
   findMessage: (...args) => currentReads().findMessage(...args),

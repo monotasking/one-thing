@@ -391,6 +391,21 @@
   text-align: center;
 }
 
+/**
+ * 列表顶端那一行读数(工单 5 ⑥):「还有更早的」/「正在取」/「已到开头」。
+ *
+ * **一行字,不是一个控件** —— 取页由「翻到顶部附近」这个动作触发,不由人去点
+ * 一颗「加载更多」;所以它没有 hover / focus,也没有 spinner(列表的加载态用
+ * 文字,规范禁令第一条)。
+ */
+.olderMark {
+  align-self: center;
+  padding: var(--sp-3) 0 var(--sp-2);
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+  text-align: center;
+}
+
 .errorText {
   font-family: var(--font-mono);
   font-size: var(--fs-micro);

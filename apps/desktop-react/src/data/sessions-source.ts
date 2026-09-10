@@ -265,7 +265,14 @@ export const chaptersQuery = createQueryFamily<SessionChapter[]>('sessions.chapt
   }),
 )
 
-/** 首页消息(`sessions.getMessagesPage`)。Quick Look 与「进入会话」都吃这一格。 */
+/**
+ * 首页消息(`sessions.getMessagesPage`)。**只有 Quick Look 那块预览面吃它。**
+ *
+ * 「进入会话」从前也预取一发,2026-09-10 工单 5 ⑧ 删了:它交的是整份抄本的尾
+ * 20 条(真店夹具 2.3MB),而聊天区自己走的是 `session` 的 `page` 读法 —— 同一
+ * 屏内容的两个产地,贵的那个还没人读(判据全文在 `expose/store.ts` 的
+ * `openSession`)。
+ */
 export const messagesQuery = createQueryFamily<SessionPreviewMessage[]>('sessions.messages', (ctx) =>
   orEmpty(async () => {
     const port = await sessionsPort()

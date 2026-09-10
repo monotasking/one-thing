@@ -696,6 +696,16 @@ async function main() {
         rows: streams[1]?.querySelectorAll('[data-message-id]').length ?? 0,
       }
     })
+    const streamsDump = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('[data-testid="chat-stream"]')).map((el) => ({
+        tab: el.closest('[data-pane-tab]')?.getAttribute('data-pane-tab')
+          ?? el.closest('[data-pane-kept]')?.getAttribute('data-pane-kept') ?? '?',
+        on: Boolean(el.closest('[data-pane-on]')),
+        rows: el.querySelectorAll('[data-message-id]').length,
+        status: el.getAttribute('data-status') ?? '',
+      })),
+    )
+    console.log(`      现场:${JSON.stringify(streamsDump)}`)
     assert(after.rows > quiet.rows, `隔壁那片叶真的收到了流(${quiet.rows} → ${after.rows} 行)`)
     assert(
       Math.abs((after.scrollTop ?? 0) - (quiet.scrollTop ?? 0)) < 1,

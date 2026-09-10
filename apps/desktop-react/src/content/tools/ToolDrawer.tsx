@@ -3,9 +3,13 @@ import { useT } from '../../i18n'
 import { BlockView } from '../blocks/BlockView'
 import { blockKey } from '../assemble'
 import type { BlockCtx } from '../blocks/registry'
+import { fetchChatToolResult, useChatSourceOf } from '../../data/chat-source'
+import { formatBytes } from '../../format/quantity'
+import { pageResultKey, type PageResultReference } from '../../data/page-results'
 import type { ProjectedToolCall } from '../model/segments'
 import type { ToolProgress } from './card'
 import { resolveToolPresenter } from './presenter'
+import { toolResultReference } from './result'
 import s from './ToolDrawer.module.css'
 
 /**
@@ -24,6 +28,12 @@ import s from './ToolDrawer.module.css'
  * ── 左竖线禁令 ──────────────────────────────────────────────────────
  * 抽屉与行的从属关系靠**衬面**(surface-1 + 圆角)说,不靠在左边画一条引线。
  * 引线在全仓被禁(六轮比稿的横切规范),嵌套结构也不例外。
+ *
+ * ── 正文还没到手的那一格(工单 5 ②)──────────────────────────────────
+ * 首屏那一页里超过内联预算的结果只带 `{bytes, hash, preview}`。**「展开」正是
+ * 取正文的那一刻** —— 这个组件被挂上来的时机与「人拉开了这一行」逐字重合,
+ * 所以取件不必另配一个触发口,挂载即触发(与 `detail()` 惰性同一条理由:
+ * 十次调用九次没被拉开,就一次都不取)。
  */
 export function ToolDrawer({
   call,
@@ -56,6 +66,12 @@ export function ToolDrawer({
   // 开着期间重渲染多少次都只算一遍(与装配那份 memo 同款判据)。
   const blocks = useMemo(() => resolveToolPresenter(call).detail(call), [call])
   const args = useMemo(() => argumentRows(call), [call])
+  /*
+   * 正文还没到手吗。取回来之后**这条消息本身**被就地换掉(`applyToolResultBody`),
+   * 于是 `call` 换了引用、这一格变回 `undefined`、上面那只 `blocks` 的 memo 自然
+   * 重算 —— 一条数据流,没有第二个「已经取到了」的记号。
+   */
+  const deferred = toolResultReference(call)
 
   // 抽屉里的块与正文里的块共用 key 的派生规则,只是段身份换成了这次调用。
   const keyBase = `tool:${call.id}`
@@ -87,7 +103,21 @@ export function ToolDrawer({
 
       <section className={s.section}>
         <h4 className={s.label}>{t('chat.tool.result')}</h4>
-        {blocks.length === 0 ? (
+        {deferred ? (
+          /*
+           * 没有会话就没有取件的对象(块也长在查看器那种没有会话的地方,见
+           * `BlockCtx.sessionId`)—— 那一次只把手上这几件事实摆出来,不画一颗
+           * 按下去不知道打给谁的取件动作。
+           */
+          ctx.sessionId ? (
+            <DeferredResult sessionId={ctx.sessionId} reference={deferred} />
+          ) : (
+            <>
+              {deferred.preview && <pre className={s.deferredPreview}>{deferred.preview}</pre>}
+              <p className={s.empty}>{t('chat.tool.resultDeferred', { size: formatBytes(deferred.bytes) })}</p>
+            </>
+          )
+        ) : blocks.length === 0 ? (
           // 没有结果**也要说出来**:空白会被读成「还没加载完」。
           <p className={s.empty}>{t(live ? 'chat.tool.noOutputYet' : 'chat.tool.noResult')}</p>
         ) : (
@@ -97,6 +127,52 @@ export function ToolDrawer({
         )}
       </section>
     </div>
+  )
+}
+
+/**
+ * 正文还没到手的那一格(工单 5 ②)。
+ *
+ * 三件事:摆后端摘的那段开头(**它是摘要不是结果** —— 所以画成一段素文本,
+ * 不套代码块那层檐:套上去就是让 200 字冒充整份文件)、说一句此刻的状态、
+ * 挂载那一刻发一次取件。
+ *
+ * **取件是幂等的**(`fetchToolResult` 自己判在飞 / 已取),所以这只 effect 的
+ * 重跑不会变成第二发;依赖表按**侧表键**而不是 `reference` 对象 —— 上翻取页会
+ * 把同一枚引用重新挂一遍,对象换了而说的是同一件事。
+ *
+ * 这里订一格 store 是划算的:抽屉只在被拉开时才挂上来,场上两百张卡里同时开着的
+ * 是个位数(与 `respondChatPermission` 那条「别为身份恒定的动作订两百格」不冲突
+ * —— 那说的是**动作**,这一格订的是**状态**)。
+ */
+function DeferredResult({
+  sessionId,
+  reference,
+}: {
+  sessionId: string
+  reference: PageResultReference
+}) {
+  const t = useT()
+  const key = pageResultKey(reference)
+  const state = useChatSourceOf(sessionId, (st) => st.toolResults[key])
+
+  useEffect(() => {
+    fetchChatToolResult(reference, sessionId)
+    // `reference` 不进依赖表:见上面「按侧表键」那一段。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, key])
+
+  return (
+    <>
+      {reference.preview && <pre className={s.deferredPreview}>{reference.preview}</pre>}
+      <p className={s.empty}>
+        {state === 'failed'
+          ? t('chat.tool.resultFailed')
+          : t(state === 'loading' ? 'chat.tool.resultLoading' : 'chat.tool.resultDeferred', {
+            size: formatBytes(reference.bytes),
+          })}
+      </p>
+    </>
   )
 }
 

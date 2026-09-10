@@ -1,6 +1,6 @@
 import { useT } from '../../../i18n'
 import type { MessageKey } from '../../../i18n'
-import { formatBytes } from '../../../data/files-source'
+import { formatBytes } from '../../../format/quantity'
 import { registerViewer, disposeRegistrations } from '../registry'
 import type { ViewerBodyProps } from '../registry'
 import { HonestState } from '../HonestState'

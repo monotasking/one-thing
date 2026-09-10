@@ -76,6 +76,13 @@ const retried: Array<{ sessionId: string; messageId: string }> = []
 function port(ledger: Ledger[]): ChatPort {
   return {
     ready: async () => undefined,
+    /*
+     * 页那条路在这只假端口上**说不**(工单 5 ③)—— 于是这一台退回整份账本,
+     * 也就是这些用例本来就在测的那条路。假端口给一份空页会把树画成空的,
+     * 那是造事实;说不才是它此刻的真话。
+     */
+    readPage: () => Promise.reject(new Error('no page in this fake port')),
+    readToolResult: () => Promise.resolve(undefined),
     listRaw: async () => ({ events: [...ledger] as never }),
     readBlob: async () => ({}),
     onSessionEvent: () => () => undefined,

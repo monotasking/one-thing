@@ -44,3 +44,26 @@ export function formatDuration(ms: number): string {
   const seconds = total % 60
   return `${minutes}m ${String(seconds).padStart(2, '0')}s`
 }
+
+/**
+ * 字节数 → 一句人话。单位符号(B / KB / MB / GB)是**数据**不是文案:
+ * 换一门语言它不该变,所以它不进字典(判据见 i18n/index.ts 顶部)。
+ *
+ * **住在 `format/` 而不是 `data/files-source`**(2026-09-10 工单 5 搬的):它是一只
+ * 纯函数,与文件数据源没有任何关系 —— 而工具卡那一行要念「这格结果多大」时,
+ * 从消息渲染的热路上牵一条边到文件面的查询族(zustand store + query family)只为
+ * 一个 `Math.round`,是让一句人话拖着一整片数据层走。搬过来之后两边都干净:
+ * 文件面照旧从这里取,全壳仍然只有这一个把字节念成人话的地方。
+ */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let value = bytes
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit += 1
+  }
+  const shown = unit === 0 ? String(Math.round(value)) : value.toFixed(value < 10 ? 1 : 0)
+  return `${shown} ${units[unit]}`
+}

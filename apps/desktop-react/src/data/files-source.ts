@@ -201,22 +201,6 @@ export function langOfPath(path: string): string | null {
   return languageIdOfExtension(name.slice(at + 1))
 }
 
-/**
- * 字节数 → 一句人话。单位符号(B / KB / MB / GB)是**数据**不是文案:
- * 换一门语言它不该变,所以它不进字典(判据见 i18n/index.ts 顶部)。
- */
-export function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes < 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']
-  let value = bytes
-  let unit = 0
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024
-    unit += 1
-  }
-  const shown = unit === 0 ? String(Math.round(value)) : value.toFixed(value < 10 ? 1 : 0)
-  return `${shown} ${units[unit]}`
-}
 
 /**
  * 毫秒时间戳 → 一句绝对时间。**不用相对时间**(「昨天」/「9月2日」):

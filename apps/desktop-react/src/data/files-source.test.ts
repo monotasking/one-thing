@@ -12,7 +12,6 @@ import {
   breadcrumbsOf,
   classifyFileFailure,
   flattenTree,
-  formatBytes,
   formatMtime,
   langOfPath,
   currentFileDetail,
@@ -499,13 +498,6 @@ describe('小工具', () => {
     expect(langOfPath('/a/Makefile')).toBeNull()
     expect(langOfPath('/a/.gitignore')).toBeNull()
     expect(langOfPath('/a/b.wat')).toBeNull()
-  })
-
-  it('字节数', () => {
-    expect(formatBytes(0)).toBe('0 B')
-    expect(formatBytes(1023)).toBe('1023 B')
-    expect(formatBytes(1024)).toBe('1.0 KB')
-    expect(formatBytes(1024 * 1024 * 3.5)).toBe('3.5 MB')
   })
 
   it('沙箱越界归 denied —— 对用户来说它就是「这台不让我读那儿」', () => {

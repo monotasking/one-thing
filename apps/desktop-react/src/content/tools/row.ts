@@ -1,5 +1,7 @@
+import { formatBytes } from '../../format/quantity'
 import type { ProjectedToolCall, ToolRowModel } from '../model/segments'
 import { parsePartialJson, partialString, type PartialJson } from './partial-json'
+import { toolResultReference } from './result'
 
 /**
  * 每个 presenter 都要的那几格,算一次。
@@ -22,11 +24,27 @@ export function baseToolRow(
     name: call.toolName || call.toolId,
     status: call.status,
     ...(call.durationMs !== undefined ? { durationMs: call.durationMs } : {}),
+    // 正文还没取的那一格,右端说的是**它有多大**(工单 5 ②)。摆在这里而不是
+    // 每个 presenter 里:引用是**页这一层**的形状,与「这是哪个工具」无关 ——
+    // 逐个 presenter 加一句就是按能力枚举,而且第七个一定会忘。排在失败原因与
+    // presenter 补丁**之前**,所以谁说得出更具体的话谁盖掉它。
+    ...(deferredOutcome(call) ?? {}),
     // 失败时右端默认摆**后端说的那句原话**。presenter 可以覆盖,但覆盖不掉的是
     // 「失败必须说出理由」这条:成功的行没有话说可以空着,失败的不行。
     ...(failureOutcome(call) ?? {}),
     ...patch,
   }
+}
+
+/**
+ * 「结果 N KB,展开时取」—— 页里那一格还是引用时右端那句话(工单 5 ②)。
+ *
+ * 字节数走 `formatBytes`(与文件面板、查看器同一只)—— 全壳只许有一个把字节念成
+ * 人话的地方,第二个迟早在 1024 那一格上分叉。
+ */
+function deferredOutcome(call: ProjectedToolCall): Pick<ToolRowModel, 'outcome'> | undefined {
+  const ref = toolResultReference(call)
+  return ref ? { outcome: { key: 'chat.tool.resultDeferred', vars: { size: formatBytes(ref.bytes) } } } : undefined
 }
 
 /**

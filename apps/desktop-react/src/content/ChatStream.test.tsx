@@ -173,6 +173,13 @@ let sendResult: () => Promise<{ success: boolean; error?: string }> = async () =
 function port(ledger: Ledger[]): ChatPort {
   return {
     ready: async () => undefined,
+    /*
+     * 页那条路在这只假端口上**说不**(工单 5 ③)—— 于是这一台退回整份账本,
+     * 也就是这些用例本来就在测的那条路。假端口给一份空页会把树画成空的,
+     * 那是造事实;说不才是它此刻的真话。
+     */
+    readPage: () => Promise.reject(new Error('no page in this fake port')),
+    readToolResult: () => Promise.resolve(undefined),
     listRaw: async () => ({ events: [...ledger] as never }),
     readBlob: async () => ({}),
     onSessionEvent: () => () => undefined,
@@ -227,6 +234,13 @@ describe('空态:三种各说各话,一种都不回退到假数据', () => {
   it('读不到时把后端说的那句话原样摆出来,不回退到 mock', async () => {
     configureChatPort({
       ...port([]),
+      /*
+       * 页那条路在这只假端口上**说不**(工单 5 ③)—— 于是这一台退回整份账本,
+       * 也就是这些用例本来就在测的那条路。假端口给一份空页会把树画成空的,
+       * 那是造事实;说不才是它此刻的真话。
+       */
+      readPage: () => Promise.reject(new Error('no page in this fake port')),
+      readToolResult: () => Promise.resolve(undefined),
       listRaw: async () => {
         throw new Error('listRaw 炸了')
       },

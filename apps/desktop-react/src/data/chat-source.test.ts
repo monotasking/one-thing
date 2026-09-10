@@ -17,12 +17,14 @@ import { useNotifyStore } from '../services/notify-store'
 import {
   ABORT_SETTLE_MS,
   chatSources,
+  CHAT_PAGE_HUNT_LIMIT,
   CHAT_SOURCE_DOCK_LIMIT,
   REFOLD_THROTTLE_MS,
   RETRY_SETTLE_MS,
   selectEngineBusy,
   useChatSource,
 } from './chat-source'
+import { resetSessionViewStates, saveSessionScrollAnchor } from './session-view-state'
 import { t } from '../i18n'
 
 /**
@@ -151,6 +153,13 @@ function harness(initial: Ledger[]): Harness {
     respondResult: async () => ({ success: true }),
     port: {
       ready: async () => undefined,
+      /*
+       * 页那条路在这只假端口上**说不**(工单 5 ③)—— 于是这一台退回整份账本,
+       * 也就是这些用例本来就在测的那条路。假端口给一份空页会把树画成空的,
+       * 那是造事实;说不才是它此刻的真话。
+       */
+      readPage: () => Promise.reject(new Error('no page in this fake port')),
+      readToolResult: () => Promise.resolve(undefined),
       listRaw: async () => {
         h.listRawCalls += 1
         return { events: [...h.ledger] as never }
@@ -1070,6 +1079,13 @@ describe('多开:一条会话一台机器,注册表按会话分发', () => {
       loads: (sessionId) => loadCounts.get(sessionId) ?? 0,
       port: {
         ready: async () => undefined,
+        /*
+         * 页那条路在这只假端口上**说不**(工单 5 ③)—— 于是这一台退回整份账本,
+         * 也就是这些用例本来就在测的那条路。假端口给一份空页会把树画成空的,
+         * 那是造事实;说不才是它此刻的真话。
+         */
+        readPage: () => Promise.reject(new Error('no page in this fake port')),
+        readToolResult: () => Promise.resolve(undefined),
         listRaw: async (sessionId) => {
           loadCounts.set(sessionId, (loadCounts.get(sessionId) ?? 0) + 1)
           return { events: [...(ledgers[sessionId] ?? [])] as never }
@@ -1372,6 +1388,13 @@ describe('停靠池的出池口:换工作区不拆,会话真删才拆', () => {
     emitLifecycle = undefined
     configureChatPort({
       ready: async () => undefined,
+      /*
+       * 页那条路在这只假端口上**说不**(工单 5 ③)—— 于是这一台退回整份账本,
+       * 也就是这些用例本来就在测的那条路。假端口给一份空页会把树画成空的,
+       * 那是造事实;说不才是它此刻的真话。
+       */
+      readPage: () => Promise.reject(new Error('no page in this fake port')),
+      readToolResult: () => Promise.resolve(undefined),
       listRaw: async (sessionId) => {
         loads.set(sessionId, (loads.get(sessionId) ?? 0) + 1)
         return { events: [] as never }
@@ -1715,5 +1738,389 @@ describe('审批车道:应答', () => {
     state().respondPermission('call-2', 'once')
     await settle()
     expect(h.responded).toEqual([])
+  })
+})
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * 页那条路(2026-09-10 工单 5 ③–⑦)
+ *
+ * 上面所有用例的假端口都对 `readPage` **说不**,于是它们走的是整份账本那条老路
+ * —— 那条路一个字没改,那些断言就是它的守卫。下面这一族反过来:端口**给得出**
+ * 页,判的是页这条路自己那几条。
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/** 一条页里的消息(折好的形,后端交下来什么样这里就什么样)。 */
+const pageMessage = (id: string, content: string): Record<string, unknown> => ({
+  id,
+  role: 'user',
+  content,
+  timestamp: T0,
+})
+
+/** 一条带三格结果的助手消息 —— 侧表那套引用标记的载体。 */
+const pageToolMessage = (id: string, callId: string, mark: unknown): Record<string, unknown> => ({
+  id,
+  role: 'assistant',
+  content: '',
+  timestamp: T0,
+  toolCalls: [{ id: callId, name: 'bash', status: 'completed', result: mark }],
+  steps: [{ toolCallId: callId, toolCall: { id: callId, name: 'bash', result: mark }, result: mark }],
+})
+
+interface PageCall {
+  limit?: number
+  before?: string
+}
+
+interface PageHarness extends Harness {
+  /** 端口收到的每一次取页(判「翻了几页」「拿谁当游标」)。 */
+  pages: PageCall[]
+  /** 端口收到的每一次取正文。 */
+  bodies: { toolCallId: string; slot: string }[]
+  /** 页那条读法此刻交什么出去 —— 用例按需换。 */
+  serve: (call: PageCall) => Record<string, unknown>
+  /** 取正文交什么出去(`undefined` = 读不到)。 */
+  body: unknown
+}
+
+function pageHarness(initial: Ledger[]): PageHarness {
+  const base = harness(initial) as PageHarness
+  base.pages = []
+  base.bodies = []
+  base.body = undefined
+  base.serve = () => ({ messages: [], results: {}, hasMoreBefore: false, watermark: 0 })
+  configureChatPort({
+    ...base.port,
+    readPage: async (_sessionId, query) => {
+      const call = (query ?? {}) as PageCall
+      base.pages.push(call)
+      return base.serve(call) as never
+    },
+    readToolResult: async (_sessionId, toolCallId, slot) => {
+      base.bodies.push({ toolCallId, slot })
+      return base.body
+    },
+  })
+  return base
+}
+
+describe('冷载走页:不再把整份账本搬进渲染进程', () => {
+  it('页给得出来就走页 —— `listRaw` 一次都不发', async () => {
+    const h = pageHarness([created(1), userMessage(2, 'm1', '整份那条路的内容')])
+    h.serve = () => ({
+      messages: [pageMessage('p1', '页里那一条')],
+      results: {},
+      hasMoreBefore: true,
+      nextBefore: 'cur-1',
+      watermark: 7,
+    })
+
+    await state().open(SESSION)
+    await settle()
+
+    expect(h.listRawCalls).toBe(0)
+    expect(h.pages).toEqual([{ limit: 24 }])
+    expect(ids()).toEqual(['p1'])
+    expect(state().status).toBe('ready')
+    // 「上面还有」是页说的,不是「本地够不够多」推的。
+    expect(state().hasMoreBefore).toBe(true)
+  })
+
+  it('水位之前的事件丢掉,水位之后的接着折(唯一接缝)', async () => {
+    const h = pageHarness([])
+    h.serve = () => ({
+      messages: [pageMessage('p1', '页里那一条')],
+      results: {},
+      hasMoreBefore: false,
+      watermark: 7,
+    })
+    await state().open(SESSION)
+    await settle()
+
+    // 水位以内 —— 页里已经折过了,再折一遍就是重复。
+    h.emitLedger(userMessage(7, 'p1', '回声'))
+    await settle()
+    expect(ids()).toEqual(['p1'])
+    expect(h.listRawCalls).toBe(0)
+
+    // 水位之后第一条 —— 接得上,当场折进去。
+    h.emitLedger(userMessage(8, 'p2', '水位之后'))
+    await settle()
+    expect(ids()).toEqual(['p1', 'p2'])
+    expect(h.listRawCalls).toBe(0)
+  })
+
+  it('水位那一刻有开着的 run:页这条路不成立,退回整份账本', async () => {
+    const h = pageHarness([created(1), userMessage(2, 'm1', '整份那条路的内容')])
+    h.serve = () => ({
+      messages: [pageMessage('p1', '页里那一条')],
+      results: {},
+      hasMoreBefore: false,
+      watermark: 7,
+      activeMessageId: 'a1',
+    })
+
+    await state().open(SESSION)
+    await settle()
+
+    // 页那一发白问了,但**一个字节都没写进这台机器**,所以退回去是干净的。
+    expect(h.pages.length).toBe(1)
+    expect(h.listRawCalls).toBe(1)
+    expect(ids()).toEqual(['m1'])
+    expect(state().hasMoreBefore).toBe(false)
+  })
+
+  it('页读不到也退回整份账本 —— 那条路是全集,不是一次降级', async () => {
+    const h = pageHarness([created(1), userMessage(2, 'm1', '整份那条路的内容')])
+    h.serve = () => {
+      throw new Error('页炸了')
+    }
+
+    await state().open(SESSION)
+    await settle()
+
+    expect(h.listRawCalls).toBe(1)
+    expect(ids()).toEqual(['m1'])
+  })
+})
+
+describe('页里的工具结果:线上一份,屏幕上三处', () => {
+  it('三格引用挂回去的是**同一个值**(去重的全部意义)', async () => {
+    const h = pageHarness([])
+    h.serve = () => ({
+      messages: [pageToolMessage('a1', 'c1', { '@pageResult': 'c1' })],
+      results: { c1: { kind: 'inline', value: '一段输出' } },
+      hasMoreBefore: false,
+      watermark: 3,
+    })
+    await state().open(SESSION)
+    await settle()
+
+    const message = state().messages[0] as unknown as {
+      toolCalls: { result: unknown }[]
+      steps: { toolCall: { result: unknown }; result: unknown }[]
+    }
+    expect(message.toolCalls[0].result).toBe('一段输出')
+    expect(message.steps[0].toolCall.result).toBe('一段输出')
+    expect(message.steps[0].result).toBe('一段输出')
+  })
+
+  it('大结果只带尺寸:屏幕上是一枚引用,展开时才取正文并**就地**换掉', async () => {
+    const h = pageHarness([])
+    h.serve = () => ({
+      messages: [
+        pageMessage('m0', '不含结果的那一条'),
+        pageToolMessage('a1', 'c1', { '@pageResult': 'c1' }),
+      ],
+      results: {
+        c1: { kind: 'reference', toolCallId: 'c1', slot: 'result', bytes: 40960, hash: 'ab12', preview: '开头那一段' },
+      },
+      hasMoreBefore: false,
+      watermark: 3,
+    })
+    await state().open(SESSION)
+    await settle()
+
+    const before = state().messages
+    const ref = (before[1] as unknown as { toolCalls: { result: { '@toolResult'?: unknown } }[] })
+      .toolCalls[0].result['@toolResult'] as { toolCallId: string; slot: string; bytes: number }
+    expect(ref).toMatchObject({ toolCallId: 'c1', slot: 'result', bytes: 40960 })
+
+    h.body = '取回来的正文'
+    state().fetchToolResult({ toolCallId: 'c1', slot: 'result', bytes: 40960, hash: 'ab12' })
+    expect(state().toolResults['c1']).toBe('loading')
+    await settle()
+
+    expect(h.bodies).toEqual([{ toolCallId: 'c1', slot: 'result' }])
+    const after = state().messages
+    const call = (after[1] as unknown as { toolCalls: { result: unknown }[] }).toolCalls[0]
+    expect(call.result).toBe('取回来的正文')
+    // 律④:换的只有含它的那一条,另一条连引用都没动。
+    expect(after[0]).toBe(before[0])
+    expect(after[1]).not.toBe(before[1])
+    // 取成功的那一格不留在表上 —— 屏幕上「已拉」的形状就是那段正文出现了。
+    expect(state().toolResults['c1']).toBeUndefined()
+  })
+
+  it('取不到就说读不到,不画一段空白的结果', async () => {
+    const h = pageHarness([])
+    h.serve = () => ({
+      messages: [pageToolMessage('a1', 'c1', { '@pageResult': 'c1' })],
+      results: {
+        c1: { kind: 'reference', toolCallId: 'c1', slot: 'result', bytes: 40960, hash: 'ab12' },
+      },
+      hasMoreBefore: false,
+      watermark: 3,
+    })
+    await state().open(SESSION)
+    await settle()
+
+    h.body = undefined
+    state().fetchToolResult({ toolCallId: 'c1', slot: 'result', bytes: 40960, hash: 'ab12' })
+    await settle()
+    expect(state().toolResults['c1']).toBe('failed')
+  })
+})
+
+describe('上翻取页:本地那一批用完了才往 core 要', () => {
+  it('接一页在前面,游标与读数跟着走', async () => {
+    const h = pageHarness([])
+    h.serve = (call) =>
+      call.before === undefined
+        ? {
+          messages: [pageMessage('p3', '第三条')],
+          results: {},
+          hasMoreBefore: true,
+          nextBefore: 'cur-3',
+          watermark: 9,
+        }
+        : {
+          messages: [pageMessage('p1', '第一条'), pageMessage('p2', '第二条')],
+          results: {},
+          hasMoreBefore: false,
+          watermark: 9,
+        }
+    await state().open(SESSION)
+    await settle()
+    expect(ids()).toEqual(['p3'])
+
+    const tick = state().olderTick
+    expect(state().loadOlder()).toBe(true)
+    expect(state().loadingOlder).toBe(true)
+    await settle()
+
+    expect(ids()).toEqual(['p1', 'p2', 'p3'])
+    expect(h.pages[1]).toEqual({ limit: 24, before: 'cur-3' })
+    expect(state().hasMoreBefore).toBe(false)
+    expect(state().loadingOlder).toBe(false)
+    // 「刚刚发生了一次 prepend」是一件**事** —— 补偿那一格按它的沿走。
+    expect(state().olderTick).toBe(tick + 1)
+  })
+
+  it('上面没有了就是恒等 —— 不发那一趟,也不留那格补偿', async () => {
+    const h = pageHarness([])
+    h.serve = () => ({
+      messages: [pageMessage('p1', '就这一条')],
+      results: {},
+      hasMoreBefore: false,
+      watermark: 3,
+    })
+    await state().open(SESSION)
+    await settle()
+
+    expect(state().loadOlder()).toBe(false)
+    expect(h.pages.length).toBe(1)
+  })
+
+  it('边界那一条又回来一次:按 id 去重,不按条数', async () => {
+    const h = pageHarness([])
+    h.serve = (call) =>
+      call.before === undefined
+        ? {
+          messages: [pageMessage('p2', '第二条')],
+          results: {},
+          hasMoreBefore: true,
+          nextBefore: 'cur-2',
+          watermark: 9,
+        }
+        : {
+          messages: [pageMessage('p1', '第一条'), pageMessage('p2', '第二条')],
+          results: {},
+          hasMoreBefore: false,
+          watermark: 9,
+        }
+    await state().open(SESSION)
+    await settle()
+
+    state().loadOlder()
+    await settle()
+    expect(ids()).toEqual(['p1', 'p2'])
+  })
+})
+
+describe('锚点在尾页之外:按页往前取,取不到就落底', () => {
+  it('往前翻到含锚点那一页为止', async () => {
+    const h = pageHarness([])
+    saveSessionScrollAnchor(SESSION, { messageId: 'p1', offset: 0 })
+    h.serve = (call) =>
+      call.before === undefined
+        ? {
+          messages: [pageMessage('p3', '第三条')],
+          results: {},
+          hasMoreBefore: true,
+          nextBefore: 'cur-3',
+          watermark: 9,
+        }
+        : call.before === 'cur-3'
+          ? {
+            messages: [pageMessage('p2', '第二条')],
+            results: {},
+            hasMoreBefore: true,
+            nextBefore: 'cur-2',
+            watermark: 9,
+          }
+          : {
+            messages: [pageMessage('p1', '第一条')],
+            results: {},
+            hasMoreBefore: true,
+            nextBefore: 'cur-1',
+            watermark: 9,
+          }
+
+    await state().open(SESSION)
+    await settle()
+
+    expect(h.pages.length).toBe(3)
+    expect(ids()).toEqual(['p1', 'p2', 'p3'])
+    saveSessionScrollAnchor(SESSION, undefined)
+    resetSessionViewStates()
+  })
+
+  it('够不到就到此为止(封顶 8 页)—— 人回到的是最新那一屏,不是把整条会话拉回来', async () => {
+    const h = pageHarness([])
+    saveSessionScrollAnchor(SESSION, { messageId: '够不到的那一条', offset: 0 })
+    let page = 0
+    h.serve = () => {
+      page += 1
+      return {
+        messages: [pageMessage(`p${page}`, `第 ${page} 页`)],
+        results: {},
+        hasMoreBefore: true,
+        nextBefore: `cur-${page}`,
+        watermark: 9,
+      }
+    }
+
+    await state().open(SESSION)
+    await settle()
+
+    expect(h.pages.length).toBe(CHAT_PAGE_HUNT_LIMIT)
+    expect(state().status).toBe('ready')
+    expect(state().hasMoreBefore).toBe(true)
+    resetSessionViewStates()
+  })
+})
+
+describe('接缝闸:折不下去的那一条要重取,不许静默丢', () => {
+  it('指着水位之前那条 run 的事件 → 重取页(不是当场丢掉)', async () => {
+    vi.useFakeTimers()
+    const h = pageHarness([])
+    h.serve = () => ({
+      messages: [pageMessage('p1', '页里那一条')],
+      results: {},
+      hasMoreBefore: false,
+      watermark: 7,
+    })
+    await state().open(SESSION)
+    await vi.advanceTimersByTimeAsync(30)
+    expect(h.pages.length).toBe(1)
+
+    // `run/end` 指着一条**水位之前**就开张的 run —— 空状态上 `runs.get` 落空,
+    // 硬折进去就是让屏幕与账本分家。
+    h.emitLedger(runEnd(8, '水位之前那条 run'))
+    await vi.advanceTimersByTimeAsync(REFOLD_THROTTLE_MS + 60)
+
+    expect(h.pages.length).toBe(2)
+    vi.useRealTimers()
   })
 })

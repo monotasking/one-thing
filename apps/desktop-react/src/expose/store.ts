@@ -289,9 +289,21 @@ export const useExposeStore = create<ExposeStore>()(
          * 别处。中央区那一形照旧送:那时输入框正是它自己的。
          */
         if (where === null || where === 'center') focusComposerAfterCommit()
-        // 进了会话,目录(钢琴键)与首页消息就都成了「此刻要看的东西」。
+        /*
+         * 进了会话,目录(钢琴键)成了「此刻要看的东西」。
+         *
+         * **首页消息那一发已经删掉了**(2026-09-10 工单 5 ⑧):`ensureMessages`
+         * 拉的是 `sessions.getMessagesPage`,而那条读法交的是**整份抄本的尾 20
+         * 条**——真店夹具上量出来 **2,295,530 字节**,比聊天区自己那一页
+         * (`resources.read(page)`,134,973 B)大 17 倍,而且它与那一页在同一
+         * 瞬间抢同一条连接:冷载上屏 1146ms 里有它一份。
+         *
+         * 它在这里从来就没有消费者:`messagesQuery` 的唯一读者是 Quick Look 那块
+         * 预览面(`useSessionMessages`),而 Quick Look 自己在挂载时就 ensure 一次
+         * (它必须——缓存会被 SSE 作废)。进会话预取一份**只有预览面才看的东西**,
+         * 买的是「万一等会儿开 Quick Look」,付的是每一次冷开 2.3MB。
+         */
         void useSessionsSource.getState().ensureChapters(sessionId)
-        void useSessionsSource.getState().ensureMessages(sessionId)
         /*
          * 「进入」之后这块面收不收,看它的**形态**(08-30 用户拍板):
          *  - 舞台 / 浮窗是**瞬态形**——点开、选完、即走,「进入」的语义就是活干完了,

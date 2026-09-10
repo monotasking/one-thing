@@ -985,3 +985,36 @@ describe('§6.5 第 8 条 FLIP:挂载那一批一个几何属性都不许读', (
     expect(card.style.height).toBe('')
   })
 })
+
+/* ═══ 正文还没到手的那一格(2026-09-10 工单 5 ②)═══════════════════════ */
+
+describe('大结果:卡上说它有多大,展开那一刻才取正文', () => {
+  /** 页里那枚引用的形 —— 与 `data/page-results.ts` 挂上去的逐字相同。 */
+  const deferred = (bytes: number, preview?: string) => ({
+    '@toolResult': { toolCallId: 'c1', slot: 'result', bytes, hash: 'ab12', ...(preview ? { preview } : {}) },
+  })
+
+  it('行上右端说的是「结果 N,展开时取」,不是一段空白', async () => {
+    const { container } = await draw([call('c1', 'bash', { result: deferred(40 * 1024) })])
+    // 40960 B → `formatBytes` 念作 40 KB(≥10 不带小数;全壳唯一那只)。
+    expect(container.textContent).toContain('40 KB')
+    expect(rowOf(container, 'c1').getAttribute('data-tool-tone')).toBe('ok')
+  })
+
+  it('展开:摆后端摘的那段开头 + 说一句此刻的状态;没有会话就不去取', async () => {
+    const { container } = await draw([call('c1', 'bash', { result: deferred(40 * 1024, '开头那一段') })])
+    await open(rowOf(container, 'c1'))
+    expect(container.textContent).toContain('开头那一段')
+    // `ctx` 没有 sessionId(这块面此刻不属于任何会话)—— 说事实,不画取件动作。
+    expect(container.textContent).toContain('40 KB')
+    // **摘要不套代码块那层檐**:套上去就是让 200 字冒充整份结果。
+    expect(container.querySelector('[data-block-kind="code"]')).toBeNull()
+  })
+
+  it('正文到手之后就是一张普通的卡 —— 引用那一格不再出现', async () => {
+    const { container } = await draw([call('c1', 'bash', { result: '整段真的输出' })])
+    await open(rowOf(container, 'c1'))
+    expect(container.textContent).toContain('整段真的输出')
+    expect(container.textContent).not.toContain('KB')
+  })
+})

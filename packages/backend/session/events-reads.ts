@@ -26,6 +26,7 @@ import {
   buildSessionEventJumpIndex,
   materializeNode,
   materializeChatMessages,
+  materializeStep,
   pageEventMessages,
   readLedgerWatermark,
   userMarkersFromProjected,
@@ -43,6 +44,18 @@ export interface SessionEventReadPorts {
   getLogPath(sessionId: string): string
   projections: Pick<SessionProjectionCache, 'getLiveSessionProjection' | 'hasLiveSessionProjection'>
   materializeOptions: typeof sessionProjectionOptions
+}
+
+/**
+ * 尾页那条读法交出去的整份快照:一页 + 水位 + 「此刻有没有一条开着的 run」。
+ *
+ * 三格出自**同一个快照**(判据全文在下面那只函数的注上),所以它们是一个类型
+ * 而不是三个返回值。
+ */
+export interface SessionTailPageSnapshot {
+  page: GetSessionMessagesPageResponse
+  watermark: number
+  activeMessageId?: string
 }
 
 export function createSessionEventReads(ports: SessionEventReadPorts) {
@@ -392,11 +405,30 @@ function pageFromMemory(
  */
 function eventsPageMessagesAtWatermark(
   request: GetSessionMessagesPageRequest,
-): { page: GetSessionMessagesPageResponse; watermark: number } | undefined {
+): SessionTailPageSnapshot | undefined {
   if (ports.projections.hasLiveSessionProjection(request.sessionId)) {
     const state = ports.projections.getLiveSessionProjection(request.sessionId)
     const messages = messagesFromState(request.sessionId, state, 'reference')
-    if (messages) return { page: pageFromMemory(request, messages), watermark: state.lastSeq }
+    if (messages) {
+      return {
+        page: pageFromMemory(request, messages),
+        watermark: state.lastSeq,
+        /*
+         * 水位那一刻**还开着的那条 run**(工单 5 ③ 的接缝闸)。
+         *
+         * 壳按水位接 SSE 是「空状态上接着折」——只有 `run/start` / `user/message`
+         * 这类**自己会造节点**的事件折得进去。一条**在水位之前就开张**的 run,
+         * 它后面的 delta 在空状态上一条都落不下(归约器 `state.runs.get` 落空
+         * 就 break),于是壳必须知道「这一次不能走页」。所以这一格不是读数,
+         * 是判据。
+         *
+         * 文件那一支恒缺席,而那**不是漏答**:没有活投影 = 这个进程里没有引擎在
+         * 跑这条会话 = 不会有属于它的 SSE 事件到达,「有没有开着的 run」这个问题
+         * 在那条路上没有答案也不需要答案。
+         */
+        ...(state.activeRun ? { activeMessageId: state.activeRun.messageId } : {}),
+      }
+    }
   }
 
   const snapshot = withEventReader(request.sessionId, reader => ({
@@ -421,8 +453,26 @@ function eventsPageMessagesAtWatermark(
   const paged = snapshot.page
   if (!paged.success) return { page: paged as unknown as GetSessionMessagesPageResponse, watermark }
   if ((paged.messages?.length ?? 0) === 0 && !paged.hasMoreBefore) {
-    // 折不出任何消息 = 事件里没有这条会话的历史(老会话)。交回给上层。
-    return undefined
+    /*
+     * 折不出任何消息 —— **但这里有两件事,不是一件**(2026-09-10 工单 5 修的
+     * 一条真 bug;`gate:chat-follow` 的「隔壁那片叶真的收到了流」当场红):
+     *
+     *  · **没有账本**(老会话,历史只在 `messages.jsonl` 化石里)—— 这条读法
+     *    答不了,交回给上层;
+     *  · **账本在,只是还没有消息**(刚建出来的新会话:`session/created` 已经
+     *    写进去了,而它不是一条消息)—— 这条读法答得了,答案是「空页 + 账本
+     *    此刻的水位」。
+     *
+     * 两件事一起返回 `undefined` 的代价是**壳把水位当成 0**:下一条事件是 seq 2,
+     * 而 `lastSeq` 是 0,于是壳判成缺号、排一次三秒节流的重取 —— 屏幕上是
+     * 「新会话里发第一句话,三秒不上屏」。
+     *
+     * 判据是**水位本身**:它大于 0 就证明账本在(那一条 `session/created` 就是
+     * 证据)。不另问一次 `sessionHasEventHistory` —— 那是第二次开账本,而水位
+     * 与这一页出自同一个 reader(见上面「原子性」那一节)。
+     */
+    if (watermark <= 0) return undefined
+    return { page: { ...paged, messages: [] } as GetSessionMessagesPageResponse, watermark }
   }
   // `seq` ← `eventSeq`,与 `eventsPageMessages` 逐字同一句(§11.1)。
   return {
@@ -435,8 +485,48 @@ function eventsPageMessagesAtWatermark(
   }
 }
 
+/**
+ * **一次调用的一格结果**(工单 5 ②:页里带引用的那些大结果,壳展开卡片时按这条
+ * 路取正文)。
+ *
+ * ## 为什么它物化**一个节点**,不是整条会话
+ *
+ * `eventsGetMessage` 那条路每次都把整条会话物化一遍(`inline` 档有自己的一张 memo,
+ * 冷开时是实打实的一次全量折)。而这条路的触发点是**人点开了一张工具卡** ——
+ * 让一次展开动作付一次整会话物化,正是本单在治的那类病。所以这里按 `callId` 找到
+ * 那条 run,只 `materializeStep` 它那一只工具。
+ *
+ * ## 三格槽与页里那张侧表逐条同源
+ *
+ * `result` = `toolCall.result`(`toolCalls[]` 与 `steps[].toolCall` 共用的那一格)、
+ * `text` = `step.result`、`partial` = `step.partialResult`。名字与
+ * `session/page-results.ts` 的 `SessionPageResultSlot` 是同一张表 —— 抽出去的是它,
+ * 取回来的也得是它,两处对不上就是「同一件事两个词汇」。
+ *
+ * 物化走 **`inline` 档**:这一次要的正是正文(blob 换回来),与页那一次
+ * (`reference`,不读不记)恰好相反 —— 两次读者不同,拿它干的事不同。
+ */
+function eventsToolResult(
+  sessionId: string,
+  toolCallId: string,
+  slot: 'result' | 'text' | 'partial',
+): { value: unknown } | undefined {
+  const state = ports.projections.getLiveSessionProjection(sessionId)
+  for (const run of state.runs.values()) {
+    const tool = run.tools.get(toolCallId)
+    if (!tool) continue
+    const step = materializeStep(run, tool, [], materializeFor(sessionId, 'inline'))
+    const value = slot === 'result'
+      ? step.toolCall?.result
+      : slot === 'text' ? step.result : step.partialResult
+    return value === undefined ? undefined : { value }
+  }
+  return undefined
+}
+
   return {
     resetSessionEventReadCache,
+    eventsToolResult,
     eventsListMessages,
     eventsHasMessage,
     sessionHasEventHistory,
@@ -454,6 +544,7 @@ function eventsPageMessagesAtWatermark(
 export type SessionEventReads = ReturnType<typeof createSessionEventReads>
 const currentReads = (): SessionEventReads => getCurrentBackend('sessionLayer').sessionLayer.events.reads
 export const resetSessionEventReadCache: SessionEventReads['resetSessionEventReadCache'] = (...args) => currentReads().resetSessionEventReadCache(...args)
+export const eventsToolResult: SessionEventReads['eventsToolResult'] = (...args) => currentReads().eventsToolResult(...args)
 export const eventsListMessages: SessionEventReads['eventsListMessages'] = (...args) => currentReads().eventsListMessages(...args)
 export const eventsHasMessage: SessionEventReads['eventsHasMessage'] = (...args) => currentReads().eventsHasMessage(...args)
 export const sessionHasEventHistory: SessionEventReads['sessionHasEventHistory'] = (...args) => currentReads().sessionHasEventHistory(...args)
