@@ -516,6 +516,72 @@ describe('onething model registry helpers', () => {
     })
   })
 
+  it('refreshes a generic provider catalog before reading the cache on forceRefresh', async () => {
+    const refreshed: string[] = []
+    const warnCalls: unknown[][] = []
+    let catalog = [openRouterModel('stale-model')]
+    const withoutRefreshAdapter = {
+      getModelsForProvider: async () => catalog,
+      fetchCopilotModels: async () => [],
+      fetchCodexModels: async () => [openRouterModel('live-codex')],
+      saveProviderModels: () => {},
+      getCodexFallbackModels: (ids?: string[]) => (ids?.length ? ids : ['fallback-codex']).map(openRouterModel),
+      getConfiguredCodexModelSelection: () => undefined,
+      getACPAgents: () => [],
+      logger: { warn: (...args: unknown[]) => warnCalls.push(args) },
+    }
+    const adapters = {
+      ...withoutRefreshAdapter,
+      refreshProviderModels: async (providerId: string) => {
+        refreshed.push(providerId)
+        catalog = [openRouterModel('fresh-model')]
+      },
+    }
+
+    // 只是打开抽屉:不重拉,拿缓存。
+    await expect(getOnethingModelsWithCapabilities({ providerId: 'kimi' }, adapters))
+      .resolves.toMatchObject({ success: true, models: [expect.objectContaining({ id: 'stale-model' })] })
+    expect(refreshed).toEqual([])
+
+    // 刷新钮:先重拉落盘,再读缓存 —— 读到的必须是新表。
+    await expect(getOnethingModelsWithCapabilities({ providerId: 'kimi', forceRefresh: true }, adapters))
+      .resolves.toMatchObject({ success: true, models: [expect.objectContaining({ id: 'fresh-model' })] })
+    expect(refreshed).toEqual(['kimi'])
+
+    // Codex 自己重拉(fetchCodexModels + saveProviderModels),不经这条适配器。
+    await getOnethingModelsWithCapabilities({ providerId: 'codex', forceRefresh: true }, adapters)
+    expect(refreshed).toEqual(['kimi'])
+
+    // 宿主没接这条适配器 = 旧口径:只读缓存,不报错也不 warn。
+    await expect(getOnethingModelsWithCapabilities({ providerId: 'kimi', forceRefresh: true }, withoutRefreshAdapter))
+      .resolves.toMatchObject({ success: true, models: [expect.objectContaining({ id: 'fresh-model' })] })
+    expect(warnCalls).toEqual([])
+  })
+
+  it('keeps serving the cached catalog when a generic provider refresh throws', async () => {
+    const warnCalls: unknown[][] = []
+    const adapters = {
+      getModelsForProvider: async () => [openRouterModel('cached-kimi')],
+      fetchCopilotModels: async () => [],
+      fetchCodexModels: async () => [],
+      saveProviderModels: () => {},
+      getCodexFallbackModels: () => [],
+      getConfiguredCodexModelSelection: () => undefined,
+      getACPAgents: () => [],
+      refreshProviderModels: async () => {
+        throw new Error('models.dev unreachable')
+      },
+      logger: { warn: (...args: unknown[]) => warnCalls.push(args) },
+    }
+
+    await expect(getOnethingModelsWithCapabilities({ providerId: 'kimi', forceRefresh: true }, adapters))
+      .resolves.toMatchObject({ success: true, models: [expect.objectContaining({ id: 'cached-kimi' })] })
+    expect(warnCalls).toEqual([[
+      '[Models] Failed to refresh provider models, using cache:',
+      'models.dev unreachable',
+    ]])
+  })
+
   it('fetches models.dev data through an injected fetch adapter', async () => {
     const fetchCalls: unknown[] = []
     const data = {
@@ -623,6 +689,30 @@ describe('onething model registry helpers', () => {
     expect(settings.ai.providers.claude?.modelsLastFetched).toBe(4321)
     expect(settings.ai.providers.codex?.models).toBeUndefined()
     expect(saved).toEqual([settings])
+  })
+
+  it('leaves an existing cache alone when models.dev has no entry for the provider', async () => {
+    // 转发站 / 自建端点在 models.dev 上没有条目:重拉必须**不动**既有 models,
+    // 否则一次刷新就把用户手上唯一一份目录清空了。
+    const existing = { 'relay-model': entry('relay-model', 'custom-relay', 128000, 4096) }
+    const settings: OnethingModelRegistrySettingsLike = {
+      ai: { providers: { 'custom-relay': { models: existing, modelsLastFetched: 111 } } },
+    }
+    const saved: OnethingModelRegistrySettingsLike[] = []
+    const warnings: unknown[][] = []
+
+    await refreshOnethingProviderModels('custom-relay', {
+      getSettings: () => settings,
+      saveSettings: next => saved.push(next),
+      fetchModelsDevData: async () => ({}),
+      now: () => 999,
+      logger: { log: () => {}, warn: (...args) => warnings.push(args) },
+    })
+
+    expect(settings.ai.providers['custom-relay']?.models).toBe(existing)
+    expect(settings.ai.providers['custom-relay']?.modelsLastFetched).toBe(111)
+    expect(saved).toEqual([])
+    expect(warnings).toHaveLength(1)
   })
 
   it('refreshes all configured non-custom non-codex providers', async () => {

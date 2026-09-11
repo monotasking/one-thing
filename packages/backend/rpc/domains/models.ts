@@ -109,6 +109,10 @@ export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
       getConfiguredCodexModelSelection: () =>
         getSettings()?.ai?.providers?.codex as OnethingConfiguredModelSelection | undefined,
       getACPAgents: () => getSettings()?.acp?.agents,
+      // 刷新钮对通用厂商的真动作(2026-09-11):重拉 models.dev 落盘,随后
+      // `getModelsForProvider` 读到的是新表。挂在这里而不是壳里 —— 壳那一头
+      // (`forceRefresh: true`)本来就对,断的是后端这一截。
+      refreshProviderModels: providerId => modelRegistry.refreshProviderModels(providerId),
       providerIds: {
         githubCopilot: [AIProvider.GitHubCopilot],
         codex: [AIProvider.Codex],

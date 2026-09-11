@@ -223,6 +223,16 @@ export interface GetOnethingModelsWithCapabilitiesAdapters {
 		| OnethingConfiguredModelSelection
 		| undefined;
 	getACPAgents(): OnethingACPAgentModelLike[] | undefined;
+	/**
+	 * 刷新钮对**通用厂商**的真动作:重拉目录(models.dev)并落盘,之后
+	 * `getModelsForProvider` 读到的就是新表。`forceRefresh` 之前只有 Codex /
+	 * Copilot 两支认得,其余厂商一路落到「只读 settings 缓存」——「刷新模型也不
+	 * 更新」就是这么来的(2026-09-11)。
+	 *
+	 * **可选**:缺席 = 这个宿主没有重拉能力,行为退回旧口径(只读缓存),而不是
+	 * 报错。
+	 */
+	refreshProviderModels?(providerId: string): Promise<void> | void;
 	providerIds?: GetOnethingModelsWithCapabilitiesProviderIds;
 	logger?: OnethingModelRegistryRefreshLogger;
 }
@@ -531,6 +541,21 @@ export async function getOnethingModelsWithCapabilities(
 				success: true,
 				models: acpAgentsToOnethingOpenRouterModels(adapters.getACPAgents()),
 			};
+		}
+
+		// 通用厂商的刷新:先重拉目录落盘,再照旧读缓存。
+		// 重拉失败不让整发失败 —— 与上面 Codex 分支「拉不到退缓存」同一口径。
+		// 退缓存这件事今天**只落在日志上**:`ModelsListResponse` 没有 stale /
+		// warning 的格,加一格要连壳一起改,不在这一单的范围里。
+		if (request.forceRefresh && adapters.refreshProviderModels) {
+			try {
+				await adapters.refreshProviderModels(request.providerId);
+			} catch (error) {
+				adapters.logger?.warn?.(
+					"[Models] Failed to refresh provider models, using cache:",
+					error instanceof Error ? error.message : String(error),
+				);
+			}
 		}
 
 		const models = await adapters.getModelsForProvider(request.providerId);

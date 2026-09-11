@@ -187,6 +187,27 @@ describe('models RPC domain — Codex cache handling', () => {
     expect(mocks.saveProviderModels).not.toHaveBeenCalled()
   })
 
+  it('getWithCapabilities on a generic provider really reaches refreshProviderModels', async () => {
+    // 装配级:壳的刷新钮走的是 `getWithCapabilities({forceRefresh:true})`,
+    // 不是 `refreshRegistry` —— 这条口必须接到真的重拉(2026-09-11)。
+    mocks.refreshProviderModels.mockResolvedValue(undefined)
+    mocks.getModelsForProvider.mockResolvedValue([model('fresh-kimi')])
+
+    const response = await modelsRpcHandlers.getWithCapabilities({
+      providerId: 'kimi',
+      forceRefresh: true,
+    })
+
+    expect(mocks.refreshProviderModels).toHaveBeenCalledWith('kimi')
+    expect(mocks.refreshProviderModels).toHaveBeenCalledTimes(1)
+    expect(response.models?.map(m => m.id)).toEqual(['fresh-kimi'])
+
+    // 只是打开抽屉时不重拉。
+    mocks.refreshProviderModels.mockClear()
+    await modelsRpcHandlers.getWithCapabilities({ providerId: 'kimi' })
+    expect(mocks.refreshProviderModels).not.toHaveBeenCalled()
+  })
+
   it('refreshRegistry: no providerId = every provider, providerId = only that one', async () => {
     mocks.forceRefresh.mockResolvedValue(undefined)
     mocks.refreshProviderModels.mockResolvedValue(undefined)
