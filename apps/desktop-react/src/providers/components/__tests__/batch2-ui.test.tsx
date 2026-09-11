@@ -60,6 +60,7 @@ function catalog(props: Partial<Parameters<typeof ModelCatalog>[0]> = {}) {
       onSetCurrent={vi.fn()}
       onAddManual={vi.fn()}
       onRemoveManual={vi.fn()}
+      onRenameManual={vi.fn()}
       onWriteOverride={vi.fn()}
       {...props}
     />

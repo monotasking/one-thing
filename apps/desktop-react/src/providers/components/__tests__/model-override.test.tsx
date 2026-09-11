@@ -82,6 +82,7 @@ function renderCatalog(
         onSetCurrent={vi.fn()}
         onAddManual={vi.fn()}
         onRemoveManual={vi.fn()}
+        onRenameManual={vi.fn()}
         onWriteOverride={vi.fn()}
         {...props}
       />
@@ -543,6 +544,7 @@ describe('在写(pending 逐行)', () => {
           onSetCurrent={vi.fn()}
           onAddManual={vi.fn()}
           onRemoveManual={vi.fn()}
+          onRenameManual={vi.fn()}
           onWriteOverride={onWriteOverride}
         />
       </>,
@@ -558,6 +560,237 @@ describe('在写(pending 逐行)', () => {
     fireEvent.click(capSeg('tools', '关'))
     fireEvent.click(screen.getByTestId('model-override-reset'))
     expect(onWriteOverride).not.toHaveBeenCalled()
+  })
+})
+
+/* ══ 第五格:改模型 ID(09-11)══════════════════════════════════════════════
+ * 报障原话「手写的不能改模型 id」。入口在这张浮层的**头部**:手填行的 id 那一行
+ * 尾巴上一颗笔,点下去换成一条 `ui/InlineEditStrip`。目录里有的行**没有**这一格
+ * (它的 id 是目录说的),而那不是「禁着的笔」—— 是压根不画。
+ */
+
+/** 手填的一行(目录对它什么都没说)。 */
+const manualRow = (id: string) => row(id, { manual: true, catalog: NO_CATALOG_FACTS })
+
+const pencil = (id: string) => screen.getByTestId(`model-override-rename-${id}`)
+const idBox = () => screen.getByTestId('model-override-rename-input') as HTMLInputElement
+
+describe('改模型 ID', () => {
+  it('目录里有的行:头部照旧,一颗笔都没有', async () => {
+    renderCatalog([row('a')])
+    await openOverride('a')
+    expect(screen.queryByTestId('model-override-rename-a')).toBeNull()
+    expect(screen.queryByTestId('model-override-rename-input')).toBeNull()
+  })
+
+  it('手填行:点笔换成输入条,框里预填当前 id 且已选中全文', async () => {
+    renderCatalog([manualRow('ghost')])
+    await openOverride('ghost')
+    expect(pencil('ghost').getAttribute('aria-label')).toBe('改模型 ID')
+
+    fireEvent.click(pencil('ghost'))
+    await waitFor(() => expect(screen.getByTestId('model-override-rename-input')).toBeTruthy())
+    expect(idBox().value).toBe('ghost')
+    // 一进来就 focus + 全选(`ui/inline-edit` 那一手)——接着打就是覆盖。
+    expect(document.activeElement).toBe(idBox())
+    expect(idBox().selectionStart).toBe(0)
+    expect(idBox().selectionEnd).toBe('ghost'.length)
+    // 读数那一行让位了:笔与它一起退场(一格里不摆两套同名的东西)。
+    expect(screen.queryByTestId('model-override-rename-ghost')).toBeNull()
+  })
+
+  it('↵ 落定:递出去的是 **trim 过的**那个 id', async () => {
+    const onRenameManual = vi.fn(() => undefined)
+    renderCatalog([manualRow('ghost')], { onRenameManual })
+    await openOverride('ghost')
+    fireEvent.click(pencil('ghost'))
+    fireEvent.change(idBox(), { target: { value: '  my-qwen  ' } })
+    fireEvent.keyDown(idBox(), { key: 'Enter' })
+    expect(onRenameManual).toHaveBeenCalledWith('ghost', 'my-qwen')
+  })
+
+  it('「保存」那颗钮走同一条路;空草稿时它自己是禁的', async () => {
+    const onRenameManual = vi.fn(() => undefined)
+    renderCatalog([manualRow('ghost')], { onRenameManual })
+    await openOverride('ghost')
+    fireEvent.click(pencil('ghost'))
+
+    const save = () =>
+      within(screen.getByTestId('model-override')).getByRole('button', {
+        name: '保存',
+      }) as HTMLButtonElement
+    fireEvent.change(idBox(), { target: { value: '   ' } })
+    expect(save().disabled).toBe(true)
+
+    fireEvent.change(idBox(), { target: { value: 'my-qwen' } })
+    fireEvent.click(save())
+    expect(onRenameManual).toHaveBeenCalledWith('ghost', 'my-qwen')
+  })
+
+  it('被拒:红字就地说原因,**输入条不收、草稿一个字不清**', async () => {
+    const onRenameManual = vi.fn(() => 'my-qwen 已经在这一坑的列表里了')
+    renderCatalog([manualRow('ghost')], { onRenameManual })
+    await openOverride('ghost')
+    fireEvent.click(pencil('ghost'))
+    fireEvent.change(idBox(), { target: { value: 'my-qwen' } })
+    fireEvent.keyDown(idBox(), { key: 'Enter' })
+
+    await waitFor(() =>
+      expect(screen.getByText('my-qwen 已经在这一坑的列表里了')).toBeTruthy(),
+    )
+    // 边线转 danger 那一半给眼睛,aria-invalid 给读屏 —— 两件事都要在。
+    expect(idBox().getAttribute('aria-invalid')).toBe('true')
+    expect(idBox().value).toBe('my-qwen')
+
+    // 接着打就把上一次那句话抹掉 —— 它是对上一次提交说的。
+    fireEvent.change(idBox(), { target: { value: 'my-qwen-2' } })
+    expect(screen.queryByText('my-qwen 已经在这一坑的列表里了')).toBeNull()
+  })
+
+  it('Esc 收回的是**这一格**,不是整张浮层(归响应链的瞬态口)', async () => {
+    const onRenameManual = vi.fn(() => undefined)
+    renderCatalog([manualRow('ghost')], { onRenameManual })
+    await openOverride('ghost')
+    fireEvent.click(pencil('ghost'))
+    fireEvent.change(idBox(), { target: { value: 'my-qwen' } })
+
+    act(() => {
+      fireEvent.keyDown(idBox(), { key: 'Escape' })
+    })
+    await waitFor(() => expect(screen.queryByTestId('model-override-rename-input')).toBeNull())
+    // 浮层还开着(它那句 onEscape 轮不到),而且一发都没写出去。
+    expect(screen.getByTestId('model-override')).toBeTruthy()
+    expect(onRenameManual).not.toHaveBeenCalled()
+    // 再点开一次:草稿丢掉了,框里回到当前 id。
+    fireEvent.click(pencil('ghost'))
+    expect(idBox().value).toBe('ghost')
+  })
+
+  it('别的行在写不影响这一行的笔(律③粒度)', async () => {
+    renderCatalog([manualRow('ghost'), manualRow('other')], {
+      pendingModelIds: new Set(['ghost']),
+    })
+    // ghost 那一行的滑杆钮此刻是禁的(开不了浮层),other 那一行一个字不动。
+    expect((screen.getByTestId('configure-ghost') as HTMLButtonElement).disabled).toBe(true)
+    await openOverride('other')
+    expect((pencil('other') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('浮层开着时这一行忙起来:读数态笔禁,编辑态框与两颗钮一起禁', async () => {
+    const onRenameManual = vi.fn(() => undefined)
+    const view = renderCatalog([manualRow('ghost')], { onRenameManual })
+    await openOverride('ghost')
+    expect((pencil('ghost') as HTMLButtonElement).disabled).toBe(false)
+
+    /** 同一行、只把 `pendingModelIds` 换掉的那一帧。 */
+    const busy = (
+      <>
+        <FocusDispatchHarness />
+        <ModelCatalog
+          providerId="openrouter"
+          rows={[manualRow('ghost')]}
+          phase="ready"
+          dataRev={1}
+          refresh={undefined}
+          kind="api"
+          query=""
+          pendingModelIds={new Set(['ghost'])}
+          write={undefined}
+          onQuery={vi.fn()}
+          onRefresh={vi.fn()}
+          onToggle={vi.fn()}
+          onSetCurrent={vi.fn()}
+          onAddManual={vi.fn()}
+          onRemoveManual={vi.fn()}
+          onRenameManual={onRenameManual}
+          onWriteOverride={vi.fn()}
+        />
+      </>
+    )
+
+    // ① 读数态:笔自己禁着。
+    view.rerender(busy)
+    expect((pencil('ghost') as HTMLButtonElement).disabled).toBe(true)
+
+    // ② 编辑态:框 + 两颗钮一起禁,主钮换「正在保存…」,点了也写不出去。
+    view.rerender(
+      <>
+        <FocusDispatchHarness />
+        <ModelCatalog
+          providerId="openrouter"
+          rows={[manualRow('ghost')]}
+          phase="ready"
+          dataRev={1}
+          refresh={undefined}
+          kind="api"
+          query=""
+          pendingModelIds={NO_PENDING}
+          write={undefined}
+          onQuery={vi.fn()}
+          onRefresh={vi.fn()}
+          onToggle={vi.fn()}
+          onSetCurrent={vi.fn()}
+          onAddManual={vi.fn()}
+          onRemoveManual={vi.fn()}
+          onRenameManual={onRenameManual}
+          onWriteOverride={vi.fn()}
+        />
+      </>,
+    )
+    fireEvent.click(pencil('ghost'))
+    fireEvent.change(idBox(), { target: { value: 'my-qwen' } })
+    view.rerender(busy)
+
+    const pop = () => within(screen.getByTestId('model-override'))
+    expect(idBox().disabled).toBe(true)
+    const saving = pop().getByRole('button', { name: /正在保存…/ }) as HTMLButtonElement
+    expect(saving.disabled).toBe(true)
+    expect(saving.getAttribute('aria-busy')).toBe('true')
+    expect((pop().getByRole('button', { name: '取消' }) as HTMLButtonElement).disabled).toBe(true)
+
+    fireEvent.click(saving)
+    expect(onRenameManual).not.toHaveBeenCalled()
+  })
+
+  it('改成了:浮层**留在原位改到新 id 上**(目录层把 openOverride 换过去)', async () => {
+    const onRenameManual = vi.fn(() => undefined)
+    const view = renderCatalog([manualRow('ghost')], { onRenameManual })
+    await openOverride('ghost')
+    expect(openModelId()).toBe('ghost')
+
+    fireEvent.click(pencil('ghost'))
+    fireEvent.change(idBox(), { target: { value: 'my-qwen' } })
+    fireEvent.keyDown(idBox(), { key: 'Enter' })
+
+    // 写是乐观的:真店里行当场就换了 id,这里把那一帧演出来。
+    view.rerender(
+      <>
+        <FocusDispatchHarness />
+        <ModelCatalog
+          providerId="openrouter"
+          rows={[manualRow('my-qwen')]}
+          phase="ready"
+          dataRev={1}
+          refresh={undefined}
+          kind="api"
+          query=""
+          pendingModelIds={NO_PENDING}
+          write={undefined}
+          onQuery={vi.fn()}
+          onRefresh={vi.fn()}
+          onToggle={vi.fn()}
+          onSetCurrent={vi.fn()}
+          onAddManual={vi.fn()}
+          onRemoveManual={vi.fn()}
+          onRenameManual={onRenameManual}
+          onWriteOverride={vi.fn()}
+        />
+      </>,
+    )
+    await waitFor(() => expect(openModelId()).toBe('my-qwen'))
+    // 回到读数态(改完那一格就收工了),而且笔还在 —— 还能再改一次。
+    expect(screen.queryByTestId('model-override-rename-input')).toBeNull()
+    expect(pencil('my-qwen')).toBeTruthy()
   })
 })
 

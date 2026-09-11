@@ -1354,6 +1354,12 @@ export const zh = {
   'providers.addModelDuplicate': '{model} 已经在这一坑的列表里了',
   'providers.manualModel': '手填',
   'providers.removeModel': '删除 {model}',
+  /* 手填模型改 id(09-11 报障「手写的不能改模型 id」)。入口在覆盖浮层的头部:
+   * 手填行的 id 那一行旁一颗笔,点下去换成一条行内输入条。目录里有的行不给改
+   * —— 它的 id 是目录说的。重复那一句复用上面的 addModelDuplicate(同一件事)。 */
+  'providers.renameModel': '改模型 ID',
+  'providers.renameModelSave': '保存',
+  'providers.renameModelEmpty': '模型 ID 不能为空',
   /* 厂牌折叠(OpenRouter 300+ 型):已选置顶 + 按 id 前缀分组 + 检索截断。 */
   'providers.groupPicked': '已选 · {count}(始终置顶)',
   'providers.groupOther': '其他',

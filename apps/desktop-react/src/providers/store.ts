@@ -28,6 +28,7 @@ import { notify } from '../services/notify'
 import { t } from '../i18n'
 import { buildFamilies, providerIdsOf, resolveMode } from './families'
 import { credentialFactsOf, isModeConfigured, poolViewOf, reorderPool } from './projection'
+import { MODEL_KEYED_TABLES, moveModelKey } from './model-maps'
 import {
   BROWSER_POLL_INTERVAL_MS,
   BROWSER_POLL_TIMEOUT_MS,
@@ -214,6 +215,20 @@ export interface ProviderSettingsState {
   addManualModel: (providerId: string, modelId: string) => string | undefined
   /** 删掉一个手填模型。最后一条不删(与生产 `toggleSpaceModelSelection` 同一守则)。 */
   removeManualModel: (providerId: string, modelId: string) => Promise<void>
+  /**
+   * 给一个手填模型**改 id**(09-11 报障:「手写的不能改模型 id」)。
+   *
+   * 从前它没有改法:`AddModelRow` 只能加、`✕` 只能删,而删了重填会把这个 id
+   * 在**七张按模型 id 键的表**里的覆盖一起丢掉(窗口 / 最大输出 / 温度 /
+   * 思考开关 / 思考档 / 服务档 / 能力)。所以这一口做的是**跨九处一起迁**:
+   * 那七张表 + `selectedModels` 的原位替换 + `model`(当前模型)——
+   * 与退役的 Vue 壳 `useProviderSettings.renameModel` 同一张清单。
+   *
+   * **同步**返回一句错误原文(口径与 `addManualModel` 同):输入条要当场知道
+   * 该不该收回,不能等一个 await。三条校验:空 / 已在这一坑的列表里 /
+   * **与原 id 相同 = 取消**(答 undefined 且一发都不发 —— 它不是错误)。
+   */
+  renameManualModel: (providerId: string, oldId: string, newId: string) => string | undefined
   /**
    * 一个模型的**用户覆盖**(09-09;09-10 能力从一格开到五格):上下文窗口
    * `contextLengthByModel[m]`、最大输出 `maxOutputByModel[m]` 与
@@ -990,6 +1005,51 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
         },
         settingsKey.model(providerId, modelId),
       )
+    },
+
+    /**
+     * 改一个手填模型的 id。**一发写完九处**(七张按模型键的表 + `selectedModels`
+     * + `model`)—— 拆成几发的话中间任何一发失败都会留下一个「名字改了、覆盖
+     * 还挂在旧 id 上」的半截状态,而那正是这一口要治的病。
+     *
+     * 忙态打在**旧 id 那一行**上(`settingsKey.model(pid, oldId)`)—— 这一发是
+     * 从那一行的浮层里发出去的,记账要记在按钮所在的那个坐标上。
+     *
+     * 搬表那一手**不在这里** —— 一张表怎么搬、什么时候算「不动」、什么时候算
+     * 「整张删」,全在 `./model-maps` 那只纯函数里,七张表共用它一份
+     * (名单也在那儿:后端再加一张按模型键的表,改的是名单里一行)。
+     */
+    renameManualModel: (providerId, oldId, newId) => {
+      const id = newId.trim()
+      if (!id) return t('providers.renameModelEmpty')
+      // 没改 = 取消。**不是错误**:答一句空,输入条照旧收回去。
+      if (id === oldId) return undefined
+      const config = get().settings?.ai?.providers?.[providerId]
+      const selected = config?.selectedModels ?? []
+      // 重复是**用户看得见的事实**,不是错误 —— 当场说清,不发请求(与手填同一句)。
+      if (selected.includes(id)) return t('providers.addModelDuplicate', { model: id })
+      // 要改的那个 id 根本不在这一坑的列表里 = 没有可改的东西,一发都不发。
+      if (!selected.includes(oldId)) return undefined
+
+      const delta: Partial<ProviderConfig> = {
+        // **原位替换**:手填模型的次序是用户自己排的,改个名不该把它挪到队尾。
+        selectedModels: selected.map((model) => (model === oldId ? id : model)),
+        // 改的正好是当前模型时,当前跟着换 —— 留一个指向旧 id 的 `model`
+        // 就是让聊天那边挑到一个不存在的模型(与 `removeManualModel` 同一条)。
+        ...(config?.model === oldId ? { model: id } : {}),
+      }
+      const bag = delta as unknown as Record<string, unknown>
+      for (const table of MODEL_KEYED_TABLES) {
+        const moved = moveModelKey(
+          config?.[table] as Record<string, unknown> | undefined,
+          oldId,
+          id,
+        )
+        // `false` = 这张表里没有旧键 → **一个字不动它**(既不重写也不删)。
+        if (moved !== false) bag[table] = moved
+      }
+      void writeProviders({ [providerId]: delta }, settingsKey.model(providerId, oldId))
+      return undefined
     },
 
     /**

@@ -91,6 +91,7 @@ export function ModelCatalog({
   onSetCurrent,
   onAddManual,
   onRemoveManual,
+  onRenameManual,
   onWriteOverride,
 }: {
   /** 这一坑是谁。换一坑要把「展开了哪些组」忘掉 —— 那是上一坑的事。 */
@@ -123,6 +124,11 @@ export function ModelCatalog({
   /** 手填一个目录里没有的 id。返回一句错误原文 = 没加上。 */
   onAddManual: (modelId: string) => string | undefined
   onRemoveManual: (modelId: string) => void
+  /**
+   * 改一个手填模型的 id(09-11)。返回一句错误原文 = 没改成。
+   * 成功之后这块面自己把覆盖浮层**换到新 id 上**(见下面那段包装)。
+   */
+  onRenameManual: (oldId: string, newId: string) => string | undefined
   /** 写一个模型的覆盖(上下文窗口 / 工具调用)。`null` = 删那一格。 */
   onWriteOverride: (modelId: string, patch: ModelOverridePatch) => void
 }) {
@@ -160,6 +166,19 @@ export function ModelCatalog({
    * 行收 `overrideOpen` + `onOverrideOpen`,一格自己的开合状态都不留。
    */
   const [openOverride, setOpenOverride] = useState<string | null>(null)
+
+  /*
+   * 改完 id 之后浮层**留在原位改到新 id 上**(09-11)。它住在这一层,所以
+   * 「跟过去」这件事也只能在这一层做:行的 id 换了,旧那一行连同它的浮层
+   * 一起卸载,而 `openOverride` 还指着一个已经不存在的 id —— 表现是浮层
+   * 当场消失,用户改完名得再点一次钮。
+   * 包在这里而不是包在行里:行不知道自己改完之后叫什么(它只把那句话转出去)。
+   */
+  function renameManual(oldId: string, newId: string): string | undefined {
+    const problem = onRenameManual(oldId, newId)
+    if (!problem) setOpenOverride(newId)
+    return problem
+  }
 
   const headRef = useRef<HTMLDivElement>(null)
   const topMark = useRef<HTMLDivElement>(null)
@@ -322,6 +341,7 @@ export function ModelCatalog({
               onToggle={onToggle}
               onSetCurrent={onSetCurrent}
               onRemoveManual={onRemoveManual}
+              onRenameManual={renameManual}
               onOverrideOpen={(open) => setOpenOverride(open ? row.id : null)}
               onWriteOverride={onWriteOverride}
             />
@@ -371,6 +391,7 @@ export function ModelCatalog({
                       onToggle={onToggle}
                       onSetCurrent={onSetCurrent}
                       onRemoveManual={onRemoveManual}
+                      onRenameManual={renameManual}
                       onOverrideOpen={(open) => setOpenOverride(open ? row.id : null)}
                       onWriteOverride={onWriteOverride}
                     />

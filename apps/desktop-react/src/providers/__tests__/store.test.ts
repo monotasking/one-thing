@@ -336,6 +336,156 @@ describe('setCurrentModel / addManualModel / removeManualModel', () => {
   })
 })
 
+/* ── 手填模型改 id(09-11):一发迁九处 ──────────────────────────────────────
+ * 这一组守的是**九处一起走**:七张按模型 id 键的表 + `selectedModels` +
+ * `model`。从前没有这条路,用户只能删了重填 —— 而那样这个 id 上的七格覆盖
+ * 全丢,报障原话是「手写的不能改模型 id」。
+ */
+
+describe('renameManualModel', () => {
+  /** 一份七张表全填过、当前模型正好就是要改的那一个的空间设置。 */
+  function renamable(): SpaceProviderSettings {
+    return {
+      provider: 'claude',
+      providers: {
+        claude: {
+          model: 'ghost',
+          // 改完要**原位**留在中间:手填模型的次序是用户自己排的。
+          selectedModels: ['claude-opus-5', 'ghost', 'zzz'],
+          temperatureByModel: { ghost: 0.3, 'claude-opus-5': 0.7 },
+          maxOutputByModel: { ghost: 8_192 },
+          contextLengthByModel: { ghost: 200_000 },
+          thinkingByModel: { ghost: true },
+          thinkingEffortByModel: { ghost: 'high' },
+          serviceTierByModel: { ghost: 'flex' },
+          modelCapabilitiesByModel: { ghost: { tools: true } },
+        },
+      },
+      customProviders: [],
+    } as unknown as SpaceProviderSettings
+  }
+
+  it('九处一起迁:七张按模型键的表 + selectedModels(原位)+ model', async () => {
+    const port = installPort({
+      readProviderSettings: vi.fn(async () => ({ success: true, ai: renamable() })),
+    })
+    await useProviderSettings.getState().start()
+    expect(
+      useProviderSettings.getState().renameManualModel('claude', 'ghost', 'my-qwen'),
+    ).toBeUndefined()
+    await vi.waitFor(() => expect(port.writeProviderSettings).toHaveBeenCalledTimes(1))
+    const config = vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.providers.claude
+
+    // ① 列表原位替换(第 2 格还是第 2 格),② 当前模型跟着换。
+    expect(config.selectedModels).toEqual(['claude-opus-5', 'my-qwen', 'zzz'])
+    expect(config.model).toBe('my-qwen')
+    // ③ 七张表各自把那一格搬到新键上,旧键一个不留。
+    expect(config.temperatureByModel).toEqual({ 'my-qwen': 0.3, 'claude-opus-5': 0.7 })
+    expect(config.maxOutputByModel).toEqual({ 'my-qwen': 8_192 })
+    expect(config.contextLengthByModel).toEqual({ 'my-qwen': 200_000 })
+    expect(config.thinkingByModel).toEqual({ 'my-qwen': true })
+    expect(config.thinkingEffortByModel).toEqual({ 'my-qwen': 'high' })
+    expect(config.serviceTierByModel).toEqual({ 'my-qwen': 'flex' })
+    expect(config.modelCapabilitiesByModel).toEqual({ 'my-qwen': { tools: true } })
+  })
+
+  it('忙态打在**旧 id 那一行**上 —— 这一发是从那一行的浮层里发出去的', async () => {
+    let release: (() => void) | undefined
+    installPort({
+      readProviderSettings: vi.fn(async () => ({ success: true, ai: renamable() })),
+      writeProviderSettings: vi.fn(async (request) => {
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+        return { success: true, ai: request.ai }
+      }),
+    })
+    await useProviderSettings.getState().start()
+    useProviderSettings.getState().renameManualModel('claude', 'ghost', 'my-qwen')
+    await vi.waitFor(() =>
+      expect([...settingsMutation.get().pendingKeys]).toEqual([
+        settingsKey.model('claude', 'ghost'),
+      ]),
+    )
+    release?.()
+  })
+
+  it('只迁**有旧键**的那几张表:没这一格的不重写也不删,整张没有的不凭空长出来', async () => {
+    const sparse = {
+      provider: 'claude',
+      providers: {
+        claude: {
+          model: 'claude-opus-5',
+          selectedModels: ['claude-opus-5', 'ghost'],
+          contextLengthByModel: { ghost: 200_000 },
+          // 这一张里**没有** ghost —— 它该原样留着(既不重写也不删)。
+          serviceTierByModel: { 'claude-opus-5': 'flex' },
+          // thinkingByModel 整张不存在 —— 改完也不该冒出来一个 `{}`。
+        },
+      },
+      customProviders: [],
+    } as unknown as SpaceProviderSettings
+    const port = installPort({
+      readProviderSettings: vi.fn(async () => ({ success: true, ai: sparse })),
+    })
+    await useProviderSettings.getState().start()
+    useProviderSettings.getState().renameManualModel('claude', 'ghost', 'my-qwen')
+    await vi.waitFor(() => expect(port.writeProviderSettings).toHaveBeenCalledTimes(1))
+    const config = vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.providers.claude
+
+    expect(config.contextLengthByModel).toEqual({ 'my-qwen': 200_000 })
+    expect(config.serviceTierByModel).toEqual({ 'claude-opus-5': 'flex' })
+    // 留一个 `{}` 在盘上是一句「这一型被配置过」的假话 —— 按 Object.keys 数。
+    expect(Object.keys(config)).not.toContain('thinkingByModel')
+    // 当前模型不是被改的那一个,`model` 这一格一个字不动。
+    expect(config.model).toBe('claude-opus-5')
+  })
+
+  it('校验 ①:空 id —— 同步一句话,一发都不发', async () => {
+    const port = installPort({
+      readProviderSettings: vi.fn(async () => ({ success: true, ai: renamable() })),
+    })
+    await useProviderSettings.getState().start()
+    // 夹具跑在缺省语种(en)上 —— 断言的是那一句**原文**,不是一句「有错就行」。
+    expect(useProviderSettings.getState().renameManualModel('claude', 'ghost', '   ')).toBe(
+      'A model ID cannot be empty',
+    )
+    expect(port.writeProviderSettings).not.toHaveBeenCalled()
+  })
+
+  it('校验 ②:新 id 已经在这一坑的列表里 —— 复用手填那一句,一发都不发', async () => {
+    const port = installPort({
+      readProviderSettings: vi.fn(async () => ({ success: true, ai: renamable() })),
+    })
+    await useProviderSettings.getState().start()
+    const problem = useProviderSettings.getState().renameManualModel('claude', 'ghost', 'zzz')
+    expect(problem).toBe('zzz is already in this mode’s list')
+    expect(port.writeProviderSettings).not.toHaveBeenCalled()
+  })
+
+  it('校验 ③:与原 id 相同 = **取消**(答一句空,而不是报一句错)', async () => {
+    const port = installPort({
+      readProviderSettings: vi.fn(async () => ({ success: true, ai: renamable() })),
+    })
+    await useProviderSettings.getState().start()
+    expect(
+      useProviderSettings.getState().renameManualModel('claude', 'ghost', ' ghost '),
+    ).toBeUndefined()
+    expect(port.writeProviderSettings).not.toHaveBeenCalled()
+  })
+
+  it('要改的 id 根本不在这一坑的列表里(目录行不经这条路)—— 一发都不发', async () => {
+    const port = installPort({
+      readProviderSettings: vi.fn(async () => ({ success: true, ai: renamable() })),
+    })
+    await useProviderSettings.getState().start()
+    expect(
+      useProviderSettings.getState().renameManualModel('claude', 'claude-sonnet-4', 'x'),
+    ).toBeUndefined()
+    expect(port.writeProviderSettings).not.toHaveBeenCalled()
+  })
+})
+
 /* ── 逐型覆盖(09-09):两张按模型的表,整张换,删要删干净 ─────────────────── */
 
 describe('setModelOverride', () => {

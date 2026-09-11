@@ -25,6 +25,17 @@
   text-overflow: ellipsis;
 }
 
+/*
+ * id 那一行:读数 + 一颗笔(09-11 的改 id 入口)。抗挤压律一 —— 这一行恰有
+ * **一个**弯腰件(`.ident`),笔 `flex: none`:窄下来先截 id,不把笔挤出去。
+ */
+.identLine {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
 /* id 是**标识不是句子**,走 mono(与目录行里那一格同一手)。 */
 .ident {
   font-family: var(--font-mono);
@@ -33,6 +44,25 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/*
+ * 改 id 那一条(09-11)。它**顶替 id 那一行**,所以横排档的 Field 与它装着的
+ * 那条 strip 都吃满这块头的宽;错误句由 `ui/Field` 的 `.inline .error`
+ * 折到第二行占满宽(那一条在库件里,这里一个字不重画)。
+ */
+.renameField {
+  min-width: 0;
+}
+
+.renameStrip {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 框里的字与它顶替掉的那行读数同一种笔迹 —— id 在哪一态都是 mono。 */
+.renameInput {
+  font-family: var(--font-mono);
 }
 
 /*

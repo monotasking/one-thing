@@ -65,7 +65,12 @@
   .pop[hidden]{display:none}
   .pop .head{display:flex;flex-direction:column;gap:1px;margin-bottom:var(--sp-3)}
   .pop .head .n{font-size:var(--fs-body);color:var(--text-1)}
-  .pop .head .i{font-family:var(--mono);font-size:var(--fs-ext);color:var(--text-3)}
+  .pop .head .i{font-family:var(--mono);font-size:var(--fs-ext);color:var(--text-3);min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  /* 09-11:id 那一行尾巴上一颗笔(改模型 ID)。抗挤压律一 —— 这一行恰有一个
+     弯腰件(.i),笔 flex:none。**只有手填行有**:目录里有的行 id 是目录说的。 */
+  .pop .head .idLine{display:flex;align-items:center;gap:var(--sp-1);min-width:0}
+  .pop .head .idLine .btn.icon{flex:none;padding:2px}
+  .pop .head .idLine .btn.icon svg{width:12px;height:12px}
   .field{display:flex;flex-direction:column;gap:4px;margin-top:var(--sp-3)}
   .field label{font-size:var(--fs-micro);color:var(--text-2)}
   .field .hint{font-size:var(--fs-ext);color:var(--text-3)}
@@ -129,7 +134,7 @@
       <span class="actions"><button class="btn">设为当前</button><button class="btn icon" data-open="a" aria-expanded="true" aria-label="配置 my-qwen3-235b">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></button><button class="btn icon" aria-label="移除">✕</button></span>
       <div class="pop" data-pop="a">
-        <div class="head"><span class="n">my-qwen3-235b</span><span class="i">my-qwen3-235b · 手填</span></div>
+        <div class="head"><span class="n">my-qwen3-235b</span><span class="idLine"><span class="i">my-qwen3-235b · 手填</span><button class="btn icon" aria-label="改模型 ID"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.17 2.83a2.83 2.83 0 0 0-4 0L3 17v4h4L21.17 6.83a2.83 2.83 0 0 0 0-4z"/><path d="M15 5l4 4"/></svg></button></span></div>
         <div class="field">
           <label>上下文窗口</label>
           <div class="inputWrap"><input class="input" placeholder="128k(默认)" data-ctx="a"><span class="unit">token</span></div>
@@ -334,12 +339,14 @@
     <tr><td>填错</td><td>边线 danger、错误句替换提示、不写、行上不变;两个数字框各自一份 invalid。能力那一组<b>没有错误态</b>:分段是封闭集合,填不错。</td></tr>
     <tr><td>超量</td><td>能力恒五行(编译期常量),不随数据涨。真正会涨的是目录行数,归目录的折叠与跳排版。</td></tr>
     <tr><td>在写</td><td>这一行的钮与浮层控件禁用;别的行不动。</td></tr>
+    <tr><td>头部三态(09-11)</td><td>读数 / 在改 id / 改被拒。<b>目录里有的行没有第三态也没有笔</b> —— 它的 id 是目录说的,所以那一档连 <code>onRename</code> 都不传(不是画一颗禁着的笔)。被拒:边线 danger + 错误句折到第二行(<code>ui/Field</code> 的 error 槽),<b>草稿一个字不清</b>。</td></tr>
   </table>
   <table>
     <tr><th style="width:120px">UI 交互状态</th><th></th></tr>
     <tr><td>滑杆钮</td><td>rest / hover / focus 环 / 展开(底色 st-sel,aria-expanded)。不进 Tab 序之外的任何序;是行上第三颗钮,与「设为当前」「✕」并排。</td></tr>
     <tr><td>数字框</td><td>rest / hover / focus / invalid;Esc 还原草稿并关浮层。</td></tr>
     <tr><td>分段</td><td>三格 radio,←→ 换格,当前格 st-sel;五只各自一份值,<code>aria-label</code> 是自己那一项的能力名(组自己是 role=group,名字与说明接在 Field 那一格上)。</td></tr>
+    <tr><td>笔 / id 输入条(09-11)</td><td>笔:rest / hover / active / focus 环 / disabled(在写);名字 = aria-label = Tooltip =「改模型 ID」。输入条:形归 <code>ui/InlineEditStrip</code>、手势归 <code>ui/inline-edit</code>(↵ 落定 / Esc 收回 / 一进来选中全文),<b>失焦不取消</b>(并肩站着两颗真钮)。<b>Esc 在编辑时退的是这一格不是浮层</b> —— 瞬态口在活动路径之前被问到。</td></tr>
     <tr><td>能力名 / 目录小字</td><td>纯读数,不可交互 —— 它们是事实不是控件。名字是这一行唯一的弯腰件(截断不换行),目录那句定宽不弯。</td></tr>
   </table>
 
@@ -352,7 +359,7 @@
     └── Button ✕(仅手填)                   │
                                             ▼
 ModelOverridePopover (new, providers/components/)   ← 消费 ui/Popover
-├── head: name + id (+ 手填)
+├── head: name + [id (+ 手填) + IconButton(Pencil)] ⇄ InlineEditStrip(改 id,仅手填)  ← 09-11
 ├── Field「上下文窗口」 → Input(认 200K / 1M / 200,000,parseQuantity 一处) + hint | error
 ├── Field「最大输出」   → Input(同一件 QuantityInput,各自一份草稿) + hint | error
 ├── Field「能力」      → CapabilityGroup(role=group,吃 Field 的 id/labelledby/describedby)
@@ -367,7 +374,7 @@ ModelOverridePopover (new, providers/components/)   ← 消费 ui/Popover
       → 行上按它画虚线与划掉;store.ts 的 setModelOverride 逐键三态(布尔写 / null 删 / 缺席不动)</pre>
 
   <h2>没做的</h2>
-  <p class="note">最大输出 09-09 补上;视觉 / 推理 / 生图 / 文件输入四项 09-10 补上 —— 落地果然是「分段多几行」,骨架一格没动(<code>CapabilityKey</code> 一张表 + <code>CAP_OF_KEY</code> 一张映射,行上那一手从 tools 专用泛化成逐键读)。后端 <code>ModelCapabilityOverride</code> 里剩下的 <code>audio</code> 仍不开面:开它就得连「音频输出」一起想清楚,今天没有需求。手填模型改名(Vue 壳当年会一并迁三张表的键)也不做:今天删了重填就是改名。</p>
+  <p class="note">最大输出 09-09 补上;视觉 / 推理 / 生图 / 文件输入四项 09-10 补上 —— 落地果然是「分段多几行」,骨架一格没动(<code>CapabilityKey</code> 一张表 + <code>CAP_OF_KEY</code> 一张映射,行上那一手从 tools 专用泛化成逐键读)。后端 <code>ModelCapabilityOverride</code> 里剩下的 <code>audio</code> 仍不开面:开它就得连「音频输出」一起想清楚,今天没有需求。手填模型改 id <b>09-11 补上</b>(报障「手写的不能改模型 id」):入口就在第 ① 张那个头部 —— id 那一行尾巴上一颗笔,点下去换成一条 <code>ui/InlineEditStrip</code>,↵ 落定 / Esc 收回;目录里有的行没有这一格(它的 id 是目录说的)。一发写完<b>九处</b>:<code>selectedModels</code> 原位替换 + <code>model</code> + 七张按模型 id 键的表(<code>temperature / maxOutput / contextLength / thinking / thinkingEffort / serviceTier / modelCapabilities</code>,搬表那一手在 <code>providers/model-maps.ts</code> 一处,七张共用)。改完浮层留在原位改到新 id 上。</p>
 
 <script>
   const fmt = n => n >= 1e6 ? (n/1e6).toFixed(1).replace(/\.0$/,'') + 'M' : n >= 1e3 ? Math.round(n/1e3) + 'k' : String(n)

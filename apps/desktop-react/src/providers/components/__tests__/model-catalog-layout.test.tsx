@@ -235,6 +235,7 @@ describe('列头与行同源:格子数一样多', () => {
         onSetCurrent={vi.fn()}
         onAddManual={vi.fn()}
         onRemoveManual={vi.fn()}
+        onRenameManual={vi.fn()}
         onWriteOverride={vi.fn()}
       />,
     )

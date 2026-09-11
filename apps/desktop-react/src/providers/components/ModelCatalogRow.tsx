@@ -142,6 +142,7 @@ export function ModelCatalogRow({
   onToggle,
   onSetCurrent,
   onRemoveManual,
+  onRenameManual,
   onOverrideOpen,
   onWriteOverride,
 }: {
@@ -163,6 +164,8 @@ export function ModelCatalogRow({
   onToggle: (modelId: string, selected: boolean) => void
   onSetCurrent: (modelId: string) => void
   onRemoveManual: (modelId: string) => void
+  /** 改一个**手填**模型的 id。返回一句错误原文 = 没改成。 */
+  onRenameManual: (oldId: string, newId: string) => string | undefined
   onOverrideOpen: (open: boolean) => void
   onWriteOverride: (modelId: string, patch: ModelOverridePatch) => void
 }) {
@@ -318,6 +321,14 @@ export function ModelCatalogRow({
             pending={pending}
             onClose={() => onOverrideOpen(false)}
             onWrite={(patch) => onWriteOverride(row.id, patch)}
+            /*
+              改 id **只给手填行**(09-11):目录里有的行,它的 id 是目录说的,
+              改了就对不上目录 —— 所以那一档连这个 prop 都不传,浮层头部
+              因此连笔都不画(不是画一颗禁着的笔,见浮层文件头)。
+            */
+            onRename={
+              row.manual ? (newId) => onRenameManual(row.id, newId) : undefined
+            }
           />
         )}
         {/*

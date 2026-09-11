@@ -1,9 +1,13 @@
 import { useState } from 'react'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { Field, useFieldControlProps } from '../../ui/Field'
+import { IconButton } from '../../ui/IconButton'
+import { InlineEditStrip } from '../../ui/InlineEditStrip'
+import { useInlineEdit } from '../../ui/inline-edit'
 import { Input } from '../../ui/Input'
 import { Popover } from '../../ui/Popover'
 import { Segmented } from '../../ui/Segmented'
+import { Pencil } from '../../components/icons'
 import { useT } from '../../i18n'
 import type { MessageKey, TFn } from '../../i18n'
 import { formatQuantity, parseQuantity } from '../../format/quantity'
@@ -53,8 +57,13 @@ import s from './ModelOverridePopover.module.css'
  *          自己没有中间态)。两个数字框**各自独立提交**(各自的 blur / ↵),
  *          改一格不动另一格 —— 它们是两张表,不是一次表单;五项能力同理,
  *          点一行只写那一键。
+ *          **头部那一行是读数还是在改 id**(09-11)也在这一格:挂载恒是读数,
+ *          草稿不预生成 —— 草稿的寿命是「这一次编辑」,不是「这张浮层」。
  *   卸载   关浮层 / 换模式换坑(开合状态住在 `ModelCatalog`,换坑那一发
- *          `useEffect` 把它归零)/ 这一行被折叠起来。
+ *          `useEffect` 把它归零)/ 这一行被折叠起来。**改 id 成功也算一次卸载**:
+ *          行的 id 变了,目录层把浮层开到新 id 上,这张随旧行一起走、新行上
+ *          重新挂一张(`ModelCatalogRow` 的 key 就是 `row.id`)。成功那一支
+ *          仍显式退出编辑态 —— 为没有目录层的场合(单测 / 规格页)守住同一个行为。
  *   换宿主 只有一种落点:锚在那颗钮下面的一块浮层。没有第二种形。**滚动归浮层**
  *          (`ui/Popover` 自带 `max-height` + `overflow:auto`)—— 能力开成五行
  *          之后这块浮层能长到接近一屏高,那条既有约束是它不溢出屏幕的唯一保证。
@@ -72,7 +81,17 @@ import s from './ModelOverridePopover.module.css'
  *            **两格各自一份 invalid** —— 上一格填错不该把下一格也判红。
  *            能力那一组**没有错误态**:分段是封闭集合,填不错。
  *   超量     能力恒五行(`CAPABILITY_KEYS` 是编译期常量),不随数据涨。
+ *            id 可以很长(openrouter 那种):读数态 `.ident` 是那一行唯一的弯腰件
+ *            (笔 `flex:none`),编辑态输入框是那一条唯一的弯腰件(两颗钮 `flex:none`)。
+ *   头部三态 (09-11)读数 / 在改 id / 改被拒。**目录里有的行没有第三态也没有笔** ——
+ *            它的 id 是目录说的,改了就对不上目录,所以 `onRename` 不传 =
+ *            这一格**结构上不存在**,不是画一颗禁着的笔。被拒那一态:输入框边线
+ *            转 danger + 错误句折到第二行(`ui/Field` 的 error 槽,`aria-invalid`
+ *            与 `aria-describedby` 一并拿到),草稿**一个字不清**(让人看得见自己
+ *            刚打的是什么,与 `AddModelRow` 同一手)。
  *   在写     这一行的三颗钮与浮层里的七件控件一起禁;别的行一个都不许动。
+ *            头部同此:读数态笔禁,编辑态输入框与两颗钮一起禁(主钮换
+ *            `common.saving` + 一枚 Spinner —— `ui/InlineEditStrip` 的 busy 档)。
  *
  * ③ UI 交互状态
  *   数字框 rest / hover / focus / invalid / disabled;**失焦与 ↵ 才提交**
@@ -82,6 +101,15 @@ import s from './ModelOverridePopover.module.css'
  *          五只各自一份值,`aria-label` 是自己那一项的能力名。
  *   能力名 / 目录小字 纯读数,不可交互(它们是事实不是控件)。
  *   恢复钮 rest / hover / disabled(没覆盖时)。
+ *   笔     rest / hover / active / focus / disabled(在写);提示走 `ui/IconButton`
+ *          自带的 `ui/Tooltip`(禁 native title=),名字 = aria-label = 提示。
+ *   id 输入条 形归 `ui/InlineEditStrip`、手势归 `ui/inline-edit`(↵ 落定 /
+ *          Esc 收回 / 一进来选中全文),**这块面一行 keydown 监听都不写**。
+ *          `cancelOnBlur` 关着:并肩站着两颗真钮,而 `blur` 在 `click` 之前到 ——
+ *          失焦即取消会把那两颗钮变成永远点不到的(判据全文在 `ui/inline-edit`)。
+ *          **Esc 在这里退的是编辑,不是浮层**:`ui/inline-edit` 向响应链登记的
+ *          那个瞬态口在活动路径**之前**被问到,浮层自己那句 `onEscape`
+ *          (`ui/Popover` 声明的)因此轮不到 —— 不在编辑时它照旧关浮层。
  */
 
 /**
@@ -209,6 +237,7 @@ export function ModelOverridePopover({
   pending,
   onClose,
   onWrite,
+  onRename,
 }: {
   row: CatalogRow
   /** 这一坑是谁。浮层不显示它,但落点得说得出自己属于哪一坑(门与单测按它取)。 */
@@ -219,6 +248,13 @@ export function ModelOverridePopover({
   pending: boolean
   onClose: () => void
   onWrite: (patch: ModelOverridePatch) => void
+  /**
+   * 改这一型的 id(09-11)。**缺席 = 这一行的 id 不给改**,头部连笔都不画 ——
+   * 目录里有的行正是这一档:它的 id 是目录说的,改了就对不上目录。
+   * 同步返回一句错误原文 = 没改成(口径与 `addManualModel` 同);
+   * 答 undefined = 收工(包括「新旧同名」那一种,它是取消不是错误)。
+   */
+  onRename?: (newId: string) => string | undefined
 }) {
   const t = useT()
 
@@ -236,6 +272,14 @@ export function ModelOverridePopover({
     row.override.maxOutput != null ? draftOf(row.override.maxOutput) : '',
   )
   const [outInvalid, setOutInvalid] = useState(false)
+
+  /*
+   * 头部那一行此刻在改 id 吗(09-11)。`null` = 读数态;一个字符串 = 正在改,
+   * 里面装的就是草稿。**两格分开**(草稿 + 一句错误)的理由与上面两个数字框
+   * 同一条:错误是对**上一次提交**说的,打字要把它就地抹掉。
+   */
+  const [idDraft, setIdDraft] = useState<string | null>(null)
+  const [idError, setIdError] = useState<string | undefined>(undefined)
 
   const hasOverride =
     row.override.contextLength != null ||
@@ -299,6 +343,24 @@ export function ModelOverridePopover({
    * 改一项能力。**只写这一键**(`caps` 里就一格)—— 五行是五张各自的嘴,
    * 点开图像输入不该顺手把工具调用也答一遍。`inherit` = 删键,不是第三种值。
    */
+  /**
+   * 落定一次改 id。三条出口,与两个数字框同一种分法:
+   *  · 被拒(空 / 重名)→ **留在编辑态、草稿一个字不清**,红字就地说原因;
+   *  · 收工 → 退出编辑态。「新旧同名」走的正是这一支(store 答 undefined
+   *    且一发都不发)—— 那是取消,不是错误。
+   *
+   * 递出去的是 **trim 过的**那个 id:草稿里的空格是草稿的事,要改成的 id
+   * 是那个看得见的字。目录层据它把浮层开到新 id 上(`setOpenOverride`),
+   * 所以这里递一个带空格的字符串会让浮层跟丢 —— 一处 trim,两边同一个字。
+   */
+  function commitRename() {
+    if (!onRename || idDraft === null) return
+    const problem = onRename(idDraft.trim())
+    setIdError(problem)
+    if (problem) return
+    setIdDraft(null)
+  }
+
   function pickCap(key: CapabilityKey, value: CapChoice) {
     if (value === capChoiceOf(row.override.caps[key])) return
     onWrite({ caps: { [key]: value === 'inherit' ? null : value === 'on' } })
@@ -318,9 +380,77 @@ export function ModelOverridePopover({
       <div className={s.body} data-provider={providerId} data-model={row.id}>
         <div className={s.head}>
           <span className={s.name}>{row.name}</span>
-          <span className={s.ident}>
-            {row.manual ? `${row.id} · ${t('providers.manualModel')}` : row.id}
-          </span>
+          {idDraft !== null ? (
+            /*
+              改 id 那一条**顶替 id 那一行**(不是挤在它旁边):这块浮层内容宽只有
+              `--pv-override-w`,一行里塞不下「id · 手填 + 输入框 + 两颗钮」。
+              错误句经 `ui/Field` 的 error 槽折到第二行占满宽 —— 横排档唯一的
+              错误落点(与 `AddModelRow` 同一手),读屏拿得到 `aria-invalid`
+              与 `aria-describedby`。
+            */
+            <Field
+              layout="inline"
+              size="sm"
+              labelHidden
+              label={t('providers.renameModel')}
+              error={idError}
+              className={s.renameField}
+            >
+              <InlineEditStrip
+                className={s.renameStrip}
+                saveLabel={t('providers.renameModelSave')}
+                savingLabel={t('common.saving')}
+                cancelLabel={t('common.cancel')}
+                busy={pending}
+                canSave={idDraft.trim().length > 0}
+                onCommit={commitRename}
+                onCancel={() => {
+                  setIdDraft(null)
+                  setIdError(undefined)
+                }}
+              >
+                <RenameInput
+                  draft={idDraft}
+                  invalid={Boolean(idError)}
+                  disabled={pending}
+                  onDraft={(value) => {
+                    setIdDraft(value)
+                    // 一边打字一边把上一次那句错误抹掉:它是对上一次提交说的。
+                    setIdError(undefined)
+                  }}
+                  onCommit={commitRename}
+                  onCancel={() => {
+                    setIdDraft(null)
+                    setIdError(undefined)
+                  }}
+                />
+              </InlineEditStrip>
+            </Field>
+          ) : (
+            <span className={s.identLine}>
+              <span className={s.ident}>
+                {row.manual ? `${row.id} · ${t('providers.manualModel')}` : row.id}
+              </span>
+              {/*
+                笔只在**能改**的时候在场(= 手填行,由 `onRename` 在不在场说了算)。
+                目录里有的行不画一颗禁着的笔 —— 那是在说「这里有个开关,只是此刻
+                不给你按」,而事实是它根本没有这一格。
+              */}
+              {onRename && (
+                <IconButton
+                  size="xs"
+                  icon={Pencil}
+                  label={t('providers.renameModel')}
+                  disabled={pending}
+                  onClick={() => {
+                    setIdDraft(row.id)
+                    setIdError(undefined)
+                  }}
+                  testId={`model-override-rename-${row.id}`}
+                />
+              )}
+            </span>
+          )}
         </div>
 
         <Field
@@ -466,6 +596,53 @@ function QuantityInput({
         event.preventDefault()
         onCommit()
       }}
+    />
+  )
+}
+
+/**
+ * 改 id 那一格的输入框。**单独一件仍然是因为 hook 只能在组件里调**
+ * (`useFieldControlProps()` 要在 `<Field>` 的 context 之内 —— 与 `QuantityInput`、
+ * `AddModelRow.ManualIdInput`、`CredentialPool.RowInput` 同一条理由)。
+ *
+ * 手势整只交给 `ui/inline-edit`:↵ 落定 / Esc 收回 / 一进来 focus + 全选
+ * (`controlId` 一到手跑一次,id 由 `ui/Field` 的 `useId` 给、跨渲染稳定,
+ * 所以重渲不会把光标重新拽回开头)。**`cancelOnBlur` 关着**:这一形并肩站着
+ * 「保存」与「取消」两颗真钮,而 `blur` 在 `click` 之前到。
+ *
+ * id 是**标识不是句子**,所以框里的字走 mono —— 与它顶替掉的那一行读数
+ * (`.ident`)同一种笔迹,改到一半不会看着像换了一个东西。
+ */
+function RenameInput({
+  draft,
+  invalid,
+  disabled,
+  onDraft,
+  onCommit,
+  onCancel,
+}: {
+  draft: string
+  invalid: boolean
+  disabled: boolean
+  onDraft: (value: string) => void
+  onCommit: () => void
+  onCancel: () => void
+}) {
+  const t = useT()
+  const field = useFieldControlProps()
+  const edit = useInlineEdit({ controlId: field.id, onCommit, onCancel })
+  return (
+    <Input
+      {...field}
+      {...edit}
+      size="sm"
+      className={s.renameInput}
+      value={draft}
+      onValueChange={onDraft}
+      disabled={disabled}
+      invalid={invalid}
+      placeholder={t('providers.addModelPlaceholder')}
+      data-testid="model-override-rename-input"
     />
   )
 }

@@ -77,6 +77,7 @@ export function ProviderSettingsPanel() {
   const setCurrentModel = useProviderSettings((st) => st.setCurrentModel)
   const addManualModel = useProviderSettings((st) => st.addManualModel)
   const removeManualModel = useProviderSettings((st) => st.removeManualModel)
+  const renameManualModel = useProviderSettings((st) => st.renameManualModel)
   const setModelOverride = useProviderSettings((st) => st.setModelOverride)
   const addCredential = useProviderSettings((st) => st.addCredential)
   const replaceCredential = useProviderSettings((st) => st.replaceCredential)
@@ -379,6 +380,9 @@ export function ProviderSettingsPanel() {
               onSetCurrent={(modelId) => void setCurrentModel(mode.providerId, modelId)}
               onAddManual={(modelId) => addManualModel(mode.providerId, modelId)}
               onRemoveManual={(modelId) => void removeManualModel(mode.providerId, modelId)}
+              onRenameManual={(oldId, newId) =>
+                renameManualModel(mode.providerId, oldId, newId)
+              }
               onWriteOverride={(modelId, patch) =>
                 void setModelOverride(mode.providerId, modelId, patch)
               }

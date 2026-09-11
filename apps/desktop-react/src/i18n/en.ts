@@ -1143,6 +1143,12 @@ export const en: Record<MessageKey, string> = {
   'providers.addModelDuplicate': '{model} is already in this mode’s list',
   'providers.manualModel': 'By hand',
   'providers.removeModel': 'Remove {model}',
+  /* Renaming a hand-added model (09-11). The pencil lives in the override
+   * popover's head, next to the id; catalog rows have no pencil — their id is
+   * the catalog's word. The duplicate sentence reuses addModelDuplicate above. */
+  'providers.renameModel': 'Change model ID',
+  'providers.renameModelSave': 'Save',
+  'providers.renameModelEmpty': 'A model ID cannot be empty',
   'providers.groupPicked': 'Picked · {count} (always on top)',
   'providers.groupOther': 'Other',
   'providers.groupCount': '{count} models',

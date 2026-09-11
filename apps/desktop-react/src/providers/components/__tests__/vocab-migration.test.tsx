@@ -205,6 +205,7 @@ function renderCatalog(rows: readonly CatalogRow[], query = '') {
       onSetCurrent={vi.fn()}
       onAddManual={vi.fn()}
       onRemoveManual={vi.fn()}
+      onRenameManual={vi.fn()}
       onWriteOverride={vi.fn()}
     />,
   )
