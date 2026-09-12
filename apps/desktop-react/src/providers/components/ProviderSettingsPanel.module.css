@@ -10,12 +10,26 @@
 
 /* 两栏:左 rail 定宽,右详情吃剩下的。
  * 三种形态(舞台 / 浮窗 / 架子)共用这一份,所以这里不写任何与形态有关的尺寸 ——
- * 它只声明「我横着分两栏」,多宽由摆它的人说。 */
+ * 它只声明「我横着分两栏」,多宽由摆它的人说。
+ *
+ * ── 09-11:它同时是这块面的**尺寸容器**(报障「模型配置页面没有响应式布局」)──
+ * `container-name: providers-panel`。左栏读它决定自己是 268 还是一条 44 的图标条
+ * (判据与账在 tokens.css 的 `--pv-panel-rail-collapse`)。容器必须是**面板自己**
+ * 而不是外面的宿主:同一块面会被摆进舞台 / 浮窗 / 钉边架子三种形态,宿主那一层
+ * 的宽度里还掺着檐与边,拿它当基准量出来的不是这两栏真正分到的宽。
+ *
+ * `min-width` 从 0 改成 `--pv-panel-min`(502)是挤压四律第四条要的那句
+ * **自述**:「我能活到多窄」。再窄由宿主兜 —— 叶(`workbench/PaneLeaf.module.css`
+ * 的 `.leaf`)与浮窗(`components/FloatWindow.module.css`)都是 `overflow: hidden`,
+ * 所以宿主比它还窄时是**齐边剪**,不是把两栏揉成一团。
+ */
 .panel {
   height: 100%;
   display: flex;
-  min-width: 0;
+  min-width: var(--pv-panel-min);
   background: var(--surface-0);
+  container-type: inline-size;
+  container-name: providers-panel;
 }
 
 /* 整面的非常态:还在读 / 读不到。都居中一段灰字 + 一颗重试钮

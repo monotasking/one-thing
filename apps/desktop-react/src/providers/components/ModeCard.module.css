@@ -13,6 +13,9 @@
   font-size: var(--fs-micro);
   color: var(--text-2);
   user-select: text;
+  /* 这里装的是地址与 id(`https://…/v1` 这一族),没有断行机会的长串在窄列里
+   * 会整条溢出。正文区允许换行,给它一条最后的断法。 */
+  overflow-wrap: anywhere;
 }
 
 /* 一行档位:标签定宽,选择器吃剩下的 —— 两行档位的选择器才从同一条竖线起笔。 */

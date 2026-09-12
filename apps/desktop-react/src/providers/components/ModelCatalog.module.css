@@ -22,10 +22,21 @@
  * 盒子上(= 永远不动),而不是粘在真正在滚的 `.body` 上。`clip` 不造滚动容器,
  * 粘性照旧解析到 `.body`。这是一条容易踩的坑,所以写在这里而不是省略。
  */
+/*
+ * ── 09-11:地板(`min-width`)与它买下来的那条横滚 ─────────────────────────
+ * 五档退场走到头就是三列(勾选 / 模型 / 动作组)= `--pv-catalog-floor`(400)。
+ * 再窄**不再降列**,而是让这张表保持 400 顶着详情列 —— 那一层
+ * (`ProviderDetail` 的 `.body`)竖轴是 `auto`,按 CSS 规则横轴跟着算成 `auto`,
+ * 于是多出来一条横滚条。这是刻意的:`overflow: clip` 会把动作列那三颗钮**吃掉**,
+ * 而 09-11 报障里最硬的一条正是「切掉的滚不到 = 功能不可达」。
+ * 收起态下这条横滚永远出不来(面板地板 502 恰好给到目录 400);
+ * 只有用户在窄面板里把左栏临时撑回 268 的那一刻才会见到它。
+ */
 .catalog {
   flex: none;
   display: flex;
   flex-direction: column;
+  min-width: var(--pv-catalog-floor);
   border: var(--bw-1) solid var(--line-1);
   border-radius: var(--r-2);
   background: var(--surface-2);
@@ -50,11 +61,21 @@
   flex-direction: column;
 }
 
+/*
+ * 截断,不换行(挤压律二:结构行里的文本永不换行)。09-11 报障的一处:面板 640
+ * 一带目录标题折了行,折下来的第二行压在 Filter 框上 —— 病灶与 08-30 那条组头
+ * 一模一样:这条规则从前**只写了字号与字重**,于是吃着 flex 项的默认
+ * `white-space: normal`,而 `.headText` 早就 `min-width: 0` 可以缩到 0。
+ * 一行的高度是版式定的(头是定高的结构行),文字一换行就落在别人身上。
+ */
 .title {
   margin: 0;
   font-size: var(--fs-label);
   font-weight: 600;
   color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hint {
@@ -492,14 +513,26 @@
  *    「它在不在用」,都是当下就要看的。
  *  · 再走**最大输出** —— 两个容量数里它是次要的那个:上下文决定「喂不喂得进去」,
  *    最大输出只决定「一次能吐多长」,而后者绝大多数模型是同一档。
+ *  · 再走**能力** —— 图标条到 64px 就不再弯(轨归零是 08-31 那条重影报障),
+ *    再窄整格退场;能力是「它会不会这件事」,在三列的地板上,先要看得见的是
+ *    「它叫什么」与「它在不在用」。
+ *  · 最后走**上下文** —— 剩下的三列(勾选 / 模型 / 动作组)是地板,不再降了。
  * 每一步都是**离散**的取舍,比让每一列都缩成半个字诚实。
  *
- * 两个阈值在查询里只能写字面量(`@container` 条件里不能写 var()),
- * `--pv-catalog-narrow` / `--pv-catalog-tight` 是同一事实的名字,
- * **改的时候两处一起改**,而且要照 tokens.css 里那三行把入场宽重算一遍 ——
- * 08-31 那条重叠报障的一半原因就是旧阈值(640)定在了七列入场宽(728)之下。
+ * 四个阈值在查询里只能写字面量(`@container` 条件里不能写 var()),
+ * `--pv-catalog-narrow / -tight / -bare / -bones` 是同一事实的名字,
+ * **改的时候两处一起改**,而且要照 tokens.css 里那五行把入场宽重算一遍 ——
+ * 08-31 那条重叠报障的一半原因就是旧阈值(640)定在了七列入场宽(728)之下;
+ * 09-11 那条(动作列先缺角再整列消失)的一半原因是**算式里漏了行内衬那 14px**,
+ * 另一半是 554 之下**根本没有下一档**,于是 894 以下的面板一路切到底。
+ *
+ * ── 三格与列一起退场的把手 ────────────────────────────────────────────────
+ * `.price/.colPrice`、`.out/.colOut` 这两对是既有写法;能力与上下文照抄:
+ * 能力那一格行上叫 `.caps`(既有),列头补一个 `.colCaps`;上下文那一格行上叫
+ * `.num`(既有,全表只有它用),列头补一个 `.colCtx`。**行那一侧一个字都没动** ——
+ * 类名本来就在,缺的只是列头那一半。
  */
-@container catalog (max-width: 774px) {
+@container catalog (max-width: 788px) {
   .grid {
     grid-template-columns:
       var(--pv-col-check) minmax(var(--pv-col-name-min), 1fr)
@@ -513,7 +546,7 @@
   }
 }
 
-@container catalog (max-width: 650px) {
+@container catalog (max-width: 664px) {
   .grid {
     grid-template-columns:
       var(--pv-col-check) minmax(var(--pv-col-name-min), 1fr)
@@ -524,5 +557,58 @@
   .out,
   .colOut {
     display: none;
+  }
+}
+
+@container catalog (max-width: 568px) {
+  .grid {
+    grid-template-columns:
+      var(--pv-col-check) minmax(var(--pv-col-name-min), 1fr)
+      var(--pv-col-ctx) var(--pv-col-current);
+  }
+
+  .caps,
+  .colCaps {
+    display: none;
+  }
+}
+
+@container catalog (max-width: 496px) {
+  .grid {
+    grid-template-columns:
+      var(--pv-col-check) minmax(var(--pv-col-name-min), 1fr) var(--pv-col-current);
+  }
+
+  .num,
+  .colCtx {
+    display: none;
+  }
+}
+
+/*
+ * ── 目录头两行(阈值 `--pv-catalog-head-stack`)─────────────────────────────
+ * 一行排得下的下限是 443(算式在 tokens.css 那一格);520 是留的一档余量。
+ * 之下改两行:标题独占上行,Filter + 刷新 + 手填 ID 落第二行,Filter 吃剩余空间。
+ * **降的是行数,不是件** —— 三颗入口一个都不许消失:09-11 报障里
+ * 「刷新目录」「＋ 手填 ID」在面板 ≈755 以下被切没,那是功能不可达。
+ */
+@container catalog (max-width: 520px) {
+  .head {
+    flex-wrap: wrap;
+  }
+
+  /* 独占一行:`flex-basis: 100%` 把后面三件全挤到第二行去。
+   * `min-width: 0` 与常态那条同一句话 —— 覆盖 `flex` 简写会把常态那一格
+   * 一并盖掉的错觉是律一最常见的踩法,所以这里写全(标题自己带省略号)。 */
+  .headText {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  /* 第二行里它是**唯一的弯腰件**(律一):定宽 200 改成吃剩余,并且能缩到 0。 */
+  .search {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
   }
 }

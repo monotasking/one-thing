@@ -36,6 +36,8 @@
 .factValue {
   font-size: var(--fs-meta);
   color: var(--text-1);
+  /* 这一格是真读数(计划名 / 长数字),窄列里没有断行机会就会顶出 `.fact`。 */
+  overflow-wrap: anywhere;
 }
 
 /* 一根用量条:名 / 轨 / 百分比 / 重置时刻。名与右侧读数定宽,

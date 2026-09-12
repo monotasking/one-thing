@@ -20,6 +20,9 @@
   margin: 0;
   font-size: var(--fs-micro);
   color: var(--text-2);
+  /* 这几句里嵌着真数据(验证地址、后端原话、账号名),没有断行机会的长串在窄列里
+   * 会整条溢出 —— 正文区允许换行,但要给它一条**最后的断法**(与 `.error` 同款)。 */
+  overflow-wrap: anywhere;
 }
 
 /* 服务商原话。danger 只上**字** —— 状态色不铺面。 */
@@ -39,6 +42,8 @@
  */
 .deviceCode {
   margin: 0;
+  /* 一串没有分隔的大写字母 = 零断行机会。窄列里让它换行,别让它画到卡外面去。 */
+  overflow-wrap: anywhere;
   font-family: var(--font-mono);
   font-size: var(--fs-display);
   font-weight: 600;

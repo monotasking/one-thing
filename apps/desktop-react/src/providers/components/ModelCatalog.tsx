@@ -275,8 +275,10 @@ export function ModelCatalog({
       <div className={`${s.grid} ${s.columns}`}>
         <span />
         <span>{t('providers.colModel')}</span>
-        <span>{t('providers.colCaps')}</span>
-        <span>{t('providers.colCtx')}</span>
+        {/* 窄容器里这一格与行上的 `.caps` 一起退场 —— 类名是它俩的共同开关。 */}
+        <span className={s.colCaps}>{t('providers.colCaps')}</span>
+        {/* 同上,配的是行上那格 `.num`(全表只有上下文用它)。 */}
+        <span className={s.colCtx}>{t('providers.colCtx')}</span>
         {/* 窄容器里这一格与行上的最大输出一起退场 —— 类名是它俩的共同开关。 */}
         <span className={s.colOut}>{t('providers.colOut')}</span>
         {/* 窄容器里这一格与行上的价格一起退场 —— 类名是它俩的共同开关。 */}

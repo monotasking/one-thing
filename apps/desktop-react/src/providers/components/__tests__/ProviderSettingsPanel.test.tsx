@@ -288,7 +288,10 @@ describe('写与缺席态', () => {
     await screen.findByTestId('model-row-claude-sonnet-4')
 
     // ① 新建自定义家:钮活了。
-    const addCustom = screen.getByRole('button', { name: '＋ 自定义服务商' }) as HTMLButtonElement
+    // 按 testid 取件,不按名字:09-11 起名册有两种形(268 的名册 / 44 的图标条),
+    // 这一句在两种形里是同一句文案的两颗钮,真机上永不同屏(另一颗 display:none),
+    // 而 jsdom 没有 CSS,两颗都在树上。
+    const addCustom = screen.getByTestId('provider-add-custom') as HTMLButtonElement
     expect(addCustom.disabled).toBe(false)
     // ② 多钥与轮换:池子长出来了。
     expect(screen.getByRole('button', { name: '＋ 添加密钥' })).toBeTruthy()

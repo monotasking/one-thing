@@ -1,5 +1,16 @@
 /* 右面 = 头(图标 / 名 / 副语 / 启用开关)+ 模式分段器 + 模式内容区。
  * 内容区自己滚,头与分段器常驻 —— 换一坑时页面不跳。 */
+/*
+ * ── 09-11:它也是一个**尺寸容器**(`providers-detail`)──────────────────────
+ * 头那一行与凭证卡里的轮换行都要问「这一列现在多宽」,而**不能问面板** ——
+ * 面板的宽里还掺着左栏,而左栏会在 268 与 44 之间换形:同一个面板宽,详情列
+ * 可以相差 224px。拿面板当基准量出来的不是这一列真正分到的宽。
+ *
+ * 阈值 `--pv-detail-stack`(420)今天只有一条到得了的路:用户在窄面板里把左栏
+ * 从图标条临时撑回 268 的那一刻(详情列 = 面板 − 268,贴着面板地板 502 就是 234)。
+ * 收起态下这一列最窄是 502 − 44 = 458,够不着 —— 那正是「左栏收成图标条」
+ * 替这一列买下来的余量,账写在 tokens.css 的 `--pv-detail-stack` 上。
+ */
 .detail {
   flex: 1;
   min-width: 0;
@@ -7,6 +18,8 @@
   flex-direction: column;
   min-height: 0;
   background: var(--surface-0);
+  container-type: inline-size;
+  container-name: providers-detail;
 }
 
 .head {
@@ -45,18 +58,33 @@
   gap: var(--sp-1);
 }
 
+/*
+ * 截断,不换行(挤压律二)。09-11 报障的一处:面板 ≈545 以下这个名字画到了
+ * Enabled 开关身上 —— 这条规则从前只写了字号与字重,于是吃着 flex 项的默认
+ * `white-space: normal`,而 `.headText` 早就 `min-width: 0` 可以缩到 0。
+ * 截断配 Tooltip 全名(壳 CLAUDE.md「标题截断须配 Tooltip 全名」),挂在 .tsx 那侧。
+ */
 .name {
   margin: 0;
   font-size: var(--fs-headline);
   font-weight: 600;
   color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
+/*
+ * 副语是**正文**不是结构行(它的高度跟着内容走),所以它换行 —— 律二管的是
+ * 高度被版式定住的那一族。但它里面会出现长 id / URL 这类没有断行机会的串,
+ * 那种串在窄列里会整条溢出,所以给一条**最后的断法**。
+ */
 .desc {
   margin: 0;
   font-size: var(--fs-meta);
   color: var(--text-2);
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .enable {
@@ -85,6 +113,24 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
+}
+
+/*
+ * ── 窄详情列:头改竖排(阈值 `--pv-detail-stack`)──────────────────────────
+ * 名 + 副语占上行,启用开关整条落到下一行右对齐。**开关不许被挤成半个** ——
+ * 它是这一面上最要紧的那一格(「这一家在不在用」),宁可多占一行。
+ * 降的是行数不是件:图标、名、副语、编辑钮、开关,一件都没有退场。
+ */
+@container providers-detail (max-width: 420px) {
+  .head {
+    flex-wrap: wrap;
+  }
+
+  .enable {
+    flex: 1 0 100%;
+    min-width: 0;
+    justify-content: flex-end;
+  }
 }
 
 /*

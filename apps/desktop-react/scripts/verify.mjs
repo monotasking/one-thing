@@ -223,6 +223,14 @@ run('gate:stream-structure', 'npm', ['run', '--silent', 'gate:stream-structure']
  */
 run('gate:squeeze', 'npm', ['run', '--silent', 'gate:squeeze'])
 /*
+ * gate:providers-squeeze 紧跟着它(09-11):同一条律四,另一块面。
+ * `gate:squeeze` 量的是会话总览钉在右架子上的那一形,量不到模型服务面 ——
+ * 那块面有自己的两栏骨架、自己的七列表和自己的四级列退场,一把尺够不着两块地。
+ * 判据同样是排版(六档各自的列数、左栏宽、零溢出、动作钮在不在),不是毫秒读数,
+ * 所以它与 squeeze / motion 同一个价位进得来。
+ */
+run('gate:providers-squeeze', 'npm', ['run', '--silent', 'gate:providers-squeeze'])
+/*
  * gate:motion 与 gate:squeeze 同一个理由进得来:它断言的是**计算样式**
  * (切到「无」档之后 transition/animation 的时长是不是 0),不是毫秒读数 ——
  * 同一份 CSS 同一个档跑一百遍是同一个答案,没有余量一说。

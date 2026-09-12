@@ -81,8 +81,8 @@ describe('七列表的轨道:单产地 + 每一档都排得下', () => {
    * 声明轨道(常态一条 + 两条 @container 覆盖),`.columns` / `.row` 一条都不许自己写。
    * 两处各写一遍就是两处会漂开 —— 那正是 ④ 那条报障最容易演变成的下一个形态。
    */
-  it('轨道声明只有三处,全部长在 .grid 上', () => {
-    expect(templates()).toHaveLength(3)
+  it('轨道声明只有五处,全部长在 .grid 上', () => {
+    expect(templates()).toHaveLength(5)
     for (const [i] of templates().entries()) {
       // 每条声明往前找最近的一个选择器,必须是 .grid。
       const at = [...css.matchAll(/grid-template-columns:/g)][i].index ?? 0
@@ -93,8 +93,8 @@ describe('七列表的轨道:单产地 + 每一档都排得下', () => {
     }
   })
 
-  it('三档轨道数是 7 / 6 / 5 —— 一次让一整列,不是每列缩一点', () => {
-    expect(templates().map(trackCount)).toEqual([7, 6, 5])
+  it('五档轨道数是 7 / 6 / 5 / 4 / 3 —— 一次让一整列,不是每列缩一点', () => {
+    expect(templates().map(trackCount)).toEqual([7, 6, 5, 4, 3])
   })
 
   /*
@@ -103,9 +103,14 @@ describe('七列表的轨道:单产地 + 每一档都排得下', () => {
    * 而列头那个 `<span>` 没有裁切、直接画到邻轨上 —— 一个 bug,两种表现。
    */
   it('能力轨有下限,样式表里再没有一条 minmax(0, …)', () => {
+    // 后两档里能力整列退场了 —— 那时它连一条轨都没有,自然也就没有「轨归零」
+    // 这回事(08-31 那条重影报障的病灶是**轨还在、却被榨到 0**)。
+    // 所以判据是「只要这一列还在,就一定带着下限」。
     for (const template of templates()) {
+      if (!template.includes('--pv-col-caps')) continue
       expect(template).toContain('minmax(var(--pv-col-caps-min), var(--pv-col-caps))')
     }
+    expect(templates().filter((t) => t.includes('--pv-col-caps'))).toHaveLength(3)
     expect(css).not.toMatch(/minmax\(\s*0\s*,/)
   })
 
@@ -119,31 +124,81 @@ describe('七列表的轨道:单产地 + 每一档都排得下', () => {
   })
 
   /*
-   * 两级阈值不是估的,是**算出来的**:一档的入场宽 = 该档所有轨的最小宽 + 轨间距。
+   * 四级阈值 + 一格地板不是估的,是**算出来的**:
+   *   一档的入场宽 = 该档所有轨的最小宽 + 轨间距 + **行内衬**。
    * ④ 的另一半病因就是旧阈值(640)定在了七列入场宽(728)之下 —— 于是
    * 640–728 这一整段里表还是七列、却排不下,唯一能让的能力轨被榨到 0。
-   * 这条断言把那次算术钉进门里:改任何一条列宽 token 而忘了重算阈值,当场红。
+   *
+   * ── 09-11 修账:算式里一直漏着「行内衬」那一项 ─────────────────────────
+   * 旧算式只算轨与缝,于是每一档都比真正排得下的宽度**低 14px**(真机实测七列
+   * 789 才不截、算出来的却是 774)—— 同一个病换个数复发。补上的这一项是
+   * `.grid` 的 padding-left(--sp-3)+ `.catalog` 的两道边框(2×--bw-1):
+   * `scrollWidth` 在 LTR 下算 padding-left 不算 padding-right,而 `@container`
+   * 量的是内容盒(不含边框),两件事合起来正好是这 14。
+   *
+   * 这条断言把那次算术钉进门里:改任何一条列宽 token(或那 14 里的任何一项)
+   * 而忘了重算阈值,当场红。
    */
-  it('两级阈值 = 下一档的入场宽(照列宽 token 现算)', () => {
+  it('四级阈值 + 地板 = 下一档的入场宽(照列宽 token 现算,含行内衬)', () => {
     const gap = px('--sp-2')
-    const wide =
-      px('--pv-col-check') +
-      px('--pv-col-name-min') +
-      px('--pv-col-caps-min') +
-      px('--pv-col-ctx') +
-      px('--pv-col-out') +
-      px('--pv-col-price') +
-      px('--pv-col-current') +
-      6 * gap
-    const narrow = wide - px('--pv-col-price') - gap
-    expect(px('--pv-catalog-narrow')).toBe(wide)
-    expect(px('--pv-catalog-tight')).toBe(narrow)
+    /** 行内衬:`.grid` 的左内衬 + `.catalog` 的两道边框。 */
+    const inset = px('--sp-3') + 2 * px('--bw-1')
+    expect(px('--pv-catalog-inset')).toBe(inset)
 
-    // @container 条件里写不了 var(),所以那两个字面量与 token 是**同一事实的两处**。
+    /** 一档的入场宽(目录 border-box)= Σ轨 + (n−1)×gap + 行内衬。 */
+    const entry = (...tracks: number[]) =>
+      tracks.reduce((a, b) => a + b, 0) + (tracks.length - 1) * gap + inset
+
+    const check = px('--pv-col-check')
+    const name = px('--pv-col-name-min')
+    const caps = px('--pv-col-caps-min')
+    const ctx = px('--pv-col-ctx')
+    const out = px('--pv-col-out')
+    const price = px('--pv-col-price')
+    const current = px('--pv-col-current')
+
+    const seven = entry(check, name, caps, ctx, out, price, current)
+    const six = entry(check, name, caps, ctx, out, current)
+    const five = entry(check, name, caps, ctx, current)
+    const four = entry(check, name, ctx, current)
+    const three = entry(check, name, current)
+
+    expect(px('--pv-catalog-narrow')).toBe(seven)
+    expect(px('--pv-catalog-tight')).toBe(six)
+    expect(px('--pv-catalog-bare')).toBe(five)
+    expect(px('--pv-catalog-bones')).toBe(four)
+    // 地板不是阈值:它是三列这一档自己的入场宽,`.catalog` 用它当 min-width。
+    expect(px('--pv-catalog-floor')).toBe(three)
+    expect(/\.catalog\s*\{[^}]*min-width:\s*var\(--pv-catalog-floor\)/.test(css)).toBe(true)
+
+    // @container 条件里写不了 var(),所以那些字面量与 token 是**同一事实的两处**。
     const queries = [...css.matchAll(/@container catalog \(max-width:\s*(\d+)px\)/g)].map((m) =>
       Number(m[1]),
     )
-    expect(queries).toEqual([wide, narrow])
+    expect(queries).toEqual([seven, six, five, four, px('--pv-catalog-head-stack')])
+  })
+
+  /*
+   * 目录头在窄容器里改两行,而**三颗入口一个都不许消失** —— 09-11 报障里
+   * 「刷新目录」「＋ 手填 ID」在面板 ≈755 以下被切没,那是功能不可达。
+   * 阈值必须在「一行排得下的下限」之上,否则那一档根本来不及救。
+   */
+  it('目录头两行的阈值高于一行排得下的下限,且降的是行数不是件', () => {
+    // 一行的下限 = 检索框 + 刷新与手填两颗钮 + 3 条缝 + 头的左右内衬 + 两道边框。
+    // 两颗钮那 193 是真机量的(`providers-squeeze-report.json` 640 档:头
+    // scrollWidth 429 − padding-left 12 − 检索 200 − 3×8 = 193)。
+    const oneRowFloor = px('--pv-search-w') + 193 + 3 * px('--sp-2') + 2 * px('--sp-3') + 2 * px('--bw-1')
+    expect(px('--pv-catalog-head-stack')).toBeGreaterThan(oneRowFloor)
+
+    const at = css.indexOf(`@container catalog (max-width: ${px('--pv-catalog-head-stack')}px)`)
+    expect(at, '目录头那一档不在样式表里').toBeGreaterThanOrEqual(0)
+    const block = css.slice(at, css.indexOf('\n}\n', at))
+    expect(block).toMatch(/\.head\s*\{[^}]*flex-wrap:\s*wrap/)
+    // 标题独占一行(basis 100%),检索框成为第二行唯一的弯腰件。
+    expect(block).toMatch(/\.headText\s*\{[^}]*flex:\s*1 1 100%/)
+    expect(block).toMatch(/\.search\s*\{[^}]*min-width:\s*0/)
+    // 一件都没退场:这一档里不许出现 display: none。
+    expect(block).not.toMatch(/display:\s*none/)
   })
 })
 

@@ -966,6 +966,10 @@ export const en: Record<MessageKey, string> = {
   'providers.railTitle': 'Model services',
   'providers.railCount': '{count} connected',
   'providers.searchPlaceholder': 'Search providers',
+  /* The rail collapses to an icon strip in a narrow panel; these name that button
+   * (it is both the aria-label and the tooltip). */
+  'providers.railExpand': 'Expand provider list',
+  'providers.railCollapse': 'Collapse provider list',
   'providers.groupCloud': 'Cloud',
   'providers.groupLocal': 'Local',
   'providers.groupCustom': 'Custom',

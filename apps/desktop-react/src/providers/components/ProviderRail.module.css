@@ -25,6 +25,29 @@
   gap: var(--sp-2);
 }
 
+/* 搜索框与展开/收起钮同一行。宽档里钮不在场,这一行**逐像素等于从前那只光杆
+ * 输入框**(`display:flex` 的单孩子占满,gap 不生效)—— 这是一次结构补位,
+ * 不是改版。 */
+.searchRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.searchBox {
+  flex: 1;
+  min-width: 0;
+}
+
+/*
+ * 展开 / 收起那颗钮:**只在收起档在场**(宽档里左栏从来就是 268,没有可展开的东西,
+ * 一颗永远点不出变化的钮就是噪音)。它是 `ui/IconButton`,提示与 aria-label
+ * 由库件从 `label` 一处给出 —— 禁 native title= 那条全仓禁令。
+ */
+.railToggle {
+  display: none;
+}
+
 .title {
   margin: 0;
   flex: 1;
@@ -94,6 +117,14 @@
   background: var(--st-sel);
 }
 
+/*
+ * `pointer-events: none` 是**给收起档留的开关**,不是装饰:这枚方图标在收起档里
+ * 包着一层 `ui/Tooltip`(那时名字与副行都不在屏幕上,提示是读出这一家叫什么的
+ * 唯一一条路)。宽档里名字就写在旁边,提示重复念一遍是噪音 —— 而「此刻是宽档
+ * 还是收起档」这件事只有 CSS 知道(`@container`),JS 这边没有第二个产地可问。
+ * 于是关法落在指针上:宽档里图标不吃指针 → 悬停事件直接落到行上 → Tooltip 的
+ * mouseenter 永远不触发;收起档里把它打开(见文件末尾那段 @container)。
+ */
 .icon {
   flex: none;
   width: var(--pv-rail-icon);
@@ -107,6 +138,7 @@
   font-family: var(--font-mono);
   font-size: var(--fs-micro);
   color: var(--text-2);
+  pointer-events: none;
 }
 
 /* 自定义家的图标是虚线边 —— 「这是你自己建的」在扫列表时一眼看得出。 */
@@ -171,4 +203,117 @@
   font-size: var(--fs-micro);
   color: var(--text-2);
   line-height: 1.5;
+}
+
+/* 宽档那颗带字的钮:竖排的脚里它不跟着拉伸。收起档里它让位给下面那颗图标钮 ——
+ * 同一句文案、同一件事,只是 44px 的条子装不下字。 */
+.addCustomText {
+  flex: none;
+}
+
+/* 收起档里那颗「＋ 自定义服务商」图标钮。宽档里不在场(那边是一颗带字的 Button)。 */
+.addCustomIcon {
+  display: none;
+}
+
+/*
+ * ── 收起档:一条 44px 的图标条(09-11,报障「模型配置页面没有响应式布局」)────
+ *
+ * 判据是**面板的宽**,不是窗口、不是宿主:`@container providers-panel`,容器声明在
+ * ProviderSettingsPanel.module.css 的 `.panel` 上。阈值 899 与它的账在 tokens.css
+ * 的 `--pv-panel-rail-collapse`:左栏 268 + 详情内衬 58 + 五列入场 568 = 894,
+ * 进位 900 —— 也就是「让开左栏之后目录还保得住五列」的那条线。
+ * 改前左栏在六档面板宽下恒是 268,520 档里它一个人吃掉面板的 51.5%。
+ *
+ * `:not([data-expanded='true'])` 那一格是**用户临时展开**的出口(见 .tsx 里的
+ * `railExpanded`):展开时这一整段规则全部不命中,左栏当场回到与宽档逐字相同的形。
+ * 于是「收起」这件事在 CSS 里只有一个产地,JS 那边一个宽度都不必知道。
+ *
+ * 切档不换 DOM、不重挂、不 FLIP(挤压四律「切档必须是布局连续的」第 1 条):
+ * 同一棵树,只改宽与几个 display —— 选中态与滚动位天然保住,因为它们从来没被销毁过。
+ */
+@container providers-panel (max-width: 899px) {
+  .rail:not([data-expanded='true']) {
+    width: var(--pv-rail-collapsed-w);
+  }
+
+  /* 收起档:头只剩那一颗钮,居中站在 44 的竖中线上。 */
+  .rail:not([data-expanded='true']) .head {
+    align-items: center;
+    padding: var(--sp-2) 0;
+  }
+
+  .rail:not([data-expanded='true']) .headLine,
+  .rail:not([data-expanded='true']) .searchBox,
+  .rail:not([data-expanded='true']) .none,
+  .rail:not([data-expanded='true']) .text,
+  .rail:not([data-expanded='true']) .groupHead {
+    display: none;
+  }
+
+  /*
+   * 组头没了之后组与组之间要有个交代 —— 一条发丝线,不是一段空白:
+   * 三组(云服务 / 本地 / 自定义)在这条 44 的竖列里仍然是三段。
+   */
+  .rail:not([data-expanded='true']) .group {
+    margin-bottom: 0;
+  }
+
+  .rail:not([data-expanded='true']) .group + .group {
+    margin-top: var(--sp-2);
+    padding-top: var(--sp-2);
+    border-top: var(--bw-1) solid var(--line-1);
+  }
+
+  /*
+   * 一行 = 图标在上、状态点在下,两件都居中。
+   * **状态点没有被砍掉**:它是这张名册上唯一一格「这一家现在怎么样」的读数,
+   * 44px 横着摆不下就竖着摆 —— 律四说的「先截断,再有序降元素」,降的是字,
+   * 不是状态。名字与副行那串事实进 Tooltip(挂在图标上,见 `.icon` 那段)。
+   */
+  .rail:not([data-expanded='true']) .row {
+    position: relative;
+    flex-direction: column;
+    justify-content: center;
+    gap: var(--sp-1);
+    padding: var(--sp-2) 0;
+  }
+
+  .rail:not([data-expanded='true']) .icon {
+    pointer-events: auto;
+  }
+
+  /*
+   * 把提示的**触发面**从那枚 22px 的方图标摊到整行 —— 一条 44px 宽的条子上,
+   * 「悬停到图标正中那 22px 才出名字」不是一个人能瞄准的目标。
+   * 伪元素的命中**记在它的宿主元素身上**,所以铺一层透明的 `::after`
+   * 等于把 `.icon` 的 mouseenter 面积撑满全行,而 DOM、无障碍树与像素一个都没动
+   * (行本身照旧吃点击 —— 事件从这层冒上去)。
+   * 它相对 `.row` 定位:`.icon` 自己是 static,最近的定位祖先就是上面那一条。
+   */
+  .rail:not([data-expanded='true']) .icon::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+  }
+
+  /* 两颗钮:收起档里它们才在场。 */
+  .rail:not([data-expanded='true']) .railToggle,
+  .rail:not([data-expanded='true']) .addCustomIcon {
+    display: inline-flex;
+  }
+
+  .rail:not([data-expanded='true']) .addCustomText {
+    display: none;
+  }
+
+  .rail:not([data-expanded='true']) .foot {
+    align-items: center;
+    padding: var(--sp-2) 0;
+  }
+
+  /* 展开档(用户点了搜索钮):形与宽档逐字相同,只多一颗收回钮。 */
+  .rail[data-expanded='true'] .railToggle {
+    display: inline-flex;
+  }
 }

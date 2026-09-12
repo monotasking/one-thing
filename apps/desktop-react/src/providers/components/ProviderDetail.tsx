@@ -1,6 +1,7 @@
 import { Button } from '../../ui/Button'
 import { Segmented } from '../../ui/Segmented'
 import { Switch } from '../../ui/Switch'
+import { Tooltip } from '../../ui/Tooltip'
 import { useT } from '../../i18n'
 import { initialOf } from '../projection'
 import type { ModeTab, ProviderFamilyView, ProviderMode } from '../types'
@@ -70,7 +71,11 @@ export function ProviderDetail({
           {initialOf(family.label)}
         </span>
         <div className={s.headText}>
-          <h2 className={s.name}>{family.label}</h2>
+          {/* 名字单行截断(律二),所以配一句 Tooltip 把全名说出来 ——
+              壳 CLAUDE.md「标题截断须配 Tooltip 全名」,禁 native title=。 */}
+          <Tooltip content={family.label}>
+            <h2 className={s.name}>{family.label}</h2>
+          </Tooltip>
           {family.description && <p className={s.desc}>{family.description}</p>}
         </div>
         {family.custom && (

@@ -1157,6 +1157,9 @@ export const zh = {
   'providers.railTitle': '模型服务',
   'providers.railCount': '{count} 家已接入',
   'providers.searchPlaceholder': '搜索服务商',
+  /* 窄面板里左栏收成一条图标条,这两句是那颗钮的名字(它同时是 aria-label 与提示)。 */
+  'providers.railExpand': '展开服务商名册',
+  'providers.railCollapse': '收起服务商名册',
   'providers.groupCloud': '云服务',
   'providers.groupLocal': '本地',
   'providers.groupCustom': '自定义',

@@ -291,6 +291,7 @@ export function CredentialPool({
       <div className={s.rotation}>
         <span className={s.rotationLabel}>{t('providers.rotation')}</span>
         <Select
+          className={s.rotationSelect}
           size="sm"
           value={pool.policy}
           disabled={busy || pool.rows.length === 0}
