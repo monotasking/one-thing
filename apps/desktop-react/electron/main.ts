@@ -44,6 +44,7 @@ import {
 import { removeHttpDiscovery } from '@onething/backend/server/discovery.js'
 import { initializeUserSchedulerTasks } from '@onething/backend/wiring/scheduler/user-tasks.js'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { installAppMenu } from './app-menu-install.js'
 import { applyShellNetworkProxySettings, createShellHostPorts } from './host-ports.js'
 import { createDesktopShutdownRequest } from './shutdown.js'
 // T2:页面重载时把「消费者走了」当场说给终端服务听(判词在那只文件的文件头)。
@@ -541,6 +542,9 @@ ipcMain.handle('host:connection', async (): Promise<HostConnectionResult> => (
 void app.whenReady().then(async () => {
   // 离屏档连 Dock 图标都不冒(macOS 上 `app.dock` 才有;别的平台是 undefined)。
   if (GATE_HEADLESS) app.dock?.hide()
+  // K1:壳自己设菜单,把 Electron 默认那张没人审过的键表拿掉(判词在 `app-menu.ts`
+  // 的文件头)。**必须在第一扇窗之前**,否则窗已经在那张默认表底下站了一会儿。
+  installAppMenu()
   const existing = readDiscovery()
   if (existing && (await isAlive(existing))) {
     // 借用活的core只建立窗口连接;自有写者始终由Backend的store lease排他。

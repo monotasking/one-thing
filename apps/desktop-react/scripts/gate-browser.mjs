@@ -69,6 +69,12 @@
  *     **bypass 必须是 `<-loopback>` 而不是空串**:Chromium 默认**隐式放过**
  *     localhost / link-local,空 bypass 下这道门量到的会是「谁都没走代理」这件
  *     废话;`<-loopback>` 正是关掉那条隐式规则的那一行(net::ProxyBypassRules)。
+ *  ㉑ **应用菜单**(K1,`docs/keymap-responder-2026-09.md` §5 K1):壳自己设了菜单,
+ *     Electron 默认那张没人审过的键表(`reload` ⌘R / `close` ⌘W / zoom 三条 /
+ *     `toggleDevTools`)不在了,而 Edit 的角色都在(它们才是 mac 上 ⌘C/⌘V 的供给
+ *     方)。**读表不按键**:菜单加速键走 NSApp 的 `sendEvent`,门里那套 CDP 合成键
+ *     根本不经过它 —— 判词与那格只在 `ONETHING_GATE_` 前缀下生效的自述口
+ *     (`ONETHING_GATE_MENU_DUMP`)都写在 `electron/app-menu.ts` 上。自己一趟壳。
  *
  * ⑫⑬⑭ 跑在 ⑪ **之前**,而那是有意的:三件都留在屏上,于是 axe 那一扫顺带把
  * B3-a 这三个新 surface 也扫了(「新 surface 必须追加进扫描屏」那条纪律)。
@@ -1606,7 +1612,124 @@ async function main() {
     await delay(1200)
     child = undefined
 
-    console.log(`\n[browser-gate] ok(${LANE} 档)—— 十八条全过`)
+    /*
+     * ── ㉑ 应用菜单(K1,方案 `docs/keymap-responder-2026-09.md` §5 K1)────────
+     *
+     * **它为什么读表而不是按键**:菜单加速键走的是 macOS NSApp 的 `sendEvent`,
+     * 而这道门那套 CDP `Input.dispatchKeyEvent` 是直接喂给 `WebContents` 的合成
+     * 事件,**根本不经过 NSApp**;拿 CDP 去按 ⌘R 什么都不会发生,那证明不了
+     * 「菜单没占这个键」。所以产品那一侧留了一格只在 `ONETHING_GATE_` 前缀下生效
+     * 的自述口(`electron/app-menu.ts` 的 `GATE_MENU_DUMP_ENV`),门读它。
+     *
+     * **自己一趟**(与 ⑱ 同判例):dump 是 `app.whenReady()` 那一拍写的,要它就得
+     * 在起壳时把 env 带上;前面那趟壳早起过了,而这一条与 UI 无关,一个空 store
+     * 起到「菜单装完」就够,不必等 core。
+     *
+     * 保留表(`KEYS_RESERVED_FOR_CONTENT`)从 dump 里读,**门不抄第二份** ——
+     * K2 把表改了,这道门跟着改口,而不是按一张旧表静静判绿。
+     */
+    console.log('\n[10b] ㉑ 应用菜单 —— 默认那张没人审过的键表已经不在了')
+    const menuDumpDir = await mkdtemp(path.join(tmpdir(), 'browser-gate-menu-'))
+    const menuDump = path.join(menuDumpDir, 'menu.json')
+    const menuStore = await mkdtemp(path.join(tmpdir(), 'browser-gate-menu-store-'))
+    // 这一段自己收自己的尸(两只临时目录),所以外面那张 `finally` 一个字不用改。
+    try {
+      child = spawn(electronBinary, [mainEntry, `--user-data-dir=${userDataDir}`], {
+        env: {
+          ...process.env,
+          ONETHING_STORE_PATH: menuStore,
+          // 这一格就是 dev / prod 的分档:prod 档它是空串 → `isDevShell` false。
+          ONETHING_REACT_DEV_SERVER_URL: rendererUrl,
+          ONETHING_GATE_HEADLESS: '1',
+          ONETHING_GATE_OFFSCREEN: '1',
+          ONETHING_GATE_DOWNLOADS_DIR: downloadsDir,
+          ONETHING_GATE_MENU_DUMP: menuDump,
+        },
+        stdio: 'ignore',
+      })
+      const dumped = await waitFor('㉑ 壳把菜单表写出来了', () => readJson(menuDump), 40_000)
+      child.kill('SIGTERM')
+      await delay(800)
+      child = undefined
+
+      const flatten = (rows) => (rows ?? []).flatMap((row) => [row, ...flatten(row.submenu)])
+      const menuRows = flatten(dumped.menu)
+      /*
+       * **角色一律按小写判**(这道门第一次跑就抓到的真事):模板里写的是
+       * `selectAll` / `toggleDevTools` 这种驼峰,而 Electron 装完之后
+       * `MenuItem.role` 交回来的是**全小写**的 `selectall` / `toggledevtools`。
+       * 照驼峰判的话,「没有 `forceReload`」那一族会**永远绿** —— 默认表真回来了
+       * 它也匹配不上。少了这一行,这道门就是一张空头支票。
+       */
+      const menuRoles = menuRows.map((row) => row.role).filter(Boolean).map((role) => String(role).toLowerCase())
+      const roleName = (role) => String(role).toLowerCase()
+      const menuAccels = menuRows.map((row) => row.accelerator).filter(Boolean)
+      report.menu = { dev: dumped.dev, roles: menuRoles.length, accelerators: menuAccels.length }
+
+      assert(
+        Array.isArray(dumped.menu) && dumped.menu.length > 0,
+        `㉑ 菜单是壳自己设的那张(顶格 ${(dumped.menu ?? []).map((r) => r.label || r.role).join(' / ')})`,
+      )
+      assert(
+        dumped.dev === !PROD,
+        `㉑ dev 档判据与这一趟对得上(dump 说 dev=${dumped.dev},门跑的是 ${LANE})`,
+      )
+
+      // ① 拿掉的那些角色,prod 档一个都不许在;dev 档只放行 reload / toggleDevTools。
+      const bannedAlways = ['forceReload', 'zoomIn', 'zoomOut', 'resetZoom', 'close', 'fileMenu', 'windowMenu']
+      const banned = PROD ? [...bannedAlways, 'reload', 'toggleDevTools'] : bannedAlways
+      for (const role of banned) {
+        assert(!menuRoles.includes(roleName(role)), `㉑ 菜单里没有 \`${role}\` 角色(${LANE} 档)`)
+      }
+      // ② Edit 的角色在 —— 它们是 macOS 上 ⌘C/⌘V 真正的供给方。
+      for (const role of ['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll']) {
+        assert(menuRoles.includes(roleName(role)), `㉑ Edit 的 \`${role}\` 角色在(没有它 mac 上 ⌘C/⌘V 不工作)`)
+      }
+
+      // 内容层那七个键,一个都不许被菜单占着(表从 dump 里读,门不抄第二份)。
+      const normalize = (key) => String(key).trim().toLowerCase()
+        .replace(/^commandorcontrol\+/, 'cmdorctrl+')
+        .replace(/^command\+/, 'cmdorctrl+')
+      const reserved = new Set((dumped.reserved ?? []).map(normalize))
+      /*
+       * 只判「这张表**在**、而且门读到的就是产品自述的那张」——**不判几条**。
+       * 钉个数等于把产品表的数抄进门里,与上面那句「表只能有一个产地」自相矛盾:
+       * K2 往表里加一条键,这道门会因为「不是七条」而红,而它本该跟着表走。
+       */
+      assert(
+        reserved.size > 0 && reserved.size === (dumped.reserved ?? []).length,
+        `㉑ 保留表是产品自述的那张,非空且逐条对得上(${[...reserved].join(' ')})`,
+      )
+      const squatted = menuAccels.filter((accel) => reserved.has(normalize(accel)))
+      assert(
+        squatted.length === 0,
+        `㉑ 内容层那七个键一个都没被菜单占着(菜单实际用的键:${menuAccels.join(' ')})`,
+      )
+
+      if (!PROD) {
+        const reloadRow = menuRows.find((row) => roleName(row.role) === 'reload')
+        assert(reloadRow, '㉑ dev 档 Reload 还在(开发者要它)')
+        assert(
+          reloadRow.accelerator && !reserved.has(normalize(reloadRow.accelerator)),
+          `㉑ dev 档 Reload 的键已经从 ⌘R 让开(${reloadRow.accelerator})`,
+        )
+        assert(menuRoles.includes('toggledevtools'), '㉑ dev 档 Toggle DevTools 还在')
+      }
+    } finally {
+      // 失败路上(dump 没写出来)那一趟壳还活着,**先收它再删目录** —— 反过来的话
+      // 它会把刚删掉的 store 再写回来,留下一只谁也不认领的临时目录(真踩过)。
+      if (child) {
+        try { child.kill('SIGKILL') } catch { /* 已经走了 */ }
+        child = undefined
+      }
+      // 无条件等一拍:SIGTERM 过的 Electron 未必已经落地,**它还会往 store 里写**——
+      // 删早了就留下一只谁也不认领的临时目录(真踩过两次,第二次就是这一行补的)。
+      await delay(600)
+      await rm(menuDumpDir, { recursive: true, force: true })
+      await rm(menuStore, { recursive: true, force: true })
+    }
+
+    console.log(`\n[browser-gate] ok(${LANE} 档)—— 十九条全过`)
     console.log(`[browser-gate] 读数:${JSON.stringify(report)}`)
   } finally {
     if (app) await app.close().catch(() => {})
