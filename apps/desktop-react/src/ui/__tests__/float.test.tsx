@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { useFloatDismiss, useFloatPosition } from '../float'
 import type { FloatAnchor, FloatPlace } from '../float'
@@ -287,6 +287,111 @@ describe('useFloatPosition:rect 档跟着锚点走', () => {
     await nextFrame()
 
     expect(get).not.toHaveBeenCalled()
+  })
+})
+
+/* ── 安全区 ──────────────────────────────────────────────────────────────── */
+
+/**
+ * 「视口 = 窗口减安全区」那一格(09-12)。安全区由宿主在根元素上用 token 声明
+ * (`--float-inset-top` = 顶上那条 chrome 带,`--float-inset-edge` = 左右与底边
+ * 三边的留白),原语只认识那两个数 —— 所以这里拨的就是那两枚 custom property,
+ * 不是去 mock 什么「红绿灯宽度」。
+ *
+ * jsdom 不排版(offsetWidth/offsetHeight 恒 0),而「上方摆不下」与「左右夹」
+ * 两件事都要浮层的身量才算得出来,所以用例自己给它盖一个身量(`stubFloatSize`)。
+ */
+function setInset(name: 'top' | 'edge', value: string): void {
+  document.documentElement.style.setProperty(`--float-inset-${name}`, value)
+}
+
+function stubFloatSize(width: number, height: number): () => void {
+  const proto = HTMLElement.prototype
+  const before = {
+    offsetWidth: Object.getOwnPropertyDescriptor(proto, 'offsetWidth'),
+    offsetHeight: Object.getOwnPropertyDescriptor(proto, 'offsetHeight'),
+  }
+  Object.defineProperty(proto, 'offsetWidth', { configurable: true, get: () => width })
+  Object.defineProperty(proto, 'offsetHeight', { configurable: true, get: () => height })
+  return () => {
+    for (const [key, desc] of Object.entries(before)) {
+      if (desc) Object.defineProperty(proto, key, desc)
+      else delete (proto as unknown as Record<string, unknown>)[key]
+    }
+  }
+}
+
+describe('useFloatPosition:视口 = 窗口减安全区', () => {
+  let restoreSize: (() => void) | null = null
+
+  beforeEach(() => {
+    restoreSize = null
+  })
+
+  afterEach(() => {
+    restoreSize?.()
+    restoreSize = null
+    document.documentElement.style.removeProperty('--float-inset-top')
+    document.documentElement.style.removeProperty('--float-inset-edge')
+  })
+
+  /*
+   * 报障那一格:左架子最上排 tab 的 tooltip 摆在锚点上方,「摆得下」按 0 判是真的,
+   * 摆出来却正落在顶栏带里被原生红绿灯压住(z-index 管不着它)。所以翻转的判据
+   * 是**安全区内沿**,不是窗口上边线 —— 同一个锚点、同一个身量,设不设 token
+   * 给出两个相反的答案。
+   */
+  it('above-center:翻转判据是安全区内沿,不是 0', () => {
+    setViewport(1000, 800)
+    restoreSize = stubFloatSize(60, 40)
+    const { anchor } = liveRect(rectOf(100, 60, 60, 20))
+
+    // 未设 inset:上方还剩 60,放得下 40,不翻。
+    const { unmount } = render(<PositionHarness anchor={anchor('above-center')} />)
+    expect(readPos()).toEqual({ left: '130', top: '60', flipped: 'false' })
+    unmount()
+
+    // 顶上 44px 是顶栏带:60 − 40 = 20 落在带子里 → 翻到锚点下缘。
+    setInset('top', '44px')
+    render(<PositionHarness anchor={anchor('above-center')} />)
+    expect(readPos()).toEqual({ left: '130', top: '80', flipped: 'true' })
+  })
+
+  it('above-center:左右夹留出三边留白(锚点贴着左边线时不再齐边线零留白)', () => {
+    setViewport(1000, 800)
+    restoreSize = stubFloatSize(60, 40)
+    setInset('edge', '8px')
+    // 锚点贴左边线:中线只有 10,而浮层半身 30 —— 夹完的中线至少是 30 + 8。
+    const { anchor } = liveRect(rectOf(0, 300, 20, 20))
+    render(<PositionHarness anchor={anchor('above-center')} />)
+    expect(Number(readPos().left)).toBeGreaterThanOrEqual(30 + 8)
+    expect(readPos().left).toBe('38')
+  })
+
+  it('below-end:贴右边线时 left ≤ vw − w − insetEdge', () => {
+    setViewport(1000, 800)
+    restoreSize = stubFloatSize(60, 40)
+    setInset('edge', '8px')
+    // 锚点右缘就是窗口右边线:理想位 940,夹到 1000 − 60 − 8。
+    const { anchor } = liveRect(rectOf(940, 60, 60, 24))
+    render(<PositionHarness anchor={anchor('below-end')} />)
+    expect(Number(readPos().left)).toBeLessThanOrEqual(1000 - 60 - 8)
+    expect(readPos().left).toBe('932')
+  })
+
+  /*
+   * `cover` 不夹视口,自然也不认安全区:它的「看全」就是「与锚重合」(理由写在
+   * `FloatPlace` 上)。一片落在顶栏带里的落区照样要原样高亮在那儿 —— 挪开半格
+   * 就是把高亮画到了它该盖的地方之外。
+   */
+  it('cover:设了安全区仍与锚重合', () => {
+    setViewport(1000, 800)
+    restoreSize = stubFloatSize(60, 40)
+    setInset('top', '44px')
+    setInset('edge', '8px')
+    const { anchor } = liveRect(rectOf(5, 5, 100, 50))
+    render(<PositionHarness anchor={anchor('cover')} />)
+    expect(readPos()).toEqual({ left: '5', top: '5', flipped: 'false' })
   })
 })
 

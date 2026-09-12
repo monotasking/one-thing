@@ -32,6 +32,10 @@ import type { RefObject } from 'react'
  *          → 跟随(仅 rect 档:锚点一动就重算)→ 关 / 卸载(全部拆掉,幂等)。
  * 交互:点外关、程序关(消费方自己 setState)两条路,同一个 `onClose`;
  *      Esc 归响应链(`<FocusScope onEscape>`),不在这只原语里。
+ * 几何:**视口 = 窗口减安全区**,安全区是宿主用 token 声明的
+ *      (`--float-inset-top` 是顶上那条 chrome 带,`--float-inset-edge` 是左右与
+ *      底边三边的留白;见 `readInsets`)—— 这只原语只知道「有一圈不许画」,
+ *      不知道那圈里画着什么。
  * ──────────────────────────────────────────────────────────────────────────
  */
 
@@ -146,16 +150,46 @@ export interface FloatPositionOptions {
 }
 
 /**
- * 算一次位置。纯函数(除了读 window 的视口尺寸),好断言。
+ * 安全区 —— 这只原语的「视口」不是整扇窗,是**窗减去宿主声明的那一圈**。
+ *
+ * 两枚数不是同一件事的两个方向:
+ *  · `top` —— 顶上那一段是窗口的 chrome(拖拽带 + 画在网页之上、z-index 管不着的
+ *    原生红绿灯),浮层摆进去就是**被压住**;左架子最上排 tab 的 tooltip 正是
+ *    这么消失的(09-12)。
+ *  · `edge` —— 左、右、底**三边的留白**:那三边没有东西压人,浮层齐着窗口边线
+ *    摆是看得见的,只是难看。所以它是一个数管三边,名字不叫 `x`(叫 x 会让人
+ *    以为底边那句 `vh - h - edge` 是抄错的)。
+ *
+ * 这里**只认识「有一圈不许画」**,不认识红绿灯是什么:声明与理由都在
+ * `styles/tokens.css` 的 `--float-inset-*` 上,换宿主(Windows / 浏览器壳)改的是
+ * 那两个值,不是这里的分支。
+ *
+ * 每次 `place()` 现读,不缓存:它跑在 show 与 rAF 合并后的 scroll / resize 里,
+ * 一帧最多一次,一次 getComputedStyle 不值得记一格状态 —— 而记了就会在换主题 /
+ * 换宿主的那一刻说谎。jsdom 里 custom property 读出来是空串、`parseFloat` 给 NaN,
+ * 那一档按 0 走,所以不设 token 的环境读数与从前逐字相同。
+ */
+function readInsets(): { top: number; edge: number } {
+  const cs = getComputedStyle(document.documentElement)
+  const num = (name: string): number => {
+    const v = parseFloat(cs.getPropertyValue(name))
+    return Number.isFinite(v) ? v : 0
+  }
+  return { top: num('--float-inset-top'), edge: num('--float-inset-edge') }
+}
+
+/**
+ * 算一次位置。纯函数(除了读 window 的视口尺寸与根元素上那两枚安全区 token),好断言。
  * `w`/`h` 是浮层的身量 —— 还没量到的时候传 0,得到的就是「未 clamp 的理想位」。
  */
 function place(anchor: FloatAnchor, w: number, h: number): FloatPosition | null {
   const vw = window.innerWidth
   const vh = window.innerHeight
+  const { top: insetTop, edge: insetEdge } = readInsets()
   if (anchor.kind === 'point') {
     return {
-      left: Math.max(0, Math.min(anchor.x, vw - w)),
-      top: Math.max(0, Math.min(anchor.y, vh - h)),
+      left: Math.max(insetEdge, Math.min(anchor.x, vw - w - insetEdge)),
+      top: Math.max(insetTop, Math.min(anchor.y, vh - h - insetEdge)),
       flipped: false,
       width: null,
       height: null,
@@ -167,11 +201,11 @@ function place(anchor: FloatAnchor, w: number, h: number): FloatPosition | null 
   if (anchor.place === 'cover') {
     return { left: r.left, top: r.top, flipped: false, width: r.width, height: r.height }
   }
-  // 贴右缘、顶对齐(子菜单那一档)。视口右边放不下就往左夹 —— 夹到贴着右边线为止。
+  // 贴右缘、顶对齐(子菜单那一档)。视口右边放不下就往左夹 —— 夹到贴着安全区内沿为止。
   if (anchor.place === 'right-start') {
     return {
-      left: Math.max(0, Math.min(r.right, vw - w)),
-      top: Math.max(0, Math.min(r.top, vh - h)),
+      left: Math.max(insetEdge, Math.min(r.right, vw - w - insetEdge)),
+      top: Math.max(insetTop, Math.min(r.top, vh - h - insetEdge)),
       flipped: false,
       width: null,
       height: null,
@@ -182,8 +216,10 @@ function place(anchor: FloatAnchor, w: number, h: number): FloatPosition | null 
     // 「贴着锚点右缘」,量到真身量之后在同一个 layout 相位里修正(纪律①)。
     const ideal = anchor.place === 'below-end' ? r.right - w : r.left
     return {
-      left: Math.max(0, Math.min(ideal, vw - w)),
-      top: Math.max(0, Math.min(r.bottom, vh - h)),
+      // 两头夹的不是同一个数:下界是 `insetTop`(菜单开进顶栏带就会被拖拽带与
+      // 红绿灯压住,与 tooltip 同一个病,09-12),上界是底边那道留白 `insetEdge`。
+      left: Math.max(insetEdge, Math.min(ideal, vw - w - insetEdge)),
+      top: Math.max(insetTop, Math.min(r.bottom, vh - h - insetEdge)),
       flipped: false,
       width: null,
       height: null,
@@ -194,11 +230,16 @@ function place(anchor: FloatAnchor, w: number, h: number): FloatPosition | null 
    * 所以夹的是中线,不是左缘 —— 按左缘夹会把一个居中的浮层夹歪半个身子。
    * 垂直方向不夹:它挂在锚点上缘之上,夹 top≥0 等于把它按回锚点头上。
    * 摆不下这件事由**翻转**回答,不由夹回答。
+   *
+   * 「摆不下」的线是**顶上那条 chrome 带的内沿**而不是 0:上方还剩 20px、而顶上
+   * 44px 是顶栏带时,按 0 判是「摆得下」,摆出来的提示正落在红绿灯底下(09-12
+   * 左架子最上排 tab 的报障就是这一格)。左右两头则各留一道 `insetEdge`(三边留白
+   * 里的两边),不再齐着窗口边线零留白。
    */
-  const flipped = r.top - h < 0
+  const flipped = r.top - h < insetTop
   const half = w / 2
   return {
-    left: Math.max(half, Math.min(r.left + r.width / 2, vw - half)),
+    left: Math.max(half + insetEdge, Math.min(r.left + r.width / 2, vw - half - insetEdge)),
     top: flipped ? r.bottom : r.top,
     flipped,
     width: null,

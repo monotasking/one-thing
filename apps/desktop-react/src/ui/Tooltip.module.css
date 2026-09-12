@@ -7,7 +7,16 @@
 .tip {
   position: fixed;
   z-index: var(--z-tooltip);
-  max-width: var(--menu-w);
+  /* 身量由内容定,不随 left 挤窄:`position: fixed` 的盒子没写宽度时,可用宽是
+   * 「视口宽 − left」—— 锚点离右边线近的那几颗图标钮,提示会被挤成一条竖着的字柱。 */
+  width: max-content;
+  /* 上限借 `--menu-w`(176)是 09-01 的临时借用,09-12 退役:176 装不下一条路径,
+   * 「Open /Users/…/lenovo-scripts」内容宽 199,第一行只剩「Open」,路径整段从
+   * 第二行伸到深色底外面。提示族自己一枚 token。 */
+  max-width: var(--tooltip-w);
+  /* 路径 / URL 没有空格,`break-word` 那一套找不到断点,字就伸出底外面 ——
+   * `anywhere` 允许任意字符处断,字永远在底里。 */
+  overflow-wrap: anywhere;
   padding: var(--sp-1) var(--sp-2);
   border-radius: var(--r-1);
   background: var(--tooltip-bg);
