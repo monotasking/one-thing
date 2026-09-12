@@ -96,6 +96,16 @@ export interface PickDrawerDeps {
   closeDrawer: () => void
 }
 
+/**
+ * 尾巴上补一个 `/`(已经有了就一个字不动)。
+ *
+ * 它不是格式化,是**把候选自己说的那句话写进那条路径里**:这条是目录。
+ * 幂等,所以后端哪天开始发带尾巴的目录路径,这里也不会长出 `//`。
+ */
+function ensureTrailingSlash(path: string): string {
+  return path.endsWith('/') ? path : `${path}/`
+}
+
 export function usePickDrawer({
   allCommands,
   sessionId,
@@ -231,9 +241,20 @@ export function usePickDrawer({
     (i: number) => {
       if (drawerKind === 'files') {
         const hit = fileHits[i]
-        // chip 上写的是相对路径(人心里的名字),草稿里代表的是绝对路径的
-        // `{{file:…}}`(交出去那一刻由 chat-port 展开回 `@<路径>`)。
-        if (hit) inputRef.current?.insert('files', hit.label, { token: createFileToken(hit.path) })
+        // chip 上写的是相对路径(人心里的名字),它代表的是绝对路径的
+        // `{{file:…}}`(交出去那一刻由输入面的草稿出口展成 `@<路径>`)。
+        //
+        // **目录带尾斜杠,而且判据只在这一处**(09-12):候选自己说得清是
+        // `directory` 还是 `file`(`FileMention.type`),而下游谁都没有 stat ——
+        // 气泡里那枚 chip 判「这是目录吗」的唯一判据就是路径尾巴上那个 `/`
+        // (`content/user-message.tsx` 的 `dirRef`),模型看见的也只是那一条路径。
+        // 不在 `file-mentions-source` 改 `path` 本身:那张表还有别的读者
+        // (匹配、念法、去重),给它们喂一条带尾巴的路径是另一件事。
+        if (hit) {
+          const path = hit.type === 'directory' ? ensureTrailingSlash(hit.path) : hit.path
+          const label = hit.type === 'directory' ? ensureTrailingSlash(hit.label) : hit.label
+          inputRef.current?.insert('files', label, { token: createFileToken(path) })
+        }
         closeDrawer()
         return
       }

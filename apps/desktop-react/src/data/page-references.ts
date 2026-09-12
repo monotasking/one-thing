@@ -18,7 +18,12 @@ import { browserTabOf, browserTabsQuery, readBrowserPage } from './browser-sourc
  * (2026-07-27 判例,`project_browser_page_mention_2026_07`)URL 与页面正文都是
  * **页面自控的字节**。先物化页面、再展开文件 token,等于把一段页面可以写的文本
  * 送进「`{{file:…}}` 会被展成本地文件内联」那条信任通道 —— 一个网页就能走私出
- * 这台机器上任意一个文件。所以出站那一句里两者的次序不是风格,是闸。
+ * 这台机器上任意一个文件。所以两者的次序不是风格,是闸。
+ * **09-12 起这一条由结构保证,不再靠出站那一句里的先后**:壳里唯一那道
+ * `expandFileTokens` 搬去了输入面的草稿出口(`ComposerInput.readDraft`,理由是
+ * 乐观上屏的那句话必须与账本上的逐字相同),而这一只在**发送那一刻**才跑 ——
+ * 页面正文进入正文的时候,展开早已结束,没有第二遍扫描可言。哪天有人把展开加回
+ * `chat-port.sendMessage`,它必须仍然排在这一只**之前**(守卫在 chat-port.test)。
  *
  * **② 正文走附件,不进 `content`。**
  * (「附件链路」判例:文本 engine 内联)引擎对一件带 `sourceUrl` / `excerpt` 的

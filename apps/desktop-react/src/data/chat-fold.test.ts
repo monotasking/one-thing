@@ -581,6 +581,32 @@ describe('overlay:以折叠为准的认领', () => {
     expect(out).toEqual([])
   })
 
+  /**
+   * **病 ① 的账**(09-12 真机:@ 一个文件发出去,屏幕上留下两条用户气泡,
+   * 其中一条是裸的 `{{file:/Users/…}}` 且永不消失)。
+   *
+   * 认领判据是「正文逐字相同」—— 它没有病,病的是从前有**两句话**:乐观 overlay
+   * 记的是草稿原文(token 句),账本落的是展开句(`@<绝对路径>`),于是那一格
+   * pending 永远等不到自己那条消息。修法在上游(`ComposerInput.readDraft` 交出去
+   * 的就已经是展开句),这两条把「修好之后」与「病着的时候」各钉一遍。
+   */
+  it('展开句对展开句 = 认领得上(修好之后的形)', () => {
+    const out = reconcileOverlay(
+      [pending('o1', '看看 @/abs/x.ts')],
+      [message({ id: 'm1', role: 'user', content: '看看 @/abs/x.ts' })],
+    )
+    expect(out).toEqual([])
+  })
+
+  it('token 句对展开句 = 认不上,那一格永远留在屏上(病着的时候的形)', () => {
+    const out = reconcileOverlay(
+      [pending('o1', '看看 {{file:/abs/x.ts}}')],
+      [message({ id: 'm1', role: 'user', content: '看看 @/abs/x.ts' })],
+    )
+    // 这正是用户看见的第二条气泡 —— 它不是多发了一条,是一格没人认领的乐观 overlay。
+    expect(out.map((entry) => entry.id)).toEqual(['o1'])
+  })
+
   it('快照里已有的那条不算认领 —— 连发同一句话不会一次消掉两格', () => {
     const out = reconcileOverlay(
       [pending('o1', '同一句', []), pending('o2', '同一句', ['m1'])],

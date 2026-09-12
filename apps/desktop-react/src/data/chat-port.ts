@@ -14,7 +14,6 @@ import { sessionEventsRouter } from '@shared/ipc/session-events'
 import { sessionCommandRouter } from '@shared/ipc/session-command'
 import { permissionRouter } from '@shared/ipc/permissions'
 import { resourcesRouter } from '@shared/ipc/resources'
-import { expandFileTokens } from '@onething/runtime/prompts/prompt-references'
 import { materializePageReferences } from './page-references'
 import type { PageResultSlot, SessionTailPage } from './page-results'
 
@@ -75,22 +74,29 @@ export interface ChatPort {
    *
    * **签名仍然只有正文**(B3-b 一个参数都没加):页面引用在草稿里是一枚
    * `{{page:<tabId>}}`,与 `@` 文件引用逐字同一种占位法,所以它跟着正文一起
-   * 到达这一口,由下面那道唯一的展开物化成一件附件。调用方(输入面板 /
+   * 到达这一口,由下面那一步物化成一件附件。调用方(输入面板 /
    * ask 交卷 / 将来的草稿纸)一个字都不必知道有「页面附件」这回事。
    *
-   * ── 出站唯一的那道展开(D3 波二)──────────────────────────────────────
-   * `@` 引用在草稿里是 `{{file:<绝对路径>}}`(chip 是呈现,token 才是位置),
-   * **交出去之前**由 `expandFileTokens` 就地换回 `@<绝对路径>`。落点定在这一条
-   * 而不是输入面板,理由是「单一出口」:壳里所有会变成一条用户消息的路
-   * (发送键 / 回车 / ask 交卷 / 将来的草稿纸)最后都汇到这一口,
-   * 在上游各展开一次必然漏掉其中一条。
+   * ── 文件 token 的展开**不在这一口**(09-12 判例)────────────────────────
+   * `@` 引用在这块屏幕上是 `{{file:<绝对路径>}}`(chip 是呈现,token 才是位置),
+   * 而把它展成 `@<绝对路径>` 的那一句住在**输入面的草稿出口**
+   * (`ComposerInput.readDraft`),不在这里。
+   *
+   * D3 波二把它放在这一口,理由是「单一出口」;真机上那个位置生出的是一条
+   * **永不消失的重复气泡**:`chat-source` 在发送那一刻落的乐观 overlay 记的是
+   * 草稿原文(token 句),而账本回来的是展开句,`reconcileOverlay` 的「正文逐字
+   * 相同」于是永远认不上。判词一句话:**乐观上屏的那句话与账本上的那句话必须是
+   * 同一串字节**,所以展开要发生在「这句话被记下来」之前 —— 也就是草稿的出口。
+   *
+   * 所以这一口今天**一个字都不改正文**,除了下面那一步页面引用。
    *
    * `retryMessage` 不涉:那条消息早已落账,重跑的是账本上的原文。
    *
-   * ── 那道展开从 B3-b 起有**两步,而顺序是闸** ──────────────────────────
-   * ① `expandFileTokens`(同步);② `materializePageReferences`(只在正文里
-   * 真有 `{{page:` 时才发一次 `resources.read`)。倒过来做等于让一段页面自控的
-   * 正文被当成草稿再扫一遍 —— 判词整段在 `data/page-references.ts` 上。
+   * ── 剩下的那一步:物化页面引用(B3-b) ────────────────────────────────
+   * `materializePageReferences` 只在正文里真有 `{{page:` 时才发一次
+   * `resources.read`。它仍然排在文件展开**之后**(今天是结构上的:上游那道展开
+   * 早在草稿出口就做完了),这条先后是闸不是风格 —— 反过来等于让一段页面自控的
+   * 正文被当成草稿再扫一遍,判词整段在 `data/page-references.ts` 上。
    */
   sendMessage(sessionId: string, content: string): Promise<SessionCommandEmitResult>
   /*
@@ -209,16 +215,16 @@ async function realPort(): Promise<ChatPort> {
     // 频道走(默认 'ipc'),渲染层替它拍这个板就是在两处定义同一件事。
     sendMessage: async (sessionId, content) => {
       /*
-       * 出站唯一的那道展开(见接口上的注)。**两步的顺序是闸,不是风格**
-       * (2026-07-27 判例):`{{file:…}}` 先就地展成 `@<路径>`,**之后**才去物化
-       * 页面引用。反过来的话,一段页面自控的正文会被当成草稿再扫一遍 —— 一个网页
-       * 就能在里面写一句 `{{file:/Users/…/.ssh/id_rsa}}` 把本地文件走私进引擎的
-       * 文件内联通道。判词整段在 `data/page-references.ts` 的判据①上。
+       * 正文**原样过去**,只物化页面引用(见接口上的注)。文件 token 那道展开在
+       * 输入面的草稿出口就做完了,这里不再扫第二遍 —— 也正因为这一口不展,
+       * 一段页面自控的正文里写着 `{{file:/Users/…/.ssh/id_rsa}}` 在结构上就走私
+       * 不进引擎的文件内联通道(2026-07-27 判例要的那个结果,今天由「壳里只有一处
+       * 展开,而它在页面正文进入正文之前」保证)。
        *
-       * 第二步**只有正文里真有 `{{page:` 时才发生**(那只函数第一句就是这道闸),
-       * 所以绝大多数消息的出站路与从前逐字相同:一次同步展开,零往返。
+       * 这一步**只有正文里真有 `{{page:` 时才发生**(那只函数第一句就是这道闸),
+       * 所以绝大多数消息的出站路一发往返都不多。
        */
-      const { text, attachments } = await materializePageReferences(expandFileTokens(content))
+      const { text, attachments } = await materializePageReferences(content)
       return sessionCommands.emit({
         sessionId,
         command: {

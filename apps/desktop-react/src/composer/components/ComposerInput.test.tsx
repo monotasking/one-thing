@@ -157,16 +157,63 @@ describe('参数幽灵占位:画在屏幕上,不进草稿,打第一个字就散'
   })
 })
 
+describe('文件 chip 的展开就在草稿出口', () => {
+  /**
+   * **病 ① 的那条反证**(09-12 真机:@ 一个文件发出去,屏幕上出现两条用户气泡,
+   * 其中一条是裸的 `{{file:/Users/…}}` 而且永不消失)。
+   *
+   * 病根是壳里有**两句话**:发送那一刻 `chat-source` 记下的乐观 overlay 是草稿
+   * 原文(token 句),而账本回来的是端口展开后的 `@<路径>` —— 认领判据「正文
+   * 逐字相同」于是永远不成立。修法是把展开挪到这里,让**交出去的那一刻就已经是
+   * 账本上的那串字节**。
+   *
+   * **反证**:把 `readDraft` 里那句 `expandFileTokens` 拆掉 → 这一条当场读到
+   * `{{file:…}}`,也就是用户报的那条裸文本。
+   */
+  it('`text()` 交出的是 `@<绝对路径>`,一个 `{{file:` 都不许漏出去', () => {
+    const { api, box } = setup()
+    put(box, '看看 @a')
+    api().insert('files', 'src/a.ts', { token: '{{file:/repo/src/a.ts}}' })
+
+    // 屏幕上写的是 `@src/a.ts`(呈现),交出去的是那条绝对路径(位置)。
+    expect(box.textContent).toContain('@src/a.ts')
+    expect(api().text()).toBe('看看 @/repo/src/a.ts ')
+    expect(api().text()).not.toContain('{{file:')
+  })
+
+  /**
+   * 存草稿存的是 `html()` —— chip 是真节点,token 原样挂在它身上。展开只发生在
+   * 「交出去」这条路上,所以换一格会话回来它仍旧是一枚 chip。
+   */
+  it('存下来的稿里 token 一个字没变(展开只在交出去那条路上)', () => {
+    const { api, box } = setup()
+    put(box, '看看 @a')
+    api().insert('files', 'src/a.ts', { token: '{{file:/repo/src/a.ts}}' })
+    expect(api().html()).toContain('{{file:/repo/src/a.ts}}')
+    expect(box.querySelectorAll('[data-token]')).toHaveLength(1)
+  })
+
+  /**
+   * 页面引用(浏览器叶那一枚)**不**在这里展开:那一页此刻长什么样只有发送的
+   * 那一刻知道,物化仍归 `chat-port`。展开只认 `{{file:`。
+   */
+  it('`{{page:…}}` 原样交出去 —— 展开只认文件那一种', () => {
+    const { api } = setup()
+    api().appendReference('example.test', { token: '{{page:t1}}' })
+    expect(api().text()).toBe('{{page:t1}} ')
+  })
+})
+
 describe('回车与发送键读同一口草稿', () => {
-  it('回车交出去的是 `text()`,不是 `textContent` —— chip 的 token 不许在这条路上丢', () => {
+  it('回车交出去的是 `text()`,不是 `textContent` —— chip 的位置不许在这条路上丢', () => {
     const { api, box, sent } = setup()
     put(box, '看看 @a')
     api().insert('files', 'src/a.ts', { token: '{{file:/repo/src/a.ts}}' })
 
-    // 屏幕上写的是 `@src/a.ts`(呈现),草稿里代表的是那截 token(位置)。
+    // 屏幕上写的是 `@src/a.ts`(呈现),交出去的是那条绝对路径(位置)。
     expect(box.textContent).toContain('@src/a.ts')
     fireEvent.keyDown(box, { key: 'Enter' })
-    expect(sent).toEqual(['看看 {{file:/repo/src/a.ts}} '])
+    expect(sent).toEqual(['看看 @/repo/src/a.ts '])
   })
 
   it('幽灵占位也不走回车那条路出去', () => {

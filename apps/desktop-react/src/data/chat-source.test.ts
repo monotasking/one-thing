@@ -467,6 +467,36 @@ describe('发送:pending 立刻上屏,账本认领之后丢掉', () => {
     expect(state().overlay).toEqual([])
   })
 
+  /**
+   * **病 ① 的端到端形**(09-12 真机:@ 一个文件发出去,屏幕上留下两条用户气泡)。
+   *
+   * 这一层钉的是**同一串字节走完整条路**:输入面交出来的已经是 `@<绝对路径>`
+   * (展开在草稿的出口),端口一个字不改,账本回来的也是它 —— 那一格 pending
+   * 于是认领得上,overlay 清空。
+   *
+   * **反证**:把 `ComposerInput.readDraft` 那句 `expandFileTokens` 拆掉 → 发出去的
+   * 与账本回来的不再是同一句(账本上的那句由引擎照收),overlay 那一格永远留着。
+   */
+  it('@ 一个文件:发出去的与账本回来的是同一串字节,pending 认领得上', async () => {
+    const h = harness([created(1)])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    // 输入面交出来的那句话(chip 已经在草稿出口展成了绝对路径)。
+    expect(state().send('看看 @/abs/x.ts')).toBe(true)
+    expect(state().overlay).toHaveLength(1)
+    await settle()
+    // 端口这一口不改正文 —— 没有第二处展开。
+    expect(h.sent).toEqual(['看看 @/abs/x.ts'])
+
+    h.emitLedger(userMessage(2, 'm1', '看看 @/abs/x.ts'))
+    await settle()
+
+    expect(ids()).toEqual(['m1'])
+    expect(state().overlay).toEqual([])
+  })
+
   it('发不出去 = 那一格转 failed 并带上后端说的那句话,重试再发一次', async () => {
     const h = harness([created(1)])
     h.sendResult = async () => ({ success: false, error: '引擎没接住' })

@@ -1,5 +1,6 @@
 import { useImperativeHandle, useRef } from 'react'
 import type { KeyboardEvent, RefObject } from 'react'
+import { expandFileTokens } from '@onething/runtime/prompts/prompt-references'
 import { useFocusScope } from '../../focus/useFocusScope'
 import { parseToken } from '../transitions'
 import type { TokenHit } from '../types'
@@ -25,9 +26,10 @@ export interface ComposerInputHandle {
   /**
    * 把光标处的 @xx / /xx 换成一枚 chip(files)或命令徽(commands)。
    *
-   * `token` 是**这枚 chip 在草稿里真正代表的那截文本**(`@` 引用是
-   * `{{file:<绝对路径>}}`)。给了就挂在 `data-token` 上,`text()` 交出去时
-   * 用它顶替屏幕上那几个字;不给 = 屏幕上写什么、交出去就是什么。
+   * `token` 是**这枚 chip 真正代表的那截文本**(`@` 引用是 `{{file:<绝对路径>}}`)。
+   * 给了就挂在 `data-token` 上,`text()` 交出去时用它顶替屏幕上那几个字
+   * (文件 token 在那一刻就地展成 `@<绝对路径>`,见 `readDraft`);
+   * 不给 = 屏幕上写什么、交出去就是什么。
    *
    * `argHint` 是**这条命令还要人填的那一截**(`<path>` / `[分类]`),由
    * `data/commands-source.argHintOf` 解析好递进来 —— 这个文件一条业务规则都没有,
@@ -49,7 +51,9 @@ export interface ComposerInputHandle {
    * 不是一个可靠的事实(人刚刚点的是浏览器叶上的一颗菜单项)。
    *
    * 与 `insert` 共用同一种 chip(`data-token` 挂 token),所以它走的是**同一条
-   * 出站路** —— `readDraft` 交出 token,`chat-port` 那道唯一的展开物化它。
+   * 出站路** —— `readDraft` 交出 `data-token`。它挂的是 `{{page:<tabId>}}`,
+   * 文件 token 那道展开只认 `{{file:`,所以页面这一枚原样过去,由 `chat-port`
+   * 在发送那一刻物化成一件带出处的附件(那一页此刻长什么样,只有那一刻知道)。
    */
   appendReference: (label: string, opts: { token: string; tip?: string }) => void
   text: () => string
@@ -66,14 +70,31 @@ export interface ComposerInputHandle {
 }
 
 /**
- * 把这块可编辑区读成**草稿文本**。
+ * 把这块可编辑区读成**交出去的那句话**。
  *
  * 与 `textContent` 的唯一差别是那一句 `data-token`:一枚文件 chip 屏幕上写的是
- * `@src/a.ts`(人心里的名字),而草稿里它代表的是 `{{file:/abs/src/a.ts}}` ——
- * 「chip 是呈现,token 才是位置」正是 `@onething/runtime/prompts/prompt-references` 里
- * `FILE_REF_PATTERN` 那段注释说的事(Vue 壳把 token 直接放在纯文本草稿里,
- * 由编辑器画成 chip;这块 contenteditable 反过来,chip 是真节点、token 挂在它身上。
- * 两边**交出去的那句话逐字相同**,那才是要紧的)。
+ * `@src/a.ts`(人心里的名字),而它真正代表的位置挂在 `data-token` 上
+ * (`{{file:/abs/src/a.ts}}`)。「chip 是呈现,token 才是位置」正是
+ * `@onething/runtime/prompts/prompt-references` 里 `FILE_REF_PATTERN` 那段注释说的事
+ * (Vue 壳把 token 直接放在纯文本草稿里,由编辑器画成 chip;这块 contenteditable
+ * 反过来,chip 是真节点、token 挂在它身上。两边**交出去的那句话逐字相同**,
+ * 那才是要紧的)。
+ *
+ * ── 文件 token 的展开就在这一句,而且只在这一句(09-12)──────────────────
+ * 读到 `data-token` 之后**当场** `expandFileTokens`,于是这只函数交出去的已经是
+ * `@<绝对路径>` —— 与账本上最终落下的那一句**逐字相同**。
+ *
+ * 从前这道展开在 `chat-port.sendMessage` 里(理由是「单一出口」),而真机上它
+ * 生出的是一条**永不消失的重复气泡**:发送那一刻 `chat-source` 先落一格乐观
+ * overlay,`text` 是这里交出来的 token 句;出站时端口才展开,账本回来的是展开句;
+ * `reconcileOverlay` 的认领判据是「正文逐字相同」,于是那一格 pending 永远等不到
+ * 自己那条消息。**把展开挪到草稿的出口**,两边从此是同一串字节,认领一格不用改。
+ * (存草稿存的是 `html()`,chip 是真节点 —— 所以展开只发生在「交出去」这条路上,
+ * 存回来的稿里 token 一个字没变。)
+ *
+ * 只展 `{{file:` 这一种:`{{page:` 是浏览器叶那一枚,它要到发送那一刻才知道那一页
+ * 此刻长什么样,物化仍在 `chat-port`(顺序不变:文件先、页面后,判词在
+ * `data/page-references.ts` 的判据①上)。
  *
  * 其余一切照旧:`<br>` 与 contenteditable 自己包出来的 `<div>` 都不产生换行,
  * 与从前 `textContent` 的行为逐字一致(那是既有口径,这一批不动)。
@@ -92,7 +113,7 @@ function readDraft(root: Node): string {
      */
     if (node instanceof HTMLElement && node.dataset.argGhost !== undefined) continue
     const token = node instanceof HTMLElement ? node.dataset.token : undefined
-    out += token ?? readDraft(node)
+    out += token === undefined ? readDraft(node) : expandFileTokens(token)
   }
   return out
 }
@@ -333,8 +354,8 @@ export function ComposerInput({
       /*
        * **回车与发送键读同一口**(09-12 顺手结清)。从前这里是 `textContent`,
        * 而发送键走的是 `text()`(= `readDraft`)—— 两者对一枚 chip 的答案本来
-       * 就不同:`readDraft` 交出 `data-token` 上那截真正代表的文本
-       * (`{{file:/abs/…}}`),`textContent` 交出屏幕上那几个字(`@src/a.ts`)。
+       * 就不同:`readDraft` 交出 `data-token` 上那截真正代表的文本(展开之后是
+       * `@/abs/…`),`textContent` 交出屏幕上那几个字(`@src/a.ts`)。
        * 也就是说同一句话「按回车发」和「点发送发」发出去的不是同一句。
        * 参数幽灵占位让这道口子变得不能再留(它在 textContent 里,在草稿里没有),
        * 所以两口在这里合成一口:**草稿只有一个读法**。

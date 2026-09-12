@@ -308,9 +308,10 @@ describe('抽屉:一个槽,后来者顶替先来者', () => {
 })
 
 /**
- * `@` 引用(D3 波二)。候选来自真产地(`files.list`),而 chip 与草稿是**两样东西**:
- * 屏幕上那几个字是给人看的,草稿里那一截 `{{file:…}}` 才是这枚 chip 的位置。
- * 「展开成 `@<路径>`」发生在更下游(chat-port,见 data/chat-port.test.ts)。
+ * `@` 引用(D3 波二)。候选来自真产地(`files.list`),而 chip 与交出去的那句话是
+ * **两样东西**:屏幕上那几个字是给人看的,`data-token` 上那一截 `{{file:…}}` 才是
+ * 这枚 chip 的位置 —— 它在**草稿的出口**展成 `@<绝对路径>`(09-12,见
+ * `ComposerInput.test.tsx`;从前这一步在 chat-port,那正是重复气泡的病根)。
  */
 describe('@ 引用:候选是真的,插进去的是 token', () => {
   beforeEach(() => {
@@ -359,7 +360,7 @@ describe('@ 引用:候选是真的,插进去的是 token', () => {
     expect(screen.getByText('/repo/src/codex.ts')).toBeTruthy()
   })
 
-  it('选中一条:chip 上写路径,交出去的那句话里是 {{file:…}}', async () => {
+  it('选中一条:chip 上写路径,交出去的那句话里是 `@<绝对路径>`', async () => {
     renderComposer()
     const box = inputBox()
     type(box, '看看 @model')
@@ -385,11 +386,13 @@ describe('@ 引用:候选是真的,插进去的是 token', () => {
     // 发送那一条得**先把焦点挪开**才量得出东西(壳一挂起来它本来就在 box 上)。
     act(() => screen.getByTestId('composer-send').focus())
     fireEvent.click(screen.getByTestId('composer-send'))
-    // 交出去的是**草稿**:chip 那一格换成它代表的 token(位置)。
+    // 交出去的是**草稿**:chip 那一格换成它代表的那条路径(位置)。token 在
+    // 草稿的出口就展成了 `@<绝对路径>` —— 与账本上最终落下的那句逐字相同
+    // (09-12:展开从 `chat-port` 挪到这里,判词在 `ComposerInput.readDraft`)。
     expect(handed.at(-1)).toEqual({
       kind: 'text',
       attachments: 0,
-      text: `看看 ${createFileToken('/repo/src/model-capability.ts')}`,
+      text: '看看 @/repo/src/model-capability.ts',
     })
     /*
      * 发完话光标回输入框。R2 之前这是 `inputRef.current?.focus()`(一次跨作用域的
@@ -397,6 +400,63 @@ describe('@ 引用:候选是真的,插进去的是 token', () => {
      * 落点**上。反证:把 `useComposerSend` 里那句 `backToComposer()` 删掉 → 这里红。
      */
     expect(document.activeElement).toBe(box)
+  })
+
+  /**
+   * **病 ② 的那条反证**(09-12 真机:@ 的是一个目录,气泡与模型都把它当成文件)。
+   *
+   * 候选自己说得清是 `directory` 还是 `file`,而下游谁都没有 stat —— 气泡里那枚
+   * chip(`content/user-message.tsx` 的 `dirRef`)判「这是目录吗」的唯一判据就是
+   * 路径尾巴上那个 `/`,模型看见的也只是那一条路径。所以那一格得在**选中的那一刻**
+   * 写进路径里,判据只此一处(`usePickDrawer.applyPick`)。
+   *
+   * **反证**:把那两句 `ensureTrailingSlash` 拆掉 → 这一条当场读到不带尾巴的路径。
+   */
+  it('选中的是目录:chip 与交出去的那条路径都带尾斜杠(文件不带)', async () => {
+    configureFilesPort({
+      ready: async () => undefined,
+      listDirectory: async () => ({ success: false, error: 'not used here' }),
+      stat: async () => ({ success: false, error: 'not used here' }),
+      readContent: async () => ({ success: false, error: 'not used here' }),
+      saveContent: async () => ({ success: true }),
+      reveal: async () => ({ success: false, error: 'not used here' }),
+      list: async () => ({
+        success: true,
+        files: ['/repo/src/lib', '/repo/src/lib.ts'],
+        entries: [
+          { path: '/repo/src/lib', type: 'directory' as const },
+          { path: '/repo/src/lib.ts', type: 'file' as const },
+        ],
+      }),
+    })
+    renderComposer()
+    const box = inputBox()
+    type(box, '看看 @lib')
+    await settleMentions()
+
+    fireEvent.mouseDown(screen.getByText('/repo/src/lib'))
+    expect(box.textContent).toContain('@/repo/src/lib/')
+    expect(box.querySelector('[data-token]')?.getAttribute('data-token')).toBe(
+      createFileToken('/repo/src/lib/'),
+    )
+
+    act(() => screen.getByTestId('composer-send').focus())
+    fireEvent.click(screen.getByTestId('composer-send'))
+    expect(handed.at(-1)).toMatchObject({ text: '看看 @/repo/src/lib/' })
+  })
+
+  it('选中的是文件:尾巴上一个斜杠都不许多', async () => {
+    renderComposer()
+    const box = inputBox()
+    type(box, '看看 @codex')
+    await settleMentions()
+
+    fireEvent.mouseDown(screen.getByText('/repo/src/codex.ts'))
+    expect(box.querySelector('[data-token]')?.getAttribute('data-token')).toBe(
+      createFileToken('/repo/src/codex.ts'),
+    )
+    expect(box.textContent).toContain('@/repo/src/codex.ts')
+    expect(box.textContent?.endsWith('/')).toBe(false)
   })
 })
 

@@ -47,6 +47,19 @@ describe('切分表', () => {
     ])
   })
 
+  /**
+   * **病 ② 的收口**(09-12 真机:@ 的是一个目录,气泡与模型都把它当成文件)。
+   * 尾巴上那个 `/` 由 `usePickDrawer.applyPick` 在选中的那一刻写进路径里
+   * (壳没有 stat,那是这一侧唯一的判据),这里钉的是**句中**的那一形 ——
+   * 后面还跟着话,目录判据照样成立。
+   */
+  it('句中的目录引用:后面跟着正文,照旧判成 dirRef', () => {
+    expect(segmentUserMessage('@/a/dir/ 看看')).toEqual([
+      { kind: 'dirRef', path: '/a/dir/' },
+      { kind: 'text', text: ' 看看' },
+    ])
+  })
+
   it('~/ 开头也认(展不展开是打开那条路的事,这里不碰)', () => {
     expect(segmentUserMessage('@~/notes/a.md')).toEqual([
       { kind: 'fileRef', path: '~/notes/a.md' },
