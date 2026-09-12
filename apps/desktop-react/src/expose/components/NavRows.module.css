@@ -1,0 +1,106 @@
+/*
+ * 三行导航 —— **与会话行同形同左缘**(09-12 方向 A 拍板 1 / 2,正本 §3.1)。
+ *
+ * 左缘是这一整块面的判据:`--content-lead-left`(22 = 红灯中心)。所有盒子的
+ * 左缘从这条线起,**没有任何元素越过它**(用户原话),文字在盒内再进 --sp-2
+ * → x = 30;带字形的那三行再让 16 + 8 → 文字 x = 54。
+ * 列表那一侧读的是同一个变量(见 SessionTree.module.css 的 .scroll),
+ * 09-12 报的「搜索区比列表宽」因此在结构上不存在:两块面是同一条线。
+ */
+.nav {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  /* 行与行之间贴着 —— 三行导航读起来该是**一组**,不是三张卡。会话行之间那
+     2px(--expose-row-gap)让开是因为两条各自上薄膜的行会焊成色带,而这三行
+     同时亮着的永远只有一条(鼠标只有一个)。 */
+  gap: 0;
+  padding: var(--sp-2) var(--sp-2) var(--sp-1) var(--content-lead-left);
+}
+
+/*
+ * 一行导航。**形与会话行逐格同源**:同高、同内边距、同圆角、同一层悬停薄膜。
+ * 底座是 `ui/ButtonBase`(只清 UA),所以这里画的都是这一件自己的皮肤。
+ */
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  width: 100%;
+  height: var(--expose-nav-row-h);
+  padding-inline: var(--sp-2);
+  border-radius: var(--r-1);
+  color: var(--text-1);
+  font-size: var(--fs-label);
+  text-align: start;
+  cursor: default;
+  /* 无位移原则:hover 只上薄膜,一格位置都不动。 */
+  transition: background-color var(--dur) var(--ease);
+}
+
+.row:hover {
+  background: var(--st-hover);
+}
+
+/*
+ * 字形列:**这三行都有字形,所以它是定宽的**(与会话行那一格刻意不同 ——
+ * 行上普通聊天没有字形、不预留,判词在 SessionRow.module.css)。
+ * 宽度读 --expose-glyph-w(16):导航的字形比行内那枚(14)大一档,它们是
+ * 「这块面的功能」而不是「这条会话的形态」。
+ */
+.glyph {
+  flex: none;
+  width: var(--expose-glyph-w);
+  height: var(--expose-glyph-w);
+  color: var(--text-2);
+}
+
+/* 挤压律一:一行里吸剩余空间的只有这一件,且只截断不换行。 */
+.label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 范围行尾那枚 ▾:定宽、不参与收缩,开合态由 aria-expanded 说。 */
+.chev {
+  flex: none;
+  width: var(--fs-nano);
+  height: var(--fs-nano);
+  color: var(--text-3);
+}
+
+/*
+ * 搜索开着的那一档。`ui/Input` 的根落在这个类上,这里只说它在这一列里怎么排
+ * (**不改它的高** —— 两个单类选择器特异性相同,谁赢由样式表先后决定;
+ * 同高靠 token 读同一个数,判词在 NavRows.tsx 与 tokens.css 上)。
+ *
+ * 名字**不叫 `.field`**:`ui:consume` 的 `shared-vocab-css` 盯的是「同一个视觉
+ * 词汇有几个产地」,而 `field` 正在那张待收编清单上(`ui/Input` 自己那一份才是
+ * 它的产地)。这一格说的是「搜索行此刻开着」,不是「这里有一个字段」。
+ */
+.searchOpen {
+  flex: none;
+  min-width: 0;
+}
+
+/* ── 宽档(≥ 761):侧栏在场,顶上不需要第二个范围控件 ────────────────────
+ * `display: none` 顺手把它移出无障碍树,于是同一时刻只有一个范围控件被读屏
+ * 读到。阈值与 tokens 的 --expose-rail-bp 是同一事实的两处写法:`@container`
+ * 的条件里不能写 var(),改的时候两处一起改。 */
+@container expose (min-width: 761px) {
+  .scopeRow {
+    display: none;
+  }
+  /*
+   * 总览形维持今天的密度:页边距回到 --expose-pad(32)。
+   * 「所有元素从红灯中心起笔」那条拍板说的是**侧栏形** —— 总览形是浮窗 / 舞台,
+   * 那里左边根本没有红灯(正本 §3.2:总览形变的只有三件)。
+   */
+  .nav {
+    padding: var(--sp-4) var(--expose-pad) var(--sp-3);
+  }
+}

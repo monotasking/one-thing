@@ -1,11 +1,15 @@
 /*
  * 粘顶、无计数,09-04 起**可折叠**、**不透明**(底色 = 宿主面,见 .head 内注)。
- * 高度 = --list-row-h,与行同一个节拍;`scroll-padding-top` 在滚动容器那一侧
- * 取的是这个数加一格行距(否则键盘走到视口外的行会被停在节头**底下**:
- * 环在,行看不见)。
  *
- * caret 占的是 `--expose-glyph-w`,与行首那一列**同宽同位**:于是节名与行标题
- * 从同一条竖线起笔(裁决 6 的左端,在节头这一层也成立)。
+ * **两种形**(09-12 方向 A):侧栏形(基准规则)高 26、上面让 10、字号 --fs-meta
+ * 加一档字重与字距 —— 它在这一形里是一条**结构线**而不是一行标题;
+ * 总览形(≥761,文件末尾那一组覆写)维持今天的 --list-row-h。
+ * 滚动容器那一侧的 `scroll-padding-top` 读的就是「此刻这一档的节头高」——
+ * 两处必须同源,否则键盘走到视口外的行会被停在节头**底下**(环在,行看不见)。
+ *
+ * 折叠箭头 09-12 **挪到行尾**,而且**悬停或已折叠才显**(正本 §3.1):
+ * 节名因此与行的文字落在同一条竖线上(x = 22 + 8),而一列常显的 ▾
+ * 在一张按时间分节的列表里是六个一模一样的装饰。
  */
 .head {
   position: sticky;
@@ -14,8 +18,13 @@
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  height: var(--list-row-h);
-  margin: 0;
+  height: var(--expose-sec-h);
+  /* 上边距读一格**可被上游改写的** token:第一节不该在列表顶上再让 10
+     (那是「节与节之间」的呼吸,顶上已经有滚动容器的内边距),所以
+     `SessionTree.module.css` 的 `.section:first-child` 把 --expose-sec-lead
+     重定义成 --sp-1。自定义属性会继承,于是这一条规则一个字都不用改 ——
+     「第一节让多少」是**列表**的事,不是节头自己该知道的事。 */
+  margin: var(--expose-sec-lead) 0 0;
   padding-inline: var(--sp-2);
   border-radius: var(--r-1);
   /* 09-04 用户令「让它不透明」:粘顶时行从底下滚过不许透出来。颜色不是自己的,是
@@ -25,7 +34,7 @@
   font-weight: 650;
   color: var(--text-3);
   /* 节头是**结构线**不是主角:降一档字号与灰度,行的标题才是这屏的主角。 */
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   /* 行与节头都不是文本,点它是「收 / 展这一节」——不出文本光标。 */
   cursor: default;
   transition: color var(--dur) var(--ease);
@@ -62,18 +71,53 @@
   color: var(--text-2);
 }
 
-/* caret 定宽:开合时节名不许左右跳(▾ 与 ▸ 的字宽本来就不同)。 */
-.caret {
-  flex: none;
-  width: var(--expose-glyph-w);
-  height: var(--expose-glyph-w);
-}
-
-/* 挤压纪律:结构行只截断不换行。 */
+/* 挤压纪律:结构行只截断不换行。节名是这一行唯一的弯腰件。 */
 .label {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+ * 折叠箭头 —— **行尾,悬停或已折叠才显**(09-12 正本 §3.1)。
+ *
+ * 「已折叠才显」是这一格的全部要点:一节收起来之后,屏幕上除了「少了一片行」
+ * 没有任何东西说明它是被收起来的(而不是空的)—— 那时箭头是**状态显示**,
+ * 不是装饰,所以它得常驻。展开着的时候它才退成一件悬停才出现的动作。
+ *
+ * 显形只动 opacity、**常驻在流里**:条件渲染或 display 切换会让节名在悬停那一
+ * 刻左右跳一格(无位移原则)。定宽同因 —— ▾ 与 ▸ 的字宽本来就不同。
+ */
+.caret {
+  flex: none;
+  width: var(--expose-row-glyph);
+  height: var(--expose-row-glyph);
+  opacity: 0;
+  transition: opacity var(--dur-hover-fade) var(--ease);
+}
+
+.head:hover .caret,
+.head[data-active='true'] .caret,
+.head[aria-expanded='false'] .caret {
+  opacity: 1;
+}
+
+/*
+ * ── 总览形(容器 ≥ 761):维持今天的节拍 ─────────────────────────────────
+ * 高度回到 --list-row-h(它同时是滚动容器 `scroll-padding-top` 的那个数),
+ * 字距回到 0.02em,上边距归零 —— 09-04 那一份逐格还原。
+ * 变的只有一件:箭头在行尾(那是 09-12 对两种形一起拍的)。
+ */
+@container expose (min-width: 761px) {
+  .head {
+    height: var(--list-row-h);
+    margin-top: 0;
+    letter-spacing: 0.02em;
+  }
+  .caret {
+    width: var(--expose-glyph-w);
+    height: var(--expose-glyph-w);
+  }
 }

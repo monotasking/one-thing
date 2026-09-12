@@ -28,8 +28,9 @@ import s from './SectionHead.module.css'
  * activedescendant 指着),axe 的 `aria-required-children` 与 Tab 序走查各红一遍。
  * 它的**静态形**是 `<div>`,但静态形按定义不画 caret(判据就是「给不给 onToggle」)。
  * 皮肤也没有 `composes`:`GroupHead.module.css` 的 `.head` 带着自己的 padding 与
- * `--fs-micro`,而这一行的高必须**恰好是 `--list-row-h`**(粘顶的高度与滚动容器
- * 的 `scroll-padding-top` 是同一个数);两个单类选择器特异性相同,谁赢由样式表
+ * `--fs-micro`,而这一行的高必须**恰好是它这一档的行高**(侧栏形
+ * `--expose-sec-h`、总览形 `--list-row-h`;粘顶的高度与滚动容器的
+ * `scroll-padding-top` 是同一个数);两个单类选择器特异性相同,谁赢由样式表
  * 先后决定 —— 那是一条会随 import 次序漂的规则,不值得为省几行 CSS 去冒。
  * 所以这里保留自己的皮肤,并把这条出入记在这儿(施工纪律:出入记档回报)。
  *
@@ -96,9 +97,19 @@ export function SectionHead({
       aria-expanded={expanded}
       onClick={() => onToggle(id)}
     >
-      {/* caret 不带名字:开合态由 `aria-expanded` 说,读屏念两遍是噪音。 */}
-      <Caret className={s.caret} strokeWidth={2} aria-hidden="true" />
+      {/*
+       * ── 09-12:节名在前,caret 挪到**行尾**(正本 §3.1)──────────────────
+       * 从前 caret 占的是 `--expose-glyph-w`、与行首那一列同宽同位,为的是
+       * 「节名与行标题从同一条竖线起笔」。方向 A 把行首那一列去掉了
+       * (形态字形只在有字形的行上画),于是那条对齐的对象不存在了 ——
+       * 留着一列常显的 ▾ 只会让节名比行的文字多缩进 22px。
+       * 今天节名直接从盒子的左内缘起笔(x = 22 + 8),与行的文字同一条线,
+       * caret 退到行尾并且**悬停或已折叠才显**(判词在 .caret 上)。
+       *
+       * caret 不带名字:开合态由 `aria-expanded` 说,读屏念两遍是噪音。
+       */}
       <span className={s.label}>{text}</span>
+      <Caret className={s.caret} strokeWidth={2} aria-hidden="true" />
     </div>
   )
 }

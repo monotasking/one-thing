@@ -97,21 +97,32 @@ export function ExposeView() {
   const treeRef = useRef<HTMLDivElement>(null)
 
   /**
-   * 落点两档,判据是 `focusVisible`(键盘位显不显形):
-   *  · 还没交接 → **搜索条**(「摆出来的那一刻键盘归这块面,焦点落进搜索条」);
-   *  · 已经交给列表 → **树容器**。这一格不是可有可无的:交接之后焦点必须离开
-   *    搜索条,否则 ↑↓/Space/↵ 会被「输入面里的无修饰单键」那条规则让给输入框,
-   *    列表当场不动。从前那一手是 `blur()` —— 焦点掉到 body,而 R1 之后孤儿焦点
-   *    会被收回落点,于是它会**弹回搜索条**。落点分两档才是这条手势在响应链上的
-   *    正确写法。
+   * 落点**三档**(09-12 方向 A:顶上没有常驻输入框了,所以从前那两档里的
+   * 「搜索条」裂成了「输入框开着」与「那一行字」两格)。次序就是判据:
    *
-   * 搜索条按**取件口**取(`data-expose-search`,Toolbar 挂的),不为了一个落点
-   * 去改库件 `ui/Input` 的 props 形状 —— 与 `viewer/JumpBar` 的
+   *  ① `focusVisible` 为真 → **树容器**。交接之后焦点必须离开输入框,否则
+   *    ↑↓/Space/↵ 会被「输入面里的无修饰单键」那条规则让给输入框,列表当场不动。
+   *    从前那一手是 `blur()` —— 焦点掉到 body,而 R1 之后孤儿焦点会被收回落点,
+   *    于是它会**弹回搜索条**。这一档排第一,是因为它说的是「键盘已经交出去了」;
+   *  ② 输入框开着 → 那只 `<input>`。点开搜索行那一拍焦点就该进去(响应链规则 2:
+   *    开什么焦点进什么);
+   *  ③ 都不是 → **搜索行那颗钮**。这块面被摆出来的那一刻落在它身上
+   *    (「摆出来的那一刻键盘归这块面」),Esc 收回输入框之后也回到它 ——
+   *    结构性的归还,不靠谁记得(响应链规则 5)。
+   *
+   * 两格都按**取件口**取(`data-expose-search` 在输入框上、
+   * `data-testid="expose-search-row"` 在静息那一行上),不为了一个落点去改库件
+   * `ui/Input` / `ui/ButtonBase` 的 props 形状 —— 与 `viewer/JumpBar` 的
    * `restingTarget = () => root.querySelector('input')` 同一判例。
    */
   const restingTarget = useCallback(() => {
     if (useExposeStore.getState().focusVisible) return treeRef.current
-    return rootRef.current?.querySelector<HTMLInputElement>('[data-expose-search]') ?? null
+    const root = rootRef.current
+    if (!root) return null
+    return (
+      root.querySelector<HTMLInputElement>('[data-expose-search]')
+      ?? root.querySelector<HTMLButtonElement>('[data-testid="expose-search-row"]')
+    )
   }, [])
 
   /**
@@ -132,16 +143,26 @@ export function ExposeView() {
   )
 
   /**
-   * Esc 的三档,次序与从前那条监听逐字相同:
-   *  ① 总览这一层且搜索条有词 → **先清词**(Esc 的第 0 层);
-   *  ② 总览这一层且没有词 → **不拦**,让宿主那一层去收这块面(退层链);
+   * Esc 的三档,次序与从前那条监听逐字相同,只有第一档换了判据:
+   *  ① 总览这一层且**搜索行开着** → 收回成一行字(连词一起清,焦点回那一行)。
+   *     这是 Esc 的第 0 层;
+   *  ② 总览这一层且搜索行是一行字 → **不拦**,让宿主那一层去收这块面(退层链);
    *  ③ Quick Look → 退一层。
+   *
+   * ── 第一档的判据从「有没有词」换成「开着没有」(09-12 方向 A)────────────
+   * 正本 §5 那一行写的是「有词就清词并收回成行;没词时走既有 `onEscape`」。
+   * 「没词」在**常驻输入框**的时代与「没在搜索」是同一句话 —— 框永远在,所以
+   * 只有词能当判据。方向 A 之后这两件事分了家:一只**刚点开、还没打字**的输入框
+   * 是一个真状态,而拿「没词」判它会让 Esc 越过它直接把整块面收回 Dock ——
+   * 点开搜索、改主意、按 Esc,整个侧栏没了。那不是退一层,是退两层。
+   * 所以这里读的是 `searching`;「有词」蕴含「开着」,于是正本那句话逐字成立,
+   * 多答的只是它没写到的那一格。**这处出入记在交卷报的留账里。**
    */
   const onEscape = useCallback(() => {
     const st = useExposeStore.getState()
     if (st.view.mode === 'overview') {
-      if (!st.query.trim()) return false
-      st.setQuery('')
+      if (!st.searching) return false
+      st.closeSearch()
       return true
     }
     st.escape()

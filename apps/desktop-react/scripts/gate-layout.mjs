@@ -1359,14 +1359,14 @@ async function sceneSummon(store, udd, sessions) {
      * 中央区那一条是**必需的布景**,不是凑数:中央区空着的话,「顶替焦点那片会话叶」
      * 那条老路会顶到右架子那一片上去 —— 两种行为就再也分不出来了。
      *
-     * 用会话行的「在下方打开」而不是「在右边打开」:后者在 W6-a 之后是**二合一**
+     * 用会话行的「在新标签页打开」而不是「在右侧打开」:后者在 W6-a 之后是**二合一**
      * (开出来的是一格 `pair:` 复合标签,右架子那一步就没有单独的会话标签可挪);
      * 前者是老老实实在同一片叶上多开一格。
      */
     await clickSessionRow(page, sessions[0])
     const tabId = `session:${sessions[1]}`
-    if (!(await pickFromSessionRowMenu(page, sessions[1], /^Open below$|在下方打开/))) {
-      throw new Error('会话行菜单里没有「Open below」那一行')
+    if (!(await pickFromSessionRowMenu(page, sessions[1], /^Open in new tab$|在新标签页打开/))) {
+      throw new Error('会话行菜单里没有「Open in new tab / 在新标签页打开」那一行')
     }
     const split = await read(page)
     check(
@@ -1468,6 +1468,10 @@ async function sceneSummon(store, udd, sessions) {
     const afterPair = await read(page)
     check(
       'sidebar 点 pair 里那条会话:不新开、不顶替(全壳标签逐字不变)',
+     *
+     * **09-12 只换了名字**(方向 A 拍板 4):那一行做的事一个字没变(仍然是
+     * `dropRef({kind:'open'})`),但「在下方打开」在会话这边名不副实 ——
+     * 两格模型里竖着并排不存在。新键是 `expose.menuOpenNewTab`。
       JSON.stringify(allTabs(afterPair).map((t) => t.id)) === JSON.stringify(pairedIds),
       `${JSON.stringify(pairedIds)} → ${JSON.stringify(allTabs(afterPair).map((t) => t.id))}`,
     )

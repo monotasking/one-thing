@@ -11,9 +11,29 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable both-edges;
-  scroll-padding-top: calc(var(--list-row-h) + var(--expose-row-gap));
-  padding: 0 var(--expose-pad) var(--sp-4);
+  /*
+   * `stable` **而不是 `stable both-edges`**(09-12,正本 §1 第三行报障)。
+   * `both-edges` 在左边也留一条滚动条宽的槽(实测 10px),而顶上那三行导航
+   * 没有 —— 用户报的「搜索区比列表宽」量出来正是这个:列表 x=26,工具栏 x=16。
+   * 槽只留在右边之后,两块面的左缘都是 --content-lead-left,对不齐在结构上
+   * 不存在;右边多出来的那一条槽是滚动条的家,它本来就该只在那一侧。
+   */
+  scrollbar-gutter: stable;
+  /*
+   * `scroll-padding-top` = 粘性节头的**滚动边界**:键盘走到视口外的行时
+   * `SessionTree` 会 `scrollIntoView({block:'nearest'})`,而「最近」认的是
+   * padding 边 —— 不告诉它「上面那一行被节头占着」,它就会把行停在节头**底下**
+   * (环在,行看不见)。取值 = **这一档的节头高**加一格行距(行与行之间隔着
+   * `--expose-row-gap`,不算进来会正好被节头压掉那 2px)。
+   * 两种形各自对齐自己那个节头高 —— 总览形那一档在文件末尾覆写。
+   */
+  scroll-padding-top: calc(var(--expose-sec-h) + var(--expose-row-gap));
+  /*
+   * 页边距:左 --content-lead-left(22 = 红灯中心,拍板 2:所有盒子的左缘从
+   * 这条线起,没有任何元素越过它)、右 --sp-2(8,槽的外面只留一档呼吸)。
+   * 顶上 0:第一节的上边距由 `.section:first-child` 那一格管。
+   */
+  padding: 0 var(--sp-2) var(--sp-4) var(--content-lead-left);
 }
 
 /*
@@ -40,6 +60,17 @@
   display: flex;
   flex-direction: column;
   gap: var(--expose-row-gap);
+}
+
+/*
+ * 第一节不在列表顶上再让那 10px(正本 §3.1:「节头上边距 10,第一节 4」)。
+ * 改法是**重定义那格 token** 而不是写一条 `.section:first-child .head`:
+ * 后者要跨 CSS Module 去点另一件的类名(名字带哈希,点不到),而
+ * 自定义属性会继承 —— 节头那条 `margin-top: var(--expose-sec-lead)` 一个字
+ * 都不用改,「第一节让多少」于是是**列表**的事,不是节头该知道的事。
+ */
+.section:first-child {
+  --expose-sec-lead: var(--sp-1);
 }
 
 /* 一节里的会话行(role="group")。 */
@@ -85,9 +116,17 @@
   color: var(--text-3);
 }
 
-/* 窄形(< 480):页边距 32px 在 240px 的架子里吃掉四分之一宽,收到 16px。 */
-@container expose (max-width: 480px) {
+/*
+ * ── 总览形(容器 ≥ 761,浮窗 / 舞台):维持今天的密度 ─────────────────────
+ * 页边距回到 --expose-pad(32),滚动边界回到 --list-row-h + 一格行距 ——
+ * 09-04 那一份逐格还原。左右对称是对的:总览形不钉在窗口左缘,那里没有红灯。
+ * 09-12 之前这里还有一档 `(max-width: 480px)` 把 32 收成 16 —— 那一档随
+ * 「侧栏形的页边距直接读 --content-lead-left」一起没了对象(22 < 16 那档的
+ * 目的就是别吃掉四分之一宽,而 22 本来就不吃)。
+ */
+@container expose (min-width: 761px) {
   .scroll {
-    padding-inline: var(--sp-4);
+    padding-inline: var(--expose-pad);
+    scroll-padding-top: calc(var(--list-row-h) + var(--expose-row-gap));
   }
 }

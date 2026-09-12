@@ -10,6 +10,7 @@ import { useExposeStore } from '../store'
 import { openSessionIds } from './__fixtures__/open-sessions'
 import { useWorkbenchStore } from '../../workbench/store'
 import { initialExposeState } from '../transitions'
+import { togglePinAndAnnounce } from './pin-announce'
 import { FocusDispatchHarness } from '../../test/focus-harness'
 import { SESSION_PREFETCH_HOVER_MS } from '../../components/motion'
 import { chatSources } from '../../data/chat-source'
@@ -411,15 +412,26 @@ describe('树的结构键(设计 §3.2 那张表的右半列)', () => {
   })
 })
 
+/*
+ * ── 09-12:行上那颗图钉退役了,这一组改叫那一口 ────────────────────────────
+ * 拍板 3 把悬停动作收成一颗 ⋯,图钉与眼睛退役成菜单里的行 —— 而「置顶」那一行
+ * 归 A2。所以此刻置顶的入口只有 ⌘⇧P(与它背后那只 `togglePinAndAnnounce`)。
+ *
+ * 这一组要证的东西**一个字没变**:乐观那一笔就地搬家、focusId 不动、播报一句、
+ * 后端拒了翻回去。变的只有**谁按下它** —— 从「点那颗钮」换成「叫那一口」。
+ * 下面第三条(⌘⇧P)本来就是走键盘那条路的,它现在是这一组里唯一还带着
+ * 「真有人按了一下」的用例;等 A2 把「置顶」那一行接进菜单,这里该补一条
+ * 「点菜单里那一行」。**这处覆盖缺口记在 A1 的交卷报留账里。**
+ */
 describe('置顶:行当场搬家,活动行跟着搬', () => {
-  it('按下图钉 → 那一行立刻进「置顶」节,focusId 一格不动(就地更新,律①)', async () => {
+  it('叫那一口 → 那一行立刻进「置顶」节,focusId 一格不动(就地更新,律①)', async () => {
     stubPort()
     render(<ExposeView />)
     lightUp('os-provider')
     expect(rows().indexOf('os-provider')).toBeGreaterThan(0)
 
     await act(async () => {
-      fireEvent.click(screen.getByTestId('session-row-pin-os-provider'))
+      togglePinAndAnnounce('os-provider')
       await Promise.resolve()
     })
 
@@ -467,7 +479,7 @@ describe('置顶:行当场搬家,活动行跟着搬', () => {
     stubPort({ updatePin: async () => ({ success: false, error: '这条会话不在' }) })
     render(<ExposeView />)
     await act(async () => {
-      fireEvent.click(screen.getByTestId('session-row-pin-os-provider'))
+      togglePinAndAnnounce('os-provider')
       await Promise.resolve()
       await Promise.resolve()
     })

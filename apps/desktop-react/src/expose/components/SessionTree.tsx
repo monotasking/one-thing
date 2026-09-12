@@ -6,7 +6,6 @@ import { hoverSessionRow, leaveSessionRow } from '../../data/chat-prefetch'
 import { buildListModel, treeNodeDomId } from '../list-model'
 import { projectNameOf } from '../projection'
 import { useExposeStore } from '../store'
-import { togglePinAndAnnounce } from './pin-announce'
 import { SectionHead } from './SectionHead'
 import { SessionRow } from './SessionRow'
 import { useSessionTime } from './session-time'
@@ -112,16 +111,10 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
     (sessionId: string) => useExposeStore.getState().enterSession(sessionId),
     [],
   )
-  const onPeek = useCallback(
-    (sessionId: string) => useExposeStore.getState().openQuickLook(sessionId),
-    [],
-  )
   const onToggleRoom = useCallback(
     (sessionId: string) => useExposeStore.getState().toggleRoom(sessionId),
     [],
   )
-  // 置顶两个入口(图钉 / ⌘⇧P)共用同一件,播报也就只有一个产地(见 pin-announce)。
-  const onTogglePin = useCallback((sessionId: string) => togglePinAndAnnounce(sessionId), [])
   /*
    * **一行会话是一个拖拽来源,而且它落哪儿都行**(W5-b 裁定 8)。
    *
@@ -247,7 +240,6 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
                   id={row.id}
                   title={row.session.title}
                   kind={row.session.kind}
-                  isPinned={row.session.isPinned}
                   projectName={showProject ? projectNames(row.session.projectId) : null}
                   time={timeOf(row.session.updatedAt)}
                   query={query}
@@ -258,11 +250,10 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
                   current={row.id === currentSessionId}
                   openState={openStateOfSession(row.id)}
                   active={row.id === activeId}
+                  menuOpen={row.id === menu?.id}
                   showProject={showProject}
                   t={t}
                   onEnter={onEnter}
-                  onPeek={onPeek}
-                  onTogglePin={onTogglePin}
                   onToggleRoom={onToggleRoom}
                   onDragPointerDown={onDragPointerDown}
                   onRestore={onRestore}

@@ -85,6 +85,8 @@ export const initialExposeState: ExposeState = {
   // 分节缺省**全开**,所以这一格记的是「我关掉了哪几节」(见 types.ts 那段)。
   collapsedSections: [],
   query: '',
+  // 出厂是**一行字**,不是一只空输入框(09-12 方向 A:顶上没有常驻输入框)。
+  searching: false,
   // 空串 = 还没有当前会话。开场归位时它会落到序列首。
   // **W5-b 起这两格是投影**(唯一写者 `content/session-projection.ts`);
   // 这里只是出厂值,形态机的每一条都不写它们。
@@ -129,6 +131,8 @@ export function open(state: ExposeState, facts: ListFacts): ExposeState {
     ...state,
     view: { mode: 'overview' },
     query: '',
+    // 开场即一行字:上次退出时那只开着的输入框不该在下次打开时还原(§4①)。
+    searching: false,
     scope: resolveScope(state.scope, facts.sessions),
   }
   const model = listModelOf(next, facts)
@@ -459,6 +463,31 @@ export function setQuery(state: ExposeState, query: string, facts: ListFacts): E
 }
 
 /**
+ * 点开搜索行 —— 那一行**原地**换成一只输入框(09-12 方向 A §3.1)。
+ *
+ * 它不碰 `query`(缺省本来就是空串),也不碰焦点:焦点落到哪儿由作用域的
+ * `restingTarget` 在提交之后去认(「开的人点名、被开的那一格挂载时自己取走」),
+ * 纯函数不认识 DOM。已经开着时是**同一个引用** —— 不触发一次白重渲染。
+ */
+export function openSearch(state: ExposeState): ExposeState {
+  return state.searching ? state : { ...state, searching: true }
+}
+
+/**
+ * 收回成一行字 —— **连词一起清**(Esc 那一下的语义:正本 §5「有词就清词并
+ * 收回成行」)。
+ *
+ * 「清词」与「收回」是一件事而不是两件:留下一个「收着但还在过滤」的状态,
+ * 屏幕上就会有一张少了行的列表而没有任何东西说明为什么(而那正是 09-04
+ * 卡片时代留下的那类「看不见的过滤器」)。清了词所以要夹持焦点:活动行可能
+ * 是一条只有在搜索结果里才存在的子行。
+ */
+export function closeSearch(state: ExposeState, facts: ListFacts): ExposeState {
+  if (!state.searching && !state.query) return state
+  return clampFocus({ ...state, searching: false, query: '' }, facts)
+}
+
+/**
  * 「进入」= 内容回到起点(退出 quicklook、清掉搜索词)。
  *
  * **它不再写 `currentSessionId`**(W5-b 裁定 3):那一格成了树的投影,而
@@ -470,7 +499,8 @@ export function setQuery(state: ExposeState, query: string, facts: ListFacts): E
  * 这件事,将来这块面要按它做别的(比如把那一行滚进视野)时不必再改签名。
  */
 export function enterSession(state: ExposeState, _sessionId: string): ExposeState {
-  return { ...state, view: { mode: 'overview' }, query: '' }
+  // 「回到起点」在 09-12 之后多了一格:搜索行也收回成一行字(它与清词是一件事)。
+  return { ...state, view: { mode: 'overview' }, query: '', searching: false }
 }
 
 /* ── 会话没了 ──────────────────────────────────────────────────────────── */

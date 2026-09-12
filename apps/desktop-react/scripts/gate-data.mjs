@@ -250,7 +250,27 @@ async function main() {
     )
 
     console.log('\n[4/4] 进一条会话的 Quick Look,断言首页消息的正文出现')
-    await clickTestId(page, `session-row-peek-${target.id}`)
+    /*
+     * ── 入口换了(09-12 方向 A 拍板 3)────────────────────────────────────
+     * 行上那只眼睛退役了:悬停只剩一颗 ⋯,与右键弹**同一张表**,Quick Look 是
+     * 表里的一行(`card.preview`)。所以这一步走用户真走的那条路 ——
+     * 点 ⋯ → 点「Quick Look」。`Space` 那条键盘等价仍在(它在单测里),
+     * 这里刻意走鼠标那条:门要证的是**入口还通着**。
+     */
+    await clickTestId(page, `session-row-menu-${target.id}`)
+    await delay(350)
+    const picked = await page.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]'))
+      // 两种语言各一句(`card.preview`:zh「预览」/ en「Quick Look」)。
+      const hit = rows.find(el => /^(Quick Look|预览)$/.test((el.textContent ?? '').trim()))
+      if (!hit) return rows.map(el => (el.textContent ?? '').trim())
+      hit.click()
+      return true
+    })
+    assert(
+      picked === true,
+      `行菜单里有 Quick Look 那一行(实有:${Array.isArray(picked) ? picked.join(' / ') : picked})`,
+    )
     const shown = await waitFor('Quick Look 画出首页消息', async () => {
       const text = await page.evaluate(() => {
         const body = document.querySelector('[data-testid="quicklook-body"]')

@@ -1357,7 +1357,8 @@ async function main() {
      * 改判成二合一之后,两条会话并成**一格** `pair`,条上只剩一格,⑤c 当场没有对象。
      * 借来的前置状态会随任何一个前置场景的改动一起塌(gate:drag 也踩过同一条)。
      * `ensureSecondTab` 是**幂等**的:⑤b 已经开好了它就一个字都不动,没开好它自己
-     * 走「在下方打开」那条路开一格 —— 两个场景于是各自成立,谁先谁后都量得对。
+     * 走「在新标签页打开」那条路开一格 —— 两个场景于是各自成立,谁先谁后都量得对。
+     * (09-12 那一行只改了名,做的事一个字没变;方向 A 拍板 4。)
      */
     const reorderReady = await ensureSecondTab(page, normalIds)
     assertScenario(
@@ -1869,7 +1870,7 @@ async function ensureSecondTab(page, candidates) {
   const enough = counts => counts.some(n => n >= 2)
   if (enough(await census())) return true
   /*
-   * **收的是一串候选,不是一条会话**(W6-p 第一趟真机当场撞上的):「在下方打开」
+   * **收的是一串候选,不是一条会话**(W6-p 第一趟真机当场撞上的):「在新标签页打开」
    * 落的是 `dropRef({kind:'open'})`,而它对**已经开着的那一格**是幂等的 ——
    * 只把它点亮,不会再添一格。⑤a 跑完停在哪一条会话是它自己的循环说了算
    * (`i % normalIds.length`),夹具不该去猜那个余数;换成挨个试,开出第二格就收手。
@@ -1885,7 +1886,7 @@ async function ensureSecondTab(page, candidates) {
   }
   // 夹具搭不起来时要说得出**哪一步**没成:菜单那一项在不在、条上此刻有几格。
   console.log(
-    `  · 夹具没搭起来:「在下方打开」${opened ? '点到了' : '**没找到**'};`
+    `  · 夹具没搭起来:「在新标签页打开」${opened ? '点到了' : '**没找到**'};`
       + `试过 ${candidates.length} 条会话;此刻屏幕上的标签条各有几格:`
       + `${after.length ? after.join(' / ') : '(一条都没有)'}`,
   )
@@ -1895,7 +1896,8 @@ async function ensureSecondTab(page, candidates) {
 /**
  * **在中央那条条的末尾再开一格标签**(⑤b / ⑤c 的夹具)。
  *
- * 走的是用户真走的那条路:会话行右键 →「在下方打开」。挑这一项而不是「在右侧」
+ * 走的是用户真走的那条路:会话行右键 →「在新标签页打开」(09-12 前它叫「在下方
+ * 打开」—— 方向 A 拍板 4 只改了名字,做的事一个字没变)。挑这一项而不是「在右侧」
  * 是因为它在 main 与 W6-b 上是**同一个结果**(末尾开一格新标签)——「在右侧」
  * 在 W6-b 之后是二合一,两边不同形,A/B 就不是同一个现场了。
  */
@@ -1908,7 +1910,7 @@ async function openSessionAsSecondTab(page, sessionId) {
   await delay(400)
   const opened = await page.evaluate(() => {
     const items = Array.from(document.querySelectorAll('[role="menuitem"],[role="menuitemradio"]'))
-    const below = items.find((el) => /在下方|Open below/.test(el.textContent ?? ''))
+    const below = items.find((el) => /在新标签页打开|Open in new tab/.test(el.textContent ?? ''))
     if (below instanceof HTMLElement) below.click()
     else document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     return Boolean(below)

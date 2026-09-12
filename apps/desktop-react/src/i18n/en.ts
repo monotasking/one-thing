@@ -336,6 +336,11 @@ export const en: Record<MessageKey, string> = {
   'expose.emptyTitle': 'No sessions yet',
   'expose.emptyHint': 'Start a session in onething and it shows up here',
   'expose.disconnectedTitle': 'Not connected to a core',
+  /* 09-12 direction A: three nav rows on top, search being one of them. This is
+   * the row at rest; once opened, the input reuses the placeholder / label pair
+   * below (one control, two shapes — so one set of words). No shortcut hint:
+   * there is no global "focus session search" command to print (see §7). */
+  'expose.searchRow': 'Search',
   'expose.disconnectedHint': 'Sessions come from the core running on this machine; {error}',
 
   /* ── rail scopes ──────────────────────────────────────────────────── */
@@ -357,8 +362,9 @@ export const en: Record<MessageKey, string> = {
   'expose.unpin': 'Unpin',
   'expose.pinnedAnnounce': 'Pinned {name}',
   'expose.unpinnedAnnounce': 'Unpinned {name}',
-  /* W5-b: the session row's context menu, plus the accname of the hollow
-   * "open but hidden" dot. The three menu items reuse `files.menuOpen*`. */
+  /* W5-b: the session row's context menu (since 09-12 the row-end ⋯ opens the
+   * same table), plus the accname of the hollow "open but hidden" dot. The
+   * first two items reuse `files.menuOpen*`, Quick Look reuses `card.preview`. */
   'expose.rowMenu': 'More actions',
   'expose.openStateHidden': 'Open (hidden)',
   'expose.expandRoom': 'Expand {name}',
@@ -367,6 +373,12 @@ export const en: Record<MessageKey, string> = {
   /* ── list view: retired 09-04 (see zh.ts) ─────────────────────────── */
 
   /* ── search panel (search/: one search row + one flat hit list) ───── */
+  /* 09-12 ruling 4: sessions cannot sit side by side vertically (two slots, left
+   * and right only), so "Open below" was a lie — renamed to what it does. NOT
+   * reusing `files.menuOpenBelow`: that key is literally true in the file tree
+   * (it really calls `splitLeaf(leaf.id, 'col')`), so retitling it would break
+   * that row instead. One sentence, one key. */
+  'expose.menuOpenNewTab': 'Open in new tab',
   /* Fallback placeholder while the manifests are still on the wire: it names no
    * scopes, because any name it printed there would be a guess. */
   'search.placeholder': 'Search…',

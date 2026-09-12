@@ -397,6 +397,11 @@ export const zh = {
   /* ── 侧栏范围(SCOPE_SPECS 读这几条;侧栏项不带数字)──────────────── */
   'expose.scopeLabel': '项目',
   'expose.scopeAll': '全部',
+  /* 09-12 方向 A:顶上三行导航,搜索是其中一行。这一条是它**静息时那行字**;
+   * 点开之后那只输入框读的仍是下面 placeholder / label 两条(同一件的两种形,
+   * 文案也该是同一组)。**不画快捷键提示** —— 今天没有「聚焦会话搜索」这条
+   * 全局命令,画一个按不出来的键位是在说谎(正本 §7 留账)。 */
+  'expose.searchRow': '搜索',
   'expose.scopeCollab': '协作',
   'expose.scopeLoose': '无项目',
   'expose.newSession': '新会话',
@@ -416,8 +421,9 @@ export const zh = {
   'expose.unpinnedAnnounce': '已取消置顶 {name}',
   'expose.expandRoom': '展开 {name}',
   'expose.collapseRoom': '收起 {name}',
-  /* W5-b:会话行的右键菜单,以及那颗空心「已打开·隐藏」点的 accname。
-   * 三行菜单项本身复用 `files.menuOpen*`(同一句话只该有一个键)。 */
+  /* W5-b:会话行的右键菜单(09-12 起行尾那颗 ⋯ 弹的是同一张表),以及那颗
+   * 空心「已打开·隐藏」点的 accname。头两行菜单项复用 `files.menuOpen*`
+   * (同一句话只该有一个键),Quick Look 那行复用 `card.preview`。 */
   'expose.rowMenu': '更多操作',
   'expose.openStateHidden': '打开着(已隐藏)',
   /* 空态 / 载入态:数据源说了算,不留 mock 兜底 —— 假数据比空更糟。 */
@@ -426,6 +432,11 @@ export const zh = {
   'expose.emptyHint': '在 onething 里开一条会话,它会出现在这里',
   'expose.disconnectedTitle': '没连上 core',
   'expose.disconnectedHint': '会话数据来自本机正在跑的 core;{error}',
+  /* 09-12 拍板 4:会话这边**竖着并排不存在**(两格只有左右),所以「在下方打开」
+   * 名不副实,改名为它真做的事。**不复用 `files.menuOpenBelow`** —— 那把键在
+   * 文件树里字字属实(那边真的 `splitLeaf(leaf.id, 'col')`),改它的文案会把
+   * 文件树那一行一起改错。一句话一把键。 */
+  'expose.menuOpenNewTab': '在新标签页打开',
 
   /* ── 组列表视图 09-04 退役(方向 A:总览与组列表合并成一张树)──────────
    * `list.*` 六条与 `expose.sessionCount*` 两条随 `ListView` 一起删:

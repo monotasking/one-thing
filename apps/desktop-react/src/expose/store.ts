@@ -117,6 +117,13 @@ interface ExposeStore extends ExposeState, PerSpaceState<ExposeFurniture> {
    */
   togglePin: (sessionId: string) => Promise<TogglePinOutcome | null>
   setQuery: (query: string) => void
+  /**
+   * 搜索行的两档(09-12 方向 A §3.1)。它们**不碰焦点** —— 「开什么焦点进什么」
+   * 由那块面自己在提交之后 `activate()` 一句(见 NavRows),纯函数与 store
+   * 都不认识 DOM。
+   */
+  openSearch: () => void
+  closeSearch: () => void
   enterSession: (sessionId: string) => void
   /**
    * 建一条会话并进去。`projectId` = 落在哪个项目下(null = 不属于任何项目)。
@@ -256,6 +263,10 @@ export const useExposeStore = create<ExposeStore>()(
       },
       // 搜索词一变,焦点可能落到一行被过滤掉的行上 —— 纯函数要那份名册才夹得住。
       setQuery: (query) => set((s) => T.setQuery(s, query, facts())),
+      openSearch: () => set(T.openSearch),
+      // 收回去连词一起清 —— 清了词焦点可能落在一行只存在于搜索结果里的子行上,
+      // 所以这一口也要那份名册(判据全在纯函数 `T.closeSearch`)。
+      closeSearch: () => set((s) => T.closeSearch(s, facts())),
       enterSession: (sessionId) => {
         set((s) => T.enterSession(s, sessionId))
         /*

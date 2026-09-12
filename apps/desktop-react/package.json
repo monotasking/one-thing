@@ -55,6 +55,7 @@
     "gate:drag-region": "node scripts/gate-drag-region.mjs",
     "gate:drag": "node scripts/gate-drag.mjs",
     "gate:layout": "node scripts/gate-layout.mjs",
+    "gate:sessions": "node scripts/gate-sessions.mjs",
     "gate:resources": "node scripts/gate-resources.mjs",
     "gate:music": "node scripts/gate-music.mjs",
     "gate:terminal": "node scripts/gate-terminal.mjs",

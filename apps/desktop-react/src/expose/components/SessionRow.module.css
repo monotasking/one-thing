@@ -1,6 +1,13 @@
 /*
- * 一条会话 —— 单行 40px(--list-row-h),永不换行、永不变形(设计裁决 2)。
- * 顺序 = `[形态 16] [标题 flex 1] [展开箭头] [悬停动作] [项目] [时间 56]`。
+ * 一条会话 —— 单行,永不换行、永不变形(设计裁决 2)。**两种形**(09-12 方向 A):
+ *
+ *  · 侧栏形(容器 < 760,= 本文件的基准规则):行 32、`[字形?] [标题] [点] [⋯]`
+ *    —— 没有时间列、没有项目签、**字形只在有字形的行上占位**;
+ *  · 总览形(容器 ≥ 761,= 文件末尾那一组覆写):维持今天的密度,行 40、
+ *    时间列与项目签在场、字形列回到 16。
+ *
+ * 基准写侧栏形而不是反过来,是因为它是**新的那一形**,也是最挤的那一形:
+ * 挤压纪律要先在最窄处成立,宽档只是把让位加回来。
  * 挤压律一:这一行里吸剩余空间的只有标题,别的一律 flex: none。
  */
 .row {
@@ -8,9 +15,9 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: var(--expose-row-gap-inline);
   min-width: 0;
-  height: var(--list-row-h);
+  height: var(--expose-row-h);
   padding-inline: var(--sp-2);
   border-radius: var(--r-1);
   cursor: default;
@@ -29,16 +36,14 @@
    * **对这一形不成立,而且是量过的**:柔光环是这一行**自己**的 `outline`
    * (见下面 `[data-active='true']`),而 paint containment 剪的是「内容」——
    * 元素自己的边框与 outline 不在其中。离线对照截图数红色像素:开与不开都是 1218。
-   * (那句判词说的是从前那种「卡片外沿的柔光」——环画在**别人**身上、靠溢出露出来,
-   * 那一形确实会被剪掉。行是自己画自己的环,所以这里能用。)
    *
    * `contain-intrinsic-size` 的第二个值就是行高:行是定高的,所以跳过排版时给出的
-   * 占位尺寸与真值逐像素相同 —— 滚动条不会跳(离线对照:滚到第 300 行,
-   * `scrollTop` / 行高 / `scrollHeight` 三个数开与不开完全相同)。`auto` 那一半让
-   * 它排过一次之后记住真值。
+   * 占位尺寸与真值逐像素相同 —— 滚动条不会跳。**两种形各自对齐自己那个行高**
+   * (总览形那一档在文件末尾覆写);对不上的话跳过排版的行会给出错的高度,
+   * 滚动条当场跳。
    */
   content-visibility: auto;
-  contain-intrinsic-size: auto var(--list-row-h);
+  contain-intrinsic-size: auto var(--expose-row-h);
 }
 
 /* 子行(派工 / 执行)缩进,其余同形 —— 缩的是内边距不是 margin,
@@ -77,13 +82,17 @@
 }
 
 /*
- * 形态图标列:**全行预留**,普通聊天留空。定宽 + flex: none,所以标题永远从
- * 同一条竖线起笔(裁决 6,与检索面板同源)。
+ * 形态字形。**只在有字形的行上在场**(09-12 拍板;从前这里是「全行预留」的定宽列)。
+ * 所以这一格量的是**图标的尺寸**而不是列宽 —— 它读图标梯的 sm 档
+ * (--expose-row-glyph),不另立一个数。
+ * 代价照记:普通聊天的标题从盒子左内缘起笔,带图标的行多让 14 + 6 ——
+ * 「标题永远从同一条竖线起笔」那半条裁决 6 在侧栏形里**主动作废**,
+ * 换来的是 240px 里多出来的 20px 标题(正本 §3.1)。
  */
 .glyph {
   flex: none;
-  width: var(--expose-glyph-w);
-  height: var(--expose-glyph-w);
+  width: var(--expose-row-glyph);
+  height: var(--expose-row-glyph);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -91,14 +100,14 @@
 }
 
 .glyphIcon {
-  width: var(--expose-glyph-w);
-  height: var(--expose-glyph-w);
+  width: var(--expose-row-glyph);
+  height: var(--expose-row-glyph);
 }
 
 /* 私聊的首字牌:一个圆,字压在正中。 */
 .initial {
-  width: var(--expose-glyph-w);
-  height: var(--expose-glyph-w);
+  width: var(--expose-row-glyph);
+  height: var(--expose-row-glyph);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -127,38 +136,67 @@
 
 /*
  * 悬停动作**浮在行尾之上**,不进 flex 流(09-04 用户报:钉在边架 320px 宽时
- * 标题只剩「屏幕使…」三个字 —— 两颗动作钮常驻在流里就常驻吃掉 ~56px,
- * 无位移原则守住了「显形时不挤别人」,却把「静息时也占位」这笔账记在标题头上)。
- * 改法:绝对定位贴右缘,显形时盖住时间列(与 chip);时间那一格同帧淡出,
- * 于是静息态标题拿到整行、显形态一个像素都不位移 —— 两条纪律都保住。
+ * 标题只剩「屏幕使…」三个字 —— 动作钮常驻在流里就常驻吃掉那一截,
+ * 无位移原则守住了「显形时不挤别人」,却把「静息时也占位」记在标题头上)。
+ *
+ * ── 09-12:这一格是那条真 bug 的修法(正本 §1 第一行)──────────────────────
+ * 用户报「悬停的眼睛 / 图钉点不到」。病根**不在动作层**,在被它盖住的那两格:
+ * 从前显形靠「时间与项目签同帧 `opacity: 0` 淡出」,而 `opacity < 1` 让那两格
+ * 各自成了**独立层叠上下文**,它们的 DOM 顺序又排在动作之后 —— 于是两块透明
+ * 的盒子画在钮**上面**并且照样接鼠标。真机读数:指针停在眼睛正中,
+ * `elementFromPoint` 答 `SPAN._time`;点眼睛进了会话,点图钉没置顶。
+ *
+ * 修法两句,缺一不可:
+ *  ① 动作层自己**带 `z-index`**并且 DOM 顺序排在时间 / 项目签**之后** ——
+ *    层级在上、顺序在后,两条都占着,它就不可能再被盖住;
+ *  ② 显形**不再靠别人淡出**,靠自己那条**渐变面纱**把标题的尾巴收掉。
+ *    那两格 `opacity: 0` 的规则整条删掉 —— 病根删了,不是绕开。
+ *
+ * 面纱是**两层**渐变叠出来的,因为这块壳的 --st-* 都是半透明的墨:
+ *  · 上层 = 那一档薄膜(--st-hover / --st-sel-hover),
+ *  · 下层 = 宿主那一层不透明的面(--surface-host,与粘顶节头读同一格)。
+ * 两层合起来的右端 = 这一行此刻的底色**逐格相同**,而左端是全透明 ——
+ * 于是标题的尾巴真的被收掉(单靠半透明的墨是收不掉字的,只会把它染一层)。
+ * 长度 = 动作层往左伸出去的内边距 = --expose-veil-w(一个数两处用,判词在 tokens)。
  */
 .actions {
   position: absolute;
-  inset-inline-end: var(--sp-2);
-  top: 50%;
-  transform: translateY(-50%);
+  inset-inline-end: var(--sp-1);
+  top: 0;
+  bottom: 0;
+  /* 层级只要「在同一行里压住时间与项目签」这一格,不参与全壳的层级表 ——
+     所以是 1 而不是 --z-* 里的某一档(那张表管的是浮层之间的先后)。 */
+  z-index: 1;
   display: flex;
   align-items: center;
-  gap: var(--sp-1);
+  padding-inline-start: var(--expose-veil-w);
   color: var(--text-3);
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--dur-hover-fade) var(--ease);
+  background-image:
+    linear-gradient(to right, transparent, var(--st-hover) var(--expose-veil-w)),
+    linear-gradient(to right, transparent, var(--surface-host) var(--expose-veil-w));
 }
 
+/* 当前会话那一行的面纱换一档薄膜(两档,与行的底色同源)。 */
+.row[aria-selected='true'] .actions {
+  background-image:
+    linear-gradient(to right, transparent, var(--st-sel-hover) var(--expose-veil-w)),
+    linear-gradient(to right, transparent, var(--surface-host) var(--expose-veil-w));
+}
+
+/*
+ * 显形三个判据:鼠标在这一行上、键盘活动行、**它的菜单正开着**。
+ * 第三格不是锦上添花:鼠标一移进菜单,行就不再 `:hover`,那颗刚被点开的钮
+ * 当场消失,屏幕上剩一张不知道从哪儿弹出来的菜单。
+ */
 .row:hover .actions,
 .row[data-active='true'] .actions,
+.row[data-menu-open='true'] .actions,
 .actions:focus-within {
   opacity: 1;
   pointer-events: auto;
-}
-
-/* 动作显形那一刻,被盖住的时间与 chip 淡出 —— 只动 opacity,位置一格不动。 */
-.row:hover .time,
-.row[data-active='true'] .time,
-.row:hover .project,
-.row[data-active='true'] .project {
-  opacity: 0;
 }
 
 /*
@@ -173,11 +211,16 @@
 }
 
 /*
- * 项目名。**不叫 .chip / .card / .badge**:`ui:consume` 的 `shared-vocab-css`
- * 盯的是「同一个视觉词汇有几个产地」,新面不往那张待收编清单上加一行。
+ * 项目名。类名刻意**不叫** `.chip` / `.card` / `.badge` —— `ui:consume` 的
+ * `shared-vocab-css` 那条盯的是「同一个视觉词汇有几个产地」,新面不该再往
+ * 那张待收编清单上加一行。
  * 空心小牌、单行截断 —— 目录名可以很长,它不该把时间挤出行外。
+ * **侧栏形整格不在场**(见下面那句 display: none):240px 里它与时间列合起来
+ * 吃掉标题的三分之一,而「这条属于哪个项目」在按项目筛过的列表里是句废话,
+ * 在「全部」里也可以等宽一点的时候再说。
  */
 .project {
+  display: none;
   flex: 0 1 auto;
   min-width: 0;
   max-width: 30%;
@@ -198,9 +241,10 @@
   white-space: nowrap;
 }
 
-/* 时间:定宽右对齐 + 等宽数字,所以一列数字上下对齐、行与行之间不跳。 */
+/* 时间:定宽右对齐 + 等宽数字,所以一列数字上下对齐、行与行之间不跳。
+   **侧栏形整格不在场** —— 按时间分节的列表里,「哪一天」已经由节头说了。 */
 .time {
-  transition: opacity var(--dur-hover-fade) var(--ease);
+  display: none;
   flex: none;
   width: var(--expose-time-w);
   text-align: end;
@@ -209,9 +253,49 @@
   color: var(--text-3);
 }
 
-/* 窄形(< 480,--expose-chip-bp):项目名降元素(律四:先截断,再有序降元素)。 */
-@container expose (max-width: 480px) {
+/*
+ * ── 总览形(容器 ≥ 761,浮窗 / 舞台)——维持今天的密度 ─────────────────────
+ * 变的只有三件(正本 §3.2):范围导航行隐藏(Rail 接管)、动作只剩一颗 ⋯、
+ * 节头箭头挪到行尾。行的几何因此在这一档**逐格还原**成 09-04 那一份。
+ * 阈值 760 / 761 与 tokens 的 --expose-rail-bp 是同一事实的两处写法:
+ * `@container` 的条件里不能写 var(),改的时候两处一起改。
+ */
+@container expose (min-width: 761px) {
+  .row {
+    gap: var(--sp-2);
+    height: var(--list-row-h);
+    /* 与上面那条同因:占位尺寸必须等于**这一档**的真行高,否则滚动条跳。 */
+    contain-intrinsic-size: auto var(--list-row-h);
+  }
+  /* 字形在这一档回到 16(裁决 6 的原形):宽档不缺那点地方。 */
+  .glyph,
+  .glyphIcon,
+  .initial {
+    width: var(--expose-glyph-w);
+    height: var(--expose-glyph-w);
+  }
+  /*
+   * **总览形把那条起笔线补回来**(正本 §3.2:这一档「变的只有三件」,
+   * 字形列不在其列)。
+   *
+   * 字形是**条件渲染**的 —— 那是组件那一层的减法,容器查询管不着它
+   * (一句 `@container` 改不了 React 画不画那个 `<div>`)。而这一档要的是
+   * 「标题永远从同一条竖线起笔」,于是这里用**一格外边距**把缺席那一格补上:
+   * 只在标题是行的第一个孩子时(= 这一行没有字形)才补,补的正好是
+   * 「字形 + 间距」。零 DOM 节点 —— 09-12 减掉的是**节点**,不是对齐;
+   * 侧栏形不补,那才是那次翻面真正换来的 20px(判词在 .glyph 上)。
+   */
+  .title:first-child {
+    margin-inline-start: calc(var(--expose-glyph-w) + var(--sp-2));
+  }
   .project {
-    display: none;
+    display: block;
+  }
+  .time {
+    display: block;
   }
 }
+
+/* 窄形(< 480,--expose-chip-bp):这一档从前要把项目签降元素,而 09-12 起
+   它在整个侧栏形里都不在场 —— 那条规则因此没有对象,一并删掉,不留一条
+   「恒真但什么都不做」的空规则(它只会让下一个人以为这里还有一档)。 */

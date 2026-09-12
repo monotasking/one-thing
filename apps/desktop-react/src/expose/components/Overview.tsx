@@ -9,12 +9,14 @@ import { formOf } from '../../stage/transitions'
 import { useExposeLive } from './use-live'
 import { Rail } from './Rail'
 import { SessionTree } from './SessionTree'
-import { Toolbar } from './Toolbar'
+import { NavRows } from './NavRows'
 import s from './Overview.module.css'
 
 /**
- * 会话总览的**装配** —— 三块面,从左到右:侧栏(Rail)/ 工具栏(Toolbar)/
- * 列表(SessionTree)。设计 `docs/design/react-shell-sessions-list-2026-09.md` §1。
+ * 会话总览的**装配** —— 三块面,从左到右:侧栏(Rail)/ 三行导航(NavRows)/
+ * 列表(SessionTree)。设计 `docs/design/react-shell-sessions-list-2026-09.md` §1,
+ * 顶上那一块 09-12 由 `Toolbar` 换成 `NavRows`(正本
+ * `docs/sessions-sidebar-2026-09.md` 拍板 1:顶部不是工具栏,是三行导航)。
  *
  * 这只组件自己**不画任何内容**:它只摆位置、开容器查询,以及画那一行
  * 「错误与列表并存」的读数(它必须在滚动容器**外面**,所以留在这一层)。
@@ -23,7 +25,8 @@ import s from './Overview.module.css'
  */
 
 /**
- * 摆出来的那一刻,键盘归这块面 —— 焦点落进搜索条。
+ * 摆出来的那一刻,键盘归这块面 —— 焦点落进**搜索那一行**(09-12 起它静息时
+ * 是一行字而不是一只输入框;落点三档的判词在 ExposeView 的 `restingTarget` 上)。
  * 在此之前它归 Dock 上那块瓦(点开面板的那个按钮),于是「刚开完面板按一下空格」
  * 会再次触发那颗按钮、把面板关掉:那是 08-30 用户报的键盘死区的另一半。
  *
@@ -63,7 +66,7 @@ function AutoFocusSearch() {
     const justPlaced = placed && !wasPlaced.current
     wasPlaced.current = placed
     // 落焦是 `activate()`,**焦点具体落在哪儿**由这一格作用域的 `restingTarget` 答
-    // (还没交接给树就是搜索条 —— 见 ExposeView)。
+    // (还没交接给树、搜索也没点开,那就是搜索行那颗钮 —— 见 ExposeView 的三档)。
     if (live && justPlaced) activate('placement')
   }, [live, placed, activate])
   return null
@@ -79,7 +82,7 @@ export function Overview({ treeRef }: { treeRef: RefObject<HTMLDivElement | null
       <AutoFocusSearch />
       <Rail />
       <div className={s.main}>
-        <Toolbar />
+        <NavRows />
         {/*
           ── 错误与列表并存(律②的另一半)────────────────────────────────
           手上还有列表时,这一行只说「这次没拿到,原话是这句」;它不负责把列表

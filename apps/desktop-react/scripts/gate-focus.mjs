@@ -1393,12 +1393,18 @@ async function main() {
      * 那只 `el.click()`:合成 click 不落焦,输入框上尤其不落 —— 那样量的就是
      * 「焦点本来在哪」而不是「↓ 把它交给了谁」。
      */
-    await page.click('[data-expose-search]')
-    await delay(200)
+    /*
+     * ── 09-12:搜索**静息时是一行字**,点它才换成输入框(方向 A 拍板 1)────────
+     * 所以摆起点这一步多了一下:先点那一行(`expose-search-row`),输入框才存在;
+     * 点开那一拍焦点由作用域的落点第二档送进去(判词在 ExposeView 的
+     * `restingTarget` 上),于是下面那句断言量的仍旧是「焦点在输入框里」。
+     */
+    await page.click('[data-testid="expose-search-row"]')
+    await delay(250)
     const onSearch = await page.evaluate(() =>
       Boolean(document.activeElement?.hasAttribute?.('data-expose-search')),
     )
-    assert(onSearch, '点一下搜索条,焦点落在它身上(交接的起点摆好了)')
+    assert(onSearch, '点一下搜索那一行 → 输入框在场且焦点落在它身上(交接的起点摆好了)')
     await page.keyboard.press('ArrowDown')
     await delay(300)
     const handed = await page.evaluate(() => {

@@ -36,11 +36,21 @@ const rowIds = () =>
     el.getAttribute('data-session-id'),
   )
 
+/**
+ * 打一个词进搜索框。09-12 起搜索是**三行导航里的一行** —— 顶上没有常驻输入框,
+ * 所以要先点开那一行,输入框才存在(这一步就是用户真走的那一下)。
+ */
+const type = (value: string) => {
+  const row = screen.queryByTestId('expose-search-row')
+  if (row) fireEvent.click(row)
+  fireEvent.change(screen.getByLabelText('搜索会话'), { target: { value } })
+}
+
 describe('三块面的装配', () => {
-  it('侧栏 / 工具栏 / 树同屏,滚动容器的 testid 留在原地(工作区门按它问)', () => {
+  it('侧栏 / 三行导航 / 树同屏,滚动容器的 testid 留在原地(工作区门按它问)', () => {
     render(<ExposeView />)
     expect(screen.getByTestId('expose-rail')).toBeTruthy()
-    expect(screen.getByTestId('expose-toolbar')).toBeTruthy()
+    expect(screen.getByTestId('expose-nav')).toBeTruthy()
     expect(screen.getByTestId('expose-tree')).toBeTruthy()
     expect(screen.getByTestId('expose-overview-scroll')).toBeTruthy()
   })
@@ -50,19 +60,32 @@ describe('三块面的装配', () => {
    * jsdom 不排版也不跑容器查询,所以这里钉的是**规则本身**(读源码,与卡片时代
    * 那两组几何用例同一个办法);真的有没有挤到,由 `npm run gate:squeeze` 判。
    */
-  it('两档阈值各就各位:760 收侧栏、480 降项目名与新会话', () => {
+  /**
+   * **一档阈值,两种形**(09-12 方向 A,正本 §3)。480 那一档退役:它从前管的
+   * 三件(项目签降元素 / 新会话缩图标钮 / 工具栏换行)前两件由侧栏形一并管掉,
+   * 第三件随那只常驻搜索框一起没了。
+   * 这里钉的仍然是**规则本身**(jsdom 不跑容器查询);真的有没有挤到、
+   * 有没有在场,由 `npm run gate:sessions` 与 `gate:squeeze` 判。
+   */
+  it('一档阈值两种形:≤760 收侧栏、出范围行、行去掉时间与项目签', () => {
     const css = (name: string) =>
       readFileSync(resolve(__dirname, name), 'utf-8').replace(/\/\*[\s\S]*?\*\//g, '')
     expect(css('Rail.module.css')).toMatch(/@container expose \(max-width: 760px\)[\s\S]*display: none/)
-    expect(css('Toolbar.module.css')).toMatch(
-      /@container expose \(min-width: 761px\)[\s\S]*\.scopePick[\s\S]*display: none/,
+    // 范围行:> 阈值就不必画(侧栏已经是范围控件,顶上不出第二个)。
+    expect(css('NavRows.module.css')).toMatch(
+      /@container expose \(min-width: 761px\)[\s\S]*\.scopeRow[\s\S]*display: none/,
     )
-    expect(css('Toolbar.module.css')).toMatch(
-      /@container expose \(max-width: 480px\)[\s\S]*\.newWide[\s\S]*display: none/,
+    // 时间列与项目签:**基准规则里就不在场**,宽档那一组才把它们放回来。
+    const row = css('SessionRow.module.css')
+    expect(row).toMatch(/\.project \{\s*display: none/)
+    expect(row).toMatch(/\.time \{\s*display: none/)
+    expect(row).toMatch(
+      /@container expose \(min-width: 761px\)[\s\S]*\.project \{\s*display: block/,
     )
-    expect(css('SessionRow.module.css')).toMatch(
-      /@container expose \(max-width: 480px\)[\s\S]*\.project[\s\S]*display: none/,
-    )
+    // 480 那一档一条都不许再有(留着一条恒真的空规则只会让下一个人以为还有一档)。
+    for (const name of ['NavRows.module.css', 'SessionRow.module.css', 'SessionTree.module.css', 'Overview.module.css']) {
+      expect(css(name), name).not.toMatch(/@container expose \(max-width: 480px\)/)
+    }
   })
 
   it('行高与图标列走 token,不写字面量(Token 纪律)', () => {
@@ -70,7 +93,12 @@ describe('三块面的装配', () => {
       /\/\*[\s\S]*?\*\//g,
       '',
     )
+    // 两种形各自那一格行高,以及「占位尺寸 = 这一档的真行高」那条对账。
+    expect(css).toMatch(/height: var\(--expose-row-h\)/)
+    expect(css).toMatch(/contain-intrinsic-size: auto var\(--expose-row-h\)/)
     expect(css).toMatch(/height: var\(--list-row-h\)/)
+    expect(css).toMatch(/contain-intrinsic-size: auto var\(--list-row-h\)/)
+    expect(css).toMatch(/width: var\(--expose-row-glyph\)/)
     expect(css).toMatch(/width: var\(--expose-glyph-w\)/)
     expect(css).toMatch(/var\(--expose-indent\)/)
     expect(css).toMatch(/width: var\(--expose-time-w\)/)
@@ -108,9 +136,7 @@ describe('会话侧的四种空态', () => {
 
   it('搜不到时是一行灰字,不是「这里还没有会话」也不是插画', () => {
     render(<ExposeView />)
-    fireEvent.change(screen.getByLabelText('搜索会话'), {
-      target: { value: '这个词哪儿都没有' },
-    })
+    type('这个词哪儿都没有')
     expect(screen.getByText('没有匹配的会话')).toBeTruthy()
     expect(screen.queryByText('这里还没有会话')).toBeNull()
     expect(rowIds()).toEqual([])
@@ -130,7 +156,7 @@ describe('错误与列表并存(律②的另一半)', () => {
   it('搜不到词的那一屏照样说 —— 手上有列表这件事不因为过滤而改变', async () => {
     await seedSessionsFailure('core 掉了', SESSIONS)
     render(<ExposeView />)
-    fireEvent.change(screen.getByLabelText('搜索会话'), { target: { value: '哪儿都没有' } })
+    type('哪儿都没有')
     expect(screen.getByRole('status').textContent).toContain('core 掉了')
   })
 
@@ -145,18 +171,15 @@ describe('错误与列表并存(律②的另一半)', () => {
  * 输入词之后屏幕仍是这一套(侧栏 + 工具栏 + 树,同样的 testid),只是内容少了。
  */
 describe('总览搜索:过滤器,不是第四种形态', () => {
-  const type = (value: string) =>
-    fireEvent.change(screen.getByLabelText('搜索会话'), { target: { value } })
-
   it('搜索时三块面的 testid 一个没换', () => {
     render(<ExposeView />)
     type('Exposé')
     expect(screen.getByTestId('expose-rail')).toBeTruthy()
-    expect(screen.getByTestId('expose-toolbar')).toBeTruthy()
+    expect(screen.getByTestId('expose-nav')).toBeTruthy()
     expect(screen.getByTestId('expose-tree')).toBeTruthy()
     expect(screen.getByTestId('session-row-os-expose')).toBeTruthy()
-    // 行上的预览眼睛还在 —— 搜索结果照常能 QuickLook。
-    expect(screen.getByTestId('session-row-peek-os-expose')).toBeTruthy()
+    // 行尾那颗 ⋯ 还在 —— 搜索结果照常有那张动作表(Quick Look 在它里面)。
+    expect(screen.getByTestId('session-row-menu-os-expose')).toBeTruthy()
   })
 
   it('不命中的行消失,变空的节整个消失', () => {

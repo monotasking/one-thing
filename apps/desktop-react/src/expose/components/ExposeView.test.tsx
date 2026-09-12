@@ -62,7 +62,8 @@ describe('会话总览是一块普通的面', () => {
     render(<AppShell />)
     cmdE()
     expect(placementOfSessions()).toEqual({ kind: 'edge', side: 'left' })
-    expect(screen.getByLabelText('搜索会话')).toBeTruthy()
+    // 09-12:顶上是三行导航,搜索静息时是**一行字**(不再是一只常驻输入框)。
+    expect(screen.getByTestId('expose-search-row')).toBeTruthy()
   })
 
   /*
@@ -266,12 +267,15 @@ describe('Esc 的让位契约', () => {
     expect(placementOfSessions()).toBeUndefined()
   })
 
-  it('搜索词是 Esc 的第 0 层:先清词,面板与视图都不动(浮窗常态下)', () => {
+  it('搜索是 Esc 的第 0 层:先收回成一行字(连词一起清),面板与视图都不动', () => {
     render(<AppShell />)
     cmdE()
+    // 先点开那一行 —— 09-12 起顶上没有常驻输入框,这一步就是用户真走的那一下。
+    act(() => void fireEvent.click(screen.getByTestId('expose-search-row')))
     fireEvent.change(screen.getByLabelText('搜索会话'), { target: { value: 'provider' } })
     esc()
     expect(useExposeStore.getState().query).toBe('')
+    expect(useExposeStore.getState().searching).toBe(false)
     expect(placementOfSessions()).toEqual({ kind: 'edge', side: 'left' })
   })
 })

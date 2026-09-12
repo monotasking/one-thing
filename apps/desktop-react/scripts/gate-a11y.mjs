@@ -428,15 +428,24 @@ async function checkComposerTabOrder(page) {
 }
 
 /**
- * 会话总览的 **Tab 序**(09-04 方向 A,设计 §3.1)。
+ * 会话总览的 **Tab 序**(09-04 方向 A,设计 §3.1;09-12 顶上换成三行导航)。
  *
  * 一块装着几百条会话的面,它的 Tab 位只许有**四个**:侧栏(一个,内部走 roving)、
- * 搜索条、新会话、树容器(一个,活动行走 `aria-activedescendant`)。
+ * 新会话行、搜索行、树容器(一个,活动行走 `aria-activedescendant`)。
  * 行**一个都不进 Tab 序** —— 469 条会话不该是 469 次 Tab,这正是选 tree +
  * activedescendant 而不是「每行一个 button」的全部理由,所以它得被钉住。
  *
- * 走法从**搜索条**出发(这块面摆出来时焦点就在它身上,`restingTarget` 第一档):
- * 先反着走两下证「侧栏是一个 Tab 位」(第一下进侧栏、第二下就出了这块面),
+ * ── 09-12 两处口径变化(方向 A,正本 `docs/sessions-sidebar-2026-09.md`)──────
+ *  ① 起点从「搜索**条**」换成「搜索**行**」:顶上没有常驻输入框了,静息态那一格
+ *    是一颗 `ui/ButtonBase`(`data-testid="expose-search-row"`),点开才换成
+ *    `ui/Input`(`data-expose-search`)。落点因此是三档(判词在 ExposeView),
+ *    这里量的是第三档 —— **这块面被摆出来那一刻**,搜索还没点开;
+ *  ② 次序从「侧栏 → 搜索 → 新会话」换成「侧栏 → 新会话 → 搜索」:三行导航的
+ *    DOM 次序就是屏幕上从上到下的次序(新会话 / 搜索 / 范围),而 Tab 序跟着
+ *    DOM 走。范围行在这一档(浮窗 ≥761)`display: none`,所以它不在 Tab 序里 ——
+ *    这正是「同一时刻只有一个范围控件被读屏读到」那条约束的机械含义。
+ *
+ * 走法:先反着走两下证「侧栏是一个 Tab 位」(第一下进侧栏、第二下就出了这块面),
  * 再正着走**五**下:前四站按次序读出来,第五站证「树是最后一个 Tab 位」——
  * 行如果长了 tabIndex,它们排在树容器之后,只走四下看不见(反证跑出来的)。
  */
@@ -452,17 +461,37 @@ async function checkExposeTabOrder(page) {
         inExpose,
         inRail: Boolean(el?.closest?.('[data-testid="expose-rail"]')),
         railSelected: el?.getAttribute?.('aria-selected') === 'true',
-        isSearch: Boolean(el?.hasAttribute?.('data-expose-search')),
+        // 输入框开着那一档(点开搜索行之后);这一步量的是它**没**开着的那一档。
+        isSearchBox: Boolean(el?.hasAttribute?.('data-expose-search')),
+        isSearchRow: el?.getAttribute?.('data-testid') === 'expose-search-row',
         isRow: Boolean(el?.hasAttribute?.('data-session-id')),
       }
     })
 
   const start = await probe()
-  assert(start.isSearch, `总览摆出来时焦点落在搜索条上(此刻在 [${start.testid ?? start.role ?? '—'}])`)
+  assert(
+    start.isSearchRow,
+    `总览摆出来时焦点落在**搜索那一行**上(落点第三档;此刻在 [${start.testid ?? start.role ?? '—'}])`,
+  )
+  assert(
+    !start.isSearchBox,
+    '摆出来那一刻搜索还没点开 —— 顶上没有常驻输入框(09-12 方向 A 拍板 1)',
+  )
 
+  /*
+   * 往回走两下要从**新会话行**那边算:搜索行在 DOM 上排在它后面,所以
+   * 「往回一下」先到新会话行,再一下才进侧栏。这一步只关心「侧栏占几个 Tab 位」,
+   * 所以走三下:新会话 → 侧栏 → 出这块面。
+   */
+  await page.keyboard.press('Shift+Tab')
+  const back0 = await probe()
+  assert(
+    back0.testid === 'expose-new-session',
+    `搜索行往回一下 = 新会话那一行(此刻在 [${back0.testid ?? '—'}])`,
+  )
   await page.keyboard.press('Shift+Tab')
   const back1 = await probe()
-  assert(back1.inRail && back1.railSelected, `搜索条往回一下 = 侧栏当前那一项(此刻在 [${back1.testid ?? '—'}])`)
+  assert(back1.inRail && back1.railSelected, `再往回一下 = 侧栏当前那一项(此刻在 [${back1.testid ?? '—'}])`)
   await page.keyboard.press('Shift+Tab')
   const back2 = await probe()
   assert(!back2.inRail, `侧栏只占**一个** Tab 位:再往回一下就出了侧栏(到了 [${back2.testid ?? back2.role ?? '—'}])`)
@@ -479,10 +508,21 @@ async function checkExposeTabOrder(page) {
   }
   const trail = forward.map((f) => f.testid ?? f.role ?? '(无名)')
   assert(
-    forward[0].inRail && forward[1].isSearch
-      && forward[2].testid === 'expose-new-session'
+    forward[0].inRail
+      && forward[1].testid === 'expose-new-session'
+      && forward[2].isSearchRow
       && forward[3].testid === 'expose-tree',
-    `Tab 序 = 侧栏 → 搜索 → 新会话 → 树(实走:${trail.join(' → ')})`,
+    `Tab 序 = 侧栏 → 新会话 → 搜索 → 树(实走:${trail.join(' → ')})`,
+  )
+  /*
+   * 范围行在这一档(浮窗容器 ≥761)`display: none` —— 它一并被移出无障碍树,
+   * 所以同一时刻只有**一个**范围控件被读屏读到(另一个是侧栏那只 listbox)。
+   * 这一条与上面那句是同一件事的两面:少了它,「次序对上了」也可能是因为
+   * 范围行恰好排在树后面而没走到。
+   */
+  assert(
+    forward.every((f) => f.testid !== 'expose-scope-row'),
+    `宽档里范围行不在 Tab 序里(侧栏已经是范围控件;实走:${trail.join(' → ')})`,
   )
   assert(
     forward.every((f) => !f.isRow),

@@ -1,8 +1,11 @@
 /*
- * 三块面的装配:侧栏(定宽)| 工具栏 + 列表(其余全部)。
- * 容器查询的**两档阈值**都写在这个文件里(设计 §1.5):
- *  · 760(--expose-rail-bp)—— 侧栏收起,顶栏长出项目选择器;
- *  · 480(--expose-chip-bp)—— 项目名降元素、新会话缩成图标钮、工具栏换行。
+ * 三块面的装配:侧栏(定宽)| 三行导航 + 列表(其余全部)。
+ * 容器查询**只剩一档阈值**(09-12 方向 A:两种形,正本 §3):
+ *  · 760(--expose-rail-bp)—— 它下面是侧栏形(侧栏收起、顶上出范围行、
+ *    行去掉时间与项目签),它上面是总览形(维持 09-04 那份密度)。
+ *  · 480(--expose-chip-bp)那一档**退役**:它从前管的三件(项目签降元素、
+ *    新会话缩成图标钮、工具栏换行)在两种形之后各自有了归宿 —— 前两件由
+ *    侧栏形一并管掉,第三件随常驻搜索框一起没了。token 本身留着(别处在读)。
  * `@container` 的条件里**不能写 var()**,所以字面量与 token 并排存在、互相点名
  * (与 420 / --squeeze-narrow 那一对同一条做法)。各件自己那一半的窄档规则
  * 住在各自的 .module.css 里 —— 这里只管「侧栏在不在场」。
@@ -33,7 +36,9 @@
   align-items: center;
   gap: var(--sp-2);
   margin: 0;
-  padding: 0 var(--expose-pad) var(--sp-2);
+  /* 左缘与列表 / 导航行同一条线(--content-lead-left,拍板 2:没有任何元素
+     越过它);右边与列表那一侧同样只让一档呼吸。总览形回 --expose-pad。 */
+  padding: 0 var(--sp-2) var(--sp-2) var(--content-lead-left);
   font-size: var(--fs-meta);
   color: var(--danger);
 }
@@ -51,8 +56,14 @@
   height: var(--icon-sm);
 }
 
-@container expose (max-width: 480px) {
+/*
+ * ── 总览形(容器 ≥ 761):页边距回到 --expose-pad ──────────────────────────
+ * 09-12 之前这里是一档 `(max-width: 480px)` 把 32 收成 16;两种形之后基准
+ * 就是侧栏形那条对齐线(22),那一档因此没有对象 —— 删掉而不是留一条
+ * 「恒真但什么都不做」的规则。
+ */
+@container expose (min-width: 761px) {
   .error {
-    padding-inline: var(--sp-4);
+    padding-inline: var(--expose-pad);
   }
 }

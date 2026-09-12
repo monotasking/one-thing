@@ -320,29 +320,36 @@ async function setExposeContainerTo(page, want) {
 }
 
 /**
- * 三档宽度的**在场表**(设计 §1.5;09-04 换掉 ListView 那个场景之后的第二把尺)。
+ * 三档宽度的**在场表**(09-12 方向 A:**两种形**,正本 §3)。
  *
  * ── 为什么这一条不能靠上面那把重叠尺 ────────────────────────────────────
  * 「有序降元素」这件事在重叠尺眼里是**隐形**的:一件被 `display: none` 掉,
  * 它连盒子都没有,自然一对相交都不会有 —— 修前修后同样零相交。而降错元素
- * (窄档还留着侧栏、宽档却把选择器也画出来)恰恰是这一档最容易犯的病:
+ * (侧栏形还留着 Rail、总览形却把范围行也画出来)恰恰是这一档最容易犯的病:
  * 两个范围控件同时在场时,读屏软件会念出两遍同一件事。
  * 所以这一条的判据是**在场表**:每一档里谁必须在、谁必须不在,逐条列出来。
  *
- * 第二半是**工具栏不许被挤出去**(08-30 那条报障判据的继承者):三件的右缘
- * 都必须落在容器可视区内 —— 被挤出边界不在「有序降元素」的名单里,
- * 没有谁声明过搜索框可以消失。
+ * 第二半是**三行导航不许被挤出去**(08-30 那条报障判据的继承者):每一行的
+ * 右缘都必须落在容器可视区内。
  *
- * 第三半只在最窄那一档问:`[选择器][+]` 同排、搜索独占第二行 —— 这正是 09-04
- * 真机走查那张 460px 截图报的病(`+` 被挤到自己一行去了),病根是 `ui/Select`
- * 的根写着 `width: 100%`,`flex-basis: auto` 于是把整行宽当成了基准尺寸。
+ * ── 09-12 这张表换了一半(方向 A)────────────────────────────────────────
+ * 顶上从「一行三件」变成「三行各一件」,于是:
+ *  · 那只 `ui/Select`(combobox)没了 —— 范围是**一行**(`expose-scope-row`,
+ *    `aria-haspopup="menu"`),点开是 `ui/Menu`;
+ *  · 搜索**静息时是一行字**(`expose-search-row`),`[data-expose-search]`
+ *    只在点开之后存在 —— 所以在场表问的是那一行,不是那只输入框;
+ *  · 「新会话」只剩**一颗**(一行),`expose-new-session-narrow` 整件退役 ——
+ *    从前那一对是「一件的两种形」,而一行导航天生装得下文字;
+ *  · 480 那一档退役(第三半连同它一起删):它判的是「`[选择器][+]` 同排、
+ *    搜索独占第二行」,而三行导航天生就是三行,那个病在结构上不存在了。
+ *  · 时间列与项目签**只在总览形**在场(侧栏形整格 `display: none`)。
  */
 async function checkWidthBands(page, band) {
   return page.evaluate((width) => {
     const root = document.querySelector('[data-focus-scope="expose"]')
     if (!root) return { error: '会话总览不在 DOM 里' }
-    const toolbar = root.querySelector('[data-testid="expose-toolbar"]')
-    if (!toolbar) return { error: '工具栏不在 DOM 里' }
+    const nav = root.querySelector('[data-testid="expose-nav"]')
+    if (!nav) return { error: '三行导航不在 DOM 里' }
 
     const shown = (el) => {
       if (!el) return false
@@ -352,34 +359,41 @@ async function checkWidthBands(page, band) {
       return r.width > 0 && r.height > 0
     }
     const rail = root.querySelector('[data-testid="expose-rail"]')
-    // 窄档那只项目选择器 = 工具栏里的 combobox(ui/Select 的根)。
-    const select = toolbar.querySelector('[role="combobox"]')
-    const search = root.querySelector('[data-expose-search]')
-    const newWide = root.querySelector('[data-testid="expose-new-session"]')
-    const newNarrow = root.querySelector('[data-testid="expose-new-session-narrow"]')
+    // 范围是**一行**(不再是 combobox):`aria-haspopup="menu"`,点开是 ui/Menu。
+    const scopeRow = nav.querySelector('[data-testid="expose-scope-row"]')
+    // 搜索静息时是一行字;`[data-expose-search]` 只在点开之后存在。
+    const searchRow = nav.querySelector('[data-testid="expose-search-row"]')
+    const searchBox = root.querySelector('[data-expose-search]')
+    const newRow = nav.querySelector('[data-testid="expose-new-session"]')
     /*
-     * 项目 chip:行的直接子 `<span>` 恰好是 [标题, (项目), 时间] ——
-     * 三个就是带 chip,两个就是没有。按结构问而不是按类名问,是因为
-     * CSS Module 的类名带哈希,而这块面刻意**没有**叫 `.chip` 的词汇
-     * (ui:consume 的 shared-vocab-css 那条)。
+     * 时间列与项目签:行的直接子 `<span>` 是 [标题, (开着那颗点), (项目), 时间]。
+     * 按**结构**问而不是按类名问,是因为 CSS Module 的类名带哈希,而这块面刻意
+     * **没有**叫 `.chip` / `.time` 的词汇(ui:consume 的 shared-vocab-css 那条)。
      *
-     * **问全部行,不问第一行**:没有工作目录的会话本来就没有 chip,而种子里
+     * **问全部行,不问第一行**:没有工作目录的会话本来就没有项目签,而种子里
      * 最新的那两条恰恰是「独立甲 / 独立乙」—— 拿第一行当被试,这一条在修前修后
-     * 都会说「chip 不在场」(首跑就是这么假红的)。
+     * 都会说「不在场」(09-04 首跑就是这么假红的)。
+     * 末尾那一格恒是时间(09-12 起它在侧栏形里 display:none,所以 `shown` 才是判据)。
      */
-    const chip = [...root.querySelectorAll('[data-session-id][data-depth="0"]')]
+    const rowSpans = [...root.querySelectorAll('[data-session-id][data-depth="0"]')]
       .map((row) => [...row.children].filter((el) => el.tagName === 'SPAN'))
-      .filter((spans) => spans.length === 3)
-      .map((spans) => spans[1])
+    const chip = rowSpans
+      .filter((spans) => spans.length >= 3)
+      .map((spans) => spans[spans.length - 2])
+      .find((el) => shown(el)) ?? null
+    const time = rowSpans
+      .map((spans) => spans[spans.length - 1])
       .find((el) => shown(el)) ?? null
 
     const state = {
       rail: shown(rail),
-      select: shown(select),
-      search: shown(search),
-      newWide: shown(newWide),
-      newNarrow: shown(newNarrow),
+      scopeRow: shown(scopeRow),
+      searchRow: shown(searchRow),
+      // 静息态**不许**有输入框:顶上没有常驻搜索框是拍板 1 的字面要求。
+      searchBox: Boolean(searchBox),
+      newRow: shown(newRow),
       chip: Boolean(chip),
+      time: Boolean(time),
     }
 
     const problems = []
@@ -389,30 +403,24 @@ async function checkWidthBands(page, band) {
       }
     }
     if (width > 760) {
-      want('rail', true, '≥760 档:侧栏在场')
-      want('select', false, '≥760 档:侧栏已经是范围控件,顶栏不再出第二个')
-      want('newWide', true, '≥760 档:「新会话」是带文字的钮')
-      want('newNarrow', false, '任何一刻只有一颗新会话钮在焦点序里')
-      want('chip', true, '「全部」范围下项目名在场')
-    } else if (width > 480) {
-      want('rail', false, '480–760 档:侧栏收起')
-      want('select', true, '480–760 档:顶栏出项目选择器')
-      want('newWide', true, '480–760 档:「新会话」仍是带文字的钮')
-      want('newNarrow', false, '任何一刻只有一颗新会话钮在焦点序里')
-      want('chip', true, '480–760 档:项目 chip 还在')
+      want('rail', true, '总览形:侧栏在场')
+      want('scopeRow', false, '总览形:侧栏已经是范围控件,顶上不再出第二个')
+      want('chip', true, '总览形 +「全部」范围:项目签在场')
+      want('time', true, '总览形:时间列在场')
     } else {
-      want('rail', false, '<480 档:侧栏收起')
-      want('select', true, '<480 档:顶栏出项目选择器')
-      want('chip', false, '<480 档:项目 chip 降元素')
-      want('newWide', false, '<480 档:「新会话」缩成图标钮')
-      want('newNarrow', true, '<480 档:图标钮上场')
+      want('rail', false, '侧栏形:侧栏收起')
+      want('scopeRow', true, '侧栏形:顶上出范围行(Rail 不在场,范围要有个入口)')
+      want('chip', false, '侧栏形:项目签整格不在场(240px 里它与时间合起来吃掉标题三分之一)')
+      want('time', false, '侧栏形:时间列整格不在场(哪一天由节头说)')
     }
-    want('search', true, '搜索条任何一档都在场')
+    want('searchRow', true, '搜索那一行任何一档都在场')
+    want('searchBox', false, '静息态顶上没有常驻输入框(拍板 1)')
+    want('newRow', true, '「新会话」那一行任何一档都在场')
 
-    // 工具栏三件一件都不许冲出容器右缘(08-30 那条报障判据的继承者)。
+    // 三行导航一行都不许冲出容器右缘(08-30 那条报障判据的继承者)。
     const clip = root.getBoundingClientRect()
     const seen = [`容器 ${width.toFixed(0)}`]
-    for (const [name, el] of [['选择器', select], ['搜索', search], ['新会话', shown(newWide) ? newWide : newNarrow]]) {
+    for (const [name, el] of [['新会话', newRow], ['搜索', searchRow], ['范围', scopeRow]]) {
       if (!shown(el)) continue
       const r = el.getBoundingClientRect()
       seen.push(`${name} 右缘余量 ${(clip.right - r.right).toFixed(0)}`)
@@ -420,35 +428,26 @@ async function checkWidthBands(page, band) {
       if (clip.left - r.left > 1) problems.push(`${name} 左缘冲出容器 ${(clip.left - r.left).toFixed(1)}px`)
     }
 
-    // 最窄那一档:第一行 = [选择器][+],第二行 = 搜索。
-    if (width <= 480 && shown(select) && shown(newNarrow) && shown(search)) {
-      const a = select.getBoundingClientRect()
-      const b = newNarrow.getBoundingClientRect()
-      const c = search.getBoundingClientRect()
-      const mid = (r) => r.top + r.height / 2
-      seen.push(
-        `选择器 中线 ${mid(a).toFixed(0)} 右缘 ${a.right.toFixed(0)}`
-        + ` / + 中线 ${mid(b).toFixed(0)} 左缘 ${b.left.toFixed(0)} / 搜索 top ${c.top.toFixed(0)}`,
-      )
-      /*
-       * 「同一行」的判据是**竖中线**,不是 top:两件身量不同(选择器是 sm 档的
-       * 输入形,图标钮是一颗方钮),而工具栏 `align-items: center` —— 它们本来
-       * 就该 top 差着几像素、中线对齐。拿 top 判会把「对的」判成红(首跑差 3px)。
-       */
-      if (Math.abs(mid(a) - mid(b)) > 1) {
-        problems.push(
-          `<480 档:选择器与「新会话」不在同一行(竖中线差 ${Math.abs(mid(a) - mid(b)).toFixed(1)}px)`
-          + ' —— ui/Select 的 width:100% 又把 flex-basis 撑成整行了?',
-        )
-      }
-      // 而且次序是 [选择器][+]:`+` 在选择器右边,不是换行换到它下面去了。
-      if (b.left < a.right - 1) {
-        problems.push(
-          `<480 档:「新会话」没有排在选择器右边(它的左缘 ${b.left.toFixed(1)} < 选择器右缘 ${a.right.toFixed(1)})`,
-        )
-      }
-      if (c.top < a.bottom - 1) {
-        problems.push(`<480 档:搜索条没有独占第二行(它的 top ${c.top.toFixed(1)} 还在选择器下缘 ${a.bottom.toFixed(1)} 之上)`)
+    /*
+     * ── 侧栏形多问一条:**三行导航与列表是同一条左缘**(拍板 2)────────────
+     * 09-12 用户报「搜索区比列表宽」量出来就是这个:列表 x=26、工具栏 x=16
+     * (`scrollbar-gutter: stable both-edges` 在左边也留了一条槽)。
+     * 判的是「两块面的左缘对不对得上」,而**那条线是多少**由 gate:sessions ①
+     * 去比红灯中心 —— 这里只问「它们是不是同一条」。
+     */
+    if (width <= 760) {
+      const scroll = root.querySelector('[data-testid="expose-overview-scroll"]')
+      const firstRow = root.querySelector('[data-session-id]')
+      if (shown(newRow) && firstRow && scroll) {
+        const a = newRow.getBoundingClientRect().left
+        const b = firstRow.getBoundingClientRect().left
+        seen.push(`导航行左缘 ${a.toFixed(1)} / 会话行左缘 ${b.toFixed(1)}`)
+        if (Math.abs(a - b) > 0.5) {
+          problems.push(
+            `侧栏形:导航行与会话行不在同一条左缘(差 ${Math.abs(a - b).toFixed(1)}px)`
+              + ' —— scrollbar-gutter 又回到 both-edges 了?',
+          )
+        }
       }
     }
     return { problems, seen, state }
@@ -456,35 +455,48 @@ async function checkWidthBands(page, band) {
 }
 
 /**
- * 行的几何(设计 §1.1:一行 = 固定字形列 + 弹性标题 + 右端定宽时间列)。
+ * 行的几何(09-12 方向 A:**两种形**,正本 §3)。
  *
  * 四条判据,一条都不能由重叠尺代劳:
  *  ① **标题只截断不溢出**:`scrollWidth > clientWidth` 只有配着 `overflow: hidden`
  *     才是「截断」,否则是墨溢出到别人身上(那把尺看不见墨);
- *  ② **时间列右缘逐行对齐**(±0.5px):裁决 6 那条「标题永远从同一条竖线起笔」的
- *     另一端 —— 右端也要是一条竖线,否则一列时间读起来是锯齿;
- *  ③ **字形列左缘逐行对齐**:同一条判据的左端(普通聊天留空但**占位**);
- *  ④ **树零横向溢出**:`scrollWidth ≤ clientWidth` —— 一行挤不下时该截断,
- *     不该把整棵树推出一条横向滚动条。
+ *  ② **树零横向溢出**:`scrollWidth ≤ clientWidth` —— 一行挤不下时该截断,
+ *     不该把整棵树推出一条横向滚动条;
+ *  ③ **总览形**(≥761)才问那两条竖线:时间列右缘逐行对齐、**标题左缘逐行对齐**
+ *     (裁决 6 的两端)。
+ *  ④ **侧栏形**(≤760)问的是另一件事:**标题的左缘只有两种**——没有字形的行
+ *     从盒子的左内缘起笔,带字形的行多让 `字形 + 间距`。
  *
- * 只量顶层行(`data-depth="0"`):子行按设计缩进 26px,拿它去比左缘是在量缩进。
- * 而且只量**会话行**(`[data-session-id]`):09-04 分节可折叠之后节头也是
- * `role="treeitem"`,但它的结构是 [caret][节名] —— 没有时间列、没有第二个 span。
- * 拿 `[role="treeitem"]` 取件的话,①行结构那一条会对着节头报「少了一格」,
- * ②右缘对齐会去比一个根本没有时间列的元素。所以下面顺带断言「树上确实有节头」:
- * 哪天选择器被放宽成 treeitem,这一步的样本里就会混进它们而当场红。
+ * ── ③ 与 ④ 为什么必须分档问(09-12,这一条是改口不是放宽)────────────────
+ * 09-12 拍板把字形从「全行预留的一列」改成「只在有字形的行上画」(条件渲染 ——
+ * 那是组件那一层的减法),并把时间列在侧栏形里整格降掉(病历:240px 的架子里
+ * 标题净宽只有 83px / 35%)。于是:
+ *  · 左缘那条竖线要**量标题而不是量字形盒**:字形盒在没有字形的行上压根不在场,
+ *    拿「行的第一个元素子节点」当尺子就是在两种行上量两种东西。总览形靠一格
+ *    `margin-inline-start`(`.title:first-child`)把缺席那一格补回来,所以
+ *    **标题左缘在这一档恒是一条线** —— 这比量字形盒更直接,量的正是人看见的那条;
+ *  · 「时间列右缘逐行对齐」在侧栏形里量的是一个 `display: none` 的盒子(矩形恒零),
+ *    它会**恒绿** —— 那比红更糟(一道说谎的门)。
+ * 所以这两条留在它们成立的那一档,侧栏形换上 ④ —— 它判的正是那次翻面本身:
+ * 起笔线**恰好两种**,不许有第三种(那说明 padding / 间距在某些行上漂了)。
+ *
+ * 只量顶层行(`data-depth="0"`):子行按设计缩进,拿它去比左缘是在量缩进。
+ * 而且只量**会话行**(`[data-session-id]`):节头也是 `role="treeitem"`,但它的结构
+ * 是 [节名][caret] —— 拿 `[role="treeitem"]` 取件的话样本里会混进它们而当场红。
+ * 下面顺带断言「树上确实有节头」:哪天选择器被放宽,这一步立刻说得出来。
  */
-async function checkRowGeometry(page) {
-  return page.evaluate(() => {
+async function checkRowGeometry(page, band) {
+  return page.evaluate((width) => {
     const root = document.querySelector('[data-focus-scope="expose"]')
     const tree = root?.querySelector('[data-testid="expose-tree"]')
     if (!root || !tree) return { error: '会话总览或树容器不在 DOM 里' }
     const rows = [...tree.querySelectorAll('[data-session-id][data-depth="0"]')]
     if (rows.length < 2) return { error: `顶层行只有 ${rows.length} 条 —— 对齐要至少两行才量得出` }
     const heads = [...tree.querySelectorAll('[data-section-id]')]
+    const wide = width > 760
 
     const problems = []
-    const seen = []
+    const seen = [wide ? '总览形(≥761)' : '侧栏形(≤760)']
     // 节头与会话行是树上两种项,行几何量的是后者 —— 这一条把「样本没混进节头」钉住。
     if (heads.length === 0) {
       problems.push('树上一个分节头都没有 —— 行几何量的是「行」,它必须能与节头区分开')
@@ -493,15 +505,22 @@ async function checkRowGeometry(page) {
       problems.push('行几何的样本里混进了分节头(选择器被放宽成 role="treeitem" 了?)')
     }
     seen.push(`${heads.length} 个分节头(不进行几何样本)`)
-    const lefts = []
-    const rights = []
+
+    const shown = (el) => {
+      if (!el) return false
+      const st = getComputedStyle(el)
+      if (st.display === 'none' || st.visibility === 'hidden') return false
+      const r = el.getBoundingClientRect()
+      return r.width > 0 && r.height > 0
+    }
+    const glyphLefts = []
+    const timeRights = []
+    const titleLefts = []
     for (const row of rows) {
       const spans = [...row.children].filter((el) => el.tagName === 'SPAN')
       const title = spans[0]
-      const time = spans[spans.length - 1]
-      const glyph = row.firstElementChild
-      if (!title || !time || !glyph) {
-        problems.push('行的结构对不上(字形列 / 标题 span / 时间 span 少了一格)')
+      if (!title) {
+        problems.push('行的结构对不上(第一个 span 该是标题)')
         continue
       }
       if (title.scrollWidth > title.clientWidth + 1) {
@@ -513,19 +532,69 @@ async function checkRowGeometry(page) {
           )
         }
       }
-      lefts.push(glyph.getBoundingClientRect().left)
-      rights.push(time.getBoundingClientRect().right)
+      titleLefts.push(Math.round(title.getBoundingClientRect().left * 10) / 10)
+      /*
+       * 字形盒是行的**第一个元素子节点**,而且**只有带字形的行才有它**
+       * (09-12 拍板)—— 所以判据是「它不是那只标题 span」,不是「取第一个孩子」。
+       * 它只进读数、不进断言:这道门的种子全是普通聊天(`sessions.create` 只给名字),
+       * 一条带字形的行都没有,拿它当判据会是一道**永远量不到被试**的断言。
+       * 左缘那条竖线因此量**标题**(见文件头 ③)—— 它在两种行上都在场。
+       */
+      const first = row.firstElementChild
+      if (first && first !== title) glyphLefts.push(first.getBoundingClientRect().left)
+      const time = spans[spans.length - 1]
+      if (spans.length >= 2 && shown(time)) timeRights.push(time.getBoundingClientRect().right)
     }
-    const spread = (xs) => Math.max(...xs) - Math.min(...xs)
-    seen.push(`${rows.length} 行:字形列左缘散布 ${spread(lefts).toFixed(2)}px,时间列右缘散布 ${spread(rights).toFixed(2)}px`)
-    if (spread(lefts) > 0.5) problems.push(`字形列左缘没对齐,散布 ${spread(lefts).toFixed(2)}px(标题该从同一条竖线起笔)`)
-    if (spread(rights) > 0.5) problems.push(`时间列右缘没对齐,散布 ${spread(rights).toFixed(2)}px`)
+    const spread = (xs) => (xs.length > 1 ? Math.max(...xs) - Math.min(...xs) : 0)
+
+    if (wide) {
+      seen.push(
+        `${rows.length} 行:标题左缘散布 ${spread(titleLefts).toFixed(2)}px,`
+        + `时间列右缘散布 ${spread(timeRights).toFixed(2)}px(${timeRights.length} 条);`
+        + `带字形的行 ${glyphLefts.length} 条`,
+      )
+      if (timeRights.length < 2) {
+        problems.push(`总览形:时间列只量到 ${timeRights.length} 条 —— 它在这一档必须在场`)
+      }
+      if (spread(titleLefts) > 0.5) {
+        problems.push(
+          `总览形:标题左缘没对齐,散布 ${spread(titleLefts).toFixed(2)}px`
+            + '(这一档 `.title:first-child` 那格外边距把缺席的字形补回来,起笔线该是一条)',
+        )
+      }
+      if (spread(timeRights) > 0.5) {
+        problems.push(`时间列右缘没对齐,散布 ${spread(timeRights).toFixed(2)}px`)
+      }
+    } else {
+      /*
+       * ④ 侧栏形:标题的左缘**恰好两种**。多于两种 = 某些行的 padding / 间距漂了;
+       * 少于两种 = 这一屏上没有第二种行(样本不够,说出来而不是假装绿)。
+       */
+      const kinds = [...new Set(titleLefts)].sort((a, b) => a - b)
+      seen.push(`${rows.length} 行:标题左缘 ${kinds.length} 种 [${kinds.join(', ')}]`)
+      if (timeRights.length > 0) {
+        problems.push(`侧栏形:时间列还在场(量到 ${timeRights.length} 条)—— 它在这一档该整格降掉`)
+      }
+      if (kinds.length > 2) {
+        problems.push(
+          `侧栏形:标题起笔线有 ${kinds.length} 种 [${kinds.join(', ')}] —— 只许「没字形」与「有字形」两种`,
+        )
+      }
+      if (kinds.length === 2) {
+        // 两种之间的差 = 字形 + 间距(--expose-row-glyph 14 + --expose-row-gap-inline 6)。
+        const gap = kinds[1] - kinds[0]
+        seen.push(`两种起笔线相差 ${gap.toFixed(1)}px(= 字形 + 间距)`)
+        if (gap < 8 || gap > 40) {
+          problems.push(`侧栏形:两种起笔线相差 ${gap.toFixed(1)}px,不像「一枚字形 + 一格间距」`)
+        }
+      }
+    }
 
     const over = tree.scrollWidth - tree.clientWidth
     seen.push(`树 scrollWidth ${tree.scrollWidth} / clientWidth ${tree.clientWidth}`)
     if (over > 1) problems.push(`树横向溢出 ${over}px —— 挤不下时该截断,不该推出横向滚动条`)
     return { problems, seen }
-  })
+  }, band)
 }
 
 /**
@@ -2685,7 +2754,7 @@ async function main() {
     console.log('\n[7/11] 场景①总览:五档厚度,逐档滚一遍扫重叠')
     await sweepThicknesses(page, '总览', failures)
 
-    console.log('\n[8/11] 三档容器宽:谁在场、谁降元素、工具栏没被挤出去')
+    console.log('\n[8/11] 三档容器宽:谁在场、谁降元素、三行导航没被挤出去')
     /*
      * 窗要先撑宽:800 那一档的架子厚度够不着 `0.55 × 1280`(见 WIDE_WINDOW)。
      * 撑宽这一手与 `[6/11]` 的 `narrowComposerTo` 是同一只(放开 minWidth 再
@@ -2716,18 +2785,20 @@ async function main() {
           for (const problem of bands.problems) console.log(`  ✗ 容器 ${band}px:${problem}`)
           failures.push(`容器宽 ${band}px:${bands.problems.length} 条`)
         } else {
-          console.log(`  ✓ 容器 ${band}px:在场表逐条对上,工具栏三件都在容器里`)
+          console.log(`  ✓ 容器 ${band}px:在场表逐条对上,三行导航都在容器里`)
         }
 
         // 行几何在**每一档**都问一遍:对齐是排版的性质,它在哪一档塌都算塌。
-        const geom = await checkRowGeometry(page)
+        const geom = await checkRowGeometry(page, container)
         if (geom.error) throw new Error(geom.error)
         console.log(`    [${band}px] ${geom.seen.join(' | ')}`)
         if (geom.problems.length) {
           for (const problem of geom.problems) console.log(`  ✗ 容器 ${band}px:${problem}`)
           failures.push(`行几何 ${band}px:${geom.problems.length} 条`)
         } else {
-          console.log(`  ✓ 容器 ${band}px:标题只截断 · 两列各自一条竖线 · 树零横向溢出`)
+          console.log(
+            `  ✓ 容器 ${band}px:标题只截断 · ${band > 760 ? '两列各自一条竖线' : '起笔线不超过两种'} · 树零横向溢出`,
+          )
         }
       }
     } finally {

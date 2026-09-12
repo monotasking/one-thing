@@ -29,6 +29,56 @@ describe('粘顶节头不透明', () => {
     expect(hover).not.toMatch(/background(-color)?:/)
   })
 
+  /*
+   * ── 09-12 方向 A:箭头挪到行尾,而且**悬停或已折叠才显**(正本 §3.1)────────
+   * 「已折叠才显」是这一格的要点:一节收起来之后,屏幕上除了「少了一片行」没有
+   * 任何东西说明它是被收起来的(而不是空的)—— 那时箭头是**状态显示**。
+   * 显形只动 opacity、常驻在流里:条件渲染或 display 切换会让节名在悬停那一刻
+   * 左右跳一格(无位移原则)。
+   */
+  it('箭头在行尾、常驻在流里、悬停或已折叠才显(只动 opacity)', () => {
+    const css = read('SectionHead.module.css')
+    const caret = block(css, '.caret {')
+    expect(caret).toMatch(/opacity:\s*0/)
+    expect(caret).toMatch(/transition:\s*opacity/)
+    // 节名是这一行唯一的弯腰件 —— 它吸满剩余空间,箭头因此被挤到行尾。
+    expect(block(css, '.label {')).toMatch(/flex:\s*1 1 auto/)
+    expect(css).toMatch(/\.head\[aria-expanded='false'\] \.caret/)
+    expect(css).toMatch(/\.head:hover \.caret/)
+  })
+
+  /*
+   * 粘顶的高与滚动容器的 `scroll-padding-top` 是**同一个数**:不告诉滚动容器
+   * 「上面那一行被节头占着」,键盘走到视口外的行会被停在节头底下(环在、行看不见)。
+   * 两种形各有各的节头高,所以这一对**要逐档对上**。
+   */
+  it('两种形各自那个节头高,滚动边界逐档跟着它走', () => {
+    const head = read('SectionHead.module.css')
+    const tree = read('SessionTree.module.css')
+    expect(block(head, '.head {')).toMatch(/height:\s*var\(--expose-sec-h\)/)
+    expect(block(tree, '.scroll {')).toMatch(
+      /scroll-padding-top:\s*calc\(var\(--expose-sec-h\) \+ var\(--expose-row-gap\)\)/,
+    )
+    // 总览形那一档:两边一起回到 --list-row-h。
+    expect(head).toMatch(/@container expose \(min-width: 761px\)[\s\S]*height:\s*var\(--list-row-h\)/)
+    expect(tree).toMatch(
+      /@container expose \(min-width: 761px\)[\s\S]*scroll-padding-top:\s*calc\(var\(--list-row-h\) \+ var\(--expose-row-gap\)\)/,
+    )
+  })
+
+  /*
+   * 「第一节让 4 而不是 10」由**列表**重定义那格 token(自定义属性会继承),
+   * 而不是写一条跨 CSS Module 去点节头类名的规则(名字带哈希,点不到)。
+   */
+  it('第一节的上边距由列表重定义 token,节头那条规则一个字不用改', () => {
+    expect(block(read('SectionHead.module.css'), '.head {')).toMatch(
+      /margin:\s*var\(--expose-sec-lead\) 0 0/,
+    )
+    expect(read('SessionTree.module.css')).toMatch(
+      /\.section:first-child \{\s*--expose-sec-lead:\s*var\(--sp-1\)/,
+    )
+  })
+
   it('四个 Placement 宿主各自声明 --surface-host,且声明在真正铺内容底的那一格上(同块同色)', () => {
     // W2:`CoverLayer` 退役,`FullLayer` 顶上 —— 同一条判据,同一个位置。
     for (const host of ['FloatWindow', 'EdgeShelf', 'StageOverlay', 'FullLayer']) {
