@@ -12,6 +12,13 @@ import type { ComposerInputHandle } from './ComposerInput'
  * 幽灵占位。缝越多,越要有一处把它们逐条钉住。
  *
  * 编排(什么时候开抽屉、选中哪一条)在 `Composer.test.tsx`,这里一格都不碰。
+ *
+ * ── 09-12 第三批:`insert` 的**签名**换了,断言一条没动 ────────────────────
+ * 从前是 `insert('files' | 'commands', label, opts)` —— 两个种类名写死在联合里。
+ * 今天是 `insert(kindId, chip, opts)`:第一个参数是注册表上的 id(它落在 chip 的
+ * `data-kind` 上,草稿出口据此查那一种的 `expand`),第二个参数是那一种自述交出来
+ * 的 chip(写什么 + 画成哪一形)。所以下面每一处调用的**形**变了,而每一条
+ * `expect` 逐字照旧 —— 这正是「迁移 = 等价替换」要的那种差异。
  */
 
 function setup() {
@@ -50,7 +57,7 @@ describe('insert:命令徽之后恒有一个空格,光标落在它后面', () =>
   it('`/cd` 插完,草稿是 `/cd `(空格在里面),光标停在那个空格之后', () => {
     const { api, box } = setup()
     put(box, '/cd')
-    api().insert('commands', '/cd')
+    api().insert('command', { label: '/cd', tone: 'token' })
 
     // 交出去的那句话:命令徽 + 一个空格。**结尾那个空格是内容的一部分** ——
     // 09-12 报障「补全命令后没有空格」病的不是它不在,是 `.input` 把它折叠没了
@@ -76,7 +83,7 @@ describe('insert:命令徽之后恒有一个空格,光标落在它后面', () =>
     window.getSelection()?.removeAllRanges()
     window.getSelection()?.addRange(range)
 
-    api().insert('commands', '/cd')
+    api().insert('command', { label: '/cd', tone: 'token' })
     expect(api().text()).toBe('/cd  之后的话')
   })
 })
@@ -85,7 +92,7 @@ describe('参数幽灵占位:画在屏幕上,不进草稿,打第一个字就散'
   it('给了 argHint 就挂一枚 —— 屏幕上看得见,`text()` 里一个字都没有', () => {
     const { api, box } = setup()
     put(box, '/cd')
-    api().insert('commands', '/cd', { argHint: '<path>' })
+    api().insert('command', { label: '/cd', tone: 'token' }, { argHint: '<path>' })
 
     expect(box.querySelector('[data-arg-ghost]')?.textContent).toBe('<path>')
     expect(box.textContent).toBe('/cd <path>')
@@ -96,7 +103,7 @@ describe('参数幽灵占位:画在屏幕上,不进草稿,打第一个字就散'
   it('没给 argHint 就一枚都不挂(不收参数的命令)', () => {
     const { api, box } = setup()
     put(box, '/compact')
-    api().insert('commands', '/compact')
+    api().insert('command', { label: '/compact', tone: 'token' })
     expect(box.querySelector('[data-arg-ghost]')).toBeNull()
     expect(api().text()).toBe('/compact ')
   })
@@ -104,7 +111,7 @@ describe('参数幽灵占位:画在屏幕上,不进草稿,打第一个字就散'
   it('打第一个字它就散', () => {
     const { api, box } = setup()
     put(box, '/cd')
-    api().insert('commands', '/cd', { argHint: '<path>' })
+    api().insert('command', { label: '/cd', tone: 'token' }, { argHint: '<path>' })
 
     // 人在那个空格后面打了一个字:空格那一节点变成 ' ~',提示当场退场。
     const gap = box.querySelector('[data-arg-ghost]')?.previousSibling as Text
@@ -123,7 +130,7 @@ describe('参数幽灵占位:画在屏幕上,不进草稿,打第一个字就散'
   it('退格把那个空格吃掉,同样散', () => {
     const { api, box } = setup()
     put(box, '/cd')
-    api().insert('commands', '/cd', { argHint: '<path>' })
+    api().insert('command', { label: '/cd', tone: 'token' }, { argHint: '<path>' })
 
     const gap = box.querySelector('[data-arg-ghost]')?.previousSibling as Text
     gap.textContent = ''
@@ -136,7 +143,7 @@ describe('参数幽灵占位:画在屏幕上,不进草稿,打第一个字就散'
   it('光标挪到别处去了(它前面那一节点不再是光标所在),也散', () => {
     const { api, box } = setup()
     put(box, '/cd')
-    api().insert('commands', '/cd', { argHint: '<path>' })
+    api().insert('command', { label: '/cd', tone: 'token' }, { argHint: '<path>' })
 
     window.getSelection()?.removeAllRanges()
     fireEvent.input(box)
@@ -147,7 +154,7 @@ describe('参数幽灵占位:画在屏幕上,不进草稿,打第一个字就散'
   it('铺回一份存下来的稿:幽灵占位不跟着回来(那句提示已经过期)', () => {
     const { api, box } = setup()
     put(box, '/cd')
-    api().insert('commands', '/cd', { argHint: '<path>' })
+    api().insert('command', { label: '/cd', tone: 'token' }, { argHint: '<path>' })
     const saved = api().html()
     expect(saved).toContain('data-arg-ghost')
 
@@ -173,7 +180,7 @@ describe('文件 chip 的展开就在草稿出口', () => {
   it('`text()` 交出的是 `@<绝对路径>`,一个 `{{file:` 都不许漏出去', () => {
     const { api, box } = setup()
     put(box, '看看 @a')
-    api().insert('files', 'src/a.ts', { token: '{{file:/repo/src/a.ts}}' })
+    api().insert('file', { label: '@src/a.ts', tone: 'reference' }, { token: '{{file:/repo/src/a.ts}}' })
 
     // 屏幕上写的是 `@src/a.ts`(呈现),交出去的是那条绝对路径(位置)。
     expect(box.textContent).toContain('@src/a.ts')
@@ -188,7 +195,7 @@ describe('文件 chip 的展开就在草稿出口', () => {
   it('存下来的稿里 token 一个字没变(展开只在交出去那条路上)', () => {
     const { api, box } = setup()
     put(box, '看看 @a')
-    api().insert('files', 'src/a.ts', { token: '{{file:/repo/src/a.ts}}' })
+    api().insert('file', { label: '@src/a.ts', tone: 'reference' }, { token: '{{file:/repo/src/a.ts}}' })
     expect(api().html()).toContain('{{file:/repo/src/a.ts}}')
     expect(box.querySelectorAll('[data-token]')).toHaveLength(1)
   })
@@ -208,7 +215,7 @@ describe('回车与发送键读同一口草稿', () => {
   it('回车交出去的是 `text()`,不是 `textContent` —— chip 的位置不许在这条路上丢', () => {
     const { api, box, sent } = setup()
     put(box, '看看 @a')
-    api().insert('files', 'src/a.ts', { token: '{{file:/repo/src/a.ts}}' })
+    api().insert('file', { label: '@src/a.ts', tone: 'reference' }, { token: '{{file:/repo/src/a.ts}}' })
 
     // 屏幕上写的是 `@src/a.ts`(呈现),交出去的是那条绝对路径(位置)。
     expect(box.textContent).toContain('@src/a.ts')
@@ -219,7 +226,7 @@ describe('回车与发送键读同一口草稿', () => {
   it('幽灵占位也不走回车那条路出去', () => {
     const { api, box, sent } = setup()
     put(box, '/cd')
-    api().insert('commands', '/cd', { argHint: '<path>' })
+    api().insert('command', { label: '/cd', tone: 'token' }, { argHint: '<path>' })
     fireEvent.keyDown(box, { key: 'Enter' })
     expect(sent).toEqual(['/cd '])
   })

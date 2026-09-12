@@ -1,3 +1,5 @@
+import type { ReferenceTrigger } from '../references/kind'
+
 /**
  * Composer 形态学的形状。和 stage/ expose/ 一样:这里只有数据,没有 React、没有 DOM。
  *
@@ -8,8 +10,46 @@
  * 三者共用同一份状态,所以「同时开两个抽屉」在类型层就不可表达。
  */
 
-/** 抽屉里此刻住的是谁;null = 抽屉收着。四种住户共用一个槽,这是纪律不是巧合。 */
-export type DrawerKind = 'files' | 'commands' | 'model' | 'status' | null
+/**
+ * 抽屉里此刻住的是谁;null = 抽屉收着。四位住户共用一个槽,这是纪律不是巧合。
+ *
+ * ── 来源那半边收成了「哪个触发字符」(09-12 引用种类注册表)──────────────────
+ * 从前这一格是 `'files' | 'commands'` 两个**种类名**,于是「加一种从 `@` 进来的
+ * 引用」第一步就得改这个联合 —— 那正是「按能力枚举」的形状。今天它只记**哪个
+ * 触发字符开着**:同一个字符下有几种引用、各自查什么,归注册表
+ * (`references/`),这一层一个种类名都不认得。
+ *
+ * `model` / `status` 两位不是引用(人主动开的两块面),所以原样留在这里。
+ */
+export interface PickDrawerKind {
+  readonly kind: 'pick'
+  readonly trigger: ReferenceTrigger
+}
+
+export type DrawerKind = PickDrawerKind | 'model' | 'status' | null
+
+/**
+ * 每个触发字符**恒是同一个对象**。
+ *
+ * 不是省内存:抽屉每敲一个字都要 `showPick` 一次,而 `drawerKind` 进了好几只
+ * effect 的依赖表 —— 每次现造一个新对象等于每敲一个字就宣布一次「抽屉换住户了」,
+ * 那几只 effect 会跟着重跑(首开那格 ref 判据首当其冲)。
+ */
+const PICK_DRAWERS = new Map<ReferenceTrigger, PickDrawerKind>()
+
+export function pickDrawer(trigger: ReferenceTrigger): PickDrawerKind {
+  let now = PICK_DRAWERS.get(trigger)
+  if (!now) {
+    now = { kind: 'pick', trigger }
+    PICK_DRAWERS.set(trigger, now)
+  }
+  return now
+}
+
+/** 打字驱动的那两位住户在不在场。抽屉开着时上下键与回车归它,不归输入框。 */
+export function isPickDrawer(drawer: DrawerKind): drawer is PickDrawerKind {
+  return typeof drawer === 'object' && drawer !== null && drawer.kind === 'pick'
+}
 
 /** 本体行的两种形态。ask 不走抽屉 —— 它是本体自己变了个样。 */
 export type ComposerMode = 'write' | 'ask'
@@ -127,11 +167,11 @@ export interface ComposerState {
   status: StatusState | null
 }
 
-/** @ / 的触发结果。q 可以是空串(刚敲下 @ 就该出全表)。 */
-export interface TokenHit {
-  kind: 'files' | 'commands'
-  query: string
-}
+/*
+ * 触发结果(`TokenHit`)09-12 搬去了 `references/registry.ts`:它的形
+ * (`{trigger, query}`)是**注册表算出来的**,而 `parseToken` 那两条手写正则
+ * 连同这一格一起退役了。这里留一条路标,免得下一个人照着旧文件去找。
+ */
 
 /** 一张附件卡在摞里的位置。收拢态只画顶三张,其余 hidden。 */
 export interface AttCardLayout {

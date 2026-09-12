@@ -6,6 +6,12 @@ import { Composer } from './Composer'
 import { focusTree } from '../../focus/registry'
 import { FocusDispatchHarness } from '../../test/focus-harness'
 import { useComposerStore, resetComposerStore } from '../store'
+/*
+ * `drawerKind` 的来源那半边 09-12 从两个**种类名**(`'files' | 'commands'`)收成了
+ * 「哪个触发字符」—— 下面两条断言因此换了形,说的还是同一句话:「`@` 那一档开着」。
+ * 这是这一单里**唯一**动过的既有断言(其余全是调用形)。
+ */
+import { pickDrawer } from '../types'
 import { composerDraftKeys, readComposerDraft } from '../drafts'
 import { configureComposerSink } from '../sink'
 import { ASK_DEMO_SPEC } from '../data'
@@ -225,7 +231,7 @@ describe('抽屉:一个槽,后来者顶替先来者', () => {
     expect(screen.getByLabelText('搜模型或 Provider…')).toBeTruthy()
 
     type(inputBox(), '看看 @model')
-    expect(state().drawerKind).toBe('files')
+    expect(state().drawerKind).toEqual(pickDrawer('@'))
     expect(screen.queryByLabelText('搜模型或 Provider…')).toBeNull()
     expect(screen.getByText('引用文件')).toBeTruthy()
 
@@ -985,7 +991,7 @@ describe('发送', () => {
     renderComposer()
     const box = screen.getByRole('textbox', { name: /说点什么/ })
     type(box, '看看 @')
-    expect(state().drawerKind).toBe('files')
+    expect(state().drawerKind).toEqual(pickDrawer('@'))
     // 候选是真取来的(D3 波二):没有候选就没有可翻的行,这一条也就验不出东西。
     await settleMentions()
     const before = state().pickIndex

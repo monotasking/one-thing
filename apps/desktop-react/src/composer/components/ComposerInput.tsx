@@ -1,9 +1,13 @@
 import { useImperativeHandle, useRef } from 'react'
 import type { KeyboardEvent, RefObject } from 'react'
-import { expandFileTokens } from '@onething/runtime/prompts/prompt-references'
 import { useFocusScope } from '../../focus/useFocusScope'
-import { parseToken } from '../transitions'
-import type { TokenHit } from '../types'
+/* 引用种类的注册 barrel。**谁要查表,谁负责保证表是装好的**(与 `workbench/
+ * CenterRegion` 对内容种类那一条逐字同判例)—— 草稿出口要查那一枚 chip 的
+ * `expand`,所以这块面板自己保证表在。生产那条路仍旧由 `main.tsx` 先 import 一次。 */
+import '../../references'
+import { draftTokenTailPattern, expandReferenceToken, parseToken } from '../../references/registry'
+import type { TokenHit } from '../../references/registry'
+import type { ChipDraft } from '../../references/kind'
 import s from './Composer.module.css'
 
 /**
@@ -24,12 +28,18 @@ export interface ComposerInputHandle {
    */
   element: () => HTMLElement | null
   /**
-   * 把光标处的 @xx / /xx 换成一枚 chip(files)或命令徽(commands)。
+   * 把光标处的 `@xx` / `/xx` 换成一枚 chip。
+   *
+   * `kindId` 是**这一枚算哪一种引用**(注册表上的 id)。它落在 chip 的
+   * `data-kind` 上,`text()` 交出去时据此查那一种的 `expand` —— 所以这个文件
+   * 不必知道有几种引用、哪一种要展开成什么。
+   *
+   * `chip` 是那一种自述交出来的两格:写什么(`label`)、画成哪一形(`tone`)。
+   * **两档 tone 是这块输入面自己的呈现词汇表**(皮肤在 `Composer.module.css`),
+   * 不是种类名 —— 加一种引用不必在这里加一档,除非它真要长成第三个样子。
    *
    * `token` 是**这枚 chip 真正代表的那截文本**(`@` 引用是 `{{file:<绝对路径>}}`)。
-   * 给了就挂在 `data-token` 上,`text()` 交出去时用它顶替屏幕上那几个字
-   * (文件 token 在那一刻就地展成 `@<绝对路径>`,见 `readDraft`);
-   * 不给 = 屏幕上写什么、交出去就是什么。
+   * 给了就挂在 `data-token` 上;不给 = 屏幕上写什么、交出去就是什么。
    *
    * `argHint` 是**这条命令还要人填的那一截**(`<path>` / `[分类]`),由
    * `data/commands-source.argHintOf` 解析好递进来 —— 这个文件一条业务规则都没有,
@@ -37,8 +47,8 @@ export interface ComposerInputHandle {
    * 人打第一个字它就散(见 `dissolveArgGhost`)。
    */
   insert: (
-    kind: 'files' | 'commands',
-    label: string,
+    kindId: string,
+    chip: ChipDraft,
     opts?: { token?: string; argHint?: string },
   ) => void
   /**
@@ -80,9 +90,12 @@ export interface ComposerInputHandle {
  * 反过来,chip 是真节点、token 挂在它身上。两边**交出去的那句话逐字相同**,
  * 那才是要紧的)。
  *
- * ── 文件 token 的展开就在这一句,而且只在这一句(09-12)──────────────────
- * 读到 `data-token` 之后**当场** `expandFileTokens`,于是这只函数交出去的已经是
- * `@<绝对路径>` —— 与账本上最终落下的那一句**逐字相同**。
+ * ── 记号的展开就在这一句,而且只在这一句(09-12)──────────────────────────
+ * 读到 `data-token` 之后**当场**问那一枚 chip 自报的种类要一句 `expand`
+ * (`data-kind` → 注册表),于是这只函数交出去的已经是账本上最终落下的那串字节。
+ * **这个文件不知道有几种引用**:哪一种要展开、展成什么样,是那一种自己的事;
+ * 没有自述 / 没有 `expand` 的原样穿过去(浏览器叶那一枚 `{{page:…}}` 走的正是
+ * 这一支 —— 它要到发送那一刻才知道那一页长什么样,物化仍归 `chat-port`)。
  *
  * 从前这道展开在 `chat-port.sendMessage` 里(理由是「单一出口」),而真机上它
  * 生出的是一条**永不消失的重复气泡**:发送那一刻 `chat-source` 先落一格乐观
@@ -91,10 +104,6 @@ export interface ComposerInputHandle {
  * 自己那条消息。**把展开挪到草稿的出口**,两边从此是同一串字节,认领一格不用改。
  * (存草稿存的是 `html()`,chip 是真节点 —— 所以展开只发生在「交出去」这条路上,
  * 存回来的稿里 token 一个字没变。)
- *
- * 只展 `{{file:` 这一种:`{{page:` 是浏览器叶那一枚,它要到发送那一刻才知道那一页
- * 此刻长什么样,物化仍在 `chat-port`(顺序不变:文件先、页面后,判词在
- * `data/page-references.ts` 的判据①上)。
  *
  * 其余一切照旧:`<br>` 与 contenteditable 自己包出来的 `<div>` 都不产生换行,
  * 与从前 `textContent` 的行为逐字一致(那是既有口径,这一批不动)。
@@ -112,8 +121,9 @@ function readDraft(root: Node): string {
      * 是编译期哈希,拿它当协议等于把样式表接进逻辑里。
      */
     if (node instanceof HTMLElement && node.dataset.argGhost !== undefined) continue
-    const token = node instanceof HTMLElement ? node.dataset.token : undefined
-    out += token === undefined ? readDraft(node) : expandFileTokens(token)
+    const el = node instanceof HTMLElement ? node : undefined
+    const token = el?.dataset.token
+    out += token === undefined ? readDraft(node) : expandReferenceToken(el?.dataset.kind, token)
   }
   return out
 }
@@ -222,20 +232,26 @@ export function ComposerInput({
         ghost.remove()
       }
     },
-    insert: (kind, label, opts) => {
+    insert: (kindId, draft, opts) => {
       const el = ref.current
       if (!el) return
       const cur = caretToken(el)
       if (!cur) return
       const raw = cur.node.textContent ?? ''
-      // 把 @xx / /xx 那一截原地摘掉,chip 补在原位,后半截原样跟上。
-      // `:` 与 parseToken 那条命令正则同步放行 —— 技能引用叫 `/skill:<名字>`,
-      // 少这一格就会在框里留下半截 `/skill:`(两处是同一句语法的两半)。
-      const before = raw.slice(0, cur.offset).replace(/(@|\/)[\w.:-]*$/, '')
+      /*
+       * 把 `@xx` / `/xx` 那一截原地摘掉,chip 补在原位,后半截原样跟上。
+       * 那条尾巴**由注册表算出来**(触发字符与 token 字符集都是各种引用自述的并),
+       * 所以这里既不写 `@`、也不写哪几个字符算 token —— 从前那句写死的
+       * `/(@|\/)[\w.:-]*$/` 与 `parseToken` 是同一句语法的两半,漂开一次就会在
+       * 框里留下半截 `/skill:`。
+       */
+      const before = raw.slice(0, cur.offset).replace(draftTokenTailPattern(), '')
       const rest = raw.slice(cur.offset)
       const chip = document.createElement('span')
-      chip.className = kind === 'files' ? s.chip : s.cmdTok
-      chip.textContent = kind === 'files' ? `@${label}` : label
+      chip.className = draft.tone === 'reference' ? s.chip : s.cmdTok
+      // 前缀(`@`)是那一种引用自己的写法,不是这块面板的规矩 —— label 自带。
+      chip.textContent = draft.label
+      chip.dataset.kind = kindId
       if (opts?.token) chip.dataset.token = opts.token
       chip.contentEditable = 'false'
       /*

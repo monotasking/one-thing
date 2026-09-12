@@ -161,6 +161,22 @@ export interface CommandTables {
   devVisible?: boolean
 }
 
+/**
+ * **同名以内置为准**(插件 / 技能顶不掉 `/new`)—— 这一句判据的**唯一**写法。
+ *
+ * 它从 `mergeCommands` 里抽出来,是因为抽屉那一头不再合一张大表:`/` 下面三种
+ * 引用各查各的候选(`references/kinds/{command,skill,plugin}.ts`),而「顶不掉
+ * 内置」这条纪律对后两种都成立。三处各写一遍 `Set` + `commandTokenOf` 的下场是
+ * 它们迟早分叉,而分叉的第一处必然是大小写归一那一格。
+ */
+export function withoutBuiltinCollisions(
+  entries: readonly CommandEntry[],
+  builtin: readonly CommandEntry[] = BUILTIN_COMMANDS,
+): CommandEntry[] {
+  const taken = new Set(builtin.map((entry) => commandTokenOf(entry)))
+  return entries.filter((entry) => !taken.has(commandTokenOf(entry)))
+}
+
 export function mergeCommands({
   builtin,
   skill = [],
@@ -168,8 +184,6 @@ export function mergeCommands({
   dev = [],
   devVisible = DEV_COMMANDS_VISIBLE,
 }: CommandTables): CommandEntry[] {
-  const taken = new Set(builtin.map((entry) => commandTokenOf(entry)))
-  const notTaken = (entry: CommandEntry) => !taken.has(commandTokenOf(entry))
   /*
    * **这个顺序就是抽屉里从上到下的顺序**(09-12)。
    *
@@ -183,8 +197,8 @@ export function mergeCommands({
   const merged = [
     ...builtin,
     ...dev,
-    ...skill.filter(notTaken),
-    ...plugin.filter(notTaken),
+    ...withoutBuiltinCollisions(skill, builtin),
+    ...withoutBuiltinCollisions(plugin, builtin),
   ]
   return devVisible ? merged : merged.filter((entry) => entry.kind !== 'dev')
 }

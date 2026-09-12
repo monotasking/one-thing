@@ -20,6 +20,13 @@ import { startPerSpaceLayout } from './workspace/layout-scope'
 // 理由是那会造一条 import 环(病历在那只文件头上)。
 import './content/kinds'
 /*
+ * **引用种类的注册 barrel**(09-12)。import 它**就是**「这台上认得哪几种引用」
+ * —— 文件 / 目录 / 命令 / 技能 / 插件 / 提示词 / 网页。抽屉、草稿出口、气泡三处
+ * 都会自己再 import 一次(「谁要查表,谁负责保证表是装好的」),这一行管的是
+ * **第一帧**:composer 与消息列表挂载之前表就该是满的。
+ */
+import './references'
+/*
  * **启动瓦的注册**(W6-a,`stage/launchers.ts`)。与上面那张表逐字同一个体例:
  * import 它**就是**「这台上哪几块瓦是启动瓦」。今天两块(「目录」与「终端」)。
  * 它排在这里而不是 `stage/store` 里,理由与内容种类那一句相同 —— 那会造一条

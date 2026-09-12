@@ -60,7 +60,7 @@ const StopIcon = resolveIcon('Square')
  *
  * 这个文件只做**编排**:谁在场、谁让位、键盘归谁。判断在 transitions,状态在 store,
  * 三条自带状态的行为各自成 hook(09-02 批 9c 拆出来的四条切线):
- *   `usePickDrawer`    —— 抽屉里那两位输入驱动的住户(候选、键盘位、选中);
+ *   `usePickDrawer`    —— 抽屉里那位打字驱动的住户(候选、键盘位、选中);
  *   `useComposerSend`  —— 发送的三口(命令岔口、惰性建会话、两把防重闸);
  *   `useEscStop`       —— Esc 的两段式停止(预备态与它的三条拆除路);
  *   ~~`useComposerKeys`~~ —— **09-03 R2 退役**:这块面的键不再是一条 window
@@ -92,7 +92,8 @@ const StopIcon = resolveIcon('Square')
  *     `useComposerSend` 的两把闸上);
  *   · error —— 候选拉失败:旧候选留屏 + 一行弱色错误文字(不换底)。命令失败仍旧
  *     走 `notify` 的通知面、不落在这块面上。
- *   判据整张表在 `DrawerPickList` 的文件头(`fileStatus` 由 `usePickDrawer` 交下来)。
+ *   判据整张表在 `DrawerPickList` 的文件头;那一行说哪句话由 `references/drawer`
+ *   的 `buildPickView` 算,取数态是**每一种引用自述的一格**(`PickResult.status`)。
  *
  * **③ UI 交互状态**:
  *   · 药丸:rest / hover / focus 走 `ButtonBase` + `.modelPill` 皮肤;切模型在飞
@@ -173,8 +174,10 @@ export function Composer() {
     [skillCommands, pluginCommands],
   )
 
-  /* 切线 D:抽屉里那两位输入驱动的住户。十格正好是下面两个组件要的全部。 */
-  const pick = usePickDrawer({ allCommands, sessionId, inputRef, drawerKind, openAsk, closeDrawer })
+  /* 切线 D:抽屉里那位打字驱动的住户。它不再收命令表 —— `/` 那个字符下的三种
+   * 引用各查各的候选(`references/kinds/{command,skill,plugin}.ts`),而**发送**
+   * 那条路仍旧要一张合过的表(下面那句 `useComposerSend`)。 */
+  const pick = usePickDrawer({ sessionId, inputRef, drawerKind, openAsk, closeDrawer })
 
   /* 切线 C:发送的三口。交出来的只有 `doSend` —— 输入框的回车与发送键读同一个它。 */
   const doSend = useComposerSend({ allCommands, sessionId, inputRef, openAsk, closeDrawer, send })
@@ -414,10 +417,7 @@ export function Composer() {
             <div className={s.drawerBody}>
               {pick.picking && (
                 <DrawerPickList
-                  kind={drawerKind === 'files' ? 'files' : 'commands'}
-                  files={pick.files}
-                  fileStatus={pick.fileStatus}
-                  commandGroups={pick.commandGroups}
+                  view={pick.view}
                   index={pick.index}
                   rowRef={pick.rowRef}
                   onPick={pick.applyPick}

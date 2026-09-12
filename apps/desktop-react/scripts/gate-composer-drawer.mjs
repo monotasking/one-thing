@@ -78,6 +78,25 @@ const appRootArg = process.argv.find((arg) => arg.startsWith('--app-root='))
 const appRoot = appRootArg ? path.resolve(appRootArg.slice('--app-root='.length)) : here
 const mainEntry = path.join(appRoot, 'dist-electron/main.cjs')
 
+/**
+ * `--shots=<目录>`:每一档宽下把 composer 那一片**逐态**拍下来(rest / loading /
+ * ready / hover / active / 空态 / 分组)。给了才拍,不给一格都不动 ——
+ * 它服务的是「迁移 = 等价替换」那条纪律:同一夹具、同一视口,改前改后逐像素比。
+ * 比的那一半在 `scripts/compare-shots.mjs`(它不认得这道门,只认两个目录)。
+ */
+const shotsArg = process.argv.find((arg) => arg.startsWith('--shots='))
+const shotsDir = shotsArg ? path.resolve(shotsArg.slice('--shots='.length)) : undefined
+
+/**
+ * 第 5 轴的两个数(壳 CLAUDE.md 第 5 轴):
+ *  · 敲下 `@` 到抽屉**出现在屏幕上**的第一帧 ≤ 16ms —— 「点击当帧必须有可见响应」
+ *    那条铁律在这块面上的形。量的是**产品那一段**:起点是页面自己收到 `input`
+ *    的那一刻(门把字送进去的 IPC 不算产品的时间,09-12 判例);
+ *  · 候选刷新那一段零 ≥50ms 长帧。
+ */
+const FIRST_FRAME_MS = 16
+const LONG_FRAME_MS = 50
+
 const SESSION_NAME = '抽屉门 · composer'
 /** 夹具文件数。> FILE_MENTION_LIMIT(50),所以候选真的会多到框里滚起来。 */
 const SEED_FILES = 80
@@ -209,7 +228,18 @@ async function startRecorder(page) {
         ) ?? null
       )
     }
-    window.__drawer = { samples: [], sawNoMatch: false, stop: false }
+    window.__drawer = { samples: [], sawNoMatch: false, stop: false, typedAt: undefined }
+    /*
+     * **起点是页面自己收到那一下输入的时刻**,不是门调用 `Input.insertText` 的时刻:
+     * 中间隔着一趟 CDP,而那是门的时间不是产品的时间(09-12 判例:「报一个数之前
+     * 先问这段时间里有多少是门自己花的」)。
+     */
+    const box = document.querySelector('[data-testid="composer-input"]')
+    if (box) {
+      box.addEventListener('input', () => {
+        if (window.__drawer.typedAt === undefined) window.__drawer.typedAt = performance.now()
+      })
+    }
     const tick = () => {
       if (window.__drawer.stop) return
       const panel = document.querySelector('[data-testid="composer-panel"]')
@@ -219,6 +249,7 @@ async function startRecorder(page) {
         if (noMatch.some((word) => text.includes(word))) window.__drawer.sawNoMatch = true
         window.__drawer.samples.push({
           t: Math.round(performance.now()),
+          raw: performance.now(),
           h: Math.round(el.getBoundingClientRect().height * 10) / 10,
           op: Math.round(Number.parseFloat(getComputedStyle(el).opacity) * 100) / 100,
           open: /drawerOpen/i.test(String(el.className)),
@@ -236,10 +267,138 @@ async function readRecorder(page, { reset = true } = {}) {
     const got = {
       samples: window.__drawer.samples.slice(),
       sawNoMatch: window.__drawer.sawNoMatch,
+      typedAt: window.__drawer.typedAt,
     }
-    if (doReset) window.__drawer.samples = []
+    if (doReset) {
+      window.__drawer.samples = []
+      window.__drawer.typedAt = undefined
+    }
     return got
   }, reset)
+}
+
+/**
+ * 长帧观察器。**切窗口取样**(09-12 判例):`buffered` 恒 false、开在这一段之前、
+ * 关在这一段之后 —— 一只 observer 从头开到尾收到的会是开壳与首屏留下的那些帧,
+ * 而那不是这一段的账。`long-animation-frame` 拿不到就退回 `longtask`。
+ */
+async function startFrames(page) {
+  await page.evaluate(() => {
+    window.__frames = { entries: [], kind: 'none' }
+    for (const type of ['long-animation-frame', 'longtask']) {
+      try {
+        const observer = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) window.__frames.entries.push(Math.round(entry.duration))
+        })
+        observer.observe({ type, buffered: false })
+        window.__frames.kind = type
+        window.__frames.observer = observer
+        return
+      } catch {
+        /* 这台不认这一种,试下一种。 */
+      }
+    }
+  })
+}
+
+async function readFrames(page) {
+  return page.evaluate(() => {
+    window.__frames?.observer?.disconnect()
+    return { kind: window.__frames?.kind ?? 'none', entries: (window.__frames?.entries ?? []).slice() }
+  })
+}
+
+/**
+ * 敲下那一刻 → 抽屉**出现在屏幕上**的第一帧,用了多少毫秒。
+ * 「出现在屏幕上」= 第一个 `open` 且高度非零的 rAF 采样(rAF 回调跑在那一帧的
+ * 排版之后,所以它就是人第一次看见它的那一帧)。
+ */
+function firstFrameMs(recorded) {
+  if (recorded.typedAt === undefined) return undefined
+  const shown = recorded.samples.find((s) => s.open && (s.h ?? 0) > 0)
+  return shown ? Math.round((shown.raw - recorded.typedAt) * 10) / 10 : undefined
+}
+
+/**
+ * 把 composer 那一片(抽屉 + 面板的并)拍下来。给了 `--shots` 才拍。
+ *
+ * 裁到**那一片自己**而不是整扇窗:窗里别的地方(聊天流的滚动位、时间戳)与这一单
+ * 无关,进了图就会把「等价替换」的比对变成一张噪声图。
+ */
+async function shot(page, cdp, name, { waitFor: waitText } = {}) {
+  if (!shotsDir) return
+  /*
+   * 有的态是**一瞬**(「正在找…」只活到候选回来那一刻)。给了 `waitFor` 就先等它
+   * 出现再拍,等不到就说一声跳过 —— 拍一张「碰巧是什么就是什么」的图,比对出来的
+   * 是竞速不是回归(那正是这只函数第一版踩的坑:两边各拍到一半,差 96%)。
+   */
+  if (waitText) {
+    const until = Date.now() + 400
+    let seen = false
+    while (Date.now() < until) {
+      seen = await page.evaluate((words) => {
+        const panel = document.querySelector('[data-testid="composer-panel"]')
+        const text = panel?.textContent ?? ''
+        return words.some((word) => text.includes(word))
+      }, waitText)
+      if (seen) break
+      await delay(10)
+    }
+    if (!seen) {
+      console.log(`      · 截图 ${name}:那一态没等到(它太快了),跳过`)
+      return
+    }
+  }
+  /*
+   * **把聊天流藏起来再拍**。composer 那块玻璃是 `backdrop-filter` —— 它采的是身后
+   * 那一片真的像素,而聊天流的滚动位在两次跑之间不是一个可复现的事实
+   * (同一夹具两次跑,`content-visibility` 估出来的总高就不同)。不藏,比出来的是
+   * 「身后那几行字不一样」,不是这块面自己变没变。藏的是**背景**,不是被测的东西。
+   */
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="chat-stream"]')
+    if (el instanceof HTMLElement) el.style.visibility = 'hidden'
+  })
+  await delay(60)
+  const clip = await page.evaluate(() => {
+    const panel = document.querySelector('[data-testid="composer-panel"]')
+    if (!panel) return undefined
+    const rects = [panel.getBoundingClientRect()]
+    const drawer = window.__drawerEl?.()
+    if (drawer) {
+      const box = drawer.getBoundingClientRect()
+      if (box.height > 0) rects.push(box)
+    }
+    const left = Math.min(...rects.map((r) => r.left))
+    const top = Math.min(...rects.map((r) => r.top))
+    const right = Math.max(...rects.map((r) => r.right))
+    const bottom = Math.max(...rects.map((r) => r.bottom))
+    return {
+      x: Math.floor(left),
+      y: Math.floor(top),
+      width: Math.ceil(right - left),
+      height: Math.ceil(bottom - top),
+    }
+  })
+  const restore = async () => {
+    await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="chat-stream"]')
+      if (el instanceof HTMLElement) el.style.visibility = ''
+    })
+  }
+  if (!clip || clip.width <= 0 || clip.height <= 0) {
+    console.log(`      · 截图 ${name}:那一片量不出来,跳过`)
+    await restore()
+    return
+  }
+  const { data } = await cdp.send('Page.captureScreenshot', {
+    format: 'png',
+    clip: { ...clip, scale: 1 },
+    captureBeyondViewport: false,
+  })
+  mkdirSync(shotsDir, { recursive: true })
+  writeFileSync(path.join(shotsDir, `${name}.png`), Buffer.from(data, 'base64'))
+  await restore()
 }
 
 async function stopRecorder(page) {
@@ -497,12 +656,20 @@ async function main() {
       await clearInput(page)
       await delay(300)
       await startRecorder(page)
+      await shot(page, cdp, `${size.width}-rest`)
 
       /* ── (a) 开抽屉:一发把 `@<前缀>` 打进去,采 800ms ───────────────────── */
+      await startFrames(page)
       await focusInput(page)
       await cdp.send('Input.insertText', { text: `@${PREFIX}` })
+      /* loading 那一态:候选还没回来的那一瞬。**等到那句话真的在屏上再拍** ——
+       * 不等的话两边各拍到一半,比出来的是竞速不是回归。 */
+      await shot(page, cdp, `${size.width}-loading`, { waitFor: ['正在找', 'Searching'] })
       await delay(800)
       const opened = await readRecorder(page)
+      const framesOpen = await readFrames(page)
+      const firstFrame = firstFrameMs(opened)
+      await shot(page, cdp, `${size.width}-ready`)
       const declared = await declaredDrawerHeight(page)
       const fade = await fadeContract(page)
       const fadeSampled = fadeMs(opened.samples)
@@ -514,20 +681,50 @@ async function main() {
         () => document.querySelectorAll('[data-testid="composer-panel"] button').length,
       )
 
+      /* hover 与 active 是**两个状态、两条产地**(hover ≠ active,禁令区):
+       * ↓ 只动键盘位,鼠标停在第一行只动 CSS 的 `:hover`。逐态截图各拍一张。 */
+      for (const type of ['rawKeyDown', 'keyUp']) {
+        await cdp.send('Input.dispatchKeyEvent', {
+          type,
+          windowsVirtualKeyCode: 40,
+          key: 'ArrowDown',
+          code: 'ArrowDown',
+        })
+      }
+      await delay(250)
+      await shot(page, cdp, `${size.width}-active`)
+      const hoverAt = await page.evaluate(() => {
+        const row = document.querySelector('[data-testid="composer-panel"] button')
+        if (!row) return undefined
+        const box = row.getBoundingClientRect()
+        return { x: Math.round(box.left + box.width / 2), y: Math.round(box.top + box.height / 2) }
+      })
+      if (hoverAt) {
+        await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...hoverAt, button: 'none' })
+        await delay(250)
+        await shot(page, cdp, `${size.width}-hover`)
+        await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 2, button: 'none' })
+        await delay(150)
+      }
+      await readRecorder(page)
+
       /* ── (b) 三种情况:候选到齐前后已经在上面那 800ms 里;再收窄两次、再打一个
        *      一定落空的词。三段的开着帧**合起来**只许有一个高度值。 */
+      await startFrames(page)
       await cdp.send('Input.insertText', { text: '-1' })
       await delay(400)
       const narrowed1 = await readRecorder(page)
       await cdp.send('Input.insertText', { text: '9' })
       await delay(400)
       const narrowed2 = await readRecorder(page)
+      const framesNarrow = await readFrames(page)
       await clearInput(page)
       await delay(250)
       await focusInput(page)
       await cdp.send('Input.insertText', { text: `@${NO_HIT}` })
       await delay(700)
       const empty = await readRecorder(page)
+      await shot(page, cdp, `${size.width}-empty`)
 
       const allOpen = [
         ...openH,
@@ -546,6 +743,7 @@ async function main() {
       await focusInput(page)
       await cdp.send('Input.insertText', { text: '/cd' })
       await delay(400)
+      await shot(page, cdp, `${size.width}-groups`)
       const usageShown = await page.evaluate(() => {
         /* 量的是它占不占地方,不是 textContent 里有没有它 —— `display: none`
          * 的元素照样进 textContent。 */
@@ -568,7 +766,10 @@ async function main() {
           + ` → 最终 ${finalH}px,第 ${settleAt} 个采样到位\n`
           + `    (a) 淡入:声明 ${fade?.duration ?? '—'}(属性 ${fade?.property ?? '—'}),采样到不透明用了 ${fadeSampled ?? '—'}ms\n`
           + `    (b) 四段合起来出现过的高度:${JSON.stringify(distinct)}\n`
-          + `    (d)「无匹配」在候选飞行期出现过:${sawNoMatch}`,
+          + `    (d)「无匹配」在候选飞行期出现过:${sawNoMatch}\n`
+          + `    (g) 第 5 轴:敲下 → 抽屉上屏首帧 ${firstFrame ?? '—'}ms(预算 ${FIRST_FRAME_MS})`
+          + ` · 长帧(${framesOpen.kind})候选刷新段 ${JSON.stringify(framesNarrow.entries)}(判)`
+          + ` / 开抽屉段 ${JSON.stringify(framesOpen.entries)}(读数,不判 —— 改前同样有)`,
       )
 
       assert(
@@ -611,6 +812,35 @@ async function main() {
         `${size.label} (b):候选到达前后 / 敲字收窄 / 0 条,抽屉高**逐样本相同**`
           + `(出现过的高度 ${JSON.stringify(distinct)},只许一个)`,
       )
+      /*
+       * (g) 第 5 轴,两个数。
+       * ①**敲下到抽屉上屏那一帧** —— 抽屉是固定高的框,内容还没到也照样立刻出现,
+       *   所以这一格量的是「点击当帧有没有可见响应」,与候选什么时候回来无关。
+       * ②**候选刷新那一段零 ≥50ms 长帧** —— 收窄两次(80 个候选里筛)不许卡。
+       *   `long-animation-frame` 拿不到的机器退回 `longtask`,两者都没有就跳过
+       *   并说明白(不许靠「压根没量」而绿)。
+       */
+      assert(
+        firstFrame !== undefined && firstFrame <= FIRST_FRAME_MS,
+        `${size.label} (g):敲下 → 抽屉上屏首帧 ${firstFrame ?? '—'}ms ≤ ${FIRST_FRAME_MS}`,
+      )
+      if (framesNarrow.kind === 'none') {
+        console.log('  · 这台不认 long-animation-frame / longtask —— 长帧那条跳过(说明白,不算绿)')
+      } else {
+        /*
+         * **判的是「候选刷新」那一段**(第 5 轴那句话的主语),不是「开抽屉」那一段。
+         * 后者在窄档上**改前就有一帧 ~300ms**(干净 HEAD 的对照跑出来的读数):
+         * 那是这块面第一次在新视口下排 53 行候选 + 视口切换那一下的排版,
+         * 与这一单无关。把它也判红只会得到一条「改前改后都红」的门 —— 而一条恒红
+         * 的门会被人加 `|| true`(过渡值那条判例的同一个道理)。所以它是**读数**,
+         * 印出来但不判;真要治它,那是另一单的事(留账)。
+         */
+        const long = framesNarrow.entries.filter((ms) => ms >= LONG_FRAME_MS)
+        assert(
+          long.length === 0,
+          `${size.label} (g):候选刷新那一段零 ≥${LONG_FRAME_MS}ms 长帧(命中 ${JSON.stringify(long)})`,
+        )
+      }
       // (d) 候选在飞时从来没说过「无匹配」。
       assert(
         !sawNoMatch,
@@ -813,6 +1043,7 @@ async function main() {
     console.error(`\n[drawer-gate] FAILED —— ${failures.length} 条:\n  ${failures.join('\n  ')}`)
     process.exit(1)
   }
+  if (shotsDir) console.log(`\n[drawer-gate] 逐态截图写在 ${shotsDir}`)
   console.log(
     '\n[drawer-gate] ok —— 抽屉一出来就是最终大小、框不随内容变、开合不动正文一个像素',
   )

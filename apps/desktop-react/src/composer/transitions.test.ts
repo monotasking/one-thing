@@ -31,22 +31,14 @@ const GROUPS: ProviderGroup[] = [
  * 触发位、答案的三种形态、摞的坐标、分组过滤。组件测试只管「谁在场」。
  */
 
-describe('@ 与 / 的触发位', () => {
-  it('@ 在任意处都触发,后面那截就是查询词', () => {
-    expect(T.parseToken('看看 @model', '看看 @model')).toEqual({ kind: 'files', query: 'model' })
-    expect(T.parseToken('刚敲下 @', '刚敲下 @')).toEqual({ kind: 'files', query: '' })
-  })
-
-  it('/ 只在整段话以 / 开头时触发 —— 命令是一句话的主语,不是句中的词', () => {
-    expect(T.parseToken('/rev', '/rev')).toEqual({ kind: 'commands', query: 'rev' })
-    expect(T.parseToken('先看看 /rev', '先看看 /rev')).toBeNull()
-  })
-
-  it('没有 token 就是 null(路径里的斜杠不算命令)', () => {
-    expect(T.parseToken('普通一句话', '普通一句话')).toBeNull()
-    expect(T.parseToken('src/app', 'src/app')).toBeNull()
-  })
-
+/*
+ * ── 触发位那几条 09-12 搬去了 `references/__tests__/token.test.ts` ──────────
+ * `parseToken` 连同它那两条手写正则一起搬进了注册表(触发字符、句首还是句中、
+ * token 收哪些字符,三样都由各种引用自述并出来),所以钉它的用例跟着搬 ——
+ * **判据在哪,守卫在哪**。那边的断言逐条照抄,只是 `TokenHit` 今天报的是
+ * 「哪个触发字符」而不是「哪一种引用」。
+ */
+describe('候选的匹配', () => {
   it('文件是包含匹配,命令是前缀匹配', () => {
     expect(T.matchFiles(['model-capability.ts', 'codex.ts'], 'ex')).toEqual(['codex.ts'])
     expect(
@@ -56,31 +48,12 @@ describe('@ 与 / 的触发位', () => {
     ).toEqual(['/review'])
   })
 
-  /* 冒号进命令词(09-12):技能引用叫 `/skill:<名字>`,而人是一个字一个字打出来的
-   * —— 打到冒号那一刻 token 若断掉,抽屉当场收起来。 */
-  it('`/skill:` 打到一半 token 不断,冒号之后那几个字就是查询词', () => {
-    expect(T.parseToken('/skill:', '/skill:')).toEqual({ kind: 'commands', query: 'skill:' })
-    expect(T.parseToken('/skill:wr', '/skill:wr')).toEqual({ kind: 'commands', query: 'skill:wr' })
-    // 触发前提一个字没改:整段话得以 / 开头,所以句中的冒号照旧不触发。
-    expect(T.parseToken('见 a:b', '见 a:b')).toBeNull()
-    /*
-     * **留账**:`\w` 不收中日韩,所以一个中文名的技能打到名字第一个汉字时 token
-     * 仍会断(抽屉收起来)—— 与 `@` 那条对中文路径的既有限制是同一格。
-     * 从抽屉里选(打 `/skill` → ↑↓ → ↵)不受影响,那也是这一批设计的入口。
-     * 放宽字符集是一次更大的行为赌注(`/新建…` 这类句子会开始触发抽屉),另批拍。
-     */
-    expect(T.parseToken('/skill:写', '/skill:写')).toBeNull()
-  })
-
   /* 「选中行上下走 / 夹进范围」的判据 09-01 搬去了 ui/a11y/list-selection,
    * 断言跟着搬进 src/ui/__tests__/list-selection.test.tsx —— 判据在哪,守卫在哪。 */
 })
 
 /**
- * 命令的匹配与分组(09-12,用户报障「命令无提示」)。
- *
- * 两件事一起测,是因为它们的**次序**本身就是一条判据:分组是外层分区,
- * 匹配的排序只在组内说话 —— 反过来就会切出两次「命令」组头。
+ * 命令的匹配(09-12,用户报障「命令无提示」)。
  */
 describe('命令匹配:名字前缀在前,说明 / 用法子串在后', () => {
   const table = [
@@ -114,49 +87,14 @@ describe('命令匹配:名字前缀在前,说明 / 用法子串在后', () => {
   })
 })
 
-describe('命令分组:三组,每组恰好出现一次,空组不出现', () => {
-  const row = (name: string, kind: string) => ({ name, desc: '', usage: name, kind })
-
-  it('顺序固定 命令 → 技能 → 插件;dev 与内置同组', () => {
-    const got = T.groupCommands([
-      row('/note', 'plugin'),
-      row('/new', 'builtin'),
-      row('/skill:a', 'skill'),
-      row('/ask-demo', 'dev'),
-    ])
-    expect(got.map((g) => g.id)).toEqual(['command', 'skill', 'plugin'])
-    expect(got[0].items.map((c) => c.name)).toEqual(['/new', '/ask-demo'])
-  })
-
-  it('空组不出现在结果里(「只当那组非空时画」落在这里,不落在渲染层)', () => {
-    const got = T.groupCommands([row('/new', 'builtin')])
-    expect(got.map((g) => g.id)).toEqual(['command'])
-  })
-
-  it('**分组只许一次**:匹配把说明命中的挪到后面,组头也不许因此出现两次', () => {
-    // 匹配之后的顺序是「内置 / 技能 / 内置」—— 按相邻切段会切出两个「命令」组。
-    const matched = [row('/cd', 'builtin'), row('/skill:a', 'skill'), row('/goal', 'builtin')]
-    const got = T.groupCommands(matched)
-    expect(got.map((g) => g.id)).toEqual(['command', 'skill'])
-    expect(got[0].items.map((c) => c.name)).toEqual(['/cd', '/goal'])
-  })
-
-  it('扁平序 = 各组顺次相连(键盘位与 applyPick 的下标都按它算)', () => {
-    const matched = [row('/cd', 'builtin'), row('/note', 'plugin'), row('/skill:a', 'skill')]
-    const flat = T.groupCommands(matched).flatMap((g) => g.items)
-    expect(flat.map((c) => c.name)).toEqual(['/cd', '/skill:a', '/note'])
-  })
-})
-
-/**
- * ask 形态的 ← → 翻题只在**焦点不在任何输入面里**时才响 —— 写字的人按方向键
- * 是在移动光标。判据 09-02 批 9c 从 Composer 的键盘 effect 里提上来
- * (`isTypingTarget`),这一组是它的守卫。
- *
- * 反证:把 `contenteditable` 属性那一问删掉(只信 `isContentEditable`),
- * 下面「jsdom 上属性也算数」那条立刻红 —— 而真机上的后果是在输入框里按 ← →
- * 会翻题(光标动不了)。
+/*
+ * ── 分组那几条 09-12 搬去了 `references/__tests__/drawer.test.ts` ────────────
+ * `groupCommands` 整件退役了:组就是**种类**(`/` 下面三种引用各自登记),
+ * 装配在 `references/drawer.buildPickView`。那边逐条钉住同一批判据 ——
+ * 顺序固定、每组恰好一次、空组不出现、扁平序 = 各组顺次相连 —— 而「分组只许一次」
+ * 今天在结构上不可违反(一种引用恰好产出一组)。
  */
+
 describe('哪些元素算「正在写字」', () => {
   const el = (html: string): Element => {
     const box = document.createElement('div')

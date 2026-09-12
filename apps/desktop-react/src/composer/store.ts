@@ -3,6 +3,8 @@ import { useModelsSource } from '../data/models-source'
 import { composerSink } from './sink'
 import { configureDraftRevoke, resetComposerDrafts } from './drafts'
 import * as T from './transitions'
+import { pickDrawer } from './types'
+import type { ReferenceTrigger } from '../references/kind'
 import type {
   AskSpec,
   Attachment,
@@ -62,7 +64,7 @@ configureDraftRevoke(revoke)
 
 interface ComposerStore extends ComposerState {
   /* 抽屉(单一槽) */
-  showPick: (kind: 'files' | 'commands', query: string) => void
+  showPick: (trigger: ReferenceTrigger, query: string) => void
   /**
    * 选中位只有这一个 setter。「往下走一格」那件事已经不在 store 里 ——
    * 它是 `ui/a11y/list-selection` 的 `move`,与工作区快切、模型抽屉同一份判据
@@ -100,7 +102,12 @@ interface ComposerStore extends ComposerState {
 export const useComposerStore = create<ComposerStore>()((set, get) => ({
   ...initialState,
 
-  showPick: (kind, query) => set({ drawerKind: kind, pickQuery: query, pickIndex: 0 }),
+  /*
+   * 开的是**哪个触发字符**,不是「哪一种引用」(09-12 引用种类注册表)。
+   * `pickDrawer` 每个字符恒交同一个对象 —— 判词在它自己那儿。
+   */
+  showPick: (trigger, query) =>
+    set({ drawerKind: pickDrawer(trigger), pickQuery: query, pickIndex: 0 }),
   setPickIndex: (i) => set({ pickIndex: i }),
 
   // 模型抽屉是**瞬态**的:每次开都从空搜索开始,不记上次搜了什么。
