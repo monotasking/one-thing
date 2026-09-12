@@ -3,6 +3,7 @@ import { SHARED_SLASH_COMMANDS } from '@onething/core/slash-commands'
 import { configureCommandsPort } from './commands-port'
 import { configureSessionsPort } from './sessions-port'
 import {
+  argHintOf,
   BUILTIN_COMMANDS,
   commandTokenOf,
   executeCommand,
@@ -128,6 +129,56 @@ describe('表与 core 的注册表对账', () => {
     }
   })
 
+  /*
+   * ── 用法里「要人自己填的那一截」(09-12)───────────────────────────────
+   * 它是**全仓唯一**的那一句解析:选中之后那一截会变成输入框里的幽灵占位,
+   * 而输入面一条业务规则都没有(判词在 `CommandEntry.argHint` 上)。
+   */
+  describe('argHintOf:usage → 幽灵占位那一截', () => {
+    it.each([
+      ['/cd <path>', '<path>'],
+      ['/pomodoro [分类]', '[分类]'],
+      // 方括号里套着尖括号:取**先出现**的那个整段,不是先出现的那种括号 ——
+      // 只取 `<objective>` 会把「还可以写 pause / clear」整句吃掉。
+      ['/goal [<objective> | pause | resume | clear | budget <tokens>]',
+        '[<objective> | pause | resume | clear | budget <tokens>]'],
+      ['/skill:写作 [说明]', '[说明]'],
+      // 不收参数的命令没有这一截。
+      ['/compact', undefined],
+      ['/practice-stop', undefined],
+      // 命令名自己带的连字符 / 冒号不算语法(名字那一截先剥掉)。
+      ['/practice-stop <x>', '<x>'],
+    ])('%s → %s', (usage, hint) => {
+      expect(argHintOf(usage)).toBe(hint)
+    })
+
+    it('内置表上那一格与 usage 同源:收参数的才有,不收的一格都没有', () => {
+      for (const entry of BUILTIN_COMMANDS) {
+        expect(entry.argHint).toBe(entry.allowArgs ? argHintOf(entry.usage) : undefined)
+      }
+      expect(builtin('cd').argHint).toBe('<path>')
+      expect(builtin('compact').argHint).toBeUndefined()
+    })
+  })
+
+  it('技能引用壳一个字都不执行:原样当一条消息交出去', async () => {
+    const skill: CommandEntry = {
+      // **id 恰好叫 `cd`**:兜底那条 switch 按 id 分派,判据必须是自报的 kind。
+      id: 'cd',
+      name: '/skill:cd',
+      desc: '一份名字不巧的技能',
+      usage: '/skill:cd [说明]',
+      kind: 'skill',
+      insertText: '/skill:cd ',
+      allowArgs: true,
+    }
+    expect(await executeCommand(skill, '改一下', ctx())).toEqual({ kind: 'sendAsText' })
+    // 反证:把 kind 换成 builtin,同一条就会被当成「改工作目录」。
+    expect(await executeCommand({ ...skill, kind: 'builtin' }, '改一下', ctx())).not.toEqual({
+      kind: 'sendAsText',
+    })
+  })
+
   it('留账在表上写着:内置七条里壳只执行三条,其余四条只插文本', async () => {
     expect([...RUNNABLE_BUILTIN_IDS]).toEqual(['new', 'compact', 'cd'])
     const notRunnable = BUILTIN_COMMANDS.filter(
@@ -144,18 +195,71 @@ describe('表与 core 的注册表对账', () => {
     }
   })
 
-  it('拉插件命令:并进表里,**同名以内置为准**,dev 那条排最后', async () => {
+  it('拉插件命令:并进表里,**同名以内置为准**,插件那一段垫底', async () => {
     await useCommandsSource.getState().ensurePluginCommands()
-    const merged = mergeCommands(
-      BUILTIN_COMMANDS,
-      useCommandsSource.getState().pluginCommands,
-      DEV_COMMANDS,
-    )
+    const merged = mergeCommands({
+      builtin: BUILTIN_COMMANDS,
+      plugin: useCommandsSource.getState().pluginCommands,
+      dev: DEV_COMMANDS,
+    })
     // 插件那条冒充的 `/new` 被挡在外面,真的 `/new` 还是内置那条。
     expect(merged.filter((entry) => commandTokenOf(entry) === 'new')).toHaveLength(1)
     expect(findCommand(merged, 'new')?.kind).toBe('builtin')
     expect(findCommand(merged, 'note')?.kind).toBe('plugin')
-    expect(merged.at(-1)?.id).toBe('ask-demo')
+    /*
+     * **09-12 改口:dev 不再垫底,它紧跟内置。**
+     * 理由不是排版偏好,是分组:dev 扳机与内置同属抽屉里「命令」那一组,而
+     * 「分组只许一次」(禁令区)—— 排在插件后面就会让那个组头出现两次。
+     * 这条扁平序**就是**屏幕上从上到下的顺序(判词在 mergeCommands 上)。
+     */
+    expect(merged.at(-1)?.kind).toBe('plugin')
+    expect(merged.findIndex((entry) => entry.kind === 'dev')).toBe(BUILTIN_COMMANDS.length)
+  })
+
+  it('四张表的先后 = 内置 → dev → 技能 → 插件(抽屉从上到下就是它)', () => {
+    const skill: CommandEntry[] = [
+      {
+        id: 'skill:writing',
+        name: '/skill:writing',
+        desc: '改文字',
+        usage: '/skill:writing [说明]',
+        kind: 'skill',
+        insertText: '/skill:writing ',
+        allowArgs: true,
+      },
+    ]
+    const plugin: CommandEntry[] = [
+      {
+        id: 'note',
+        name: '/note',
+        desc: '记一条',
+        usage: '/note',
+        kind: 'plugin',
+        insertText: '/note ',
+        allowArgs: true,
+      },
+    ]
+    const merged = mergeCommands({ builtin: BUILTIN_COMMANDS, skill, plugin, dev: DEV_COMMANDS })
+    const kinds = merged.map((entry) => entry.kind)
+    // 每一族都是**连续的一段**(分组切段的前提),而且段序固定。
+    expect([...new Set(kinds)]).toEqual(['builtin', 'dev', 'skill', 'plugin'])
+  })
+
+  it('技能同名也让内置(判据与插件同一条 taken 表)', () => {
+    const fake: CommandEntry[] = [
+      {
+        id: 'skill:new',
+        name: '/new',
+        desc: '冒充的',
+        usage: '/new',
+        kind: 'skill',
+        insertText: '/new ',
+        allowArgs: true,
+      },
+    ]
+    const merged = mergeCommands({ builtin: BUILTIN_COMMANDS, skill: fake })
+    expect(merged.filter((entry) => commandTokenOf(entry) === 'new')).toHaveLength(1)
+    expect(findCommand(merged, 'new')?.kind).toBe('builtin')
   })
 
   /*
@@ -167,24 +271,32 @@ describe('表与 core 的注册表对账', () => {
   it('生产形的命令表里一条 dev 命令都没有', async () => {
     await useCommandsSource.getState().ensurePluginCommands()
     const plugin = useCommandsSource.getState().pluginCommands
-    const prod = mergeCommands(BUILTIN_COMMANDS, plugin, DEV_COMMANDS, false)
+    const prod = mergeCommands({
+      builtin: BUILTIN_COMMANDS,
+      plugin,
+      dev: DEV_COMMANDS,
+      devVisible: false,
+    })
 
     expect(prod.some((entry) => entry.kind === 'dev')).toBe(false)
     expect(findCommand(prod, 'ask-demo')).toBeUndefined()
     // 挡掉的**只有** dev 那些:内置与插件一条不少。
     expect(prod).toEqual(
-      mergeCommands(BUILTIN_COMMANDS, plugin, DEV_COMMANDS, true).filter(
-        (entry) => entry.kind !== 'dev',
-      ),
+      mergeCommands({
+        builtin: BUILTIN_COMMANDS,
+        plugin,
+        dev: DEV_COMMANDS,
+        devVisible: true,
+      }).filter((entry) => entry.kind !== 'dev'),
     )
   })
 
   it('判据是命令自报的 kind,不是它从第几个参数传进来的', () => {
     const smuggled: CommandEntry[] = [{ ...DEV_COMMANDS[0], id: 'smuggled', name: '/smuggled' }]
     // 一条 dev 命令混进插件表里,照样挡掉。
-    expect(mergeCommands(BUILTIN_COMMANDS, smuggled, [], false)).toEqual(
-      mergeCommands(BUILTIN_COMMANDS, [], [], false),
-    )
+    expect(
+      mergeCommands({ builtin: BUILTIN_COMMANDS, plugin: smuggled, devVisible: false }),
+    ).toEqual(mergeCommands({ builtin: BUILTIN_COMMANDS, devVisible: false }))
   })
 
   it('插件读面失败:静默降级成只剩内置,不抛也不弹', async () => {

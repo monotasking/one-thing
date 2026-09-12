@@ -1,10 +1,11 @@
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { CARD_FLIP_MS, currentMotionTier } from '../../components/motion'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
+import { CARD_FLIP_MS } from '../../components/motion'
 import { useLiveClock } from '../../components/useLiveClock'
 import { resolveIcon } from '../../components/icons'
 import { formatDuration } from '../../format/quantity'
 import { useT, type TFn } from '../../i18n'
 import { ButtonBase } from '../../ui/ButtonBase'
+import { useFlipHeight } from '../../ui/flip-height'
 import { Tooltip } from '../../ui/Tooltip'
 import type { BlockCtx } from '../blocks/registry'
 import type {
@@ -159,7 +160,9 @@ export const ToolCard = memo(function ToolCard({
    * 说的那种「结构变化」。
    */
   const structure = `${multi}|${open}|${card.steps.length}|${[...visible].join(',')}|${[...openKeys].sort().join(',')}`
-  useFlipHeight(cardRef, structure)
+  /* 09-12:机制搬去 `ui/flip-height`(第二个消费者 = composer 候选抽屉),
+   * 这里剩下的只有这一族自己的三格配方 —— 账本、时长 token 与它的 JS 镜像。 */
+  useFlipHeight(cardRef, structure, { book: cardHeights, durVar: '--dur-card-flip', durMs: CARD_FLIP_MS })
 
   /*
    * 底缘那条进度条(§6.2「执行中」列,C2-b)。
@@ -638,72 +641,3 @@ export function outcomeText(t: TFn, outcome: ToolOutcomeModel): string {
   return 'text' in outcome ? outcome.text : t(outcome.key, outcome.vars)
 }
 
-/**
- * 卡高从「改前」到「改后」做过渡(§6.5 第 8 条 FLIP)。
- *
- * 把内联 height 先钉回旧值、强制一次排版、再钉到新值让它自己走过去 —— 不突变。
- *
- * 只在 `structure` 变了时跑:逐帧的文字补丁不改高度,量它只是每 100ms 白白强排一次版。
- * 动效档 `none` 直切(不是「快一点」,是压根不做)。
- *
- * **三条次序纪律**(病历在文件头,读数 916 张卡 × 一次 = prod 770ms):
- *  ① 判据排在读之前 —— `none` 档整段不做,那就一个几何属性都不该碰;
- *  ② 「改前」那一格**不问,只收**:由共享 `ResizeObserver` 报过来
- *     (`card-heights.ts`,回调跑在排版之后,916 张卡攒成一次)。挂载那一次
- *     因此**一个几何属性都不读** —— 账上还是 0,那就不做过渡;
- *  ③ 只有真有「改前」的那一次照旧**同步**量「改后」并当场 FLIP —— 那一次
- *     非同步不可(要在浏览器绘制之前把起点钉住),而它一次只发生在一张卡上。
- *
- * 过渡跑的那 180ms 里 RO 会一路报中间高度,账上于是停在「它此刻真的多高」——
- * 万一第二次结构变化压着上一次的过渡到,起点就是它当下的位置,而不是一个
- * 早就不成立的旧值。那正是 FLIP 想要的语义,所以这里不去纠正它。
- */
-function useFlipHeight(ref: React.RefObject<HTMLDivElement | null>, structure: string): void {
-  // 挂载即上账,卸载即销账 —— 依赖表里没有 `structure`,一次结构变化不折腾观察者。
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (!el) return
-    cardHeights.observe(el)
-    return () => cardHeights.unobserve(el)
-  }, [ref])
-
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (!el) return
-    // ① none 档压根不做这件事 —— 连基线都不必问(读在前判在后,就是 916 次白排版)。
-    if (currentMotionTier() === 'none') return
-
-    /*
-     * ② 账上没有「改前」= 直切。三种情形合成这一句(逐条理由在 `card-heights.ts`
-     * 文件头):RO 还没报过(挂载后第一次结构变化就来)、这张卡此刻在
-     * `content-visibility` 跳渲的子树里、宿主压根没有 `ResizeObserver`。
-     * 没人看得见的卡不需要过渡 —— 而补一次同步读正是这一批要治的病。
-     */
-    const before = cardHeights.heightOf(el)
-    if (!before) return
-
-    // ③ 真有「改前」:同步量「改后」,当场把两头钉住。
-    const after = el.offsetHeight
-    if (before === after) return
-
-    el.style.transition = 'none'
-    el.style.height = `${before}px`
-    // 强制一次排版,让上面那一句成为动画的起点(不读它的话浏览器会把两次写合并)。
-    void el.offsetHeight
-    el.style.transition = `height var(--dur-card-flip) var(--ease)`
-    el.style.height = `${after}px`
-
-    const clear = () => {
-      el.style.height = ''
-      el.style.transition = ''
-    }
-    const timer = window.setTimeout(clear, CARD_FLIP_MS + FLIP_SETTLE_MS)
-    return () => {
-      window.clearTimeout(timer)
-      clear()
-    }
-  }, [ref, structure])
-}
-
-/** 过渡跑完到摘掉内联 height 之间留的一点余量 —— 定时器与合成器不是同一个时钟。 */
-const FLIP_SETTLE_MS = 40

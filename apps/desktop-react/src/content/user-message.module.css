@@ -1,0 +1,80 @@
+/*
+ * 用户气泡里那三种非文字段的皮肤(判词与切分表在 user-message.tsx)。
+ *
+ * 三件事值得写下来:
+ *  ① 它们活在 `.user` 那句 `white-space: pre-wrap` 的行内流里 —— 所以都是
+ *     inline-flex,跟着正文一起折行;chip 自己 `nowrap`,断行只发生在段与段之间。
+ *  ② 名字**只截断不换行**(挤压纪律):`--umsg-chip-name-max` 是上限,超了省略号,
+ *     全路径由 Tooltip 说。一条 120 字符的绝对路径因此撑不破气泡。
+ *  ③ 一个字面色值 / px 都不在这里 —— 几何与色全在 tokens.css 的 `--umsg-*` 节。
+ */
+
+.ref {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--umsg-chip-gap);
+  /* 与正文同一条基线上的一枚小牌;middle 是关键字不是量,chip 比正文小一档,
+   * 居中对齐读起来比压在基线上稳。 */
+  vertical-align: middle;
+  max-width: 100%;
+  padding: var(--umsg-chip-pad-y) var(--umsg-chip-pad-x);
+  border-radius: var(--r-1);
+  background: var(--st-hover);
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ref:hover {
+  background: var(--st-sel);
+}
+
+.ref:active {
+  background: var(--st-sel-hover);
+}
+
+.refIcon {
+  flex: none;
+  width: var(--umsg-chip-icon);
+  height: var(--umsg-chip-icon);
+  color: var(--text-3);
+}
+
+/* 结构行只截断不换行。`min-width: 0` 是 flex 子项能缩到省略号的那一格。 */
+.refName {
+  min-width: 0;
+  max-width: var(--umsg-chip-name-max);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * 命令药丸 / 技能徽:**不可点**,所以是 span 不是钮 —— 屏幕上不该出现一个
+ * 按下去没反应的东西。两者共用一套几何,只有色不同。
+ */
+.command,
+.skill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--umsg-chip-gap);
+  vertical-align: middle;
+  padding: var(--umsg-chip-pad-y) var(--umsg-chip-pad-x);
+  border-radius: var(--r-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.command {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+
+.skill {
+  background: var(--umsg-skill-bg);
+  color: var(--umsg-skill-fg);
+}

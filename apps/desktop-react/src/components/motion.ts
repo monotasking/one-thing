@@ -187,3 +187,17 @@ export const CARD_FLIP_MS = 180
  * 之前出发才有意义,慢过读一句提示就白等了。
  */
 export const SESSION_PREFETCH_HOVER_MS = 180
+
+/**
+ * --dur-drawer:composer 那一个抽屉槽的开合时长(`grid-template-rows: 0fr↔1fr`)。
+ *
+ * JS 侧要这个数是因为**收尾有个定时器**:候选列表的内容换了(「正在找…」一行
+ * 长成整列、整列收窄成三条)时那块滚动区走一次高度 FLIP(`ui/flip-height`),
+ * 过渡跑完要把内联 height 摘掉 —— 与 CARD_FLIP_MS 逐字同一条理由。
+ *
+ * 复用开合那一个数而不是另立一个:抽屉长高与抽屉展开在人眼里是同一件事的两段,
+ * 两个时长会让它们在同一次交互里跑出两种快慢。动效档 `none` 下整段 FLIP 直接
+ * 跳过(`currentMotionTier()` 判),所以这里只镜像标准档那一个数;
+ * 相等由 __tests__/motion-tokens.test.ts 与 tokens.css 逐条比对。
+ */
+export const DRAWER_MS = 220

@@ -29,7 +29,13 @@ import type { MessageKey } from '../i18n'
 export function parseToken(upto: string, full: string): TokenHit | null {
   const file = /@([\w.-]*)$/.exec(upto)
   if (file) return { kind: 'files', query: file[1] }
-  const cmd = /(?:^|\s)\/([\w-]*)$/.exec(upto)
+  /*
+   * 冒号也算命令词的一部分(09-12):技能引用叫 `/skill:<名字>`,而**人是一个字
+   * 一个字打出来的** —— 打到 `/skill:` 那一刻若 token 断掉,抽屉当场收起来,
+   * 正要选的那几行凭空消失。`:` 只在这条命令正则里放行(文件那条 `@` 不动):
+   * 触发的前提照旧是「整段话以 / 开头」,所以句中的 `a:b` 不受影响。
+   */
+  const cmd = /(?:^|\s)\/([\w:-]*)$/.exec(upto)
   if (cmd && full.trim().startsWith('/')) return { kind: 'commands', query: cmd[1] }
   return null
 }
@@ -82,14 +88,79 @@ export function matchFiles<T extends string | { label: string }>(
 }
 
 /**
- * 命令是**前缀**匹配(命令名从头念)。
+ * 命令的匹配:**名字前缀命中在前,说明 / 用法里的子串命中在后**(09-12)。
+ *
+ * 从前只有前缀那一支 —— 于是「我想压缩一下上下文」这件事,除非你已经知道它叫
+ * `/compact`,否则打什么都找不到它。加的这一支让人能按**它是干什么的**去找;
+ * 而两支分成两组、组内保持原表顺序,是为了让排序**稳定且可解释**:
+ * 名字命中永远在上面(那是人真的在打这条命令的名字),说明命中跟在后面。
+ * 不做相关度打分 —— 一个看不见的分数会让同一句话在两次击键之间跳来跳去。
+ *
+ * 大小写一律归一:命令名与技能名都可能带大写(`/skill:Writing`),
+ * 而人打的时候不会去管。
  *
  * 泛型是为了**不丢子类型**:表里流过来的是 `CommandEntry`(带 id / kind /
  * insertText),筛完还得是它 —— 写死成 `CommandSpec[]` 的话调用现场就得
  * 再断言一次回去,而那正是「判断层偷偷改了形状」的入口。
+ * `usage` 写成可选,是因为这个判据只吃 `CommandSpec`(抽屉画一行要的那两格),
+ * 没有用法的表照样筛得动。
  */
-export function matchCommands<T extends CommandSpec>(cmds: readonly T[], query: string): T[] {
-  return cmds.filter((c) => c.name.slice(1).startsWith(query))
+export function matchCommands<T extends CommandSpec & { usage?: string }>(
+  cmds: readonly T[],
+  query: string,
+): T[] {
+  const q = query.toLowerCase()
+  if (!q) return [...cmds]
+  const byName: T[] = []
+  const byText: T[] = []
+  for (const c of cmds) {
+    if (c.name.slice(1).toLowerCase().startsWith(q)) byName.push(c)
+    else if (`${c.desc} ${c.usage ?? ''}`.toLowerCase().includes(q)) byText.push(c)
+  }
+  return [...byName, ...byText]
+}
+
+/** 抽屉里命令分的那**三**组。组多一个 = 这张表多一行,别处不许再判一次。 */
+export type CommandGroupId = 'command' | 'skill' | 'plugin'
+
+/**
+ * 一条命令属于哪一组。**判据是它自报的 `kind`**(与 `mergeCommands` 挡 dev 的
+ * 那一条同源)——dev 扳机与内置同属「命令」:它们都是这台壳自己的命令,
+ * 「这一条只在开发档里看得见」不是一种组别。
+ */
+const GROUP_OF: Record<string, CommandGroupId> = {
+  builtin: 'command',
+  dev: 'command',
+  skill: 'skill',
+  plugin: 'plugin',
+}
+
+export interface CommandGroup<T> {
+  id: CommandGroupId
+  items: T[]
+}
+
+/**
+ * 把匹配结果切成**最多三段**,顺序固定 `命令 → 技能 → 插件`。
+ *
+ * **分组只许一次**(禁令区):所以这里是一次稳定分区,不是按相邻切段 ——
+ * `matchCommands` 会把「说明命中」的那一批挪到后面,相邻切段于是能切出
+ * 「命令 / 技能 / 命令」这种两次同名组头。分区保证每一组恰好出现一次。
+ * 组内保持传进来的相对顺序(也就是名字命中在前、说明命中在后那条)。
+ *
+ * 空组**不出现在结果里** —— 「只当那组非空时画」那条纪律落在这里,
+ * 而不是让渲染层每一组都去判一次长度。
+ *
+ * 交出去的扁平序(各组 `items` 顺次相连)**就是屏幕上的顺序**,
+ * 键盘走位与 `applyPick` 的下标都按它算:一条列表不许有两种序。
+ */
+export function groupCommands<T extends { kind: string }>(
+  cmds: readonly T[],
+): CommandGroup<T>[] {
+  const order: CommandGroupId[] = ['command', 'skill', 'plugin']
+  return order
+    .map((id) => ({ id, items: cmds.filter((c) => (GROUP_OF[c.kind] ?? 'command') === id) }))
+    .filter((group) => group.items.length > 0)
 }
 
 /*

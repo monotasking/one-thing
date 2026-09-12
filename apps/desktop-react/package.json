@@ -18,6 +18,7 @@
     "gate:theme": "node scripts/gate-theme.mjs",
     "gate:chat": "node scripts/gate-chat.mjs",
     "gate:chat-follow": "node scripts/gate-chat-follow.mjs",
+    "gate:composer-drawer": "node scripts/gate-composer-drawer.mjs",
     "gate:continuity": "node scripts/gate-continuity.mjs",
     "gate:companions": "node scripts/gate-companions.mjs",
     "gate:permission": "node scripts/gate-permission.mjs",

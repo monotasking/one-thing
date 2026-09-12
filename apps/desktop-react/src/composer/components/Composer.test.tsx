@@ -12,6 +12,9 @@ import { ASK_DEMO_SPEC } from '../data'
 import { useStageStore } from '../../stage/store'
 import { useChatSource } from '../../data/chat-source'
 import { useCommandsSource } from '../../data/commands-source'
+import { configureCommandsPort } from '../../data/commands-port'
+import { configureSkillsPort } from '../../data/skills-port'
+import { useSkillsSource } from '../../data/skills-source'
 import {
   FILE_MENTION_DEBOUNCE_MS,
   useFileMentionsSource,
@@ -420,7 +423,14 @@ describe('/ 命令:选中只插文本,执行在按下发送的那一刻', () => 
     // 输入框里此刻也写着 `/cd`,所以要的是抽屉里那一行(按钮),不是随便一处文字。
     const row = screen.getAllByText('/cd').find((el) => el.closest('button'))
     fireEvent.mouseDown(row as HTMLElement)
-    expect(box.textContent?.trim()).toBe('/cd')
+    /*
+     * **09-12 改口**:框里除了命令徽还多一枚参数幽灵占位(`<path>`)——
+     * 它是画出来的一句提示,`textContent` 看得见、草稿里一个字都没有
+     * (那条缝由 `ComposerInput.test.tsx` 逐条钉)。这里只认「命令徽进去了、
+     * 执行没发生」这两件事,所以改问那枚徽自己。
+     */
+    expect(box.querySelector('[data-arg-ghost]')?.textContent).toBe('<path>')
+    expect(box.textContent?.trim()).toBe('/cd <path>')
     expect(handed).toHaveLength(0)
   })
 
@@ -453,6 +463,202 @@ describe('/ 命令:选中只插文本,执行在按下发送的那一刻', () => 
     fireEvent.click(send())
     expect(starts).toBe(0)
     expect(handed).toEqual([{ kind: 'text', text: '看看 /new 那条', attachments: 0 }])
+  })
+
+  /* ── 09-12:命令行画用法(用户报障「命令无提示」)────────────────────── */
+
+  it('一行三格:名 · 说明 · 用法 —— usage 从此上屏,不再只在报错里出现', () => {
+    renderComposer()
+    type(inputBox(), '/cd')
+    const row = screen.getAllByText('/cd').find((el) => el.closest('button'))?.closest('button')
+    expect(row?.textContent).toContain('/cd <path>')
+    expect(row?.textContent).toContain('Change the working directory')
+  })
+
+  it('用法与命令名一样时不画 —— 同一个词一行里不写两遍', () => {
+    renderComposer()
+    type(inputBox(), '/compact')
+    const row = screen
+      .getAllByText('/compact')
+      .find((el) => el.closest('button'))
+      ?.closest('button')
+    // `/compact` 的 usage 就是它自己:行上只出现一次。
+    expect(row?.textContent?.match(/\/compact/g) ?? []).toHaveLength(1)
+  })
+
+  it('按说明也找得到 —— 「directory」打进去,`/cd` 在列(它名字里没这几个字母)', () => {
+    renderComposer()
+    type(inputBox(), '/directory')
+    expect(screen.getAllByText('/cd').some((el) => el.closest('button'))).toBe(true)
+  })
+})
+
+/**
+ * 抽屉里命令分三组(09-12)。这一层钉的是**画法**:组头各出现一次、
+ * 键盘走位仍旧是一条扁平序。切组的判据在 transitions.test.ts。
+ */
+describe('/ 命令抽屉:命令 / 技能 / 插件三个组头', () => {
+  beforeEach(async () => {
+    /*
+     * **先散账再换端口**:这只 store 按 cwd 缓存(拉过同一个 cwd 就是恒等),
+     * 而前面的用例已经用 setup.ts 那份空端口把 `cwd: null` 这一格拉成 ready 了
+     * —— 不散,这一组换上来的端口一发都不会发(踩过一次)。
+     */
+    useSkillsSource.getState().reset()
+    configureSkillsPort({
+      ready: async () => undefined,
+      getAll: async () => ({
+        success: true,
+        skills: [
+          {
+            id: 'user/writing',
+            name: 'writing',
+            description: '把一段话改得更像人说的',
+            source: 'user',
+            path: '/s/SKILL.md',
+            directoryPath: '/s',
+            enabled: true,
+            instructions: '',
+          },
+        ],
+      }),
+    })
+    configureCommandsPort({
+      ready: async () => undefined,
+      listPluginCommands: async () => ({
+        success: true,
+        commands: [{ id: 'note', name: '/note', description: '记一条', usage: '/note <文字>' }],
+      }),
+      executePluginCommand: async () => ({ success: false }),
+      compactContext: async () => ({ success: false }),
+    })
+  })
+
+  afterEach(() => {
+    configureSkillsPort(undefined)
+    useSkillsSource.getState().reset()
+  })
+
+  /** 开一次命令抽屉,并把那两发懒拉落地。 */
+  async function openCommands(word = '/') {
+    renderComposer()
+    type(inputBox(), word)
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+  }
+
+  it('三个组头各出现恰好一次,顺序是 命令 → 技能 → 插件', async () => {
+    await openCommands()
+    const heads = Array.from(document.querySelectorAll('[data-testid="composer-panel"] div'))
+      .map((el) => el.textContent)
+      .filter((text) => text === '命令' || text === '技能' || text === '插件')
+    expect(heads).toEqual(['命令', '技能', '插件'])
+  })
+
+  it('技能那一行是 `/skill:<名字>`,选中只插文本(展开在引擎那头)', async () => {
+    await openCommands()
+    const row = screen.getByText('/skill:writing')
+    fireEvent.mouseDown(row)
+    const box = inputBox()
+    expect(box.textContent).toContain('/skill:writing')
+    // 幽灵占位说的是「接着说你要它干什么」。
+    expect(box.querySelector('[data-arg-ghost]')?.textContent).toBe('[说明]')
+    expect(handed).toHaveLength(0)
+  })
+
+  it('发出去的就是 `/skill:… …` 那句话本身 —— 壳一个字都不执行', async () => {
+    await openCommands()
+    fireEvent.mouseDown(screen.getByText('/skill:writing'))
+    const box = inputBox()
+    type(box, '/skill:writing 改一下这段')
+    await act(async () => void fireEvent.click(screen.getByTestId('composer-send')))
+    expect(handed).toEqual([
+      { kind: 'text', text: '/skill:writing 改一下这段', attachments: 0 },
+    ])
+  })
+
+  it('分组不改键盘走位:↓ 一格一格走过三组,↵ 落在键盘那一行', async () => {
+    await openCommands()
+    const box = inputBox()
+    // 扁平序里技能排在内置七条(+dev)之后。走到它那一格再回车。
+    const flat = Array.from(
+      document.querySelectorAll('[data-testid="composer-panel"] button'),
+    ).filter((el) => el.className.includes('pickRow'))
+    const at = flat.findIndex((el) => el.textContent?.startsWith('/skill:writing'))
+    expect(at).toBeGreaterThan(0)
+    for (let i = 0; i < at; i += 1) fireEvent.keyDown(box, { key: 'ArrowDown' })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(box.textContent).toContain('/skill:writing')
+  })
+})
+
+/**
+ * `@` 候选的四态(09-12)。从前这一列只按长度判,于是去抖窗口里屏幕上写着
+ * 「无匹配」—— 用户报的「出现的动画很突兀」有一半是这句不成立的话。
+ */
+describe('@ 候选:正在找 / 旧候选留屏 / 无匹配 / 出错', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  it('刚敲下 @、一发还没回来:画「正在找…」,**不**说「无匹配」', () => {
+    renderComposer()
+    type(inputBox(), '看看 @')
+    expect(screen.getByText('正在找…')).toBeTruthy()
+    expect(screen.queryByText('无匹配')).toBeNull()
+  })
+
+  it('回来了、真的一条都没有:这时才说「无匹配」', async () => {
+    configureFilesPort({
+      ready: async () => undefined,
+      listDirectory: async () => ({ success: false, error: 'x' }),
+      stat: async () => ({ success: false, error: 'x' }),
+      readContent: async () => ({ success: false, error: 'x' }),
+      saveContent: async () => ({ success: true }),
+      reveal: async () => ({ success: false, error: 'x' }),
+      list: async () => ({ success: true, files: [], entries: [] }),
+    })
+    renderComposer()
+    type(inputBox(), '看看 @zzz')
+    await settleMentions()
+    expect(screen.getByText('无匹配')).toBeTruthy()
+    expect(screen.queryByText('正在找…')).toBeNull()
+  })
+
+  it('手上有旧候选时再打字:旧候选**留在屏上**,不闪一下「正在找…」', async () => {
+    renderComposer()
+    const box = inputBox()
+    type(box, '看看 @')
+    await settleMentions()
+    expect(screen.getByText('/repo/src/codex.ts')).toBeTruthy()
+
+    type(box, '看看 @c')
+    expect(screen.queryByText('正在找…')).toBeNull()
+    expect(screen.getByText('/repo/src/codex.ts')).toBeTruthy()
+  })
+
+  it('这一发失败:旧候选留屏,错误与它并陈(律②:错误不抹掉旧答案)', async () => {
+    renderComposer()
+    const box = inputBox()
+    type(box, '看看 @')
+    await settleMentions()
+
+    configureFilesPort({
+      ready: async () => undefined,
+      listDirectory: async () => ({ success: false, error: 'x' }),
+      stat: async () => ({ success: false, error: 'x' }),
+      readContent: async () => ({ success: false, error: 'x' }),
+      saveContent: async () => ({ success: true }),
+      reveal: async () => ({ success: false, error: 'x' }),
+      list: async () => ({ success: false, error: '后端说不成', files: [] }),
+    })
+    type(box, '看看 @co')
+    await settleMentions()
+    expect(screen.getByText('/repo/src/codex.ts')).toBeTruthy()
+    expect(screen.getByText('这一发没找成,先看上一批')).toBeTruthy()
   })
 })
 

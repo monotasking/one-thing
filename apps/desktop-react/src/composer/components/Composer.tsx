@@ -5,6 +5,7 @@ import { ChevronDown, resolveIcon } from '../../components/icons'
 import { DEV_COMMANDS } from '../data'
 import { BUILTIN_COMMANDS, mergeCommands, useCommandsSource } from '../../data/commands-source'
 import { useMeterSource } from '../../data/meter-source'
+import { useSkillsSource } from '../../data/skills-source'
 import {
   ensureCatalog,
   modelMutation,
@@ -73,24 +74,24 @@ const StopIcon = resolveIcon('Square')
  * 所以「檐怎么合、滚动谁管、尺寸谁定」三问在这里都不成立。
  *   挂载:① `openMeter(sessionId)` 订读数(换会话重订 + 重拉;无会话是缺席态,
  *   不发请求);② `ensureCatalog(selection.provider)` 拉当前这一家的目录(环要
- *   画百分比就得知道窗口多大;已拉过的直接返回);③ `ensurePluginCommands()` ——
- *   **不在这里**,它懒在抽屉第一次开的时候(`usePickDrawer`);
+ *   画百分比就得知道窗口多大;已拉过的直接返回);③ `ensurePluginCommands()` 与
+ *   `ensureSkills(cwd)` —— **都不在这里**,它们懒在命令抽屉第一次开的时候
+ *   (`usePickDrawer`);
  *   ④ `registerComposerFocus(…)` 登记「把光标交过来」那一口。
  *   卸载:① `revokeAllAttachments()`;② `registerComposerFocus(undefined)`;
  *   ③ Esc 预备态那只计时器(在 `useEscStop` 里收)。另有两个跟着 hook 走的
  *   监听(`useComposerKeys` 的 window keydown、`useFloatDismiss` 的点外关),
  *   各自 effect 自己收。
  *
- * **② UI 生命状态**:ready 是唯一在画的一态。
- *   · empty —— 只有候选列表有(`DrawerPickList` 的 `composer.noMatch`),按长度
- *     判,不读 status;
- *   · loading —— **一处都没画**:`@` 候选在飞时抽屉什么都不变(旧候选留屏),
- *     切模型只在药丸上挂 `aria-busy`,建会话 / 跑命令那两段往返**刻意**不画
- *     (理由在 `useComposerSend` 的两把闸上);
- *   · error —— **一处都没画**:`useFileMentionsSource` 有 `error` 一格而抽屉不读
- *     它,命令失败走 `notify` 的通知面、不落在这块面上。
- *   `@` 候选那三态的留账在 `data/file-mentions-source.ts:50` 与提交 ac384704 里
- *   各记过一次;**本批只记不补** —— 补它们是行为变化,要另批拍板。
+ * **② UI 生命状态**(09-12 结清了候选列表那三态):
+ *   · empty —— 候选列表的「无匹配」,而它现在**只在 ready 且真的零条**时才说;
+ *   · loading —— 候选在飞且手上没有旧候选时,列表画一行「正在找…」(纯文字,
+ *     Spinner 只许在按钮内 / 状态栏);有旧候选就**留屏**,不闪。切模型仍旧只在
+ *     药丸上挂 `aria-busy`,建会话 / 跑命令那两段往返**刻意**不画(理由在
+ *     `useComposerSend` 的两把闸上);
+ *   · error —— 候选拉失败:旧候选留屏 + 一行弱色错误文字(不换底)。命令失败仍旧
+ *     走 `notify` 的通知面、不落在这块面上。
+ *   判据整张表在 `DrawerPickList` 的文件头(`fileStatus` 由 `usePickDrawer` 交下来)。
  *
  * **③ UI 交互状态**:
  *   · 药丸:rest / hover / focus 走 `ButtonBase` + `.modelPill` 皮肤;切模型在飞
@@ -156,14 +157,22 @@ export function Composer() {
   const [meterOpen, setMeterOpen] = useState(false)
 
   /* 命令表是**两条切线共用的一件事实**(抽屉要拿它筛候选,发送要拿它认命令),
-   * 所以合表留在编排点:内置那七条是编译期常量,插件那一半由抽屉懒拉进 store。 */
+   * 所以合表留在编排点:内置那七条是编译期常量,插件与技能两半由抽屉懒拉进各自的
+   * store(技能按 cwd)。四张表的先后在 `mergeCommands` 里排定,不在这里排。 */
   const pluginCommands = useCommandsSource((st) => st.pluginCommands)
+  const skillCommands = useSkillsSource((st) => st.commands)
   const allCommands = useMemo(
-    () => mergeCommands(BUILTIN_COMMANDS, pluginCommands, DEV_COMMANDS),
-    [pluginCommands],
+    () =>
+      mergeCommands({
+        builtin: BUILTIN_COMMANDS,
+        skill: skillCommands,
+        plugin: pluginCommands,
+        dev: DEV_COMMANDS,
+      }),
+    [skillCommands, pluginCommands],
   )
 
-  /* 切线 D:抽屉里那两位输入驱动的住户。八格正好是下面两个组件要的全部。 */
+  /* 切线 D:抽屉里那两位输入驱动的住户。十格正好是下面两个组件要的全部。 */
   const pick = usePickDrawer({ allCommands, sessionId, inputRef, drawerKind, openAsk, closeDrawer })
 
   /* 切线 C:发送的三口。交出来的只有 `doSend` —— 输入框的回车与发送键读同一个它。 */
@@ -369,7 +378,8 @@ export function Composer() {
                   <DrawerPickList
                     kind={drawerKind === 'files' ? 'files' : 'commands'}
                     files={pick.files}
-                    commands={pick.commands}
+                    fileStatus={pick.fileStatus}
+                    commandGroups={pick.commandGroups}
                     index={pick.index}
                     rowRef={pick.rowRef}
                     onPick={pick.applyPick}

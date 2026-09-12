@@ -110,7 +110,11 @@ export function useComposerSend({
         // 与 Vue 壳 `InputBox.sendMessage` 的 `refreshPluginCommands` 同一手。
         await ensurePluginCommands()
         entry = findCommand(
-          mergeCommands(BUILTIN_COMMANDS, useCommandsSource.getState().pluginCommands, DEV_COMMANDS),
+          mergeCommands({
+            builtin: BUILTIN_COMMANDS,
+            plugin: useCommandsSource.getState().pluginCommands,
+            dev: DEV_COMMANDS,
+          }),
           parsed.token,
         )
       }

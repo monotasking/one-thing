@@ -1382,6 +1382,21 @@
   /* ⌘L 跳转条那张候选表的高度上限(浮层 / 抽屉列表必有约束)。 */
   --viewer-jump-max-h: 180px;
 
+  /* ── 用户消息里的引用(content/user-message,2026-09-12)────────────────
+   * 气泡正文里那枚 `@路径` chip 与 `/命令` 药丸的几何与色。
+   * 色**一格都不是新色值**:命令走强调色的那一对(--accent-deep / --accent-soft),
+   * 技能徽换一档更浅的底(--st-sel)把两者在同一句里分开 —— 它们是两种东西
+   * (一个是这台执行的命令,一个是这回合挂上的技能),同色会读成一件。
+   * 名字宽 13ch:一屏里认得出 `ChatStream.module.css` 这个长度的名字,再长的
+   * 尾部省略号 + Tooltip 全路径接着;不给上限的话一条绝对路径会把气泡撑破。 */
+  --umsg-chip-pad-x: 5px;
+  --umsg-chip-pad-y: 1px;
+  --umsg-chip-gap: 3px;
+  --umsg-chip-icon: 12px;
+  --umsg-chip-name-max: 13ch;
+  --umsg-skill-fg: var(--accent-deep);
+  --umsg-skill-bg: var(--st-sel);
+
   /* Composer 用到、既有字号梯里没有的四档 */
   --fs-pill: 11.5px;
   --fs-code: 12.5px;

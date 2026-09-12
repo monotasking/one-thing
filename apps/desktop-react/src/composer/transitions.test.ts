@@ -56,8 +56,96 @@ describe('@ 与 / 的触发位', () => {
     ).toEqual(['/review'])
   })
 
+  /* 冒号进命令词(09-12):技能引用叫 `/skill:<名字>`,而人是一个字一个字打出来的
+   * —— 打到冒号那一刻 token 若断掉,抽屉当场收起来。 */
+  it('`/skill:` 打到一半 token 不断,冒号之后那几个字就是查询词', () => {
+    expect(T.parseToken('/skill:', '/skill:')).toEqual({ kind: 'commands', query: 'skill:' })
+    expect(T.parseToken('/skill:wr', '/skill:wr')).toEqual({ kind: 'commands', query: 'skill:wr' })
+    // 触发前提一个字没改:整段话得以 / 开头,所以句中的冒号照旧不触发。
+    expect(T.parseToken('见 a:b', '见 a:b')).toBeNull()
+    /*
+     * **留账**:`\w` 不收中日韩,所以一个中文名的技能打到名字第一个汉字时 token
+     * 仍会断(抽屉收起来)—— 与 `@` 那条对中文路径的既有限制是同一格。
+     * 从抽屉里选(打 `/skill` → ↑↓ → ↵)不受影响,那也是这一批设计的入口。
+     * 放宽字符集是一次更大的行为赌注(`/新建…` 这类句子会开始触发抽屉),另批拍。
+     */
+    expect(T.parseToken('/skill:写', '/skill:写')).toBeNull()
+  })
+
   /* 「选中行上下走 / 夹进范围」的判据 09-01 搬去了 ui/a11y/list-selection,
    * 断言跟着搬进 src/ui/__tests__/list-selection.test.tsx —— 判据在哪,守卫在哪。 */
+})
+
+/**
+ * 命令的匹配与分组(09-12,用户报障「命令无提示」)。
+ *
+ * 两件事一起测,是因为它们的**次序**本身就是一条判据:分组是外层分区,
+ * 匹配的排序只在组内说话 —— 反过来就会切出两次「命令」组头。
+ */
+describe('命令匹配:名字前缀在前,说明 / 用法子串在后', () => {
+  const table = [
+    { name: '/new', desc: 'Start a new chat session', usage: '/new', kind: 'builtin' },
+    { name: '/compact', desc: 'Summarize older history', usage: '/compact', kind: 'builtin' },
+    { name: '/cd', desc: 'Change the working directory', usage: '/cd <path>', kind: 'builtin' },
+  ]
+
+  it('空词 = 整张表原样(一条都不筛,顺序一个字不动)', () => {
+    expect(T.matchCommands(table, '').map((c) => c.name)).toEqual(['/new', '/compact', '/cd'])
+  })
+
+  it('名字命中的那一组永远在上面,说明命中的跟在后面', () => {
+    // `c` 命中名字的有 /compact 与 /cd(原表顺序);/new 靠说明里的 "chat" 不命中 `c`?
+    // 它命中的是 "session" 里没有 c —— 但 "Start a new chat session" 有 c,所以它进第二组。
+    const got = T.matchCommands(table, 'c').map((c) => c.name)
+    expect(got).toEqual(['/compact', '/cd', '/new'])
+  })
+
+  it('用法里的字也算数 —— 「path」找得到 /cd,而它名字里没有这几个字母', () => {
+    expect(T.matchCommands(table, 'path').map((c) => c.name)).toEqual(['/cd'])
+  })
+
+  it('不分大小写', () => {
+    expect(T.matchCommands(table, 'DIRECTORY').map((c) => c.name)).toEqual(['/cd'])
+    expect(T.matchCommands(table, '/CD'.slice(1)).map((c) => c.name)).toEqual(['/cd'])
+  })
+
+  it('一条都不命中就是空表(抽屉据此说「无匹配」)', () => {
+    expect(T.matchCommands(table, 'zzz')).toEqual([])
+  })
+})
+
+describe('命令分组:三组,每组恰好出现一次,空组不出现', () => {
+  const row = (name: string, kind: string) => ({ name, desc: '', usage: name, kind })
+
+  it('顺序固定 命令 → 技能 → 插件;dev 与内置同组', () => {
+    const got = T.groupCommands([
+      row('/note', 'plugin'),
+      row('/new', 'builtin'),
+      row('/skill:a', 'skill'),
+      row('/ask-demo', 'dev'),
+    ])
+    expect(got.map((g) => g.id)).toEqual(['command', 'skill', 'plugin'])
+    expect(got[0].items.map((c) => c.name)).toEqual(['/new', '/ask-demo'])
+  })
+
+  it('空组不出现在结果里(「只当那组非空时画」落在这里,不落在渲染层)', () => {
+    const got = T.groupCommands([row('/new', 'builtin')])
+    expect(got.map((g) => g.id)).toEqual(['command'])
+  })
+
+  it('**分组只许一次**:匹配把说明命中的挪到后面,组头也不许因此出现两次', () => {
+    // 匹配之后的顺序是「内置 / 技能 / 内置」—— 按相邻切段会切出两个「命令」组。
+    const matched = [row('/cd', 'builtin'), row('/skill:a', 'skill'), row('/goal', 'builtin')]
+    const got = T.groupCommands(matched)
+    expect(got.map((g) => g.id)).toEqual(['command', 'skill'])
+    expect(got[0].items.map((c) => c.name)).toEqual(['/cd', '/goal'])
+  })
+
+  it('扁平序 = 各组顺次相连(键盘位与 applyPick 的下标都按它算)', () => {
+    const matched = [row('/cd', 'builtin'), row('/note', 'plugin'), row('/skill:a', 'skill')]
+    const flat = T.groupCommands(matched).flatMap((g) => g.items)
+    expect(flat.map((c) => c.name)).toEqual(['/cd', '/skill:a', '/note'])
+  })
 })
 
 /**

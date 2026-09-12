@@ -115,6 +115,19 @@ configureCommandsPort({
 })
 
 /**
+ * 技能读面的端口(09-12):同一条理由,同一手。默认这一份**读得到但是空** ——
+ * 「这台机器上一份技能都没有」是真实存在的状态,而抽屉在命令那一档第一次开的
+ * 时候就会问它;不装的话每一个开过命令抽屉的用例都会去摸真的连通面。
+ * 要验技能那一组的用例自己 `configureSkillsPort` 换一个。
+ */
+import { configureSkillsPort } from '../data/skills-port'
+
+configureSkillsPort({
+  ready: async () => undefined,
+  getAll: async () => ({ success: true, skills: [] }),
+})
+
+/**
  * agent 名册的端口:同一条理由,同一手。顶栏在每一个渲染了外壳的用例里都在,
  * 不装的话它们会一起去摸真的连通面。
  */

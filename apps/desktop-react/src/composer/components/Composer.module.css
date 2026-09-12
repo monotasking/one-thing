@@ -460,6 +460,53 @@
   font-size: var(--fs-code);
 }
 
+/*
+ * ── 命令行的三格(09-12)────────────────────────────────────────────────
+ * 名 · 说明 · 用法。挤压纪律律一:**一行恰有一个弯腰件**,而它是**说明** ——
+ * 名字是身份(截了就认不出是哪条命令),用法是这次改动要补的那句提示
+ * (截半句比不画更糟),所以两头都 `flex: none`,只有说明去抢剩余空间并省略号。
+ * 律二:结构行只截断不换行。
+ *
+ * 命令名那一格**不在 `.pickMono` 上加 `flex: none`**:那个类同时长在文件候选行
+ * 与模型行上,改它就是替另外两种住户做了一次没人要过的裁定。这一格因此是
+ * 命令行自己的一层(`.pickName` 与 `.pickMono` 同时挂在那一枚 span 上)。
+ */
+.pickName {
+  flex: none;
+}
+.pickDesc {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * 用法那一截(`/cd <path>`)。等宽 + 弱色 —— 它是**语法**不是句子,
+ * 与命令名同族的字形让人一眼看出哪几个字是要自己填的。
+ */
+.pickUsage {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+/*
+ * 窄档收掉用法(与模型抽屉两栏塌一栏同一个阈值、同一份来历,见 `.pickCols`
+ * 上面那段注)。判据是**这块抽屉自己有多宽**:输入框在浮窗 / 窄舞台 / 钉边架子上
+ * 各有各的宽。收的是「用法」而不是「说明」—— 一行窄到放不下三格时,
+ * 「这条命令是干什么的」比「它收什么参数」更早被需要;而参数那句话在选中之后
+ * 还会以幽灵占位再说一次(`.argGhost`),说明则没有第二次机会。
+ */
+@container composerDrawer (max-width: 448px) {
+  .pickUsage {
+    display: none;
+  }
+}
+
 .pickHint {
   margin-left: auto;
   font-size: var(--fs-micro);
@@ -647,6 +694,23 @@
   line-height: 1.7;
   color: var(--text-1);
   caret-color: var(--accent);
+  /*
+   * **行尾空格要看得见**(09-12 用户报障:「补全命令后没有空格」)。
+   *
+   * 病根不在 `insert()` —— 它插的一直是 `" " + rest`,草稿里那个空格从来都在。
+   * 病根是这一行少了它:CSS 的缺省 `white-space: normal` 会把**行尾的空白折叠掉**,
+   * 于是补全完那一枚命令徽 / chip 之后,屏幕上光标紧贴着它,看起来像是没插空格;
+   * 人于是自己再补一个,发出去的那句话就多了一个空格。
+   *
+   * `pre-wrap` 只改「空白怎么画」,不改这块可编辑区里有什么:换行照旧由
+   * contentEditable 自己的 `<br>` / `<div>` 表达(草稿里一个 `\n` 都没有,
+   * `readDraft` 的既有口径因此一个字没变)。
+   *
+   * `word-break: break-word` 留着不动:`pre-wrap` 不换行只是不折叠空白,
+   * 长 URL / 长路径照旧要能在词中断开(它与 `overflow-wrap: anywhere` 等义,
+   * 是这一行既有的写法 —— 换写法是一次无谓的行为赌注)。
+   */
+  white-space: pre-wrap;
   word-break: break-word;
   /*
    * 08-31 真机报障:**空框时鼠标停在占位符上是箭头,不是 I 形**。
@@ -689,6 +753,28 @@
   font-weight: 600;
   font-family: var(--font-mono);
   font-size: var(--fs-label);
+}
+
+/*
+ * ── 参数幽灵占位(09-12,用户报障「命令无提示」的第三半)────────────────
+ *
+ * 选完 `/cd` 之后光标停在空格后面,而「这条命令还要一个路径」这件事此前只在
+ * **发出去之后**才由一条用法错说出来。这一枚就是把那句话提前到人要打字的那一刻:
+ * 它写的是 usage 里那一截(`<path>` / `[分类]`),灰到不像字,人打第一个字它就散。
+ *
+ * 它是**画出来的一句提示,不是草稿的一部分**:
+ *  · `contentEditable=false` + `pointer-events: none` —— 点不中、选不中,
+ *    光标不会掉进它里面(与 `.input:empty::before` 占位符同一条判例);
+ *  · `readDraft` 认 `data-arg-ghost` 并整枚跳过 —— 交出去的那句话里一个字都没有它;
+ *  · `user-select: none` —— 全选复制不该把它捎上。
+ * 颜色比占位符的 `--text-4` 不能更重:它与真的输入同处一行,重一点就会被读成已输入。
+ */
+.argGhost {
+  color: var(--text-4);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  pointer-events: none;
+  user-select: none;
 }
 
 /*

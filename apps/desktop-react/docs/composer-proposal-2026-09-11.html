@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Composer 三台样例 · 2026-09-11</title>
+<style>
+  :root{
+    --paper:#faf8f4; --paper-2:#f3f0ea; --surface:#fffdf9; --text-1:#2b2926; --text-2:#6b665f; --text-3:#9a948b; --text-4:#b8b2a8;
+    --line-1:#e6e1d8; --line-2:#d8d2c7; --accent:#c9782a; --accent-deep:#9a5a1c; --accent-soft:#f6e9d8;
+    --st-sel:#efe9df; --st-hover:#f1ece4; --st-sel-hover:#e9e1d3; --ok:#4f8a5b; --warn:#b3541e;
+    --r-1:6px; --r-2:10px; --r-3:14px; --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px;
+    --fs-body:14px; --fs-label:13px; --fs-micro:11px; --fs-code:12.5px; --pr-fs:15px; --pr-lh:1.65;
+    --font-ui:-apple-system,"PingFang SC","Helvetica Neue",system-ui,sans-serif;
+    --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --dur:120ms; --dur-enter:140ms; --dur-mode:160ms; --ease:cubic-bezier(.2,.7,.2,1); --ease-out:cubic-bezier(0,0,.2,1);
+    --shadow-float:0 10px 30px -12px rgba(43,41,38,.28),0 2px 6px -2px rgba(43,41,38,.12);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--paper);color:var(--text-1);font:var(--fs-body)/1.5 var(--font-ui)}
+  main{max-width:1240px;margin:0 auto;padding:28px 20px 80px}
+  h1{font-size:21px;margin:0 0 6px}
+  p.note{color:var(--text-2);font-size:13px;margin:0 0 6px;max-width:960px;line-height:1.65}
+  kbd{font:11px/1 var(--font-mono);padding:2px 5px;border:1px solid var(--line-2);border-bottom-width:2px;border-radius:4px;background:#fff;color:var(--text-2)}
+  code{font:var(--fs-code)/1.4 var(--font-mono);background:var(--paper-2);padding:1px 5px;border-radius:4px}
+  .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:16px 0 30px}
+  .issue{border:1px solid var(--line-1);border-radius:var(--r-2);background:var(--surface);padding:10px 12px;font-size:12.5px;color:var(--text-2);line-height:1.6}
+  .issue b{display:block;color:var(--text-1);margin-bottom:2px;font-size:13px}
+  .issue i{font-style:normal;color:var(--warn)}
+
+  /* ── 台 ── */
+  section.stage{margin:0 0 44px;padding-top:10px;border-top:1px solid var(--line-1)}
+  .stage>header{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;margin:8px 0 10px}
+  .stage h2{font-size:17px;margin:0}
+  .stage h2 small{font-size:12px;color:var(--accent);font-weight:600;margin-right:8px;letter-spacing:.04em}
+  .thesis{color:var(--text-2);font-size:13px;flex:1 1 420px;line-height:1.6}
+  .widths{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--text-3)}
+  .widths button{font:12px var(--font-ui);padding:4px 9px;border:1px solid var(--line-2);border-radius:999px;background:#fff;color:var(--text-2);cursor:pointer}
+  .widths button.on{background:var(--text-1);color:#fff;border-color:var(--text-1)}
+  .frameWrap{display:flex;justify-content:center;background:repeating-linear-gradient(45deg,transparent 0 10px,rgba(43,41,38,.025) 10px 20px);border:1px dashed var(--line-2);border-radius:18px;padding:16px;overflow:auto}
+  .frame{container:frame/inline-size;width:100%;max-width:100%;height:520px;display:flex;flex-direction:column;border:1px solid var(--line-1);border-radius:16px;background:var(--surface);overflow:hidden;position:relative;resize:horizontal;min-width:300px;box-shadow:0 1px 2px rgba(43,41,38,.05)}
+  .frame[data-w="360"]{width:360px}.frame[data-w="560"]{width:560px}.frame[data-w="880"]{width:880px}
+  .chat{flex:1;overflow:auto;padding:18px 18px 8px;display:flex;flex-direction:column;gap:14px;scroll-behavior:smooth}
+  .reply{font-size:var(--pr-fs);line-height:var(--pr-lh);max-width:72ch}
+  .reply p{margin:0 0 .5em}
+  .user{align-self:flex-end;max-width:min(80%,60ch);padding:10px 14px;border-radius:var(--r-3);background:var(--st-sel);font-size:var(--pr-fs);line-height:var(--pr-lh);white-space:pre-wrap;overflow-wrap:anywhere;animation:rise var(--dur-enter) var(--ease-out)}
+  .toast{position:absolute;left:50%;bottom:110px;transform:translateX(-50%);background:var(--text-1);color:#fff;font-size:12px;padding:6px 12px;border-radius:999px;opacity:0;pointer-events:none;transition:opacity var(--dur)}
+  .toast.show{opacity:1}
+  .cap{font-size:12.5px;color:var(--text-2);margin:12px 0 0;line-height:1.65}
+  .cap b{color:var(--text-1)}
+  .howtbl{width:100%;border-collapse:collapse;margin-top:12px;font-size:12.5px}
+  .howtbl th,.howtbl td{text-align:left;padding:6px 8px;border-top:1px solid var(--line-1);vertical-align:top;line-height:1.55}
+  .howtbl th{color:var(--text-3);font-weight:500;white-space:nowrap;width:150px}
+
+  /* 引用 chip(气泡里,三台共用同一套「可点击引用」) */
+  .refchip{display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:0 6px 0 4px;border-radius:6px;background:#fff;border:1px solid var(--line-2);color:var(--accent-deep);font:var(--fs-code)/1.6 var(--font-mono);vertical-align:-1px;cursor:pointer;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background var(--dur),border-color var(--dur)}
+  .refchip:hover{background:var(--accent-soft);border-color:var(--accent)}
+  .refchip .g{font-family:var(--font-ui);font-size:11px;color:var(--text-3)}
+  .refchip.dir .g{color:var(--accent)}
+  .cmdpill{display:inline-block;padding:0 6px;border-radius:6px;background:var(--accent-soft);color:var(--accent-deep);font:600 var(--fs-code)/1.6 var(--font-mono)}
+  .skillpill{display:inline-flex;gap:4px;align-items:center;padding:0 7px;border-radius:999px;background:#eef3ea;color:#3f6b48;font:600 12px/1.7 var(--font-ui)}
+  .b{font-weight:600}
+
+  /* ─────────────────────────── A 就地 ─────────────────────────── */
+  .A .composer{position:relative;margin:8px 12px 12px;border:1px solid var(--line-1);border-radius:16px;background:#fff;box-shadow:0 1px 3px rgba(43,41,38,.06);transition:box-shadow var(--dur),border-color var(--dur)}
+  .A .composer:focus-within{border-color:var(--line-2);box-shadow:0 0 0 3px rgba(201,120,42,.14)}
+  .A .input{min-height:44px;max-height:160px;overflow:auto;padding:12px 14px 6px;outline:none;font-size:var(--pr-fs);line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;caret-color:var(--accent)}
+  .A .input:empty::before{content:attr(data-placeholder);color:var(--text-4);pointer-events:none}
+  .A .hint{display:flex;align-items:center;gap:10px;min-height:22px;padding:0 14px 6px;font-size:var(--fs-micro);color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .A .hint .u{font-family:var(--font-mono);color:var(--text-2)}
+  .A .hint .u em{font-style:normal;color:var(--accent-deep);background:var(--accent-soft);padding:0 4px;border-radius:4px}
+  .A .hint .u.err em{color:var(--warn);background:#f8e6dc}
+  .A .hint .k{margin-left:auto;display:inline-flex;gap:6px}
+  .A .tools{display:flex;align-items:center;gap:6px;padding:4px 8px 8px 10px;border-top:1px solid var(--line-1)}
+  .A .tools .sp{flex:1}
+  .ibtn{width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:var(--text-3);cursor:pointer;display:inline-grid;place-items:center;font-size:15px;transition:background var(--dur),color var(--dur)}
+  .ibtn:hover{background:var(--st-hover);color:var(--text-1)}
+  .model{font:12px var(--font-ui);padding:4px 10px;border:1px solid var(--line-1);border-radius:999px;background:#fff;color:var(--text-2);cursor:pointer}
+  .send{width:30px;height:30px;border:0;border-radius:999px;background:var(--text-1);color:#fff;cursor:pointer;font-size:14px;display:grid;place-items:center;transition:transform var(--dur),opacity var(--dur)}
+  .send:disabled{opacity:.35;cursor:default}
+  .send:not(:disabled):hover{transform:translateY(-1px)}
+  .chip{display:inline-flex;align-items:center;gap:3px;padding:0 6px 0 4px;border-radius:6px;background:var(--st-sel);color:var(--accent-deep);font:var(--fs-code)/1.6 var(--font-mono);vertical-align:-1px;white-space:nowrap;user-select:all}
+  .chip .g{font-family:var(--font-ui);font-size:11px;color:var(--text-3)}
+  .cmdtok{color:var(--accent-deep);font:600 var(--fs-code)/1.6 var(--font-mono);background:var(--accent-soft);padding:0 6px;border-radius:6px}
+  .ghost{color:var(--text-4);pointer-events:none;user-select:none}
+  /* 浮层:锚在光标 x,长在输入面之上;窄容器时变成贴底整宽 */
+  .A .pop{position:absolute;bottom:calc(100% + 8px);left:0;width:min(380px,100%);max-height:min(300px,45cqh);overflow:auto;background:#fff;border:1px solid var(--line-1);border-radius:12px;box-shadow:var(--shadow-float);padding:6px;transform-origin:bottom left;opacity:0;transform:scale(.96) translateY(4px);pointer-events:none;transition:opacity var(--dur) var(--ease-out),transform var(--dur) var(--ease-out);z-index:3}
+  .A .pop.open{opacity:1;transform:none;pointer-events:auto}
+  .A .pop .sec{padding:8px 10px 3px;font-size:10.5px;font-weight:700;letter-spacing:.06em;color:var(--text-3);text-transform:uppercase}
+  .A .pop .row{display:grid;grid-template-columns:20px minmax(0,auto) minmax(0,1fr) auto;gap:8px;align-items:center;width:100%;padding:7px 10px;border:0;border-radius:8px;background:transparent;text-align:left;cursor:pointer;color:var(--text-1);font:var(--fs-label)/1.4 var(--font-ui)}
+  .A .pop .row:hover{background:var(--st-hover)}
+  .A .pop .row.on{background:var(--st-sel)}.A .pop .row.on:hover{background:var(--st-sel-hover)}
+  .A .pop .row .g{color:var(--text-3);font-size:13px;text-align:center}
+  .A .pop .row .n{font-family:var(--font-mono);font-size:var(--fs-code);color:var(--accent-deep);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .A .pop .row .d{color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px}
+  .A .pop .row .k{font-size:10.5px;color:var(--text-3);visibility:hidden;white-space:nowrap}
+  .A .pop .row.on .k{visibility:visible}
+  .A .pop .empty{padding:12px;color:var(--text-3);font-size:12.5px}
+  .A .pop .load{padding:8px 10px;font-size:11.5px;color:var(--text-3)}
+  @container frame (max-width: 480px){
+    .A .pop{left:-1px;right:-1px;width:auto;bottom:calc(100% + 6px);border-radius:12px 12px 8px 8px}
+    .A .pop .row{grid-template-columns:20px minmax(0,1fr) auto;grid-template-areas:"g n k" "g d k"}
+    .A .pop .row .g{grid-area:g}.A .pop .row .n{grid-area:n}.A .pop .row .d{grid-area:d}.A .pop .row .k{grid-area:k}
+    .A .hint .k{display:none}
+  }
+
+  /* ─────────────────────────── B 命令行 ─────────────────────────── */
+  .B .composer{margin:8px 12px 12px;border:1px solid var(--line-1);border-radius:14px;background:#fff;display:grid;grid-template-columns:minmax(0,1fr);transition:background var(--dur-mode),border-color var(--dur-mode)}
+  .B .composer.cmd{background:#fbf6ee;border-color:#e8d5bb}
+  .B .composer.at{grid-template-columns:minmax(0,1fr) 260px}
+  .B .main{display:flex;flex-direction:column;min-width:0}
+  .B .line{display:flex;align-items:flex-start;gap:8px;padding:10px 12px 6px}
+  .B .rail{flex:none;width:22px;height:22px;margin-top:2px;display:grid;place-items:center;border-radius:6px;font:700 13px/1 var(--font-mono);color:var(--text-4);background:transparent;transition:all var(--dur-mode) var(--ease-out)}
+  .B .composer.cmd .rail{color:#fff;background:var(--accent)}
+  .B .edit{position:relative;flex:1;min-width:0}
+  .B .input{min-height:26px;max-height:150px;overflow:auto;outline:none;font-size:var(--pr-fs);line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;caret-color:var(--accent);transition:font-family 0s}
+  .B .composer.cmd .input{font-family:var(--font-mono);font-size:14px}
+  .B .input:empty::before{content:attr(data-placeholder);color:var(--text-4);pointer-events:none}
+  .B .ghost{position:absolute;left:0;top:0;white-space:pre-wrap;color:var(--text-4);pointer-events:none;font:inherit;font-family:var(--font-mono);font-size:14px;line-height:1.65}
+  .B .ghost .typed{visibility:hidden}
+  .B .ghost .arg{color:var(--text-3);font-style:italic}
+  .B .strip{display:flex;gap:6px;align-items:center;padding:0 12px 8px 42px;overflow-x:auto;scrollbar-width:none;min-height:30px}
+  .B .strip::-webkit-scrollbar{display:none}
+  .B .strip .c{flex:none;display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;border:1px solid var(--line-1);background:#fff;font:12px/1.4 var(--font-ui);color:var(--text-2);cursor:pointer;white-space:nowrap;transition:background var(--dur),border-color var(--dur)}
+  .B .strip .c .n{font-family:var(--font-mono);font-size:12px;color:var(--text-1)}
+  .B .strip .c .g{font-size:11px;color:var(--text-3)}
+  .B .strip .c:hover{background:var(--st-hover)}
+  .B .strip .c.on{background:var(--accent-soft);border-color:#e3c8a3}.B .strip .c.on .n{color:var(--accent-deep)}
+  .B .strip .usage{flex:none;font:11.5px var(--font-mono);color:var(--text-3);padding-right:6px}
+  .B .strip .usage em{font-style:normal;color:var(--accent-deep)}
+  .B .strip .usage.err{color:var(--warn)}
+  .B .strip .sep{flex:none;width:1px;height:14px;background:var(--line-2);margin:0 2px}
+  .B .tools{display:flex;align-items:center;gap:6px;padding:4px 8px 8px 10px;border-top:1px solid var(--line-1)}
+  .B .tools .sp{flex:1}
+  .B .tools .ret{font-size:11px;color:var(--text-3);margin-right:6px}
+  .B .side{display:none;border-left:1px solid var(--line-1);flex-direction:column;min-height:0;background:#fff;border-radius:0 14px 14px 0;overflow:hidden}
+  .B .composer.at .side{display:flex}
+  .B .side h4{margin:0;padding:8px 12px 4px;font-size:10.5px;letter-spacing:.06em;color:var(--text-3);text-transform:uppercase;display:flex;justify-content:space-between}
+  .B .side h4 span{font-weight:400;letter-spacing:0;text-transform:none}
+  .B .side .list{overflow-y:auto;overflow-x:hidden;max-height:220px;padding:0 6px 6px}
+  .B .side .f{display:flex;align-items:center;gap:8px;width:100%;min-width:0;overflow:hidden;padding:6px 8px;border:0;background:transparent;border-radius:8px;text-align:left;cursor:pointer;font:var(--fs-code)/1.4 var(--font-mono);color:var(--text-2)}
+  .B .side .f>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .B .side .f .dir{color:var(--text-4)}.B .side .f .base{color:var(--text-1)}
+  .B .side .f .g{font-family:var(--font-ui);font-size:12px;color:var(--text-3);width:14px;text-align:center}
+  .B .side .f:hover{background:var(--st-hover)}.B .side .f.on{background:var(--st-sel)}.B .side .f.on .base{color:var(--accent-deep)}
+  .B .side .empty{padding:10px 12px;font-size:12px;color:var(--text-3)}
+  .B .promptline{align-self:flex-end;max-width:min(88%,70ch);padding:8px 12px;border-radius:10px;background:#fbf6ee;border:1px solid #e8d5bb;font:13.5px/1.6 var(--font-mono);color:var(--text-1);animation:rise var(--dur-enter) var(--ease-out)}
+  .B .promptline .p{color:var(--accent);font-weight:700;margin-right:6px}
+  .B .promptline .a{color:var(--text-2)}
+  .B .promptline .st{display:block;margin-top:4px;font:11.5px var(--font-ui);color:var(--ok)}
+  .B .user .ul{color:var(--accent-deep);text-decoration:underline;text-decoration-color:#e3c8a3;text-underline-offset:3px;cursor:pointer;font-family:var(--font-mono);font-size:var(--fs-code)}
+  .B .user .ul:hover{text-decoration-color:var(--accent)}
+  @container frame (max-width: 640px){
+    .B .composer.at{grid-template-columns:minmax(0,1fr)}
+    .B .side{border-left:0;border-top:1px solid var(--line-1);border-radius:0;order:-1}
+    .B .side .list{max-height:150px}
+    .B .strip{padding-left:12px}
+  }
+
+  /* ─────────────────────────── C 工作台 ─────────────────────────── */
+  .C .composer{position:relative;margin:8px 12px 12px;border:1px solid var(--line-1);border-radius:16px;background:#fff}
+  .C .tray{display:flex;flex-wrap:wrap;gap:6px;padding:10px 12px 0;min-height:0}
+  .C .tray:empty{display:none}
+  .C .tray .t{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:3px 6px 3px 8px;border-radius:999px;border:1px solid var(--line-1);background:var(--paper);font:12px/1.4 var(--font-ui);color:var(--text-1);animation:pop var(--dur-enter) var(--ease-out)}
+  .C .tray .t .g{font-size:12px;color:var(--text-3)}
+  .C .tray .t .n{font-family:var(--font-mono);font-size:12px;max-width:26ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .C .tray .t.cmd{background:var(--accent-soft);border-color:#e3c8a3}
+  .C .tray .t.cmd .n{color:var(--accent-deep);font-weight:600}
+  .C .tray .t.skill{background:#eef3ea;border-color:#cfdcc9}.C .tray .t.skill .n{color:#3f6b48;font-family:var(--font-ui)}
+  .C .tray .t input{font:12px var(--font-mono);border:0;border-bottom:1px dashed var(--line-2);background:transparent;outline:none;width:12ch;color:var(--text-1);padding:0 2px}
+  .C .tray .t input:focus{border-bottom-color:var(--accent)}
+  .C .tray .t input::placeholder{color:var(--text-4);font-style:italic}
+  .C .tray .t .x{border:0;background:transparent;color:var(--text-3);cursor:pointer;font-size:13px;line-height:1;padding:0 2px;border-radius:999px}
+  .C .tray .t .x:hover{color:var(--text-1);background:var(--st-hover)}
+  .C .input{min-height:44px;max-height:150px;overflow:auto;padding:10px 14px 8px;outline:none;font-size:var(--pr-fs);line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;caret-color:var(--accent)}
+  .C .input:empty::before{content:attr(data-placeholder);color:var(--text-4);pointer-events:none}
+  .C .tools{display:flex;align-items:center;gap:6px;padding:4px 8px 8px 10px;border-top:1px solid var(--line-1)}
+  .C .tools .sp{flex:1}
+  .C .tools .plus{font:12px var(--font-ui);padding:4px 10px;border:1px dashed var(--line-2);border-radius:999px;background:transparent;color:var(--text-2);cursor:pointer}
+  .C .tools .plus:hover{border-style:solid;background:var(--st-hover)}
+  /* 中央面板 */
+  .C .veil{position:absolute;inset:0;background:rgba(43,41,38,.18);opacity:0;pointer-events:none;transition:opacity var(--dur-mode);z-index:4}
+  .C .veil.open{opacity:1;pointer-events:auto}
+  .C .panel{position:absolute;left:50%;bottom:104px;transform:translate(-50%,10px) scale(.98);width:min(640px,calc(100% - 32px));max-height:min(380px,60cqh);display:flex;flex-direction:column;background:#fff;border:1px solid var(--line-1);border-radius:16px;box-shadow:var(--shadow-float);opacity:0;pointer-events:none;transition:opacity var(--dur-mode) var(--ease-out),transform var(--dur-mode) var(--ease-out);z-index:5;overflow:hidden}
+  .C .panel.open{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+  .C .panel .top{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line-1)}
+  .C .panel .q{flex:1;font:14px var(--font-ui);color:var(--text-1);min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .C .panel .q .tr{color:var(--accent);font-family:var(--font-mono);font-weight:700;margin-right:2px}
+  .C .panel .q .ph{color:var(--text-4)}
+  .C .panel .tabs{display:flex;gap:2px;padding:6px 8px 0}
+  .C .panel .tabs button{font:12px var(--font-ui);padding:5px 10px;border:0;border-radius:8px 8px 0 0;background:transparent;color:var(--text-2);cursor:pointer;border-bottom:2px solid transparent}
+  .C .panel .tabs button.on{color:var(--text-1);border-bottom-color:var(--accent);font-weight:600}
+  .C .panel .grid{flex:1;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;padding:10px}
+  .C .card{display:flex;flex-direction:column;gap:4px;min-width:0;padding:10px 11px;border:1px solid var(--line-1);border-radius:12px;background:#fff;text-align:left;cursor:pointer;font:12.5px/1.45 var(--font-ui);color:var(--text-2);transition:background var(--dur),border-color var(--dur),transform var(--dur)}
+  .C .card:hover{background:var(--st-hover)}
+  .C .card.on{border-color:var(--accent);background:#fffaf3;box-shadow:0 0 0 3px rgba(201,120,42,.14)}
+  .C .card .h{display:flex;align-items:center;gap:6px;color:var(--text-1);font-weight:600;font-size:13px;min-width:0}
+  .C .card .h .g{font-size:14px;color:var(--text-3);flex:none}
+  .C .card .h .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono);font-size:12.5px;font-weight:600}
+  .C .card .d{overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .C .card .m{font-size:11px;color:var(--text-3);font-family:var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .C .card .tag{align-self:flex-start;font-size:10.5px;padding:1px 6px;border-radius:999px;background:var(--paper-2);color:var(--text-3)}
+  .C .panel .foot{display:flex;gap:12px;padding:6px 12px 8px;border-top:1px solid var(--line-1);font-size:11px;color:var(--text-3)}
+  .C .panel .foot .sp{flex:1}
+  .C .panel .empty{grid-column:1/-1;padding:30px 10px;text-align:center;color:var(--text-3);font-size:12.5px}
+  .C .usermsg{align-self:flex-end;max-width:min(84%,64ch);display:flex;flex-direction:column;gap:6px;animation:rise var(--dur-enter) var(--ease-out)}
+  .C .usermsg .ctx{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end}
+  .C .usermsg .body{padding:10px 14px;border-radius:var(--r-3);background:var(--st-sel);font-size:var(--pr-fs);line-height:var(--pr-lh);white-space:pre-wrap;overflow-wrap:anywhere}
+  .C .usermsg .cmdcard{padding:8px 12px;border-radius:12px;background:#fff;border:1px solid var(--line-1);font-size:13px;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+  .C .usermsg .cmdcard .st{margin-left:auto;font-size:11px;color:var(--ok);white-space:nowrap}
+  @container frame (max-width: 520px){
+    .C .panel{left:0;right:0;bottom:0;width:auto;transform:translateY(16px);max-height:70cqh;border-radius:16px 16px 0 0;border-bottom:0}
+    .C .panel.open{transform:none}
+    .C .panel .grid{grid-template-columns:1fr}
+    .C .card .d{-webkit-line-clamp:1}
+    .C .panel .foot{display:none}
+  }
+
+  @keyframes rise{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  @keyframes pop{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}
+  @media (max-width:760px){main{padding:18px 12px 60px}.frame{height:460px}.widths{display:none}.frame[data-w]{width:100%}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Composer · 三台完全不同的样例</h1>
+  <p class="note">每台都能真打:输入 <kbd>@</kbd> 拉文件、<kbd>/</kbd> 拉命令与技能,<kbd>↑</kbd><kbd>↓</kbd> 走位,<kbd>⏎</kbd> 选中,再 <kbd>⏎</kbd> 发送,发出去的那条气泡里引用都能点。右上角切三档宽度,框右下角也能拖(样例用容器查询,不看窗口宽度)。三台差的是<b>交互模型</b>,不是皮:A 把选择器锚在光标上、B 把命令当命令行、C 把引用从正文里拿出来放托盘。</p>
+
+  <div class="issues">
+    <div class="issue"><b>① 气泡不渲染</b><code>ChatStream.tsx:1083</code> 用户消息是 <code>{message.content}</code> 纯文本;<code>@/绝对路径</code> 原样露出,没有链接、没有 markdown。</div>
+    <div class="issue"><b>② 补全后没有空格</b><code>ComposerInput.insert</code> 其实插了 <code>" "</code>,但 <code>.input</code> 没写 <code>white-space: pre-wrap</code>,行尾空格被折叠 —— 看起来光标贴着命令。</div>
+    <div class="issue"><b>③ 动画突兀</b>抽屉是 grid-rows 0fr→1fr 220ms 顶着输入框往上长、把消息列表挤走;打 <code>@</code> 先清空候选画「无匹配」,120ms 去抖后整列换掉再跳一次高度;<i>没有 loading 态</i>。</div>
+    <div class="issue"><b>④ 命令无提示</b>行上只有 name + desc,选中后 <code>usage</code>(<code>/cd &lt;path&gt;</code>)从不上屏;匹配只按 name 前缀,不看描述;用法错只在发送后 toast。</div>
+    <div class="issue"><b>⑤ skill 没进 command</b>表 = 内置 7 条 + 插件;后端 <code>prompts/resolver.ts</code> 早认 <code>/skill:名</code> 与 <code>{{skill:id}}</code>,旧 Vue 壳有 SkillPicker,React 壳从没接 <code>skills.getAll</code>。</div>
+  </div>
+
+  <!-- ══════════════ A ══════════════ -->
+  <section class="stage A" id="A">
+    <header>
+      <h2><small>A · 就地</small>光标锚定浮层 + 用法提示条</h2>
+      <p class="thesis">选择器<b>浮在光标上方</b>,不再顶着输入框长,消息列表一像素不动;下沿常驻一行提示条,打 <code>/</code> 就把用法与参数槽亮出来,选完命令光标后自带空格与参数占位;分组「命令 / 技能 / 插件」同列。</p>
+      <div class="widths" data-for="fA"><span>宽度</span><button data-w="360">360</button><button data-w="560">560</button><button data-w="880">880</button><button data-w="" class="on">自适应</button></div>
+    </header>
+    <div class="frameWrap"><div class="frame" id="fA">
+      <div class="chat" id="chatA">
+        <div class="reply"><p>已经读完 <span class="refchip"><span class="g">◇</span>src/composer/transitions.ts</span> 里的 <code>parseToken</code>。要我顺便看下 chip 插入那段吗?</p></div>
+      </div>
+      <div class="toast" id="toastA"></div>
+      <div class="composer">
+        <div class="pop" id="popA" role="listbox"></div>
+        <div class="input" id="inA" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="说点什么… @ 文件 · / 命令与技能"></div>
+        <div class="hint" id="hintA"></div>
+        <div class="tools"><button class="ibtn" title="附件">⊕</button><button class="model">claude-opus-5 ▾</button><span class="sp"></span><button class="send" id="sendA" disabled>↑</button></div>
+      </div>
+    </div></div>
+    <table class="howtbl">
+      <tr><th>气泡渲染</th><td>发出去的 <code>@路径</code> 画成 refchip(目录 ▸ / 文件 ◇),悬停全路径,点击开查看器;命令画成 pill;其余走 markdown 行内(代码、粗体)。</td></tr>
+      <tr><th>补全后空格</th><td>chip 后插 <code>" "</code> 且 <code>.input{white-space:pre-wrap}</code>;命令带参数时再挂一个灰色幽灵占位 <i>&lt;路径&gt;</i>,打第一个字就散。</td></tr>
+      <tr><th>出现动画</th><td>浮层 120ms opacity+scale(.96→1),transform-origin 在光标那一角;候选换内容时<b>不重放</b>入场;有 loading 行(「正在找…」)顶住高度,不画「无匹配」再跳。</td></tr>
+      <tr><th>命令提示</th><td>提示条三段:用法(参数槽高亮)· 描述 · 快捷键;缺必填参数时槽变红,发送键禁用 —— 用法错在发送前就看见。匹配 name + 描述子串,分组显示。</td></tr>
+      <tr><th>技能</th><td><code>/</code> 列表第二组「技能」来自 <code>skills.getAll</code>(enabled),选中插 <code>/skill:名</code> pill,后端 resolver 原样认。</td></tr>
+      <tr><th>响应式</th><td>≤480 容器:浮层贴输入面整宽,行改两行(名 / 描述),提示条隐藏快捷键段。</td></tr>
+    </table>
+  </section>
+
+  <!-- ══════════════ B ══════════════ -->
+  <section class="stage B" id="B">
+    <header>
+      <h2><small>B · 命令行</small>模式切换 + 行内幽灵补全</h2>
+      <p class="thesis">句首打 <code>/</code> 整块输入面切成<b>命令模式</b>(左轨亮起、等宽字),候选不弹列表而是<b>灰色幽灵字直接接在光标后</b>,<kbd>Tab</kbd> 或 <kbd>→</kbd> 收下,<kbd>↑</kbd><kbd>↓</kbd> 换候选;下面一条横向候选带。<code>@</code> 则在宽容器里从右侧开一栏文件列,窄容器折到上方。</p>
+      <div class="widths" data-for="fB"><span>宽度</span><button data-w="360">360</button><button data-w="560">560</button><button data-w="880">880</button><button data-w="" class="on">自适应</button></div>
+    </header>
+    <div class="frameWrap"><div class="frame" id="fB">
+      <div class="chat" id="chatB">
+        <div class="reply"><p>工作目录现在是 <code>~/data/code/start-electron</code>。</p></div>
+      </div>
+      <div class="toast" id="toastB"></div>
+      <div class="composer" id="compB">
+        <div class="main">
+          <div class="line">
+            <div class="rail" id="railB">›</div>
+            <div class="edit">
+              <div class="ghost" id="ghostB" aria-hidden="true"></div>
+              <div class="input" id="inB" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="说点什么… 句首 / 进命令模式,@ 引文件"></div>
+            </div>
+          </div>
+          <div class="strip" id="stripB"></div>
+          <div class="tools"><button class="ibtn" title="附件">⊕</button><button class="model">claude-opus-5 ▾</button><span class="sp"></span><span class="ret" id="retB"></span><button class="send" id="sendB" disabled>↑</button></div>
+        </div>
+        <div class="side" id="sideB"><h4>引用文件 <span id="sideBq"></span></h4><div class="list" id="listB"></div></div>
+      </div>
+    </div></div>
+    <table class="howtbl">
+      <tr><th>气泡渲染</th><td>命令消息不当聊天气泡,画成一行<b>提示符行</b>(› /cd ~/x + 结果状态);普通消息里 <code>@路径</code> 画成等宽下划线链接,克制、不像按钮。</td></tr>
+      <tr><th>补全后空格</th><td>收下幽灵字后自动补一个空格并把参数名以斜体幽灵字接在后面(<i>路径</i>),第一次击键替换;没有 chip 节点,退格就是删字符。</td></tr>
+      <tr><th>出现动画</th><td>不弹层:模式切换只是背景 160ms 变暖 + 左轨点亮;幽灵字零动画(它是文本);候选带的项 fade 120ms。窗口里没有任何东西被挤动。</td></tr>
+      <tr><th>命令提示</th><td>候选带最左侧常驻当前候选的 usage,参数槽高亮,缺参数变红且发送键禁用;每个候选 pill 带图标区分命令 ⌘ / 技能 ◇ / 插件 ⚙。</td></tr>
+      <tr><th>技能</th><td>技能与命令<b>同一条候选带</b>,同一套 Tab 补全,插出来是 <code>/skill:名</code>;命令模式下句子整体就是一条指令,所以技能天然是命令。</td></tr>
+      <tr><th>响应式</th><td>≥640 容器:@ 文件列开在右栏 260px;更窄时列表折到输入行上方,限高 150。</td></tr>
+    </table>
+  </section>
+
+  <!-- ══════════════ C ══════════════ -->
+  <section class="stage C" id="C">
+    <header>
+      <h2><small>C · 工作台</small>上下文托盘 + 中央卡片面板</h2>
+      <p class="thesis">引用<b>不进正文</b>:文件、技能、命令都作为托盘里的一枚可删 chip 挂在文本上方,正文永远是干净的一句话;<code>@</code> / <code>/</code> 呼出居中的卡片面板(文件 / 命令 / 技能 / 最近 四个 tab),卡片有描述与来源;命令的参数就填在托盘 chip 里的小格。窄容器时面板变成贴底抽屉。</p>
+      <div class="widths" data-for="fC"><span>宽度</span><button data-w="360">360</button><button data-w="560">560</button><button data-w="880">880</button><button data-w="" class="on">自适应</button></div>
+    </header>
+    <div class="frameWrap"><div class="frame" id="fC">
+      <div class="chat" id="chatC">
+        <div class="reply"><p>好,先看 <span class="refchip"><span class="g">◇</span>Composer.tsx</span> 的抽屉那段,再决定要不要拆。</p></div>
+      </div>
+      <div class="toast" id="toastC"></div>
+      <div class="veil" id="veilC"></div>
+      <div class="panel" id="panelC" role="dialog">
+        <div class="top"><div class="q" id="qC"></div><span style="font-size:11px;color:var(--text-3)">Esc 关闭</span></div>
+        <div class="tabs" id="tabsC"></div>
+        <div class="grid" id="gridC"></div>
+        <div class="foot"><span>⏎ 加入托盘</span><span>⇥ 换 tab</span><span class="sp"></span><span id="footC"></span></div>
+      </div>
+      <div class="composer">
+        <div class="tray" id="trayC"></div>
+        <div class="input" id="inC" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="说点什么… @ 文件 · / 命令与技能,都会挂到上面的托盘"></div>
+        <div class="tools"><button class="plus" id="plusC">+ 引用</button><button class="model">claude-opus-5 ▾</button><span class="sp"></span><button class="send" id="sendC" disabled>↑</button></div>
+      </div>
+    </div></div>
+    <table class="howtbl">
+      <tr><th>气泡渲染</th><td>消息 = 上方一行上下文 chip(文件可点开、技能徽章)+ 下方干净正文;命令消息画成一张小卡(名 + 参数 + 状态)。正文里不再需要解析 <code>@</code>。</td></tr>
+      <tr><th>补全后空格</th><td>问题不存在:选中的东西离开正文进托盘,触发字符被摘掉,光标回原位;命令参数在 chip 里的输入格,不占正文。</td></tr>
+      <tr><th>出现动画</th><td>面板 160ms 从输入面上方升起 + 半透明幕;托盘 chip 加入 140ms pop;面板换 tab / 换候选不动画。输入面自身不变高,列表不被挤。</td></tr>
+      <tr><th>命令提示</th><td>卡片正面写描述、角标写用法与来源;入托盘后 chip 带参数格与占位(<i>路径</i>),缺参数发送键禁用并在 chip 上标红。</td></tr>
+      <tr><th>技能</th><td>技能是面板独立一 tab(来源 user / project / builtin 各一角标),入托盘为绿色徽章;发出时序列化成 <code>{{skill:id}}</code>,与后端既有 token 逐字相同。</td></tr>
+      <tr><th>响应式</th><td>面板宽 min(640, 容器−32),卡片 auto-fill 180px;≤520 容器变成贴底抽屉、单列、描述一行。</td></tr>
+    </table>
+  </section>
+
+  <p class="cap"><b>共同前提</b>(三台都成立,不算差异):hover 与键盘位两态分离(mouseenter 不改 active);选中即 scrollIntoView;IME 组字期间不抢键;Esc 先关选择器再轮到外层;引用 chip 的点击是「打开」,右键才是动作。</p>
+</main>
+
+<script>
+(() => {
+/* ───────── 共用假数据 ───────── */
+const FILES = [
+  {p:'src/composer/components/Composer.tsx',d:false},
+  {p:'src/composer/components/ComposerInput.tsx',d:false},
+  {p:'src/composer/transitions.ts',d:false},
+  {p:'src/content/ChatStream.tsx',d:false},
+  {p:'src/data/commands-source.ts',d:false},
+  {p:'src/composer/',d:true},
+  {p:'docs/search-panel-2026-09.md',d:false},
+  {p:'packages/core/slash-commands.ts',d:false},
+  {p:'apps/desktop-react/',d:true},
+  {p:'README.md',d:false},
+];
+const CMDS = [
+  {k:'cmd',n:'new',desc:'新建会话',usage:'/new',args:null},
+  {k:'cmd',n:'cd',desc:'切换本会话的工作目录',usage:'/cd <路径>',args:'路径',req:true},
+  {k:'cmd',n:'compact',desc:'压缩较早的对话历史',usage:'/compact',args:null},
+  {k:'cmd',n:'goal',desc:'设定或查看会话目标',usage:'/goal [目标 | pause | resume | clear]',args:'目标',req:false},
+  {k:'cmd',n:'pomodoro',desc:'开始一轮番茄钟',usage:'/pomodoro [分类]',args:'分类',req:false},
+  {k:'skill',n:'commit',desc:'按仓库规范生成提交信息并提交',usage:'/skill:commit',src:'user'},
+  {k:'skill',n:'review',desc:'按 CLAUDE.md 清单审当前改动',usage:'/skill:review',src:'project'},
+  {k:'skill',n:'note-skills',desc:'读写笔记库(内置)',usage:'/skill:note-skills',src:'builtin'},
+  {k:'plugin',n:'log-monitor',desc:'监视 app.jsonl 并汇报异常',usage:'/log-monitor [ns]',args:'ns',req:false},
+];
+const base = p => p.endsWith('/') ? p.slice(0,-1).split('/').pop()+'/' : p.split('/').pop();
+const esc = s => s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fuzzy = (q,...hay) => { q=q.toLowerCase(); return !q || hay.some(h=>h&&h.toLowerCase().includes(q)); };
+const matchFiles = q => FILES.filter(f=>fuzzy(q,f.p));
+const matchCmds = q => CMDS.filter(c=>fuzzy(q,c.n,c.desc));
+const isIME = e => e.isComposing || e.keyCode===229;
+const GL = {cmd:'⌘',skill:'◇',plugin:'⚙',file:'◇',dir:'▸'};
+
+function toast(id,msg){ const t=document.getElementById(id); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),1400); }
+function widthCtl(){
+  document.querySelectorAll('.widths').forEach(w=>{
+    const f=document.getElementById(w.dataset.for);
+    w.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
+      w.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+      f.style.width=''; if(b.dataset.w) f.dataset.w=b.dataset.w; else delete f.dataset.w;
+    }));
+  });
+}
+widthCtl();
+/* 光标前那截 token(与真实 parseToken 同规则,但让命令查询里能带空格前的词) */
+function caretToken(el){
+  const sel=window.getSelection(); const n=sel&&sel.anchorNode;
+  if(!n||n.nodeType!==3||!el.contains(n)) return null;
+  const upto=(n.textContent||'').slice(0,sel.anchorOffset);
+  let m=/@([\w./-]*)$/.exec(upto); if(m) return {kind:'files',q:m[1],node:n,off:sel.anchorOffset,len:m[0].length};
+  m=/(?:^|\s)\/([\w:-]*)$/.exec(upto);
+  if(m && el.textContent.trim().startsWith('/')) return {kind:'commands',q:m[1].replace(/^skill:/,''),node:n,off:sel.anchorOffset,len:m[0].trimStart().length};
+  return null;
+}
+function placeCaret(node,off){ const r=document.createRange(); r.setStart(node,off); r.collapse(true); const s=window.getSelection(); s.removeAllRanges(); s.addRange(r); }
+/* 气泡里的行内渲染:@路径 → refchip,/命令 → pill,`code`,**粗** */
+function renderInline(text,toastId){
+  let h=esc(text);
+  h=h.replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<span class="b">$1</span>');
+  h=h.replace(/(^|\s)@(\S+)/g,(m,pre,p)=>`${pre}<span class="refchip ${p.endsWith('/')?'dir':''}" data-p="${esc(p)}" title="${esc(p)}"><span class="g">${p.endsWith('/')?GL.dir:GL.file}</span>${esc(base(p))}</span>`);
+  h=h.replace(/(^|\s)\/skill:([\w-]+)/g,(m,pre,n)=>`${pre}<span class="skillpill">◇ ${n}</span>`);
+  h=h.replace(/^\/([\w-]+)/,(m,n)=>`<span class="cmdpill">/${n}</span>`);
+  return h;
+}
+function bindChips(root,toastId){ root.querySelectorAll('.refchip').forEach(c=>c.addEventListener('click',()=>toast(toastId,'在查看器里打开 '+c.dataset.p))); }
+
+/* ═══════════════ A ═══════════════ */
+(function A(){
+  const inp=document.getElementById('inA'), pop=document.getElementById('popA'), hint=document.getElementById('hintA'), chat=document.getElementById('chatA'), send=document.getElementById('sendA');
+  let tok=null, items=[], idx=0, loading=null;
+  const draft=()=>{ let s=''; inp.childNodes.forEach(n=>{ s+= n.nodeType===3? n.textContent : (n.dataset&&n.dataset.token!=null? n.dataset.token : n.classList&&n.classList.contains('ghost')?'':(n.textContent||'')); }); return s; };
+  function currentCmd(){ const t=inp.querySelector('.cmdtok'); if(!t) return null; return CMDS.find(c=>('/'+(c.k==='skill'?'skill:':'')+c.n)===t.dataset.token)||null; }
+  function argText(){ const t=inp.querySelector('.cmdtok'); if(!t) return ''; let s=''; let n=t.nextSibling; while(n){ if(n.nodeType===3) s+=n.textContent; else if(!(n.classList&&n.classList.contains('ghost'))) s+=n.textContent||''; n=n.nextSibling;} return s.trim(); }
+  function renderHint(){
+    const c=currentCmd();
+    if(c){ const missing=c.req&&!argText(); hint.innerHTML=`<span class="u ${missing?'err':''}">${esc(c.usage).replace(/(&lt;[^&]+&gt;|\[[^\]]+\])/g,'<em>$1</em>')}</span><span>${esc(c.desc)}</span><span class="k">${missing?'缺少参数':'<kbd>⏎</kbd> 发送'}</span>`; send.disabled=!!missing; return; }
+    if(tok&&tok.kind==='commands'){ hint.innerHTML=`<span>命令与技能 · 按名称或描述筛选</span><span class="k"><kbd>↑↓</kbd> 选 <kbd>⏎</kbd> 用 <kbd>Esc</kbd> 关</span>`; }
+    else if(tok&&tok.kind==='files'){ hint.innerHTML=`<span>引用文件或目录 · 相对当前工作目录</span><span class="k"><kbd>↑↓</kbd> 选 <kbd>⏎</kbd> 引用</span>`; }
+    else hint.innerHTML=`<span><kbd>@</kbd> 文件 · <kbd>/</kbd> 命令与技能</span><span class="k"><kbd>⏎</kbd> 发送 · <kbd>⇧⏎</kbd> 换行</span>`;
+    send.disabled=!draft().trim();
+  }
+  function renderPop(){
+    if(!tok){ pop.classList.remove('open'); return; }
+    let h='';
+    if(tok.kind==='files'){
+      h+='<div class="sec">文件</div>';
+      if(loading) h+='<div class="load">正在找 “'+esc(tok.q)+'”…</div>';
+      else if(!items.length) h+='<div class="empty">没有匹配 “'+esc(tok.q)+'” 的文件</div>';
+      items.forEach((f,i)=>h+=`<button class="row ${i===idx?'on':''}" data-i="${i}"><span class="g">${f.d?GL.dir:GL.file}</span><span class="n">${esc(base(f.p))}</span><span class="d">${esc(f.p)}</span><span class="k">⏎ 引用</span></button>`);
+    } else {
+      const groups=[['命令','cmd'],['技能','skill'],['插件','plugin']];
+      let any=false;
+      groups.forEach(([t,k])=>{ const g=items.map((c,i)=>[c,i]).filter(([c])=>c.k===k); if(!g.length) return; any=true; h+=`<div class="sec">${t}</div>`; g.forEach(([c,i])=>h+=`<button class="row ${i===idx?'on':''}" data-i="${i}"><span class="g">${GL[c.k]}</span><span class="n">/${c.k==='skill'?'skill:':''}${esc(c.n)}</span><span class="d">${esc(c.desc)}</span><span class="k">⏎ 选用</span></button>`); });
+      if(!any) h+='<div class="empty">没有叫 “'+esc(tok.q)+'” 的命令或技能</div>';
+    }
+    pop.innerHTML=h; pop.classList.add('open');
+    const on=pop.querySelector('.row.on'); on&&on.scrollIntoView({block:'nearest'});
+    // 锚在光标 x(窄容器时 CSS 覆盖成整宽)
+    const sel=window.getSelection(); if(sel&&sel.rangeCount){ const r=sel.getRangeAt(0).cloneRange(); r.collapse(true); const rc=r.getBoundingClientRect(), pc=inp.parentElement.getBoundingClientRect(); if(pc.width<=480){ pop.style.left=''; } else { const x=Math.max(0,Math.min(rc.left-pc.left-12, pc.width-pop.offsetWidth)); pop.style.left=x+'px'; } }
+  }
+  function refresh(){
+    const t=caretToken(inp);
+    const reopened = !tok || !t || t.kind!==tok.kind;
+    tok=t; idx = reopened?0:Math.min(idx, 999);
+    if(!tok){ items=[]; renderPop(); renderHint(); return; }
+    if(tok.kind==='files'){ clearTimeout(loading); items = reopened? [] : items; loading=setTimeout(()=>{ loading=null; items=matchFiles(tok.q); idx=Math.min(idx,Math.max(0,items.length-1)); renderPop(); },160); }
+    else { items=matchCmds(tok.q); idx=Math.min(idx,Math.max(0,items.length-1)); }
+    renderPop(); renderHint();
+  }
+  function insertPick(i){
+    const it=items[i]; if(!it||!tok) return;
+    const raw=tok.node.textContent, before=raw.slice(0,tok.off).replace(/(@|\/)[\w./:-]*$/,''), rest=raw.slice(tok.off);
+    const chip=document.createElement('span'); chip.contentEditable='false';
+    if(tok.kind==='files'){ chip.className='chip'; chip.innerHTML=`<span class="g">${it.d?GL.dir:GL.file}</span>@${esc(it.p)}`; chip.dataset.token='@/abs/'+it.p; }
+    else { chip.className='cmdtok'; chip.textContent='/'+(it.k==='skill'?'skill:':'')+it.n; chip.dataset.token=chip.textContent; }
+    const after=document.createTextNode(' '+rest);
+    tok.node.textContent=before; tok.node.parentNode.insertBefore(chip,tok.node.nextSibling); chip.parentNode.insertBefore(after,chip.nextSibling);
+    if(tok.kind==='commands'&&it.args&&!rest.trim()){ const g=document.createElement('span'); g.className='ghost'; g.contentEditable='false'; g.textContent='<'+it.args+'>'; after.parentNode.insertBefore(g,after.nextSibling); }
+    placeCaret(after,1); tok=null; items=[]; renderPop(); renderHint(); inp.focus();
+  }
+  inp.addEventListener('input',()=>{ inp.querySelectorAll('.ghost').forEach(g=>{ const n=g.previousSibling; if(!(n&&n.nodeType===3&&/^\s*$/.test(n.textContent))||inp.textContent.replace(/<[^>]*>/,'').trim()!==inp.textContent.trim()) g.remove(); else { let t=g.nextSibling; if(t&&t.textContent.trim()) g.remove(); } }); refresh(); });
+  inp.addEventListener('keydown',e=>{
+    if(isIME(e)) return;
+    if(tok&&pop.classList.contains('open')){
+      if(e.key==='ArrowDown'){e.preventDefault(); idx=Math.min(idx+1,items.length-1); renderPop(); return;}
+      if(e.key==='ArrowUp'){e.preventDefault(); idx=Math.max(idx-1,0); renderPop(); return;}
+      if(e.key==='Enter'||e.key==='Tab'){ if(items.length){e.preventDefault(); insertPick(idx); return;} }
+      if(e.key==='Escape'){e.preventDefault(); tok=null; renderPop(); renderHint(); return;}
+    }
+    if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); doSend(); }
+  });
+  inp.addEventListener('keyup',e=>{ if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) refresh(); });
+  inp.addEventListener('click',refresh);
+  pop.addEventListener('mousedown',e=>{ const r=e.target.closest('.row'); if(!r) return; e.preventDefault(); insertPick(+r.dataset.i); });
+  function doSend(){
+    if(send.disabled) return; const text=draft().trim(); if(!text) return;
+    const u=document.createElement('div'); u.className='user'; u.innerHTML=renderInline(text,'toastA'); bindChips(u,'toastA'); chat.appendChild(u);
+    const c=currentCmd(); if(c){ const r=document.createElement('div'); r.className='reply'; r.innerHTML=`<p>✓ ${esc(c.desc)}${argText()?' → <code>'+esc(argText())+'</code>':''}</p>`; chat.appendChild(r); }
+    inp.innerHTML=''; tok=null; renderPop(); renderHint(); chat.scrollTop=chat.scrollHeight;
+  }
+  send.addEventListener('click',doSend);
+  renderHint();
+})();
+
+/* ═══════════════ B ═══════════════ */
+(function B(){
+  const inp=document.getElementById('inB'), ghost=document.getElementById('ghostB'), strip=document.getElementById('stripB'), comp=document.getElementById('compB'), side=document.getElementById('sideB'), list=document.getElementById('listB'), sq=document.getElementById('sideBq'), chat=document.getElementById('chatB'), send=document.getElementById('sendB'), ret=document.getElementById('retB');
+  let cands=[], ci=0, files=[], fi=0, ftok=null;
+  const text=()=>inp.textContent||'';
+  const cmdMode=()=>text().trimStart().startsWith('/');
+  function parseCmd(){ const m=/^\/(skill:)?([\w-]*)(\s(.*))?$/s.exec(text().trimStart()); if(!m) return null; return {name:m[2],hasSpace:m[3]!=null,args:(m[4]||'').trim(),typed:'/'+(m[1]||'')+m[2]}; }
+  const label = c => '/'+(c.k==='skill'?'skill:':'')+c.n;
+  function refresh(){
+    const mode=cmdMode(); comp.classList.toggle('cmd',mode);
+    ftok=caretToken(inp); if(ftok&&ftok.kind!=='files') ftok=null;
+    comp.classList.toggle('at',!!ftok);
+    if(ftok){ files=matchFiles(ftok.q); fi=Math.min(fi,Math.max(0,files.length-1)); sq.textContent=ftok.q?'“'+ftok.q+'”':'↑↓ 选 ⏎ 引用'; list.innerHTML=files.length?files.map((f,i)=>{const b=base(f.p);const d=f.p.slice(0,f.p.length-b.length);return `<button class="f ${i===fi?'on':''}" data-i="${i}"><span class="g">${f.d?GL.dir:GL.file}</span><span><span class="dir">${esc(d)}</span><span class="base">${esc(b)}</span></span></button>`;}).join(''):'<div class="empty">没有匹配的文件</div>'; const on=list.querySelector('.f.on'); on&&on.scrollIntoView({block:'nearest'}); }
+    ghost.innerHTML=''; strip.innerHTML=''; ret.textContent='';
+    if(!mode){ send.disabled=!text().trim(); return; }
+    const p=parseCmd(); if(!p){ send.disabled=true; return; }
+    if(!p.hasSpace){
+      cands=matchCmds(p.name).filter(c=>label(c).startsWith(p.typed)||c.n.startsWith(p.name)); ci=Math.min(ci,Math.max(0,cands.length-1));
+      const c=cands[ci];
+      if(c){ const full=label(c); const tail=full.slice(p.typed.length); ghost.innerHTML=`<span class="typed">${esc(text())}</span>${esc(tail)}${c.args?' <span class="arg">'+esc(c.args)+'</span>':''}`; ret.textContent='⇥ 收下补全'; }
+      strip.innerHTML = (c?`<span class="usage">${esc(c.usage).replace(/(&lt;[^&]+&gt;|\[[^\]]+\])/g,'<em>$1</em>')}</span><span class="sep"></span>`:'<span class="usage err">没有这条命令</span>') + cands.map((x,i)=>`<button class="c ${i===ci?'on':''}" data-i="${i}"><span class="g">${GL[x.k]}</span><span class="n">${esc(label(x))}</span>${esc(x.desc)}</button>`).join('');
+      const on=strip.querySelector('.c.on'); on&&on.scrollIntoView({block:'nearest',inline:'nearest'});
+      send.disabled=!(c&&label(c)===p.typed&&!c.req);
+    } else {
+      const c=CMDS.find(x=>label(x)===p.typed);
+      if(!c){ strip.innerHTML='<span class="usage err">没有这条命令 · 会当普通消息发出</span>'; send.disabled=false; return; }
+      const missing=c.req&&!p.args;
+      if(!p.args&&c.args) ghost.innerHTML=`<span class="typed">${esc(text())}</span><span class="arg">${esc(c.args)}</span>`;
+      strip.innerHTML=`<span class="usage ${missing?'err':''}">${esc(c.usage).replace(/(&lt;[^&]+&gt;|\[[^\]]+\])/g,'<em>$1</em>')}</span><span class="sep"></span><span class="c on"><span class="g">${GL[c.k]}</span><span class="n">${esc(label(c))}</span>${esc(c.desc)}</span>`;
+      ret.textContent=missing?'缺少参数':'⏎ 执行'; send.disabled=missing;
+    }
+  }
+  function accept(){ const p=parseCmd(); const c=cands[ci]; if(!p||!c) return; inp.textContent=label(c)+' '; placeCaret(inp.firstChild,inp.firstChild.length); refresh(); }
+  function pickFile(i){ const f=files[i]; if(!f||!ftok) return; const raw=ftok.node.textContent; const before=raw.slice(0,ftok.off).replace(/@[\w./-]*$/,''); const rest=raw.slice(ftok.off); ftok.node.textContent=before+'@'+f.p+' '+rest; placeCaret(ftok.node,before.length+f.p.length+2); ftok=null; refresh(); inp.focus(); }
+  inp.addEventListener('input',refresh); inp.addEventListener('click',refresh);
+  inp.addEventListener('keyup',e=>{ if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) refresh(); });
+  inp.addEventListener('keydown',e=>{
+    if(isIME(e)) return;
+    if(ftok){ if(e.key==='ArrowDown'){e.preventDefault(); fi=Math.min(fi+1,files.length-1); refresh(); return;} if(e.key==='ArrowUp'){e.preventDefault(); fi=Math.max(fi-1,0); refresh(); return;} if(e.key==='Enter'||e.key==='Tab'){ if(files.length){e.preventDefault(); pickFile(fi); return;} } if(e.key==='Escape'){e.preventDefault(); ftok=null; comp.classList.remove('at'); return;} }
+    if(cmdMode()&&!parseCmd()?.hasSpace){
+      if(e.key==='ArrowDown'){e.preventDefault(); ci=Math.min(ci+1,cands.length-1); refresh(); return;}
+      if(e.key==='ArrowUp'){e.preventDefault(); ci=Math.max(ci-1,0); refresh(); return;}
+      if(e.key==='Tab'||e.key==='ArrowRight'&&window.getSelection().anchorOffset===text().length){ if(cands.length){e.preventDefault(); accept(); return;} }
+      if(e.key==='Enter'&&cands.length){ e.preventDefault(); accept(); if(!cands[ci]?.req && !cands[ci]?.args) doSend(); return; }
+    }
+    if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); doSend(); }
+  });
+  strip.addEventListener('mousedown',e=>{ const c=e.target.closest('.c[data-i]'); if(!c) return; e.preventDefault(); ci=+c.dataset.i; accept(); });
+  list.addEventListener('mousedown',e=>{ const f=e.target.closest('.f'); if(!f) return; e.preventDefault(); pickFile(+f.dataset.i); });
+  function doSend(){
+    if(send.disabled) return; const t=text().trim(); if(!t) return;
+    const p=cmdMode()?parseCmd():null; const c=p&&CMDS.find(x=>label(x)===p.typed);
+    if(c){ const d=document.createElement('div'); d.className='promptline'; d.innerHTML=`<span class="p">›</span>${esc(label(c))} <span class="a">${esc(p.args)}</span><span class="st">✓ ${esc(c.desc)}${p.args?' → '+esc(p.args):''}</span>`; chat.appendChild(d); }
+    else { const u=document.createElement('div'); u.className='user'; u.innerHTML=esc(t).replace(/(^|\s)@(\S+)/g,(m,pre,pth)=>`${pre}<span class="ul" data-p="${esc(pth)}" title="${esc(pth)}">${esc(pth)}</span>`); u.querySelectorAll('.ul').forEach(x=>x.addEventListener('click',()=>toast('toastB','在查看器里打开 '+x.dataset.p))); chat.appendChild(u); }
+    inp.textContent=''; refresh(); chat.scrollTop=chat.scrollHeight;
+  }
+  send.addEventListener('click',doSend);
+  refresh();
+})();
+
+/* ═══════════════ C ═══════════════ */
+(function C(){
+  const inp=document.getElementById('inC'), tray=document.getElementById('trayC'), veil=document.getElementById('veilC'), panel=document.getElementById('panelC'), q=document.getElementById('qC'), tabs=document.getElementById('tabsC'), grid=document.getElementById('gridC'), foot=document.getElementById('footC'), chat=document.getElementById('chatC'), send=document.getElementById('sendC'), plus=document.getElementById('plusC');
+  const TABS=[['files','文件'],['cmd','命令'],['skill','技能'],['recent','最近']];
+  let open=false, tab='files', query='', tok=null, items=[], idx=0, recent=[FILES[2],CMDS[1]];
+  const trayItems=[]; // {kind:'file'|'cmd'|'skill', ref, arg}
+  function renderTray(){
+    tray.innerHTML=trayItems.map((t,i)=>{
+      if(t.kind==='file') return `<span class="t"><span class="g">${t.ref.d?GL.dir:GL.file}</span><span class="n" title="${esc(t.ref.p)}">${esc(t.ref.p)}</span><button class="x" data-i="${i}" title="移除">×</button></span>`;
+      if(t.kind==='skill') return `<span class="t skill"><span class="g">◇</span><span class="n">${esc(t.ref.n)}</span><button class="x" data-i="${i}">×</button></span>`;
+      const missing=t.ref.req&&!t.arg;
+      return `<span class="t cmd" style="${missing?'border-color:var(--warn)':''}"><span class="g">${GL[t.ref.k]}</span><span class="n">/${esc(t.ref.n)}</span>${t.ref.args?`<input data-i="${i}" placeholder="${esc(t.ref.args)}${t.ref.req?'':'(可选)'}" value="${esc(t.arg||'')}">`:''}<button class="x" data-i="${i}">×</button></span>`;
+    }).join('');
+    tray.querySelectorAll('.x').forEach(b=>b.addEventListener('click',()=>{ trayItems.splice(+b.dataset.i,1); renderTray(); inp.focus(); }));
+    tray.querySelectorAll('input').forEach(x=>{ x.addEventListener('input',()=>{ trayItems[+x.dataset.i].arg=x.value.trim(); updateSend(); }); x.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key==='Tab'){e.preventDefault(); inp.focus();} }); });
+    updateSend();
+  }
+  function updateSend(){ const missing=trayItems.some(t=>t.kind==='cmd'&&t.ref.req&&!t.arg); send.disabled=missing||!(inp.textContent.trim()||trayItems.length); }
+  function openPanel(kind,qs){ open=true; tab= kind==='files'?'files': (qs&&CMDS.some(c=>c.k==='skill'&&c.n.startsWith(qs))&&!CMDS.some(c=>c.k!=='skill'&&c.n.startsWith(qs)))?'skill':'cmd'; query=qs||''; idx=0; render(); veil.classList.add('open'); panel.classList.add('open'); }
+  function closePanel(){ open=false; tok=null; veil.classList.remove('open'); panel.classList.remove('open'); }
+  function collect(){
+    if(tab==='files') return matchFiles(query).map(f=>({kind:'file',ref:f}));
+    if(tab==='cmd') return matchCmds(query).filter(c=>c.k!=='skill').map(c=>({kind:'cmd',ref:c}));
+    if(tab==='skill') return matchCmds(query).filter(c=>c.k==='skill').map(c=>({kind:'skill',ref:c}));
+    return recent.filter(r=>fuzzy(query,r.p||r.n,r.desc)).map(r=>({kind:r.p?'file':(r.k==='skill'?'skill':'cmd'),ref:r}));
+  }
+  function render(){
+    items=collect(); idx=Math.min(idx,Math.max(0,items.length-1));
+    q.innerHTML=`<span class="tr">${tab==='files'?'@':'/'}</span>${query?esc(query):'<span class="ph">继续输入筛选…</span>'}`;
+    tabs.innerHTML=TABS.map(([k,t])=>`<button class="${k===tab?'on':''}" data-k="${k}">${t}</button>`).join('');
+    grid.innerHTML = items.length? items.map((it,i)=>{
+      if(it.kind==='file') return `<button class="card ${i===idx?'on':''}" data-i="${i}"><div class="h"><span class="g">${it.ref.d?GL.dir:GL.file}</span><span class="n">${esc(base(it.ref.p))}</span></div><div class="m">${esc(it.ref.p)}</div><span class="tag">${it.ref.d?'目录':'文件'}</span></button>`;
+      const c=it.ref; return `<button class="card ${i===idx?'on':''}" data-i="${i}"><div class="h"><span class="g">${GL[c.k]}</span><span class="n">/${c.k==='skill'?'skill:':''}${esc(c.n)}</span></div><div class="d">${esc(c.desc)}</div><div class="m">${esc(c.usage)}</div><span class="tag">${c.k==='skill'?'技能 · '+c.src:c.k==='plugin'?'插件':'命令'}</span></button>`;
+    }).join('') : `<div class="empty">这一栏没有匹配 “${esc(query)}” 的项 · ⇥ 换一栏看看</div>`;
+    const on=grid.querySelector('.card.on'); on&&on.scrollIntoView({block:'nearest'});
+    foot.textContent=items.length?`${idx+1} / ${items.length}`:'';
+  }
+  function add(i){
+    const it=items[i]; if(!it) return;
+    if(tok){ const raw=tok.node.textContent; tok.node.textContent=raw.slice(0,tok.off).replace(/(@|\/)[\w./:-]*$/,'')+raw.slice(tok.off); placeCaret(tok.node,Math.max(0,tok.off-tok.len)); }
+    if(!trayItems.some(t=>t.ref===it.ref)) trayItems.push({kind:it.kind,ref:it.ref,arg:''});
+    if(!recent.includes(it.ref)) recent.unshift(it.ref);
+    renderTray(); closePanel(); inp.focus();
+    const ai=tray.querySelector('input'); if(it.kind==='cmd'&&it.ref.args&&ai) ai.focus();
+  }
+  function refresh(){ const t=caretToken(inp); if(t){ if(!open||!tok||t.kind!==tok.kind) { tok=t; openPanel(t.kind,t.q); } else { tok=t; query=t.q; render(); } } else if(tok){ closePanel(); } updateSend(); }
+  inp.addEventListener('input',refresh); inp.addEventListener('click',refresh);
+  inp.addEventListener('keydown',e=>{
+    if(isIME(e)) return;
+    if(open){
+      if(e.key==='ArrowDown'||e.key==='ArrowRight'){e.preventDefault(); idx=Math.min(idx+1,items.length-1); render(); return;}
+      if(e.key==='ArrowUp'||e.key==='ArrowLeft'){e.preventDefault(); idx=Math.max(idx-1,0); render(); return;}
+      if(e.key==='Tab'){e.preventDefault(); const ks=TABS.map(x=>x[0]); tab=ks[(ks.indexOf(tab)+(e.shiftKey?-1:1)+ks.length)%ks.length]; idx=0; render(); return;}
+      if(e.key==='Enter'){ if(items.length){e.preventDefault(); add(idx); return;} }
+      if(e.key==='Escape'){e.preventDefault(); closePanel(); return;}
+    }
+    if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); doSend(); }
+  });
+  veil.addEventListener('click',closePanel);
+  tabs.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; tab=b.dataset.k; idx=0; render(); inp.focus(); });
+  grid.addEventListener('mousedown',e=>{ const c=e.target.closest('.card'); if(!c) return; e.preventDefault(); add(+c.dataset.i); });
+  plus.addEventListener('click',()=>{ tok=null; openPanel('files',''); inp.focus(); });
+  function doSend(){
+    if(send.disabled) return; const t=inp.textContent.trim(); if(!t&&!trayItems.length) return;
+    const m=document.createElement('div'); m.className='usermsg';
+    const cmds=trayItems.filter(x=>x.kind==='cmd'), refs=trayItems.filter(x=>x.kind!=='cmd');
+    let h='';
+    if(refs.length) h+=`<div class="ctx">${refs.map(r=>r.kind==='file'?`<span class="refchip ${r.ref.d?'dir':''}" data-p="${esc(r.ref.p)}" title="${esc(r.ref.p)}"><span class="g">${r.ref.d?GL.dir:GL.file}</span>${esc(base(r.ref.p))}</span>`:`<span class="skillpill">◇ ${esc(r.ref.n)}</span>`).join('')}</div>`;
+    cmds.forEach(c=>h+=`<div class="cmdcard"><span class="cmdpill">/${esc(c.ref.n)}</span>${c.arg?'<code>'+esc(c.arg)+'</code>':''}<span class="st">✓ ${esc(c.ref.desc)}</span></div>`);
+    if(t) h+=`<div class="body">${esc(t).replace(/`([^`]+)`/g,'<code>$1</code>')}</div>`;
+    m.innerHTML=h; bindChips(m,'toastC'); chat.appendChild(m);
+    trayItems.length=0; renderTray(); inp.textContent=''; updateSend(); chat.scrollTop=chat.scrollHeight;
+  }
+  send.addEventListener('click',doSend);
+  renderTray();
+})();
+})();
+</script>
+</body>
+</html>

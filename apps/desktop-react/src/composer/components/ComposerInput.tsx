@@ -28,8 +28,17 @@ export interface ComposerInputHandle {
    * `token` 是**这枚 chip 在草稿里真正代表的那截文本**(`@` 引用是
    * `{{file:<绝对路径>}}`)。给了就挂在 `data-token` 上,`text()` 交出去时
    * 用它顶替屏幕上那几个字;不给 = 屏幕上写什么、交出去就是什么。
+   *
+   * `argHint` 是**这条命令还要人填的那一截**(`<path>` / `[分类]`),由
+   * `data/commands-source.argHintOf` 解析好递进来 —— 这个文件一条业务规则都没有,
+   * 当然也不该在这里再解析一遍 usage。给了就在那个空格之后挂一枚灰色幽灵占位,
+   * 人打第一个字它就散(见 `dissolveArgGhost`)。
    */
-  insert: (kind: 'files' | 'commands', label: string, token?: string) => void
+  insert: (
+    kind: 'files' | 'commands',
+    label: string,
+    opts?: { token?: string; argHint?: string },
+  ) => void
   text: () => string
   clear: () => void
   /**
@@ -63,10 +72,37 @@ function readDraft(root: Node): string {
       out += node.textContent ?? ''
       continue
     }
+    /*
+     * 参数幽灵占位整枚跳过(09-12):它是**画出来的一句提示**,不是人写的字。
+     * 判据挂在它自己身上(`data-arg-ghost`),不靠类名 —— CSS Modules 的类名
+     * 是编译期哈希,拿它当协议等于把样式表接进逻辑里。
+     */
+    if (node instanceof HTMLElement && node.dataset.argGhost !== undefined) continue
     const token = node instanceof HTMLElement ? node.dataset.token : undefined
     out += token ?? readDraft(node)
   }
   return out
+}
+
+/**
+ * 幽灵占位**散掉**的那一刻(09-12)。
+ *
+ * 它只在一种情形下活着:插完之后**一个字都还没打**,而且光标就停在它前面
+ * 那个空格的末尾。别的一切 —— 打了字、退格把空格吃掉了、光标挪到别处去了 ——
+ * 都是「人已经在自己写这一截了」,提示当场退场。
+ *
+ * 判据写成「什么时候**留**」而不是「什么时候**摘**」,是因为留的条件恰好只有
+ * 一条,而摘的情形数不完;按后者写,漏掉的每一种都会让一句灰字赖在屏幕上。
+ */
+function dissolveArgGhost(el: HTMLElement): void {
+  const ghost = el.querySelector('[data-arg-ghost]')
+  if (!(ghost instanceof HTMLElement)) return
+  const prev = ghost.previousSibling
+  const lead = prev && prev.nodeType === Node.TEXT_NODE ? (prev.textContent ?? '') : ''
+  const sel = typeof window === 'undefined' ? null : window.getSelection()
+  const caretHere = sel?.anchorNode === prev && sel?.anchorOffset === lead.length
+  if (lead === ' ' && caretHere) return
+  ghost.remove()
 }
 
 interface Props {
@@ -140,30 +176,63 @@ export function ComposerInput({
      * 读出来的),所以没有第二方的字节进这里。
      */
     restore: (html) => {
-      if (ref.current) ref.current.innerHTML = html
+      if (!ref.current) return
+      ref.current.innerHTML = html
+      /*
+       * 铺回来的稿里**不留幽灵占位**:它说的是「你接下来要打的是这一截」,
+       * 而换一格会话回来的那一刻这句话已经过期了(人早就不在那次补全的现场)。
+       * 摘在这里而不是在 `html()` 里滤:存下来的字节保持「这块面板当时长什么样」,
+       * 过期的只是这一句提示。
+       */
+      for (const ghost of Array.from(ref.current.querySelectorAll('[data-arg-ghost]'))) {
+        ghost.remove()
+      }
     },
-    insert: (kind, label, token) => {
+    insert: (kind, label, opts) => {
       const el = ref.current
       if (!el) return
       const cur = caretToken(el)
       if (!cur) return
       const raw = cur.node.textContent ?? ''
       // 把 @xx / /xx 那一截原地摘掉,chip 补在原位,后半截原样跟上。
-      const before = raw.slice(0, cur.offset).replace(/(@|\/)[\w.-]*$/, '')
+      // `:` 与 parseToken 那条命令正则同步放行 —— 技能引用叫 `/skill:<名字>`,
+      // 少这一格就会在框里留下半截 `/skill:`(两处是同一句语法的两半)。
+      const before = raw.slice(0, cur.offset).replace(/(@|\/)[\w.:-]*$/, '')
       const rest = raw.slice(cur.offset)
       const chip = document.createElement('span')
       chip.className = kind === 'files' ? s.chip : s.cmdTok
       chip.textContent = kind === 'files' ? `@${label}` : label
-      if (token) chip.dataset.token = token
+      if (opts?.token) chip.dataset.token = opts.token
       chip.contentEditable = 'false'
-      const after = document.createTextNode(` ${rest}`)
+      /*
+       * chip 之后**恒有一个空格**,光标落在它后面 —— 接着打字就是接着说话。
+       * 从前这里是一个 `' ' + rest` 的文本节点;现在空格与后半截分成两个节点,
+       * 是为了让幽灵占位能插在**它们中间**(空格 → 提示 → 原来的后半截)。
+       * 没有 argHint 时两个节点与从前那一个在草稿上逐字等价。
+       *
+       * (那个空格从来都在;09-12 之前它看不见,病根在 `.input` 少了
+       * `white-space: pre-wrap` —— 行尾空白被折叠掉了。判词在那条 CSS 上。)
+       */
+      const gap = document.createTextNode(' ')
+      const tail = document.createTextNode(rest)
       cur.node.textContent = before
       cur.node.parentNode?.insertBefore(chip, cur.node.nextSibling)
-      chip.parentNode?.insertBefore(after, chip.nextSibling)
-      // 光标落在 chip 后那个空格之后:接着打字就是接着说话。
+      chip.parentNode?.insertBefore(gap, chip.nextSibling)
+      let mark: Node = gap
+      if (opts?.argHint) {
+        const ghost = document.createElement('span')
+        ghost.className = s.argGhost
+        ghost.textContent = opts.argHint
+        ghost.contentEditable = 'false'
+        ghost.dataset.argGhost = ''
+        gap.parentNode?.insertBefore(ghost, gap.nextSibling)
+        mark = ghost
+      }
+      mark.parentNode?.insertBefore(tail, mark.nextSibling)
+      // 光标落在 chip 后那个空格之后(幽灵占位在它右边,人打的字从它左边长出来)。
       const range = document.createRange()
       const sel = window.getSelection()
-      range.setStart(after, 1)
+      range.setStart(gap, 1)
       range.collapse(true)
       sel?.removeAllRanges()
       sel?.addRange(range)
@@ -214,7 +283,16 @@ export function ComposerInput({
     }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      onSend(ref.current?.textContent ?? '')
+      /*
+       * **回车与发送键读同一口**(09-12 顺手结清)。从前这里是 `textContent`,
+       * 而发送键走的是 `text()`(= `readDraft`)—— 两者对一枚 chip 的答案本来
+       * 就不同:`readDraft` 交出 `data-token` 上那截真正代表的文本
+       * (`{{file:/abs/…}}`),`textContent` 交出屏幕上那几个字(`@src/a.ts`)。
+       * 也就是说同一句话「按回车发」和「点发送发」发出去的不是同一句。
+       * 参数幽灵占位让这道口子变得不能再留(它在 textContent 里,在草稿里没有),
+       * 所以两口在这里合成一口:**草稿只有一个读法**。
+       */
+      onSend(ref.current ? readDraft(ref.current) : '')
     }
   }
 
@@ -234,7 +312,12 @@ export function ComposerInput({
       aria-label={placeholder}
       data-testid="composer-input"
       data-placeholder={placeholder}
-      onInput={() => onToken(ref.current ? (caretToken(ref.current)?.hit ?? null) : null)}
+      onInput={() => {
+        // 先散提示、再报 token:摘掉那枚节点会改变光标前后的节点结构,
+        // 而 `caretToken` 读的正是那个结构。次序反过来就会按摘之前的现场报。
+        if (ref.current) dissolveArgGhost(ref.current)
+        onToken(ref.current ? (caretToken(ref.current)?.hit ?? null) : null)
+      }}
       onKeyDown={handleKeyDown}
     />
   )

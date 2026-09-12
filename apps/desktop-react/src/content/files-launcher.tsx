@@ -3,18 +3,22 @@ import { t } from '../i18n'
 import { baseNameOf, sessionCwdOf, useFilesSource } from '../data/files-source'
 import { useSessionsSource } from '../data/sessions-source'
 import { useExposeStore } from '../expose/store'
-import { findItem } from '../stage/items'
 import { registerStageLauncher } from '../stage/launchers'
-import { nextFloatId } from '../stage/placement'
-import { useStageStore } from '../stage/store'
-import { CENTER_REGION, edgeRegion, floatRegion } from '../workbench/regions'
-import { refId } from '../workbench/kinds'
-import { regionOfRefIn, useWorkbenchStore } from '../workbench/store'
+import { useWorkbenchStore } from '../workbench/store'
+import { FILES_ITEM_ID, openDirectoryPanel } from './dir-open'
 import { DIR_KIND, dirRef } from './kinds/dir-ref'
 import { useOpenDirDialog } from './files/open-dir-hub'
-import type { PlacementMemory } from '../stage/types'
-import type { ContentRef } from '../workbench/kinds'
-import type { RegionId } from '../workbench/regions'
+
+/**
+ * **「打开一份目录」那个动作已经不在这只文件里**(2026-09-12 review 打回)。
+ * 它连同 `FILES_ITEM_ID` 与落点算法搬去了 `content/dir-open.ts`,理由整段写在
+ * 那只文件头上:这里最后一句 `registerStageLauncher(...)` 是**模块级副作用**,
+ * 谁 import 这只文件谁就顺手把「files 瓦是启动瓦」这条登记装进了自己的世界 ——
+ * 消息气泡里的目录 chip 只想调一个函数,不该为此改变 Dock 的行为
+ * (真事故:`stage/__tests__/summon-entries.test.ts` 5 红)。
+ * 这里原样 re-export 那两口,老调用方一行不改。
+ */
+export { FILES_ITEM_ID, openDirectoryPanel } from './dir-open'
 
 /**
  * **Dock 上那块瓦从「文件」变成「目录」**(W6-a,设计
@@ -41,51 +45,10 @@ import type { RegionId } from '../workbench/regions'
  * 「哪个区域装得下一格内容」这句翻译,所以不能直接借它。
  */
 
-/** 「目录」那块启动瓦的 id(它就是从前那块「文件」瓦 —— id 不改,名字改了)。 */
-export const FILES_ITEM_ID = 'files'
-
 /** 当前会话的工作目录。答不出(会话没绑目录 / 名册还没到)= null。 */
 export function sessionDirOf(): string | null {
   const sessionId = useExposeStore.getState().envSessionId
   return sessionCwdOf(useSessionsSource.getState().sessions, sessionId)
-}
-
-/**
- * 这块瓦此刻该把内容开到哪个区域。**记忆 > 天生**(见文件头)。
- *
- * `stage` / `full` 两档都落中央区:全屏不是一个住处(判词在 `stage/types.ts`),
- * 而一块目录面板铺满整扇窗不是任何人要的东西。
- */
-function regionForLauncher(ref: ContentRef): RegionId {
-  const stage = useStageStore.getState()
-  const memory: PlacementMemory | undefined = stage.memory[FILES_ITEM_ID]
-  const wanted = memory ?? findItem(FILES_ITEM_ID)?.defaultPlacement
-  if (wanted?.kind === 'edge') return edgeRegion(wanted.side)
-  if (wanted?.kind === 'float') {
-    // 这份内容已经有一扇自己的窗就交回那一扇(同一档连点两次不该开出两扇装着
-    // 同一个目录的窗)—— 与 `content/viewer/open-target.regionForMode` 同一句。
-    const already = regionOfRefIn(useWorkbenchStore.getState().regions, refId(ref))
-    if (already?.startsWith('float:')) return already
-    const winId = nextFloatId()
-    // 身量归形态机补(默认档 + 视口钳制两件事的产地都在那儿)。
-    useStageStore.getState().ensureFloatRect(winId)
-    return floatRegion(winId)
-  }
-  return CENTER_REGION
-}
-
-/**
- * **打开一份目录面板**(启动瓦、右键最近项、「打开目录…」三处共用的唯一一只)。
- *
- * 三件事,次序即语义:记一笔最近目录 → 算落点 → 摆过去。摆那一句走
- * `stage.placeRef`(它同时改树与形态机,而且经 `orchestrate` 那格缓冲 ——
- * 判词写在 `stage/store.placeRef` 上)。
- */
-export function openDirectoryPanel(path: string): void {
-  if (!path) return
-  const ref = dirRef(path)
-  useWorkbenchStore.getState().rememberRoot(path)
-  useStageStore.getState().placeRef(ref, regionForLauncher(ref))
 }
 
 /**

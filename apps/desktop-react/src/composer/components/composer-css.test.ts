@@ -126,6 +126,17 @@ describe('本体行两行布局 + 药丸永不折行(09-03 报障的产地)', ()
     expect(block('.modelPillLabel')).toMatch(/text-overflow:\s*ellipsis/)
   })
 
+  /*
+   * ── 09-12 报障「补全命令后没有空格」的**产地** ────────────────────────
+   * 草稿里那个空格一直都在(`ComposerInput.test.tsx` 逐条钉着它),看不见是因为
+   * 缺省的 `white-space: normal` 把**行尾空白折叠掉了**。jsdom 量不出折叠,
+   * 所以这条门守在源文本上;真机那一半在 `gate:composer-drawer` 的 ④
+   * (量那个空格的 Range 宽度真的大于 0)。
+   */
+  it('.input 声明 white-space: pre-wrap —— 行尾那个空格看得见', () => {
+    expect(block('.input')).toMatch(/white-space:\s*pre-wrap/)
+  })
+
   it('.input 声明 min-width: 0 —— 长 URL 撑不宽这一行', () => {
     expect(block('.input')).toMatch(/min-width:\s*0/)
   })
@@ -202,5 +213,39 @@ describe('模型抽屉两栏:只有列表滚,卡不滚', () => {
 
   it('容器是抽屉自己(不是窗口)—— 输入框在浮窗 / 窄舞台里各有各的宽', () => {
     expect(block('.drawerBody')).toMatch(/container:\s*composerDrawer \/ inline-size/)
+  })
+})
+
+/**
+ * 命令行的三格与参数幽灵占位(09-12,用户报障「命令无提示」的产地)。
+ *
+ * 同一条理由守在源文本上(CSS Modules 那份样式表没进过 jsdom)。
+ * 「窄档里用法真的不见了」是**排版**,在真机门 `gate:composer-drawer` 的窄容器
+ * 那一趟里量 —— 两件事必须都在。
+ */
+describe('命令行三格 + 参数幽灵占位(09-12)', () => {
+  it('挤压律一:弯腰的是说明,名字与用法都不弯腰', () => {
+    expect(block('.pickDesc')).toMatch(/flex:\s*1 1 auto/)
+    expect(block('.pickDesc')).toMatch(/text-overflow:\s*ellipsis/)
+    // 律二:结构行只截断不换行。
+    expect(block('.pickDesc')).toMatch(/white-space:\s*nowrap/)
+    expect(block('.pickName')).toMatch(/flex:\s*none/)
+    expect(block('.pickUsage')).toMatch(/flex:\s*none/)
+  })
+
+  it('窄档收掉用法(与两栏塌一栏同一个阈值,那个数只有一处来历)', () => {
+    const at = css.indexOf('@container composerDrawer (max-width: 448px)')
+    const second = css.indexOf('@container composerDrawer (max-width: 448px)', at + 1)
+    expect(second).toBeGreaterThan(at)
+    const block448 = css.slice(second, css.indexOf('\n}', second))
+    expect(block448).toMatch(/\.pickUsage/)
+    expect(block448).toMatch(/display:\s*none/)
+  })
+
+  it('幽灵占位点不中、选不中 —— 它是画出来的一句提示,不是能被点中的东西', () => {
+    expect(block('.argGhost')).toMatch(/pointer-events:\s*none/)
+    expect(block('.argGhost')).toMatch(/user-select:\s*none/)
+    // 颜色不能比占位符重:重一点就会被读成「已经输入了」。
+    expect(block('.argGhost')).toMatch(/color:\s*var\(--text-4\)/)
   })
 })

@@ -32,6 +32,7 @@ import { StopNotice } from './message/StopNotice'
 import { StreamReadout } from './message/StreamReadout'
 import { MessageSourceFoot } from './research/SourceFoot'
 import { SegmentView } from './SegmentView'
+import { UserMessageBody } from './user-message'
 import { FocusScope } from '../focus/FocusScope'
 import { usePanelVisibility } from './visibility'
 import { Dots } from '../ui/Dots'
@@ -1080,7 +1081,11 @@ const MessageRow = memo(function MessageRow({
 
   return (
     <article className={className} data-message-id={message.id} data-role={role}>
-      {role === 'user' && <div className={s.user}>{message.content}</div>}
+      {role === 'user' && (
+        <div className={s.user}>
+          <UserMessageBody text={message.content} />
+        </div>
+      )}
 
       {/* data-prose:节奏表的钩子 —— 错误卡是一件东西,按物件档留白(节奏表在
           ChatStream.module.css)。 */}

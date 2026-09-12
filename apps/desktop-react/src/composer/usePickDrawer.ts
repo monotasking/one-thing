@@ -7,11 +7,14 @@ import {
   FILE_MENTION_DEBOUNCE_MS,
   useFileMentionsSource,
 } from '../data/file-mentions-source'
+import type { FileMentionsStatus } from '../data/file-mentions-source'
 import { useSessionCwd } from '../data/files-source'
+import { useSkillsSource } from '../data/skills-source'
 import { useListSelection } from '../ui/a11y/list-selection'
 import { ASK_DEMO_SPEC } from './data'
 import { useComposerStore } from './store'
-import { matchCommands, matchFiles } from './transitions'
+import { groupCommands, matchCommands, matchFiles } from './transitions'
+import type { CommandGroup } from './transitions'
 import type { ComposerInputHandle } from './components/ComposerInput'
 import type { AskSpec, DrawerKind, TokenHit } from './types'
 
@@ -22,9 +25,12 @@ import type { AskSpec, DrawerKind, TokenHit } from './types'
  * token 出现就开、消失就收,候选按词收窄,↑↓ 走位,↵ 插进输入框。
  * 模型与执行状态是人主动开的,不归这里。
  *
- * 交出去的八格 `{picking, files, commands, index, move, rowRef, applyPick, onToken}`
- * 正是 `DrawerPickList` 与 `ComposerInput` 要的全部 —— `move` 是输入框那头 ↑↓
- * 的直通口(见下),少了它 `useListSelection` 就搬不整只。
+ * 交出去的十格 `{picking, files, fileStatus, commands, commandGroups, index, move,
+ * rowRef, applyPick, onToken}` 正是 `DrawerPickList` 与 `ComposerInput` 要的全部
+ * —— `move` 是输入框那头 ↑↓ 的直通口(见下),少了它 `useListSelection` 就搬不整只。
+ * (09-12 多出来的两格:`fileStatus` 让抽屉画得出 loading / error,
+ * `commandGroups` 让命令切成命令 / 技能 / 插件三组 —— 两格都与 `commands` /
+ * `files` 同源同一次计算,不是第二份事实。)
  *
  * **`useListSelection` 整只跟着走**:键盘位是这两位住户的状态,不是编排点的。
  * hook 边界上一个 `mouseenter` 都不许补 —— hover ≠ active 那条法(CLAUDE.md
@@ -35,12 +41,13 @@ import type { AskSpec, DrawerKind, TokenHit } from './types'
  *
  * **生命周期**:两个 effect —— ① `@` 候选的去抖拉取(抽屉不是 files 就散候选,
  * 是 files 就等 `FILE_MENTION_DEBOUNCE_MS` 再发一次,重入即撤上一发的计时器);
- * ② 命令抽屉第一次开时懒拉插件那一半。都没有卸载动作要做,除了 ① 那只计时器
- * (它由 effect 自己的清理函数收)。这只 hook 只有一种宿主(编排点),没有
- * 换宿主这回事。
+ * ② 命令抽屉第一次开时懒拉插件与技能那两半(技能按 cwd 缓存)。都没有卸载动作
+ * 要做,除了 ① 那只计时器(它由 effect 自己的清理函数收)。这只 hook 只有一种
+ * 宿主(编排点),没有换宿主这回事。
  *
- * **UI 生命状态**:候选**只有 ready 一态在画**。loading / empty / error 的现状
- * 逐条记在下面 `mentions` 那段注释里 —— 本批**只记不补**。
+ * **UI 生命状态**:09-12 起四态齐全 —— `fileStatus` 原样交给 `DrawerPickList`,
+ * 由它在「正在找…」/ 旧候选留屏 / 「无匹配」/ 错误行之间选。命令那一半没有
+ * 取数态可言(内置是编译期常量,插件与技能拉不到就是那一组不出现,静默降级)。
  *
  * **UI 交互状态**:`index` 是键盘位(active),hover 一格 JS 都不占(由
  * `DrawerPickList` 的 CSS 画)。没有 disabled 档:候选行永远可点。
@@ -50,7 +57,21 @@ export interface PickDrawer {
   picking: boolean
   /** 抽屉那一行画的是 label(cwd 之下的相对路径)。 */
   files: string[]
+  /**
+   * `@` 候选此刻处在哪一态。抽屉据此在「正在找…」/ 旧候选留屏 / 「无匹配」/
+   * 错误行之间选一种画法 —— 09-12 之前它只按长度判,于是拉候选的那 120ms 里
+   * 屏幕上写的是「无匹配」(用户报的「出现的动画很突兀」有一半是这一句)。
+   */
+  fileStatus: FileMentionsStatus
+  /**
+   * 命令的**扁平序**(= 屏幕上从上到下的顺序)。`applyPick` 与键盘位都按它算。
+   */
   commands: CommandEntry[]
+  /**
+   * 同一批命令切成的组(命令 / 技能 / 插件,空组不出现)。各组 `items` 顺次
+   * 相连**恒等于** `commands` —— 一条列表不许有两种序,所以两格同源同一次计算。
+   */
+  commandGroups: CommandGroup<CommandEntry>[]
   /** 键盘位(active)。 */
   index: number
   /**
@@ -101,15 +122,18 @@ export function usePickDrawer({
    * (`useSessionCwd`),候选走 `files.list`(数据源),去抖归这一层 ——
    * 「人打字的节奏」是编排的事,不是数据源的事(与 SearchPanel 逐条同款)。
    *
-   * **留账(只记不补)**:`useFileMentionsSource` 有 `status`(idle/loading/
-   * ready/error)与 `error` 两格,但抽屉今天**一格都没画** —— 拉候选的那一瞬
-   * 没有 loading、拉失败没有 error(旧候选留屏、错误只进 store)、真没匹配到
-   * 时画的是 `composer.noMatch` 那句 empty(那一格是 `DrawerPickList` 自己
-   * 按长度判的,不读 status)。同一条留账在 `data/file-mentions-source.ts:50`
-   * 与提交 ac384704 里各记过一次;补这三态是**行为变化**,要另批拍板。
+   * ── 09-12 结清:那条留账(loading / error 一格都没画)补上了 ──────────────
+   * 从前 `status` 这一格没人读,抽屉只按候选**长度**判 —— 于是刚敲下 `@`、
+   * 去抖窗口还没走完的那 120ms 里,屏幕上白纸黑字写着「无匹配」,一次往返之后
+   * 再整列换成真候选。用户报的「command / file 出现的动画很突兀」有一半是它:
+   * 突兀的不是过渡曲线,是**先说了一句不成立的话再改口**。
+   * 今天 `status` 交给 `DrawerPickList`,那四态各有各的画法(见它的文件头)。
+   * `clearMentions()` 仍旧只在**抽屉不是 files** 时发 —— 切到 files 的那一拍
+   * 一个字都不清,所以「开抽屉」本身从不制造一次空列表。
    */
   const cwd = useSessionCwd()
   const mentions = useFileMentionsSource((st) => st.mentions)
+  const fileStatus = useFileMentionsSource((st) => st.status)
   const searchMentions = useFileMentionsSource((st) => st.search)
   const clearMentions = useFileMentionsSource((st) => st.clear)
 
@@ -129,9 +153,17 @@ export function usePickDrawer({
    * 内置那七条是编译期常量(合表在编排点),插件那一半懒拉一次 ——
    * 抽屉第一次开的时候才发。 */
   const ensurePluginCommands = useCommandsSource((st) => st.ensurePluginCommands)
+  /*
+   * 技能那一半同样懒(09-12)。**键是 cwd**:「项目根下的技能按它发现」是契约上
+   * 那一格自己的注释,换一条工作目录看得见的技能表就不同 —— 所以依赖表里带 cwd,
+   * 而 store 自己按 cwd 判要不要真发(拉过同一个 cwd 就是恒等)。
+   */
+  const ensureSkills = useSkillsSource((st) => st.ensureSkills)
   useEffect(() => {
-    if (drawerKind === 'commands') void ensurePluginCommands()
-  }, [drawerKind, ensurePluginCommands])
+    if (drawerKind !== 'commands') return
+    void ensurePluginCommands()
+    void ensureSkills(cwd)
+  }, [drawerKind, cwd, ensurePluginCommands, ensureSkills])
 
   /* 这几条**必须** useMemo:它们进了下面 applyPick 的依赖数组,而数组字面量
    * 每帧都是新身份 —— 不 memo 的话 applyPick 每帧重建,它的 useCallback 等于没写,
@@ -144,9 +176,19 @@ export function usePickDrawer({
   /* 抽屉那一行画的是 label(cwd 之下的相对路径);选中时要的是 path。
    * 两者同源同序,所以下标就是它们之间的对应关系。 */
   const files = useMemo(() => fileHits.map((hit) => hit.label), [fileHits])
-  const commands = useMemo(
-    () => (drawerKind === 'commands' ? matchCommands(allCommands, pickQuery) : []),
+  /*
+   * 命令:先筛(名字前缀 → 说明 / 用法子串),再切组(命令 / 技能 / 插件)。
+   * **两步的顺序不能反**:分组是外层分区,匹配的排序只在组内说话 ——
+   * 反过来就会切出两次「命令」组头(判词整段在 `transitions.groupCommands`)。
+   */
+  const commandGroups = useMemo(
+    () => (drawerKind === 'commands' ? groupCommands(matchCommands(allCommands, pickQuery)) : []),
     [drawerKind, allCommands, pickQuery],
+  )
+  /** 扁平序 = 各组顺次相连。屏幕上的顺序、键盘位、`applyPick` 的下标都是它。 */
+  const commands = useMemo(
+    () => commandGroups.flatMap((group) => group.items),
+    [commandGroups],
   )
   const pickLen = drawerKind === 'files' ? files.length : commands.length
   /*
@@ -191,7 +233,7 @@ export function usePickDrawer({
         const hit = fileHits[i]
         // chip 上写的是相对路径(人心里的名字),草稿里代表的是绝对路径的
         // `{{file:…}}`(交出去那一刻由 chat-port 展开回 `@<路径>`)。
-        if (hit) inputRef.current?.insert('files', hit.label, createFileToken(hit.path))
+        if (hit) inputRef.current?.insert('files', hit.label, { token: createFileToken(hit.path) })
         closeDrawer()
         return
       }
@@ -205,7 +247,12 @@ export function usePickDrawer({
         openAsk(ASK_DEMO_SPEC)
         return
       }
-      inputRef.current?.insert('commands', cmd.name)
+      /*
+       * 参数提示跟着命令一起插进去(09-12):`argHint` 是这条命令自己带的一格
+       * (产地 `commands-source.argHintOf`),输入面只负责把它挂成一枚幽灵占位。
+       * 不收参数的命令没有这一格,于是插完就只剩命令徽加一个空格 —— 与从前逐字相同。
+       */
+      inputRef.current?.insert('commands', cmd.name, { argHint: cmd.argHint })
       closeDrawer()
     },
     [drawerKind, fileHits, commands, inputRef, closeDrawer, openAsk],
@@ -214,7 +261,9 @@ export function usePickDrawer({
   return {
     picking,
     files,
+    fileStatus,
     commands,
+    commandGroups,
     index,
     move: pick.move,
     rowRef: pick.rowRef,

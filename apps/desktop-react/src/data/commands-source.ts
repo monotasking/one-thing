@@ -38,7 +38,7 @@ import type { CommandSpec } from '../composer/types'
 
 /* ── 形状 ──────────────────────────────────────────────────────────────── */
 
-export type CommandKind = 'builtin' | 'plugin' | 'dev'
+export type CommandKind = 'builtin' | 'skill' | 'plugin' | 'dev'
 
 /**
  * 表里的一行。`CommandSpec`(抽屉画一行所需要的全部)是它的**显示半边**,
@@ -47,14 +47,45 @@ export type CommandKind = 'builtin' | 'plugin' | 'dev'
 export interface CommandEntry extends CommandSpec {
   id: string
   kind: CommandKind
-  /** 用法那句(报错时原样念给人听)。 */
+  /** 用法那句(报错时原样念给人听;09-12 起抽屉里那一行也画它)。 */
   usage: string
   /** 选中时插进输入框的那一截。契约上就有这一格,不由壳现造。 */
   insertText: string
   /** 收不收参数。不收却带了参数 = 用法错,不是「多余的字」。 */
   allowArgs: boolean
+  /**
+   * usage 里**要人自己填的那一截**(`<path>` / `[分类]`),选中之后作为一枚灰色
+   * 幽灵占位挂在输入框里(见 `ComposerInput.insert`)。不收参数的命令没有这一格。
+   *
+   * **解析只在 `argHintOf` 一处**(下面那只纯函数):输入面拿到的是解析好的结果,
+   * 不许再解析一遍 usage —— 两处解析同一句语法,迟早给出两个答案。
+   */
+  argHint?: string
   /** dev-only 扳机(`/ask-demo`)。真接上 ask_user 事件后这一格连同那条命令一起删。 */
   action?: 'ask-demo'
+}
+
+/**
+ * 从 usage 里取出**要人自己填的那一截**。全仓唯一的那一句解析。
+ *
+ *   `/cd <path>`                                   → `<path>`
+ *   `/pomodoro [分类]`                             → `[分类]`
+ *   `/goal [<objective> | pause | … ]`             → 整段 `[…]`
+ *   `/compact` / `/kegel`(不收参数)               → undefined
+ *
+ * 两种括号**取先出现的那一个整段**:`/goal` 那一条的方括号里还套着尖括号,
+ * 只取第一个 `<…>` 会念出半句 `<objective>`,把「还可以写 pause / clear」吃掉。
+ * 所以判据是位置,不是括号的种类。
+ *
+ * 命令名那一截先剥掉:`/skill:写作 [说明]` 里的冒号、`/practice-stop` 里的连字符
+ * 都不该被当成语法。
+ */
+export function argHintOf(usage: string): string | undefined {
+  const rest = usage.replace(/^\S+/, '')
+  const bracket = /\[[^\]]*\]/.exec(rest)
+  const angle = /<[^>]*>/.exec(rest)
+  if (bracket && angle) return bracket.index <= angle.index ? bracket[0] : angle[0]
+  return bracket?.[0] ?? angle?.[0]
 }
 
 /**
@@ -72,6 +103,7 @@ export const BUILTIN_COMMANDS: CommandEntry[] = SHARED_SLASH_COMMANDS.map((comma
   kind: 'builtin' as const,
   insertText: command.insertText,
   allowArgs: command.allowArgs === true,
+  argHint: command.allowArgs === true ? argHintOf(command.usage) : undefined,
 }))
 
 /**
@@ -93,6 +125,8 @@ export function toPluginCommand(info: PluginCommandInfo): CommandEntry {
     // 后端不声明收不收参数,而插件命令本来就靠 `args` 传话 —— 一律放行,
     // 参数合不合法由插件自己说(它比壳知道)。
     allowArgs: true,
+    // 插件自己写的 usage 里有语法就画,没有就不画 —— 壳不替它编一句。
+    argHint: argHintOf(info.usage || name),
   }
 }
 
@@ -117,17 +151,40 @@ export const DEV_COMMANDS_VISIBLE: boolean = import.meta.env.DEV === true
  * 一条 `kind: 'dev'` 混进 builtin 或插件表里同样该被挡掉,而参数位置管不到那种情况。
  * 这也正是 `CommandKind` 那一格的用处 —— 它此前只用来画徽,现在它是一条判据。
  */
-export function mergeCommands(
-  builtin: readonly CommandEntry[],
-  plugin: readonly CommandEntry[],
-  dev: readonly CommandEntry[] = [],
-  devVisible: boolean = DEV_COMMANDS_VISIBLE,
-): CommandEntry[] {
+export interface CommandTables {
+  builtin: readonly CommandEntry[]
+  /** `/skill:<name>` 那一族(`data/skills-source`)。 */
+  skill?: readonly CommandEntry[]
+  plugin?: readonly CommandEntry[]
+  dev?: readonly CommandEntry[]
+  /** dev 命令这一刻看不看得见。缺省 `DEV_COMMANDS_VISIBLE`(理由见它自己)。 */
+  devVisible?: boolean
+}
+
+export function mergeCommands({
+  builtin,
+  skill = [],
+  plugin = [],
+  dev = [],
+  devVisible = DEV_COMMANDS_VISIBLE,
+}: CommandTables): CommandEntry[] {
   const taken = new Set(builtin.map((entry) => commandTokenOf(entry)))
+  const notTaken = (entry: CommandEntry) => !taken.has(commandTokenOf(entry))
+  /*
+   * **这个顺序就是抽屉里从上到下的顺序**(09-12)。
+   *
+   * 从前是 `[builtin, plugin, dev]` —— dev 扳机垫底。抽屉分组之后那个顺序不成立:
+   * dev 命令与内置同属「命令」那一组,排在插件后面就会让「命令」这个组头出现
+   * **两次**,而分组只许一次(禁令区)。所以 dev 紧跟内置,技能与插件各自成段。
+   *
+   * 四张表因此在这一处排定,别处不许再排一次:抽屉的组是**按这条扁平序切段**
+   * 出来的(`composer/transitions.groupCommands`),键盘走位也走同一条扁平序。
+   */
   const merged = [
     ...builtin,
-    ...plugin.filter((entry) => !taken.has(commandTokenOf(entry))),
     ...dev,
+    ...skill.filter(notTaken),
+    ...plugin.filter(notTaken),
   ]
   return devVisible ? merged : merged.filter((entry) => entry.kind !== 'dev')
 }
@@ -199,6 +256,17 @@ export async function executeCommand(
   const needsSession = (): CommandOutcome => ({ kind: 'failed', error: t('command.needsSession') })
 
   if (!entry.allowArgs && args) return usage()
+
+  /*
+   * 技能引用**壳一个字都不执行**:`/skill:<name> …` 原样当一条消息交出去,
+   * 展开在引擎那头(`prompts/resolver.collectReferenceMatches` 认这个前缀,
+   * `wiring/engine/stream/agent-loop-runtime` 在每条用户消息上跑它)。
+   *
+   * 这一支写在 switch 之前而不是靠 `default` 兜住:兜底那条按 `entry.id` 分派,
+   * 而技能的 id 是路径推出来的 —— 哪天有一份技能的 id 恰好叫 `cd`,
+   * 引用它就会变成一次改工作目录。判据必须是它自报的 `kind`。
+   */
+  if (entry.kind === 'skill') return { kind: 'sendAsText' }
 
   if (entry.kind === 'plugin') {
     if (!ctx.sessionId) return needsSession()

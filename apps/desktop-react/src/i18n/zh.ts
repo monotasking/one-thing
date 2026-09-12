@@ -108,9 +108,20 @@ export const zh = {
   'composer.modelCardUnknown': '这一型的读数还没拉到',
   'composer.headFiles': '引用文件',
   'composer.headCommands': '命令',
+  /* 抽屉里命令分的另外两组(09-12)。三个组头在一列里各出现恰好一次。 */
+  'composer.headSkills': '技能',
+  'composer.headPlugins': '插件',
   'composer.hintFile': '⏎ 引用',
   'composer.hintCommand': '⏎ 选用',
   'composer.noMatch': '无匹配',
+  /* 候选在飞、手上还没有旧候选时列表那一行。**纯文字**:Spinner 只许在按钮内 /
+   * 状态栏(禁令区),而且这一行的寿命常常只有一次去抖那么长。 */
+  'composer.searching': '正在找…',
+  /* 候选这一发失败:旧候选留屏,这一行与它并陈(律②:错误不抹掉旧答案)。 */
+  'composer.searchFailed': '这一发没找成,先看上一批',
+  /* `/skill:<名字> [说明]` 里方括号中那个词 —— 选中之后它是输入框里的幽灵占位,
+   * 说的是「接着说你要它干什么」。 */
+  'composer.skillArg': '说明',
   'composer.context': '上下文用量',
   /* 窗口大小拿不到时读屏软件听见的那句 —— 不能说成 0%。 */
   'composer.contextUnknown': '上下文用量未知',
@@ -556,6 +567,10 @@ export const zh = {
   'chat.error': '读不到这条会话',
   'chat.empty': '这条会话还没有消息',
   'chat.errorCard': '出错了',
+  /* 用户消息里那枚 `@路径` chip 的 Tooltip / 无障碍名(content/user-message)。
+   * 路径是数据不是文案 —— 它按 {path} 插进来,两门语言都原样带全路径。 */
+  'chat.ref.openFile': '打开 {path}',
+  'chat.ref.openDir': '打开目录 {path}',
   'chat.thought': '思考',
   'chat.streaming': '正在生成',
   /* ── 上下文更新 chip(U3)──────────────────────────────────────────────

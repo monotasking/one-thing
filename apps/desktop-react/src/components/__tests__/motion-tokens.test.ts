@@ -14,6 +14,7 @@ import {
   EXIT_MS_BY_TIER,
   FLASH_MS,
   DOCK_LENS_MS,
+  DRAWER_MS,
   RELEASE_MS,
   TOAST_LIFE_MS,
   TOC_FLASH_MS,
@@ -81,6 +82,9 @@ describe('JS 侧的时长常量与 tokens.css 逐条相等', () => {
     /* 工具卡的 FLIP(C2-a):JS 侧那个数只服务收尾定时器(过渡跑完摘掉内联 height),
      * 产地仍是 tokens.css —— 与 --dur-exit 同一条理由。 */
     ['--dur-card-flip', CARD_FLIP_MS],
+    /* composer 抽屉槽的开合(09-12 补):候选列表的高度 FLIP 复用它,收尾定时器
+     * 要这个数 —— 与 --dur-card-flip 同一条理由。 */
+    ['--dur-drawer', DRAWER_MS],
     /* 拖拽的三拍(W6-b,设计 `docs/workbench-tabs-2026-09.md` §4.1)。三个都是动画
      * (让位 / 滑入新槽 / 卡片飞入),各有一个 JS 收尾定时器跟着走。
      * 从前还有第四行,镜像那个「停多久算我要二合一」的时长 —— 二合一先改成位置
