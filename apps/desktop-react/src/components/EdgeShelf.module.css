@@ -56,6 +56,15 @@
   min-height: 0;
 }
 
+/* 收起 ∧ 把手也藏了(全局偏好 shelfRail='hidden'):这条架子**一个像素都不占**。
+ * 厚度那一格由 JSX 写 0,这里把四条边框一并归零 —— 只归零厚度会在屏幕上留下
+ * 一条 1px 的线(`.sideLeft` 那族各画一侧),那正是「隐藏把手」要去掉的东西。
+ * 必须排在 `.sideLeft/.sideRight/.sideTop/.sideBottom` 之后:同为一个类选择器,
+ * 特异性打平,谁在后面谁说了算。 */
+.railHidden {
+  border-width: 0;
+}
+
 /* 跟手期零过渡 —— 拖厚度时布局必须逐帧贴着指针,一格缓动都不许有。 */
 .dragging {
   transition: none;
@@ -193,13 +202,33 @@
 }
 
 /*
- * ── `.layer` / `.layerHidden` 随 `ShelfTabLayer` 一起退役了(W4)──────────
- * 从前这条架子自己挂一串 keep-alive 层(每个 tab 一层,`content-visibility:
- * hidden` + `inert`)。现在架子的身子是一棵拼贴树,那件事整份归 `PaneLeaf` 的
+ * ── 「一格 tab 的 keep-alive 层」仍旧不在这只文件里(W4)──────────────────
+ * 从前这条架子自己挂一串 `ShelfTabLayer`(每个 tab 一层,`content-visibility:
+ * hidden` + `inert`)。现在架子的身子是一棵拼贴树,**那件事**整份归 `PaneLeaf` 的
  * `PaneTabLayer`(`PaneLeaf.module.css` 的 `.layer` / `.layerHidden`)——
- * **同一条判据只留一个产地**:两份写法迟早在「用 display:none 还是
+ * 同一条判据只留一个产地:两份写法迟早在「用 display:none 还是
  * content-visibility」这一格上分叉,而那一格正是「切回来滚动位没了」的病根。
+ *
+ * ── 下面这一格 `.bodyHidden` 不是它的第二份(2026-09-12「收起 ≠ 关闭」)──────
+ * 两者隐藏的**不是同一层东西**,所以它们是两层不同的判据,不是一条判据抄了两遍:
+ *   · `PaneLeaf` 的 `.layerHidden` 藏的是**一格 tab** —— 同一片叶上的兄弟还露着,
+ *     它回答的是「这片叶此刻露哪一格」;
+ *   · 这里的 `.bodyHidden` 藏的是**整棵树身** —— 连同它的檐、它的每一片叶、
+ *     每一格 tab,回答的是「这条架子此刻收起来了」。
+ * 一条架子收起来时两层同时成立(树身藏着,里面非活动那格 tab 也藏着),换句话说
+ * 它们叠在一起而不是二选一 —— 一个产地装不下两件事。
+ *
+ * 出流(`position: absolute; inset: 0`)是这一格的要点:留在流里的话,收起态那 12px
+ * 会被它和细梁**两个** flex 子项分掉,细梁就铺不满整条边了。`content-visibility:
+ * hidden` 而不是 `display: none`,与上面那条判例同一个理由 —— 后代不排版但**不卸载**,
+ * 展开那一拍才排,滚动位与内部状态原样还在。
  */
+.bodyHidden {
+  position: absolute;
+  inset: 0;
+  content-visibility: hidden;
+  pointer-events: none;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .sideLeft,

@@ -258,10 +258,17 @@ export const zh = {
   'shelf.closeAll': '关闭整栏 {name}',
   'shelf.expand': '展开{name}',
   'shelf.resize': '调整{name}厚度',
+  'shelf.railMenu': '{name}细梁动作',
+  'shelf.railHideAll': '隐藏收起把手(所有边)',
+  'shelf.railToggle': '收起后显示把手',
 
   /* ── 设置面 ───────────────────────────────────────────────────────── */
   'settings.dockDisplay': 'Dock 显示方式',
   'settings.dockDisplayHint': 'Dock 始终是浮层;自动隐藏时移到那条边才滑出来',
+  'settings.shelfRail': '收起后的把手',
+  'settings.shelfRailHint': '架子收起来之后留不留一条可点的细梁;隐藏后收起的架子零厚度,用快捷键或点 Dock 那块瓦照样展开',
+  'settings.shelfRailShown': '显示',
+  'settings.shelfRailHidden': '隐藏',
   'settings.dockAlways': '常驻',
   'settings.dockAutohide': '自动隐藏',
   'settings.defaultOpen': '默认打开方式',

@@ -151,6 +151,80 @@ function check(label, ok, detail = '') {
   process.stdout.write(`  ${ok ? '✓' : '✗'} ${label}${detail ? `  ${detail}` : ''}\n`)
 }
 
+/* ── 「收起 ≠ 关闭」那一拍的两把尺(2026-09-12)────────────────────────────── */
+
+/**
+ * 页内 `long-animation-frame` 观察器。装一次、取号、收号,写法与 `gate-workspace.mjs`
+ * ⑤ **逐字同源**(判词也在那儿):时刻的产地必须在页内,而且必须**切窗口取样** ——
+ * `buffered: true` 会把整道门到此刻为止的历史帧一次性交过来,拿它量「展开那一拍」
+ * 会把开壳、装配、首屏那几帧算进产品头上(09-12 判例,T2 把 B2 的一个假红判掉)。
+ * 这里的取样窗口就是 `frameMark` 到 `frameHarvest` 那一段。
+ *
+ * 条目门槛本身是 50ms,所以「一条都没报」= 这一段里没有任何一帧超过预算。
+ * 观察器装不上(旧内核 / 被关掉)时 `known: false`,那一条**跳过**而不是假装绿。
+ */
+async function installFrameProbe(page) {
+  await page.evaluate(() => {
+    if (window.__layoutFrames) return
+    const probe = (window.__layoutFrames = { loaf: [] })
+    try {
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) probe.loaf.push(entry.duration)
+      }).observe({ type: 'long-animation-frame', buffered: true })
+    } catch (error) {
+      probe.err = String(error)
+    }
+  })
+}
+
+/** 取号:此刻已经收到多少条长帧。探针没装上给 -1。 */
+function frameMark(page) {
+  return page.evaluate(() =>
+    window.__layoutFrames && !window.__layoutFrames.err ? window.__layoutFrames.loaf.length : -1,
+  )
+}
+
+/** 收号:从 `mark` 到现在这一段里,最长的那一帧有多长、一共几条。 */
+function frameHarvest(page, mark) {
+  return page.evaluate((m) => {
+    const probe = window.__layoutFrames
+    if (!probe || probe.err || m < 0) return { known: false, longest: 0, frames: 0 }
+    const slice = probe.loaf.slice(m)
+    return {
+      known: true,
+      longest: slice.length ? Math.round(Math.max(...slice)) : 0,
+      frames: slice.length,
+    }
+  }, mark)
+}
+
+/**
+ * **记住这条架子此刻那个树身节点**(收起前),之后拿同一个引用比。
+ *
+ * 「同一个 DOM 节点」是「收起来再展开,内部状态与滚动位一格不丢」的机械含义 ——
+ * 节点换人 = 整棵内容子树重挂,屏幕上看不出来,只有这一把尺量得到。引用只能
+ * 存在页内(CDP 送不出 DOM 节点),所以它挂在 window 上。
+ */
+const markShelfBody = (page, side) =>
+  page.evaluate((sd) => {
+    /*
+     * **记的是树身里面那一层,不是 `[data-shelf-body]` 那只 div**(Fable review):
+     * 那只 div 是架子自己画的,`PaneTree` 整棵重挂它也纹丝不动 —— 第一版拿它当尺,
+     * 树每收/展一次各重挂一遍照样绿。`[data-pane-tab]` 是 `PaneLeaf` 画的 tab 层,
+     * 它换了身份就说明内容子树被重建过(超量探针 dev 165–181ms 那一帧就是它)。
+     */
+    const el = document.querySelector(`[data-shelf-body="${sd}"] [data-pane-tab]`)
+    window.__shelfBodyMark = el ?? null
+    return Boolean(el)
+  }, side)
+
+/** 此刻那一层还是不是刚才记下的那一个(两个都不在也算不同 —— 那是卸载)。 */
+const sameShelfBody = (page, side) =>
+  page.evaluate((sd) => {
+    const el = document.querySelector(`[data-shelf-body="${sd}"] [data-pane-tab]`)
+    return Boolean(el) && el === window.__shelfBodyMark
+  }, side)
+
 /* ── core ──────────────────────────────────────────────────────────────── */
 
 function readDiscovery(store) {
@@ -219,7 +293,14 @@ const READ_LAYOUT = () => {
     if (!el) return null
     return {
       rect: rectOf(el),
-      collapsed: !el.querySelector(`[data-shelf-body="${side}"]`),
+      /*
+       * **形态问形态口,不问「树身在不在 DOM 里」**(2026-09-12「收起 ≠ 关闭」)。
+       * 从前这一句拿「查不到 `data-shelf-body`」当收起 —— 那时收起真的把整棵树
+       * 卸载掉,两件事恰好同一个答案。今天收起**不卸载**(只隐藏 + `inert`),
+       * 旧判据当场说谎:每一条架子都会被读成「展开着」。
+       * 改的只是**读形态的方式**,这一格的语义一个字没动。
+       */
+      collapsed: el.hasAttribute('data-shelf-collapsed'),
       tabs: tabsIn(el),
     }
   }
@@ -774,14 +855,45 @@ async function sceneFull(handle) {
     JSON.stringify(out.persist.stageMemory?.diff),
   )
   // 「再点瓦 = 展开架子,不是全屏」:先把那条架子收成细梁,再点。
+  /*
+   * ── 顺手在同一段手势上量「收起 ≠ 关闭」那两件事(2026-09-12 用户拍)────────
+   * 这一段本来就是「收起 → 再点那块瓦 → 展开」,正是那条改动的现场,所以两把尺
+   * 挂在这儿而不是另起一个场景(另起一段要再开一次壳、再钉一次架子)。
+   *  · **同一个 DOM 节点** —— 收起只隐藏树身、不卸载;换人就是整棵内容子树重挂;
+   *  · **展开那一拍零 ≥50ms 长帧** —— 保挂载的意义正在于展开不再从零重建
+   *    (第 5 轴:重挂合法不等于重挂可以慢;这里连重挂都不该有)。
+   * 反证:把 `EdgeShelf` 收起那一支换回旧的三元(收起就不渲染树身)→ 第一条当场红。
+   */
+  await installFrameProbe(page)
+  const bodyMarked = await markShelfBody(page, 'right')
+  check('前提:收起之前量得到右架子那个树身节点', bodyMarked)
   await page.keyboard.press('Meta+Alt+ArrowRight')
   await delay(600)
   const collapsed = await read(page)
   check('前提:右架子已收成细梁', collapsed.shelves.right?.collapsed === true)
+  check(
+    '收起 ≠ 关闭:细梁态下树身仍在 DOM 里,而且还是同一个节点',
+    await sameShelfBody(page, 'right'),
+  )
+  const expandMark = await frameMark(page)
   await clickTile(page, 'diff')
   const back = await read(page)
   check('再点那块瓦:架子展开了', back.shelves.right?.collapsed === false)
   check('再点那块瓦:没有进全屏', !back.full)
+  const expandFrames = await frameHarvest(page, expandMark)
+  check(
+    '展开那一拍:树身还是收起前那个 DOM 节点(内部状态与滚动位不丢的机械含义)',
+    await sameShelfBody(page, 'right'),
+  )
+  if (expandFrames.known) {
+    check(
+      `展开那一拍零 ≥50ms 长帧(最长 ${expandFrames.longest}ms,${expandFrames.frames} 条)`,
+      expandFrames.frames === 0,
+      `longest=${expandFrames.longest}ms frames=${expandFrames.frames}`,
+    )
+  } else {
+    check('展开那一拍的长帧:`long-animation-frame` 观察器没装上,这一格没量到(不当绿)', true, 'skipped')
+  }
 
   /*
    * **A9:全屏铺着时召唤别的瓦 —— 先退全屏,再照四态开出来**
@@ -1362,6 +1474,10 @@ async function sceneSummon(store, udd, sessions) {
      * 用会话行的「在新标签页打开」而不是「在右侧打开」:后者在 W6-a 之后是**二合一**
      * (开出来的是一格 `pair:` 复合标签,右架子那一步就没有单独的会话标签可挪);
      * 前者是老老实实在同一片叶上多开一格。
+     *
+     * **09-12 只换了名字**(方向 A 拍板 4):那一行做的事一个字没变(仍然是
+     * `dropRef({kind:'open'})`),但「在下方打开」在会话这边名不副实 ——
+     * 两格模型里竖着并排不存在。新键是 `expose.menuOpenNewTab`。
      */
     await clickSessionRow(page, sessions[0])
     const tabId = `session:${sessions[1]}`
@@ -1468,10 +1584,6 @@ async function sceneSummon(store, udd, sessions) {
     const afterPair = await read(page)
     check(
       'sidebar 点 pair 里那条会话:不新开、不顶替(全壳标签逐字不变)',
-     *
-     * **09-12 只换了名字**(方向 A 拍板 4):那一行做的事一个字没变(仍然是
-     * `dropRef({kind:'open'})`),但「在下方打开」在会话这边名不副实 ——
-     * 两格模型里竖着并排不存在。新键是 `expose.menuOpenNewTab`。
       JSON.stringify(allTabs(afterPair).map((t) => t.id)) === JSON.stringify(pairedIds),
       `${JSON.stringify(pairedIds)} → ${JSON.stringify(allTabs(afterPair).map((t) => t.id))}`,
     )

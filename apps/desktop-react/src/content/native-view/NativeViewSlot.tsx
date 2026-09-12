@@ -5,6 +5,7 @@ import { dispatchSyntheticKey } from '../../focus/dispatch'
 import { nativeViewBridge } from '../../data/browser-port'
 import { useStageStore } from '../../stage/store'
 import { useWorkbenchStore } from '../../workbench/store'
+import { usePanelVisibility } from '../visibility'
 import { startNativeViewKeymapDownlink } from './keymap-downlink'
 import s from './NativeViewSlot.module.css'
 import type { MutableRefObject } from 'react'
@@ -132,6 +133,29 @@ export interface NativeViewSlotProps {
 
 export function NativeViewSlot({ viewId, scope, elementRef, className }: NativeViewSlotProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
+  /**
+   * **宿主自述的「这一份在不在屏幕上」**(2026-09-12「收起 ≠ 关闭」补的第二个判据)。
+   *
+   * 从前这只文件只问几何,而它文件里那句「`content-visibility: hidden` 的隐藏层里
+   * 容器尺寸为 0」**是假的** —— 实测(Chromium 141):`content-visibility: hidden`
+   * 只是不渲染内容,后代该排还是排,容器自己的盒子由它的定位撑着。把架子收起来
+   * 时树身是 `position: absolute; inset: 0`,盒子跟着细梁变成 12×N —— **非零**,
+   * 于是这片原生视图照旧自称可见,一张网页就那么浮在收起来的架子上面
+   * (原生视图三条第①条:它压在 DOM 之上,CSS 盖不住它)。
+   *
+   * **为什么不改成把那一层压成 0×0**:那会让里面的滚动容器当场被夹回 0
+   * (实测:`inset:0` 收起再展开 `scrollTop` 1234 → 1234;`width/height:0` → 0),
+   * 而「收起来再展开,滚动位一格不丢」正是这条改动要的东西。
+   *
+   * 所以判据是**两句**:几何(这块地占不占面积)∧ 宿主自述(`PanelVisibility.visible`
+   * ——「摆它的那个宿主认不认这一份此刻在屏幕上」,`content/visibility.ts` 的原话)。
+   * 缺省是 `true`,所以中央区 / 浮窗 / 全屏三个宿主一个字都没变;今天唯一会说
+   * `false` 的是**收起来的架子**。
+   */
+  const hostVisible = usePanelVisibility().visible
+  const hostVisibleRef = useRef(hostVisible)
+  /** 主 effect 里那只 `schedule` 的出口 —— 宿主翻脸时要**立刻**重量一次。 */
+  const remeasureRef = useRef<() => void>(() => {})
   const { activate } = useFocusScope()
   const [snapshot, setSnapshot] = useState<string | null>(null)
   const [snapshotShown, setSnapshotShown] = useState(false)
@@ -177,11 +201,13 @@ export function NativeViewSlot({ viewId, scope, elementRef, className }: NativeV
       const myRank = myFloat ? floatRank(order, myFloat) : -1
 
       /*
-       * 「看得见」= 这块地**真的占着面积**。`content-visibility: hidden` 的隐藏层
-       * 里容器尺寸为 0(T1 的 9-9 是同一条),`display:none` 亦然 —— 一个判据同时
-       * 管住两种藏法,不必逐种藏法各写一句。
+       * 「看得见」= 这块地**真的占着面积** ∧ **宿主认它此刻在屏幕上**。
+       *
+       * 第一句管 `display:none` 与一切把盒子压没的藏法;第二句管
+       * `content-visibility: hidden` 这一种 —— 它**不**把盒子压没(判词与实测
+       * 全文在上面 `hostVisible` 那一格上),几何这一句对它是瞎的。
        */
-      const visible = rect.width > 0 && rect.height > 0
+      const visible = hostVisibleRef.current && rect.width > 0 && rect.height > 0
       const frame: Frame = {
         bounds: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
         visible,
@@ -277,8 +303,14 @@ export function NativeViewSlot({ viewId, scope, elementRef, className }: NativeV
 
     measure()
 
+    /*
+     * **把重量那一口交出去**,放在这里(所有闭包都已就位)而不是函数定义之前 ——
+     * `const schedule` 是 TDZ 的,提前引用当场炸。
+     */
+    remeasureRef.current = schedule
     return () => {
       disposed = true
+      remeasureRef.current = () => {}
       if (scheduled) cancelAnimationFrame(scheduled)
       if (clearing) cancelAnimationFrame(clearing)
       if (chasing) cancelAnimationFrame(chasing)
@@ -307,6 +339,20 @@ export function NativeViewSlot({ viewId, scope, elementRef, className }: NativeV
     // `setSnapshot` 是 React 给的稳定口,不必进依赖表(进了这只 effect 就会跟着
     // 每一次快照重挂,而重挂 = 重新观察 + 重发一帧)。
   }, [viewId])
+
+  /*
+   * **宿主翻脸时立刻重量一次**。它必须是**独立的一只** effect(不是把 `hostVisible`
+   * 塞进上面那只的依赖表):进了依赖表,收起 / 展开就会把整只观察器连同
+   * `lastFrame` / `lastOccluded` 拆了重挂 —— 那等于每收一次架子就多发一轮
+   * 「摘掉这块地」的帧,而主进程那边正靠这几句判要不要 materialize。
+   *
+   * 排在上面那只**后面**:passive effect 按声明序跑,首挂那一拍 `remeasureRef`
+   * 已经被上面那只填好了。
+   */
+  useEffect(() => {
+    hostVisibleRef.current = hostVisible
+    remeasureRef.current()
+  }, [hostVisible])
 
   /* ── 主进程推过来的四条 ──────────────────────────────────────────────── */
   useEffect(() => {

@@ -29,9 +29,54 @@ import type {
  * ──────────────────────────────────────────────────────────────────────────
  */
 
-/** 这个节点此刻可不可以当第一响应者。`inert` 由注册表算好(§4.7)。 */
+/** 这个节点**自己**此刻可不可以当第一响应者。`inert` 由注册表算好(§4.7)。 */
 export function isInteractive(node: ScopeNode | null | undefined): node is ScopeNode {
   return Boolean(node) && !node!.inert
+}
+
+/**
+ * 这个节点**连同它的祖先链**此刻可不可以接焦点 —— 「路径经过 inert 就在那儿截断」
+ * (`registry.ts` 文件头那张表)在纯函数这一头的字面兑现。
+ *
+ * ── 为什么要有第二只(2026-09-12「收起 ≠ 关闭」抓的)──────────────────────
+ * `isInteractive` 只看节点自己那一格旗。从前它够用,因为「祖先 inert 而孩子自己
+ * 不 inert」这一形在树上**活不到被问**:架子收起来把整层卸载,层里那些节点连表都
+ * 不在。架子收起改成保挂载之后,`shelf-layer` 打了 `inert`,它底下那片 `leaf` 自己
+ * 的旗还是干净的 —— 归还从 `search` 往上走,第一个碰到的就是这片 `leaf`,于是把
+ * 焦点送进了一块 `inert` 的面:浏览器对 inert 子树里的 `focus()` 是**空动作**,
+ * 焦点留在原地,随后被 Chromium 的 focus fixup 扔回 body,I1 收回再把它捡到 root
+ * (`gate:focus` 场景 17 ④-b 逐字量到的就是这一条)。
+ *
+ * 父不在表上是**合法的中间态**(同一次提交里父子一起挂载,子先登记),走到就停,
+ * 按「没人说它不行」算 —— 与 `activePathOf` 那条边界同一个判据。
+ */
+export function isReachablyInteractive(
+  nodes: FocusTreeNodes,
+  node: ScopeNode | null | undefined,
+): node is ScopeNode {
+  if (!isInteractive(node)) return false
+  const seen = new Set<FocusInstanceId>()
+  let at = node.parent
+  while (at && !seen.has(at)) {
+    seen.add(at)
+    const ancestor = nodes.get(at)
+    if (!ancestor) return true
+    if (ancestor.inert) return false
+    at = ancestor.parent
+  }
+  return true
+}
+
+/**
+ * 一个元素此刻**收不收得下焦点**:仍连通,且不在任何 `inert` 子树里(含自己)。
+ *
+ * 树上的判据(上面那只)与 DOM 上的判据是两条,缺一条都会漏:`lastFocused` /
+ * `restingTarget` / `root` 记的是**元素**,而元素可能躺在一个树上没登记的
+ * `inert` 容器里(架子的树身那只 div 不是作用域,它的 `inert` 只有 DOM 知道)。
+ * 仍然是纯的:只读传进来的那个元素自己的属性与祖先链,不问 `document`。
+ */
+export function acceptsFocus(el: HTMLElement | null | undefined): el is HTMLElement {
+  return Boolean(el) && el!.isConnected && el!.closest('[inert]') === null
 }
 
 /**
@@ -224,7 +269,8 @@ export function nearestInteractiveAncestorOf(
      * 于是判完再读 `.parent` 编译不过。取值与判定分两句是最省事的写法。
      */
     const up = ancestor.parent
-    if (isInteractive(ancestor)) return ancestor
+    // 连同祖先链一起判:架子收起保挂载之后,层里的叶自己的旗是干净的(判词在 `isReachablyInteractive` 上)。
+    if (isReachablyInteractive(nodes, ancestor)) return ancestor
     at = up
   }
   return null
@@ -270,7 +316,7 @@ export function returnTargetOf(
   const seat = node?.returnTo
   if (seat) {
     const back = nodes.get(seat.instanceId)
-    if (isInteractive(back) && seat.element.isConnected) {
+    if (isReachablyInteractive(nodes, back) && acceptsFocus(seat.element)) {
       return { instanceId: back.instanceId, element: seat.element }
     }
   }
@@ -280,16 +326,21 @@ export function returnTargetOf(
     seen.add(at)
     const ancestor = nodes.get(at)
     if (!ancestor) return null
-    if (isInteractive(ancestor)) {
+    /*
+     * 树上「可交互」连祖先链一起判,元素候选再过一道 DOM 的 `inert`(两条判据的
+     * 判词在 `isReachablyInteractive` / `acceptsFocus` 上)。三格候选的**顺序**
+     * 一个字没动:上次焦点所在 → 声明的落点 → 根。
+     */
+    if (isReachablyInteractive(nodes, ancestor)) {
       const last = ancestor.lastFocused
-      if (last && last.isConnected && ancestor.root?.contains(last)) {
+      if (acceptsFocus(last) && ancestor.root?.contains(last)) {
         return { instanceId: ancestor.instanceId, element: last }
       }
       const resting = ancestor.restingTarget?.() ?? null
-      if (resting && resting.isConnected) {
+      if (acceptsFocus(resting)) {
         return { instanceId: ancestor.instanceId, element: resting }
       }
-      if (ancestor.root && ancestor.root.isConnected) {
+      if (acceptsFocus(ancestor.root)) {
         return { instanceId: ancestor.instanceId, element: ancestor.root }
       }
     }

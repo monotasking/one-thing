@@ -103,19 +103,28 @@ describe('四边架子', () => {
     expect(screen.getByRole('complementary', { name: NAME.top })).toBeTruthy()
   })
 
-  it('收起后只剩细梁:tab 条与内容都不在了,展开键还在', () => {
+  /**
+   * **收起 = 形态变了,不是内容没了**(2026-09-12 用户拍「收起 ≠ 关闭」)。
+   *
+   * 这一条从前断的是「tab 条与内容都不在了」—— 那时收起真的把整棵 `PaneTree`
+   * 连同每一格内容子树卸载掉,展开时从零重建。今天它断的是同一件事的**新答案**:
+   * 屏幕上只看得见细梁(形态口 `data-shelf-collapsed` 在场、展开钮在),而树身
+   * 仍旧挂着 —— 那正是「收起来再展开,滚动位与内部状态一格不丢」的机械含义。
+   * 收起态的树身**必须 `inert`**,否则它的局部键会在看不见的地方响。
+   */
+  it('收起 = 细梁在、形态口在;树身仍挂着但 inert', () => {
     render(<AppShell />)
     openOnEdge('files', 'bottom')
     const shelf = screen.getByRole('complementary', { name: NAME.bottom })
     fireEvent.click(screen.getByLabelText('收起底栏'))
     expect(useStageStore.getState().shelves.bottom.collapsed).toBe(true)
-    /*
-     * **在这条架子里面**问(W1):中央区从今天起也有一条 tab 条(叶檐 —— 单 tab 时
-     * 它是那块内容的身份带),所以「整扇窗里没有 tablist」不再等于「这条架子收起来了」。
-     * 这一条要验的一直是后者。
-     */
-    expect(within(shelf).queryByRole('tablist')).toBeNull()
+    expect(shelf.hasAttribute('data-shelf-collapsed')).toBe(true)
     expect(screen.getByLabelText('展开底栏')).toBeTruthy()
+    // 树身没走:tab 条还在 DOM 里,整格被 `inert` 移出焦点序与辅助树。
+    const body = shelf.querySelector('[data-shelf-body="bottom"]') as HTMLElement
+    expect(body).toBeTruthy()
+    expect(body.hasAttribute('inert')).toBe(true)
+    expect(within(body).queryAllByRole('tab', { hidden: true }).length).toBeGreaterThan(0)
   })
 
   it('点细梁展开回去,tab 次序与活动 tab 一个都没动', () => {

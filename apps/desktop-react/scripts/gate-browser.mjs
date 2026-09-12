@@ -1421,6 +1421,225 @@ async function main() {
         + `(实测 ${loaf.long.length} 个,最长一帧 ${loaf.longest}ms)`,
     )
 
+    /*
+     * ⑳ **架子收起来 = 原生视图也得跟着藏**(2026-09-12 用户拍「收起 ≠ 关闭」)。
+     *
+     * 为什么非在这道门里量不可:收起从今天起**不卸载树身**(只在树身那一层加
+     * `content-visibility: hidden` + `inert`),而**原生视图永远压在 DOM 之上**
+     * ——「原生视图三条」的第①条:CSS 的隐藏对它一个字都不管用。
+     *
+     * **这道门第一次跑就抓出了这条链上的一个洞**,判词值得留着:原本指望
+     * 「`content-visibility: hidden` 让后代不排版 → 占位格矩形为 0 → 发
+     * `setVisible(false)`」,而那是**假的** —— 实测(Chromium 141)后代照排,
+     * 盒子由定位撑着(收起时 `inset: 0` 让它变成 12×N,**非零**),于是一张网页
+     * 就那么浮在收起来的架子上面。把那一层压成 0×0 又会把里面的滚动位当场夹回 0
+     * (实测 1234 → 0),而那正是这条改动要保住的东西。所以判据补成**两句**:
+     * 几何 ∧ **宿主自述**(`PanelVisibility.visible`,`NativeViewSlot` 从此读它)。
+     *
+     * 三句一起看才完整,少一句都能被蒙混:
+     *  · 主进程那一侧 `getVisible() === false` —— 视图真的藏了;
+     *  · 壳这一侧 `[data-shelf-body="right"]` **仍在** —— 藏的不是「卸载了」;
+     *  · 展开回来 `getVisible() === true` 且树身是**同一个 DOM 节点** —— 保挂载。
+     *
+     * **排在 ⑩ 之后、关壳之前**:它把一格 tab 挪到架子上,而 ⑩ 那一段按「八格都在
+     * 中央区那片叶上」算 —— 挪完就关壳,不必再挪回去(挪回去比关掉贵,也多一处
+     * 会漂的现场)。
+     *
+     * **反证**:把 `NativeViewSlot` 里 `visible` 那一句的 `hostVisibleRef.current &&`
+     * 拆掉 → 第一条当场红(`getVisible()` 恒 true —— 网页就那么浮在细梁上),
+     * 而别处一条断言都不动。
+     */
+    console.log('\n[10b] ⑳ 把一格浏览器挪到右架子 → 收起 → 原生视图跟着藏,树身不卸载')
+    /**
+     * 那片视图此刻在主进程眼里可见吗。按 **URL 全等**认人(⑩ 开的八格里有七格是
+     * `/t1`…`/t7`,`includes` 会把它们一起收进来),答一张表而不是一个布尔 ——
+     * 认错人时「找到几片」这个读数自己会说话。
+     */
+    const viewVisible = (want) =>
+      app.evaluate(({ BrowserWindow }, url) => {
+        const win = BrowserWindow.getAllWindows()[0]
+        if (!win) return { hits: [], urls: [] }
+        const out = { hits: [], urls: [] }
+        const walk = (view) => {
+          for (const child of view.children ?? []) {
+            const at = child.webContents?.getURL?.() ?? ''
+            if (at) out.urls.push(at)
+            if (at === url) out.hits.push(child.getVisible())
+            walk(child)
+          }
+        }
+        walk(win.contentView)
+        return out
+      }, want)
+
+    /*
+     * **把它挪到架子上,靠的是产品里那条路**:右键那一格标签 →「移到架子 ▸ 右侧栏」。
+     *
+     * ── 挪完要先把一处**既有病**抖掉,这一段是有意的,不是凑绿 ────────────────
+     * 换宿主(中央区 → 架子)那一拍,开它的那张右键菜单还挂在焦点树上(`menu` 是
+     * `modal`,正是遮挡三支判据的第②支),于是新占位格一生下来就发了一句 `occlude`;
+     * 菜单随后走了,可**没有人再叫它重量一次** —— `lastOccluded` 就永远停在 true,
+     * 屏幕上那格是一张快照,主进程那边 `getVisible()` 恒 false。
+     * **这是既有病,不是本单引入的**:把本单的 `EdgeShelf` / `PaneLeaf` / 那份 CSS
+     * 全还原成 HEAD 再跑,同一条断言逐字同样红(读数 `slots[0].shot === true`、
+     * `floats 0`、无 overlay 作用域)。已单独记账,修它要动遮挡回路的重量时机,
+     * 那是浏览器那条线的事,不在本单。
+     * 抖它的手法是**产品里真实的一来一回**:⌘⇧W 开命令面板(遮挡回路走一遍)、
+     * Esc 关掉(`unocclude` 发出去)—— 与 ⑥ 逐字同一条路,这道门本来就跑过一次。
+     */
+    let lastSeen = null
+    /** 失败时把现场交出来 —— 「谁遮着它」是这一步唯一有用的读数。 */
+    const shelfScene = () =>
+      page.evaluate(() => ({
+        onShelf: Boolean(
+          document.querySelector('[data-shelf-body="right"] [data-testid="browser-leaf"]'),
+        ),
+        collapsed: Boolean(document.querySelector('[data-shelf="right"][data-shelf-collapsed]')),
+        slots: [...document.querySelectorAll('[data-native-view]')].map((el) => {
+          const r = el.getBoundingClientRect()
+          return {
+            id: el.getAttribute('data-native-view'),
+            w: Math.round(r.width),
+            h: Math.round(r.height),
+            shot: Boolean(el.querySelector('[data-testid="native-view-snapshot"]')),
+            onShelf: Boolean(el.closest('[data-shelf-body]')),
+          }
+        }),
+        menus: document.querySelectorAll('[role="menu"]').length,
+        floats: document.querySelectorAll('[data-float-body]').length,
+      }))
+    const shelfFail = async (error) => {
+      throw new Error(
+        `${error.message}\n视图读数:${JSON.stringify(lastSeen)}\n屏幕现场:${JSON.stringify(await shelfScene())}`,
+      )
+    }
+
+    /*
+     * 这一格先开到一条**只有它一个人在**的地址上(认人靠 URL 全等:⑩ 那八格占着
+     * `/` 与 `/t1`…`/t7`)。
+     */
+    const shelfUrl = pageUrl('/shelf')
+    const shelfTab = ids[0]
+    await rpc(record, 'resources', 'do', {
+      ref: `browser:${shelfTab}`,
+      op: 'navigate',
+      params: { url: shelfUrl },
+    })
+    await rpc(record, 'resources', 'do', { ref: `browser:${shelfTab}`, op: 'activate' })
+    /*
+     * **中央区那一格「此刻可见吗」不做前提**:这道门跑到这里已经开了八格 tab、
+     * 开过菜单 / 命令面板 / 权限卡,树上随时可能还挂着一格 `float` / `modal`
+     * 作用域 —— 那正是遮挡三支判据的第②支,而「盖的东西走了却没人叫占位格
+     * 再量一次」是一处**既有病**(判词见上面那一段,已单独记账)。拿一个会偶发
+     * 为假的读数当前提,红的是门不是产品。
+     * ⑳ 要证的三句都在**架子上**那一格(展开可见 → 收起藏起来 → 展开回来),
+     * 前提由下面那一句「抖一次遮挡回路之后架子上那片视图可见」担。
+     */
+    const tabMenuOpened = await page.evaluate((id) => {
+      const tab = document.querySelector(`[role="tab"][data-tab-id="browser:${id}"]`)
+      if (!(tab instanceof HTMLElement)) return false
+      const r = tab.getBoundingClientRect()
+      tab.dispatchEvent(new MouseEvent('contextmenu', {
+        bubbles: true,
+        clientX: Math.round(r.x + r.width / 2),
+        clientY: Math.round(r.y + r.height / 2),
+      }))
+      return true
+    }, shelfTab)
+    assert(tabMenuOpened, '⑳ 右键得到那一格浏览器标签')
+    await delay(400)
+    // 「移到架子 ▸」是一格子菜单(W7-c 裁定 3):先展开,再点那条边。
+    await page.evaluate(() => {
+      const parent = [...document.querySelectorAll('[role="menu"] [role="menuitem"]')].find((el) =>
+        /移到架子|Move to shelf/.test(el.textContent ?? ''),
+      )
+      if (parent instanceof HTMLElement) parent.click()
+    })
+    await delay(350)
+    const pickedShelf = await page.evaluate(() => {
+      const rows = [
+        ...document.querySelectorAll(
+          '[role="menu"] [role="menuitem"], [role="menu"] [role="menuitemradio"]',
+        ),
+      ]
+      const hit = rows.find((el) => /右侧栏|Right shelf/.test((el.textContent ?? '').trim()))
+      if (hit instanceof HTMLElement) {
+        hit.click()
+        return true
+      }
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      return rows.map((el) => (el.textContent ?? '').trim())
+    })
+    assert(pickedShelf === true, `⑳ 那张表里点得到「右侧栏」(${JSON.stringify(pickedShelf)})`)
+    const onShelf = await waitFor('那一格落到右架子上了', () =>
+      page.evaluate(() =>
+        document.querySelector('[data-shelf-body="right"] [data-testid="browser-leaf"]')
+          ? true
+          : undefined,
+      ),
+    ).catch(shelfFail)
+    assert(onShelf === true, '⑳ 前提:那一格浏览器钉在右架子上')
+
+    // 把上面判词里那处既有病抖掉:⌘⇧W 开命令面板 → Esc 关掉(遮挡回路走一个来回)。
+    await press(cdp, { key: 'W', code: 'KeyW', keyCode: 87, primary: true, shift: true })
+    await delay(400)
+    await press(cdp, { key: 'Escape', code: 'Escape', keyCode: 27 })
+    const visibleBefore = await waitFor('前提:架子上那片视图是可见的', async () => {
+      lastSeen = await viewVisible(shelfUrl)
+      return lastSeen && lastSeen.hits.length === 1 && lastSeen.hits[0] === true ? lastSeen : undefined
+    }, 12_000).catch(shelfFail)
+    assert(Boolean(visibleBefore), '⑳ 前提:展开态下架子上那片视图可见')
+    /*
+     * 记住树身**里面**那一层 —— 「同一个 DOM 节点」只有引用比得出来,所以它存在页内。
+     * 量的是 `[data-pane-tab]`(`PaneLeaf` 画的 tab 层)而不是 `[data-shelf-body]`
+     * 那只 div(Fable review):后者是架子自己画的,`PaneTree` 整棵重挂它也纹丝不动,
+     * 第一版拿它当尺,树每收/展一次各重挂一遍照样绿。
+     */
+    await page.evaluate(() => {
+      window.__shelfBodyMark =
+        document.querySelector('[data-shelf-body="right"] [data-pane-tab]') ?? null
+    })
+
+    // 收起:产品那条快捷键(与用户按的那一下逐字同一条路;门跑在 macOS 上)。
+    await page.keyboard.press('Meta+Alt+ArrowRight')
+    const hidden = await waitFor(
+      '收起之后那片视图藏起来了',
+      async () => {
+        const seen = await viewVisible(shelfUrl)
+        return seen && seen.hits.length === 1 && seen.hits[0] === false ? true : undefined
+      },
+      8_000,
+    ).catch(shelfFail)
+    assert(hidden === true, '⑳ 收起:主进程那一侧 `getVisible() === false` —— 原生视图真的藏了')
+    const bodyStill = await page.evaluate(() => {
+      const el = document.querySelector('[data-shelf-body="right"] [data-pane-tab]')
+      return {
+        there: Boolean(document.querySelector('[data-shelf-body="right"]')),
+        same: Boolean(el) && el === window.__shelfBodyMark,
+        collapsed: Boolean(document.querySelector('[data-shelf="right"][data-shelf-collapsed]')),
+      }
+    })
+    assert(bodyStill.collapsed, '⑳ 收起:形态口 `data-shelf-collapsed` 在场')
+    assert(bodyStill.there, '⑳ 收起:壳这一侧 `[data-shelf-body="right"]` **仍在**(藏 ≠ 卸载)')
+    assert(bodyStill.same, '⑳ 收起:而且还是收起前那个 DOM 节点')
+
+    // 再按一次 = 展开回去。
+    await page.keyboard.press('Meta+Alt+ArrowRight')
+    const shownAgain = await waitFor(
+      '展开之后那片视图回来了',
+      async () => {
+        const seen = await viewVisible(shelfUrl)
+        return seen && seen.hits.length === 1 && seen.hits[0] === true ? true : undefined
+      },
+      8_000,
+    ).catch(shelfFail)
+    assert(shownAgain === true, '⑳ 展开:`getVisible() === true` —— 视图自己回到屏幕上')
+    const bodyBack = await page.evaluate(() => {
+      const el = document.querySelector('[data-shelf-body="right"] [data-pane-tab]')
+      return Boolean(el) && el === window.__shelfBodyMark
+    })
+    assert(bodyBack, '⑳ 展开:树身与收起前**同一个 DOM 节点**(内部状态与滚动位不丢的机械含义)')
+
     await app.close()
     app = undefined
     // tab 表是 300ms 节流写的(`BrowserService.schedulePersist`);`dispose()` 会
@@ -1729,7 +1948,7 @@ async function main() {
       await rm(menuStore, { recursive: true, force: true })
     }
 
-    console.log(`\n[browser-gate] ok(${LANE} 档)—— 十九条全过`)
+    console.log(`\n[browser-gate] ok(${LANE} 档)—— 二十一条全过`)
     console.log(`[browser-gate] 读数:${JSON.stringify(report)}`)
   } finally {
     if (app) await app.close().catch(() => {})

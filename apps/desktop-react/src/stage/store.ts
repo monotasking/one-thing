@@ -43,6 +43,7 @@ import type {
   Placement,
   PlacementTarget,
   ResolvedOpen,
+  ShelfRail,
   ShelfSide,
   StageItemSpec,
   StageSettings,
@@ -53,6 +54,11 @@ import type {
 interface StageStore extends StageState, StageSettings, PerSpaceState<T.StageFurniture> {
   items: StageItemSpec[]
   dockDisplay: DockDisplay
+  /**
+   * **收起来的架子还画不画那条细梁把手**(2026-09-12 用户拍)。一格全局偏好,
+   * 四条边共用;判词全文在 `types.ts` 的 `ShelfRail` 上。缺省 `'shown'`。
+   */
+  shelfRail: ShelfRail
 
   /** 落点由 resolveOpen 解析(记忆 > 全局默认档);要点名落点的走 openAs。 */
   clickDockIcon: (id: string) => void
@@ -140,6 +146,8 @@ interface StageStore extends StageState, StageSettings, PerSpaceState<T.StageFur
   closeFloat: (id: string) => void
   setShelfThickness: (side: ShelfSide, thickness: number) => void
   setDockDisplay: (d: DockDisplay) => void
+  /** 收起后画不画细梁把手。三处入口(细梁右键 / 架子 ⋯ 菜单 / 设置页)调的都是这一只。 */
+  setShelfRail: (r: ShelfRail) => void
   setDockEdge: (e: DockEdge) => void
   setDockAlign: (a: DockAlign) => void
   setDockSize: (z: DockSize) => void
@@ -534,6 +542,7 @@ export const useStageStore = create<StageStore>()(
       byWorkspace: {},
       items: STAGE_ITEMS,
       dockDisplay: 'always',
+      shelfRail: 'shown',
 
       /**
        * **点 Dock 瓦 = 召唤**(W7-p 裁定 6,审计 A 的 A7/A8)。
@@ -708,6 +717,7 @@ export const useStageStore = create<StageStore>()(
       setShelfThickness: (side, thickness) =>
         set((s) => T.setShelfThickness(s, side, thickness, viewport())),
       setDockDisplay: (dockDisplay) => set({ dockDisplay }),
+      setShelfRail: (shelfRail) => set({ shelfRail }),
       setDockEdge: (dockEdge) => set({ dockEdge }),
       setDockAlign: (dockAlign) => set({ dockAlign }),
       setDockSize: (dockSize) => set({ dockSize }),
@@ -763,6 +773,13 @@ export const useStageStore = create<StageStore>()(
         // 「缺席读作空」本身就是这一格的语义,不需要翻译。
         merged.hiddenItems = Array.isArray(merged.hiddenItems) ? merged.hiddenItems : []
         /*
+         * 同一条(本批新加的那一格):**缺席读作 `'shown'`** —— 那就是这一格的语义,
+         * 不需要一个迁移版本来翻译它。写成白名单而不是 `?? 'shown'`,是因为档案里
+         * 那一格也可能是别的脏字符串(手改 localStorage / 未来版本回滚),而
+         * 「不是 hidden 就是 shown」两档全覆盖。
+         */
+        merged.shelfRail = merged.shelfRail === 'hidden' ? 'hidden' : 'shown'
+        /*
          * 档案里的浮窗矩形当场重钳一遍(09-04 §4)。
          *
          * 存下来的那份身量是**上一台窗口**的:1400 宽的窗里摆好的 880 浮窗,搬到
@@ -789,6 +806,7 @@ export const useStageStore = create<StageStore>()(
        */
       partialize: (s) => ({
         dockDisplay: s.dockDisplay,
+        shelfRail: s.shelfRail,
         dockEdge: s.dockEdge,
         dockAlign: s.dockAlign,
         dockSize: s.dockSize,

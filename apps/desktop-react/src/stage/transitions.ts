@@ -268,8 +268,8 @@ export const initialStageState: StageState = {
  * 少写一处就会出现「存的时候多摘一格、换的时候少摊一格」那类只在切回去时才
  * 露面的 bug。
  *
- * 不在表里的(dockEdge/dockAlign/dockSize/dockDisplay/hiddenItems/defaultOpen/
- * locale)是**这台机器的偏好**,跨空间共享:换个工作区不该把 Dock 挪到另一条边、
+ * 不在表里的(dockEdge/dockAlign/dockSize/dockDisplay/shelfRail/hiddenItems/
+ * defaultOpen/locale)是**这台机器的偏好**,跨空间共享:换个工作区不该把 Dock 挪到另一条边、
  * 更不该换界面语言。判据写在 `workspace/per-space.ts` 文件头。
  *
  * `flashPinned` / `flashSide` 也不在表里:它们是**一次动画的瞬时值**,本来就不

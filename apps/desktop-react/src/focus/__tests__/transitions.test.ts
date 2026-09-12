@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   activePathOf,
+  isReachablyInteractive,
   modalTrapNode,
+  nearestInteractiveAncestorOf,
   restingElementOf,
   returnTargetOf,
   routeEscape,
@@ -569,5 +571,70 @@ describe('modalTrapNode —— Tab 圈在哪一格里', () => {
       scopeNode('m', 'menu', 'd', { root: el() }),
     )
     expect(modalTrapNode(t, ['r'])?.instanceId).toBe('m')
+  })
+})
+
+/**
+ * **inert 祖先截断**(2026-09-12「收起 ≠ 关闭」抓的:架子收起改成保挂载之后
+ * 才活出来的树形)。树:root > shelf-layer(**inert**)> leaf(自己不 inert)> search。
+ * 归还从 `search` 往上走,第一个碰到的是 `leaf` —— 它自己的旗是干净的,可它整个
+ * 躺在一块 inert 的面里。从前这一形活不到被问(收起把整层卸载),今天它是常态。
+ *
+ * 反证:把 `returnTargetOf` 里的 `isReachablyInteractive` 换回 `isInteractive` →
+ * 第一条回的是 `leaf` 的根;把 `acceptsFocus` 的 `closest('[inert]')` 拆掉 → 第二条
+ * 回的是那只躺在 inert 容器里的输入框。
+ */
+describe('returnTargetOf ③ inert 祖先截断 —— 架子收起保挂载(2026-09-12)', () => {
+  it('归还跳过「自己干净、祖先 inert」的叶,落到 root', () => {
+    const rootEl = el()
+    // 输入面板与架子都长在 root 的根元素**里面**(与真机 DOM 同形,`contains` 才成立)。
+    const composerRoot = document.createElement('div')
+    rootEl.append(composerRoot)
+    const box = document.createElement('textarea')
+    composerRoot.append(box)
+    const shelfRoot = document.createElement('div')
+    shelfRoot.setAttribute('inert', '')
+    rootEl.append(shelfRoot)
+    const leafRoot = document.createElement('div')
+    shelfRoot.append(leafRoot)
+    const t = tree(
+      scopeNode('r', 'root', null, { root: rootEl, lastFocused: box }),
+      scopeNode('c', 'composer', 'r', { root: composerRoot, lastFocused: box }),
+      scopeNode('sh', 'shelf-layer', 'r', { root: shelfRoot, inert: true }),
+      scopeNode('l', 'leaf', 'sh', { root: leafRoot }),
+      scopeNode('s', 'search', 'l', {
+        root: el(),
+        // 上一任是那一层自己(召唤露面时先聚的是层),此刻它 inert 了。
+        returnTo: { instanceId: 'sh', element: shelfRoot },
+      }),
+    )
+    expect(isReachablyInteractive(t, t.get('l'))).toBe(false)
+    expect(nearestInteractiveAncestorOf(t, t.get('s'))?.instanceId).toBe('r')
+    expect(returnTargetOf(t, t.get('s'))).toEqual({ instanceId: 'r', element: box })
+  })
+
+  it('候选元素自己躺在 DOM 的 `[inert]` 容器里 → 跳过(树上没登记那只容器)', () => {
+    const rootEl = el()
+    const hidden = document.createElement('div')
+    hidden.setAttribute('inert', '')
+    const stale = document.createElement('button')
+    hidden.append(stale)
+    rootEl.append(hidden)
+    const resting = document.createElement('textarea')
+    rootEl.append(resting)
+    const t = tree(
+      scopeNode('r', 'root', null, {
+        root: rootEl,
+        lastFocused: stale,
+        restingTarget: () => resting,
+      }),
+      scopeNode('s', 'search', 'r', { root: el() }),
+    )
+    expect(returnTargetOf(t, t.get('s'))).toEqual({ instanceId: 'r', element: resting })
+  })
+
+  it('父不在表上是合法中间态:不因它判死', () => {
+    const t = tree(scopeNode('l', 'leaf', 'ghost', { root: el() }))
+    expect(isReachablyInteractive(t, t.get('l'))).toBe(true)
   })
 })

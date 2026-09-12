@@ -201,10 +201,17 @@ export const en: Record<MessageKey, string> = {
   'shelf.closeAll': 'Close all in {name}',
   'shelf.expand': 'Expand {name}',
   'shelf.resize': 'Resize {name}',
+  'shelf.railMenu': '{name} rail actions',
+  'shelf.railHideAll': 'Hide the collapsed handle (all edges)',
+  'shelf.railToggle': 'Show handle when collapsed',
 
   /* ── settings ─────────────────────────────────────────────────────── */
   'settings.dockDisplay': 'Dock display',
   'settings.dockDisplayHint': 'The Dock always floats above the UI; on auto-hide it slides out when you reach that edge',
+  'settings.shelfRail': 'Collapsed shelf handle',
+  'settings.shelfRailHint': 'Whether a collapsed shelf keeps a clickable rail. Hidden means a collapsed shelf takes no space at all; a shortcut or its Dock tile still expands it',
+  'settings.shelfRailShown': 'Show',
+  'settings.shelfRailHidden': 'Hide',
   'settings.dockAlways': 'Always shown',
   'settings.dockAutohide': 'Auto-hide',
   'settings.defaultOpen': 'Default open behavior',

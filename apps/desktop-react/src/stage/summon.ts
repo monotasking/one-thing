@@ -31,7 +31,8 @@ import type { Placement, ShelfSide, StageState } from './types'
  * 舞台 / 浮窗 / 盖没有「收起」这一档(它们不是家具,是开着的面),所以照旧 `closeToDock`。
  *
  * **焦点不在这里手动搬**:面一收,装着它的那一层要么卸载(关掉)要么变 inert
- * (架子收成细梁),两条都是**结构变化**,树的结构归还(§4.5 的 `returnTo` → 父链)
+ * (架子收成细梁 —— 2026-09-12 起这句话**字面成立**:收起只把树身翻成
+ * `content-visibility: hidden` + `inert`,DOM 与 React 树一格不动),两条都是**结构变化**,树的结构归还(§4.5 的 `returnTo` → 父链)
  * 自然把焦点送回按键之前的地方。写跳转条的人不需要知道有归还这回事,收面的人
  * 同样不需要 —— 少写的那一句正是这条设计要的东西。
  *
@@ -133,7 +134,13 @@ export type SummonRevealHow =
 
 /** 收起一块面的三条路。哪一条由**形态**说了算(见文件头那段判词)。 */
 export type SummonHideHow =
-  /** 钉在架子上 —— 收起整条架子,这块面仍是它的活动 tab。 */
+  /**
+   * 钉在架子上 —— 收起整条架子,这块面仍是它的活动 tab。
+   *
+   * **收起 ≠ 关闭**(2026-09-12 用户拍):这一下只翻 `shelves[side].collapsed`,
+   * 树身**保持挂载**(隐藏 + `inert`),内容的滚动位、播放、终端缓冲一格不丢;
+   * 只有 `closeShelf` / `closeToDock` 才真的把那棵树摘掉、把内容卸载。
+   */
   | 'shelf-collapse'
   /** 舞台 / 浮窗 —— 没有「收起」档,收回 Dock。 */
   | 'close'

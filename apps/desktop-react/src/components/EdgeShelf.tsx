@@ -11,6 +11,7 @@ import { panelIdOf } from '../stage/panel-ref'
 import { occludedByFull, useWorkbenchStore } from '../workbench/store'
 import { edgeRegion } from '../workbench/regions'
 import { PaneTree } from '../workbench/PaneTree'
+import { DEFAULT_PANEL_VISIBILITY, PanelVisibilityContext } from '../content/visibility'
 import { leafCount } from '../workbench/layout'
 import { FocusScope } from '../focus/FocusScope'
 import { perfMark } from '../services/perf'
@@ -20,7 +21,7 @@ import type { PaneHostChrome } from '../workbench/PaneLeaf'
 import { ButtonBase } from '../ui/ButtonBase'
 import { PointerTrack } from '../ui/drag'
 import { IconButton } from '../ui/IconButton'
-import { MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
+import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
 import { ChevronsDown, ChevronsLeft, ChevronsRight, ChevronsUp } from './icons'
 import type { LucideIcon } from './icons'
 import { FLASH_MS } from './motion'
@@ -81,6 +82,9 @@ function readViewport(): Viewport {
   return { w: window.innerWidth, h: window.innerHeight }
 }
 
+/** 收起态那份宿主自述。模块级常量 —— 每帧新造一个对象会让整棵树白重渲一次。 */
+const COLLAPSED_VISIBILITY = { visible: false, interactive: false } as const
+
 interface Props {
   side: ShelfSide
 }
@@ -114,7 +118,9 @@ interface Props {
  * ── 状态表 ②:UI 生命状态 ───────────────────────────────────────────────
  *   空       整条不渲染(不占一丝布局)
  *   展开     厚度 = `shelf.thickness`,身子是那棵树
- *   收起     折成一条细梁(`--shelf-rail`),里面一个 tab 的内容都不画
+ *   收起     折成一条细梁(`--shelf-rail`);**树身不卸载**,只是隐藏 + `inert`
+ *            (2026-09-12 用户拍「收起 ≠ 关闭」;判词在下面 `.bodyHidden` 那一格)
+ *   收起·无把手  `shelfRail === 'hidden'` 时收起态零厚度、连细梁都不画
  *   拖厚度   零过渡、逐帧写本地 state,松手才落 store
  *   闪烁     `flashSide` 指到自己时闪两下
  *   分屏     树自己的事(`PaneTree` 画杆),这一层不知道
@@ -144,6 +150,13 @@ export function EdgeShelf({ side }: Props) {
   const setShelfThickness = useStageStore((st) => st.setShelfThickness)
   const toggleShelfCollapsed = useStageStore((st) => st.toggleShelfCollapsed)
   const closeShelf = useStageStore((st) => st.closeShelf)
+  /**
+   * **收起后那条细梁画不画**(2026-09-12 用户拍)。一格全局偏好,四条边共用;
+   * 三处入口(细梁右键 / 架子 ⋯ 菜单 / 设置页 Dock 节)写的是**同一格** ——
+   * parity 测试逐项钉着这一条。
+   */
+  const shelfRail = useStageStore((st) => st.shelfRail)
+  const setShelfRail = useStageStore((st) => st.setShelfRail)
   const edgeToFloat = useStageStore((st) => st.edgeToFloat)
 
   const asideRef = useRef<HTMLElement>(null)
@@ -153,6 +166,16 @@ export function EdgeShelf({ side }: Props) {
 
   // 拖厚度期间的实时值。松手清空,渲染就自动回到 store 那份(两者此刻相等)。
   const [liveThickness, setLiveThickness] = useState<number | null>(null)
+
+  /**
+   * **细梁的右键菜单**开在哪(视口坐标;null = 没开)。
+   *
+   * 它不走 `workbench/leaf-menu` 那格 store:那一格答的是「哪**一片叶**的动作表
+   * 开着」,而细梁上此刻根本没有叶露脸(树身是隐藏的)。这张表只有两行、只活在
+   * 这一条架子上,所以它是一格本地 state —— 与 `ui/Menu` 的点锚档天然合得上
+   * (右键那一下的坐标只在那一发事件里存在)。
+   */
+  const [railMenuAt, setRailMenuAt] = useState<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
     if (firstFlash.current) {
@@ -292,16 +315,34 @@ export function EdgeShelf({ side }: Props) {
             {t('shelf.popOut', { name })}
           </MenuItem>
           <MenuItem onClick={() => closeShelf(side)}>{t('shelf.closeAll', { name })}</MenuItem>
+          {/*
+            **第三处入口,同一格真相**(2026-09-12):细梁右键 / 这一行 / 设置页
+            Dock 节调的都是 `setShelfRail`。用勾选态而不是两句切换文案 ——
+            `ui/MenuItem` 本来就收 `checked`(它自己翻成 `menuitemradio` 并画那颗勾),
+            而「这一格此刻是开还是关」正是勾选态在说的话;两句文案要读者自己
+            推断当前值,同一张表在两种状态下还会长得不一样。
+            它是**全局**偏好(四条边共用),所以文案里不带 `{name}`。
+          */}
+          <MenuItem
+            checked={shelfRail === 'shown'}
+            onClick={() => setShelfRail(shelfRail === 'shown' ? 'hidden' : 'shown')}
+          >
+            {t('shelf.railToggle')}
+          </MenuItem>
         </>
       ),
     }),
-    [activeItemId, edgeToFloat, t, name, side, toggleCollapsed, closeShelf],
+    [activeItemId, edgeToFloat, t, name, side, toggleCollapsed, closeShelf, shelfRail, setShelfRail],
   )
 
   // 空架子不渲染 —— 也就不占一丝布局。
   if (!tree) return null
   const thickness = liveThickness ?? shelf.thickness
   const multi = leafCount(tree) > 1
+  /** 收起态还画不画那条细梁。展开态与它无关(那时把手是厚度杆,不是细梁)。 */
+  const railShown = shelfRail === 'shown'
+  /** 收起且把手也藏了 = 这条架子此刻**一个像素都不占**(连那条 1px 分隔线)。 */
+  const flush = shelf.collapsed && !railShown
 
   return (
     <aside
@@ -310,66 +351,147 @@ export function EdgeShelf({ side }: Props) {
         s.shelf,
         SIDE_CLASS[side],
         shelf.collapsed && s.collapsed,
+        flush && s.railHidden,
         liveThickness !== null && s.dragging,
         flashing && s.flashing,
       ]
         .filter(Boolean)
         .join(' ')}
-      style={thicknessStyle(side, shelf.collapsed ? 'var(--shelf-rail)' : `${thickness}px`)}
+      style={thicknessStyle(
+        side,
+        shelf.collapsed ? (railShown ? 'var(--shelf-rail)' : '0px') : `${thickness}px`,
+      )}
       aria-label={name}
       data-shelf={side}
+      /*
+       * **形态的取件口**(2026-09-12)。从前门与用例问「有没有 `data-shelf-body`」
+       * 来判收起 —— 那是拿「树身在不在 DOM 里」当形态读数,而收起从今天起**不再
+       * 卸载树身**,那条判据当场说谎。形态是形态,挂载是挂载,所以它自己一格。
+       */
+      data-shelf-collapsed={shelf.collapsed || undefined}
     >
-      {shelf.collapsed ? (
-        /* 细梁不是一颗图标钮:它是**整条边那么长**的一块结构件(展开把手),
-         * 所以走裸钮三类判的第③类 —— `ui/ButtonBase` 只清 UA,那条 100%×100%
-         * 的皮肤(含 hover 时 railIcon 转正色)原样留在本地。 */
-        <ButtonBase
-          className={s.rail}
-          onClick={toggleCollapsed}
-          aria-label={t('shelf.expand', { name })}
-        >
-          {(() => {
-            const ExpandIcon = EXPAND_ICON[side]
-            return <ExpandIcon className={s.railIcon} strokeWidth={1.75} aria-hidden="true" />
-          })()}
-        </ButtonBase>
-      ) : (
-        <>
+      {/*
+        ── 收起 ≠ 关闭(2026-09-12 用户拍)────────────────────────────────────
+        从前这里是个三元:收起那一支只画细梁,于是整棵 `PaneTree` 连同每一格 tab
+        的内容子树**当场卸载**,展开时从零重建 —— 一条钉着大会话的右架子收一下
+        再展开,滚动位、流式接续、终端缓冲、原生视图全部重来。收起是**看不看得见**
+        这件事,和「这块面还在不在」是两件事,只有后者才该卸载(`closeShelf` /
+        `closeToDock`:那时 `regions['edge:<side>']` 没了,整条 `<aside>` 连同
+        `return null` 一起走)。
+
+        所以今天是两格并列:细梁(只在收起 ∧ 把手显示时画)与树身(永远画,
+        收起时隐藏 + `inert`)。厚度把手只在展开时画 —— 收起态没有厚度可拖。
+      */}
+      {shelf.collapsed
+        ? railShown && (
+            /* 细梁不是一颗图标钮:它是**整条边那么长**的一块结构件(展开把手),
+             * 所以走裸钮三类判的第③类 —— `ui/ButtonBase` 只清 UA,那条 100%×100%
+             * 的皮肤(含 hover 时 railIcon 转正色)原样留在本地。 */
+            <ButtonBase
+              className={s.rail}
+              onClick={toggleCollapsed}
+              /*
+               * **右键 = 这条细梁自己的动作表**(本仓判例「动作单产地 = 右键上下文
+               * 菜单」)。用户原话是「双击细梁」,改判右键:细梁**单击即展开**,
+               * 展开之后细梁已经不在了,第二下落不到同一个元素上 —— `dblclick`
+               * 在结构上发不出来;而「延迟单击去等双击」违反第 5 轴那条
+               * 「点击当帧必须有可见响应」。
+               */
+              onContextMenu={(e) => {
+                e.preventDefault()
+                setRailMenuAt({ x: e.clientX, y: e.clientY })
+              }}
+              aria-label={t('shelf.expand', { name })}
+            >
+              {(() => {
+                const ExpandIcon = EXPAND_ICON[side]
+                return <ExpandIcon className={s.railIcon} strokeWidth={1.75} aria-hidden="true" />
+              })()}
+            </ButtonBase>
+          )
+        : (
+            <div
+              className={s.handle}
+              onPointerDown={onHandleDown}
+              role="separator"
+              aria-label={t('shelf.resize', { name })}
+              aria-orientation={side === 'left' || side === 'right' ? 'vertical' : 'horizontal'}
+            />
+          )}
+      {/*
+        身 = 这条边那棵树。檐(tab 条 + ⋯ / 分屏 + 上面那三颗)由 `PaneLeaf`
+        统一画 —— 这一层不再自绘一条 tab 条,keep-alive 与 `inert` 那两遍话
+        也随之只剩一个产地(判词写在 `PaneLeaf` 的 `PaneTabLayer` 上)。
+
+        **收起时它仍在这儿**,只是隐藏 + `inert`:`inert` 照旧**说两遍**
+        (一遍给 DOM、一遍给树),判据与被全屏盖住那一格并成一句 —— 少了给树的
+        那一遍,收起来的架子的局部键会在看不见的地方响。
+      */}
+      <FocusScope scope="shelf-layer" owner={ownerId} inert={occluded || shelf.collapsed}>
+        {({ scopeProps }) => (
           <div
-            className={s.handle}
-            onPointerDown={onHandleDown}
-            role="separator"
-            aria-label={t('shelf.resize', { name })}
-            aria-orientation={side === 'left' || side === 'right' ? 'vertical' : 'horizontal'}
-          />
-          {/*
-            身 = 这条边那棵树。檐(tab 条 + ⋯ / 分屏 + 上面那三颗)由 `PaneLeaf`
-            统一画 —— 这一层不再自绘一条 tab 条,keep-alive 与 `inert` 那两遍话
-            也随之只剩一个产地(判词写在 `PaneLeaf` 的 `PaneTabLayer` 上)。
-          */}
-          <FocusScope scope="shelf-layer" owner={ownerId} inert={occluded}>
-            {({ scopeProps }) => (
-              <div
-                {...scopeProps}
-                className={s.body}
-                data-shelf-body={side}
-                inert={occluded || undefined}
-                /*
-                 * **这条架子此刻露脸的那格瓦**(门与用例的取件口;`gate:squeeze` /
-                 * `gate:perf` 按它认「总览钉上来了没有」)。树是真相,这一格是它的
-                 * 一格投影 —— 与 `shelves[side].activeId` 同一个读法、同一处产地。
-                 * 露的是文件时它是空串:那是诚实的「此刻没有瓦露脸」。
-                 */
-                data-panel={activeItemId ?? ''}
-                data-pane-region={region}
-                data-pane-multi={multi || undefined}
-                onPointerDownCapture={() => perfMark(`shelf.activate:${side}`)}
-              >
-                <PaneTree node={tree} host={host} />
-              </div>
-            )}
-          </FocusScope>
-        </>
+            {...scopeProps}
+            className={shelf.collapsed ? `${s.body} ${s.bodyHidden}` : s.body}
+            data-shelf-body={side}
+            inert={occluded || shelf.collapsed || undefined}
+            /*
+             * **这条架子此刻露脸的那格瓦**(门与用例的取件口;`gate:squeeze` /
+             * `gate:perf` 按它认「总览钉上来了没有」)。树是真相,这一格是它的
+             * 一格投影 —— 与 `shelves[side].activeId` 同一个读法、同一处产地。
+             * 露的是文件时它是空串:那是诚实的「此刻没有瓦露脸」。
+             */
+            data-panel={activeItemId ?? ''}
+            data-pane-region={region}
+            data-pane-multi={multi || undefined}
+            onPointerDownCapture={() => perfMark(`shelf.activate:${side}`)}
+          >
+            {/*
+              **收起 = 这块地没露脸,宿主自己说一遍**(2026-09-12)。
+              `inert` 管的是键盘与辅助树,这一格管的是**内容侧的自述**:
+              `expose` 的归位、通知面的「算不算被看见」、原生视图的显隐都读它。
+              两句缺一不可 —— 少了这一句,收起来的架子里那一格仍旧自称在屏幕上
+              (真机症状:收起再展开,会话总览停在 Quick Look 而不回总览)。
+
+              **Provider 两态都在,只换 value**(Fable review 抓的):第一版写成
+              `collapsed ? <Provider><PaneTree/></Provider> : <PaneTree/>`,两个分支在
+              同一个槽位上是**不同类型**的元素,React 按类型对账 —— 收起与展开各
+              重挂一次整棵 `PaneTree`,「保挂载」一个字都没成立(焦点归还那条红也是
+              它的副作用:收起那一拍所有作用域先出表再回表,归还被当成一次重挂吞掉)。
+              展开态给的是缺省值那个**同一个对象**,与从前「不给 Provider」逐字等价。
+            */}
+            <PanelVisibilityContext.Provider
+              value={shelf.collapsed ? COLLAPSED_VISIBILITY : DEFAULT_PANEL_VISIBILITY}
+            >
+              <PaneTree node={tree} host={host} />
+            </PanelVisibilityContext.Provider>
+          </div>
+        )}
+      </FocusScope>
+      {shelf.collapsed && railShown && railMenuAt && (
+        <Menu
+          x={railMenuAt.x}
+          y={railMenuAt.y}
+          onClose={() => setRailMenuAt(null)}
+          label={t('shelf.railMenu', { name })}
+        >
+          <MenuItem
+            onClick={() => {
+              setRailMenuAt(null)
+              toggleCollapsed()
+            }}
+          >
+            {t('shelf.expand', { name })}
+          </MenuItem>
+          {/* 第一处入口。文案说「所有边」是因为它**真的**是四条边共用的一格。 */}
+          <MenuItem
+            onClick={() => {
+              setRailMenuAt(null)
+              setShelfRail('hidden')
+            }}
+          >
+            {t('shelf.railHideAll')}
+          </MenuItem>
+        </Menu>
       )}
     </aside>
   )

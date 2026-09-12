@@ -12,6 +12,7 @@ import type {
   DockMagnifyLevel,
   DockSize,
   ResolvedOpen,
+  ShelfRail,
 } from '../stage/types'
 import {
   SESSION_OPEN_MODE_LABELS,
@@ -43,6 +44,16 @@ import s from './mocks.module.css'
 const DOCK_OPTIONS: Array<{ value: DockDisplay; labelKey: MessageKey }> = [
   { value: 'always', labelKey: 'settings.dockAlways' },
   { value: 'autohide', labelKey: 'settings.dockAutohide' },
+]
+
+/**
+ * 收起后那条细梁把手画不画(2026-09-12 用户拍)。**第三处入口**,与细梁右键、
+ * 架子 ⋯ 菜单写的是同一格 `shelfRail`;它长在 Dock 这一节里,因为这一节问的
+ * 就是「外壳上那些常驻的把手长什么样」。
+ */
+const SHELF_RAIL_OPTIONS: Array<{ value: ShelfRail; labelKey: MessageKey }> = [
+  { value: 'shown', labelKey: 'settings.shelfRailShown' },
+  { value: 'hidden', labelKey: 'settings.shelfRailHidden' },
 ]
 
 const EDGE_OPTIONS: Array<{ value: DockEdge; labelKey: MessageKey }> = [
@@ -144,6 +155,8 @@ export function SettingsMock() {
   const t = useT()
   const dockDisplay = useStageStore((st) => st.dockDisplay)
   const setDockDisplay = useStageStore((st) => st.setDockDisplay)
+  const shelfRail = useStageStore((st) => st.shelfRail)
+  const setShelfRail = useStageStore((st) => st.setShelfRail)
   const dockEdge = useStageStore((st) => st.dockEdge)
   const setDockEdge = useStageStore((st) => st.setDockEdge)
   const dockAlign = useStageStore((st) => st.dockAlign)
@@ -274,6 +287,19 @@ export function SettingsMock() {
                   value={dockDisplay}
                   onChange={setDockDisplay}
                   label={t('settings.dockDisplay')}
+                />
+              </div>
+
+              <div className={s.settingRow}>
+                <div>
+                  <div className={s.settingRowLabel}>{t('settings.shelfRail')}</div>
+                  <div className={s.settingRowHint}>{t('settings.shelfRailHint')}</div>
+                </div>
+                <Segmented
+                  options={opts(SHELF_RAIL_OPTIONS)}
+                  value={shelfRail}
+                  onChange={setShelfRail}
+                  label={t('settings.shelfRail')}
                 />
               </div>
 

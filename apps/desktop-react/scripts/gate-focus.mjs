@@ -666,8 +666,14 @@ async function main() {
       )
       await delay(500)
     }
+    /*
+     * **只数展开着的那些架子上的 tab**(2026-09-12「收起 ≠ 关闭」)。收起从今天起
+     * 不卸载树身,于是一条收成细梁的架子照样查得到 `[role="tab"]` —— 拿它来选
+     * 「切哪一格」会点进一块**此刻看不见**的面,而这一段要量的是焦点跟着切 tab
+     * 走。改的只是**读形态的方式**(`:not([data-shelf-collapsed])`),量什么一个字没动。
+     */
     const shelf = await page.evaluate(() => ({
-      count: document.querySelectorAll('[data-shelf] [role="tab"]').length,
+      count: document.querySelectorAll('[data-shelf]:not([data-shelf-collapsed]) [role="tab"]').length,
     }))
     if (shelf.count < 2) {
       skip('架子两 tab 切换', `夹具没搭起来 —— 此刻架子上只有 ${shelf.count} 个 tab`)
@@ -677,7 +683,9 @@ async function main() {
        * 在别的边上也留了瓦 —— 点 A 边、量 B 边当然读不到焦点)。
        */
       const clickedSide = await page.evaluate(() => {
-        const tabs = Array.from(document.querySelectorAll('[data-shelf] [role="tab"]'))
+        const tabs = Array.from(
+          document.querySelectorAll('[data-shelf]:not([data-shelf-collapsed]) [role="tab"]'),
+        )
         const off = tabs.find((t) => t.getAttribute('aria-selected') !== 'true')
         if (!(off instanceof HTMLElement)) return null
         off.click()
@@ -694,7 +702,9 @@ async function main() {
        */
       const state = await page.evaluate((side) => {
         const body = document.querySelector(
-          side ? `[data-shelf="${side}"] [data-shelf-body]` : '[data-shelf] [data-shelf-body]',
+          side
+            ? `[data-shelf="${side}"] [data-shelf-body]`
+            : '[data-shelf]:not([data-shelf-collapsed]) [data-shelf-body]',
         )
         const layers = Array.from(body?.querySelectorAll('[data-pane-tab]') ?? [])
         const active = document.activeElement

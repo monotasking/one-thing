@@ -2,6 +2,7 @@ import { FOCUS_SCOPES } from './scopes'
 import {
   activePathOf,
   isInteractive,
+  isReachablyInteractive,
   nearestInteractiveAncestorOf,
   restingElementOf,
   returnTargetOf,
@@ -492,7 +493,8 @@ export class FocusTree {
   ): boolean {
     let best: ScopeNode | null = null
     for (const node of this.map.values()) {
-      if (node.scope !== scope || !isInteractive(node) || !node.root) continue
+      // 连祖先链一起判(2026-09-12):收起来的架子里那片叶自己的旗是干净的,但它不可达。
+      if (node.scope !== scope || !isReachablyInteractive(this.map, node) || !node.root) continue
       if (opts.owner !== undefined && node.owner !== opts.owner) continue
       if (!best || node.lastActiveAt > best.lastActiveAt) best = node
     }

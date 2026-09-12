@@ -14,6 +14,7 @@ import { useReportOverflow } from './leaf-overflow'
 import { useCloseLeafTab, useLeafTabSpecs } from './leaf-tabs'
 import { CENTER_REGION } from './regions'
 import { renderRef } from './render'
+import { usePanelVisibility } from '../content/visibility'
 import { regionOfLeafIn, useWorkbenchStore } from './store'
 import { useTabDrag } from './useTabDrag'
 import type { ContentRef } from './kinds'
@@ -186,6 +187,22 @@ export const PaneLeaf = memo(function PaneLeaf({
   /** 檐在不在这片叶身上。**唯一判据**,见文件头那张区域表。 */
   const stripInLeaf = region !== CENTER_REGION
 
+  /**
+   * **宿主此刻把这块地露出来了吗**(2026-09-12「收起 ≠ 关闭」)。
+   *
+   * 从今天起一条架子收起来**不卸载树身**(判词在 `components/EdgeShelf.tsx` 上),
+   * 于是「这片叶的活动 tab 露脸了」这句话多了一个前提:装着它的那块地自己得露着。
+   * 没有这一句,收起来的架子里那一格照样 `visible: true / interactive: true` ——
+   * `expose/components/use-live` 的归位、通知面的「算不算被看见」、原生视图的
+   * 显隐,统统会当它还在屏幕上(真机症状:收起再展开,总览停在 Quick Look 而不是
+   * 回到总览;那正是这条链的第一处显形)。
+   *
+   * 读的是**宿主的自述**(`PanelVisibility.visible`)而不是「我在不在架子上、
+   * 那条架子收没收」—— 后者要这只文件认识宿主。缺席即缺省 `true`,所以中央区 /
+   * 浮窗 / 全屏三个宿主一个字都没变。
+   */
+  const hostShown = usePanelVisibility().visible
+
   /*
    * ── 全屏那三个读数(W2)──────────────────────────────────────────────
    * 订的都是**标量**,不是整张表:全屏开合是全局事件,而它只该让「装着它的那一片」
@@ -315,7 +332,7 @@ export const PaneLeaf = memo(function PaneLeaf({
                 `appendChild` 进它的槽),搬一次 = 整棵内容子树换爹。
               */}
               {frames.map((ref) => (
-                <PaneTabFrame key={refId(ref)} tabRef={ref} on={refId(ref) === activeId} />
+                <PaneTabFrame key={refId(ref)} tabRef={ref} on={refId(ref) === activeId} hostShown={hostShown} />
               ))}
               {/*
                 **内容那一半:一格内容一层**(key = 那一格**内容**的 refId,复合的
@@ -331,6 +348,7 @@ export const PaneLeaf = memo(function PaneLeaf({
                   refKind={ref.kind}
                   refKey={ref.key}
                   on={liveIds.has(refId(ref))}
+                  hostShown={hostShown}
                   tabbed={tabbedIds.has(refId(ref))}
                 />
               ))}
@@ -480,11 +498,25 @@ const PaneContentLayer = memo(function PaneContentLayer({
   refKind,
   refKey,
   on,
+  hostShown,
   tabbed,
 }: {
   refKind: string
   refKey: string
   on: boolean
+  /**
+   * **宿主此刻把这块地露出来了吗**(2026-09-12「收起 ≠ 关闭」)。
+   *
+   * 它**只窄化「自述」那一格**(`PanelVisibility`),`on` 那一格一个字不碰 ——
+   * 判据是真机门抓出来的:`on` 同时驱动 `inert`,而架子收起来时**整条
+   * `shelf-layer` 已经 `inert` 了**;再让里面每一格 `leaf` 也翻 `inert`,
+   * 焦点树就要结算两遍 —— 第一遍(leaf)把第一响应者挪到 `shelf-layer`,
+   * 第二遍(shelf-layer)再问归还席位时,记着席位的那一任已经不是它了,
+   * `returnTo` 当场落空:焦点落回 `root`,而不是按键之前那个输入框
+   * (`gate:focus` 场景 ④-b 逐字量的就是这一条)。
+   * **树的截断由最外面那一格说一次就够**,这一层只管「我这一份算不算在屏幕上」。
+   */
+  hostShown: boolean
   /**
    * **这一格此刻有没有标签**(组件级停靠,2026-09-10)。没有 = 它是一格
    * **停靠**的内容:照旧挂着、照旧走这一层的 `inert` 两遍,只是取件口画的是
@@ -495,7 +527,8 @@ const PaneContentLayer = memo(function PaneContentLayer({
 }) {
   const id = `${refKind}:${refKey}`
   const contentRef = useMemo<ContentRef>(() => ({ kind: refKind, key: refKey }), [refKind, refKey])
-  const visibility = useMemo(() => ({ visible: on, interactive: on }), [on])
+  const shown = on && hostShown
+  const visibility = useMemo(() => ({ visible: shown, interactive: shown }), [shown])
   /*
    * **身份恒定的 holder**(`display: contents`,零盒子)。它是这一格内容在
    * 屏幕上的那个节点,由 `content-slots` 那张表挂进当下该去的槽里 —— 换序、
@@ -614,10 +647,20 @@ function useFrameOrder(tabs: readonly ContentRef[]): readonly ContentRef[] {
  *
  * `memo` 不许省:切一次 tab 只有翻了 `on` 的那两层该重渲。
  */
-const PaneTabFrame = memo(function PaneTabFrame({ tabRef, on }: { tabRef: ContentRef; on: boolean }) {
+const PaneTabFrame = memo(function PaneTabFrame({
+  tabRef,
+  on,
+  hostShown,
+}: {
+  tabRef: ContentRef
+  on: boolean
+  /** 同 `PaneContentLayer.hostShown`:只窄化自述,不碰 `on`(判词在那一格上)。 */
+  hostShown: boolean
+}) {
   const id = refId(tabRef)
   const parts = partsOfContent(tabRef)
-  const visibility = useMemo(() => ({ visible: on, interactive: on }), [on])
+  const shown = on && hostShown
+  const visibility = useMemo(() => ({ visible: shown, interactive: shown }), [shown])
   return (
     <div
       className={on ? s.layer : `${s.layer} ${s.layerHidden}`}

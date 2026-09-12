@@ -81,6 +81,18 @@ describe('登记与路径', () => {
     expect(focusTree.current()?.scope).toBe('viewer')
   })
 
+  it('祖先 inert、自己干净的那一格同样不许被 activateScope 选中(2026-09-12 架子收起保挂载)', () => {
+    const root = focusTree.register('root', null)
+    const shelf = focusTree.register('shelf-layer', root.instanceId, { inert: true })
+    const leafRoot = document.createElement('div')
+    document.body.append(leafRoot)
+    const leaf = focusTree.register('leaf', shelf.instanceId)
+    leaf.setRoot(leafRoot)
+    // 反证:把 `activateScope` 里的 `isReachablyInteractive` 换回 `isInteractive` → 这一句答 true。
+    expect(focusTree.activateScope('leaf')).toBe(false)
+    leafRoot.remove()
+  })
+
   it('inert 的那一格不许被 activate 选中', () => {
     const root = focusTree.register('root', null)
     const shelf = focusTree.register('shelf-layer', root.instanceId, { inert: true })

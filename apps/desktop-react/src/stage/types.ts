@@ -351,6 +351,20 @@ export interface StageSettings {
 
 export type DockDisplay = 'always' | 'autohide'
 
+/**
+ * **收起来的架子还画不画那条细梁把手**(2026-09-12 用户拍)。一格**全局**偏好,
+ * 四条边共用 —— 它说的是「收起之后屏幕上留不留一条可点的边」这件审美,而那件事
+ * 在四条边上是同一个答案;做成每边一格会让「我把把手关了」变成要点四次的设置。
+ *
+ * `'hidden'` 下收起的架子**零厚度、不画把手**(连那条 1px 的分隔线也归零)——
+ * 取回的路一条没少:快捷键召唤(`reveal` 的 `shelf-expand`)与点 Dock 那块瓦
+ * 照旧展开它。所以这一格藏的是**那条把手**,不是那条架子本身(与 `hiddenItems`
+ * 藏的是入口而不是面,同一条判词)。
+ *
+ * 它是**偏好**不是家具:不进 `STAGE_FURNITURE_KEYS`,跨工作区共享。
+ */
+export type ShelfRail = 'shown' | 'hidden'
+
 /** 四条边。Dock 永远是浮层,所以「停靠」只决定贴哪儿,不决定谁让位。 */
 export type DockEdge = 'bottom' | 'top' | 'left' | 'right'
 
