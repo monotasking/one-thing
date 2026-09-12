@@ -5,7 +5,7 @@
  * 「活着」是 pid + 端口两段判定 —— 只过一段不算。
  */
 import { createServer } from 'node:http'
-import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, mkdirSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -98,6 +98,39 @@ describe('http discovery file', () => {
       port: 1, host: '127.0.0.1', pid: process.pid, startedAt: 0, owner: 'shell',
     })
     expect(readHttpDiscovery()?.owner).toBe('shell')
+  })
+
+  /**
+   * B2′:宿主能往发现文件里补的那一格(这个进程的 CDP 口)。
+   * 两条一起断言 —— 补了读得回来,**没补就连键都不出现**(不是一个写着 null
+   * 的格子:读它的人按「有没有这个键」判「这台 core 有没有调试口」)。
+   */
+  it('round-trips the host-supplied cdp field, and omits the key when absent', () => {
+    const filePath = writeHttpDiscovery({
+      port: 1, host: '127.0.0.1', pid: process.pid, startedAt: 0, owner: 'shell',
+      cdp: { port: 9333 },
+    })
+    expect(readHttpDiscovery()?.cdp).toEqual({ port: 9333 })
+
+    writeHttpDiscovery({ port: 1, host: '127.0.0.1', pid: process.pid, startedAt: 0, owner: 'shell' })
+    expect(readHttpDiscovery()?.cdp).toBeUndefined()
+    expect(JSON.parse(readFileSync(filePath, 'utf-8'))).not.toHaveProperty('cdp')
+  })
+
+  it('drops a misshaped cdp field instead of handing it on', () => {
+    mkdirSync(path.join(storePath, 'run'), { recursive: true })
+    const write = (cdp: unknown): void => {
+      writeFileSync(path.join(storePath, 'run', 'http.json'), JSON.stringify({
+        port: 1, host: '127.0.0.1', pid: process.pid, startedAt: 0, owner: 'shell', cdp,
+      }))
+    }
+    // 端口是 0(随机口)/ 不是数字 / 干脆不是对象 —— 一律当这一格没有,
+    // 但**记录本身照旧读得出来**:发现文件是「线索」,一格坏了不该整份作废。
+    for (const bad of [{ port: 0 }, { port: 'nope' }, 'nope', null]) {
+      write(bad)
+      expect(readHttpDiscovery()?.port).toBe(1)
+      expect(readHttpDiscovery()?.cdp).toBeUndefined()
+    }
   })
 
   it('never throws on a missing, corrupt or misshaped file', () => {

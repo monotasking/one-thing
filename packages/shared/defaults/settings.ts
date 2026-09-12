@@ -14,7 +14,7 @@ import type {
   NetworkSettings,
   PluginPreferences,
 } from '../ipc/settings.js'
-import { DEFAULT_SEMANTIC_MODEL_ID } from '../ipc/settings.js'
+import { DEFAULT_BROWSER_CDP_PORT, DEFAULT_SEMANTIC_MODEL_ID } from '../ipc/settings.js'
 import type { VoiceSettings } from '../ipc/voice.js'
 import type { MusicRadioSource, MusicSettings } from '../ipc/music.js'
 import type { ProviderConfig, EffectiveAISettings } from '../ipc/providers.js'
@@ -549,6 +549,8 @@ export function createDefaultSettings(): AppSettings {
     diagnostics: { enabled: false },
     // 语义召回:默认关(拍点壬 a)。打开才下载模型。
     search: { semantic: { enabled: false, modelId: DEFAULT_SEMANTIC_MODEL_ID } },
+    // 内置浏览器的 CDP 口:默认关(拍点 ②)。开着 = 本机任何程序都能驱动它。
+    browser: { cdp: { enabled: false, port: DEFAULT_BROWSER_CDP_PORT } },
   }
 }
 
@@ -670,6 +672,16 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
       semantic: {
         enabled: settings.search?.semantic?.enabled === true,
         modelId: settings.search?.semantic?.modelId || DEFAULT_SEMANTIC_MODEL_ID,
+      },
+    },
+    // 与 diagnostics / search 同一条理由(白名单式重建漏掉的键会被静默丢弃)。
+    // 这一格被吞掉的后果更实在:用户开着的调试口下次启动会自己关回去,而他以为
+    // 它还开着 —— chrome-mcp 连不上,报的却是一句「连接被拒绝」。
+    // 端口夹进 1..65535:`0` 是随机口,开了等于没开(没人发现得了)。
+    browser: {
+      cdp: {
+        enabled: settings.browser?.cdp?.enabled === true,
+        port: normalizeCdpPort(settings.browser?.cdp?.port),
       },
     },
   }
@@ -916,6 +928,21 @@ export function normalizeEditorSettings(settings?: EditorSettings): Required<Edi
 function clampNumber(value: number | null | undefined, min: number, max: number, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.max(min, Math.min(max, Math.round(value)))
+}
+
+/**
+ * CDP 端口的归一。**不合法就回缺省,不夹** —— 与别处那些 `clampNumber` 有意不同:
+ * 夹一个端口是没有意义的(`0` 夹成 `1` 会开在一个特权口上,`70000` 夹成 `65535`
+ * 开在一个谁也没打算用的口上)。端口不是一根滑杆上的量,它是一个地址:说不出
+ * 合法地址的时候,唯一诚实的答案是「用缺省那个」。
+ *
+ * `0`(Chromium 的随机口)明确不收:随机口没人发现得了,等于开了个谁都用不上的洞
+ * —— 与 `electron/browser/cdp-flag.ts` 读侧那条判据逐字同一把尺子。
+ */
+function normalizeCdpPort(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return DEFAULT_BROWSER_CDP_PORT
+  if (value < 1 || value > 65535) return DEFAULT_BROWSER_CDP_PORT
+  return value
 }
 
 function clampFraction(value: number | null | undefined, min: number, max: number, fallback: number): number {

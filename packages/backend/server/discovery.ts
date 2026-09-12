@@ -44,6 +44,8 @@ export {
   isHttpDiscoveryAlive,
 } from '@shared/backend/http-discovery.js'
 export type {
+  HttpDiscoveryCdp,
+  HttpDiscoveryExtras,
   HttpDiscoveryOwner,
   HttpDiscoveryRecord,
 } from '@shared/backend/http-discovery.js'

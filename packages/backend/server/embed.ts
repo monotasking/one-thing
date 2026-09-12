@@ -22,6 +22,7 @@ import type { SessionAudienceFactory } from './audience.js'
 import {
   removeHttpDiscovery,
   writeHttpDiscovery,
+  type HttpDiscoveryExtras,
   type HttpDiscoveryOwner,
 } from './discovery.js'
 import { configureHostLocalTrust } from './host-trust.js'
@@ -51,6 +52,20 @@ export interface EmbeddedOnethingHttpServerOptions {
    * 传 `createOpenAudienceFactory()` —— 那里只有一个人,归属判定恒真。
    */
   audienceFactory?: SessionAudienceFactory
+  /**
+   * **宿主往发现文件里补的那几格**(B2′,方案
+   * `apps/desktop-react/docs/terminal-browser-2026-09.md` §2.2-5)。
+   *
+   * 为什么要有这个口:发现文件的作者是这一只函数,而里面有一格
+   * (`cdp` —— 这个进程的 Chromium 调试口)**core 根本不知道** —— 它是主进程
+   * `app.commandLine` 上的一个事实,而装配层禁 import electron。所以那一格由
+   * 宿主在这一行递进来,与 `owner` 同一族:一个只有宿主答得出的事实。
+   *
+   * 缺席 / 那一格是 `undefined` = 这个 core 没有这一格,**键不出现在文件里**
+   * (`JSON.stringify` 本来就丢 `undefined`)。契约与合法性判据在
+   * `@shared/backend/http-discovery.ts`。
+   */
+  discoveryExtras?: HttpDiscoveryExtras
   logger?: Pick<Console, 'log' | 'warn' | 'error'>
 }
 
@@ -162,6 +177,9 @@ export async function startEmbeddedOnethingHttpServer(
       pid: process.pid,
       startedAt: Date.now(),
       owner: options.owner ?? 'desktop',
+      // 宿主补的那几格。`undefined` 的键 `JSON.stringify` 自己会丢,所以
+      // 「没有 CDP 口」= 文件里没有 `cdp` 这个键,不是一个写着 null 的格子。
+      ...(options.discoveryExtras ?? {}),
     }, { lease })
     const url = `http://${host}:${port}`
     logger.log(`[core-http] embedded HTTP/SSE surface listening on ${url}`)

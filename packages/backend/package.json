@@ -68,6 +68,7 @@
     "./wiring/resource/index.js": "./wiring/resource/index.ts",
     "./wiring/scheduler/user-tasks.js": "./wiring/scheduler/user-tasks.ts",
     "./wiring/search/providers.js": "./wiring/search/providers.ts",
+    "./wiring/settings/events.js": "./wiring/settings/events.ts",
     "./wiring/skills/index.js": "./wiring/skills/index.ts",
     "./wiring/skills/loader.js": "./wiring/skills/loader.ts",
     "./wiring/skills/session-skills.js": "./wiring/skills/session-skills.ts",

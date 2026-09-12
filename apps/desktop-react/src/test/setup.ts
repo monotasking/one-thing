@@ -316,6 +316,21 @@ import { configure } from '@testing-library/react'
 configure({ defaultIgnore: 'script, style, [data-live-region], [data-live-region] *' })
 
 /**
+ * 设置页「内置浏览器」那一节的端口:同一条理由,同一手。
+ *
+ * 默认这一份**答不上话**(两口都 `success:false`)—— 那正是「没接线」诚实的
+ * 样子:那一节会把错误与那一行开关并陈,开关自禁。没有哪个用例该因为默认端口
+ * 而真的在这台机器上把调试口打开、或者往 MCP 名册里写进一条服务器。
+ */
+import { configureBrowserSettingsPort } from '../data/browser-settings-port'
+
+configureBrowserSettingsPort({
+  ready: async () => undefined,
+  readSettings: async () => ({ success: false, error: 'no browser settings port in tests' }),
+  saveSettings: async () => ({ success: false, error: 'no browser settings port in tests' }),
+})
+
+/**
  * **每一例之前把拼贴台那本账归零**(W4)。
  *
  * 从 W4 起「一块面在哪儿」这件事实住在拼贴树里(`workbench.regions`),

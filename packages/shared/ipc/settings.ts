@@ -316,6 +316,48 @@ export interface SemanticSearchSettings {
 	modelId: string;
 }
 
+/**
+ * 内置浏览器的设置(B2′,`apps/desktop-react/docs/terminal-browser-2026-09.md`
+ * §2.2-5 / §9-4 / §9-13)。
+ *
+ * 今天**只有 CDP 那一格** —— 内嵌浏览器本身没有开关(它随桌面壳一起在),
+ * 这里说的是「要不要把这台浏览器的调试口开出来,让 AI 与外部工具驱动它」。
+ *
+ * **缺省关**(拍点 ②,用户按推荐拍定)。理由两条,都写进了设置页那一行:
+ * 开着 = 本机任何程序都能驱动一个登着账号的浏览器;而且 CDP 口一开,**壳自己的
+ * 渲染页也是一个 page 目标**,它内存里有 `host:connection` 交来的 Bearer token
+ * (§9-13)。
+ *
+ * **这一格不是主进程的读者**:`--remote-debugging-port` 只能在 app `ready` 之前
+ * 加,而设置要装配之后才读得到。宿主把这一格折成 `<store>/run/cdp.json`
+ * 启动旗文件(`apps/desktop-react/electron/browser/cdp-flag.ts`),下次启动才生效
+ * —— 所以设置页那一行必须写明「重启生效」。
+ */
+export interface BrowserSettings {
+	cdp: BrowserCdpSettings;
+}
+
+/**
+ * 缺省调试端口。**契约层记它**,理由与 `DEFAULT_SEMANTIC_MODEL_ID` 同款:
+ * defaults、设置页的复制片段、主进程的旗文件都要同一个数。
+ *
+ * 9333 而不是 Chrome 习惯的 9222:9222 是本机上最容易被一个真 Chrome / 一个
+ * puppeteer 脚本占着的那个口,而端口被占在这条路上不会报错,只会让 chrome-mcp
+ * 连上**别人的**浏览器。
+ */
+export const DEFAULT_BROWSER_CDP_PORT = 9333;
+
+export interface BrowserCdpSettings {
+	/** 默认 false(拍点 ②)。改了要重启 onething 才生效。 */
+	enabled: boolean;
+	/**
+	 * 监听端口(只绑回环)。**UI 上不暴露**(「设置极简」:技术参数走默认值)——
+	 * 真要换口的人是在改 `settings.json`,不是在设置页里找输入框。
+	 * 归一时夹进 1..65535,`0`(随机口)不收:随机口没人发现得了。
+	 */
+	port: number;
+}
+
 export interface AppSettings {
 	/**
 	 * **生效形状**:当前空间的 provider 设置 + 全局目录缓存(C2)。
@@ -342,6 +384,7 @@ export interface AppSettings {
 	plugins?: PluginPreferences;
 	diagnostics?: DiagnosticsSettings;
 	search?: SearchSettings;
+	browser?: BrowserSettings;
 }
 
 /**

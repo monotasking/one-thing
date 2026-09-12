@@ -750,6 +750,23 @@ export const en: Record<MessageKey, string> = {
   'permission.effect.plugin_exec': 'Run a plugin',
   'permission.effect.external-agent': 'Call an external agent',
   'permission.effect.ui_change': 'Change the interface',
+  /* ── built-in browser (B2′: content/settings/BrowserSettings.tsx) ───────── */
+  'settings.sectionBrowser': 'Built-in browser',
+  'browser.cdpLabel': 'Let AI and outside tools drive it (CDP)',
+  'browser.cdpHint':
+    'Takes effect on the next launch. Any program on this machine can then drive this browser — including pages you are signed in to and onething’s own interface.',
+  'browser.loadFailed': 'Could not load the browser settings',
+  'browser.cdpSaveFailed': 'That setting did not save',
+  'browser.mcpInstall': 'Set it up for AI',
+  'browser.mcpInstalling': 'Setting up…',
+  'browser.mcpInstalled': 'Already set up',
+  'browser.mcpInstalledNote': 'Set up. AI can use it after you restart onething.',
+  'browser.mcpInstallFailed': 'Setup did not succeed',
+  'browser.copyConfig': 'Copy the config for Claude Code / Cursor',
+  'browser.copyConfigTip': 'Copies a JSON snippet to paste into their MCP config.',
+  'browser.cdpPortNote': 'The debug port listens on 127.0.0.1:{port}, loopback only.',
+  'browser.newPageNote':
+    'new_page does not work on Electron — AI opens new tabs through the built-in browser tool.',
   'settings.sectionPermissions': 'Granted',
   'permissions.hint':
     'What got remembered when you answered “this session”, “this directory” or “always allow”.',

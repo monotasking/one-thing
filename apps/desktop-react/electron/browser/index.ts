@@ -23,6 +23,18 @@
  *      两句都**必须**在 ready 之前 —— `appendSwitch` 之后 Chromium 才读命令行
  *      (`cdp-flag.ts` 的文件头写着为什么 CDP 那一格是旗文件而不是读设置)。
  *
+ *   ①′ **挂内嵌 HTTP 面那一行**(B2′):把这个进程真的开着的 CDP 口补进
+ *      `run/http.json`,别的客户端(chrome-devtools-mcp 的配置、脚本)就不必猜口:
+ *
+ *          import { cdpDiscoveryExtras } from './browser/cdp-settings.js'
+ *          startEmbeddedOnethingHttpServer(b, {
+ *            owner: 'shell',
+ *            discoveryExtras: cdpDiscoveryExtras(app.commandLine),
+ *          })
+ *
+ *      判据是**命令行**不是设置:设置改了要重启才生效,按设置写等于说谎。
+ *      没开 → `undefined` → `cdp` 那个键根本不出现在文件里。
+ *
  *   ② **窗口建成 + 装配完成之后**(`startPostWindowServices()` 里,与
  *      `b.mcp.start()` 同一段):
  *
@@ -49,8 +61,14 @@
 import { WebContentsView, ipcMain, session, type BrowserWindow } from 'electron'
 import type { OnethingBackend } from '@onething/backend'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import {
+  configureSettingsEventBroadcaster,
+  getSettingsEventBroadcaster,
+} from '@onething/backend/wiring/settings/events.js'
+import { getSettings } from '@onething/backend/stores/settings.js'
 import { NATIVE_VIEW_CHANNEL, type NativeViewPush } from '../native-view-protocol.js'
 import { KeymapBridge } from './keymap-bridge.js'
+import { installCdpSettingsWatcher } from './cdp-settings.js'
 import { NativeViewLayout, type NativeViewHost } from './layout.js'
 import { installNativeViewIpc } from './native-view-ipc.js'
 import { BrowserResourceProvider, type BrowserOps, type BrowserTabView } from './resource-provider.js'
@@ -165,6 +183,24 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
     keymap: chords => { keymap.setBoundChords(chords) },
   })
 
+  /*
+   * 设置里那一格 CDP 开关 → `<store>/run/cdp.json`(B2′,§9-4)。
+   *
+   * **它挂在这里而不是设置域里**:`--remote-debugging-port` 只能在 app `ready`
+   * 之前加,而设置是装配之后才读得到的 —— 折叠这件事因此是宿主的活,与
+   * `applyCdpFlag` 同家(判据全文在 `cdp-settings.ts` 的文件头)。
+   *
+   * 写失败只记一行:这一格砸了的全部后果是「下次启动 CDP 口状态没跟上」,
+   * 不该让它把一次保存设置炸掉。
+   */
+  const offCdpSettings = installCdpSettingsWatcher({
+    ...(options.storePath ? { storePath: options.storePath } : {}),
+    readSettings: () => getSettings(),
+    getBroadcaster: () => getSettingsEventBroadcaster(),
+    setBroadcaster: next => { configureSettingsEventBroadcaster(next) },
+    onError: error => { log.error('cdp launch flag write failed', undefined, error) },
+  })
+
   log.info('browser host installed', { tabs: service.list().length })
 
   let disposed = false
@@ -172,6 +208,7 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
     async dispose(): Promise<void> {
       if (disposed) return
       disposed = true
+      offCdpSettings()
       offIpc()
       // 先摘 provider(内核那只注销会先掐在飞、等它们收场),再拆视图 —— 反过来的话
       // 一次在飞的 `read page` 会打在一片已经销毁的 webContents 上。

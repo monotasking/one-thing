@@ -24,6 +24,7 @@ import { useSystemReducedMotion } from '../reading/useSystemReducedMotion'
 import type { MotionTier, ReadingColumn, ReadingDensity, ReadingFontSize } from '../reading/types'
 import { FocusScope } from '../focus/FocusScope'
 import { KeymapSettings } from './KeymapSettings'
+import { BrowserSettings } from './settings/BrowserSettings'
 import { PermissionGrants } from './settings/PermissionGrants'
 import s from './mocks.module.css'
 
@@ -388,6 +389,16 @@ export function SettingsMock() {
               排在快捷键之前:它与「打开方式」一样是关于**这台机器怎么替我做事**
               的决定,而快捷键是最后那一节键位表。
             */}
+            {/*
+              「内置浏览器」自成一区(B2′,2026-09-12)。分区判据照旧是「用户想改
+              的是哪件事」—— 这一件是「要不要把内置浏览器交给 AI 与外部工具驱动」,
+              与打开方式 / 已授权都不是同一件。排在「已授权」之前:那一节说的是
+              「收回已经给出去的」,这一节说的是「要不要给出去」,顺着读。
+            */}
+            <Section titleKey="settings.sectionBrowser">
+              <BrowserSettings />
+            </Section>
+
             <Section titleKey="settings.sectionPermissions">
               <PermissionGrants />
             </Section>

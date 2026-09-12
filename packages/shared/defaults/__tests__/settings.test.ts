@@ -541,3 +541,44 @@ describe('插件氛围偏好(G2 —— 全窗动画覆盖)', () => {
     expect(plugins?.notifySoundMutedPluginIds).toEqual([])
   })
 })
+
+/**
+ * 内置浏览器的 CDP 那一格(B2′,方案
+ * `apps/desktop-react/docs/terminal-browser-2026-09.md` §2.2-5 / 拍点 ②)。
+ */
+describe('browser.cdp settings', () => {
+  it('缺省关 —— 开着 = 本机任何程序都能驱动一台登着账号的浏览器', () => {
+    const settings = createDefaultSettings()
+    expect(settings.browser?.cdp.enabled).toBe(false)
+    expect(settings.browser?.cdp.port).toBe(9333)
+  })
+
+  it('显式归一,不靠白名单重建兜住 —— 被吞掉的后果是开着的口自己关回去', () => {
+    expect(mergeSettings({ browser: { cdp: { enabled: true, port: 9444 } } }).browser?.cdp)
+      .toEqual({ enabled: true, port: 9444 })
+    // 这一段压根不在(老 store):按缺省,不是 undefined。
+    expect(mergeSettings({}).browser?.cdp).toEqual({ enabled: false, port: 9333 })
+  })
+
+  it('只有显式 true 才算开', () => {
+    expect(mergeSettings({ browser: { cdp: { enabled: 'yes', port: 9333 } } }).browser?.cdp.enabled)
+      .toBe(false)
+    expect(mergeSettings({ browser: { cdp: { enabled: 1, port: 9333 } } }).browser?.cdp.enabled)
+      .toBe(false)
+  })
+
+  it('端口不合法**回缺省,不夹** —— 夹一个端口是没有意义的(它是地址不是滑杆上的量)', () => {
+    const portOf = (port: unknown): number =>
+      mergeSettings({ browser: { cdp: { enabled: true, port } } }).browser!.cdp.port
+    // 0 = Chromium 的随机口:没人发现得了,等于开了个谁都用不上的洞。
+    expect(portOf(0)).toBe(9333)
+    expect(portOf(70000)).toBe(9333)
+    expect(portOf(-1)).toBe(9333)
+    expect(portOf(9333.5)).toBe(9333)
+    expect(portOf('nope')).toBe(9333)
+    // 合法的那些原样留着。
+    expect(portOf(9444)).toBe(9444)
+    expect(portOf(1)).toBe(1)
+    expect(portOf(65535)).toBe(65535)
+  })
+})

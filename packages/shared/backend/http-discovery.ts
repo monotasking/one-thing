@@ -58,6 +58,32 @@ export function isHttpDiscoveryOwner(value: unknown): value is HttpDiscoveryOwne
   return HTTP_DISCOVERY_OWNERS.includes(value as HttpDiscoveryOwner)
 }
 
+/**
+ * **宿主能往发现文件里补的那几格**(B2′)。
+ *
+ * 它们不是 core 服务知道的事实 —— core 不认识 electron,问不出「这个进程的
+ * Chromium 调试口开着没有」。所以这一族由**宿主在挂载内嵌面时递进来**
+ * (`startEmbeddedOnethingHttpServer(backend, { discoveryExtras })`),写不写由
+ * 宿主说了算;`undefined` = 这个 core 没有这一格,键根本不出现在文件里。
+ *
+ * 是**具名字段**而不是 `Record<string, unknown>`:读侧(`parseHttpDiscoveryRecord`)
+ * 是白名单式重建,一个没人认识的键在读回来那一拍就被静默丢掉 —— 「写得进去、
+ * 读不出来」比不许写更坏(与 `mergeWithDefaults` 的白名单漏键判例同款)。
+ */
+export type HttpDiscoveryExtras = Pick<HttpDiscoveryRecord, 'cdp'>
+
+/**
+ * 这个 core 进程的 Chromium 调试口(B2′,方案
+ * `apps/desktop-react/docs/terminal-browser-2026-09.md` §2.2-5)。
+ *
+ * **只有真的开着才写**:判据是主进程 `app.commandLine` 上那个开关在不在,不是
+ * 设置里那一格 —— 设置改了要重启才生效,按设置写等于说谎。别的客户端
+ * (chrome-devtools-mcp 的配置、脚本)按它找口,不必去猜 9222。
+ */
+export interface HttpDiscoveryCdp {
+  port: number
+}
+
 export interface HttpDiscoveryRecord {
   /** 实际监听到的端口(动态分配时是 listen 之后才知道的那个数)。 */
   port: number
@@ -68,6 +94,15 @@ export interface HttpDiscoveryRecord {
   /** 毫秒时间戳。 */
   startedAt: number
   owner: HttpDiscoveryOwner
+  /** 宿主补的一格:这个进程的 CDP 口(开着才有)。见 `HttpDiscoveryCdp`。 */
+  cdp?: HttpDiscoveryCdp
+}
+
+/** `cdp` 那一格合不合法。端口口径与 `cdp-flag.ts` 同款(`0` = 随机口,不收)。 */
+export function isHttpDiscoveryCdp(value: unknown): value is HttpDiscoveryCdp {
+  if (!value || typeof value !== 'object') return false
+  const port = (value as { port?: unknown }).port
+  return typeof port === 'number' && Number.isInteger(port) && port >= 1 && port <= 65535
 }
 
 export function isHttpDiscoveryRecord(value: unknown): value is HttpDiscoveryRecord {
@@ -120,6 +155,8 @@ export function parseHttpDiscoveryRecord(text: string): HttpDiscoveryRecord | un
     pid: parsed.pid,
     startedAt: typeof parsed.startedAt === 'number' ? parsed.startedAt : 0,
     owner: parsed.owner,
+    // 宿主补的那一格:形状不对就当没有 —— 发现文件是「线索」不是「契约」。
+    ...(isHttpDiscoveryCdp(parsed.cdp) ? { cdp: { port: parsed.cdp.port } } : {}),
   }
 }
 
