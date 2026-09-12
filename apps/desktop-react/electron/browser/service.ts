@@ -210,6 +210,8 @@ export class BrowserService {
     return new BrowserTab(init, {
       createView: this.options.createView,
       preferencesFor: profile => this.options.sessionPolicy.webPreferencesFor(profile),
+      // 代理回放这一格的门(2026-09-12)。判词在 `BrowserTabDeps.ready` 上。
+      ready: profile => this.options.sessionPolicy.ready(profile),
       observer: {
         onState: (tab, patch) => { this.onTabState(tab, patch) },
         onOpened: tab => {

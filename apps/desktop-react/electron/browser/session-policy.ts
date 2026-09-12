@@ -97,9 +97,29 @@ export type BrowserPermissionAsk = (request: {
   readonly origin: string
 }) => Promise<boolean>
 
+/**
+ * 一格分区刚建出来,**把它交给这个进程的代理策略**(2026-09-12)。
+ *
+ * 答的是「回放落地」的那个 promise —— 判词整段在 `electron/network-proxy.ts`
+ * 的文件头上;一句话:`setProxy` 是异步的,回放没落地就发第一发请求 =
+ * **直连一发**,在只有代理能出网的网络上那一发不是慢,是失败,而且泄露直连 IP
+ * (旧壳 `whenBrowserPartitionReady` 的判例,原样搬过来)。
+ *
+ * 端口收的是 `BrowserSessionLike`(这只文件认识的那一片),而不是一个带
+ * `setProxy` 的形状 —— 分区策略不该认识代理的词汇,装配点手上才有真的 `Session`。
+ */
+export interface BrowserProxyPort {
+  register(session: BrowserSessionLike): Promise<void>
+}
+
 export interface BrowserSessionPolicyOptions {
   /** 可询问的那一族走它。缺席 = 全拒。 */
   readonly ask?: BrowserPermissionAsk
+  /**
+   * 代理策略。**缺席 = 这台宿主不管代理**(单测与老装配点照旧:`ready()` 立刻
+   * 答应,行为与从前逐字相同)。
+   */
+  readonly proxy?: BrowserProxyPort
   /**
    * 一格分区第一次建出来那一刻。装配点拿它挂 `will-download` ——
    * **每个 profile 各挂一次**(多 profile 是 B3 的账,这条缝先留对)。
@@ -142,6 +162,8 @@ export class BrowserSessionPolicy {
   private readonly fromPartition: BrowserSessionFactory
   private readonly options: BrowserSessionPolicyOptions
   private readonly sessions = new Map<string, BrowserSessionLike>()
+  /** 每格分区一份「代理回放落地了没有」。`ready(profile)` 就是它的读口。 */
+  private readonly readiness = new Map<string, Promise<void>>()
 
   constructor(fromPartition: BrowserSessionFactory, options: BrowserSessionPolicyOptions = {}) {
     this.fromPartition = fromPartition
@@ -179,9 +201,32 @@ export class BrowserSessionPolicy {
         .catch(() => { callback(false) })
     })
     created.setPermissionCheckHandler(() => false)
+    /*
+     * **代理在这一拍登记**,而不是在装配点事后补一遍:分区是懒建的(一格 tab
+     * 第一次被看见那一刻才建),而「最后一次 apply」可能早就过去了。登记 = 当场
+     * 回放,回放的 promise 记成这一格的 `ready` —— 第一发 `loadURL` 等它。
+     *
+     * **回放砸了也要让 `ready` 落地**(`then(…, …)` 两边都收):一次套不上代理的
+     * 后果是「这一格直连」,而让它永远等下去的后果是「这一格永远白屏」—— 后者更坏,
+     * 而且它把一个网络问题变成一次看不出原因的挂起。
+     */
+    const replay = this.options.proxy?.register(created)
+    if (replay) this.readiness.set(partition, replay.then(() => {}, () => {}))
     this.sessions.set(partition, created)
     this.options.onSession?.(created, partition)
     return created
+  }
+
+  /**
+   * 这一格身份的代理回放落地了没有。**第一发 `loadURL` 之前必须等它**(判词在
+   * `BrowserProxyPort` 上)。
+   *
+   * 没登记过 = 立刻答应。这不是一条侥幸:建视图那一步走的是
+   * `webPreferencesFor` → `sessionFor`,所以任何一格真的会去加载的 tab,它的分区
+   * 在这一问之前**一定**已经建出来并登记过了。
+   */
+  ready(profile: string = DEFAULT_BROWSER_PROFILE): Promise<void> {
+    return this.readiness.get(browserPartitionFor(profile)) ?? Promise.resolve()
   }
 
   /**

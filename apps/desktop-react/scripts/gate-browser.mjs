@@ -51,6 +51,19 @@
  *  ⑰ **把这一页交给对话**(B3-b):⋯ 那张表里点一行 → 输入框落一枚
  *     `{{page:<id>}}` chip(零字节)→ 发送 → 那一发 `session-command.emit` 的
  *     信封里页面正文是一件带 `sourceUrl` 的**附件**,`content` 里一个字都没有。
+ *  ⑱ **代理**(2026-09-12,真机报障:内置浏览器打不开 YouTube,主进程日志成串
+ *     `ssl_client_socket_impl.cc handshake failed … net_error -100`)。病根是
+ *     `applyShellNetworkProxySettings()` 只对 `session.defaultSession` 一个人
+ *     `setProxy`,而每一格身份跑在自己的 `persist:browser-<id>` 分区上 → 标签
+ *     **直连出网**。两半各判一条,**各自单起一趟壳**(见下):
+ *       ·(a)临时 store 的 `settings.json` 里代理开着 → 开一格 tab 载入门自己那张
+ *            本地页 → **门自起的记账代理的日志里出现那条请求**(证明分区真的走了
+ *            代理,而不是「反正 localhost 也能直连」);
+ *       ·(b)经 RPC 把代理关掉 → 再开一格 → 记账日志**不再增加**(证明改设置
+ *            真的重套到了已经建出来的那格分区上 —— 宿主表 `settings` 那一格)。
+ *     **bypass 必须是 `<-loopback>` 而不是空串**:Chromium 默认**隐式放过**
+ *     localhost / link-local,空 bypass 下这道门量到的会是「谁都没走代理」这件
+ *     废话;`<-loopback>` 正是关掉那条隐式规则的那一行(net::ProxyBypassRules)。
  *
  * ⑫⑬⑭ 跑在 ⑪ **之前**,而那是有意的:三件都留在屏上,于是 axe 那一扫顺带把
  * B3-a 这三个新 surface 也扫了(「新 surface 必须追加进扫描屏」那条纪律)。
@@ -85,8 +98,8 @@
  *   `npm run gate:browser -- --prod`  —— prod 渲染层(吃 `npm run app:build` 的 dist)
  */
 import { spawn } from 'node:child_process'
-import { createServer } from 'node:http'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { createServer, request as httpRequest } from 'node:http'
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -335,6 +348,69 @@ function startPageServer() {
 }
 
 /**
+ * ⑱ 那只**记账 HTTP 代理**。
+ *
+ * 它只做两件事:**记下每一条经过它的请求**,然后照转。记账才是断言的本体 ——
+ * 「这一发到底走没走代理」不是壳能自证的事(直连一样能把 localhost 那张页载上来),
+ * 只有代理这一侧的日志答得了。
+ *
+ * 两条请求形态都收着:
+ *  · **绝对 URI 的普通请求**(RFC 7230 §5.3.2)—— Chromium 对 `http://` 目标就是
+ *    这么发给代理的,也是这道门唯一真会走的那条;
+ *  · **CONNECT**(`https://` 目标)—— 这道门的本地页是 http,用不上它,但收着:
+ *    少了它的话,哪天有人把门里的页换成 https,红出来的会是一条看不懂的超时,
+ *    而不是「代理不认识 CONNECT」。
+ *
+ * **不做任何缓存 / 改写**:它是一把尺子,不是一个中间件。
+ */
+function startAccountingProxy() {
+  const seen = []
+  const server = createServer((req, res) => {
+    const target = req.url ?? ''
+    if (!/^https?:\/\//i.test(target)) {
+      // 不是代理请求(有人直接打了这个口)。记都不记 —— 它不是被量的那件事。
+      res.writeHead(400, { 'content-type': 'text/plain' })
+      res.end('not a proxy request')
+      return
+    }
+    const url = new URL(target)
+    seen.push({ host: url.host, path: `${url.pathname}${url.search}` })
+    const upstream = httpRequest(
+      {
+        host: url.hostname,
+        port: url.port || 80,
+        path: `${url.pathname}${url.search}`,
+        method: req.method,
+        headers: { ...req.headers, host: url.host },
+      },
+      (up) => {
+        res.writeHead(up.statusCode ?? 502, up.headers)
+        up.pipe(res)
+      },
+    )
+    upstream.on('error', () => {
+      res.writeHead(502, { 'content-type': 'text/plain' })
+      res.end('upstream failed')
+    })
+    req.pipe(upstream)
+  })
+  server.on('connect', (req, socket) => {
+    const [host, port] = String(req.url ?? '').split(':')
+    seen.push({ host: String(req.url ?? ''), path: 'CONNECT' })
+    const up = connect(Number(port || 443), host, () => {
+      socket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+      up.pipe(socket)
+      socket.pipe(up)
+    })
+    up.on('error', () => { socket.destroy() })
+    socket.on('error', () => { up.destroy() })
+  })
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => resolve({ server, seen, port: server.address().port }))
+  })
+}
+
+/**
  * 屏幕上此刻那几片浏览器叶。
  *
  * **把手是叶自己的 `data-tab-id`,不是占位格的 `data-native-view`**(B3-b 改口)。
@@ -369,6 +445,9 @@ async function main() {
   let child
   let pages
   let vite
+  /** ⑱ 那只记账代理,以及它那一趟壳的临时 store(`finally` 里收尸)。 */
+  let proxyServer
+  let proxyStoreDir
   const report = { lane: LANE }
   try {
     await mkdir(path.join(store, 'run'), { recursive: true, mode: 0o700 })
@@ -1296,17 +1375,137 @@ async function main() {
     await delay(1200)
     child = undefined
 
-    console.log(`\n[browser-gate] ok(${LANE} 档)—— 十七条全过`)
+    /*
+     * ── ⑱ 代理:浏览器分区跟着设置走 ───────────────────────────────────────
+     *
+     * **自己一趟、自己一个 store**,两条理由:①代理要在 `hooks.afterSettings`
+     * 那一拍就开着(启动那一次),所以它得写进 `settings.json` 再起壳 —— 往前面
+     * 九步那个 store 里塞代理会把每一条断言都拖着走代理;②这一条量的是网络面,
+     * 不要 UI,RPC 就够,于是也不必再占一趟 playwright。
+     */
+    console.log('\n[10/10] ⑱ 代理 —— 浏览器分区不许直连出网(真机报障 net_error -100)')
+    const proxy = await startAccountingProxy()
+    proxyServer = proxy
+    const proxyStore = await mkdtemp(path.join(tmpdir(), 'browser-gate-proxy-store-'))
+    proxyStoreDir = proxyStore
+    writeFileSync(
+      path.join(proxyStore, 'settings.json'),
+      JSON.stringify({
+        network: {
+          proxy: {
+            enabled: true,
+            url: `http://127.0.0.1:${proxy.port}`,
+            // 判词在文件头 ⑱ 上:空串 = Chromium 隐式放过 localhost = 这道门白判。
+            bypassRules: '<-loopback>',
+          },
+        },
+      }),
+      'utf8',
+    )
+    child = spawn(electronBinary, [mainEntry, `--user-data-dir=${userDataDir}`], {
+      env: {
+        ...process.env,
+        ONETHING_STORE_PATH: proxyStore,
+        ONETHING_REACT_DEV_SERVER_URL: rendererUrl,
+        ONETHING_GATE_HEADLESS: '1',
+        ONETHING_GATE_OFFSCREEN: '1',
+        ONETHING_GATE_DOWNLOADS_DIR: downloadsDir,
+      },
+      stdio: 'ignore',
+    })
+    const third = await waitFor(
+      '⑱ 那一趟的 core 写出发现文件',
+      () => {
+        const found = readJson(path.join(proxyStore, 'run', 'http.json'))
+        return found && found.owner === 'shell' ? found : undefined
+      },
+      40_000,
+    )
+
+    const viaProxy = await rpc(third, 'resources', 'do', {
+      ref: 'browser:@all',
+      op: 'open',
+      params: { url: pageUrl('/viaproxy') },
+    })
+    assert(viaProxy.kind === 'ok', '⑱a resources.do open 成功(代理开着)')
+    const proxiedTab = await waitFor(
+      '⑱a 那一页载上来了',
+      async () => {
+        const tabs = await rpc(third, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+        const rows = tabs.value?.tabs ?? []
+        return rows.some((r) => String(r.title).startsWith(NONCE)) ? rows : undefined
+      },
+      30_000,
+    )
+    /*
+     * **尺子只量本地页那台服务器**。dev 档里壳自己的渲染层也跑在 loopback 上
+     * (vite:5199 那几百个模块请求),`<-loopback>` 一关隐式放行它们也会经过这只
+     * 代理 —— 那是这份门配置的副产品,不是被量的那件事;不筛的话断言的读数会被
+     * 几百行 vite 模块淹掉,而「淹掉的读数」等于没有读数。
+     */
+    const pageHost = `127.0.0.1:${pages.port}`
+    const onPage = (rows) => rows.filter((row) => row.host === pageHost)
+    const brief = (rows) => rows.slice(0, 6).map((r) => r.host + r.path).join(' | ') || '空'
+    const proxiedHits = onPage(proxy.seen).filter((row) => row.path.startsWith('/viaproxy'))
+    report.proxy = { total: proxy.seen.length, onPage: onPage(proxy.seen).length, viaproxy: proxiedHits.length }
+    assert(
+      proxiedHits.length >= 1,
+      `⑱a 记账代理上看见了那一发(本地页那台 ${onPage(proxy.seen).length} 条,`
+        + `其中 /viaproxy ${proxiedHits.length} 条;头几条 ${brief(onPage(proxy.seen))})`
+        + ' —— 空表 = 分区直连出网,正是这次报障的形'
+        + `(载上来的标题 ${proxiedTab.map((r) => r.title).join(' / ')})`,
+    )
+
+    const settings18 = await rpc(third, 'settings', 'getSettings', {})
+    const savedOff = await rpc(third, 'settings', 'saveSettings', {
+      ...settings18.settings,
+      network: {
+        ...(settings18.settings?.network ?? {}),
+        proxy: { enabled: false, url: '', bypassRules: '' },
+      },
+    })
+    assert(savedOff.success === true, '⑱b 设置存上了(代理关掉)')
+    const seenBeforeOff = proxy.seen.length
+    const offTab = await rpc(third, 'resources', 'do', {
+      ref: 'browser:@all',
+      op: 'open',
+      params: { url: pageUrl('/proxyoff') },
+    })
+    assert(offTab.kind === 'ok', '⑱b resources.do open 成功(代理关掉之后)')
+    await waitFor(
+      '⑱b 第二页也载上来了',
+      async () => {
+        const tabs = await rpc(third, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+        const rows = tabs.value?.tabs ?? []
+        return rows.length >= 2 && rows.every((r) => String(r.title).startsWith(NONCE)) ? rows : undefined
+      },
+      30_000,
+    )
+    const afterOff = onPage(proxy.seen.slice(seenBeforeOff))
+    report.proxyAfterOff = afterOff.length
+    assert(
+      afterOff.every((row) => !row.path.startsWith('/proxyoff')),
+      `⑱b 关掉之后那一发**没有**走代理(关后本地页那台新增 ${afterOff.length} 条:`
+        + `${brief(afterOff)})`
+        + ' —— 有它 = 改设置没重套到已经建出来的那格分区(宿主表 `settings` 那一格)',
+    )
+    child.kill('SIGTERM')
+    await delay(1200)
+    child = undefined
+
+    console.log(`\n[browser-gate] ok(${LANE} 档)—— 十八条全过`)
     console.log(`[browser-gate] 读数:${JSON.stringify(report)}`)
   } finally {
     if (app) await app.close().catch(() => {})
     if (child) { try { child.kill('SIGKILL') } catch { /* 已经走了 */ } }
     if (vite) await vite.close().catch(() => {})
     if (pages) await new Promise((resolve) => pages.server.close(resolve))
+    if (proxyServer) await new Promise((resolve) => proxyServer.server.close(resolve))
     await delay(600)
     await rm(store, { recursive: true, force: true })
     await rm(userDataDir, { recursive: true, force: true })
     await rm(downloadsDir, { recursive: true, force: true })
+    if (proxyStoreDir) await rm(proxyStoreDir, { recursive: true, force: true })
   }
 }
 

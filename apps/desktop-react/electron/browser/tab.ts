@@ -113,6 +113,17 @@ export interface BrowserTabDeps {
   readonly createView: BrowserViewFactory
   readonly preferencesFor: (profile: string) => BrowserViewPreferences
   readonly observer: BrowserTabObserver
+  /**
+   * 这一格身份的网络策略落地了没有(2026-09-12)。**每一发 `loadURL` 之前等它**。
+   *
+   * 判词整段在 `electron/network-proxy.ts` 的文件头:`setProxy` 是异步的,分区
+   * 又是懒建的,回放还没落地就把第一发请求打出去 = **直连一发** —— 在只有代理
+   * 能出网的网络上那一发不是慢,是失败,而且泄露直连 IP。旧壳
+   * (`whenBrowserPartitionReady`)立的这条判例,原样搬过来。
+   *
+   * 缺席 = 这台宿主没有这件事,行为与从前逐字相同。
+   */
+  readonly ready?: (profile: string) => Promise<void>
 }
 
 export class BrowserTab {
@@ -276,6 +287,12 @@ export class BrowserTab {
   }
 
   private async load(url: string): Promise<void> {
+    /*
+     * **先等网络策略落地,再取 webContents**(不是反过来):这一等可能跨好几拍,
+     * 这中间这一格可能已经被关掉了,所以 `alive()` 要在等完之后问。
+     */
+    const ready = this.deps.ready?.(this.current.profile)
+    if (ready) await ready
     const wc = this.alive()
     if (!wc) return
     try {

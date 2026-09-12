@@ -69,6 +69,8 @@ import {
 } from '@onething/backend/wiring/settings/events.js'
 import { getSettings } from '@onething/backend/stores/settings.js'
 import { NATIVE_VIEW_CHANNEL, type NativeViewPush } from '../native-view-protocol.js'
+import { shellProxyPolicy } from '../host-ports.js'
+import type { ElectronProxySessionLike } from '../network-proxy.js'
 import { KeymapBridge } from './keymap-bridge.js'
 import { installCdpSettingsWatcher } from './cdp-settings.js'
 import {
@@ -155,8 +157,33 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
   }
   /** 每格 profile 一份「摘 will-download」的退订。 */
   const downloadsOff: (() => void)[] = []
+  /** 每格 profile 一份「不再跟着重套代理」的退订。 */
+  const proxyOff: (() => void)[] = []
 
   const sessionPolicy = new BrowserSessionPolicy(partition => session.fromPartition(partition), {
+    /*
+     * ── 代理:**分区建出来那一拍就登记**(2026-09-12)─────────────────────────
+     *
+     * 报障的形状:用户设置里代理开着,而 `applyShellNetworkProxySettings()` 只对
+     * `session.defaultSession` 一个人 `setProxy` —— 这里每一格身份是
+     * `session.fromPartition('persist:browser-<id>')`,是**另一个** Session,于是
+     * 标签直连出网,被墙的站在 TLS 握手那一步被关(日志里成串的 `net_error -100`)。
+     *
+     * 修法不是在这里补一句 `setProxy`,而是**把这一格网络面交给策略对象**:
+     * `register` 当场回放当前配置(policy 把那个 promise 记成 `ready(profile)`,
+     * 第一发 `loadURL` 等它),而且此后每一次「设置里改了代理」都由策略挨个重套。
+     * 判词整段在 `electron/network-proxy.ts` 的文件头。
+     *
+     * 这里的 cast 与本文件另外五处同族:`BrowserSessionLike` 是分区策略认识的
+     * 那一片(它不该认识代理的词汇),真 `Session` 两边的口都有。
+     */
+    proxy: {
+      register: created => {
+        const registration = shellProxyPolicy.register(created as unknown as ElectronProxySessionLike)
+        proxyOff.push(() => { registration.unregister() })
+        return registration.ready
+      },
+    },
     ask: request => {
       const tabId = tabIdByContents.get(request.webContents)
       // 认不出是哪一格 = 没有地方画那张卡 = 只能拒(「没人能答的时候唯一诚实的
@@ -330,6 +357,11 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
       permissions.dispose()
       for (const off of downloadsOff) off()
       downloadsOff.length = 0
+      // 这几格分区不再跟着重套代理 —— 视图马上就要摘掉,而 `Session` 对象本身
+      // 是 Electron 的(`fromPartition` 对同一个分区名永远交回同一个),留在策略
+      // 的登记表里只会让下一次 `apply` 对着一批没人用的面空套。
+      for (const off of proxyOff) off()
+      proxyOff.length = 0
       // 先摘 provider(内核那只注销会先掐在飞、等它们收场),再拆视图 —— 反过来的话
       // 一次在飞的 `read page` 会打在一片已经销毁的 webContents 上。
       await unmount()
