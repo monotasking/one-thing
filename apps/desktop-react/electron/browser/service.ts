@@ -34,6 +34,7 @@ import type { BrowserTabPatch, BrowserTabState, PersistedTabTable } from './tab-
 import { EMPTY_TAB_TABLE, parseTabTable, persistTab } from './tab-state.js'
 import type { BrowserViewFactory } from './tab.js'
 import { BrowserTab } from './tab.js'
+import type { BrowserFindReadout } from './find.js'
 import type { WindowOpenDecision } from './session-policy.js'
 import { BrowserSessionPolicy, DEFAULT_BROWSER_PROFILE } from './session-policy.js'
 
@@ -54,6 +55,14 @@ export interface BrowserServiceObserver {
   onMaterialized(tab: BrowserTab): void
   /** 视图要摘了,登记方先撤。 */
   onDematerialized(tabId: string): void
+  /**
+   * 一次页内查找的读数(B3-a)。**它与上面五条不同族,而那是有意的**:前五条是
+   * 数据面 / 生命周期的事实,这一条是**视图状态**(查找不进 `browser:` 的自述,
+   * 判词在 `native-view-protocol.ts` 的 `verb: 'find'` 上)。它经这条链只是因为
+   * 持有 webContents 的是 tab,而 service 是 tab 的唯一持有者 —— 与
+   * `onMaterialized` / `onDematerialized` 同一个理由、同一条路。
+   */
+  onFind(tab: BrowserTab, readout: BrowserFindReadout): void
 }
 
 export interface BrowserServiceOptions {
@@ -187,6 +196,7 @@ export class BrowserService {
           this.options.observer.onOpened(tab)
         },
         onWindowOpen: (tab, decision) => { this.onWindowOpen(tab, decision) },
+        onFind: (tab, readout) => { this.options.observer.onFind(tab, readout) },
       },
     })
   }

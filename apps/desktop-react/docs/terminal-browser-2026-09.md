@@ -408,6 +408,7 @@ B0-② 顺手核「registry 能不能列出挂载中的作用域」,不能就加
 | T1 | `d6e31abb` | xterm 进壳、五档状态机、`gate:terminal` 八条(超量 2 万行零长帧);**两条真病顺带治**:①键位内核 `matchCombo` 把 ⌘ 与 Ctrl 当同一位 → 按下侧 `primaryPressedIn(e, platform)` + `offHandPressed`,`platform` 必填;②`TerminalService.handleExit` 的 `disposing` 守卫让 RPC `kill` 永不发死讯 → `exitSent` 闩 |
 | B2 | `76d98911` | 壳侧真浏览器:`browser` 内容种类 + 启动瓦 + `NativeViewSlot` + 键位下沉与焦点双向同步 + `gate:browser` 十一条 |
 | T2 | 本单 | 终端内查找(`@xterm/addon-search`,⌘F 进 `terminal.keys`,叶顶查找行四态)+ 组件级停靠**量了不做**(数字见下)+ 重载 detach 宿主调用点 + `gate:terminal` / `gate:browser` 定档进 `verify`(两档渲染层各一趟)|
+| B3-a | (本笔) | 页内查找(`host:native-view` 两动词一推送,不进资源面)+ 网页权限询问(`permissionRequested/Resolved` 事实 + `respondPermission` 做法,非用户主体一律拒,60s 超时按拒,无「始终」)+ 下载落地提示(`app.getPath('downloads')` 重名加序号);真 bug:Electron `findNext` 语义反的——首发要 `true`(`find.ts` `beginsNewFindSession`);`gate:browser` 十四条两档绿 |
 
 **T1 立下的判例**:启动瓦开出内容那一拍树上只有叶没有内容格,`focusIntoRefAfterCommit` 落空 → 「开的人点名、被开的那一格挂载时取走」(`registry.requestTerminalFocus`,与 `stage/summon.requestFocusOnOpen` 同族);`appendChild` 走 ref 回调不走 effect(子 effect 先于父,落焦那一刻 textarea 还不在文档里);目录瓦有同一缺口未动。**缺省拍**:`toggle:terminal` 出厂键读作主修饰键 + 反引号 → Win/Linux `Ctrl+\``、mac `⌘\``(macOS 把 ⌘\` 交给应用,单窗无冲突;今天没有绑定表达得出「就是 Ctrl 那一枚」,`DEFAULT_COMBOS` 行上标 ⚠️)。`gate-a11y` 起的是 server 宿主(`terminal: null`),终端那一屏永远等不到叶 → axe 进 `gate:terminal` ⑧。
 

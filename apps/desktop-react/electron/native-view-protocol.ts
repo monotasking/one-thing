@@ -63,6 +63,27 @@ export type NativeViewRequest =
    * 整表覆盖而不是增量:键位可以在设置里改绑,一份全表比一串增删更难对错。
    */
   | { readonly verb: 'keymap'; readonly chords: readonly string[] }
+  /**
+   * 在这片视图里找一个词(B3-a)。
+   *
+   * ── 它为什么在**这条**通道上,而不是一条读法 / 一条做法 ──────────────────
+   * 查找是**视图状态**,不是这格资源的事实(方案 §6「只有拿着鼠标的人才有这个
+   * 动作」):它没有结局、不该落审计、AI 要在页面里找东西走的是 `page` 那条读法
+   * (整篇正文交给它,它自己会读)。把它做成 `browser:` 的一条做法,等于在模型
+   * 面上多一件它永远不该用的东西,而每一件这样的东西都要在权限、审计、事件三处
+   * 各占一格。所以它与 `frame` / `occlude` / `focus` 同族:壳里那块面的显隐几何
+   * 归这条通道,**钉数不涨**(帧带 `viewId`,主进程按 id 路由)。
+   *
+   * ── 为什么没有「这是不是同一个词」那一格 ────────────────────────────────
+   * `webContents.findInPage` 的 `findNext` 说的是「接着上次往下找」还是「从头
+   * 重找」。那个判据是**「词变了没有」**,而记得上一个词的是主进程(它才是那台
+   * 查找器的持有者)。让壳报一格 `again: boolean` 就是让同一个判据有两个产地 ——
+   * 壳只要在 `onChange` 与 ↵ 两条路上写错一处,手感就分叉。所以壳只说「找这个词,
+   * 往哪个方向」,同不同是主进程自己比出来的。
+   */
+  | { readonly verb: 'find'; readonly viewId: string; readonly text: string; readonly forward: boolean }
+  /** 收起查找:清掉高亮与选区。壳那一行关掉、这一格 tab 的视图摘掉时各发一次。 */
+  | { readonly verb: 'findStop'; readonly viewId: string }
 
 /**
  * 主进程 → 渲染进程(`webContents.send`,**不占** `transport:gate` 的 ipcMain 钉数
@@ -76,6 +97,14 @@ export type NativeViewPush =
   /** 页面自己拿到 / 失去了键盘焦点。 */
   | { readonly kind: 'focus'; readonly viewId: string }
   | { readonly kind: 'blur'; readonly viewId: string }
+  /**
+   * 一次查找的读数(B3-a)。`active` 是**从 1 起**的当前命中序号(Chromium 的
+   * `activeMatchOrdinal` 原样),`total` 是总命中数;一处都没有时两格都是 0。
+   *
+   * 口径原样带出来而不是在这里折成 0 起:折了之后「壳算错了」与「Chromium 报的
+   * 就是这个数」再也分不开,而这条通道的职责是**转述**,不是解释。
+   */
+  | { readonly kind: 'find'; readonly viewId: string; readonly active: number; readonly total: number }
 
 /** preload 挂出来的那两口(`window.onethingHost.nativeView`)。 */
 export interface NativeViewBridge {

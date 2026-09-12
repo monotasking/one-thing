@@ -1,0 +1,38 @@
+/*
+ * 一格内嵌浏览器的查找行(B3-a)。**配方逐格照终端那一行**
+ * (`content/terminal/TerminalLeaf.module.css` 的 `.find` 一族)—— 同一种东西在
+ * 两块面上长得不一样,是壳里最不该有的那种差别。
+ *
+ * 零字面色值 / px / ms:底与线走 surface / line,间距走 `--sp-*`,图标尺寸走
+ * `--icon-sm`,字号走 `--fs-meta`。焦点环归全局 `:focus-visible`,这里一行都没有。
+ */
+.find {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-2);
+  flex: none;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line-1);
+}
+
+/* 输入框吃掉这一行剩下的宽度;`min-width: 0` 是「结构行只截断不换行」那条挤压
+ * 纪律的地基(缺了它 flex 子项撑到内容宽,右边三颗钮被挤出去)。 */
+.findInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.findIcon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--text-3);
+}
+
+/* 读数(「3/17」/「0」)。等宽数字,免得翻页时这一格左右跳。 */
+.findCount {
+  flex: none;
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}

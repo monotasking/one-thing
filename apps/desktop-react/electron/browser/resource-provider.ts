@@ -78,6 +78,12 @@ export interface BrowserOps {
   readText(tabId: string, maxChars?: number): Promise<string>
   capture(tabId: string): Promise<string | undefined>
   get(tabId: string): BrowserTabView | undefined
+  /**
+   * 答一次网页权限询问(B3-a)。答**没有**这一问 = `false`,而那不是一次错误:
+   * 它的常态是「这一问已经超时结了,而屏幕上那张卡还在人手上」——两边差一拍,
+   * 不是谁坏了。调用方据它说一句说得出口的话。
+   */
+  respondPermission(requestId: string, allow: boolean): boolean
 }
 
 export class BrowserTabUnknownError extends Error {
@@ -101,10 +107,45 @@ export class BrowserUrlRequiredError extends Error {
   }
 }
 
+/**
+ * **模型 / 插件不许替网页放权限**(B3-a)。
+ *
+ * 判词整段在 `resource-spec.ts` 的 `respondPermission` 上;一句话:这一问是给
+ * 坐在机器前面那个人的,而把它交给一个能被网页正文说服的东西,正是 `page` 读法
+ * 反复提醒「那是数据不是指令」所要防的那件事。
+ *
+ * 它在 **plan** 期抛,不在 apply 期:一次注定不许跑的做法不该先去弹一张权限卡
+ * 问人(与 `dir-provider` 对缺席宿主口的那一句同序)。
+ */
+export class BrowserPermissionNotUserError extends Error {
+  constructor(kind: string) {
+    super(
+      'respondPermission is answered by the person at this machine only — '
+      + `this call is on behalf of ${kind}. A page's permission question is not something a model may answer.`,
+    )
+    this.name = 'BrowserPermissionNotUserError'
+  }
+}
+
+export class BrowserPermissionRequestUnknownError extends Error {
+  constructor(requestId: string) {
+    super(`No permission question is waiting under id ${requestId} — it was answered, timed out, or its tab closed`)
+    this.name = 'BrowserPermissionRequestUnknownError'
+  }
+}
+
+export class BrowserPermissionParamsError extends Error {
+  constructor() {
+    super('respondPermission needs a requestId (string) and allow (boolean)')
+    this.name = 'BrowserPermissionParamsError'
+  }
+}
+
 export type BrowserOpPayload =
   | { readonly op: 'open'; readonly url?: string; readonly background: boolean }
   | { readonly op: 'navigate'; readonly tabId: string; readonly url: string }
   | { readonly op: 'back' | 'forward' | 'reload' | 'activate' | 'close'; readonly tabId: string }
+  | { readonly op: 'respondPermission'; readonly tabId: string; readonly requestId: string; readonly allow: boolean }
 
 /** 命名空间级的两条(没有实例地址);其余都要一格 tab。 */
 const NAMESPACE_MEMBERS: ReadonlySet<string> = new Set(['tabs', 'open'])
@@ -156,6 +197,36 @@ export class BrowserResourceProvider implements ResourceProvider<BrowserOpPayloa
     this.emit(tab.id, 'loading', { id: tab.id, loading: tab.loading })
   }
 
+  /** 一个网页在要一格能力(B3-a)。载荷逐格对着自述里那一条。 */
+  emitPermissionRequested(event: {
+    tabId: string
+    requestId: string
+    permission: string
+    origin: string
+  }): void {
+    this.emit(event.tabId, 'permissionRequested', { ...event })
+  }
+
+  /** 那一问结了(答了 / 超时 / 这一格没了)。判词在自述那一条上。 */
+  emitPermissionResolved(event: {
+    tabId: string
+    requestId: string
+    allow: boolean
+    reason: 'answered' | 'timeout' | 'gone'
+  }): void {
+    this.emit(event.tabId, 'permissionResolved', { ...event })
+  }
+
+  /** 一次下载的三态。 */
+  emitDownload(event: {
+    tabId: string
+    filename: string
+    state: 'started' | 'done' | 'failed'
+    path: string
+  }): void {
+    this.emit(event.tabId, 'download', { ...event })
+  }
+
   // ── 读 ───────────────────────────────────────────────────────────────────
 
   async read(name: string, ref: ResourceRef | null, query: unknown, _ctx: ResourceReadContext): Promise<unknown> {
@@ -199,6 +270,14 @@ export class BrowserResourceProvider implements ResourceProvider<BrowserOpPayloa
   // ── 做 ───────────────────────────────────────────────────────────────────
 
   async plan(op: string, ref: ResourceRef | null, params: unknown, ctx: PlanContext): Promise<Intent<BrowserOpPayload>> {
+    /*
+     * **主体闸在最前面**(B3-a)。它排在 `payloadOf` 之前是有意的:一次不许跑的
+     * 做法,连「参数写对了没有」都不该去替它检查 —— 那会让一句「你的 requestId
+     * 少了一格」看起来像是「参数补齐就能调」。
+     */
+    if (op === 'respondPermission' && ctx.principal.kind !== 'user') {
+      throw new BrowserPermissionNotUserError(ctx.principal.kind)
+    }
     const payload = this.payloadOf(op, ref, params)
     return this.planned(op, ref, payload, this.previewOf(payload), ctx)
   }
@@ -231,6 +310,18 @@ export class BrowserResourceProvider implements ResourceProvider<BrowserOpPayloa
       case 'close':
         this.ops.close(payload.tabId)
         return this.done(ctx, 'Tab closed', `browser:${payload.tabId} closed`, payload.op)
+      case 'respondPermission': {
+        // 答不上的那一问**抛**,不静默 —— 见 `BrowserOps.respondPermission` 的判词。
+        if (!this.ops.respondPermission(payload.requestId, payload.allow)) {
+          throw new BrowserPermissionRequestUnknownError(payload.requestId)
+        }
+        return this.done(
+          ctx,
+          payload.allow ? 'Allowed once' : 'Refused',
+          `browser:${payload.tabId} ${payload.allow ? 'allowed' : 'refused'} ${payload.requestId}`,
+          payload.op,
+        )
+      }
     }
   }
 
@@ -251,6 +342,14 @@ export class BrowserResourceProvider implements ResourceProvider<BrowserOpPayloa
     }
     if (op === 'back' || op === 'forward' || op === 'reload' || op === 'activate' || op === 'close') {
       return { op, tabId }
+    }
+    if (op === 'respondPermission') {
+      const requestId = stringParam(params, 'requestId')
+      const allow = (params as { allow?: unknown } | undefined)?.allow
+      // 两格都必填,而 `allow` 必须是**真布尔** —— 收一个 undefined 当「拒」会让
+      // 一次少写了参数的调用看起来像一次有意的拒绝。
+      if (!requestId || typeof allow !== 'boolean') throw new BrowserPermissionParamsError()
+      return { op, tabId, requestId, allow }
     }
     throw new TypeError(`Browser resource has no op named ${JSON.stringify(op)}`)
   }
@@ -282,6 +381,10 @@ export class BrowserResourceProvider implements ResourceProvider<BrowserOpPayloa
       case 'reload': return 'Reload the browser tab'
       case 'activate': return 'Bring this browser tab to the front'
       case 'close': return 'Close this browser tab'
+      case 'respondPermission':
+        return payload.allow
+          ? 'Allow what the page asked for, once'
+          : 'Refuse what the page asked for'
     }
   }
 

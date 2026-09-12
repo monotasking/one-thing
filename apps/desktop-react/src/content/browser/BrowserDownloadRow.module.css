@@ -1,0 +1,59 @@
+/*
+ * 下载落地那一行(B3-a)。**一条读数,不是一张卡** —— 与叶上那一行错话
+ * (`BrowserLeaf.module.css` 的 `.error`)同一档身量:一行小字,不换底、不加缘。
+ *
+ * 零字面色值 / px / ms。
+ */
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: none;
+  min-width: 0;
+  padding: var(--sp-1) var(--sp-3);
+  border-bottom: 1px solid var(--line-1);
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+/* 主句吃掉剩下的宽度,**只截断不换行**(结构行纪律)。 */
+.text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * 「在文件管理器中显示」—— 行内微型文字动作(裸钮三类判的 ③):无边无底、
+ * 与正文同行,所以走 `ui/ButtonBase` 保本地皮肤。换成 28px 描边的 `ui/Button`
+ * 是改版不是等价迁移。
+ */
+.action {
+  flex: none;
+  font-size: inherit;
+  color: var(--text-2);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
+.action:hover:not(:disabled) {
+  color: var(--text-1);
+}
+
+.action:disabled {
+  cursor: default;
+  opacity: var(--btn-disabled-o);
+}
+
+/* 定位没成那一句:后端原话,同一行接着说,截断不换行。 */
+.problem {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-3);
+}

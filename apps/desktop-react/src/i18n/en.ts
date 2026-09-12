@@ -288,6 +288,31 @@ export const en: Record<MessageKey, string> = {
   'browser.noHost': 'This host has no built-in browser. Pages open in the desktop app.',
   'browser.gone': 'That page is gone.',
 
+  /* ── find in page (B3-a) ──────────────────────────────────────────── */
+  'browser.find': 'Find on this page',
+  'browser.findPlaceholder': 'Find',
+  'browser.findPrev': 'Previous match',
+  'browser.findNext': 'Next match',
+  'browser.findClose': 'Close find',
+
+  /* ── a page is asking for a capability (B3-a) ─────────────────────── */
+  'browser.perm.title': '{origin} wants to {capability}',
+  'browser.perm.titleAnonymous': 'This page wants to {capability}',
+  'browser.perm.notifications': 'send you notifications',
+  'browser.perm.geolocation': 'know where you are',
+  'browser.perm.media': 'use your camera or microphone',
+  'browser.perm.clipboardRead': 'read your clipboard',
+  'browser.perm.midi': 'talk to your MIDI devices',
+  'browser.perm.pointerLock': 'take over your mouse pointer',
+  'browser.perm.unknown': 'do something it did not name clearly',
+
+  /* ── downloads (B3-a) ─────────────────────────────────────────────── */
+  'browser.downloadStarted': 'Downloading {name}…',
+  'browser.downloadDone': 'Downloaded {name}',
+  'browser.downloadFailed': '{name} did not download',
+  'browser.downloadReveal': 'Show in file manager',
+  'browser.downloadDismiss': 'Dismiss this download line',
+
   /* ── session exposé ───────────────────────────────────────────────── */
   'expose.searchPlaceholder': 'Search sessions, sections, messages',
   'expose.searchLabel': 'Search sessions',

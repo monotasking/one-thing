@@ -347,6 +347,33 @@ export const zh = {
   'browser.noHost': '此宿主没有内嵌浏览器,页开在桌面里。',
   'browser.gone': '这一页找不到了。',
 
+  /* ── 页内查找(B3-a)。`browser.find` 同时是 ⌘F 那条局部键在设置页键位表上的
+   *    名字 —— 原话说的是「这一页」,与终端那句「这块屏幕」、查看器那句「这份
+   *    文件」是三句话,所以各有各的键(i18n 纪律:同一句话才只该有一个键)。 */
+  'browser.find': '在这一页里查找',
+  'browser.findPlaceholder': '查找',
+  'browser.findPrev': '上一处',
+  'browser.findNext': '下一处',
+  'browser.findClose': '收起查找',
+
+  /* ── 网页权限询问(B3-a)。卡的形复用既有权限卡。 */
+  'browser.perm.title': '{origin} 想要{capability}',
+  'browser.perm.titleAnonymous': '这个网页想要{capability}',
+  'browser.perm.notifications': '给你发通知',
+  'browser.perm.geolocation': '知道你在哪儿',
+  'browser.perm.media': '用摄像头或麦克风',
+  'browser.perm.clipboardRead': '读你的剪贴板',
+  'browser.perm.midi': '连你的 MIDI 设备',
+  'browser.perm.pointerLock': '接管你的鼠标指针',
+  'browser.perm.unknown': '一格它没说清的能力',
+
+  /* ── 下载落地(B3-a)。一行文字读数,禁 spinner 禁 Toast。 */
+  'browser.downloadStarted': '正在下载 {name}…',
+  'browser.downloadDone': '已下载 {name}',
+  'browser.downloadFailed': '{name} 没下成',
+  'browser.downloadReveal': '在文件管理器中显示',
+  'browser.downloadDismiss': '收起这条下载读数',
+
   /* ── 会话总览 Exposé ──────────────────────────────────────────────── */
   'expose.searchPlaceholder': '搜索会话、章节、消息',
   'expose.searchLabel': '搜索会话',

@@ -14,9 +14,11 @@
  *
  * ## 为什么是 `on` 而不是 `handle`
  *
- * 这五个动词**没有一个要回执**。`frame` 是每帧都在发的(要回执就是每帧一次
- * Promise 往返);其余四条的答案是「屏幕上的事实」,而不是一个返回值 —— `occlude`
- * 的回执就是那张 `snapshot` 推送。`handle` 会让每一发都背上一个没人读的 Promise。
+ * 这七个动词(B3-a 起;原来五个)**没有一个要回执**。`frame` 是每帧都在发的
+ * (要回执就是每帧一次 Promise 往返);其余六条的答案是「屏幕上的事实」,而不是
+ * 一个返回值 —— `occlude` 的回执就是那张 `snapshot` 推送,`find` 的回执就是那条
+ * `find` 推送(而且一次查找会推**好几发**:Chromium 边扫边报,一个 Promise
+ * 只接得住其中一发)。`handle` 会让每一发都背上一个没人读的 Promise。
  *
  * ## 载荷是不可信的
  *
@@ -33,13 +35,16 @@ export interface NativeViewIpcMain {
   removeAllListeners(channel: string): unknown
 }
 
-/** 五个动词各自的落点。装配方填。 */
+/** 七个动词各自的落点。装配方填。 */
 export interface NativeViewHandlers {
   frame(request: Extract<NativeViewRequest, { verb: 'frame' }>): void
   occlude(viewId: string): void
   unocclude(viewId: string): void
   focus(viewId: string): void
   keymap(chords: readonly string[]): void
+  /** 页内查找(B3-a)。判词在协议那两条上 —— 它是视图状态,不是数据面。 */
+  find(request: Extract<NativeViewRequest, { verb: 'find' }>): void
+  findStop(viewId: string): void
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -74,9 +79,17 @@ export function parseNativeViewRequest(raw: unknown): NativeViewRequest | undefi
     }
     case 'occlude':
     case 'unocclude':
-    case 'focus': {
+    case 'focus':
+    case 'findStop': {
       const viewId = viewIdOf(raw)
       return viewId ? { verb: raw.verb, viewId } : undefined
+    }
+    case 'find': {
+      const viewId = viewIdOf(raw)
+      // 词必须是串;**空串是合法的**(它的意思是「别找了」,由 tab 折成
+      // `stopFindInPage`)—— 认不出来的只有「根本不是串」那一种。
+      if (!viewId || typeof raw.text !== 'string') return undefined
+      return { verb: 'find', viewId, text: raw.text, forward: raw.forward !== false }
     }
     case 'keymap': {
       if (!Array.isArray(raw.chords)) return undefined
@@ -101,6 +114,8 @@ export function installNativeViewIpc(
       case 'unocclude': handlers.unocclude(request.viewId); return
       case 'focus': handlers.focus(request.viewId); return
       case 'keymap': handlers.keymap(request.chords); return
+      case 'find': handlers.find(request); return
+      case 'findStop': handlers.findStop(request.viewId); return
     }
   }
   ipcMain.on(NATIVE_VIEW_CHANNEL, listener)

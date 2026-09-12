@@ -19,7 +19,12 @@ import {
   type BrowserTabRow,
 } from '../../data/browser-source'
 import { resolveBrowserOmniboxInput, resolveBrowserSearchEngine } from '../../browser/omnibox'
+import { closeBrowserFind, openBrowserFind, useBrowserFind } from '../../data/browser-find'
+import { useBrowserNotices } from '../../data/browser-notices'
 import { NativeViewSlot } from '../native-view/NativeViewSlot'
+import { WebPermissionCard } from '../permission/WebPermissionCard'
+import { BrowserDownloadRow } from './BrowserDownloadRow'
+import { BrowserFindBar } from './BrowserFindBar'
 import { browserRef } from './browser-ref'
 import { takeBrowserFocusRequest } from './focus-request'
 import s from './BrowserLeaf.module.css'
@@ -48,6 +53,14 @@ import s from './BrowserLeaf.module.css'
  * | 加载中 | `row.loading` | 顶上那条 1px 描线在走;刷新钮变成停止钮 |
  * | 出错 | `row.error` | 地址栏下面一行原话(**后端那句,不发明文案**) |
  * | 找不到 | 表到了、里面没有这一格(账本坏 / 别人关掉了) | 「这一页找不到了」+ 一颗「关掉」 |
+ *
+ * **B3-a 加的三条檐与上面五档正交**(哪一档都可能同时挂着它们),每一条自己那
+ * 张状态表在它自己的组件 / 数据层文件头上,这里只说落点与次序:
+ * 查找行(`BrowserFindBar`,贴着导航檐)→ 错话 → 权限卡(`WebPermissionCard`,
+ * **只画队头**)→ 下载读数(`BrowserDownloadRow`,**只画最近变动的那一条**)→
+ * 占位格。四件都是 `flex: none`,所以它们一出现,那片原生视图的矩形就跟着缩 ——
+ * **不是盖上去**:盖上去要走遮挡快照那条路(原生视图永远压在 DOM 之上),而那
+ * 会让一张等着人答的卡显示成一张静止的截图。
  * ══════════════════════════════════════════════════════════════════════════
  * ③ 交互状态
  * ══════════════════════════════════════════════════════════════════════════
@@ -57,6 +70,7 @@ import s from './BrowserLeaf.module.css'
  * | 回车 | `resolveBrowserOmniboxInput` 折成一个 URL(像地址就当地址,像话就去搜)→ `do navigate` |
  * | Esc(在地址栏里) | 草稿退回真地址,焦点回页面。这是**元素级**的一下,不进退层链 |
  * | ⌘L | 地址栏聚焦并全选(面域局部键,同时是推给主进程的保留键) |
+ * | ⌘F | 开查找行并把光标送进去;**已经开着就是「回到输入框并全选」**。与 ⌘L 并列,同样是保留键 —— 页面有焦点时按它,开的是壳这一行而不是页面自己的查找条 |
  * | 失焦 | 草稿退回真地址 —— 半截地址留在栏里会让人以为页面在那儿 |
  * | 四颗钮 | 各自一只 mutation,**逐格 pending**(律③):按了刷新,后退照常能点 |
  *
@@ -88,6 +102,13 @@ export function BrowserLeaf({ id }: { id: string }) {
   useBrowserLive()
   const tabs = useQuery(browserTabsQuery)
   const row = tabs.data?.tabs.find((tab) => tab.id === id)
+  /*
+   * 查找行与檐下那两件临时的东西(B3-a)。**三格都不是这只组件的 state** ——
+   * 它们按 tabId 住在 `data/browser-find.ts` / `data/browser-notices.ts` 里,
+   * 寿命是那片视图而不是这次挂载(判词各在那两只文件头上)。
+   */
+  const find = useBrowserFind(id)
+  const notices = useBrowserNotices(id)
   const slotRef = useRef<HTMLDivElement | null>(null)
   /*
    * 地址栏那个 `<input>` 从**檐上现取**,而不是给 `ui/Input` 递一个 ref。
@@ -155,6 +176,56 @@ export function BrowserLeaf({ id }: { id: string }) {
     el.select()
   }, [])
 
+  /*
+   * ── ⌘F 的落点 ──────────────────────────────────────────────────────────
+   *
+   * **开着的时候再按一下 = 把光标送回输入框并全选**(与浏览器、编辑器一族的
+   * 手感一致:第二下不是「关掉」,是「重来一次」)。
+   *
+   * 「点名 + 挂载时取走」而不是 rAF —— 判词整段在 `TerminalLeaf` 的 `openFind`
+   * 上(T2 的真机病历:开的那一拍输入框还没挂上来,rAF 与 React 的提交之间没有
+   * 先后保证,焦点送不进去,后面那一串字进了别人那里)。ref 回调跑在提交阶段,
+   * 挂载一定排在点名之后,所以它没有窗口可言。
+   */
+  const findFocusWanted = useRef(false)
+  const findInputRef = useRef<HTMLInputElement | null>(null)
+  const mountFindInput = useCallback((el: HTMLInputElement | null) => {
+    findInputRef.current = el
+    if (!el || !findFocusWanted.current) return
+    findFocusWanted.current = false
+    /*
+     * ui-consume-allow: focus-outside-focus — 作用域**内部**的移动:焦点已经在
+     * `browser` 这一格上,这一句只是把它从占位格 / 地址栏交给查找行那只输入框。
+     * 判词与这只文件上面 `focusAddress` 那一段逐字相同。
+     */
+    el.focus()
+    el.select()
+  }, [])
+
+  const openFind = useCallback(() => {
+    openBrowserFind(id)
+    const input = findInputRef.current
+    if (input) {
+      /* ui-consume-allow: focus-outside-focus — 同上:作用域内部的移动。 */
+      input.focus()
+      input.select()
+      return
+    }
+    findFocusWanted.current = true
+  }, [id])
+
+  const closeFind = useCallback(() => {
+    closeBrowserFind(id)
+    findFocusWanted.current = false
+    // 键盘还给那片页面(占位格就是它的落点)。
+    // ui-consume-allow: focus-outside-focus — 作用域内部的移动(判词同上)
+    slotRef.current?.focus()
+  }, [id])
+
+  const respondPermission = useCallback((requestId: string, allow: boolean) => {
+    void browserOps.respondPermission.run({ tabId: id, requestId, allow })
+  }, [id])
+
   const go = useCallback(() => {
     const engine = resolveBrowserSearchEngine(undefined)
     const url = resolveBrowserOmniboxInput(draft.value, engine)
@@ -209,7 +280,7 @@ export function BrowserLeaf({ id }: { id: string }) {
        * 开出来的」—— 后者要多记一格状态,而这一格现问就有。
        */
       restingTarget={() => (row?.url ? slotRef.current : addressInput() ?? slotRef.current)}
-      keyHandlers={{ address: focusAddress }}
+      keyHandlers={{ address: focusAddress, find: openFind }}
     >
       {({ scopeProps }) => (
         <div
@@ -288,11 +359,29 @@ export function BrowserLeaf({ id }: { id: string }) {
             是编。它只说两件事:在走 / 不在走。
           */}
           <div className={s.progress} data-on={loading || undefined} data-testid="browser-progress" />
+          {/*
+            查找行(B3-a)。它与下面那五档**正交**:哪一档都可能开着它。
+            排在加载线之下、错话之上 —— 它是人自己开出来的一条檐,该贴着导航檐。
+          */}
+          {find.open && (
+            <BrowserFindBar tabId={id} find={find} onClose={closeFind} inputRef={mountFindInput} />
+          )}
           {row?.error && (
             <p className={s.error} data-testid="browser-error">
               {row.error}
             </p>
           )}
+          {/*
+            一张网页权限询问卡。**只画队头**(同一 tab 多问排队,判词在
+            `data/browser-notices.ts` 上);它长在这片叶的檐下,不进任何全局通知 ——
+            这一问问的是「**这一页**能不能拿你的位置」,而屏幕上说得出「这一页」
+            的地方只有这片叶。
+          */}
+          {notices.asks[0] && (
+            <WebPermissionCard ask={notices.asks[0]} onRespond={respondPermission} />
+          )}
+          {/* 下载读数一行。画的永远是最近变动的那一条(判词同上)。 */}
+          {notices.downloads[0] && <BrowserDownloadRow notice={notices.downloads[0]} />}
           <NativeViewSlot viewId={id} scope="browser" elementRef={slotRef} />
         </div>
       )}

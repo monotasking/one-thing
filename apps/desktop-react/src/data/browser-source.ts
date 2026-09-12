@@ -4,6 +4,16 @@ import { createMutation, createQuery } from './kernel'
 import type { Mutation, Rollback } from './kernel'
 import { browserPort } from './browser-port'
 import type { BrowserResourceEvent } from './browser-port'
+import {
+  browserDownloadFact,
+  browserPermissionRequested,
+  browserPermissionResolved,
+  forgetBrowserNotices,
+  resetBrowserNotices,
+  type BrowserDownloadNotice,
+  type WebPermissionAsk,
+} from './browser-notices'
+import { forgetBrowserFind, resetBrowserFind } from './browser-find'
 
 /**
  * 内嵌浏览器的数据层(B2 · 壳半边)。**地址栏上每一颗按钮都走资源路**
@@ -166,12 +176,16 @@ export type BrowserOpName =
   | 'reload'
   | 'activate'
   | 'close'
+  | 'respondPermission'
 
 export interface BrowserOpInput {
   /** 除 `open` 之外每一条都要它。 */
   tabId?: string
   url?: string
   background?: boolean
+  /** `respondPermission` 那两格(B3-a)。 */
+  requestId?: string
+  allow?: boolean
 }
 
 interface BrowserOpSpec {
@@ -258,6 +272,20 @@ const OPS: Readonly<Record<BrowserOpName, BrowserOpSpec>> = {
       input.tabId
         ? patchTabs((prev) => ({ ...prev, tabs: prev.tabs.filter((row) => row.id !== input.tabId) }))
         : undefined,
+  },
+  /*
+   * 答一次网页权限询问(B3-a)。
+   *
+   * **没有乐观补丁**,而这是一次有意的例外:那张卡收不收由后端那条
+   * `permissionResolved` 说了算(答了 / 超时 / tab 没了三条收场共用它)。壳这一侧
+   * 当场把卡撤掉,会让「另一扇窗刚好答掉了」与「我这一发被拒了」两种现场长得一样,
+   * 而且撤早了之后这一发万一失败,屏幕上就再也没有那一问了 —— 那头页面还在等。
+   * 一发往返是 20–30ms,而这一格不是「按下去要有手感」的那一类:人刚刚按的是
+   * 一颗**有后果**的键,让它等后端认下来那一下是对的。
+   */
+  respondPermission: {
+    ref: tabRefOf,
+    params: (input) => ({ requestId: input.requestId ?? '', allow: input.allow === true }),
   },
 }
 
@@ -348,8 +376,57 @@ const EVENT_INVALIDATES: Readonly<Record<string, readonly { invalidate(): void }
   loading: [browserTabsQuery],
 }
 
+/**
+ * 事实 → **不是读数**的那一半(B3-a)。
+ *
+ * 权限询问与下载都不是「屏幕上要一直新鲜的读数」,它们是**一件件到达的事**:
+ * 一问来了、那一问结了、一次下载落地了。标脏一条 query 表达不了它们(重拉整张
+ * tab 表既答不出「谁在问」,也会把一次超时抹成没发生过)。所以第二张表:
+ * 事实 → 交给谁记。**表,不是 switch**;不在表上的事实当没看见。
+ *
+ * `closed` 在两张表上各有一行,而那不是重复:一张说「tab 表脏了」,另一张说
+ * 「这一格身上那些临时的东西该扔了」—— 两件事,两个消费者。
+ */
+const EVENT_NOTICES: Readonly<Record<string, (payload: unknown) => void>> = {
+  'permissionRequested': (payload) => {
+    const row = payload as WebPermissionAsk
+    if (typeof row?.tabId === 'string' && typeof row?.requestId === 'string') {
+      browserPermissionRequested({
+        tabId: row.tabId,
+        requestId: row.requestId,
+        permission: String(row.permission ?? ''),
+        origin: String(row.origin ?? ''),
+      })
+    }
+  },
+  'permissionResolved': (payload) => {
+    const row = payload as { tabId?: unknown; requestId?: unknown }
+    if (typeof row?.tabId === 'string' && typeof row?.requestId === 'string') {
+      browserPermissionResolved({ tabId: row.tabId, requestId: row.requestId })
+    }
+  },
+  download: (payload) => {
+    const row = payload as BrowserDownloadNotice
+    if (typeof row?.tabId === 'string' && typeof row?.path === 'string') {
+      browserDownloadFact({
+        tabId: row.tabId,
+        filename: String(row.filename ?? ''),
+        state: row.state === 'done' || row.state === 'failed' ? row.state : 'started',
+        path: row.path,
+      })
+    }
+  },
+  closed: (payload) => {
+    const id = (payload as { id?: unknown })?.id
+    if (typeof id !== 'string') return
+    forgetBrowserNotices(id)
+    forgetBrowserFind(id)
+  },
+}
+
 export function onBrowserFact(fact: BrowserResourceEvent): void {
   for (const query of EVENT_INVALIDATES[fact.event] ?? []) query.invalidate()
+  EVENT_NOTICES[fact.event]?.(fact.payload)
 }
 
 /* ── 这条线的开与关 ──────────────────────────────────────────────────────── */
@@ -384,6 +461,10 @@ export function resetBrowserSource(): void {
   unsubscribe = undefined
   browserTabsQuery.reset()
   for (const op of OP_NAMES) browserOps[op].reset()
+  // 这条线上还挂着两格**不是读数**的东西(B3-a)。归零一次就该把它们一起归零 ——
+  // 两套拆卸迟早漏一格。
+  resetBrowserNotices()
+  resetBrowserFind()
 }
 
 /**

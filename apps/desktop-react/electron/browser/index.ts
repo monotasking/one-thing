@@ -58,7 +58,9 @@
  * ────────────────────────────────────────────────────────────────────────────
  */
 
-import { WebContentsView, ipcMain, session, type BrowserWindow } from 'electron'
+import fs from 'node:fs'
+import nodePath from 'node:path'
+import { WebContentsView, app, ipcMain, session, type BrowserWindow } from 'electron'
 import type { OnethingBackend } from '@onething/backend'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
 import {
@@ -72,9 +74,11 @@ import { installCdpSettingsWatcher } from './cdp-settings.js'
 import { NativeViewLayout, type NativeViewHost } from './layout.js'
 import { installNativeViewIpc } from './native-view-ipc.js'
 import { BrowserResourceProvider, type BrowserOps, type BrowserTabView } from './resource-provider.js'
-import { BrowserSessionPolicy } from './session-policy.js'
+import { BrowserSessionPolicy, type BrowserSessionLike } from './session-policy.js'
 import { BrowserService, getBrowserTabsPath } from './service.js'
 import type { BrowserTab, NativeView } from './tab.js'
+import { WebPermissionBroker } from './permission.js'
+import { installBrowserDownloads, resolveDownloadDirectory } from './download.js'
 
 const log = getLogger('shell.browser')
 
@@ -104,11 +108,69 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
   // 「结构化端口」与真 Electron 对接的那一道缝,全部五处 cast 都集中在这只文件里。
   const layout = new NativeViewLayout(window.contentView as unknown as NativeViewHost, push)
   const keymap = new KeymapBridge(push)
-  const sessionPolicy = new BrowserSessionPolicy(partition => session.fromPartition(partition))
   /** 每格 tab 一份「摘 keymap 监听」的退订。 */
   const keymapOff = new Map<string, () => void>()
 
   let provider: BrowserResourceProvider | undefined
+
+  /*
+   * ── 「哪片 webContents 属于哪一格 tab」(B3-a)────────────────────────────
+   *
+   * 权限询问与下载这两件事,Electron 交来的身份都是**那片 webContents**,而壳那
+   * 一侧要的是一格 tab 的地址(`browser:<id>`)。这张表在装配点,不在 policy、也
+   * 不在 service:policy 不认识 tab(那正是它测得动的原因),而 service 手上有的是
+   * `BrowserTab`,不是「谁的 webContents」这条反向问句。**登记与撤销各只有一处**
+   * —— 视图落地那一刻记,视图摘掉那一刻删,与 `layout` / `keymapOff` 逐字同序。
+   */
+  const tabIdByContents = new Map<unknown, string>()
+
+  /*
+   * 一次询问结了就发一条事实 —— **三条收场共用这一句**(答了 / 超时 / tab 没了)。
+   * 判词在 `resource-spec.ts` 的 `permissionResolved` 上:没有它,一张问过就没人
+   * 管的卡会永远举在屏幕上。
+   */
+  const permissions = new WebPermissionBroker({
+    onAsk: event => { provider?.emitPermissionRequested(event) },
+    onResolved: event => { provider?.emitPermissionResolved(event) },
+  })
+
+  /*
+   * 下载落哪儿。**每次下载现问**(`directory` 是个函数)—— 于是门那一格覆盖与
+   * 将来设置里那一格「下到哪」都不必重挂监听。判词在 `download.ts` 上。
+   */
+  const downloads = resolveDownloadDirectory(app.getPath('downloads'), process.env)
+  if (downloads.override) {
+    /*
+     * 覆盖生效时把宿主自己那一格也指过去 —— 沙箱的**读根**里有「下载目录」一条
+     * (`getOnethingDownloadsDirectory` 走的正是 `app.getPath('downloads')`),两边
+     * 不一致的话门里下出来的文件就落在读根之外,`dir:` 的 `reveal` 会说它越界。
+     * 只在门那一档下发生;`setPath` 对不存在的目录会抛,所以兜一下。
+     */
+    try { app.setPath('downloads', downloads.dir) } catch { /* 目录不在:照旧用覆盖值落盘 */ }
+  }
+  /** 每格 profile 一份「摘 will-download」的退订。 */
+  const downloadsOff: (() => void)[] = []
+
+  const sessionPolicy = new BrowserSessionPolicy(partition => session.fromPartition(partition), {
+    ask: request => {
+      const tabId = tabIdByContents.get(request.webContents)
+      // 认不出是哪一格 = 没有地方画那张卡 = 只能拒(「没人能答的时候唯一诚实的
+      // 答案就是不」,与 policy 里 `ask` 缺席那一档逐字同一句)。
+      if (!tabId) return Promise.resolve(false)
+      return permissions.ask({ tabId, permission: request.permission, origin: request.origin })
+    },
+    onSession: (created: BrowserSessionLike) => {
+      downloadsOff.push(
+        installBrowserDownloads(created as never, {
+          directory: () => downloads.dir,
+          tabIdOf: webContents => tabIdByContents.get(webContents),
+          exists: target => fs.existsSync(target),
+          join: (dir, name) => nodePath.join(dir, name),
+          onEvent: event => { provider?.emitDownload(event) },
+        }),
+      )
+    },
+  })
 
   const viewOf = (tab: BrowserTab): BrowserTabView => ({
     ...tab.state,
@@ -126,14 +188,26 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
         if (!view) return
         layout.register(tab.id, view)
         keymapOff.set(tab.id, keymap.attach(tab.id, view.webContents))
+        tabIdByContents.set(view.webContents, tab.id)
       },
       onDematerialized: tabId => {
         keymapOff.get(tabId)?.()
         keymapOff.delete(tabId)
+        for (const [contents, id] of tabIdByContents) {
+          if (id === tabId) tabIdByContents.delete(contents)
+        }
         layout.release(tabId)
       },
       onOpened: tab => { provider?.emitOpened(viewOf(tab)) },
-      onClosed: tabId => { provider?.emitClosed(tabId) },
+      onClosed: tabId => {
+        // 这一格没了:它身上还悬着的每一问当场按拒结掉 —— 页面那边在等一个
+        // `callback`,而那个页面马上就要被销毁了,悬着只会留一条永不回的路。
+        permissions.withdrawTab(tabId)
+        provider?.emitClosed(tabId)
+      },
+      onFind: (tab, readout) => {
+        push({ kind: 'find', viewId: tab.id, active: readout.active, total: readout.total })
+      },
       onNavigated: tab => { provider?.emitNavigated(viewOf(tab)) },
       onLoading: tab => { provider?.emitLoading(viewOf(tab)) },
     },
@@ -166,6 +240,7 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
       const tab = service.get(tabId)
       return tab ? viewOf(tab) : undefined
     },
+    respondPermission: (requestId, allow) => permissions.respond(requestId, allow),
   }
 
   provider = new BrowserResourceProvider(ops)
@@ -181,6 +256,9 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
     unocclude: viewId => { layout.unocclude(viewId) },
     focus: viewId => { service.get(viewId)?.focus() },
     keymap: chords => { keymap.setBoundChords(chords) },
+    // 查找是视图状态,所以它走这条通道而不是资源面(判词在协议那两条上)。
+    find: request => { service.get(request.viewId)?.findInPage(request.text, { forward: request.forward }) },
+    findStop: viewId => { service.get(viewId)?.stopFindInPage() },
   })
 
   /*
@@ -210,6 +288,14 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
       disposed = true
       offCdpSettings()
       offIpc()
+      /*
+       * 先把还悬着的每一问按拒结掉,**再**摘 provider:反过来的话那几条
+       * `permissionResolved` 会打在一只已经 dispose 的 hub 上(它自己吞得掉,
+       * 但页面那边等的 `callback` 就真的没人调了)。
+       */
+      permissions.dispose()
+      for (const off of downloadsOff) off()
+      downloadsOff.length = 0
       // 先摘 provider(内核那只注销会先掐在飞、等它们收场),再拆视图 —— 反过来的话
       // 一次在飞的 `read page` 会打在一片已经销毁的 webContents 上。
       await unmount()
@@ -217,6 +303,7 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
       provider = undefined
       for (const off of keymapOff.values()) off()
       keymapOff.clear()
+      tabIdByContents.clear()
       layout.clear()
       service.dispose()
       log.info('browser host disposed')

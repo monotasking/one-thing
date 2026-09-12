@@ -34,7 +34,19 @@
  *  ⑩ **超量**:8 格 tab 全开,**冷 / 热两轮**逐格切换并分段计时(activate 往返 /
  *     状态落定),判热轮那一格与「这一段零长帧」——判词与两档阈值在 `BUDGET` /
  *     `TRANSITIONAL` 上;
- *  ⑪ **axe 扫这一屏**(与 `gate:a11y` 同一套标签、同一个 legacy 模式)。
+ *  ⑪ **axe 扫这一屏**(与 `gate:a11y` 同一套标签、同一个 legacy 模式);
+ *  ⑫ **页内查找**(B3-a):⌘F → 打一个词 → 读数「1/1」,而且 ⌘F 真的在推给主进程
+ *     那张保留键表里(页面有焦点时它先于页面自己的查找条);
+ *  ⑬ **网页权限**(B3-a):门自起的本地页 `getCurrentPosition` → 询问卡出现在叶檐下
+ *     → 点「拒绝」→ **页面真的收到 `PERMISSION_DENIED`**(页面把 `err.code` 写进
+ *     标题,而标题是这道门本来就读得到的东西)→ 卡随 `permissionResolved` 撤掉;
+ *  ⑭ **下载**(B3-a):页面里点一颗 `<a download>`(**在主进程里让那一页自己
+ *     `click()`**,不动真鼠标)→ 檐下一行「已下载 …」+ 文件真的落在**临时**下载
+ *     目录里(`ONETHING_GATE_DOWNLOADS_DIR`,产品路径上读不到的那一格)。
+ *
+ * ⑫⑬⑭ 跑在 ⑪ **之前**,而那是有意的:三件都留在屏上,于是 axe 那一扫顺带把
+ * B3-a 这三个新 surface 也扫了(「新 surface 必须追加进扫描屏」那条纪律)。
+ * ⑬ 的「拒绝」压在 axe 之后 —— 卡得先站在屏上让它扫到。
  *
  * ── ⑪ 为什么长在这道门上,而不是 `gate:a11y` 的第 N 屏 ────────────────────
  * 与 `gate:terminal` ⑧ 逐字同一个理由,只是主语换了:`gate-a11y` 先起一台
@@ -66,7 +78,7 @@
  */
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -240,16 +252,54 @@ async function press(cdp, { key, code, keyCode, text, primary = false, shift = f
   })
 }
 
-/** 门自己那台 http 页服务器:标题就是断言(③④)。 */
+/** ⑭ 那份要下的东西的名字(带 nonce —— 临时下载目录里认得出是这一趟的)。 */
+const DOWNLOAD_NAME = `gate-${NONCE}.txt`
+
+/**
+ * 门自己那台 http 页服务器:标题就是断言(③④)。
+ *
+ * B3-a 加三条路,而**三条都只为「这件事真的会发生」而存在**:
+ *  · `/file` —— 带 `content-disposition: attachment` 的一份正文。**它不是一张页**,
+ *    浏览器对它唯一会做的事就是下载(⑭ 的触发源);
+ *  · `/dl`   —— 一张页,上面一颗 `<a download>` 指着 `/file`。⑭ 在主进程里让那一页
+ *    自己 `click()` 它(**不动真鼠标** —— CDP 的键鼠打进的是壳那个 webContents,
+ *    页面那片视图不吃它;「不许抢用户的机器」那条纪律也禁系统级合成输入);
+ *  · `/geo`  —— 一张页,载入就 `getCurrentPosition`,并把**结果写进标题**。
+ *    标题是这道门本来就读得到的东西(`read tabs`),于是「页面收到了
+ *    PERMISSION_DENIED」这件事不必往页面里伸手就量得到。
+ */
 function startPageServer() {
   return new Promise((resolve) => {
     const server = createServer((req, res) => {
-      const which = (req.url ?? '/').replace(/[^a-z0-9/]/gi, '')
+      const route = (req.url ?? '/').split('?')[0]
+      if (route === '/file') {
+        res.writeHead(200, {
+          'content-type': 'application/octet-stream',
+          'content-disposition': `attachment; filename="${DOWNLOAD_NAME}"`,
+        })
+        res.end(`${BODY_MARK}\n`)
+        return
+      }
+      const which = route.replace(/[^a-z0-9/]/gi, '')
+      const head = `<!doctype html><html><head><meta charset="utf-8"><title>${NONCE}${which === '/' ? '' : which}</title></head>`
+      if (route === '/dl') {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+        res.end(`${head}<body style="background:#0a0">${BODY_MARK}`
+          + `<a id="dl" href="/file" download="${DOWNLOAD_NAME}">get</a></body></html>`)
+        return
+      }
+      if (route === '/geo') {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+        res.end(`${head}<body style="background:#0a0">${BODY_MARK}<script>
+          navigator.geolocation.getCurrentPosition(
+            () => { document.title = ${JSON.stringify(NONCE)} + 'GEOOK' },
+            (err) => { document.title = ${JSON.stringify(NONCE)} + 'GEO' + err.code },
+          )
+        </script></body></html>`)
+        return
+      }
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
-      res.end(
-        `<!doctype html><html><head><meta charset="utf-8"><title>${NONCE}${which === '/' ? '' : which}</title></head>`
-          + `<body style="background:#0a0">${BODY_MARK}</body></html>`,
-      )
+      res.end(`${head}<body style="background:#0a0">${BODY_MARK}</body></html>`)
     })
     server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }))
   })
@@ -269,6 +319,13 @@ async function main() {
 
   const store = await mkdtemp(path.join(tmpdir(), 'browser-gate-store-'))
   const userDataDir = await mkdtemp(path.join(tmpdir(), 'browser-gate-userdata-'))
+  /*
+   * ⑭ 的落点。**门不许往用户真正的 `~/Downloads` 里扔东西**(「验证不改用户状态」
+   * 那条纪律),所以产品那一侧留了一格只在 `ONETHING_GATE_` 前缀下生效的覆盖
+   * (`electron/browser/download.ts` 的 `GATE_DOWNLOADS_DIR_ENV`);产品路径上
+   * 一个字都读不到它。
+   */
+  const downloadsDir = await mkdtemp(path.join(tmpdir(), 'browser-gate-downloads-'))
   /** 产品那一口 CDP。与门自己驱动壳用的那条分开(B0-③)。 */
   const productCdpPort = 19_000 + Math.floor(Math.random() * 900)
   let app
@@ -306,6 +363,7 @@ async function main() {
         // 不抢焦点地 showInactive」。判词在 `electron/main.ts` 的 `GATE_OFFSCREEN` 上。
         ONETHING_GATE_HEADLESS: '1',
         ONETHING_GATE_OFFSCREEN: '1',
+        ONETHING_GATE_DOWNLOADS_DIR: downloadsDir,
       },
     })
     const page = await app.firstWindow()
@@ -333,8 +391,19 @@ async function main() {
       '① navigate 的效果类是 browser_navigate(拍点 ③ 那一档)',
     )
     assert(
-      Object.keys(spec.ops ?? {}).sort().join(',') === 'activate,back,close,forward,navigate,open,reload',
-      `① 做法七条(${Object.keys(spec.ops ?? {}).sort().join(',')})`,
+      Object.keys(spec.ops ?? {}).sort().join(',')
+        === 'activate,back,close,forward,navigate,open,reload,respondPermission',
+      `① 做法八条(B3-a 加了 respondPermission;${Object.keys(spec.ops ?? {}).sort().join(',')})`,
+    )
+    assert(
+      Object.keys(spec.events ?? {}).sort().join(',')
+        === 'closed,download,loading,navigated,opened,permissionRequested,permissionResolved',
+      `① 事实七条(B3-a 加了三条;${Object.keys(spec.events ?? {}).sort().join(',')})`,
+    )
+    assert(
+      !('find' in (spec.ops ?? {})) && !('find' in (spec.reads ?? {})),
+      '① **页内查找一个字都没进自述** —— 它是视图状态,走 host:native-view'
+        + '(判词在 electron/browser/resource-spec.ts 的「哪些东西不进这份自述」)',
     )
 
     await waitFor('渲染层完成一次 RPC 往返', async () => {
@@ -362,8 +431,12 @@ async function main() {
      */
     await app.evaluate(({ ipcMain }) => {
       globalThis.__b2Keymap = []
+      globalThis.__b2Find = []
       ipcMain.on('host:native-view', (_event, message) => {
         if (message && message.verb === 'keymap') globalThis.__b2Keymap.push(message.chords)
+        if (message && (message.verb === 'find' || message.verb === 'findStop')) {
+          globalThis.__b2Find.push(message)
+        }
       })
     })
 
@@ -560,7 +633,155 @@ async function main() {
      * 所以门走人走的那条路:保存设置 → 旗文件落地 → **下次启动**才生效
      * (「重启生效」那句话也因此被量到了)。
      */
-    console.log('\n[7b] axe 扫这一屏(与 gate:a11y 同一套标签)')
+    console.log('\n[7c] ⑫ 页内查找:⌘F → 打一个词 → 读数「1/1」')
+    /*
+     * **⌘F 走的是壳自己那条局部键**(`FOCUS_SCOPES.browser.keys` 那一行)。
+     * 它同时是一条保留键:键位下沉那张表读的正是 `focusScopeKeysOf('browser')`,
+     * 所以 ⑦ 里断言过的那张表现在也带着它 —— 页面拿到焦点时按 ⌘F,是主进程
+     * 截下来推回壳的。这一步量的是壳这一侧「开出来、找到了、读数对」。
+     */
+    await press(cdp, { key: 'F', code: 'KeyF', keyCode: 70, primary: true })
+    await waitFor('查找行开出来并拿到焦点', () =>
+      page.evaluate(() =>
+        document.querySelector('[data-testid="browser-find"]') ? true : undefined,
+      ),
+    )
+    await cdp.send('Input.insertText', { text: BODY_MARK })
+    /*
+     * **等的是「1/1」,不是「读数格里有字」**(第一版就栽在这儿,实测出来的):
+     * Chromium 对一次 `findInPage` 先报一发 `finalUpdate: false` 的中间结果再报
+     * 定稿,而中间那一发的 `matches` 可以是 0。等「有字」会当场收下那个 0 ——
+     * 那不是产品错了,是这道门量早了一拍。产品侧两发都推是有意的(读数一路长上去
+     * 正是「它还在数」的诚实形态,判词在 `electron/browser/find.ts` 上)。
+     */
+    const findReadout = await waitFor(
+      '查找读数落成 1/1(中间结果可能先报一发 0)',
+      async () => {
+        const now = await page.evaluate(() => {
+          const el = document.querySelector('[data-testid="browser-find-count"]')
+          const input = document.querySelector('[data-testid="browser-find"] input')
+          return { readout: el ? el.textContent : null, typed: input ? input.value : null }
+        })
+        return now.readout === '1/1' ? now : undefined
+      },
+      15_000,
+    ).catch(async (error) => {
+      // 失败时把现场交出来:打进去的词、那一格 tab 此刻在哪、正文里有没有那句话。
+      const where = await page.evaluate(() => {
+        const el = document.querySelector('[data-testid="browser-find-count"]')
+        const input = document.querySelector('[data-testid="browser-find"] input')
+        return { readout: el ? el.textContent : null, typed: input ? input.value : null }
+      })
+      const tabsNow = await rpc(record, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+      const rowNow = (tabsNow.value?.tabs ?? []).find((t) => t.id === two[0].id)
+      const pageNow = await rpc(record, 'resources', 'read', { ref: `browser:${two[0].id}`, name: 'page' })
+      /*
+       * **主进程直接查一次同一个词**。这一段是 B3-a 那次判红留下来的:壳报的读数
+       * 是 0,而主进程在同一片视图上直接 `findInPage` 答 1 —— 一句话把「是我们的
+       * 管子断了」与「Chromium 就是找不到」分开(那次的真因是 `findNext` 的语义
+       * 与它的名字是反的,判词在 `electron/browser/find.ts` 上)。只在失败路上跑。
+       */
+      const probe = await app.evaluate(async ({ webContents }, mark) => {
+        const rows = []
+        for (const wc of webContents.getAllWebContents()) {
+          let url = ''
+          try { url = wc.getURL() } catch { url = '(gone)' }
+          if (!url.includes('127.0.0.1') || url.includes('5199')) continue
+          const direct = await new Promise((resolve) => {
+            const timer = setTimeout(() => resolve('(no found-in-page in 2s)'), 2000)
+            wc.once('found-in-page', (_e, r) => { clearTimeout(timer); resolve(r) })
+            try { wc.findInPage(mark) } catch (e) { clearTimeout(timer); resolve(`throw:${String(e)}`) }
+          })
+          rows.push({ url, type: wc.getType(), direct })
+        }
+        return rows
+      }, BODY_MARK)
+      const sentFinds = await app.evaluate(() => globalThis.__b2Find ?? [])
+      throw new Error(
+        `${error.message}\n现场:${JSON.stringify(where)}`
+        + `\n壳发下来的 find:${JSON.stringify(sentFinds)} 期望 viewId=${two[0].id}`
+        + `\ntab:${JSON.stringify(rowNow)}`
+        + `\n正文含标记:${String(pageNow.value?.text ?? '').includes(BODY_MARK)}`
+        + ` 正文头 200:${String(pageNow.value?.text ?? '').slice(0, 120)}`
+        + `\n主进程直接 findInPage:${JSON.stringify(probe)}`,
+      )
+    })
+    report.findReadout = findReadout.readout
+    assert(
+      findReadout.readout === '1/1',
+      `⑫ 页内查找读数「${findReadout.readout}」(打进去的词:${findReadout.typed})`,
+    )
+    const findChords = await app.evaluate(() => globalThis.__b2Keymap ?? [])
+    assert(
+      (findChords.at(-1) ?? []).some((c) => c === 'cmd+f' || c === 'ctrl+f'),
+      '⑫ ⌘F 也在推给主进程那张保留键表里(页面有焦点时它先于页面自己的查找条)',
+    )
+
+    console.log('\n[7d] ⑭ 下载:页面里点一颗 `<a download>` → 落到临时下载目录')
+    /*
+     * **在主进程里让那一页自己 `click()`**,不动真鼠标:CDP 的键鼠打进的是壳那个
+     * webContents,页面那片视图根本不吃它;而系统级合成输入被「真机门不许抢用户
+     * 的机器」那条纪律禁着。`executeJavaScript(..., true)` 的第二格是 userGesture
+     * —— 没有它 Chromium 会把这一下当成脚本自己发起的下载。
+     */
+    await rpc(record, 'resources', 'do', {
+      ref: `browser:${two[0].id}`,
+      op: 'navigate',
+      params: { url: pageUrl('/dl') },
+    })
+    await waitFor('下载那一页加载完', async () => {
+      const tabs = await rpc(record, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+      const row = (tabs.value?.tabs ?? []).find((t) => t.id === two[0].id)
+      return row && row.url.endsWith('/dl') && !row.loading ? row : undefined
+    }, 20_000)
+    const clicked2 = await app.evaluate(async ({ webContents }, needle) => {
+      const target = webContents.getAllWebContents().find((w) => w.getURL().includes(needle))
+      if (!target) return false
+      await target.executeJavaScript("document.getElementById('dl').click()", true)
+      return true
+    }, '/dl')
+    assert(clicked2 === true, '⑭ 在那一页里找到并点了那颗 `<a download>`')
+    const downloadLine = await waitFor(
+      '下载行落成「已下载」',
+      () =>
+        page.evaluate(() => {
+          const el = document.querySelector('[data-testid="browser-download"]')
+          return el && el.dataset.downloadState === 'done' ? el.textContent : undefined
+        }),
+      25_000,
+    )
+    assert(
+      typeof downloadLine === 'string' && downloadLine.includes(DOWNLOAD_NAME),
+      `⑭ 檐下那一行读数说「已下载 ${DOWNLOAD_NAME}」(实读:${downloadLine})`,
+    )
+    const landed = readdirSync(downloadsDir)
+    report.downloads = landed
+    assert(
+      landed.includes(DOWNLOAD_NAME),
+      `⑭ 文件真的落在临时下载目录里(${landed.join(', ') || '空'})—— 而不是用户的 ~/Downloads`,
+    )
+
+    console.log('\n[7e] ⑬ 网页权限:geolocation → 询问卡 → 点「拒绝」→ 页面收到 PERMISSION_DENIED')
+    await rpc(record, 'resources', 'do', {
+      ref: `browser:${two[0].id}`,
+      op: 'navigate',
+      params: { url: pageUrl('/geo') },
+    })
+    const permCard = await waitFor(
+      '权限询问卡出现在叶檐下',
+      () =>
+        page.evaluate(() => {
+          const el = document.querySelector('[data-testid="browser-permission-card"]')
+          return el ? { id: el.dataset.webPermission, text: el.textContent } : undefined
+        }),
+      25_000,
+    )
+    assert(
+      Boolean(permCard.id),
+      `⑬ 卡上带着那一问的 requestId(${permCard.id});卡面:${String(permCard.text).slice(0, 80)}`,
+    )
+
+    console.log('\n[7b] axe 扫这一屏(B3-a 起:查找行 / 下载行 / 权限卡三件都在屏上)')
     /*
      * `setLegacyMode(true)` 是**必须的**(与 `gate-a11y.scanAxe` / `gate-terminal` ⑧
      * 逐字同一个理由):默认模式下 AxeBuilder 会 `newPage()` 去处理跨 frame,而
@@ -579,6 +800,36 @@ async function main() {
       axe.violations.length === 0,
       `⑪ 浏览器这一屏 axe 零违例(过了 ${axe.passes.length} 条规则)`,
     )
+
+    console.log('\n[7e 续] 点「拒绝」—— 页面那边必须真的收到 PERMISSION_DENIED')
+    const refused = await page.evaluate(() => {
+      const key = document.querySelector('[data-testid="browser-permission-reject"]')
+      if (!(key instanceof HTMLElement)) return false
+      key.click()
+      return true
+    })
+    assert(refused, '⑬ 卡上那颗「拒绝」点下去了')
+    const denied = await waitFor(
+      '页面把 PERMISSION_DENIED 写进标题',
+      async () => {
+        const tabs = await rpc(record, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+        const row = (tabs.value?.tabs ?? []).find((t) => t.id === two[0].id)
+        return row && row.title.startsWith(`${NONCE}GEO`) ? row.title : undefined
+      },
+      25_000,
+    )
+    report.geo = denied
+    assert(
+      denied === `${NONCE}GEO1`,
+      `⑬ 页面收到的是 code 1 = PERMISSION_DENIED(实读标题 ${denied})`
+        + '——「拒绝」不是壳自己把卡收掉,那一下真的落回了 Chromium 的 callback',
+    )
+    const cardGone = await waitFor('那张卡随 permissionResolved 撤掉', () =>
+      page.evaluate(() =>
+        document.querySelector('[data-testid="browser-permission-card"]') ? undefined : true,
+      ),
+    )
+    assert(cardGone === true, '⑬ 答完那张卡就没了(由 `permissionResolved` 撤,不由点下去那一下撤)')
 
     console.log('\n[8/10 前置] 经设置打开 CDP 那一格(重启才生效)')
     const settingsNow = await rpc(record, 'settings', 'getSettings', {})
@@ -758,6 +1009,7 @@ async function main() {
         ONETHING_REACT_DEV_SERVER_URL: rendererUrl,
         ONETHING_GATE_HEADLESS: '1',
         ONETHING_GATE_OFFSCREEN: '1',
+        ONETHING_GATE_DOWNLOADS_DIR: downloadsDir,
       },
       stdio: 'ignore',
     })
@@ -801,7 +1053,7 @@ async function main() {
     await delay(1200)
     child = undefined
 
-    console.log(`\n[browser-gate] ok(${LANE} 档)—— 十一条全过`)
+    console.log(`\n[browser-gate] ok(${LANE} 档)—— 十四条全过`)
     console.log(`[browser-gate] 读数:${JSON.stringify(report)}`)
   } finally {
     if (app) await app.close().catch(() => {})
@@ -811,6 +1063,7 @@ async function main() {
     await delay(600)
     await rm(store, { recursive: true, force: true })
     await rm(userDataDir, { recursive: true, force: true })
+    await rm(downloadsDir, { recursive: true, force: true })
   }
 }
 

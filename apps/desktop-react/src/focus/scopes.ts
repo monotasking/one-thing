@@ -172,6 +172,32 @@ const LEAF_KEYS: readonly ScopedKey[] = [
  */
 const BROWSER_KEYS: readonly ScopedKey[] = [
   { scope: 'browser', combo: { meta: true, key: 'l' }, labelKey: 'browser.address', action: 'address' },
+  /**
+   * ⌘F = 在这一页里查找(B3-a)。
+   *
+   * ── 与 ⌘L 并列,判据逐字相同 ────────────────────────────────────────────
+   * 它需要一个目标 —— **这一页**。没有浏览器在场时它无处可去,所以是面域局部键
+   * 而不是全局命令。
+   *
+   * ── 它同时是一条**保留键**,而这一条是免费拿到的 ────────────────────────
+   * 键盘此刻多半就在那片原生视图里(人正在看那一页),而页面自己也想要 ⌘F
+   * (Chrome 自己的查找条、以及每一个自己画查找框的网页)。键位下沉那张表读的
+   * 正是 `focusScopeKeysOf('browser')`(`content/native-view/keymap-downlink.ts`),
+   * 所以**在这里加一行,主进程那张保留键表就自动多一格** —— 于是页面有焦点时
+   * 按 ⌘F,`before-input-event` 先截下来推回壳,开的是壳自己那一行。
+   * 这正是 Chrome「保留键先于页面」的形。
+   *
+   * ── 它与终端 / 查看器的 ⌘F 撞不撞 ────────────────────────────────────────
+   * 不撞,与 ⌘L 那一段逐字同一句:三个作用域的局部键,派发器按活动路径由深到浅
+   * 只问在场的那几格,同一刻至多一格在场。撞车表会把它们列成一族同键 ——
+   * 那是**事实**不是错误:设置页据此说得出「⌘F 在浏览器里是找这一页,在终端里
+   * 是找那块屏幕,在查看器里是找这份文件」。
+   *
+   * labelKey **新开一句**(`browser.find`),不复用 `terminal.find`(原话是「在这块
+   * 屏幕里查找」——说的是屏幕)也不复用 `viewer.findLabel`(说的是文件)。
+   * i18n 纪律管的是「同一句话只该有一个键」,这里是三句话。
+   */
+  { scope: 'browser', combo: { meta: true, key: 'f' }, labelKey: 'browser.find', action: 'find' },
 ]
 
 export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
@@ -248,8 +274,8 @@ export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
    *  · Esc **不声明** —— Esc 在页面里归页面。不传 = 不进 Esc 候选表 = 派发器问
    *    不到人 = 不 `preventDefault` = 那一下归页面自己。与 `terminal` / `music` /
    *    `permission` 三格不声明 Esc 是同一句判词的第四种用法;
-   *  · 局部键 = ⌘L 回地址栏(判词整段写在 `BROWSER_KEYS` 上,含「它同时是一条
-   *    保留键」那一半)。
+   *  · 局部键 = ⌘L 回地址栏 + ⌘F 在这一页里查找(判词整段写在 `BROWSER_KEYS` 上,
+   *    含「它们同时是保留键」那一半)。
    * labelKey 复用 Dock 瓦那一句(i18n 纪律:同一句话只该有一个键)。
    */
   browser: { id: 'browser', kind: 'region', labelKey: 'item.browser', keys: BROWSER_KEYS },

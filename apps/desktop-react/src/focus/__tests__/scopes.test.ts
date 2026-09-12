@@ -89,7 +89,7 @@ describe('FOCUS_SCOPES 封闭表', () => {
 })
 
 describe('局部键:查看器 / 文件树 / 检索面 / 会话总览 / 终端 / 浏览器 / 叶七格', () => {
-  it('查看器三条、文件树两条、检索面两条、总览一条、终端六条、浏览器一条、叶一条,别的作用域一条都没有', () => {
+  it('查看器三条、文件树两条、检索面两条、总览一条、终端六条、浏览器两条、叶一条,别的作用域一条都没有', () => {
     expect(focusScopeKeysOf('viewer').map((k) => k.action)).toEqual(['save', 'jump', 'find'])
     expect(focusScopeKeysOf('files').map((k) => k.action)).toEqual(['detail', 'detail'])
     // 检索重建 S4b:⌘[ / ⌘] = 查询历史的后退 / 前进(§4.6,与浏览器地址栏同形)。
@@ -122,8 +122,13 @@ describe('局部键:查看器 / 文件树 / 检索面 / 会话总览 / 终端 / 
      * B2:⌘L = 回地址栏。它同时是一条**保留键**(会随全局命令一起推给主进程,
      * 由 `before-input-event` 先于页面截下来)—— 判词在 `scopes.ts` 的
      * `BROWSER_KEYS` 上。删掉这一行 → `gate:browser` ⑦ 的 ⌘L 那一半当场红。
+     *
+     * B3-a 在它后面加了 **⌘F**(在这一页里查找)。它是**免费拿到的保留键**:
+     * 键位下沉那张表读的正是 `focusScopeKeysOf('browser')`,所以在声明里加一行,
+     * 主进程那张表就自动多一格 —— 于是页面有焦点时按 ⌘F,开的是壳这一行而不是
+     * 页面自己的查找条。拆掉它 → `gate:browser` ⑫ 的查找读数当场红。
      */
-    expect(focusScopeKeysOf('browser').map((k) => k.action)).toEqual(['address'])
+    expect(focusScopeKeysOf('browser').map((k) => k.action)).toEqual(['address', 'find'])
     // W1 拍点 ④:⌘W 关当前 tab(叶内局部键 —— 它需要一个目标)。
     expect(focusScopeKeysOf('leaf').map((k) => k.action)).toEqual(['closeTab'])
     const withKeys = FOCUS_SCOPE_LIST.filter((s) => (s.keys?.length ?? 0) > 0).map((s) => s.id)

@@ -30,6 +30,8 @@ import type { BrowserTabPatch, BrowserTabState } from './tab-state.js'
 import { createTabState, reduceTabState } from './tab-state.js'
 import type { BrowserViewPreferences, WindowOpenDecision } from './session-policy.js'
 import { decideWindowOpen, isAllowedNavigation } from './session-policy.js'
+import type { BrowserFindReadout } from './find.js'
+import { beginsNewFindSession, foldFoundInPage } from './find.js'
 
 /** `webContents.navigationHistory` 上用到的那几口。 */
 export interface NativeNavigationHistory {
@@ -57,6 +59,10 @@ export interface NativeWebContents {
   isDestroyed(): boolean
   executeJavaScript(code: string, userGesture?: boolean): Promise<unknown>
   capturePage(): Promise<NativeImageLike>
+  /** 页内查找(B3-a)。`findNext` 的判据在 `find.ts` 的 `beginsNewFindSession` 上。 */
+  findInPage(text: string, options?: { forward?: boolean; findNext?: boolean }): number
+  /** `'clearSelection'` = 收起高亮并把选区也清掉(壳那一行关掉时要的正是这一档)。 */
+  stopFindInPage(action: 'clearSelection' | 'keepSelection' | 'activateSelection'): void
   readonly navigationHistory: NativeNavigationHistory
 }
 
@@ -77,6 +83,15 @@ export interface BrowserTabObserver {
   onOpened(tab: BrowserTab): void
   /** 页面要开一扇新窗。service 把它折成一格新 tab(或者拒掉)。 */
   onWindowOpen(tab: BrowserTab, decision: WindowOpenDecision): void
+  /**
+   * 一次页内查找的读数(B3-a)。
+   *
+   * **它经的是观察者链,而不是资源事件**:查找是视图状态,`browser:` 的自述里
+   * 一个字都没有它(判词在 `native-view-protocol.ts` 的 `verb: 'find'` 上)。
+   * 走这条链的先例是 `onMaterialized` / `onDematerialized` —— 那两条同样是窗口
+   * 系统的事实,同样由 service 转手给装配点,装配点再经 `host:native-view` 推回壳。
+   */
+  onFind(tab: BrowserTab, readout: BrowserFindReadout): void
 }
 
 /** 读页面正文的字数上限(P0)。超出截断,并在正文末尾说明截断了。 */
@@ -106,6 +121,12 @@ export class BrowserTab {
   private readonly deps: BrowserTabDeps
   /** 还没建视图时攒下的那一发导航(`navigate` 先于第一次 `activate` 到)。 */
   private pendingUrl: string | undefined
+  /**
+   * 上一次找的那个词(B3-a)。**只为算 `findNext` 而存在** —— 它不是状态,
+   * 不发事件、不落盘、不进 `BrowserTabState`:查找是视图状态,而视图状态的寿命
+   * 是这片视图。视图一摘(`dispose`)它就没了,与那块查找高亮一起。
+   */
+  private findText: string | undefined
   private disposed = false
 
   constructor(init: BrowserTabInit, deps: BrowserTabDeps) {
@@ -164,6 +185,44 @@ export class BrowserTab {
   focus(): void { this.alive()?.focus() }
 
   /**
+   * 在这一页里找一个词(B3-a)。
+   *
+   * **没有视图 = 什么都不做**,与 `readText` 那一句同一条判据:一次查找不该把
+   * 一片惰性的视图建出来(那会让壳上一行输入框悄悄花掉一个渲染进程,而屏幕上
+   * 什么都没有)。空词走 `stopFindInPage` —— 「找一个空串」在 Chromium 那儿是
+   * 一次抛,而人删光输入框时要的本来就是「别找了」。
+   */
+  findInPage(text: string, options: { forward?: boolean } = {}): void {
+    const wc = this.alive()
+    if (!wc) return
+    if (!text) {
+      this.stopFindInPage()
+      return
+    }
+    // `findNext` 的意思与它的名字是反的(true = 开一段新会话)—— 整段判词在
+    // `find.ts` 的 `beginsNewFindSession` 上,那是 `gate:browser` ⑫ 判红挖出来的。
+    const findNext = beginsNewFindSession(this.findText, text)
+    this.findText = text
+    try {
+      wc.findInPage(text, { forward: options.forward !== false, findNext })
+    } catch {
+      // 页面在这中间导航走了 / 上下文没了。一次找不成不是一次崩溃。
+    }
+  }
+
+  /** 收起查找:清高亮、清选区、忘掉上一个词(下一次一定是「从头重找」)。 */
+  stopFindInPage(): void {
+    this.findText = undefined
+    const wc = this.alive()
+    if (!wc) return
+    try {
+      wc.stopFindInPage('clearSelection')
+    } catch {
+      // 同上。
+    }
+  }
+
+  /**
    * 页面正文(P0 = `innerText`)。**没有视图 = 没有正文**,答空串而不是去把视图
    * 建出来:一次读不该有副作用(§2 不变量 1「读无效果」是结构性的)。
    *
@@ -199,6 +258,7 @@ export class BrowserTab {
   /** 摘掉视图。幂等。状态留着 —— 关不关这一格是 service 的事。 */
   dispose(): void {
     this.disposed = true
+    this.findText = undefined
     const wc = this.view?.webContents
     this.view = undefined
     if (wc && !wc.isDestroyed()) {
@@ -261,7 +321,22 @@ export class BrowserTab {
       this.patch({ favicon: icon })
     }) as never)
     on('did-navigate', ((_e: unknown, url: string) => {
+      /*
+       * 换了一页 = 那块查找高亮没了(Chromium 自己清的)。忘掉上一个词,
+       * 于是下一下 ↵ 是「在这一页从头找」而不是「接着上一页的第 7 处往下」——
+       * 后者的接着处根本不存在。壳那一行照旧开着、词照旧留着(与浏览器一族
+       * 的手感一致),它只是要重新按一次。
+       */
+      this.findText = undefined
       this.patch({ url, error: undefined, ...this.navFlags() })
+    }) as never)
+    /*
+     * 查找读数(B3-a)。**一发不落地全推** —— Chromium 对一次查找通常先报一发
+     * 中间结果再报一发定稿,两发都推让读数一路长上去正是「它还在数」的诚实形态
+     * (判词整段在 `find.ts` 的文件头)。
+     */
+    on('found-in-page', ((_e: unknown, result: unknown) => {
+      this.deps.observer.onFind(this, foldFoundInPage(result))
     }) as never)
     on('did-navigate-in-page', ((_e: unknown, url: string, isMainFrame: boolean) => {
       if (isMainFrame) this.patch({ url, ...this.navFlags() })
