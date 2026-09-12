@@ -86,7 +86,7 @@
 | `apps` | **app** | 「所有应用」是恢复入口,与 `hiddenItems` 同为全局 |
 | `notifications` | **space**(拍点 2,09-10 按**缺省**定) | 建议过 app(「未读是机器级事实」),但拍点的缺省是「保持旧行为」,所以落地取 space。改成 app 是瓦表那一行改一个字 |
 | `providers` | space | 模型表有 per-space 覆盖层(`SpaceOverlayPayload.selectedModels`) |
-| `sessions` | space | 总览本来就按空间过滤 |
+| `sessions` | space | 总览本来就按空间过滤。**space 级 = 换空间重挂**(W4 之后每个空间各一棵拼贴树、各一片叶,`PaneTree` 按 `key={leaf.id}` 画);`gate:workspace` ⑤ 从前断言「切换前后是同一个 DOM 节点」,09-12 因此改口径 —— 改成「切换前后那块面都在场 + 这一拍最长帧在第五轴预算内」,判词在 `scripts/gate-workspace.mjs` 文件头「⑤ 的第三次口径更正」 |
 | `search` | space | cwd / 会话范围都是空间的 |
 | `files` 「目录」瓦 → `files-root` | space | 多份、绑会话 workdir,见 §4 |
 | `diff` | space,**多开**(09-09 用户追加) | 今天是 mock 面板。改成多实例内容 `diff:<目标>`:目标今天是会话 workdir(一个仓一份改动面),将来按文件 `diff:<workdir>#<file>` 同一形状;`singleton: false`,`follow.keyOf = session.projectId` 与目录面板同一句(它看的就是当前仓的改动,不跟随的 diff 没有意义;拍点 8)。「改动」瓦点 = 召唤环境会话 workdir 那份,与「目录」瓦同一条启动器写法 |

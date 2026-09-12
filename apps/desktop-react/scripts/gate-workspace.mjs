@@ -15,8 +15,10 @@
  *  ③ **provider 设置按空间**:两个空间各配一套(默认家 + 勾选的型),
  *     切过去屏幕上读到的是本空间那一套。
  *  ④ **凭证池按空间**:两个空间各一把 key,尾号不同;切过去尾号跟着换。
- *  ⑤ **切换不闪、不重挂**:切换前后会话列表是**同一个 DOM 节点**(零重挂),
- *     而且切换之后的首帧就有内容(没有骨架、没有空屏那一档)。
+ *  ⑤ **切换不闪、不掀面、不卡**:切换前后那块会话面**两头都在场**(面没被掀掉),
+ *     切换之后的首帧就有内容(没有骨架、没有空屏那一档),而且换空间这一拍的
+ *     **最长帧**在第五轴「来回切」的预算内。**「同一个 DOM 节点」那句话已经作废**
+ *     —— 见下面「⑤ 的第三次口径更正」。
  *  ⑥ **文件面的根跟着换**:它按活跃会话的工作目录取,而会话跟着空间走 ——
  *     这一条证的是那条传导链真的通(壳这边一个字的空间参数都没加)。
  *  ⑦ **四条架子的快捷键**(09-01 用户放权):⌘⌥←/→/↓/↑ 各管各的一侧,
@@ -33,6 +35,38 @@
  *     `level: 'app'`,它不属于哪个工作区,是这台壳的。所以开着的那扇浮窗切过去
  *     **同区域同矩形**;而在新空间把它关掉、切回来它**也不在**(进场那棵树上
  *     那格旧影被剥掉了)。两句缺一不可:只证前一句的话,「端过去但不剥」也是绿的。
+ *
+ * ── ⑤ 的**第三次口径更正**(09-12;前两次的判词留在第 4 步那两段注释里)────
+ * ⑤ 出生那天(`e389473b`,09-01)与当天改口那一次(`6182af4b`)写的都是同一句:
+ * 「切换前后 `expose-overview-scroll` 是**同一个 DOM 节点**」。那时它是**免费**
+ * 成立的 —— 面板挂在 `stage/` 上,拼贴树**全局只有一棵**,换空间只换树里的数据,
+ * 那片叶从头到尾没动过。
+ *
+ * W4(`a86b79d5`,09-05)把瓦搬进了**按空间隔离的拼贴树**(`WORKBENCH_PER_SPACE`,
+ * 叶 id 带空间前缀,`PaneTree` 拿 `key={leaf.id}` 画,holder 绑的是组件实例),
+ * 而「会话总览」这块瓦是 `level: 'space'` —— `docs/dock-scope-2026-09.md` §2.2
+ * 那张表白纸黑字拍过:**总览本来就按空间过滤**;S1 携带(⑪)只搬 `level: 'app'`
+ * 那一类。于是两个空间 = 两棵树 = 两片叶 = **两个 DOM 节点**:重挂是**设计**,
+ * 不是回归。今天没有任何一版产品代码能让那句话绿 —— 它已经不是一条可证的断言。
+ *
+ * **为什么改断言而不改产品**,两条:
+ *  · 把瓦表里 `sessions` 的 level 改成 `'app'` 能让节点同一性回来,代价是**默认
+ *    空间的总览端到别的空间去显示别人的会话** —— 那当场砸掉同一道门的 ①
+ *    (「另一个空间的会话一条都不在 DOM 里」)。拿一条断言的绿换另一条断言的红,
+ *    是把门当目标。
+ *  · 壳 `CLAUDE.md` 那条「树 / 面常驻铁律」管的是**一个空间之内**的开关浮层:
+ *    别因为开了别的面就把人正看着的这块面掀掉。换工作区不在其列 —— 换的是世界,
+ *    不是面。
+ *
+ * 所以 ⑤ 换成两句**今天可证**的:
+ *  ① 切换**前后**那块面的滚动容器 `[data-testid="expose-overview-scroll"]`
+ *    **都在场** —— 两个空间各自那格都画出来了。两头都读:只读切完那一头的话,
+ *    「切之前它就没开」也会绿。
+ *  ② 换空间这一拍的**最长帧**(`long-animation-frame`)在预算内 —— **重挂合法
+ *    不等于重挂可以慢**,它的代价归**第五轴**那张表管(`BUDGET.switchLongestFrameMs`,
+ *    与 `gate:chat-layout` ⑦ 同一把尺、同一个探针体例)。
+ * 「一帧之内新世界就在屏上 / 没有骨架 / 不发请求」那半句**原样保留**:它量的是
+ * 「切换是纯投影」,与节点同一性无关,W4 一个字都没动它。
  *
  * ── 为什么这一半必须真机 ─────────────────────────────────────────────────
  * 单元测试换掉的是端口,证的是「壳往哪条口上打」;这里证的是**盘上那几个文件
@@ -101,6 +135,40 @@ const SPACE_AI = {
 const SPACE_KEY = {
   [DEFAULT_SPACE_ID]: 'sk-gate-default-aaaa',
   work: 'sk-gate-work-bbbb',
+}
+
+/**
+ * ── ⑤ 的预算(与 `gate:chat-layout` 同一把尺)──────────────────────────────
+ * 第五轴那张表(用户 09-10 立)里「来回切 ≤ 50ms」那一格 —— 换空间就是「来回切」
+ * 的一种,W4 之后它多了一笔重挂的账,那笔账照这个数收。`BUDGET` 就是那张表,
+ * **一个数都不动**;真达不到就照 `gate-chat-layout.mjs` 的体例把过渡值写进
+ * `TRANSITIONAL`,每一行印来源与退场判据,达标之后删行而不是改小。
+ *
+ * 这道门只有**一档**(它要 `dist/` 才跑得起来 = prod 渲染层),所以过渡表是平的,
+ * 没有 dev / prod 两列。
+ *
+ * 量法:页内 `long-animation-frame` 观察器。这个条目本身的门槛就是 50ms ——
+ * 也就是说 `longest === 0`(一条都没报)与「这一拍里没有任何一帧超过预算」是
+ * 同一句话,预算 50 在这里读作**零长帧**。
+ */
+const BUDGET = {
+  /** ⑤ 换空间那一拍里最长的那一帧。第五轴「来回切 ≤ 50ms」。 */
+  switchLongestFrameMs: 50,
+}
+
+/** 过渡档(体例同 `gate-chat-layout.mjs`)。**今天是空的** —— 实测就在原数之内。 */
+const TRANSITIONAL = {}
+
+/** 这一格今天的判据(有过渡值就用过渡值,没有就是第五轴原数)。 */
+function budgetOf(key) {
+  return key in TRANSITIONAL ? TRANSITIONAL[key] : BUDGET[key]
+}
+
+/** 判据后面那句「这是过渡档」的尾巴。没有过渡值的格子是空串。 */
+function laneNote(key) {
+  return key in TRANSITIONAL
+    ? `(**过渡档**;第五轴原数 ${BUDGET[key]}ms —— 达标之后删掉过渡表那一行)`
+    : ''
 }
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -201,6 +269,25 @@ async function openPanel(page, itemId, readySelector) {
 }
 
 /**
+ * **关掉某块 Dock 面** —— 照 `stage/open-item.ts` 的**召唤四态**点,而不是把瓦当
+ * 两态开关点一下就算数。
+ *
+ * 四态是:没开就开 / 看不见就露出来 / **看得见没聚焦就只聚焦** / 焦点已在里面才收起。
+ * 于是「关掉一块开着但没聚焦的面」在今天是**两下**,而不是一下(判词与真机逐次
+ * 读数写在 ⑫ 那一步的注释里)。封顶 3 下:四态里最远的一条路就是三步,再多就不是
+ * 「点不到」而是「点了不管用」—— 那时让调用处那句 `assert` 当场红,别在这里等。
+ *
+ * `stillOpen()` 由调用处给:这只函数不认识任何一块面的账长什么样。
+ */
+async function closeStageItem(page, itemId, stillOpen) {
+  for (let i = 0; i < 3; i += 1) {
+    if (!(await stillOpen())) return
+    await clickSelector(page, `[data-testid="dock-tile-${itemId}"]`)
+    await delay(250)
+  }
+}
+
+/**
  * 屏幕上此刻的会话行。读的是 `[data-session-id]`(= `session-row-<id>`)那一族的
  * **标题文字** —— 断言按名字写(名字是种子给的),不依赖后端现给的 id。
  *
@@ -221,6 +308,46 @@ function readCards(page) {
   })
 }
 
+
+/**
+ * ⑤ 的量尺:页内 `long-animation-frame` 观察器。装一次(`installFrameProbe`),
+ * 之后 `frameMark` 取一个号、`frameHarvest` 收这一段里最长的那一帧。
+ *
+ * 时刻的产地必须在**页内** —— 与 `gate-chat-layout.mjs` 的探针同一条理由:脚本
+ * 这一侧的墙钟带着一次 CDP 往返,拿它量 50ms 的预算,往返本身就吃掉一小半。
+ *
+ * `long-animation-frame` 的条目门槛是 50ms,所以「一条都没报」= 这一段里没有
+ * 任何一帧超过预算。观察器装不上(旧内核 / 被关掉)时 `known: false`,那一条**跳过**
+ * 而不是假装绿。
+ */
+async function installFrameProbe(page) {
+  await page.evaluate(() => {
+    if (window.__wsFrames) return
+    const probe = (window.__wsFrames = { loaf: [] })
+    try {
+      new PerformanceObserver(list => {
+        for (const entry of list.getEntries()) probe.loaf.push(entry.duration)
+      }).observe({ type: 'long-animation-frame', buffered: true })
+    } catch (error) {
+      probe.err = String(error)
+    }
+  })
+}
+
+/** 取号:此刻已经收到多少条长帧。探针没装上给 -1。 */
+function frameMark(page) {
+  return page.evaluate(() => (window.__wsFrames && !window.__wsFrames.err ? window.__wsFrames.loaf.length : -1))
+}
+
+/** 收号:从 `mark` 到现在这一段里,最长的那一帧有多长、一共几条。 */
+function frameHarvest(page, mark) {
+  return page.evaluate(m => {
+    const probe = window.__wsFrames
+    if (!probe || probe.err || m < 0) return { known: false, longest: 0, frames: 0 }
+    const seen = probe.loaf.slice(m)
+    return { known: true, longest: Math.round(Math.max(0, ...seen)), frames: seen.length }
+  }, mark)
+}
 
 /** 往目标窗口里派发一次组合键。**页面内 DOM 派发**,不动真光标、不抢前台焦点。 */
 async function pressCombo(page, key, mods = {}) {
@@ -419,6 +546,8 @@ async function main() {
       const value = await page.evaluate(() => window.__d0 ?? null)
       return value && value.rpcOk ? value : undefined
     })
+    // ⑤ 的量尺,装在窗口起来之后、任何一次切换之前(`buffered: true`,装早了也不亏)。
+    await installFrameProbe(page)
 
     await openPanel(page, 'sessions', '[data-session-id]')
     const inDefault = await waitFor('默认空间的卡画出来', async () => {
@@ -483,18 +612,22 @@ async function main() {
     )
 
     /*
-     * 两个空间现在都开着会话面。来回切一次,量四律要的那两件:
+     * 两个空间现在都开着会话面。来回切一次,量 ⑤ 要的那三件:
      *  · **一帧就位** —— 切换是纯投影(账本重投影 + 家具摊开),不发一次请求;
-     *  · **零重挂** —— 那块面在两个空间都开着,所以它的滚动容器必须是同一个节点。
+     *  · **面两头都在场** —— 切之前那格开着,切过去那格也画出来了;
+     *  · **这一拍不卡** —— 最长帧在第五轴「来回切」的预算内。
+     *
      * 抓的是滚动容器而不是某张卡的父节点:卡会换、组会换(两个空间的会话落在
      * 不同项目下,分节本来就该重画)。第一版抓行的 `.parentElement`(= 分节的
      * section)红过一次 —— 那是量错了东西。
+     *
+     * **这里从前写的是「同一个 DOM 节点」,09-12 作废**:W4 之后两个空间各是一棵树
+     * 上的一片叶,重挂是设计。完整判词在文件头「⑤ 的第三次口径更正」。
      */
-    const beforeSwitch = await page.evaluate(() => {
-      const list = document.querySelector('[data-testid="expose-overview-scroll"]')
-      window.__wsGate = { node: list ?? null }
-      return { known: Boolean(list) }
-    })
+    const paneBefore = await page.evaluate(() =>
+      Boolean(document.querySelector('[data-testid="expose-overview-scroll"]')),
+    )
+    const frameMarkBefore = await frameMark(page)
     await page.evaluate(() => {
       window.dispatchEvent(
         new KeyboardEvent('keydown', { key: '1', metaKey: true, bubbles: true, cancelable: true }),
@@ -509,14 +642,26 @@ async function main() {
       backInDefault.count === 2 && backInDefault.titles.every(t => t.includes('默认空间')),
       '⑤ 切换后**一帧之内**新世界就在屏上(没有空屏那一档 = 切换不发请求)',
     )
-    const sameNode = await page.evaluate(() => {
-      const now = document.querySelector('[data-testid="expose-overview-scroll"]')
-      return { known: Boolean(now), same: window.__wsGate?.node === now }
-    })
-    if (beforeSwitch.known && sameNode.known) {
-      assert(sameNode.same, '⑤ 两边都开着时,切换前后列表容器是**同一个 DOM 节点**(零重挂)')
+    const paneAfter = await page.evaluate(() =>
+      Boolean(document.querySelector('[data-testid="expose-overview-scroll"]')),
+    )
+    const switchFrames = await frameHarvest(page, frameMarkBefore)
+    console.log(
+      `  · 换空间这一拍:面在场 前=${paneBefore} 后=${paneAfter};`
+      + `最长帧=${switchFrames.known ? `${switchFrames.longest}ms(≥50ms 的帧 ${switchFrames.frames} 个)` : '探针没装上'}`,
+    )
+    assert(
+      paneBefore && paneAfter,
+      '⑤ 切换**前后**那块面都在场(面没被掀掉;W4 之后两个空间各一片叶,重挂是设计 —— 见文件头第三次口径更正)',
+    )
+    if (switchFrames.known) {
+      assert(
+        switchFrames.longest <= budgetOf('switchLongestFrameMs'),
+        `⑤ 换空间这一拍最长帧 ${switchFrames.longest}ms ≤ ${budgetOf('switchLongestFrameMs')}ms`
+        + `${laneNote('switchLongestFrameMs')} —— 重挂合法不等于重挂可以慢`,
+      )
     } else {
-      skip('⑤ 零重挂:没抓到列表容器(选择器与这一版界面对不上)')
+      skip('⑤ 最长帧:`long-animation-frame` 观察器没装上(这一版内核不给),这一格没量到')
     }
 
     // 回到第二个空间,后面几步都在它里面做。
@@ -807,12 +952,29 @@ async function main() {
     )
     await page.screenshot({ path: path.join(shotDir, 'workspace-carry-in-b.png') })
 
-    // 在 B 关掉它(瓦是开关:再点一次 = 收回 Dock)。
-    await clickSelector(page, '[data-testid="dock-tile-workspace"]')
-    await delay(250)
+    /*
+     * 在 B 关掉它。**这里从前写的是「瓦是开关:再点一次 = 收回 Dock」,09-12 作废** ——
+     * 与 ⑤ 同一类的口径过期,只是它埋在一句*前提*里,而前提在 ⑤ 红着的那段日子里
+     * 从来没被跑到过(assert 抛,这一步够不着),所以它是被 ⑤ 的红盖住的第二处旧账。
+     *
+     * 点瓦今天走的是 `stage/open-item.ts` 的**召唤四态**(W7-p 裁定 6:点瓦与
+     * `toggle:<面>` 快捷键从此逐字相同):没开就开 / 看不见就露出来 /
+     * **看得见没聚焦就只聚焦** / 焦点已在里面才收起来。切过来那一下焦点并不在这扇
+     * 浮窗里(实测 `document.activeElement` 在窗外),所以第一下点击换来的是「送焦点」,
+     * 第二下才是「收回 Dock」—— 真机逐次读数:一次 `float:workspace` / 两次 `null` /
+     * 三次 `float:workspace`(又开了)。**产品按合同在跑**,是这道门在用四态机器之前
+     * 的两态词汇说话。
+     *
+     * 所以这一步改成**照四态开到目的地**:点到它真的不在树上为止(封顶 3 下 ——
+     * 四态里最远的一条路是「露出来 → 聚焦 → 收起」)。它仍然是一句**前提**:
+     * 关不掉当场红,而 ⑫ 要证的那句(切回 A 那格旧影被剥掉)一个字没松。
+     */
+    await closeStageItem(page, 'workspace', async () =>
+      regionOfRefIn(await readWorkbenchPersist(page), workId, 'panel:workspace') !== null,
+    )
     assert(
       regionOfRefIn(await readWorkbenchPersist(page), workId, 'panel:workspace') === null,
-      '⑫ 前提:在 B 里它确实被关掉了',
+      '⑫ 前提:在 B 里它确实被关掉了(照召唤四态点到它真的不在树上 —— 判词见上)',
     )
 
     await pressCombo(page, '1', { meta: true })
@@ -828,7 +990,7 @@ async function main() {
     await app.close()
     app = undefined
     console.log(
-      `\n[workspace-gate] ok —— 切换真的换世界(列表 / 归属 / provider 设置 / 凭证 / 零重挂 / 家具 / 四条架子键`
+      `\n[workspace-gate] ok —— 切换真的换世界(列表 / 归属 / provider 设置 / 凭证 / 面不掀且这一拍不卡 / 家具 / 四条架子键`
         + ` / 全局瓦携带)`
         + `(截图:${path.relative(appRoot, shotDir)}/)`,
     )
