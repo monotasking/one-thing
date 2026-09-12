@@ -126,9 +126,9 @@ const LeafTabGroup = memo(function LeafTabGroup({
   const closeAt = useCloseLeafTab(leaf)
   const active = leaf.tabs[leaf.active] ?? null
 
-  /** ⌘W:关当前 tab。表在 `focus/scopes.ts` 的 `FOCUS_SCOPES.leaf.keys`。 */
+  /** ⌘W:关当前 tab。声明在 `focus/scopes.ts` 的 `FOCUS_SCOPES.leaf.answers`(命令 `tab.close`)。 */
   const leafKeys = useMemo(
-    () => ({ closeTab: active ? () => void closeAt(leaf.active) : undefined }),
+    () => ({ 'tab.close': active ? () => void closeAt(leaf.active) : undefined }),
     [active, closeAt, leaf.active],
   )
 
@@ -198,7 +198,7 @@ const LeafTabGroup = memo(function LeafTabGroup({
   }, [leaf.id])
 
   return (
-    <FocusScope scope="leaf" owner={leaf.id} rootRef={rootRef} keyHandlers={leafKeys}>
+    <FocusScope scope="leaf" owner={leaf.id} rootRef={rootRef} commands={leafKeys}>
       {({ scopeProps }) => (
         <div
           {...scopeProps}

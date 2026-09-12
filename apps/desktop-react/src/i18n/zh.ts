@@ -1679,4 +1679,18 @@ export const zh = {
   'terminal.findNext': '下一处',
   'terminal.findClose': '收起查找',
 
+  /* ── 快捷键表合一(K0,2026-09-12)──────────────────────────────────────
+   * 从前每块面自报键位,「查找」在查看器 / 终端 / 浏览器各是一行;K0 起它们答
+   * 的是**同一条命令**,所以命令自己要有一句**通名** —— 三块面各自的说法
+   * (`viewer.findLabel` / `terminal.find` / `browser.find`)一句没少,挂在
+   * `FOCUS_SCOPES[*].answers` 上。 */
+  'keymap.find': '查找',
+  'keymap.sectionApp': '全局',
+  'keymap.sectionScoped': '跟随焦点',
+  'keymap.scopedNote2': '这些键只在对应的那块面在活动路径上时才响;没人答就放行,不再兜底成别的事',
+  'keymap.answerer': '{scope}·{action}',
+  'keymap.sharedChord': '与「{name}」共用这个键(不同时在场)',
+  'keymap.conflictApp': '与「{name}」冲突:同一个键上只能有一条全局命令',
+  'keymap.conflictOverlap': '与「{name}」冲突:在「{scope}」里两者都可能答',
+
 } as const

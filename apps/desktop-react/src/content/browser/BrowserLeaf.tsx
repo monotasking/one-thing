@@ -311,7 +311,7 @@ export function BrowserLeaf({ id }: { id: string }) {
        * 开出来的」—— 后者要多记一格状态,而这一格现问就有。
        */
       restingTarget={() => (row?.url ? slotRef.current : addressInput() ?? slotRef.current)}
-      keyHandlers={{ address: focusAddress, find: openFind }}
+      commands={{ 'browser.address': focusAddress, 'view.find': openFind }}
     >
       {({ scopeProps }) => (
         <div

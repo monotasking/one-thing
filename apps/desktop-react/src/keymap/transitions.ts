@@ -1,45 +1,44 @@
-import { SESSIONS_ITEM_ID, STAGE_ITEMS } from '../stage/items'
-import type { ShelfSide } from '../stage/types'
-import { WORKSPACE_SLOT_COUNT } from '../workspace/types'
-import type { MessageKey } from '../i18n'
+import { KEYMAP_COMMANDS, comboConflictBetween, findCommand, toggleCommandId } from './commands'
+import { SESSIONS_ITEM_ID } from '../stage/items'
+import type { ComboConflict } from './commands'
 import type {
   Combo,
   ComboEvent,
   CommandId,
-  KeymapCommand,
   KeymapPlatform,
   KeymapState,
   RecordOutcome,
 } from './types'
 
-/** persist 档案版本。改这个数就必须在 migrateKeymapPersisted 里加一段,两者同生共死。 */
-export const KEYMAP_PERSIST_VERSION = 2
-
-/** toggle 族的 id 前缀。派发器按它分流,迁移按它铸新 id —— 全仓只此一处字面量。 */
-export const TOGGLE_COMMAND_PREFIX = 'toggle:'
-
-export function toggleCommandId(itemId: string): CommandId {
-  return `${TOGGLE_COMMAND_PREFIX}${itemId}`
-}
-
-/** 工作区序号直达那一族的 id 前缀。派发器按它分流 —— 全仓唯一一处字面量。 */
-export const WORKSPACE_SLOT_COMMAND_PREFIX = 'workspace.slot:'
-
 /**
- * 序号直达那三条在设置页里的名字。命令名是**界面文案**,所以只持有 key
- * (同 StageItemSpec.titleKey 的判例);三条各一句而不是一句带 {n},
- * 是因为 KeymapCommand.labelKey 这一格不带插值 —— 加插值要动整张注册表。
- * 长度必须等于 WORKSPACE_SLOT_COUNT,由 __tests__/keymap-workspace.test.ts 钉住。
+ * **键位注册表的算术**(K0 之后这只文件只剩这一半)。
+ *
+ * 表本身搬去了 `./commands.ts`(判词写在那只文件头上:表要读 `focus/scopes.ts`
+ * 的 `answers`,而算术这一半要被 `focus/transitions.ts` 反过来读,两半留在一个
+ * 文件里就是一个模块环)。这里管的是:组合怎么比、一条命令当下绑着什么、
+ * 一次按键落在哪几条命令上、写入怎么拦冲突、录制怎么读、档案怎么迁。
+ *
+ * 下面那几行 `export ... from './commands'` 是**原样再导出**:既有调用点
+ * (`run-command.ts` / 设置页 / 各门 / 各用例)一个字都不用改,而它们读到的
+ * 仍然是唯一那张表。
  */
-const WORKSPACE_SLOT_LABEL_KEYS: MessageKey[] = [
-  'workspace.slot1',
-  'workspace.slot2',
-  'workspace.slot3',
-]
+export {
+  KEYMAP_COMMANDS,
+  TOGGLE_COMMAND_PREFIX,
+  WORKSPACE_SLOT_COMMAND_PREFIX,
+  comboConflictBetween,
+  findCommand,
+  shelfSideOfCommand,
+  shelfToggleCommandId,
+  toggleCommandId,
+  workspaceSlotCommandId,
+} from './commands'
+export type { ComboConflict } from './commands'
+/** 「这是什么机器」搬去了 `./platform.ts`(断环,判词在那只文件头上)。 */
+export { platformOf } from './platform'
 
-export function workspaceSlotCommandId(slot: number): CommandId {
-  return `${WORKSPACE_SLOT_COMMAND_PREFIX}${slot}`
-}
+/** persist 档案版本。改这个数就必须在 migrateKeymapPersisted 里加一段,两者同生共死。 */
+export const KEYMAP_PERSIST_VERSION = 3
 
 /**
  * 退役的命令 id。它只作为**老档案里的一个键**存在(v2 迁移读它、改挂它),
@@ -47,202 +46,7 @@ export function workspaceSlotCommandId(slot: number): CommandId {
  */
 const RETIRED_EXPOSE_TOGGLE_ID = 'expose.toggle'
 
-/**
- * 出厂绑定表。只列**有**默认键的那几条,别的一律 null ——
- * 「大多数命令出厂不绑键」是有意的:键位是稀缺资源,预占等于替用户做主。
- *
- * ⌘E 给会话总览那块瓦(⌘P 在 08-29 那次拍板里归了检索面板),
- * ⌘J 给顶栏那枚 agent 切换器(08-30 拍板)。
- * ⌘N 给新建会话 —— 这一条是**跨应用惯例**(新建文档 / 新建标签页),
- * 预占它不算替用户做主,不给它才是。
- * ⌘⇧W 给工作区命令面板、⌘1/2/3 给前三个工作区的直达(08-31 切换器 v1 拍板)。
- *
- * ── ⌘⇧O 撞键已解(08-31 用户裁定)─────────────────────────────────────────
- * 那次撞车是这样来的:目录面板的 ⌘⇧O 在先(08-29),工作区命令面板的 ⌘⇧O 是
- * 08-31 拍板点名的键。出厂表这一层**没有冲突检查**(`bindCombo` 只拦用户改绑),
- * 而 `lookupCommand` 按 KEYMAP_COMMANDS 的次序取第一个命中 —— 于是次序成了裁决,
- * `toc.toggle` 的出厂键当下按不响。
- *
- * 裁定走的是「工作区面板改一个键」那条:**⌘⇧W**(W = workspace,好记;
- * 与 ⌘W 关窗那条跨应用惯例不同键,不受影响),⌘⇧O 原样还给目录。
- * 于是次序不再决定任何一个键的去向 —— 下面命令表里那段排序注释也跟着改了。
- *
- * 工作区**总览**没有、也不再要独立快捷键:单击那块瓦即达,快切面板里还有一条
- * 「打开总览」的入口。两个入口够了,第三个只是在花键位预算。
- * ──────────────────────────────────────────────────────────────────────────
- */
-/**
- * 四条架子的**收 / 展**命令(09-01 用户放权:「四条架子的快捷键」)。
- *
- * ── 键位:⌘⌥ + 那个方向的箭头 ────────────────────────────────────────────
- * **方向即语义**,不用记 —— 左架子是 ⌘⌥←,底架子是 ⌘⌥↓。施工前跑过全表冲突
- * 检查(9 条出厂全局键 + 5 条面域局部键,`shelf-commands.test.ts` 把这条检查
- * 钉成了断言):四个组合**一条都不撞**,而且这台壳出厂表里此前一个带 ⌥ 的键
- * 都没有,所以这一族是干净地长出来的,没有挤掉谁。
- *
- * 行内结构键(裸方向键的焦点语义)也不受影响:那一层根本不看修饰键,
- * 而这四条必须同时按住 ⌘ 与 ⌥。
- *
- * ── 为什么是折叠而不是关整栏 ─────────────────────────────────────────────
- * 语义写在 `types.ts` 的命令族注释里:关整栏会把架子上的瓦全收回 Dock,
- * 那是**有后果**的;折叠是可逆的,按同一个键就回来。
- */
-const SHELF_TOGGLE_LABELS: Array<{ side: ShelfSide; labelKey: MessageKey; combo: Combo }> = [
-  { side: 'left', labelKey: 'shelf.labelLeft', combo: { meta: true, alt: true, key: 'arrowleft' } },
-  { side: 'right', labelKey: 'shelf.labelRight', combo: { meta: true, alt: true, key: 'arrowright' } },
-  { side: 'bottom', labelKey: 'shelf.labelBottom', combo: { meta: true, alt: true, key: 'arrowdown' } },
-  { side: 'top', labelKey: 'shelf.labelTop', combo: { meta: true, alt: true, key: 'arrowup' } },
-]
-
-/** 架子命令 id。**全仓唯一一处**这个字符串的拼法(派发器按它反解出哪一侧)。 */
-export function shelfToggleCommandId(side: ShelfSide): CommandId {
-  return `shelf.${side}.toggle`
-}
-
-/**
- * 架子命令 id → 哪一侧。认不出就是 null —— 派发器据此放行,不去猜。
- *
- * 收 `string` 而不是 `CommandId`(K2b-1 放宽):它是**反解**,而反解的入参按定义
- * 是「还不知道是不是一条命令」的串 —— 收 `CommandId` 就等于要求调用方先知道答案。
- * 判据与 `run-command.ts` 的 `runShellCommand` 逐字相同,写在那只函数头上。
- */
-export function shelfSideOfCommand(id: string): ShelfSide | null {
-  const found = SHELF_TOGGLE_LABELS.find((row) => shelfToggleCommandId(row.side) === id)
-  return found?.side ?? null
-}
-
-const SHELF_TOGGLE_COMMANDS: KeymapCommand[] = SHELF_TOGGLE_LABELS.map((row) => ({
-  id: shelfToggleCommandId(row.side),
-  labelKey: row.labelKey,
-  defaultCombo: row.combo,
-}))
-
-const DEFAULT_COMBOS: Partial<Record<CommandId, Combo>> = {
-  'toggle:search': { meta: true, key: 'p' },
-  /*
-   * **召唤终端**(T1,方案 §2.1-6;`desktop-os` §8.2 核过三平台都空着)。
-   *
-   * ── 它为什么不是一条新命令 ─────────────────────────────────────────────
-   * 派工单写的是「加全局命令 `terminal.summon`」。表里**已经有那条命令**了:
-   * `toggle:<瓦 id>` 这一族的语义就是**召唤**(`keymap/types.ts` 的 `CommandId`
-   * 那一段:没打开就按它的打开方式开、看不见就露出来、看得见没聚焦就送焦点、
-   * 焦点已经在里面就收起来),而 `toggle:terminal` 走的正是
-   * `stage/open-item.summonStageItem` —— 那只函数**先问启动瓦**
-   * (`stageLauncherOf(id)`),所以「有开着的就激活最近那格,没有就开一格」
-   * 逐字就是它。再登记一条 `terminal.summon` 会得到两条做同一件事的命令、
-   * 设置页两行、以及一对迟早分叉的落点。所以这里只给那一行补一个**出厂键位**。
-   *
-   * ── 键位:主修饰键 + 反引号 ──────────────────────────────────────────
-   * 出厂全表零冲突(带 ⌥ 的只有架子那四条,带 ⇧ 的只有 ⌘⇧O / ⌘⇧W / ⌘⇧↩,
-   * 反引号这个位子没有第二个人占),而且它是 VS Code / Windows Terminal 一族
-   * 三十年的手势。
-   *
-   * **写 `ctrl` 还是写 `meta` 在这里是同义的**(`primaryOf`:声明这一侧两种拼法
-   * 都读作「主修饰键」);真正按下的那一枚由平台定(T1-fix 的 `matchCombo`):
-   * **Win / Linux 上是 `Ctrl+\``(要的就是它),mac 上是 `⌘\``**。
-   *
-   * ⚠️ **mac 上的 `⌘\`` 与系统的「在本应用的窗口间轮换」撞车** —— 那是 AppKit
-   * 一级的手势,这台壳抢不抢得到要看窗口此刻有没有应用菜单接它。方案
-   * `desktop-os §8.2` 当时核的是「`Ctrl+\`` 三平台都空着」,而那个前提在
-   * T1-fix 之后只对 Win / Linux 成立(mac 上没有任何一条绑定表达得出「就是
-   * Ctrl 那一枚」)。**mac 上换哪个键是用户的拍点**,T1-fix 交卷已列;
-   * 在拍之前这一行照旧,因为它在 Win / Linux 上是对的、在 mac 上至多是按不响。
-   */
-  'toggle:terminal': { ctrl: true, key: '`' },
-  [toggleCommandId(SESSIONS_ITEM_ID)]: { meta: true, key: 'e' },
-  'toc.toggle': { meta: true, shift: true, key: 'o' },
-  'agent.menu': { meta: true, key: 'j' },
-  'session.new': { meta: true, key: 'n' },
-  /*
-   * 真全屏(W2 / 拍点 ④,09-04 用户已拍 `⌘⇧↩`)。**全表零冲突**:出厂表里带 shift
-   * 的只有 `⌘⇧O`(目录)与 `⌘⇧W`(工作区面板),回车这个位子没有第二个人占。
-   * 不取 `⌘⇧F` 的理由写在设计 §4.5 上:它与「在文件中查找」的通用习惯撞。
-   */
-  'workbench.toggleFull': { meta: true, shift: true, key: 'enter' },
-  'workspace.palette': { meta: true, shift: true, key: 'w' },
-  /*
-   * ── 标签换序(W7-c 裁定 3)。**规格写的是 ⌘⌥← / ⌘⌥→,那两个位子有人**:
-   * 它们从 09-01 起就是**左 / 右架子的收展**(上面 `SHELF_TOGGLE_LABELS`,
-   * 「方向即语义」那一族)。规格给的是「若与既有键撞就换并写明」,所以换成
-   * **⌘⌥⇧← / ⌘⌥⇧→**,理由不是随手找一个空位:
-   *  · 它与架子那一族**同一根轴、只多一个 ⇧**,而 ⇧ 在跨应用里正是「带着这个东西
-   *    一起走」的意思(VS Code 的 ⌥⇧↑↓ 搬一行、多数应用的 ⇧+方向键扩选)——
-   *    「⌘⌥← 是让位给左架子,加一个 ⇧ 就是带着这一格标签往左走」读得出来;
-   *  · 全表零冲突:出厂表里带 ⌥ 的只有架子那四条(⌘⌥ + 四个方向,不带 ⇧),
-   *    带 ⇧ 的只有 ⌘⇧O / ⌘⇧W / ⌘⇧↩ —— 三个修饰键一起按的这两条是新长出来的,
-   *    没有挤掉谁(`workspace-commands.test.ts` 守着全表两两不同)。
-   * 行内结构键(裸方向键的焦点语义)不受影响:那一层根本不看修饰键。
-   */
-  'workbench.moveTabLeft': { meta: true, alt: true, shift: true, key: 'arrowleft' },
-  'workbench.moveTabRight': { meta: true, alt: true, shift: true, key: 'arrowright' },
-  [workspaceSlotCommandId(1)]: { meta: true, key: '1' },
-  [workspaceSlotCommandId(2)]: { meta: true, key: '2' },
-  [workspaceSlotCommandId(3)]: { meta: true, key: '3' },
-}
-
-/**
- * 工作区序号直达的命令行。**三条是键位预算,不是能力上限** ——
- * 第四个工作区照样能切(菜单 / 面板 / 总览三处都在),只是没有直达键。
- * 数目由 WORKSPACE_SLOT_COUNT 说了算,这里不写死一个 3。
- */
-const WORKSPACE_SLOT_COMMANDS: KeymapCommand[] = Array.from(
-  { length: WORKSPACE_SLOT_COUNT },
-  (_, i): KeymapCommand => {
-    const id = workspaceSlotCommandId(i + 1)
-    return { id, labelKey: WORKSPACE_SLOT_LABEL_KEYS[i], defaultCombo: DEFAULT_COMBOS[id] ?? null }
-  },
-)
-
-/**
- * 命令表 —— **封闭**。加一个命令就是在这里多一行:
- * 每块 Dock 瓦自动有一条 toggle(所以瓦表长出新瓦时这里不用改),
- * 加上两条不属于任何一块瓦的开关。
- *
- * 会话总览也在瓦那一族里:它有 Placement,「呼出 / 收回」对它和别的瓦是同一句话。
- */
-export const KEYMAP_COMMANDS: KeymapCommand[] = [
-  ...STAGE_ITEMS.map<KeymapCommand>((item) => {
-    const id = toggleCommandId(item.id)
-    return { id, labelKey: item.titleKey, defaultCombo: DEFAULT_COMBOS[id] ?? null }
-  }),
-  ...SHELF_TOGGLE_COMMANDS,
-  /*
-   * 工作区那一族排在 toc.toggle 之前,现在**只是排版**了 —— 从前不是:
-   * 两者出厂键都是 ⌘⇧O 时,这个次序就是那次撞车的裁决。08-31 工作区面板改到
-   * ⌘⇧W 之后出厂表里再没有两条命令共用一个组合,次序不决定任何一个键的去向。
-   * 「不再撞键」由 workspace-commands.test.ts 钉着(它守的是全表两两不同,
-   * 而不是某一对谁赢 —— 后者会在下次加键时无声地失效)。
-   */
-  {
-    id: 'workspace.palette',
-    labelKey: 'workspace.paletteLabel',
-    defaultCombo: DEFAULT_COMBOS['workspace.palette'] ?? null,
-  },
-  ...WORKSPACE_SLOT_COMMANDS,
-  // TOC 面板不是 StageItem,但它的开关同样是命令类快捷键(08-29 全称拍板:都可设置)
-  { id: 'toc.toggle', labelKey: 'toc.title', defaultCombo: DEFAULT_COMBOS['toc.toggle'] ?? null },
-  // 顶栏 agent 切换器:同样不是瓦,同样是「呼出一块面」的命令(08-30)。
-  { id: 'agent.menu', labelKey: 'agent.menuLabel', defaultCombo: DEFAULT_COMBOS['agent.menu'] ?? null },
-  // 新建会话(D1 开工批)。它不开面,它**做一件事** —— 这一族里的第一条。
-  { id: 'session.new', labelKey: 'session.new', defaultCombo: DEFAULT_COMBOS['session.new'] ?? null },
-  /*
-   * 真全屏(W2)。它是**全局档**而不是叶的局部键:按下去时焦点可能在任何地方
-   * (侧栏、输入框、总览),而它要的目标是「焦点叶的活动 tab」—— 那是 store 答得出
-   * 的一句话,不需要键盘落在那片叶里。判据即三层立法那一条:需不需要一个**由焦点
-   * 决定的目标**,而不是「有没有目标」。
-   */
-  { id: 'workbench.toggleFull', labelKey: 'keymap.toggleFull', defaultCombo: DEFAULT_COMBOS['workbench.toggleFull'] ?? null },
-  /* 标签换序两条(W7-c)。它们与 `workbench.toggleFull` 同一族:对**焦点叶的活动
-   * tab** 做一件事,目标由 store 答,不需要键盘落在那片叶里。 */
-  { id: 'workbench.moveTabLeft', labelKey: 'keymap.moveTabLeft', defaultCombo: DEFAULT_COMBOS['workbench.moveTabLeft'] ?? null },
-  { id: 'workbench.moveTabRight', labelKey: 'keymap.moveTabRight', defaultCombo: DEFAULT_COMBOS['workbench.moveTabRight'] ?? null },
-]
-
 export const initialKeymapState: KeymapState = { overrides: {} }
-
-export function findCommand(id: CommandId): KeymapCommand | undefined {
-  return KEYMAP_COMMANDS.find((c) => c.id === id)
-}
 
 /* ── 键与组合(纯算术,与 state 无关,所以能单独测) ────────────────────────── */
 
@@ -377,12 +181,17 @@ export function formatCombo(combo: Combo, platform: KeymapPlatform): string[] {
 /* ── 注册表查询 ───────────────────────────────────────────────────────────── */
 
 /**
- * 一条命令**当下**绑的键:覆盖优先,没登记才落到出厂默认。
+ * 一条命令**当下**绑的那几个键:覆盖优先,没登记才落到出厂默认。
  * 显式的 null 是「用户解绑了」,它赢过默认 —— 所以这里问的是 `in`,不是真值。
+ *
+ * 回**数组**(K0):一条命令可以有好几个键面(`files.detail` 的 ⌘I 与 ⌘↵)。
+ * 空数组 = 此刻没绑,与「绑了一个」在形状上是同一种东西 —— 从前那个
+ * `Combo | null` 让每个调用点各自判一次 null,而那正是「两个出厂键」说不出口的
+ * 根由。
  */
-export function effectiveCombo(state: KeymapState, id: CommandId): Combo | null {
-  if (id in state.overrides) return state.overrides[id]
-  return findCommand(id)?.defaultCombo ?? null
+export function effectiveCombos(state: KeymapState, id: CommandId): readonly Combo[] {
+  if (id in state.overrides) return state.overrides[id] ?? []
+  return findCommand(id)?.defaultCombos ?? []
 }
 
 /** 这条命令有没有被用户改过 —— 「恢复默认」那颗按钮只在它为真时出现。 */
@@ -390,37 +199,82 @@ export function hasOverride(state: KeymapState, id: CommandId): boolean {
   return id in state.overrides
 }
 
-/** 一次按键落在哪条命令上。没人认领 = null。`platform` 见 `matchCombo`。 */
-export function lookupCommand(
+/**
+ * 一次按键落在**哪几条**命令上(K0:一个键可以绑好几条,见冲突规则)。
+ *
+ * 回候选**集**而不是第一个命中的那一条:⌘L 上同时有 `viewer.gotoLine` 与
+ * `browser.address`,谁做由**活动路径**说了算(`focus/transitions.routeKey`),
+ * 不该由这张表的行序说了算 —— 行序决定键的去向正是 08-31 那次 ⌘⇧O 撞车的形状。
+ * 次序按表的声明序,`routeKey` 只把它当候选池,不当优先级。
+ */
+export function lookupCommands(
   state: KeymapState,
   e: ComboEvent,
   platform: KeymapPlatform,
-): CommandId | null {
+): CommandId[] {
+  const out: CommandId[] = []
   for (const command of KEYMAP_COMMANDS) {
-    const combo = effectiveCombo(state, command.id)
-    if (combo && matchCombo(e, combo, platform)) return command.id
+    for (const combo of effectiveCombos(state, command.id)) {
+      if (matchCombo(e, combo, platform)) {
+        out.push(command.id)
+        break
+      }
+    }
   }
-  return null
+  return out
+}
+
+/**
+ * 这个键上**别的**命令(设置页说「⌘L 与查看器的『跳到某行』共用,不同时在场」)。
+ *
+ * 共键不是错误 —— 冲突规则允许的那些共键正是**设计**(一条命令三个响应者、
+ * 两条命令两块永不同框的面)。但不许**静默**:一行键位旁边要说得出还有谁在这
+ * 个键上。判据与 `bindCombo` 同一只 `sameCombo`,所以两处不会分叉。
+ */
+export function sharedChordOf(state: KeymapState, id: CommandId): CommandId[] {
+  const mine = effectiveCombos(state, id)
+  if (mine.length === 0) return []
+  const out: CommandId[] = []
+  for (const command of KEYMAP_COMMANDS) {
+    if (command.id === id) continue
+    const other = effectiveCombos(state, command.id)
+    if (other.some((b) => mine.some((a) => sameCombo(a, b)))) out.push(command.id)
+  }
+  return out
 }
 
 /* ── 写入(唯一的写入口,冲突不静默覆盖) ─────────────────────────────────── */
 
 /**
- * 绑一个组合。**已经被别人占着就不写** —— 返回占它的那条命令,由调用方去说话。
- * 静默覆盖是最难查的一类 bug:用户会以为老键还在。
+ * 绑一个组合。**规则不许的共键就不写** —— 返回撞的是谁、按哪一条规则撞,
+ * 由调用方去说话。静默覆盖是最难查的一类 bug:用户会以为老键还在。
  * 绑到自己身上是恒等成功(再按一次同一个组合不该报「与自己冲突」)。
+ *
+ * ── K0:从「一个键至多一条命令」改成一条**规则**(`comboConflictBetween`)──
+ * 从前这里拦的是「这个组合已经被任何一条命令占着」。那条口径把面域局部键排除在
+ * 外(它们不在这张表里),于是设置页只好另开一张「撞车表」把它们说出来 ——
+ * 说得出、却拦不住,而且拦不住是对的:⌘I 在文件树里开详情、在别处仍是那条全局
+ * 命令,本来就该共存。K0 把「什么时候共键是对的」写成了一条可跑的规则,于是两
+ * 件事合一:合法的共键**放行并说出口**(`sharedChordOf`),不合法的**拦住并说清
+ * 是哪一条规则**。规则本身与出厂表同用一只函数,出厂表自己也得过
+ * (`__tests__/commands.test.ts` 跑全表)。
+ *
+ * 录一次 = **整条换成那一个键**(数组长度回到 1)。`files.detail` 的第二个出厂键
+ * 因此会丢,「恢复默认」拿得回来 —— 多键改绑是 K5 的事,这里先把形状留对。
  */
 export function bindCombo(
   state: KeymapState,
   id: CommandId,
   combo: Combo,
-): { ok: KeymapState } | { conflict: CommandId } {
+): { ok: KeymapState } | { conflict: ComboConflict } {
   for (const command of KEYMAP_COMMANDS) {
     if (command.id === id) continue
-    const other = effectiveCombo(state, command.id)
-    if (other && sameCombo(other, combo)) return { conflict: command.id }
+    const other = effectiveCombos(state, command.id)
+    if (!other.some((c) => sameCombo(c, combo))) continue
+    const conflict = comboConflictBetween(id, command.id)
+    if (conflict) return { conflict }
   }
-  return { ok: { ...state, overrides: { ...state.overrides, [id]: combo } } }
+  return { ok: { ...state, overrides: { ...state.overrides, [id]: [combo] } } }
 }
 
 /** 解绑:写一条显式的 null。它不是「恢复默认」—— 默认键也不再生效。 */
@@ -453,13 +307,11 @@ export function recordKey(e: ComboEvent): RecordOutcome {
 
 /* ── 平台 / persist ───────────────────────────────────────────────────────── */
 
-/** 纯函数不许读 navigator,所以「这是什么机器」由调用方量一次递进来。 */
-export function platformOf(ua: string): KeymapPlatform {
-  return /mac|iphone|ipad/i.test(ua) ? 'mac' : 'other'
-}
-
 /**
  * persist 迁移。
+ *
+ * v3(K0):覆盖的值从一个 `Combo` 变成一串 `Combo[]` —— 一条命令可以有好几个
+ * 键面。判词写在下面那一段上。
  *
  * v2:会话总览去接管化,它的开关从独立的 'expose.toggle' 变成自己那条 toggle。
  * 老档案里挂在旧 id 上的覆盖整条改挂过去 —— 包括用户显式解绑的那条 null:
@@ -469,13 +321,31 @@ export function platformOf(ua: string): KeymapPlatform {
 export function migrateKeymapPersisted(persisted: unknown, version: number): unknown {
   if (version >= KEYMAP_PERSIST_VERSION) return persisted
   if (!persisted || typeof persisted !== 'object') return persisted
-  const out = persisted as Record<string, unknown>
+  let out = persisted as Record<string, unknown>
   if (version < 2) {
     const overrides = out.overrides
     if (overrides && typeof overrides === 'object' && RETIRED_EXPOSE_TOGGLE_ID in overrides) {
       const { [RETIRED_EXPOSE_TOGGLE_ID]: legacy, ...rest } = overrides as Record<string, unknown>
       const id = toggleCommandId(SESSIONS_ITEM_ID)
-      return { ...out, overrides: id in rest ? rest : { ...rest, [id]: legacy } }
+      out = { ...out, overrides: id in rest ? rest : { ...rest, [id]: legacy } }
+    }
+  }
+  if (version < 3) {
+    /*
+     * v3:一条命令可以有好几个键面,所以覆盖的值从 `Combo` 变成 `Combo[]`。
+     * 老档案里每一格是**一个**组合 —— 包成一格数组。
+     *
+     * **显式的 null 原样留着**:它是「用户把这一条解绑了」,不是「没绑过」,
+     * 包成 `[]` 会让 v2 的迁移判词(「解绑也是用户的意思」)在这一版失效。
+     * 已经是数组的(理论上不会有,v3 才出生)照旧不动 —— 迁移要幂等。
+     */
+    const overrides = out.overrides
+    if (overrides && typeof overrides === 'object') {
+      const wrapped: Record<string, unknown> = {}
+      for (const [id, value] of Object.entries(overrides as Record<string, unknown>)) {
+        wrapped[id] = value === null || Array.isArray(value) ? value : [value]
+      }
+      out = { ...out, overrides: wrapped }
     }
   }
   return out

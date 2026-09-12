@@ -232,15 +232,15 @@ describe('关一格:先问种类,答 close 才真关', () => {
     expect(centerLeaves()[0].tabs.map(refId)).toEqual(['home:main', 'doc:a'])
   })
 
-  it('⌘W 关当前 tab —— 声明在 `FOCUS_SCOPES.leaf.keys`,落点是叶注入的处理器', async () => {
+  it('⌘W 关当前 tab —— 声明在 `FOCUS_SCOPES.leaf.answers`,落点是叶注入的处理器', async () => {
     act(() => store().openRef(doc('a')))
     renderCenter()
     // 声明这一头。
-    expect(FOCUS_SCOPES.leaf.keys?.map((k) => k.action)).toEqual(['closeTab'])
+    expect(FOCUS_SCOPES.leaf.answers?.map((a) => a.command)).toEqual(['tab.close'])
     // 落点那一头:真的挂起来的那个实例交出了同名处理器。
     const leafId = centerLeaves()[0].id
     const node = focusTree.dump().nodes.find((n) => n.scope === 'leaf' && n.owner === leafId)
-    expect(node?.keys).toEqual(['closeTab'])
+    expect(node?.keys).toEqual(['tab.close'])
     // 焦点摆进这片叶,再按下去。
     act(() => {
       focusTree.activateScope('leaf', { owner: leafId, reason: 'open' })

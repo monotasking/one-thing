@@ -1,4 +1,4 @@
-import type { Combo } from '../keymap/types'
+import type { Combo, CommandId } from '../keymap/types'
 import type { MessageKey } from '../i18n'
 
 /**
@@ -16,7 +16,7 @@ import type { MessageKey } from '../i18n'
  * 对话框的键」?所以这里:
  *
  *  · `FocusScopeKind` = **行为档**,五格封闭,决定缺省行为;
- *  · `FocusScopeId`   = **声明 id**,21 格封闭,决定标签与局部键表;
+ *  · `FocusScopeId`   = **声明 id**,21 格封闭,决定标签与它答哪些命令;
  *  · `ScopeNode.instanceId` = **实例**,树上的一个节点(同一个 id 可以有好几份 ——
  *    两扇浮窗各一个查看器,架子 keep-alive 各一份)。
  *
@@ -77,22 +77,23 @@ export type FocusScopeId =
   | 'palette'
 
 /**
- * 一个**面域局部键**的声明。
+ * **这种面可能答哪一条命令**(K0,方案 §4 ②)。
  *
- * `action` 是这条键要触发的动作名 —— 它是声明与落点之间那根绳子:表里写
- * `{ scope:'viewer', action:'save' }`,实例注册时交出
- * `keyHandlers: { save: () => … }`。路由(`transitions.routeKey`)回的是这个名字,
- * 不是一个函数,所以路由本身仍然是纯的。
+ * 从前这里是 `ScopedKey { scope, combo, labelKey, action }` —— 一块面自己报一个
+ * 键位、自己造一个动作名。三块面各写一行 ⌘F 于是成了三个意义,「查找在每块面
+ * 里都是 ⌘F」只是三行恰好相同。K0 反过来:**键与意义在命令表里说一次**
+ * (`keymap/commands.ts`),这里只回答「我答不答得出这一条」。
  *
- * 同一个 action 可以挂两个组合(文件树的 ⌘I 与 ⌘↵ 都是 `detail`),那是两行。
+ * 声明这一头不带组合 —— 组合是命令的属性,用户改绑一次,每个响应者自动跟着。
+ *
+ * `labelKey` 是**这块面对这条命令的说法**,缺席就用命令自己那一句通名:
+ * `view.find` 通名是「查找」,终端说「在这块屏幕里查找」、浏览器说「在这一页里
+ * 查找」、查看器说「在这份文件里检索」。三句话仍然是三句(i18n 纪律:同一句话
+ * 只该有一个键),只是它们挂在**响应者**上,不再各绑一次键。
  */
-export interface ScopedKey {
-  scope: FocusScopeId
-  combo: Combo
-  /** 这个键干什么。设置页的撞键提示与键位速查读它。 */
-  labelKey: MessageKey
-  /** 实例注入的处理器名(`ScopeNode.keyHandlers` 的键)。 */
-  action: string
+export interface ScopeAnswer {
+  command: CommandId
+  labelKey?: MessageKey
 }
 
 /**
@@ -108,13 +109,30 @@ export interface FocusReturnSeat {
   element: HTMLElement
 }
 
-/** 一格**声明**。标签与局部键表按 id 记一次,树上有几份实例与它无关(§4.8)。 */
+/** 一格**声明**。标签与「答哪些命令」按 id 记一次,树上有几份实例与它无关(§4.8)。 */
 export interface FocusScopeSpec {
   id: FocusScopeId
   kind: FocusScopeKind
   /** 面域名是界面文案,所以只持有 key(同 StageItemSpec.titleKey 的判例)。 */
   labelKey: MessageKey
-  keys?: readonly ScopedKey[]
+  /** 这种面**可能**答哪些命令(声明这一头;实例此刻答不答得出是另一回事)。 */
+  answers?: readonly ScopeAnswer[]
+  /**
+   * **这几个键归里面那台程序,壳别碰**(K0,方案 §4 ③)。
+   *
+   * 它与 `answers` 方向相反:`answers` 是「接住并执行」,这一格是「**认领并
+   * 放行**」—— 派发器命中 claim 时既不跑任何东西,也**不 `preventDefault`**,
+   * 更不再往外问,事件照常落到 xterm / 页面手里。
+   *
+   * 今天只有 `terminal` 一格有(Win / Linux 上 PTY 要的那五个 `Ctrl+字母`,
+   * 判词整段在 `content/terminal/key-courtesy.ts`)。它**不是命令** —— 不进设置
+   * 页的改绑表、不进原生视图保留表(页面本来就该拿到它);设置页只在「谁答」
+   * 那一列把它说出来:「终端里这个键归 PTY」。
+   *
+   * 实例那一头有一格开关(`ScopeNode.claiming`):里面那台程序此刻不在收键时
+   * (终端的查找框开着、光标在里面)整族让开,与 `commands[id]` 缺席同一个形。
+   */
+  claims?: readonly Combo[]
   /**
    * **这一格是家具,不是面**(W4)。进入它 = 进入它装着的那块内容,
    * 所以 `entryOf` 穿过它继续往里走(与 `kind: 'layer'` 那一档逐字同一条规矩:
@@ -165,8 +183,16 @@ export interface ScopeNode {
   restingTarget?: () => HTMLElement | null
   /** 这一层认不认 Esc。答 true = 这一下归我,别再往外传(§4.4)。 */
   onEscape?: () => boolean
-  /** 局部键的落点。键是 `ScopedKey.action`。 */
-  keyHandlers?: Readonly<Record<string, (() => void) | undefined>>
+  /**
+   * **我此刻能做哪些命令**(K0:键是命令 id,不再是各面自造的动作名)。
+   * 缺席的那一条 = 此刻答不了,派发器当没命中,继续往浅走。
+   */
+  commands?: Readonly<Partial<Record<CommandId, (() => void) | undefined>>>
+  /**
+   * 这一格此刻**认领**它声明的那几个键吗(见 `FocusScopeSpec.claims`)。
+   * 缺省认领;`false` = 里面那台程序此刻不在收键,整族让开。
+   */
+  claiming?: boolean
   /**
    * 这一格**替谁摆着**(R2)。宿主层填它装着的那块面的 id(`stage/items` 的 item id);
    * 内容面这一族填**它自己那一格的 refId**(W5-b:`chat` 的每一片会话叶各一份)。
@@ -216,8 +242,16 @@ export type ActivateReason =
   | 'pointer'
   | 'programmatic'
 
-/** 一次按键的去向(`transitions.routeKey` 的返回值)。 */
+/**
+ * 一次按键的去向(`transitions.routeKey` 的返回值)。
+ *
+ * `claim` 是 K0 新的那一格:**认领并放行** —— 调用方既不跑什么也不
+ * `preventDefault`,这一下原样交给里面那台程序(xterm / 页面)。
+ * 它与 `null`(谁都没接)在结果上像,但意思相反:`null` 是「还可以往下传给
+ * 系统菜单」,`claim` 是「这一下已经有主了,壳不再问任何人」。
+ */
 export type KeyRoute =
-  | { target: 'scope'; instanceId: FocusInstanceId; scope: FocusScopeId; action: string }
-  | { target: 'root'; command: string }
+  | { target: 'claim'; instanceId: FocusInstanceId; scope: FocusScopeId }
+  | { target: 'scope'; instanceId: FocusInstanceId; scope: FocusScopeId; command: CommandId }
+  | { target: 'root'; command: CommandId }
   | null

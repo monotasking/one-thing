@@ -173,11 +173,11 @@ describe('两处登记', () => {
     expect(findItem('terminal')?.defaultPlacement).toEqual({ kind: 'edge', side: 'bottom' })
   })
 
-  it('作用域声明三件:region 档、有局部键、**不认 Esc**(Esc 是 PTY 的键)', () => {
+  it('作用域声明三件:region 档、答一条命令 + 认领五个键、**不认 Esc**(Esc 是 PTY 的键)', () => {
     expect(FOCUS_SCOPES.terminal.kind).toBe('region')
-    // 五行礼让(Win / Linux;jsdom 的 UA 不是 mac)+ 一条 ⌘F(T2)。
-    expect(FOCUS_SCOPES.terminal.keys?.length).toBe(6)
-    expect(FOCUS_SCOPES.terminal.keys?.some((k) => k.action === 'find')).toBe(true)
+    // 一条 ⌘F(T2)+ 五个认领键(Win / Linux;jsdom 的 UA 不是 mac)。
+    expect(FOCUS_SCOPES.terminal.answers?.map((a) => a.command)).toEqual(['view.find'])
+    expect(FOCUS_SCOPES.terminal.claims?.length).toBe(5)
     expect(FOCUS_SCOPES.terminal.passThrough).toBeUndefined()
     expect(zh[FOCUS_SCOPES.terminal.labelKey]).toBeTruthy()
     expect(en[FOCUS_SCOPES.terminal.labelKey]).toBeTruthy()

@@ -1081,13 +1081,13 @@ describe('详情:附属浮层(不是打断式对话框)', () => {
    * **真的挂起来的实例**上做,读的是树自己的排障口。
    * 反证:把 `filesKeys` 那一格改名(比如 `detail` → `info`)→ 这一条当场红。
    */
-  it('作用域实例注入的 keyHandlers 名单 = FOCUS_SCOPES.files.keys 的 action 集合', async () => {
+  it('作用域实例注入的 `commands` 名单 = FOCUS_SCOPES.files.answers 的命令集合', async () => {
     installPort()
     renderFiles()
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
     const node = focusTree.dump().nodes.find((n) => n.scope === 'files')
     expect(node?.keys.slice().sort()).toEqual([
-      ...new Set(FOCUS_SCOPES.files.keys?.map((k) => k.action) ?? []),
+      ...new Set(FOCUS_SCOPES.files.answers?.map((a) => a.command) ?? []),
     ].sort())
   })
 

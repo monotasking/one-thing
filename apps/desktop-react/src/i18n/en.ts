@@ -1421,4 +1421,14 @@ export const en: Record<MessageKey, string> = {
   'terminal.findNext': 'Next match',
   'terminal.findClose': 'Close find',
 
+  /* 快捷键表合一(K0,2026-09-12)。判词见 zh.ts 同一段。 */
+  'keymap.find': 'Find',
+  'keymap.sectionApp': 'Global',
+  'keymap.sectionScoped': 'Follows focus',
+  'keymap.scopedNote2': 'These fire only while the matching pane is on the active path; if nobody answers, the key is passed through instead of falling back to something else',
+  'keymap.answerer': '{scope} · {action}',
+  'keymap.sharedChord': 'Shares this key with “{name}” (never both on screen)',
+  'keymap.conflictApp': 'Conflicts with “{name}”: a key can carry only one global command',
+  'keymap.conflictOverlap': 'Conflicts with “{name}”: both could answer inside “{scope}”',
+
 }

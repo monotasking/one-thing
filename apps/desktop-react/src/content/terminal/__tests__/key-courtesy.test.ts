@@ -1,50 +1,66 @@
 import { describe, expect, it } from 'vitest'
 import {
+  TERMINAL_CLAIMS,
   TERMINAL_COURTESY_LETTERS,
-  TERMINAL_SCOPED_KEYS,
   appAlreadyTookKey,
-  controlByteOf,
-  terminalPtyKeyAction,
-  terminalScopedKeys,
+  terminalClaims,
 } from '../key-courtesy'
 import { FOCUS_SCOPES } from '../../../focus/scopes'
-import { KEYMAP_COMMANDS, effectiveCombo, matchCombo, sameCombo } from '../../../keymap/transitions'
+import { KEYMAP_COMMANDS, effectiveCombos, matchCombo, sameCombo } from '../../../keymap/transitions'
+import { scopesAnswering } from '../../../keymap/commands'
 import { en } from '../../../i18n/en'
 import { zh } from '../../../i18n/zh'
 
 /**
- * **键盘礼让表的守卫**(T1)。
+ * **键盘认领表的守卫**(T1 立,K0 改名 —— 它从「伪装成局部键」改回了它本来的
+ * 样子:一张 `claims`)。
  *
  * 这一组把那张表的**判据**钉住 —— 不是钉住「今天写着 p/e/j/n/w」这个事实,
- * 而是钉住「它们是从哪一条规则算出来的」:出厂全局表(含 `leaf` 的 ⌘W)里
- * 占着「主修饰键 + 单个字母」的那几条,就是这张表。哪天有人给某条命令绑上
- * ⌘K,这一组会说「表该更新了」。
+ * 而是钉住「它们是从哪一条规则算出来的」:出厂命令表里占着「主修饰键 + 单个
+ * 字母」的那几条,就是这张表。哪天有人给某条命令绑上 ⌘K,这一组会说「表该更新了」。
  */
 
-/** 出厂表里「主修饰键 + 一个字母、没有 ⌥ 没有 ⇧」的那些命令绑的字母。 */
+/**
+ * 出厂表里「主修饰键 + 一个字母、没有 ⌥ 没有 ⇧」、而且**会把这个键从终端手里
+ * 拿走**的那些命令绑的字母。
+ *
+ * 后半句是判据的要害,K0 之后它必须写出来:命令表上如今也有 `view.save`(⌘S)、
+ * `viewer.gotoLine` / `browser.address`(⌘L)这些**跟随焦点**的命令,而它们的
+ * 响应者(查看器 / 浏览器)与终端**不会同时在一条活动路径上** —— 在终端里按
+ * `Ctrl+S` / `Ctrl+L`,派发器沿路径问一圈问不到人、也没有应用层兜底,于是不
+ * `preventDefault`,`^S` / `^L` 照常进 PTY。给它们各写一个认领只会在设置页的
+ * 「谁答」列上长出一串永远不会发生的行。
+ *
+ * 真会拿走这个键的只有两族:**应用级命令**(焦点在哪儿都响),以及**装着这格
+ * 终端的那片叶**答得出的命令(`leaf` 是 `terminal` 的祖先,由深到浅问得到它)。
+ * T1 那一版的原话「出厂全局表 + `focus/scopes.ts` 的 `leaf`」说的正是这两族,
+ * 只是那时候它们分住两张表。
+ */
 function factoryPlainLetterCommands(): string[] {
   const out: string[] = []
   for (const command of KEYMAP_COMMANDS) {
-    const combo = effectiveCombo({ overrides: {} }, command.id)
-    if (!combo) continue
-    if (combo.alt || combo.shift) continue
-    if (!(combo.meta || combo.ctrl)) continue
-    if (!/^[a-z]$/.test(combo.key)) continue
-    out.push(combo.key)
-  }
-  // `leaf` 的 ⌘W 不是全局命令,它是一格局部键 —— 但对 PTY 来说后果一样。
-  for (const scoped of FOCUS_SCOPES.leaf.keys ?? []) {
-    if (/^[a-z]$/.test(scoped.combo.key)) out.push(scoped.combo.key)
+    const takesItAway = command.app || scopesAnswering(command.id).includes('leaf')
+    if (!takesItAway) continue
+    for (const combo of effectiveCombos({ overrides: {} }, command.id)) {
+      if (combo.alt || combo.shift) continue
+      if (!(combo.meta || combo.ctrl)) continue
+      if (!/^[a-z]$/.test(combo.key)) continue
+      out.push(combo.key)
+    }
   }
   return out
 }
 
 describe('表是算出来的,不是抄出来的', () => {
-  it('礼让的字母 = 出厂表里被「主修饰键 + 单字母」占着的那几个,一个不多一个不少', () => {
+  it('认领的字母 = 出厂表里被「主修饰键 + 单字母」占着的那几个,一个不多一个不少', () => {
     /*
-     * 这一条是这张表的**判据本身**。加一条 `⌘K` 的全局命令而不更新礼让表 →
+     * 这一条是这张表的**判据本身**。加一条 `⌘K` 的命令而不更新认领表 →
      * 当场红,提示是「终端里 ^K 会被应用吃掉」;反过来往表里塞一个没人占着的
-     * 字母(比如 `c`)也红,提示是「^C 本来就到得了 PTY,别在撞键表里加噪音」。
+     * 字母(比如 `c`)也红,提示是「^C 本来就到得了 PTY,别在这张表里加噪音」。
+     *
+     * K0 之后 `tab.close`(⌘W)也在同一张命令表里,所以这一条不必再像 T1 那样
+     * 从两个产地各捞一遍(那时 `leaf` 的 ⌘W 是局部键,不在命令表上);
+     * 「会不会把键拿走」那一半的判词写在 `factoryPlainLetterCommands` 上。
      */
     expect([...TERMINAL_COURTESY_LETTERS].sort()).toEqual(factoryPlainLetterCommands().sort())
   })
@@ -52,8 +68,9 @@ describe('表是算出来的,不是抄出来的', () => {
   it('三条例外(Ctrl+Tab 族 / Ctrl+` / Ctrl+,)结构上就进不来:这张表只收单个字母', () => {
     for (const letter of TERMINAL_COURTESY_LETTERS) expect(letter).toMatch(/^[a-z]$/)
     // 召唤终端那条命令用的正是反引号 —— 它进了表就再也收不起来。
-    const summon = effectiveCombo({ overrides: {} }, 'toggle:terminal')
-    expect(summon).toEqual({ ctrl: true, key: '`' })
+    expect(effectiveCombos({ overrides: {} }, 'toggle:terminal')).toEqual([
+      { ctrl: true, key: '`' },
+    ])
     expect(TERMINAL_COURTESY_LETTERS).not.toContain('`')
   })
 
@@ -65,78 +82,56 @@ describe('表是算出来的,不是抄出来的', () => {
    * PTY —— 一行声明都不用写。把 `matchCombo` 改回「⌘ 与 Ctrl 皆可」,这一条当场红。
    */
   it('mac:空表,因为 Ctrl 那一枚根本命中不了任何绑定', () => {
-    expect(terminalScopedKeys('mac')).toEqual([])
-    const searchCombo = effectiveCombo({ overrides: {} }, 'toggle:search')
+    expect(terminalClaims('mac')).toEqual([])
+    const searchCombo = effectiveCombos({ overrides: {} }, 'toggle:search')[0]
     expect(searchCombo).toEqual({ meta: true, key: 'p' })
     const ctrlP = { metaKey: false, ctrlKey: true, altKey: false, shiftKey: false, key: 'p' }
     const cmdP = { metaKey: true, ctrlKey: false, altKey: false, shiftKey: false, key: 'p' }
-    expect(matchCombo(ctrlP, searchCombo!, 'mac')).toBe(false) // ^P 归 PTY
-    expect(matchCombo(cmdP, searchCombo!, 'mac')).toBe(true) // ⌘P 照旧开检索面
+    expect(matchCombo(ctrlP, searchCombo, 'mac')).toBe(false) // ^P 归 PTY
+    expect(matchCombo(cmdP, searchCombo, 'mac')).toBe(true) // ⌘P 照旧开检索面
   })
 
-  it('win / linux:那五行在场,而且每一行都与它挡下的那条全局绑定是同一个组合', () => {
-    const rows = terminalScopedKeys('other')
-    expect(rows.map((k) => k.combo)).toEqual(
-      TERMINAL_COURTESY_LETTERS.map((letter) => ({ ctrl: true, key: letter })),
-    )
-    const searchCombo = effectiveCombo({ overrides: {} }, 'toggle:search')
-    // 同一个组合 → 局部先接才拦得住(撞键由 `scopedCollisionsOf` 说出口)。
-    expect(sameCombo(rows[0].combo, searchCombo!)).toBe(true)
+  it('win / linux:那五个在场,而且每一个都与它挡下的那条绑定是同一个组合', () => {
+    const claims = terminalClaims('other')
+    expect(claims).toEqual(TERMINAL_COURTESY_LETTERS.map((letter) => ({ ctrl: true, key: letter })))
+    const searchCombo = effectiveCombos({ overrides: {} }, 'toggle:search')[0]
+    // 同一个组合 → 认领先命中才拦得住(这件事由设置页的「谁答」列说出口)。
+    expect(sameCombo(claims[0], searchCombo)).toBe(true)
     const ctrlP = { metaKey: false, ctrlKey: true, altKey: false, shiftKey: false, key: 'p' }
-    expect(matchCombo(ctrlP, rows[0].combo, 'other')).toBe(true)
+    expect(matchCombo(ctrlP, claims[0], 'other')).toBe(true)
   })
 
   it('这台机器上那一份就是按它的平台算出来的(模块加载时量一次)', () => {
     // 测试跑在 jsdom 上(UA 不是 mac),所以这里应当是 Win / Linux 那一档。
-    expect(TERMINAL_SCOPED_KEYS).toEqual(terminalScopedKeys('other'))
+    expect(TERMINAL_CLAIMS).toEqual(terminalClaims('other'))
   })
 })
 
-describe('一行一个组合,名字与文案都对得上', () => {
-  it('五行各自带 ctrl、带自己的 action、共用一句文案(Win / Linux 那一档)', () => {
-    const rows = terminalScopedKeys('other')
-    expect(rows.map((k) => k.combo)).toEqual(
-      TERMINAL_COURTESY_LETTERS.map((letter) => ({ ctrl: true, key: letter })),
-    )
-    expect(rows.map((k) => k.action)).toEqual(TERMINAL_COURTESY_LETTERS.map(terminalPtyKeyAction))
-    expect(new Set(rows.map((k) => k.labelKey)).size).toBe(1)
+describe('认领不是命令', () => {
+  it('作用域表上装着它们,而且装在 `claims` 那一格(不是 `answers`)', () => {
+    expect(FOCUS_SCOPES.terminal.claims).toEqual([...TERMINAL_CLAIMS])
+    // `answers` 那一格是反着的一句话:那一条 ⌘F 归应用,不交给 PTY。
+    expect(FOCUS_SCOPES.terminal.answers?.map((a) => a.command)).toEqual(['view.find'])
   })
 
-  it('那句文案在两本字典里都真有一条', () => {
+  it('「交给终端」那句文案在两本字典里都真有一条(设置页的「谁答」列读它)', () => {
     expect(zh['terminal.keyToPty']).toBeTruthy()
     expect(en['terminal.keyToPty']).toBeTruthy()
-  })
-
-  /**
-   * T2 之后这张作用域表上多了一条 ⌘F(终端内查找,判词在 `focus/scopes.ts` 的
-   * `TERMINAL_FIND_KEY` 上)。所以判据从「就是同一个数组」改成「**礼让那几行**
-   * 逐字来自这个产地」—— 要守的从来是后者:礼让表只有一个产地,而那一格作用域
-   * 上还可以有别的局部键。
-   */
-  it('作用域表上装着礼让那几行(声明只有一个产地)', () => {
-    const keys = FOCUS_SCOPES.terminal.keys ?? []
-    expect(keys.slice(0, TERMINAL_SCOPED_KEYS.length)).toEqual([...TERMINAL_SCOPED_KEYS])
-    // 多出来的那一条是 ⌘F,而且**不是**礼让键(它归应用,不交给 PTY)。
-    const extra = keys.slice(TERMINAL_SCOPED_KEYS.length)
-    expect(extra.map((k) => k.action)).toEqual(['find'])
-  })
-})
-
-describe('控制字节是编码算出来的,不是一张查找表', () => {
-  it('w → 0x17 / p → 0x10 / e → 0x05 / j → 0x0A / n → 0x0E', () => {
-    expect(controlByteOf('w')).toBe('\x17')
-    expect(controlByteOf('p')).toBe('\x10')
-    expect(controlByteOf('e')).toBe('\x05')
-    expect(controlByteOf('j')).toBe('\x0a')
-    expect(controlByteOf('n')).toBe('\x0e')
-    // 大小写不是第二种真相。
-    expect(controlByteOf('W')).toBe(controlByteOf('w'))
   })
 })
 
 describe('xterm 侧那唯一一行', () => {
   it('**应用已经拿走的键不再进 PTY**(反证:把这条判据改成恒 false,按 ⌘K 时 PTY 会收到字节)', () => {
     expect(appAlreadyTookKey({ defaultPrevented: true })).toBe(true)
+    expect(appAlreadyTookKey({ defaultPrevented: false })).toBe(false)
+  })
+
+  /**
+   * **K0 的那一格**:认领命中时派发器**不** `preventDefault`,所以这只守卫会放行,
+   * xterm 自己把 `^P` 写成 `\x10` 发下去。从前是壳先截下来、再由
+   * `session.sendCourtesyKey` 把同一个字节写一遍(`controlByteOf` 与它一起退役)。
+   */
+  it('认领放行的那一下 `defaultPrevented` 是 false,所以它到得了 PTY', () => {
     expect(appAlreadyTookKey({ defaultPrevented: false })).toBe(false)
   })
 })

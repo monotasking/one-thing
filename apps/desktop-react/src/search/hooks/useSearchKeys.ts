@@ -1,5 +1,6 @@
 import { useMemo, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
+import type { CommandId } from '../../keymap/types'
 import { useListSelection } from '../../ui/a11y/list-selection'
 import { searchIntentOf } from '../keys'
 import { indexOfItem } from '../sequence'
@@ -17,8 +18,8 @@ import { useSearchStore } from '../store'
  *  · **焦点恒在输入框** —— 所以 `scrollBlock: null`(原语那条按下标滚的 effect
  *    不跑,滚动归 `SearchList` 那一条依赖 `[selection]` 的 effect)。
  *
- * ── 为什么 `keyHandlers` 必须身份稳定 ────────────────────────────────────
- * 作用域实例每拿到一份新的 `keyHandlers` 就要往树上重写一次,而这块面每敲一个
+ * ── 为什么 `commands` 必须身份稳定 ──────────────────────────────────────
+ * 作用域实例每拿到一份新的 `commands` 就要往树上重写一次,而这块面每敲一个
  * 字母都在重渲染。处理器本身不变,变的只是它闭包里的那份历史 —— 那正是 ref 的
  * 用处(手法逐字照旧,从前写在 `SearchPanel.tsx` 里)。
  */
@@ -37,8 +38,8 @@ export interface SearchKeysPorts {
 export interface SearchKeys {
   /** 挂在作用域根上的事件委托(真正拿焦点的是那格输入框)。 */
   onKeyDown(event: KeyboardEvent<HTMLDivElement>): void
-  /** 面域局部键的落点(⌘[ / ⌘]);**身份稳定**。 */
-  keyHandlers: Readonly<Record<string, () => void>>
+  /** 命令的落点(`nav.back` / `nav.forward`,出厂 ⌘[ / ⌘]);**身份稳定**。 */
+  commands: Readonly<Partial<Record<CommandId, () => void>>>
 }
 
 export function useSearchKeys(ports: SearchKeysPorts): SearchKeys {
@@ -68,9 +69,9 @@ export function useSearchKeys(ports: SearchKeysPorts): SearchKeys {
   const liveRef = useRef({ ports, selection, stepHistory })
   liveRef.current = { ports, selection, stepHistory }
 
-  const keyHandlers = useMemo(() => ({
-    'history.back': () => { liveRef.current.stepHistory('back') },
-    'history.forward': () => { liveRef.current.stepHistory('forward') },
+  const commands = useMemo(() => ({
+    'nav.back': () => { liveRef.current.stepHistory('back') },
+    'nav.forward': () => { liveRef.current.stepHistory('forward') },
   }), [])
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
@@ -126,5 +127,5 @@ export function useSearchKeys(ports: SearchKeysPorts): SearchKeys {
     selection.handleKey(event.key)
   }
 
-  return { onKeyDown, keyHandlers }
+  return { onKeyDown, commands }
 }

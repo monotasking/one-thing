@@ -9,7 +9,6 @@ import { usePanelVisibility } from '../visibility'
 import { findReadout } from '../find-readout'
 import { useLiveTitleStore } from '../../stage/live-title'
 import { refId } from '../../workbench/kinds'
-import { TERMINAL_COURTESY_LETTERS, terminalPtyKeyAction } from './key-courtesy'
 import { createTerminal, takeTerminalFocusRequest, terminalSessionOf } from './registry'
 /*
  * **这一行是 import 副作用,不是没用的 import**:`./screen` 在模块末尾把
@@ -88,7 +87,9 @@ import s from './TerminalLeaf.module.css'
  *    表)—— 光标在那只输入框里时 Esc 的意思是「收起这一行」,与「关一扇浮层」
  *    不是一句话,所以它落在输入框自己的 `onKeyDown` 上,与 `⌘F` 那条局部键
  *    分属两层。
- *  · 局部键 = `key-courtesy.ts` 那五行 + 一条 ⌘F,落点就是下面这张 `keyHandlers`。
+ *  · 认领 = `key-courtesy.ts` 那五个键(声明在 `FOCUS_SCOPES.terminal.claims`,
+ *    此刻在不在由下面那格 `claiming` 说);答一条命令 `view.find`(出厂 ⌘F),
+ *    落点就是下面那张 `commands`。
  */
 
 /** 一格实例的快照。`useSyncExternalStore` 订它自己那条线,不经任何 store。 */
@@ -97,15 +98,6 @@ function useTerminalSnapshot(session: TerminalSession) {
     useCallback((listener: () => void) => session.subscribe(listener), [session]),
     useCallback(() => session.get(), [session]),
   )
-}
-
-/** 五行局部键的落点。**表驱动** —— 加一个礼让键 = `key-courtesy` 那张表加一行。 */
-function courtesyHandlers(session: TerminalSession): Record<string, () => void> {
-  const out: Record<string, () => void> = {}
-  for (const letter of TERMINAL_COURTESY_LETTERS) {
-    out[terminalPtyKeyAction(letter)] = () => session.sendCourtesyKey(letter)
-  }
-  return out
 }
 
 /**
@@ -129,8 +121,8 @@ export function TerminalLeaf({ id }: { id: string }) {
   const findInputRef = useRef<HTMLInputElement | null>(null)
   const busyRef = useRef(false)
   /*
-   * **光标此刻在查找框里吗**。它存在只为一件事:那几个礼让键(Win / Linux 上的
-   * `Ctrl+P/E/J/N/W`)在人**打字**的时候不该被翻译成控制字节发给 PTY ——
+   * **光标此刻在查找框里吗**。它存在只为一件事:那几个认领键(Win / Linux 上的
+   * `Ctrl+P/E/J/N/W`)在人**打字**的时候不该被当成「归 PTY」放行下去 ——
    * `Ctrl+W` 在一只输入框里是「删一个词」,不是「给 shell 删一个词」。
    *
    * 判据为什么是这一格布尔而不是去问 `document.activeElement`:那是 I3 的硬闸
@@ -291,10 +283,12 @@ export function TerminalLeaf({ id }: { id: string }) {
       activateOnMount={openedByUser.current}
       restingTarget={() => hostRef.current}
       /*
-       * 礼让键在**人打字的时候整族让开**(判词在 `typingInFind` 上);⌘F 那一条
-       * 任何时候都在 —— 它正是「再按一下回到输入框」的那条路。
+       * 认领的那五个键(`FOCUS_SCOPES.terminal.claims`)在**人打字的时候整族
+       * 让开**(判词在 `typingInFind` 上)—— 那时候在收键的不是 PTY,是这只
+       * 输入框。⌘F 那一条命令任何时候都在:它正是「再按一下回到输入框」的路。
        */
-      keyHandlers={{ ...(typingInFind ? {} : courtesyHandlers(session)), find: openFind }}
+      claiming={!typingInFind}
+      commands={{ 'view.find': openFind }}
     >
       {({ scopeProps }) => (
         <div {...scopeProps} className={s.leaf} data-testid="terminal-leaf" data-terminal-state={state}>

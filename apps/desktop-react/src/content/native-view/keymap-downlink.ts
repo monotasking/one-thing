@@ -1,6 +1,6 @@
-import { focusScopeKeysOf } from '../../focus/scopes'
+import { focusScopeAnswersOf, focusScopeClaimsOf } from '../../focus/scopes'
 import { currentKeymapPlatform, useKeymapStore } from '../../keymap/store'
-import { KEYMAP_COMMANDS, effectiveCombo } from '../../keymap/transitions'
+import { KEYMAP_COMMANDS, effectiveCombos } from '../../keymap/transitions'
 import { nativeViewBridge } from '../../data/browser-port'
 import type { Combo, KeymapPlatform } from '../../keymap/types'
 import type { FocusScopeId } from '../../focus/types'
@@ -56,23 +56,46 @@ export function chordOfCombo(combo: Combo, platform: KeymapPlatform): string {
 }
 
 /**
- * 此刻「已绑定的组合键」全表 = 全局命令 ∪ 这几个作用域的局部键。
+ * 此刻「已绑定的**保留键**」全表(K0 起它从命令表派生,判据写成了数据)。
  *
- * 局部键要进表的理由与全局命令一模一样:⌘L 是**壳**的键,页面不该先吃到它。
+ * 一条命令进表要同时满足三件:
+ *  · `nativeView === 'reserve'`(它要先于页面被截下来。今天全表都是 —— 让出 ⌘P
+ *    给网页打印是 K2 的拍点,而那一天改的是**表上一格**,不是这只函数);
+ *  · **此刻真绑着键**(解绑的那条该归页面);
+ *  · 应用级(`app`),**或者**这几格在场的作用域里有人答得出它。
+ *
+ * 第三条是「⌘S 不该被推下去」的判据:`view.save` 只有查看器答得出,而查看器与
+ * 那片原生视图不会同时在场;推下去只会让页面自己的 ⌘S 变成一个什么都不做的键。
  * 收哪几个作用域由调用方给 —— 这只文件因此不认识 `browser`。
+ *
+ * **`claims` 不下沉**:那几个键归里面那台程序,页面本来就该拿到它们。所以最后
+ * 减掉在场作用域认领的那些(今天浏览器一格都没有,终端不走这条路 —— 留着这一
+ * 句是因为下一片原生视图可能两样都有)。
  */
 export function boundChordsFor(
   scopes: readonly FocusScopeId[],
-  overrides: Record<string, Combo | null>,
+  overrides: Record<string, Combo[] | null>,
   platform: KeymapPlatform,
 ): string[] {
+  const answered = new Set<string>()
+  for (const scope of scopes) {
+    for (const answer of focusScopeAnswersOf(scope)) answered.add(answer.command)
+  }
   const out = new Set<string>()
   for (const command of KEYMAP_COMMANDS) {
-    const combo = effectiveCombo({ overrides }, command.id)
-    if (combo) out.add(chordOfCombo(combo, platform))
+    if (command.nativeView !== 'reserve') continue
+    if (!command.app && !answered.has(command.id)) continue
+    for (const combo of effectiveCombos({ overrides }, command.id)) {
+      out.add(chordOfCombo(combo, platform))
+    }
   }
+  /*
+   * 认领的那几个减掉。比的是**串**不是 `Combo` —— `chordOfCombo` 已经把平台
+   * 解释过了(mac 写 `cmd+…`、其余写 `ctrl+…`),所以「⌘P 与 Ctrl+P 是同一条」
+   * 这件事在这一层是逐字相等,不需要再问一次 `sameCombo`。
+   */
   for (const scope of scopes) {
-    for (const key of focusScopeKeysOf(scope)) out.add(chordOfCombo(key.combo, platform))
+    for (const claim of focusScopeClaimsOf(scope)) out.delete(chordOfCombo(claim, platform))
   }
   return [...out].sort()
 }

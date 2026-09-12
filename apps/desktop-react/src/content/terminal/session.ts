@@ -1,4 +1,3 @@
-import { controlByteOf } from './key-courtesy'
 import type { TerminalPort } from '../../data/terminal-port'
 import type { TerminalFindDirection, TerminalScreen } from './screen'
 
@@ -290,15 +289,14 @@ export class TerminalSession {
     }
   }
 
-  /**
-   * 局部键的落点:把 `Ctrl+<字母>` 写成那个控制字节发下去。
-   *
-   * 派发器已经 `preventDefault` 过这一下(局部键命中即认领),所以 xterm 那条
-   * 守卫会让它进不了 PTY —— 这一句就是它的替代路。判词整段在 `key-courtesy.ts`。
+  /*
+   * ── `sendCourtesyKey` 随 K0 退役 ──────────────────────────────────────
+   * 它从前是礼让键的落点:派发器先 `preventDefault` 这一下(局部键命中即认领),
+   * 于是 xterm 那条守卫让它进不了 PTY,只好由这一句把控制字节再写一遍。
+   * K0 把礼让表改成 `claims`(认领并**放行**)——派发器不再 `preventDefault`,
+   * xterm 收到原生 keydown 自己就会把 `^W` 写成 `\x17` 发下去。少了一次翻译,
+   * 也少了一份「哪个字母对哪个字节」的第二真相(`controlByteOf` 一起退役)。
    */
-  sendCourtesyKey(letter: string): void {
-    void this.send(controlByteOf(letter))
-  }
 
   /* ── 查找(T2)────────────────────────────────────────────────────────── */
 

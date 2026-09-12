@@ -188,20 +188,22 @@ export function FileViewer({
   /*
    * **面域局部键的落点**(R2:从元素监听迁进作用域声明)。
    *
-   * 表在 `focus/scopes.ts` 的 `FOCUS_SCOPES.viewer.keys`(⌘S / ⌘L / ⌘F 三行),
-   * 这里交出的是**同名的处理器**;路由由响应链按活动路径的深度做。
+   * 声明在 `focus/scopes.ts` 的 `FOCUS_SCOPES.viewer.answers`(三条命令:
+   * `view.save` / `viewer.gotoLine` / `view.find`),这里交出的是**同 id 的处理器**;
+   * 路由由响应链按活动路径的深度做。键位本身在 `keymap/commands.ts`,不在这儿 ——
+   * 用户改绑一次,这三格自动跟着。
    *
    * 三格 `undefined` 是**判据本身**,不是防御:交不出处理器的那一格,
    * `routeKey` 当没命中处理,这一下原样落到外层(叶的 ⌘W / 全局命令表)去。
    */
   const viewerKeys = {
-    save: edit.editing ? () => void runSave() : undefined,
-    jump: lineCount === undefined ? undefined : () => setJumpQuery(''),
-    find: lineCount === undefined ? undefined : () => setJumpQuery(SEARCH_SIGIL),
+    'view.save': edit.editing ? () => void runSave() : undefined,
+    'viewer.gotoLine': lineCount === undefined ? undefined : () => setJumpQuery(''),
+    'view.find': lineCount === undefined ? undefined : () => setJumpQuery(SEARCH_SIGIL),
   }
 
   return (
-    <FocusScope scope="viewer" rootRef={rootRef} keyHandlers={viewerKeys}>
+    <FocusScope scope="viewer" rootRef={rootRef} commands={viewerKeys}>
       {({ scopeProps }) => (
         <section
           {...scopeProps}

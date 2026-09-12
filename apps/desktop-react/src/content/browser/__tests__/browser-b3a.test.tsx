@@ -189,9 +189,9 @@ describe('查找行四态', () => {
     expect(h.sent).toEqual([{ verb: 'findStop', viewId: 't1' }])
   })
 
-  it('⌘F 在 `browser` 作用域的局部键表里(拆掉它 → 这一条与 scopes 那两条一起红)', () => {
-    expect(FOCUS_SCOPES.browser.keys?.length).toBe(2)
-    expect(FOCUS_SCOPES.browser.keys?.some((k) => k.action === 'find')).toBe(true)
+  it('`view.find` 在 `browser` 的 `answers` 里(拆掉它 → 这一条与 scopes 那两条一起红)', () => {
+    expect(FOCUS_SCOPES.browser.answers?.length).toBe(2)
+    expect(FOCUS_SCOPES.browser.answers?.some((a) => a.command === 'view.find')).toBe(true)
   })
 })
 

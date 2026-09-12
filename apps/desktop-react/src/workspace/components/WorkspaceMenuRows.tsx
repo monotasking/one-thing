@@ -2,7 +2,7 @@ import { MenuItem, MenuSeparator } from '../../ui/Menu'
 import { Kbd } from '../../ui/Kbd'
 import { useT } from '../../i18n'
 import { currentKeymapPlatform, useKeymapStore } from '../../keymap/store'
-import { effectiveCombo, formatCombo, workspaceSlotCommandId } from '../../keymap/transitions'
+import { effectiveCombos, formatCombo, workspaceSlotCommandId } from '../../keymap/transitions'
 import { useWorkspaceStore, useWorkspaceViews } from '../store'
 import sw from '../swatch.module.css'
 import s from './WorkspaceMenuRows.module.css'
@@ -41,7 +41,10 @@ export function WorkspaceMenuRows({ onOpenOverview, onCreate, onDone }: Props) {
     <>
       {views.map((view) => {
         const combo =
-          view.slot === null ? null : effectiveCombo({ overrides }, workspaceSlotCommandId(view.slot))
+          view.slot === null
+            ? null
+            : /* 一条命令可以有好几个键面(K0);菜单行上画**第一个**。 */
+              (effectiveCombos({ overrides }, workspaceSlotCommandId(view.slot))[0] ?? null)
         return (
           <MenuItem
             key={view.id}

@@ -10,6 +10,7 @@ import {
   shrinkPath,
 } from '../transitions'
 import { FOCUS_SCOPES } from '../scopes'
+import type { CommandId } from '../../keymap/types'
 import type { FocusScopeId, ScopeNode } from '../types'
 
 /**
@@ -62,7 +63,13 @@ const tree = (...nodes: ScopeNode[]) => new Map(nodes.map((n) => [n.instanceId, 
 
 const KEY_F = { key: 'f', metaKey: true, ctrlKey: false, altKey: false, shiftKey: false }
 const KEY_P = { key: 'p', metaKey: true, ctrlKey: false, altKey: false, shiftKey: false }
-const noRoot = () => null
+/**
+ * ⌘F 上的候选集(K0:候选由 `keymap/transitions.lookupCommands` 按用户的改绑算,
+ * 纯函数这一头只收算好的那一串)。出厂表里 ⌘F 只有一条命令 `view.find`,
+ * 而它 `app: false` —— 所以「没人答」= 放行,不是「掉给全局」。
+ */
+const FIND: readonly CommandId[] = ['view.find']
+const noCandidates: readonly CommandId[] = []
 /*
  * **这一组按 mac 跑**(T1-fix)。`matchCombo` 从这一批起要知道「主修饰键是哪一枚
  * 物理键」(判词在 `keymap/transitions.matchCombo` 上),而夹具里的 `KEY_F` /
@@ -142,27 +149,27 @@ describe('shrinkPath —— 缩到最近一个仍可交互的祖先', () => {
   })
 })
 
-describe('routeKey —— 局部先接,没接住放行全局', () => {
+describe('routeKey —— 局部先接,没接住放行应用层', () => {
   it('由深到浅:查看器在路径上,⌘F 归它(用户报的那条 bug 的正面)', () => {
     const t = tree(
       scopeNode('r', 'root', null),
-      scopeNode('v', 'viewer', 'r', { keyHandlers: { find: () => {} } }),
+      scopeNode('v', 'viewer', 'r', { commands: { 'view.find': () => {} } }),
     )
-    expect(routeKey(t, ['r', 'v'], KEY_F, noRoot, 'mac')).toEqual({
+    expect(routeKey(t, ['r', 'v'], KEY_F, FIND, 'mac')).toEqual({
       target: 'scope',
       instanceId: 'v',
       scope: 'viewer',
-      action: 'find',
+      command: 'view.find',
     })
   })
 
   it('**多实例同 scope**:只有活动路径上那一份接得住', () => {
     const t = tree(
       scopeNode('r', 'root', null),
-      scopeNode('v1', 'viewer', 'r', { keyHandlers: { find: () => {} } }),
-      scopeNode('v2', 'viewer', 'r', { keyHandlers: { find: () => {} } }),
+      scopeNode('v1', 'viewer', 'r', { commands: { 'view.find': () => {} } }),
+      scopeNode('v2', 'viewer', 'r', { commands: { 'view.find': () => {} } }),
     )
-    expect(routeKey(t, ['r', 'v2'], KEY_F, noRoot, 'mac')).toMatchObject({ instanceId: 'v2' })
+    expect(routeKey(t, ['r', 'v2'], KEY_F, FIND, 'mac')).toMatchObject({ instanceId: 'v2' })
   })
 
   it('**由深到浅**:同一个键两格都接得住时,深的那一份赢', () => {
@@ -174,10 +181,10 @@ describe('routeKey —— 局部先接,没接住放行全局', () => {
      */
     const t = tree(
       scopeNode('r', 'root', null),
-      scopeNode('outer', 'viewer', 'r', { keyHandlers: { find: () => {} } }),
-      scopeNode('inner', 'viewer', 'outer', { keyHandlers: { find: () => {} } }),
+      scopeNode('outer', 'viewer', 'r', { commands: { 'view.find': () => {} } }),
+      scopeNode('inner', 'viewer', 'outer', { commands: { 'view.find': () => {} } }),
     )
-    expect(routeKey(t, ['r', 'outer', 'inner'], KEY_F, noRoot, 'mac')).toMatchObject({
+    expect(routeKey(t, ['r', 'outer', 'inner'], KEY_F, FIND, 'mac')).toMatchObject({
       instanceId: 'inner',
     })
   })
@@ -185,16 +192,23 @@ describe('routeKey —— 局部先接,没接住放行全局', () => {
   it('深的那一格没这个键 → 继续往浅问(文件树在查看器外面时的 ⌘F)', () => {
     const t = tree(
       scopeNode('r', 'root', null),
-      scopeNode('v', 'viewer', 'r', { keyHandlers: { find: () => {} } }),
-      scopeNode('f', 'files', 'v', { keyHandlers: { detail: () => {} } }),
+      scopeNode('v', 'viewer', 'r', { commands: { 'view.find': () => {} } }),
+      scopeNode('f', 'files', 'v', { commands: { 'files.detail': () => {} } }),
     )
-    expect(routeKey(t, ['r', 'v', 'f'], KEY_F, noRoot, 'mac')).toMatchObject({ instanceId: 'v' })
+    expect(routeKey(t, ['r', 'v', 'f'], KEY_F, FIND, 'mac')).toMatchObject({ instanceId: 'v' })
   })
 
-  it('声明有、落点没注入 → **当作没命中**,不吞这一下', () => {
-    // 吞掉的表现是「按了没反应」,那是最难查的一种;落到全局至少是可预期的。
+  it('候选里有、落点没注入 → **当作没命中**,不吞这一下', () => {
+    /*
+     * 吞掉的表现是「按了没反应」,那是最难查的一种。K0 之后「没人答」有两种
+     * 收场,由命令自己的 `app` 那一格说了算,两条都在这儿钉着:
+     *  · 候选里只有 `app: false` 的(⌘F 就是)→ **放行**(null),页面 / PTY /
+     *    系统菜单接着走;
+     *  · 候选里有 `app: true` 的 → 走 root(应用层兜底)。
+     */
     const t = tree(scopeNode('r', 'root', null), scopeNode('v', 'viewer', 'r'))
-    expect(routeKey(t, ['r', 'v'], KEY_F, () => 'toc.toggle', 'mac')).toEqual({
+    expect(routeKey(t, ['r', 'v'], KEY_F, FIND, 'mac')).toBeNull()
+    expect(routeKey(t, ['r', 'v'], KEY_F, [...FIND, 'toc.toggle'], 'mac')).toEqual({
       target: 'root',
       command: 'toc.toggle',
     })
@@ -203,18 +217,98 @@ describe('routeKey —— 局部先接,没接住放行全局', () => {
   it('inert 的那一格一律不接', () => {
     const t = tree(
       scopeNode('r', 'root', null),
-      scopeNode('v', 'viewer', 'r', { inert: true, keyHandlers: { find: () => {} } }),
+      scopeNode('v', 'viewer', 'r', { inert: true, commands: { 'view.find': () => {} } }),
     )
-    expect(routeKey(t, ['r', 'v'], KEY_F, noRoot, 'mac')).toBeNull()
+    expect(routeKey(t, ['r', 'v'], KEY_F, FIND, 'mac')).toBeNull()
   })
 
-  it('没有任何局部键命中 → 全局命令表;它也答不出就是 null', () => {
+  it('没有任何响应者命中 → 候选里 app 那一条走 root;候选空就是 null', () => {
     const t = tree(scopeNode('r', 'root', null))
-    expect(routeKey(t, ['r'], KEY_P, () => 'search.toggle', 'mac')).toEqual({
+    expect(routeKey(t, ['r'], KEY_P, ['toggle:search'], 'mac')).toEqual({
       target: 'root',
-      command: 'search.toggle',
+      command: 'toggle:search',
     })
-    expect(routeKey(t, ['r'], KEY_P, noRoot, 'mac')).toBeNull()
+    expect(routeKey(t, ['r'], KEY_P, noCandidates, 'mac')).toBeNull()
+  })
+})
+
+describe('routeKey —— 认领(`claims`):壳不碰,原样交给里面那台程序', () => {
+  /*
+   * **K0 的那一格**(方案 §4 ③)。终端在 Win / Linux 上认领 `Ctrl+P/E/J/N/W` ——
+   * 那五个键在 readline 下是每天都在按的,而主修饰键在那两台机器上**就是** Ctrl,
+   * 与应用的 ⌘P/⌘E/⌘J/⌘N/⌘W 抢的是同一枚物理键。
+   *
+   * 认领与「接住并执行」是两件事:命中 claim 回的是 `claim`,调用方据此**不**
+   * `preventDefault`、也不再往外问,xterm 收到原生 keydown 自己把 `\x10` 发下去。
+   * 从前这里是「局部键 + 一个把控制字节写回 PTY 的 action」——壳先截下来,
+   * 再自己写一遍 xterm 本来就会写的那个字节。
+   */
+  const CTRL_P = { key: 'p', metaKey: false, ctrlKey: true, altKey: false, shiftKey: false }
+
+  it('Win / Linux:Ctrl+P 在终端里答 `claim`,不落到 `toggle:search`', () => {
+    const t = tree(
+      scopeNode('r', 'root', null),
+      scopeNode('leaf', 'leaf', 'r', { commands: { 'tab.close': () => {} } }),
+      scopeNode('term', 'terminal', 'leaf', { commands: { 'view.find': () => {} } }),
+    )
+    expect(routeKey(t, ['r', 'leaf', 'term'], CTRL_P, ['toggle:search'], 'other')).toEqual({
+      target: 'claim',
+      instanceId: 'term',
+      scope: 'terminal',
+    })
+  })
+
+  it('**Ctrl+W 同理** —— 装着它的那片叶答 `tab.close`,但认领比它深,所以先命中', () => {
+    /*
+     * 这一条钉的是深度裁决本身:终端比叶深,由深到浅走先遇到认领。哪天
+     * `leaf` 与 `terminal` 的父子关系反了(或者循环改成由浅到深),
+     * 「终端里 Ctrl+W 删一个词」当场变成「关掉跑着的 shell」。
+     */
+    const CTRL_W = { key: 'w', metaKey: false, ctrlKey: true, altKey: false, shiftKey: false }
+    const t = tree(
+      scopeNode('r', 'root', null),
+      scopeNode('leaf', 'leaf', 'r', { commands: { 'tab.close': () => {} } }),
+      scopeNode('term', 'terminal', 'leaf', {}),
+    )
+    expect(routeKey(t, ['r', 'leaf', 'term'], CTRL_W, ['tab.close'], 'other')).toMatchObject({
+      target: 'claim',
+    })
+  })
+
+  it('mac:认领表是空的,Ctrl+P 谁都不命中(⌘ 与 Ctrl 分得开)', () => {
+    const t = tree(
+      scopeNode('r', 'root', null),
+      scopeNode('term', 'terminal', 'r', { commands: { 'view.find': () => {} } }),
+    )
+    // mac 上 Ctrl+P 连候选都算不出来(`lookupCommands` 那一头),这里直接给空候选。
+    expect(routeKey(t, ['r', 'term'], CTRL_P, [], 'mac')).toBeNull()
+  })
+
+  it('`claiming: false` = 里面那台程序此刻不收键(查找框在打字)→ 认领整族让开', () => {
+    /*
+     * 实例那一头的开关,与 `commands[id]` 缺席同一个形。少了它,Win / Linux 上
+     * 在终端查找框里按 Ctrl+W 会被当成「归 PTY」放行,而那时候在收键的是一只
+     * 输入框,不是 shell。
+     */
+    const t = tree(
+      scopeNode('r', 'root', null),
+      scopeNode('term', 'terminal', 'r', { claiming: false, commands: { 'view.find': () => {} } }),
+    )
+    expect(routeKey(t, ['r', 'term'], CTRL_P, ['toggle:search'], 'other')).toEqual({
+      target: 'root',
+      command: 'toggle:search',
+    })
+  })
+
+  it('inert 的那一格连认领都不算数', () => {
+    const t = tree(
+      scopeNode('r', 'root', null),
+      scopeNode('term', 'terminal', 'r', { inert: true }),
+    )
+    expect(routeKey(t, ['r', 'term'], CTRL_P, ['toggle:search'], 'other')).toEqual({
+      target: 'root',
+      command: 'toggle:search',
+    })
   })
 })
 

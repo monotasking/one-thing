@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { FOCUS_SCOPED_KEYS, FOCUS_SCOPES, FOCUS_SCOPE_LIST, focusScopeKeysOf } from '../scopes'
+import {
+  FOCUS_SCOPES,
+  FOCUS_SCOPE_LIST,
+  focusScopeAnswersOf,
+  focusScopeClaimsOf,
+} from '../scopes'
+import { findCommand } from '../../keymap/commands'
 import { zh } from '../../i18n/zh'
 import { en } from '../../i18n/en'
 import type { FocusScopeId, FocusScopeKind } from '../types'
@@ -10,7 +16,7 @@ import type { FocusScopeId, FocusScopeKind } from '../types'
  * 某块面的名字读成一个键名。
  *
  * 反证:把 `FOCUS_SCOPES.viewer` 的 labelKey 改成一个不存在的键 → 第二条红;
- * 把 `viewer` 那三行局部键删一行 → 投影那两条红(以及 keymap-scopes 那一组)。
+ * 把 `viewer` 那三条 `answers` 删一条 → 下面那一组红(以及 keymap-scopes 的比对表)。
  */
 
 const ALL_IDS: readonly FocusScopeId[] = [
@@ -88,75 +94,91 @@ describe('FOCUS_SCOPES 封闭表', () => {
   })
 })
 
-describe('局部键:查看器 / 文件树 / 检索面 / 会话总览 / 终端 / 浏览器 / 叶七格', () => {
-  it('查看器三条、文件树两条、检索面两条、总览一条、终端六条、浏览器两条、叶一条,别的作用域一条都没有', () => {
-    expect(focusScopeKeysOf('viewer').map((k) => k.action)).toEqual(['save', 'jump', 'find'])
-    expect(focusScopeKeysOf('files').map((k) => k.action)).toEqual(['detail', 'detail'])
+describe('答哪些命令:查看器 / 文件树 / 检索面 / 会话总览 / 终端 / 浏览器 / 叶七格', () => {
+  it('七格各自答得出哪几条,别的作用域一条都不答', () => {
+    expect(focusScopeAnswersOf('viewer').map((a) => a.command)).toEqual([
+      'view.save',
+      'viewer.gotoLine',
+      'view.find',
+    ])
+    /*
+     * **一条 answer,不是两条**(K0)。⌘I 与 ⌘↵ 是同一件事的两个键面,而
+     * 「一条命令可以有好几个出厂键」现在由 `defaultCombos` 说得出口 ——
+     * 旧表把它写成两行,两行意味着两个意义。
+     */
+    expect(focusScopeAnswersOf('files').map((a) => a.command)).toEqual(['files.detail'])
     // 检索重建 S4b:⌘[ / ⌘] = 查询历史的后退 / 前进(§4.6,与浏览器地址栏同形)。
-    expect(focusScopeKeysOf('search').map((k) => k.action)).toEqual([
-      'history.back',
-      'history.forward',
-    ])
+    expect(focusScopeAnswersOf('search').map((a) => a.command)).toEqual(['nav.back', 'nav.forward'])
     // 09-04 方向 A:⌘⇧P = 置顶 / 取消置顶活动行。
-    expect(focusScopeKeysOf('expose').map((k) => k.action)).toEqual(['pin.toggle'])
+    expect(focusScopeAnswersOf('expose').map((a) => a.command)).toEqual(['expose.pin'])
     /*
-     * T1:键盘礼让五行。**它们是全表唯一一族「接住了不给应用,而是把这一下交给
-     * 里面那台程序」的键** —— 那五个字母(p/e/j/n/w)是按「出厂全局表占着、而
-     * readline 又每天在按」挑出来的,判词整段在 `content/terminal/key-courtesy.ts`。
-     * 表里加 / 减一个字母 → 这一条当场红。
-     *
-     * T2 在它们后面又加了一条 **⌘F**(终端内查找)。它与上面五行是**反着的**
-     * 一族:那五行说「这几个键归 PTY」,这一条说「这一个键归应用」——
-     * 两句话住在同一张表上,判词在 `scopes.ts` 的 `TERMINAL_FIND_KEY` 上。
-     * 拆掉它 → `gate:terminal` ⑨ 的查找行开不出来,这一条也当场红。
+     * T2:终端答一条 `view.find`(出厂 ⌘F)。它与 `claims` 那一族是**反着的**
+     * 两句话:那五个键归 PTY,这一条归应用 —— 判词在 `scopes.ts` 的
+     * `TERMINAL_ANSWERS` 上。拆掉它 → `gate:terminal` ⑨ 的查找行开不出来。
      */
-    expect(focusScopeKeysOf('terminal').map((k) => k.action)).toEqual([
-      'pty:p',
-      'pty:e',
-      'pty:j',
-      'pty:n',
-      'pty:w',
-      'find',
+    expect(focusScopeAnswersOf('terminal').map((a) => a.command)).toEqual(['view.find'])
+    /*
+     * B2 / B3-a:⌘L 回地址栏 + ⌘F 在这一页里查找。两条同时是**保留键**
+     * (`nativeView: 'reserve'` 且这一格答得出 → 键位下沉那张表自动带上),
+     * 判词在 `scopes.ts` 的 `BROWSER_ANSWERS` 上。
+     */
+    expect(focusScopeAnswersOf('browser').map((a) => a.command)).toEqual([
+      'browser.address',
+      'view.find',
     ])
-    /*
-     * B2:⌘L = 回地址栏。它同时是一条**保留键**(会随全局命令一起推给主进程,
-     * 由 `before-input-event` 先于页面截下来)—— 判词在 `scopes.ts` 的
-     * `BROWSER_KEYS` 上。删掉这一行 → `gate:browser` ⑦ 的 ⌘L 那一半当场红。
-     *
-     * B3-a 在它后面加了 **⌘F**(在这一页里查找)。它是**免费拿到的保留键**:
-     * 键位下沉那张表读的正是 `focusScopeKeysOf('browser')`,所以在声明里加一行,
-     * 主进程那张表就自动多一格 —— 于是页面有焦点时按 ⌘F,开的是壳这一行而不是
-     * 页面自己的查找条。拆掉它 → `gate:browser` ⑫ 的查找读数当场红。
-     */
-    expect(focusScopeKeysOf('browser').map((k) => k.action)).toEqual(['address', 'find'])
-    // W1 拍点 ④:⌘W 关当前 tab(叶内局部键 —— 它需要一个目标)。
-    expect(focusScopeKeysOf('leaf').map((k) => k.action)).toEqual(['closeTab'])
-    const withKeys = FOCUS_SCOPE_LIST.filter((s) => (s.keys?.length ?? 0) > 0).map((s) => s.id)
+    // W1 拍点 ④:⌘W 关当前 tab(`app: false` —— 它需要一个目标)。
+    expect(focusScopeAnswersOf('leaf').map((a) => a.command)).toEqual(['tab.close'])
+    const withAnswers = FOCUS_SCOPE_LIST.filter((s) => (s.answers?.length ?? 0) > 0).map((s) => s.id)
     // 次序 = 表里的声明序(`terminal` 在 region 那一族里,`leaf` 排在它们末尾)。
-    expect(withKeys).toEqual(['viewer', 'files', 'search', 'expose', 'terminal', 'browser', 'leaf'])
+    expect(withAnswers).toEqual(['viewer', 'files', 'search', 'expose', 'terminal', 'browser', 'leaf'])
   })
 
-  /*
-   * 带修饰的组合进这张表**就是为了能对撞** —— ⌘P 已经被 `toggle:search` 占着,
-   * 而 ⌘⇧P 是另一个组合(`matchCombo` 判 shift)。这一条钉的是「新加的那条键
-   * 没有踩在某条已有的全局键上」,加下一条局部键时照抄一遍。
+  /**
+   * **一条命令,三个响应者**(K0 要的那件事)。从前这是三行恰好写着同一个组合;
+   * 现在它是一条命令,谁答得出由三块面自述 —— 用户改绑一次,三块面一起跟着。
+   * 把 `terminal` 那一行的 `answers` 删掉 → 这一条红(设置页的「谁答」列也少一格)。
    */
-  it('⌘⇧P 与全局的 ⌘P 不是同一个组合(shift 是判据的一格)', () => {
-    const pin = focusScopeKeysOf('expose')[0].combo
-    expect(pin).toEqual({ meta: true, shift: true, key: 'p' })
-    expect(pin.shift).toBe(true)
+  it('`view.find` 有三个响应者,而且三块面各说各的话', () => {
+    const says = (scope: 'viewer' | 'terminal' | 'browser') =>
+      focusScopeAnswersOf(scope).find((a) => a.command === 'view.find')?.labelKey
+    expect(says('viewer')).toBe('viewer.findLabel')
+    expect(says('terminal')).toBe('terminal.find')
+    expect(says('browser')).toBe('browser.find')
+    // 三句话三个键(i18n 纪律),而命令自己那一句是第四个 —— 通名。
+    expect(new Set([says('viewer'), says('terminal'), says('browser')]).size).toBe(3)
+    expect(findCommand('view.find')?.labelKey).toBe('keymap.find')
   })
 
-  it('每条键的 scope 字段真的指着装它的那一格(表里不许有搬错家的行)', () => {
-    for (const spec of FOCUS_SCOPE_LIST) {
-      for (const key of spec.keys ?? []) expect(key.scope).toBe(spec.id)
+  /**
+   * **认领**(`claims`):全表唯一一格,而且它与 `answers` 方向相反 ——
+   * 那五个键壳不碰,原样交给里面那台 PTY。判词整段在
+   * `content/terminal/key-courtesy.ts`;这一条只钉「表上只有终端有、而且它只收
+   * `Ctrl+字母`」。
+   */
+  it('认领表:只有终端一格,五个 Ctrl+字母(Win / Linux 那一档)', () => {
+    const withClaims = FOCUS_SCOPE_LIST.filter((s) => (s.claims?.length ?? 0) > 0).map((s) => s.id)
+    // 测试跑在 jsdom 上(UA 不是 mac),所以这里是 Win / Linux 那一档。
+    expect(withClaims).toEqual(['terminal'])
+    expect(focusScopeClaimsOf('terminal').map((c) => c.key)).toEqual(['p', 'e', 'j', 'n', 'w'])
+    for (const claim of focusScopeClaimsOf('terminal')) {
+      expect(claim.ctrl).toBe(true)
+      expect(claim.key).toMatch(/^[a-z]$/)
     }
   })
 
-  it('每条键的 labelKey 也在两本字典里', () => {
-    for (const key of FOCUS_SCOPED_KEYS) {
-      expect(zh[key.labelKey], `zh ${key.action}`).toBeTruthy()
-      expect(en[key.labelKey], `en ${key.action}`).toBeTruthy()
+  it('每条 answer 指的命令在命令表里真有一条(不许有指向空气的自述)', () => {
+    for (const spec of FOCUS_SCOPE_LIST) {
+      for (const a of spec.answers ?? []) expect(findCommand(a.command), a.command).toBeTruthy()
+    }
+  })
+
+  it('每条 answer 的说法(覆盖的那一句)也在两本字典里', () => {
+    for (const spec of FOCUS_SCOPE_LIST) {
+      for (const a of spec.answers ?? []) {
+        if (!a.labelKey) continue
+        expect(zh[a.labelKey], `zh ${a.command}`).toBeTruthy()
+        expect(en[a.labelKey], `en ${a.command}`).toBeTruthy()
+      }
     }
   })
 })
@@ -168,4 +190,8 @@ describe('局部键:查看器 / 文件树 / 检索面 / 会话总览 / 终端 / 
  * 正是「投影不许与正本分叉」。R2 把落点也迁进了作用域实例,旧形状一个消费者都
  * 没有了,整层连同那三条用例一起退役 —— **没有第二份声明可对**,这只文件上面
  * 那几组守的就是正本本身。
+ *
+ * K0 之后连「键位」都不在这张表上了(它们在 `keymap/commands.ts`),所以
+ * 「⌘⇧P 与全局的 ⌘P 不是同一个组合」那一条也搬去了 `keymap/__tests__/commands.test.ts`
+ * 的全表冲突规则里 —— 那才是它今天的家:两条命令共不共得了一个键,是规则的事。
  */

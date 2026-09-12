@@ -3,9 +3,9 @@ import { WORKSPACE_ITEM_ID } from '../stage/items'
 import { WORKSPACE_SLOT_COUNT } from '../workspace/types'
 import {
   KEYMAP_COMMANDS,
-  effectiveCombo,
+  effectiveCombos,
   initialKeymapState,
-  lookupCommand,
+  lookupCommands,
   workspaceSlotCommandId,
 } from './transitions'
 
@@ -38,22 +38,21 @@ describe('序号直达那一族', () => {
 
   it('出厂键是 ⌘1 / ⌘2 / ⌘3', () => {
     for (let n = 1; n <= WORKSPACE_SLOT_COUNT; n += 1) {
-      expect(effectiveCombo(initialKeymapState, workspaceSlotCommandId(n))).toEqual({
-        meta: true,
-        key: String(n),
-      })
+      expect(effectiveCombos(initialKeymapState, workspaceSlotCommandId(n))).toEqual([
+        { meta: true, key: String(n) },
+      ])
     }
   })
 
   it('⌘2 落到第二个序号的命令上', () => {
-    // T1-fix:`lookupCommand` 从这一批起要知道「主修饰键是哪一枚物理键」。
+    // T1-fix:`lookupCommands` 从这一批起要知道「主修饰键是哪一枚物理键」。
     // 这一组的夹具按的都是 ⌘,所以递 `'mac'`(判词在 `matchCombo` 上)。
-    const id = lookupCommand(
+    const id = lookupCommands(
       initialKeymapState,
       { key: '2', metaKey: true, ctrlKey: false, altKey: false, shiftKey: false },
       'mac',
     )
-    expect(id).toBe(workspaceSlotCommandId(2))
+    expect(id).toEqual([workspaceSlotCommandId(2)])
   })
 })
 
@@ -66,11 +65,18 @@ describe('出厂表两两不撞键(见文件头 ②)', () => {
     shiftKey: shift,
   })
 
-  it('全表任意两条命令的出厂组合都不同 —— 撞了就说得出是哪两条', () => {
+  it('全表**应用级**命令的出厂组合两两不同 —— 撞了就说得出是哪两条', () => {
+    /*
+     * K0 改口:一个键上可以有好几条命令(冲突规则批的是「作用域集合不交」),
+     * 所以「全表两两不同」这句话只对**应用级**那一族成立 —— 它们没有作用域,
+     * 撞了就一定有一条永远轮不到。跟随焦点那九条的共键合法性由
+     * `__tests__/commands.test.ts` 的全表规则用例跑。
+     */
     const seen = new Map<string, string>()
     const clashes: string[] = []
     for (const command of KEYMAP_COMMANDS) {
-      const combo = effectiveCombo(initialKeymapState, command.id)
+      if (!command.app) continue
+      const combo = effectiveCombos(initialKeymapState, command.id)[0]
       if (!combo) continue
       // 组合的规范写法。四个修饰键都写进去,免得 {meta} 与 {meta, shift:false} 被当成两个键。
       const key = [
@@ -88,17 +94,17 @@ describe('出厂表两两不撞键(见文件头 ②)', () => {
   })
 
   it('⌘⇧W 落在工作区面板上(08-31 裁定的新键)', () => {
-    expect(lookupCommand(initialKeymapState, press('w', true), 'mac')).toBe('workspace.palette')
+    expect(lookupCommands(initialKeymapState, press('w', true), 'mac')).toEqual(['workspace.palette'])
   })
 
   it('⌘⇧O 还给目录面板 —— 撞键解开之后它才真的按得响', () => {
-    expect(lookupCommand(initialKeymapState, press('o', true), 'mac')).toBe('toc.toggle')
+    expect(lookupCommands(initialKeymapState, press('o', true), 'mac')).toEqual(['toc.toggle'])
   })
 
   it('工作区总览不占独立快捷键(单击瓦即达,快切面板里也有入口)', () => {
     const overview = KEYMAP_COMMANDS.find((c) => c.id === `toggle:${WORKSPACE_ITEM_ID}`)
     // 它在表里(每块瓦都有一条 toggle,用户改得了),但出厂**不绑键**。
     expect(overview).toBeTruthy()
-    expect(overview?.defaultCombo ?? null).toBeNull()
+    expect(overview?.defaultCombos ?? []).toEqual([])
   })
 })

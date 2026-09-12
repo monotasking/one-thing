@@ -10,6 +10,7 @@ import { focusTree } from './registry'
 import './focus-scope.css'
 import type { ReactNode } from 'react'
 import type { FocusScopeHandle } from './registry'
+import type { CommandId } from '../keymap/types'
 import type { ActivateReason, FocusInstanceId, FocusScopeId } from './types'
 
 /**
@@ -121,8 +122,21 @@ export interface FocusScopeProps {
   restingTarget?: () => HTMLElement | null
   /** 这一层认不认 Esc。答 true = 这一下归我。**不传 = 根本不进 Esc 候选表**。 */
   onEscape?: () => boolean
-  /** 局部键的落点,键是 `ScopedKey.action`(表在 `focus/scopes.ts`)。 */
-  keyHandlers?: Readonly<Record<string, (() => void) | undefined>>
+  /**
+   * **我此刻能做哪些命令**(K0)。键是命令 id(`keymap/commands.ts` 的那张表),
+   * 不再是各面自造的动作名;声明这一头是 `FOCUS_SCOPES[scope].answers`。
+   * 缺席的那一条 = 此刻答不了,派发器当没命中继续往浅走。
+   */
+  commands?: Readonly<Partial<Record<CommandId, (() => void) | undefined>>>
+  /**
+   * 这一格此刻**认领**它声明的那几个键吗(`FOCUS_SCOPES[scope].claims`)。
+   * 缺省认领(`true`)。
+   *
+   * 它存在的唯一理由是**里面那台程序此刻在不在收键**:终端的查找框开着、光标
+   * 在那只输入框里时,Win / Linux 的 `Ctrl+W` 不该被当成「给 shell 删一个词」。
+   * 与 `commands[id]` 缺席同一个形 —— 声明在表上、此刻在不在由实例说。
+   */
+  claiming?: boolean
   /**
    * 这一格**替谁摆着**(R2)。只有 Placement 宿主层填它 —— 填它此刻装着的那块面
    * 的 item id,`activateScope(scope, { owner })` 据此在四条边的架子 / 几扇浮窗里
@@ -140,7 +154,8 @@ export function FocusScope(props: FocusScopeProps): ReactNode {
     activateOnMount = false,
     restingTarget,
     onEscape,
-    keyHandlers,
+    commands,
+    claiming,
     owner,
     children,
   } = props
@@ -168,10 +183,12 @@ export function FocusScope(props: FocusScopeProps): ReactNode {
    * 直接把 props 里那个字面量交出去的话,树上存的是某一帧的旧闭包;
    * 而把它放进依赖表又会重登记(见上)。
    */
-  const keysRef = useRef<Record<string, (() => void) | undefined>>({})
+  const keysRef = useRef<Partial<Record<CommandId, (() => void) | undefined>>>({})
   const keysBox = keysRef.current
-  for (const k of Object.keys(keysBox)) if (!keyHandlers || !(k in keyHandlers)) delete keysBox[k]
-  if (keyHandlers) Object.assign(keysBox, keyHandlers)
+  for (const k of Object.keys(keysBox) as CommandId[]) {
+    if (!commands || !(k in commands)) delete keysBox[k]
+  }
+  if (commands) Object.assign(keysBox, commands)
 
   const handleRef = useRef<FocusScopeHandle | null>(null)
   const rootElRef = useRef<HTMLElement | null>(null)
@@ -204,7 +221,8 @@ export function FocusScope(props: FocusScopeProps): ReactNode {
         inert,
         restingTarget: () => restingRef.current?.() ?? null,
         onEscape: hasEscape ? () => escapeRef.current?.() ?? false : null,
-        keyHandlers: keysBox,
+        commands: keysBox,
+        claiming,
         owner,
       },
       instanceId,
@@ -237,6 +255,14 @@ export function FocusScope(props: FocusScopeProps): ReactNode {
   useLayoutEffect(() => {
     handleRef.current?.update({ owner })
   }, [owner])
+
+  /*
+   * 认领的开关与 `owner` / `inert` 同款:它是**数据**,一变就地改,不进登记
+   * effect 的依赖表(重登记会把 `lastFocused` 与 `returnTo` 一起丢掉)。
+   */
+  useLayoutEffect(() => {
+    handleRef.current?.update({ claiming })
+  }, [claiming])
 
   useLayoutEffect(() => {
     handleRef.current?.update({

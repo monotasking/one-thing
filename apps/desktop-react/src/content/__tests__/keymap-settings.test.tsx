@@ -8,27 +8,27 @@ import { zh } from '../../i18n/zh'
 import type { Combo } from '../../keymap/types'
 
 /**
- * 设置页快捷键区的**撞键那一问**(09-03 R3)。
+ * 设置页快捷键区的**「谁答」那一列 + 共键那一句**(09-03 R3 立,K0 改口)。
  *
- * 这块面要说得出两种撞车,而这一组只守其中一种:**全局命令 ↔ 面域局部键**。
- * 它的正本是 `focus/scopes.ts` 的 `FOCUS_SCOPES[id].keys`(R2 之前
- * `keymap/scopes.ts` 还留着一层旧形状的投影,R2 把那层连同 `files.row` 这个
- * 旧 id 一起退役了),这里钉的就是「读的是那张正本、并且说得出所属的**那块面**」。
+ * 这块面要说得出三件事,这一组守其中两件:
+ *  · **谁答得出这条命令**(`answerersOf`,正本 `FOCUS_SCOPES[id].answers`)——
+ *    「查找 ⌘F:浏览器(这一页)/ 终端(这块屏幕)/ 查看器(这份文件)」;
+ *  · **合法的共键**(`sharedChordOf`)—— 撞不是错误,但不许**静默**。
  *
  * 为什么它值得一条用例:F1 那条留账的原话是「用户把某条全局命令改绑到 ⌘I,
  * bindCombo 看不见这条行内键,会**静默**把它盖住」。静默正是这条病的形状 ——
  * 而一句默认不出现的提示,人眼是走查不出「它到底还在不在」的。
  *
- * 反证:把 KeymapSettings 里那段 `scopedCollisions.map(...)` 删掉 → 第二条红;
- * 把 `t('keymap.scopedConflict', { scope: … })` 的 scope 换成 `c.scoped.scope`
- * (作用域 id 而不是它的 labelKey)→ 第三条红。
+ * 反证:把 `FOCUS_SCOPES.files.answers` 删掉 → 第一条红;把 KeymapSettings 里
+ * 那段 `shared.map(...)` 删掉 → 共键那两条红。
  */
 
-const MOD_I: Combo = { meta: true, key: 'i' }
+const MOD_I: Combo[] = [{ meta: true, key: 'i' }]
 
-/** 「⌘I 已被谁占着」那句话里,{scope} 与 {action} 该填的两个词。 */
+/** 「谁答」那一句里,{scope} 与 {action} 该填的两个词。 */
 const FILES_LABEL = zh[FOCUS_SCOPES.files.labelKey]
 const DETAIL_LABEL = zh['files.detailAction']
+const TOC_LABEL = zh['toc.title']
 
 /*
  * 两处 store 复位都先 `cleanup()` 再写:store 是模块单例,而这块面订阅着它 ——
@@ -50,49 +50,91 @@ afterEach(() => {
   })
 })
 
-describe('设置页快捷键区:全局 ↔ 面域局部键的撞车', () => {
-  it('出厂表下一句都不出现(今天零撞车)', () => {
+describe('设置页快捷键区:「谁答」那一列', () => {
+  it('跟随焦点那一节在场,而且「详情」那一行说得出是**文件**答的', () => {
     render(<KeymapSettings />)
-    expect(screen.queryByText(new RegExp(DETAIL_LABEL))).toBeNull()
-  })
-
-  it('把某条命令改绑到 ⌘I:那一行旁边说出**所属的那块面**与被占的动作', () => {
-    useKeymapStore.setState({ overrides: { 'toc.toggle': MOD_I } })
-    render(<KeymapSettings />)
+    expect(screen.getByText(zh['keymap.sectionScoped'])).toBeTruthy()
     /*
      * 断言整句而不是「含 files 两个字」:这句话的价值全在**两个填空**上
-     * (哪块面 / 哪个动作),少填一个就等于没说清。
+     * (哪块面 / 它管这件事叫什么),少填一个就等于没说清。
      */
-    const expected = zh['keymap.scopedConflict']
+    const expected = zh['keymap.answerer']
       .replace('{scope}', FILES_LABEL)
       .replace('{action}', DETAIL_LABEL)
     expect(screen.getByText(expected)).toBeTruthy()
   })
 
-  it('填的是作用域的 labelKey(人读的名字),不是它的 id', () => {
-    useKeymapStore.setState({ overrides: { 'toc.toggle': MOD_I } })
+  it('**一条命令三个响应者**:⌘F 那一行同时列出浏览器 / 终端 / 查看器', () => {
     render(<KeymapSettings />)
-    /*
-     * 先**取到**那句话再看它里面有什么 —— 只写一句「屏幕上找不到 files」的话,
-     * 整段渲染被摘掉时它也是绿的(首版就是这么写的,反证时当场发现,改锐)。
-     * `files` 是 `FocusScopeId`,不该出现在给人看的那句话里。
-     */
+    for (const [scopeKey, actionKey] of [
+      ['item.browser', 'browser.find'],
+      ['item.terminal', 'terminal.find'],
+      ['viewer.label', 'viewer.findLabel'],
+    ] as const) {
+      const line = zh['keymap.answerer']
+        .replace('{scope}', zh[scopeKey])
+        .replace('{action}', zh[actionKey])
+      expect(screen.getByText(line), line).toBeTruthy()
+    }
+  })
+
+  it('填的是作用域的 labelKey(人读的名字),不是它的 id', () => {
+    render(<KeymapSettings />)
     const line = screen.getByText(
       // 「{scope} 那一格填了什么」是这一条要问的,所以 scope 留成通配。
-      new RegExp(zh['keymap.scopedConflict'].replace('{scope}', '.+').replace('{action}', DETAIL_LABEL)),
+      new RegExp(zh['keymap.answerer'].replace('{scope}', '.+').replace('{action}', DETAIL_LABEL)),
     )
     expect(line.textContent ?? '').toContain(FILES_LABEL)
     expect(line.textContent ?? '').not.toMatch(/files/)
     expect(FILES_LABEL).not.toBe('files')
   })
 
-  it('撞车**不拦写入**:那条命令的键位仍然显示成 ⌘I(局部先接、没接住放行全局)', () => {
+  /**
+   * **认领那一句**(Win / Linux 档;jsdom 的 UA 不是 mac,所以终端的 `claims`
+   * 在场)。⌘P 在终端里根本到不了应用 —— 这不是错误,但用户有权在键位页上看见。
+   * K0 之前这句话由 `scopedCollisionsOf` 说,现在由 `claimantsOf` 说。
+   */
+  it('「⌘P 在终端里交给终端」说得出口(认领不是命令,但不许静默)', () => {
+    render(<KeymapSettings />)
+    const line = zh['keymap.answerer']
+      .replace('{scope}', zh['item.terminal'])
+      .replace('{action}', zh['terminal.keyToPty'])
+    expect(screen.getAllByText(line).length).toBeGreaterThan(0)
+  })
+})
+
+describe('设置页快捷键区:共键说得出口', () => {
+  it('出厂档下「目录」那一行没有共键提示(⌘⇧O 只有它一个人在用)', () => {
+    render(<KeymapSettings />)
+    const shared = zh['keymap.sharedChord'].replace('{name}', DETAIL_LABEL)
+    expect(screen.queryByText(shared)).toBeNull()
+  })
+
+  it('把「目录」改绑到 ⌘I:那一行说出「与『详情』共用这个键」,而且**不拦写入**', () => {
     useKeymapStore.setState({ overrides: { 'toc.toggle': MOD_I } })
     render(<KeymapSettings />)
+    expect(
+      screen.getByText(zh['keymap.sharedChord'].replace('{name}', DETAIL_LABEL)),
+    ).toBeTruthy()
+    // 反过来那一行也说得出(共键是对称的)。
+    expect(screen.getByText(zh['keymap.sharedChord'].replace('{name}', TOC_LABEL))).toBeTruthy()
     /*
-     * 撞车不是错误:⌘I 在文件树里开详情,在别处仍然是那条全局命令。
+     * 共键不是错误:⌘I 在文件树里开详情,在别处仍然是那条全局命令。
      * 所以这一行的键帽照旧画 ⌘ 与 I —— 它不该被改写成「未绑定」或灰掉。
      */
     expect(screen.getAllByText('I').length).toBeGreaterThan(0)
+  })
+
+  /**
+   * **一条命令两个键面**(`files.detail` 的 ⌘I 与 ⌘↵)。旧表把它写成两行,
+   * 于是设置页说不出「详情」这一条到底绑着什么;K0 把它归位成一行两键。
+   */
+  it('「详情」那一行同时画出 ⌘I 与 ⌘↵', () => {
+    render(<KeymapSettings />)
+    const slot = screen.getByLabelText(
+      zh['keymap.recordOf'].replace('{name}', DETAIL_LABEL),
+    )
+    expect(slot.textContent).toContain('I')
+    expect(slot.textContent).toContain('↵')
   })
 })

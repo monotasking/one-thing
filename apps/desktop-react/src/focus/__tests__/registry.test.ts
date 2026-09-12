@@ -339,14 +339,14 @@ describe('独占口与排障口', () => {
   it('dump 说得出路径、独占与每一格的形', () => {
     const root = focusTree.register('root', null)
     const viewer = focusTree.register('viewer', root.instanceId, {
-      keyHandlers: { find: () => {} },
+      commands: { 'view.find': () => {} },
     })
     viewer.activate('open')
     const shot = focusTree.dump()
     expect(shot.path).toEqual([root.instanceId, viewer.instanceId])
     expect(shot.reason).toBe('open')
     expect(shot.captured).toBe(false)
-    expect(shot.nodes.find((n) => n.scope === 'viewer')?.keys).toEqual(['find'])
+    expect(shot.nodes.find((n) => n.scope === 'viewer')?.keys).toEqual(['view.find'])
   })
 
   it('window.__focus.dump() 就是它(排障口按 __perf / __onethingLog 的惯例)', () => {

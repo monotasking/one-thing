@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
   KEYMAP_COMMANDS,
-  effectiveCombo,
+  comboConflictBetween,
+  effectiveCombos,
   findCommand,
   sameCombo,
   shelfSideOfCommand,
   shelfToggleCommandId,
 } from '../transitions'
-import { FOCUS_SCOPED_KEYS } from '../../focus/scopes'
+import { FOCUS_SCOPE_LIST } from '../../focus/scopes'
 import type { KeymapState } from '../types'
 import type { ShelfSide } from '../../stage/types'
 
@@ -39,11 +40,9 @@ describe('四条架子的命令行', () => {
       top: 'arrowup',
     }
     for (const side of SIDES) {
-      expect(findCommand(shelfToggleCommandId(side))?.defaultCombo).toEqual({
-        meta: true,
-        alt: true,
-        key: expected[side],
-      })
+      expect(findCommand(shelfToggleCommandId(side))?.defaultCombos).toEqual([
+        { meta: true, alt: true, key: expected[side] },
+      ])
     }
   })
 
@@ -56,34 +55,48 @@ describe('四条架子的命令行', () => {
 })
 
 describe('全表冲突检查(加键之前那一步的机器化)', () => {
-  it('出厂表里没有两条命令共用一个组合', () => {
-    const bound = KEYMAP_COMMANDS.map((c) => ({ id: c.id, combo: effectiveCombo(EMPTY, c.id) }))
-      .filter((row): row is { id: typeof row.id; combo: NonNullable<typeof row.combo> } =>
-        row.combo !== null && row.combo !== undefined,
-      )
+  it('出厂表里共用一个组合的每一对都过得了冲突规则', () => {
+    /*
+     * K0 之前这一条读作「没有两条命令共用一个组合」。那句话随「一个键可以绑
+     * 好几条命令」一起作废,但它守的那件事没变,只是判据从「一个都不许有」变成
+     * 了**那条规则**(`comboConflictBetween`):`app: true` 的至多一条,其余每两条
+     * 的作用域集合两两不交。出厂表自己第一个跑它。
+     */
+    const bound = KEYMAP_COMMANDS.flatMap((c) =>
+      effectiveCombos(EMPTY, c.id).map((combo) => ({ id: c.id, combo })),
+    )
     const clashes: string[] = []
     for (let i = 0; i < bound.length; i += 1) {
       for (let j = i + 1; j < bound.length; j += 1) {
-        if (sameCombo(bound[i].combo, bound[j].combo)) {
-          clashes.push(`${bound[i].id} ↔ ${bound[j].id}`)
-        }
+        if (bound[i].id === bound[j].id) continue
+        if (!sameCombo(bound[i].combo, bound[j].combo)) continue
+        const conflict = comboConflictBetween(bound[i].id, bound[j].id)
+        if (conflict) clashes.push(`${bound[i].id} ↔ ${bound[j].id}(${conflict.rule})`)
       }
     }
     expect(clashes).toEqual([])
   })
 
-  it('四条架子键与**面域局部键**也不撞', () => {
+  it('四条架子键与**跟随焦点那九条**也不撞,而且没有一块面认领着它们', () => {
     /*
-     * 局部键撞车本身不是错(局部先接、没接住放行),但架子这四条是**全局**的:
+     * 共键本身不是错(局部先接、没接住放行应用层),但架子这四条是**应用级**的:
      * 真撞上了,焦点在查看器里时那一侧架子就按不响 —— 而用户会以为键坏了。
-     * 所以这一族要求的是干净:一条都不许撞。
+     * 所以这一族要求的是干净:一条都不许撞,也不许被哪块面认领走。
      */
     const clashes: string[] = []
     for (const side of SIDES) {
-      const combo = findCommand(shelfToggleCommandId(side))?.defaultCombo
-      if (!combo) continue
-      for (const scoped of FOCUS_SCOPED_KEYS) {
-        if (sameCombo(combo, scoped.combo)) clashes.push(`${side} ↔ ${scoped.scope}`)
+      for (const combo of effectiveCombos(EMPTY, shelfToggleCommandId(side))) {
+        for (const command of KEYMAP_COMMANDS) {
+          if (command.app) continue
+          if (effectiveCombos(EMPTY, command.id).some((c) => sameCombo(combo, c))) {
+            clashes.push(`${side} ↔ ${command.id}`)
+          }
+        }
+        for (const spec of FOCUS_SCOPE_LIST) {
+          if ((spec.claims ?? []).some((c) => sameCombo(combo, c))) {
+            clashes.push(`${side} ↔ claim:${spec.id}`)
+          }
+        }
       }
     }
     expect(clashes).toEqual([])
@@ -101,9 +114,9 @@ describe('全表冲突检查(加键之前那一步的机器化)', () => {
    * 已经钉住它们没挤掉谁。
    */
   it('带 ⌥ 的只有这一族与标签换序那两条(第三伙人挤进来就红)', () => {
-    const withAlt = KEYMAP_COMMANDS.filter((c) => effectiveCombo(EMPTY, c.id)?.alt === true).map(
-      (c) => c.id,
-    )
+    const withAlt = KEYMAP_COMMANDS.filter((c) =>
+      effectiveCombos(EMPTY, c.id).some((combo) => combo.alt === true),
+    ).map((c) => c.id)
     expect(withAlt).toEqual([
       ...SIDES.map(shelfToggleCommandId),
       'workbench.moveTabLeft',

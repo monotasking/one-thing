@@ -115,15 +115,15 @@ export function ExposeView() {
   }, [])
 
   /**
-   * 面域局部键的**落点**(声明的正本是 `FOCUS_SCOPES.expose.keys`,今天一条:
-   * ⌘⇧P = `pin.toggle`)。作用在**活动行**上 —— 与 `files` 那格 `⌘I` 同一手:
+   * 命令的**落点**(声明的正本是 `FOCUS_SCOPES.expose.answers`,今天一条:
+   * `expose.pin`,出厂 ⌘⇧P)。作用在**活动行**上 —— 与 `files` 那格 `⌘I` 同一手:
    * 不去读 `document.activeElement`,读这块面自己的选择状态(store 的 focusId)。
    * 没有活动行时这一下什么都不做(而不是让这一层去订阅 `focusId` ——
    * 订了它,每按一次方向键这整块面连同侧栏 / 工具栏都要跟着重渲一遍)。
    */
   const exposeKeys = useMemo(
     () => ({
-      'pin.toggle': () => {
+      'expose.pin': () => {
         const { focusId } = useExposeStore.getState()
         if (focusId) togglePinAndAnnounce(focusId)
       },
@@ -230,7 +230,7 @@ export function ExposeView() {
       rootRef={rootRef}
       restingTarget={restingTarget}
       onEscape={onEscape}
-      keyHandlers={exposeKeys}
+      commands={exposeKeys}
     >
       {({ scopeProps }) => (
         /* eslint-disable-next-line jsx-a11y/no-static-element-interactions --

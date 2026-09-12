@@ -251,14 +251,14 @@ export const PaneLeaf = memo(function PaneLeaf({
   useLayoutEffect(() => () => holder.remove(), [holder])
 
   /**
-   * ⌘W:关当前 tab。表在 `focus/scopes.ts` 的 `FOCUS_SCOPES.leaf.keys`。
+   * ⌘W:关当前 tab。声明在 `focus/scopes.ts` 的 `FOCUS_SCOPES.leaf.answers`(命令 `tab.close`)。
    *
    * 中央区那一组标签在顶栏上也注入同名的一口(同一个 `owner`,两份实例)—— 于是
    * 焦点在**叶的身体里**还是在**它的标签上**,⌘W 都关得掉这一格。少了这一边,
    * 「在查看器里按 ⌘W」就没人接。
    */
   const leafKeys = useMemo(
-    () => ({ closeTab: active ? () => void closeAt(leaf.active) : undefined }),
+    () => ({ 'tab.close': active ? () => void closeAt(leaf.active) : undefined }),
     [active, closeAt, leaf.active],
   )
 
@@ -269,7 +269,7 @@ export const PaneLeaf = memo(function PaneLeaf({
      * 那一格 tab 的层,一直走到内容自己那一格。判词全文在
      * `FocusScopeSpec.passThrough` 上。
      */
-    <FocusScope scope="leaf" owner={leaf.id} rootRef={rootRef} keyHandlers={leafKeys} inert={occluded}>
+    <FocusScope scope="leaf" owner={leaf.id} rootRef={rootRef} commands={leafKeys} inert={occluded}>
       {({ scopeProps }) => (
         <div
           {...scopeProps}

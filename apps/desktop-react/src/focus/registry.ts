@@ -8,6 +8,7 @@ import {
   scopeAtElement,
   shrinkPath,
 } from './transitions'
+import type { CommandId } from '../keymap/types'
 import type {
   ActivePath,
   ActivateReason,
@@ -123,8 +124,10 @@ export interface FocusScopeRegisterOptions {
    * 根本不进 Esc 候选表,后者进表但把这一下让出去。
    */
   onEscape?: (() => boolean) | null
-  /** 局部键的落点,键是 `ScopedKey.action`。 */
-  keyHandlers?: Readonly<Record<string, (() => void) | undefined>>
+  /** 「我此刻能做哪些命令」的落点,键是命令 id(K0)。 */
+  commands?: Readonly<Partial<Record<CommandId, (() => void) | undefined>>>
+  /** 这一格此刻认领它声明的那几个键吗(见 `FocusScopeSpec.claims`)。缺省认领。 */
+  claiming?: boolean
   /** 这一格替谁摆着(宿主层填住户的 item id,见 `ScopeNode.owner`)。 */
   owner?: string
 }
@@ -220,7 +223,7 @@ export class FocusTree {
      * `pendingUnregister` 头上)。原样复用那个节点对象 —— `root` / `lastFocused` /
      * `returnTo` / `lastActiveAt` 全留着,于是「关掉什么焦点回打开它的地方」
      * (§3.5 规则 5)与 MRU 都活过这一次重挂;声明那几格按新的这一发覆写
-     * (重挂之后 `restingTarget` / `keyHandlers` 都是新闭包)。
+     * (重挂之后 `restingTarget` / `commands` 都是新闭包)。
      */
     const revived = this.pendingUnregister.get(instanceId)
     const node: ScopeNode = revived?.node ?? {
@@ -233,7 +236,8 @@ export class FocusTree {
       lastFocused: null,
       restingTarget: opts.restingTarget,
       onEscape: opts.onEscape ?? undefined,
-      keyHandlers: opts.keyHandlers,
+      commands: opts.commands,
+      claiming: opts.claiming,
       owner: opts.owner,
       lastActiveAt: 0,
     }
@@ -243,7 +247,8 @@ export class FocusTree {
       node.inert = opts.inert ?? false
       node.restingTarget = opts.restingTarget
       node.onEscape = opts.onEscape ?? undefined
-      node.keyHandlers = opts.keyHandlers
+      node.commands = opts.commands
+      node.claiming = opts.claiming
       node.owner = opts.owner
     }
     this.map.set(instanceId, node)
@@ -278,7 +283,8 @@ export class FocusTree {
         if ('inert' in patch && patch.inert !== undefined) at.inert = patch.inert
         if ('restingTarget' in patch) at.restingTarget = patch.restingTarget
         if ('onEscape' in patch) at.onEscape = patch.onEscape ?? undefined
-        if ('keyHandlers' in patch) at.keyHandlers = patch.keyHandlers
+        if ('commands' in patch) at.commands = patch.commands
+        if ('claiming' in patch) at.claiming = patch.claiming
         if ('owner' in patch) at.owner = patch.owner
         // 变得不可交互 = 结构变化(§4.2 来源 3),与卸载同一条路。
         if (patch.inert) this.settle(at)
@@ -878,7 +884,7 @@ export class FocusTree {
         parent: n.parent,
         inert: n.inert,
         hasRoot: Boolean(n.root),
-        keys: Object.keys(n.keyHandlers ?? {}),
+        keys: Object.keys(n.commands ?? {}),
         escape: Boolean(n.onEscape),
         owner: n.owner ?? null,
         returnTo: n.returnTo?.instanceId ?? null,

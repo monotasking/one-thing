@@ -1,5 +1,5 @@
-import { matchCombo } from '../keymap/transitions'
-import type { KeymapPlatform } from '../keymap/types'
+import { findCommand, matchCombo } from '../keymap/transitions'
+import type { CommandId, KeymapPlatform } from '../keymap/types'
 import { FOCUS_SCOPES } from './scopes'
 import type { ComboEvent } from '../keymap/types'
 import type {
@@ -82,51 +82,61 @@ export function shrinkPath(nodes: FocusTreeNodes, path: ActivePath): ActivePath 
 }
 
 /**
- * 一次按键归谁(§4.3)。**由深到浅**问路径上每一格的局部键表,
- * 第一个命中的赢;都没命中才轮到 root 的命令表。
+ * 一次按键归谁(§4.3;K0 起走的是**候选命令集**)。
+ *
+ * 顺序,由深到浅沿活动路径:
+ *  ① 这一格**认领**了这个键(`FOCUS_SCOPES[scope].claims`)→ 回 `claim`,
+ *    调用方不 `preventDefault`、不再往外问,事件原样交给里面那台程序;
+ *  ② 这一格**答得出**候选里的某一条(`node.commands[c]`)→ 回 `scope`;
+ *  ③ 路径走完 → 候选里 `app: true` 的那一条走 `root`(应用层兜底);
+ *  ④ 还没有 → null,放行(页面 / PTY / 系统菜单接着走)。
  *
  * 「局部先接、没接住放行全局」这条裁定一个字没变,变的是它靠什么成立:
- * 从前靠 DOM 冒泡序(事件先经过面域根、才到 window),现在靠树的深度。
- * 用户报的 ⌘F 就死在旧判据上 —— 查看器在活动路径上,但那一下按键
+ * 最早靠 DOM 冒泡序(事件先经过面域根、才到 window),R2 起靠树的深度,
+ * K0 起把「全局」这个词换成了「有应用层兜底的那一条命令」—— 同一件事,
+ * 但现在它是命令表上的**一格数据**,派发器一行都不读命令名。
+ * 用户报的 ⌘F 就死在最早那条判据上 —— 查看器在活动路径上,但那一下按键
  * 没有经过它的根,于是局部键根本没被问到。
  *
- * `rootLookup` 是注入的:全局命令表要读用户的改绑(zustand store),
- * 那是有状态的东西,不该长进这只文件。
+ * `candidates` 是算好递进来的(`keymap/transitions.lookupCommands`):候选要读
+ * 用户的改绑(zustand store),那是有状态的东西,不该长进这只文件。
  *
- * 命中了但那一格**没有注入处理器** → 当作没命中,继续往浅走。理由:声明与落点
- * 分叉时,宁可让键落到全局(可预期),也不要吞掉这一下(表现为「按了没反应」)。
+ * 候选里有、那一格**没有注入处理器** → 当作没命中,继续往浅走。理由:声明与
+ * 落点分叉时,宁可让键落到应用层(可预期),也不要吞掉这一下(表现为
+ * 「按了没反应」)。
  */
 export function routeKey(
   nodes: FocusTreeNodes,
   path: ActivePath,
   event: ComboEvent,
-  rootLookup: (event: ComboEvent) => string | null,
+  candidates: readonly CommandId[],
   /**
    * 「主修饰键是哪一枚物理键」(T1-fix)。**必填** —— 判词整段在
    * `keymap/transitions.matchCombo` 上:给它一个默认值,忘了传的调用点就会悄悄
    * 回到「⌘ 与 Ctrl 两枚皆可」那条老路,而那正是这一改要治的病。
    * 纯函数照旧不读 `navigator`:量它的是派发器(`focus/dispatch.ts`)。
+   *
+   * 候选那一半已经解释过平台了,这里还要它是因为 `claims` 是**组合**不是命令
+   * (认领不进命令表,判词在 `FocusScopeSpec.claims` 上)。
    */
   platform: KeymapPlatform,
 ): KeyRoute {
   for (let i = path.length - 1; i >= 0; i -= 1) {
     const node = nodes.get(path[i])
     if (!isInteractive(node)) continue
-    const keys = FOCUS_SCOPES[node.scope].keys
-    if (!keys) continue
-    for (const scoped of keys) {
-      if (!matchCombo(event, scoped.combo, platform)) continue
-      if (!node.keyHandlers?.[scoped.action]) continue
-      return {
-        target: 'scope',
-        instanceId: node.instanceId,
-        scope: node.scope,
-        action: scoped.action,
-      }
+    const spec = FOCUS_SCOPES[node.scope]
+    if (node.claiming !== false && spec.claims?.some((c) => matchCombo(event, c, platform))) {
+      return { target: 'claim', instanceId: node.instanceId, scope: node.scope }
+    }
+    for (const command of candidates) {
+      if (!node.commands?.[command]) continue
+      return { target: 'scope', instanceId: node.instanceId, scope: node.scope, command }
     }
   }
-  const command = rootLookup(event)
-  return command ? { target: 'root', command } : null
+  for (const command of candidates) {
+    if (findCommand(command)?.app) return { target: 'root', command }
+  }
+  return null
 }
 
 /**

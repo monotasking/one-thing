@@ -228,20 +228,24 @@ describe('注册表:键位档', () => {
    * 作用域实例注入的那张表 —— 所以对表在**真的挂起来的实例**上做,读树的排障口。
    * 反证:把 FileViewer 的 `viewerKeys` 里任何一格改名 → 这一条当场红。
    */
-  it('作用域实例注入的 keyHandlers 名单 = FOCUS_SCOPES.viewer.keys 的 action 集合', async () => {
+  it('作用域实例注入的 `commands` 名单 = FOCUS_SCOPES.viewer.answers 的命令集合', async () => {
     installPort()
     await open('/repo/a.ts')
     renderViewer()
     const node = focusTree.dump().nodes.find((n) => n.scope === 'viewer')
     expect(node?.keys.slice().sort()).toEqual([
-      ...new Set(FOCUS_SCOPES.viewer.keys?.map((k) => k.action) ?? []),
+      ...new Set(FOCUS_SCOPES.viewer.answers?.map((a) => a.command) ?? []),
     ].sort())
   })
 
   it('档里**没有** bindings 那一格:键位路由归响应链的作用域声明', () => {
     const map = keymapById('default') as unknown as Record<string, unknown>
     expect('bindings' in map).toBe(false)
-    expect(FOCUS_SCOPES.viewer.keys?.map((k) => k.action)).toEqual(['save', 'jump', 'find'])
+    expect(FOCUS_SCOPES.viewer.answers?.map((a) => a.command)).toEqual([
+      'view.save',
+      'viewer.gotoLine',
+      'view.find',
+    ])
   })
 })
 

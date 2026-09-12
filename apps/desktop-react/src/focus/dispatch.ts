@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { hasModifier, lookupCommand } from '../keymap/transitions'
+import { hasModifier, lookupCommands } from '../keymap/transitions'
 import { currentKeymapPlatform, useKeymapStore } from '../keymap/store'
 import { focusTree } from './registry'
 import { tabStopWithin } from './tab-trap'
@@ -29,14 +29,14 @@ import type { CommandId } from '../keymap/types'
  * | ⑤ | 路径上的 Esc,由深到浅 | `ui/float` 捕获 + `useEscapeChain` 冒泡 + composer / ExposeView / FilesPanel 各自那一份 |
  * | ⑥ | `modal` 的 Tab 圈禁 | `a11y/focus-trap` 的 document 捕获 |
  * | ⑦ | 输入面里的无修饰单键放行 | `keymap/dispatch` 的同一句 |
- * | ⑧ | 局部键(由深到浅) | viewer / files 各自面域根上的元素监听 |
- * | ⑨ | 全局命令表 | `keymap/dispatch` 的 window 冒泡 |
+ * | ⑧ | 响应者的命令(由深到浅)+ 认领放行 | viewer / files 各自面域根上的元素监听 |
+ * | ⑨ | 应用层兜底(`app: true` 那一条) | `keymap/dispatch` 的 window 冒泡 |
  *
  * ── 相位为什么是**捕获** ─────────────────────────────────────────────────
  * 相位从前要回答两个问题:「这一下归哪一层浮层」(靠捕获抢在前面)与「局部先接、
  * 没接住放行全局」(靠冒泡排在后面)。第一个问题现在由树答,第二个由树的深度答 ——
  * 相位于是只剩**一件**事要保:**React 元素级的结构键不被抢**。而结构键
- * (方向键 / ↵ / Space / Tab)**一格都不在局部键表里**(§4.3 的封闭裁定),
+ * (方向键 / ↵ / Space / Tab)**一格都不在命令表里**(§4.3 的封闭裁定),
  * 所以捕获相位跑在它们之前也拿不走它们:⑦ 先把输入面里的无修饰单键放掉,
  * ⑧ 只按表匹配(表里每一条都带修饰键),⑥ 只在真有 modal 时才碰 Tab。
  *
@@ -75,9 +75,10 @@ import type { CommandId } from '../keymap/types'
  *     没人答 true → **不 preventDefault**(后面的消费者照旧)。
  *  ⑥ **Tab**:只在 `modal` 作用域被圈禁,别处一律放行(结构键不进表)。
  *  ⑦ 输入面里的**无修饰单键**归输入框(判据与旧派发器逐字相同)。
- *  ⑧ **局部键**:由深到浅找第一个命中的作用域;命中即 `preventDefault` 并跑
- *     它注入的处理器。
- *  ⑨ 都没命中 → 全局命令表。
+ *  ⑧ **响应者**:由深到浅找第一个答得出候选命令的作用域;命中即
+ *     `preventDefault` 并跑它注入的处理器。认领(`claims`)在它之前问,命中就
+ *     **不 preventDefault** 地放行(K0)。
+ *  ⑨ 都没命中 → 候选里 `app: true` 的那一条(应用层兜底);还没有就放行。
  *
  * 「局部先接、没接住放行全局」这条裁定一个字没变,变的是它靠什么成立:
  * 从前靠 DOM 冒泡序(局部监听挂在面域根上,先于 window 收到),现在靠树的深度。
@@ -202,15 +203,25 @@ export function useFocusDispatch(opts: FocusDispatchOptions): void {
       // ⑦ 输入框里的无修饰单键让给输入。
       if (isTypingTarget(e.target) && !hasModifier(e)) return
 
-      // ⑧⑨ 局部先接,没接住放行全局。
-      const route = routeKey(nodes, path, e, (ev) => lookupCommand({ overrides }, ev, platform), platform)
+      /*
+       * ⑧⑨ 局部先接,没接住放行应用层。
+       *
+       * K0:先算**候选命令集**(一个键可以绑好几条命令,谁做由活动路径说了算),
+       * 再交给 `routeKey`。`claim` 那一档是**认领并放行** —— 这一下已经有主了
+       * (里面那台程序),所以既不跑什么,也**不 `preventDefault`**:xterm 收到
+       * 原生 keydown 自己就会把 `^P` 写成 `\x10` 发下去。从前是壳先截下来、
+       * 再自己往 PTY 写一遍同一个字节。
+       */
+      const candidates = lookupCommands({ overrides }, e, platform)
+      const route = routeKey(nodes, path, e, candidates, platform)
       if (!route) return
+      if (route.target === 'claim') return
       e.preventDefault()
       if (route.target === 'root') {
-        runCommand(route.command as CommandId)
+        runCommand(route.command)
         return
       }
-      nodes.get(route.instanceId)?.keyHandlers?.[route.action]?.()
+      nodes.get(route.instanceId)?.commands?.[route.command]?.()
     }
 
     /*

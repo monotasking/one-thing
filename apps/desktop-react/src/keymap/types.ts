@@ -4,17 +4,26 @@ import type { ShelfSide } from '../stage/types'
 /**
  * 快捷键注册表的形状。和 stage/ expose/ 一样:这里只有数据,没有 React、没有 DOM。
  *
- * ── 三层(09-01 立法,全文见 CLAUDE.md「快捷键三层」)────────────────────────
- * ① **全局档** = 这张表。焦点在哪儿都响,可改绑,dispatch.ts 是唯一派发器。
- * ② **面域局部键** = `keymap/scopes.ts` 的 SCOPED_KEYS(声明)+ 那块面根元素上的
- *    监听(落点)。焦点在那块面里才响 —— 查看器的 ⌘S/⌘L/⌘F、文件行的 ⌘I/⌘↵。
- * ③ **行内结构键** = 下面那一段说的那些,不进任何表。
- * 撞键裁决:**局部先接,没接住放行全局** —— 局部接住了就 preventDefault,
- * 全局派发器开头一句 `if (e.defaultPrevented) return`。不需要优先级表。
+ * ── 三层(09-01 立法)→ 一张表 + 响应者(K0,2026-09-12)────────────────────
+ * 立法一个字没变,变的是「表长什么样」(方案
+ * `docs/keymap-responder-2026-09.md` §4):从前**全局命令**在这张表里、
+ * **面域局部键**在 `focus/scopes.ts` 的 `keys` 里、**终端礼让表**在
+ * `content/terminal/key-courtesy.ts` 里,一个键的意义散在三个产地。
+ * K0 起只有两种对象:
+ *  · **命令**(`KeymapCommand`)—— 键 ↔ 意义,唯一的一张表(`commands.ts`)。
+ *    `app` 那一格说的是「活动路径上没人接时,应用层有没有兜底实现」:
+ *    `true` 就是从前的全局档(呼出一块面 / 做一件全局的事),`false` 就是从前的
+ *    面域局部键(它需要一个**由焦点决定的目标**,没人答就不响)。
+ *  · **响应者**(一格作用域实例)—— 「我此刻能做哪些命令」,落点是实例注入的
+ *    `commands`(`focus/FocusScope` 的同名 prop),声明是 `FOCUS_SCOPES[id].answers`。
+ * 撞键裁决照旧:**局部先接,没接住放行全局** —— 由活动路径的深度保证
+ * (`focus/transitions.routeKey`),不靠冒泡序。
+ * ③ **行内结构键**(方向 / ↵ / Space / Tab / Esc)照旧**不进任何表**,见下。
  *
  * ── 什么进这张表,什么永远不进 ───────────────────────────────────────────────
- * 进:**命令**。一次按键 = 触发一个具名动作(呼出某块面、开关总览、收展右钉栏)。
- *     它们互相之间没有顺序、没有层次,少一个多一个都不影响别的,所以可配置。
+ * 进:**命令**。一次按键 = 触发一个具名动作(呼出某块面、开关总览、收展右钉栏、
+ *     在这块面里查找)。它们互相之间没有顺序、没有层次,少一个多一个都不影响
+ *     别的,所以可配置。
  * 不进:**结构导航键**。它们不是命令,而是这套形态语法本身的一部分:
  *     - Esc 逐层退出(浮窗 → 舞台 → 总览 Quick Look → 总览);
  *     - 总览里的方向键 / Enter / Space(移焦、进入、Quick Look);
@@ -96,21 +105,76 @@ export type CommandId =
    */
   | 'workbench.moveTabLeft'
   | 'workbench.moveTabRight'
+  /*
+   * ── 从前的**面域局部键**,K0 起是九条同样形状的命令 ─────────────────────
+   * 它们与上面那些的唯一区别是 `app: false`:**没有应用层兜底**,活动路径上
+   * 没有响应者答得出这一条时,这一下就放行(页面 / PTY / 系统菜单接着走)。
+   * 谁答得出由 `FOCUS_SCOPES[id].answers` 声明、由实例注入的 `commands` 落地。
+   *
+   * 名字按方案 §4 ①,一条命令一个意义(不是一块面一行):
+   *  · `view.find` —— 在这块内容里查找。**一条命令三个响应者**(查看器 / 终端 /
+   *    浏览器),三块面各自的说法挂在 `answers` 那一格的 `labelKey` 上;
+   *  · `view.save` —— 存这份内容(今天只有查看器答);
+   *  · `viewer.gotoLine` / `browser.address` —— 同一个键(⌘L)上的两条命令。
+   *    它们合法,因为 `viewer` 与 `browser` 不会同时在一条活动路径上
+   *    (冲突规则见 `commands.ts` 的 `comboConflictBetween`);
+   *  · `files.detail` —— 文件树的详情。**一条命令两个出厂键**(⌘I 与 ⌘↵),
+   *    所以 `defaultCombos` 是数组而不是一格;
+   *  · `nav.back` / `nav.forward` —— 后退 / 前进。今天的响应者是检索面的查询历史,
+   *    浏览器的前进后退是 K3 的事(**同一条命令**,不会是第三个产地);
+   *  · `expose.pin` —— 会话总览置顶活动行;
+   *  · `tab.close` —— 关当前 tab(响应者是叶)。
+   */
+  | 'view.find'
+  | 'view.save'
+  | 'viewer.gotoLine'
+  | 'browser.address'
+  | 'files.detail'
+  | 'nav.back'
+  | 'nav.forward'
+  | 'expose.pin'
+  | 'tab.close'
+
+/**
+ * 焦点在一片原生视图(`WebContentsView`)里时,这条命令要不要**先于页面**被截下来。
+ *
+ * `reserve` = 保留键(Chrome 自己对 ⌘P / ⌘L 的做法):主进程的 `before-input-event`
+ * 把它 `preventDefault` 并推回壳,走唯一那个派发器。`yield` = 让给页面。
+ * 今天全表都是 `reserve`(K0 零行为变化);让出 ⌘P 那一条是 K2 的拍点。
+ */
+export type NativeViewPolicy = 'reserve' | 'yield'
 
 export interface KeymapCommand {
   id: CommandId
   /** 命令名是界面文案,所以只持有 key —— 同 StageItemSpec.titleKey 的判例。 */
   labelKey: MessageKey
-  /** 出厂绑定。null = 出厂就没绑(用户可以自己绑一个)。 */
-  defaultCombo: Combo | null
+  /**
+   * 出厂绑定。**空数组 = 出厂就没绑**(用户可以自己绑一个);
+   * 一条命令可以有**好几个**出厂键 —— `files.detail` 的 ⌘I 与 ⌘↵ 就是一条命令
+   * 两个键面。从前那一格 `defaultCombo: Combo | null` 说不出这件事,于是文件树
+   * 那两个键在旧表里是**两行**,而两行意味着两个意义。
+   */
+  defaultCombos: readonly Combo[]
+  /**
+   * **应用层有没有兜底实现**。活动路径上一格响应者都没接住时:`true` 交给
+   * `keymap/run-command.ts` 的那张动作表(从前的「全局档」),`false` 就放行。
+   */
+  app: boolean
+  /** 焦点在原生视图里时的去向,见 `NativeViewPolicy`。 */
+  nativeView: NativeViewPolicy
 }
 
 /**
  * 只存**覆盖**。缺席 = 用后厂默认;显式的 null = 用户把它解绑了。
- * 「缺席」与「null」是两件事,所以这里不能用 `Combo | undefined` 糊过去。
+ * 「缺席」与「null」是两件事,所以这里不能用 `Combo[] | undefined` 糊过去。
+ *
+ * 值是**一串**组合(K0,跟着 `defaultCombos`):一条命令可以有好几个键面。
+ * 设置页今天录一次写一格数组(整条换成那一个键),多键改绑是 K5 的事 ——
+ * 但**形状先对**,否则 `files.detail` 的 ⌘↵ 一旦被覆盖就永远回不来。
+ * 老档案里存的是单个 `Combo`,`migrateKeymapPersisted` 的 v3 段把它包成 `[Combo]`。
  */
 export interface KeymapState {
-  overrides: Record<string, Combo | null>
+  overrides: Record<string, Combo[] | null>
 }
 
 /** 显示用的平台。只影响键面写 ⌘ 还是 Ctrl,不影响匹配。 */

@@ -29,16 +29,23 @@ beforeEach(() => {
 })
 
 describe('runShellCommand:注册表里的每一条都落得下去', () => {
-  it('`KEYMAP_COMMANDS` 每一条 id 都回 true(例外表上的除外)', () => {
+  it('`app: true` 的每一条 id 都回 true;`app: false` 的每一条都回 false', () => {
+    /*
+     * K0:`app` 那一格**就是**「应用层有没有兜底实现」,所以这张动作表与它是
+     * 一对一的 —— 跟随焦点那九条没有兜底(活动路径上没人答就放行),
+     * `runShellCommand` 对它们回 false 不是漏了一格,那是它们的定义。
+     * 哪天有人给 `app: false` 的命令写了一个应用层落点(或者反过来),这一条红。
+     */
     const hookOnly = new Set<string>(HOOK_ONLY_COMMANDS)
     const wrong: string[] = []
     for (const command of KEYMAP_COMMANDS) {
-      const want = !hookOnly.has(command.id)
+      const want = command.app && !hookOnly.has(command.id)
       if (runShellCommand(command.id) !== want) wrong.push(command.id)
     }
     expect(wrong).toEqual([])
-    // 前提:表真的不是空的(空表会让上一条空过)。
-    expect(KEYMAP_COMMANDS.length).toBeGreaterThan(0)
+    // 前提:两族都真的不是空的(空表会让上一条空过)。
+    expect(KEYMAP_COMMANDS.filter((c) => c.app).length).toBeGreaterThan(0)
+    expect(KEYMAP_COMMANDS.filter((c) => !c.app).length).toBeGreaterThan(0)
   })
 
   it('例外表上的每一条**确实**回 false —— 表与行为对得上,不是一句注释', () => {

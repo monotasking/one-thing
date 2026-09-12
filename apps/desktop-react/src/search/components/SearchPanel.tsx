@@ -279,7 +279,7 @@ export function SearchPanel() {
 
   /* ── 键盘 ─────────────────────────────────────────────────────────── */
   const canRecallHistory = !searching && canGoBack(history)
-  const { onKeyDown, keyHandlers } = useSearchKeys({
+  const { onKeyDown, commands } = useSearchKeys({
     sequence,
     activate: activateItem,
     stepScope: (step: 1 | -1) => setScope(nextTab(tabs, scope, step)),
@@ -354,7 +354,7 @@ export function SearchPanel() {
       scope="search"
       rootRef={panelRef}
       restingTarget={() => panelRef.current?.querySelector('input') ?? null}
-      keyHandlers={keyHandlers}
+      commands={commands}
     >
       {({ scopeProps }) => (
     /* eslint-disable-next-line jsx-a11y/no-static-element-interactions --

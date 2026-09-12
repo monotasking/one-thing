@@ -1005,12 +1005,12 @@ describe('R10:IME 组字期间那一下键归输入法', () => {
 })
 
 describe('面域局部键:⌘[ / ⌘](§4.6 的查询历史)', () => {
-  it('实例注入的 keyHandlers 名单 = FOCUS_SCOPES.search.keys 的 action 集合', async () => {
+  it('实例注入的 `commands` 名单 = FOCUS_SCOPES.search.answers 的命令集合', async () => {
     render(<SearchPanel />)
     await waitFor(() => expect(screen.getByLabelText('搜索')).toBeTruthy())
     const node = focusTree.dump().nodes.find(n => n.scope === 'search')
     expect(node?.keys.slice().sort()).toEqual(
-      [...new Set(FOCUS_SCOPES.search.keys?.map(k => k.action) ?? [])].sort(),
+      [...new Set(FOCUS_SCOPES.search.answers?.map(a => a.command) ?? [])].sort(),
     )
   })
 

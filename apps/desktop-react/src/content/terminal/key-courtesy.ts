@@ -1,17 +1,25 @@
-import { platformOf } from '../../keymap/transitions'
-import type { KeymapPlatform } from '../../keymap/types'
-import type { ScopedKey } from '../../focus/types'
+import { platformOf } from '../../keymap/platform'
+import type { Combo, KeymapPlatform } from '../../keymap/types'
 
 /**
- * **键盘礼让表**(T1;方案 §2.1-7,按深查 **9-1 末段**改判成「作用域局部键」;
- * T1-fix 把它改回方案原文那个**按平台**的形)。
+ * **键盘认领表**(T1 叫「礼让表」;方案 §2.1-7,T1-fix 改成按平台的形;
+ * **K0 把它从「伪装成局部键」改回它本来的样子**:一张 `claims`)。
  *
  * ── 一句话 ──────────────────────────────────────────────────────────────
  * 一张**纯数据表**:哪几个组合键在终端里属于 PTY,不属于这台应用。它的消费方
- * 是 `focus/scopes.ts` 的 `FOCUS_SCOPES.terminal.keys` —— 局部键由深到浅先接,
- * 全局命令表排在最后,所以「在终端里 Ctrl+W 是删词、不是关标签」由**树的深度**
- * 成立,不靠 xterm 那一侧跟谁抢相位(9-1:xterm 是 DOM,唯一那个派发器在捕获
- * 相位先于它跑;`WebContentsView` 那条失明的路终端没有)。
+ * 是 `focus/scopes.ts` 的 `FOCUS_SCOPES.terminal.claims` —— 派发器沿活动路径由深
+ * 到浅走,命中 claim 就**不 `preventDefault`、不再往外问**,事件原样落到 xterm
+ * 手里,由 xterm 自己把 `^P` 写成 `\x10` 发下去。所以「在终端里 Ctrl+W 是删词、
+ * 不是关标签」由**树的深度**成立,不靠 xterm 那一侧跟谁抢相位(9-1:xterm 是
+ * DOM,唯一那个派发器在捕获相位先于它跑)。
+ *
+ * ── K0 为什么要改这个形 ─────────────────────────────────────────────────
+ * T1 把它实现成「局部键 + 一个把控制字节写回 PTY 的 action」:壳先把这一下截下
+ * 来(`preventDefault`),再自己往 PTY 写一遍 xterm 本来就会写的那个字节。
+ * 它与「查找」根本不是一类东西 —— 一个是**认领并放行**,一个是**接住并执行**;
+ * 模型里说不出这两类,下一个「Esc 归页面」之类的声明就又要找地方塞。
+ * 于是 `pty:` 前缀、`terminalPtyKeyAction`、`controlByteOf` 与 `sendCourtesyKey`
+ * 一起退役:**少了一次翻译,也少了一份「哪个字母对哪个字节」的第二真相**。
  *
  * ── mac 上这张表是**空的**,而那不是偷懒 ────────────────────────────────
  * 方案 §2.1-7 的原话:「mac 上 ⌘ 一族放给应用,Ctrl 进 PTY」。它成立的前提是
@@ -34,18 +42,18 @@ import type { ScopedKey } from '../../focus/types'
  * 挑哪几个,判据是**撞车**,不是「终端喜欢哪些键」。没被全局表占着的组合
  * (Ctrl+C / Ctrl+D / Ctrl+A / Ctrl+R / Ctrl+U / Ctrl+L …)**本来就到得了 PTY**:
  * 派发器在 `routeKey` 里问不到人就不 `preventDefault`,xterm 照常收。给它们各写
- * 一行只会让设置页的撞键表长出一串永远不会撞的行。
+ * 一行只会让设置页的「谁答」列长出一串永远不会撞的行。
  *
- * 出厂全局表里占着「主修饰键 + 单个字母」的,一共五条(`keymap/transitions.ts`
- * 的 `DEFAULT_COMBOS` + `focus/scopes.ts` 的 `leaf`):
+ * 出厂命令表里占着「主修饰键 + 单个字母」的,一共五条(`keymap/commands.ts`
+ * 的 `DEFAULT_COMBOS`,K0 之后 `tab.close` 也在同一张表里):
  *
  *   ⌘P `toggle:search` · ⌘E `toggle:sessions` · ⌘J `agent.menu` ·
- *   ⌘N `session.new` · ⌘W `leaf.closeTab`
+ *   ⌘N `session.new` · ⌘W `tab.close`
  *
  * 而这五个字母在 readline / emacs 键位下全是每天都在按的:
  * `^P` 上一条历史、`^E` 行尾、`^J` 换行、`^N` 下一条历史、`^W` 删一个词。
  * 于是这张表恰好就是那五行。用户把别的命令改绑到别的 Ctrl+字母上时会撞 ——
- * 那条撞车由 `scopedCollisionsOf` 在设置页说出来(撞车不是错误,但不许静默)。
+ * 那条撞车由设置页的「谁答」列说出来(撞车不是错误,但不许静默)。
  *
  * ── 三条例外:`Ctrl+Tab` 族 / `Ctrl+\`` / `Ctrl+,`,一个都不在表上 ────────
  * 方案 §2.1-7 点名它们要留给应用。这里**结构上就进不来**:这张表只收字母,
@@ -58,68 +66,46 @@ import type { ScopedKey } from '../../focus/types'
  * 作用域种类』这条路」),所以这几行必须在模块加载时就定下来。判据仍旧是那只
  * 纯函数 `platformOf(ua)`,量它的是**这只文件**(与 `content/FileActionsMenu.tsx`
  * 那一处逐字同一手:纯函数不读 navigator,调用方量一次递进去)。
- * 按平台分档的那一只 `terminalScopedKeys(platform)` 是导出的纯函数 —— 测试因此
+ * 按平台分档的那一只 `terminalClaims(platform)` 是导出的纯函数 —— 测试因此
  * 能把两台机器都走一遍,不必去改 UA。
  */
 
-/** 这张表交出去的 `action` 前缀。落点(`keyHandlers`)按同一个前缀造名字。 */
-export const TERMINAL_PTY_KEY_ACTION_PREFIX = 'pty:'
-
 /**
- * 被礼让的那几个字母。**只有字母** —— 判词见文件头「三条例外」。
- * 次序 = 出厂全局表里那五条命令的声明序,好让设置页的撞键表读起来与键位页同序。
+ * 被认领的那几个字母。**只有字母** —— 判词见文件头「三条例外」。
+ * 次序 = 出厂全局表里那五条命令的声明序,好让设置页的「谁答」列读起来与键位页同序。
  */
 export const TERMINAL_COURTESY_LETTERS: readonly string[] = ['p', 'e', 'j', 'n', 'w']
 
-/** `pty:w`。全仓唯一一处这个字符串的拼法(声明与落点都从这里取)。 */
-export function terminalPtyKeyAction(letter: string): string {
-  return `${TERMINAL_PTY_KEY_ACTION_PREFIX}${letter}`
-}
-
 /**
- * `Ctrl+<字母>` 要写进 PTY 的那个字节。
+ * 这台机器上要认领的那几个组合。**mac 是空的**,判词整段在文件头。
  *
- * ASCII 的控制字符就是「字母的大写码 − 64」(`w` → 0x17、`p` → 0x10),
- * 这不是一张查找表而是**编码本身**,所以这里算,不列表。
+ * **一个组合一格**(与 `files.detail` 的 ⌘I / ⌘↵ 是同一条判例的两面:那两个键面
+ * 是同一件事所以合成一条命令,这五个键各归各的字节所以各是一格)。它们不带
+ * labelKey —— 认领不是命令,设置页在「谁答」那一列用终端自己的名字加一句
+ * `terminal.keyToPty`(「交给终端」)把它说出来。
  */
-export function controlByteOf(letter: string): string {
-  return String.fromCharCode(letter.toUpperCase().charCodeAt(0) - 64)
-}
-
-/**
- * 这台机器上要礼让的那几行。**mac 是空的**,判词整段在文件头。
- *
- * **一行一个组合**(与文件树的 ⌘I / ⌘↵ 同一条判例:表要能逐条说出「Ctrl+W 被谁
- * 占着」,一行装两个组合就说不出口了)。`labelKey` 几行共用一句 —— 它们是同
- * 一件事(「交给终端」),而 i18n 纪律是同一句话只该有一个键。
- */
-export function terminalScopedKeys(platform: KeymapPlatform): readonly ScopedKey[] {
+export function terminalClaims(platform: KeymapPlatform): readonly Combo[] {
   if (platform === 'mac') return []
-  return TERMINAL_COURTESY_LETTERS.map((letter) => ({
-    scope: 'terminal' as const,
-    combo: { ctrl: true, key: letter },
-    labelKey: 'terminal.keyToPty' as const,
-    action: terminalPtyKeyAction(letter),
-  }))
+  return TERMINAL_COURTESY_LETTERS.map((letter) => ({ ctrl: true, key: letter }))
 }
 
 /** 这台机器的那一份(模块加载时量一次,判词在文件头末段)。 */
-export const TERMINAL_SCOPED_KEYS: readonly ScopedKey[] = terminalScopedKeys(
+export const TERMINAL_CLAIMS: readonly Combo[] = terminalClaims(
   platformOf(typeof navigator === 'undefined' ? '' : navigator.userAgent),
 )
 
 /**
  * **xterm 侧那唯一一行**(9-1 末段):应用已经拿走的键不再进 PTY。
  *
- * 它住在这只文件而不是 `screen.ts`,是因为它**是礼让法的另一半**:上面那张表
+ * 它住在这只文件而不是 `screen.ts`,是因为它**是认领法的另一半**:上面那张表
  * 说「这几个键归 PTY」,这一句说「除此之外,凡应用真的接住了的就别再重复一遍」。
  * 两半写在一处,下一个人改其中一半时看得见另一半;顺带它也就不必为了被测到而
  * 把 xterm 拖进 jsdom。
  *
  * 判据只有 `defaultPrevented` 一格,**不抄第二张键表**:唯一那个派发器住在
  * window 的捕获相位(整条传播路径的第一站),所以它认领过的每一下在到达 xterm
- * 时都已经 `preventDefault` 过;它没认领的(Ctrl+C / Ctrl+D / Esc / Tab /
- * 方向键 / 所有无修饰键)一个字都没动,照常进 PTY。
+ * 时都已经 `preventDefault` 过;它没认领的(被 claims 放行的那五个、Ctrl+C /
+ * Ctrl+D / Esc / Tab / 方向键 / 所有无修饰键)一个字都没动,照常进 PTY。
  */
 export function appAlreadyTookKey(event: { defaultPrevented: boolean }): boolean {
   return event.defaultPrevented

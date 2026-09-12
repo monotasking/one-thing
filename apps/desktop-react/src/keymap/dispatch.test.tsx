@@ -96,7 +96,7 @@ describe('规则 1 / 2:焦点跟着「打开」走(09-03 R2)', () => {
    */
   it('**用键盘**从 Dock 开一块面 → 焦点进那块面(规则 2)', () => {
     render(<AppShell />)
-    act(() => useKeymapStore.setState({ overrides: { 'toggle:diff': { meta: true, key: 'k' } } }))
+    act(() => useKeymapStore.setState({ overrides: { 'toggle:diff': [{ meta: true, key: 'k' }] } }))
     act(() => void fireEvent.keyDown(document.body, { key: 'k', metaKey: true }))
     expect(useStageStore.getState().placements.diff).toBeTruthy()
     /*
@@ -140,7 +140,7 @@ describe('规则 1 / 2:焦点跟着「打开」走(09-03 R2)', () => {
    */
   it('**用键盘**开一块自己没有 region 的面 → 焦点落在装着它的那一层上(不是留在输入框里)', () => {
     render(<AppShell />)
-    act(() => useKeymapStore.setState({ overrides: { 'toggle:workspace': { meta: true, key: 'k' } } }))
+    act(() => useKeymapStore.setState({ overrides: { 'toggle:workspace': [{ meta: true, key: 'k' }] } }))
     act(() => void fireEvent.keyDown(document.body, { key: 'k', metaKey: true }))
     expect(useStageStore.getState().placements.workspace).toBeTruthy()
     /*
@@ -197,7 +197,12 @@ describe('设置页里的录制', () => {
     // 撞了检索那条,所以既没绑上,也没有人替它开面板。
     expect(useKeymapStore.getState().overrides['toggle:files']).toBeUndefined()
     expect(useStageStore.getState().placements.search).toBeUndefined()
-    expect(screen.getByText('与「检索」冲突')).toBeTruthy()
+    /*
+      * K0:撞车那一句要**说清是哪一条规则**(这里是「一个键上只能有一条全局
+      * 命令」)。两条命令都是 `app: true`,所以规则是 `app`。
+      */
+     expect(screen.getByText(/与「检索」冲突/)).toBeTruthy()
+     expect(screen.getByText(/同一个键上只能有一条全局命令/)).toBeTruthy()
   })
 
   it('按一个没人占的组合就绑上,行上随即出现「恢复默认」', () => {
@@ -206,11 +211,10 @@ describe('设置页里的录制', () => {
     fireEvent.click(slot)
     act(() => void fireEvent.keyDown(slot, { key: 'f', metaKey: true, shiftKey: true }))
 
-    expect(useKeymapStore.getState().overrides['toggle:files']).toEqual({
-      key: 'f',
-      meta: true,
-      shift: true,
-    })
+    // K0:覆盖的值是**一串**组合(录一次 = 整条换成那一个键)。
+    expect(useKeymapStore.getState().overrides['toggle:files']).toEqual([
+      { key: 'f', meta: true, shift: true },
+    ])
     expect(screen.getByLabelText('恢复「目录」的默认组合')).toBeTruthy()
   })
 })

@@ -9,7 +9,7 @@ import { ButtonBase } from '../../ui/ButtonBase'
 import { useAsyncPending } from '../../data/kernel'
 import { useT } from '../../i18n'
 import { currentKeymapPlatform, useKeymapStore } from '../../keymap/store'
-import { effectiveCombo, formatCombo, workspaceSlotCommandId } from '../../keymap/transitions'
+import { effectiveCombos, formatCombo, workspaceSlotCommandId } from '../../keymap/transitions'
 import { filterWorkspaces } from '../projection'
 import { useWorkspaceStore, useWorkspaceViews, workspaceKey, workspaceMutation } from '../store'
 import type { WorkspaceView } from '../types'
@@ -181,7 +181,8 @@ export function WorkspacePalette() {
                 const combo =
                   view.slot === null
                     ? null
-                    : effectiveCombo({ overrides }, workspaceSlotCommandId(view.slot))
+                    : /* 一条命令可以有好几个键面(K0);这一行画**第一个**。 */
+                      (effectiveCombos({ overrides }, workspaceSlotCommandId(view.slot))[0] ?? null)
                 return (
                   <ButtonBase
                     key={view.id}

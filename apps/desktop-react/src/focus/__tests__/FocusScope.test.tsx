@@ -162,21 +162,21 @@ describe('声明的进出', () => {
     expect(focusTree.nodes().get(id)?.onEscape).toBeUndefined()
   })
 
-  it('`keyHandlers` 每渲染同步内容,但**不重登记**(实例 id 不变)', () => {
+  it('`commands` 每渲染同步内容,但**不重登记**(实例 id 不变)', () => {
     function Case({ n }: { n: number }) {
       return (
-        <FocusScope scope="viewer" keyHandlers={{ find: () => void n }}>
+        <FocusScope scope="viewer" commands={{ 'view.find': () => void n }}>
           {({ scopeProps }) => <div {...scopeProps} />}
         </FocusScope>
       )
     }
     const { rerender } = render(<Case n={1} />)
     const before = [...focusTree.nodes().values()][0]
-    const first = before.keyHandlers?.find
+    const first = before.commands?.['view.find']
     rerender(<Case n={2} />)
     const after = [...focusTree.nodes().values()][0]
     expect(after.instanceId).toBe(before.instanceId)
-    expect(after.keyHandlers?.find).not.toBe(first)
+    expect(after.commands?.['view.find']).not.toBe(first)
   })
 
   it('`inert` 改成 true 就地生效,不经重登记', () => {

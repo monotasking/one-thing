@@ -316,12 +316,15 @@ describe('用户按键与礼让键', () => {
     expect(port.writes).toEqual(['ls\r'])
   })
 
-  it('礼让键写成那个控制字节(`w` → 0x17)', async () => {
-    const { port, session } = build()
-    await session.attach()
-    session.sendCourtesyKey('w')
-    expect(port.writes).toEqual(['\x17'])
-  })
+  /*
+   * ── 「礼让键写成那个控制字节」随 K0 退役 ──────────────────────────────
+   * 那条用例钉的是 `sendCourtesyKey`:壳先 `preventDefault` 掉 `Ctrl+W`,再自己
+   * 往 PTY 写一个 `\x17`。K0 把礼让表改成 `claims`(认领并**放行**),派发器不再
+   * 截这一下,xterm 收到原生 keydown 自己就会写那个字节 —— 少了一次翻译,也就
+   * 没有了「哪个字母对哪个字节」这份第二真相。等价性改由
+   * `focus/__tests__/transitions.test.ts` 的认领那一组钉(Win 档 Ctrl+P → `claim`、
+   * 不跑 `toggle:search`、事件未被 preventDefault)。
+   */
 })
 
 describe('活标题三档', () => {

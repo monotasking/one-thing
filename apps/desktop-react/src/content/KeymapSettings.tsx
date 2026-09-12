@@ -1,47 +1,61 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Button } from '../ui/Button'
 import { ButtonBase } from '../ui/ButtonBase'
 import { Kbd } from '../ui/Kbd'
 import { focusTree } from '../focus/registry'
-import { FOCUS_SCOPES } from '../focus/scopes'
 import { useT } from '../i18n'
 import { useKeymapStore, currentKeymapPlatform } from '../keymap/store'
-import { scopedCollisionsOf } from '../keymap/scopes'
+import { answerersOf, claimantsOf, scopeLabelKeyOf } from '../keymap/scopes'
 import {
   KEYMAP_COMMANDS,
-  effectiveCombo,
+  effectiveCombos,
   findCommand,
   formatCombo,
   hasOverride,
   recordKey,
+  sharedChordOf,
 } from '../keymap/transitions'
+import type { KeymapCommand } from '../keymap/types'
 import type { CommandId } from '../keymap/types'
 import s from './mocks.module.css'
 
 /**
- * 设置页的「快捷键」区。一行 = 一条命令 + 它当下绑的键 + (改过才出现的)恢复默认。
+ * 设置页的「快捷键」区。一行 = 一条命令 + 谁答得出它 + 它当下绑的键 +
+ * (改过才出现的)恢复默认。
  *
- * ── 两种撞车,两句不同的话(09-03 R3)────────────────────────────────────
- * 这块面要说得出**两种**撞车,它们的严重程度根本不同:
- *  · **全局 ↔ 全局**(`bind` 回一个被占的 command id):真的有一个按不响 ——
- *    所以它拦住写入,留在录制态、行内说清撞的是谁,让用户直接再按一个。
- *  · **全局 ↔ 面域局部键**(`scopedCollisionsOf`,读的是正本
- *    `focus/scopes.ts` 的 `FOCUS_SCOPES[id].keys`):**不是错误**,两者共存 ——
- *    局部先接、没接住放行全局(⌘I 在文件树里开详情,在别处仍是那条全局命令)。
- *    所以它不拦写入,只在那一行旁边**说出所属的那块面**(用作用域自己的
- *    `labelKey`,「文件」「查看器」……),这正是 F1 那条留账要的东西:从前
- *    「用户把某条命令改绑到 ⌘I」是**静默**盖住行内键的。
- *    出厂表下零撞车,所以这句话默认一个字都不出现。
+ * ── 两节,分界是「有没有应用层兜底」(K0)────────────────────────────────
+ * **全局**(`app: true`)= 焦点在哪儿都响,没人接住时由 `run-command.ts` 兜底。
+ * **跟随焦点**(`app: false`)= 它需要一个由焦点决定的目标,所以没有兜底:
+ * 活动路径上没人答就放行(页面 / PTY / 系统菜单接着走)。这不是排版,这就是
+ * 三层立法那条判据本身 —— 从前跟随焦点那九条根本不在这块面上,用户既看不见
+ * 「⌘F 是什么」,也改不了它。
+ *
+ * ── 「谁答」那一列 ──────────────────────────────────────────────────────
+ * 读 `answerersOf`(正本 `focus/scopes.ts` 的 `answers`)。它回答的是那句从前
+ * 只能从撞车里反推的话:「查找 ⌘F —— 浏览器(在这一页里查找)/ 终端(在这块
+ * 屏幕里查找)/ 查看器(在这份文件里检索)」。**一条命令三个响应者**,三句话
+ * 仍是三句,但它们挂在响应者上,不再各绑一次键。
+ * 同一列还说得出第二件事:`claimantsOf` —— 这个键在哪块面里**归里面那台程序**
+ * (Win / Linux 上终端认领的那五个 `Ctrl+字母`)。它不是命令、改不了、也不该被
+ * 静默:用户有权在键位页上看见「⌘P 在终端里交给终端」。
+ *
+ * ── 两种撞车,两句不同的话(09-03 R3 立,K0 改口)─────────────────────────
+ *  · **拒掉的**(`bindCombo` 回 `conflict`):按**冲突规则**判 —— 同一个键上
+ *    `app: true` 的至多一条(`keymap.conflictApp`),其余每两条的作用域集合两两
+ *    不交(`keymap.conflictOverlap`)。拒了就留在录制态、行内说清撞的是谁、
+ *    按的是哪一条规则,让用户直接再按一个。
+ *  · **放行的共键**(`sharedChordOf`):合法,而且往往正是**设计**(⌘L 上浏览器
+ *    的地址栏与查看器的跳行)。所以它不拦写入,只在那一行旁边说一句
+ *    「与「X」共用这个键(不同时在场)」—— 共键不是错误,但不许**静默**,那正是
+ *    F1 那条留账要的东西。
  *
  * 三件事值得记一笔:
- * 1. 录制态向响应链**申请独占**(`focusTree.capture`,09-02 R1;从前是这块面
- *    自己在 window 捕获阶段挂一条并 stopPropagation)。独占口是设计 §5 里
- *    **唯一那条例外** —— 别的键都能写成一张表,而录制要吃的键集合不可枚举
+ * 1. 录制态向响应链**申请独占**(`focusTree.capture`,09-02 R1)。独占口是设计
+ *    §5 里**唯一那条例外** —— 别的键都能写成一张表,而录制要吃的键集合不可枚举
  *    (它得能录下任何一个已经绑出去的组合)。截住这件事没变,只是改由那一个
  *    派发器代劳:它拿到独占口就一格作用域都不问,并在认领时 stopPropagation,
- *    所以录 ⌘P 的时候检索面板仍然不会真的弹出来。这不是「顺手加的保险」,
- *    是录制态成立的前提。
- * 2. 冲突**不静默覆盖**:撞了就留在录制态、行内说清撞的是谁,用户可以直接再按一个。
+ *    所以录 ⌘P 的时候检索面板仍然不会真的弹出来。
+ * 2. 冲突**不静默覆盖**:撞了就留在录制态、行内说清撞的是谁。
  * 3. 行不是一个 <button> —— 键位面与「恢复默认」是两颗兄弟按钮,不是嵌套的
  *    (嵌套 button 是铁律里的禁令,也确实点不动)。
  */
@@ -54,12 +68,11 @@ export function KeymapSettings() {
 
   /** 一次只有一行在录 —— 所以录制态住在这一层,而不是每行各存各的。 */
   const [recording, setRecording] = useState<CommandId | null>(null)
-  const [conflict, setConflict] = useState<CommandId | null>(null)
+  /** 撞了的那一条:撞的是谁 + 按的是哪一条规则(`ComboConflict`)。 */
+  const [conflict, setConflict] = useState<ReturnType<typeof bind>>(null)
 
   const platform = currentKeymapPlatform()
   const state = { overrides }
-  /** 全局命令与面域局部键撞在同一个组合上的那些。出厂表下是空的。 */
-  const scopedCollisions = scopedCollisionsOf(state)
 
   useEffect(() => {
     if (!recording) return
@@ -97,73 +110,111 @@ export function KeymapSettings() {
     })
   }, [recording, bind, unbind])
 
+  /** 撞车那一句:两条规则两句话,都带上撞的是谁。 */
+  function conflictLine(): string | null {
+    if (!conflict) return null
+    const name = t(findCommand(conflict.with)?.labelKey ?? 'keymap.unbound')
+    if (conflict.rule === 'app') return t('keymap.conflictApp', { name })
+    return t('keymap.conflictOverlap', { name, scope: t(scopeLabelKeyOf(conflict.scope)) })
+  }
+
+  function row(command: KeymapCommand) {
+    const name = t(command.labelKey)
+    const combos = effectiveCombos(state, command.id)
+    const isRecording = recording === command.id
+    /*
+     * 「谁答」= 声明这一头的响应者 + 认领这个键的那几块面。两者在这一列里同形
+     * (面名 · 它管这件事叫什么),因为对用户来说它们回答的是同一个问题:
+     * 「这个键按下去,在哪块面里会发生什么」。
+     */
+    const answerers = answerersOf(command.id).map((a) => ({
+      key: `answer:${a.scope}`,
+      text: t('keymap.answerer', { scope: t(scopeLabelKeyOf(a.scope)), action: t(a.labelKey) }),
+    }))
+    const claimants = claimantsOf(state, command.id).map((scope) => ({
+      key: `claim:${scope}`,
+      text: t('keymap.answerer', {
+        scope: t(scopeLabelKeyOf(scope)),
+        action: t('terminal.keyToPty'),
+      }),
+    }))
+    const shared = sharedChordOf(state, command.id)
+
+    return (
+      <div className={s.settingRow} key={command.id}>
+        <div className={s.settingRowLabel}>{name}</div>
+        <div className={s.keyRight}>
+          {[...answerers, ...claimants].map((line) => (
+            <span className={s.keyConflict} key={line.key}>
+              {line.text}
+            </span>
+          ))}
+          {/* 合法的共键:不拦写入,只说清还有谁在这个键上(不同时在场)。 */}
+          {shared.map((other) => (
+            <span className={s.keyConflict} key={`shared:${other}`}>
+              {t('keymap.sharedChord', { name: t(findCommand(other)?.labelKey ?? 'keymap.unbound') })}
+            </span>
+          ))}
+          {isRecording && conflict && <span className={s.keyConflict}>{conflictLine()}</span>}
+          {/* 键位面是一颗**结构件**(一格键位槽,视觉本该定制:录制态换底换边、
+            * 里面装的是 Kbd 帽子)——三类判的第三类,清 UA 归 `ui/ButtonBase`。 */}
+          <ButtonBase
+            className={isRecording ? `${s.keySlot} ${s.keySlotOn}` : s.keySlot}
+            aria-label={t('keymap.recordOf', { name })}
+            onClick={() => {
+              setRecording(command.id)
+              setConflict(null)
+            }}
+          >
+            {isRecording ? (
+              <span className={s.keyMuted}>{t('keymap.recording')}</span>
+            ) : combos.length > 0 ? (
+              /* 一条命令可以有好几个键面(⌘I 与 ⌘↵),中间用一枚哑分隔符隔开 ——
+               * 那是**键盘上印的字**那一族,不是界面文案,所以不进字典。 */
+              combos.map((combo, ci) => (
+                <Fragment key={ci}>
+                  {ci > 0 && <span className={s.keyMuted}>/</span>}
+                  {formatCombo(combo, platform).map((cap, i) => (
+                    <Kbd key={i}>{cap}</Kbd>
+                  ))}
+                </Fragment>
+              ))
+            ) : (
+              <span className={s.keyMuted}>{t('keymap.unbound')}</span>
+            )}
+          </ButtonBase>
+          {hasOverride(state, command.id) && (
+            <Button
+              aria-label={t('keymap.resetOf', { name })}
+              onClick={() => {
+                reset(command.id)
+                if (isRecording) {
+                  setRecording(null)
+                  setConflict(null)
+                }
+              }}
+            >
+              {t('keymap.reset')}
+            </Button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  const appCommands = KEYMAP_COMMANDS.filter((c) => c.app)
+  const scopedCommands = KEYMAP_COMMANDS.filter((c) => !c.app)
+
   return (
     <>
       <div className={s.sectionNote}>{t('keymap.hint')}</div>
 
-      {KEYMAP_COMMANDS.map((command) => {
-        const name = t(command.labelKey)
-        const combo = effectiveCombo(state, command.id)
-        const isRecording = recording === command.id
-        const conflictWith = isRecording && conflict ? findCommand(conflict) : undefined
-        const scoped = scopedCollisions.filter((c) => c.command === command.id)
+      <h4 className={s.sectionTitle}>{t('keymap.sectionApp')}</h4>
+      {appCommands.map(row)}
 
-        return (
-          <div className={s.settingRow} key={command.id}>
-            <div className={s.settingRowLabel}>{name}</div>
-            <div className={s.keyRight}>
-              {conflictWith && (
-                <span className={s.keyConflict}>
-                  {t('keymap.conflict', { name: t(conflictWith.labelKey) })}
-                </span>
-              )}
-              {/* 面域局部键那种撞车:不拦写入,只说清是**哪一块面**里的**哪个动作**
-                * 占着这个组合(局部先接、没接住放行全局)。同一句话与全局撞车共用
-                * 一件皮肤(fs-micro + text-3):两者都是行内的一句提示,不是错误态。 */}
-              {scoped.map((c) => (
-                <span className={s.keyConflict} key={`${c.scoped.scope}:${c.scoped.action}`}>
-                  {t('keymap.scopedConflict', {
-                    scope: t(FOCUS_SCOPES[c.scoped.scope].labelKey),
-                    action: t(c.scoped.labelKey),
-                  })}
-                </span>
-              ))}
-              {/* 键位面是一颗**结构件**(一格键位槽,视觉本该定制:录制态换底换边、
-                * 里面装的是 Kbd 帽子)——三类判的第三类,清 UA 归 `ui/ButtonBase`。 */}
-              <ButtonBase
-                className={isRecording ? `${s.keySlot} ${s.keySlotOn}` : s.keySlot}
-                aria-label={t('keymap.recordOf', { name })}
-                onClick={() => {
-                  setRecording(command.id)
-                  setConflict(null)
-                }}
-              >
-                {isRecording ? (
-                  <span className={s.keyMuted}>{t('keymap.recording')}</span>
-                ) : combo ? (
-                  formatCombo(combo, platform).map((cap, i) => <Kbd key={i}>{cap}</Kbd>)
-                ) : (
-                  <span className={s.keyMuted}>{t('keymap.unbound')}</span>
-                )}
-              </ButtonBase>
-              {hasOverride(state, command.id) && (
-                <Button
-                  aria-label={t('keymap.resetOf', { name })}
-                  onClick={() => {
-                    reset(command.id)
-                    if (isRecording) {
-                      setRecording(null)
-                      setConflict(null)
-                    }
-                  }}
-                >
-                  {t('keymap.reset')}
-                </Button>
-              )}
-            </div>
-          </div>
-        )
-      })}
+      <h4 className={s.sectionTitle}>{t('keymap.sectionScoped')}</h4>
+      <div className={s.sectionNote}>{t('keymap.scopedNote2')}</div>
+      {scopedCommands.map(row)}
 
       <div className={s.sectionNote}>{t('keymap.structuralNote')}</div>
     </>

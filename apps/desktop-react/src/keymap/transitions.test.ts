@@ -5,13 +5,13 @@ import {
   KEYMAP_PERSIST_VERSION,
   bindCombo,
   comboFromEvent,
-  effectiveCombo,
+  effectiveCombos,
   findCommand,
   formatCombo,
   hasModifier,
   hasOverride,
   initialKeymapState,
-  lookupCommand,
+  lookupCommands,
   matchCombo,
   migrateKeymapPersisted,
   normalizeKey,
@@ -44,8 +44,8 @@ describe('命令表', () => {
     expect(toggles).toContain(toggleCommandId(SESSIONS_ITEM_ID))
   })
 
-  it('出厂绑这十七条,别的一律未绑定;次序即注册表次序(它是撞键的裁决,见下)', () => {
-    const bound = KEYMAP_COMMANDS.filter((c) => c.defaultCombo !== null).map((c) => c.id)
+  it('出厂绑这二十六条,别的一律未绑定;次序即注册表次序', () => {
+    const bound = KEYMAP_COMMANDS.filter((c) => c.defaultCombos.length > 0).map((c) => c.id)
     /*
      * 检索 ⌘P、总览 ⌘E、四条架子 ⌘⌥←/→/↓/↑(09-01 用户放权后新绑)、
      * 工作区面板 ⌘⇧W、工作区序号 ⌘1/2/3、目录 ⌘⇧O、agent 切换器 ⌘J、新建会话 ⌘N、
@@ -77,21 +77,38 @@ describe('命令表', () => {
       'workbench.toggleFull',
       'workbench.moveTabLeft',
       'workbench.moveTabRight',
+      /*
+       * 跟随焦点那九条(K0):它们从前是七块面各自的局部键,现在与上面那些同住
+       * 一张表,区别只在 `app: false`(没有应用层兜底 —— 没人答就放行)。
+       */
+      'view.find',
+      'view.save',
+      'viewer.gotoLine',
+      'browser.address',
+      'files.detail',
+      'nav.back',
+      'nav.forward',
+      'expose.pin',
+      'tab.close',
     ])
     // ⌘⇧↩(W2)。全表零冲突由下面那条「两两不同」的断言钉着。
-    expect(findCommand('workbench.toggleFull')?.defaultCombo).toEqual({
-      meta: true,
-      shift: true,
-      key: 'enter',
-    })
-    expect(findCommand('agent.menu')?.defaultCombo).toEqual({ meta: true, key: 'j' })
-    expect(findCommand('session.new')?.defaultCombo).toEqual({ meta: true, key: 'n' })
-    expect(findCommand('toggle:search')?.defaultCombo).toEqual({ meta: true, key: 'p' })
-    expect(findCommand(toggleCommandId(SESSIONS_ITEM_ID))?.defaultCombo).toEqual({
-      meta: true,
-      key: 'e',
-    })
-    expect(findCommand('toc.toggle')?.defaultCombo).toEqual({ meta: true, shift: true, key: 'o' })
+    expect(findCommand('workbench.toggleFull')?.defaultCombos).toEqual([
+      { meta: true, shift: true, key: 'enter' },
+    ])
+    expect(findCommand('agent.menu')?.defaultCombos).toEqual([{ meta: true, key: 'j' }])
+    expect(findCommand('session.new')?.defaultCombos).toEqual([{ meta: true, key: 'n' }])
+    expect(findCommand('toggle:search')?.defaultCombos).toEqual([{ meta: true, key: 'p' }])
+    expect(findCommand(toggleCommandId(SESSIONS_ITEM_ID))?.defaultCombos).toEqual([
+      { meta: true, key: 'e' },
+    ])
+    expect(findCommand('toc.toggle')?.defaultCombos).toEqual([
+      { meta: true, shift: true, key: 'o' },
+    ])
+    // **一条命令两个出厂键**(K0):文件树的详情是 ⌘I 与 ⌘↵。
+    expect(findCommand('files.detail')?.defaultCombos).toEqual([
+      { meta: true, key: 'i' },
+      { meta: true, key: 'enter' },
+    ])
   })
 })
 
@@ -162,18 +179,19 @@ describe('匹配', () => {
 })
 
 describe('注册表读写', () => {
-  it('effectiveCombo:覆盖赢默认,显式 null(用户解绑)也赢默认', () => {
-    expect(effectiveCombo(initialKeymapState, 'toggle:search')).toEqual(CMD_P)
-    const rebound: KeymapState = { overrides: { 'toggle:search': { meta: true, key: 'k' } } }
-    expect(effectiveCombo(rebound, 'toggle:search')).toEqual({ meta: true, key: 'k' })
+  it('effectiveCombos:覆盖赢默认,显式 null(用户解绑)也赢默认', () => {
+    expect(effectiveCombos(initialKeymapState, 'toggle:search')).toEqual([CMD_P])
+    const rebound: KeymapState = { overrides: { 'toggle:search': [{ meta: true, key: 'k' }] } }
+    expect(effectiveCombos(rebound, 'toggle:search')).toEqual([{ meta: true, key: 'k' }])
     const unbound = unbindCombo(initialKeymapState, 'toggle:search')
     expect(unbound.overrides['toggle:search']).toBeNull()
-    expect(effectiveCombo(unbound, 'toggle:search')).toBeNull()
+    expect(effectiveCombos(unbound, 'toggle:search')).toEqual([])
   })
 
-  it('bind 撞车时返回占它的那条命令,一个字都不写(不静默覆盖)', () => {
+  it('bind 撞车时返回撞的是谁 + 哪一条规则,一个字都不写(不静默覆盖)', () => {
     const result = bindCombo(initialKeymapState, 'toggle:files', CMD_P)
-    expect(result).toEqual({ conflict: 'toggle:search' })
+    // 两条都是 `app: true` —— 一个键上只能有一条应用级命令。
+    expect(result).toEqual({ conflict: { rule: 'app', with: 'toggle:search' } })
     expect(initialKeymapState.overrides).toEqual({})
   })
 
@@ -182,7 +200,7 @@ describe('注册表读写', () => {
     const freed = unbindCombo(initialKeymapState, 'toggle:search')
     const result = bindCombo(freed, 'toggle:files', CMD_P)
     expect(result).toHaveProperty('ok')
-    expect('ok' in result && result.ok.overrides['toggle:files']).toEqual(CMD_P)
+    expect('ok' in result && result.ok.overrides['toggle:files']).toEqual([CMD_P])
   })
 
   it('reset 摘掉覆盖、落回出厂值;没覆盖时是恒等变换', () => {
@@ -191,28 +209,34 @@ describe('注册表读写', () => {
     expect(hasOverride(state, 'toggle:search')).toBe(true)
     const back = resetCombo(state, 'toggle:search')
     expect(hasOverride(back, 'toggle:search')).toBe(false)
-    expect(effectiveCombo(back, 'toggle:search')).toEqual(CMD_P)
+    expect(effectiveCombos(back, 'toggle:search')).toEqual([CMD_P])
     expect(resetCombo(back, 'toggle:search')).toBe(back)
   })
 
-  it('lookupCommand:按键落在哪条命令上,没人认领就是 null', () => {
-    expect(lookupCommand(initialKeymapState, press('p', { metaKey: true }), 'mac')).toBe('toggle:search')
-    expect(lookupCommand(initialKeymapState, press('e', { metaKey: true }), 'mac')).toBe(
+  it('lookupCommands:按键落在**哪几条**命令上,没人认领就是空表', () => {
+    expect(lookupCommands(initialKeymapState, press('p', { metaKey: true }), 'mac')).toEqual([
+      'toggle:search',
+    ])
+    expect(lookupCommands(initialKeymapState, press('e', { metaKey: true }), 'mac')).toEqual([
       toggleCommandId(SESSIONS_ITEM_ID),
-    )
-    expect(lookupCommand(initialKeymapState, press('p'), 'mac')).toBeNull()
-    const rebound: KeymapState = { overrides: { 'toggle:search': { meta: true, key: 'k' } } }
-    expect(lookupCommand(rebound, press('p', { metaKey: true }), 'mac')).toBeNull()
-    expect(lookupCommand(rebound, press('k', { metaKey: true }), 'mac')).toBe('toggle:search')
+    ])
+    expect(lookupCommands(initialKeymapState, press('p'), 'mac')).toEqual([])
+    const rebound: KeymapState = { overrides: { 'toggle:search': [{ meta: true, key: 'k' }] } }
+    expect(lookupCommands(rebound, press('p', { metaKey: true }), 'mac')).toEqual([])
+    expect(lookupCommands(rebound, press('k', { metaKey: true }), 'mac')).toEqual(['toggle:search'])
     /*
      * T1-fix:同一条命令在两台机器上认的是**两枚不同的物理键**。
      * `toggle:terminal` 的出厂键位写的是 `ctrl`(它要的就是 Ctrl 那一枚),
      * 而声明两种拼法同义 —— 所以 mac 上它由 ⌘\` 触发,Win 上由 Ctrl+\` 触发。
      */
-    expect(lookupCommand(initialKeymapState, press('`', { metaKey: true }), 'mac')).toBe('toggle:terminal')
-    expect(lookupCommand(initialKeymapState, press('`', { ctrlKey: true }), 'mac')).toBeNull()
-    expect(lookupCommand(initialKeymapState, press('`', { ctrlKey: true }), 'other')).toBe('toggle:terminal')
-    expect(lookupCommand(initialKeymapState, press('`', { metaKey: true }), 'other')).toBeNull()
+    expect(lookupCommands(initialKeymapState, press('`', { metaKey: true }), 'mac')).toEqual([
+      'toggle:terminal',
+    ])
+    expect(lookupCommands(initialKeymapState, press('`', { ctrlKey: true }), 'mac')).toEqual([])
+    expect(lookupCommands(initialKeymapState, press('`', { ctrlKey: true }), 'other')).toEqual([
+      'toggle:terminal',
+    ])
+    expect(lookupCommands(initialKeymapState, press('`', { metaKey: true }), 'other')).toEqual([])
   })
 })
 
@@ -248,16 +272,17 @@ describe('录制', () => {
 })
 
 describe('persist', () => {
-  it('当前版本的档案原样放行,没有旧 id 的老档案也原样放行', () => {
+  it('当前版本的档案原样放行;老档案里那一格 Combo 在 v3 段被包成 [Combo]', () => {
+    const now = { overrides: { 'toggle:files': [{ meta: true, key: 'f' }] } }
+    expect(migrateKeymapPersisted(now, KEYMAP_PERSIST_VERSION)).toEqual(now)
     const archived = { overrides: { 'toggle:files': { meta: true, key: 'f' } } }
-    expect(migrateKeymapPersisted(archived, KEYMAP_PERSIST_VERSION)).toEqual(archived)
-    expect(migrateKeymapPersisted(archived, 1)).toEqual(archived)
+    expect(migrateKeymapPersisted(archived, 1)).toEqual(now)
   })
 
   it('v2:老档案里 expose.toggle 上的覆盖改挂到会话总览那条 toggle 上', () => {
     const archived = { overrides: { 'expose.toggle': { meta: true, key: 'j' } } }
     expect(migrateKeymapPersisted(archived, 1)).toEqual({
-      overrides: { [toggleCommandId(SESSIONS_ITEM_ID)]: { meta: true, key: 'j' } },
+      overrides: { [toggleCommandId(SESSIONS_ITEM_ID)]: [{ meta: true, key: 'j' }] },
     })
   })
 
@@ -265,7 +290,7 @@ describe('persist', () => {
     const archived = { overrides: { 'expose.toggle': null, 'toggle:files': { meta: true, key: 'f' } } }
     expect(migrateKeymapPersisted(archived, 1)).toEqual({
       overrides: {
-        'toggle:files': { meta: true, key: 'f' },
+        'toggle:files': [{ meta: true, key: 'f' }],
         [toggleCommandId(SESSIONS_ITEM_ID)]: null,
       },
     })

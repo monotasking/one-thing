@@ -460,7 +460,7 @@ export function FilesPanel({ root }: { root: string }) {
   }, [])
 
   const filesKeys = {
-    detail: current
+    'files.detail': current
       ? () =>
           openDetailFor(
             current.row,
@@ -502,7 +502,7 @@ export function FilesPanel({ root }: { root: string }) {
       rootRef={panelRef}
       restingTarget={restingTarget}
       onEscape={onEscape}
-      keyHandlers={filesKeys}
+      commands={filesKeys}
     >
       {({ scopeProps }) => (
         <div {...scopeProps} className={s.panel} data-testid="files-panel">
