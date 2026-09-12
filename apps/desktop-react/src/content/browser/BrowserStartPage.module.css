@@ -1,0 +1,90 @@
+/*
+ * 一格空标签页(B3-b)。**壳自己的 DOM**,不是一张网页 —— 判词在组件头上。
+ *
+ * 颜色纪律:零字面色值;那排引擎丸的选中态走 `--st-sel` 一层极淡的膜
+ * (与 `ui/FilterChip` 的「挑过了」逐字同配方),**不换底色**
+ * (四轴第一条:状态色只上图标 / 文字)。
+ */
+
+/*
+ * 居中一列。**不给最小高度** —— 这一块填满叶里除檐之外的全部地(`flex: 1`),
+ * 而那块地有多大由拼贴树说了算:一片被压成三行高的叶上,这一列该自己收着,
+ * 而不是撑出一条滚动条。
+ */
+.start {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding: var(--sp-5);
+  background: var(--surface-1);
+  overflow: hidden;
+}
+
+/* 图标梯里最大的那一档(`--icon-lg`)—— 起始页不值得为一枚装饰性字形在梯外
+ * 加一个新档(08-31「梯外只剩两类例外」那条纪律)。 */
+.glyph {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+  color: var(--text-3);
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--fs-body);
+  color: var(--text-3);
+  text-align: center;
+}
+
+/* 四枚丸一行,窄面上换行 —— 它们是一组彼此独立的选择,不是一条结构行。 */
+.engines {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-2);
+}
+
+/*
+ * 一枚引擎丸。**结构性交互件**(`ui:consume` 的 bare-button 第三类):它有自己
+ * 的形(丸 + 一枚字符 + 简称),所以不走 `ui/Button`;但也不裸着 —— 组件那一侧
+ * 用的是 `ui/ButtonBase`(清 UA、零像素),焦点环仍走全局 `:focus-visible`。
+ * 配方画在这里,与 `ui/FilterChip` 的片身同一套几何语汇。
+ */
+.engine {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: var(--btn-sm);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+.engine:hover {
+  background-image: linear-gradient(var(--st-hover), var(--st-hover));
+  color: var(--text-1);
+}
+
+/* 选中的那一枚:描边加重 + 一层极淡的选中膜。同屏可以与 hover 叠。 */
+.engine[data-on] {
+  border-color: var(--accent);
+  background-image: linear-gradient(var(--st-sel), var(--st-sel));
+  color: var(--text-1);
+}
+
+/* 那一枚字符(G / B / 百 / D)。它是装饰,`aria-hidden`,名字由 aria-label 说。 */
+.token {
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.engine[data-on] .token {
+  color: var(--text-1);
+}

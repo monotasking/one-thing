@@ -71,6 +71,11 @@ import { getSettings } from '@onething/backend/stores/settings.js'
 import { NATIVE_VIEW_CHANNEL, type NativeViewPush } from '../native-view-protocol.js'
 import { KeymapBridge } from './keymap-bridge.js'
 import { installCdpSettingsWatcher } from './cdp-settings.js'
+import {
+  installBrowserProfilesWatcher,
+  profileTableFromSettings,
+  type BrowserProfileTable,
+} from './profiles.js'
 import { NativeViewLayout, type NativeViewHost } from './layout.js'
 import { installNativeViewIpc } from './native-view-ipc.js'
 import { BrowserResourceProvider, type BrowserOps, type BrowserTabView } from './resource-provider.js'
@@ -177,11 +182,20 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
     active: service.activeId === tab.id,
   })
 
+  /*
+   * ── 身份名册此刻是什么样(B3-b)──────────────────────────────────────────
+   * 名册的真源是**设置**;这一格是它在主进程这一侧的**投影**,由下面那只
+   * watcher 每次 `settings:changed` 刷新。service 每开一格 tab 现问缺省身份,
+   * 所以「在设置页把缺省改成工作号」下一格新 tab 就跟着变,不必重启。
+   */
+  let profiles: BrowserProfileTable = profileTableFromSettings(getSettings())
+
   const service = new BrowserService({
     sessionPolicy,
     createView: preferences =>
       new WebContentsView({ webPreferences: preferences as never }) as unknown as NativeView,
     ...(options.storePath ? { tabsPath: getBrowserTabsPath(options.storePath) } : {}),
+    defaultProfile: () => profiles.defaultProfile,
     observer: {
       onMaterialized: tab => {
         const view = tab.nativeView
@@ -271,6 +285,21 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
    * 写失败只记一行:这一格砸了的全部后果是「下次启动 CDP 口状态没跟上」,
    * 不该让它把一次保存设置炸掉。
    */
+  /*
+   * 名册变更 → 后果(B3-b)。**删一格身份**才有后果,而那两步的次序是判据本身:
+   * 先关掉它的 tab、再清它的分区(反过来做等于清一半,判词整段在 `profiles.ts`)。
+   * 与 CDP 那一格同一条判例:设置域只管存,「会让数据消失」这件事是宿主的活。
+   */
+  const offProfiles = installBrowserProfilesWatcher({
+    readSettings: () => getSettings(),
+    getBroadcaster: () => getSettingsEventBroadcaster(),
+    setBroadcaster: next => { configureSettingsEventBroadcaster(next) },
+    onTable: table => { profiles = table },
+    closeTabs: profile => service.closeProfileTabs(profile),
+    clearPartition: profile => sessionPolicy.clear(profile),
+    onError: (profile, error) => { log.error('browser profile clear failed', { profile }, error) },
+  })
+
   const offCdpSettings = installCdpSettingsWatcher({
     ...(options.storePath ? { storePath: options.storePath } : {}),
     readSettings: () => getSettings(),
@@ -279,7 +308,11 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
     onError: error => { log.error('cdp launch flag write failed', undefined, error) },
   })
 
-  log.info('browser host installed', { tabs: service.list().length })
+  log.info('browser host installed', {
+    tabs: service.list().length,
+    profiles: profiles.ids.length,
+    defaultProfile: profiles.defaultProfile,
+  })
 
   let disposed = false
   return {
@@ -287,6 +320,7 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
       if (disposed) return
       disposed = true
       offCdpSettings()
+      offProfiles()
       offIpc()
       /*
        * 先把还悬着的每一问按拒结掉,**再**摘 provider:反过来的话那几条

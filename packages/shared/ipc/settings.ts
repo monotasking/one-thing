@@ -335,7 +335,42 @@ export interface SemanticSearchSettings {
  */
 export interface BrowserSettings {
 	cdp: BrowserCdpSettings;
+	/**
+	 * **身份(profile)名册**(B3-b)。一格身份 = 一个持久分区
+	 * `persist:browser-<id>` = 一套独立的 cookie / localStorage / 登录态。
+	 *
+	 * 名册**至少一行**(归一保证):删到空会让每一格 tab 指向一个不存在的分区。
+	 * 出厂一行 `default`,名字由字典给(`browser.profileDefaultName`)——
+	 * 所以这一格的 `name` 出厂是**空串**,不是一句写死的中文:名册是数据,
+	 * 用户改过的名字才进这一格,没改过的那一行由 UI 用字典画。
+	 */
+	profiles: BrowserProfile[];
+	/**
+	 * 新 tab 缺省用哪一格身份。归一保证它**总是名册里某一行的 id**
+	 * (指着一个已删的身份 = 每开一格 tab 都落进一个新建的空分区,
+	 * 而用户以为自己还登着)。
+	 */
+	defaultProfile: string;
+	/** 地址栏那一行输入折成 URL 时用哪家搜索引擎(id,见壳里的 `browser/omnibox.ts`)。 */
+	searchEngine: string;
 }
+
+/**
+ * 一格浏览器身份。**只有身份两格** —— 它跑在哪个分区、屏幕上叫什么。
+ *
+ * 「这个身份登了什么」不在这里:那是 Chromium 分区里的事,而那份东西的产地
+ * 只有一个(浏览器自己)。名册若开始记「已登录 google」之类的格子,就是在
+ * 壳里存第二份真相。
+ */
+export interface BrowserProfile {
+	/** 分区名的后半截(`persist:browser-<id>`)。一格身份一辈子不变。 */
+	id: string;
+	/** 屏幕上那一行写什么。空串 = 还没起过名,由 UI 用字典画。 */
+	name: string;
+}
+
+/** 出厂那一格身份的 id。**契约层记它** —— 主进程、defaults、壳三边要同一个串。 */
+export const DEFAULT_BROWSER_PROFILE_ID = "default";
 
 /**
  * 缺省调试端口。**契约层记它**,理由与 `DEFAULT_SEMANTIC_MODEL_ID` 同款:

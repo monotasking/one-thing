@@ -33,11 +33,10 @@ import type { NativeViewPush } from './browser-port'
  *
  * ## 读数三档:不画 /「0」/「3/17」
  *
- * 与终端那一格**逐字同形**。没有抽成一处共用,理由是那一份今天住在
- * `content/terminal/TerminalLeaf.tsx` 里(`findReadout`),而那只模块 import 了
- * `./screen` —— 一条会把整个 xterm 拖进来的边。为一个四行纯函数让浏览器叶背上
- * xterm 不划算,而把它抬进一处共用文件要动 T2 那只**正在提交**的文件。
- * **留账**:T2 落库之后把两份合成 `content/find-readout.ts` 一处。
+ * 与终端那一格**逐字同形**,而 B3-b 已经把两份合成一只:
+ * `content/find-readout.ts` 的 `findReadout`(纯函数、零 import,所以浏览器叶
+ * 不会因为它背上 xterm —— 那正是 B3-a 当初留账没合的理由)。这只文件从此
+ * 只管**状态**,不管字面。
  */
 
 /** 一格 tab 的查找状态。`active` 从 **1** 起(Chromium 口径);`0` = 没有当前命中。 */
@@ -74,17 +73,14 @@ function patch(tabId: string, next: Partial<BrowserFindState>): void {
   emit()
 }
 
-/**
- * 读数那一格的字面。**纯函数** —— 三档只有一个产地。
- *
- * `active === 0` 那一档只报总数,不编一个序号出来:Chromium 在中间结果里偶尔
- * 只给总数(判词在 `electron/browser/find.ts` 上)。
+/*
+ * 读数那一格的字面**不在这里了**(B3-b)。它与终端查找行那一条合成了一只
+ * —— `content/find-readout.ts` 的 `findReadout`,收归一之后的
+ * `{query, ordinal, total}`。Chromium 的 `activeMatchOrdinal` 本来就是 1 起、
+ * `0` = 「这一发只报了总数」,与那只函数的口径逐字相同,所以这一侧**一个字
+ * 都不必折**:`BrowserFindBar` 把 `{query, ordinal: find.active, total}` 直接
+ * 递进去。判词整段在那只文件头上。
  */
-export function browserFindReadout(find: BrowserFindState): string | null {
-  if (!find.query) return null
-  if (find.total <= 0) return '0'
-  return find.active <= 0 ? String(find.total) : `${find.active}/${find.total}`
-}
 
 /* ── 动作(每一条都只做一件事,而且发出去的那一句就是它的全部)──────────── */
 

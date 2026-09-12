@@ -71,6 +71,13 @@ export interface BrowserServiceOptions {
   readonly observer: BrowserServiceObserver
   /** 落盘路径。缺席 = 按当前 store 解析。测试传临时目录。 */
   readonly tabsPath?: string
+  /**
+   * 新 tab 缺省用哪一格身份(B3-b)。**是一只函数不是一个值**:名册与缺省
+   * 住在设置里,人在设置页改完那一刻起就该生效 —— 缓存一个值等于「改了要重启」,
+   * 而这一格没有任何需要重启的理由(与 CDP 那一格刚好相反)。
+   * 缺席 = 出厂那一格(单测与老装配点照旧)。
+   */
+  readonly defaultProfile?: () => string
   /** 测试缝:把节流写盘换成同步。 */
   readonly persistDelayMs?: number
 }
@@ -122,7 +129,9 @@ export class BrowserService {
   open(init: { url?: string; background?: boolean; profile?: string } = {}): BrowserTabState {
     const tab = this.construct({
       id: randomUUID(),
-      profile: init.profile ?? DEFAULT_BROWSER_PROFILE,
+      // **点名 > 缺省 > 出厂**(B3-b)。缺省那一格现问(见 `defaultProfile` 的注),
+      // 所以「在设置页把缺省身份改掉,下一格新 tab 就跟着变」不需要重启。
+      profile: init.profile ?? this.options.defaultProfile?.() ?? DEFAULT_BROWSER_PROFILE,
       url: init.url,
     })
     this.tabs.set(tab.id, tab)
@@ -164,6 +173,18 @@ export class BrowserService {
     if (this.active === tabId) this.active = this.order[this.order.length - 1] ?? null
     this.options.observer.onClosed(tabId)
     this.schedulePersist()
+  }
+
+  /**
+   * 关掉某一格身份下的**全部** tab(B3-b 删身份的第一步)。答关掉了几格。
+   *
+   * 它与 `close` 不是两条路:逐格走同一只 `close`(于是 `closed` 事件、
+   * 视图摘除、活动位回落、落盘全部照旧发生)。这里多的只有「挑出哪几格」。
+   */
+  closeProfileTabs(profile: string): number {
+    const doomed = this.order.filter(id => this.tabs.get(id)?.state.profile === profile)
+    for (const id of doomed) this.close(id)
+    return doomed.length
   }
 
   /** 全关 + 把攒着的那一发写出去。`dispose()` 用,幂等。 */

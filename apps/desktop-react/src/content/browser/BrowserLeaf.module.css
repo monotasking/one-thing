@@ -73,3 +73,25 @@
 .notice + * {
   margin: 0 auto auto;
 }
+
+/*
+ * 身份丸(B3-b)。**读数不是控件** —— 它说「这一格 tab 跑在哪个身份上」,
+ * 换身份是 ⋯ 那张表里的一条动作。所以它不是按钮:没有 hover 态、不进 Tab 序。
+ *
+ * 只在名册多于一格时出现(判据在组件上),所以它不必为「常驻一枚」省地方;
+ * 挤压纪律:它是檐上的**固定件**(`flex: none`),弯腰的永远是地址框。
+ */
+.profile {
+  flex: none;
+  max-width: var(--browser-profile-max-w);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  font-size: var(--fs-micro);
+  line-height: var(--browser-profile-h);
+  color: var(--text-3);
+}

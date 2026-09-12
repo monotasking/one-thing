@@ -120,6 +120,9 @@ describe('BrowserSessionPolicy', () => {
       setUserAgent(next: string) { this.ua = next },
       setPermissionRequestHandler(h: unknown) { this.permissionRequest = h },
       setPermissionCheckHandler(h: unknown) { this.permissionCheck = h },
+      /** B3-b:删一格身份的第二步。记一笔,单测拿它钉「清过没有」。 */
+      cleared: 0,
+      clearStorageData() { this.cleared += 1; return Promise.resolve() },
     }
   }
 
@@ -569,6 +572,7 @@ describe('BrowserService', () => {
     const sessionPolicy = new BrowserSessionPolicy(() => ({
       getUserAgent: () => 'X Electron/1 Y', setUserAgent: () => {},
       setPermissionRequestHandler: () => {}, setPermissionCheckHandler: () => {},
+      clearStorageData: () => Promise.resolve(),
     }))
     const service = new BrowserService({
       sessionPolicy,

@@ -15,6 +15,7 @@ import { sessionCommandRouter } from '@shared/ipc/session-command'
 import { permissionRouter } from '@shared/ipc/permissions'
 import { resourcesRouter } from '@shared/ipc/resources'
 import { expandFileTokens } from '@onething/runtime/prompts/prompt-references'
+import { materializePageReferences } from './page-references'
 import type { PageResultSlot, SessionTailPage } from './page-results'
 
 /**
@@ -70,7 +71,12 @@ export interface ChatPort {
   /** 流分片推送(活尾巴的唯一进料口)。 */
   onSessionStream(callback: (payload: SessionStreamPayload) => void): () => void
   /**
-   * 发一条纯文本用户消息。附件不在这一批 —— 端口上也就没有那个参数。
+   * 发一条用户消息。
+   *
+   * **签名仍然只有正文**(B3-b 一个参数都没加):页面引用在草稿里是一枚
+   * `{{page:<tabId>}}`,与 `@` 文件引用逐字同一种占位法,所以它跟着正文一起
+   * 到达这一口,由下面那道唯一的展开物化成一件附件。调用方(输入面板 /
+   * ask 交卷 / 将来的草稿纸)一个字都不必知道有「页面附件」这回事。
    *
    * ── 出站唯一的那道展开(D3 波二)──────────────────────────────────────
    * `@` 引用在草稿里是 `{{file:<绝对路径>}}`(chip 是呈现,token 才是位置),
@@ -80,6 +86,11 @@ export interface ChatPort {
    * 在上游各展开一次必然漏掉其中一条。
    *
    * `retryMessage` 不涉:那条消息早已落账,重跑的是账本上的原文。
+   *
+   * ── 那道展开从 B3-b 起有**两步,而顺序是闸** ──────────────────────────
+   * ① `expandFileTokens`(同步);② `materializePageReferences`(只在正文里
+   * 真有 `{{page:` 时才发一次 `resources.read`)。倒过来做等于让一段页面自控的
+   * 正文被当成草稿再扫一遍 —— 判词整段在 `data/page-references.ts` 上。
    */
   sendMessage(sessionId: string, content: string): Promise<SessionCommandEmitResult>
   /*
@@ -196,12 +207,29 @@ async function realPort(): Promise<ChatPort> {
     onSessionStream: (callback) => client.events.on(IPC_CHANNELS.SESSION_STREAM, callback),
     // 命令**整条透传**,一个字段都不多给:`channel` 缺席时引擎按会话自己的
     // 频道走(默认 'ipc'),渲染层替它拍这个板就是在两处定义同一件事。
-    sendMessage: (sessionId, content) =>
-      sessionCommands.emit({
+    sendMessage: async (sessionId, content) => {
+      /*
+       * 出站唯一的那道展开(见接口上的注)。**两步的顺序是闸,不是风格**
+       * (2026-07-27 判例):`{{file:…}}` 先就地展成 `@<路径>`,**之后**才去物化
+       * 页面引用。反过来的话,一段页面自控的正文会被当成草稿再扫一遍 —— 一个网页
+       * 就能在里面写一句 `{{file:/Users/…/.ssh/id_rsa}}` 把本地文件走私进引擎的
+       * 文件内联通道。判词整段在 `data/page-references.ts` 的判据①上。
+       *
+       * 第二步**只有正文里真有 `{{page:` 时才发生**(那只函数第一句就是这道闸),
+       * 所以绝大多数消息的出站路与从前逐字相同:一次同步展开,零往返。
+       */
+      const { text, attachments } = await materializePageReferences(expandFileTokens(content))
+      return sessionCommands.emit({
         sessionId,
-        // 出站唯一的那道展开:`{{file:…}}` → `@<路径>`(见接口上的注)。
-        command: { type: SESSION_COMMAND_TYPES.SEND_MESSAGE, content: expandFileTokens(content) },
-      }),
+        command: {
+          type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
+          content: text,
+          // 没有页面引用时**这一格根本不出现** —— 一个空数组与「没有附件」在
+          // 账本上不是同一件事(契约上它是可选的)。
+          ...(attachments.length > 0 ? { attachments } : {}),
+        },
+      })
+    },
     abort: (sessionId) =>
       sessionCommands.emit({
         sessionId,

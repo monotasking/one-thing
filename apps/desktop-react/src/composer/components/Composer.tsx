@@ -19,6 +19,7 @@ import { composerSink, useComposerBusy } from '../sink'
 import { readComposerDraft, saveComposerDraft } from '../drafts'
 import type { ComposerDraft } from '../drafts'
 import { revokeAllAttachments, useComposerStore } from '../store'
+import { configureComposerReferenceSink } from '../references'
 import { isTypingTarget, THINKING_LABEL_KEY, thinkingRungOf } from '../transitions'
 import { useComposerSend } from '../useComposerSend'
 import { useEscStop } from '../useEscStop'
@@ -303,6 +304,22 @@ export function Composer() {
 
   // 整块面板下场时把还挂着的缩略图 URL 销掉(造它的是 store,所以销也调 store 那口)。
   useEffect(() => revokeAllAttachments, [])
+
+  /*
+   * **外面往输入框里落一枚引用**的那条缝(B3-b;判词整段在 `composer/references.ts`)。
+   * 登记在这里而不是在 store 里,是因为落点是**这块可编辑区的 DOM**(chip 是真节点),
+   * 而摸得着它的只有这只句柄。登记与撤销都由这只 effect 管 —— 一处开一处关。
+   */
+  useEffect(
+    () =>
+      configureComposerReferenceSink((reference) => {
+        inputRef.current?.appendReference(reference.label, {
+          token: reference.token,
+          ...(reference.tip ? { tip: reference.tip } : {}),
+        })
+      }),
+    [],
+  )
 
   /* ── 拖拽落区 = 整块面板 ──────────────────────────────────────────────── */
   const onDrop = (e: DragEvent<HTMLDivElement>) => {

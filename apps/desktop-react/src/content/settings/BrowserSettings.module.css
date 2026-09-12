@@ -28,3 +28,30 @@
   font-size: var(--fs-meta);
   color: var(--text-3);
 }
+
+/*
+ * 「身份」那一块(B3-b)。一列行 —— 与设置页别处的节内间距同一格
+ * (`--sp-3`,`mocks.module.css` 的 `.section` 用的就是它的兄弟 `--sp-4`;
+ * 这里紧一格是因为这几行是**同一件事的几格**,不是几件事)。
+ */
+.profiles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/*
+ * 一格身份一行:名字占满,删钮贴右。**不是 `.settingRow`** —— 那一族的形是
+ * 「左边是它是什么,右边是关于它的那一个决定」,而这一行左边就是那个决定本身
+ * (一格可改的名字)。同名不同形是 `shared-vocab-css` 那条门要抓的病,所以另起。
+ */
+.profileRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.profileName {
+  flex: 1;
+  min-width: 0;
+}

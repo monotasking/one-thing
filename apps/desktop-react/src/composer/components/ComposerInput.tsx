@@ -39,6 +39,19 @@ export interface ComposerInputHandle {
     label: string,
     opts?: { token?: string; argHint?: string },
   ) => void
+  /**
+   * **从外面**落一枚引用 chip(B3-b:浏览器叶的「把这一页交给对话」)。
+   *
+   * 与 `insert` 的差别只有一句:`insert` 是**顶替**光标处那截 `@xx` / `/xx`
+   * (它的调用方是抽屉,那截 token 就在光标前面),而这一只是**追加在末尾**
+   * —— 从外面来的那一下,光标可能在任何地方,也可能这块面根本没有焦点。
+   * 追加而不是「插在光标处」,是因为「光标此刻在哪」在外部动作发生的那一刻
+   * 不是一个可靠的事实(人刚刚点的是浏览器叶上的一颗菜单项)。
+   *
+   * 与 `insert` 共用同一种 chip(`data-token` 挂 token),所以它走的是**同一条
+   * 出站路** —— `readDraft` 交出 token,`chat-port` 那道唯一的展开物化它。
+   */
+  appendReference: (label: string, opts: { token: string; tip?: string }) => void
   text: () => string
   clear: () => void
   /**
@@ -241,6 +254,40 @@ export function ComposerInput({
        * 所以走树的 `activate()`(它把焦点送到这块面声明的落点上,而在 write
        * 形态下那个落点就是这块可编辑区),不再自己 `el.focus()`。
        * 插入点已经在上面设好了:focus 一块 contenteditable 不会动 selection。
+       */
+      activate('programmatic')
+    },
+    appendReference: (label, opts) => {
+      const el = ref.current
+      if (!el) return
+      const chip = document.createElement('span')
+      chip.className = s.chip
+      chip.textContent = label
+      chip.dataset.token = opts.token
+      /*
+       * **原生 `title` 在这里是允许的一格,而那不是例外主义**:禁令(「禁 native
+       * `title=`,提示一律 `ui/Tooltip`」)管的是**组件**,而这一枚 chip 是
+       * 手动造出来的 DOM 节点 —— 这块可编辑区是 composer 里唯一直接动 DOM 的地方
+       * (文件头第一段),React 的 Tooltip 挂不上一个 `document.createElement`
+       * 出来的节点。同一格在 `insert` 那一支里今天是**空缺**(文件 chip 没有
+       * 提示),这一支有 URL 可说,所以说出来。
+       */
+      if (opts.tip) chip.title = opts.tip
+      chip.contentEditable = 'false'
+      // chip 之后恒有一个空格(与 `insert` 逐字同一条):接着打字就是接着说话。
+      const gap = document.createTextNode(' ')
+      el.appendChild(chip)
+      el.appendChild(gap)
+      const range = document.createRange()
+      const sel = window.getSelection()
+      range.setStart(gap, 1)
+      range.collapse(true)
+      sel?.removeAllRanges()
+      sel?.addRange(range)
+      /*
+       * 焦点进这块面 —— 人刚刚说的是「把这一页交给对话」,下一件事就是打字。
+       * 走树的 `activate()` 而不是 `el.focus()`:这是一次**跨作用域**的搬焦点
+       * (从浏览器叶到输入面板),I3 禁的正是后者。
        */
       activate('programmatic')
     },

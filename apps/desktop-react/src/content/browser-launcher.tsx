@@ -3,6 +3,8 @@ import { MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
 import { t } from '../i18n'
 import { useQuery } from '../data/kernel'
 import { browserOps, browserTabsQuery, openBrowserTab } from '../data/browser-source'
+import { browserSettingsQuery } from '../data/browser-settings-source'
+import { profileDisplayName } from './settings/BrowserSettings'
 import { findItem } from '../stage/items'
 import { registerStageLauncher } from '../stage/launchers'
 import { nextFloatId } from '../stage/placement'
@@ -99,7 +101,10 @@ export function placeBrowserTab(tabId: string): void {
  * **开一格新的并摆出来**。开不出来(后端拒绝 / 这台宿主没有浏览器)什么都不做 ——
  * 摆一片指着不存在的 tab 的叶,比不摆更糟。
  */
-export async function openBrowser(url?: string): Promise<void> {
+export async function openBrowser(
+  url?: string,
+  init: { profile?: string } = {},
+): Promise<void> {
   /*
    * **先把叶那个 chunk 拉下来,再去开 tab**(两件事并发,等的是慢的那一件)——
    * 与 `terminal-launcher.openTerminal` 逐字同一条判例:叶是 `lazy` 进来的,
@@ -107,7 +112,9 @@ export async function openBrowser(url?: string): Promise<void> {
    * 作用域实例根本还没登记,「送不进去不追」当场生效,人开了一格浏览器却不能打地址。
    */
   const [tabId] = await Promise.all([
-    openBrowserTab(url ? { url } : {}),
+    // 身份**缺席就是缺席**:回落成哪一格由后端现问设置(`service.open`),
+    // 壳这边替它拍板等于同一句话两个产地(判词在 `resource-provider.payloadOf`)。
+    openBrowserTab({ ...(url ? { url } : {}), ...(init.profile ? { profile: init.profile } : {}) }),
     import('./browser/BrowserLeaf'),
   ])
   if (!tabId) return
@@ -133,12 +140,16 @@ export async function summonBrowser(): Promise<void> {
 /** 开着的那几格 + 新建一条。 */
 function BrowserLauncherMenuRows({ onDone }: { onDone: () => void }) {
   const tabs = useQuery(browserTabsQuery)
+  // 名册(B3-b)。与 tab 表同一条纪律:只在菜单开着的那一段问一次。
+  const settings = useQuery(browserSettingsQuery)
   // 菜单开着的这一段就是这条读数要新鲜的那一段 —— 一张只在右键那一下出现的菜单
   // 不值得让全壳挂一条订阅(与 terminal-launcher 逐字同一条)。
   useEffect(() => {
     void browserTabsQuery.ensure()
+    void browserSettingsQuery.ensure()
   }, [])
   const rows = tabs.data?.tabs ?? []
+  const profiles = settings.data?.profiles ?? []
   return (
     <>
       {rows.length > 0 && (
@@ -163,14 +174,37 @@ function BrowserLauncherMenuRows({ onDone }: { onDone: () => void }) {
           <MenuSeparator />
         </>
       )}
-      <MenuItem
-        onClick={() => {
-          void openBrowser()
-          onDone()
-        }}
-      >
-        {t('browser.newTab')}
-      </MenuItem>
+      {/*
+        **「新标签页」按身份展开**(B3-b)。名册只有一格时就是从前那一行 ——
+        一台只有一个身份的机器上「新标签页(默认)」是一句废话,而且它会把
+        这张表从两行撑成三行。多于一格时每个身份一行,身份的名字进行里:
+        「新标签页(「工作」)」读起来是一句完整的话,不是一列孤零零的名字。
+      */}
+      {profiles.length > 1 ? (
+        <>
+          <MenuSection>{t('browser.profileSection')}</MenuSection>
+          {profiles.map((profile) => (
+            <MenuItem
+              key={profile.id}
+              onClick={() => {
+                void openBrowser(undefined, { profile: profile.id })
+                onDone()
+              }}
+            >
+              {t('browser.newTabInProfile', { name: profileDisplayName(profile, t) })}
+            </MenuItem>
+          ))}
+        </>
+      ) : (
+        <MenuItem
+          onClick={() => {
+            void openBrowser()
+            onDone()
+          }}
+        >
+          {t('browser.newTab')}
+        </MenuItem>
+      )}
     </>
   )
 }

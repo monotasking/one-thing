@@ -6,6 +6,7 @@ import { Input } from '../../ui/Input'
 import { ChevronDown, ChevronUp, Search, X } from '../../components/icons'
 import { useT } from '../../i18n'
 import { usePanelVisibility } from '../visibility'
+import { findReadout } from '../find-readout'
 import { useLiveTitleStore } from '../../stage/live-title'
 import { refId } from '../../workbench/kinds'
 import { TERMINAL_COURTESY_LETTERS, terminalPtyKeyAction } from './key-courtesy'
@@ -107,13 +108,16 @@ function courtesyHandlers(session: TerminalSession): Record<string, () => void> 
   return out
 }
 
-/** 读数那一格的字面。**纯函数** —— 三档(不画 / 「0」/「3/17」)只有一个产地。 */
-export function findReadout(find: { query: string; index: number; count: number }): string | null {
-  if (!find.query) return null
-  if (find.count <= 0) return '0'
-  // `index` 是从 0 起的序号,`-1` = 插件还没说它停在第几处(超出高亮上限时就是
-  // 这一形)—— 那时候只报总数,不编一个序号出来。
-  return find.index < 0 ? String(find.count) : `${find.index + 1}/${find.count}`
+/**
+ * 这一格查找读数的字面。**判据不在这里** —— 它与网页查找行那一条合成了一只
+ * (`content/find-readout.ts`,B3-b)。这里只做**口径归一**:
+ * `resultIndex` 是 0 起、`-1` = 「插件还没说它停在第几处」(超出高亮上限时
+ * 就是这一形),`+1` 之后恰好落进共用那只函数的口径(1 起、`<= 0` = 不知道)。
+ * 折在调用点而不是推送链上,理由与 B3-a 那一条逐字相同:折过之后
+ * 「插件报的就是这个数」与「壳算错了」就再也分不开。
+ */
+function terminalFindReadout(find: { query: string; index: number; count: number }): string | null {
+  return findReadout({ query: find.query, ordinal: find.index + 1, total: find.count })
 }
 
 export function TerminalLeaf({ id }: { id: string }) {
@@ -258,7 +262,7 @@ export function TerminalLeaf({ id }: { id: string }) {
   }, [session])
 
   const find = snapshot.find
-  const readout = findReadout(find)
+  const readout = terminalFindReadout(find)
   const state = snapshot.state
   const bar =
     state === 'attaching'
@@ -325,7 +329,7 @@ export function TerminalLeaf({ id }: { id: string }) {
                 placeholder={t('terminal.findPlaceholder')}
                 className={s.findInput}
               />
-              {/* 读数三档只有一个产地(`findReadout`);没词的时候整格不画 ——
+              {/* 读数三档只有一个产地(`content/find-readout.ts`);没词的时候整格不画 ——
                   「没内容就别占地方」与状态条那一行同一条。 */}
               {readout !== null && (
                 <span className={s.findCount} data-testid="terminal-find-count" aria-live="polite">

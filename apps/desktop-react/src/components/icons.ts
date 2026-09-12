@@ -77,6 +77,8 @@ import {
   SkipBack,
   SkipForward,
   Heart,
+  // B3-b:设置页「身份」那一行的删钮(X 会被读成「关掉」;会删数据的钮该长得像删)。
+  Trash2,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -181,6 +183,7 @@ const REGISTRY: Record<string, LucideIcon> = {
   SkipBack,
   SkipForward,
   Heart,
+  Trash2,
 }
 
 export function resolveIcon(name: string): LucideIcon {
@@ -244,5 +247,6 @@ export {
   SkipBack,
   SkipForward,
   Heart,
+  Trash2,
 }
 export type { LucideIcon }

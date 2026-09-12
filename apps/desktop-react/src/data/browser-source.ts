@@ -183,6 +183,11 @@ export interface BrowserOpInput {
   tabId?: string
   url?: string
   background?: boolean
+  /**
+   * `open` 那一条的身份(B3-b)。**缺席就是缺席** —— 回落成哪一格由后端现问
+   * 设置(`electron/browser/service.ts` 的 `defaultProfile`),壳这边不替它拍板。
+   */
+  profile?: string
   /** `respondPermission` 那两格(B3-a)。 */
   requestId?: string
   allow?: boolean
@@ -240,6 +245,7 @@ const OPS: Readonly<Record<BrowserOpName, BrowserOpSpec>> = {
     params: (input) => ({
       ...(input.url ? { url: input.url } : {}),
       ...(input.background ? { background: true } : {}),
+      ...(input.profile ? { profile: input.profile } : {}),
     }),
   },
   navigate: {
@@ -336,7 +342,7 @@ export const browserOps = Object.fromEntries(
  * 开不出来(后端拒绝 / 这台宿主没有浏览器)答 `null` —— 调用方据它决定摆不摆叶。
  */
 export async function openBrowserTab(
-  init: { url?: string; background?: boolean } = {},
+  init: { url?: string; background?: boolean; profile?: string } = {},
 ): Promise<string | null> {
   const before = new Set((browserTabsQuery.get().data?.tabs ?? []).map((row) => row.id))
   await browserOps.open.run({ ...init })

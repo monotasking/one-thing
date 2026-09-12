@@ -5,10 +5,10 @@ import { useT } from '../../i18n'
 import {
   browserFindNext,
   browserFindPrevious,
-  browserFindReadout,
   setBrowserFindQuery,
   type BrowserFindState,
 } from '../../data/browser-find'
+import { findReadout } from '../find-readout'
 import s from './BrowserFindBar.module.css'
 
 /**
@@ -63,7 +63,12 @@ export function BrowserFindBar({
   inputRef: (el: HTMLInputElement | null) => void
 }) {
   const t = useT()
-  const readout = browserFindReadout(find)
+  /*
+   * 读数三档的判据与终端查找行**同一只函数**(B3-b 合一)。Chromium 的
+   * `activeMatchOrdinal` 本来就是 1 起、`0` = 只报了总数,与那只函数的
+   * `ordinal` 口径逐字相同,所以这里一个字都不折。
+   */
+  const readout = findReadout({ query: find.query, ordinal: find.active, total: find.total })
 
   return (
     <div className={s.find} data-testid="browser-find">
@@ -95,7 +100,7 @@ export function BrowserFindBar({
         placeholder={t('browser.findPlaceholder')}
         className={s.findInput}
       />
-      {/* 读数三档只有一个产地(`browserFindReadout`);没词的时候整格不画 ——
+      {/* 读数三档只有一个产地(`content/find-readout.ts`);没词的时候整格不画 ——
           「没内容就别占地方」与叶上那一行错话同一条。 */}
       {readout !== null && (
         <span className={s.findCount} data-testid="browser-find-count" aria-live="polite">

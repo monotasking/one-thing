@@ -34,11 +34,18 @@
  * 整棵测试树就只能靠 mock 电梯)。
  */
 
+import { DEFAULT_BROWSER_PROFILE_ID } from '@shared/ipc/settings'
 import { userAgentPolicy } from './user-agent.js'
 import { decideWebPermission } from './permission.js'
 
-/** 一格 profile 的持久分区名。P0 只有一个 `default`;多 profile 的设置面归 B3。 */
-export const DEFAULT_BROWSER_PROFILE = 'default'
+/**
+ * 一格 profile 的持久分区名。
+ *
+ * **出厂那一格的 id 住在契约层**(`@shared/ipc/settings` 的
+ * `DEFAULT_BROWSER_PROFILE_ID`,B3-b):名册、defaults、壳、主进程四边要同一个串,
+ * 而这只文件不该是那个产地 —— 它只是把 id 折成分区名的那一手。
+ */
+export const DEFAULT_BROWSER_PROFILE = DEFAULT_BROWSER_PROFILE_ID
 
 export function browserPartitionFor(profile: string): string {
   return `persist:browser-${profile}`
@@ -54,6 +61,15 @@ export interface BrowserPermissionDetails {
 export interface BrowserSessionLike {
   getUserAgent(): string
   setUserAgent(userAgent: string): void
+  /**
+   * 把这个分区里的东西全部清掉(B3-b 删身份那一步)。
+   *
+   * **不给 `options`**:删一格身份的意思就是「这套登录态整个不要了」,而
+   * `clearStorageData({storages:[…]})` 那张表是一份会随 Electron 版本变的
+   * 枚举 —— 少列一格就是留下一半(cookie 清了、IndexedDB 里的 refresh token
+   * 还在)。缺省那一档清全部,那正是这一格要的语义。
+   */
+  clearStorageData(): Promise<void>
   setPermissionRequestHandler(
     handler:
       | ((
@@ -166,6 +182,28 @@ export class BrowserSessionPolicy {
     this.sessions.set(partition, created)
     this.options.onSession?.(created, partition)
     return created
+  }
+
+  /**
+   * 把一格 profile 的分区整个清掉(删身份的第二步)。
+   *
+   * **顺序是硬的**:调用方必须先把这一格身份的 tab 全关掉,再调这一句 ——
+   * 一片还活着的 `WebContentsView` 会在清完之后**当场把它正看着的那一页的
+   * cookie 重新写回去**(页面还在跑,一次 `fetch` 就够),于是「清掉了」
+   * 变成「清掉了一半」。判据与它的反证都在 `profiles.ts` 的 reconciler 上。
+   *
+   * 没建过这个分区的 session 也照样建出来清一次:账本上有过这一格身份,
+   * 盘上就可能有它的数据(上一次启动建过),不建就清不着。
+   *
+   * 清完**不从表里摘**:`session.fromPartition` 对同一个分区名交回的是**同一个**
+   * `Session` 对象,摘掉之后下一次 `sessionFor` 会把 UA / 权限 / `onSession`
+   * (装配点在那里挂 `will-download`)**再挂一遍** —— 一次下载两条监听、
+   * 两个序号。清的是盘上的数据,不是这只表里的登记。
+   */
+  async clear(profile: string): Promise<void> {
+    const partition = browserPartitionFor(profile)
+    const existing = this.sessions.get(partition)
+    await (existing ?? this.fromPartition(partition)).clearStorageData()
   }
 
   webPreferencesFor(profile: string = DEFAULT_BROWSER_PROFILE): BrowserViewPreferences {

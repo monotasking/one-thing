@@ -66,7 +66,7 @@ export interface BrowserTabView extends BrowserTabState {
 export interface BrowserOps {
   list(): BrowserTabView[]
   activeId(): string | null
-  open(init: { url?: string; background?: boolean }): BrowserTabView
+  open(init: { url?: string; background?: boolean; profile?: string }): BrowserTabView
   navigate(tabId: string, url: string): void
   back(tabId: string): void
   forward(tabId: string): void
@@ -142,7 +142,7 @@ export class BrowserPermissionParamsError extends Error {
 }
 
 export type BrowserOpPayload =
-  | { readonly op: 'open'; readonly url?: string; readonly background: boolean }
+  | { readonly op: 'open'; readonly url?: string; readonly background: boolean; readonly profile?: string }
   | { readonly op: 'navigate'; readonly tabId: string; readonly url: string }
   | { readonly op: 'back' | 'forward' | 'reload' | 'activate' | 'close'; readonly tabId: string }
   | { readonly op: 'respondPermission'; readonly tabId: string; readonly requestId: string; readonly allow: boolean }
@@ -289,8 +289,9 @@ export class BrowserResourceProvider implements ResourceProvider<BrowserOpPayloa
         const tab = this.ops.open({
           ...(payload.url !== undefined ? { url: payload.url } : {}),
           background: payload.background,
+          ...(payload.profile !== undefined ? { profile: payload.profile } : {}),
         })
-        return this.done(ctx, 'Tab opened', `browser:${tab.id}${tab.url ? ` → ${tab.url}` : ' (start page)'}`, payload.op, { tab })
+        return this.done(ctx, 'Tab opened', `browser:${tab.id}${tab.url ? ` → ${tab.url}` : ' (start page)'} [${tab.profile}]`, payload.op, { tab })
       }
       case 'navigate':
         this.ops.navigate(payload.tabId, payload.url)
@@ -331,7 +332,18 @@ export class BrowserResourceProvider implements ResourceProvider<BrowserOpPayloa
     if (op === 'open') {
       const url = stringParam(params, 'url')
       const background = (params as { background?: unknown } | undefined)?.background === true
-      return url ? { op, url, background } : { op, background }
+      /*
+       * 身份**缺席就是缺席**(B3-b),不在这里回落成 `default`:回落的那一格
+       * 事实住在 service(它现问设置里的缺省身份)。在这里替它拍板 = 同一句话
+       * 两个产地,而其中一个还赶不上用户刚刚改过的设置。
+       */
+      const profile = stringParam(params, 'profile')
+      return {
+        op,
+        ...(url ? { url } : {}),
+        background,
+        ...(profile ? { profile } : {}),
+      }
     }
     const tabId = this.tabIdOf(op, ref)
     if (!this.ops.has(tabId)) throw new BrowserTabUnknownError(tabId)
@@ -374,7 +386,11 @@ export class BrowserResourceProvider implements ResourceProvider<BrowserOpPayloa
   /** 权限卡上那一句人话。地址栏上的 URL 本来就是给人看的,原样带出来。 */
   private previewOf(payload: BrowserOpPayload): string {
     switch (payload.op) {
-      case 'open': return payload.url ? `Open a browser tab at ${payload.url}` : 'Open an empty browser tab'
+      case 'open': {
+        // 身份出现在人话里 —— 「以哪个身份开」正是这一下值得让人看见的那一格。
+        const as = payload.profile ? ` as ${payload.profile}` : ''
+        return payload.url ? `Open a browser tab at ${payload.url}${as}` : `Open an empty browser tab${as}`
+      }
       case 'navigate': return `Send the browser to ${payload.url}`
       case 'back': return 'Go back in the browser'
       case 'forward': return 'Go forward in the browser'

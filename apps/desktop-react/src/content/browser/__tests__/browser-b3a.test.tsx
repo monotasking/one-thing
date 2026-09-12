@@ -6,7 +6,6 @@ import type { NativeViewPush, NativeViewRequest } from '../../../data/browser-po
 import { onBrowserFact, resetBrowserSource } from '../../../data/browser-source'
 import {
   browserFindOf,
-  browserFindReadout,
   openBrowserFind,
   resetBrowserFind,
 } from '../../../data/browser-find'
@@ -101,14 +100,11 @@ async function settle(): Promise<void> {
 
 // ── 查找行 ───────────────────────────────────────────────────────────────
 
-describe('读数三档只有一个产地', () => {
-  it('没词 → 整格不画;零命中 →「0」;有命中 →「3/17」;只有总数 →「9」', () => {
-    expect(browserFindReadout({ open: true, query: '', active: 0, total: 0 })).toBeNull()
-    expect(browserFindReadout({ open: true, query: 'a', active: 0, total: 0 })).toBe('0')
-    expect(browserFindReadout({ open: true, query: 'a', active: 3, total: 17 })).toBe('3/17')
-    expect(browserFindReadout({ open: true, query: 'a', active: 0, total: 9 })).toBe('9')
-  })
-})
+/*
+ * 读数三档那组纯函数断言**不在这里了**(B3-b):判据与终端查找行合成了一只
+ * (`content/find-readout.ts`),断言跟着搬去 `content/__tests__/find-readout.test.ts`。
+ * 下面「开有命中 / 开零命中」两条留着 —— 它们量的是这块屏幕消费了它。
+ */
 
 describe('查找行四态', () => {
   it('关着的时候整行不画', async () => {

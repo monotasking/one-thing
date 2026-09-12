@@ -114,6 +114,17 @@ const OPEN_PARAMS: JsonSchema = {
   properties: {
     url: { type: 'string', description: 'HTTP(S) URL to load. Omit to open an empty tab on the start page.' },
     background: { type: 'boolean', description: 'Open without taking over the active tab.' },
+    /*
+     * 身份(B3-b)。**可选,而缺席不等于 `default`** —— 缺席 = 「用这个人在设置里
+     * 挑的那一格」(`settings.browser.defaultProfile`),那是 service 现问的一格。
+     * 写死一个 id 当缺省会让「我把缺省身份改成了工作号」这句话在 AI 那条路上失效。
+     */
+    profile: {
+      type: 'string',
+      description:
+        'Which isolated login identity to open this tab under. '
+        + 'Omit to use the identity the user picked as default — each one is a separate set of cookies and logins.',
+    },
   },
   required: [],
 }
@@ -176,7 +187,9 @@ export const browserResourceSpec: ResourceSpec = {
       keymap: true,
       describe: params => {
         const url = urlOf(params)
-        return url ? `open a browser tab at ${url}` : 'open an empty browser tab'
+        const profile = String((params as { profile?: unknown } | undefined)?.profile ?? '')
+        const where = profile ? ` as ${profile}` : ''
+        return url ? `open a browser tab at ${url}${where}` : `open an empty browser tab${where}`
       },
     },
     navigate: {

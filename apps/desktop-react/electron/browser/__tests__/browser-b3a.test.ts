@@ -212,6 +212,7 @@ function fakeSession(): BrowserSessionLike & {
     setUserAgent: () => {},
     setPermissionRequestHandler: (handler: never) => { row.request = handler as never },
     setPermissionCheckHandler: () => {},
+    clearStorageData: () => Promise.resolve(),
   } as BrowserSessionLike & {
     request?: (wc: unknown, permission: string, cb: (granted: boolean) => void, details?: unknown) => void
   }

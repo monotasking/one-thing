@@ -11,7 +11,7 @@ import {
   resetTerminalRegistry,
 } from '../registry'
 import { resetTerminalMemory, rememberTerminalCwd, terminalCwdOf } from '../terminal-memory'
-import { findReadout, TerminalLeaf } from '../TerminalLeaf'
+import { TerminalLeaf } from '../TerminalLeaf'
 import { TERMINAL_KIND } from '../terminal-ref'
 import { en } from '../../../i18n/en'
 import { zh } from '../../../i18n/zh'
@@ -205,7 +205,7 @@ describe('cwd 小账本', () => {
  * **查找行那四态**(T2)。状态表在 `session.ts` 的 `TerminalFindState` 上,
  * 这里量的是它在屏幕上的那一半:什么时候画、读数写什么、两颗钮什么时候禁。
  *
- * 反证:把 `findReadout` 里「`count <= 0` 答 '0'」那一支改成 `return null`
+ * 反证:把 `content/find-readout.ts` 里「`total <= 0` 答 '0'」那一支改成 `return null`
  * → 「开零命中:读数写 0」当场红。
  */
 describe('查找行', () => {
@@ -264,12 +264,9 @@ describe('查找行', () => {
   })
 })
 
-describe('读数三档(纯函数)', () => {
-  it('没词不画 / 零命中写 0 / 有命中写「第几 / 共几」', () => {
-    expect(findReadout({ query: '', index: -1, count: 0 })).toBeNull()
-    expect(findReadout({ query: 'x', index: -1, count: 0 })).toBe('0')
-    expect(findReadout({ query: 'x', index: 2, count: 17 })).toBe('3/17')
-    // 超出高亮上限时插件报 `-1`:只报总数,不编一个序号出来。
-    expect(findReadout({ query: 'x', index: -1, count: 9 })).toBe('9')
-  })
-})
+/*
+ * 读数三档那组纯函数断言**不在这里了**(B3-b):判据与网页查找行合成了一只
+ * (`content/find-readout.ts`),断言跟着搬去 `content/__tests__/find-readout.test.ts`。
+ * 上面「开有命中 / 开零命中」两条留着 —— 它们量的是**这块屏幕消费了它**,
+ * 而那正是合一之后这个文件该守的东西。
+ */

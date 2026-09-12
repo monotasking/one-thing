@@ -42,7 +42,15 @@
  *     标题,而标题是这道门本来就读得到的东西)→ 卡随 `permissionResolved` 撤掉;
  *  ⑭ **下载**(B3-a):页面里点一颗 `<a download>`(**在主进程里让那一页自己
  *     `click()`**,不动真鼠标)→ 檐下一行「已下载 …」+ 文件真的落在**临时**下载
- *     目录里(`ONETHING_GATE_DOWNLOADS_DIR`,产品路径上读不到的那一格)。
+ *     目录里(`ONETHING_GATE_DOWNLOADS_DIR`,产品路径上读不到的那一格);
+ *  ⑮ **起始页**(B3-b):一格新标签页画的是**壳自己的 DOM**(`browser-start`)、
+ *     **不画占位格**(不报帧 = 那片视图保持隐藏),地址栏有焦点(② 那条);
+ *  ⑯ **多 profile**(B3-b):`do open {profile:'gate-b'}` 之后 `read tabs` 里那一格
+ *     的 `profile === 'gate-b'`,而且**两格身份的 cookie 互相看不见** —— 门自起的
+ *     本地页各种一枚同名 cookie 再各读一次,量的是 Chromium 的分区本身;
+ *  ⑰ **把这一页交给对话**(B3-b):⋯ 那张表里点一行 → 输入框落一枚
+ *     `{{page:<id>}}` chip(零字节)→ 发送 → 那一发 `session-command.emit` 的
+ *     信封里页面正文是一件带 `sourceUrl` 的**附件**,`content` 里一个字都没有。
  *
  * ⑫⑬⑭ 跑在 ⑪ **之前**,而那是有意的:三件都留在屏上,于是 axe 那一扫顺带把
  * B3-a 这三个新 surface 也扫了(「新 surface 必须追加进扫描屏」那条纪律)。
@@ -288,6 +296,27 @@ function startPageServer() {
           + `<a id="dl" href="/file" download="${DOWNLOAD_NAME}">get</a></body></html>`)
         return
       }
+      /*
+       * B3-b 加两条,**只为「两格身份真的隔开了」而存在**(⑯):
+       *  · `/setcookie` —— 种一枚带值的 cookie,并把种下的值写进标题;
+       *  · `/readcookie` —— 把**读到的** cookie 写进标题(读不到就写 `NONE`)。
+       * 标题是这道门本来就读得到的东西(`read tabs`),所以「另一格身份看不见
+       * 这枚 cookie」这件事不必往页面里伸手就量得到 —— 而且量的是 Chromium 的
+       * 分区本身,不是我们自己那张表。
+       */
+      if (route === '/setcookie' || route === '/readcookie') {
+        const value = (req.url ?? '').includes('v=') ? (req.url ?? '').split('v=')[1] : ''
+        const headers = { 'content-type': 'text/html; charset=utf-8' }
+        if (route === '/setcookie') headers['set-cookie'] = `gate=${value}; Path=/`
+        const seen = route === '/readcookie'
+          ? (/gate=([A-Za-z0-9_-]+)/.exec(req.headers.cookie ?? '')?.[1] ?? 'NONE')
+          : value
+        res.writeHead(200, headers)
+        res.end(`<!doctype html><html><head><meta charset="utf-8">`
+          + `<title>${NONCE}COOKIE${seen}</title></head>`
+          + `<body style="background:#0a0">${BODY_MARK}</body></html>`)
+        return
+      }
       if (route === '/geo') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
         res.end(`${head}<body style="background:#0a0">${BODY_MARK}<script>
@@ -305,10 +334,18 @@ function startPageServer() {
   })
 }
 
-/** 屏幕上此刻那几片浏览器叶(门用的把手:`data-native-view` 就是 tab id)。 */
+/**
+ * 屏幕上此刻那几片浏览器叶。
+ *
+ * **把手是叶自己的 `data-tab-id`,不是占位格的 `data-native-view`**(B3-b 改口)。
+ * 起始页那一档(空标签页)整片占位格都不画 —— 视图不报帧就保持隐藏,屏幕上是
+ * 壳自己的 DOM;拿占位格当把手的话,一格刚开出来的新标签页在门眼里根本不存在。
+ * `data-tab-id` 在**每一档**都成立(没有宿主 / 找不到 / 起始页 / 正常),
+ * 所以它才是这条把手该挂的地方。
+ */
 const leafIds = (page) =>
   page.evaluate(() =>
-    [...document.querySelectorAll('[data-native-view]')].map((el) => el.dataset.nativeView),
+    [...document.querySelectorAll('[data-testid="browser-leaf"]')].map((el) => el.dataset.tabId),
   )
 
 async function main() {
@@ -491,6 +528,24 @@ async function main() {
     })
     assert(addressFocused === true, '② 地址栏拿到焦点(响应链规则 2「打开什么焦点进什么」)')
 
+    /*
+     * ⑮ **起始页**(B3-b)。一格空标签页画的是**壳自己的 DOM**,不是一张网页:
+     * 屏幕上有 `browser-start` 那一块,而占位格**整个不在**——不报帧,于是主进程
+     * 那一侧那片视图保持隐藏(`layout.register` 的第一句)。
+     * 焦点那一半就是上面 ② 那条断言,不重复量。
+     *
+     * **反证**:把 `BrowserLeaf` 里 `known && !row.url` 那一支改成恒假(永远画
+     * 占位格)→ 第一条红;改成恒真 → ③ 打完地址之后页面永远出不来,③ 红。
+     */
+    const startPage = await page.evaluate(() => ({
+      start: Boolean(document.querySelector('[data-testid="browser-start"]')),
+      slot: Boolean(document.querySelector('[data-native-view]')),
+      engines: document.querySelectorAll('[data-testid="browser-start-engine"]').length,
+    }))
+    assert(startPage.start, '⑮ 新标签页画的是起始页(壳自己的 DOM)')
+    assert(!startPage.slot, '⑮ 起始页那一档**不画占位格** —— 不报帧 = 那片视图保持隐藏')
+    assert(startPage.engines === 4, `⑮ 起始页上四枚搜索引擎丸(${startPage.engines})`)
+
     console.log('\n[3/10] 地址栏输入本地 URL + 回车')
     await cdp.send('Input.insertText', { text: pageUrl('/') })
     await press(cdp, { key: 'Enter', code: 'Enter', keyCode: 13, text: '\r' })
@@ -544,6 +599,92 @@ async function main() {
       /untrusted/i.test(pageRead.value.text),
       `⑤ 正文被 untrusted 定界包过(§9-3;头 120 字:${pageRead.value.text.slice(0, 120)})`,
     )
+
+    /*
+     * ⑯ **两格身份真的隔开了**(B3-b)。
+     *
+     * 量的是 **Chromium 的分区本身**,不是我们自己那张 tab 表:两格 tab 各种一枚
+     * 同名 cookie(值不同),再各读一次 —— 读回自己那一枚才算隔开。
+     * `set-cookie` 与 `cookie` 两个请求头都由门自己那台 http 页服务器处理,
+     * 页面把读到的值写进 `<title>`,而标题正是 `read tabs` 本来就交出来的东西。
+     *
+     * **反证**:把 `BrowserSessionPolicy.sessionFor` 里那句 `browserPartitionFor(profile)`
+     * 换成常量分区名 → 第二格读到的是第一格种下的值,这一条当场红。
+     */
+    console.log('\n[5b] ⑯ 多 profile:两格身份的 cookie 互相看不见')
+    const cookieA = `A${NONCE}`
+    const cookieB = `B${NONCE}`
+    const openedB = await rpc(record, 'resources', 'do', {
+      ref: 'browser:@all',
+      op: 'open',
+      /*
+       * **不给 `background`**:后台那一格是**惰性**的(`service.open` 只对前台那格
+       * 调 `materialize`),而没有视图就没有导航、没有 cookie、没有标题 ——
+       * 这一步量的恰恰是「那一格身份真的去发了一个请求」。
+       */
+      params: { url: pageUrl(`/setcookie?v=${cookieB}`), profile: 'gate-b' },
+    })
+    assert(openedB.kind === 'ok', `⑯ do open {profile:'gate-b'} 成功(${openedB.kind})`)
+
+    const tabB = await waitFor('第二格身份那一格落进表里,而且它的 profile 是 gate-b', async () => {
+      const tabs = await rpc(record, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+      const row = (tabs.value?.tabs ?? []).find((r) => r.profile === 'gate-b')
+      return row && row.title.includes('COOKIE') ? row : undefined
+    }, 25_000)
+    assert(tabB.profile === 'gate-b', `⑯ read tabs 里那一格的 profile 是 'gate-b'`)
+
+    // 缺省身份那一格也种一枚(值不同)。
+    const navA = await rpc(record, 'resources', 'do', {
+      ref: `browser:${two[0].id}`,
+      op: 'navigate',
+      params: { url: pageUrl(`/setcookie?v=${cookieA}`) },
+    })
+    assert(navA.kind === 'ok', '⑯ 缺省身份那一格也去种一枚')
+    await waitFor('缺省那一格种完了', async () => {
+      const tabs = await rpc(record, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+      const row = (tabs.value?.tabs ?? []).find((r) => r.id === two[0].id)
+      return row && row.title.includes(`COOKIE${cookieA}`) ? row : undefined
+    }, 25_000)
+
+    // 各读一次:读回自己那一枚才算隔开。
+    async function readCookieIn(tabId) {
+      const outcome = await rpc(record, 'resources', 'do', {
+        ref: `browser:${tabId}`,
+        op: 'navigate',
+        params: { url: pageUrl('/readcookie') },
+      })
+      assert(outcome.kind === 'ok', `⑯ browser:${tabId} 去读一次 cookie`)
+      /*
+       * 判据要**同时**看 url 与标题:上一发 `/setcookie` 留下的标题里也有 `COOKIE`,
+       * 只看标题会把那一份当成这一次的读数(而它写的正是刚种下去的值 ——
+       * 于是这条断言会恒绿,那比红更坏)。
+       */
+      const row = await waitFor(`browser:${tabId} 的读数落下来`, async () => {
+        const tabs = await rpc(record, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+        const found = (tabs.value?.tabs ?? []).find((r) => r.id === tabId)
+        return found && found.url.includes('/readcookie') && found.title.includes('COOKIE')
+          ? found
+          : undefined
+      }, 25_000)
+      return row.title.replace(`${NONCE}COOKIE`, '')
+    }
+    const seenInDefault = await readCookieIn(two[0].id)
+    const seenInB = await readCookieIn(tabB.id)
+    assert(
+      seenInDefault === cookieA,
+      `⑯ 缺省身份读回自己那一枚(读到 ${seenInDefault},该是 ${cookieA})`,
+    )
+    assert(
+      seenInB === cookieB,
+      `⑯ 'gate-b' 身份读回自己那一枚,看不见另一格的(读到 ${seenInB},该是 ${cookieB})`,
+    )
+    // 收拾掉这一格 —— 后面 ⑩ 的超量那一段按格数算。
+    await rpc(record, 'resources', 'do', { ref: `browser:${tabB.id}`, op: 'close' })
+    await rpc(record, 'resources', 'do', {
+      ref: `browser:${two[0].id}`,
+      op: 'navigate',
+      params: { url: pageUrl('/') },
+    })
 
     console.log('\n[6/10] 遮挡:开一块别的面并撕成浮窗压上去')
     /*
@@ -863,6 +1004,108 @@ async function main() {
     })
     assert(after.length === 1, `⑨ read tabs 里没有它了(还剩 ${after.length} 格)`)
 
+    /*
+     * ⑰ **把这一页交给对话**(B3-b)。两半:
+     *  ① 点 ⋯ 那张表里的那一行 → 输入框里落一枚引用 chip(`data-token` 是
+     *     `{{page:<tabId>}}`,**零字节** —— 点击那一刻一个字的正文都不取);
+     *  ② 按发送 → 交出去的那个 RPC 信封里,页面正文是一件带 `sourceUrl` 的
+     *     **附件**,而 `content` 里一个字的正文都没有。
+     *
+     * 第二半的取件口是渲染进程里那一发 `POST /api/rpc` 的请求体 —— 比起在核那一头
+     * 架一只假 provider,这一层更靠近判据本身(「交出去的那句话长什么样」),
+     * 而且不必给这道门配一个模型。
+     *
+     * **反证**:把 `chat-port.sendMessage` 里 `materializePageReferences` 那一句
+     * 拆掉 → ② 当场红(信封里没有附件,而 `{{page:…}}` 原样漏进 `content`)。
+     *
+     * ── 它为什么排在这里(⑨ 之后、⑩ 之前)──────────────────────────────
+     * 这一步要按一次发送,而按发送就得**把焦点借进输入面板**。⑦ 的前提恰恰是
+     * 「焦点在 `browser` 那一格作用域上」(它先把键盘交给页面,再量 ⌘L 有没有
+     * 落回地址栏),⑬ 也要点那张权限卡。借了还不回去 —— 试过在这一步末尾把
+     * 焦点塞回地址栏,`composer` 那一格的归还规则当场把它拽回来(响应链规则 5),
+     * 于是 ⑦ 量到的是一次**门自己制造的**现场。**排到它们后面比还回去干净**:
+     * ⑩ 之后的每一步都只经 RPC 驱动,不问焦点。
+     */
+    console.log('\n[9b] ⑰ 把这一页交给对话 → 引用落进输入框,发送时正文随附件走')
+    await page.evaluate(() => {
+      window.__b3bSends = []
+      const real = window.fetch
+      window.fetch = async (input, init) => {
+        try {
+          const url = typeof input === 'string' ? input : input?.url ?? ''
+          if (url.includes('/api/rpc') && init && typeof init.body === 'string') {
+            const parsed = JSON.parse(init.body)
+            if (parsed?.domain === 'session-command' && parsed?.method === 'emit') {
+              window.__b3bSends.push(parsed.payload)
+            }
+          }
+        } catch { /* 抓不到就抓不到 —— 这只旁听不许影响那一发请求 */ }
+        return real(input, init)
+      }
+    })
+    const menuOpened = await page.evaluate(() => {
+      const button = document.querySelector('[data-testid="browser-actions"]')
+      if (!(button instanceof HTMLElement)) return false
+      button.click()
+      return true
+    })
+    assert(menuOpened, '⑰ 叶檐上那颗 ⋯ 在')
+    const chip = await waitFor('引用 chip 落进输入框', async () => {
+      const ok = await page.evaluate(() => {
+        const item = [...document.querySelectorAll('[role="menuitem"]')].find((el) =>
+          /交给对话|Give this page/.test(el.textContent ?? ''),
+        )
+        if (!(item instanceof HTMLElement)) return null
+        item.click()
+        return true
+      })
+      if (!ok) return undefined
+      return page.evaluate(() => {
+        const input = document.querySelector('[data-testid="composer-input"]')
+        const token = input?.querySelector('[data-token^="{{page:"]')
+        return token ? token.getAttribute('data-token') : undefined
+      })
+    })
+    assert(
+      chip === `{{page:${two[0].id}}}`,
+      `⑰ 输入框里那枚 chip 代表的是这一格 tab(${chip})`,
+    )
+
+    await page.evaluate(() => {
+      const input = document.querySelector('[data-testid="composer-input"]')
+      if (input) input.focus()
+    })
+    await cdp.send('Input.insertText', { text: ' 总结一下' })
+    await press(cdp, { key: 'Enter', code: 'Enter', keyCode: 13, text: '\r' })
+    const envelope = await waitFor('那一发 session-command.emit 交出去了', () =>
+      page.evaluate(() => window.__b3bSends?.[0]),
+    )
+    const command = envelope?.command ?? {}
+    assert(
+      !String(command.content ?? '').includes('{{page:'),
+      `⑰ 正文里没有 token 残留(${String(command.content ?? '').slice(0, 80)})`,
+    )
+    assert(
+      !String(command.content ?? '').includes(BODY_MARK),
+      '⑰ **页面正文不进 `content`** —— 它走附件(不然气泡里会出现整页文字、账本里存一份)',
+    )
+    assert(
+      (command.attachments ?? []).length === 1,
+      `⑰ 一件附件(${JSON.stringify(command.attachments ?? []).slice(0, 120)})`,
+    )
+    assert(
+      (command.attachments?.[0]?.sourceUrl ?? '').startsWith('http://127.0.0.1:'),
+      `⑰ 附件带着出处(${command.attachments?.[0]?.sourceUrl})`,
+    )
+    assert(
+      String(command.attachments?.[0]?.excerpt ?? '').includes(BODY_MARK),
+      '⑰ 附件里装的是这一页的正文',
+    )
+    assert(
+      /untrusted/i.test(String(command.attachments?.[0]?.excerpt ?? '')),
+      '⑰ 而且它仍旧带着 untrusted 定界(与 ⑤ 同一条包法,不包第二层)',
+    )
+
     console.log('\n[10/10] 超量:8 格 tab 全开,逐格切换')
     await page.evaluate(() => {
       if (window.__b2Loaf) return
@@ -1053,7 +1296,7 @@ async function main() {
     await delay(1200)
     child = undefined
 
-    console.log(`\n[browser-gate] ok(${LANE} 档)—— 十四条全过`)
+    console.log(`\n[browser-gate] ok(${LANE} 档)—— 十七条全过`)
     console.log(`[browser-gate] 读数:${JSON.stringify(report)}`)
   } finally {
     if (app) await app.close().catch(() => {})

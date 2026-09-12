@@ -313,6 +313,20 @@ export const en: Record<MessageKey, string> = {
   'browser.downloadReveal': 'Show in file manager',
   'browser.downloadDismiss': 'Dismiss this download line',
 
+  /* ── identities and "give this page to the chat" (B3-b) ───────────── */
+  'browser.actions': 'Actions for this page',
+  'browser.giveToChat': 'Give this page to the chat',
+  'browser.giveToChatNoComposer': 'No chat is open to hand this page to',
+  'browser.profileBadge': 'Identity: {name}',
+  'browser.profileSection': 'Identity',
+  'browser.openInProfile': 'Open this page as “{name}”',
+  'browser.newTabInProfile': 'New tab as “{name}”',
+  'browser.profileDefaultName': 'Default',
+  /* start page */
+  'browser.startHint': 'Enter an address, or search',
+  'browser.startEngine': 'Search with {name}',
+  'browser.startEngineSection': 'Search engine',
+
   /* ── session exposé ───────────────────────────────────────────────── */
   'expose.searchPlaceholder': 'Search sessions, sections, messages',
   'expose.searchLabel': 'Search sessions',
@@ -802,6 +816,21 @@ export const en: Record<MessageKey, string> = {
   'browser.cdpPortNote': 'The debug port listens on 127.0.0.1:{port}, loopback only.',
   'browser.newPageNote':
     'new_page does not work on Electron — AI opens new tabs through the built-in browser tool.',
+  'browser.searchEngineLabel': 'Search from the address bar with',
+  'browser.searchEngineHint': 'Where an address-bar line that is not a URL gets searched.',
+  'browser.searchEngineSaveFailed': 'The search engine did not save',
+  'browser.profilesLabel': 'Identities',
+  'browser.profilesHint':
+    'One identity = its own cookies and logins. Two tabs can be signed in to the same site as different people.',
+  'browser.profileName': 'Identity name',
+  'browser.profileAdd': 'New identity',
+  'browser.profileDelete': 'Delete this identity',
+  'browser.profileDeleteTitle': 'Delete “{name}”?',
+  'browser.profileDeleteBody':
+    'Its logins and data are erased and its open tabs are closed. This cannot be undone.',
+  'browser.profileDeleteConfirm': 'Delete',
+  'browser.defaultProfileLabel': 'New tabs use',
+  'browser.profileSaveFailed': 'The identities did not save',
   'settings.sectionPermissions': 'Granted',
   'permissions.hint':
     'What got remembered when you answered “this session”, “this directory” or “always allow”.',

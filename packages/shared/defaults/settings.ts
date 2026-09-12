@@ -7,6 +7,7 @@ import { AIProvider } from '../ipc/providers.js'
 import { DEFAULT_AGENT_ID } from '../ipc/agents.js'
 import type {
   AppSettings,
+  BrowserProfile,
   ChannelSettings,
   GeneralSettings,
   ChatSettings,
@@ -14,7 +15,11 @@ import type {
   NetworkSettings,
   PluginPreferences,
 } from '../ipc/settings.js'
-import { DEFAULT_BROWSER_CDP_PORT, DEFAULT_SEMANTIC_MODEL_ID } from '../ipc/settings.js'
+import {
+  DEFAULT_BROWSER_CDP_PORT,
+  DEFAULT_BROWSER_PROFILE_ID,
+  DEFAULT_SEMANTIC_MODEL_ID,
+} from '../ipc/settings.js'
 import type { VoiceSettings } from '../ipc/voice.js'
 import type { MusicRadioSource, MusicSettings } from '../ipc/music.js'
 import type { ProviderConfig, EffectiveAISettings } from '../ipc/providers.js'
@@ -550,7 +555,14 @@ export function createDefaultSettings(): AppSettings {
     // 语义召回:默认关(拍点壬 a)。打开才下载模型。
     search: { semantic: { enabled: false, modelId: DEFAULT_SEMANTIC_MODEL_ID } },
     // 内置浏览器的 CDP 口:默认关(拍点 ②)。开着 = 本机任何程序都能驱动它。
-    browser: { cdp: { enabled: false, port: DEFAULT_BROWSER_CDP_PORT } },
+    browser: {
+      cdp: { enabled: false, port: DEFAULT_BROWSER_CDP_PORT },
+      // 身份名册出厂一行。`name` 是**空串**而不是「默认」三个字:名册是数据,
+      // 没起过名的那一行由 UI 用字典画(B3-b)。
+      profiles: [{ id: DEFAULT_BROWSER_PROFILE_ID, name: '' }],
+      defaultProfile: DEFAULT_BROWSER_PROFILE_ID,
+      searchEngine: DEFAULT_BROWSER_SEARCH_ENGINE,
+    },
   }
 }
 
@@ -683,6 +695,13 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
         enabled: settings.browser?.cdp?.enabled === true,
         port: normalizeCdpPort(settings.browser?.cdp?.port),
       },
+      // 身份名册与缺省身份**一起归一**:两格互相约束(缺省必须指着名册里
+      // 真有的那一行),分开归一必然出现「指着一个已删身份」的组合。
+      ...normalizeBrowserProfiles(settings.browser?.profiles, settings.browser?.defaultProfile),
+      searchEngine:
+        typeof settings.browser?.searchEngine === 'string' && settings.browser.searchEngine
+          ? settings.browser.searchEngine
+          : DEFAULT_BROWSER_SEARCH_ENGINE,
     },
   }
 
@@ -939,6 +958,54 @@ function clampNumber(value: number | null | undefined, min: number, max: number,
  * `0`(Chromium 的随机口)明确不收:随机口没人发现得了,等于开了个谁都用不上的洞
  * —— 与 `electron/browser/cdp-flag.ts` 读侧那条判据逐字同一把尺子。
  */
+/**
+ * 出厂搜索引擎的 id。**字符串而不是联合类型**:可选那几家住在壳里
+ * (`apps/desktop-react/src/browser/omnibox.ts` 的 `BROWSER_SEARCH_ENGINES`),
+ * 而 `@shared` 不该认识壳。壳那一侧 `resolveBrowserSearchEngine` 对认不出的 id
+ * 自己回落,所以这里只负责「有一个非空串」。
+ */
+const DEFAULT_BROWSER_SEARCH_ENGINE = 'google'
+
+/**
+ * 身份名册的归一(B3-b)。**三条硬保证**,每一条都对着一种真会发生的坏账本:
+ *
+ *  ① **至少一行** —— 删到空(或整格缺席 / 不是数组)就回出厂那一行。空名册的
+ *     后果是每一格 tab 指着一个名册上没有的身份,设置页画不出、删不掉。
+ *  ② **id 去重、去空、去非法字符** —— id 直接拼进分区名 `persist:browser-<id>`,
+ *     一个斜杠或一个引号就是一个奇怪的分区(Chromium 不会报错,它会老老实实
+ *     给你一个新分区,而用户以为自己还登着)。只收 `[A-Za-z0-9_-]`。
+ *  ③ **缺省身份必须在名册里** —— 指着一个已删的身份 = 每开一格 tab 都落进一个
+ *     现建的空分区。不在就回第一行。
+ *
+ * 名字不归一(除了截断):那是人写的字,壳不替他改。
+ */
+function normalizeBrowserProfiles(
+  rawProfiles: unknown,
+  rawDefault: unknown
+): { profiles: BrowserProfile[]; defaultProfile: string } {
+  const seen = new Set<string>()
+  const profiles: BrowserProfile[] = []
+  for (const entry of Array.isArray(rawProfiles) ? rawProfiles : []) {
+    if (!entry || typeof entry !== 'object') continue
+    const row = entry as { id?: unknown; name?: unknown }
+    if (typeof row.id !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(row.id)) continue
+    if (seen.has(row.id)) continue
+    seen.add(row.id)
+    profiles.push({
+      id: row.id,
+      name: typeof row.name === 'string' ? row.name.slice(0, 64) : '',
+    })
+  }
+  if (profiles.length === 0) {
+    profiles.push({ id: DEFAULT_BROWSER_PROFILE_ID, name: '' })
+  }
+  const wanted = typeof rawDefault === 'string' ? rawDefault : ''
+  const defaultProfile = profiles.some(profile => profile.id === wanted)
+    ? wanted
+    : profiles[0]!.id
+  return { profiles, defaultProfile }
+}
+
 function normalizeCdpPort(value: unknown): number {
   if (typeof value !== 'number' || !Number.isInteger(value)) return DEFAULT_BROWSER_CDP_PORT
   if (value < 1 || value > 65535) return DEFAULT_BROWSER_CDP_PORT

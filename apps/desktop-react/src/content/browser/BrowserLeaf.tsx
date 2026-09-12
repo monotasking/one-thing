@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, Plus, RotateCw, X } from '../../components/icons'
+import { ArrowLeft, ArrowRight, Ellipsis, Plus, RotateCw, X } from '../../components/icons'
 import { FocusScope } from '../../focus/FocusScope'
 import { focusTree } from '../../focus/registry'
 import { IconButton } from '../../ui/IconButton'
@@ -19,12 +19,17 @@ import {
   type BrowserTabRow,
 } from '../../data/browser-source'
 import { resolveBrowserOmniboxInput, resolveBrowserSearchEngine } from '../../browser/omnibox'
+import { browserSettingsQuery } from '../../data/browser-settings-source'
+import { profileDisplayName } from '../settings/BrowserSettings'
+import { Tooltip } from '../../ui/Tooltip'
 import { closeBrowserFind, openBrowserFind, useBrowserFind } from '../../data/browser-find'
 import { useBrowserNotices } from '../../data/browser-notices'
 import { NativeViewSlot } from '../native-view/NativeViewSlot'
 import { WebPermissionCard } from '../permission/WebPermissionCard'
+import { BrowserActionsMenu } from './BrowserActionsMenu'
 import { BrowserDownloadRow } from './BrowserDownloadRow'
 import { BrowserFindBar } from './BrowserFindBar'
+import { BrowserStartPage } from './BrowserStartPage'
 import { browserRef } from './browser-ref'
 import { takeBrowserFocusRequest } from './focus-request'
 import s from './BrowserLeaf.module.css'
@@ -110,6 +115,21 @@ export function BrowserLeaf({ id }: { id: string }) {
   const find = useBrowserFind(id)
   const notices = useBrowserNotices(id)
   const slotRef = useRef<HTMLDivElement | null>(null)
+  /*
+   * 动作菜单开在哪一点(null = 没开)。**留在本地 state**,而不是像叶檐那张
+   * 动作表那样搬进一格 store —— 判据是「有没有第二个够不着彼此的开口」
+   * (`workbench/leaf-menu.ts` 那一段判词):这里两个开口(檐右端那颗 ⋯ 与
+   * 右键这条檐)都在**这一只组件**里,setState 够得着。
+   */
+  const [actionsAt, setActionsAt] = useState<{ x: number; y: number } | null>(null)
+  /*
+   * 身份名册(B3-b)。叶上只用它两件事:那枚身份丸的名字,以及「多于一格时才画」。
+   * `ensure()` 幂等,所以每片叶各调一次也只发一发。
+   */
+  const profiles = useQuery(browserSettingsQuery)
+  useEffect(() => {
+    void browserSettingsQuery.ensure()
+  }, [])
   /*
    * 地址栏那个 `<input>` 从**檐上现取**,而不是给 `ui/Input` 递一个 ref。
    *
@@ -240,7 +260,7 @@ export function BrowserLeaf({ id }: { id: string }) {
   /* ── 此宿主没有内嵌浏览器(`--mode web`)────────────────────────────── */
   if (!bridge) {
     return (
-      <div className={s.leaf} data-testid="browser-leaf" data-browser-state="no-host">
+      <div className={s.leaf} data-testid="browser-leaf" data-tab-id={id} data-browser-state="no-host">
         <p className={s.notice}>{t('browser.noHost')}</p>
       </div>
     )
@@ -257,7 +277,7 @@ export function BrowserLeaf({ id }: { id: string }) {
    */
   if (tabs.data && !row) {
     return (
-      <div className={s.leaf} data-testid="browser-leaf" data-browser-state="missing">
+      <div className={s.leaf} data-testid="browser-leaf" data-tab-id={id} data-browser-state="missing">
         <p className={s.notice}>{t('browser.gone')}</p>
         <Button onClick={() => closeBrowserLeaf(id)} data-testid="browser-gone-close">
           {t('common.close')}
@@ -268,6 +288,17 @@ export function BrowserLeaf({ id }: { id: string }) {
 
   const loading = row?.loading === true
   const known = row !== undefined
+  /*
+   * 身份丸上写什么(`null` = 不画)。三支:名册还没到 / 只有一格 / 这一格 tab
+   * 的身份在名册里认不出来(名册被手改过)—— 都不画。**不编一个名字出来**:
+   * 一枚写着「default」的丸比没有丸更让人困惑。
+   */
+  const profileBadge = ((): string | null => {
+    const rows = profiles.data?.profiles
+    if (!row || !rows || rows.length <= 1) return null
+    const mine = rows.find((profile) => profile.id === row.profile)
+    return mine ? profileDisplayName(mine, t) : null
+  })()
 
   return (
     <FocusScope
@@ -287,9 +318,29 @@ export function BrowserLeaf({ id }: { id: string }) {
           {...scopeProps}
           className={s.leaf}
           data-testid="browser-leaf"
+          /*
+            **这片叶画的是哪一格 tab** —— DOM 上的契约(B3-b)。从前门是拿占位格
+            的 `data-native-view` 当把手的,而起始页那一档根本不画占位格
+            (空标签页不报帧),于是那条把手对一格新标签页答不出东西。
+            把「这是哪一格」挂在叶自己身上,是因为它在**每一档**都成立。
+          */
+          data-tab-id={id}
           data-browser-state={loading ? 'loading' : known ? 'live' : 'unknown'}
         >
-          <div className={s.bar} ref={barRef}>
+          <div
+            className={s.bar}
+            ref={barRef}
+            /*
+              右键这条檐 = 开同一张动作表(「动作单产地 = 右键上下文菜单」)。
+              地址框自己那条右键**让开**(`e.target` 落在 `<input>` 上时不拦)——
+              人在一行输入框上右键要的是系统那张「粘贴 / 全选」。
+            */
+            onContextMenu={(e) => {
+              if (e.target instanceof HTMLInputElement) return
+              e.preventDefault()
+              setActionsAt({ x: e.clientX, y: e.clientY })
+            }}
+          >
             <IconButton
               icon={ArrowLeft}
               label={t('browser.back')}
@@ -346,11 +397,37 @@ export function BrowserLeaf({ id }: { id: string }) {
               placeholder={t('browser.addressPlaceholder')}
               data-testid="browser-address"
             />
+            {/*
+              身份丸(B3-b)。**只在名册多于一格时画** —— 一台只有一个身份的机器上
+              它说的是一句废话,而檐上每一格地都是从地址栏那里借来的。
+              它是**读数不是控件**:换身份是「以另一个身份打开此页」那条动作
+              (在 ⋯ 那张表里),不是就地把这一格 tab 的身份改掉 —— 一格 tab 的
+              身份是它的身份(`BrowserTabPatch` 里根本没有 profile 这一格)。
+            */}
+            {profileBadge !== null && (
+              <Tooltip content={t('browser.profileBadge', { name: profileBadge })}>
+                <span className={s.profile} data-testid="browser-profile-badge">
+                  {profileBadge}
+                </span>
+              </Tooltip>
+            )}
             <IconButton
               icon={Plus}
               label={t('browser.newTab')}
               onClick={() => void import('../browser-launcher').then((m) => m.openBrowser())}
               testId="browser-new-tab"
+            />
+            <IconButton
+              icon={Ellipsis}
+              label={t('browser.actions')}
+              disabled={!known}
+              onClick={(e) => {
+                // 钮那条路量的是**钮自己的矩形左下角**(与右键那条同一张表、
+                // 两个点),不是光标 —— 键盘按下去的那一下没有光标可言。
+                const rect = e.currentTarget.getBoundingClientRect()
+                setActionsAt({ x: rect.left, y: rect.bottom })
+              }}
+              testId="browser-actions"
             />
           </div>
           {/*
@@ -382,7 +459,31 @@ export function BrowserLeaf({ id }: { id: string }) {
           )}
           {/* 下载读数一行。画的永远是最近变动的那一条(判词同上)。 */}
           {notices.downloads[0] && <BrowserDownloadRow notice={notices.downloads[0]} />}
-          <NativeViewSlot viewId={id} scope="browser" elementRef={slotRef} />
+          {/*
+            **空标签页画壳自己的起始页,不画占位格**(B3-b)。这不是「在网页上面
+            盖一块 DOM」——原生视图永远压在 DOM 之上,盖不住;这里是**根本不报帧**,
+            于是 `layout` 那一侧那片视图保持 `setVisible(false)`(`register` 的第一句)。
+            判据是 `row.url` 为空,而它是**精确**的:一格开在某个地址上的 tab,
+            `createTabState` 那一刻 `url` 就已经是那个地址了(不必等 `did-navigate`),
+            所以「开着 URL 的 tab 先闪一下起始页」这件事结构上不存在。
+          */}
+          {known && !row.url ? (
+            <BrowserStartPage />
+          ) : (
+            <NativeViewSlot viewId={id} scope="browser" elementRef={slotRef} />
+          )}
+          {actionsAt && row && (
+            <BrowserActionsMenu
+              tab={row}
+              at={actionsAt}
+              onClose={() => setActionsAt(null)}
+              onOpenInProfile={(profile) => {
+                void import('../browser-launcher').then((m) =>
+                  m.openBrowser(row.url || undefined, { profile }),
+                )
+              }}
+            />
+          )}
         </div>
       )}
     </FocusScope>

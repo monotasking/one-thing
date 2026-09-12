@@ -22,7 +22,10 @@ import {
 
 /** 只带这一节要的两格 —— `AppSettings` 那 17 段与这件事无关。 */
 function settingsWith(cdp: { enabled: boolean; port: number } | undefined): Pick<AppSettings, 'browser'> {
-  return cdp ? { browser: { cdp } } : {}
+  // 名册那三格与这一节无关,但契约上它们是必填的 —— 补一份最小的(B3-b)。
+  return cdp
+    ? { browser: { cdp, profiles: [{ id: 'default', name: '' }], defaultProfile: 'default', searchEngine: 'google' } }
+    : {}
 }
 
 /** 单槽端口的替身:一个格子 + 读写两口,与真端口逐格同形。 */
