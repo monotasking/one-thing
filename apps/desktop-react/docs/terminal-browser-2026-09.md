@@ -406,6 +406,28 @@ B0-② 顺手核「registry 能不能列出挂载中的作用域」,不能就加
 | B1-a | `72c998f8` | `electron/browser/` 十二类 + `browser:` in-process provider + `browser_navigate` 效果类 + `untrusted-text`(`web_open`/`web_search` 同批)+ 删孤儿契约;ipcMain 1→2 递归扫描 |
 | B2′ | `6fba799b` | `browser.cdp` 设置键缺省关 9333(不给端口框)+ 一键装 chrome-devtools-mcp + `run/http.json.cdp` 由宿主按命令行填 |
 | T1 | `d6e31abb` | xterm 进壳、五档状态机、`gate:terminal` 八条(超量 2 万行零长帧);**两条真病顺带治**:①键位内核 `matchCombo` 把 ⌘ 与 Ctrl 当同一位 → 按下侧 `primaryPressedIn(e, platform)` + `offHandPressed`,`platform` 必填;②`TerminalService.handleExit` 的 `disposing` 守卫让 RPC `kill` 永不发死讯 → `exitSent` 闩 |
+| B2 | `76d98911` | 壳侧真浏览器:`browser` 内容种类 + 启动瓦 + `NativeViewSlot` + 键位下沉与焦点双向同步 + `gate:browser` 十一条 |
+| T2 | 本单 | 终端内查找(`@xterm/addon-search`,⌘F 进 `terminal.keys`,叶顶查找行四态)+ 组件级停靠**量了不做**(数字见下)+ 重载 detach 宿主调用点 + `gate:terminal` / `gate:browser` 定档进 `verify`(两档渲染层各一趟)|
 
 **T1 立下的判例**:启动瓦开出内容那一拍树上只有叶没有内容格,`focusIntoRefAfterCommit` 落空 → 「开的人点名、被开的那一格挂载时取走」(`registry.requestTerminalFocus`,与 `stage/summon.requestFocusOnOpen` 同族);`appendChild` 走 ref 回调不走 effect(子 effect 先于父,落焦那一刻 textarea 还不在文档里);目录瓦有同一缺口未动。**缺省拍**:`toggle:terminal` 出厂键读作主修饰键 + 反引号 → Win/Linux `Ctrl+\``、mac `⌘\``(macOS 把 ⌘\` 交给应用,单窗无冲突;今天没有绑定表达得出「就是 Ctrl 那一枚」,`DEFAULT_COMBOS` 行上标 ⚠️)。`gate-a11y` 起的是 server 宿主(`terminal: null`),终端那一屏永远等不到叶 → axe 进 `gate:terminal` ⑧。
 
+**T2 的三个结论**(2026-09-12):
+1. **组件级停靠:量了,不做。** 派工单那道题(同一片叶上 `session:A → terminal:X →
+   session:A` 会不会卸载重挂)在今天的产品里**凑不出来** —— 会卸载重挂的只有
+   「原位换 ref」(`store.replaceRef`),而壳里叫它的三处全在 `content/session-open.ts`,
+   换掉的一格恒是**会话那一格**(`leafSessionTabOf`)或那格保留键,一格终端标签
+   既不是前者也不是后者。终端真会走的两条路量出来是:**藏起来再拿回来**(切 tab,
+   `content-visibility`)prod 3–8ms / dev 6–14ms;**搬家**(⌘⇧↩ 铺满 / 还原,真的
+   卸载重挂 + `appendChild` 把屏幕 DOM 搬走)prod 15–24ms / dev 27–41ms;两条路上
+   ≥50ms 长帧**都是 0**。都在第 5 轴的 50ms 以内,所以 `workbench/kept-contents`
+   一个字不加(读数与判词进 `gate:terminal` ⑩,回归了会被抓住)。
+2. **浏览器 ⑩「每格 ~85ms」是门自己睡的。** B2 报的 688–712ms 里 **640ms 是
+   `delay(80) × 8`**;分段计时之后产品那一侧每格 `activate` 往返 prod 1–5ms /
+   dev 1–9ms、状态落定 1–6ms,冷轮(每格现建 `WebContentsView`)与热轮几乎同价。
+   所以 `tabSwitchMs` 直接吃第 5 轴原数 50ms,不给过渡值。**B2 报的「1–2 个 ≥50ms
+   长帧」也是量错了窗口**:那只 LoAF observer 是 `buffered: true` 起的,收的是整道
+   门的历史帧;切窗口之后逐格切换那一段**零长帧**。
+3. **遮挡回路是今天唯一一格达不到第 5 轴的**:实测 148–192ms(B2 三遍 160–239),
+   `BUDGET` 写 100ms(方案 §2.2-1 的口径),`TRANSITIONAL` dev 320 / prod 300 并
+   写明退场判据 —— 差的那一百多毫秒在壳这一侧的 `img.decode()` + 留一帧,治到
+   100ms 以内就删掉那两行。

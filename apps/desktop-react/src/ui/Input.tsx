@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, ReactNode } from 'react'
+import type { InputHTMLAttributes, ReactNode, Ref } from 'react'
 import s from './Input.module.css'
 
 /**
@@ -29,6 +29,15 @@ import s from './Input.module.css'
  * ──────────────────────────────────────────────────────────────────────
  */
 interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size' | 'prefix'> {
+  /**
+   * 那只 `<input>` 本身(T2 补口,与 `ui/IconButton.ref` 逐字同一条判据)。
+   *
+   * React 19 里 `ref` 就是一个普通 prop,经 `...rest` 落到 `<input>` 上本来就通;
+   * 缺的只是**类型** —— `InputHTMLAttributes` 上没有 `ref`。消费方要它做的是
+   * 「任意时刻把光标送回这只框」(终端查找行的 ⌘F 再按一下),那件事 `autoFocus`
+   * 答不了:它只管第一次挂载。
+   */
+  ref?: Ref<HTMLInputElement>
   value: string
   onValueChange: (v: string) => void
   size?: 'sm' | 'md' | 'lg'

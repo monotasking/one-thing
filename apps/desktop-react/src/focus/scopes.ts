@@ -2,6 +2,36 @@ import { TERMINAL_SCOPED_KEYS } from '../content/terminal/key-courtesy'
 import type { FocusScopeId, FocusScopeSpec, ScopedKey } from './types'
 
 /**
+ * 终端一条:⌘F = 在这块屏幕里查找(T2)。
+ *
+ * ── 为什么是**面域局部键**而不是全局命令 ────────────────────────────────
+ * 判据仍是那一句「一个键属不属于这一层,由它需不需要一个目标决定」:要找的是
+ * **这一格终端的回滚缓冲**,没有终端在场时它无处可去。
+ *
+ * ── 它与查看器的 ⌘F 撞不撞 ──────────────────────────────────────────────
+ * 不撞,与 `browser` 那条 ⌘L 逐字同一句:两个作用域的局部键,派发器按活动路径
+ * 由深到浅只问在场的那几格,同一刻至多一格在场。撞车表(`scopedCollisionsOf`)
+ * 会把它们列成一对同键 —— 那是**事实**不是错误:设置页据此说得出「⌘F 在终端里
+ * 是找这块屏幕,在查看器里是找这份文件」。
+ *
+ * ── 它与礼让表并排,次序是有意的 ────────────────────────────────────────
+ * 礼让表那几行(Win / Linux 的 `Ctrl+P/E/J/N/W`)说的是「这几个键归 PTY」,
+ * 这一条说的是「这一个键归应用」。两句话住在同一张 `keys` 上,下一个想往礼让
+ * 表里加字母的人一眼看得见还有谁在这块面上占着位子 —— `f` 不在礼让表里
+ * (`^F` 在 readline 里是「右移一格」,而右移一格有方向键;查找没有第二条路)。
+ *
+ * labelKey **新开一句**而不是复用查看器的 `viewer.findLabel`:那一句的原话是
+ * 「在这份文件里检索」—— 说的是文件,不是屏幕。i18n 纪律管的是「同一句话只该
+ * 有一个键」,这里是两句话。
+ */
+const TERMINAL_FIND_KEY: ScopedKey = {
+  scope: 'terminal',
+  combo: { meta: true, key: 'f' },
+  labelKey: 'terminal.find',
+  action: 'find',
+}
+
+/**
  * **作用域封闭表**(R0)。一格 = 一种「能接键盘的面」的**声明**:它的行为档、
  * 它的名字、它自己那几个局部键。树上有几份实例与这张表无关(§4.8)。
  *
@@ -196,7 +226,8 @@ export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
    *  · Esc **不声明** —— Esc 是 PTY 的键(vim 一秒按三次)。不传 = 不进 Esc
    *    候选表 = 派发器问不到人 = 不 `preventDefault` = xterm 照常把它发下去。
    *    与 `permission` / `music` 两格不声明 Esc 是同一句判词的三种用法;
-   *  · 局部键 = **键盘礼让表**。它是全表唯一一族「接住了什么都不做给应用、
+   *  · 局部键 = **键盘礼让表 + 一条 ⌘F**(T2,判词在 `TERMINAL_FIND_KEY` 上)。
+   *    礼让那一族是全表唯一一族「接住了什么都不做给应用、
    *    而是把这一下交给里面那台程序」的键 —— 判词与那五个字母是怎么选出来的,
    *    整段在 `content/terminal/key-courtesy.ts` 上(含它与方案原文的出入)。
    *    落点是 `TerminalLeaf` 注入的 `keyHandlers`。
@@ -206,7 +237,7 @@ export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
     id: 'terminal',
     kind: 'region',
     labelKey: 'item.terminal',
-    keys: TERMINAL_SCOPED_KEYS,
+    keys: [...TERMINAL_SCOPED_KEYS, TERMINAL_FIND_KEY],
   },
   music: { id: 'music', kind: 'region', labelKey: 'item.music' },
   /*

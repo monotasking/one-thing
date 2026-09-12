@@ -1610,5 +1610,12 @@ export const zh = {
   'terminal.aliveSection': '开着的终端',
   /* 键盘礼让那五行共用的一句(判词在 `content/terminal/key-courtesy.ts`)。 */
   'terminal.keyToPty': '交给终端',
+  /* 终端内查找(T2)。`terminal.find` 同时是 ⌘F 那条局部键在设置页键位表上的名字
+   * ——**不复用** `viewer.findLabel`(那一句写死了「文件」,这里找的是一块屏幕)。 */
+  'terminal.find': '在这块屏幕里查找',
+  'terminal.findPlaceholder': '查找',
+  'terminal.findPrev': '上一处',
+  'terminal.findNext': '下一处',
+  'terminal.findClose': '收起查找',
 
 } as const

@@ -23,6 +23,7 @@ function fakeScreen() {
   let size: { cols: number; rows: number } | null = null
   let onDataCb: ((data: string) => void) | undefined
   let onTitleCb: ((title: string) => void) | undefined
+  let onFindCb: ((results: { index: number; count: number }) => void) | undefined
   const screen: TerminalScreen & {
     written: string[]
     flush(): void
@@ -31,6 +32,10 @@ function fakeScreen() {
     setTitle(title: string): void
     resized: [number, number][]
     disposed: boolean
+    finds: [string, 'next' | 'previous'][]
+    cleared: number
+    findAnswer: boolean
+    report(index: number, count: number): void
   } = {
     element: { dataset: {} } as unknown as HTMLElement,
     cols: 80,
@@ -38,6 +43,9 @@ function fakeScreen() {
     written,
     resized: [],
     disposed: false,
+    finds: [],
+    cleared: 0,
+    findAnswer: true,
     write: (data, done) => {
       written.push(data)
       if (done) dones.push(done)
@@ -59,6 +67,18 @@ function fakeScreen() {
     onTitleChange: (cb) => {
       onTitleCb = cb
     },
+    /* 查找那三口(T2)。记事本只记「被问了什么」,答案由用例钉。 */
+    find: (term, direction) => {
+      screen.finds.push([term, direction])
+      return screen.findAnswer
+    },
+    clearFind: () => {
+      screen.cleared += 1
+    },
+    onFindResults: (cb) => {
+      onFindCb = cb
+    },
+    report: (index, count) => onFindCb?.({ index, count }),
     type: (data) => onDataCb?.(data),
     setTitle: (title) => onTitleCb?.(title),
     refreshFace: () => {},
@@ -318,5 +338,81 @@ describe('活标题三档', () => {
     expect(session.get().title).toBe('work')
     screen.setTitle('vim README.md')
     expect(session.get().title).toBe('vim README.md')
+  })
+})
+
+/**
+ * **查找那四档**(T2)。判词整段在 `session.ts` 的 `TerminalFindState` 上:
+ * 它住在实例上而不是组件里,因为「找的是什么词 / 屏幕上亮着哪几处」的寿命是
+ * 那格 PTY,不是这一次挂载。
+ *
+ * 反证(每条真跑过「拆掉即红」):
+ *  · 把 `setFindQuery` 里「空词 = 清高亮」那一支拆掉 → 「空词清高亮」红;
+ *  · 把 `runFind` 里 `if (!found)` 那一句拆掉 → 「找不到读数是 0」红;
+ *  · 把 `onFindResults` 回调开头那句 `if (!this.find.open) return` 拆掉 →
+ *    「收起之后迟到的读数不许再画上来」红。
+ */
+describe('终端内查找', () => {
+  it('开 → 打字 → 就地往下找一次(增量那一档由屏幕自己管)', async () => {
+    const { screen, session } = build()
+    await session.attach()
+    expect(session.get().find).toEqual({ open: false, query: '', index: -1, count: 0 })
+    session.openFind()
+    expect(session.get().find.open).toBe(true)
+    session.setFindQuery('err')
+    expect(screen.finds).toEqual([['err', 'next']])
+  })
+
+  it('空词清高亮、读数归零(**不是**去找一个空串)', async () => {
+    const { screen, session } = build()
+    await session.attach()
+    session.openFind()
+    session.setFindQuery('err')
+    screen.report(2, 17)
+    expect(session.get().find).toMatchObject({ index: 2, count: 17 })
+    screen.finds.length = 0
+    session.setFindQuery('')
+    expect(screen.finds).toEqual([])
+    expect(screen.cleared).toBe(1)
+    expect(session.get().find).toMatchObject({ query: '', index: -1, count: 0 })
+  })
+
+  it('找不到:读数是 0(装饰关着时这条布尔答案是唯一的读数来源)', async () => {
+    const { screen, session } = build()
+    await session.attach()
+    session.openFind()
+    screen.findAnswer = false
+    session.setFindQuery('nope')
+    expect(session.get().find).toMatchObject({ count: 0, index: -1 })
+  })
+
+  it('上一处 / 下一处按方向问屏幕;词空着时一格都不动', async () => {
+    const { screen, session } = build()
+    await session.attach()
+    session.openFind()
+    session.findNext()
+    session.findPrevious()
+    expect(screen.finds).toEqual([])
+    session.setFindQuery('err')
+    screen.finds.length = 0
+    session.findPrevious()
+    session.findNext()
+    expect(screen.finds).toEqual([
+      ['err', 'previous'],
+      ['err', 'next'],
+    ])
+  })
+
+  it('收起:清高亮、读数归零、**词留着**;迟到的读数不许再画上来', async () => {
+    const { screen, session } = build()
+    await session.attach()
+    session.openFind()
+    session.setFindQuery('err')
+    screen.report(0, 3)
+    session.closeFind()
+    expect(screen.cleared).toBe(1)
+    expect(session.get().find).toEqual({ open: false, query: 'err', index: -1, count: 0 })
+    screen.report(1, 9)
+    expect(session.get().find).toMatchObject({ index: -1, count: 0 })
   })
 })

@@ -660,6 +660,15 @@ const allTabs = (layout) => [
  * 所以这一条**必须跨两次进程**:同 store、同 user-data-dir 起第二遍,逐字比。
  * 反证:把 merge 里那两句换回 `normalizeRegions` / `normalizeHidden` → 第二次起窗
  * 时三个区域全没,中央区 leaf id 也换了,这一组四条一起红。
+ *
+ * ── 这道门里为什么再也不出现 `terminal` / `browser` 两块瓦(2026-09-12,T2)──
+ * 它们从 T1 / B2 起是**启动瓦**:右键菜单里那一排落点单选被瓦自己那几行替掉了
+ * (`Dock.tsx` 的 `menuLauncherRows` 那一支,判词在 `stage/launchers.ts` 文件头),
+ * 于是 `pickFromTileMenu(…, /^Left$/)` 再也点不到东西 —— 这道门从 T1 那一刻起
+ * 就是红的,而 T1 / B2 的交卷都没跑它。今天换成仍旧是**普通瓦**的那几块
+ * (`music` / `search` / `notifications`),量的东西一格没变:这道门问的是
+ * 「家具摆好之后关窗再起还在不在」,与哪一块瓦被摆无关。
+ * 启动瓦自己的落点由 `gate:terminal` / `gate:browser` 各自的门管。
  */
 async function sceneRestart(store, udd) {
   scene('① 重启:钉右 + 钉左 + 一扇浮窗 → 关窗 → 再起,三处逐字恢复(裁定 1 / A1)')
@@ -669,7 +678,7 @@ async function sceneRestart(store, udd) {
     if (!(await pickFromTileMenu(handle.page, 'diff', /^Right$|钉到右边|右栏/))) {
       throw new Error('Dock 菜单里没有「Right」那一行')
     }
-    if (!(await pickFromTileMenu(handle.page, 'terminal', /^Left$|钉到左边|左栏/))) {
+    if (!(await pickFromTileMenu(handle.page, 'music', /^Left$|钉到左边|左栏/))) {
       throw new Error('Dock 菜单里没有「Left」那一行')
     }
     if (!(await pickFromTileMenu(handle.page, 'providers', /^Float$|浮窗/))) {
@@ -790,7 +799,15 @@ async function sceneFull(handle) {
     throw new Error('Dock 菜单里没有「Full screen」那一行')
   }
   check('A9 前提:全屏又铺上来了', (await read(page)).full)
-  await clickTile(page, 'browser')
+  /*
+   * 被召唤的那一块换成 `notifications`(原来是 `browser`,B2 之后它是启动瓦 ——
+   * 点它开出来的是一格 `browser:<id>` 内容而不是 `panel:browser`,下面那条
+   * 「那块瓦真的开出来了」从此永远找不到那格 id。判词整段在这道门文件里
+   * `sceneRestart` 上头)。挑它而不是 `music`:这一场之前没人碰过它,**既没有
+   * 记忆也没有出厂档**,于是落在全局默认档(浮窗)—— 下面那条正是按「在浮窗里」
+   * 判的。
+   */
+  await clickTile(page, 'notifications')
   const after = await read(page)
   check('A9:召唤别的瓦 → 全屏层退掉了', !after.full)
   check(
@@ -800,7 +817,7 @@ async function sceneFull(handle) {
   )
   check(
     'A9:那块被召唤的瓦真的开出来了(四态第一格)',
-    after.floats.some((f) => f.tabs.some((t) => t.id === 'panel:browser')),
+    after.floats.some((f) => f.tabs.some((t) => t.id === 'panel:notifications')),
     JSON.stringify(after.floats.map((f) => f.tabs.map((t) => t.id))),
   )
   // 收拾现场:把那扇窗收回去,后面的场景各起各的进程,这里只保证不留脏。
@@ -827,8 +844,8 @@ async function sceneBudget(store, udd) {
     await setSize(app, page, SIZES[0].w, SIZES[0].h)
     for (const [tile, label] of [
       ['diff', /^Right$/],
-      ['terminal', /^Left$/],
-      ['browser', /^Top$/],
+      ['music', /^Left$/],
+      ['search', /^Top$/],
       ['providers', /^Bottom$/],
     ]) {
       await pickFromTileMenu(page, tile, label)
@@ -1037,7 +1054,7 @@ async function sceneFloats(store, udd) {
       `${JSON.stringify(first?.rect)} → ${JSON.stringify(back.floats[0]?.rect)}`,
     )
 
-    for (const tile of ['terminal', 'diff', 'browser']) {
+    for (const tile of ['music', 'diff', 'search']) {
       await pickFromTileMenu(page, tile, /^Float$/)
     }
     const many = await read(page)
@@ -1212,7 +1229,7 @@ async function sceneSpawn(store, udd) {
     await setSize(app, page, SIZES[0].w, SIZES[0].h)
     // 这四块瓦既没有记忆也没有出厂档 → 落在全局默认档(浮窗)。`files` 不在其中:
     // 它是启动瓦,点它走的是另一支(判词在 `stage/open-item.ts`)。
-    for (const tile of ['diff', 'terminal', 'browser', 'providers']) {
+    for (const tile of ['diff', 'music', 'search', 'providers']) {
       await clickTile(page, tile)
     }
     const many = await read(page)
@@ -1296,7 +1313,7 @@ async function sceneSummon(store, udd, sessions) {
       JSON.stringify(opened.shelves.left?.tabs.map((t) => t.id)),
     )
     // 往同一条边上再钉一块瓦,让目录那一格变成**非活动** tab。
-    await pickFromTileMenu(page, 'terminal', /^Left$/)
+    await pickFromTileMenu(page, 'music', /^Left$/)
     const stacked = await read(page)
     const orderBefore = stacked.shelves.left?.tabs.map((t) => t.id) ?? []
     check(
@@ -1501,7 +1518,7 @@ async function sceneCancel(store, udd, sessions) {
      * 反证:把 `EdgeShelf.onHandleDown` 里那只 `cancel` 回调挖掉 → 「厚度回去了」
      * 与「dragging 摘掉了」两条一起红(屏幕停在拖到一半那个数上)。
      */
-    await pickFromTileMenu(page, 'terminal', /^Left$/)
+    await pickFromTileMenu(page, 'music', /^Left$/)
     const shelfBefore = await shelfDragState(page, 'left')
     check('前提:左架子在,量得到它的厚度', Boolean(shelfBefore), JSON.stringify(shelfBefore))
     const shelfGrab = await shelfHandleGrab(page, 'left')
@@ -1691,7 +1708,7 @@ async function sceneShelfTabs(store, udd) {
      * 四块瓦挑的是**菜单里有「Right」那一行**的那几块:`files`(目录)与
      * `workspace` 的右键菜单是另一张表(「打开一个目录…」/ 空间清单),没有落点行。
      */
-    for (const tile of ['diff', 'terminal', 'browser', 'search']) {
+    for (const tile of ['diff', 'music', 'search', 'providers']) {
       if (!(await pickFromTileMenu(page, tile, /^Right$/))) {
         throw new Error(`Dock 菜单里没有「Right」那一行(瓦:${tile})`)
       }

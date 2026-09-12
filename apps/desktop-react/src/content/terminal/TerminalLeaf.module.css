@@ -32,3 +32,38 @@
   padding: var(--sp-2);
   overflow: hidden;
 }
+
+/* ── 查找行(T2)────────────────────────────────────────────────────────────
+ * 叶顶那一条。它与状态条是**两条**檐而不是一条:状态条说的是这格 PTY 的生死
+ * (attaching / detached / exited / dead),查找说的是人此刻在这块屏幕上找什么 ——
+ * 两件事可以同时成立(一格 `exited` 的终端照样要能翻回去找那行报错)。
+ * 次序上查找在最上:它是人刚刚亲手打开的那一行,该在离眼睛最近的地方。 */
+.find {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-2);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line-1);
+}
+
+/* 输入框吃掉这一行剩下的宽度;`min-width: 0` 是「结构行只截断不换行」那条挤压
+ * 纪律的地基(缺了它 flex 子项撑到内容宽,右边三颗钮被挤出去)。 */
+.findInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.findIcon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--text-3);
+}
+
+/* 读数(「3/17」/「0」)。等宽数字,免得翻页时这一格左右跳。 */
+.findCount {
+  flex: none;
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}

@@ -5,9 +5,13 @@ import { stageLauncherOf } from '../../../stage/launchers'
 import { FOCUS_SCOPES } from '../../../focus/scopes'
 import { findItem } from '../../../stage/items'
 import { configureTerminalPort } from '../../../data/terminal-port'
-import { configureTerminalScreenFactory, resetTerminalRegistry } from '../registry'
+import {
+  configureTerminalScreenFactory,
+  peekTerminalSession,
+  resetTerminalRegistry,
+} from '../registry'
 import { resetTerminalMemory, rememberTerminalCwd, terminalCwdOf } from '../terminal-memory'
-import { TerminalLeaf } from '../TerminalLeaf'
+import { findReadout, TerminalLeaf } from '../TerminalLeaf'
 import { TERMINAL_KIND } from '../terminal-ref'
 import { en } from '../../../i18n/en'
 import { zh } from '../../../i18n/zh'
@@ -25,7 +29,11 @@ import '../../terminal-launcher'
  * (第一个是 xterm 在 import 的那一刻就探 canvas,判词写在那一格上)。
  */
 
-function fakeScreen(): TerminalScreen {
+/**
+ * 这一组共用的那张记事本屏幕。**查找那三口由外面递进来**(T2):这一组要证的
+ * 是「读数怎么画、键怎么送」,而「找得到找不到」是屏幕那一侧的事。
+ */
+function fakeScreen(find?: Partial<TerminalScreen>): TerminalScreen {
   return {
     element: document.createElement('div'),
     cols: 80,
@@ -35,10 +43,14 @@ function fakeScreen(): TerminalScreen {
     resize: () => {},
     onData: () => {},
     onTitleChange: () => {},
+    find: () => true,
+    clearFind: () => {},
+    onFindResults: () => {},
     refreshFace: () => {},
     attachKeyGuard: () => {},
     focusScreen: () => {},
     dispose: () => {},
+    ...find,
   }
 }
 
@@ -163,7 +175,9 @@ describe('两处登记', () => {
 
   it('作用域声明三件:region 档、有局部键、**不认 Esc**(Esc 是 PTY 的键)', () => {
     expect(FOCUS_SCOPES.terminal.kind).toBe('region')
-    expect(FOCUS_SCOPES.terminal.keys?.length).toBe(5)
+    // 五行礼让(Win / Linux;jsdom 的 UA 不是 mac)+ 一条 ⌘F(T2)。
+    expect(FOCUS_SCOPES.terminal.keys?.length).toBe(6)
+    expect(FOCUS_SCOPES.terminal.keys?.some((k) => k.action === 'find')).toBe(true)
     expect(FOCUS_SCOPES.terminal.passThrough).toBeUndefined()
     expect(zh[FOCUS_SCOPES.terminal.labelKey]).toBeTruthy()
     expect(en[FOCUS_SCOPES.terminal.labelKey]).toBeTruthy()
@@ -184,5 +198,78 @@ describe('cwd 小账本', () => {
     expect(terminalCwdOf('t0')).toBeUndefined()
     expect(terminalCwdOf('t39')).toBe('/d39')
     expect(terminalCwdOf('t8')).toBe('/d8')
+  })
+})
+
+/**
+ * **查找行那四态**(T2)。状态表在 `session.ts` 的 `TerminalFindState` 上,
+ * 这里量的是它在屏幕上的那一半:什么时候画、读数写什么、两颗钮什么时候禁。
+ *
+ * 反证:把 `findReadout` 里「`count <= 0` 答 '0'」那一支改成 `return null`
+ * → 「开零命中:读数写 0」当场红。
+ */
+describe('查找行', () => {
+  async function mounted(screen?: Partial<TerminalScreen>) {
+    configureTerminalScreenFactory(() => fakeScreen(screen))
+    configureTerminalPort(portWith(live))
+    render(<TerminalLeaf id="t1" />)
+    await waitFor(() => expect(dom.getByTestId('terminal-leaf').dataset.terminalState).toBe('live'))
+    const session = peekTerminalSession('t1')
+    expect(session).toBeTruthy()
+    return session!
+  }
+
+  it('关:整行不画', async () => {
+    await mounted()
+    expect(dom.queryByTestId('terminal-find')).toBeNull()
+  })
+
+  it('开无输入:行在、读数不画、两颗钮禁着(禁令区:不给一颗按了没用的钮)', async () => {
+    const session = await mounted()
+    session.openFind()
+    await waitFor(() => expect(dom.getByTestId('terminal-find')).toBeTruthy())
+    expect(dom.queryByTestId('terminal-find-count')).toBeNull()
+    expect((dom.getByTestId('terminal-find-prev') as HTMLButtonElement).disabled).toBe(true)
+    expect((dom.getByTestId('terminal-find-next') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('开有命中:读数「3/17」', async () => {
+    let report: ((r: { index: number; count: number }) => void) | undefined
+    const session = await mounted({
+      onFindResults: (cb) => {
+        report = cb
+      },
+    })
+    session.openFind()
+    session.setFindQuery('err')
+    report?.({ index: 2, count: 17 })
+    await waitFor(() =>
+      expect(dom.getByTestId('terminal-find-count').textContent).toBe('3/17'),
+    )
+  })
+
+  it('开零命中:读数写「0」,**什么都不弹**', async () => {
+    const session = await mounted({ find: () => false })
+    session.openFind()
+    session.setFindQuery('nope')
+    await waitFor(() => expect(dom.getByTestId('terminal-find-count').textContent).toBe('0'))
+  })
+
+  it('那颗 × 收起这一行(Esc 走的是同一只 `closeFind`)', async () => {
+    const session = await mounted()
+    session.openFind()
+    await waitFor(() => expect(dom.getByTestId('terminal-find')).toBeTruthy())
+    dom.getByTestId('terminal-find-close').click()
+    await waitFor(() => expect(dom.queryByTestId('terminal-find')).toBeNull())
+  })
+})
+
+describe('读数三档(纯函数)', () => {
+  it('没词不画 / 零命中写 0 / 有命中写「第几 / 共几」', () => {
+    expect(findReadout({ query: '', index: -1, count: 0 })).toBeNull()
+    expect(findReadout({ query: 'x', index: -1, count: 0 })).toBe('0')
+    expect(findReadout({ query: 'x', index: 2, count: 17 })).toBe('3/17')
+    // 超出高亮上限时插件报 `-1`:只报总数,不编一个序号出来。
+    expect(findReadout({ query: 'x', index: -1, count: 9 })).toBe('9')
   })
 })

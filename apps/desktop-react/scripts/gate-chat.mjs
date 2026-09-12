@@ -174,9 +174,19 @@ async function typeIntoComposer(page, text) {
 }
 
 /** 屏幕上那棵树:按 DOM 序取 (id, role, 正文)。 */
+/**
+ * 屏幕上**活动那一层**的消息树。
+ *
+ * `[data-pane-on]` 那一段前缀不是装饰(2026-09-12,T2 顺手结清的一条存量红):
+ * 09-10 的视图停靠池之后,切走的那条会话**仍旧挂在 DOM 上**(`data-pane-kept`
+ * + `content-visibility: hidden`),整份 document 里因此同时躺着好几棵消息树。
+ * 不加前缀的话 ⑥ 那一条「新会话的聊天区是空的」永远等不到 —— 它数到的是上一条
+ * 会话停靠着的那棵。`gate:continuity` 的 `readView` 在 eca50552 就已经加了同一段
+ * 前缀,这道门那时漏了。
+ */
 function readScreenTree(page) {
   return page.evaluate(() =>
-    Array.from(document.querySelectorAll('[data-message-id]')).map(el => ({
+    Array.from(document.querySelectorAll('[data-pane-on] [data-message-id]')).map(el => ({
       id: el.getAttribute('data-message-id'),
       role: el.getAttribute('data-role'),
       text: el.textContent ?? '',

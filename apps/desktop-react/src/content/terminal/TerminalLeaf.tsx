@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { FocusScope } from '../../focus/FocusScope'
 import { Button } from '../../ui/Button'
+import { IconButton } from '../../ui/IconButton'
+import { Input } from '../../ui/Input'
+import { ChevronDown, ChevronUp, Search, X } from '../../components/icons'
 import { useT } from '../../i18n'
 import { usePanelVisibility } from '../visibility'
 import { useLiveTitleStore } from '../../stage/live-title'
@@ -48,6 +51,10 @@ import s from './TerminalLeaf.module.css'
  * ══════════════════════════════════════════════════════════════════════════
  * ② UI 生命状态
  * ══════════════════════════════════════════════════════════════════════════
+ *  · 查找行(T2)—— 与下面五档**正交**的一条檐:关 / 开无输入 / 开有命中
+ *                 (读数「3/17」)/ 开零命中(读数「0」,**不弹任何东西**)。
+ *                 四档与它为什么住在实例上,判词在 `session.ts` 的
+ *                 `TerminalFindState` 上;这只组件只负责画它与把键送进去;
  *  · attaching —— 状态条「正在接上…」;屏幕已在,输入还没意义;
  *  · live      —— **状态条整行不画**(没有消息就不占地方);
  *  · detached  —— 「已断开」+「重新连接」一颗钮。屏幕停在最后一帧;
@@ -76,7 +83,11 @@ import s from './TerminalLeaf.module.css'
  *    再 `session.focusScreen()` 一句 —— 那是**作用域内部**的移动,不跨作用域);
  *  · Esc **不声明** —— Esc 是 PTY 的键(vim 一秒按三次)。不进候选表 =
  *    派发器问不到人 = 不 `preventDefault` = xterm 照常把它发下去。
- *  · 局部键 = `key-courtesy.ts` 那五行,落点就是下面这张 `keyHandlers`。
+ *    **查找行里那一下 Esc 是另一回事**:它是**行内结构键**(第三层,不进任何
+ *    表)—— 光标在那只输入框里时 Esc 的意思是「收起这一行」,与「关一扇浮层」
+ *    不是一句话,所以它落在输入框自己的 `onKeyDown` 上,与 `⌘F` 那条局部键
+ *    分属两层。
+ *  · 局部键 = `key-courtesy.ts` 那五行 + 一条 ⌘F,落点就是下面这张 `keyHandlers`。
  */
 
 /** 一格实例的快照。`useSyncExternalStore` 订它自己那条线,不经任何 store。 */
@@ -96,13 +107,33 @@ function courtesyHandlers(session: TerminalSession): Record<string, () => void> 
   return out
 }
 
+/** 读数那一格的字面。**纯函数** —— 三档(不画 / 「0」/「3/17」)只有一个产地。 */
+export function findReadout(find: { query: string; index: number; count: number }): string | null {
+  if (!find.query) return null
+  if (find.count <= 0) return '0'
+  // `index` 是从 0 起的序号,`-1` = 插件还没说它停在第几处(超出高亮上限时就是
+  // 这一形)—— 那时候只报总数,不编一个序号出来。
+  return find.index < 0 ? String(find.count) : `${find.index + 1}/${find.count}`
+}
+
 export function TerminalLeaf({ id }: { id: string }) {
   const t = useT()
   const session = terminalSessionOf(id)
   const snapshot = useTerminalSnapshot(session)
   const { visible } = usePanelVisibility()
   const hostRef = useRef<HTMLDivElement | null>(null)
+  const findInputRef = useRef<HTMLInputElement | null>(null)
   const busyRef = useRef(false)
+  /*
+   * **光标此刻在查找框里吗**。它存在只为一件事:那几个礼让键(Win / Linux 上的
+   * `Ctrl+P/E/J/N/W`)在人**打字**的时候不该被翻译成控制字节发给 PTY ——
+   * `Ctrl+W` 在一只输入框里是「删一个词」,不是「给 shell 删一个词」。
+   *
+   * 判据为什么是这一格布尔而不是去问 `document.activeElement`:那是 I3 的硬闸
+   * (`active-element-read`),而且这一问本来就该由**知道自己被聚焦了**的那只
+   * 输入框自己答 —— 它有 `onFocus`/`onBlur` 两口现成的。
+   */
+  const [typingInFind, setTypingInFind] = useState(false)
   /*
    * **「我是刚被人亲手开出来的那一格吗」**——一次性取走那张点名条(判词整段在
    * `registry.requestTerminalFocus` 上)。用 ref 的惰性初始化算**一次**:
@@ -174,6 +205,60 @@ export function TerminalLeaf({ id }: { id: string }) {
       })
   }, [id, snapshot.cwd])
 
+  /**
+   * ⌘F 的落点。**开着的时候再按一下 = 把光标送回输入框并全选**(与浏览器、
+   * 编辑器一族的手感一致:第二下不是「关掉」,是「重来一次」)。
+   *
+   * ── 为什么是「点名 + 挂载时取走」,不是 rAF ──────────────────────────────
+   * 第一版是 `session.openFind()` 之后排一发 `requestAnimationFrame` 去落焦。
+   * 真机门连跑四遍红了四遍(`gate:terminal` ⑨ 超时在「读数写出命中」):开的那
+   * 一拍输入框还没挂上来,而 rAF 与 React 的提交之间**没有先后保证** —— 回调
+   * 跑起来时 `findInputRef.current` 还是 null,焦点没送进去,后面那一串字进了
+   * 别人那里。这与 T1 那条判例是同一个病、同一个修法(`registry.requestTerminalFocus`
+   * 的头注释:「不在外面数帧重试 —— 那是拿时间窗口赌一个次序」):
+   * **开的人点名,被开的那一格挂载时自己取走**。ref 回调跑在提交阶段,挂载一定
+   * 排在点名之后,所以它没有窗口可言。
+   *
+   * 这一句里的 `focus()` 是**作用域内部**的移动(焦点已经在 `terminal` 这一格
+   * 上,只是从屏幕容器换到查找框),与 `screen.ts` 那一处逐字同一条判据。
+   */
+  const findFocusWanted = useRef(false)
+  const mountFindInput = useCallback((el: HTMLInputElement | null) => {
+    findInputRef.current = el
+    if (!el || !findFocusWanted.current) return
+    findFocusWanted.current = false
+    /*
+     * ui-consume-allow: focus-outside-focus — 作用域**内部**的移动,不跨作用域:
+     * 焦点已经在 `terminal` 这一格上,这一句只是把它从屏幕容器交给这一行的输入框。
+     * 与 `content/terminal/screen.ts` 的 `focusScreen` 是同一条判据的两半。
+     */
+    el.focus()
+    el.select()
+  }, [])
+
+  const openFind = useCallback(() => {
+    session.openFind()
+    const input = findInputRef.current
+    // 已经开着:这一下就是「回到输入框并全选」,当场做。
+    if (input) {
+      /* ui-consume-allow: focus-outside-focus — 同上:作用域内部的移动。 */
+      input.focus()
+      input.select()
+      return
+    }
+    // 还没开:点名,由那只输入框挂载时取走(判词在上面)。
+    findFocusWanted.current = true
+  }, [session])
+
+  const closeFind = useCallback(() => {
+    session.closeFind()
+    setTypingInFind(false)
+    findFocusWanted.current = false
+    session.focusScreen()
+  }, [session])
+
+  const find = snapshot.find
+  const readout = findReadout(find)
   const state = snapshot.state
   const bar =
     state === 'attaching'
@@ -201,10 +286,77 @@ export function TerminalLeaf({ id }: { id: string }) {
       owner={refId(terminalRef(id))}
       activateOnMount={openedByUser.current}
       restingTarget={() => hostRef.current}
-      keyHandlers={courtesyHandlers(session)}
+      /*
+       * 礼让键在**人打字的时候整族让开**(判词在 `typingInFind` 上);⌘F 那一条
+       * 任何时候都在 —— 它正是「再按一下回到输入框」的那条路。
+       */
+      keyHandlers={{ ...(typingInFind ? {} : courtesyHandlers(session)), find: openFind }}
     >
       {({ scopeProps }) => (
         <div {...scopeProps} className={s.leaf} data-testid="terminal-leaf" data-terminal-state={state}>
+          {find.open && (
+            <div className={s.find} data-testid="terminal-find">
+              <Input
+                ref={mountFindInput}
+                value={find.query}
+                onValueChange={(next) => session.setFindQuery(next)}
+                onFocus={() => setTypingInFind(true)}
+                onBlur={() => setTypingInFind(false)}
+                onKeyDown={(e) => {
+                  /*
+                   * 三个**行内结构键**(第三层,不进任何表):↵ 下一处、⇧↵ 上一处、
+                   * Esc 收起这一行并把键盘还给屏幕。它们是这套形态的语法,
+                   * 不是可改的键位 —— 判词在 `keymap/types.ts` 顶部。
+                   */
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    if (e.shiftKey) session.findPrevious()
+                    else session.findNext()
+                    return
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    closeFind()
+                  }
+                }}
+                size="sm"
+                prefix={<Search className={s.findIcon} strokeWidth={1.75} aria-hidden="true" />}
+                aria-label={t('terminal.find')}
+                placeholder={t('terminal.findPlaceholder')}
+                className={s.findInput}
+              />
+              {/* 读数三档只有一个产地(`findReadout`);没词的时候整格不画 ——
+                  「没内容就别占地方」与状态条那一行同一条。 */}
+              {readout !== null && (
+                <span className={s.findCount} data-testid="terminal-find-count" aria-live="polite">
+                  {readout}
+                </span>
+              )}
+              <IconButton
+                icon={ChevronUp}
+                label={t('terminal.findPrev')}
+                size="xs"
+                disabled={!find.query}
+                onClick={() => session.findPrevious()}
+                testId="terminal-find-prev"
+              />
+              <IconButton
+                icon={ChevronDown}
+                label={t('terminal.findNext')}
+                size="xs"
+                disabled={!find.query}
+                onClick={() => session.findNext()}
+                testId="terminal-find-next"
+              />
+              <IconButton
+                icon={X}
+                label={t('terminal.findClose')}
+                size="xs"
+                onClick={closeFind}
+                testId="terminal-find-close"
+              />
+            </div>
+          )}
           {bar && (
             <div className={s.bar} data-testid="terminal-status">
               <span>{bar.text}</span>

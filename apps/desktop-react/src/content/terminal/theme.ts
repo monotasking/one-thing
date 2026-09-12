@@ -48,10 +48,44 @@ const COLOR_VARS: Readonly<Record<string, string>> = {
 const FONT_FAMILY_VAR = '--font-mono'
 const FONT_SIZE_VAR = '--fs-meta'
 
+/** 查找高亮那两格(T2)。判词在 `TerminalFindFace` 上。 */
+const FIND_MATCH_VAR = '--term-find-match'
+const FIND_ACTIVE_VAR = '--term-find-active'
+
+/**
+ * **查找高亮的四格颜色**(T2)。
+ *
+ * ── 形状为什么在这里自己写一遍,而不是 import 搜索插件的类型 ────────────────
+ * `@xterm/addon-search` 的 `ISearchDecorationOptions` 逐字就是这四格,但把那条
+ * import 拉进这只文件会让「认识 `@xterm/*` 的地方」从一处变成两处
+ * (`screen.ts` 文件头那句话是有执法意义的:xterm 在 import 那一刻就去探 canvas)。
+ * 结构类型让这份自述与插件那份**恒等可用**,而边只长在 `screen.ts` 上。
+ *
+ * ── 为什么四格都是 `#RRGGBB`,不许带透明度 ──────────────────────────────
+ * 插件自己的文档写着 `matchBackground` 「must use #RRGGBB format」—— 它要把这个
+ * 值塞进 canvas 的一层装饰里自己合成。所以 `palette.css` 上那两格也是不透明的
+ * 实色,与同族的 `--term-selection`(rgba)刻意不同:那一格交给的是 xterm 的
+ * 选区,这两格交给的是装饰层。
+ */
+export interface TerminalFindFace {
+  matchBackground: string
+  matchOverviewRuler: string
+  activeMatchBackground: string
+  activeMatchColorOverviewRuler: string
+}
+
 export interface TerminalFace {
   theme: ITheme
   fontFamily?: string
   fontSize?: number
+  /**
+   * 查找高亮。**读不到那两格变量就是 undefined** —— 与颜色那一族「少一格就用
+   * xterm 的缺省」同一条判词,只是这里的后果要写明:装饰关掉之后插件的
+   * `onDidChangeResults` **不发**(它自己的文档写着「When decorations are
+   * enabled」),于是查找照样能找,只是读数那一格空着。兑一对假颜色出来会让
+   * 「这台机器上终端色板没加载」这件事再也看不出来。
+   */
+  find?: TerminalFindFace
 }
 
 /** `12px` / ` 12.5px ` → 12.5;读不出数就是 undefined(那一格不填)。 */
@@ -73,7 +107,25 @@ export function terminalFaceFrom(read: (name: string) => string): TerminalFace {
   }
   const fontFamily = read(FONT_FAMILY_VAR).trim() || undefined
   const fontSize = pxOf(read(FONT_SIZE_VAR))
-  return { theme: theme as ITheme, ...(fontFamily ? { fontFamily } : {}), ...(fontSize ? { fontSize } : {}) }
+  const match = read(FIND_MATCH_VAR).trim()
+  const active = read(FIND_ACTIVE_VAR).trim()
+  // 两格**一起有才算**:只有一半的装饰画出来是「命中与当前命中长一个样」,
+  // 那比不画更难读。
+  const find: TerminalFindFace | undefined =
+    match && active
+      ? {
+          matchBackground: match,
+          matchOverviewRuler: match,
+          activeMatchBackground: active,
+          activeMatchColorOverviewRuler: active,
+        }
+      : undefined
+  return {
+    theme: theme as ITheme,
+    ...(fontFamily ? { fontFamily } : {}),
+    ...(fontSize ? { fontSize } : {}),
+    ...(find ? { find } : {}),
+  }
 }
 
 /** 生产里的那一口读法。没有 document(SSR / 单测)时全空 = 全部用 xterm 缺省。 */

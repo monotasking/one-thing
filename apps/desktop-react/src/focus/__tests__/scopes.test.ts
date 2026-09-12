@@ -89,7 +89,7 @@ describe('FOCUS_SCOPES 封闭表', () => {
 })
 
 describe('局部键:查看器 / 文件树 / 检索面 / 会话总览 / 终端 / 浏览器 / 叶七格', () => {
-  it('查看器三条、文件树两条、检索面两条、总览一条、终端五条、浏览器一条、叶一条,别的作用域一条都没有', () => {
+  it('查看器三条、文件树两条、检索面两条、总览一条、终端六条、浏览器一条、叶一条,别的作用域一条都没有', () => {
     expect(focusScopeKeysOf('viewer').map((k) => k.action)).toEqual(['save', 'jump', 'find'])
     expect(focusScopeKeysOf('files').map((k) => k.action)).toEqual(['detail', 'detail'])
     // 检索重建 S4b:⌘[ / ⌘] = 查询历史的后退 / 前进(§4.6,与浏览器地址栏同形)。
@@ -104,6 +104,11 @@ describe('局部键:查看器 / 文件树 / 检索面 / 会话总览 / 终端 / 
      * 里面那台程序」的键** —— 那五个字母(p/e/j/n/w)是按「出厂全局表占着、而
      * readline 又每天在按」挑出来的,判词整段在 `content/terminal/key-courtesy.ts`。
      * 表里加 / 减一个字母 → 这一条当场红。
+     *
+     * T2 在它们后面又加了一条 **⌘F**(终端内查找)。它与上面五行是**反着的**
+     * 一族:那五行说「这几个键归 PTY」,这一条说「这一个键归应用」——
+     * 两句话住在同一张表上,判词在 `scopes.ts` 的 `TERMINAL_FIND_KEY` 上。
+     * 拆掉它 → `gate:terminal` ⑨ 的查找行开不出来,这一条也当场红。
      */
     expect(focusScopeKeysOf('terminal').map((k) => k.action)).toEqual([
       'pty:p',
@@ -111,6 +116,7 @@ describe('局部键:查看器 / 文件树 / 检索面 / 会话总览 / 终端 / 
       'pty:j',
       'pty:n',
       'pty:w',
+      'find',
     ])
     /*
      * B2:⌘L = 回地址栏。它同时是一条**保留键**(会随全局命令一起推给主进程,

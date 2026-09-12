@@ -31,7 +31,9 @@
  *  ⑧ `run/http.json` 有 `cdp.port`,而且那个口的 `/json/list` 里有 `type:'page'` 的
  *     tab 页、标题对得上(chrome-devtools-mcp 的 `browser.pages()` 读的就是这张表);
  *  ⑨ 关标签 → `read tabs` 里没有它了;
- *  ⑩ **超量**:8 格 tab 全开,逐格切换,打表 ≥50ms 的长帧数与最长一帧;
+ *  ⑩ **超量**:8 格 tab 全开,**冷 / 热两轮**逐格切换并分段计时(activate 往返 /
+ *     状态落定),判热轮那一格与「这一段零长帧」——判词与两档阈值在 `BUDGET` /
+ *     `TRANSITIONAL` 上;
  *  ⑪ **axe 扫这一屏**(与 `gate:a11y` 同一套标签、同一个 legacy 模式)。
  *
  * ── ⑪ 为什么长在这道门上,而不是 `gate:a11y` 的第 N 屏 ────────────────────
@@ -53,7 +55,14 @@
  * **产品的 CDP 口与门自己的 CDP 分开**(B0-③):产品那一口由门写进 `run/cdp.json`,
  * 取一个高位随机端口;门驱动壳走的是 playwright 自己那条 inspector,两者不打架。
  *
- * 跑法:`npm run gate:browser`(先 `npm run app:build`)。
+ * ── 两档渲染层都跑(第 5 轴)──────────────────────────────────────────────
+ * **缺省跑 dev**(现起一台 vite,端口 5199 —— 绝不碰用户的 5175),`--prod` 吃
+ * `dist/` 产物。理由是第 5 轴那一句:用户跑的是 `electron:dev`,生产构建上量出来
+ * 的数对它不成立。dev 档里那台 vite 同时服务**两趟壳**(⑧ 另起的那一趟)。
+ *
+ * 跑法:
+ *   `npm run gate:browser`            —— dev 渲染层
+ *   `npm run gate:browser -- --prod`  —— prod 渲染层(吃 `npm run app:build` 的 dist)
  */
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
@@ -69,6 +78,71 @@ import electronBinary from 'electron'
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const mainEntry = path.join(appRoot, 'dist-electron/main.cjs')
+
+const PROD = process.argv.includes('--prod') || process.env.ONETHING_GATE_DIST === '1'
+const LANE = PROD ? 'prod' : 'dev'
+
+/**
+ * dev 档的 vite 端口。**不是 5175**(用户 `app:dev` 占着的那一口,`strictPort`),
+ * 也不是 5197 / 5198(`gate:chat-layout` / `gate:terminal` 各占一口)—— 三道门
+ * 可能挨着跑。
+ */
+const DEV_PORT = Number(process.env.ONETHING_GATE_VITE_PORT ?? 5199)
+
+/**
+ * ── 预算(T2 定档;体例照 `scripts/gate-chat-layout.mjs`)──────────────────
+ *
+ * 第 5 轴那张表在这道门上说得上话的有两格,原数照抄不改:
+ *  · **来回切 ≤ 50ms**(那张表第四行)—— 浏览器这一侧的「切」是换一格 tab:
+ *    主进程把上一片视图藏起来、把这一片的矩形摆好;
+ *  · **流式期间零 ≥50ms 长帧**(第五行)—— 这里没有流,但「逐格切换那一段里
+ *    渲染进程不许卡一帧」是同一句话。
+ * 第三格是这条线自己的:**遮挡换图 ≤ 100ms**(方案 §2.2-1 的「B0 量闪烁」——
+ * 盖上来到占位格铺上快照,人眼看得出来的那一下)。
+ */
+const BUDGET = {
+  /** ⑩ 一格 tab 切过去要多久(主进程 activate 那一趟的往返)。 */
+  tabSwitchMs: 50,
+  /** ⑩ 逐格切换那一段里不许出现的长帧门槛。 */
+  switchLongFrameMs: 50,
+  /** ⑥ 盖上来 → 占位格铺上快照的端到端回路。 */
+  occludeSnapshotMs: 100,
+}
+
+/**
+ * ── **过渡阈值**(T2;体例与退场判据逐字照 `gate-chat-layout` 的同名表)──────
+ *
+ * 两格今天达不到第 5 轴的原数,而且**两档渲染层都达不到** —— 所以两档各一列,
+ * 每一行写实测来源与退场判据(那一格在这一档上真的达标之后,**删掉这里对应的
+ * 行**,不是把它改小)。抬 `BUDGET` 是改法,让它恒红只会被人加 `|| true`。
+ *
+ * **`tabSwitchMs` 没有过渡值,而那是量出来的,不是省出来的**:B2 那一版报的
+ * 「8 格逐格切换 688–712ms」里 **640ms 是门自己 `delay(80)` 睡的**,产品那一侧
+ * 每格 `activate` 往返 prod 1–5ms / dev 2–8ms(冷轮与热轮几乎同价 —— 惰性建视图
+ * 不在这一趟的同步路上)。所以它直接吃第 5 轴原数 50ms,余量一个数量级。
+ *
+ * ① **遮挡回路**(`occludeSnapshotMs`):B2 实测 160–239ms,B0 量到主进程那半程
+ *    p50 18–29 / p95 54–96ms —— 差的那一百多毫秒在**壳这一侧**:收 `snapshot`
+ *    推送 → `img.decode()` → 下一帧再显(B2 有意留的一帧,判词在 `NativeViewSlot`)。
+ *    退场判据:那条换图链治到 100ms 以内(B3 的 `img.decode()` 预热 / 直接用
+ *    `createImageBitmap`),删掉这两行。
+ */
+const TRANSITIONAL = {
+  dev: { occludeSnapshotMs: 320 },
+  prod: { occludeSnapshotMs: 300 },
+}
+
+/** 这一档下某一格的判据(有过渡值就用过渡值,没有就是第 5 轴原数)。 */
+function budgetOf(key) {
+  return key in TRANSITIONAL[LANE] ? TRANSITIONAL[LANE][key] : BUDGET[key]
+}
+
+/** 判据后面那句「这是过渡档」的尾巴。没有过渡值的格子是空串。 */
+function laneNote(key) {
+  return key in TRANSITIONAL[LANE]
+    ? `(${LANE} **过渡档**;第 5 轴原数 ${BUDGET[key]}ms —— 达标之后删掉过渡表那一行)`
+    : ''
+}
 
 /** ③④ 的标记。**分两段拼**,免得脚本自己这一行被当成页面正文找到。 */
 const NONCE = `ONETHING_B2_${Math.random().toString(36).slice(2, 8)}`
@@ -200,20 +274,34 @@ async function main() {
   let app
   let child
   let pages
-  const report = {}
+  let vite
+  const report = { lane: LANE }
   try {
     await mkdir(path.join(store, 'run'), { recursive: true, mode: 0o700 })
     pages = await startPageServer()
     const pageUrl = (p = '/') => `http://127.0.0.1:${pages.port}${p}`
 
-    console.log('\n[1/10] 壳自己装配 core + 屏外窗(判词在文件头)')
+    let rendererUrl = ''
+    if (!PROD) {
+      console.log(`\n[0/10] dev 档:起一台 vite(端口 ${DEV_PORT},**不是用户的 5175**)`)
+      const { createServer } = await import('vite')
+      vite = await createServer({
+        configFile: path.join(appRoot, 'vite.config.ts'),
+        server: { port: DEV_PORT, strictPort: true },
+        logLevel: 'warn',
+      })
+      await vite.listen()
+      rendererUrl = vite.resolvedUrls?.local?.[0] ?? `http://127.0.0.1:${DEV_PORT}/`
+      console.log(`      ${rendererUrl}`)
+    }
+    console.log(`\n[1/10] 壳自己装配 core + 屏外窗(判词在文件头;${LANE} 档)`)
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
         ONETHING_STORE_PATH: store,
-        ONETHING_REACT_DEV_SERVER_URL: '',
+        ONETHING_REACT_DEV_SERVER_URL: rendererUrl,
         // 两个一起传:`HEADLESS` 管「别自己 show」,`OFFSCREEN` 管「摆到屏外、
         // 不抢焦点地 showInactive」。判词在 `electron/main.ts` 的 `GATE_OFFSCREEN` 上。
         ONETHING_GATE_HEADLESS: '1',
@@ -408,6 +496,15 @@ async function main() {
     )
     report.occludeMs = Date.now() - snapshotAt
     assert(shown === true, `⑥ 被遮时占位格铺上了快照(回路 ${report.occludeMs}ms)`)
+    /*
+     * **T2 起这一条判红**:遮挡换图是人眼看得见的那一下(方案 §2.2-1 的「B0 量
+     * 闪烁」)。第 5 轴口径 100ms 今天达不到 —— 实测与病因(差的一百多毫秒在壳
+     * 那一侧的 `img.decode()` + 留一帧)与退场判据全写在 `TRANSITIONAL` 上。
+     */
+    assert(
+      report.occludeMs <= budgetOf('occludeSnapshotMs'),
+      `⑥ 遮挡回路 ${report.occludeMs}ms ≤ ${budgetOf('occludeSnapshotMs')}ms${laneNote('occludeSnapshotMs')}`,
+    )
     await press(cdp, { key: 'Escape', code: 'Escape', keyCode: 27 })
     const back = await waitFor('盖的东西走了,图撤掉、视图回来', () =>
       page.evaluate(() =>
@@ -547,25 +644,90 @@ async function main() {
     )
     ids.length = 0
     ids.push(...all.map((r) => r.id))
-    const switchStart = Date.now()
-    for (const id of ids) {
-      await rpc(record, 'resources', 'do', { ref: `browser:${id}`, op: 'activate' })
-      await delay(80)
+
+    /**
+     * **一轮逐格切换,分段计时**(T2)。
+     *
+     * B2 那一版量的是「八格切完一共多少毫秒」= 688–712ms,读起来像「每格 ~85ms」。
+     * **那个数里 640ms 是门自己睡的**(每格之后 `delay(80)` 等事件落地),所以
+     * 它从来不是产品的钱。这一版把它拆开:
+     *  · `rpcMs`  —— `resources.do activate` 那一趟往返:主进程惰性建视图
+     *                (`new WebContentsView` + `loadURL`,只有**第一轮**有)+
+     *                `setBounds` / `setVisible`;
+     *  · `settleMs` —— 从 RPC 回来到 `read tabs` 里 `active` 真的换成它
+     *                (主进程状态投影落定);
+     *  · 两轮 —— **冷轮**(每格都要建视图)与**热轮**(全都建好了,只换矩形)。
+     *    门判的是热轮:那才是「切一格 tab」这件事本身的价钱;冷轮的实测走
+     *    `TRANSITIONAL`(判词与退场判据在那张表上)。
+     */
+    const runRound = async (label) => {
+      const laps = []
+      const started = Date.now()
+      for (const id of ids) {
+        const t0 = Date.now()
+        await rpc(record, 'resources', 'do', { ref: `browser:${id}`, op: 'activate' })
+        const rpcMs = Date.now() - t0
+        const t1 = Date.now()
+        await waitFor(
+          `tabs 里 active 换成 ${id}`,
+          async () => {
+            const tabs = await rpc(record, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+            return (tabs.value?.tabs ?? []).some((r) => r.id === id && r.active) ? true : undefined
+          },
+          10_000,
+        )
+        laps.push({ rpcMs, settleMs: Date.now() - t1 })
+        // 睡一下让事件走完再进下一格。**它不计入上面那两个数** —— B2 那一版正是
+        // 把它算进了总账,于是「每格 85ms」里 80ms 是门自己躺着的那一下。
+        await delay(80)
+      }
+      const worstRpc = Math.max(...laps.map((l) => l.rpcMs))
+      const worstSettle = Math.max(...laps.map((l) => l.settleMs))
+      console.log(
+        `      ⑩ ${label}:八格 activate 往返 ${laps.map((l) => l.rpcMs).join('/')}ms(最坏 ${worstRpc})`
+          + `;落定 ${laps.map((l) => l.settleMs).join('/')}ms(最坏 ${worstSettle})`
+          + `;这一轮墙上时间 ${Date.now() - started}ms(其中 ${ids.length * 80}ms 是门自己睡的)`,
+      )
+      return { laps, worstRpc, worstSettle, wallMs: Date.now() - started }
     }
-    report.switchMs = Date.now() - switchStart
+
+    /*
+     * **长帧只数这一段的**:上面那只 observer 是 `buffered: true` 起的(它连
+     * 这道门前面九步里的长帧都收着 —— 第一版没切窗口,于是 78 / 59ms 两个来自
+     * 开窗与首次导航的帧被算到了「逐格切换」头上,是一条读错了的红)。
+     */
+    const loafMark = await page.evaluate(() => window.__b2Loaf.frames.length)
+    const cold = await runRound('冷轮(每格都要现建 WebContentsView)')
+    const warm = await runRound('热轮(视图都在了,只换矩形)')
     await delay(600)
-    const loaf = await page.evaluate(() => {
+    const loaf = await page.evaluate((mark) => {
       const P = window.__b2Loaf
-      const frames = P?.frames ?? []
+      const frames = (P?.frames ?? []).slice(mark)
       return { frames: frames.length, long: frames.filter((d) => d >= 50), longest: Math.max(0, ...frames) }
-    })
+    }, loafMark)
     report.tabs = ids.length
     report.loaf = loaf
+    report.switchCold = cold
+    report.switchWarm = warm
+    // 旧那一格读数留着名字,但口径换成**净额**(减掉门自己睡的那一段)。
+    report.switchMs = cold.wallMs + warm.wallMs
+    report.switchNetMs = cold.wallMs + warm.wallMs - ids.length * 160
     console.log(
-      `      ⑩ 8 格全开 + 逐格切换共 ${report.switchMs}ms;≥50ms 的长帧 ${loaf.long.length} 个`
+      `      ⑩ 两轮共 ${report.switchMs}ms,减掉门自己睡的 ${ids.length * 160}ms 净 ${report.switchNetMs}ms`
+        + `;≥50ms 的长帧 ${loaf.long.length} 个`
         + `${loaf.long.length ? `(${loaf.long.join(', ')}ms)` : ''},最长一帧 ${loaf.longest}ms`,
     )
-    assert(true, '⑩ 超量读数已打表(本版不判红 —— 第一次有读数,阈值下一单按实测定)')
+    assert(
+      warm.worstRpc <= budgetOf('tabSwitchMs'),
+      `⑩ 热轮里最慢一格 activate ${warm.worstRpc}ms ≤ ${budgetOf('tabSwitchMs')}ms${laneNote('tabSwitchMs')}`
+        + `(冷轮最慢 ${cold.worstRpc}ms —— 那一格里含一次惰性建视图;两轮几乎同价,`
+        + `判词在 BUDGET 上那一段「640ms 是门自己睡的」)`,
+    )
+    assert(
+      loaf.long.length === 0,
+      `⑩ 逐格切换那一段渲染进程零 ≥${BUDGET.switchLongFrameMs}ms 长帧`
+        + `(实测 ${loaf.long.length} 个,最长一帧 ${loaf.longest}ms)`,
+    )
 
     await app.close()
     app = undefined
@@ -592,7 +754,8 @@ async function main() {
       env: {
         ...process.env,
         ONETHING_STORE_PATH: store,
-        ONETHING_REACT_DEV_SERVER_URL: '',
+        // 第二趟也跟着这一档走(dev 时那台 vite 还开着 —— 它服务两趟壳)。
+        ONETHING_REACT_DEV_SERVER_URL: rendererUrl,
         ONETHING_GATE_HEADLESS: '1',
         ONETHING_GATE_OFFSCREEN: '1',
       },
@@ -638,11 +801,12 @@ async function main() {
     await delay(1200)
     child = undefined
 
-    console.log('\n[browser-gate] ok —— 十一条全过')
+    console.log(`\n[browser-gate] ok(${LANE} 档)—— 十一条全过`)
     console.log(`[browser-gate] 读数:${JSON.stringify(report)}`)
   } finally {
     if (app) await app.close().catch(() => {})
     if (child) { try { child.kill('SIGKILL') } catch { /* 已经走了 */ } }
+    if (vite) await vite.close().catch(() => {})
     if (pages) await new Promise((resolve) => pages.server.close(resolve))
     await delay(600)
     await rm(store, { recursive: true, force: true })

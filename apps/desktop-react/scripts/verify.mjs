@@ -297,6 +297,28 @@ run('gate:layout', 'npm', ['run', '--silent', 'gate:layout'])
  */
 run('gate:chat-follow', 'npm', ['run', '--silent', 'gate:chat-follow'])
 run('gate:continuity', 'npm', ['run', '--silent', 'gate:continuity'])
+/*
+ * ── 终端与浏览器那两道门(T2,2026-09-12)────────────────────────────────────
+ *
+ * 进得来的理由与上面那几条同源,判据仍旧是「余量够不够、会不会随机器状况随机
+ * 变红」:
+ *  · 两道门的绝大多数断言**不是毫秒读数** —— 能力位真不真、召唤键开不开得出叶、
+ *    `printf` 的输出到没到屏幕上、查找读数写的是不是「第几 / 共几」、`resources`
+ *    自述列不列得出 `browser`、遮挡时占位格换没换图、`/json/list` 列不列得出
+ *    tab 页、axe 零违例:同一份代码跑一百遍是同一个答案。
+ *  · 真是毫秒的那三格余量都在一个数量级上:终端 `seq 1 20000` 期间的 ≥50ms 长帧
+ *    实测**恒 0**;浏览器热轮 activate 实测 1–6ms 对 50ms;遮挡回路实测 148–239ms
+ *    对过渡值 300 / 320ms(那一行连同退场判据写在 `gate-browser.mjs` 的
+ *    `TRANSITIONAL` 上)。
+ *
+ * **两档都跑**(第 5 轴写死的那一句:用户跑的是 `electron:dev`,生产构建上量出来
+ * 的数对它不成立)。prod 那一趟复用上面 build 出来的 `dist/`,所以它比 dev 便宜。
+ * 两道门都自己起窗、自己收尸,不连 5175、不碰 `~/.onething`。
+ */
+run('gate:terminal(dev)', 'npm', ['run', '--silent', 'gate:terminal'])
+run('gate:terminal(prod)', 'npm', ['run', '--silent', 'gate:terminal', '--', '--prod'])
+run('gate:browser(dev)', 'npm', ['run', '--silent', 'gate:browser'])
+run('gate:browser(prod)', 'npm', ['run', '--silent', 'gate:browser', '--', '--prod'])
 run('gate:chat-layout(dev)', 'npm', ['run', '--silent', 'gate:chat-layout'])
 run('gate:chat-layout(prod)', 'npm', ['run', '--silent', 'gate:chat-layout', '--', '--prod'])
 /*
@@ -309,5 +331,5 @@ process.stdout.write(
   '\n[verify] ok —— typecheck / lint(含 jsx-a11y)/ squeeze-gate / motion-gate / test / build'
     + ' / offline-fonts / buttonbase-css'
     + ' / 真机门(connect·data·theme·chat·files·search·monotone·squeeze·motion·a11y·focus·layout'
-    + '·chat-follow·continuity·chat-layout[dev+prod])全绿\n',
+    + '·chat-follow·continuity·terminal[dev+prod]·browser[dev+prod]·chat-layout[dev+prod])全绿\n',
 )

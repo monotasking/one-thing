@@ -1356,5 +1356,11 @@ export const en: Record<MessageKey, string> = {
   'terminal.newInDir': 'New in directory…',
   'terminal.aliveSection': 'Open terminals',
   'terminal.keyToPty': 'Send to terminal',
+  /* Find in terminal (T2). Not `viewer.findLabel` — that one says "file". */
+  'terminal.find': 'Find in this screen',
+  'terminal.findPlaceholder': 'Find',
+  'terminal.findPrev': 'Previous match',
+  'terminal.findNext': 'Next match',
+  'terminal.findClose': 'Close find',
 
 }

@@ -182,6 +182,13 @@
   --term-cursor: #7c6fa0;
   --term-selection: rgba(124, 111, 160, 0.22);
 
+  /* 终端内查找的两格高亮(T2)。**不透明实色**:xterm 的搜索装饰自己合成,
+     插件文档写死 `#RRGGBB`(判词在 `content/terminal/theme.ts` 的
+     `TerminalFindFace` 上)。取的是同族黄色的两档 —— 淡的铺满所有命中,
+     浓的只给当前那一处,两档在同一张底纸上分得开。 */
+  --term-find-match: #f2e9c8;
+  --term-find-active: #d0a215;
+
   --term-black: #100f0f;
   --term-red: #af3029;
   --term-green: #66800b;
@@ -205,6 +212,10 @@
   --term-fg: #cecdc3;
   --term-cursor: #b7a5dd;
   --term-selection: rgba(183, 165, 221, 0.28);
+
+  /* 暗档的同两格:淡的压在深底上是一块暖褐,浓的是亮一档的黄。 */
+  --term-find-match: #4a4020;
+  --term-find-active: #ad8301;
 
   --term-black: #100f0f;
   --term-red: #d14d41;

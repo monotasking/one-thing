@@ -37,7 +37,7 @@ function key(combo: Combo): string {
 }
 
 describe('面域局部键:声明这一头', () => {
-  it('今天有局部键的七格:查看器三条、文件树两条、检索面两条、总览一条、终端五条、浏览器一条、叶一条', () => {
+  it('今天有局部键的七格:查看器三条、文件树两条、检索面两条、总览一条、终端六条、浏览器一条、叶一条', () => {
     const withKeys = Object.values(FOCUS_SCOPES)
       .filter((spec) => (spec.keys?.length ?? 0) > 0)
       .map((spec) => spec.id)
@@ -50,12 +50,18 @@ describe('面域局部键:声明这一头', () => {
      * 局部先接 → 终端拿到焦点时这五下进 PTY,别处照旧是那五条全局命令。
      * 撞车由下面那条用例逐条说出口(撞车不是错误,但不许静默)。
      */
+    /*
+     * T2 又加了一条 **⌘F**(终端内查找)。它与上面五行**方向相反**:那五行把键
+     * 交给 PTY,这一条把键留给应用。它与查看器的 ⌘F 是一对同键 —— 两个作用域,
+     * 同一刻至多一格在场,撞车表会把它说出来(下面那条用例)。
+     */
     expect(focusScopeKeysOf('terminal').map((k) => key(k.combo))).toEqual([
       'mod+p',
       'mod+e',
       'mod+j',
       'mod+n',
       'mod+w',
+      'mod+f',
     ])
     /*
      * W1 拍点 ④:**⌘W 关当前 tab**。它是面域局部键而不是全局命令 —— 判据是

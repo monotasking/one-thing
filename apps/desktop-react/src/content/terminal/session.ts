@@ -1,6 +1,6 @@
 import { controlByteOf } from './key-courtesy'
 import type { TerminalPort } from '../../data/terminal-port'
-import type { TerminalScreen } from './screen'
+import type { TerminalFindDirection, TerminalScreen } from './screen'
 
 /**
  * **一格终端的实例**(T1,方案 §2.1-4;状态表 §3.1)。
@@ -38,6 +38,10 @@ import type { TerminalScreen } from './screen'
  *  · `exited`    `terminal:exit` 到了。屏幕保留(人要看最后那几行),输入禁用;
  *  · `dead`      attach 不上。账上有 id,机器上没有那格 PTY。
  *
+ * 与这五档**正交**的还有一格:查找行(T2)。它不是一种生死,所以不进这张表 ——
+ * 自己的四档写在 `TerminalFindState` 上,理由(为什么它住在实例上而不是组件里)
+ * 也在那儿。
+ *
  * 超量:一次 `seq 1 20000` 是两万条短帧。这一层**不攒不丢**(攒 = 延迟,丢 =
  * 撒谎),只按 `seq` 去重后原样写进 xterm —— 攒批是 core 那边 16ms flush 的事
  * (`service.wiring.ts`),重画节流是 xterm 自己的事。真机读数进 `gate:terminal` ⑤。
@@ -67,6 +71,32 @@ export const ACK_THRESHOLD_UNITS = 16 * 1024
 
 export type TerminalState = 'attaching' | 'live' | 'detached' | 'exited' | 'dead'
 
+/**
+ * **终端内查找的那一格状态**(T2)。
+ *
+ * ── 它为什么住在实例上,而不是叶那只组件的 `useState` ────────────────────
+ * 判据与「屏幕住在注册表里」逐字同一条:**这件事的寿命是那格 PTY,不是这次
+ * 挂载**。查找的高亮、选区、当前命中全在 xterm 那块缓冲里(DOM 搬家不丢),
+ * 把「开着没有 / 找的是什么词」放进组件 state 会让它们在一次换宿主(撕浮窗、
+ * 铺满、拖到别的叶)之后当场分叉:屏幕上还亮着十七处高亮,查找行却没了。
+ *
+ * 四档(状态表,与叶那三张表同页):
+ *  · 关        `open=false`,没有高亮;
+ *  · 开无输入  `open=true, query=''`,读数整格不画(禁令区:没内容就别占地方);
+ *  · 开有命中  `count>0`,读数「index+1/count」;
+ *  · 开零命中  `count===0 且 query 非空`,读数「0」—— **不弹**任何东西,
+ *              一个数字就是全部答案(零 Toast)。
+ */
+export interface TerminalFindState {
+  open: boolean
+  query: string
+  /** 当前命中的序号(从 0 起,`-1` = 没有)。 */
+  index: number
+  count: number
+}
+
+const FIND_CLOSED: TerminalFindState = { open: false, query: '', index: -1, count: 0 }
+
 export interface TerminalSnapshot {
   id: string
   state: TerminalState
@@ -78,6 +108,8 @@ export interface TerminalSnapshot {
   cwd?: string
   /** 最近一次往返的错话。屏幕上就地一行,零 Toast。 */
   error?: string
+  /** 查找行(T2)。判词整段在 `TerminalFindState` 上。 */
+  find: TerminalFindState
 }
 
 export interface TerminalSessionDeps {
@@ -92,6 +124,7 @@ export class TerminalSession {
   private fallbackTitle: string
   private cwd: string | undefined
   private error: string | undefined
+  private find: TerminalFindState = FIND_CLOSED
 
   /** 已经画过的最大 seq。去重与回放接口都按它判。 */
   private lastSeq = -1
@@ -126,6 +159,15 @@ export class TerminalSession {
     })
     screen.onTitleChange((title) => {
       this.oscTitle = title
+      this.publish()
+    })
+    /*
+     * 读数订**一次**(与上面两条同一手:一格实例的寿命里只订一回)。装饰关掉时
+     * 这一条永不回调 —— 那一档由 `runFind` 的布尔答案兜底,判词在那儿。
+     */
+    screen.onFindResults(({ index, count }) => {
+      if (!this.find.open) return
+      this.find = { ...this.find, index, count }
       this.publish()
     })
     this.offs.push(
@@ -258,6 +300,70 @@ export class TerminalSession {
     void this.send(controlByteOf(letter))
   }
 
+  /* ── 查找(T2)────────────────────────────────────────────────────────── */
+
+  /**
+   * 开查找行。**已经开着就只是重申**(⌘F 再按一下由叶把光标送回输入框并全选,
+   * 那是「落点」的事,不是这一层的)。
+   */
+  openFind(): void {
+    if (this.disposed || this.find.open) return
+    this.find = { ...this.find, open: true }
+    this.publish()
+  }
+
+  /**
+   * 收起查找行:清掉高亮,**词留着**(下次开还是它 —— 与浏览器、编辑器一族的
+   * 手感一致),读数归零(高亮都没了,再报一个数就是撒谎)。
+   */
+  closeFind(): void {
+    if (this.disposed || !this.find.open) return
+    this.deps.screen.clearFind()
+    this.find = { ...this.find, open: false, index: -1, count: 0 }
+    this.publish()
+  }
+
+  /**
+   * 人在输入框里打字。空词 = 清高亮(**不是**「找一个空串」),非空 = 就地往下
+   * 找一次(增量:选区随着打字长出去)。
+   */
+  setFindQuery(query: string): void {
+    if (this.disposed) return
+    this.find = { ...this.find, query }
+    if (!query) {
+      this.deps.screen.clearFind()
+      this.find = { ...this.find, index: -1, count: 0 }
+      this.publish()
+      return
+    }
+    this.runFind('next')
+  }
+
+  /** 下一处 / 上一处。词空着时一格都不动(那颗钮在叶那边也是禁着的)。 */
+  findNext(): void {
+    this.runFind('next')
+  }
+
+  findPrevious(): void {
+    this.runFind('previous')
+  }
+
+  /**
+   * 真正去找的那一句。
+   *
+   * **布尔答案只用来兜「零命中」那一档**:装饰开着时读数由
+   * `onFindResults` 说了算(它知道总共几处、此刻是第几处),而装饰关掉时那条
+   * 事件永不来 —— 这时候至少还答得出「一处都没有」,不至于让屏幕上那一格读数
+   * 停在上一次查询的数上。找到了却拿不到读数,就让读数保持原样:编一个
+   * 「1/1」出来会让「这台机器上终端色板没加载」这件事永远看不出来。
+   */
+  private runFind(direction: TerminalFindDirection): void {
+    if (this.disposed || !this.find.query) return
+    const found = this.deps.screen.find(this.find.query, direction)
+    if (!found) this.find = { ...this.find, index: -1, count: 0 }
+    this.publish()
+  }
+
   /* ── 尺寸 ────────────────────────────────────────────────────────────── */
 
   /**
@@ -321,6 +427,7 @@ export class TerminalSession {
       title: titleOf(this.oscTitle, this.cwd, this.fallbackTitle),
       ...(this.cwd ? { cwd: this.cwd } : {}),
       ...(this.error ? { error: this.error } : {}),
+      find: this.find,
     }
   }
 

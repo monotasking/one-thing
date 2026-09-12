@@ -107,8 +107,18 @@ describe('一行一个组合,名字与文案都对得上', () => {
     expect(en['terminal.keyToPty']).toBeTruthy()
   })
 
-  it('作用域表上装的就是这几行(声明只有一个产地)', () => {
-    expect(FOCUS_SCOPES.terminal.keys).toBe(TERMINAL_SCOPED_KEYS)
+  /**
+   * T2 之后这张作用域表上多了一条 ⌘F(终端内查找,判词在 `focus/scopes.ts` 的
+   * `TERMINAL_FIND_KEY` 上)。所以判据从「就是同一个数组」改成「**礼让那几行**
+   * 逐字来自这个产地」—— 要守的从来是后者:礼让表只有一个产地,而那一格作用域
+   * 上还可以有别的局部键。
+   */
+  it('作用域表上装着礼让那几行(声明只有一个产地)', () => {
+    const keys = FOCUS_SCOPES.terminal.keys ?? []
+    expect(keys.slice(0, TERMINAL_SCOPED_KEYS.length)).toEqual([...TERMINAL_SCOPED_KEYS])
+    // 多出来的那一条是 ⌘F,而且**不是**礼让键(它归应用,不交给 PTY)。
+    const extra = keys.slice(TERMINAL_SCOPED_KEYS.length)
+    expect(extra.map((k) => k.action)).toEqual(['find'])
   })
 })
 

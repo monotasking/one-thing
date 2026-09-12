@@ -26,7 +26,13 @@
  *     (它量的正是 T1-fix 修掉的那个真洞,判词写在那一步上头);
  *  ⑦ 点那一格 tab 上的 × → 叶没了、`terminal.list` 里没有活着的它(关 = 杀,
  *     方案 §2.1-8;**不走 ⌘W** —— 那个组合在终端里是礼让给 PTY 的)。
- *  ⑧ **axe 扫这一屏**(与 `gate:a11y` 同一套标签、同一个 legacy 模式)。
+ *  ⑧ **axe 扫这一屏**(与 `gate:a11y` 同一套标签、同一个 legacy 模式);
+ *  ⑨ **终端内查找**(T2):⌘F 开出查找行 → 输入刚打上屏的那串标记 → 读数写出
+ *     「1/1」→ Esc 收起并把键盘还给屏幕(这一条量的是**真的搜索插件**:上面那
+ *     一组单测用的是一张记事本屏幕,它证不了 xterm 那一侧真找得到);
+ *  ⑩ **组件级停靠的那一问**(T2):同一片叶上「会话 ↔ 终端」来回切,量最长帧与
+ *     「终端再现」耗时 —— 读数决定要不要把终端写进 `workbench/kept-contents`
+ *     (判词与结论写在那一步上头)。
  *
  * ── ⑧ 为什么长在这道门上,而不是 `gate:a11y` 的第九屏 ─────────────────────
  * 派工单写的是「`gate-a11y.mjs` 加终端一屏」。**那台 harness 里开不出终端**:
@@ -41,17 +47,28 @@
  * 要让那道门也照得到终端,前置是它改成「壳自当 core」那条起法 —— 那是一次
  * 动 13 屏夹具的改动,留账在 T1 交卷里。
  *
- * ⑤ 为什么不给阈值:`gate-chat-layout` 的 `BUDGET` 是**在真店规模夹具上量过**
- * 之后定的(壳 CLAUDE.md 第 5 轴)。终端这一路今天第一次有读数,拿一个凭空的
- * 数当门只会得到一条「抓不着的天花板」(那正是第 5 单留账里点名的说谎方式)。
- * 所以这一版把数打出来写进报告;下一单按实测定档。
+ * ── ⑤ 的阈值(T2 定档)────────────────────────────────────────────────────
+ * T1 那一版只打表不判红,理由是「终端这一路今天第一次有读数,拿一个凭空的数当门
+ * 只会得到一条抓不着的天花板」。**现在有实测了**,所以它按 `gate-chat-layout` 的
+ * 体例进 `BUDGET`:第 5 轴那张表的第五格原话是「流式期间零 ≥50ms 长帧」,而 T1 与
+ * T2 在两档渲染层上各连跑三遍量到的都是 **0 个** —— 一个真的抓得着的天花板。
+ * 过渡表 `TRANSITIONAL` 因此是**空的**:没有一格今天达不到,空着比填一行宽的数
+ * 诚实(那张表的退场判据就是「达标就删行」)。
+ *
+ * ── 两档渲染层都跑(第 5 轴)──────────────────────────────────────────────
+ * **缺省跑 dev**(现起一台 vite,端口另挑,绝不碰用户的 5175),`--prod` 吃
+ * `dist/` 产物。理由是第 5 轴那一句:用户跑的是 `electron:dev`,生产构建上量出来
+ * 的数对它不成立。两档的读数分别记在 `BUDGET` / `TRANSITIONAL` 旁边。
  *
  * ── 纪律(照 gate-music / gate-focus)────────────────────────────────────
  * 临时 store + 独立 `--user-data-dir` + `ONETHING_GATE_HEADLESS=1` + 只用 CDP
  * (`Input.dispatchKeyEvent` / `Input.insertText`,不动真光标、不抢前台),
  * 不连 5175,`~/.onething` 零改动,`finally` 里逐个收尸。
  *
- * 跑法:`npm run gate:terminal`(先 `npm run app:build`)。
+ * 跑法:
+ *   `npm run gate:terminal`            —— dev 渲染层
+ *   `npm run gate:terminal -- --prod`  —— prod 渲染层(吃 `npm run app:build` 的 dist)
+ * (两档都要 `npm run electron:build` 产出的 `dist-electron/main.cjs`。)
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -65,6 +82,45 @@ import electronBinary from 'electron'
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const mainEntry = path.join(appRoot, 'dist-electron/main.cjs')
+
+const PROD = process.argv.includes('--prod') || process.env.ONETHING_GATE_DIST === '1'
+const LANE = PROD ? 'prod' : 'dev'
+
+/**
+ * dev 档的 vite 端口。**不是 5175**(用户 `app:dev` 占着的那一口,`strictPort`),
+ * 也不是 5197(`gate:chat-layout` 占着的那一口)—— 两道门可能挨着跑。
+ */
+const DEV_PORT = Number(process.env.ONETHING_GATE_VITE_PORT ?? 5198)
+
+/**
+ * ── 预算(T2 定档;体例照 `scripts/gate-chat-layout.mjs`)──────────────────
+ *
+ * 第 5 轴那张表在这道门上只有一格说得上话:**流式期间零 ≥50ms 长帧**。终端的
+ * 「超量」是一次 `seq 1 20000`(两万条短帧),而它恰好就是那一格量的那件事。
+ *
+ * 另外两格是这一批新量的,判据与它们各自的判词写在命中处:⑨ 查找那一趟不计价
+ * (它是功能不是预算),⑩ 停靠那两个数今天**只打表**(判词在那一步上头:要不要
+ * 为它加一张表,由数字说了算)。
+ */
+const BUDGET = {
+  /** ⑤ 流式期间不许出现的长帧门槛(第 5 轴原数)。 */
+  streamLongFrameMs: 50,
+}
+
+/**
+ * ── **过渡阈值**:空的 ──────────────────────────────────────────────────
+ * `gate-chat-layout` 那张表存在是因为有两格今天真的达不到第 5 轴的原数。这道门
+ * 没有那样的格子:两档渲染层各连跑三遍,`seq 1 20000` 的 ≥50ms 长帧都是 0。
+ * 表留在这里是**形**不是摆设 —— 将来哪一格达不到,该做的事是在这里加一行并
+ * 写上实测来源与退场判据,而不是去改 `BUDGET`(判词整段在 gate-chat-layout 的
+ * 同名表上:抬预算 = 改法,让它恒红 = 迟早被人加 `|| true`)。
+ */
+const TRANSITIONAL = { dev: {}, prod: {} }
+
+/** 这一档下某一格的判据(有过渡值就用过渡值,没有就是第 5 轴原数)。 */
+function budgetOf(key) {
+  return key in TRANSITIONAL[LANE] ? TRANSITIONAL[LANE][key] : BUDGET[key]
+}
 
 /** ③ 的标记。**分两段拼**,免得脚本自己这一行在 `.xterm-rows` 里被找到。 */
 const MARK = `ONETHING_T1_${'ok'}`
@@ -157,10 +213,12 @@ const SUMMON_CAP = ON_MAC ? '⌘`' : 'Ctrl+`'
  * 一下按键。**只进这个窗口**(CDP `Input.dispatchKeyEvent`),不动真光标
  * (09-01 那条「真机输入探针禁抢用户的机器」)。
  *
- * `primary = true` = 按住这台机器的主修饰键(见 `PRIMARY_MODIFIER`)。
+ * `primary = true` = 按住这台机器的主修饰键(见 `PRIMARY_MODIFIER`);
+ * `shift = true` 再叠一枚 ⇧(⌘⇧↩ 那条全屏命令要它)。
  */
-async function press(cdp, { key, code, keyCode, text, primary = false, windowsVirtualKeyCode }) {
-  const modifiers = primary ? PRIMARY_MODIFIER : 0
+async function press(cdp, { key, code, keyCode, text, primary = false, shift = false, windowsVirtualKeyCode }) {
+  // CDP 的 modifiers 位:1 = Alt,2 = Ctrl,4 = Meta,8 = Shift。
+  const modifiers = (primary ? PRIMARY_MODIFIER : 0) | (shift ? 8 : 0)
   await cdp.send('Input.dispatchKeyEvent', {
     type: text ? 'keyDown' : 'rawKeyDown',
     key,
@@ -248,16 +306,30 @@ async function main() {
   const store = await mkdtemp(path.join(tmpdir(), 'terminal-gate-store-'))
   const userDataDir = await mkdtemp(path.join(tmpdir(), 'terminal-gate-userdata-'))
   let app
-  const report = {}
+  let vite
+  const report = { lane: LANE }
   try {
-    console.log('\n[1/8] 壳自己装配 core(不起 server —— 判词在文件头)')
+    let rendererUrl = ''
+    if (!PROD) {
+      console.log(`\n[0/10] dev 档:起一台 vite(端口 ${DEV_PORT},**不是用户的 5175**)`)
+      const { createServer } = await import('vite')
+      vite = await createServer({
+        configFile: path.join(appRoot, 'vite.config.ts'),
+        server: { port: DEV_PORT, strictPort: true },
+        logLevel: 'warn',
+      })
+      await vite.listen()
+      rendererUrl = vite.resolvedUrls?.local?.[0] ?? `http://127.0.0.1:${DEV_PORT}/`
+      console.log(`      ${rendererUrl}`)
+    }
+    console.log(`\n[1/10] 壳自己装配 core(不起 server —— 判词在文件头;${LANE} 档)`)
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
         ONETHING_STORE_PATH: store,
-        ONETHING_REACT_DEV_SERVER_URL: '',
+        ONETHING_REACT_DEV_SERVER_URL: rendererUrl,
         ONETHING_GATE_HEADLESS: '1',
       },
     })
@@ -284,7 +356,7 @@ async function main() {
     await installLoaf(page)
 
     console.log(
-      `\n[2/8] ${SUMMON_CAP} 召唤一格终端(主修饰键随平台,见 PRIMARY_MODIFIER)`,
+      `\n[2/10] ${SUMMON_CAP} 召唤一格终端(主修饰键随平台,见 PRIMARY_MODIFIER)`,
     )
     await press(cdp, { key: '`', code: 'Backquote', keyCode: 192, primary: true })
     const leaf = await waitFor('那格终端叶出现', () =>
@@ -304,7 +376,7 @@ async function main() {
     )
     assert(Boolean(focused), `② 焦点落在终端里(${focused.tag}.${focused.cls})`)
 
-    console.log('\n[3/8] 打一行命令 —— 后端真的 spawn 了一台 shell 吗')
+    console.log('\n[3/10] 打一行命令 —— 后端真的 spawn 了一台 shell 吗')
     await waitFor('终端接上了(live)', () =>
       page.evaluate(
         () =>
@@ -323,7 +395,46 @@ async function main() {
     })
     assert(true, `③ \`printf\` 的输出经 SSE 回到 xterm(屏幕上找到 ${MARK})`)
 
-    console.log('\n[4/8] 刷新页面 —— attach 回放把它找回来')
+    console.log('\n[4/10] ⌘F 查找 —— 真的搜索插件,不是那张记事本屏幕')
+    /*
+     * 上面 ③ 刚把 `MARK` 打上屏,所以这一趟找的就是它:一处命中,读数必须写
+     * 「1/1」。这一条量的是**单测量不到的那一半** —— `@xterm/addon-search` 真的
+     * 装上了、装饰真的开着(读数是插件的 `onDidChangeResults` 报回来的,装饰关掉
+     * 时那条事件根本不发)、⌘F 真的经由 `FOCUS_SCOPES.terminal.keys` 那条局部键
+     * 走到了叶上。
+     *
+     * 反证:把 `focus/scopes.ts` 里 `TERMINAL_FIND_KEY` 从 `terminal.keys` 上拆掉
+     * → 查找行开不出来,这一步当场超时。
+     */
+    await press(cdp, { key: 'f', code: 'KeyF', keyCode: 70, primary: true })
+    await waitFor('查找行出现', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="terminal-find"]'))),
+    )
+    assert(true, '⑨ ⌘F 开出查找行(局部键先接,全局命令轮不到)')
+    await cdp.send('Input.insertText', { text: MARK })
+    const readout = await waitFor('读数写出命中', () =>
+      page.evaluate(() => {
+        const el = document.querySelector('[data-testid="terminal-find-count"]')
+        const text = el?.textContent ?? ''
+        return text ? { text } : undefined
+      }),
+      15_000,
+    )
+    assert(
+      /^\d+\/\d+$/.test(readout.text),
+      `⑨ 读数是「第几 / 共几」的形(实测「${readout.text}」)`,
+    )
+    // Esc 在这一行是**行内结构键**:收起查找、把键盘还给屏幕(不进任何键表)。
+    await press(cdp, { key: 'Escape', code: 'Escape', keyCode: 27 })
+    const closedFind = await waitFor('Esc 收起查找行并把焦点还给屏幕', () =>
+      page.evaluate(() => {
+        if (document.querySelector('[data-testid="terminal-find"]')) return undefined
+        return document.activeElement?.closest('[data-terminal-screen]') ? true : undefined
+      }),
+    )
+    assert(closedFind === true, '⑨ Esc 收起查找行,键盘回到那块屏幕上')
+
+    console.log('\n[5/10] 刷新页面 —— attach 回放把它找回来')
     await page.reload()
     await waitFor('渲染层重新连上', async () => {
       const value = await page.evaluate(() => window.__d0 ?? null)
@@ -353,7 +464,7 @@ async function main() {
     )
     assert(refocused === true, '④b 再按一下召唤键:看得见没聚焦 → 只把键盘送进去')
 
-    console.log('\n[5/8] 喷两万行 —— 流式期间的长帧读数')
+    console.log('\n[6/10] 喷两万行 —— 流式期间的长帧读数')
     const mark = await loafMark(page)
     const frames = await sampleFrames(page, async () => {
       await cdp.send('Input.insertText', { text: 'seq 1 20000' })
@@ -373,9 +484,18 @@ async function main() {
         cost.long.length ? `(${cost.long.join(', ')}ms)` : ''
       };这一段走了 ${frames.frames} 帧,最长一帧间隔 ${frames.longestGap}ms`,
     )
-    assert(true, `⑤ 超量读数已打表(本版不判红 —— 判词在文件头)`)
+    /*
+     * **T2 起这一条判红**(第 5 轴第五格:流式期间零 ≥50ms 长帧)。判词与两档的
+     * 实测来源在文件头的「⑤ 的阈值」那一节;`budgetOf` 让将来真有一档达不到时
+     * 有一个写得下「过渡 + 退场判据」的地方,而不是回头去改 `BUDGET`。
+     */
+    assert(
+      cost.long.length === 0,
+      `⑤ 超量:seq 1 20000 期间零 ≥${budgetOf('streamLongFrameMs')}ms 长帧`
+        + `(实测 ${cost.long.length} 个,最长一帧间隔 ${frames.longestGap}ms)`,
+    )
 
-    console.log('\n[6/8] 经 RPC kill 杀掉 —— 死讯要走到屏幕上')
+    console.log('\n[7/10] 经 RPC kill 杀掉 —— 死讯要走到屏幕上')
     const list = await rpc(record, 'terminal', 'list', {})
     const alive = (list.terminals ?? []).filter((row) => !row.exited)
     assert(alive.length === 1, `杀之前 terminal.list 里恰好一格活着(${alive.length})`)
@@ -399,7 +519,7 @@ async function main() {
     )
     assert(exited.text.length > 0, `⑥ 经 RPC kill 之后屏幕上说了一句「${exited.text.trim()}」`)
 
-    console.log('\n[7/8] 关标签 = 杀 —— 账上不留残渣')
+    console.log('\n[8/10] 关标签 = 杀 —— 账上不留残渣')
     /*
      * 点那颗 ×。**不走 ⌘W** —— 那个组合在终端里是礼让给 PTY 的
      * (`content/terminal/key-courtesy.ts` 的五行之一),按下去是删一个词,
@@ -427,7 +547,7 @@ async function main() {
       `⑦ terminal.list 里没有活着的它了(整表 ${JSON.stringify(after.terminals ?? [])})`,
     )
 
-    console.log('\n[8/8] axe 扫这一屏(与 gate:a11y 同一套标签)')
+    console.log('\n[9/10] axe 扫这一屏(与 gate:a11y 同一套标签)')
     /*
      * 这一屏扫的是**终端刚被关掉之后**那台壳?不 —— 上面 ⑦ 把它关了,所以这里
      * 先开一格新的:axe 要扫的是**有终端在场**的那棵树(xterm 自己会往里长一堆
@@ -457,12 +577,152 @@ async function main() {
       `⑧ 终端这一屏 axe 零违例(过了 ${axe.passes.length} 条规则)`,
     )
 
+    console.log('\n[10/10] 组件级停靠的那一问:终端被藏起来、被搬家,各要多少钱')
+    /*
+     * ── 这一步在回答什么(T2 派工单第 2 条)──────────────────────────────
+     * 派工单的原话是「同一片叶上 `session:A → terminal:X → session:A` 的切换」,
+     * 判据是「≥50ms 就把终端写进 `workbench/kept-contents`」。
+     *
+     * **那道题在今天的产品里凑不出来,而这不是量法的问题,是事实**:会卸载重挂的
+     * 只有「原位换 ref」(`store.replaceRef`),而壳里叫它的三处全在
+     * `content/session-open.ts`,换掉的一格恒是**会话那一格**(`leafSessionTabOf`)
+     * 或那格保留键(`placeholderIndexOf`)—— 一格终端标签既不是前者也不是后者,
+     * 所以「点一条会话把终端顶掉」这条路不存在。终端与会话同处一叶时,来回切就是
+     * 切 tab:`PaneLeaf` 给每一格各挂一层,切换只翻 `content-visibility`。
+     *
+     * 所以这里量的是**终端真会走的那两条路**,把那个问题答完整:
+     *  (a) **藏起来再拿回来**(切 tab):同一片叶两格终端来回切 —— 这正是
+     *      `kept-contents` 那张表把「原位换 ref」治成的那一形,量它等于量
+     *      「治好之后能有多快」;
+     *  (b) **搬家**(换宿主):⌘⇧↩ 铺满 / 还原 —— 那是终端今天唯一一条真的
+     *      卸载重挂的路(全屏是另一层宿主),也就是 T1 那句「DOM 搬家不丢屏,
+     *      可搬家本身有代价」里说的代价。
+     * 结论(要不要为终端也开一张停靠表)按这两个数写在交卷里。
+     */
+    // 右键那块瓦 → 「新建终端」:两格终端会落进同一片叶(底架),于是有了两格标签。
+    await page.evaluate(() => {
+      const tile = document.querySelector('[data-testid="dock-tile-terminal"]')
+      if (!(tile instanceof HTMLElement)) return
+      const rect = tile.getBoundingClientRect()
+      tile.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          clientX: rect.left + rect.width / 2,
+          clientY: rect.top + rect.height / 2,
+        }),
+      )
+    })
+    const opened = await page.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll('[role="menuitem"]'))
+      const row = rows.find((el) => (el.textContent ?? '').trim() === 'New terminal')
+      if (!(row instanceof HTMLElement)) return rows.map((el) => el.textContent)
+      row.click()
+      return true
+    })
+    assert(opened === true, `⑩ 右键那块瓦 →「新建终端」(菜单里那几行:${JSON.stringify(opened)})`)
+    const seat = await waitFor('同一片叶上两格终端', () =>
+      page.evaluate(() => {
+        const leaves = Array.from(document.querySelectorAll('[data-pane-leaf]'))
+        for (const leaf of leaves) {
+          const ids = Array.from(leaf.querySelectorAll('[data-pane-tab]'))
+            .map((el) => el.getAttribute('data-pane-tab'))
+            .filter((id) => id && id.startsWith('terminal:'))
+          if (ids.length >= 2) return { leaf: leaf.getAttribute('data-pane-leaf'), a: ids[0], b: ids[1] }
+        }
+        return undefined
+      }),
+      25_000,
+    )
+    assert(Boolean(seat), `⑩ 同一片叶两格终端:${seat.a} / ${seat.b}`)
+
+    /**
+     * 一次切换的两个数:**最长帧**(LoAF)与**再现耗时**(点下去 → 那一层真的在
+     * 屏幕上,而且那块屏幕量得出高度 —— `content-visibility: hidden` 下它恒为 0,
+     * 所以这一句正是「终端再现」的判据)。
+     */
+    const switchTo = async (tabId) => {
+      const mark = await loafMark(page)
+      const ms = await page.evaluate(async (id) => {
+        const bar = document.querySelector(`[data-tab-id="${id}"]`)
+        if (!(bar instanceof HTMLElement)) return -1
+        const t0 = performance.now()
+        bar.click()
+        const ready = () => {
+          const layer = document.querySelector(`[data-pane-tab="${id}"][data-pane-on]`)
+          const host = layer?.querySelector('[data-terminal-screen]')
+          return Boolean(host && host.getBoundingClientRect().height > 0)
+        }
+        return await new Promise((resolve) => {
+          const tick = () => {
+            if (ready()) resolve(Math.round(performance.now() - t0))
+            else if (performance.now() - t0 > 5000) resolve(-1)
+            else requestAnimationFrame(tick)
+          }
+          requestAnimationFrame(tick)
+        })
+      }, tabId)
+      await delay(400)
+      const cost = await loafHarvest(page, mark)
+      return { ms, longest: cost.longest, long: cost.long.length }
+    }
+
+    const hide = []
+    for (const id of [seat.a, seat.b, seat.a, seat.b]) hide.push(await switchTo(id))
+    report.parkSwitch = hide
+    console.log(
+      `      ⑩(a)藏起来再拿回来(切 tab):再现 ${hide.map((r) => r.ms).join(' / ')}ms;`
+        + `最长帧 ${hide.map((r) => r.longest).join(' / ')}ms`,
+    )
+
+    /*
+     * (b)**搬家**:⌘⇧↩ 是 `workbench.toggleFull`(出厂键位)。全屏是另一层宿主,
+     * 所以那一格内容真的卸载重挂 —— `appendChild` 把同一块屏幕 DOM 从一棵树搬到
+     * 另一棵树(T1 的 D6 判例:屏幕不重建,所以缓冲、滚动位置、选区一个不丢)。
+     */
+    const toggleFull = async (wantFull) => {
+      const mark = await loafMark(page)
+      const t0 = Date.now()
+      await press(cdp, { key: 'Enter', code: 'Enter', keyCode: 13, primary: true, shift: true })
+      const ok = await waitFor(
+        wantFull ? '铺满之后那块屏幕回到屏幕上' : '还原之后那块屏幕回到屏幕上',
+        () =>
+          page.evaluate((full) => {
+            const host = document.querySelector('[data-terminal-screen]')
+            if (!host || host.getBoundingClientRect().height <= 0) return undefined
+            const inFull = Boolean(host.closest('[data-focus-scope="full-layer"]'))
+            return inFull === full ? true : undefined
+          }, wantFull),
+        10_000,
+      ).catch(() => false)
+      const ms = Date.now() - t0
+      await delay(400)
+      const cost = await loafHarvest(page, mark)
+      return { ok: ok === true, ms, longest: cost.longest, long: cost.long.length }
+    }
+    const full = await toggleFull(true)
+    const back = await toggleFull(false)
+    report.parkMove = { full, back }
+    console.log(
+      `      ⑩(b)搬家(⌘⇧↩ 铺满 / 还原):再现 ${full.ms} / ${back.ms}ms;`
+        + `最长帧 ${full.longest} / ${back.longest}ms`,
+    )
+    /*
+     * **本版只打表**(与 T1 的 ⑤ 同一条判词:第一次有读数,拿一个凭空的数当门
+     * 只会得到一条抓不着的天花板)。这里判的只有一件事 —— 那几下真的切成了
+     * (`-1` / `ok:false` = 五秒里那块屏幕没回来,那才是回归)。
+     */
+    assert(
+      hide.every((r) => r.ms >= 0) && full.ok && back.ok,
+      '⑩ 藏 / 搬两条路上那块屏幕每一次都真的回到了屏幕上(读数已打表,判词在这一步上头)',
+    )
+
     await app.close()
     app = undefined
-    console.log('\n[terminal-gate] ok —— 八条全过')
+    console.log(`\n[terminal-gate] ok(${LANE} 档)—— 十条全过`)
     console.log(`[terminal-gate] 读数:${JSON.stringify(report)}`)
   } finally {
     if (app) await app.close().catch(() => {})
+    if (vite) await vite.close().catch(() => {})
     await delay(600)
     await rm(store, { recursive: true, force: true })
     await rm(userDataDir, { recursive: true, force: true })

@@ -46,6 +46,8 @@ import { initializeUserSchedulerTasks } from '@onething/backend/wiring/scheduler
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
 import { applyShellNetworkProxySettings, createShellHostPorts } from './host-ports.js'
 import { createDesktopShutdownRequest } from './shutdown.js'
+// T2:页面重载时把「消费者走了」当场说给终端服务听(判词在那只文件的文件头)。
+import { installTerminalReloadDetach } from './terminal-reload.js'
 /*
  * ── 内嵌浏览器(B2 接线;整块的判词在 `electron/browser/index.ts` 的文件头)──
  * 三段,次序是硬的:①两句旗子必须在 app `ready` 之前(`appendSwitch` 之后
@@ -512,6 +514,13 @@ function createWindow(): BrowserWindow {
   window.on('enter-full-screen', pushFullScreen)
   window.on('leave-full-screen', pushFullScreen)
   window.webContents.on('did-finish-load', pushFullScreen)
+
+  /*
+   * 页面重载 = 终端那几份订阅证明性地没了(T2)。判据(主框架 / 非同文档 /
+   * 非首次)与整段病历在 `electron/terminal-reload.ts` 上;**关窗那条不接** ——
+   * 那条路上 `backend.dispose()` 会真的把 PTY 杀掉。
+   */
+  installTerminalReloadDetach(window.webContents)
 
   const devServerUrl = process.env.ONETHING_REACT_DEV_SERVER_URL
   if (devServerUrl) void window.loadURL(devServerUrl)

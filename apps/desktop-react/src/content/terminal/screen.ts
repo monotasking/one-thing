@@ -1,5 +1,6 @@
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { SearchAddon } from '@xterm/addon-search'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { appAlreadyTookKey } from './key-courtesy'
 import { configureTerminalScreenFactory } from './registry'
@@ -21,6 +22,14 @@ import '@xterm/xterm/css/xterm.css'
  * 颜色与字面由 `theme.ts` 从 `--term-*` 现算之后作为值交进去)。
  */
 
+/** 一次查找此刻的读数。`index` 从 0 起;`-1` = 没有活动命中(含超出高亮上限)。 */
+export interface TerminalFindResults {
+  index: number
+  count: number
+}
+
+export type TerminalFindDirection = 'next' | 'previous'
+
 export interface TerminalScreen {
   /** 这块屏幕的宿主元素。组件挂载时 `appendChild` 它,卸载时**不销毁**。 */
   readonly element: HTMLElement
@@ -40,6 +49,21 @@ export interface TerminalScreen {
   onData(cb: (data: string) => void): void
   /** OSC 标题(`\x1b]0;…\x07`)。活标题的第一顺位。 */
   onTitleChange(cb: (title: string) => void): void
+  /**
+   * 在这块屏幕的回滚缓冲里找一处。**答「这一次找到了没有」**。
+   *
+   * `incremental` 只在往下找时有意义(插件自己的规矩:它让选区随着人打字一格
+   * 一格长出去),所以那一格由**方向**决定,不给调用方一个开关 —— 一块屏幕
+   * 只该有一种查找手感。
+   */
+  find(term: string, direction: TerminalFindDirection): boolean
+  /** 收起查找:清掉高亮与选区。空词也走它。 */
+  clearFind(): void
+  /**
+   * 命中读数。**装饰关掉时永不回调**(插件的规矩,判词在 `theme.ts` 的
+   * `TerminalFace.find` 上)—— 那一档由调用方按 `find()` 的布尔答案兜底。
+   */
+  onFindResults(cb: (results: TerminalFindResults) => void): void
   /** 主题换了:把新的颜色与字面交进去。 */
   refreshFace(): void
   /** 键盘礼让那一行:应用已经拿走的键不再进 PTY(判据 = `defaultPrevented`)。 */
@@ -76,7 +100,16 @@ export function createXtermScreen(): TerminalScreen {
   const fitAddon = new FitAddon()
   term.loadAddon(fitAddon)
   term.loadAddon(new WebLinksAddon())
+  const searchAddon = new SearchAddon()
+  term.loadAddon(searchAddon)
   term.open(element)
+
+  /*
+   * 查找的装饰颜色随主题走,所以它是一格**可变**的选项而不是常量:`refreshFace`
+   * 换一份新的,下一次 `find()` 就画在新颜色上(已经画着的那几处由插件自己在
+   * 下一次搜索时重铺 —— 一次查找的寿命本来就只有「查找行开着」那一会儿)。
+   */
+  let findDecorations = face.find
 
   return {
     element,
@@ -109,11 +142,25 @@ export function createXtermScreen(): TerminalScreen {
     onTitleChange: (cb) => {
       term.onTitleChange(cb)
     },
+    find: (term_, direction) => {
+      const options = {
+        ...(findDecorations ? { decorations: findDecorations } : {}),
+        ...(direction === 'next' ? { incremental: true } : {}),
+      }
+      return direction === 'next'
+        ? searchAddon.findNext(term_, options)
+        : searchAddon.findPrevious(term_, options)
+    },
+    clearFind: () => searchAddon.clearDecorations(),
+    onFindResults: (cb) => {
+      searchAddon.onDidChangeResults((e) => cb({ index: e.resultIndex, count: e.resultCount }))
+    },
     refreshFace: () => {
       const next = currentTerminalFace()
       term.options.theme = next.theme
       if (next.fontFamily) term.options.fontFamily = next.fontFamily
       if (next.fontSize) term.options.fontSize = next.fontSize
+      findDecorations = next.find
     },
     attachKeyGuard: () => {
       /*

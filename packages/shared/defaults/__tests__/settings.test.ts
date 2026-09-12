@@ -568,7 +568,9 @@ describe('browser.cdp settings', () => {
   })
 
   it('端口不合法**回缺省,不夹** —— 夹一个端口是没有意义的(它是地址不是滑杆上的量)', () => {
-    const portOf = (port: unknown): number =>
+    // 参数写 `number | string` 而不是 `unknown`:下面五个调用点就是这两种,而
+    // `unknown` 进不了 `JsonObjectProperty`(存量 tsc 红,T2 顺手结清)。
+    const portOf = (port: number | string): number =>
       mergeSettings({ browser: { cdp: { enabled: true, port } } }).browser!.cdp.port
     // 0 = Chromium 的随机口:没人发现得了,等于开了个谁都用不上的洞。
     expect(portOf(0)).toBe(9333)

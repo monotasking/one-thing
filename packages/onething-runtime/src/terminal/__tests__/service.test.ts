@@ -217,6 +217,42 @@ describe('TerminalService', () => {
     expect(broadcaster.data.length).toBe(before)
   })
 
+  /**
+   * **窗口重载那一趟**(T2,宿主调用点在 `apps/desktop-react/electron/terminal-reload.ts`)。
+   *
+   * 重载 = 上一份订阅连同它欠着的那笔未回执账一起没了,而服务只看得见「回执停了」。
+   * 宿主说一句 `markAllDetached()` 之后,新的 attach 必须拿到一条**干净**的流:
+   * 代次 +1(旧回执作废)、账本归零(不许拿上一份消费者的欠账继续算)、
+   * ring 回放**一个字节不少**(人重载之后要看见重载之前那一屏)。
+   *
+   * 少了宿主那一句,这一趟要等 `ackStallMs`(5 秒)那只停滞表才走得完 ——
+   * 这条用例量的正是「不必等那五秒」。
+   */
+  it('reload roundtrip: detach then attach bumps the generation, zeroes the ledger, replays the ring', () => {
+    const { backend, service } = createHarness({ highWaterUnits: 4 })
+    const info = service.create({})
+    const first = service.attach(info.id)
+    const pty = backend.spawned[0].pty
+    pty.emitData('hello')
+    vi.advanceTimersByTime(FLUSH)
+    expect(pty.pauseCount).toBe(1)
+
+    // 壳那一侧重载:宿主把「消费者走了」当场说出来。
+    service.markAllDetached()
+    expect(pty.resumeCount).toBe(1)
+
+    const second = service.attach(info.id)
+    expect(second.success).toBe(true)
+    expect(second.generation).toBe((first.generation ?? 0) + 1)
+    expect(second.chunks?.map((c) => c.data).join('')).toContain('hello')
+    // 旧代次的回执一格都不许算进新账本 —— 它先被丢掉,所以新一段输出照旧会
+    // 在高水位上暂停(账本是从 0 开始重新攒的,不是接着上一份消费者的欠账)。
+    service.ack(info.id, 5, first.generation ?? 0)
+    pty.emitData('world')
+    vi.advanceTimersByTime(FLUSH)
+    expect(pty.pauseCount).toBe(2)
+  })
+
   it('auto-detaches when acks stall past the deadline', () => {
     const { backend, service } = createHarness({ highWaterUnits: 4, ackStallMs: 5000 })
     const info = service.create({})
