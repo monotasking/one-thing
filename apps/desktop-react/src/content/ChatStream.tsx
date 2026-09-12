@@ -1083,7 +1083,9 @@ const MessageRow = memo(function MessageRow({
     <article className={className} data-message-id={message.id} data-role={role}>
       {role === 'user' && (
         <div className={s.user}>
-          <UserMessageBody text={message.content} />
+          {/* 两格都给:`content` 是模型版(技能引用在它里面是整份 SKILL.md),
+              显示版住在 `contentParts` 里 —— 判据与理由在 user-message 文件头。 */}
+          <UserMessageBody text={message.content} parts={message.contentParts} />
         </div>
       )}
 

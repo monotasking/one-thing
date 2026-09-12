@@ -9,7 +9,11 @@ import { useStageStore } from '../stage/store'
  *  ① **形状** —— 一条技能变成命令表里的一行长什么样(名字一个字不改写,
  *     因为后端按它查表);
  *  ② **取数纪律** —— 懒拉一次、按 cwd 缓存、失败静默降级;
- *  ③ **筛** —— 关掉的技能不进表(引擎那头也认不出来)。
+ *  ③ **筛** —— 关掉的技能不进命令表(引擎那头也认不出来),但**进 byId**
+ *     (那张表回答的是「某条已经发出去过的引用,它的目录在哪」)。
+ *
+ * **「打开这条技能所在的目录」那三条路不在这儿** —— 它是个动作,住在
+ * `content/skill-open.ts`(壳的依赖方向是 content → data),测试同址。
  */
 
 const skill = (over: Partial<SkillDefinition> = {}): SkillDefinition =>
@@ -138,5 +142,33 @@ describe('筛:关掉的技能不进表', () => {
     })
     await useSkillsSource.getState().ensureSkills('/repo')
     expect(useSkillsSource.getState().commands.map((c) => c.name)).toEqual(['/skill:writing'])
+  })
+})
+
+describe('byId:回答「某条已经发出去过的引用,它的目录在哪」', () => {
+  it('与 commands 同一次取数填,一发 RPC 都不多', async () => {
+    await useSkillsSource.getState().ensureSkills('/repo')
+    expect(asked).toEqual(['/repo'])
+    expect(useSkillsSource.getState().byId.get('user/writing')).toEqual({
+      name: 'writing',
+      directoryPath: '/s',
+      source: 'user',
+    })
+  })
+
+  it('**不筛 enabled**(与命令表那半分家:今天关了不等于它没有目录)', async () => {
+    answer = async () => ({
+      success: true,
+      skills: [skill(), skill({ id: 'user/off', name: 'off', enabled: false })],
+    })
+    await useSkillsSource.getState().ensureSkills('/repo')
+    expect(useSkillsSource.getState().commands.map((c) => c.name)).toEqual(['/skill:writing'])
+    expect([...useSkillsSource.getState().byId.keys()]).toEqual(['user/writing', 'user/off'])
+  })
+
+  it('空串目录 = 没有(拿空路径开面板会开出一块无根的树)', async () => {
+    answer = async () => ({ success: true, skills: [skill({ directoryPath: '' })] })
+    await useSkillsSource.getState().ensureSkills('/repo')
+    expect(useSkillsSource.getState().byId.get('user/writing')?.directoryPath).toBeNull()
   })
 })

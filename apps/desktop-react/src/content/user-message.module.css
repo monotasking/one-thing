@@ -52,11 +52,15 @@
 }
 
 /*
- * 命令药丸 / 技能徽:**不可点**,所以是 span 不是钮 —— 屏幕上不该出现一个
- * 按下去没反应的东西。两者共用一套几何,只有色不同。
+ * 命令药丸 / 技能徽 / 提示词药丸:**不可点**,所以是 span 不是钮 —— 屏幕上不该
+ * 出现一个按下去没反应的东西。三者共用一套几何,只有色不同。
+ *
+ * (技能**引用**是另一回事:它带着 skillId,点了能打开那条技能所在的目录,
+ *  所以它是 `.skillChip` 那一族 —— 一枚真按钮。)
  */
 .command,
-.skill {
+.skill,
+.prompt {
   display: inline-flex;
   align-items: center;
   gap: var(--umsg-chip-gap);
@@ -77,4 +81,43 @@
 .skill {
   background: var(--umsg-skill-bg);
   color: var(--umsg-skill-fg);
+}
+
+.prompt {
+  background: var(--umsg-prompt-bg);
+  color: var(--umsg-prompt-fg);
+}
+
+/*
+ * 技能**引用** chip:与 `.ref`(文件 / 目录)同一套几何 —— 一枚真按钮 ——
+ * 只有色换成技能那一对。写成 `composes` 而不是复制一遍:几何只有一个产地,
+ * 改 `--umsg-chip-*` 时两族一起变。
+ */
+.skillChip {
+  composes: ref;
+  background: var(--umsg-skill-bg);
+  color: var(--umsg-skill-fg);
+  font-weight: 600;
+}
+
+/*
+ * hover 与 active 同一档:技能这一族的底色阶梯**在 --st-sel-hover 上就到顶了**
+ * (rest 已经站在 --st-sel 上,比文件 chip 高一级起步)。硬造第三档就是在 token
+ * 表外面发明一个色值 —— 宁可让按下与悬停读作同一档,也不开那个口子。
+ * 两条选择器合成一条:它们是同一个裁定,不是两条恰好撞了值。
+ */
+.skillChip:hover,
+.skillChip:active {
+  background: var(--umsg-skill-bg-hover);
+}
+
+/*
+ * pending:**不转圈**(spinner 只许在按钮内或状态栏,这是一枚行内小牌)——
+ * 压淡一档 + 指针改成等待,把「这一下已经收到了」说出来。
+ * 不用 `disabled`:一颗拿着焦点的钮变 disabled 会把焦点丢回 body(响应链 I1),
+ * 重复点由 JS 那格闸挡(见 SkillChip)。
+ */
+.skillChip[aria-busy='true'] {
+  opacity: var(--umsg-pending-opacity);
+  cursor: progress;
 }

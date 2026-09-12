@@ -1467,6 +1467,15 @@
   --ft-jvm: var(--face-g1-b);
   --ft-lua: var(--face-g0-b);
   --ft-web: var(--ws-violet);
+  /* 技能 chip **可点**那一形(09-12):底比不可点那枚再深一档,与文件 chip
+   * 的 hover/active 阶梯同构(rest → hover → active 各深一档),这样同一句话里
+   * 「能按的」与「只是个记号」在静止时就分得开,不用等鼠标过去。 */
+  --umsg-skill-bg-hover: var(--st-sel-hover);
+  /* 提示词引用那枚药丸:不可点,所以**不进强调色**——它是一条中性的记号。 */
+  --umsg-prompt-fg: var(--text-2);
+  --umsg-prompt-bg: var(--st-hover);
+  /* 异步动作在飞时压淡一档(spinner 只许在按钮内或状态栏,行内小牌不转圈)。 */
+  --umsg-pending-opacity: 0.55;
 
   /* 非语言族:图标已经把它们分开了,色只负责「不是源码」这一层。 */
   --ft-shell: var(--face-g2-b);

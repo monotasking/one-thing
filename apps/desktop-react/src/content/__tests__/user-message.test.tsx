@@ -1,27 +1,36 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
-import { segmentUserMessage, UserMessageBody } from '../user-message'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { segmentUserMessage, segmentUserParts, UserMessageBody } from '../user-message'
 import { useStageStore } from '../../stage/store'
+import type { UserContentPart } from '../user-message'
 
 /**
- * 用户气泡里的 `@路径` / `/命令`(2026-09-12)。
+ * 用户气泡里的 `@路径` / `/命令` / 技能引用(2026-09-12)。
  *
- * 两半分开量:**切分表**是纯函数,一条一条钉判据;**画**那一半只问三件事 ——
- * chip 出不出得来、点下去叫不叫得对人、五十个引用会不会炸。
+ * 两半分开量:**切分表**是纯函数(正文一张、部件一张),一条一条钉判据;
+ * **画**那一半只问四件事 —— chip 出不出得来、点下去叫不叫得对人、
+ * SKILL.md 正文有没有漏上屏、五十个引用会不会炸。
  */
 
 const openFile = vi.hoisted(() => vi.fn())
 const openDir = vi.hoisted(() => vi.fn())
+const openSkill = vi.hoisted(() => vi.fn(async () => true))
+const notified = vi.hoisted(() => vi.fn())
 
-// 打开那两条路各自拖着一整片 store(viewer-source / workbench / stage),
-// 这里量的是「叫对了谁」,不是那两条路自己 —— 它们有自己的用例。
+// 打开那三条路各自拖着一整片 store(viewer-source / workbench / stage / 技能表),
+// 这里量的是「叫对了谁」,不是那三条路自己 —— 它们有自己的用例。
 vi.mock('../viewer/open-target', () => ({ openFileInCurrentTarget: openFile }))
 vi.mock('../dir-open', () => ({ openDirectoryPanel: openDir }))
+vi.mock('../skill-open', () => ({ openSkillDirectory: openSkill }))
+vi.mock('../../services/notify', () => ({ notify: notified }))
 
 beforeEach(() => {
   useStageStore.setState({ locale: 'zh' })
   openFile.mockClear()
   openDir.mockClear()
+  notified.mockClear()
+  openSkill.mockReset()
+  openSkill.mockResolvedValue(true)
 })
 
 describe('切分表', () => {
@@ -119,7 +128,13 @@ describe('切分表', () => {
     // 带标点的那几种一起进来:剥尾巴是「还给正文」不是「丢掉」。
     const text = '/cd ~/x\n看 @/a.ts,和 @/dir/ 还有 a@b.com(@/c.v2.ts)。'
     const joined = segmentUserMessage(text)
-      .map((seg) => (seg.kind === 'text' ? seg.text : seg.kind === 'fileRef' || seg.kind === 'dirRef' ? `@${seg.path}` : seg.token))
+      .map((seg) => {
+        if (seg.kind === 'text') return seg.text
+        if (seg.kind === 'fileRef' || seg.kind === 'dirRef') return `@${seg.path}`
+        // 正文切出来的只可能是这三种;`skillRef` / `promptRef` 只从部件来。
+        if (seg.kind === 'command' || seg.kind === 'skill') return seg.token
+        throw new Error(`正文里不该切出 ${seg.kind}`)
+      })
       .join('')
     expect(joined).toBe(text)
   })
@@ -248,5 +263,205 @@ describe('画', () => {
   it('换行由 pre-wrap 保留 —— 切分不吃换行符', () => {
     const { container } = render(<UserMessageBody text={'第一行\n第二行 @/a.ts'} />)
     expect(container.textContent).toBe('第一行\n第二行 a.ts')
+  })
+})
+
+/* ── 部件那一半(09-12:`/skill:名` 发出去,气泡里是一整份 SKILL.md)────── */
+
+/** 引擎真的折出来的那一形(读数取自真账本 `7f0ab096…/events.jsonl` 第 19 行)。 */
+const SKILL_BODY = '# Lenovo VoiceConnector Scripts\n\nDeployed to /usr/local/freeswitch/scripts.'
+const skillPart = (over: Partial<UserContentPart> = {}): UserContentPart => ({
+  type: 'skill-ref',
+  skillId: 'user/lenovo-scripts',
+  name: 'lenovo-scripts',
+  content: SKILL_BODY,
+  ...over,
+})
+
+describe('部件切分表', () => {
+  it('text 部件照旧走正文那张表:`@路径` 成 chip、行首命令成药丸', () => {
+    expect(segmentUserParts([{ type: 'text', content: '/cd 看 @/a.ts' }])).toEqual([
+      { kind: 'command', token: '/cd' },
+      { kind: 'text', text: ' 看 ' },
+      { kind: 'fileRef', path: '/a.ts' },
+    ])
+  })
+
+  it('skill-ref → 可点那一种段(带 skillId),**正文一个字不进段**', () => {
+    const segs = segmentUserParts([skillPart(), { type: 'text', content: ' 帮我看看' }])
+    expect(segs).toEqual([
+      { kind: 'skillRef', skillId: 'user/lenovo-scripts', name: 'lenovo-scripts' },
+      { kind: 'text', text: ' 帮我看看' },
+    ])
+    expect(JSON.stringify(segs)).not.toContain('Lenovo VoiceConnector')
+  })
+
+  it('prompt-ref → 标题药丸', () => {
+    expect(segmentUserParts([{ type: 'prompt-ref', title: '周报' }])).toEqual([
+      { kind: 'promptRef', title: '周报' },
+    ])
+  })
+
+  it('不认识的部件一个字都不画(reasoning / image / provider-data 不是用户说的话)', () => {
+    expect(
+      segmentUserParts([
+        { type: 'reasoning', content: '模型自己想的' },
+        { type: 'image' } as UserContentPart,
+        { type: 'text', content: '嗨' },
+      ]),
+    ).toEqual([{ kind: 'text', text: '嗨' }])
+  })
+
+  it('skill-ref 没带 skillId 就不画 —— 一枚打不开任何东西的 chip 比没有更坏', () => {
+    expect(segmentUserParts([skillPart({ skillId: undefined })])).toEqual([])
+  })
+
+  it('name 缺席时退回 skillId(屏幕上总得有个认得出的名字)', () => {
+    expect(segmentUserParts([skillPart({ name: undefined })])).toEqual([
+      { kind: 'skillRef', skillId: 'user/lenovo-scripts', name: 'user/lenovo-scripts' },
+    ])
+  })
+
+  /**
+   * 命令词只认**整条消息**的开头那一个 —— 排在一枚部件后面的那截正文不是开头。
+   *
+   * 反证锚点:把 `appendText` 的 `atStart` 拆成恒真,这一条当场红
+   * (前一条不会红:`/skill:x 干活` 折出来那截是 `' 干活'`,本来就不以 `/` 起笔,
+   *  所以它量的是**形**,这一条量的才是**判据**)。
+   */
+  it('排在部件后面那截正文里的 `/x` 不是命令', () => {
+    expect(
+      segmentUserParts([
+        { type: 'prompt-ref', title: '周报' },
+        { type: 'text', content: '/cd ~/x' },
+      ]),
+    ).toEqual([
+      { kind: 'promptRef', title: '周报' },
+      { kind: 'text', text: '/cd ~/x' },
+    ])
+  })
+
+  it('`/skill:x 干活` 折出来的那截正文照旧是正文', () => {
+    expect(segmentUserParts([skillPart(), { type: 'text', content: ' 干活' }])).toEqual([
+      { kind: 'skillRef', skillId: 'user/lenovo-scripts', name: 'lenovo-scripts' },
+      { kind: 'text', text: ' 干活' },
+    ])
+  })
+
+  it('相邻的文字并成一段(剥回来的尾巴与后面那截本来就是同一句话)', () => {
+    expect(
+      segmentUserParts([
+        { type: 'text', content: '看 @/a.ts,' },
+        { type: 'text', content: '然后呢' },
+      ]),
+    ).toEqual([
+      { kind: 'text', text: '看 ' },
+      { kind: 'fileRef', path: '/a.ts' },
+      { kind: 'text', text: ',然后呢' },
+    ])
+  })
+})
+
+describe('画:有 contentParts 就按部件画', () => {
+  /** 账本上那条消息的 `content` 是**模型版** —— 整份 SKILL.md。 */
+  const modelContent = `<skill name="lenovo-scripts">\n${SKILL_BODY}\n</skill> 帮我看看`
+
+  it('**SKILL.md 正文一个字都不上屏**(这一单要治的病)', () => {
+    const { container } = render(
+      <UserMessageBody
+        text={modelContent}
+        parts={[skillPart(), { type: 'text', content: ' 帮我看看' }]}
+      />,
+    )
+    expect(container.textContent).toBe('◇lenovo-scripts 帮我看看')
+    expect(container.textContent).not.toContain('Lenovo VoiceConnector')
+  })
+
+  /**
+   * **反证**:把「有 contentParts 就按部件画」拆掉(这里用不传 parts 模拟),
+   * 整份 SKILL.md 当场回到屏幕上 —— 那正是真机报障的原样。
+   */
+  it('反证:不按部件画时,整份 SKILL.md 原样上屏', () => {
+    const { container } = render(<UserMessageBody text={modelContent} />)
+    expect(container.textContent).toContain('Lenovo VoiceConnector')
+  })
+
+  it('空 parts 不算「有」—— 照旧切正文,不画成空气泡', () => {
+    const { container } = render(<UserMessageBody text="就一句话" parts={[]} />)
+    expect(container.textContent).toBe('就一句话')
+  })
+
+  it('技能 chip 是一枚真按钮,全名进无障碍名,禁 native title', () => {
+    render(<UserMessageBody text="" parts={[skillPart()]} />)
+    const chip = screen.getByRole('button', { name: '打开技能目录 lenovo-scripts' })
+    expect(chip.tagName).toBe('BUTTON')
+    expect(chip.getAttribute('data-ref-kind')).toBe('skillRef')
+    expect(chip.getAttribute('title')).toBeNull()
+    expect(chip.getAttribute('tabindex')).toBeNull()
+  })
+
+  it('点技能 chip = openSkillDirectory(skillId)(它那头再去开目录面板)', async () => {
+    render(<UserMessageBody text="" parts={[skillPart()]} />)
+    fireEvent.click(screen.getByRole('button'))
+    expect(openSkill).toHaveBeenCalledWith('user/lenovo-scripts')
+    await waitFor(() => expect(notified).not.toHaveBeenCalled())
+  })
+
+  it('pending:点下去那一瞬 aria-busy,回来之后撤 —— **不 disabled**(焦点不许掉回 body)', async () => {
+    let settle: (ok: boolean) => void = () => {}
+    openSkill.mockImplementation(() => new Promise<boolean>((resolve) => { settle = resolve }))
+    render(<UserMessageBody text="" parts={[skillPart()]} />)
+    const chip = screen.getByRole('button')
+    chip.focus()
+    fireEvent.click(chip)
+    await waitFor(() => expect(chip.getAttribute('aria-busy')).toBe('true'))
+    expect(chip.hasAttribute('disabled')).toBe(false)
+    expect(document.activeElement).toBe(chip)
+    // 在飞期间再点是恒等(重复点由那格闸挡住)。
+    fireEvent.click(chip)
+    expect(openSkill).toHaveBeenCalledTimes(1)
+    settle(true)
+    await waitFor(() => expect(chip.getAttribute('aria-busy')).toBeNull())
+  })
+
+  it('三条路全落空:notify 一条 warn(异步失败得有人说话)', async () => {
+    openSkill.mockResolvedValue(false)
+    render(<UserMessageBody text="" parts={[skillPart()]} />)
+    fireEvent.click(screen.getByRole('button'))
+    await waitFor(() => expect(notified).toHaveBeenCalledTimes(1))
+    expect(notified.mock.calls[0][0]).toMatchObject({
+      level: 'warn',
+      title: '打不开技能目录 lenovo-scripts',
+    })
+  })
+
+  it('prompt-ref 画成药丸、**不可点**(壳里还没有能打开提示词的面)', () => {
+    const { container } = render(
+      <UserMessageBody text="" parts={[{ type: 'prompt-ref', title: '周报' }]} />,
+    )
+    expect(container.textContent).toBe('[周报]')
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('prompt-ref 没标题时兜底一句人话', () => {
+    const { container } = render(
+      <UserMessageBody text="" parts={[{ type: 'prompt-ref' }]} />,
+    )
+    expect(container.textContent).toBe('[未命名提示词]')
+  })
+
+  it('超量:20 个技能引用 + 50 个文件引用,七十枚 chip 全在且正文零泄漏', () => {
+    const parts: UserContentPart[] = []
+    for (let i = 0; i < 20; i += 1) {
+      parts.push(skillPart({ skillId: `user/s-${i}`, name: `skill-${i}` }))
+      parts.push({ type: 'text', content: ' ' })
+    }
+    parts.push({
+      type: 'text',
+      content: Array.from({ length: 50 }, (_, i) => `@/Users/me/src/file-${i}.ts`).join(' '),
+    })
+    const { container } = render(<UserMessageBody text="" parts={parts} />)
+    expect(screen.getAllByRole('button')).toHaveLength(70)
+    expect(container.textContent).not.toContain('Lenovo VoiceConnector')
   })
 })

@@ -629,6 +629,12 @@ export const zh = {
    * 壳不认识的块 id **原样显示 id**,不进字典 —— 那是数据不是文案。 */
   'chat.contextDeltaTitle': '上下文更新',
   'chat.contextDeltaCount': '{name} {n}',
+  /* 技能引用那枚 chip(09-12):点了打开那条技能所在的目录。技能名是数据。
+   * 三条路全落空时那句 warn —— 不带详情,因为没有详情可看。 */
+  'chat.ref.openSkill': '打开技能目录 {name}',
+  'chat.ref.openSkillFailed': '打不开技能目录 {name}',
+  /* 提示词引用那枚药丸没有标题时的兜底(它不可点,只是把这一格说出来)。 */
+  'chat.ref.promptUntitled': '未命名提示词',
   'chat.contextDeltaRemoved': '移除 {n}',
   'chat.contextDeltaGone': '已移除',
   'chat.contextDeltaCollapse': '收起',

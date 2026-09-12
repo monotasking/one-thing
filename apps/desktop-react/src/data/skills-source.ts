@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { SkillDefinition } from '@shared/ipc/skills'
+import type { SkillDefinition, SkillSource } from '@shared/ipc/skills'
 import { argHintOf } from './commands-source'
 import type { CommandEntry } from './commands-source'
 import { skillsPort } from './skills-port'
@@ -67,11 +67,33 @@ export function toSkillCommand(skill: SkillDefinition, argLabel = t('composer.sk
 
 export type SkillsStatus = 'idle' | 'loading' | 'ready' | 'error'
 
+/**
+ * 一条技能**在别处被引用时**要知道的那几格(09-12)。
+ *
+ * 与 `commands` 同一次取数填,**不多发一发 RPC** —— 同一份 `getAll` 的答案里
+ * 本来就有 `directoryPath`,从前只是被 `toSkillCommand` 丢掉了。
+ *
+ * **不按 `enabled` 筛**(与 `commands` 那半的判据分家):抽屉里不画关掉的技能,
+ * 是因为引擎那头也认不出它;而这张表回答的是「某条**已经发出去过**的引用,
+ * 它的目录在哪」—— 那条消息发出去的时候它是开着的,今天关了不等于它没有目录。
+ *
+ * 这张表只是**数据**:拿它去开一块目录面板是个动作,住在 `content/skill-open.ts`
+ * —— 壳的依赖方向是 content → data,这只 store 不认识任何一块面。
+ */
+export interface SkillEntry {
+  name: string
+  /** 空串 = 这条技能答不出目录,只能走 RPC 回落(动作在 `content/skill-open.ts`)。 */
+  directoryPath: string | null
+  source: SkillSource
+}
+
 export interface SkillsSourceState {
   status: SkillsStatus
   /** **产生 `commands` 的那个 cwd**(null = 那一次没带工作目录)。缓存判据就是它。 */
   cwd: string | null
   commands: CommandEntry[]
+  /** `skillId` → 那条技能的身份与目录。见 `SkillEntry`。 */
+  byId: ReadonlyMap<string, SkillEntry>
   /** 拉一次这条 cwd 下的技能表。懒的 —— 命令抽屉第一次开的时候才发。 */
   ensureSkills(cwd: string | null): Promise<void>
   reset(): void
@@ -81,6 +103,7 @@ const EMPTY = {
   status: 'idle' as SkillsStatus,
   cwd: null as string | null,
   commands: [] as CommandEntry[],
+  byId: new Map<string, SkillEntry>() as ReadonlyMap<string, SkillEntry>,
 }
 
 export const useSkillsSource = create<SkillsSourceState>()((set, get) => {
@@ -100,19 +123,31 @@ export const useSkillsSource = create<SkillsSourceState>()((set, get) => {
           const port = await skillsPort()
           const response = await port.getAll(cwd)
           if (!response.success) {
-            // **不清 commands**:上一批还在屏上的技能行留着,与
+            // **不清 commands / byId**:上一批还在屏上的技能行留着,与
             // file-mentions 的律②逐字同一条(错误不抹掉旧答案)。
             set({ status: 'error' })
             return
           }
+          const skills = response.skills ?? []
           set({
             status: 'ready',
             cwd,
             // 关掉的技能引擎那头也认不出来(`getSkillsForSession` 只给开着的),
             // 画出来就是一条点了没反应的行。
-            commands: (response.skills ?? [])
-              .filter((skill) => skill.enabled)
-              .map((skill) => toSkillCommand(skill)),
+            commands: skills.filter((skill) => skill.enabled).map((skill) => toSkillCommand(skill)),
+            // 查目录那张表不筛 enabled(理由在 `SkillEntry` 上)。
+            byId: new Map(
+              skills.map((skill) => [
+                skill.id,
+                {
+                  name: skill.name,
+                  // 契约上它是必填的 `string`,但**空串**在这一格等于「没有」——
+                  // 拿一个空路径去开面板会开出一块无根的目录树。
+                  directoryPath: skill.directoryPath || null,
+                  source: skill.source,
+                } satisfies SkillEntry,
+              ]),
+            ),
           })
         } catch {
           // 静默降级:抽屉里只是没有「技能」那一组(见文件头)。
@@ -131,3 +166,4 @@ export const useSkillsSource = create<SkillsSourceState>()((set, get) => {
     },
   }
 })
+
