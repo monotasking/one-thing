@@ -63,6 +63,12 @@ const tree = (...nodes: ScopeNode[]) => new Map(nodes.map((n) => [n.instanceId, 
 const KEY_F = { key: 'f', metaKey: true, ctrlKey: false, altKey: false, shiftKey: false }
 const KEY_P = { key: 'p', metaKey: true, ctrlKey: false, altKey: false, shiftKey: false }
 const noRoot = () => null
+/*
+ * **这一组按 mac 跑**(T1-fix)。`matchCombo` 从这一批起要知道「主修饰键是哪一枚
+ * 物理键」(判词在 `keymap/transitions.matchCombo` 上),而夹具里的 `KEY_F` /
+ * `KEY_P` 按的都是 ⌘(`metaKey: true`)—— 所以每一处 `routeKey` 都把 `'mac'`
+ * 递进去。要量 Win 那一档的话换掉夹具那两格修饰键,别只换这个字符串。
+ */
 
 describe('activePathOf —— 从第一响应者走到根,根在前', () => {
   it('三层的路径按根 → 层 → 面排好', () => {
@@ -142,7 +148,7 @@ describe('routeKey —— 局部先接,没接住放行全局', () => {
       scopeNode('r', 'root', null),
       scopeNode('v', 'viewer', 'r', { keyHandlers: { find: () => {} } }),
     )
-    expect(routeKey(t, ['r', 'v'], KEY_F, noRoot)).toEqual({
+    expect(routeKey(t, ['r', 'v'], KEY_F, noRoot, 'mac')).toEqual({
       target: 'scope',
       instanceId: 'v',
       scope: 'viewer',
@@ -156,7 +162,7 @@ describe('routeKey —— 局部先接,没接住放行全局', () => {
       scopeNode('v1', 'viewer', 'r', { keyHandlers: { find: () => {} } }),
       scopeNode('v2', 'viewer', 'r', { keyHandlers: { find: () => {} } }),
     )
-    expect(routeKey(t, ['r', 'v2'], KEY_F, noRoot)).toMatchObject({ instanceId: 'v2' })
+    expect(routeKey(t, ['r', 'v2'], KEY_F, noRoot, 'mac')).toMatchObject({ instanceId: 'v2' })
   })
 
   it('**由深到浅**:同一个键两格都接得住时,深的那一份赢', () => {
@@ -171,7 +177,7 @@ describe('routeKey —— 局部先接,没接住放行全局', () => {
       scopeNode('outer', 'viewer', 'r', { keyHandlers: { find: () => {} } }),
       scopeNode('inner', 'viewer', 'outer', { keyHandlers: { find: () => {} } }),
     )
-    expect(routeKey(t, ['r', 'outer', 'inner'], KEY_F, noRoot)).toMatchObject({
+    expect(routeKey(t, ['r', 'outer', 'inner'], KEY_F, noRoot, 'mac')).toMatchObject({
       instanceId: 'inner',
     })
   })
@@ -182,13 +188,13 @@ describe('routeKey —— 局部先接,没接住放行全局', () => {
       scopeNode('v', 'viewer', 'r', { keyHandlers: { find: () => {} } }),
       scopeNode('f', 'files', 'v', { keyHandlers: { detail: () => {} } }),
     )
-    expect(routeKey(t, ['r', 'v', 'f'], KEY_F, noRoot)).toMatchObject({ instanceId: 'v' })
+    expect(routeKey(t, ['r', 'v', 'f'], KEY_F, noRoot, 'mac')).toMatchObject({ instanceId: 'v' })
   })
 
   it('声明有、落点没注入 → **当作没命中**,不吞这一下', () => {
     // 吞掉的表现是「按了没反应」,那是最难查的一种;落到全局至少是可预期的。
     const t = tree(scopeNode('r', 'root', null), scopeNode('v', 'viewer', 'r'))
-    expect(routeKey(t, ['r', 'v'], KEY_F, () => 'toc.toggle')).toEqual({
+    expect(routeKey(t, ['r', 'v'], KEY_F, () => 'toc.toggle', 'mac')).toEqual({
       target: 'root',
       command: 'toc.toggle',
     })
@@ -199,16 +205,16 @@ describe('routeKey —— 局部先接,没接住放行全局', () => {
       scopeNode('r', 'root', null),
       scopeNode('v', 'viewer', 'r', { inert: true, keyHandlers: { find: () => {} } }),
     )
-    expect(routeKey(t, ['r', 'v'], KEY_F, noRoot)).toBeNull()
+    expect(routeKey(t, ['r', 'v'], KEY_F, noRoot, 'mac')).toBeNull()
   })
 
   it('没有任何局部键命中 → 全局命令表;它也答不出就是 null', () => {
     const t = tree(scopeNode('r', 'root', null))
-    expect(routeKey(t, ['r'], KEY_P, () => 'search.toggle')).toEqual({
+    expect(routeKey(t, ['r'], KEY_P, () => 'search.toggle', 'mac')).toEqual({
       target: 'root',
       command: 'search.toggle',
     })
-    expect(routeKey(t, ['r'], KEY_P, noRoot)).toBeNull()
+    expect(routeKey(t, ['r'], KEY_P, noRoot, 'mac')).toBeNull()
   })
 })
 

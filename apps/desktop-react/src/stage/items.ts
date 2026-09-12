@@ -138,7 +138,26 @@ export const STAGE_ITEMS: StageItemSpec[] = [
    * 理由与两个残留消费者写在 VIEWER_ITEM_ID 上。
    */
   { id: 'diff', titleKey: 'item.diff', level: 'space', dockGroup: 'session', icon: 'GitCompare' },
-  { id: 'terminal', titleKey: 'item.terminal', level: 'space', dockGroup: 'session', icon: 'Terminal' },
+  /*
+   * **「终端」从一块面降格成启动瓦**(T1,方案
+   * `apps/desktop-react/docs/terminal-browser-2026-09.md` §2.1-6;与 `files` 那一行
+   * 逐字同一条路)。id 一个字不改 —— 位置记忆、隐藏配置、Dock 顺序全按 id 记。
+   * 点它 / 右键 / 拖它三件登记在 `content/terminal-launcher.tsx`;这一行照旧只是
+   * 静态声明。
+   *
+   * `defaultPlacement: 底架`:终端出厂落 `edge:bottom` —— 三十年来它在编辑器里
+   * 就待在那儿,而中央区是内容的地。读它的是启动瓦那条路
+   * (`terminal-launcher.regionForLauncher` 的 `记忆 ?? defaultPlacement`),
+   * 与 `files` 那一行同一个判例(写在它上头那段末尾)。**存量记忆压过它**。
+   */
+  {
+    id: 'terminal',
+    titleKey: 'item.terminal',
+    level: 'space',
+    dockGroup: 'session',
+    icon: 'Terminal',
+    defaultPlacement: { kind: 'edge', side: 'bottom' },
+  },
   { id: 'browser', titleKey: 'item.browser', level: 'space', dockGroup: 'global', icon: 'Globe' },
   // 检索是一块普通的瓦:参与 Placement 全套(⌘P 也只是"按它的打开方式开一下")。
   { id: 'search', titleKey: 'item.search', level: 'space', dockGroup: 'global', icon: 'Search' },

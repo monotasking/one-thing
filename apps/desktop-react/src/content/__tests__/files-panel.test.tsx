@@ -25,6 +25,7 @@ import { useWorkbenchStore } from '../../workbench/store'
 import { focusIntoScopeOf } from '../../workbench/kinds'
 import { leavesOf, refIdsOf } from '../../workbench/tree'
 import '../kinds'
+import { pinMacUserAgent } from '../../test/mac-ua'
 
 /**
  * 文件面板。这一批验的是**面板长在真数据上** + **定稿那六处改判**:
@@ -91,6 +92,9 @@ const REAL_SESSION_ACTIONS = {
 }
 
 beforeEach(() => {
+  /* T1-fix:这一组拿 mac 的词写(⌘…),而 jsdom 的 UA 不是 mac ——
+   * 判词整段在 `src/test/mac-ua.ts` 上。 */
+  pinMacUserAgent()
   useStageStore.setState({ locale: 'zh' })
   useSessionsSource.setState(REAL_SESSION_ACTIONS)
   seedSessionsSource()

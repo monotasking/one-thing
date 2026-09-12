@@ -39,6 +39,17 @@ import { themePort } from './theme-port'
 const STYLE_ELEMENT_ID = 'onething-theme-vars'
 /** 桥的激活标记。它在场 = 色值来自主题管道;不在场 = palette 静态值。 */
 const BRIDGE_ATTRIBUTE = 'data-theme-bridge'
+/**
+ * **「这页现在是暗的还是亮的」,写成 CSS 选得中的形**(T1,2026-09-12)。
+ *
+ * 这条事实本来就在往下面 `root.style.colorScheme` 上写 —— 那是给浏览器的原生
+ * 绘制看的,选择器选不中它。终端那十六格 ANSI 色是全仓第一个真需要按明暗分档
+ * 的 CSS 族(主题管道的 `--ui-*` 表里没有终端这件事实,所以它们没有产地,
+ * 判词整段在 `styles/palette.css` 的 `--term-*` 那一节上)。于是同一句话多写
+ * 一个属性,不多一次判断:没连上 core = 标记不在 = 亮档原样生效,与
+ * `data-theme-bridge` 那条纪律逐字同源。
+ */
+const COLOR_MODE_ATTRIBUTE = 'data-color-mode'
 /** 与旧壳 themes store 同一个兜底 id(`DEFAULT_THEME_ID`)。 */
 const DEFAULT_THEME_ID = 'flexoki'
 
@@ -142,6 +153,8 @@ export function applyThemeVariables(
   // 明暗也告诉浏览器一声:原生表单控件、默认滚动条、`color-scheme` 相关的
   // 系统绘制跟着走。这不是主题色值,是「这页现在是暗的还是亮的」这一条事实。
   root.style.colorScheme = mode
+  // 同一条事实的 CSS 选得中的形(判词在 `COLOR_MODE_ATTRIBUTE` 上)。
+  root.setAttribute(COLOR_MODE_ATTRIBUTE, mode)
   return lines.length
 }
 
@@ -162,6 +175,32 @@ async function pull(): Promise<ThemeProbe> {
   return applyDecision(decideTheme(preference, systemTheme))
 }
 
+/**
+ * **「变量表刚刚换过一次」的订阅口**(T1,2026-09-12)。
+ *
+ * ── 谁需要它、为什么 DOM 那条路不够 ─────────────────────────────────────
+ * 绝大多数消费者不需要:它们是 CSS,`:root` 上的值一换就跟着变。需要它的是
+ * **那些把 CSS 变量读成 JS 值、自己画像素的东西** —— 今天只有一个:xterm
+ * (canvas / WebGL 渲染器,颜色必须以 `ITheme` 交给它,`getComputedStyle`
+ * 读过一次就定死在那台渲染器里)。
+ *
+ * 不做成 MutationObserver:那是**猜**(观察一个属性的变化去推断另一件事已经
+ * 完成),而这里有一句确定的「刚刚贴完」。也不做成 zustand store:它没有
+ * 「当下值」这回事 —— 当下值在 `:root` 上,这只是一声通知。
+ *
+ * 通知**只在真的贴上去之后**发(`applyDecision` 成功那一路);
+ * `applyIfChanged` 判据没变时一声都不发(见那只函数)。
+ */
+const themeAppliedListeners = new Set<(decision: ThemeDecision) => void>()
+
+/** 订「变量表换过了」。返回退订;订阅方自己负责在卸载/HMR 时调它。 */
+export function onThemeApplied(listener: (decision: ThemeDecision) => void): () => void {
+  themeAppliedListeners.add(listener)
+  return () => {
+    themeAppliedListeners.delete(listener)
+  }
+}
+
 async function applyDecision(decision: ThemeDecision): Promise<ThemeProbe> {
   const port = await themePort()
   const response = await port.applyTheme(decision.themeId, decision.mode)
@@ -176,6 +215,15 @@ async function applyDecision(decision: ThemeDecision): Promise<ThemeProbe> {
   probe.mode = decision.mode
   probe.error = undefined
   lastDecision = decision
+  // 一声通知,给「把 CSS 变量读成 JS 值」的那一族(见 `onThemeApplied`)。
+  // 一个监听炸了不许拦住别的 —— 这是通知,不是一条链。
+  for (const listener of [...themeAppliedListeners]) {
+    try {
+      listener(decision)
+    } catch {
+      /* 订阅方自己的事 */
+    }
+  }
   return probe
 }
 
@@ -275,6 +323,8 @@ export function resetThemeSourceForTest(): void {
   if (typeof document !== 'undefined') {
     document.getElementById(STYLE_ELEMENT_ID)?.remove()
     document.documentElement.removeAttribute(BRIDGE_ATTRIBUTE)
+    document.documentElement.removeAttribute(COLOR_MODE_ATTRIBUTE)
     document.documentElement.style.colorScheme = ''
   }
+  themeAppliedListeners.clear()
 }

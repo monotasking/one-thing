@@ -10,10 +10,6 @@
   --demo-del-fg: #a84b42;
   --demo-add-bg: rgba(111, 143, 78, 0.1);
   --demo-add-fg: #55703b;
-  --demo-term-bg: #23221f;
-  --demo-term-fg: #8fbf6a;
-  --demo-term-dim: #6b6a63;
-
   height: 100%;
   overflow: auto;
   overscroll-behavior: contain;
@@ -90,21 +86,10 @@
   font-size: var(--fs-meta);
 }
 
-/* ── 终端 ─────────────────────────────────────────────────────────────── */
-.term {
-  height: 100%;
-  padding: var(--sp-3);
-  background: var(--demo-term-bg);
-  font-family: var(--font-mono);
-  font-size: var(--fs-micro);
-  line-height: 1.8;
-  color: var(--demo-term-fg);
-  white-space: pre-wrap;
-}
-
-.termDim {
-  color: var(--demo-term-dim);
-}
+/* ── 终端 ──────────────────────────────────────────────────────────────
+ * 那三格演示色与两条类随 **T1** 一起退役 —— 终端不再是这张表里的一块假面,
+ * 它是 `content/terminal/` 下的一格真 PTY(颜色在 `styles/palette.css` 的
+ * `--term-*` 一节,那是产品的色不是演示色)。 */
 
 /* ── 设置 ─────────────────────────────────────────────────────────────── */
 /* 页 = 若干个领域节;节之间的间距比节内行距大一档,分组靠的是这个差值而不是分隔线。 */

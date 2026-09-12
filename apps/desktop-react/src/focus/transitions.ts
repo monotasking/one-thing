@@ -1,4 +1,5 @@
 import { matchCombo } from '../keymap/transitions'
+import type { KeymapPlatform } from '../keymap/types'
 import { FOCUS_SCOPES } from './scopes'
 import type { ComboEvent } from '../keymap/types'
 import type {
@@ -100,6 +101,13 @@ export function routeKey(
   path: ActivePath,
   event: ComboEvent,
   rootLookup: (event: ComboEvent) => string | null,
+  /**
+   * 「主修饰键是哪一枚物理键」(T1-fix)。**必填** —— 判词整段在
+   * `keymap/transitions.matchCombo` 上:给它一个默认值,忘了传的调用点就会悄悄
+   * 回到「⌘ 与 Ctrl 两枚皆可」那条老路,而那正是这一改要治的病。
+   * 纯函数照旧不读 `navigator`:量它的是派发器(`focus/dispatch.ts`)。
+   */
+  platform: KeymapPlatform,
 ): KeyRoute {
   for (let i = path.length - 1; i >= 0; i -= 1) {
     const node = nodes.get(path[i])
@@ -107,7 +115,7 @@ export function routeKey(
     const keys = FOCUS_SCOPES[node.scope].keys
     if (!keys) continue
     for (const scoped of keys) {
-      if (!matchCombo(event, scoped.combo)) continue
+      if (!matchCombo(event, scoped.combo, platform)) continue
       if (!node.keyHandlers?.[scoped.action]) continue
       return {
         target: 'scope',

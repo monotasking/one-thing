@@ -1,3 +1,6 @@
+import { sessionCwdOf } from '../data/files-source'
+import { useSessionsSource } from '../data/sessions-source'
+import { useExposeStore } from '../expose/store'
 import { findItem } from '../stage/items'
 import { nextFloatId } from '../stage/placement'
 import { useStageStore } from '../stage/store'
@@ -32,6 +35,19 @@ import type { RegionId } from '../workbench/regions'
 
 /** 「目录」那块启动瓦的 id(它就是从前那块「文件」瓦 —— id 不改,名字改了)。 */
 export const FILES_ITEM_ID = 'files'
+
+/**
+ * 当前会话的工作目录。答不出(会话没绑目录 / 名册还没到)= null。
+ *
+ * **T1 起它住在这只文件**:终端那块启动瓦也要问同一句话,而从
+ * `files-launcher.tsx` 里 import 它会顺手把「files 瓦是启动瓦」那句登记装进
+ * 调用方的世界 —— 那正是这只文件头上记的那桩事故。`files-launcher.tsx` 原样
+ * re-export,它的老调用方一行不改。
+ */
+export function sessionDirOf(): string | null {
+  const sessionId = useExposeStore.getState().envSessionId
+  return sessionCwdOf(useSessionsSource.getState().sessions, sessionId)
+}
 
 /**
  * 这块瓦此刻该把内容开到哪个区域。**记忆 > 天生**。

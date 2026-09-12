@@ -5,7 +5,6 @@ import { DEFAULT_PANEL_VISIBILITY, PanelVisibilityContext } from './visibility'
 import type { PanelVisibility } from './visibility'
 import { DiffMock } from './DiffMock'
 import { BrowserMock } from './BrowserMock'
-import { TerminalMock } from './TerminalMock'
 import { SettingsMock } from './SettingsMock'
 import { SearchPanel } from '../search/components/SearchPanel'
 import { NotificationsPanel } from './NotificationsPanel'
@@ -40,7 +39,13 @@ const RENDERERS: Record<string, () => ReactNode> = {
    */
   diff: DiffMock,
   browser: BrowserMock,
-  terminal: TerminalMock,
+  /*
+   * **`terminal` 那一行撤了**(T1,方案 `apps/desktop-react/docs/terminal-browser-2026-09.md`
+   * §2.1)。终端不再是「一块面」,它是**一族**面:一格 PTY 一份
+   * `terminal:<id>`(`content/kinds/terminal.tsx`)。Dock 上那块瓦因此从「一块面」
+   * 降格成**启动瓦**(`content/terminal-launcher.tsx`):点它 = 在当前会话那个
+   * 目录开一格,右键 = 活着的那几格 + 新建两条。判例与 `files` 那一行逐字相同。
+   */
   settings: SettingsMock,
   search: SearchPanel,
   /*

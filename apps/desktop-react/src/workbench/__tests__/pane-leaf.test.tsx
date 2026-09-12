@@ -12,6 +12,7 @@ import { focusTree } from '../../focus/registry'
 import { FOCUS_SCOPES } from '../../focus/scopes'
 import { FocusDispatchHarness } from '../../test/focus-harness'
 import type { ContentRef } from '../kinds'
+import { pinMacUserAgent } from '../../test/mac-ua'
 
 /**
  * **叶檐**(W1,设计 §2.2 / §10 的 `PaneLeaf` 三张状态表)。
@@ -33,6 +34,9 @@ let closed: string[] = []
 let answer: 'close' | 'cancel' = 'close'
 
 beforeEach(() => {
+  /* T1-fix:这一组拿 mac 的词写(⌘…),而 jsdom 的 UA 不是 mac ——
+   * 判词整段在 `src/test/mac-ua.ts` 上。 */
+  pinMacUserAgent()
   useStageStore.setState({ locale: 'zh' })
   resetContentKinds()
   closed = []

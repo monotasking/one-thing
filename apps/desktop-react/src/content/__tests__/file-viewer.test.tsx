@@ -27,6 +27,7 @@ import { useLiveTitleStore } from '../../stage/live-title'
 import { FOCUS_SCOPES } from '../../focus/scopes'
 import { focusTree } from '../../focus/registry'
 import { FocusDispatchHarness } from '../../test/focus-harness'
+import { pinMacUserAgent } from '../../test/mac-ua'
 
 /**
  * 文件查看器(F1)。这一组验的是**查看器这一块内容自己**:三张注册表、
@@ -92,6 +93,9 @@ function Viewer(props: { path?: string; onReveal?: (p: string) => void; strip?: 
 const inst = (path: string = opened) => useViewerSource.getState().instances[path]
 
 beforeEach(() => {
+  /* T1-fix:这一组拿 mac 的词写(⌘…),而 jsdom 的 UA 不是 mac ——
+   * 判词整段在 `src/test/mac-ua.ts` 上。 */
+  pinMacUserAgent()
   useStageStore.setState({ locale: 'zh' })
   useViewerSource.getState().reset()
   useFileOpenMode.setState({ mode: 'panel' })

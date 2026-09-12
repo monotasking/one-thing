@@ -13,6 +13,7 @@ import { FACTS, SESSIONS, seedSessionsSource } from '../../data/__fixtures__/ses
 import { useExposeStore } from '../store'
 import { findSession } from '../projection'
 import { initialExposeState, sessionRowIdsOf } from '../transitions'
+import { pinMacUserAgent } from '../../test/mac-ua'
 
 /**
  * 会话总览去接管化(08-29 拍板)之后要钉住的四件事:
@@ -21,6 +22,9 @@ import { initialExposeState, sessionRowIdsOf } from '../transitions'
  * 内层(quicklook)先消费,消费不了才轮到宿主关这块面。
  */
 beforeEach(() => {
+  /* T1-fix:这一组拿 mac 的词写(⌘…),而 jsdom 的 UA 不是 mac ——
+   * 判词整段在 `src/test/mac-ua.ts` 上。 */
+  pinMacUserAgent()
   // 打开档默认即浮窗(08-30 拍板:点开统一浮窗;舞台=浮窗的放大目标)
   useStageStore.setState({ ...initialStageState, locale: 'zh' })
   // 数据先在场,再挂壳 —— 会话侧从此吃真数据源(D1),没有 mock 兜底。

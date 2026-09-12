@@ -1,0 +1,34 @@
+/* 一格终端的壳。颜色全部来自 palette 的 `--term-*` 一族(判词在那一节上);
+ * 这只文件一个字面色值、一个字面 px 都没有。 */
+.leaf {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--term-bg);
+}
+
+/* 状态条:只在非 live 的那几档出现。一行字 + 一颗钮,**不占布局**时整行不画。 */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line-1);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+
+/* 一句错话就地一行(零 Toast,与音乐面同一条纪律)。 */
+.error {
+  color: var(--danger);
+}
+
+/* 屏幕本体。xterm 自己会往里塞 canvas —— 这里只负责给它一块有尺寸的地。 */
+.screen {
+  flex: 1;
+  min-height: 0;
+  padding: var(--sp-2);
+  overflow: hidden;
+}

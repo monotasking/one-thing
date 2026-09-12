@@ -37,12 +37,26 @@ function key(combo: Combo): string {
 }
 
 describe('面域局部键:声明这一头', () => {
-  it('今天有局部键的五格:查看器三条、文件树两条、检索面两条、会话总览一条、叶一条', () => {
+  it('今天有局部键的六格:查看器三条、文件树两条、检索面两条、总览一条、终端五条、叶一条', () => {
     const withKeys = Object.values(FOCUS_SCOPES)
       .filter((spec) => (spec.keys?.length ?? 0) > 0)
       .map((spec) => spec.id)
     // 次序 = 表里的声明序(`leaf` 排在 region 那一族的末尾)。
-    expect(withKeys).toEqual(['viewer', 'files', 'search', 'expose', 'leaf'])
+    expect(withKeys).toEqual(['viewer', 'files', 'search', 'expose', 'terminal', 'leaf'])
+    /*
+     * **T1 的键盘礼让五行**(`content/terminal/key-courtesy.ts`)。它们是这张表
+     * 里唯一一族**故意与全局命令撞车**的键:`^P/^E/^J/^N/^W` 在 readline 下是
+     * 每天都在按的五个,而出厂全局表恰好用主修饰键占着同样五个字母。
+     * 局部先接 → 终端拿到焦点时这五下进 PTY,别处照旧是那五条全局命令。
+     * 撞车由下面那条用例逐条说出口(撞车不是错误,但不许静默)。
+     */
+    expect(focusScopeKeysOf('terminal').map((k) => key(k.combo))).toEqual([
+      'mod+p',
+      'mod+e',
+      'mod+j',
+      'mod+n',
+      'mod+w',
+    ])
     /*
      * W1 拍点 ④:**⌘W 关当前 tab**。它是面域局部键而不是全局命令 —— 判据是
      * 「它需不需要一个目标」(哪一片叶的哪一格)。⌘⇧W 是工作区命令面板,
@@ -95,15 +109,50 @@ describe('面域局部键:声明这一头', () => {
 })
 
 describe('撞键:局部先接,没接住放行全局', () => {
-  it('出厂表下 ⌘I / ⌘F 都没有全局命令占着 —— 今天零撞车', () => {
-    expect(scopedCollisionsOf({ overrides: {} })).toEqual([])
+  /*
+   * **出厂撞车恰好五条,而且每一条都是有意的**(T1)。
+   *
+   * T1 之前这里断言的是「零撞车」。那句话随键盘礼让表一起作废,但作废的方式
+   * 很重要:不是「多了几条不知道哪来的」,而是**那五条就是礼让表本身** ——
+   * 终端拿到焦点时 `^P/^E/^J/^N/^W` 进 PTY,焦点不在终端里时它们照旧是那五条
+   * 全局命令。设置页会把这五行说出来(`scopedCollisionsOf` 的唯一消费者)。
+   *
+   * 查看器的 ⌘S/⌘L/⌘F、文件树的 ⌘I/⌘↵、检索的 ⌘[/⌘]、总览的 ⌘⇧P、叶的 ⌘W
+   * **仍然零撞车** —— 这一条把两半都钉住:撞的只有终端那五行,一条不多。
+   */
+  it('出厂撞车恰好是终端礼让那四行,别的局部键一条都不撞', () => {
+    const collisions = scopedCollisionsOf({ overrides: {} })
+    expect(collisions.map((c) => c.scoped.scope)).toEqual([
+      'terminal',
+      'terminal',
+      'terminal',
+      'terminal',
+    ])
+    expect(collisions.map((c) => c.command)).toEqual([
+      'toggle:search', // ^P ↔ ⌘P 检索面
+      'toggle:sessions', // ^E ↔ ⌘E 会话总览
+      'agent.menu', // ^J ↔ ⌘J agent 切换器
+      'session.new', // ^N ↔ ⌘N 新建会话
+    ])
+    /*
+     * **第五行 `^W` 不在这张表上,而这不是漏网。** `scopedCollisionsOf` 问的是
+     * 「全局命令与局部键撞了没有」,而 ⌘W 本来就**不是**全局命令 —— 它是 `leaf`
+     * 那一格的局部键(W1 拍点 ④)。所以 `^W` 是一次**局部 ↔ 局部**的撞车,
+     * 裁决由活动路径的深度给:终端比装着它的那片叶更深,局部由深到浅问,
+     * 终端先接。结果正是要的那个 —— 终端里 `^W` 删一个词,别处 ⌘W 关这一格 tab。
+     * 这一句钉住那条深度裁决:哪天 `leaf` 与 `terminal` 的父子关系反了,它会红。
+     */
+    expect(focusScopeKeysOf('leaf').map((k) => key(k.combo))).toEqual(['mod+w'])
+    expect(focusScopeKeysOf('terminal').map((k) => key(k.combo))).toContain('mod+w')
   })
 
   it('用户把某条命令改绑到 ⌘I:撞车**说得出口**(而不是静默盖住行内键)', () => {
     const state = { overrides: { 'toc.toggle': { meta: true, key: 'i' } as Combo } }
     const collisions = scopedCollisionsOf(state)
-    expect(collisions.map((c) => c.command)).toEqual(['toc.toggle'])
-    expect(collisions[0].scoped.scope).toBe('files')
+    // 终端礼让那五行是出厂就在的(上一条用例钉着),这一条只看**新多出来的那一条**。
+    const added = collisions.filter((c) => c.scoped.scope !== 'terminal')
+    expect(added.map((c) => c.command)).toEqual(['toc.toggle'])
+    expect(added[0].scoped.scope).toBe('files')
     /*
      * 撞车**不是错误**:局部先接、没接住放行,两者可以共存(⌘I 在文件行上开详情,
      * 在别处仍然是那条全局命令)。所以 `bindCombo` 的口径一个字不改 —— 它拦的是

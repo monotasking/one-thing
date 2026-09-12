@@ -242,6 +242,38 @@ describe('TerminalService', () => {
     expect(service.list()[0].exited).toEqual({ code: 0 })
   })
 
+  /**
+   * **经 RPC 杀掉的那一格也要发死讯**(T1-fix,2026-09-12)。
+   *
+   * 病历:`handleExit` 从前的最后一句是 `if (!record.disposing) sendExit(...)`,
+   * 而 `kill()` 一进门就把 `disposing` 翻真 —— 于是从别的窗口 / 别的客户端杀掉
+   * 一格终端,这台消费者永远收不到死讯,屏幕上那一格停在「活着」。
+   * 判据现在是 `exitSent` 那格闩:**每格最多一次,而且怎么死都发**。
+   *
+   * 反证:把 `if (!record.exitSent)` 改回 `if (!record.disposing)` → 这一条当场红。
+   */
+  it('kill still broadcasts exit once (the consumer is not the one who killed it)', () => {
+    const { backend, broadcaster, service } = createHarness({ killGraceMs: 1000 })
+    const info = service.create({})
+    service.attach(info.id)
+    void service.kill(info.id)
+    expect(broadcaster.exits).toHaveLength(0) // 还没真死
+    backend.spawned[0].pty.emitExit(0)
+    expect(broadcaster.exits).toEqual([{ terminalId: info.id, exitCode: 0 }])
+  })
+
+  it('exit is broadcast at most once per terminal (the latch, not the disposing flag)', () => {
+    const { backend, broadcaster, service } = createHarness()
+    const info = service.create({})
+    service.attach(info.id)
+    const pty = backend.spawned[0].pty
+    pty.emitExit(0)
+    // 再喊一遍死讯(node-pty 真机上不会,但闩守的就是「最多一次」这句话)。
+    pty.emitExit(0)
+    void service.kill(info.id)
+    expect(broadcaster.exits).toEqual([{ terminalId: info.id, exitCode: 0 }])
+  })
+
   it('kill signals the process group gracefully then forcefully', () => {
     const { backend, service } = createHarness({ killGraceMs: 1000 })
     const info = service.create({})
@@ -283,8 +315,18 @@ describe('TerminalService', () => {
     await stoppingAll
     vi.advanceTimersByTime(2000)
     expect(pty.signals).toEqual(['SIGHUP'])
+    /*
+     * **尾巴不刷屏,死讯照发**(T1-fix 把这两件事拆开了)。
+     *
+     * `disposing` 守的是前半句:正在拆的那一格不再 flush 尾巴('late output'
+     * 一个字都不上屏)—— 那是它一直以来要干的事,一个字没改。
+     * 后半句从前也被它顺手挡了,而那是一条 bug:经 RPC 杀掉一格终端,消费者
+     * 永远收不到死讯。现在由 `exitSent` 那格闩说了算:每格最多一次、怎么死都发。
+     * 两格终端两条死讯,次序按它们各自真死的先后。
+     */
     expect(broadcaster.data).toEqual([])
-    expect(broadcaster.exits).toEqual([])
+    expect(broadcaster.exits).toHaveLength(2)
+    expect(broadcaster.exits.map((e) => e.exitCode)).toEqual([0, 0])
   })
 
   it('retains the force-kill and drain while the exited shell still has a live process group', async () => {

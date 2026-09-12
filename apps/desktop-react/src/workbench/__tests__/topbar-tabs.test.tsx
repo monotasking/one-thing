@@ -13,6 +13,7 @@ import { focusTree } from '../../focus/registry'
 import { FocusDispatchHarness } from '../../test/focus-harness'
 import type { ContentRef } from '../kinds'
 import type { PaneNode } from '../tree'
+import { pinMacUserAgent } from '../../test/mac-ua'
 
 /**
  * **中央区的檐就是窗口顶栏**(W1-b,设计 §2.2 D 稿)。
@@ -95,6 +96,9 @@ describe('落位:一片叶一组,重叠的按序平分', () => {
 const doc = (key: string): ContentRef => ({ kind: 'doc', key })
 
 beforeEach(() => {
+  /* T1-fix:这一组拿 mac 的词写(⌘…),而 jsdom 的 UA 不是 mac ——
+   * 判词整段在 `src/test/mac-ua.ts` 上。 */
+  pinMacUserAgent()
   useStageStore.setState({ locale: 'zh' })
   resetContentKinds()
   registerContentKind({

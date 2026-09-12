@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { hasModifier, lookupCommand } from '../keymap/transitions'
-import { useKeymapStore } from '../keymap/store'
+import { currentKeymapPlatform, useKeymapStore } from '../keymap/store'
 import { focusTree } from './registry'
 import { tabStopWithin } from './tab-trap'
 import { modalTrapNode, routeEscape, routeKey } from './transitions'
@@ -98,6 +98,13 @@ export interface FocusDispatchOptions {
 export function useFocusDispatch(opts: FocusDispatchOptions): void {
   const overrides = useKeymapStore((st) => st.overrides)
   const { runCommand } = opts
+  /*
+   * 「主修饰键是哪一枚」(T1-fix)。两只纯函数(`routeKey` / `lookupCommand`)
+   * 都要它,而它们一行都不许读 `navigator` —— 所以这台机器由**派发器**量一次
+   * (与 `formatCombo` 的调用方同一条纪律)。它在一次会话里不会变,所以量在
+   * effect 外面、不进依赖表。
+   */
+  const platform = currentKeymapPlatform()
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -160,7 +167,7 @@ export function useFocusDispatch(opts: FocusDispatchOptions): void {
       if (isTypingTarget(e.target) && !hasModifier(e)) return
 
       // ⑧⑨ 局部先接,没接住放行全局。
-      const route = routeKey(nodes, path, e, (ev) => lookupCommand({ overrides }, ev))
+      const route = routeKey(nodes, path, e, (ev) => lookupCommand({ overrides }, ev, platform), platform)
       if (!route) return
       e.preventDefault()
       if (route.target === 'root') {
@@ -181,5 +188,5 @@ export function useFocusDispatch(opts: FocusDispatchOptions): void {
     return () => {
       window.removeEventListener('keydown', onKeyDown, true)
     }
-  }, [overrides, runCommand])
+  }, [overrides, runCommand, platform])
 }

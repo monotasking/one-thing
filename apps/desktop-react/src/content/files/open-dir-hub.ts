@@ -22,12 +22,26 @@ import { create } from 'zustand'
  * 原生对话框那一格连同它的理由记在交卷报的留账里,等拍板。
  */
 
+/**
+ * ── 「挑完了拿它去干什么」为什么住在这里(T1,2026-09-12)─────────────────
+ * 终端那块启动瓦也要一条「在目录…新建」。全壳只有这一处「挑一个目录」的面
+ * (动作单产地),所以**不再开第二扇窗** —— 发起方把「挑完了做什么」一起递
+ * 进来。缺席 = 老语义(开一份目录面板),`files-launcher` 因此一个字不改。
+ *
+ * 它是**一次调用的参数**,不是一份偏好:窗关掉就跟着清掉(否则下一个从别处
+ * 开出来的「打开目录…」会落进上一次那个动作里)。
+ */
+export type OpenDirPick = (path: string) => void
+
 interface OpenDirDialogState {
   open: boolean
-  setOpen: (open: boolean) => void
+  /** 这一次挑完了做什么。缺席 = 开一份目录面板(见上)。 */
+  onPick?: OpenDirPick
+  setOpen: (open: boolean, onPick?: OpenDirPick) => void
 }
 
 export const useOpenDirDialog = create<OpenDirDialogState>()((set) => ({
   open: false,
-  setOpen: (open) => set({ open }),
+  onPick: undefined,
+  setOpen: (open, onPick) => set({ open, onPick: open ? onPick : undefined }),
 }))

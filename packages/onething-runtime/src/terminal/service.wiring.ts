@@ -82,6 +82,21 @@ interface TerminalRecord {
   stallTimer: ReturnType<typeof setTimeout> | null
   exited: boolean
   disposing: boolean
+  /**
+   * 这一格的死讯**发出去过没有**(T1-fix,2026-09-12)。
+   *
+   * 从前这件事由 `disposing` 兼任:`handleExit` 最后一句是
+   * `if (!record.disposing) sendExit(...)`。而 `kill()` 一进门就把 `disposing`
+   * 翻真 —— 于是**经 RPC 杀掉一格终端,消费者永远收不到死讯**,屏幕上那一格
+   * 停在「活着」。壳今天看不出来(它的「关标签 = 杀」同时把那一格叶丢掉了),
+   * 但从别的窗口 / 别的客户端杀一格就会。
+   *
+   * 两件事得拆开:`disposing` 说的是「这一格正在被拆」(它挡的是**刷屏**:
+   * `handleData` 不再攒、`handleExit` 不再 flush 尾巴、`finishExit` 要等整个
+   * 进程组真死),`exitSent` 说的是「死讯发过一次了」。死讯每格最多一次,
+   * 而且**无论怎么死**都要发一次。
+   */
+  exitSent: boolean
   exit: Promise<void>
   resolveExit(): void
   killTimer: ReturnType<typeof setTimeout> | null
@@ -130,6 +145,7 @@ export class TerminalService {
       stallTimer: null,
       exited: false,
       disposing: false,
+      exitSent: false,
       exit,
       resolveExit,
       killTimer: null,
@@ -287,7 +303,20 @@ export class TerminalService {
     record.info.exited = { code: exitCode }
     this.clearStallTimer(record)
     this.finishExit(record)
-    if (!record.disposing) this.getBroadcaster()?.sendExit({ terminalId: record.info.id, exitCode })
+    /*
+     * 死讯**每格最多一次,而且怎么死都发**(T1-fix;闩的判词在 `exitSent` 上)。
+     * 判据不能再是 `disposing` —— 那个标志在 `kill()` 的第一行就翻真,于是经 RPC
+     * 杀掉的那一格永远不发死讯,消费者的屏幕停在「活着」。
+     *
+     * 整机关闭那一路(`killAll()` → 每格 `disposeRecord`)照样会走到这里,而那是
+     * 对的:广播器自己守着「事件系统还在不在」(`isEventSystemInitialized()`,
+     * 判词在 `backend/wiring/terminal/bus-broadcaster.ts` 上),装配拆了就丢一行
+     * warn,不抛。
+     */
+    if (!record.exitSent) {
+      record.exitSent = true
+      this.getBroadcaster()?.sendExit({ terminalId: record.info.id, exitCode })
+    }
   }
 
   private finishExit(record: TerminalRecord): boolean {

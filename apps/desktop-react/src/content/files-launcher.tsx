@@ -1,11 +1,9 @@
 import { MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
 import { t } from '../i18n'
-import { baseNameOf, sessionCwdOf, useFilesSource } from '../data/files-source'
-import { useSessionsSource } from '../data/sessions-source'
-import { useExposeStore } from '../expose/store'
+import { baseNameOf, useFilesSource } from '../data/files-source'
 import { registerStageLauncher } from '../stage/launchers'
 import { useWorkbenchStore } from '../workbench/store'
-import { FILES_ITEM_ID, openDirectoryPanel } from './dir-open'
+import { FILES_ITEM_ID, openDirectoryPanel, sessionDirOf } from './dir-open'
 import { DIR_KIND, dirRef } from './kinds/dir-ref'
 import { useOpenDirDialog } from './files/open-dir-hub'
 
@@ -18,7 +16,7 @@ import { useOpenDirDialog } from './files/open-dir-hub'
  * (真事故:`stage/__tests__/summon-entries.test.ts` 5 红)。
  * 这里原样 re-export 那两口,老调用方一行不改。
  */
-export { FILES_ITEM_ID, openDirectoryPanel } from './dir-open'
+export { FILES_ITEM_ID, openDirectoryPanel, sessionDirOf } from './dir-open'
 
 /**
  * **Dock 上那块瓦从「文件」变成「目录」**(W6-a,设计
@@ -44,12 +42,6 @@ export { FILES_ITEM_ID, openDirectoryPanel } from './dir-open'
  * 只是那一只答的是 `Placement`,这里要的是一个 `RegionId` —— 中间隔着
  * 「哪个区域装得下一格内容」这句翻译,所以不能直接借它。
  */
-
-/** 当前会话的工作目录。答不出(会话没绑目录 / 名册还没到)= null。 */
-export function sessionDirOf(): string | null {
-  const sessionId = useExposeStore.getState().envSessionId
-  return sessionCwdOf(useSessionsSource.getState().sessions, sessionId)
-}
 
 /**
  * 点那块瓦:开**当前会话的工作目录**。会话没绑目录时退到主目录(`~`)——

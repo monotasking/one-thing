@@ -15,6 +15,7 @@ import { SESSION_PREFETCH_HOVER_MS } from '../../components/motion'
 import { chatSources } from '../../data/chat-source'
 import { resetChatPrefetch } from '../../data/chat-prefetch'
 import { ExposeView } from './ExposeView'
+import { pinMacUserAgent } from '../../test/mac-ua'
 
 /**
  * 列表这张树:角色 / 层级 / 展开、`aria-activedescendant`、四条结构键、
@@ -22,6 +23,9 @@ import { ExposeView } from './ExposeView'
  * 会把委托那一半测没)。
  */
 beforeEach(() => {
+  /* T1-fix:这一组拿 mac 的词写(⌘…),而 jsdom 的 UA 不是 mac ——
+   * 判词整段在 `src/test/mac-ua.ts` 上。 */
+  pinMacUserAgent()
   // 夹具的 NOW 与真店的「现在」差好几天,不钉住的话所有行都塌进月桶。
   vi.spyOn(Date, 'now').mockReturnValue(NOW)
   useStageStore.setState({ locale: 'zh', placements: {} })

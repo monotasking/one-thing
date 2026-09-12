@@ -26,6 +26,8 @@ const ALL_IDS: readonly FocusScopeId[] = [
   'settings',
   // 音乐面(音乐收尾 · 壳半边,2026-09-10)。
   'music',
+  // 一格终端(T1,2026-09-12)。
+  'terminal',
   'dock',
   // 拼贴树里的一片叶(W1)。
   'leaf',
@@ -45,7 +47,7 @@ const ALL_IDS: readonly FocusScopeId[] = [
 ]
 
 describe('FOCUS_SCOPES 封闭表', () => {
-  it('24 格(音乐面是第 24 格),一格不多一格不少', () => {
+  it('25 格(终端是第 25 格),一格不多一格不少', () => {
     expect(FOCUS_SCOPE_LIST.map((s) => s.id).sort()).toEqual([...ALL_IDS].sort())
   })
 
@@ -84,8 +86,8 @@ describe('FOCUS_SCOPES 封闭表', () => {
   })
 })
 
-describe('局部键:查看器 / 文件树 / 检索面 / 会话总览 / 叶五格', () => {
-  it('查看器三条、文件树两条、检索面两条、总览一条、叶一条,别的作用域一条都没有', () => {
+describe('局部键:查看器 / 文件树 / 检索面 / 会话总览 / 终端 / 叶六格', () => {
+  it('查看器三条、文件树两条、检索面两条、总览一条、终端五条、叶一条,别的作用域一条都没有', () => {
     expect(focusScopeKeysOf('viewer').map((k) => k.action)).toEqual(['save', 'jump', 'find'])
     expect(focusScopeKeysOf('files').map((k) => k.action)).toEqual(['detail', 'detail'])
     // 检索重建 S4b:⌘[ / ⌘] = 查询历史的后退 / 前进(§4.6,与浏览器地址栏同形)。
@@ -95,11 +97,24 @@ describe('局部键:查看器 / 文件树 / 检索面 / 会话总览 / 叶五格
     ])
     // 09-04 方向 A:⌘⇧P = 置顶 / 取消置顶活动行。
     expect(focusScopeKeysOf('expose').map((k) => k.action)).toEqual(['pin.toggle'])
+    /*
+     * T1:键盘礼让五行。**它们是全表唯一一族「接住了不给应用,而是把这一下交给
+     * 里面那台程序」的键** —— 那五个字母(p/e/j/n/w)是按「出厂全局表占着、而
+     * readline 又每天在按」挑出来的,判词整段在 `content/terminal/key-courtesy.ts`。
+     * 表里加 / 减一个字母 → 这一条当场红。
+     */
+    expect(focusScopeKeysOf('terminal').map((k) => k.action)).toEqual([
+      'pty:p',
+      'pty:e',
+      'pty:j',
+      'pty:n',
+      'pty:w',
+    ])
     // W1 拍点 ④:⌘W 关当前 tab(叶内局部键 —— 它需要一个目标)。
     expect(focusScopeKeysOf('leaf').map((k) => k.action)).toEqual(['closeTab'])
     const withKeys = FOCUS_SCOPE_LIST.filter((s) => (s.keys?.length ?? 0) > 0).map((s) => s.id)
-    // 次序 = 表里的声明序(`leaf` 排在 region 那一族的末尾)。
-    expect(withKeys).toEqual(['viewer', 'files', 'search', 'expose', 'leaf'])
+    // 次序 = 表里的声明序(`terminal` 在 region 那一族里,`leaf` 排在它们末尾)。
+    expect(withKeys).toEqual(['viewer', 'files', 'search', 'expose', 'terminal', 'leaf'])
   })
 
   /*

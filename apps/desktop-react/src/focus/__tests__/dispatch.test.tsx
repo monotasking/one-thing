@@ -5,6 +5,7 @@ import { focusTree } from '../registry'
 import { useKeymapStore } from '../../keymap/store'
 import { initialKeymapState } from '../../keymap/transitions'
 import type { CommandId } from '../../keymap/types'
+import { pinMacUserAgent } from '../../test/mac-ua'
 
 /**
  * **唯一那个 window keydown 的顺序**(设计 §4.3 / §4.4)。
@@ -31,6 +32,7 @@ function Harness({ run }: { run: (id: CommandId) => void }) {
 let runCommand: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
+  pinMacUserAgent()
   useKeymapStore.setState({ ...initialKeymapState })
   runCommand = vi.fn()
 })

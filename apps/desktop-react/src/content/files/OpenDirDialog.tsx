@@ -34,11 +34,15 @@ export function OpenDirDialog() {
     if (open) setPath('')
   }, [open])
 
+  const onPick = useOpenDirDialog((st) => st.onPick)
+
   const submit = () => {
     const next = path.trim()
     if (!next) return
+    // 先读再关:`setOpen(false)` 会把这一次的动作清掉(判词在 hub 上)。
+    const run = onPick ?? openDirectoryPanel
     setOpen(false)
-    openDirectoryPanel(next)
+    run(next)
   }
 
   return (

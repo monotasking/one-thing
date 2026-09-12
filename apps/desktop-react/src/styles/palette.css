@@ -156,3 +156,70 @@
   --ws-teal: #6d9aa6;
   --on-ws: #ffffff;
 }
+
+/* ── 终端的十六色 + 四格屏幕色(T1,2026-09-12)────────────────────────────────
+ * 一台真 PTY 屏幕要的是 ANSI 那十六格(SGR 30–37 / 90–97),而**主题管道里没有
+ * 这件事实** —— 它下发的 `--ui-*` 表是界面语义色(surface / text / status),
+ * 没有「第 3 号色」这种东西。所以这一族与 `--warn` 同档:**不过桥**,值只在这里
+ * 出现一次,组件侧照旧只写 var()(`content/terminal/theme.ts` 现算成 xterm 的
+ * `ITheme`)。真要让它跟着主题走,该做的是给主题侧长出终端 token,不是在这里
+ * 从 `--accent` 兑十六个假的。
+ *
+ * ── 明暗两档靠 `data-color-mode` ───────────────────────────────────────────
+ * 这一族是全仓**第一个**真的需要「此刻是暗还是亮」的 CSS 选择器:别的颜色都由
+ * 主题管道整表下发(那张表自己就带着明暗),而这十六格没有产地。所以
+ * `theme/theme-source.ts` 在贴变量表那一刻多打一个 `data-color-mode="dark|light"`
+ * ——那条事实它本来就在往 `root.style.colorScheme` 上写,这里只是把同一句话
+ * 写成 CSS 选得中的形。没连上 core(浏览器直开)= 标记不在 = 下面这块不匹配 =
+ * 亮档原样生效,与 `data-theme-bridge` 那条纪律逐字同源。
+ *
+ * 值取的是 flexoki 的 ANSI 对照(与本仓默认主题同源),两档各自压在自己的底纸上
+ * 都过得了正文对比度;`--term-bright-black` 刻意不等于底色(选中/淡出的那一族要
+ * 认得出来)。 */
+:root {
+  --term-bg: #ffffff;
+  --term-fg: #2b2a26;
+  --term-cursor: #7c6fa0;
+  --term-selection: rgba(124, 111, 160, 0.22);
+
+  --term-black: #100f0f;
+  --term-red: #af3029;
+  --term-green: #66800b;
+  --term-yellow: #ad8301;
+  --term-blue: #205ea6;
+  --term-magenta: #a02f6f;
+  --term-cyan: #24837b;
+  --term-white: #6f6e69;
+  --term-bright-black: #b7b5ac;
+  --term-bright-red: #d14d41;
+  --term-bright-green: #879a39;
+  --term-bright-yellow: #d0a215;
+  --term-bright-blue: #4385be;
+  --term-bright-magenta: #ce5d97;
+  --term-bright-cyan: #3aa99f;
+  --term-bright-white: #100f0f;
+}
+
+:root[data-color-mode='dark'] {
+  --term-bg: #1c1b1a;
+  --term-fg: #cecdc3;
+  --term-cursor: #b7a5dd;
+  --term-selection: rgba(183, 165, 221, 0.28);
+
+  --term-black: #100f0f;
+  --term-red: #d14d41;
+  --term-green: #879a39;
+  --term-yellow: #d0a215;
+  --term-blue: #4385be;
+  --term-magenta: #ce5d97;
+  --term-cyan: #3aa99f;
+  --term-white: #878580;
+  --term-bright-black: #575653;
+  --term-bright-red: #e8705f;
+  --term-bright-green: #a0af54;
+  --term-bright-yellow: #dfb431;
+  --term-bright-blue: #66a0c8;
+  --term-bright-magenta: #e47da8;
+  --term-bright-cyan: #5abdaf;
+  --term-bright-white: #fffcf0;
+}

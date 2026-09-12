@@ -50,6 +50,9 @@ export type FocusScopeId =
   // 音乐面(音乐收尾 · 壳半边)。一块普通的内容面:它有自己的落点(播放 / 暂停
   // 那颗钮),没有局部键,不认 Esc。
   | 'music'
+  // 一格终端(T1)。一格 PTY 一份实例;它是全表**唯一**带着「把这个键交给
+  // 里面那台程序」这一族局部键的作用域(判词在 `content/terminal/key-courtesy.ts`)。
+  | 'terminal'
   | 'dock'
   // 拼贴树里的一片叶(W1)。同一个 id 会有**好几份实例**:叶根一份(owner = 叶 id,
   // 它拿 ⌘W、也是跟焦的落点),每一格 tab 的内容层各一份(owner = refId,

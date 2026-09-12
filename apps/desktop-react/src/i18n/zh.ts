@@ -1587,4 +1587,18 @@ export const zh = {
   'music.backendNotReady': '音乐后端还没配好 —— 装好那只 CLI 并登录之后才放得出声。',
   'music.backendError': '音乐后端报了一句:{message}',
 
+  /* 终端(T1,方案 `apps/desktop-react/docs/terminal-browser-2026-09.md` §2.1)。
+   * 瓦名复用 `item.terminal`(i18n 纪律:同一句话只有一个键)。 */
+  'terminal.attaching': '正在接上…',
+  'terminal.detached': '已断开。',
+  'terminal.reconnect': '重新连接',
+  'terminal.exited': '进程已退出({code})',
+  'terminal.dead': '已结束。',
+  'terminal.openAnother': '再开一个',
+  'terminal.new': '新建终端',
+  'terminal.newInDir': '在目录…新建',
+  'terminal.aliveSection': '开着的终端',
+  /* 键盘礼让那五行共用的一句(判词在 `content/terminal/key-courtesy.ts`)。 */
+  'terminal.keyToPty': '交给终端',
+
 } as const

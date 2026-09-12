@@ -8,6 +8,7 @@ import { initialStageState } from '../stage/transitions'
 import { focusTree } from '../focus/registry'
 import { useKeymapStore } from './store'
 import { initialKeymapState } from './transitions'
+import { pinMacUserAgent } from '../test/mac-ua'
 
 /**
  * 派发器只钉两件事:一次按键确实经**注册表**落到命令上,以及改绑之后
@@ -15,6 +16,7 @@ import { initialKeymapState } from './transitions'
  * 组合本身的算术在 transitions 的纯函数里测,这里不重复。
  */
 beforeEach(() => {
+  pinMacUserAgent()
   useStageStore.setState({ ...initialStageState, locale: 'zh' })
   useKeymapStore.setState({ ...initialKeymapState })
   useAgentMenu.setState({ open: false })

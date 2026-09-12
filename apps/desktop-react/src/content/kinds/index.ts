@@ -26,3 +26,7 @@ import './session'
 import './dir'
 /* W6-a:一个标签装两格 —— 「二合一」并出来的那一种(设计 `workbench-tabs-2026-09.md` §2.1)。 */
 import './pair'
+/* T1:一格真 PTY(方案 `apps/desktop-react/docs/terminal-browser-2026-09.md` §2.1-5)。
+ * 它就是这张表头上那句「终端实例按 cwd 各一个当 tab」那次陌生能力演练的答案 ——
+ * 兑现下来正好两行:它自己那个模块,与这一行 import。 */
+import './terminal'

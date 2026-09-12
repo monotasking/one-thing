@@ -46,13 +46,13 @@ describe('序号直达那一族', () => {
   })
 
   it('⌘2 落到第二个序号的命令上', () => {
-    const id = lookupCommand(initialKeymapState, {
-      key: '2',
-      metaKey: true,
-      ctrlKey: false,
-      altKey: false,
-      shiftKey: false,
-    })
+    // T1-fix:`lookupCommand` 从这一批起要知道「主修饰键是哪一枚物理键」。
+    // 这一组的夹具按的都是 ⌘,所以递 `'mac'`(判词在 `matchCombo` 上)。
+    const id = lookupCommand(
+      initialKeymapState,
+      { key: '2', metaKey: true, ctrlKey: false, altKey: false, shiftKey: false },
+      'mac',
+    )
     expect(id).toBe(workspaceSlotCommandId(2))
   })
 })
@@ -88,11 +88,11 @@ describe('出厂表两两不撞键(见文件头 ②)', () => {
   })
 
   it('⌘⇧W 落在工作区面板上(08-31 裁定的新键)', () => {
-    expect(lookupCommand(initialKeymapState, press('w', true))).toBe('workspace.palette')
+    expect(lookupCommand(initialKeymapState, press('w', true), 'mac')).toBe('workspace.palette')
   })
 
   it('⌘⇧O 还给目录面板 —— 撞键解开之后它才真的按得响', () => {
-    expect(lookupCommand(initialKeymapState, press('o', true))).toBe('toc.toggle')
+    expect(lookupCommand(initialKeymapState, press('o', true), 'mac')).toBe('toc.toggle')
   })
 
   it('工作区总览不占独立快捷键(单击瓦即达,快切面板里也有入口)', () => {

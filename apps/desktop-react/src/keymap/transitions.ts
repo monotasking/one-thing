@@ -119,6 +119,36 @@ const SHELF_TOGGLE_COMMANDS: KeymapCommand[] = SHELF_TOGGLE_LABELS.map((row) => 
 
 const DEFAULT_COMBOS: Partial<Record<CommandId, Combo>> = {
   'toggle:search': { meta: true, key: 'p' },
+  /*
+   * **召唤终端**(T1,方案 §2.1-6;`desktop-os` §8.2 核过三平台都空着)。
+   *
+   * ── 它为什么不是一条新命令 ─────────────────────────────────────────────
+   * 派工单写的是「加全局命令 `terminal.summon`」。表里**已经有那条命令**了:
+   * `toggle:<瓦 id>` 这一族的语义就是**召唤**(`keymap/types.ts` 的 `CommandId`
+   * 那一段:没打开就按它的打开方式开、看不见就露出来、看得见没聚焦就送焦点、
+   * 焦点已经在里面就收起来),而 `toggle:terminal` 走的正是
+   * `stage/open-item.summonStageItem` —— 那只函数**先问启动瓦**
+   * (`stageLauncherOf(id)`),所以「有开着的就激活最近那格,没有就开一格」
+   * 逐字就是它。再登记一条 `terminal.summon` 会得到两条做同一件事的命令、
+   * 设置页两行、以及一对迟早分叉的落点。所以这里只给那一行补一个**出厂键位**。
+   *
+   * ── 键位:主修饰键 + 反引号 ──────────────────────────────────────────
+   * 出厂全表零冲突(带 ⌥ 的只有架子那四条,带 ⇧ 的只有 ⌘⇧O / ⌘⇧W / ⌘⇧↩,
+   * 反引号这个位子没有第二个人占),而且它是 VS Code / Windows Terminal 一族
+   * 三十年的手势。
+   *
+   * **写 `ctrl` 还是写 `meta` 在这里是同义的**(`primaryOf`:声明这一侧两种拼法
+   * 都读作「主修饰键」);真正按下的那一枚由平台定(T1-fix 的 `matchCombo`):
+   * **Win / Linux 上是 `Ctrl+\``(要的就是它),mac 上是 `⌘\``**。
+   *
+   * ⚠️ **mac 上的 `⌘\`` 与系统的「在本应用的窗口间轮换」撞车** —— 那是 AppKit
+   * 一级的手势,这台壳抢不抢得到要看窗口此刻有没有应用菜单接它。方案
+   * `desktop-os §8.2` 当时核的是「`Ctrl+\`` 三平台都空着」,而那个前提在
+   * T1-fix 之后只对 Win / Linux 成立(mac 上没有任何一条绑定表达得出「就是
+   * Ctrl 那一枚」)。**mac 上换哪个键是用户的拍点**,T1-fix 交卷已列;
+   * 在拍之前这一行照旧,因为它在 Win / Linux 上是对的、在 mac 上至多是按不响。
+   */
+  'toggle:terminal': { ctrl: true, key: '`' },
   [toggleCommandId(SESSIONS_ITEM_ID)]: { meta: true, key: 'e' },
   'toc.toggle': { meta: true, shift: true, key: 'o' },
   'agent.menu': { meta: true, key: 'j' },
@@ -229,11 +259,41 @@ export function isModifierKey(key: string): boolean {
 }
 
 /**
- * 主修饰键:mac 的 ⌘ 与别处的 Ctrl 是同一个位子。
- * 匹配、冲突判定、录制全都问这一个函数 —— 平台差异只活在 formatCombo 里。
+ * **声明**这一侧的主修饰键:一条绑定写 `meta` 还是写 `ctrl`,说的是同一件事
+ * ——「按住那枚主修饰键」。表里两种拼法都合法,冲突判定因此把 ⌘P 与 Ctrl+P
+ * 判为同一条绑定(`sameCombo`),这一格一个字没改。
+ *
+ * **平台差异不在这里**(T1-fix 改口):从前 `matchCombo` 也问这一只,于是
+ * 「按下的是哪一枚」与「声明写的是哪一枚」共用一个判据 —— 结果是**两枚键都
+ * 命中**:mac 上按 Ctrl+W 会触发 ⌘W(关当前 tab),Win 上按 Win+W 会触发 Ctrl+W。
+ * 平常看不出来,直到有一块面**真的要 Ctrl 那一枚**(终端:`^W` 删一个词、
+ * `^P` 上一条历史)—— 那时「两枚皆可」就成了「终端里删一个词会把 shell 关掉」。
+ * 按下的那一侧现在归 `primaryPressedIn`,判词写在它上头。
  */
 function primaryOf(combo: Combo): boolean {
   return combo.meta === true || combo.ctrl === true
+}
+
+/**
+ * **按下**这一侧的主修饰键:mac 是 ⌘,其余平台是 Ctrl(T1-fix)。
+ *
+ * 两条,缺一不可:
+ *  ① 主修饰键那一枚按下了;
+ *  ② **另一枚没按下**。另一枚在这台壳的键位表里永远不参与绑定,所以按着它就
+ *     不是这一条(mac 上 ⌃⌘P 不是 ⌘P;Win 上 Win+Ctrl+P 不是 Ctrl+P)。
+ *     没有 ② 的话,一条不带主修饰的绑定(`{alt:true,key:'x'}`)会被 mac 上的
+ *     Ctrl+⌥X 命中 —— 因为那时 ① 恰好也答 false。
+ *
+ * 纯函数,平台由调用方量一次递进来(与 `formatCombo` 逐字同一条纪律:
+ * 「这是什么机器」是宿主的事实,不是注册表的)。
+ */
+export function primaryPressedIn(e: ComboEvent, platform: KeymapPlatform): boolean {
+  return platform === 'mac' ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
+}
+
+/** 那枚**永远不参与绑定**的修饰键此刻按着没有(见上面的 ②)。 */
+function offHandPressed(e: ComboEvent, platform: KeymapPlatform): boolean {
+  return platform === 'mac' ? e.ctrlKey : e.metaKey
 }
 
 /** 两个组合是不是同一个。冲突判定用它,所以 ⌘P 与 Ctrl+P 判为同一个。 */
@@ -246,10 +306,17 @@ export function sameCombo(a: Combo, b: Combo): boolean {
   )
 }
 
-/** 一次按键是不是这个组合。修饰键逐位相等 —— 多按一个 Shift 就不是同一条绑定。 */
-export function matchCombo(e: ComboEvent, combo: Combo): boolean {
+/**
+ * 一次按键是不是这个组合。修饰键逐位相等 —— 多按一个 Shift 就不是同一条绑定。
+ *
+ * **`platform` 是必填的**(T1-fix):它决定「主修饰键」指的是哪一枚物理键。
+ * 给它一个默认值会让每个忘了传的调用点悄悄回到「两枚皆可」那条老路上 ——
+ * 而那正是这一改要治的病,所以让 tsc 在每一处问一遍。
+ */
+export function matchCombo(e: ComboEvent, combo: Combo, platform: KeymapPlatform): boolean {
   return (
-    primaryOf(combo) === (e.metaKey || e.ctrlKey) &&
+    primaryOf(combo) === primaryPressedIn(e, platform) &&
+    !offHandPressed(e, platform) &&
     (combo.alt === true) === e.altKey &&
     (combo.shift === true) === e.shiftKey &&
     normalizeKey(e.key) === combo.key
@@ -323,11 +390,15 @@ export function hasOverride(state: KeymapState, id: CommandId): boolean {
   return id in state.overrides
 }
 
-/** 一次按键落在哪条命令上。没人认领 = null。 */
-export function lookupCommand(state: KeymapState, e: ComboEvent): CommandId | null {
+/** 一次按键落在哪条命令上。没人认领 = null。`platform` 见 `matchCombo`。 */
+export function lookupCommand(
+  state: KeymapState,
+  e: ComboEvent,
+  platform: KeymapPlatform,
+): CommandId | null {
   for (const command of KEYMAP_COMMANDS) {
     const combo = effectiveCombo(state, command.id)
-    if (combo && matchCombo(e, combo)) return command.id
+    if (combo && matchCombo(e, combo, platform)) return command.id
   }
   return null
 }

@@ -1,3 +1,4 @@
+import { TERMINAL_SCOPED_KEYS } from '../content/terminal/key-courtesy'
 import type { FocusScopeId, FocusScopeSpec, ScopedKey } from './types'
 
 /**
@@ -161,6 +162,26 @@ export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
    * Space / 方向键那套**结构键**语义(第三层,不进任何表)。
    * labelKey 复用 Dock 瓦那一句(i18n 纪律:同一句话只该有一个键)。
    */
+  /*
+   * 一格终端(T1,方案 `apps/desktop-react/docs/terminal-browser-2026-09.md`
+   * §2.1-7,按深查 9-1 末段改判)。**三件声明**:
+   *  · 落点(`restingTarget`)= 那块屏幕的容器(实例侧声明;进去之后键盘落在
+   *    xterm 自己的 textarea 上,那是**作用域内部**的移动);
+   *  · Esc **不声明** —— Esc 是 PTY 的键(vim 一秒按三次)。不传 = 不进 Esc
+   *    候选表 = 派发器问不到人 = 不 `preventDefault` = xterm 照常把它发下去。
+   *    与 `permission` / `music` 两格不声明 Esc 是同一句判词的三种用法;
+   *  · 局部键 = **键盘礼让表**。它是全表唯一一族「接住了什么都不做给应用、
+   *    而是把这一下交给里面那台程序」的键 —— 判词与那五个字母是怎么选出来的,
+   *    整段在 `content/terminal/key-courtesy.ts` 上(含它与方案原文的出入)。
+   *    落点是 `TerminalLeaf` 注入的 `keyHandlers`。
+   * labelKey 复用 Dock 瓦那一句(i18n 纪律:同一句话只该有一个键)。
+   */
+  terminal: {
+    id: 'terminal',
+    kind: 'region',
+    labelKey: 'item.terminal',
+    keys: TERMINAL_SCOPED_KEYS,
+  },
   music: { id: 'music', kind: 'region', labelKey: 'item.music' },
   dock: { id: 'dock', kind: 'region', labelKey: 'dock.label' },
   /*

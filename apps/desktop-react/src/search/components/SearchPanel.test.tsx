@@ -23,6 +23,7 @@ import { useSearchStore } from '../store'
 import { focusTree } from '../../focus/registry'
 import { FocusDispatchHarness } from '../../test/focus-harness'
 import { FOCUS_SCOPES } from '../../focus/scopes'
+import { pinMacUserAgent } from '../../test/mac-ua'
 
 /**
  * 检索面板(第 ⑦⑧ 步「换心 + 裁定落地」之后)。
@@ -88,6 +89,9 @@ const chatHit = (over: Partial<SearchResult> = {}): SearchResult => ({
 })
 
 beforeEach(async () => {
+  /* T1-fix:这一组拿 mac 的词写(⌘[ / ⌘]),而 jsdom 的 UA 不是 mac ——
+   * 判词整段在 `src/test/mac-ua.ts` 上。 */
+  pinMacUserAgent()
   resetSearchCatalog()
   resetSearchListing()
   useSearchStore.getState().reset()

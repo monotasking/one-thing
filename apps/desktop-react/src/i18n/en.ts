@@ -1335,4 +1335,16 @@ export const en: Record<MessageKey, string> = {
   'music.backendNotReady': 'The music backend is not set up yet — install the CLI and log in before anything can play.',
   'music.backendError': 'The music backend said: {message}',
 
+  /* Terminal (T1). The tile name reuses `item.terminal`. */
+  'terminal.attaching': 'Attaching…',
+  'terminal.detached': 'Disconnected.',
+  'terminal.reconnect': 'Reconnect',
+  'terminal.exited': 'Process exited ({code})',
+  'terminal.dead': 'Ended.',
+  'terminal.openAnother': 'Open another',
+  'terminal.new': 'New terminal',
+  'terminal.newInDir': 'New in directory…',
+  'terminal.aliveSection': 'Open terminals',
+  'terminal.keyToPty': 'Send to terminal',
+
 }
