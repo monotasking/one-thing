@@ -335,8 +335,17 @@ export const zh = {
   'focus.scope.menu': '菜单',
   'focus.scope.palette': '工作区快切',
 
-  /* ── 浏览器面(壳,不是页面内容) ─────────────────────────────────── */
-  'browser.pagePlaceholder': '页面占位',
+  /* ── 浏览器面(壳,不是页面内容;B2:content/browser/BrowserLeaf.tsx)── */
+  'browser.address': '地址',
+  'browser.addressPlaceholder': '输入网址,或者搜点什么',
+  'browser.back': '后退',
+  'browser.forward': '前进',
+  'browser.reload': '刷新',
+  'browser.stop': '停止',
+  'browser.newTab': '新标签页',
+  'browser.openTabsSection': '开着的标签页',
+  'browser.noHost': '此宿主没有内嵌浏览器,页开在桌面里。',
+  'browser.gone': '这一页找不到了。',
 
   /* ── 会话总览 Exposé ──────────────────────────────────────────────── */
   'expose.searchPlaceholder': '搜索会话、章节、消息',
@@ -915,6 +924,7 @@ export const zh = {
   'permission.effect.plugin_exec': '运行插件',
   'permission.effect.external-agent': '调用外部 agent',
   'permission.effect.ui_change': '改界面',
+  'permission.effect.browser_navigate': '让内置浏览器去一个地址',
   /* ── 内置浏览器(B2′:content/settings/BrowserSettings.tsx)──────────────────
    * 「开着会有什么后果」那两句是**会造成后果的警告**,所以它们是文案不是数据,
    * 双语成对。端口是数据,由 `{port}` 插进来 —— 换一门语言它不该变。 */

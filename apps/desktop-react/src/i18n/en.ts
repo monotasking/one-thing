@@ -276,8 +276,17 @@ export const en: Record<MessageKey, string> = {
   'focus.scope.menu': 'Menu',
   'focus.scope.palette': 'Workspace switcher',
 
-  /* ── browser shell ────────────────────────────────────────────────── */
-  'browser.pagePlaceholder': 'Page placeholder',
+  /* ── browser shell (B2: content/browser/BrowserLeaf.tsx) ──────────── */
+  'browser.address': 'Address',
+  'browser.addressPlaceholder': 'Enter an address, or search',
+  'browser.back': 'Back',
+  'browser.forward': 'Forward',
+  'browser.reload': 'Reload',
+  'browser.stop': 'Stop',
+  'browser.newTab': 'New tab',
+  'browser.openTabsSection': 'Open tabs',
+  'browser.noHost': 'This host has no built-in browser. Pages open in the desktop app.',
+  'browser.gone': 'That page is gone.',
 
   /* ── session exposé ───────────────────────────────────────────────── */
   'expose.searchPlaceholder': 'Search sessions, sections, messages',
@@ -750,6 +759,7 @@ export const en: Record<MessageKey, string> = {
   'permission.effect.plugin_exec': 'Run a plugin',
   'permission.effect.external-agent': 'Call an external agent',
   'permission.effect.ui_change': 'Change the interface',
+  'permission.effect.browser_navigate': 'Send the built-in browser somewhere',
   /* ── built-in browser (B2′: content/settings/BrowserSettings.tsx) ───────── */
   'settings.sectionBrowser': 'Built-in browser',
   'browser.cdpLabel': 'Let AI and outside tools drive it (CDP)',

@@ -158,7 +158,23 @@ export const STAGE_ITEMS: StageItemSpec[] = [
     icon: 'Terminal',
     defaultPlacement: { kind: 'edge', side: 'bottom' },
   },
-  { id: 'browser', titleKey: 'item.browser', level: 'space', dockGroup: 'global', icon: 'Globe' },
+  /*
+   * **「浏览器」从一块面降格成启动瓦**(B2,方案 §2.2-4;与「终端」那一行逐字
+   * 同一条路)。id 一个字不改 —— 位置记忆、隐藏配置、Dock 顺序全按 id 记。
+   * 点它 / 右键 / 拖它三件登记在 `content/browser-launcher.tsx`。
+   *
+   * `level` 从 `'space'` 改成 **`'app'`**:一格网页与「你此刻在做哪个项目」无关,
+   * 切工作区不该让它消失(终端相反 —— 它开在项目目录里)。方案 §6「缺省不问」
+   * 那一行写的就是这一格。
+   *
+   * **天生落中央区**,而这一格是**缺席**不是一行声明:`OpenPlacement` 里没有
+   * 「中央」这一档 —— 中央是启动瓦那条路问完记忆与天生之后的**兜底**
+   * (`browser-launcher.regionForLauncher` 的最后一句 `return CENTER_REGION`)。
+   * 写一行 `{kind:'center'}` 需要先给那个联合加一档,而那一档在形态机里没有对应
+   * 的住处(中央区是拼贴树的地,不是 Placement)。所以不写。
+   * 一页网页要的地与一段对话要的地一样大,塞进架子只看得见三行;**存量记忆压过它**。
+   */
+  { id: 'browser', titleKey: 'item.browser', level: 'app', dockGroup: 'global', icon: 'Globe' },
   // 检索是一块普通的瓦:参与 Placement 全套(⌘P 也只是"按它的打开方式开一下")。
   { id: 'search', titleKey: 'item.search', level: 'space', dockGroup: 'global', icon: 'Search' },
   // 会话总览同样是一块普通的瓦(08-29 拍板去接管化):它有内容、有落点、有打开方式,

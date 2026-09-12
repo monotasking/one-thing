@@ -57,7 +57,8 @@
     "gate:layout": "node scripts/gate-layout.mjs",
     "gate:resources": "node scripts/gate-resources.mjs",
   "gate:music": "node scripts/gate-music.mjs",
-    "gate:terminal": "node scripts/gate-terminal.mjs"
+    "gate:terminal": "node scripts/gate-terminal.mjs",
+    "gate:browser": "node scripts/gate-browser.mjs"
   },
   "dependencies": {
     "@xterm/addon-fit": "0.11.0",

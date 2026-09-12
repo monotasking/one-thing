@@ -46,6 +46,17 @@ import { initializeUserSchedulerTasks } from '@onething/backend/wiring/scheduler
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
 import { applyShellNetworkProxySettings, createShellHostPorts } from './host-ports.js'
 import { createDesktopShutdownRequest } from './shutdown.js'
+/*
+ * ── 内嵌浏览器(B2 接线;整块的判词在 `electron/browser/index.ts` 的文件头)──
+ * 三段,次序是硬的:①两句旗子必须在 app `ready` 之前(`appendSwitch` 之后
+ * Chromium 才读命令行);①′ 挂 HTTP 面那一行把真开着的 CDP 口补进发现文件;
+ * ②窗口 + 装配之后才装得起 `installBrowserHost`(要 `window` 挂视图、要装配完
+ * 的 `backend.resources`)。
+ */
+import { installBrowserHost } from './browser/index.js'
+import { applyChromiumFlags } from './browser/user-agent.js'
+import { applyCdpFlag, readCdpLaunchFlag } from './browser/cdp-flag.js'
+import { cdpDiscoveryExtras } from './browser/cdp-settings.js'
 
 /**
  * ── 同店同钥:app 名字就是 safeStorage 的钥匙名 ─────────────────────────────
@@ -66,6 +77,19 @@ import { createDesktopShutdownRequest } from './shutdown.js'
 const shellUserData = app.getPath('userData')
 app.setName('onething')
 app.setPath('userData', shellUserData)
+
+/*
+ * **内嵌浏览器的两句启动旗**(B2 ①,`electron/browser/index.ts` 文件头逐字照做)。
+ *
+ * 它们必须在 app `ready` **之前** —— `appendSwitch` 之后 Chromium 才读命令行。
+ * `applyChromiumFlags` 关掉 FedCm(登谷歌那条配方的四件之一);`applyCdpFlag` 按
+ * `<store>/run/cdp.json` 那张旗文件决定开不开 `--remote-debugging-port`
+ * (**判据是旗文件 + argv,不是设置** —— 设置改了要重启才生效,按设置写等于说谎;
+ * argv 里已经带着口时不再 append,否则真机门的口会被产品旗子顶掉,判词在
+ * `browser/cdp-flag.ts` 的文件头)。
+ */
+applyChromiumFlags(app)
+applyCdpFlag(app, readCdpLaunchFlag(resolveStoreRoot()))
 
 type HttpDiscoveryRecord = {
   port: number
@@ -166,6 +190,15 @@ class ShellNoopSender extends EventEmitter {
 
 let backend: OnethingBackend | undefined
 let ownCoreAssembly: Promise<OnethingBackend> | undefined
+/**
+ * 这扇窗(B2 ②)。**内嵌浏览器的视图要挂进它的 `contentView`**,推送也发给它的
+ * `webContents` —— 而 `startPostWindowServices()` 今天不收参数(它跑在
+ * `createWindow()` 之后),所以窗子由 `createWindow` 记在这一格上。
+ *
+ * 单窗:`window-all-closed` 就退,`activate` 重开时会重新写它。多窗是 P4 窗口系
+ * 那一批的事(`NativeViewLayout` 按窗 id 分账的口子已经留着,方案 §8 留账)。
+ */
+let shellWindow: BrowserWindow | undefined
 let quitting = false
 /**
  * `host:connection` 的答案。是 Promise 而不是值:内嵌那条路上 HTTP 面是**开窗之后**
@@ -222,6 +255,12 @@ function startPostWindowServices(): void {
     // 恒真,所以把那句话说出口(批 A §3.1),而不是让过滤代码每条分片重新问一遍。
     const mounting = startEmbeddedOnethingHttpServer(b, {
       owner: 'shell',
+      /*
+       * B2′:把这个进程**真的开着**的 CDP 口补进 `run/http.json`,别的客户端
+       * (chrome-devtools-mcp 的配置、门脚本)就不必猜口。判据是**命令行**不是
+       * 设置;没开 → `undefined` → `cdp` 那个键根本不出现在文件里。
+       */
+      discoveryExtras: cdpDiscoveryExtras(app.commandLine),
     })
     connectionReady = mounting
       .then(embedded => {
@@ -286,6 +325,33 @@ function startPostWindowServices(): void {
     void b.mcp.start().catch((error: unknown) => {
       log.error('subsystem startup failed', { subsystem: 'mcp', blocking: false }, error)
     })
+
+    /*
+     * **内嵌浏览器**(B2 ②;整块的判词在 `electron/browser/index.ts` 的文件头)。
+     *
+     * 次序是硬的:要 `window`(视图得挂进 `win.contentView`)、要**装配完**的
+     * backend(`backend.resources` 在装配之前抛 `BackendNotAssembledError`)——
+     * 所以它在这里,不在 `hooks.afterTools`(那一拍窗口还没有)。
+     *
+     * `installBrowserHost` 自己**不** `own()`:它交回一个 disposer,由起它的这一行
+     * `own()`(「谁起的谁 own」那条纪律的落点是起它的那一行,与上面
+     * `embeddedHttpSurface` / `userSchedulerTasks` 同形)。
+     *
+     * 装不起来不阻塞壳:没有内嵌浏览器不该让窗口起不来 —— `browser:` 不 mount,
+     * 于是壳与 AI 两侧都诚实地答「这台上没有它」(§3.2「未挂」那一行)。
+     */
+    if (shellWindow) {
+      try {
+        const browserHost = installBrowserHost({
+          window: shellWindow,
+          backend: b,
+          storePath: resolveStoreRoot(),
+        })
+        b.own(() => browserHost.dispose(), 'browserHost')
+      } catch (error: unknown) {
+        log.error('subsystem startup failed', { subsystem: 'browser', blocking: false }, error)
+      }
+    }
     const refreshController = new AbortController()
     b.own(() => refreshController.abort(), 'modelRegistryRefresh', 'quiesce')
     void b.runTask('desktop:model-registry', () => refreshModelsOnFirstStartup(refreshController.signal)).catch((error: unknown) => {
@@ -375,6 +441,26 @@ const FRAMELESS_ON_MAC =
  *      主进程 —— 那些版本没有离屏开关,窗子会弹到用户脸上。
  */
 const GATE_HEADLESS = process.env.ONETHING_GATE_HEADLESS === '1'
+/**
+ * · `ONETHING_GATE_OFFSCREEN=1` —— **窗子摆到屏外,不抢焦点地显示出来**
+ *   (B2 新增;它是上面那一档的**细化**,两个开关一起传)。
+ *
+ *   立它的理由是 B0-④ 量出来的一条真账,不是口味:`show: false` 的窗整扇被
+ *   Chromium 当成隐藏,**合成器按 1Hz 节流**(藏后心跳中位 1000ms,放出即恢复)。
+ *   凡是与「页面上的时间」有关的量项 —— 一页网页加载完没有、标题落下来没有、
+ *   遮挡快照刷没刷新 —— 在那一档下量到的都是节流之后的数,而那不是产品的行为。
+ *
+ *   所以 `gate:browser` 要一扇**真的在合成、但人看不见也抢不着焦点**的窗,
+ *   两个开关各管一半:`HEADLESS` 管「别自己 `show()`」(上面那一行原样不动,
+ *   顺带也不冒 Dock 图标),`OFFSCREEN` 管「摆到屏外,再 `showInactive()`」——
+ *   显示但**不激活**,而那正是「真机门不许抢用户的机器」那条纪律要的。
+ *   macOS 会把窗的 y 钳进可见区(实测钳到 33),x 不钳 —— 于是它落在主屏右侧
+ *   之外,前台应用一格都不动。
+ *
+ *   只传 `OFFSCREEN` 不传 `HEADLESS` 也说得通(窗会先 `show()` 再挪到屏外,
+ *   中间抢一下焦点),但那不是门该干的事,所以门两个一起传。
+ */
+const GATE_OFFSCREEN = process.env.ONETHING_GATE_OFFSCREEN === '1'
 const GATE_DIST = process.env.ONETHING_GATE_DIST || 'dist'
 
 function createWindow(): BrowserWindow {
@@ -394,6 +480,18 @@ function createWindow(): BrowserWindow {
   })
   // 离屏档**什么都不做**:窗子本来就是 `show: false` 起的,不接这一发就永远不上屏。
   if (!GATE_HEADLESS) window.once('ready-to-show', () => window.show())
+  /*
+   * 屏外档(B2):`showInactive()` 而不是 `show()` —— 后者会把这扇窗激活,
+   * 而那正是「真机门不许抢用户的机器」那条纪律禁的。位置摆到主屏右侧之外;
+   * macOS 会把 y 钳进可见区,那没关系:x 出了屏就看不见,而它仍然在合成
+   * (于是页面不被 1Hz 节流,判词在 `GATE_OFFSCREEN` 上)。
+   */
+  if (GATE_OFFSCREEN) {
+    window.once('ready-to-show', () => {
+      window.setPosition(20_000, 0)
+      window.showInactive()
+    })
+  }
 
   /*
    * ── 全屏态要推给渲染层(09-01 自查走查:全屏下红绿灯没了,顶栏左边那 80px
@@ -418,6 +516,11 @@ function createWindow(): BrowserWindow {
   const devServerUrl = process.env.ONETHING_REACT_DEV_SERVER_URL
   if (devServerUrl) void window.loadURL(devServerUrl)
   else void window.loadFile(path.resolve(appRoot, GATE_DIST, 'index.html'))
+  // B2 ②:内嵌浏览器那一块要这扇窗(判词在 `shellWindow` 上)。
+  shellWindow = window
+  window.on('closed', () => {
+    if (shellWindow === window) shellWindow = undefined
+  })
   return window
 }
 

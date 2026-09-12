@@ -51,40 +51,10 @@
   color: var(--demo-add-fg);
 }
 
-/* ── 浏览器 ───────────────────────────────────────────────────────────── */
-.browserBar {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-3);
-}
-
-.addr {
-  flex: 1;
-  height: var(--btn-sm);
-  display: flex;
-  align-items: center;
-  padding: 0 var(--sp-3);
-  border-radius: var(--r-full);
-  border: 1px solid var(--line-1);
-  background: var(--surface-1);
-  font-size: var(--fs-meta);
-  color: var(--text-2);
-}
-
-.viewport {
-  margin: 0 var(--sp-3) var(--sp-3);
-  min-height: var(--sp-8);
-  height: calc(100% - var(--sp-8) - var(--sp-5));
-  border: 1px solid var(--line-1);
-  border-radius: var(--r-1);
-  background: var(--surface-1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-4);
-  font-size: var(--fs-meta);
-}
+/* ── 浏览器 ────────────────────────────────────────────────────────────
+ * 那三条类(`.browserBar` / `.addr` / `.viewport`)随 **B2** 一起退役 ——
+ * 浏览器不再是这张表里的一块假面,它是 `content/browser/` 下一格真
+ * `WebContentsView`(檐的配方在 `BrowserLeaf.module.css`,那是产品的形不是演示色)。 */
 
 /* ── 终端 ──────────────────────────────────────────────────────────────
  * 那三格演示色与两条类随 **T1** 一起退役 —— 终端不再是这张表里的一块假面,

@@ -1,0 +1,75 @@
+/*
+ * 一格内嵌浏览器。
+ *
+ * 整片叶是「一条檐 + 一条线 + 一块地」:檐上是导航与地址,线是加载,地是那片
+ * 原生视图(`NativeViewSlot` 自己占满剩下的全部)。檐的配方与叶檐同档 ——
+ * 高度走 `--btn-sm` 那一族的节奏,底与线用 surface/line,一格字面值都没有。
+ */
+.leaf {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--surface-0);
+}
+
+/* 檐:四颗钮 + 一条地址。`gap` 一档,地址栏吃掉剩下的宽。 */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-2);
+  border-bottom: 1px solid var(--line-1);
+}
+
+/* 地址栏:唯一会弯腰的那一件(挤压纪律:一行一个弯腰件)。 */
+.address {
+  flex: 1;
+  min-width: 0;
+}
+
+/*
+ * 加载线:**1px 描线**,不是进度条(判词在组件里)。
+ *
+ * 它常驻占位 —— 不在走的时候是透明的那 1px,而不是「不存在」:高度随状态变
+ * 会让整片视图上下跳一像素,而那是位移。
+ *
+ * **不动**。一条会跑的不确定进度条要一段关键帧,而它表达的信息与「这条线亮着」
+ * 逐字相同(我们拿不到真进度,Chromium 不给)—— 多出来的只是一段永远在动的东西
+ * 停在人的余光里。亮 / 不亮两态,过渡走 `--dur` 那一档统一的淡入淡出。
+ */
+.progress {
+  height: 1px;
+  flex: none;
+  background: transparent;
+  transition: background var(--dur) var(--ease);
+}
+
+.progress[data-on] {
+  background: var(--accent-ring);
+}
+
+/* 出错那一行:后端原话,单行截断(全文由 tooltip 那一族另说,B3)。 */
+.error {
+  margin: 0;
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 两句降级文案(没有宿主 / 找不到这一页)。居中一句话 + 至多一颗钮。 */
+.notice {
+  margin: auto;
+  padding: var(--sp-4);
+  max-width: 40ch;
+  text-align: center;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+.notice + * {
+  margin: 0 auto auto;
+}

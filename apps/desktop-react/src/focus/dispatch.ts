@@ -84,6 +84,42 @@ import type { CommandId } from '../keymap/types'
  * 用户报的 ⌘F 死在旧判据上 —— 查看器在活动路径上,但那一下按键没有经过它的根。
  */
 
+/**
+ * **喂一个合成键给那唯一的派发器**(B2 §9-1 的回程)。
+ *
+ * 一片原生视图(`WebContentsView`)拿到焦点之后,键盘进的是页面那个 webContents;
+ * 主进程按「已绑定的组合键」整表把保留键截下来(`electron/browser/keymap-bridge.ts`),
+ * 经 `host:native-view` 推回渲染进程 —— 推回来的那一下要走的**正是这条路**:
+ * 局部先接、全局兜底、Esc 退层,一条判据都不许另起炉灶。
+ *
+ * 所以它**不挂第二个监听**,也不复制上面那张九格表:它只是在 window 上派发一次
+ * 真的 `keydown`,于是那条捕获监听照常收到、照常路由。派发目标是 `window`,
+ * 所以 `e.target` 不是 `HTMLElement`,⑦「输入框里的无修饰单键」那一格自然不命中
+ * —— 键盘此刻在页面里,壳里没有任何一个输入框该认领它。
+ *
+ * 修饰键的名字用的是主进程 `chordOf` 那一套(`cmd` / `ctrl` / `alt` / `shift`),
+ * 与 `content/native-view/keymap-downlink.ts` 推下去的表同一份词汇。
+ */
+export function dispatchSyntheticKey(message: {
+  key: string
+  code: string
+  modifiers: readonly string[]
+}): void {
+  const mods = new Set(message.modifiers)
+  window.dispatchEvent(
+    new KeyboardEvent('keydown', {
+      key: message.key,
+      code: message.code,
+      metaKey: mods.has('cmd'),
+      ctrlKey: mods.has('ctrl'),
+      altKey: mods.has('alt'),
+      shiftKey: mods.has('shift'),
+      bubbles: true,
+      cancelable: true,
+    }),
+  )
+}
+
 /** 焦点在输入面里:无修饰的单键属于输入框,不属于快捷键。(与旧派发器逐字相同) */
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false

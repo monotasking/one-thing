@@ -118,6 +118,32 @@ const LEAF_KEYS: readonly ScopedKey[] = [
   { scope: 'leaf', combo: { meta: true, key: 'w' }, labelKey: 'common.close', action: 'closeTab' },
 ]
 
+/**
+ * 内嵌浏览器一条:⌘L = 回到地址栏(B2,方案 §9-1 末段)。
+ *
+ * 它是**面域局部键**而不是全局命令,判据仍是那一句「一个键属不属于这一层,由
+ * 它需不需要一个目标决定」:⌘L 要的是**这一格 tab 的那条地址栏**,没有浏览器
+ * 在场时它无处可去。
+ *
+ * ── 它与查看器的 ⌘L 撞不撞 ──────────────────────────────────────────────
+ * 不撞。`viewer` 那条(`viewer.jumpLabel` 跳到某一行)与这一条是**两个作用域**
+ * 的局部键,而局部键按活动路径由深到浅只问在场的那几格 —— 同一刻至多一格在场。
+ * 撞车表(`scopedCollisionsOf`)会把它们列成一对同键,那是**事实**而不是错误:
+ * 设置页据此说得出「⌘L 在浏览器里是地址栏,在查看器里是跳行」。
+ *
+ * ── 它同时是一条**保留键** ───────────────────────────────────────────────
+ * 键盘此刻可能在那片原生视图里(页面自己也想要 ⌘L)。所以这一条会随全局命令
+ * 一起被推给主进程(`content/native-view/keymap-downlink.ts`),由
+ * `before-input-event` 先截下来再推回壳 —— 「保留键先于页面」。这正是局部键要
+ * 进那张表的理由,也是那只文件收 `scope` 参数的理由。
+ *
+ * Esc **不声明**:Esc 在页面里归页面(vim 式网页、编辑器网页都要它)。离开页面
+ * 的路是 ⌘L 与点别处 —— 与 `terminal` 那一格不声明 Esc 是同一句判词。
+ */
+const BROWSER_KEYS: readonly ScopedKey[] = [
+  { scope: 'browser', combo: { meta: true, key: 'l' }, labelKey: 'browser.address', action: 'address' },
+]
+
 export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
   /* ── root:整台壳,只有一个 ──────────────────────────────────────────── */
   root: { id: 'root', kind: 'root', labelKey: 'a11y.appTitle' },
@@ -183,6 +209,19 @@ export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
     keys: TERMINAL_SCOPED_KEYS,
   },
   music: { id: 'music', kind: 'region', labelKey: 'item.music' },
+  /*
+   * 一格内嵌浏览器(B2,方案 §9-1)。**三件声明**:
+   *  · 落点(`restingTarget`)= 那片原生视图的占位格(实例侧声明)。进去之后键盘
+   *    落在 `WebContentsView` 里 —— I1 在这一格的读法是「activeElement = 占位格,
+   *    原生视图是它的**里面**」,与终端「键盘落在 xterm 的 textarea 上」同形;
+   *  · Esc **不声明** —— Esc 在页面里归页面。不传 = 不进 Esc 候选表 = 派发器问
+   *    不到人 = 不 `preventDefault` = 那一下归页面自己。与 `terminal` / `music` /
+   *    `permission` 三格不声明 Esc 是同一句判词的第四种用法;
+   *  · 局部键 = ⌘L 回地址栏(判词整段写在 `BROWSER_KEYS` 上,含「它同时是一条
+   *    保留键」那一半)。
+   * labelKey 复用 Dock 瓦那一句(i18n 纪律:同一句话只该有一个键)。
+   */
+  browser: { id: 'browser', kind: 'region', labelKey: 'item.browser', keys: BROWSER_KEYS },
   dock: { id: 'dock', kind: 'region', labelKey: 'dock.label' },
   /*
    * 拼贴树里的一片叶(W1)。行为档 `region` —— 它是一块能接键盘的面,不是一层

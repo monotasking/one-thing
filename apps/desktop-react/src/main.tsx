@@ -28,6 +28,7 @@ import './content/kinds'
 import './content/files-launcher'
 /* T1:「终端」那块瓦也是启动瓦(方案 §2.1-6)。 */
 import './content/terminal-launcher'
+import './content/browser-launcher'
 import { startWorkbench } from './workbench/store'
 import { startStage } from './stage/store'
 import { startSessionProjection } from './content/session-projection'

@@ -397,3 +397,15 @@ B0-② 顺手核「registry 能不能列出挂载中的作用域」,不能就加
 
 **spike ①(未登录,用户手跑)已知**:UA 前后逐字只少 ` Electron/41.1.1`;㈠㈡ 都能到 accounts.google.com 首屏(首屏不是判据,谷歌在提交账号后才拦);㈡ 的 `userAgentData.brands` 真多了 `Google Chrome 146`;EME 栈活着,`clearkey` ok、`com.widevine.alpha` `NotSupportedError`——§1.3-① 预言的唯一结构性差在真二进制上量到;`window.chrome` 是 `{}`(真 Chrome 有 `loadTimes/csi/app/runtime`),大概率在 ㈢ 的差分里冒出来。**㈡ 阶三个坑写进 B1**:`Network.setUserAgentOverride` 对从没导航过的视图 promise 永不 resolve(先导航 + 超时护栏);热身页必须 `file://`(`about:blank` / `data:` 上 `navigator.userAgentData` 不存在);只「插」缺的那一格别自己算(传顶层 `platform` 会把 `navigator.platform` 改成 `macOS`、`app.getSystemVersion()` 与 Chromium 报的差一个大版本)。`webRequest.onBeforeSendHeaders` 看不到 `Sec-CH-UA*`,那份 dump 不能当 client hints 证据。
 
+### 9.5 施工账(2026-09-12)
+
+| 单 | 提交 | 要点 |
+| --- | --- | --- |
+| T0 | `dce6c15e` | 两条全局事件 + `wiring/terminal/bus-broadcaster.ts` + 壳宿主表注入 + 还原先杀后摘;传输基线三降 |
+| B0 | `69219d30` | §9.4 读数 + `scripts/spike-browser/` 七脚本(谷歌登录三阶留用户手跑) |
+| B1-a | `72c998f8` | `electron/browser/` 十二类 + `browser:` in-process provider + `browser_navigate` 效果类 + `untrusted-text`(`web_open`/`web_search` 同批)+ 删孤儿契约;ipcMain 1→2 递归扫描 |
+| B2′ | `6fba799b` | `browser.cdp` 设置键缺省关 9333(不给端口框)+ 一键装 chrome-devtools-mcp + `run/http.json.cdp` 由宿主按命令行填 |
+| T1 | `d6e31abb` | xterm 进壳、五档状态机、`gate:terminal` 八条(超量 2 万行零长帧);**两条真病顺带治**:①键位内核 `matchCombo` 把 ⌘ 与 Ctrl 当同一位 → 按下侧 `primaryPressedIn(e, platform)` + `offHandPressed`,`platform` 必填;②`TerminalService.handleExit` 的 `disposing` 守卫让 RPC `kill` 永不发死讯 → `exitSent` 闩 |
+
+**T1 立下的判例**:启动瓦开出内容那一拍树上只有叶没有内容格,`focusIntoRefAfterCommit` 落空 → 「开的人点名、被开的那一格挂载时取走」(`registry.requestTerminalFocus`,与 `stage/summon.requestFocusOnOpen` 同族);`appendChild` 走 ref 回调不走 effect(子 effect 先于父,落焦那一刻 textarea 还不在文档里);目录瓦有同一缺口未动。**缺省拍**:`toggle:terminal` 出厂键读作主修饰键 + 反引号 → Win/Linux `Ctrl+\``、mac `⌘\``(macOS 把 ⌘\` 交给应用,单窗无冲突;今天没有绑定表达得出「就是 Ctrl 那一枚」,`DEFAULT_COMBOS` 行上标 ⚠️)。`gate-a11y` 起的是 server 宿主(`terminal: null`),终端那一屏永远等不到叶 → axe 进 `gate:terminal` ⑧。
+

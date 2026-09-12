@@ -30,3 +30,6 @@ import './pair'
  * 它就是这张表头上那句「终端实例按 cwd 各一个当 tab」那次陌生能力演练的答案 ——
  * 兑现下来正好两行:它自己那个模块,与这一行 import。 */
 import './terminal'
+/* B2:一格内嵌浏览器(方案 `apps/desktop-react/docs/terminal-browser-2026-09.md` §2.2-4)。
+ * 与终端那一行一样正好两行:它自己那个模块,与这一行 import。 */
+import './browser'

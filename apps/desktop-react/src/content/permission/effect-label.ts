@@ -8,7 +8,7 @@ import type { MessageKey, TFn } from '../../i18n'
  * 后端哪天加一档新效果类就在运行时炸(`format` 拿到 undefined)。列成表之后,
  * 认不出来的类**原样显示那个英文枚举**:那是事实,而编一句中文是猜。
  *
- * 表里这 17 行与 `packages/core/toolkit/effects.ts` 的 `EffectClass` 今天一一对应。
+ * 表里这 18 行与 `packages/core/toolkit/effects.ts` 的 `EffectClass` 今天一一对应。
  * 它不是那张表的第二个产地 —— 它是那张表的**读法**:核回答「有哪些类、各自怎么
  * 处理」,这里只回答「这一类在屏幕上念作什么」。加一类效果 = 核加一行 + 这里加一行,
  * 忘了加这里的后果是屏幕上出现那个英文枚举,不是屏幕出错。
@@ -31,6 +31,12 @@ const EFFECT_KEYS: Record<string, MessageKey> = {
   plugin_exec: 'permission.effect.plugin_exec',
   'external-agent': 'permission.effect.external-agent',
   ui_change: 'permission.effect.ui_change',
+  /*
+   * B1-a 新立的那一档(`electron/browser/resource-spec.ts` 的判词):让一个**登着
+   * 账号**的浏览器去一个地址,是带着 cookie 以用户身份发一个请求 —— 与 `web_open`
+   * 那种匿名 fetch(`net_fetch`,silent)不是一类,所以它自己一格、policy `ask`。
+   */
+  browser_navigate: 'permission.effect.browser_navigate',
 }
 
 export function effectLabel(t: TFn, type: string): string {

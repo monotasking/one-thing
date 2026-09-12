@@ -1,0 +1,42 @@
+/*
+ * 原生视图的占位格。
+ *
+ * 它是**一块地**,不是一件控件:真正画东西的是压在窗上的那片 `WebContentsView`
+ * (DOM 这一侧永远是空的)。所以这里只有三件事:占满、给一层底、以及被遮时
+ * 那张快照铺满它。
+ *
+ * 底色用 `--surface-1` 而不是白:视图还没建起来的那一瞬(惰性视图第一次报
+ * `visible` 之前)人看见的就是它,一块跟着主题走的底比一块硬白更像「还没画」。
+ */
+.slot {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface-1);
+}
+
+/* 占位格是作用域落点(tabIndex=-1),但它自己不画焦点环 —— 键盘此刻在那片
+ * 视图里面,画一圈环在它外面是在说一件不对的事(叶檐那一侧已经有在场指示)。 */
+.slot:focus,
+.slot:focus-visible {
+  outline: none;
+}
+
+/*
+ * 遮挡快照。铺满、等比裁切(视图与占位格同尺寸,所以实际上不会裁到东西;
+ * `cover` 是为了「刚换过尺寸、图还是上一档」的那一两帧不变形)。
+ *
+ * `hidden` 由组件翻(解码完再显、撤图多留一帧)—— 这里不写任何过渡:
+ * 这一格要的是**逐帧对齐**,一条 120ms 的淡入只会让「盖上来」那一下多出一段
+ * 半透明的糊。
+ */
+.snapshot {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}

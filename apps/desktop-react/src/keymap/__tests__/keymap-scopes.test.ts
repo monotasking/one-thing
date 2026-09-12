@@ -37,12 +37,12 @@ function key(combo: Combo): string {
 }
 
 describe('面域局部键:声明这一头', () => {
-  it('今天有局部键的六格:查看器三条、文件树两条、检索面两条、总览一条、终端五条、叶一条', () => {
+  it('今天有局部键的七格:查看器三条、文件树两条、检索面两条、总览一条、终端五条、浏览器一条、叶一条', () => {
     const withKeys = Object.values(FOCUS_SCOPES)
       .filter((spec) => (spec.keys?.length ?? 0) > 0)
       .map((spec) => spec.id)
     // 次序 = 表里的声明序(`leaf` 排在 region 那一族的末尾)。
-    expect(withKeys).toEqual(['viewer', 'files', 'search', 'expose', 'terminal', 'leaf'])
+    expect(withKeys).toEqual(['viewer', 'files', 'search', 'expose', 'terminal', 'browser', 'leaf'])
     /*
      * **T1 的键盘礼让五行**(`content/terminal/key-courtesy.ts`)。它们是这张表
      * 里唯一一族**故意与全局命令撞车**的键:`^P/^E/^J/^N/^W` 在 readline 下是
@@ -85,6 +85,13 @@ describe('面域局部键:声明这一头', () => {
       'mod+i',
     ])
     expect(focusScopeKeysOf('files').map((k) => k.action)).toEqual(['detail', 'detail'])
+    /*
+     * B2:⌘L = 回地址栏。它与查看器那条 ⌘L(跳到某一行)**是同一个组合的两格
+     * 局部键** —— 局部 ↔ 局部的撞车,而 `scopedCollisionsOf` 问的是「全局命令与
+     * 局部键撞了没有」,所以下面那条撞键用例照旧是四行(与 `^W` 那一格同判例)。
+     * 两者同一刻至多一格在活动路径上,所以这不是 bug,是事实。
+     */
+    expect(focusScopeKeysOf('browser').map((k) => key(k.combo))).toEqual(['mod+l'])
   })
 
   it('每一行都报得出自己属于哪一格,而且那一格真的在表里(不许有无主的声明)', () => {

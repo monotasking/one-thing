@@ -48,7 +48,10 @@ import {
   CircleAlert,
   Paperclip,
   ArrowUp,
+  ArrowLeft,
+  ArrowRight,
   RotateCcw,
+  RotateCw,
   Ellipsis,
   Copy,
   TriangleAlert,
@@ -132,7 +135,14 @@ const REGISTRY: Record<string, LucideIcon> = {
   CircleAlert,
   Paperclip,
   ArrowUp,
+  /* 浏览器导航那一族(B2):后退 / 前进用**箭头**而不是 chevron —— 全世界的
+     浏览器都用这一对,而 chevron 在这套词汇里已经是「展开 / 收起」。
+     `RotateCw` 是刷新(顺时针,同样是浏览器的通用形);已有的 `RotateCcw`
+     是「重试」,两者形近而意不同,所以各占一格不合并。 */
+  ArrowLeft,
+  ArrowRight,
   RotateCcw,
+  RotateCw,
   Ellipsis,
   Copy,
   TriangleAlert,
@@ -205,7 +215,10 @@ export {
   CircleAlert,
   Paperclip,
   ArrowUp,
+  ArrowLeft,
+  ArrowRight,
   RotateCcw,
+  RotateCw,
   Ellipsis,
   Copy,
   TriangleAlert,

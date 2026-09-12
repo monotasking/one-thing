@@ -271,7 +271,12 @@ describe('Dock 分隔线的分组:逐字同今天(拍点 1)', () => {
 
   it('app 级只有 §2.2 表上那三块 —— 其余全 space(拍点 2:通知也是 space)', () => {
     expect(STAGE_ITEMS.filter((i) => i.level === 'app').map((i) => i.id))
-      .toEqual(['workspace', 'settings', 'apps'])
+      /*
+       * B2:`browser` 从 `space` 升到 `app`(方案 §2.2-4)—— 一格网页与「你此刻
+       * 在做哪个项目」无关,切工作区不该让它消失。次序 = `STAGE_ITEMS` 的声明序,
+       * 而浏览器那一行排在这三块之前。
+       */
+      .toEqual(['browser', 'workspace', 'settings', 'apps'])
     expect(findItem('notifications')?.level).toBe('space')
   })
 })

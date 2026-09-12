@@ -28,6 +28,8 @@ const ALL_IDS: readonly FocusScopeId[] = [
   'music',
   // 一格终端(T1,2026-09-12)。
   'terminal',
+  // 一格内嵌浏览器(B2,2026-09-12)。
+  'browser',
   'dock',
   // 拼贴树里的一片叶(W1)。
   'leaf',
@@ -47,7 +49,7 @@ const ALL_IDS: readonly FocusScopeId[] = [
 ]
 
 describe('FOCUS_SCOPES 封闭表', () => {
-  it('25 格(终端是第 25 格),一格不多一格不少', () => {
+  it('26 格(浏览器是第 26 格),一格不多一格不少', () => {
     expect(FOCUS_SCOPE_LIST.map((s) => s.id).sort()).toEqual([...ALL_IDS].sort())
   })
 
@@ -86,8 +88,8 @@ describe('FOCUS_SCOPES 封闭表', () => {
   })
 })
 
-describe('局部键:查看器 / 文件树 / 检索面 / 会话总览 / 终端 / 叶六格', () => {
-  it('查看器三条、文件树两条、检索面两条、总览一条、终端五条、叶一条,别的作用域一条都没有', () => {
+describe('局部键:查看器 / 文件树 / 检索面 / 会话总览 / 终端 / 浏览器 / 叶七格', () => {
+  it('查看器三条、文件树两条、检索面两条、总览一条、终端五条、浏览器一条、叶一条,别的作用域一条都没有', () => {
     expect(focusScopeKeysOf('viewer').map((k) => k.action)).toEqual(['save', 'jump', 'find'])
     expect(focusScopeKeysOf('files').map((k) => k.action)).toEqual(['detail', 'detail'])
     // 检索重建 S4b:⌘[ / ⌘] = 查询历史的后退 / 前进(§4.6,与浏览器地址栏同形)。
@@ -110,11 +112,17 @@ describe('局部键:查看器 / 文件树 / 检索面 / 会话总览 / 终端 / 
       'pty:n',
       'pty:w',
     ])
+    /*
+     * B2:⌘L = 回地址栏。它同时是一条**保留键**(会随全局命令一起推给主进程,
+     * 由 `before-input-event` 先于页面截下来)—— 判词在 `scopes.ts` 的
+     * `BROWSER_KEYS` 上。删掉这一行 → `gate:browser` ⑦ 的 ⌘L 那一半当场红。
+     */
+    expect(focusScopeKeysOf('browser').map((k) => k.action)).toEqual(['address'])
     // W1 拍点 ④:⌘W 关当前 tab(叶内局部键 —— 它需要一个目标)。
     expect(focusScopeKeysOf('leaf').map((k) => k.action)).toEqual(['closeTab'])
     const withKeys = FOCUS_SCOPE_LIST.filter((s) => (s.keys?.length ?? 0) > 0).map((s) => s.id)
     // 次序 = 表里的声明序(`terminal` 在 region 那一族里,`leaf` 排在它们末尾)。
-    expect(withKeys).toEqual(['viewer', 'files', 'search', 'expose', 'terminal', 'leaf'])
+    expect(withKeys).toEqual(['viewer', 'files', 'search', 'expose', 'terminal', 'browser', 'leaf'])
   })
 
   /*

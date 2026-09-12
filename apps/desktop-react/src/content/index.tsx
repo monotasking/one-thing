@@ -4,7 +4,6 @@ import { ErrorBoundary } from '../components/ErrorBoundary'
 import { DEFAULT_PANEL_VISIBILITY, PanelVisibilityContext } from './visibility'
 import type { PanelVisibility } from './visibility'
 import { DiffMock } from './DiffMock'
-import { BrowserMock } from './BrowserMock'
 import { SettingsMock } from './SettingsMock'
 import { SearchPanel } from '../search/components/SearchPanel'
 import { NotificationsPanel } from './NotificationsPanel'
@@ -38,7 +37,6 @@ const RENDERERS: Record<string, () => ReactNode> = {
    * 点它 = 开当前会话那个目录,右键 = 最近开过的那几个 + 「打开目录…」。
    */
   diff: DiffMock,
-  browser: BrowserMock,
   /*
    * **`terminal` 那一行撤了**(T1,方案 `apps/desktop-react/docs/terminal-browser-2026-09.md`
    * §2.1)。终端不再是「一块面」,它是**一族**面:一格 PTY 一份
