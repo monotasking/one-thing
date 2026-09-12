@@ -567,7 +567,7 @@ describe('BrowserService', () => {
     const created: unknown[] = []
     const observer = {
       onOpened: vi.fn(), onClosed: vi.fn(), onNavigated: vi.fn(), onLoading: vi.fn(),
-      onMaterialized: vi.fn(), onDematerialized: vi.fn(), onFind: vi.fn(),
+      onMaterialized: vi.fn(), onDematerialized: vi.fn(), onFind: vi.fn(), onSpawned: vi.fn(), onSpawnBlocked: vi.fn(),
     }
     const sessionPolicy = new BrowserSessionPolicy(() => ({
       getUserAgent: () => 'X Electron/1 Y', setUserAgent: () => {},

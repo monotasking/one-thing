@@ -477,7 +477,7 @@ export function placeRefIn(
   deps: PlacementDeps,
   ref: ContentRef,
   region: RegionId,
-  opts: { rect?: FloatRect } = {},
+  opts: { rect?: FloatRect; activate?: boolean } = {},
 ): PlacementOutcome {
   const id = panelIdOf(ref)
   if (id !== null) {
@@ -497,7 +497,9 @@ export function placeRefIn(
   if (side && !canNailShelf(deps.stage(), side, deps.viewport())) {
     return { kind: 'refused', reason: 'shelf-budget', side }
   }
-  workbench().moveRef(ref, region)
+  // `activate: false` 是后台开那一档(⌘-click):摆进去,但那个区域里人正看着的
+  // 那一格不换。缺席 = 照旧激活。
+  workbench().moveRef(ref, region, opts.activate === undefined ? {} : { activate: opts.activate })
   if (side) {
     setShelfCollapsed(deps, side, false)
     return null

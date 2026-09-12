@@ -134,7 +134,7 @@ describe('BrowserTab —— 第一发 loadURL 等回放落地', () => {
       }) as never,
       observer: {
         onOpened: vi.fn(), onClosed: vi.fn(), onNavigated: vi.fn(), onLoading: vi.fn(),
-        onMaterialized: vi.fn(), onDematerialized: vi.fn(), onFind: vi.fn(),
+        onMaterialized: vi.fn(), onDematerialized: vi.fn(), onFind: vi.fn(), onSpawned: vi.fn(), onSpawnBlocked: vi.fn(),
       },
     })
     return { service, loads }

@@ -129,7 +129,7 @@ describe('open 的缺省身份', () => {
       createView: () => fakeView() as never,
       observer: {
         onOpened: vi.fn(), onClosed: vi.fn(), onNavigated: vi.fn(), onLoading: vi.fn(),
-        onMaterialized: vi.fn(), onDematerialized: vi.fn(), onFind: vi.fn(),
+        onMaterialized: vi.fn(), onDematerialized: vi.fn(), onFind: vi.fn(), onSpawned: vi.fn(), onSpawnBlocked: vi.fn(),
       },
     })
     return { service, cleanup: () => fs.rmSync(store, { recursive: true, force: true }) }
@@ -351,7 +351,7 @@ describe('closeProfileTabs', () => {
       createView: () => fakeView() as never,
       observer: {
         onOpened: vi.fn(), onClosed: (id: string) => { closed.push(id) }, onNavigated: vi.fn(),
-        onLoading: vi.fn(), onMaterialized: vi.fn(), onDematerialized: vi.fn(), onFind: vi.fn(),
+        onLoading: vi.fn(), onMaterialized: vi.fn(), onDematerialized: vi.fn(), onFind: vi.fn(), onSpawned: vi.fn(), onSpawnBlocked: vi.fn(),
       },
     })
     try {

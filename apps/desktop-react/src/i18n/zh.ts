@@ -344,6 +344,7 @@ export const zh = {
   'browser.stop': '停止',
   'browser.newTab': '新标签页',
   'browser.openTabsSection': '开着的标签页',
+  'browser.closeOffscreen': '关闭不在屏上的标签({count})',
   'browser.noHost': '此宿主没有内嵌浏览器,页开在桌面里。',
   'browser.gone': '这一页找不到了。',
 

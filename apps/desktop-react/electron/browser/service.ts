@@ -41,6 +41,27 @@ import { BrowserSessionPolicy, DEFAULT_BROWSER_PROFILE } from './session-policy.
 /** 攒够这么久再写一次盘。与 sessions 仓库的 300ms 节流同一个量级、同一条理由。 */
 export const PERSIST_DELAY_MS = 300
 
+/**
+ * **一个页面能替你开多少格 tab**(2026-09-12)。滑动窗:同一个 opener 在
+ * `SPAWN_WINDOW_MS` 之内最多开 `SPAWN_BURST` 格,之后的一律拒。
+ *
+ * ── 为什么要有这一格 ──────────────────────────────────────────────────
+ * `window.open` 这条路上,**按下的是页面不是人**:一句 `for (…) window.open(…)`
+ * 就能把拼贴台塞满标签,而收养那一侧每多一格就是一片叶 + 一次 `read tabs`
+ * 重拉 —— 手感与性能两头都塌。真正的浏览器在这儿的做法是「弹窗拦截」,判据
+ * 也都是「这一下是不是人点出来的」的某种近似;我们手上没有 user-gesture 这一格
+ * (`setWindowOpenHandler` 的 `details` 里没有),所以用**速率**近似:人点链接
+ * 一秒开三格是可能的,一秒开三十格不是。
+ *
+ * 拒掉的那一发**要说出来**(`spawnBlocked` 事实)—— 静默吞掉的话,页面上点了
+ * 第四下什么都没发生,而那正是这一单在治的病(「点了没反应」)。
+ *
+ * 三格 / 两秒是保守值:它大到任何真人的连点都碰不着,小到一次 `for` 循环第四发
+ * 就被挡住。
+ */
+export const SPAWN_WINDOW_MS = 2_000
+export const SPAWN_BURST = 3
+
 export function getBrowserTabsPath(storePath?: string): string {
   return path.join(getOnethingStorePath(storePath ? { storePath } : {}), 'browser', 'tabs.json')
 }
@@ -49,6 +70,30 @@ export function getBrowserTabsPath(storePath?: string): string {
 export interface BrowserServiceObserver {
   onOpened(tab: BrowserTab): void
   onClosed(tabId: string): void
+  /**
+   * **一个网页自己开了一格 tab**(`window.open` / `target=_blank` / ⌘-click)。
+   *
+   * ── 它为什么不是 `onOpened` 的一种 ────────────────────────────────────
+   * `onOpened` 由「视图真的建起来了」那一刻发(文件头),而一格**后台**开出来的
+   * tab 按设计根本不 materialize —— 于是它永远不会发 `onOpened`。壳要为这一格摆
+   * 一片叶,靠 `onOpened` 就永远等不到,人得到的是「点了个链接什么都没发生,
+   * 而后台多了一台在放视频的页面」(2026-09-12 真机报障,读数:用户账本里 16 格
+   * tab 有 14 格 YouTube、活动那格是一段正在放的视频,屏幕上一片叶都没有)。
+   *
+   * 所以这是**另一条事实**:表里多了一行,而**开它的是一个网页**。两条判据各自
+   * 成立、各自有消费者 —— `opened` 说「这一格活了」,它说「这一格是谁开的」。
+   *
+   * `openerId` 永远在场(没有 opener 的开法根本不走这条路:壳 / AI 的 `open` 是
+   * 命令,命令的结局由发命令的人自己接着)。
+   */
+  onSpawned(tab: BrowserTabState, openerId: string): void
+  /**
+   * **这一页开得太快,拦了一发**(配额见 `SPAWN_BURST`)。
+   *
+   * 它是一条**事实**不是一次错误:拦下来的那一下页面那边什么都不会发生,
+   * 而「什么都不会发生」正是这一单在治的病 —— 所以这条路要说得出口。
+   */
+  onSpawnBlocked(openerId: string, url: string): void
   onNavigated(tab: BrowserTab): void
   onLoading(tab: BrowserTab): void
   /** 视图刚建出来,交给 layout / keymap-bridge 登记。 */
@@ -88,6 +133,14 @@ export class BrowserService {
   private order: string[] = []
   private active: string | null = null
   private persistTimer: ReturnType<typeof setTimeout> | null = null
+  /**
+   * 每个 opener 最近那几发的时刻(滑动窗的全部实现)。
+   *
+   * **只留窗内那几个**:每次问的时候先把过期的扔掉,所以这张表的大小由「此刻
+   * 正在开窗的那几页」决定,不由「这台浏览器活了多久」决定。tab 关掉时那一行
+   * 顺手删(`close`)。
+   */
+  private readonly spawnLog = new Map<string, number[]>()
   private readonly tabsPath: string
   private disposed = false
 
@@ -167,6 +220,7 @@ export class BrowserService {
     const tab = this.tabs.get(tabId)
     if (!tab) return
     this.tabs.delete(tabId)
+    this.spawnLog.delete(tabId)
     this.order = this.order.filter(id => id !== tabId)
     if (tab.materialized) this.options.observer.onDematerialized(tabId)
     tab.dispose()
@@ -202,6 +256,7 @@ export class BrowserService {
       tab.dispose()
     }
     this.tabs.clear()
+    this.spawnLog.clear()
     this.order = []
     this.active = null
   }
@@ -232,9 +287,46 @@ export class BrowserService {
     if ('url' in patch || 'title' in patch) this.schedulePersist()
   }
 
+  /**
+   * 页面要开一扇新窗 → 一格新 tab,**并且当场说出「它是谁开的」**。
+   *
+   * 那一句不能省:开出来的这一格没有任何人在等它的结局(它不是谁发的命令),
+   * 壳只有靠这条事实才知道该为它摆一片叶。不说 = 这一格 tab 在表里活着、在屏幕上
+   * 不存在、关不掉 —— 2026-09-12 的报障就是这一格。
+   */
   private onWindowOpen(tab: BrowserTab, decision: WindowOpenDecision): void {
     if (decision.kind !== 'tab') return
-    this.open({ url: decision.url, background: decision.background, profile: tab.state.profile })
+    if (!this.admitSpawn(tab.id)) {
+      this.options.observer.onSpawnBlocked(tab.id, decision.url)
+      return
+    }
+    const spawned = this.open({
+      url: decision.url,
+      background: decision.background,
+      profile: tab.state.profile,
+    })
+    this.options.observer.onSpawned(spawned, tab.id)
+  }
+
+  /**
+   * 这一发准不准开(滑动窗,判词在 `SPAWN_BURST` 上)。**准了就记一笔** ——
+   * 问与记是同一件事,拆成两步迟早有人只问不记。
+   *
+   * 时钟现问 `Date.now()`:这一格不值得一个注入的时钟端口,单测用假时钟
+   * (`vi.useFakeTimers`)照样量得到两条判据。
+   */
+  private admitSpawn(openerId: string): boolean {
+    const now = Date.now()
+    const fresh = (this.spawnLog.get(openerId) ?? []).filter(at => now - at < SPAWN_WINDOW_MS)
+    if (fresh.length >= SPAWN_BURST) {
+      // 窗内那几个仍旧留着 —— 拒掉的这一发**不进账**(不然一直点就一直往后推,
+      // 窗口永远不过期,那是另一种病)。
+      this.spawnLog.set(openerId, fresh)
+      return false
+    }
+    fresh.push(now)
+    this.spawnLog.set(openerId, fresh)
+    return true
   }
 
   private schedulePersist(): void {

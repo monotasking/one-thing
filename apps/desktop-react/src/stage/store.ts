@@ -74,7 +74,7 @@ interface StageStore extends StageState, StageSettings, PerSpaceState<T.StageFur
    * 是一次干净的 A → B。绕开它,`stage/focus-follow` 的差分判据会把一次落定
    * 读成好几拍(真机门 `gate:focus` 场景 11 / 15 的病历)。
    */
-  placeRef: (ref: ContentRef, region: RegionId, opts?: { rect?: FloatRect }) => void
+  placeRef: (ref: ContentRef, region: RegionId, opts?: { rect?: FloatRect; activate?: boolean }) => void
   /**
    * **召唤**一块面(S1,设计 §14)。键盘 `toggle:<面>` 命令的**唯一**落点:
    * 没开就开、看不见就露出来、看得见没聚焦就只聚焦、焦点已在里面就收起来。

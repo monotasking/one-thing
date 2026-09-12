@@ -283,7 +283,8 @@ export const browserResourceSpec: ResourceSpec = {
     },
   },
   /**
-   * 七条事实(B3-a 起;原来四条)(§10.3 的通用名在这一 scheme 上的填法)。
+   * 九条事实(2026-09-12 加 `spawned` / `spawnBlocked`;B3-a 起七条,原来四条)(§10.3 的通用名
+   * 在这一 scheme 上的填法)。
    *
    * `opened` 由「视图真的建起来了」那一刻发,不是「表里多了一行」——一格惰性的 tab
    * 在账上有、在屏幕上还不存在(`tab.ts` 文件头)。`closed` 对称。
@@ -298,6 +299,55 @@ export const browserResourceSpec: ResourceSpec = {
         type: 'object',
         properties: { id: { type: 'string' }, url: { type: 'string' } },
         required: ['id', 'url'],
+      },
+    },
+    /**
+     * **一个网页自己开了一格 tab**(`window.open` / `target=_blank` / ⌘-click;
+     * 2026-09-12)。
+     *
+     * 它与 `opened` 不是一件事,而那正是它存在的理由:`opened` 说「这一格的视图
+     * 活了」,一格**后台**开出来的 tab 按设计不 materialize,于是它永远不发
+     * `opened` —— 靠 `opened` 去认「页面新开的那一格」,后台那一支永远认不着。
+     * 这一条说的是另一件:**表里多了一行,而开它的是一个网页**(`openerId` 因此
+     * 永远在场;壳 / AI 的 `open` 是命令,命令的结局由发命令的人自己接着,不走
+     * 这条路)。
+     *
+     * 收到它的人该做的事是「把这一格摆到该在的地方」——真机报障的读数是:不摆
+     * 的话这一格 tab 在表里活着、在屏幕上不存在、关不掉,而它可能正在放一段视频。
+     */
+    spawned: {
+      title: 'A page opened a new tab (window.open / target=_blank)',
+      payload: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          url: { type: 'string' },
+          openerId: { type: 'string', description: 'The tab whose page opened this one.' },
+          background: {
+            type: 'boolean',
+            description: 'True when the page asked for a background tab (⌘-click).',
+          },
+        },
+        required: ['id', 'url', 'openerId', 'background'],
+      },
+    },
+    /**
+     * **一页开得太快,拦了一发**(2026-09-12)。`window.open` 这条路上按下的是
+     * 页面不是人,一句 `for` 循环就能把拼贴台塞满;配额与它的判词在
+     * `service.ts` 的 `SPAWN_BURST` 上。
+     *
+     * 它发在**开它的那一格**的地址上 —— 被拦下来的那一格根本没有出生,没有
+     * 自己的地址。
+     */
+    spawnBlocked: {
+      title: 'A page was opening tabs too fast; one was refused',
+      payload: {
+        type: 'object',
+        properties: {
+          openerId: { type: 'string' },
+          url: { type: 'string', description: 'The address it wanted to open.' },
+        },
+        required: ['openerId', 'url'],
       },
     },
     closed: {

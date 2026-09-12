@@ -243,7 +243,11 @@ export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
    *
    * `at` 是**叶内下标**(位置记忆放回原位那一路要它);缺席 = 排到末尾。
    */
-  moveRef(ref: ContentRef, region: RegionId, opts?: { at?: number }): void
+  /**
+   * `activate` 缺省 `true`。`false` = 后台开(⌘-click):那个区域里人正看着的
+   * 那一格**不换**(与 `moveRefIntoLeaf` 同一格语义、同一条理由)。
+   */
+  moveRef(ref: ContentRef, region: RegionId, opts?: { at?: number; activate?: boolean }): void
   /**
    * **把一格从所有树里摘掉,什么都不留**(W4)。既不记隐藏也不 dispose ——
    * 它是「收回 Dock」那条路的树侧动作:瓦的家在 Dock 上,离开树就是回家了,
@@ -345,7 +349,12 @@ export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
    * 次写的话,中间那一拍屏幕上会少一格,而订阅者(顶栏标签组 / 焦点跟随)
    * 会把它读成「关掉了一格」。
    */
-  moveRefIntoLeaf(ref: ContentRef, leafId: string, opts?: { at?: number }): void
+  /**
+   * `activate` 缺省 `true`(插进去就看它)。`false` 是 ⌘-click 那一档:
+   * 标签条上多一格,而人正看着的那一格**不换** —— 静默换掉人正看着的东西,
+   * 与「后台开一格」要的恰好相反(2026-09-12)。
+   */
+  moveRefIntoLeaf(ref: ContentRef, leafId: string, opts?: { at?: number; activate?: boolean }): void
   /**
    * **同一片叶里换个位子**(W3-b 裁定 4 的落定 + 裁定 8 的「左移 / 右移」;
    * W5-b 合树接缝 a 把它接上)。`from` / `to` 都是对着**换之前那张表**量的下标。
@@ -1098,7 +1107,13 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           const tree = regions[region] ?? T.makeLeaf(nextLeafId())
           const leaf = focusLeafOf(tree, null)
           set({
-            regions: { ...regions, [region]: T.insertTab(tree, leaf.id, ref, { at: opts.at }) },
+            regions: {
+              ...regions,
+              [region]: T.insertTab(tree, leaf.id, ref, {
+                at: opts.at,
+                ...(opts.activate === undefined ? {} : { activate: opts.activate }),
+              }),
+            },
             // 藏着的那一份被搬出来 = 它不再是「藏着的」(实例一路留着)。
             hidden: s.hidden.filter((entry) => refId(entry.ref) !== id),
             focusLeafId: leaf.id,
@@ -1277,7 +1292,13 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           const tree = regions[region]
           if (!tree || !T.findLeaf(tree, leafId)) return
           set({
-            regions: { ...regions, [region]: T.insertTab(tree, leafId, ref, { at: opts.at }) },
+            regions: {
+              ...regions,
+              [region]: T.insertTab(tree, leafId, ref, {
+                at: opts.at,
+                ...(opts.activate === undefined ? {} : { activate: opts.activate }),
+              }),
+            },
             // 搬出来的那一份不再是「藏着的」(实例一路留着,与 `moveRef` 同一句)。
             hidden: s.hidden.filter((entry) => refId(entry.ref) !== id),
             focusLeafId: leafId,

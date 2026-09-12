@@ -51,6 +51,11 @@
  *  ⑰ **把这一页交给对话**(B3-b):⋯ 那张表里点一行 → 输入框落一枚
  *     `{{page:<id>}}` chip(零字节)→ 发送 → 那一发 `session-command.emit` 的
  *     信封里页面正文是一件带 `sourceUrl` 的**附件**,`content` 里一个字都没有。
+ *  ⑲ **页面自己开出来的那一格**(2026-09-12 真机报障:搜索结果页点一条
+ *     `target=_blank` 的链接「没有任何反应」,而那一页其实在后台跑着甚至在放视频、
+ *     还关不掉)。视图里那一页自己 `click()` 一条 `target=_blank` → `read tabs` 多
+ *     一格,**而且拼贴树上多一片指着它的叶**(报障时这一半是空的),开它的那一格
+ *     还在原地;
  *  ⑱ **代理**(2026-09-12,真机报障:内置浏览器打不开 YouTube,主进程日志成串
  *     `ssl_client_socket_impl.cc handshake failed … net_error -100`)。病根是
  *     `applyShellNetworkProxySettings()` 只对 `session.defaultSession` 一个人
@@ -330,6 +335,18 @@ function startPageServer() {
           + `<body style="background:#0a0">${BODY_MARK}</body></html>`)
         return
       }
+      /*
+       * ⑲ 那张**会自己开一扇窗**的页(2026-09-12 报障的形状):一条
+       * `target=_blank` 的链接 + 一颗 `window.open` 的钮。两条路在产品那一侧
+       * 汇进同一只 `setWindowOpenHandler`,门走链接那条(它就是用户点的那一下)。
+       */
+      if (route === '/spawn') {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+        res.end(`${head}<body style="background:#0a0">${BODY_MARK}`
+          + `<a id="pop" href="/t9" target="_blank">pop</a>`
+          + `<button id="popjs" onclick="window.open('/t9','_blank')">js</button></body></html>`)
+        return
+      }
       if (route === '/geo') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
         res.end(`${head}<body style="background:#0a0">${BODY_MARK}<script>
@@ -513,8 +530,8 @@ async function main() {
     )
     assert(
       Object.keys(spec.events ?? {}).sort().join(',')
-        === 'closed,download,loading,navigated,opened,permissionRequested,permissionResolved',
-      `① 事实七条(B3-a 加了三条;${Object.keys(spec.events ?? {}).sort().join(',')})`,
+        === 'closed,download,loading,navigated,opened,permissionRequested,permissionResolved,spawnBlocked,spawned',
+      `① 事实九条(2026-09-12 加 spawned / spawnBlocked;B3-a 加了三条;${Object.keys(spec.events ?? {}).sort().join(',')})`,
     )
     assert(
       !('find' in (spec.ops ?? {})) && !('find' in (spec.reads ?? {})),
@@ -1184,6 +1201,102 @@ async function main() {
       /untrusted/i.test(String(command.attachments?.[0]?.excerpt ?? '')),
       '⑰ 而且它仍旧带着 untrusted 定界(与 ⑤ 同一条包法,不包第二层)',
     )
+
+    /*
+     * ⑲ **页面自己开出来的那一格,壳里要真的有它**(2026-09-12 真机报障)。
+     *
+     * 报障的读数:在搜索结果页点一条 `target=_blank` 的链接 → 主进程照
+     * `decideWindowOpen` 建了 tab、视图 materialize 了、页面真的在跑 —— 而拼贴树
+     * 上**一片叶都没有**(用户账本里 16 格 tab 有 14 格 YouTube,活动那格是一段
+     * 正在放的视频)。三句报障是同一件事:「点了没反应」(屏幕不动)、「页面跑到
+     * 不知道哪儿去了」(它在窗里,矩形 0×0、`setVisible(false)`)、「关不掉」
+     * (没有叶就没有那颗 ✕)。
+     *
+     * 这一条量的就是那条缝:**点一下 → 壳里多一片叶,而且它指着新那一格 tab**。
+     *
+     * **在主进程里让那一页自己 `click()`**(与 ⑭ 同一条:不动真鼠标)。
+     *
+     * **反证**:把 `content/browser-launcher.tsx` 里那一句 `setBrowserTabAdopter`
+     * 拆掉(或把 `service.onWindowOpen` 里那一句 `onSpawned` 拆掉)→ 这一条当场红:
+     * `read tabs` 里照样多一格(页面照样在跑),而 `leafIds` 一片都没多。
+     */
+    console.log('\n[9c] ⑲ 页面自己开一格 tab(target=_blank)→ 壳里真的多一片叶')
+    const spawnOpener = after[0].id
+    /*
+     * **用完把这一格的地址还回去**。⑩ / ⑳ 是按「这一格停在哪一页」往下写的
+     * (⑳ 认人靠 URL 全等),这一步借它去了 `/spawn`,不还就是给后面的步骤
+     * 留一个它们没同意过的现场 —— 门里改别人的前提,比产品回归还难查。
+     */
+    const spawnOpenerUrl = after[0].url
+    await rpc(record, 'resources', 'do', {
+      ref: `browser:${spawnOpener}`,
+      op: 'navigate',
+      params: { url: pageUrl('/spawn') },
+    })
+    await waitFor('/spawn 载上', async () => {
+      const tabs = await rpc(record, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+      const row = (tabs.value?.tabs ?? []).find((r) => r.id === spawnOpener)
+      return row?.url?.endsWith('/spawn') ? row : undefined
+    })
+    await app.evaluate(async ({ webContents }) => {
+      const wc = webContents.getAllWebContents().find((w) => w.getURL().includes('/spawn'))
+      if (!wc) throw new Error('找不到那片视图的 webContents')
+      await wc.executeJavaScript("document.getElementById('pop').click()", true)
+    })
+    const spawnedRow = await waitFor('表里多了一格,而且是页面开的那一格', async () => {
+      const tabs = await rpc(record, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+      const rows = tabs.value?.tabs ?? []
+      const fresh = rows.find((r) => r.id !== spawnOpener)
+      return rows.length === 2 && fresh?.url?.endsWith('/t9') ? fresh : undefined
+    })
+    const spawnedLeaves = await waitFor('壳里出现了指着它的那一片叶', async () => {
+      const ids = await leafIds(page)
+      return ids.includes(spawnedRow.id) ? ids : undefined
+    }).catch(async (error) => {
+      const where = await leafIds(page)
+      throw new Error(
+        `${error.message}\n屏幕上的浏览器叶:${JSON.stringify(where)};`
+        + `而表里那一格是 ${spawnedRow.id}(报障的形状:tab 活着、页面在跑、屏幕上没有它)`,
+      )
+    })
+    assert(
+      spawnedLeaves.includes(spawnedRow.id),
+      `⑲ 页面开出来的那一格有了自己的一片叶(${spawnedRow.id.slice(0, 8)})`,
+    )
+    assert(
+      spawnedLeaves.includes(spawnOpener),
+      '⑲ **开它的那一格还在**(新那一格落在它旁边,不是顶掉它、也不是另起一扇窗)',
+    )
+    const spawnedTitle = await waitFor('活标题落到叶上', async () => {
+      const tabs = await rpc(record, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+      const row = (tabs.value?.tabs ?? []).find((r) => r.id === spawnedRow.id)
+      return row?.title?.includes(NONCE) ? row.title : undefined
+    })
+    assert(spawnedTitle.includes(NONCE), `⑲ 它真的把那一页载上来了(标题 ${spawnedTitle})`)
+
+    // 收尸:⑩ 要的是一张只有一格的表。**走产品自己的两条路**——先 `do close`
+    // (那片叶随即画「这一页找不到了」),再点它自己那颗「关掉」把叶收走。
+    await rpc(record, 'resources', 'do', { ref: `browser:${spawnedRow.id}`, op: 'close' })
+    await waitFor('那片叶被自己那颗「关掉」收走', async () => {
+      await page.evaluate(() => {
+        const btn = document.querySelector('[data-testid="browser-gone-close"]')
+        if (btn instanceof HTMLElement) btn.click()
+      })
+      const ids = await leafIds(page)
+      const tabs = await rpc(record, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+      return !ids.includes(spawnedRow.id) && (tabs.value?.tabs ?? []).length === 1 ? true : undefined
+    })
+    // 地址还回去(判词在上面 `spawnOpenerUrl` 那一段)。
+    await rpc(record, 'resources', 'do', {
+      ref: `browser:${spawnOpener}`,
+      op: 'navigate',
+      params: { url: spawnOpenerUrl },
+    })
+    await waitFor('这一格回到了它原来那一页', async () => {
+      const tabs = await rpc(record, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+      const row = (tabs.value?.tabs ?? []).find((r) => r.id === spawnOpener)
+      return row?.url === spawnOpenerUrl ? row : undefined
+    })
 
     console.log('\n[10/10] 超量:8 格 tab 全开,逐格切换')
     await page.evaluate(() => {

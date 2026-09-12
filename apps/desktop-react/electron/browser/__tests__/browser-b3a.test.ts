@@ -459,14 +459,14 @@ const planCtx = (kind: 'user' | 'agent' | 'system') => ({
 }) as never
 
 describe('自述:B3-a 新加的那几行', () => {
-  it('契约照样过;做法八条、事实七条', () => {
+  it('契约照样过;做法八条、事实九条(2026-09-12 加 `spawned` / `spawnBlocked`)', () => {
     expect(assertResourceSpec(browserResourceSpec)).toBeUndefined()
     expect(Object.keys(browserResourceSpec.ops).sort()).toEqual([
       'activate', 'back', 'close', 'forward', 'navigate', 'open', 'reload', 'respondPermission',
     ])
     expect(Object.keys(browserResourceSpec.events).sort()).toEqual([
       'closed', 'download', 'loading', 'navigated', 'opened',
-      'permissionRequested', 'permissionResolved',
+      'permissionRequested', 'permissionResolved', 'spawnBlocked', 'spawned',
     ])
   })
 

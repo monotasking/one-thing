@@ -408,7 +408,50 @@ B0-② 顺手核「registry 能不能列出挂载中的作用域」,不能就加
 | T1 | `d6e31abb` | xterm 进壳、五档状态机、`gate:terminal` 八条(超量 2 万行零长帧);**两条真病顺带治**:①键位内核 `matchCombo` 把 ⌘ 与 Ctrl 当同一位 → 按下侧 `primaryPressedIn(e, platform)` + `offHandPressed`,`platform` 必填;②`TerminalService.handleExit` 的 `disposing` 守卫让 RPC `kill` 永不发死讯 → `exitSent` 闩 |
 | B2 | `76d98911` | 壳侧真浏览器:`browser` 内容种类 + 启动瓦 + `NativeViewSlot` + 键位下沉与焦点双向同步 + `gate:browser` 十一条 |
 | T2 | 本单 | 终端内查找(`@xterm/addon-search`,⌘F 进 `terminal.keys`,叶顶查找行四态)+ 组件级停靠**量了不做**(数字见下)+ 重载 detach 宿主调用点 + `gate:terminal` / `gate:browser` 定档进 `verify`(两档渲染层各一趟)|
-| B3-a | (本笔) | 页内查找(`host:native-view` 两动词一推送,不进资源面)+ 网页权限询问(`permissionRequested/Resolved` 事实 + `respondPermission` 做法,非用户主体一律拒,60s 超时按拒,无「始终」)+ 下载落地提示(`app.getPath('downloads')` 重名加序号);真 bug:Electron `findNext` 语义反的——首发要 `true`(`find.ts` `beginsNewFindSession`);`gate:browser` 十四条两档绿 |
+| B3-b | `65ec160f` | 「把这一页交给对话」+ 多 profile 身份 + 起始页 + 查找读数函数合一 |
+| 代理 | `1369c29b` | 浏览器分区各自 `setProxy`(`ShellProxyPolicy`,分区建出来那一拍登记 + 第一发 `loadURL` 等回放落地)+ 宿主表 `settings` 接上(改设置重套);`gate:browser` ⑱ |
+| 收养 | (本笔) | **页面自己开出来的那一格要有一片叶**:新事实 `spawned`(`{id,url,openerId,background}`,与 `opened` 分家 —— 后台开的 tab 不 materialize,靠 `opened` 永远等不到它)+ 壳侧单槽 `setBrowserTabAdopter` → `placeBrowserTabNear`(落在开它的那片叶的**下一位**,后台档不抢活动格;开它的那格不在屏上就退回常规落点,**后台档照样摆**只是不激活不抢焦点 —— 不摆就是本单在治的那个病)。**配额**:`SPAWN_WINDOW_MS 2s / SPAWN_BURST 3`,同一 opener 超了就 `deny` 并发 `spawnBlocked {openerId,url}`(壳侧只记一行日志,不画 —— 那一下是页面按的,人没做任何事);`window.open` 这条路上按下的是页面不是人,一句 `for` 循环就能塞满拼贴台。**孤儿清理入口**:启动瓦右键多一行「关闭不在屏上的标签(N)」(N = `read tabs` 里 `locateBrowserTab` 答 null 的那几格,0 时不画)。叶檐那颗 + 与 ⋯ 表里「以另一个身份打开此页」一并改走 `near`;`gate:browser` ⑲ |
+| B3-a | `b2d46373` | 页内查找(`host:native-view` 两动词一推送,不进资源面)+ 网页权限询问(`permissionRequested/Resolved` 事实 + `respondPermission` 做法,非用户主体一律拒,60s 超时按拒,无「始终」)+ 下载落地提示(`app.getPath('downloads')` 重名加序号);真 bug:Electron `findNext` 语义反的——首发要 `true`(`find.ts` `beginsNewFindSession`);`gate:browser` 十四条两档绿 |
+
+**「收养」这一单的归因读数(2026-09-12 真机报障,三句话一件事)**。用户报:内置
+浏览器里能搜索,**点搜索结果链接没有任何反应**;后来又报「页面跑到不知道哪儿去了,
+视频开始放、关不掉」「叶檐按钮点不到」「整个壳点不了,只有原生视图那块能点」。
+真机复现(临时 store + 独立 `--user-data-dir` + 屏外档 + 只用 CDP/RPC)量到的是:
+
+- **一格 `target=_blank`(以及 `window.open`、⌘-click)在主进程这一侧全走通了**:
+  `setWindowOpenHandler` → `decideWindowOpen` → `service.open` → 视图 materialize →
+  `loadURL` 成功、标题落下来。`read tabs` 多一格、`activeId` 换成它。
+  **而 `leafIds` 一片都没多。** 那片视图的矩形是 `{0,0,0,0}` / `visible:false`
+  (`layout.register` 的第一句:壳没报过帧,谁都不知道它该在哪)——
+  **页面照样在跑**(Chromium 只把隐藏视图的**渲染**节流到 1Hz,音视频照走)。
+  三句报障因此是同一件事:屏幕不动 = 没反应;它在窗里但 0×0 = 跑到不知道哪儿去了;
+  没有叶就没有那颗 ✕ = 关不掉。用户账本 `~/.onething/browser/tabs.json` 里 **16 格
+  tab、14 格 YouTube、活动那格是一段正在放的视频**,正是这条缝一次一次漏出来的。
+- **`BrowserWindow.getAllWindows()` 恒为 1**:没有第二扇原生窗口(`setWindowOpenHandler`
+  永远 `deny`,这一半是对的)。「点新建开出来一个窗口」是**壳这一侧**的事:
+  `browser-launcher.regionForLauncher` 读的是**瓦的位置记忆**,而一格新 tab 在记忆里
+  永远没有自己的位置 —— 记忆是 `float` 时每按一次 + 就去要一扇新浮窗。本单一并改走
+  `near`。
+- **代理那一半已经治好了,`-100` 是代理自己的 REJECT**:`resolveProxy` 在
+  `defaultSession` 与 `persist:browser-default` 上都答 `PROXY 127.0.0.1:7890`
+  (本地回环答 `DIRECT`),YouTube 载得上来。stderr 里那两行
+  `ssl_client_socket_impl.cc handshake failed … net_error -100` 与
+  `webRequest.onErrorOccurred` 一一对上的是 **`static.doubleclick.net`
+  (`ERR_CONNECTION_CLOSED`,`resourceType: 'script'`,子资源不是主框架)**;
+  `curl -x http://127.0.0.1:7890 https://static.doubleclick.net/…` 在同一台机器上
+  复现同一种失败,而同一把代理下 `www.youtube.com` 答 200、`fonts.gstatic.com` 答 404。
+  **这是 Clash 对广告 / 统计域名的 REJECT 规则,不是壳的 bug,产品一个字不改** ——
+  要核的话看 Clash 的连接日志里那条 `REJECT`。(顺带:`www.google.com/search` 在
+  这把代理下会跳 `/sorry/`,那是 Google 认出了代理出口 IP,同样不是壳的事。)
+- **「整个壳点不了」这一条没能在隔离实例里复现**,读数如实报:12 格孤儿 tab +
+  3 格真 YouTube 之后,壳的 `evaluate` 往返 2–12ms、`[inert]` 计数与基线同为 1、
+  浮层 / 模态作用域 0 格、渲染层错误 0 条、点 Dock 瓦照样开得出叶;`WebPermissionCard`
+  的作用域是 `kind:'region'` 不是 `modal`(而且它只画在**某一片叶的檐下**,没有叶就
+  根本不渲染),所以「一张看不见的模态卡锁死全壳」这条路在代码上就不成立。檐钮矩形
+  (y 55–77)与原生视图矩形(y 90 起)**不相交**,`elementFromPoint` 每一处都命中真
+  元素。**今天能证的只有一条**:那扇窗里当时挂着 15 片各自活着的隐藏页面(15 个渲染
+  进程,一格在解视频),而本单之后这些页面不再会无主地长出来。留账:若收养落地之后
+  用户仍遇到整壳不响应,再查资源侧(进程数 / 内存)与那一刻的作用域树 dump。
 
 **T1 立下的判例**:启动瓦开出内容那一拍树上只有叶没有内容格,`focusIntoRefAfterCommit` 落空 → 「开的人点名、被开的那一格挂载时取走」(`registry.requestTerminalFocus`,与 `stage/summon.requestFocusOnOpen` 同族);`appendChild` 走 ref 回调不走 effect(子 effect 先于父,落焦那一刻 textarea 还不在文档里);目录瓦有同一缺口未动。**缺省拍**:`toggle:terminal` 出厂键读作主修饰键 + 反引号 → Win/Linux `Ctrl+\``、mac `⌘\``(macOS 把 ⌘\` 交给应用,单窗无冲突;今天没有绑定表达得出「就是 Ctrl 那一枚」,`DEFAULT_COMBOS` 行上标 ⚠️)。`gate-a11y` 起的是 server 宿主(`terminal: null`),终端那一屏永远等不到叶 → axe 进 `gate:terminal` ⑧。
 

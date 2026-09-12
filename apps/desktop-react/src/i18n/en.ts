@@ -285,6 +285,7 @@ export const en: Record<MessageKey, string> = {
   'browser.stop': 'Stop',
   'browser.newTab': 'New tab',
   'browser.openTabsSection': 'Open tabs',
+  'browser.closeOffscreen': 'Close tabs that are off screen ({count})',
   'browser.noHost': 'This host has no built-in browser. Pages open in the desktop app.',
   'browser.gone': 'That page is gone.',
 

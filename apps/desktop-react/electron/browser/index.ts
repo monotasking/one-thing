@@ -240,6 +240,20 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
         layout.release(tabId)
       },
       onOpened: tab => { provider?.emitOpened(viewOf(tab)) },
+      /*
+       * 页面自己开的那一格(2026-09-12)。**照 `viewOf` 那一份读数发**,与别的
+       * 事实同一个产地;`openerId` 是 service 递过来的,装配点不去反查(它手上
+       * 那张 `tabIdByContents` 答的是 webContents → tab,而这里问的是 tab → tab)。
+       */
+      onSpawned: (state, openerId) => {
+        provider?.emitSpawned({ ...state, active: service.activeId === state.id }, openerId)
+      },
+      onSpawnBlocked: (openerId, url) => {
+        // 一行日志 + 一条事实:拦下来的那一下页面那边什么都不会发生,而
+        // 「什么都不会发生」正是这一单在治的病,所以这条路要说得出口。
+        log.warn('browser spawn refused (rate)', { openerId, url })
+        provider?.emitSpawnBlocked(openerId, url)
+      },
       onClosed: tabId => {
         // 这一格没了:它身上还悬着的每一问当场按拒结掉 —— 页面那边在等一个
         // `callback`,而那个页面马上就要被销毁了,悬着只会留一条永不回的路。

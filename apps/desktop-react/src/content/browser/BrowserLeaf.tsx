@@ -414,7 +414,12 @@ export function BrowserLeaf({ id }: { id: string }) {
             <IconButton
               icon={Plus}
               label={t('browser.newTab')}
-              onClick={() => void import('../browser-launcher').then((m) => m.openBrowser())}
+              /*
+               * **新那一格落在这片叶的标签条上**(`near`,2026-09-12)——
+               * 不走位置记忆那条路:一格新 tab 在记忆里没有自己的位置,于是那条
+               * 路上每按一次 + 就要一扇新浮窗(真机报障「点新建开出来一个窗口」)。
+               */
+              onClick={() => void import('../browser-launcher').then((m) => m.openBrowser(undefined, { near: id }))}
               testId="browser-new-tab"
             />
             <IconButton
@@ -479,7 +484,7 @@ export function BrowserLeaf({ id }: { id: string }) {
               onClose={() => setActionsAt(null)}
               onOpenInProfile={(profile) => {
                 void import('../browser-launcher').then((m) =>
-                  m.openBrowser(row.url || undefined, { profile }),
+                  m.openBrowser(row.url || undefined, { profile, near: id }),
                 )
               }}
             />

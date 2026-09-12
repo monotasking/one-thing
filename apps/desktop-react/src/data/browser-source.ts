@@ -14,6 +14,7 @@ import {
   type WebPermissionAsk,
 } from './browser-notices'
 import { forgetBrowserFind, resetBrowserFind } from './browser-find'
+import { getLogger } from '../services/log'
 
 /**
  * 内嵌浏览器的数据层(B2 · 壳半边)。**地址栏上每一颗按钮都走资源路**
@@ -54,6 +55,8 @@ import { forgetBrowserFind, resetBrowserFind } from './browser-find'
  */
 
 /* ── 地址 ────────────────────────────────────────────────────────────────── */
+
+const log = getLogger('browser.source')
 
 export const BROWSER_SCHEME_PREFIX = 'browser:'
 
@@ -377,9 +380,47 @@ export function readBrowserPage(tabId: string, maxChars?: number): Promise<Brows
  */
 const EVENT_INVALIDATES: Readonly<Record<string, readonly { invalidate(): void }[]>> = {
   opened: [browserTabsQuery],
+  // 页面自己开的那一格:表里多了一行(2026-09-12)。
+  spawned: [browserTabsQuery],
   closed: [browserTabsQuery],
   navigated: [browserTabsQuery],
   loading: [browserTabsQuery],
+}
+
+/* ── 页面自己开出来的那一格,谁去为它摆一片叶 ─────────────────────────────── */
+
+/**
+ * **收养一格 tab**(2026-09-12 真机报障的修法)。
+ *
+ * 报障的形状:在搜索结果页点一条 `target=_blank` 的链接 → 主进程照 `decideWindowOpen`
+ * 建了一格 tab、视图也 materialize 了、页面真的在跑(读数:用户账本 16 格 tab 有
+ * 14 格 YouTube、活动那格是一段正在放的视频)—— 而屏幕上**一片叶都没有**,于是
+ * 「点了没反应」「页面跑到不知道哪儿去了」「关不掉」是同一件事的三种说法。
+ *
+ * ── 为什么是一格**端口**,而不是这只文件自己去摆 ──────────────────────
+ * 摆一片叶是拼贴树 / 形态机的词汇(`stage.placeRef` / `workbench.moveRefIntoLeaf`),
+ * 数据层不该认识它们 —— `data/` 反过来 import `content/` 是把这条依赖倒过来。
+ * 所以这里只留一格单槽:**谁认识那套词汇谁来填**(`content/browser-launcher.tsx`,
+ * 它本来就是「一格浏览器 tab 该摆到哪」的唯一产地,`main.tsx` 开机静态 import 它)。
+ *
+ * 缺席 = 这台壳没有摆叶的能力(单测 / 将来别的宿主),事实照旧标脏,行为逐字不变。
+ */
+export interface BrowserTabSpawn {
+  /** 新开出来的那一格。 */
+  id: string
+  /** 开它的那一格(它的叶就是这一格该落的地方)。 */
+  openerId: string
+  /** ⌘-click 那一档:摆出来但**不抢**当前看着的那一格。 */
+  background: boolean
+}
+
+export type BrowserTabAdopter = (spawn: BrowserTabSpawn) => void
+
+let adoptSpawnedTab: BrowserTabAdopter | null = null
+
+/** 填那格单槽。`null` = 撤(HMR / 测试)。 */
+export function setBrowserTabAdopter(next: BrowserTabAdopter | null): void {
+  adoptSpawnedTab = next
 }
 
 /**
@@ -394,6 +435,37 @@ const EVENT_INVALIDATES: Readonly<Record<string, readonly { invalidate(): void }
  * 「这一格身上那些临时的东西该扔了」—— 两件事,两个消费者。
  */
 const EVENT_NOTICES: Readonly<Record<string, (payload: unknown) => void>> = {
+  /*
+   * 页面自己开的那一格(2026-09-12)。**先把表拉新再交给收养人** —— 叶那一侧
+   * 「表到了、里面没有这一格」画的是「这一页找不到了」,拿旧表摆叶会先闪一下
+   * 那句话。拉不动(后端拒 / 掉线)就不摆:摆一片指着不存在的 tab 的叶更糟。
+   */
+  spawned: (payload) => {
+    const row = payload as { id?: unknown; openerId?: unknown; background?: unknown }
+    if (typeof row?.id !== 'string' || typeof row?.openerId !== 'string') return
+    const spawn: BrowserTabSpawn = {
+      id: row.id,
+      openerId: row.openerId,
+      background: row.background === true,
+    }
+    void browserTabsQuery.refetch().then(
+      () => adoptSpawnedTab?.(spawn),
+      () => {},
+    )
+  },
+  /*
+   * 一页开得太快、被主进程拦了一发(配额在 `electron/browser/service.ts` 的
+   * `SPAWN_BURST`)。**今天只记一行**:屏幕上不画 —— 那一下是页面自己按的,
+   * 人没有做任何事,弹一张卡是替一个没人发起的动作报错。要画的话它属于
+   * 「这一页正在做奇怪的事」那一族的提示,而那一族今天还不存在。
+   */
+  spawnBlocked: (payload) => {
+    const row = payload as { openerId?: unknown; url?: unknown }
+    log.warn('a page was opening tabs too fast; one was refused', {
+      openerId: typeof row?.openerId === 'string' ? row.openerId : '',
+      url: typeof row?.url === 'string' ? row.url : '',
+    })
+  },
   'permissionRequested': (payload) => {
     const row = payload as WebPermissionAsk
     if (typeof row?.tabId === 'string' && typeof row?.requestId === 'string') {
@@ -471,6 +543,11 @@ export function resetBrowserSource(): void {
   // 两套拆卸迟早漏一格。
   resetBrowserNotices()
   resetBrowserFind()
+}
+
+/** 只给测试:此刻那格单槽填没填。 */
+export function hasBrowserTabAdopter(): boolean {
+  return adoptSpawnedTab !== null
 }
 
 /**

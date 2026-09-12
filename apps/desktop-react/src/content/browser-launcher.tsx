@@ -2,7 +2,12 @@ import { useEffect } from 'react'
 import { MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
 import { t } from '../i18n'
 import { useQuery } from '../data/kernel'
-import { browserOps, browserTabsQuery, openBrowserTab } from '../data/browser-source'
+import {
+  browserOps,
+  browserTabsQuery,
+  openBrowserTab,
+  setBrowserTabAdopter,
+} from '../data/browser-source'
 import { browserSettingsQuery } from '../data/browser-settings-source'
 import { profileDisplayName } from './settings/BrowserSettings'
 import { findItem } from '../stage/items'
@@ -11,7 +16,7 @@ import { nextFloatId } from '../stage/placement'
 import { useStageStore } from '../stage/store'
 import { CENTER_REGION, edgeRegion, floatRegion } from '../workbench/regions'
 import { refId } from '../workbench/kinds'
-import { findLeaf, firstRefOfKindIn } from '../workbench/tree'
+import { findLeaf, firstRefOfKindIn, locateRef } from '../workbench/tree'
 import { regionOfLeafIn, regionOfRefIn, useWorkbenchStore } from '../workbench/store'
 import { focusTree } from '../focus/registry'
 import { BROWSER_KIND, browserRef } from './browser/browser-ref'
@@ -90,20 +95,109 @@ export function visibleBrowserRef(): ContentRef | null {
  * 这一句**不能省**:`stage/focus-follow` 那条跟焦链判的是 `placements[瓦 id]` 的
  * 前后差,而启动瓦开出来的是一格**内容**(`browser:<id>`),那张表上一个字都没动。
  */
-export function placeBrowserTab(tabId: string): void {
+export function placeBrowserTab(tabId: string, opts: { activate?: boolean } = {}): void {
   const ref = browserRef(tabId)
-  // 响应链规则 2「打开什么,焦点进什么」。
-  requestBrowserFocus(tabId)
-  useStageStore.getState().placeRef(ref, regionForLauncher(ref))
+  const activate = opts.activate !== false
+  // 响应链规则 2「打开什么,焦点进什么」。**后台开那一档不点名** —— 人没有要
+  // 去那里(⌘-click 的意思就是「先开着」),抢焦点就是把它读反了。
+  if (activate) requestBrowserFocus(tabId)
+  useStageStore.getState().placeRef(ref, regionForLauncher(ref), activate ? {} : { activate: false })
+}
+
+/**
+ * **屏幕上那一格 tab 坐在哪片叶的第几格**(哪棵树都问)。不在屏幕上 = `null`。
+ *
+ * 与 `BrowserLeaf.closeBrowserLeaf` 那一段是同一条遍历,而这里没有把它抽成
+ * 一只公用函数:那一只要的是「把这片叶收掉」(拿 `leafId + index` 去 `closeTab`),
+ * 这一只要的是「往它旁边插一格」——两个消费者、两种下一步,共用的只有一句
+ * `locateRef`,而那已经是公用的了。
+ */
+function locateBrowserTab(tabId: string): { region: RegionId; leafId: string; index: number } | null {
+  const regions = useWorkbenchStore.getState().regions
+  const key = refId(browserRef(tabId))
+  for (const [region, tree] of Object.entries(regions)) {
+    const at = locateRef(tree, region as RegionId, key)
+    if (at) return { region: region as RegionId, leafId: at.leafId, index: at.index }
+  }
+  return null
+}
+
+/**
+ * **表里有、屏幕上没有的那几格**(2026-09-12)。
+ *
+ * 一格 tab 在账本里活着而拼贴树上没有它 —— 本单之前那是**一种常态**(页面自己
+ * 开出来的每一格都长这样,用户账本里攒了 16 格,14 格 YouTube);本单之后它只
+ * 剩两条正当来路:AI 开的后台 tab,以及人自己把叶关掉、却选择留着那一格。
+ * 两条都是正当的,所以这不是一次自动清理,而是右键菜单上**一行看得见的动作**。
+ *
+ * 判据就是 `locateBrowserTab` 答 `null` ——「屏幕上有没有它」只有一个产地。
+ */
+export function offscreenBrowserTabs(ids: readonly string[]): string[] {
+  return ids.filter((id) => locateBrowserTab(id) === null)
+}
+
+/** 逐格关掉。**一条一条走同一只 `close`**,没有第二条关法。 */
+export function closeOffscreenBrowserTabs(ids: readonly string[]): Promise<void> {
+  return Promise.all(ids.map((tabId) => browserOps.close.run({ tabId }))).then(() => {})
+}
+
+/**
+ * **把一格 tab 摆到「开它的那一格」旁边**(2026-09-12)。
+ *
+ * 这是浏览器的形:一条 `target=_blank` 的链接开出来的那一格,长在**点它的那片叶
+ * 的标签条上**,紧挨着它 —— 而不是另起一扇窗(那正是报障里「点新建开出来一个
+ * 窗口」的那一格:`regionForLauncher` 读的是**瓦的位置记忆**,而一格新 tab 在
+ * 记忆里永远没有自己的位置,于是每一格新 tab 都去要一扇新浮窗)。
+ *
+ * 开它的那一格不在屏幕上(人把它关了 / 从没摆过)才退回 `placeBrowserTab` 那条
+ * 老路 —— 那时确实没有「旁边」可言。
+ *
+ * `background` = ⌘-click 那一档:摆出来,但**不换**人正看着的那一格、也不抢焦点。
+ */
+export function placeBrowserTabNear(openerId: string, tabId: string, background = false): void {
+  const at = locateBrowserTab(openerId)
+  if (!at) {
+    /*
+     * 开它的那一格不在屏幕上(人把它关了 / 从没摆过)—— 没有「旁边」可言,退回
+     * 浏览器的常规落点。**后台那一档照样摆**:不摆的话这一格就是「表里活着、
+     * 屏幕上没有它」,与本单治的病一模一样;它只是摆进去**不激活、不抢焦点**。
+     */
+    placeBrowserTab(tabId, background ? { activate: false } : {})
+    return
+  }
+  // 响应链规则 2「打开什么,焦点进什么」——后台那一档人没有要去那里,所以不点名。
+  if (!background) requestBrowserFocus(tabId)
+  useWorkbenchStore.getState().moveRefIntoLeaf(browserRef(tabId), at.leafId, {
+    at: at.index + 1,
+    activate: !background,
+  })
+}
+
+/*
+ * **页面自己开出来的那一格由这里收养**(2026-09-12 真机报障;判词整段在
+ * `data/browser-source.ts` 的 `BrowserTabAdopter` 上)。
+ *
+ * 落在这只文件里是因为它本来就是「一格浏览器 tab 该摆到哪」的唯一产地;`main.tsx`
+ * 开机静态 import 它,所以这一句在第一格 tab 出生之前就填好了。
+ */
+setBrowserTabAdopter((spawn) => {
+  placeBrowserTabNear(spawn.openerId, spawn.id, spawn.background)
+})
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => setBrowserTabAdopter(null))
 }
 
 /**
  * **开一格新的并摆出来**。开不出来(后端拒绝 / 这台宿主没有浏览器)什么都不做 ——
  * 摆一片指着不存在的 tab 的叶,比不摆更糟。
+ *
+ * `near` = 「从这一格开出来的」(叶檐上那颗 +、⋯ 表里「以另一个身份打开此页」):
+ * 新那一格落在它旁边,而不是去要一扇新窗。缺席 = 老路(记忆 > 天生 > 中央区)。
  */
 export async function openBrowser(
   url?: string,
-  init: { profile?: string } = {},
+  init: { profile?: string; near?: string } = {},
 ): Promise<void> {
   /*
    * **先把叶那个 chunk 拉下来,再去开 tab**(两件事并发,等的是慢的那一件)——
@@ -118,6 +212,10 @@ export async function openBrowser(
     import('./browser/BrowserLeaf'),
   ])
   if (!tabId) return
+  if (init.near) {
+    placeBrowserTabNear(init.near, tabId)
+    return
+  }
   placeBrowserTab(tabId)
 }
 
@@ -150,6 +248,8 @@ function BrowserLauncherMenuRows({ onDone }: { onDone: () => void }) {
   }, [])
   const rows = tabs.data?.tabs ?? []
   const profiles = settings.data?.profiles ?? []
+  // 「表里有、屏幕上没有」的那几格(判词在 `offscreenBrowserTabs` 上)。
+  const offscreen = offscreenBrowserTabs(rows.map((row) => row.id))
   return (
     <>
       {rows.length > 0 && (
@@ -171,6 +271,20 @@ function BrowserLauncherMenuRows({ onDone }: { onDone: () => void }) {
               {row.title || row.url || t('browser.newTab')}
             </MenuItem>
           ))}
+          {/*
+            **关掉不在屏上的那几格**。0 格时这一行不画 —— 一行恒显的「关闭 0 个」
+            是噪音,而且它会让人以为自己漏看了什么。
+          */}
+          {offscreen.length > 0 && (
+            <MenuItem
+              onClick={() => {
+                void closeOffscreenBrowserTabs(offscreen)
+                onDone()
+              }}
+            >
+              {t('browser.closeOffscreen', { count: String(offscreen.length) })}
+            </MenuItem>
+          )}
           <MenuSeparator />
         </>
       )}

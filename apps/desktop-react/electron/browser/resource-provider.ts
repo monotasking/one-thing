@@ -185,6 +185,30 @@ export class BrowserResourceProvider implements ResourceProvider<BrowserOpPayloa
     this.emit(tab.id, 'opened', { id: tab.id, url: tab.url })
   }
 
+  /**
+   * 一个网页自己开了一格 tab(2026-09-12)。载荷逐格对着自述里那一条。
+   *
+   * `background` 由 `active` **推**出来,不另存一格:一格前台开出来的 tab 在
+   * `service.open` 那一刻就成了活动 tab(那正是「前台」的定义),所以这两个词
+   * 说的是同一件事,而多存一格就是多一个会对不上的产地。
+   */
+  emitSpawned(tab: BrowserTabView, openerId: string): void {
+    this.emit(tab.id, 'spawned', {
+      id: tab.id,
+      url: tab.url,
+      openerId,
+      background: !tab.active,
+    })
+  }
+
+  /**
+   * 拦了一发(配额见 `service.ts` 的 `SPAWN_BURST`)。**发在 opener 的地址上** ——
+   * 被拦的那一格根本不存在,没有自己的地址可言。
+   */
+  emitSpawnBlocked(openerId: string, url: string): void {
+    this.emit(openerId, 'spawnBlocked', { openerId, url })
+  }
+
   emitClosed(tabId: string): void {
     this.emit(tabId, 'closed', { id: tabId })
   }
