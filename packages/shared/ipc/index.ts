@@ -1068,36 +1068,3 @@ export type {
 	TerminalWriteRequest,
 } from "./terminal.js";
 
-export type {
-	BrowserCreateTabRequest,
-	BrowserCreateTabResponse,
-	BrowserHydrateResponse,
-	BrowserNavigateRequest,
-	BrowserSetBoundsRequest,
-	BrowserSetVisibleRequest,
-	BrowserSimpleResponse,
-	BrowserAddProfileRequest,
-	BrowserPickResponse,
-	BrowserProfile,
-	BrowserProfileIdRequest,
-	BrowserProfilesResponse,
-	BrowserSearchEngine,
-	BrowserSearchEngineId,
-	BrowserSearchEngineResponse,
-	BrowserSetSearchEngineRequest,
-	BrowserTabIdRequest,
-	BrowserTabInfo,
-	BrowserTabsChangedEvent,
-	BrowserViewBounds,
-	BrowserRoutes,
-	PickedWebElement,
-} from "./browser.js";
-
-export {
-	browserRouter,
-	BROWSER_SEARCH_ENGINES,
-	DEFAULT_BROWSER_SEARCH_ENGINE_ID,
-	isBrowserSearchInput,
-	resolveBrowserOmniboxInput,
-	resolveBrowserSearchEngine,
-} from "./browser.js";

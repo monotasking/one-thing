@@ -52,7 +52,14 @@ const DOMAINS_DIR = 'packages/backend/rpc'
 /** 扫描规模下限：遍历坏了长得像「全治愈了」。 */
 const MIN_DOMAIN_FILES = 30
 
-/** React 壳的主进程目录：`ipcMain:` 那把尺子的扫描根。 */
+/**
+ * React 壳的主进程目录：`ipcMain:` 那把尺子的扫描根。**递归**。
+ *
+ * 2026-09-12（B1-a）改成递归，理由与 C0 R2 把 `forks:` 的扫描根提到整棵 `rpc/` 树
+ * 逐字相同：`electron/browser/native-view-ipc.ts` 里那条 `ipcMain.on` 在不递归的
+ * 口径下**数不到** —— 于是「新壳只许有 N 条手写 IPC」这把尺子，只要把通道挂进一个
+ * 子目录就能绕过去。一条手写通道在哪一层目录，与「它是不是一条手写通道」无关。
+ */
 const SHELL_ELECTRON_DIR = 'apps/desktop-react/electron'
 const IPC_MAIN_METRIC = `ipcMain:${SHELL_ELECTRON_DIR}`
 
@@ -201,17 +208,6 @@ function readShell(relativePath) {
   return readFileSync(absolute, 'utf8')
 }
 
-/** 列出一个目录里的 `.ts` 文件(不递归、不含测试)。目录不存在 = 硬错。 */
-function listTsFiles(relativeDir) {
-  const absolute = path.join(root, relativeDir)
-  if (!existsSync(absolute)) {
-    throw new Error(`度量目录不存在：${relativeDir} —— 若确已搬家，请显式改脚本`)
-  }
-  return readdirSync(absolute)
-    .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts') && !name.endsWith('.d.ts'))
-    .sort()
-}
-
 /**
  * 递归列出一棵树下的 `.ts` 文件，相对仓根，排序稳定。
  *
@@ -262,8 +258,8 @@ export function measure(readFile = readShell) {
   }
 
   let ipcMain = 0
-  for (const name of listTsFiles(SHELL_ELECTRON_DIR)) {
-    ipcMain += countIpcMainChannels(readFile(`${SHELL_ELECTRON_DIR}/${name}`))
+  for (const relativePath of listTsFilesRecursive(SHELL_ELECTRON_DIR)) {
+    ipcMain += countIpcMainChannels(readFile(relativePath))
   }
   // 这一格恒有(不像 forks 逐文件)：新壳一条通道都不剩也要看得见是 0。
   metrics[IPC_MAIN_METRIC] = ipcMain

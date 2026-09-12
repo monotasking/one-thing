@@ -6,6 +6,10 @@
  * `onethingHost`,渲染层照旧解析到 web 传输面,只是基址与 token 由这一条口交过去。
  */
 import { contextBridge, ipcRenderer } from 'electron'
+import { NATIVE_VIEW_CHANNEL } from './native-view-protocol.js'
+import type { NativeViewBridge, NativeViewPush, NativeViewRequest } from './native-view-protocol.js'
+
+export type { NativeViewBridge, NativeViewPush, NativeViewRequest }
 
 export type HostConnectionResult =
   | { ok: true; baseUrl: string; token?: string }
@@ -43,4 +47,28 @@ contextBridge.exposeInMainWorld('onethingHost', {
     ipcRenderer.on('host:fullscreen', listener)
     return () => { ipcRenderer.removeListener('host:fullscreen', listener) }
   },
+  /**
+   * **原生视图**那条管道(`host:native-view`)。词汇表在
+   * `electron/native-view-protocol.ts` —— 主进程、preload、渲染层三边共用一份,
+   * 而不是各写一遍字面量。
+   *
+   * 它与浏览器无关:帧上带 `viewId`,主进程按 id 路由,第二种原生视图(PDF 阅读器)
+   * 复用同一条通道。所以这一格叫 `nativeView` 而不是 `browser`。
+   *
+   * **`send` 而不是 `invoke`**:五个动词没有一个要回执(`frame` 是每帧都在发的,
+   * 要回执就是每帧一次 Promise 往返;`occlude` 的回执是那张 `snapshot` 推送)。
+   * 主进程那一侧因此是 `ipcMain.on`,`transport:gate` 的钉数 1 → 2,基线文件那一行
+   * 写明理由。
+   *
+   * `on` 返回退订,形与 `onFullScreenChange` 逐字相同:订阅者卸载时必须调用,
+   * 否则热更 / 重挂之后旧回调还挂在 ipcRenderer 上。
+   */
+  nativeView: {
+    send: (message: NativeViewRequest): void => { ipcRenderer.send(NATIVE_VIEW_CHANNEL, message) },
+    on: (handler: (message: NativeViewPush) => void): (() => void) => {
+      const listener = (_event: unknown, message: NativeViewPush) => handler(message)
+      ipcRenderer.on(NATIVE_VIEW_CHANNEL, listener)
+      return () => { ipcRenderer.removeListener(NATIVE_VIEW_CHANNEL, listener) }
+    },
+  } satisfies NativeViewBridge,
 })

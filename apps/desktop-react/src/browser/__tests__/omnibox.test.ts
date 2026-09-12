@@ -6,7 +6,7 @@ import {
   isBrowserSearchInput,
   resolveBrowserOmniboxInput,
   resolveBrowserSearchEngine,
-} from '../browser'
+} from '../omnibox'
 
 describe('browser search engines', () => {
   it('every engine carries exactly one %s query slot and an https homepage', () => {

@@ -1,0 +1,111 @@
+/**
+ * `host:native-view` 的**唯一**那一条 `ipcMain.on`。
+ *
+ * ## 为什么钉数从 1 变成 2,而且到此为止
+ *
+ * `transport:gate` 钉着「React 壳只许有一条手写 IPC」(今天是 `host:connection`)。
+ * 这一条让它变成 2,基线文件那一行写明理由:**它是窗口系统的管道,不是数据面**
+ * ——与 `host:connection` 同族。数据面(读 / 做 / 看)永远走 `POST /api/rpc`,
+ * 浏览器的每一颗按钮也走那条路(`resources.do`),一条都不会落到这里。
+ *
+ * 钉数**不再涨**(方案 §7 演练乙):帧上带 `viewId`,主进程按 id 路由;第二种原生
+ * 视图(PDF 阅读器)复用同一条通道与同一只占位格,只是多几个 id。一条通道一个
+ * `verb`,不是四条通道。
+ *
+ * ## 为什么是 `on` 而不是 `handle`
+ *
+ * 这五个动词**没有一个要回执**。`frame` 是每帧都在发的(要回执就是每帧一次
+ * Promise 往返);其余四条的答案是「屏幕上的事实」,而不是一个返回值 —— `occlude`
+ * 的回执就是那张 `snapshot` 推送。`handle` 会让每一发都背上一个没人读的 Promise。
+ *
+ * ## 载荷是不可信的
+ *
+ * 发帧的是渲染进程(本机、同一份代码),但**判据不该建立在那上面** —— 一次拼错的
+ * 帧不该让主进程抛。所以每条动词自己校验形状,认不出来的静默丢掉(记一条 debug)。
+ */
+
+import type { NativeViewRequest } from '../native-view-protocol.js'
+import { NATIVE_VIEW_CHANNEL } from '../native-view-protocol.js'
+
+/** `ipcMain` 上用到的那两口。真实现是 electron 的 `ipcMain`。 */
+export interface NativeViewIpcMain {
+  on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown
+  removeAllListeners(channel: string): unknown
+}
+
+/** 五个动词各自的落点。装配方填。 */
+export interface NativeViewHandlers {
+  frame(request: Extract<NativeViewRequest, { verb: 'frame' }>): void
+  occlude(viewId: string): void
+  unocclude(viewId: string): void
+  focus(viewId: string): void
+  keymap(chords: readonly string[]): void
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object'
+}
+
+function viewIdOf(message: Record<string, unknown>): string | undefined {
+  const viewId = message.viewId
+  return typeof viewId === 'string' && viewId.length > 0 ? viewId : undefined
+}
+
+function boundsOf(value: unknown): { x: number; y: number; width: number; height: number } | undefined {
+  if (!isRecord(value)) return undefined
+  const { x, y, width, height } = value
+  if ([x, y, width, height].some(n => typeof n !== 'number' || !Number.isFinite(n))) return undefined
+  return { x: x as number, y: y as number, width: width as number, height: height as number }
+}
+
+/**
+ * 解一条帧。**纯函数** —— 于是「拼错的载荷不会让主进程抛」这一条在 vitest 里量得到,
+ * 不必起 Electron。认不出来 = `undefined`。
+ */
+export function parseNativeViewRequest(raw: unknown): NativeViewRequest | undefined {
+  if (!isRecord(raw)) return undefined
+  switch (raw.verb) {
+    case 'frame': {
+      const viewId = viewIdOf(raw)
+      const bounds = boundsOf(raw.bounds)
+      if (!viewId || !bounds) return undefined
+      const z = typeof raw.z === 'number' && Number.isFinite(raw.z) ? raw.z : 0
+      return { verb: 'frame', viewId, bounds, visible: raw.visible === true, z }
+    }
+    case 'occlude':
+    case 'unocclude':
+    case 'focus': {
+      const viewId = viewIdOf(raw)
+      return viewId ? { verb: raw.verb, viewId } : undefined
+    }
+    case 'keymap': {
+      if (!Array.isArray(raw.chords)) return undefined
+      return { verb: 'keymap', chords: raw.chords.filter((c): c is string => typeof c === 'string') }
+    }
+    default:
+      return undefined
+  }
+}
+
+/** 挂上那一条监听。返回退订(`backend.own()` 收)。 */
+export function installNativeViewIpc(
+  ipcMain: NativeViewIpcMain,
+  handlers: NativeViewHandlers,
+): () => void {
+  const listener = (_event: unknown, raw: unknown): void => {
+    const request = parseNativeViewRequest(raw)
+    if (!request) return
+    switch (request.verb) {
+      case 'frame': handlers.frame(request); return
+      case 'occlude': handlers.occlude(request.viewId); return
+      case 'unocclude': handlers.unocclude(request.viewId); return
+      case 'focus': handlers.focus(request.viewId); return
+      case 'keymap': handlers.keymap(request.chords); return
+    }
+  }
+  ipcMain.on(NATIVE_VIEW_CHANNEL, listener)
+  // `removeAllListeners` 而不是 `removeListener`:这条通道全进程只有这一个监听
+  // (那正是 `transport:gate` 钉着的事),所以「全摘」与「摘我那个」等价,而前者
+  // 对「装了两次」也是对的。
+  return () => { ipcMain.removeAllListeners(NATIVE_VIEW_CHANNEL) }
+}

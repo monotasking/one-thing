@@ -93,6 +93,16 @@
 #   channels.ts 234→232:同上那两行 + 注释改写。
 #   http.ts 742→732:**不是本批的功劳** —— 它是 90200f6f(原子 K2a' 把 `/api/events` 的非会话
 #     那一半搬进 `global-event-delivery.ts`)留下的、当时没收紧的下降,这次顺手收进来。
-channels:IPC_CHANNELS 40
+# 2026-09-12 B1-a(浏览器孤儿契约清账)：**两项下降，一项没动。**
+#   channels 40→39:删 `BROWSER_TABS_CHANGED`。它与 A1-b 立的那份 19 动词
+#     `browserRouter` 一样,**全仓零 import**(唯一宿主是 2026-09-04 退役的 Vue 壳);
+#     `packages/shared/ipc/browser.ts` 整只删,omnibox 三件纯函数搬去壳自己的
+#     `apps/desktop-react/src/browser/omnibox.ts`(它跨不了进程,从来不属于 @shared)。
+#     今天内嵌浏览器的数据面是 `browser:` 资源,走通用 RPC,不加任何通道。
+#   channels.ts 232:删 7 行(常量 + 旧注释)、加 6 行(改判的注释),净 −1 再 +1,持平。
+#   http.ts 732 一行未动:浏览器在 server 上不存在。
+#   本批**唯一**的上升在另一份基线里(`ipcMain` 1 → 2,`host:native-view`),理由写在
+#   `transport-forks-baseline-2026-09-03.txt` 那一段。
+channels:IPC_CHANNELS 39
 lines:packages/backend/server/http.ts 732
 lines:packages/shared/ipc/channels.ts 232

@@ -35,10 +35,26 @@
 #   `isHostLocallyTrusted()`,所以扩量程之后**表里不新增任何行** —— 递归扫到的另外两个文件
 #   (`rpc/index.ts` / `rpc/registry.ts`)读法为 0(index.ts 那处 `context.transport` 在注释里,
 #   剥注释后不计)。反证:把 sandbox.ts 改回 transport 判 → `forks:…/rpc/sandbox.ts 0 → 1` 红。
+# 2026-09-12 B1-a(apps/desktop-react/docs/terminal-browser-2026-09.md §2.2-1)：
+#   **`ipcMain:apps/desktop-react/electron` 1 → 2，这一次上升是拍定的，不是长胖。**
+#   第二条是 `host:native-view`(`electron/browser/native-view-ipc.ts`)。
+#   理由与 `host:connection` 同族：**它是窗口系统的管道，不是数据面**。内嵌浏览器
+#   每 tab 一片主进程 `WebContentsView`(chrome-devtools-mcp 只认 CDP `type:'page'`，
+#   列不出 `<webview>` 的 guest，所以形态没得选)，而原生视图永远压在 DOM 之上 ——
+#   渲染进程必须把「这片叶此刻的矩形、显隐、堆叠序」告诉主进程，那是 DOM 与原生视图
+#   之间的几何，不是读/做/看。数据面一条都没动：浏览器的每一颗按钮与 AI 的每一次调用
+#   都走 `resources.read` / `resources.do`(`browser:` 资源)，也就是 `POST /api/rpc`。
+#   **钉数不再涨**(方案 §7 演练乙)：帧上带 `viewId`，主进程按 id 路由，第二种原生
+#   视图(PDF 阅读器)复用同一条通道与同一只占位格，只多几个 id；五个动词(frame /
+#   occlude / unocclude / focus / keymap)住在同一条通道上，不是五条。
+#   同批把这把尺子的扫描根改成**递归**(与 C0 R2 对 `forks:` 做的事逐字同理)：
+#   不递归的话这条通道住在 `electron/browser/` 子目录里根本数不到，尺子是白的。
+#   反证:把 `native-view-ipc.ts` 挪回 `electron/` 顶层 → 计数不变(递归口径下位置无关)；
+#   把它删掉 → 2 → 1，门提示可收紧。
 # 降了之后跑 `bun run transport:gate --write-baseline` 收紧(重写会保留本段注释)。
 forks:packages/backend/rpc/domains/interaction.ts 1
 forks:packages/backend/rpc/domains/logs.ts 1
 forks:packages/backend/rpc/domains/mcp.ts 1
 forks:packages/backend/rpc/domains/session-command.ts 1
 forks:packages/backend/rpc/domains/settings.ts 1
-ipcMain:apps/desktop-react/electron 1
+ipcMain:apps/desktop-react/electron 2

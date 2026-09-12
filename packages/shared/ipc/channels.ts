@@ -212,12 +212,12 @@ export const IPC_CHANNELS = {
 	// 无 import(唯一宿主是已退役的 Vue 壳),真正的出网口是全局事件
 	// `terminal:data` / `terminal:exit` → `GET /api/events`(壳只有一条 IPC)。
 
-	// Browser (embedded WebContentsView; distinct from the WorkbenchTab
-	// 'browser' <iframe> which stays only as the apps/web fallback)
-	// 19 条请求面于 A1-b 走**宿主壳路由**(`browserRouter`,处理者在
-	// `apps/electron/src/ipc/shell/browser.ts` —— 它动的是主进程里一扇真原生视图,
-	// 所以是壳面不是数据面)。这里只剩一条**推送**:一次合批的标签态广播。
-	BROWSER_TABS_CHANGED: "browser:tabs-changed",
+	// Browser:B1-a(2026-09-12)整族清账。A1-b 立的 19 动词 `browserRouter` 与这条
+	// `BROWSER_TABS_CHANGED` 推送**从来没有任何 import**(唯一宿主是 2026-09-04
+	// 退役的 Vue 壳),两样一起删;omnibox 三件纯函数搬去壳自己的 `src/browser/`。
+	// 今天数据面是 `browser:` 资源(`resources.read` / `.do` 走通用 RPC),状态推送走
+	// `resource:event` → `GET /api/events`;窗口系那一半(矩形 / 显隐 / 遮挡 / 键位)
+	// 走壳自己那条 `host:native-view` IPC —— 不在这张表上(它数的是通道常量)。
 
 	// 系统通知与 dock 徽标(agent-dm-user.md §4.2)。判定在 renderer;两条执行面
 	// (弹通知 / 画墨点)于 A1-a 走 `notifyRouter`。

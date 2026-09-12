@@ -24,6 +24,7 @@ import {
 } from '../../tools/builtin/web-search/page-fetch.js'
 import { defineInput } from '../contract.js'
 import { NetworkTool } from '../families/network.js'
+import { wrapUntrustedText } from '../untrusted-text.js'
 
 export interface WebSearchToolAdapters {
   providers?: Record<string, SearchProvider>
@@ -372,6 +373,20 @@ function buildMetadata(input: {
   }
 }
 
+/**
+ * §9-3(`apps/desktop-react/docs/terminal-browser-2026-09.md`)—— 搜索结果里
+ * **每一个字都是别人写的**:标题、URL、摘要来自搜索引擎与被索引的那些站点,
+ * `fetchPages` 打开时还会带上整段页面正文。所以整块结果经 `wrapUntrustedText`
+ * 包一次,与 `web_open` **同一只函数、同一种标记**(模型要认的标记只许有一种)。
+ *
+ * **包一次,不是每条包一次**:这一族输出是一张给模型扫的清单,十条结果十对定界符
+ * 会把清单撑成噪音,而那十条的信任级是同一档 —— 一个信封说得清。头两行(搜了什么、
+ * 用的哪个引擎)留在信封**外面**:那是这台机器自己说的话,把它也圈进「不可信」里,
+ * 等于连「我搜的是这个词」都不敢信了。
+ *
+ * `maxChars` 用包法的缺省:每页正文已经被 `truncateForAI(PAGE_AI_TEXT_CHARS)`
+ * 截过一刀,这里那一刀是「整块加起来别失控」的第二道。
+ */
 function formatSearchOutput(input: {
   query: string
   queries: string[]
@@ -379,14 +394,15 @@ function formatSearchOutput(input: {
   searches: WebSearchRun[]
   pages: FetchedSearchPage[]
 }): string {
-  const lines: string[] = [
+  const header: string[] = [
     `Search results for "${input.query}" (via ${input.providerName})`,
   ]
 
   if (input.queries.length > 1) {
-    lines.push(`Queries searched: ${input.queries.join(' | ')}`)
+    header.push(`Queries searched: ${input.queries.join(' | ')}`)
   }
 
+  const lines: string[] = []
   const pagesByResultId = new Map(input.pages.map(page => [page.resultId, page]))
 
   for (const search of input.searches) {
@@ -411,7 +427,9 @@ function formatSearchOutput(input: {
     }
   }
 
-  return lines.join('\n').trim()
+  const body = lines.join('\n').trim()
+  if (!body) return header.join('\n')
+  return `${header.join('\n')}\n\n${wrapUntrustedText(body, { source: input.providerName })}`
 }
 
 function formatSnippet(result: WebSearchResultItem): string {

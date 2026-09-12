@@ -49,6 +49,7 @@ export type EffectClass =
   | 'plugin_exec'
   | 'external-agent'
   | 'ui_change'
+  | 'browser_navigate'
 
 /**
  * 默认处置:
@@ -99,6 +100,32 @@ const ROWS: readonly EffectPolicyRow[] = [
    * `silent` 不等于不留痕:两类照样落 `tool/audit`,照样发事件。
    */
   { kind: 'net_fetch', policy: 'silent', prompt: 'Fetch a URL', barrier: false },
+  /**
+   * 让**内嵌浏览器**去一个地址(B1-a,`apps/desktop-react/docs/terminal-browser-2026-09.md`
+   * §9-2 / 拍点 ③)。
+   *
+   * ## 为什么它不是 `net_fetch`
+   *
+   * 上面那一行管的是**匿名 fetch**:`web_search` 发几条 query、`web_open` 抓一页 ——
+   * 没有 cookie、没有身份,抓回来的是任何人都看得见的那一份,所以静默。
+   *
+   * 内嵌浏览器不是这样。它跑在 `persist:browser-<profile>` 上,**登着用户的账号**;
+   * 让它 `navigate` 到一个地址 = 带着那份 cookie 以用户的身份发一个请求。一个 GET
+   * 就能退出登录、确认一笔订单、接受一次邀请。这与匿名取材不是一类事,不该共用
+   * 一行策略 —— 共用就等于把「以你的身份点一下」降级成「查一次资料」。
+   *
+   * `ask` 而不是 `never-grantable`:它是可记忆的。用户经许可卡答一次「始终允许
+   * browser:*」就一次放行(`alwaysScopeOf` 认得出这一族的地址,合表 863332c7 /
+   * a50d4f99 的那条路白拿),而不是每开一页问一遍。
+   *
+   * `barrier: false`:两次导航之间没有共享坐标要保护 —— 两格 tab 各走各的,
+   * 而同一格 tab 的两次导航本来就是后一次盖前一次(那是浏览器的语义,不是竞态)。
+   *
+   * **读不在这一行里**:`page` / `screenshot` 两条读法零效果(读无效果是结构性的,
+   * `ReadSpec` 里根本没有 effects 这一格);`activate` / `close` 是 `ui_change`
+   * ——它们动的是这个人自己那扇窗。
+   */
+  { kind: 'browser_navigate', policy: 'ask', prompt: 'Navigate the built-in browser', barrier: false },
   { kind: 'user_ask', policy: 'silent', prompt: 'Ask the user a question', barrier: false },
   /**
    * 往**另一条会话**里投一条消息。合表后 `ask` —— **是表跟上了行为,不是行为变了**
