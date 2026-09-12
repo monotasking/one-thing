@@ -208,11 +208,9 @@ export const IPC_CHANNELS = {
 
 	// Token usage / billing moved to the generic RPC channel (usageRouter).
 
-	// Terminal (real PTY, user-driven; distinct from the ACP protocol "terminal").
-	// 七条请求面已迁通用 RPC 通道(P4 终态批 D2,`terminalRouter`);留下的两条是
-	// **推送面**,走注入广播器端口 `configureTerminalBroadcaster`(router 无推送面)。
-	TERMINAL_DATA: "terminal:data",
-	TERMINAL_EXIT: "terminal:exit",
+	// Terminal:七条请求面走 `terminalRouter`(P4-D2);两条推送常量 T0 删除 ——
+	// 无 import(唯一宿主是已退役的 Vue 壳),真正的出网口是全局事件
+	// `terminal:data` / `terminal:exit` → `GET /api/events`(壳只有一条 IPC)。
 
 	// Browser (embedded WebContentsView; distinct from the WorkbenchTab
 	// 'browser' <iframe> which stays only as the apps/web fallback)

@@ -16,8 +16,9 @@
  * `applyHostPorts` 逐项接线。每一项必填,没接的显式写 `null` —— 于是"这个壳
  * 缺什么能力"是可数的,而不是靠比对两个壳的调用清单才看得出来。
  *
- * 这个壳真的交出来的三件:auth(凭证解密的唯一口)、sandbox(下载目录)、
- * storePath(打包资源目录)与 localTrust(`desktop-embedded`,B3);其余十二项是 `null`。
+ * 这个壳真的交出来的:auth(凭证解密的唯一口)、sandbox(下载目录)、
+ * storePath(打包资源目录)、terminal(T0:PTY 输出的出网口)与 localTrust
+ * (`desktop-embedded`,B3);其余十一项是 `null`。
  */
 import { app, net, safeStorage, session } from 'electron'
 import type { OnethingTokenCryptoAdapter } from '@onething/runtime/auth'
@@ -28,6 +29,7 @@ import {
   validateProxyUrl,
 } from '@onething/backend/provider-binding/bound-fetch.js'
 import { getSettings } from '@onething/backend/stores/settings.js'
+import { createEventBusTerminalBroadcaster } from '@onething/backend/wiring/terminal/bus-broadcaster.js'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
 import type { ProxySettings } from '@shared/ipc.js'
 
@@ -133,13 +135,22 @@ export function createShellHostPorts(): OnethingHostPorts {
       authFetch: createShellAuthFetch(),
       tokenCryptoAdapter: getShellSafeStorage,
     },
+    /**
+     * 终端输出的出网口(T0,方案 `apps/desktop-react/docs/terminal-browser-2026-09.md`
+     * §2.1-1/2)。**注入这一格 = 这台宿主有终端** —— `hasTerminalHost()` 是
+     * `terminal` 域七条 RPC 的闸,也是 `/api/capabilities.terminal` 那一位;在此
+     * 之前它们在生产里恒 false / 恒拒,壳里那块终端面板是假的。
+     *
+     * 推送骑的是既有的全局事件 → `GET /api/events`,不新开通道:这个壳只有一条
+     * IPC(`host:connection`),渲染层与 core 之间只有 HTTP/SSE。
+     */
+    terminal: { broadcaster: createEventBusTerminalBroadcaster() },
     // ── 以下是这个壳还没有的能力。每一行都是一笔待办,不是一次省略。 ──
     // 日志目录与 renderer console 兜底采集:壳走 `configureLogging` 自己开
     // `shell.jsonl`,那两件宿主采集能力还没接。
     logging: null,
     shell: null,
     voice: null,
-    terminal: null,
     // 留账②:打包态的内建 skills 目录靠这一项指路,这个壳还没注入。
     skillsEnvironment: null,
     todoPlan: null,

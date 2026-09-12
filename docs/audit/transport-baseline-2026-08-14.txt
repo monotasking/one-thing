@@ -84,6 +84,15 @@
 #   会话生命周期(建 / 删)那一半**零行变化**:建骑既有的 `session:ledger-event`,
 #   删新增一条**会话事件词**(`SESSION_EVENT_TYPES.SESSION_REMOVED`,不是 `IPC_CHANNELS` 常量),
 #   渲染侧的折叠住在壳外一个模块 `platform/session-lifecycle.ts` —— 四壳一行不动。
-channels:IPC_CHANNELS 42
-lines:packages/backend/server/http.ts 742
-lines:packages/shared/ipc/channels.ts 234
+# 2026-09-12 T0(终端后端最后一公里,apps/desktop-react/docs/terminal-browser-2026-09.md §2.1):
+#   **三项一起下降,没有一项上升。**
+#   channels 42→40:删 `TERMINAL_DATA` / `TERMINAL_EXIT` —— 它们从 P4-D2 起就没有任何 import
+#     (两年里唯一的宿主是 2026-09-04 退役的 Vue 壳),而 T0 让 PTY 输出真的出网走的是两条
+#     **全局事件**(`@shared/events` 的 `terminal:data` / `terminal:exit` → `GET /api/events`)。
+#     换句话说这一批加了一条真推送路,手写通道数反而少了两条 —— 这正是这把尺子想看到的形状。
+#   channels.ts 234→232:同上那两行 + 注释改写。
+#   http.ts 742→732:**不是本批的功劳** —— 它是 90200f6f(原子 K2a' 把 `/api/events` 的非会话
+#     那一半搬进 `global-event-delivery.ts`)留下的、当时没收紧的下降,这次顺手收进来。
+channels:IPC_CHANNELS 40
+lines:packages/backend/server/http.ts 732
+lines:packages/shared/ipc/channels.ts 232

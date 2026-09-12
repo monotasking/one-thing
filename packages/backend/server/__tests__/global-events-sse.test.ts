@@ -17,6 +17,11 @@
  *    客户端就得先猜自己收到的是哪一种。
  * 3. **它不占会话事件的序号。** 全局事件不进任何一条会话的环形缓冲,所以帧里没有
  *    `id:` —— 重连的 `Last-Event-ID` 只对会话事件的 seq 有意义。
+ * 4. **终端输出骑的是同一条出口**(T0,`apps/desktop-react/docs/terminal-browser-2026-09.md`
+ *    §2.1-1/2)。它是这条出口的第三位乘客,也是第一个"不是资源"的乘客:PTY 的输出
+ *    从宿主广播器上总线,再原样出网。这一条走的是真广播器 + 真 SSE —— 不往总线上
+ *    手塞,否则 `createEventBusTerminalBroadcaster` 那一段(惰性取总线、字段原样)
+ *    就没被走到。
  */
 import { once } from 'node:events'
 import type { Server } from 'node:http'
@@ -25,6 +30,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { SerializedResourceSpec } from '@shared/ipc/resources.js'
+import { createEventBusTerminalBroadcaster } from '../../wiring/terminal/bus-broadcaster.js'
 import { createOnethingHttpServer } from '../http.js'
 import type { OnethingServerRuntime } from '../runtime.js'
 import { createAppServerRuntime } from './test-helpers.js'
@@ -195,6 +201,43 @@ describe('全局事件走既有的 GET /api/events', () => {
 
     backend!.shellResources.settleResult('sse-shell', command.callId, { kind: 'ok', text: 'opened' })
     expect((await pending).kind).toBe('ok')
+  })
+
+  /**
+   * T0 —— 终端输出。**这是壳里那块终端面板今天唯一的到达路径**:React 壳只有一条
+   * `host:connection` IPC,渲染层与 core 之间只有 HTTP/SSE,所以「再开一条推送
+   * 通道」在结构上走不通。
+   *
+   * 反证(实跑过):把 `GLOBAL_EVENT_LEAVES_PROCESS` 里 `terminal:data` /
+   * `terminal:exit` 两行改成 `false` → 这一条超时红(SSE 上一帧都没有)。
+   */
+  it('终端输出:宿主广播器 → 总线 → SSE 上一帧 terminal:data', async () => {
+    const serverRuntime = await startRuntime()
+    expect(serverRuntime.backend).toBeTruthy()
+    const server = await listen(createOnethingHttpServer({ runtime: serverRuntime.runtime }))
+
+    const stream = await fetch(`${baseUrl(server)}/api/events`)
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    // 宿主表里 `terminal` 那一格交的就是这只对象(React 壳 `host-ports.ts`)。
+    const broadcaster = createEventBusTerminalBroadcaster()
+    broadcaster.sendData({ terminalId: 'term-sse', seq: 3, data: '$ echo hi\r\n' })
+    broadcaster.sendExit({ terminalId: 'term-sse', exitCode: 0 })
+
+    const text = await readUntil(stream, value => value.includes('event: terminal:exit'))
+    expect(sseData(text, 'terminal:data')).toEqual({
+      type: 'terminal:data',
+      terminalId: 'term-sse',
+      seq: 3,
+      data: '$ echo hi\r\n',
+    })
+    expect(sseData(text, 'terminal:exit')).toEqual({
+      type: 'terminal:exit',
+      terminalId: 'term-sse',
+      exitCode: 0,
+    })
+    // 与别的全局事件同一条纪律:不占会话事件的序号。
+    expect(sseFrame(text, 'terminal:data')).not.toContain('id: ')
   })
 
   it('出网名单说不出网的,一帧都不发', async () => {

@@ -326,8 +326,10 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // http 上十一条逐字沿用旧 server adapter 的「server 上没有语音运行时」。
   { id: 'rpc:voice', mount: ctx => { ctx.registerRpcDomain(voiceRouter, voiceRpcHandlers) } },
   // P4 终态批 D2(terminal)—— 七条请求面:开 / 列 / 写 / 改尺寸 / 杀 / 附着 / 流控回执。
-  // **两条推送留在原地**:`TERMINAL_DATA` / `TERMINAL_EXIT` 早就是
-  // `configureTerminalBroadcaster` 注入端口,router 没有推送面。
+  // **推送不在这个域里**:输出走 `configureTerminalBroadcaster` 注入端口
+  // (router 没有推送面)。T0 起那只端口的桌面实现把每条输出放上总线,骑全局事件
+  // `terminal:data` / `terminal:exit` 出 `GET /api/events`;两条同名的手写通道常量
+  // 同批删除(从 P4-D2 起就没有 import)。
   // `ack` 从单向 `ipcRenderer.send` 变成带一条空回执的 invoke(渲染侧本来就不等它;
   // 与 `VOICE_AUDIO_CHUNK` 退回单向的差别在频次 —— 那是每秒 10–25 块的稳定 PCM 上行)。
   // **七条在 http 上一律结构化拒绝**:能力位 `terminal` 在 web 默认关(用户拍板),

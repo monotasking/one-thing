@@ -71,6 +71,8 @@
     "./wiring/skills/index.js": "./wiring/skills/index.ts",
     "./wiring/skills/loader.js": "./wiring/skills/loader.ts",
     "./wiring/skills/session-skills.js": "./wiring/skills/session-skills.ts",
+    "./wiring/terminal/bus-broadcaster.js": "./wiring/terminal/bus-broadcaster.ts",
+    "./wiring/terminal/index.js": "./wiring/terminal/index.ts",
     "./wiring/toc/index.js": "./wiring/toc/index.ts",
     "./wiring/todo-plan/store.js": "./wiring/todo-plan/store.ts",
     "./wiring/toolkit/index.js": "./wiring/toolkit/index.ts",

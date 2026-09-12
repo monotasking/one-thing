@@ -5,6 +5,7 @@
  */
 
 import type { PluginNotifySound } from '@onething/core/plugins/notify-sound'
+import type { TerminalDataEvent, TerminalExitEvent } from '../ipc/terminal.js'
 
 // ── App lifecycle ───────────────────────────────
 
@@ -183,6 +184,43 @@ export interface ResourceShellCommandEvent {
   at: number
 }
 
+// ── Terminal (真 PTY 输出,T0) ───────────────────
+
+/**
+ * 一格 PTY 的一批输出(`docs/design/terminal-browser-2026-09.md` §2.1-1)。
+ *
+ * ## 为什么是全局事件,不是第三条手写通道
+ *
+ * `TerminalService` 早就有输出流水线(16ms 合批 → seq → 环形缓冲 → 广播器端口),
+ * 缺的只是**一条到得了壳的路**。而今天的 React 壳只有一条 IPC(`host:connection`,
+ * `transport:gate` 的 `ipcMain` 钉数就是它),渲染层与 core 之间只有 HTTP/SSE ——
+ * 于是「再开一条通道」这条路在结构上已经关死了。全局事件本来就走
+ * `GET /api/events`(`backend/server/global-event-delivery.ts`),转发那一侧不认识
+ * 任何一种事件的名字,所以接上它 = 加一支联合 + 出网名单加一行,零传输面改动。
+ *
+ * ## 「SSE 不回放全局事件」在这里正好是对的
+ *
+ * 全局事件不进任何一条会话的环形缓冲,`?after=` 不回放它们。终端不需要那个:
+ * 回放是终端服务自己的事 —— 每次 `attach` 交出 ring + seq + 一个新代次,断线
+ * 期间错过的输出由那一次 attach 补齐,而不是由传输面替它存第二本账。
+ *
+ * ## 不出网名单里为什么是 `true`
+ *
+ * 判据是「载荷会不会把本机路径 / 命令行 / 凭证带出进程」。这两条的载荷是
+ * `{terminalId, seq, data}` 与 `{terminalId, exitCode}` —— `data` 里当然会有本机
+ * 路径(那是终端的屏幕),但**它本来就是调用方自己刚敲出来的那扇终端的回显**:
+ * 拿得到这条 SSE 的人已经过了 Bearer 那道门,而同一道门后面 `terminal.attach`
+ * 会把同样的字节整段交出去。压着它不出网只会让终端在壳里永远是个假面板。
+ */
+export interface TerminalDataGlobalEvent extends TerminalDataEvent {
+  type: 'terminal:data'
+}
+
+/** 一格 PTY 死了。服务侧保证它排在那一格最后一批 `terminal:data` 之后。 */
+export interface TerminalExitGlobalEvent extends TerminalExitEvent {
+  type: 'terminal:exit'
+}
+
 // ── Union ───────────────────────────────────────
 
 export type GlobalEvent =
@@ -200,6 +238,8 @@ export type GlobalEvent =
   | PluginNotificationEvent
   | ResourceEventOccurredEvent
   | ResourceShellCommandEvent
+  | TerminalDataGlobalEvent
+  | TerminalExitGlobalEvent
 
 // ── 出网名单(原子 K2a')────────────────────────────
 
@@ -254,4 +294,14 @@ export const GLOBAL_EVENT_LEAVES_PROCESS: Readonly<Record<GlobalEvent['type'], b
    * 递进来的那一坨,原路返回。
    */
   'resource:shell-command': true,
+  /**
+   * **出网 —— 它整条命就是为了出网**(T0)。终端的输出流水线在 core 里,而唯一
+   * 的消费者住在壳的渲染层;`GET /api/events` 是这两者之间今天唯一的路(React
+   * 壳只有一条 `host:connection` IPC)。载荷是 `{terminalId, seq, data}`,`data`
+   * 就是那扇终端的屏幕字节 —— 同一道 Bearer 门后面 `terminal.attach` 交出去的是
+   * 同一批字节,这里不新增一类暴露。
+   */
+  'terminal:data': true,
+  /** **出网 —— 同上**。载荷只有 `{terminalId, exitCode}`。 */
+  'terminal:exit': true,
 })

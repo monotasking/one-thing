@@ -90,6 +90,7 @@ import {
 } from '@onething/runtime/voice/host-ports.wiring'
 import {
   configureTerminalBroadcaster,
+  killAllTerminals,
   type TerminalHostPorts,
 } from '@onething/runtime/terminal/service.wiring'
 import {
@@ -214,9 +215,16 @@ export interface OnethingHostPorts {
  *
  * `assembleSteps` 把这个返回值 `own('hostPorts')` 起来。
  */
-export function applyHostPorts(host: OnethingHostPorts): () => void {
-  /** 这次真正调过的那几件的还原口,**登记序**;返回值逆序跑。 */
-  const restores: Array<() => void> = []
+export function applyHostPorts(host: OnethingHostPorts): () => void | Promise<void> {
+  /**
+   * 这次真正调过的那几件的还原口,**登记序**;返回值逆序跑。
+   *
+   * 允许 `Promise<void>`:`terminal` 那一格的还原要先**真的杀掉 PTY** 再摘端口,
+   * 而杀进程是异步的(SIGHUP → 宽限 → SIGKILL)。`own()` 本来就收
+   * `() => void | Promise<void>`,所以这里让类型说实话,而不是把一个 promise
+   * 丢在地上。
+   */
+  const restores: Array<() => void | Promise<void>> = []
 
   configureStorePathHost(host.storePath)
   restores.push(resetStorePathHost)
@@ -240,8 +248,19 @@ export function applyHostPorts(host: OnethingHostPorts): () => void {
   }
   if (host.terminal) {
     configureTerminalBroadcaster(host.terminal.broadcaster)
-    // 这一格的"未注入"就是 `null` —— 它本来就是端口自己的缺省值,不必另开 reset。
-    restores.push(() => configureTerminalBroadcaster(null))
+    /**
+     * 这一格的"未注入"就是 `null` —— 它本来就是端口自己的缺省值,不必另开 reset。
+     *
+     * **但摘端口之前要先杀 PTY**(T0)。从前这里只摘端口,因为从来没有宿主注入过
+     * 这一格:生产里一格 PTY 都没有过,那笔账看不出来。注入之后它是真的 ——
+     * `backend.dispose()` 若只摘广播器,活着的 shell 会变成没人认领的孤儿子进程
+     * (node-pty spawn 出来的进程不随父进程退出走),而且它们还在往一个已经没有
+     * 消费者的 ring 里写。顺序不能反:先摘端口再杀,最后那批 exit 事件就没有出口了。
+     */
+    restores.push(async () => {
+      await killAllTerminals()
+      configureTerminalBroadcaster(null)
+    })
   }
   if (host.skillsEnvironment) {
     configureSkillsEnvironmentHost(host.skillsEnvironment)
@@ -290,7 +309,9 @@ export function applyHostPorts(host: OnethingHostPorts): () => void {
   // `null` 是"明确声明不可信",不是 no-op)。
   if (host.localTrust) restores.push(configureHostLocalTrust(host.localTrust))
 
-  return () => {
-    for (let i = restores.length - 1; i >= 0; i -= 1) restores[i]!()
+  return async () => {
+    // 逐件 await:`terminal` 那一格要等 PTY 真的死掉才算还原完,而后面(= 登记序
+    // 更早)的几格摘端口必须排在它之后 —— 并发跑会把"逆序"这句话作废。
+    for (let i = restores.length - 1; i >= 0; i -= 1) await restores[i]!()
   }
 }

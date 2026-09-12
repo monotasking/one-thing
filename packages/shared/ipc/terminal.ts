@@ -102,14 +102,14 @@ export interface TerminalSimpleResponse {
 	error?: string
 }
 
-/** Push payload on IPC_CHANNELS.TERMINAL_DATA. */
+/** 一批终端输出。T0 起它是全局事件 `terminal:data` 的载荷(见下方「两条推送不在这条路上」)。 */
 export interface TerminalDataEvent {
 	terminalId: string
 	seq: number
 	data: string
 }
 
-/** Push payload on IPC_CHANNELS.TERMINAL_EXIT (always emitted AFTER the final data flush). */
+/** 一格 PTY 死了。全局事件 `terminal:exit` 的载荷;服务侧保证它排在最后一批输出 flush 之后。 */
 export interface TerminalExitEvent {
 	terminalId: string
 	exitCode: number | null
@@ -133,10 +133,16 @@ export interface TerminalExitEvent {
  *
  * ## 两条推送不在这条路上
  *
- * `TERMINAL_DATA` / `TERMINAL_EXIT` 是**注入广播器端口**
- * (`configureTerminalBroadcaster`,`@onething/runtime/terminal/service.wiring`),
- * 而 router 今天只有请求/响应面 —— 所以那两条通道常量与它们的载荷类型原样留在
- * 手写 IPC 上(同 practice / scratchpad / oauth 判例)。
+ * 输出走**注入广播器端口**(`configureTerminalBroadcaster`,
+ * `@onething/runtime/terminal/service.wiring`),而 router 今天只有请求/响应面。
+ *
+ * P4-D2 当时把 `TERMINAL_DATA` / `TERMINAL_EXIT` 两条通道常量留在了手写 IPC 上
+ * (同 practice / scratchpad / oauth 判例);**T0(2026-09-12)把它们删了** ——
+ * 两年里没有一个 import,而真正把输出送出 core 的那条路是两条**全局事件**
+ * (`@shared/events` 的 `TerminalDataGlobalEvent` / `TerminalExitGlobalEvent`,
+ * 骑 `GET /api/events`):React 壳只有一条 `host:connection` IPC,手写通道在它
+ * 身上结构性地走不通。下面这两个**载荷类型**原样留在这里 —— 全局事件 `extends`
+ * 的就是它们,形状只有一份。
  */
 export type TerminalRoutes = {
 	create: { input: TerminalCreateRequest; output: TerminalCreateResponse };

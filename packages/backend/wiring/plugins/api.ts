@@ -125,6 +125,12 @@ export const GLOBAL_PLUGIN_EVENT_TYPES = new Set([
   // (漏一个,插件订阅它就会被静默挂到会话面上);但它对插件没有用 —— 执行它的
   // 是那扇 `shellId` 指着的壳,别人读到要当没看见。
   'resource:shell-command',
+  // T0:PTY 的输出与死讯(`@shared/events` 的 `terminal:data` / `terminal:exit`)。
+  // 同上 —— 名单与联合一一对应是这张表的整条命,所以两行必须在;但它们对插件同样
+  // 没有用:终端的正式消费者是壳(经 `GET /api/events`),而一批屏幕字节离开了
+  // 那一格终端的 attach 代次就没有意义。
+  'terminal:data',
+  'terminal:exit',
 ])
 
 /** 插件自定义事件:`plugin:<pluginId>:<name>`,三段以上。 */
