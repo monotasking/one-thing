@@ -92,11 +92,83 @@ describe('抽屉候选列表:封顶 + 自己滚 + 不把滚动传给身后', () 
     expect(scroll()).toMatch(/overscroll-behavior:\s*contain/)
   })
 
-  /* 抽屉本身的开合语义**一字未动**:封顶的是列表区,不是抽屉。
-   * 这一条守的就是「有人图省事把上限加到 .drawer 上」那种改法。 */
-  it('抽屉自己仍然是 grid 0fr↔1fr,没有被顺手改成 max-height', () => {
-    expect(block('.drawer')).toMatch(/grid-template-rows:\s*0fr/)
-    expect(block('.drawer')).not.toMatch(/max-height/)
+  /*
+   * 09-12 第二批推翻了这一族最后一条(从前它守「抽屉自己仍然是 grid 0fr↔1fr」)。
+   * 上面那三条一个字没动 —— 它们守的是**模型抽屉那一列**,那位住户的高仍旧由
+   * 右栏那张卡定,列表照旧封顶、照旧自己滚、照旧不把滚动链传给身后。
+   * `@` / `/` 两位住户改吃固定框,它们的守卫在下面那一族。
+   */
+})
+
+/**
+ * ══ 抽屉:浮在面板上方 + 固定高 + 只淡入(09-12 第二批,用户两报障合一)══════
+ *
+ * 报障原话:「它太慢了,我能看到它先很短、再慢慢长出来;能不能直接看到一个
+ * 固定长度、固定宽度的最终结果」,以及此前的「会把内容往上顶,有时顶有时不顶」。
+ *
+ * 三件事各有一条守卫,**每一条都对应一个可复发的改法**:
+ *   ① 绝对定位 —— 有人把它改回文档流,`--composer-h` 当场又把抽屉算进去,
+ *      贴底跟随时正文又被顶;
+ *   ② 固定高 —— 有人把 `.drawerFixed` 的 height 改回 auto / max-height,
+ *      「先短再长」原样复发;
+ *   ③ 高度零过渡 —— 有人顺手给 `.drawer` 加一条 height / grid-rows 过渡。
+ *
+ * 「真的不顶」与「真的一帧到位」是**排版**,CSS 源文本说不出那句话:它们在
+ * 真机门 `npm run gate:composer-drawer` 的 (a)(b)(c) 里量。两边必须都在 ——
+ * 这里守住这几行没被删,那里守住这几行真的管用。
+ */
+describe('抽屉浮在面板上方 · 固定高 · 只淡入', () => {
+  const drawer = () => block('.drawer')
+
+  it('① 抽屉绝对定位挂在面板上沿 —— 它不进 composer 的布局高', () => {
+    expect(drawer()).toMatch(/position:\s*absolute/)
+    expect(drawer()).toMatch(/bottom:\s*100%/)
+    // 左右与面板的**边框盒**齐平(绝对定位量的是 padding box,差的正是那道边框)。
+    expect(drawer()).toMatch(/inset-inline:\s*calc\(-1 \* var\(--bw-1\)\)/)
+  })
+
+  it('① 的另一半:面板开着抽屉时放开 overflow,否则那一片整个被剪掉', () => {
+    const open = block('.panel:has(.drawerOpen)')
+    expect(open).toMatch(/overflow:\s*visible/)
+    // 上两角让给抽屉(接缝两端否则各露一小牙底色);下两角一个像素不动。
+    expect(open).toMatch(/border-start-start-radius:\s*0/)
+    expect(open).toMatch(/border-start-end-radius:\s*0/)
+    // 常态那句 `overflow: hidden` 还在 —— 关着时它照旧把贴边的东西剪进圆角。
+    expect(block('.panel')).toMatch(/overflow:\s*hidden/)
+  })
+
+  it('② `@` / `/` 两位住户的框是**固定高**:token 与矮窗夹子两项都在', () => {
+    expect(block('.drawerFixed')).toMatch(
+      /height:\s*min\(var\(--composer-drawer-h\), calc\(var\(--center-h, 200vh\) \* 0\.5\)\)/,
+    )
+    // 高度一路传到底,列表在框里铺满自己滚(否则框底下空一条填不满的带)。
+    expect(block('.drawerFixed .drawerBody')).toMatch(/height:\s*100%/)
+    expect(block('.drawerFixed .pickScroll')).toMatch(/height:\s*100%/)
+    expect(block('.drawerFixed .pickScroll')).toMatch(/max-height:\s*none/)
+  })
+
+  it('③ 高度一个过渡都没有,出现那一下只淡入', () => {
+    expect(drawer()).not.toMatch(/transition:[^;]*height/)
+    expect(drawer()).not.toMatch(/grid-template-rows/)
+    // 关是立刻的:过渡只声明在**开着**那一档,去类那一刻当场落回「无过渡」。
+    expect(drawer()).not.toMatch(/transition:/)
+    expect(block('.drawerOpen')).toMatch(
+      /transition:\s*opacity var\(--dur-drawer\) var\(--ease-out\)/,
+    )
+    expect(block('.drawerOpen')).not.toMatch(/height/)
+  })
+
+  it('③ 的另一半:关着时不可见也不接事件(而不是靠一个 0 高度)', () => {
+    expect(drawer()).toMatch(/opacity:\s*0/)
+    expect(drawer()).toMatch(/visibility:\s*hidden/)
+    expect(block('.drawerOpen')).toMatch(/visibility:\s*visible/)
+  })
+
+  it('接缝:抽屉是同一块玻璃的上半截 —— 同一档边线、同一档影、只圆上两角', () => {
+    expect(drawer()).toMatch(/border:\s*var\(--bw-1\) solid var\(--line-1\)/)
+    expect(drawer()).toMatch(/background:\s*var\(--surface-2\)/)
+    expect(drawer()).toMatch(/box-shadow:\s*var\(--sh-2\)/)
+    expect(drawer()).toMatch(/border-radius:\s*var\(--r-3\) var\(--r-3\) 0 0/)
   })
 })
 

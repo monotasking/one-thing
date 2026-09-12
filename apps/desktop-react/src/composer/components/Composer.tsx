@@ -387,24 +387,44 @@ export function Composer() {
             />
           )}
 
-          {/* 抽屉:一个槽,四种住户。开合是 grid-rows 0fr↔1fr,内容按 kind 换。 */}
-          <div className={drawerKind ? `${s.drawer} ${s.drawerOpen}` : s.drawer}>
-            <div className={s.drawerInner}>
-              <div className={s.drawerBody}>
-                {pick.picking && (
-                  <DrawerPickList
-                    kind={drawerKind === 'files' ? 'files' : 'commands'}
-                    files={pick.files}
-                    fileStatus={pick.fileStatus}
-                    commandGroups={pick.commandGroups}
-                    index={pick.index}
-                    rowRef={pick.rowRef}
-                    onPick={pick.applyPick}
-                  />
-                )}
-                {drawerKind === 'model' && <DrawerModelPicker />}
-                {drawerKind === 'status' && status && <DrawerStatus status={status} />}
-              </div>
+          {/*
+            * 抽屉:一个槽,四种住户,内容按 kind 换。
+            *
+            * ── 09-12 两处改动,骨架一格没动 ─────────────────────────────────
+            * ① 它**浮在面板上方**(`position: absolute; bottom: 100%`),不再占
+            *    面板的高 —— 于是 `--composer-h` 与抽屉开不开无关,消息流不再被顶。
+            *    判词整段在 `.drawer` 的 CSS 上;DOM 上它仍是 `.panel` 的孩子,
+            *    响应链作用域 / `useFloatDismiss` 的「外面」/ `:has(.drawerOpen)`
+            *    三样因此一个字不改。
+            * ② `.drawerInner` 那层没了:它唯一的活是给 `grid-rows 0fr↔1fr` 当
+            *    裁剪盒,而那条展开已经判掉(高度一帧到位)。裁剪归 `.drawer`
+            *    自己的 `overflow: hidden`(圆角也要它)。
+            *
+            * `drawerFixed` 只挂给**打字驱动**的两位住户(`pick.picking`):它们的
+            * 内容逐字在变,所以要一个不变的框(用户:「直接看到一个固定长度、
+            * 固定宽度的最终结果」)。模型 / 执行状态是人主动开的、内容不随打字变,
+            * 高照旧由内容定。
+            */}
+          <div
+            className={[s.drawer, drawerKind ? s.drawerOpen : '', pick.picking ? s.drawerFixed : '']
+              .filter(Boolean)
+              .join(' ')}
+            data-testid="composer-drawer"
+          >
+            <div className={s.drawerBody}>
+              {pick.picking && (
+                <DrawerPickList
+                  kind={drawerKind === 'files' ? 'files' : 'commands'}
+                  files={pick.files}
+                  fileStatus={pick.fileStatus}
+                  commandGroups={pick.commandGroups}
+                  index={pick.index}
+                  rowRef={pick.rowRef}
+                  onPick={pick.applyPick}
+                />
+              )}
+              {drawerKind === 'model' && <DrawerModelPicker />}
+              {drawerKind === 'status' && status && <DrawerStatus status={status} />}
             </div>
           </div>
 

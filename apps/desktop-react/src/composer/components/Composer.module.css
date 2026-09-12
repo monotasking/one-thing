@@ -70,12 +70,24 @@
  *
  * 判据是 `:has(.drawerOpen)` —— **那格状态类本来就在**(抽屉的开合就是它),
  * 不必为这条规则新造一个「玻璃/不透明」的状态位:两个位说同一件事迟早分叉。
+ *
+ * ── 09-12 多出来的两句:让路给浮在上方的抽屉 ─────────────────────────────
+ * `overflow: visible` —— 抽屉改成 `position: absolute; bottom: 100%`(判词整段在
+ * `.drawer` 上)之后它长在面板**外面**,而 `.panel` 常态那句 `overflow: hidden`
+ * 会把它整片剪掉。只在开着时放开:关着时那句 `hidden` 照旧把状态条的底、
+ * 拖拽虚线这些贴边的东西剪进圆角里。
+ *
+ * 上两角改直角 —— 那两个角此刻不是这块玻璃的顶,抽屉才是;圆角留着会在接缝
+ * 两端各露出一小牙底色。**只动上两角**,下两角一个像素没变。
  */
 .panel:has(.drawerOpen) {
+  overflow: visible;
   background: var(--surface-2);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   border-color: var(--line-1);
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
 }
 
 /*
@@ -162,41 +174,104 @@
   transform: rotate(180deg);
 }
 
-/* ── 抽屉:单一槽,grid-rows 0fr↔1fr ────────────────────────────────────────
- * 用 grid 行而不是 max-height:内容多高就展开多高,不需要猜一个上限。 */
+/* ── 抽屉:一个槽,四种住户;**浮在面板上方,永不占面板的高** ───────────────
+ *
+ * ══ 09-12 推翻式改写(用户两报障合一)════════════════════════════════════
+ * 从前这块是 `.panel` 里的一格流内元素,靠 `grid-template-rows: 0fr↔1fr` 展开。
+ * 两条病一个根:
+ *
+ *  ①「有时把内容往上顶、有时不顶」。composer 绝对定位浮在消息流上(ChatLeaf
+ *    §5.6),`AppShell.useComposerGeometry` 用 ResizeObserver 把**整块 dock**的高
+ *    写进 `--composer-h`,消息流拿它做 `padding-block-end` / `scroll-padding`。
+ *    抽屉一开 → dock 变高 → 内衬变高 → **贴底跟随**时列表为了继续贴底把正文
+ *    往上推,推的距离正是抽屉高;**上翻浏览**时滚动位不动,于是只是被盖住。
+ *    「有时顶有时不顶」= 跟随与浏览两种状态,不是随机。
+ *  ②「先很短、再慢慢长出来」。0fr→1fr 走 220ms,内容还是从上往下擦出来的;
+ *    候选列表又叠了一次高度 FLIP,于是「一行『正在找…』→ 整列」再长一次。
+ *
+ * ── 治法:把它从「面板的一格」改成「面板上方的一片」 ──────────────────────
+ * `position: absolute; bottom: 100%` —— **绝对定位的子元素不进父级的布局高**,
+ * 所以 `.composerDock` 的 `getBoundingClientRect().height` 与抽屉开不开无关,
+ * `--composer-h` 自然不动,消息流一个像素都不必让。`AppShell` 那只观察者、
+ * `ChatStream` 那两条内衬**一行都没改** —— 病根在几何,治在几何。
+ *
+ * ── 为什么留在 `.panel` 里面,而不是提到 `.anchor` 上 ─────────────────────
+ * 三样东西都认这个父子关系,搬出去就要各修一遍:`FocusScope` 的根是 `.panel`
+ * (`panelRef`)、`useFloatDismiss(panelRef, …)` 的「外面」是 `.panel` 之外
+ * (抽屉搬出去 = 点抽屉里的模型行等于点了外面,当场关掉自己)、
+ * 还有下面那条 `.panel:has(.drawerOpen)` 的换底。留在里面,这三样一个字不动;
+ * 代价只有一条 `overflow: visible`(见 `.panel:has(.drawerOpen)` 那段)。
+ *
+ * ── 接缝:一块玻璃的上半截,不是第二张卡 ─────────────────────────────────
+ * `inset-inline: calc(-1 * var(--bw-1))` 让抽屉的**边框盒**与面板的边框盒左右
+ * 齐平(绝对定位量的是父级的 padding box,差的正好是那一道边框);
+ * `bottom: 100%` 让抽屉的下边框与面板的上边框**落在同一排像素上** —— 于是接缝
+ * 处恰好一条线,不是两层描边也不是一道缝。抽屉只圆上两角,面板开着抽屉时上两角
+ * 改直角(下面那段),两块合起来仍是一块玻璃的外形。
+ *
+ * ── 出现 = 只淡入,不长高(用户原话:「直接看到一个固定长度、固定宽度的最终
+ * 结果」)──────────────────────────────────────────────────────────────────
+ * 关着时 `visibility: hidden` 且**不写 transition**,所以**关是立刻的**;
+ * 开着时才声明那一条 80ms 的 opacity 过渡 —— 加类那一刻 0→1 才动,去类那一刻
+ * 落回 `.drawer` 的「无过渡」当场消失。`--dur-drawer` 在动效档 `none` 下是 0ms,
+ * 于是这一档自动退化成直切,**不另写 reduced-motion 块**(第二份真相)。
+ * 高度那一维**一个过渡都没有**:这正是这次改动要买的东西。
+ */
 .drawer {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows var(--dur-drawer) var(--ease-out);
+  position: absolute;
+  inset-inline: calc(-1 * var(--bw-1));
+  bottom: 100%;
+  overflow: hidden;
+  border: var(--bw-1) solid var(--line-1);
+  border-radius: var(--r-3) var(--r-3) 0 0;
+  background: var(--surface-2);
+  box-shadow: var(--sh-2);
+  opacity: 0;
+  visibility: hidden;
 }
 
 .drawerOpen {
-  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity var(--dur-drawer) var(--ease-out);
 }
 
-.drawerInner {
-  overflow: hidden;
-  min-height: 0;
+/*
+ * ── 固定高:`@` 文件 / `/` 命令两位住户(09-12)─────────────────────────────
+ * **一出来就是最终大小**。候选少时框里下半截留白,候选多时框内滚动 —— 框本身
+ * 不随内容变,所以 loading →「正在找…」→ 整列这一串换内容**不改变任何几何**,
+ * 没有第二段动画可看。推导写在 `--composer-drawer-h` 上(= 表头 + 8 行)。
+ *
+ * 矮窗上再夹一道 `--center-h` 的一半:抽屉不再推正文,但它仍然**盖住**正文,
+ * 盖掉一半是「正文永远露出上半截」那句话在这一档的形。`--center-h` 由 AppShell
+ * 的 ResizeObserver 写在 `.center` 上;兜底 200vh 让「壳还没量出来」的第一帧退回
+ * 固定高(min 里那一项大到不参与)。
+ *
+ * 模型 / 执行状态两位住户**不吃这一格**:它们的高按内容(模型那位由右栏那张卡
+ * 定,判词在 `.pickCols`)。同一个槽,两种定高法 —— 判据是「这位住户的内容会不会
+ * 在人打字时逐字变」,会变的才需要一个不变的框。
+ */
+.drawerFixed {
+  height: min(var(--composer-drawer-h), calc(var(--center-h, 200vh) * 0.5));
 }
 
 .drawerBody {
   padding: var(--sp-1);
-  border-bottom: 1px solid transparent;
-  opacity: 0;
-  transition: opacity var(--dur) var(--ease);
   /*
    * 模型抽屉两栏 / 一栏的**容器**(09-05 庚)。判据是这块抽屉自己有多宽,
    * 不是窗口有多宽:输入框在浮窗里、在窄舞台上、在钉边的架子里各有各的宽,
    * 而窗口只有一个数(与 ModelCatalog / FileViewer 同一条判例)。
-   * `inline-size` 只在行内轴上收缩包含 —— 高度照旧由内容说了算,抽屉那条
-   * `grid-template-rows: 0fr↔1fr` 的开合语义一格没动。
+   * `inline-size` 只在行内轴上收缩包含 —— 高度照旧由住户说了算(固定档由
+   * `.drawerFixed` 给,另两位按内容)。
    */
   container: composerDrawer / inline-size;
 }
 
-.drawerOpen .drawerBody {
-  border-bottom-color: var(--line-1);
-  opacity: 1;
+/* 固定档:高度一路传到底,列表在框里铺满自己滚(`box-sizing: border-box` 全局)。
+ * 列表那一格的覆盖写在 `.pickScroll` 之后(样式表里在下面) —— 覆盖要挨着被覆盖的
+ * 那条,否则读的人得跨半个文件才拼得出「这一档到底多高」。 */
+.drawerFixed .drawerBody {
+  height: 100%;
 }
 
 /* ── 抽屉内容:列表(files / commands / model 共用一种行) ─────────────────── */
@@ -236,6 +311,17 @@
    * 不该横着抖一下(全仓第一处用它,理由就是这一条)。
    */
   scrollbar-gutter: stable;
+}
+
+/*
+ * 固定档(`@` / `/` 两位住户)里列表**铺满那个框**,不再自己封顶 —— 封顶那件事
+ * 已经由框接走了,上面那条 `max-height` 从此只服务**模型抽屉**那一列
+ * (判词在 `--composer-drawer-max` 上)。两个数同时在会打架:框是 320 而列表是
+ * `min(320, 40% 窗高)`,矮窗上列表先塌,框底下就空出一条永远填不满的带。
+ */
+.drawerFixed .pickScroll {
+  height: 100%;
+  max-height: none;
 }
 
 .pickScroll::-webkit-scrollbar-thumb {

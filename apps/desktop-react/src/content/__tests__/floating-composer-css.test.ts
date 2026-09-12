@@ -76,6 +76,25 @@ describe('② 气口:正文与玻璃上缘之间那 40px', () => {
     expect(tokens).toMatch(/--composer-h:\s*0px/)
     expect(read('src/components/AppShell.tsx')).toMatch(/setProperty\(name, `\$\{Math\.round\(px\)\}px`\)/)
   })
+
+  /*
+   * ── 09-12 报障「会把内容往上顶,有时顶有时不顶」的产地 ────────────────────
+   * `--composer-h` 量的是 `.composerDock` 的 `getBoundingClientRect().height`,
+   * 而那只是它**布局盒**的高。抽屉从前是面板里的一格流内元素 —— 一开就把这个数
+   * 抬高一整列,消息流的内衬跟着抬,**贴底跟随**时列表为了继续贴底把正文往上推
+   * (上翻浏览时滚动位不动,所以只是被盖住:「有时顶有时不顶」= 两种状态)。
+   *
+   * 治法是几何:抽屉改成 `position: absolute`,绝对定位的子元素**不进父级布局高**。
+   * 所以这条断言与上面那一条是**一对**:一条说这个数怎么量,一条说什么东西不该
+   * 被量进去。AppShell 那只观察者、`.scroll` 那两条内衬都因此一行没改。
+   */
+  it('抽屉不进这个数:它绝对定位挂在面板上沿,布局高里没有它', () => {
+    const drawer = block(composer, '.drawer')
+    expect(drawer).toMatch(/position:\s*absolute/)
+    expect(drawer).toMatch(/bottom:\s*100%/)
+    // 反面:它一旦回到文档流(grid 展开那一形),这个数当场又把它算进去。
+    expect(drawer).not.toMatch(/grid-template-rows/)
+  })
 })
 
 describe('③ 玻璃(拍点 ⑪ 磨砂)', () => {

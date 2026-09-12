@@ -191,6 +191,17 @@ async function settleMentions() {
   })
 }
 
+/**
+ * **不推时钟**,只把微任务放干净 —— 「首开那一发有没有出门」要的正是这个:
+ * 推一格时钟就分不清「当场发的」与「去抖到期发的」了。
+ */
+async function settleWithoutClock() {
+  await act(async () => {
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+}
+
 /** 在 contenteditable 里「打」一段话:落文本 + 把光标放到末尾 + 发 input。 */
 function type(el: HTMLElement, text: string) {
   el.textContent = text
@@ -318,20 +329,39 @@ describe('@ 引用:候选是真的,插进去的是 token', () => {
     vi.useFakeTimers()
   })
 
-  it('去抖 120ms:窗口里连打几下只发一次,发的就是最后那个词', async () => {
+  /*
+   * ── 首开不去抖,此后每一次改词才去抖(09-12 第二批)──────────────────────
+   * 从前这一条守的是「连打几下只发一次」,而它连**第一下**也一起去抖了 ——
+   * 那 120ms 里屏幕上写着「正在找…」,请求却还没出门。去抖是给**打字的节奏**
+   * 准备的,而 `@` 敲下去的那一拍没有节奏可言:它是一次明确的「我要看候选」。
+   * 所以今天判据分两段,两段都要守:首开当场发、后续仍然只发一次最后那个词。
+   */
+  it('首开不去抖:`@` 敲下去那一拍当场发一次', async () => {
+    renderComposer()
+    type(inputBox(), '看看 @m')
+    await settleWithoutClock()
+    expect(fileAsks, '刚切到 files 的那一拍不该再等 120ms').toHaveLength(1)
+    // 没有当前会话 = 没有工作目录:`cwd` 与 `sessionId` 两格都**不带**,
+    // 不在渲染层拼一个根去顶(判据见 data/file-mentions-source.ts 文件头)。
+    expect(fileAsks[0]).toEqual({ query: 'm', limit: 50 })
+  })
+
+  it('首开之后照旧去抖 120ms:窗口里连打几下只发一次,发的就是最后那个词', async () => {
     renderComposer()
     const box = inputBox()
 
     type(box, '看看 @m')
+    await settleWithoutClock()
+    expect(fileAsks, '首开那一发').toHaveLength(1)
+
     type(box, '看看 @mo')
     type(box, '看看 @mod')
-    expect(fileAsks, '去抖窗口里一发都不该发出去').toHaveLength(0)
+    await settleWithoutClock()
+    expect(fileAsks, '去抖窗口里一发都不该再发出去').toHaveLength(1)
 
     await settleMentions()
-    expect(fileAsks).toHaveLength(1)
-    // 没有当前会话 = 没有工作目录:`cwd` 与 `sessionId` 两格都**不带**,
-    // 不在渲染层拼一个根去顶(判据见 data/file-mentions-source.ts 文件头)。
-    expect(fileAsks[0]).toEqual({ query: 'mod', limit: 50 })
+    expect(fileAsks).toHaveLength(2)
+    expect(fileAsks[1]).toEqual({ query: 'mod', limit: 50 })
   })
 
   it('抽屉一收就把候选散掉 —— 它是「此刻在匹配什么」,不是缓存', async () => {

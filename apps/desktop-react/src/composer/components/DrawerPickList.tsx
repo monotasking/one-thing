@@ -1,8 +1,6 @@
-import { Fragment, useRef } from 'react'
+import { Fragment } from 'react'
 import type { MouseEvent } from 'react'
 import { ButtonBase } from '../../ui/ButtonBase'
-import { useFlipHeight } from '../../ui/flip-height'
-import { DRAWER_MS } from '../../components/motion'
 import { useT } from '../../i18n'
 import type { MessageKey } from '../../i18n'
 import type { CommandEntry } from '../../data/commands-source'
@@ -65,14 +63,17 @@ import s from './Composer.module.css'
  * 键盘走位仍旧是**一条扁平序**:`index` 与 `onPick(i)` 的下标按各组 `items`
  * 顺次相连算 —— 下面那个 `offset` 就是它。分组一个字都没改选择模型。
  *
- * ── 高度不许瞬跳:FLIP ──────────────────────────────────────────────────
- * 「一行 →(往返回来)整列」这一下从前是**瞬跳**:抽屉的 `grid-rows 0fr↔1fr`
- * 过渡管的是开合,管不了「开着的时候内容换了」。所以这块滚动区自己走一次
- * 高度 FLIP(`ui/flip-height` —— 与工具卡同一件原语,09-12 从 ToolCard 抽出来
- * 立在 `src/ui/` 下,**禁止在这里手写第二份**)。
- * 时长走 `--dur-drawer`(与抽屉开合同一个数,两段在人眼里是同一件事),
- * 缓动 `--ease-out`,动效档 `none` / `prefers-reduced-motion` 下时长归 0 = 直切。
- * 挂载那一次账上没有「改前」,所以**开抽屉不走 FLIP** —— 那一下归 grid-rows。
+ * ══ 09-12 第二批:高度这件事整个不归这里了 ════════════════════════════════
+ * 同日早些时候这块滚动区自己走一次高度 FLIP(`ui/flip-height`),让「一行
+ * 『正在找…』→ 整列」那一下有得看。用户当天报回来的正是它:
+ * 「它太慢了,我能看到它先很短、再慢慢长出来;能不能直接看到一个固定长度、
+ * 固定宽度的最终结果」。
+ *
+ * 所以 FLIP **删了**(原语留着,工具卡还在用)。抽屉改成**固定高的框**
+ * (`.drawerFixed`,推导在 `--composer-drawer-h` 上),这一列在框里铺满自己滚 ——
+ * 四态之间换的只是框里第一行写什么,**一个像素的几何都不动**。
+ * 于是这个文件里再没有任何一处量高、记高、改高:要「一出来就是最终大小」,
+ * 最可靠的写法是让它压根没有第二个尺寸。
  * ──────────────────────────────────────────────────────────────────────
  */
 interface Props {
@@ -110,19 +111,7 @@ export function DrawerPickList({
     onPick(i)
   }
 
-  /*
-   * 「此刻这一列长什么样」—— 它变了才值得走一次高度过渡。逐帧的选中位变化
-   * (↑↓ 走行)**不在**这个字符串里:换一行高亮不改高度,量它只是白排一次版
-   * (与工具卡那条 `structure` 逐字同一条纪律)。
-   */
   const rows = kind === 'files' ? files.length : commandGroups.reduce((n, g) => n + g.items.length, 0)
-  const structure = `${kind}|${rows}|${kind === 'files' ? fileStatus : commandGroups.length}`
-  const scrollRef = useRef<HTMLDivElement>(null)
-  useFlipHeight(scrollRef, structure, {
-    durVar: '--dur-drawer',
-    durMs: DRAWER_MS,
-    easeVar: '--ease-out',
-  })
 
   /** 候选一条没有时,那一行该说什么(四态表的下半截;null = 什么都不说)。 */
   const emptyNote: MessageKey | null =
@@ -141,7 +130,7 @@ export function DrawerPickList({
   let offset = -1
 
   return (
-    <div className={s.pickScroll} ref={scrollRef}>
+    <div className={s.pickScroll}>
       {kind === 'files' && <div className={s.pickHead}>{t('composer.headFiles')}</div>}
 
       {emptyNote && <div className={s.pickEmpty}>{t(emptyNote)}</div>}

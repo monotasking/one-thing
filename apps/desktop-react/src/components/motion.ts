@@ -189,15 +189,19 @@ export const CARD_FLIP_MS = 180
 export const SESSION_PREFETCH_HOVER_MS = 180
 
 /**
- * --dur-drawer:composer 那一个抽屉槽的开合时长(`grid-template-rows: 0fr↔1fr`)。
+ * --dur-drawer:composer 那一个抽屉槽**出现那一下**的时长(今天只剩淡入)。
  *
- * JS 侧要这个数是因为**收尾有个定时器**:候选列表的内容换了(「正在找…」一行
- * 长成整列、整列收窄成三条)时那块滚动区走一次高度 FLIP(`ui/flip-height`),
- * 过渡跑完要把内联 height 摘掉 —— 与 CARD_FLIP_MS 逐字同一条理由。
+ * ── 09-12 从 220 降到 80,连同它的语义一起窄了一格 ────────────────────────
+ * 它从前镜像的是 `grid-template-rows: 0fr↔1fr` 那段高度展开,顺带喂给候选列表
+ * 那次高度 FLIP 的收尾定时器。用户报障「它太慢了,我能看到它先很短、再慢慢
+ * 长出来」之后,**高度这件事整个被判掉**:抽屉改成绝对定位 + 固定高,开出来
+ * 就是最终大小,FLIP 也跟着从 `DrawerPickList` 删了(原语 `ui/flip-height`
+ * 留着,工具卡还在用)。剩下的唯一一段过渡是淡入,80ms ≈ 5 帧 —— 短到只够
+ * 盖住那一帧硬切,读作「出现了」而不是「正在出现」。
  *
- * 复用开合那一个数而不是另立一个:抽屉长高与抽屉展开在人眼里是同一件事的两段,
- * 两个时长会让它们在同一次交互里跑出两种快慢。动效档 `none` 下整段 FLIP 直接
- * 跳过(`currentMotionTier()` 判),所以这里只镜像标准档那一个数;
- * 相等由 __tests__/motion-tokens.test.ts 与 tokens.css 逐条比对。
+ * **JS 侧今天没有消费者**:淡入是纯 CSS 的一条 transition,没有收尾定时器要
+ * 这个数。这个常量留下来是为了**那张比对表**(tokens.css 是产地、JS 是镜像,
+ * `__tests__/motion-tokens.test.ts` 逐条比对)—— 少一行镜像,tokens 那头改了
+ * 就没人拦得住。
  */
-export const DRAWER_MS = 220
+export const DRAWER_MS = 80

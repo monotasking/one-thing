@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { RefObject } from 'react'
 import { createFileToken } from '@onething/runtime/prompts/prompt-references'
 import type { CommandEntry } from '../data/commands-source'
@@ -39,8 +39,9 @@ import type { AskSpec, DrawerKind, TokenHit } from './types'
  *
  * ## 三张表
  *
- * **生命周期**:两个 effect —— ① `@` 候选的去抖拉取(抽屉不是 files 就散候选,
- * 是 files 就等 `FILE_MENTION_DEBOUNCE_MS` 再发一次,重入即撤上一发的计时器);
+ * **生命周期**:两个 effect —— ① `@` 候选的拉取(抽屉不是 files 就散候选;
+ * **刚切到 files 的那一拍当场发一次**,此后每次改词才等 `FILE_MENTION_DEBOUNCE_MS`,
+ * 重入即撤上一发的计时器 —— 09-12 第二批:去抖是给打字的节奏准备的,首开没有节奏);
  * ② 命令抽屉第一次开时懒拉插件与技能那两半(技能按 cwd 缓存)。都没有卸载动作
  * 要做,除了 ① 那只计时器(它由 effect 自己的清理函数收)。这只 hook 只有一种
  * 宿主(编排点),没有换宿主这回事。
@@ -147,9 +148,31 @@ export function usePickDrawer({
   const searchMentions = useFileMentionsSource((st) => st.search)
   const clearMentions = useFileMentionsSource((st) => st.clear)
 
+  /**
+   * 「抽屉是不是刚切到 files 的那一拍」。ref 而不是 state:它只是给下面那只
+   * effect 认门,读它的人不需要重渲染。
+   */
+  const filesJustOpened = useRef(false)
   useEffect(() => {
     if (drawerKind !== 'files') {
+      filesJustOpened.current = false
       clearMentions()
+      return
+    }
+    /*
+     * ── 首开不去抖(09-12 第二批)────────────────────────────────────────
+     * 去抖是给**打字的节奏**准备的:人一个字一个字地敲,每个字都发一发是浪费。
+     * 而 `@` 刚敲下去的那一拍**没有节奏可言** —— 它是一次明确的「我要看候选」,
+     * 后面跟着的 120ms 纯粹是白等:屏幕上写着「正在找…」,而请求还没出门。
+     * 所以首开当场发一次,去抖只管此后每一次改词。
+     *
+     * 这不是把等待变短了一点,是把等待**少一段**:抽屉今天是固定高的框,
+     * 框里那行字从「正在找…」换成候选不改变任何几何,于是首开的全部体感
+     * 就剩这一次往返 —— 去抖 120ms 在它上面是整整一半。
+     */
+    if (!filesJustOpened.current) {
+      filesJustOpened.current = true
+      void searchMentions(pickQuery, cwd, sessionId)
       return
     }
     const timer = setTimeout(

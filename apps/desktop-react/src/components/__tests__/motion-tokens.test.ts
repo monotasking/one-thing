@@ -82,8 +82,9 @@ describe('JS 侧的时长常量与 tokens.css 逐条相等', () => {
     /* 工具卡的 FLIP(C2-a):JS 侧那个数只服务收尾定时器(过渡跑完摘掉内联 height),
      * 产地仍是 tokens.css —— 与 --dur-exit 同一条理由。 */
     ['--dur-card-flip', CARD_FLIP_MS],
-    /* composer 抽屉槽的开合(09-12 补):候选列表的高度 FLIP 复用它,收尾定时器
-     * 要这个数 —— 与 --dur-card-flip 同一条理由。 */
+    /* composer 抽屉槽**出现那一下**的时长(09-12 补,同日第二批收窄:高度展开与
+     * 候选列表的 FLIP 一起判掉了,只剩 80ms 淡入)。JS 那份今天没有消费者 ——
+     * 它留在这里就是为了这一行:产地改了,镜像得跟着红。 */
     ['--dur-drawer', DRAWER_MS],
     /* 拖拽的三拍(W6-b,设计 `docs/workbench-tabs-2026-09.md` §4.1)。三个都是动画
      * (让位 / 滑入新槽 / 卡片飞入),各有一个 JS 收尾定时器跟着走。
