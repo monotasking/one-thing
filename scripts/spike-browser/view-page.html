@@ -1,0 +1,61 @@
+<!doctype html>
+<!--
+  B0 spike ② 里被 WebContentsView 载入的「网页」。刻意**沙箱 + 无 preload**(与产品里
+  浏览器 tab 的 webPreferences 一致),所以它与主进程之间没有 IPC —— 主进程一律用
+  `webContents.executeJavaScript` 读它。
+
+  它自报三件事:① 16ms 心跳的到点时刻(量隐藏后被不被节流)、② 收到的 keydown
+  (量 before-input-event 的 preventDefault 挡不挡得住)、③ 视口尺寸与 DPR(量 DIP 对齐)。
+-->
+<meta charset="utf-8" />
+<title>spike view</title>
+<style>
+  /* 纯红底:主进程截窗时按像素判「这片到底有没有合成进去」 */
+  html, body { margin: 0; height: 100%; background: rgb(255, 0, 0); color: #fff;
+    font: 14px/1.4 ui-monospace, Menlo, monospace; }
+  #box { padding: 8px; }
+</style>
+<body>
+  <div id="box">spike view page</div>
+  <script>
+    window.__ticks = []
+    setInterval(() => {
+      window.__ticks.push(Date.now())
+      if (window.__ticks.length > 4000) window.__ticks.splice(0, 2000)
+    }, 16)
+    window.__tickMark = () => window.__ticks.length
+
+    window.__keys = []
+    window.addEventListener('keydown', (e) => {
+      window.__keys.push([e.metaKey ? 'meta+' : '', e.ctrlKey ? 'ctrl+' : '', e.key].join(''))
+    })
+
+    window.__probe = () => ({
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      dpr: window.devicePixelRatio,
+      hasFocus: document.hasFocus(),
+      visibility: document.visibilityState,
+      hidden: document.hidden,
+      keys: window.__keys.slice(),
+      tickCount: window.__ticks.length,
+    })
+
+    /** [from, to) 区间内心跳间隔的分布 —— 拿来判「隐藏后被节流成多少」 */
+    window.__tickStats = (fromTs, toTs) => {
+      const t = window.__ticks.filter((x) => x >= fromTs && x <= toTs)
+      if (t.length < 2) return { n: t.length, median: null, max: null, spanMs: toTs - fromTs }
+      const gaps = []
+      for (let i = 1; i < t.length; i++) gaps.push(t[i] - t[i - 1])
+      gaps.sort((a, b) => a - b)
+      return {
+        n: t.length,
+        median: gaps[Math.floor(gaps.length / 2)],
+        p95: gaps[Math.floor(gaps.length * 0.95)],
+        max: gaps[gaps.length - 1],
+        spanMs: toTs - fromTs,
+        ticksPerSecond: +(t.length / ((toTs - fromTs) / 1000)).toFixed(2),
+      }
+    }
+  </script>
+</body>

@@ -1,0 +1,109 @@
+<!doctype html>
+<!--
+  B0 spike ② 的**自造壳页**(不是产品壳):一片可改尺寸的「叶」占位格 + 一扇假浮窗 + 一张快照 img。
+  只服务 native-view.mjs 的量测,零产品代码。
+-->
+<meta charset="utf-8" />
+<title>spike shell</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #14161a; color: #cfd6e4;
+    font: 12px/1.5 ui-monospace, Menlo, monospace; overflow: hidden; }
+  #stage { position: relative; height: 100%; }
+  /* 「叶」的占位格:原生视图跟着它的矩形走 */
+  #slot { position: absolute; left: 40px; top: 60px; width: 600px; height: 400px;
+    background: #1d2026; outline: 1px solid #3a4050; }
+  /* 遮挡快照就画在占位格里 */
+  #snap { position: absolute; inset: 0; width: 100%; height: 100%; display: none; }
+  /* 假浮窗:盖在占位格上面 */
+  #float { position: absolute; left: 300px; top: 200px; width: 260px; height: 160px;
+    background: #262b33; border: 1px solid #4a5263; display: none; }
+  #log { position: absolute; left: 40px; bottom: 8px; white-space: pre; }
+</style>
+<div id="stage">
+  <div id="slot"><img id="snap" /></div>
+  <div id="float">float</div>
+  <div id="log">spike shell</div>
+</div>
+<script>
+  const { ipcRenderer } = require('electron')
+  const slot = document.getElementById('slot')
+  const snap = document.getElementById('snap')
+
+  const state = { viewId: 'v1', visible: true, z: 0 }
+  let pending = false
+
+  /** rAF 合批:一帧最多报一次矩形(产品里 NativeViewSlot 也是这么做) */
+  function schedule() {
+    if (pending) return
+    pending = true
+    requestAnimationFrame(() => {
+      pending = false
+      const r = slot.getBoundingClientRect()
+      ipcRenderer.send('nv', {
+        kind: 'bounds',
+        viewId: state.viewId,
+        // 四舍五入:setBounds 收整数 DIP
+        bounds: { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) },
+        visible: state.visible,
+        z: state.z,
+        // 这一格是「壳决定改尺寸」那一刻的墙钟,主进程拿它算端到端延迟
+        tSet: window.__tSet ?? Date.now(),
+        dpr: window.devicePixelRatio,
+      })
+    })
+  }
+
+  new ResizeObserver(schedule).observe(slot)
+
+  // ── 主进程驱动的口子 ──────────────────────────────────────────────
+  window.__resizeSlot = (w, h) => {
+    window.__tSet = Date.now()
+    slot.style.width = w + 'px'
+    slot.style.height = h + 'px'
+    return window.__tSet
+  }
+
+  window.__slotRect = () => {
+    const r = slot.getBoundingClientRect()
+    return { x: r.x, y: r.y, width: r.width, height: r.height, dpr: window.devicePixelRatio }
+  }
+
+  /** 遮挡:假浮窗盖上来 → 报 occlude,等主进程把快照推回来 */
+  window.__occlude = () => {
+    window.__tOcclude = Date.now()
+    window.__tSnapShown = 0
+    document.getElementById('float').style.display = 'block'
+    ipcRenderer.send('nv', { kind: 'occlude', viewId: state.viewId })
+    return window.__tOcclude
+  }
+  window.__unocclude = () => {
+    document.getElementById('float').style.display = 'none'
+    snap.style.display = 'none'
+    ipcRenderer.send('nv', { kind: 'reveal', viewId: state.viewId })
+    return Date.now()
+  }
+  window.__snapshotShownAt = () => window.__tSnapShown || 0
+
+  ipcRenderer.on('nv-host', (_e, msg) => {
+    if (msg.kind === 'snapshot') {
+      snap.onload = async () => {
+        try { await snap.decode() } catch {}
+        // 再等一帧,确保这张图真的进了合成器
+        requestAnimationFrame(() => { window.__tSnapShown = Date.now() })
+      }
+      snap.style.display = 'block'
+      snap.src = msg.dataUrl
+    }
+    if (msg.kind === 'key') {
+      ;(window.__keysFromHost ||= []).push(msg.combo)
+    }
+    if (msg.kind === 'focus') {
+      ;(window.__focusFromHost ||= []).push(msg)
+    }
+  })
+
+  window.__hasFocus = () => document.hasFocus()
+  window.__activeTag = () => (document.activeElement && document.activeElement.tagName) || null
+
+  schedule()
+</script>

@@ -1,0 +1,142 @@
+<!doctype html>
+<!--
+  B0 spike ①-㈢ 的**指纹探针页**。两边各开一次、把 JSON 存下来,再用 fp-diff.mjs 逐格比:
+    · 官方 Electron(本目录的 google-login.mjs --stage=3,它会自动把 JSON 写到 --fp-out)
+    · 本机 Flow Browser(castlabs 底座,能登谷歌)—— 在 Flow 里打开这个文件,
+      按「下载 JSON」或「复制 JSON」存成 flow.json
+  页面自己不上网、不发请求。
+-->
+<meta charset="utf-8" />
+<title>fp probe</title>
+<style>
+  body { margin: 0; padding: 16px; background: #0f1115; color: #d7dee9;
+    font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  h1 { font-size: 14px; margin: 0 0 4px; }
+  .bar { margin: 10px 0; display: flex; gap: 8px; }
+  button, a.btn { background: #232936; color: #d7dee9; border: 1px solid #38404f;
+    padding: 5px 10px; border-radius: 4px; cursor: pointer; text-decoration: none; font: inherit; }
+  pre { background: #161a21; border: 1px solid #262d38; padding: 12px; border-radius: 6px;
+    white-space: pre-wrap; word-break: break-all; }
+</style>
+<h1>fp probe — 官方 Electron vs Flow(castlabs)指纹差分</h1>
+<div>在两个浏览器里各打开一次,把 JSON 各存一份,再跑 <code>node fp-diff.mjs a.json b.json</code>。</div>
+<div class="bar">
+  <button id="copy">复制 JSON</button>
+  <a class="btn" id="dl" download="fp.json">下载 JSON</a>
+  <span id="hint"></span>
+</div>
+<pre id="out">collecting…</pre>
+<script>
+  async function collect() {
+    const nav = navigator
+    const fp = { collectedAt: new Date().toISOString() }
+
+    // 安全上下文与来源:**EME 那几格只在安全上下文里有意义**(file:// 不是),
+    // 两边差分时先核这一格一致,否则 widevine 的「不支持」可能只是因为页面走的是 file://
+    fp.isSecureContext = window.isSecureContext
+    fp.origin = location.origin
+    fp.protocol = location.protocol
+
+    fp.userAgent = nav.userAgent
+    fp.appVersion = nav.appVersion
+    fp.vendor = nav.vendor
+    fp.platform = nav.platform
+    fp.languages = nav.languages
+    fp.language = nav.language
+    fp.webdriver = nav.webdriver
+    fp.hardwareConcurrency = nav.hardwareConcurrency
+    fp.deviceMemory = nav.deviceMemory ?? null
+    fp.maxTouchPoints = nav.maxTouchPoints
+    fp.pdfViewerEnabled = nav.pdfViewerEnabled ?? null
+    fp.cookieEnabled = nav.cookieEnabled
+    fp.doNotTrack = nav.doNotTrack
+
+    // plugins / mimeTypes(Chrome 有 5 个内建 PDF 伪插件)
+    fp.pluginsLength = nav.plugins ? nav.plugins.length : null
+    fp.pluginNames = nav.plugins ? Array.from(nav.plugins).map((p) => p.name) : null
+    fp.mimeTypesLength = nav.mimeTypes ? nav.mimeTypes.length : null
+
+    // UA-CH 高熵值 —— 与 Sec-CH-UA-* 请求头必须一致
+    if (nav.userAgentData) {
+      fp.uaDataBrands = nav.userAgentData.brands
+      fp.uaDataMobile = nav.userAgentData.mobile
+      fp.uaDataPlatform = nav.userAgentData.platform
+      try {
+        fp.uaHighEntropy = await nav.userAgentData.getHighEntropyValues([
+          'architecture', 'bitness', 'model', 'platformVersion',
+          'uaFullVersion', 'fullVersionList', 'wow64', 'formFactors',
+        ])
+      } catch (e) { fp.uaHighEntropy = { error: String(e) } }
+    } else {
+      fp.uaDataBrands = null
+      fp.uaHighEntropy = { error: 'navigator.userAgentData missing' }
+    }
+
+    // EME / Widevine —— 官方核与 castlabs 核唯一的真差。
+    // 两组配置各问一遍:**ClearKey 只接受空 robustness**(用 SW_SECURE_DECODE 问它一定得
+    // NotSupportedError,那是问法的错不是能力的差;2026-09-12 自测踩过这个坑)。
+    fp.widevine = await (async () => {
+      if (!nav.requestMediaKeySystemAccess) return { reason: 'requestMediaKeySystemAccess missing' }
+      const mk = (robustness) => [{
+        initDataTypes: ['cenc', 'keyids', 'webm'],
+        videoCapabilities: [{ contentType: 'video/mp4;codecs="avc1.42E01E"', ...(robustness ? { robustness } : {}) }],
+      }]
+      const probe = async (ks, robustness) => {
+        try {
+          const a = await nav.requestMediaKeySystemAccess(ks, mk(robustness))
+          return { ok: true, keySystem: a.keySystem }
+        } catch (e) { return { ok: false, name: e?.name, message: String(e?.message || e).slice(0, 120) } }
+      }
+      const out = {}
+      for (const ks of ['com.widevine.alpha', 'com.apple.fps', 'org.w3.clearkey']) {
+        out[ks] = { noRobustness: await probe(ks, null), swSecureDecode: await probe(ks, 'SW_SECURE_DECODE') }
+      }
+      return out
+    })()
+
+    // window.chrome:真 Chrome 有 loadTimes / csi / runtime / app
+    fp.windowChrome = window.chrome
+      ? { keys: Object.keys(window.chrome), hasRuntime: !!window.chrome.runtime, hasLoadTimes: typeof window.chrome.loadTimes === 'function', hasCsi: typeof window.chrome.csi === 'function', hasApp: !!window.chrome.app }
+      : null
+
+    fp.screen = { width: screen.width, height: screen.height, availWidth: screen.availWidth, availHeight: screen.availHeight, colorDepth: screen.colorDepth, pixelDepth: screen.pixelDepth, dpr: window.devicePixelRatio }
+    fp.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    fp.timezoneOffset = new Date().getTimezoneOffset()
+
+    // WebGL vendor / renderer(Chromium 的 ANGLE 串,壳之间常见差)
+    try {
+      const c = document.createElement('canvas')
+      const gl = c.getContext('webgl') || c.getContext('experimental-webgl')
+      const dbg = gl && gl.getExtension('WEBGL_debug_renderer_info')
+      fp.webgl = gl ? {
+        vendor: gl.getParameter(gl.VENDOR),
+        renderer: gl.getParameter(gl.RENDERER),
+        unmaskedVendor: dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : null,
+        unmaskedRenderer: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : null,
+        version: gl.getParameter(gl.VERSION),
+      } : { error: 'no webgl' }
+    } catch (e) { fp.webgl = { error: String(e) } }
+
+    fp.permissionsNotification = await (async () => {
+      try { return (await navigator.permissions.query({ name: 'notifications' })).state } catch (e) { return String(e) }
+    })()
+    fp.notificationPermission = typeof Notification !== 'undefined' ? Notification.permission : null
+
+    // 自动化痕迹:真 Chrome 里这些键一个都不该有
+    fp.automationMarkers = Object.keys(window).filter((k) => /webdriver|selenium|_phantom|callPhantom|domAutomation|cdc_/i.test(k))
+
+    return fp
+  }
+
+  collect().then((fp) => {
+    const json = JSON.stringify(fp, null, 2)
+    window.__fp = () => fp
+    document.getElementById('out').textContent = json
+    const blob = new Blob([json], { type: 'application/json' })
+    document.getElementById('dl').href = URL.createObjectURL(blob)
+    document.getElementById('copy').onclick = async () => {
+      try { await navigator.clipboard.writeText(json); document.getElementById('hint').textContent = '已复制' }
+      catch (e) { document.getElementById('hint').textContent = '复制失败:' + e }
+    }
+  })
+</script>
