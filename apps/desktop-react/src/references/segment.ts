@@ -157,17 +157,27 @@ function textOfPart(part: ReferencePart): string | null {
 }
 
 /**
- * 一条消息**显示出来是哪句话**里属于文字的那一半 —— 引用那几格不算。
+ * 把账本上的一条用户消息**还原成发送方手里那句话**:文字格原样,引用格按各家
+ * 自述的 `parse.part.typed` 还原成用户打的形(`/skill:x`),没说的不占字。
  *
- * 用处只有一个:拿账本上的一条用户消息与发送方手里那句话比对(`reconcileOverlay`
- * 的兜底)。**它不是 `displayContent` 的替代品**:引用那几格由各自的 `render`
- * 画,这里一个字都不代它们说。
+ * 用处只有一个:`reconcileOverlay` 的文本兜底比对(09-13 真机:旧引擎不认
+ * `messageId` 时,`/skill:x 干活` 的账本 parts 是 `[skill-ref, text(' 干活')]`,
+ * 只拼文字格得到 ` 干活` ≠ 发出的那句 → 那格乐观气泡永远留屏 = 用户看见的
+ * 第二条)。**它不是 `displayContent` 的替代品**:屏幕上引用那几格由各自的
+ * `render` 画,这里还原的是字节不是形。
  */
 export function displayTextOfParts(parts: readonly ReferencePart[]): string {
+  const kinds = referencePartKinds()
   let out = ''
   for (const part of parts) {
     const text = textOfPart(part)
-    if (text !== null) out += text
+    if (text !== null) {
+      out += text
+      continue
+    }
+    // 引用那几格:各家自述说它在用户打的那句里长什么样(`typed`),没说就不占字。
+    const kind = kinds.find((k) => k.parse!.part!.type === part.type)
+    out += kind?.parse!.part!.typed?.(part) ?? ''
   }
   return out
 }

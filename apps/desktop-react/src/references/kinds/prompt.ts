@@ -23,6 +23,7 @@ export const promptReferenceKind: ReferenceKind<never, { kind: 'promptRef'; titl
     part: {
       type: 'prompt-ref',
       toRef: (part) => ({ kind: 'promptRef', title: part.title ?? '' }),
+      typed: (part) => (part.promptId ? `{{prompt:${part.promptId}}}` : null),
     },
   },
 

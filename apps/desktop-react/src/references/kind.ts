@@ -223,12 +223,23 @@ export interface ReferencePart {
   title?: string
   name?: string
   skillId?: string
+  promptId?: string
 }
 
 /** 从 **`contentParts` 部件**里认出来的那一半。 */
 export interface ReferencePartParse<Ref> {
   type: string
   toRef(part: ReferencePart): Ref | null
+  /**
+   * 这一格在**用户打的那句话里**长什么样(`/skill:x`、`{{prompt:id}}`)。
+   *
+   * 只有一个读者:`segment.displayTextOfParts` —— 把账本上的一条用户消息
+   * 还原成发送方手里那句话,给 `reconcileOverlay` 的文本兜底比对用(引擎写账本前
+   * 会把正文换成模型版,`content` 与那句话从来不是同一句;按 id 认领是正路,
+   * 这一格只管旧引擎 / steering 那几条没有 id 可认的路)。缺席 = 这一格在
+   * 那句话里不占字。
+   */
+  typed?(part: ReferencePart): string | null
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- 注册表装的是异构的自述:

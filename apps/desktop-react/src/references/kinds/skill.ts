@@ -98,6 +98,9 @@ export const skillReferenceKind: ReferenceKind<CommandEntry, SkillRef> = {
         part.skillId
           ? { kind: 'skillRef', skillId: part.skillId, name: part.name || part.skillId }
           : null,
+      // 抽屉落稿的形就是 `/skill:<name> `,发出去那句里它长这样(裸 `/<name>` 的
+      // 手打形引擎也认,但 composer 从不产它,兜底只需还原 composer 产的那一种)。
+      typed: (part) => (part.name ? `/skill:${part.name}` : null),
     },
   },
 

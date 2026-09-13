@@ -3,6 +3,10 @@ import type { materializeChatMessages } from '@onething/core/session/projection/
  * `reconcileOverlay` 的注)。这一行只吃 `segment.ts` 里的那只纯函数,
  * 不碰引用种类注册表(它不需要表装好,也不该把表拖进数据层)。 */
 import { displayTextOfParts } from '../references/segment'
+// 兜底比对要查引用种类表(各家的 `parse.part.typed`)——谁要查表谁保证表装好
+// (与 `content/user-message` / `composer/usePickDrawer` 同判例;不经 main.tsx 的
+// 宿主、以及这只文件自己的单测,都靠这一行)。
+import '../references'
 
 /**
  * ⚠️ **这个文件的一大半在退役途中**(R 线 R2,`docs/stream-render-2026-09.md`)。

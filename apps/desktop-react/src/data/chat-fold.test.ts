@@ -686,10 +686,12 @@ describe('overlay:以折叠为准的认领', () => {
 
   /**
    * 技能那一支同病同治:`content` 是整份 SKILL.md,`contentParts` 是
-   * `[skill-ref, text]` —— 显示文本只有末尾那句话,与发出去的那句**不相等**
-   * (chip 那一格不是文字),所以这一条**只有靠 id 才认得上**。
+   * `[skill-ref, text]`。id 是正路;**没有 id 的那条路(旧引擎 / steering)也要
+   * 认得上** —— 09-13 真机第二次报障正是它:桌面主进程还是旧引擎,壳发的 id 被
+   * 忽略,兜底只拼文字格得到 ' 提交' ≠ 原话,那格乐观气泡永远留屏。兜底现在按
+   * 各家自述 `parse.part.typed` 把 skill-ref 还原成 `/skill:commit`。
    */
-  it('/skill:x:显示文本也对不上 → 只有 messageId 认得上', () => {
+  it('/skill:x:按 id 认得上;没有 id 时按还原出的原话也认得上', () => {
     const skillLedger = message({
       id: 'ffffffff-1111-4222-8333-444444444444',
       role: 'user',
@@ -706,9 +708,11 @@ describe('overlay:以折叠为准的认领', () => {
     }
     expect(reconcileOverlay([withId], [skillLedger])).toEqual([])
 
-    // 反证:同一份账本,没有 id 那一格认不上(显示文本是 ' 提交',不是原话)。
-    expect(reconcileOverlay([pending('o2', '/skill:commit 提交')], [skillLedger])
-      .map((entry) => entry.id)).toEqual(['o2'])
+    // 没有 id(旧引擎 / steering):skill-ref 还原成 `/skill:commit` + ' 提交' = 原话,认得上。
+    expect(reconcileOverlay([pending('o2', '/skill:commit 提交')], [skillLedger])).toEqual([])
+    // 反证:原话不一样(用户打的是别的技能)就不认领。
+    expect(reconcileOverlay([pending('o3', '/skill:review 提交')], [skillLedger])
+      .map((entry) => entry.id)).toEqual(['o3'])
   })
 
   /**
