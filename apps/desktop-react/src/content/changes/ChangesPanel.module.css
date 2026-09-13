@@ -370,6 +370,14 @@
  */
 .bodyHead {
   position: sticky;
+  /*
+   * **横滚时也钉住**(2026-09-13 用户报障:diff 有横向滚动条时,这条带跟着内容往左跑,
+   * 它只有容器那么宽,右边就露出体的底色;把面板拖宽就看不见,因为带也跟着变宽)。
+   * `.body` 横竖都滚,而这条带是 UI 不是文本行:它该钉在**视口**上而不是内容上,
+   * 所以 top 与 left 都粘。判据一句话:横滚区里,文本行按内容宽(`Diff` 的
+   * `min-width: max-content`),UI 带(文件名 / 提示 / 行号列)按视口宽并粘左。
+   */
+  left: 0;
   top: 0;
   z-index: var(--z-sticky);
   display: flex;
@@ -397,6 +405,9 @@
 /* 「二进制 / 已截断 / 此刻没有改动」三句话共用一格。 */
 .bodyNote {
   margin: 0;
+  /* 与 .bodyHead 同一条:UI 带按视口宽、粘左,横滚时不跟内容跑。 */
+  position: sticky;
+  left: 0;
   padding: var(--sp-3);
   font-size: var(--fs-micro);
   color: var(--text-3);

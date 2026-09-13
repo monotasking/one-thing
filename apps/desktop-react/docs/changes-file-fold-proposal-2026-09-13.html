@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>改动面 · 整文件 + 折叠(建议方向样例)</title>
+<style>
+  :root {
+    --bg: #2a2928; --panel: #333230; --panel-2: #3b3a38; --line: #4a4846; --line-2: #5a5856;
+    --text: #e8e4dc; --text-2: #bdb8ae; --text-3: #8f8a80; --text-4: #6d6963;
+    --tint-ok: rgba(150,180,90,.18); --tint-danger: rgba(220,110,100,.18);
+    --ok: #a3c46a; --danger: #e08a80; --accent: #6f9fe6; --accent-soft: rgba(111,159,230,.18);
+    --kw: #c792ea; --str: #c3e88d; --fn: #82aaff; --cm: #7f8a7a; --ty: #ffcb6b;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace; --sans: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.5 var(--sans); }
+  header { padding: 12px 20px; border-bottom: 1px solid var(--line); display: flex; gap: 16px; align-items: baseline; }
+  header h1 { margin: 0; font-size: 15px; font-weight: 600; }
+  header p { margin: 0; color: var(--text-3); }
+  .wrap { display: grid; grid-template-columns: 220px 1fr; height: calc(100vh - 50px); }
+  .files { border-right: 1px solid var(--line); padding: 8px 6px; }
+  .files .row { display: flex; gap: 8px; padding: 5px 8px; border-radius: 6px; font: 12px var(--mono); color: var(--text-2); }
+  .files .row.sel { background: rgba(111,159,230,.22); color: var(--text); }
+  .files .letter { color: var(--text-3); width: 10px; }
+  .files .stat { margin-left: auto; font-size: 11px; }
+  .a { color: var(--ok); } .d { color: var(--danger); margin-left: 4px; }
+  .viewer { display: flex; flex-direction: column; min-width: 0; }
+  .eave { display: flex; align-items: center; gap: 12px; padding: 6px 12px; border-bottom: 1px solid var(--line); font: 12px var(--mono); }
+  .eave .path { color: var(--text); }
+  .eave .path .dir { color: var(--text-3); }
+  .seg { margin-left: auto; display: inline-flex; border: 1px solid var(--line-2); border-radius: 6px; overflow: hidden; font-family: var(--sans); }
+  .seg button { background: none; border: 0; color: var(--text-3); padding: 2px 10px; font: 11px var(--sans); cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--text); }
+  .nav button { background: none; border: 1px solid var(--line-2); border-radius: 6px; color: var(--text-2); padding: 1px 8px; font: 11px var(--sans); cursor: pointer; }
+  .nav button:hover { border-color: var(--accent); color: var(--text); }
+  .nav .k { color: var(--text-4); margin: 0 4px; }
+  .bodyrow { display: flex; flex: 1; min-height: 0; }
+  .code { flex: 1; overflow: auto; font: 12px/19px var(--mono); }
+  /* 横滚纪律:文本行按内容宽 —— 内层盒 min-width: max-content,加删底色铺到最长那行;
+     行号列与折叠带的文字按视口宽粘左,横滚时钉住不跑。 */
+  .code .inner { min-width: max-content; }
+  .ln .gut { position: sticky; left: 0; display: inline-flex; flex: none; background: var(--bg); }
+  .ln.add .gut { background: #3a4133; } .ln.del .gut { background: #463a39; }
+  .fold .label { position: sticky; left: 8px; display: inline-flex; gap: 10px; align-items: center; }
+  .ln { display: flex; align-items: baseline; padding-right: 12px; }
+  .ln .o, .ln .n { width: 4ch; text-align: right; color: var(--text-4); font-size: 10px; flex: none; user-select: none; }
+  .ln .n { margin-right: 6px; border-right: 1px solid var(--line); padding-right: 6px; }
+  .ln .gut { padding-left: 2px; }
+  .ln .s { width: 1ch; margin: 0 6px; color: transparent; flex: none; }
+  .ln .t { white-space: pre; }
+  .ln.add { background: var(--tint-ok); } .ln.add .s { color: var(--ok); }
+  .ln.del { background: var(--tint-danger); } .ln.del .s { color: var(--danger); }
+  .ln.cur { box-shadow: inset 3px 0 0 var(--accent); }
+  .kw { color: var(--kw); } .str { color: var(--str); } .fn { color: var(--fn); } .cm { color: var(--cm); font-style: italic; } .ty { color: var(--ty); }
+  /* 折叠带:整文件模型里「没改的一段」 */
+  .fold { display: flex; align-items: center; gap: 10px; height: 22px; padding-left: 8px; background: var(--panel-2); border-top: 1px dashed var(--line-2); border-bottom: 1px dashed var(--line-2); cursor: pointer; font-family: var(--sans); font-size: 11px; color: var(--text-3); }
+  .fold:hover { color: var(--text); background: rgba(111,159,230,.10); }
+  .fold .dots { color: var(--accent); letter-spacing: 2px; }
+  .fold .fnname { color: var(--text-2); font-family: var(--mono); }
+  .fold .fnname::before { content: "ƒ "; color: var(--accent); }
+  .fold .hint { margin-left: auto; margin-right: 12px; color: var(--text-4); }
+  body[data-mode="all"] .fold { display: none; }
+  body[data-mode="all"] .ln.hid { display: flex; }
+  .ln.hid { display: none; }
+  .ln.hid.open { display: flex; }
+  /* 右侧改动地图 */
+  .map { width: 14px; border-left: 1px solid var(--line); position: relative; background: var(--panel); }
+  .map i { position: absolute; left: 3px; right: 3px; border-radius: 1px; }
+  .map i.add { background: var(--ok); } .map i.del { background: var(--danger); }
+  footer { padding: 10px 20px; color: var(--text-3); font-size: 12px; border-top: 1px solid var(--line); }
+  footer b { color: var(--text-2); }
+</style>
+</head>
+<body data-mode="fold">
+<header>
+  <h1>改动面 · 整文件 + 折叠</h1>
+  <p>建议方向的样例:单位是文件不是 hunk。没改的段折成一道带,点开就是文件本来的行;两列行号;改动地图在右缘;上一处 / 下一处直接跳。</p>
+</header>
+<div class="wrap">
+  <aside class="files">
+    <div class="row sel"><span class="letter">M</span>model-capability.ts<span class="stat"><span class="a">+7</span><span class="d">−3</span></span></div>
+    <div class="row"><span class="letter">M</span>catalog.ts<span class="stat"><span class="a">+2</span><span class="d">−1</span></span></div>
+    <div class="row"><span class="letter">?</span>capability.test.ts<span class="stat"><span class="a">+41</span></span></div>
+  </aside>
+  <section class="viewer">
+    <div class="eave">
+      <span class="path"><span class="dir">packages/onething-runtime/src/providers/</span>model-capability.ts</span>
+      <span class="stat"><span class="a">+7</span><span class="d">−3</span></span>
+      <span class="nav"><button id="prev">↑ 上一处</button><span class="k" id="pos">1 / 2</span><button id="next">↓ 下一处</button></span>
+      <span class="seg"><button id="mFold" aria-pressed="true">只看改动</button><button id="mAll" aria-pressed="false">整个文件</button></span>
+    </div>
+    <div class="bodyrow">
+      <div class="code" id="code"></div>
+      <div class="map" id="map"></div>
+    </div>
+  </section>
+</div>
+<footer>
+  <b>与今天的差别:</b>今天画的是 <code>git diff</code> 的文本(hunk + 3 行上下文,<code>@@</code> 原文当分隔);这里画的是**文件**——后端交 HEAD 版与工作区版两份原文,壳里算行级 diff、给每一行两列行号、把没改的段折起来。折叠带上写「⋯ N 行未改」与所属函数名,点开不是「再去要几行」而是本来就在的行。语法高亮走查看器已有的那台 shiki。评论的坐标因此就是文件行号,和文件查看器是同一个面。
+</footer>
+
+<script>
+  // 一份「文件」:每行带 kind(ctx / add / del)。del 行只有旧行号,add 行只有新行号。
+  // 单趟分词的假高亮:先转义,再一次 replace 里按优先级挑(注释 > 字符串 > 关键字 > 类型 > 函数名),
+  // 不会把上一段插进去的 <span> 再染一遍。真做的时候走查看器那台 shiki。
+  const esc = (t) => t.replace(/[&<>]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]))
+  const H = (t) => esc(t).replace(
+    /(\/\/.*$)|('[^']*')|\b(import|from|export|function|return|const|type|keyof|if|typeof|in)\b|\b(ModelEntry|CapabilityKey|Capabilities|Record|boolean|string)\b|\b(supportsImageOutput|readCapability|supportsTools|supportsReasoning|supportsVision|contextWindowOf|maxOutputOf|describeCapabilities|includes|keys|join)\b/g,
+    (m, cm, str, kw, ty, fn) => cm ? `<span class="cm">${cm}</span>` : str ? `<span class="str">${str}</span>` : kw ? `<span class="kw">${kw}</span>` : ty ? `<span class="ty">${ty}</span>` : `<span class="fn">${fn}</span>`)
+  const lines = [
+    ['ctx',"import { ModelEntry } from './catalog'"],
+    ['ctx',"import type { CapabilityKey } from './capability'"],
+    ['ctx',''],
+    ['ctx','const EMPTY_CAPABILITIES: Capabilities = {}'],
+    ['ctx',''],
+    ['ctx','type Capabilities = Record<CapabilityKey, boolean>'],
+    ['ctx',''],
+    ['ctx','// 能力表优先,模态只是兜底。'],
+    ['ctx','// 见 docs/design/provider-oop-2026-08.md §4'],
+    ['ctx',''],
+    ['ctx','export function supportsTools(m: ModelEntry) {'],
+    ['ctx',"  return readCapability(m, 'tools') ?? true"],
+    ['ctx','}'],
+    ['ctx',''],
+    ['ctx','export function supportsImageOutput(m: ModelEntry) {', 'supportsImageOutput'],
+    ['del',"  return m.modalities?.includes('image')"],
+    ['add',"  return readCapability(m, 'imageOutput')"],
+    ['add',"    ?? m.modalities?.includes('image')"],
+    ['add','    ?? false'],
+    ['ctx','}'],
+    ['ctx',''],
+    ['ctx','export function supportsReasoning(m: ModelEntry) {'],
+    ['ctx',"  return readCapability(m, 'reasoning') ?? false"],
+    ['ctx','}'],
+    ['ctx',''],
+    ['ctx','export function supportsVision(m: ModelEntry) {'],
+    ['ctx',"  return readCapability(m, 'vision') ?? m.modalities?.includes('image') ?? m.modalities?.includes('video') ?? m.modalities?.includes('document') ?? m.modalities?.includes('audio') ?? false"],
+    ['ctx','}'],
+    ['ctx',''],
+    ['ctx','export function contextWindowOf(m: ModelEntry) {'],
+    ['ctx','  return m.contextWindow ?? DEFAULT_CONTEXT_WINDOW'],
+    ['ctx','}'],
+    ['ctx',''],
+    ['ctx','export function maxOutputOf(m: ModelEntry) {'],
+    ['ctx','  return m.maxOutput'],
+    ['ctx','}'],
+    ['ctx',''],
+    ['ctx','function readCapability(m: ModelEntry, key: CapabilityKey) {', 'readCapability'],
+    ['del','  return m.capabilities[key]'],
+    ['del','}'],
+    ['add','  const table = m.capabilities ?? EMPTY_CAPABILITIES'],
+    ['add','  if (!(key in table)) return undefined'],
+    ['add','  return table[key]'],
+    ['add','}'],
+    ['ctx',''],
+    ['ctx','export function describeCapabilities(m: ModelEntry) {'],
+    ['ctx',"  return Object.keys(m.capabilities ?? {}).join(', ')"],
+    ['ctx','}'],
+  ]
+  const CONTEXT = 3
+  // 标记:离改动 ≤3 行的 ctx 露出,其余折叠
+  const changed = lines.map(l => l[0] !== 'ctx')
+  const shown = lines.map((_, i) => changed.slice(Math.max(0, i - CONTEXT), i + CONTEXT + 1).some(Boolean))
+  const code = document.getElementById('code'), map = document.getElementById('map')
+  let o = 1, n = 1, html = '', runStart = -1, lastFn = ''
+  const flushFold = (endExclusive) => {
+    if (runStart < 0) return
+    const count = endExclusive - runStart
+    // 这一段所在的函数 = 从折叠起点往上找最近的一行 `function 名`(段里自己开了新函数就用段里最后那个)
+    const enclosing = (upto) => { for (let i = upto - 1; i >= 0; i--) { const m = /function\s+(\w+)/.exec(lines[i][1]); if (m) return m[1] } return '' }
+    const fnName = enclosing(endExclusive)
+    html += `<div class="fold" data-from="${runStart}" data-to="${endExclusive}"><span class="label"><span class="dots">⋯</span><span>${count} 行未改</span>${fnName ? `<span class="fnname">${fnName}</span>` : ''}</span><span class="hint">点开 · 整个文件</span></div>`
+    runStart = -1
+  }
+  const marks = []
+  lines.forEach((l, i) => {
+    const [k, t, fn] = l
+    if (fn) lastFn = fn
+    if (!shown[i]) { if (runStart < 0) runStart = i } else flushFold(i)
+    const on = k === 'del' ? o : k === 'add' ? n : o
+    const nn = k === 'add' ? n : k === 'del' ? '' : n
+    const oo = k === 'del' ? o : k === 'add' ? '' : o
+    html += `<div class="ln ${k}${shown[i] ? '' : ' hid'}" data-i="${i}"><span class="gut"><span class="o">${oo}</span><span class="n">${nn}</span></span><span class="s">${k === 'add' ? '+' : k === 'del' ? '−' : ' '}</span><span class="t">${H(t)}</span></div>`
+    if (k !== 'add') o += 1
+    if (k !== 'del') n += 1
+    if (k !== 'ctx') marks.push([i, k])
+  })
+  flushFold(lines.length)
+  code.innerHTML = `<div class="inner">${html}</div>`
+  // 折叠带点开 = 露出本来就在的行
+  code.querySelectorAll('.fold').forEach(f => f.addEventListener('click', () => {
+    for (let i = +f.dataset.from; i < +f.dataset.to; i++) code.querySelector(`.ln[data-i="${i}"]`).classList.add('open')
+    f.remove()
+  }))
+  // 改动地图
+  marks.forEach(([i, k]) => { const el = document.createElement('i'); el.className = k; el.style.top = (i / lines.length * 100) + '%'; el.style.height = (100 / lines.length) + '%'; map.appendChild(el) })
+  // 上一处 / 下一处
+  const hunkStarts = marks.filter(([i], j) => j === 0 || marks[j - 1][0] !== i - 1).map(([i]) => i)
+  let cur = 0
+  const go = (d) => {
+    cur = (cur + d + hunkStarts.length) % hunkStarts.length
+    document.getElementById('pos').textContent = `${cur + 1} / ${hunkStarts.length}`
+    code.querySelectorAll('.ln.cur').forEach(el => el.classList.remove('cur'))
+    const el = code.querySelector(`.ln[data-i="${hunkStarts[cur]}"]`); el.classList.add('cur'); el.scrollIntoView({ block: 'center' })
+  }
+  document.getElementById('prev').onclick = () => go(-1); document.getElementById('next').onclick = () => go(1)
+  const setMode = (m) => { document.body.dataset.mode = m; document.getElementById('mFold').setAttribute('aria-pressed', m === 'fold'); document.getElementById('mAll').setAttribute('aria-pressed', m === 'all') }
+  document.getElementById('mFold').onclick = () => setMode('fold'); document.getElementById('mAll').onclick = () => setMode('all')
+</script>
+</body>
+</html>

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>hunk 头 · 三种画法(C / D / E)</title>
+<style>
+  :root {
+    --bg: #2a2928; --panel: #333230; --panel-2: #3b3a38; --line: #4a4846; --line-2: #5a5856;
+    --text: #e8e4dc; --text-2: #bdb8ae; --text-3: #8f8a80; --text-4: #6d6963;
+    --tint-ok: rgba(150,180,90,.18); --tint-danger: rgba(220,110,100,.18);
+    --ok: #a3c46a; --danger: #e08a80; --accent: #6f9fe6; --accent-soft: rgba(111,159,230,.18);
+    --mono: ui-monospace, "SF Mono", Menlo, monospace; --sans: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.5 var(--sans); }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--line); display: flex; gap: 16px; align-items: baseline; }
+  header h1 { margin: 0; font-size: 15px; font-weight: 600; }
+  header p { margin: 0; color: var(--text-3); }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+  .card h2 { margin: 0; padding: 10px 12px 4px; font-size: 13px; font-weight: 600; }
+  .card h2 span { color: var(--accent); margin-right: 8px; }
+  .card p { margin: 0; padding: 0 12px 10px; color: var(--text-3); font-size: 12px; }
+  .view { height: 420px; overflow: auto; font: 12px/19px var(--mono); border-top: 1px solid var(--line); position: relative; }
+  .r { display: flex; gap: 8px; align-items: baseline; padding-right: 10px; }
+  .r .n { width: 3.5ch; text-align: right; color: var(--text-4); font-size: 10px; flex: none; user-select: none; }
+  .r .s { width: 1ch; flex: none; color: var(--text-4); }
+  .r .t { white-space: pre; }
+  .r.add { background: var(--tint-ok); } .r.add .s { color: var(--ok); }
+  .r.del { background: var(--tint-danger); } .r.del .s { color: var(--danger); }
+  .r.ctx.more { display: none; } .r.ctx.more.on { display: flex; background: var(--panel-2); }
+
+  /* ── C 折线分隔:不占一行的底色条,只有一道虚线和 gutter 里的小丸 ── */
+  .hC { position: relative; height: 19px; display: flex; align-items: center; }
+  .hC::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px dashed var(--line-2); }
+  .hC .pill { position: relative; margin-left: 8px; background: var(--panel); border: 1px solid var(--line-2); border-radius: 999px; padding: 0 8px; font: 10px/15px var(--sans); color: var(--text-3); cursor: default; }
+  .hC .pill:hover { color: var(--text); border-color: var(--accent); }
+  .hC .raw { position: absolute; left: 96px; top: 50%; transform: translateY(-50%); font-size: 10px; color: var(--text-4); background: var(--panel); padding: 0 6px; opacity: 0; transition: opacity .12s; }
+  .hC:hover .raw { opacity: 1; }
+
+  /* ── D 函数名档:像章节标题,粘在顶上;写函数名不写 @@ ── */
+  .hD { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 8px; height: 22px; background: var(--panel-2); border-bottom: 1px solid var(--line); font-family: var(--sans); }
+  .hD .fn { color: var(--text); font-size: 11px; font-weight: 600; letter-spacing: .01em; }
+  .hD .fn::before { content: "ƒ"; color: var(--accent); margin-right: 6px; font-family: var(--mono); font-weight: 400; }
+  .hD .range { margin-left: auto; font: 10px var(--mono); color: var(--text-3); }
+  .hD .skip { font: 10px var(--sans); color: var(--text-4); }
+
+  /* ── E 展开把手:gutter 里两枚箭头,头本身只剩「跳过 N 行」 ── */
+  .hE { display: flex; align-items: center; height: 22px; background: var(--panel-2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .hE .arrows { width: 3.5ch; margin-left: 0; display: flex; flex-direction: column; justify-content: center; }
+  .hE button { background: none; border: 0; color: var(--text-3); font: 10px/10px var(--mono); padding: 0 4px; cursor: pointer; text-align: right; width: 4.2ch; }
+  .hE button:hover { color: var(--accent); }
+  .hE .txt { margin-left: 12px; font: 11px var(--sans); color: var(--text-3); }
+  .hE .all { margin-left: auto; margin-right: 10px; font: 10px var(--sans); color: var(--text-4); background: none; border: 1px solid var(--line-2); border-radius: 4px; padding: 1px 6px; cursor: pointer; width: auto; }
+  .hE .all:hover { color: var(--text); border-color: var(--accent); }
+  .hE.gone { display: none; }
+  footer { padding: 10px 20px 20px; color: var(--text-3); font-size: 12px; }
+  footer b { color: var(--text-2); }
+</style>
+</head>
+<body>
+<header>
+  <h1>hunk 头 · 三种画法</h1>
+  <p>同一段 diff。C 折线分隔 · D 函数名档(滚一滚看粘顶)· E 展开把手(点箭头真的展开)。之前的 A 跳行条 / B 提对比度在评论样例页右上角。</p>
+</header>
+
+<div class="grid" id="grid"></div>
+
+<footer>
+  <b>三条各自的性格:</b>
+  C 最安静,把「这里有段没改」压成一道虚线,悬停才露出 <code>@@</code> 原文,适合看改动为主的场合;
+  D 把 hunk 当章节,头上写函数名并粘顶,长文件里滚到哪都知道在哪个函数里,适合 review 大改动;
+  E 把头变成动作,箭头逐 10 行展开上下文、右边一键全展,适合需要看上下文再判断的场合(展开要后端 <code>diff</code> 读法加 context 参数)。
+</footer>
+
+<script>
+  // 同一段 diff 数据,三张卡各画一遍
+  const hunks = [
+    { fn: 'supportsImageOutput', raw: '@@ -12,7 +12,9 @@ export function supportsImageOutput', skipBefore: 11, from: 12,
+      before: ['import { readCapability } from "./capability"', '', 'const EMPTY_CAPABILITIES = {}', '', 'export type CapabilityKey = keyof Capabilities'],
+      rows: [
+        ['ctx','export function supportsImageOutput(m: ModelEntry) {'],
+        ['del',"  return m.modalities?.includes('image')"],
+        ['add',"  return readCapability(m, 'imageOutput')"],
+        ['add',"    ?? m.modalities?.includes('image')"],
+        ['add','    ?? false'],
+        ['ctx','}'],
+        ['ctx',''],
+      ] },
+    { fn: 'readCapability', raw: '@@ -39,4 +41,6 @@ function readCapability', skipBefore: 23, from: 41,
+      before: ['', '/** 能力表优先,模态只是兜底。 */', 'type Capabilities = Record<CapabilityKey, boolean>', '', '// 见 docs/design/provider-oop-2026-08.md §4'],
+      rows: [
+        ['ctx','function readCapability(m: ModelEntry, key: CapabilityKey) {'],
+        ['del','  return m.capabilities[key]'],
+        ['del','}'],
+        ['add','  const table = m.capabilities ?? EMPTY_CAPABILITIES'],
+        ['add','  if (!(key in table)) return undefined'],
+        ['add','  return table[key]'],
+        ['add','}'],
+      ] },
+  ]
+  const esc = (s) => s.replace(/[&<>]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]))
+  function rowsHtml(h) {
+    let n = h.from
+    const more = h.before.map((t, i) => `<div class="r ctx more" data-more="${h.fn}"><span class="n">${h.from - h.before.length + i}</span><span class="s"> </span><span class="t">${esc(t)}</span></div>`).join('')
+    const body = h.rows.map(([k, t]) => {
+      const num = k === 'del' ? '' : n
+      if (k !== 'del') n += 1
+      return `<div class="r ${k}"><span class="n">${num}</span><span class="s">${k === 'add' ? '+' : k === 'del' ? '−' : ' '}</span><span class="t">${esc(t)}</span></div>`
+    }).join('')
+    return more + body
+  }
+  const heads = {
+    C: (h) => `<div class="hC"><span class="pill">⋯ ${h.skipBefore} 行</span><span class="raw">${esc(h.raw)}</span></div>`,
+    D: (h) => `<div class="hD"><span class="fn">${h.fn}</span><span class="skip">· 上面 ${h.skipBefore} 行未改</span><span class="range">L${h.from}–${h.from + h.rows.filter(r => r[0] !== 'del').length - 1}</span></div>`,
+    E: (h) => `<div class="hE" data-head="${h.fn}"><span class="arrows"><button title="展开上面 10 行" data-up="${h.fn}">↑10</button><button title="展开下面 10 行" data-down="${h.fn}">↓10</button></span><span class="txt">跳过 ${h.skipBefore} 行未改动</span><button class="all" data-all="${h.fn}">全部展开</button></div>`,
+  }
+  const cards = [
+    ['C', '折线分隔', '不占底色条:一道虚线 + gutter 小丸写「⋯ N 行」,悬停露出 @@ 原文。'],
+    ['D', '函数名档', '头上写所属函数名,像章节标题一样粘顶;右侧是新文件行号范围。'],
+    ['E', '展开把手', 'gutter 里 ↑10 / ↓10 逐段展开上下文,右侧一键全展;头只剩「跳过 N 行」。'],
+  ]
+  document.getElementById('grid').innerHTML = cards.map(([k, name, desc]) => `
+    <section class="card"><h2><span>${k}</span>${name}</h2><p>${desc}</p>
+      <div class="view">${hunks.map(h => heads[k](h) + rowsHtml(h)).join('')}</div>
+    </section>`).join('')
+  // E:展开把手真的展开(样例里上下文行是预埋的 5 行)
+  document.querySelectorAll('[data-up],[data-down],[data-all]').forEach(b => b.addEventListener('click', () => {
+    const fn = b.dataset.up ?? b.dataset.down ?? b.dataset.all
+    const card = b.closest('.card')
+    card.querySelectorAll(`.r.more[data-more="${fn}"]`).forEach(r => r.classList.add('on'))
+    if (b.dataset.all !== undefined) card.querySelector(`.hE[data-head="${fn}"]`).classList.add('gone')
+    else b.closest('.hE').querySelector('.txt').textContent = '上面还有 ' + (fn === 'supportsImageOutput' ? 6 : 18) + ' 行未改动'
+  }))
+</script>
+</body>
+</html>

@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>改动面 · 行评论发给 AI(样例)</title>
+<style>
+  :root {
+    --bg: #2a2928; --panel: #333230; --panel-2: #3b3a38; --line: #4a4846; --line-2: #5a5856;
+    --text: #e8e4dc; --text-2: #bdb8ae; --text-3: #8f8a80; --text-4: #6d6963;
+    --tint-ok: rgba(150, 180, 90, .18); --tint-danger: rgba(220, 110, 100, .18);
+    --ok: #a3c46a; --danger: #e08a80; --accent: #6f9fe6; --accent-soft: rgba(111,159,230,.18);
+    --sel: rgba(111,159,230,.22); --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    --sans: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif; --r: 8px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.5 var(--sans); }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--line); display: flex; gap: 18px; align-items: baseline; }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  header p { margin: 0; color: var(--text-3); }
+  .toggle { margin-left: auto; display: flex; gap: 6px; font-size: 12px; color: var(--text-2); }
+  .toggle button { background: var(--panel-2); color: var(--text-2); border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px; cursor: pointer; }
+  .toggle button[aria-pressed="true"] { background: var(--accent-soft); color: var(--text); border-color: var(--accent); }
+  .shell { display: grid; grid-template-columns: 200px 1fr 420px; height: calc(100vh - 52px); }
+  .files { border-right: 1px solid var(--line); padding: 8px 6px; }
+  .files .row { display: flex; gap: 8px; padding: 5px 8px; border-radius: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-2); }
+  .files .row.sel { background: var(--sel); color: var(--text); }
+  .files .letter { color: var(--text-3); width: 10px; }
+  .files .stat { margin-left: auto; font-size: 11px; }
+  .stat .a { color: var(--ok); } .stat .d { color: var(--danger); margin-left: 4px; }
+  .body { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--line); }
+  .head { padding: 8px 14px; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 12px; display: flex; gap: 10px; align-items: center; }
+  .head .badge { margin-left: auto; font-size: 11px; color: var(--text-3); }
+  .diff { flex: 1; overflow: auto; font-family: var(--mono); font-size: 12px; line-height: 19px; position: relative; }
+  .dr { display: flex; align-items: baseline; gap: 8px; position: relative; padding-right: 12px; }
+  .dr .num { width: 3.5ch; text-align: right; color: var(--text-4); font-size: 10px; user-select: none; flex: none; }
+  .dr .gut { width: 18px; flex: none; text-align: center; color: transparent; cursor: pointer; user-select: none; font-weight: 700; }
+  .dr:hover .gut { color: var(--accent); }
+  .dr .sign { width: 1ch; color: var(--text-4); flex: none; }
+  .dr.add { background: var(--tint-ok); } .dr.add .sign { color: var(--ok); }
+  .dr.del { background: var(--tint-danger); } .dr.del .sign { color: var(--danger); }
+  .dr .text { white-space: pre; flex: 1; }
+  .dr.sel { box-shadow: inset 3px 0 0 var(--accent); background-color: var(--sel); }
+  .dr .mark { position: absolute; right: 8px; top: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); display: none; }
+  .dr.commented .mark { display: block; }
+  /* hunk 头两种画法 */
+  .hunk { font-size: 11px; color: var(--text-4); background: var(--panel-2); padding: 0 14px; }
+  .hunk.a { display: flex; align-items: center; gap: 10px; color: var(--text-2); cursor: pointer; }
+  .hunk.a .dots { letter-spacing: 2px; color: var(--accent); }
+  .hunk.a .raw { margin-left: auto; color: var(--text-4); }
+  .hunk.b { color: var(--text-3); }
+  body[data-hunk="a"] .hunk.b, body[data-hunk="b"] .hunk.a { display: none; }
+  /* 右键菜单 */
+  .menu { position: absolute; z-index: 5; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: var(--r); padding: 4px; min-width: 190px; box-shadow: 0 8px 24px rgba(0,0,0,.4); display: none; font-family: var(--sans); }
+  .menu[data-open="true"] { display: block; }
+  .menu button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--text); padding: 6px 10px; border-radius: 5px; font: inherit; cursor: pointer; }
+  .menu button:hover { background: var(--accent-soft); }
+  .menu .hint { color: var(--text-4); font-size: 11px; padding: 2px 10px 4px; }
+  /* 行内评论框 */
+  .inline { margin: 6px 14px 8px 46px; background: var(--panel-2); border: 1px solid var(--accent); border-radius: var(--r); padding: 8px; font-family: var(--sans); display: none; }
+  .inline[data-open="true"] { display: block; }
+  .inline .where { font: 11px var(--mono); color: var(--text-3); margin-bottom: 6px; }
+  .inline textarea { width: 100%; min-height: 54px; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: 13px/1.4 var(--sans); resize: vertical; }
+  .inline .acts { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+  .btn { background: var(--panel); color: var(--text-2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; font: inherit; }
+  .btn.primary { background: var(--accent); color: #101418; border-color: var(--accent); }
+  /* 聊天区 */
+  .chat { display: flex; flex-direction: column; }
+  .stream { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .msg { max-width: 100%; }
+  .msg.user { align-self: flex-end; background: var(--panel-2); border-radius: 12px 12px 4px 12px; padding: 10px 12px; }
+  .msg.ai { color: var(--text); }
+  .ref { border-left: 3px solid var(--accent); background: var(--panel); border-radius: 0 6px 6px 0; padding: 6px 10px; margin-bottom: 8px; font-size: 12px; }
+  .ref .loc { font-family: var(--mono); color: var(--text-3); font-size: 11px; }
+  .ref pre { margin: 6px 0 0; font: 11px/1.5 var(--mono); color: var(--text-2); white-space: pre-wrap; }
+  .ref pre .add { color: var(--ok); } .ref pre .del { color: var(--danger); }
+  .composer { border-top: 1px solid var(--line); padding: 10px 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; min-height: 0; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 999px; padding: 2px 8px 2px 10px; font: 11px var(--mono); color: var(--text); max-width: 100%; }
+  .chip .note { font-family: var(--sans); color: var(--text-2); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip .x { cursor: pointer; color: var(--text-3); }
+  .input { display: flex; gap: 8px; align-items: flex-end; }
+  .input textarea { flex: 1; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font: 13px/1.4 var(--sans); min-height: 40px; resize: none; }
+  .empty { color: var(--text-4); font-size: 12px; }
+  .steps { padding: 6px 20px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--text-2); display: flex; gap: 14px; align-items: baseline; }
+  .steps ol { margin: 0; padding-left: 18px; display: flex; gap: 18px; }
+  .steps b { color: var(--text); }
+  .shell { height: calc(100vh - 84px); }
+</style>
+</head>
+<body data-hunk="a">
+<header>
+  <h1>改动面 · 行评论发给 AI</h1>
+  <p>样例:选行 → 评论 → 变成 composer 里的引用 chip → 发送后落成消息里的引用块。</p>
+  <div class="toggle">hunk 头画法
+    <button id="hunkA" aria-pressed="true">A 跳行条</button>
+    <button id="hunkB" aria-pressed="false">B 保留 @@ 提对比度</button>
+  </div>
+</header>
+
+<div class="steps"><b>怎么玩</b><ol><li>点一行选中,⇧ 点另一行扩成范围</li><li>悬停行首的 <b>＋</b>,或右键 →「评论并发给 AI」</li><li>写一句话 →「加入对话」,composer 多一枚 chip,行首出现蓝点</li><li>攒几枚,发送</li></ol></div>
+<div class="shell">
+  <aside class="files">
+    <div class="row sel"><span class="letter">M</span>model-capability.ts<span class="stat"><span class="a">+7</span><span class="d">−3</span></span></div>
+    <div class="row"><span class="letter">M</span>catalog.ts<span class="stat"><span class="a">+2</span><span class="d">−1</span></span></div>
+    <div class="row"><span class="letter">?</span>capability.test.ts<span class="stat"><span class="a">+41</span></span></div>
+  </aside>
+
+  <section class="body">
+    <div class="head">
+      <span>packages/onething-runtime/src/providers/model-capability.ts</span>
+      <span class="badge" id="badge">未选中行 · 悬停行首的 ＋ 或右键可评论</span>
+    </div>
+    <div class="diff" id="diff">
+      <div class="hunk a" data-skip="1-11"><span class="dots">⋯</span><span>跳过 11 行未改动(第 1–11 行)</span><span class="raw">@@ -12,7 +12,9 @@ export function supportsImageOutput</span></div>
+      <div class="hunk b">@@ -12,7 +12,9 @@ export function supportsImageOutput</div>
+      <div class="dr ctx" data-n="12"><span class="num">12</span><span class="gut">＋</span><span class="sign"> </span><span class="text">export function supportsImageOutput(m: ModelEntry) {</span><i class="mark"></i></div>
+      <div class="dr del" data-n=""><span class="num"></span><span class="gut">＋</span><span class="sign">−</span><span class="text">  return m.modalities?.includes('image')</span><i class="mark"></i></div>
+      <div class="dr add" data-n="13"><span class="num">13</span><span class="gut">＋</span><span class="sign">+</span><span class="text">  return readCapability(m, 'imageOutput')</span><i class="mark"></i></div>
+      <div class="dr add" data-n="14"><span class="num">14</span><span class="gut">＋</span><span class="sign">+</span><span class="text">    ?? m.modalities?.includes('image')</span><i class="mark"></i></div>
+      <div class="dr add" data-n="15"><span class="num">15</span><span class="gut">＋</span><span class="sign">+</span><span class="text">    ?? false</span><i class="mark"></i></div>
+      <div class="dr ctx" data-n="16"><span class="num">16</span><span class="gut">＋</span><span class="sign"> </span><span class="text">}</span><i class="mark"></i></div>
+      <div class="dr ctx" data-n="17"><span class="num">17</span><span class="gut">＋</span><span class="sign"> </span><span class="text"></span><i class="mark"></i></div>
+      <div class="inline" id="inline">
+        <div class="where" id="where"></div>
+        <textarea id="note" placeholder="对这几行说一句话,发送时会和这几行一起交给 AI"></textarea>
+        <div class="acts"><button class="btn" id="cancel">取消</button><button class="btn primary" id="addChip">加入对话</button></div>
+      </div>
+      <div class="hunk a" data-skip="18-40"><span class="dots">⋯</span><span>跳过 23 行未改动(第 18–40 行)</span><span class="raw">@@ -39,4 +41,6 @@ function readCapability</span></div>
+      <div class="hunk b">@@ -39,4 +41,6 @@ function readCapability</div>
+      <div class="dr ctx" data-n="41"><span class="num">41</span><span class="gut">＋</span><span class="sign"> </span><span class="text">function readCapability(m: ModelEntry, key: CapabilityKey) {</span><i class="mark"></i></div>
+      <div class="dr del" data-n=""><span class="num"></span><span class="gut">＋</span><span class="sign">−</span><span class="text">  return m.capabilities[key]</span><i class="mark"></i></div>
+      <div class="dr del" data-n=""><span class="num"></span><span class="gut">＋</span><span class="sign">−</span><span class="text">}</span><i class="mark"></i></div>
+      <div class="dr add" data-n="42"><span class="num">42</span><span class="gut">＋</span><span class="sign">+</span><span class="text">  const table = m.capabilities ?? EMPTY_CAPABILITIES</span><i class="mark"></i></div>
+      <div class="dr add" data-n="43"><span class="num">43</span><span class="gut">＋</span><span class="sign">+</span><span class="text">  if (!(key in table)) return undefined</span><i class="mark"></i></div>
+      <div class="dr add" data-n="44"><span class="num">44</span><span class="gut">＋</span><span class="sign">+</span><span class="text">  return table[key]</span><i class="mark"></i></div>
+      <div class="dr add" data-n="45"><span class="num">45</span><span class="gut">＋</span><span class="sign">+</span><span class="text">}</span><i class="mark"></i></div>
+      <div class="menu" id="menu">
+        <button id="mComment">评论并发给 AI</button>
+        <button id="mQuote">只引用这几行(不写话)</button>
+        <button id="mOpen">在查看器里打开</button>
+        <div class="hint">⇧ 点击可扩选范围</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="chat">
+    <div class="stream" id="stream">
+      <div class="empty">这里是聊天区。评论加入对话后,发送即可看到消息里的引用块与 AI 的回复。</div>
+    </div>
+    <div class="composer">
+      <div class="chips" id="chips"></div>
+      <div class="input">
+        <textarea id="text" placeholder="说点什么…(引用 chip 会随消息一起发)"></textarea>
+        <button class="btn primary" id="send">发送</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+
+
+<script>
+  const rows = [...document.querySelectorAll('.dr')]
+  const menu = document.getElementById('menu'), inline = document.getElementById('inline')
+  const chips = document.getElementById('chips'), stream = document.getElementById('stream')
+  let anchor = -1, focus = -1, pending = null
+  const drafts = []
+
+  const range = () => anchor < 0 ? [] : rows.slice(Math.min(anchor, focus), Math.max(anchor, focus) + 1)
+  const label = (rs) => {
+    const nums = rs.map(r => r.dataset.n).filter(Boolean)
+    const a = nums[0], b = nums[nums.length - 1]
+    return a ? (a === b ? `L${a}` : `L${a}–${b}`) : '删除行'
+  }
+  function paint() {
+    const rs = new Set(range())
+    rows.forEach(r => r.classList.toggle('sel', rs.has(r)))
+    document.getElementById('badge').textContent = rs.size ? `已选 ${rs.size} 行 · ${label([...rs])} · 悬停 ＋ 或右键评论` : '未选中行 · 悬停行首的 ＋ 或右键可评论'
+  }
+  rows.forEach((r, i) => {
+    r.addEventListener('click', (e) => {
+      if (e.target.classList.contains('gut')) return
+      if (e.shiftKey && anchor >= 0) focus = i; else anchor = focus = i
+      paint(); closeMenu()
+    })
+    r.querySelector('.gut').addEventListener('click', () => { if (!(anchor <= i && i <= focus || focus <= i && i <= anchor)) anchor = focus = i; paint(); openInline() })
+    r.addEventListener('contextmenu', (e) => {
+      e.preventDefault()
+      if (!(anchor >= 0 && (Math.min(anchor, focus) <= i && i <= Math.max(anchor, focus)))) { anchor = focus = i; paint() }
+      const box = document.getElementById('diff').getBoundingClientRect()
+      menu.style.left = (e.clientX - box.left + document.getElementById('diff').scrollLeft) + 'px'
+      menu.style.top = (e.clientY - box.top + document.getElementById('diff').scrollTop) + 'px'
+      menu.dataset.open = 'true'
+    })
+  })
+  function closeMenu() { menu.dataset.open = 'false' }
+  document.addEventListener('click', (e) => { if (!menu.contains(e.target)) closeMenu() })
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMenu(); inline.dataset.open = 'false' } })
+
+  function openInline(quoteOnly) {
+    const rs = range(); if (!rs.length) return
+    pending = rs
+    // 评论框落在选区最后一行下面
+    rs[rs.length - 1].after(inline)
+    document.getElementById('where').textContent = `model-capability.ts · ${label(rs)} · ${rs.length} 行`
+    inline.dataset.open = 'true'
+    if (quoteOnly) { commit('') } else document.getElementById('note').focus()
+  }
+  document.getElementById('mComment').onclick = () => { closeMenu(); openInline() }
+  document.getElementById('mQuote').onclick = () => { closeMenu(); openInline(true) }
+  document.getElementById('mOpen').onclick = closeMenu
+  document.getElementById('cancel').onclick = () => { inline.dataset.open = 'false' }
+  document.getElementById('addChip').onclick = () => commit(document.getElementById('note').value.trim())
+
+  function commit(note) {
+    const rs = pending; if (!rs) return
+    const draft = { where: label(rs), note, lines: rs.map(r => ({ k: r.classList.contains('add') ? 'add' : r.classList.contains('del') ? 'del' : 'ctx', t: r.querySelector('.text').textContent })) , rows: rs }
+    drafts.push(draft); rs.forEach(r => r.classList.add('commented'))
+    inline.dataset.open = 'false'; document.getElementById('note').value = ''
+    anchor = focus = -1; paint(); renderChips()
+  }
+  function renderChips() {
+    chips.innerHTML = ''
+    drafts.forEach((d, i) => {
+      const c = document.createElement('span'); c.className = 'chip'
+      c.innerHTML = `<span>model-capability.ts:${d.where}</span>${d.note ? `<span class="note">“${d.note}”</span>` : ''}<span class="x" title="移除">×</span>`
+      c.querySelector('.x').onclick = () => { d.rows.forEach(r => r.classList.remove('commented')); drafts.splice(i, 1); renderChips() }
+      chips.appendChild(c)
+    })
+  }
+  document.getElementById('send').onclick = () => {
+    const text = document.getElementById('text').value.trim()
+    if (!text && !drafts.length) return
+    stream.querySelector('.empty')?.remove()
+    const u = document.createElement('div'); u.className = 'msg user'
+    u.innerHTML = drafts.map(d => `<div class="ref"><div class="loc">model-capability.ts · ${d.where}</div>${d.note ? `<div>${d.note}</div>` : ''}<pre>${d.lines.map(l => `<span class="${l.k}">${l.k === 'add' ? '+' : l.k === 'del' ? '−' : ' '} ${escape(l.t)}</span>`).join('\n')}</pre></div>`).join('') + (text ? `<div>${escape(text)}</div>` : '')
+    stream.appendChild(u)
+    const names = drafts.map(d => d.where).join('、')
+    drafts.length = 0; rows.forEach(r => r.classList.remove('commented')); renderChips(); document.getElementById('text').value = ''
+    setTimeout(() => {
+      const a = document.createElement('div'); a.className = 'msg ai'
+      a.innerHTML = `收到 ${names || '这条消息'}。以 L13–15 为例:<code>readCapability</code> 先查显式能力表、查不到才退回 <code>modalities</code>,是为了让「登记过的 false」压过模态推断——否则一个登记了 <code>imageOutput:false</code> 但模态里带 image 的模型会被误判为能生图。要我把这条判据写进 <code>capability.test.ts</code> 吗?`
+      stream.appendChild(a); stream.scrollTop = stream.scrollHeight
+    }, 600)
+    stream.scrollTop = stream.scrollHeight
+  }
+  const escape = (s) => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
+  document.getElementById('hunkA').onclick = () => setHunk('a'); document.getElementById('hunkB').onclick = () => setHunk('b')
+  function setHunk(k) { document.body.dataset.hunk = k; document.getElementById('hunkA').setAttribute('aria-pressed', k === 'a'); document.getElementById('hunkB').setAttribute('aria-pressed', k === 'b') }
+</script>
+</body>
+</html>
