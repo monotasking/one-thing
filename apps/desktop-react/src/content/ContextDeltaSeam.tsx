@@ -4,6 +4,7 @@ import { useT, type MessageKey, type TFn } from '../i18n'
 import { ButtonBase } from '../ui/ButtonBase'
 import { Fold } from '../ui/Fold'
 import { clampMeasurer } from './blocks/shell/clamp-measurer'
+import { useNoteUserExpand } from './expand-intent'
 import { Seam, SeamBody, SeamFoot, SeamLabel, SeamLine } from './seam/Seam'
 import c from './ContextDeltaSeam.module.css'
 
@@ -29,10 +30,13 @@ import c from './ContextDeltaSeam.module.css'
  * 这一行**必然是事后出现的**:发送那一刻它还不存在,`turnContext` 要等引擎走到
  * `buildPrompt` 之后才落账,回合一开始它就凭空多出一行。
  * **根治不在壳** —— 它在引擎写 `turnContext` 的时机(`buildPrompt` 之后);
- * 壳这一侧唯一能做的是让它**软着陆**:淡入(`--kf-settle`,不新增 keyframes),
- * 并按节奏表的物件档留白(`data-prose="object"` 由折痕基座自带)。
- * 预留空位是做不到的反面写法:发送那一刻壳不知道这一轮会不会有 delta,
- * 预留等于给绝大多数回合凭空加一段空白。
+ * 壳这一侧唯一能做的是让它**软着陆**,并按节奏表的物件档留白
+ * (`data-prose="object"` 由折痕基座自带)。
+ *
+ * **软着陆不在这个文件里**(2026-09-12 报障一复审):从前这里是折痕自己淡入一下,
+ * 而高度与行距瞬间到位 —— 淡入盖不住 32px + 一行的位移。今天是「事后出现的那一行」
+ * 整行三量一起过渡,落点 `ChatStream.module.css` 的 `.rowLate`(行距 `--sp-6` 是
+ * `.column` 的 gap,负 margin 要与它同产地),判词整段在那里。
  *
  * ── 为什么是读数而不是徽标 ─────────────────────────────────────────────
  * 「变量 1 · 待办 1」是**文字读数**。壳的计数禁令只禁 tab / 列表 / 组头挂徽,
@@ -157,16 +161,23 @@ export function contextDeltaSummary(t: TFn, rows: readonly ContextDeltaEntry[]):
 
 export function ContextDeltaSeam({ turnContext }: { turnContext?: TurnContextDelta }) {
   const t = useT()
+  const note = useNoteUserExpand()
   const rows = contextDeltaEntries(turnContext)
   // 没有 delta 就没有这件东西 —— 不占位、不画空壳。摆它的那一层同样问一遍
   // (`hasContextDelta`),那一句省的是外面那个 `<article>`;这一句是本件自己的底。
   if (rows.length === 0) return null
 
   return (
-    <Fold>
+    /* 用户点开的,报给流:别贴底(`content/expand-intent.ts`)。收起不报 —— 变矮
+       不会把人推走。 */
+    <Fold
+      onOpenChange={(open) => {
+        if (open) note()
+      }}
+    >
       {/* 上下文更新是**已经发生完**的事,恒 `settled` —— 没有「正在更新」这一档:
           它是回合开张时一次性落的账,壳看见它的时候早已经完成了。 */}
-      <Seam data-state="settled" className={c.seam} data-testid="context-delta-seam">
+      <Seam data-state="settled" data-testid="context-delta-seam">
         <SeamLine />
         <SeamLabel fold data-testid="context-delta-label">
           {contextDeltaSummary(t, rows)}
@@ -192,6 +203,7 @@ export function ContextDeltaSeam({ turnContext }: { turnContext?: TurnContextDel
  * `overflows` 只决定遮罩与展开钮 —— 所以永远不会「先铺满再被钳住」那一闪。
  */
 function DeltaRow({ t, row }: { t: TFn; row: ContextDeltaEntry }) {
+  const note = useNoteUserExpand()
   const outer = useRef<HTMLDivElement>(null)
   const inner = useRef<HTMLDivElement>(null)
   const [overflows, setOverflows] = useState(false)
@@ -233,7 +245,15 @@ function DeltaRow({ t, row }: { t: TFn; row: ContextDeltaEntry }) {
         {overflows && (
           /* ③ 类:行内微型文字动作,皮肤本地、清 UA 归基座(与内容块的展开钮同判)。
              词表与内容块共用 `block.expand` / `block.collapse` —— 同一件事不许有两套说法。 */
-          <ButtonBase className={c.expand} onClick={() => setExpanded((open) => !open)}>
+          <ButtonBase
+            className={c.expand}
+            onClick={() => {
+              // 用户点开的,报给流:别贴底(收起不报)。判据用当前 state,不放进
+              // setState 的 updater —— updater 在 StrictMode 下会跑两遍。
+              if (!expanded) note()
+              setExpanded((open) => !open)
+            }}
+          >
             {t(expanded ? 'block.collapse' : 'block.expand')}
           </ButtonBase>
         )}

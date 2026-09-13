@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useT } from '../i18n'
 import { Fold, FoldTrigger } from '../ui/Fold'
+import { useNoteUserExpand } from './expand-intent'
 import s from './SegmentView.module.css'
 
 /**
@@ -28,6 +29,7 @@ import s from './SegmentView.module.css'
  */
 export function ThinkingSegment({ text, live }: { text: string; live: boolean }) {
   const t = useT()
+  const note = useNoteUserExpand()
   const [expanded, setExpanded] = useState(live)
 
   // 跟着 live 走:开始想就展开,想完就折回去。用户在**非流式**时手动展开的那一份
@@ -37,7 +39,15 @@ export function ThinkingSegment({ text, live }: { text: string; live: boolean })
   }, [live])
 
   return (
-    <Fold open={expanded} onOpenChange={setExpanded}>
+    <Fold
+      open={expanded}
+      /* 用户点开的,报给流:别贴底(`content/expand-intent.ts`)。`live` 驱动的
+         自动开合走上面那只 effect,不经过这里 —— 天然不算用户意图,正确。 */
+      onOpenChange={(open) => {
+        if (open) note()
+        setExpanded(open)
+      }}
+    >
       <FoldTrigger
         className={expanded ? `${s.thought} ${s.thoughtOpen}` : s.thought}
         aria-label={t('chat.thought')}

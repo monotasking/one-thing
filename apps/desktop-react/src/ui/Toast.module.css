@@ -1,9 +1,21 @@
 /* 关键帧 toastIn(全系统唯一允许位移的入场)与 toastLife(底缘那条剩余时间线)
  * 都住在 styles/motion.css —— 全仓唯一的 @keyframes 产地。 */
 
+/*
+ * ── 摆在 chrome 带**下面**,不是窗口顶上(09-13 报障:崩溃 toast 的 ✕ 点不动)──
+ * 顶上那 44px 是顶栏,整条是 `-webkit-app-region: drag`(`components/TopBar.module.css`)。
+ * 从前这一堆从 `top: 16px` 起画,error 档的 ✕(14px,落在 y 29–43)整颗压在拖拽带
+ * 里 —— 原生层在网页命中测试**之前**就把那一下当成拖窗口,按钮根本收不到 click。
+ * 这不是 z-index 能治的(拖拽区是 native 拦截),给 toast 写 `no-drag` 也治不了:
+ * `no-drag` 只在 drag 元素**同一分支的子孙**上生效,而这一堆是 portal 到 body 的
+ * 另一分支(判例:`workbench/TopBarTabs.tsx` 文件头那三条)。唯一的治法是几何:
+ * 与 `ui/float` 同读 `--float-inset-top`(那条带有多高),从带的下缘再空一档。
+ * 浏览器壳没有拖拽带,但顶栏一样 44 高,同一枚 token 两边都对。
+ * 「查看详情」那道门从前就在带的下面,所以报障里只有 ✕ 一件点不动 —— 与此吻合。
+ */
 .stack {
   position: fixed;
-  top: var(--sp-4);
+  top: calc(var(--float-inset-top) + var(--sp-2));
   right: var(--sp-4);
   z-index: var(--z-toast);
   display: flex;

@@ -16,7 +16,11 @@
  *  ⑥ **发送三态**:上翻时在输入框真发一条 → 不滚,丸依次画过
  *     「已发送」→ 生成中 → 「回到最新」(**流完之后不许还写「已发送」**);
  *  ⑦ **点丸** → 回到底,丸当场卸载;
- *  ⑧ TOC 键列的下缘在玻璃上缘之上(键不许钻进玻璃里)。
+ *  ⑧ TOC 键列的下缘在玻璃上缘之上(键不许钻进玻璃里);
+ *  ⑨ **人自己点开的东西不许把他推到底**(2026-09-12 报障二):贴底时点开视口里
+ *     一件收起着的可展开物(工具行 / 思考段 / 折痕),`scrollTop` 与那件东西的
+ *     上缘都一像素不动 —— 展开与流式 delta 在几何上逐字相同,分不出来的那一半
+ *     由动手的那一方自述(`content/expand-intent.ts`)。
  *
  * ── 真流从哪来(09-05 改)──────────────────────────────────────────────────
  * 这道门原先跑在一台**没有 provider** 的 core 上,于是「回复到达」这件事在真机上
@@ -481,6 +485,89 @@ async function main() {
       atBottom.rowsUnderGlass === 0,
       `贴底时气口是空的:没有任何一条消息压在玻璃上(实测 ${atBottom.rowsUnderGlass} 条)`,
     )
+
+    /* ── ⑨ 人自己点开的东西不许把他推到底(2026-09-12 报障二)────────────────
+     *
+     * 前提此刻正好成立:上面刚断言过「进场就在底」,所以跟随是 pinned,而视口里
+     * 有起底那一轮留下的可展开物(工具行 / 思考段 / 折痕标签,`aria-expanded="false"`)。
+     * 点开它之后两句话都要成立 ——
+     *   · 容器的 `scrollTop` 一像素不动(跟底那一半没把他冲走);
+     *   · 他要读的那一件自己的上缘也不动。
+     * 不报意图的旧代码在这里必然红:pinned 下任何长高都贴底,展开的那一段当场被
+     * 推出视野 —— 那正是报障二。判据与窗长在 `content/expand-intent.ts` /
+     * `components/motion.ts` 的 `EXPAND_HOLD_MS`。
+     *
+     * **这一段要把后台节流关掉**:`ONETHING_GATE_HEADLESS` 下整扇窗被 Chromium 节流
+     * 到 1Hz(判例写在壳 CLAUDE.md 的「离屏两档」),而这条链量的是「意图窗口内那
+     * 一拍尺寸变化」—— 一秒一帧的话那一拍必然落在窗口外,量的就成了节流器不是产品。
+     * 关掉、量完、开回去;整道门别的断言一格不动。
+     */
+    await app.evaluate(({ BrowserWindow }) => {
+      for (const win of BrowserWindow.getAllWindows()) win.webContents.setBackgroundThrottling(false)
+    })
+    const expandTarget = await page.evaluate(() => {
+      const scroll = document.querySelector('[data-testid="chat-stream"]')
+      const glass = document.querySelector('[data-testid="composer-panel"]')
+      if (!scroll) return null
+      const view = scroll.getBoundingClientRect()
+      const floor = glass ? glass.getBoundingClientRect().top : view.bottom
+      const all = Array.from(scroll.querySelectorAll('[aria-expanded="false"]'))
+      for (let i = all.length - 1; i >= 0; i -= 1) {
+        const el = all[i]
+        const r = el.getBoundingClientRect()
+        if (r.height <= 0 || r.top < view.top || r.bottom > floor) continue
+        el.setAttribute('data-gate-expand', '')
+        return {
+          top: r.top,
+          kind: el.getAttribute('data-tool-status')
+            ? 'tool-row'
+            : (el.getAttribute('data-testid') ?? el.tagName.toLowerCase()),
+        }
+      }
+      return null
+    })
+    assert(
+      expandTarget !== null,
+      `贴底时视口里有一件收起着的可展开物(实测:${expandTarget ? expandTarget.kind : '一件都没有'})`,
+    )
+    if (expandTarget) {
+      const beforeExpand = await readGeometry(page)
+      await page.evaluate(() => {
+        const el = document.querySelector('[data-gate-expand]')
+        if (el instanceof HTMLElement) el.click()
+      })
+      // 等得比意图窗口(`EXPAND_HOLD_MS`)长得多 —— 量的是「窗口内位置没动」的结局,
+      // 不是那个数本身,所以这里不镜像它。
+      await delay(900)
+      const afterExpand = await page.evaluate(() => {
+        const scroll = document.querySelector('[data-testid="chat-stream"]')
+        const el = document.querySelector('[data-gate-expand]')
+        return {
+          scrollTop: scroll ? scroll.scrollTop : null,
+          top: el ? el.getBoundingClientRect().top : null,
+          open: el ? el.getAttribute('aria-expanded') : null,
+        }
+      })
+      assert(afterExpand.open === 'true', `点下去那件东西真的展开了(${expandTarget.kind})`)
+      assert(
+        Math.abs(afterExpand.scrollTop - beforeExpand.scrollTop) <= 2,
+        `点开之后 scrollTop 一像素不动(${beforeExpand.scrollTop} → ${afterExpand.scrollTop})`,
+      )
+      assert(
+        afterExpand.top !== null && Math.abs(afterExpand.top - expandTarget.top) <= 2,
+        `他要读的那一件还在原位(上缘 ${expandTarget.top.toFixed(1)} → ${afterExpand.top === null ? '不在了' : afterExpand.top.toFixed(1)})`,
+      )
+      // 收回去、摘掉记号:后面几段量的是**没有一件东西展开着**的那张排版。
+      await page.evaluate(() => {
+        const el = document.querySelector('[data-gate-expand]')
+        if (el instanceof HTMLElement) el.click()
+        el?.removeAttribute('data-gate-expand')
+      })
+      await delay(400)
+    }
+    await app.evaluate(({ BrowserWindow }) => {
+      for (const win of BrowserWindow.getAllWindows()) win.webContents.setBackgroundThrottling(true)
+    })
 
     await scrollTo(page, 'top')
     const scrolled = await readGeometry(page)

@@ -85,7 +85,9 @@
  * —— 常驻铁律),而 `@keyframes` 只在元素首次显形时播一次,挂在这里根本不会响。
  * 会响的是这一条:accent 那层从 `scaleX(k/N)` 收回 `scaleX(0)`,走
  * `--dur-release` 的过渡 —— 肉眼看见的正是「那段高亮缩回去、线实了」。
- * 正文展开时的 settle 是另一件事,挂在 `.seamBody` 上(那一格真的是从无到有)。
+ * 正文展开是另一件事,挂在 `.seamBody` 上(那一格真的是从无到有):2026-09-12 起
+ * 它不再是 `--kf-settle` 的整块淡入,而是 `@starting-style` 起手的**高度过渡**
+ * —— 正文自上向下推开,判词写在那一条规则上。
  */
 .seam[data-state='settled'] .seamLine::after {
   transform: scaleX(0);
@@ -181,7 +183,46 @@
   font-size: var(--fs-meta);
   line-height: 1.6;
   color: var(--text-2);
-  animation: var(--kf-settle) var(--dur-release) var(--ease-out);
+  /*
+   * ── 展开:自上向下展开,不是整块凭空显形(2026-09-12 报障二的「形」)──────
+   * 从前这里是一句 `animation: var(--kf-settle) …`:正文整块**满高**淡入,视口
+   * 在那一帧被撑开一整段,于是人看见的是「跳一下」而不是「拉开」。
+   *
+   * `FoldBody` 的两态是 `display: none` ↔ 可见(`ui/Fold` 里那句内联,判词在它
+   * 自己的文件头),而 `@starting-style` 正是为「这个元素**第一次有样式**」立的:
+   * `display: none` 回来的那一拍就是它的第一次。所以高度从 0 起插值(
+   * `interpolate-size: allow-keywords` 让 `height: auto` 可插值),正文由上往下推开。
+   *
+   * `padding-block` **也从 0 起**:不然起手那一下就先有一格 24px 的空盒子在那儿
+   * 撑着,「从 0 拉开」这句话当场破功。`box-sizing: border-box` 是它的前提 ——
+   * 内衬要算进那个插值中的 `height` 里,否则过渡期间盒子比 `height` 说的高一截。
+   *
+   * `overflow: clip` 常驻**可以**:正文里唯一会伸到盒子外面的东西是焦点环,而这一族
+   * 的展开钮都在内衬之内(底把手在盒子外面,它不归这一格)。
+   *
+   * **收起(可见 → `display: none`)仍旧是瞬间的,这是有意的**:收起那一下人已经
+   * 读完了,没有「让他跟上」这回事;而且 `display: none` 是内联样式、当拍生效,
+   * 中间态根本不存在,硬要做就得引入一个「正在收」的假状态。
+   *
+   * 动效档「无」下 `--dur-release` 是 0ms,三条一起瞬到 —— 不另写 reduced-motion 块
+   * (与这个文件末尾那两条降级同一条判词:那两条降的是**装饰**,这一条是**几何**)。
+   */
+  box-sizing: border-box;
+  interpolate-size: allow-keywords;
+  height: auto;
+  overflow: clip;
+  transition:
+    height var(--dur-release) var(--ease-out),
+    padding-block var(--dur-release) var(--ease-out),
+    opacity var(--dur-release) var(--ease-out);
+}
+
+@starting-style {
+  .seamBody {
+    height: 0;
+    padding-block: 0;
+    opacity: 0;
+  }
 }
 
 /*

@@ -8,6 +8,7 @@ import { ButtonBase } from '../../ui/ButtonBase'
 import { useFlipHeight } from '../../ui/flip-height'
 import { Tooltip } from '../../ui/Tooltip'
 import type { BlockCtx } from '../blocks/registry'
+import { useNoteUserExpand } from '../expand-intent'
 import type {
   ToolCardEntry,
   ToolCardHead,
@@ -110,18 +111,39 @@ export const ToolCard = memo(function ToolCard({
   ctx: BlockCtx
 }) {
   const t = useT()
+  const note = useNoteUserExpand()
   const [open, setOpen] = useState(false)
   const [openKeys, setOpenKeys] = useState<ReadonlySet<string>>(EMPTY_KEYS)
   const cardRef = useRef<HTMLDivElement | null>(null)
 
-  const toggleOpen = useCallback(() => setOpen((value) => !value), [])
-  const toggleKey = useCallback((key: string) => {
-    setOpenKeys((current) => {
-      const next = new Set(current)
-      if (!next.delete(key)) next.add(key)
-      return next
-    })
-  }, [])
+  /*
+   * ── 两格镜像,只为「这一下是开还是合」(2026-09-12)────────────────────────
+   * 展开时要报一句「用户点开的,别贴底」(`content/expand-intent.ts`),而这两只
+   * 回调的身份必须**恒定** —— 它们一路传到头行与每一行上,身份一变那几层的 memo
+   * 就白短路了(FLIP 那 916 次强排版的同款账)。把当前值读进 ref,于是判据拿得到
+   * 「此刻开着没有」而依赖表仍是空的。副作用**不放进 setState 的 updater**:
+   * updater 在 StrictMode 下会跑两遍。
+   */
+  const openRef = useRef(open)
+  openRef.current = open
+  const openKeysRef = useRef(openKeys)
+  openKeysRef.current = openKeys
+
+  const toggleOpen = useCallback(() => {
+    if (!openRef.current) note()
+    setOpen((value) => !value)
+  }, [note])
+  const toggleKey = useCallback(
+    (key: string) => {
+      if (!openKeysRef.current.has(key)) note()
+      setOpenKeys((current) => {
+        const next = new Set(current)
+        if (!next.delete(key)) next.add(key)
+        return next
+      })
+    },
+    [note],
+  )
 
   // 有活步才需要一只钟:一条会话里九成的工具卡是收场了的,它们不该有定时器。
   const live = card.steps.some(isLiveStep)

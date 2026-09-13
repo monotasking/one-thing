@@ -11,6 +11,7 @@ import { markdownToFrame } from './assemble/markdown'
 import { BlockView } from './blocks/BlockView'
 import type { BlockCtx } from './blocks/registry'
 import type { CompactMarker } from './compact/marker'
+import { useNoteUserExpand } from './expand-intent'
 import { Seam, SeamBody, SeamCount, SeamFoot, SeamLabel, SeamLine, SeamSentence, type SeamState } from './seam/Seam'
 import s from './SegmentView.module.css'
 
@@ -138,6 +139,7 @@ function RunningSeam({ marker, t }: { marker: CompactMarker; t: TFn }) {
  * 是在撒谎。所以这一支退成一枚普通标签 —— 状态表沉默的那一格,按组件规格补齐。
  */
 function CompletedSeam({ marker, ctx, t }: { marker: CompactMarker; ctx: BlockCtx; t: TFn }) {
+  const note = useNoteUserExpand()
   const label = completedLabel(t, marker)
   if (!marker.summary) {
     return (
@@ -149,7 +151,12 @@ function CompletedSeam({ marker, ctx, t }: { marker: CompactMarker; ctx: BlockCt
     )
   }
   return (
-    <Fold>
+    /* 用户点开的,报给流:别贴底(`content/expand-intent.ts`)。收起不报。 */
+    <Fold
+      onOpenChange={(open) => {
+        if (open) note()
+      }}
+    >
       <SeamLine />
       <SeamLabel fold data-testid="compact-seam-label">
         {label}

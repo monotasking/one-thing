@@ -101,6 +101,66 @@
   contain-intrinsic-block-size: auto var(--msg-intrinsic-h);
 }
 
+/*
+ * ── 事后出现的那一行:软着陆(2026-09-12 报障一)─────────────────────────
+ *
+ * **它说的不是「上下文更新」**,说的是「这一行不是随消息一起来的,它是**回合开张
+ * 之后**才补上的」。今天唯一的消费者是上下文更新折痕(`article[data-context-of]`),
+ * 但类名里一个折痕的字都没有 —— 第三种事后出现的行进来时,它拼上 `.rowLate` 就够,
+ * 这个文件一行不改(「加功能不许改骨架」在这一小块上的形状)。
+ *
+ * **为什么必然是事后出现的**:用户按下发送那一刻它还不存在,`turnContext` 要等引擎
+ * 走到 `buildPrompt` 之后才落账。**根治不在壳** —— 它在引擎写 `turnContext` 的时机;
+ * 壳能做的只有让它出现得不突兀。**预留空位是做不到的反面写法**:发送那一刻壳不知道
+ * 这一轮会不会有 delta,预留等于给绝大多数回合凭空加一段空白。
+ *
+ * ── 为什么只淡入不够(这一条判例的直接起因)──────────────────────────────
+ * 从前它只在折痕自己的皮肤里淡入(`ContextDeltaSeam.module.css` 的
+ * `.seam { animation: var(--kf-settle) … }`),**高度是瞬间到位的**:一行标签的高
+ * 外加 `.column` 那格 `--sp-6`(32px)的行距,一帧之内全部长出来,把用户自己那一行
+ * 往上顶一大截。淡入盖不住位移 —— 人眼看见的是「跳」,不是「淡」。所以三个量
+ * (高度 / 行距 / 不透明度)必须**一起**走同一条过渡。
+ *
+ * ── 为什么落在这个文件,不在折痕自己的皮肤里 ──────────────────────────────
+ * 行距 `--sp-6` 是 `.column` 的 `gap`,那一格的产地在这个文件;负 margin 要与它同
+ * 产地才不会分叉(改了 gap 而忘了改这里 = 起手那一下多出或少掉一截)。
+ *
+ * ── 为什么是 @starting-style 而不是 FLIP ─────────────────────────────────
+ * FLIP 要「改之前」的几何,而这一行是**挂载**出来的:挂载那一刻没有「改前」高度可量。
+ * 而且一条长会话里有几百道折痕,给每一道各挂一只 ResizeObserver 去量高,正是
+ * 09-10 那笔 916 次强制排版的同款账。`@starting-style` 是浏览器替我们记住「第一次
+ * 有样式时从哪儿起」,零 JS、零观察者。
+ *
+ * `interpolate-size: allow-keywords` 是 `height: auto` 可插值的开关(Chromium 129+;
+ * 这台是 Electron 41 = Chromium 140)。不写死一个高度:折痕一行还是三行由内容说了算。
+ * `overflow: clip` 只管过渡中露头的那点内容;`overflow-clip-margin` 留出标签的焦点环
+ * (环 + 2px offset),否则起手那一下按 Tab 落上来会被剪掉半圈。
+ *
+ * `@starting-style` **写在顶层**而不是嵌套进规则里:CSS Modules 对顶层选择器的类名
+ * 改写是逐字可预期的,嵌套形在不同 postcss 版本上有过不一致。
+ *
+ * 动效档「无」下 `--dur-release` 是 0ms,三条过渡一起瞬到 —— **不另写
+ * reduced-motion 块**,写了就是第二份真相(与折痕基座同一条判词)。
+ */
+.rowLate {
+  interpolate-size: allow-keywords;
+  height: auto;
+  overflow: clip;
+  overflow-clip-margin: var(--sp-2);
+  transition:
+    height var(--dur-release) var(--ease-out),
+    margin-block-start var(--dur-release) var(--ease-out),
+    opacity var(--dur-release) var(--ease-out);
+}
+
+@starting-style {
+  .rowLate {
+    height: 0;
+    margin-block-start: calc(-1 * var(--sp-6));
+    opacity: 0;
+  }
+}
+
 /* ── 节奏表:段与段之间隔多远 ───────────────────────────────────────────────
  *
  * 从前这里是一句 `gap: var(--sp-4)` —— **一律 16px**,不管两边是什么。于是标题与

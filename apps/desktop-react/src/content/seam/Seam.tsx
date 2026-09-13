@@ -143,6 +143,10 @@ export interface SeamBodyProps extends HTMLAttributes<HTMLElement> {
 /**
  * 线下面那个盒子(`ui/Fold` 的 body 皮肤)。**只给盒子** —— 里面装什么、怎么排,
  * 归消费方(压缩折痕装块渲染的摘要,上下文更新折痕装逐块表)。
+ *
+ * 展开那一下的**形**归皮肤(`Seam.module.css` 的 `.seamBody`):2026-09-12 起它是
+ * `@starting-style` 起手的高度过渡(正文自上向下推开),不再是整块淡入;展开那一下
+ * 的**位**(视口别跟着跳到底)归消费方报一句意图,见 `content/expand-intent.ts`。
  */
 export function SeamBody({ className, children, ...rest }: SeamBodyProps) {
   return (

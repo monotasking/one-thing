@@ -22,10 +22,11 @@ import { sessionRefIdOf } from './session-ref'
 import type { OverlayEntry, ProjectedMessage } from '../data/chat-fold'
 import { useT, type TFn } from '../i18n'
 import { resolveIcon } from '../components/icons'
-import { SCROLL_ANCHOR_SETTLE_MS } from '../components/motion'
+import { EXPAND_HOLD_MS, SCROLL_ANCHOR_SETTLE_MS } from '../components/motion'
 import { ButtonBase } from '../ui/ButtonBase'
 import { assembleMessage, segmentKey } from './assemble'
 import { ContextDeltaSeam, hasContextDelta } from './ContextDeltaSeam'
+import { ExpandIntentContext } from './expand-intent'
 import type { SegmentModel } from './model/segments'
 import { MessageActions } from './message/MessageActions'
 import { StopNotice } from './message/StopNotice'
@@ -209,7 +210,7 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
     onScroll?.()
   }, [expandOnScroll, onScroll])
 
-  const { follow, jumpToBottom, onScrollWithFollow } = useFollowBottom(
+  const { follow, jumpToBottom, onScrollWithFollow, noteUserExpand } = useFollowBottom(
     scrollRef,
     foldedSessionId,
     messages,
@@ -239,6 +240,16 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
      */
     <FocusScope scope="chat" owner={sessionRefIdOf(sessionId)} rootRef={scrollRef}>
       {({ scopeProps }) => (
+        /*
+         * ── 「是我点开的」那一条通道(2026-09-12 报障二)────────────────────────
+         * 流里任何一件可展开的东西(折痕 / 思考段 / 工具卡)点开时报一句,跟随那只
+         * 观察者据此在 `EXPAND_HOLD_MS` 内按兵不动 —— 几何分不出「模型又吐了一段」
+         * 与「人点开了一段」,所以必须由动手的那一方自述(判词在 `expand-intent.ts`)。
+         *
+         * 值是 `useCallback` 出来的,**身份恒定** —— 所以 `MessageRow` / `ToolCard`
+         * 那几层的 memo 短路一格没动(context 的值不变,消费者不会被推着重渲)。
+         */
+        <ExpandIntentContext.Provider value={noteUserExpand}>
         <>
         <div {...scopeProps} className={s.scroll} onScroll={onScrollWithFollow} data-testid="chat-stream">
           <div className={s.column}>
@@ -314,7 +325,15 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
               if (message.role !== 'user' || !hasContextDelta(message.turnContext)) return [row]
               return [
                 row,
-                <article key={`${message.id}#context`} className={s.row} data-context-of={message.id}>
+                /* `.rowLate` = **事后出现的行**(判词在 `ChatStream.module.css`):
+                   这一行不是随消息一起来的,它在回合开张之后才补上,所以高度 / 行距 /
+                   不透明度三量一起软着陆。类名里没有折痕的名字 —— 第三种事后出现的行
+                   拼上它就够。 */
+                <article
+                  key={`${message.id}#context`}
+                  className={`${s.row} ${s.rowLate}`}
+                  data-context-of={message.id}
+                >
                   <ContextDeltaSeam turnContext={message.turnContext} />
                 </article>,
               ]
@@ -336,6 +355,7 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
           onJump={jumpToBottom}
         />
         </>
+        </ExpandIntentContext.Provider>
       )}
     </FocusScope>
   )
@@ -531,7 +551,12 @@ function useFollowBottom(
   lastDeltaAt: number | undefined,
   activeMessageId: string | undefined,
   onScroll: (() => void) | undefined,
-): { follow: FollowState; jumpToBottom: () => void; onScrollWithFollow: () => void } {
+): {
+  follow: FollowState
+  jumpToBottom: () => void
+  onScrollWithFollow: () => void
+  noteUserExpand: () => void
+} {
   const [follow, setFollow] = useState<FollowState>(FOLLOW_PINNED)
   /*
    * 状态的**镜像**。滚动回调与 ResizeObserver 都在 React 之外跑,它们要的是
@@ -558,6 +583,15 @@ function useFollowBottom(
   }, [])
 
   /**
+   * **人此刻停在第几像素**(2026-09-10 组件级停靠立的,2026-09-12 多了一个读者)。
+   * 写点两处:滚动回调(人滚的)与 `stick`(我们贴的)—— 两处写的是同一件事实。
+   * 读点两处:取回那一拍(`useParkedScroll`),与滚动回调里「是谁离的底」那一句。
+   * `undefined` = 这次挂载里一次都没量过 —— 那时缺省的 pinned 会去贴底,不需要它。
+   * 声明在 `stick` 之前,因为 `stick` 要写它。
+   */
+  const lastTopRef = useRef<number | undefined>(undefined)
+
+  /**
    * 贴底。**唯一**一处写 `scrollTop`,三个调用点(进场 / 长高 / 点丸)都经它。
    *
    * **停靠中不写**(2026-09-10 组件级停靠):`content-visibility: hidden` 的子树
@@ -571,6 +605,14 @@ function useFollowBottom(
     if (!el) return
     if (el.clientHeight === 0) return
     el.scrollTop = el.scrollHeight
+    /*
+     * 贴完当场记下「人此刻在第几像素」,不等下一帧那个滚动事件来记(2026-09-12)。
+     * `onScrollWithFollow` 拿它判「是谁离的底」(人往上翻 = `scrollTop` 变小):
+     * 滚动事件比 RO 晚一帧,不在这里写的话,下一帧人往上翻的那一下会拿**贴底之前**
+     * 的位置当参照 —— 内容一帧长的比他翻的多,这一下就被读成「没往回走」而吞掉,
+     * 要等再翻一下才逃得出去。在这里写掉,参照永远是真的底,一下就认出来。
+     */
+    lastTopRef.current = el.scrollTop
   }, [scrollRef])
 
   /** 「下面还有多少没露脸」。判据与 `follow.ts` 的 `scrolled` 用的是同一个式子。 */
@@ -589,12 +631,30 @@ function useFollowBottom(
   const lastGapRef = useRef(0)
 
   /**
-   * **停靠之前人停在第几像素**(2026-09-10 组件级停靠)。写点只有一处:滚动
-   * 回调(判词在那儿)。读点只有一处:取回那一拍(`useParkedScroll`)。
-   * `undefined` = 这次挂载里人一次都没滚过 —— 那时缺省的 pinned 会去贴底,
-   * 不需要它。
+   * **人自己点开的那样东西还在长,到这一刻为止**(2026-09-12 报障二的「位」)。
+   *
+   * 0 = 没有这回事。写点只有一处(下面那只 `noteUserExpand`,由
+   * `content/expand-intent.ts` 那条 context 交到每一件可展开的东西手里),
+   * 读点也只有一处(RO 回调里那一格判据)。
    */
-  const lastTopRef = useRef<number | undefined>(undefined)
+  const holdUntilRef = useRef(0)
+
+  /**
+   * 「这一下是用户点开的」。
+   *
+   * 记的是一个**截止时刻**而不是一个布尔闩:展开是一段过渡 / FLIP,尺寸变化会
+   * **逐帧**来好几次,一次性闩被第一帧消费掉之后,后面那几帧照旧贴底(报障二
+   * 仍在);而且短会话里第一帧往往还没溢出,gap 仍是 0,状态压根不会翻成 browsing。
+   * 窗长的推导写在 `EXPAND_HOLD_MS` 上。
+   *
+   * **为什么不是 `transitionend`**:动效档「无」下它根本不发、被打断时也不发,
+   * 而且四个消费者(折痕 / 压缩折痕 / 思考段 / 工具卡)各自的过渡挂在各自的元素上,
+   * 要一一接线;截止时刻是一个数,谁报都一样。
+   */
+  const noteUserExpand = useCallback(() => {
+    holdUntilRef.current = performance.now() + EXPAND_HOLD_MS
+  }, [])
+
   /**
    * **取回那一拍要对的位**(在场 = 「刚被拿回来,还没对过」)。立它的是
    * `useParkedScroll`(零几何读),消它的是下面那只观察者 —— 判词在两处。
@@ -672,6 +732,8 @@ function useFollowBottom(
    */
   useLayoutEffect(() => {
     dispatch({ type: 'enter' })
+    // 换会话不带上一条会话的意图:那格截止时刻说的是「**那边**有人点开了一样东西」。
+    holdUntilRef.current = 0
     const el = scrollRef?.current
     /** 落定一次:把「此刻离底多远」交给状态机、记进 gap 基准、把锚点记一笔。 */
     const settle = (container: HTMLElement) => {
@@ -863,6 +925,29 @@ function useFollowBottom(
        */
       const gap = el.scrollHeight - el.clientHeight - el.scrollTop
       const grewBelow = gap - lastGapRef.current > AT_BOTTOM_EPS
+      /*
+       * ── 人自己点开的东西还在长:位置一动不动(2026-09-12 报障二的「位」)──────
+       * 展开一段折痕正文 / 一段思考 / 一张工具卡,在几何上与「模型又吐了一段」逐字
+       * 相同(都让 gap 变大、`scrollTop` 不动),所以分不出来的那一半由动手的那一方
+       * 自述(`content/expand-intent.ts`)。pinned 下不报的话,展开的那一瞬间屏幕
+       * 当场滑到最底 —— 人点开是为了读它,结果它被推出了视野。
+       *
+       * **一动不动之后按此刻离底多远重新判档**:这一句与「滚动停下来了」逐字相同
+       * (`gap > EPS` 就翻成 browsing),不另开一个事件 —— 事件多一个,`follow.ts`
+       * 那张转移表就要多一行,而这一下与人自己往上翻在语义上没有区别:他此刻确实
+       * 不在底,而且是他自己要求的。
+       *
+       * **窗口内的长高也不算「下面长出了没看见的东西」**:第一拍把状态翻成 browsing
+       * 之后,展开的过渡还要再长几帧 —— 那几帧要是走下面 browsing 那一支的 `grew`,
+       * 丸会亮起来说「回到最新」,而下面长出来的正是他自己点开的那一段。所以整个
+       * 窗口内一律不派 `grew`;代价是窗口内(220ms)恰好到达的流式 delta 晚几帧才
+       * 点亮丸 —— 下一拍长高照旧会点。
+       */
+      if (performance.now() < holdUntilRef.current) {
+        if (followShouldStick(followRef.current)) dispatch({ type: 'scrolled', gap })
+        lastGapRef.current = gap
+        return
+      }
       if (followShouldStick(followRef.current)) {
         stick()
         lastGapRef.current = el.scrollHeight - el.clientHeight - el.scrollTop
@@ -924,6 +1009,26 @@ function useFollowBottom(
    * 所以不必维护一个「这一下是我自己滚的」标志位 —— 而标志位正是这类代码最容易
    * 漏掉一条路径的地方(wheel / 触控板 / 键盘 / 拖滚动条 / TOC 跳转 / scrollIntoView,
    * 每加一条来源就要多记一次)。
+   *
+   * ── 「在不在底」不够,还要问「是谁离的底」(2026-09-12,真机探针抓到)────────
+   * 上面那句话里藏着一个前提:**我们自己落底那几下正正好在底**。内容**一帧一帧
+   * 地长**的时候它不成立 —— 浏览器一帧里先跑滚动事件、后跑 ResizeObserver,于是:
+   *   RO(第 n 帧)贴底 → scrollTop = 那一刻的 scrollHeight − clientHeight
+   *   → 滚动事件排到**第 n+1 帧**才派,而那一帧内容又长了几像素
+   *   → 这只回调量到 gap = 4.5px > `AT_BOTTOM_EPS`(2)→ 判成「人往上翻了」。
+   * 真机读数(`gate:chat-follow` ④ 上的探针,2026-09-12):
+   *   `ro t=1175 gap=6 pinned → stick`、`scroll t=1183 st=10805.5 gap=4.5 → browsing`,
+   * 此后每一条新消息都不再跟底(离底 38 → 263 → 431 → … 逐条累加)。
+   * 病灶不是那条 2px 容差调小了,而是**一段跨帧的高度过渡每帧长 2–6px**,
+   * 任何容差都挡不住;它是「上下文更新折痕出场软着陆」(`.rowLate`)一落地就撞上的
+   * 那堵墙,也是从前任何「内容自己连续长高」都会踩、只是没人量过的那一格。
+   *
+   * 修法仍然**只用位置,不设标志位**(follow.ts 文件头那条纪律一个字没松):
+   * **人往上翻 = `scrollTop` 变小**。gap 张开而 `scrollTop` 一点没往回走,那是
+   * 下面长出来的,不是人走开了 —— 同一帧稍后的那次 RO 会把它贴回去。所以这一格
+   * 只在「真的往回走了」或者「已经在浏览」时才把这次滚动交给状态机。
+   * 它判的仍然是两个**位置**之差,不是「这一下是不是我发的」:后者要为每一种
+   * 滚动来源各记一次,而这一句对所有来源同时成立。
    */
   const onScrollWithFollow = useCallback(() => {
     const el = scrollRef?.current
@@ -938,9 +1043,18 @@ function useFollowBottom(
        * 记在滚动这一头是白拿的:这只回调本来就在读同一批几何。
        * (与锚点表分工:锚点按**消息**记、跨挂载留着,给冷载入与被逐出那条路用;
        *  这一格按**像素**记、只活在这次挂载里,给「同一棵树藏起来再拿出来」用。)
+       *
+       * 2026-09-12 起它多了第二个读者:上面那条「是谁离的底」——**先读旧值再写新值**,
+       * 两个读者要的是同一件事实(这只回调上一次看见人在第几像素),不必各记一份。
        */
+      const previousTop = lastTopRef.current
       lastTopRef.current = el.scrollTop
-      dispatch({ type: 'scrolled', gap })
+      /*
+       * 第一次(这次挂载里还没量过)按老办法交给状态机 —— 没有「上一次」可比,
+       * 保守的缺省是照旧判,而不是替它猜。
+       */
+      const wentUp = previousTop === undefined || el.scrollTop < previousTop
+      if (wentUp || !followShouldStick(followRef.current)) dispatch({ type: 'scrolled', gap })
     }
     // 停稳之后记一笔「看到哪儿」——这里只重排计时器,量在停下来那一下(见上)。
     scheduleAnchorSave()
@@ -953,7 +1067,7 @@ function useFollowBottom(
    */
   useParkedScroll(visible, lastTopRef, unparkTopRef)
 
-  return { follow, jumpToBottom, onScrollWithFollow }
+  return { follow, jumpToBottom, onScrollWithFollow, noteUserExpand }
 }
 
 /**
