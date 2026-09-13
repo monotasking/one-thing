@@ -260,7 +260,10 @@ describe('Dock 分隔线的分组:逐字同今天(拍点 1)', () => {
   it('两组的成员与次序,与 09-10 之前一字不差', () => {
     expect(SESSION_ITEMS.map((i) => i.id)).toEqual(['files', 'diff', 'terminal'])
     expect(GLOBAL_ITEMS.map((i) => i.id)).toEqual([
-      'browser', 'search', 'sessions', 'notifications', 'providers',
+      // 2026-09-13:`providers` 那一块瓦退役(模型服务并进设置页),所以这张名单
+      // 短了一格。**次序与别的成员一个字没动** —— 这一条钉的是「改一块瓦不许
+      // 顺手重排 Dock」。
+      'browser', 'search', 'sessions', 'notifications',
       'workspace', 'music', 'settings', 'apps',
     ])
   })

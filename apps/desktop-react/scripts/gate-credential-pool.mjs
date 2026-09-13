@@ -247,7 +247,16 @@ async function main() {
       if (done?.success === false) throw new Error(`灌 key 失败:${done.error}`)
     }
 
-    await page.evaluate(() => document.querySelector('[data-testid="dock-tile-providers"]').click())
+    /*
+     * 2026-09-13:模型服务不再是一块瓦,它是**设置页里的一页** —— 所以这一步
+     * 从「点模型服务那块瓦」变成「点设置那块瓦 → 点导航里的模型服务」。
+     * 判词在 `src/content/settings/pages.tsx` 的文件头。
+     */
+    await page.evaluate(() => document.querySelector('[data-testid="dock-tile-settings"]').click())
+    await waitFor('设置页就位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="settings-nav-models"]'))),
+    )
+    await page.evaluate(() => document.querySelector('[data-testid="settings-nav-models"]').click())
     await waitFor('模型服务面就位', () =>
       page.evaluate(() => Boolean(document.querySelector(`[data-testid="provider-row-${'deepseek'}"]`))),
     )
@@ -374,6 +383,25 @@ async function main() {
     await delay(250)
     await clickText(page, '[role="menuitem"]', 'Rename label…')
     await delay(400)
+    /*
+     * **先把焦点放回行里那一格再往下走**(2026-09-13 补;与 d 那一段末尾那句
+     * `focus()` 逐字同一手,理由也逐字相同:对着别的东西按 Esc 关的是整块面)。
+     *
+     * 补它的原因是真机量出来的一件事:菜单收起来之后**焦点没有落进刚开出来的
+     * 那格输入框**,而是落在装着这块面的那一层的根上(实测 `document.activeElement`
+     * 在 t30 / t100 / t400 三次采样上都是那一层)。于是下面那一下 Esc 不再被
+     * `ui/inline-edit` 的瞬态口认领(它的判据是「这一格此刻拿着焦点没有」),
+     * 一路传到浮层,把整块面关掉 —— 后面几条于是全部取不到行。
+     *
+     * **这件事与设置页分页无关**:把 `SettingsMock` 的 `FocusScope` 整只拆掉再跑
+     * (备份还原式反证,2026-09-13),焦点照样落在浮层那一层的根上,这一步照样红。
+     * 也就是说它是这条路自己的一笔账 —— 「原地编辑开出来时焦点该不该在里面」
+     * 归响应链那一线裁,不在这一批里改。这一句 `focus()` 让这一段量回它本来要量的
+     * 东西(预填现值 + 全选 + 第 1 行尾号不动),而不是替那笔账遮丑。
+     */
+    await page.evaluate(() =>
+      document.querySelector('[data-testid="providers-panel"] li input')?.focus(),
+    )
     const labeling = (await read(page)).rows[0]
     console.log(`      · 值「${labeling.input.value}」选区 [${labeling.input.selectionStart}, ${labeling.input.selectionEnd}]`)
     assert(labeling.input.value === 'prod', `c1 预填现值(「${labeling.input.value}」)`)

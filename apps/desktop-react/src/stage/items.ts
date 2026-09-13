@@ -17,10 +17,28 @@ export const SESSIONS_ITEM_ID = 'sessions'
 export const NOTIFICATIONS_ITEM_ID = 'notifications'
 
 /**
- * 模型服务这块瓦的 id。与上面两个同一条理由不许各写各的字面量:
- * 它被内容表与真机门(gate:a11y 的第三屏)两处引用。
+ * 从前那块「模型服务」瓦的 id。**它已经不在 `STAGE_ITEMS` 里了**(2026-09-13)。
+ *
+ * ── 为什么撤掉 ──────────────────────────────────────────────────────────
+ * 用户 09-13 原话:「把模型设置移到设置中去」。模型服务从此是**设置页里的一页**
+ * (`content/settings/pages.tsx` 的 `models` 那一行),而设置页为此从「分区不分页
+ * 的单列表单」改成「左导航 + 右页」—— 判词整段在那只文件的文件头。
+ * 这一行下面那段旧判词(「模型服务是另一块瓦,不是设置页里的一节」)当天被推翻:
+ * 它当时的理由是「两栏的面塞不进单列表单」,而今天治的正是那张表单本身。
+ *
+ * ── 这个常量为什么留着 ──────────────────────────────────────────────────
+ * 一个消费者:stage persist **v11** 的迁移(把存量档案里所有 `providers` 条目
+ * 清掉)。字面量散在两处会让「改一处漏一处」重演,所以名字留在这里 ——
+ * 与 `VIEWER_ITEM_ID` 逐字同一条处置。
  */
 export const PROVIDERS_ITEM_ID = 'providers'
+
+/**
+ * 设置这块瓦的 id。与上面几个同一条理由不许各写各的字面量:它被内容表、
+ * 设置页自己的深链口(`content/settings/store.openSettingsPage`)与真机门
+ * (`gate:a11y` / `gate:credential-pool` 点的都是 `dock-tile-settings`)引用。
+ */
+export const SETTINGS_ITEM_ID = 'settings'
 
 /**
  * 工作区(space)切换器这块瓦的 id。与上面三个同一条理由不许各写各的字面量:
@@ -82,7 +100,8 @@ export const VIEWER_ITEM_ID = 'viewer'
  *   sessions     MessagesSquare 面里是**一堆对话**。修前是 LayoutGrid,那是「网格
  *                               排布」——说的是版式不是内容,而且与工作区那块撞了族
  *   notifications Bell          同名同形
- *   providers    Boxes          几家服务商各自一箱模型;与 Layers(层叠)分得开
+ *   providers    —              **已退役**(2026-09-13 并入设置页,见 v11 迁移);
+ *                               它从前用的是 Boxes(几家服务商各自一箱模型)
  *   workspace    Layers         「一层一层的空间」。瓦面另有色底(见 Dock 的 face):
  *                               色承载「我在哪」,形承载「这是什么」——字标已退役
  *   settings     Settings       同名同形
@@ -196,10 +215,13 @@ export const STAGE_ITEMS: StageItemSpec[] = [
   // 未读**不在这张表里**:表是静态声明,未读是当下的事实(住在 services/notify-store)。
   // Dock 渲染时才把两者对上 —— 表里写死一个 dot 就等于让声明冒充状态。
   { id: NOTIFICATIONS_ITEM_ID, titleKey: 'item.notifications', level: 'space', dockGroup: 'global', icon: 'Bell' },
-  // 模型服务是**另一块瓦**,不是设置页里的一节:它有自己的左栏名册与右面分坑,
-  // 而设置页的版式是「分区不分页的单列表单」(见 content/SettingsMock.tsx 顶部)。
-  // 把一块两栏的面塞进那张单列表单,等于让两种版式在同一页里打架。
-  { id: PROVIDERS_ITEM_ID, titleKey: 'item.providers', level: 'space', dockGroup: 'global', icon: 'Boxes' },
+  /*
+   * **「模型服务」那一行撤了**(2026-09-13,用户裁定「把模型设置移到设置中去」)。
+   * 它从一块瓦降格成**设置页里的一页**(`content/settings/pages.tsx` 的 `models`),
+   * 而设置页为此分了页 —— 从前这里写着「把一块两栏的面塞进单列表单等于让两种版式
+   * 打架」,今天治的正是那张表单本身。
+   * 理由与两个残留消费者写在 `PROVIDERS_ITEM_ID` 上;存量档案由 persist v11 清。
+   */
   // 工作区切换器。icon 是**常态**(08-31 用户否决字标瓦面:字当图标与这套风格不符)——
   // 瓦面画的是「色底 + 这枚图标」:**色**承载「我在哪」,**形**承载「这是什么」。
   // 列表还没读到时就只剩这枚图标,那时候确实没有「我在哪」可画。
@@ -224,7 +246,7 @@ export const STAGE_ITEMS: StageItemSpec[] = [
    * 其余一律 space —— 缺省 = 保持今天的行为,不顺手替用户改一格。
    */
   { id: 'music', titleKey: 'item.music', level: 'space', dockGroup: 'global', icon: 'Music' },
-  { id: 'settings', titleKey: 'item.settings', level: 'app', dockGroup: 'global', icon: 'Settings' },
+  { id: SETTINGS_ITEM_ID, titleKey: 'item.settings', level: 'app', dockGroup: 'global', icon: 'Settings' },
   // 「所有应用」排在最后:它是**管理**入口,不是又一块日常要点的面。
   // 两条特殊都在这一行上,不散在代码里 —— 见 APPS_ITEM_ID 的注释。
   {

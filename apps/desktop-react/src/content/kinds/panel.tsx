@@ -6,7 +6,8 @@ import { t } from '../../i18n'
 import type { ContentRef } from '../../workbench/kinds'
 
 /**
- * **今天那 12 块瓦,整体登记为 `panel` 这一种**(设计 §1.1)。
+ * **今天那 11 块瓦,整体登记为 `panel` 这一种**(设计 §1.1;2026-09-13「模型服务」
+ * 退役,从 12 变成 11 —— 这个数是**日志里的一句话**,瓦表才是产地)。
  *
  * `key` = 瓦 id,`singleton: true` —— 一块瓦全应用只有一个实例,那是 `STAGE_ITEMS`
  * 与形态机从第一天起就成立的约定(`placements` 是按 id 记的一张表)。
@@ -28,7 +29,7 @@ registerContentKind(
     id: PANEL_KIND,
     singleton: true,
     /**
-     * **层级转问瓦表**(S1,dock-scope §2.2 / §2.4)。12 块瓦整体登记成这一种,
+     * **层级转问瓦表**(S1,dock-scope §2.2 / §2.4)。11 块瓦整体登记成这一种,
      * 而「工作区 / 设置 / 所有应用是 app 级、其余是 space 级」是**逐瓦**的事实 ——
      * 所以这一格是个函数,答案在 `stage/items.ts` 那张表的 `level` 一列上。
      *
@@ -36,6 +37,19 @@ registerContentKind(
      * 行为**,而「随人走」这种事不该由一格问不出主的 ref 白拿。
      */
     level: (ref: ContentRef) => findItem(ref.key)?.level ?? 'space',
+    /**
+     * **退役的瓦不再活在存量档案里**(2026-09-13,起因:模型服务并进设置页)。
+     *
+     * `sanitize` 从前只问得出「`panel` 这一种还在不在」,而一块瓦退役时种类好端端
+     * 地在、没了的是**那一行**;于是 `panel:providers` 活下来,在标签条上变成一格
+     * 点开是空白的 tab(`renderContent` 查不到表,答 null)。
+     *
+     * 判据就是瓦表本身 —— **这一种自己答得出**,核心层因此照旧不认识「瓦」。
+     * 它与 v11 那段迁移不是一件事的两份实现:迁移清的是 stage 那本**家具**账
+     * (浮窗矩形 / 位置记忆 / 隐藏表),这一口管的是**拼贴树**里那一格 tab,
+     * 而且它不靠版本号 —— 每次水合都跑(存档是不可信输入)。
+     */
+    exists: (ref: ContentRef) => findItem(ref.key) !== undefined,
     // 标题读的是瓦表上那个静态名;活标题(浏览器瓦的当前网页名之类)由
     // `stage/live-title` 盖在上面 —— 两半的分工写在 `ContentKind.title` 上。
     title: (ref: ContentRef) => {

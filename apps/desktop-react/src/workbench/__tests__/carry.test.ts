@@ -54,7 +54,7 @@ beforeEach(() => {
   registerContentKind({
     id: 'mixed',
     singleton: true,
-    // 「12 块瓦整体登记成一种,而层级是**逐瓦**的事实」那个形。
+    // 「11 块瓦整体登记成一种,而层级是**逐瓦**的事实」那个形。
     level: (ref) => (ref.key.startsWith('app-') ? 'app' : 'space'),
     title: (ref) => ({ text: ref.key }),
     icon: () => 'LayoutGrid',

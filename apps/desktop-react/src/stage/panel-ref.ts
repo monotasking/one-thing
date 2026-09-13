@@ -3,7 +3,8 @@ import type { ContentRef } from '../workbench/kinds'
 /**
  * **Dock 上那些瓦在拼贴台里的名字**(W4,设计 `apps/desktop-react/docs/workbench-2026-09.md` §1.1)。
  *
- * W1-a 把 12 块瓦整体登记成 `panel` 这一种内容(`content/kinds/panel.tsx`),但那时
+ * W1-a 把那几块瓦(当时 12 块,2026-09-13「模型服务」退役后 11 块)整体登记成 `panel`
+ * 这一种内容(`content/kinds/panel.tsx`),但那时
  * 树里还没有它们的消费者 —— 瓦仍旧走形态机那条老路。W4 把架子与浮窗换成树之后,
  * **瓦就是树里的一格 tab**,身份是 `{ kind: 'panel', key: <瓦 id> }`。
  *

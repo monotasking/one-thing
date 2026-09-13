@@ -888,15 +888,24 @@ export function carryByLevel(
 /* ── 存量档案的入口闸 ──────────────────────────────────────────────────── */
 
 export interface SanitizeOptions {
-  /** 认不认得这个种类名。认不得的 tab **整格丢掉**(见下)。 */
-  known(kind: string): boolean
+  /**
+   * **这一格今天还认得出吗**。认不得的 tab **整格丢掉**(见下)。
+   *
+   * 2026-09-13 从 `(kind: string)` 放宽成 `(ref)`:从前它只问得出「这**一种**还在
+   * 不在」,而一块退役的瓦(模型服务并进设置页)留下的 `panel:providers` 种类还在、
+   * 没了的是那**一个 key**。判据仍然是种类自述的
+   * (`kinds.isKnownContent` = 表上有这一种 ∧ 那一种认得这一个),这只文件照旧
+   * 一个种类名都不出现。
+   */
+  known(ref: ContentRef): boolean
   /** 这一格是不是单例。单例的同一个 refId 在整棵树上只留第一格。 */
   singleton(ref: ContentRef): boolean
   /**
    * **这一格背后那个东西还在吗**(第三口,W5-b 裁定 5)。缺席 = 一律当还在。
    *
    * ── 它为什么是**宿主注入**,不是种类自述 ─────────────────────────────
-   * `known` / `singleton` 问的是**这一种**(注册表答得出,与时间无关);
+   * `known` / `singleton` 问的是**同步答得出**的那一层(注册表 + 种类自述,
+   * 与时间无关 —— `known` 2026-09-13 放宽到按 ref 问,答案仍旧全在表上);
    * 这一口问的是**这一个**——「`session:abc` 那条会话被删了没有」,而答案住在
    * 会话列表那本账上,列表到了才有判据。种类自己去问数据源 = 树的入口闸依赖
    * 一次网络往返,那正是「merge 是同步的、第一帧画的就是这个布局」要避开的。
@@ -913,9 +922,10 @@ export interface SanitizeOptions {
  * `prune + 未知 kind 剔除`)。
  *
  * 它治的是三件真会发生的事:
- *  ① **未知种类**:插件卸载了 / 版本回退了,档案里留着 `terminal:` 的 tab ——
- *    渲染时查不到表,今天的 `renderContent` 会答 null,而 tab 条上会留一格
- *    点不开的标签。剔掉整格是唯一诚实的处理。
+ *  ① **认不出的那一格**:插件卸载了 / 版本回退了,档案里留着 `terminal:` 的 tab;
+ *    或者种类还在、**那一个**没了(一块退役的瓦留下的 `panel:providers`,
+ *    2026-09-13)。两种都是渲染时查不到东西,`renderContent` 答 null,而 tab 条上
+ *    会留一格点不开的标签。剔掉整格是唯一诚实的处理。
  *  ② **单例重复**:两片叶里各有一个 `panel:files` —— 单例的定义就是不许这样,
  *    留第一格。
  *  ③ **结构烂了**:活动下标越界、空叶、只剩一支的 split、ratio 是 NaN。
@@ -941,7 +951,7 @@ function scrub(node: PaneNode, opts: SanitizeOptions, seen: Set<ContentRefId>): 
     const kept: number[] = []
     const tabs = node.tabs.filter((tab, at) => {
       const ok = (() => {
-        if (!opts.known(tab.kind)) return false
+        if (!opts.known(tab)) return false
         // 背后那个东西没了(被删掉的会话)= 这一格整个丢掉。缺席 = 不问。
         if (opts.alive && !opts.alive(tab)) return false
         if (!opts.singleton(tab)) return true

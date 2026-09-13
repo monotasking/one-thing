@@ -1,0 +1,284 @@
+/* ── 设置页:左导航 + 右页 ──────────────────────────────────────────────────
+ * 版式从「分区不分页的单列表单」改成 macOS 系统设置那种两栏(2026-09-13),
+ * 理由整段写在 `settings/pages.tsx` 的文件头(一块要吃满高度的两栏面塞进单列
+ * 表单只能得到嵌套滚动)。
+ *
+ * 这一族**行形**(`.form` / `.section*` / `.settingRow*` / `.stub`)与快捷键那一节
+ * 的 `.key*` 是从 `content/mocks.module.css` **原样搬来**的:那只文件的身份是
+ * 「mock 内容的局部演示色」(今天只剩 diff 那一族),而设置页的行形早就不是演示
+ * —— 它是这一页真正的版式,还被 `BrowserSettings` / `PermissionGrants` /
+ * `KeymapSettings` 三处消费。一族词汇一个家。
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/*
+ * 页壳:左边一条定宽导航,右边吃剩下的。
+ *
+ * `container-type: inline-size` 是**挤压四律第四条要的自述**:这块面会被摆进
+ * 舞台 / 浮窗 / 240 宽的架子三种形态,而「此刻分得多宽」只有它自己量得出来
+ * (宿主那一层的宽里还掺着檐与边)。窄档那一段在文件末尾。
+ */
+.settings {
+  height: 100%;
+  display: flex;
+  container-type: inline-size;
+  container-name: settings;
+  background: var(--surface-0);
+}
+
+.nav {
+  flex: none;
+  width: var(--settings-nav-w);
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  border-right: 1px solid var(--line-1);
+}
+
+/*
+ * 一行导航。左对齐 + 截断:页名是结构行,窄档里只截断不换行(挤压纪律)。
+ *
+ * 三档底色与 `workspace/components/WorkspacePalette.module.css` 的 `.row` 一族
+ * 逐字同源(hover = `--st-hover` 纯视觉,选中 = `--st-sel`,叠在一起 =
+ * `--st-sel-hover`)—— 照抄不发明。
+ */
+.navItem {
+  flex: none;
+  min-width: 0;
+  padding: var(--sp-2) var(--sp-2);
+  border-radius: var(--r-1);
+  text-align: left;
+  font-size: var(--fs-label);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.navItem:hover {
+  background: var(--st-hover);
+}
+
+.navItemOn {
+  background: var(--st-sel);
+  color: var(--text-1);
+}
+
+.navItemOn:hover {
+  background: var(--st-sel-hover);
+}
+
+/*
+ * 右边那一页。两档:
+ *  · `form` —— 页这一层管滚动(内边距由里面那层 `.form` 给);
+ *  · `fill` —— 内容吃满、**自己**管滚动,页这一层不滚(判词在 `pages.tsx` 的
+ *    `layout` 那一格上)。里面那块面拿 `flex: 1; min-height: 0` 才有高度可吃。
+ */
+.page {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.page[data-layout='fill'] {
+  overflow: hidden;
+  display: flex;
+}
+
+.page[data-layout='fill'] > * {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ── 一页里的行形 ─────────────────────────────────────────────────────────
+ * 页 = 若干个领域节;节之间的间距比节内行距大一档,分组靠的是这个差值而不是分隔线。 */
+.form {
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* 节标:11px 粗体 + 字距,顶上一条细线把它和上一节隔开(第一节不画)。 */
+.sectionTitle {
+  margin: 0;
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--line-1);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--ls-section);
+  color: var(--text-3);
+}
+
+/*
+ * 设置面的一行:**横排**(左边是它是什么,右边是关于它的那一个决定)。
+ *
+ * 09-02 批 6 从 `.field` 一族改到这个名字。判据早就写在 `ui/Field.module.css`
+ * 的文件头里:那件的形是**竖排**(标签在上、控件在下、下面还能挂 hint 与
+ * error),配方抄自 CustomProviderDialog;横排的这一族「不是这件的形」。
+ * 同名不同形正是 `shared-vocab-css` 那条门要抓的病 —— 硬套过去会把一整面
+ * 设置行从横排改成竖排,那不是收编,那是改版。所以改的是名字。
+ */
+.settingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+
+.settingRowLabel {
+  font-size: var(--fs-label);
+  color: var(--text-1);
+}
+
+.settingRowHint {
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+/* 整段说明:跟在它解释的那一行底下,所以往上收一格抵掉节内的 gap。 */
+.settingRowNote {
+  margin-top: calc(var(--sp-3) * -1);
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+/* 整节的说明(节标底下 / 节末尾):不贴着某一行,所以不往上收。 */
+.sectionNote {
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+/*
+ * 工作目录那一行的占位块。`min-width: 0` 是搬家时补上的那一格收缩下界(律一)
+ * —— 它 `flex: 1` 却没有解开下界,从 08-30 起就挂在 squeeze 基线上;一块空占位
+ * 本来就没有什么内容宽度要守,补上即结清。
+ */
+.stub {
+  height: var(--btn-sm);
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-1);
+  background: var(--surface-1);
+}
+
+/* ── 快捷键那一页 ─────────────────────────────────────────────────────────
+ * 键位面是一颗按钮(点它进录制态),「恢复默认」是它的兄弟而不是它的孩子 ——
+ * 嵌套 button 既是禁令也确实点不动。录制态只换底色与描边,尺寸一格不动:
+ * 无位移原则在这儿尤其要紧,因为用户此刻正盯着这一行等它变。
+ * ────────────────────────────────────────────────────────────────────── */
+.keyRight {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.keyConflict {
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+.keySlot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-1);
+  min-width: var(--key-slot-w);
+  height: var(--btn-sm);
+  padding: 0 var(--sp-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-1);
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.keySlot:hover {
+  background: var(--st-hover);
+}
+
+.keySlot:focus-visible {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 0;
+}
+
+.keySlotOn,
+.keySlotOn:hover {
+  background: var(--st-sel);
+  border-color: var(--accent-ring);
+}
+
+.keyMuted {
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+/* ── 一条命令的**好几枚键面**(K5)──────────────────────────────────────
+ * 一枚键面 = 几顶 Kbd 帽子 + 一颗 ×(删这一枚)。× 与帽子是**兄弟**,外面这层
+ * 只负责把它们粘成视觉上的一枚 —— 与 ui/FilterChip 的 `.wrap` 逐字同一手
+ * (嵌套 button 既是禁令也确实点不动)。
+ * ────────────────────────────────────────────────────────────────────── */
+.keyFace {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+/* 槽尾那颗 ＋:**追加**一枚键面。尺寸按 Kbd 帽子那一档,不抢戏。 */
+.keyAdd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--sp-5);
+  height: var(--sp-5);
+  border-radius: var(--r-1);
+  color: var(--text-3);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.keyAdd:hover {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+.keyAdd:focus-visible {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 0;
+}
+
+/* 文件选择器那一枚 input:藏起来,由「导入」那颗钮代点(同 composer 附件口那一格)。 */
+.hiddenFile {
+  display: none;
+}
+
+/* ── 窄档:导航从左栏翻成顶上一条横滚 ──────────────────────────────────────
+ * **这是挤压四律里的自述**:设置页被钉进 240 宽的架子时,一条 168 的左栏会把
+ * 右边那一页挤到剩 70 —— 那时候「左导航 + 右页」已经不是这块面的形了。
+ * 阈值 560 = 导航 168 + 一页放得下一行「标签 + 控件」的最小宽。
+ * ────────────────────────────────────────────────────────────────────── */
+@container settings (max-width: 560px) {
+  .settings {
+    flex-direction: column;
+  }
+
+  .nav {
+    width: auto;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--line-1);
+  }
+}

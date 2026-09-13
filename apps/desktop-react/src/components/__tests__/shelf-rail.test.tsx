@@ -220,6 +220,8 @@ describe('三处入口写的是同一格', () => {
 
   it('入口三:设置页 Dock 节那一行', () => {
     render(<SettingsMock />)
+    // 2026-09-13 分页:设置页开出来停在**通用**页,Dock 那一节在「Dock」页里。
+    act(() => void fireEvent.click(screen.getByTestId('settings-nav-dock')))
     const group = screen.getByRole('radiogroup', { name: '收起后的把手' })
     act(() => {
       fireEvent.click(within(group).getByText('隐藏'))

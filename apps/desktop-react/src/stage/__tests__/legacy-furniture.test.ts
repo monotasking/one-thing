@@ -30,7 +30,14 @@ import type { Placement, ShelfSide } from '../types'
  * 之外的推演抓回来的。
  */
 
-/** 一份 v8 的家具:两条架子各 3 个 tab + 一扇浮窗 + 三条记忆。 */
+/**
+ * 一份 v8 的家具:两条架子各 3 个 tab + 一扇浮窗 + 三条记忆。
+ *
+ * 那扇浮窗**2026-09-13 从 `providers` 换成了 `notifications`**:`providers` 那块瓦
+ * 当天退役,v11 会把它从档案里逐格清掉 —— 拿一块被后一段迁移清掉的瓦当这一组
+ * 用例的样本,量的就不再是「v8 → v9 住处搬家」这件事了。换的只是样本 id,
+ * 这一组的判据一个字没动。v11 自己那一段的判据在 `migrate-v11.test.ts`。
+ */
 function v8Furniture() {
   const shelves = emptyShelves() as unknown as Record<ShelfSide, Record<string, unknown>>
   return {
@@ -41,10 +48,10 @@ function v8Furniture() {
       browser: { kind: 'edge', side: 'left' },
       search: { kind: 'edge', side: 'left' },
       sessions: { kind: 'edge', side: 'left' },
-      providers: { kind: 'float' },
+      notifications: { kind: 'float' },
     } as Record<string, Placement>,
-    floats: { providers: { x: 40, y: 60, w: 880, h: 520 } },
-    floatOrder: ['providers'],
+    floats: { notifications: { x: 40, y: 60, w: 880, h: 520 } },
+    floatOrder: ['notifications'],
     shelves: {
       ...shelves,
       right: { tabs: ['files', 'diff', 'terminal'], activeId: 'diff', thickness: 420, collapsed: false },
@@ -52,7 +59,7 @@ function v8Furniture() {
     },
     memory: {
       files: { kind: 'edge', side: 'right', index: 0 },
-      providers: { kind: 'float', rect: { x: 40, y: 60, w: 880, h: 520 } },
+      notifications: { kind: 'float', rect: { x: 40, y: 60, w: 880, h: 520 } },
       apps: { kind: 'cover' },
     },
   }
@@ -87,9 +94,9 @@ describe('v8 → v9:摘那一头', () => {
     expect(shelves.right).toEqual({ thickness: 420, collapsed: false })
     expect(shelves.left).toEqual({ thickness: 360, collapsed: true })
     // 几何那一半一个字不动:浮窗矩形、置顶序、位置记忆都还在 stage 的档案里。
-    expect(space.floats).toEqual({ providers: { x: 40, y: 60, w: 880, h: 520 } })
-    expect(space.floatOrder).toEqual(['providers'])
-    expect(Object.keys(space.memory as object).sort()).toEqual(['apps', 'files', 'providers'])
+    expect(space.floats).toEqual({ notifications: { x: 40, y: 60, w: 880, h: 520 } })
+    expect(space.floatOrder).toEqual(['notifications'])
+    expect(Object.keys(space.memory as object).sort()).toEqual(['apps', 'files', 'notifications'])
     // 偏好留在顶层(它不是家具)。
     expect(out.dockEdge).toBe('left')
   })
@@ -112,7 +119,7 @@ describe('v8 → v9:接那一头', () => {
   it('每条架子折成一棵单叶树,tab 次序原样,activeId 翻成叶内下标', () => {
     const { handed } = migrate(v8Archive())
     const regions = regionsFromLegacyFurniture(handed.get(DEFAULT_SPACE_ID), leafId())
-    expect(Object.keys(regions).sort()).toEqual(['edge:left', 'edge:right', 'float:providers'])
+    expect(Object.keys(regions).sort()).toEqual(['edge:left', 'edge:right', 'float:notifications'])
 
     const right = regions['edge:right']
     expect(tabsOf(right)).toEqual(['panel:files', 'panel:diff', 'panel:terminal'])
@@ -126,7 +133,7 @@ describe('v8 → v9:接那一头', () => {
   it('每扇浮窗折成一棵 `float:<瓦 id>` 的单叶树 —— 窗 id 就是瓦 id,矩形表因此不用改', () => {
     const { handed } = migrate(v8Archive())
     const regions = regionsFromLegacyFurniture(handed.get(DEFAULT_SPACE_ID), leafId())
-    expect(tabsOf(regions['float:providers'])).toEqual(['panel:providers'])
+    expect(tabsOf(regions['float:notifications'])).toEqual(['panel:notifications'])
   })
 
   it('活动 tab 已经不在名单上 → 落在末位,不留悬空下标', () => {
@@ -158,7 +165,7 @@ describe('v8 → v9:折进拼贴台那本账', () => {
       'center',
       'edge:left',
       'edge:right',
-      'float:providers',
+      'float:notifications',
     ])
     expect(tabsOf(store.regions['edge:right'])).toEqual([
       'panel:files',
@@ -168,7 +175,7 @@ describe('v8 → v9:折进拼贴台那本账', () => {
     expect(Object.keys(store.byWorkspace['ws-b'].regions).sort()).toEqual([
       'edge:left',
       'edge:right',
-      'float:providers',
+      'float:notifications',
     ])
     // 折叠不造隐藏项:这一次搬的是「摆在哪」,不是「藏起来的那些」。
     expect(store.hidden).toEqual([])

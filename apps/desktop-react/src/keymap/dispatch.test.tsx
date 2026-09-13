@@ -211,10 +211,17 @@ describe('规则 1 / 2:焦点跟着「打开」走(09-03 R2)', () => {
 })
 
 describe('设置页里的录制', () => {
-  /** 设置面在舞台上,快捷键区就在里面 —— 走真路径,不单独挂一个测试用的壳。 */
+  /**
+   * 设置面在舞台上,快捷键区就在里面 —— 走真路径,不单独挂一个测试用的壳。
+   *
+   * 2026-09-13 分页之后设置页开出来停在**通用**页,所以这里多点一下导航 ——
+   * 点的是壳真正画出来的那颗钮(`settings-nav-keymap`),不是直接写 store:
+   * 「走真路径」那句话包括导航。
+   */
   function openSettings() {
     render(<AppShell />)
     act(() => useStageStore.getState().openAs('settings', { kind: 'stage' }))
+    act(() => void fireEvent.click(screen.getByTestId('settings-nav-keymap')))
   }
 
   it('录制态吃掉这一下按键:录 ⌘⇧F 的时候检索面板不会真的弹出来,而是报冲突', () => {

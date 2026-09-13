@@ -25,7 +25,7 @@ import type { RegionId } from './regions'
  * 判据:**凡「按种类枚举」的地方改成「种类自述、别人读表」**。这只文件是那张表。
  *
  * ── 与 `stage/items.ts` 的关系 ────────────────────────────────────────────
- * `STAGE_ITEMS` 是 Dock 上那 12 块瓦的**静态声明**,它整体登记成 `panel` 这一种
+ * `STAGE_ITEMS` 是 Dock 上那 11 块瓦的**静态声明**,它整体登记成 `panel` 这一种
  * (`content/kinds/panel.tsx`,`key` = 瓦 id,`singleton: true`)。查看器从「一块瓦」
  * 降格为 `file` 这一种(`key` = 绝对路径,不是单例:两个文件两份实例),
  * 聊天区登记成 `session`(W5-b:`key` = 会话 id,**不是单例** —— 两条会话可以
@@ -161,7 +161,7 @@ export interface ContentKind {
    * ── 它为什么许**按 key 答**(S1,dock-scope §2.4 / §3)────────────────────
    * 从前这一格是种类级的布尔,读法是 `isSingletonContentKind(id)`。dock-scope
    * §6 演练三问的是「『搜索』瓦想同一空间开两份并排」:那是**一块瓦**的事,而
-   * 12 块瓦整体登记成 `panel` 一种 —— 种类级布尔答不出「这一种里只有这一个可以
+   * 11 块瓦整体登记成 `panel` 一种 —— 种类级布尔答不出「这一种里只有这一个可以
    * 多开」,于是那条能力就得去动 `tree.sanitize` 的去重,也就是**惊动核心层**。
    * 放宽成「许按 ref 答」之后,那条能力是 `panel.tsx` 一行 + 瓦表一格。
    *
@@ -183,7 +183,7 @@ export interface ContentKind {
    * app 级格剥掉 —— 它们是上一次离场时留下的旧影)。两只纯函数在 `./tree.ts`,
    * 接线在 `./store.ts` 与 `../stage/store.ts` 各一处 `carry`。
    *
-   * 与 `singleton` 同族许**按 ref 答**:12 块瓦整体登记成 `panel` 一种,而「工作区 /
+   * 与 `singleton` 同族许**按 ref 答**:11 块瓦整体登记成 `panel` 一种,而「工作区 /
    * 设置 / 所有应用是 app 级、其余是 space 级」是**逐瓦**的事实(`panel.tsx` 转问瓦表)。
    *
    * **一种内容只有一个 level**(dock-scope §6 演练四):它是内容的自述,不是空间的
@@ -331,6 +331,29 @@ export interface ContentKind {
    */
   restore?(snapshot: unknown): Promise<ContentRef | null>
   /**
+   * **这一个实例今天还认得出吗**(2026-09-13)。缺席 = 这一种的每一格都算认得出。
+   *
+   * ── 它治的是哪一句 ────────────────────────────────────────────────────
+   * `tree.sanitize` 从前只问 `known(kind)` ——「这**一种**还在不在」。而一块瓦
+   * 退役(模型服务并进设置页)之后,存量档案里那格 `panel:providers` 的**种类**
+   * 好端端地在,没了的是那一个 **key**:于是它活下来,在标签条上变成一格点开
+   * 是空白的 tab。「剔掉整格是唯一诚实的处理」这句话本来就写在 `sanitize` 的
+   * ① 上,只是从前问不出这一层。
+   *
+   * ── 为什么是自述而不是核心层一句 `if` ─────────────────────────────────
+   * 判据照旧是「**能力自述、别人读表**」:核心层不知道「瓦」是什么,更不知道
+   * 「瓦表里还有没有这一行」。`panel` 那一种自己答得出(`findItem(key)`),
+   * 下一种有同样需求的内容(一个退役了的资源 scheme?)也只改它自己那一个模块。
+   *
+   * ── 谁**不该**声明它 ─────────────────────────────────────────────────
+   * `file` / `session` / `terminal` / `dir` 这些:它们的 key 存不存在是**异步
+   * 事实**(要问磁盘、问后端),而这一口是**同步**的、每次水合都跑。会话那一层
+   * 对应的口是 `SanitizeOptions.alive` —— 由发起清洗的那一拍**注入**,因为答案
+   * 住在列表那本账上(判词整段在那一格上)。两口的分界就是「问这一种」与
+   * 「问这一个、而且答案在别人手里」。
+   */
+  exists?(ref: ContentRef): boolean
+  /**
    * **这一种在标签条上要更宽的上限**(W7-t / B6,设计 v3 §6:「最大宽度 260px」)。
    * 缺席 = 常规上限。它经 `LeafStrip.tabSpecOf` 变成 `TabSpec.wide` 那一格事实;
    * `ui/Tabs` 与样式表照旧认不得任何一种内容(判词在 `TabSpec.wide` 上)。
@@ -449,9 +472,24 @@ export function flattenContent(ref: ContentRef, depth = 4): ContentRef[] {
   return parts.flatMap((part) => flattenContent(part, depth - 1))
 }
 
-/** 认不认得这个种类名。`tree.sanitize` 拿它剔存量档案里的未知种类。 */
+/** 认不认得这个种类名。 */
 export function isKnownContentKind(id: string): boolean {
   return REGISTRY.has(id)
+}
+
+/**
+ * **这一格内容今天还认得出吗** —— 两问合一:种类在不在表上,以及那一种自己
+ * 认不认得这一个实例(`ContentKind.exists`,缺席 = 都认)。
+ *
+ * `tree.sanitize` 与 `store.normalizeHidden` 拿它剔存量档案里的死条目。它**不靠
+ * 版本号**,每一次水合都跑 —— 与「存档是不可信输入」同源(判例
+ * `keymap/persisted.ts`):一块瓦昨天退役、今天档案里还留着它,那不是一次迁移
+ * 能一劳永逸的事(别的空间那一份、别人机器上那一份、回退过一版再上来的那一份)。
+ */
+export function isKnownContent(ref: ContentRef): boolean {
+  const kind = REGISTRY.get(ref.kind)
+  if (!kind) return false
+  return kind.exists?.(ref) ?? true
 }
 
 /**

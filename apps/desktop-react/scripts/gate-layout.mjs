@@ -747,7 +747,7 @@ const allTabs = (layout) => [
  * (`Dock.tsx` 的 `menuLauncherRows` 那一支,判词在 `stage/launchers.ts` 文件头),
  * 于是 `pickFromTileMenu(…, /^Left$/)` 再也点不到东西 —— 这道门从 T1 那一刻起
  * 就是红的,而 T1 / B2 的交卷都没跑它。今天换成仍旧是**普通瓦**的那几块
- * (`music` / `search` / `notifications`),量的东西一格没变:这道门问的是
+ * (`music` / `search` / `notifications` / `diff`),量的东西一格没变:这道门问的是
  * 「家具摆好之后关窗再起还在不在」,与哪一块瓦被摆无关。
  * 启动瓦自己的落点由 `gate:terminal` / `gate:browser` 各自的门管。
  */
@@ -762,7 +762,14 @@ async function sceneRestart(store, udd) {
     if (!(await pickFromTileMenu(handle.page, 'music', /^Left$|钉到左边|左栏/))) {
       throw new Error('Dock 菜单里没有「Left」那一行')
     }
-    if (!(await pickFromTileMenu(handle.page, 'providers', /^Float$|浮窗/))) {
+    /*
+     * 那扇浮窗 2026-09-13 从 `providers`(退役了)换成 **`search`** 而不是
+     * `notifications`:**这一场的 handle 会交给 ⑦(全屏 + A9)接着用**
+     * (`main()` 里那句 `sceneFull(carried)`),而 A9 那一条的前提正是
+     * 「`notifications` 这一场之前没人碰过它 —— 既没有记忆也没有出厂档」。
+     * 拿它当这一场的浮窗会把那条前提当场作废。
+     */
+    if (!(await pickFromTileMenu(handle.page, 'search', /^Float$|浮窗/))) {
       throw new Error('Dock 菜单里没有「Float」那一行')
     }
     before = await read(handle.page)
@@ -958,7 +965,7 @@ async function sceneBudget(store, udd) {
       ['diff', /^Right$/],
       ['music', /^Left$/],
       ['search', /^Top$/],
-      ['providers', /^Bottom$/],
+      ['notifications', /^Bottom$/],
     ]) {
       await pickFromTileMenu(page, tile, label)
     }
@@ -1104,7 +1111,7 @@ async function sceneFloats(store, udd) {
   try {
     const { page, app, cdp } = handle
     await setSize(app, page, SIZES[0].w, SIZES[0].h)
-    await pickFromTileMenu(page, 'providers', /^Float$/)
+    await pickFromTileMenu(page, 'notifications', /^Float$/)
     const wide = await read(page)
     const first = wide.floats[0]
     check('开出来一扇浮窗', Boolean(first), JSON.stringify(first?.rect))
@@ -1155,8 +1162,8 @@ async function sceneFloats(store, udd) {
     )
     check(
       '缩窗:记忆一个字没写(裁定 4 —— 记忆只由手势与落定写)',
-      rectEq(narrow.persist.stageMemory?.providers?.rect, wide.persist.stageMemory?.providers?.rect),
-      `${JSON.stringify(wide.persist.stageMemory?.providers?.rect)} → ${JSON.stringify(narrow.persist.stageMemory?.providers?.rect)}`,
+      rectEq(narrow.persist.stageMemory?.notifications?.rect, wide.persist.stageMemory?.notifications?.rect),
+      `${JSON.stringify(wide.persist.stageMemory?.notifications?.rect)} → ${JSON.stringify(narrow.persist.stageMemory?.notifications?.rect)}`,
     )
     await setSize(app, page, SIZES[0].w, SIZES[0].h)
     const back = await read(page)
@@ -1341,7 +1348,7 @@ async function sceneSpawn(store, udd) {
     await setSize(app, page, SIZES[0].w, SIZES[0].h)
     // 这四块瓦既没有记忆也没有出厂档 → 落在全局默认档(浮窗)。`files` 不在其中:
     // 它是启动瓦,点它走的是另一支(判词在 `stage/open-item.ts`)。
-    for (const tile of ['diff', 'music', 'search', 'providers']) {
+    for (const tile of ['diff', 'music', 'search', 'notifications']) {
       await clickTile(page, tile)
     }
     const many = await read(page)
@@ -1681,10 +1688,10 @@ async function sceneCancel(store, udd, sessions) {
      * 反证:把 `FloatWindow.begin` 里那只 `cancel: clearLive` 挖掉 → 「窗子回去了」
      * 当场红(它停在拖到一半那个位置上)。
      */
-    await pickFromTileMenu(page, 'providers', /^Float$/)
-    const floatRect = (layout) => layout.floats.find((f) => f.id === 'providers')?.rect ?? null
+    await pickFromTileMenu(page, 'notifications', /^Float$/)
+    const floatRect = (layout) => layout.floats.find((f) => f.id === 'notifications')?.rect ?? null
     const winBefore = floatRect(await read(page))
-    const winGrab = await floatDragBlank(page, 'providers')
+    const winGrab = await floatDragBlank(page, 'notifications')
     check('抓得到那扇浮窗的标题栏空白处', Boolean(winGrab), JSON.stringify(winGrab))
     if (winBefore && winGrab) {
       /* 往**左下**走:躲开 `SNAP_BAND`(落在带里松手 = 钉成架子,那是另一件事)。 */
@@ -1711,7 +1718,7 @@ async function sceneCancel(store, udd, sessions) {
         rectEq(floatRect(await read(page)), winBefore),
         JSON.stringify(floatRect(await read(page))),
       )
-      const memory = (await read(page)).persist.stageMemory?.providers?.rect
+      const memory = (await read(page)).persist.stageMemory?.notifications?.rect
       check(
         '档案里那扇窗的记忆也一个字没写',
         !memory || rectEq(memory, winBefore),
@@ -1734,7 +1741,7 @@ async function sceneCancel(store, udd, sessions) {
      * 的手势)。
      */
     const closed = await page.evaluate(() => {
-      const body = document.querySelector('[data-float-body="providers"]')
+      const body = document.querySelector('[data-float-body="notifications"]')
       const btn = body?.closest('[role="dialog"]')?.querySelector('[aria-label="Close this window"]')
       if (!(btn instanceof HTMLElement)) return false
       btn.click()
@@ -1824,7 +1831,7 @@ async function sceneShelfTabs(store, udd) {
      * 四块瓦挑的是**菜单里有「Right」那一行**的那几块:`files`(目录)与
      * `workspace` 的右键菜单是另一张表(「打开一个目录…」/ 空间清单),没有落点行。
      */
-    for (const tile of ['diff', 'music', 'search', 'providers']) {
+    for (const tile of ['diff', 'music', 'search', 'notifications']) {
       if (!(await pickFromTileMenu(page, tile, /^Right$/))) {
         throw new Error(`Dock 菜单里没有「Right」那一行(瓦:${tile})`)
       }

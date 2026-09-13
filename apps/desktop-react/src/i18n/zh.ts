@@ -282,8 +282,27 @@ export const zh = {
   'settings.sectionDock': 'Dock',
   'settings.sectionKeymap': '快捷键',
 
+  /* ── 设置页分页(2026-09-13)。导航行与页标题共用一个键。 ───────────────
+   * 「外观」是**页**,底下两节是「主题」与「阅读」;`settings.sectionReading`
+   * 的值因此从「外观 · 阅读」改成「阅读」——它已经住在外观页里,再写一遍
+   * 「外观」是重复。键没动(它有别的读者:壳里那句节标)。 */
+  'settings.pageAppearance': '外观',
+
+  /* ── 外观·主题(2026-09-13)。明暗一行 + 两档各一套主题。 ───────────────
+   * 三行都即点即生效(与阅读四轴同一条纪律,没有保存钮)。 */
+  'settings.sectionTheme': '主题',
+  'settings.themeMode': '明暗',
+  'settings.themeModeHint': '跟随系统时按系统明暗在两套主题间切换',
+  'settings.themeModeSystem': '跟随系统',
+  'settings.themeModeLight': '浅色',
+  'settings.themeModeDark': '深色',
+  'settings.themeLight': '浅色主题',
+  'settings.themeDark': '深色主题',
+  'settings.themeLoadFailed': '主题设置读取失败',
+  'settings.themeSaveFailed': '主题设置保存失败',
+
   /* ── 外观·阅读(08-31)。四根正交的轴,只管聊天正文列。 ───────────────── */
-  'settings.sectionReading': '外观 · 阅读',
+  'settings.sectionReading': '阅读',
   'settings.readingFs': '字号',
   /* 档名说的是「相对大小」不是像素数:用户挑的是「这样读着舒不舒服」,
    * 不是「13 还是 14」。像素数留在 tokens.css 里。 */

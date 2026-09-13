@@ -50,8 +50,14 @@ const BRIDGE_ATTRIBUTE = 'data-theme-bridge'
  * `data-theme-bridge` 那条纪律逐字同源。
  */
 const COLOR_MODE_ATTRIBUTE = 'data-color-mode'
-/** 与旧壳 themes store 同一个兜底 id(`DEFAULT_THEME_ID`)。 */
-const DEFAULT_THEME_ID = 'flexoki'
+/**
+ * 与旧壳 themes store 同一个兜底 id(`DEFAULT_THEME_ID`)。
+ *
+ * **导出**是 2026-09-13 设置页「主题」那一节要的:那一节也得在
+ * `general.{light,dark}ThemeId` 缺席时说出一个 id,而「兜底是哪一个」
+ * 只该有一个产地 —— 两处各写一个 `'flexoki'` 字面量,改一处漏一处。
+ */
+export const DEFAULT_THEME_ID = 'flexoki'
 
 export type ThemeDecision = { themeId: string; mode: 'dark' | 'light' }
 

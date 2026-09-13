@@ -8,15 +8,14 @@ import { SettingsMock } from './SettingsMock'
 import { SearchPanel } from '../search/components/SearchPanel'
 import { NotificationsPanel } from './NotificationsPanel'
 import { ExposeView } from '../expose/components/ExposeView'
-import { ProviderSettingsPanel } from '../providers/components/ProviderSettingsPanel'
 import { WorkspaceOverview } from '../workspace/components/WorkspaceOverview'
 import { AppsPanel } from './AppsPanel'
 import { MusicPanel } from './MusicPanel'
 import {
   APPS_ITEM_ID,
   NOTIFICATIONS_ITEM_ID,
-  PROVIDERS_ITEM_ID,
   SESSIONS_ITEM_ID,
+  SETTINGS_ITEM_ID,
   WORKSPACE_ITEM_ID,
 } from '../stage/items'
 
@@ -44,7 +43,7 @@ const RENDERERS: Record<string, () => ReactNode> = {
    * 降格成**启动瓦**(`content/terminal-launcher.tsx`):点它 = 在当前会话那个
    * 目录开一格,右键 = 活着的那几格 + 新建两条。判例与 `files` 那一行逐字相同。
    */
-  settings: SettingsMock,
+  [SETTINGS_ITEM_ID]: SettingsMock,
   search: SearchPanel,
   /*
    * 音乐(音乐收尾 · 壳半边)。它是一块**普通的瓦**:面里每一颗按钮走的都是
@@ -55,7 +54,13 @@ const RENDERERS: Record<string, () => ReactNode> = {
   music: MusicPanel,
   [NOTIFICATIONS_ITEM_ID]: NotificationsPanel,
   [SESSIONS_ITEM_ID]: ExposeView,
-  [PROVIDERS_ITEM_ID]: ProviderSettingsPanel,
+  /*
+   * **`providers` 那一行撤了**(2026-09-13,用户裁定「把模型设置移到设置中去」)。
+   * 模型服务不再是一块瓦,它是**设置页里的一页**(`content/settings/pages.tsx` 的
+   * `models` 那一行,`layout: 'fill'`)。于是 Dock 上那块瓦、这张表里那一行两样
+   * 一起退役 —— 与 W1 「查看器」那一段逐字同一条处置;存量档案里残留的
+   * `panel:providers` 由 stage persist v11 与 `ContentKind.exists` 两头清。
+   */
   // 工作区总览 = 切换器那块瓦的内容。它挂在这张表里而不是自成一个浮层,
   // 正是「切换器 = 一块普通 Dock 瓦,零新原语」这条裁定的字面落地。
   [WORKSPACE_ITEM_ID]: WorkspaceOverview,

@@ -226,8 +226,23 @@ export const en: Record<MessageKey, string> = {
   'settings.sectionDock': 'Dock',
   'settings.sectionKeymap': 'Shortcuts',
 
+  /* ── settings pages (2026-09-13). Nav row and page title share a key. ── */
+  'settings.pageAppearance': 'Appearance',
+
+  /* ── appearance · theme (2026-09-13) ──────────────────────────────── */
+  'settings.sectionTheme': 'Theme',
+  'settings.themeMode': 'Light / Dark',
+  'settings.themeModeHint': "Follows the system's light/dark setting when set to System",
+  'settings.themeModeSystem': 'System',
+  'settings.themeModeLight': 'Light',
+  'settings.themeModeDark': 'Dark',
+  'settings.themeLight': 'Light theme',
+  'settings.themeDark': 'Dark theme',
+  'settings.themeLoadFailed': 'Could not load theme settings',
+  'settings.themeSaveFailed': 'Could not save theme settings',
+
   /* ── appearance · reading (08-31) ─────────────────────────────────── */
-  'settings.sectionReading': 'Appearance · Reading',
+  'settings.sectionReading': 'Reading',
   'settings.readingFs': 'Text size',
   'settings.readingFsSm': 'Small',
   'settings.readingFsMd': 'Default',

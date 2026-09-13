@@ -24,7 +24,7 @@ import { DOCK_WAKE_DWELL_MS } from '../components/motion'
  * 而那只文件本身是一片**零运行期 import 的叶子**(它对 `./types` 是 `import type`,
  * 编译后整条边消失)。除此之外 items 仍旧只有类型边。
  */
-import { VIEWER_ITEM_ID } from './items'
+import { PROVIDERS_ITEM_ID, VIEWER_ITEM_ID } from './items'
 import { foldFlatIntoDefaultSpace } from '../workspace/per-space'
 import type { PerSpaceState, SpaceLedger } from '../workspace/per-space'
 import { DEFAULT_SPACE_ID } from '../workspace/types'
@@ -234,7 +234,7 @@ export const DOCK_HOLD_PAD = 24
 export const FLOAT_HEADER_H = 40
 
 /** persist 档案版本。改这个数就必须在 migrateStagePersisted 里加一段,两者同生共死。 */
-export const STAGE_PERSIST_VERSION = 10
+export const STAGE_PERSIST_VERSION = 11
 
 const DOCK: Placement = { kind: 'dock' }
 
@@ -1772,20 +1772,7 @@ export function migrateStagePersisted(
      * **一格都没碰到就原样交回**(引用恒等)。迁移是幂等的,而「幂等」在这一族
      * 档案上的机器化判据就是**同一个对象** —— 存量用例(v6 折叠那一条)钉的正是它。
      */
-    const nextHidden = withoutViewerId(out.hiddenItems)
-    if (nextHidden !== out.hiddenItems) out = { ...out, hiddenItems: nextHidden }
-    const ledger = out.byWorkspace
-    if (ledger && typeof ledger === 'object') {
-      let changed = false
-      const next: Record<string, unknown> = {}
-      for (const [spaceId, furniture] of Object.entries(ledger as Record<string, unknown>)) {
-        const stripped = stripViewerFurniture(furniture)
-        if (stripped !== furniture) changed = true
-        next[spaceId] = stripped
-      }
-      if (changed) out = { ...out, byWorkspace: next }
-    }
-    out = stripViewerFurniture(out) as Record<string, unknown>
+    out = stripRetiredItem(out, VIEWER_ITEM_ID)
   }
   if (version < 9) {
     /*
@@ -1846,7 +1833,52 @@ export function migrateStagePersisted(
     }
     out = coverMemoryToFull(out) as Record<string, unknown>
   }
+  if (version < 11) {
+    /*
+     * 2026-09-13:**「模型服务」不再是一块瓦**(用户裁定「把模型设置移到设置中去」;
+     * 判词在 `stage/items.ts` 的 `PROVIDERS_ITEM_ID` 上)。与 v8 撤查看器那一次
+     * **逐字同一件事**,所以它跑的是同一套函数 —— v8 那一段在这一批被泛化成
+     * `stripRetiredItem(archive, id)`,两段各传自己那个 id。
+     *
+     * 留着这些条目**不是无害的**:一格位置记忆就等于开机恢复出一块查不到内容的
+     * 瓦(`renderContent` 答 null,屏幕上是一扇空浮窗),一行 `hiddenItems` 就等于
+     * 「所有应用」那张清单上留一行点不开的瓦。
+     *
+     * **v9 之后 `placements` / `shelves.{tabs,activeId}` 已经不在 stage 的档案里了**
+     * (它们搬去了拼贴台那本账)。泛化函数照旧**逐键判**,没有那个键就跳过 ——
+     * 不为 v11 单独裁一份窄的:那样两段就成了两份实现,而它们做的是同一件事。
+     * 拼贴树里那格 `panel:providers` 由另一头治:`ContentKind.exists`
+     * (`content/kinds/panel.tsx`),**不靠版本号**,每次水合都跑。
+     */
+    out = stripRetiredItem(out, PROVIDERS_ITEM_ID)
+  }
   return out
+}
+
+/**
+ * **一块退役的瓦从一份 stage 档案里逐格清干净**(v8 查看器 / v11 模型服务共用)。
+ *
+ * 走**每一个空间那一格**(家具账 `byWorkspace`)加扁平层那一份 —— 只清当前那一格
+ * 的话,切到别的空间才露出同一个病。`hiddenItems` 是顶层的一张表,单独摘一次。
+ *
+ * **一格都没碰到就原样交回**(引用恒等 —— 幂等在这一族档案上的机器化判据)。
+ */
+function stripRetiredItem(archive: Record<string, unknown>, id: string): Record<string, unknown> {
+  let out = archive
+  const nextHidden = withoutItemId(out.hiddenItems, id)
+  if (nextHidden !== out.hiddenItems) out = { ...out, hiddenItems: nextHidden }
+  const ledger = out.byWorkspace
+  if (ledger && typeof ledger === 'object') {
+    let changed = false
+    const next: Record<string, unknown> = {}
+    for (const [spaceId, furniture] of Object.entries(ledger as Record<string, unknown>)) {
+      const stripped = stripItemFurniture(furniture, id)
+      if (stripped !== furniture) changed = true
+      next[spaceId] = stripped
+    }
+    if (changed) out = { ...out, byWorkspace: next }
+  }
+  return stripItemFurniture(out, id) as Record<string, unknown>
 }
 
 /**
@@ -1875,7 +1907,7 @@ export function coverMemoryToFull(furniture: unknown): unknown {
  * 一份家具里所有**住处**的痕迹(v9 迁移用):整格 `placements`,以及每条架子上的
  * `tabs` / `activeId`。厚度与收起态**一个字不动** —— 那是几何,归 stage。
  *
- * **一格都没碰到就原样交回**(引用恒等),与 `stripViewerFurniture` 同一条口径。
+ * **一格都没碰到就原样交回**(引用恒等),与 `stripItemFurniture` 同一条口径。
  */
 export function stripResidencyFurniture(furniture: unknown): unknown {
   if (!furniture || typeof furniture !== 'object') return furniture
@@ -1911,24 +1943,33 @@ export function stripResidencyFurniture(furniture: unknown): unknown {
 }
 
 /**
- * 一份家具里所有 `viewer` 的痕迹(v8 迁移用)。**逐格清**,不是整份丢:
- * 用户摆了半年的别的瓦一格都不能动。
+ * 一份家具里**某一块退役的瓦**的全部痕迹。**逐格清**,不是整份丢:用户摆了半年的
+ * 别的瓦一格都不能动。
+ *
+ * v8(查看器)写的时候它叫 `stripViewerFurniture`、id 写死在函数体里;v11(模型
+ * 服务)要做的是**逐字同一件事**,所以 2026-09-13 把 id 提成参数而不是复制一份 ——
+ * 两份实现迟早在「`activeId` 恰好是它怎么办」这种角落上分叉。v8 那一段的行为
+ * 一个字没变(存量用例照过)。
+ *
+ * **逐键判**:`placements` / `floats` / `memory` / `floatOrder` / `shelves` 哪个键
+ * 不在就跳过 —— v9 之后前两族里有几格已经不在 stage 的档案里了,而「没有那个键」
+ * 与「那个键里没有它」在这里是同一个答案:什么都不动。
  */
-function stripViewerFurniture(furniture: unknown): unknown {
+function stripItemFurniture(furniture: unknown, id: string): unknown {
   if (!furniture || typeof furniture !== 'object') return furniture
   const source = furniture as Record<string, unknown>
   const f: Record<string, unknown> = { ...source }
   let touched = false
   for (const key of ['placements', 'floats', 'memory'] as const) {
     const table = f[key]
-    if (table && typeof table === 'object' && VIEWER_ITEM_ID in (table as object)) {
+    if (table && typeof table === 'object' && id in (table as object)) {
       const next = { ...(table as Record<string, unknown>) }
-      delete next[VIEWER_ITEM_ID]
+      delete next[id]
       f[key] = next
       touched = true
     }
   }
-  const nextOrder = withoutViewerId(f.floatOrder)
+  const nextOrder = withoutItemId(f.floatOrder, id)
   if (nextOrder !== f.floatOrder) {
     f.floatOrder = nextOrder
     touched = true
@@ -1943,12 +1984,12 @@ function stripViewerFurniture(furniture: unknown): unknown {
         continue
       }
       const one = { ...(shelf as Record<string, unknown>) }
-      const nextTabs = withoutViewerId(one.tabs)
+      const nextTabs = withoutItemId(one.tabs, id)
       if (nextTabs !== one.tabs) {
         one.tabs = nextTabs
         shelvesTouched = true
       }
-      if (one.activeId === VIEWER_ITEM_ID) {
+      if (one.activeId === id) {
         const tabs = Array.isArray(one.tabs) ? (one.tabs as string[]) : []
         one.activeId = tabs[tabs.length - 1] ?? null
         shelvesTouched = true
@@ -1964,8 +2005,8 @@ function stripViewerFurniture(furniture: unknown): unknown {
 }
 
 /** 摘掉那个 id。**一格都没摘到就原样交回**(引用恒等 —— 幂等的机器化判据)。 */
-function withoutViewerId(list: unknown): unknown {
+function withoutItemId(list: unknown, id: string): unknown {
   if (!Array.isArray(list)) return list
-  if (!list.includes(VIEWER_ITEM_ID)) return list
-  return list.filter((id) => id !== VIEWER_ITEM_ID)
+  if (!list.includes(id)) return list
+  return list.filter((one) => one !== id)
 }

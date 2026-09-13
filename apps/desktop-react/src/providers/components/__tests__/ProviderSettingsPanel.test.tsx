@@ -2,14 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { AppSettings } from '@shared/ipc/settings'
 import type { OpenRouterModel, ProviderInfo, SpaceProviderSettings } from '@shared/ipc/providers'
-import { renderContent } from '../../../content'
 import { configureProviderSettingsPort } from '../../../data/provider-settings-port'
 import type { ProviderSettingsPort } from '../../../data/provider-settings-port'
 import { useProviderSettings } from '../../store'
 import { fakeProviderPort } from '../../__tests__/fake-port'
 import { useNotifyStore } from '../../../services/notify-store'
 import { useStageStore } from '../../../stage/store'
-import { PROVIDERS_ITEM_ID } from '../../../stage/items'
+import { ProviderSettingsPanel } from '../ProviderSettingsPanel'
 
 /**
  * 模型服务面(批一)。这一批验的是**面长在真数据上**:
@@ -160,7 +159,7 @@ beforeEach(() => {
 describe('骨架', () => {
   it('左栏按三组画家名册,一家两模式只占一行', async () => {
     installPort()
-    render(<>{renderContent(PROVIDERS_ITEM_ID)}</>)
+    render(<ProviderSettingsPanel />)
 
     expect(await screen.findByTestId('provider-row-claude')).toBeTruthy()
     expect(screen.getByTestId('provider-row-acp')).toBeTruthy()
@@ -174,14 +173,14 @@ describe('骨架', () => {
 
   it('副行是算出来的事实句,不是写死的字', async () => {
     installPort()
-    render(<>{renderContent(PROVIDERS_ITEM_ID)}</>)
+    render(<ProviderSettingsPanel />)
     await screen.findByTestId('provider-row-claude')
     expect(screen.getByText('API 密钥 · 已配置 · 订阅 · 未登录 · 已选 1 型')).toBeTruthy()
   })
 
   it('开面落在第一家上,头部画名字与启用开关', async () => {
     installPort()
-    render(<>{renderContent(PROVIDERS_ITEM_ID)}</>)
+    render(<ProviderSettingsPanel />)
     await screen.findByTestId('provider-row-claude')
     expect(screen.getByRole('switch', { name: '启用 Claude' })).toBeTruthy()
     expect(screen.getByText('Anthropic 的模型')).toBeTruthy()
@@ -192,7 +191,7 @@ describe('骨架', () => {
       listProviders: vi.fn(async () => ({ success: false, error: 'boom' })),
       readSettings: vi.fn(async () => ({ success: false, error: 'nope' })),
     })
-    render(<>{renderContent(PROVIDERS_ITEM_ID)}</>)
+    render(<ProviderSettingsPanel />)
     await waitFor(() => expect(screen.getByText(/读不到模型服务名册/)).toBeTruthy())
     expect(screen.getByRole('button', { name: '重新读取' })).toBeTruthy()
   })
@@ -201,7 +200,7 @@ describe('骨架', () => {
 describe('模式切换换目录', () => {
   it('默认落在配好的那一坑,目录是那一坑的', async () => {
     const port = installPort()
-    render(<>{renderContent(PROVIDERS_ITEM_ID)}</>)
+    render(<ProviderSettingsPanel />)
     await screen.findByTestId('model-row-claude-sonnet-4')
     expect(port.listModels).toHaveBeenCalledWith('claude', false)
     expect(screen.queryByTestId('model-row-claude-opus-5')).toBeNull()
@@ -209,7 +208,7 @@ describe('模式切换换目录', () => {
 
   it('换到已登录的订阅坑,拉的是**另一份**目录', async () => {
     const port = installPort({ readCredentials: vi.fn(async () => credentials(true)) })
-    render(<>{renderContent(PROVIDERS_ITEM_ID)}</>)
+    render(<ProviderSettingsPanel />)
     await screen.findByTestId('model-row-claude-sonnet-4')
 
     fireEvent.click(screen.getByRole('radio', { name: '订阅 · 已登录' }))
@@ -221,7 +220,7 @@ describe('模式切换换目录', () => {
 
   it('未登录的订阅坑**连请求都不发** —— 目录不可得就说不可得', async () => {
     const port = installPort()
-    render(<>{renderContent(PROVIDERS_ITEM_ID)}</>)
+    render(<ProviderSettingsPanel />)
     await screen.findByTestId('model-row-claude-sonnet-4')
 
     fireEvent.click(screen.getByRole('radio', { name: '订阅 · 未登录' }))
@@ -231,7 +230,7 @@ describe('模式切换换目录', () => {
 
   it('一坑的家不画分段器 —— 只有一格的分段器是噪音', async () => {
     installPort()
-    render(<>{renderContent(PROVIDERS_ITEM_ID)}</>)
+    render(<ProviderSettingsPanel />)
     fireEvent.click(await screen.findByTestId('provider-row-acp'))
     await waitFor(() => expect(screen.queryByRole('radiogroup', { name: '接入模式' })).toBeNull())
   })
@@ -240,7 +239,7 @@ describe('模式切换换目录', () => {
 describe('写与缺席态', () => {
   it('勾一个模型 = 一次整份写回,只动 selectedModels', async () => {
     const port = installPort()
-    render(<>{renderContent(PROVIDERS_ITEM_ID)}</>)
+    render(<ProviderSettingsPanel />)
     await screen.findByTestId('model-row-claude-sonnet-4')
 
     fireEvent.click(screen.getByRole('checkbox', { name: '勾选 claude-sonnet-4' }))
@@ -252,7 +251,7 @@ describe('写与缺席态', () => {
 
   it('关一家 = 家族一开全开的反面:两个 id 一次写完', async () => {
     const port = installPort()
-    render(<>{renderContent(PROVIDERS_ITEM_ID)}</>)
+    render(<ProviderSettingsPanel />)
     await screen.findByTestId('model-row-claude-sonnet-4')
 
     fireEvent.click(screen.getByRole('switch', { name: '启用 Claude' }))
@@ -264,7 +263,7 @@ describe('写与缺席态', () => {
 
   it('密钥:添加走凭证域,原文绝不经 saveSettings', async () => {
     const port = installPort()
-    render(<>{renderContent(PROVIDERS_ITEM_ID)}</>)
+    render(<ProviderSettingsPanel />)
     await screen.findByTestId('model-row-claude-sonnet-4')
 
     fireEvent.click(screen.getByRole('button', { name: '＋ 添加密钥' }))
@@ -284,7 +283,7 @@ describe('写与缺席态', () => {
 
   it('批一那五处缺席态全部兑现,一句「在下一批」都不剩', async () => {
     installPort()
-    render(<>{renderContent(PROVIDERS_ITEM_ID)}</>)
+    render(<ProviderSettingsPanel />)
     await screen.findByTestId('model-row-claude-sonnet-4')
 
     // ① 新建自定义家:钮活了。
@@ -334,7 +333,7 @@ describe('忙态逐格', () => {
   it('勾选 A 在飞时,B 那一行既不禁用、也还是同一个 DOM 节点', async () => {
     const held = heldWrite()
     const port = installPort({ writeProviderSettings: held.write })
-    render(<>{renderContent(PROVIDERS_ITEM_ID)}</>)
+    render(<ProviderSettingsPanel />)
     await screen.findByTestId('model-row-claude-sonnet-4')
 
     const pick = (name: string) => screen.getByRole('checkbox', { name }) as HTMLInputElement
@@ -366,7 +365,7 @@ describe('忙态逐格', () => {
     installPort({
       writeProviderSettings: vi.fn(async () => ({ success: false, error: '写不进去' })),
     })
-    render(<>{renderContent(PROVIDERS_ITEM_ID)}</>)
+    render(<ProviderSettingsPanel />)
     await screen.findByTestId('model-row-claude-sonnet-4')
 
     // 底本 = 出手之前屏幕上那两格的**引用**。回滚回的必须是它们本身。

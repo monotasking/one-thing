@@ -28,7 +28,7 @@ import {
 import { BROWSER_SEARCH_ENGINES } from '../../browser/omnibox'
 import { useT } from '../../i18n'
 import type { TFn } from '../../i18n'
-import shared from '../mocks.module.css'
+import shared from './Settings.module.css'
 import s from './BrowserSettings.module.css'
 
 /**

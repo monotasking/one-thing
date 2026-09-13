@@ -12,8 +12,9 @@
  * 两段:
  *
  *  ① **axe 全页扫描**(@axe-core/playwright,wcag2a / wcag2aa / best-practice)。
- *     八屏各扫一遍:产品外壳、模型抽屉、模型服务面(Dock 上点开的一块内容 —— 收着的面 axe
- *     一条都查不到,而它恰恰是表格 / 勾选框 / 分段器 / 禁用钮最密的一块)、
+ *     八屏各扫一遍:产品外壳、模型抽屉、**设置页那八页**(2026-09-13 分页:逐页点
+ *     导航再扫,模型服务是其中一页,它那块面**另扫一遍** —— Dock 上点开的一块内容,
+ *     收着的面 axe 一条都查不到,而它恰恰是表格 / 勾选框 / 分段器 / 禁用钮最密的一块)、
  *     所有应用面(08-31 加:一整列 `role="switch"` 加一整列打开钮,而且是这道门里
  *     唯一一屏 **真全屏**的面),音乐面(09-10 加:这块壳里第一处 `role="slider"` ——
  *     两条拖杆各要说得出名字、当前值与两头),**拖拽落点菜单**(W3 裁定 9 + W3-b 裁定 8 的
@@ -77,7 +78,8 @@
  * 治:`gate-a11y-settle.mjs` 的 `waitForScreenSettled` —— 等 `window.__d2.applied`
  * 与 `data-theme-bridge`(主题自己的探针,不是启发式)、等色值与可聚焦元素计数
  * 连续 3 帧逐字不变、等有终点的动画排空(排空后还会有新的起来,所以是循环)。
- * 八屏各调一次。从前只有第 5、6 两屏等动画,外壳 / 模型服务面 / 规格页是裸扫的。
+ * 八屏各调一次(设置页那一屏是**逐页**调)。从前只有第 5、6 两屏等动画,
+ * 外壳 / 模型服务面 / 规格页是裸扫的。
  *
  * 读数(同一构建、同一台机器,每组连跑 5 次):
  *   · **修前 0 红 / 5**(这一轮没抖出来 —— 病历里的 1/4 是三批各自记的历史读数);
@@ -191,7 +193,7 @@ async function waitFor(label, predicate, timeoutMs = 20_000) {
  * 「这一屏可以量了」。判据与那段病历在 `gate-a11y-settle.mjs` 的文件头里,
  * 一句话:等主题真的落定、色值与可聚焦计数连续三帧不变、没有还在播的过渡 ——
  * 而不是睡一段猜出来的时间。**每一屏扫描之前都要调**(从前只有第 5、6 两屏
- * 等动画,外壳 / 模型服务面 / 规格页三屏是裸扫的,那正是抖动的产地)。
+ * 等动画,外壳 / 设置页 / 规格页三屏是裸扫的,那正是抖动的产地)。
  */
 async function settle(page, label, opts) {
   const report = await waitForScreenSettled(page, label, opts)
@@ -796,24 +798,63 @@ async function main() {
     )
 
     /*
-     * 模型服务面(批一)。它进这道门的理由与规格页一样:**外壳那一屏看不见它** ——
-     * 面板收在 Dock 里,axe 扫的是已经排好的那棵树,没画出来的东西它一条都查不到。
-     * 一块带表格、勾选框、分段器与两处禁用钮的面,恰恰是最容易漏名字的那种。
+     * **设置页:逐页点导航再扫**(2026-09-13 分页)。
      *
-     * **覆盖到哪儿为止**:这道门跑在一个全新的临时 store 上,那台机器一把密钥都没有,
-     * 所以扫到的是左栏名册 / 家头(启用开关)/ 模式分段器 / 密钥卡 / 目录的空态;
-     * 模型行那几个勾选框**不在场**(目录是空的)。它们的名字由单测守
+     * 进这道门的理由与后面几屏逐字相同 —— **外壳那一屏看不见它**(面板收在 Dock
+     * 里,axe 扫的是已经排好的那棵树)。分页之后又多一条:**只开设置页只扫得到
+     * 缺省那一页**,而这里有八页,每一页装的东西都不一样(表单行、两栏面、一张
+     * 授权清单、一整屏键位)。所以逐页点过去,每一页各扫一遍。
+     *
+     * 页名单**照着页表抄**(`src/content/settings/pages.tsx` 的 `SETTINGS_PAGES`)
+     * —— 加一页要在这里补一行,那是有意的:一页没人扫等于那一页没有 a11y 判据。
+     *
+     * 模型服务那一页**多扫一遍它自己那块面**:这一屏从前是 [5/13] 的全部内容
+     * (「模型服务面」),分页之后它是设置页里的一页,但那块面的 axe 覆盖一条都
+     * 不能少 —— 一块带表格、勾选框、分段器与两处禁用钮的面,恰恰是最容易漏名字
+     * 的那种。**覆盖到哪儿为止**:这道门跑在一个全新的临时 store 上,那台机器一把
+     * 密钥都没有,所以扫到的是左栏名册 / 家头(启用开关)/ 模式分段器 / 密钥卡 /
+     * 目录的空态;模型行那几个勾选框**不在场**(目录是空的)。它们的名字由单测守
      * (`providers/components/__tests__`,按 `勾选 {model}` 取的)。
      * 反证:把家头那枚 Switch 的 `label` 拆掉 → 这一屏当场 critical button-name 红
      * (2026-08-31 真跑过一轮)。
      */
-    console.log('\n[5/13] 模型服务面:开一块面再扫一次')
-    await clickSelector(page, '[data-testid="dock-tile-providers"]')
-    await waitFor('模型服务面就位', () =>
-      page.evaluate(() => Boolean(document.querySelector('[data-testid^="provider-row-"]'))),
+    console.log('\n[5/13] 设置页:开出来,逐页点导航再扫')
+    await clickSelector(page, '[data-testid="dock-tile-settings"]')
+    await waitFor('设置页就位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="settings-panel"]'))),
     )
-    await settle(page, '模型服务面')
-    await scanAxe(page, '模型服务面', '[data-testid="providers-panel"]')
+    for (const id of [
+      'general',
+      'models',
+      'appearance',
+      'dock',
+      'open',
+      'browser',
+      'permissions',
+      'keymap',
+    ]) {
+      await clickSelector(page, `[data-testid="settings-nav-${id}"]`)
+      await waitFor(`设置·${id} 就位`, () =>
+        page.evaluate(
+          (pageId) => Boolean(document.querySelector(`[data-testid="settings-page-${pageId}"]`)),
+          id,
+        ),
+      )
+      if (id === 'models') {
+        // 那块面自己要一趟取数才画得出名册 —— 扫一屏还没画完的面等于什么都没扫。
+        await waitFor('模型服务面就位', () =>
+          page.evaluate(() => Boolean(document.querySelector('[data-testid^="provider-row-"]'))),
+        )
+      }
+      await settle(page, `设置·${id}`)
+      await scanAxe(page, `设置·${id}`, '[data-testid="settings-panel"]')
+      if (id === 'models') await scanAxe(page, '模型服务面', '[data-testid="providers-panel"]')
+    }
+    // 扫完把它收回去,别把它留给下一屏(Dock 上那颗瓦是开关)。
+    await clickSelector(page, '[data-testid="dock-tile-settings"]')
+    await waitFor('设置页已收回', () =>
+      page.evaluate(() => !document.querySelector('[data-testid="settings-panel"]')),
+    )
 
     /*
      * **检索面**(09-06 补账,检索面终稿 R10)。进这道门的理由与模型服务面逐字

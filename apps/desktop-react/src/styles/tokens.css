@@ -515,6 +515,10 @@
   --btn-sm: 28px;
   /* 快捷键行右侧键位面的下限宽:未绑定与 ⌘⇧P 共用一个坑,换绑时行不动。 */
   --key-slot-w: 96px;
+  /* 设置页左导航那一栏的宽(2026-09-13 分页)。最长那一行是「内置浏览器」/
+   * "Model services",168 装得下而不截断;窄档里这一栏整个翻成顶上一条横滚
+   * (阈值与判词写在 content/settings/Settings.module.css 末尾那段 @container)。 */
+  --settings-nav-w: 168px;
   --row-h: 28px;
 
   /* ── L2 会话总览 Exposé 几何(09-04 方向 A「档案」:三块面 + 一张树)───────

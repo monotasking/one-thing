@@ -172,7 +172,7 @@ describe('剪枝', () => {
 describe('sanitize:存量档案的入口闸', () => {
   it('未知种类**整格丢掉**(插件卸载了 / 版本回退了)', () => {
     const tree = T.makeLeaf('L1', [A, ref('gone', 'x'), B], 2)
-    const clean = T.sanitize(tree, { known: (k) => k === 'k', singleton: () => false })!
+    const clean = T.sanitize(tree, { known: (r) => r.kind === 'k', singleton: () => false })!
     expect(T.leavesOf(clean)[0].tabs.map(refId)).toEqual(['k:a', 'k:b'])
     // 活动下标跟着夹回范围内(2 已经越界了)。
     expect(T.leavesOf(clean)[0].active).toBe(1)
@@ -214,10 +214,10 @@ describe('sanitize:存量档案的入口闸', () => {
 
   it('**幂等**:洗过一遍的树再洗一遍交回同一个对象', () => {
     const once = T.sanitize(T.makeLeaf('L1', [A, ref('gone', 'x')]), {
-      known: (k) => k === 'k',
+      known: (r) => r.kind === 'k',
       singleton: () => false,
     })!
-    expect(T.sanitize(once, { known: (k) => k === 'k', singleton: () => false })).toBe(once)
+    expect(T.sanitize(once, { known: (r) => r.kind === 'k', singleton: () => false })).toBe(once)
   })
 })
 

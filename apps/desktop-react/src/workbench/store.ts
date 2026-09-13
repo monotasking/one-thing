@@ -6,7 +6,7 @@ import {
   contentKindOf,
   flattenContent,
   isCompositeContent,
-  isKnownContentKind,
+  isKnownContent,
   isSingletonContent,
   partsOfContent,
   refId,
@@ -630,7 +630,9 @@ export const RECENT_ROOTS_MAX = 20
 /* ── 纯函数半边:每一条判据都可以脱开 React 测 ─────────────────────────── */
 
 const SANITIZE_OPTIONS: T.SanitizeOptions = {
-  known: isKnownContentKind,
+  // 2026-09-13 起按 **ref** 问(判词在 `kinds.isKnownContent` 与
+  // `ContentKind.exists` 上):种类在表上还不够,那一种还得认得出这一个实例。
+  known: isKnownContent,
   // S1 起按 ref 问(判词在 `kinds.ContentKind.singleton` 上)。
   singleton: isSingletonContent,
 }
@@ -657,7 +659,7 @@ export function normalizeRegions(regions: Record<string, PaneNode>): Record<stri
  * `main.tsx` 的 `import App from './App'` 排在 `import './content/kinds'` 前面,
  * 而 App 那条 import 闭包会经过**这只 store** —— 于是 store 在种类表还空着的时候
  * 就建出来了,persist 的 `merge` 是**同步**的,当场跑完。那一遍从前调的是
- * `normalizeRegions`,它第一句就是 `T.sanitize(tree, { known: isKnownContentKind })`:
+ * `normalizeRegions`,它第一句就是 `T.sanitize(tree, { known: isKnownContent })`:
  * 表是空的,于是**每一格标签都是「未知种类」**,四条边与每一扇浮窗的树被整棵剔掉,
  * 中央区塌成一片新叶(`nextLeafId()` —— 连叶 id 都换了)。随后第一次 `set` 触发
  * `partialize` 回写,档案里那份真布局被这份塌过的覆盖:**重启即失忆**。
@@ -799,14 +801,14 @@ export function normalizeRecentRoots(roots: unknown): string[] {
   return out
 }
 
-/** 洗一遍隐藏表:未知种类剔掉、重复的只留第一条。 */
+/** 洗一遍隐藏表:认不出的那几格剔掉、重复的只留第一条。 */
 export function normalizeHidden(hidden: HiddenEntry[]): HiddenEntry[] {
-  return normalizeHiddenShape(hidden).filter((entry) => isKnownContentKind(entry.ref.kind))
+  return normalizeHiddenShape(hidden).filter((entry) => isKnownContent(entry.ref))
 }
 
 /**
  * 隐藏表的**结构级**那一半(W7-p 裁定 1)—— 形状对不对 + 去重,**不问种类表**。
- * 水合那一刻种类表还是空的,拿 `isKnownContentKind` 去筛会把整张表清空
+ * 水合那一刻种类表还是空的,拿 `isKnownContent` 去筛会把整张表清空
  * (与 `normalizeRegionShapes` 那段病历同一个机制,只是丢的是「藏起来的那几格」)。
  */
 export function normalizeHiddenShape(hidden: HiddenEntry[]): HiddenEntry[] {

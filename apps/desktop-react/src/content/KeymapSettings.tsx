@@ -26,7 +26,7 @@ import {
 } from '../keymap/transitions'
 import type { Combo, KeymapCommand } from '../keymap/types'
 import type { CommandId } from '../keymap/types'
-import s from './mocks.module.css'
+import s from './settings/Settings.module.css'
 
 /**
  * 设置页的「快捷键」区。顶上一格**键位组**,下面一行 = 一条命令 + 谁答得出它 +

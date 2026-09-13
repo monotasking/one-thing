@@ -134,7 +134,7 @@ describe('归一那几遍', () => {
   })
 
   it('清洗:洗掉一格之后标记重算;洗掉的**就是**预览格 → 没有预览格', () => {
-    const opts = { known: (k: string) => k !== 'gone', singleton: () => false }
+    const opts = { known: (r: ContentRef) => r.kind !== 'gone', singleton: () => false }
     const live = setPreviewIndex(
       makeLeaf('L', [{ kind: 'gone', key: 'x' }, doc('a'), doc('b')], 0),
       'L',

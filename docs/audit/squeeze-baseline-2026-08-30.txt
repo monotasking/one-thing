@@ -16,7 +16,9 @@
 # 2026-09-12 B2 又减一条:`src/content/mocks.module.css .addr` 随假浏览器面一起退役
 # (那三条演示类 `.browserBar` / `.addr` / `.viewport` 让位给 `content/browser/`
 # 下一格真 `WebContentsView`)。今天 4 条。
+# 2026-09-13 设置页分页又减一条:`src/content/mocks.module.css .stub` 那一族搬去了
+# `content/settings/Settings.module.css`,搬家那一手顺便给它补上 `min-width: 0`
+# —— 一块空占位本来就没有内容宽度要守,补上即结清。今天 3 条。
 src/components/StageOverlay.module.css .title
 src/content/NotificationsPanel.module.css .spacer
 src/content/blocks/kinds/diff/Diff.module.css .text
-src/content/mocks.module.css .stub
