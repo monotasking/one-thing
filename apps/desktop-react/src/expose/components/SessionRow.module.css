@@ -91,7 +91,9 @@
  */
 .glyph {
   flex: none;
-  width: var(--expose-row-glyph);
+  /* 列宽 16(--expose-glyph-w)、图标 14(--expose-row-glyph)居中:列的中心要正好落在
+     红灯中心那条线上(09-13 裁定「中心对中心」),14 宽的列会偏 1px。 */
+  width: var(--expose-glyph-w);
   height: var(--expose-row-glyph);
   display: flex;
   align-items: center;

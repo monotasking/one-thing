@@ -89,6 +89,8 @@ function trafficLightX() {
 const CONTENT_LEAD_LEFT = token('content-lead-left')
 /** 行 / 节头 / 导航行的左内边距(`--sp-2`):盒子比对齐线往左探出的那一格。 */
 const ROW_PAD = token('sp-2')
+/** 图标列的宽(`--expose-glyph-w`):它的中心对着红灯中心,所以墨最左 = 线 − 一半。 */
+const GLYPH_W = token('expose-glyph-w')
 const TRAFFIC_X = trafficLightX()
 const TRAFFIC_LIGHT_RADIUS = 6
 const COLD_OPEN_MS = budget('coldOpenMs')
@@ -312,7 +314,7 @@ const read = (page) => page.evaluate(READ)
  *  · 「没有任何元素越过它」—— 这一句管的是**一切**,所以第二个数量的是墨
  *    (自己画内容的元素:直接文本 / svg / img / canvas / input)。
  *
- * 两个数分开量是必须的:盒子比线往左探一格 --sp-2(盒 x = 14、墨 x = 22,09-13 裁定),
+ * 三个数分开量是必须的:图标列的**中心**在线上、盒子在线左 16、墨不越过线左 8(09-13 两次裁定),
  * 所以拿墨去比那条线必然差 8px 而且**该**差 —— 首跑就是这么红的一次(实际 30、
  * 想要 22),红的是尺子不是产品。
  * 铺满整条架子的那些容器 div 不进任何一个数:它们的左缘恒等于架子的左缘,
@@ -362,6 +364,18 @@ const minInkLeft = (page) =>
      * CSS Module 的类名带哈希,而这三种行各自本来就有稳定的取件口
      * (`data-testid="expose-*"` / `data-section-id` / `data-session-id`)。
      */
+    // 图标列的中心(09-13 裁定「红灯的中间跟图标的中间对齐」):导航三行的 svg
+    // 与会话行的字形列各取一个矩形中心。
+    const icons = [
+      ...shelf.querySelectorAll(
+        // `> svg:first-child`:范围行尾巴上那枚 ▾ 也是 svg,只认行首那一枚。
+        '[data-testid="expose-new-session"] > svg:first-child,'
+          + '[data-testid="expose-search-row"] > svg:first-child,'
+          + '[data-testid="expose-scope-row"] > svg:first-child,[data-session-id] [data-row-glyph]',
+      ),
+    ]
+      .filter((el) => visible(el) && inClip(el.getBoundingClientRect()))
+      .map((el) => { const r = el.getBoundingClientRect(); return round(r.left + r.width / 2) })
     const boxes = [
       ...shelf.querySelectorAll(
         '[data-testid="expose-new-session"],[data-testid="expose-search-row"],'
@@ -380,6 +394,7 @@ const minInkLeft = (page) =>
       }
     }
     return {
+      icons,
       ink: ink === Infinity ? null : round(ink),
       inkWho,
       box: box === Infinity ? null : round(box),
@@ -587,29 +602,30 @@ async function sceneLead(page) {
     return
   }
   const want = m.shelfLeft + CONTENT_LEAD_LEFT
-  const wantBox = want - ROW_PAD
+  const wantInk = want - GLYPH_W / 2
+  const wantBox = wantInk - ROW_PAD
   note(
-    `架子左缘 ${m.shelfLeft} · 想要 ${want} · 结构盒 ${m.boxCount} 个,最左 ${m.box}(${m.boxWho})`
+    `架子左缘 ${m.shelfLeft} · 线 ${want} · 图标中心 ${JSON.stringify(m.icons)} · 结构盒 ${m.boxCount} 个,最左 ${m.box}(${m.boxWho})`
       + ` · 最左那一笔墨 ${m.ink}(${m.inkWho})`,
   )
   /*
-   * 09-13 用户拿真机截图画线追加的裁定:**对线的是图标与文字(墨),不是盒边**。
-   * 第一版把盒边对上线、字再进 8,屏幕上字与红灯错着半颗灯 —— 这三条断言就是
-   * 那一次的反面:墨贴线、墨不越线、盒子探出线外恰好一格行内边距(悬停薄膜挂在
-   * 字的左边,与 macOS 侧栏选中条同形)。
+   * 09-13 用户两次拿真机截图画线裁定:第一次「对线的是图标与文字,不是盒边」,
+   * 第二次「红灯的中间跟图标的中间是对齐的」—— **中心对中心**。所以量三件:
+   * 导航三行的图标与会话行字形列的**中心**都在线上;墨的最左不越过图标列的左缘
+   * (线 − 8,节名与没图标的标题从那儿起);盒子再往左探一格行内边距。
    */
   check(
-    '导航行 / 节头 / 会话行的**图标与文字**落在那条线上(最左一笔墨,容差 1px)',
-    m.ink !== null && Math.abs(m.ink - want) <= 1,
-    `最左那一笔墨 ${m.ink}(${m.inkWho})vs 线 ${want}`,
+    '导航三行的图标 / 会话行的字形列,**中心**都落在那条线上(容差 1px)',
+    m.icons.length >= 3 && m.icons.every((c) => Math.abs(c - want) <= 1),
+    `图标中心 ${JSON.stringify(m.icons)} vs 线 ${want}`,
   )
   check(
-    '**没有任何元素越过它**(连墨都不许,容差 1px)',
-    m.ink !== null && m.ink >= want - 1,
-    `最左那一笔墨 ${m.ink} vs 线 ${want}`,
+    `最左一笔墨 = 图标列的左缘(线 − ${GLYPH_W / 2}),没有墨越过它(容差 1px)`,
+    m.ink !== null && Math.abs(m.ink - wantInk) <= 1,
+    `最左那一笔墨 ${m.ink}(${m.inkWho})vs ${wantInk}`,
   )
   check(
-    `盒子往左探出恰好一格行内边距(--sp-2 = ${ROW_PAD}):悬停薄膜挂在字的左边`,
+    `盒子再往左探一格行内边距(--sp-2 = ${ROW_PAD}):悬停薄膜挂在图标列左边`,
     m.box !== null && m.boxCount >= 3 && Math.abs(m.box - wantBox) <= 1,
     `${m.boxCount} 个盒子,最左 ${m.box}(${m.boxWho}),想要 ${wantBox}`,
   )

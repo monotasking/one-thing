@@ -29,13 +29,13 @@
    */
   scroll-padding-top: calc(var(--expose-sec-h) + var(--expose-row-gap));
   /*
-   * 页边距:左 = --content-lead-left 减一格行内边距(22 − 8 = 14;09-13 裁定:对着
-   * 红灯中心的是**字**不是盒边,行的 padding-inline 8 正好把字送回 22,悬停薄膜
-   * 探出线外 8px)。从前那句「所有盒子的左缘从
+   * 页边距:左 = --content-lead-left − 半个图标列 − 一格行内边距(22 − 8 − 8 = 6;
+   * 09-13 裁定:红灯中心对着**图标列的中心**,行的 padding-inline 8 把图标列送到
+   * 14–30,节名与没图标的标题从 14 起)。从前那句「所有盒子的左缘从
    * 这条线起,没有任何元素越过它)、右 --sp-2(8,槽的外面只留一档呼吸)。
    * 顶上 0:第一节的上边距由 `.section:first-child` 那一格管。
    */
-  padding: 0 var(--sp-2) var(--sp-4) calc(var(--content-lead-left) - var(--sp-2));
+  padding: 0 var(--sp-2) var(--sp-4) calc(var(--content-lead-left) - var(--expose-glyph-w) / 2 - var(--sp-2));
 }
 
 /*

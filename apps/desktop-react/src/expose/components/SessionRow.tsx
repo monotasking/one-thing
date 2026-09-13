@@ -247,7 +247,7 @@ function SessionRowView({
        * 要么不在场、要么仍是一个 `<div>`。
        */}
       {hasGlyph && (
-        <div className={s.glyph} aria-hidden="true">
+        <div className={s.glyph} aria-hidden="true" data-row-glyph="">
           {GlyphIcon && <GlyphIcon className={s.glyphIcon} strokeWidth={1.75} />}
           {glyph === 'initial' && <div className={s.initial}>{firstChar(title)}</div>}
         </div>

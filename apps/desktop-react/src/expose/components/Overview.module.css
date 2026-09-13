@@ -38,7 +38,7 @@
   margin: 0;
   /* 左缘与列表 / 导航行同一条线(--content-lead-left,拍板 2:没有任何元素
      越过它);右边与列表那一侧同样只让一档呼吸。总览形回 --expose-pad。 */
-  padding: 0 var(--sp-2) var(--sp-2) calc(var(--content-lead-left) - var(--sp-2));
+  padding: 0 var(--sp-2) var(--sp-2) calc(var(--content-lead-left) - var(--expose-glyph-w) / 2 - var(--sp-2));
   font-size: var(--fs-meta);
   color: var(--danger);
 }
