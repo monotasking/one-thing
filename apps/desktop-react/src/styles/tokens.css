@@ -494,14 +494,26 @@
    * —— **两个名字留着是因为消费侧按轴取用**(横边 -h、竖边 -v),哪天条的两轴内距
    * 再分家,改的是这里。(改后真机量:四条边栏外留白各 12.00。)
    *
-   * `--dock-tile` 由外壳按大小档就地覆写(与 Dock 条覆写 --tile-size 同一手),
-   * 于是改大小档时预留自己跟着走,没有第二处要记得改。
-   * 自动隐藏档与「Dock 不在这条边」时预留归零 —— 那时它本来就不占地方。
+   * ── **式子不在这里,在 `.shell` 上**(09-13 晚第五刀,病历见下)──────────────
+   * `--dock-tile` / `--dock-thick` / `--dock-reserve-h` / `--dock-reserve-v` 四格
+   * 声明在 `AppShell.module.css` 的 `.shell` 里,这一节只留**数**(瓦三档 /
+   * 内距 / 边框 / 留白)。理由是自定义属性的求值规则,不是风格偏好:
+   *
+   *   **`var()` 在「声明那条 calc 的元素」上代入,不在「读它的元素」上。**
+   *
+   * 从前这四格都写在 `:root`,于是 `--dock-thick` 在 `:root` 那一层就把
+   * `var(--dock-tile)` 代成了 44px,子元素继承到的是**代入之后的**
+   * `calc(44px + 8px * 2 + 1px * 2)` —— 外壳后来在 `.shell` 上把 `--dock-tile`
+   * 覆写成 36 / 52 一个字都影响不到它。上一行注释写着「预留自己跟着走」,
+   * 而真机从 08-31 立让位那天起就没跟过:四条边 × 三档,`.main` 那一边的
+   * padding **恒为 86px**,于是 sm 档 Dock 离内容 20、md 12、lg 只剩 4 ——
+   * lg 档放大后的瓦探出 9.2px、压进内容 5px。
+   *
+   * 修法是把这四条 calc 挪到**与覆写同一个元素**(`.shell`,`.reserveSm` /
+   * `.reserveLg` 是同元素上的类,层叠赢过 `.shell` 里的默认值),于是代入发生在
+   * 覆写已经生效的那一层。**别再在 `:root` 上写依赖被覆写变量的 calc** ——
+   * 它不会报错,只会静默地一直用第一层的值。
    */
-  --dock-tile: var(--tile-size-md);
-  --dock-thick: calc(var(--dock-tile) + var(--dock-pad-y) * 2 + var(--bw-1) * 2);
-  --dock-reserve-h: calc(var(--dock-thick) + var(--sp-3) * 2);
-  --dock-reserve-v: calc(var(--dock-thick) + var(--sp-3) * 2);
   --tile-icon: var(--icon-lg);
   --dock-sep-h: 36px;
   --dock-sep-w: var(--bw-1);

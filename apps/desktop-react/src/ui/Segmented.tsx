@@ -94,6 +94,10 @@ export function Segmented<T extends string>({
           type="button"
           role="radio"
           aria-checked={o.value === value}
+          /* 这一段是**哪一个值** —— 给真机门用的取件口(09-13,gate:dock ⑩⑪ 要按值点
+           * 边 / 大小 / 幅度)。可访问名是 i18n 的,按文字点等于把门钉死在中文上;
+           * 按下标点则把「表里第几行」这件实现细节写进门。值是数据,门按值点。 */
+          data-value={o.value}
           disabled={disabled}
           // roving 入组标记 + 初值(选中的那一段才在 Tab 序里)。
           // 禁着时不入组:那几颗按钮 focus 不上,roving 走过去只会走进一堵墙。

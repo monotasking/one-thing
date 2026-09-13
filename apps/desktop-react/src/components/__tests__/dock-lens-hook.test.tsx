@@ -78,11 +78,17 @@ function harness(input: DockLensInput = INPUT) {
     act(() => pending.forEach((cb) => cb(0)))
     return pending.length
   }
-  const move = (main: number, cross = 830) =>
+  /**
+   * `target` 是**第三个参数**,缺省给条本身 —— 与真机一致:指针压在条的空白处
+   * (缝、内距)时事件目标就是条,`closest('[data-dock-tile]')` 答 null。
+   * 要模拟「脚下压着放大后探出条外的那块瓦」就把那块瓦的外壳传进来。
+   */
+  const move = (main: number, cross = 830, target: Element = strip) =>
     act(() =>
       view.result.current.onMouseMove({
         clientX: main,
         clientY: cross,
+        target,
       } as unknown as React.MouseEvent<HTMLDivElement>),
     )
   const leave = () => act(() => view.result.current.onMouseLeave())
@@ -109,13 +115,39 @@ describe('useDockLens:指针在不在条上', () => {
     expect(h.scales().indexOf(Math.max(...h.scales()))).toBe(0)
   })
 
-  it('交叉轴出了条(悬在放大后长出条外的那一截上)= 不在条上,镜头收着', () => {
+  it('交叉轴出了条、**脚下也不是瓦** = 不在坞上,镜头收着', () => {
     const h = harness()
-    // 条的交叉轴是 800→862;790 在条上方 —— 正是瓦长出去那一截所在的位置。
-    // 事件仍会从那一截冒泡到条上,所以只判主轴的话这里会照样放大。
+    // 条的交叉轴是 800→862;790 在条上方。事件目标是条本身(缺省)——
+    // 那是「指针悬在条外的空中」,不是「压在放大后探出的瓦身上」,所以收着。
     h.move(clientCenter(0), 790)
     h.run()
     expect(h.on()).toBe(null)
+  })
+
+  /*
+   * ── 病 C 的两条(09-13)────────────────────────────────────────────────────
+   * 放大的瓦朝内长出条外 `瓦身量 × (峰值 − 1) − 9px`(md/md 6.4px、lg/lg 22.2px)。
+   * 上一版只问条的矩形,于是指针落在探出那一截上就 close() —— 整条缩回去,指针
+   * 脚下空了,后续横扫再也点不亮(真机:那条线上 0% 亮、第 0 帧就熄)。
+   * macOS 的规矩是「指针在放大着的图标身上就算在坞上」,判据因此是
+   * 盒内 ∨ 脚下是瓦;两条用例各钉一半,缺一条这条判据就会退化成老样子或者
+   * 退化成「只要事件到得了条就算在」。
+   */
+  it('交叉轴出了条、但事件目标在某块瓦里 —— 那是探出的那一截,镜头仍开着', () => {
+    const h = harness()
+    h.move(clientCenter(0), 790, h.tiles()[0])
+    h.run()
+    expect(h.on()).toBe('on')
+    expect(Math.max(...h.scales())).toBeCloseTo(1.35, 6)
+  })
+
+  it('事件目标是瓦里更深的那颗按钮也算(closest 往上找,不是 ===)', () => {
+    const h = harness()
+    const button = document.createElement('button')
+    h.tiles()[0].append(button)
+    h.move(clientCenter(0), 790, button)
+    h.run()
+    expect(h.on()).toBe('on')
   })
 
   it('手离开:只摘开关,**几何留着最后一帧** —— 于是它原地缩回去,不会先跳一下', () => {
@@ -313,5 +345,28 @@ describe('useDockLens:轴向', () => {
     // 位移落在 y 那一格,x 那一格一个字都不写。
     expect(h.tiles()[0].style.getPropertyValue('--tile-dx-y')).not.toBe('')
     expect(h.tiles()[0].style.getPropertyValue('--tile-dx-x')).toBe('')
+  })
+
+  /*
+   * 病 B(09-13):CSS 侧是一条 `translate()` 合两轴的,换边**不重挂 DOM**
+   * (瓦按 item id 做 key),所以横排时写下的 `--tile-dx-x` 会原样留在瓦身上;
+   * 竖排一放大,每块瓦就沿交叉轴乱挪一截(真机:第一块 −3.79,扫完整条底边再切
+   * 可到 −15)。判据是「当前轴有值、另一轴那一格被摘掉」—— 上面那条用的是
+   * 全新的 harness(x 压根没写过),证不了这件事,所以这一条必须先横后竖。
+   */
+  it('从横排切到竖排:旧轴那一格被摘掉,不是留在瓦身上跟着 translate 走', () => {
+    const h = harness()
+    h.move(clientCenter(2))
+    h.run()
+    expect(h.dxs().some((v) => Math.abs(v) > 0.5)).toBe(true)
+
+    act(() => h.view.rerender({ edge: 'right', align: 'center', enabled: true }))
+    h.move(250, 830)
+    h.run()
+    expect(h.on()).toBe('on')
+    for (const t of h.tiles()) {
+      expect(t.style.getPropertyValue('--tile-dx-x')).toBe('')
+      expect(t.style.getPropertyValue('--tile-dx-y')).not.toBe('')
+    }
   })
 })

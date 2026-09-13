@@ -20,7 +20,7 @@ import { dockLens, dockPitch, GROWTH_BIAS } from './dock-lens'
  * | 挂载 | 不量(没人问就不用量) | 什么都不写;`--dock-amount` 的初值 0 就是静息 |
  * | 指针进条 | 当场从布局现读 | **先写几何、再挂 `data-lens="on"`**(反过来会让第一帧从满格起跳) |
  * | 跟手 | 每帧现读(rAF 合帧,一次 pointermove 至多算一次) | 只改几何,开关不动 |
- * | 指针出条(含交叉轴出界) | — | 只摘 `data-lens`,**几何留着最后一帧** —— 于是它原地缩回去,不会先跳一下再缩 |
+ * | 指针出坞(条外**且**脚下不是瓦) | — | 只摘 `data-lens`,**几何留着最后一帧** —— 于是它原地缩回去,不会先跳一下再缩 |
  * | 瓦数 / 分隔线 / 大小档 / 对齐档 变 | 自动跟上(基准是现读的,没有旧值可过期) | 渲染后补写一次,手不动也算数 |
  * | 视口 resize | 同上(条挪窝时条内坐标会变) | 收到 resize 补写一次 |
  * | 卸载 | — | cancelAnimationFrame |
@@ -34,16 +34,16 @@ import { dockLens, dockPitch, GROWTH_BIAS } from './dock-lens'
  * | 状态 | 何时 | 画什么 |
  * | --- | --- | --- |
  * | 关 | 指针不在条上(条还没画出来也算) | 全静止:amount 0,底板齐条身 |
- * | 开 | 指针在条的**两个维度**里 | 照算,amount 1 |
+ * | 开 | 指针在条的**两个维度**里,**或**脚下压着一块(放大后探出条外的)瓦 | 照算,amount 1 |
  * | 开合中 | 上面两者之间的 --dur-dock-lens | 几何不变,amount 在路上 |
  * | 超量 | 瓦再多也只是数组更长(条被视口挤是 Dock 的事) | 照算 |
  *
  * ── ③ UI 交互状态 ──────────────────────────────────────────────────────────
  * | 状态 | 触发 | 行为 |
  * | --- | --- | --- |
- * | rest | 指针不在条上 | amount 0 |
- * | hover / 跟手 | 指针在条上 | 几何逐次 pointermove 现算,零延迟 |
- * | 释放 | mouseleave 或交叉轴出界 | amount 1 → 0,几何原地不动 |
+ * | rest | 指针不在坞上 | amount 0 |
+ * | hover / 跟手 | 指针在坞上(条身 ∪ 放大后的瓦身) | 几何逐次 pointermove 现算,零延迟 |
+ * | 释放 | mouseleave,或交叉轴出界且脚下不是瓦 | amount 1 → 0,几何原地不动 |
  * | reduced-motion / 动效档「无」 | 系统偏好或设置 | --dur-dock-lens = 0ms,当帧瞬到(是瞬到,不是不放大 —— 放大是这块面的读法,不是装饰) |
  * | **配置态:放大关** | 设置 → Dock → 磁性放大 | 这条链**根本不跑**:指针滑过条时一格几何都不写,条与瓦纹丝不动(对齐 macOS 那枚「放大」开关关掉之后的样子) |
  * | **配置态:幅度档** | 设置 → Dock → 放大幅度 | 只换条上那格 `--dock-lens-max`,几何现读 —— 这只 hook 一个数都不认识 |
@@ -97,8 +97,13 @@ function num(value: string, fallback: number): number {
 
 export function useDockLens({ edge, align, enabled }: DockLensInput) {
   const strip = useRef<HTMLDivElement | null>(null)
-  /** 指针的两个坐标:主轴的进算式,交叉轴的只用来判「还在条上吗」。 */
-  const pointer = useRef<{ main: number; cross: number } | null>(null)
+  /**
+   * 指针的两个坐标 + **脚下是不是一块瓦**。
+   *
+   * 主轴的进算式;交叉轴的与 `onTile` 合起来回答「还在坞上吗」——
+   * 为什么要第二问,见 `paint` 里交叉轴判据那一段。
+   */
+  const pointer = useRef<{ main: number; cross: number; onTile: boolean } | null>(null)
   const frame = useRef<number | null>(null)
   /*
    * 轴与退让比例走 ref 而不是进 useCallback 的依赖表:`paint` 每一帧都可能被叫到,
@@ -128,15 +133,32 @@ export function useDockLens({ edge, align, enabled }: DockLensInput) {
     }
 
     const vertical = axis.current === 'y'
-    // 交叉轴判据:指针离开条的**另一个维度**就算不在条上了。放大的瓦朝内长出条外,
-    // 鼠标事件仍从那一截冒泡到条上 —— 没有这一句,悬在条外的那一截上照样会放大。
-    // 条的交叉轴尺寸是钉死的(见 Dock.module.css 的 height / width),所以这里读活
-    // 矩形不会自激;自动隐藏滑进滑出时它还必须是活的。
+    /*
+     * ── 交叉轴判据:**指针在条的盒子里,或者脚下压着一块瓦**(09-13 重写)──────
+     *
+     * 上一版只问前一半,而**放大的瓦朝内长出条外** `瓦身量 × (峰值 − 1) − 9px`
+     * (md 档 / md 幅度 6.4px,lg / lg 22.2px;sm / sm 是 −1.8,也就是没探出)。
+     * 指针落在探出的那一截上时,事件照样从瓦冒泡到条,可这条判据答「不在」→
+     * `close()` → 整条按 --dur-dock-lens 缩回去 → 指针脚下空了 → 后续横扫再也
+     * 点不亮。真机读数:底边在放大后瓦顶之下 2 / 6px 两条线横扫,镜头 0% 亮、
+     * 第 0 帧就熄;右边在瓦内缘之内 2 / 6 / 10px 三条线纵扫全 0%;瓦中心线 100%。
+     * 竖排时探出的是**内侧**,正是手从内容区过来先碰到的那一边,所以停左 / 右边
+     * 时这条死带天天撞得到。
+     *
+     * macOS 的规矩是一句话:**指针在放大着的图标身上就算在坞上**。所以补第二问
+     * `at.onTile`(`onMouseMove` 那里现读 `e.target.closest('[data-dock-tile]')`,
+     * 见那一段)。**这不会长出卡死态**:指针从探出那一截离开到内容区时,它离开的是
+     * 条的整棵子树,strip 的 `mouseleave` 照常发,`pointer = null` 之后走到
+     * 上面那一支 close。
+     *
+     * 前一半仍旧读活矩形:条的交叉轴尺寸是钉死的(Dock.module.css 的 height /
+     * width),读活矩形不会自激;自动隐藏滑进滑出时它还必须是活的。
+     */
     const box = el.getBoundingClientRect()
-    const onStrip = vertical
+    const inBox = vertical
       ? at.cross >= box.left && at.cross <= box.right
       : at.cross >= box.top && at.cross <= box.bottom
-    if (!onStrip) {
+    if (!inBox && !at.onTile) {
       close(el)
       return
     }
@@ -175,7 +197,16 @@ export function useDockLens({ edge, align, enabled }: DockLensInput) {
     })
 
     const dxVar = TILE_DX_VAR[vertical ? 'y' : 'x']
+    /*
+     * **另一轴那一格要摘掉**(09-13 补):CSS 侧是一条 `translate()` 合两轴的,
+     * 从底边切到右边之后瓦身上旧的 `--tile-dx-x` 还在(真机量:第一块瓦 −3.79,
+     * 扫完整条底边再切可到 −15),竖排放大时每块瓦都沿交叉轴乱挪一截。
+     * 摘而不是写 '0':CSS 那头 `var(--tile-dx-x, 0)` 本来就有缺省,摘掉更干净,
+     * 也与「关掉放大时一格都不写」同一个口径 —— 瓦身上只留此刻真在用的那一格。
+     */
+    const staleVar = TILE_DX_VAR[vertical ? 'x' : 'y']
     for (let i = 0; i < tiles.length; i += 1) {
+      tiles[i].style.removeProperty(staleVar)
       tiles[i].style.setProperty(dxVar, String(lens.dx[i]))
       tiles[i].style.setProperty(TILE_SCALE_VAR, String(lens.scale[i]))
     }
@@ -200,10 +231,18 @@ export function useDockLens({ edge, align, enabled }: DockLensInput) {
 
   const onMouseMove = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
+      /*
+       * 「脚下是不是一块瓦」**现读事件目标**,不是拿坐标去算 —— 放大着的瓦是
+       * transform 出来的,它的命中区归浏览器说了算,自己按几何重算一遍就是第二真相。
+       * 记在指针那一格里(而不是 paint 里再查一次):paint 跑在 rAF 上,那时
+       * `e.target` 早没了。
+       */
+      const target = e.target as Element | null
+      const onTile = Boolean(target?.closest?.('[data-dock-tile]'))
       pointer.current =
         axis.current === 'x'
-          ? { main: e.clientX, cross: e.clientY }
-          : { main: e.clientY, cross: e.clientX }
+          ? { main: e.clientX, cross: e.clientY, onTile }
+          : { main: e.clientY, cross: e.clientX, onTile }
       schedule()
     },
     [schedule],

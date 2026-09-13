@@ -123,6 +123,10 @@ export function DockPage() {
           value={dockEdge}
           onChange={setDockEdge}
           label={t('dock.edge')}
+          /* 真机门的取件口(gate:dock ⑩⑪ 要在不重载的前提下换边 / 换档)。
+           * 走真控件而不是直接改 store:那两条判据要证的正是「用户在设置里点一下」
+           * 这条整链,而换轴那条病(旧轴位移没清)只在**不重挂 DOM** 时才现形。 */
+          data-testid="dock-settings-edge"
         />
       </div>
 
@@ -143,6 +147,7 @@ export function DockPage() {
           value={dockSize}
           onChange={setDockSize}
           label={t('dock.size')}
+          data-testid="dock-settings-size"
         />
       </div>
 
@@ -166,6 +171,7 @@ export function DockPage() {
           options={opts(MAGNIFY_OPTIONS)}
           value={dockMagnifyLevel}
           onChange={setDockMagnifyLevel}
+          data-testid="dock-settings-magnify-level"
           label={t('dock.magnifyLevel')}
           disabled={!dockMagnify}
         />
