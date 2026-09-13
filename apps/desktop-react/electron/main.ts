@@ -466,6 +466,27 @@ const GATE_HEADLESS = process.env.ONETHING_GATE_HEADLESS === '1'
 const GATE_OFFSCREEN = process.env.ONETHING_GATE_OFFSCREEN === '1'
 const GATE_DIST = process.env.ONETHING_GATE_DIST || 'dist'
 
+/*
+ * dev 档开页前先清这扇窗所在 session 的 HTTP 缓存(2026-09-13 真机病历:启动后一片空白)。
+ *
+ * vite 把 `node_modules/.vite/deps` 里的预构建 chunk 标成 immutable,靠 `?v=<browserHash>`
+ * 换代;但那个哈希只算 lockfile + 配置 + 依赖名单,**不算 chunk 内容**。deps 目录同哈希下
+ * 整套重建(chunk 名全换)时,Chromium 缓存照旧把旧 `react.js` 与旧 chunk 供出来、不问
+ * 服务器,而被淘汰的那几份从网络拿到的是新 chunk —— 两份 React 并存,首屏就
+ * `Cannot read properties of null (reading 'useCallback')`,错误边界渲空。缓存淘汰是随机的,
+ * 所以重建后不一定当场炸。dev 下所有资源都来自本机 vite,清缓存零代价;**只清默认
+ * session**,内嵌浏览器的 `persist:browser-*` 分区不碰(那边缓存着用户登录页,是产品数据)。
+ * 清不掉也照开页 —— 缓存是加速件,不是前提。
+ */
+async function loadDevServer(window: BrowserWindow, devServerUrl: string): Promise<void> {
+  try {
+    await window.webContents.session.clearCache()
+  } catch (error) {
+    getLogger('shell.boot').warn('dev http cache clear failed; loading anyway', {}, error)
+  }
+  await window.loadURL(devServerUrl)
+}
+
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1280,
@@ -524,7 +545,7 @@ function createWindow(): BrowserWindow {
   installTerminalReloadDetach(window.webContents)
 
   const devServerUrl = process.env.ONETHING_REACT_DEV_SERVER_URL
-  if (devServerUrl) void window.loadURL(devServerUrl)
+  if (devServerUrl) void loadDevServer(window, devServerUrl)
   else void window.loadFile(path.resolve(appRoot, GATE_DIST, 'index.html'))
   // B2 ②:内嵌浏览器那一块要这扇窗(判词在 `shellWindow` 上)。
   shellWindow = window
