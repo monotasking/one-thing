@@ -487,7 +487,8 @@
 .mapTick[data-active='true'] {
   left: calc(var(--bw-1) * -1);
   right: calc(var(--bw-1) * -1);
-  outline: var(--bw-1) solid var(--text-1);
+  /* 描边走 box-shadow 不走 outline:outline 是焦点环的载体,全壳只许 global.css 那一处画(09-13 焦点环收口)。 */
+  box-shadow: 0 0 0 var(--bw-1) var(--text-1);
 }
 
 /* 「二进制 / 已截断 / 此刻没有改动」三句话共用一格。 */

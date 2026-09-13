@@ -993,9 +993,29 @@ async function main() {
      */
     const x = Math.min(dpr2.img.width - 8, Math.round(dpr2.img.width * 0.9))
     const y0 = Math.round(dpr2.img.height * 0.35)
-    const y1 = Math.round(dpr2.img.height * 0.9)
+    /*
+     * 取样段的下沿要**钳在 composer 之上**(2026-09-13 rebase 到「Dock 让位改平移形」之后
+     * 门当场红了一道:y=1099 一行只差 1 个色阶,正是 composer 那层玻璃的上边缘落进了
+     * 35%–90% 的窗口 —— 它盖在改动面底下那一截上,底色被玻璃染了一级)。composer 的
+     * 位置是壳的事,这道门量的是行与行之间,所以按 DOM 现读它的顶边、留一行余量。
+     */
+    const composerTop = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="composer-input"]')?.closest('form, [class*="composer"]') ?? document.querySelector('[data-testid="composer-input"]')
+      return el instanceof HTMLElement ? el.getBoundingClientRect().top : null
+    })
+    const y1 = Math.min(
+      Math.round(dpr2.img.height * 0.9),
+      composerTop === null ? Number.POSITIVE_INFINITY : Math.round((composerTop - dpr2.box.y) * 2) - 8,
+    )
     const seam = seamsInColumn(dpr2.img, x, y0, y1)
     report.dpr2Seams = seam.seams
+    if (seam.seams > 0) {
+      // 红了就把每一道的位置与颜色打出来:一道缝的诊断从「它在哪」开始,不从重跑开始。
+      const colorAt = (yy) => { const i = (yy * dpr2.img.width + x) * dpr2.img.bpp; return `${dpr2.img.data[i]},${dpr2.img.data[i + 1]},${dpr2.img.data[i + 2]}` }
+      const hits = []
+      for (let yy = y0 + 1; yy < y1 - 1; yy += 1) if (colorAt(yy) !== seam.base && (colorAt(yy - 1) === seam.base || colorAt(yy + 1) === seam.base)) hits.push({ y: yy, color: colorAt(yy) })
+      console.log(`  · 缝的位置(x=${x},取样 ${y0}–${y1},composer 顶 ${composerTop}):${JSON.stringify(hits)}`)
+    }
     console.log(
       `  · dpr-2 缝数:列 x=${x}、行 ${y0}–${y1}、底色 ${seam.base}`
         + `(${seam.baseRows}/${seam.rows} 行)→ **${seam.seams} 道**`,
