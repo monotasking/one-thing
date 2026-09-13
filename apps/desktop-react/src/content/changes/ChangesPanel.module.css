@@ -403,19 +403,23 @@
 }
 
 /*
- * **`content-visibility: auto` 逐块**(第五轴:单文件两万行 diff)。
+ * **`content-visibility: auto` 按 hunk**(第五轴:单文件两万行 diff)。
  *
- * ── 取件口为什么是「包一层再打孙子」────────────────────────────────────
- * `Diff` 的 DOM 是**一层平铺**:一个根 `div`,里面是 hunk 头与行**并列**的一串
- * `div`(`Hunk` 是 Fragment,没有自己的容器)。所以「每个 hunk 一格容器」这句话
- * 在那份 DOM 上没有对应物,而它的类名又是 CSS Modules 哈希过的,`:global(.diff)`
- * 够不着。这里的做法是这块面自己包一层 `.diffWrap`,再对**它的孙辈**下手 ——
- * 那一批正是那些平铺的头与行,粒度比一整段 hunk 更细,而收益(不排版的行数)
- * 一样。不去改 `Diff`:那块是聊天正文里那块 diff 的身子,一行都不该为这块面动。
+ * `Diff` 的 DOM 是根 `div` → 一个 hunk 一个盒 → 头与行。这块面自己包一层 `.diffWrap`,
+ * 对**它的孙辈**(= 那些 hunk 盒)下手;类名是 CSS Modules 哈希过的,`:global(.diff)`
+ * 够不着,所以取件口是层级不是类名。
  *
- * `contain-intrinsic-size` 给一格粗估高度(就是一行),免得卷轴在滚动中一跳一跳。
+ * ── 为什么粒度必须是 hunk 而不是行(2026-09-13 报障)─────────────────────────
+ * 第一版打的是行(`Hunk` 当时是 Fragment,没有盒可打)。`content-visibility: auto` 自带
+ * paint containment,每一行各自一块绘制盒;行高是分数(18.594px),2 倍屏上相邻两块盒
+ * 各自吸附到设备像素,在分数边界上留一道没人画的缝 —— 真机 2 倍屏读数每 5–6 行一道,
+ * 关掉逐行 containment 即 0 道(判词与读数在 `blocks/kinds/diff/Diff.tsx` 的 Hunk 上)。
+ * 按 hunk 包盒之后,分数边界全在盒里面,盒与盒之间隔着另一种底色的 hunk 头。
+ *
+ * `contain-intrinsic-size` 给一格粗估高度(一个 hunk 按八行估),免得卷轴在滚动中一跳一跳;
+ * `auto` 那一半让画过一次的盒记住自己的真高。
  */
 .diffWrap > * > * {
   content-visibility: auto;
-  contain-intrinsic-size: auto var(--files-row-h);
+  contain-intrinsic-size: auto var(--changes-hunk-est-h);
 }

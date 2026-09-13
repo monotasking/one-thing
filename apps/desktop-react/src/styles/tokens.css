@@ -1501,6 +1501,8 @@
   --changes-letter-w: 12px;
   --changes-stat-w: 52px;
   --changes-skel-w3: 33%;
+  /* 一个 hunk 画出来之前的粗估高(八行);画过一次之后 contain-intrinsic-size: auto 记真高 */
+  --changes-hunk-est-h: calc(var(--files-row-h) * 8);
 
   /* ── 分隔杆(ui/Splitter,09-01)────────────────────────────────────────
    * 抓手比线宽得多:线是**视觉**(1px 的分栏界),抓手是**手感**。一条 1px

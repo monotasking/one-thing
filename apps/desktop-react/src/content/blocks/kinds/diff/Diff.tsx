@@ -34,8 +34,20 @@ export function Diff({ model }: { model: DiffModel }) {
 function Hunk({ hunk }: { hunk: DiffHunk }) {
   // 行号从 hunk 头给的新文件起始行往下走;删除行不占新文件的行,所以不递增。
   let line = hunk.newStart
+  /*
+   * 一个 hunk 一个盒(2026-09-13,改动面报障「同色相邻行之间每隔五六行一道白线」)。
+   *
+   * 从前这里是 Fragment,头与行平铺在根下面;改动面为了大 diff 不排版屏外的行,只能
+   * 对**每一行**下 `content-visibility: auto`。那一格自带 paint containment:每一行
+   * 各自是一块绘制盒,而行高是 1.55 倍行距算出来的分数(18.594px,2 倍屏 37.19 设备
+   * 像素),相邻两块盒各自吸附到设备像素时在分数边界上留一道没人画的缝 —— 真机 2 倍
+   * 屏读数:每 5–6 行一道(186 / 223 设备像素 = 5 / 6 × 37.19),关掉逐行 containment
+   * 即 0 道。所以 containment 的粒度只能是 hunk:一个 hunk 里的行同属一块绘制盒,分数
+   * 边界都在盒**里面**,盒与盒之间隔着 hunk 头(另一种底色),那一道缝无处可见。
+   * 聊天正文里这块 diff 不做 containment,这层盒对它只是多一个 block 容器,一个像素不变。
+   */
   return (
-    <>
+    <div className={s.hunk}>
       {hunk.header !== undefined && <div className={s.hunkHead}>{hunk.header}</div>}
       {hunk.lines.map((entry, index) => {
         const number = entry.kind === 'del' ? undefined : line
@@ -49,7 +61,7 @@ function Hunk({ hunk }: { hunk: DiffHunk }) {
           </div>
         )
       })}
-    </>
+    </div>
   )
 }
 

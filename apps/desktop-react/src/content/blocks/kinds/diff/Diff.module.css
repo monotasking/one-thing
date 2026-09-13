@@ -15,6 +15,12 @@
   line-height: 1.55;
 }
 
+/* ── 一个 hunk 一个盒:零视觉,只是绘制 / 排版 containment 的落点(判词在 Diff.tsx 的 Hunk 上)─ */
+
+.hunk {
+  display: block;
+}
+
 /* ── hunk 头:`@@ …… @@` 原文一行 ─────────────────────────────────────── */
 
 .hunkHead {
