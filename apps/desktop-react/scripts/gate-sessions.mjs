@@ -87,6 +87,8 @@ function trafficLightX() {
 }
 
 const CONTENT_LEAD_LEFT = token('content-lead-left')
+/** 行 / 节头 / 导航行的左内边距(`--sp-2`):盒子比对齐线往左探出的那一格。 */
+const ROW_PAD = token('sp-2')
 const TRAFFIC_X = trafficLightX()
 const TRAFFIC_LIGHT_RADIUS = 6
 const COLD_OPEN_MS = budget('coldOpenMs')
@@ -310,7 +312,7 @@ const read = (page) => page.evaluate(READ)
  *  · 「没有任何元素越过它」—— 这一句管的是**一切**,所以第二个数量的是墨
  *    (自己画内容的元素:直接文本 / svg / img / canvas / input)。
  *
- * 两个数分开量是必须的:文字在盒内还要再进 --sp-2(x = 22 + 8 = 30,正本 §3.1),
+ * 两个数分开量是必须的:盒子比线往左探一格 --sp-2(盒 x = 14、墨 x = 22,09-13 裁定),
  * 所以拿墨去比那条线必然差 8px 而且**该**差 —— 首跑就是这么红的一次(实际 30、
  * 想要 22),红的是尺子不是产品。
  * 铺满整条架子的那些容器 div 不进任何一个数:它们的左缘恒等于架子的左缘,
@@ -585,29 +587,31 @@ async function sceneLead(page) {
     return
   }
   const want = m.shelfLeft + CONTENT_LEAD_LEFT
+  const wantBox = want - ROW_PAD
   note(
     `架子左缘 ${m.shelfLeft} · 想要 ${want} · 结构盒 ${m.boxCount} 个,最左 ${m.box}(${m.boxWho})`
       + ` · 最左那一笔墨 ${m.ink}(${m.inkWho})`,
   )
+  /*
+   * 09-13 用户拿真机截图画线追加的裁定:**对线的是图标与文字(墨),不是盒边**。
+   * 第一版把盒边对上线、字再进 8,屏幕上字与红灯错着半颗灯 —— 这三条断言就是
+   * 那一次的反面:墨贴线、墨不越线、盒子探出线外恰好一格行内边距(悬停薄膜挂在
+   * 字的左边,与 macOS 侧栏选中条同形)。
+   */
   check(
-    '导航行 / 节头 / 会话行的左缘**都落在**那条线上(容差 1px)',
-    m.box !== null && m.boxCount >= 3 && Math.abs(m.box - want) <= 1,
-    `${m.boxCount} 个盒子,最左 ${m.box},差 ${m.box === null ? '—' : (m.box - want).toFixed(1)}px`,
+    '导航行 / 节头 / 会话行的**图标与文字**落在那条线上(最左一笔墨,容差 1px)',
+    m.ink !== null && Math.abs(m.ink - want) <= 1,
+    `最左那一笔墨 ${m.ink}(${m.inkWho})vs 线 ${want}`,
   )
   check(
     '**没有任何元素越过它**(连墨都不许,容差 1px)',
     m.ink !== null && m.ink >= want - 1,
     `最左那一笔墨 ${m.ink} vs 线 ${want}`,
   )
-  /*
-   * 文字在盒内**还要再进一档**(正本 §3.1:x = 22 + 8 = 30)。这一条不是装饰:
-   * 它把「盒贴着线、字在盒内」与「字贴着线、盒探到线外」两种形分开 ——
-   * 后者在第二条断言下同样绿(墨没越线),但屏幕上悬停薄膜会探出那条线。
-   */
   check(
-    '而字在盒内再进一档(不是贴着那条线)',
-    m.ink !== null && m.ink > want + 1,
-    `墨 ${m.ink} vs 线 ${want}`,
+    `盒子往左探出恰好一格行内边距(--sp-2 = ${ROW_PAD}):悬停薄膜挂在字的左边`,
+    m.box !== null && m.boxCount >= 3 && Math.abs(m.box - wantBox) <= 1,
+    `${m.boxCount} 个盒子,最左 ${m.box}(${m.boxWho}),想要 ${wantBox}`,
   )
 }
 
