@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>改动面 · 整文件 + 折叠(建议方向样例)</title>
+<title>改动面 · 整文件(建议方向样例)</title>
 <style>
   :root {
     --bg: #2a2928; --panel: #333230; --panel-2: #3b3a38; --line: #4a4846; --line-2: #5a5856;
@@ -29,12 +29,9 @@
   .eave { display: flex; align-items: center; gap: 12px; padding: 6px 12px; border-bottom: 1px solid var(--line); font: 12px var(--mono); }
   .eave .path { color: var(--text); }
   .eave .path .dir { color: var(--text-3); }
-  .seg { margin-left: auto; display: inline-flex; border: 1px solid var(--line-2); border-radius: 6px; overflow: hidden; font-family: var(--sans); }
-  .seg button { background: none; border: 0; color: var(--text-3); padding: 2px 10px; font: 11px var(--sans); cursor: pointer; }
-  .seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--text); }
-  .nav button { background: none; border: 1px solid var(--line-2); border-radius: 6px; color: var(--text-2); padding: 1px 8px; font: 11px var(--sans); cursor: pointer; }
-  .nav button:hover { border-color: var(--accent); color: var(--text); }
-  .nav .k { color: var(--text-4); margin: 0 4px; }
+  .nav { margin-left: auto; display: inline-flex; gap: 4px; }
+  .nav button { background: none; border: 0; border-radius: 6px; color: var(--text-3); width: 24px; height: 22px; font: 13px var(--sans); cursor: pointer; }
+  .nav button:hover { background: var(--accent-soft); color: var(--text); }
   .bodyrow { display: flex; flex: 1; min-height: 0; }
   .code { flex: 1; overflow: auto; font: 12px/19px var(--mono); }
   /* 横滚纪律:文本行按内容宽 —— 内层盒 min-width: max-content,加删底色铺到最长那行;
@@ -72,10 +69,10 @@
   footer b { color: var(--text-2); }
 </style>
 </head>
-<body data-mode="fold">
+<body>
 <header>
-  <h1>改动面 · 整文件 + 折叠</h1>
-  <p>建议方向的样例:单位是文件不是 hunk。没改的段折成一道带,点开就是文件本来的行;两列行号;改动地图在右缘;上一处 / 下一处直接跳。</p>
+  <h1>改动面 · 整文件</h1>
+  <p>建议方向的样例(09-13 拍板):只有整个文件一种形态,不折叠;改动上底色;两列行号;右缘改动地图;檐上两枚箭头在改动之间跳。</p>
 </header>
 <div class="wrap">
   <aside class="files">
@@ -87,8 +84,7 @@
     <div class="eave">
       <span class="path"><span class="dir">packages/onething-runtime/src/providers/</span>model-capability.ts</span>
       <span class="stat"><span class="a">+7</span><span class="d">−3</span></span>
-      <span class="nav"><button id="prev">↑ 上一处</button><span class="k" id="pos">1 / 2</span><button id="next">↓ 下一处</button></span>
-      <span class="seg"><button id="mFold" aria-pressed="true">只看改动</button><button id="mAll" aria-pressed="false">整个文件</button></span>
+      <span class="nav"><button id="prev" aria-label="上一处改动" title="上一处改动">↑</button><button id="next" aria-label="下一处改动" title="下一处改动">↓</button></span>
     </div>
     <div class="bodyrow">
       <div class="code" id="code"></div>
@@ -97,7 +93,7 @@
   </section>
 </div>
 <footer>
-  <b>与今天的差别:</b>今天画的是 <code>git diff</code> 的文本(hunk + 3 行上下文,<code>@@</code> 原文当分隔);这里画的是**文件**——后端交 HEAD 版与工作区版两份原文,壳里算行级 diff、给每一行两列行号、把没改的段折起来。折叠带上写「⋯ N 行未改」与所属函数名,点开不是「再去要几行」而是本来就在的行。语法高亮走查看器已有的那台 shiki。评论的坐标因此就是文件行号,和文件查看器是同一个面。
+  <b>与今天的差别:</b>今天画的是 <code>git diff</code> 的文本(hunk + 3 行上下文,<code>@@</code> 原文当分隔);这里画的是**文件**——后端交 HEAD 版与工作区版两份原文,壳里算行级 diff、给每一行两列行号。不折叠(09-13 拍板:只有整个文件一种形态),在改动之间移动靠檐上两枚箭头与右缘的改动地图。语法高亮走查看器已有的那台 shiki。评论的坐标因此就是文件行号,和文件查看器是同一个面。
 </footer>
 
 <script>
@@ -161,7 +157,7 @@
   const CONTEXT = 3
   // 标记:离改动 ≤3 行的 ctx 露出,其余折叠
   const changed = lines.map(l => l[0] !== 'ctx')
-  const shown = lines.map((_, i) => changed.slice(Math.max(0, i - CONTEXT), i + CONTEXT + 1).some(Boolean))
+  const shown = lines.map(() => true) // 09-13 拍板:只有整个文件一种形态,不折叠
   const code = document.getElementById('code'), map = document.getElementById('map')
   let o = 1, n = 1, html = '', runStart = -1, lastFn = ''
   const flushFold = (endExclusive) => {
@@ -200,13 +196,10 @@
   let cur = 0
   const go = (d) => {
     cur = (cur + d + hunkStarts.length) % hunkStarts.length
-    document.getElementById('pos').textContent = `${cur + 1} / ${hunkStarts.length}`
     code.querySelectorAll('.ln.cur').forEach(el => el.classList.remove('cur'))
-    const el = code.querySelector(`.ln[data-i="${hunkStarts[cur]}"]`); el.classList.add('cur'); el.scrollIntoView({ block: 'center' })
+    const el = code.querySelector(`.ln[data-i="${hunkStarts[cur]}"]`); el.classList.add('cur'); code.scrollTop = el.offsetTop - code.clientHeight / 2 // 只滚自己这一格,不把整页拖走
   }
   document.getElementById('prev').onclick = () => go(-1); document.getElementById('next').onclick = () => go(1)
-  const setMode = (m) => { document.body.dataset.mode = m; document.getElementById('mFold').setAttribute('aria-pressed', m === 'fold'); document.getElementById('mAll').setAttribute('aria-pressed', m === 'all') }
-  document.getElementById('mFold').onclick = () => setMode('fold'); document.getElementById('mAll').onclick = () => setMode('all')
 </script>
 </body>
 </html>
