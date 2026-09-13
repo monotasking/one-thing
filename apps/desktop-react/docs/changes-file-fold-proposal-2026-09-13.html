@@ -29,7 +29,8 @@
   .eave { display: flex; align-items: center; gap: 12px; padding: 6px 12px; border-bottom: 1px solid var(--line); font: 12px var(--mono); }
   .eave .path { color: var(--text); }
   .eave .path .dir { color: var(--text-3); }
-  .nav { margin-left: auto; display: inline-flex; gap: 4px; }
+  .nav { margin-left: auto; display: inline-flex; gap: 4px; align-items: center; }
+  .nav .k { color: var(--text-3); font: 11px var(--mono); margin: 0 2px; }
   .nav button { background: none; border: 0; border-radius: 6px; color: var(--text-3); width: 24px; height: 22px; font: 13px var(--sans); cursor: pointer; }
   .nav button:hover { background: var(--accent-soft); color: var(--text); }
   .bodyrow { display: flex; flex: 1; min-height: 0; }
@@ -84,7 +85,7 @@
     <div class="eave">
       <span class="path"><span class="dir">packages/onething-runtime/src/providers/</span>model-capability.ts</span>
       <span class="stat"><span class="a">+7</span><span class="d">−3</span></span>
-      <span class="nav"><button id="prev" aria-label="上一处改动" title="上一处改动">↑</button><button id="next" aria-label="下一处改动" title="下一处改动">↓</button></span>
+      <span class="nav"><button id="prev" aria-label="上一处改动" title="上一处改动">↑</button><span class="k" id="pos">1 / 2</span><button id="next" aria-label="下一处改动" title="下一处改动">↓</button></span>
     </div>
     <div class="bodyrow">
       <div class="code" id="code"></div>
@@ -196,6 +197,7 @@
   let cur = 0
   const go = (d) => {
     cur = (cur + d + hunkStarts.length) % hunkStarts.length
+    document.getElementById('pos').textContent = `${cur + 1} / ${hunkStarts.length}`
     code.querySelectorAll('.ln.cur').forEach(el => el.classList.remove('cur'))
     const el = code.querySelector(`.ln[data-i="${hunkStarts[cur]}"]`); el.classList.add('cur'); code.scrollTop = el.offsetTop - code.clientHeight / 2 // 只滚自己这一格,不把整页拖走
   }

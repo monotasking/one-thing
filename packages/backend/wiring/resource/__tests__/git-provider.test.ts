@@ -33,7 +33,15 @@
  *   ⑯ 未跟踪的敏感文件**连打开都不打开**:`status` 里有它那一行,`add` 缺席,
  *      `diff` 仍拒 —— 「不给看」包括「不打开」(反证⑨);
  *   ⑰ **仓根在读根之外时按地址那一段列**,`scope` 说出是哪一段;范围外的文件
- *      `diff` 仍拒(反证⑩)。
+ *      `diff` 仍拒(反证⑩);
+ *   ⑱ `file` 的**六种状态各一例**:modified 两版都在且不同 / added(staged)只有
+ *      `work` / deleted 只有 `head` / renamed 按新路径问是「只有 `work`」/ untracked
+ *      只有 `work` / binary 两侧 `binary: true` 且 `text` 空,`bytes` 照实说
+ *      (反证⑪:「不在 HEAD」那句 stderr 不折成 `null`,added 与 untracked 两行当场红);
+ *   ⑲ `file` 与 `diff` 过**同一套关**:`.env` 拒 `sensitive`(反证⑫:把第三关拆掉)、
+ *      绝对 / `..` / 空一律 TypeError、范围外拒 `outside`、非仓库抛;
+ *   ⑳ 两版**各 2 MiB**:各自 `truncated` 且截在完整行上,两边**互不影响**,而且不抛
+ *      (反证⑬);空仓的 `head` 是 `null`,`work` 照常在。
  *
  * **这只测试把 `GIT_CONFIG_GLOBAL` 指向 `/dev/null`**:provider 跑 git 时铺的是
  * `process.env`,而跑测试这台机器上的全局 gitconfig(`diff.noprefix`、
@@ -69,6 +77,8 @@ let bigRepo: string
 let dirRepo: string
 let budgetDir: string
 let scopeRepo: string
+let fileRepo: string
+let emptyRepo: string
 
 const previousGlobalConfig = process.env.GIT_CONFIG_GLOBAL
 const previousSystemConfig = process.env.GIT_CONFIG_SYSTEM
@@ -104,6 +114,8 @@ beforeAll(() => {
   dirRepo = path.join(root, 'dirs')
   budgetDir = path.join(root, 'budget')
   scopeRepo = path.join(root, 'scoped')
+  fileRepo = path.join(root, 'twoversions')
+  emptyRepo = path.join(root, 'empty')
 
   fs.mkdirSync(path.join(repo, 'src'), { recursive: true })
   fs.mkdirSync(plain, { recursive: true })
@@ -158,6 +170,22 @@ beforeAll(() => {
   git(scopeRepo, ['commit', '-qm', 'first'])
   fs.writeFileSync(path.join(scopeRepo, 'a.txt'), 'a1\na2\n')
   fs.writeFileSync(path.join(scopeRepo, 'sub', 'b.txt'), 'b1\nb2\n')
+
+  /*
+   * ⑳:**两版各 2 MiB**,自己一棵树 —— 它要证的是两边各截各的,而把一个 2 MiB 的
+   * 文件塞进 `repo` 会把①那张表的读数搅乱(用例之间不许靠「谁先跑」说话)。
+   */
+  fs.mkdirSync(fileRepo, { recursive: true })
+  git(fileRepo, ['-c', 'init.defaultBranch=main', 'init', '-q', '.'])
+  fs.writeFileSync(path.join(fileRepo, 'both.txt'), `${'h'.repeat(63)}\n`.repeat(32_768))
+  git(fileRepo, ['add', 'both.txt'])
+  git(fileRepo, ['commit', '-qm', 'first'])
+  fs.writeFileSync(path.join(fileRepo, 'both.txt'), `${'w'.repeat(63)}\n`.repeat(32_768))
+
+  // ⑳b:一个**还没有第一次提交**的仓 —— `HEAD` 不存在,不是「这个文件不在 HEAD 里」。
+  fs.mkdirSync(emptyRepo, { recursive: true })
+  git(emptyRepo, ['-c', 'init.defaultBranch=main', 'init', '-q', '.'])
+  fs.writeFileSync(path.join(emptyRepo, 'fresh.txt'), 'f1\nf2\n')
 
   // ⑮:三只 1 MiB 的未跟踪文件,配一本小预算。
   fs.mkdirSync(budgetDir, { recursive: true })
@@ -222,6 +250,19 @@ interface DiffView {
   truncated: boolean
 }
 
+interface FileTextView {
+  text: string
+  binary: boolean
+  truncated: boolean
+  bytes: number
+}
+
+interface FileView {
+  path: string
+  head: FileTextView | null
+  work: FileTextView | null
+}
+
 describe('git provider(「改动」面)', () => {
   const provider = new GitResourceProvider()
 
@@ -235,6 +276,13 @@ describe('git provider(「改动」面)', () => {
       { path: filePath },
       readContext(sandboxAt(root)),
     )) as DiffView
+
+  const file = async (
+    target: string,
+    filePath: string,
+    sandbox: SandboxPolicy = sandboxAt(root),
+  ): Promise<FileView> =>
+    (await provider.read('file', { scheme: 'git', path: target }, { path: filePath }, readContext(sandbox))) as FileView
 
   it('① 六种状态一次问全,每行的读数与 stat 合计都对得上', async () => {
     const view = await status(repo)
@@ -575,6 +623,108 @@ describe('git provider(「改动」面)', () => {
     expect(inside.text).toContain('+b2')
   })
 
+  it('⑱ file 的六种状态各一例:两个 null 合起来就是这个文件发生了什么(反证⑪)', async () => {
+    // modified:两版都在,而且**不是同一份** —— 只对得上一版的话,行级差异那一侧
+    // 算出来的会是「整篇没变」或「整篇全换」。
+    const modified = await file(repo, 'src/a.txt')
+    expect(modified.path).toBe('src/a.txt')
+    expect(modified.head).toEqual({ text: 'one\ntwo\nthree\n', binary: false, truncated: false, bytes: 14 })
+    expect(modified.work).toEqual({ text: 'one\nTWO\nthree\nfour\n', binary: false, truncated: false, bytes: 19 })
+
+    /*
+     * added(**已暂存**):`work` 在、`head` 空。`git show` 对它说的是
+     * 「exists on disk, but not in 'HEAD'」—— 把那句话折成 `null` 正是这一行在钉的事
+     * (反证⑪:改成抛,这一行与下面 untracked 那一行一起红)。
+     */
+    const added = await file(repo, 'added.txt')
+    expect(added.head).toBeNull()
+    expect(added.work).toMatchObject({ text: 'x\ny\n', binary: false, truncated: false, bytes: 4 })
+
+    // deleted:盘上没有了,`head` 还在 —— 整篇 del 的那一路。
+    const deleted = await file(repo, 'deleted.txt')
+    expect(deleted.head).toMatchObject({ text: 'a\nb\nc\n', bytes: 6 })
+    expect(deleted.work).toBeNull()
+
+    /*
+     * renamed:**按新路径问**,答案是「只有 `work`」。这不是缺陷是契约(自述那条读法
+     * 上写着):这只函数不去猜旧路径 —— 猜错的那一份会被整篇画成改动。要旧那一版就
+     * 拿 `status` 给的 `oldPath` 再问一次,而那一问答的是「只有 `head`」。
+     */
+    const renamed = await file(repo, 'new.txt')
+    expect(renamed.head).toBeNull()
+    expect(renamed.work).toMatchObject({ text: 'same\n' })
+    const fromPath = await file(repo, 'old.txt')
+    expect(fromPath.head).toMatchObject({ text: 'same\n' })
+    expect(fromPath.work).toBeNull()
+
+    // untracked:git 一个字都不认识它,答案整个来自盘。
+    const untracked = await file(repo, 'untracked.txt')
+    expect(untracked.head).toBeNull()
+    expect(untracked.work).toMatchObject({ text: 'u1\nu2\nu3\n', binary: false, bytes: 9 })
+
+    /*
+     * binary:两侧都 `binary: true` 且 `text` 空,而 `bytes` **照实说**(16 → 32)——
+     * 空文本与「这个文件是空的」不是同一件事,`bytes` 就是把它们分开的那一格。
+     * `truncated` 是 `false`:那一版的文本空着不是因为被裁掉了。
+     */
+    const binary = await file(repo, 'logo.png')
+    expect(binary.head).toEqual({ text: '', binary: true, truncated: false, bytes: 16 })
+    expect(binary.work).toEqual({ text: '', binary: true, truncated: false, bytes: 32 })
+  })
+
+  it('⑲ file 与 diff 过同一套关:.env 拒 sensitive、路径形状、范围外、非仓库(反证⑫)', async () => {
+    // 第三关 —— 与 `diff` 同一句 `resolveReadable`、同一序(判在 git 跑起来之前)。
+    // 拆掉它,这一行当场红,而 `.env` 的**原文**会整篇交出去。
+    await expect(file(repo, '.env'))
+      .rejects.toMatchObject({ name: 'DirOutsideSandboxError', reason: 'sensitive' })
+    // 前提:同一个仓里别的文件读得到 —— 上面拒的不是「这个仓一个文件都读不出来」。
+    expect((await file(repo, 'src/a.txt')).work?.text).toContain('four')
+
+    // 那一格 `path` 的形状,与 `diff` 逐字同一只判官。
+    for (const bad of ['', path.join(repo, 'src', 'a.txt'), '../outside.txt', 'src/../../x', '~/x']) {
+      await expect(file(repo, bad)).rejects.toThrowError(TypeError)
+    }
+
+    // 范围外:仓根在读根之外时,`status` 列不到它,`file` 也读不到。
+    const sub = path.join(scopeRepo, 'sub')
+    const scoped = sandboxAt(sub)
+    await expect(file(sub, 'a.txt', scoped))
+      .rejects.toMatchObject({ name: 'DirOutsideSandboxError', reason: 'outside' })
+    expect((await file(sub, 'sub/b.txt', scoped)).work?.text).toBe('b1\nb2\n')
+
+    // 不是仓库 → 抛(与 `diff` 同一条:那句话的参照系不存在)。
+    await expect(file(plain, 'x.txt')).rejects.toThrowError(GitOperationFailedError)
+  })
+
+  it('⑳ 两版各 2 MiB:各截各的,互不影响,不抛;空仓的 head 是 null(反证⑬)', async () => {
+    const view = await file(fileRepo, 'both.txt')
+
+    for (const version of [view.head, view.work]) {
+      expect(version?.truncated).toBe(true)
+      expect(version?.binary).toBe(false)
+      // `bytes` 说的是**原始大小**(2 MiB),`text` 只有上限那一截 —— 两个数差着一个
+      // 数量级,而读者要靠前者才知道自己手上是个零头。
+      expect(version?.bytes).toBe(2 * 1024 * 1024)
+      expect(Buffer.byteLength(version?.text ?? '', 'utf8')).toBeLessThanOrEqual(1024 * 1024)
+      // 截在完整的行上:半行原文喂给一个按行对齐的算法,画出来的是一张骗人的表。
+      expect(version?.text.endsWith('\n')).toBe(true)
+    }
+
+    // **两边各是各的**:一边的内容漏到另一边(比如 work 那一侧误读了 HEAD),这两行红。
+    expect(view.head?.text).toContain('h'.repeat(63))
+    expect(view.head?.text).not.toContain('w'.repeat(63))
+    expect(view.work?.text).toContain('w'.repeat(63))
+    expect(view.work?.text).not.toContain('h'.repeat(63))
+
+    /*
+     * 空仓:`HEAD` 根本不存在。判据是 `rev-parse` 而不是第三句 stderr —— git 对它
+     * 说的是「invalid object name 'HEAD'」,与「这个文件不在 HEAD 里」是两句话。
+     */
+    const fresh = await file(emptyRepo, 'fresh.txt')
+    expect(fresh.head).toBeNull()
+    expect(fresh.work).toMatchObject({ text: 'f1\nf2\n', binary: false, truncated: false, bytes: 6 })
+  })
+
   it('⑩ 零做法:任何 op 抛;认不出的读法抛;attach 收着不发', async () => {
     await expect(provider.plan('stage', { scheme: 'git', path: repo }, {}, {} as PlanContext))
       .rejects.toThrowError(TypeError)
@@ -598,7 +748,7 @@ describe('git 的自述与守卫', () => {
     expect(() => { assertResourceSpec(gitResourceSpec) }).not.toThrow()
     expect(Object.keys(gitResourceSpec.ops)).toEqual([])
     expect(Object.keys(gitResourceSpec.events)).toEqual([])
-    expect(Object.keys(gitResourceSpec.reads).sort()).toEqual(['diff', 'status'])
+    expect(Object.keys(gitResourceSpec.reads).sort()).toEqual(['diff', 'file', 'status'])
   })
 
   it('读守卫对 git 与对 dir 同一条:本机可信放行,不可信拒', async () => {

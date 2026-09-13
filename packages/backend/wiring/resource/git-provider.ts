@@ -22,14 +22,17 @@
  * 去猜。
  *
  * ── 沙箱判三次,不是两次 ────────────────────────────────────────────────────
- * `status` 判两处(地址、根),`diff` 判**三处**:地址、根、以及 `path.join(root, path)`
- * 那个**目标文件自己**。第三处不是多余的 —— 少了它,`git:<仓库>` + `{path:'.env'}`
- * 会把一份凭证文件的原文交出去,而同一个文件经 `read` 工具是拒的(敏感文件那一关)。
- * 「地址在界内」不蕴含「这个地址里的每一个文件都该被读出来」。
+ * `status` 判两处(地址、根),**收一格 `path` 的那两条**(`diff` / `file`)判**三处**:
+ * 地址、根、以及 `path.join(root, path)` 那个**目标文件自己**。第三处不是多余的 ——
+ * 少了它,`git:<仓库>` + `{path:'.env'}` 会把一份凭证文件的原文交出去,而同一个文件经
+ * `read` 工具是拒的(敏感文件那一关)。「地址在界内」不蕴含「这个地址里的每一个文件都
+ * 该被读出来」。`file` 交的是**原文**而不是一块 diff,所以这一关在它身上只会更要紧,
+ * 判据却一个字都不用改 —— 两条读法调的是同一句 `resolveReadable`,同一个序:
+ * **判在 git 跑起来之前**,一次被拒的读不该先把凭证读进这个进程的内存。
  *
  * 而**根过不了读根时不是整条拒**:会话绑的工作目录常常是仓库的一个子目录,那时
  * `status` 按地址那一段列并把范围说出来(`scope`)——判词写在 `readableRepoScope`
- * 上。`diff` 不必跟着改:它的第三关已经把范围外的文件拒掉了。
+ * 上。`diff` / `file` 不必跟着改:它们的第三关已经把范围外的文件拒掉了。
  *
  * ── 跑 git 的五条公共纪律 ───────────────────────────────────────────────────
  * · `spawn` 不过 shell —— 路径里的空格、引号、`$` 不需要任何人转义;
@@ -70,6 +73,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import {
   GIT_DIFF_MAX_BYTES,
+  GIT_FILE_MAX_BYTES,
   GIT_UNTRACKED_COUNT_BUDGET_BYTES,
   gitResourceSpec,
 } from '@onething/runtime/files/git-resource-spec'
@@ -129,6 +133,33 @@ export interface GitChangedFile {
   readonly binary?: boolean
   readonly oldPath?: string
 }
+
+/**
+ * `file` 那条读法里**一个版本**的原文。形状逐格对着自述的 `FILE_TEXT_SCHEMA`。
+ *
+ * `bytes` 是**原始大小**,不是 `text` 的长度:截断过的那一版里两个数差着一个数量级,
+ * 而读者要靠它才知道自己手上是个零头(自述那格常量上写着这句)。
+ */
+export interface GitFileText {
+  readonly text: string
+  readonly binary: boolean
+  readonly truncated: boolean
+  readonly bytes: number
+}
+
+/**
+ * git 说「这一版不在 HEAD 里」的两句话,逐字取自它自己
+ * (`path 'x' does not exist in 'HEAD'` / `path 'x' exists on disk, but not in 'HEAD'`)。
+ *
+ * 为什么认这两句而不是认那个 128:128 是 git 的通用失败码,一个坏掉的仓库、一个
+ * 权限不足的 `.git`、一个写错的 revision 全都答 128。把它整个折成 `null` 等于把
+ * 每一种失败都说成「这个文件是新增的」—— 于是一个真的故障会安静地变成一屏「整篇
+ * 都是新增行」。**认不出的非零退出仍然是 `GitOperationFailedError`**。
+ *
+ * (`LC_ALL=C` 就是为了这两句读得准 —— 与 `toplevel()` 认「not a git repository」
+ * 同一条理由、同一把尺子。)
+ */
+const PATH_NOT_IN_HEAD = /does not exist in 'HEAD'|exists on disk, but not in 'HEAD'/
 
 export type GitFileStatus =
   | 'modified'
@@ -234,6 +265,18 @@ export class GitResourceProvider implements ResourceProvider<never> {
          */
         const { root } = readableRepoScope(toplevel, cwd, ctx)
         return this.diff(root, relativePathQuery(query, name), ctx)
+      }
+      case 'file': {
+        /*
+         * 与 `diff` 逐字同一支(连那句「不是仓库就抛」的理由都一样):「这个文件相对
+         * 上一次提交的两个版本」对一个不归 git 管的目录没有答案,而 `status` 的
+         * `{ repo: false }` 是一句**关于这个目录**的真话。
+         */
+        if (toplevel === null) {
+          throw new GitOperationFailedError(['rev-parse', '--show-toplevel'], 128, `${cwd}: not a git repository`)
+        }
+        const { root } = readableRepoScope(toplevel, cwd, ctx)
+        return this.file(root, relativePathQuery(query, name), ctx)
       }
       default:
         // 走不到:两条路(`ResourceTool` / `ResourceKernel.read`)都先查过读法名在不在
@@ -378,8 +421,77 @@ export class GitResourceProvider implements ResourceProvider<never> {
     if (/^Binary files .* differ$/m.test(raw)) {
       return { path: target, text: '', binary: true, truncated: false }
     }
-    const cut = truncateDiff(raw)
+    const cut = truncateToLastCompleteLine(raw, GIT_DIFF_MAX_BYTES)
     return { path: target, text: cut.text, binary: false, truncated: cut.truncated }
+  }
+
+  /**
+   * 一个文件的两个版本的原文。**一个差异都不算** —— 算法在壳里,后端只交事实
+   * (自述文件头「`diff` 与 `file` 为什么是两条」)。
+   *
+   * 两边各走各的路,而这不是重复:上一次提交那一版只有 git 说得出(盘上没有它),
+   * 此刻这一版只有盘说得出(它可能还没进过任何一个 git 对象)。于是「不在」这件事
+   * 也各有各的读法 —— `git show` 的一句 stderr,与 `fs.stat` 的一次 ENOENT。
+   *
+   * 两个 `null` 合起来就是这个文件发生了什么:都在 = 改过;只有 `work` = 新增 /
+   * 未跟踪;只有 `head` = 删掉了。**重命名按新路径问**,答案是「只有 `work`」——
+   * 这只函数不去猜旧路径,猜错的那一份会被整篇画成改动。
+   */
+  private async file(root: string, target: string, ctx: ResourceReadContext): Promise<unknown> {
+    /*
+     * **第三关:目标文件自己**,与 `diff` 同一句、同一序(文件头「沙箱判三次」)。
+     * 判在两边任何一次读之前:这条读法交的是**原文**,被拒的那一份连打开都不该打开。
+     */
+    const absolute = resolveReadable(path.join(root, target), ctx.sandbox, ctx.sessionId)
+    return {
+      path: target,
+      head: await this.headText(root, target, ctx),
+      work: await workText(absolute),
+    }
+  }
+
+  /** 上一次提交那一版。不在 HEAD(新增 / 未跟踪 / 空仓)= `null`。 */
+  private async headText(root: string, target: string, ctx: ResourceReadContext): Promise<GitFileText | null> {
+    /*
+     * 空仓先判,而且判据是 `rev-parse` 不是一句 stderr:一个还没有第一次提交的仓库里
+     * `HEAD` 根本不存在,git 对它说的是「invalid object name」——那与「这个文件不在
+     * HEAD 里」是两句不同的话,靠认第三句 stderr 去合并它们,等于让这条读法的正确性
+     * 挂在 git 的措辞上多一处。判据与 `diff` 那一支逐字相同。
+     */
+    const hasHead = (await this.run(['rev-parse', '--verify', '--quiet', 'HEAD'], root, ctx)).code === 0
+    if (!hasHead) return null
+
+    /*
+     * **大小先问 `cat-file -s`,再读内容**,多花的这一次子进程买的是一句不会说谎的
+     * `bytes`:`git show` 交出来的那一截可能是截断的(300 MB 的锁文件只会出来 1 MiB),
+     * 而二进制那一版经 utf8 解码之后字节数已经不是原来那个数了(非法序列会变成替换
+     * 字符)。两种情况下拿交出去的那一截去量,量到的都是「我给了你多少」,而 `bytes`
+     * 要答的是「它有多大」。
+     *
+     * 顺带它也是**存在性那一问**:`cat-file` 与 `show` 对「不在 HEAD」说的是同一句话。
+     */
+    const sizeArgs = ['cat-file', '-s', `HEAD:${target}`]
+    const sized = await this.run(sizeArgs, root, ctx)
+    if (sized.code !== 0) {
+      if (PATH_NOT_IN_HEAD.test(sized.stderr)) return null
+      throw this.failed(sizeArgs, sized)
+    }
+
+    const showArgs = ['show', `HEAD:${target}`]
+    const shown = await this.run(showArgs, root, ctx, GIT_FILE_MAX_BYTES)
+    /*
+     * **overflow 先判**(与 `text()` 那一句同一条理由):到了上限的子进程是被这只
+     * provider 杀掉的,它的退出码必然不是 0,先判退出码只会把一次成功的截断报成失败。
+     */
+    if (!shown.overflow && shown.code !== 0) {
+      if (PATH_NOT_IN_HEAD.test(shown.stderr)) return null
+      throw this.failed(showArgs, shown)
+    }
+    // `cat-file -s` 印的就是一个十进制数;读不成数(它改了输出、或者这不是一个 blob)
+    // 就退回量交出去的那一截 —— 交一个 `NaN` 出去会让每个读 `bytes` 的地方各自去兜底。
+    const declared = Number.parseInt(sized.stdout.trim(), 10)
+    const bytes = Number.isFinite(declared) ? declared : Buffer.byteLength(shown.stdout, 'utf8')
+    return fileTextOf(shown.stdout, bytes)
   }
 
   /**
@@ -460,7 +572,7 @@ function runGit(args: readonly string[], cwd: string, signal: AbortSignal, limit
 
     child.stdout.on('data', (chunk: Buffer) => {
       if (overflow) return
-      // 收**够**上限再多一个字节就停:`truncateDiff` 的判据是「大于上限」,
+      // 收**够**上限再多一个字节就停:`truncateToLastCompleteLine` 的判据是「大于上限」,
       // 刚好等于上限的一块 diff 是完整的,不该被说成截断过。
       if (outBytes + chunk.length > limit) {
         out.push(chunk.subarray(0, Math.max(0, limit + 1 - outBytes)))
@@ -764,15 +876,82 @@ export function createUntrackedLineCounter(
 }
 
 /**
- * 截到 `GIT_DIFF_MAX_BYTES`,而且**截在最后一个完整的行上**。
+ * 截到 `maxBytes`,而且**截在最后一个完整的行上**。
  *
- * 按字节截而不是按字符:上限说的是字节(自述里那个常量),而一块 diff 里的中文一个
+ * 按字节截而不是按字符:上限说的是字节(自述里那两个常量),而一块 diff 里的中文一个
  * 字三个字节。按字节切可能把一个字切成半个,于是最后回退到最后一个 `\n` —— 那半个
  * 字一定在最后一个换行之后,所以这一刀同时把它扔了。
+ *
+ * 上限是**参数**而不是那个常量:`diff` 与 `file` 的上界今天同值、说的却是两句不同的
+ * 话(自述里 `GIT_FILE_MAX_BYTES` 上写着为什么它们不是同一格),把常量写死在这里等于
+ * 让以后其中一格改数时这只函数悄悄按另一格截。
  */
-function truncateDiff(raw: string): { text: string; truncated: boolean } {
-  if (Buffer.byteLength(raw, 'utf8') <= GIT_DIFF_MAX_BYTES) return { text: raw, truncated: false }
-  const head = Buffer.from(raw, 'utf8').subarray(0, GIT_DIFF_MAX_BYTES).toString('utf8')
+function truncateToLastCompleteLine(raw: string, maxBytes: number): { text: string; truncated: boolean } {
+  if (Buffer.byteLength(raw, 'utf8') <= maxBytes) return { text: raw, truncated: false }
+  const head = Buffer.from(raw, 'utf8').subarray(0, maxBytes).toString('utf8')
   const lastBreak = head.lastIndexOf('\n')
   return { text: lastBreak >= 0 ? head.slice(0, lastBreak + 1) : '', truncated: true }
+}
+
+/**
+ * 一段原文 + 它的真实字节数 → 自述那四格。
+ *
+ * **二进制那一档 `truncated` 是 `false`**:那一版的 `text` 空着不是因为被裁掉了,是
+ * 因为它压根不是文本。两件事混成一格,读者会去画一句「内容过长,已截断」,而正确的
+ * 那句话是「这是一个二进制文件」。`bytes` 两档都照实说。
+ *
+ * NUL 判二进制(与 `createUntrackedLineCounter` 同一条,也与 git 自己的判法同族):
+ * `0x00` 是合法的单字节 utf8,所以它在解码之后仍然在字符串里 —— 这一句对着 `git show`
+ * 解码出来的字符串与盘上那份 Buffer 解码出来的字符串都成立。
+ */
+function fileTextOf(raw: string, bytes: number): GitFileText {
+  if (raw.includes('\0')) return { text: '', binary: true, truncated: false, bytes }
+  const cut = truncateToLastCompleteLine(raw, GIT_FILE_MAX_BYTES)
+  return { text: cut.text, binary: false, truncated: cut.truncated, bytes }
+}
+
+/**
+ * 此刻盘上那一版。不在盘上(删掉了、或者那是个目录)= `null`。
+ *
+ * **超上限时只读开头那一截**,而且读的是 `GIT_FILE_MAX_BYTES + 1` 个字节:截断的判据
+ * 是「大于上限」(刚好等于上限的一份原文是完整的,不该被说成截断过),读满上限就停会
+ * 让一份 300 MB 的文件与一份恰好 1 MiB 的文件在判据眼里长得一模一样。多读的那一个
+ * 字节就是它们的差。
+ *
+ * `bytes` 取 `stat` 的 `size` 而不是读回来那一截的长度 —— 与 head 那一侧
+ * `cat-file -s` 同一条理由:`bytes` 答的是「它有多大」,不是「我给了你多少」。
+ */
+async function workText(absolute: string): Promise<GitFileText | null> {
+  const stats = await fs.stat(absolute).catch(() => null)
+  // 目录也答 `null`:`file` 收的那一格来自 `status`,而一个目录不是一处改动
+  // (`-uall` 那条判词的另一半)。
+  if (!stats || !stats.isFile()) return null
+
+  const cap = GIT_FILE_MAX_BYTES + 1
+  let content: Buffer | null
+  if (stats.size <= cap) {
+    content = await fs.readFile(absolute).catch(() => null)
+  } else {
+    content = await readFirstBytes(absolute, cap)
+  }
+  // 刚刚还在、这一刻读不到了(被删掉、权限变了):与「盘上没有它」同一个答案 ——
+  // 编一个空文件出来会被整篇画成「删光了」。
+  if (!content) return null
+
+  return fileTextOf(content.toString('utf8'), stats.size)
+}
+
+/** 开头 `count` 个字节,读不到就 `null`。句柄自己收尸(整个用处就是不把那几百 MB 读进来)。 */
+async function readFirstBytes(absolute: string, count: number): Promise<Buffer | null> {
+  const handle = await fs.open(absolute, 'r').catch(() => null)
+  if (!handle) return null
+  try {
+    const buffer = Buffer.alloc(count)
+    const { bytesRead } = await handle.read(buffer, 0, count, 0)
+    return buffer.subarray(0, bytesRead)
+  } catch {
+    return null
+  } finally {
+    await handle.close().catch(() => {})
+  }
 }

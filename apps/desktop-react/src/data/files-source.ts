@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react'
 import { create } from 'zustand'
-import { languageIdOfExtension } from './languages'
 import type { FileSearchEntry, FilesDirectoryEntry } from '@shared/ipc/files'
 import { useExposeStore } from '../expose/store'
 import type { SessionSummary } from '../expose/types'
@@ -194,12 +193,10 @@ export function baseNameOf(path: string): string {
  * 那个文件头:两处会静默分叉,而分叉的表现是「怎么没上色」)。
  * 表里没有的一律 null = 素文本,那不是错误,是这台不认识它。
  */
-export function langOfPath(path: string): string | null {
-  const name = baseNameOf(path)
-  const at = name.lastIndexOf('.')
-  if (at <= 0) return null
-  return languageIdOfExtension(name.slice(at + 1))
-}
+/* `langOfPath` 住在 `./languages`(纯数据,零 store / 零端口)—— 批 ② 起聊天里的
+ * diff 块也要问「这是什么语言」,不该为了一句话把整条文件数据层拖进消息列表。
+ * 这里只转出去,旧 import 一个字不用改。 */
+export { langOfPath } from './languages'
 
 
 /**

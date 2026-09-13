@@ -23,7 +23,7 @@ import type { HighlighterCore, ThemedToken } from 'shiki/types'
  * 不是错误,是这台不认识它。
  */
 
-import { LANGUAGES } from '../../../../data/languages'
+import { LANGUAGES } from '../../data/languages'
 
 type Highlighter = HighlighterCore
 

@@ -154,6 +154,22 @@ describe('六态', () => {
     expect(screen.getByTestId('changes-body').textContent).toContain('const b = 3')
   })
 
+  it('diff 体逐**行**跳渲 —— 这块面把 `skip` 递下去(两万行那一格的前提)', async () => {
+    mount()
+    await screen.findByTestId('changes-list')
+    await waitFor(() => expect(screen.getByTestId('changes-body')).toBeTruthy())
+    /*
+     * 2026-09-13 批 ②:containment 的粒度从 hunk 盒回到**行**(行高取整之后逐行
+     * 才不留缝,判词在 `CodeLines.module.css` 规矩③ 与 `ChangesPanel.module.css`
+     * 那段病历上)。谁要跳渲由宿主说 —— 聊天正文里那块不传,这块面传 `true`。
+     */
+    const rows = Array.from(
+      screen.getByTestId('changes-body').querySelectorAll('[class*="line"]'),
+    )
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows.every((row) => row.className.includes('lineSkip'))).toBe(true)
+  })
+
   it('error:通知行 + **后端原话** + 重试钮,而且旧屏不清', async () => {
     mount()
     await screen.findByTestId('changes-list')

@@ -15,7 +15,7 @@ import { MessageSourceFoot, researchFoots } from '../SourceFoot'
  * 丸点下去 → 那一段展开 + 滚进视野。
  */
 
-vi.mock('../../blocks/kinds/code/highlight', () => ({
+vi.mock('../../code/highlight', () => ({
   loadHighlighter: () => Promise.resolve(undefined),
   highlight: () => undefined,
   HIGHLIGHT_THEME: 'vitesse-light',

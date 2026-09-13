@@ -1,21 +1,26 @@
 /*
  * diff 块本体。横滚与限高折叠归壳(BlockShell.module.css 的 .body),这里不重复。
+ * **行的样子不在这里**(2026-09-13 批 ②):行号两列、加删底色、+/− 符号列、行高、
+ * 横滚纪律整份搬进了「行」渲染基础件 `content/code/CodeLines.module.css` ——
+ * 聊天代码块、文件查看器、diff 三处画的是同一串行,行的样子只该有一份。
+ * 这个文件剩下的是 diff **自己**的两件:hunk 盒与 hunk 头那条带子。
  * 颜色零字面值:全部 var()。**没有一条左竖线** —— 见 Diff.tsx 头注那段理由。
  */
 
 .diff {
   /*
-   * 行要能铺满**内容**的宽度,不是容器的宽度:壳的 .body 是 overflow-x:auto,
-   * 横滚之后如果行只有容器那么宽,右半边的行底色就断在原来的容器右边缘上,
-   * 读起来像「这一行改到一半」。max-content 把每一行撑到最长那行的宽度。
+   * 行自己会撑到最长那行(基础件根上的 `min-width: max-content`),而 **hunk 头
+   * 那条带子是这一层的孩子** —— 这一层不撑,横滚之后它的底色就断在原来的容器
+   * 右边缘上,读起来像「这个 hunk 到这儿就没了」。所以这一句留着,它管的是带子,
+   * 不是行。(`block-shell.test` 那句「横滚的本体自己撑成 max-content」两处都钉:
+   *  行那一半钉在基础件上,带子这一半钉在这里。)
    */
   min-width: max-content;
+  /* 等宽只为那条 `@@ …… @@` 带子:行的字体由基础件给。 */
   font-family: var(--font-mono);
-  font-size: var(--fs-meta);
-  line-height: 1.55;
 }
 
-/* ── 一个 hunk 一个盒:零视觉,只是绘制 / 排版 containment 的落点(判词在 Diff.tsx 的 Hunk 上)─ */
+/* ── 一个 hunk 一个盒:零视觉,只是「头与它管的那些行是一组」的落点 ───────── */
 
 .hunk {
   display: block;
@@ -29,61 +34,4 @@
   color: var(--text-4);
   font-size: var(--fs-micro);
   white-space: pre;
-}
-
-/* ── 行 ─────────────────────────────────────────────────────────────── */
-
-.row {
-  display: flex;
-  align-items: baseline;
-  gap: var(--sp-2);
-}
-
-.add {
-  background: var(--tint-ok);
-}
-
-.del {
-  background: var(--tint-danger);
-}
-
-.ctx {
-  background: transparent;
-}
-
-/* 行号单列:新文件的行号。淡、窄、不可选中。 */
-.num {
-  flex: none;
-  width: 3.5ch;
-  text-align: right;
-  color: var(--text-4);
-  font-size: var(--fs-nano);
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-/* +/− 符号:满饱和状态色 —— 底色只有 12%,符号是那一行的判据。 */
-.sign {
-  flex: none;
-  width: 1ch;
-  user-select: none;
-  -webkit-user-select: none;
-  color: var(--text-4);
-}
-
-.add .sign {
-  color: var(--ok);
-}
-
-.del .sign {
-  color: var(--danger);
-}
-
-/* 正文:不折行(折行会改变缩进的含义),长行由壳的横滚接住。 */
-.text {
-  flex: 1;
-  padding-right: var(--sp-3);
-  white-space: pre;
-  color: var(--text-1);
-  tab-size: 2;
 }

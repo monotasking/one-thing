@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
 import { BlockView } from '../../../BlockView'
 import type { BlockCtx } from '../../../registry'
 import type { BlockModel } from '../../../../model/blocks'
@@ -8,6 +8,22 @@ import { routeFence } from '../../../../markdown/fence'
 import { resolveToolPresenter } from '../../../../tools/presenter'
 import '../../../../tools/presenters'
 import { useStageStore } from '../../../../../stage/store'
+import { hunkCodeLines } from '../Diff'
+
+/*
+ * 假高亮器:**按 lang 有没有**决定给不给 token,按 `\n` 切行 —— 与真 shiki 在这条
+ * 链路上唯一重要的性质相同(一次染整段、按行取回)。真 shiki 在 jsdom 里要拉十六份
+ * grammar,而这里要验的是「lang 从文件名来」与「token 按行落到行上」,不是配色。
+ */
+vi.mock('../../../../code/highlight', () => ({
+  loadHighlighter: () => Promise.resolve({}),
+  highlight: (source: string, lang: string | null) =>
+    lang === null
+      ? undefined
+      : source.split('\n').map((text) => [{ content: text, color: '#123456', offset: 0 }]),
+  HIGHLIGHT_THEME: 'vitesse-light',
+  resetHighlighterForTest: () => undefined,
+}))
 
 /**
  * diff 一等块的上屏判据 + **两个产地同一个块**的钉子。
@@ -59,13 +75,15 @@ describe('diff 定稿形', () => {
   })
 
   it('增删行各自带上自己的类名(行底色由 CSS 认这一格)', () => {
+    // 批 ②:行交给基础件之后取件口从 `.row` 换成 `.line`,未改的行**一个状态类都不带**
+    //(从前有一个画 `background: transparent` 的 `.ctx`,那是在说一句空话)。
     const { container } = draw(parsed())
-    const rows = Array.from(container.querySelectorAll('[class*="row"]'))
+    const rows = Array.from(container.querySelectorAll('[class*="line"]'))
     const classesOf = (text: string) =>
       rows.find((row) => row.textContent?.includes(text))?.className ?? ''
-    expect(classesOf('new line')).toMatch(/add/)
-    expect(classesOf('old line')).toMatch(/del/)
-    expect(classesOf('keep')).toMatch(/ctx/)
+    expect(classesOf('new line')).toMatch(/lineAdd/)
+    expect(classesOf('old line')).toMatch(/lineDel/)
+    expect(classesOf('keep')).not.toMatch(/lineAdd|lineDel/)
   })
 
   it('+/− 符号在自己的格里(满饱和色上在它身上,不上在整行文字上)', () => {
@@ -74,17 +92,68 @@ describe('diff 定稿形', () => {
     expect(signs).toEqual([' ', '−', '+', '+'])
   })
 
-  it('行号单列 = 新文件行号;删除行那一格空着', () => {
+  /*
+   * 批 ②:行号**从一列变两列**(旧 / 新),而且它是**数据**不是 DOM 文本 ——
+   * 基础件用 `content: attr(data-old-no)` 画,所以框选一段 diff 复制出来一个数字
+   * 都没有(与从前 `.num` 那一列靠 `user-select:none` 求来的结果相同,只是这回
+   * 是结构上的)。两列同时把「这一行是加是删」说了第二遍:加行没有旧号,删行没有
+   * 新号 —— 计数器表达不了这件事,这就是行号走数据的理由。
+   */
+  const numbersOf = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll('[data-old-no], [data-new-no], [class*="line"]'))
+      .filter((el) => el.className.includes('line'))
+      .map((el) => [el.getAttribute('data-old-no'), el.getAttribute('data-new-no')])
+
+  it('两列行号:旧号从 oldStart 推、新号从 newStart 推', () => {
     const { container } = draw(parsed())
-    const nums = Array.from(container.querySelectorAll('[class*="num"]')).map((n) => n.textContent)
-    // ctx(10) · del(空) · add(11) · add(12)
-    expect(nums).toEqual(['10', '', '11', '12'])
+    // `@@ -10,3 +10,4 @@` → ctx(10/10) · del(11/—) · add(—/11) · add(—/12)
+    expect(numbersOf(container)).toEqual([
+      ['10', '10'],
+      ['11', null],
+      [null, '11'],
+      [null, '12'],
+    ])
   })
 
-  it('碎片 diff 没有起始行号时整列空着 —— 不编一个', () => {
+  it('新增行不占旧文件的行号,删除行不占新文件的行号', () => {
+    const { container } = draw(parsed())
+    const rows = Array.from(container.querySelectorAll('[class*="line"]'))
+    const add = rows.find((row) => row.textContent?.includes('new line'))!
+    const del = rows.find((row) => row.textContent?.includes('old line'))!
+    expect(add.hasAttribute('data-old-no')).toBe(false)
+    expect(del.hasAttribute('data-new-no')).toBe(false)
+  })
+
+  it('碎片 diff 没有起始行号时两列都空着 —— 不编一个,但列仍在', () => {
     const { container } = draw(routeFence('diff', '+a\n-b', true))
-    const nums = Array.from(container.querySelectorAll('[class*="num"]')).map((n) => n.textContent)
-    expect(nums).toEqual(['', ''])
+    expect(numbersOf(container)).toEqual([
+      [null, null],
+      [null, null],
+    ])
+    // 列仍在:两列的宽由基础件的 `numBoth` 档给,根上那个类就是「列在不在」的取件口。
+    expect(container.querySelector('pre')?.className).toMatch(/numBoth/)
+  })
+
+  it('有文件名就逐行上色,语言由扩展名说;没有文件名就是素文本', async () => {
+    const withFile = draw({
+      kind: 'diff',
+      file: 'src/app.ts',
+      source: DIFF,
+      ...parsedShape(),
+    })
+    // 高亮是懒加载的:库到了之后原位重画,所以等那一帧。
+    await waitFor(() =>
+      expect(withFile.container.querySelectorAll('[class*="line"] span[style]').length).toBe(4),
+    )
+    // 字一个都没变(上色只是把同一段字包进带色的 span)。
+    expect(
+      Array.from(withFile.container.querySelectorAll('[class*="line"]')).map((el) => el.textContent),
+    ).toEqual([' keep', '−old line', '+new line', '+extra'])
+
+    // markdown 的 ```diff 围栏没有文件名这回事 —— 素文本,零带色 span。
+    const noFile = draw(parsed())
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(noFile.container.querySelectorAll('[class*="line"] span[style]').length).toBe(0)
   })
 
   it('动作只有一个:复制原始 diff 文本', () => {
@@ -137,3 +206,46 @@ describe('两个产地,同一个块(P2 留账的钉子)', () => {
 function parsed(): BlockModel {
   return routeFence('diff', DIFF, true)
 }
+
+/** 同一段 diff 的解析结果,只借它的 hunks / stat(给「带文件名」那一格用)。 */
+function parsedShape() {
+  const block = parsed() as Extract<BlockModel, { kind: 'diff' }>
+  return { hunks: block.hunks, stat: block.stat }
+}
+
+/**
+ * `hunkCodeLines` 是纯函数 —— 两个计数器各走各的那条判据在这里单独钉一遍,
+ * 免得它只能靠一整棵 DOM 才验得到。
+ */
+describe('hunkCodeLines(纯函数)', () => {
+  it('两个计数器各走各的:add 不动旧号,del 不动新号', () => {
+    const lines = hunkCodeLines({
+      oldStart: 10,
+      newStart: 20,
+      lines: [
+        { kind: 'ctx', text: 'a' },
+        { kind: 'del', text: 'b' },
+        { kind: 'add', text: 'c' },
+        { kind: 'ctx', text: 'd' },
+      ],
+    })
+    expect(lines.map((line) => [line.oldNo, line.newNo, line.mark])).toEqual([
+      [10, 20, undefined],
+      [11, undefined, 'del'],
+      [undefined, 21, 'add'],
+      [12, 22, undefined],
+    ])
+  })
+
+  it('起始号缺席 = 那一列整列空着(碎片 diff),token 按下标落到行上', () => {
+    const lines = hunkCodeLines(
+      { lines: [{ kind: 'add', text: 'x' }, { kind: 'del', text: 'y' }] },
+      [[{ content: 'x', color: '#1', offset: 0 }], [{ content: 'y', color: '#2', offset: 0 }]],
+    )
+    expect(lines.map((line) => [line.oldNo, line.newNo])).toEqual([
+      [undefined, undefined],
+      [undefined, undefined],
+    ])
+    expect(lines.map((line) => line.tokens?.[0]?.content)).toEqual(['x', 'y'])
+  })
+})

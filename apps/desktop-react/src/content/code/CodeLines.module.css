@@ -1,0 +1,296 @@
+/*
+ * **「行」渲染基础件**(2026-09-13 批 ①;正本 docs/changes-file-view-2026-09.md §2)。
+ *
+ * 壳里有三处画代码:聊天里的 markdown 代码块、文件查看器、diff。从前三处各写一份
+ * 「行」—— 一份用 `display:inline` + 手写 `\n`,一份用块盒 + counter 行号,一份用
+ * flex + baseline —— 于是同一段代码在三处的行高是 20.8 / 20.8 / 18.6,横滚之后
+ * 行号与底色各有各的断法。这个文件是那三份的**唯一一份**。
+ *
+ * 这里**不出现任何一个宿主的名字**:它不知道自己装的是代码块、文件还是 diff。
+ * 宿主往里递的只有一串行(`CodeLine[]`)与四个开关,以及两口挂 `data-*` 的手
+ * (`testId` / `rootAttrs` / `rowAttrs`)。
+ *
+ * ── 三条硬规矩(§2,全部落在这个文件里,消费方一行样式都不写)─────────────
+ *
+ * ① **横滚纪律**。滚动容器永远是**宿主**(块壳的 `.body`、查看器的 `.body`),
+ *    这里只管两件:根 `min-width: max-content` —— 行要铺到**最长那行**的宽度,
+ *    不是容器的宽度(否则横滚之后加删底色断在原来的容器右缘上,读起来像
+ *    「这一行改到一半」;而且 Chromium 只把滚动容器的尾端内边距算进**块级**
+ *    后代的可滚区,行内溢出不算,病历在 `block-shell.test` 那条用例上);
+ *    行号列 `position: sticky; left: 0` —— 横滚时 UI 带不跟着内容跑,它带着
+ *    **自己那一行的底色**贴在左缘,否则代码会从数字底下穿过去。
+ *
+ * ② **整数行高**。`--code-line-h`(tokens.css)是四舍五入到整数的那个数。
+ *    行号列与正文同在一条 flex 行上,`align-items` 取 `stretch` 而**不是
+ *    baseline** —— baseline 对齐会让「行号列有没有字」影响行的高度(diff 里
+ *    新增行没有旧行号,那一格是空的),于是同一份文件里有的行高一像素、
+ *    有的行高满格。
+ *
+ * ③ **跳过屏外行**。`skip` 打开时逐行 `content-visibility: auto`。
+ *    **行高整数了才许逐行**:分数行高下每一行各自 containment,2 倍屏上相邻两行
+ *    的绘制边界错开半个物理像素,行与行之间留出一道缝(病历见提交 `592103be9`)。
+ *    判词写在样式上,就是这一句。
+ */
+
+/* ── 根:一个 <pre> ──────────────────────────────────────────────────────── */
+
+.root {
+  margin: 0;
+  /* 规矩①的前一半。短内容仍铺满宿主(min-width 不是 width)。 */
+  min-width: max-content;
+  font-family: var(--font-mono);
+  font-size: var(--code-fs);
+  line-height: var(--code-line-h);
+  color: var(--text-1);
+  /* 代码里的空白是内容:一个都不许折叠,也不许自动断行(断行会改变缩进的含义)。 */
+  white-space: pre;
+  tab-size: 2;
+}
+
+/*
+ * ── 左边那一叠「UI 带」有多宽,只在这里算一次 ────────────────────────────────
+ * 加删符号列要粘在行号列右边,它的落点 = 前面那些列的总宽。两个累加量的**缺省 0**
+ * 在 tokens.css(它们也是量),各档在这里往上加 —— 不这么做的话「几档行号 × 有没有
+ * 标记位」的每一种组合都要在符号列那条规则上再写一遍 `left`。
+ */
+
+.marksCurrent {
+  --code-mark-w: var(--bw-3);
+}
+
+.numSingle {
+  --code-gutter-w: calc(var(--code-mark-w) + var(--code-num-w) + var(--code-num-gap));
+}
+
+.numBoth {
+  --code-gutter-w: calc(
+    var(--code-mark-w) + var(--code-num-w) * 2 + var(--sp-1) + var(--code-num-gap)
+  );
+}
+
+/*
+ * 折行档:长行就地断,不再要求横滚。`anywhere` 而不是 break-word —— 一条没有
+ * 空格的长 URL / base64 串也得断得动。
+ * **`min-width` 必须退回 0**:折行与 `max-content` 是互斥的两件事(根若按最长
+ * 那行定宽,就永远没有可折的时候)。
+ */
+.rootWrap {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.code {
+  font: inherit;
+}
+
+/* ── 一行 ───────────────────────────────────────────────────────────────── */
+
+/*
+ * 一行 = 一个 flex 行盒。块级(而非行内)是四件事的前提:行号列、整行底色、
+ * 逐行 `content-visibility`(它对行内盒不生效),以及跨行选择复制时浏览器会在
+ * 块与块之间补上换行 —— 所以行尾**不画 `\n`**(画了每一行会占两行高)。
+ */
+.line {
+  display: flex;
+  /* 规矩②:不用 baseline。 */
+  align-items: stretch;
+  /* 空行也占一格行高:没有这一句,文件里的空行会塌成零高,行号跟着错位。 */
+  min-height: var(--code-line-h);
+  background: var(--code-row-tint, transparent);
+}
+
+/* ── 行号列:两根伪元素,**生成内容不进选区** ───────────────────────────── */
+/*
+ * 框选一段代码复制出来只有代码,没有一列数字 —— 这是行号必须是生成内容的理由
+ * (`user-select:none` 是双保险:generated content 本来就选不中)。数字从**数据**
+ * 来(`attr(data-old-no)` / `attr(data-new-no)`),不是 CSS counter:diff 的旧行号
+ * 在新增行上是**空的**,计数器表达不了「这一行没有号」。
+ *
+ * 底色两层:`background-color` 是宿主那块面的脸(横滚时代码从底下穿过,这一层
+ * 必须不透明;读的是 `--code-face`,宿主自己那块面的脸),`background-image` 叠的是
+ * **这一行自己的那层色**(加 / 删 / 悬停 /
+ * 当前行都走同一个自定义属性,所以行号列与正文永远同色,不存在第二处要同步)。
+ */
+.numSingle .line::before,
+.numBoth .line::before,
+.numBoth .line::after {
+  flex: none;
+  position: sticky;
+  width: var(--code-num-w);
+  text-align: right;
+  color: var(--text-3);
+  user-select: none;
+  -webkit-user-select: none;
+  background-color: var(--code-face);
+  background-image: linear-gradient(
+    var(--code-row-tint, transparent),
+    var(--code-row-tint, transparent)
+  );
+}
+
+/*
+ * ── 往左多盖一段:`--code-gutter-bleed`(缺省 0,宿主自己说)────────────────────
+ * 滚动口的左内边距是一条**窗口**:粘在滚动口左缘的那一列左边还有一条缝,横滚过去
+ * 的字会从那儿露出来(批 ① 真机截图上是一截飘在行号左边的 `7:`,批 ② 是 `v1`)。
+ * 用**投影**而不是把盒子改宽:改宽(哪怕配负外边距)会把粘住那一刻的落点一起挪走
+ * —— 实测 Chromium 的 sticky 钉的是**外边距盒**,于是数字整列右移一格(批 ① 第二次
+ * 真机截图上的 `48:`)。投影一个像素都不进布局,所以不粘的那一刻与改件之前逐字相同。
+ * 两层顺序与底色那两层一致:先画的那一条在上,所以色调在上、面色在下。
+ *
+ * **只给最左边那一列**:给第二列也画,它的投影会盖住第一列的数字
+ * (批 ② 真机截图上两列行号的旧号被切成半个数字)。所以两列档里只有 `::before` 有;
+ * 一列行号都没有、只有符号列时,最左边的那一位是符号列。
+ */
+.numSingle .line::before,
+.numBoth .line::before,
+.root:not(.numSingle):not(.numBoth) .sign {
+  box-shadow:
+    calc(var(--code-gutter-bleed) * -1) 0 0 0 var(--code-row-tint, transparent),
+    calc(var(--code-gutter-bleed) * -1) 0 0 0 var(--code-face);
+}
+
+/* 单列:新文件的行号(查看器就是这一档)。 */
+.numSingle .line::before {
+  content: attr(data-new-no);
+  order: 1;
+  left: 0;
+  margin-right: var(--code-num-gap);
+}
+
+/* 两列:旧 / 新。`order` 是必需的 —— `::after` 在 DOM 序上排在正文之后。 */
+.numBoth .line::before {
+  content: attr(data-old-no);
+  order: 1;
+  left: 0;
+  margin-right: var(--sp-1);
+}
+
+.numBoth .line::after {
+  content: attr(data-new-no);
+  order: 2;
+  /* 粘住的位子要与它左边那些列的总宽对得上,否则两列一贴边就叠在一起。 */
+  left: calc(var(--code-mark-w) + var(--code-num-w) + var(--sp-1));
+  margin-right: var(--code-num-gap);
+}
+
+/*
+ * ── 当前行的那一格位子,只在**宿主认当前行**时留,而且尽量长在行号列上 ──────
+ *
+ * ① 那条 2px 竖条平时是透明的:当前行只换色,**不进出布局**(进出会让整份文件
+ *    在落点那一刻横移两像素)。但「留一格透明边」本身也是一次缩进 —— 无条件写
+ *    上去,聊天里那块**根本没有当前行这回事**的代码块会平白往右挪两像素
+ *    (批 ① 真机截图量出来的:字整体右移 2px,列墨量逐列对得上,是一次纯平移)。
+ *    所以位子跟着 `currentLine` 走:宿主递了这个数(哪怕是 0 = 还没落点),
+ *    才有这一格。
+ * ② **有行号时这一格长在行号列上,不在行上**。两个理由,都是真机量出来的:
+ *    (a) 行号列往左多铺的那一段(bleed)是**投影**,而子元素的投影画在父元素的
+ *        边框之上 —— 竖条画在行上就会被自己那条投影盖掉(批 ① 第三次截图:
+ *        当前行的 accent 竖条整条消失);长在行号列自己的左缘上,投影正好停在
+ *        它外面。(b) 行号列是粘着的,于是横滚之后那条竖条也还在屏上 —— 与
+ *        「UI 带不跟内容跑」是同一条。
+ *    宽度补上那 2px(`border-box`,见 global.css),所以数字与正文的起笔线
+ *    一个像素没动。
+ */
+.marksCurrent.numSingle .line::before,
+.marksCurrent.numBoth .line::before {
+  width: calc(var(--code-num-w) + var(--bw-3));
+  border-left: var(--bw-3) solid transparent;
+}
+
+.marksCurrent .line[data-current='true']::before {
+  border-left-color: var(--accent);
+}
+
+/* 没有行号的宿主:这一格只能长在行自己的左缘上(那里没有投影会盖它)。 */
+.marksCurrent:not(.numSingle):not(.numBoth) .line {
+  border-left: var(--bw-3) solid transparent;
+}
+
+.marksCurrent:not(.numSingle):not(.numBoth) .line[data-current='true'] {
+  border-left-color: var(--accent);
+}
+
+/*
+ * 正文。非折行档 `flex: none` —— 根已经按最长那行定了宽,正文不该被压缩;
+ * 折行档换成可伸缩 + `min-width: 0`,它才折得动(flex 项的默认最小宽是内容宽)。
+ */
+.text {
+  flex: none;
+  order: 4;
+}
+
+.rootWrap .text {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* ── 加删符号列(`signs`)────────────────────────────────────────────────── */
+/*
+ * 一个字宽的一列,只画 `+` / `−` / 空格。**它是 `mark` 的另一种说法,不是第二份
+ * 数据** —— 底色只有 12%,而符号是满饱和的:一行到底是加是删,色弱的人读的是这一格
+ * (底色那一层在无障碍上只算装饰)。所以有 `mark` 的宿主该不该画它,由宿主自己说
+ * (`signs`),不由「有没有行号」推。
+ *
+ * 它与行号列一样**粘在左缘**:落点是前面那些列的总宽(`--code-gutter-w`,根上算的
+ * 那一格),底色两层也一样 —— 横滚时正文从它底下穿过去,不透明那一层是必需的。
+ * 文字进 DOM(与改件之前逐字相同:框选不进去靠 `user-select: none`,不是靠生成内容)。
+ */
+.sign {
+  flex: none;
+  order: 3;
+  position: sticky;
+  left: var(--code-gutter-w);
+  width: var(--code-sign-w);
+  margin-right: var(--code-num-gap);
+  color: var(--text-3);
+  user-select: none;
+  -webkit-user-select: none;
+  background-color: var(--code-face);
+  background-image: linear-gradient(
+    var(--code-row-tint, transparent),
+    var(--code-row-tint, transparent)
+  );
+}
+
+.lineAdd .sign {
+  color: var(--ok);
+}
+
+.lineDel .sign {
+  color: var(--danger);
+}
+
+/* ── 一行的四种底色:悬停 < 加删 < 当前行 ────────────────────────────────
+ * 四条特异性刻意相同(都是 0,2,0),先后由源序决定 —— 这是查看器那条
+ * 「悬停在当前行上时保持 accent 底」的老判例,原样搬过来。
+ * 悬停只在**行号在场**时给:有行号 = 这份内容按行定位,「我在第几行」是个问题;
+ * 聊天里的代码块没有行号,给它一层跟着鼠标走的底色是凭空多一种状态。
+ * (`:where()` 不计特异性,所以这一条仍是 0,2,0,不会盖过下面两条。)
+ */
+
+:where(.numSingle, .numBoth) .line:hover {
+  --code-row-tint: var(--st-hover);
+}
+
+.line.lineAdd {
+  --code-row-tint: var(--tint-ok);
+}
+
+.line.lineDel {
+  --code-row-tint: var(--tint-danger);
+}
+
+/* 当前行:淡 accent 底(左缘那条 accent 竖条在上面那一节 —— 它跟着行号列走)。 */
+.line[data-current='true'] {
+  --code-row-tint: color-mix(in srgb, var(--accent) 13%, transparent);
+}
+
+/*
+ * 规矩③。`contain-intrinsic-block-size` 只钳纵向 —— 横向要让真实内容决定,
+ * 否则长行的横滚宽度会被一个猜出来的数字定死。
+ */
+.lineSkip {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto var(--code-line-h);
+}

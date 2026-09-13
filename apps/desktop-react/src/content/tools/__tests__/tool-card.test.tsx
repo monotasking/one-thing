@@ -24,7 +24,7 @@ import { cardHeights } from '../card-heights'
  */
 
 // shiki 是异步的,而这里断言的是素文本先行 —— 与 kinds 冒烟同一条。
-vi.mock('../../blocks/kinds/code/highlight', () => ({
+vi.mock('../../code/highlight', () => ({
   loadHighlighter: () => Promise.resolve(undefined),
   highlight: () => undefined,
   HIGHLIGHT_THEME: 'vitesse-light',

@@ -17,7 +17,7 @@ import { useStageStore } from '../../../stage/store'
  */
 
 // shiki 在这条冒烟里不该被拉起:它是异步的,而这里要断言的恰恰是**素文本先行**。
-vi.mock('../kinds/code/highlight', () => ({
+vi.mock('../../code/highlight', () => ({
   loadHighlighter: () => Promise.resolve(undefined),
   highlight: () => undefined,
   HIGHLIGHT_THEME: 'vitesse-light',

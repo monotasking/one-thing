@@ -108,8 +108,13 @@ describe('块体的滚动契约', () => {
    * 真机读数(Chrome 148):没有这一句 gap −0.2px,有了 11.8px。这层只能守字面。
    */
   it('横滚的本体自己撑成 max-content 块盒:code 与 diff 同一条配方', () => {
-    for (const file of ['kinds/code/Code.module.css', 'kinds/diff/Diff.module.css']) {
-      const text = readFileSync(resolve(process.cwd(), 'src/content/blocks', file), 'utf8')
+    /*
+     * 2026-09-13 批 ①:code 那一半搬去了「行」渲染基础件 `content/code/CodeLines`
+     * ——**判据一个字没改**,只是那句 `min-width: max-content` 现在写在基础件的根上
+     * (三处画代码的地方共用同一条横滚纪律)。diff 那一半等批 ② 接件后一并归位。
+     */
+    for (const file of ['content/code/CodeLines.module.css', 'content/blocks/kinds/diff/Diff.module.css']) {
+      const text = readFileSync(resolve(process.cwd(), 'src', file), 'utf8')
       const lines = text
         .replace(/\/\*[\s\S]*?\*\//g, '')
         .split('\n')

@@ -15,7 +15,7 @@ import { revealResearch } from '../reveal'
  * favicon 取不到时降级成字母圆片、来源条能把段唤出来。
  */
 
-vi.mock('../../blocks/kinds/code/highlight', () => ({
+vi.mock('../../code/highlight', () => ({
   loadHighlighter: () => Promise.resolve(undefined),
   highlight: () => undefined,
   HIGHLIGHT_THEME: 'vitesse-light',

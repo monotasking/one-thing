@@ -12,18 +12,33 @@
  * 领域、同一棵树,不新开一棵 `git/`。一个工作树此刻改了什么,是关于**这台机器上的
  * 文件**的一句话。
  *
- * ── 两条读法,零做法 ────────────────────────────────────────────────────────
- * `status`(整表)与 `diff`(一个文件的统一 diff)。**本单一格做法都没有** ——
+ * ── 三条读法,零做法 ────────────────────────────────────────────────────────
+ * `status`(整表)、`diff`(一个文件的统一 diff)与 `file`(一个文件的两个版本原文)。
+ * **一格做法都没有** ——
  * stage / unstage / discard / commit 是写面,它们的效果类今天在效果表里没有对应的
  * 一行(`file_write` 说不准「改的是索引不是盘上的文件」),而给一批带副作用的做法
  * 挑一个凑合的效果类,等于让权限卡说一句不准确的话。写面是另一张拍点表(方案 §8)。
  *
- * 零做法的结果是这只 scheme 投影出去的 `git` 工具**只有两条分支**,效果并集是空 ——
- * 模型拿它比 `bash git status` 拿到的是结构化的表,而且不必过一次 `bash` 的权限。
+ * 零做法的结果是这只 scheme 投影出去的 `git` 工具**每一条分支都是读**,效果并集是空
+ * —— 模型拿它比 `bash git status` 拿到的是结构化的表,而且不必过一次 `bash` 的权限。
  *
- * ── 为什么没有 `log` / `blame` / `show` ────────────────────────────────────
- * 不是划界,是**还没有消费者**。这一 scheme 的第一个消费者是「改动」面,它问的就是
- * 这两句话。多写一条读法要先回答「它的结果长什么样、谁在读」,而今天两个答案都没有
+ * ── `diff` 与 `file` 为什么是两条,而不是一条带参数的 ────────────────────────
+ * 它们答的是两个不同的问题,而不是同一个问题的两种排版。`diff` 答「**变了什么**」
+ * —— 一块 git 自己排好版的统一 diff,给要读那几行改动的人(以及要把它贴进对话的
+ * 模型)。`file` 答「**这个文件的两个版本各自长什么样**」—— 两份原文,一个字都没被
+ * 谁排过版,给要自己算行级差异、自己上语法高亮、自己画整篇的那一侧
+ * (`apps/desktop-react/docs/changes-file-view-2026-09.md` §1:算法在壳里,后端只交事实)。
+ *
+ * 合成一条「`diff` 加一格 `format: 'raw'`」会得到一条结果形状随参数变的读法,而
+ * 自述里一条读法只有一份 `result` —— 那一格 schema 立刻变成「看情况」,每个读它的
+ * 出口(命令面板、MCP、模型)都得先学会那个情况。
+ *
+ * 而后端**不算行级差异**也是同一条:算出来的差异是一种排版决定(块怎么分、
+ * 移动算不算、空白忽不忽略),而排版决定属于画它的那一侧。后端交的是两份事实。
+ *
+ * ── 为什么没有 `log` / `blame` ─────────────────────────────────────────────
+ * 不是划界,是**还没有消费者**。这一 scheme 的消费者是「改动」面,它问的就是这三
+ * 句话。多写一条读法要先回答「它的结果长什么样、谁在读」,而今天两个答案都没有
  * —— 加一条读法是「这只文件 + provider 各一格」,骨架不动(方案 §1 的陌生能力演练)。
  *
  * ── `diff` 的口径:相对 HEAD,暂存与未暂存合在一起 ─────────────────────────
@@ -66,6 +81,21 @@ export const GIT_RESOURCE_SCHEME = 'git'
 export const GIT_DIFF_MAX_BYTES = 1024 * 1024
 
 /**
+ * `file` 那条读法里**每一个版本**最多交出去多少字节,超过的部分截到最后一个完整的
+ * 行并声明 `truncated: true`。两个版本**各算各的** —— 一份两万行的文件被删掉一半,
+ * 旧版超上限、新版没超是正常的,把两份合起来算一本账会让一份完整的原文被说成截断过。
+ *
+ * 常量在自述这一侧的理由与 `GIT_DIFF_MAX_BYTES` 逐字相同:读者看得见截断,也看得见
+ * 是在哪一刀截的。数值也与它相同,但**不是同一个常量**:一块 diff 的上界说的是
+ * 「人还看得下去多少改动」,一份原文的上界说的是「壳把整篇画出来还画得动」——
+ * 两句话今天恰好同值,而把它们并成一格就等于说以后也必须同值。
+ *
+ * 注意 `bytes` 说的始终是**原始大小**,不是交出去那一截的大小:一份 300 MB 的
+ * 锁文件截断之后 `text` 是 1 MiB,而读者要靠 `bytes` 才知道自己拿到的是一个零头。
+ */
+export const GIT_FILE_MAX_BYTES = 1024 * 1024
+
+/**
  * 数未跟踪文件的行数,一次 `status` 最多**读**多少字节。
  *
  * git 自己不数未跟踪文件(它们还不在任何一块 diff 里),所以那几行的 `add` 是
@@ -106,6 +136,27 @@ const CHANGED_FILE_SCHEMA: JsonSchema = {
     oldPath: { type: 'string', description: 'Where it came from — only for "renamed" and "copied".' },
   },
   required: ['path', 'status', 'staged', 'unstaged'],
+}
+
+/**
+ * 一个文件的**一个版本**的原文。`file` 那条读法交的两格都是这个形状。
+ *
+ * `binary: true` 时 `text` 是空串 —— 那不是「这个文件是空的」,而是「这一版不是
+ * 文本,交出去的字节没有人读得懂」。判据是文本里有没有 NUL(与 `status` 数未跟踪
+ * 行数时同一条),而 `bytes` 照旧说得出它有多大。
+ *
+ * `truncated: true` 时 `text` 是**开头那一截**,而且截在最后一个完整的行上 ——
+ * 半行原文喂给一个按行对齐的算法,画出来的是一张骗人的表。
+ */
+const FILE_TEXT_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    text: { type: 'string', description: 'The file content. Empty when this version is binary.' },
+    binary: { type: 'boolean', description: 'This version is not text — read nothing into "text".' },
+    truncated: { type: 'boolean', description: 'Cut at the last complete line before the size cap.' },
+    bytes: { type: 'number', description: 'Original size of this version in bytes, before any truncation.' },
+  },
+  required: ['text', 'binary', 'truncated', 'bytes'],
 }
 
 export const gitResourceSpec: ResourceSpec = {
@@ -180,6 +231,49 @@ export const gitResourceSpec: ResourceSpec = {
           truncated: { type: 'boolean', description: 'The diff was cut at the last complete line before the size cap.' },
         },
         required: ['path', 'text', 'binary', 'truncated'],
+      },
+    },
+    /**
+     * 一个文件的**两个版本的原文**:上一次提交那一版,与此刻盘上那一版。
+     *
+     * **这不是一块 diff** —— 它一个差异都没算(为什么是两条读法,见文件头)。问它的人
+     * 要的是两份原文:自己算行级差异、自己上语法高亮、自己决定怎么排版。要一块读得懂的
+     * 改动就问 `diff`。
+     *
+     * 两格各自可以是 `null`,而那两个 `null` 说的是两件不同的事,读它的人靠这两格就
+     * 认得出这个文件发生了什么:`head` 空 = 这一版在上一次提交里不存在(新增的文件、
+     * 未跟踪的文件、或者这个仓还没有第一次提交);`work` 空 = 盘上没有它了(删掉的
+     * 文件)。**重命名按新路径问**:新路径的 `work` 在、`head` 空,那是正确答案 ——
+     * 这条读法不去猜旧路径(要旧那一版就拿 `status` 给的 `oldPath` 再问一次)。
+     */
+    file: {
+      title: 'Read both versions of one file as plain text: as of the last commit, and as it is on disk',
+      query: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Repository-root-relative path, exactly as "status" gave it. Not absolute, no "..".',
+          },
+        },
+        required: ['path'],
+      },
+      result: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'The path that was read, repository-root-relative.' },
+          head: {
+            ...FILE_TEXT_SCHEMA,
+            type: ['object', 'null'],
+            description: 'The file as of the last commit. Null when it is not in HEAD: a new or untracked file, or a repository with no commits yet.',
+          },
+          work: {
+            ...FILE_TEXT_SCHEMA,
+            type: ['object', 'null'],
+            description: 'The file as it is on disk right now. Null when it is not there: a deleted file.',
+          },
+        },
+        required: ['path', 'head', 'work'],
       },
     },
   },

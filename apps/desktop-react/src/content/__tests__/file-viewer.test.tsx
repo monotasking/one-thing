@@ -430,11 +430,17 @@ describe('一格一檐:查看器自己不画檐(W1)', () => {
     )
     expect(css).toMatch(/\.viewer\s*\{[^}]*height:\s*100%/)
     expect(css).toMatch(/\.body\s*\{[^}]*overflow:\s*auto/)
+    /*
+     * 身是滚动口,它的左内边距对「行」渲染基础件而言是一条窗口:行号列粘在滚动口
+     * 左缘,横滚过去的字会从那条缝里露出来(2026-09-13 批 ① 真机截图上是一截飘在
+     * 行号左边的 `7:`)。宿主必须把自己那一格告诉基础件。
+     */
+    expect(css).toMatch(/\.body\s*\{[^}]*--code-gutter-bleed:\s*var\(--sp-3\)/)
   })
 })
 
 describe('体:code 型', () => {
-  it('行由我们自己切(不等高亮器),每一行一个块级盒 —— 行号靠 counter,不进选区', async () => {
+  it('行由我们自己切(不等高亮器),每一行一个块级盒 —— 行号是生成内容,不进选区', async () => {
     installPort()
     await open('/repo/a.ts')
     renderViewer(<Viewer />)
@@ -443,8 +449,10 @@ describe('体:code 型', () => {
     expect(pre.getAttribute('data-viewer-lines')).toBe('3')
     expect(pre.querySelectorAll('[data-line]')).toHaveLength(3)
     /*
-     * 行号**不在 DOM 文本里**(它是 ::before 的生成内容)—— 所以逐行取出来的字
-     * 就是磁盘上那几行,一个数字都没多。
+     * 行号**不在 DOM 文本里**(它是 ::before 的生成内容,2026-09-13 批 ① 起由
+     * `content: attr(data-new-no)` 从数据读 —— 从前是 CSS counter,换的理由是
+     * diff 的旧行号在新增行上是空的,计数器表达不了「这一行没有号」)—— 所以逐行
+     * 取出来的字就是磁盘上那几行,一个数字都没多。
      * (行之间的换行是**块级盒**给的,不是文本节点:jsdom 的 textContent 把块
      *  拼起来时不补换行,所以这里逐行比,而不是比整块字符串。)
      */

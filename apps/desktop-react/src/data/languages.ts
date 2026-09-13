@@ -3,7 +3,7 @@
  *
  * ── 修前是两处,而且会**静默**分叉 ────────────────────────────────────────
  * 从前「扩展名 → 语言 id」在 `data/files-source.ts` 的 `LANG_BY_EXT` 里,
- * 「语言 id → grammar」在 `content/blocks/kinds/code/highlight.ts` 的 `langs`
+ * 「语言 id → grammar」在 `content/code/highlight.ts` 的 `langs`
  * 数组里。两处都要加,而漏掉任何一处的后果都**不报错**:
  *  · 只加扩展名表 → 高亮器不认得这个 id,`getLoadedLanguages()` 里没有它,
  *    `highlight()` 回 undefined,屏幕上是一片没上色的素文本;
@@ -14,7 +14,7 @@
  * 每一行 = **认哪些扩展名** + **叫什么(shiki 的语言 id)** + **grammar 从哪儿拉**。
  * 于是「加一门语言」是一次编辑:在下面这张表里加一行。两个消费方各取所需:
  *   · `files-source.langOfPath` 取「扩展名 → id」(查看器与代码块共用它);
- *   · `highlight.ts` 的 `createHighlighter` 取那一串 `grammar()`。
+ *   · `content/code/highlight.ts` 的 `createHighlighter` 取那一串 `grammar()`。
  * 对不上由 `__tests__/languages.test.ts` 钉着(表里每一行都得两头都有)。
  *
  * ── grammar 是**按需拉的**,不是全量内置 ──────────────────────────────────
@@ -80,4 +80,24 @@ const ID_BY_EXT: Record<string, string> = Object.fromEntries(
  */
 export function languageIdOfExtension(ext: string): string | null {
   return ID_BY_EXT[ext.toLowerCase()] ?? null
+}
+
+/**
+ * 一条路径用哪门语言高亮 —— 上面那张表的**唯一一条**「按路径问」的委托。
+ *
+ * 2026-09-13 批 ② 从 `files-source.ts` 搬来:那时它只服务查看器与文件面,住在
+ * 数据层的那只大模块(zustand store、端口、通知、i18n)里不碍事;聊天里的 diff 块
+ * 接高亮之后它多了一个消费者,而一块 markdown 代码不该为了问一句「这是什么语言」
+ * 把整条文件数据层拖进消息列表的渲染路上。`files-source` 那边只剩一行再导出,
+ * 所有旧 import 与两处用例一个字不用改。
+ *
+ * 没有扩展名(`Makefile`)、以点开头(`.gitignore`)、表里没有的一律 null = 素文本。
+ */
+export function langOfPath(path: string): string | null {
+  const trimmed = path.endsWith('/') && path.length > 1 ? path.slice(0, -1) : path
+  const at = trimmed.lastIndexOf('/')
+  const name = at < 0 ? trimmed : trimmed.slice(at + 1) || trimmed
+  const dot = name.lastIndexOf('.')
+  if (dot <= 0) return null
+  return languageIdOfExtension(name.slice(dot + 1))
 }

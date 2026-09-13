@@ -11,6 +11,13 @@
   border: 1px solid var(--line-1);
   border-radius: var(--r-2);
   background: var(--surface-2);
+  /*
+   * 这块卡片的**脸**:里面那些按行画的东西(代码块 / diff 的行号列、加删符号列)
+   * 要在自己底下铺一层不透明色,好让横滚过去的正文从它底下穿过去而不是透出来。
+   * 不说的话基础件按缺省读「叶的脸」,于是数字底下会露出一条别的颜色
+   * (2026-09-13 批 ② 真机截图上那条竖带)。谁画背景谁说。
+   */
+  --code-face: var(--surface-2);
   overflow: hidden;
 }
 
@@ -133,6 +140,13 @@
   overflow-y: hidden;
   overscroll-behavior-x: contain;
   max-height: var(--block-clamp-h);
+  /*
+   * 这块是滚动口,而它的**左内边距是一条窗口**:按行画的东西(diff 的行号两列与
+   * 加删符号列)粘在滚动口左缘,横滚过去的正文会从那条缝里露出来 ——
+   * 2026-09-13 批 ② 真机截图上是一截飘在行号左边的 `v1`。把自己那一格告诉基础件,
+   * 那几列连它一起盖上(判词见 tokens.css 的 `--code-gutter-bleed`)。
+   */
+  --code-gutter-bleed: var(--sp-3);
 }
 
 /*

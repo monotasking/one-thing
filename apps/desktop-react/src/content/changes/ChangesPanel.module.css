@@ -362,6 +362,9 @@
   overflow: auto;
   overscroll-behavior: contain;
   border-left: var(--bw-1) solid var(--line-1);
+  /* 这块面坐在面板那张 `--surface-2` 上:行号列与符号列的不透明底要读同一个色,
+   * 不说就会在数字底下露出一条别的颜色(判词见 tokens.css 的 `--code-face`)。 */
+  --code-face: var(--surface-2);
 }
 
 /*
@@ -414,23 +417,18 @@
 }
 
 /*
- * **`content-visibility: auto` 按 hunk**(第五轴:单文件两万行 diff)。
+ * ── `content-visibility` 的粒度回到**行**(2026-09-13 批 ②)───────────────────
+ * 这里从前有一条 `.diffWrap > * > *`(连同它包的那一层 `div`):对 `Diff` 的孙辈
+ * (那些 hunk 盒)下
+ * `content-visibility: auto`。它是 09-13 那次报障(「同色相邻行之间每隔五六行一道
+ * 白线」)的解药 —— 病根是**分数行高 + 逐行 containment**:每一行各自一块绘制盒,
+ * 行高 18.594px,2 倍屏上相邻两块盒各自吸附到设备像素,在分数边界上留一道没人画的
+ * 缝(真机 2 倍屏每 5–6 行一道,关掉即 0 道;读数在提交 `592103be9` 里)。
  *
- * `Diff` 的 DOM 是根 `div` → 一个 hunk 一个盒 → 头与行。这块面自己包一层 `.diffWrap`,
- * 对**它的孙辈**(= 那些 hunk 盒)下手;类名是 CSS Modules 哈希过的,`:global(.diff)`
- * 够不着,所以取件口是层级不是类名。
- *
- * ── 为什么粒度必须是 hunk 而不是行(2026-09-13 报障)─────────────────────────
- * 第一版打的是行(`Hunk` 当时是 Fragment,没有盒可打)。`content-visibility: auto` 自带
- * paint containment,每一行各自一块绘制盒;行高是分数(18.594px),2 倍屏上相邻两块盒
- * 各自吸附到设备像素,在分数边界上留一道没人画的缝 —— 真机 2 倍屏读数每 5–6 行一道,
- * 关掉逐行 containment 即 0 道(判词与读数在 `blocks/kinds/diff/Diff.tsx` 的 Hunk 上)。
- * 按 hunk 包盒之后,分数边界全在盒里面,盒与盒之间隔着另一种底色的 hunk 头。
- *
- * `contain-intrinsic-size` 给一格粗估高度(一个 hunk 按八行估),免得卷轴在滚动中一跳一跳;
- * `auto` 那一半让画过一次的盒记住自己的真高。
+ * **批 ② 把病根本身治了**:行搬进「行」渲染基础件之后行高是整数 token
+ * (`--code-line-h`),分数边界不存在了,所以 containment 可以回到它本来该在的粒度 ——
+ * 一行一格(基础件的 `skip`,由 `ChangeBody` 传 `true` 打开)。粒度回到行的好处是
+ * 屏外**真的**不排版:按 hunk 包盒时,一个三百行的 hunk 只要有一行在视口里,整块
+ * 三百行都得排。解药撤了,病历留着 —— dpr-2 缝数由 `gate:changes` 每次量一遍。
  */
-.diffWrap > * > * {
-  content-visibility: auto;
-  contain-intrinsic-size: auto var(--changes-hunk-est-h);
-}
+

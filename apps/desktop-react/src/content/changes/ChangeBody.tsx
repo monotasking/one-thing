@@ -28,7 +28,6 @@ import s from './ChangesPanel.module.css'
  * 第五轴那一格(单文件两万行 diff)。`Diff` 的 DOM 是**一层平铺**(hunk 头与行
  * 并列,`Hunk` 是 Fragment),块与块之间没有任何跨块布局依赖 —— 所以「看不见的
  * 那些不排版」是安全的,而且是唯一能让一块两万行的 diff 首帧进 16ms 的手段。
- * 判据与取件口整段写在样式表的 `.diffWrap` 上;这里只负责包那一层。
  */
 
 export interface ChangeBodyProps {
@@ -80,10 +79,7 @@ export function ChangeBody({ file, snapshot, onRetry, t }: ChangeBodyProps) {
         </p>
       ) : parsed ? (
         <>
-          {/* 包一层的理由(`content-visibility` 的取件口)写在样式表 `.diffWrap` 上。 */}
-          <div className={s.diffWrap}>
-            <Diff model={{ kind: 'diff', ...parsed }} />
-          </div>
+          <Diff model={{ kind: 'diff', ...parsed }} skip />
           {snapshot.data?.truncated && (
             <p className={s.bodyNote} data-testid="changes-body-truncated">
               {t('diff.truncated')}

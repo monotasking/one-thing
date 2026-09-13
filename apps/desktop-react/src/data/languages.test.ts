@@ -54,7 +54,7 @@ describe('语言表:单产地', () => {
 
   it('高亮器的 langs 那一列**取自这张表**,不是第二份手写清单', () => {
     const source = readFileSync(
-      path.join(here, '../content/blocks/kinds/code/highlight.ts'),
+      path.join(here, '../content/code/highlight.ts'),
       'utf-8',
     )
     expect(source).toMatch(/langs: LANGUAGES\.map\(/)

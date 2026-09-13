@@ -322,6 +322,12 @@
   overflow: auto;
   overscroll-behavior: contain;
   padding: var(--sp-3);
+  /*
+   * 这块面是滚动口,它的左内边距对「行」渲染基础件而言是一条窗口:行号列粘在
+   * 滚动口左缘,横滚过去的字会从那条缝里露出来。把自己那一格告诉基础件,
+   * 行号列连它一起盖上(判词在 tokens.css 的 `--code-gutter-bleed`)。
+   */
+  --code-gutter-bleed: var(--sp-3);
 }
 
 /* 一句注(还在读 / 空文件)。 */
@@ -351,84 +357,14 @@
   color: var(--accent-deep);
 }
 
-/* ── code 型 ────────────────────────────────────────────────────────── */
+/* ── code 型 ─────────────────────────────────────────────────────────── */
 /*
- * 字体与字号跟着聊天代码块走(mono、比正文小一档)—— 同一段代码在两处长得一样。
- * 横滚在**这一层**:查看器整块面就是这个文件,没有第二层滚动容器与它抢滚轮。
+ * 一个字都不剩了(2026-09-13 批 ①)。`.pre` / `.code` / `.line` / `.line::before` /
+ * `.lineSkip` / `.preWrap` 那一整段 —— 字体字号、行高、行号列、当前行、行跳渲、
+ * 折行档 —— 整份搬进了「行」渲染基础件 `content/code/CodeLines.module.css`:
+ * 聊天代码块、查看器、diff 三处画的是同一串行,行的样子只该有一份。
+ * 查看器自己的东西(身的滚动与内边距、诚实态、跳转条、状态栏)都还在原地。
  */
-.pre {
-  counter-reset: viewer-line;
-  margin: 0;
-  min-width: 0;
-  font-family: var(--font-mono);
-  font-size: calc(var(--pr-fs) - 1px);
-  line-height: 1.6;
-  color: var(--text-1);
-  /* 代码里的空白是内容:一个都不许折叠。 */
-  white-space: pre;
-  tab-size: 2;
-}
-
-.code {
-  font: inherit;
-}
-
-/*
- * 一行 = 一个块级盒。块级是四件事的前提:行号(counter)、当前行底色、行跳渲
- * (content-visibility 对行内盒不生效)、以及跨行选择复制时浏览器会在块与块
- * 之间补上换行 —— 所以行尾**不再画 `\n`**(画了会让每一行占两行高)。
- */
-.line {
-  display: block;
-  position: relative;
-  padding-left: var(--viewer-gutter);
-  /* 空行也占一格行高:没有这一句,文件里的空行会塌成零高,行号跟着错位。 */
-  min-height: 1lh;
-  counter-increment: viewer-line;
-  /* 左缘那条 2px 竖条平时是透明的:当前行只换色,**不进出布局**
-   * (进出会让整份文件在跳转的那一刻横移两像素)。 */
-  border-left: var(--bw-3) solid transparent;
-}
-
-.line:hover {
-  background: var(--st-hover);
-}
-
-/* 当前行:淡 accent 底 + 左缘 2px accent 竖条(定稿画法)。 */
-.line[data-current='true'] {
-  background: color-mix(in srgb, var(--accent) 13%, transparent);
-  border-left-color: var(--accent);
-}
-
-/*
- * 行号。**生成内容不进选区** —— 框选一段代码复制出来只有代码,没有一列数字。
- * (`user-select:none` 是双保险:generated content 本来就选不中。)
- */
-.line::before {
-  content: counter(viewer-line);
-  position: absolute;
-  left: 0;
-  width: calc(var(--viewer-gutter) - var(--sp-3));
-  text-align: right;
-  color: var(--text-3);
-  user-select: none;
-}
-
-/*
- * 行跳渲:视口外的行不排版、不上色。`contain-intrinsic-block-size` 只钳纵向 ——
- * 横向要让真实内容决定,否则长行的横滚宽度会被一个猜出来的数字定死。
- */
-.lineSkip {
-  content-visibility: auto;
-  contain-intrinsic-block-size: auto 1lh;
-}
-
-/* 折行档:长行就地断,不再要求横滚。`anywhere` 而不是 break-word —— 一条没有
- * 空格的长 URL / base64 串也得断得动。 */
-.preWrap {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
 
 /* ── 编辑区 ───────────────────────────────────────────────────────────── */
 /*
@@ -443,8 +379,14 @@
   background: none;
   resize: none;
   font-family: var(--font-mono);
-  font-size: calc(var(--pr-fs) - 1px);
-  line-height: 1.6;
+  /*
+   * 字号与行高读的是**基础件那两个 token**(2026-09-13 批 ①)。从前这里抄的是
+   * `calc(var(--pr-fs) - 1px)` / `1.6` —— 只读态搬进 `CodeLines` 并把行高取整
+   * 之后,再抄一份就等于宣布「进编辑那一刻每一行矮 0.2px」,一屏三十行就是
+   * 六个像素的跳。两处读同一格,那句「逐字相同」才是真的。
+   */
+  font-size: var(--code-fs);
+  line-height: var(--code-line-h);
   color: var(--text-1);
   tab-size: 2;
   white-space: pre;

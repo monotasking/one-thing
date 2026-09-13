@@ -54,9 +54,19 @@ export function useViewerScroll(
   /* ── ① 律④ 跳转滚动不闪:落点之后把那一行滚到视野中间 ───────────────── */
   useEffect(() => {
     if (!currentLine) return
-    const el = bodyRef.current?.querySelector(`[data-line="${currentLine}"]`)
-    // 不重挂 body、不改高度 —— 只是滚过去。
+    const body = bodyRef.current
+    const el = body?.querySelector(`[data-line="${currentLine}"]`)
+    /*
+     * 不重挂 body、不改高度 —— 只是滚过去。**横向那一轴原样按住**(2026-09-13
+     * 批 ① 真机截图量出来的):行接进「行」渲染基础件之后按内容定宽
+     * (`min-width: max-content`,横滚纪律),于是一行可能比视口宽,而
+     * `scrollIntoView` 的 `inline` 缺省是 `nearest` —— 元素比视口宽时它会把起笔边
+     * 对到视口起笔边上,实测跳一次行横向被拨走 12px(正好是 body 的左内边距)。
+     * 用户按 ⌘L 要的是**第几行**,不是第几列;所以横向的位子由用户自己说了算。
+     */
+    const left = body?.scrollLeft
     el?.scrollIntoView({ block: 'center' })
+    if (body && left !== undefined) body.scrollLeft = left
   }, [bodyRef, currentLine, path])
 
   /* ── ②③ 换宿主不丢滚动位 + 抄进 store —— 整件是 `ui/scroll-memory` ─────
