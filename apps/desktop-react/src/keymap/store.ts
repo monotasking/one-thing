@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import * as T from './transitions'
+import { mergeKeymapPersisted } from './persisted'
 import type { ComboConflict } from './commands'
 import type { Combo, CommandId, KeymapPlatform, KeymapState } from './types'
 
@@ -41,6 +42,8 @@ export const useKeymapStore = create<KeymapStore>()(
       version: T.KEYMAP_PERSIST_VERSION,
       storage: createJSONStorage(() => localStorage),
       migrate: T.migrateKeymapPersisted,
+      // 存档是不可信输入:每次水合按形状归一,不看版本号(09-13 半迁存档事故,见 persisted.ts)。
+      merge: mergeKeymapPersisted,
       // 只存覆盖。出厂默认不进档案 —— 存了的话改默认值就再也推不到老用户身上。
       partialize: (s) => ({ overrides: s.overrides }),
     },
