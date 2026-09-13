@@ -107,3 +107,27 @@ reduced-motion:光扫与脉动关闭,填色与 settle 保留(它们是状态,不
 
 留账:折痕以上的消息不变灰(先看真机,变灰是第二步);摘要正文里的文件清单不做可点(消息引用那条线另有单);
 `context:compact-progress` 事件在 React 壳仍无消费者(折痕读 marker 就够,事件留给状态栏类消费方)。
+
+2026-09-12(报障两条,都落在上下文更新折痕上,`src/content/__tests__/expand-hold.test.tsx` 钉着):
+**① 出场软着陆**——从前只淡入而高度与 `.column` 那格 32px 行距瞬间到位,淡入盖不住位移;
+改成「事后出现的那一行」整行三量(高度 / 行距 / 不透明度)一起过渡,落点是
+`ChatStream.module.css` 的 `.rowLate`(行距是 `.column` 的 gap,负 margin 必须与它同产地;
+类名里不出现折痕的名字,第三种事后出现的行拼上它就够),起手那一格由**顶层 `@starting-style`**
+给——挂载那一刻没有「改前」高度可量,FLIP 不成立,而一条会话几百道折痕不该各挂一只 RO。
+**② 正文自上向下展开**——`Seam.module.css` 的 `.seamBody` 从整块 `--kf-settle` 淡入改成
+`@starting-style` 起手的高度过渡(`padding-block` 也从 0 起,否则起手就有一格空盒子撑着);
+收起仍是瞬间的,`display: none` 当拍生效、没有中间态可过渡。
+**③ 点开的东西不许把人推到底**——展开与流式 delta 在几何上逐字相同(都让 gap 变大、
+`scrollTop` 不动),所以由动手的那一方自述:新通道 `content/expand-intent.ts`(四个消费者:
+两道折痕 / 思考段 / 工具卡,只在「打开」那一下报),窗长 `EXPAND_HOLD_MS = 220`
+(= max(`--dur-release`, `--dur-card-flip`) + 40ms 余量),窗口内 `ChatStream` 那只 ResizeObserver
+位置一动不动、按此刻离底多远重新判档。真机门 `gate:chat-follow` 加了 ⑨(贴底时点开视口里
+一件收起着的可展开物,`scrollTop` 与它的上缘都一像素不动);反证实测:拆掉那一格,
+`scrollTop` 10618.5 → 11216、那一行的上缘 553.2 → **−44.3**(被推出视口顶)。
+**④ 顺手治了一条从没被量过的旧竞态**(真机页内探针,2026-09-12):浏览器一帧里先跑滚动
+事件、后跑 ResizeObserver,于是内容一帧一帧长的时候,RO 贴的底会被**下一帧才派出去的**
+滚动事件读成「离底 4.5px > `AT_BOTTOM_EPS`(2)」→ 判成人往上翻、跟底从此丢掉
+(实测此后每条新消息离底 38 → 263 → 431 → … 逐条累加)。它不是容差调小了,而是**任何跨帧
+的高度过渡每帧长 2–6px**,容差挡不住 —— `.rowLate` 一落地就撞上它。修法仍然只用位置、
+零标志位:**人往上翻 = `scrollTop` 变小**;位置没往回走就不是人干的(判词在
+`ChatStream` 的 `onScrollWithFollow`,`follow.ts` 文件头补了一行指路)。

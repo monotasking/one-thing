@@ -4,6 +4,17 @@ import { AppShell } from '../AppShell'
 import { useStageStore } from '../../stage/store'
 import { initialStageState } from '../../stage/transitions'
 import { DOCK_HIDE_DELAY_MS, DOCK_WAKE_DWELL_MS } from '../motion'
+import { DOCK_WAKE_BAND } from '../../stage/transitions'
+
+/**
+ * 「此刻在不在拖」由 `ui/drag` 的模块级瞬态回答;这里把它换成一格可拨的开关,
+ * 其余导出原样 —— 拖拽会话本身怎么起、怎么收,是 `ui/drag` 自己的用例。
+ */
+const dragFlag = vi.hoisted(() => ({ active: false }))
+vi.mock('../../ui/drag/DragSession', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../../ui/drag/DragSession')>()
+  return { ...mod, isDragActive: () => dragFlag.active }
+})
 
 /**
  * **自动隐藏的唤醒生命周期**(09-03 报障:「dock 的出现太敏感」)。
@@ -16,11 +27,12 @@ import { DOCK_HIDE_DELAY_MS, DOCK_WAKE_DWELL_MS } from '../motion'
  * pointermove 就停发了,纯函数永远看不到「事件不来了」这件事,于是计时器会以为
  * 手还老老实实停在边上 —— 「去点系统 Dock,我们的也跟着弹出来」就是这么来的。
  *
- * jsdom 视口是 1024×768(默认),底边窄带 = y ≥ 760(DOCK_WAKE_BAND = 8)。
+ * jsdom 视口是 1024×768(默认),底边窄带 = y ≥ 768 − DOCK_WAKE_BAND(09-13 起 20)。
  * 真机那一半(自然速度穿越 20 次一次都不唤醒)由 `scripts/gate-dock-wake.mjs` 量。
  */
 beforeEach(() => {
   vi.useFakeTimers()
+  dragFlag.active = false
   useStageStore.setState({ ...initialStageState, locale: 'zh', dockDisplay: 'autohide' })
 })
 
@@ -111,6 +123,76 @@ describe('自动隐藏:唤醒是停留不是碰到', () => {
     tick(DOCK_WAKE_DWELL_MS - 40)
     move(x + 40, y - 1) // 仍在带内
     tick(40)
+    expect(isHidden()).toBe(false)
+  })
+
+  it('⑫ 停在带的上缘(不必贴到底)也出来 —— 09-13「必须完全贴到底部」的修法', () => {
+    render(<AppShell />)
+    const [x] = inBand()
+    move(x, window.innerHeight - DOCK_WAKE_BAND)
+    tick(DOCK_WAKE_DWELL_MS)
+    expect(isHidden()).toBe(false)
+  })
+})
+
+/**
+ * 09-13 报障:「拖拽 tab 的时候,拖到底部会让 dock 出来,影响拖拽」。
+ * Dock 自述一律不收落点(`data-nodrop`),拖着东西停在带内不是在叫它。
+ */
+describe('自动隐藏:拖着东西时不唤醒', () => {
+  it('⑬ 拖拽中停在带内停够 → 不出来;松手之后再进带 → 照旧出来', () => {
+    render(<AppShell />)
+    const [x, y] = inBand()
+    dragFlag.active = true
+    move(x, y)
+    tick(DOCK_WAKE_DWELL_MS * 3)
+    expect(isHidden()).toBe(true)
+    // 松手:下一发 move 才起表,停够才出来 —— 松手那一刻不会凭空弹出来。
+    dragFlag.active = false
+    tick(DOCK_WAKE_DWELL_MS * 3)
+    expect(isHidden()).toBe(true)
+    move(x + 1, y)
+    tick(DOCK_WAKE_DWELL_MS)
+    expect(isHidden()).toBe(false)
+  })
+
+  it('⑭ 停留期间起了拖:到点那一刻再问一次,不出来', () => {
+    render(<AppShell />)
+    const [x, y] = inBand()
+    move(x, y)
+    tick(DOCK_WAKE_DWELL_MS - 60)
+    dragFlag.active = true
+    tick(60)
+    expect(isHidden()).toBe(true)
+  })
+
+  /**
+   * 反证纪律:把宿主 onMove 里那句 `isDragActive() ||` 删掉,这一条立刻红 —— 到点那一问
+   * 只挡得住「到点时还在拖」,挡不住「拖拽期间把表起着,一松手就借旧表出来」。
+   */
+  it('⑯ 拖拽期间不起表:松手后的停留从松手后的第一发 move 起算,不借拖拽期间的零头', () => {
+    render(<AppShell />)
+    const [x, y] = inBand()
+    dragFlag.active = true
+    move(x, y)
+    tick(DOCK_WAKE_DWELL_MS - 10)
+    dragFlag.active = false
+    move(x + 1, y)
+    tick(10) // 若拖拽期间起了表,这一刻它到点、dragging 已假 → 会错误地出来
+    expect(isHidden()).toBe(true)
+    tick(DOCK_WAKE_DWELL_MS - 10)
+    expect(isHidden()).toBe(false)
+  })
+
+  it('⑮ 已经出来的 Dock,拖拽起了之后走既有留驻 / 收回,不是当场收', () => {
+    render(<AppShell />)
+    const [x, y] = inBand()
+    move(x, y)
+    tick(DOCK_WAKE_DWELL_MS)
+    expect(isHidden()).toBe(false)
+    dragFlag.active = true
+    move(x, y - 1) // 仍在窄带 → 留驻
+    tick(DOCK_HIDE_DELAY_MS * 2)
     expect(isHidden()).toBe(false)
   })
 })

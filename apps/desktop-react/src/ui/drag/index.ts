@@ -18,6 +18,7 @@ export { DropOverlay } from './DropOverlay'
 export { PointerTrack } from './pointer-track'
 export type { PointerTrackCancelReason, PointerTrackRun } from './pointer-track'
 export {
+  isDragActive,
   resetDragSession,
   setDragPresentation,
   setDropFeedback,

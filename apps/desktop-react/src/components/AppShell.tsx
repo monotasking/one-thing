@@ -19,7 +19,7 @@ import { FullLayer } from './FullLayer'
 import { EdgeShelf } from './EdgeShelf'
 import { SnapHint } from './SnapHint'
 import { FloatLayer } from './FloatWindow'
-import { DragLayer, DropOverlay } from '../ui/drag'
+import { DragLayer, DropOverlay, isDragActive } from '../ui/drag'
 import { ToastHost } from '../ui/Toast'
 import { ConfirmHost } from '../ui/Dialog'
 import { WorkspacePalette } from '../workspace/components/WorkspacePalette'
@@ -397,7 +397,12 @@ export function AppShell() {
          *
          * **每帧零布局读**:进带那一发排一个计时器,之后每一发只做一次算术判「还在带内吗」。
          */
-        if (!withinDockWakeBand(pointer, viewport, dockEdge)) {
+        /*
+         * 拖着东西 = 这只手在找落点,不是在叫 Dock(09-13 报障「拖 tab 到底部 dock 就
+         * 出来,影响拖拽」)。与出带同一种处理:清表,下次(松手之后)进带重新计时。
+         * `isDragActive()` 读的是拖拽会话的模块级瞬态,零 DOM —— 这条路每帧都跑。
+         */
+        if (isDragActive() || !withinDockWakeBand(pointer, viewport, dockEdge)) {
           cancelWake()
           return
         }
@@ -416,6 +421,8 @@ export function AppShell() {
                 viewport,
                 edge: dockEdge,
                 dwelledMs: Date.now() - bandEnteredAt,
+                // 到点这一刻再问一次:停留期间可能刚起了一场拖(按下 + 越过阈值不到 180ms)。
+                dragging: isDragActive(),
               })
             ) {
               cancelHide()

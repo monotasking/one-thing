@@ -191,14 +191,21 @@ export const TEAR_OFF_DISTANCE = 24
 /**
  * **唤醒**:指针离那条边多近才把藏着的 Dock 叫出来。贴边窄带,与 --dock-wake-band 同一事实。
  *
- * 它必须窄到碰不到任何可交互的东西:同一次真机量到,最低的那件(composer 输入区 /
- * 发送键)下缘离视口底 29px,8 留出 21px 余地。底边挂了架子时那一截还会更薄,
- * 所以这个数只该往小调,不该往大调 —— 想让 Dock 更好叫出来,调的是别处。
+ * 它必须窄到碰不到任何可交互的东西:真机量到最低的那件(composer 输入区 /
+ * 发送键)下缘离视口底 29px —— 这个数的**上限**由那 29 决定,不由手感决定。
  *
- * 09-03「太敏感」那一批**一个字没动它**:带宽不是病根(见 DOCK_WAKE_DWELL_MS 的病历),
- * 而这个数往哪个方向调都会踩到上面那句 —— 调大就碰输入区,调小就更难瞄准。
+ * 09-13 由 8 放宽到 20(用户报「hover 必须完全贴到底部它才会出来」)。8 是
+ * 09-01 定的,那时唤醒还是「碰到就出来」,窄是为了不碰输入区;09-03 之后唤醒
+ * 换成了**停留**(DOCK_WAKE_DWELL_MS),意图门槛已经由时间守着,带宽就不必再
+ * 替它守 —— 而窗口边不是墙,8px 的带没有墙可以顶,是一个要**瞄准**的目标。
+ * 20 = 输入区下缘之下留 9px 余地(29 − 20),停在发送键上仍然一像素都不进带;
+ * 目标面积 2.5 倍,配合停留门槛,穿越仍然一次都留不住(自然速度 6px/帧穿 20px
+ * ≈ 3 帧 ≈ 50ms,离 180ms 差三倍)。
+ *
+ * 再往大调就顶到输入区了(29 是硬上限,底边挂了架子时那一截还会更薄);
+ * 想让它更好叫出来,调的是别处,不是这个数。
  */
-export const DOCK_WAKE_BAND = 8
+export const DOCK_WAKE_BAND = 20
 
 /**
  * **停留**:进了窄带之后要在带内连续停满多久才唤醒(与 --dur-dock-wake 同一事实,
@@ -1567,12 +1574,16 @@ export function withinDockHoldZone(
  *
  * 两个语义在这里分岔,而分岔就是那一行 `if (!shown)`:
  *  - 还没出来(`shown === false`)→ **唤醒**:贴边窄带 **且**在带内停够
- *    `DOCK_WAKE_DWELL_MS`。留驻区一个字都不问 —— 它讲的是「手已经在 Dock 上了,
- *    别为一点抖动就跑」,而手还没把它叫出来时,这句话没有主语。
+ *    `DOCK_WAKE_DWELL_MS` **且**手上没拖着东西。留驻区一个字都不问 —— 它讲的是
+ *    「手已经在 Dock 上了,别为一点抖动就跑」,而手还没把它叫出来时,这句话没有主语。
  *    停留那一半是 09-03 加的(报障「dock 的出现太敏感」):窗口边不是墙,
  *    穿过去的手不该唤醒它,病历写在 DOCK_WAKE_DWELL_MS 上。
  *    时间由宿主喂(`dwelledMs` = 指针在带内已经连续待了多久),**判据仍只有这一处**:
  *    宿主只负责起表 / 续表 / 清表,「够不够」这句话不许在宿主里再写一遍。
+ *    拖着东西那一半是 09-13 加的(报障「拖拽 tab 时拖到底部会让 dock 出来,影响
+ *    拖拽」):Dock 自述「一律不收」(`data-nodrop`),所以一次拖拽里指针停在带内
+ *    **不可能是在叫它** —— 手在找落点,Dock 出来只会盖住底下的落区。事实由宿主喂
+ *    (`dragging` = 拖拽会话此刻活着),判据照旧只在这里写一遍。
  *  - 已经出来(`shown === true`)→ **留驻**:窄带 ∪ 停稳位留驻区(含本体到视口边
  *    那条 4px 死缝,08-29「一闪而逝」的根因)。
  *
@@ -1590,12 +1601,15 @@ export function shouldShowDock(args: {
   edge: DockEdge
   rect?: Rect
   dwelledMs?: number
+  /** 拖拽会话此刻活着(宿主从 `ui/drag` 读)。缺省 false = 没在拖。 */
+  dragging?: boolean
 }): boolean {
-  const { shown, pointer, viewport, edge, rect, dwelledMs } = args
+  const { shown, pointer, viewport, edge, rect, dwelledMs, dragging } = args
   const inBand = withinDockWakeBand(pointer, viewport, edge)
-  // 藏着 → 唤醒:窄带**且**停够。缺省 0 = 「刚碰到」,所以不传时间就永远唤不醒 ——
-  // 宿主漏喂时间会当场表现为「叫不出来」,而不是悄悄退回旧的碰一下就出来。
-  if (!shown) return inBand && (dwelledMs ?? 0) >= DOCK_WAKE_DWELL_MS
+  // 藏着 → 唤醒:窄带**且**停够**且**没在拖。缺省 0 = 「刚碰到」,所以不传时间就永远
+  // 唤不醒 —— 宿主漏喂时间会当场表现为「叫不出来」,而不是悄悄退回旧的碰一下就出来。
+  // 拖着东西时这一跳整个关掉:Dock 不收落点,出来只会盖住底下的落区(09-13)。
+  if (!shown) return !dragging && inBand && (dwelledMs ?? 0) >= DOCK_WAKE_DWELL_MS
   // 已经出来 → 留驻:窄带 ∪ 停稳位留驻区,**不看** dwelledMs(它是入门的门槛,不是住下的条件)。
   if (inBand) return true
   return rect ? withinDockHoldZone(pointer, viewport, edge, rect) : false

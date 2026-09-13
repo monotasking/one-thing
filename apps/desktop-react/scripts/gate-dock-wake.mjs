@@ -241,7 +241,7 @@ async function main() {
   let server
   let app
   try {
-    console.log('\n[1/8] 起一台 core')
+    console.log('\n[1/9] 起一台 core')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: { ...process.env, ONETHING_STORE_PATH: store },
@@ -258,7 +258,7 @@ async function main() {
     if (!(await portConnects(rec.host, rec.port))) throw new Error('core 端口连不上')
     console.log('  ✓ core 起来了')
 
-    console.log('\n[2/8] 拉起应用(独立 --user-data-dir),切到自动隐藏档')
+    console.log('\n[2/9] 拉起应用(独立 --user-data-dir),切到自动隐藏档')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -335,7 +335,7 @@ async function main() {
     const cdp = await app.context().newCDPSession(page)
     console.log(`  ✓ 外壳画出来了(窗口 ${viewport.join('×')}),探针与 CDP 会话已装`)
 
-    console.log(`\n[3/8] ① 穿过 ${CROSS_REPEATS} 次(${CROSS_STEP_PX}px/帧,划到底边并继续出窗)`)
+    console.log(`\n[3/9] ① 穿过 ${CROSS_REPEATS} 次(${CROSS_STEP_PX}px/帧,划到底边并继续出窗)`)
     await park(cdp, viewport)
     await delay(BETWEEN_MS)
     await resetProbe(page)
@@ -350,7 +350,7 @@ async function main() {
     console.log(`  ${CROSS_REPEATS} 次穿越 → 唤醒 ${crossed.wakes} 次`)
     check(crossed.wakes === 0, `① 穿过窄带一次都不唤醒(实测 ${crossed.wakes} 次 / ${CROSS_REPEATS} 次穿越)`)
 
-    console.log('\n[4/8] ② 划到带内停住 → 该出来')
+    console.log('\n[4/9] ② 划到带内停住 → 该出来')
     await park(cdp, viewport)
     await delay(BETWEEN_MS)
     await resetProbe(page)
@@ -368,7 +368,7 @@ async function main() {
       `② 停满门槛就出来(实测 wakes=${dwelled.wakes} shown=${dwelled.shown};门槛 ${DWELL_MS}ms + 入场 ${ENTER_MS}ms 之内)`,
     )
 
-    console.log('\n[5/8] ⑤ 唤醒之后往上抬 30px 停住 → 留驻不回退(08-31 那 12 组的哨兵)')
+    console.log('\n[5/9] ⑤ 唤醒之后往上抬 30px 停住 → 留驻不回退(08-31 那 12 组的哨兵)')
     await resetProbe(page)
     await move(cdp, bandX, viewport[1] - HOLD_LIFT_PX)
     await delay(HOLD_SETTLE_MS)
@@ -377,7 +377,7 @@ async function main() {
     console.log(`  抬 ${HOLD_LIFT_PX}px 停 ${HOLD_SETTLE_MS}ms → 收回 ${held.hides} 次,shown=${held.shown}`)
     check(held.shown === true && held.hides === 0, `⑤ 留驻语义不回退(实测 hides=${held.hides} shown=${held.shown})`)
 
-    console.log('\n[6/8] ⑥ 唤醒着出窗 → 收回宽限之后收回')
+    console.log('\n[6/9] ⑥ 唤醒着出窗 → 收回宽限之后收回')
     await resetProbe(page)
     await move(cdp, bandX, viewport[1] + OUT_OF_WINDOW_PX)
     await delay(HIDE_DELAY_MS + 400)
@@ -386,7 +386,7 @@ async function main() {
     console.log(`  出窗后等 ${HIDE_DELAY_MS + 400}ms → 收回 ${left.hides} 次,shown=${left.shown}`)
     check(left.shown === false && left.hides === 1, `⑥ 出窗之后走 ${HIDE_DELAY_MS}ms 宽限收回(实测 hides=${left.hides} shown=${left.shown})`)
 
-    console.log('\n[7/8] ③ 停在带内但窗口失焦 → 不唤醒')
+    console.log('\n[7/9] ③ 停在带内但窗口失焦 → 不唤醒')
     /*
      * **先在带外把 blur 那条路探明白**,再进带 —— 而不是进带之后现试。
      * 理由是时序:这一条要在门槛(180ms)到点**之前**把失焦递进去,而
@@ -437,7 +437,7 @@ async function main() {
       `③ 停在带内但失焦不唤醒(实测 wakes=${blurred.wakes},blur 路径 ${blurPath})`,
     )
 
-    console.log(`\n[8/8] ④ 只停 ${SHORT_HOLD_MS}ms(< 门槛 ${DWELL_MS}ms)就离开 → 不唤醒`)
+    console.log(`\n[8/9] ④ 只停 ${SHORT_HOLD_MS}ms(< 门槛 ${DWELL_MS}ms)就离开 → 不唤醒`)
     await park(cdp, viewport)
     await delay(BETWEEN_MS)
     await resetProbe(page)
@@ -449,6 +449,109 @@ async function main() {
     readings.shortHoldWakes = shortHold.wakes
     console.log(`  停 ${SHORT_HOLD_MS}ms 即离开 → 唤醒 ${shortHold.wakes} 次`)
     check(shortHold.wakes === 0, `④ 短停不唤醒(实测 ${shortHold.wakes} 次)`)
+
+    console.log('\n[9/9] ⑦ 拖着一块瓦停在带内 → 不唤醒;松手之后同一点照旧出来(09-13)')
+    /*
+     * 报障(09-13):「拖拽 tab 的时候,拖到底部会让 dock 出来,影响拖拽」。Dock 自述
+     * 一律不收落点,所以一场拖拽里指针停在带内不可能是在叫它 —— 唤醒那一跳在拖拽期间
+     * 整个关掉(纯函数 shouldShowDock 的 `dragging` 入参 + 宿主 onMove 拖着就不起表)。
+     *
+     * 拖的是 Dock 自己的一块瓦(每块内容瓦都是拖拽来源,不必先摆一格 tab):先把 Dock
+     * 叫出来 → 在瓦上按下 → 抬 80px 越过起拖阈值(根上 `data-drag-active` 为真是
+     * **前提**,不是断言对象:没起拖,这一步量的就不是拖拽)→ 指针离开留驻区 Dock 收回
+     * → 再拖回带内,按 stroke 的手法 1px 横向微动着停 3 个门槛 → 唤醒 0 次。
+     * 松手之后指针还在带内:下一发 move 起表、停够就出来 —— 拖拽只关唤醒,不留后遗症。
+     */
+    await park(cdp, viewport)
+    await delay(BETWEEN_MS)
+    await move(cdp, bandX, bandY)
+    await delay(DWELL_HOLD_MS)
+    const preDrag = await probe(page)
+    check(preDrag.shown === true, `⑦ 前提:Dock 先叫出来(实测 shown=${preDrag.shown})`)
+    const tiles = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-dock="strip"] [data-dock-tile] button')].map((el) => {
+        const b = el.getBoundingClientRect()
+        return {
+          x: Math.round(b.left + b.width / 2),
+          y: Math.round(b.top + b.height / 2),
+          label: el.getAttribute('aria-label'),
+        }
+      }),
+    )
+    check(tiles.length > 0, `⑦ 前提:Dock 上有瓦(实测 ${tiles.length} 块)`)
+    const pressed = (type, x, y) =>
+      cdp.send('Input.dispatchMouseEvent', {
+        type,
+        x: Math.round(x),
+        y: Math.round(y),
+        button: 'left',
+        buttons: 1,
+        clickCount: 1,
+      })
+    /*
+     * 不是每块瓦都拖得起来:启动瓦拖出去的是它指向的东西(「目录」瓦 = 当前会话的
+     * 工作目录),而这台临时 store 里没有会话,它的 `dragRef()` 答 null、`onStart`
+     * 当场作废。所以逐块试,谁真的起了拖(根上 `data-drag-active`)就用谁 ——
+     * 这是**前提**,不是断言对象;一块都起不来才是红。
+     */
+    let tile = null
+    for (const candidate of tiles) {
+      if (!preDrag.shown) break
+      await move(cdp, candidate.x, candidate.y)
+      await delay(FRAME_MS * 2)
+      await pressed('mousePressed', candidate.x, candidate.y)
+      // 抬 80px:越过起拖阈值,也离开留驻区(24 余量)。
+      for (let i = 1; i <= 10; i += 1) {
+        await pressed('mouseMoved', candidate.x, candidate.y - 8 * i)
+        await delay(FRAME_MS)
+      }
+      const started = await page.evaluate(() => document.documentElement.hasAttribute('data-drag-active'))
+      if (started) {
+        tile = candidate
+        break
+      }
+      await pressed('mouseReleased', candidate.x, candidate.y - 80)
+      await delay(FRAME_MS * 4)
+    }
+    readings.dragTile = tile?.label ?? null
+    check(Boolean(tile), `⑦ 前提:有一块瓦真的起拖了(${tile ? JSON.stringify(tile) : `试了 ${tiles.length} 块都没起`})`)
+    if (preDrag.shown && tile) {
+      await delay(HIDE_DELAY_MS + 400)
+      const hidAfterLift = await probe(page)
+      check(hidAfterLift.shown === false, `⑦ 前提:拖着抬走之后 Dock 已按留驻语义收回(shown=${hidAfterLift.shown})`)
+      await resetProbe(page)
+      // 拖回带内:一路划下去,然后横向 1px 微动着停 3 个门槛(与 stroke 同一手法:一直在动)。
+      for (let y = tile.y - 80; y <= bandY; y += CROSS_STEP_PX) {
+        await pressed('mouseMoved', bandX, Math.min(y, bandY))
+        await delay(FRAME_MS)
+      }
+      const dragDeadline = Date.now() + DWELL_MS * 3
+      let flip = 0
+      while (Date.now() < dragDeadline) {
+        flip = 1 - flip
+        await pressed('mouseMoved', bandX + flip, bandY)
+        await delay(FRAME_MS)
+      }
+      const dragged = await probe(page)
+      readings.dragWakes = dragged.wakes
+      console.log(`  拖着停在带内 ${DWELL_MS * 3}ms → 唤醒 ${dragged.wakes} 次,shown=${dragged.shown}`)
+      check(
+        dragged.wakes === 0 && dragged.shown === false,
+        `⑦ 拖着东西停在带内不唤醒(实测 wakes=${dragged.wakes} shown=${dragged.shown})`,
+      )
+      await pressed('mouseReleased', bandX, bandY)
+      await delay(FRAME_MS * 4)
+      await resetProbe(page)
+      await move(cdp, bandX + 1, bandY)
+      await delay(DWELL_HOLD_MS)
+      const afterDrop = await probe(page)
+      readings.afterDropWakes = afterDrop.wakes
+      console.log(`  松手后再动一下停 ${DWELL_HOLD_MS}ms → 唤醒 ${afterDrop.wakes} 次,shown=${afterDrop.shown}`)
+      check(
+        afterDrop.shown === true && afterDrop.wakes === 1,
+        `⑦ 松手之后同一点照旧出来(实测 wakes=${afterDrop.wakes} shown=${afterDrop.shown})`,
+      )
+    }
 
     await app.close()
     app = undefined
@@ -466,7 +569,7 @@ async function main() {
     console.error(`\n[dock-wake-gate] FAILED(${failures.length} 条):\n  ${failures.join('\n  ')}`)
     process.exit(1)
   }
-  console.log('\n[dock-wake-gate] ok —— 穿过不算数 / 停留算数 / 失焦取消 / 短停不算 / 留驻不回退 / 出窗收回')
+  console.log('\n[dock-wake-gate] ok —— 穿过不算数 / 停留算数 / 失焦取消 / 短停不算 / 留驻不回退 / 出窗收回 / 拖着不唤醒')
 }
 
 main().catch((error) => {

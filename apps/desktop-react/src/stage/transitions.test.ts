@@ -1552,10 +1552,21 @@ describe('Dock 自动隐藏的唤醒窄带(去元素化后就是一次距离判�
     expect(withinDockWakeBand({ x: 997, y: 400 }, VIEWPORT, 'right')).toBe(true)
   })
 
-  it('8 进、9 出;停在别的边不算进这条边的带', () => {
-    expect(withinDockWakeBand({ x: 500, y: 792 }, VIEWPORT, 'bottom')).toBe(true)
-    expect(withinDockWakeBand({ x: 500, y: 791 }, VIEWPORT, 'bottom')).toBe(false)
+  it('带宽那一像素进、下一像素出;停在别的边不算进这条边的带', () => {
+    expect(withinDockWakeBand({ x: 500, y: VIEWPORT.h - DOCK_WAKE_BAND }, VIEWPORT, 'bottom')).toBe(true)
+    expect(withinDockWakeBand({ x: 500, y: VIEWPORT.h - DOCK_WAKE_BAND - 1 }, VIEWPORT, 'bottom')).toBe(false)
     expect(withinDockWakeBand({ x: 500, y: 3 }, VIEWPORT, 'bottom')).toBe(false)
+  })
+
+  /**
+   * 09-13 由 8 放宽到 20(「必须完全贴到底部才出来」)。**上限是输入区**:
+   * 真机量到 composer 输入区 / 发送键下缘离视口底 29px,带宽必须停在它之下。
+   * 反证:把 DOCK_WAKE_BAND 调到 29 以上,这一条立刻红。
+   */
+  it('带宽宽过 8(目标不再要瞄准),但仍停在输入区下缘之下', () => {
+    const COMPOSER_BOTTOM_CLEARANCE = 29
+    expect(DOCK_WAKE_BAND).toBeGreaterThan(8)
+    expect(DOCK_WAKE_BAND).toBeLessThan(COMPOSER_BOTTOM_CLEARANCE)
   })
 })
 
@@ -2253,9 +2264,43 @@ describe('唤醒是停留不是碰到(09-03 报障:出现太敏感)', () => {
 
   it('藏着 + 带内 + 停不够 → 不出来(「穿过去」那一下就落在这里)', () => {
     expect(wake(DOCK_WAKE_DWELL_MS - 1)).toBe(false)
-    // 自然速度 6px/帧 穿过 8px 的带 ≈ 1.3 帧 ≈ 22ms —— 差一个量级。
+    // 自然速度 6px/帧 穿过 20px 的带 ≈ 3.3 帧 ≈ 55ms —— 离门槛仍差三倍。
+    expect(wake(55)).toBe(false)
     expect(wake(22)).toBe(false)
     expect(wake(0)).toBe(false)
+  })
+
+  /**
+   * 09-13 报障:「拖拽 tab 时拖到底部会让 dock 出来,影响拖拽」。Dock 自述一律不收落点,
+   * 所以拖着东西停在带内不可能是在叫它。**反证纪律**:把 `!dragging &&` 那半句删掉,
+   * 下面第一条立刻红。
+   */
+  it('藏着 + 带内 + 停够 + 手上拖着东西 → 不出来;松手之后同一点照旧出来', () => {
+    const at = (dragging: boolean) =>
+      shouldShowDock({
+        shown: false,
+        pointer: { x: 640, y: vp.h - 2 },
+        viewport: vp,
+        edge: 'bottom',
+        rect: SETTLED,
+        dwelledMs: DOCK_WAKE_DWELL_MS * 3,
+        dragging,
+      })
+    expect(at(true)).toBe(false)
+    expect(at(false)).toBe(true)
+  })
+
+  it('已经出来的 Dock 不因为起了一场拖就被赶走 —— 拖只关唤醒那一跳,留驻语义不动', () => {
+    expect(
+      shouldShowDock({
+        shown: true,
+        pointer: { x: 640, y: SETTLED.top - 4 },
+        viewport: vp,
+        edge: 'bottom',
+        rect: SETTLED,
+        dragging: true,
+      }),
+    ).toBe(true)
   })
 
   it('不喂时间 = 刚碰到 —— 纯函数不认识时钟,缺省不许退回旧行为', () => {

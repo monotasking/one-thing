@@ -222,6 +222,17 @@ function subscribe(notify: () => void): () => void {
   }
 }
 
+/**
+ * **此刻在不在拖** —— 给每帧都要问一遍、又不在 React 渲染里的人(AppShell 的
+ * Dock 唤醒判据住在 window 的 pointermove 监听里,订阅 store 等于每次显隐重挂监听)。
+ * 与根上那格 `data-drag-active` 是**同一件事实**:起拖那一刻两者一起为真,拆卸那一刻
+ * 一起为假 —— 收笔飞行(`landing` 非 null)那一程**不算在拖**,手已经松开了。
+ * 读模块级瞬态,零 DOM、零布局。
+ */
+export function isDragActive(): boolean {
+  return current !== null && current.landing === null
+}
+
 /** 服务端快照恒为 null:拖拽只在有指针的地方存在(与 `useSnapSide` 同一句)。 */
 export function useDragState(): DragSessionState | null {
   return useSyncExternalStore(

@@ -205,3 +205,21 @@ export const SESSION_PREFETCH_HOVER_MS = 180
  * 就没人拦得住。
  */
 export const DRAWER_MS = 80
+
+/**
+ * **用户在聊天流里点开一样东西之后,「他开的那个东西还在长」这件事持续多久**
+ * (2026-09-12 报障二;通道是 `content/expand-intent.ts`,落点是 `ChatStream` 那只
+ * ResizeObserver)。
+ *
+ * 它不是一段动画,是一个**截止时刻**:这段时间内的长高一律算「人自己点开的那一段
+ * 在展开」,聊天流按兵不动。推导 = max(`--dur-release` 160, `--dur-card-flip` 180)
+ * + 40ms —— 前一半是「会长多久」(折痕正文走 release,工具卡走 FLIP,两者取大),
+ * 后一半是余量:定时器与合成器不是同一个时钟,最后一帧的尺寸变化可能落在过渡的
+ * 名义终点之后。这与 `ui/flip-height.ts` 的 `FLIP_SETTLE_MS` 是同一条理由、同一个数量级。
+ *
+ * **它没有 CSS token**:CSS 侧没有任何一条规则读它 —— 它是判据不是时长
+ * (与 `ESC_STOP_WINDOW_MS` / `SCROLL_ANCHOR_SETTLE_MS` / `MIN_BUSY_MS` 同处一族)。
+ * 动效档「无」下**不清零**也是有意的:那一档过渡是 0ms,展开一拍就完,窗口内至多
+ * 接住那一拍长高,之后 gap 判据照旧;清零反而要为「档位」这件事在跟随链上开一个口子。
+ */
+export const EXPAND_HOLD_MS = 220

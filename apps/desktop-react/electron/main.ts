@@ -491,8 +491,8 @@ function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1280,
     height: 860,
-    minWidth: 900,
-    minHeight: 600,
+    minWidth: 600,
+    minHeight: 300,
     show: false,
     backgroundColor: '#111111',
     ...FRAMELESS_ON_MAC,
