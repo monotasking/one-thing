@@ -1684,11 +1684,17 @@ export function createChatSource(sessionId: string): ChatSource {
       await resync(token)
     }
 
-    /** 真发送 —— 成败都落在那一格 overlay 上,认领由 `reconcileOverlay` 负责。 */
-    async function dispatch(entryId: string, target: string, text: string): Promise<void> {
+    /**
+     * 真发送 —— 成败都落在那一格 overlay 上,认领由 `reconcileOverlay` 负责。
+     *
+     * `messageId` 是这条消息**将来在账本上的 id**(发送前就铸好了,见 `send`),
+     * 原样递给端口。重试递的仍然是**同一个** —— 上一次既然没能到账本,这个
+     * 位置就还空着;换一个新的等于让重试后的认领又失去身份。
+     */
+    async function dispatch(entryId: string, target: string, text: string, messageId?: string): Promise<void> {
       try {
         const port = await chatPort()
-        const result = await port.sendMessage(target, text)
+        const result = await port.sendMessage(target, text, messageId)
         if (result?.success) return
         failEntry(entryId, result?.error || 'session-command.emit 未成功')
       } catch (error) {
@@ -1781,6 +1787,19 @@ export function createChatSource(sessionId: string): ChatSource {
         const entry = {
           id: nextEntryId(),
           kind: 'pending' as const,
+          /*
+           * 这条消息**将来在账本上的 id**,在这里就铸好(09-13)。
+           *
+           * 它与那一格 overlay 是**同一个动作**里的两半:认领拿的就是它。铸在
+           * 端口里不行 —— 隔着一个 `await`,铸出来的东西到不了这一格;铸在引擎里
+           * 更不行,那正是从前那条「靠正文认领」的路,而引擎**落库之前就把正文
+           * 换掉了**(`@/abs/x.lua` → 34KB 的 `<file>` 块),于是永远认不上。
+           *
+           * `crypto.randomUUID()` 与 core 的 `createCoreId()` 是同一句话
+           * (`packages/core/engine/ids.ts`:Web Crypto,不是 `node:crypto`),
+           * 所以形天然过引擎那道判。
+           */
+          messageId: crypto.randomUUID(),
           text: body,
           attachments,
           status: 'sending' as const,
@@ -1792,7 +1811,7 @@ export function createChatSource(sessionId: string): ChatSource {
          * 只有真交出去的那一下才 +1 —— 空话与「还没有当前会话」上面已经 return 掉了。
          */
         set((prev) => ({ overlay: [...prev.overlay, entry], sentTick: prev.sentTick + 1 }))
-        void dispatch(entry.id, target, body)
+        void dispatch(entry.id, target, body, entry.messageId)
         return true
       },
 
@@ -1864,7 +1883,10 @@ export function createChatSource(sessionId: string): ChatSource {
               : item,
           ),
         }))
-        void dispatch(entryId, target, entry.text)
+        // 同一个 `messageId`(见 `dispatch` 的注)。上一版建的那几格没有这一格,
+        // 那就**不给** —— 现铸一个的话,引擎会用一个这台屏幕上没人记得的 id,
+        // 而那一格 overlay 只能再回去比正文,等于白铸。
+        void dispatch(entryId, target, entry.text, entry.messageId)
       },
 
       /**

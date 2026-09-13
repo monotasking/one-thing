@@ -116,6 +116,11 @@ interface Harness {
   listRawCalls: number
   ledger: Ledger[]
   sent: string[]
+  /**
+   * 端口收到的每一次发送的**整条**载荷 —— `sent` 只记正文,而 09-13 之后
+   * 「壳有没有把预铸的 id 带出去」是这条链的判据,它只在这一格里看得见。
+   */
+  sentCommands: { content: string; messageId?: string }[]
   /** 端口收到的每一次 abort 的 sessionId —— 「打空的 abort 一次都不许发」靠它钉。 */
   aborted: string[]
   /** 端口收到的每一次重跑的 messageId。 */
@@ -142,6 +147,7 @@ function harness(initial: Ledger[]): Harness {
     listRawCalls: 0,
     ledger: [...initial],
     sent: [],
+    sentCommands: [],
     aborted: [],
     retried: [],
     sendResult: async () => ({ success: true }),
@@ -173,8 +179,9 @@ function harness(initial: Ledger[]): Harness {
         streamSubs.push(callback)
         return () => void streamSubs.splice(streamSubs.indexOf(callback), 1)
       },
-      sendMessage: async (_sessionId, content) => {
+      sendMessage: async (_sessionId, content, messageId) => {
         h.sent.push(content)
+        h.sentCommands.push({ content, messageId })
         return h.sendResult()
       },
       abort: async (sessionId) => {
@@ -495,6 +502,70 @@ describe('发送:pending 立刻上屏,账本认领之后丢掉', () => {
 
     expect(ids()).toEqual(['m1'])
     expect(state().overlay).toEqual([])
+  })
+
+  /**
+   * **病 ② 的端到端形**(09-13 真机第二次报障)。上一条治的是壳这一侧的两句话,
+   * 这一条治的是**引擎那一侧**:它在落库之前就把正文换掉了 —— `@/abs/x.lua`
+   * 展成一整份 34KB 的 `<file>` 块(`packages/core/engine/file-mentions.ts`),
+   * 于是「同一串字节」这条判据在这条路上结构上不成立。
+   *
+   * 今天认领靠**身份**:壳发送前铸好 id 随命令带过去,引擎照用。
+   *
+   * **反证**:`reconcileOverlay` 去掉 id 那一支 → 这一条红(账本回来的
+   * `content` 是那份 34KB,与发出去的 55 个字比不上);引擎不接 `messageId`
+   * (账本上的 id 换成别的)→ 也红。
+   */
+  it('@ 一个文件:引擎把正文换成 <file> 块,靠 messageId 认领,overlay 清空', async () => {
+    const h = harness([created(1)])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    expect(state().send('@/abs/x.lua')).toBe(true)
+    expect(state().overlay).toHaveLength(1)
+    await settle()
+
+    // 壳铸好了 id 并且真的带出去了。
+    const minted = h.sentCommands[0].messageId
+    expect(minted).toMatch(/^[0-9a-zA-Z_-]{8,64}$/)
+
+    // 账本回来的是**模型版**:正文已经不是发出去那句话了,id 才是同一个。
+    h.emitLedger({
+      seq: 2,
+      time: T0,
+      type: 'user/message',
+      data: {
+        message: {
+          id: minted,
+          role: 'user',
+          content: `<file path="/abs/x.lua" lines="1995" shown="1-773">\n${'-- lua\n'.repeat(2000)}\n</file>`,
+          contentParts: [{ type: 'text', content: '@/abs/x.lua' }],
+          timestamp: T0,
+        },
+      },
+    })
+    await settle()
+
+    expect(ids()).toEqual([minted])
+    expect(state().overlay).toEqual([])
+  })
+
+  it('重试递的是同一个 messageId —— 上一次没到账本,那个位置还空着', async () => {
+    const h = harness([created(1)])
+    h.sendResult = async () => ({ success: false, error: '引擎没接住' })
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    state().send('会失败的一条')
+    await settle()
+    h.sendResult = async () => ({ success: true })
+    state().retry(state().overlay[0].id)
+    await settle()
+
+    expect(h.sentCommands).toHaveLength(2)
+    expect(h.sentCommands[1].messageId).toBe(h.sentCommands[0].messageId)
   })
 
   it('发不出去 = 那一格转 failed 并带上后端说的那句话,重试再发一次', async () => {

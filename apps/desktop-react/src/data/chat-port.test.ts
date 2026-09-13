@@ -135,6 +135,34 @@ describe('sendMessage:正文逐字过去,端口不改一个字', () => {
     )
   })
 
+  /**
+   * **病 ② 的守卫**(09-13)。`messageId` 是调用方预铸的那条消息的 id;这一口
+   * **透传**:不铸、不校验、不改写。
+   *
+   * **反证**:把 `...(messageId ? { messageId } : {})` 那一行拆掉 → 两条都红,
+   * 而产品那一侧是**静默**回到靠正文认领(屏幕上第二条用户气泡回来,零报错)。
+   */
+  it('`messageId` 原样落进信封', async () => {
+    const port = await chatPort()
+    await port.sendMessage('s1', '发一句', 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee')
+    expect(emittedEnvelopes()).toEqual([
+      {
+        sessionId: 's1',
+        command: {
+          type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
+          content: '发一句',
+          messageId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+        },
+      },
+    ])
+  })
+
+  it('没给 `messageId` 时**这一格根本不出现** —— 缺席 = 引擎自己铸', async () => {
+    const port = await chatPort()
+    await port.sendMessage('s1', '发一句')
+    expect('messageId' in (emittedEnvelopes()[0] as { command: object }).command).toBe(false)
+  })
+
   it('花括号原样留着 —— 这一口从来不是一次「清洗」', async () => {
     const port = await chatPort()
     await port.sendMessage('s1', '把 {{ 这种花括号 }} 原样留着')

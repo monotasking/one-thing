@@ -9,6 +9,7 @@ import { getCoreLogger } from '../logging/index.js'
 import type { CoreInitialToolChoice } from './stream-executor.js'
 import { coreProviderOwnsItsContextWindow } from './external-agent-providers.js'
 import { expandFileMentions, isFileMentionTrustedChannel } from './file-mentions.js'
+import { isClientMintedId } from './ids.js'
 import { parsePrincipal } from '../permission/principal.js'
 import type {
   StreamEngineCompactionAdapter,
@@ -251,6 +252,15 @@ export function isCoreProviderResolutionFailure(
 
 interface SendMessageCommandLike {
   type?: string
+  /**
+   * 客户端预铸的用户消息 id(契约上的说明在
+   * `@shared/events/session-commands.ts` 的 `SendMessageCommand.messageId`)。
+   *
+   * 它**不是**一格透传:引擎会读它,而且是这条命令里唯一一格由发送方决定的
+   * 「事实地址」。所以它两道判 —— 形(`isClientMintedId`)与会话内唯一 ——
+   * 由 `resolveUserMessageId` 一处做完,不合格就当作没给。
+   */
+  messageId?: string
   content: string
   attachments?: unknown[]
   channel?: string
@@ -879,6 +889,35 @@ export class CoreStreamEngine<
     }
   }
 
+  /**
+   * 这条用户消息用哪个 id —— **发送方给的那个,除非它不成立**。
+   *
+   * 病(2026-09-13 真机报障,第二次):发送方在自己屏幕上先摆一格乐观气泡,
+   * 等账本把同一条消息发回来再撤掉它。从前认领靠「正文逐字相同」,而引擎在
+   * **落库之前**就把正文换掉了(`@/abs/x.lua` → 一整份 34KB 的 `<file>` 块,
+   * `/skill:x` → 整份 SKILL.md),于是那一格永远认不上、永远留在屏幕上 ——
+   * 用户看见的是 AI 回复之后又冒出来的第二条自己的话。
+   *
+   * 治法是**认领靠身份不靠正文**:发送方铸 id、随命令发过来,引擎照用。
+   *
+   * 两道判,不合格一律**当作没给**(不抛、不报错):
+   *  ① 形 —— 它会进账本每一行、进 `data-message-id`、进事件的 `messageId`,
+   *     是一个地址不是一格自由文本;
+   *  ② 会话内唯一 —— 撞上已有消息就是在覆盖历史。一次重试、一次重放、一个
+   *     算错了的发送方,代价都不该是账本上的一条真消息被顶掉。
+   *
+   * 不合格为什么不报错:id 是发送方给自己的**方便**,不是它的权力。认不认由
+   * 引擎说了算,而「这句话有没有被说出去」不该因为一个 id 写歪了就变成没有。
+   */
+  private resolveUserMessageId(
+    candidate: unknown,
+    existing: readonly unknown[],
+  ): string {
+    if (!isClientMintedId(candidate)) return this.createMessageId()
+    const taken = existing.some(message => (message as { id?: unknown } | undefined)?.id === candidate)
+    return taken ? this.createMessageId() : candidate
+  }
+
   handleSendMessage(sessionId: string, cmd: SendMessageCommandLike, sender: TCommandTarget, options: CoreExecutionOptions = {}): Promise<void> {
     this.authorizeExecution(sessionId, options.executionContext)
     return this.trackSessionExecution(sessionId, () => this.performSendMessage(sessionId, cmd, sender, options))
@@ -947,7 +986,8 @@ export class CoreStreamEngine<
        * moved (`SessionTurnContext` in the assembly layer).
        */
       const userMessage = {
-        id: this.createMessageId(),
+        // 发送方预铸的那个,不成立才现铸(判词在 `resolveUserMessageId`)。
+        id: this.resolveUserMessageId(cmd.messageId, messagesForRefs),
         role: 'user',
         content: resolvedPromptRefs.modelContent,
         timestamp: this.now(),

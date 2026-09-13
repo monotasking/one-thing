@@ -4,7 +4,7 @@ export {
 } from "./compact-prompt.js";
 export type { ContextCompactPromptPart } from "./compact-prompt.js";
 
-export { createCoreId } from "./ids.js";
+export { createCoreId, isClientMintedId } from "./ids.js";
 
 export {
 	coreProviderOwnsItsContextWindow,

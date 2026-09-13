@@ -1,4 +1,8 @@
 import type { materializeChatMessages } from '@onething/core/session/projection/chat-messages'
+/* 「部件里哪几格是显示文字」的唯一判据 —— 画气泡那一半读的也是它(见
+ * `reconcileOverlay` 的注)。这一行只吃 `segment.ts` 里的那只纯函数,
+ * 不碰引用种类注册表(它不需要表装好,也不该把表拖进数据层)。 */
+import { displayTextOfParts } from '../references/segment'
 
 /**
  * ⚠️ **这个文件的一大半在退役途中**(R 线 R2,`docs/stream-render-2026-09.md`)。
@@ -750,6 +754,18 @@ function liveToolCall(tool: TailToolCall, progress?: TailToolProgress): Projecte
 export interface PendingSend {
   id: string
   kind: 'pending'
+  /**
+   * 这条消息**将来在账本上的 id** —— 发送那一刻自己铸的,随命令一起过去
+   * (契约:`SendMessageCommand.messageId`)。
+   *
+   * 认领靠它。从前认领靠「正文逐字相同」,而引擎在落库之前就把正文换掉了
+   * (`@/abs/x.lua` 展成 34KB 的 `<file>` 块、`/skill:x` 展成整份 SKILL.md),
+   * 于是那一格永远认不上 —— 用户看见的是 AI 回复之后又冒出来的第二条自己的话。
+   *
+   * 缺席 = 这一格是那次改动之前建的(或者某个不经过 `send` 的宿主建的),
+   * 走文本兜底。
+   */
+  messageId?: string
   text: string
   /** 随这条消息一起离开输入框的附件数(D3 不传附件,只如实显示计数)。 */
   attachments: number
@@ -776,11 +792,42 @@ export interface LocalNotice {
 export type OverlayEntry = PendingSend | LocalNotice
 
 /**
+ * 账本上这条用户消息**显示出来是哪句话**。
+ *
+ * 两个来源一条判据,与 `content/user-message.tsx` 画气泡时**同源**:有部件就按
+ * 部件(账本上的 `content` 那时是模型版 —— 技能引用在它里面是整份 SKILL.md),
+ * 没有才是 `content`。文字那一半由 `references/segment.ts` 那一句说了算,
+ * 这里不重写第二份。
+ *
+ * 空数组 = 没有(投影那头只有 `length > 0` 才挂这一格),与画气泡那条同判。
+ */
+function displayTextOf(message: ProjectedMessage): string {
+  const parts = message.contentParts
+  if (parts && parts.length > 0) return displayTextOfParts(parts)
+  return message.content
+}
+
+/**
  * 折叠树接管了哪几条 pending —— **以折叠为准**,认领到就丢掉那一格 overlay。
  *
- * 认领判据两条同时成立:正文逐字相同,且那条用户消息的 id **不在**这条 pending
- * 发出时的快照里(= 它是这次发送之后才出现的)。一条真消息只认领一条 pending
- * (按 pending 的先后序贪心),所以连发同一句话不会一次消掉两格。
+ * ── 认领靠身份,不靠正文(2026-09-13)────────────────────────────────────
+ * 第一判据是 **`message.id === entry.messageId`**:发送方发出去之前就把这条
+ * 消息的 id 铸好随命令带过去了,引擎照用(`SendMessageCommand.messageId`)。
+ * 靠正文认领的老判据在**引擎改写正文**的那几条路上永远认不上 ——
+ * `@/abs/x.lua` 落库时已经是 34KB 的 `<file>` 块,`/skill:x` 是整份 SKILL.md
+ * —— 于是那一格 pending 永远留屏,屏幕上出现第二条用户气泡。
+ *
+ * ── 文本兜底为什么**对带 id 的也照跑** ───────────────────────────────────
+ * 因为有一条路上引擎不会用那个 id:会话忙的时候 send 降级成 steering
+ * (`CoreStreamEngine.performSendMessage` 的忙时闸门),而 steering 那一段自己
+ * 铸 id。那条路上正文恰好**没有**被改写(steering 收的是原话),所以兜底认得上。
+ * 「有 id 就只按 id 认」在那条路上就是又一格永不消失的气泡。
+ *
+ * 兜底比的是**显示文本**而不是 `content`:账本上的 `content` 是模型版。
+ *
+ * 两条判据都还要满足:那条用户消息的 id **不在**这条 pending 发出时的快照里
+ * (= 它是这次发送之后才出现的),且一条真消息只认领一条 pending(按 pending
+ * 的先后序贪心),所以连发同一句话不会一次消掉两格。
  *
  * `failed` 的那些**不认领** —— 它们说的是"这条没能到达账本",留着让人重试。
  */
@@ -793,13 +840,13 @@ export function reconcileOverlay(
   return entries.filter((entry) => {
     if (entry.kind !== 'pending' || entry.status !== 'sending') return true
     const seen = new Set(entry.seenUserIds)
-    const hit = messages.find(
-      (message) =>
-        message.role === 'user' &&
-        message.content === entry.text &&
-        !seen.has(message.id) &&
-        !claimed.has(message.id),
-    )
+    const free = (message: ProjectedMessage) =>
+      message.role === 'user' && !seen.has(message.id) && !claimed.has(message.id)
+    const hit =
+      (entry.messageId !== undefined
+        ? messages.find((message) => message.id === entry.messageId && free(message))
+        : undefined)
+      ?? messages.find((message) => free(message) && displayTextOf(message) === entry.text)
     if (!hit) return true
     claimed.add(hit.id)
     return false

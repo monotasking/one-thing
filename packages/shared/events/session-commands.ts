@@ -44,6 +44,30 @@ export interface SendMessageCommand {
   type: typeof SESSION_COMMAND_TYPES.SEND_MESSAGE
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
   channel?: string
+  /**
+   * The id this user message should be created with — **pre-minted by the
+   * client**, so the sender can recognize its own message when the ledger
+   * hands it back.
+   *
+   * Why it exists: the engine rewrites `content` before persisting it
+   * (`@path` file mentions are inlined as `<file>` blocks, `/skill:x` becomes
+   * the whole SKILL.md). A client that recognized its own message by comparing
+   * the text it sent against the text that came back therefore never
+   * recognized it at all, and left a duplicate optimistic bubble on screen
+   * forever (2026-09-13 真机报障).
+   *
+   * Contract: the engine uses it verbatim; **absent = the engine mints one**.
+   * A value that is not shaped like an id (`^[0-9a-zA-Z_-]{8,64}$`, the shape
+   * `createCoreId()` produces) or that collides with a message already in this
+   * session is **ignored — the engine mints one and does not error**: an id is
+   * a convenience for the sender, never a way for it to overwrite history.
+   *
+   * Only SEND_MESSAGE takes it. `edit-and-resend` / `retry-message` address a
+   * message that already exists, so there is nothing to pre-mint; a message
+   * that degrades into the steering queue (busy session) gets its own id from
+   * the engine, because the steering path is not this creation site.
+   */
+  messageId?: string
   content: string
   attachments?: MessageAttachment[]
   source?: 'text' | 'voice' | 'api' | string

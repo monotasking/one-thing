@@ -97,8 +97,20 @@ export interface ChatPort {
    * `resources.read`。它仍然排在文件展开**之后**(今天是结构上的:上游那道展开
    * 早在草稿出口就做完了),这条先后是闸不是风格 —— 反过来等于让一段页面自控的
    * 正文被当成草稿再扫一遍,判词整段在 `data/page-references.ts` 上。
+   *
+   * ── 第二格:`messageId`(09-13)──────────────────────────────────────────
+   * 调用方在发出去**之前**铸好这条消息将来在账本上的 id,随命令一起过去。
+   * 它是这一口唯一多出来的那一格,而且是**透传**:这里不铸、不校验、不改写
+   * (引擎自己判形与会话内唯一,不合格就当没给 —— 判词在
+   * `CoreStreamEngine.resolveUserMessageId`)。
+   *
+   * 为什么不在这一口铸:铸的那一刻必须与「乐观气泡落进 overlay」是同一件事
+   * (那一格就是拿它认领的),而那一步在 `chat-source.send` 里 —— 隔着一个
+   * `await` 的端口铸出来的 id 到不了那一格。同一条判词的另一半写在上面那段
+   * 「乐观上屏的那句话与账本上的那句话必须是同一串字节」旁边:今天认领不再
+   * 比字节了,比的是这一格 id。
    */
-  sendMessage(sessionId: string, content: string): Promise<SessionCommandEmitResult>
+  sendMessage(sessionId: string, content: string, messageId?: string): Promise<SessionCommandEmitResult>
   /*
    * `/compact` **不在这条端口上**(D4 波二)。它骑的确实是同一条命令总线
    * (`command:compact-context`),但它不是「聊天这块屏幕的一个动作」——
@@ -213,7 +225,7 @@ async function realPort(): Promise<ChatPort> {
     onSessionStream: (callback) => client.events.on(IPC_CHANNELS.SESSION_STREAM, callback),
     // 命令**整条透传**,一个字段都不多给:`channel` 缺席时引擎按会话自己的
     // 频道走(默认 'ipc'),渲染层替它拍这个板就是在两处定义同一件事。
-    sendMessage: async (sessionId, content) => {
+    sendMessage: async (sessionId, content, messageId) => {
       /*
        * 正文**原样过去**,只物化页面引用(见接口上的注)。文件 token 那道展开在
        * 输入面的草稿出口就做完了,这里不再扫第二遍 —— 也正因为这一口不展,
@@ -230,6 +242,8 @@ async function realPort(): Promise<ChatPort> {
         command: {
           type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
           content: text,
+          // 没铸就**这一格根本不出现**(契约上它是可选的,缺席 = 引擎自己铸)。
+          ...(messageId ? { messageId } : {}),
           // 没有页面引用时**这一格根本不出现** —— 一个空数组与「没有附件」在
           // 账本上不是同一件事(契约上它是可选的)。
           ...(attachments.length > 0 ? { attachments } : {}),

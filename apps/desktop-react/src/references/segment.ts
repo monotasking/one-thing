@@ -145,13 +145,41 @@ export function segmentReferenceText(text: string): ResolvedSegment[] {
  * 「不认识就原样摆出来」在这里是错的 —— 一格 `skill-ref` 的 `content` 正是那份
  * 4862 字的 SKILL.md,而那正是 09-12 报障要治的病。
  */
+/**
+ * 一格部件里的**显示文字**,不是文字就 `null`。
+ *
+ * 全壳唯一那一句 —— 切分(下面)与认领(`data/chat-fold.ts` 的
+ * `reconcileOverlay` 兜底)读的是同一条判据。分成两处写,总有一天它们会对
+ * 「哪几格算文字」有两种意见。
+ */
+function textOfPart(part: ReferencePart): string | null {
+  return part.type === 'text' ? part.content ?? '' : null
+}
+
+/**
+ * 一条消息**显示出来是哪句话**里属于文字的那一半 —— 引用那几格不算。
+ *
+ * 用处只有一个:拿账本上的一条用户消息与发送方手里那句话比对(`reconcileOverlay`
+ * 的兜底)。**它不是 `displayContent` 的替代品**:引用那几格由各自的 `render`
+ * 画,这里一个字都不代它们说。
+ */
+export function displayTextOfParts(parts: readonly ReferencePart[]): string {
+  let out = ''
+  for (const part of parts) {
+    const text = textOfPart(part)
+    if (text !== null) out += text
+  }
+  return out
+}
+
 export function segmentReferenceParts(parts: readonly ReferencePart[]): ResolvedSegment[] {
   const out: ResolvedSegment[] = []
   const kinds = referencePartKinds()
   let atStart = true
   for (const part of parts) {
-    if (part.type === 'text') {
-      appendText(out, part.content ?? '', atStart)
+    const text = textOfPart(part)
+    if (text !== null) {
+      appendText(out, text, atStart)
     } else {
       const kind = kinds.find((k) => k.parse!.part!.type === part.type)
       const ref = kind?.parse!.part!.toRef(part)

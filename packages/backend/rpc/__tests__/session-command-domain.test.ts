@@ -132,6 +132,38 @@ describe('session-command RPC domain', () => {
     expect(command.origin.source).not.toBe('wechat')
   })
 
+  /**
+   * `messageId` 那一格是**客户端预铸的用户消息 id**(09-13)。这一跳既不铸也不
+   * 校验也不摘 —— 判形与「会话内唯一」在引擎里(`resolveUserMessageId`)。
+   *
+   * 钉它的理由:这条链上有过一次白名单式的清洗(`sanitizeRendererCommand` 给
+   * 四条带正文的命令盖 origin),而「盖章」与「只让这几格过去」看起来像同一件事。
+   * 哪天有人把它改成摘字段,壳那一格乐观气泡就会**悄悄**回到靠正文认领 ——
+   * 屏幕上再次出现第二条用户气泡,而没有任何一处报错。
+   */
+  it.each([
+    ['ipc', IPC],
+    ['http', HTTP],
+  ])('%s: send-message 的 messageId 原样到得了总线', async (_label, context) => {
+    const { dispatchRpc } = await loadDomain()
+
+    await dispatchRpc({
+      domain: 'session-command',
+      method: 'emit',
+      payload: {
+        sessionId: 's1',
+        command: {
+          type: 'command:send-message',
+          content: '@/abs/x.lua',
+          messageId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+        },
+      },
+    }, context)
+
+    const [, command] = bus.emit.mock.calls[0] as [string, Record<string, any>]
+    expect(command.messageId).toBe('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee')
+  })
+
   it('ipc: retry / edit-and-resend amend the turn record (late negative signal)', async () => {
     const { dispatchRpc } = await loadDomain()
 

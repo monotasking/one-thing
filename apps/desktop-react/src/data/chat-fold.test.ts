@@ -622,6 +622,132 @@ describe('overlay:以折叠为准的认领', () => {
     expect(out).toHaveLength(1)
   })
 
+  /**
+   * **病 ② 的账**(09-13 真机第二次报障,`a00e1728` 治的是记号句、没治到根)。
+   *
+   * 真账本形状(`~/.onething/sessions/2bd6d352…/events.jsonl` 第 21 条,
+   * 逐字缩样):`content` 是引擎跑完 `expandFileMentions` 之后的**模型版** ——
+   * 一整份 34KB 的 `<file>` 块;`contentParts` 才是壳发出去的那 55 个字。
+   * 「正文逐字相同」在这条路上**结构上不可能成立**:比的两句话从来就不是同一句。
+   */
+  const FILE_BODY = '-- ChatBot.lua\n'.repeat(2000)
+  const fileModelContent =
+    `<file path="/Users/me/ChatBot.lua" lines="1995" shown="1-773">\n${FILE_BODY}\n</file>`
+
+  it('@ 文件:账本上的 content 是模型版 → 认领靠 messageId(改后的形)', () => {
+    const entry: PendingSend = {
+      ...pending('o1', '@/Users/me/ChatBot.lua'),
+      messageId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+    }
+    const out = reconcileOverlay(
+      [entry],
+      [
+        message({
+          id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+          role: 'user',
+          content: fileModelContent,
+          contentParts: [{ type: 'text', content: '@/Users/me/ChatBot.lua' }],
+        } as never),
+      ],
+    )
+    expect(out).toEqual([])
+  })
+
+  /**
+   * **反证**:同一份夹具,那一格没有 `messageId`(= 改动之前的形)。正文兜底
+   * 比的是**显示文本**,而这一条的显示文本恰好就是那 55 个字 —— 所以它也认得上。
+   * 病着的时候兜底比的是 `content`(34KB 的 `<file>` 块),下面一条钉它。
+   */
+  it('@ 文件:没有 messageId 时兜底比显示文本(contentParts),不是 content', () => {
+    const out = reconcileOverlay(
+      [pending('o1', '@/Users/me/ChatBot.lua')],
+      [
+        message({
+          id: 'm1',
+          role: 'user',
+          content: fileModelContent,
+          contentParts: [{ type: 'text', content: '@/Users/me/ChatBot.lua' }],
+        } as never),
+      ],
+    )
+    expect(out).toEqual([])
+  })
+
+  it('@ 文件:拿 content 比就是用户看见的那条永不消失的气泡(病着的形)', () => {
+    // 改动之前 `reconcileOverlay` 比的正是这一格 —— 34KB 的 `<file>` 块 ≠ 那 55 个字。
+    expect(fileModelContent).not.toBe('@/Users/me/ChatBot.lua')
+    const out = reconcileOverlay(
+      [pending('o1', '@/Users/me/ChatBot.lua')],
+      // 老会话没有 `contentParts` 这一格,于是兜底只剩 `content` —— 认不上。
+      [message({ id: 'm1', role: 'user', content: fileModelContent })],
+    )
+    expect(out.map((entry) => entry.id)).toEqual(['o1'])
+  })
+
+  /**
+   * 技能那一支同病同治:`content` 是整份 SKILL.md,`contentParts` 是
+   * `[skill-ref, text]` —— 显示文本只有末尾那句话,与发出去的那句**不相等**
+   * (chip 那一格不是文字),所以这一条**只有靠 id 才认得上**。
+   */
+  it('/skill:x:显示文本也对不上 → 只有 messageId 认得上', () => {
+    const skillLedger = message({
+      id: 'ffffffff-1111-4222-8333-444444444444',
+      role: 'user',
+      content: '<skill name="commit">…整份 SKILL.md…</skill> 提交',
+      contentParts: [
+        { type: 'skill-ref', skillId: 'commit', name: 'commit', content: '…整份 SKILL.md…' },
+        { type: 'text', content: ' 提交' },
+      ],
+    } as never)
+
+    const withId: PendingSend = {
+      ...pending('o1', '/skill:commit 提交'),
+      messageId: 'ffffffff-1111-4222-8333-444444444444',
+    }
+    expect(reconcileOverlay([withId], [skillLedger])).toEqual([])
+
+    // 反证:同一份账本,没有 id 那一格认不上(显示文本是 ' 提交',不是原话)。
+    expect(reconcileOverlay([pending('o2', '/skill:commit 提交')], [skillLedger])
+      .map((entry) => entry.id)).toEqual(['o2'])
+  })
+
+  /**
+   * **文本兜底对带 id 的也照跑**(判词在 `reconcileOverlay` 的注)。
+   * 会话忙的时候 send 降级成 steering,而 steering 那一段自己铸 id ——
+   * 「有 id 就只按 id 认」在那条路上就是又一格永不消失的气泡。
+   */
+  it('带 id 但引擎用了别的 id(忙时降级 steering)→ 文本兜底仍然认得上', () => {
+    const entry: PendingSend = {
+      ...pending('o1', '补一句'),
+      messageId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+    }
+    const out = reconcileOverlay(
+      [entry],
+      // steering 落的是引擎自己铸的 id,正文没被改写。
+      [message({ id: 'steer-1', role: 'user', content: '补一句' })],
+    )
+    expect(out).toEqual([])
+  })
+
+  it('id 撞不上、正文也不同 = 不认领', () => {
+    const entry: PendingSend = {
+      ...pending('o1', '这一句'),
+      messageId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+    }
+    const out = reconcileOverlay([entry], [message({ id: 'm1', role: 'user', content: '另一句' })])
+    expect(out.map((e) => e.id)).toEqual(['o1'])
+  })
+
+  it('id 命中的那条已被别人认领 = 退回文本兜底,不重复认领同一条', () => {
+    const first: PendingSend = { ...pending('o1', '同一句'), messageId: 'id-aaaaaaaa' }
+    const second: PendingSend = { ...pending('o2', '同一句'), messageId: 'id-aaaaaaaa' }
+    const out = reconcileOverlay(
+      [first, second],
+      [message({ id: 'id-aaaaaaaa', role: 'user', content: '同一句' })],
+    )
+    expect(out.map((e) => e.id)).toEqual(['o2'])
+  })
+
   it('本地提示按定义不在账本上,永远不被认领', () => {
     const notice: OverlayEntry = { id: 'n1', kind: 'notice', notice: 'ask-rejected' }
     expect(reconcileOverlay([notice], [])).toEqual([notice])
