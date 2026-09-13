@@ -19,14 +19,17 @@
  * `sessions/` 里,不新开一棵同名树。
  */
 
-import { ResourceInputValidator, ResourceKernel, ResourceRegistry } from '@onething/core/resource'
+import { NO_ORIGIN_SESSION, ResourceInputValidator, ResourceKernel, ResourceRegistry } from '@onething/core/resource'
 import type { ResourceKernelOptions } from '@onething/core/resource'
 import { combineValidators, type ToolRunner, type Validator } from '@onething/core/toolkit'
 import { ZodValidator } from '@onething/runtime/toolkit'
 import { DIR_RESOURCE_SCHEME } from '@onething/runtime/files/resource-spec'
+import { GIT_RESOURCE_SCHEME } from '@onething/runtime/files/git-resource-spec'
+import * as store from '../../store.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import { createSandboxPolicy } from '../toolkit/runner.js'
 import { DirResourceProvider } from './dir-provider.js'
+import { GitResourceProvider } from './git-provider.js'
 import { createMusicResourceProvider } from './music-provider.js'
 import { createLocalOnlyReadGuard } from './read-guard.js'
 import { SessionResourceProvider } from './session-provider.js'
@@ -56,6 +59,14 @@ export {
   DirShellUnavailableError,
 } from './dir-provider.js'
 export type { DirEntryKind, DirOpPayload, DirRefusalReason } from './dir-provider.js'
+export { resolveReadable, resolveWritable } from './path-guard.js'
+export {
+  GitOperationFailedError,
+  GitRefRequiredError,
+  GitResourceProvider,
+  GitUnavailableError,
+} from './git-provider.js'
+export type { GitChangedFile, GitFileStatus } from './git-provider.js'
 export { createLocalOnlyReadGuard } from './read-guard.js'
 export type { LocalOnlyReadGuardOptions } from './read-guard.js'
 export { mountMcpResources } from './mcp-mount.js'
@@ -124,15 +135,35 @@ export function createResourceKernel(
      *
      * 它在这里而不在 `backend.ts`:那只文件里不许出现任何资源的名字,而「资源的读
      * 要按哪把尺子判」正是这一层的事。宿主真要换一把,`options.sandbox` 盖得住。
+     *
+     * **资源读根 = 工具读根,同一张表,漏一格就是「两把尺子」**(2026-09-13):
+     * 工具那条路(`toolkit/families/file.ts` 的 `sandboxRoots`)一直把
+     * `scope.workingDirectory`(发起会话绑的工作目录)算进根里,而这一条以前没传
+     * —— 于是同一条会话、同一个仓,`read` 工具读得到、`dir:` / `git:` 资源答
+     * 「outside the sandbox root」。两把尺子不是「资源更严」:它是一处会被当成规矩
+     * 的自相矛盾,而修它的方向只能是把漏的那一格补上,不是把另一把放松。
+     *
+     * `scope` 就是内核递来的**发起坐标**:缺席 / `NO_ORIGIN_SESSION` / 查无此会话
+     * 一律空数组 —— 退回这一格存在之前的行为,一个字都不猜。
      */
-    sandbox: createSandboxPolicy(),
+    sandbox: createSandboxPolicy(undefined, {
+      workingDirectoryRootsFor: scope => {
+        if (!scope || scope === NO_ORIGIN_SESSION) return []
+        const session = store.getSession(scope) as { workingDirectory?: string } | undefined
+        return session?.workingDirectory ? [session.workingDirectory] : []
+      },
+    }),
     /*
      * K3-c —— 读的守卫。名单在这里给,判据在 `./read-guard.ts`(它自己不认识任何
-     * 一个命名空间)。今天名单上只有 `dir`,理由与退场条件写在那只文件的头上:
-     * 资源面还没有 per-caller 的沙箱根,所以非本机可信的进程上目录读一律拒。
+     * 一个命名空间)。理由与退场条件写在那只文件的头上:资源面还没有 per-caller 的
+     * 沙箱根,所以非本机可信的进程上本地文件那一族的读一律拒。
+     *
+     * `git` 与 `dir` 同一条、同一天进这张表(「改动」面那一单):它答的是这台机器上
+     * 某个工作树里的文件名与它们的 diff —— 那比一次目录列举交出去的东西**更多**,
+     * 而两者的授权诚实账缺的是同一格。
      */
     readGuard: createLocalOnlyReadGuard({
-      schemes: [DIR_RESOURCE_SCHEME],
+      schemes: [DIR_RESOURCE_SCHEME, GIT_RESOURCE_SCHEME],
       isTrusted: () => isHostLocallyTrusted(),
     }),
     ...options,
@@ -183,6 +214,15 @@ export function mountBuiltinResources(
      * 是那一档真正的判据。
      */
     kernel.mount(new DirResourceProvider()),
+    /*
+     * 「改动」面 —— git 工作树。**不分 tier**:两条读法零效果、零副作用
+     * (`ops: {}`),所以 `readonly` 那一档没有任何理由把它摘掉,而 server / CLI 上
+     * 「这个工作树此刻改了什么」是一句照样答得出、也照样有人问的话。
+     *
+     * 副作用要说清:挂上即自动多一只 `git` 工具(`catalog-sync`)。模型用它比
+     * `bash git status` 拿到的是结构化的表,而且不必过一次 `bash` 的权限。
+     */
+    kernel.mount(new GitResourceProvider()),
   ]
   /*
    * K3-b —— 音乐,**只在 `full` 档**(理由写在 `MountBuiltinResourcesOptions.tier`

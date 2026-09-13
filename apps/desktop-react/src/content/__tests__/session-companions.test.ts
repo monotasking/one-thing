@@ -16,6 +16,7 @@ import { refIdsOf } from '../../workbench/tree'
 import { refId } from '../../workbench/kinds'
 import '../kinds'
 import { dirRef } from '../kinds/dir-ref'
+import { diffRef } from '../kinds/diff-ref'
 import { fileRef } from '../viewer/open-target'
 import {
   companionEnvOf,
@@ -111,6 +112,28 @@ describe('scheduleCompanionSwap:排在微任务里', () => {
       .toEqual([dirRef(ONETHING_DIR)])
     // 乙也在同一个仓里,所以继承出来的正好是同一棵 —— 这条同时钉着「同 workdir 只放一份」。
     expect(ids().filter((id) => id === refId(dirRef(ONETHING_DIR)))).toHaveLength(1)
+  })
+
+  /*
+   * 「改动」面(正本 `apps/desktop-react/docs/changes-panel-2026-09.md` §3.1)。
+   * C3 那句留账「`diff` 单例瓦留口」在这一条上还清:它与目录那一种走**同一条**
+   * 路(`companion.seed`),所以这一条与上面那一条形状逐字相同,只换一种内容 ——
+   * 而那正是「加一种伴随面 = 它自己那一格 `seed`,骨架零改动」的可观测形。
+   *
+   * **反证**:`content/kinds/diff.tsx` 的 `seed` 改成恒 `null` → 这一条当场红
+   * (乙那边一格都不开)。
+   */
+  it('改动面也继承:离场那条开着改动面 → 进场那条拿到**它自己 workdir** 的那一份', async () => {
+    const host = leafIdOfSessionLeaf()
+    useWorkbenchStore.getState().openRef(diffRef(ONETHING_DIR), { region: CENTER_REGION, leafId: host })
+
+    scheduleCompanionSwap(A, OTHER)
+    await settle()
+
+    // 甲那一份收进账;乙拿到的是**它自己那个仓**的改动面,不是甲那个。
+    expect(useWorkbenchStore.getState().sessionCompanions[A].seats.map((seat) => seat.ref))
+      .toEqual([diffRef(ONETHING_DIR)])
+    expect(ids()).toEqual([refId(sessionRefOf('')), refId(diffRef(TRANSREADER_DIR))])
   })
 
   it('文件不继承:切过去只剩目录', async () => {

@@ -23,6 +23,8 @@ const ALL_IDS: readonly FocusScopeId[] = [
   'root',
   'viewer',
   'files',
+  // 「改动」面(正本 `apps/desktop-react/docs/changes-panel-2026-09.md` §3.4)。
+  'diff',
   'composer',
   'search',
   'expose',
@@ -55,7 +57,7 @@ const ALL_IDS: readonly FocusScopeId[] = [
 ]
 
 describe('FOCUS_SCOPES 封闭表', () => {
-  it('26 格(浏览器是第 26 格),一格不多一格不少', () => {
+  it('27 格(「改动」面是第 27 格),一格不多一格不少', () => {
     expect(FOCUS_SCOPE_LIST.map((s) => s.id).sort()).toEqual([...ALL_IDS].sort())
   })
 

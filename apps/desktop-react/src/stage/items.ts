@@ -156,6 +156,21 @@ export const STAGE_ITEMS: StageItemSpec[] = [
    * `file` 那一种内容 —— 回访入口是文件树,落点是拼贴树的叶。
    * 理由与两个残留消费者写在 VIEWER_ITEM_ID 上。
    */
+  /*
+   * **「改动」从一块面降格成启动瓦**(正本
+   * `apps/desktop-react/docs/changes-panel-2026-09.md` §3.2;与「终端」那一行逐字
+   * 同一条路)。id / titleKey / icon **一个字不改** —— 位置记忆、隐藏配置、Dock
+   * 顺序全按 id 记,改 id 等于把用户摆了半年的东西弄丢。变的是它开出来的是什么:
+   * 从前是 `panel:diff`(一块写死的假面),现在是**一族** `diff:<workdir>`
+   * (`content/kinds/diff.tsx`)。点它 / 右键 / 拖它三件登记在
+   * `content/diff-launcher.tsx`;这一行照旧只是静态声明。
+   *
+   * **天生落中央区**,而这一格是**缺席**不是一行声明 —— 与「浏览器」那一行逐字
+   * 同一句判词:`OpenPlacement` 里没有「中央」这一档,中央是启动瓦那条路问完记忆
+   * 与天生之后的兜底(`diff-launcher.regionForLauncher` 的最后一句)。一块改动面
+   * 要的宽度与一段对话一样(左边一列路径、右边一块不折行的 diff),塞进架子只
+   * 看得见三行;**存量记忆压过它**。
+   */
   { id: 'diff', titleKey: 'item.diff', level: 'space', dockGroup: 'session', icon: 'GitCompare' },
   /*
    * **「终端」从一块面降格成启动瓦**(T1,方案

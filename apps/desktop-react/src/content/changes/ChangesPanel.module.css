@@ -1,0 +1,421 @@
+/*
+ * 「改动」面(正本 `apps/desktop-react/docs/changes-panel-2026-09.md` §3.4)。
+ * 三段式(檐 / 通知行 / **身:两列**)+ 两种空态。三种形态(舞台 / 浮窗 / 架子)
+ * 共用这一份,所以这里不写任何与形态有关的尺寸。
+ *
+ * 抗挤压(`docs/design/react-shell-squeeze-rules-2026-08.md`)在这块面上的落点:
+ *  · 文件行**恰有一个**弯腰件(那一整段路径),它同时有 min-width:0 与省略号;
+ *  · 檐上仓库名是唯一吸剩余空间的角色,所以合计与刷新钮不必弯腰;
+ *  · 状态字母 / ± 两列**有布局预留**(律三):槽位常驻,只换内容,所以一行从
+ *    「+3 −1」变成「binary」时路径不会被顶得跳一下。
+ *
+ * ⚠ **行高恒定 `--files-row-h` 是一条硬约束**:文件列是窗口化渲染的(复用
+ * `files/useRowWindow`),按「行序 × 行高」反推位置。骨架行与条目行**同高**——
+ * 那不是审美对齐,那是算式的前提。**这块面复用文件面那一格 token**,不新开一格:
+ * 两列长在同一台壳上、扫的是同一种东西(一列路径),两个数迟早会漂成两种密度。
+ *
+ * 颜色零字面值:diff 的红绿直接吃 `--ok` / `--danger`(与 `Diff.module.css` 同源,
+ * 那两枚就是这套设计系统的语义色),不新造。
+ */
+.panel {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+}
+
+/* ── 檐:仓库名 · 分支 · 合计 · 刷新 ──────────────────────────────────── */
+.head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: var(--bw-1) solid var(--line-1);
+}
+
+/*
+ * 仓库名那一段同时是**拖把手**,所以它吃剩余空间(抓得着)。窄下来时整段横滚
+ * 而不是换行:它是一条结构行(律二)。滚条不画 —— 一条只有一行高的带子上一条
+ * 滚轨会比内容还显眼。
+ */
+.repo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  white-space: nowrap;
+  /* 拖拽是指针手势,所以这一段不选中文字(拖到一半选出一串蓝底是另一种坏)。 */
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+
+.repo::-webkit-scrollbar {
+  display: none;
+}
+
+.repoName {
+  flex: none;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+/* 分支:比仓库名淡一档、小一档 —— 它是限定语,不是主语。 */
+.branch {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--files-meta-fs);
+  color: var(--text-3);
+}
+
+/* 合计 = 两枚读数,不是徽章(同号同字,只有颜色不同)。 */
+.total {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--files-meta-fs);
+}
+
+/*
+ * 「重新读取」那一圈。转的**只有那枚字形**,不是整颗钮(钮连同它的悬停底一起转
+ * 是另一种动效,而用户手指此刻正压在那颗钮上)。圈数走一格**无单位**自定义属性
+ * (与 `--changes-split` 同一手,由 tsx 单调递增地给)。
+ * `@keyframes` 一个都不加 —— 它是一次过渡,不是循环。
+ */
+.headSpin svg {
+  transform: rotate(calc(var(--changes-spin, 0) * -360deg));
+  transition: transform var(--dur-release) var(--ease);
+}
+
+/* ── 通知行(错误)───────────────────────────────────────────────────── */
+/*
+ * danger 的**晕底**而不是实色:一条实色横杠会在一屏安静的列表上炸开。
+ * 8% 是「看得见但不喊」的那一档(与文件面那条告知条同一个配方,换一枚色)。
+ */
+.notice {
+  flex: none;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border-bottom: var(--bw-1) solid var(--line-1);
+}
+
+.noticeIcon {
+  flex: none;
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+  color: var(--danger);
+}
+
+/* 这一行里唯一的弯腰件。后端原话可能很长,而它是**数据**,不折行只截断。 */
+.noticeText {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 两种空态(不是仓库 / 干净)────────────────────────────────────────── */
+/*
+ * 两种空态共用一块地:一句话 + 一段单薄的补充(路径 / 分支)。它们**居中偏上**
+ * 而不是垂直居中 —— 一块面正中央的一句话读起来像一次报错,而这两种都不是。
+ */
+.empty {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-7) var(--sp-4) 0;
+  text-align: center;
+}
+
+.emptyText {
+  font-size: var(--fs-label);
+  color: var(--text-2);
+}
+
+/* 路径 / 分支是**数据**,所以 mono;它比上面那句淡一档。 */
+.emptyPath {
+  max-width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--files-meta-fs);
+  color: var(--text-4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 首载骨架 ──────────────────────────────────────────────────────────── */
+/*
+ * 三条不等长的短横。不等长才读成「一段还没到的内容」;等长会读成一张表格。
+ * 每一条占一格**正常行高** —— 与文件列的行同高(见文件头那条硬约束)。
+ */
+.skel {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.skelBar {
+  height: var(--files-skel-h);
+  margin: calc((var(--files-row-h) - var(--files-skel-h)) / 2) 0;
+  border-radius: var(--r-1);
+  background: var(--st-hover);
+}
+
+.skelBar1 {
+  width: var(--files-skel-w1);
+}
+
+.skelBar2 {
+  width: var(--files-skel-w2);
+}
+
+.skelBar3 {
+  width: var(--changes-skel-w3);
+}
+
+/* ── 身:两列(文件列 | diff 体)──────────────────────────────────────── */
+/*
+ * 与文件面那条分栏同一个形:三列(列 | 杆 | 体),收起时中间与右边都是 0
+ * (杆此刻根本不在 DOM 里)。两列都走 `minmax(0, …)`:窄面板下先让两列一起缩,
+ * 而不是横向长出一条滚轨(律二)。份额是用户拖出来的,记在 `data/split-prefs`。
+ */
+.split {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 0 minmax(0, 0fr);
+  transition: grid-template-columns var(--dur) var(--ease);
+}
+
+.split[data-body='open'] {
+  grid-template-columns:
+    minmax(0, calc(var(--changes-split, 32) * 1%))
+    var(--splitter-hit)
+    minmax(0, 1fr);
+}
+
+/*
+ * 拖拽期间**关掉过渡**。不关的话列宽会追着指针走(每一帧都被过渡拖慢一拍),
+ * 手感是「杆跑在前面、面板在后面追」—— 跟手定律的反面。
+ * 属性由 `ui/Splitter` 在 pointerdown 时挂上、松手时摘掉。
+ */
+.split[data-splitting='true'] {
+  transition: none;
+}
+
+/* 文件列。它是 `.split` 的第一个网格项 —— 高度由网格拉满。 */
+.list {
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-1) var(--sp-2);
+}
+
+/* ── 一行 ──────────────────────────────────────────────────────────────── */
+/*
+ * 三格:状态字母(定宽)· 路径(唯一的弯腰件)· ±(定宽预留)。
+ * 行本身是一颗 `ui/ButtonBase` 底座之外的定制件,所以皮肤在这里画;
+ * 焦点环走全局 `:focus-visible`,这里一个字都不写。
+ */
+.row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: var(--files-row-h);
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-1);
+  background: none;
+  text-align: left;
+  transition: background var(--dur) var(--ease);
+}
+
+.row:hover {
+  background: var(--st-hover);
+}
+
+/* 键盘位 = accent 底。**与 hover 是两件事**,叠在同一行时用 `--st-sel-hover`。 */
+.rowSel {
+  background: var(--st-sel);
+}
+
+.rowSel:hover {
+  background: var(--st-sel-hover);
+}
+
+/*
+ * 状态字母。**定宽槽位**(律三布局预留):`M` 与 `?` 宽度不同,不定宽的话整列
+ * 路径会因为上一行是不是改名而左右跳。
+ */
+.letter {
+  flex: none;
+  width: var(--changes-letter-w);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--files-meta-fs);
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+/* 三枚语义色。**只上字,不上底**(判词在 ChangeList 的组件头上)。 */
+.toneAdd {
+  color: var(--ok);
+}
+
+.toneDel {
+  color: var(--danger);
+}
+
+.toneWarn {
+  color: var(--warn);
+}
+
+/*
+ * 路径。唯一的弯腰件,而且省略号要吃掉**目录的尾巴**而不是文件名 ——
+ * 所以整段用 `direction: rtl` 把截断点挪到左边,再用一格 `bdi` 语义的
+ * `unicode-bidi: plaintext` 把里面每一段的阅读方向掰回来(路径里可能有中文
+ * 目录名,纯 rtl 会把它们的标点甩到另一头)。
+ */
+.path {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  direction: rtl;
+  unicode-bidi: plaintext;
+  font-family: var(--font-mono);
+  font-size: var(--files-meta-fs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 目录段淡 —— 扫一列时眼睛找的是文件名。 */
+.pathDir {
+  color: var(--text-4);
+}
+
+.pathName {
+  color: var(--text-1);
+}
+
+/* 改名的来处。它已经不在了,所以最淡的一档。 */
+.pathOld {
+  color: var(--text-4);
+}
+
+/*
+ * ± 两枚数字。**定宽预留**:一行从「+3 −1」变成「binary」时路径不该被顶得跳一下。
+ * 右对齐 —— 数字列对齐才扫得出「哪一个改得多」。
+ */
+.stat,
+.statBinary {
+  flex: none;
+  min-width: var(--changes-stat-w);
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: var(--sp-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-nano);
+}
+
+.statBinary {
+  color: var(--text-4);
+}
+
+.statAdd {
+  color: var(--ok);
+}
+
+.statDel {
+  color: var(--danger);
+}
+
+/* ── diff 体 ──────────────────────────────────────────────────────────── */
+.body {
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-left: var(--bw-1) solid var(--line-1);
+}
+
+/*
+ * 体自己的第一行写文件名。**sticky** —— 一条 diff 铺开好几屏,滚到中间时
+ * 「我在看哪个文件」必须还在屏上。层级与 `Diff` 的 hunk 头同一个。
+ */
+.bodyHead {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-1);
+  border-bottom: var(--bw-1) solid var(--line-1);
+  font-family: var(--font-mono);
+  font-size: var(--files-meta-fs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bodyPathDir {
+  color: var(--text-4);
+}
+
+.bodyPathName {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+/* 「二进制 / 已截断 / 此刻没有改动」三句话共用一格。 */
+.bodyNote {
+  margin: 0;
+  padding: var(--sp-3);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+/*
+ * **`content-visibility: auto` 逐块**(第五轴:单文件两万行 diff)。
+ *
+ * ── 取件口为什么是「包一层再打孙子」────────────────────────────────────
+ * `Diff` 的 DOM 是**一层平铺**:一个根 `div`,里面是 hunk 头与行**并列**的一串
+ * `div`(`Hunk` 是 Fragment,没有自己的容器)。所以「每个 hunk 一格容器」这句话
+ * 在那份 DOM 上没有对应物,而它的类名又是 CSS Modules 哈希过的,`:global(.diff)`
+ * 够不着。这里的做法是这块面自己包一层 `.diffWrap`,再对**它的孙辈**下手 ——
+ * 那一批正是那些平铺的头与行,粒度比一整段 hunk 更细,而收益(不排版的行数)
+ * 一样。不去改 `Diff`:那块是聊天正文里那块 diff 的身子,一行都不该为这块面动。
+ *
+ * `contain-intrinsic-size` 给一格粗估高度(就是一行),免得卷轴在滚动中一跳一跳。
+ */
+.diffWrap > * > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto var(--files-row-h);
+}

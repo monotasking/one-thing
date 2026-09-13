@@ -28,7 +28,7 @@ import './content/kinds'
 import './references'
 /*
  * **启动瓦的注册**(W6-a,`stage/launchers.ts`)。与上面那张表逐字同一个体例:
- * import 它**就是**「这台上哪几块瓦是启动瓦」。今天两块(「目录」与「终端」)。
+ * import 它**就是**「这台上哪几块瓦是启动瓦」。今天四块(目录 / 终端 / 浏览器 / 改动)。
  * 它排在这里而不是 `stage/store` 里,理由与内容种类那一句相同 —— 那会造一条
  * import 环(`stage/store` → 这只 → `workbench/store` → …)。
  */
@@ -36,6 +36,8 @@ import './content/files-launcher'
 /* T1:「终端」那块瓦也是启动瓦(方案 §2.1-6)。 */
 import './content/terminal-launcher'
 import './content/browser-launcher'
+/* 「改动」面:那块瓦也是启动瓦(正本 `docs/changes-panel-2026-09.md` §3.2)。 */
+import './content/diff-launcher'
 import { startWorkbench } from './workbench/store'
 import { startStage } from './stage/store'
 import { startSessionProjection } from './content/session-projection'

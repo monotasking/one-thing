@@ -1134,6 +1134,36 @@ export const zh = {
   'files.menuOpenBelow': '在下方打开',
   'files.openStateShown': '打开着',
   'files.openStateHidden': '打开着(已隐藏)',
+  /* ── 「改动」面(正本 apps/desktop-react/docs/changes-panel-2026-09.md §3.5)───
+   * 面板标题不另起一个键:它就是 'item.diff' 那两个字(与文件面复用 'item.files'
+   * 同一条)。**路径、分支名、仓库名、后端的英文原话一个字都不在字典里** ——
+   * 它们是数据,换一门语言不该变。这里只有「这台此刻处在哪种状态」的那几句人话,
+   * 外加八个状态字母的无障碍名(屏幕上是一枚字母,读屏软件要听见一个词)。 */
+  'diff.noWorkdir': '这条会话没有工作目录,没有可看的改动',
+  'diff.notRepo': '这个目录不是 git 仓库',
+  'diff.clean': '没有未提交的改动',
+  'diff.refresh': '重新读取',
+  'diff.retry': '重试',
+  'diff.filesSection': '改动的文件',
+  'diff.splitLabel': '文件列与 diff 的分隔杆(← → 调宽度,↵ 回默认)',
+  /* 改名那一行的来处。`{from}` 是路径,是数据。 */
+  'diff.renamedFrom': '← {from}',
+  /* 行尾那一格(二进制文件没有行数)。它要短 —— 那一列只有 52px。 */
+  'diff.binaryShort': '二进制',
+  'diff.binary': '二进制文件,不展示 diff',
+  'diff.truncated': '这块 diff 太大,只显示了前 1 MiB',
+  /* 选中的文件在两次刷新之间被撤销了改动。 */
+  'diff.noDiff': '这个文件此刻没有改动',
+  /* 八个状态字母的无障碍名(M/A/D/R/C/?/!/T)。 */
+  'diff.statusM': '已修改',
+  'diff.statusA': '新增',
+  'diff.statusD': '已删除',
+  'diff.statusR': '已改名',
+  'diff.statusC': '已复制',
+  'diff.statusU': '未跟踪',
+  'diff.statusX': '有冲突',
+  'diff.statusT': '类型变了',
+
   /* 目录面板(W6-a)。 */
   'files.recentDirs': '最近打开的目录',
   'files.openDirTitle': '打开目录…',

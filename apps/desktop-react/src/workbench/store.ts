@@ -987,9 +987,11 @@ export function fullStillStands(
  * v3 = **W6-a 单叶 + 预览退役**:中央区那棵树折成一片叶,`preview` 那一格抹掉;
  * v4 = **K2b-1 地址合一**:目录那一种 `files-root` 改名 `dir`
  *      (`docs/design/atom-2026-09.md` §7 盲点 2);
- * v5 = **C3 伴随面**:每个空间多一格 `sessionCompanions`(老档案没有这一格 → 空表)。
+ * v5 = **C3 伴随面**:每个空间多一格 `sessionCompanions`(老档案没有这一格 → 空表);
+ * v6 = **「改动」面**:`panel:diff` 那一格从档案里丢掉(那块瓦降格成启动瓦,
+ *      `renderContent('diff')` 从此答 `null`,留着就是一格画不出东西的 tab)。
  */
-export const WORKBENCH_PERSIST_VERSION = 5
+export const WORKBENCH_PERSIST_VERSION = 6
 
 /**
  * **每一级串着跑**(v1 的档案要先翻名字、再折叶、再翻一次名字):按版本从低到高
@@ -1000,8 +1002,9 @@ export const WORKBENCH_PERSIST_VERSION = 5
  * 它从 persist 的选项里提出来是为了**能被单测直接问**:反证「把 `version < 4` 那条
  * 拆掉 → 迁移用例当场红」在选项字面量里跑不了。
  *
- * v2 与 v4 共用同一只改写器(`rewriteLegacyContentRef` 是种类改名的**唯一**产地),
- * 所以一份 v1 档案会经过它两遍 —— 而它幂等,第二遍原样交回同一个对象。
+ * v2 / v4 / v6 共用同一只改写器(`rewriteLegacyContentRef` 是「档案里这一格该变成
+ * 什么」的**唯一**产地 —— 改名与丢弃都在它身上),所以一份 v1 档案会经过它三遍,
+ * 而它幂等,第二、三遍原样交回同一个对象。
  */
 export function migrateWorkbenchPersisted(persisted: unknown, version: number): unknown {
   if (!persisted || typeof persisted !== 'object') return persisted
@@ -1022,6 +1025,16 @@ export function migrateWorkbenchPersisted(persisted: unknown, version: number): 
    * 不改任何行为 —— 也正因为如此,它必须**幂等**且**引用恒等**(用例钉着两条)。
    */
   if (version < 5) out = defaultFurnitureFieldInPersisted(out, 'sessionCompanions', () => ({}))
+  /*
+   * v6(「改动」面):**同一只改写器的第三遍**。它今天多了一条答 `null` 的规则
+   * (`panel:diff` 丢掉,判词整段在 `content/legacy-refs.ts` 上),而这只改写器是
+   * 幂等的 —— 一份 v1 档案因此会经过它三遍,第二、三遍原样交回同一个对象。
+   *
+   * **不新写一段**:清一格退役的 ref 与翻一个改过名的 ref 是同一件事的两个方向
+   * (`RefRewrite` 从 W5-b 起就收 `null`),各写一段等于让「档案里这一格该变成
+   * 什么」有两个产地。
+   */
+  if (version < 6) out = rewriteRefsInPersisted(out, rewriteLegacyContentRef)
   return out
 }
 

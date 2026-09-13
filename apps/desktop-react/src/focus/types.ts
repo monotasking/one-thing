@@ -28,8 +28,9 @@ import type { MessageKey } from '../i18n'
 export type FocusScopeKind = 'root' | 'layer' | 'region' | 'float' | 'modal'
 
 /**
- * 声明 id。22 格(W1 加了 `leaf`)—— 加一格是**声明变更**,要同时改 `FOCUS_SCOPES`
- * 那张表与它的 labelKey,`focus/__tests__/scopes.test.ts` 逐条钉着。
+ * 声明 id。23 格(W1 加了 `leaf`,「改动」面加了 `diff`)—— 加一格是**声明变更**,
+ * 要同时改 `FOCUS_SCOPES` 那张表与它的 labelKey,`focus/__tests__/scopes.test.ts`
+ * 逐条钉着。
  */
 export type FocusScopeId =
   // root:整台壳,只有一个
@@ -37,6 +38,9 @@ export type FocusScopeId =
   // region:内容面
   | 'viewer'
   | 'files'
+  // 一份改动面(「改动」面)。**同一个 id 会有好几份实例**:一个工作目录一份
+  // `diff:<workdir>`,与 `files` 那一格逐字同型 —— 声明这一头与实例份数无关(§4.8)。
+  | 'diff'
   | 'composer'
   | 'search'
   | 'expose'

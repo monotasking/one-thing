@@ -956,6 +956,32 @@ export const en: Record<MessageKey, string> = {
   'files.menuOpenBelow': 'Open below',
   'files.openStateShown': 'Open',
   'files.openStateHidden': 'Open (hidden)',
+  /* ── changes panel (changes-panel-2026-09.md §3.5) ─────────────────────
+   * The panel title reuses 'item.diff'. Paths, branch names, repository names and
+   * the backend's own error strings are DATA and never enter this dict — only the
+   * sentences describing which state this machine is in, plus a spoken name for
+   * each of the eight status letters. */
+  'diff.noWorkdir': 'This session has no working directory — nothing to diff',
+  'diff.notRepo': 'This directory is not a git repository',
+  'diff.clean': 'Nothing uncommitted',
+  'diff.refresh': 'Reload',
+  'diff.retry': 'Retry',
+  'diff.filesSection': 'Changed files',
+  'diff.splitLabel': 'Divider between the file list and the diff (← → to resize, ↵ to restore)',
+  'diff.renamedFrom': '← {from}',
+  'diff.binaryShort': 'binary',
+  'diff.binary': 'Binary file — no diff to show',
+  'diff.truncated': 'This diff is large; only the first 1 MiB is shown',
+  'diff.noDiff': 'This file has no changes right now',
+  'diff.statusM': 'Modified',
+  'diff.statusA': 'Added',
+  'diff.statusD': 'Deleted',
+  'diff.statusR': 'Renamed',
+  'diff.statusC': 'Copied',
+  'diff.statusU': 'Untracked',
+  'diff.statusX': 'Conflicted',
+  'diff.statusT': 'Type changed',
+
   /* Directory panels (W6-a). */
   'files.recentDirs': 'Recent directories',
   'files.openDirTitle': 'Open a directory…',

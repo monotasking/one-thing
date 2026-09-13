@@ -95,7 +95,7 @@
  * (仓根先 `bun run server:build`,本目录先 `npm run app:build`)。
  * 可重复:每次一个全新的临时 store + 全新的 --user-data-dir,跑完删干净。
  */
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { connect } from 'node:net'
@@ -699,10 +699,32 @@ async function main() {
    * **留账**:高亮配色在深色主题下的对比度要单独一批,不在 W1 里顺手改。
    */
   await writeFile(path.join(projectDir, 'alpha.md'), '# alpha\n\n一段正文,给这道门照壳用。\n')
+  /*
+   * **把这个夹具做成一个真的 git 仓,并留一处未提交的改动**(「改动」面那一屏)。
+   * 那一屏画得最满的一档是 `ready`(文件列 + diff 体 + 分隔杆 + 刷新钮),而它要
+   * 一个真仓才出得来。`git` 不在这台机器上、或者这条路径落在读根之外时,那一屏
+   * 退成「不是仓库」/ 错误行 —— 两档都仍然是**这块面的一屏**,axe 照扫,所以这里
+   * 造仓失败**不让整道门红**(它是一次加厚,不是前提)。
+   */
+  try {
+    const gitEnv = {
+      ...process.env,
+      GIT_AUTHOR_NAME: 'gate', GIT_AUTHOR_EMAIL: 'gate@example.com',
+      GIT_COMMITTER_NAME: 'gate', GIT_COMMITTER_EMAIL: 'gate@example.com',
+      GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null',
+    }
+    const git = (args) => execFileSync('git', args, { cwd: projectDir, env: gitEnv, stdio: 'ignore' })
+    git(['init', '-q', '-b', 'main'])
+    git(['add', '-A'])
+    git(['commit', '-qm', 'fixture'])
+    await writeFile(path.join(projectDir, 'alpha.md'), '# alpha\n\n改过一行,给「改动」面那一屏用。\n')
+  } catch (error) {
+    console.log(`  · 夹具没做成 git 仓(${String(error).slice(0, 80)})—— 「改动」那一屏退成空态,照扫`)
+  }
   let server
   let app
   try {
-    console.log('\n[1/13] 起一台 core')
+    console.log('\n[1/14] 起一台 core')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: { ...process.env, ONETHING_STORE_PATH: store },
@@ -734,7 +756,7 @@ async function main() {
     }
     console.log(`  ✓ core 起来了,种了 ${seeded.length} 条会话`)
 
-    console.log('\n[2/13] 拉起应用(独立 --user-data-dir)')
+    console.log('\n[2/14] 拉起应用(独立 --user-data-dir)')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -764,7 +786,7 @@ async function main() {
     )
     console.log('  ✓ 外壳画出来了')
 
-    console.log('\n[3/13] 产品外壳:axe 全页扫描 + Tab 序走查')
+    console.log('\n[3/14] 产品外壳:axe 全页扫描 + Tab 序走查')
     // 这一屏从前是裸扫的 —— 而颜色恰恰是最后才到的那样东西(见 settle 的文件头)。
     await settle(page, '外壳')
     await scanAxe(page, '外壳')
@@ -784,7 +806,7 @@ async function main() {
      * (`composer/components/Composer.test.tsx` 的「庚」那一族,按 role=radio 取的)。
      * 反证:把 `RadioGroup` 的 `label` 拆掉 → 那一族单测当场红。
      */
-    console.log('\n[4/13] 模型抽屉:开一格再扫一次')
+    console.log('\n[4/14] 模型抽屉:开一格再扫一次')
     await clickSelector(page, '[data-testid="composer-panel"] button[aria-expanded]')
     await waitFor('模型抽屉就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-focus-scope="drawer"]'))),
@@ -818,7 +840,7 @@ async function main() {
      * 反证:把家头那枚 Switch 的 `label` 拆掉 → 这一屏当场 critical button-name 红
      * (2026-08-31 真跑过一轮)。
      */
-    console.log('\n[5/13] 设置页:开出来,逐页点导航再扫')
+    console.log('\n[5/14] 设置页:开出来,逐页点导航再扫')
     await clickSelector(page, '[data-testid="dock-tile-settings"]')
     await waitFor('设置页就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="settings-panel"]'))),
@@ -871,7 +893,7 @@ async function main() {
      * 反证:把 `SearchList` 里那句 `aria-label={t('search.resultsLabel')}` 拆掉 →
      * 这一屏当场 `aria-input-field-name` / `region` 类违例。
      */
-    console.log('\n[6/13] 检索面:开一块面再扫一次')
+    console.log('\n[6/14] 检索面:开一块面再扫一次')
     await clickSelector(page, '[data-testid="dock-tile-search"]')
     await waitFor('检索面就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="search-panel"] input'))),
@@ -899,7 +921,7 @@ async function main() {
      * 反证:把 `ui/Slider` 那两处 `aria-label` 拆掉 → 这一屏当场
      * `aria-input-field-name` 类红(一个 `role="slider"` 没有名字)。
      */
-    console.log('\n[7/13] 音乐面:开一块面再扫一次')
+    console.log('\n[7/14] 音乐面:开一块面再扫一次')
     await clickSelector(page, '[data-testid="dock-tile-music"]')
     await waitFor('音乐面就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="music-panel"]'))),
@@ -926,7 +948,7 @@ async function main() {
      * 反证:把 AppsPanel 里 Switch 的 `label` 拆掉 → 这一屏当场 critical
      * button-name 红(每一行都是,因为那颗 <button role="switch"> 只有一个空 span)。
      */
-    console.log('\n[8/13] 所有应用面(全屏形态):开一块面再扫一次')
+    console.log('\n[8/14] 所有应用面(全屏形态):开一块面再扫一次')
     await clickSelector(page, '[data-testid="dock-tile-apps"]')
     await waitFor('所有应用面就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid^="apps-row-"]'))),
@@ -951,7 +973,7 @@ async function main() {
      * 由 gate:files 那道门验(它自己建了一棵真目录树)—— 两道门各扫各的那一半,
      * 不在这里再造一次目录树。
      */
-    console.log('\n[9/13] 文件查看器 + 叶檐:走文件树开一个文件再扫一次')
+    console.log('\n[9/14] 文件查看器 + 叶檐:走文件树开一个文件再扫一次')
     /*
      * **先进那条带工作目录的会话**:文件树的根跟着「当前会话的工作目录」走,
      * 而当前会话是内存态 —— 不进去的话树会退回主目录(那时树上有什么就不由
@@ -1599,6 +1621,38 @@ async function main() {
      * 与前三屏同一条理由:外壳那一份别再报第二遍。
      */
     /*
+     * **「改动」面**(正本 `apps/desktop-react/docs/changes-panel-2026-09.md` §4 ⑤)。
+     * 进这道门的理由与音乐面 / 模型服务面逐字相同 —— **外壳那一屏看不见它**
+     * (面收在 Dock 里)。它自己新长出来的无障碍面有三件:①一列 `<button>` 行,
+     * 每一行的状态是一枚**装饰性字母**(`aria-hidden`)加一段**只念不看**的状态名
+     * (`visually-hidden`)—— 漏了后者读屏软件就只念得出一条路径;②那条分隔杆
+     * (`ui/Splitter` 的 `role="separator"` + `aria-valuenow`);③错误那一行的
+     * `role="alert"`。
+     *
+     * 它**在这道门里等得到**(第 2 轴那条例外的反面):`git:` 资源不分 tier、
+     * 读法零效果,server 宿主照样答得出(判词在 `git-resource-spec.ts` 的挂载那一段)
+     * —— 与终端 / 浏览器那两屏不同,它不要任何桌面宿主才有的东西。
+     *
+     * 这一屏落在哪一档(ready / 不是仓库 / 错误)由夹具与读根说了算 —— 三档都是
+     * **这块面的一屏**,所以这里只等面板根出现就扫,不钉它是哪一档(钉了就等于让
+     * 一道无障碍门去守一件别的门守的事实,而且会在读根策略变一次时假红)。
+     *
+     * 反证:把行上那一句 `visually-hidden` 的状态名拆掉 → 这一屏当场多出一批
+     * 「按钮只有一枚看不懂的字母」类违例。
+     */
+    console.log('\n[10/14] 改动面:开一块面再扫一次')
+    await clickSelector(page, '[data-testid="dock-tile-diff"]')
+    const changesUp = await waitFor('改动面就位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="changes-panel"]'))),
+    ).catch(() => false)
+    if (!changesUp) {
+      console.log('  · 跳过:改动面没开出来(这条会话多半没绑工作目录)')
+    } else {
+      await settle(page, '改动面')
+      await scanAxe(page, '改动面', '[data-testid="changes-panel"]')
+    }
+
+    /*
      * **把「当前会话」换回没有项目的那一条**,再去扫总览。
      *
      * 理由是一笔**产品既有的账**,不是这一批的东西:带项目那条会话被选中时,
@@ -1615,7 +1669,7 @@ async function main() {
     }, seeded[1])
     await delay(500)
 
-    console.log('\n[10/13] 会话总览(树形列表):开一块面再扫一次 + Tab 序走查')
+    console.log('\n[11/14] 会话总览(树形列表):开一块面再扫一次 + Tab 序走查')
     /*
      * **先看它在不在,再决定点不点**(W6-a)。会话总览的出厂摆法从浮窗改成了
      * 左架子(设计 §8),而钉在架子上的面进一条会话**不会收回 Dock**
@@ -1783,7 +1837,7 @@ async function main() {
      * 卡在场就扫它 + 量那句可访问名;不在场就打印一行说清由谁负责,**不判红** ——
      * 与总览那一屏「找不到会话行打印跳过」同一条纪律。
      */
-    console.log('\n[11/13] 权限卡:在场就扫(造卡那一半归 `npm run gate:permission`)')
+    console.log('\n[12/14] 权限卡:在场就扫(造卡那一半归 `npm run gate:permission`)')
     const permissionCard = await page.evaluate(() => {
       const el = document.querySelector('[data-permission-card]')
       if (!el) return null
@@ -1812,7 +1866,7 @@ async function main() {
 
     // 28 = `src/dev/Gallery.tsx` 今天的 <Section> 展位数(25 件组件 +
     // useScrolledPast / useSettlePulse / useInlineEdit 三件 hook)。日志读数,不是断言。
-    console.log('\n[12/13] 组件规格页(?gallery):28 个展位一次全在场')
+    console.log('\n[13/14] 组件规格页(?gallery):28 个展位一次全在场')
     /*
      * 生产窗口是 loadFile 读本地文件,没有 router —— 换页靠改 location.search
      * 再等一次重载(App.tsx 读的就是这个查询参数)。
@@ -1832,7 +1886,7 @@ async function main() {
     await settle(page, '规格页')
     await scanAxe(page, '规格页')
 
-    console.log('\n[13/13] 键盘走查:Dialog 圈禁与返还、Menu 方向键循环')
+    console.log('\n[14/14] 键盘走查:Dialog 圈禁与返还、Menu 方向键循环')
     await checkDialog(page)
     await checkMenu(page)
 

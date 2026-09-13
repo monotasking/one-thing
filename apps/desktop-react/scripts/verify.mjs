@@ -339,6 +339,13 @@ run('gate:terminal(dev)', 'npm', ['run', '--silent', 'gate:terminal'])
 run('gate:terminal(prod)', 'npm', ['run', '--silent', 'gate:terminal', '--', '--prod'])
 run('gate:browser(dev)', 'npm', ['run', '--silent', 'gate:browser'])
 run('gate:browser(prod)', 'npm', ['run', '--silent', 'gate:browser', '--', '--prod'])
+/*
+ * gate:changes(改动面,2026-09-13,方案 `docs/changes-panel-2026-09.md` §4)与终端 / 浏览器
+ * 两道门同一个价位、同一条理由进得来:自己起壳自己收尸、临时仓零残留,两档各量第五轴
+ * 两格(首帧 / 两千行列上屏),`TRANSITIONAL` 里挂的两行各带退场判据。
+ */
+run('gate:changes(dev)', 'npm', ['run', '--silent', 'gate:changes'])
+run('gate:changes(prod)', 'npm', ['run', '--silent', 'gate:changes', '--', '--prod'])
 run('gate:chat-layout(dev)', 'npm', ['run', '--silent', 'gate:chat-layout'])
 run('gate:chat-layout(prod)', 'npm', ['run', '--silent', 'gate:chat-layout', '--', '--prod'])
 /*

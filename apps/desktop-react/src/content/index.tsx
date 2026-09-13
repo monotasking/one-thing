@@ -3,7 +3,6 @@ import type { ReactNode } from 'react'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { DEFAULT_PANEL_VISIBILITY, PanelVisibilityContext } from './visibility'
 import type { PanelVisibility } from './visibility'
-import { DiffMock } from './DiffMock'
 import { SettingsMock } from './SettingsMock'
 import { SearchPanel } from '../search/components/SearchPanel'
 import { NotificationsPanel } from './NotificationsPanel'
@@ -35,7 +34,15 @@ const RENDERERS: Record<string, () => ReactNode> = {
    * 因此从「一块面」降格成**启动瓦**(`stage/launchers.ts` + `content/files-launcher.tsx`):
    * 点它 = 开当前会话那个目录,右键 = 最近开过的那几个 + 「打开目录…」。
    */
-  diff: DiffMock,
+  /*
+   * **`diff` 那一行撤了**(「改动」面,正本
+   * `apps/desktop-react/docs/changes-panel-2026-09.md` §3.2)。改动不再是「一块面」
+   * (那一份写死五行代码的 `DiffMock` 连同它在 `mocks.module.css` 里的五条类一起
+   * 删了),它是**一族**面:一个工作目录一份 `diff:<workdir>`
+   * (`content/kinds/diff.tsx`)。Dock 上那块瓦因此从「一块面」降格成**启动瓦**
+   * (`content/diff-launcher.tsx`):点它 = 开当前会话那个目录的改动面,右键 =
+   * 最近开过的那几个目录。判例与 `files` / `terminal` 两行逐字相同。
+   */
   /*
    * **`terminal` 那一行撤了**(T1,方案 `apps/desktop-react/docs/terminal-browser-2026-09.md`
    * §2.1)。终端不再是「一块面」,它是**一族**面:一格 PTY 一份

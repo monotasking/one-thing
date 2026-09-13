@@ -60,7 +60,21 @@ export function createToolOutputSpill(): SpillPort {
  * adapters,因为沙箱根是 per-space 的,而这个端口的签名里没有会话)。它存在是为了
  * 让没有会话语境的工具(R3 的那批)有一条统一的问路口,判据仍然是同一批函数。
  */
-export function createSandboxPolicy(cwd?: () => string | undefined): SandboxPolicy {
+export interface SandboxPolicyOptions {
+  /**
+   * 这个作用域(= 发起会话)带进来的额外**读根**,今天就是那条会话自己的
+   * 工作目录。缺席 / 空数组 = 与没有这一格时逐字节相同。
+   *
+   * 为什么是一只函数而不是一个列表:作用域是**每次调用**才知道的
+   * (`readable(target, scope)`),而端口是装配期造一次的。
+   */
+  readonly workingDirectoryRootsFor?: (scope?: string) => readonly string[]
+}
+
+export function createSandboxPolicy(
+  cwd?: () => string | undefined,
+  options: SandboxPolicyOptions = {},
+): SandboxPolicy {
   const workingDirectory = () => cwd?.()
   return {
     root: () => getSandboxBoundary(workingDirectory()),
@@ -80,15 +94,17 @@ export function createSandboxPolicy(cwd?: () => string | undefined): SandboxPoli
      * `getConnectedDirectoriesForSession` 自己那句诚实降级逐字同义,绝不去猜
      * 「用户现在在看哪个空间」。
      *
-     * 少一格:`workingDirectoryRoots`。`read` 工具从 `Invocation` 上拿得到它,而
-     * 资源那条路的坐标里今天没有 cwd 也没有根列表(`Invocation` 只有 principal +
-     * sessionId,与 per-caller 沙箱根同一笔留账)。少的是**额外**的根,方向是更紧,
-     * 不是更松。
+     * `workingDirectoryRoots` 这一格由 `options.workingDirectoryRootsFor` 填
+     * (2026-09-13):它原本恒 `undefined`,而工具那条路
+     * (`toolkit/families/file.ts` 的 `sandboxRoots`)一直把 `scope.workingDirectory`
+     * 当读根 —— 于是**同一条会话、同一个仓**,`read` 工具读得到、`dir:` / `git:`
+     * 资源答「outside the sandbox root」。那不是两种严格程度,那是两把尺子,而两把
+     * 尺子里松的那把迟早会被当成规矩。缺席仍然退回原样(更紧,不更松)。
      */
     readable: (target, scope) => findReadSandboxRootForPath(
       target,
       workingDirectory(),
-      undefined,
+      [...(options.workingDirectoryRootsFor?.(scope) ?? [])],
       { getConnectedDirectories: () => getConnectedDirectoriesForSession(scope) },
     ) !== undefined,
     isSensitive: target => classifySensitiveFile(target).sensitive,

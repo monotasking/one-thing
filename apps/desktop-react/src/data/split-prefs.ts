@@ -28,14 +28,27 @@ import { DEFAULT_SPACE_ID } from '../workspace/types'
 export const FILES_SPLIT_ID = 'files'
 
 /**
+ * 「改动」面那条分栏的 id。与上面那一格逐字同一条理由不许各写各的字面量。
+ *
+ * 它就是这张表头上那句「第二处分栏零成本接入」兑现下来的样子:加一处分栏 =
+ * 这里一个名字 + 下面那张表一行,store 的形状一个字不动。
+ */
+export const CHANGES_SPLIT_ID = 'changes'
+
+/**
  * 各处分栏的出厂比例。
  *
  * 文件面板那条取 45 —— 它逐字等于 F1 那两枚 token(`--files-tree-fr: 0.9fr` /
  * `--files-viewer-fr: 1.1fr`,0.9 / (0.9+1.1) = 45%)。**改版不改手感**是有意的:
  * 这一批加的是「能拖」,不是「换一个新的默认」。
+ *
+ * 改动面那条取 **32**(正本 §3.4)。它比文件面窄,而那不是审美:左边是一列**路径**
+ * (一行一个文件名,长的那些本来就要省略号),右边是一块 **diff**(等宽字,行不折,
+ * 折了缩进的含义就变了)。两边要的宽度不对等,所以缺省不对半。
  */
 export const DEFAULT_SPLIT_RATIOS: Record<string, number> = {
   [FILES_SPLIT_ID]: 45,
+  [CHANGES_SPLIT_ID]: 32,
 }
 
 /** 拖到头的两档。留 15% 是因为再窄的一栏里什么都读不出来,那不是「收起」而是「坏了」。 */

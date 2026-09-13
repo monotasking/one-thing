@@ -48,10 +48,11 @@ describe('v4:`files-root` → `dir`', () => {
    * 这一行是**今天的版本号**,每加一级迁移就跟着改一次 —— 它守的正是
    * `WORKBENCH_PERSIST_VERSION` 上那句「改这个数就必须在 migrate 里加一段」:
    * 改数而不加段的话,改这一行的人会先撞见 `migrateWorkbenchPersisted` 里没有
-   * 对应的那一句。今天是 5(C3 的 `sessionCompanions`,用例在 `companions.test.ts`)。
+   * 对应的那一句。今天是 6(「改动」面:`panel:diff` 从档案里丢掉,用例在
+   * `persist-v6.test.ts`)。
    */
-  it('版本号与 migrate 里的级数同生共死(今天是 5)', () => {
-    expect(WORKBENCH_PERSIST_VERSION).toBe(5)
+  it('版本号与 migrate 里的级数同生共死(今天是 6)', () => {
+    expect(WORKBENCH_PERSIST_VERSION).toBe(6)
   })
 
   it('tab 与 hidden 两处都翻,**key 一个字不动**', () => {

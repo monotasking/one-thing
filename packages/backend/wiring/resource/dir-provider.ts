@@ -45,9 +45,10 @@
  * 它,不是把它交出去随便改。上一单(目录读根)放宽的是读那一侧,它的留账里那句
  * 「写面将来照旧问 `contains`,别顺手抄 `readable`」说的就是这一刻。
  *
- * 于是这只文件里有两把尺子、两只解析函数,名字里就写着各自判的是哪一根
+ * 于是有两把尺子、两只解析函数,名字里就写着各自判的是哪一根
  * (`resolveReadable` / `resolveWritable`),共用同一句「没有沙箱 → 越界 → 敏感」的
- * 三关顺序与同一只错。
+ * 三关顺序与同一只错 —— 它们**住在 `./path-guard.ts`**(「改动」面那一单搬过去的:
+ * `git` provider 判的是同一条边界,而一份复制品就是两把尺子的第一天)。
  *
  * ── 写面的三条调的是 `files` 域调的同一批纯函数 ─────────────────────────────
  * `createOnethingDirectory` / `renameOnethingPath` / `deleteOnethingPath` —— 与
@@ -85,39 +86,21 @@ import type {
   ResourceReadContext,
   ResourceRef,
 } from '@onething/core/resource'
-import type { Effect, PlanContext, Result, RunContext, SandboxPolicy } from '@onething/core/toolkit'
+import type { Effect, PlanContext, Result, RunContext } from '@onething/core/toolkit'
 import { Intent, textResult } from '@onething/core/toolkit'
+import { resolveReadable, resolveWritable } from './path-guard.js'
 
 /** 一个目录项 / 一次 stat 交出去的「是什么」。与自述那两格逐字同名。 */
 export type DirEntryKind = 'file' | 'dir'
 
 /**
- * 这个路径不许读。
- *
- * 一只具名错带一格 `reason`,而不是三只错:判定读的是**类名**
- * (`core/tools/abort.ts` 那条判例),而调用方对三种拒绝要做的事是同一件 —— 都是
- * 「不给看」。`reason` 是给读日志的人分辨用的,不是给分支用的。
+ * 越界那只错与两只解析函数住在 `./path-guard.ts`(「改动」面那一单搬过去的:
+ * `git` provider 判的必须是同一把尺子、同一个顺序、同一句话)。这里**原样再导出**
+ * 它们那一对名字 —— 调用方(装配层的 `index.ts`、测试)一直按这个名字匹配,
+ * 搬家不该让它们跟着改一行。
  */
-export type DirRefusalReason = 'no-sandbox' | 'outside' | 'sensitive'
-
-export class DirOutsideSandboxError extends Error {
-  readonly path: string
-  readonly reason: DirRefusalReason
-
-  constructor(path: string, reason: DirRefusalReason) {
-    super(`${path}: ${DIR_REFUSAL_MESSAGES[reason]}`)
-    this.name = 'DirOutsideSandboxError'
-    this.path = path
-    this.reason = reason
-  }
-}
-
-const DIR_REFUSAL_MESSAGES: Record<DirRefusalReason, string> = {
-  // 「这台宿主没有给读根」——说的是宿主缺一格能力,不是这个路径犯了什么错。
-  'no-sandbox': 'this host handed the resource kernel no sandbox, so no path can be judged in or out of bounds',
-  outside: 'it is outside the sandbox root',
-  sensitive: 'it is a sensitive file (credentials, keys, environment secrets)',
-}
+export { DirOutsideSandboxError } from './path-guard.js'
+export type { DirRefusalReason } from './path-guard.js'
 
 /** 底下那一层(readdir / stat / 定位)说不。那句话原样带出来。 */
 export class DirOperationFailedError extends Error {
@@ -408,52 +391,4 @@ export class DirResourceProvider implements ResourceProvider<DirOpPayload> {
       ...(response.mtimeMs !== undefined ? { mtimeMs: response.mtimeMs } : {}),
     }
   }
-}
-
-/**
- * 一个地址 → 一个判过界的绝对路径。三关,顺序是想清楚的:**没有沙箱 → 越界 →
- * 敏感**。先说宿主缺能力(那与这个路径无关),再说这个路径在不在界内(界外的东西
- * 不必再问它敏不敏感)。
- *
- * 「在不在界内」这一句由调用方递进来 —— 这只文件有**两根界**,读的与写的,而三关
- * 的顺序、那只错、那三句话只有一份。
- */
-function resolveInside(
-  rawPath: string,
-  sandbox: SandboxPolicy | undefined,
-  inBounds: (policy: SandboxPolicy, resolved: string) => boolean,
-): string {
-  if (!sandbox) throw new DirOutsideSandboxError(rawPath, 'no-sandbox')
-  const resolved = sandbox.resolve(rawPath)
-  if (!inBounds(sandbox, resolved)) throw new DirOutsideSandboxError(resolved, 'outside')
-  if (sandbox.isSensitive(resolved)) throw new DirOutsideSandboxError(resolved, 'sensitive')
-  return resolved
-}
-
-/**
- * 读那一根界:**读根**(`sandbox.readable`)—— 写根并上用户亲手接入的目录、笔记根、
- * 下载目录。`scope` 是发起会话,由两条路各自从自己的上下文里取(读那条是
- * `ResourceReadContext.sessionId`,做那条是 `PlanContext.invocation.sessionId`)。
- *
- * `reveal` 也走这一只,不走写的那只:它没有一格效果(只是把文件管理器叫到前台),
- * 而「看得见 / 列得出的目录能不能在访达里指给我看」若与「列得出」不是同一个答案,
- * 用户看到的就是一条列得出来却定位不了的目录。
- */
-function resolveReadable(
-  rawPath: string,
-  sandbox: SandboxPolicy | undefined,
-  scope: string | undefined,
-): string {
-  return resolveInside(rawPath, sandbox, (policy, resolved) => policy.readable(resolved, scope))
-}
-
-/**
- * 写那一根界:**写根**(`sandbox.contains`,单根)。
- *
- * 没有 `scope` 这一格,而且这是一句关于语义的话不是省略:写根不是分组的 ——
- * 接入目录之所以要按会话归属取,是因为「哪些目录被接进来了」是 per-space 的设置;
- * 而写根只有一个,与哪条会话在问无关。
- */
-function resolveWritable(rawPath: string, sandbox: SandboxPolicy | undefined): string {
-  return resolveInside(rawPath, sandbox, (policy, resolved) => policy.contains(resolved))
 }

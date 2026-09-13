@@ -33,3 +33,7 @@ import './terminal'
 /* B2:一格内嵌浏览器(方案 `apps/desktop-react/docs/terminal-browser-2026-09.md` §2.2-4)。
  * 与终端那一行一样正好两行:它自己那个模块,与这一行 import。 */
 import './browser'
+/* 「改动」面(正本 `apps/desktop-react/docs/changes-panel-2026-09.md` §3.1):
+ * 一个工作目录一份 `diff:<workdir>`。与 `terminal` / `browser` 两行一样正好两行:
+ * 它自己那个模块,与这一行 import。 */
+import './diff'

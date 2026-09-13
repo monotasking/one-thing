@@ -1,55 +1,18 @@
-/* ── mock 内容的局部演示色 ────────────────────────────────────────────────────
- * 铁律里说组件文件禁字面色值。这里是 content/ ——「被展示的东西」而不是外壳,
- * diff 的红绿、终端的深底是内容自己的语义,不是设计系统的一层。所以它们:
- *   1) 只允许出现在本文件;
- *   2) 全部先落成局部变量,消费处照样只写 var();
- *   3) 接真实内容时整块替换,外壳一行不动。
+/* ── 从前这里是 mock 内容的局部演示色 ─────────────────────────────────────────
+ * 那条例外(「content/ 是被展示的东西,diff 的红绿、终端的深底是内容自己的语义,
+ * 所以准许在本文件里落字面色」)**今天一个消费者都没有了**:浏览器随 B2、终端随
+ * T1、改动随「改动」面各自接上真内容,三块假面的演示色一并退役。
+ * 剩下的是设置页那一族的版式类 —— 它们**一格字面色都没有**,全是 var()。
+ * 所以这只文件此后的规矩只有一条:**不许再往这里加字面色**;下一块假面接真内容
+ * 之前需要局部色,就在它自己那份样式表里落,别回到这张表上。
  * ────────────────────────────────────────────────────────────────────────── */
-.demo {
-  --demo-del-bg: rgba(196, 72, 61, 0.08);
-  --demo-del-fg: #a84b42;
-  --demo-add-bg: rgba(111, 143, 78, 0.1);
-  --demo-add-fg: #55703b;
-  height: 100%;
-  overflow: auto;
-  overscroll-behavior: contain;
-}
-
-/* ── diff ─────────────────────────────────────────────────────────────── */
-.diffHead {
-  position: sticky;
-  top: 0;
-  z-index: var(--z-sticky);
-  padding: var(--sp-2) var(--sp-3);
-  background: var(--surface-1);
-  border-bottom: 1px solid var(--line-1);
-  font-family: var(--font-mono);
-  font-size: var(--fs-meta);
-  color: var(--text-2);
-}
-
-.diffBody {
-  padding: var(--sp-2) 0;
-  font-family: var(--font-mono);
-  font-size: var(--fs-meta);
-  line-height: 1.7;
-}
-
-.diffLine {
-  padding: 0 var(--sp-3);
-  white-space: pre;
-  color: var(--text-3);
-}
-
-.diffDel {
-  background: var(--demo-del-bg);
-  color: var(--demo-del-fg);
-}
-
-.diffAdd {
-  background: var(--demo-add-bg);
-  color: var(--demo-add-fg);
-}
+/* ── diff ──────────────────────────────────────────────────────────────
+ * 那四格演示色(`--demo-del-*` / `--demo-add-*`)与五条类(`.demo` / `.diffHead` /
+ * `.diffBody` / `.diffLine` / `.diffDel` / `.diffAdd`)随**「改动」面**一起退役
+ * (正本 `apps/desktop-react/docs/changes-panel-2026-09.md`)—— 改动不再是这张表里
+ * 的一块假面,它是 `content/changes/` 下一族真的 `diff:<workdir>`,颜色吃
+ * `styles/palette.css` 的 `--ok` / `--danger`(那是产品的色不是演示色)。
+ * `.demo` 跟着一起走:`DiffMock` 是它最后一个消费者。 */
 
 /* ── 浏览器 ────────────────────────────────────────────────────────────
  * 那三条类(`.browserBar` / `.addr` / `.viewport`)随 **B2** 一起退役 ——

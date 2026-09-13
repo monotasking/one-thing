@@ -363,6 +363,19 @@ interface LiveFold {
    */
   /** 起底 / 重折还没完成时,新到的行进 `pendingLedger` 攒着,完成后排空回放。 */
   pending: boolean
+  /**
+   * **这台机器起过底了吗**(「改动」面那一单加的一格)。
+   *
+   * 它与 `pending` 不是一件事:`pending` 说的是「此刻有没有一发折在飞」(会反复
+   * 翻),这一格说的是「**第一次**装载完成过没有」——只从 false 到 true 一次。
+   *
+   * 唯一的读者是 `feedLedger` 里那句「一轮跑完了」的广播(`announceRunEnded`):
+   * **回放不发,活到达才发**。今天两条装载路(整份 `refoldFromLedger` / 尾页
+   * `runPageLoad`)都不经过 `feedLedger`,所以那条性质**今天是顺带成立的**——
+   * 而顺带成立的性质是下一个人顺手改掉的那一种。这一格把它写成结构:哪天有人把
+   * 冷载改成「逐条喂进折叠机」,一条两百轮的历史也不会变成两百次重问 git。
+   */
+  hydrated: boolean
   lastRefoldAt: number
   refoldScheduled: boolean
 }
@@ -448,6 +461,7 @@ function newFold(): LiveFold {
     lastSeq: 0,
     pending: true,
     lastRefoldAt: 0,
+    hydrated: false,
     refoldScheduled: false,
   }
 }
@@ -456,6 +470,37 @@ const raf: (fn: () => void) => void =
   typeof globalThis.requestAnimationFrame === 'function'
     ? (fn) => void globalThis.requestAnimationFrame(() => fn())
     : (fn) => void setTimeout(fn, 0)
+
+/* ── 「这条会话一轮跑完了」的通知面(「改动」面 · 壳半边)──────────────────
+ *
+ * ── 它为什么是一条接缝,而不是让别人自己去订账本 ──────────────────────────
+ * 「一轮跑完 = 工作树可能变了」是**别的面**的判据(改动面要据此重问一次 git),
+ * 而账本行的分发与折叠住在这只文件里:一条 `run/end` 要经过注册表分发、缺号重折、
+ * 「这一条落不落得到手里这份折叠上」三道闸才算数。让每个消费者各自去订 SSE 再自己
+ * 判一遍 `type === 'run/end'`,就是把这三道闸各抄一份 —— 而抄漏哪一道,表现都是
+ * 「有时候不刷新」。
+ *
+ * 与 `sessions-source.onSessionsRemoved` 逐字同一条接缝纪律:这一层只把
+ * **哪条会话跑完了**交出去,不认识任何一块面;听不听、刷不刷由订阅方自己说
+ * (改动面只认环境会话那一条 —— 判词在 `changes-source.ts` 上)。
+ *
+ * 模块级订阅表 = 这个模块实例的寿命(09-01 立法),所以它跟着这只文件已有的那段
+ * HMR 退役一起归零 —— **不写第二套拆卸**。
+ */
+export type RunEndedListener = (sessionId: string) => void
+
+const runEndedListeners = new Set<RunEndedListener>()
+
+/** 订阅「某条会话一轮跑完了」。返回退订函数。 */
+export function onRunEnded(listener: RunEndedListener): () => void {
+  runEndedListeners.add(listener)
+  return () => runEndedListeners.delete(listener)
+}
+
+/** 只给这只文件自己用:发一轮。一个订阅者炸掉不许拖累下一个。 */
+function announceRunEnded(sessionId: string): void {
+  for (const listener of [...runEndedListeners]) listener(sessionId)
+}
 
 /**
  * **一条会话的数据机器**。
@@ -1038,6 +1083,12 @@ export function createChatSource(sessionId: string): ChatSource {
       mine.state = createSessionProjectionState()
       mine.lastSeq = watermark
       mine.pending = false
+      /*
+       * 起底完成。**排在排空 `pendingLedger` 之前**:攒着的那一批是重折在飞时
+       * 真到达的**活**事件,它们该发广播;而它们前面那一整页历史走的是上面那句
+       * `createSessionProjectionState()`,一条都不经过 `feedLedger`。
+       */
+      mine.hydrated = true
       // 与整份那条路逐字同一句:新折叠可能已经装下了尾巴前面那一截。
       handOverTail(mine.state)
       const drained = pendingLedger
@@ -1079,6 +1130,8 @@ export function createChatSource(sessionId: string): ChatSource {
         mine.state = state
         mine.lastSeq = lastSeq
         mine.pending = false
+        // 起底完成(判词与页那条路上那一句逐字相同)。
+        mine.hydrated = true
         // 新折叠可能已经装下了尾巴前面那一截(打包行进了快照而尾巴没被裁过)——
         // 交给那条唯一的交接规则,不然就是重影(见 handOverToLedger 的注)。
         handOverTail(state)
@@ -1186,6 +1239,28 @@ export function createChatSource(sessionId: string): ChatSource {
       }
       mine.state = reduceSessionProjection(mine.state, record as never)
       mine.lastSeq = seq
+      /*
+       * **一轮跑完了**(「改动」面 · 壳半边)。三条判据,缺一条就是一次错的重问:
+       *
+       *  ① **起过底了才发**(`mine.hydrated`)。回放一条两百轮的历史不是两百次
+       *     「刚刚跑完一轮」—— 那是同一件已经发生完的事被读了一遍。判词整段在
+       *     `LiveFold.hydrated` 上。**这一条今天拆掉也不会红**(2026-09-13 反证
+       *     实测):`feedLedger` 全仓三个调用点(SSE 那一支 + 两条装载路各自排空
+       *     `pendingLedger` 的那一行)都是活到达,两条冷载路一条都不经过这里。
+       *     所以它是**把一条顺带成立的性质写成结构**——顺带成立的性质正是下一个人
+       *     顺手改掉的那一种。看守是 `changes-source.test.ts` 里那两例(回放 3 条
+       *     `run/end` → 0 次;之后活到一条 → 1 次);
+       *  ② 发在**折进去之后**:这条 run 已经在这份折叠上落定了,订阅者此刻去问
+       *     后端,问到的是这一轮结束之后的工作树。发在前面就是抢跑;
+       *  ③ 只问 `type`,**不问 outcome**。一轮失败的 run 照样可能已经改过一批文件
+       *     (edit 跑完了、下一发才炸),把它滤掉换来的是「有时候不刷新」。
+       *
+       * 另外三道闸(缺号重折 / `ledgerLandsOnFold` / `seq <= lastSeq` 去重)都排在
+       * 这一句前面,所以 SSE `?after=` 重放追上来的回声不会在这里再喊一遍。
+       */
+      if (mine.hydrated && (record as { type?: unknown }).type === 'run/end') {
+        announceRunEnded(sessionId)
+      }
       /*
        * 调用点 ③:**账本上这一轮的工具活儿也算活动**。工具执行期间流分片可能一条
        * 都没有(不刷输出的工具就是这样),而账本照旧在动:`tool/call` `tool/annotate`
@@ -2509,6 +2584,9 @@ export const useChatSource = Object.assign(useCurrentChatSource, {
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     chatSources.resetAll()
+    // 「一轮跑完了」那张订阅表也是这个模块实例的东西:不清它,热更之后旧实例的
+    // 订阅者还挂在旧表上,而发通知的是新实例 —— 表现是「改动面再也不自动刷新了」。
+    runEndedListeners.clear()
   })
 }
 

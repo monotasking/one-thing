@@ -14,6 +14,9 @@
  *   ⑤ 设置里**接入**一个写根之外的目录,它就列得出来(2026-09-10 的读根那一格,
  *      K3-c 留账第 3 条还的)—— 同一条读在接入之前是 `failed`,之后是 `ok`,
  *      两句断言在同一个用例里,所以它证的是**这一次设置**,不是「什么都读得到」。
+ *   ⑦ **发起会话绑的工作目录就是读根**(2026-09-13):资源读根 = 工具读根,同一张
+ *      表 —— 少这一格,同一条会话、同一个仓,`read` 工具读得到而 `dir:` / `git:`
+ *      资源答「outside」。按**会话**取:另一条没绑的会话问同一个路径照旧拒;
  *   ⑥ **写面走的是真权限卡**(K3-c'):AI 主体 `do('dir:…','createDirectory')` 停在
  *      一张 `file_write` 的卡上(那一类在效果表里是 `ask`),答 `once` 之后目录**真的
  *      在盘上**;`delete` 同样停一张 `file_destructive_edit` 的卡,答完之后目录没了,
@@ -189,6 +192,67 @@ describe('目录资源在真装配里(K3-c)', () => {
     } finally {
       updateSettingsInMemory(before)
       fs.rmSync(connected, { recursive: true, force: true })
+    }
+  })
+
+  it('⑦ 发起会话绑的工作目录就是读根 —— 资源读根 = 工具读根,同一张表(反证③)', async () => {
+    /*
+     * 病根:工具那条路(`toolkit/families/file.ts` 的 `sandboxRoots`)一直把
+     * `scope.workingDirectory` 算进根里,而资源那条路的 `createSandboxPolicy()`
+     * 没传这一格 —— 于是**同一条会话、同一个仓**,`read` 工具读得到、`dir:` / `git:`
+     * 资源答「outside the sandbox root」。这一例证的是那一格补上了,而且它是
+     * **按发起会话**取的:另一条没绑 workdir 的会话问同一个路径,照旧拒。
+     */
+    const bound = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onething-session-workdir-')))
+    fs.mkdirSync(path.join(bound, 'sub'), { recursive: true })
+    fs.writeFileSync(path.join(bound, 'sub', 'note.md'), '# hi\n')
+
+    const store = await import('../store.js')
+    const { sessionCommands } = await import('../session/commands.js')
+    const withWorkdir = store.createSession(`resource-workdir-${Date.now()}`, 'Bound').id
+    const without = store.createSession(`resource-no-workdir-${Date.now()}`, 'Unbound').id
+    sessionCommands.patchSession(withWorkdir, { patch: { workingDirectory: bound } })
+
+    try {
+      // 前提:它在进程写根之外(写根是 `process.cwd()`,这棵树在 `os.tmpdir()` 下),
+      // 也不是接入目录 —— 所以下面读得到,靠的只能是那条会话绑的工作目录。
+      const { createSandboxPolicy } = await import('../wiring/toolkit/runner.js')
+      expect(createSandboxPolicy().contains(path.join(bound, 'sub'))).toBe(false)
+      expect(createSandboxPolicy().readable(path.join(bound, 'sub'), withWorkdir)).toBe(false)
+
+      // 发起坐标 = 那条绑了 workdir 的会话 → 读得到。**改前这一句红**。
+      const allowed = await backend.resources.read(
+        `dir:${path.join(bound, 'sub')}`,
+        'list',
+        {},
+        { principal: PRINCIPAL, sessionId: withWorkdir },
+      )
+      expect(allowed.kind).toBe('ok')
+      const entries = allowed.kind === 'ok'
+        ? (allowed.value as { entries: Array<{ name: string }> }).entries
+        : []
+      expect(entries.map(entry => entry.name)).toEqual(['note.md'])
+
+      // 另一条会话没绑 —— 同一个路径照旧拒。多的那一格是**按会话**的,不是全局放宽。
+      const denied = await backend.resources.read(
+        `dir:${path.join(bound, 'sub')}`,
+        'list',
+        {},
+        { principal: PRINCIPAL, sessionId: without },
+      )
+      expect(denied.kind).toBe('failed')
+      expect(denied.kind === 'failed' && denied.error.name).toBe('DirOutsideSandboxError')
+
+      // 不给发起坐标(`NO_ORIGIN_SESSION`)也照旧拒 —— 缺席退回这一格存在之前的行为。
+      const anonymous = await backend.resources.read(
+        `dir:${path.join(bound, 'sub')}`,
+        'list',
+        {},
+        { principal: PRINCIPAL },
+      )
+      expect(anonymous.kind).toBe('failed')
+    } finally {
+      fs.rmSync(bound, { recursive: true, force: true })
     }
   })
 

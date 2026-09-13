@@ -224,6 +224,20 @@ export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
   /* ── region:内容面(§4.1 第三行)───────────────────────────────────── */
   viewer: { id: 'viewer', kind: 'region', labelKey: 'viewer.label', answers: VIEWER_ANSWERS },
   files: { id: 'files', kind: 'region', labelKey: 'item.files', answers: FILES_ANSWERS },
+  /*
+   * 一份改动面(「改动」面,正本 `apps/desktop-react/docs/changes-panel-2026-09.md`
+   * §3.4)。**三件声明**里它只填两件:
+   *  · 落点(`restingTarget`,实例侧)= 文件列**第一行**(没选中就第一行,一行都
+   *    没有才退回根)—— 进这块面第一件想做的事就是拿方向键在改了的文件之间走;
+   *  · Esc **不声明**(不传 = 根本不进 Esc 候选表)。一块摆在架子上的内容面没有
+   *    「关自己」这回事(关一格 tab 是 ⌘W 那条显式的键),Esc 该穿过去交给外面
+   *    那一层 —— 与 `music` / `permission` / `terminal` / `browser` 四格不声明
+   *    `onEscape` 是同一句判词的第五种用法。
+   * **没有 `answers`**:面上的键全是结构键 —— ↑↓ 走行、↵ 开那个文件、Tab 走到
+   *  分隔杆与刷新钮。结构键不进任何表(`keymap/types.ts` 顶部:可配置就等于不一致)。
+   * labelKey 复用 Dock 瓦那一句(i18n 纪律:同一句话只该有一个键)。
+   */
+  diff: { id: 'diff', kind: 'region', labelKey: 'item.diff' },
   composer: {
     id: 'composer',
     kind: 'region',
