@@ -360,6 +360,27 @@ export function refreshOpenChanges(): void {
 }
 
 /**
+ * **重问某一个目录的那一份**(檐上那颗「重新读取」按下去那一发)。
+ *
+ * 它比 `refreshOpenChanges` 窄一格:只重问这一个 root 的改动表,外加**这个 root
+ * 下面此刻正被人看着的那几个文件**的两版原文。批⑤ 之前后半句是面板自己写的一行
+ * (`fileSource.refetch()`)—— 那时正文就在这块面里,「选中的那一个」有唯一答案;
+ * 拆开之后正文是别处那几格 tab,而按下刷新的人要的是「把这个仓此刻的样子重读一遍」,
+ * 不是「重读我脚下这一行」。
+ *
+ * 不在场的那几格**不碰**:标脏由 `refreshOpenChanges` 那条全局的路管,而这一发是
+ * 一次人按出来的、有范围的重读。
+ */
+export function refreshChangesOf(root: string): void {
+  void statusQuery.get(root).refetch()
+  const prefix = `${root}${DIFF_KEY_SEP}`
+  for (const key of fileQuery.keys()) {
+    if (!key.startsWith(prefix) || !splitDiffKey(key).path) continue
+    if (openFiles.has(key)) void fileQuery.get(key).refetch()
+  }
+}
+
+/**
  * **环境会话一轮跑完 → 重问**(第三条路;前两条是「首次可见 `ensure()`」与
  * 「檐上那颗刷新钮 `refetch()`」)。
  *

@@ -100,7 +100,7 @@
  */
 import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -765,7 +765,19 @@ async function main() {
    * 一个真实存在的临时目录下 —— `sessions.updateWorkingDirectory` 在本机可信面
    * 上把路径逐字当真,不存在的目录会被当场拒掉(gate-squeeze 那条判例)。
    */
-  const projectsRoot = await mkdtemp(path.join(tmpdir(), 'a11y-gate-projects-'))
+  /*
+   * **`realpath` 一次**(批⑤ 补;判词与 `gate-changes.mjs` 那一段逐字同源)。
+   * macOS 上 `tmpdir()` 是 `/var/folders/…`,而 `/var` 是指向 `/private/var` 的
+   * 符号链接。后端那把尺子把地址解析成真路径再判包含,而这道门若把**没解析过**
+   * 的那一条写进会话的工作目录,读根里躺着的就是 `/var/…`、被判的是 `/private/var/…`
+   * —— 同一个目录,两条串,当场 `DirOutsideSandboxError`。
+   *
+   * 病历:第 10 屏(改动面)因此**一直扫的是错误那一档**(屏幕上是一条
+   * 「it is outside the sandbox root」的通知行),而不是它自己那句话写的
+   * 「画得最满的 ready 档」。解一次之后那一屏才真的画出文件列,批⑤ 新添的
+   * 「开出来那一格正文」也才等得到。
+   */
+  const projectsRoot = await realpath(await mkdtemp(path.join(tmpdir(), 'a11y-gate-projects-')))
   const projectDir = path.join(projectsRoot, 'a11y-fixture-project')
   await mkdir(projectDir, { recursive: true })
   /*
@@ -1732,6 +1744,41 @@ async function main() {
     } else {
       await settle(page, '改动面')
       await scanAxe(page, '改动面', '[data-testid="changes-panel"]')
+      /*
+       * **批⑤:再扫一屏「开出来那一格」**(正本 `docs/changes-file-view-2026-09.md`
+       * §6.3 末条)。列与正文拆开之后,正文是一格自己的 tab —— 上面那一扫只盖得到
+       * 文件列,而正文那一半自己有新的无障碍面:两颗导航箭头(`ui/IconButton`)、
+       * 一句给读屏的读数(`第 k 处改动,共 n 处`)、右缘那条 `aria-hidden` 的地图,
+       * 以及**一块 `tabIndex={-1}` 的滚动容器**(焦点进得来、Tab 序里不多一站)。
+       *
+       * 点得出来才扫:这条会话此刻可能是干净的(一行改动都没有),那时列里没有行
+       * 可点 —— 与上面那句「没开出来就跳过」同一条纪律,一道无障碍门不该去守
+       * 「夹具里有没有改动」这件别的门守的事实。
+       */
+      const rowOpened = await page.evaluate(() => {
+        const row = document.querySelector('[data-change-path]')
+        if (!(row instanceof HTMLElement)) return false
+        row.click()
+        return true
+      })
+      if (!rowOpened) {
+        const said = await page.evaluate(() => ({
+          error: document.querySelector('[data-testid="changes-error"]')?.textContent ?? null,
+          notRepo: document.querySelector('[data-testid="changes-not-repo"]')?.textContent ?? null,
+          clean: document.querySelector('[data-testid="changes-clean"]')?.textContent ?? null,
+        }))
+        console.log(`  · 跳过:这条会话此刻没有改动的文件(列里一行都没有);这块面说的是 ${JSON.stringify(said)}`)
+      } else {
+        const viewUp = await waitFor('那一格改动正文画出来', () =>
+          page.evaluate(() => Boolean(document.querySelector('[data-testid="changes-file-view"]'))),
+        ).catch(() => false)
+        if (!viewUp) {
+          console.log('  · 跳过:正文那一格没开出来')
+        } else {
+          await settle(page, '改动正文')
+          await scanAxe(page, '改动正文(开出来那一格)', '[data-testid="changes-file-view"]')
+        }
+      }
     }
 
     /*

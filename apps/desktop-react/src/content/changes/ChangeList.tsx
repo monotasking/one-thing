@@ -1,4 +1,5 @@
 import { ButtonBase } from '../../ui/ButtonBase'
+import { OpenDot } from '../../ui/OpenDot'
 import { useRowWindow } from '../files/useRowWindow'
 import type { GitChangedFile, GitFileStatus } from '../../data/changes-source'
 import type { MessageKey } from '../../i18n'
@@ -21,10 +22,21 @@ import s from './ChangesPanel.module.css'
  * —— 长路径省略号、长的 ± 数字也只是字更宽。
  *
  * ── 为什么行是 `<button>` 而不是 `role="option"` ────────────────────────
- * 与 `files/TreeEntryRow` 同一条:一行**就是**一颗「打开这个文件」的钮(↵ / 双击
- * 都是它),而 roving 的当前项(`ui/a11y/list-selection`)说的是「键盘位」。
+ * 与 `files/TreeEntryRow` 同一条:一行**就是**一颗「打开这个文件的改动」的钮
+ * (单击 / ↵ 都是它),而 roving 的当前项(`ui/a11y/list-selection`)说的是「键盘位」。
  * 两者同屏:键盘位画 `--st-sel`,鼠标经过画 `--st-hover` —— 那正是那只原语头上
  * 「hover 只是 hover,不许影响 select」立的形。
+ *
+ * ── 批⑤:单击就是打开;**双击退役**;右键出菜单;行尾多一颗开态点 ────────────
+ * 从前单击只落位、双击才打开 —— 而壳的禁令区写着「禁双击作为动作触发」(macOS
+ * 触控板双指点按以双击形态到达,与右键语义打架)。批⑤ 把打开这件事收进**单击
+ * 与 ↵ 同一条路**(与目录面板 `TreeEntryRow.onActivate(viaKeyboard)` 逐字同形),
+ * 双击那一格整只删掉。
+ *
+ * 打开之后「选中」与「打开」就成了两件事(目录面板早有的那一条判例):选中 =
+ * 键盘位(底色),打开 = 行尾一颗点(`ui/OpenDot`,实心 = 显示中 / 空心 = 已隐藏)。
+ * 判据整件是纯函数 `workbench/store.openStateOf` —— 这一列与文件树那一列读的是
+ * 同一句话,只是问的 ref 从 `file:` 换成了 `change:`。
  */
 
 /** 八种状态各一枚字母 + 一枚语义色。**表,不是 switch** —— 后端多一种就加一行。 */
@@ -70,10 +82,19 @@ export interface ChangeListProps {
   files: readonly GitChangedFile[]
   /** 键盘位(roving 的当前项)。 */
   active: number
-  /** 点一行:落位(**不打开**——打开是 ↵ / 双击)。 */
+  /** 点一行:落位。打开由 `onOpen` 说 —— 单击两件事一起发(批⑤)。 */
   onSelect: (index: number) => void
-  /** ↵ / 双击:开那个文件。 */
-  onOpen: (file: GitChangedFile) => void
+  /** 单击 / ↵:开这个文件的改动。`viaKeyboard` 只决定焦点送不送进那一格。 */
+  onOpen: (file: GitChangedFile, viaKeyboard: boolean) => void
+  /**
+   * 这一行的改动此刻开着没有(`'shown'` / `'hidden'` / `null`)。判据整件是纯函数
+   * `workbench/store.openStateOf`,由面板那一层答 —— 这一列只负责画。
+   */
+  openStateOf: (file: GitChangedFile) => 'shown' | 'hidden' | null
+  /** 点那颗空心点:把藏起来的那一格请回来。 */
+  onRestore: (file: GitChangedFile) => void
+  /** 右键:开那张动作表(**动作单产地**)。交出去的是那一次指针事件(点锚)。 */
+  onMenu: (file: GitChangedFile, origin: { clientX: number; clientY: number }) => void
   /** roving 的行 ref 收集器(滚入视野靠它认行)。 */
   rowRef: (index: number) => (el: HTMLElement | null) => void
   t: (key: MessageKey, vars?: Record<string, string | number>) => string
@@ -86,6 +107,9 @@ export function ChangeList({
   active,
   onSelect,
   onOpen,
+  openStateOf,
+  onRestore,
+  onMenu,
   rowRef,
   t,
   bodyRef,
@@ -141,42 +165,92 @@ export function ChangeList({
         const index = start + offset
         const at = splitPath(file.path)
         const letter = STATUS_LETTER[file.status] ?? '·'
+        const openState = openStateOf(file)
         return (
-          <ButtonBase
+          /*
+           * **一行两层**(批⑤,与 `files/TreeEntryRow` 逐字同形):外面一格 `div` 收
+           * 底色、右键与那颗开态点,里面一颗 `ButtonBase` 是「打开这个文件的改动」。
+           * 两层不是装饰 —— 空心那一档的开态点**自己就是一颗钮**(点它把藏起来的
+           * 那一格请回来),而一颗 `<button>` 套在另一颗里是非法 DOM(axe 当场报)。
+           */
+          <div
             key={file.path}
-            ref={rowRef(index) as (el: HTMLButtonElement | null) => void}
-            className={`${s.row} ${index === active ? s.rowSel : ''}`}
-            data-change-path={file.path}
-            data-change-status={file.status}
-            data-change-selected={index === active ? 'true' : undefined}
-            onClick={() => onSelect(index)}
-            onDoubleClick={() => onOpen(file)}
+            className={`${s.rowWrap} ${index === active ? s.rowSel : ''}`}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              onSelect(index)
+              // 指针事件原样交出去 → 点锚(光标那一点就是落点,不加缝)。
+              onMenu(file, e)
+            }}
           >
-            <span className={`${s.letter} ${STATUS_TONE[file.status] ?? ''}`} aria-hidden="true">
-              {letter}
-            </span>
-            {/* 读屏软件念的是整句:「已修改 · src/a.ts · 加 3 减 1」。 */}
-            <span className="visually-hidden">{t(STATUS_LABEL[file.status])}</span>
-            <span className={s.path}>
-              {/*
-               * 唯一的弯腰件是这一整段(律一:一行恰有一个)。目录段在前、文件名在后,
-               * 省略号因此吃掉的是**目录的尾巴**而不是文件名 —— 那正是
-               * `direction: rtl` 那一手在这里的用处(判词在样式表上)。
-               */}
-              {at.dir && <span className={s.pathDir}>{at.dir}</span>}
-              <span className={s.pathName}>{at.name}</span>
-              {/* 改名:两段路径 `old → new`。旧那一段淡,它已经不在了。 */}
-              {file.oldPath && <span className={s.pathOld}>{t('diff.renamedFrom', { from: file.oldPath })}</span>}
-            </span>
-            {file.binary ? (
-              <span className={s.statBinary}>{t('diff.binaryShort')}</span>
-            ) : (
-              <span className={s.stat}>
-                {file.add ? <span className={s.statAdd}>{`+${file.add}`}</span> : null}
-                {file.del ? <span className={s.statDel}>{`−${file.del}`}</span> : null}
+            <ButtonBase
+              ref={rowRef(index) as (el: HTMLButtonElement | null) => void}
+              className={s.row}
+              data-change-path={file.path}
+              data-change-status={file.status}
+              data-change-selected={index === active ? 'true' : undefined}
+              data-change-open={openState ?? undefined}
+              /*
+               * **单击 = 落位 + 打开**(批⑤;与目录面板那一行逐字同形)。焦点留在列里
+               * —— 「导航器里浏览不抢焦点」是响应链规则 4。
+               */
+              onClick={() => {
+                onSelect(index)
+                onOpen(file, false)
+              }}
+              /*
+               * ↵ 同一条路,只多一件:焦点送进开出来的那一格。一颗 `<button>` 上的 ↵
+               * 本来就会合成一次 click,所以这里必须 `preventDefault()` 把那一次挡掉
+               * ——不挡就开两遍。带修饰键的 ↵ 不算(那是别人的键,归派发器)。
+               */
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return
+                e.preventDefault()
+                onSelect(index)
+                onOpen(file, true)
+              }}
+            >
+              <span className={`${s.letter} ${STATUS_TONE[file.status] ?? ''}`} aria-hidden="true">
+                {letter}
+              </span>
+              {/* 读屏软件念的是整句:「已修改 · src/a.ts · 加 3 减 1」。 */}
+              <span className="visually-hidden">{t(STATUS_LABEL[file.status])}</span>
+              <span className={s.path}>
+                {/*
+                 * 唯一的弯腰件是这一整段(律一:一行恰有一个)。目录段在前、文件名在后,
+                 * 省略号因此吃掉的是**目录的尾巴**而不是文件名 —— 那正是
+                 * `direction: rtl` 那一手在这里的用处(判词在样式表上)。
+                 */}
+                {at.dir && <span className={s.pathDir}>{at.dir}</span>}
+                <span className={s.pathName}>{at.name}</span>
+                {/* 改名:两段路径 `old → new`。旧那一段淡,它已经不在了。 */}
+                {file.oldPath && <span className={s.pathOld}>{t('diff.renamedFrom', { from: file.oldPath })}</span>}
+              </span>
+              {file.binary ? (
+                <span className={s.statBinary}>{t('diff.binaryShort')}</span>
+              ) : (
+                <span className={s.stat}>
+                  {file.add ? <span className={s.statAdd}>{`+${file.add}`}</span> : null}
+                  {file.del ? <span className={s.statDel}>{`−${file.del}`}</span> : null}
+                </span>
+              )}
+            </ButtonBase>
+            {/*
+              * 「这个文件的改动正开着」。它与选中态是两件事,所以是两处画法
+              * (圆点 vs 底色)—— 与文件树那一行同一件 `ui/OpenDot`、同一句判据。
+              * `null` 时**整格不在场**:那一格 `margin-left` 是位置,没有点就不该占位。
+              */}
+            {openState !== null && (
+              <span className={s.openDot}>
+                <OpenDot
+                  state={openState}
+                  label={t('files.openStateHidden')}
+                  testId={`changes-open-dot:${file.path}`}
+                  onRestore={() => onRestore(file)}
+                />
               </span>
             )}
-          </ButtonBase>
+          </div>
         )
       })}
       {win.padBottom > 0 && <div style={{ height: win.padBottom }} aria-hidden="true" />}

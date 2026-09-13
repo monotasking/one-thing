@@ -37,3 +37,7 @@ import './browser'
  * 一个工作目录一份 `diff:<workdir>`。与 `terminal` / `browser` 两行一样正好两行:
  * 它自己那个模块,与这一行 import。 */
 import './diff'
+/* 批⑤(正本 `apps/desktop-react/docs/changes-file-view-2026-09.md` §6):一个文件的
+ * 改动正文 —— 改动面点一行开出来的那一格。与上面几行一样正好两行:它自己那个模块,
+ * 与这一行 import。 */
+import './change'

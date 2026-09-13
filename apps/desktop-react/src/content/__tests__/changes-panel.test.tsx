@@ -1,12 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ResourceReadView } from '@shared/ipc/resources'
 import { ChangesPanel } from '../changes/ChangesPanel'
+import { ChangeFileView } from '../changes/ChangeFileView'
 import { configureGitPort } from '../../data/git-port'
 import type { GitPort } from '../../data/git-port'
 import { resetChangesSource, statusQuery } from '../../data/changes-source'
 import type { GitChangedFile } from '../../data/changes-source'
+import { useFileOpenMode } from '../../data/file-open-mode'
 import { openStateOf, useWorkbenchStore } from '../../workbench/store'
+import { refId } from '../../workbench/kinds'
+import { leavesOf } from '../../workbench/tree'
+import { focusTree } from '../../focus/registry'
+import { changeRef } from '../kinds/change-ref'
 import { fileRef } from '../viewer/open-target'
 import { t } from '../../i18n'
 import { FocusDispatchHarness } from '../../test/focus-harness'
@@ -14,19 +20,25 @@ import '../kinds'
 
 /**
  * **「改动」面**(正本 `apps/desktop-react/docs/changes-panel-2026-09.md` §3.4;
- * 壳侧 §4 第四组)。
+ * 批⑤「列与正文拆开」= `docs/changes-file-view-2026-09.md` §6.3 第一条)。
  *
- * 六态各一例 + 选行开文件 + **超量零重挂**:
- *  initial / not-a-repo / clean / ready / error / refetching。
+ * 批⑤ 之后这只文件分成**两半**,与产品的那一刀同一处:
+ *  · `ChangesPanel` = 一列文件 + 开一格的那条路 + 行菜单(下面前两组);
+ *  · `ChangeFileView` = 那一格正文,**直接渲染它**(它自足了,不必先摆一块面出来
+ *    —— 那正是这一单要证的事:它离开那块面也活得下去)。
  *
  * 取数走假端口(`configureGitPort`)—— 这一组问的是**这块面按读数画成什么**,
  * 后端那半边由它自己那组守。
  *
- * **反证**:`{repo:false}` 折成 error(在 `changes-source.readGit` 里对它 throw)
- * → 「not-a-repo」那一条当场红(屏幕上是一条报错行,不是那句话)。
+ * **反证**(逐条真跑过):
+ *  · `openChange` 不按档走(写死 `openRef(ref)`)→「`panel` 档不开新标签」当场红;
+ *  · ↵ 那一句 `focusIntoRefAfterCommit` 拿掉 →「↵ 多一发点名」红;
+ *  · 把 `onDoubleClick` 加回行上 →「双击零处理器」红;
+ *  · `{repo:false}` 折成 error → 「not-a-repo」那一条红(屏幕上是一条报错行)。
  */
 
 const ROOT = '/repo/a'
+const A_PATH = 'src/a.ts'
 
 const ok = (value: unknown): ResourceReadView => ({ kind: 'ok', value }) as ResourceReadView
 
@@ -80,10 +92,18 @@ function installPort(): void {
   configureGitPort(port)
 }
 
-/** 一份文件此刻开着没有(`openStateOf` 是那三格事实的唯一判官)。 */
-const openedState = (path: string) => {
+/** 一格内容此刻开着没有(`openStateOf` 是那三格事实的唯一判官)。 */
+const openedState = (ref: { kind: string; key: string }) => {
   const st = useWorkbenchStore.getState()
-  return openStateOf({ regions: st.regions, hidden: st.hidden, panelPath: st.panelPath }, fileRef(path))
+  return openStateOf({ regions: st.regions, hidden: st.hidden, panelPath: st.panelPath }, ref)
+}
+
+/** 整棵树上装着这一格的 tab 有几份(「同一行点两下不开出两格」靠它钉)。 */
+const tabsOf = (ref: { kind: string; key: string }): number => {
+  const id = refId(ref)
+  return Object.values(useWorkbenchStore.getState().regions)
+    .flatMap((tree) => leavesOf(tree))
+    .reduce((n, leaf) => n + leaf.tabs.filter((tab) => refId(tab) === id).length, 0)
 }
 
 /** 屏幕上此刻画出来的那几行(取件口是行自己那格 `data-change-path`)。 */
@@ -100,6 +120,19 @@ function mount(root = ROOT) {
   )
 }
 
+/**
+ * **直接渲染那一格正文**(批⑤:它自足了)。`owner` 给了就是标准档(自己一格
+ * 作用域),不给就是改动面 `panel` 档那条内联分栏。
+ */
+function mountView(path = A_PATH, owner?: string) {
+  return render(
+    <>
+      <FocusDispatchHarness />
+      <ChangeFileView root={ROOT} path={path} owner={owner} />
+    </>,
+  )
+}
+
 beforeEach(() => {
   resetChangesSource()
   installPort()
@@ -109,14 +142,16 @@ beforeEach(() => {
       root: ROOT,
       branch: 'main',
       head: 'abc1234',
-      files: [file('src/a.ts'), file('docs/b.md', { status: 'added', add: 9, del: 0 })],
+      files: [file(A_PATH), file('docs/b.md', { status: 'added', add: 9, del: 0 })],
       stat: { add: 12, del: 1, files: 2 },
     })
-  fileText = () =>
-    ok({ path: 'src/a.ts', head: version(HEAD_TEXT), work: version(WORK_TEXT) })
+  fileText = () => ok({ path: A_PATH, head: version(HEAD_TEXT), work: version(WORK_TEXT) })
   holdStatus = null
   useWorkbenchStore.getState().reset()
   useWorkbenchStore.getState().seed()
+  // 打开方式是一格**跨用例会漏**的偏好(它 persist 在 localStorage 里):
+  // 每一条从出厂那一档起算,免得上一条挑的 `panel` 把下一条判成「不开标签」。
+  useFileOpenMode.setState({ mode: 'stage' })
 })
 
 afterEach(() => {
@@ -129,7 +164,7 @@ describe('六态', () => {
     holdStatus = () => {}
     mount()
     expect(await screen.findByTestId('changes-skeleton')).toBeTruthy()
-    // 骨架**只在首载**:列与体这时一个都没有。
+    // 骨架**只在首载**:列这时还没有。
     expect(screen.queryByTestId('changes-list')).toBeNull()
   })
 
@@ -151,32 +186,15 @@ describe('六态', () => {
     expect(box.textContent).toContain('main')
   })
 
-  it('ready:两行 + **首次自动选第一行** + 那一行的 diff', async () => {
+  it('ready:两行 + **首次把键盘位落到第一行**(而且什么都不打开)', async () => {
     mount()
     await screen.findByTestId('changes-list')
     const rows = rowsOnScreen()
-    expect(rows.map((r) => r.getAttribute('data-change-path'))).toEqual(['src/a.ts', 'docs/b.md'])
+    expect(rows.map((r) => r.getAttribute('data-change-path'))).toEqual([A_PATH, 'docs/b.md'])
     expect(rows[0].getAttribute('data-change-selected')).toBe('true')
-    await waitFor(() => expect(screen.getByTestId('changes-body')).toBeTruthy())
-    expect(screen.getByTestId('changes-body').getAttribute('data-change-body-path')).toBe('src/a.ts')
-    // diff 体画的是块本体解析出来的行(`+const b = 3` 那一行真在屏上)。
-    expect(screen.getByTestId('changes-body').textContent).toContain('const b = 3')
-  })
-
-  it('diff 体逐**行**跳渲 —— 这块面把 `skip` 递下去(两万行那一格的前提)', async () => {
-    mount()
-    await screen.findByTestId('changes-list')
-    await waitFor(() => expect(screen.getByTestId('changes-body')).toBeTruthy())
-    /*
-     * 2026-09-13 批 ②:containment 的粒度从 hunk 盒回到**行**(行高取整之后逐行
-     * 才不留缝,判词在 `CodeLines.module.css` 规矩③ 与 `ChangesPanel.module.css`
-     * 那段病历上)。谁要跳渲由宿主说 —— 聊天正文里那块不传,这块面传 `true`。
-     */
-    const rows = Array.from(
-      screen.getByTestId('changes-body').querySelectorAll('[class*="line"]'),
-    )
-    expect(rows.length).toBeGreaterThan(0)
-    expect(rows.every((row) => row.className.includes('lineSkip'))).toBe(true)
+    // **键盘位不是打开**(批⑤):一块面自己开出来的 tab 是没人要过的打开。
+    expect(tabsOf(changeRef(ROOT, A_PATH))).toBe(0)
+    expect(calls.file).toBe(0)
   })
 
   it('error:通知行 + **后端原话** + 重试钮,而且旧屏不清', async () => {
@@ -208,7 +226,138 @@ describe('六态', () => {
   })
 })
 
-describe('整文件视图的四态(批 ③-b)', () => {
+describe('批⑤:列与正文拆开', () => {
+  it('缺省**只有列** —— 一块正文都不画,分隔杆也不在', async () => {
+    mount()
+    await screen.findByTestId('changes-list')
+    expect(screen.queryByTestId('changes-body')).toBeNull()
+    expect(screen.queryByTestId('changes-file-view')).toBeNull()
+    expect(screen.queryByTestId('changes-splitter')).toBeNull()
+  })
+
+  it('单击一行 → 开一格 `change:`,落点按当下这一档(出厂 = 中央区)', async () => {
+    mount()
+    await screen.findByTestId('changes-list')
+    act(() => rowsOnScreen()[0].click())
+    const ref = changeRef(ROOT, A_PATH)
+    expect(openedState(ref)).toBe('shown')
+    expect(useWorkbenchStore.getState().regions.center).toBeDefined()
+    // **同一行点两下不开出两格**(`insertTab` 在同一片叶里只激活)。
+    act(() => rowsOnScreen()[0].click())
+    expect(tabsOf(ref)).toBe(1)
+  })
+
+  it('单击开的是**改动**那一格,不是那个文件', async () => {
+    mount()
+    await screen.findByTestId('changes-list')
+    act(() => rowsOnScreen()[0].click())
+    expect(openedState(changeRef(ROOT, A_PATH))).toBe('shown')
+    expect(openedState(fileRef(`${ROOT}/${A_PATH}`))).toBeNull()
+  })
+
+  it('↵ 走**同一条路**,只多一件:点名把焦点送进开出来的那一格', async () => {
+    const spy = vi.spyOn(focusTree, 'activateScope')
+    mount()
+    await screen.findByTestId('changes-list')
+    const ref = changeRef(ROOT, A_PATH)
+
+    act(() => rowsOnScreen()[0].click())
+    // 单击**不送焦点**(响应链规则 4:导航器里浏览不抢焦点)。
+    expect(spy.mock.calls.some(([, opts]) => opts?.owner === refId(ref))).toBe(false)
+
+    await act(async () => {
+      fireEvent.keyDown(rowsOnScreen()[0], { key: 'Enter' })
+      await Promise.resolve()
+    })
+    expect(
+      spy.mock.calls.some(([scope, opts]) => scope === 'diff' && opts?.owner === refId(ref)),
+    ).toBe(true)
+    spy.mockRestore()
+  })
+
+  it('`panel` 那一档:面板里长出分栏 + 内联正文,**中央区一格不多**', async () => {
+    useFileOpenMode.setState({ mode: 'panel' })
+    mount()
+    await screen.findByTestId('changes-list')
+    act(() => rowsOnScreen()[0].click())
+
+    expect(await screen.findByTestId('changes-splitter')).toBeTruthy()
+    const view = await screen.findByTestId('changes-file-view')
+    // 内联那一档**不登记作用域**(它是这块面的一部分)。
+    expect(view.getAttribute('data-change-inline')).toBe('true')
+    expect(view.getAttribute('data-focus-scope')).toBeNull()
+    expect(screen.getByTestId('changes-body').getAttribute('data-change-body-path')).toBe(A_PATH)
+    expect(tabsOf(changeRef(ROOT, A_PATH))).toBe(0)
+  })
+
+  it('行尾那颗开态点:开着才画,而且画的是**这一行**那一格', async () => {
+    mount()
+    await screen.findByTestId('changes-list')
+    expect(rowsOnScreen()[0].getAttribute('data-change-open')).toBeNull()
+    act(() => rowsOnScreen()[0].click())
+    await waitFor(() => expect(rowsOnScreen()[0].getAttribute('data-change-open')).toBe('shown'))
+    // 另一行没开 —— 那一格仍旧不在场。
+    expect(rowsOnScreen()[1].getAttribute('data-change-open')).toBeNull()
+  })
+
+  it('**双击零处理器**(壳禁令:双击不作动作触发)', async () => {
+    mount()
+    await screen.findByTestId('changes-list')
+    act(() => {
+      rowsOnScreen()[0].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+    })
+    expect(tabsOf(changeRef(ROOT, A_PATH))).toBe(0)
+    expect(screen.queryByTestId('changes-body')).toBeNull()
+  })
+
+  it('右键 → 四项动作(打开改动 / 打开文件 / 打开方式 ▸ / 在文件管理器里显示)', async () => {
+    mount()
+    await screen.findByTestId('changes-list')
+    act(() => {
+      fireEvent.contextMenu(rowsOnScreen()[0], { clientX: 40, clientY: 60 })
+    })
+    const items = await screen.findAllByRole('menuitem')
+    expect(items.map((el) => el.textContent)).toEqual([
+      t('diff.menuOpenChange'),
+      t('diff.menuOpenFile'),
+      t('files.openWith'),
+      t('files.reveal'),
+    ])
+  })
+
+  it('菜单里的「打开改动」与单击同一条路', async () => {
+    mount()
+    await screen.findByTestId('changes-list')
+    act(() => {
+      fireEvent.contextMenu(rowsOnScreen()[0], { clientX: 40, clientY: 60 })
+    })
+    const open = await screen.findByText(t('diff.menuOpenChange'))
+    act(() => open.click())
+    expect(openedState(changeRef(ROOT, A_PATH))).toBe('shown')
+  })
+
+  it('已删除的那一行:「在查看器里打开文件」与「在文件管理器里显示」**按不动**', async () => {
+    status = () =>
+      ok({
+        repo: true,
+        root: ROOT,
+        files: [file('gone.ts', { status: 'deleted', add: 0, del: 4 })],
+        stat: { add: 0, del: 4, files: 1 },
+      })
+    mount()
+    await screen.findByTestId('changes-list')
+    act(() => {
+      fireEvent.contextMenu(rowsOnScreen()[0], { clientX: 40, clientY: 60 })
+    })
+    const items = await screen.findAllByRole('menuitem')
+    const disabled = items.filter((el) => (el as HTMLButtonElement).disabled).map((el) => el.textContent)
+    expect(disabled).toEqual([t('diff.menuOpenFile'), t('files.reveal')])
+    // 「打开改动」照旧按得动 —— 删掉的文件**有**改动可看(整篇 del)。
+    expect(openedState(changeRef(ROOT, 'gone.ts'))).toBeNull()
+  })
+})
+
+describe('整文件视图的四态(批 ③-b;批⑤ 起直接渲染它)', () => {
   /** 屏幕上那几行(取件口是基础件落的 `data-line-index`)。 */
   const linesOnScreen = (): HTMLElement[] =>
     Array.from(document.querySelectorAll<HTMLElement>('[data-testid="changes-body"] [data-line-index]'))
@@ -218,8 +367,26 @@ describe('整文件视图的四态(批 ③-b)', () => {
       el.className.includes('lineAdd') ? 'add' : el.className.includes('lineDel') ? 'del' : 'ctx',
     )
 
+  it('**自足**:只收 root + path,自己取两版原文、自己拿 ± 与状态', async () => {
+    mountView()
+    await screen.findByTestId('changes-body')
+    await waitFor(() => expect(linesOnScreen().length).toBeGreaterThan(0))
+    // ± 来自 `status` 那一份里自己那一行(夹具:+3 −1)。
+    const head = screen.getByTestId('changes-body').querySelector('[class*="bodyHead"]')
+    expect(head?.textContent).toContain('+3')
+    expect(head?.textContent).toContain('−1')
+  })
+
+  it('标准档(带 owner)自己是一格 `diff` 作用域,落点是正文那块滚动容器', async () => {
+    mountView(A_PATH, refId(changeRef(ROOT, A_PATH)))
+    const view = await screen.findByTestId('changes-file-view')
+    expect(view.getAttribute('data-focus-scope')).toBe('diff')
+    expect(view.getAttribute('data-change-inline')).toBeNull()
+    expect(screen.getByTestId('changes-body').getAttribute('tabindex')).toBe('-1')
+  })
+
   it('两版都在 → 整文件:行数 = 文件行数 + 改动行,未改的行两个号都有', async () => {
-    mount()
+    mountView()
     await screen.findByTestId('changes-body')
     await waitFor(() => expect(linesOnScreen().length).toBeGreaterThan(0))
     // 六行里两行改了 = 4 未改 + 2 删 + 2 增。
@@ -230,8 +397,8 @@ describe('整文件视图的四态(批 ③-b)', () => {
   })
 
   it('只有 head(文件删掉了)→ 整篇 del,一行都没有新行号', async () => {
-    fileText = () => ok({ path: 'src/a.ts', head: version(HEAD_TEXT), work: null })
-    mount()
+    fileText = () => ok({ path: A_PATH, head: version(HEAD_TEXT), work: null })
+    mountView()
     await screen.findByTestId('changes-body')
     await waitFor(() => expect(linesOnScreen().length).toBe(6))
     expect(marksOf().every((m) => m === 'del')).toBe(true)
@@ -241,8 +408,8 @@ describe('整文件视图的四态(批 ③-b)', () => {
   })
 
   it('只有 work(新文件)→ 整篇 add,一行都没有旧行号', async () => {
-    fileText = () => ok({ path: 'src/a.ts', head: null, work: version(WORK_TEXT) })
-    mount()
+    fileText = () => ok({ path: A_PATH, head: null, work: version(WORK_TEXT) })
+    mountView()
     await screen.findByTestId('changes-body')
     await waitFor(() => expect(linesOnScreen().length).toBe(6))
     expect(marksOf().every((m) => m === 'add')).toBe(true)
@@ -251,24 +418,32 @@ describe('整文件视图的四态(批 ③-b)', () => {
 
   it('任一版 binary:一句「不展示」,一行都不画', async () => {
     fileText = () =>
-      ok({ path: 'src/a.ts', head: version('', { binary: true }), work: version(WORK_TEXT) })
-    mount()
+      ok({ path: A_PATH, head: version('', { binary: true }), work: version(WORK_TEXT) })
+    mountView()
     expect(await screen.findByTestId('changes-body-binary')).toBeTruthy()
     expect(linesOnScreen()).toHaveLength(0)
   })
 
   it('truncated:块尾一行', async () => {
     fileText = () =>
-      ok({ path: 'src/a.ts', head: version(HEAD_TEXT), work: version(WORK_TEXT, { truncated: true }) })
-    mount()
+      ok({ path: A_PATH, head: version(HEAD_TEXT), work: version(WORK_TEXT, { truncated: true }) })
+    mountView()
     expect(await screen.findByTestId('changes-body-truncated')).toBeTruthy()
   })
 
   it('两版一模一样:一句「此刻没有改动」,导航整组不画', async () => {
-    fileText = () => ok({ path: 'src/a.ts', head: version(HEAD_TEXT), work: version(HEAD_TEXT) })
-    mount()
+    fileText = () => ok({ path: A_PATH, head: version(HEAD_TEXT), work: version(HEAD_TEXT) })
+    mountView()
     expect(await screen.findByTestId('changes-body-empty')).toBeTruthy()
     expect(screen.queryByTestId('changes-nav')).toBeNull()
+  })
+
+  it('**这一行不在改动表里了** → 一句话,而且 tab 不自动关(§6.4 裁定)', async () => {
+    mountView('src/never-changed.ts')
+    expect(await screen.findByTestId('changes-body-gone')).toBeTruthy()
+    // 说了话,但这一格还在屏上 —— 关掉别人的标签不是这块面的事。
+    expect(screen.getByTestId('changes-file-view')).toBeTruthy()
+    expect(linesOnScreen()).toHaveLength(0)
   })
 })
 
@@ -280,14 +455,14 @@ describe('改动导航:↑ k / N ↓ 与右缘那张地图', () => {
       ?.getAttribute('data-line-index')
 
   it('首次 ready 落在第一块,读数是 `1 / N`', async () => {
-    mount()
+    mountView()
     await screen.findByTestId('changes-nav')
     expect(countText()).toBe('1 / 2')
     expect(currentIndex()).toBe('1')
   })
 
   it('↓ 走到下一块,↑ 回来,而且**到头循环**', async () => {
-    mount()
+    mountView()
     await screen.findByTestId('changes-nav')
     act(() => screen.getByTestId('changes-next').click())
     expect(countText()).toBe('2 / 2')
@@ -301,7 +476,7 @@ describe('改动导航:↑ k / N ↓ 与右缘那张地图', () => {
   })
 
   it('读数给读屏的是一整句(`第 k 处改动,共 n 处`)', async () => {
-    mount()
+    mountView()
     await screen.findByTestId('changes-nav')
     expect(screen.getByTestId('changes-nav-count').getAttribute('aria-label')).toBe(
       t('diff.changeAt', { k: 1, n: 2 }),
@@ -309,7 +484,7 @@ describe('改动导航:↑ k / N ↓ 与右缘那张地图', () => {
   })
 
   it('地图每块一格,点一格跳过去', async () => {
-    mount()
+    mountView()
     const map = await screen.findByTestId('changes-map')
     expect(map.querySelectorAll('[data-change-block]')).toHaveLength(2)
     expect(map.querySelector('[data-change-block="0"]')?.getAttribute('data-active')).toBe('true')
@@ -324,39 +499,10 @@ describe('改动导航:↑ k / N ↓ 与右缘那张地图', () => {
   })
 
   it('地图那条带子不在 Tab 序里(键盘的路是檐上那两颗钮)', async () => {
-    mount()
+    mountView()
     const map = await screen.findByTestId('changes-map')
     expect(map.getAttribute('tabindex')).toBe('-1')
     expect(map.getAttribute('aria-hidden')).toBe('true')
-  })
-})
-
-describe('↵ / 双击开那个文件', () => {
-  it('开的是 `<仓库根>/<相对路径>` 那个绝对路径', async () => {
-    mount()
-    await screen.findByTestId('changes-list')
-    const rows = rowsOnScreen()
-    act(() => rows[0].dispatchEvent(new MouseEvent('dblclick', { bubbles: true })))
-    // 落点由「打开方式」那一档说了算(分栏 / 舞台 / 浮窗 …),所以断言问的是
-    // **那份文件此刻开着没有**(`openStateOf` 是那三格事实的唯一判官),
-    // 不是某一档的落点 —— 后者会让这一条跟着一个与它无关的偏好走。
-    await waitFor(() => expect(openedState(`${ROOT}/src/a.ts`)).not.toBeNull())
-  })
-
-  it('`deleted` 那一行开不出来(盘上没有那个文件了)', async () => {
-    status = () =>
-      ok({
-        repo: true,
-        root: ROOT,
-        files: [file('gone.ts', { status: 'deleted', add: 0, del: 4 })],
-        stat: { add: 0, del: 4, files: 1 },
-      })
-    mount()
-    await screen.findByTestId('changes-list')
-    const rows = rowsOnScreen()
-    act(() => rows[0].dispatchEvent(new MouseEvent('dblclick', { bubbles: true })))
-    await Promise.resolve()
-    expect(openedState(`${ROOT}/gone.ts`)).toBeNull()
   })
 })
 

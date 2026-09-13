@@ -8,14 +8,22 @@
  * 它证的是**屏幕上那块改动面来自一个真的 git 仓库**:
  *
  *  ① 脚本在磁盘上 `git init` 一个真仓、提交一版、改一个文件 → 会话绑它 →
- *     点「改动」瓦 → 面板在中央区、列 1 行、diff 体里有那一行 `+`;
+ *     点「改动」瓦 → 面板在中央区、列 1 行;
+ *  ①-b(批⑤)**列与正文拆开了**:缺省面板里一块正文都没有;点第一行 → 中央区多
+ *     一格 `change:` 标签,而 diff 体在**那一格**里(不在面板里);
+ *  ⑩(批⑤)行右键 → 打开方式 ▸ 面板内 → 点行 → 分栏在**面板里**长出来、中央区
+ *     一格不多;换回中央区 → 分栏收起来(顺带证了那张四项的行菜单);
+ *  ⑪(批⑤)焦点:单击**不抢**(开出来那一格没把键盘拿走),↵ 才把焦点送进去;
  *  ② 再改第二个文件 → 点檐上那颗刷新 → 列 2 行,**旧那一行的 DOM 节点不变**
  *     (零重挂 —— 律④的真机面);
  *  ③ 第二条会话绑另一个临时仓 → 切会话 → 伴随面 seed 出**第二份**、第一份收进账;
  *     切回来 → 第一份回来(C3 那条留账的真机面);
  *  ④ 无 workdir 的会话 → 点瓦 → 一条 toast,**零新标签**;
  *  ⑤ 「不是仓库」那一档:一个不是 git 仓的目录 → 面板画那句话,**零按钮**;
- *  ⑥ 第五轴读数:2 000 行改动的仓,点瓦到首帧可见 / 列上屏,dev 与 prod 各一列。
+ *  ⑥ 第五轴读数:2 000 行改动的仓,点瓦到首帧可见 / 列上屏,dev 与 prod 各一列;
+ *  ⑦–⑨ 整文件视图那三件(↑↓ 循环与 `k / N` / 横滚纪律 / dpr-2 缝数)—— 批⑤ 起
+ *     它们量的是**开出来那一格**里的正文(取件口 `window.__changesBody()`:屏上
+ *     那块**看得见**的,理由在那只函数上)。
  *
  * 第 ⑤ 屏的 axe **不在这里**:这道门起的是**壳自己那台 core**,而
  * `gate-a11y.mjs` 起的是 server 宿主 —— `git:` 资源两边都在(读法零效果、不分
@@ -191,6 +199,43 @@ async function rpc(record, domain, method, payload = {}) {
   return body.data
 }
 
+/**
+ * **「此刻画在屏上的那一块正文」的唯一取件口**(批⑤ 立)。
+ *
+ * 批⑤ 之前全屏只可能有一块 `changes-body`(它是改动面自己那条分栏);拆开之后
+ * 它是一格 tab,而**后台那几格 tab 的层是挂着的**(keep-alive:`content-visibility:
+ * hidden` + `inert`,判词在 `PaneLeaf.module.css` 上)—— 于是
+ * `document.querySelector('[data-testid="changes-body"]')` 会按**文档序**拿到一块
+ * 谁都看不见的正文,而 ⑧/⑨ 是**拍照**的量法:拍一块看不见的东西必然量出零。
+ *
+ * 判据取 **`inert`**:后台那几层在 JSX 上就带着它(`PaneLeaf` 的
+ * `inert={!on || undefined}`,与 `content-visibility: hidden` 一对)。
+ * **不拿矩形当判据**(第一版就是这么写的,当场被真机打回):
+ * `content-visibility: hidden` 跳过的是**内容的渲染**,元素自己仍旧有布局盒 ——
+ * 实测两块正文的 `getBoundingClientRect().width` 都是 870,一块是屏上那块、
+ * 一块是后台那一格标签里挂着的。`inert` 才是「这一层此刻不在人手里」那句话本身。
+ *
+ * `page.evaluate` 带不过闭包,所以它是装一次的全局(与 `scripts/lib/composer-dock.mjs`
+ * 那一只同一个体例)。
+ */
+async function installBodyProbe(page) {
+  await page.evaluate(() => {
+    window.__changesBody = () =>
+      Array.from(document.querySelectorAll('[data-testid="changes-body"]')).find(
+        (el) => el.closest('[inert]') === null,
+      ) ?? null
+    window.__changesLines = (css = '[data-line-index]') =>
+      Array.from(window.__changesBody()?.querySelectorAll(css) ?? [])
+    /* 整块(檐 + 正文 + 右缘那张地图)—— 导航读数与地图都在它里面,
+     * 而它们与正文一样**屏上可能有好几份**(后台标签里挂着的那几格)。 */
+    window.__changesView = () =>
+      Array.from(document.querySelectorAll('[data-testid="changes-file-view"]')).find(
+        (el) => el.closest('[inert]') === null,
+      ) ?? null
+    window.__changesIn = (css) => window.__changesView()?.querySelector(css) ?? null
+  })
+}
+
 /** 与 gate-data / gate-files 同一条理由:用 element.click() 绕开可操作性判定,派发的仍是真事件。 */
 async function clickSelector(page, selector) {
   const clicked = await page.evaluate((css) => {
@@ -200,6 +245,21 @@ async function clickSelector(page, selector) {
     return true
   }, selector)
   if (!clicked) throw new Error(`点不到:${selector} 不在 DOM 里`)
+}
+
+/**
+ * 点**屏上那一格正文**里的一件东西(批⑤)。与 `clickSelector` 同一条理由(用
+ * `element.click()` 绕开可操作性判定),差别只有取件口:后台标签里挂着的那几格
+ * 正文也在 DOM 里,按 testid 全局取会点到一块谁都看不见的面。
+ */
+async function clickInView(page, selector) {
+  const clicked = await page.evaluate((css) => {
+    const el = window.__changesIn(css)
+    if (!(el instanceof HTMLElement)) return false
+    el.click()
+    return true
+  }, selector)
+  if (!clicked) throw new Error(`点不到:屏上那一格正文里没有 ${selector}`)
 }
 
 /** 在一个目录里跑一条 git。**同步**:这一段是造前提,不是被量的动作。 */
@@ -292,12 +352,12 @@ async function seedBigFile(dir, lines) {
  */
 async function shotOfBody(page, cdp) {
   const box = await page.evaluate(() => {
-    const el = document.querySelector('[data-testid="changes-body"]')
+    const el = window.__changesBody()
     if (!(el instanceof HTMLElement)) return null
     const r = el.getBoundingClientRect()
     return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) }
   })
-  if (!box) throw new Error('拍不到:[data-testid="changes-body"] 不在 DOM 里')
+  if (!box) throw new Error('拍不到:屏上没有一块看得见的 [data-testid="changes-body"]')
   const shot = await cdp.send('Page.captureScreenshot', {
     format: 'png',
     clip: { x: box.x, y: box.y, width: box.w, height: box.h, scale: 1 },
@@ -557,6 +617,8 @@ async function main() {
       const value = await page.evaluate(() => window.__d0 ?? null)
       return value && value.rpcOk ? value : undefined
     })
+    // 「哪一块正文是看得见的那一块」的取件口(批⑤,判词在那只函数上)。
+    await installBodyProbe(page)
 
     /** 进一条会话(走用户真正走的那条路:总览里点那一行)。 */
     const enter = async (sessionId) => {
@@ -604,9 +666,40 @@ async function main() {
       throw new Error(`${error.message}\n这块面此刻说的是:${JSON.stringify(said)}`)
     })
     assert(rows1.length === 1, `① 列 1 行:${rows1.join(', ')}`)
+    /*
+     * ①-b **列与正文拆开了**(批⑤,正本 `docs/changes-file-view-2026-09.md` §6.3)。
+     * 缺省这块面**只有列**:面板里一块正文都没有。点第一行 → 中央区多一格
+     * `change:` 标签,而正文在**那一格**里(不在面板里)。
+     */
+    const beforeOpen = await page.evaluate(() => ({
+      inPanel: document.querySelectorAll('[data-testid="changes-panel"] [data-testid="changes-body"]').length,
+      anywhere: document.querySelectorAll('[data-testid="changes-body"]').length,
+      tabs: document.querySelectorAll('[data-tab-id^="change:"]').length,
+    }))
+    assert(
+      beforeOpen.inPanel === 0 && beforeOpen.anywhere === 0 && beforeOpen.tabs === 0,
+      `①-b 缺省只有列(面板里 ${beforeOpen.inPanel} 块正文、全屏 ${beforeOpen.anywhere} 块、`
+        + `${beforeOpen.tabs} 格 change 标签,三个都该是 0)`,
+    )
+    await clickSelector(page, '[data-change-path]')
+    const opened = await waitFor('点第一行 → 开出一格 change 标签', async () => {
+      const seen = await page.evaluate(() => ({
+        tabs: Array.from(document.querySelectorAll('[data-tab-id^="change:"]')).map((el) =>
+          el.getAttribute('data-tab-id'),
+        ),
+        inPanel: document.querySelectorAll('[data-testid="changes-panel"] [data-testid="changes-body"]').length,
+        anywhere: document.querySelectorAll('[data-testid="changes-body"]').length,
+      }))
+      return seen.tabs.length > 0 && seen.anywhere > 0 ? seen : undefined
+    })
+    assert(opened.tabs.length === 1, `①-b 恰好一格 change 标签:${opened.tabs.join(', ')}`)
+    assert(
+      opened.inPanel === 0 && opened.anywhere === 1,
+      `①-b 正文在**开出来那一格**里,不在面板里(面板 ${opened.inPanel} / 全屏 ${opened.anywhere})`,
+    )
     const bodyText = await waitFor('diff 体画出来', async () => {
       const text = await page.evaluate(
-        () => document.querySelector('[data-testid="changes-body"]')?.textContent ?? null,
+        () => window.__changesBody()?.textContent ?? null,
       )
       return text && text.includes('changed') ? text : undefined
     })
@@ -618,9 +711,7 @@ async function main() {
      */
     const whole = await waitFor('整文件画出来', async () => {
       const seen = await page.evaluate(() => {
-        const rows = Array.from(
-          document.querySelectorAll('[data-testid="changes-body"] [data-line-index]'),
-        )
+        const rows = window.__changesLines()
         return {
           rows: rows.length,
           add: rows.filter((el) => el.className.includes('lineAdd')).length,
@@ -650,18 +741,18 @@ async function main() {
      */
     const navText = () =>
       page.evaluate(
-        () => document.querySelector('[data-testid="changes-nav-count"]')?.textContent ?? null,
+        () => window.__changesIn('[data-testid="changes-nav-count"]')?.textContent ?? null,
       )
     assert((await navText()) === '1 / 2', `⑦ 首次落在第一块:${await navText()}`)
     const outerBefore = await page.evaluate(() => ({
       win: window.scrollY,
       panel: document.querySelector('[data-testid="changes-panel"]')?.scrollTop ?? 0,
     }))
-    await clickSelector(page, '[data-testid="changes-next"]')
+    await clickInView(page, '[data-testid="changes-next"]')
     assert((await navText()) === '2 / 2', `⑦ ↓ 走到下一块:${await navText()}`)
-    await clickSelector(page, '[data-testid="changes-next"]')
+    await clickInView(page, '[data-testid="changes-next"]')
     assert((await navText()) === '1 / 2', `⑦ 最后一块再 ↓ **循环**回第一块:${await navText()}`)
-    await clickSelector(page, '[data-testid="changes-prev"]')
+    await clickInView(page, '[data-testid="changes-prev"]')
     assert((await navText()) === '2 / 2', `⑦ 第一块再 ↑ 回到最后一块:${await navText()}`)
     const outerAfter = await page.evaluate(() => ({
       win: window.scrollY,
@@ -681,7 +772,7 @@ async function main() {
      *    而按行数跳不该动列。
      */
     const landed = await page.evaluate(() => {
-      const body = document.querySelector('[data-testid="changes-body"]')
+      const body = window.__changesBody()
       const row = body?.querySelector('[data-current="true"]')
       if (!(body instanceof HTMLElement) || !(row instanceof HTMLElement)) return null
       const b = body.getBoundingClientRect()
@@ -705,12 +796,12 @@ async function main() {
 
     // 当前块的首行带 `data-current`,而且**全篇只有一行**带。
     const currents = await page.evaluate(
-      () => document.querySelectorAll('[data-testid="changes-body"] [data-current="true"]').length,
+      () => window.__changesLines('[data-current="true"]').length,
     )
     assert(currents === 1, `⑦ 当前行全篇恰有一行(实测 ${currents})`)
     // 右缘那张地图:每块一格,当前那一格自己说得出来。
     const mapTicks = await page.evaluate(() => {
-      const map = document.querySelector('[data-testid="changes-map"]')
+      const map = window.__changesIn('[data-testid="changes-map"]')
       return {
         ticks: map ? map.querySelectorAll('[data-change-block]').length : 0,
         active: map ? map.querySelectorAll('[data-active="true"]').length : 0,
@@ -730,12 +821,12 @@ async function main() {
      */
     const beforeShot = await shotOfBody(page, cdp)
     await page.evaluate(() => {
-      const body = document.querySelector('[data-testid="changes-body"]')
+      const body = window.__changesBody()
       if (body instanceof HTMLElement) body.scrollLeft = 600
     })
     await delay(250)
     const scrolled = await page.evaluate(() => {
-      const body = document.querySelector('[data-testid="changes-body"]')
+      const body = window.__changesBody()
       const pre = body?.querySelector('pre')
       const row = body?.querySelector('[data-line-index]')
       if (!(body instanceof HTMLElement) || !(pre instanceof HTMLElement) || !(row instanceof HTMLElement)) {
@@ -764,7 +855,7 @@ async function main() {
      * 上面那条「左 80 列墨量」抓不住它:只有一行有长行,漏进来的字对整列的墨量只是零头。
      */
     const band = await page.evaluate(() => {
-      const body = document.querySelector('[data-testid="changes-body"]')
+      const body = window.__changesBody()
       // 长行按内容找(正文最长的那一行),不按下标:行表里加删行会把「文件第 5 行」推到别的下标上。
       const rows = Array.from(body?.querySelectorAll('[data-line-index]') ?? [])
       const row = rows.reduce((best, el) => {
@@ -794,10 +885,139 @@ async function main() {
         + `(抗锯齿的零头,≤ 4),而中段 ${pinned.midMoved} 列全换了 —— 差两个数量级`,
     )
     await page.evaluate(() => {
-      const body = document.querySelector('[data-testid="changes-body"]')
+      const body = window.__changesBody()
       if (body instanceof HTMLElement) body.scrollLeft = 0
     })
     await page.screenshot({ path: path.join(shotDir, `changes-${LANE}-ready.png`) })
+
+    /*
+     * ── ⑪ 焦点:**单击不抢,↵ 才送**(批⑤;响应链规则 4「导航器里浏览不抢焦点,
+     * 确认才抢」在这块面上的落地)────────────────────────────────────────────
+     *
+     * **量法与方案里写的那一句有一处出入,写在这儿**:§6.3 说「单击之后焦点仍在
+     * 列里」。这道门的布局里改动面就在**中央区**,而开出来那一格 `change:` 落在
+     * **同一片叶**上 —— 于是那一格成了活动 tab,面板那一层当场 `inert`,焦点不可能
+     * 还留在一个 inert 的子树里(那是拼贴台的语义,不是这一单的行为)。所以这里问
+     * 的是同一条规则**分得开的那一半**:单击之后焦点**没被抢进**开出来那一格,
+     * ↵ 之后**在**那一格里。两条合起来正是「浏览不抢、确认才抢」。
+     */
+    // ①-b 开出来那一格标签此刻盖着面板 —— 先把面板那一格点回前台。
+    const backToPanel = async () => {
+      await clickSelector(page, '[data-tab-id^="diff:"]')
+      await waitFor('面板回到前台', () =>
+        page.evaluate(() => {
+          const el = document.querySelector('[data-testid="changes-panel"]')
+          return el instanceof HTMLElement && el.getBoundingClientRect().width > 0
+        }),
+      )
+    }
+    await backToPanel()
+    await page.click('[data-change-path]')
+    await delay(250)
+    const afterClick = await page.evaluate(() => ({
+      inView: Boolean(document.activeElement?.closest('[data-testid="changes-file-view"]')),
+      where: document.activeElement?.getAttribute('data-testid')
+        ?? document.activeElement?.tagName
+        ?? null,
+    }))
+    assert(!afterClick.inView, `⑪ 单击**不抢**焦点(此刻焦点在 ${afterClick.where})`)
+
+    await backToPanel()
+    // 焦点摆回那一行(落焦本身是 `gate:focus` 的事,这道门只要一个确定的起点)。
+    const rowFocused = await page.evaluate(() => {
+      const row = document.querySelector('[data-change-path]')
+      if (!(row instanceof HTMLElement)) return false
+      row.focus()
+      return document.activeElement === row
+    })
+    assert(rowFocused, '⑪ 起点:焦点在那一行上')
+    await page.keyboard.press('Enter')
+    const afterEnter = await waitFor('↵ 之后焦点进了开出来那一格', async () => {
+      const seen = await page.evaluate(() => {
+        const scope = document.activeElement?.closest('[data-focus-scope="diff"]')
+        return {
+          inScope: Boolean(scope),
+          hasBody: Boolean(scope?.querySelector('[data-testid="changes-body"]')),
+          hasList: Boolean(scope?.querySelector('[data-testid="changes-list"]')),
+        }
+      })
+      return seen.inScope ? seen : undefined
+    })
+    assert(
+      afterEnter.hasBody && !afterEnter.hasList,
+      `⑪ ↵ 之后焦点在**装着正文**的那一格作用域里(正文 ${afterEnter.hasBody} / 文件列 ${afterEnter.hasList})`,
+    )
+
+    /*
+     * ── ⑩ 「面板内」那一档:分栏在面板里长出来,中央区**一格不多** ──────────
+     * 换档走的是用户真正走的那条路:行右键 → 打开方式 ▸ → 面板内。顺带这一步也是
+     * **行菜单**的真机面(四项、子菜单开得出来)。
+     */
+    await backToPanel()
+    await page.click('[data-change-path]', { button: 'right' })
+    const menuLabels = await waitFor('行菜单开出来', async () => {
+      const labels = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('[data-menu-surface] [role="menuitem"]')).map(
+          (el) => el.textContent,
+        ),
+      )
+      return labels.length > 0 ? labels : undefined
+    })
+    assert(menuLabels.length === 4, `⑩ 行菜单四项(实测 ${menuLabels.length}:${menuLabels.join(' / ')})`)
+    const pickMode = async (at) => {
+      // 第三项 = 「打开方式 ▸」;子表是父表 DOM 的真孩子(判词在 `ui/Submenu` 上),
+      // 所以最后那一张浮层面就是它。
+      await page.evaluate(() => {
+        const items = Array.from(document.querySelectorAll('[data-menu-surface] [role="menuitem"]'))
+        const row = items[2]
+        if (row instanceof HTMLElement) row.click()
+      })
+      await delay(200)
+      /*
+       * 子表里那七行是**单选项**(`MenuItem checked=` → `menuitemradio`,判词在
+       * `ui/Menu` 的 `MenuItem` 上:角色由容器的 role 与 checked 一起推出来)——
+       * 所以选择器是两条,不是一条。
+       */
+      const picked = await page.evaluate((index) => {
+        const surfaces = Array.from(document.querySelectorAll('[data-menu-surface]'))
+        const sub = surfaces[surfaces.length - 1]
+        const items = Array.from(sub?.querySelectorAll('[role="menuitem"],[role="menuitemradio"]') ?? [])
+        const item = items[index]
+        if (item instanceof HTMLElement) item.click()
+        return { modes: items.length, took: item?.textContent ?? null }
+      }, at)
+      assert(picked.took !== null, `⑩ 子表里挑得到第 ${at} 档(共 ${picked.modes} 档)`)
+      await delay(200)
+    }
+    const tabsBeforeInline = await page.evaluate(
+      () => document.querySelectorAll('[data-tab-id^="change:"]').length,
+    )
+    // `FILE_OPEN_MODES` 第 0 档 = 面板内(那张表的次序是唯一一份,菜单照它画)。
+    await pickMode(0)
+    await clickSelector(page, '[data-change-path]')
+    const inlineNow = await waitFor('面板里长出分栏', async () => {
+      const seen = await page.evaluate(() => ({
+        splitter: Boolean(document.querySelector('[data-testid="changes-panel"] [data-testid="changes-splitter"]')),
+        body: Boolean(document.querySelector('[data-testid="changes-panel"] [data-testid="changes-body"]')),
+        tabs: document.querySelectorAll('[data-tab-id^="change:"]').length,
+      }))
+      return seen.splitter ? seen : undefined
+    })
+    assert(inlineNow.body, '⑩ 「面板内」那一档:正文就在这块面里')
+    assert(
+      inlineNow.tabs === tabsBeforeInline,
+      `⑩ 中央区一格不多(${tabsBeforeInline} → ${inlineNow.tabs})`,
+    )
+    // 换回中央区(第 1 档),后面几步照旧按 tab 那条路量。
+    await page.click('[data-change-path]', { button: 'right' })
+    await waitFor('行菜单再开一次', () =>
+      page.evaluate(() => document.querySelectorAll('[data-menu-surface] [role="menuitem"]').length > 0),
+    )
+    await pickMode(1)
+    const backToStage = await page.evaluate(
+      () => Boolean(document.querySelector('[data-testid="changes-panel"] [data-testid="changes-splitter"]')),
+    )
+    assert(!backToStage, '⑩ 换回中央区:那条分栏收起来了(一份内容一个落点)')
 
     console.log('\n[5/7] ② 再改一个文件 → 点刷新 → 列 2 行,**旧行零重挂**')
     const marked = await markRows(page)
@@ -938,13 +1158,28 @@ async function main() {
     await clickSelector(page, '[data-change-path="f0.txt"]')
     const bigLines = await waitFor('两千行那份文件的整文件视图上屏', async () => {
       const n = await page.evaluate(
-        () => document.querySelectorAll('[data-testid="changes-body"] [data-line-index]').length,
+        () => window.__changesLines().length,
       )
       return n > BIG_LINES ? n : undefined
-    }, 60_000)
+    }, 60_000).catch(async (error) => {
+      const said = await page.evaluate(() => ({
+        bodies: Array.from(document.querySelectorAll('[data-testid="changes-body"]')).map((el) => ({
+          path: el.getAttribute('data-change-body-path'),
+          w: Math.round(el.getBoundingClientRect().width),
+          lines: el.querySelectorAll('[data-line-index]').length,
+        })),
+        tabs: Array.from(document.querySelectorAll('[data-tab-id^="change:"]')).map((el) =>
+          el.getAttribute('data-tab-id'),
+        ),
+        notes: Array.from(document.querySelectorAll('[data-testid^="changes-body-"]')).map((el) =>
+          el.getAttribute('data-testid'),
+        ),
+      }))
+      throw new Error(`${error.message}\n屏上此刻:${JSON.stringify(said)}`)
+    })
     report.bigFileRows = bigLines
     const bigBlocks = await page.evaluate(
-      () => document.querySelectorAll('[data-testid="changes-map"] [data-change-block]').length,
+      () => window.__changesView()?.querySelectorAll('[data-change-block]').length ?? 0,
     )
     report.bigFileBlocks = bigBlocks
     console.log(`  · 两千行那份文件:上屏 ${bigLines} 行 / ${bigBlocks} 个改动块`)
@@ -960,17 +1195,17 @@ async function main() {
      * **地图点跳**的真机面(单测那一半在 jsdom 里量不到坐标)。
      */
     const picked = await page.evaluate(() => {
-      const map = document.querySelector('[data-testid="changes-map"]')
+      const map = window.__changesIn('[data-testid="changes-map"]')
       if (!(map instanceof HTMLElement)) return null
       const box = map.getBoundingClientRect()
       map.dispatchEvent(
         new MouseEvent('click', { bubbles: true, clientY: box.top + box.height / 2, clientX: box.left + 2 }),
       )
-      return document.querySelector('[data-testid="changes-nav-count"]')?.textContent ?? null
+      return window.__changesIn('[data-testid="changes-nav-count"]')?.textContent ?? null
     })
     await delay(250)
     const pickedNow = await page.evaluate(
-      () => document.querySelector('[data-testid="changes-nav-count"]')?.textContent ?? null,
+      () => window.__changesIn('[data-testid="changes-nav-count"]')?.textContent ?? null,
     )
     const pickedAt = Number((pickedNow ?? '').split('/')[0])
     assert(
@@ -978,7 +1213,7 @@ async function main() {
       `⑦ 点地图中段跳到中间那一块:${pickedNow}(点之前 ${picked})`,
     )
     const bigLanded = await page.evaluate(() => {
-      const body = document.querySelector('[data-testid="changes-body"]')
+      const body = window.__changesBody()
       const row = body?.querySelector('[data-current="true"]')
       if (!(body instanceof HTMLElement) || !(row instanceof HTMLElement)) return null
       const b = body.getBoundingClientRect()
@@ -1017,9 +1252,7 @@ async function main() {
     await clickSelector(page, '[data-change-path="big-add.txt"]')
     await waitFor('整篇新增那份上屏', async () => {
       const seen = await page.evaluate(() => {
-        const rows = Array.from(
-          document.querySelectorAll('[data-testid="changes-body"] [data-line-index]'),
-        )
+        const rows = window.__changesLines()
         return { rows: rows.length, add: rows.filter((el) => el.className.includes('lineAdd')).length }
       })
       return seen.rows >= BIG_LINES && seen.add === seen.rows ? seen : undefined

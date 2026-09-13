@@ -86,3 +86,31 @@ export interface CodeLinesProps {
   会把每一段连续文本、每一个 token span 都变成独立的 flex 项,不裹起来就是几十个
   各自成盒的 token。查看器本来就不虚拟滚动,这一档不在任何门的预算表里;**接受**,
   记在这儿,要治得治「查看器该不该虚拟滚动」那件事,不是把包裹层拆掉。
+
+## 6. 批⑤:列表与正文拆开 —— 改动面只剩文件列,看一个文件的改动 = 开一格内容,落点走「文件打开方式」(2026-09-14 用户提出)
+
+用户原话:「能否把这个 diff 的文件列表和文件拆开?查看文件的 diff 走默认的文件的 tab 行为?」答案是能,而且形是现成的:目录面板点一个文件开的是 `file:<path>` 这一种内容,落在哪由 `data/file-open-mode.ts` 的七档(`panel` / `stage` / 四条边 / `float`)说,`panel` 档是在目录面板自己里面分栏。改动面照抄这一套,一个字不另起。
+
+### 6.1 对象
+
+| 对象 | 住哪 | 职责 |
+| --- | --- | --- |
+| `change` 内容种类(新) | `content/kinds/change.tsx` + `change-ref.ts` | 一个文件的整文件改动视图。`key` 的产地只有 `change-ref.ts` 一处(`changeRef(root, path)` / `changeRootOf` / `changePathOf`),形状必须经 `refId → parseRefId` 与拼贴树落盘往返不失真(用例钉);`singleton: false`、`level: 'space'`、`focusInto: 'diff'`、title = 文件名(tip 全路径 + 「改动」)、icon 走 `tabIconOf(文件名)`(它是「这个文件」不是「改动这件事」,标签上认文件);**不是伴随面**(它是人开出来的,与 `file` 同一档);`render` = `<ChangeFileView root path />` |
+| `ChangeFileView` | 原地,**改成自足**:只收 `root` + `path`,自己 `useFileLive` + `fileQueryOf` + 从 `statusQuery` 里取自己那一行的 ± 与状态(行没了 = 「此刻没有改动」空态,tab 不自动关) | 檐 / 体 / 地图一字不改 |
+| `ChangesPanel` | 原地 | **缺省只有文件列**(`ChangeList` 铺满,无分隔杆、无内联体);行的**单击与 ↵ 走同一条路**开 `change:`(照 `FilesPanel` 的 `onActivate(viaKeyboard)`:单击开、焦点留列;↵ 开、`activateScope('diff', { reason: 'open' })` 送焦点进那一格,`wantViewer` + `openTick` 那一套原样照抄);打开方式 = `useFileOpenMode` 那一格(**与文件共用同一档,不另立设置**);`panel` 档 = 今天的分栏内联(列 + `Splitter` + `ChangeFileView`),内联着哪个文件是这块面的**瞬态**本地状态(不落盘),行的开态点(`data-file-open`)由 `openStateOf(changeRef)` 或「内联着的就是它」答 |
+| 行的右键菜单(新) | `ChangeList` 行 | 动作单产地:「打开改动」(缺省档)/「在查看器里打开文件」(`openFileInCurrentTarget`,已删除的文件灰)/「打开方式」子菜单(与目录面板同一张七档表,写同一格 `useFileOpenMode`)/「在文件管理器里显示」(`revealMutation`);**双击退役**(壳禁令) |
+
+### 6.2 不变的
+
+`diff` 种类(列表面,伴随会话 workdir)、`companion.seed`、`changes-source` 的三本在场账、run/end 刷新、`CodeLines` / `line-diff` / `ChangeMap`、`git:` 后端。
+
+### 6.3 门
+
+- 单测:`change-ref` 往返;`change-kind`(title / icon / focusInto / 不是伴随面);`changes-panel.test` 改:缺省零 `changes-body`、单击 → `workbench.openRef(changeRef)` 一次且 region 按档、↵ 多一发 `activateScope('diff')`、`panel` 档内联体在场、右键菜单四项、双击零处理器。
+- `gate:changes`:①「点瓦 → 列」不变;新 ①-b 点第一行 → 中央区多一格 `change:` 标签且 `changes-body` 在那格里;②–⑤ 不变;⑥–⑨ 的量法把「面板里的 `changes-body`」换成「打开出来那一格里的」;新 ⑩ 把打开方式切到 `panel` → 点行 → 面板里长出分栏、中央区不多格;⑪ ↵ 之后 `document.activeElement` 在 `[data-focus-scope="diff"]` 里、单击之后仍在列里。`gate:a11y` 第 10 屏加扫打开出来的那一格。
+- 三张状态表重填(`ChangesPanel` 两档形 × `ChangeFileView` 自足后的生命周期)。
+
+### 6.4 留账
+
+- 「打开方式」与文件共用一格是**裁定**:用户说「走默认的文件的 tab 行为」,分开设就是两处会漂的偏好。
+- `change:` 标签在文件被撤销改动后留着显示空态,不自动关 —— 自动关等于替人关标签。

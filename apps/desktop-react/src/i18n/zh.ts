@@ -1171,6 +1171,12 @@ export const zh = {
   'diff.changeAt': '第 {k} 处改动,共 {n} 处',
   'diff.fileBinary': '二进制文件,不展示内容',
   'diff.fileTruncated': '这个文件太大,只读了前 1 MiB',
+  /* 批⑤(正本 `docs/changes-file-view-2026-09.md` §6):列与正文拆开之后,行上那张
+   * 动作表。「打开方式」与「在文件管理器里显示」两行复用目录面板那两句 —— 同一件事
+   * 在两块面里说两种话,人得记两套。 */
+  'diff.rowMenu': '改动动作',
+  'diff.menuOpenChange': '打开改动',
+  'diff.menuOpenFile': '在查看器里打开文件',
   /* 八个状态字母的无障碍名(M/A/D/R/C/?/!/T)。 */
   'diff.statusM': '已修改',
   'diff.statusA': '新增',

@@ -241,20 +241,24 @@
  * 行本身是一颗 `ui/ButtonBase` 底座之外的定制件,所以皮肤在这里画;
  * 焦点环走全局 `:focus-visible`,这里一个字都不写。
  */
-.row {
-  width: 100%;
+/*
+ * **一行两层**(批⑤):外框收底色与那颗开态点,里面那颗钮才是「打开这个文件的
+ * 改动」。理由在 `ChangeList` 那一处 —— 空心的开态点自己是一颗钮,套在另一颗钮
+ * 里是非法 DOM。底色因此挪到外框上:不挪的话行尾那颗点周围会缺一块底。
+ * **行高仍旧恒定**(`--files-row-h`,与文件树共用那一格 token):窗口化按
+ * 「行序 × 行高」反推位置,这是算式的前提。
+ */
+.rowWrap {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
   height: var(--files-row-h);
-  padding: 0 var(--sp-2);
+  padding-right: var(--sp-2);
   border-radius: var(--r-1);
-  background: none;
-  text-align: left;
   transition: background var(--dur) var(--ease);
 }
 
-.row:hover {
+.rowWrap:hover {
   background: var(--st-hover);
 }
 
@@ -265,6 +269,24 @@
 
 .rowSel:hover {
   background: var(--st-sel-hover);
+}
+
+.row {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: 100%;
+  padding: 0 0 0 var(--sp-2);
+  background: none;
+  text-align: left;
+}
+
+/* 行尾那颗开态点的**位置**(画法整件在 `ui/OpenDot`)。与文件树那一行同一格缝。 */
+.openDot {
+  flex: none;
+  margin-left: var(--sp-1);
 }
 
 /*
@@ -347,12 +369,25 @@
   color: var(--text-4);
 }
 
+/*
+ * ± 那两个数。**两枚语义色各朝正文色走一档**(批⑤ 补,`gate:a11y` 第 10 屏
+ * 抓到的):它们是 10px 的字,而 AA 对 18.66px 以下的字要 4.5:1 —— 深色主题下
+ * `--ok` 在这块底上实测 4.05–4.44(选中那一行的底更亮,差得更多),`--danger` 4.30。
+ *
+ * **不改那两枚 token**(别处的语义色底 / 图标依赖它们,而那些地方过得了线),也
+ * 不新造一枚颜色:朝 `--text-1` 混一档,深色主题里它变亮、浅色主题里它变暗 ——
+ * **两个方向都是朝「与底的对比更大」走**,所以这一句不必分主题写。
+ * 混色这一手与上面那条通知行的底(`color-mix(… --danger 8% …)`)同源。
+ *
+ * 病历:这条红在屏上活了两周没人看见 —— `gate:a11y` 的夹具没解符号链接,第 10 屏
+ * 一直扫的是「读不到」那一档(判词在 `scripts/gate-a11y.mjs` 的 `projectsRoot` 上)。
+ */
 .statAdd {
-  color: var(--ok);
+  color: color-mix(in srgb, var(--ok) 72%, var(--text-1));
 }
 
 .statDel {
-  color: var(--danger);
+  color: color-mix(in srgb, var(--danger) 72%, var(--text-1));
 }
 
 /* ── 整文件视图 ───────────────────────────────────────────────────────── */
@@ -362,7 +397,13 @@
  * 而不是里面的一个 sticky 件(sticky 件要么占一整行的流、要么得靠浮动去躲,
  * 两条都是在用定位机制补一个本该由布局回答的问题)。
  */
+/*
+ * 批⑤:这块正文有**两个宿主** —— 一格自己的 tab(`change:` 那一种内容,`.layer`
+ * 是列向 flex,所以要 `flex: 1` 才铺满)与改动面 `panel` 档那条分栏(`.split` 的
+ * 第三个网格项,网格项不读 flex-*,那一格因此是空操作)。一份样式两处用,不分叉。
+ */
 .fileArea {
+  flex: 1;
   min-height: 0;
   min-width: 0;
   display: flex;
@@ -380,10 +421,18 @@
   position: relative;
   overflow: auto;
   overscroll-behavior: contain;
-  border-left: var(--bw-1) solid var(--line-1);
   /* 这块面坐在面板那张 `--surface-2` 上:行号列与符号列的不透明底要读同一个色,
    * 不说就会在数字底下露出一条别的颜色(判词见 tokens.css 的 `--code-face`)。 */
   --code-face: var(--surface-2);
+  background: var(--surface-2);
+}
+
+/*
+ * 那条**左边界**只属于内联那一档:它画的是「列与正文之间那条缝」。自己占一格 tab
+ * 的时候左边没有列,再画一条就是凭空多一条线(批⑤)。
+ */
+.fileArea[data-change-inline='true'] .body {
+  border-left: var(--bw-1) solid var(--line-1);
 }
 
 /*

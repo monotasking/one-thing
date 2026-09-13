@@ -57,6 +57,28 @@ function regionForMode(mode: FileOpenMode, ref: ContentRef): RegionId | 'panel' 
 }
 
 /**
+ * **按当下这一档,把任意一格内容开出去**(批⑤;从 `openFileInCurrentTarget` 里
+ * 抽出来的那两行)。
+ *
+ * ── 为什么是一只泛化的口,而不是改动面自己抄一份 ──────────────────────────
+ * 用户 09-14 的裁定原话是「查看文件的 diff 走默认的文件的 tab 行为」——**同一档
+ * 偏好、同一条落点翻译**。抄一份的下场是七档里哪一档哪天改了判据(浮窗那一档
+ * 「同一份内容已经有一扇窗就交回那一扇」正是这种判据),两条路只会修好一条。
+ * 所以这只函数只认 `ContentRef`,**一个种类名都不出现**:`file` 与 `change` 两处
+ * 消费它,第三种内容要走同一档时不必再动这只文件。
+ *
+ * 回 `'panel'` = 这一档**不进树**(「面板内」),落点归调用方自己那条分栏 ——
+ * 文件那一路是 `workbench.openInPanel`(拼贴台那一格瞬态字段),改动面那一路是
+ * 它自己的本地瞬态(那条分栏画的是哪个文件不落盘)。这一层不替它们选,因为
+ * 「面板内」这四个字在两块面里指的本来就是两条不同的分栏。
+ */
+export function openRefByFileMode(ref: ContentRef): RegionId | 'panel' {
+  const region = regionForMode(useFileOpenMode.getState().mode, ref)
+  if (region !== 'panel') useWorkbenchStore.getState().openRef(ref, { region })
+  return region
+}
+
+/**
  * 打开一份文件 —— 读它,并按当下这一档摆好。
  *
  * ── 单击与 ↵ 是**同一条路**(W6-a,设计 `workbench-tabs-2026-09.md` §3)────
@@ -70,15 +92,13 @@ function regionForMode(mode: FileOpenMode, ref: ContentRef): RegionId | 'panel' 
  */
 export function openFileInCurrentTarget(path: string): void {
   if (!path) return
-  const ref = fileRef(path)
-  const region = regionForMode(useFileOpenMode.getState().mode, ref)
-  const workbench = useWorkbenchStore.getState()
-  if (region === 'panel') {
-    workbench.openInPanel(path)
+  // 落点那两行归上面那只泛化口(批⑤:改动面走的是同一档)。这里只剩「文件」
+  // 自己那两件:面板内那一档的落点,与那一发读。
+  if (openRefByFileMode(fileRef(path)) === 'panel') {
+    useWorkbenchStore.getState().openInPanel(path)
   } else {
     // 两档互斥:开进树里就把分栏收起来(一份内容只该有一个落点)。
-    workbench.closePanel()
-    workbench.openRef(ref, { region })
+    useWorkbenchStore.getState().closePanel()
   }
   void useViewerSource.getState().openFile(path)
 }
