@@ -362,6 +362,67 @@ describe('overlay 车道', () => {
     await waitFor(() => expect(screen.queryByTestId('chat-pending-failed')).toBeNull())
   })
 
+  /*
+   * ── 所见即所发(09-14,正本 §6.2)────────────────────────────────────────
+   * 两条,各钉一半:在飞那一格**画的是段**,以及落账那一拍**不换节点**。
+   */
+  it('在飞那一格画的是**段**,不是 `entry.text` 那一串', async () => {
+    const { container } = await mount([created(1)])
+    await act(async () => {
+      sessionSource().getState().send('看看 @/repo/src/a.ts', 0, [
+        { kindId: null, value: { kind: 'text', text: '看看 ' } },
+        { kindId: 'file', value: { kind: 'fileRef', path: '/repo/src/a.ts' } },
+      ])
+    })
+    const bubble = container.querySelector('article[data-role="user"]')
+    // 屏上是一枚 chip(basename),不是那一整串绝对路径 —— 而**发出去的**仍是它。
+    expect(bubble?.textContent).toBe('看看 a.ts')
+    expect(bubble?.querySelector('[data-ref-kind="fileRef"]')).toBeTruthy()
+    /*
+     * **反证**:把 `UserBubble` 里那句 `<UserMessageBody …/>` 换回画
+     * `{entry.text}` 纯文本(= 09-14 之前 `OverlayRow` 的原样)→ 这一条当场读到
+     * `看看 @/repo/src/a.ts`,也就是用户看见的「chip → 整串路径 → 另一种 chip」
+     * 里中间那一形。(**只摘 `segments` 一格不够**:那一支会回落到
+     * `segmentReferenceText(entry.text)`,而 `@<绝对路径>` 正好认得回来 ——
+     * 回落本身是设计,见 `UserMessageBody` 的三来源判据链。)
+     */
+    expect(bubble?.textContent).not.toContain('/repo/src/a.ts')
+  })
+
+  it('落账不换节点:同一个 DOM 节点从 pending 翻成 landed', async () => {
+    const { container } = await mount([created(1)])
+    await act(async () => void sessionSource().getState().send('所见即所发'))
+    const pending = container.querySelector('article[data-role="user"]')
+    expect(pending?.getAttribute('data-pending')).toBe('pending')
+    const entry = sessionSource().getState().overlay[0]
+    const messageId = entry.kind === 'pending' ? (entry.messageId ?? '') : ''
+    expect(messageId).not.toBe('')
+
+    /*
+     * 落账那一拍:账本上多了那条消息,overlay 那一格被认领掉。这里直接推那一格
+     * 状态(认领的判据归 `chat-fold.reconcileOverlay` 自己那份用例)—— 这一条
+     * 钉的是**这一层**:同一张有序表里,同一把 key、同一种元素 = 同一个 DOM 节点。
+     */
+    await act(async () => {
+      sessionSource().setState({
+        messages: [
+          { id: messageId, role: 'user', content: '所见即所发', timestamp: T0 },
+        ] as never,
+        overlay: [],
+      })
+    })
+    const landed = container.querySelector('article[data-role="user"]')
+    // **同一个引用** —— 不是「长得一样」,是 React 保住了那个节点。
+    expect(landed).toBe(pending)
+    expect(landed?.getAttribute('data-pending')).toBeNull()
+    expect(landed?.getAttribute('data-message-id')).toBe(messageId)
+    /*
+     * **反证**:把乐观行的 key 从 `entry.messageId` 改回 `entry.id`
+     * → `landed` 与 `pending` 不再是同一个引用(React 认不出「还是它」),
+     * 真机门 `gate:composer-send` 的 ⑦b 同时红。
+     */
+  })
+
   it('拒绝一组问题:进流,但说得轻一点', async () => {
     await mount([created(1)])
     await act(async () => {

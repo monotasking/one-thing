@@ -19,7 +19,8 @@ import {
 } from '../data/session-view-state'
 import { CHAT_WINDOW_STEP, growChatWindow, useChatWindowStart } from './chat-window'
 import { sessionRefIdOf } from './session-ref'
-import type { OverlayEntry, ProjectedMessage } from '../data/chat-fold'
+import type { ProjectedMessage } from '../data/chat-fold'
+import type { ResolvedSegment } from '../references/segment'
 import { useT, type TFn } from '../i18n'
 import { resolveIcon } from '../components/icons'
 import { EXPAND_HOLD_MS, SCROLL_ANCHOR_SETTLE_MS } from '../components/motion'
@@ -34,6 +35,7 @@ import { StreamReadout } from './message/StreamReadout'
 import { MessageSourceFoot } from './research/SourceFoot'
 import { SegmentView } from './SegmentView'
 import { UserMessageBody } from './user-message'
+import type { UserContentPart } from './user-message'
 import { FocusScope } from '../focus/FocusScope'
 import { usePanelVisibility } from './visibility'
 import { Dots } from '../ui/Dots'
@@ -289,7 +291,42 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
               * 后缀,起点只减不增(判词在 `chat-window.ts`),所以这里一格特判都没有:
               * 全量到齐时 `visible === messages`,与从前逐字相同。
               */}
-            {visible.flatMap((message) => {
+            {/*
+              * ── 账本行与在飞行是**一张有序表**(09-14,所见即所发;正本 §6.2)──
+              * 从前它们是两句 JSX(`{visible.flatMap(…)}{overlay.map(…)}`)。两句
+              * 表达式在 React 眼里是 `.column` 的**两格孩子**,key 各管各的 ——
+              * 所以一条消息落账那一刻,在飞那一格从第二格里消失、账本那一行在第一格
+              * 里出现:**两个 DOM 节点**,中间必然有一次挂载与一次卸载,用户看见的
+              * 就是气泡闪一下重画一遍。
+              *
+              * 合成一张之后,乐观行的 key 是 `entry.messageId`、账本用户行的 key 是
+              * `message.id` —— **同一个字符串**,元素类型又同为 `UserBubble`,于是
+              * React 在同一个父数组里按 key 认出「还是它」,DOM 节点原样留着,落账
+              * 那一拍只改 `data-pending` 与那一格不透明度。
+              *
+              * `flatMap` 那一层保留:上下文更新那道折痕是**跟在某条消息后面的一行**,
+              * 它与消息同属这张表。
+              */}
+            {[
+              ...visible.flatMap((message) => {
+              if (message.role === 'user') {
+                const row = (
+                  <UserBubble
+                    key={message.id}
+                    t={t}
+                    sessionId={sessionId}
+                    messageId={message.id}
+                    text={message.content}
+                    parts={message.contentParts}
+                    status="landed"
+                    attachments={0}
+                    flash={message.id === flashMessageId}
+                  />
+                )
+                return hasContextDelta(message.turnContext)
+                  ? [row, contextSeamRow(message)]
+                  : [row]
+              }
               const row = (
                 <MessageRow
                   key={message.id}
@@ -322,26 +359,38 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
                * 键空间,而这一行的整篇 memo 短路(60 万 token 会话 3–4fps 那笔账)
                * 全靠它的 key 与位置一格不动。
                */
-              if (message.role !== 'user' || !hasContextDelta(message.turnContext)) return [row]
-              return [
-                row,
-                /* `.rowLate` = **事后出现的行**(判词在 `ChatStream.module.css`):
-                   这一行不是随消息一起来的,它在回合开张之后才补上,所以高度 / 行距 /
-                   不透明度三量一起软着陆。类名里没有折痕的名字 —— 第三种事后出现的行
-                   拼上它就够。 */
-                <article
-                  key={`${message.id}#context`}
-                  className={`${s.row} ${s.rowLate}`}
-                  data-context-of={message.id}
-                >
-                  <ContextDeltaSeam turnContext={message.turnContext} />
-                </article>,
-              ]
-            })}
-
-            {overlay.map((entry) => (
-              <OverlayRow key={entry.id} t={t} entry={entry} sessionId={sessionId} />
-            ))}
+              return [row]
+              }),
+              /*
+               * 在飞那几格**紧跟在账本末尾**(顺序按 entry 先后)。它们与上面那几行
+               * 在同一张表里 —— 判词见这张表开头那一段。
+               */
+              ...overlay.map((entry) => (
+                entry.kind === 'notice'
+                  ? <NoticeRow key={entry.id} t={t} />
+                  : (
+                      <UserBubble
+                        /*
+                         * key = 这条消息**将来在账本上的 id**(发送前就铸好了,
+                         * `chat-source.send`)。账本那一行用的是同一个字符串,所以
+                         * 落账那一拍 React 认出「还是它」,DOM 节点原样留着。
+                         * 没有 `messageId` 的旧形 entry(steering 降级那条路自己铸 id)
+                         * 退回 `entry.id` —— 那一条落账时仍会换节点,**留账**:
+                         * 要根治得改 `steerMessage` 的签名(正本 §6.2 末)。
+                         */
+                        key={entry.messageId ?? entry.id}
+                        t={t}
+                        sessionId={sessionId}
+                        text={entry.text}
+                        segments={entry.segments}
+                        status={entry.status === 'failed' ? 'failed' : 'pending'}
+                        attachments={entry.attachments}
+                        error={entry.error}
+                        entryId={entry.id}
+                      />
+                    )
+              )),
+            ]}
           </div>
         </div>
         {/*
@@ -1195,13 +1244,8 @@ const MessageRow = memo(function MessageRow({
 
   return (
     <article className={className} data-message-id={message.id} data-role={role}>
-      {role === 'user' && (
-        <div className={s.user}>
-          {/* 两格都给:`content` 是模型版(技能引用在它里面是整份 SKILL.md),
-              显示版住在 `contentParts` 里 —— 判据与理由在 user-message 文件头。 */}
-          <UserMessageBody text={message.content} parts={message.contentParts} />
-        </div>
-      )}
+      {/* 用户那一条**不走这一行**了(09-14):它与在飞那几格同为 `UserBubble`,
+          否则落账那一拍元素类型一换,同 key 也保不住那个 DOM 节点。 */}
 
       {/* data-prose:节奏表的钩子 —— 错误卡是一件东西,按物件档留白(节奏表在
           ChatStream.module.css)。 */}
@@ -1288,48 +1332,149 @@ const MessageRow = memo(function MessageRow({
   )
 })
 
-function OverlayRow({ t, entry, sessionId }: { t: TFn; entry: OverlayEntry; sessionId: string }) {
+/**
+ * **一条用户发言 —— 不论它此刻在账本上还是还在飞**(09-14,所见即所发;正本 §6.2)。
+ *
+ * ── 它为什么是一只组件而不是两只 ──────────────────────────────────────────
+ * 从前在飞与落账是两只(`OverlayRow` 与 `MessageRow` 的 user 分支),画法也不同:
+ * 在飞画 `{entry.text}` 纯文本(一整串 `@/绝对路径`),落账画 `contentParts` 切出来
+ * 的 chip。于是用户按下回车看见的是 **chip → 整串路径 → 另一种 chip**,两次换形。
+ *
+ * 合成一只之后,落账那一拍 React 在同一张表里按 key 认出「还是它」——
+ * **DOM 节点原样留着**,变的只有 `data-pending` 与那一格不透明度。这就是样例页
+ * 「屏上读数:气泡 DOM 前后逐字相同」在真壳里的实现。
+ *
+ * ── 三张状态表 ────────────────────────────────────────────────────────────
+ * ① **生命周期**:乐观建(`chat-source.send` 那一次 `set`)→ 落账,同节点翻成
+ *    `landed` → 发不出去翻 `failed` → 重试翻回 `pending` → 「不发了」卸载。
+ *    没有挂载 / 卸载动作要做:两口动作是 store 上的,没有订阅也没有计时器。
+ *    **换宿主**不适用(它长在消息列里,不进浮窗 / 架子)。
+ *    **留账**:steering 降级那条路自己铸 id,乐观那一格没有 `messageId`,
+ *    落账时 key 从 `entry.id` 换成 `message.id` —— 那一条仍会换节点。
+ * ② **UI 生命状态**:`pending`(淡一档)/ `failed`(危险底 + 脚注两钮)/
+ *    `landed`(常态)。没有 empty / loading:一条发言要么在,要么不在。
+ *    **超量**:一条消息 60 枚引用 + 2000 字 —— 段序列按引用数线性,chip 自己
+ *    `max-width` 截断(`--refchip-name-max`),气泡按 `.user` 的 80% 宽折行;
+ *    这一行整体走 `.row` 的 `content-visibility: auto`,没进视口不排版。
+ * ③ **UI 交互状态**:chip 的 rest / hover / focus / pending 归 `ReferenceChip`
+ *    (全壳一份皮);失败脚注那两颗微型文字动作 rest / hover 归 `.pendingAction`。
+ *    气泡本身没有 hover / 选中态 —— 它不是一个可操作的东西。
+ *
+ * `memo`:与 `MessageRow` 同一条理由(流式期间列表数组每帧是新的)。props 里
+ * `segments` / `parts` 按消息或 entry 的引用稳住,其余是原始值,默认浅比就够。
+ */
+const UserBubble = memo(function UserBubble({
+  t,
+  sessionId,
+  messageId,
+  text,
+  parts,
+  segments,
+  status,
+  attachments,
+  error,
+  entryId,
+  flash,
+}: {
+  t: TFn
+  sessionId: string
+  /** 账本上那条的 id。在飞时缺席 —— 它还不是账本上的一条。 */
+  messageId?: string
+  text?: string
+  parts?: readonly UserContentPart[]
+  segments?: readonly ResolvedSegment[]
+  status: 'pending' | 'failed' | 'landed'
+  attachments: number
+  error?: string
+  /** overlay 那一格的号(两口动作按它认)。落账之后缺席。 */
+  entryId?: string
+  flash?: boolean
+}) {
   // 两口动作也跟着这条会话走 —— overlay 是「这条会话的屏幕」上的车道。
   const retry = useChatSourceOf(sessionId, (st) => st.retry)
   const dismiss = useChatSourceOf(sessionId, (st) => st.dismiss)
+  const landed = status === 'landed'
+  const failed = status === 'failed'
 
-  // 拒绝也进流:一次没回答**也是一次回答**,不该在记录里消失,只是说得轻一点。
-  if (entry.kind === 'notice') {
-    return <div className={`${s.user} ${s.declined}`}>{t('ask.rejected')}</div>
-  }
-
-  const failed = entry.status === 'failed'
   return (
-    <div
-      className={[s.user, s.pending, failed && s.pendingFailed].filter(Boolean).join(' ')}
-      data-testid={`chat-pending-${entry.status}`}
+    /*
+     * `article[data-role="user"]` 是 DOM 契约(门在数它、TOC 按 `data-message-id`
+     * 找它)。在飞那一格**也是它** —— 不然落账那一拍元素形一换,同 key 也保不住
+     * 那个节点。`data-pending` 是「此刻是哪一档」的产地(落账之后它就不在了)。
+     */
+    <article
+      className={[s.row, flash && s.flash].filter(Boolean).join(' ')}
+      data-message-id={messageId}
+      data-role="user"
+      data-pending={landed ? undefined : status}
     >
-      {entry.text}
-      {entry.attachments > 0 && (
-        <span className={s.sentAtt}>
-          <ClipIcon className={s.sentAttIcon} strokeWidth={1.8} aria-hidden="true" />
-          {entry.attachments}
-        </span>
-      )}
-      {failed && (
-        <span className={s.pendingFoot}>
-          {/* 失败的理由照抄后端说的 —— 渲染层不替它编一句更好听的。 */}
-          <span className={s.pendingError}>{entry.error}</span>
-          {/*
-            * 三类判的第三类:脚注上的**微型静默文字动作**(fs-micro / 无边框无底 /
-            * 长在一行错误说明的旁边),视觉本该定制 —— 与批 3 把「加载更多」判进
-            * 基座同一形。换成 `ui/Button` 会在这一行里塞进两颗 28 高的描边钮,
-            * 那不是等价替换而是改版。皮肤留本地,清 UA 归 `ui/ButtonBase`。
-            */}
-          <ButtonBase className={s.pendingAction} onClick={() => retry(entry.id)}>
-            <RetryIcon className={s.pendingIcon} strokeWidth={1.9} aria-hidden="true" />
-            {t('chat.retry')}
-          </ButtonBase>
-          <ButtonBase className={s.pendingAction} onClick={() => dismiss(entry.id)}>
-            {t('chat.discard')}
-          </ButtonBase>
-        </span>
-      )}
-    </div>
+      <div
+        className={[s.user, !landed && s.pending, failed && s.pendingFailed]
+          .filter(Boolean)
+          .join(' ')}
+        /* 门与用例按它找在飞那一格;落账之后它**不在了** —— 那正是「认领成了」。 */
+        data-testid={landed ? undefined : `chat-pending-${failed ? 'failed' : 'sending'}`}
+      >
+        {/* 三个来源一条判据链:现成的段 ▷ 部件 ▷ 正文(判词在 user-message 文件头)。 */}
+        <UserMessageBody text={text} parts={parts} segments={segments} />
+        {attachments > 0 && (
+          <span className={s.sentAtt}>
+            <ClipIcon className={s.sentAttIcon} strokeWidth={1.8} aria-hidden="true" />
+            {attachments}
+          </span>
+        )}
+        {failed && entryId !== undefined && (
+          <span className={s.pendingFoot}>
+            {/* 失败的理由照抄后端说的 —— 渲染层不替它编一句更好听的。 */}
+            <span className={s.pendingError}>{error}</span>
+            {/*
+              * 三类判的第三类:脚注上的**微型静默文字动作**(fs-micro / 无边框无底 /
+              * 长在一行错误说明的旁边),视觉本该定制 —— 与批 3 把「加载更多」判进
+              * 基座同一形。换成 `ui/Button` 会在这一行里塞进两颗 28 高的描边钮,
+              * 那不是等价替换而是改版。皮肤留本地,清 UA 归 `ui/ButtonBase`。
+              */}
+            <ButtonBase className={s.pendingAction} onClick={() => retry(entryId)}>
+              <RetryIcon className={s.pendingIcon} strokeWidth={1.9} aria-hidden="true" />
+              {t('chat.retry')}
+            </ButtonBase>
+            <ButtonBase className={s.pendingAction} onClick={() => dismiss(entryId)}>
+              {t('chat.discard')}
+            </ButtonBase>
+          </span>
+        )}
+      </div>
+    </article>
+  )
+})
+
+/** 拒绝也进流:一次没回答**也是一次回答**,不该在记录里消失,只是说得轻一点。 */
+function NoticeRow({ t }: { t: TFn }) {
+  return <div className={`${s.user} ${s.declined}`}>{t('ask.rejected')}</div>
+}
+
+/**
+ * ── 上下文更新那一道折痕(U5,09-09 裁定)────────────────────────────────
+ * `turnContext` 是**宿主在这一回合开始时补给模型的上下文** —— 是回合的事,
+ * 不是用户说的话。数据照旧存在用户消息上(它是发给模型的那条消息的一部分,
+ * 账本一个字不动),**呈现**却不该挂在气泡下面:挂在那里读起来像
+ * 「用户还说了这些」。所以它是用户那一行**之后**、下一行**之前**的独立一行,
+ * 与压缩折痕同属「系统在两回合之间做的事」这一族。
+ *
+ * 它**不带 `data-message-id`** —— 那个属性是 TOC / `locate-message` 找消息的
+ * 唯一接缝,多一个不是消息的元素挂上去,钢琴键就会落到一行折痕上。
+ * 它报的是 `data-context-of`:这道折痕说的是**哪条消息**那一回合的事。
+ *
+ * `.rowLate` = **事后出现的行**(判词在 `ChatStream.module.css`):这一行不是随
+ * 消息一起来的,它在回合开张之后才补上,所以高度 / 行距 / 不透明度三量一起软着陆。
+ */
+function contextSeamRow(message: ProjectedMessage) {
+  return (
+    <article
+      key={`${message.id}#context`}
+      className={`${s.row} ${s.rowLate}`}
+      data-context-of={message.id}
+    >
+      <ContextDeltaSeam turnContext={message.turnContext} />
+    </article>
   )
 }

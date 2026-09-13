@@ -2,6 +2,7 @@ import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'
 import { useModelsSource } from '../data/models-source'
 import { composerSink } from './sink'
+import type { ResolvedSegment } from '../references/segment'
 import { configureDraftRevoke, resetComposerDrafts } from './drafts'
 import * as T from './transitions'
 import { pickDrawer } from './types'
@@ -113,7 +114,7 @@ export interface ComposerStore extends ComposerState {
   rejectAsk: () => void
 
   /* 发送 */
-  send: (text: string, toSession?: string) => boolean
+  send: (text: string, toSession?: string, segments?: readonly ResolvedSegment[]) => boolean
 }
 
 /** 一块面板的 store 句柄(`zustand/vanilla`,与 `data/chat-source` 同形)。 */
@@ -275,11 +276,17 @@ function createComposerStore(sessionId: string): ComposerStoreApi {
      * 空串(`chatSources.get('')` 查无此人 → 静默不发),那正是首开最常见的一步。
      * 所以它是**一个参数**,不是一格状态:一次性的例外不该变成一格会漂的事实。
      */
-    send: (text, toSession) => {
+    send: (text, toSession, segments) => {
       const body = text.trim()
       if (!body) return false
       const atts = get().attachments
-      if (!composerSink().send(body, atts.length, toSession ?? sessionId)) return false
+      /*
+       * **段跟着这句话一起走**(09-14):乐观气泡画的是段,发出去的是它的投影。
+       * 这里一个字都不碰段 —— 输入面读出来什么,交出去的就是什么(`trim` 只作用
+       * 在那句话上;段是原样,首尾空白由画的那一层按 `pre-wrap` 处理,与账本
+       * 回来之后的那一条逐字同)。
+       */
+      if (!composerSink().send(body, atts.length, toSession ?? sessionId, segments)) return false
       revoke(atts)
       set({ attachments: [], attOpen: false, drawerKind: null })
       return true

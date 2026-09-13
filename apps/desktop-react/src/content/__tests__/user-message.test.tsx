@@ -247,10 +247,17 @@ describe('画', () => {
     expect(document.activeElement).toBe(chip)
   })
 
+  /*
+   * 09-14 皮 B:技能那一枚的记号从字符 `◇` 换成真图标(`Sparkles`,`aria-hidden`)
+   * —— 所以 `textContent` 里不再有那个字。断言换的是**这一件形变**,判据
+   * (「不可点 = 不是按钮」)一个字没动。
+   */
   it('命令与技能不可点(不是按钮)', () => {
     const { container } = render(<UserMessageBody text="/skill:commit 提交" />)
     expect(screen.queryByRole('button')).toBeNull()
-    expect(container.textContent).toBe('◇commit 提交')
+    expect(container.textContent).toBe('commit 提交')
+    // 图标在,而且它不念给读屏听(名字才是身份)。
+    expect(container.querySelector('svg[aria-hidden="true"]')).toBeTruthy()
   })
 
   it('超量:一条消息里 50 个引用 + 一段长正文,五十枚 chip 全在', () => {
@@ -373,7 +380,8 @@ describe('画:有 contentParts 就按部件画', () => {
         parts={[skillPart(), { type: 'text', content: ' 帮我看看' }]}
       />,
     )
-    expect(container.textContent).toBe('◇lenovo-scripts 帮我看看')
+    // 皮 B:记号 `◇` 换成了真图标(不进 `textContent`),名字一个字没变。
+    expect(container.textContent).toBe('lenovo-scripts 帮我看看')
     expect(container.textContent).not.toContain('Lenovo VoiceConnector')
   })
 

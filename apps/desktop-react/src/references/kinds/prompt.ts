@@ -1,6 +1,6 @@
 import { t } from '../../i18n'
 import { registerReferenceKind } from '../registry'
-import s from '../../content/user-message.module.css'
+import s from '../ReferenceChip.module.css'
 import type { ReferenceKind } from '../kind'
 
 /**
@@ -34,7 +34,8 @@ export const promptReferenceKind: ReferenceKind<never, { kind: 'promptRef'; titl
    * 跟着换,不会卡在旧语言上。
    */
   render: (ref) => ({
-    className: s.prompt,
+    // 皮 B(09-14):与命令同一形 —— 两者都是**已经发生过的事**的记号,不是链接。
+    className: s.token,
     label: `[${ref.title || t('chat.ref.promptUntitled')}]`,
     clickable: false,
   }),

@@ -77,6 +77,8 @@ import {
   SkipBack,
   SkipForward,
   Heart,
+  // 09-14 引用 chip 皮 B:技能那一枚的真图标(从前是一个 ◇ 字符记号)。
+  Sparkles,
   // B3-b:设置页「身份」那一行的删钮(X 会被读成「关掉」;会删数据的钮该长得像删)。
   Trash2,
 } from 'lucide-react'
@@ -183,6 +185,7 @@ const REGISTRY: Record<string, LucideIcon> = {
   SkipBack,
   SkipForward,
   Heart,
+  Sparkles,
   Trash2,
 }
 

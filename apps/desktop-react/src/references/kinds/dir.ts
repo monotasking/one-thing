@@ -5,7 +5,7 @@ import { basename } from '../../content/tools/result'
 import { openDirectoryPanel } from '../../content/dir-open'
 import { registerReferenceKind } from '../registry'
 import { isDirectoryPath, PATH_REF_PATTERN, pathRefOf } from './path-ref'
-import s from '../../content/user-message.module.css'
+import s from '../ReferenceChip.module.css'
 import type { ReferenceKind } from '../kind'
 
 /**
@@ -40,8 +40,10 @@ export const dirReferenceKind: ReferenceKind<FileMention, { kind: 'dirRef'; path
   id: 'dir',
 
   draft: {
-    chip: (hit) => ({ label: `@${ensureTrailingSlash(hit.label)}`, tone: 'reference' }),
-    token: (hit) => createFileToken(ensureTrailingSlash(hit.path)),
+    // 尾斜杠在**落稿那一刻**补进路径里(判词在文件头),所以它写在 `toRef` 上:
+    // 从这一刻起「这是个目录」就是这枚 Ref 自己的事实,记号与呈现都从它算。
+    toRef: (hit) => ({ kind: 'dirRef' as const, path: ensureTrailingSlash(hit.path) }),
+    token: (ref) => createFileToken(ref.path),
     // 记号与文件那一种同形(`{{file:…}}` 装的就是一条路径),展开当然也是同一只。
     expand: expandFileTokens,
   },

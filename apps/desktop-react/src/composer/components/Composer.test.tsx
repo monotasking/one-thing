@@ -483,8 +483,14 @@ describe('@ 引用:候选是真的,插进去的是 token', () => {
     const refocus = vi.spyOn(box, 'focus')
     fireEvent.mouseDown(screen.getByText('/repo/src/model-capability.ts'))
     expect(state().drawerKind).toBeNull()
-    // 屏幕上是一枚写着 `@路径` 的 chip(呈现)。
-    expect(box.textContent).toContain('@/repo/src/model-capability.ts')
+    /*
+     * 屏幕上是一枚 chip(呈现)。**写的是 basename**(09-14 皮 B):草稿里那一枚
+     * 与气泡里那一枚今天是同一个组件、同一份 `render(ref)` 画的 —— 从前草稿写
+     * `@/repo/src/model-capability.ts`、气泡写 `model-capability.ts`,同一枚引用
+     * 两种形,按下回车就换一次。这是「所见即所发」那一单唯一一处可感知的形变。
+     */
+    expect(box.textContent).toContain('model-capability.ts')
+    expect(box.textContent).not.toContain('@/repo/src/model-capability.ts')
     expect(refocus).toHaveBeenCalled()
     refocus.mockRestore()
 
@@ -540,7 +546,9 @@ describe('@ 引用:候选是真的,插进去的是 token', () => {
     await settleMentions()
 
     fireEvent.mouseDown(screen.getByText('/repo/src/lib'))
-    expect(box.textContent).toContain('@/repo/src/lib/')
+    // 屏幕上是目录名带尾斜杠(呈现;与气泡里那一枚逐字同一份 `render`),
+    // **交出去的**才是那条带尾斜杠的绝对路径 —— 下面 `data-token` 与 `handed` 两条。
+    expect(box.textContent).toContain('lib/')
     expect(box.querySelector('[data-token]')?.getAttribute('data-token')).toBe(
       createFileToken('/repo/src/lib/'),
     )
@@ -560,7 +568,7 @@ describe('@ 引用:候选是真的,插进去的是 token', () => {
     expect(box.querySelector('[data-token]')?.getAttribute('data-token')).toBe(
       createFileToken('/repo/src/codex.ts'),
     )
-    expect(box.textContent).toContain('@/repo/src/codex.ts')
+    expect(box.textContent).toContain('codex.ts')
     expect(box.textContent?.endsWith('/')).toBe(false)
   })
 })
@@ -728,7 +736,9 @@ describe('/ 命令抽屉:命令 / 技能 / 插件三个组头', () => {
     const row = screen.getByText('/skill:writing')
     fireEvent.mouseDown(row)
     const box = inputBox()
-    expect(box.textContent).toContain('/skill:writing')
+    // chip 上写的是技能名(与气泡里那一枚同一份 `render`);`/skill:writing`
+    // 是它**交出去**的那截字,下面 `handed` 那一条钉的正是它。
+    expect(box.textContent).toContain('writing')
     // 幽灵占位说的是「接着说你要它干什么」。
     expect(box.querySelector('[data-arg-ghost]')?.textContent).toBe('[说明]')
     expect(handed).toHaveLength(0)
@@ -756,7 +766,7 @@ describe('/ 命令抽屉:命令 / 技能 / 插件三个组头', () => {
     expect(at).toBeGreaterThan(0)
     for (let i = 0; i < at; i += 1) fireEvent.keyDown(box, { key: 'ArrowDown' })
     fireEvent.keyDown(box, { key: 'Enter' })
-    expect(box.textContent).toContain('/skill:writing')
+    expect(box.textContent).toContain('writing')
   })
 })
 

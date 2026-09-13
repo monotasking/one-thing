@@ -6,6 +6,7 @@ import {
   useChatSourceOf,
 } from '../data/chat-source'
 import { useExposeStore } from '../expose/store'
+import type { ResolvedSegment } from '../references/segment'
 
 /**
  * 输入框与聊天之间的**接缝**(D3)。
@@ -27,8 +28,18 @@ export interface ComposerSink {
    *
    * `sessionId` 是**交给谁**(W5-c-2):它由叫这一口的那块面板自己说,不再由
    * 这只文件去问一句「当前会话是谁」—— 判词见下面 `realSink` 那一段。
+   *
+   * `segments` 是这句话的**段**(09-14,所见即所发):它是 `text` 的**产地**
+   * (`text` 是它的投影),一路穿到那格乐观气泡上,于是在飞的那一枚 chip 与落账
+   * 之后那一枚是同一份 `render(ref)` 画的。缺席 = 这条路上没有段可言(ask 交卷、
+   * 命令回落),乐观气泡照旧切 `text`。
    */
-  send(text: string, attachments: number, sessionId: string): boolean
+  send(
+    text: string,
+    attachments: number,
+    sessionId: string,
+    segments?: readonly ResolvedSegment[],
+  ): boolean
   /**
    * 挂一条**本地提示**。它说的正是「这件事没有进账本」(拒绝一组问题不是一条
    * 消息),所以它走 overlay 车道,而不是发送。
@@ -74,7 +85,8 @@ export interface ComposerSink {
  * 不认识 `expose`(只剩 `startSession` 那一口还要它,而那一口本来就没有会话)。
  */
 const realSink: ComposerSink = {
-  send: (text, attachments, sessionId) => sendChatMessage(text, attachments, sessionId),
+  send: (text, attachments, sessionId, segments) =>
+    sendChatMessage(text, attachments, sessionId, segments),
   notice: (kind, sessionId) => pushChatNotice(kind, sessionId),
   abort: (sessionId) => abortChatRun(sessionId),
   // 惰性建会话时没有「当前会话」,所以当前项目必然是 null —— 与 ⌘N 首开同义。

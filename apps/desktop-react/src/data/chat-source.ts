@@ -27,6 +27,7 @@ import {
   type ProjectedMessage,
   type Tail,
 } from './chat-fold'
+import type { ResolvedSegment } from '../references/segment'
 import {
   askFromPendingInfo,
   askFromRequestEvent,
@@ -291,7 +292,16 @@ export interface ChatSourceState {
    */
   open: (sessionId: string) => Promise<void>
   /** 发一条纯文本消息。返回 false = 空话,压根没离开输入框。 */
-  send: (text: string, attachments?: number) => boolean
+  send: (
+    text: string,
+    attachments?: number,
+    /**
+     * 这句话的**段**(09-14,所见即所发)。它与那一格乐观 entry 是同一次 `set`
+     * 的两半:屏幕上画的是段,交出去的是它的投影 `text`。缺席 = 没有段可言
+     * (非输入框那几条路),画的那一头照旧切 `text`。
+     */
+    segments?: readonly ResolvedSegment[],
+  ) => boolean
   /** 中止正在跑的那一轮。没有在跑的轮次时是**恒等**(不发命令、不报错)。 */
   abort: () => void
   /** 重试一条失败的 pending。 */
@@ -1854,7 +1864,7 @@ export function createChatSource(sessionId: string): ChatSource {
       // 「换当前会话」是注册表的活,不是这台机器的(见类型上的注)。
       open: (next: string) => chatSources.openCurrent(next),
 
-      send: (text, attachments = 0) => {
+      send: (text, attachments = 0, segments) => {
         const body = text.trim()
         if (!body) return false
         const target = get().sessionId
@@ -1876,6 +1886,9 @@ export function createChatSource(sessionId: string): ChatSource {
            */
           messageId: crypto.randomUUID(),
           text: body,
+          // 段与 `messageId` 同一格 entry、同一次 `set` —— 屏幕上那一枚 chip 与
+          // 认领用的那个身份是同一个动作的两半(判词在 `PendingSend.segments`)。
+          ...(segments && segments.length > 0 ? { segments } : {}),
           attachments,
           status: 'sending' as const,
           seenUserIds: userMessageIds(get().messages),
@@ -2596,8 +2609,13 @@ if (import.meta.hot) {
  * `sessionId` 缺省 = 「当前会话」。W5-b 之后 composer 会显式传焦点叶那一条 ——
  * 参数排在最后而不是最前,正是为了那一天能一处一处地换过去而不惊动别的调用点。
  */
-export function sendChatMessage(text: string, attachments = 0, sessionId?: string): boolean {
-  return sourceFor(sessionId)?.getState().send(text, attachments) ?? false
+export function sendChatMessage(
+  text: string,
+  attachments = 0,
+  sessionId?: string,
+  segments?: readonly ResolvedSegment[],
+): boolean {
+  return sourceFor(sessionId)?.getState().send(text, attachments, segments) ?? false
 }
 
 export function pushChatNotice(kind: 'ask-rejected', sessionId?: string): void {

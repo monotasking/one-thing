@@ -14,6 +14,13 @@ import { referenceKindOf } from './registry'
  * 每加一种引用就多一个。今天它只读那一种自述交出来的 `ChipSpec` **数据表**:
  * 图标 / 记号 / 标签 / 提示 / 可不可点全由那一种说,这只文件一个种类名都不认得。
  *
+ * ── 09-14:它从「气泡里那一枚」升成**三个宿主那一枚** ──────────────────────
+ * 输入框的草稿(`ComposerInput` 的宿主节点 + `createPortal`)、在飞的乐观气泡
+ * (`ChatStream` 的 `UserBubble`)、落账的气泡(`content/user-message`)画的都是
+ * 这一只、读的都是同一份 `render(ref)`。所以一条消息从按下回车到落账**一次形都
+ * 不换** —— 那正是「所见即所发」在代码里的那一句(正本 §6)。皮住在
+ * `ReferenceChip.module.css`,同样只有一份。
+ *
  * ── 两形,判据是「点得点不得」 ────────────────────────────────────────────
  *  · 可点 = 一枚真按钮(`ui/ButtonBase`,裸钮三类判的第③类:它有自己的形,
  *    不该硬套 `ui/Button`);提示走 `ui/Tooltip`(禁 native `title=`),
@@ -81,15 +88,33 @@ export function ReferenceChip({ kindId, value }: { kindId: string; value: unknow
     </>
   )
 
+  /*
+   * 屏幕上那句提示:**这一种自述了什么就画什么**,三档按具体程度排 ——
+   * 路径(两层形)▷ 一截数据(URL,不过字典)▷ 字典里那一句。这只文件照旧一个
+   * 种类名都不认得:它读的是表上那一格,不是「这个 label 看起来像不像路径」
+   * (判词整段在 `content/model/title-tip.ts`)。
+   */
+  const hint = spec.tooltipKey ? t(spec.tooltipKey, spec.tooltipArgs) : undefined
+  const tip = spec.tooltipPath ? (
+    <PathText path={spec.tooltipPath.path} home={home} layout="stacked" dir={spec.tooltipPath.dir} />
+  ) : (
+    spec.tooltipText ?? hint
+  )
+
   if (!spec.clickable) {
-    return (
+    /*
+     * 不可点 = 一枚 `<span>`,**但它照样可以有提示**(09-14,网页那一枚要说出
+     * 整条 URL)。span 进不了 Tab 序,所以这一形的提示只有悬停一条路 ——
+     * 那正是「它不是一个可操作的东西」的诚实后果,不必给它硬挂一个 aria-label。
+     */
+    const plain = (
       <span className={spec.className} data-ref-kind={spec.dataKind}>
         {body}
       </span>
     )
+    return tip ? <Tooltip content={tip}>{plain}</Tooltip> : plain
   }
 
-  const hint = spec.tooltipKey ? t(spec.tooltipKey, spec.tooltipArgs) : undefined
   const button = (
     <ButtonBase
       className={spec.className}
@@ -103,17 +128,6 @@ export function ReferenceChip({ kindId, value }: { kindId: string; value: unknow
     >
       {body}
     </ButtonBase>
-  )
-
-  /*
-   * 屏幕上那句提示:**这一种自述了路径就画路径**,否则就是 `tooltipKey` 那句话。
-   * 这只文件照旧一个种类名都不认得 —— 它读的是表上那一格,不是「这个 label
-   * 看起来像不像路径」(判词整段在 `content/model/title-tip.ts`)。
-   */
-  const tip = spec.tooltipPath ? (
-    <PathText path={spec.tooltipPath.path} home={home} layout="stacked" dir={spec.tooltipPath.dir} />
-  ) : (
-    hint
   )
 
   return tip ? <Tooltip content={tip}>{button}</Tooltip> : button

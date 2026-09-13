@@ -4,7 +4,7 @@ import type { CommandEntry } from '../../data/commands-source'
 import { ASK_DEMO_SPEC, DEV_COMMANDS } from '../../composer/data'
 import { matchCommands } from '../../composer/transitions'
 import { registerReferenceKind } from '../registry'
-import s from '../../content/user-message.module.css'
+import s from '../ReferenceChip.module.css'
 import type { PickContext, PickResult, ReferenceKind, RowSpec } from '../kind'
 
 /**
@@ -31,13 +31,25 @@ export function commandRow(entry: CommandEntry): RowSpec {
   }
 }
 
+/** 一条命令发出去之后,它在那句话里就是开头那个词 —— Ref 里因此只有那个词。 */
+export interface CommandRef {
+  kind: 'command'
+  token: string
+}
+
 /**
- * 命令那一族**共用的落稿**(三家自述各自登记,但落稿的形只有一种):
- * 命令徽 + 一个空格 + 参数占位。徽上写什么、交出去就是什么 —— 它没有第二个身份,
- * 所以 `token` 那一格空着。
+ * 命令那一族**共用的落稿**(命令与插件命令两家登记,落稿的形只有一种)。
+ *
+ * 徽上写什么、交出去就是什么 —— 它没有第二个身份,所以 `token(ref)` 就是
+ * `ref.token` 本人。**这一格仍然要写出来**(09-14 起 `token` 不是可选格):
+ * 缺席就只能回到「屏幕上写什么、交出去就是什么」,而那正是这一单拆掉的东西。
+ *
+ * 技能**不在**这一族里了:它的 Ref 带着名字(气泡里画的是名字,不是 `/skill:名`),
+ * 所以它有自己的 `toRef`(见 `kinds/skill.ts`),只借这里的 `argHint`。
  */
 export const commandDraft = {
-  chip: (entry: CommandEntry) => ({ label: entry.name, tone: 'token' as const }),
+  toRef: (entry: CommandEntry): CommandRef => ({ kind: 'command', token: entry.name }),
+  token: (ref: CommandRef) => ref.token,
   /*
    * 参数提示跟着命令一起插进去:`argHint` 是这条命令自己带的一格
    * (产地 `commands-source.argHintOf`,**全仓唯一那句 usage 解析**),
@@ -70,10 +82,7 @@ function useBuiltinCommands(ctx: PickContext): PickResult<CommandEntry> {
  */
 const COMMAND_HEAD = /^\/([A-Za-z][A-Za-z0-9_-]*(?::[A-Za-z0-9_-]+)?)(?=\s|$)/
 
-export const commandReferenceKind: ReferenceKind<
-  CommandEntry,
-  { kind: 'command'; token: string }
-> = {
+export const commandReferenceKind: ReferenceKind<CommandEntry, CommandRef> = {
   id: 'command',
 
   source: {
@@ -118,10 +127,14 @@ export const commandReferenceKind: ReferenceKind<
     },
   },
 
+  /*
+   * 皮 B(09-14):命令**不是链接** —— 它是已经发生过的事的记号,所以不带图标、
+   * 不画下划线,走记号那一形(墨色 mono 小块 + 5% 墨底)。不可点:屏幕上不该
+   * 出现一个按下去没反应的东西。
+   */
   render: (ref) => ({
-    className: s.command,
+    className: s.token,
     label: ref.token,
-    // 不可点:它是**已经发生过的事**的记号,不是一个还能按的按钮。
     clickable: false,
   }),
 }

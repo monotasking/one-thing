@@ -1,23 +1,52 @@
-import { useImperativeHandle, useRef } from 'react'
+import { useCallback, useImperativeHandle, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { KeyboardEvent, RefObject } from 'react'
 import { useFocusScope } from '../../focus/useFocusScope'
 /* 引用种类的注册 barrel。**谁要查表,谁负责保证表是装好的**(与 `workbench/
  * CenterRegion` 对内容种类那一条逐字同判例)—— 草稿出口要查那一枚 chip 的
- * `expand`,所以这块面板自己保证表在。生产那条路仍旧由 `main.tsx` 先 import 一次。 */
+ * `token` / `expand`,画它又要查 `render`,所以这块面板自己保证表在。
+ * 生产那条路仍旧由 `main.tsx` 先 import 一次。 */
 import '../../references'
-import { draftTokenTailPattern, expandReferenceToken, parseToken } from '../../references/registry'
+import { ReferenceChip } from '../../references/ReferenceChip'
+import { projectSegmentsToText } from '../../references/segment'
+import type { ResolvedSegment, TextSegmentValue } from '../../references/segment'
+import {
+  draftTokenTailPattern,
+  expandReferenceToken,
+  parseToken,
+  referenceTokenOf,
+} from '../../references/registry'
 import type { TokenHit } from '../../references/registry'
-import type { ChipDraft } from '../../references/kind'
+import rs from '../../references/ReferenceChip.module.css'
 import s from './Composer.module.css'
 
 /**
- * 本体行的输入面。它是 composer 里**唯一**一块直接动 DOM 的地方,理由是
- * 行内 chip:@ 引用要变成一枚不可编辑的整体(退格是整枚删),
- * 而 React 的受控 value 表达不了「文本 + 不可编辑节点」的混排。
+ * 本体行的输入面。它是 composer 里**唯一一块直接动 DOM、并且往 DOM 里挂 portal
+ * 的地方**(09-14 改了半句判词,见下),理由是行内 chip:@ 引用要变成一枚不可
+ * 编辑的整体(退格是整枚删),而 React 的受控 value 表达不了「文本 + 不可编辑
+ * 节点」的混排。
  *
  * 所以这里的分工是:光标在哪、插进哪 —— 宿主的事实,由这个文件量;
- * 「这截 token 算不算触发」「命中哪几条」—— 判断,全在 transitions 里。
- * 这个文件一条业务规则都不许有。
+ * 「这截 token 算不算触发」「命中哪几条」「这一枚画成什么」—— 判断,全在
+ * 注册表与各家自述里。这个文件一条业务规则都不许有。
+ *
+ * ── 09-14:chip 不再是「手画的一个 span」,是**一枚宿主节点 + 一格 portal** ──
+ * 从前 `insert` 用 `document.createElement` 亲手画出那枚 chip(类名 `.chip` /
+ * `.cmdTok`、`textContent = label`),于是同一枚引用在草稿里一种写法、在气泡里
+ * 另一种写法(`render(ref)`)—— 用户按下回车看见的是 chip → 整串路径 → 另一种
+ * chip,两次换形。今天草稿里那一枚是:
+ *
+ *   一枚空的 `contenteditable=false` span(`data-kind` / `data-ref` / `data-token`)
+ *   + `createPortal(<ReferenceChip kindId value />, 那枚 span)`
+ *
+ * 于是输入框、在飞的乐观气泡、落账的气泡是**同一个 React 组件、同一份
+ * `render(ref)`**,连 hover / tooltip / 可不可点都一样。判词全文在正本 §6.2。
+ *
+ * **宿主节点表由「扫」维护,不由「记」维护**:退格整枚删、粘贴、撤销、铺回一份
+ * 存下来的稿 —— 每一条都会改那几枚节点,而 React 这一侧并不在场。所以四处同步点
+ * (`insert` / `appendReference` / `restore`+`clear` / `onInput`)调的是同一只
+ * `syncHosts()`:现读 DOM 里所有带 `data-ref` 的节点,与上一拍逐个比身份,
+ * **变了才 setState**。打一行普通的字不会让这块面板重渲一次。
  */
 
 export interface ComposerInputHandle {
@@ -30,27 +59,18 @@ export interface ComposerInputHandle {
   /**
    * 把光标处的 `@xx` / `/xx` 换成一枚 chip。
    *
-   * `kindId` 是**这一枚算哪一种引用**(注册表上的 id)。它落在 chip 的
-   * `data-kind` 上,`text()` 交出去时据此查那一种的 `expand` —— 所以这个文件
-   * 不必知道有几种引用、哪一种要展开成什么。
-   *
-   * `chip` 是那一种自述交出来的两格:写什么(`label`)、画成哪一形(`tone`)。
-   * **两档 tone 是这块输入面自己的呈现词汇表**(皮肤在 `Composer.module.css`),
-   * 不是种类名 —— 加一种引用不必在这里加一档,除非它真要长成第三个样子。
-   *
-   * `token` 是**这枚 chip 真正代表的那截文本**(`@` 引用是 `{{file:<绝对路径>}}`)。
-   * 给了就挂在 `data-token` 上;不给 = 屏幕上写什么、交出去就是什么。
+   * `kindId` 是**这一枚算哪一种引用**(注册表上的 id),`ref` 是那一种自述
+   * `draft.toRef(hit)` 交出来的**那一枚引用本身**。两格一起落在宿主节点的
+   * `data-kind` / `data-ref` 上:草稿出口据此算记号(`draft.token`)与展开
+   * (`draft.expand`),portal 据此画(`render`)。所以这个文件不必知道有几种
+   * 引用、哪一种写成什么样。
    *
    * `argHint` 是**这条命令还要人填的那一截**(`<path>` / `[分类]`),由
    * `data/commands-source.argHintOf` 解析好递进来 —— 这个文件一条业务规则都没有,
    * 当然也不该在这里再解析一遍 usage。给了就在那个空格之后挂一枚灰色幽灵占位,
    * 人打第一个字它就散(见 `dissolveArgGhost`)。
    */
-  insert: (
-    kindId: string,
-    chip: ChipDraft,
-    opts?: { token?: string; argHint?: string },
-  ) => void
+  insert: (kindId: string, ref: unknown, opts?: { argHint?: string }) => void
   /**
    * **从外面**落一枚引用 chip(B3-b:浏览器叶的「把这一页交给对话」)。
    *
@@ -60,72 +80,145 @@ export interface ComposerInputHandle {
    * 追加而不是「插在光标处」,是因为「光标此刻在哪」在外部动作发生的那一刻
    * 不是一个可靠的事实(人刚刚点的是浏览器叶上的一颗菜单项)。
    *
-   * 与 `insert` 共用同一种 chip(`data-token` 挂 token),所以它走的是**同一条
-   * 出站路** —— `readDraft` 交出 `data-token`。它挂的是 `{{page:<tabId>}}`,
-   * 文件 token 那道展开只认 `{{file:`,所以页面这一枚原样过去,由 `chat-port`
-   * 在发送那一刻物化成一件带出处的附件(那一页此刻长什么样,只有那一刻知道)。
+   * 落下来的是**同一种宿主节点**,所以它走的是同一条出站路、画的是同一枚 chip。
    */
-  appendReference: (label: string, opts: { token: string; tip?: string }) => void
+  appendReference: (kindId: string, ref: unknown) => void
+  /**
+   * 这块可编辑区此刻的**段序列** —— 「段是真相」那句话的产地(09-14)。
+   *
+   * 文字段原样,引用段是那一枚 Ref 本人。交出去之后有两个读者:`text()`
+   * (投影成线上那句话)与发送那一刻的乐观气泡(原样画)。
+   */
+  segments: () => ResolvedSegment[]
+  /** 交出去的那句话。它是 `segments()` 的**投影**,不是第二次计算(见下)。 */
   text: () => string
   clear: () => void
   /**
    * **这块可编辑区此刻的 HTML**(W7-t / B2)。存草稿存的是它而不是 `text()` ——
-   * `@` 引用是**真节点**(不可编辑的 chip,真正代表的那截文本挂在 `data-token`
-   * 上),存纯文本等于换一格会话回来 chip 就散成几个字,而散掉之后发出去的那句话
+   * `@` 引用是**真节点**(不可编辑的 chip,那一枚引用本身挂在 `data-ref` 上),
+   * 存纯文本等于换一格会话回来 chip 就散成几个字,而散掉之后发出去的那句话
    * 与人看见的不再是同一句。
+   *
+   * portal 画进去的那几个元素**在这份 HTML 里**(它们是宿主节点的真孩子)——
+   * 无害:`restore` 铺回去之后 `syncHosts()` 会重新给每枚宿主挂一格 portal,
+   * React 接管那枚节点时先把里面清空。段的来源自始至终是 `data-ref`,不是
+   * 里面画着什么。
    */
   html: () => string
   /** 把一份存下来的稿铺回去(空串 = 清空,与 `clear()` 同义)。 */
   restore: (html: string) => void
 }
 
+/** 宿主节点表里的一格。`id` 只为 React 的 key —— DOM 节点本身不是一个稳定的键。 */
+interface ChipHost {
+  id: number
+  node: HTMLElement
+  kindId: string
+  ref: unknown
+}
+
 /**
- * 把这块可编辑区读成**交出去的那句话**。
- *
- * 与 `textContent` 的唯一差别是那一句 `data-token`:一枚文件 chip 屏幕上写的是
- * `@src/a.ts`(人心里的名字),而它真正代表的位置挂在 `data-token` 上
- * (`{{file:/abs/src/a.ts}}`)。「chip 是呈现,token 才是位置」正是
- * `@onething/runtime/prompts/prompt-references` 里 `FILE_REF_PATTERN` 那段注释说的事
- * (Vue 壳把 token 直接放在纯文本草稿里,由编辑器画成 chip;这块 contenteditable
- * 反过来,chip 是真节点、token 挂在它身上。两边**交出去的那句话逐字相同**,
- * 那才是要紧的)。
- *
- * ── 记号的展开就在这一句,而且只在这一句(09-12)──────────────────────────
- * 读到 `data-token` 之后**当场**问那一枚 chip 自报的种类要一句 `expand`
- * (`data-kind` → 注册表),于是这只函数交出去的已经是账本上最终落下的那串字节。
- * **这个文件不知道有几种引用**:哪一种要展开、展成什么样,是那一种自己的事;
- * 没有自述 / 没有 `expand` 的原样穿过去(浏览器叶那一枚 `{{page:…}}` 走的正是
- * 这一支 —— 它要到发送那一刻才知道那一页长什么样,物化仍归 `chat-port`)。
- *
- * 从前这道展开在 `chat-port.sendMessage` 里(理由是「单一出口」),而真机上它
- * 生出的是一条**永不消失的重复气泡**:发送那一刻 `chat-source` 先落一格乐观
- * overlay,`text` 是这里交出来的 token 句;出站时端口才展开,账本回来的是展开句;
- * `reconcileOverlay` 的认领判据是「正文逐字相同」,于是那一格 pending 永远等不到
- * 自己那条消息。**把展开挪到草稿的出口**,两边从此是同一串字节,认领一格不用改。
- * (存草稿存的是 `html()`,chip 是真节点 —— 所以展开只发生在「交出去」这条路上,
- * 存回来的稿里 token 一个字没变。)
- *
- * 其余一切照旧:`<br>` 与 contenteditable 自己包出来的 `<div>` 都不产生换行,
- * 与从前 `textContent` 的行为逐字一致(那是既有口径,这一批不动)。
+ * 发号器。**它是模块级的可变状态,而这里不配 HMR dispose** —— 判词:
+ * 那条法要退役的是「寿命跟着模块实例走、退不掉就会留下第二份活口」的东西
+ * (订阅 / 计时器 / 监听 / 注册表)。这一格既不持有任何人,也没有第二份:
+ * 它只管**别发出重号**,而热更之后框里那几枚节点身上的号还在(`html()` 存着),
+ * 归零反倒会与它们撞车。所以它靠下面 `scanHosts` 那句「见过更大的就抬上去」
+ * 自愈,而不是靠归零。
  */
-function readDraft(root: Node): string {
-  let out = ''
-  for (const node of Array.from(root.childNodes)) {
-    if (node.nodeType === Node.TEXT_NODE) {
-      out += node.textContent ?? ''
+let hostSeq = 0
+
+/**
+ * 现读这块可编辑区里的宿主节点(文档序)。
+ *
+ * 判据是 `data-ref` **在不在**,不是类名 —— CSS Modules 的类名是编译期哈希,
+ * 拿它当协议等于把样式表接进逻辑里(与幽灵占位那条 `data-arg-ghost` 同判)。
+ * 认不出 JSON 的那一枚整格跳过:它不是一枚引用,后面那条读法会把它当文字。
+ */
+function scanHosts(root: HTMLElement): ChipHost[] {
+  const out: ChipHost[] = []
+  for (const node of Array.from(root.querySelectorAll<HTMLElement>('[data-ref]'))) {
+    const kindId = node.dataset.kind
+    const raw = node.dataset.ref
+    if (!kindId || raw === undefined) continue
+    let ref: unknown
+    try {
+      ref = JSON.parse(raw)
+    } catch {
       continue
     }
     /*
-     * 参数幽灵占位整枚跳过(09-12):它是**画出来的一句提示**,不是人写的字。
-     * 判据挂在它自己身上(`data-arg-ghost`),不靠类名 —— CSS Modules 的类名
-     * 是编译期哈希,拿它当协议等于把样式表接进逻辑里。
+     * 号只为 React 的 key(DOM 节点本身不是一个稳定的键)。铺回一份存下来的稿时
+     * 号跟着 HTML 一起回来 —— 所以发号器要**抬到见过的最大号之上**,不然下一枚新
+     * chip 会发一个与铺回来那几枚撞车的号,两格 portal 抢同一个 key。
      */
-    if (node instanceof HTMLElement && node.dataset.argGhost !== undefined) continue
-    const el = node instanceof HTMLElement ? node : undefined
-    const token = el?.dataset.token
-    out += token === undefined ? readDraft(node) : expandReferenceToken(el?.dataset.kind, token)
+    if (node.dataset.hostId === undefined) node.dataset.hostId = String((hostSeq += 1))
+    const id = Number(node.dataset.hostId)
+    if (Number.isFinite(id) && id > hostSeq) hostSeq = id
+    out.push({ id, node, kindId, ref })
   }
   return out
+}
+
+/** 两拍宿主表是不是同一张(身份 + 序)。相同就不 setState —— 打字不该让这块面重渲。 */
+function sameHosts(a: readonly ChipHost[], b: readonly ChipHost[]): boolean {
+  return a.length === b.length && a.every((one, i) => one.node === b[i].node)
+}
+
+/**
+ * 把这块可编辑区读成**段**。
+ *
+ * 三支,顺序即语义:
+ *  · 文本节点 —— 原样一段文字;
+ *  · 参数幽灵占位(`data-arg-ghost`)—— 整枚跳过。它是**画出来的一句提示**,
+ *    不是人写的字;判据挂在它自己身上,不靠类名;
+ *  · 宿主节点(`data-ref`)—— 一段引用,值就是那一枚 Ref 本人。
+ *    **不往里递归**:里面是 portal 画出来的 chip,那是呈现不是内容。
+ *  · 只有 `data-token` 没有 `data-ref` 的 —— 09-14 之前那一形的 chip
+ *    (热更之后可能还躺在框里)。当场展成它代表的那截文本,于是**交出去的
+ *    那句话一个字不变**,只是它不再是一枚 chip。
+ *  · 其余元素 —— 递归。`<br>` 与 contenteditable 自己包出来的 `<div>` 都不产生
+ *    换行,与从前 `textContent` 的行为逐字一致(那是既有口径,这一批不动)。
+ */
+function readSegments(root: Node, out: ResolvedSegment[] = []): ResolvedSegment[] {
+  for (const node of Array.from(root.childNodes)) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      pushText(out, node.textContent ?? '')
+      continue
+    }
+    if (!(node instanceof HTMLElement)) {
+      // 不是元素也不是文本(注释 / SVG …)—— 照旧往下走,与从前 `readDraft` 逐字同。
+      readSegments(node, out)
+      continue
+    }
+    if (node.dataset.argGhost !== undefined) continue
+    const raw = node.dataset.ref
+    if (raw !== undefined && node.dataset.kind) {
+      try {
+        out.push({ kindId: node.dataset.kind, value: JSON.parse(raw) })
+        continue
+      } catch {
+        /* 认不出就当它是几个字 —— 往下掉到递归那一支。 */
+      }
+    }
+    const token = node.dataset.token
+    if (token !== undefined) {
+      pushText(out, expandReferenceToken(node.dataset.kind, token))
+      continue
+    }
+    readSegments(node, out)
+  }
+  return out
+}
+
+/** 相邻的文字并成一段(与 `references/segment.ts` 的那一只同一条纪律)。 */
+function pushText(out: ResolvedSegment[], text: string): void {
+  if (!text) return
+  const last = out[out.length - 1]
+  if (last && last.kindId === null) {
+    ;(last.value as TextSegmentValue).text += text
+    return
+  }
+  out.push({ kindId: null, value: { kind: 'text', text } satisfies TextSegmentValue })
 }
 
 /**
@@ -158,7 +251,12 @@ interface Props {
   onMove: (delta: number) => void
   onPick: () => void
   onEscape: () => void
-  onSend: (text: string) => void
+  /**
+   * 交出去那一下。**段与它的投影一起交**(09-14):乐观气泡画的是段、发出去的
+   * 是那句话,两者必须来自同一次读取 —— 分两口读就是两个产地,而中间隔着的那
+   * 一拍里人可能已经又打了一个字。
+   */
+  onSend: (text: string, segments: ResolvedSegment[]) => void
 }
 
 /**
@@ -206,12 +304,57 @@ export function ComposerInput({
   const ref = useRef<HTMLDivElement>(null)
   /* 这块可编辑区住在输入面板那一格作用域里,所以拿到的是它的句柄。 */
   const { activate } = useFocusScope()
+  /**
+   * 此刻框里那几枚宿主节点。它是**DOM 的投影**,不是第二份真相 ——
+   * 产地永远是那几枚节点身上的 `data-kind` / `data-ref`。
+   */
+  const [hosts, setHosts] = useState<readonly ChipHost[]>([])
+  const syncHosts = useCallback(() => {
+    const el = ref.current
+    const next = el ? scanHosts(el) : []
+    setHosts((prev) => (sameHosts(prev, next) ? prev : next))
+  }, [])
+
+  /** 造一枚宿主节点。空的 —— 里面画什么由 portal 说。 */
+  const makeHost = useCallback((kindId: string, value: unknown): HTMLElement => {
+    const host = document.createElement('span')
+    host.className = rs.host
+    host.dataset.kind = kindId
+    host.dataset.ref = JSON.stringify(value)
+    /*
+     * `data-token` 是这一枚在线上那句话里占的那截字。它由 `draft.token(ref)` 算,
+     * 落在节点上只为两件事:存下来的稿一眼看得懂,以及热更之后旧节点仍认得出。
+     * **段的产地是 `data-ref`** —— 投影那一句现算,不读这一格(不然记号与 Ref
+     * 就有了两个真相)。
+     */
+    const token = referenceTokenOf(kindId, value)
+    if (token !== undefined) host.dataset.token = token
+    host.contentEditable = 'false'
+    return host
+  }, [])
 
   useImperativeHandle(apiRef, () => ({
     element: () => ref.current,
-    text: () => (ref.current ? readDraft(ref.current) : ''),
+    segments: () => (ref.current ? readSegments(ref.current) : []),
+    /*
+     * ── 交出去的那句话 = 段的投影,而且只有这一条路 ─────────────────────────
+     * 与 `textContent` 的唯一差别是那一枚引用:屏幕上写的是 basename(呈现),
+     * 而它真正代表的位置由 `draft.token(ref)` 算出来、再由 `draft.expand` 展开
+     * (`{{file:/abs/src/a.ts}}` → `@/abs/src/a.ts`)。
+     *
+     * **展开就在这一句,而且只在这一句**(09-12):从前这道展开在
+     * `chat-port.sendMessage` 里(理由是「单一出口」),而真机上它生出的是一条
+     * **永不消失的重复气泡** —— 发送那一刻 `chat-source` 先落一格乐观 overlay,
+     * `text` 是这里交出来的 token 句;出站时端口才展开,账本回来的是展开句;
+     * `reconcileOverlay` 的认领判据是「正文逐字相同」,于是那一格 pending 永远
+     * 等不到自己那条消息。把展开挪到草稿的出口,两边从此是同一串字节。
+     * (存草稿存的是 `html()`,chip 是真节点 —— 展开只发生在「交出去」这条路上,
+     * 存回来的稿里 token 一个字没变。)
+     */
+    text: () => (ref.current ? projectSegmentsToText(readSegments(ref.current)) : ''),
     clear: () => {
       if (ref.current) ref.current.innerHTML = ''
+      syncHosts()
     },
     html: () => ref.current?.innerHTML ?? '',
     /*
@@ -231,8 +374,10 @@ export function ComposerInput({
       for (const ghost of Array.from(ref.current.querySelectorAll('[data-arg-ghost]'))) {
         ghost.remove()
       }
+      // 铺回来的那几枚宿主要重新挂上 portal —— 它们是新节点,上一张表里没有。
+      syncHosts()
     },
-    insert: (kindId, draft, opts) => {
+    insert: (kindId, value, opts) => {
       const el = ref.current
       if (!el) return
       const cur = caretToken(el)
@@ -247,13 +392,7 @@ export function ComposerInput({
        */
       const before = raw.slice(0, cur.offset).replace(draftTokenTailPattern(), '')
       const rest = raw.slice(cur.offset)
-      const chip = document.createElement('span')
-      chip.className = draft.tone === 'reference' ? s.chip : s.cmdTok
-      // 前缀(`@`)是那一种引用自己的写法,不是这块面板的规矩 —— label 自带。
-      chip.textContent = draft.label
-      chip.dataset.kind = kindId
-      if (opts?.token) chip.dataset.token = opts.token
-      chip.contentEditable = 'false'
+      const chip = makeHost(kindId, value)
       /*
        * chip 之后**恒有一个空格**,光标落在它后面 —— 接着打字就是接着说话。
        * 从前这里是一个 `' ' + rest` 的文本节点;现在空格与后半截分成两个节点,
@@ -286,6 +425,7 @@ export function ComposerInput({
       range.collapse(true)
       sel?.removeAllRanges()
       sel?.addRange(range)
+      syncHosts()
       /*
        * 插完一枚 chip 之后光标回到这块可编辑区 —— **作用域内部**的一次移动,
        * 所以走树的 `activate()`(它把焦点送到这块面声明的落点上,而在 write
@@ -294,23 +434,10 @@ export function ComposerInput({
        */
       activate('programmatic')
     },
-    appendReference: (label, opts) => {
+    appendReference: (kindId, value) => {
       const el = ref.current
       if (!el) return
-      const chip = document.createElement('span')
-      chip.className = s.chip
-      chip.textContent = label
-      chip.dataset.token = opts.token
-      /*
-       * **原生 `title` 在这里是允许的一格,而那不是例外主义**:禁令(「禁 native
-       * `title=`,提示一律 `ui/Tooltip`」)管的是**组件**,而这一枚 chip 是
-       * 手动造出来的 DOM 节点 —— 这块可编辑区是 composer 里唯一直接动 DOM 的地方
-       * (文件头第一段),React 的 Tooltip 挂不上一个 `document.createElement`
-       * 出来的节点。同一格在 `insert` 那一支里今天是**空缺**(文件 chip 没有
-       * 提示),这一支有 URL 可说,所以说出来。
-       */
-      if (opts.tip) chip.title = opts.tip
-      chip.contentEditable = 'false'
+      const chip = makeHost(kindId, value)
       // chip 之后恒有一个空格(与 `insert` 逐字同一条):接着打字就是接着说话。
       const gap = document.createTextNode(' ')
       el.appendChild(chip)
@@ -321,6 +448,7 @@ export function ComposerInput({
       range.collapse(true)
       sel?.removeAllRanges()
       sel?.addRange(range)
+      syncHosts()
       /*
        * 焦点进这块面 —— 人刚刚说的是「把这一页交给对话」,下一件事就是打字。
        * 走树的 `activate()` 而不是 `el.focus()`:这是一次**跨作用域**的搬焦点
@@ -369,40 +497,57 @@ export function ComposerInput({
       e.preventDefault()
       /*
        * **回车与发送键读同一口**(09-12 顺手结清)。从前这里是 `textContent`,
-       * 而发送键走的是 `text()`(= `readDraft`)—— 两者对一枚 chip 的答案本来
-       * 就不同:`readDraft` 交出 `data-token` 上那截真正代表的文本(展开之后是
-       * `@/abs/…`),`textContent` 交出屏幕上那几个字(`@src/a.ts`)。
-       * 也就是说同一句话「按回车发」和「点发送发」发出去的不是同一句。
-       * 参数幽灵占位让这道口子变得不能再留(它在 textContent 里,在草稿里没有),
-       * 所以两口在这里合成一口:**草稿只有一个读法**。
+       * 而发送键走的是 `text()` —— 两者对一枚 chip 的答案本来就不同。也就是说
+       * 同一句话「按回车发」和「点发送发」发出去的不是同一句。参数幽灵占位让
+       * 这道口子变得不能再留(它在 textContent 里,在草稿里没有),所以两口在
+       * 这里合成一口:**草稿只有一个读法**,而 09-14 起那个读法是**段**。
        */
-      onSend(ref.current ? readDraft(ref.current) : '')
+      const segments = ref.current ? readSegments(ref.current) : []
+      onSend(projectSegmentsToText(segments), segments)
     }
   }
 
   // `data-testid` 是给门用的落点:aria-label 是翻译过的文案,会跟着系统语言变。
   return (
-    <div
-      ref={ref}
-      className={s.input}
-      contentEditable
-      suppressContentEditableWarning
-      role="textbox"
-      /* contentEditable 本来就进 tab 序,但那是**浏览器行为**;role="textbox" 是
-       * 给辅助技术的**声明**。两者要对上,声明了可编辑就得显式声明可聚焦,
-       * 否则读屏软件按 ARIA 的说法去找焦点会落空(jsx-a11y 揪出的就是这条)。 */
-      tabIndex={0}
-      aria-multiline="true"
-      aria-label={placeholder}
-      data-testid="composer-input"
-      data-placeholder={placeholder}
-      onInput={() => {
-        // 先散提示、再报 token:摘掉那枚节点会改变光标前后的节点结构,
-        // 而 `caretToken` 读的正是那个结构。次序反过来就会按摘之前的现场报。
-        if (ref.current) dissolveArgGhost(ref.current)
-        onToken(ref.current ? (caretToken(ref.current)?.hit ?? null) : null)
-      }}
-      onKeyDown={handleKeyDown}
-    />
+    <>
+      <div
+        ref={ref}
+        className={s.input}
+        contentEditable
+        suppressContentEditableWarning
+        role="textbox"
+        /* contentEditable 本来就进 tab 序,但那是**浏览器行为**;role="textbox" 是
+         * 给辅助技术的**声明**。两者要对上,声明了可编辑就得显式声明可聚焦,
+         * 否则读屏软件按 ARIA 的说法去找焦点会落空(jsx-a11y 揪出的就是这条)。 */
+        tabIndex={0}
+        aria-multiline="true"
+        aria-label={placeholder}
+        data-testid="composer-input"
+        data-placeholder={placeholder}
+        onInput={() => {
+          // 先散提示、再报 token:摘掉那枚节点会改变光标前后的节点结构,
+          // 而 `caretToken` 读的正是那个结构。次序反过来就会按摘之前的现场报。
+          if (ref.current) dissolveArgGhost(ref.current)
+          /*
+           * 退格把一枚 chip 整个删掉(或者粘贴 / 撤销带进来几枚)之后对账。
+           * **不是每一下都 setState** —— `syncHosts` 先比身份,一样就是恒等
+           * (判词在它自己那儿):打一行普通的字,这块面板一次都不重渲。
+           */
+          syncHosts()
+          onToken(ref.current ? (caretToken(ref.current)?.hit ?? null) : null)
+        }}
+        onKeyDown={handleKeyDown}
+      />
+      {/*
+        * 每一枚宿主节点一格 portal。它们画进的是**那块可编辑区里面**的节点,
+        * 所以 DOM 上它们就长在 chip 该在的位置;React 这一侧它们是这只组件的
+        * 孩子,于是 hover / tooltip / 点击与气泡里那一枚逐字同一套。
+        */}
+      {hosts.map((host) => createPortal(
+        <ReferenceChip kindId={host.kindId} value={host.ref} />,
+        host.node,
+        String(host.id),
+      ))}
+    </>
   )
 }

@@ -11,7 +11,7 @@ import { basename } from '../../content/tools/result'
 import { openFileInCurrentTarget } from '../../content/viewer/open-target'
 import { registerReferenceKind } from '../registry'
 import { isDirectoryPath, PATH_REF_PATTERN, pathRefOf } from './path-ref'
-import s from '../../content/user-message.module.css'
+import s from '../ReferenceChip.module.css'
 import type { PickContext, PickResult, ReferenceKind } from '../kind'
 
 /**
@@ -102,9 +102,14 @@ export const fileReferenceKind: ReferenceKind<FileMention, { kind: 'fileRef'; pa
   },
 
   draft: {
-    // chip 上写的是相对路径(人心里的名字),它代表的是绝对路径的 `{{file:…}}`。
-    chip: (hit) => ({ label: `@${hit.label}`, tone: 'reference' }),
-    token: (hit) => createFileToken(hit.path),
+    /*
+     * 候选 → **这一枚引用**。09-14 之前这里交的是一枚 chip(`@<相对路径>`),
+     * 而气泡里那一枚由 `render` 画成 basename —— 同一个文件两种写法,按下回车
+     * 就换一次形。今天两边读的都是下面那只 `render`。
+     */
+    toRef: (hit) => ({ kind: 'fileRef' as const, path: hit.path }),
+    // chip 是呈现,token 才是位置(`@onething/runtime` 的 `FILE_REF_PATTERN` 那段注)。
+    token: (ref) => createFileToken(ref.path),
     /*
      * **展开在草稿出口,而且只在那里**(a00e1728):交出去的那一句必须与账本上
      * 最终落下的逐字相同,不然乐观上屏那一格永远认领不到自己那条消息。

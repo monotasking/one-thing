@@ -17,7 +17,8 @@ import { useExposeStore } from '../expose/store'
  * (「动作单产地 = 右键上下文菜单」),落点是这条缝。
  *
  * ── 落的是**一枚 chip,不是一段正文** ─────────────────────────────────────
- * chip 身上挂着 `data-token`,而草稿读出来的是那截 token(`{{page:<tabId>}}`)。
+ * chip 的宿主节点身上挂着 `data-ref`,而草稿读出来的是那一枚引用本身,
+ * 交出去那一刻投影成那截 token(`{{page:<tabId>}}`)。
  * 于是这条路与 `@` 选一个文件**逐字同一条出站路**:token 在草稿里占位,
  * 交出去那一刻由 `data/chat-port` 的**唯一那道展开**物化。点击那一刻**不取正文**
  * —— 20k 字进 store 会跟着草稿一起被存进每条会话的稿里,而人也许根本没发出去。
@@ -45,14 +46,20 @@ import { useExposeStore } from '../expose/store'
  * ③ UI 交互状态:不归这里(chip 的形在 `ComposerInput`)。
  */
 
-/** 一枚要落进输入框的引用。 */
+/**
+ * 一枚要落进输入框的引用。
+ *
+ * ── 09-14:两格,而且两格都是**表上的东西** ──────────────────────────────
+ * 从前这里是 `{label, token, tip}` —— 调用方自己拼「chip 上写什么」「提示说
+ * 什么」,于是网页那一种在表上有一份自述、在这条缝上又有一份手写的形。今天它
+ * 只说**哪一种**和**哪一枚**:记号由那一种的 `draft.token(ref)` 算,画成什么由
+ * 它的 `render(ref)` 说。这条缝因此一个种类名都不认得(与抽屉那条路同一个形)。
+ */
 export interface ComposerReference {
-  /** 屏幕上那枚 chip 写什么(页标题 → 主机名)。 */
-  label: string
-  /** 草稿里它真正代表的那截文本(`{{page:<tabId>}}`)。 */
-  token: string
-  /** 鼠标停上去说的整句(页面 URL)。缺席 = 不挂提示。 */
-  tip?: string
+  /** 注册表上的种类 id。 */
+  kindId: string
+  /** 那一种自述里的 Ref(形由它自己说 —— 这条缝不看里面有什么)。 */
+  ref: unknown
 }
 
 export type ComposerReferenceSink = (reference: ComposerReference) => void

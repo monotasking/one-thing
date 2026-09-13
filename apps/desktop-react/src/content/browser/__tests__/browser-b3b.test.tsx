@@ -19,6 +19,8 @@ import {
   type ComposerReference,
 } from '../../../composer/references'
 import { materializePageReferences } from '../../../data/page-references'
+import '../../../references'
+import { referenceKindOf } from '../../../references/registry'
 import { focusTree } from '../../../focus/registry'
 import { resetNativeViewKeymapDownlink } from '../../native-view/keymap-downlink'
 import { resetBrowserFind } from '../../../data/browser-find'
@@ -251,9 +253,19 @@ describe('把这一页交给对话', () => {
     await settle()
     await act(async () => { screen.getByText(t('browser.giveToChat')).click() })
 
+    /*
+     * 09-14(所见即所发):这条缝收的是**哪一种 + 哪一枚**,不再是调用方手拼的
+     * `{label, token, tip}` —— chip 上写什么、记号是哪几个字、提示说什么,三样
+     * 全归 `references/kinds/page.ts` 那一份自述。
+     */
     expect(landed).toEqual([
-      { label: 'Example', token: '{{page:t1}}', tip: 'https://example.test/a' },
+      {
+        kindId: 'page',
+        ref: { kind: 'pageRef', tabId: 't1', title: 'Example', url: 'https://example.test/a' },
+      },
     ])
+    // 那一枚在句子里占的那截字仍旧是它(记号由自述算,不由这条缝说)。
+    expect(referenceKindOf('page')!.draft!.token(landed[0].ref)).toBe('{{page:t1}}')
     /*
      * **反证**:把 `BrowserActionsMenu.giveToChat` 改成点击那一刻就
      * `readBrowserPage(tab.id)` → 这一条当场红。判词整段在

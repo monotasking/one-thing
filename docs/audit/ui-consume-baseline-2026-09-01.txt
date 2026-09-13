@@ -225,6 +225,10 @@
 #      所以没有一行要删。
 #
 # ── 今天这张表:**36 条**(全是 shared-vocab-css / debt 档)。
+#   2026-09-14(所见即所发):`Composer.module.css` 的 `.chip` 那一条**退役** ——
+#   草稿里那枚引用今天由 `references/ReferenceChip` 画,皮在
+#   `references/ReferenceChip.module.css`(`.ref` / `.token`,不撞保留词)。
+#   一枚引用从此只有一份皮,三个宿主(输入框 / 在飞气泡 / 落账气泡)共用。
 #    改动之后请把这个数一起改准 —— 09-03 发现它一直写着 37,是陈数。 ─────────
 #
 shared-vocab-css src/components/AgentChip.module.css:16 视觉词汇多产地(chip),待批 2 立件收编
@@ -236,7 +240,6 @@ shared-vocab-css src/components/DockTile.module.css:99 视觉词汇多产地(dot
 shared-vocab-css src/components/DockTile.module.css:100 视觉词汇多产地(dot),待批 2 立件收编
 shared-vocab-css src/components/DockTile.module.css:101 视觉词汇多产地(dot),待批 2 立件收编
 shared-vocab-css src/components/DockTile.module.css:102 视觉词汇多产地(dot),待批 2 立件收编
-shared-vocab-css src/composer/components/Composer.module.css:394 视觉词汇多产地(chip),待批 2 立件收编
 shared-vocab-css src/composer/components/Composer.module.css:426 视觉词汇多产地(pill),待批 2 立件收编
 shared-vocab-css src/composer/components/Composer.module.css:482 视觉词汇多产地(meter),待批 2 立件收编
 shared-vocab-css src/composer/components/Composer.module.css:499 视觉词汇多产地(meter),待批 2 立件收编

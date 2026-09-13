@@ -72,6 +72,27 @@ function SegmentView({ seg }: { seg: ResolvedSegment }) {
 }
 
 /**
+ * **一串段画出来的样子 —— 全壳唯一那一只**(09-14,所见即所发)。
+ *
+ * 三个宿主读它:输入框那块可编辑区(经 `ComposerInput` 的 portal,画的是单段)、
+ * 在飞的乐观气泡(`ChatStream` 的 `UserBubble`)、落账的气泡(下面那只
+ * `UserMessageBody`)。所以一条消息从按下回车到落账**一次形都不换** —— 从前
+ * 在飞那一段画的是 `entry.text` 纯文本(一整串绝对路径),那是三份形里的第二份。
+ *
+ * key 用下标:段序列是**一个不可变输入**的投影,同一条消息里它不会重排也不会
+ * 增删(消息正文改了就是另一条消息,输入变则整段重算)。
+ */
+export function SegmentsView({ segments }: { segments: readonly ResolvedSegment[] }) {
+  return (
+    <>
+      {segments.map((seg, i) => (
+        <SegmentView key={i} seg={seg} />
+      ))}
+    </>
+  )
+}
+
+/**
  * 气泡正文。换行仍旧由 `.user` 那句 `white-space: pre-wrap` 保留 —— 切分一个字符
  * 都不吃,拼回来与原文逐字相同。
  *
@@ -84,26 +105,27 @@ function SegmentView({ seg }: { seg: ResolvedSegment }) {
  * **空数组 = 没有**:`contentParts` 在投影那头只有 `length > 0` 时才挂上去,
  * 一个空数组只可能是某条路径传了个空壳 —— 按它画会画出一个空气泡。
  *
- * key 用下标:段序列是**一个不可变输入**的投影,同一条消息里它不会重排也不会
- * 增删(消息正文改了就是另一条消息,输入变则整段重算)。
+ * ── 第三个来源:**现成的段**(09-14,所见即所发)──────────────────────────
+ * 在飞的那一条没有账本,它手里只有输入框交出来的那串段。给了 `segments` 就用它,
+ * 一个字都不再切 —— 「段是真相,文本是投影」在这里的落点。三个来源一条判据链:
+ * 现成的段 ▷ 部件 ▷ 正文。
  */
 export function UserMessageBody({
   text,
   parts,
+  segments,
 }: {
-  text: string
+  text?: string
   parts?: readonly UserContentPart[]
+  segments?: readonly ResolvedSegment[]
 }) {
-  const segments = useMemo(
+  const resolved = useMemo(
     () =>
-      parts && parts.length > 0 ? segmentReferenceParts(parts) : segmentReferenceText(text),
-    [text, parts],
+      segments
+      ?? (parts && parts.length > 0
+        ? segmentReferenceParts(parts)
+        : segmentReferenceText(text ?? '')),
+    [segments, text, parts],
   )
-  return (
-    <>
-      {segments.map((seg, i) => (
-        <SegmentView key={i} seg={seg} />
-      ))}
-    </>
-  )
+  return <SegmentsView segments={resolved} />
 }

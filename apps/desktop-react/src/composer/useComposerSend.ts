@@ -16,6 +16,7 @@ import { notify } from '../services/notify'
 import { ASK_DEMO_SPEC, DEV_COMMANDS } from './data'
 import { composerSink } from './sink'
 import type { ComposerInputHandle } from './components/ComposerInput'
+import type { ResolvedSegment } from '../references/segment'
 import type { AskSpec } from './types'
 
 /**
@@ -51,7 +52,7 @@ export interface ComposerSendDeps {
    * `toSession` 缺席 = 发给这块面板自己的收件人;首开草稿态那一下点名刚建出来的
    * 那一条(判词整段在 `composer/store.send` 上)。
    */
-  send: (text: string, toSession?: string) => boolean
+  send: (text: string, toSession?: string, segments?: readonly ResolvedSegment[]) => boolean
 }
 
 /**
@@ -77,7 +78,7 @@ export function useComposerSend({
   openAsk,
   closeDrawer,
   send,
-}: ComposerSendDeps): (text: string) => void {
+}: ComposerSendDeps): (text: string, segments?: readonly ResolvedSegment[]) => void {
   const ensurePluginCommands = useCommandsSource((st) => st.ensurePluginCommands)
 
   /*
@@ -165,10 +166,16 @@ export function useComposerSend({
     [allCommands, ensurePluginCommands, sessionId, inputRef, openAsk, closeDrawer],
   )
 
-  /** 把这句话当**一条消息**交出去(命令那条岔口在 `doSend` 里,先分完才到这)。 */
+  /**
+   * 把这句话当**一条消息**交出去(命令那条岔口在 `doSend` 里,先分完才到这)。
+   *
+   * `segments` 是这句话的**段**(09-14):它一路穿到那格乐观气泡上,于是在飞的
+   * 那一枚 chip 与落账之后那一枚是同一份 `render(ref)` 画的。缺席 = 这条路上没有
+   * 段可言(命令执行完再当一句话发出去的那一支),乐观气泡照旧切 `text`。
+   */
   const sendPlain = useCallback(
-    (text: string) => {
-      if (send(text)) {
+    (text: string, segments?: readonly ResolvedSegment[]) => {
+      if (send(text, undefined, segments)) {
         // **发了一句话 = 这一格不再是「随手翻翻」**(C2 转正之一,设计 §4.1)。
         // 判据整件在 `content/session-open.promoteSessionSeat`(它自己会问那一格
         // 是不是预览格);这里只提供**时刻** —— 全壳唯一一处「一句话真的交出去了」。
@@ -200,7 +207,7 @@ export function useComposerSend({
            * 是空串(它就是那片「还没绑会话」的叶),而这一句的去处是新那条。
            * 判词整段在 `composer/store.send` 的 `toSession` 上。
            */
-          if (created && send(text, created)) {
+          if (created && send(text, created, segments)) {
             /* 与上面那一句同一条(C2 转正之一):首开草稿态发出的第一句话同样算数。
              * 转正的是**刚建出来那一条**的格子 —— 从前这里写 `sessionId`,靠的是
              * 内层那个同名 const 把外面那个遮住;W5-c 之后外面那个是这块面板的
@@ -219,7 +226,7 @@ export function useComposerSend({
   )
 
   return useCallback(
-    (text: string) => {
+    (text: string, segments?: readonly ResolvedSegment[]) => {
       /*
        * 命令先于消息。判据是 `parseDraftCommand`:**整段话**就是 `/词` 或
        * `/词 <参数>` 才算,所以「看看 /new 那条」照常是一句话。
@@ -234,7 +241,7 @@ export function useComposerSend({
           try {
             if (await runCommand(text)) return
             // 壳不执行这一条:原样当一句话发出去(`/goal …` 就走这里)。
-            sendPlain(text)
+            sendPlain(text, segments)
           } finally {
             running.current = false
             backToComposer()
@@ -242,7 +249,7 @@ export function useComposerSend({
         })()
         return
       }
-      sendPlain(text)
+      sendPlain(text, segments)
     },
     [runCommand, sendPlain],
   )

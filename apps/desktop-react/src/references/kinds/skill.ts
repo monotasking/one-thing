@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react'
+import { resolveIcon } from '../../components/icons'
 import { withoutBuiltinCollisions } from '../../data/commands-source'
 import type { CommandEntry } from '../../data/commands-source'
 import { useSkillsSource } from '../../data/skills-source'
@@ -6,7 +7,7 @@ import { matchCommands } from '../../composer/transitions'
 import { openSkillDirectory } from '../../content/skill-open'
 import { registerReferenceKind } from '../registry'
 import { commandDraft, commandRow } from './command'
-import s from '../../content/user-message.module.css'
+import s from '../ReferenceChip.module.css'
 import type { PickContext, PickResult, ReferenceKind } from '../kind'
 
 /**
@@ -26,8 +27,13 @@ import type { PickContext, PickResult, ReferenceKind } from '../kind'
  * `parse.part`:**绝不画 `part.content`**。
  */
 
-/** 正文形与部件形共用的那一个字。它只有一处。 */
-const SKILL_MARK = '◇'
+/**
+ * 正文形与部件形共用的那一枚图标(皮 B,09-14)。
+ *
+ * 从前这里是一个字符记号 `◇`。换成真图标是比稿拍板的直接后果:三种引用在一句话
+ * 里要靠图标分得开,而 `◇` 与 `▸` 这种字符在不同字体下宽窄、基线都不一样。
+ */
+const SkillIcon = resolveIcon('Sparkles')
 
 /** `/skill:<name>` 的前缀。技能与普通命令的分界只有这一处。 */
 const SKILL_HEAD = /^\/skill:([A-Za-z0-9_-]+)(?=\s|$)/
@@ -73,8 +79,23 @@ export const skillReferenceKind: ReferenceKind<CommandEntry, SkillRef> = {
     row: commandRow,
   },
 
-  // 落稿与命令逐字同一种形(徽 + 空格 + 参数占位)—— 技能引用本来就是一条命令。
-  draft: commandDraft,
+  /*
+   * 落稿的**动作**与命令同一种(徽 + 空格 + 参数占位,`argHint` 借命令那一族),
+   * 但落下来的那一枚**不是命令**:技能 Ref 带着名字,气泡里画的是名字而不是
+   * `/skill:名`。所以 `toRef` 在这里自己写一份 —— 09-14 之前它整只借
+   * `commandDraft`,那正是「草稿里一种写法、气泡里另一种写法」的产地。
+   */
+  draft: {
+    toRef: (entry) => ({
+      kind: 'skill' as const,
+      token: entry.name,
+      name: SKILL_HEAD.exec(entry.name)?.[1] ?? entry.name,
+    }),
+    // 两形共用一格:部件形没有 `token`(它从引擎那边来,壳里落不了稿),
+    // 照它自己的名字拼回用户打的那一句,与 `parse.part.typed` 逐字同源。
+    token: (ref) => (ref.kind === 'skill' ? ref.token : `/skill:${ref.name}`),
+    argHint: commandDraft.argHint,
+  },
 
   parse: {
     text: {
@@ -104,19 +125,28 @@ export const skillReferenceKind: ReferenceKind<CommandEntry, SkillRef> = {
     },
   },
 
+  /*
+   * 两形同皮同字,差的只有那一格能力(正文形没有 id,打不开任何东西,所以不可点)。
+   * 皮 B 之后连类名都是同一个 —— 可不可点由 `clickable` 说,不由色说。
+   */
   render: (ref) =>
     ref.kind === 'skill'
       ? {
           className: s.skill,
-          mark: SKILL_MARK,
+          // 两形都报身份(门与用例按 `data-ref-kind` 数 chip):正文形答 `skill`,
+          // 部件形答 `skillRef` —— 少一格会让「屏上有几枚引用」在两形之间不等。
+          dataKind: 'skill',
+          icon: SkillIcon,
+          iconClassName: s.skillIcon,
           label: ref.name,
-          // 正文形只有名字,没有 id —— 打不开任何东西,所以不可点。
+          labelClassName: s.refName,
           clickable: false,
         }
       : {
-          className: s.skillChip,
+          className: s.skill,
           dataKind: 'skillRef',
-          mark: SKILL_MARK,
+          icon: SkillIcon,
+          iconClassName: s.skillIcon,
           label: ref.name,
           labelClassName: s.refName,
           tooltipKey: 'chat.ref.openSkill',

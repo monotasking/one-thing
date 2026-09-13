@@ -1,8 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
+import { createElement } from 'react'
+import { render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import '..'
+import { SegmentsView } from '../../content/user-message'
 import {
   parseToken,
   referenceKindList,
@@ -11,7 +14,7 @@ import {
   registerReferenceKind,
   resetReferenceKinds,
 } from '../registry'
-import { segmentReferenceText } from '../segment'
+import { projectSegmentsToText, segmentReferenceText } from '../segment'
 import { buildPickView } from '../drawer'
 import type { ReferenceKind } from '../kind'
 
@@ -68,11 +71,31 @@ describe('① 旧枚举点:核心层不出现任何一种引用的名字', () =>
     ['composer/types.ts', '抽屉的来源那半边收成了「哪个触发字符」'],
     ['composer/usePickDrawer.ts', '候选怎么取、落稿插什么,八处分支全归自述'],
     ['composer/components/DrawerPickList.tsx', '组头 / 一行几格 / 空态六处分支全归自述'],
-    ['composer/components/ComposerInput.tsx', 'chip 画哪一形、记号怎么展开归自述'],
+    ['composer/components/ComposerInput.tsx', 'chip 画成什么、记号怎么算,两样都归自述'],
     ['content/user-message.tsx', '两张 switch 收成一条通路'],
+    /* 09-14 所见即所发新进来的三处:这条链从「气泡那一头」长到了「发送那一路」。 */
+    ['data/chat-source.ts', '段原样进那格乐观 entry,一个种类名都不看'],
+    ['data/chat-fold.ts', '`PendingSend.segments` 只是一串段,形归各家自述'],
+    ['content/ChatStream.tsx', '在飞与落账同一只 `UserBubble`,画法归 `render(ref)`'],
   ])('%s 里没有种类 id 字面量(%s)', (relative) => {
     const hits = codeOf(relative).match(KIND_LITERAL) ?? []
     expect(hits).toEqual([])
+  })
+
+  /**
+   * **`draft.chip(hit)` 那一格已经退役**(09-14):从前落稿那一头自己说「chip 上
+   * 写什么」,于是同一枚引用在草稿里一种写法、在气泡里另一种写法(`render(ref)`)
+   * —— 用户按下回车看见的就是 chip 换一次形。今天三个宿主只有一份形,所以这五处
+   * 里一句 `.chip(` 都不许再有。
+   */
+  it.each([
+    ['composer/usePickDrawer.ts'],
+    ['composer/components/ComposerInput.tsx'],
+    ['content/ChatStream.tsx'],
+    ['content/user-message.tsx'],
+    ['data/chat-source.ts'],
+  ])('%s 里没有一句 `.chip(` —— 落稿交的是 Ref,不是一枚画好的 chip', (relative) => {
+    expect(codeOf(relative)).not.toContain('.chip(')
   })
 
   it('`parseToken` 里没有 `@` / `/` 的手写正则 —— 触发表由自述并出来', () => {
@@ -160,8 +183,8 @@ describe('③ 陌生能力演练:@ 一条会话', () => {
       row: (hit) => ({ primary: hit.title }),
     },
     draft: {
-      chip: (hit) => ({ label: `@${hit.title}`, tone: 'reference' }),
-      token: (hit) => `{{session:${hit.id}}}`,
+      toRef: (hit) => ({ kind: 'sessionRef' as const, id: hit.id }),
+      token: (ref) => `{{session:${ref.id}}}`,
       expand: (token) => `@session:${token.slice('{{session:'.length, -2)}`,
     },
     parse: {
@@ -216,10 +239,11 @@ describe('③ 陌生能力演练:@ 一条会话', () => {
     ])
     expect(view.groups[0].entries[0].row.primary).toBe('上一条会话')
 
-    // ② 落稿:chip 写什么、草稿里那截记号长什么样、出站展成什么。
+    // ② 落稿:选中的候选变成哪一枚引用、它在句子里占哪几个字、出站展成什么。
     const hit = view.groups[0].entries[0].hit as SessionHit
-    expect(sessionKind.draft!.chip(hit)).toEqual({ label: '@上一条会话', tone: 'reference' })
-    const token = sessionKind.draft!.token!(hit)
+    const picked = sessionKind.draft!.toRef(hit)
+    expect(picked).toEqual({ kind: 'sessionRef', id: 's1' })
+    const token = sessionKind.draft!.token(picked)
     expect(token).toBe('{{session:s1}}')
     expect(sessionKind.draft!.expand!(token)).toBe('@session:s1')
 
@@ -234,6 +258,47 @@ describe('③ 陌生能力演练:@ 一条会话', () => {
     expect(spec.label).toBe('s1')
     expect(referenceKindOf('session')!.open!(segs[1].value as never)).toBe(true)
     expect(opened).toEqual(['s1'])
+  })
+
+  /**
+   * ── 演练的第二半:**在飞那一格也得画得出**(09-14,所见即所发;正本 §6.4)──
+   *
+   * 从前这段演练只问到「气泡认不认得出」—— 而在飞的那一格当时画的是
+   * `entry.text` 纯文本,一种新引用在那一段里必然是一串裸记号。今天它画的是
+   * **段**,所以演练要问到三个宿主:
+   *   ① composer 的草稿读得出这一枚(`segments()` 里它是一段引用,不是几个字);
+   *   ② 那串段原样进 `PendingSend.segments`,画出来是**同一枚 chip**;
+   *   ③ 落账之后按线上那句话重新切,切出来的还是**同一枚**。
+   *
+   * 三条全程**一个生产文件都不改** —— 这只文件里除了 `readFileSync` 与上面那份
+   * 假自述,没有任何生产路径的改动。
+   */
+  it('在飞那一格与落账那一格画的是同一枚(段 → 句子 → 段,往返不变)', () => {
+    off = registerReferenceKind(sessionKind)
+
+    // ① composer 那一头:草稿里那一枚是**一段引用**(Ref 原样躺着)。
+    const hit: SessionHit = { id: 's1', title: '上一条会话' }
+    const drafted = [
+      { kindId: null, value: { kind: 'text', text: '看看 ' } },
+      { kindId: sessionKind.id, value: sessionKind.draft!.toRef(hit) },
+      { kindId: null, value: { kind: 'text', text: ' 那条' } },
+    ]
+
+    // ② 在飞:`PendingSend.segments` 原样是它,画出来是那一枚 chip。
+    const flying = render(createElement(SegmentsView, { segments: drafted }))
+    expect(flying.container.textContent).toBe('看看 s1 那条')
+    expect(flying.container.querySelector('.session-chip')).toBeTruthy()
+
+    // ③ 落账:线上那句话(段的投影)重新切,切出来的还是同一枚。
+    const wire = projectSegmentsToText(drafted)
+    expect(wire).toBe('看看 @session:s1 那条')
+    const landed = segmentReferenceText(wire)
+    expect(landed.map((seg) => seg.kindId)).toEqual([null, 'session', null])
+    expect(landed[1].value).toEqual(drafted[1].value)
+
+    // 画出来逐字相同 —— 「一条消息从按下回车到落账一次形都不换」的那句读数。
+    const settled = render(createElement(SegmentsView, { segments: landed }))
+    expect(settled.container.innerHTML).toBe(flying.container.innerHTML)
   })
 
   it('反证:把那一行登记去掉,同一句话原样落回文字', () => {

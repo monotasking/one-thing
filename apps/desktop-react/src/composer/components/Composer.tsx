@@ -379,10 +379,7 @@ export function Composer({ sessionId, owner }: ComposerProps) {
   useEffect(
     () =>
       configureComposerReferenceSink(sessionId, (reference) => {
-        inputRef.current?.appendReference(reference.label, {
-          token: reference.token,
-          ...(reference.tip ? { tip: reference.tip } : {}),
-        })
+        inputRef.current?.appendReference(reference.kindId, reference.ref)
       }),
     [sessionId],
   )
@@ -635,11 +632,19 @@ export function Composer({ sessionId, owner }: ComposerProps) {
                       aria-label={busy ? t('composer.stop') : t('composer.send')}
                       data-testid="composer-send"
                       data-mode={busy ? 'stop' : 'send'}
-                      onClick={() =>
-                        busy
-                          ? composerSink().abort(sessionId)
-                          : doSend(inputRef.current?.text() ?? '')
-                      }
+                      onClick={() => {
+                        if (busy) {
+                          composerSink().abort(sessionId)
+                          return
+                        }
+                        /*
+                         * **段与它的投影一起交**(09-14):乐观气泡画的是段、发出去的
+                         * 是那句话,两者必须来自同一次读取 —— 回车那条路在
+                         * `ComposerInput` 里也是这么读的(两口读同一份草稿)。
+                         */
+                        const segments = inputRef.current?.segments() ?? []
+                        doSend(inputRef.current?.text() ?? '', segments)
+                      }}
                     >
                       {busy ? (
                         <StopIcon

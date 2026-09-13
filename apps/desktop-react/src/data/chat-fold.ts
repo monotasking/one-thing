@@ -3,6 +3,7 @@ import type { materializeChatMessages } from '@onething/core/session/projection/
  * `reconcileOverlay` 的注)。这一行只吃 `segment.ts` 里的那只纯函数,
  * 不碰引用种类注册表(它不需要表装好,也不该把表拖进数据层)。 */
 import { displayTextOfParts } from '../references/segment'
+import type { ResolvedSegment } from '../references/segment'
 // 兜底比对要查引用种类表(各家的 `parse.part.typed`)——谁要查表谁保证表装好
 // (与 `content/user-message` / `composer/usePickDrawer` 同判例;不经 main.tsx 的
 // 宿主、以及这只文件自己的单测,都靠这一行)。
@@ -770,7 +771,21 @@ export interface PendingSend {
    * 走文本兜底。
    */
   messageId?: string
+  /**
+   * 这句话的**线上形**。它是 `segments` 的投影 —— 认领的文本兜底比的是它,
+   * 而屏幕上画的是 `segments`(有的话)。
+   */
   text: string
+  /**
+   * 这句话的**段**(09-14,所见即所发;正本 §6.2)。
+   *
+   * 输入框交出来什么,这里原样躺着什么 —— 于是在飞的那一枚 chip 与落账之后那一枚
+   * 是**同一份 `render(ref)`** 画出来的,一条消息从按下回车到落账一次形都不换。
+   *
+   * 缺席 = 这一格不是从输入框来的(ask 交卷、命令回落),或者它是那次改动之前
+   * 建的 —— 画的那一头照旧切 `text`(`segmentReferenceText`),行为逐字不变。
+   */
+  segments?: readonly ResolvedSegment[]
   /** 随这条消息一起离开输入框的附件数(D3 不传附件,只如实显示计数)。 */
   attachments: number
   status: 'sending' | 'failed'

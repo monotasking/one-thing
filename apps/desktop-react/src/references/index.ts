@@ -33,7 +33,7 @@ import './kinds/skill'
 import './kinds/plugin'
 /* 提示词:只从引擎那边来(`contentParts` 的 `prompt-ref`),壳里没有落稿口。 */
 import './kinds/prompt'
-/* 网页:只有落稿那半边,而且今天没有生产读者(留账在它文件头)。 */
+/* 网页:只有落稿与呈现两半(它不从抽屉进,也不在正文里 —— 判词在它文件头)。 */
 import './kinds/page'
 
 export { registerReferenceKind, resetReferenceKinds, referenceKindOf, referenceKindList } from './registry'

@@ -812,22 +812,15 @@
   pointer-events: none;
 }
 
-/* 行内 chip:@ 引用的文件。contentEditable=false,所以退格是整枚删。 */
-.chip {
-  padding: 0 var(--sp-1);
-  border-radius: var(--r-1);
-  background: var(--st-sel);
-  color: var(--accent-deep);
-  font-family: var(--font-mono);
-  font-size: var(--fs-code);
-}
-
-.cmdTok {
-  color: var(--accent-deep);
-  font-weight: 600;
-  font-family: var(--font-mono);
-  font-size: var(--fs-label);
-}
+/*
+ * 行内 chip 的皮**不在这里**了(09-14,所见即所发)。草稿里那一枚今天是一枚空的
+ * 宿主节点 + 一格 portal,画它的是 `references/ReferenceChip`、皮是
+ * `references/ReferenceChip.module.css` —— 与在飞的气泡、落账的气泡同一份。
+ * 从前这里的 `.chip` / `.cmdTok` 是那份皮的**第二个产地**:同一枚文件引用在草稿里
+ * 写 `@相对路径`、在气泡里写 basename,按下回车就换一次形。两条一起退役。
+ * (`contentEditable=false` 那一格仍在 —— 它在 `ComposerInput` 的宿主节点上,
+ * 「退格是整枚删」靠的是它,不靠皮。)
+ */
 
 /*
  * ── 参数幽灵占位(09-12,用户报障「命令无提示」的第三半)────────────────

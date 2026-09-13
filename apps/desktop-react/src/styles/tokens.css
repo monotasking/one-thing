@@ -1676,29 +1676,42 @@
   /* ⌘L 跳转条那张候选表的高度上限(浮层 / 抽屉列表必有约束)。 */
   --viewer-jump-max-h: 180px;
 
-  /* ── 用户消息里的引用(content/user-message,2026-09-12)────────────────
-   * 气泡正文里那枚 `@路径` chip 与 `/命令` 药丸的几何与色。
-   * 色**一格都不是新色值**:命令走强调色的那一对(--accent-deep / --accent-soft),
-   * 技能徽换一档更浅的底(--st-sel)把两者在同一句里分开 —— 它们是两种东西
-   * (一个是这台执行的命令,一个是这回合挂上的技能),同色会读成一件。
+  /* ── 一枚引用的皮(references/ReferenceChip,2026-09-14 皮 B「链接」)──────
+   * 三个宿主共用一份:输入框的草稿 chip、在飞的乐观气泡、落账的气泡。
+   *
+   * 09-12 那一节 `--umsg-chip-*`(pad / gap / icon / skill-bg / prompt-*)随
+   * `content/user-message.module.css` 一起**退役** —— 那是「有盒子」那一形的几何,
+   * 皮 B 没有盒子。只留下 `--umsg-skill-fg`:技能那一对色是一个还活着的裁定
+   * (它今天等于 --accent-deep;哪天要换成绿的,改的就是这一格)。
+   *
    * 名字宽 13ch:一屏里认得出 `ChatStream.module.css` 这个长度的名字,再长的
    * 尾部省略号 + Tooltip 全路径接着;不给上限的话一条绝对路径会把气泡撑破。 */
-  --umsg-chip-pad-x: 5px;
-  --umsg-chip-pad-y: 1px;
-  --umsg-chip-gap: 3px;
-  --umsg-chip-icon: 12px;
-  --umsg-chip-name-max: 13ch;
+  --refchip-gap: 0.28em;
+  /* 图标随字号走(em 而不是 px):三个宿主的正文字号并不相同,写死 px 会让
+   * 输入框里那一枚与气泡里那一枚不是同一个大小。 */
+  --refchip-icon: 0.9em;
+  --refchip-icon-dim: 0.85;
+  /* 名字上限 22ch:比稿(reference-chip-proposal-2026-09-14.html)那一档 ——
+   * `ChatStream.module.css` 这个长度的名字一屏里认得出,再长的尾部省略号 +
+   * Tooltip 全路径接着;不给上限的话一条绝对路径会把气泡撑破。 */
+  --refchip-name-max: 22ch;
+  --refchip-weight: 500;
+  /* chip 的盒必须**比它所在的那一行矮**(判词整段在 ReferenceChip.module.css
+   * 的骨架那一节):正文行高是 1.65,chip 收到 1.25 —— 插一枚引用不许把行盒撑高。 */
+  --refchip-lh: 1.25;
+  /* 下划线:静止兑到 35% 透明,悬停由 CSS 换成 currentColor(实色)。 */
+  --refchip-line: color-mix(in srgb, currentColor 35%, transparent);
+  --refchip-line-w: 1px;
+  --refchip-line-offset: 0.2em;
+  /* 记号那一族(命令 / 提示词引用):墨色 mono 小块 + 5% 墨底。 */
+  --refchip-token-bg: color-mix(in srgb, var(--text-1) 5%, transparent);
+  --refchip-token-pad-x: 0.35em;
+  --refchip-token-pad-y: 0.02em;
+  --refchip-token-fs: 0.92em;
+  --refchip-token-weight: 600;
+  /* 异步动作在飞时压淡一档(spinner 只许在按钮内或状态栏,行内的词不转圈)。 */
+  --refchip-pending-opacity: 0.55;
   --umsg-skill-fg: var(--accent-deep);
-  --umsg-skill-bg: var(--st-sel);
-  /* 技能 chip **可点**那一形(09-12):底比不可点那枚再深一档,与文件 chip
-   * 的 hover/active 阶梯同构(rest → hover → active 各深一档),这样同一句话里
-   * 「能按的」与「只是个记号」在静止时就分得开,不用等鼠标过去。 */
-  --umsg-skill-bg-hover: var(--st-sel-hover);
-  /* 提示词引用那枚药丸:不可点,所以**不进强调色**——它是一条中性的记号。 */
-  --umsg-prompt-fg: var(--text-2);
-  --umsg-prompt-bg: var(--st-hover);
-  /* 异步动作在飞时压淡一档(spinner 只许在按钮内或状态栏,行内小牌不转圈)。 */
-  --umsg-pending-opacity: 0.55;
 
   /* ── 内容块里的图(content/blocks/kinds/image,2026-09-13)────────────────
    * 占位盒最小高 120:尺寸表(blocks/asset/dimensions.ts)还没记住这张图多大时先

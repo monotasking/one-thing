@@ -1,4 +1,9 @@
-import { referencePartKinds, referenceTextKinds } from './registry'
+import {
+  expandReferenceToken,
+  referencePartKinds,
+  referenceTextKinds,
+  referenceTokenOf,
+} from './registry'
 import type { ReferencePart } from './kind'
 
 /**
@@ -127,6 +132,34 @@ function appendText(out: ResolvedSegment[], text: string, atStart: boolean): voi
 
 function ensureGlobal(flags: string): string {
   return flags.includes('g') ? flags : `${flags}g`
+}
+
+/**
+ * **段 → 那句话**(09-14;「段是真相,文本是投影」在代码里的那一句)。
+ *
+ * 它是 `segmentReferenceText` 的**左逆**:文字段原样,引用段问那一种自述要一截
+ * 记号(`draft.token(ref)`)再当场展开(`draft.expand`)—— 也就是说,交出来的
+ * 已经是**账本上最终落下的那串字节**(展开在草稿的出口,判词在
+ * `ComposerInput.readDraft` 与正本 §2 修正③)。
+ *
+ * 唯一的读者是输入框的 `text()`:那块可编辑区里 chip 是真节点,`segments()` 把
+ * 它读成段,这一只再把段投影成句子。**两者互为投影**是一条单测钉着的不变量 ——
+ * 少了它,「屏幕上的这一枚」与「发出去的那几个字」就又有了两个产地。
+ *
+ * 落不了稿的那一种(没有 `draft`)在句子里**不占字**:那是「它进不了草稿」的
+ * 直接推论,不是一格漏判。
+ */
+export function projectSegmentsToText(segments: readonly ResolvedSegment[]): string {
+  let out = ''
+  for (const seg of segments) {
+    if (seg.kindId === null) {
+      out += (seg.value as TextSegmentValue).text
+      continue
+    }
+    const token = referenceTokenOf(seg.kindId, seg.value)
+    if (token !== undefined) out += expandReferenceToken(seg.kindId, token)
+  }
+  return out
 }
 
 /**

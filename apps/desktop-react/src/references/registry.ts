@@ -192,6 +192,17 @@ export function expandReferenceToken(kindId: string | undefined, token: string):
   return referenceKindOf(kindId)?.draft?.expand?.(token) ?? token
 }
 
+/**
+ * 一枚引用**在句子里占的那截字**(09-14)。
+ *
+ * 查不到那一种、或者它根本落不了稿(没有 `draft`)= `undefined`,而不是空串 ——
+ * 「这台上没有这种能力」与「它在句子里不占字」是两件事,并起来会让一段段序列
+ * 静默少掉一截。调用方(段 → 文本的投影)据此照实什么都不拼。
+ */
+export function referenceTokenOf(kindId: string | undefined, ref: unknown): string | undefined {
+  return referenceKindOf(kindId)?.draft?.token(ref)
+}
+
 /* ── 触发检测 ──────────────────────────────────────────────────────────── */
 
 /** `@` / `/` 的触发结果。`trigger` 是**字符**,不是种类名 —— 一个字符下可以有好几种。 */

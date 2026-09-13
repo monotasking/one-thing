@@ -5,7 +5,7 @@ import { useQuery } from '../../data/kernel'
 import { browserSettingsQuery } from '../../data/browser-settings-source'
 import { profileDisplayName } from '../settings/BrowserSettings'
 import { insertComposerReference } from '../../composer/references'
-import { createPageToken, pageReferenceLabel } from '../../data/page-references'
+import { pageReferenceKind } from '../../references/kinds/page'
 import { notify } from '../../services/notify'
 import type { BrowserTabRow } from '../../data/browser-source'
 
@@ -60,11 +60,19 @@ export function BrowserActionsMenu({
   const others = profiles.filter((profile) => profile.id !== tab.profile)
 
   const giveToChat = (): void => {
-    const label = pageReferenceLabel(tab)
+    /*
+     * 交出去的是**哪一种 + 哪一枚**(09-14):记号、chip 上写什么、提示说什么,
+     * 三样全归 `references/kinds/page.ts` 那一份自述。这里因此不再拼 label /
+     * token / tip —— 那三格从前在这只文件里各写一遍,正是「同一枚引用两处形」
+     * 的产地。
+     */
     const ok = insertComposerReference({
-      label,
-      token: createPageToken(tab.id),
-      ...(tab.url ? { tip: tab.url } : {}),
+      kindId: pageReferenceKind.id,
+      ref: pageReferenceKind.draft!.toRef({
+        tabId: tab.id,
+        ...(tab.title ? { title: tab.title } : {}),
+        ...(tab.url ? { url: tab.url } : {}),
+      }),
     })
     /*
      * 落不进去 = 此刻壳里没有输入面(没有会话开着)。**说一句**,不静默 ——

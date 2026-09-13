@@ -183,10 +183,13 @@ export function usePickDrawer({
       const draft = referenceKindOf(targetId)?.draft
       if (!draft) return
       if (draft.onPick?.(hit, { clearDraft: () => inputRef.current?.clear(), openAsk })) return
-      inputRef.current?.insert(targetId, draft.chip(hit), {
-        token: draft.token?.(hit),
-        argHint: draft.argHint?.(hit),
-      })
+      /*
+       * 落下去的是**那一枚引用本身**(`draft.toRef`),不是「chip 上写什么」——
+       * 09-14 之前这里递的是 `draft.chip(hit)`,于是同一枚引用在草稿里一种写法、
+       * 在气泡里另一种写法。记号(`draft.token`)由输入面自己按 Ref 现算,画成
+       * 什么由 `render(ref)` 说;这只 hook 两样都不认识。
+       */
+      inputRef.current?.insert(targetId, draft.toRef(hit), { argHint: draft.argHint?.(hit) })
       closeDrawer()
     },
     [view, inputRef, openAsk, closeDrawer],

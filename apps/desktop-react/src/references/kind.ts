@@ -18,9 +18,10 @@ import type { AskSpec } from '../composer/types'
  *
  * ── 五格 ──────────────────────────────────────────────────────────────────
  *   拾取 `source`  —— 哪个触发字符下出现、候选怎么查、一行画什么、组头念什么
- *   落稿 `draft`   —— 选中之后 chip 写什么、草稿里的记号长什么样、出站时怎么展开
+ *   落稿 `draft`   —— 选中的候选变成哪一枚引用、它在句子里占哪几个字、怎么展开
  *   认出 `parse`   —— 从出站句子 / 从 `contentParts` 部件里怎么认出它
- *   呈现 `render`  —— 图标、标签、提示、可不可点(**数据,不是 JSX**)
+ *   呈现 `render`  —— 图标、标签、提示、可不可点(**数据,不是 JSX**);
+ *                     09-14 起这一格是**三个宿主唯一那一份形**(草稿 / 在飞 / 落账)
  *   打开 `open`    —— 点了做什么
  *
  * 五格**没有一格是必填的**,而缺席各有各的意思(每一格自己那段注写着)。
@@ -78,24 +79,15 @@ export interface RowSpec {
 }
 
 /**
- * 输入框里那枚 chip 的**两种画法**。它是**输入面自己的呈现词汇表**(皮肤住在
- * `Composer.module.css`,由 `ComposerInput` 认),不是种类名 —— 所以加一种引用
- * 不必新增一档,除非它真的要长成第三个样子。
- *  · `reference` —— 一枚有身份、指向别处的小牌(文件 / 目录 / 网页);
- *  · `token`     —— 就是这句话的一部分,只是写法特殊(命令徽 / 技能引用)。
- */
-export type ChipTone = 'reference' | 'token'
-
-/** 选中一条候选之后,草稿里落下的那枚 chip。 */
-export interface ChipDraft {
-  /** chip 上写的那几个字(`@` 那一族自己带前缀 —— 前缀是它的写法,不是壳的规矩)。 */
-  label: string
-  tone: ChipTone
-}
-
-/**
- * 气泡里那一枚引用**画成什么**。同样是数据:`content/user-message.tsx` 只按这张
- * 表摆元素,一个种类名都不认得。
+ * 一枚引用**画成什么**。它是数据:`references/ReferenceChip` 只按这张表摆元素,
+ * 一个种类名都不认得。
+ *
+ * ── 09-14:它从「气泡那一半的呈现」升成**三个宿主唯一那一份形** ─────────────
+ * 从前输入框里那枚 chip 有自己的一格自述(`ReferenceDraft.chip` 交 `{label, tone}`,
+ * 由 `ComposerInput` 拿 `document.createElement` 画),于是同一枚引用在草稿里是
+ * `@相对路径`、在气泡里是 basename —— 一条消息按下回车之后换两次形。今天草稿里
+ * 那一枚也是 `ReferenceChip` 画的(宿主节点 + portal),所以**这张表是唯一那一份**:
+ * 输入框、在飞的乐观气泡、落账的气泡读的都是它。
  */
 export interface ChipSpec {
   /** 外层类名(皮肤归各种类自己那份 CSS —— 「能力自述」的呈现半边)。 */
@@ -127,6 +119,14 @@ export interface ChipSpec {
    * 那句话。
    */
   tooltipPath?: { path: string; dir?: boolean }
+  /**
+   * **屏幕上那句提示就是这几个字**(09-14,给网页那一种用)。
+   *
+   * 它不过字典,因为它**是数据**不是文案 —— 一条 URL 没有中英两说。与
+   * `tooltipKey` 互斥(同时给以 `tooltipPath` ▷ `tooltipText` ▷ `tooltipKey`
+   * 为序,判词在 `ReferenceChip`)。
+   */
+  tooltipText?: string
   /** 可点 = 一枚真按钮(`open` 缺席时这一格必须是 false —— 屏幕上不该有按了没反应的东西)。 */
   clickable?: boolean
   /** `open` 答 false 时说的那句话(异步反馈纪律:失败得有人说话)。 */
@@ -177,13 +177,27 @@ export interface ReferenceSource<Hit> {
 }
 
 /** ── 落稿 ────────────────────────────────────────────────────────────── */
-export interface ReferenceDraft<Hit> {
-  chip(hit: Hit): ChipDraft
+export interface ReferenceDraft<Hit, Ref> {
   /**
-   * 写进草稿的**位置记号**(`{{file:/abs}}`)。缺席 = chip 上写什么、交出去就是
-   * 什么(命令徽那一族:它本来就是这句话里的那几个字,没有第二个身份)。
+   * 抽屉选中的那条候选 → **这一枚引用本身**(09-14)。
+   *
+   * 从前这一格是 `chip(hit): ChipDraft` —— 「草稿里写什么」由落稿那一头说,
+   * 而「气泡里画什么」由 `render(ref)` 说,于是同一枚引用有**两种写法**,
+   * 用户看见的就是按下回车之后 chip 换一次形。今天落稿交出来的是 Ref,
+   * 画成什么三个宿主一律问 `render(ref)`:**一枚引用只有一种写法**。
    */
-  token?(hit: Hit): string
+  toRef(hit: Hit): Ref
+  /**
+   * 这一枚在**线上那句话**里占的那截字(`{{file:/abs}}` / `/cd`)。
+   *
+   * 它收的是 Ref 而不是候选 —— 草稿是可以存下来、铺回去、再发出去的,而那时候
+   * 那条候选早就不在了(表已经换过好几批)。记号由 Ref 算得出来,是「Ref 才是
+   * 真相」这句话的另一半。
+   *
+   * **不是可选格**:每一种落得了稿的引用都得说得出自己在句子里占哪几个字 ——
+   * 缺席就只能回到「屏幕上写什么、交出去就是什么」,而那正是这一单拆掉的东西。
+   */
+  token(ref: Ref): string
   /**
    * 出站时记号 → 句子。缺席 = 记号本身就是句子。
    * **展开在草稿出口**(`ComposerInput.readDraft`,正本 §2 修正③):乐观上屏那
@@ -249,7 +263,7 @@ export interface ReferenceKind<Hit = any, Ref = any> {
   /** 这一种的名字。全表唯一(重复登记直接抛,见 registry)。 */
   id: string
   source?: ReferenceSource<Hit>
-  draft?: ReferenceDraft<Hit>
+  draft?: ReferenceDraft<Hit, Ref>
   parse?: { text?: ReferenceTextParse<Ref>; part?: ReferencePartParse<Ref> }
   render?(ref: Ref): ChipSpec
   /**

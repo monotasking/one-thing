@@ -1,0 +1,150 @@
+/*
+ * **一枚引用的皮 —— 全壳唯一那一份**(皮 B「链接」,2026-09-14 用户比稿拍板;
+ * 正本 `docs/composer-references-2026-09.md` §6.7,样例 `reference-chip-proposal-2026-09-14.html`)。
+ *
+ * ── 为什么它住在 `references/` 而不是某一块面里 ────────────────────────────
+ * 同一枚 chip 要住**三个地方**:输入框的草稿、在飞的乐观气泡、落账的气泡
+ * (AI 回复行内也画得出)。09-14 之前它是三份皮 —— `Composer.module.css` 的
+ * `.chip` / `.cmdTok`(输入框)、`content/user-message.module.css` 的
+ * `.ref` / `.skillChip` / `.command` / `.prompt`(气泡)、外加在飞那一格干脆是
+ * **一整串裸路径**。于是用户看见的是同一条消息换三次形。这一份是那三份的唯一
+ * 继承人:`ReferenceChip` 是唯一那只组件,这是它唯一那份皮。
+ *
+ * ── 皮 B 的三句话 ────────────────────────────────────────────────────────
+ *  ① **没有盒子**:引用是正文里的**一个词** —— 与正文同字体同字号,只有字重
+ *     500 与强调色把它托出来。所以这里一条 `background` 都没有(命令那一族除外,
+ *     见下)。
+ *  ② **1px 细下划线**,静止 35% 透明、悬停实色 —— 「可点」这件事由它说,不由
+ *     底色说。它画在**名字**上而不是整枚 chip 上:图标是一个字形不是一个词,
+ *     给它也划一道线读起来像两个词被连在一起;而且 `text-decoration` 在
+ *     inline-flex 容器上要不要传进 flex 项,各引擎口径并不一致 —— 画在真正那
+ *     一段文字上,答案只有一个。
+ *  ③ **命令不是链接**:它是**已经发生过的事**的记号(不可点),所以走另一形 ——
+ *     墨色 mono 小块 + 5% 墨底 + `--r-1` 圆角。提示词引用同形(同样是记号)。
+ *
+ * ── 一个字面色值 / px 都不在这里 ──────────────────────────────────────────
+ * 全部量在 `styles/tokens.css` 的 `--refchip-*` 一节。技能那一对色沿用
+ * `--umsg-skill-fg`(它今天等于 `--accent-deep`;哪天要换成绿的,改那一格)。
+ */
+
+/*
+ * ── 骨架:图标 + 名字,行内,不折行,超长省略 ─────────────────────────────
+ *
+ * **两条让它不长高的量**(09-14 真机挖出来的,判词留在这里):
+ *  ① `line-height` 收成 `--refchip-lh`(1.25 而不是正文的 1.65)——
+ *     chip 的盒必须**比它所在的那一行矮**,否则插一枚引用会把整条行盒撑高
+ *     (实测输入框 24 → 25.49px,而且那一下 1.5px 的变化会让 composer 那只
+ *     `ResizeObserver` 在同一帧里再报一轮,屏上当场弹一条
+ *     「ResizeObserver loop completed with undelivered notifications」)。
+ *  ② `vertical-align: middle` —— chip 比正文矮一档,居中读起来比压在基线上稳
+ *     (`content/user-message.module.css` 那份旧皮的原判词,一个字没改);
+ *     而且**这一族没有可用的基线**:`.refName` 带 `overflow: hidden`,一个
+ *     overflow 非 visible 的 flex 项的基线是它的下外边距缘 —— 拿 `baseline`
+ *     对齐等于拿盒底当基线,那正是 ① 那 1.5px 的来处。
+ */
+.ref {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--refchip-gap);
+  max-width: 100%;
+  vertical-align: middle;
+  white-space: nowrap;
+  /* 与正文**同字体同字号**:`font: inherit` 一句话把 UA 给 <button> 的那一套
+   * (13px / system-ui)整个让开,只留字重与行高两格自己说。
+   * **次序要紧**:`font` 是简写,它会把 `line-height` 一起重置成继承来的那个值
+   * —— 行高那一句写在它**前面**就等于没写(09-14 真机:chip 的 line-height 读到
+   * 23.8px = 正文那一档,行盒照旧被撑高 0.7px)。 */
+  font: inherit;
+  font-weight: var(--refchip-weight);
+  line-height: var(--refchip-lh);
+  color: var(--accent-deep);
+  /* 不可点那一形是一枚 <span>;可点那一形由下面那条 `:is(button)` 接手。 */
+  cursor: default;
+}
+
+.ref:is(button) {
+  cursor: pointer;
+}
+
+.refIcon {
+  flex: none;
+  width: var(--refchip-icon);
+  height: var(--refchip-icon);
+  /* 图标比字弱一档:它是路标,读的人认的是名字。 */
+  opacity: var(--refchip-icon-dim);
+}
+
+/* 结构行只截断不换行(挤压纪律)。`min-width: 0` 是 flex 子项能缩到省略号的那一格。 */
+.refName {
+  min-width: 0;
+  max-width: var(--refchip-name-max);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * 细下划线只画在**可点**那一形的名字上(判词在文件头 ②)。
+ * 静止 35% 透明由 `color-mix` 从 `currentColor` 兑出来 —— 于是技能换一种颜色
+ * 时线跟着换,不必再开一格 token。
+ */
+.ref:is(button) .refName {
+  text-decoration: underline;
+  text-decoration-color: var(--refchip-line);
+  text-decoration-thickness: var(--refchip-line-w);
+  text-underline-offset: var(--refchip-line-offset);
+  transition: text-decoration-color var(--dur) var(--ease);
+}
+
+.ref:is(button):hover .refName {
+  text-decoration-color: currentColor;
+}
+
+/*
+ * pending:**不转圈**(spinner 只许出现在按钮内或状态栏,而这是一枚行内的词)——
+ * 压淡一档 + 指针改成等待。不用 `disabled`:一颗拿着焦点的钮变 disabled 会把焦点
+ * 丢回 body(响应链 I1),重复点由 `ReferenceChip` 那格 ref 闸挡。
+ */
+.ref[aria-busy='true'] {
+  opacity: var(--refchip-pending-opacity);
+  cursor: progress;
+}
+
+/* ── 技能:同一副骨架,换一对色 ────────────────────────────────────────── */
+.skill {
+  composes: ref;
+  color: var(--umsg-skill-fg);
+}
+
+.skillIcon {
+  composes: refIcon;
+}
+
+/* ── 记号那一族:命令 / 提示词引用 —— 不是链接,是已经发生过的事的标记 ───── */
+/* 两条让它不长高的量与 `.ref` 逐字同一条(判词在上面)。 */
+.token {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  padding: var(--refchip-token-pad-y) var(--refchip-token-pad-x);
+  border-radius: var(--r-1);
+  background: var(--refchip-token-bg);
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: var(--refchip-token-fs);
+  font-weight: var(--refchip-token-weight);
+  line-height: var(--refchip-lh);
+  white-space: nowrap;
+  cursor: default;
+}
+
+/*
+ * ── 输入框里那一枚多的一句(§6.7)────────────────────────────────────────
+ * 宿主节点是 `contenteditable=false` 的一枚空 span,chip 由 `createPortal`
+ * 画进去。「退格整枚删」的手感靠 `contenteditable=false` 保住(不靠盒子);
+ * `user-select: all` 管的是另一半 —— 拖选时它要么整枚被选中、要么一个字都不选,
+ * 不会选出半个文件名来。
+ */
+.host {
+  user-select: all;
+}

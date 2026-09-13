@@ -1,8 +1,12 @@
 import { createRef } from 'react'
+import { act } from 'react'
 import { describe, expect, it } from 'vitest'
 import { fireEvent, render } from '@testing-library/react'
+import '../../references'
 import { ComposerInput } from './ComposerInput'
 import type { ComposerInputHandle } from './ComposerInput'
+import { projectSegmentsToText } from '../../references/segment'
+import type { ResolvedSegment } from '../../references/segment'
 
 /**
  * 本体行输入面的**草稿口**(09-12)。
@@ -15,15 +19,23 @@ import type { ComposerInputHandle } from './ComposerInput'
  *
  * ── 09-12 第三批:`insert` 的**签名**换了,断言一条没动 ────────────────────
  * 从前是 `insert('files' | 'commands', label, opts)` —— 两个种类名写死在联合里。
- * 今天是 `insert(kindId, chip, opts)`:第一个参数是注册表上的 id(它落在 chip 的
- * `data-kind` 上,草稿出口据此查那一种的 `expand`),第二个参数是那一种自述交出来
- * 的 chip(写什么 + 画成哪一形)。所以下面每一处调用的**形**变了,而每一条
- * `expect` 逐字照旧 —— 这正是「迁移 = 等价替换」要的那种差异。
+ * 今天是 `insert(kindId, ref, opts)`:第一个参数是注册表上的 id,第二个参数是
+ * 那一种自述交出来的**那一枚引用本身**(`draft.toRef(hit)`)。
+ *
+ * ── 09-14 所见即所发:签名再换一次,断言**仍然**一条没动 ────────────────────
+ * chip 不再由这只文件画(它是一枚空的宿主节点 + 一格 `createPortal`),记号也
+ * 不再由调用方递进来 —— 由 `draft.token(ref)` 现算。所以:
+ *  · `insert('command', {kind:'command', token:'/cd'})` 取代了从前那个
+ *    `insert('command', {label:'/cd', tone:'token'}, {token})`;
+ *  · 每一处调用包一层 `act()` —— 落一枚 chip 现在会改一格 React 状态(宿主节点表);
+ *  · 每一条 `expect(api().text())` 逐字照旧。
+ * 多出来的是**段那一半**:`segments()` 与 `text()` 互为投影(新增一节)。
  */
 
 function setup() {
   const apiRef = createRef<ComposerInputHandle>()
   const sent: string[] = []
+  const sentSegments: ResolvedSegment[][] = []
   const view = render(
     <ComposerInput
       apiRef={apiRef}
@@ -33,12 +45,24 @@ function setup() {
       onMove={() => undefined}
       onPick={() => undefined}
       onEscape={() => undefined}
-      onSend={(text) => void sent.push(text)}
+      onSend={(text, segments) => {
+        sent.push(text)
+        sentSegments.push(segments)
+      }}
     />,
   )
   const box = view.getByTestId('composer-input')
-  return { api: () => apiRef.current as ComposerInputHandle, box, sent }
+  const api = () => apiRef.current as ComposerInputHandle
+  /* 落一枚 chip 会改一格 React 状态(宿主节点表 → portal),所以包 act。 */
+  const insert = (kindId: string, ref: unknown, opts?: { argHint?: string }) =>
+    act(() => api().insert(kindId, ref, opts))
+  return { api, insert, box, sent, sentSegments }
 }
+
+/** 一枚文件引用的 Ref(与 `references/kinds/file.ts` 的 `draft.toRef` 同形)。 */
+const fileRef = (path: string) => ({ kind: 'fileRef', path })
+/** 一条命令的 Ref(同 `kinds/command.ts`)。 */
+const commandRef = (token: string) => ({ kind: 'command', token })
 
 /** 在那块可编辑区里「打」一段话:落文本 + 把光标放到末尾(不发 input)。 */
 function put(box: HTMLElement, text: string) {
@@ -55,9 +79,9 @@ function put(box: HTMLElement, text: string) {
 
 describe('insert:命令徽之后恒有一个空格,光标落在它后面', () => {
   it('`/cd` 插完,草稿是 `/cd `(空格在里面),光标停在那个空格之后', () => {
-    const { api, box } = setup()
+    const { api, insert, box } = setup()
     put(box, '/cd')
-    api().insert('command', { label: '/cd', tone: 'token' })
+    insert('command', commandRef('/cd'))
 
     // 交出去的那句话:命令徽 + 一个空格。**结尾那个空格是内容的一部分** ——
     // 09-12 报障「补全命令后没有空格」病的不是它不在,是 `.input` 把它折叠没了
@@ -72,7 +96,7 @@ describe('insert:命令徽之后恒有一个空格,光标落在它后面', () =>
   })
 
   it('句中补全:后半截原样跟在空格后面,一个字不丢', () => {
-    const { api, box } = setup()
+    const { api, insert, box } = setup()
     put(box, '/cd')
     // 光标放在 `/cd` 与后半截之间(模拟「打了一半又回头补全」)。
     const node = box.firstChild as Text
@@ -83,16 +107,16 @@ describe('insert:命令徽之后恒有一个空格,光标落在它后面', () =>
     window.getSelection()?.removeAllRanges()
     window.getSelection()?.addRange(range)
 
-    api().insert('command', { label: '/cd', tone: 'token' })
+    insert('command', commandRef('/cd'))
     expect(api().text()).toBe('/cd  之后的话')
   })
 })
 
 describe('参数幽灵占位:画在屏幕上,不进草稿,打第一个字就散', () => {
   it('给了 argHint 就挂一枚 —— 屏幕上看得见,`text()` 里一个字都没有', () => {
-    const { api, box } = setup()
+    const { api, insert, box } = setup()
     put(box, '/cd')
-    api().insert('command', { label: '/cd', tone: 'token' }, { argHint: '<path>' })
+    insert('command', commandRef('/cd'), { argHint: '<path>' })
 
     expect(box.querySelector('[data-arg-ghost]')?.textContent).toBe('<path>')
     expect(box.textContent).toBe('/cd <path>')
@@ -101,17 +125,17 @@ describe('参数幽灵占位:画在屏幕上,不进草稿,打第一个字就散'
   })
 
   it('没给 argHint 就一枚都不挂(不收参数的命令)', () => {
-    const { api, box } = setup()
+    const { api, insert, box } = setup()
     put(box, '/compact')
-    api().insert('command', { label: '/compact', tone: 'token' })
+    insert('command', commandRef('/compact'))
     expect(box.querySelector('[data-arg-ghost]')).toBeNull()
     expect(api().text()).toBe('/compact ')
   })
 
   it('打第一个字它就散', () => {
-    const { api, box } = setup()
+    const { api, insert, box } = setup()
     put(box, '/cd')
-    api().insert('command', { label: '/cd', tone: 'token' }, { argHint: '<path>' })
+    insert('command', commandRef('/cd'), { argHint: '<path>' })
 
     // 人在那个空格后面打了一个字:空格那一节点变成 ' ~',提示当场退场。
     const gap = box.querySelector('[data-arg-ghost]')?.previousSibling as Text
@@ -128,9 +152,9 @@ describe('参数幽灵占位:画在屏幕上,不进草稿,打第一个字就散'
   })
 
   it('退格把那个空格吃掉,同样散', () => {
-    const { api, box } = setup()
+    const { api, insert, box } = setup()
     put(box, '/cd')
-    api().insert('command', { label: '/cd', tone: 'token' }, { argHint: '<path>' })
+    insert('command', commandRef('/cd'), { argHint: '<path>' })
 
     const gap = box.querySelector('[data-arg-ghost]')?.previousSibling as Text
     gap.textContent = ''
@@ -141,9 +165,9 @@ describe('参数幽灵占位:画在屏幕上,不进草稿,打第一个字就散'
   })
 
   it('光标挪到别处去了(它前面那一节点不再是光标所在),也散', () => {
-    const { api, box } = setup()
+    const { api, insert, box } = setup()
     put(box, '/cd')
-    api().insert('command', { label: '/cd', tone: 'token' }, { argHint: '<path>' })
+    insert('command', commandRef('/cd'), { argHint: '<path>' })
 
     window.getSelection()?.removeAllRanges()
     fireEvent.input(box)
@@ -152,13 +176,13 @@ describe('参数幽灵占位:画在屏幕上,不进草稿,打第一个字就散'
   })
 
   it('铺回一份存下来的稿:幽灵占位不跟着回来(那句提示已经过期)', () => {
-    const { api, box } = setup()
+    const { api, insert, box } = setup()
     put(box, '/cd')
-    api().insert('command', { label: '/cd', tone: 'token' }, { argHint: '<path>' })
+    insert('command', commandRef('/cd'), { argHint: '<path>' })
     const saved = api().html()
     expect(saved).toContain('data-arg-ghost')
 
-    api().restore(saved)
+    act(() => api().restore(saved))
     expect(box.querySelector('[data-arg-ghost]')).toBeNull()
     expect(api().text()).toBe('/cd ')
   })
@@ -178,12 +202,17 @@ describe('文件 chip 的展开就在草稿出口', () => {
    * `{{file:…}}`,也就是用户报的那条裸文本。
    */
   it('`text()` 交出的是 `@<绝对路径>`,一个 `{{file:` 都不许漏出去', () => {
-    const { api, box } = setup()
+    const { api, insert, box } = setup()
     put(box, '看看 @a')
-    api().insert('file', { label: '@src/a.ts', tone: 'reference' }, { token: '{{file:/repo/src/a.ts}}' })
+    insert('file', fileRef('/repo/src/a.ts'))
 
-    // 屏幕上写的是 `@src/a.ts`(呈现),交出去的是那条绝对路径(位置)。
-    expect(box.textContent).toContain('@src/a.ts')
+    /*
+     * **屏幕上写的是 basename**(09-14 皮 B:chip 由 `render(ref)` 画,三个宿主
+     * 同一形)。从前这里是 `@src/a.ts` —— 那是草稿自己那一份写法,而气泡里画的
+     * 是 basename,同一枚引用两种形。这是本单**唯一**一处可感知的形变。
+     */
+    expect(box.textContent).toContain('a.ts')
+    expect(box.textContent).not.toContain('@src/a.ts')
     expect(api().text()).toBe('看看 @/repo/src/a.ts ')
     expect(api().text()).not.toContain('{{file:')
   })
@@ -193,9 +222,9 @@ describe('文件 chip 的展开就在草稿出口', () => {
    * 「交出去」这条路上,所以换一格会话回来它仍旧是一枚 chip。
    */
   it('存下来的稿里 token 一个字没变(展开只在交出去那条路上)', () => {
-    const { api, box } = setup()
+    const { api, insert, box } = setup()
     put(box, '看看 @a')
-    api().insert('file', { label: '@src/a.ts', tone: 'reference' }, { token: '{{file:/repo/src/a.ts}}' })
+    insert('file', fileRef('/repo/src/a.ts'))
     expect(api().html()).toContain('{{file:/repo/src/a.ts}}')
     expect(box.querySelectorAll('[data-token]')).toHaveLength(1)
   })
@@ -206,28 +235,121 @@ describe('文件 chip 的展开就在草稿出口', () => {
    */
   it('`{{page:…}}` 原样交出去 —— 展开只认文件那一种', () => {
     const { api } = setup()
-    api().appendReference('example.test', { token: '{{page:t1}}' })
+    act(() => api().appendReference('page', { kind: 'pageRef', tabId: 't1' }))
     expect(api().text()).toBe('{{page:t1}} ')
   })
 })
 
 describe('回车与发送键读同一口草稿', () => {
   it('回车交出去的是 `text()`,不是 `textContent` —— chip 的位置不许在这条路上丢', () => {
-    const { api, box, sent } = setup()
+    const { insert, box, sent } = setup()
     put(box, '看看 @a')
-    api().insert('file', { label: '@src/a.ts', tone: 'reference' }, { token: '{{file:/repo/src/a.ts}}' })
+    insert('file', fileRef('/repo/src/a.ts'))
 
-    // 屏幕上写的是 `@src/a.ts`(呈现),交出去的是那条绝对路径(位置)。
-    expect(box.textContent).toContain('@src/a.ts')
+    // 屏幕上写的是 basename(呈现),交出去的是那条绝对路径(位置)。
+    expect(box.textContent).toContain('a.ts')
     fireEvent.keyDown(box, { key: 'Enter' })
     expect(sent).toEqual(['看看 @/repo/src/a.ts '])
   })
 
   it('幽灵占位也不走回车那条路出去', () => {
-    const { api, box, sent } = setup()
+    const { insert, box, sent } = setup()
     put(box, '/cd')
-    api().insert('command', { label: '/cd', tone: 'token' }, { argHint: '<path>' })
+    insert('command', commandRef('/cd'), { argHint: '<path>' })
     fireEvent.keyDown(box, { key: 'Enter' })
     expect(sent).toEqual(['/cd '])
+  })
+})
+
+/* ── 段那一半(09-14,所见即所发;正本 §6.5)──────────────────────────────── */
+
+describe('段是真相,文本是投影', () => {
+  it('`text()` 逐字等于 `projectSegmentsToText(segments())`', () => {
+    const { api, insert, box } = setup()
+    put(box, '看看 @a')
+    insert('file', fileRef('/repo/src/a.ts'))
+    /*
+     * **反证锚点**:把 `text()` 改回自己走一遍 DOM(不经段),这一条就成了
+     * 「两条路恰好同意」—— 那正是 09-14 之前草稿与气泡各算各的那个形。
+     */
+    expect(api().text()).toBe(projectSegmentsToText(api().segments()))
+  })
+
+  it('段里那一枚是**引用**不是几个字(文字 / 引用 / 文字 三段)', () => {
+    const { api, insert, box } = setup()
+    put(box, '看看 @a')
+    insert('file', fileRef('/repo/src/a.ts'))
+    const segs = api().segments()
+    expect(segs.map((seg) => seg.kindId)).toEqual([null, 'file', null])
+    expect(segs[1].value).toEqual({ kind: 'fileRef', path: '/repo/src/a.ts' })
+    // 文字段一个字不吃:前面那句话与 chip 后面那个空格都在。
+    expect(segs[0].value).toEqual({ kind: 'text', text: '看看 ' })
+    expect(segs[2].value).toEqual({ kind: 'text', text: ' ' })
+  })
+
+  it('幽灵占位不进段(它是画出来的一句提示,不是人写的字)', () => {
+    const { api, insert, box } = setup()
+    put(box, '/cd')
+    insert('command', commandRef('/cd'), { argHint: '<path>' })
+    expect(box.textContent).toBe('/cd <path>')
+    expect(api().segments().map((seg) => seg.kindId)).toEqual(['command', null])
+    expect(api().text()).toBe('/cd ')
+  })
+
+  it('`restore(html())` 往返:段一格不变,chip 仍是一枚 chip', () => {
+    const { api, insert, box } = setup()
+    put(box, '看看 @a')
+    insert('file', fileRef('/repo/src/a.ts'))
+    const before = api().segments()
+    const saved = api().html()
+
+    act(() => api().clear())
+    expect(api().segments()).toEqual([])
+
+    act(() => api().restore(saved))
+    expect(api().segments()).toEqual(before)
+    expect(api().text()).toBe('看看 @/repo/src/a.ts ')
+    // 铺回来那一枚照样是宿主节点 + portal —— 屏幕上仍是 basename,不是几个字。
+    expect(box.querySelectorAll('[data-ref]')).toHaveLength(1)
+    expect(box.textContent).toContain('a.ts')
+  })
+
+  it('退格整枚删:宿主表当场同步,portal 不留在一个已经没了的节点上', () => {
+    const { api, insert, box } = setup()
+    put(box, '看看 @a')
+    insert('file', fileRef('/repo/src/a.ts'))
+    expect(box.querySelectorAll('[data-ref]')).toHaveLength(1)
+    expect(box.querySelector('[data-ref]')?.childNodes.length).toBeGreaterThan(0)
+
+    // 浏览器把那枚 `contenteditable=false` 的节点整个删掉,然后发一发 input。
+    box.querySelector('[data-ref]')?.remove()
+    fireEvent.input(box)
+
+    expect(box.querySelectorAll('[data-ref]')).toHaveLength(0)
+    expect(api().segments().map((seg) => seg.kindId)).toEqual([null])
+    expect(api().text()).toBe('看看  ')
+  })
+
+  it('`insert` 之后宿主节点里画的是 `ReferenceChip`(不是这只文件自己写的几个字)', () => {
+    const { insert, box } = setup()
+    put(box, '看看 @a')
+    insert('file', fileRef('/repo/src/a.ts'))
+    const host = box.querySelector('[data-ref]') as HTMLElement
+    // 宿主自己是空壳(`data-kind` / `data-ref` / `data-token` 三格),里面那一枚
+    // 才是 chip —— 它报 `data-ref-kind`,那是 `render(ref)` 那张表上的一格。
+    expect(host.dataset.kind).toBe('file')
+    expect(host.querySelector('[data-ref-kind="fileRef"]')).toBeTruthy()
+    // 可点 = 一枚真按钮(与气泡里那一枚逐字同一条判据)。
+    expect(host.querySelector('button')).toBeTruthy()
+  })
+
+  it('onSend 交出去的是**同一次读取**的段与句子', () => {
+    const { insert, box, sent, sentSegments } = setup()
+    put(box, '看看 @a')
+    insert('file', fileRef('/repo/src/a.ts'))
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(sent).toEqual(['看看 @/repo/src/a.ts '])
+    expect(sentSegments[0].map((seg) => seg.kindId)).toEqual([null, 'file', null])
+    expect(projectSegmentsToText(sentSegments[0])).toBe(sent[0])
   })
 })

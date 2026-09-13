@@ -1,26 +1,35 @@
+import { resolveIcon } from '../../components/icons'
 import { createPageToken, pageReferenceLabel } from '../../data/page-references'
 import { registerReferenceKind } from '../registry'
+import s from '../ReferenceChip.module.css'
 import type { ReferenceKind } from '../kind'
 
 /**
  * **网页引用** `{{page:<tabId>}}` —— 浏览器叶的「把这一页交给对话」(B3-b)。
  *
- * ── 它只有「落稿」那一格,而且那一格今天**没有生产读者**(留账)──────────────
- * 三件事各有各的理由:
+ * ── 三格,每一格缺席都有理由 ──────────────────────────────────────────────
  *  · **没有 `source`** —— 它不从抽屉进。动作留在浏览器叶自己的右键菜单里
  *    (「动作单产地 = 右键上下文菜单」),落点是 `composer/references.ts` 那条缝。
  *  · **没有 `expand`** —— 它不是一句话,是**发送那一刻才物化的一件附件**:
  *    那一页此刻长什么样只有那一刻知道(`data/page-references.materializePageReferences`
  *    在 `chat-port` 里跑)。所以这一枚记号原样穿过草稿出口。
- *  · **没有 `parse` / `render`** —— 正文里根本没有它:它在发送那一刻就变成了
- *    attachments,气泡里那一格归附件那条路(浏览器那批),**这一单一个字不碰**。
+ *  · **没有 `parse`** —— 正文里根本没有它:它在发送那一刻就变成了 attachments,
+ *    落账的气泡里那一格归附件那条路。
  *
- * **留账**:今天落这一枚 chip 的是 `content/browser/BrowserActionsMenu.tsx`,
- * 它自己拼 `{label, token, tip}` 交给 `insertComposerReference` —— 那条缝**没有**
- * 走这张表(那几只文件本批是别人的地,不碰)。于是下面这两格是**自述在场、
- * 读者缺席**:登记在这里,是为了让「网页也是一种引用」这件事在表上说得出来,
- * 也为了那条缝哪天收进来的时候不必先发明一份自述。
+ * ── 09-14:`render` 补上了,而且那条缝真的接进来了 ──────────────────────────
+ * 09-12 立表时这一份是「自述在场、读者缺席」:落 chip 的是
+ * `content/browser/BrowserActionsMenu.tsx`,它自己拼 `{label, token, tip}` 交给
+ * `insertComposerReference`,压根没走这张表。所见即所发那一单把那条缝改成收
+ * `{kindId, ref}`,于是这一份的 `toRef` / `token` / `render` 三格全部上岗:
+ * 输入框里那一枚网页 chip 与别的引用**是同一个组件画的**。
+ *
+ * **留账**:落账之后的气泡里没有这一枚 —— 它在发送那一刻变成了附件,正文里那截
+ * 记号被 `materializePageReferences` 摘掉了。于是「在飞的气泡有一枚网页 chip、
+ * 落账之后它变成一枚回形针」是今天的事实,不是这一单能治的(治它要动附件那条路
+ * 的呈现,归浏览器批)。
  */
+
+const PageIcon = resolveIcon('Globe')
 
 /** 一格 tab 交到这里的样子(只要标题与地址两格 —— 正文到发送那一刻才读)。 */
 export interface PageHit {
@@ -29,14 +38,40 @@ export interface PageHit {
   url?: string
 }
 
-export const pageReferenceKind: ReferenceKind<PageHit, never> = {
+/** 落下来的那一枚。形与 `PageHit` 同 —— 这一种没有「候选」与「引用」之别。 */
+export interface PageRef extends PageHit {
+  kind: 'pageRef'
+}
+
+export const pageReferenceKind: ReferenceKind<PageHit, PageRef> = {
   id: 'page',
 
   draft: {
-    // 页标题 → 主机名 → 地址。三档与叶檐那只同源同序(`pageReferenceLabel`)。
-    chip: (hit) => ({ label: pageReferenceLabel(hit) || (hit.url ?? ''), tone: 'reference' }),
-    token: (hit) => createPageToken(hit.tabId),
+    toRef: (hit) => ({
+      kind: 'pageRef',
+      tabId: hit.tabId,
+      ...(hit.title ? { title: hit.title } : {}),
+      ...(hit.url ? { url: hit.url } : {}),
+    }),
+    token: (ref) => createPageToken(ref.tabId),
   },
+
+  /*
+   * 页标题 → 主机名 → 地址。三档与叶檐那只同源同序(`pageReferenceLabel`)。
+   * **不可点**:壳里「点一枚网页 chip」该做的事(跳回那一格 tab)还没有裁定,
+   * 而屏幕上不该出现一个按下去没反应的东西。提示走 `tooltipText` —— 一条 URL
+   * 是**数据**不是文案,不进字典。
+   */
+  render: (ref) => ({
+    className: s.ref,
+    dataKind: 'pageRef',
+    icon: PageIcon,
+    iconClassName: s.refIcon,
+    label: pageReferenceLabel(ref) || (ref.url ?? ''),
+    labelClassName: s.refName,
+    ...(ref.url ? { tooltipText: ref.url } : {}),
+    clickable: false,
+  }),
 }
 
 registerReferenceKind(pageReferenceKind, import.meta.hot)

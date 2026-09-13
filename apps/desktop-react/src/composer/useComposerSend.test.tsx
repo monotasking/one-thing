@@ -34,6 +34,7 @@ function fakeInput(): { ref: { current: ComposerInputHandle | null }; clears: ()
     element: () => null,
     insert: () => {},
     appendReference: () => {},
+    segments: () => [],
     text: () => '',
     clear: () => void (clears += 1),
     html: () => '',
