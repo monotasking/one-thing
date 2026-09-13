@@ -654,4 +654,38 @@ describe('parseNativeViewRequest —— 载荷是不可信的', () => {
     expect(parseNativeViewRequest({ verb: 'keymap', chords: ['cmd+k', 7] }))
       .toEqual({ verb: 'keymap', chords: ['cmd+k'] })
   })
+
+  /**
+   * **菜单表也是不可信载荷**(K4)。它要被画成一台真的 `Menu`,一格形状不对的项
+   * 会让 `Menu.buildFromTemplate` 当场抛 —— 抛在主进程里,而不是抛在发帧那一侧。
+   * 所以认不出的**整张丢掉**(不是丢掉那一项):半张菜单比没有菜单更难排查,
+   * 而「这一帧没说菜单」本来就是合法的一档(主进程保留上一份)。
+   */
+  it('菜单表:解得出来的照收,认不出的整张丢掉', () => {
+    const good = {
+      verb: 'keymap',
+      chords: ['cmd+t'],
+      menu: { sections: [{ label: '标签', items: [
+        { id: 'tab.new', label: '新标签', chord: 'cmd+t', enabled: true },
+        { id: 'tab.close', label: '关掉', chord: null, enabled: false },
+      ] }] },
+    }
+    expect(parseNativeViewRequest(good)).toEqual(good)
+    // `menu` 缺席 = 这一帧没说菜单(合法)。
+    expect(parseNativeViewRequest({ verb: 'keymap', chords: [] })).toEqual({ verb: 'keymap', chords: [] })
+    const bad = (menu: unknown) => parseNativeViewRequest({ verb: 'keymap', chords: [], menu })
+    expect(bad({ sections: 'nope' })).toEqual({ verb: 'keymap', chords: [] })
+    expect(bad({ sections: [{ items: [] }] })).toEqual({ verb: 'keymap', chords: [] })
+    expect(bad({ sections: [{ label: 'x', items: [{ label: 'y', chord: null }] }] }))
+      .toEqual({ verb: 'keymap', chords: [] })
+    expect(bad({ sections: [{ label: 'x', items: [{ id: 'a', label: 'y', chord: 7 }] }] }))
+      .toEqual({ verb: 'keymap', chords: [] })
+    // `enabled` 不是 true 的一律读作 false —— 缺席的那一格不该变成「亮的」。
+    expect(bad({ sections: [{ label: 'x', items: [{ id: 'a', label: 'y', chord: null }] }] }))
+      .toEqual({
+        verb: 'keymap',
+        chords: [],
+        menu: { sections: [{ label: 'x', items: [{ id: 'a', label: 'y', chord: null, enabled: false }] }] },
+      })
+  })
 })

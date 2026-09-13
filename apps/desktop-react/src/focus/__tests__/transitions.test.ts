@@ -6,6 +6,7 @@ import {
   nearestInteractiveAncestorOf,
   restingElementOf,
   returnTargetOf,
+  routeCommand,
   routeEscape,
   routeKey,
   scopeAtElement,
@@ -642,5 +643,70 @@ describe('returnTargetOf ③ inert 祖先截断 —— 架子收起保挂载(202
   it('父不在表上是合法中间态:不因它判死', () => {
     const t = tree(scopeNode('l', 'leaf', 'ghost', { root: el() }))
     expect(isReachablyInteractive(t, t.get('l'))).toBe(true)
+  })
+})
+
+/**
+ * **`routeCommand` —— 一条命令此刻归谁做**(K4)。
+ *
+ * 菜单栏上点一项、菜单项画不画灰,两处都问它;它与 `routeKey` 共用
+ * 「这一格答得出吗」那一句(`nodeAnswers`)与「应用层有没有兜底」那一句
+ * (`findCommand(...).app`)。这一组钉的是**两只函数对同一棵树给同一个答案** ——
+ * 那正是「菜单画灰 = 按键不响」这句话成立的地方。
+ */
+describe('routeCommand —— 菜单与按键是同一条判据', () => {
+  it('由深到浅找第一个答得出的响应者', () => {
+    const t = tree(
+      scopeNode('r', 'root', null),
+      scopeNode('outer', 'viewer', 'r', { commands: { 'view.find': () => {} } }),
+      scopeNode('inner', 'viewer', 'outer', { commands: { 'view.find': () => {} } }),
+    )
+    expect(routeCommand(t, ['r', 'outer', 'inner'], 'view.find')).toMatchObject({
+      target: 'scope',
+      instanceId: 'inner',
+    })
+  })
+
+  it('没人答 + `app: false` → null(画灰,按下去也不会有事)', () => {
+    const t = tree(scopeNode('r', 'root', null))
+    expect(routeCommand(t, ['r'], 'view.find')).toBeNull()
+  })
+
+  it('没人答 + `app: true` → 应用层兜底(菜单上它永远是亮的)', () => {
+    const t = tree(scopeNode('r', 'root', null))
+    expect(routeCommand(t, ['r'], 'toggle:search')).toEqual({ target: 'root', command: 'toggle:search' })
+  })
+
+  it('声明里有、此刻没交出处理器 → 当作没命中(与 `routeKey` 逐字同一格)', () => {
+    const t = tree(
+      scopeNode('r', 'root', null),
+      scopeNode('l', 'leaf', 'r', { commands: {} }),
+    )
+    expect(routeCommand(t, ['r', 'l'], 'tab.close')).toBeNull()
+  })
+
+  it('inert 的那一格不答(路径经过它就在那儿断)', () => {
+    const t = tree(
+      scopeNode('r', 'root', null),
+      scopeNode('v', 'viewer', 'r', { inert: true, commands: { 'view.find': () => {} } }),
+    )
+    expect(routeCommand(t, ['r', 'v'], 'view.find')).toBeNull()
+  })
+
+  /**
+   * **两只函数对同一棵树给同一个答案** —— 反证:把 `routeCommand` 的循环改成
+   * 由浅到深、或者让它不问 `app`,这一条当场红。
+   */
+  it('与 `routeKey` 对同一棵树同一条命令逐字相等', () => {
+    const t = tree(
+      scopeNode('r', 'root', null),
+      scopeNode('v', 'viewer', 'r', { commands: { 'view.find': () => {} } }),
+      scopeNode('f', 'files', 'v', { commands: { 'files.detail': () => {} } }),
+    )
+    for (const path of [['r'], ['r', 'v'], ['r', 'v', 'f']]) {
+      for (const command of ['view.find', 'files.detail', 'toggle:search'] as CommandId[]) {
+        expect(routeCommand(t, path, command)).toEqual(routeKey(t, path, KEY_F, [command], 'mac'))
+      }
+    }
   })
 })

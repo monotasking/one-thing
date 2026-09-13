@@ -359,6 +359,12 @@ export function NativeViewSlot({ viewId, scope, elementRef, className }: NativeV
     const bridge = nativeViewBridge()
     if (!bridge) return
     return bridge.on((message: NativeViewPush) => {
+      /*
+       * **不带 `viewId` 的那一推不归这里**(K4:菜单点击)。菜单属于这扇窗,
+       * 不属于任何一片视图 —— 收它的是键位下沉链那一条订阅(它整台壳一份、
+       * 没开浏览器时也活着)。这一句是这只占位格的门牌:它只认自己那片地。
+       */
+      if (!('viewId' in message)) return
       if (message.viewId !== viewId) return
       switch (message.kind) {
         case 'snapshot':

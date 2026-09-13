@@ -174,7 +174,7 @@ export function routeKey(
       return { target: 'claim', instanceId: node.instanceId, scope: node.scope }
     }
     for (const command of candidates) {
-      if (!node.commands?.[command]) continue
+      if (!nodeAnswers(node, command)) continue
       return { target: 'scope', instanceId: node.instanceId, scope: node.scope, command }
     }
   }
@@ -182,6 +182,45 @@ export function routeKey(
     if (findCommand(command)?.app) return { target: 'root', command }
   }
   return null
+}
+
+/**
+ * **这一格此刻答得出这条命令吗** —— 判据只有这一句,`routeKey` 与
+ * `routeCommand` 共用它(K4)。
+ *
+ * `commands[id]` 是**动态**的:叶没有活动 tab 时 `tab.close` 是 `undefined`,
+ * 浏览器刚开那一格没有历史时 `nav.back` 是 `undefined`(K3 判例)。所以
+ * 「声明里有」与「此刻交得出」是两件事,而这里问的永远是后者。
+ */
+function nodeAnswers(node: ScopeNode, command: CommandId): boolean {
+  return Boolean(node.commands?.[command])
+}
+
+/**
+ * **一条命令此刻归谁做**(K4)—— 与 `routeKey` 同一条判据,少了「按键」那一半。
+ *
+ * 菜单栏上点一项、以及菜单项画不画灰,两处都问它。为什么不是直接调 `routeKey`:
+ *  · `routeKey` 要一个 `ComboEvent`,而菜单点击**没有按键** —— 造一个假事件出来
+ *    只为了喂给它,等于让「这一下是哪个键」凭空多一个说法;
+ *  · `claims`(「这几个键归里面那台程序」)是**按键**这一层的概念:它说的是
+ *    「别截这个键」,而不是「别做这件事」。用户在菜单栏上点「查找」,终端没有
+ *    理由把它当成一次要让给 PTY 的按键。
+ * 剩下那两问 —— 由深到浅找第一个答得出的响应者、再落到应用层兜底 —— 逐字是
+ * 同一段代码(`nodeAnswers` + `findCommand(...).app`),所以菜单画灰与按键不响
+ * 永远是同一件事。
+ */
+export function routeCommand(
+  nodes: FocusTreeNodes,
+  path: ActivePath,
+  command: CommandId,
+): KeyRoute {
+  for (let i = path.length - 1; i >= 0; i -= 1) {
+    const node = nodes.get(path[i])
+    if (!isInteractive(node)) continue
+    if (!nodeAnswers(node, command)) continue
+    return { target: 'scope', instanceId: node.instanceId, scope: node.scope, command }
+  }
+  return findCommand(command)?.app ? { target: 'root', command } : null
 }
 
 /**

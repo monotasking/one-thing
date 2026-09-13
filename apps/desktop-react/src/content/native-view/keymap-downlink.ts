@@ -1,9 +1,15 @@
 import { focusScopeAnswersOf, focusScopeClaimsOf } from '../../focus/scopes'
+import { dispatchHostCommand } from '../../focus/dispatch'
+import { focusTree } from '../../focus/registry'
+import { routeCommand } from '../../focus/transitions'
 import { chordOfCombo } from '../../keymap/chord'
+import { projectAppMenu } from '../../keymap/menu-projection'
 import { currentKeymapPlatform, useKeymapStore } from '../../keymap/store'
 import { KEYMAP_COMMANDS, effectiveCombos } from '../../keymap/transitions'
+import { useStageStore } from '../../stage/store'
 import { nativeViewBridge } from '../../data/browser-port'
-import type { KeymapPlatform, KeymapState } from '../../keymap/types'
+import type { AppMenuSpec, NativeViewPush } from '../../data/browser-port'
+import type { CommandId, KeymapPlatform, KeymapState } from '../../keymap/types'
 import type { FocusScopeId } from '../../focus/types'
 
 /**
@@ -126,12 +132,39 @@ export const NATIVE_VIEW_HOST_SCOPES: readonly FocusScopeId[] = ['leaf']
 
 /** 谁在挂着 → 要收哪几个作用域的局部键。引用计数,见文件头。 */
 const SCOPES = new Map<FocusScopeId, number>()
-let unsubscribe: (() => void) | undefined
+/**
+ * **应用级那条链的引用计数**(K4)。
+ *
+ * 键位表只有原生视图在场时才有人读,**菜单栏不是** —— 它在壳起来的那一刻就画在
+ * 屏幕顶上,一格浏览器都没开也得是对的。所以这条链有两种挂法:
+ *  · `startKeymapDownlink()` —— `AppShell` 挂一次,整台壳的寿命;
+ *  · `startNativeViewKeymapDownlink(scope)` —— 每片原生视图挂一次,只为了把
+ *    **它那一格作用域**的局部键补进保留键表。
+ * 两种都只是给同一只 `push()` 加一个理由,表还是一份、订阅还是一条。
+ */
+let appLinks = 0
+let unsubscribers: (() => void)[] = []
 let lastSent: string | undefined
+/** 上一次算出来的 locale —— stage store 上任何一次写都会叫醒订阅,只有它变了才重投影。 */
+let lastLocale: string | undefined
+
+/** 一条命令此刻答不答得出。**与派发器同一条判据**(判词在 `routeCommand` 上)。 */
+function commandEnabled(id: CommandId): boolean {
+  return routeCommand(focusTree.nodes(), focusTree.activePath(), id) !== null
+}
+
+function currentMenu(platform: KeymapPlatform): AppMenuSpec {
+  return projectAppMenu({
+    state: useKeymapStore.getState(),
+    platform,
+    isEnabled: commandEnabled,
+  })
+}
 
 function push(): void {
   const bridge = nativeViewBridge()
   if (!bridge) return
+  const platform = currentKeymapPlatform()
   const chords = boundChordsFor(
     [...SCOPES.keys(), ...NATIVE_VIEW_HOST_SCOPES],
     /*
@@ -140,14 +173,97 @@ function push(): void {
      * 主进程收到的还是出厂那张表,网页里按 ⌘⇧P 会落到页面自己手里。
      */
     useKeymapStore.getState(),
-    currentKeymapPlatform(),
+    platform,
   )
-  // 整表覆盖,但**一样就不发**:键位 store 上任何一次无关的写(它还存别的东西)
-  // 都会把这条订阅叫醒,而一条与上次逐字相同的表推下去只是白跑一趟 IPC。
-  const signature = chords.join('\u0000')
+  const menu = currentMenu(platform)
+  /*
+   * 整表覆盖,但**一样就不发**:三条订阅(键位 store / 焦点树 / 语言)里任何一次
+   * 无关的写都会把这只函数叫醒,而一条与上次逐字相同的帧推下去只是白跑一趟 IPC
+   * —— 主进程那一侧收到菜单就会重建一次 `Menu`(Electron 的菜单不可变),
+   * 所以这道签名不只是省一次 IPC,它是「同签名不重建」的第一道。
+   *
+   * 签名把两半都算进去:菜单变了而键表没变(换了个焦点)照样要发。
+   */
+  const signature = `${chords.join('\u0000')}\u0001${JSON.stringify(menu)}`
   if (signature === lastSent) return
   lastSent = signature
-  bridge.send({ verb: 'keymap', chords })
+  bridge.send({ verb: 'keymap', chords, menu })
+}
+
+/**
+ * 三条订阅。**三处都走同一只 `push()`**(签名去重在那里),所以「什么时候重投影」
+ * 这句话只有一个产地:
+ *  · **键位表变**(改绑 / 换键位组)—— 保留键表与菜单上的键面同时变;
+ *  · **活动路径变**(焦点换人)—— `enabled` 那一格是活动路径算出来的;
+ *  · **换语言** —— 标签是当场翻好的串,主进程没有字典重翻不了。
+ */
+function subscribe(): void {
+  if (unsubscribers.length > 0) return
+  lastLocale = useStageStore.getState().locale
+  unsubscribers = [
+    useKeymapStore.subscribe(push),
+    focusTree.subscribe(push),
+    useStageStore.subscribe(() => {
+      // stage store 存的东西多得很(浮窗次序、Dock 形状…),只有语言这一格与菜单有关。
+      const locale = useStageStore.getState().locale
+      if (locale === lastLocale) return
+      lastLocale = locale
+      push()
+    }),
+    /*
+     * 菜单栏上点一项 → 主进程推 `{ kind: 'command' }` 回来 → 交给壳里**唯一**那个
+     * 派发口。收它的是**这条链**而不是占位格(`NativeViewSlot`):占位格只在有
+     * 原生视图时才挂载,而菜单在没开浏览器时照样点得动。
+     */
+    bridgeOn(message => {
+      if (message.kind !== 'command') return
+      dispatchHostCommand(message.id as CommandId)
+    }),
+  ]
+}
+
+/** 订阅推送口。没有宿主(`--mode web`)时是一只空退订。 */
+function bridgeOn(handler: (message: NativeViewPush) => void): () => void {
+  return nativeViewBridge()?.on(handler) ?? (() => {})
+}
+
+function unsubscribeAll(): void {
+  for (const off of unsubscribers) off()
+  unsubscribers = []
+  lastSent = undefined
+  lastLocale = undefined
+}
+
+/** 还有人要这条链吗。 */
+function linked(): boolean {
+  return appLinks > 0 || SCOPES.size > 0
+}
+
+function release(): void {
+  if (linked()) {
+    push()
+    return
+  }
+  unsubscribeAll()
+}
+
+/**
+ * **整台壳那一条链**(K4)。`AppShell` 挂一次,活到壳被卸载。
+ *
+ * 它在的时候菜单表一直是新的;它是 K4 之前那条「最后一片视图走了就退订」的
+ * 判词改口的地方 —— 从前没有视图就没有人读这张表,今天菜单栏一直有人读。
+ */
+export function startKeymapDownlink(): () => void {
+  appLinks += 1
+  subscribe()
+  push()
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    appLinks -= 1
+    release()
+  }
 }
 
 /**
@@ -157,7 +273,7 @@ function push(): void {
  */
 export function startNativeViewKeymapDownlink(scope: FocusScopeId): () => void {
   SCOPES.set(scope, (SCOPES.get(scope) ?? 0) + 1)
-  unsubscribe ??= useKeymapStore.subscribe(push)
+  subscribe()
   push()
   let released = false
   return () => {
@@ -166,25 +282,20 @@ export function startNativeViewKeymapDownlink(scope: FocusScopeId): () => void {
     const left = (SCOPES.get(scope) ?? 1) - 1
     if (left > 0) SCOPES.set(scope, left)
     else SCOPES.delete(scope)
-    if (SCOPES.size > 0) {
-      push()
-      return
-    }
-    unsubscribe?.()
-    unsubscribe = undefined
-    lastSent = undefined
     /*
-     * 最后一片视图走了 —— **不推空表**。表推给的是主进程那只 `KeymapBridge`,
-     * 而它是按视图挂监听的:没有视图就没有人读这张表。推一张空表等于在说
-     * 「从现在起页面吃掉所有键」,而下一片视图挂上来时那句话还留在那儿。
+     * 最后一片视图走了 —— **不推空表**(表本来也不会空:叶那一族永远在里面,
+     * 判词在 `NATIVE_VIEW_HOST_SCOPES` 上)。K4 之前这里连订阅一起拆,理由是
+     * 「没有视图就没有人读这张表」;今天菜单栏一直在读同一条帧的另一半,所以
+     * 拆不拆由 `linked()` 说了算,而不是由「有没有视图」说了算。下一片视图挂上来
+     * 时照样会推一次带它那一格作用域的全表(上面那句 `push()`)。
      */
+    release()
   }
 }
 
 /** 回到出厂。测试用。 */
 export function resetNativeViewKeymapDownlink(): void {
   SCOPES.clear()
-  unsubscribe?.()
-  unsubscribe = undefined
-  lastSent = undefined
+  appLinks = 0
+  unsubscribeAll()
 }

@@ -1518,4 +1518,10 @@ export const en: Record<MessageKey, string> = {
   'keymap.exportFail': 'Export failed',
   'keymap.removeKey': 'Remove {combo} from “{name}”',
 
+  /* The four app-menu sections (K4). Family rule: `keymap/menu-projection.menuFamilyOf`. */
+  'menu.sectionGlobal': 'Commands',
+  'menu.sectionTab': 'Tabs',
+  'menu.sectionContent': 'Content',
+  'menu.sectionFace': 'Panels',
+
 }

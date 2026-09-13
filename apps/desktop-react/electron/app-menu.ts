@@ -46,6 +46,7 @@
  * 是碰巧,不是设计;单测里有一条读本文件源文本的用例钉着这件事。
  */
 import type { MenuItemConstructorOptions } from 'electron'
+import type { AppMenuSpec } from './native-view-protocol.js'
 
 /**
  * **这七个键归内容层**,应用菜单一个都不许占。
@@ -93,6 +94,123 @@ export interface AppMenuInput {
   /** dev 档(见 `isDevShell`):多一个 View,里面只有 DevTools 与换了键的 Reload。 */
   dev: boolean
   platform: NodeJS.Platform
+  /**
+   * **命令表投影出来的那几节**(K4)。缺席 = 还没收到过(壳刚 `whenReady`,
+   * 渲染进程还没起来)—— 那时画的就是 K1 那张只做减法的表,与从前逐字相同。
+   */
+  menu?: AppMenuSpec
+  /**
+   * 点一项要做什么。`buildAppMenuTemplate` 是纯模板,所以「点了之后」是**参数** ——
+   * 真实现是把 `{ kind: 'command', id }` 推回渲染进程(`app-menu-install.ts`)。
+   */
+  onCommand?: (id: string) => void
+}
+
+/**
+ * **规范串 → Electron 的加速键**(K4)。纯函数,读不出就是 `null`(不猜)。
+ *
+ * 串这一侧已经**解释过平台**了(判词在渲染层 `keymap/chord.ts`):
+ * mac 上主修饰键写 `cmd`、另一枚写 `ctrl`;Win / Linux 上主修饰键写 `ctrl`、
+ * 另一枚写 `cmd`(那是 Win 键)。所以这里的映射也按平台分:
+ *
+ *  · **主修饰键** → `CommandOrControl`(Electron 自己按平台画成 ⌘ / Ctrl);
+ *  · **另一枚** → mac 画 `Control`、其余画 `Super`。
+ *
+ * 主键按 Electron 的键名表折(`enter` → `Return`、`arrowleft` → `Left`、
+ * 空格 → `Space`、`+` → `Plus`;标点原样)。折不出来的一律 `null` —— 一项没有
+ * 加速键只是少画一个键面,而**猜**出来的键面是一句假话。
+ */
+const ACCELERATOR_KEYS: Record<string, string> = {
+  enter: 'Return',
+  escape: 'Escape',
+  tab: 'Tab',
+  backspace: 'Backspace',
+  delete: 'Delete',
+  insert: 'Insert',
+  home: 'Home',
+  end: 'End',
+  pageup: 'PageUp',
+  pagedown: 'PageDown',
+  arrowup: 'Up',
+  arrowdown: 'Down',
+  arrowleft: 'Left',
+  arrowright: 'Right',
+  ' ': 'Space',
+  '+': 'Plus',
+}
+
+/** Electron 的加速键里原样收得下的标点(文档那句「Punctuations like ~, !, @, #, $」)。 */
+const ACCELERATOR_PUNCTUATION = new Set([
+  '`', '~', '-', '=', '[', ']', '\\', ';', "'", ',', '.', '/', '!', '@', '#', '$', '%', '^', '&', '*',
+  '(', ')', '_', '{', '}', '|', ':', '"', '<', '>', '?',
+])
+
+export function acceleratorOfChord(chord: string, platform: NodeJS.Platform): string | null {
+  const mac = platform === 'darwin'
+  const text = chord.trim().toLowerCase()
+  if (!text) return null
+  /* 主键本身是 `+` 的那一档要单独认(`cmd++` 的末位是键不是分隔符),与 `keymap/chord.ts` 同判例。 */
+  let mods: string[]
+  let key: string
+  if (text === '+') {
+    mods = []
+    key = '+'
+  } else if (text.endsWith('+')) {
+    const head = text.slice(0, -1)
+    if (!head.endsWith('+')) return null
+    mods = head.slice(0, -1).split('+').filter(Boolean)
+    key = '+'
+  } else {
+    const parts = text.split('+')
+    const last = parts.pop()
+    if (!last) return null
+    mods = parts.filter(Boolean)
+    key = last
+  }
+  const out: string[] = []
+  for (const mod of mods) {
+    if (mod === 'alt') out.push('Alt')
+    else if (mod === 'shift') out.push('Shift')
+    else if (mod === (mac ? 'cmd' : 'ctrl')) out.push('CommandOrControl')
+    else if (mod === (mac ? 'ctrl' : 'cmd')) out.push(mac ? 'Control' : 'Super')
+    else return null
+  }
+  const named = ACCELERATOR_KEYS[key]
+  if (named) out.push(named)
+  else if (/^[a-z0-9]$/.test(key)) out.push(key.toUpperCase())
+  else if (/^f([1-9]|1[0-9]|2[0-4])$/.test(key)) out.push(key.toUpperCase())
+  else if (ACCELERATOR_PUNCTUATION.has(key)) out.push(key)
+  else return null
+  return out.join('+')
+}
+
+/**
+ * 一节 → 一格顶层菜单。**每一项 `registerAccelerator: false`** —— 这是硬约束:
+ * 加速键在这里**只用来显示**。真正的派发永远是壳里那唯一一个派发器
+ * (菜单点击也走它,见 `focus/dispatch.dispatchHostCommand`);让菜单真的注册这个
+ * 键,同一下按键会先被 NSApp 的菜单吃掉、再被壳自己接一次 —— 响两次,或者更糟:
+ * 菜单那一份不认识活动路径,于是「⌘T 在浏览器里开标签、在别处什么都不做」这条
+ * 裁定当场失效。单测 ⑧ 对**全表**钉着这一格。
+ */
+function menuSectionTemplate(
+  section: AppMenuSpec['sections'][number],
+  platform: NodeJS.Platform,
+  onCommand: ((id: string) => void) | undefined,
+): MenuItemConstructorOptions {
+  return {
+    label: section.label,
+    submenu: section.items.map((item): MenuItemConstructorOptions => {
+      const accelerator = item.chord ? acceleratorOfChord(item.chord, platform) : null
+      return {
+        /* id = 命令 id:门按它取件,`ONETHING_GATE_MENU_CLICK` 也按它点。 */
+        id: item.id,
+        label: item.label,
+        enabled: item.enabled,
+        ...(accelerator ? { accelerator, registerAccelerator: false } : {}),
+        click: () => { onCommand?.(item.id) },
+      }
+    }),
+  }
 }
 
 /** dev 档 Reload 的键:与 ⌘R 错开(mac 用 ⌃⌥⌘R,别的平台用 Ctrl+Alt+Shift+R)。 */
@@ -104,7 +222,7 @@ export function devReloadAccelerator(platform: NodeJS.Platform): string {
  * 纯模板函数:进得了 vitest(它一个 electron 的**值**都不碰,只用类型)。
  * 判例与 `electron/browser/` 同一条 —— 那个目录里只有 `index.ts` 碰 electron。
  */
-export function buildAppMenuTemplate({ dev, platform }: AppMenuInput): MenuItemConstructorOptions[] {
+export function buildAppMenuTemplate({ dev, platform, menu, onCommand }: AppMenuInput): MenuItemConstructorOptions[] {
   const mac = platform === 'darwin'
   const template: MenuItemConstructorOptions[] = []
 
@@ -136,6 +254,18 @@ export function buildAppMenuTemplate({ dev, platform }: AppMenuInput): MenuItemC
       { role: 'selectAll' },
     ],
   })
+
+  /*
+   * **命令表投影出来的那几节**(K4),排在 Edit 之后、别的一切之前。
+   *
+   * 它们是这台壳自己的命令,不是系统角色 —— 所以它们挨着 Edit 站,而 Window /
+   * Help 仍然收尾(每个 mac 应用都是这个次序)。dev 档那格 View 排在它们后面:
+   * 它是开发者的东西,不该插在产品命令中间。
+   */
+  for (const section of menu?.sections ?? []) {
+    if (section.items.length === 0) continue
+    template.push(menuSectionTemplate(section, platform, onCommand))
+  }
 
   if (dev) {
     /*
@@ -198,28 +328,119 @@ export const GATE_MENU_DUMP_ENV = 'ONETHING_GATE_MENU_DUMP'
 
 /** `Menu.getApplicationMenu()` 交回来的东西的结构形(便于纯函数化与单测)。 */
 export interface MenuItemLike {
+  id?: string
   label?: string
   role?: string
   accelerator?: string
   type?: string
+  enabled?: boolean
   submenu?: { items: MenuItemLike[] } | undefined
 }
 
 export interface MenuDumpRow {
+  /** 命令 id(K4 起投影出来的项带它;角色项没有)。 */
+  id?: string
   label?: string
   role?: string
   accelerator?: string
   type?: string
+  /** **只在 false 时写出去**:门问的是「这一项此刻画不画灰」,而绝大多数项恒 true。 */
+  enabled?: boolean
   submenu?: MenuDumpRow[]
 }
 
 /** 纯函数:把菜单树压成门读得懂的行(递归)。 */
 export function dumpMenuItems(items: readonly MenuItemLike[]): MenuDumpRow[] {
   return items.map(item => ({
+    id: item.id || undefined,
     label: item.label || undefined,
     role: item.role || undefined,
     accelerator: item.accelerator || undefined,
     type: item.type && item.type !== 'normal' ? item.type : undefined,
+    enabled: item.enabled === false ? false : undefined,
     submenu: item.submenu ? dumpMenuItems(item.submenu.items) : undefined,
   }))
+}
+
+/**
+ * 门用的第二格自述口:`ONETHING_GATE_MENU_CLICK=<path>` 一设,主进程**盯着那个
+ * 文件**,里面写进一个命令 id 就在菜单上点它一次(同一个 id 不重复点)。
+ *
+ * ── 为什么是**路径**而不是直接写命令 id ──────────────────────────────────
+ * 门要证的不是「点得动」,是「**这个时候**点它会开出一格浏览器标签」——
+ * 而 `tab.new` 在任何一片会话叶拿到焦点时就已经 `enabled` 了。env 里塞一个 id
+ * 说得出「点什么」,说不出「什么时候」,于是门只能赌自己先到;换成一个文件,
+ * 时机由门自己写那一下决定,与它前面十几条一样是确定的。
+ *
+ * 判例与 `GATE_MENU_DUMP_ENV` 逐字相同:**只在 `ONETHING_GATE_` 前缀下生效**,
+ * 产品路径上一个字都读不到它。
+ */
+export const GATE_MENU_CLICK_ENV = 'ONETHING_GATE_MENU_CLICK'
+
+/**
+ * 一份菜单表的签名。**同签名不重建** —— Electron 的 `Menu` 是不可变的,换一份
+ * 表只能整台重建(`setApplicationMenu(buildFromTemplate(...))`),而重建会让
+ * macOS 把菜单栏重画一遍。渲染进程那一侧已经按同一条规矩去过一次重(它的签名
+ * 还多算了保留键表那一半),这里是第二道:换语言 / 换焦点那种**只动一半**的帧
+ * 到这儿仍然可能与上一次逐字相同(比如两片都答不出任何命令的面互切)。
+ */
+export function menuSpecSignature(menu: AppMenuSpec | undefined): string {
+  return menu ? JSON.stringify(menu) : ''
+}
+
+/**
+ * **菜单此刻长什么样**,以及「要不要重画」这一问 —— 有状态的那一小格。
+ *
+ * 它住在这只**零 electron 值导入**的文件里(与 `buildAppMenuTemplate` 同一条
+ * 判例),所以「同签名不重建」是一条跑得动的单测,不是一句注释:真正的
+ * `Menu.setApplicationMenu` 由构造时注入的 `render` 代表,装它的那一半仍然只在
+ * `app-menu-install.ts` 里碰 electron。
+ */
+export class AppMenuRenderer {
+  private readonly render: (template: MenuItemConstructorOptions[]) => void
+  private readonly input: () => { dev: boolean; platform: NodeJS.Platform }
+  private readonly onCommand: (id: string) => void
+  private spec: AppMenuSpec | undefined
+  private signature: string | undefined
+
+  constructor(options: {
+    render: (template: MenuItemConstructorOptions[]) => void
+    input: () => { dev: boolean; platform: NodeJS.Platform }
+    onCommand: (id: string) => void
+  }) {
+    this.render = options.render
+    this.input = options.input
+    this.onCommand = options.onCommand
+  }
+
+  /** K1 那一趟:壳刚 `whenReady`,还没有任何投影 —— 画的就是只做减法的那张。 */
+  install(): void {
+    this.draw()
+  }
+
+  /**
+   * 收一份新投影。**回的是「重画了没有」** —— 门与单测都要这句话,而一个布尔比
+   * 「你自己再算一遍签名」诚实。
+   */
+  apply(menu: AppMenuSpec | undefined): boolean {
+    const next = menuSpecSignature(menu)
+    if (next === (this.signature ?? '')) return false
+    this.signature = next
+    this.spec = menu
+    this.draw()
+    return true
+  }
+
+  /** 此刻这张表里那一项是什么样(门的点击口按 id 取件)。 */
+  itemOf(id: string): AppMenuSpec['sections'][number]['items'][number] | undefined {
+    for (const section of this.spec?.sections ?? []) {
+      for (const item of section.items) if (item.id === id) return item
+    }
+    return undefined
+  }
+
+  private draw(): void {
+    const { dev, platform } = this.input()
+    this.render(buildAppMenuTemplate({ dev, platform, menu: this.spec, onCommand: this.onCommand }))
+  }
 }

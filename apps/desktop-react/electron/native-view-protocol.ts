@@ -29,6 +29,50 @@
 /** 通道名。preload 与主进程各 import 这一个常量,不各写一遍字面量。 */
 export const NATIVE_VIEW_CHANNEL = 'host:native-view'
 
+/**
+ * **应用菜单表**(K4)——命令表的一次投影,**纯数据**。
+ *
+ * ## 为什么菜单是渲染进程算的
+ *
+ * 三件东西主进程都没有:**字典**(`labelKey` → 人话,i18n 住在渲染层)、**有效键**
+ * (用户覆盖 ▷ 键位组 ▷ 出厂表,三层都在渲染进程的 store 里)、**此刻谁答得出**
+ * (活动路径是 `focus/` 那棵树)。主进程要是自己算,这三样就各有第二个产地 ——
+ * 而 K4 的正题恰恰是「设置页 / 菜单栏 / 保留表三处只有一个产地」。
+ * 所以主进程只做一件事:**把这张表画成 `Menu`**。
+ *
+ * ## 键写成 `chord` 串,不是 Electron 的 accelerator
+ *
+ * 串那一份规范住在 `keymap/chord.ts`(与下沉的保留键表逐字同一套写法,两端已经
+ * 对了一年)。换成 accelerator 语法就是让渲染进程认识 Electron ——
+ * 翻译那一步归主进程(`app-menu.ts` 的 `acceleratorOfChord`)。
+ *
+ * ## `enabled` 是事实,不是样式
+ *
+ * 它的判据与派发器逐字相同(`focus/transitions.routeCommand`):此刻活动路径上
+ * 有人答得出,或者这条命令有应用层兜底。画灰的那一项按下去本来也不会有事发生
+ * —— 菜单只是**投影**,不是第二条键盘路。
+ */
+export interface AppMenuItemSpec {
+  /** 命令 id(渲染进程的 `CommandId`;这条通道上它只是一个串,主进程不解释它)。 */
+  readonly id: string
+  /** 已经翻好的人话。主进程没有字典。 */
+  readonly label: string
+  /** `cmd+shift+f` 那种规范串;没绑键就是 null。 */
+  readonly chord: string | null
+  /** 此刻答得出吗(判据见上)。false = 画灰。 */
+  readonly enabled: boolean
+}
+
+export interface AppMenuSection {
+  /** 这一节在菜单栏上的名字(已翻好)。 */
+  readonly label: string
+  readonly items: readonly AppMenuItemSpec[]
+}
+
+export interface AppMenuSpec {
+  readonly sections: readonly AppMenuSection[]
+}
+
 /** 一片原生视图此刻该在哪、看不看得见、压在第几层。 */
 export interface NativeViewBounds {
   readonly x: number
@@ -61,8 +105,13 @@ export type NativeViewRequest =
    * 组合键 `preventDefault()` 并经 `key` 推回渲染进程照常派发,不在表里的归页面。
    *
    * 整表覆盖而不是增量:键位可以在设置里改绑,一份全表比一串增删更难对错。
+   *
+   * **K4 起同一条帧还捎着菜单表**(`menu`)。两件事共用一个动词而不是各占一条,
+   * 理由是它们**同源同时**:两张表都是命令表的投影,改绑一次两张一起变,
+   * 分成两条只会让「这一拍哪张新哪张旧」变成一个真问题。`menu` 可缺席 ——
+   * 缺席的意思是「这一帧没说菜单」(主进程保留上一份),不是「菜单是空的」。
    */
-  | { readonly verb: 'keymap'; readonly chords: readonly string[] }
+  | { readonly verb: 'keymap'; readonly chords: readonly string[]; readonly menu?: AppMenuSpec }
   /**
    * 在这片视图里找一个词(B3-a)。
    *
@@ -105,6 +154,19 @@ export type NativeViewPush =
    * 就是这个数」再也分不开,而这条通道的职责是**转述**,不是解释。
    */
   | { readonly kind: 'find'; readonly viewId: string; readonly active: number; readonly total: number }
+  /**
+   * **菜单栏上点了一项**(K4)。
+   *
+   * 它是这条通道上**唯一不带 `viewId`** 的一推 —— 菜单不属于任何一片视图,它属于
+   * 这扇窗。走这条通道而不是新开一条,理由与 `keymap` 那条动词同族:菜单表是从
+   * 这条通道下去的,点击的回程走同一条才只有一个词汇表(而 `transport:gate`
+   * 钉着 ipcMain 的条数 —— 那把尺子数的是 `ipcMain.handle/on`,这一推不占它)。
+   *
+   * 收它的那一侧把它交给壳里**唯一那个派发器**(`focus/dispatch.ts` 的
+   * `dispatchHostCommand`),与页面里截下来的那一下按键(`kind: 'key'`)同一条路:
+   * 局部先接、没接住才应用层兜底。**菜单不是第二条键盘路**。
+   */
+  | { readonly kind: 'command'; readonly id: string }
 
 /** preload 挂出来的那两口(`window.onethingHost.nativeView`)。 */
 export interface NativeViewBridge {

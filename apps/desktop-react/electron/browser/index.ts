@@ -80,6 +80,7 @@ import {
 } from './profiles.js'
 import { NativeViewLayout, type NativeViewHost } from './layout.js'
 import { installNativeViewIpc } from './native-view-ipc.js'
+import { applyAppMenuSpec, configureAppMenuCommandSender } from '../app-menu-install.js'
 import { BrowserResourceProvider, type BrowserOps, type BrowserTabView } from './resource-provider.js'
 import { BrowserSessionPolicy, type BrowserSessionLike } from './session-policy.js'
 import { BrowserService, getBrowserTabsPath } from './service.js'
@@ -115,6 +116,14 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
   // 「结构化端口」与真 Electron 对接的那一道缝,全部五处 cast 都集中在这只文件里。
   const layout = new NativeViewLayout(window.contentView as unknown as NativeViewHost, push)
   const keymap = new KeymapBridge(push)
+  /*
+   * **菜单点击的回程**(K4)。菜单是 `app.whenReady()` 那一拍装上的(K1:第一扇窗
+   * 之前),但「点了要交给谁」要等这扇窗 —— 所以它在这里填,与 `push` 同一只闭包。
+   * 撤销进下面那张 `dispose` 的清单:窗口没了之后菜单上点一下只记一行 debug。
+   */
+  const offMenuSender = configureAppMenuCommandSender(id => {
+    push({ kind: 'command', id })
+  })
   /** 每格 tab 一份「摘 keymap 监听」的退订。 */
   const keymapOff = new Map<string, () => void>()
 
@@ -311,7 +320,15 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
     occlude: viewId => { void layout.occlude(viewId) },
     unocclude: viewId => { layout.unocclude(viewId) },
     focus: viewId => { service.get(viewId)?.focus() },
-    keymap: chords => { keymap.setBoundChords(chords) },
+    keymap: (chords, menu) => {
+      keymap.setBoundChords(chords)
+      /*
+       * 菜单表(K4)。**同一条帧的另一半** —— 两张表都是命令表的投影,同源同时,
+       * 所以它们共用一个动词而不是各占一条(判词在协议那条动词上)。
+       * `undefined` = 这一帧没说菜单,主进程保留上一份。
+       */
+      applyAppMenuSpec(menu)
+    },
     // 查找是视图状态,所以它走这条通道而不是资源面(判词在协议那两条上)。
     find: request => { service.get(request.viewId)?.findInPage(request.text, { forward: request.forward }) },
     findStop: viewId => { service.get(viewId)?.stopFindInPage() },
@@ -364,6 +381,11 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
       offCdpSettings()
       offProfiles()
       offIpc()
+      /*
+       * 菜单的推送口(K4)。排在 `offIpc()` 之后、别的一切之前:这一刻起菜单上
+       * 点一下只记一行 debug,而菜单本身**不拆** —— 它是 `app` 级的,比这块地长命。
+       */
+      offMenuSender()
       /*
        * 先把还悬着的每一问按拒结掉,**再**摘 provider:反过来的话那几条
        * `permissionResolved` 会打在一只已经 dispose 的 hub 上(它自己吞得掉,

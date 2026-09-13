@@ -26,7 +26,7 @@
  * 帧不该让主进程抛。所以每条动词自己校验形状,认不出来的静默丢掉(记一条 debug)。
  */
 
-import type { NativeViewRequest } from '../native-view-protocol.js'
+import type { AppMenuSpec, NativeViewRequest } from '../native-view-protocol.js'
 import { NATIVE_VIEW_CHANNEL } from '../native-view-protocol.js'
 
 /** `ipcMain` 上用到的那两口。真实现是 electron 的 `ipcMain`。 */
@@ -41,7 +41,11 @@ export interface NativeViewHandlers {
   occlude(viewId: string): void
   unocclude(viewId: string): void
   focus(viewId: string): void
-  keymap(chords: readonly string[]): void
+  /**
+   * 键位表 + 菜单表(K4 起是两半)。`menu` 缺席 = 这一帧没说菜单(保留上一份),
+   * **不是**「菜单是空的」—— 判词在协议那条动词上。
+   */
+  keymap(chords: readonly string[], menu?: AppMenuSpec): void
   /** 页内查找(B3-a)。判词在协议那两条上 —— 它是视图状态,不是数据面。 */
   find(request: Extract<NativeViewRequest, { verb: 'find' }>): void
   findStop(viewId: string): void
@@ -61,6 +65,32 @@ function boundsOf(value: unknown): { x: number; y: number; width: number; height
   const { x, y, width, height } = value
   if ([x, y, width, height].some(n => typeof n !== 'number' || !Number.isFinite(n))) return undefined
   return { x: x as number, y: y as number, width: width as number, height: height as number }
+}
+
+/**
+ * 解一张菜单表。**载荷不可信**这条法在这里最要紧:这张表要被画成一台真的
+ * `Menu`,一格形状不对的项会让 `Menu.buildFromTemplate` 当场抛 —— 抛在主进程里,
+ * 而不是抛在发帧那一侧。所以逐格校验,认不出的**整张丢掉**(不是丢掉那一项):
+ * 半张菜单比没有菜单更难排查,而「这一帧没说菜单」本来就是合法的一档。
+ */
+function parseAppMenuSpec(raw: unknown): AppMenuSpec | undefined {
+  if (!isRecord(raw) || !Array.isArray(raw.sections)) return undefined
+  const sections: AppMenuSpec['sections'][number][] = []
+  for (const rawSection of raw.sections) {
+    if (!isRecord(rawSection) || typeof rawSection.label !== 'string') return undefined
+    if (!Array.isArray(rawSection.items)) return undefined
+    const items: AppMenuSpec['sections'][number]['items'][number][] = []
+    for (const rawItem of rawSection.items) {
+      if (!isRecord(rawItem)) return undefined
+      const { id, label, chord } = rawItem
+      if (typeof id !== 'string' || !id) return undefined
+      if (typeof label !== 'string') return undefined
+      if (chord !== null && typeof chord !== 'string') return undefined
+      items.push({ id, label, chord, enabled: rawItem.enabled === true })
+    }
+    sections.push({ label: rawSection.label, items })
+  }
+  return { sections }
 }
 
 /**
@@ -93,7 +123,9 @@ export function parseNativeViewRequest(raw: unknown): NativeViewRequest | undefi
     }
     case 'keymap': {
       if (!Array.isArray(raw.chords)) return undefined
-      return { verb: 'keymap', chords: raw.chords.filter((c): c is string => typeof c === 'string') }
+      const chords = raw.chords.filter((c): c is string => typeof c === 'string')
+      const menu = parseAppMenuSpec(raw.menu)
+      return menu ? { verb: 'keymap', chords, menu } : { verb: 'keymap', chords }
     }
     default:
       return undefined
@@ -113,7 +145,7 @@ export function installNativeViewIpc(
       case 'occlude': handlers.occlude(request.viewId); return
       case 'unocclude': handlers.unocclude(request.viewId); return
       case 'focus': handlers.focus(request.viewId); return
-      case 'keymap': handlers.keymap(request.chords); return
+      case 'keymap': handlers.keymap(request.chords, request.menu); return
       case 'find': handlers.find(request); return
       case 'findStop': handlers.findStop(request.viewId); return
     }

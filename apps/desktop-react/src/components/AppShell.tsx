@@ -8,6 +8,7 @@ import { useViewportReclamp } from '../stage/viewport-reclamp'
 import { useKeymapCommandRunner } from '../keymap/dispatch'
 import { FocusScope } from '../focus/FocusScope'
 import { useFocusDispatch } from '../focus/dispatch'
+import { startKeymapDownlink } from '../content/native-view/keymap-downlink'
 import { focusTree } from '../focus/registry'
 import { TopBar } from './TopBar'
 import { ErrorBoundary } from './ErrorBoundary'
@@ -125,6 +126,15 @@ export function AppShell() {
    * 常驻挂在这一层的理由没变:它得能在面板关着时把面叫起来,而面板此刻并不挂载。
    */
   useFocusDispatch({ runCommand: useKeymapCommandRunner() })
+
+  /**
+   * **键位与菜单的下沉链**(K4)。整台壳一条,挂在这一层的理由与上面那一条同源:
+   * 菜单栏在屏幕顶上,一格浏览器都没开的时候也得是对的 —— 而它是命令表的投影,
+   * 所以「键位表变 / 焦点换人 / 换语言」三处都要重投一次
+   * (三条订阅与签名去重都在 `keymap-downlink` 里,这里只负责挂一次)。
+   * 没有宿主(`--mode web`)时它是一只空退订。
+   */
+  useEffect(() => startKeymapDownlink(), [])
 
   /**
    * **窗子改了尺寸 → 浮窗回到视口里**(09-04 §4)。与上面那一条同一个形:判据在

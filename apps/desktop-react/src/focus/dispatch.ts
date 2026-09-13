@@ -3,7 +3,8 @@ import { hasModifier, lookupCommands } from '../keymap/transitions'
 import { currentKeymapPlatform, useKeymapStore } from '../keymap/store'
 import { focusTree } from './registry'
 import { tabStopWithin } from './tab-trap'
-import { modalTrapNode, routeEscape, routeKey } from './transitions'
+import { modalTrapNode, routeCommand, routeEscape, routeKey } from './transitions'
+import { runShellCommand } from '../keymap/run-command'
 import type { CommandId } from '../keymap/types'
 
 /**
@@ -119,6 +120,37 @@ export function dispatchSyntheticKey(message: {
       cancelable: true,
     }),
   )
+}
+
+/**
+ * **宿主(菜单栏)点了一条命令**(K4 的回程)。
+ *
+ * 它与 `dispatchSyntheticKey` 挨着写、住同一只文件,因为它们是同一件事的两种
+ * 入口:一次从**宿主**来的动作要走壳里**唯一**那条判据 —— 局部先接、没接住才
+ * 应用层兜底。区别只在「这一下是什么」已经知道了(一条具名命令),所以它不必
+ * 合成一个按键:合成按键会把「这条命令绑的是哪个键」变成第二个说法,而菜单项
+ * 上画的那个键面本来就是同一张表投影出去的。
+ *
+ * `routeCommand` 是 `routeKey` 的另一半(判词写在它自己身上),所以**画灰的项
+ * 按下去不会有事发生**这句话在两侧是同一段代码算出来的 —— 菜单只是投影,
+ * 不是第二条键盘路。
+ *
+ * ── 为什么这里直接吃 `runShellCommand`,而 `useFocusDispatch` 收的是注入的 ──
+ * 那条注入的理由(文件头「为什么 `runCommand` 是注入的」)是**动作表不许有第二
+ * 个产地**;K2b-1 之后那张表本身就是模块级纯函数 `run-command.ts`,`useKeymapCommandRunner()`
+ * 只是给 React 消费者的一层稳定引用。菜单点击没有 React 上下文(它从 IPC 进来),
+ * 所以它调的是同一张表本人 —— 产地仍然只有一个。
+ */
+export function dispatchHostCommand(id: CommandId): boolean {
+  const route = routeCommand(focusTree.nodes(), focusTree.activePath(), id)
+  if (!route) return false
+  if (route.target === 'root') {
+    runShellCommand(route.command)
+    return true
+  }
+  if (route.target !== 'scope') return false
+  focusTree.nodes().get(route.instanceId)?.commands?.[route.command]?.()
+  return true
 }
 
 /** 焦点在输入面里:无修饰的单键属于输入框,不属于快捷键。(与旧派发器逐字相同) */

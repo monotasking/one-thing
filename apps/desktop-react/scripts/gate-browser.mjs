@@ -75,6 +75,14 @@
  *     方)。**读表不按键**:菜单加速键走 NSApp 的 `sendEvent`,门里那套 CDP 合成键
  *     根本不经过它 —— 判词与那格只在 `ONETHING_GATE_` 前缀下生效的自述口
  *     (`ONETHING_GATE_MENU_DUMP`)都写在 `electron/app-menu.ts` 上。自己一趟壳。
+ *  ㉕ **菜单栏从命令表画**(K4,同文 §5 K4):菜单里有「新标签」这一项、加速键是
+ *     `CommandOrControl+T`(键面与保留键表、设置页同一个产地);焦点在浏览器叶里
+ *     它是亮的、在设置页里画灰(判据与派发器逐字相同 —— `routeCommand`);点它
+ *     **真的开出一格标签**。点击走的是一格只在 `ONETHING_GATE_` 前缀下生效的
+ *     **文件**口(`ONETHING_GATE_MENU_CLICK`)而不是 env 里的一个 id:`tab.new`
+ *     在任何一片会话叶拿到焦点时就已经亮了,id 说得出「点什么」、说不出「什么
+ *     时候」,而这一条量的正是那个时候。开出来那一格当场关掉 —— ⑧ 数的是账本上
+ *     那 8 格。
  *  ㉔ **键位组换一组,键位下沉表跟着换**(K5,同文 §5 K5):有效键从 K5 起是三层
  *     落出来的(用户逐格覆盖 ▷ 当前键位组 ▷ 出厂表),而下沉那只 `push()` 从前只
  *     递 `overrides` 一格 —— 那样切到 VS Code 组之后主进程收到的还是出厂表,网页里
@@ -467,6 +475,14 @@ async function main() {
    * 一个字都读不到它。
    */
   const downloadsDir = await mkdtemp(path.join(tmpdir(), 'browser-gate-downloads-'))
+  /**
+   * K4 的两格(㉕)。**活着那一趟**的菜单自述口:dump 每重画一次重写一次,
+   * 点击口是一个门自己写的文件 —— 写进去一个命令 id 就在菜单上点它一次。
+   * 两只都落在临时目录里,`finally` 里跟着 `menuLiveDir` 一起收。
+   */
+  const menuLiveDir = await mkdtemp(path.join(tmpdir(), 'browser-gate-menu-live-'))
+  const menuLiveDump = path.join(menuLiveDir, 'menu.json')
+  const menuClickFile = path.join(menuLiveDir, 'click.txt')
   /** 产品那一口 CDP。与门自己驱动壳用的那条分开(B0-③)。 */
   const productCdpPort = 19_000 + Math.floor(Math.random() * 900)
   let app
@@ -508,6 +524,15 @@ async function main() {
         ONETHING_GATE_HEADLESS: '1',
         ONETHING_GATE_OFFSCREEN: '1',
         ONETHING_GATE_DOWNLOADS_DIR: downloadsDir,
+        /*
+         * K4 的两格自述口。㉑ 那一趟只看得到「壳刚起来、渲染层还没推过投影」的
+         * 那一份;㉕ 要的是**活着的现场**(焦点在浏览器叶里 / 在设置页里),
+         * 所以主这一趟也带上 dump,而且它会**每重画一次重写一次**。
+         * 点击那一格收的是**路径**不是 id —— 判词在 `app-menu.ts` 的
+         * `GATE_MENU_CLICK_ENV` 上:id 说得出「点什么」,说不出「什么时候」。
+         */
+        ONETHING_GATE_MENU_DUMP: menuLiveDump,
+        ONETHING_GATE_MENU_CLICK: menuClickFile,
       },
     })
     const page = await app.firstWindow()
@@ -2106,6 +2131,129 @@ async function main() {
     assert(bodyBack, '⑳ 展开:树身与收起前**同一个 DOM 节点**(内部状态与滚动位不丢的机械含义)')
 
     /*
+     * ── ㉕ 菜单栏从命令表画(K4,方案 `docs/keymap-responder-2026-09.md` §5 K4)──
+     *
+     * ㉑ 那一趟证的是「默认那张没人审过的表不在了」;它起的是一台**空 store、没人
+     * 驱动**的壳,所以它看得到的只有「壳刚 `whenReady`、渲染层还没推过投影」的那
+     * 一份。K4 要证的三句话全都关于**活着的现场**,于是它们住在这一趟:
+     *  ａ 菜单里有「新标签」这一项,加速键是 `CommandOrControl+T` ——
+     *    键面与保留键表、设置页同一个产地(命令表);
+     *  ｂ **焦点在浏览器叶里** → 那一项 `enabled`;**焦点在设置页里** → 画灰。
+     *    判据与派发器逐字相同(`focus/transitions.routeCommand`),所以这一句同时
+     *    也是「⌘T 在设置页里什么都不做」那条裁定的可观测形;
+     *  ｃ 点它**真的开出一格标签** —— 菜单不是装饰,而且它走的是壳里唯一那个
+     *    派发口(`dispatchHostCommand`),不是第二条键盘路。
+     *
+     * **点击为什么走文件不走 env**:菜单加速键与菜单点击都走 macOS 的 NSApp,
+     * 门里那套 CDP 合成事件根本不经过它(判词在 ㉑ 与 `app-menu.ts` 上)。产品那
+     * 一侧因此留了一格只在 `ONETHING_GATE_` 前缀下生效的点击口,而它收**路径**:
+     * `tab.new` 在任何一片会话叶拿到焦点时就已经亮了,env 里塞一个 id 说不出
+     * 「什么时候点」,而这一条量的正是那个时候。
+     *
+     * **自己收自己的尸**:开出来那一格当场关掉 —— 下面 ⑧ 那一趟数的是账本上
+     * 那 8 格(`restored.length === 8`),多一格就把它判红,而红的是门不是产品。
+     */
+    console.log('\n[10b-2] ㉕ 菜单栏 —— 「新标签 ⌘T」从命令表画出来,点它真的开一格')
+    const menuRows = (dump) => {
+      const walk = (rows) => (rows ?? []).flatMap((row) => [row, ...walk(row.submenu)])
+      return walk(dump?.menu)
+    }
+    const menuItem = (dump, id) => menuRows(dump).find((row) => row.id === id)
+    const liveDump = await waitFor(
+      '㉕ 壳把带投影的菜单表写出来了',
+      () => {
+        const dumped = readJson(menuLiveDump)
+        return dumped && menuItem(dumped, 'tab.new') ? dumped : undefined
+      },
+      30_000,
+    )
+    const tabNewRow = menuItem(liveDump, 'tab.new')
+    report.menuLive = {
+      items: menuRows(liveDump).filter((row) => row.id).length,
+      sections: (liveDump.menu ?? []).length,
+    }
+    assert(
+      tabNewRow.accelerator === 'CommandOrControl+T',
+      `㉕a 菜单里「${tabNewRow.label}」的加速键是 CommandOrControl+T(读到 ${tabNewRow.accelerator})`,
+    )
+    assert(
+      typeof tabNewRow.label === 'string' && tabNewRow.label.length > 0,
+      `㉕a 那一项的标签是渲染层翻好的人话(读到 ${JSON.stringify(tabNewRow.label)})`,
+    )
+    assert(
+      menuRows(liveDump).filter((row) => row.id).length > 20,
+      `㉕a 投影出来的项不止一两条(${report.menuLive.items} 条 / ${report.menuLive.sections} 个顶格)`,
+    )
+
+    /* 键盘回到架子上那一页里(与 ⑦ / ㉓ 逐字同一手)。 */
+    await page.evaluate((viewId) => {
+      window.onethingHost?.nativeView?.send({ verb: 'focus', viewId })
+    }, shelfTab)
+    const enabledDump = await waitFor(
+      '㉕b 焦点进浏览器叶之后,菜单表重写了一份',
+      () => {
+        const dumped = readJson(menuLiveDump)
+        return menuItem(dumped, 'tab.new')?.enabled !== false ? dumped : undefined
+      },
+      20_000,
+    )
+    assert(
+      menuItem(enabledDump, 'tab.new')?.enabled !== false,
+      '㉕b 焦点在浏览器叶里:「新标签」是亮的',
+    )
+
+    const rowsBeforeMenu = await rpc(record, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+    const idsBeforeMenu = (rowsBeforeMenu.value?.tabs ?? []).map((t) => t.id)
+    writeFileSync(menuClickFile, 'tab.new', 'utf8')
+    const grownByMenu = await waitFor(
+      '㉕c 点了菜单上那一项之后,账本上多出一格',
+      async () => {
+        const now = await rpc(record, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+        const rows = now.value?.tabs ?? []
+        return rows.length > idsBeforeMenu.length ? rows : undefined
+      },
+      20_000,
+    )
+    const bornFromMenu = grownByMenu.map((t) => t.id).find((id) => !idsBeforeMenu.includes(id))
+    report.menuClick = { before: idsBeforeMenu.length, after: grownByMenu.length }
+    assert(
+      Boolean(bornFromMenu),
+      `㉕c 菜单上点「新标签」**真的开出了一格浏览器标签**(${idsBeforeMenu.length} → ${grownByMenu.length})`,
+    )
+    /* 收尾:关掉它,行数回到 ⑧ 数的那 8 格。 */
+    await rpc(record, 'resources', 'do', { ref: `browser:${bornFromMenu}`, op: 'close' })
+    await waitFor('㉕c 收尾:那一格关掉,行数回到原样', async () => {
+      const now = await rpc(record, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+      return (now.value?.tabs ?? []).length === idsBeforeMenu.length ? true : undefined
+    }, 20_000)
+
+    /*
+     * ㉕d 焦点在设置页里 → 画灰。⌘, 是 `toggle:settings` 的出厂键(K2 顺带那一格),
+     * 走的是壳自己那条唯一的派发器 —— 与用户按的那一下逐字同一条路。
+     */
+    await page.keyboard.press('Meta+Comma')
+    const greyDump = await waitFor(
+      '㉕d 焦点离开浏览器叶之后,「新标签」画灰',
+      () => {
+        const dumped = readJson(menuLiveDump)
+        return menuItem(dumped, 'tab.new')?.enabled === false ? dumped : undefined
+      },
+      20_000,
+    )
+    assert(
+      menuItem(greyDump, 'tab.new')?.enabled === false,
+      '㉕d 焦点在设置页里:「新标签」是灰的(⌘T 在那儿本来也什么都不做)',
+    )
+    /*
+     * 亮的那些仍然亮着 —— 画灰的是「此刻没人答」那一族,不是整张表:
+     * 应用级命令(呼出一块面)永远有兜底,所以它们不该跟着灰掉。
+     */
+    assert(
+      menuItem(greyDump, 'toggle:search')?.enabled !== false,
+      '㉕d 应用级那一族仍然亮着(它们有兜底,与焦点无关)',
+    )
+
+    /*
      * ── ㉓ 键位组换一组之后,**推给主进程那张保留键表跟着换**(K5)────────────
      *
      * 它治的是一个真会出现的洞:有效键从 K5 起是**三层**落出来的(用户逐格覆盖
@@ -2390,7 +2538,17 @@ async function main() {
        */
       const menuRoles = menuRows.map((row) => row.role).filter(Boolean).map((role) => String(role).toLowerCase())
       const roleName = (role) => String(role).toLowerCase()
-      const menuAccels = menuRows.map((row) => row.accelerator).filter(Boolean)
+      /*
+       * **只数菜单自己会注册的那些键**(K4 起要分两族)。
+       *
+       * 投影出来的那些项(带 `id` = 一条命令)是 `registerAccelerator: false` 的:
+       * 它们**画**一个键面,但一个键都不向系统注册 —— 那正是 K4 的硬约束(菜单只是
+       * 命令表的投影,不许变成第二条键盘路),而「菜单里看得见 ⌘T」恰恰是这一期
+       * 要做出来的东西。`MenuItem` 不把 `registerAccelerator` 交回来,所以这道门
+       * 看不见它;对全表钉住它的是单测 ⑧(`electron/__tests__/app-menu.test.ts`)。
+       * 这里判的仍然是 K1 那句话:**角色项**一个都不许占内容层的键。
+       */
+      const menuAccels = menuRows.filter((row) => !row.id).map((row) => row.accelerator).filter(Boolean)
       report.menu = { dev: dumped.dev, roles: menuRoles.length, accelerators: menuAccels.length }
 
       assert(
@@ -2430,7 +2588,7 @@ async function main() {
       const squatted = menuAccels.filter((accel) => reserved.has(normalize(accel)))
       assert(
         squatted.length === 0,
-        `㉑ 内容层那七个键一个都没被菜单占着(菜单实际用的键:${menuAccels.join(' ')})`,
+        `㉑ 内容层那七个键一个都没被**角色项**占着(角色项实际用的键:${menuAccels.join(' ')})`,
       )
 
       if (!PROD) {
@@ -2456,7 +2614,7 @@ async function main() {
       await rm(menuStore, { recursive: true, force: true })
     }
 
-    console.log(`\n[browser-gate] ok(${LANE} 档)—— 二十四条全过`)
+    console.log(`\n[browser-gate] ok(${LANE} 档)—— 二十五条全过`)
     console.log(`[browser-gate] 读数:${JSON.stringify(report)}`)
   } finally {
     if (app) await app.close().catch(() => {})
@@ -2468,6 +2626,7 @@ async function main() {
     await rm(store, { recursive: true, force: true })
     await rm(userDataDir, { recursive: true, force: true })
     await rm(downloadsDir, { recursive: true, force: true })
+    await rm(menuLiveDir, { recursive: true, force: true })
     if (proxyStoreDir) await rm(proxyStoreDir, { recursive: true, force: true })
   }
 }

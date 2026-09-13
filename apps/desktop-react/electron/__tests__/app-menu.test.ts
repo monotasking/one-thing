@@ -16,13 +16,16 @@ import { fileURLToPath } from 'node:url'
 import { describe, it, expect } from 'vitest'
 import type { MenuItemConstructorOptions } from 'electron'
 import {
+  AppMenuRenderer,
   KEYS_RESERVED_FOR_CONTENT,
+  acceleratorOfChord,
   buildAppMenuTemplate,
   devReloadAccelerator,
   dumpMenuItems,
   isDevShell,
   isReservedForContent,
 } from '../app-menu.js'
+import type { AppMenuSpec } from '../native-view-protocol.js'
 
 type Row = MenuItemConstructorOptions
 
@@ -153,14 +156,160 @@ describe('应用菜单模板', () => {
       ]),
     ).toEqual([
       {
+        id: undefined,
         label: 'Edit',
         role: 'editMenu',
         accelerator: undefined,
         type: 'submenu',
+        enabled: undefined,
         submenu: [
-          { label: 'Copy', role: 'copy', accelerator: 'CommandOrControl+C', type: undefined, submenu: undefined },
+          {
+            id: undefined,
+            label: 'Copy',
+            role: 'copy',
+            accelerator: 'CommandOrControl+C',
+            type: undefined,
+            enabled: undefined,
+            submenu: undefined,
+          },
         ],
       },
     ])
+  })
+})
+
+/**
+ * K4 单测:命令表投影出来的那几节。
+ *
+ * 三件事这里钉、真机门证不了:
+ *  · **`registerAccelerator: false` 对全表成立** —— 它是硬约束(菜单只是投影,
+ *    不许变成第二条键盘路)。真机门读的是装完之后的 `MenuItem`,而 Electron 不
+ *    把这一格交回来,所以它的唯一守卫在这里;
+ *  · **chord 串 → accelerator** 的逐条折法(平台两档);
+ *  · **同签名不重建** —— Electron 的 `Menu` 不可变,换表就是整台重建。
+ */
+describe('K4 · 菜单从命令表画', () => {
+  const spec: AppMenuSpec = {
+    sections: [
+      {
+        label: '标签',
+        items: [
+          { id: 'tab.new', label: '新标签', chord: 'cmd+t', enabled: true },
+          { id: 'tab.next', label: '下一个标签', chord: 'ctrl+tab', enabled: false },
+          { id: 'expose.pin', label: '置顶', chord: null, enabled: false },
+        ],
+      },
+    ],
+  }
+
+  it('⑥ 几节排在 Edit 之后、Window 之前', () => {
+    const labels = buildAppMenuTemplate({ dev: false, platform: 'darwin', menu: spec })
+      .map(item => item.label ?? String(item.role))
+    expect(labels.indexOf('标签')).toBeGreaterThan(labels.indexOf('Edit'))
+    expect(labels.indexOf('标签')).toBeLessThan(labels.indexOf('Window'))
+  })
+
+  it('⑦ 一项一行:id / 标签 / 加速键 / 画不画灰,都从表上来', () => {
+    const section = buildAppMenuTemplate({ dev: false, platform: 'darwin', menu: spec })
+      .find(item => item.label === '标签')
+    const items = (section?.submenu ?? []) as Row[]
+    expect(items.map(i => i.id)).toEqual(['tab.new', 'tab.next', 'expose.pin'])
+    expect(items[0]?.accelerator).toBe('CommandOrControl+T')
+    // mac 上 `ctrl` 是「另一枚」,画成 Control(不是 CommandOrControl)。
+    expect(items[1]?.accelerator).toBe('Control+Tab')
+    expect(items[0]?.enabled).toBe(true)
+    expect(items[1]?.enabled).toBe(false)
+    // 没绑键 = 没有加速键那一格(不是空串)。
+    expect(items[2]?.accelerator).toBeUndefined()
+  })
+
+  it('⑧ **全表** `registerAccelerator: false` —— 菜单只显示,不注册键', () => {
+    for (const platform of ['darwin', 'win32', 'linux'] as const) {
+      for (const dev of [false, true]) {
+        const rows = walk(buildAppMenuTemplate({ dev, platform, menu: spec }))
+        const withAccel = rows.filter(row => row.accelerator && row.id)
+        expect(withAccel.length).toBeGreaterThan(0)
+        for (const row of withAccel) {
+          expect(row.registerAccelerator, `${String(row.id)} 注册了加速键`).toBe(false)
+        }
+      }
+    }
+  })
+
+  it('⑨ 点一项 = 把命令 id 交出去(菜单自己不做任何事)', () => {
+    const seen: string[] = []
+    const section = buildAppMenuTemplate({
+      dev: false,
+      platform: 'darwin',
+      menu: spec,
+      onCommand: id => { seen.push(id) },
+    }).find(item => item.label === '标签')
+    const items = (section?.submenu ?? []) as Row[]
+    ;(items[0]?.click as () => void)()
+    expect(seen).toEqual(['tab.new'])
+  })
+
+  it('⑩ chord → accelerator:两档平台各自认哪一枚是主修饰键', () => {
+    // mac:cmd = 主修饰键,ctrl = 另一枚。
+    expect(acceleratorOfChord('cmd+shift+f', 'darwin')).toBe('CommandOrControl+Shift+F')
+    expect(acceleratorOfChord('ctrl+tab', 'darwin')).toBe('Control+Tab')
+    expect(acceleratorOfChord('cmd+alt+arrowleft', 'darwin')).toBe('CommandOrControl+Alt+Left')
+    expect(acceleratorOfChord('cmd+enter', 'darwin')).toBe('CommandOrControl+Return')
+    expect(acceleratorOfChord('cmd+`', 'darwin')).toBe('CommandOrControl+`')
+    expect(acceleratorOfChord('cmd+=', 'darwin')).toBe('CommandOrControl+=')
+    expect(acceleratorOfChord('cmd+shift++', 'darwin')).toBe('CommandOrControl+Shift+Plus')
+    // Win / Linux:ctrl = 主修饰键,cmd(串里)= Win 键 = Super。
+    expect(acceleratorOfChord('ctrl+shift+f', 'win32')).toBe('CommandOrControl+Shift+F')
+    expect(acceleratorOfChord('cmd+tab', 'win32')).toBe('Super+Tab')
+    // 读不出的一律 null —— **不猜**(一个猜出来的键面是一句假话)。
+    expect(acceleratorOfChord('hyper+f', 'darwin')).toBeNull()
+    expect(acceleratorOfChord('cmd+', 'darwin')).toBeNull()
+    expect(acceleratorOfChord('', 'darwin')).toBeNull()
+    expect(acceleratorOfChord('cmd+片', 'darwin')).toBeNull()
+  })
+
+  it('⑪ 同签名不重建;签名变了才重建', () => {
+    const drawn: MenuItemConstructorOptions[][] = []
+    const renderer = new AppMenuRenderer({
+      render: template => { drawn.push(template) },
+      input: () => ({ dev: false, platform: 'darwin' }),
+      onCommand: () => {},
+    })
+    renderer.install()
+    expect(drawn.length).toBe(1)
+    expect(renderer.apply(spec)).toBe(true)
+    expect(drawn.length).toBe(2)
+    // 逐字相同的另一份(不是同一个对象)—— 判据是签名,不是引用。
+    expect(renderer.apply(JSON.parse(JSON.stringify(spec)) as AppMenuSpec)).toBe(false)
+    expect(drawn.length).toBe(2)
+    const moved: AppMenuSpec = {
+      sections: [{ ...spec.sections[0], items: [{ ...spec.sections[0].items[0], enabled: false }] }],
+    }
+    expect(renderer.apply(moved)).toBe(true)
+    expect(drawn.length).toBe(3)
+    expect(renderer.itemOf('tab.new')?.enabled).toBe(false)
+    expect(renderer.itemOf('nope')).toBeUndefined()
+  })
+
+  /**
+   * **投影出来的项画得出内容层那七个键,而那不违反 K1** —— 判据是「占没占着」,
+   * 不是「画没画出来」:`registerAccelerator: false` 的项一个键都不向系统注册,
+   * 而「菜单栏上看得见 ⌘T」恰恰是 K4 要做出来的东西(macOS 用户找快捷键的第一
+   * 反应)。K1 那句话管的是**角色项**,真机门 ㉑ 因此只数不带 `id` 的那些。
+   */
+  it('⑬ 一项画着 ⌘T 不算「占着」—— 它没注册,K1 那条仍然成立', () => {
+    const rows = walk(buildAppMenuTemplate({ dev: false, platform: 'darwin', menu: spec }))
+    const tabNew = rows.find(row => row.id === 'tab.new')
+    expect(isReservedForContent(tabNew?.accelerator)).toBe(true)
+    expect(tabNew?.registerAccelerator).toBe(false)
+    // 角色项那一族照旧:一个都不许落在保留表上(⑤ 在无投影那一档已经钉过)。
+    for (const row of rows.filter(item => !item.id && item.accelerator)) {
+      expect(isReservedForContent(row.accelerator)).toBe(false)
+    }
+  })
+
+  it('⑫ 没收到过投影 = K1 那张只做减法的表,逐字不变', () => {
+    expect(buildAppMenuTemplate({ dev: false, platform: 'darwin' }))
+      .toEqual(buildAppMenuTemplate({ dev: false, platform: 'darwin', menu: { sections: [] } }))
   })
 })

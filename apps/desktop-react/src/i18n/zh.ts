@@ -1778,4 +1778,10 @@ export const zh = {
   'keymap.exportFail': '导出没成',
   'keymap.removeKey': '删掉「{name}」的 {combo}',
 
+  /* 应用菜单栏上的四节(K4)。分节判据是纯函数 `keymap/menu-projection.menuFamilyOf`。 */
+  'menu.sectionGlobal': '命令',
+  'menu.sectionTab': '标签',
+  'menu.sectionContent': '内容',
+  'menu.sectionFace': '面板',
+
 } as const
