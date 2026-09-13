@@ -157,32 +157,54 @@ module 级懒挂一块 `.visually-hidden` 的常驻区,两格:polite 与 asserti
 
 ## 5. 焦点样式纪律
 
-### 5.1 只替换,永不裸删
+### 5.1 只替换,永不裸删 —— 而「替代品」是**元素上一个属性**(09-13 改写)
 
-**任何一处 `outline: none`,都必须在同一处配上替代品。** 一处都不例外。
-「同一处」指同一个文件、同一个焦点态 —— 让审代码的人一眼看得见那个替代品,
-而不是去别处猜有没有。
+**任何一处 `outline: none`,都必须配上替代品。** 一处都不例外。变的是「配在哪」:
+从前的判词是「同一个文件、同一个焦点态」,让审代码的人一眼看得见;09-13 焦点环收口
+之后,替代品不再写在消费方那一侧 —— **消费方连环长什么样都不知道了**,它只在 JSX
+那一行自述角色,`outline: none` 与它的替代品并排住在 `styles/global.css` 的载体组里。
+「一眼看得见」那件事因此升级成:全仓**只有一个地方**要看。
 
-三种合法形态:
+正本 `apps/desktop-react/docs/focus-ring-2026-09.md`(用户 09-13 拍板「丙 · 内嵌描边」,
+并要求「统一到一个地方,下次想改样式非常容易改」)。两个对象:
 
-| 形态 | 用在哪 | 例 |
-| --- | --- | --- |
-| 全局兜底 | 没自己画环的一切元素 | `styles/global.css` 的 `:focus-visible` |
-| 就地画环 | 需要不同 offset / 画在别的盒子上 | `Checkbox` 把环画在看得见的方框上(真 input 是视觉隐藏的) |
-| 光标即指示 | **文本输入**(`<input>` / `<textarea>` / contenteditable) | 闪动的插入符本身就是 WCAG 2.4.7 认的焦点指示 |
+- **配方**(环长什么样)= `styles/tokens.css` 四格:`--focus-ring-w` / `--focus-ring-color`
+  / `--focus-ring-offset` / `--focus-ring-edge`。**换样式 = 换这四格**,零选择器改动。
+  (`--accent-ring` 从此只是**染色**,不是环。)
+- **载体**(哪个元素、什么时候把环画在自己身上)= `styles/global.css` 一组选择器,
+  元素只写一个 `data-focus-ring`:
 
-### 5.2 全局兜底那条规则,以及它为什么画 outline
+| 亮法 | 元素怎么说 | 判据 | 谁 |
+| --- | --- | --- | --- |
+| 自己(缺省) | 什么都不写 | `:focus-visible` | 按钮、行、标签、分段、可聚焦的块 |
+| 盒内 | `data-focus-ring="within"` | `:has(:focus-visible)` | 勾选框的盒、单选的点(焦点在看不见的原生控件上) |
+| 活动位 | `data-focus-ring="active"` | `[data-active='true']` | `aria-activedescendant` 那一族:会话行、节头(项永远不是 activeElement) |
+| 文本 | `data-focus-ring="text"` | `:has(<能打字的东西>:focus)`,里层赢 | `ui/Input` 的 `.field`、composer 三处外框、命令面板的头一行 |
+| 不画 | `data-focus-ring="none"` | `outline: none` | 拿焦点只为让键盘落进来的**面的根**;`[data-focus-scope][tabindex=-1]` 是同一组里的第三个选择器 |
+
+配方另有一格**上下文**(与载体正交):`data-focus-ring-tone="on-accent"` 换环色(底就是强调色的
+那几件,同色画同色等于没有环)、`="danger"` 换边线色(填错的输入框 —— text 载体那条带 `:has`
+的选择器压得过消费方的红边)。判词在 `styles/global.css`,两条都是真机量出来的。
+
+从前 5.1 表里那一行「**光标即指示**」(文本输入靠插入符豁免)08-31 就已经退役,
+09-13 把它的替代物固化成 `text` 载体:环画在看得见的外框上、鼠标点进去也亮、
+里面那个能打字的东西自己不画 —— 三句话只写一遍。
+
+执法:`npm run ui:consume` 的 `focus-ring-handwritten`(**零基线硬闸**)——
+任何一份 CSS Module 里再出现「环的样子 / 什么时候亮 / `outline: none`」都是红。
+
+### 5.2 为什么画 outline(理由留着,而且更强了)
 
 ```css
 :focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 0;
+  outline: var(--focus-ring-w) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 ```
 
 `:focus-visible` 而不是 `:focus`:鼠标点一下按钮不该亮环(那是「我知道我点了谁」,
-不是「我不知道焦点在哪」)。文本输入类是这条规矩的唯一例外,它用 `:focus-within`
-自己画 —— 鼠标点进输入框也要亮环,因为「光标现在在这里」本来就该被看见。
+不是「我不知道焦点在哪」)。文本输入类是这条规矩的唯一例外 —— 鼠标点进输入框也要
+亮环,因为「光标现在在这里」本来就该被看见;那句例外今天由 `text` 载体说,只说一遍。
 
 **立项稿写的是 box-shadow 形 + `outline: none`,这里偏离了,理由是两个真坑:**
 
@@ -195,12 +217,11 @@ module 级懒挂一块 `.visually-hidden` 的常驻区,两格:polite 与 asserti
    单属性,赢了就等于**盖掉**元素自己的投影 —— 选中的分段一拿到焦点就从「抬起」
    塌回平面。那是可见的视觉回归。
 
-outline 没有这两个问题(全仓除了焦点上下文没人写 outline,不抢任何人的属性),
-而且它**正是仓里既有 19 个文件已经在用的配方**。走 outline 是让全局兜底与存量说同一句话,
-不是引入第二种环。
-
-真机门两种载体都认,判据只有一条:**环的颜色 = `--accent-ring` 的计算值**。
-门不该替谁规定用哪个 CSS 属性。
+09-13 之后这两条更强了:连从前用 box-shadow 画环的 `ui/Input` 与 composer 也改走
+outline,composer 面板那句 `--sh-1` 因此留在 rest 规则里不动 —— 那正是理由 ① 的实证。
+仓里**不再有第二种环**,真机门的判据也从「outline 或 box-shadow 之一」收紧成三句:
+只认 outline、色 = `--focus-ring-color`、offset = `--focus-ring-offset`(两个期望值由
+门里一格探针元素现算,所以换配方时门跟着走)。
 
 ### 5.3 视觉隐藏
 

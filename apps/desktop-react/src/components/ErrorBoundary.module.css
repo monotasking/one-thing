@@ -67,11 +67,7 @@
 .summary {
   cursor: default;
   user-select: none;
-}
-
-.summary:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 2px;
+  /* 圆角是这一行自己的形(焦点环沿着它拐弯),不是焦点态才有的东西。 */
   border-radius: var(--r-1);
 }
 

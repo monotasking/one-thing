@@ -104,7 +104,7 @@
   --glass: color-mix(in srgb, var(--ui-surface-floating-bg) 55%, transparent); /* Dock 毛玻璃 */
   --dock-sep: color-mix(in srgb, var(--ui-text-primary-fg) 14%, transparent);
   --accent-soft: rgba(var(--accent-rgb), 0.12);
-  --accent-ring: rgba(var(--accent-rgb), 0.18); /* focus 柔光环 */
+  --accent-ring: rgba(var(--accent-rgb), 0.18); /* 染色,不是焦点环(环走 --focus-ring-color) */
   --tint-accent: rgba(var(--accent-rgb), 0.12);
   /* 状态淡底:主题自带现成的一档(status-*-bg,15%),用它而不是自己再兑一次 12%
    * —— 差三个百分点,换来的是「状态色的淡底由主题一处定义」。 */

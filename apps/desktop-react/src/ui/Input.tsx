@@ -21,9 +21,9 @@ import s from './Input.module.css'
  * ── 键盘表(A11y 线 · A2)───────────────────────────────────────────────
  *   Tab               进出(原生 <input>)
  *   其余              全归原生:选词、行内移动、撤销 —— 一个都不许自造
- *   焦点环             **这件自己画**(见上面那段「例外」):环画在外壳 `.field` 上,
- *                     所以里面那个 `<input>` 的 `outline: none` 不是裸删,
- *                     它的替代品就在同一个文件、同一个焦点态里(:focus-within)
+ *   焦点环             载体 `data-focus-ring="text"`,写在外壳 `.field` 上:环画在
+ *                     看得见的外框上、鼠标点进来也亮、里面那个 `<input>` 不画 ——
+ *                     三句话都由 styles/global.css 那一组规则说,这件只自述角色
  * 无障碍名:`aria-label` / `aria-labelledby` 经 InputHTMLAttributes 透传,
  * 由调用方给;`invalid` 会落成 `aria-invalid`,读屏软件据此说「这里填错了」。
  * ──────────────────────────────────────────────────────────────────────
@@ -86,7 +86,12 @@ export function Input({
     .join(' ')
 
   return (
-    <div className={cls}>
+    <div
+      className={cls}
+      data-focus-ring="text"
+      /* 填错了:让配方把边线那一格换成 --danger(不然落焦时红边会被 accent 边盖掉)。 */
+      data-focus-ring-tone={invalid ? 'danger' : undefined}
+    >
       {prefix && (
         <span className={s.slot} aria-hidden="true">
           {prefix}

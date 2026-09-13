@@ -140,9 +140,15 @@ export function AskForm({
         })}
 
         {/* 「其他」行:点记号 = 取消这句自定义答案,点行内文字 = 直接改,不新开输入框。 */}
-        <div className={customOn ? `${s.askBar} ${s.askBarOn} ${s.askOther}` : `${s.askBar} ${s.askOther}`}>
+        {/* 文本载体:同一条横条上那枚记号落焦时不点亮它 —— 判据只认能打字的那个。 */}
+        <div
+          className={customOn ? `${s.askBar} ${s.askBarOn} ${s.askOther}` : `${s.askBar} ${s.askOther}`}
+          data-focus-ring="text"
+        >
           <span
             className={customOn ? `${s.askMark} ${s.askMarkOn}` : s.askMark}
+            /* 选中的记号是强调色实心,环得换一档才看得见。 */
+            data-focus-ring-tone={customOn ? 'on-accent' : undefined}
             role="button"
             tabIndex={0}
             aria-label={t('ask.other')}

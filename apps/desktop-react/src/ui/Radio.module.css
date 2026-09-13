@@ -51,11 +51,6 @@
   cursor: inherit;
 }
 
-.dot:has(.native:focus-visible) {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 0;
-}
-
 .label {
   user-select: none;
 }

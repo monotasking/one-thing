@@ -23,6 +23,11 @@
  * `report` 档的机制留着(今天零条规则用它),它是「先立门、后分期还账」这条路
  * 本身 —— 下一条要分期还的规则照 R0→R3 走一遍。
  *
+ * ── `focus-ring-handwritten` 是第四条零基线硬闸(09-13)──────────────────────
+ * 它没走分期路:立规则那天存量 41 条,同一批里一次清到零(环的样子从 28 个文件
+ * 收进 tokens 四格 + global 一组载体),所以它从第一天起就生在硬闸上,基线文件里
+ * 一条都没有。判据同上:命中不在基线里 = 新增 = 红。
+ *
  * 想看全表:`node scripts/ui-consume-check.mjs`。
  */
 import { readFileSync } from 'node:fs'
@@ -83,6 +88,9 @@ if (added.length) {
       + '\n    icon-button-* → src/ui/IconButton'
       + '\n    bare-button-text / -icon → src/ui/Button · AsyncButton / IconButton'
       + '\n    bare-button-structural   → src/ui/ButtonBase(只清 UA 的基座)'
+      + '\n    focus-ring-handwritten   → 环的样子只有两处产地:src/styles/tokens.css 四格配方'
+      + '\n                    与 src/styles/global.css 载体组;消费方只在 JSX 上写一个'
+      + '\n                    data-focus-ring="within|text|none"(缺省什么都不写)'
       + '\n    keydown-outside-focus / focus-outside-focus / active-element-read'
       + '\n                  → src/focus/(响应链;设计 react-shell-focus-2026-09.md §3 的 I2/I3)'
       + '\n                    键盘监听收进 focus/dispatch;跨作用域搬焦点改 activate();'
@@ -108,6 +116,17 @@ const focusHits = current.filter((l) => FOCUS_RULES.includes(l.split(/\s+/)[0]))
 console.log(
   `[ui-consume] 响应链三条(I2/I3,零基线硬闸):${focusHits} 条`
     + `${focusHits === 0 ? ' —— keydown 监听 / 跨作用域 .focus() / 读 activeElement 全在 src/focus/ 里' : ''}`,
+)
+
+/*
+ * 焦点环(09-13 收口)**同一族、同一条路**:severity `violation` + 基线文件里一条都没有
+ * = 一条新命中直接红。批 1 把存量 41 条一次清到零,所以它不必走 R0→R3 那条分期路,
+ * 直接生在硬闸上。这一行同样是「把今天仍然是零说出口」,不是第二次判。
+ */
+const ringHits = current.filter((l) => l.split(/\s+/)[0] === 'focus-ring-handwritten').length
+console.log(
+  `[ui-consume] 焦点环手写(零基线硬闸):${ringHits} 条`
+    + `${ringHits === 0 ? ' —— 环的样子只有 styles/tokens.css 四格配方 + styles/global.css 一组载体' : ''}`,
 )
 
 if (reported.length) {

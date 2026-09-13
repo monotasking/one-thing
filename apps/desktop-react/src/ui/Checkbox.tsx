@@ -53,7 +53,13 @@ export function Checkbox({
     .join(' ')
 
   return (
-    <span className={cls}>
+    // 焦点落在看不见的原生 input 上,环要画在**看得见的盒**上:载体 within。
+    <span
+      className={cls}
+      data-focus-ring="within"
+      /* 打了勾的盒底就是强调色 —— 同色的环看不见,换 --on-accent 那一档。 */
+      data-focus-ring-tone={on ? 'on-accent' : undefined}
+    >
       <input
         ref={ref}
         type="checkbox"

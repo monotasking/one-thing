@@ -91,22 +91,16 @@
 }
 
 /*
- * ── 焦点:与 ui/Input 同一副配方 ─────────────────────────────────────────
- * 输入本体(`.input`)自己 `outline: none`,环画在**看得见的那个外框**上 ——
- * 这块面板就是它的 `.field`。三件事照抄 Input.module.css,一件不改:
- *   ① 边线升到 --accent;② 外面一圈 --accent-ring 柔光;
- *   ③ 判据是 `:focus`(不是 `:focus-visible`)—— 文本输入类是「环只在键盘焦点亮」
- *      那条全局规矩的例外:鼠标点进来也要亮,因为「光标现在在这里」本来就该被看见。
- *
- * 为什么是 `:has(.input:focus)` 而不是 `:focus-within`:面板里还住着发送键、
- * 回形针、模型 pill、抽屉里的每一行 —— 它们落焦时全局 `:focus-visible` 已经给了
- * 各自一圈环,再把整块面板也点亮就是**两圈环**。`:has()` 把这一条精确地钉在
- * 那一个文本输入上(同 ui/Checkbox 的 `.box:has(.native:focus-visible)` 判例)。
+ * ── 焦点:这块面板是一格 `text` 载体 ─────────────────────────────────────
+ * 从前这里手写了一遍与 ui/Input 逐字相同的配方(边线升 accent + 一圈柔光 +
+ * 判据 `:has(.input:focus)`)。09-13 收口之后那三句话各归其位:
+ *   · 边线与环的样子 → tokens.css 四格配方;
+ *   · 「鼠标点进去也亮」「里面那个能打字的才算」「里层赢」→ global.css 的 text 载体;
+ *   · 这块面板要做的只剩一句自述:JSX 上一个 `data-focus-ring="text"`。
+ * 面板自己的 `--sh-1` 投影因此留在 rest 规则里**不动** —— 从前为了把环画进
+ * box-shadow 才要把它俩合成一条,那正是 global.css 里「为什么不用 box-shadow」①
+ * 那条判词的实证。
  * ──────────────────────────────────────────────────────────────────────── */
-.panel:has(.input:focus) {
-  border-color: var(--accent);
-  box-shadow: var(--sh-1), 0 0 0 var(--focus-ring-w) var(--accent-ring);
-}
 
 /* 拖着文件进来:整块面板换成虚线 accent 边 —— 落点是整块面板,不是某个小角。 */
 .dragging {
@@ -617,24 +611,18 @@
 }
 
 /*
- * 搜索行的焦点环。与 `.panel` / `.askBar` 同一副配方,只有**载体**不同:这一行
- * 身上没有 border(它靠 --surface-0 的底与抽屉分开),而给它补一圈真 border 会
- * 让整行长高 2px —— 视觉守恒批不许拿几何换焦点。所以那道 accent 边线用
- * `inset` 投影画在里侧,外面那圈仍是标准的 --accent-ring 柔光:
- * 屏幕上与「边线升档 + 柔光环」一模一样,盒模型一像素没动。
+ * 搜索行也是一格 `text` 载体(JSX 上一个属性)。从前它得自己写一条:这一行身上
+ * 没有 border(靠 --surface-0 的底与抽屉分开),补一圈真 border 会让整行长高,
+ * 所以那道 accent 边线只能拿 `inset` 投影伪造。丙的环**本来就画在盒里**,
+ * 那一手伪造随之作废 —— 盒模型照旧一像素没动,而且不再有第二种画法。
+ * 它长在 `.panel`(也是 text 载体)里面,只亮里层这一格 —— 那格「里层赢」的判据
+ * 写在 global.css,不在这里。
  */
-.modelSearch:has(.modelSearchInput:focus) {
-  box-shadow:
-    inset 0 0 0 var(--bw-1) var(--accent),
-    0 0 0 var(--focus-ring-w) var(--accent-ring);
-}
 
 .modelSearchInput {
   flex: 1;
   min-width: 0;
   border: 0;
-  /* 不是裸删:替代品是上面那条 `.modelSearch:has(.modelSearchInput:focus)`。 */
-  outline: none;
   background: none;
   color: var(--text-1);
   font: inherit;
@@ -773,9 +761,6 @@
   min-height: var(--composer-input-min);
   max-height: var(--composer-input-max);
   overflow-y: auto;
-  /* 不是裸删:替代品是 `.panel:has(.input:focus)` 那条 —— 环画在看得见的外框上,
-   * 与 ui/Input 里 `<input>` 的 outline:none ↔ `.field:focus-within` 是同一句话。 */
-  outline: none;
   font-size: var(--fs-body);
   line-height: 1.7;
   color: var(--text-1);
@@ -1352,22 +1337,16 @@
 }
 
 /*
- * 「其他」那一行的焦点环。载体是这一行的横条(它自己就有 border + border-color
- * 过渡),配方与 `.panel:has(.input:focus)` 逐字相同。
- * 仍然是 `:has(.askFree:focus)` 而不是 `:focus-within`:同一条横条上还有一枚
- * `role="button"` 的记号(tabIndex 0),它落焦时全局 `:focus-visible` 已经给了环。
+ * 「其他」那一行的横条是一格 `text` 载体(它自己就有 border + border-color 过渡,
+ * 边线升色正好落在它身上)。同一条横条上还住着一枚 `role="button"` 的记号,
+ * 它落焦时不该把整条横条也点亮 —— 那一格由 text 载体「只认里面能打字的东西」
+ * 的判据管,不再靠这里手写 `:has(.askFree:focus)`。
  */
-.askBar:has(.askFree:focus) {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 var(--focus-ring-w) var(--accent-ring);
-}
 
 /* 「其他」不新开输入框:就在这一行里直接写,回车即答。 */
 .askFree {
   flex: 1;
   min-width: 0;
-  /* 不是裸删:替代品是上面那条 `.askBar:has(.askFree:focus)` —— 环画在看得见的横条上。 */
-  outline: none;
   font-size: var(--fs-meta);
   color: var(--text-1);
   caret-color: var(--accent);

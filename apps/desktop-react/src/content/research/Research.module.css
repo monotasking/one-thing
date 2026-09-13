@@ -73,11 +73,6 @@
   background: var(--st-hover);
 }
 
-.head:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 2px;
-}
-
 .caret {
   width: var(--fs-meta);
   height: var(--fs-meta);
@@ -207,11 +202,6 @@ button.sourceFace:hover {
   background: var(--st-hover);
 }
 
-button.sourceFace:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: -2px;
-}
-
 .sourceTitle {
   flex: 1;
   min-width: 0;
@@ -336,9 +326,4 @@ button.sourceFace:focus-visible {
 
 .footPill:hover {
   background: var(--st-hover);
-}
-
-.footPill:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 2px;
 }

@@ -84,6 +84,8 @@ export function SectionHead({
       data-testid={`expose-section-${id}`}
       data-section-id={id}
       data-active={active ? 'true' : undefined}
+      /* 键盘位的环:载体自述,配方在 styles/global.css(判据就是上面那一格 data-active)。 */
+      data-focus-ring="active"
       aria-level={1}
       /*
        * 这棵树是**单选**的(选中 = 当前会话,行上由 `aria-selected` 报),而一个

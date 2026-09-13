@@ -46,6 +46,7 @@
 }
 
 .progress[data-on] {
+  /* 染色,不是焦点环(加载条的底)。 */
   background: var(--accent-ring);
 }
 

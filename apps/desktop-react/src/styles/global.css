@@ -142,16 +142,41 @@ button:disabled {
 
 /* 无位移原则:hover/active 一律不位移。唯二例外 = Dock 磁性放大、(未来的)弹跳提醒。 */
 
-/* ── 焦点柔光环:全系统的**兜底**画法(A11y 线 · A2)────────────────────────
- * 立法见 docs/design/react-shell-a11y-2026-08.md 第二律「焦点可见」与焦点样式纪律:
- * **只替换,永不裸删** —— 任何一处 `outline: none` 都必须在同一处配上替代品。
- * 这一条就是全系统的那个「替代品」:凡是没自己画环的元素,键盘落焦时统一得到
- * 一圈 token 柔光环,而不是浏览器那圈黄/蓝默认框(用户 08-31 报的「黄圈」正是它 ——
- * 黄圈出现的地方 = 那个元素谁都没给它画环)。
+/* ── 焦点环:**载体契约表**(A11y 线 · A2 立;09-13 收口成表,正本 docs/focus-ring-2026-09.md)
  *
- * `:focus-visible` 而不是 `:focus`:鼠标点一下按钮不该亮环(那是「我知道我点了谁」,
- * 不是「我不知道焦点在哪」)。文本输入类是这条规矩的唯一例外,它在 Input.module.css
- * 里用 `:focus-within` 自己画,压过这一条。
+ * 两个对象,分家住:**配方**(环长什么样)是 tokens.css 焦点节那四格
+ * `--focus-ring-w / -color / -offset / -edge`;**载体**(哪个元素、什么时候把环画在
+ * 自己身上)就是下面这一组选择器。元素只**自述角色** —— 一个 `data-focus-ring` 属性
+ * (外加可选的一格处境 `data-focus-ring-tone`,见下面那段)——
+ * 它不知道环是柔光还是实线、画在里还是外。于是:换样式改四格 token,零选择器改动;
+ * 新长一种载体是元素上一个属性,零 CSS;新增第六种亮法才动这里,而这里正是配方自己的家。
+ *
+ * 立法见 docs/design/react-shell-a11y-2026-08.md 第二律「焦点可见」与焦点样式纪律:
+ * **只替换,永不裸删** —— `outline: none` 只许出现在这一组规则里,配着它的替代品。
+ * 用户 08-31 报的「黄圈」= 那个元素谁都没给它画环,浏览器于是画了自己的。
+ *
+ * ┌ 亮法 ─┬ 元素怎么说 ──────────────┬ 判据 ───────────────┬ 谁 ────────────────────┐
+ * │ 自己  │ 什么都不写(缺省)         │ `:focus-visible`     │ 按钮、行、标签、分段、  │
+ * │       │                           │                      │ 可聚焦的块 —— 全局兜底  │
+ * │ 盒内  │ `data-focus-ring="within"`│ `:has(:focus-visible)`│ 勾选框的盒、单选的点:  │
+ * │       │                           │                      │ 焦点在看不见的原生控件  │
+ * │       │                           │                      │ 上,环要画在盒上        │
+ * │ 活动位│ `data-focus-ring="active"`│ `[data-active='true']`│ aria-activedescendant  │
+ * │       │                           │                      │ 那一族:会话行、节头    │
+ * │ 文本  │ `data-focus-ring="text"`  │ `:has(<能打字的>:focus)`│ ui/Input 的 .field、  │
+ * │       │                           │ 边线升 --focus-ring-edge│ Composer 三处外框、  │
+ * │       │                           │ 里层赢                │ 命令面板的头一行        │
+ * │ 不画  │ `data-focus-ring="none"`  │ `outline: none`      │ 拿焦点只为让键盘落进来  │
+ * │       │                           │                      │ 的**面的根**            │
+ * └───────┴───────────────────────────┴──────────────────────┴─────────────────────────┘
+ * (正本第 1 节还列了第六种「代理」——焦点在容器上、环画在里面某一件上——今天零消费方,
+ *  **留口不留码**:形记在那儿,真有人要时在这里加一组。
+ *  「活动位」那一格是施工时长出来的第五种:会话行 / 节头从前各写一遍同一条配方,
+ *  而它们既不是 `:focus-visible` 也不是 `:has(:focus)`,删掉就没有环了 —— 详见正本施工账。)
+ *
+ * **文本那一格为什么用 `:focus` 而不是 `:focus-visible`**:鼠标点一下按钮不该亮环
+ * (那是「我知道我点了谁」),但鼠标点进输入框**必须**亮 —— 光标在哪、我打的字进哪,
+ * 靠的就是那圈边。这是缺省那条规矩唯一的例外,所以它自己一格,不靠各面各写一遍。
  *
  * ── 为什么画 outline 而不是 box-shadow(与立项稿的一处偏离,理由记档)──────
  * 立项稿写的是「box-shadow 形 + outline: none」。真按那个写会踩两个坑,都不是洁癖:
@@ -163,15 +188,118 @@ button:disabled {
  *  ② **抬高特异性会赔掉真投影**:把选择器写成 `:root :focus-visible` 能赢层叠,
  *     但 box-shadow 是单属性,赢了就等于**盖掉**元素自己的投影 —— 选中的分段
  *     一拿到焦点就从「抬起」塌回平面。那是可见的视觉回归。
- * outline 没有这两个问题:全仓除了焦点上下文没人写 outline,不抢任何人的属性;
- * 而且这**正是仓里既有 19 个文件已经在用的配方**(Checkbox / Radio / Switch / Tabs /
- * BlockShell / Research / ToolRow …都是 `outline: var(--focus-ring-w) solid var(--accent-ring)`),
- * 走 outline 是让全局兜底与存量同一句话,而不是引入第二种环。
- * 真机门 gate:a11y 两种载体都认(outline 或 box-shadow),但都必须是 --accent-ring 的色。
+ * outline 没有这两个问题:它不抢任何人的属性。09-13 之后这两条理由更强了 ——
+ * 连从前用 box-shadow 画环的 Input 与 Composer 也换成了 outline(它们的 `--sh-1`
+ * 投影因此留在 rest 规则里不动,正是理由①的实证),**仓里不再有第二种环**,
+ * 真机门 gate:a11y 的判据也从「outline 或 box-shadow 之一」收紧成「只认 outline」。
+ * 执法:`npm run ui:consume` 的 `focus-ring-handwritten`(零基线硬闸)——
+ * 任何一处 CSS Module 里再写环的样子都是红。
  * ──────────────────────────────────────────────────────────────────────── */
 :focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 0;
+  outline: var(--focus-ring-w) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* ── 配方的**上下文格**:`data-focus-ring-tone`(09-13 施工时补的,两条判例)────
+ * 元素自述「我这一格此刻的处境」,配方答一句「那就换这一格值」。它换的是四格里的
+ * **一格**,不是环的画法 —— 元素照旧不知道环是实线还是柔光、画在里还是外,所以
+ * 对象仍然是「配方 / 载体」两个,没有第三个。与载体那一格**正交**:
+ * within / text / 缺省都能挂它。
+ *
+ * ① `on-accent` —— **底就是强调色**。丙的环是「实线强调色、画在盒里」,而勾选框
+ *    选中、单选选中、开关打开、`ui/Button` 的 primary、composer 发送键、ask 那枚
+ *    选中的记号,底**就是**强调色:同色画同色,屏幕上一个像素的环都没有。真机
+ *    6 倍放大核过 —— 一颗打了勾又落着焦的勾选框,与没落焦的那颗逐像素相同。
+ *    那不是「环细」,是 WCAG 2.4.7 意义上的**没有焦点指示**。
+ * ② `danger` —— **这一格填错了**。text 载体会把边线升到 --focus-ring-edge,而它那条
+ *    选择器带 `:has()` + `:not(:has())`,特异性远高于消费方的 `.invalid:focus-within`
+ *    (0,6,0 对 0,2,0);不给这一格的话,**一个填错的输入框一落焦红边就变回强调色边**
+ *    ——「错还没改完却显得没事了」,正是 ui/Input 那条判词要防的。真机层叠探针量过:
+ *    不挂这一格时 borderColor 读出来是 accent。
+ * ──────────────────────────────────────────────────────────────────────── */
+[data-focus-ring-tone='on-accent'] {
+  --focus-ring-color: var(--on-accent);
+}
+
+[data-focus-ring-tone='danger'] {
+  --focus-ring-edge: var(--danger);
+}
+
+/* 盒内:焦点落在看不见的原生控件上,环画在它的可见外壳上。 */
+[data-focus-ring='within']:has(:focus-visible) {
+  outline: var(--focus-ring-w) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/*
+ * 活动位:焦点在**容器**上,键盘走到哪一项由 `aria-activedescendant` 说了算 ——
+ * 项自己永远不是 `document.activeElement`,`:focus-visible` 一辈子匹配不上它。
+ * 这一格是「键盘位」这件事的环,判据是那个列表**已经在写**的事实
+ * (`data-active='true'`,由 store 的 `focusVisible && focusId === id` 派生),
+ * 载体属性只是让它自述「我这一格要画环」——于是容器例外(容器 `data-focus-ring="none"`)
+ * 与项上的环是同一套语法的两格,而不是两块面各自的家法。
+ * 消费方:会话行、会话节头(两处从前各写一遍同一条配方,判词原话:「同一种『键盘位』
+ * 的语言不该在两块面里长成两个样」—— 那句话现在由这一条规则兑现,不再靠人自觉)。
+ */
+[data-focus-ring='active'][data-active='true'] {
+  outline: var(--focus-ring-w) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/*
+ * 文本:鼠标点进去也亮(见上),边线同时升到 --focus-ring-edge。
+ *
+ * 判据里的两格括号都是**被真机教出来的**,不是洁癖:
+ *  ① `:has(:is(input, textarea, [contenteditable]):focus)` 而不是裸 `:has(:focus)` ——
+ *    这些外框里还住着别的可聚焦件(composer 面板里有发送键、回形针、模型药丸;
+ *    「其他」那一行里有一枚 `role="button"` 的记号)。它们落焦时缺省那条已经各给了
+ *    一圈环,外框再亮一次就是**两圈环**。判据收在「里面那个能打字的东西」上,
+ *    正是从前各面手写 `:has(.input:focus)` / `:has(.askFree:focus)` 想说的那句话,
+ *    只是现在按**种类**说,不按各自的类名说。
+ *  ② `:not(:has(<嵌套的 text 载体>里的文本控件))` —— **里层赢**。模型抽屉的搜索行
+ *    是一格 text 载体,而它长在 composer 面板(也是 text 载体)里面;不写这一格,
+ *    在搜索框里打字会同时点亮抽屉行与整块面板。
+ */
+[data-focus-ring='text']:has(:is(input, textarea, [contenteditable]):focus):not(
+    :has([data-focus-ring='text'] :is(input, textarea, [contenteditable]):focus)
+  ) {
+  outline: var(--focus-ring-w) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  border-color: var(--focus-ring-edge);
+}
+
+/*
+ * 文本载体里那个能打字的东西自己不画环 —— 替代品就是外壳上那一圈,由上面那条给。
+ * 这是「只替换,永不裸删」的字面兑现:替代品与裸删写在同一组规则里,
+ * 消费方不必也不许再各写一句 `outline: none`。
+ * `[contenteditable]` 与 input / textarea 并列:composer 的输入区与「其他」那一行
+ * 都是 contentEditable 的 `role="textbox"`,少这一格它们会在外框环之外**再**顶一圈。
+ */
+[data-focus-ring='text'] :is(input, textarea, [contenteditable]):focus {
+  outline: none;
+}
+
+/* ── 不画:拿焦点只为让键盘落进来的**面的根** ─────────────────────────────
+ * 这一格删的不是控件的环。控件偷偷删环 = 用户再也不知道键盘走到哪儿(08-31「黄圈」
+ * 的反面);而一块面的根带 `tabIndex=-1` 的唯一理由是「焦点能被送到它身上」——
+ * 它自己不可 Tab、不可点、也不表示任何一个可操作的东西。不删的后果是可见的:
+ * Esc 关掉一层浮层、焦点结构性地回落到宿主面的根上,而上一下交互是键盘,
+ * Chrome 于是给这块面画一整圈边 —— 08-28 判例记的就是这个形:「残留焦点的柔环
+ * 看起来像卡片莫名带阴影」。用户看到的是一块面无缘无故亮了边,而不是「焦点在这里」。
+ *
+ * `[data-focus-scope][tabindex='-1']` 那一格是 09-02 R1 立的**唯一容器例外**
+ * (从前独占一份 focus/focus-scope.css,09-13 搬进来与同族并排;判词一字未改)。
+ * 两格判据缺一不可:`[data-focus-scope]` 单独用会连**消费方自己也是控件**的那种根
+ * 一起删;`[tabindex="-1"]` 单独用会波及所有可编程聚焦的容器(菜单容器、对话框面板 ——
+ * 它们里面的项才是控件)。两格一起 = 「树送焦点用的那种根」。
+ *
+ * 要再往这一组加一个消费方,先回答「它为什么不能像别的面一样,把焦点送给里面
+ * 某个真控件」—— 那才是正解,不画环是最后一步。
+ * ──────────────────────────────────────────────────────────────────────── */
+[data-focus-ring='none']:focus,
+[data-focus-ring='none']:focus-visible,
+[data-focus-scope][tabindex='-1']:focus-visible {
+  outline: none;
 }
 
 /*

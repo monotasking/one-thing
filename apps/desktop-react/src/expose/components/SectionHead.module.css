@@ -62,12 +62,11 @@
 }
 
 /*
- * 键盘活动项的柔光环,与 SessionRow 的 `[data-active]` 同一条配方(同一种
- * 「键盘位」的语言不该在两块面里长成两个样)。环画在外(outline),不占布局。
+ * 键盘活动项:字色跟着抬一档。**环不在这里画** —— 它是载体 `active` 那一格
+ * (`data-focus-ring="active"` 写在这颗节头的 JSX 上,规则在 styles/global.css),
+ * 与会话行共用同一条,而不是两块面各写一遍同一条配方。
  */
 .head[data-active='true'] {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 0;
   color: var(--text-2);
 }
 

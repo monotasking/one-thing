@@ -104,11 +104,6 @@
   background: var(--st-hover);
 }
 
-.rowBtn:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 1px;
-}
-
 .attr {
   font-family: var(--font-mono);
   font-size: var(--fs-nano);

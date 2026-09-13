@@ -55,6 +55,17 @@ function walk(dir, opts = {}) {
   return out
 }
 
+/** 焦点环那一条要的是**每一份 CSS**(裸 `.css` 与 `src/ui/**` 都算)—— 理由写在它那儿。 */
+function walkCss(dir) {
+  const out = []
+  for (const name of readdirSync(dir)) {
+    const full = path.join(dir, name)
+    if (statSync(full).isDirectory()) out.push(...walkCss(full))
+    else if (full.endsWith('.css')) out.push(full)
+  }
+  return out
+}
+
 /** 注释里的病历文本会让断言自红(读样式表源文本的门先剥注释 —— 本仓既有纪律)。 */
 function stripComments(text, isCss) {
   const blanked = text.replace(/\/\*[\s\S]*?\*\//g, (b) => b.replace(/[^\n]/g, ' '))
@@ -501,7 +512,87 @@ function ruleSharedVocabCss(file, css) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────
- * 规则 ⑨⑩⑪  响应链的三条(设计 `docs/design/react-shell-focus-2026-09.md` §8)
+ * 规则 ⑨  焦点环手写(09-13 收口;正本 `docs/focus-ring-2026-09.md`)
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * **环的样子只有两处产地**:配方 `styles/tokens.css` 四格、载体 `styles/global.css`
+ * 一组选择器。别处任何一句「环长什么样 / 什么时候亮 / 干脆别亮」都是违例。
+ *
+ * 起因(09-13 摸底):环的样子当时写在 28 个文件 40 处 —— 26 处 `outline:
+ * var(--focus-ring-w) solid var(--accent-ring)` 与全局兜底**逐字相同**(它们不是
+ * 定制,是 A2 立全局规则之前留下的复述)、6 处 box-shadow 环、16 处 `outline: none`。
+ * 想换一种环 = 改 28 个文件,而用户要的正是「统一到一个地方,下次想改非常容易改」。
+ *
+ * 四条判据,一处命中一条就够:
+ *  ① `outline:` 声明里出现 `--focus-ring-*` 或 `--accent-ring` —— 在抄配方;
+ *  ② 选择器含 `:focus`,块里 `box-shadow` 读 `--accent-ring` —— 第二种环;
+ *  ③ `outline: none` —— 裸删。替代品**只许**是 global.css 载体组里的
+ *    `data-focus-ring="none"` / `="text"`,而那是元素上一个属性,不是 CSS;
+ *  ④ 选择器含 `:focus`,块里有任何 `outline*` 声明 —— 自己判「什么时候亮」。
+ *
+ * 扫描面比别的规则**宽两格**:`.module.css` 之外的裸 `.css` 也扫,`src/ui/**` 也扫
+ * (库件正是从前写得最多的一头:Checkbox / Radio / Input / Switch / Popover /
+ * Slider / Splitter / Dialog 八份各写一遍)。豁免只有配方自己那两份。
+ *
+ * 真要有一处非写不可(比如某种载体在这套语法里表达不出来),照本仓体例在命中处
+ * 上方 8 行内写 `ui-consume-allow: focus-ring-handwritten — <理由>`;
+ * 但先想清楚:第六种亮法的正解是往 global.css 加**一组选择器**,不是在自己家里画。
+ */
+const FOCUS_RING_RECIPE_FILES = ['src/styles/global.css', 'src/styles/tokens.css']
+
+/** 逐块拆 CSS(只要「选择器 + 它自己的声明」两格)。at-rule 与嵌套块各自成块。 */
+function cssBlocks(css) {
+  const out = []
+  const stack = []
+  let start = 0
+  for (let i = 0; i < css.length; i += 1) {
+    const ch = css[i]
+    if (ch === '{') {
+      stack.push({ sel: css.slice(start, i).trim(), from: i + 1 })
+      start = i + 1
+    } else if (ch === '}') {
+      const b = stack.pop()
+      if (b) out.push({ sel: b.sel, from: b.from, body: css.slice(b.from, i) })
+      start = i + 1
+    }
+  }
+  return out
+}
+
+function ruleFocusRingHandwritten(file, css) {
+  if (FOCUS_RING_RECIPE_FILES.includes(file.split(path.sep).join('/'))) return []
+  /** 一处只报一条:①③ 与 ④ 常常命中同一行,重复计数会让基线读起来像两笔账。 */
+  const found = new Map()
+  const add = (line, note) => {
+    if (!found.has(line)) found.set(line, note)
+  }
+
+  // ①③ 声明级:一行一句,不必知道自己在谁的块里。
+  css.split('\n').forEach((raw, i) => {
+    const m = raw.match(/(?:^|[\s;{])outline\s*:([^;}]*)/)
+    if (!m) return
+    if (/--focus-ring-|--accent-ring/.test(m[1])) add(i + 1, '手写环的样子(outline 读环 token)')
+    else if (/\bnone\b/.test(m[1])) add(i + 1, '裸删 outline(替代品是 data-focus-ring 属性,不是 CSS)')
+  })
+
+  // ②④ 块级:判的是「自己写了一句什么时候亮」。
+  for (const b of cssBlocks(css)) {
+    if (b.sel.startsWith('@') || !/:focus/.test(b.sel)) continue
+    const own = b.body.replace(/\{[^{}]*\}/g, (blk) => blk.replace(/[^\n]/g, ' '))
+    const shadow = /box-shadow\s*:[^;}]*--accent-ring/.exec(own)
+    if (shadow) add(lineOf(css, b.from + shadow.index), '手写环的样子(:focus 上 box-shadow 环)')
+    const outline = /(?:^|[\s;])outline(?:-[a-z]+)?\s*:/.exec(own)
+    if (outline) add(lineOf(css, b.from + outline.index), ':focus 选择器自己判什么时候亮')
+  }
+
+  return [...found]
+    .sort((a, b) => a[0] - b[0])
+    .map(([line, note]) => ({ rule: 'focus-ring-handwritten', file, line, note }))
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * 规则 ⑩⑪⑫  响应链的三条(设计 `docs/design/react-shell-focus-2026-09.md` §8)
  * ──────────────────────────────────────────────────────────────────────── */
 
 /**
@@ -621,6 +712,8 @@ export const RULE_SEVERITY = {
   'drag-handwritten': 'violation',
   'spinner-placement': 'violation',
   'shared-vocab-css': 'debt',
+  // 焦点环(09-13 批 1 归零后起硬闸,基线零,不进 baseline 文件)。
+  'focus-ring-handwritten': 'violation',
   // 响应链三条(R3 起硬闸,基线零,不进 baseline 文件)。
   'keydown-outside-focus': 'violation',
   'focus-outside-focus': 'violation',
@@ -634,6 +727,18 @@ export function findViolations() {
    * 理由写在那三条的注释里:它们问的是「机制住在哪儿」,而 ui/ 正是要被收编的一头。
    */
   const consumeFiles = new Set(walk(srcDir))
+  /*
+   * 焦点环那一条自己走一遍**所有 CSS**:`walk` 只收 `.module.css`,而环从前也写在
+   * 裸 `.css` 里(`focus/focus-scope.css` 就是),而且 `src/ui/**` 正是写得最多的
+   * 一头。豁免只有配方那两份,判在规则自己身上(见 FOCUS_RING_RECIPE_FILES)。
+   */
+  for (const file of walkCss(srcDir)) {
+    const rel = path.relative(appRoot, file)
+    const raw = readFileSync(file, 'utf-8')
+    const found = ruleFocusRingHandwritten(rel, stripComments(raw, true))
+    const lines = raw.split('\n')
+    hits.push(...found.filter((h) => !waived(lines, h.rule, h.line)))
+  }
   for (const file of walk(srcDir, { all: true })) {
     if (consumeFiles.has(file) || file.endsWith('.css')) continue
     const rel = path.relative(appRoot, file)

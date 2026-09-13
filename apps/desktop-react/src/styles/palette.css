@@ -116,7 +116,11 @@
   --surface-accent: color-mix(in srgb, var(--accent) 6%, var(--surface-2));
   --surface-drop: color-mix(in srgb, var(--accent) 4%, var(--surface-2));
 
-  /* L2 派生:焦点柔环、头像底色、未读丸前景 */
+  /* L2 派生:强调色淡底(**染色,不是焦点环**)、头像底色、未读丸前景。
+   * 09-13 焦点环收口之后 --accent-ring 与焦点无关了:环的颜色是
+   * --focus-ring-color(tokens.css 焦点环配方四格之一)。这一格今天只服务
+   * 「借强调色涂一层淡的」那五处(SnapHint 的边 / PaneLeaf 当前格的内嵌线 /
+   * BrowserLeaf 的底 / 设置页键位槽的边 / 总览当前卡的外圈)。 */
   --accent-ring: rgba(124, 111, 160, 0.18);
   --tint-accent: rgba(124, 111, 160, 0.12);
   --tint-ok: rgba(111, 143, 78, 0.12);

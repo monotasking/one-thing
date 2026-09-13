@@ -360,6 +360,8 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
         * (见 ExposeView),所以这里不挂 onKeyDown —— 一个键只许有一个产地。 */}
       <div
         ref={treeRef}
+        /* 它是 Tab 位,但看得见的键盘位是那一行的环(载体 active),所以容器不画。 */
+        data-focus-ring="none"
         className={s.tree}
         role="tree"
         tabIndex={0}

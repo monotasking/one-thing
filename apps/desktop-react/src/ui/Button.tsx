@@ -76,7 +76,14 @@ export function Button({
     .join(' ')
 
   return (
-    <button type={type ?? 'button'} className={cls} {...rest}>
+    <button
+      type={type ?? 'button'}
+      className={cls}
+      /* primary 的底就是强调色 —— 同色的环看不见,换 --on-accent 那一档
+       * (配方的一格值,不是环的画法;判词在 styles/global.css)。 */
+      data-focus-ring-tone={variant === 'primary' ? 'on-accent' : undefined}
+      {...rest}
+    >
       {children}
     </button>
   )

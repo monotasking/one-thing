@@ -23,7 +23,7 @@
  * 所以:盒子的上下留白归零(左右本来就是 0),内层 `<p>` 的 UA 边距在这里清掉
  * (它不是 `.row` 的直接子项,清不到它的地方只有这个文件),两段之间隔多远一律由
  * ChatStream 那张邻接表说 —— 见那里的 ④「同类相接」。
- * 焦点柔光环不靠 padding 撑:`outline` 本来就画在盒子外面,还带着 2px 的 offset。
+ * 焦点环不靠 padding 撑:环走全局载体(缺省档),画在盒**里**,不占布局。
  */
 .thought {
   display: block;
@@ -31,17 +31,13 @@
   text-align: start;
   color: var(--text-4);
   cursor: pointer;
+  /* 圆角是这颗钮**自己**的形(焦点环沿着它拐弯),不是焦点态才有的东西。 */
+  border-radius: var(--r-1);
   transition: color var(--dur) var(--ease);
 }
 
 .thought:hover {
   color: var(--text-3);
-}
-
-.thought:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 2px;
-  border-radius: var(--r-1);
 }
 
 .thoughtBody {

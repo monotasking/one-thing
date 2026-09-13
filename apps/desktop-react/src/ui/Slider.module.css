@@ -70,8 +70,9 @@
   transform: translateX(-50%) scale(0);
 }
 
-/* 焦点环往里收一点:一条很扁的杆,环画在外面会压住上下两行。 */
-.slider:focus-visible {
-  outline-offset: calc(-1 * var(--focus-ring-w));
+/* 圆角是这根杆自己的形(焦点环沿着它拐弯)。环本身走缺省载体:09-13 起环**本来就
+ * 画在盒里**,而「往里收一点,别压住上下两行」正是这根扁杆当初自己收的那一手 ——
+ * 它成了全系统的缺省,于是这里不必再说一遍。 */
+.slider {
   border-radius: var(--r-1);
 }

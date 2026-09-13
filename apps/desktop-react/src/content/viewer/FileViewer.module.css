@@ -142,15 +142,6 @@
   color: var(--text-1);
 }
 
-.pathBtn:focus-visible,
-.action:focus-visible,
-.statusLink:focus-visible,
-.noteAction:focus-visible,
-.jumpRow:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 2px;
-}
-
 .pathBtnDone {
   color: var(--accent-deep);
 }
@@ -457,10 +448,6 @@
   color: var(--text-1);
   tab-size: 2;
   white-space: pre;
-}
-
-.editor:focus-visible {
-  outline: none;
 }
 
 /* ── markdown 型 ────────────────────────────────────────────────────── */

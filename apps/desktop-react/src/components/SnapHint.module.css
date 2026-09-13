@@ -7,6 +7,8 @@
   z-index: var(--z-overlay);
   pointer-events: none;
   background: var(--accent-soft);
+  /* --accent-ring 在这里是**染色**(强调色的一档淡),不是焦点环 —— 09-13 收口
+   * 之后环的颜色是 --focus-ring-color,这条薄膜不该跟着环走。 */
   border: 1px solid var(--accent-ring);
   animation: var(--kf-film-in) var(--dur-enter) var(--ease-out);
 }

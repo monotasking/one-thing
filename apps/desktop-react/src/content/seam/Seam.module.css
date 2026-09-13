@@ -126,11 +126,6 @@
   color: var(--text-1);
 }
 
-.seamLabelFold:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 2px;
-}
-
 /*
  * danger 档的标签色调。**由根上那一格状态说了算,不是消费方递一个 class**
  * (原产地是 `.seamLabelFailed`,消费方得记得拼上去 —— 记得填的东西迟早忘)。
@@ -218,11 +213,6 @@
 .seamFoot:hover {
   background: var(--st-hover);
   color: var(--text-1);
-}
-
-.seamFoot:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 2px;
 }
 
 /* 箭头朝上:它说的是「收回去」,与头上那枚展开态的 chevron 同一个方向。 */

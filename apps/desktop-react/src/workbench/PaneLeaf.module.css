@@ -31,6 +31,7 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
+  /* 染色,不是焦点环(当前格的内嵌线;09-13 起环的颜色另有产地)。 */
   box-shadow: inset 0 0 0 var(--bw-1) var(--accent-ring);
 }
 

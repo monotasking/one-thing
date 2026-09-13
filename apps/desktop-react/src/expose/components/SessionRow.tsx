@@ -254,6 +254,8 @@ function SessionRowView({
       data-session-id={id}
       data-depth={depth}
       data-active={active ? 'true' : undefined}
+      /* 键盘位的环:载体自述,配方在 styles/global.css(判据就是上面那一格 data-active)。 */
+      data-focus-ring="active"
       data-menu-open={menuOpen ? 'true' : undefined}
       aria-level={level}
       aria-selected={current}

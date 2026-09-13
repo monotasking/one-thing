@@ -421,6 +421,9 @@ export function NativeViewSlot({ viewId, scope, elementRef, className }: NativeV
   return (
     <div
       ref={setHost}
+      /* 占位格是作用域落点(tabIndex=-1),但它自己不画焦点环 —— 键盘此刻在那片
+       * 视图里面,画一圈环在它外面是在说一件不对的事(叶檐那一侧已经有在场指示)。 */
+      data-focus-ring="none"
       className={className ? `${className} ${s.slot}` : s.slot}
       data-native-view={viewId}
       data-native-view-snapshot={snapshotShown || undefined}

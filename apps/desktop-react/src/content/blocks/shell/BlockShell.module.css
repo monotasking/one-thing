@@ -106,11 +106,6 @@
   color: var(--text-1);
 }
 
-.action:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 2px;
-}
-
 /*
  * `.actionIcon` 随批 6 退役:檐上唯一那颗图标钮(⋯)迁进 `ui/IconButton`,
  * 图标尺寸由那件的 `--icon-btn-glyph-xs` 说了算(与这里的 --fs-meta 同为 12px)。
@@ -195,11 +190,6 @@
 
 .expand:hover {
   color: var(--text-1);
-}
-
-.expand:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 2px;
 }
 
 /* ── 懒加载骨架:静默占位,不转菊花 ───────────────────────────────────── */

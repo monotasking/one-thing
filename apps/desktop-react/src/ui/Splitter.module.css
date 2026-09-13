@@ -54,10 +54,5 @@
   background: var(--accent);
 }
 
-/*
- * 焦点环画在**抓手**上(全局 :focus-visible 那条给的是 outline)。这里只把
- * 它往里收一点 —— 一条 6px 宽的抓手,环画在外面会盖住两边的内容。
- */
-.bar:focus-visible {
-  outline-offset: calc(-1 * var(--focus-ring-w));
-}
+/* 焦点环走缺省载体。它从前在这里往里收一格(6px 宽的抓手,环画在外面会盖住两边的
+ * 内容)—— 09-13 之后「画在盒里」就是缺省,这一句于是删掉,不是丢了。 */

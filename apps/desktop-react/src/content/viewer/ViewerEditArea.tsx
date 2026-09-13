@@ -32,6 +32,8 @@ export interface ViewerEditAreaProps {
 export function ViewerEditArea({ file, draft, onDraft, t }: ViewerEditAreaProps) {
   return (
     <textarea
+      /* 编辑面拿焦点只为让键盘落进来,插入符就是指示,不画环。 */
+      data-focus-ring="none"
       className={s.editor}
       data-testid="viewer-editor"
       value={draft}

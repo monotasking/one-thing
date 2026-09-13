@@ -42,8 +42,8 @@
 }
 
 /*
- * 树容器自己**不画焦点环**(容器例外,同 focus-scope.css 判例)——
- * 它是 Tab 位,但看得见的键盘位是那一行的柔光环。
+ * 树容器自己**不画焦点环**:那一句现在写在 JSX 上(`data-focus-ring="none"`),
+ * 与「看得见的键盘位是那一行的环」(载体 `active`)是同一套语法的两格。
  */
 .tree {
   display: flex;
@@ -58,7 +58,6 @@
    * 节头与它的组之间、行与行之间 —— 一格 token 三处引用,不是三份配方。
    */
   gap: var(--expose-row-gap);
-  outline: none;
 }
 
 .section {

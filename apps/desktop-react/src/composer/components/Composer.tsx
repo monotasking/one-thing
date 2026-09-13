@@ -385,6 +385,9 @@ export function Composer() {
         <div
           {...scopeProps}
           className={dragging ? `${s.panel} ${s.dragging}` : s.panel}
+          /* 文本载体:里面那块 contentEditable 落焦时,环与 accent 边线画在这块
+           * 看得见的面板上(配方 tokens 四格 / 规则 styles/global.css)。 */
+          data-focus-ring="text"
           /* 玻璃那块面自己的把手 —— `gate:chat-follow` 要量它的矩形与它此刻
            * 透不透明(§5.6)。`data-testid` 恒定,门按位置找它、不按状态找。 */
           data-testid="composer-panel"
@@ -583,6 +586,8 @@ export function Composer() {
                      */}
                     <ButtonBase
                       className={s.sendBtn}
+                      /* 这颗钮的底是强调色,环得换一档才看得见(同 ui/Button 的 primary)。 */
+                      data-focus-ring-tone="on-accent"
                       aria-label={busy ? t('composer.stop') : t('composer.send')}
                       data-testid="composer-send"
                       data-mode={busy ? 'stop' : 'send'}

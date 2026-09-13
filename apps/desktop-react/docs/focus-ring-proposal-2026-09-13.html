@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="zh-CN" data-focus-style="halo">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>焦点环比稿 · 三种样式 · 一处配方</title>
+<style>
+  /* ── 纸面与墨色(照壳的 palette / theme-bridge 抄形,不是壳的正本)──────── */
+  :root {
+    color-scheme: light dark;
+    --paper: #faf8f4;
+    --surface-2: #ffffff;
+    --surface-3: #f3f0ea;
+    --line-1: #e6e1d8;
+    --line-2: #cfc8bb;
+    --text-1: #2a2622;
+    --text-2: #5d564d;
+    --text-3: #8a8378;
+    --text-4: #b3ac9f;
+    --accent: #7c6fa0;
+    --accent-rgb: 124, 111, 160;
+    --sh-1: 0 1px 2px rgba(42, 38, 34, 0.06), 0 2px 8px rgba(42, 38, 34, 0.05);
+    --r-2: 8px;
+    --r-3: 12px;
+    --dur: 120ms;
+    --ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --font: -apple-system, "PingFang SC", "Helvetica Neue", "Noto Sans CJK SC", sans-serif;
+  }
+  :root[data-theme="dark"] {
+    --paper: #1e1c1a;
+    --surface-2: #262320;
+    --surface-3: #2e2a26;
+    --line-1: #38332e;
+    --line-2: #4a443d;
+    --text-1: #ece7df;
+    --text-2: #b8b0a4;
+    --text-3: #857d72;
+    --text-4: #5f584f;
+    --accent: #a99bd1;
+    --accent-rgb: 169, 155, 209;
+    --sh-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.25);
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+   * 焦点环配方 —— 全页唯一产地。换样式 = 换下面这四格,其余一个字不动。
+   *
+   *   --focus-ring-w       环的粗细
+   *   --focus-ring-color   环的颜色
+   *   --focus-ring-offset  环离盒边多远(负数 = 画在盒里)
+   *   --focus-ring-edge    文本输入类落焦时边线的颜色(不想动边线就等于 --line-1)
+   * ════════════════════════════════════════════════════════════════════════ */
+  :root[data-focus-style="halo"] {
+    --focus-ring-w: 3px;
+    --focus-ring-color: rgba(var(--accent-rgb), 0.18);
+    --focus-ring-offset: 0px;
+    --focus-ring-edge: var(--accent);
+  }
+  :root[data-focus-style="hairline"] {
+    --focus-ring-w: 2px;
+    --focus-ring-color: var(--accent);
+    --focus-ring-offset: 2px;
+    --focus-ring-edge: var(--line-1);
+  }
+  :root[data-focus-style="inset"] {
+    --focus-ring-w: 2px;
+    --focus-ring-color: var(--accent);
+    --focus-ring-offset: -2px;
+    --focus-ring-edge: var(--accent);
+  }
+
+  /* ── 载体契约:元素只说「我是环的载体、我什么时候亮」,不说环长什么样 ────────
+   *   data-focus-ring          自己落焦(键盘)时亮 —— 按钮、行、标签、分段
+   *   data-focus-ring="within" 里面任何控件键盘落焦时亮 —— 勾选框的盒、开关
+   *   data-focus-ring="text"   里面的文本输入拿到焦点(鼠标也算)时亮 —— 输入框、Composer
+   * 环永远在,只是透明:落焦只换 outline-color,所以出现与消失都是 --dur 的淡变。 */
+  [data-focus-ring] {
+    outline: var(--focus-ring-w) solid transparent;
+    outline-offset: var(--focus-ring-offset);
+    transition:
+      outline-color var(--dur) var(--ease),
+      border-color var(--dur) var(--ease);
+  }
+  [data-focus-ring]:focus-visible,
+  [data-focus-ring="within"]:has(:focus-visible),
+  [data-focus-ring="text"]:has(:focus),
+  .lit [data-focus-ring] {
+    outline-color: var(--focus-ring-color);
+  }
+  [data-focus-ring="text"]:has(:focus),
+  .lit [data-focus-ring="text"] {
+    border-color: var(--focus-ring-edge);
+  }
+  /* 载体里的原生控件不画自己的环:替代品是载体那一圈(只替换,不裸删)。 */
+  [data-focus-ring] :is(input, textarea, button):focus {
+    outline: none;
+  }
+
+  /* ── 以下全是页面骨架与示例控件,与焦点无关 ──────────────────────────── */
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--text-1);
+    font: 14px/1.6 var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 32px 28px 80px; }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
+  .sub { color: var(--text-3); margin: 0 0 20px; }
+  h2 { font-size: 15px; font-weight: 600; margin: 32px 0 10px; color: var(--text-2); }
+  p { margin: 0 0 8px; color: var(--text-2); }
+  code { font: 12px/1 ui-monospace, "SF Mono", Menlo, monospace; background: var(--surface-3); padding: 2px 5px; border-radius: 4px; }
+
+  .bar {
+    position: sticky; top: 0; z-index: 2;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 12px 0; margin-bottom: 8px;
+    background: color-mix(in srgb, var(--paper) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line-1);
+  }
+  .seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--surface-3); border-radius: 10px; }
+  .seg button {
+    appearance: none; border: 0; background: none; color: var(--text-2);
+    padding: 6px 14px; border-radius: 8px; font: inherit; font-size: 13px; cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--text-1); box-shadow: var(--sh-1); }
+  .spacer { flex: 1; }
+  .toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 13px; cursor: pointer; }
+
+  .card {
+    background: var(--surface-2); border: 1px solid var(--line-1); border-radius: var(--r-3);
+    padding: 18px 20px; box-shadow: var(--sh-1);
+  }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+  .lbl { font-size: 12px; color: var(--text-3); margin: 14px 0 6px; }
+
+  .btn {
+    appearance: none; font: inherit; font-size: 13px; cursor: pointer;
+    height: 32px; padding: 0 14px; border-radius: var(--r-2);
+    border: 1px solid var(--line-1); background: var(--surface-2); color: var(--text-1);
+  }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn:hover { border-color: var(--line-2); }
+  .ibtn { width: 32px; padding: 0; display: inline-grid; place-items: center; }
+  .ibtn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+
+  .field {
+    display: inline-flex; align-items: center; height: 32px; padding: 0 10px;
+    border: 1px solid var(--line-1); border-radius: var(--r-2); background: var(--surface-2);
+    min-width: 220px;
+  }
+  .field input { flex: 1; min-width: 0; border: 0; background: none; color: inherit; font: inherit; font-size: 13px; }
+  .field input::placeholder { color: var(--text-4); }
+
+  .panel {
+    border: 1px solid var(--line-1); border-radius: 14px; background: var(--surface-2);
+    box-shadow: var(--sh-1); padding: 10px 12px 8px;
+  }
+  .panel textarea {
+    display: block; width: 100%; border: 0; background: none; resize: none; color: inherit;
+    font: inherit; line-height: 1.7; min-height: 44px; caret-color: var(--accent);
+  }
+  .panel .tools { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+  .pill {
+    appearance: none; font: inherit; font-size: 12px; cursor: pointer; height: 24px; padding: 0 10px;
+    border-radius: 999px; border: 1px solid var(--line-1); background: var(--surface-3); color: var(--text-2);
+  }
+
+  .check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
+  .check .box {
+    position: relative; width: 16px; height: 16px; border-radius: 5px;
+    border: 1px solid var(--line-2); background: var(--surface-2); display: grid; place-items: center;
+  }
+  .check input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+  .check input:checked + .mark { opacity: 1; }
+  .check .mark { width: 10px; height: 10px; stroke: var(--accent); fill: none; stroke-width: 2.4; opacity: 0; }
+  .radio .box { border-radius: 50%; }
+  .radio .mark { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); stroke: none; }
+
+  .list { border: 1px solid var(--line-1); border-radius: var(--r-2); overflow: hidden; }
+  .list .item {
+    display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 12px;
+    font-size: 13px; cursor: pointer; background: var(--surface-2);
+  }
+  .list .item + .item { border-top: 1px solid var(--line-1); }
+  .list .item:hover { background: var(--surface-3); }
+  .list .item .t { color: var(--text-3); margin-left: auto; font-size: 12px; }
+
+  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line-1); }
+  .tab {
+    appearance: none; border: 0; background: none; font: inherit; font-size: 13px; cursor: pointer;
+    padding: 8px 12px; color: var(--text-2); border-radius: 6px 6px 0 0; position: relative;
+  }
+  .tab[aria-selected="true"] { color: var(--text-1); }
+  .tab[aria-selected="true"]::after {
+    content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; background: var(--accent); border-radius: 2px;
+  }
+
+  .segc { display: inline-flex; padding: 3px; gap: 2px; background: var(--surface-3); border-radius: 9px; }
+  .segc button {
+    appearance: none; border: 0; background: none; font: inherit; font-size: 13px; color: var(--text-2);
+    padding: 5px 12px; border-radius: 7px; cursor: pointer;
+  }
+  .segc button[aria-pressed="true"] { background: var(--surface-2); color: var(--text-1); box-shadow: var(--sh-1); }
+
+  /* 「被裁掉的环」示例:一个会滚动的窄容器,贴着边的按钮 */
+  .clip {
+    height: 96px; overflow: auto; border: 1px solid var(--line-1); border-radius: var(--r-2);
+    background: var(--surface-2); padding: 0;
+  }
+  .clip .inner { display: flex; flex-direction: column; }
+  .clip .rowbtn {
+    appearance: none; border: 0; border-bottom: 1px solid var(--line-1); background: none; text-align: left;
+    font: inherit; font-size: 13px; padding: 8px 12px; cursor: pointer; color: var(--text-1);
+  }
+  .clip .rowbtn:hover { background: var(--surface-3); }
+
+  .dock { display: inline-flex; gap: 4px; padding: 6px; background: var(--surface-3); border-radius: 12px; }
+  .tile {
+    width: 36px; height: 36px; border-radius: 9px; border: 0; background: var(--surface-2);
+    box-shadow: var(--sh-1); cursor: pointer; display: grid; place-items: center; color: var(--text-2);
+  }
+  .tile svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+
+  .notes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
+  @media (max-width: 720px) { .notes { grid-template-columns: 1fr; } }
+  .note { border: 1px solid var(--line-1); border-radius: var(--r-2); padding: 12px 14px; background: var(--surface-2); }
+  .note h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+  .note p { font-size: 12.5px; margin: 0 0 4px; }
+  .note.on { border-color: var(--accent); }
+  .k { display: inline-block; min-width: 1.4em; padding: 0 5px; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 4px; font-size: 11px; line-height: 1.5; color: var(--text-2); background: var(--surface-2); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>焦点环比稿</h1>
+  <p class="sub">三种样式共用同一份载体契约,上面这一排切的只是四个 token。按 <span class="k">Tab</span> 走一遍,或者点「全部点亮」一眼看完。</p>
+
+  <div class="bar">
+    <div class="seg" role="group" aria-label="焦点样式">
+      <button type="button" data-style="halo" aria-pressed="true">甲 · 柔光环</button>
+      <button type="button" data-style="hairline" aria-pressed="false">乙 · 硬线环</button>
+      <button type="button" data-style="inset" aria-pressed="false">丙 · 内嵌描边</button>
+    </div>
+    <label class="toggle"><input type="checkbox" id="lit" /> 全部点亮</label>
+    <span class="spacer"></span>
+    <label class="toggle"><input type="checkbox" id="dark" /> 深色</label>
+  </div>
+
+  <div class="notes">
+    <div class="note" data-note="halo">
+      <h3>甲 · 柔光环(今天的形,收口后的版本)</h3>
+      <p>3px、强调色 18% 透明,贴着盒边。文本输入落焦时边线一起升到强调色。</p>
+      <p>气质最软,和暖纸面最合;代价是浅色面上对比最低,深色面上要靠边线升色才看得清。</p>
+    </div>
+    <div class="note" data-note="hairline">
+      <h3>乙 · 硬线环(Chrome / GitHub 那一路)</h3>
+      <p>2px 实线强调色,离盒边 2px,中间露出一圈底色。边线不动,环独自说话。</p>
+      <p>任何底色上都读得出(这是无障碍规范对焦点外观的那条要求);代价是最占地方,贴边的控件会被容器裁掉。</p>
+    </div>
+    <div class="note" data-note="inset">
+      <h3>丙 · 内嵌描边(macOS 列表 / Figma 那一路)</h3>
+      <p>2px 实线画在盒<b>里</b>,不越界一像素。文本输入落焦时边线升色,与内环叠成一道加粗的强调边。</p>
+      <p>永远不会被滚动容器裁掉、不会压到邻居(标签条、Dock 瓦、密排的行);代价是小控件里环会吃掉内容边距。</p>
+    </div>
+  </div>
+
+  <h2>基础控件</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="lbl">按钮 · 图标钮(只在键盘落焦时亮)</div>
+      <div class="row">
+        <button class="btn primary" data-focus-ring>发送</button>
+        <button class="btn" data-focus-ring>取消</button>
+        <button class="btn ibtn" data-focus-ring aria-label="附件"><svg viewBox="0 0 24 24"><path d="M21 12.5 12.3 21a5.5 5.5 0 0 1-7.8-7.8l9-9a3.5 3.5 0 0 1 5 5l-9 9a1.5 1.5 0 0 1-2.1-2.1l8.3-8.3"/></svg></button>
+        <button class="btn ibtn" data-focus-ring aria-label="更多"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg></button>
+      </div>
+      <div class="lbl">分段器 · 标签(带自己投影的元素,环不能被投影顶掉)</div>
+      <div class="row">
+        <div class="segc" role="group">
+          <button data-focus-ring aria-pressed="true">跟随系统</button>
+          <button data-focus-ring aria-pressed="false">浅色</button>
+          <button data-focus-ring aria-pressed="false">深色</button>
+        </div>
+      </div>
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" aria-selected="true" data-focus-ring>对话</button>
+        <button class="tab" role="tab" aria-selected="false" data-focus-ring>文件</button>
+        <button class="tab" role="tab" aria-selected="false" data-focus-ring>改动</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">文本输入(鼠标点进去也亮)</div>
+      <div class="row">
+        <label class="field" data-focus-ring="text"><input placeholder="搜索会话…" /></label>
+      </div>
+      <div class="row">
+        <label class="field" data-focus-ring="text" style="min-width:140px"><input placeholder="端口" value="9333" /></label>
+        <label class="field" data-focus-ring="text" style="min-width:140px"><input placeholder="模型 id" /></label>
+      </div>
+      <div class="lbl">勾选 · 单选(环在盒上,不在那个看不见的原生控件上)</div>
+      <div class="row">
+        <label class="check"><span class="box" data-focus-ring="within"><input type="checkbox" checked /><svg class="mark" viewBox="0 0 12 12"><path d="M2 6.5 5 9.5 10 3"/></svg></span>开启诊断模式</label>
+        <label class="check radio"><span class="box" data-focus-ring="within"><input type="radio" name="r" checked /><span class="mark"></span></span>覆盖</label>
+        <label class="check radio"><span class="box" data-focus-ring="within"><input type="radio" name="r" /><span class="mark"></span></span>新标签</label>
+      </div>
+    </div>
+  </div>
+
+  <h2>复合载体</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="lbl">Composer 面板:环画在整块面板上,只认里面那个文本框的焦点;发送键落焦时是它自己的环,不叠面板</div>
+      <div class="panel" data-focus-ring="text">
+        <textarea rows="2" placeholder="问点什么…"></textarea>
+        <div class="tools">
+          <button class="pill" data-focus-ring>claude-fable-5-1</button>
+          <button class="pill" data-focus-ring>@ 引用</button>
+          <span class="spacer"></span>
+          <button class="btn primary ibtn" data-focus-ring aria-label="发送"><svg viewBox="0 0 24 24"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="lbl">列表行 · Dock 瓦(密排元素,看环会不会压到邻居)</div>
+      <div class="list" role="listbox">
+        <div class="item" role="option" tabindex="0" data-focus-ring>焦点环比稿<span class="t">刚刚</span></div>
+        <div class="item" role="option" tabindex="0" data-focus-ring>设置页分页化<span class="t">昨天</span></div>
+        <div class="item" role="option" tabindex="0" data-focus-ring>改动面 diff<span class="t">昨天</span></div>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <div class="dock">
+          <button class="tile" data-focus-ring aria-label="会话"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z"/></svg></button>
+          <button class="tile" data-focus-ring aria-label="文件"><svg viewBox="0 0 24 24"><path d="M4 4h7l2 3h7v13H4z"/></svg></button>
+          <button class="tile" data-focus-ring aria-label="终端"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM7 9l3 3-3 3M12 15h5"/></svg></button>
+          <button class="tile" data-focus-ring aria-label="改动"><svg viewBox="0 0 24 24"><path d="M6 4v16M18 4v16M6 12h12"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2>会被裁掉的那种位置</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="lbl">滚动容器里贴边的行:甲、乙的环外扩,会被 <code>overflow: auto</code> 切掉一半;丙画在里面,完整</div>
+      <div class="clip">
+        <div class="inner">
+          <button class="rowbtn" data-focus-ring>第一行 · 贴着容器顶</button>
+          <button class="rowbtn" data-focus-ring>第二行</button>
+          <button class="rowbtn" data-focus-ring>第三行</button>
+          <button class="rowbtn" data-focus-ring>第四行</button>
+          <button class="rowbtn" data-focus-ring>第五行 · 滚到底才见</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="lbl">壳里要改的地方</div>
+      <p style="font-size:13px">配方:<code>tokens.css</code> 四格。<br/>规则:<code>global.css</code> 一组选择器(上面那七行)。<br/>消费方:28 个文件删掉自己那句 <code>outline / box-shadow</code>,元素上加一个 <code>data-focus-ring</code>。<br/>门:<code>gate:a11y</code> 不动;新增一条静态棘轮,<code>--accent-ring</code> 只许出现在那两个文件里。</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  const root = document.documentElement;
+  const notes = [...document.querySelectorAll('.note')];
+  function setStyle(s) {
+    root.dataset.focusStyle = s;
+    document.querySelectorAll('.seg [data-style]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.style === s)));
+    notes.forEach(n => n.classList.toggle('on', n.dataset.note === s));
+  }
+  document.querySelectorAll('.seg [data-style]').forEach(b => b.addEventListener('click', () => setStyle(b.dataset.style)));
+  document.getElementById('lit').addEventListener('change', e => document.body.classList.toggle('lit', e.target.checked));
+  document.getElementById('dark').addEventListener('change', e => { if (e.target.checked) root.dataset.theme = 'dark'; else delete root.dataset.theme; });
+  setStyle('halo');
+</script>
+</body>
+</html>

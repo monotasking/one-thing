@@ -47,7 +47,6 @@
   flex: 1;
   min-width: 0;
   border: none;
-  outline: none;
   background: transparent;
   color: var(--text-1);
   font-family: var(--font-ui);
@@ -159,11 +158,6 @@
   border-top: 1px solid var(--line-1);
   font-size: var(--fs-micro);
   color: var(--text-4);
-}
-
-/* 面板拿焦点只是为了让键盘落进来,不该画环(同 ui/Dialog.module.css)。 */
-.panel:focus {
-  outline: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

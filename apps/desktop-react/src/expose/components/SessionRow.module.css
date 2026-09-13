@@ -72,16 +72,6 @@
 }
 
 /*
- * 键盘活动行的柔光环。**只在 focusVisible 为真时**存在 —— `data-active` 本身
- * 就是 `focusVisible && focusId === id` 的投影(见 SessionTree),所以这条规则
- * 天然只在键盘会话里亮。环画在行外(outline),不占布局。
- */
-.row[data-active='true'] {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 0;
-}
-
-/*
  * 形态字形。**每一行都有这一格**(09-13 对齐律 §8 第 2 条)。
  *
  * 09-12 那一版是「只在有字形的行上在场」,换来 240px 里 20px 的标题;09-13

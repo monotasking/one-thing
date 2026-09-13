@@ -46,11 +46,6 @@
   cursor: default;
 }
 
-.box:has(.native:focus-visible) {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 0;
-}
-
 .mark {
   display: inline-flex;
   align-items: center;

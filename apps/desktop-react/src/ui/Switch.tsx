@@ -40,6 +40,8 @@ export function Switch({ checked, onChange, disabled, label, className }: Switch
       aria-label={label}
       disabled={disabled}
       className={cls}
+      /* 打开的轨底就是强调色 —— 同色的环看不见,换 --on-accent 那一档(同 Checkbox)。 */
+      data-focus-ring-tone={checked ? 'on-accent' : undefined}
       onClick={() => onChange(!checked)}
     >
       <span className={s.knob} aria-hidden="true" />

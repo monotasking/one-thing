@@ -31,14 +31,17 @@
  *       b. 开 Dialog:焦点进圈,Tab 出不去;
  *       c. Esc 关 Dialog:焦点**回到开它的那个元素**;
  *       d. Menu:方向键在项之间循环,整组只占一个 Tab 位;
- *       e. 每个落焦元素身上都有**我们的**柔光环(--accent-ring 的色),
- *          不是浏览器那圈默认 outline。
+ *       e. 每个落焦元素身上都有**我们的**环(--focus-ring-color 的色、
+ *          --focus-ring-offset 的位置),不是浏览器那圈默认 outline。
  *
- * ── 焦点环认哪一种载体 ──────────────────────────────────────────────────
- * outline 与 box-shadow 两种都认,判据只有一条:**环的颜色 = --accent-ring 的计算值**。
- * 全局兜底(styles/global.css 的 `:focus-visible`)画的是 outline;Input 那一族
- * 自己用 box-shadow 画在外壳上。两种载体的取舍与那段层叠账写在 global.css 里,
- * 这条门只问「有没有画、画的是不是我们那个色」——它不该替谁规定用哪个属性。
+ * ── 焦点环认哪一种载体(09-13 收口后:一种)──────────────────────────────
+ * **只认 outline**,判据三句:环的颜色 = `--focus-ring-color` 的计算值、
+ * outline-offset = `--focus-ring-offset` 的计算值、画在落焦元素或它六层以内的祖先上
+ * (勾选框 / 输入框那一族的环画在看得见的外壳上)。
+ * 从前这里两种载体都认(box-shadow 那一支是给 Input 一族留的),09-13 焦点环收口
+ * 之后仓里**不再有第二种环** —— 环的样子只有 tokens.css 四格配方 + global.css 一组
+ * 载体规则两处产地,再留一支 box-shadow 等于给「又长出第二种画法」留门。
+ * 期望值由探针现算(见 `ringProbeSource`),所以换配方时这道门跟着走,不用改数。
  * ──────────────────────────────────────────────────────────────────────
  *
  * ── 反证(照 gate:motion 的纪律)────────────────────────────────────────
@@ -301,11 +304,22 @@ async function scanAxe(page, screen, include) {
 /* ── ② 键盘走查 ────────────────────────────────────────────────────────── */
 
 /**
- * 焦点环的判据:两种载体都认(outline / box-shadow),色必须**等于** --accent-ring。
+ * 焦点环的判据(09-13 收口后收紧成三句话):**只认 outline 一种载体**,色必须等于
+ * `--focus-ring-color`,`outline-offset` 必须等于 `--focus-ring-offset` 的计算值。
  *
- * 颜色比的是**数值**不是字符串:token 的计算值是 `rgba(67, 133, 190, .18)`
- * (自定义属性保留作者写法,`.18` 没有前导 0),而 `outlineColor` 是浏览器序列化过的
- * `rgba(67, 133, 190, 0.18)` —— 逐字比会把每一站都判成裸的。首跑就是这么假红的。
+ * 从前这里认两种载体(outline / box-shadow)、比的是 `--accent-ring`。两处都变了,
+ * 而且是同一件事变的:环的样子从「28 个文件各写一遍」收成 tokens.css 四格配方 +
+ * global.css 一组载体规则,于是①仓里**不再有第二种环**(Input 与 Composer 那三处
+ * box-shadow 环随批 1 一起改走 outline),box-shadow 那一支再留着就是给「又长出
+ * 第二种画法」留门;②`--accent-ring` 从此只是染色,不是环 —— 拿它当期望色会在
+ * 环改成实线强调色之后**永远绿不了**,或者更糟:绿在一个没人画的颜色上。
+ * offset 这一格是新加的:丙的形是「画在盒**里**」,而「有一圈 accent 的 outline」
+ * 与「那圈画在里面」是两件事,只量前者的话把环挪回盒外这道门一声不吭。
+ *
+ * 颜色比的是**数值**不是字符串:token 的计算值可能是 `rgba(67, 133, 190, .18)`
+ * 这种作者写法(自定义属性原样保留,`.18` 没有前导 0),而 `outlineColor` 是浏览器
+ * 序列化过的 `rgb(67, 133, 190)` / `rgba(…, 0.18)` —— 逐字比会把每一站都判成裸的。
+ * 首跑就是这么假红的。
  *
  * ── 曾经的一族豁免:文本输入(08-31 视觉守恒批**退役**)───────────────────
  * 光标(caret)本身也算焦点指示,WCAG 2.4.7 认这个形 —— 所以从前这道门把
@@ -335,7 +349,38 @@ function ringProbeSource() {
     const el = document.activeElement
     if (!el || el === document.body) return { none: true }
     const style = getComputedStyle(el)
-    const ring = getComputedStyle(document.documentElement).getPropertyValue('--accent-ring').trim()
+    /*
+     * 期望值不是从 token 字面**读**出来的,是让浏览器自己**算**出来的:插一格
+     * 探针元素,把四格配方原样写上去,再读它的 computed。理由有二:
+     *  ① 自定义属性的计算值保留作者写法 —— `--focus-ring-color` 会原样交出
+     *    `#7c6fa0` 之类,而 `outlineColor` 是序列化过的 `rgb(124, 111, 160)`;
+     *  ② `--focus-ring-offset` 是一句 `calc(-1 * var(--focus-ring-w))`,自定义属性
+     *    不替我们算 calc,读出来的是那句话本身。
+     * 探针只解析一次配方,之后每一站都跟它比 —— 门量的于是永远是「与配方一致」,
+     * 不是「与某个写死的数一致」。
+     */
+    /*
+     * 探针**挂在被问的那个元素下面**,不是挂在 body 下面:配方有一格是可以被
+     * 上下文换掉的(`data-focus-ring-tone="on-accent"` 把 --focus-ring-color 换成
+     * --on-accent —— 强调色实心底上同色的环看不见,判词在 global.css)。
+     * 挂在 body 上算出来的永远是根上那一档,拿它去量一颗打了勾的勾选框会得出
+     * 「这里没有环」——门于是在一个**正确**的实现上变红。
+     */
+    const recipeAt = (host) => {
+      const probe = document.createElement('div')
+      probe.style.cssText =
+        'position:absolute;left:-9999px;top:0;width:10px;height:10px;'
+        + 'outline:var(--focus-ring-w) solid var(--focus-ring-color);outline-offset:var(--focus-ring-offset)'
+      host.appendChild(probe)
+      const st = getComputedStyle(probe)
+      const out = { color: st.outlineColor, offset: st.outlineOffset, width: st.outlineWidth }
+      probe.remove()
+      return out
+    }
+    const own = recipeAt(el.parentElement ?? document.body)
+    const ring = own.color
+    const wantOffset = own.offset
+    const wantWidth = own.width
     /** `rgba(67, 133, 190, .18)` → `67,133,190,0.18`。比数不比字面。 */
     const chan = (v) => {
       const nums = String(v).match(/-?\d*\.?\d+/g)
@@ -346,18 +391,20 @@ function ringProbeSource() {
     }
     const want = chan(ring)
     const outline = `${style.outlineStyle} ${style.outlineWidth} ${style.outlineColor}`
-    // 环也可能画在祖先上(Input 那一族:input 自己 outline:none,环在 .field 外壳上)。
+    // 环也可能画在祖先上(Input 那一族:input 自己不画,环在 .field 外壳上)。
+    // **只认 outline**:仓里不再有第二种环(判词见这只函数上面那段)。
     let carrier = null
+    let offset = null
+    let carrierHop = null
     let node = el
     for (let hop = 0; node && hop < 6; hop += 1) {
       const st = getComputedStyle(node)
-      if (st.outlineStyle !== 'none' && chan(st.outlineColor) === want) {
+      // 每一跳按**它自己那一档**配方判(上下文可能把颜色那一格换掉了,见上)。
+      const wantHere = chan(recipeAt(node).color)
+      if (st.outlineStyle !== 'none' && (chan(st.outlineColor) === want || chan(st.outlineColor) === wantHere)) {
         carrier = 'outline'
-        break
-      }
-      const shadowColors = (st.boxShadow ?? '').match(/rgba?\([^)]*\)/g) ?? []
-      if (shadowColors.some((c) => chan(c) === want)) {
-        carrier = 'box-shadow'
+        offset = st.outlineOffset
+        carrierHop = hop
         break
       }
       node = node.parentElement
@@ -369,6 +416,10 @@ function ringProbeSource() {
       role: el.getAttribute('role'),
       name: (el.getAttribute('aria-label') ?? el.textContent ?? '').trim().slice(0, 28),
       carrier,
+      offset,
+      carrierHop,
+      wantOffset,
+      wantWidth,
       textEntry: tag === 'input' || tag === 'textarea' || el.isContentEditable,
       outline,
       ring,
@@ -409,9 +460,40 @@ async function checkComposerTabOrder(page) {
   const bare = named.filter((s) => !s.carrier && !s.textEntry)
   assert(
     bare.length === 0,
-    '每个落焦元素身上都是 --accent-ring 的柔光环,没有浏览器默认 outline'
+    '每个落焦元素身上都是 --focus-ring-color 的环(outline 载体),没有浏览器默认 outline'
       + (bare.length
         ? `;裸着的:${bare.slice(0, 8).map((s) => `${s.tag}${s.testid ? `[${s.testid}]` : ''} outline=${s.outline} vs ring=「${s.ring}」`).join(' · ')}`
+        : ''),
+  )
+  /*
+   * 环画在**盒里**(丙的形)。只量「有一圈 accent 的 outline」的话,把环挪回盒外
+   * 这道门一声不吭 —— offset 是配方四格之一,它也得被钉住。比的是探针算出来的
+   * `--focus-ring-offset`,不是写死的 -2px:换配方时这条跟着走。
+   */
+  /*
+   * **文本输入的环画在外框上,不画在它自己身上**(`text` 载体的全部内容)。
+   * 判据是 `carrierHop > 0`:找到环的那一跳不是落焦元素本身。
+   *
+   * 这一条是 09-13 反证逼出来的:拆掉 global.css 的 text 组之后这道门**没有变红** ——
+   * 因为消费方那一侧的 `outline: none` 也在同一批里删干净了,输入本体于是落回缺省载体,
+   * 自己顶了一圈环。「有环」成立,「环在该在的地方」不成立,而门只问了前半句。
+   * 从前它问不出来也不算漏:那时替代品与裸删写在同一个文件里,拆一半必然露出裸的那一半。
+   * 现在两半都在 global.css,门就得自己会分辨这两种绿。
+   */
+  const selfRinged = ringed.filter((s) => s.textEntry && s.carrierHop === 0)
+  assert(
+    selfRinged.length === 0,
+    '文本输入的环画在**外框**上(text 载体),不是它自己顶一圈'
+      + (selfRinged.length
+        ? `;自己顶的:${selfRinged.map((s) => `${s.tag}${s.testid ? `[${s.testid}]` : ''}`).join(' · ')}`
+        : ''),
+  )
+  const offMismatch = ringed.filter((s) => s.offset !== s.wantOffset)
+  assert(
+    offMismatch.length === 0,
+    `环画在盒里(outline-offset = --focus-ring-offset = ${ringed[0]?.wantOffset ?? '—'})`
+      + (offMismatch.length
+        ? `;偏了的:${offMismatch.slice(0, 8).map((s) => `${s.tag}${s.testid ? `[${s.testid}]` : ''} offset=${s.offset}`).join(' · ')}`
         : ''),
   )
   // 文本输入也得画环(08-31 起)。从前这一栏是「靠光标指示焦点」的统计口径,

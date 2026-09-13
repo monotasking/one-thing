@@ -155,6 +155,8 @@ export function WorkspacePalette() {
            * 所以它在这里是误报。 */
           <div
             {...scopeProps}
+            /* 面板拿焦点只是为了让键盘落进来,不该画环(同 ui/Dialog)。 */
+            data-focus-ring="none"
             className={s.panel}
             role="dialog"
             aria-modal="true"
@@ -162,7 +164,8 @@ export function WorkspacePalette() {
             tabIndex={-1}
             onKeyDown={onKeyDown}
           >
-            <div className={s.head}>
+            {/* 文本载体:输入本体不画环,环与边线归这一行(整块面就是那个字段)。 */}
+            <div className={s.head} data-focus-ring="text">
               <Search className={s.headIcon} strokeWidth={1.75} aria-hidden="true" />
               <input
                 ref={input}

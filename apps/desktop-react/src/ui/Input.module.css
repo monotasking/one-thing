@@ -30,18 +30,19 @@
 }
 
 /*
- * 文本输入类是「焦点环只在 :focus-visible」那条规矩的例外:
- * 鼠标点进来也亮环。所以这里用 :focus-within 而不是 :focus-visible。
+ * 落焦那一格(边线升色 + 环)**不在这里画**:`.field` 自述 `data-focus-ring="text"`,
+ * 规则在 styles/global.css 的载体组里 —— 文本输入是「只在 :focus-visible 亮环」
+ * 那条规矩的例外(鼠标点进来也得亮),而那句例外只该写一遍。
+ * 下面 `.invalid:focus-within` 仍在:错还没改完不该显得没事了,红边压过 accent 边
+ * (同分后来者胜 —— CSS Modules 排在 global.css 之后)。
  */
-.field:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 var(--focus-ring-w) var(--accent-ring);
-}
 
-/* 错误只换边色。聚焦时红边仍然压过 accent 边 —— 错还没改完,不该显得没事了。 */
+/* 错误只换边色。**落焦那一档不在这里** —— `.field` 自述 `data-focus-ring-tone="danger"`,
+ * 配方于是把 --focus-ring-edge 换成红的:错还没改完,不该显得没事了。
+ * (从前这里靠 `.invalid:focus-within` 压过 accent 边;text 载体那条带 :has 的选择器
+ *  特异性 0,6,0,压不过了,所以改走配方那一格 —— 屏幕上一模一样。) */
 .invalid,
-.invalid:hover:not(.disabled),
-.invalid:focus-within {
+.invalid:hover:not(.disabled) {
   border-color: var(--danger);
 }
 
@@ -54,7 +55,6 @@
   min-width: 0;
   height: 100%;
   border: 0;
-  outline: none;
   background: none;
   color: inherit;
   font: inherit;

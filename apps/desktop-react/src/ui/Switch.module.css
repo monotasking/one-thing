@@ -19,11 +19,6 @@
   cursor: default;
 }
 
-.track:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 0;
-}
-
 /* 钮走 transform 位移:轨的盒模型一帧不变,所以开关不会推动同一行里的别的东西。 */
 .knob {
   width: var(--switch-knob);

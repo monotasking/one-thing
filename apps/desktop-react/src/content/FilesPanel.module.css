@@ -81,16 +81,6 @@
   color: var(--text-1);
 }
 
-.crumb:focus-visible,
-.row:focus-visible,
-.more:focus-visible,
-.noteRetry:focus-visible,
-.noticeAction:focus-visible,
-.detailCopy:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 0;
-}
-
 /* 折起来的中段。不可点(点它没有一个确定的去处),所以画成最淡的一档。 */
 .crumbFold {
   flex: none;

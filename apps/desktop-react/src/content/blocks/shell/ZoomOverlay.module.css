@@ -36,11 +36,6 @@
   animation: var(--kf-block-zoom-canvas-in) var(--dur-enter) var(--ease-out);
 }
 
-/* 画布拿焦点只是让 Esc 落进来,不该画环 —— 环是给可操作元素的(同 Dialog)。 */
-.canvas:focus {
-  outline: none;
-}
-
 /* SVG 按自己的尺寸铺开;装不下就靠上面那层滚,不缩放(缩糊了就白放大了)。 */
 .figure {
   /* 给 `width="100%"` 的 SVG 一个确定的参照宽度(同 Figure.module.css 那条理由)。 */

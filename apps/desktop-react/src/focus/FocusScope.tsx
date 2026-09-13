@@ -7,7 +7,6 @@ import {
   useRef,
 } from 'react'
 import { focusTree } from './registry'
-import './focus-scope.css'
 import type { ReactNode } from 'react'
 import type { FocusScopeHandle } from './registry'
 import type { CommandId } from '../keymap/types'
@@ -49,8 +48,8 @@ import type { ActivateReason, FocusInstanceId, FocusScopeId } from './types'
  * 锚点跟着变,Esc 回焦时有几率画出一圈焦点环。一个开关管一件事 —— R1 翻开关,
  * 行为与属性同时到位。`data-focus-scope` 不受这个闸管(I4 现在就要能扫)。
  *
- * 作用域根**不画焦点环**,那条唯一的例外规则在 `focus/focus-scope.css` 里,
- * 理由写在那只文件的头上(容器不是控件)。
+ * 作用域根**不画焦点环**,那条唯一的容器例外与 09-13 立的其余四种载体并排住在
+ * `styles/global.css` 的焦点环那一组里(判词随规则一起搬过去了;容器不是控件)。
  *
  * ── `rootRef`:DOM 上只有一格 ref(R1 补)────────────────────────────────
  * 消费方本来就常常有自己的一个 ref(浮层要量矩形定位、要判「点没点在我身上」),

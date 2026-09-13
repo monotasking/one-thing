@@ -69,11 +69,6 @@ button.row:hover {
   background: var(--st-hover);
 }
 
-button.row:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: -2px;
-}
-
 /* 步与步之间一条发丝线,不留 gap;一步的卡里只有一行,所以线只在多步卡上画。 */
 .toolCard[data-multi] .list > .row {
   border-top: 1px solid var(--line-1);

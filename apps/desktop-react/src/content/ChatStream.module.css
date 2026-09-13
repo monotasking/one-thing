@@ -51,6 +51,11 @@
  * outline 常驻透明:高亮时只换颜色,**不进出布局** —— outline 本来就不占位,
  * 这样 1.2s 的淡出不会让下面的内容动一下。
  *
+ * 粗细读 --bw-3(状态标记那一档),**不读 --focus-ring-w**:这一圈是「落定闪一下」
+ * 不是焦点环(同 ui/Tabs 的 tabLand,那边一直就是 --bw-3)。09-13 焦点环收口把
+ * --focus-ring-w 从 3px 改成 --bw-2,那一改与「闪一圈」无关 —— 两件事共用一个名字
+ * 才是病:今天钉在 --bw-3 上,它俩从此各改各的。
+ *
  * **这里没有 gap**(08-31 换轨)。理由见下面那张节奏表。
  */
 .row {
@@ -58,7 +63,7 @@
   flex-direction: column;
   scroll-margin-top: var(--sp-4);
   border-radius: var(--r-2);
-  outline: var(--focus-ring-w) solid transparent;
+  outline: var(--bw-3) solid transparent;
   outline-offset: var(--sp-2);
   /*
    * ── 看不见的消息不排版(2026-09-10)──────────────────────────────────────
@@ -344,11 +349,6 @@
 
 .pendingAction:hover {
   color: var(--text-1);
-}
-
-.pendingAction:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 2px;
 }
 
 .pendingIcon {

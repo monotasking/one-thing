@@ -101,7 +101,13 @@ export function Radio({ value, disabled, children, label, className }: RadioProp
 
   return (
     <label className={cls}>
-      <span className={on ? `${s.dot} ${s.on}` : s.dot}>
+      {/* 同 Checkbox:焦点在看不见的原生 input 上,环画在这颗看得见的点上。 */}
+      <span
+        className={on ? `${s.dot} ${s.on}` : s.dot}
+        data-focus-ring="within"
+        /* 选中的那颗点是强调色实心圈,环得换一档才看得见(同 Checkbox)。 */
+        data-focus-ring-tone={on ? 'on-accent' : undefined}
+      >
         <input
           type="radio"
           className={s.native}

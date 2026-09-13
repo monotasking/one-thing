@@ -59,6 +59,8 @@ export function ZoomOverlay({ content, onClose }: { content: ZoomContent; onClos
         {({ scopeProps }) => (
           <div
             {...scopeProps}
+            /* 画布拿焦点只是让 Esc 落进来,不该画环 —— 环是给可操作元素的(同 Dialog)。 */
+            data-focus-ring="none"
             className={s.canvas}
             role="dialog"
             aria-modal="true"

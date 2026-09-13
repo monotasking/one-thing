@@ -103,11 +103,6 @@
   opacity: var(--btn-disabled-o);
 }
 
-.ghost:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 2px;
-}
-
 .ghostIcon {
   width: var(--fs-label);
   height: var(--fs-label);

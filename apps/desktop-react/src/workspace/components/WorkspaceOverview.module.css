@@ -68,11 +68,14 @@
   box-shadow: var(--sh-2);
 }
 
-/* 当前那张:accent 边 + 同一枚焦点柔环。它是「我在哪」的第二处指示,
- * 所以用的是与瓦面同一族的语汇(色),不是一个额外的徽。 */
+/* 当前那张:accent 边 + 一圈淡强调色的外圈。它是「我在哪」的第二处指示,
+ * 所以用的是与瓦面同一族的语汇(色),不是一个额外的徽。
+ * 这一圈是**染色不是焦点环**(09-13 收口):它跟「这张卡有没有焦点」没关系,
+ * 所以既不读 --focus-ring-color 也不读 --focus-ring-w;那个 3px 的字面量换成
+ * --bw-3 —— 它说的是「状态标记那一档粗细」。 */
 .cardCurrent {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-ring);
+  box-shadow: 0 0 0 var(--bw-3) var(--accent-ring);
 }
 
 .cardNew {

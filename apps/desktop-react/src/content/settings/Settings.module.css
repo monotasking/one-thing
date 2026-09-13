@@ -209,14 +209,10 @@
   background: var(--st-hover);
 }
 
-.keySlot:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 0;
-}
-
 .keySlotOn,
 .keySlotOn:hover {
   background: var(--st-sel);
+  /* 染色,不是焦点环(选中槽的边;它与「这一格有没有焦点」无关)。 */
   border-color: var(--accent-ring);
 }
 
@@ -251,11 +247,6 @@
 .keyAdd:hover {
   background: var(--st-hover);
   color: var(--text-1);
-}
-
-.keyAdd:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 0;
 }
 
 /* 文件选择器那一枚 input:藏起来,由「导入」那颗钮代点(同 composer 附件口那一格)。 */

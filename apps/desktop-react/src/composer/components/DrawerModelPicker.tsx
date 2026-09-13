@@ -180,7 +180,8 @@ export function DrawerModelPicker() {
         <div {...scopeProps}>
           <div className={s.pickCols}>
             <div className={s.pickListCol}>
-              <div className={s.modelSearch}>
+              {/* 文本载体(里层赢:它长在 composer 面板那格 text 载体里面)。 */}
+              <div className={s.modelSearch} data-focus-ring="text">
                 <Search className={s.searchIcon} strokeWidth={2} aria-hidden="true" />
                 <input
                   ref={ref}

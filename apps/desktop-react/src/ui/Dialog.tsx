@@ -97,6 +97,8 @@ export function Dialog({ open, onClose, title, children, footer, label }: Dialog
         {({ scopeProps }) => (
           <div
             {...scopeProps}
+            /* 面板拿焦点只是为了让键盘落进来,不该画环 —— 环是给可操作元素的。 */
+            data-focus-ring="none"
             className={s.panel}
             role="dialog"
             aria-modal="true"

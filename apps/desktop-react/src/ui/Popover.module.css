@@ -16,8 +16,3 @@
   overscroll-behavior: contain;
   animation: var(--kf-menu-in) var(--dur-enter) var(--ease-out);
 }
-
-.pop:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 0;
-}
