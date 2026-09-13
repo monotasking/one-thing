@@ -15,12 +15,12 @@ import {
   useSplitPrefs,
   useSplitRatio,
 } from '../../data/split-prefs'
-import { diffQueryOf, statusQuery, useChangesLive, useDiffLive } from '../../data/changes-source'
+import { fileQueryOf, statusQuery, useChangesLive, useFileLive } from '../../data/changes-source'
 import type { GitChangedFile } from '../../data/changes-source'
 import { useContentDrag } from '../../workbench/useContentDrag'
 import { diffRef } from '../kinds/diff-ref'
 import { openFileInCurrentTarget } from '../viewer/open-target'
-import { ChangeBody } from './ChangeBody'
+import { ChangeFileView } from './ChangeFileView'
 import { ChangeList } from './ChangeList'
 import { ChangesHeader } from './ChangesHeader'
 import s from './ChangesPanel.module.css'
@@ -105,21 +105,21 @@ export function ChangesPanel({ root }: { root: string }) {
   const selected = files[selection.active]
 
   /*
-   * 选中那个文件的 diff。**query 的身份跟着 (root, path) 走**,所以切来切去不会
-   * 互相污染。
+   * 选中那个文件的**两个版本原文**(批 ③-b:整文件视图吃 `file` 那条读法,
+   * 不再吃 `diff`)。**query 的身份跟着 (root, path) 走**,所以切来切去不会互相污染。
    *
-   * 报到与首载都在 `useDiffLive`(数据层那一只):它同时把这一格记进「正看着哪几格
-   * diff」那本引用计数账,`refreshOpenChanges` 据此对**看得见的那一格**发真的
+   * 报到与首载都在 `useFileLive`(数据层那一只):它同时把这一格记进「正看着哪几个
+   * 文件」那本引用计数账,`refreshOpenChanges` 据此对**看得见的那一格**发真的
    * `refetch`、对别的只标脏。这块面因此一句 `ensure` 都不写 —— 与 `useChangesLive`
    * 是同一条纪律(取数的生命周期归数据层,面只声明「我在看什么」)。
    *
-   * 没有选中行时读的是 `diffQueryOf(root, '')` 那一格占位:它**永远没人 `ensure`**,
+   * 没有选中行时读的是 `fileQueryOf(root, '')` 那一格占位:它**永远没人 `ensure`**,
    * 快照恒是出厂那一份。判词与 `data/file-peek-source.useFilePeek` 那句「路径为空时
    * 订空串那一格」逐字同源,`refreshOpenChanges` 也照着跳过它。
    */
-  const diffSource = selected ? diffQueryOf(root, selected.path) : undefined
-  const diff = useQuery(diffSource ?? diffQueryOf(root, ''))
-  useDiffLive(root, selected?.path ?? '')
+  const fileSource = selected ? fileQueryOf(root, selected.path) : undefined
+  const fileText = useQuery(fileSource ?? fileQueryOf(root, ''))
+  useFileLive(root, selected?.path ?? '')
 
   /*
    * **首次 ready 自动选第一行**(表二)。判据是「读到了 ∧ 有行 ∧ 还没选过」——
@@ -170,8 +170,8 @@ export function ChangesPanel({ root }: { root: string }) {
   const onRefresh = useCallback(() => {
     setSpins((n) => n + 1)
     void statusQuery.get(root).refetch()
-    if (diffSource) void diffSource.refetch()
-  }, [root, diffSource])
+    if (fileSource) void fileSource.refetch()
+  }, [root, fileSource])
 
   /*
    * **被召唤时焦点落在哪**(三件声明之二)。选中那一行 → 第一行 → 根。
@@ -302,10 +302,10 @@ export function ChangesPanel({ root }: { root: string }) {
                 />
               )}
               {selected && (
-                <ChangeBody
+                <ChangeFileView
                   file={selected}
-                  snapshot={diff}
-                  onRetry={() => void diffSource?.refetch()}
+                  snapshot={fileText}
+                  onRetry={() => void fileSource?.refetch()}
                   t={t}
                 />
               )}

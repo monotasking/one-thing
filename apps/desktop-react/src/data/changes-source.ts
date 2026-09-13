@@ -102,6 +102,34 @@ export interface GitDiffView {
   truncated: boolean
 }
 
+/**
+ * 一个文件的**一个版本**的原文(`file` 那条读法交的两格都是这个形)。
+ *
+ * `binary` 时 `text` 是空串 —— 那不是「这个文件是空的」,是「这一版不是文本」;
+ * `truncated` 时 `text` 是开头那一截,而且截在**最后一个完整的行**上(半行原文喂给
+ * 一个按行对齐的算法,画出来的是一张骗人的表)。`bytes` 说的永远是截断前的真大小。
+ */
+export interface GitFileText {
+  text: string
+  binary: boolean
+  truncated: boolean
+  bytes: number
+}
+
+/**
+ * `file` 那条读法的答案:一个文件的两个版本原文。**后端不算 diff**,算法在壳里
+ * (`content/code/line-diff.ts`)—— 正本 §1 那条分工。
+ *
+ * 两格的 `null` 各自是一句话:`head` 空 = 这一版在上一次提交里不存在(新增 / 未跟踪 /
+ * 空仓);`work` 空 = 盘上没有它了(删掉的文件)。重命名按**新路径**问,于是它长得
+ * 和新增一样 —— 那是正确答案。
+ */
+export interface GitFileView {
+  path: string
+  head: GitFileText | null
+  work: GitFileText | null
+}
+
 /* ── 结局 → 一句人话(四支,**不发明文案**)───────────────────────────────── */
 
 /**
@@ -169,7 +197,21 @@ export const diffQuery = createQueryFamily<GitDiffView>('changes.diff', (ctx) =>
 })
 
 /**
- * `root` + 仓库根相对路径 → 一格 diff 的键。
+ * 一个文件的**两个版本原文**。键与 `diffQuery` 那一族同形(见 `diffKey`)。
+ *
+ * 与 `diff` 那一族**并存**:整文件视图吃这一只,而 `diff` 那条读法是后端自述里
+ * 一等的一条(模型调 `git` 工具时问的就是它),壳这边今天没有消费者不等于它该删 ——
+ * 删它是另一笔账,不搭这一单的车。
+ */
+export const fileQuery = createQueryFamily<GitFileView>('changes.file', (ctx) => {
+  const at = splitDiffKey(ctx.key)
+  return readGit<GitFileView>(gitRef(at.root), 'file', { path: at.path })
+})
+
+/**
+ * `root` + 仓库根相对路径 → 一格的键。**两族共用这一只** —— 同一条路径在两个仓里
+ * 是两份答案,拿 `path` 单独当键会让第二个仓读到第一个仓的缓存;而两族各写一份
+ * 拼法,迟早只改好其中一份。
  *
  * 分隔符取 `\n`:它**不可能**出现在这两段里的任何一段(git 自己就用 `-z` 把
  * 路径按 NUL 分开,而路径里带换行的文件在 `status` 那一侧根本活不下来),所以
@@ -190,6 +232,11 @@ function splitDiffKey(key: string): { root: string; path: string } {
 /** 这一格 diff 的 query(面板只经这一只问,不自己拼键)。 */
 export function diffQueryOf(root: string, path: string): Query<GitDiffView> {
   return diffQuery.get(diffKey(root, path))
+}
+
+/** 这一格「两个版本原文」的 query。 */
+export function fileQueryOf(root: string, path: string): Query<GitFileView> {
+  return fileQuery.get(diffKey(root, path))
 }
 
 /* ── 刷新:三条路,零 poll ────────────────────────────────────────────────── */
@@ -269,6 +316,9 @@ const openRoots = createHoldLedger(
 /** 屏幕上此刻正看着哪几格 diff(键与 `diffQuery` 那一族同形)。 */
 const openDiffs = createHoldLedger()
 
+/** 屏幕上此刻正看着哪几个文件的两版原文(同一条规矩,另一族)。 */
+const openFiles = createHoldLedger()
+
 let unsubscribeRunEnded: (() => void) | undefined
 
 /**
@@ -302,6 +352,11 @@ export function refreshOpenChanges(): void {
     if (openDiffs.has(key)) void diffQuery.get(key).refetch()
     else diffQuery.invalidate(key)
   }
+  for (const key of fileQuery.keys()) {
+    if (!splitDiffKey(key).path) continue
+    if (openFiles.has(key)) void fileQuery.get(key).refetch()
+    else fileQuery.invalidate(key)
+  }
 }
 
 /**
@@ -328,7 +383,9 @@ function onEnvSessionRunEnded(sessionId: string): void {
 export function resetChangesSource(): void {
   statusQuery.reset()
   diffQuery.reset()
+  fileQuery.reset()
   openDiffs.clear()
+  openFiles.clear()
   openRoots.clear()
 }
 
@@ -357,7 +414,9 @@ export function useChangesLive(root: string): void {
 }
 
 /**
- * **正看着这一格 diff 的那一段**(`ChangeBody` 挂载期间)。
+ * **正看着这一格 diff 的那一段**。**今天零消费者** —— 改动面批 ③-b 起吃的是
+ * `useFileLive`;这一只与 `diffQuery` 一起留着(那条读法是后端自述里一等的一条),
+ * 删是另一笔账。
  *
  * 与 `useChangesLive` 同一个形:报到 + 首载。**空 path 不报到也不拉** —— 那是
  * 「还没选中」的占位格(见 `refreshOpenChanges` 末段)。
@@ -368,6 +427,20 @@ export function useDiffLive(root: string, path: string): void {
     if (!key) return
     const release = openDiffs.hold(key)
     void diffQuery.get(key).ensure()
+    return release
+  }, [key])
+}
+
+/**
+ * **正看着这一个文件两版原文的那一段**(`ChangeFileView` 挂载期间)。
+ * 与 `useDiffLive` 逐字同一个形,只是记在另一本账上。
+ */
+export function useFileLive(root: string, path: string): void {
+  const key = path ? diffKey(root, path) : ''
+  useEffect(() => {
+    if (!key) return
+    const release = openFiles.hold(key)
+    void fileQuery.get(key).ensure()
     return release
   }, [key])
 }

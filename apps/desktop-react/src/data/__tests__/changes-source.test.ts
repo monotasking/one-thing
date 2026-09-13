@@ -19,6 +19,9 @@ import {
   statusQuery,
   useChangesLive,
   useDiffLive,
+  useFileLive,
+  fileQuery,
+  fileQueryOf,
 } from '../changes-source'
 import { useExposeStore } from '../../expose/store'
 import { initialExposeState } from '../../expose/transitions'
@@ -171,6 +174,16 @@ function hold(root: string): () => void {
     held = held.filter((x) => x !== off)
   }
 }
+/** 「正看着这一个文件的两版原文」(批 ③-b:改动面吃的是这一族)。 */
+function holdFile(root: string, path: string): () => void {
+  const view = renderHook(() => useFileLive(root, path))
+  const off = () => view.unmount()
+  held.push(off)
+  return () => {
+    act(() => off())
+    held = held.filter((x) => x !== off)
+  }
+}
 /** 「正看着这一格 diff」。走的是产品那条唯一的登记口。 */
 function holdDiff(root: string, path: string): () => void {
   const view = renderHook(() => useDiffLive(root, path))
@@ -287,6 +300,36 @@ describe('刷新:在场 refetch,不在场 invalidate', () => {
     refreshOpenChanges()
     await settle()
     expect(mine()).toBe(2)
+  })
+
+  it('**正看着的那个文件两版原文也重问**(`file` 那一族同一条规矩)', async () => {
+    answer = () => ok({ path: 'src/a.ts', head: null, work: { text: 'x', binary: false, truncated: false, bytes: 1 } })
+    holdFile(ROOT, 'src/a.ts')
+    await settle()
+    const mine = () => reads.filter((r) => r.name === 'file').length
+    expect(mine()).toBe(1)
+
+    refreshOpenChanges()
+    await settle()
+    expect(mine()).toBe(2)
+  })
+
+  it('没在看的那个文件只标脏,一发都不发;空 path 那格照旧跳过', async () => {
+    answer = () => ok({ path: 'src/b.ts', head: null, work: { text: 'x', binary: false, truncated: false, bytes: 1 } })
+    await fileQueryOf(ROOT, 'src/b.ts').ensure()
+    const before = reads.length
+    refreshOpenChanges()
+    await settle()
+    expect(reads.length).toBe(before)
+    await fileQuery.get(diffKey(ROOT, 'src/b.ts')).ensure()
+    expect(reads.length).toBe(before + 1)
+    // 空 path 那一格:订着也不发。
+    const off = fileQueryOf(ROOT, '').subscribe(() => {})
+    const at = reads.length
+    refreshOpenChanges()
+    await settle()
+    expect(reads.length).toBe(at)
+    off()
   })
 
   it('没在看的那一格 diff 只标脏,一发都不发', async () => {

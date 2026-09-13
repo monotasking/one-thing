@@ -1164,6 +1164,13 @@ export const zh = {
   'diff.truncated': '这块 diff 太大,只显示了前 1 MiB',
   /* 选中的文件在两次刷新之间被撤销了改动。 */
   'diff.noDiff': '这个文件此刻没有改动',
+  /* 整文件视图(批 ③-b):导航与两句诚实态。「上一处 / 下一处」说的是**改动块**,
+   * 不是行 —— 删三行加两行是一处,人读 diff 时它就是一件事。 */
+  'diff.prevChange': '上一处改动',
+  'diff.nextChange': '下一处改动',
+  'diff.changeAt': '第 {k} 处改动,共 {n} 处',
+  'diff.fileBinary': '二进制文件,不展示内容',
+  'diff.fileTruncated': '这个文件太大,只读了前 1 MiB',
   /* 八个状态字母的无障碍名(M/A/D/R/C/?/!/T)。 */
   'diff.statusM': '已修改',
   'diff.statusA': '新增',

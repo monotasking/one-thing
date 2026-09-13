@@ -40,31 +40,39 @@ const file = (path: string, over: Partial<GitChangedFile> = {}): GitChangedFile 
   ...over,
 })
 
-const DIFF_TEXT = `diff --git a/src/a.ts b/src/a.ts
---- a/src/a.ts
-+++ b/src/a.ts
-@@ -1,3 +1,3 @@
- const a = 1
--const b = 2
-+const b = 3
-`
+/**
+ * 整文件视图吃的是**两个版本的原文**(批 ③-b:`git:` 的 `file` 读法),
+ * 行级 diff 在壳里算(`content/code/line-diff.ts`)。
+ * 这一对造出**两处**改动(第 2 行、第 6 行),中间隔着未改的行 —— ↑↓ 与
+ * 改动地图都要有两块可走。
+ */
+const HEAD_TEXT = 'const a = 1\nconst b = 2\nconst c = 3\nconst d = 4\nconst e = 5\nconst f = 6\n'
+const WORK_TEXT = 'const a = 1\nconst b = 3\nconst c = 3\nconst d = 4\nconst e = 5\nconst f = 7\n'
+
+const version = (text: string, over: Record<string, unknown> = {}) => ({
+  text,
+  binary: false,
+  truncated: false,
+  bytes: text.length,
+  ...over,
+})
 
 /** 这一发 status 答什么(每个用例自己改)。 */
 let status: () => ResourceReadView
-/** 这一发 diff 答什么。 */
-let diff: () => ResourceReadView
+/** 这一发 `file` 答什么。 */
+let fileText: () => ResourceReadView
 /** 每条读法各被问了几次(「刷新真的发了一发」靠它钉)。 */
 let calls: Record<string, number>
 /** 把 `status` 那一发挂住(refetching 那一档要一份在飞的读数)。 */
 let holdStatus: (() => void) | null
 
 function installPort(): void {
-  calls = { status: 0, diff: 0 }
+  calls = { status: 0, file: 0 }
   const port: GitPort = {
     ready: async () => undefined,
     read: vi.fn(async (_ref, name) => {
       calls[name] = (calls[name] ?? 0) + 1
-      if (name === 'diff') return diff()
+      if (name === 'file') return fileText()
       if (holdStatus) await new Promise<void>((resolve) => (holdStatus = resolve))
       return status()
     }),
@@ -104,7 +112,8 @@ beforeEach(() => {
       files: [file('src/a.ts'), file('docs/b.md', { status: 'added', add: 9, del: 0 })],
       stat: { add: 12, del: 1, files: 2 },
     })
-  diff = () => ok({ path: 'src/a.ts', text: DIFF_TEXT, binary: false, truncated: false })
+  fileText = () =>
+    ok({ path: 'src/a.ts', head: version(HEAD_TEXT), work: version(WORK_TEXT) })
   holdStatus = null
   useWorkbenchStore.getState().reset()
   useWorkbenchStore.getState().seed()
@@ -199,17 +208,126 @@ describe('六态', () => {
   })
 })
 
-describe('二进制 / 截断 两档', () => {
-  it('binary:一句「不展示」,没有 diff 体', async () => {
-    diff = () => ok({ path: 'src/a.ts', text: '', binary: true, truncated: false })
+describe('整文件视图的四态(批 ③-b)', () => {
+  /** 屏幕上那几行(取件口是基础件落的 `data-line-index`)。 */
+  const linesOnScreen = (): HTMLElement[] =>
+    Array.from(document.querySelectorAll<HTMLElement>('[data-testid="changes-body"] [data-line-index]'))
+
+  const marksOf = () =>
+    linesOnScreen().map((el) =>
+      el.className.includes('lineAdd') ? 'add' : el.className.includes('lineDel') ? 'del' : 'ctx',
+    )
+
+  it('两版都在 → 整文件:行数 = 文件行数 + 改动行,未改的行两个号都有', async () => {
+    mount()
+    await screen.findByTestId('changes-body')
+    await waitFor(() => expect(linesOnScreen().length).toBeGreaterThan(0))
+    // 六行里两行改了 = 4 未改 + 2 删 + 2 增。
+    expect(marksOf()).toEqual(['ctx', 'del', 'add', 'ctx', 'ctx', 'ctx', 'del', 'add'])
+    const first = linesOnScreen()[0]
+    expect(first.getAttribute('data-old-no')).toBe('1')
+    expect(first.getAttribute('data-new-no')).toBe('1')
+  })
+
+  it('只有 head(文件删掉了)→ 整篇 del,一行都没有新行号', async () => {
+    fileText = () => ok({ path: 'src/a.ts', head: version(HEAD_TEXT), work: null })
+    mount()
+    await screen.findByTestId('changes-body')
+    await waitFor(() => expect(linesOnScreen().length).toBe(6))
+    expect(marksOf().every((m) => m === 'del')).toBe(true)
+    expect(linesOnScreen().every((el) => !el.hasAttribute('data-new-no'))).toBe(true)
+    // **整篇删除的文件里 ↑↓ 照样有落点** —— 当前行按下标定位,不按新行号。
+    expect(linesOnScreen()[0].getAttribute('data-current')).toBe('true')
+  })
+
+  it('只有 work(新文件)→ 整篇 add,一行都没有旧行号', async () => {
+    fileText = () => ok({ path: 'src/a.ts', head: null, work: version(WORK_TEXT) })
+    mount()
+    await screen.findByTestId('changes-body')
+    await waitFor(() => expect(linesOnScreen().length).toBe(6))
+    expect(marksOf().every((m) => m === 'add')).toBe(true)
+    expect(linesOnScreen().every((el) => !el.hasAttribute('data-old-no'))).toBe(true)
+  })
+
+  it('任一版 binary:一句「不展示」,一行都不画', async () => {
+    fileText = () =>
+      ok({ path: 'src/a.ts', head: version('', { binary: true }), work: version(WORK_TEXT) })
     mount()
     expect(await screen.findByTestId('changes-body-binary')).toBeTruthy()
+    expect(linesOnScreen()).toHaveLength(0)
   })
 
   it('truncated:块尾一行', async () => {
-    diff = () => ok({ path: 'src/a.ts', text: DIFF_TEXT, binary: false, truncated: true })
+    fileText = () =>
+      ok({ path: 'src/a.ts', head: version(HEAD_TEXT), work: version(WORK_TEXT, { truncated: true }) })
     mount()
     expect(await screen.findByTestId('changes-body-truncated')).toBeTruthy()
+  })
+
+  it('两版一模一样:一句「此刻没有改动」,导航整组不画', async () => {
+    fileText = () => ok({ path: 'src/a.ts', head: version(HEAD_TEXT), work: version(HEAD_TEXT) })
+    mount()
+    expect(await screen.findByTestId('changes-body-empty')).toBeTruthy()
+    expect(screen.queryByTestId('changes-nav')).toBeNull()
+  })
+})
+
+describe('改动导航:↑ k / N ↓ 与右缘那张地图', () => {
+  const countText = () => screen.getByTestId('changes-nav-count').textContent
+  const currentIndex = () =>
+    document
+      .querySelector('[data-testid="changes-body"] [data-current="true"]')
+      ?.getAttribute('data-line-index')
+
+  it('首次 ready 落在第一块,读数是 `1 / N`', async () => {
+    mount()
+    await screen.findByTestId('changes-nav')
+    expect(countText()).toBe('1 / 2')
+    expect(currentIndex()).toBe('1')
+  })
+
+  it('↓ 走到下一块,↑ 回来,而且**到头循环**', async () => {
+    mount()
+    await screen.findByTestId('changes-nav')
+    act(() => screen.getByTestId('changes-next').click())
+    expect(countText()).toBe('2 / 2')
+    expect(currentIndex()).toBe('6')
+    // 最后一块再往下 → 回到第一块(循环,不是禁用)。
+    act(() => screen.getByTestId('changes-next').click())
+    expect(countText()).toBe('1 / 2')
+    // 第一块再往上 → 到最后一块。
+    act(() => screen.getByTestId('changes-prev').click())
+    expect(countText()).toBe('2 / 2')
+  })
+
+  it('读数给读屏的是一整句(`第 k 处改动,共 n 处`)', async () => {
+    mount()
+    await screen.findByTestId('changes-nav')
+    expect(screen.getByTestId('changes-nav-count').getAttribute('aria-label')).toBe(
+      t('diff.changeAt', { k: 1, n: 2 }),
+    )
+  })
+
+  it('地图每块一格,点一格跳过去', async () => {
+    mount()
+    const map = await screen.findByTestId('changes-map')
+    expect(map.querySelectorAll('[data-change-block]')).toHaveLength(2)
+    expect(map.querySelector('[data-change-block="0"]')?.getAttribute('data-active')).toBe('true')
+    /*
+     * 点的是**位置**不是格子(两千处改动时格子只有半个像素高)。jsdom 里
+     * `getBoundingClientRect` 恒零,所以这里把它按下去再量那条判据本身
+     * —— 真机那一半在 `gate:changes` ⑦ 上。
+     */
+    act(() => screen.getByTestId('changes-next').click())
+    expect(map.querySelector('[data-change-block="1"]')?.getAttribute('data-active')).toBe('true')
+    expect(map.querySelector('[data-change-block="0"]')?.getAttribute('data-active')).toBeNull()
+  })
+
+  it('地图那条带子不在 Tab 序里(键盘的路是檐上那两颗钮)', async () => {
+    mount()
+    const map = await screen.findByTestId('changes-map')
+    expect(map.getAttribute('tabindex')).toBe('-1')
+    expect(map.getAttribute('aria-hidden')).toBe('true')
   })
 })
 

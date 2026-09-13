@@ -355,10 +355,29 @@
   color: var(--danger);
 }
 
-/* ── diff 体 ──────────────────────────────────────────────────────────── */
-.body {
+/* ── 整文件视图 ───────────────────────────────────────────────────────── */
+/*
+ * `.split` 的第三格:左边是**滚动的正文**,右边是那条**不滚的改动地图**。
+ * 地图是一条 UI 带,不是内容 —— 它要按视口定位,所以它是滚动容器的**兄弟**
+ * 而不是里面的一个 sticky 件(sticky 件要么占一整行的流、要么得靠浮动去躲,
+ * 两条都是在用定位机制补一个本该由布局回答的问题)。
+ */
+.fileArea {
   min-height: 0;
   min-width: 0;
+  display: flex;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  /*
+   * ↑↓ 跳块时读的是行的 `offsetTop`,而它是相对**最近的定位祖先**算的 ——
+   * 这一句让那个祖先就是这块滚动容器自己,于是 `offsetTop` 与 `scrollTop`
+   * 同一个原点。不写的话原点会漂到面板根上,跳块会差一个檐的高度。
+   */
+  position: relative;
   overflow: auto;
   overscroll-behavior: contain;
   border-left: var(--bw-1) solid var(--line-1);
@@ -396,6 +415,13 @@
   text-overflow: ellipsis;
 }
 
+.bodyPath {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .bodyPathDir {
   color: var(--text-4);
 }
@@ -403,6 +429,65 @@
 .bodyPathName {
   color: var(--text-1);
   font-weight: 600;
+}
+
+/* ── 檐右端:上一处 / 第 k 处 共 n 处 / 下一处 ──────────────────────────── */
+/*
+ * `margin-left: auto` 把它顶到右端 —— 这条檐里唯一的弯腰件是路径(它自己截断),
+ * 导航这一组 `flex: none`:改动数是**读数**,少一个字这句话就不成立了。
+ */
+.navGroup {
+  flex: none;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.navCount {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+}
+
+/* ── 右缘的改动地图 ───────────────────────────────────────────────────── */
+/*
+ * 一条竖带。整条是**一颗钮**(判词在 ChangeMap.tsx:键盘的路是檐上那两颗),
+ * 所以这里只画带子与格子,焦点环走全局 —— `aria-hidden` 的件不该有可见焦点态,
+ * 而它 `tabIndex -1` 本来也进不了 Tab 序。
+ */
+.map {
+  flex: none;
+  position: relative;
+  width: var(--changes-map-w);
+  background: var(--surface-1);
+  border-left: var(--bw-1) solid var(--line-1);
+  cursor: pointer;
+}
+
+.mapTick {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--changes-map-tick-h);
+  /* 位置按比例给(行内 style),这里只管高度与色。 */
+}
+
+.mapAdd {
+  background: var(--ok);
+}
+
+.mapDel {
+  background: var(--danger);
+}
+
+/*
+ * 此刻停在的那一块:左右各探出一点 + 满饱和描边。**只换这一格的形,不换整条带子**
+ * ——「我在哪儿」是一格状态,不是一层底色。
+ */
+.mapTick[data-active='true'] {
+  left: calc(var(--bw-1) * -1);
+  right: calc(var(--bw-1) * -1);
+  outline: var(--bw-1) solid var(--text-1);
 }
 
 /* 「二进制 / 已截断 / 此刻没有改动」三句话共用一格。 */
@@ -427,7 +512,7 @@
  *
  * **批 ② 把病根本身治了**:行搬进「行」渲染基础件之后行高是整数 token
  * (`--code-line-h`),分数边界不存在了,所以 containment 可以回到它本来该在的粒度 ——
- * 一行一格(基础件的 `skip`,由 `ChangeBody` 传 `true` 打开)。粒度回到行的好处是
+ * 一行一格(基础件的 `skip`,由 `ChangeFileView` 传 `true` 打开)。粒度回到行的好处是
  * 屏外**真的**不排版:按 hunk 包盒时,一个三百行的 hunk 只要有一行在视口里,整块
  * 三百行都得排。解药撤了,病历留着 —— dpr-2 缝数由 `gate:changes` 每次量一遍。
  */
