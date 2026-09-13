@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { ChevronDown, Plus, Search, resolveIcon } from '../../components/icons'
+import { ChevronDown, Plus, Search, X, resolveIcon } from '../../components/icons'
 import { ButtonBase } from '../../ui/ButtonBase'
+import { IconButton } from '../../ui/IconButton'
 import { Input } from '../../ui/Input'
-import { Menu, MenuItem } from '../../ui/Menu'
+import { Menu, MenuItem, MenuSeparator } from '../../ui/Menu'
 import { useT } from '../../i18n'
 import { useAsyncPending } from '../../data/kernel'
 import {
@@ -15,6 +16,7 @@ import {
 import { useFocusScope } from '../../focus/useFocusScope'
 import { buildProjects } from '../projection'
 import { exposeIntentOf } from '../keys'
+import { buildScopeMenu, toScopeMenuProjects } from '../scope-menu'
 import { projectScope, scopeId, scopeSpecOf, visibleScopes } from '../scopes'
 import { useExposeStore } from '../store'
 import { sessionRowIdsOf } from '../transitions'
@@ -68,17 +70,20 @@ export function NavRows() {
   const creating = useAsyncPending(sessionMutation, CREATE_KEY)
 
   /** 范围表 = 与侧栏**同一张表**(固定档 + 项目),不另起一份口径。 */
-  const options = useMemo(() => {
-    const fixed = visibleScopes(sessions).map((item) => ({
-      value: scopeId(item),
-      label: t(scopeSpecOf(item).labelKey),
-    }))
-    const projects = buildProjects(sessions).map((project) => ({
-      value: scopeId(projectScope(project.id)),
-      label: project.name,
-    }))
-    return [...fixed, ...projects]
-  }, [sessions, t])
+  const table = useMemo(
+    () => ({
+      fixed: visibleScopes(sessions).map((item) => ({
+        value: scopeId(item),
+        label: t(scopeSpecOf(item).labelKey),
+      })),
+      projects: toScopeMenuProjects(buildProjects(sessions), (project) =>
+        scopeId(projectScope(project.id)),
+      ),
+    }),
+    [sessions, t],
+  )
+  /** 行上那句话按 id 在**整张表**里查(见下),所以这一格要摊平的那一份。 */
+  const options = useMemo(() => [...table.fixed, ...table.projects], [table])
 
   /**
    * 范围行上显示的那句话 = **当前这一档在上面那张表里的名字**。
@@ -176,6 +181,40 @@ export function NavRows() {
     [],
   )
 
+  /*
+   * ── 范围菜单自己的两格临时状态(A6)──────────────────────────────────────
+   * 筛选词与「更早」的开合**只活在这一次打开里**:关掉再开是一张干净的表
+   * (与搜索行那两格不落盘逐字同一条理由)。所以它们由开关那一口一并清 ——
+   * 一件事一个产地,不再在 `onClose` / 选中 / Esc 三处各清一遍。
+   */
+  const [scopeFilter, setScopeFilter] = useState('')
+  const [olderOpen, setOlderOpen] = useState(false)
+  const setScopeMenuOpen = useCallback((open: boolean) => {
+    setScopeOpen(open)
+    if (!open) {
+      setScopeFilter('')
+      setOlderOpen(false)
+    }
+  }, [])
+
+  /**
+   * 这一刻那张表长什么样 —— 判据全在纯函数 `expose/scope-menu.ts`(三段 +
+   * 画不画筛选框 + 折不折),这只组件只负责把它画出来。
+   * `Date.now()` 在这里现读:菜单是**开的那一刻**照的一张相,它活不过这一次打开
+   * (词一变重算一次,而那一刻与开的那一刻差着几秒 —— 对一条 7 天的线无关紧要)。
+   */
+  const menuModel = useMemo(
+    () =>
+      buildScopeMenu({
+        fixed: table.fixed,
+        projects: table.projects,
+        query: scopeFilter,
+        now: Date.now(),
+        olderExpanded: olderOpen,
+      }),
+    [table, scopeFilter, olderOpen],
+  )
+
   const newLabel = t('expose.newSession')
 
   return (
@@ -211,14 +250,42 @@ export function NavRows() {
           aria-label={t('expose.searchLabel')}
         />
       ) : (
-        <ButtonBase
-          className={s.row}
-          data-testid="expose-search-row"
-          onClick={() => useExposeStore.getState().openSearch()}
-        >
-          <Search className={s.glyph} strokeWidth={1.75} aria-hidden="true" />
-          <span className={s.label}>{t('expose.searchRow')}</span>
-        </ButtonBase>
+        /*
+         * ── 静息那一档,**A6 起有两种形** ───────────────────────────────────
+         * 词是空的 → 一行字(与从前逐字相同);**词还在** → 那一行自己把词说出来
+         * (「筛选 · <词>」)并在行尾挂一颗 ×。后者是「离开活动路径就收回」那条
+         * 拍板的另一半:收形不收词,而一个**看不见的过滤器**是 09-04 立法禁掉的
+         * 东西 —— 所以收回来的那一行必须说得出自己还在滤什么。
+         *
+         * × 是一颗**真钮**,所以它不能长在那一行(`ButtonBase`)**里面**
+         * (`<button>` 套 `<button>` 是非法 HTML)。于是带词那一档外面包一格:
+         * 悬停薄膜挪到包着的那一格上,两件同亮同灭,读起来仍是一行。
+         * 它 `tabIndex={-1}` 不进 Tab 序 —— 键盘那条路是 Esc(与它同一口,
+         * 判词在 `ExposeView.onEscape`),与会话行尾那颗 ⋯ 逐字同一条。
+         */
+        <div className={query ? s.keptRow : undefined}>
+          <ButtonBase
+            className={query ? s.keptMain : s.row}
+            data-testid="expose-search-row"
+            onClick={() => useExposeStore.getState().openSearch()}
+          >
+            <Search className={s.glyph} strokeWidth={1.75} aria-hidden="true" />
+            <span className={s.label}>
+              {query ? t('expose.filterChip', { query }) : t('expose.searchRow')}
+            </span>
+          </ButtonBase>
+          {query && (
+            <IconButton
+              icon={X}
+              size="xs"
+              tip={false}
+              tabIndex={-1}
+              testId="expose-filter-clear"
+              label={t('expose.filterClear')}
+              onClick={() => useExposeStore.getState().setQuery('')}
+            />
+          )}
+        </div>
       )}
 
       {/*
@@ -233,7 +300,7 @@ export function NavRows() {
         data-testid="expose-scope-row"
         aria-haspopup="menu"
         aria-expanded={scopeOpen}
-        onClick={() => setScopeOpen(true)}
+        onClick={() => setScopeMenuOpen(true)}
       >
         <ScopeIcon className={s.glyph} strokeWidth={1.75} aria-hidden="true" />
         <span className={s.label}>{scopeLabel}</span>
@@ -246,14 +313,77 @@ export function NavRows() {
           anchor={scopeAnchor}
           anchorPlace="below-start"
           label={t('expose.scopeLabel')}
-          onClose={() => setScopeOpen(false)}
+          onClose={() => setScopeMenuOpen(false)}
+          /*
+           * 项目多时顶上那格筛选框(A6 §9 拍板 2)。**头部槽是库件的一格**
+           * (`ui/Menu.header`):不进 roving、不跟着滚、在 `role="menu"` 外面,
+           * ↓ / ↑ / ↵ 三个键由库件交给菜单体 —— 这里一行键盘代码都不写。
+           */
+          header={
+            menuModel.filterShown ? (
+              <Input
+                size="sm"
+                data-expose-scope-filter=""
+                value={scopeFilter}
+                onValueChange={setScopeFilter}
+                placeholder={t('expose.scopeFilterPlaceholder')}
+                aria-label={t('expose.scopeFilterPlaceholder')}
+              />
+            ) : undefined
+          }
+          /*
+           * Esc **先清词再关**(拍板 2 的最后一句)。答 `false` 时库件照旧关菜单 ——
+           * 「这一下归不归我」由消费方答,而关不关是库件的事。
+           */
+          onEscape={() => {
+            if (!scopeFilter) return false
+            setScopeFilter('')
+            return true
+          }}
         >
-          {options.map((option) => (
+          {/* 固定三档钉在最上面,**不参与过滤**(判词在 `scope-menu.ts`)。 */}
+          {menuModel.fixed.map((option) => (
             <MenuItem
               key={option.value}
               checked={option.value === current}
               onClick={() => {
-                setScopeOpen(false)
+                setScopeMenuOpen(false)
+                onPick(option.value)
+              }}
+            >
+              {option.label}
+            </MenuItem>
+          ))}
+          {/* 有项目可画时才隔一条线:一条悬在空处的分隔线是在说「下面还有」而其实没有。 */}
+          {(menuModel.recent.length > 0 || menuModel.olderCount > 0) && <MenuSeparator />}
+          {menuModel.recent.map((option) => (
+            <MenuItem
+              key={option.value}
+              checked={option.value === current}
+              onClick={() => {
+                setScopeMenuOpen(false)
+                onPick(option.value)
+              }}
+            >
+              {option.label}
+            </MenuItem>
+          ))}
+          {/*
+           * 「更早 · N 个」。它是一行**动作**(点开 / 收起),不是一个值,所以
+           * 不带 `checked` —— 角色因此是 `menuitem` 而不是 `menuitemradio`,
+           * 读屏软件不会把它念成「这一档没选中」。
+           */}
+          {menuModel.olderCount > 0 && (
+            <MenuItem onClick={() => setOlderOpen((on) => !on)}>
+              {t('expose.scopeOlder', { n: menuModel.olderCount })}
+            </MenuItem>
+          )}
+          {menuModel.older.map((option) => (
+            <MenuItem
+              key={option.value}
+              checked={option.value === current}
+              onClick={() => {
+                setScopeMenuOpen(false)
                 onPick(option.value)
               }}
             >

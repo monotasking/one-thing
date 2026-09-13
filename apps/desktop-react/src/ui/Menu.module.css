@@ -1,5 +1,13 @@
 /* 关键帧 menuIn 住在 styles/motion.css(全仓唯一的 @keyframes 产地)。 */
 
+/*
+ * ── 两层不是洁癖,是「头部槽不许跟着滚」+「role 只许装 menuitem」(A6)──────
+ * `.menu` 是**浮出面**(位置、底、边、影、内衬、入场),`.list` 是**菜单体**
+ * (那格 `role="menu"` / `"listbox"`,封顶与滚在它身上)。头部槽画在两者之间:
+ * 它在面里、在体外 —— 于是它不随列表滚(滚的是体),而那只输入框也不会成为
+ * `role="menu"` 的一个不合法的孩子(axe 的 `aria-required-children` 当场判红)。
+ * 没有头部槽的菜单结构上多一层 div,视觉与从前逐像素相同。
+ */
 .menu {
   position: fixed;
   z-index: var(--z-dropdown);
@@ -9,8 +17,33 @@
   background: var(--surface-2);
   border: 1px solid var(--line-1);
   box-shadow: var(--sh-2);
+  /* 面自己不滚:滚的是体。这一格挡住「头部槽被列表顶出面外」那一形。 */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   /* 入场只淡入:菜单已经在光标处了,再从别处飞过来就是骗人 */
   animation: var(--kf-menu-in) var(--dur-enter) var(--ease-out);
+}
+
+/*
+ * 菜单体。**封顶 + 自己滚**(壳规「浮层 / 抽屉列表必有最大高度约束」)——
+ * 上限 `--menu-max-h` 的推导写在 tokens.css 上。`overscroll-behavior: contain`
+ * 是这一条的另一半:滚到底再滚不该把身后那一屏带着走。
+ */
+.list {
+  min-height: 0;
+  max-height: var(--menu-max-h);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/*
+ * 头部槽。定高不参与滚;与菜单体之间留一格 `--menu-pad`(与面的内衬同一个数,
+ * 所以头部与第一项之间的呼吸 = 第一项与面上缘之间的呼吸)。
+ */
+.header {
+  flex: none;
+  margin-bottom: var(--menu-pad);
 }
 
 .section {
@@ -72,7 +105,22 @@
  * 而字是所有人都读得到的。所以这里不再叠一层视觉差:多一条规矩就多一处会漂。
  */
 
-.itemOn {
+/*
+ * 选中那一项:**accent 只上那枚勾,不上这一行字**(第 1 轴「状态色只上图标 / 点,
+ * 永不换底」的同一句话,换到前景色上)。
+ *
+ * 09-13 A6 给范围菜单加了第一屏 axe,当场判红一条 `color-contrast`(serious):
+ * 旧写法把整项染成 `--accent-deep`,而那一格在**真主题**下是
+ * `--ui-action-primary-hover-bg` —— 一个**底色**(静态 palette 里它是「按下去更重」
+ * 的那一档,所以从前只在 `#fff` 上量过,一直没露),拿它当正文色对比度不够。
+ * 全仓每一张单选菜单(`ui/Select` 的面板、范围表、模型表……)都长着这条,
+ * 只是从前没有一屏 axe 扫到过带勾的菜单。
+ *
+ * 治法不是调一个新色号:「这一项选中了」本来就由那枚 ✓ 说得清清楚楚,一行读不清
+ * 的字是白搭的第二遍。可感知的变化只有一件 —— 选中项的**文字**回到正文色,
+ * 勾仍是 accent。
+ */
+.itemOn .checkIcon {
   color: var(--accent-deep);
 }
 

@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { useStageStore } from '../../stage/store'
-import { NOW, SESSION_META, seedSessionsSource } from '../../data/__fixtures__/sessions'
+import { NOW, SESSIONS, SESSION_META, seedSessionsSource } from '../../data/__fixtures__/sessions'
 import { configureSessionsPort } from '../../data/sessions-port'
 import { sessionMutation } from '../../data/sessions-source'
 import { useExposeStore } from '../store'
@@ -40,7 +40,7 @@ const placeSessions = () =>
   }))
 
 const searchRow = () => screen.getByTestId('expose-search-row')
-const searchBox = () => screen.getByLabelText('搜索会话') as HTMLInputElement
+const searchBox = () => screen.getByLabelText('筛选会话') as HTMLInputElement
 /** 点开搜索行 —— 从「一行字」换成「一只输入框」。 */
 const openSearch = () => act(() => void fireEvent.click(searchRow()))
 
@@ -85,7 +85,7 @@ describe('三行导航吃的是基础件,不是裸 button / 裸 input', () => {
   it('顶上**没有常驻输入框**:静息态整块面里一个 input 都没有', () => {
     const { container } = render(<ExposeView />)
     expect(container.querySelector('input')).toBeNull()
-    expect(screen.queryByLabelText('搜索会话')).toBeNull()
+    expect(screen.queryByLabelText('筛选会话')).toBeNull()
   })
 })
 
@@ -258,6 +258,171 @@ describe('范围行:一张表,选中项打勾', () => {
     })
     expect(scopeRow().textContent).toContain('transreader')
     expect(document.querySelector('[role="menu"]')).toBeNull()
+  })
+})
+
+/**
+ * **范围菜单封顶那一批**(A6,§9 拍板 1 / 2;报障:真店 24 个项目,菜单无限长)。
+ *
+ * 封顶本身是库件的事(`ui/Menu` 的用例钉结构,`gate:sessions` ⑨ 在真机上量高度),
+ * 这里钉的是**这块面接了它之后**的形:多少个项目才出筛选框、打词滤谁不滤谁、
+ * 「更早」折起来的那一行、以及关掉再开是一张干净的表。
+ */
+describe('范围菜单:项目多时的筛选框与折叠(A6)', () => {
+  const scopeRow = () => screen.getByTestId('expose-scope-row')
+  const menuItems = () =>
+    [...document.querySelectorAll('[role="menu"] [role="menuitemradio"]')].map(
+      (el) => el.textContent,
+    )
+  const filterBox = () => document.querySelector('[data-expose-scope-filter]') as HTMLInputElement
+
+  /**
+   * n 个项目的一屏。**每个项目一条会话** —— `buildProjects` 按会话的
+   * `workingDirectory` 现造名册,所以「有几个项目」= 「有几个不同的工作目录」。
+   * `agoMs` 让那几条落到 7 天线的两侧。
+   */
+  const seedProjects = (n: number, agoOf: (i: number) => number = () => 0) => {
+    const base = SESSIONS[0]
+    seedSessionsSource({
+      sessions: Array.from({ length: n }, (_, i) => ({
+        ...base,
+        id: `proj-${i}`,
+        title: `会话 ${i}`,
+        projectId: `/Users/dev/code/pj${i}`,
+        workingDirectory: `/Users/dev/code/pj${i}`,
+        updatedAt: NOW - agoOf(i),
+      })),
+    })
+  }
+
+  it('项目不多(≤8)时顶上没有筛选框', () => {
+    seedProjects(8)
+    render(<ExposeView />)
+    act(() => void fireEvent.click(scopeRow()))
+    expect(filterBox()).toBeNull()
+  })
+
+  it('项目多起来(>8)才画那一格', () => {
+    seedProjects(9)
+    render(<ExposeView />)
+    act(() => void fireEvent.click(scopeRow()))
+    expect(filterBox()).toBeTruthy()
+  })
+
+  it('打字即过滤,而**固定三档钉在最上面不参与**', () => {
+    seedProjects(12)
+    render(<ExposeView />)
+    act(() => void fireEvent.click(scopeRow()))
+    act(() => void fireEvent.change(filterBox(), { target: { value: 'pj1' } }))
+    const labels = menuItems()
+    // 固定档一格不少(这一屏每条会话都有项目,所以可见的固定档只有「全部」)。
+    expect(labels[0]).toBe('全部')
+    // 项目只剩命中的那几个(pj1 / pj10 / pj11)。
+    expect(labels.slice(1)).toEqual(['pj1', 'pj10', 'pj11'])
+  })
+
+  it('大小写不敏感;一个都不命中时固定档照样点得到(不把人困在筛空的表里)', () => {
+    seedProjects(12)
+    render(<ExposeView />)
+    act(() => void fireEvent.click(scopeRow()))
+    act(() => void fireEvent.change(filterBox(), { target: { value: 'PJ3' } }))
+    expect(menuItems().slice(1)).toEqual(['pj3'])
+    act(() => void fireEvent.change(filterBox(), { target: { value: '哪儿都没有' } }))
+    expect(menuItems()).toEqual(['全部'])
+  })
+
+  it('近 7 天没动过的折成一行「更早 · N 个」,点开才展;有词时全展', () => {
+    // 前 9 个刚动过,后 3 个是两周前的。
+    seedProjects(12, (i) => (i < 9 ? i * 1000 : 14 * 24 * 60 * 60 * 1000))
+    render(<ExposeView />)
+    act(() => void fireEvent.click(scopeRow()))
+    const older = () => screen.queryByRole('menuitem', { name: '更早 · 3 个' })
+    expect(older()).toBeTruthy()
+    expect(menuItems()).not.toContain('pj11')
+
+    act(() => void fireEvent.click(older()!))
+    expect(menuItems()).toContain('pj11')
+    // 那一行还在 —— 它是开关,不是标题。
+    expect(older()).toBeTruthy()
+
+    act(() => void fireEvent.click(older()!))
+    expect(menuItems()).not.toContain('pj11')
+    // 有词 = 全表参与匹配(搜不到与不存在没区别)。
+    act(() => void fireEvent.change(filterBox(), { target: { value: 'pj11' } }))
+    expect(menuItems()).toContain('pj11')
+    expect(older()).toBeNull()
+  })
+
+  it('关掉再开是一张干净的表(词与折叠都不活过这一次打开)', () => {
+    seedProjects(12, (i) => (i < 9 ? i * 1000 : 14 * 24 * 60 * 60 * 1000))
+    render(<ExposeView />)
+    act(() => void fireEvent.click(scopeRow()))
+    act(() => void fireEvent.change(filterBox(), { target: { value: 'pj1' } }))
+    act(() => void fireEvent.click(screen.getByRole('menuitemradio', { name: 'pj1' })))
+    expect(document.querySelector('[role="menu"]')).toBeNull()
+
+    act(() => void fireEvent.click(scopeRow()))
+    expect(filterBox().value).toBe('')
+    expect(screen.queryByRole('menuitem', { name: '更早 · 3 个' })).toBeTruthy()
+  })
+})
+
+/**
+ * **带词收回那一档**(A6 §9 拍板 4)。收形不收词,而一个看不见的过滤器是
+ * 09-04 立法禁掉的东西 —— 所以那一行必须自己把词说出来,并给一颗清得掉的 ×。
+ */
+describe('筛选行:带词收回的那一形', () => {
+  const retract = () => act(() => void useExposeStore.getState().leaveExpose())
+
+  it('没词离开 = 与没点过一样', () => {
+    render(<ExposeView />)
+    openSearch()
+    retract()
+    expect(screen.getByTestId('expose-search-row').textContent).toBe('筛选')
+    expect(screen.queryByTestId('expose-filter-clear')).toBeNull()
+  })
+
+  it('有词离开 → 行上写着词 + 一颗 ×;列表**还在过滤**', () => {
+    render(<ExposeView />)
+    openSearch()
+    fireEvent.change(searchBox(), { target: { value: 'Exposé' } })
+    retract()
+    expect(screen.getByTestId('expose-search-row').textContent).toContain('Exposé')
+    expect(screen.getByTestId('expose-filter-clear')).toBeTruthy()
+    expect(useExposeStore.getState().query).toBe('Exposé')
+  })
+
+  it('× 只清词、**不展开**那一行;它不进 Tab 序(键盘那条路是 Esc)', () => {
+    render(<ExposeView />)
+    openSearch()
+    fireEvent.change(searchBox(), { target: { value: 'Exposé' } })
+    retract()
+    const clear = screen.getByTestId('expose-filter-clear')
+    expect(clear.tabIndex).toBe(-1)
+    act(() => void fireEvent.click(clear))
+    expect(useExposeStore.getState().query).toBe('')
+    expect(useExposeStore.getState().searching).toBe(false)
+    expect(screen.getByTestId('expose-search-row').textContent).toBe('筛选')
+  })
+
+  it('点那一行重新展开,**词还在框里**', () => {
+    render(<ExposeView />)
+    openSearch()
+    fireEvent.change(searchBox(), { target: { value: 'Exposé' } })
+    retract()
+    act(() => void fireEvent.click(screen.getByTestId('expose-search-row')))
+    expect(searchBox().value).toBe('Exposé')
+  })
+
+  it('× 是 ui/IconButton(不是裸 button),提示关着 —— 旁边就写着那个词', () => {
+    render(<ExposeView />)
+    openSearch()
+    fireEvent.change(searchBox(), { target: { value: 'Exposé' } })
+    retract()
+    const clear = screen.getByTestId('expose-filter-clear')
+    expect(clear.hasAttribute('data-ui-base')).toBe(true)
+    expect(clear.getAttribute('aria-label')).toBe('清除筛选')
+    expect(clear.hasAttribute('title')).toBe(false)
   })
 })
 

@@ -18,6 +18,7 @@ import {
   collapseSection,
   expandSection,
   isSectionCollapsed,
+  leaveExpose,
   quickLookPrev,
   relativeTime,
   rowIdsOf,
@@ -441,6 +442,35 @@ describe('搜索 = 过滤器,不是另一层视图', () => {
 
   it('splitHighlight 空词时原样返回一片', () => {
     expect(splitHighlight('abc', '')).toEqual([{ text: 'abc', hit: false }])
+  })
+})
+
+/**
+ * **离开活动路径那一拍**(A6,§9 拍板 4)。两档,判据是有没有词 ——
+ * 「收着但还在过滤」是这块面从 A6 起的一个新状态,它合法的前提是那一行
+ * 自己把词说出来(屏幕那一半在 `NavRows`,这里只钉状态)。
+ */
+describe('离开活动路径:筛选行收回(A6)', () => {
+  const open8 = { ...overview, searching: true }
+
+  it('没词 → 与没点过一样(searching 与 query 都归零)', () => {
+    const st = leaveExpose(open8, FACTS)
+    expect(st.searching).toBe(false)
+    expect(st.query).toBe('')
+  })
+
+  it('**有词 → 只收形,词留着**(那一行改说「筛选 · 词」)', () => {
+    const st = leaveExpose({ ...open8, query: 'provider' }, FACTS)
+    expect(st.searching).toBe(false)
+    expect(st.query).toBe('provider')
+    // 列表一格没变,所以焦点也不该动。
+    expect(rowIdsOf(st, FACTS)).toEqual(rowIdsOf({ ...open8, query: 'provider' }, FACTS))
+  })
+
+  it('本来就没在搜:**同一个引用**(不触发一次白重渲染)', () => {
+    expect(leaveExpose(overview, FACTS)).toBe(overview)
+    const carried = { ...overview, query: 'provider' }
+    expect(leaveExpose(carried, FACTS)).toBe(carried)
   })
 })
 

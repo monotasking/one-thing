@@ -77,6 +77,38 @@ export function nextRovingIndex(
   }
 }
 
+/**
+ * **把键盘交进这一组**(A6 补口)。
+ *
+ * 起因是菜单族的头部槽:一格输入框长在 roving 组**外面**(它不是一项,也不该
+ * 进方向键的循环),而 ↓ / ↑ 那一下的意思仍然是「别管我了,走列表」。容器上的
+ * 那条 keydown 监听够不着它 —— 事件根本不经过那个容器。
+ *
+ * 它与 `useRoving` 内部那几行**是同一件事**(同一份 `itemsOf` 判据、同一句
+ * tabIndex 重排、同一句 `.focus()`),所以它住在这只文件里而不是各消费方自己
+ * 写一份:`.focus()` 的允许区只有三只文件(不变量 I3),而这一下是**作用域
+ * 内部**的移动(菜单的头部与菜单的项在同一格 `menu` 作用域里),与方向键走项
+ * 逐字同一条理由。
+ *
+ * 答 `false` = 这一组此刻一项都没有(全禁灰 / 被筛空),调用方据此**不要**
+ * `preventDefault` —— 吞掉一个什么都没做的键是「键盘可达」的反面。
+ */
+export function focusRovingEdge(
+  container: HTMLElement | null,
+  edge: 'first' | 'last',
+  itemSelector: string = ROVING_ITEM_SELECTOR,
+): boolean {
+  if (!container) return false
+  const items = itemsOf(container, itemSelector)
+  if (items.length === 0) return false
+  const next = edge === 'first' ? 0 : items.length - 1
+  items.forEach((el, i) => {
+    el.tabIndex = i === next ? 0 : -1
+  })
+  items[next].focus()
+  return true
+}
+
 export interface RovingOptions {
   axis?: RovingAxis
   loop?: boolean

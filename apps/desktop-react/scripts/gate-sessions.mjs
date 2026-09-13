@@ -117,6 +117,13 @@ const COLD_OPEN_MS = budget('coldOpenMs')
 const LONG_FRAME_MS = budget('longFrameMs')
 /** 标题净宽占行宽的下限(正本 §6②)。 */
 const TITLE_SHARE_MIN = 0.6
+/**
+ * A6:⑨ 要种多少个**项目**。
+ * 100 有两个理由,不是一个整数:①它远过 `EXPOSE_SCOPE_FILTER_MIN`(8),筛选框
+ * 必然在场;②它让那张表必然超过 `--menu-max-h`,于是「滚的是菜单体而不是整扇窗」
+ * 才量得出来。它同时是第 5 轴的超量格(浮层那一档)。
+ */
+const SCOPE_PROJECTS = 100
 /** 两档厚度(240 是架子下限 SHELF_MIN_THICKNESS,320 是用户真机那一档)。 */
 const THICKNESSES = [240, 320]
 
@@ -297,6 +304,9 @@ const READ = () => {
     scopeRowShown: shown(root?.querySelector('[data-testid="expose-scope-row"]')),
     scopeRowText: (root?.querySelector('[data-testid="expose-scope-row"]')?.textContent ?? '').trim(),
     searchRowShown: shown(root?.querySelector('[data-testid="expose-search-row"]')),
+    // A6:那一行此刻写着什么(「筛选」/「筛选 · 词」),与行尾那颗 × 在不在。
+    searchRowText: (root?.querySelector('[data-testid="expose-search-row"]')?.textContent ?? '').trim(),
+    filterClearShown: shown(root?.querySelector('[data-testid="expose-filter-clear"]')),
     hasSearchBox: Boolean(root?.querySelector('[data-expose-search]')),
     searchBoxFocused: Boolean(document.activeElement?.hasAttribute?.('data-expose-search')),
     searchRowFocused: document.activeElement?.getAttribute?.('data-testid') === 'expose-search-row',
@@ -978,6 +988,272 @@ async function sceneScopeRow(page, cdp, projectName) {
   await delay(500)
 }
 
+
+/* ── ⑨ ⑩(A6,正本 §9)────────────────────────────────────────────────────
+ *
+ * ⑨ 范围菜单封顶 + 筛选框,⑩ 筛选行离开活动路径就收回。两条都**只有真机成立**:
+ *  · 封顶是一个**排版**结论(菜单体的 clientHeight vs scrollHeight vs 那格 token),
+ *    jsdom 里 `getBoundingClientRect` 一律答零,量什么都是 0 ≤ 0;
+ *  · 「焦点去了别的面」在 jsdom 里是 `focusTree.activateScope()` 一句话,而真机上
+ *    它是「点了另一块面,浏览器把焦点交过去,focusin 冒到派发器,树换人」整条链 ——
+ *    09-13 报的那条病(「焦点走了不恢复」)正是这条链上的事。
+ *
+ * **「更早 · N 个」那一档这道门钉不到**,如实写在这里而不是假装绿:`sessions`
+ * 域二十六条里没有一条设得了 `updatedAt`(`create` / `rename` / `updatePin` /
+ * `updateWorkingDirectory` … 全不收时间),门里种出来的会话必然都在 7 天内。
+ * 所以这里钉的是那条规则的**反面**(全新的项目 → 一行「更早」都不该有),
+ * 正面(7 天边界两侧、展开 / 收起、有词全展)由 `src/expose/scope-menu.test.ts`
+ * 的纯函数用例钉 —— 判据是同一只函数,屏幕读的也是它。
+ */
+
+/** `--menu-max-h` 是一格 `min()` 表达式,px 读不出来 —— 真高度问浏览器自己算。 */
+const menuMaxH = (page) =>
+  page.evaluate(() => {
+    const probe = document.createElement('div')
+    probe.style.cssText = 'position:fixed;visibility:hidden;height:var(--menu-max-h)'
+    document.body.appendChild(probe)
+    const h = probe.getBoundingClientRect().height
+    probe.remove()
+    return Math.round(h)
+  })
+
+const scopeMenuRead = (page) =>
+  page.evaluate(() => {
+    const body = document.querySelector('[role="menu"]')
+    const surface = document.querySelector('[data-menu-surface]')
+    const filter = document.querySelector('[data-expose-scope-filter]')
+    const items = [...(body?.querySelectorAll('[role="menuitemradio"]') ?? [])].map((el) =>
+      (el.textContent ?? '').trim(),
+    )
+    const rows = [...(body?.querySelectorAll('[role="menuitem"]') ?? [])].map((el) =>
+      (el.textContent ?? '').trim(),
+    )
+    const r = surface?.getBoundingClientRect() ?? null
+    return {
+      open: Boolean(body),
+      items,
+      rows,
+      filterShown: Boolean(filter),
+      filterFocused: document.activeElement === filter,
+      // 头部槽在 role="menu" **外面**(一只 input 不是 menu 的合法孩子)。
+      filterInsideBody: Boolean(filter && body?.contains(filter)),
+      filterInsideSurface: Boolean(filter && surface?.contains(filter)),
+      bodyClientH: body ? Math.round(body.clientHeight) : 0,
+      bodyScrollH: body ? Math.round(body.scrollHeight) : 0,
+      surfaceBottom: r ? Math.round(r.bottom) : 0,
+      viewportH: window.innerHeight,
+    }
+  })
+
+/** ⑨ 范围菜单:封顶 · 可滚 · 筛选框三条约束 · 打词 · Esc 两档 · axe。 */
+async function sceneScopeMenuCap(page, cdp) {
+  scene('⑨ 范围菜单:封顶 + 顶上那格筛选框(A6 §9 拍板 1 / 2)')
+  const at = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="expose-scope-row"]')
+    if (!(el instanceof HTMLElement)) return null
+    const r = el.getBoundingClientRect()
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
+  })
+  if (!at) {
+    check('范围那一行在屏上', false, '')
+    return
+  }
+  const maxH = await menuMaxH(page)
+  await installFrameProbe(page)
+  const mark = await frameMark(page)
+  await clickAt(cdp, at)
+  const frames = await frameHarvest(page, mark)
+  const open = await scopeMenuRead(page)
+  check('点开了', open.open, '')
+  note(
+    `${open.items.length} 行项目/固定档;菜单体 ${open.bodyClientH} / 内容 ${open.bodyScrollH}`
+      + `(--menu-max-h = ${maxH});面下缘 ${open.surfaceBottom} / 视口 ${open.viewportH}`,
+  )
+  check(`菜单体高 ≤ --menu-max-h(${maxH})`, open.bodyClientH <= maxH + 1, `实测 ${open.bodyClientH}`)
+  check(
+    '装不下的那部分在菜单**体**里滚(不是把整扇窗撑长)',
+    open.bodyScrollH > open.bodyClientH,
+    `内容 ${open.bodyScrollH} vs 可视 ${open.bodyClientH}`,
+  )
+  check(
+    '整张面留在视口里(底部开菜单时被 float 的 clamp 顶上来)',
+    open.surfaceBottom <= open.viewportH,
+    `下缘 ${open.surfaceBottom} / 视口 ${open.viewportH}`,
+  )
+  check('项目多(>8)→ 顶上那格筛选框在场', open.filterShown, '')
+  check('焦点开出来就在那只框里(落点明说)', open.filterFocused, '')
+  check(
+    '筛选框在 role="menu" **外面**、在浮出面**里面**(一只 input 不是 menu 的合法孩子)',
+    open.filterShown && !open.filterInsideBody && open.filterInsideSurface,
+    `body=${open.filterInsideBody} surface=${open.filterInsideSurface}`,
+  )
+  check(
+    '全新的项目一行「更早」都没有(7 天那条线的反面;正面归单测,理由见文件里那段)',
+    !open.rows.some((r) => /^(更早|Earlier)\b/.test(r)),
+    open.rows.filter((r) => /^(更早|Earlier)\b/.test(r)).join(' / '),
+  )
+  if (frames.known) {
+    note(`打开那一段 > ${LONG_FRAME_MS}ms 的长帧 ${frames.frames} 段,最长 ${frames.longest}ms`)
+    check(
+      `${open.items.length} 行的菜单打开:零 > ${LONG_FRAME_MS}ms 的长帧(第 5 轴超量格)`,
+      frames.frames === 0,
+      `${frames.frames} 段,最长 ${frames.longest}ms`,
+    )
+  } else {
+    note('长帧探针装不上 —— 超量那一条跳过,不假装绿')
+  }
+
+  /*
+   * axe **扫这一屏**(浮出面整张,不是 `[role="menu"]`)—— 头部槽长在 role 外面,
+   * 只扫 menu 会漏掉这一批新增的东西里最要紧的那一件。
+   * 这一屏为什么不住 `gate:a11y`:那道门起的是 **server 宿主**,而这一屏要
+   * 「一份真会话列表 + 十几个真项目 + 左架子那一档容器宽」三件同时在场
+   * (范围行本身只在 <760 的侧栏形里画),与 T2/B3-a 的搬家判例同一条 ——
+   * 一屏 axe 住哪,由「谁装得出这块面」决定。`setLegacyMode(true)` 的理由
+   * 与 ⑦c 那一处逐字相同。
+   */
+  const axe = await new AxeBuilder({ page })
+    .setLegacyMode(true)
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'])
+    .include('[data-menu-surface]')
+    .analyze()
+  for (const v of axe.violations) {
+    note(`[${v.impact}] ${v.id} —— ${v.help}`)
+    for (const node of v.nodes.slice(0, 4)) note(`  ${node.target.join(' ')}`)
+  }
+  check(
+    `范围菜单那一屏 axe 零违例(过了 ${axe.passes.length} 条规则)`,
+    axe.violations.length === 0,
+    `${axe.violations.length} 条违例`,
+  )
+
+  // 打词:项目按子串收窄,**固定三档一格不少**。
+  await page.keyboard.type('gate-pj1')
+  await delay(300)
+  const typed = await scopeMenuRead(page)
+  note(`打「gate-pj1」→ ${typed.items.length} 行:${typed.items.slice(0, 6).join(' / ')}…`)
+  check('打字即过滤(行数减少)', typed.items.length < open.items.length && typed.items.length > 0, `${open.items.length} → ${typed.items.length}`)
+  /*
+   * 固定档 = 打词**之前**那张表里,排在第一个项目之前的那几行(这一屏是
+   * 「全部」+「无项目」,协作那一档没有会话所以不画)。判据从那一份现推,
+   * 不在门里抄一份名单 —— 抄的那份哪天多一档就永远绿。
+   */
+  const fixedLabels = open.items.slice(0, open.items.findIndex((l) => /^gate-pj/.test(l)))
+  note(`固定档 ${fixedLabels.length} 行:${fixedLabels.join(' / ')}`)
+  check(
+    '固定档钉在最上面,一行不少、不参与过滤',
+    fixedLabels.length > 0 && typed.items.slice(0, fixedLabels.length).join('|') === fixedLabels.join('|'),
+    `实际 ${typed.items.slice(0, fixedLabels.length).join(' / ')}`,
+  )
+  check(
+    '剩下的每一行都命中那个词',
+    typed.items.slice(fixedLabels.length).every((label) => label.includes('gate-pj1')),
+    typed.items.slice(fixedLabels.length).join(' / '),
+  )
+
+  // Esc 第一下清词、菜单还在;第二下才关。
+  await page.keyboard.press('Escape')
+  await delay(300)
+  const cleared = await scopeMenuRead(page)
+  check('Esc 第一下:清词,菜单**不关**', cleared.open && cleared.items.length === open.items.length, `${cleared.items.length} 行 / open=${cleared.open}`)
+  await page.keyboard.press('Escape')
+  await delay(350)
+  const closed = await scopeMenuRead(page)
+  check('Esc 第二下:关掉这张菜单', !closed.open, '')
+}
+
+/** ⑩ 筛选行:离开活动路径就收回(有词留词 + 一颗 ×;点那一行重新展开)。 */
+async function sceneFilterRetract(page, cdp) {
+  scene('⑩ 筛选行:离开活动路径就收回(A6 §9 拍板 3 / 4 / 5)')
+  const pointOf = (selector) =>
+    page.evaluate((sel) => {
+      const el = document.querySelector(sel)
+      if (!(el instanceof HTMLElement)) return null
+      const r = el.getBoundingClientRect()
+      return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
+    }, selector)
+
+  const before = await read(page)
+  const rowAt = await pointOf('[data-testid="expose-search-row"]')
+  if (!rowAt) {
+    check('筛选那一行在屏上', false, '')
+    return
+  }
+  check(
+    '那一行叫「筛选」(与 Dock 上的「搜索」瓦分清)',
+    /^(筛选|Filter)$/.test(before.searchRowText ?? ''),
+    `实际「${before.searchRowText}」`,
+  )
+  await clickAt(cdp, rowAt)
+  await page.keyboard.type('导航行')
+  await delay(450)
+  const filtered = await read(page)
+  check('输入框在场且焦点在里面', filtered.hasSearchBox && filtered.searchBoxFocused, '')
+  check('列表真的在滤', filtered.rowCount < before.rowCount && filtered.rowCount > 0, `${before.rowCount} → ${filtered.rowCount}`)
+
+  /*
+   * **焦点去了别的面** —— 这道门在 Dock 的一块瓦上弹一张菜单:它在树上是
+   * `dock` 的孩子,所以活动路径当场不再含 expose,而这正是拍板 4 的判据本身。
+   * 用户报障时走的那一下是「点聊天输入框」,但这道门的窗里未必有一条开着的会话;
+   * 而**开另一块面**(点一块瓦)会摆出一扇浮窗,那扇窗会一直留在屏上、把后面
+   * 几步的 axe 扫描面污染掉(第一版就是这么红的)。换一件**不留痕**的东西去
+   * 接焦点,判据一个字没变。
+   */
+  const menuOpened = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="dock-tile-files"]')
+    if (!(el instanceof HTMLElement)) return false
+    /* 摆到**右下角**:这道门接下来要点的那颗 × 在左架子的顶上,两者不许叠 ——
+     * 叠上了那一下点的就是「关菜单」而不是「清筛选」。 */
+    el.dispatchEvent(
+      new MouseEvent('contextmenu', {
+        bubbles: true,
+        clientX: window.innerWidth - 40,
+        clientY: window.innerHeight - 40,
+      }),
+    )
+    return true
+  })
+  check('Dock 上弹得出一张菜单(焦点因此去了别处)', menuOpened, '')
+  await delay(450)
+  const left = await read(page)
+  note(`收回之后那一行写着「${left.searchRowText}」,列表 ${left.rowCount} 行`)
+  check('输入框收回去了', !left.hasSearchBox && left.searchRowShown, '')
+  check('**词留着**,而且那一行自己把它说出来', (left.searchRowText ?? '').includes('导航行'), `实际「${left.searchRowText}」`)
+  check('列表仍然在滤(收形不收词)', left.rowCount === filtered.rowCount, `${filtered.rowCount} → ${left.rowCount}`)
+  check('行尾那颗清除钮在场', left.filterClearShown, '')
+
+  /*
+   * 收尾就一下:CDP 点那颗 ×。这一下同时干三件事,而且**刻意不用 Esc** ——
+   * 那张菜单挂在 Dock 上,而 Dock 会自动藏;藏起来的那一拍菜单的祖先离场,
+   * 活动路径在它之前就截断了,于是 Esc 不再归它、反倒被这块面接走当成「清词」
+   * (第一版实测:× 当场消失,而那张菜单还留在 DOM 里污染了后面几步的右键表)。
+   * 点外关走的是 window 上的 pointerdown,与这一下点在谁身上互不干扰,
+   * 所以一下既关得掉那张菜单,也真的按到了这颗钮。
+   */
+  const clearAt = await pointOf('[data-testid="expose-filter-clear"]')
+  if (!clearAt) {
+    check('清除钮点得到', false, '')
+    return
+  }
+  await clickAt(cdp, clearAt)
+  const restored = await read(page)
+  check('那张菜单也跟着关了(点外关,不留痕给后面几步)', !restored.menuOpen, '')
+  check('× → 词没了、列表复原', restored.rowCount === before.rowCount, `${restored.rowCount} vs ${before.rowCount}`)
+  check('× → 那一行回到「筛选」两个字', /^(筛选|Filter)$/.test(restored.searchRowText ?? ''), `实际「${restored.searchRowText}」`)
+  /*
+   * 拍板 5 的真机那一半:这一下把焦点**送回了这块面**(× 长在它里面),
+   * 而那一行**没有**自己展开成输入框 —— 「焦点回来不自动展开」。
+   */
+  check('焦点回到这块面**不自动展开**(拍板 5)', !restored.hasSearchBox, '')
+
+  // 点那一行重新展开:词是空的(刚被 × 清掉),框在场。
+  await clickAt(cdp, await pointOf('[data-testid="expose-search-row"]'))
+  const reopened = await read(page)
+  check('点那一行重新展开成输入框', reopened.hasSearchBox && reopened.searchBoxFocused, '')
+  await page.keyboard.press('Escape')
+  await delay(350)
+}
+
 /* ── ⑦ 动作面(A2,正本 §6⑦)────────────────────────────────────────────────
  *
  * 三步都要**真机**才成立,而且三条各有各的理由:
@@ -1427,6 +1703,13 @@ async function main() {
     const titles = seedTitles(24)
     const projectDir = path.join(ws, 'sessions-gate-project')
     /*
+     * ── A6:再种 `SCOPE_PROJECTS` 个**各自一个目录**的会话 ─────────────────
+     * ⑨ 要的两件东西都只有「项目真的多」才存在:筛选框的闸是 8 个,而封顶要
+     * 一张**装不下的**表才量得出「滚的是菜单体」。100 同时是第 5 轴的超量格
+     * (`gate:perf` 场景①量的是 400 行的列表,这一格量的是一张 100 行的浮层)。
+     * 它们的标题就是目录名,所以 ⑨ 打「gate-pj1」那一下命中的是一族确定的行。
+     */
+    /*
      * 目录要**真存在**:`sessions.updateWorkingDirectory` 在本机可信面上走 ipc
      * 那条路,沙箱不夹持、路径被逐字当真,不存在的目录会被后端当场拒掉
      * (`Directory does not exist` —— gate-squeeze 08-31 踩过同一条)。
@@ -1444,7 +1727,21 @@ async function main() {
         }).catch(() => undefined)
       }
     }
-    note(`种了 ${titles.length} 条会话(标题 ${Math.min(...titles.map((t) => t.length))}–${Math.max(...titles.map((t) => t.length))} 字)`)
+    for (let i = 0; i < SCOPE_PROJECTS; i += 1) {
+      const dir = path.join(ws, `gate-pj${i}`)
+      await mkdir(dir, { recursive: true })
+      const created = await rpc(record, 'sessions', 'create', { name: `gate-pj${i}` })
+      const id = created?.session?.id
+      if (!id) throw new Error(`sessions.create 没给出会话 id:${JSON.stringify(created)}`)
+      await rpc(record, 'sessions', 'updateWorkingDirectory', {
+        sessionId: id,
+        workingDirectory: dir,
+      }).catch(() => undefined)
+    }
+    note(
+      `种了 ${titles.length} 条会话(标题 ${Math.min(...titles.map((t) => t.length))}–${Math.max(...titles.map((t) => t.length))} 字)`
+        + ` + ${SCOPE_PROJECTS} 条各带一个目录的(A6:范围菜单要一张装不下的表)`,
+    )
 
     ctx = await launch(store, udd)
     await openOnLeftShelf(ctx.page)
@@ -1458,6 +1755,8 @@ async function main() {
     await sceneHoverMenu(ctx.page, ctx.cdp)
     await sceneSearchRow(ctx.page, ctx.cdp)
     await sceneScopeRow(ctx.page, ctx.cdp, 'sessions-gate-project')
+    await sceneScopeMenuCap(ctx.page, ctx.cdp)
+    await sceneFilterRetract(ctx.page, ctx.cdp)
     /*
      * ⑦ 排在 ⑥ **之前**:它要的是侧栏形那一档的行(240 宽),而 ⑥ 会把这块面
      * 撕成一扇 900 宽的浮窗 —— 那之后左架子上就没有行可以右键了。
@@ -1508,7 +1807,7 @@ async function main() {
     process.exit(1)
   }
   process.stdout.write(
-    '[gate:sessions] ok —— 左缘对着红灯中心 / 两档标题占比 / ⋯ 真点得到 / 搜索行三步 / 范围菜单 / 动作面三步(关闭·改名·删除,含确认框 axe)/ 两种形换手 / 冷开读数\n',
+    '[gate:sessions] ok —— 左缘对着红灯中心 / 两档标题占比 / ⋯ 真点得到 / 搜索行三步 / 范围菜单 / 范围菜单封顶+筛选框(含 axe)/ 筛选行失焦收回 / 动作面三步(关闭·改名·删除,含确认框 axe)/ 两种形换手 / 冷开读数\n',
   )
 }
 

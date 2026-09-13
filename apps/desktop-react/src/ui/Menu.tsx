@@ -1,9 +1,9 @@
-import { createContext, useContext, useRef, useState } from 'react'
+import { createContext, useContext, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { ReactNode } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
 import { Check, ChevronRight } from '../components/icons'
 import { FocusScope } from '../focus/FocusScope'
-import { useRoving } from './a11y/roving'
+import { focusRovingEdge, useRoving } from './a11y/roving'
 import { useFloatDismiss, useFloatPosition } from './float'
 import type { FloatAnchor } from './float'
 import s from './Menu.module.css'
@@ -36,6 +36,36 @@ import s from './Menu.module.css'
  * (Select 用的就是这一档,见 ui/Select.tsx)。两者的键盘行为逐字相同,
  * 差的只是读屏软件念什么 —— 所以是一个 prop,不是第二个组件。
  * 项的角色由容器决定、经 context 下发:**没有哪个消费方该自己去写 role**。
+ * ──────────────────────────────────────────────────────────────────────
+ *
+ * ── **封顶与头部槽**(A6,09-13;报障:真店 24 个项目让范围菜单无限长)───────
+ * 壳规「浮层 / 抽屉列表必有最大高度约束 + 选中项 scrollIntoView」从前只在
+ * `ui/Select` 那层壳上落地过一次,菜单族本身没有上限 —— 于是任何一张由**数据**
+ * 撑起来的菜单都随数据长。封顶因此是**库件的事**:`--menu-max-h`(判词在
+ * tokens.css)加在菜单体上,开出来那一拍把打勾的那一项 `scrollIntoView`。
+ *
+ * 头部槽 `header` 是它的另一半:**表长到读不过来时配一格筛选,而不是更长的菜单**。
+ * 三条约束写死在这里,消费方不必也不该自己想:
+ *  ① 它**不进 roving**(它不是一项),所以 `useRoving` 挂在菜单体上而不是面上;
+ *  ② 它**不跟着滚**(滚的是菜单体);
+ *  ③ 它在 `role="menu"` **外面** —— 一只 `<input>` 是 `textbox`,不是 menu 的
+ *    合法孩子,塞进去 axe 的 `aria-required-children` 当场判红。
+ * 键的分工也在这里:头部槽里 ↓ / ↑ 把键盘**交给**菜单体(`focusRovingEdge`),
+ * ↵ 选当前那一项,其余(打字 / ← → / Home / End / 选词)一个不碰 ——
+ * 那正是「让 ← → 与打字通过」那句话的落地。Esc 走 `onEscape`(见那格 prop)。
+ * ──────────────────────────────────────────────────────────────────────
+ *
+ * ── 三类状态(库件入库的规格,CLAUDE.md「组件收敛战役纪律」)────────────────
+ * ① **生命状态**:开 = 挂载(`activateOnMount` 把焦点送进落点:有头部槽且槽里
+ *    有输入框 → 那只框,否则 → 菜单体);关 = 卸载(消费方 `onClose` 之后不再
+ *    渲染它,`ui/float` 的监听随之全拆,幂等)。没有 loading / error 两格:
+ *    菜单不取数,内容是消费方现给的。
+ * ② **交互状态**:项随 `MenuItem`(rest / hover / active / disabled / 两段确认);
+ *    面本身只有一格入场淡入,没有 hover 也没有 pressed。
+ * ③ **页面与数据状态**:empty = 消费方一项都没给(面仍在场、只有内衬与头部槽;
+ *    这时 ↓ 不动焦点,`focusRovingEdge` 答 false 所以键不被吞);
+ *    **超量** = 项多到超过 `--menu-max-h`,菜单体自己滚、选中项开场即在视野里,
+ *    面的位置由 `ui/float` 的视口 clamp 往上顶(底部开菜单时整张表抬起来)。
  * ──────────────────────────────────────────────────────────────────────
  */
 export type MenuRole = 'menu' | 'listbox'
@@ -73,6 +103,22 @@ interface MenuProps {
    * 左对齐还是右对齐是「锚点在这一行的哪一头」的函数,不是口味,所以是一格 prop。
    */
   anchorPlace?: 'below-start' | 'below-end'
+  /**
+   * **头部槽**(A6):画在面里、菜单体外的一格。不进 roving、不跟着滚、不在
+   * `role="menu"` 里面(三条判词见文件头)。今天唯一的消费者是会话侧栏的范围
+   * 菜单那格筛选框 —— 表长到读不过来时配一格筛选,而不是更长的菜单。
+   */
+  header?: ReactNode
+  /**
+   * **这一下 Esc 先问消费方**:答 `true` = 这一下归它(菜单**不关**),答
+   * `false` / 不传 = 照旧关掉这张菜单。
+   *
+   * 它为什么必须长在库件上:Esc 由响应链**从最深那一格问起**,而菜单就是此刻
+   * 最深的那一格 —— 消费方在自己那层写一个 keydown 监听既够不着这一下
+   * (它被树在更深处消费掉了),也当场违反不变量 I2。「菜单里装了自己的一格
+   * 状态(比如一格筛选词),Esc 先退那一格」是头部槽的孪生条款。
+   */
+  onEscape?: () => boolean
 }
 
 export function Menu({
@@ -86,10 +132,55 @@ export function Menu({
   minWidth,
   anchor,
   anchorPlace = 'below-start',
+  header,
+  onEscape,
 }: MenuProps) {
   const ref = useRef<HTMLDivElement>(null)
+  /** 菜单体(那格 `role`)。roving / 封顶 / 落点三件都认它,不是外面那张面。 */
+  const listRef = useRef<HTMLDivElement>(null)
 
-  useRoving(ref, { axis: 'vertical' })
+  useRoving(listRef, { axis: 'vertical' })
+
+  /*
+   * 开出来那一拍,把**打勾的那一项**滚进视野(壳规「浮层列表必有最大高度约束
+   * **+ 选中项 scrollIntoView**」的后半句)。只跑一次:之后的滚动位归用户。
+   * `block: 'nearest'` = 已经在视野里就一格都不动 —— 短表上它是空操作。
+   * 两种角色各有各的选中属性(menuitemradio 用 aria-checked、option 用
+   * aria-selected),所以选择器是两条,不是一条。
+   */
+  useLayoutEffect(() => {
+    listRef.current
+      ?.querySelector<HTMLElement>(
+        '[data-roving-item][aria-checked="true"],[data-roving-item][aria-selected="true"]',
+      )
+      ?.scrollIntoView({ block: 'nearest' })
+  }, [])
+
+  /**
+   * 头部槽的键。**只交三个键,其余一个不碰**(文件头那条):
+   *  · ↓ / ↑ → 键盘交给菜单体(组里一项都没有时不 preventDefault,别吞空键);
+   *  · ↵ → 选**当前那一项**。焦点还在头部槽里时「当前」= 第一项,与 roving 自己
+   *    那条豁免(「焦点还在容器上时第一下方向键落到当前项本身」)是同一句话。
+   * 只在 `<input>` 上认这三下:头部槽里换成一颗钮时,↵ 是那颗钮自己的激活键。
+   */
+  const onHeaderKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.defaultPrevented) return
+    if (!(e.target instanceof HTMLInputElement)) return
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (focusRovingEdge(listRef.current, e.key === 'ArrowDown' ? 'first' : 'last')) {
+        e.preventDefault()
+      }
+      return
+    }
+    if (e.key === 'Enter') {
+      const first = listRef.current?.querySelector<HTMLElement>(
+        '[data-roving-item]:not([disabled])',
+      )
+      if (!first) return
+      e.preventDefault()
+      first.click()
+    }
+  }
 
   // 定位与点外关在 ui/float —— 行为与判例都写在那儿,这里不重写一份。
   // x/y 在 anchor 在场时只当首帧兜底:矩形量得到就一次都用不上。
@@ -102,22 +193,46 @@ export function Menu({
   return createPortal(
     <RoleCtx.Provider value={role}>
       {/* 菜单在场即开启,所以 `activateOnMount` 是「挂载即入焦」;`ref` 交给作用域一并写
-        * (定位与点外关都要读它,而一个元素上只能写一格 ref)。 */}
-      <FocusScope scope="menu" rootRef={ref} activateOnMount onEscape={() => (onClose(), true)}>
+        * (定位与点外关都要读它,而一个元素上只能写一格 ref)。
+        * 落点**明说**(A6):头部槽里有输入框就落它(开出来就能打字),否则落菜单体 ——
+        * 从前不声明落点、靠「根恰好就是那格 role」成立,而根现在是外面那张面。 */}
+      <FocusScope
+        scope="menu"
+        rootRef={ref}
+        activateOnMount
+        restingTarget={() =>
+          ref.current?.querySelector<HTMLElement>('[data-menu-header] input') ?? listRef.current
+        }
+        onEscape={() => (onEscape?.() ? true : (onClose(), true))}
+      >
         {({ scopeProps }) => (
           <div
             {...scopeProps}
-            id={id}
             className={s.menu}
+            data-menu-surface=""
             style={{ left: `${pos.left}px`, top: `${pos.top}px`, ...(minWidth ? { minWidth } : {}) }}
-            role={role}
-            /* ARIA 菜单模式:容器**可编程聚焦**(-1),项走 roving tabindex。
-             * 不给 -1 的话容器根本拿不到焦点,读屏软件进不去这棵菜单树。 */
-            tabIndex={-1}
-            aria-label={label}
             onContextMenu={(e) => e.preventDefault()}
           >
-            {children}
+            {header !== undefined && (
+              /* eslint-disable-next-line jsx-a11y/no-static-element-interactions --
+               * 三个键的**委托**(↓ / ↑ / ↵),不是把一个 div 变成控件:焦点在槽里
+               * 那只真输入框上,判词与消费方一行代码都不用写的理由见文件头。 */
+              <div className={s.header} data-menu-header="" onKeyDown={onHeaderKeyDown}>
+                {header}
+              </div>
+            )}
+            <div
+              ref={listRef}
+              id={id}
+              className={s.list}
+              role={role}
+              /* ARIA 菜单模式:容器**可编程聚焦**(-1),项走 roving tabindex。
+               * 不给 -1 的话容器根本拿不到焦点,读屏软件进不去这棵菜单树。 */
+              tabIndex={-1}
+              aria-label={label}
+            >
+              {children}
+            </div>
           </div>
         )}
       </FocusScope>
@@ -277,9 +392,11 @@ export function Submenu({
 }) {
   const rowRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  /** 子表的**体**。与 `Menu` 逐字同一套两层(封顶与 roving 都认体,不认面)。 */
+  const panelListRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
 
-  useRoving(panelRef, { axis: 'vertical' })
+  useRoving(panelListRef, { axis: 'vertical' })
 
   /*
    * 子表贴在这一行的**右上角**:左缘 = 行的右缘(压掉父表那格内边距,两张表看起来
@@ -330,6 +447,8 @@ export function Submenu({
           scope="menu"
           rootRef={panelRef}
           activateOnMount
+          /* 落点明说 = 子表的体(面是它外面那一层,见 `Menu` 那一处的同一句)。 */
+          restingTarget={() => panelListRef.current}
           /* 关掉就够了 —— **归还是结构性的**(§4.5):这一格 `menu` 作用域摘掉时,
            * 树按 `returnTo` 把焦点交回开它的那一行。手写一句 `.focus()` 既多一条
            * 产地,又违反不变量 I3(跨作用域搬焦点一律走树)。 */
@@ -339,20 +458,28 @@ export function Submenu({
             <div
               {...scopeProps}
               className={s.menu}
+              data-menu-surface=""
               style={{ left: `${pos.left}px`, top: `${pos.top}px` }}
-              role="menu"
-              tabIndex={-1}
-              aria-label={typeof label === 'string' ? label : undefined}
-              onKeyDown={(e) => {
-                /* ← 收起子表。焦点回那一行同样靠结构性归还(见上面 onEscape)。 */
-                if (e.key === 'ArrowLeft') {
-                  e.preventDefault()
-                  setOpen(false)
-                }
-              }}
               onContextMenu={(e) => e.preventDefault()}
             >
-              {children}
+              <div
+                ref={panelListRef}
+                className={s.list}
+                role="menu"
+                tabIndex={-1}
+                aria-label={typeof label === 'string' ? label : undefined}
+                onKeyDown={(e) => {
+                  /* ← 收起子表。焦点回那一行同样靠结构性归还(见上面 onEscape)。
+                   * 它挂在**体**上而不是面上:焦点在体里的项上,冒泡到这一格就够了,
+                   * 而面没有 role —— 一个没有角色的 div 不该接键(jsx-a11y)。 */
+                  if (e.key === 'ArrowLeft') {
+                    e.preventDefault()
+                    setOpen(false)
+                  }
+                }}
+              >
+                {children}
+              </div>
             </div>
           )}
         </FocusScope>

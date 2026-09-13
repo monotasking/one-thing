@@ -411,20 +411,30 @@ export const zh = {
   'browser.startEngineSection': '搜索引擎',
 
   /* ── 会话总览 Exposé ──────────────────────────────────────────────── */
-  'expose.searchPlaceholder': '搜索会话、章节、消息',
-  'expose.searchLabel': '搜索会话',
+  /* 09-12 方向 A:顶上三行导航,搜索是其中一行。这一条是它**静息时那行字**;
+   * 点开之后那只输入框读的仍是下面 placeholder / label 两条(同一件的两种形,
+   * 文案也该是同一组)。**不画快捷键提示** —— 今天没有「聚焦会话搜索」这条
+   * 全局命令,画一个按不出来的键位是在说谎(正本 §7 留账)。 */
+  /* A6(09-13):这一行改叫**筛选** —— 它滤的是这张列表,与 Dock 上那块「搜索」
+   * 瓦(全机检索)不是一件事,两处都叫「搜索」时人只能靠位置分辨。键名不动:
+   * 这一行是同一件东西,换的是它该叫什么。 */
+  'expose.searchRow': '筛选',
+  'expose.searchPlaceholder': '筛选会话、章节、消息',
+  'expose.searchLabel': '筛选会话',
+  /* 带词收回那一档(A6 §9 拍板 4):行上自己把词说出来,别做看不见的过滤器。 */
+  'expose.filterChip': '筛选 · {query}',
+  'expose.filterClear': '清除筛选',
   'expose.noMatchingSessions': '没有匹配的会话',
 
   /* ── 侧栏范围(SCOPE_SPECS 读这几条;侧栏项不带数字)──────────────── */
   'expose.scopeLabel': '项目',
   'expose.scopeAll': '全部',
-  /* 09-12 方向 A:顶上三行导航,搜索是其中一行。这一条是它**静息时那行字**;
-   * 点开之后那只输入框读的仍是下面 placeholder / label 两条(同一件的两种形,
-   * 文案也该是同一组)。**不画快捷键提示** —— 今天没有「聚焦会话搜索」这条
-   * 全局命令,画一个按不出来的键位是在说谎(正本 §7 留账)。 */
-  'expose.searchRow': '搜索',
   'expose.scopeCollab': '协作',
   'expose.scopeLoose': '无项目',
+  /* A6:项目多过 `EXPOSE_SCOPE_FILTER_MIN` 时菜单顶上那格筛选框,与「久没动过的
+   * 折成一行」。N 是**收着的那几个**的个数(展开之后这一行还在,它是开关)。 */
+  'expose.scopeFilterPlaceholder': '筛选项目',
+  'expose.scopeOlder': '更早 · {n} 个',
   'expose.newSession': '新会话',
 
   /* ── 分节(SECTION_BUCKETS 读这几条;节头不带计数)────────────────── */

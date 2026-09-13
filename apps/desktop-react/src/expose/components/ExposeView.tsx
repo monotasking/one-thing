@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { FocusScope } from '../../focus/FocusScope'
+import { useFocusScopeActive } from '../../focus/useFocusScope'
 import { useExposeStore } from '../store'
 import { useExposeLive } from './use-live'
 import type { FocusDir } from '../types'
@@ -185,13 +186,25 @@ export function ExposeView() {
    * 点开搜索、改主意、按 Esc,整个侧栏没了。那不是退一层,是退两层。
    * 所以这里读的是 `searching`;「有词」蕴含「开着」,于是正本那句话逐字成立,
    * 多答的只是它没写到的那一格。**这处出入记在交卷报的留账里。**
+   *
+   * ── A6 在第一档**前面**插了一格:「带词收回」态(09-13 §9 拍板 6)──────────
+   * `searching === false && query !== ''` 是这块面从 A6 起的一个新状态(那一行
+   * 显示「筛选 · 词」+ 一颗 ×),而 Esc 在它上面说的是**清词** —— 与那颗 × 同一口。
+   * 再按一下才轮到「不拦、让宿主把这块面收回 Dock」。于是 Esc 在这块面上是一条
+   * 完整的退层链:输入框 → 词 → 这块面,一下退一层,与响应链规则 7 逐字同型。
    */
   const onEscape = useCallback(() => {
     const st = useExposeStore.getState()
     if (st.view.mode === 'overview') {
-      if (!st.searching) return false
-      st.closeSearch()
-      return true
+      if (st.searching) {
+        st.closeSearch()
+        return true
+      }
+      if (st.query) {
+        st.setQuery('')
+        return true
+      }
+      return false
     }
     st.escape()
     return true
@@ -288,6 +301,7 @@ export function ExposeView() {
          * 焦点在里面那些真控件上(搜索条 / 树容器),与 `search/SearchPanel` 同判例。 */
         <div {...scopeProps} className={s.view} onKeyDown={onGridKey}>
           <ExposeBindings />
+          <ExposeRetract />
           <Overview treeRef={treeRef} />
           {view.mode === 'quicklook' && <QuickLook sessionId={view.sessionId} />}
         </div>
@@ -315,6 +329,42 @@ function ExposeBindings() {
   useEffect(() => {
     if (live) open()
   }, [live, open])
+
+  return null
+}
+
+/**
+ * **离开活动路径那一拍,筛选行收回**(A6,正本 §9 拍板 4 / 6;09-13 用户报障:
+ * 「筛选行变成输入框之后,焦点走了不恢复」)。
+ *
+ * ── 判据只有一条,而且是**声明**出来的 ────────────────────────────────────
+ * 「焦点去了别的面」这句话在响应链里只有一个问法:**我还在不在活动路径上**
+ * (`useFocusScopeActive`,那只 hook 的文件头把三种错问法逐条判过)。所以这里
+ * **不加 keydown / focusout 监听、不读 `activeElement`** —— 那三条是 `ui:consume`
+ * 的零基线硬闸,而它们同时也确实答不对这个问题:焦点掉到 body(卸载、inert)
+ * 时 `contains(activeElement)` 会说「不在」,而树说的是「路径没变」。
+ *
+ * 范围菜单开着的时候**不收**:菜单在树上是这块面的孩子(portal 到 body 只是
+ * DOM 上的位置),祖先照样在活动路径里。这是「按树问」白送的一格正确。
+ *
+ * ── 为什么是一颗渲染 null 的叶子 ─────────────────────────────────────────
+ * `useFocusScopeActive` 是这条链上唯一还订着树的 hook,焦点每换一次人它翻一次。
+ * 长在 `ExposeView` 顶上的话,那一翻要把整块总览(真店 469 行)连树重渲一遍 ——
+ * 与 `ExposeBindings` 那一格同一条判例、同一个修法(08-30 真机画像)。
+ *
+ * `was` 那格 ref 是「只在**翻面**那一拍动手」:进来(false → true)一格都不动
+ * (拍板 5:「焦点回到这块面不自动展开输入框」),只有出去(true → false)才收。
+ * 初值取此刻的值 —— 挂载那一瞬路径还没轮到这块面时,不该当成「刚离开」。
+ */
+function ExposeRetract() {
+  const active = useFocusScopeActive()
+  const was = useRef(active)
+
+  useEffect(() => {
+    const left = was.current && !active
+    was.current = active
+    if (left) useExposeStore.getState().leaveExpose()
+  }, [active])
 
   return null
 }

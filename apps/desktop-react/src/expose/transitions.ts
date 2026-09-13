@@ -493,6 +493,27 @@ export function closeSearch(state: ExposeState, facts: ListFacts): ExposeState {
 }
 
 /**
+ * **这块面离开活动路径那一拍**(A6,正本 §9 拍板 4;09-13 用户第二条报障:
+ * 「筛选行变成输入框之后,焦点走了不恢复」)。
+ *
+ * 两档,判据是**有没有词**:
+ *  · 没词 → 与没点过一样(= `closeSearch`):一只空着的输入框留在那儿,既占着
+ *    一行的宽,又让人以为自己还在搜;
+ *  · **有词 → 只收形,词留着**。这一格是新的:从前 `searching === false` 蕴含
+ *    `query === ''`,而「收着但还在过滤」正是 09-04 立法要防的「看不见的过滤器」——
+ *    所以它只有在那一行**自己把词说出来**(「筛选 · 词」+ 一颗 ×)的前提下才合法。
+ *    屏幕上的话是那一行说的,这只函数只负责让那个状态存在。
+ *
+ * 它**不碰焦点**:焦点此刻已经在别处了(这条迁移就是被「别处」触发的)。
+ * 也**不夹持焦点**:一格行都没离场 —— 词没变,列表就没变。
+ */
+export function leaveExpose(state: ExposeState, facts: ListFacts): ExposeState {
+  if (!state.searching) return state
+  if (!state.query) return closeSearch(state, facts)
+  return { ...state, searching: false }
+}
+
+/**
  * **原地改名:开**(A2)。那一行的标题当场换成一只输入框。
  *
  * 它不碰焦点(与 `openSearch` 逐字同一条:「开的人点名、被开的那一格挂载时

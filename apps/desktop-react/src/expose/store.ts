@@ -126,6 +126,12 @@ interface ExposeStore extends ExposeState, PerSpaceState<ExposeFurniture> {
   openSearch: () => void
   closeSearch: () => void
   /**
+   * **离开活动路径那一拍把筛选行收回**(A6)。谁调它:`ExposeView` 里那颗订着
+   * 「我在不在活动路径上」的叶子 —— 判据走响应链,**不加 keydown / focusout
+   * 监听,不读 `activeElement`**(三条零基线硬闸)。两档全在纯函数里。
+   */
+  leaveExpose: () => void
+  /**
    * 原地改名的两档(A2)。形与搜索行那两档相同(纯函数翻一格形态),但**焦点
    * 这一半不同**:开搜索行的人是那块面自己(落点由 `restingTarget` 自然答对),
    * 而开改名的人是一张**正在卸载的菜单** —— 它卸载时会做一次结构性归还,把焦点
@@ -433,6 +439,8 @@ export const useExposeStore = create<ExposeStore>()(
       // 收回去连词一起清 —— 清了词焦点可能落在一行只存在于搜索结果里的子行上,
       // 所以这一口也要那份名册(判据全在纯函数 `T.closeSearch`)。
       closeSearch: () => set((s) => T.closeSearch(s, facts())),
+      // 没词那一档落到 `closeSearch` 身上,所以同样要那份名册(判据在纯函数里)。
+      leaveExpose: () => set((s) => T.leaveExpose(s, facts())),
       startRename: (sessionId) => {
         set((s) => T.startRename(s, sessionId))
         /*

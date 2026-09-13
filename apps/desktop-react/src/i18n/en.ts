@@ -347,18 +347,26 @@ export const en: Record<MessageKey, string> = {
   'browser.startEngineSection': 'Search engine',
 
   /* ── session exposé ───────────────────────────────────────────────── */
-  'expose.searchPlaceholder': 'Search sessions, sections, messages',
-  'expose.searchLabel': 'Search sessions',
+  /* 09-12 direction A: three nav rows on top, search being one of them. This is
+   * the row at rest; once opened, the input reuses the placeholder / label pair
+   * below (one control, two shapes — so one set of words). No shortcut hint:
+   * there is no global "focus session search" command to print (see §7). */
+  /* A6 (09-13): the row is called **Filter** now — it narrows this list, which is
+   * not what the Dock's "Search" tile does (whole-machine retrieval). Two rows
+   * called "Search" leave people telling them apart by position. Key unchanged:
+   * same thing, different name. */
+  'expose.searchRow': 'Filter',
+  'expose.searchPlaceholder': 'Filter sessions, sections, messages',
+  'expose.searchLabel': 'Filter sessions',
+  /* Collapsed-with-a-word (A6 §9 ruling 4): the row says the word out loud —
+   * never leave an invisible filter on a list. */
+  'expose.filterChip': 'Filter · {query}',
+  'expose.filterClear': 'Clear filter',
   'expose.noMatchingSessions': 'No matching sessions',
   'expose.loading': 'Loading sessions…',
   'expose.emptyTitle': 'No sessions yet',
   'expose.emptyHint': 'Start a session in onething and it shows up here',
   'expose.disconnectedTitle': 'Not connected to a core',
-  /* 09-12 direction A: three nav rows on top, search being one of them. This is
-   * the row at rest; once opened, the input reuses the placeholder / label pair
-   * below (one control, two shapes — so one set of words). No shortcut hint:
-   * there is no global "focus session search" command to print (see §7). */
-  'expose.searchRow': 'Search',
   'expose.disconnectedHint': 'Sessions come from the core running on this machine; {error}',
 
   /* ── rail scopes ──────────────────────────────────────────────────── */
@@ -366,6 +374,12 @@ export const en: Record<MessageKey, string> = {
   'expose.scopeAll': 'All',
   'expose.scopeCollab': 'Collaboration',
   'expose.scopeLoose': 'No project',
+  /* A6: the filter box that appears on top of the scope menu once there are more
+   * than `EXPOSE_SCOPE_FILTER_MIN` projects, and the fold for the ones nobody has
+   * touched in a week. N counts the folded ones (the row stays after expanding —
+   * it is the toggle). */
+  'expose.scopeFilterPlaceholder': 'Filter projects',
+  'expose.scopeOlder': 'Earlier · {n}',
   'expose.newSession': 'New session',
 
   /* ── sections ─────────────────────────────────────────────────────── */

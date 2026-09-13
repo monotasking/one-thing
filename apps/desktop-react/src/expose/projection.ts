@@ -199,9 +199,18 @@ export function buildProjects(sessions: SessionSummary[]): ProjectSummary[] {
     const seen = newest.get(session.projectId) ?? 0
     if (session.updatedAt > seen) newest.set(session.projectId, session.updatedAt)
   }
-  return [...newest.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([dir]) => ({ id: dir, name: projectNameOf(dir), path: dir }))
+  return (
+    [...newest.entries()]
+      .sort((a, b) => b[1] - a[1])
+      // A6:排序用的那个数**交出去**,不再排完就扔 —— 范围菜单的「近 7 天」折叠
+      // 要按它判(判词在 `types.ts` 的 `ProjectSummary.updatedAt` 上)。
+      .map(([dir, updatedAt]) => ({
+        id: dir,
+        name: projectNameOf(dir),
+        path: dir,
+        updatedAt,
+      }))
+  )
 }
 
 /*

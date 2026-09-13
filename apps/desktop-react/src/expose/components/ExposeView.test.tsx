@@ -154,6 +154,75 @@ describe('会话总览是一块普通的面', () => {
     expect(useExposeStore.getState().currentSessionId).toBe(other.id)
     expect(placementOfSessions()).toEqual({ kind: 'edge', side: 'left' })
   })
+
+  /**
+   * **A6 在退层链里插了一格**(§9 拍板 6):带词收回那一档上,Esc 说的是「清词」——
+   * 与那颗 × 同一口。于是这块面的 Esc 是一条完整的链:输入框 → 词 → 这块面。
+   */
+  it('带词收回之后,Esc 先清词 —— 它是退层链里新插的那一格', () => {
+    render(<AppShell />)
+    cmdE()
+    act(() => void fireEvent.click(screen.getByTestId('expose-search-row')))
+    fireEvent.change(screen.getByLabelText('筛选会话'), { target: { value: 'provider' } })
+    // 焦点去了别处 → 收形不收词(这一拍产品里由响应链那颗叶子发,见下一组)。
+    act(() => void useExposeStore.getState().leaveExpose())
+    expect(useExposeStore.getState()).toMatchObject({ searching: false, query: 'provider' })
+
+    esc()
+    expect(useExposeStore.getState().query).toBe('')
+    // 这一下**被这块面消费掉了**:面板一动不动(与第 0 层那一条逐字同一句)。
+    expect(placementOfSessions()).toEqual({ kind: 'edge', side: 'left' })
+  })
+})
+
+/**
+ * **离开活动路径那一拍,筛选行收回**(A6 §9 拍板 4 / 5)。
+ *
+ * 判据走响应链 —— 这一组因此真的去动那棵树(`focusTree.activateScope`),
+ * 而不是直接调 store 那一口:要钉的正是「谁在什么时候发这一下」。
+ */
+describe('筛选行:离开活动路径就收回(A6)', () => {
+  const openSearchWith = (word: string) => {
+    act(() => void fireEvent.click(screen.getByTestId('expose-search-row')))
+    fireEvent.change(screen.getByLabelText('筛选会话'), { target: { value: word } })
+  }
+
+  it('焦点去了别的面 → 没词就整格归零', () => {
+    render(<AppShell />)
+    cmdE()
+    act(() => void fireEvent.click(screen.getByTestId('expose-search-row')))
+    expect(useExposeStore.getState().searching).toBe(true)
+    act(() => void focusTree.activateScope('composer'))
+    expect(useExposeStore.getState()).toMatchObject({ searching: false, query: '' })
+  })
+
+  it('有词 → 只收形,词留着(那一行自己说出来)', () => {
+    render(<AppShell />)
+    cmdE()
+    openSearchWith('provider')
+    act(() => void focusTree.activateScope('composer'))
+    expect(useExposeStore.getState()).toMatchObject({ searching: false, query: 'provider' })
+    expect(screen.getByTestId('expose-search-row').textContent).toContain('provider')
+  })
+
+  it('**焦点回来不自动展开**(拍板 5):落点是那一行,不是一只输入框', () => {
+    render(<AppShell />)
+    cmdE()
+    openSearchWith('provider')
+    act(() => void focusTree.activateScope('composer'))
+    act(() => void focusTree.activateScope('expose'))
+    expect(useExposeStore.getState().searching).toBe(false)
+    expect(screen.queryByLabelText('筛选会话')).toBeNull()
+  })
+
+  it('**范围菜单开着不算离开** —— 菜单在树上是这块面的孩子', () => {
+    render(<AppShell />)
+    cmdE()
+    act(() => void fireEvent.click(screen.getByTestId('expose-search-row')))
+    act(() => void fireEvent.click(screen.getByTestId('expose-scope-row')))
+    expect(document.querySelector('[role="menu"]')).toBeTruthy()
+    expect(useExposeStore.getState().searching).toBe(true)
+  })
 })
 
 describe('Esc 的让位契约', () => {
@@ -272,7 +341,7 @@ describe('Esc 的让位契约', () => {
     cmdE()
     // 先点开那一行 —— 09-12 起顶上没有常驻输入框,这一步就是用户真走的那一下。
     act(() => void fireEvent.click(screen.getByTestId('expose-search-row')))
-    fireEvent.change(screen.getByLabelText('搜索会话'), { target: { value: 'provider' } })
+    fireEvent.change(screen.getByLabelText('筛选会话'), { target: { value: 'provider' } })
     esc()
     expect(useExposeStore.getState().query).toBe('')
     expect(useExposeStore.getState().searching).toBe(false)

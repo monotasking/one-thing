@@ -43,7 +43,7 @@ const rowIds = () =>
 const type = (value: string) => {
   const row = screen.queryByTestId('expose-search-row')
   if (row) fireEvent.click(row)
-  fireEvent.change(screen.getByLabelText('搜索会话'), { target: { value } })
+  fireEvent.change(screen.getByLabelText('筛选会话'), { target: { value } })
 }
 
 describe('三块面的装配', () => {

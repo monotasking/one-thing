@@ -248,3 +248,158 @@ describe('Menu:点外关', () => {
     expect(screen.queryByRole('menu')).toBeTruthy()
   })
 })
+
+/**
+ * **封顶 + 头部槽**(A6,09-13;报障:真店 24 个项目让会话侧栏的范围菜单无限长)。
+ *
+ * 两件都是**库件**的事,所以钉在这只文件里而不是消费面的用例里:封顶随
+ * `--menu-max-h` 落在菜单体上(jsdom 不排版,所以这里钉的是「那一格属性挂在
+ * 哪个元素上」与「结构分了两层」——真高度由 `gate:sessions` ⑨ 在真机上量),
+ * 头部槽钉的是它的三条约束与那三个键的交接。
+ */
+describe('Menu 的封顶与头部槽(A6)', () => {
+  function HeaderHarness({
+    onEscape,
+    onFirst,
+  }: {
+    onEscape?: () => boolean
+    onFirst?: () => void
+  }) {
+    const [word, setWord] = useState('')
+    return (
+      <FocusScope scope="root">
+        {({ scopeProps }) => (
+          <div {...scopeProps}>
+            <FocusDispatchHarness />
+            <Menu
+              x={0}
+              y={0}
+              onClose={() => {}}
+              label="m"
+              onEscape={onEscape}
+              header={
+                <input
+                  aria-label="筛选"
+                  value={word}
+                  onChange={(e) => setWord(e.target.value)}
+                />
+              }
+            >
+              <MenuItem onClick={() => onFirst?.()}>一</MenuItem>
+              <MenuItem onClick={() => {}}>二</MenuItem>
+            </Menu>
+          </div>
+        )}
+      </FocusScope>
+    )
+  }
+
+  it('结构分两层:面(data-menu-surface)在外,role=menu 的**体**在里', () => {
+    render(<Harness />)
+    fireEvent.click(screen.getByTestId('opener'))
+    const menu = screen.getByRole('menu')
+    const surface = document.querySelector('[data-menu-surface]')
+    expect(surface).toBeTruthy()
+    expect(surface).not.toBe(menu)
+    expect(surface?.contains(menu)).toBe(true)
+  })
+
+  it('封顶那一格落在**菜单体**上(滚的是它,不是整张面)', () => {
+    render(<Harness />)
+    fireEvent.click(screen.getByTestId('opener'))
+    // CSS Modules 在 vitest 下交出的是类名字符串,判据是「体带的类与面不是同一个」。
+    const menu = screen.getByRole('menu')
+    expect(menu.className).not.toBe(document.querySelector('[data-menu-surface]')?.className)
+    expect(menu.className).toBeTruthy()
+  })
+
+  it('头部槽在 role=menu **外面**(一只 input 不是 menu 的合法孩子)', () => {
+    render(<HeaderHarness />)
+    const input = screen.getByLabelText('筛选')
+    expect(screen.getByRole('menu').contains(input)).toBe(false)
+    expect(document.querySelector('[data-menu-surface]')?.contains(input)).toBe(true)
+    // 也不进 roving:组里只有那两项。
+    expect(input.hasAttribute('data-roving-item')).toBe(false)
+  })
+
+  it('有头部槽时**焦点开出来就在那只框里**(落点明说,不靠「根恰好是它」)', () => {
+    render(<HeaderHarness />)
+    expect(document.activeElement).toBe(screen.getByLabelText('筛选'))
+  })
+
+  it('↓ / ↑ 把键盘交给菜单体;打字与 ← → 一个不碰', () => {
+    render(<HeaderHarness />)
+    const input = screen.getByLabelText('筛选')
+    const items = screen.getAllByRole('menuitem')
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(items[0])
+
+    input.focus()
+    fireEvent.keyDown(input, { key: 'ArrowUp' })
+    expect(document.activeElement).toBe(items[1])
+
+    // ← → 与 Home / End 留给光标:这一下不该动焦点。
+    input.focus()
+    for (const key of ['ArrowLeft', 'ArrowRight', 'Home', 'End']) {
+      fireEvent.keyDown(input, { key })
+      expect(document.activeElement, key).toBe(input)
+    }
+  })
+
+  it('↵ 选**当前那一项**(焦点还在槽里时 = 第一项)', () => {
+    const onFirst = vi.fn()
+    render(<HeaderHarness onFirst={onFirst} />)
+    fireEvent.keyDown(screen.getByLabelText('筛选'), { key: 'Enter' })
+    expect(onFirst).toHaveBeenCalledTimes(1)
+  })
+
+  it('Esc 先问消费方:答 true 就不关这张菜单', () => {
+    const onEscape = vi.fn(() => true)
+    render(<HeaderHarness onEscape={onEscape} />)
+    act(() => void fireEvent.keyDown(window, { key: 'Escape' }))
+    expect(onEscape).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('menu')).toBeTruthy()
+  })
+
+  it('答 false 照旧关掉 —— 「这一下归不归我」由消费方答,关不关是库件的事', () => {
+    const onEscape = vi.fn(() => false)
+    const onClose = vi.fn()
+    render(
+      <FocusScope scope="root">
+        {({ scopeProps }) => (
+          <div {...scopeProps}>
+            <FocusDispatchHarness />
+            <Menu x={0} y={0} onClose={onClose} label="m" onEscape={onEscape}>
+              <MenuItem onClick={() => {}}>一</MenuItem>
+            </Menu>
+          </div>
+        )}
+      </FocusScope>,
+    )
+    act(() => void fireEvent.keyDown(window, { key: 'Escape' }))
+    expect(onEscape).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('开出来那一拍把**打勾的那一项**滚进视野(两种角色各认各的属性)', () => {
+    const seen: Element[] = []
+    const spy = vi
+      .spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(function (this: HTMLElement) {
+        seen.push(this)
+      })
+    render(
+      <Menu x={0} y={0} onClose={() => {}} label="m">
+        <MenuItem checked={false} onClick={() => {}}>
+          一
+        </MenuItem>
+        <MenuItem checked onClick={() => {}}>
+          二
+        </MenuItem>
+      </Menu>,
+    )
+    expect(seen).toEqual([screen.getByRole('menuitemradio', { name: '二' })])
+    spy.mockRestore()
+  })
+})
