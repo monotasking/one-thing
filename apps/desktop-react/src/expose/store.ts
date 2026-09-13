@@ -29,6 +29,7 @@ import {
 } from '../workspace/per-space'
 import { DEFAULT_SPACE_ID } from '../workspace/types'
 import { formOf } from '../stage/transitions'
+import { useWorkbenchStore } from '../workbench/store'
 import { ALL_SCOPE } from './scopes'
 import * as T from './transitions'
 import type { ExposeState, FocusDir, ProjectScope } from './types'
@@ -124,6 +125,44 @@ interface ExposeStore extends ExposeState, PerSpaceState<ExposeFurniture> {
    */
   openSearch: () => void
   closeSearch: () => void
+  /**
+   * 原地改名的两档(A2)。形与搜索行那两档相同(纯函数翻一格形态),但**焦点
+   * 这一半不同**:开搜索行的人是那块面自己(落点由 `restingTarget` 自然答对),
+   * 而开改名的人是一张**正在卸载的菜单** —— 它卸载时会做一次结构性归还,把焦点
+   * 拽回右键之前那个元素。所以 `startRename` 要**点一次名**
+   * (`activateScopeAfterCommit('expose')`),病历整段在 `SessionRename.tsx`
+   * 的文件头与下面那句实现上。
+   */
+  startRename: (sessionId: string) => void
+  cancelRename: () => void
+  /**
+   * 落定一次改名。**屏幕上那只框当场收回**(不等往返),写路走数据源的
+   * `rename`(就地更新 + 重拉对账);答案原样交出去,由渲染层决定怎么说
+   * (与 `togglePin` 逐字同一条接缝纪律:store 不碰 `announce`)。
+   *
+   * 空串 / 没变在数据源那一层就是「当没改」(答 `{ ok: true }`),所以这里
+   * 不再判一遍 —— 判据只有一个产地。
+   */
+  commitRename: (
+    sessionId: string,
+    newName: string,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>
+  /**
+   * 删一条会话(A2)。**编排点落在这层壳里**,理由与 `newSession` / `enterSession`
+   * 逐字相同:这一下要同时碰拼贴台(把开着它的格子摘掉)与数据源(那一发写),
+   * 两个谁也不该认识谁。
+   *
+   * 次序即语义:**先摘格子,再删账本**。反过来的话账本先没了 →
+   * `session:removed` 到达 → `sweepRefs` 那条清洗路会把中央区最后一格**原位换成
+   * 新播的一格**(种类自述的 `resident.seed`),而那正是「删完之后屏幕上莫名
+   * 出现一条新会话」的来路;先摘则那一格是用户点着关的,收场看得懂。
+   * 摘不掉(常驻最后一格)也照删 —— 账本的事实与屏幕摆着谁是两件事,
+   * 账本没了之后那一格由清洗路换成新播的一格,那是它该有的收场。
+   *
+   * 确认那一问**不在这里**:它是一次可感知的打断,产地在渲染层(菜单那一行,
+   * `ui/Dialog` 的 `useConfirm`)。store 收到的调用就是「已经确认了」。
+   */
+  deleteSession: (sessionId: string) => Promise<{ ok: true } | { ok: false; error: string }>
   enterSession: (sessionId: string) => void
   /**
    * 建一条会话并进去。`projectId` = 落在哪个项目下(null = 不属于任何项目)。
@@ -267,6 +306,43 @@ export const useExposeStore = create<ExposeStore>()(
       // 收回去连词一起清 —— 清了词焦点可能落在一行只存在于搜索结果里的子行上,
       // 所以这一口也要那份名册(判据全在纯函数 `T.closeSearch`)。
       closeSearch: () => set((s) => T.closeSearch(s, facts())),
+      startRename: (sessionId) => {
+        set((s) => T.startRename(s, sessionId))
+        /*
+         * **「开的人点名、被开的那一格挂载时自己取走」**(§3.5 规则 2;与
+         * `focusComposerAfterCommit` 同一副队列、同一条判词)。
+         *
+         * 这一句是真机 bug 修出来的,病历整段在 `components/SessionRename.tsx`
+         * 的文件头上:弹这张表的菜单卸载时会做一次**结构性归还**(焦点回右键
+         * 之前那个元素 —— 通常是聊天输入框),而那只框自己 focus 一下**不算
+         * 「别人接管了键盘」**(它在同一个作用域内部移动焦点),于是归还照跑、
+         * 焦点被拽走。所以这里由**开它的人**点一次名:`activateScopeAfterCommit`
+         * 的 rAF 那一拍排在归还那一拍之后(两个队列都是 FIFO,而归还是在 React
+         * 提交里才排上的),落点由 `ExposeView.restingTarget` 的第一档答 ——
+         * 那一档就是改名框。
+         *
+         * 它落在这层壳里而不是菜单那一行上,理由与 `enterSession` 逐字相同:
+         * **一件事一个编排点** —— 哪天再多一条进原地改名的路(键位 / 命令面),
+         * 焦点这一半自动跟着走。
+         */
+        activateScopeAfterCommit('expose', { reason: 'open' })
+      },
+      cancelRename: () => set(T.stopRename),
+      commitRename: async (sessionId, newName) => {
+        // 形态先收(屏幕上那只框当场没了),再打那一发 —— 反过来会留一只
+        // 「还在飞、但看起来能继续打字」的框,而律③要的反馈是**行上的字换了**,
+        // 不是框变灰(改名这一口的结果全在屏幕上,与置顶同一族)。
+        set(T.stopRename)
+        return useSessionsSource.getState().rename(sessionId, newName)
+      },
+      deleteSession: async (sessionId) => {
+        // 先摘格子(判词在接口注释上:反过来会被清洗路换成一条新播的会话),
+        // 再删账本。摘不掉照删 —— 账本的事实不受「屏幕上摆着谁」的限制。
+        useWorkbenchStore.getState().closeRef(sessionRefOf(sessionId))
+        // 改名框正开在这一条上就顺手收掉:那条会话马上就不在了。
+        if (get().renamingId === sessionId) set(T.stopRename)
+        return useSessionsSource.getState().remove(sessionId)
+      },
       enterSession: (sessionId) => {
         set((s) => T.enterSession(s, sessionId))
         /*

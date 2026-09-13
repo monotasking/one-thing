@@ -47,6 +47,8 @@ function sessionsPortStub(): SessionsPort {
     create: (request) => create(request),
     updateWorkingDirectory: (id, dir) => updateWorkingDirectory(id, dir),
     updatePin: async () => ({ success: true }),
+    rename: async () => ({ success: true }),
+    delete: async () => ({ success: true }),
     onSessionEvent: () => () => undefined,
     onSessionLifecycle: () => () => undefined,
   }

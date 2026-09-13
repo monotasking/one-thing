@@ -309,6 +309,8 @@ export async function seedSessionsFailure(
     create: async () => ({ success: false, error: 'not stubbed' }),
     updateWorkingDirectory: async () => ({ success: true }),
     updatePin: async () => ({ success: true }),
+    rename: async () => ({ success: true }),
+    delete: async () => ({ success: true }),
     onSessionEvent: () => () => undefined,
     onSessionLifecycle: () => () => undefined,
   })

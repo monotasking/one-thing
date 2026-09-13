@@ -97,8 +97,15 @@ export function ExposeView() {
   const treeRef = useRef<HTMLDivElement>(null)
 
   /**
-   * 落点**三档**(09-12 方向 A:顶上没有常驻输入框了,所以从前那两档里的
-   * 「搜索条」裂成了「输入框开着」与「那一行字」两格)。次序就是判据:
+   * 落点**四档**(A2 在最前面加了一档;09-12 方向 A 那三档一个字没动)。
+   * 次序就是判据:
+   *
+   *  ⓿ **原地改名那只框开着 → 它**(A2)。它排第一,因为它是这块面此刻**最深**
+   *    的那个东西,而且这一档是真机 bug 修出来的一格:菜单那一层卸载之后
+   *    活动路径缩回这块面,结构性归还(§4.5 规则 5)会按这只函数把焦点放回
+   *    落点 —— 少了这一档,答案是第三档那一行搜索行,而那只框的
+   *    `cancelOnBlur` 当场把改名收回(「点了重命名什么都没发生」)。
+   *    病历整段写在 `SessionRename.tsx` 的文件头上。
    *
    *  ① `focusVisible` 为真 → **树容器**。交接之后焦点必须离开输入框,否则
    *    ↑↓/Space/↵ 会被「输入面里的无修饰单键」那条规则让给输入框,列表当场不动。
@@ -116,8 +123,15 @@ export function ExposeView() {
    * `restingTarget = () => root.querySelector('input')` 同一判例。
    */
   const restingTarget = useCallback(() => {
-    if (useExposeStore.getState().focusVisible) return treeRef.current
     const root = rootRef.current
+    /*
+     * ⓿ 改名框开着 → 它。**按取件口取**而不是读 `renamingId` 再拼一个 id:
+     * 与下面那两格逐字同一手(落点是一个 DOM 元素,而屏幕上在不在场只有 DOM
+     * 答得准 —— `renamingId` 指着一行、而那一行此刻可能被搜索词滤掉了)。
+     */
+    const renaming = root?.querySelector<HTMLInputElement>('[data-expose-rename]')
+    if (renaming) return renaming
+    if (useExposeStore.getState().focusVisible) return treeRef.current
     if (!root) return null
     return (
       root.querySelector<HTMLInputElement>('[data-expose-search]')

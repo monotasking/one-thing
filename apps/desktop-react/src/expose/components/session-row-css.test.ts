@@ -72,4 +72,27 @@ describe('SessionRow 悬停动作不占行内空间', () => {
     const base = css.slice(0, css.indexOf('@container'))
     expect(base).not.toMatch(/\.title:first-child/)
   })
+
+  /*
+   * ── A2:改名那一格吃与标题**同一条**弯腰声明 ────────────────────────────
+   * 它顶替标题站在同一个位置上,所以挤压律一(一行一个弯腰件)对它照样成立:
+   * 按内容宽度撑出去会把行尾那颗 ⋯ 推出架子。
+   *
+   * **这一条为什么是源文本断言而不是几何断言(反证纪律)**:`gate:sessions` ⑦b
+   * 真机量过 —— 240px 的架子里,拆掉这两行之后框宽仍是 142px / 右缘 185,
+   * 与不拆逐字相同。原因是那一档里框本来就在**收缩**区间(内容基准已经比可用
+   * 宽度大),`flex-shrink` 的缺省值 1 把两种写法收到同一个数上。差别只在**有
+   * 余量**的那一档(总览形 ≥761):声明了才长满那一行,不声明就停在内在宽度。
+   * 真机那一条(不越过行右缘)照旧留着 —— 它守的是另一半(不许撑出去);
+   * 这一条守的是「长满」那一半,而它只有在这儿判得出来。
+   */
+  it('.rename 是这一行的弯腰件(flex + min-width: 0),与 .title 同一条', () => {
+    const rename = block('.rename {')
+    expect(rename).toMatch(/flex:\s*1 1 auto/)
+    expect(rename).toMatch(/min-width:\s*0/)
+    // 与标题那一格逐字同形 —— 两者站在同一个位置上,不该有两套弯腰配方。
+    const title = block('.title {')
+    expect(title).toMatch(/flex:\s*1 1 auto/)
+    expect(title).toMatch(/min-width:\s*0/)
+  })
 })

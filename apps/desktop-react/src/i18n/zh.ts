@@ -432,6 +432,31 @@ export const zh = {
    * 空心「已打开·隐藏」点的 accname。头两行菜单项复用 `files.menuOpen*`
    * (同一句话只该有一个键),Quick Look 那行复用 `card.preview`。 */
   'expose.rowMenu': '更多操作',
+  /* 09-12 拍板 4:会话这边**竖着并排不存在**(两格只有左右),所以「在下方打开」
+   * 名不副实,改名为它真做的事。**不复用 `files.menuOpenBelow`** —— 那把键在
+   * 文件树里字字属实(那边真的 `splitLeaf(leaf.id, 'col')`),改它的文案会把
+   * 文件树那一行一起改错。一句话一把键。 */
+  'expose.menuOpenNewTab': '在新标签页打开',
+  /* ── A2 补齐的四行动作 ──────────────────────────────────────────────
+   * 「关闭」= 把这条从所有开着它的格子里摘掉,**不删数据**(拍板 5)——
+   * 所以它与「删除…」必须是两句一眼分得开的话,而后者带省略号(还有一问)。
+   * 置顶那一行复用 `expose.pin` / `expose.unpin`(行上那颗图钉退役之后,
+   * 菜单与 ⌘⇧P 说的是同一句话,同一把键)。 */
+  'expose.menuClose': '关闭',
+  'expose.menuRename': '重命名…',
+  'expose.menuDelete': '删除…',
+  /* 原地改名那只框的名字:**只念不看**(`labelHidden`)—— 屏幕上它就长在那一行
+   * 标题的位置上,画一个可见标签会把行挤成 A1 刚治好的样子。 */
+  'expose.renameLabel': '会话名称',
+  /* 唯一允许的确认(数据会没)。正文点名那条会话 —— 一句「确定删除吗」在
+   * 一屏 400 行里说不清删的是哪一条。 */
+  'expose.deleteConfirmTitle': '删除会话',
+  'expose.deleteConfirmBody': '删除「{name}」?这条会话与它的历史会没。',
+  'expose.deleteConfirmAction': '删除',
+  /* 两句**只在没成时**播报的话(成了的那一下屏幕自己说明白了)。后端原话原样
+   * 带上:这一族的失败原因通常是「这条会话不在了」/ 沙箱拒绝,人看得懂。 */
+  'expose.renameFailed': '改名没成:{error}',
+  'expose.deleteFailed': '删除没成:{error}',
   'expose.openStateHidden': '打开着(已隐藏)',
   /* 空态 / 载入态:数据源说了算,不留 mock 兜底 —— 假数据比空更糟。 */
   'expose.loading': '正在读会话…',
@@ -439,11 +464,6 @@ export const zh = {
   'expose.emptyHint': '在 onething 里开一条会话,它会出现在这里',
   'expose.disconnectedTitle': '没连上 core',
   'expose.disconnectedHint': '会话数据来自本机正在跑的 core;{error}',
-  /* 09-12 拍板 4:会话这边**竖着并排不存在**(两格只有左右),所以「在下方打开」
-   * 名不副实,改名为它真做的事。**不复用 `files.menuOpenBelow`** —— 那把键在
-   * 文件树里字字属实(那边真的 `splitLeaf(leaf.id, 'col')`),改它的文案会把
-   * 文件树那一行一起改错。一句话一把键。 */
-  'expose.menuOpenNewTab': '在新标签页打开',
 
   /* ── 组列表视图 09-04 退役(方向 A:总览与组列表合并成一张树)──────────
    * `list.*` 六条与 `expose.sessionCount*` 两条随 `ListView` 一起删:

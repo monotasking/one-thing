@@ -59,6 +59,8 @@ function installSessionsPort(): void {
     create: (request) => create(request),
     updateWorkingDirectory: async () => ({ success: true }),
     updatePin: async () => ({ success: true }),
+    rename: async () => ({ success: true }),
+    delete: async () => ({ success: true }),
     onSessionEvent: () => () => {},
     onSessionLifecycle: () => () => {},
   }

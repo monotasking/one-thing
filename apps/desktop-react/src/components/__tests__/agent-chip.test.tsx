@@ -100,6 +100,8 @@ function installSessionsPort(listMeta?: SessionsPort['listMeta']): void {
     create: async () => ({ success: false, error: 'fake port' }),
     updateWorkingDirectory: async () => ({ success: true }),
     updatePin: async () => ({ success: true }),
+    rename: async () => ({ success: true }),
+    delete: async () => ({ success: true }),
     onSessionEvent: () => () => undefined,
     onSessionLifecycle: () => () => undefined,
   })

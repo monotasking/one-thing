@@ -234,6 +234,31 @@ export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
    * 关不掉(常驻那一种的最后一格)时什么都不做。
    */
   closeTab(leafId: string, index: number): void
+  /**
+   * **把这一格内容从「开着它的每一处」都摘掉**(A2,会话侧栏菜单「关闭」那一行)。
+   *
+   * 它不是 `closeTab` 的同义词,也不是 `detachRef` 的:
+   *  · `closeTab(leafId, index)` 要一个**座位**,而发起这一下的人手上只有
+   *    「哪一条会话」——一条会话可以同时开在中央区、右架子和一扇浮窗里
+   *    (`openStateOf` 只答第一处,`openSessionIdsIn` 才答全部),关一处不算关掉;
+   *  · `detachRef` 是「收回 Dock」那条路:**不 dispose、不问关不关得掉**,
+   *    因为瓦的家在 Dock 上。这一口是真关 —— 所以每一处都要经 `closeTab`,
+   *    实例由种类自己 `dispose`。
+   *
+   * 返回这一下的**结果**而不是 void,因为它有三种收场而且外面要分得开:
+   *  · `'closed'`  —— 至少摘掉了一处;
+   *  · `'refused'` —— 找到了却一处都摘不掉(常驻那一种在它自己的家里的最后
+   *    一格:`canDetachTab` 说不行)。这一档**不许静默** —— 播报归渲染层
+   *    (与 `leaf-tabs.useCloseLeafTab` 的 `workbench.tabNotClosable` 同一口话);
+   *  · `'absent'`  —— 哪儿都没开着(菜单上那一行本来就不该在场,但键盘 / 竞态
+   *    走得到:菜单弹出到点下去之间那一格可能已经被别处关掉了)。
+   *
+   * **不问 `beforeClose`**:与 `closeTab` 逐字同一条 —— 那一问是界面那一层的事
+   * (`PaneLeaf` / `leaf-tabs`)。会话那一种压根没有声明它(脏文件那一问是
+   * `file` 那一种的),所以这条路上没有漏掉的一问;哪天有一种既声明了
+   * `beforeClose` 又要走这一口,那一问要加在调用方那一侧(它才是异步的那一层)。
+   */
+  closeRef(ref: ContentRef): 'closed' | 'refused' | 'absent'
   /** 藏起来一格:从叶里摘掉、记 `returnTo`,实例留着。 */
   hideTab(leafId: string, index: number): void
   /**
@@ -1177,6 +1202,82 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           writeRegion(region, T.removeTab(tree, leafId, index))
           // **关掉 = 丢实例**(隐藏不丢)。种类自己清它自己的状态。
           if (ref) contentKindOf(ref.kind)?.dispose?.(ref)
+        },
+
+        /*
+         * 判词整段在接口上。这里只写「怎么走遍每一处」那一半:
+         *
+         * ①**每摘一处都要重新定位**。`closeTab` 是一次写(COW,`set` 换了整棵
+         *   树),所以 `get()` 的快照在它返回之后就旧了 —— 拿一份开场的座位表
+         *   连关两处,第二个下标指的已经是别人(P0 那条「命令是 COW 的:await /
+         *   写之后重读」在同步路上同样成立)。于是这里是一个**循环加重读**,
+         *   一次只摘一处,摘完从头再问一遍。
+         * ②**上限 = 摘之前数出来的处数**。一条会话开在几处就至多转几圈:
+         *   `closeTab` 有一条静默的早退(`frozen()` —— 拖拽中不许动树),
+         *   没有上限的话那一档会变成一个死循环。它同时是这一口的第四种收场
+         *   「拖着的时候什么都不做」——答 `'absent'`(屏幕上确实什么都没发生)。
+         * ③**隐藏表那一格走 `dropHidden`**:那一格不在任何树上,`closeTab` 摸不到
+         *   它,而「隐藏着」在人眼里就是「开着」(空心点)—— 只摘树里那几处会
+         *   留下一颗点不掉的空心点。`dropHidden` 自己也 dispose(与 closeTab 同句)。
+         * ④`canDetachTab` 那一档不重试:它的答案在这一拍里不会变(判据是「这个
+         *   区域里还剩不剩同种的」),再转一圈只是原地踏步。
+         */
+        closeRef: (ref) => {
+          const id = refId(ref)
+          /*
+           * 逐个**座位**(区域 + 叶 + 叶内下标),不是逐个区域:一条会话在同一棵
+           * 树的两片叶上各开一格是做得到的(架子 / 浮窗可以分屏),而
+           * `T.locateRef` 每棵树只答第一处。所以这里自己走一遍叶。
+           */
+          const seatsIn = (state: WorkbenchState) => {
+            const out: { region: RegionId; leafId: string; index: number }[] = []
+            for (const [region, tree] of Object.entries(state.regions)) {
+              for (const leaf of T.leavesOf(tree)) {
+                leaf.tabs.forEach((tab, index) => {
+                  if (refId(tab) === id) out.push({ region: region as RegionId, leafId: leaf.id, index })
+                })
+              }
+            }
+            return out
+          }
+          let rounds = seatsIn(get()).length
+          let closed = false
+          let refused = false
+          while (rounds > 0) {
+            rounds -= 1
+            const s = get()
+            const seats = seatsIn(s)
+            if (seats.length === 0) break
+            /*
+             * **挑第一个摘得掉的**,不是挑第一个。`canDetachTab` 的答案是
+             * **按区域**的(判词在它自己身上:「最后一格常驻的不许走」只对那一种
+             * 自己的家说得通),所以中央区那一格关不掉不该连带让右架子里同一条
+             * 会话也关不掉 —— 那正是 U3 报障的反面。
+             */
+            const at = seats.find((seat) =>
+              canDetachTab(s.regions[seat.region], seat.leafId, seat.index, seat.region),
+            )
+            if (!at) {
+              refused = true
+              break
+            }
+            s.closeTab(at.leafId, at.index)
+            // 真摘掉了才算。`closeTab` 有一条静默早退(`frozen()` —— 拖拽中不许
+            // 动树),它在这里表现为「座位一个没少」,于是当场收手不空转。
+            if (seatsIn(get()).length === seats.length) break
+            closed = true
+          }
+          /*
+           * 隐藏表那一格:它不在任何树上,`closeTab` 摸不到 —— 而「隐藏着」在人
+           * 眼里就是「开着」(那颗空心点),只摘树里几处会留下一颗点不掉的点。
+           * `dropHidden` 自己 dispose(与 `closeTab` 同一句)。
+           */
+          if (get().hidden.some((entry) => refId(entry.ref) === id)) {
+            get().dropHidden(id)
+            closed = true
+          }
+          if (closed) return 'closed'
+          return refused ? 'refused' : 'absent'
         },
 
         hideTab: (leafId, index) => {

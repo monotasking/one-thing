@@ -19,6 +19,7 @@ import type { TFn } from '../../i18n'
 import { rowKindOf, type RowGlyph } from '../row-kinds'
 import type { SessionKind } from '../types'
 import { Highlight } from './Highlight'
+import { SessionRename } from './SessionRename'
 import s from './SessionRow.module.css'
 
 /*
@@ -131,6 +132,15 @@ interface Props {
    * 屏幕上剩一张不知道从哪儿弹出来的菜单。
    */
   menuOpen: boolean
+  /**
+   * **这一行此刻在原地改名**(A2)。标题那一格换成一只输入框(`SessionRename`)。
+   *
+   * 它是一格布尔而不是一格草稿:草稿住在那只输入框自己身上(它随这一格翻回
+   * false 一起卸载)。判据的产地是 store 的 `renamingId`,树那一层比一次
+   * (`row.id === renamingId`)—— 与 `menuOpen` 逐字同一手:一屏至多一格为真,
+   * 所以递进来的是一个已经比过的布尔,不是那个 id(递 id 就是让 400 行各比一遍)。
+   */
+  renaming: boolean
   /** 「全部」范围才显项目签(设计 §1.1);侧栏形再由容器查询整格降掉。 */
   showProject: boolean
   /** 父层那一只 `useT()`(身份随 locale 才变)。见文件头病历第 ② 笔。 */
@@ -153,6 +163,10 @@ interface Props {
    * 所以这一格的形状是一个点而不是一个活矩形。
    */
   onMenu: (sessionId: string, point: { x: number; y: number }) => void
+  /** ↵ 落定一次改名(入参带 id,与旁边几只同一条纪律)。 */
+  onRenameCommit: (sessionId: string, newName: string) => void
+  /** Esc / 失焦 —— 收回成一行字。这一口不带 id:一屏至多一格在改名。 */
+  onRenameCancel: () => void
 }
 
 function SessionRowView({
@@ -170,6 +184,7 @@ function SessionRowView({
   openState,
   active,
   menuOpen,
+  renaming,
   showProject,
   t,
   onEnter,
@@ -177,6 +192,8 @@ function SessionRowView({
   onDragPointerDown,
   onRestore,
   onMenu,
+  onRenameCommit,
+  onRenameCancel,
 }: Props) {
   // 「键盘走到视口外的行时把它带回来」那条 effect 在 `SessionTree` 上,按
   // `activeId` 一条(文件头病历第 ③ 笔)—— 它本来就只关心**一行**,长在行上
@@ -247,9 +264,32 @@ function SessionRowView({
        * Tooltip 是冷开预算否决过的(见文件头第 ① 笔的读数);全名靠 Quick Look
        * 与总览形那一档的宽度。native `title=` 更不行 —— 那是明令禁止的。
        */}
-      <span className={s.title}>
-        {query ? <Highlight text={title} query={query} /> : title}
-      </span>
+      {/*
+       * ── A2:改名时这一格换成一只输入框 ─────────────────────────────────
+       * **换而不是叠**:一行会话容不下「标题 + 一只框」两件弯腰件(律一),
+       * 而原地编辑的语义本来就是「那段文字自己变成了输入框」(`ui/inline-edit`
+       * 的文件头:休止态是一段文字,它自己就是入口)。
+       *
+       * 换掉的那一拍上面那条契约(「第一个 `<span>` 是完整标题」)在**这一行**
+       * 上不成立 —— `ui/Field` 交出来的是 label + input,一个 span 都没有。
+       * 这是有意的而且只影响正在改名的那一行:那一刻屏幕上的事实就是
+       * 「这一行没有标题文本,它是一只输入框」,拿一个隐藏的 span 去骗读取方
+       * 才是说谎。**这处写在 A2 的交卷报留账里**(gate-data 读的是第一行,
+       * 而门里没有一处在改名态下读标题)。
+       */}
+      {renaming ? (
+        <SessionRename
+          sessionId={id}
+          title={title}
+          t={t}
+          onCommit={onRenameCommit}
+          onCancel={onRenameCancel}
+        />
+      ) : (
+        <span className={s.title}>
+          {query ? <Highlight text={title} query={query} /> : title}
+        </span>
+      )}
 
       {expandable && (
         <IconButton

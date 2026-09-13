@@ -129,6 +129,22 @@
   white-space: nowrap;
 }
 
+/*
+ * 原地改名那一格(A2)。它**顶替标题站在同一个位置上**,所以吃的是同一条
+ * 弯腰声明(律一:这一行里吸剩余空间的只有它)—— 不然那只框会按内容宽度
+ * 撑出去,把行尾那颗 ⋯ 推到架子外面。
+ * 只声明几何:形归 `ui/Field` / `ui/Input`,一个颜色一个边框都不在这里画。
+ */
+.rename {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* `ui/Input` 的外壳:占满那一格。高度归它自己的 `sm` 档,这里不碰。 */
+.renameInput {
+  width: 100%;
+}
+
 .caret {
   flex: none;
   color: var(--text-3);

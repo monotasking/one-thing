@@ -35,6 +35,8 @@ function renderRow(over: Partial<React.ComponentProps<typeof SessionRow>> = {}) 
     active: false,
     // 09-12:这一行的动作菜单开着没有(⋯ 的第三个显形判据)。
     menuOpen: false,
+    // A2:这一行在原地改名没有(标题那一格换成输入框的那一档)。
+    renaming: false,
     showProject: true,
     // 行不再自己 `useT()`(冷开预算,见组件文件头病历第 ② 笔):`t` 由父层递进来。
     // 这里用的是 i18n 那只非 hook 的 `t` —— 它当场读 store,而上面刚把 locale 钉成 'zh'。
@@ -44,6 +46,8 @@ function renderRow(over: Partial<React.ComponentProps<typeof SessionRow>> = {}) 
     onDragPointerDown: noop,
     onRestore: noop,
     onMenu: noop,
+    onRenameCommit: noop,
+    onRenameCancel: noop,
     ...over,
   }
   return { ...render(<SessionRow {...props} />), props }

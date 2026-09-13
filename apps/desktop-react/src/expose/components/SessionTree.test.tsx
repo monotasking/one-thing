@@ -6,6 +6,7 @@ import { configureSessionsPort } from '../../data/sessions-port'
 import { sessionMutation } from '../../data/sessions-source'
 import { focusTree } from '../../focus/registry'
 import { liveRegionText, resetLiveRegions } from '../../ui/a11y/live-region'
+import { ConfirmHost, useConfirmHub } from '../../ui/Dialog'
 import { useExposeStore } from '../store'
 import { openSessionIds } from './__fixtures__/open-sessions'
 import { useWorkbenchStore } from '../../workbench/store'
@@ -17,6 +18,23 @@ import { chatSources } from '../../data/chat-source'
 import { resetChatPrefetch } from '../../data/chat-prefetch'
 import { ExposeView } from './ExposeView'
 import { pinMacUserAgent } from '../../test/mac-ua'
+
+/*
+ * 数「行的渲染体跑了几次」的那把尺子(判词在下面那条用例上)。`rowKindOf` 是
+ * `SessionRowView` 渲染体里**无条件**的一句,所以它的调用次数就是行的渲染次数;
+ * 真实现原样转发 —— 这不是一个假模块,只是一个计数器。
+ */
+const rowKindCalls: string[] = []
+vi.mock('../row-kinds', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../row-kinds')>()
+  return {
+    ...real,
+    rowKindOf: (kind: Parameters<typeof real.rowKindOf>[0]) => {
+      rowKindCalls.push(String(kind))
+      return real.rowKindOf(kind)
+    },
+  }
+})
 
 /**
  * 列表这张树:角色 / 层级 / 展开、`aria-activedescendant`、四条结构键、
@@ -37,6 +55,9 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  // 单槽 confirm hub 是进程级的:不结掉会把一个悬着的 promise 漏进下一条用例
+  // (包在 act 里 —— 结掉它会让还挂着的 ConfirmHost 重渲一次)。
+  act(() => useConfirmHub.getState().settle(false))
   // 悬停预取那只表与它捂热的机器都是进程级的,不收就会漏进下一条用例。
   resetChatPrefetch()
   chatSources.resetAll()
@@ -65,13 +86,31 @@ const lightUp = (id: string) => act(() => useExposeStore.setState({ focusId: id,
  * 缺了它,settle 的重拉会拿 `src/test/setup.ts` 的出厂假端口(空列表)把屏幕清掉 ——
  * 那样测出来的不是「行搬没搬家」,是「列表还在不在」。
  */
-function stubPort(over: { updatePin?: () => Promise<{ success: boolean; error?: string }> } = {}) {
+function stubPort(
+  over: {
+    updatePin?: () => Promise<{ success: boolean; error?: string }>
+    /* A2:改名与删除各一格覆写口 —— 「后端说不行」那两条用例靠它。 */
+    rename?: (sessionId: string, newName: string) => Promise<{ success: boolean; error?: string }>
+    remove?: (sessionId: string) => Promise<{ success: boolean; error?: string }>
+  } = {},
+) {
   const pinned = new Set<string>()
+  /*
+   * A2:这份假端口的账本再长两格 —— 改过的名字与删掉的 id。
+   * 它们与 `pinned` 是同一条理由(见这只函数头上那段):重拉回来的那一份要
+   * **认账**,不然测出来的不是「行换了字 / 行没了」,是「列表还在不在」。
+   */
+  const names = new Map<string, string>()
+  const gone = new Set<string>()
   configureSessionsPort({
     ready: async () => undefined,
     listMeta: async () => ({
       success: true,
-      sessions: SESSION_META.map((m) => (pinned.has(m.id) ? { ...m, isPinned: true } : m)),
+      sessions: SESSION_META.filter((m) => !gone.has(m.id)).map((m) => ({
+        ...m,
+        ...(pinned.has(m.id) ? { isPinned: true } : {}),
+        ...(names.has(m.id) ? { name: names.get(m.id) } : {}),
+      })),
     }),
     getSegments: async () => ({ success: true, segments: [] }),
     getMessagesPage: async () => ({ success: true, messages: [] }),
@@ -83,6 +122,18 @@ function stubPort(over: { updatePin?: () => Promise<{ success: boolean; error?: 
       (async (sessionId: string, isPinned: boolean) => {
         if (isPinned) pinned.add(sessionId)
         else pinned.delete(sessionId)
+        return { success: true }
+      }),
+    rename:
+      over.rename ??
+      (async (sessionId: string, newName: string) => {
+        names.set(sessionId, newName)
+        return { success: true }
+      }),
+    delete:
+      over.remove ??
+      (async (sessionId: string) => {
+        gone.add(sessionId)
         return { success: true }
       }),
     onSessionEvent: () => () => undefined,
@@ -492,5 +543,270 @@ describe('置顶:行当场搬家,活动行跟着搬', () => {
       vi.useRealTimers()
     })
     expect(liveRegionText('polite')).toBe('')
+  })
+})
+
+/*
+ * ── A2:动作面接上之后的三条真路 ───────────────────────────────────────────
+ * 上面那一组是「叫那一口会发生什么」;这一组是**真有人点了一下**,而且走的是
+ * 屏幕上那条链:右键一行 → 那张表 → 那一行。A1 的留账 1(「菜单里没有置顶,
+ * 这处覆盖缺口留给 A2」)在第一条里结清。
+ *
+ * 菜单本身逐行的形与在场归 `SessionActionsMenu.test.tsx`;这里判的是**贯通**:
+ * 行上的字真的换了 / 那条会话真的没了 / 那一行真的进了置顶节。
+ */
+describe('A2 动作面:右键那张表 → 真的落地', () => {
+  const openRowMenu = (id: string) =>
+    fireEvent.contextMenu(screen.getByTestId(`session-row-${id}`), { clientX: 10, clientY: 10 })
+  const menuRow = (name: string) => screen.getByRole('menuitem', { name })
+  /*
+   * 等那一句播报真的落进 live region。
+   *
+   * **不用上面那一组的 `useFakeTimers + advanceTimersByTime(1)`**:`announce`
+   * 的那一发 `setTimeout(…, 0)` 是在**真定时器**下排的(播报发生在写路那条
+   * promise 链的末尾),而 `vi.useFakeTimers()` 管不着一个已经排好的真定时器 ——
+   * 那一手在这一组里是**看运气**(整套跑时这一条真的红过一次:读到空串)。
+   * 让一个真的 0ms 宏任务跑完是这件事唯一诚实的等法。
+   */
+  const flushAnnounce = () =>
+    act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+  it('菜单里点「置顶」→ 那一行进置顶节(A1 留账 1 结清:与 ⌘⇧P 同一口)', async () => {
+    stubPort()
+    render(<ExposeView />)
+    expect(rows().indexOf('os-provider')).toBeGreaterThan(0)
+
+    openRowMenu('os-provider')
+    await act(async () => {
+      fireEvent.click(menuRow('置顶'))
+      await Promise.resolve()
+    })
+
+    expect(rows().slice(0, 2)).toEqual(['os-provider', 'os-toolkit'])
+    // 与键盘那条路共用播报那一个产地,所以这一句话在两条路上逐字相同。
+    await flushAnnounce()
+    expect(liveRegionText('polite')).toBe('已置顶 重构 provider 抽象')
+  })
+
+  it('「重命名…」→ 那一行的标题**原地**换成输入框,↵ 落定之后行上的字换了', async () => {
+    stubPort()
+    render(<ExposeView />)
+
+    openRowMenu('os-provider')
+    fireEvent.click(menuRow('重命名…'))
+
+    const box = screen.getByTestId('session-row-rename-os-provider') as HTMLInputElement
+    // 原地:那只框长在**那一行里面**(不是弹一个对话框)。
+    expect(screen.getByTestId('session-row-os-provider').contains(box)).toBe(true)
+    // 初值 = 屏幕上那个标题,而且一进来就全选(库件 `ui/inline-edit` 那一发)。
+    expect(box.value).toBe('重构 provider 抽象')
+
+    await act(async () => {
+      fireEvent.change(box, { target: { value: 'provider 聚合根' } })
+      fireEvent.keyDown(box, { key: 'Enter' })
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    // 框收回、字换了(就地更新,律①:不等那一次往返)。
+    expect(screen.queryByTestId('session-row-rename-os-provider')).toBeNull()
+    expect(useExposeStore.getState().renamingId).toBeNull()
+    expect(screen.getByTestId('session-row-os-provider').textContent).toContain('provider 聚合根')
+  })
+
+  it('改名时 Esc = 收回,**一个字都不写**(取消不是提交)', async () => {
+    stubPort()
+    render(<ExposeView />)
+    openRowMenu('os-provider')
+    fireEvent.click(menuRow('重命名…'))
+
+    const box = screen.getByTestId('session-row-rename-os-provider') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(box, { target: { value: '改了一半' } })
+      fireEvent.keyDown(box, { key: 'Escape' })
+      await Promise.resolve()
+    })
+
+    expect(screen.queryByTestId('session-row-rename-os-provider')).toBeNull()
+    expect(screen.getByTestId('session-row-os-provider').textContent).toContain('重构 provider 抽象')
+  })
+
+  it('改名那只框里点一下 / 按一下,**不会进那条会话、也不会开始拖它**', () => {
+    stubPort()
+    render(<ExposeView />)
+    openRowMenu('os-provider')
+    fireEvent.click(menuRow('重命名…'))
+
+    const box = screen.getByTestId('session-row-rename-os-provider')
+    fireEvent.click(box)
+    fireEvent.pointerDown(box)
+    // 行的 onClick 是 `enterSession`(它会把这块面收回 Dock 并装树)——
+    // 截不住的话点一下输入框那只框当场卸载,人连一个字都打不进去。
+    expect(openSessionIds()).toEqual([])
+    expect(useExposeStore.getState().renamingId).toBe('os-provider')
+  })
+
+  it('后端拒了改名 → 行上的字翻回原名,并播报**后端原话**', async () => {
+    stubPort({ rename: async () => ({ success: false, error: '这条会话不在' }) })
+    render(<ExposeView />)
+    openRowMenu('os-provider')
+    fireEvent.click(menuRow('重命名…'))
+
+    const box = screen.getByTestId('session-row-rename-os-provider')
+    await act(async () => {
+      fireEvent.change(box, { target: { value: '改不成' } })
+      fireEvent.keyDown(box, { key: 'Enter' })
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(screen.getByTestId('session-row-os-provider').textContent).toContain('重构 provider 抽象')
+    await flushAnnounce()
+    expect(liveRegionText('polite')).toBe('改名没成:这条会话不在')
+  })
+
+  it('「删除…」→ 确认框 → 确定:那一行没了(先摘格子,再删账本)', async () => {
+    stubPort()
+    render(
+      <>
+        <ExposeView />
+        <ConfirmHost />
+      </>,
+    )
+    // 先把它开进树里 —— 「先摘格子」那一半要有对象才判得出来。
+    await act(async () => {
+      useExposeStore.getState().enterSession('os-provider')
+      await Promise.resolve()
+    })
+    expect(openSessionIds()).toContain('os-provider')
+
+    openRowMenu('os-provider')
+    await act(async () => {
+      fireEvent.click(menuRow('删除…'))
+      await Promise.resolve()
+    })
+    expect(screen.getByRole('dialog').textContent).toContain('重构 provider 抽象')
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '删除' }))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(rows()).not.toContain('os-provider')
+    expect(openSessionIds()).not.toContain('os-provider')
+  })
+
+  it('确认框里按「取消」→ 那一行一个字没动(确认不是形式)', async () => {
+    stubPort()
+    render(
+      <>
+        <ExposeView />
+        <ConfirmHost />
+      </>,
+    )
+    openRowMenu('os-provider')
+    await act(async () => {
+      fireEvent.click(menuRow('删除…'))
+      await Promise.resolve()
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '取消' }))
+      await Promise.resolve()
+    })
+    expect(rows()).toContain('os-provider')
+  })
+
+  it('后端拒了删除 → 那一行留在屏上,并播报后端原话', async () => {
+    stubPort({ remove: async () => ({ success: false, error: '这条会话不在' }) })
+    render(
+      <>
+        <ExposeView />
+        <ConfirmHost />
+      </>,
+    )
+    openRowMenu('os-provider')
+    await act(async () => {
+      fireEvent.click(menuRow('删除…'))
+      await Promise.resolve()
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '删除' }))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(rows()).toContain('os-provider')
+    await flushAnnounce()
+    expect(liveRegionText('polite')).toBe('删除没成:这条会话不在')
+  })
+
+  it('「关闭」只摘格子,**账本一个字不动**(拍板 5:关闭 ≠ 删除)', async () => {
+    stubPort()
+    render(<ExposeView />)
+    await act(async () => {
+      useExposeStore.getState().enterSession('os-provider')
+      await Promise.resolve()
+    })
+    expect(openSessionIds()).toContain('os-provider')
+
+    openRowMenu('os-provider')
+    // 开着才有这一行 —— 它的在场判据与行尾那颗点同一只纯函数。
+    await act(async () => {
+      fireEvent.click(menuRow('关闭'))
+      await Promise.resolve()
+    })
+
+    expect(openSessionIds()).not.toContain('os-provider')
+    // 行还在:这一下没碰数据。
+    expect(rows()).toContain('os-provider')
+  })
+
+  /**
+   * **拼贴树动一下,400 行一个都不该重渲**(SessionRow 文件头那段 47.9ms 病历的
+   * 前提:递给行的每一格 prop 都稳得住)。
+   *
+   * A2 自审时真踩过一次:`onMenu` 为了读「这一条开着没有」而闭包住了那只带三格
+   * 树依赖的记忆体(`regions` / `hidden` / `panelPath`),于是**开关一格标签就让
+   * 400 行的 memo 全部作废**。行的 memo 还在,只是永远比不过 —— 没有任何一道门
+   * 看得见(冷开读数不变,而「切一格标签重渲多少行」不在任何预算里)。
+   *
+   * 判据是**行的渲染体跑了几次**,不是 props 的身份:后者要从 fiber 上读,而
+   * `__reactFiber$` 指的是**挂载那一刻**那个 fiber —— React 每次提交把
+   * current / alternate 对调,所以隔一次渲染读到的是**上一版** props。
+   * 第一稿就是这么写的,反证当场空过(拆掉修法照样绿)。所以这里数的是
+   * `rowKindOf` 的调用次数:它在 `SessionRowView` 的渲染体里**无条件**跑一次,
+   * memo 挡住了就一次都不跑。
+   */
+  it('拼贴树变了 → 会话行一次都不重渲(400 行 memo 的前提)', async () => {
+    stubPort()
+    render(<ExposeView />)
+    const rowsOnScreen = rows().length
+    expect(rowsOnScreen).toBeGreaterThan(3)
+
+    rowKindCalls.length = 0
+    // 拼贴树动一下(开一格会话 = regions / focusLeafId 都换了引用)。
+    const before = useWorkbenchStore.getState().regions
+    await act(async () => {
+      useExposeStore.getState().enterSession('os-toolkit')
+      await Promise.resolve()
+    })
+    expect(useWorkbenchStore.getState().regions, '树没动,这一条就什么都没证').not.toBe(before)
+
+    /*
+     * 只许**那两条真的换了状态的行**重渲(`os-toolkit` 成了当前会话 + 它多了
+     * 一颗开着点;原来那条当前会话翻回去)。其余一行都不许跑。
+     */
+    expect(rowKindCalls.length).toBeLessThanOrEqual(2)
+  })
+
+  it('没开着的那一条,菜单里**没有**「关闭」这一行', () => {
+    stubPort()
+    render(<ExposeView />)
+    openRowMenu('os-provider')
+    expect(screen.queryByRole('menuitem', { name: '关闭' })).toBeNull()
   })
 })

@@ -1,9 +1,12 @@
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../../ui/Menu'
+import { useConfirm } from '../../ui/Dialog'
 import { useT } from '../../i18n'
 import { sessionRefOf } from '../../content/session-ref'
 import { focusSessionSeat } from '../../content/session-open'
 import { dropRef } from '../../workbench/drop-commit'
 import { useExposeStore } from '../store'
+import { togglePinAndAnnounce } from './pin-announce'
+import { closeSessionAndAnnounce, deleteSessionAndAnnounce } from './session-actions'
 import type { RegionId } from '../../workbench/regions'
 
 /**
@@ -14,11 +17,17 @@ import type { RegionId } from '../../workbench/regions'
  * 删除 / 移到项目在 React 壳都还没有产地,挂一个弹空菜单的右键比不挂更糟」。
  * 会话多开把那个空菜单填上了第一批真动作:**这一条要在哪儿打开**。
  *
- * ── 四行(09-12 补了第四行,并给第三行改了名)──────────────────────────────
+ * ── 八行(A2 把后四行接上,分成三段)──────────────────────────────────────
  *   打开(`files.menuOpen`)             落焦点叶 —— 与单击一行逐字同义(切换)
  *   在右侧打开(`files.menuOpenRight`)  先切一刀,新叶放右边
  *   在新标签页打开(`expose.menuOpenNewTab`)在同一片叶上多开一格
  *   Quick Look(`card.preview`)         09-12:行上那只眼睛退役成这一行
+ *   ────
+ *   关闭(`expose.menuClose`)           **只在这条此刻开着时在场**,见下
+ *   置顶 / 取消置顶(`expose.pin/unpin`)行上那颗图钉退役成这一行
+ *   重命名…(`expose.menuRename`)       行内原地改名(那一行的标题换成输入框)
+ *   ────
+ *   删除…(`expose.menuDelete`)         danger;唯一允许的确认(数据会没)
  * 前两行与文件树那一组是**同一句话**,所以复用同一组 i18n 键。
  * 后两行走的是**拖拽落定那一只**(`workbench/drop-commit.dropRef`),不是第二条
  * 路:键盘那条与鼠标那条对同一个落点必须做同一件事(W3 裁定 5,「一个事务动作,
@@ -35,30 +44,66 @@ import type { RegionId } from '../../workbench/regions'
  * ── Quick Look 为什么进这张表(拍板 3)───────────────────────────────────────
  * 行上从前挂着两颗悬停钮(眼睛 = 预览、图钉 = 置顶)。09-12 悬停只留一颗 ⋯,
  * 而「动作单产地 = 右键上下文菜单」(09-01)要求退役的那两件落到这张表里。
- * 这一批先接 Quick Look(它是纯读、零副作用,而且 `Space` 那条键盘等价一直在);
- * 置顶 / 关闭 / 重命名 / 删除四行归 A2 —— **所以此刻置顶暂时只有 ⌘⇧P 一条路,
- * 这处缺口写在 A1 的交卷报留账里,由 A2 在同一批文件里填上。**
+ * A1 先接 Quick Look(它是纯读、零副作用,而且 `Space` 那条键盘等价一直在);
+ * A2 接上另外四行 —— **图钉那条鼠标路因此结清**(A1 的留账 1:那两批之间置顶
+ * 只有 ⌘⇧P 一条路),而两条路共用的是同一只 `togglePinAndAnnounce`。
+ *
+ * ── 「关闭」为什么**会不在场**(而别的行永远在)────────────────────────────
+ * 禁令那条「禁灰而不消失」(`MenuItem.disabled` 的判词:一张菜单的形状不该随
+ * 上下文变)说的是**这一项此刻做不了**;而「关闭」在这条会话没开着的时候不是
+ * 做不了,是**没有对象** —— 屏幕上没有任何一格装着它,一行禁灰的「关闭」会让
+ * 人以为「有个地方开着但我关不掉」。判据是 `openStateOf ≠ null`,与行尾那颗
+ * 开着点(`ui/OpenDot`)**同一句话、同一只纯函数**:点画得出来,这一行就在场。
+ * 它由外面递进来(`openState`)而不是这里自己问树:这只组件是右键那一刻的
+ * 一张**快照**(`title` 同理),订上树等于让一张菜单跟着整棵树重渲。
+ *
+ * ── 「删除」那一问为什么是 `ui/Dialog` 的 `useConfirm` 而不是 `MenuItem` 的
+ *    两段就地确认 ─────────────────────────────────────────────────────────
+ * `MenuItem.confirmLabel` 的判词写着它适用的那一族:「后果是**局部**的(删一行、
+ * 删一家),一个模态框对它太重了」。删一条会话不在那一族里 —— **这条会话与它的
+ * 全部历史都会没**,而那正是壳里「唯一允许的确认」那一档(09-12 判例,B3-b 给
+ * 身份删除用的是同一档)。所以这里走模态:它会把焦点从菜单上拽走再结构性地
+ * 还回去,而这一下**就该**打断。
+ * `ConfirmHost` 早就挂在 `components/AppShell.tsx` 上(W6-a,工作区删除那一问的
+ * 落点),所以这一批没有「把宿主挂进壳」这一步 —— 派工单说它只在测试里挂着,
+ * 核下来不是:**这处出入写在 A2 的交卷报里**,并由 `confirm-host.test.ts` 钉住
+ * (它是这条路的前提:宿主不在,`await confirm(...)` 永远不 resolve)。
  *
  * ── 三张状态表 ──────────────────────────────────────────────────────────
- *  ① 生命周期:右键那一刻挂载,点任何一行 / 点外 / Esc 卸载(`ui/Menu` 自己管);
- *  ② UI 生命状态:只有 ready 一格 —— 三行恒在,没有异步、没有空态;
- *  ③ UI 交互状态:rest / hover / active(键盘位)/ focus 全归 `ui/Menu`
- *     与 `ui/MenuItem`,这只组件一个像素都不画。
+ *  ① 生命周期:右键 / 点 ⋯ 那一刻挂载,点任何一行 / 点外 / Esc 卸载
+ *     (`ui/Menu` 自己管)。**删除那一行点下去之后菜单先卸载、确认框才开**
+ *     —— 次序是刻意的(`onClose()` 排在 `await confirm` 之前):两层浮层叠着
+ *     的话 Esc 该退哪一层是个说不清的问题,而那一问本来就该独占一层;
+ *  ② UI 生命状态:只有 ready 一格 —— 行是同步算出来的,没有异步、没有空态。
+ *     「关闭」的在与不在是**结构**(见上),不是一种加载态;
+ *  ③ UI 交互状态:rest / hover / active(键盘位)/ focus / danger 全归 `ui/Menu`
+ *     与 `ui/MenuItem`,这只组件一个像素都不画。pending **没有**:四个写口的
+ *     反馈全在屏幕上(行搬家 / 字换了 / 那一行没了),而菜单在那之前就卸载了。
  */
 export function SessionActionsMenu({
   sessionId,
   title,
+  isPinned,
+  openState,
   x,
   y,
   onClose,
 }: {
   sessionId: string
   title: string
+  /** 右键那一刻这条会话置顶没有(快照)。决定第六行念「置顶」还是「取消置顶」。 */
+  isPinned: boolean
+  /**
+   * 右键那一刻它开着没有(快照;判据 `workbench.openStateOf`,与行尾那颗点
+   * 同一只纯函数)。`null` = 哪儿都没开 → 「关闭」那一行**整格不在场**。
+   */
+  openState: 'shown' | 'hidden' | null
   x: number
   y: number
   onClose: () => void
 }) {
   const t = useT()
+  const confirm = useConfirm()
   return (
     <Menu x={x} y={y} onClose={onClose} label={t('expose.rowMenu')}>
       <MenuSection>{title}</MenuSection>
@@ -100,6 +145,83 @@ export function SessionActionsMenu({
         }}
       >
         {t('card.preview')}
+      </MenuItem>
+
+      {/*
+       * ── 第二段:改这条会话本身(A2)──────────────────────────────────────
+       * 与第一段的差别是**动手的对象**:上面四行改的是「它摆在哪儿」,这三行改的
+       * 是这条会话自己(它开着没有 / 置不置顶 / 叫什么)。所以中间一条分隔线。
+       */}
+      <MenuSeparator />
+      {openState !== null && (
+        /*
+         * **关闭 ≠ 删除**(拍板 5 的原话:把这条从所有开着它的格子里摘掉,
+         * 不删数据)。动作整件在 `workbench.closeRef`,播报在
+         * `session-actions.closeSessionAndAnnounce` —— 这一行连「摘几处」都不知道。
+         */
+        <MenuItem
+          onClick={() => {
+            onClose()
+            closeSessionAndAnnounce(sessionId)
+          }}
+        >
+          {t('expose.menuClose')}
+        </MenuItem>
+      )}
+      {/*
+       * 置顶 / 取消置顶。**与 ⌘⇧P 是同一口**(`togglePinAndAnnounce`)——
+       * 一件事两个入口,播报也就只有一个产地(判词在那只文件上)。
+       * 念哪一句由快照 `isPinned` 定:它说的是「按下去会发生什么」,
+       * 所以置顶着的行念「取消置顶」。
+       *
+       * **不画 ⌘⇧P 的键帽**:`ui/MenuItem` 今天没有快捷键那一格(它的 API 是
+       * children 复合形,键帽得是一格新 props + 一列排版),而全壳没有第二张
+       * 菜单画键帽 —— 为一行现开一格库件 API 会让这张表成为孤例。
+       * **这处与派工单的出入写在 A2 的交卷报留账里。**
+       */}
+      <MenuItem
+        onClick={() => {
+          onClose()
+          togglePinAndAnnounce(sessionId)
+        }}
+      >
+        {t(isPinned ? 'expose.unpin' : 'expose.pin')}
+      </MenuItem>
+      {/*
+       * 重命名…:这一行**只翻形态**(store 的 `startRename`),真正改名发生在
+       * 那一行长出来的输入框里(↵ 落定 / Esc 收回)。所以它不是一次写,
+       * 后面那三个点说的正是「还有一步」。
+       */}
+      <MenuItem
+        onClick={() => {
+          onClose()
+          useExposeStore.getState().startRename(sessionId)
+        }}
+      >
+        {t('expose.menuRename')}
+      </MenuItem>
+
+      {/* ── 第三段:删掉它。单独一段 —— 它与上面那些不是同一个量级。 ───────── */}
+      <MenuSeparator />
+      <MenuItem
+        danger
+        onClick={() => {
+          /*
+           * 次序:**先关菜单,再问**(判词在文件头③)。`confirm` 是进程级单槽
+           * hub 上的一个动作,引用稳定,菜单卸载之后这条 promise 照样活着。
+           */
+          onClose()
+          void confirm({
+            title: t('expose.deleteConfirmTitle'),
+            description: t('expose.deleteConfirmBody', { name: title }),
+            confirmLabel: t('expose.deleteConfirmAction'),
+          }).then((ok) => {
+            if (!ok) return
+            return deleteSessionAndAnnounce(sessionId)
+          })
+        }}
+      >
+        {t('expose.menuDelete')}
       </MenuItem>
     </Menu>
   )

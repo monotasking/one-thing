@@ -12,6 +12,13 @@
  *  ④ 搜索行开合、范围菜单选中、宽窄两形换手,全是容器查询 + 真焦点。
  * 08-30 那条判例的原话:交互时序类改动必须真机对照,jsdom 的绿不算数。
  *
+ * ── A2 加的第五条(⑦ 动作面)────────────────────────────────────────────
+ * 关闭 / 重命名 / 删除三步的判据**有一半在 core 侧**:屏幕上那一行换了字、
+ * 没了,不等于账本换了字、没了 —— 所以这一步每一条都回头问一次
+ * `sessions.listMeta`。另一半在**两个 store 的投影对齐**上(拼贴树那条 tab
+ * 条 ↔ 会话行那颗开着点),真机里它们隔着一次 React 提交与一条 SSE。
+ * 确认框那一屏的 axe 也长在这一步上(理由写在 `sceneActionsMenu` 的头上)。
+ *
  * ── 纪律(与 `gate-layout.mjs` 逐字同一套)────────────────────────────────
  * 离屏(`ONETHING_GATE_HEADLESS=1`)、临时 store、自己的 `--user-data-dir`、
  * CDP 补焦点、finally 收尸。**不连 5175、不碰 `~/.onething`、窗口不到前台、
@@ -33,6 +40,7 @@ import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { AxeBuilder } from '@axe-core/playwright'
 import { _electron as electron } from 'playwright'
 import electronBinary from 'electron'
 
@@ -826,6 +834,330 @@ async function sceneScopeRow(page, cdp, projectName) {
   await delay(500)
 }
 
+/* ── ⑦ 动作面(A2,正本 §6⑦)────────────────────────────────────────────────
+ *
+ * 三步都要**真机**才成立,而且三条各有各的理由:
+ *  ⑦a 关闭 —— 判据是「中央区那条 tab 条上少了一格」+「行上那颗开着点没了」,
+ *     两者都是**两个 store 的投影对齐**(拼贴树 ↔ 会话行),jsdom 里那两棵树
+ *     是同一进程里的两格 setState,真机里它们隔着一次 React 提交与一条 SSE;
+ *  ⑦b 重命名 —— 判据的另一半在 **core 侧**(`sessions.listMeta` 那个名字真的
+ *     换了),而那一头只有起了一台 core 才问得到;
+ *  ⑦c 删除 —— 同上,而且它是**这块面唯一一处模态**:确认框要真开出来才扫得到
+ *     (axe 那一扫见下)。
+ *
+ * ── 确认框那一屏的 axe **为什么长在这道门上**(第 2 轴的「二选一」)──────────
+ * 走 B3-a 立的那条顺序法与 T2/B3-a 的搬家判例:**一屏 axe 住哪,由「谁装得出
+ * 这块面」决定**。这一框要三件东西同时在场 —— 一份真的会话列表、一次右键弹出
+ * 的动作表、一次「删除…」—— 而 `gate:a11y` 那一屏是**裸扫会话总览**,要它走完
+ * 这三步等于把「删掉一条会话」这个副作用搬进一道只读的门里。`ui/Dialog` 自己的
+ * 语义契约(role / aria-modal / aria-labelledby / 焦点在框内 / Esc 关)**已经**
+ * 在 `gate:a11y` 的规格页那一屏钉着(它扫的是同一件库件),这道门补的是
+ * **这一框的内容**:标题、正文、两颗钮。同一套标签、同一个 legacy 模式。
+ */
+async function sceneActionsMenu(page, cdp, record) {
+  scene('⑦ 动作面:⋯ → 关闭 / 重命名 / 删除(A2)')
+
+  /** 右键那一行,把那张表弹出来;返回表上每一行的字。 */
+  const openRowMenu = async (sessionId) => {
+    const ok = await page.evaluate((id) => {
+      const row = document.querySelector(`[data-session-id="${id}"]`)
+      if (!(row instanceof HTMLElement)) return false
+      const r = row.getBoundingClientRect()
+      row.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          clientX: Math.round(r.x + r.width / 2),
+          clientY: Math.round(r.y + r.height / 2),
+        }),
+      )
+      return true
+    }, sessionId)
+    if (!ok) return []
+    await delay(300)
+    return page.evaluate(() =>
+      Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]')).map((el) =>
+        (el.textContent ?? '').trim(),
+      ),
+    )
+  }
+  /** 点表上那一行(按字面找 —— 那正是人眼读到的东西)。 */
+  const pickMenuRow = async (label) => {
+    const hit = await page.evaluate((want) => {
+      const el = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]')).find(
+        (row) => (row.textContent ?? '').trim() === want,
+      )
+      if (!(el instanceof HTMLElement)) return false
+      el.click()
+      return true
+    }, label)
+    await delay(450)
+    return hit
+  }
+  /** 中央区那条 tab 条上此刻摆着哪几格(判据与 `gate:workspace` 同一个取件口)。 */
+  const centerTabs = () =>
+    page.evaluate(() =>
+      Array.from(document.querySelectorAll('[data-testid="topbar-tabs"] [role="tab"]')).map(
+        (el) => el.getAttribute('data-tab-id') ?? '',
+      ),
+    )
+  /** core 侧那一份名册(**门的判据的另一半**:屏幕换了字不等于账本换了)。 */
+  const coreNames = async () => {
+    const answer = await rpc(record, 'sessions', 'listMeta', {})
+    const rows = answer?.sessions ?? []
+    return new Map(rows.map((row) => [row.id, row.name]))
+  }
+
+  const ids = (await read(page)).rowIds
+  if (ids.length < 2) {
+    check('屏幕上至少两条会话(⑦ 要开两格才关得掉)', false, `${ids.length} 条`)
+    return
+  }
+  const [first, second] = ids
+
+  /* ── ⑦a 关闭 ─────────────────────────────────────────────────────────────
+   * **先开两格**再关:`canDetachTab` 那条守卫(常驻那一种在它自己的家里的
+   * 最后一格不许走)对中央区的会话是成立的 —— 只开一格时「关闭」会如实地被
+   * 拒绝并播报一句,那是另一条路。这一步量的是它真关得掉的那一档。
+   */
+  await page.evaluate((id) => {
+    const row = document.querySelector(`[data-session-id="${id}"]`)
+    if (row instanceof HTMLElement) row.click()
+  }, first)
+  await delay(700)
+  const menuA = await openRowMenu(second)
+  check('右键弹出的那张表带「在新标签页打开」', menuA.some((row) => /新标签页|new tab/i.test(row)), menuA.join(' / '))
+  await pickMenuRow(menuA.find((row) => /新标签页|new tab/i.test(row)) ?? '')
+  const twoTabs = await centerTabs()
+  note(`中央区 tab:${twoTabs.join(' / ')}`)
+  check('两条会话都开在中央区', twoTabs.length >= 2, `${twoTabs.length} 格`)
+
+  const menuClose = await openRowMenu(second)
+  check(
+    '开着的那一条,表上有「关闭」这一行',
+    menuClose.some((row) => /^(关闭|Close)$/.test(row)),
+    menuClose.join(' / '),
+  )
+  const closed = await pickMenuRow(menuClose.find((row) => /^(关闭|Close)$/.test(row)) ?? '')
+  check('点得到「关闭」', closed, '')
+  const afterClose = await centerTabs()
+  const dotGone = await page.evaluate(
+    (id) => !document.querySelector(`[data-testid="session-row-open-${id}"]`),
+    second,
+  )
+  note(`关掉之后中央区 tab:${afterClose.join(' / ')}`)
+  check(
+    '中央区少了那一格',
+    afterClose.length === twoTabs.length - 1 && !afterClose.includes(`session:${second}`),
+    `${twoTabs.length} → ${afterClose.length}`,
+  )
+  check('行上那颗「开着」点没了(一套判据两处消费)', dotGone, '')
+  // **关闭不删数据**:账本上那一条还在 —— 这一条正是拍板 5 的机械含义。
+  const namesAfterClose = await coreNames()
+  check('关闭**不删数据**:core 侧那一条还在', namesAfterClose.has(second), '')
+  // 没开着的那一条,这一行整格不在场(它没有对象,不是做不了)。
+  const menuGone = await openRowMenu(second)
+  check(
+    '关掉之后再右键,「关闭」这一行不在场了',
+    !menuGone.some((row) => /^(关闭|Close)$/.test(row)),
+    menuGone.join(' / '),
+  )
+  await page.keyboard.press('Escape')
+  await delay(250)
+
+  /* ── ⑦b 重命名 ────────────────────────────────────────────────────────── */
+  const NEW_NAME = 'A2 改过的名字'
+  const menuRename = await openRowMenu(first)
+  const renameLabel = menuRename.find((row) => /^(重命名…|Rename…)$/.test(row))
+  check('表上有「重命名…」', Boolean(renameLabel), menuRename.join(' / '))
+  if (renameLabel) {
+    const clickedRename = await pickMenuRow(renameLabel)
+    check('点得到「重命名…」', clickedRename, '')
+    const box = await page.evaluate((id) => {
+      const el = document.querySelector(`[data-testid="session-row-rename-${id}"]`)
+      if (!(el instanceof HTMLElement)) return null
+      const row = el.closest('[data-session-id]')
+      return {
+        inRow: Boolean(row && row.getAttribute('data-session-id') === id),
+        focused: document.activeElement === el,
+        value: el instanceof HTMLInputElement ? el.value : '',
+        selected:
+          el instanceof HTMLInputElement
+            ? el.selectionStart === 0 && el.selectionEnd === el.value.length
+            : false,
+      }
+    }, first)
+    if (!box) {
+      check('那一行原地长出一只输入框', false, '框不在 DOM 里')
+    } else {
+      check('那只框长在**那一行里面**(原地,不是弹一个对话框)', box.inRow, '')
+      /*
+       * **这一条是那个真机 bug 的机械化**(病历在 `SessionRename.tsx` 文件头):
+       * 菜单卸载之后结构性归还会把焦点放回这块面的落点,落点答错的话这只框
+       * 当场 blur → `cancelOnBlur` 收回 → 屏幕上什么都没发生。所以判的是
+       * 「450ms 之后它**还**拿着焦点」,不是「它刚挂载时拿到过焦点」。
+       */
+      check('焦点落在框里、而且**留在**框里(落点第 ⓿ 档)', box.focused, '')
+      check('一进来就选中全文(接着打就是覆盖)', box.selected, `value=「${box.value}」`)
+
+      /*
+       * **挤压纪律**(一行一个弯腰件):这只框顶替标题站在同一个位置上,所以它
+       * 也得是那个弯腰的 —— 按内容宽度撑出去的话会把行尾那颗 ⋯ 推出架子。
+       * 判据是几何:框的右缘不越过行的右缘(jsdom 里量不出来,只有真机有分子)。
+       */
+      const geo = await page.evaluate((id) => {
+        const el = document.querySelector(`[data-testid="session-row-rename-${id}"]`)
+        const row = el?.closest('[data-session-id]')
+        const shelf = document.querySelector('[data-shelf="left"]')
+        if (!el || !row || !shelf) return null
+        const b = el.getBoundingClientRect()
+        const r = row.getBoundingClientRect()
+        const sh = shelf.getBoundingClientRect()
+        return {
+          boxRight: Math.round(b.right),
+          rowRight: Math.round(r.right),
+          shelfRight: Math.round(sh.right),
+          rowW: Math.round(r.width),
+          boxW: Math.round(b.width),
+        }
+      }, first)
+      if (geo) {
+        note(`改名框几何:框 ${geo.boxW}px(右缘 ${geo.boxRight})· 行 ${geo.rowW}px(右缘 ${geo.rowRight})· 架子右缘 ${geo.shelfRight}`)
+        check(
+          '改名框不越过行的右缘(它是这一行唯一的弯腰件)',
+          geo.boxRight <= geo.rowRight + 1,
+          `框 ${geo.boxRight} vs 行 ${geo.rowRight}`,
+        )
+      }
+
+      /*
+       * axe 扫**改名态那一屏**(第 2 轴:新 surface 要有一屏 axe)。它与确认框
+       * 那一扫同一条搬家判据 —— 这一屏要一次右键 + 一次点菜单才站得出来,
+       * `gate:a11y` 那一屏是裸扫会话总览,等不到它。`include` 收到这块面的根上
+       * (框长在那一行里,单扫一个 `<input>` 扫不出「它在谁里面」这类规则)。
+       */
+      const axeRename = await new AxeBuilder({ page })
+        .setLegacyMode(true)
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'])
+        .include('[data-focus-scope="expose"]')
+        .analyze()
+      for (const v of axeRename.violations) {
+        note(`[${v.impact}] ${v.id} —— ${v.help}`)
+        for (const node of v.nodes.slice(0, 4)) note(`  ${node.target.join(' ')}`)
+      }
+      check(
+        `改名态那一屏 axe 零违例(过了 ${axeRename.passes.length} 条规则)`,
+        axeRename.violations.length === 0,
+        `${axeRename.violations.length} 条违例`,
+      )
+
+      // 真键盘:全选之后打新名字,↵ 落定(CDP,不动真光标)。
+      await page.keyboard.type(NEW_NAME)
+      await page.keyboard.press('Enter')
+      await delay(900)
+      const rowText = await page.evaluate(
+        (id) => document.querySelector(`[data-session-id="${id}"]`)?.textContent ?? '',
+        first,
+      )
+      const boxGone = await page.evaluate(
+        (id) => !document.querySelector(`[data-testid="session-row-rename-${id}"]`),
+        first,
+      )
+      check('框收回了', boxGone, '')
+      check('行上的字换了', rowText.includes(NEW_NAME), `实际「${rowText.slice(0, 40)}」`)
+      const names = await coreNames()
+      note(`core 侧那一条现在叫「${names.get(first)}」`)
+      check(
+        'core 侧 `sessions.listMeta` 的名字也换了(屏幕换字不等于账本换字)',
+        names.get(first) === NEW_NAME,
+        `实际「${names.get(first)}」`,
+      )
+    }
+  }
+
+  /* ── ⑦c 删除(含确认框那一屏的 axe)──────────────────────────────────── */
+  /*
+   * 删除那一步的正文断言按**屏幕上此刻那一行的字**比,而不是按 ⑦b 打进去的
+   * 那个字面量:两者相等是 ⑦b 自己的断言,在这里再假设一遍会让一条红变两条
+   * (首跑就是这么读的:⑦b 红了之后这一条跟着红,而它自己没毛病)。
+   */
+  const liveTitle = await page.evaluate(
+    (id) => document.querySelector(`[data-session-id="${id}"] span`)?.textContent?.trim() ?? '',
+    first,
+  )
+  const menuDelete = await openRowMenu(first)
+  const deleteLabel = menuDelete.find((row) => /^(删除…|Delete…)$/.test(row))
+  check('表上有「删除…」', Boolean(deleteLabel), menuDelete.join(' / '))
+  if (deleteLabel) {
+    await pickMenuRow(deleteLabel)
+    const dialog = await page.evaluate(() => {
+      const el = document.querySelector('[role="dialog"][aria-modal="true"]')
+      if (!(el instanceof HTMLElement)) return null
+      return {
+        text: (el.textContent ?? '').trim(),
+        focusInside: el.contains(document.activeElement),
+        buttons: Array.from(el.querySelectorAll('button')).map((b) => (b.textContent ?? '').trim()),
+        menuGone: !document.querySelector('[role="menu"]'),
+      }
+    })
+    if (!dialog) {
+      check('确认框开出来了', false, '屏上没有 [role="dialog"]')
+    } else {
+      note(`确认框:「${dialog.text.slice(0, 60)}」·钮 ${dialog.buttons.join(' / ')}`)
+      check('确认框在场(唯一允许的确认:数据会没)', true, '')
+      check(
+        '正文**点名那条会话**(400 行里「确定删除吗」说不清删的是哪一条)',
+        Boolean(liveTitle) && dialog.text.includes(liveTitle),
+        `行上是「${liveTitle}」`,
+      )
+      check('菜单先卸载,框才开(两层浮层叠着 Esc 该退哪一层说不清)', dialog.menuGone, '')
+      check('焦点进了框里', dialog.focusInside, '')
+      check(
+        '有逃生口(禁止只有「确定」的死胡同)',
+        dialog.buttons.some((b) => /^(取消|Cancel)$/.test(b)),
+        dialog.buttons.join(' / '),
+      )
+
+      /*
+       * axe 扫**这一框**。`setLegacyMode(true)` 是必须的(与 `gate-a11y.scanAxe` /
+       * `gate-terminal` ⑧ / `gate-browser` ⑪ 逐字同一个理由):默认模式下
+       * AxeBuilder 会 `newPage()` 去处理跨 frame,而 Electron 的 CDP 不支持
+       * `Target.createTarget`,当场协议报错。
+       */
+      const axe = await new AxeBuilder({ page })
+        .setLegacyMode(true)
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'])
+        .include('[role="dialog"]')
+        .analyze()
+      for (const v of axe.violations) {
+        note(`[${v.impact}] ${v.id} —— ${v.help}`)
+        for (const node of v.nodes.slice(0, 4)) note(`  ${node.target.join(' ')}`)
+      }
+      check(
+        `确认框那一屏 axe 零违例(过了 ${axe.passes.length} 条规则)`,
+        axe.violations.length === 0,
+        `${axe.violations.length} 条违例`,
+      )
+
+      const confirmed = await page.evaluate(() => {
+        const el = document.querySelector('[role="dialog"][aria-modal="true"]')
+        const hit = Array.from(el?.querySelectorAll('button') ?? []).find((b) =>
+          /^(删除|Delete)$/.test((b.textContent ?? '').trim()),
+        )
+        if (!(hit instanceof HTMLElement)) return false
+        hit.click()
+        return true
+      })
+      check('点得到「删除」那颗钮', confirmed, '')
+      await delay(1200)
+      const gone = await read(page)
+      check('那一行没了', !gone.rowIds.includes(first), `还在:${gone.rowIds.includes(first)}`)
+      const names = await coreNames()
+      check('core 侧也没了(账本真的删了)', !names.has(first), '')
+      note(`删完还剩 ${gone.rowCount} 行 / core 侧 ${names.size} 条`)
+    }
+  }
+}
+
 /** ⑥ 撕成一扇 900 宽的浮窗:Rail 在场、范围行不在、时间列在。 */
 async function sceneWideForm(page) {
   scene('⑥ 总览形(容器 ≥761):Rail 在场 · 范围行不在 · 时间列在')
@@ -982,6 +1314,13 @@ async function main() {
     await sceneHoverMenu(ctx.page, ctx.cdp)
     await sceneSearchRow(ctx.page, ctx.cdp)
     await sceneScopeRow(ctx.page, ctx.cdp, 'sessions-gate-project')
+    /*
+     * ⑦ 排在 ⑥ **之前**:它要的是侧栏形那一档的行(240 宽),而 ⑥ 会把这块面
+     * 撕成一扇 900 宽的浮窗 —— 那之后左架子上就没有行可以右键了。
+     * 它也排在 ⑧ 之前:⑦c 真删掉一条会话,而 ⑧ 量的是「这一屏画多久」,
+     * 少一条行对那个读数是无害的(⑧ 自己报行数)。
+     */
+    await sceneActionsMenu(ctx.page, ctx.cdp, record)
     await sceneWideForm(ctx.page)
     cold = await sceneColdOpen(ctx.page)
   } finally {
@@ -1025,7 +1364,7 @@ async function main() {
     process.exit(1)
   }
   process.stdout.write(
-    '[gate:sessions] ok —— 左缘对着红灯中心 / 两档标题占比 / ⋯ 真点得到 / 搜索行三步 / 范围菜单 / 两种形换手 / 冷开读数\n',
+    '[gate:sessions] ok —— 左缘对着红灯中心 / 两档标题占比 / ⋯ 真点得到 / 搜索行三步 / 范围菜单 / 动作面三步(关闭·改名·删除,含确认框 axe)/ 两种形换手 / 冷开读数\n',
   )
 }
 

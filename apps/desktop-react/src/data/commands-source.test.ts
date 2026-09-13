@@ -84,6 +84,8 @@ beforeEach(() => {
       return cdOk ? { success: true } : { success: false, error: '目录不存在' }
     },
     updatePin: async () => ({ success: true }),
+    rename: async () => ({ success: true }),
+    delete: async () => ({ success: true }),
     onSessionEvent: () => () => undefined,
     onSessionLifecycle: () => () => undefined,
   })

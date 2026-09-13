@@ -29,6 +29,8 @@ import {
   setScope,
   splitHighlight,
   splitHighlightRanges,
+  startRename,
+  stopRename,
   toggleRoom,
   treeKey,
   type ListFacts,
@@ -446,6 +448,40 @@ describe('搜索 = 过滤器,不是另一层视图', () => {
  * 命中区间由**别人**判好递进来的那个入口(09-02 正文检索:后端给 `matchRanges`)。
  * 入参当作不可信 —— 所以这一组里大半是边界:越界、乱序、重叠、空段。
  */
+describe('原地改名的两档(A2:renamingId 是形态,草稿不在这里)', () => {
+  it('开:那一行进 renamingId;**不碰焦点行**(右键第三行、活动行在别处是合法状态)', () => {
+    const st = startRename({ ...overview, focusId: sseq[2] }, sseq[0])
+    expect(st.renamingId).toBe(sseq[0])
+    expect(st.focusId).toBe(sseq[2])
+  })
+
+  it('同一行再开一次是**同一个引用**(不触发一次白重渲染)', () => {
+    const once = startRename(overview, sseq[0])
+    expect(startRename(once, sseq[0])).toBe(once)
+  })
+
+  it('开着 A 又对 B 动手 = 直接换人(草稿随 A 那只框卸载一起没)', () => {
+    const st = startRename(startRename(overview, sseq[0]), sseq[1])
+    expect(st.renamingId).toBe(sseq[1])
+  })
+
+  it('空 id 什么都不做(它不是一行)', () => {
+    expect(startRename(overview, '')).toBe(overview)
+  })
+
+  it('收:归 null;没在改名时是同一个引用', () => {
+    expect(stopRename(startRename(overview, sseq[0])).renamingId).toBeNull()
+    expect(stopRename(overview)).toBe(overview)
+  })
+
+  it('归位(open)与进会话(enterSession)都清掉它 —— 与 searching 逐字同一条', () => {
+    const editing = startRename({ ...base, renamingId: null }, sseq[0])
+    expect(editing.renamingId).toBe(sseq[0])
+    expect(open(editing, FACTS).renamingId).toBeNull()
+    expect(enterSession(editing, sseq[0]).renamingId).toBeNull()
+  })
+})
+
 describe('splitHighlightRanges(区间由产地给定)', () => {
   const text = '重构 provider 抽象'
   const joined = (ranges: { start: number; end: number }[]) =>

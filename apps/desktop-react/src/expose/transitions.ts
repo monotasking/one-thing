@@ -87,6 +87,8 @@ export const initialExposeState: ExposeState = {
   query: '',
   // 出厂是**一行字**,不是一只空输入框(09-12 方向 A:顶上没有常驻输入框)。
   searching: false,
+  // 出厂没有哪一行在改名(A2)。同样不落盘,理由见 types.ts 那一格。
+  renamingId: null,
   // 空串 = 还没有当前会话。开场归位时它会落到序列首。
   // **W5-b 起这两格是投影**(唯一写者 `content/session-projection.ts`);
   // 这里只是出厂值,形态机的每一条都不写它们。
@@ -133,6 +135,9 @@ export function open(state: ExposeState, facts: ListFacts): ExposeState {
     query: '',
     // 开场即一行字:上次退出时那只开着的输入框不该在下次打开时还原(§4①)。
     searching: false,
+    // 归位同样清掉原地改名(A2):理由与上一行逐字相同 —— 这块面重新摆出来时
+    // 屏幕上不该还留着一只开着的改名框(何况那条会话可能已经不在这一屏了)。
+    renamingId: null,
     scope: resolveScope(state.scope, facts.sessions),
   }
   const model = listModelOf(next, facts)
@@ -488,6 +493,36 @@ export function closeSearch(state: ExposeState, facts: ListFacts): ExposeState {
 }
 
 /**
+ * **原地改名:开**(A2)。那一行的标题当场换成一只输入框。
+ *
+ * 它不碰焦点(与 `openSearch` 逐字同一条:「开的人点名、被开的那一格挂载时
+ * 自己取走」,纯函数不认识 DOM),也**不碰 `focusId`** —— 改名是对**某一条**
+ * 会话动手,而键盘的活动行是另一件事:右键第三行、活动行在别处,是一个合法的
+ * 屏幕状态,把活动行拽过去等于替用户挪了键盘。
+ *
+ * 同一行再开一次是**同一个引用**(不触发一次白重渲染);开着 A 又对 B 动手时
+ * 直接换人 —— A 那只输入框随它卸载,草稿跟着没(草稿归那只输入框,见 types.ts)。
+ * 那正是「改到一半点开第二行 = 前一行收回」该有的样子。
+ */
+export function startRename(state: ExposeState, sessionId: string): ExposeState {
+  if (!sessionId || state.renamingId === sessionId) return state
+  return { ...state, renamingId: sessionId }
+}
+
+/**
+ * **原地改名:收**(A2)。↵ 落定之后、Esc 收回之后、失焦之后,三条路同一口
+ * —— 「这一行不再是输入框了」只是一句话,它与「写成没成」无关(写路在数据源,
+ * 而屏幕上那只输入框该在发出去那一刻就收回:留着它等一次往返是让人对着一只
+ * 不知道还能不能打字的框)。
+ *
+ * 没在改名时是**同一个引用**。它**不夹持焦点**:改名不会让任何一行离场
+ * (名字换了行可能换节 —— 那是重投影的事,`clampFocus` 在写路对账那一头)。
+ */
+export function stopRename(state: ExposeState): ExposeState {
+  return state.renamingId === null ? state : { ...state, renamingId: null }
+}
+
+/**
  * 「进入」= 内容回到起点(退出 quicklook、清掉搜索词)。
  *
  * **它不再写 `currentSessionId`**(W5-b 裁定 3):那一格成了树的投影,而
@@ -499,8 +534,12 @@ export function closeSearch(state: ExposeState, facts: ListFacts): ExposeState {
  * 这件事,将来这块面要按它做别的(比如把那一行滚进视野)时不必再改签名。
  */
 export function enterSession(state: ExposeState, _sessionId: string): ExposeState {
-  // 「回到起点」在 09-12 之后多了一格:搜索行也收回成一行字(它与清词是一件事)。
-  return { ...state, view: { mode: 'overview' }, query: '', searching: false }
+  /*
+   * 「回到起点」在 09-12 之后多了一格:搜索行也收回成一行字(它与清词是一件事);
+   * A2 又多一格:原地改名也收回 —— 点进一条会话之后屏幕上不该还留着一只
+   * 改名框(那一下的意思是「我要去用这条会话了」,不是「我还在整理名字」)。
+   */
+  return { ...state, view: { mode: 'overview' }, query: '', searching: false, renamingId: null }
 }
 
 /* ── 会话没了 ──────────────────────────────────────────────────────────── */

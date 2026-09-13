@@ -63,6 +63,10 @@ configureSessionsPort({
   // 置顶默认**成功但什么都没发生**(这份假端口没有账本):与换目录同一档 ——
   // 它不该让任何用例因为默认端口而红,要验对账的用例自己换一个会改列表的。
   updatePin: async () => ({ success: true }),
+  // 改名与删除同一档,理由也同一条:这份假端口没有账本,答「成了」只是为了让
+  // 没在验它们的用例不因默认端口而红 —— 真要验写路的用例自己换一个会改列表的。
+  rename: async () => ({ success: true }),
+  delete: async () => ({ success: true }),
   onSessionEvent: () => () => undefined,
   onSessionLifecycle: () => () => undefined,
 })

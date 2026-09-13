@@ -1447,6 +1447,8 @@ describe('停靠池的出池口:换工作区不拆,会话真删才拆', () => {
       create: async () => ({ success: false, error: 'fake port' }),
       updateWorkingDirectory: async () => ({ success: true }),
       updatePin: async () => ({ success: true }),
+      rename: async () => ({ success: true }),
+      delete: async () => ({ success: true }),
       onSessionEvent: () => () => undefined,
       onSessionLifecycle: (callback) => {
         emitLifecycle = callback

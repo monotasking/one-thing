@@ -81,6 +81,8 @@ function sessionsPort(): SessionsPort {
     create: async () => ({ success: true, session: { id: 'new-1' } }),
     updateWorkingDirectory: async () => ({ success: true }),
     updatePin: async () => ({ success: true }),
+    rename: async () => ({ success: true }),
+    delete: async () => ({ success: true }),
     onSessionEvent: () => () => undefined,
     onSessionLifecycle: (callback: (event: SessionLifecycleEvent) => void) => {
       emitLifecycle = callback

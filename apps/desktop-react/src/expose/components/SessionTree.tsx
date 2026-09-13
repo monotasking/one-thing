@@ -13,6 +13,7 @@ import { useContentDrag } from '../../workbench/useContentDrag'
 import { openStateOf, useWorkbenchStore } from '../../workbench/store'
 import { sessionRefOf } from '../../content/session-ref'
 import { SessionActionsMenu } from './SessionActionsMenu'
+import { commitRenameAndAnnounce } from './session-actions'
 import s from './SessionTree.module.css'
 
 
@@ -61,6 +62,8 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
   const collapsedSections = useExposeStore((st) => st.collapsedSections)
   const focusId = useExposeStore((st) => st.focusId)
   const focusVisible = useExposeStore((st) => st.focusVisible)
+  /* 一屏至多一行在改名(A2),所以这里订一格 id,行那一头拿到的是比过的布尔。 */
+  const renamingId = useExposeStore((st) => st.renamingId)
   const currentSessionId = useExposeStore((st) => st.currentSessionId)
   const sessions = useSessionsSource((st) => st.sessions)
   /*
@@ -89,7 +92,14 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
    * 右键菜单那一格(点锚:光标坐标开出来,滚动时维持原位)。
    * 它是**这块面**的状态而不是行的:一屏至多一张菜单,长在行上就是 400 份。
    */
-  const [menu, setMenu] = useState<{ id: string; title: string; x: number; y: number } | null>(null)
+  const [menu, setMenu] = useState<{
+    id: string
+    title: string
+    isPinned: boolean
+    openState: 'shown' | 'hidden' | null
+    x: number
+    y: number
+  } | null>(null)
 
   /*
    * `now` 在**记忆体里**取一次,不在渲染体里现取:后者每渲染一帧换一个数,
@@ -170,14 +180,53 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
     if (sessionId) hoverSessionRow(sessionId)
     else leaveSessionRow()
   }, [])
+  /*
+   * 弹那张表。递进去的三格(名字 / 置顶没有 / 开着没有)都是**弹出那一刻的快照**
+   * —— 菜单不订阅任何东西(判词在 `SessionActionsMenu` 的状态表①上:一张跟着
+   * 整棵树重渲的菜单是 400 行那条预算付不起的)。
+   *
+   * 「开着没有」的判据仍然是那只纯函数 `openStateOf` —— 与行尾那颗点**同一句话**
+   * (所以「关闭」那一行在不在场,与那颗点画不画得出来,永远同进同退)。
+   *
+   * ── 它**不许**闭包住 `openStateOfSession`(自审抓的一处回归)──────────────
+   * 那只记忆体的依赖是三格树状态(`regions` / `hidden` / `panelPath`),所以它的
+   * 身份**每次开关一格标签都换**。而 `onMenu` 是递给**每一行**的 prop —— 依赖它
+   * 就等于「拼贴树一动,400 行全部重渲一遍」,那正是 SessionRow 文件头那段病历
+   * (47.9ms)要治的东西,而且这一处比那次更隐蔽:行的 memo 照样在,只是永远
+   * 比不过。所以这里在事件处理器里**现读** `getState()`(判据仍是同一只纯函数,
+   * 不是第二份判断),依赖表回到空 —— 与这一层别的回调同一条纪律。
+   */
   const onMenu = useCallback(
     (sessionId: string, point: { x: number; y: number }) => {
-      const title = currentSessionsTitle(sessionId)
-      setMenu({ id: sessionId, title, x: point.x, y: point.y })
+      const row = useSessionsSource.getState().sessions.find((s0) => s0.id === sessionId)
+      const tree = useWorkbenchStore.getState()
+      setMenu({
+        id: sessionId,
+        title: row?.title ?? sessionId,
+        isPinned: Boolean(row?.isPinned),
+        openState: openStateOf(
+          { regions: tree.regions, hidden: tree.hidden, panelPath: tree.panelPath },
+          sessionRefOf(sessionId),
+        ),
+        x: point.x,
+        y: point.y,
+      })
     },
     [],
   )
   const closeMenu = useCallback(() => setMenu(null), [])
+  /*
+   * 改名的两口。`commit` 走渲染层那只编排件(它收回形态、打那一发、没成播报);
+   * `cancel` 只翻形态 —— 两口都**入参带 id 或不带**照旧是身份恒定的回调
+   * (`useCallback([])`),行的 memo 一格不动。
+   */
+  /*
+   * 改名的两口。`commit` **直接就是**那只模块级编排件(它收回形态、打那一发、
+   * 没成播报)—— 模块函数的身份天生恒定,再包一层 `useCallback` 只是多一格。
+   * `cancel` 要叫 store,所以包一层空依赖的 `useCallback`(与这一层别的回调同形)。
+   */
+  const onRenameCommit = commitRenameAndAnnounce
+  const onRenameCancel = useCallback(() => useExposeStore.getState().cancelRename(), [])
 
   /*
    * 项目名按 `projectId` 记一份。`projectNameOf` 只是一次 `lastIndexOf` + `slice`,
@@ -251,6 +300,7 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
                   openState={openStateOfSession(row.id)}
                   active={row.id === activeId}
                   menuOpen={row.id === menu?.id}
+                  renaming={row.id === renamingId}
                   showProject={showProject}
                   t={t}
                   onEnter={onEnter}
@@ -258,6 +308,8 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
                   onDragPointerDown={onDragPointerDown}
                   onRestore={onRestore}
                   onMenu={onMenu}
+                  onRenameCommit={onRenameCommit}
+                  onRenameCancel={onRenameCancel}
                 />
               ))}
             </div>
@@ -323,6 +375,8 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
         <SessionActionsMenu
           sessionId={menu.id}
           title={menu.title}
+          isPinned={menu.isPinned}
+          openState={menu.openState}
           x={menu.x}
           y={menu.y}
           onClose={closeMenu}
@@ -330,9 +384,4 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
       )}
     </div>
   )
-}
-
-/** 菜单头上那一行名字。**取一次**,不订阅 —— 它是弹出那一刻的一张快照。 */
-function currentSessionsTitle(sessionId: string): string {
-  return useSessionsSource.getState().sessions.find((row) => row.id === sessionId)?.title ?? sessionId
 }

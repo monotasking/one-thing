@@ -303,6 +303,8 @@ describe('切线 B · NoWorkdirNotice:绑定的成败,以及律③的两半', ()
       create: async () => ({ success: false, error: 'not stubbed' }),
       updateWorkingDirectory,
       updatePin: async () => ({ success: true }),
+      rename: async () => ({ success: true }),
+      delete: async () => ({ success: true }),
       onSessionEvent: () => () => undefined,
       onSessionLifecycle: () => () => undefined,
     })

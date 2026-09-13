@@ -444,6 +444,35 @@ export interface SessionsSourceState {
     isPinned: boolean,
   ) => Promise<{ ok: true } | { ok: false; error: string }>
   /**
+   * 给一条会话改名(A2;行内改名那条路的写口)。
+   *
+   * 与 `setPinned` 同形(**就地更新在前、重拉对账在后**,律①),差别只有两格:
+   *  · **空串与「没变」在这里连一发都不打**,答 `{ ok: true }` —— 「取消」与
+   *    「改成一样的」在屏幕上是同一件事(什么都没发生),让它变成一次失败会
+   *    换来一句说不通的报错;
+   *  · 乐观那一笔翻的是 `title`,而它与后端广播的 `SESSION_RENAMED` 补丁
+   *    **写的是同一格同一个值**,所以事件到达时是恒等变换(`patchLedger` 值没
+   *    变连 patch 都不发)—— 乐观补丁在这一口上买的是「一次往返里那一行先换字」。
+   */
+  rename: (
+    sessionId: string,
+    newName: string,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>
+  /**
+   * 删一条会话(A2)。
+   *
+   * **没有乐观补丁**,这一格与置顶 / 改名刻意不同:摘一行的后果不是「这一格的
+   * 值翻了个面」而是**它连同级联的子会话一起离场**,而谁离场只有
+   * `session:removed` 那条事件自带的整份名单说得全(级联子会话常常压根不在屏上)。
+   * 先乐观摘掉再按名单摘一遍,等于让两个产地对同一件事各说一次 —— 而失败时要
+   * 「翻回去」的那一份根本拼不回来(顺序、父子关系、缓存全在账本上)。
+   *
+   * 所以这一口的即时反馈是**别的**:调用方(菜单)先把开着它的格子摘掉,
+   * 确认框自己就是那一拍的反馈;行由事件 / 重拉摘掉。失败时那一行留在屏上,
+   * 原话交给调用方去说(与 `create` 同一条接缝纪律:这一层不弹通知)。
+   */
+  remove: (sessionId: string) => Promise<{ ok: true } | { ok: false; error: string }>
+  /**
    * 三只「确保问过一次」。签名与迁移前逐字相同(调用点一个字不改),内部就是
    * 对应族那一格的 `ensure()` —— 去重、缓存、脏标记全由原语承担。
    */
@@ -610,6 +639,23 @@ export function pinKey(sessionId: string): string {
 }
 
 /**
+ * 改名那一口的忙态格键(A2)。同样**按会话分格**,理由与上面两条逐字相同:
+ * 改这一条的名字不该让别的行跟着变忙 —— 而侧栏里同时改两行名字是做得到的
+ * (一格原地编辑收回之后另一行再点开,前一发可能还在飞)。
+ */
+export function renameKey(sessionId: string): string {
+  return `rename:${sessionId}`
+}
+
+/**
+ * 删除那一口的忙态格键(A2)。按会话分格的理由在这一口上最硬:删两条会话是
+ * 两件独立的事,共一格忙态会让第二次确认被第一发挡住。
+ */
+export function deleteKey(sessionId: string): string {
+  return `delete:${sessionId}`
+}
+
+/**
  * 一次写要带的全部东西。两口一个联合,`kind` 同时是分派与对账口径的产地:
  *  · `create`  —— 建一条会话(可选落目录)。成功后**同步重拉**;
  *  · `workdir` —— 给一条已存在的会话换工作目录。成功后**同步重拉**
@@ -627,12 +673,31 @@ export type SessionWrite =
    * `notifySessionIndexChanged`),不对账的话屏幕永远不知道自己改成了。
    */
   | { kind: 'pin'; sessionId: string; isPinned: boolean }
+  /**
+   * 改名(A2)。成功后**同步重拉** —— 与置顶那一口同一句话,但重拉在这一口上
+   * 只是对账:后端改完会广播 `SESSION_RENAMED`,而判据 b 那一格增量补丁早就在
+   * 等它。三笔(乐观 / 事件 / 重拉)写的是同一个名字,所以后两笔是恒等变换。
+   */
+  | { kind: 'rename'; sessionId: string; newName: string }
+  /**
+   * 删除(A2)。它是这只 mutation 里唯一**不靠重拉**把行摘掉的一口:后端广播
+   * `session:removed`,`onLifecycle` 的 `deleted` 那一支当场摘账本 + 作废三份
+   * 缓存 + 发那两条接缝(`onSessionsRemoved` / `onSessionsDeleted`)。
+   * 重拉照样发 —— 它是兜底(事件没到 / 级联名单有出入时,重拉那一份才是权威)。
+   */
+  | { kind: 'delete'; sessionId: string }
 
 /** 换目录那一口的答案。成败两种形状,失败带后端原话。 */
 export type WorkdirOutcome = { ok: true } | { ok: false; error: string }
 
 /** 置顶那一口的答案。与换目录同形(同一种「改一条会话的一格」)。 */
 export type PinOutcome = { ok: true } | { ok: false; error: string }
+
+/** 改名那一口的答案。与置顶同形 —— 同一种「改一条会话的一格」。 */
+export type RenameOutcome = { ok: true } | { ok: false; error: string }
+
+/** 删除那一口的答案。同形,失败带后端原话(那句话要原样上屏)。 */
+export type DeleteOutcome = { ok: true } | { ok: false; error: string }
 
 /**
  * 这只 mutation 的答案,**带着 `kind` 标签**。
@@ -645,6 +710,8 @@ export type SessionWriteResult =
   | { kind: 'create'; outcome: CreateSessionOutcome }
   | { kind: 'workdir'; outcome: WorkdirOutcome }
   | { kind: 'pin'; outcome: PinOutcome }
+  | { kind: 'rename'; outcome: RenameOutcome }
+  | { kind: 'delete'; outcome: DeleteOutcome }
 
 /**
  * **这只 mutation 的失败通道是返回值,不是抛出** —— 与 agents / models 那两只
@@ -666,7 +733,10 @@ export const sessionMutation: Mutation<SessionWrite, SessionWriteResult> = creat
 >('sessions.write', {
   key: (input) => {
     if (input.kind === 'create') return CREATE_KEY
-    return input.kind === 'pin' ? pinKey(input.sessionId) : workdirKey(input.sessionId)
+    if (input.kind === 'pin') return pinKey(input.sessionId)
+    if (input.kind === 'rename') return renameKey(input.sessionId)
+    if (input.kind === 'delete') return deleteKey(input.sessionId)
+    return workdirKey(input.sessionId)
   },
 
   run: async (input) => {
@@ -676,6 +746,12 @@ export const sessionMutation: Mutation<SessionWrite, SessionWriteResult> = creat
     }
     if (input.kind === 'pin') {
       return { kind: 'pin', outcome: await updatePin(port, input.sessionId, input.isPinned) }
+    }
+    if (input.kind === 'rename') {
+      return { kind: 'rename', outcome: await renameSession(port, input.sessionId, input.newName) }
+    }
+    if (input.kind === 'delete') {
+      return { kind: 'delete', outcome: await deleteSession(port, input.sessionId) }
     }
 
     let created
@@ -704,7 +780,7 @@ export const sessionMutation: Mutation<SessionWrite, SessionWriteResult> = creat
   },
 
   /*
-   * 对账:三口同一句话 —— **写成了就重拉一次列表**。
+   * 对账:五口同一句话 —— **写成了就重拉一次列表**。
    *
    * 建会话那一路即便带着 `workdirError` 也照样重拉(`outcome.ok` 仍是 true):
    * 分组要按**后端的事实**走,而不是按我们以为落成了的那个目录。
@@ -732,6 +808,54 @@ async function updatePin(
     const updated = await port.updatePin(sessionId, isPinned)
     if (!updated?.success) {
       return { ok: false, error: updated?.error || 'sessions.updatePin 未成功' }
+    }
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: messageOf(error) }
+  }
+}
+
+/**
+ * 改名那一发(A2)。与置顶 / 换目录逐字同一手 —— **必须看 `success`**,
+ * 两种「没成」(后端说不行 / 端口自己抛)收成同一种答案。
+ *
+ * **空名字在这里就是一次失败而不是一次写**:`sessions.rename` 的后端会拿它
+ * 覆盖账本上的标题,于是屏幕上出现一条没有名字的会话。判据放在调用方那一层
+ * (`rename` 那口 action:空串 / 没变 = 当没改,一发都不打),这里只兜住
+ * 「真的打出去了但后端不认」那一档。
+ */
+async function renameSession(
+  port: Awaited<ReturnType<typeof sessionsPort>>,
+  sessionId: string,
+  newName: string,
+): Promise<RenameOutcome> {
+  try {
+    const updated = await port.rename(sessionId, newName)
+    if (!updated?.success) {
+      return { ok: false, error: updated?.error || 'sessions.rename 未成功' }
+    }
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: messageOf(error) }
+  }
+}
+
+/**
+ * 删除那一发(A2)。同一手,同一条理由。
+ *
+ * **不读 `deletedCount` / `parentSessionId`**:级联删掉了几条、父是谁,这一层
+ * 不需要知道 —— 谁离场由 `session:removed` 那条事件自带的**整份名单**说
+ * (`onLifecycle` 按名单摘,幂等)。在这里再读一份计数就是第二个产地,
+ * 而两个产地对「删了哪几条」的回答迟早分叉。
+ */
+async function deleteSession(
+  port: Awaited<ReturnType<typeof sessionsPort>>,
+  sessionId: string,
+): Promise<DeleteOutcome> {
+  try {
+    const deleted = await port.delete(sessionId)
+    if (!deleted?.success) {
+      return { ok: false, error: deleted?.error || 'sessions.delete 未成功' }
     }
     return { ok: true }
   } catch (error) {
@@ -1013,6 +1137,58 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
       // 没成就把乐观那一笔翻回去 —— 屏幕上不许留一条后端并不认的置顶。
       if (!outcome.ok) flip(!isPinned)
       return outcome
+    },
+
+    /*
+     * ── 改名:就地更新在前,重拉对账在后(律①)────────────────────────────
+     * 一格补丁翻 `title`,打那一发,没成翻回去 —— 与 `setPinned` 逐字同一手。
+     * `sameSession` 比 `title`(它是列表行的第一格文字),所以翻掉一定重投影。
+     */
+    rename: async (sessionId, newName) => {
+      if (!sessionId) return { ok: false, error: 'sessionId 为空' }
+      const next = newName.trim()
+      /*
+       * 旧名字读的是**账本**那一份而不是屏幕那一份(`get().sessions`):补丁打在
+       * 账本上,翻回去也就得拿账本上的值 —— 屏幕那一份是按当前空间过滤过的投影,
+       * 两份在别的空间那条路上答得不一样。
+       */
+      const before = sessionsQuery.get().data?.find((s) => s.id === sessionId)?.title
+      // 空串 / 没变 = 当没改。它不是一次失败的写,是一次**没有发生**的写。
+      if (!next || (before !== undefined && next === before)) return { ok: true }
+      const put = (title: string) =>
+        patchLedger((all) =>
+          all.some((s) => s.id === sessionId && s.title !== title)
+            ? all.map((s) => (s.id === sessionId ? { ...s, title } : s))
+            : all,
+        )
+      put(next)
+      const result = await sessionMutation.run({ kind: 'rename', sessionId, newName: next })
+      await reconcile
+      const outcome: RenameOutcome =
+        result?.kind === 'rename' ? result.outcome : { ok: false, error: 'sessions.rename 未成功' }
+      /*
+       * 没成就翻回去。**翻得回去的前提是那一刻记下了旧名字**(`before`)——
+       * 拿重拉那一份去推「原来叫什么」在写没成的那条路上办不到:写没成一发重拉
+       * 都不发(`settle` 直接返回),屏幕上留下的只可能是乐观那一笔。
+       * 旧名字答不出来(这条会话不在账上)就什么都不翻:凭空造一个名字更糟。
+       */
+      if (!outcome.ok && before !== undefined) put(before)
+      return outcome
+    },
+
+    /*
+     * ── 删除:没有乐观补丁(理由整段在接口注释上)────────────────────────
+     * 一发写 + 一次同步对账。行由 `session:removed` 那条事件摘掉(它带着整份
+     * 级联名单,而且那条路上还要发 `onSessionsRemoved` / `onSessionsDeleted`
+     * 两条接缝);重拉是兜底。
+     */
+    remove: async (sessionId) => {
+      if (!sessionId) return { ok: false, error: 'sessionId 为空' }
+      const result = await sessionMutation.run({ kind: 'delete', sessionId })
+      await reconcile
+      return result?.kind === 'delete'
+        ? result.outcome
+        : { ok: false, error: 'sessions.delete 未成功' }
     },
 
     /*

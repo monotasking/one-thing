@@ -1,8 +1,10 @@
 import type {
   CreateSessionResponse,
+  DeleteSessionResponse,
   GetSessionMessagesPageResponse,
   GetSessionUserMarkersResponse,
   GetSessionsListResponse,
+  RenameSessionResponse,
   UpdateSessionPinResponse,
 } from '@shared/ipc/chat'
 import type { SessionMutationResponse, SessionsCreateRequest } from '@shared/ipc/sessions'
@@ -19,10 +21,11 @@ import { sessionsRouter } from '@shared/ipc/sessions'
  * 失效)都是纯逻辑,不该为了测它去起一台 core。真实现是下面那一个,
  * 测试用 `configureSessionsPort` 换成假的。
  *
- * 形状是**契约的子集**,不是新契约:九个方法逐条对应 `sessionsRouter` 的
+ * 形状是**契约的子集**,不是新契约:十一个方法逐条对应 `sessionsRouter` 的
  * `listMeta / getSegments / getMessagesPage / getUserMarkers / create /
- * updateWorkingDirectory / updatePin`、推送面上的 `session:event`,与
- * `@onething/client` 的 `onSessionLifecycle`,一个字段都没有多。
+ * updateWorkingDirectory / updatePin / rename / delete`、推送面上的
+ * `session:event`,与 `@onething/client` 的 `onSessionLifecycle`,
+ * 一个字段都没有多。
  */
 export interface SessionsPort {
   /** 传输面就绪(D0 的 whenConnected);浏览器直开时它也会 resolve。 */
@@ -61,6 +64,27 @@ export interface SessionsPort {
    * 与工作目录那一口逐字同形。后端加固另批(见设计 §7 留账)。
    */
   updatePin(sessionId: string, isPinned: boolean): Promise<UpdateSessionPinResponse>
+  /**
+   * 改名(`sessions.rename`,契约 `@shared/ipc/sessions.ts:131`)。
+   *
+   * **后端这一口是推事件的**:改完广播 `SESSION_RENAMED`,而本文件的
+   * `onSessionEvent` 那条链上早就有一格增量补丁在等它(sessions-source 判据 b:
+   * 「改名自带新名字,一格增量就够」)。所以这一口与 `updatePin` 不同形 ——
+   * 那一口的重拉是它**唯一**的反馈,这一口的重拉只是对账:乐观那一笔、事件那
+   * 一笔、重拉那一笔三笔写的是同一个名字,后两笔因此是恒等变换。
+   */
+  rename(sessionId: string, newName: string): Promise<RenameSessionResponse>
+  /**
+   * 删一条会话(`sessions.delete`,契约同上 `:130`)。
+   *
+   * 它与别的写口不是同一个量级:**账本连同目录一起没了**,所以后端广播的是
+   * `session:removed`(`packages/backend/stores/sessions.ts:587`),而那条事件
+   * 在壳这一侧有两个消费者 —— `onSessionsRemoved`(形态夹持)与
+   * `onSessionsDeleted`(伴随面 / 停靠池 / 泊位忘账)。删除这条路**不自己**叫
+   * 那两条接缝:叫了就是第二个产地,而级联删掉的子会话只有事件那一份名单
+   * 说得全(`foldSessionLifecycleEvent` 带 `cascadedSessionIds`)。
+   */
+  delete(sessionId: string): Promise<DeleteSessionResponse>
   getSegments(sessionId: string): Promise<GetSessionSegmentsResponse>
   getMessagesPage(sessionId: string, limit: number): Promise<GetSessionMessagesPageResponse>
   getUserMarkers(sessionId: string): Promise<GetSessionUserMarkersResponse>
@@ -112,6 +136,8 @@ async function realPort(): Promise<SessionsPort> {
     updateWorkingDirectory: (sessionId, workingDirectory) =>
       sessionsApi.updateWorkingDirectory({ sessionId, workingDirectory }),
     updatePin: (sessionId, isPinned) => sessionsApi.updatePin({ sessionId, isPinned }),
+    rename: (sessionId, newName) => sessionsApi.rename({ sessionId, newName }),
+    delete: (sessionId) => sessionsApi.delete({ sessionId }),
     onSessionEvent: (callback) => client.events.on(IPC_CHANNELS.SESSION_EVENT, callback),
     onSessionLifecycle: (callback) => onSessionLifecycle(client.events, callback),
   }

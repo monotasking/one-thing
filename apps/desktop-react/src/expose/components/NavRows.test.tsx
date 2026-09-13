@@ -287,6 +287,8 @@ describe('新会话:aria-busy + 单飞闸', () => {
       },
       updateWorkingDirectory: async () => ({ success: true }),
       updatePin: async () => ({ success: true }),
+      rename: async () => ({ success: true }),
+      delete: async () => ({ success: true }),
       onSessionEvent: () => () => undefined,
       onSessionLifecycle: () => () => undefined,
     })

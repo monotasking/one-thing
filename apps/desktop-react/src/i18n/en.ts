@@ -373,6 +373,35 @@ export const en: Record<MessageKey, string> = {
    * same table), plus the accname of the hollow "open but hidden" dot. The
    * first two items reuse `files.menuOpen*`, Quick Look reuses `card.preview`. */
   'expose.rowMenu': 'More actions',
+  /* 09-12 ruling 4: sessions cannot sit side by side vertically (two slots, left
+   * and right only), so "Open below" was a lie — renamed to what it does. NOT
+   * reusing `files.menuOpenBelow`: that key is literally true in the file tree
+   * (it really calls `splitLeaf(leaf.id, 'col')`), so retitling it would break
+   * that row instead. One sentence, one key. */
+  'expose.menuOpenNewTab': 'Open in new tab',
+  /* ── A2: the four rows that finish the table ─────────────────────────
+   * "Close" takes this session out of every slot that holds it and touches
+   * NO data (ruling 5) — so it and "Delete…" must read as two different
+   * things at a glance; the latter carries the ellipsis (one more step).
+   * The pin row reuses `expose.pin` / `expose.unpin`: with the row pin
+   * retired, the menu and ⌘⇧P say the same sentence, so one key. */
+  'expose.menuClose': 'Close',
+  'expose.menuRename': 'Rename…',
+  'expose.menuDelete': 'Delete…',
+  /* Name of the inline rename box: spoken, not seen (`labelHidden`) — it sits
+   * exactly where the title was, and a visible label would squeeze the row
+   * back into the shape A1 just fixed. */
+  'expose.renameLabel': 'Session name',
+  /* The one confirm we allow (data really goes). The body names the session —
+   * "are you sure?" says nothing when 400 rows look alike. */
+  'expose.deleteConfirmTitle': 'Delete session',
+  'expose.deleteConfirmBody': 'Delete “{name}”? This session and its history go away.',
+  'expose.deleteConfirmAction': 'Delete',
+  /* Announced ONLY when the write did not land (when it does, the screen says
+   * it). The backend's own words ride along: the usual causes ("no such
+   * session" / sandbox refusal) are readable. */
+  'expose.renameFailed': 'Rename failed: {error}',
+  'expose.deleteFailed': 'Delete failed: {error}',
   'expose.openStateHidden': 'Open (hidden)',
   'expose.expandRoom': 'Expand {name}',
   'expose.collapseRoom': 'Collapse {name}',
@@ -380,12 +409,6 @@ export const en: Record<MessageKey, string> = {
   /* ── list view: retired 09-04 (see zh.ts) ─────────────────────────── */
 
   /* ── search panel (search/: one search row + one flat hit list) ───── */
-  /* 09-12 ruling 4: sessions cannot sit side by side vertically (two slots, left
-   * and right only), so "Open below" was a lie — renamed to what it does. NOT
-   * reusing `files.menuOpenBelow`: that key is literally true in the file tree
-   * (it really calls `splitLeaf(leaf.id, 'col')`), so retitling it would break
-   * that row instead. One sentence, one key. */
-  'expose.menuOpenNewTab': 'Open in new tab',
   /* Fallback placeholder while the manifests are still on the wire: it names no
    * scopes, because any name it printed there would be a guess. */
   'search.placeholder': 'Search…',

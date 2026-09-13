@@ -18,6 +18,8 @@ import {
   markersQuery,
   messagesQuery,
   REFRESH_THROTTLE_MS,
+  deleteKey,
+  renameKey,
   sessionMutation,
   pinKey,
   sessionsQuery,
@@ -48,6 +50,8 @@ let getUserMarkers: ReturnType<typeof vi.fn>
 let create: ReturnType<typeof vi.fn>
 let updateWorkingDirectory: ReturnType<typeof vi.fn>
 let updatePin: ReturnType<typeof vi.fn>
+let rename: ReturnType<typeof vi.fn>
+let remove: ReturnType<typeof vi.fn>
 let emit: ((envelope: SessionEventEnvelope) => void) | undefined
 let emitLifecycle: ((event: SessionLifecycleEvent) => void) | undefined
 let unsubscribed = 0
@@ -92,6 +96,8 @@ beforeEach(() => {
   create = vi.fn(async () => ({ success: true, session: { id: 'new-1' } }))
   updateWorkingDirectory = vi.fn(async () => ({ success: true }))
   updatePin = vi.fn(async () => ({ success: true }))
+  rename = vi.fn(async () => ({ success: true }))
+  remove = vi.fn(async () => ({ success: true, deletedCount: 1 }))
   emit = undefined
   emitLifecycle = undefined
   unsubscribed = 0
@@ -104,6 +110,8 @@ beforeEach(() => {
     create: (request) => create(request),
     updateWorkingDirectory: (id, dir) => updateWorkingDirectory(id, dir),
     updatePin: (id, isPinned) => updatePin(id, isPinned),
+    rename: (id, newName) => rename(id, newName),
+    delete: (id) => remove(id),
     onSessionEvent: (callback) => {
       emit = callback
       return () => {
@@ -782,6 +790,184 @@ describe('写路:一只 mutation,两口一个联合', () => {
     const outcome = await useSessionsSource.getState().setWorkingDirectory('', ONETHING_DIR)
     expect(outcome).toEqual({ ok: false, error: 'sessionId 为空' })
     expect(updateWorkingDirectory).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * ── A2:改名与删除两口写路 ──────────────────────────────────────────────────
+ *
+ * 两口与置顶那一口是同一族(一发写 + 一次同步对账),但各有**一格刻意的不同**,
+ * 而这一组钉的正是那两格:
+ *  · 改名**有**乐观补丁(行上那个字当场换),而且没成要翻回去 —— 与置顶同形;
+ *  · 删除**没有**乐观补丁(判词在 `remove` 的接口注释上:谁离场只有
+ *    `session:removed` 那份级联名单说得全),所以这一组不许出现「先摘掉再翻回来」
+ *    的断言 —— 它恰恰是那条判词的反面。
+ */
+describe('改名(A2)', () => {
+  it('乐观:那一发还在飞,账本上的名字就已经换了(就地更新,律①)', async () => {
+    await start()
+    const gate = deferred<{ success: true }>()
+    rename.mockReturnValue(gate.promise)
+
+    const flying = useSessionsSource.getState().rename('lo-notes', '随手记 → 周记')
+    // 一次 await 都没走 —— 补丁是**同步**打的(与置顶那一条逐字同一手)。
+    expect(useSessionsSource.getState().sessions.find((x) => x.id === 'lo-notes')!.title).toBe(
+      '随手记 → 周记',
+    )
+
+    gate.resolve({ success: true })
+    await flying
+  })
+
+  it('成功:同步重拉,回来的那一刻列表里那条已经是新名字', async () => {
+    await start()
+    listMeta.mockResolvedValue({
+      success: true,
+      sessions: SESSION_META.map((m) => (m.id === 'lo-notes' ? { ...m, name: '周记' } : m)),
+    })
+
+    const result = await useSessionsSource.getState().rename('lo-notes', '周记')
+
+    expect(result).toEqual({ ok: true })
+    expect(rename).toHaveBeenCalledWith('lo-notes', '周记')
+    expect(listMeta).toHaveBeenCalledTimes(2)
+    expect(useSessionsSource.getState().sessions.find((x) => x.id === 'lo-notes')!.title).toBe('周记')
+  })
+
+  it('后端说不行 → **原话**原样交出去,乐观那一笔翻回原名,一次重拉都不发', async () => {
+    await start()
+    const before = useSessionsSource.getState().sessions.find((x) => x.id === 'lo-notes')!.title
+    rename.mockResolvedValue({ success: false, error: '这条会话不在' })
+
+    const result = await useSessionsSource.getState().rename('lo-notes', '改不成')
+
+    expect(result).toEqual({ ok: false, error: '这条会话不在' })
+    // 写没成 = settle 直接返回 = 一次重拉都不发,所以留下的只可能是乐观那一笔本身。
+    expect(listMeta).toHaveBeenCalledTimes(1)
+    expect(useSessionsSource.getState().sessions.find((x) => x.id === 'lo-notes')!.title).toBe(before)
+  })
+
+  it('端口自己抛也收成同一种答案(不是一次没人接的 rejection)', async () => {
+    await start()
+    const before = useSessionsSource.getState().sessions.find((x) => x.id === 'lo-notes')!.title
+    rename.mockRejectedValue(new Error('socket 断了'))
+    expect(await useSessionsSource.getState().rename('lo-notes', 'x')).toEqual({
+      ok: false,
+      error: 'socket 断了',
+    })
+    expect(useSessionsSource.getState().sessions.find((x) => x.id === 'lo-notes')!.title).toBe(before)
+  })
+
+  it('空串 / 只有空白 / 一个字没变 = **当没改**:一发都不打,答 ok', async () => {
+    await start()
+    const before = useSessionsSource.getState().sessions.find((x) => x.id === 'lo-notes')!.title
+    expect(await useSessionsSource.getState().rename('lo-notes', '')).toEqual({ ok: true })
+    expect(await useSessionsSource.getState().rename('lo-notes', '   ')).toEqual({ ok: true })
+    expect(await useSessionsSource.getState().rename('lo-notes', before)).toEqual({ ok: true })
+    // 「取消」与「改成一样的」在屏幕上是同一件事(什么都没发生),不是一次失败。
+    expect(rename).not.toHaveBeenCalled()
+    expect(listMeta).toHaveBeenCalledTimes(1)
+  })
+
+  it('两头的空白剪掉才写出去(屏幕上看不见的空格不该进账本)', async () => {
+    await start()
+    await useSessionsSource.getState().rename('lo-notes', '  周记  ')
+    expect(rename).toHaveBeenCalledWith('lo-notes', '周记')
+  })
+
+  it('忙态按会话分格(rename:<id>),与置顶 / 换目录那两格互不干涉', async () => {
+    await start()
+    const gate = deferred<{ success: true }>()
+    rename.mockReturnValue(gate.promise)
+
+    const flying = useSessionsSource.getState().rename('os-compact', '新名字')
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(sessionMutation.isPending(renameKey('os-compact'))).toBe(true)
+    expect(sessionMutation.isPending(renameKey('os-provider'))).toBe(false)
+    expect(sessionMutation.isPending(pinKey('os-compact'))).toBe(false)
+
+    gate.resolve({ success: true })
+    await flying
+    expect(sessionMutation.isPending(renameKey('os-compact'))).toBe(false)
+  })
+
+  it('空 id 连一发都不打 —— 它是问错了的话,不是一次失败的写', async () => {
+    await start()
+    expect(await useSessionsSource.getState().rename('', 'x')).toEqual({
+      ok: false,
+      error: 'sessionId 为空',
+    })
+    expect(rename).not.toHaveBeenCalled()
+  })
+})
+
+describe('删除(A2)', () => {
+  it('成功:一发写 + 一次同步重拉;**没有乐观摘除**(谁离场由事件那份名单说)', async () => {
+    await start()
+    const gate = deferred<{ success: true }>()
+    remove.mockReturnValue(gate.promise)
+
+    const flying = useSessionsSource.getState().remove('lo-notes')
+    // 那一发还在飞 —— 行**还在**。这一条钉的就是「这一口刻意没有乐观补丁」。
+    expect(useSessionsSource.getState().sessions.map((x) => x.id)).toContain('lo-notes')
+
+    listMeta.mockResolvedValue({
+      success: true,
+      sessions: SESSION_META.filter((m) => m.id !== 'lo-notes'),
+    })
+    gate.resolve({ success: true })
+    expect(await flying).toEqual({ ok: true })
+    expect(remove).toHaveBeenCalledWith('lo-notes')
+    expect(listMeta).toHaveBeenCalledTimes(2)
+    expect(useSessionsSource.getState().sessions.map((x) => x.id)).not.toContain('lo-notes')
+  })
+
+  it('后端说不行 → 原话原样交出去,那一行留在屏上,一次重拉都不发', async () => {
+    await start()
+    remove.mockResolvedValue({ success: false, error: '这条会话不在' })
+
+    expect(await useSessionsSource.getState().remove('lo-notes')).toEqual({
+      ok: false,
+      error: '这条会话不在',
+    })
+    expect(listMeta).toHaveBeenCalledTimes(1)
+    expect(useSessionsSource.getState().sessions.map((x) => x.id)).toContain('lo-notes')
+  })
+
+  it('端口自己抛也收成同一种答案', async () => {
+    await start()
+    remove.mockRejectedValue(new Error('socket 断了'))
+    expect(await useSessionsSource.getState().remove('lo-notes')).toEqual({
+      ok: false,
+      error: 'socket 断了',
+    })
+    expect(useSessionsSource.getState().sessions.map((x) => x.id)).toContain('lo-notes')
+  })
+
+  it('忙态按会话分格(delete:<id>)—— 删两条是两件独立的事', async () => {
+    await start()
+    const gate = deferred<{ success: true }>()
+    remove.mockReturnValue(gate.promise)
+
+    const flying = useSessionsSource.getState().remove('os-compact')
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(sessionMutation.isPending(deleteKey('os-compact'))).toBe(true)
+    expect(sessionMutation.isPending(deleteKey('os-provider'))).toBe(false)
+
+    gate.resolve({ success: true })
+    await flying
+    expect(sessionMutation.isPending(deleteKey('os-compact'))).toBe(false)
+  })
+
+  it('空 id 连一发都不打', async () => {
+    await start()
+    expect(await useSessionsSource.getState().remove('')).toEqual({
+      ok: false,
+      error: 'sessionId 为空',
+    })
+    expect(remove).not.toHaveBeenCalled()
   })
 })
 
