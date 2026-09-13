@@ -2,7 +2,11 @@
  * 09-02 之前放大走布局尺寸(瓦真的变宽,flex 把邻居推开、条随之变宽),代价是
  * 每一帧都要重排,而且条一变宽,居中档的定位(left:50% + translate(-50%))就把
  * 整条来回拉 —— 那是「抖动感」的一半来源。现在条不重排、不平移,只有底板会朝
- * 主轴两头长出去(见 .bg)。 */
+ * 主轴两头长出去(见 .bg)。
+ *
+ * 09-13 起条有**两种形**(见文件末 .bar 那一节):常驻档是贴满整条边的浮栏,
+ * 自动隐藏档仍是一枚药丸。这段「盒子一动不动」对两种形都成立 —— 栏形连底板
+ * 都不长了(它已经满边,没地方可长),所以它只是把这条纪律执行得更彻底。 */
 .strip {
   position: relative;
   display: flex;
@@ -104,6 +108,42 @@
 .magnifySm { --dock-lens-max: var(--dock-lens-max-sm); }
 .magnifyMd { --dock-lens-max: var(--dock-lens-max-md); }
 .magnifyLg { --dock-lens-max: var(--dock-lens-max-lg); }
+
+/* ── 常驻 = 整边浮栏(09-13 用户拍板,样例页 docs/dock-always-bar-proposal-2026-09-13.html)──
+ *
+ * **判据**:常驻 = Dock **有自己的一条地**(主区已朝那条边让出 --dock-reserve-*),
+ * 让出来的那条带就是 Dock 本身,所以它**贴满整条边**;自动隐藏 = 盖在内容上的
+ * 浮层,所以它是**一枚药丸**。四条边同一个形:横边一条横栏、竖边一条竖栏。
+ *
+ * 起因是用户报的「常显时让出来的那条带在不同页(终端黑底 / diff / 浏览器)底下
+ * 露出不同颜色,很怪」—— 09-01 那一版的让位在上下两边是**内衬形**(面自己缩
+ * 内容、底色照画到窗底),于是那条带的颜色是**底下那块面**的,一页一个样;药丸
+ * 浮在带中央,带的其余部分是别人的底。改成平移形 + 整边栏之后,那条带永远是
+ * 栏自己的玻璃,底下换哪一页都一样。
+ *
+ * **皮一个字没改**:玻璃底 / 模糊 / 描边 / 投影 / --r-dock 全在 .bg 上,栏与药丸
+ * 共用同一块底板 —— 变的只有「有多长」与「瓦在里面怎么排」。
+ * 栏形下底板**不再随放大长出**:它已经满边,--dock-grow-before/-after 照旧被
+ * useDockLens 写上去(那只 hook 一个字没改),这里不读它就是了。 */
+.bar:not(.vertical) { width: 100%; }
+.bar.vertical { height: 100%; }
+
+/* 沿边三档在栏形下**只挪栏里的瓦**,栏自己永远满边。横竖共用这三条:
+ * 主轴由 flex-direction 决定,justify-content 说的始终是「沿主轴怎么排」。 */
+.alignStart { justify-content: flex-start; }
+.alignCenter { justify-content: center; }
+.alignEnd { justify-content: flex-end; }
+
+/* 栏形下底板齐条身(仍越出那 1px 透明边框,静息态与药丸逐像素同一手)。 */
+.bar .bg {
+  left: -1px;
+  right: -1px;
+}
+
+.vertical.bar .bg {
+  top: -1px;
+  bottom: -1px;
+}
 
 /* 大小三档:只在 Dock 根节点上覆写这两个变量,瓦、圆角、图标(41% 比例)全自动跟。 */
 .sizeSm { --tile-size: var(--tile-size-sm); --r-tile: var(--r-tile-sm); }

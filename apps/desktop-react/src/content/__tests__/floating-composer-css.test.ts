@@ -48,9 +48,24 @@ describe('① 输入框浮起来,聊天区铺满', () => {
     expect(block(shell, '.composerDock > *')).toMatch(/pointer-events:\s*auto/)
   })
 
-  it('Dock 停底边的让位改加在它的 bottom 上(绝对定位不吃父级内边距)', () => {
-    expect(block(shell, ".shell[data-dock-reserve='bottom'] .composerDock")).toMatch(
-      /bottom:\s*var\(--dock-reserve-h\)/,
+  /**
+   * 09-13(Dock 常驻改整边浮栏)**推翻**了这一条的前一版。
+   *
+   * 旧版钉的是 `.shell[data-dock-reserve='bottom'] .composerDock { bottom: reserve }` ——
+   * 那是**内衬形**让位的必需品:内衬打在 `.center` 的 `padding-block-end` 上,而输入框
+   * 是 `.center` 的绝对定位子元素,`bottom` 量的是包含块的 padding box,父级那条内衬
+   * 一个像素都推不动它,所以要在它自己身上再写一次。
+   *
+   * 四条边改成**平移形**(让位打在 `.main` 的 padding 上)之后,`.center` 整格就已经
+   * 在让位线以上了 —— 输入框贴的是一个已经缩过的包含块,`bottom: 0` 天然落在线上。
+   * 那条覆写于是**必须删掉**:留着就是让位算两遍,输入框会浮在半空。
+   *
+   * 断言因此反过来:**不许再有那条规则**,而让位落在 `.main` 上。
+   */
+  it('Dock 停底边的让位落在 .main 上(平移形),输入框不再有第二条 bottom 覆写', () => {
+    expect(shell).not.toMatch(/\.shell\[data-dock-reserve='bottom'\]\s+\.composerDock\s*\{/)
+    expect(block(shell, ".shell[data-dock-reserve='bottom'] .main")).toMatch(
+      /padding-block-end:\s*var\(--dock-reserve-h\)/,
     )
   })
 })

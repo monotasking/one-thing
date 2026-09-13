@@ -25,8 +25,10 @@ import '../content/kinds'
  * 后者是叶檐那圈焦点边的判据(只有一片时不画:没有第二片可比,一圈边只是噪音)。
  *
  * ── 它挂在 `.center` 与从前那格 `.chatArea` 之间 ──────────────────────────
- * 位置是裁定死的:`[data-dock-reserve]` 那四条让位规则打在 `.center` 上,
- * 而叶容器必须是 `.center` 的 **height:100% 后代**,那几条内衬才对得上。
+ * 位置是裁定死的:叶容器必须是 `.center` 的 **height:100% 后代**,才吃得到中央区
+ * 那一格的高度。(09-13 起 `[data-dock-reserve]` 那四条让位规则打在 `.main` 上 ——
+ * 平移形,整张网格朝那条边退,`.center` 与它的后代跟着缩;从前上下两边是内衬形、
+ * 打在 `.center` 自己身上,那一版连同 `.composerDock` 的 bottom 覆写一起删了。)
  * `.composerDock` **留在 `.center` 上不进树**(W5 才归属焦点叶)。
  */
 export function CenterRegion() {

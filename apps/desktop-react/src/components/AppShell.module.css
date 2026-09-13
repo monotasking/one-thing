@@ -53,7 +53,7 @@
   --content-lead-left: var(--sp-5);
 }
 
-/* ── Dock 的布局预留:**表面画到窗底,让位走各面的内衬** ────────────────────
+/* ── Dock 的布局预留:**四条边都是平移形,让出来的那条带就是 Dock 自己** ──────
  * 「覆盖必须有布局预留」(挤压四律第三条)在 Dock 上的落地。**常显 + 钉边**时
  * 要给那条边让出一截,内容不许长到 Dock 底下去 —— 修的是 08-31 P0:
  * 底边常显档下 composer 的四件控件 100 个采样点只有 5 个按得到。
@@ -85,60 +85,45 @@
  * 内衬移到层自己身上,两件才都成立:`.body` 的底色照旧画到窗边(不断带),
  * 层里的内容往里缩(不被盖)。四条边同此一改。
  *
- * ── 状态先行:三种形态一张表(09-01 方案乙拍板后补)──────────────────────
- *   档 / 边            | 形    | 落点                | 为什么
- *   常显 · 左 / 右      | 平移  | .main 的左右 padding | Dock 独占那条边;架子厚度是
- *                      |       |                      | 用户亲手拖的数,不该被压缩,
- *                      |       |                      | 由中央区(本来就是「剩多少算
- *                      |       |                      | 多少」那一格)买单
- *   常显 · 上 / 下      | 内衬  | .center + 面板层     | 高度这一维没人有「亲手定的数」,
- *                      |       |                      | 内衬形少一层盒子;用户对这一形
- *                      |       |                      | 没意见(17bde332)
- *   自动隐藏 · 四条边    | 零    | 宿主不挂属性          | 它平时不在屏上,让了就是白让
+ * ── 09-13 第三刀(用户报障:「常显时让出来的那条带在不同页底下露出不同颜色」)──
+ * 上面那两段病历说的是**内衬形**的由来,它今天只剩历史价值:上下两边的内衬规则
+ * (`.center` / `[data-panel-layer]` 的 padding + scroll-padding,以及
+ * `.composerDock` 那条 bottom 覆写)**已删**,四条边统一成平移形。
+ *
+ * 理由不是「内衬形不好使」——它治好了断带也治好了遮挡;是**那条带归谁**变了。
+ * 内衬形下带子的颜色是**底下那块面**的(终端黑底、diff 纸色、浏览器白),一页一个样,
+ * 药丸浮在中央像贴在别人身上的一块。09-13 拍板之后 Dock 在常驻档是**贴满整条边的
+ * 浮栏**,让出来的那条带就是它自己 —— 带的颜色于是恒为栏的玻璃,栏外只留四周各
+ * --sp-3 的呼吸。那条带既然是 Dock 的地皮,让位就该把整张网格推开(平移),
+ * 而不是让别人把内容缩进去、底色照画过来(内衬)。
+ *
+ * ── 状态先行:两种形态一张表(09-13 重写)────────────────────────────────
+ *   档 / 边            | 形    | 落点            | 为什么
+ *   常显 · 四条边       | 平移  | .main 的四向 padding | 那条带是 Dock 自己的地皮,
+ *                      |       |                 | 别人整体让开;买单的是中央区
+ *                      |       |                 | (本来就是「剩多少算多少」那格),
+ *                      |       |                 | 架子厚度一个像素不动
+ *   自动隐藏 · 四条边    | 零    | 宿主不挂属性     | 它平时不在屏上,让了就是白让
  * 大小档只换 `--dock-tile` 一个数,式子在 tokens.css 里写一次。
+ *
+ * 落点仍是 .main(三明治网格本身)而不是 .shell:让位若打在外层,四条架子与中央区
+ * 会被整体推走、露出**外壳底色** —— 那正是 7823cff9 修掉的异色带。打在网格上,
+ * 网格外那一条恰好就是 Dock 独占的地皮,栏自己会把那儿画满。
+ *
+ * 平移带过渡:常显开关一切换,整排面板平滑挪过去而不是瞬移;动效档 none 把 --dur
+ * 归 0,于是自动退化成直切(不需要在这里判档)。
  * ────────────────────────────────────────────────────────────────────────── */
 .reserveSm { --dock-tile: var(--tile-size-sm); }
 .reserveLg { --dock-tile: var(--tile-size-lg); }
 
-.shell[data-dock-reserve='bottom'] .center,
-.shell[data-dock-reserve='bottom'] [data-panel-layer] {
+.shell[data-dock-reserve='bottom'] .main {
   padding-block-end: var(--dock-reserve-h);
-  scroll-padding-block-end: var(--dock-reserve-h);
 }
 
-/*
- * 输入框那一格**不吃父级的内边距**(09-05 §5.6):它是 `.center` 的绝对定位子元素,
- * 而绝对定位的 `bottom` 量的是包含块的 **padding box** —— 上面那条 `padding-block-end`
- * 把 `.chatArea` 顶上去了,却一个像素都没有推动它。所以让位在这里再写一次,
- * 落点换成它自己的 `bottom`。两条规则各管一个盒子,不是重复。
- */
-.shell[data-dock-reserve='bottom'] .composerDock {
-  bottom: var(--dock-reserve-h);
-}
-
-.shell[data-dock-reserve='top'] .center,
-.shell[data-dock-reserve='top'] [data-panel-layer] {
+.shell[data-dock-reserve='top'] .main {
   padding-block-start: var(--dock-reserve-h);
-  scroll-padding-block-start: var(--dock-reserve-h);
 }
 
-/*
- * ── 左右两边走**平移形**(09-01 比稿后用户拍板方案乙)────────────────────
- * 竖排 Dock **真正独占那条边**(macOS Dock 的语义):整个主区朝里让出 --dock-reserve-v,
- * 同侧架子跟着整体平移 —— 面板**一个像素不缩**、内容也不再内衬,买单的是中央区总宽。
- *
- * 为什么左右与上下不同形:竖排 Dock 吃掉的是**宽度**,而架子的厚度是用户亲手拖出来的
- * 一个数(它是家具的尺寸,不该因为开了 Dock 就变窄);中央区本来就是「剩下多少算多少」
- * 的那一格,让它买单不改变任何人的既有尺寸。横排 Dock 吃的是高度,而高度那一维上
- * 谁都没有「亲手定的数」,内衬形更省一层盒子,所以底边照旧(用户对那一形没意见)。
- *
- * 落点是 .main(三明治网格本身)而不是 .shell:让位若打在外层,四条架子与中央区
- * 会被整体推走、露出外壳底色 —— 那正是 7823cff9 修掉的异色带。打在网格上,
- * 网格外那一条恰好就是 Dock 独占的地皮,它自己会把那儿画满。
- *
- * 平移带过渡:常显开关一切换,整排面板平滑挪过去而不是瞬移;动效档 none 把 --dur
- * 归 0,于是自动退化成直切(不需要在这里判档)。
- */
 .shell[data-dock-reserve='left'] .main {
   padding-inline-start: var(--dock-reserve-v);
 }
@@ -153,8 +138,9 @@
 .main {
   flex: 1;
   min-height: 0;
-  /* 竖排 Dock 的平移形吃这条过渡(见上面那段);其余时候这里不动,过渡也就不响。 */
-  transition: padding-inline-start var(--dur) var(--ease), padding-inline-end var(--dur) var(--ease);
+  /* 让位的平移形吃这条过渡(见上面那段)。09-13 起四条边都走 .main 的 padding,
+   * 所以这里写整族 `padding` 而不是只列左右两格 —— 漏一格就是「切到上/下边时瞬移」。 */
+  transition: padding var(--dur) var(--ease);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -224,6 +210,10 @@
  * 定位分两截,互不干涉,各写进一个 CSS 变量最后合成一次 transform:
  *   贴边  = 那条边的物理坐标(bottom/top/left/right: var(--sp-3));
  *   沿边  = 「百分比 + 反向 translate」:start 贴前端、center 50% 再 -50% 拉回、end 贴后端。
+ *
+ * 09-13:上面这两截说的是**药丸形**(自动隐藏档)。常驻档是**整边浮栏**,它把
+ * 「沿边」那一截整个换掉 —— 两头钉在那条边上、--dock-align-* 归零,瓦在栏里靠哪头
+ * 由 Dock 自己的 justify-content 说(见下面 [data-dock-reserve] 那两条)。
  * ────────────────────────────────────────────────────────────────────────── */
 .dock {
   position: fixed;
@@ -252,6 +242,48 @@
 .alignYStart { top: var(--sp-3); }
 .alignYCenter { top: 50%; --dock-align-y: -50%; }
 .alignYEnd { bottom: var(--sp-3); }
+
+/* ── 栏形的定位:两头钉住那条边,**但永远从顶带之下起**(09-13)──────────────
+ * 判据就是 `[data-dock-reserve]` **在不在** —— 它与「让位」是同一个事实
+ * (外壳只在常显档挂它),而形与让位必须同生同灭:让了位却画药丸,带里就露出
+ * 别人的底色;没让位却画满边栏,栏会盖住内容。所以这里不新开一格属性。
+ *
+ * 两头各留 --sp-3,与贴边那一截(.edge* 的 --sp-3)同一个数 —— 栏于是四周
+ * 一圈 12px 的呼吸,和悬浮输入框四周那一圈是同一块地。
+ * --dock-align-* 归零是**覆盖**沿边三档那两条 50% 定位:栏满边之后「沿边」
+ * 落在栏内的 justify-content 上(Dock.module.css 的 .align*),条自己不再平移。
+ * 特异性:.shell[data-dock-reserve='x'] .dock = (0,3,0) > .alignXCenter = (0,1,0)。
+ *
+ * ── **顶栏是这扇窗的顶带,Dock 的栏形永远从顶带之下起**(09-13 用户裁定)────
+ * 上 / 左 / 右三条栏的上端一律是 `--topbar-h + --sp-3`,不是 `--sp-3`。
+ * 理由是顶带**不能被推下去**:红绿灯与顶栏同一行、必须从 y=0 起(09-01 裁定),
+ * 所以「让位把顶栏一起推下去」这条路不存在,只能让栏自己从顶带之下开始。
+ * 病历(本单真机量的,CDP elementFromPoint 3×3 采样):栏从 y=12 起时,
+ * `top` 档整条栏压在顶栏那一行上(顶栏 y 0–44,栏 y 12–74)—— 标签
+ * 「New session」与 Agent chip **各 9/9 个采样点被盖**;`right` 档 Agent chip
+ * **3/9**;`left` 档功能上没盖住谁,但栏顶会顶在 macOS 合成的红绿灯底下
+ * (x 8–70 / y 10–30)—— 那是视觉事故,同一条判据一起治。
+ * 底边不受影响(它离顶带最远),所以那一条不动。
+ * ────────────────────────────────────────────────────────────────────────── */
+.shell[data-dock-reserve='top'] .dock,
+.shell[data-dock-reserve='bottom'] .dock {
+  left: var(--sp-3);
+  right: var(--sp-3);
+  --dock-align-x: 0px;
+}
+
+/* 顶边:覆盖掉 `.edgeTop { top: var(--sp-3) }`。`.main` 本来就在顶栏之下,
+ * 所以顶边的让位带仍旧整块是栏自己的地,只是那块地从顶带之下开始量。 */
+.shell[data-dock-reserve='top'] .dock {
+  top: calc(var(--topbar-h) + var(--sp-3));
+}
+
+.shell[data-dock-reserve='left'] .dock,
+.shell[data-dock-reserve='right'] .dock {
+  top: calc(var(--topbar-h) + var(--sp-3));
+  bottom: var(--sp-3);
+  --dock-align-y: 0px;
+}
 
 /* 藏:朝各自那条边推出屏外一整个身位 + 一段余量(余量保证投影也看不见)。 */
 .edgeBottom.hidden { --dock-hide-y: calc(100% + var(--sp-5)); }
