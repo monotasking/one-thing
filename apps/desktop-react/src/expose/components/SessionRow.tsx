@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronRight,
   Ellipsis,
+  MessageSquare,
   SquareCheck,
   Users,
   Zap,
@@ -51,14 +52,24 @@ import s from './SessionRow.module.css'
  * `t` 是 `useT()` 的 `useMemo` 产物、身份随 locale 才变,所以它与那几只回调
  * 一样是**稳得住的 prop**,memo 照旧成立。
  *
+ * ── 09-13 侧栏对齐律 §8 把第 ① 笔翻回来了(A5)────────────────────────────
+ * 下面第 ① 笔「形态字形只在有字形的行上画」在 09-13 被用户第三次画线裁定推翻:
+ * 一格 16px 图标列**每一行都有**,列的中心落在红灯中心那条线上,于是整块面
+ * 只有**一条文字线**(38)。普通聊天不再是「空列」也不再是「无列」——
+ * 它画一枚淡灰的对话气泡,那是「这一行是什么」的最弱一档。
+ * 那 20px 标题因此还了回去,换来的是「一条竖线穿过整块面」——
+ * 用户原话:「所有元素从这个位置开始」。
+ * 代价量过而且还得起:`gate:sessions` ② 在 240 档读到标题占行宽 **81.6%**
+ * (下限 60%,09-12 报障时是 35%),400 行冷开 `gate:perf` 场景① 54ms
+ * (预算 100,对照组 56ms,两档都是零 ≥50ms 长帧)。
+ *
  * ── 09-12 方向 A 续:这一行的三笔减法(正本 §3.1)──────────────────────────
  * 用户 09-12 真机报「标题只剩一点」:240px 的架子里标题的净宽只有 **83px(35%)**。
  * 那 157px 是这么花掉的 —— 页边距 16 + `scrollbar-gutter: stable both-edges`
  * 两侧各 10 + **空的形态列 16** + **定宽时间 56** + 行内边距 / 间距 32。
  * 三笔都落在这只组件上,而且三笔都不是「把字变小」:
- *  ① **形态字形只在有字形的行上画**。裁决 6 那条「标题永远从同一条竖线起笔」
- *    在 240px 里是一笔 16px 的空税,而屏幕上大多数行是普通聊天 —— 起笔对齐
- *    换成了「有图标的那几行多让 20px」,这是用户拍的(方向 A 那一台样例就是它);
+ *  ① **形态字形只在有字形的行上画**(**09-13 被 §8 对齐律翻回来,见上一段**:
+ *    每一行都有 16px 图标列,普通聊天画淡灰气泡);
  *  ② **时间列与项目签只在总览形(≥760)出现**。侧栏形里它们让位给标题 ——
  *    「这条会话什么时候动的」在一张按时间分节的列表里已经由节头说了;
  *  ③ **悬停动作只剩一颗 ⋯**(拍板 3)。眼睛与图钉退役成菜单里的两行,
@@ -75,10 +86,28 @@ import s from './SessionRow.module.css'
  * 形态字形 → 图标。`RowGlyph` 的产地是 `expose/row-kinds.ts` 的 `ROW_KIND_SPECS`
  * (能力自述),这里是**渲染层读表**的那一半:加一种形态 = 那张表加一行 +
  * 这里加一格图标,行的结构、键盘、`rowIds` 一个字不动(设计 §6 演练第二条)。
- * `none`(普通聊天)与 `initial`(私聊首字)没有图标 —— 前者**整格不在场**
- * (09-12:不再留那 16px),后者画字。
+ *
+ * ── 09-13 A5:`none` 进表(对齐律 §8 第 2 条)──────────────────────────────
+ * 从前 `none`(普通聊天)不在这张表里、整格不画,于是屏幕上有两条文字线
+ * (有图标的行 38、普通聊天 14)。§8 定稿:**每一行都有那一格**,所以 `none`
+ * 也要有一枚自己的图标。
+ *
+ * 画的是 `MessageSquare`(单气泡)而**不是** Sessions 那块瓦的 `MessagesSquare`
+ * (双气泡):后者在这块面里已经是**协作范围**那一格的图标(`expose/scopes.ts`
+ * 的 `collab`),拿它去画一条普通聊天会让同一枚形在同一块面里说两件事;而
+ * 「单气泡 = 就是一条聊天」是这套词汇早就定下的判词(`components/icons.ts`
+ * 那一行注释、`scopes.ts` 的 `loose` 那一格)。两枚是同一族,不是第二种机制。
+ *
+ * 颜色不在这张表里:`none` 那一档是「这一行是什么」的**最弱**一档(它是这块面
+ * 的缺省形态,不携带任何额外信息),所以它比房间 / 代理淡一档(`--text-4`);
+ * 那一句写在 CSS 里、按 `data-row-glyph` 的值选中 —— 渲染层照旧不出现
+ * `glyph === 'none'` 这种分支。
+ *
+ * `initial`(人 ⇄ agent 私聊)仍旧不在表里:它画的是**名字首字**那枚合成头像,
+ * 不是图标(这也正是这一层给的是「画哪一档」而不是一个图标组件的理由)。
  */
 const GLYPH_ICON: Partial<Record<RowGlyph, LucideIcon>> = {
+  none: MessageSquare,
   room: Users,
   swap: ArrowLeftRight,
   work: SquareCheck,
@@ -200,7 +229,6 @@ function SessionRowView({
   // 意味着 400 份同样的判断,而屏幕上活动行只有一条。
   const glyph = rowKindOf(kind).glyph
   const GlyphIcon = GLYPH_ICON[glyph]
-  const hasGlyph = Boolean(GlyphIcon) || glyph === 'initial'
   const stop = (e: ReactMouseEvent) => e.stopPropagation()
 
   return (
@@ -239,19 +267,24 @@ function SessionRowView({
       }}
     >
       {/*
-       * 形态字形。**只在真有字形的行上在场**(09-12 拍板,见文件头第 ① 笔)——
-       * 普通聊天连这一格都不画,标题直接从盒子的左内缘起笔。
+       * 形态字形。**每一行都有这一格**(09-13 对齐律 §8 第 2 条;09-12 那一版是
+       * 条件渲染,被用户第三次画线裁定推翻)—— 列宽 16 以红灯中心那条线为中心,
+       * 所以整块面只有一条文字线。普通聊天画的是最弱那一档的淡灰气泡(见
+       * `GLYPH_ICON` 的判词),不是一格空白:空列在 240px 里是白交的税,
+       * 而一枚淡到几乎只是个记号的图标是「这一行是什么」的最低成本回答。
+       *
+       * `data-row-glyph` 的值就是那一档的名字(从前是空串)。两个用处,都是
+       * **读表**而不是分支:CSS 按它给 `none` 调淡一档;门按 `[data-row-glyph]`
+       * 量图标列的中心(属性选择器,带不带值都命中,取件口逐字未变)。
+       *
        * 它是 `<div>` 而不是 `<span>`:契约「`[data-session-id]` 里**第一个
        * `<span>` 是完整标题**」由 gate-data 按 `querySelector('span')` 读,
-       * 行首插一个 span 就会把它顶掉 —— 条件渲染没有改变这一条,因为它现在
-       * 要么不在场、要么仍是一个 `<div>`。
+       * 行首插一个 span 就会把它顶掉。
        */}
-      {hasGlyph && (
-        <div className={s.glyph} aria-hidden="true" data-row-glyph="">
-          {GlyphIcon && <GlyphIcon className={s.glyphIcon} strokeWidth={1.75} />}
-          {glyph === 'initial' && <div className={s.initial}>{firstChar(title)}</div>}
-        </div>
-      )}
+      <div className={s.glyph} aria-hidden="true" data-row-glyph={glyph}>
+        {GlyphIcon && <GlyphIcon className={s.glyphIcon} strokeWidth={1.75} />}
+        {glyph === 'initial' && <div className={s.initial}>{firstChar(title)}</div>}
+      </div>
 
       {/*
        * 第一个 span = 完整标题。`Highlight` 只在里面切片,不许把 span 切碎。

@@ -61,10 +61,21 @@ const TOKENS_SRC = readFileSync(path.join(appRoot, 'src/styles/tokens.css'), 'ut
 const MAIN_SRC = readFileSync(path.join(appRoot, 'electron/main.ts'), 'utf-8')
 const BUDGET_SRC = readFileSync(path.join(appRoot, 'src/perf-budget.ts'), 'utf-8')
 
-function token(name) {
-  const hit = new RegExp(`--${name}:\\s*([0-9.]+)px`).exec(TOKENS_SRC)
+/**
+ * 一格 token 的 px 值。**允许它是另一格 token 的别名**(`var(--sp-2)`)——
+ * 09-13 A5 起 `--expose-row-gap-inline` 就是这一形(它从梯外的 6px 挪回了 --sp-2),
+ * 只认 `<数>px` 的话这道门会当场说「tokens.css 里没有它」而其实它在。
+ * 别名最多跟四层,跟不动就抛:门宁可停下也不猜一个数。
+ */
+function token(name, depth = 0) {
+  const hit = new RegExp(`--${name}:\\s*([^;]+);`).exec(TOKENS_SRC)
   if (!hit) throw new Error(`tokens.css 里没有 --${name} —— 判据与产品对不上了`)
-  return Number(hit[1])
+  const raw = hit[1].trim()
+  const px = /^([0-9.]+)px$/.exec(raw)
+  if (px) return Number(px[1])
+  const alias = /^var\(--([a-z0-9-]+)\)$/.exec(raw)
+  if (alias && depth < 4) return token(alias[1], depth + 1)
+  throw new Error(`--${name} 的值是「${raw}」—— 这道门读不出它的 px`)
 }
 
 function budget(name) {
@@ -91,6 +102,15 @@ const CONTENT_LEAD_LEFT = token('content-lead-left')
 const ROW_PAD = token('sp-2')
 /** 图标列的宽(`--expose-glyph-w`):它的中心对着红灯中心,所以墨最左 = 线 − 一半。 */
 const GLYPH_W = token('expose-glyph-w')
+/** 图标列与标题之间那一格(`--expose-row-gap-inline`):文字线 = 图标列右缘 + 它。 */
+const ROW_GAP = token('expose-row-gap-inline')
+/**
+ * 檐上一格 tab 的图标宽,与 `joined` 档那只「肩」—— ⑥「檐上标签也进格子」的两个减数。
+ * 减的是**肩**而不是 tab 的内衬:`--tab-shoulder` 同时是条的左右内边距(判词在
+ * `ui/Tabs.module.css`),所以第一格 tab 的左缘落在一只肩之后,让位加在它的内衬上。
+ */
+const TAB_ICON = token('tab-icon')
+const TAB_SHOULDER = token('tab-shoulder')
 const TRAFFIC_X = trafficLightX()
 const TRAFFIC_LIGHT_RADIUS = 6
 const COLD_OPEN_MS = budget('coldOpenMs')
@@ -393,6 +413,51 @@ const minInkLeft = (page) =>
         boxWho = el.getAttribute('data-testid') ?? el.getAttribute('data-section-id') ?? 'row'
       }
     }
+
+    /*
+     * ── 09-13 A5 的三件新读数(对齐律 §8 第 3 / 5 / 6 条)─────────────────────
+     *
+     * ① **会话标题的左缘**:§8 第 3 条「整块面只许一条文字起笔线」。量的是每一行
+     *    那只标题 span(`[data-session-id] > span:first-of-type` —— 行首那一格
+     *    字形是 `<div>`,所以第一只 span 就是标题;改名那一行没有 span,自然落选)。
+     *    去重之后**只许剩一个值**:09-12 到 09-13 之间这里有两条(有字形 38 /
+     *    没字形 14),那正是这一单要消掉的东西。
+     * ② **行数**:①那条图标中心断言的**样本下限**要随行数长 —— 每一行都有字形列
+     *    之后,「导航三行 + 每一条会话」全都得在线上。不数行的话,字形列整格
+     *    回到条件渲染这道门照样绿(它只会少量几个,而 `every` 对更短的数组恒真)。
+     * ③ **檐上第一枚图标的中心**:§8 第 6 条。取的是这条架子檐上第一格 tab 的
+     *    第一只 svg(tab 的结构是 [图标][名][✕],✕ 那只排在后面)。
+     * ④ **滚动容器左右内边距**:§8 第 5 条「盒子对称探出」。读 computed style,
+     *    因为这一格的判据是「两侧算出来的数相等」,不是源文本长什么样。
+     */
+    const textLeftsOf = (sel) => [
+      ...shelf.querySelectorAll(sel),
+    ]
+      .filter((el) => visible(el) && inClip(el.getBoundingClientRect()))
+      .map((el) => round(el.getBoundingClientRect().left))
+    /*
+     * §8 第 3 条问的是**整块面**只有一条文字线,所以两种行都要量:会话标题
+     * (行首那一格字形是 `<div>`,第一只 span 就是标题;改名那一行没有 span,
+     * 自然落选)与导航三行的那句话(`> span` —— 行尾那枚 ▾ 是 svg,不是 span)。
+     * 只量会话的话,导航行的 gap 单独漂了这道门是绿的。
+     */
+    const titleLefts = [
+      ...new Set([
+        ...textLeftsOf('[data-session-id] > span:first-of-type'),
+        ...textLeftsOf(
+          '[data-testid="expose-new-session"] > span,[data-testid="expose-search-row"] > span,'
+            + '[data-testid="expose-scope-row"] > span',
+        ),
+      ]),
+    ].sort((a, b) => a - b)
+    const rowCount = [...shelf.querySelectorAll('[data-session-id]')].filter(
+      (el) => visible(el) && inClip(el.getBoundingClientRect()),
+    ).length
+    const stripSvg = shelf.querySelector('[role="tablist"] [role="tab"] svg')
+    const stripRect = stripSvg?.getBoundingClientRect() ?? null
+    const scroll = shelf.querySelector('[data-testid="expose-overview-scroll"]')
+    const scrollSt = scroll ? getComputedStyle(scroll) : null
+
     return {
       icons,
       ink: ink === Infinity ? null : round(ink),
@@ -401,6 +466,11 @@ const minInkLeft = (page) =>
       boxWho,
       boxCount: boxCount0,
       shelfLeft: round(clip.left),
+      titleLefts,
+      rowCount,
+      stripIcon: stripRect ? round(stripRect.left + stripRect.width / 2) : null,
+      scrollPadLeft: scrollSt ? round(parseFloat(scrollSt.paddingLeft)) : null,
+      scrollPadRight: scrollSt ? round(parseFloat(scrollSt.paddingRight)) : null,
     }
   })
 
@@ -582,15 +652,21 @@ async function openOnLeftShelf(page) {
 }
 
 /**
- * ① **左缘 = 左侧红灯的中心**(拍板 2:所有盒子的左缘从这条线起,没有任何元素越过它)。
+ * ① **那条竖线**(正本 §8 侧栏对齐律,09-13 定稿八条;这道门量其中六条)。
  *
- * 三句话一起才成立:
- *  · 判据那一头两处同源 —— `--content-lead-left` === `trafficLightPosition.x + 半径`;
- *  · 屏幕这一头 —— 架子里**所有可见盒子**的最小左缘 = 架子左缘 + 那条线;
- *  · **没有越过它** —— 最小左缘不许小于那条线(这才是用户那句原话的机械含义)。
+ * 线由左侧红灯的**中心**定,所以判据是「对的是哪个点」而不是「谁贴着谁」——
+ * 三次错法(盒边对线 / 墨左缘对线 / 图标左缘对线)全部被用户拿真机截图画线打回。
+ *
+ * 七句话一起才成立:
+ *  · 判据那一头两处同源 —— `--content-lead-left` === `trafficLightPosition.x + 半径`(§8 ①);
+ *  · 导航三行 + **每一条会话**的图标列,**中心**落在线上(§8 ②;样本下限随行数长);
+ *  · 会话标题**只有一条起笔线**,= 线 + 半个图标列 + 一格间距(§8 ③);
+ *  · 最左一笔墨 = 图标列的左缘(线 − 半个图标列),没有墨越过它(§8 ④ 节名从这儿起);
+ *  · 结构盒再往左探一格行内边距(§8 ⑤ 的左半)、列表左右内边距相等(§8 ⑤ 的右半);
+ *  · **檐上第一格 tab 的图标中心**也落在线上(§8 ⑥)。
  */
 async function sceneLead(page) {
-  scene('① 左缘 = 红灯中心(拍板 2)')
+  scene('① 那条竖线:图标中心 / 一条文字线 / 盒子对称 / 檐上标签(§8)')
   check(
     `判据两处同源:--content-lead-left ${CONTENT_LEAD_LEFT} = trafficLightPosition.x ${TRAFFIC_X} + 灯半径 ${TRAFFIC_LIGHT_RADIUS}`,
     CONTENT_LEAD_LEFT === TRAFFIC_X + TRAFFIC_LIGHT_RADIUS,
@@ -605,7 +681,10 @@ async function sceneLead(page) {
   const wantInk = want - GLYPH_W / 2
   const wantBox = wantInk - ROW_PAD
   note(
-    `架子左缘 ${m.shelfLeft} · 线 ${want} · 图标中心 ${JSON.stringify(m.icons)} · 结构盒 ${m.boxCount} 个,最左 ${m.box}(${m.boxWho})`
+    `架子左缘 ${m.shelfLeft} · 线 ${want} · ${m.rowCount} 行 · 图标 ${m.icons.length} 枚,中心 ${JSON.stringify([...new Set(m.icons)])}`
+      + ` · 标题起笔线 ${JSON.stringify(m.titleLefts)} · 檐上图标中心 ${m.stripIcon}`
+      + ` · 列表内边距 左 ${m.scrollPadLeft} / 右 ${m.scrollPadRight}`
+      + ` · 结构盒 ${m.boxCount} 个,最左 ${m.box}(${m.boxWho})`
       + ` · 最左那一笔墨 ${m.ink}(${m.inkWho})`,
   )
   /*
@@ -614,10 +693,55 @@ async function sceneLead(page) {
    * 导航三行的图标与会话行字形列的**中心**都在线上;墨的最左不越过图标列的左缘
    * (线 − 8,节名与没图标的标题从那儿起);盒子再往左探一格行内边距。
    */
+  /*
+   * ── 09-13 A5:样本下限随行数长(对齐律 §8 第 2 条)────────────────────────
+   * 从前这里写 `>= 3`(导航三行),而种子全是普通聊天、那一档**不画字形列** ——
+   * 于是会话行一条都没进样本,这条断言量的其实只有导航。今天每一行都有那一格,
+   * 所以下限是「导航三行 + 屏上每一条会话」;不数行的话,字形列整格退回条件
+   * 渲染这道门照样绿(`every` 对更短的数组恒真)。
+   */
+  const wantIcons = 3 + m.rowCount
   check(
-    '导航三行的图标 / 会话行的字形列,**中心**都落在那条线上(容差 1px)',
-    m.icons.length >= 3 && m.icons.every((c) => Math.abs(c - want) <= 1),
-    `图标中心 ${JSON.stringify(m.icons)} vs 线 ${want}`,
+    '导航三行 + **每一条会话**的字形列,中心都落在那条线上(容差 1px)',
+    m.icons.length >= wantIcons && m.icons.every((c) => Math.abs(c - want) <= 1),
+    `图标 ${m.icons.length} 枚(想要 ≥ ${wantIcons} = 3 + ${m.rowCount} 行)`
+      + `,中心 ${JSON.stringify([...new Set(m.icons)])} vs 线 ${want}`,
+  )
+  /*
+   * §8 第 3 条「整块面只许一条文字起笔线」。38 = 线 + 半个图标列 + 一格间距
+   * (22 + 8 + 8),三个数全从 token 推。09-12 到 09-13 之间这里是两条线
+   * (有字形 38 / 没字形 14),这条断言就是来判它的。
+   */
+  const wantTitle = want + GLYPH_W / 2 + ROW_GAP
+  check(
+    `会话标题与导航行的字**只有一条起笔线**,且 = 线 + ${GLYPH_W / 2} + ${ROW_GAP} = ${wantTitle}(容差 1px)`,
+    m.titleLefts.length === 1 && Math.abs(m.titleLefts[0] - wantTitle) <= 1,
+    `标题左缘 ${JSON.stringify(m.titleLefts)} vs ${wantTitle}(${m.rowCount} 行)`,
+  )
+  /*
+   * §8 第 6 条「檐上标签也进格子」。让位由左架子声明(`--strip-lead`)、由
+   * `ui/Tabs` 的根落地,数同样从线推:线 − 半枚 tab 图标 − tab 自己的左内衬。
+   */
+  check(
+    '檐上第一格 tab 的图标,中心也落在那条线上(容差 1px)',
+    m.stripIcon !== null && Math.abs(m.stripIcon - want) <= 1,
+    `檐上图标中心 ${m.stripIcon} vs 线 ${want}`
+      + `(第一格 tab 的左内衬应为 ${CONTENT_LEAD_LEFT} − ${TAB_SHOULDER} − ${TAB_ICON / 2}`
+      + ` = ${CONTENT_LEAD_LEFT - TAB_SHOULDER - TAB_ICON / 2})`,
+  )
+  /*
+   * §8 第 5 条「盒子对称探出」:悬停 / 选中那块底色左右各探出同样的距离。
+   * 量的是**算出来的**两个数相等,不是源文本(源文本那一头由
+   * `NavRows.test.tsx` 那条「同一个表达式」判 —— 两个恰好相等的数与一个表达式
+   * 不是一回事,红灯一挪才见分晓)。滚动槽在这块内边距外面,不进这个数。
+   */
+  check(
+    '列表容器左右内边距相等(盒子对称探出)',
+    m.scrollPadLeft !== null
+      && m.scrollPadRight !== null
+      && Math.abs(m.scrollPadLeft - m.scrollPadRight) <= 0.5
+      && Math.abs(m.scrollPadLeft - (CONTENT_LEAD_LEFT - GLYPH_W / 2 - ROW_PAD)) <= 0.5,
+    `左 ${m.scrollPadLeft} / 右 ${m.scrollPadRight},想要两侧都是 ${CONTENT_LEAD_LEFT - GLYPH_W / 2 - ROW_PAD}`,
   )
   check(
     `最左一笔墨 = 图标列的左缘(线 − ${GLYPH_W / 2}),没有墨越过它(容差 1px)`,

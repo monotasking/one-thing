@@ -59,18 +59,32 @@ describe('SessionRow 悬停动作不占行内空间', () => {
   })
 
   /*
-   * 字形是**条件渲染**的(09-12 拍板:普通聊天不预留那 16px),而正本 §3.2 说
-   * 总览形「变的只有三件」—— 起笔线不在其列。容器查询改不了 React 画不画那个
-   * `<div>`,所以宽档用一格外边距把缺席那一格补回来:**零 DOM 节点,对齐照旧**。
-   * 侧栏形不补,那才是这次翻面换来的 20px。
+   * ── 09-13 A5:那格补偿外边距**失去了对象**(对齐律 §8 第 2 / 3 条)──────────
+   * 09-12 那一版字形是条件渲染的,总览形拿 `.title:first-child` 的一格外边距
+   * 把缺席那一列补回来。今天每一行都有字形列,`.title` 再也不是行的第一个元素
+   * 子节点 —— 那条规则恒不命中,所以整条删掉(留一条永远匹配不上的规则,
+   * 下一个人会以为这里还有一档条件渲染)。
+   *
+   * 这条断言是**反向**的:它守的是「不许把它加回来」。加回来不会有任何可见
+   * 变化(选择器不命中),却会让读代码的人得到一个假的结构事实。
    */
-  it('总览形把缺席的字形用一格外边距补回来;侧栏形**不补**', () => {
-    expect(css).toMatch(
-      /@container expose \(min-width: 761px\)[\s\S]*\.title:first-child \{\s*margin-inline-start:\s*calc\(var\(--expose-glyph-w\) \+ var\(--sp-2\)\)/,
-    )
-    // 基准规则(侧栏形)里不许有这一条 —— 补了就把那 20px 又还回去了。
-    const base = css.slice(0, css.indexOf('@container'))
-    expect(base).not.toMatch(/\.title:first-child/)
+  it('`.title:first-child` 那格补偿**整条不在了**(每一行都有字形列,它没有对象)', () => {
+    expect(css).not.toMatch(/\.title:first-child/)
+  })
+
+  /* 每一行都有那一格,所以字形列是**定宽**的(16 = --expose-glyph-w,中心落在
+     红灯中心那条线上);14 宽的列会让中心偏 1px(对齐律 §8 第 2 条)。 */
+  it('字形列定宽 --expose-glyph-w,图标 --expose-row-glyph 居中', () => {
+    const glyph = block('.glyph {')
+    expect(glyph).toMatch(/width:\s*var\(--expose-glyph-w\)/)
+    expect(glyph).toMatch(/height:\s*var\(--expose-row-glyph\)/)
+    expect(glyph).toMatch(/justify-content:\s*center/)
+  })
+
+  /* 普通聊天那一枚比别人淡一档:它是「这一行是什么」信息量为零的缺省档,
+     同样重的墨会让一屏 400 行读起来全是图标(判词在 CSS 上)。 */
+  it('`none` 那一档的墨是 --text-4(按 data-row-glyph 的值选,不是第二个类名)', () => {
+    expect(css).toMatch(/\.glyph\[data-row-glyph='none'\]\s*\{\s*color:\s*var\(--text-4\)/)
   })
 
   /*

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>会话侧栏 · 一条文字线 · 2026-09-13</title>
+<style>
+  :root{
+    --paper:#faf8f4; --surface-2:#f6f3ee; --text-1:#2b2926; --text-2:#6b665f; --text-3:#9a948b; --text-4:#b8b2a8;
+    --line-1:#e6e1d8; --accent:#c9782a; --st-sel:#efe9df; --st-hover:#f1ece4; --st-sel-hover:#e9e1d3;
+    --font-ui:-apple-system,"PingFang SC","Helvetica Neue",system-ui,sans-serif;
+    --shadow:0 10px 30px -12px rgba(43,41,38,.28),0 2px 6px -2px rgba(43,41,38,.12);
+    --line:22px;   /* 红灯中心 = 16 + 6 */
+    --glyph:16px;  /* 图标列宽 */
+    --pad:8px;     /* 行内边距 */
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--paper);color:var(--text-1);font:14px/1.5 var(--font-ui)}
+  main{max-width:1180px;margin:0 auto;padding:28px 20px 80px}
+  h1{font-size:20px;margin:0 0 6px}
+  p.note{color:var(--text-2);font-size:13px;margin:0 0 8px;max-width:900px;line-height:1.65}
+  .row3{display:flex;gap:28px;justify-content:center;align-items:flex-start;flex-wrap:wrap;margin:22px 0 10px;padding:22px;border:1px dashed var(--line-1);border-radius:18px;background:repeating-linear-gradient(45deg,transparent 0 10px,rgba(43,41,38,.025) 10px 20px)}
+  .cell{display:flex;flex-direction:column;gap:8px;align-items:center}
+  .cell h3{margin:0;font-size:13px;color:var(--text-2);font-weight:600}
+  .cell h3 b{color:var(--accent)}
+  .cap{font-size:12.5px;color:var(--text-2);line-height:1.7;max-width:900px;margin:12px auto 0}
+  .cap b{color:var(--text-1)}
+  table{border-collapse:collapse;font-size:12.5px;margin:14px auto 0;max-width:900px;width:100%}
+  th,td{text-align:left;padding:6px 8px;border-top:1px solid var(--line-1);vertical-align:top;line-height:1.55}
+  th{color:var(--text-3);font-weight:500;white-space:nowrap;width:150px}
+
+  .win{position:relative;display:flex;flex-direction:column;height:560px;border:1px solid var(--line-1);border-radius:14px;background:var(--surface-2);box-shadow:var(--shadow);overflow:hidden;flex:none;font-size:13px}
+  .titlebar{flex:none;height:36px;display:flex;align-items:center;padding-left:16px;gap:8px;background:var(--paper);border-bottom:1px solid var(--line-1)}
+  .titlebar i{width:12px;height:12px;border-radius:50%;display:block}
+  .titlebar i:nth-child(1){background:#ff5f57}.titlebar i:nth-child(2){background:#febc2e}.titlebar i:nth-child(3){background:#28c840}
+  .head{flex:none;height:32px;display:flex;align-items:stretch;border-bottom:1px solid var(--line-1);background:var(--paper)}
+  .head .tab{display:flex;align-items:center;gap:8px;padding:0 10px 0 0;font-size:12.5px;color:var(--text-1);background:var(--surface-2);border-right:1px solid var(--line-1);margin-bottom:-1px;border-bottom:1px solid var(--surface-2)}
+  .head .tab svg{flex:none;width:14px;height:14px}
+  .head .sp{flex:1}.head .col{width:32px;display:grid;place-items:center;color:var(--text-3);font-size:12px}
+  .guide{position:absolute;top:0;bottom:0;left:var(--line);width:0;border-left:1px dashed rgba(201,120,42,.55);pointer-events:none;z-index:5}
+  .guide2{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed rgba(107,102,95,.35);pointer-events:none;z-index:5}
+  .lbl{position:absolute;bottom:8px;font-size:9px;color:var(--accent);background:rgba(250,248,244,.9);padding:0 3px;border-radius:3px;white-space:nowrap;z-index:6}
+  .body{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+  .nav{flex:none;display:flex;flex-direction:column;padding:8px 8px 4px calc(var(--line) - var(--glyph)/2 - var(--pad))}
+  .r{display:flex;align-items:center;gap:8px;height:32px;padding:0 var(--pad);border-radius:6px;cursor:default;color:var(--text-1);position:relative}
+  .r:hover{background:var(--st-hover)}
+  .r.cur{background:var(--st-sel)}
+  .r.hov{background:var(--st-hover)}
+  .r svg{flex:none;width:var(--glyph);height:var(--glyph);color:var(--text-2)}
+  .r .g{flex:none;width:var(--glyph);height:var(--glyph);display:grid;place-items:center;color:var(--text-3)}
+  .r .g svg{width:14px;height:14px;color:var(--text-4)}
+  .r .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .r .chev{margin-left:auto;font-size:10px;color:var(--text-3)}
+  .r .dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-left:auto}
+  .list{flex:1;min-height:0;overflow:auto;padding:2px 8px 12px calc(var(--line) - var(--glyph)/2 - var(--pad))}
+  .sec{display:flex;align-items:center;height:26px;margin-top:10px;padding:0 var(--pad);font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--text-3)}
+  .sec .chev{margin-left:auto;font-size:10px;color:var(--text-4)}
+  /* 现状:普通聊天没有图标列 → 标题在 14 */
+  .now .r.plain .g{display:none}
+  .now .head .tab{padding-left:8px}
+  /* 建议:每一行都有图标列;tab 图标也进图标列 */
+  .next .head .tab{padding-left:calc(var(--line) - 7px)}
+  .next .list{padding-right:calc(var(--line) - var(--glyph)/2 - var(--pad))}
+  .next .nav{padding-right:calc(var(--line) - var(--glyph)/2 - var(--pad))}
+</style>
+</head>
+<body>
+<main>
+  <h1>会话侧栏 · 回到一条文字线</h1>
+  <p class="note">三扇窗同一批标题。橙色虚线 = 红灯中心(x=22),图标列以它为中心;灰色虚线 = 文字起笔线。左边是今天入库的形(472593c2),中间和右边是建议:<b>每一行都有图标列</b>(普通聊天画一枚淡的对话气泡),所有标题和导航文字落在同一条线 x=38,节名留在图标列左缘 14,悬停底色左右各让同样的距离,「Sessions」标签的图标也进图标列。</p>
+
+  <div class="row3">
+    <div class="cell"><h3>现状 · 240</h3><div class="win now" style="width:240px" data-kind="now"></div></div>
+    <div class="cell"><h3><b>建议</b> · 240</h3><div class="win next" style="width:240px" data-kind="next"></div></div>
+    <div class="cell"><h3><b>建议</b> · 320</h3><div class="win next" style="width:320px" data-kind="next"></div></div>
+  </div>
+
+  <table>
+    <tr><th></th><td><b>现状</b></td><td><b>建议</b></td></tr>
+    <tr><th>文字起笔线</th><td>两条:导航 38、节名与标题 14</td><td>一条:导航与标题都 38;节名 14(比标题浅一格 = 层级)</td></tr>
+    <tr><th>普通聊天</th><td>不画图标,标题顶到图标列左缘</td><td>画一枚淡灰对话气泡(text-4),房间 / 派工 / 代理照旧各自的形</td></tr>
+    <tr><th>悬停底色</th><td>左到 6、右到 8</td><td>左右都到 6(右边距与左同数)</td></tr>
+    <tr><th>Sessions 标签</th><td>图标贴架子左边 x≈8</td><td>图标进图标列,中心 22</td></tr>
+    <tr><th>240 宽标题净宽</th><td>约 190px</td><td>约 166px(报障时 83px)</td></tr>
+  </table>
+  <p class="cap"><b>取舍:</b>每行多画一枚 14px 图标,冷开 400 行多 400 个 svg 节点 —— 在 gate:perf 场景① 47ms 的基础上要重新量一次;标题少 24px。换来的是一整块面只有一条文字线、节名与条目有缩进层级,这两条是 macOS 侧栏(Finder / Mail / Notes)的基本盘。</p>
+</main>
+
+<script>
+const ICON = {
+  plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+  layers:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"><path d="m12 3 9 5-9 5-9-5 9-5z"/><path d="m3 13 9 5 9-5"/></svg>',
+  chat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"><path d="M4 5h16v10H9l-5 4V5z"/></svg>',
+  room:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="9" cy="8" r="3"/><circle cx="16" cy="9" r="2.5"/><path d="M3 19c0-3 3-5 6-5s6 2 6 5M14 18c0-2 2-3.5 4.5-3.5S22 16 22 18"/></svg>',
+  bolt:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg>',
+  tab:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"><path d="M4 5h16v10H9l-5 4V5z"/></svg>',
+}
+const ROWS = [
+  ['Pinned', null],
+  ['Today', [['Lenovo scripts 目录', 'chat', 'cur'], ['把会话列表改成真正能用的侧栏', 'chat', 'dot'], ['网易云电台延迟事故复盘', 'room', ''], ['Compare the streaming coalescer at 16ms', 'chat', 'hov']]],
+  ['Yesterday', [['Explain a React hook for keyboard-driven list selection', 'bolt', ''], ['一个短标题', 'chat', ''], ['Search index rebuild S7 semantic recall', 'chat', '']]],
+  ['This week', [['TransReader 菜单栏翻译窗口拖不动', 'chat', ''], ['官网部署到腾讯云香港的证书续期', 'chat', '']]],
+  ['September', null], ['August', null],
+]
+function paint(win) {
+  const esc = (s) => s.replace(/[&<>]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))
+  const glyph = (k) => k === 'chat' ? ICON.chat : k === 'room' ? ICON.room : ICON.bolt
+  const nav = `<div class="nav">
+    <div class="r">${ICON.plus}<span class="t">New session</span></div>
+    <div class="r">${ICON.search}<span class="t">Search</span></div>
+    <div class="r">${ICON.layers}<span class="t">All</span><span class="chev">⌄</span></div></div>`
+  const list = ROWS.map(([sec, rows]) => `<div class="sec"><span>${sec}</span>${rows ? '' : '<span class="chev">›</span>'}</div>` +
+    (rows ? rows.map(([t, k, st]) => `<div class="r ${k === 'chat' ? 'plain' : ''} ${st === 'cur' ? 'cur' : st === 'hov' ? 'hov' : ''}"><span class="g">${glyph(k)}</span><span class="t" title="${esc(t)}">${esc(t)}</span>${st === 'dot' || st === 'cur' ? '<span class="dot"></span>' : ''}</div>`).join('') : '')).join('')
+  const textLine = win.classList.contains('next') ? 38 : 14
+  win.innerHTML = `<div class="titlebar"><i></i><i></i><i></i></div><div class="head"><div class="tab">${ICON.tab}Sessions</div><div class="sp"></div><div class="col">«</div></div><div class="body">${nav}<div class="list">${list}</div></div><div class="guide"></div><div class="guide2" style="left:${textLine}px"></div><span class="lbl" style="left:${textLine + 4}px">文字 x=${textLine}</span>`
+}
+document.querySelectorAll('.win').forEach(paint)
+</script>
+</body>
+</html>

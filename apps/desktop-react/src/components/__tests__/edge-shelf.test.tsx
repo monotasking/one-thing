@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { AppShell } from '../AppShell'
@@ -351,4 +353,52 @@ describe('厚度把手的三条结束路径', () => {
       expect(thicknessNow()).toBe(SHELF_DEFAULT_THICKNESS)
     })
   }
+})
+
+/*
+ * ── 檐上标签也进格子(09-13 侧栏对齐律 §8 第 6 条)─────────────────────────
+ * jsdom 不排版,所以这里判的是**规则本身**(真的几何由 `gate:sessions` ① 那条
+ * 「檐上第一枚 svg 的中心 = 线」量)。两条:让位的数从线推(零字面量),
+ * 而且**只有左架子声明它** —— 别的三个宿主左边没有红绿灯,给它们让位就是
+ * 凭空歪一格。
+ */
+describe('檐上标签的图标也以那条线为中心(§8 第 6 条)', () => {
+  const strip = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '')
+  const read = (rel: string) =>
+    strip(readFileSync(resolve(__dirname, rel), 'utf-8'))
+  const block = (src: string, selector: string) =>
+    src.slice(src.indexOf(selector)).split('}')[0]
+
+  it('左架子声明 --strip-lead,数从 --content-lead-left 推(零字面量)', () => {
+    const shelf = read('../EdgeShelf.module.css')
+    /* 线 − 一只肩 − 半枚 tab 图标。减「肩」而不是「条的左内边距」:那两件在
+       joined 档里是同一个数,第一格 tab 的左缘就落在一只肩之后。 */
+    expect(block(shelf, '.sideLeft {')).toMatch(
+      /--strip-lead:\s*calc\(var\(--content-lead-left\) - var\(--tab-shoulder\) - var\(--tab-icon\) \/ 2\)/,
+    )
+  })
+
+  it('右 / 上 / 下三条架子**不**声明它(它们左边没有灯)', () => {
+    const shelf = read('../EdgeShelf.module.css')
+    for (const side of ['.sideRight {', '.sideTop {', '.sideBottom {']) {
+      expect(block(shelf, side), side).not.toMatch(/--strip-lead/)
+    }
+    // 全文件只有一处产地。
+    expect(shelf.match(/--strip-lead:/g)?.length).toBe(1)
+  })
+
+  it('落地的是**第一格 tab 的左内衬**,缺省 --tab-pad-x —— 别的宿主一个像素不变', () => {
+    const stripCss = read('../../workbench/LeafStrip.module.css')
+    expect(block(stripCss, ".tabs > * > [role='tab']:first-child {")).toMatch(
+      /padding-inline-start:\s*var\(--strip-lead,\s*var\(--tab-pad-x\)\)/,
+    )
+    /*
+     * **不许落在条的左内边距上**(真机量出来的,gate:sessions ① 第一趟就红了):
+     * `.bar[data-look='joined']` 的 `padding-inline: var(--tab-shoulder)` 不是留白,
+     * 是「活动 tab 的肩永远在条里」的结构保证 —— 压到 6 会裁掉 3px 的肩。
+     * 也不许落在 `.chrome` 上(它是檐的底,让位会在左边留一段别的颜色)。
+     */
+    expect(block(stripCss, '.tabs > * {')).not.toMatch(/padding-inline/)
+    expect(block(stripCss, '.chrome {')).not.toMatch(/padding-inline/)
+  })
 })

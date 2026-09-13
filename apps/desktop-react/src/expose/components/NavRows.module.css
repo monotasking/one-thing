@@ -16,8 +16,11 @@
      同时亮着的永远只有一条(鼠标只有一个)。 */
   gap: 0;
   /* 左:线 − 半个图标列 − 一格行内边距 = 6 —— 图标列(16)以红灯中心为中心,
-     盒子从 6 起(判词在 tokens.css)。 */
-  padding: var(--sp-2) var(--sp-2) var(--sp-1) calc(var(--content-lead-left) - var(--expose-glyph-w) / 2 - var(--sp-2));
+     盒子从 6 起(判词在 tokens.css)。
+     右:**与左同一个表达式**(09-13 对齐律 §8 第 5 条「盒子对称探出」)——
+     从前是 --sp-2(8),于是悬停 / 选中那块底色左探 6、右探 8,差 2px 在
+     240px 的架子上是看得出来的歪。一个表达式两处用,不是两个数。 */
+  padding: var(--sp-2) calc(var(--content-lead-left) - var(--expose-glyph-w) / 2 - var(--sp-2)) var(--sp-1) calc(var(--content-lead-left) - var(--expose-glyph-w) / 2 - var(--sp-2));
 }
 
 /*

@@ -387,6 +387,44 @@ describe('导航行的量:token 纪律与那条对齐线', () => {
     expect(css('Overview.module.css')).toMatch(/padding:[^;]*var\(--content-lead-left\)/)
   })
 
+  /*
+   * ── 09-13 对齐律 §8 第 5 条:盒子**对称**探出 ──────────────────────────────
+   * 从前左是那条 calc(6)、右是 --sp-2(8),于是悬停 / 选中那块底色左探 6、
+   * 右探 8 —— 240px 的架子上那 2px 是看得出来的歪。三块面的左右内边距从今天起
+   * 是**同一个表达式**(不是两个恰好相等的数:红灯一挪两边一起走)。
+   * 侧栏形那一档才有这条线;总览形(≥761)回 --expose-pad,本条不管它。
+   */
+  it('左右内边距是同一个表达式:三块面的盒子对称探出(§8 第 5 条)', () => {
+    const LEAD = 'calc(var(--content-lead-left) - var(--expose-glyph-w) / 2 - var(--sp-2))'
+    /* `padding` 的四格简写要按**括号深度**切:calc() 里面也全是空格,
+       拿 `split(/\s+/)` 切会把一个表达式切成七片。 */
+    const splitTop = (decl: string): string[] => {
+      const out: string[] = []
+      let depth = 0
+      let cur = ''
+      for (const ch of decl) {
+        if (ch === '(') depth += 1
+        if (ch === ')') depth -= 1
+        if (depth === 0 && /\s/.test(ch)) {
+          if (cur) out.push(cur)
+          cur = ''
+          continue
+        }
+        cur += ch
+      }
+      if (cur) out.push(cur)
+      return out
+    }
+    for (const rel of ['NavRows.module.css', 'SessionTree.module.css', 'Overview.module.css']) {
+      const decl = /padding:\s*([^;]*);/.exec(css(rel))?.[1] ?? ''
+      // `padding: <上> <右> <下> <左>` —— 四格里第二格与第四格必须逐字相同。
+      const sides = splitTop(decl.trim())
+      expect(sides.length, `${rel} 的 padding 不是四格简写`).toBe(4)
+      expect(sides[1], rel).toBe(LEAD)
+      expect(sides[3], rel).toBe(LEAD)
+    }
+  })
+
   it('滚动槽只留右边(`stable`,不是 `both-edges`)—— 09-12 那条报障的修法', () => {
     const scroll = css('SessionTree.module.css')
     expect(scroll).toMatch(/scrollbar-gutter:\s*stable;/)

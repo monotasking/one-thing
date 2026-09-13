@@ -75,29 +75,34 @@ describe('行的结构契约', () => {
   })
 
   /*
-   * 09-12 **翻面**:从「全行预留」变成「只在有字形的行上画」(正本 §3.1)。
-   * 病历:240px 的架子里那 16px 空列是标题净宽 83px 里的一笔实税,而屏幕上
-   * 大多数行是普通聊天。代价(标题起笔线不再逐行对齐)是用户拍的。
+   * 09-13 **再翻回来**(对齐律 §8 第 2 条,A5):09-12 那一版「只在有字形的行上
+   * 在场」被用户第三次拿真机截图画线推翻 —— 一块面上有两条文字线读起来是散的,
+   * 而那条竖线由红灯定、要穿过**每一行**的图标列中心。所以普通聊天也有那一格,
+   * 画的是最弱那一档的淡灰气泡。
    */
-  it('形态字形**只在有字形的行上在场**:普通聊天连那一格都不画', () => {
-    const { container } = renderRow({ kind: 'chat' })
-    // 行里唯一的 aria-hidden 是行尾那颗 ⋯ 的图标,不是一格空的字形列。
-    const glyphBox = container.querySelector('[data-session-id] > [aria-hidden="true"]')
-    expect(glyphBox).toBeNull()
-  })
-
-  it('普通聊天行的**第一个元素子节点就是标题 span**(标题直接从左内缘起笔)', () => {
+  it('形态字形**每一行都有**:普通聊天画的是那一档自己的图标(不是空格子)', () => {
     renderRow({ kind: 'chat' })
     const el = document.querySelector('[data-session-id="os-expose"]')!
-    expect(el.firstElementChild?.tagName).toBe('SPAN')
-    expect(el.firstElementChild?.textContent).toBe('会话总览 Exposé 设计')
+    const glyphBox = el.querySelector(':scope > [data-row-glyph]')
+    expect(glyphBox).not.toBeNull()
+    // 档的名字就写在取件口上(CSS 按它把 `none` 调淡一档,渲染层不出现 `=== 'none'`)。
+    expect(glyphBox?.getAttribute('data-row-glyph')).toBe('none')
+    expect(glyphBox?.querySelector('svg')).toBeTruthy()
+  })
+
+  it('普通聊天行的**第一个元素子节点是字形列**(标题因此与别的行同一条起笔线)', () => {
+    renderRow({ kind: 'chat' })
+    const el = document.querySelector('[data-session-id="os-expose"]')!
+    expect(el.firstElementChild?.tagName).toBe('DIV')
+    expect(el.firstElementChild?.getAttribute('data-row-glyph')).toBe('none')
+    // 契约照旧:第一个 `<span>` 仍是完整标题(字形列是 div,不是 span)。
+    expect(el.querySelector('span')?.textContent).toBe('会话总览 Exposé 设计')
   })
 
   it('房间 / agent 私聊 / 派工 / 执行各画各的图标,人 ⇄ agent 私聊画首字', () => {
-    // 字形那一格是行的**第一个**元素子节点(有它的时候),所以按位置取它 ——
-    // 行尾那颗 ⋯ 的图标同样是 aria-hidden,不分位置就会取错。
-    const glyphBox = () =>
-      document.querySelector('[data-session-id] > [aria-hidden="true"]:first-child')
+    // 字形那一格是行的**第一个**元素子节点,所以按取件口取它 —— 行尾那颗 ⋯ 的
+    // 图标同样是 aria-hidden,不认 `data-row-glyph` 就会取错。
+    const glyphBox = () => document.querySelector('[data-session-id] > [data-row-glyph]')
     for (const kind of ['room', 'swap', 'work', 'agent'] as SessionKind[]) {
       const { unmount } = renderRow({ kind })
       expect(glyphBox()?.querySelector('svg'), kind).toBeTruthy()

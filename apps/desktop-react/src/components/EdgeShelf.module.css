@@ -25,6 +25,25 @@
 .sideLeft {
   grid-area: shelfLeft;
   border-right-width: 1px;
+  /*
+   * ── 檐上标签的图标也以那条线为中心(09-13 侧栏对齐律 §8 第 6 条)───────────
+   * 这条架子的檐上第一枚图标(「Sessions」那格 tab)要和它下面每一行的图标列
+   * 站在同一条竖线上 —— 那条线由左侧红灯的中心定(`--content-lead-left`)。
+   *
+   * 数从线推,零字面量:**线 − 一只肩 − 半枚 tab 图标**(22 − 9 − 6 = 7)。
+   * 减的是「肩」而不是「条的左内边距」,因为那两件在 `joined` 档里是同一个数
+   * (`--tab-shoulder` 既是肩的边长、也是条的左右内边距,判词在 `ui/Tabs.module.css`)
+   * —— 第一格 tab 的左缘就落在一只肩之后。消费它的是 `LeafStrip.module.css` 的
+   * `.tabs > * > [role='tab']:first-child`,缺省是 tab 自己那一档 `--tab-pad-x`
+   * —— **只有左架子声明它**:右架子 / 浮窗 / 中央顶栏 / 面板内分栏左边都没有灯,
+   * 给它们让位就是凭空歪一格(与 `--content-lead-left` 只在这块面被消费同一条判据)。
+   *
+   * 留账一格:一条左架子如果被**横向**切成两片叶,右边那片的檐也会吃到这一格
+   * (CSS 说不出「你是不是贴着架子左缘的那一片」)。今天这条架子上放的是会话
+   * 总览那一块面,横切是边角中的边角;真出现时的治法是把这一格从
+   * `.sideLeft` 挪到「贴左缘那片叶」的取件口上,不是加第二个变量。
+   */
+  --strip-lead: calc(var(--content-lead-left) - var(--tab-shoulder) - var(--tab-icon) / 2);
 }
 
 .sideRight {

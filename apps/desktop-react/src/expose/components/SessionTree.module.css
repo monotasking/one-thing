@@ -31,11 +31,14 @@
   /*
    * 页边距:左 = --content-lead-left − 半个图标列 − 一格行内边距(22 − 8 − 8 = 6;
    * 09-13 裁定:红灯中心对着**图标列的中心**,行的 padding-inline 8 把图标列送到
-   * 14–30,节名与没图标的标题从 14 起)。从前那句「所有盒子的左缘从
-   * 这条线起,没有任何元素越过它)、右 --sp-2(8,槽的外面只留一档呼吸)。
+   * 14–30,节名从 14 起、标题从 38 起)。
+   * 右 = **同一个表达式**(09-13 对齐律 §8 第 5 条「盒子对称探出」):从前是
+   * --sp-2(8),悬停底色左探 6、右探 8,差 2px。滚动槽(`scrollbar-gutter:
+   * stable`)在这块内边距**外面**,所以行尾那颗 ⋯(`inset-inline-end: --sp-1`)
+   * 仍旧离槽 4px,收窄这 2px 不会让它被槽压住(gate:sessions ③ 的命中测试守着)。
    * 顶上 0:第一节的上边距由 `.section:first-child` 那一格管。
    */
-  padding: 0 var(--sp-2) var(--sp-4) calc(var(--content-lead-left) - var(--expose-glyph-w) / 2 - var(--sp-2));
+  padding: 0 calc(var(--content-lead-left) - var(--expose-glyph-w) / 2 - var(--sp-2)) var(--sp-4) calc(var(--content-lead-left) - var(--expose-glyph-w) / 2 - var(--sp-2));
 }
 
 /*
