@@ -1,3 +1,10 @@
+/*
+ * `ImageRef` 的定义处是 blocks.ts(那里是它的第一个消费者,也是 P2 加 blob 一员时
+ * 唯一要动的地方)—— 两个文件因此互相 `import type`,而 `import type` 在编译后整句
+ * 消失,运行时没有环。
+ */
+import type { ImageRef } from './blocks'
+
 /**
  * 行内词汇 —— 富文本里**一行之内**的东西(§1)。
  *
@@ -41,6 +48,17 @@ export type InlineNode =
    */
   | { type: 'strike'; children: InlineNode[] }
   | { type: 'link'; href: string; children: InlineNode[] }
+  /**
+   * 夹在字里的图(正本 §1 / §4)。
+   *
+   * 它与块那一档 `{ kind: 'image' }` 是**同一件东西的两个位置**,不是两种图:
+   * 独占一段的是物件,夹在句子中间的是一个词。共用 `ImageRef` 正是为了让 P2 的
+   * 账本图片一次接通两处。
+   *
+   * 画法是一颗芯片而不是一张小图 —— 理由在 `blocks/inline/InlineImage.tsx`:
+   * 段落是 `pre-wrap` 的一段字,行内塞一件会长高的物件会把行律破掉。
+   */
+  | { type: 'image'; ref: ImageRef; alt: string; title?: string }
   /** 检索来源角标:`sourceId` 指向 research 段那份来源清单里的一条。 */
   | { type: 'citation'; sourceId: string; index: number }
 
@@ -57,6 +75,11 @@ export function inlineText(nodes: readonly InlineNode[]): string {
       case 'strike':
       case 'link':
         out += inlineText(node.children)
+        break
+      case 'image':
+        // 与 GitHub 同:复制一段带图的正文,得到的是图的替代文字 —— 那正是 alt
+        // 这一格存在的意义(「图没了的时候这里本该是什么」)。
+        out += node.alt
         break
       case 'citation':
         // 角标是**呈现**,不是正文的字:复制正文时它不该跟着走。

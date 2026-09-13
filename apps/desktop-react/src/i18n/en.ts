@@ -674,6 +674,12 @@ export const en: Record<MessageKey, string> = {
   'block.renderFailed': "This block couldn't render",
   'block.zoom.label': 'Zoomed view',
   'block.figure.renderFailed': "This diagram couldn't render",
+  'block.image.load': 'Load image',
+  'block.image.remote': 'Image from {host}',
+  'block.image.loadFailed': "This image couldn't load",
+  'block.image.noBase': 'Relative path, no document location here',
+  'block.image.badScheme': 'Unsupported address',
+  'block.image.inline': 'Image {alt}',
 
   /* ── quick look ───────────────────────────────────────────────────── */
   'quicklook.enter': 'Open ↵',

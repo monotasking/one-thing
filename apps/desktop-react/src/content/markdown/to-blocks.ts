@@ -1,4 +1,4 @@
-import type { BlockContent, Code, List, ListItem, RootContent, Table } from 'mdast'
+import type { BlockContent, Code, List, ListItem, Paragraph, PhrasingContent, RootContent, Table } from 'mdast'
 import type { BlockModel } from '../model/blocks'
 import { routeFence } from './fence'
 import { toInline } from './to-inline'
@@ -12,7 +12,8 @@ import { toInline } from './to-inline'
  * 装配管线、ChatStream 一行不动。
  *
  * ── 翻译表之外一律 source-fallback ────────────────────────────────────
- * 表里有的:paragraph / heading(1-3)/ list / code / table(GFM)/ blockquote。
+ * 表里有的:paragraph / heading(1-3)/ list / code / table(GFM)/ blockquote /
+ * thematicBreak,外加一处**提升**:独占一段的 image 从行内升成 `image` 块(§1)。
  * 表里没有的(html 块、脚注定义、`---` 分隔线、frontmatter、将来的新语法)统统落
  * `source-fallback`,原文可见 —— 这不是兜底的客气话,是全系统的失败语义(§3.1)。
  * 于是「解析器认出了一个我们还没画法的东西」永远不会变成一段白屏。
@@ -40,7 +41,7 @@ export function mdastToBlocks(nodes: readonly RootContent[], source: string): Pa
 function translate(node: RootContent, source: string): BlockModel {
   switch (node.type) {
     case 'paragraph':
-      return { kind: 'paragraph', inline: toInline(node.children, source) }
+      return translateParagraph(node, source)
 
     case 'heading':
       // 更深的标题**钳到 3**,不落兜底:`####` 在聊天里是常见写法,把它显示成源码
@@ -72,6 +73,39 @@ function translate(node: RootContent, source: string): BlockModel {
     default:
       return fallback(node, source, `md:${node.type}`)
   }
+}
+
+/**
+ * 段落 —— 外加**「独占一段的图提升成物件」**这一处判据(正本 §1、§3)。
+ *
+ * mdast 里 image 永远是行内节点(phrasing),所以「一张图是一件东西」这句话在翻译
+ * 表里只有一个落点:**这一段除了一张图之外只剩空白**。判据落在这一处,别处一个字
+ * 都不判 —— 两处判会分叉成两种真相(与 `closed` 只从源文本看同一条纪律)。
+ *
+ * 判据里「只剩空白」用的是**源节点**而不是翻译后的行内树:翻译会把相邻文字并格
+ * (`push`),`![a](x) ` 与 ` ![a](x)` 并出来的形状不一样,按结果判就会时灵时不灵。
+ *
+ * 三种不提升,各有各的理由:两张图一段(它们是并排的两件东西,提升成一个块只能
+ * 丢掉一张)、图夹着字(那一句话的一部分)、`imageReference`(它根本没被翻译成
+ * image 节点,仍是原文文字)。这三种都留在段落里,由行内芯片说清「这里有一张图」。
+ */
+function translateParagraph(node: Paragraph, source: string): BlockModel {
+  const meat = node.children.filter((child) => !isBlankText(child))
+  const only = meat.length === 1 ? meat[0] : undefined
+  if (only?.type === 'image') {
+    return {
+      kind: 'image',
+      ref: { kind: 'url', url: only.url },
+      alt: only.alt ?? '',
+      title: only.title ?? undefined,
+    }
+  }
+  return { kind: 'paragraph', inline: toInline(node.children, source) }
+}
+
+/** 只有空白的文字节点 —— 图前图后的换行与空格,它们不算「这一段还有别的东西」。 */
+function isBlankText(node: PhrasingContent): boolean {
+  return node.type === 'text' && node.value.trim() === ''
 }
 
 /**

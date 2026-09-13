@@ -42,6 +42,17 @@ export interface BlockCtx {
    * 于是那颗按会话动手的钮整个不画,而不是画一颗按下去不知道打给谁的钮。
    */
   sessionId?: string
+  /**
+   * **这块内容所在的文档在哪个目录**(图片批加的一格,正本 §2)。
+   *
+   * 有它才解得开相对路径的资产地址(`![](../91 Attachments/x.png)` —— 真店里图片
+   * 地址的大头)。查看器 markdown 型传文件所在目录;**聊天今天不传**,因为「一条
+   * 会话的相对路径相对谁」还没有答案(会话 workdir 是正本 §6 的 P3)。
+   *
+   * **可缺席,含义是「这里没有文档位置」** —— 于是相对地址落诚实态显出原地址,
+   * 而不是拿当前页面的 URL 去拼一个谁也没写过的路径。
+   */
+  baseDir?: string
 }
 
 /** 动作词表 —— **封闭**(§4.2)。加一格是拍板件,不是随手件。 */
@@ -59,6 +70,16 @@ export type BlockActionVerb = 'copy' | 'download' | 'view-source' | 'zoom'
  */
 export type SvgSource = () => string | undefined
 
+/**
+ * 放大浮层的第二种取件口:一张**位图**(图片批加,正本 §3)。
+ *
+ * 与 `SvgSource` 并列而不是把位图硬塞进 `svg` 那一格:浮层对两者的画法本来就不同
+ * (矢量掀掉行内上限拉满,位图不放大),而词表**没有**新动词 —— `zoom` 还是那一条,
+ * 只是取件口多了一种。取不到(还没加载完 / 解不开地址)回 undefined,执行器什么
+ * 都不做,和 SVG 那一格逐字同义。
+ */
+export type ImageSource = () => { src: string; alt: string } | undefined
+
 export type BlockAction =
   /** 进剪贴板。`text` 是**已经序列化好的那份**——序列化归块,写剪贴板归壳。 */
   | { verb: 'copy'; what: 'markdown' | 'csv' | 'source' | 'column'; text: string }
@@ -66,8 +87,13 @@ export type BlockAction =
   | { verb: 'download'; what: 'csv' | 'png' | 'svg'; filename: string; svg?: SvgSource }
   /** 原地看源码。执行器是壳自己的状态,不需要块提供任何东西。 */
   | { verb: 'view-source' }
-  /** 放大到浮层。同 download:内容是点下去那一刻现取的。 */
-  | { verb: 'zoom'; svg?: SvgSource }
+  /**
+   * 放大到浮层。同 download:内容是点下去那一刻现取的。
+   *
+   * 两个取件口,**有其一就露得出来**(判据在 shell/actions.ts 的
+   * `isBlockActionRunnable`):矢量图给 `svg`,位图给 `image`。
+   */
+  | { verb: 'zoom'; svg?: SvgSource; image?: ImageSource }
 
 /**
  * 檐上的几格:左端身份(id/meta,小写 mono 灰)· 中段标题 · 增删读数。

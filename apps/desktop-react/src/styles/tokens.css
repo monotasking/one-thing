@@ -1528,6 +1528,16 @@
   --umsg-skill-fg: var(--accent-deep);
   --umsg-skill-bg: var(--st-sel);
 
+  /* ── 内容块里的图(content/blocks/kinds/image,2026-09-13)────────────────
+   * 占位盒最小高 120:尺寸表(blocks/asset/dimensions.ts)还没记住这张图多大时先
+   * 占这么高 —— 比一行字高得多(看得出「这里有一件东西在来的路上」),又比一张
+   * 常见插图矮(真到了之后往下推的那一下尽量小)。命中尺寸表之后占位按
+   * `aspect-ratio` 算,这一格就不参与了,所以它只管**第一次**。
+   * 放大层里位图的高度上限 80vh:竖长图不给上限会把浮层撑穿,而浮层画布那条
+   * `max-height:100%` 在收缩盒里解析不出百分比参照(病历在 ZoomOverlay.module.css)。 */
+  --img-placeholder-h: 120px;
+  --img-zoom-max-h: 80vh;
+
   /* Composer 用到、既有字号梯里没有的四档 */
   --fs-pill: 11.5px;
   --fs-code: 12.5px;

@@ -38,6 +38,14 @@ import s from '../FileViewer.module.css'
 export function MarkdownCanvas({ path, source }: { path: string; source: string }) {
   const parsed = useMemo(() => parseMarkdown(source), [source])
   const origin = `viewer:${path}`
+  /*
+   * **这份文档在哪个目录** —— 资产地址里的相对路径就是相对它(正本 §2)。
+   *
+   * 手写取目录而不是 `node:path.dirname`:这是渲染层,壳也跑在浏览器里(web 档),
+   * 而这条 path 永远是 posix 的一条绝对路径(文件面自己的词汇)。没有斜杠时得到
+   * 空串,`resolveAssetRef` 读作「没有文档位置」—— 与不传是同一件事。
+   */
+  const baseDir = path.slice(0, path.lastIndexOf('/'))
 
   return (
     <div className={`${s.prose} ${chat.row}`} data-testid="viewer-markdown">
@@ -45,7 +53,7 @@ export function MarkdownCanvas({ path, source }: { path: string; source: string 
         <BlockView
           key={blockKey(origin, index, block, offset)}
           block={block}
-          ctx={{ messageId: origin, streaming: false }}
+          ctx={{ messageId: origin, streaming: false, baseDir: baseDir || undefined }}
         />
       ))}
     </div>

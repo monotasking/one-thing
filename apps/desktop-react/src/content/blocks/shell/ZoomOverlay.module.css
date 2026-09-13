@@ -59,3 +59,18 @@
   max-width: none !important;
   height: auto;
 }
+
+/*
+ * 位图那一支(图片块,2026-09-13)。
+ *
+ * 与上面 `.figure > svg` 的做法**刻意相反**:那一条把 mermaid 写死的行内上限掀掉,
+ * 让矢量图铺满(矢量放大不糊);位图不给 `width`,只给两条上限 —— 拉过自然尺寸
+ * 就是一张糊图,那不叫放大。高度上限是 token(竖长图不给上限会把浮层撑穿,
+ * 而 `.canvas` 的 `max-height: 100%` 在它这个收缩盒里解析不出百分比参照)。
+ */
+.image {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  max-height: var(--img-zoom-max-h);
+}

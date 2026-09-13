@@ -18,11 +18,20 @@ import { exportSvgAsPng } from './export-png'
  * 而不是画一个点了没反应的钮。
  */
 
+/**
+ * 放大浮层里装的是什么 —— **两档,一个联合**(图片批加)。
+ *
+ * 写成联合而不是「一个可空的 svg + 一个可空的 image」:浮层里同时只有一件东西,
+ * 两个可空格子表达得出「两个都在」与「两个都没有」这两种不存在的状态,
+ * 而那正是下一轮「浮层空着」报障的落脚点。
+ */
+export type ZoomContent = { svg: string } | { image: { src: string; alt: string } }
+
 /** 壳自己提供的能力(改的是壳的状态,不是块的数据)。 */
 export interface BlockActionRuntime {
   toggleSource(): void
-  /** 开放大浮层。SVG 是**点下去那一刻**取到的那份,不是声明时的。 */
-  openZoom(svg: string): void
+  /** 开放大浮层。内容是**点下去那一刻**取到的那份,不是声明时的。 */
+  openZoom(content: ZoomContent): void
 }
 
 /**
@@ -64,7 +73,9 @@ export function isBlockActionRunnable(action: BlockAction): boolean {
     case 'download':
       return action.what === 'png' && action.svg !== undefined
     case 'zoom':
-      return action.svg !== undefined
+      // **两个取件口有其一**:矢量的(图块)或位图的(图片块)。一个都没有 = 这一型
+      // 交不出可放大的东西,檐上就不该多一颗死钮。
+      return action.svg !== undefined || action.image !== undefined
   }
 }
 
@@ -99,8 +110,14 @@ export async function runBlockAction(
       return
     }
     case 'zoom': {
+      // 先矢量后位图 —— 一个块只会声明其中一个取件口,顺序只是一条确定的读法。
       const svg = action.svg?.()
-      if (svg) runtime.openZoom(svg)
+      if (svg) {
+        runtime.openZoom({ svg })
+        return
+      }
+      const image = action.image?.()
+      if (image) runtime.openZoom({ image })
       return
     }
   }

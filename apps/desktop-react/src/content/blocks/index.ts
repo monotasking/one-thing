@@ -13,6 +13,9 @@
  * 唯一的一行)与 `diff`(两个产地同批接:markdown 的 ```diff 围栏和 edit/write
  * 工具的 detail,同一个块、同一个组件)。这台上于是没有「模型有、渲染器没有」的
  * 块了;source-fallback 从此只接**真的**未知(版本错位、将来的新语法)。
+ *
+ * 2026-09-13 多一行 `image`:独占一段的图(正本 `docs/markdown-image-2026-09.md`)。
+ * 它排在 figure 之后 —— 两张图卡是邻居,读表的人一眼看见它们是一族。
  */
 import './kinds/paragraph'
 import './kinds/heading'
@@ -22,5 +25,6 @@ import './kinds/divider'
 import './kinds/code'
 import './kinds/table'
 import './kinds/figure'
+import './kinds/image'
 import './kinds/diff'
 import './kinds/source-fallback'

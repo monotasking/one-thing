@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { FocusScope } from '../../../focus/FocusScope'
 import { useT } from '../../../i18n'
 import { SvgCanvas } from './SvgCanvas'
+import type { ZoomContent } from './actions'
 import s from './ZoomOverlay.module.css'
 
 /**
@@ -23,7 +24,7 @@ import s from './ZoomOverlay.module.css'
  * 不该被一个 P3 的顺手改动替用户回答。今天这件只在块壳里用,一个组件、
  * 一份状态,并族时整件换掉即可。
  */
-export function ZoomOverlay({ svg, onClose }: { svg: string; onClose: () => void }) {
+export function ZoomOverlay({ content, onClose }: { content: ZoomContent; onClose: () => void }) {
   const canvas = useRef<HTMLDivElement | null>(null)
   const t = useT()
 
@@ -63,7 +64,16 @@ export function ZoomOverlay({ svg, onClose }: { svg: string; onClose: () => void
             aria-modal="true"
             aria-label={t('block.zoom.label')}
           >
-            <SvgCanvas svg={svg} className={s.figure} />
+            {'svg' in content ? (
+              <SvgCanvas svg={content.svg} className={s.figure} />
+            ) : (
+              /*
+               * 位图:**不放大**(不给 width,只给两条上限)。矢量那一支要掀掉
+               * mermaid 的行内上限才叫放大,位图拉过自然尺寸只会糊 —— 两种内容
+               * 在这一层的正确做法本来就相反,所以是两支而不是一个共用的画法。
+               */
+              <img className={s.image} src={content.image.src} alt={content.image.alt} />
+            )}
           </div>
         )}
       </FocusScope>

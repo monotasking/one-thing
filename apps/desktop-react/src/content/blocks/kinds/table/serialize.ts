@@ -117,6 +117,12 @@ function nodeToMarkdown(node: InlineNode): string {
       return `~~${cellToMarkdown(node.children)}~~`
     case 'link':
       return `[${cellToMarkdown(node.children)}](${node.href})`
+    case 'image':
+      // 原样重组成 markdown 图片 —— 复制一张带图的表得到的应该还是一张能贴回去的表,
+      // 而不是一段丢了图的字(与 blockSourceText 的 image 支同一条重组)。
+      return node.title === undefined
+        ? `![${node.alt}](${node.ref.url})`
+        : `![${node.alt}](${node.ref.url} "${node.title}")`
     case 'citation':
       // 角标是呈现不是正文(inlineText 也不收它)—— 导出时同样不跟着走。
       return ''

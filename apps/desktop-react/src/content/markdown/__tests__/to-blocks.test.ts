@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { parseMarkdown } from '../parse'
 import { routeFence, isFigureLang } from '../fence'
 import type { BlockModel } from '../../model/blocks'
+import { inlineText } from '../../model/inline'
 
 /**
  * 翻译表的单测 —— **逐节点**,外加那条「表外一律 source-fallback」的总纪律。
@@ -242,5 +243,73 @@ describe('围栏路由:语言即路由', () => {
     expect(isFigureLang('plantuml')).toBe(true)
     expect(isFigureLang('ts')).toBe(false)
     expect(isFigureLang(null)).toBe(false)
+  })
+})
+
+/**
+ * 图(正本 `apps/desktop-react/docs/markdown-image-2026-09.md` §1)。
+ *
+ * 这一组守的是**那一处提升判据**:mdast 里 image 永远是行内节点,「独占一段的图是
+ * 物件、夹在字里的图是行内词」只有 `translateParagraph` 一个落点。多一处判就会分叉
+ * 成两种真相 —— 与 `closed` 只从源文本看是同一条纪律。
+ */
+describe('图:独占一段提升成块,其余留在段落里', () => {
+  it('独占一段 → image 块,三格原样(alt / title / 地址一个字节不改)', () => {
+    expect(one('![一张图](a.png "题")')).toEqual({
+      kind: 'image',
+      ref: { kind: 'url', url: 'a.png' },
+      alt: '一张图',
+      title: '题',
+    })
+  })
+
+  it('**地址不在翻译层解码** —— `%20` 原样留着,解不解得开是资产层的事', () => {
+    expect(one('![](91%20Attachments/x.png)')).toEqual({
+      kind: 'image',
+      ref: { kind: 'url', url: '91%20Attachments/x.png' },
+      alt: '',
+      title: undefined,
+    })
+  })
+
+  it('图前后只有空白也照样是块(空白不算「这一段还有别的东西」)', () => {
+    // 行首行尾的空格由 CommonMark 自己吃掉,**真能造出空白文字节点**的是字符引用:
+    // mdast 上是 [text ' ', image, text ' '] —— 这一条量的就是那处过滤。
+    expect(one('&#32;![a](x.png)&#32;')).toMatchObject({ kind: 'image' })
+    expect(one('  ![a](x.png)  ')).toMatchObject({ kind: 'image' })
+  })
+
+  it('图后面跟着一个反斜杠就不是「只有一张图」了 —— 退回段落', () => {
+    expect(one('![a](x.png)\\\n').kind).toBe('paragraph')
+  })
+
+  it('图夹在字里 → 还是段落,图是其中一个行内节点', () => {
+    expect(one('看这个 ![a](x.png) 好看吧')).toEqual({
+      kind: 'paragraph',
+      inline: [
+        { type: 'text', text: '看这个 ' },
+        { type: 'image', ref: { kind: 'url', url: 'x.png' }, alt: 'a', title: undefined },
+        { type: 'text', text: ' 好看吧' },
+      ],
+    })
+  })
+
+  it('两张图一段 → 段落装两个行内节点(它们是并排的两件东西,提升只能丢掉一张)', () => {
+    const block = one('![a](1.png) ![b](2.png)')
+    expect(block.kind).toBe('paragraph')
+    expect(block.kind === 'paragraph' && block.inline.filter((n) => n.type === 'image')).toHaveLength(2)
+  })
+
+  it('引用式 `![alt][id]` 仍走 default 支原文可见 —— 它没被翻译成 image', () => {
+    const block = one('![a][ref]\n\n[ref]: x.png')
+    expect(block).toEqual({
+      kind: 'paragraph',
+      inline: [{ type: 'text', text: '![a][ref]' }],
+    })
+  })
+
+  it('inlineText 对行内图返回 alt(复制正文拿到替代文字,与 GitHub 同)', () => {
+    const block = one('前 ![替代文字](x.png) 后')
+    expect(block.kind === 'paragraph' && inlineText(block.inline)).toBe('前 替代文字 后')
   })
 })

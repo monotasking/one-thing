@@ -816,6 +816,15 @@ export const zh = {
   'block.zoom.label': '放大预览',
   /* 图渲染失败:一行灰说明 + 渲染器的原话(原话不进字典,它是事实不是文案)。 */
   'block.figure.renderFailed': '这张图没画出来',
+  /* 图片块的五句 + 行内芯片那一句(正本 apps/desktop-react/docs/markdown-image-2026-09.md)。
+   * 地址、alt、宿主名都是**数据**,所以只有 {host} / {alt} 这两个插值位,别的不进字典。 */
+  'block.image.load': '加载图片',
+  'block.image.remote': '来自 {host} 的图片',
+  'block.image.loadFailed': '这张图没加载出来',
+  'block.image.noBase': '相对路径,这里没有文档位置',
+  'block.image.badScheme': '不支持的地址',
+  /* 行内图芯片的读屏名:芯片上只有名字,「图片」两个字靠这一句补。 */
+  'block.image.inline': '图片 {alt}',
 
   /* ── Quick Look ───────────────────────────────────────────────────── */
   'quicklook.enter': '进入 ↵',

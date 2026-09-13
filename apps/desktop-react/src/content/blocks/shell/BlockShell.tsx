@@ -12,7 +12,7 @@ import { SourceView } from './SourceView'
 import { ZoomOverlay } from './ZoomOverlay'
 import { COPY_FEEDBACK_MS } from '../../../components/motion'
 import { announce } from '../../../ui/a11y/live-region'
-import { blockActionLabelKey, isBlockActionRunnable, runBlockAction } from './actions'
+import { blockActionLabelKey, isBlockActionRunnable, runBlockAction, type ZoomContent } from './actions'
 import { clampMeasurer } from './clamp-measurer'
 import { readBlockLoader } from './loader'
 import { blockSourceText } from './source'
@@ -55,9 +55,13 @@ export function BlockShell({
   const t = useT()
   const [sourceOpen, setSourceOpen] = useState(false)
   const toggleSource = useCallback(() => setSourceOpen((open) => !open), [])
-  // 放大浮层是**壳的状态**,和「查看源码」同一格:块声明动作,壳决定屏幕上发生什么。
-  const [zoomSvg, setZoomSvg] = useState<string | null>(null)
-  const closeZoom = useCallback(() => setZoomSvg(null), [])
+  /*
+   * 放大浮层是**壳的状态**,和「查看源码」同一格:块声明动作,壳决定屏幕上发生什么。
+   * 这一格装的是 `ZoomContent`(矢量 / 位图二选一)而不是一段 SVG 字符串 ——
+   * 壳里因此没有一处判「这是哪一种块」,判的是「这次放大拿到的是哪一种内容」。
+   */
+  const [zoom, setZoom] = useState<ZoomContent | null>(null)
+  const closeZoom = useCallback(() => setZoom(null), [])
 
   const body = sourceOpen ? (
     <SourceView source={blockSourceText(model)} />
@@ -119,13 +123,13 @@ export function BlockShell({
               actions={actions}
               front={def.frontActions ?? 2}
               onToggleSource={toggleSource}
-              onZoom={setZoomSvg}
+              onZoom={setZoom}
             />
           )}
         </header>
       )}
       <ClampedBody t={t}>{guarded}</ClampedBody>
-      {zoomSvg !== null && <ZoomOverlay svg={zoomSvg} onClose={closeZoom} />}
+      {zoom !== null && <ZoomOverlay content={zoom} onClose={closeZoom} />}
     </section>
   )
 }
@@ -196,7 +200,7 @@ function BlockActions({
   /** 露出预算(块可以把它压到 1 —— 图卡定稿只留「放大」)。 */
   front: 1 | 2
   onToggleSource: () => void
-  onZoom: (svg: string) => void
+  onZoom: (content: ZoomContent) => void
 }) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   /**

@@ -9,6 +9,17 @@ import type { BlockModel } from '../../model/blocks'
  * 迟早会分叉成两种真相。
  */
 export function blockSourceText(model: BlockModel): string {
+  /*
+   * 图片没有 `source` 那一格,但它**有源码** —— 就是作者写的那一行。重组它而不是
+   * 吐一段 JSON:图块的「查看源码」若显出 `{"kind":"image","ref":{…}}`,人看到的
+   * 是我们的数据结构,不是他自己写下的字。title 缺席就不带引号段 —— 多一对空引号
+   * 是一句作者没写过的话。
+   */
+  if (model.kind === 'image') {
+    return model.title === undefined
+      ? `![${model.alt}](${model.ref.url})`
+      : `![${model.alt}](${model.ref.url} "${model.title}")`
+  }
   if ('source' in model && typeof model.source === 'string') return model.source
   try {
     return JSON.stringify(model, null, 2)

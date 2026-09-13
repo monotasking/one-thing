@@ -1,0 +1,112 @@
+/*
+ * 图片块本体 —— 与图块(figure)的净卡同族:白面、居中,别的什么都没有。
+ * 横滚与限高折叠归壳(BlockShell.module.css 的 .body)。颜色零字面值。
+ */
+
+.canvas {
+  display: flex;
+  justify-content: center;
+  /*
+   * 内边距是**补差**:壳的 .body 已经给了四边 sp-3,这里补到 sp-5 ——
+   * 量的是「图到卡片边」,不是「图到 body 边」(逐字同 Figure.module.css 的判词)。
+   */
+  padding: calc(var(--sp-5) - var(--sp-3));
+}
+
+/*
+ * 占位盒。两档由 data-reserve 说了算,判据在 Image.tsx:
+ *  · sized  尺寸表记得住这张图 → 按 aspect-ratio 占位,宽度不超过它的自然宽
+ *           (--img-ratio / --img-w 是**数据**,由组件现算写进行内自定义属性,
+ *            与 Slider 的 --slider-fill 同一手);
+ *  · blank  第一次见它 → 占一个最小高(--img-placeholder-h)。
+ * 加载完这一格整个撤掉 —— 图自己的高度就是真高度,再压一条比例只会在窄屏上
+ * 与 max-width 打架。
+ */
+.frame {
+  min-width: 0;
+}
+
+.frame[data-reserve] {
+  width: 100%;
+  border-radius: var(--r-2);
+  background: var(--st-hover);
+}
+
+.frame[data-reserve='sized'] {
+  aspect-ratio: var(--img-ratio);
+  max-width: var(--img-w);
+}
+
+.frame[data-reserve='blank'] {
+  min-height: var(--img-placeholder-h);
+}
+
+/* 自然尺寸不放大(不给 width):放大是「放大」那颗钮的事,不是排版的事。 */
+.image {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  height: auto;
+}
+
+/* 占位期间图还没有可画的东西 —— 让它不占位,免得在占位盒里叠出一条 0 高的线。 */
+.frame[data-reserve] .image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* ── 远程未放行:一张占位卡 ───────────────────────────────────────────── */
+
+.gate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--r-2);
+  background: var(--st-hover);
+}
+
+.gateGlyph {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--text-3);
+  flex: none;
+}
+
+.gateAlt {
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.gateHost {
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  /* 宿主名往右推,把按钮顶到行尾 —— 一行一个弯腰件(挤压纪律)。 */
+  margin-right: auto;
+  overflow-wrap: anywhere;
+}
+
+/* ── 三处诚实态:一行灰说明 + 地址 ───────────────────────────────────── */
+
+/* text-3 而不是 danger —— 逐字同 Figure.module.css 的 .failureLine 判词。 */
+.failureLine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+.failureAlt {
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.failureReason {
+  font-family: var(--font-mono);
+  color: var(--text-4);
+  overflow-wrap: anywhere;
+}

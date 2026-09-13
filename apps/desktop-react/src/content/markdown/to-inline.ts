@@ -10,8 +10,11 @@ import type { InlineNode } from '../model/inline'
  * 当文字摆出来**:`<sub>x</sub>` 画成 `<sub>x</sub>` 这七个字符。信息一个都不少,
  * 而且人一眼看得出「这里有个我没渲染的东西」,比悄悄吞掉诚实得多。
  *
- * 这也是 `image` 与脚注角标今天的归宿:词汇表里没有它们,P1 不为它们扩词汇
- * (扩词汇是拍板件),于是原文可见。
+ * 这是脚注角标与 `imageReference`(`![alt][id]`)今天的归宿:词汇表里没有它们,
+ * 于是原文可见。
+ *
+ * `image` 从 2026-09-13 起**有词汇了**(正本 §1):它不再原文照抄,而是翻译成行内
+ * image 节点 —— 画法(一颗芯片)在 `blocks/inline/InlineImage.tsx`。
  */
 export function toInline(nodes: readonly PhrasingContent[], source: string): InlineNode[] {
   const out: InlineNode[] = []
@@ -39,6 +42,24 @@ export function toInline(nodes: readonly PhrasingContent[], source: string): Inl
 
       case 'link':
         out.push({ type: 'link', href: node.url, children: toInline(node.children, source) })
+        break
+
+      case 'image':
+        /*
+         * 地址**原样透传,不在这里解码**:`%20` 是不是一个空格、相对路径相对谁,
+         * 都要知道「这份文档在哪儿」才答得出,而翻译表不知道 —— 那是资产层
+         * (`blocks/asset/resolve.ts`)的问题。翻译表只负责把作者写的那三格
+         * (地址 / alt / title)搬进词汇,一个字节都不改。
+         *
+         * `imageReference`(`![alt][id]` 引用式)仍走 default 支原文可见:它要一张
+         * 定义表才解得开,那是另一件事(正本 §6 的 P3)。
+         */
+        out.push({
+          type: 'image',
+          ref: { kind: 'url', url: node.url },
+          alt: node.alt ?? '',
+          title: node.title ?? undefined,
+        })
         break
 
       case 'break':

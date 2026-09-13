@@ -62,6 +62,17 @@ export type BlockModel =
   | { kind: 'table'; caption?: string; head: InlineNode[][]; rows: InlineNode[][][] }
   | { kind: 'figure'; figKind: string; source: string; title?: string }
   /**
+   * 独占一段的图 —— **一件物件**(正本 §1)。
+   *
+   * mdast 里 image 永远是行内节点,所以「块」这一档是翻译表提升出来的:一段里只装
+   * 着一张图(前后只有空白)时它是物件,夹在字里时它留在段落里当行内词。判据只有
+   * `to-blocks.ts` 一处 —— 两处判必然分叉成两种真相。
+   *
+   * `alt` 永远在(没写就是空串):它是复制正文时代替这张图的那句话,缺席与空串在
+   * 消费侧是同一件事,给它一个「可能没有」的格子只会让每个读者各判一次。
+   */
+  | { kind: 'image'; ref: ImageRef; alt: string; title?: string }
+  /**
    * `source` 是那段**统一 diff 原文**(P3 补)。
    *
    * 结构(hunks / stat)是从它解析出来的**投影**,不是替代品:「查看源码」与降级
@@ -82,6 +93,16 @@ export type BlockModel =
    * 同一条判据:换一门语言它不该跟着变,所以它不进字典,原样以 mono 灰显示。
    */
   | { kind: 'source-fallback'; reason: string; source: string }
+
+/**
+ * 图从哪儿来 —— **从第一天就是联合,不是一根字符串**(正本 §1)。
+ *
+ * 今天只有一员:作者在 markdown 里写下的那个地址。P2 的账本图片(生图流、附件
+ * 缩略)走 `{ kind: 'blob'; blob: BlobRef }` —— 那时加的是这里一员 +
+ * `blocks/asset/resolve.ts` 一支,图片组件一个字不改。写成 `url: string` 的话,
+ * 到 P2 就得改这一格的型,而那正是「加功能改骨架」。
+ */
+export type ImageRef = { kind: 'url'; url: string }
 
 export type BlockKind = BlockModel['kind']
 

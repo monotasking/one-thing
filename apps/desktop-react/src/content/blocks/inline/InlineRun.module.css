@@ -25,3 +25,30 @@
   font-size: var(--fs-micro);
   color: var(--accent-deep);
 }
+
+/*
+ * 行内图芯片(2026-09-13,正本 `docs/markdown-image-2026-09.md` §4)。
+ *
+ * 与行内码同族的一颗小底 —— 它说的是「这里有一件别的东西」,和 `.code` 是同一类
+ * 提示,所以用同一格底色而不是再造一档。`baseline` 对齐 + em 尺寸:芯片随正文字号
+ * 缩放,在三档密度里都不会把行高顶起来。非交互,所以不给 cursor、不给 hover。
+ */
+.image {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-1);
+  background: var(--st-hover);
+  color: var(--text-2);
+}
+
+/* 图形字:1em 见方,跟着字走;它是装饰,颜色比字浅一档。 */
+.imageGlyph {
+  width: 1em;
+  height: 1em;
+  color: var(--text-3);
+  flex: none;
+  /* inline-flex 的基线对齐会把 svg 顶上去一点,这一下把它按回字的腰线上。 */
+  align-self: center;
+}
