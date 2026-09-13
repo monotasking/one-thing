@@ -251,13 +251,13 @@ export const en: Record<MessageKey, string> = {
 
   /* ── shortcut settings ────────────────────────────────────────────── */
   'keymap.toggleFull': 'Full screen',
-  'keymap.hint': 'Click a binding, then press the combo; Esc cancels, Backspace unbinds',
+  'keymap.hint': 'Click the ＋ at the end of a slot, then press the combo (it is added, not replaced); Esc cancels, Backspace unbinds the whole command, the × on a cap removes just that one',
   'keymap.recording': 'Press a combo…',
   'keymap.unbound': 'Unbound',
   'keymap.conflict': 'Conflicts with “{name}”',
   'keymap.reset': 'Reset',
   'keymap.resetOf': 'Reset the default combo for “{name}”',
-  'keymap.recordOf': 'Set a shortcut for “{name}”',
+  'keymap.recordOf': 'Add a shortcut for “{name}”',
   'keymap.structuralNote': 'Esc stepping back, the overview arrow keys and Enter, and float-window dragging are part of the layout grammar and are not rebindable',
   'keymap.scopedNote': 'Pane-local keys (viewer ⌘S/⌘L/⌘F, file row ⌘I) only fire while focus is inside that pane; local takes it first, global gets whatever local did not consume',
   'keymap.scopedConflict': 'Taken by “{action}” inside “{scope}”',
@@ -1498,5 +1498,24 @@ export const en: Record<MessageKey, string> = {
   'keymap.zoomIn': 'Zoom in',
   'keymap.zoomOut': 'Zoom out',
   'keymap.zoomReset': 'Actual size',
+  /* ── Keymap profiles + import / export (K5) ─────────────────────────────── */
+  'keymap.profileLabel': 'Keymap profile',
+  'keymap.profileDefault': 'Default',
+  'keymap.profileNote':
+    'Three layers: your per-command changes ▷ the current profile ▷ the factory table. Switching profiles keeps your own changes; anything the profile does not mention falls back to the factory key',
+  'keymap.fromProfile': 'From the “{name}” profile',
+  'keymap.import': 'Import',
+  'keymap.export': 'Export',
+  'keymap.myProfile': 'My keys',
+  'keymap.importDone': 'Imported “{name}”: {count} commands applied',
+  'keymap.importUnknown': 'This shell has no such commands, skipped: {list}',
+  'keymap.importBadChord': 'These keys could not be read, skipped: {list}',
+  'keymap.importWhen': 'The when clauses on these lines were ignored and bound unconditionally: {list}',
+  'keymap.importFailRead': 'That file could not be read',
+  'keymap.importFailJson': 'That file is not valid JSON',
+  'keymap.importFailShape': 'That is neither a keymap profile nor a VS Code keybindings.json',
+  'keymap.exportDone': 'Exported “{name}”',
+  'keymap.exportFail': 'Export failed',
+  'keymap.removeKey': 'Remove {combo} from “{name}”',
 
 }

@@ -310,13 +310,13 @@ export const zh = {
 
   /* ── 快捷键设置区 ─────────────────────────────────────────────────── */
   'keymap.toggleFull': '全屏',
-  'keymap.hint': '点一行的键位再按下组合;Esc 取消,Backspace 解绑',
+  'keymap.hint': '点键位槽尾的 ＋ 再按下组合(追加一个键);Esc 取消,Backspace 整条解绑,键帽上的 × 只删那一个',
   'keymap.recording': '按下组合…',
   'keymap.unbound': '未绑定',
   'keymap.conflict': '与「{name}」冲突',
   'keymap.reset': '恢复默认',
   'keymap.resetOf': '恢复「{name}」的默认组合',
-  'keymap.recordOf': '为「{name}」设置快捷键',
+  'keymap.recordOf': '为「{name}」添加一个快捷键',
   'keymap.structuralNote': 'Esc 逐层退出、总览的方向键与回车、浮窗拖拽是形态语法的一部分,不参与改键',
   'keymap.scopedNote': '面域局部键(查看器 ⌘S/⌘L/⌘F、文件行 ⌘I)只在焦点落在那块面里时生效,局部先接、没接住才轮到全局',
   'keymap.scopedConflict': '「{scope}」里被「{action}」占着',
@@ -1758,5 +1758,24 @@ export const zh = {
   'keymap.zoomIn': '放大',
   'keymap.zoomOut': '缩小',
   'keymap.zoomReset': '实际大小',
+  /* ── 键位组与导入 / 导出(K5,方案 docs/keymap-responder-2026-09.md §5 K5)── */
+  'keymap.profileLabel': '键位组',
+  'keymap.profileDefault': '默认',
+  'keymap.profileNote':
+    '有效键三层:你逐格改的 ▷ 当前键位组 ▷ 出厂表。换组不动你自己改过的那几格;组里没说的那条落回出厂键',
+  'keymap.fromProfile': '来自「{name}」组',
+  'keymap.import': '导入',
+  'keymap.export': '导出',
+  'keymap.myProfile': '我的键位',
+  'keymap.importDone': '已导入「{name}」:{count} 条生效',
+  'keymap.importUnknown': '这台壳没有这些命令,已跳过:{list}',
+  'keymap.importBadChord': '这些键读不出来,已跳过:{list}',
+  'keymap.importWhen': '这些行的 when 条件被忽略,已当成无条件绑定:{list}',
+  'keymap.importFailRead': '这份文件读不出来',
+  'keymap.importFailJson': '这份文件不是合法的 JSON',
+  'keymap.importFailShape': '这既不是一份键位组文件,也不是 VS Code 的 keybindings.json',
+  'keymap.exportDone': '已导出「{name}」',
+  'keymap.exportFail': '导出没成',
+  'keymap.removeKey': '删掉「{name}」的 {combo}',
 
 } as const

@@ -182,3 +182,41 @@
   font-size: var(--fs-meta);
   color: var(--text-3);
 }
+
+/* ── 一条命令的**好几枚键面**(K5)──────────────────────────────────────
+ * 一枚键面 = 几顶 Kbd 帽子 + 一颗 ×(删这一枚)。× 与帽子是**兄弟**,外面这层
+ * 只负责把它们粘成视觉上的一枚 —— 与 ui/FilterChip 的 `.wrap` 逐字同一手
+ * (嵌套 button 既是禁令也确实点不动)。
+ * ────────────────────────────────────────────────────────────────────── */
+.keyFace {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+/* 槽尾那颗 ＋:**追加**一枚键面。尺寸按 Kbd 帽子那一档,不抢戏。 */
+.keyAdd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--sp-5);
+  height: var(--sp-5);
+  border-radius: var(--r-1);
+  color: var(--text-3);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.keyAdd:hover {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+.keyAdd:focus-visible {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 0;
+}
+
+/* 文件选择器那一枚 input:藏起来,由「导入」那颗钮代点(同 composer 附件口那一格)。 */
+.hiddenFile {
+  display: none;
+}

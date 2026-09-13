@@ -1,7 +1,7 @@
 import { MenuItem, MenuSeparator } from '../../ui/Menu'
 import { Kbd } from '../../ui/Kbd'
 import { useT } from '../../i18n'
-import { currentKeymapPlatform, useKeymapStore } from '../../keymap/store'
+import { currentKeymapPlatform, useKeymapState } from '../../keymap/store'
 import { effectiveCombos, formatCombo, workspaceSlotCommandId } from '../../keymap/transitions'
 import { useWorkspaceStore, useWorkspaceViews } from '../store'
 import sw from '../swatch.module.css'
@@ -34,7 +34,8 @@ export function WorkspaceMenuRows({ onOpenOverview, onCreate, onDone }: Props) {
   const t = useT()
   const views = useWorkspaceViews()
   const switchTo = useWorkspaceStore((st) => st.switchTo)
-  const overrides = useKeymapStore((st) => st.overrides)
+  /* **整份键位状态**(K5):有效键是三层落出来的,只读覆盖那一格的话换组之后这一行不重画。 */
+  const keymap = useKeymapState()
   const platform = currentKeymapPlatform()
 
   return (
@@ -44,7 +45,7 @@ export function WorkspaceMenuRows({ onOpenOverview, onCreate, onDone }: Props) {
           view.slot === null
             ? null
             : /* 一条命令可以有好几个键面(K0);菜单行上画**第一个**。 */
-              (effectiveCombos({ overrides }, workspaceSlotCommandId(view.slot))[0] ?? null)
+              (effectiveCombos(keymap, workspaceSlotCommandId(view.slot))[0] ?? null)
         return (
           <MenuItem
             key={view.id}

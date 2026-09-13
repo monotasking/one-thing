@@ -28,13 +28,54 @@ describe('normalizeKeymapOverrides', () => {
     expect(normalizeKeymapOverrides('x')).toEqual({})
   })
 
-  it('merge 只收 overrides,其余以当前实例为准', () => {
+  it('merge 只收用户自己的那三格,其余以当前实例为准', () => {
     const current = { overrides: { z: null }, bind: 'keep' }
     expect(mergeKeymapPersisted({ overrides: { a: { key: 'q' } }, bind: 'evil' }, current)).toEqual({
       overrides: { a: [{ key: 'q' }] },
+      profileId: 'default',
+      userProfiles: [],
       bind: 'keep',
     })
-    expect(mergeKeymapPersisted(undefined, current)).toEqual({ overrides: {}, bind: 'keep' })
+    expect(mergeKeymapPersisted(undefined, current)).toEqual({
+      overrides: {},
+      profileId: 'default',
+      userProfiles: [],
+      bind: 'keep',
+    })
+  })
+
+  /**
+   * **K5:`partialize` 存的那三格与 `merge` 收的那三格必须一一对上。**
+   * 存了却不收就是「设置里换了组,重启回出厂」—— 而那种病没有任何报错,
+   * 只有用户第二天发现键又变回去了。
+   */
+  it('键位组那两格从存档里收得回来,而且照样按形状归一', () => {
+    const current = { overrides: {}, profileId: 'default', userProfiles: [] }
+    const merged = mergeKeymapPersisted(
+      {
+        overrides: {},
+        profileId: 'vscode',
+        userProfiles: [
+          { id: 'user:mine', name: '我的', bindings: { 'tab.close': { key: 'q', meta: true } } },
+          // 没有身份的丢(选不中也删不掉),顶掉内置 id 的也丢(「回到出厂」那条路不许被存档拿走)。
+          { name: '没有 id', bindings: {} },
+          { id: 'default', name: '冒名顶替', bindings: {} },
+          'x',
+        ],
+      },
+      current,
+    )
+    expect(merged.profileId).toBe('vscode')
+    expect(merged.userProfiles).toEqual([
+      { id: 'user:mine', name: '我的', bindings: { 'tab.close': [{ key: 'q', meta: true }] } },
+    ])
+  })
+
+  it('组 id 不是串 = 他没换过组;组表不是数组 = 一组都没有', () => {
+    const current = { overrides: {}, profileId: 'vscode', userProfiles: [] }
+    const merged = mergeKeymapPersisted({ profileId: 7, userProfiles: 'x' }, current)
+    expect(merged.profileId).toBe('default')
+    expect(merged.userProfiles).toEqual([])
   })
 })
 

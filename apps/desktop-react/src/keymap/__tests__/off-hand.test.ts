@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  comboFromEvent,
   effectiveCombos,
   formatCombo,
   initialKeymapState,
   lookupCommands,
   matchCombo,
   platformOf,
+  recordKey,
   sameCombo,
 } from '../transitions'
 import { TERMINAL_SUMMON_COMBOS, comboForPlatform } from '../commands'
@@ -24,6 +26,10 @@ import type { Combo, ComboEvent } from '../types'
  *
  * 四件事各一节:**按下侧**(三平台)、**身份**(`sameCombo`)、**键面**
  * (`formatCombo`)、**出厂表上那三条**真的落到了这一档。
+ *
+ * **K5 补上第五节:录制**。K2 交卷时留了一笔账 —— 「录制录不出 `offHand`,
+ * 设置页录 ⌃Tab 仍读成 `{ctrl:true}`」,也就是用户按的是一枚键、存下来的是另一枚。
+ * 判据与 `matchCombo` 的 offHand 那一支逐字相同:另一枚按着**且主修饰键没按**。
  */
 
 function press(key: string, mods: Partial<Omit<ComboEvent, 'key'>> = {}): ComboEvent {
@@ -140,5 +146,44 @@ describe('出厂表上那三条真的在这一档', () => {
       'tab.next',
     ])
     expect(lookupCommands(initialKeymapState, press('Tab', { ctrlKey: true }), 'other')).toEqual([])
+  })
+})
+
+describe('录制:认得出「另一枚」(K5,结清 K2 那笔账)', () => {
+  it('mac:录 ⌃Tab 得 offHand,录 ⌘Tab 得 meta', () => {
+    expect(comboFromEvent(press('Tab', { ctrlKey: true }), 'mac')).toEqual({
+      offHand: true,
+      key: 'tab',
+    })
+    expect(comboFromEvent(press('Tab', { metaKey: true }), 'mac')).toEqual({
+      meta: true,
+      key: 'tab',
+    })
+  })
+
+  it('win / linux:录 Win+Tab 得 offHand,录 Ctrl+Tab 得主修饰键', () => {
+    expect(comboFromEvent(press('Tab', { metaKey: true }), 'other')).toEqual({
+      offHand: true,
+      key: 'tab',
+    })
+    expect(comboFromEvent(press('Tab', { ctrlKey: true }), 'other')).toEqual({
+      ctrl: true,
+      key: 'tab',
+    })
+  })
+
+  it('⌥ / ⇧ 照旧叠在上面;录出来的那一条真的能被同一下按键命中', () => {
+    const combo = comboFromEvent(press('Tab', { ctrlKey: true, shiftKey: true }), 'mac')
+    expect(combo).toEqual({ offHand: true, shift: true, key: 'tab' })
+    expect(matchCombo(press('Tab', { ctrlKey: true, shiftKey: true }), combo as Combo, 'mac')).toBe(
+      true,
+    )
+  })
+
+  it('`recordKey` 走的是同一只(录制态那一口也认得出另一枚)', () => {
+    expect(recordKey(press('`', { ctrlKey: true }), 'mac')).toEqual({
+      kind: 'bind',
+      combo: { offHand: true, key: '`' },
+    })
   })
 })

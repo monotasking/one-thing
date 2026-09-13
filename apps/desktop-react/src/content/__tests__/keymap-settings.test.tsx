@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { KeymapSettings } from '../KeymapSettings'
 import { FOCUS_SCOPES } from '../../focus/scopes'
 import { useKeymapStore } from '../../keymap/store'
@@ -39,14 +39,14 @@ beforeEach(() => {
   cleanup()
   act(() => {
     useStageStore.setState({ locale: 'zh' })
-    useKeymapStore.setState({ overrides: {} })
+    useKeymapStore.setState({ overrides: {}, profileId: 'default', userProfiles: [] })
   })
 })
 
 afterEach(() => {
   cleanup()
   act(() => {
-    useKeymapStore.setState({ overrides: {} })
+    useKeymapStore.setState({ overrides: {}, profileId: 'default', userProfiles: [] })
   })
 })
 
@@ -129,12 +129,88 @@ describe('设置页快捷键区:共键说得出口', () => {
    * **一条命令两个键面**(`files.detail` 的 ⌘I 与 ⌘↵)。旧表把它写成两行,
    * 于是设置页说不出「详情」这一条到底绑着什么;K0 把它归位成一行两键。
    */
-  it('「详情」那一行同时画出 ⌘I 与 ⌘↵', () => {
-    render(<KeymapSettings />)
-    const slot = screen.getByLabelText(
-      zh['keymap.recordOf'].replace('{name}', DETAIL_LABEL),
-    )
+  /**
+   * K5:键位槽是一格**容器**(不是一颗钮)—— 里面一枚键面一颗 ×,槽尾那颗 ＋
+   * 才是录制入口。所以这一条认的是 DOM 契约 `data-key-slot`,不是可访问名。
+   */
+  it('「详情」那一行同时画出 ⌘I 与 ⌘↵,每一枚各带一颗删钮', () => {
+    const { container } = render(<KeymapSettings />)
+    const slot = container.querySelector('[data-key-slot="files.detail"]') as HTMLElement
+    expect(slot).toBeTruthy()
     expect(slot.textContent).toContain('I')
     expect(slot.textContent).toContain('↵')
+    /* 键帽按平台画(jsdom 里是 `Ctrl` 不是 ⌘),所以这里认的是**有两颗删钮**,
+     * 不是那两句话逐字 —— 键面字符归 `formatCombo` 的用例管。 */
+    expect(screen.getAllByLabelText(new RegExp(`^删掉「${DETAIL_LABEL}」的 `))).toHaveLength(2)
+    // 槽尾那颗 ＋ 仍在,而且它的名字说的是「添加」而不是「设置」。
+    expect(
+      screen.getByLabelText(zh['keymap.recordOf'].replace('{name}', DETAIL_LABEL)),
+    ).toBeTruthy()
+  })
+})
+
+/**
+ * **键位组那一格 + 一格好几枚键**(K5)。
+ *
+ * 三件事:①换组那一下这块面真的重画(从前它只订阅 `overrides`,换组之后一行都
+ * 不动);②键位槽里每一枚键各有一颗删钮,删一枚剩下的还在;③导入一份**读得懂
+ * 一半**的文件,报告把读不懂的那几行说出来(静默是这类功能的病)。
+ */
+describe('设置页快捷键区:键位组', () => {
+  it('顶上那格选择器列出内置三组,默认那一格的名字走字典', () => {
+    render(<KeymapSettings />)
+    const picker = screen.getByLabelText(zh['keymap.profileLabel'])
+    expect(picker.textContent).toContain(zh['keymap.profileDefault'])
+  })
+
+  it('换到 VS Code 组之后,命令面板那一行当场画成 ⌘⇧P,并说出这一行来自哪一组', () => {
+    const { container } = render(<KeymapSettings />)
+    const slotOf = () =>
+      container.querySelector('[data-key-slot="workspace.palette"]') as HTMLElement
+    expect(slotOf().textContent).toContain('W')
+    act(() => void useKeymapStore.getState().setProfile('vscode'))
+    expect(slotOf().textContent).toContain('P')
+    expect(screen.getAllByText(zh['keymap.fromProfile'].replace('{name}', 'VS Code')).length)
+      .toBeGreaterThan(0)
+  })
+
+  it('删掉一枚键面:剩下的那一枚还在,而且这一行随即出现「恢复默认」', () => {
+    const { container } = render(<KeymapSettings />)
+    const slotOf = () => container.querySelector('[data-key-slot="files.detail"]') as HTMLElement
+    expect(screen.getAllByLabelText(new RegExp(`^删掉「${DETAIL_LABEL}」的 `))).toHaveLength(2)
+    act(() => void fireEvent.click(screen.getAllByLabelText(new RegExp(`^删掉「${DETAIL_LABEL}」的 `))[0]))
+    expect(screen.getAllByLabelText(new RegExp(`^删掉「${DETAIL_LABEL}」的 `))).toHaveLength(1)
+    expect(slotOf().textContent).toContain('↵')
+    expect(
+      screen.getByLabelText(zh['keymap.resetOf'].replace('{name}', DETAIL_LABEL)),
+    ).toBeTruthy()
+  })
+})
+
+describe('设置页快捷键区:导入的报告', () => {
+  it('导入一份读得懂一半的文件:生效的生效,读不懂的逐条说出来', async () => {
+    const { container } = render(<KeymapSettings />)
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    const text = JSON.stringify({
+      name: '半份',
+      bindings: { 'toc.toggle': 'cmd+alt+y', 'no.such.command': 'cmd+z', 'agent.menu': 'hyper+q' },
+    })
+    const file = new File([text], 'half.json', { type: 'application/json' })
+    /* 这一档 jsdom 的 `File` 没有 `text()`(真机上 Electron 与浏览器都有),补一格。 */
+    Object.defineProperty(file, 'text', { value: async () => text })
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [file] } })
+      /* `File.text()` 是个 Promise —— 让它落地之后再看这块面。 */
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText(/已导入「半份」:1 条生效/)).toBeTruthy()
+    expect(screen.getByText(/no\.such\.command/)).toBeTruthy()
+    expect(screen.getByText(/hyper\+q/)).toBeTruthy()
+    // 导进来的组当场生效:目录那一行画的是 ⌘⌥Y。
+    const slot = container.querySelector('[data-key-slot="toc.toggle"]') as HTMLElement
+    expect(slot.textContent).toContain('Y')
+    expect(useKeymapStore.getState().profileId).toBe('user:半份')
   })
 })

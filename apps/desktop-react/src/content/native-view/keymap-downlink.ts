@@ -1,9 +1,18 @@
 import { focusScopeAnswersOf, focusScopeClaimsOf } from '../../focus/scopes'
+import { chordOfCombo } from '../../keymap/chord'
 import { currentKeymapPlatform, useKeymapStore } from '../../keymap/store'
 import { KEYMAP_COMMANDS, effectiveCombos } from '../../keymap/transitions'
 import { nativeViewBridge } from '../../data/browser-port'
-import type { Combo, KeymapPlatform } from '../../keymap/types'
+import type { KeymapPlatform, KeymapState } from '../../keymap/types'
 import type { FocusScopeId } from '../../focus/types'
+
+/**
+ * 串那一份规范 **K5 起住在 `keymap/chord.ts`**(两个方向挨着写:键位组的
+ * 导入 / 导出要把同一句话**读回来**,而一个只能正着走的函数不是一份规范)。
+ * 这里原样再导出,既有调用点(门 / 用例)一个字不用改 —— 与 `transitions.ts`
+ * 再导出命令表逐字同一手。
+ */
+export { chordOfCombo } from '../../keymap/chord'
 
 /**
  * **键位下沉**(方案 §9-1,v2 里最大的那个洞)。
@@ -49,28 +58,6 @@ import type { FocusScopeId } from '../../focus/types'
  * 开合:两片视图挂着也只有一条订阅、一份表。
  */
 
-/** 一条绑定 → 主进程认的那个串。与 `chordOf` 同一套规则(见文件头)。 */
-export function chordOfCombo(combo: Combo, platform: KeymapPlatform): string {
-  const parts: string[] = []
-  const primary = combo.meta === true || combo.ctrl === true
-  if (primary) parts.push(platform === 'mac' ? 'cmd' : 'ctrl')
-  /*
-   * **「另一枚」也要在这里解释掉**(K2,`Combo.offHand`):mac 上它是 Ctrl
-   * (于是串写 `ctrl+…`),Win / Linux 上它是 Win 键 —— 而主进程那一侧把
-   * `meta: true` 写成 `cmd`,所以这里也写 `cmd+…`。两端因此对同一次真按键
-   * 算出同一个串(`ctrl+tab` / `cmd+tab`),用例逐条钉着。
-   *
-   * 次序:它排在主修饰之后、⌥ 之前 —— 与 `chordOf` 的 `cmd → ctrl → alt →
-   * shift` 逐字对齐(`offHand` 在 mac 上就是那个 `ctrl` 位、在别处就是那个
-   * `cmd` 位,而一条绑定不会同时要两枚,所以两个位子永不同时占用)。
-   */
-  if (combo.offHand === true) parts.push(platform === 'mac' ? 'ctrl' : 'cmd')
-  if (combo.alt === true) parts.push('alt')
-  if (combo.shift === true) parts.push('shift')
-  parts.push(combo.key.toLowerCase())
-  return parts.join('+')
-}
-
 /**
  * 此刻「已绑定的**保留键**」全表(K0 起它从命令表派生,判据写成了数据)。
  *
@@ -90,7 +77,7 @@ export function chordOfCombo(combo: Combo, platform: KeymapPlatform): string {
  */
 export function boundChordsFor(
   scopes: readonly FocusScopeId[],
-  overrides: Record<string, Combo[] | null>,
+  state: KeymapState,
   platform: KeymapPlatform,
 ): string[] {
   const answered = new Set<string>()
@@ -101,7 +88,7 @@ export function boundChordsFor(
   for (const command of KEYMAP_COMMANDS) {
     if (command.nativeView !== 'reserve') continue
     if (!command.app && !answered.has(command.id)) continue
-    for (const combo of effectiveCombos({ overrides }, command.id)) {
+    for (const combo of effectiveCombos(state, command.id)) {
       out.add(chordOfCombo(combo, platform))
     }
   }
@@ -147,7 +134,12 @@ function push(): void {
   if (!bridge) return
   const chords = boundChordsFor(
     [...SCOPES.keys(), ...NATIVE_VIEW_HOST_SCOPES],
-    useKeymapStore.getState().overrides,
+    /*
+     * **整份状态**,不是只有覆盖那一格(K5):有效键是三层落出来的,换一个
+     * 键位组就是换一张保留键表 —— 只递 `overrides` 的话,切到 VS Code 组之后
+     * 主进程收到的还是出厂那张表,网页里按 ⌘⇧P 会落到页面自己手里。
+     */
+    useKeymapStore.getState(),
     currentKeymapPlatform(),
   )
   // 整表覆盖,但**一样就不发**:键位 store 上任何一次无关的写(它还存别的东西)

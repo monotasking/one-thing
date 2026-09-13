@@ -203,14 +203,14 @@ describe('匹配', () => {
 
   it('大小写规范形:按住 Shift 时 key 是 "P",仍认得出是同一个键', () => {
     expect(normalizeKey('P')).toBe('p')
-    const combo = comboFromEvent(press('P', { metaKey: true, shiftKey: true }))
+    const combo = comboFromEvent(press('P', { metaKey: true, shiftKey: true }), 'mac')
     expect(combo).toEqual({ key: 'p', meta: true, shift: true })
     expect(matchCombo(press('P', { metaKey: true, shiftKey: true }), combo!, 'mac')).toBe(true)
   })
 
   it('只按修饰键读不出组合(录制态要接着等真正那个键)', () => {
-    expect(comboFromEvent(press('Meta', { metaKey: true }))).toBeNull()
-    expect(comboFromEvent(press('Shift', { shiftKey: true }))).toBeNull()
+    expect(comboFromEvent(press('Meta', { metaKey: true }), 'mac')).toBeNull()
+    expect(comboFromEvent(press('Shift', { shiftKey: true }), 'mac')).toBeNull()
   })
 
   it('hasModifier 只认主修饰与 ⌥ —— Shift 不算(⇧A 在输入框里就是 A)', () => {
@@ -317,14 +317,14 @@ describe('显示', () => {
 
 describe('录制', () => {
   it('Esc 取消、Backspace 与 Delete 解绑', () => {
-    expect(recordKey(press('Escape'))).toEqual({ kind: 'cancel' })
-    expect(recordKey(press('Backspace'))).toEqual({ kind: 'unbind' })
-    expect(recordKey(press('Delete'))).toEqual({ kind: 'unbind' })
+    expect(recordKey(press('Escape'), 'mac')).toEqual({ kind: 'cancel' })
+    expect(recordKey(press('Backspace'), 'mac')).toEqual({ kind: 'unbind' })
+    expect(recordKey(press('Delete'), 'mac')).toEqual({ kind: 'unbind' })
   })
 
   it('只按修饰键继续等,按到真键就是这一下要绑的组合', () => {
-    expect(recordKey(press('Meta', { metaKey: true }))).toEqual({ kind: 'ignore' })
-    expect(recordKey(press('K', { metaKey: true, shiftKey: true }))).toEqual({
+    expect(recordKey(press('Meta', { metaKey: true }), 'mac')).toEqual({ kind: 'ignore' })
+    expect(recordKey(press('K', { metaKey: true, shiftKey: true }), 'mac')).toEqual({
       kind: 'bind',
       combo: { key: 'k', meta: true, shift: true },
     })
@@ -332,8 +332,15 @@ describe('录制', () => {
 })
 
 describe('persist', () => {
+  /**
+   * v5(K5)给每一份迁出来的档案补上**键位组**那两格 —— 老档案没提过组,
+   * 而「没提过」说的正是「我用的是出厂组、没导入过谁的键位」。
+   * 下面每一条的期望里因此都带着这两格:它们是迁移的产出,不是背景噪声。
+   */
+  const V5 = { profileId: 'default', userProfiles: [] }
+
   it('当前版本的档案原样放行;老档案里那一格 Combo 在 v3 段被包成 [Combo]', () => {
-    const now = { overrides: { 'toggle:files': [{ meta: true, key: 'f' }] } }
+    const now = { overrides: { 'toggle:files': [{ meta: true, key: 'f' }] }, ...V5 }
     expect(migrateKeymapPersisted(now, KEYMAP_PERSIST_VERSION)).toEqual(now)
     const archived = { overrides: { 'toggle:files': { meta: true, key: 'f' } } }
     expect(migrateKeymapPersisted(archived, 1)).toEqual(now)
@@ -343,6 +350,7 @@ describe('persist', () => {
     const archived = { overrides: { 'expose.toggle': { meta: true, key: 'j' } } }
     expect(migrateKeymapPersisted(archived, 1)).toEqual({
       overrides: { [toggleCommandId(SESSIONS_ITEM_ID)]: [{ meta: true, key: 'j' }] },
+      ...V5,
     })
   })
 
@@ -353,6 +361,18 @@ describe('persist', () => {
         'toggle:files': [{ meta: true, key: 'f' }],
         [toggleCommandId(SESSIONS_ITEM_ID)]: null,
       },
+      ...V5,
     })
+  })
+
+  it('v5:补的是键位组那两格,**覆盖层一个字不动**;已经有值的不覆盖(迁移幂等)', () => {
+    const archived = { overrides: { 'toggle:files': [{ meta: true, key: 'f' }] } }
+    expect(migrateKeymapPersisted(archived, 4)).toEqual({ ...archived, ...V5 })
+    const mine = {
+      overrides: {},
+      profileId: 'vscode',
+      userProfiles: [{ id: 'user:x', name: 'x', bindings: {} }],
+    }
+    expect(migrateKeymapPersisted(mine, 4)).toEqual(mine)
   })
 })

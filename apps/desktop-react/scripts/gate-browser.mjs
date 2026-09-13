@@ -75,6 +75,11 @@
  *     方)。**读表不按键**:菜单加速键走 NSApp 的 `sendEvent`,门里那套 CDP 合成键
  *     根本不经过它 —— 判词与那格只在 `ONETHING_GATE_` 前缀下生效的自述口
  *     (`ONETHING_GATE_MENU_DUMP`)都写在 `electron/app-menu.ts` 上。自己一趟壳。
+ *  ㉔ **键位组换一组,键位下沉表跟着换**(K5,同文 §5 K5):有效键从 K5 起是三层
+ *     落出来的(用户逐格覆盖 ▷ 当前键位组 ▷ 出厂表),而下沉那只 `push()` 从前只
+ *     递 `overrides` 一格 —— 那样切到 VS Code 组之后主进程收到的还是出厂表,网页里
+ *     按 ⌘⇧P 会落到页面自己手里。换组走 localStorage + reload(与 `gate-workspace`
+ *     的 `SLOT_KEYMAP_SEED` 同一手),断言新表里有 ⌘⇧P、没有出厂那个 ⌘⇧W。
  *
  * ⑫⑬⑭ 跑在 ⑪ **之前**,而那是有意的:三件都留在屏上,于是 axe 那一扫顺带把
  * B3-a 这三个新 surface 也扫了(「新 surface 必须追加进扫描屏」那条纪律)。
@@ -2100,6 +2105,49 @@ async function main() {
     })
     assert(bodyBack, '⑳ 展开:树身与收起前**同一个 DOM 节点**(内部状态与滚动位不丢的机械含义)')
 
+    /*
+     * ── ㉓ 键位组换一组之后,**推给主进程那张保留键表跟着换**(K5)────────────
+     *
+     * 它治的是一个真会出现的洞:有效键从 K5 起是**三层**落出来的(用户逐格覆盖
+     * ▷ 当前键位组 ▷ 出厂表),而键位下沉那只 `push()` 从前只递 `overrides` 一格。
+     * 只递那一格的话,切到 VS Code 组之后主进程那张表还是出厂那张 —— 用户在网页
+     * 里按 ⌘⇧P 落到页面自己手里,而设置页上明明写着它是命令面板。
+     *
+     * **走 localStorage + reload**(与 `gate-workspace.mjs` 的 `SLOT_KEYMAP_SEED`
+     * 逐字同一手):键位 store 自己一个持久化槽,换组就是那一格的值。放在这一趟
+     * 的**最后**,因为 reload 之后这一页就不再被别的步骤用了(下一行就是关掉它)。
+     * 主进程那只 `__b2Keymap` 收的是 IPC,渲染进程 reload 它一格都不掉。
+     */
+    console.log('\n[10c] ㉔ 换键位组 → 键位下沉表跟着换(K5)')
+    const tablesBefore = await app.evaluate(() => (globalThis.__b2Keymap ?? []).length)
+    await page.evaluate(() => {
+      localStorage.setItem(
+        'onething.keymap',
+        JSON.stringify({ version: 5, state: { overrides: {}, profileId: 'vscode', userProfiles: [] } }),
+      )
+    })
+    await page.reload()
+    const vscodeTable = await waitFor(
+      '㉔ 换组之后主进程收到了新的一张保留键表',
+      async () => {
+        const tables = await app.evaluate(() => globalThis.__b2Keymap ?? [])
+        if (tables.length <= tablesBefore) return undefined
+        return tables.at(-1)
+      },
+      20_000,
+    )
+    report.chordsVscode = (vscodeTable ?? []).length
+    assert(
+      (vscodeTable ?? []).some((c) => c === 'cmd+shift+p' || c === 'ctrl+shift+p'),
+      `㉔ VS Code 组的命令面板(⌘⇧P)在表里(整表 ${(vscodeTable ?? []).length} 条)`,
+    )
+    assert(
+      !(vscodeTable ?? []).some((c) => c === 'cmd+shift+w' || c === 'ctrl+shift+w'),
+      '㉔ 出厂那个键(⌘⇧W)**不在**表里 —— 换的是整组,不是加一条',
+    )
+    // 门自己收拾场地:把那一格改回出厂组(这一趟的 store 是临时的,但不留残渣)。
+    await page.evaluate(() => localStorage.removeItem('onething.keymap'))
+
     await app.close()
     app = undefined
     // tab 表是 300ms 节流写的(`BrowserService.schedulePersist`);`dispose()` 会
@@ -2408,7 +2456,7 @@ async function main() {
       await rm(menuStore, { recursive: true, force: true })
     }
 
-    console.log(`\n[browser-gate] ok(${LANE} 档)—— 二十三条全过`)
+    console.log(`\n[browser-gate] ok(${LANE} 档)—— 二十四条全过`)
     console.log(`[browser-gate] 读数:${JSON.stringify(report)}`)
   } finally {
     if (app) await app.close().catch(() => {})

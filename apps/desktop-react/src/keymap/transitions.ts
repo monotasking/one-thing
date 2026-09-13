@@ -1,6 +1,8 @@
 import { KEYMAP_COMMANDS, comboConflictBetween, findCommand, toggleCommandId } from './commands'
 import { SESSIONS_ITEM_ID } from '../stage/items'
+import { BUILTIN_KEYMAP_PROFILES, DEFAULT_KEYMAP_PROFILE_ID, findBuiltinProfile } from './profiles'
 import type { ComboConflict } from './commands'
+import type { KeymapProfile } from './profiles'
 import type {
   Combo,
   ComboEvent,
@@ -38,7 +40,7 @@ export type { ComboConflict } from './commands'
 export { platformOf } from './platform'
 
 /** persist 档案版本。改这个数就必须在 migrateKeymapPersisted 里加一段,两者同生共死。 */
-export const KEYMAP_PERSIST_VERSION = 4
+export const KEYMAP_PERSIST_VERSION = 5
 
 /**
  * 退役的命令 id。它只作为**老档案里的一个键**存在(v2 迁移读它、改挂它),
@@ -53,7 +55,11 @@ const RETIRED_EXPOSE_TOGGLE_ID = 'expose.toggle'
  */
 const RETIRED_SESSION_NEW_ID = 'session.new'
 
-export const initialKeymapState: KeymapState = { overrides: {} }
+export const initialKeymapState: KeymapState = {
+  overrides: {},
+  profileId: DEFAULT_KEYMAP_PROFILE_ID,
+  userProfiles: [],
+}
 
 /* ── 键与组合(纯算术,与 state 无关,所以能单独测) ────────────────────────── */
 
@@ -165,12 +171,28 @@ export function matchCombo(e: ComboEvent, combo: Combo, platform: KeymapPlatform
   )
 }
 
-/** 一次按键读成组合。只按了修饰键 = null(还不成组合)。false 的位不写进对象。 */
-export function comboFromEvent(e: ComboEvent): Combo | null {
+/**
+ * 一次按键读成组合。只按了修饰键 = null(还不成组合)。false 的位不写进对象。
+ *
+ * ── K5:**认得出「另一枚」**,所以 platform 是必填的 ──────────────────────
+ * K2 给 `Combo` 开了 `offHand` 那一格,却没给**录制**开 —— 于是设置页上录 ⌃Tab
+ * 读回来的是 `{ctrl: true, key: 'tab'}`,而那在 mac 上读作 **⌘Tab**:用户按的是
+ * 一枚键,存下来的是另一枚(K2 留的账,原话「录制录不出 `offHand`」)。判据与
+ * `matchCombo` 的 offHand 那一支**逐字相同**:另一枚按着 **且主修饰键没按**。
+ *
+ * 两枚同按(mac 的 ⌃⌘X)照旧读成 `{meta, ctrl}` —— 那是一条**匹配不上任何按键**
+ * 的绑定(`matchCombo` 的 `!offHandPressed` 那道闸),K2 之前就是这样,K5 不顺手
+ * 改它:那是「两枚都要的组合这台壳收不收」的拍点,不是录制的事(留账)。
+ */
+export function comboFromEvent(e: ComboEvent, platform: KeymapPlatform): Combo | null {
   if (isModifierKey(e.key)) return null
   const combo: Combo = { key: normalizeKey(e.key) }
-  if (e.metaKey) combo.meta = true
-  if (e.ctrlKey) combo.ctrl = true
+  if (offHandPressed(e, platform) && !primaryHeldIn(e, platform)) {
+    combo.offHand = true
+  } else {
+    if (e.metaKey) combo.meta = true
+    if (e.ctrlKey) combo.ctrl = true
+  }
   if (e.altKey) combo.alt = true
   if (e.shiftKey) combo.shift = true
   return combo
@@ -231,7 +253,92 @@ export function formatCombo(combo: Combo, platform: KeymapPlatform): string[] {
  */
 export function effectiveCombos(state: KeymapState, id: CommandId): readonly Combo[] {
   if (id in state.overrides) return state.overrides[id] ?? []
+  return profileCombos(activeProfile(state), id)
+}
+
+/* ── 键位组:三层的中间那一层(K5)──────────────────────────────────────── */
+
+/**
+ * 此刻是哪一组。认不出的 id(用户组被删掉了、档案是别人的)**落回出厂组** ——
+ * 不是报错,也不是空表:一个认不出的组名最坏的后果应该是「键位回到出厂」,
+ * 而不是整台壳一个快捷键都没有。
+ *
+ * 内置组**先查**:用户组的 id 一律 `user:` 打头(`profile-io.ts` 铸的),所以
+ * 这两族结构上不相交 —— 次序在这里只是把那句保证再说一遍。
+ */
+export function activeProfile(state: KeymapState): KeymapProfile | undefined {
+  const id = state.profileId ?? DEFAULT_KEYMAP_PROFILE_ID
+  return findBuiltinProfile(id) ?? state.userProfiles?.find((p) => p.id === id)
+}
+
+/**
+ * 一条命令在**某一组**底下绑着什么(不含用户逐格覆盖)= 三层的下面两层。
+ *
+ * 判据与 `effectiveCombos` 上面那一句逐字相同:问的是 `in`,不是真值 ——
+ * 组里显式的 `null` 是「这一组把它解绑了」,它赢过出厂值;缺席才往下落。
+ */
+export function profileCombos(
+  profile: KeymapProfile | undefined,
+  id: CommandId,
+): readonly Combo[] {
+  if (profile && id in profile.bindings) return profile.bindings[id] ?? []
   return findCommand(id)?.defaultCombos ?? []
+}
+
+/** 这条命令是**这一组**说的话,还是落下去的出厂值。设置页那一行据此说一句出处。 */
+export function isProfileBound(profile: KeymapProfile | undefined, id: CommandId): boolean {
+  return profile !== undefined && id in profile.bindings
+}
+
+/**
+ * **一整组自己过一遍冲突规则**(K5)。回的是「这一组里哪两条撞在一个键上、
+ * 按的是哪一条规则」,空数组 = 这一组干净。
+ *
+ * 它为什么必须存在:出厂表从 K0 起自己要过冲突规则(`__tests__/commands.test.ts`
+ * 跑全表),而一个键位组是**出厂表的替身** —— 换一组就是换一张有效表,那张表
+ * 一样会撞。三组各跑一遍由 `__tests__/profiles.test.ts` 钉着;反证是往 vscode 组
+ * 里塞一条真撞的绑定,那条用例当场红。
+ *
+ * 判据用的是同一只 `comboConflictBetween`(规则只有一条,不许有第二份),
+ * 同一只 `sameCombo`(⌘P 与 Ctrl+P 是同一条绑定)。
+ */
+export interface ProfileConflict {
+  command: CommandId
+  conflict: ComboConflict
+}
+
+export function profileConflicts(profile: KeymapProfile): ProfileConflict[] {
+  const out: ProfileConflict[] = []
+  for (let i = 0; i < KEYMAP_COMMANDS.length; i += 1) {
+    const mine = profileCombos(profile, KEYMAP_COMMANDS[i].id)
+    if (mine.length === 0) continue
+    for (let j = i + 1; j < KEYMAP_COMMANDS.length; j += 1) {
+      const other = profileCombos(profile, KEYMAP_COMMANDS[j].id)
+      if (!other.some((b) => mine.some((a) => sameCombo(a, b)))) continue
+      const conflict = comboConflictBetween(KEYMAP_COMMANDS[i].id, KEYMAP_COMMANDS[j].id)
+      if (conflict) out.push({ command: KEYMAP_COMMANDS[i].id, conflict })
+    }
+  }
+  return out
+}
+
+/** 选择器里列得出的全部组:内置三组在前,用户导入的在后。 */
+export function listProfiles(state: KeymapState): readonly KeymapProfile[] {
+  return [...BUILTIN_KEYMAP_PROFILES, ...(state.userProfiles ?? [])]
+}
+
+/** 换一组。**覆盖层一个字不动** —— 「换组不丢手」就是这一行里的那句话。 */
+export function setProfile(state: KeymapState, profileId: string): KeymapState {
+  return { ...state, profileId }
+}
+
+/**
+ * 收一个导入进来的组。**同 id 覆盖**(再导入一次同一份文件是更新,不是堆一摞),
+ * 并且当场切过去 —— 导入完还要自己去选一下,那一步没有第二种可能的意图。
+ */
+export function addUserProfile(state: KeymapState, profile: KeymapProfile): KeymapState {
+  const rest = (state.userProfiles ?? []).filter((p) => p.id !== profile.id)
+  return { ...state, userProfiles: [...rest, profile], profileId: profile.id }
 }
 
 /** 这条命令有没有被用户改过 —— 「恢复默认」那颗按钮只在它为真时出现。 */
@@ -299,8 +406,15 @@ export function sharedChordOf(state: KeymapState, id: CommandId): CommandId[] {
  * 是哪一条规则**。规则本身与出厂表同用一只函数,出厂表自己也得过
  * (`__tests__/commands.test.ts` 跑全表)。
  *
- * 录一次 = **整条换成那一个键**(数组长度回到 1)。`files.detail` 的第二个出厂键
- * 因此会丢,「恢复默认」拿得回来 —— 多键改绑是 K5 的事,这里先把形状留对。
+ * ── K5:录一次 = **追加一个键**,不再整条替换 ────────────────────────────
+ * K0 留的账原话是「`files.detail` 的第二个出厂键因此会丢」。那不是一格瑕疵,
+ * 是**说不出口**:一条命令可以有好几个键面是 K0 就定下的形状,而唯一的写入口
+ * 只会把它压回一个,于是「两个键面」这件事用户既看得见又做不出来。K5 把写入
+ * 补齐成三件,一件一只函数:**追加**(这一只)、**删一个键面**(`removeCombo`)、
+ * **整条解绑**(`unbindCombo`,录制态里的 Backspace)。
+ *
+ * 已经绑在自己身上的那个组合再按一次是**恒等成功**(不追加重复的一格,也不报
+ * 「与自己冲突」)—— 用户按第二遍的意思是「我确认是它」,不是「我要两份」。
  */
 export function bindCombo(
   state: KeymapState,
@@ -314,7 +428,26 @@ export function bindCombo(
     const conflict = comboConflictBetween(id, command.id)
     if (conflict) return { conflict }
   }
-  return { ok: { ...state, overrides: { ...state.overrides, [id]: [combo] } } }
+  const mine = effectiveCombos(state, id)
+  if (mine.some((c) => sameCombo(c, combo))) return { ok: state }
+  return { ok: { ...state, overrides: { ...state.overrides, [id]: [...mine, combo] } } }
+}
+
+/**
+ * 删掉**一个键面**(设置页每个键帽尾巴上那颗 ×)。
+ *
+ * 删到一个不剩写的是**空数组**,不是把覆盖摘掉:「我把最后一个键也删了」与
+ * 「我没改过」是两件事 —— 后者才该落回出厂值。这与 `unbindCombo` 写显式 null
+ * 是同一句话的两种拼法(`effectiveCombos` 的 `?? []` 把它们读成同一个结果),
+ * 分开只是因为一个是「删这一格」、一个是「这一条我不要了」。
+ *
+ * 删一个本来就不在的组合是恒等(不新建一格覆盖)—— 没发生的事不该留下痕迹。
+ */
+export function removeCombo(state: KeymapState, id: CommandId, combo: Combo): KeymapState {
+  const mine = effectiveCombos(state, id)
+  if (!mine.some((c) => sameCombo(c, combo))) return state
+  const left = mine.filter((c) => !sameCombo(c, combo))
+  return { ...state, overrides: { ...state.overrides, [id]: [...left] } }
 }
 
 /** 解绑:写一条显式的 null。它不是「恢复默认」—— 默认键也不再生效。 */
@@ -336,11 +469,11 @@ export function resetCombo(state: KeymapState, id: CommandId): KeymapState {
  * 录制态里一次按键该怎么读。四条分支,一条不多:
  *  Esc 取消 / Backspace 与 Delete 解绑 / 只按修饰键继续等 / 别的就是这一下要绑的组合。
  */
-export function recordKey(e: ComboEvent): RecordOutcome {
+export function recordKey(e: ComboEvent, platform: KeymapPlatform): RecordOutcome {
   const key = normalizeKey(e.key)
   if (key === 'escape') return { kind: 'cancel' }
   if (key === 'backspace' || key === 'delete') return { kind: 'unbind' }
-  const combo = comboFromEvent(e)
+  const combo = comboFromEvent(e, platform)
   if (!combo) return { kind: 'ignore' }
   return { kind: 'bind', combo }
 }
@@ -405,6 +538,19 @@ export function migrateKeymapPersisted(persisted: unknown, version: number): unk
       const { [RETIRED_SESSION_NEW_ID]: legacy, ...rest } = overrides as Record<string, unknown>
       out = { ...out, overrides: 'content.new' in rest ? rest : { ...rest, 'content.new': legacy } }
     }
+  }
+  if (version < 5) {
+    /*
+     * v5(K5):档案里多了**键位组**这一层。老档案没有这两格,而「没有这两格」
+     * 说的正是「我用的是出厂组、没导入过谁的键位」—— 所以这一段把那句话写实,
+     * 覆盖层**一个字不动**(用户改过的键跟着他走,与换组不丢手同一条判词)。
+     *
+     * 已经有值的不覆盖(迁移要幂等),而且这里只补两格、不读也不改 `overrides`:
+     * 三层里下面两层的变化(将来改内置组的键)对老用户是免费的,理由与 v4
+     * 那一段逐字相同 —— 档案里只存覆盖。
+     */
+    if (!('profileId' in out)) out = { ...out, profileId: DEFAULT_KEYMAP_PROFILE_ID }
+    if (!('userProfiles' in out)) out = { ...out, userProfiles: [] }
   }
   return out
 }

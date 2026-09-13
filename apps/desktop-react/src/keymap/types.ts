@@ -1,5 +1,12 @@
 import type { MessageKey } from '../i18n'
 import type { ShelfSide } from '../stage/types'
+/*
+ * **只借形状,不借代码**:`profiles.ts` 那一侧也只 `import type` 回这里
+ * (`Combo` / `CommandId`),所以两只文件之间**一条运行时的边都没有** ——
+ * 类型在编译期就擦掉了。组的**表**住在 `profiles.ts`(它是数据,而且要读出厂表
+ * 的平台分档),状态的**形状**住在这儿,各在各的位子上。
+ */
+import type { KeymapProfile } from './profiles'
 
 /**
  * 快捷键注册表的形状。和 stage/ expose/ 一样:这里只有数据,没有 React、没有 DOM。
@@ -236,6 +243,23 @@ export interface KeymapCommand {
  */
 export interface KeymapState {
   overrides: Record<string, Combo[] | null>
+  /**
+   * **当前键位组**(K5)。缺席 = 出厂组(`DEFAULT_KEYMAP_PROFILE_ID`)。
+   *
+   * 「缺席就是出厂组」是一句**真话**,不是省事:一份没提过键位组的状态
+   * (老档案、用例里手写的 `{ overrides }`)说的正是「我没换过组」。所以这一格
+   * 是可选的 —— 与 `overrides` 那一格「缺席 vs 显式 null」逐字同一条口径,
+   * 只是上了一层。三层怎么落写在 `transitions.effectiveCombos` 上。
+   */
+  profileId?: string
+  /**
+   * **导入进来的用户组**。内置三组不在这里(它们是代码,见 `profiles.ts`)——
+   * 存档里只存用户自己带进来的东西,同 `overrides` 只存覆盖那条判词:存了内置
+   * 组的话,改内置组的键就再也推不到老用户身上。
+   *
+   * id 一律 `user:` 打头(`profile-io.ts` 铸的),所以**结构上**盖不住内置组。
+   */
+  userProfiles?: readonly KeymapProfile[]
 }
 
 /** 显示用的平台。只影响键面写 ⌘ 还是 Ctrl,不影响匹配。 */

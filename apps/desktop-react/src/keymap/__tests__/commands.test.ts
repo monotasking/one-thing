@@ -4,8 +4,10 @@ import {
   KEYMAP_PERSIST_VERSION,
   bindCombo,
   effectiveCombos,
+  hasOverride,
   lookupCommands,
   migrateKeymapPersisted,
+  removeCombo,
   sameCombo,
 } from '../transitions'
 import type { Combo, CommandId } from '../types'
@@ -113,11 +115,37 @@ describe('冲突规则:一条,两种红', () => {
     expect('ok' in again).toBe(true)
   })
 
-  it('录一次 = 整条换成那一个键(`files.detail` 的第二个出厂键因此会丢)', () => {
+  /**
+   * K0 立这一条时它钉的是「整条换成那一个键」,并在原地留了一句账:
+   * 「`files.detail` 的第二个出厂键因此会丢」。K5 结清那笔账 —— 录一次是
+   * **追加一枚**,两个出厂键原样在,新的排在后面。
+   */
+  it('录一次 = 追加一枚键面(`files.detail` 的两个出厂键一枚不丢)', () => {
     expect(effectiveCombos(factory, 'files.detail')).toHaveLength(2)
     const next = bindCombo(factory, 'files.detail', { meta: true, key: 'd' })
     expect('ok' in next).toBe(true)
-    if ('ok' in next) expect(effectiveCombos(next.ok, 'files.detail')).toEqual([{ meta: true, key: 'd' }])
+    if ('ok' in next)
+      expect(effectiveCombos(next.ok, 'files.detail')).toEqual([
+        { meta: true, key: 'i' },
+        { meta: true, key: 'enter' },
+        { meta: true, key: 'd' },
+      ])
+  })
+
+  it('已经绑在自己身上的那一枚再按一次不追加第二份(恒等)', () => {
+    const next = bindCombo(factory, 'files.detail', { meta: true, key: 'i' })
+    expect('ok' in next).toBe(true)
+    if ('ok' in next) expect(effectiveCombos(next.ok, 'files.detail')).toHaveLength(2)
+  })
+
+  it('`removeCombo` 只删那一枚;删到一枚不剩是**解绑**,不是回落出厂值', () => {
+    const one = removeCombo(factory, 'files.detail', { meta: true, key: 'i' })
+    expect(effectiveCombos(one, 'files.detail')).toEqual([{ meta: true, key: 'enter' }])
+    const none = removeCombo(one, 'files.detail', { meta: true, key: 'enter' })
+    expect(effectiveCombos(none, 'files.detail')).toEqual([])
+    expect(hasOverride(none, 'files.detail')).toBe(true)
+    // 删一枚本来就不在的组合是恒等 —— 没发生的事不留痕迹。
+    expect(removeCombo(factory, 'files.detail', { meta: true, key: 'z' })).toBe(factory)
   })
 })
 
@@ -223,7 +251,7 @@ describe('persist 迁移 v2 → v3 → v4', () => {
   })
 
   it('版本号与迁移段同生共死(改一个就要动另一个)', () => {
-    expect(KEYMAP_PERSIST_VERSION).toBe(4)
+    expect(KEYMAP_PERSIST_VERSION).toBe(5)
   })
 })
 

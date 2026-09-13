@@ -89,7 +89,7 @@ describe('一条绑定 → 一个串', () => {
 
 describe('整表', () => {
   it('全局命令 ∪ 那几个作用域的局部键,去重且排序', () => {
-    const chords = boundChordsFor(['browser'], {}, 'mac')
+    const chords = boundChordsFor(['browser'], { overrides: {} }, 'mac')
     // `browser` 那条局部键(⌘L)在表里 —— 它是保留键,得先于页面。
     expect(chords).toContain('cmd+l')
     // 全局命令也在(⌘⇧F 检索面 / ⌘E 会话总览;K2 起 ⌘P 出厂不绑)。
@@ -102,15 +102,15 @@ describe('整表', () => {
   })
 
   it('改绑跟着走 —— 表是从 `overrides` 现算的,不是一份快照', () => {
-    const before = boundChordsFor([], {}, 'mac')
-    const after = boundChordsFor([], { 'toggle:search': [{ meta: true, key: 'k' }] }, 'mac')
+    const before = boundChordsFor([], { overrides: {} }, 'mac')
+    const after = boundChordsFor([], { overrides: { 'toggle:search': [{ meta: true, key: 'k' }] } }, 'mac')
     expect(before).toContain('cmd+shift+f')
     expect(after).not.toContain('cmd+shift+f')
     expect(after).toContain('cmd+k')
   })
 
   it('解绑(`null`)的命令不进表 —— 那个组合该归页面', () => {
-    const chords = boundChordsFor([], { 'toggle:search': null }, 'mac')
+    const chords = boundChordsFor([], { overrides: { 'toggle:search': null } }, 'mac')
     expect(chords).not.toContain('cmd+shift+f')
   })
 
@@ -122,7 +122,7 @@ describe('整表', () => {
      * 不该被推下去:查看器与那片原生视图不会同时在场,推下去只会让页面自己的
      * ⌘S 变成一个什么都不做的键。
      */
-    const chords = new Set(boundChordsFor([], {}, 'mac'))
+    const chords = new Set(boundChordsFor([], { overrides: {} }, 'mac'))
     const bound = KEYMAP_COMMANDS.filter(
       (c) => c.app && effectiveCombos({ overrides: {} }, c.id).length > 0,
     )
@@ -225,7 +225,7 @@ describe('整表', () => {
 
   it('推下去的键集逐字就是这四十条(mac 档)', () => {
     const expected = [...K2_BROWSER_CHORDS_MAC, summonChordOn('mac')].sort()
-    expect(boundChordsFor(['browser', ...NATIVE_VIEW_HOST_SCOPES], {}, 'mac')).toEqual(expected)
+    expect(boundChordsFor(['browser', ...NATIVE_VIEW_HOST_SCOPES], { overrides: {} }, 'mac')).toEqual(expected)
     expect(expected).toHaveLength(40)
   })
 
@@ -237,7 +237,7 @@ describe('整表', () => {
    * 修饰键、归应用的别的命令。
    */
   it('Win / Linux 档:主修饰那一族换写法,`offHand` 那三条反着走', () => {
-    const other = boundChordsFor(['browser', ...NATIVE_VIEW_HOST_SCOPES], {}, 'other')
+    const other = boundChordsFor(['browser', ...NATIVE_VIEW_HOST_SCOPES], { overrides: {} }, 'other')
     // 三十二条字面量 + 召唤那一格(判词在 `summonChordOn` 上)。
     expect(other).toHaveLength(K2_BROWSER_CHORDS_MAC.length + 1)
     // 主修饰那一族:mac 的 `cmd+x` ↔ 别处的 `ctrl+x`。
@@ -258,7 +258,7 @@ describe('整表', () => {
    * 「页面焦点下 ⌘T 开出一格新标签」同时红。
    */
   it('只报 `browser` 一格时,叶那一族一条都不在表里(所以宿主那一格必须补)', () => {
-    const withoutLeaf = boundChordsFor(['browser'], {}, 'mac')
+    const withoutLeaf = boundChordsFor(['browser'], { overrides: {} }, 'mac')
     expect(withoutLeaf).not.toContain('cmd+t')
     expect(withoutLeaf).not.toContain('cmd+w')
     expect(withoutLeaf).not.toContain('ctrl+tab')
@@ -278,7 +278,7 @@ describe('整表', () => {
       'view.zoomOut',
       'view.zoomReset',
     ])
-    const without = boundChordsFor([], {}, 'mac')
+    const without = boundChordsFor([], { overrides: {} }, 'mac')
     expect(without).not.toContain('cmd+l')
     expect(without).not.toContain('cmd+f')
     /*
@@ -290,5 +290,32 @@ describe('整表', () => {
     for (const chord of ['cmd+r', 'cmd+[', 'cmd+]', 'cmd+=', 'cmd+-', 'cmd+0', 'cmd+shift++']) {
       expect(without, chord).not.toContain(chord)
     }
+  })
+})
+
+describe('键位下沉:表跟着**键位组**走(K5)', () => {
+  /*
+   * 有效键是三层落出来的,所以这只函数收的是**整份状态**而不是 `overrides` 一格。
+   * 只递那一格的话,换到 VS Code 组之后推给主进程的还是出厂那张表 —— 网页里按
+   * ⌘⇧P 会落到页面自己手里,而设置页上明明写着它是命令面板。真机那一半由
+   * `gate:browser` ㉓ 守着。
+   */
+  it('换到 VS Code 组:⌘⇧P 进表、出厂那个 ⌘⇧W 出表', () => {
+    const factory = boundChordsFor([], { overrides: {} }, 'mac')
+    expect(factory).toContain('cmd+shift+w')
+    expect(factory).not.toContain('cmd+shift+p')
+    const vscode = boundChordsFor([], { overrides: {}, profileId: 'vscode' }, 'mac')
+    expect(vscode).toContain('cmd+shift+p')
+    expect(vscode).not.toContain('cmd+shift+w')
+  })
+
+  it('用户逐格覆盖仍然赢组(三层的最上面那一层照样下沉)', () => {
+    const mine = boundChordsFor(
+      [],
+      { overrides: { 'workspace.palette': [{ meta: true, alt: true, key: 'y' }] }, profileId: 'vscode' },
+      'mac',
+    )
+    expect(mine).toContain('cmd+alt+y')
+    expect(mine).not.toContain('cmd+shift+p')
   })
 })

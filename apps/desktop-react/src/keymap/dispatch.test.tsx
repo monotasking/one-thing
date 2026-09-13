@@ -219,7 +219,7 @@ describe('设置页里的录制', () => {
 
   it('录制态吃掉这一下按键:录 ⌘⇧F 的时候检索面板不会真的弹出来,而是报冲突', () => {
     openSettings()
-    const slot = screen.getByLabelText('为「目录」设置快捷键')
+    const slot = screen.getByLabelText('为「目录」添加一个快捷键')
     fireEvent.click(slot)
     act(() => void fireEvent.keyDown(slot, { key: 'f', metaKey: true, shiftKey: true }))
 
@@ -236,13 +236,13 @@ describe('设置页里的录制', () => {
 
   it('按一个没人占的组合就绑上,行上随即出现「恢复默认」', () => {
     openSettings()
-    const slot = screen.getByLabelText('为「目录」设置快捷键')
+    const slot = screen.getByLabelText('为「目录」添加一个快捷键')
     fireEvent.click(slot)
     // ⌘⌃P:K2 之后 ⌘P 空出来了,但它**不是**「没人占」的好例子(它空着是有意的),
     // 所以这里挑一个出厂表里从头到尾没人碰过的组合。
     act(() => void fireEvent.keyDown(slot, { key: 'y', metaKey: true, altKey: true }))
 
-    // K0:覆盖的值是**一串**组合(录一次 = 整条换成那一个键)。
+    // K0:覆盖的值是**一串**组合;K5 起录一次是**追加**(这一条本来没绑键,所以只有一枚)。
     expect(useKeymapStore.getState().overrides['toggle:files']).toEqual([
       { key: 'y', meta: true, alt: true },
     ])
