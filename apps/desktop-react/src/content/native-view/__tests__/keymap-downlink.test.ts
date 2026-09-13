@@ -154,6 +154,20 @@ describe('整表', () => {
    * 判词在下面 `summonChordOn` 上)。
    *
    * 19 − 4 + 18 = 33。这一行算术就是这张表的审计。
+   *
+   * ── K2 的三十三条 → K3 的四十条 ─────────────────────────────────────────
+   * **只进不出,七条**,而且七条全是**浏览器答得出的内容族命令**(K3):
+   * `cmd+r`(`view.reload`)、`cmd+[` / `cmd+]`(`nav.back` / `nav.forward` ——
+   * 从前只有检索面答,检索面与那片原生视图不会同时在场,所以它们在 K2 那张表上
+   * 不在)、`cmd+=` 与 `cmd+shift++`(`view.zoomIn` 的两个键面 —— 同一枚物理键
+   * 按不按 ⇧)、`cmd+-`(`view.zoomOut`)、`cmd+0`(`view.zoomReset`)。
+   *
+   * **它们必须进这张表**,而那正是 K3 的正题:K1 已经把 ⌘R / ⌘± / ⌘0 从
+   * Electron 默认菜单手上拿走了,如果它们不在保留表里,页面焦点下按 ⌘R 就落回
+   * 页面自己的重载 —— 那**看起来**是对的,但 ⌘[ / ⌘] / ⌘0 三条壳这一侧的响应者
+   * 就永远轮不到,而「后退归浏览器叶」是这一单的裁定。
+   *
+   * 33 + 7 = 40。这一行算术就是这张表的审计。
    */
   const K2_BROWSER_CHORDS_MAC = [
     'cmd+,',
@@ -188,6 +202,14 @@ describe('整表', () => {
     'cmd+w',
     'ctrl+shift+tab',
     'ctrl+tab',
+    /* ── K3 的七条(判词在上面那段算术里)────────────────────────────── */
+    'cmd+[',
+    'cmd+]',
+    'cmd+=',
+    'cmd+-',
+    'cmd+0',
+    'cmd+r',
+    'cmd+shift++',
   ]
 
   /**
@@ -201,10 +223,10 @@ describe('整表', () => {
   const summonChordOn = (lane: KeymapPlatform) =>
     chordOfCombo(comboForPlatform(TERMINAL_SUMMON_COMBOS, platformOf(navigator.userAgent)), lane)
 
-  it('推下去的键集逐字就是这三十三条(mac 档)', () => {
+  it('推下去的键集逐字就是这四十条(mac 档)', () => {
     const expected = [...K2_BROWSER_CHORDS_MAC, summonChordOn('mac')].sort()
     expect(boundChordsFor(['browser', ...NATIVE_VIEW_HOST_SCOPES], {}, 'mac')).toEqual(expected)
-    expect(expected).toHaveLength(33)
+    expect(expected).toHaveLength(40)
   })
 
   /**
@@ -243,14 +265,30 @@ describe('整表', () => {
     expect(NATIVE_VIEW_HOST_SCOPES).toEqual(['leaf'])
   })
 
-  it('⌘L / ⌘F 进表是因为 `browser` **答得出**那两条命令,不是因为它叫 browser', () => {
+  it('这八条进表是因为 `browser` **答得出**它们,不是因为它叫 browser', () => {
     // 拆掉 `BROWSER_ANSWERS` 里任意一条 → 这一条与上面那张字面量表一起红。
     expect(focusScopeAnswersOf('browser').map((a) => a.command)).toEqual([
       'browser.address',
       'view.find',
+      /* ── 内容族六条(K3)────────────────────────────────────────────── */
+      'view.reload',
+      'nav.back',
+      'nav.forward',
+      'view.zoomIn',
+      'view.zoomOut',
+      'view.zoomReset',
     ])
     const without = boundChordsFor([], {}, 'mac')
     expect(without).not.toContain('cmd+l')
     expect(without).not.toContain('cmd+f')
+    /*
+     * **内容族那七个键面没有 `browser` 在场时一个都不进表**,而这一句比
+     * 「⌘L 不在」更值钱:它们全都落在 `KEYS_RESERVED_FOR_CONTENT`(K1)或
+     * 它旁边 —— 在没有网页的时候把 ⌘R 推下去,等于替一个不存在的响应者
+     * 占着一个键。
+     */
+    for (const chord of ['cmd+r', 'cmd+[', 'cmd+]', 'cmd+=', 'cmd+-', 'cmd+0', 'cmd+shift++']) {
+      expect(without, chord).not.toContain(chord)
+    }
   })
 })

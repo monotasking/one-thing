@@ -1749,4 +1749,14 @@ export const zh = {
   /** 会话总览 / composer 对「新建这一种内容」的说法(它们是「焦点在会话里」的两种形)。 */
   'keymap.contentNewSession': '新建会话',
 
+  /* ── 内容族(K3,方案 docs/keymap-responder-2026-09.md §3 / §5 K3)────────
+   * 这六条是**命令自己那一句通名**;每块面自己的说法挂在 `answers` 上
+   * (浏览器的后退 / 前进 / 刷新复用地址栏那三颗钮的名字,不另起键)。 */
+  'keymap.navBack': '后退',
+  'keymap.navForward': '前进',
+  'keymap.viewReload': '重载这块内容',
+  'keymap.zoomIn': '放大',
+  'keymap.zoomOut': '缩小',
+  'keymap.zoomReset': '实际大小',
+
 } as const

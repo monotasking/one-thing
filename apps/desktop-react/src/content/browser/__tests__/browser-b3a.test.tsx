@@ -190,7 +190,7 @@ describe('查找行四态', () => {
   })
 
   it('`view.find` 在 `browser` 的 `answers` 里(拆掉它 → 这一条与 scopes 那两条一起红)', () => {
-    expect(FOCUS_SCOPES.browser.answers?.length).toBe(2)
+    expect(FOCUS_SCOPES.browser.answers?.length).toBe(8)
     expect(FOCUS_SCOPES.browser.answers?.some((a) => a.command === 'view.find')).toBe(true)
   })
 })

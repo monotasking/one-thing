@@ -130,10 +130,20 @@ describe('答哪些命令:查看器 / 文件树 / 检索面 / 会话总览 / 终
      * B2 / B3-a:⌘L 回地址栏 + ⌘F 在这一页里查找。两条同时是**保留键**
      * (`nativeView: 'reserve'` 且这一格答得出 → 键位下沉那张表自动带上),
      * 判词在 `scopes.ts` 的 `BROWSER_ANSWERS` 上。
+     *
+     * K3 起还有**内容族六条**:重载、后退 / 前进、三条缩放。它们与上面两条
+     * 同一条机制(答得出 → 自动进保留表),区别只在这六条是**从 Electron
+     * 默认菜单手上拿回来的**(K1 做的减法)——拿回来没人答就是六个哑键。
      */
     expect(focusScopeAnswersOf('browser').map((a) => a.command)).toEqual([
       'browser.address',
       'view.find',
+      'view.reload',
+      'nav.back',
+      'nav.forward',
+      'view.zoomIn',
+      'view.zoomOut',
+      'view.zoomReset',
     ])
     /*
      * W1 拍点 ④:⌘W 关当前 tab(`app: false` —— 它需要一个目标)。

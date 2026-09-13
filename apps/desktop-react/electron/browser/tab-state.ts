@@ -33,6 +33,15 @@ export interface BrowserTabState {
   /** 最近一次失败的人话。成功一次导航就清掉。 */
   readonly error?: string
   readonly profile: string
+  /**
+   * 这一页此刻的缩放**级**(K3)。0 = 100%,每一级 ±0.5(见 `nextZoomLevel`)。
+   *
+   * 它与 `canGoBack` / `canGoForward` 同一族:**活视图的属性**,由 webContents
+   * 现问、折进状态、随 `navigated` 事实出网 —— 于是壳檐上想画一颗百分比丸时
+   * 读的是同一格,不必另开一条推送。同一条理由它**不落盘**(`persistTab` 只留
+   * 跨重启还成立的四格):进程死了这一格就是谎话。
+   */
+  readonly zoomLevel: number
 }
 
 /** 可被 reducer 改的那几格(`id` / `profile` 是身份,一格 tab 一辈子不变)。 */
@@ -54,7 +63,38 @@ export function createTabState(init: BrowserTabInit): BrowserTabState {
     loading: false,
     canGoBack: false,
     canGoForward: false,
+    zoomLevel: 0,
   }
+}
+
+/* ── 页面缩放的算术(K3)────────────────────────────────────────────────── */
+
+/** 三个方向。一格 tab 只认这三个词 —— 「缩到 137%」不是一个人会说的话。 */
+export type BrowserZoomDirection = 'in' | 'out' | 'reset'
+
+/**
+ * 一级。**照 Chrome**:它的缩放梯是 `setZoomLevel` 上 ±0.5 一档
+ * (25% / 33% / 50% / 67% / 80% / 90% / 100% / 110% / 125% …)。写 0.5 不是拍脑袋,
+ * 是抄那台浏览器 —— 人的手在这一族键上已经养了二十年。
+ */
+export const BROWSER_ZOOM_STEP = 0.5
+
+/**
+ * 夹在 [-3, 5]。下界 -3 ≈ 25%、上界 5 ≈ 500%,同样是 Chrome 那两头。
+ *
+ * **夹是判据不是保险**:`setZoomLevel` 收任意浮点,不夹的话按住 ⌘= 十秒就能把
+ * 一页缩成一行看不见的像素,而那一格状态还会随 `navigated` 出网、被壳当成读数
+ * 画出来 —— 一次按不回来的操作在这一族键上是不可接受的。
+ */
+export const BROWSER_ZOOM_MIN = -3
+export const BROWSER_ZOOM_MAX = 5
+
+/** 纯函数:此刻这一级,往哪个方向走一格,落在哪一级。 */
+export function nextZoomLevel(current: number, direction: BrowserZoomDirection): number {
+  if (direction === 'reset') return 0
+  const raw = Number.isFinite(current) ? current : 0
+  const moved = direction === 'in' ? raw + BROWSER_ZOOM_STEP : raw - BROWSER_ZOOM_STEP
+  return Math.min(BROWSER_ZOOM_MAX, Math.max(BROWSER_ZOOM_MIN, moved))
 }
 
 /**

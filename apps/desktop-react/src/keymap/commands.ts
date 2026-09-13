@@ -295,6 +295,31 @@ const DEFAULT_COMBOS: Partial<Record<CommandId, readonly Combo[]>> = {
   ],
   'nav.back': [{ meta: true, key: '[' }],
   'nav.forward': [{ meta: true, key: ']' }],
+  /* ── 内容族(K3,方案 §3 那张跨应用对照表的「本壳应当」列)──────────────
+   *
+   * 这四条与 `KEYS_RESERVED_FOR_CONTENT`(K1,`electron/app-menu.ts`)是**同一件事
+   * 的两半**:K1 那张表说的是「⌘R / ⌘+ / ⌘− / ⌘0 不归应用菜单」,这里说的是
+   * 「那它们归谁」。K1 落地到 K3 之间这四个键是**没有归宿**的(菜单让开了、
+   * 还没人认领 —— 按下去什么都不发生),K3 把它们接住。
+   */
+  'view.reload': [{ meta: true, key: 'r' }],
+  /*
+   * **一条命令两个键面**,而这一对不是惯例是**键盘的事实**:⌘= 与 ⌘+ 在 US 布局
+   * 上是同一枚物理键,按不按 ⇧ 决定 Chromium 报的是 `'='` 还是 `'+'`。两行都收
+   * 是因为人两种都按(Chrome 自己也两种都收);第二行**必须带 `shift`** ——
+   * `matchCombo` 是逐格比对(`(combo.shift === true) === e.shiftKey`),不写
+   * `shift` 的话真按下 ⌘⇧= 那一下永远对不上。
+   */
+  'view.zoomIn': [
+    { meta: true, key: '=' },
+    { meta: true, shift: true, key: '+' },
+  ],
+  'view.zoomOut': [{ meta: true, key: '-' }],
+  /*
+   * ⌘0 这个位子今天是空的:`workspace.slot:1–3` 在 K2 出厂解绑,`tab.select:n`
+   * 那一族占的是 ⌘1–⌘9(第 9 条是「最后一格」,没有第十条)。
+   */
+  'view.zoomReset': [{ meta: true, key: '0' }],
   'expose.pin': [{ meta: true, shift: true, key: 'p' }],
   'tab.close': [{ meta: true, key: 'w' }],
   /* ── 标签族(K2,方案 §3 那张跨应用对照表的「本壳应当」列)────────────── */
@@ -384,8 +409,14 @@ const SCOPED_COMMANDS: KeymapCommand[] = [
   scopedCommand('viewer.gotoLine', 'viewer.jumpLabel'),
   scopedCommand('browser.address', 'browser.address'),
   scopedCommand('files.detail', 'files.detailAction'),
-  scopedCommand('nav.back', 'search.historyBack'),
-  scopedCommand('nav.forward', 'search.historyForward'),
+  /*
+   * **后退 / 前进:一条命令,两个响应者**(K3 收编)。K0 起名字就已经是通名
+   * (`nav.*` 而不是 `search.*`),但那时只有检索面一个响应者,所以命令自己那
+   * 一句借用了它的说法。今天浏览器也答它了,于是通名要真的是通名:两块面各自
+   * 的话挂回 `answers`(检索面「查询历史的上一条」/ 浏览器「上一页」)。
+   */
+  scopedCommand('nav.back', 'keymap.navBack'),
+  scopedCommand('nav.forward', 'keymap.navForward'),
   scopedCommand('expose.pin', 'expose.pin'),
   scopedCommand('tab.close', 'common.close'),
   /*
@@ -400,6 +431,16 @@ const SCOPED_COMMANDS: KeymapCommand[] = [
   scopedCommand('tab.next', 'keymap.tabNext'),
   scopedCommand('tab.prev', 'keymap.tabPrev'),
   ...TAB_SELECT_COMMANDS,
+  /*
+   * ── 内容族四条(K3)。全是 `app: false`,判词与标签族逐字相同:它们要的目标是
+   *    **焦点那块内容**。「重载」在会话里根本不是一件事(一条会话没有「再读一遍」
+   *    这个动作),所以没有兜底就是对的 —— 从前 ⌘R 有一层兜底,而那层兜底是
+   *    Electron 默认菜单的 `BrowserWindow.reload()`:重载整台壳(P2 的正题)。
+   */
+  scopedCommand('view.reload', 'keymap.viewReload'),
+  scopedCommand('view.zoomIn', 'keymap.zoomIn'),
+  scopedCommand('view.zoomOut', 'keymap.zoomOut'),
+  scopedCommand('view.zoomReset', 'keymap.zoomReset'),
 ]
 
 /**

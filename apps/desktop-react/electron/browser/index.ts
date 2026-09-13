@@ -288,6 +288,7 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
     reload: tabId => { service.get(tabId)?.reload() },
     activate: tabId => { service.activate(tabId) },
     close: tabId => { service.close(tabId) },
+    zoom: (tabId, level) => { service.get(tabId)?.zoom(level) },
     has: tabId => service.get(tabId) !== undefined,
     readText: (tabId, maxChars) => service.get(tabId)?.readText(maxChars) ?? Promise.resolve(''),
     capture: tabId => service.get(tabId)?.capture() ?? Promise.resolve(undefined),

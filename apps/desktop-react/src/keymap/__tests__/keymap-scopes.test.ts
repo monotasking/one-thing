@@ -154,6 +154,11 @@ describe('比对表:旧表每一条在新表里都有唯一的落点', () => {
       'tab.next',
       'tab.prev',
       ...Array.from({ length: 9 }, (_, i) => `tab.select:${i + 1}`),
+      /* ── K3 的内容族四条。判词在 `commands.ts` 的 `SCOPED_COMMANDS` 上。 */
+      'view.reload',
+      'view.zoomIn',
+      'view.zoomOut',
+      'view.zoomReset',
     ])
   })
 })

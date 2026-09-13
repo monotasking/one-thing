@@ -247,6 +247,19 @@ export function BrowserLeaf({ id }: { id: string }) {
     void browserOps.respondPermission.run({ tabId: id, requestId, allow })
   }, [id])
 
+  /*
+   * ── 内容族六条的落点(K3)──────────────────────────────────────────────
+   *
+   * 它们是**一件事一个产地**:檐上那三颗钮与 ⌘R / ⌘[ / ⌘] 走的是同一只函数,
+   * 而不是两处各写一遍 `browserOps.*.run({ tabId: id })`。
+   */
+  const goBack = useCallback(() => { void browserOps.back.run({ tabId: id }) }, [id])
+  const goForward = useCallback(() => { void browserOps.forward.run({ tabId: id }) }, [id])
+  const reloadPage = useCallback(() => { void browserOps.reload.run({ tabId: id }) }, [id])
+  const zoomIn = useCallback(() => { void browserOps.zoom.run({ tabId: id, level: 'in' }) }, [id])
+  const zoomOut = useCallback(() => { void browserOps.zoom.run({ tabId: id, level: 'out' }) }, [id])
+  const zoomReset = useCallback(() => { void browserOps.zoom.run({ tabId: id, level: 'reset' }) }, [id])
+
   const go = useCallback(() => {
     const engine = resolveBrowserSearchEngine(undefined)
     const url = resolveBrowserOmniboxInput(draft.value, engine)
@@ -312,7 +325,23 @@ export function BrowserLeaf({ id }: { id: string }) {
        * 开出来的」—— 后者要多记一格状态,而这一格现问就有。
        */
       restingTarget={() => (row?.url ? slotRef.current : addressInput() ?? slotRef.current)}
-      commands={{ 'browser.address': focusAddress, 'view.find': openFind }}
+      /*
+       * **实例这一头是动态的**(K3):`commands[id]` 缺席 = 「此刻答不了」,
+       * 派发器据此穿过去。没有历史的那一格因此不交 `nav.back` —— 于是在一格
+       * 刚开出来的标签里按 ⌘[ 什么都不发生,而不是「响了一下但没动」。
+       * 这正是 K0 保留下来的那条形状(旧表里叶没有活动 tab 时 `closeTab` 是
+       * `undefined`,⌘W 穿过去)。
+       */
+      commands={{
+        'browser.address': focusAddress,
+        'view.find': openFind,
+        'view.reload': reloadPage,
+        ...(row?.canGoBack ? { 'nav.back': goBack } : {}),
+        ...(row?.canGoForward ? { 'nav.forward': goForward } : {}),
+        'view.zoomIn': zoomIn,
+        'view.zoomOut': zoomOut,
+        'view.zoomReset': zoomReset,
+      }}
     >
       {({ scopeProps }) => (
         <div
@@ -346,14 +375,14 @@ export function BrowserLeaf({ id }: { id: string }) {
               icon={ArrowLeft}
               label={t('browser.back')}
               disabled={!row?.canGoBack}
-              onClick={() => void browserOps.back.run({ tabId: id })}
+              onClick={goBack}
               testId="browser-back"
             />
             <IconButton
               icon={ArrowRight}
               label={t('browser.forward')}
               disabled={!row?.canGoForward}
-              onClick={() => void browserOps.forward.run({ tabId: id })}
+              onClick={goForward}
               testId="browser-forward"
             />
             {/*
@@ -365,7 +394,7 @@ export function BrowserLeaf({ id }: { id: string }) {
               icon={loading ? X : RotateCw}
               label={loading ? t('browser.stop') : t('browser.reload')}
               disabled={!known}
-              onClick={() => void browserOps.reload.run({ tabId: id })}
+              onClick={reloadPage}
               testId="browser-reload"
             />
             <Input

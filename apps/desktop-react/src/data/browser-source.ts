@@ -100,6 +100,8 @@ export interface BrowserTabRow {
   active: boolean
   error?: string
   profile: string
+  /** 缩放级(K3):0 = 100%,每格 ±0.5。本单不画,壳檐上那颗百分比丸读的是它。 */
+  zoomLevel: number
 }
 
 export interface BrowserTabsView {
@@ -169,7 +171,7 @@ export function browserTabOf(tabId: string): BrowserTabRow | undefined {
   return browserTabsQuery.get().data?.tabs.find((row) => row.id === tabId)
 }
 
-/* ── 七条做法 ────────────────────────────────────────────────────────────── */
+/* ── 九条做法(K3 加 `zoom`;这一行的数目跟着下面那张表走)──────────────── */
 
 export type BrowserOpName =
   | 'open'
@@ -179,6 +181,7 @@ export type BrowserOpName =
   | 'reload'
   | 'activate'
   | 'close'
+  | 'zoom'
   | 'respondPermission'
 
 export interface BrowserOpInput {
@@ -194,6 +197,8 @@ export interface BrowserOpInput {
   /** `respondPermission` 那两格(B3-a)。 */
   requestId?: string
   allow?: boolean
+  /** `zoom` 那一格(K3):放大 / 缩小 / 回到实际大小。 */
+  level?: 'in' | 'out' | 'reset'
 }
 
 interface BrowserOpSpec {
@@ -281,6 +286,22 @@ const OPS: Readonly<Record<BrowserOpName, BrowserOpSpec>> = {
       input.tabId
         ? patchTabs((prev) => ({ ...prev, tabs: prev.tabs.filter((row) => row.id !== input.tabId) }))
         : undefined,
+  },
+  /*
+   * 页面缩放(K3)。**没有乐观补丁**,而这一次的理由是「没有可乐观的对象」:
+   * 屏幕上会变的是那片原生视图里的排版,而那不是壳这一侧的任何一格状态;
+   * `zoomLevel` 这一格由后端那条 `navigated` 事实带回来。编一个假的级数进表,
+   * 反倒会让「夹在两头」那条规则在壳这一侧多出第二份。
+   */
+  zoom: {
+    ref: tabRefOf,
+    /*
+     * 方向**原样带下去,缺席就缺席** —— 在这里回落成 `'reset'` 会把「哪几个词
+     * 算数」这条规则复制成第二份,而它的唯一产地是后端那条做法
+     * (`BrowserZoomLevelError`:认不出就拒,不静默回落)。少写了一格的调用该听见
+     * 一句拒绝,而不是看见页面悄悄缩回 100%。
+     */
+    params: (input) => (input.level ? { level: input.level } : {}),
   },
   /*
    * 答一次网页权限询问(B3-a)。

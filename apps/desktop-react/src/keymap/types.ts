@@ -135,8 +135,9 @@ export type CommandId =
    *    (冲突规则见 `commands.ts` 的 `comboConflictBetween`);
    *  · `files.detail` —— 文件树的详情。**一条命令两个出厂键**(⌘I 与 ⌘↵),
    *    所以 `defaultCombos` 是数组而不是一格;
-   *  · `nav.back` / `nav.forward` —— 后退 / 前进。今天的响应者是检索面的查询历史,
-   *    浏览器的前进后退是 K3 的事(**同一条命令**,不会是第三个产地);
+   *  · `nav.back` / `nav.forward` —— 后退 / 前进。**两个响应者**(K3):检索面的
+   *    查询历史、浏览器的上一页 / 下一页。它们是同一条命令而不是第三个产地,
+   *    两块面各自的说法挂在 `answers` 上;
    *  · `expose.pin` —— 会话总览置顶活动行;
    *  · `tab.close` —— 关当前 tab(响应者是叶)。
    */
@@ -176,6 +177,24 @@ export type CommandId =
   | 'tab.next'
   | 'tab.prev'
   | `tab.select:${number}`
+  /*
+   * ── **内容族**(K3,方案 §3 那张对照表的「本壳应当」列)────────────────
+   * 四条,全是 `app: false`,而这一族的判词比别的族硬一格:**它们从前有兜底,
+   * 而那层兜底做的是错事**。K1 之前 ⌘R / ⌘+ / ⌘− / ⌘0 落在 Electron 默认菜单上,
+   * 目标永远是**整台壳** —— ⌘R 重载整台壳(所有终端 detach、在飞的流式回复丢
+   * UI 状态),⌘± 缩的是壳而不是那一页。K1 把那张表拿掉(`app-menu.ts` 的
+   * `KEYS_RESERVED_FOR_CONTENT` 就是「还给内容层的键」那张清单),K3 在这里
+   * 把它们接住。**没有响应者就不响**,而那是对的:一条会话没有「重载」这件事。
+   *
+   *  · `view.reload`(⌘R)—— 重载这块内容。今天只有浏览器答;
+   *  · `view.zoomIn` / `view.zoomOut` / `view.zoomReset`(⌘= ⌘+ / ⌘− / ⌘0)——
+   *    这块内容的显示比例。今天只有浏览器答(它落在那一页的
+   *    `webContents.setZoomLevel` 上,梯子在 `tab-state.nextZoomLevel`)。
+   */
+  | 'view.reload'
+  | 'view.zoomIn'
+  | 'view.zoomOut'
+  | 'view.zoomReset'
 
 /**
  * 焦点在一片原生视图(`WebContentsView`)里时,这条命令要不要**先于页面**被截下来。

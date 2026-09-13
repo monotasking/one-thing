@@ -531,8 +531,17 @@ async function main() {
     )
     assert(
       Object.keys(spec.ops ?? {}).sort().join(',')
-        === 'activate,back,close,forward,navigate,open,reload,respondPermission',
-      `① 做法八条(B3-a 加了 respondPermission;${Object.keys(spec.ops ?? {}).sort().join(',')})`,
+        === 'activate,back,close,forward,navigate,open,reload,respondPermission,zoom',
+      `① 做法九条(B3-a 加了 respondPermission,K3 加了 zoom;${Object.keys(spec.ops ?? {}).sort().join(',')})`,
+    )
+    /*
+     * K3:`zoom` 的效果类是 **`ui_change`**,与 `activate` 同一档 —— 它动的是这个人
+     * 自己那扇窗里的一格摆设,不发一个带 cookie 的请求。判词整段在
+     * `electron/browser/resource-spec.ts` 的那一条上;这一句是它的真机读数。
+     */
+    assert(
+      (spec.ops?.zoom?.effects ?? []).join(',') === 'ui_change',
+      `① zoom 的效果类是 ui_change,不是 browser_navigate(${(spec.ops?.zoom?.effects ?? []).join(',')})`,
     )
     assert(
       Object.keys(spec.events ?? {}).sort().join(',')
@@ -1166,6 +1175,250 @@ async function main() {
         ? true
         : undefined
     }, 20_000)
+
+    /*
+     * ── ㉓ 内容族命令(K3,方案 `docs/keymap-responder-2026-09.md` §5 K3)────────
+     *
+     * **这一段是 K1 那半句话的另一半。** K1 把 Electron 默认菜单拿掉,于是
+     * ⌘R / ⌘+ / ⌘− / ⌘0 不再作用于整台壳(㉑ 读表证的就是那件事);K3 给它们
+     * 找到响应者。所以 ㉓d 要证的**不是**「⌘R 有反应」,而是两句一起成立:
+     * **那一页重载了一次,而壳一次都没有**。只证前半句,一个「⌘R 落回页面自己的
+     * 重载、壳这一侧的响应者根本没被叫到」的假绿会原样通过。
+     *
+     * 键怎么送:与 ㉒ 逐字同一手 —— 在 `before-input-event` 这个**处理器入口**
+     * 合成,判词整段写在 ㉒ 上头(CDP 喂的是壳那个 webContents、`sendInputEvent`
+     * 实测不触发 pre-handler、系统级合成输入被纪律禁着)。合成的只有 Chromium
+     * 递给处理器的那一毫米;`preventDefault` → 真 IPC 推回壳 → 唯一那个派发器 →
+     * 浏览器叶答出来,每一寸都是真的。
+     *
+     * ── 为什么借 ⑦ 那一格叶,而不是自己 `do open` 一格 ──────────────────────
+     * 第一趟就是那样写的,20 秒等不到叶:**`resources.do open` 只往账本里加一行,
+     * 壳这一侧不会自动给它摆一片叶**(摆叶是壳自己那条 `openBrowserTab` +
+     * `placeBrowserTabNear` 的路,或者页面自己 `window.open` 那条 —— ⑲ 量的就是
+     * 后者)。而这一段要的是「键盘真的在某一页里、而那一页有一片答得出命令的叶」,
+     * 所以借 ⑦ / ⑫ 已经建好的那一格,焦点也照 ⑦ 那一手送进去。
+     */
+    console.log('\n[7c-2] ㉓ 内容族:⌘R 重载这一页(壳不重载)/ ⌘[ ⌘] 前进后退 / ⌘= ⌘0 缩放')
+    {
+      const tabId23 = two[0].id
+      const rowOf = async (id) => {
+        const now = await rpc(record, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+        return (now.value?.tabs ?? []).find((t) => t.id === id)
+      }
+      /* 键盘回到那一页里(与 ⑦ 逐字同一手:`verb: 'focus'` → `webContents.focus()`)。 */
+      await page.evaluate((viewId) => {
+        const host = window.onethingHost
+        host?.nativeView?.send({ verb: 'focus', viewId })
+      }, tabId23)
+      await delay(500)
+      const onPath23 = await waitFor('㉓ 活动路径上出现这一格浏览器', async () => {
+        const dump = await page.evaluate(() => {
+          const d = window.__focus?.dump?.()
+          if (!d) return null
+          return d.path
+            .map((id) => d.nodes.find((x) => x.instanceId === id))
+            .filter(Boolean)
+            .map((n) => ({ scope: n.scope, owner: n.owner, keys: n.keys }))
+        })
+        const hit = (dump ?? []).find((n) => n.scope === 'browser' && n.owner === `browser:${tabId23}`)
+        return hit ? { hit, path: dump } : undefined
+      }, 20_000)
+      assert(
+        Boolean(onPath23.hit),
+        `㉓ 前提:键盘在那一页里,叶答得出命令(读到 ${JSON.stringify(onPath23.path)})`,
+      )
+      console.log('  · ㉓ 这一格此刻答得出:', JSON.stringify(onPath23.hit.keys))
+
+      /*
+       * **把这一格的 webContents 存在主进程里**,后面每一下按键都喂给它。
+       * 不每次按 URL 现找,是因为 ㉓a 要把历史退到头(那时地址会变成起始页那一档,
+       * `getURL()` 已经不是账本里那一句了)—— 而「喂给哪一片视图」这件事从头到尾
+       * 说的是同一片,不该跟着地址变。
+       */
+      const armed23 = await app.evaluate(({ webContents }, u) => {
+        const hit = webContents.getAllWebContents().find((w) => {
+          try { return w.getURL() === u } catch { return false }
+        })
+        globalThis.__k3Wc = hit
+        return hit ? { ok: true, listeners: hit.listenerCount('before-input-event') } : { ok: false }
+      }, two[0].url)
+      assert(armed23.ok === true, `㉓ 找到那一页自己的 webContents(${JSON.stringify(armed23)})`)
+      assert(armed23.listeners > 0, `㉓ 它上头真的挂着 \`before-input-event\`(${armed23.listeners} 个监听)`)
+
+      /** 喂一下按键给那一片视图的 `before-input-event`。回 `preventDefault` 次数。 */
+      const feed = (key, code, shift = false) =>
+        app.evaluate(async (_electron, arg) => {
+          const hit = globalThis.__k3Wc
+          if (!hit || hit.isDestroyed()) return { how: 'gone' }
+          const ON_MAC = process.platform === 'darwin'
+          let prevented = 0
+          hit.emit('before-input-event', { preventDefault: () => { prevented += 1 } }, {
+            type: 'keyDown',
+            key: arg.key,
+            code: arg.code,
+            control: !ON_MAC,
+            alt: false,
+            shift: arg.shift,
+            meta: ON_MAC,
+          })
+          return { how: 'sent', prevented }
+        }, { key, code, shift })
+
+      /*
+       * ── ㉓a **没有历史时 ⌘[ 不响** ────────────────────────────────────────
+       *
+       * 前提怎么来的:**用 RPC 把这一格的历史退到头**(不是用键 —— 这一步要的是
+       * 一个确定的前提,不是一次被量的动作)。退到头之后 `canGoBack` 是 false,
+       * 而那正是「一格刚开出来的标签」的形。
+       *
+       * 它证的是**实例那一头**:`BrowserLeaf` 的 `commands` 按 `canGoBack` 决定交不
+       * 交处理器,派发器据此穿过去。键仍然会被主进程截下来(它在保留表里),所以
+       * 判据不是 `prevented === 0`,而是**地址一格都没动**。
+       */
+      for (let i = 0; i < 10; i += 1) {
+        const row = await rowOf(tabId23)
+        if (!row?.canGoBack) break
+        await rpc(record, 'resources', 'do', { ref: `browser:${tabId23}`, op: 'back' })
+        await delay(700)
+      }
+      const atHead = await waitFor('㉓a 历史退到头', async () => {
+        const row = await rowOf(tabId23)
+        return row && row.canGoBack === false && !row.loading ? row : undefined
+      }, 20_000)
+      assert(atHead.canGoBack === false, `㉓a 前提:这一格没有历史了(此刻停在 ${JSON.stringify(atHead.url)})`)
+      const leafKeys23 = await page.evaluate((id) => {
+        const d = window.__focus?.dump?.()
+        const n = (d?.nodes ?? []).find((x) => x.scope === 'browser' && x.owner === `browser:${id}`)
+        return n ? n.keys : null
+      }, tabId23)
+      assert(
+        Array.isArray(leafKeys23) && !leafKeys23.includes('nav.back'),
+        `㉓a 叶这一头**不交** \`nav.back\` 这只处理器(此刻答得出:${JSON.stringify(leafKeys23)})`,
+      )
+      const backNoHistory = await feed('[', 'BracketLeft')
+      assert(backNoHistory.how === 'sent', `㉓a 喂进去了(${JSON.stringify(backNoHistory)})`)
+      await delay(1500)
+      const afterNoHistory = await rowOf(tabId23)
+      assert(
+        afterNoHistory.url === atHead.url && afterNoHistory.canGoBack === false,
+        `㉓a 没有历史时 ⌘[ **什么都不发生**(地址仍是 ${JSON.stringify(afterNoHistory.url)})`,
+      )
+
+      /* ── ㉓b ⌘[ 后退 / ⌘] 前进 ──────────────────────────────────────────── */
+      const firstUrl = pageUrl('/k3a')
+      const secondUrl = pageUrl('/k3b')
+      for (const url of [firstUrl, secondUrl]) {
+        await rpc(record, 'resources', 'do', {
+          ref: `browser:${tabId23}`,
+          op: 'navigate',
+          params: { url },
+        })
+        await waitFor(`㉓b 走到 ${url}`, async () => {
+          const row = await rowOf(tabId23)
+          return row && row.url === url && !row.loading ? row : undefined
+        }, 25_000)
+      }
+      const withHistory = await waitFor('㉓b 现在有历史了', async () => {
+        const row = await rowOf(tabId23)
+        return row?.canGoBack ? row : undefined
+      }, 20_000)
+      assert(withHistory.canGoBack === true, '㉓b 前提:`canGoBack` 亮了')
+      const backFed = await feed('[', 'BracketLeft')
+      assert(backFed.prevented === 1, `㉓b ⌘[ 被主进程从页面手上截下来(preventDefault ${backFed.prevented} 次)`)
+      const wentBack = await waitFor('㉓b ⌘[ 回到上一页', async () => {
+        const row = await rowOf(tabId23)
+        return row && row.url === firstUrl && !row.loading ? row : undefined
+      }, 20_000)
+      assert(wentBack.url === firstUrl, `㉓b ⌘[ 回到了上一页(${wentBack.url})`)
+      assert(wentBack.canGoForward === true, '㉓b 后退之后「前进」这一格亮了')
+      const fwdFed = await feed(']', 'BracketRight')
+      assert(fwdFed.prevented === 1, `㉓b ⌘] 被主进程截下来(preventDefault ${fwdFed.prevented} 次)`)
+      const wentFwd = await waitFor('㉓b ⌘] 前进回第二页', async () => {
+        const row = await rowOf(tabId23)
+        return row && row.url === secondUrl && !row.loading ? row : undefined
+      }, 20_000)
+      assert(wentFwd.url === secondUrl, `㉓b ⌘] 前进回来了(${wentFwd.url})`)
+
+      /*
+       * ── ㉓c 缩放:⌘= 三下 → 1.5 级,⌘0 → 0 ────────────────────────────
+       * 读的是 **Chromium 自己那一格**(`getZoomLevel`),不是我们记的那一份 ——
+       * 拿自己的投影当尺子,`setZoomLevel` 那一行拆了照样绿。投影那一格另测一句。
+       */
+      const zoomNow = () =>
+        app.evaluate(() => {
+          const hit = globalThis.__k3Wc
+          return hit && !hit.isDestroyed() ? hit.getZoomLevel() : null
+        })
+      assert(Math.abs((await zoomNow()) ?? 99) < 1e-6, '㉓c 前提:这一页此刻是 100%(级 0)')
+      for (let i = 0; i < 3; i += 1) {
+        const fedZoom = await feed('=', 'Equal')
+        assert(fedZoom.prevented === 1, `㉓c ⌘= 第 ${i + 1} 下被截下来`)
+        await delay(500)
+      }
+      const zoomedIn = await waitFor('㉓c 三下 ⌘= 之后落在 1.5 级', async () => {
+        const level = await zoomNow()
+        return level !== null && Math.abs(level - 1.5) < 1e-6 ? level : undefined
+      }, 15_000)
+      assert(Math.abs(zoomedIn - 1.5) < 1e-6, `㉓c ⌘= ×3 → zoomLevel ${zoomedIn}(每格 0.5,照 Chrome)`)
+      const projected = await waitFor('㉓c 投影跟上来', async () => {
+        const row = await rowOf(tabId23)
+        return row && Math.abs((row.zoomLevel ?? 99) - 1.5) < 1e-6 ? row : undefined
+      }, 15_000)
+      assert(
+        Math.abs(projected.zoomLevel - 1.5) < 1e-6,
+        `㉓c \`read tabs\` 把它投影出来了(zoomLevel ${projected.zoomLevel};壳檐上那颗百分比丸读的是它)`,
+      )
+      const resetFed = await feed('0', 'Digit0')
+      assert(resetFed.prevented === 1, '㉓c ⌘0 被截下来')
+      const back100 = await waitFor('㉓c ⌘0 回到实际大小', async () => {
+        const level = await zoomNow()
+        return level !== null && Math.abs(level) < 1e-6 ? true : undefined
+      }, 15_000)
+      assert(back100 === true, '㉓c ⌘0 → zoomLevel 0(回到 100%)')
+
+      /*
+       * ── ㉓d ⌘R:**那一页重载一次,壳一次都没有** ────────────────────────
+       *
+       * 两个计数器都挂在主进程里,**挂完才按** —— 前面那几步自己会发导航,挂早了
+       * 数出来的是它们。壳那一侧数的是 `getType() === 'window'` 那个 webContents
+       * (它就是 `BrowserWindow` 的那一份,Electron 默认菜单的 `reload` 角色从前
+       * 打的正是它,P2 的正题)。
+       */
+      const armedNav = await app.evaluate(({ webContents }) => {
+        globalThis.__k3Nav = { page: 0, shell: 0 }
+        const target = globalThis.__k3Wc
+        const shell = webContents.getAllWebContents().find((w) => w.getType() === 'window')
+        if (!target || !shell) return { ok: false }
+        target.on('did-start-navigation', () => { globalThis.__k3Nav.page += 1 })
+        shell.on('did-start-navigation', () => { globalThis.__k3Nav.shell += 1 })
+        return { ok: true, same: shell === target }
+      })
+      assert(armedNav.ok === true, `㉓d 两个计数器都挂上了(${JSON.stringify(armedNav)})`)
+      const reloadFed = await feed('r', 'KeyR')
+      assert(
+        reloadFed.prevented === 1,
+        `㉓d ⌘R 被主进程从页面手上截下来(preventDefault ${reloadFed.prevented} 次)`,
+      )
+      const navCounts = await waitFor('㉓d 那一页真的重载了一次', async () => {
+        const seen = await app.evaluate(() => globalThis.__k3Nav ?? null)
+        return seen && seen.page >= 1 ? seen : undefined
+      }, 20_000)
+      assert(navCounts.page >= 1, `㉓d 那一页 \`did-start-navigation\` 发了(${navCounts.page} 次)`)
+      // 再等一拍,让「壳也跟着重载」那一支(如果它还在)来得及发。
+      await delay(1500)
+      const finalCounts = await app.evaluate(() => globalThis.__k3Nav ?? null)
+      assert(
+        finalCounts.shell === 0,
+        `㉓d **壳一次都没重载**(壳那个 webContents 的 did-start-navigation ${finalCounts.shell} 次)`
+          + ' —— 有它 = K1 那张默认菜单又回来了,或者 ⌘R 被当成了应用级命令',
+      )
+      report.k3 = { zoom: zoomedIn, projected: projected.zoomLevel, nav: finalCounts }
+      /*
+       * 收尾:**不开也不关任何 tab**(所以 ⑨ / ⑩ 数的行数一格没动),只把这一格
+       * 留在一张载好的页上 —— 后面 ⑭ 自己会把它导航到 `/dl`。
+       */
+      await app.evaluate(() => { globalThis.__k3Wc = undefined })
+    }
 
     console.log('\n[7d] ⑭ 下载:页面里点一颗 `<a download>` → 落到临时下载目录')
     /*
@@ -2155,7 +2408,7 @@ async function main() {
       await rm(menuStore, { recursive: true, force: true })
     }
 
-    console.log(`\n[browser-gate] ok(${LANE} 档)—— 二十二条全过`)
+    console.log(`\n[browser-gate] ok(${LANE} 档)—— 二十三条全过`)
     console.log(`[browser-gate] 读数:${JSON.stringify(report)}`)
   } finally {
     if (app) await app.close().catch(() => {})

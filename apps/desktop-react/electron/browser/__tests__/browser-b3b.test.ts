@@ -166,7 +166,7 @@ describe('open 的缺省身份', () => {
     const opened: unknown[] = []
     const tab: BrowserTabView = {
       id: 't1', url: '', title: '', loading: false, canGoBack: false, canGoForward: false,
-      active: true, profile: 'work',
+      active: true, profile: 'work', zoomLevel: 0,
     }
     const ops = {
       list: () => [tab], activeId: () => 't1',
@@ -192,7 +192,7 @@ describe('open 的缺省身份', () => {
     const opened: Array<Record<string, unknown>> = []
     const tab: BrowserTabView = {
       id: 't1', url: '', title: '', loading: false, canGoBack: false, canGoForward: false,
-      active: true, profile: 'default',
+      active: true, profile: 'default', zoomLevel: 0,
     }
     const ops = {
       list: () => [tab], activeId: () => 't1',

@@ -49,7 +49,7 @@ import { planFromSpec } from '@onething/core/resource'
 import type { PlanContext, Result, RunContext } from '@onething/core/toolkit'
 import { Intent } from '@onething/core/toolkit'
 import { wrapUntrustedText } from '@onething/runtime/toolkit/untrusted-text'
-import type { BrowserTabState } from './tab-state.js'
+import type { BrowserTabState, BrowserZoomDirection } from './tab-state.js'
 import { BROWSER_RESOURCE_SCHEME, browserResourceSpec } from './resource-spec.js'
 
 /** 一格 tab 在自述里的形(比 `BrowserTabState` 多一格 `active`)。 */
@@ -73,6 +73,8 @@ export interface BrowserOps {
   reload(tabId: string): void
   activate(tabId: string): void
   close(tabId: string): void
+  /** 放大 / 缩小 / 回到实际大小(K3)。梯子那把尺子在 `tab-state.nextZoomLevel`。 */
+  zoom(tabId: string, level: BrowserZoomDirection): void
   /** 这一格在不在。不在 = 一个说得出口的拒绝,不是一次崩溃。 */
   has(tabId: string): boolean
   readText(tabId: string, maxChars?: number): Promise<string>
@@ -141,10 +143,24 @@ export class BrowserPermissionParamsError extends Error {
   }
 }
 
+/**
+ * 缩放那一格收的是三个词之一(K3)。**认不出就拒**,不回落成 `reset` ——
+ * 一次写错了参数的调用悄悄把页面缩回 100%,看起来会像是「它就是这么设计的」。
+ */
+export class BrowserZoomLevelError extends Error {
+  constructor(got: string) {
+    super(`zoom takes level: 'in' | 'out' | 'reset' — got ${JSON.stringify(got)}`)
+    this.name = 'BrowserZoomLevelError'
+  }
+}
+
+const ZOOM_DIRECTIONS: ReadonlySet<string> = new Set(['in', 'out', 'reset'])
+
 export type BrowserOpPayload =
   | { readonly op: 'open'; readonly url?: string; readonly background: boolean; readonly profile?: string }
   | { readonly op: 'navigate'; readonly tabId: string; readonly url: string }
   | { readonly op: 'back' | 'forward' | 'reload' | 'activate' | 'close'; readonly tabId: string }
+  | { readonly op: 'zoom'; readonly tabId: string; readonly level: BrowserZoomDirection }
   | { readonly op: 'respondPermission'; readonly tabId: string; readonly requestId: string; readonly allow: boolean }
 
 /** 命名空间级的两条(没有实例地址);其余都要一格 tab。 */
@@ -335,6 +351,9 @@ export class BrowserResourceProvider implements ResourceProvider<BrowserOpPayloa
       case 'close':
         this.ops.close(payload.tabId)
         return this.done(ctx, 'Tab closed', `browser:${payload.tabId} closed`, payload.op)
+      case 'zoom':
+        this.ops.zoom(payload.tabId, payload.level)
+        return this.done(ctx, 'Zoom changed', `browser:${payload.tabId} zoom ${payload.level}`, payload.op)
       case 'respondPermission': {
         // 答不上的那一问**抛**,不静默 —— 见 `BrowserOps.respondPermission` 的判词。
         if (!this.ops.respondPermission(payload.requestId, payload.allow)) {
@@ -379,6 +398,11 @@ export class BrowserResourceProvider implements ResourceProvider<BrowserOpPayloa
     if (op === 'back' || op === 'forward' || op === 'reload' || op === 'activate' || op === 'close') {
       return { op, tabId }
     }
+    if (op === 'zoom') {
+      const level = stringParam(params, 'level')
+      if (!ZOOM_DIRECTIONS.has(level)) throw new BrowserZoomLevelError(level)
+      return { op, tabId, level: level as BrowserZoomDirection }
+    }
     if (op === 'respondPermission') {
       const requestId = stringParam(params, 'requestId')
       const allow = (params as { allow?: unknown } | undefined)?.allow
@@ -421,6 +445,10 @@ export class BrowserResourceProvider implements ResourceProvider<BrowserOpPayloa
       case 'reload': return 'Reload the browser tab'
       case 'activate': return 'Bring this browser tab to the front'
       case 'close': return 'Close this browser tab'
+      case 'zoom':
+        if (payload.level === 'in') return 'Zoom this page in one notch'
+        if (payload.level === 'out') return 'Zoom this page out one notch'
+        return 'Reset this page to its actual size'
       case 'respondPermission':
         return payload.allow
           ? 'Allow what the page asked for, once'

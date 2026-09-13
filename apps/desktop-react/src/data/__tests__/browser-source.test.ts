@@ -30,6 +30,7 @@ const TAB = {
   loading: false,
   canGoBack: true,
   canGoForward: false,
+  zoomLevel: 0,
   active: true,
   profile: 'default',
 }

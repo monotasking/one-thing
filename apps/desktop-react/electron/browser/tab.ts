@@ -26,8 +26,8 @@
  * 事在 vitest 里量得到。
  */
 
-import type { BrowserTabPatch, BrowserTabState } from './tab-state.js'
-import { createTabState, reduceTabState } from './tab-state.js'
+import type { BrowserTabPatch, BrowserTabState, BrowserZoomDirection } from './tab-state.js'
+import { createTabState, nextZoomLevel, reduceTabState } from './tab-state.js'
 import type { BrowserViewPreferences, WindowOpenDecision } from './session-policy.js'
 import { decideWindowOpen, isAllowedNavigation } from './session-policy.js'
 import type { BrowserFindReadout } from './find.js'
@@ -63,6 +63,13 @@ export interface NativeWebContents {
   findInPage(text: string, options?: { forward?: boolean; findNext?: boolean }): number
   /** `'clearSelection'` = 收起高亮并把选区也清掉(壳那一行关掉时要的正是这一档)。 */
   stopFindInPage(action: 'clearSelection' | 'keepSelection' | 'activateSelection'): void
+  /**
+   * 页面缩放级(K3)。**读也在这里**:真源是 Chromium 自己那一格,
+   * 状态里那份是它的投影 —— 拿投影当被加的数会在任何一条我们没经手的路上
+   * (页面自己 ⌘滚轮、以后的百分比丸)悄悄分叉。
+   */
+  getZoomLevel(): number
+  setZoomLevel(level: number): void
   readonly navigationHistory: NativeNavigationHistory
 }
 
@@ -194,6 +201,22 @@ export class BrowserTab {
   reload(): void { this.alive()?.reload() }
   stop(): void { this.alive()?.stop() }
   focus(): void { this.alive()?.focus() }
+
+  /**
+   * 把这一页放大 / 缩小 / 回到实际大小(K3)。
+   *
+   * **没有视图 = 什么都不做**,与 `findInPage` / `readText` 逐字同一条判据:
+   * 一次缩放不该把一片惰性的视图建出来(那会让一下按键悄悄花掉一个渲染进程,
+   * 而屏幕上什么都没有)。同一条判据的另一半是**状态也不动** —— 记下一个没有
+   * 视图去兑现的级数,就是让 `zoomLevel` 这一格开始说谎。
+   */
+  zoom(direction: BrowserZoomDirection): void {
+    const wc = this.alive()
+    if (!wc) return
+    const next = nextZoomLevel(wc.getZoomLevel(), direction)
+    wc.setZoomLevel(next)
+    this.patch({ zoomLevel: next })
+  }
 
   /**
    * 在这一页里找一个词(B3-a)。

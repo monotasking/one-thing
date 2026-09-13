@@ -421,7 +421,7 @@ describe('下载落地', () => {
 function fakeTabView(): BrowserTabView {
   return {
     id: 't1', url: 'https://example.com', title: 'Example', loading: false,
-    canGoBack: false, canGoForward: false, active: true, profile: 'default',
+    canGoBack: false, canGoForward: false, active: true, profile: 'default', zoomLevel: 0,
   }
 }
 
@@ -432,7 +432,7 @@ function opsWithPermissions(answered: string[] = []) {
     activeId: () => 't1',
     open: () => tab,
     navigate: () => {}, back: () => {}, forward: () => {}, reload: () => {},
-    activate: () => {}, close: () => {},
+    activate: () => {}, close: () => {}, zoom: () => {},
     has: (id) => id === 't1',
     readText: async () => '',
     capture: async () => undefined,
@@ -459,10 +459,11 @@ const planCtx = (kind: 'user' | 'agent' | 'system') => ({
 }) as never
 
 describe('自述:B3-a 新加的那几行', () => {
-  it('契约照样过;做法八条、事实九条(2026-09-12 加 `spawned` / `spawnBlocked`)', () => {
+  it('契约照样过;做法九条(K3 加 `zoom`)、事实九条(2026-09-12 加 `spawned` / `spawnBlocked`)', () => {
     expect(assertResourceSpec(browserResourceSpec)).toBeUndefined()
     expect(Object.keys(browserResourceSpec.ops).sort()).toEqual([
       'activate', 'back', 'close', 'forward', 'navigate', 'open', 'reload', 'respondPermission',
+      'zoom',
     ])
     expect(Object.keys(browserResourceSpec.events).sort()).toEqual([
       'closed', 'download', 'loading', 'navigated', 'opened',

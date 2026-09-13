@@ -1490,4 +1490,13 @@ export const en: Record<MessageKey, string> = {
   'keymap.tabSelect9': 'Go to the last tab',
   'keymap.contentNewSession': 'New session',
 
+  /* ── Content family (K3) — the command's own generic name; each surface's own
+   * wording hangs on `answers` (see focus/scopes.ts). */
+  'keymap.navBack': 'Back',
+  'keymap.navForward': 'Forward',
+  'keymap.viewReload': 'Reload this content',
+  'keymap.zoomIn': 'Zoom in',
+  'keymap.zoomOut': 'Zoom out',
+  'keymap.zoomReset': 'Actual size',
+
 }

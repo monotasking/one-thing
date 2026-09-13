@@ -63,8 +63,12 @@ const TAB_SCHEMA: JsonSchema = {
     active: { type: 'boolean', description: 'Whether this is the tab the user is looking at.' },
     error: { type: 'string', description: 'What went wrong last, if anything.' },
     profile: { type: 'string', description: 'Which isolated login partition this tab runs on.' },
+    zoomLevel: {
+      type: 'number',
+      description: 'Page zoom level: 0 is 100%, each step of 0.5 is one notch (same scale Chrome uses).',
+    },
   },
-  required: ['id', 'url', 'title', 'loading', 'canGoBack', 'canGoForward', 'active', 'profile'],
+  required: ['id', 'url', 'title', 'loading', 'canGoBack', 'canGoForward', 'active', 'profile', 'zoomLevel'],
 }
 
 const TABS_RESULT: JsonSchema = {
@@ -135,6 +139,23 @@ const NAVIGATE_PARAMS: JsonSchema = {
     url: { type: 'string', description: 'HTTP(S) URL. Anything else is refused — the built-in browser never hands a URL to another app.' },
   },
   required: ['url'],
+}
+
+/**
+ * 缩放那一格(K3)。**三个方向,不是一个数**:「放大一格」是人说的话,
+ * 「缩到 1.5 级」不是 —— 让调用方去算级数等于把那条梯子(每一格多少、夹在哪两头)
+ * 复制到每一个调用点去,而那把尺子的唯一产地是 `tab-state.ts` 的 `nextZoomLevel`。
+ */
+const ZOOM_PARAMS: JsonSchema = {
+  type: 'object',
+  properties: {
+    level: {
+      type: 'string',
+      enum: ['in', 'out', 'reset'],
+      description: 'One notch bigger, one notch smaller, or back to 100%.',
+    },
+  },
+  required: ['level'],
 }
 
 const RESPOND_PERMISSION_PARAMS: JsonSchema = {
@@ -239,6 +260,29 @@ export const browserResourceSpec: ResourceSpec = {
       home: 'core',
       entity: 'tab',
       describe: () => 'close the browser tab',
+    },
+    /**
+     * 页面缩放(K3)。
+     *
+     * ## 效果 `ui_change`,与 `activate` 同一档,而判据在文件头那一句上
+     *
+     * 分档问的是「它以谁的身份动了什么」:缩放**不发一个请求**、不带 cookie、
+     * 不改这一页是谁 —— 它动的是**这个人自己那扇窗里的一格摆设**,和「把这一格
+     * 挪到前面来」一模一样。所以它不是 `browser_navigate`:那一档之所以要问,
+     * 是因为它带着用户的身份去打一发真请求。
+     */
+    zoom: {
+      title: 'Zoom a tab\'s page in, out, or back to its actual size.',
+      params: ZOOM_PARAMS,
+      effects: ['ui_change'],
+      home: 'core',
+      entity: 'tab',
+      describe: params => {
+        const level = String((params as { level?: unknown } | undefined)?.level ?? '')
+        if (level === 'in') return 'zoom the page in one notch'
+        if (level === 'out') return 'zoom the page out one notch'
+        return 'reset the page zoom to 100%'
+      },
     },
     /**
      * 答一次网页权限询问(B3-a)。

@@ -47,7 +47,7 @@ describe('命令表', () => {
     expect(toggles).toContain(toggleCommandId(SESSIONS_ITEM_ID))
   })
 
-  it('出厂绑这三十七条,别的一律未绑定;次序即注册表次序', () => {
+  it('出厂绑这四十一条,别的一律未绑定;次序即注册表次序', () => {
     const bound = KEYMAP_COMMANDS.filter((c) => c.defaultCombos.length > 0).map((c) => c.id)
     /*
      * 检索 ⌘P、总览 ⌘E、四条架子 ⌘⌥←/→/↓/↑(09-01 用户放权后新绑)、
@@ -97,6 +97,15 @@ describe('命令表', () => {
       'tab.next',
       'tab.prev',
       ...Array.from({ length: 9 }, (_, i) => `tab.select:${i + 1}`),
+      /*
+       * ── K3 的内容族四条(⌘R / ⌘= 与 ⌘⇧+ / ⌘− / ⌘0)────────────────────
+       * 它们与 K1 那张 `KEYS_RESERVED_FOR_CONTENT` 是同一件事的两半:K1 让
+       * 应用菜单把这几个键交出来,K3 给它们找到响应者(今天是浏览器叶)。
+       */
+      'view.reload',
+      'view.zoomIn',
+      'view.zoomOut',
+      'view.zoomReset',
     ])
     // ⌘⇧↩(W2)。全表零冲突由下面那条「两两不同」的断言钉着。
     expect(findCommand('workbench.toggleFull')?.defaultCombos).toEqual([

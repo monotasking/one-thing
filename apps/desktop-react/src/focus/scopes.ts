@@ -70,9 +70,10 @@ const FILES_ANSWERS: readonly ScopeAnswer[] = [answer('files.detail')]
  * `docs/design/search-index-2026-09.md` §4.6)。
  *
  * K0 起它们叫 `nav.back` / `nav.forward` —— **后退 / 前进**这件事在浏览器上也是
- * 同一条命令(K3 接),所以名字先立成通名,说法仍是这块面自己的那一句
- * (命令的通名就用 `search.historyBack` / `search.historyForward`,今天只有一个
- * 响应者,不必先造一句没人读的通名)。
+ * 同一条命令,而 **K3 真的把浏览器接上来了**。于是命令自己那一句从 K0 借来的
+ * `search.historyBack` 换成了通名(`keymap.navBack`),这块面的说法**原样挂回
+ * 这里**:设置页那一行右侧从此读作「后退 — 检索面(查询历史的上一条)/
+ * 浏览器(上一页)」,两句话一句没少。检索面自己的行为一个字没改。
  *
  * ── ↑ 那一下**不在这张表上**,这也是判据不是省事 ────────────────────────
  * §4.6 里 ↑ 与 ⌘[ 是同一条历史的两个入口,但它们属于**两层**:↑ 是行内结构键
@@ -80,7 +81,10 @@ const FILES_ANSWERS: readonly ScopeAnswer[] = [answer('files.detail')]
  * 第一行」那一形才轮到历史 —— 那是一句关于这套形态语法的话,而结构键**不进任何表**
  * (`keymap/types.ts` 顶部:可配置就等于不一致)。落点因此在面板自己的 onKeyDown 里。
  */
-const SEARCH_ANSWERS: readonly ScopeAnswer[] = [answer('nav.back'), answer('nav.forward')]
+const SEARCH_ANSWERS: readonly ScopeAnswer[] = [
+  answer('nav.back', 'search.historyBack'),
+  answer('nav.forward', 'search.historyForward'),
+]
 
 /**
  * 会话总览一条:⌘⇧P = 置顶 / 取消置顶**活动行**(09-04 方向 A §3.2)。
@@ -163,6 +167,30 @@ const SESSION_NEW_ANSWERS: readonly ScopeAnswer[] = [
 const BROWSER_ANSWERS: readonly ScopeAnswer[] = [
   answer('browser.address'),
   answer('view.find', 'browser.find'),
+  /*
+   * ── 内容族六条(K3,方案 §5 K3)────────────────────────────────────────
+   *
+   * **它们六条一起进来,是因为它们六条是同一句话**:⌘R / ⌘[ / ⌘] / ⌘= / ⌘− / ⌘0
+   * 在全世界的浏览器里做的是「这一页」的事,而 K1 刚把它们从 Electron 默认菜单
+   * 手上拿回来(那张表的目标永远是**整台壳**:⌘R 重载整台壳、⌘± 缩的是壳)。
+   * 拿回来之后如果没有响应者,它们就是六个哑键 —— 比从前还糟。
+   *
+   * 说法逐条覆盖成这块面自己的那一句:`browser.reload` / `browser.back` /
+   * `browser.forward` 三条**复用地址栏上那三颗钮的名字**(i18n 纪律:那就是
+   * 同一句话,不该有第二个键)。三条缩放不覆盖 —— 通名「放大 / 缩小 /
+   * 实际大小」在这块面里读起来逐字就对,造三句「把这一页放大」是在造重复。
+   *
+   * **没有历史时那两条不响**,而那不在这里说:声明这一头回答的是「这种面
+   * **可能**答哪些命令」,「此刻答不答得出」是实例那一头的事
+   * (`BrowserLeaf` 的 `commands` 按 `canGoBack` / `canGoForward` 决定交不交
+   * 处理器,派发器据此穿过去)。
+   */
+  answer('view.reload', 'browser.reload'),
+  answer('nav.back', 'browser.back'),
+  answer('nav.forward', 'browser.forward'),
+  answer('view.zoomIn'),
+  answer('view.zoomOut'),
+  answer('view.zoomReset'),
 ]
 
 /**
