@@ -145,7 +145,8 @@ export function FileViewer({
   const liveDirty = isDirty(file, edit)
   useEffect(() => {
     const id = refId({ kind: 'file', key: path })
-    setLiveTitle(id, { text: liveName, dirty: liveDirty, tip: path })
+    // 路径形(09-13):檐据此画成「名字一行 + 目录一行」,家目录缩成 `~`。
+    setLiveTitle(id, { text: liveName, dirty: liveDirty, tip: { path } })
     return () => setLiveTitle(id, null)
   }, [path, liveName, liveDirty, setLiveTitle])
 

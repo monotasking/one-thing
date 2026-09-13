@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
-import type { PointerEvent as ReactPointerEvent } from 'react'
+import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { resolveIcon, X } from '../components/icons'
 import { FrameCoalescer } from './frame-coalescer'
 import { StatusDot } from './StatusDot'
@@ -49,8 +49,13 @@ export interface TabSpec {
    * 的 DOM 与从前逐字相同 —— 这一格是加法,不是给所有消费方换一套行为。
    * 锚在名字那一段而不是整条 tab:说的是「这句被截断的话的全文」,
    * 而 ✕ 与未保存丸各有各的说法。
+   *
+   * **它是节点,不是字符串**(09-13):文件那一种给的全名要画成「名字一行 +
+   * 目录一行」,而 `ui/Tabs` 与 `ui/Tooltip` 一样**不认识「路径」** —— 画成
+   * 什么由宿主在交进来之前决定(`content/title-tip.renderTitleTip`),这件
+   * 库件只负责把它挂在名字那一段上。
    */
-  tip?: string
+  tip?: ReactNode
   /**
    * 关不关得掉。缺省 `true`(给了 `onClose` 就画 ✕)。
    *

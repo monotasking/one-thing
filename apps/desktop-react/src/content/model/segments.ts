@@ -2,6 +2,7 @@ import type { ProjectedMessage } from '../../data/chat-fold'
 import type { MessageKey, MessageVars } from '../../i18n'
 import type { CompactMarker } from '../compact/marker'
 import type { BlockModel } from './blocks'
+import type { TitleTip } from './title-tip'
 
 /**
  * 段词汇 —— 一条消息**内部的排布单位**(§1)。
@@ -75,8 +76,12 @@ export interface ToolRowModel {
    * 能力自述、card.ts 只读表,是这条纪律唯一的解法。
    */
   headLabel?: string
-  /** 悬停才看得到的全称(全路径 / 整条命令)。拿不到就缺席,不编。 */
-  title?: string
+  /**
+   * 悬停才看得到的全称(全路径 / 整条命令)。拿不到就缺席,不编。
+   * **路径形由 presenter 自述**(09-13):交 `{ path }` 的那一种画成「名字一行 +
+   * 目录一行」,交字符串的(bash 的整条命令、web 的 URL)照原样画。
+   */
+  title?: TitleTip
   /** 参数摘要(V2):文件名之后那一小段灰字。 */
   summary?: string
   status: string

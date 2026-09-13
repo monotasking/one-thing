@@ -35,6 +35,9 @@ import { PermissionSlot } from '../permission/PermissionSlot'
 import { ToolDrawer } from './ToolDrawer'
 import { EXPANDABLE_STATUSES, toolStatusLabel, toolTone, type ToolTone } from './status'
 import s from './ToolCard.module.css'
+// 路径形提示由 presenter 自述,这一侧只读表(09-13)。
+import { renderTitleTip } from '../title-tip'
+import { useHomeDir } from '../../data/home-dir'
 
 /**
  * 工具卡 —— **一张卡装一列步**(§6.1「一件事一张脸」)。
@@ -544,6 +547,8 @@ function ToolRowFace({
   progress?: ToolProgress
 }) {
   const Icon = resolveIcon(row.icon)
+  // 家目录:一格宿主事实,拿到之前是 null = 不缩(判词在 `data/home-dir`)。
+  const home = useHomeDir()
   const streaming = row.status === 'input-streaming'
   /*
    * 摘要三级(§6.2「执行中」列,C2-b):
@@ -565,7 +570,7 @@ function ToolRowFace({
       <Icon className={s.toolIcon} strokeWidth={1.75} aria-hidden="true" />
       {/* 全名走 `ui/Tooltip`(禁 native `title=`):行上画的是短名,长的那一句
         * (带参数的标题)在悬停时说。cloneElement 注入,不多包一层 DOM。 */}
-      <Tooltip content={row.title}>
+      <Tooltip content={renderTitleTip(row.title, home)}>
         <span className={s.toolName}>{row.name}</span>
       </Tooltip>
       {(summary || streaming) && (

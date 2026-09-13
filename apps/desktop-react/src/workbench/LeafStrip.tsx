@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { Tabs } from '../ui/Tabs'
+import { renderTitleTip } from '../content/title-tip'
+import { useHomeDir } from '../data/home-dir'
 import { focusIntoRef } from './focus-into'
 import { useLiveTitleStore } from '../stage/live-title'
 import { useT } from '../i18n'
@@ -295,7 +297,7 @@ function useSelectIntoContent(
 export function tabSpecOf(
   ref: ContentRef,
   titles: Record<string, LiveTitle>,
-  opts: { closable?: boolean; home?: boolean; preview?: string } = {},
+  opts: { closable?: boolean; home?: boolean; preview?: string; homeDir?: string | null } = {},
 ): TabSpec {
   const id = refId(ref)
   const kind = contentKindOf(ref.kind)
@@ -306,8 +308,16 @@ export function tabSpecOf(
     label: live?.text ?? still?.text ?? ref.key,
     icon: kind?.icon(ref),
     dirty: live?.dirty ?? still?.dirty ?? false,
-    // 截断的名字必须说得出全名(禁令区那条)。文件那一种给的是整条路径。
-    tip: live?.tip ?? still?.tip,
+    /*
+     * 截断的名字必须说得出全名(禁令区那条)。文件那一种给的是整条路径。
+     *
+     * **在这儿就画成节点**(09-13):`ui/Tabs` 与 `ui/Tooltip` 一样不认识
+     * 「路径」,而「这句提示是不是路径」是产地自述的一格
+     * (`LiveTitle.tip`)—— 这只函数只读表,一个字都不猜。
+     * `homeDir` 由宿主在组件顶层取一次往下传:这只是纯函数(中央叶要对一组
+     * ref 各算一格),而 hook 不能在循环里调。
+     */
+    tip: renderTitleTip(live?.tip ?? still?.tip, opts.homeDir ?? null),
     closable: opts.closable ?? true,
     // 「这一组的家」(W1-b):判据由宿主从种类自述里取,这只函数只搬运。
     home: opts.home ?? false,
@@ -357,8 +367,13 @@ export function SoloLeafStrip({
 }) {
   const t = useT()
   const titles = useLiveTitleStore((st) => st.titles)
+  // 家目录在组件顶层取一次往下传(`tabSpecOf` 是纯函数,不是 hook)。
+  const homeDir = useHomeDir()
   const id = refId(contentRef)
-  const tabs = useMemo(() => [tabSpecOf(contentRef, titles)], [contentRef, titles])
+  const tabs = useMemo(
+    () => [tabSpecOf(contentRef, titles, { homeDir })],
+    [contentRef, titles, homeDir],
+  )
   const close = useCallback(() => {
     void (async () => {
       if (await mayCloseContent(contentRef)) onClose()

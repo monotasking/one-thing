@@ -21,7 +21,9 @@ export const readPresenter: ToolPresenter = {
     const lines = detailNumber(call, 'lineCount')
     return baseToolRow(call, {
       icon: 'FileText',
-      ...(path ? { name: basename(path), title: path } : {}),
+      // 行上是 basename,全路径进 `title`;**路径形自述**(09-13)——
+      // 悬停时画成「名字一行 + 目录一行」,家目录缩成 `~`。
+      ...(path ? { name: basename(path), title: { path } } : {}),
       // 失败时 baseToolRow 已经摆了后端那句原话,不许被成果词盖掉。
       ...(lines !== undefined && call.status === 'completed'
         ? { outcome: { key: 'chat.tool.lines', vars: { n: lines } } as const }
@@ -38,7 +40,7 @@ export const readPresenter: ToolPresenter = {
    */
   partial: (call) => {
     const path = partialArgString(call, 'path', 'filePath', 'file_path')
-    return path ? { icon: 'FileText', name: basename(path), title: path } : { icon: 'FileText' }
+    return path ? { icon: 'FileText', name: basename(path), title: { path } } : { icon: 'FileText' }
   },
 
   detail: (call) => {

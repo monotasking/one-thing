@@ -17,6 +17,9 @@ import {
 } from '../../workbench/store'
 import { leavesOf } from '../../workbench/tree'
 import { useLiveTitleStore } from '../../stage/live-title'
+import { useHomeDir } from '../../data/home-dir'
+import { titleTipText } from '../model/title-tip'
+import { renderTitleTip } from '../title-tip'
 import { PAIR_KIND, pairPartsOf, pairRefOf } from './pair-ref'
 import type { LiveTitle } from '../../stage/live-title'
 import type { ContentKind, ContentRef } from '../../workbench/kinds'
@@ -249,13 +252,16 @@ function PairSide({
   onClose: (side: 'left' | 'right') => void
 }) {
   const tr = useT()
+  // 家目录在组件顶层取一次(判词在 `data/home-dir`)。
+  const home = useHomeDir()
   const title = titleOfPart(part, titles)
   const id = refId(part)
   return (
     <section className={s.pane} aria-label={title.text} data-pair-side={side}>
       <div className={s.head} data-pair-head={id}>
-        {/* 截断的名字必须说得出全名(禁令区那条)。 */}
-        <Tooltip content={title.tip ?? title.text}>
+        {/* 截断的名字必须说得出全名(禁令区那条)。路径形由产地自述,格头
+          * 这一侧只读表(09-13,判词在 `content/model/title-tip.ts`)。 */}
+        <Tooltip content={renderTitleTip(title.tip, home) ?? title.text}>
           <span className={s.name}>{title.text}</span>
         </Tooltip>
         {/* 格头 = **身份 + 关这一格**(设计 §6;判词在组件头状态表 ③)。 */}
@@ -321,8 +327,13 @@ export const pairContentKind: ContentKind = {
     return {
       text: `${a.text}${JOIN}${b.text}`,
       dirty: a.dirty === true || b.dirty === true,
-      // 提示给两条全名(标签上那格窄,而 260px 装不下两个长名字)。
-      tip: `${a.tip ?? a.text}${JOIN}${b.tip ?? b.text}`,
+      /*
+       * 提示给两条全名(标签上那格窄,而 260px 装不下两个长名字)。
+       * 拼接要的是**字符串形**(`titleTipText`,09-13):合起来的这一句已经是
+       * 「两个名字连成的一句话」,不再是一条路径 —— 所以它照旧交字符串,
+       * 而两半各自的路径形在**格头**那一侧才画得出来。
+       */
+      tip: `${titleTipText(a.tip) ?? a.text}${JOIN}${titleTipText(b.tip) ?? b.text}`,
     }
   },
   /**

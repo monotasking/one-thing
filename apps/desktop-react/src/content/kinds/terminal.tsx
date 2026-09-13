@@ -95,7 +95,11 @@ registerContentKind(
     level: 'space',
     title: (ref: ContentRef) => {
       const live = peekTerminalSession(ref.key)?.get()
-      return { text: live?.title || t('item.terminal'), tip: live?.cwd }
+      // cwd 是一条**目录**路径(09-13 路径形);缺席照旧不挂提示。
+      return {
+        text: live?.title || t('item.terminal'),
+        ...(live?.cwd ? { tip: { path: live.cwd, dir: true } } : {}),
+      }
     },
     icon: () => 'Terminal',
     render: (ref) => (

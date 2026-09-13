@@ -283,7 +283,8 @@ describe('头:身份与去向(大小与时间不在这里)', () => {
     // 身份仍然说得出来 —— 只是它现在说给檐听(整条路径进 tip,禁令区那条)。
     expect(useLiveTitleStore.getState().titles['file:/repo/a.ts']).toMatchObject({
       text: 'a.ts',
-      tip: '/repo/a.ts',
+      // 路径形(09-13):「这是一条路径」由产地自述,檐照表画。
+      tip: { path: '/repo/a.ts' },
     })
   })
 

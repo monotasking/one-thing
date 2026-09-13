@@ -128,6 +128,10 @@ describe('createOnethingHttpServer', () => {
       // `capabilities.test.ts`。
       terminal: false,
       pluginsManage: false,
+      // 09-13:家目录与 `localFileSystem` 同判据(`isHostLocallyTrusted()`)。
+      // 这只测试进程没声明可信,所以如实是 null —— 判据本身钉在
+      // `capabilities.test.ts`。
+      homeDir: null,
     })
   })
 

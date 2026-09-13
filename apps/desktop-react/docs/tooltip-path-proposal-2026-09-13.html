@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>路径 tooltip 样例 · 2026-09-13</title>
+<style>
+  :root {
+    --paper: #f5f4f1; --paper-1: #faf9f7; --ink: #2b2a26; --ink-2: #5f5d56; --ink-3: #8d8a82;
+    --line: #e6e3dc; --st-hover: rgba(0,0,0,.05); --bubble: #ecebe6;
+    --tip-bg: #33434c; --tip-fg: #ffffff;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: -apple-system, 'Inter', 'PingFang SC', system-ui, sans-serif;
+  }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.6 var(--sans); }
+  main { max-width: 1120px; margin: 0 auto; padding: 40px 32px 80px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 6px; }
+  h2 { font-size: 14px; font-weight: 600; margin: 40px 0 12px; color: var(--ink); }
+  p { margin: 0 0 8px; color: var(--ink-2); }
+  .lead { max-width: 760px; }
+  .stations { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+  .station { background: var(--paper-1); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px 18px; }
+  .station h3 { font-size: 13px; font-weight: 600; margin: 0 0 2px; display: flex; align-items: baseline; gap: 8px; }
+  .station h3 .tag { font-size: 10.5px; font-weight: 500; color: var(--ink-3); }
+  .station h3 .pick { font-size: 10.5px; font-weight: 600; color: #2f6f5e; background: #e3f0ea; padding: 1px 6px; border-radius: 999px; }
+  .station .why { font-size: 12px; color: var(--ink-2); margin: 0 0 14px; min-height: 3.6em; }
+  .scene { position: relative; height: 150px; border-radius: 8px; background: var(--paper); border: 1px dashed var(--line); overflow: hidden; }
+  .scene.dark { --paper: #2e3440; --bubble: #3b4252; --st-hover: rgba(255,255,255,.08); --ink: #eceff4; --ink-2: #d8dee9; --tip-bg: #d8dee9; --tip-fg: #2e3440; border-color: #434c5e; }
+  .bubble { position: absolute; right: 16px; top: 88px; background: var(--bubble); border-radius: 12px; padding: 8px 12px; color: var(--ink); font-size: 13px; }
+  .chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 5px; border-radius: 6px; background: var(--st-hover); font: 12px var(--mono); color: var(--ink); vertical-align: middle; }
+  .chip svg { width: 12px; height: 12px; color: var(--ink-3); }
+  .tip { position: absolute; width: max-content; max-width: 320px; padding: 4px 8px; border-radius: 6px; background: var(--tip-bg); color: var(--tip-fg); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+  /* 锚点正上方居中 + 8px 间距;这里手摆,与真实原语同一个几何 */
+  /* chip 贴着气泡右缘,居中的提示会探出视口,原语把它夹回来留 8px —— 这里直接画夹完的位置 */
+  .tip.above { bottom: 70px; right: 8px; }
+  .path { overflow-wrap: normal; }           /* 只在 <wbr> 处断,单段真放不下才退到 anywhere */
+  .path.hard { overflow-wrap: anywhere; }
+  .name { font-weight: 600; }
+  .dir { opacity: .72; }
+  .two .dir { display: block; }
+  .kbd { font: 10.5px var(--mono); opacity: .6; margin-left: 6px; }
+  table { border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
+  td, th { text-align: left; padding: 6px 14px 6px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; color: var(--ink-2); font-size: 11.5px; }
+  code { font: 12px var(--mono); background: var(--st-hover); padding: 0 4px; border-radius: 4px; }
+  .note { font-size: 12px; color: var(--ink-3); }
+  .rows { display: grid; gap: 10px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>文件 chip 的 tooltip:该长什么样</h1>
+  <p class="lead">昨天那笔修的是「盒子装得下字」。装下之后露出的下一层问题在你截图里:<b>路径在连字符处被掰成两截</b>(「lenovo-」/「scripts/ChatBot.lua」),「Open」这个动词占了半行,整条提示读起来像一句被折坏的英文,而不是一个地址。下面三台都能选,每台画同一个 chip、同一条路径,亮暗各一遍。</p>
+
+  <h2>候选</h2>
+  <div class="stations">
+
+    <div class="station">
+      <h3>现状(b8adf85ad 之后)<span class="tag">对照</span></h3>
+      <p class="why">动词 + 整条路径当一句话排,任意字符处可断。装得下了,但断点不讲道理,「Open」与路径抢同一行。</p>
+      <div class="rows">
+        <div class="scene">
+          <div class="tip above" style="--chip-half:52px">Open /Users/yitiansong/data/work/lenovo-scripts/ChatBot.lua</div>
+          <div class="bubble"><span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>ChatBot.lua</span></div>
+        </div>
+        <div class="scene dark">
+          <div class="tip above" style="--chip-half:52px">Open /Users/yitiansong/data/work/lenovo-scripts/ChatBot.lua</div>
+          <div class="bubble"><span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>ChatBot.lua</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="station">
+      <h3>甲 · 只写地址,斜杠处断<span class="tag">最小改动</span></h3>
+      <p class="why">去掉「Open」(动词留给无障碍名与指针光标),路径只允许在 <code>/</code> 后面断行。一行放得下就一行,放不下也是按目录段落折,每一行都是一个完整的段。</p>
+      <div class="rows">
+        <div class="scene">
+          <div class="tip above" style="--chip-half:52px"><span class="path">/Users/<wbr>yitiansong/<wbr>data/<wbr>work/<wbr>lenovo-scripts/<wbr>ChatBot.lua</span></div>
+          <div class="bubble"><span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>ChatBot.lua</span></div>
+        </div>
+        <div class="scene dark">
+          <div class="tip above" style="--chip-half:52px"><span class="path">/Users/<wbr>yitiansong/<wbr>data/<wbr>work/<wbr>lenovo-scripts/<wbr>ChatBot.lua</span></div>
+          <div class="bubble"><span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>ChatBot.lua</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="station">
+      <h3>乙 · 名字一行,目录一行<span class="tag">分层</span></h3>
+      <p class="why">你悬停时要核对的是两件事:是哪个文件、在哪个目录。第一行把名字用重一档的字重说清,第二行淡一档写目录,目录仍按 <code>/</code> 断。眼睛不用在一长串里找文件名。</p>
+      <div class="rows">
+        <div class="scene">
+          <div class="tip above two" style="--chip-half:52px"><span class="name">ChatBot.lua</span><span class="dir path">/Users/<wbr>yitiansong/<wbr>data/<wbr>work/<wbr>lenovo-scripts</span></div>
+          <div class="bubble"><span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>ChatBot.lua</span></div>
+        </div>
+        <div class="scene dark">
+          <div class="tip above two" style="--chip-half:52px"><span class="name">ChatBot.lua</span><span class="dir path">/Users/<wbr>yitiansong/<wbr>data/<wbr>work/<wbr>lenovo-scripts</span></div>
+          <div class="bubble"><span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>ChatBot.lua</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="station">
+      <h3>丙 · 乙 + 家目录写成 <code>~</code><span class="pick">推荐</span></h3>
+      <p class="why">同乙,但 <code>/Users/yitiansong</code> 这 17 个字在单用户的桌面上不带任何信息,却让九成路径多出一行。显示层缩成 <code>~</code>,复制、打开、无障碍名仍是全路径。仓库里绝大多数路径于是一行两截读完。</p>
+      <div class="rows">
+        <div class="scene">
+          <div class="tip above two" style="--chip-half:52px"><span class="name">ChatBot.lua</span><span class="dir path">~/<wbr>data/<wbr>work/<wbr>lenovo-scripts</span></div>
+          <div class="bubble"><span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>ChatBot.lua</span></div>
+        </div>
+        <div class="scene dark">
+          <div class="tip above two" style="--chip-half:52px"><span class="name">ChatBot.lua</span><span class="dir path">~/<wbr>data/<wbr>work/<wbr>lenovo-scripts</span></div>
+          <div class="bubble"><span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>ChatBot.lua</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2>超量:很深的路径与很长的文件名</h2>
+  <p class="lead">同一台(丙)在两种极端下的样子。目录太深就多折几行,每行仍是整段;单个文件名超过 320px 才退到「任意处断」——那是最后一道兜底,不是常态。</p>
+  <div class="stations">
+    <div class="station">
+      <h3>深目录</h3>
+      <div class="scene">
+        <div class="tip above two" style="--chip-half:78px"><span class="name">109 IVA_IN premire;Idea,Think 0525.md</span><span class="dir path">~/<wbr>data/<wbr>note/<wbr>workbook/<wbr>70-79 work/<wbr>71 esoon/<wbr>71.01 需求/<wbr>IVA</span></div>
+        <div class="bubble"><span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>109 IVA_IN pr…</span></div>
+      </div>
+    </div>
+    <div class="station">
+      <h3>超长文件名(兜底档)</h3>
+      <div class="scene">
+        <div class="tip above two" style="--chip-half:78px"><span class="name path hard">screenshot-2026-09-12-at-19.27.03-composer-drawer-fixed-height-variant-b-final-final2.png</span><span class="dir path">~/<wbr>Desktop</span></div>
+        <div class="bubble"><span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>screenshot-20…</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h2>推荐丙,落地是一件小基础件</h2>
+  <table>
+    <tr><th>项</th><th>定法</th></tr>
+    <tr><td>盒子</td><td>不变:反色墨底、r-1、无箭头、上限 <code>--tooltip-w</code> 320、正上方居中(昨天那笔已定)。</td></tr>
+    <tr><td>内容</td><td>第一行文件名(字重 600),第二行目录(同字号,72% 不透明度,新 token <code>--tooltip-text-2</code>);目录形态 chip(<code>dir/</code>)只画一行目录。</td></tr>
+    <tr><td>断行</td><td>路径节点 <code>overflow-wrap: normal</code>,每个 <code>/</code> 后放一枚 <code>&lt;wbr&gt;</code>;单段超宽由 <code>.tip</code> 上那条 <code>anywhere</code> 兜底。</td></tr>
+    <tr><td>家目录</td><td>显示层把前缀替换成 <code>~</code>(家目录由 core 的 capabilities 给,壳不猜);<code>aria-label</code>、复制、打开一律全路径。</td></tr>
+    <tr><td>动词</td><td>「Open」从可见文字里退出,留在 <code>aria-label</code>(可见文字「ChatBot.lua」包含在无障碍名里,WCAG 2.5.3 成立)。</td></tr>
+    <tr><td>基础件</td><td>新建 <code>ui/PathText</code>(纯展示:收 <code>path</code>、<code>home?</code>、<code>layout: 'inline' | 'stacked'</code>,产出带 <code>&lt;wbr&gt;</code> 的节点);<code>Tooltip</code> 一个字不改——它本来就收 ReactNode,不该认识「路径」。</td></tr>
+    <tr><td>消费者</td><td>三处换内容:用户消息 RefChip、工具卡文件名、拼贴格头名。别处 tooltip 不受影响。</td></tr>
+  </table>
+  <p class="note" style="margin-top:12px">不做的:mono 字体(路径变宽 15%,与提示体「一律 sans」的板冲突)、箭头(板上明写无箭头)、按光标定位(系统里所有 tooltip 都锚在控件上,单独一种会跳)。</p>
+</main>
+</body>
+</html>

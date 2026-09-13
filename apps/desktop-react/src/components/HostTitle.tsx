@@ -1,5 +1,7 @@
 import { StatusDot } from '../ui/StatusDot'
 import { Tooltip } from '../ui/Tooltip'
+import { useHomeDir } from '../data/home-dir'
+import { renderTitleTip } from '../content/title-tip'
 import { useLiveTitle } from '../stage/live-title'
 import s from './HostTitle.module.css'
 
@@ -16,6 +18,8 @@ import s from './HostTitle.module.css'
  */
 export function HostTitle({ id, fallback, className }: { id: string; fallback: string; className?: string }) {
   const live = useLiveTitle(id)
+  // 家目录:一格宿主事实,拿到之前是 null = 不缩(判词在 `data/home-dir`)。
+  const home = useHomeDir()
   const text = live?.text ?? fallback
   const body = (
     <span className={className} data-host-title={id}>
@@ -41,8 +45,11 @@ export function HostTitle({ id, fallback, className }: { id: string; fallback: s
   )
   // 截断的标题配 Tooltip 全名(禁令区那条)。没有全名可说就不挂 —— 一个与
   // 屏幕上一模一样的提示只是噪音。提示一律走 ui/Tooltip,禁 native `title=`。
+  //
+  // **只读表,不猜**(09-13):这句提示是不是一条路径由产地说了算,檐这一侧
+  // 只把它交给 `renderTitleTip`(判词在 `content/model/title-tip.ts`)。
   if (!live?.tip) return body
-  return <Tooltip content={live.tip}>{body}</Tooltip>
+  return <Tooltip content={renderTitleTip(live.tip, home)}>{body}</Tooltip>
 }
 
 /**

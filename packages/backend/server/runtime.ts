@@ -590,7 +590,13 @@ type ServerVariablesRuntime = {
  */
 const webServerCapabilities: Omit<
 	RuntimeHostCapabilities,
-	"localFileSystem" | "shellTools" | "terminal" | "pluginsManage" | "collabRooms"
+	| "localFileSystem"
+	| "shellTools"
+	| "terminal"
+	| "pluginsManage"
+	| "collabRooms"
+	// 09-13:家目录同样是推导位(与 `localFileSystem` 同判据),不是常量。
+	| "homeDir"
 > = {
 	workspaceFileSystem: true,
 	nativeWindowControls: false,
@@ -630,6 +636,10 @@ function currentServerCapabilities(): RuntimeHostCapabilities {
 		pluginsManage: getPluginManager() !== null,
 		// 与 sessions 域建房那道闸同判据(`isCollabV3RuntimeRunning()`)。
 		collabRooms: isCollabV3RuntimeRunning(),
+		// 与 `localFileSystem` **同判据**(`isHostLocallyTrusted()`):不可信的
+		// 客户端连路径都不夹,更不该知道这台机器的家目录 —— 那是一行白送的用户名。
+		// 客户端只拿它做显示(路径前缀画成 `~`),后端不用它判任何事。
+		homeDir: isHostLocallyTrusted() ? homedir() : null,
 	};
 }
 

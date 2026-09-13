@@ -2,7 +2,9 @@ import { useCallback, useRef, useState } from 'react'
 import { useT } from '../i18n'
 import { notify } from '../services/notify'
 import { ButtonBase } from '../ui/ButtonBase'
+import { PathText } from '../ui/PathText'
 import { Tooltip } from '../ui/Tooltip'
+import { useHomeDir } from '../data/home-dir'
 import { referenceKindOf } from './registry'
 
 /**
@@ -30,6 +32,8 @@ import { referenceKindOf } from './registry'
  */
 export function ReferenceChip({ kindId, value }: { kindId: string; value: unknown }) {
   const t = useT()
+  // 家目录:一格宿主事实,拿到之前是 null = 路径不缩(判词在 `data/home-dir`)。
+  const home = useHomeDir()
   const [pending, setPending] = useState(false)
   const busy = useRef(false)
   const kind = referenceKindOf(kindId)
@@ -90,6 +94,9 @@ export function ReferenceChip({ kindId, value }: { kindId: string; value: unknow
     <ButtonBase
       className={spec.className}
       data-ref-kind={spec.dataKind}
+      // **动词留在这儿**(09-13):`hint` 仍是「打开 /Users/…」整句全路径,
+      // 屏幕上那一句换成了两层路径。可见文字(basename)包含在无障碍名里,
+      // WCAG 2.5.3 成立;复制与打开走的也是全路径。
       aria-label={hint}
       aria-busy={pending || undefined}
       onClick={click}
@@ -98,5 +105,16 @@ export function ReferenceChip({ kindId, value }: { kindId: string; value: unknow
     </ButtonBase>
   )
 
-  return hint ? <Tooltip content={hint}>{button}</Tooltip> : button
+  /*
+   * 屏幕上那句提示:**这一种自述了路径就画路径**,否则就是 `tooltipKey` 那句话。
+   * 这只文件照旧一个种类名都不认得 —— 它读的是表上那一格,不是「这个 label
+   * 看起来像不像路径」(判词整段在 `content/model/title-tip.ts`)。
+   */
+  const tip = spec.tooltipPath ? (
+    <PathText path={spec.tooltipPath.path} home={home} layout="stacked" dir={spec.tooltipPath.dir} />
+  ) : (
+    hint
+  )
+
+  return tip ? <Tooltip content={tip}>{button}</Tooltip> : button
 }

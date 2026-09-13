@@ -43,7 +43,9 @@ registerContentKind(
     singleton: false,
     title: (ref: ContentRef) => ({
       text: disambiguatedDirName(ref.key) || baseNameOf(ref.key) || ref.key,
-      tip: ref.key,
+      // 路径形,而且自述**它是个目录**(09-13):名字行因此带回尾随 `/`,
+      // 目录行是父目录 —— 屏幕上「b/」与「b」是两件东西。
+      tip: { path: ref.key, dir: true },
     }),
     // 目录就是目录那一枚。名字取的是 `components/icons` 的注册表键(大写开头),
     // 拼错了 `resolveIcon` 会静默退回 FolderTree —— 所以照表写。

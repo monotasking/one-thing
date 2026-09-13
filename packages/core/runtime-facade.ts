@@ -57,6 +57,19 @@ export interface RuntimeHostCapabilities {
    * (渲染侧默认 `false`)。
    */
   pluginsManage?: boolean
+  /**
+   * 这台机器的家目录(09-13)。**判据与 `localFileSystem` 同一条**
+   * (`isHostLocallyTrusted()`):一个不可信的客户端连路径都不夹,更不该知道
+   * 这台机器的家目录叫什么 —— 那是一行白送的用户名。不可信 = `null`。
+   *
+   * 它是**显示层的事实**:客户端拿它把路径前缀画成 `~`(判词在壳的
+   * `ui/PathText` 上),而复制、打开、无障碍名一律仍是全路径。后端这一侧
+   * 不用它做任何判断 —— 路径的夹取判据在各自那个域里,与这一格无关。
+   *
+   * 可选是因为它与 `collabRooms` / `terminal` / `pluginsManage` 同族:
+   * 省略 = 这个宿主不表态,客户端用自己的默认值(壳:不缩)。
+   */
+  homeDir?: string | null
 }
 
 export interface RuntimeEventSubscribeOptions {

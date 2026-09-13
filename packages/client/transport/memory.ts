@@ -36,6 +36,9 @@ const DEFAULT_CAPABILITIES: HostCapabilities = {
   clipboardWrite: false,
   desktopWindows: false,
   globalMenuEvents: false,
+  // 内存替身没有一台机器可言,所以如实答「不知道」—— 与它把
+  // `localFileSystem` 答成 false 是同一句话的两半。
+  homeDir: null,
 }
 
 interface MemorySubscriber {

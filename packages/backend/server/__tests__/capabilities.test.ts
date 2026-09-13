@@ -18,7 +18,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 /**
@@ -114,6 +114,24 @@ describe('/api/capabilities 的能力位从后端事实推导(B3)', () => {
 
     resetHostLocalTrustForTests()
     expect((await capabilities()).localFileSystem).toBe(false)
+  })
+
+  /**
+   * 家目录那一位(09-13)。它与上面几位的差别是**答案不是布尔**:不可信时是
+   * `null`(不是 false)—— 「我不告诉你」与「这台机器没有家目录」是两句话,
+   * 而后者不存在。
+   */
+  it('未声明可信 → homeDir 是 null(不可信的客户端不该知道这台机器的家目录)', async () => {
+    expect((await capabilities()).homeDir).toBeNull()
+  })
+
+  it('声明本机可信 → homeDir 等于 os.homedir()', async () => {
+    configureHostLocalTrust({ origin: 'desktop-embedded' })
+    expect((await capabilities()).homeDir).toBe(homedir())
+
+    // 反过来:撤掉信任声明,这一格必须跟着落回 null。
+    resetHostLocalTrustForTests()
+    expect((await capabilities()).homeDir).toBeNull()
   })
 
   it('装上插件管理器 → pluginsManage 抬起来', async () => {

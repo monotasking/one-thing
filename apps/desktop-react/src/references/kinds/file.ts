@@ -132,6 +132,10 @@ export const fileReferenceKind: ReferenceKind<FileMention, { kind: 'fileRef'; pa
     labelClassName: s.refName,
     tooltipKey: 'chat.ref.openFile',
     tooltipArgs: { path: ref.path },
+    // 悬停看到的是这条路径的两层形(09-13);「打开 …」那句动词退到
+    // `aria-label` 上 —— `chat.ref.openFile` 这个键因此**不删**,它现在只服务
+    // 无障碍名。
+    tooltipPath: { path: ref.path },
     clickable: true,
   }),
 

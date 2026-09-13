@@ -34,7 +34,9 @@ function titleOf(ref: ContentRef) {
     text: name,
     dirty: live ? isDirty(live.file, live.edit) : false,
     // 提示给**整条路径**:tab 上那格窄,而两个目录里的同名文件在屏幕上长得一样。
-    tip: ref.key,
+    // 交的是**路径形**(09-13):檐与 tab 条据此画成「名字一行 + 目录一行」,
+    // 而「这是一条路径」这件事由这里说 —— 消费者认不出,也不许猜。
+    tip: { path: ref.key },
   }
 }
 

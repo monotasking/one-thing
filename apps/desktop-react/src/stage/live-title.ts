@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { sameTitleTip } from '../content/model/title-tip'
+import type { TitleTip } from '../content/model/title-tip'
 
 /**
  * **一块瓦此刻在显示什么**(09-01 回炉:浮窗双檐)。
@@ -33,8 +35,13 @@ export interface LiveTitle {
    * 悬停时说的全名(查看器给的是整条路径)。**截断的标题必须配 Tooltip 全名**
    * 是禁令区那条 —— 檐上那格宽度有限,`engine.ts` 与另一个目录里的 `engine.ts`
    * 在屏幕上长得一模一样。缺席 = 这句话本来就不会被截断,不必挂提示。
+   *
+   * **路径形由产地自述**(09-13):交 `{ path }` 的那一种会被画成「名字一行 +
+   * 目录一行、家目录缩成 `~`」,交字符串的照原样画。判据在产地而不在檐上 ——
+   * 檐认不出「这串字是不是路径」,而产地本来就知道(判词在
+   * `content/model/title-tip.ts`)。
    */
-  tip?: string
+  tip?: TitleTip
 }
 
 interface LiveTitleStore {
@@ -54,8 +61,14 @@ export const useLiveTitleStore = create<LiveTitleStore>()((set) => ({
         return { titles: next }
       }
       const now = st.titles[id]
-      // 逐字相同就不动 —— 一次无谓的 set 会让三个宿主全重渲一遍。
-      if (now && now.text === title.text && now.dirty === title.dirty && now.tip === title.tip) {
+      /*
+       * 逐字相同就不动 —— 一次无谓的 set 会让三个宿主全重渲一遍。
+       *
+       * `tip` **按值比**(`sameTitleTip`),不是 `===`:09-13 起它可以是
+       * `{ path }` 那一形,而那是产地每次现造的对象 —— 用 `===` 的话每一次
+       * 发布都判成「变了」,这句短路当场失效。
+       */
+      if (now && now.text === title.text && now.dirty === title.dirty && sameTitleTip(now.tip, title.tip)) {
         return st
       }
       return { titles: { ...st.titles, [id]: title } }

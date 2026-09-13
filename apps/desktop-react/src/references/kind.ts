@@ -114,6 +114,19 @@ export interface ChipSpec {
   /** 鼠标停上去说的整句;它同时是无障碍名。缺席 = 不挂提示、不挂 aria-label。 */
   tooltipKey?: MessageKey
   tooltipArgs?: MessageVars
+  /**
+   * **屏幕上那句提示改画成这条路径**(09-13)。给了就把悬停时看到的东西换成
+   * 「名字一行 + 目录一行、家目录缩成 `~`」,而 `tooltipKey` 那一句
+   * (「打开 /Users/…」)**留在 `aria-label` 上** —— 动词从可见文字里退出,
+   * 无障碍名照旧说得出「这是可以打开的什么」,可见文字包含在无障碍名里,
+   * WCAG 2.5.3 成立。
+   *
+   * 它与别处的 `TitleTip` 路径形是同一件事的同一格:**「这是一条路径」由这一种
+   * 自述**,`ReferenceChip` 只读表,不许 `if (looksLikePath(label))`
+   * (判词整段在 `content/model/title-tip.ts`)。缺席 = 提示就是 `tooltipKey`
+   * 那句话。
+   */
+  tooltipPath?: { path: string; dir?: boolean }
   /** 可点 = 一枚真按钮(`open` 缺席时这一格必须是 false —— 屏幕上不该有按了没反应的东西)。 */
   clickable?: boolean
   /** `open` 答 false 时说的那句话(异步反馈纪律:失败得有人说话)。 */

@@ -164,6 +164,18 @@ configureFilesPort({
 })
 
 /**
+ * 家目录那一格宿主事实:同一条理由,同一手(09-13)。凡画了一条路径提示的
+ * 用例都会摸它,不装的话它们会一起动态 import 真的连通面。
+ *
+ * 默认答 `null` = **不缩** —— 那正是「还没拿到 / 这个宿主不该知道」这条路上的
+ * 行为,用例因此看见的是全路径。要验 `~` 的用例自己 `configureHomeDirPort`
+ * 换一个。
+ */
+import { configureHomeDirPort } from '../data/home-dir'
+
+configureHomeDirPort({ get: async () => null })
+
+/**
  * 模型名册与切模型的端口:同一条理由,同一手(D2)。composer 在每一个渲染了
  * 外壳的用例里都在,不装的话它们会一起去摸真的连通面。
  *

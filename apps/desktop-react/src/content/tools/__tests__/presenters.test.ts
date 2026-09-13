@@ -43,7 +43,12 @@ describe('read', () => {
 
   it('行 = 文件名(全路径进 title),图标是文件', () => {
     const row = rowOf(call({ ...base }))
-    expect(row).toMatchObject({ icon: 'FileText', name: 'App.tsx', title: '/repo/src/deep/App.tsx' })
+    expect(row).toMatchObject({
+      icon: 'FileText',
+      name: 'App.tsx',
+      // 全路径进 title,而且是**路径形**(09-13):悬停画成名字一行 + 目录一行。
+      title: { path: '/repo/src/deep/App.tsx' },
+    })
   })
 
   it('成果词「N 行」读的是工具自己写的 lineCount(规范形)', () => {
@@ -140,7 +145,7 @@ describe('edit / write', () => {
 
   it('参数里没写路径时退到 changes 里那一份', () => {
     const row = rowOf(call({ toolId: 'edit', toolName: 'edit', arguments: {}, changes: { filePath: '/repo/b.ts' } }))
-    expect(row).toMatchObject({ name: 'b.ts', title: '/repo/b.ts' })
+    expect(row).toMatchObject({ name: 'b.ts', title: { path: '/repo/b.ts' } })
   })
 })
 

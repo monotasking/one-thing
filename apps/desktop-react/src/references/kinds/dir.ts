@@ -67,6 +67,8 @@ export const dirReferenceKind: ReferenceKind<FileMention, { kind: 'dirRef'; path
     labelClassName: s.refName,
     tooltipKey: 'chat.ref.openDir',
     tooltipArgs: { path: ref.path },
+    // 与文件那一种同一条,外加**自述它是个目录**:名字行带回尾随 `/`。
+    tooltipPath: { path: ref.path, dir: true },
     clickable: true,
   }),
 

@@ -55,8 +55,8 @@ describe('活标题:内容告诉檐它在显示什么', () => {
       text: 'a.ts',
       dirty: false,
       // 提示给整条路径:檐上那格窄,两个目录里的同名文件在屏幕上长得一样
-      // (禁令区:标题截断须配 Tooltip 全名)。
-      tip: PATH,
+      // (禁令区:标题截断须配 Tooltip 全名)。交的是**路径形**(09-13)。
+      tip: { path: PATH },
     })
     render(<HostTitle id={REF} fallback="查看器" />)
     expect(screen.getByText('a.ts')).toBeTruthy()

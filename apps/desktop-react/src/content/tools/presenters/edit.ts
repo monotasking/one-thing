@@ -50,7 +50,8 @@ export const editPresenter: ToolPresenter = {
     const del = changes?.deletions
     return baseToolRow(call, {
       icon: 'Pencil',
-      ...(path ? { name: basename(path), title: path } : {}),
+      // 与 read 同一条:全路径进 `title`,而且是**路径形**(09-13)。
+      ...(path ? { name: basename(path), title: { path } } : {}),
       ...(add !== undefined && del !== undefined && call.status === 'completed'
         ? { outcome: { key: 'chat.tool.diffStat', vars: { add, del } } as const }
         : {}),
@@ -65,7 +66,7 @@ export const editPresenter: ToolPresenter = {
    */
   partial: (call) => {
     const path = partialArgString(call, 'path', 'filePath', 'file_path')
-    return path ? { icon: 'Pencil', name: basename(path), title: path } : { icon: 'Pencil' }
+    return path ? { icon: 'Pencil', name: basename(path), title: { path } } : { icon: 'Pencil' }
   },
 
   detail: (call) => {
