@@ -18,7 +18,8 @@ import { useExposeStore } from '../../expose/store'
 import { composerSink, useComposerBusy } from '../sink'
 import { readComposerDraft, saveComposerDraft } from '../drafts'
 import type { ComposerDraft } from '../drafts'
-import { revokeAllAttachments, useComposerStore } from '../store'
+import { composerStoreFor, revokeAllAttachments, useComposerStoreOf } from '../store'
+import { ComposerSessionContext } from '../session-context'
 import { configureComposerReferenceSink } from '../references'
 import { isTypingTarget, THINKING_LABEL_KEY, thinkingRungOf } from '../transitions'
 import { useComposerSend } from '../useComposerSend'
@@ -70,17 +71,22 @@ const StopIcon = resolveIcon('Square')
  *
  * ── 三张状态表(09-01 用户令「状态先行」) ──────────────────────────────────
  *
- * **① 生命周期**:挂载四处、卸载三处,**没有换宿主这回事** —— 这块面全仓只有
- * 一个落点(`components/AppShell.tsx:356`,舞台底部),不进浮窗 / 架子 / 盖,
- * 所以「檐怎么合、滚动谁管、尺寸谁定」三问在这里都不成立。
- *   挂载:① `openMeter(sessionId)` 订读数(换会话重订 + 重拉;无会话是缺席态,
- *   不发请求);② `ensureCatalog(selection.provider)` 拉当前这一家的目录(环要
+ * **① 生命周期**(W5-c 路线 A 之后改口):这块面全仓仍旧只有**一个落点**,
+ * 但那个落点从外壳挪进了**会话叶自己**(`content/kinds/session.tsx` 的
+ * `.composerDock`)。于是「屏幕上有几块」不再是一句常识而是一条结构事实:
+ * **有几片会话叶就有几块**,一片叶恰好一块,跟着叶挂、跟着叶卸。
+ * 换宿主(叶搬进架子 / 撕成浮窗)由拼贴树的结构共享保证**不重挂**;
+ * 「檐怎么合、滚动谁管、尺寸谁定」仍旧不成立 —— 那三问归包着它的那片叶。
+ *   挂载:① `openMeter(sessionId)` 订读数(引用账 +1;无会话是缺席态,不发
+ *   请求);② `ensureCatalog(selection.provider)` 拉当前这一家的目录(环要
  *   画百分比就得知道窗口多大;已拉过的直接返回);③ `ensurePluginCommands()` 与
  *   `ensureSkills(cwd)` —— **都不在这里**,它们懒在命令抽屉第一次开的时候
  *   (`usePickDrawer`);
- *   ④ `registerComposerFocus(…)` 登记「把光标交过来」那一口。
- *   卸载:① `revokeAllAttachments()`;② `registerComposerFocus(undefined)`;
- *   ③ Esc 预备态那只计时器(在 `useEscStop` 里收)。另有两个跟着 hook 走的
+ *   ④ `configureComposerReferenceSink(sessionId, …)` 登记「从外面落一枚引用」
+ *   那一口(**按会话分格**,W5-c-2)。
+ *   卸载:① `revokeAllAttachments(sessionId)`(只销自己那一份);
+ *   ② 那一口引用缝的撤销;③ `closeMeter(sessionId)` 还回读数那一格引用;
+ *   ④ Esc 预备态那只计时器(在 `useEscStop` 里收)。另有两个跟着 hook 走的
  *   监听(`useComposerKeys` 的 window keydown、`useFloatDismiss` 的点外关),
  *   各自 effect 自己收。
  *
@@ -106,26 +112,48 @@ const StopIcon = resolveIcon('Square')
  *   · **`disabled` 全文件 0 处,是刻意的**:没有一个控件会因为「在飞」而变灰。
  *     空话不禁发送键(按下去什么都不发,话还在框里),忙时它换的是脸不是可用性。
  */
-export function Composer() {
+/**
+ * 这块面板的两格 prop —— 两件都是**这一格叶自己的事实**,不是全局投影。
+ */
+export interface ComposerProps {
+  /**
+   * **交给谁**。叶递下来的(`content/kinds/session.tsx` 的 `sessionIdOfRef`),
+   * 保留键那片叶读作空串(「是会话叶,但还没绑会话」)。
+   */
+  sessionId: string
+  /**
+   * **这一格的身份**(`ContentRefId`,`session:<key>`)。它挂在 `FocusScope` 的
+   * `owner` 上,于是「切一格会话标签 → 焦点进它的输入面板」挑得出**这一格自己**
+   * 那一份,而不是 MRU 猜一份(判词在 `workbench/focus-into.ts` 上)。
+   */
+  owner: string
+}
+
+export function Composer({ sessionId, owner }: ComposerProps) {
   const t = useT()
-  const drawerKind = useComposerStore((st) => st.drawerKind)
-  const mode = useComposerStore((st) => st.mode)
-  const askSpec = useComposerStore((st) => st.askSpec)
-  const status = useComposerStore((st) => st.status)
-  const closeDrawer = useComposerStore((st) => st.closeDrawer)
-  const toggleModelDrawer = useComposerStore((st) => st.toggleModelDrawer)
-  const toggleStatusDrawer = useComposerStore((st) => st.toggleStatusDrawer)
-  const addFiles = useComposerStore((st) => st.addFiles)
-  const openAsk = useComposerStore((st) => st.openAsk)
-  const moveAsk = useComposerStore((st) => st.moveAsk)
-  const rejectAsk = useComposerStore((st) => st.rejectAsk)
-  const send = useComposerStore((st) => st.send)
-  /* 引擎在不在跑 —— 唯一产地在 data/chat-source.ts,这里只是接上订阅。 */
-  const busy = useComposerBusy()
+  const drawerKind = useComposerStoreOf(sessionId, (st) => st.drawerKind)
+  const mode = useComposerStoreOf(sessionId, (st) => st.mode)
+  const askSpec = useComposerStoreOf(sessionId, (st) => st.askSpec)
+  const status = useComposerStoreOf(sessionId, (st) => st.status)
+  const closeDrawer = useComposerStoreOf(sessionId, (st) => st.closeDrawer)
+  const toggleModelDrawer = useComposerStoreOf(sessionId, (st) => st.toggleModelDrawer)
+  const toggleStatusDrawer = useComposerStoreOf(sessionId, (st) => st.toggleStatusDrawer)
+  const addFiles = useComposerStoreOf(sessionId, (st) => st.addFiles)
+  const openAsk = useComposerStoreOf(sessionId, (st) => st.openAsk)
+  const moveAsk = useComposerStoreOf(sessionId, (st) => st.moveAsk)
+  const rejectAsk = useComposerStoreOf(sessionId, (st) => st.rejectAsk)
+  const send = useComposerStoreOf(sessionId, (st) => st.send)
+  /* 引擎在不在跑 —— 唯一产地在 data/chat-source.ts,这里只是接上订阅。
+   * 问的是**这一块面板的收件人**那一条(W5-c-2):分屏里另一格在跑,这一颗
+   * 发送键不该跟着换成停止。 */
+  const busy = useComposerBusy(sessionId)
 
   /* ── D2 波一:药丸与读数的三条接线。它们在这一层而不是各自的组件里,理由同
-   * 四条 hook 的接线:这个文件做**编排**(谁在场、谁要什么事实),组件只画。 */
-  const sessionId = useExposeStore((st) => st.currentSessionId)
+   * 四条 hook 的接线:这个文件做**编排**(谁在场、谁要什么事实),组件只画。
+   *
+   * W5-c-2:`sessionId` 从前是一句 `expose.currentSessionId` 投影(焦点叶在看
+   * 哪条),路线 A 之后它是**叶递下来的 prop** —— 投影答的是「焦点在哪」,
+   * 而这块面板要的是「我是谁的」,分屏下两者不是一件事。 */
   // 药丸上写谁:三层事实里推出来的那一个(见 resolveModelSelection)。
   const selection = useCurrentModelSelection(sessionId)
   /* 律③:切模型这一发在飞时,药丸上 `aria-busy`(判据全文见文件头第③表)。 */
@@ -138,12 +166,18 @@ export function Composer() {
   const thinking = useThinkingState(selection)
   const thinkingRung = thinkingRungOf(thinking)
   const openMeter = useMeterSource((st) => st.open)
+  const closeMeter = useMeterSource((st) => st.close)
   const refreshMeter = useMeterSource((st) => st.refresh)
 
-  // 读数跟着会话走:换一条就重订 + 重拉(没有会话时是缺席态,不发请求)。
+  /*
+   * 读数跟着**这一块面板**走(W5-c-3):挂上来 `open` 自己那条,下场 `close`。
+   * 那条线从「一格开着哪一条」改成了一张引用账,所以同一条会话开两块面板不会
+   * 重复订、也不会互相顶掉;卸载时不还回去,那条账本订阅就永远退不掉。
+   */
   useEffect(() => {
     void openMeter(sessionId || null)
-  }, [sessionId, openMeter])
+    return () => closeMeter(sessionId || null)
+  }, [sessionId, openMeter, closeMeter])
 
   /* 环要画出百分比就得知道**这个模型的窗口多大**,而窗口在 provider 目录里。
    * 所以当前这一家的目录是要拉的 —— 但只拉这一家(抽屉打开时才拉其余的)。
@@ -188,7 +222,7 @@ export function Composer() {
    * `tryStop` 的唯一调用点是下面那句 `onEscape`,而树只在这块面在活动路径上时
    * 才问它(理由整段写在 `useEscStop` 的文件头)。
    */
-  const escStop = useEscStop(busy, () => composerSink().abort())
+  const escStop = useEscStop(busy, () => composerSink().abort(sessionId))
 
   /*
    * ── 切线 B 退役:Esc 三层成了一句 `onEscape` ────────────────────────────
@@ -207,13 +241,13 @@ export function Composer() {
       rejectAsk()
       return true
     }
-    if (useComposerStore.getState().drawerKind) {
+    if (composerStoreFor(sessionId).getState().drawerKind) {
       closeDrawer()
       return true
     }
     // 没有任何一层浮着:焦点在这块面板里、且引擎在跑 → 两段式停止。
     return escStop.tryStop()
-  }, [mode, rejectAsk, closeDrawer, escStop])
+  }, [mode, sessionId, rejectAsk, closeDrawer, escStop])
 
   /**
    * 落点:**write 形态是那块可编辑区,ask 形态是自由答案那一格**。
@@ -237,10 +271,9 @@ export function Composer() {
    * ── 为什么输入框也要答它 ────────────────────────────────────────────────
    * 裁定的原话是「⌘N 跟着焦点走,新建**这一种**内容;焦点不在内容里就不响」。
    * 而人在会话里绝大多数时间焦点就在这格输入框上(§3.5 规则 1:「应用启动时是
-   * 主内容,有会话则是它的输入面板」)—— 输入框在树上是**叶外面**那一格
-   * (路线 B:composer 挂在 `.center`,不在叶里),所以叶那一族的 ⌘T / ⌘W 在
-   * 这儿接不住是对的,但「再开一条会话」这件事它必须接得住,否则出厂最常见的
-   * 那一格焦点位置上 ⌘N 是个哑键。
+   * 主内容,有会话则是它的输入面板」)。W5-c 路线 A 之后输入框**在叶里**了,
+   * 作用域树上它是内容层底下的一格,所以叶那一族的 ⌘T / ⌘W 由外面那一层接、
+   * 这一格答 ⌘N —— 层次对了,而这一句的落点一个字没动。
    *
    * 走的是与总览那一格**同一只** action(`newSessionInCurrentProject`:落在当前
    * 会话所属的项目下,摆法按 `sessions.openMode`)—— 一件事一个产地。
@@ -273,10 +306,15 @@ export function Composer() {
   /*
    * ── **一条会话一份草稿**(W7-t / B2,判词整段在 `composer/drafts.ts`)────────
    *
-   * 这块面板只有一只(路线 B:它在 `.center` 上、不进树),而屏幕上会话有好几条
-   * —— 修前的下场是真机读数第 79 条:在 A 里打的字跟着切标签跑到 B 里,再打一句
-   * 就把 A 的稿顶掉了。修法与 W5-a 同一条路:**状态按 sessionId 分家**,这只组件
-   * 渲染的是「当前活动会话那一份」。
+   * W7-t/B2 那时这块面板只有一只(路线 B:它在 `.center` 上、不进树),而屏幕上
+   * 会话有好几条 —— 下场是真机读数第 79 条:在 A 里打的字跟着切标签跑到 B 里,
+   * 再打一句就把 A 的稿顶掉了。修法与 W5-a 同一条路:**状态按 sessionId 分家**。
+   *
+   * W5-c 路线 A 之后**一片叶一块面板**,`sessionId` 是 prop 且一格叶一辈子不变
+   * (换会话 = 换 refId = 这一格重挂),所以下面这两只 layout effect 在生产上
+   * 只剩「挂载铺稿 / 卸载存稿」两条边。**它们照旧按 `sessionId` 变化写**,不是
+   * 冗余:那是这条接线的判据本身(换收件人就先存旧的再铺新的),写成「只在挂卸
+   * 时做」等于把一条结论钉死成一次时机。
    *
    * 三件事写在这一段里:
    *  · **`useLayoutEffect`**:铺稿要排在这一帧绘制**之前**,不然切标签会先闪一帧
@@ -287,8 +325,9 @@ export function Composer() {
    *  · 附件那半边走 store 的 `setState`(它是这块面板的状态产地),
    *    `attachments` / `attOpen` 两格一起搬 —— 摞开着与摞里有什么是同一件事的两半。
    *
-   * `sessionId` 是**投影**(焦点叶那一格活动会话标签,`content/session-projection`),
-   * 所以「切一格会话标签」与「从列表里换一条会话」走的是同一条路,不必各接一遍。
+   * `sessionId` 是**这一格叶自己的会话**(W5-c),所以「切一格会话标签」与
+   * 「从列表里换一条会话」在这一层根本不是事件:前者换的是哪一块面板在屏上,
+   * 后者换的是那一格的 refId(于是这一格重挂)。两条路都不需要这里接一遍。
    */
   const shown = useRef<string | null>(null)
   /*
@@ -298,8 +337,8 @@ export function Composer() {
    * 只会悄悄丢掉那一格。这只闭包因此是**唯一产地**:它读的是这块面板此刻的
    * 两个真相(可编辑区的 HTML、store 里的附件),不带任何时机的判断。
    */
-  const snapshotDraft = useCallback((): ComposerDraft => {
-    const live = useComposerStore.getState()
+  const snapshotDraft = useCallback((at: string): ComposerDraft => {
+    const live = composerStoreFor(at).getState()
     return {
       html: inputRef.current?.html() ?? '',
       attachments: live.attachments,
@@ -309,28 +348,28 @@ export function Composer() {
   useLayoutEffect(() => {
     const prev = shown.current
     if (prev === sessionId) return
-    if (prev !== null) saveComposerDraft(prev, snapshotDraft())
+    if (prev !== null) saveComposerDraft(prev, snapshotDraft(prev))
     const next = readComposerDraft(sessionId)
     inputRef.current?.restore(next.html)
     /* `ComposerState.attachments` 是可变数组,草稿表里那份是 readonly ——
      * 交出去的是**一份拷贝**,于是表里那份不会被这块面板后面的增删改到。 */
-    useComposerStore.setState({ attachments: [...next.attachments], attOpen: next.attOpen })
+    composerStoreFor(sessionId).setState({ attachments: [...next.attachments], attOpen: next.attOpen })
     shown.current = sessionId
   }, [sessionId, snapshotDraft])
   useLayoutEffect(
     () => () => {
       const at = shown.current
       if (at === null) return
-      saveComposerDraft(at, snapshotDraft())
+      saveComposerDraft(at, snapshotDraft(at))
       /* 存走之后本地这一份就不是「还挂着的」了 —— 交给下面那口销的只该是
        * 真的没人要的。附件的 URL 此刻活在草稿表里,由 `dropComposerDraft` 销。 */
-      useComposerStore.setState({ attachments: [], attOpen: false })
+      composerStoreFor(at).setState({ attachments: [], attOpen: false })
     },
     [snapshotDraft],
   )
 
   // 整块面板下场时把还挂着的缩略图 URL 销掉(造它的是 store,所以销也调 store 那口)。
-  useEffect(() => revokeAllAttachments, [])
+  useEffect(() => () => revokeAllAttachments(sessionId), [sessionId])
 
   /*
    * **外面往输入框里落一枚引用**的那条缝(B3-b;判词整段在 `composer/references.ts`)。
@@ -339,13 +378,13 @@ export function Composer() {
    */
   useEffect(
     () =>
-      configureComposerReferenceSink((reference) => {
+      configureComposerReferenceSink(sessionId, (reference) => {
         inputRef.current?.appendReference(reference.label, {
           token: reference.token,
           ...(reference.tip ? { tip: reference.tip } : {}),
         })
       }),
-    [],
+    [sessionId],
   )
 
   /* ── 拖拽落区 = 整块面板 ──────────────────────────────────────────────── */
@@ -357,8 +396,13 @@ export function Composer() {
   }
 
   return (
+    /* 这块面板的收件人**下发给整棵子树**(`ComposerSessionContext`):模型抽屉 /
+     * 附件摞 / ask 表 / 候选列表都要读它,而它们之间没有一件会用别的会话 ——
+     * 一路 prop 传下去只是把同一格事实抄五遍(判词在 `composer/session-context.ts`)。 */
+    <ComposerSessionContext.Provider value={sessionId}>
     <FocusScope
       scope="composer"
+      owner={owner}
       rootRef={panelRef}
       restingTarget={restingTarget}
       onEscape={onEscape}
@@ -559,7 +603,7 @@ export function Composer() {
                     <ContextRing
                       onEnter={() => {
                         setMeterOpen(true)
-                        void refreshMeter()
+                        void refreshMeter(sessionId)
                       }}
                       onLeave={() => setMeterOpen(false)}
                     />
@@ -592,7 +636,9 @@ export function Composer() {
                       data-testid="composer-send"
                       data-mode={busy ? 'stop' : 'send'}
                       onClick={() =>
-                        busy ? composerSink().abort() : doSend(inputRef.current?.text() ?? '')
+                        busy
+                          ? composerSink().abort(sessionId)
+                          : doSend(inputRef.current?.text() ?? '')
                       }
                     >
                       {busy ? (
@@ -621,6 +667,6 @@ export function Composer() {
     </div>
       )}
     </FocusScope>
+    </ComposerSessionContext.Provider>
   )
 }
-

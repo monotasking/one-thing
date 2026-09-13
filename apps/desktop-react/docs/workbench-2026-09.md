@@ -452,9 +452,11 @@ export type DropTarget =
 「全屏开着没有」是它的**参数**,不是从形态状态里读的 —— 那一格瞬态住在另一台 store 上。
 
 **W2 落地时的两条限制,交卷时点名给用户**:
-- **聊天区暂时进不了全屏**(`ContentKind.fullable: false`)。输入框(`.composerDock`)今天挂在外壳的
-  `.center` 上、不在拼贴树里,聊天叶铺满窗子会把它整条盖掉。⌘⇧↩ 落在聊天那一格是**结构化拒绝**
-  (一句提示,不是静默不做)。**W5 把 composer 归给焦点所在的 chat 叶之后撤掉这一行。**
+- ~~**聊天区暂时进不了全屏**(`ContentKind.fullable: false`)~~ —— **W5-c-3 结清**。
+  那时输入框(`.composerDock`)挂在外壳的 `.center` 上、不在拼贴树里,聊天叶铺满窗子会把它
+  整条盖掉,所以 ⌘⇧↩ 落在聊天那一格是结构化拒绝。路线 A 之后输入框是会话叶自己的器官,
+  跟着叶一起进全屏 —— `session` 与 `pair` 两格的 `fullable: false` 一起撤掉了
+  (正本 `composer-in-leaf-2026-09.md` §6 第 5 条)。
 - **全屏不跨重启、不跟工作区走**:它是瞬态,换空间即清零。
 
 ### 4.6 与拖拽(W3)的接缝:两条,方向相反
@@ -824,6 +826,13 @@ export const STALL_HARD_MS = 30_000          // 超过它:同一行补一句「�
 | **W4 架子与浮窗换树** | `ShelfState.tabs` → 单叶树;浮窗身 → 树;瓦 = `panel` 种类;`placements` 改派生;浮窗檐 = tab 条 | W1 | Dock 瓦与文件标签同一条路;架子 / 浮窗内可分屏、可并 tab |
 | **W5 会话多开** | `session` 种类;`chat-source` 按会话各持一份;composer 归属 = 焦点所在的 chat 叶;会话拖拽落任何区域 | W1、W4 | 需求 4(会话)、5(会话并排) |
 
+> **W5-b / W5-c 的账走另一本**:W5-b 走的是路线 B(composer 留在 `.center`,只把
+> 发送目标换成投影值),用户随后报「composer 在其他 tab 页也存在,导致会遮挡内容」
+> 并拍了路线 A —— **输入框由 `session` 这一种内容自己渲染,外壳从此不认识输入框**。
+> 结构搬家、状态分家、门与几何三批的正本是
+> [`composer-in-leaf-2026-09.md`](./composer-in-leaf-2026-09.md);下面 §4.5 与 §10
+> 那两条「W5 撤掉 `fullable: false`」的留账在 W5-c 结清(`session` 与 `pair` 两格一起撤)。
+
 每期照旧带:状态先行三表、零重挂断言(分屏 / 并 tab / 关叶不重挂兄弟叶)、`ui:consume`、
 `gate:squeeze` / `gate:a11y` 扩采样面(叶檐 / 分隔杆 / 落区 / 全屏檐带)、真机对照。
 
@@ -915,8 +924,8 @@ export const STALL_HARD_MS = 30_000          // 超过它:同一行补一句「�
 - 置顶(hold-top)档、隐藏 tab 的键位、系统全屏联动的真机验证,各记一格,随拍点走。
 
 **W2 留下的账(真全屏)**
-- **聊天区进不了全屏**(`ContentKind.fullable: false`):输入框还挂在外壳的 `.center` 上、不在树里。
-  W5 把 composer 归给焦点所在的 chat 叶之后删掉那一行。
+- ~~**聊天区进不了全屏**(`ContentKind.fullable: false`)~~ —— **W5-c-3 结清**:输入框进了叶,
+  `session` 与 `pair` 两格一起解禁(正本 `composer-in-leaf-2026-09.md`)。
 - **檐带常驻,不自动收起**(拍点 ⑥ 只取了样例 A 那一档;样例 B 的「2s 收成把手」不做)。
 - **全屏期间换活动 tab = 退出全屏**:全屏里那条 tab 条被盖住,换 tab 会让全屏层空掉,
   所以「⌃Tab 在全屏里换同叶下一个 tab」这一格没有建。要它就得先给全屏层自己一条 tab 条。

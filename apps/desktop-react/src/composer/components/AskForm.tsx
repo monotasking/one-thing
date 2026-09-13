@@ -3,7 +3,8 @@ import { useFocusScope } from '../../focus/useFocusScope'
 import { useT } from '../../i18n'
 import { Button } from '../../ui/Button'
 import { ButtonBase } from '../../ui/ButtonBase'
-import { useComposerStore } from '../store'
+import { useComposerStoreOf } from '../store'
+import { useComposerSessionId } from '../session-context'
 import {
   askAllAnswered,
   askAnswerText,
@@ -42,13 +43,15 @@ export function AskForm({
   freeRef: RefObject<HTMLSpanElement | null>
 }) {
   const t = useT()
-  const answers = useComposerStore((st) => st.askAnswers)
-  const idx = useComposerStore((st) => st.askIdx)
-  const answer = useComposerStore((st) => st.answerAsk)
-  const setCustom = useComposerStore((st) => st.setAskCustom)
-  const move = useComposerStore((st) => st.moveAsk)
-  const submit = useComposerStore((st) => st.submitAsk)
-  const reject = useComposerStore((st) => st.rejectAsk)
+  /* 这块面板对着哪条会话 —— 由 `Composer` 下发(W5-c-2)。 */
+  const sessionId = useComposerSessionId()
+  const answers = useComposerStoreOf(sessionId, (st) => st.askAnswers)
+  const idx = useComposerStoreOf(sessionId, (st) => st.askIdx)
+  const answer = useComposerStoreOf(sessionId, (st) => st.answerAsk)
+  const setCustom = useComposerStoreOf(sessionId, (st) => st.setAskCustom)
+  const move = useComposerStoreOf(sessionId, (st) => st.moveAsk)
+  const submit = useComposerStoreOf(sessionId, (st) => st.submitAsk)
+  const reject = useComposerStoreOf(sessionId, (st) => st.rejectAsk)
   /** 这块表单住在输入面板那一格作用域里,所以拿到的是它的句柄。 */
   const { activate } = useFocusScope()
 

@@ -229,22 +229,48 @@ export const meterQuery = createQueryFamily<MeterFacts>('meter.facts', async (ct
   return { sessionId: ctx.key, tokens, usage }
 })
 
-/* ── store:只剩「开着哪一条」与那条订阅 ────────────────────────────────── */
+/* ── store:一张「谁在看哪一条」的引用账 + 一条订阅 ──────────────────────── */
 
+/**
+ * ── **一格「开着哪一条」→ 一张引用账**(W5-c-3,正本 `composer-in-leaf-2026-09.md`
+ * §5)─────────────────────────────────────────────────────────────────────
+ *
+ * W5-c-3 之前这条线只有**一格** `sessionId`:全应用只有一块输入面板,「读数此刻
+ * 开着哪一条」于是是一句说得清的话。路线 A 之后输入框是会话叶的器官 —— 两片叶
+ * 并排就是两块面板,两块各 `open()` 自己那条,**后挂的那一块把前一块顶掉**,
+ * 于是分屏下有一侧的圆环画的是另一条会话的用量。
+ *
+ * 病与治法与 W5-a(一条会话一台折叠器)、W5-c-2(一条会话一份面板状态)同型:
+ * 取数那一半**早就按 sessionId 键好了**(`meterQuery` 的键 = sessionId),
+ * 差的只是那格「谁开着」与那条订阅。所以这里换成一张**引用账**:
+ *  · `open(id)` —— 一块面板挂上来:引用 +1、(第一份时)订上事件、`ensure()` 拉一次。
+ *    **同一条会话的第二块面板不重复订**,而且照样 `ensure()`(它是「确保问过」,
+ *    没脏就不发请求);
+ *  · `close(id)` —— 那块面板下场:引用 -1;**整台上一份都不剩时**才退订;
+ *  · `watching` —— 那张账的只读快照(用例与排障口)。
+ *
+ * 「这一发还算不算数」的判据也跟着换:从前是 `get().sessionId === next`
+ * (「还开着的是不是我」),现在是 `isWatching(next)`(「还有没有人在看我这条」)
+ * —— 两者在单块面板时逐字等价,多块面板时只有后者说得清。
+ *
+ * 那条账本订阅**整台只要一条**:处理函数按事件自己说的 `sessionId` 标脏
+ * (见 `onEvent`),与谁开着无关。所以它由总引用数开合,不跟着某一条会话走。
+ */
 export interface MeterSourceState {
-  /** 当前会话;空串 = 没有会话(草稿态)。 */
-  sessionId: string
+  /** 每条会话此刻有几块面板在看。**只读快照**(引用账的产地是下面两口)。 */
+  watching: Readonly<Record<string, number>>
 
-  /** 换会话(null / 空串 = 没有会话):订上事件并拉一次。幂等。 */
+  /** 一块面板挂上来(null / 空串 = 那片叶还没绑会话):订上事件并拉一次。幂等。 */
   open: (sessionId: string | null) => Promise<void>
+  /** 那块面板下场:引用 -1,归零时可能退订。 */
+  close: (sessionId: string | null) => void
   /** 重新拉一次(悬停开卡用)。没有会话时是恒等。 */
-  refresh: () => Promise<void>
+  refresh: (sessionId: string) => Promise<void>
   /** 测试用:回到干净态并退订。 */
   reset: () => void
 }
 
-/** 订阅现在订在哪一条上。`undefined` = 一条都没订过。 */
-let wiredFor: string | undefined
+/** 那条账本订阅。整台一条 —— 处理函数按事件自己说的会话标脏,与谁开着无关。 */
 let unsubscribe: (() => void) | undefined
 
 export const useMeterSource = create<MeterSourceState>()((set, get) => {
@@ -270,27 +296,27 @@ export const useMeterSource = create<MeterSourceState>()((set, get) => {
     meterQuery.get(envelope.sessionId).invalidate()
   }
 
+  /** 这条会话此刻还有没有人在看。**「这一发还算不算数」的唯一判据。** */
+  const isWatching = (sessionId: string): boolean => (get().watching[sessionId] ?? 0) > 0
+
   return {
-    sessionId: '',
+    watching: {},
 
     open: async (sessionId) => {
       const next = sessionId ?? ''
-      if (get().sessionId === next && wiredFor === next) return
-      set({ sessionId: next })
-      if (!next) {
-        unsubscribe?.()
-        unsubscribe = undefined
-        wiredFor = ''
-        return
-      }
+      /*
+       * 引用先记上,**哪怕是空串那一格**:它是「那片叶还没绑会话」,一格真键
+       * (与草稿表、面板状态表同一条口径)。记了才配得上 `close` 那一头。
+       */
+      set((s) => ({ watching: { ...s.watching, [next]: (s.watching[next] ?? 0) + 1 } }))
+      if (!next) return
       const port = await chatPort()
       await port.ready()
-      // 等 ready 的这一段里又换了一条:这一发作废,那一条自己会把线接上。
-      if (get().sessionId !== next) return
+      // 等 ready 的这一段里那块面板下场了:这一发作废(没人看的格子不发请求)。
+      if (!isWatching(next)) return
       // 先订上再拉:拉的那一刻起的 run/end 不能漏(与 chat-source 同一条理由)。
-      unsubscribe?.()
-      unsubscribe = port.onSessionEvent(onEvent)
-      wiredFor = next
+      // **整台一条**,已经订着就不再订(同一条会话的第二块面板、别的会话都一样)。
+      if (!unsubscribe) unsubscribe = port.onSessionEvent(onEvent)
       /*
        * **让首屏那一页先走**(工单 6 ①,判据在 `data/first-screen.ts` 头上)。
        *
@@ -303,13 +329,36 @@ export const useMeterSource = create<MeterSourceState>()((set, get) => {
        * 让路让的是那一发请求,不是那条线。
        */
       await whenFirstScreen(next)
-      // 让路的这一段里又换了一条:这一发作废(与上面 `ready` 那一段同一条判据)。
-      if (get().sessionId !== next) return
+      // 让路的这一段里那块面板下场了:这一发作废(与上面 `ready` 那一段同一条判据)。
+      if (!isWatching(next)) return
+      /*
+       * **每一次挂载都 `ensure()`**,哪怕这条会话已经有别的面板在看。
+       * `ensure` 是「确保问过」不是「再问一次」:没拉过 / 被标过脏才发请求,
+       * 否则是恒等 —— 所以「同一条会话开第二块面板」与「回到一条待过的会话」
+       * 在往返次数上都与从前逐字相同。
+       */
       await meterQuery.get(next).ensure()
     },
 
-    refresh: async () => {
-      const sessionId = get().sessionId
+    close: (sessionId) => {
+      const at = sessionId ?? ''
+      set((s) => {
+        const left = (s.watching[at] ?? 0) - 1
+        const watching = { ...s.watching }
+        if (left > 0) watching[at] = left
+        else delete watching[at]
+        return { watching }
+      })
+      /*
+       * **整台一份都不剩了才退订**:那条订阅是所有会话共用的一条,按某一条会话
+       * 的引用归零去退,会把别的面板的推送一起掐掉。
+       */
+      if (Object.keys(get().watching).some((id) => id !== '')) return
+      unsubscribe?.()
+      unsubscribe = undefined
+    },
+
+    refresh: async (sessionId) => {
       if (!sessionId) return
       // 悬停开卡那一眼要是最新的 —— 所以是 refetch(force),不是 ensure。
       await meterQuery.get(sessionId).refetch()
@@ -318,9 +367,8 @@ export const useMeterSource = create<MeterSourceState>()((set, get) => {
     reset: () => {
       unsubscribe?.()
       unsubscribe = undefined
-      wiredFor = undefined
       meterQuery.reset()
-      set({ sessionId: '' })
+      set({ watching: {} })
     },
   }
 })
@@ -329,9 +377,9 @@ export const useMeterSource = create<MeterSourceState>()((set, get) => {
  * **HMR 退役**(09-01 立法,起因是 chat-source 那一案:热更之后旧模块的模块级
  * 副作用没死,两个实例同时活着各自推屏)。
  *
- * 这个文件的模块级副作用有三样:账本订阅 `unsubscribe`、它订在哪一条的记号
- * `wiredFor`、以及那一族 `meterQuery`(每一格自带监听表)。三样的寿命都是
- * 「这个模块实例」—— 不退役,旧实例的账本订阅会继续往没人看的格子里灌数。
+ * 这个文件的模块级副作用有两样:账本订阅 `unsubscribe`、以及那一族 `meterQuery`
+ * (每一格自带监听表)。两样的寿命都是「这个模块实例」—— 不退役,旧实例的账本
+ * 订阅会继续往没人看的格子里灌数。
  *
  * 退役**复用这个模块已有的那一口拆卸**(`reset()`),不写第二套。它自身幂等;
  * 生产构建里 `import.meta.hot` 是 undefined,整段被 tree-shake 掉。
@@ -357,12 +405,14 @@ if (import.meta.hot) {
  *
  * 没有会话(空串)时也照样取一格 —— hook 不能有条件地调。那一格永远没人
  * `ensure()` / `refetch()`,所以它恒是空的:`data` 为 undefined → 整份缺席态。
+ *
+ * **`sessionId` 由调用方递进来**(W5-c-3):从前它读的是这条线那一格「开着哪一条」
+ * ——路线 A 之后那格是一张引用账,说不出「哪一条」;而问这句话的是某一块输入
+ * 面板,它自己知道自己是谁的(`composer/session-context`)。
  */
-export function useMeterView(): MeterView {
-  const sessionId = useMeterSource((st) => st.sessionId)
+export function useMeterView(sessionId: string): MeterView {
   const facts = useQuery(meterQuery.get(sessionId)).data ?? null
-  // 会话 id 取**读数自己开着的那条** —— 它由 open() 跟着当前会话走,所以与总览
-  // 同源;就地再读一次总览 store 只会多一条会漂的读法。
+  // 模型那一格也问**同一条会话** —— 环上那个百分比的分子分母必须出自一条会话。
   const selection = useCurrentModelSelection(sessionId)
   /*
    * 窗口那一格由 models-source 现问(判据仍是它的 `contextWindowOf`)。

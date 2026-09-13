@@ -1,3 +1,5 @@
+import { useExposeStore } from '../expose/store'
+
 /**
  * **从外面往输入框里落一枚引用** —— 唯一那条缝(B3-b)。
  *
@@ -26,10 +28,19 @@
  * 相反的方向 —— 那边是输入面把一句话交出去,这边是外面把一枚引用交进来。
  * 两条缝都极窄,而且都只有一个真实现。
  *
+ * ── 一格槽 → **一张按会话键的表**(W5-c-2)────────────────────────────────
+ * 路线 A 之后屏幕上有几片会话叶就有几块输入面板,「此刻挂着的那一块」不再是一句
+ * 说得清的话。所以登记按 `sessionId` 分格 —— 而**投递目标仍旧是投影**
+ * (`expose.currentSessionId`,焦点那片会话叶在看的那条):从浏览器右键菜单
+ * 「把这一页交给对话」按下去时,人心里的收件人就是他正看着的那块面板,
+ * 那正是投影这个词的意思。语义与改前逐字相同,只是「哪一块」从「唯一那一块」
+ * 变成了「焦点那一块」。
+ *
  * ── 三张状态表 ────────────────────────────────────────────────────────────
- * ① 生命周期:`Composer` 挂载时登记、卸载时撤销(它自己那只 effect);这个模块
- *    自身只有一格 `let`,寿命 = 模块实例,所以配 HMR dispose。
- * ② UI 生命状态:**没有输入面**(壳里此刻没挂 Composer)= `insertComposerReference`
+ * ① 生命周期:`Composer` 挂载时登记自己那一格、卸载时撤销(它自己那只 effect);
+ *    这张表的寿命 = 模块实例,所以配 HMR dispose。
+ * ② UI 生命状态:**没有输入面**(焦点那条会话此刻没有一块挂着的面板 —— 壳里一片
+ *    会话叶都没有,或者焦点叶是终端 / 浏览器)= `insertComposerReference`
  *    答 `false`,调用方据此说一句人话,而不是静默吞掉。
  * ③ UI 交互状态:不归这里(chip 的形在 `ComposerInput`)。
  */
@@ -46,24 +57,31 @@ export interface ComposerReference {
 
 export type ComposerReferenceSink = (reference: ComposerReference) => void
 
-let sink: ComposerReferenceSink | undefined
+/** 一条会话一格。键 = `sessionId`(保留键那片叶是空串,与草稿表同一条口径)。 */
+const sinks = new Map<string, ComposerReferenceSink>()
 
 /**
  * 登记 / 撤销。`Composer` 挂载时调一次,返回撤销 —— **撤销只在还是自己占着那
- * 一格时才清**,不然两块输入面交替挂载时后挂的会被先卸的抹掉。
+ * 一格时才清**,不然同一条会话的两块输入面交替挂载时(换宿主、StrictMode 重挂)
+ * 后挂的会被先卸的抹掉。
  */
-export function configureComposerReferenceSink(next: ComposerReferenceSink): () => void {
-  sink = next
+export function configureComposerReferenceSink(
+  sessionId: string,
+  next: ComposerReferenceSink,
+): () => void {
+  sinks.set(sessionId, next)
   return () => {
-    if (sink === next) sink = undefined
+    if (sinks.get(sessionId) === next) sinks.delete(sessionId)
   }
 }
 
 /**
- * 往输入框里落一枚引用。答 `false` = 此刻没有输入面(壳里没挂 Composer),
+ * 往输入框里落一枚引用。**落在焦点那片会话叶的那一块面板上**(判词见文件头)。
+ * 答 `false` = 此刻没有输入面(那条会话没有挂着的面板 / 壳里一片会话叶都没有),
  * 调用方据此说一句人话。
  */
 export function insertComposerReference(reference: ComposerReference): boolean {
+  const sink = sinks.get(useExposeStore.getState().currentSessionId)
   if (!sink) return false
   sink(reference)
   return true
@@ -71,7 +89,7 @@ export function insertComposerReference(reference: ComposerReference): boolean {
 
 /** 测试与 HMR 用:回到「没有输入面」。 */
 export function resetComposerReferenceSink(): void {
-  sink = undefined
+  sinks.clear()
 }
 
 if (import.meta.hot) {

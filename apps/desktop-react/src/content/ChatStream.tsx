@@ -1256,7 +1256,13 @@ const MessageRow = memo(function MessageRow({
             只有 assistant 有动作:system(压缩卡)不是"一条回答",没有重跑一说;
             user 的动作是编辑重发,那是另一件事(留账)。
           */}
-          {streaming && <StreamReadout startedAt={message.timestamp} lastActivityAt={lastActivityAt} />}
+          {streaming && (
+            <StreamReadout
+              sessionId={sessionId}
+              startedAt={message.timestamp}
+              lastActivityAt={lastActivityAt}
+            />
+          )}
           {/*
             收场通知(2026-09-09):这一轮**为什么提前结束**。它与动作行同时在场 ——
             读数行那条「同一个位置只有一个」说的是「生成中 vs 生成完」这两态,而这

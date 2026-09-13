@@ -190,7 +190,7 @@ export const en: Record<MessageKey, string> = {
   'float.window': 'Window',
   'full.region': 'Full screen',
   'full.exit': 'Exit full screen',
-  'full.refuseChat': 'Chat cannot go full screen yet — the composer would be covered',
+  'full.refused': 'This content cannot go full screen',
   'shelf.labelLeft': 'Left shelf',
   'shelf.labelRight': 'Right shelf',
   'shelf.labelTop': 'Top shelf',

@@ -233,7 +233,10 @@ describe('把这一页交给对话', () => {
     const h = harness()
     settingsPort(settingsWith([{ id: 'default', name: '' }]))
     const landed: ComposerReference[] = []
-    configureComposerReferenceSink((reference) => { landed.push(reference) })
+    /* W5-c-2:登记按 `sessionId` 分格(屏幕上可以有好几块输入面板),而投递目标
+     * 仍旧是 `expose.currentSessionId` 那格投影 —— 这一族用例没碰过它,所以它是
+     * 空串(「还没绑会话」那一态),登记与投递因此对得上。 */
+    configureComposerReferenceSink('', (reference: ComposerReference) => { landed.push(reference) })
 
     await act(async () => {
       render(

@@ -17,13 +17,13 @@ import {
 } from '../../data/models-source'
 import type { ModelSelection, ThinkingState } from '../../data/models-source'
 import { useAsyncPending } from '../../data/kernel'
-import { useExposeStore } from '../../expose/store'
 import { formatQuantity } from '../../format/quantity'
 import { formatPrice } from '../../providers/projection'
 import { settingsKey, settingsMutation, useProviderSettings } from '../../providers/store'
 import type { ThinkingRung } from '../../providers/store'
 import { filterProviders, THINKING_LABEL_KEY, THINKING_NOTE_KEY } from '../transitions'
-import { useComposerStore } from '../store'
+import { useComposerStoreOf } from '../store'
+import { useComposerSessionId } from '../session-context'
 import { useListSelection } from '../../ui/a11y/list-selection'
 import { FocusScope } from '../../focus/FocusScope'
 import { ButtonBase } from '../../ui/ButtonBase'
@@ -69,12 +69,17 @@ import s from './Composer.module.css'
  */
 export function DrawerModelPicker() {
   const t = useT()
-  const query = useComposerStore((st) => st.modelQuery)
-  const setQuery = useComposerStore((st) => st.setModelQuery)
-  const choose = useComposerStore((st) => st.chooseModel)
+  /*
+   * **这块抽屉挂在哪块面板上**(W5-c-2)。从前这里读的是 `expose.currentSessionId`
+   * ——一句投影;路线 A 之后屏幕上可能有两块面板,投影答的是「焦点在哪」而不是
+   * 「我是谁的」,分屏时选的模型会挂到另一条会话上去。
+   */
+  const sessionId = useComposerSessionId()
+  const query = useComposerStoreOf(sessionId, (st) => st.modelQuery)
+  const setQuery = useComposerStoreOf(sessionId, (st) => st.setModelQuery)
+  const choose = useComposerStoreOf(sessionId, (st) => st.chooseModel)
   const ref = useRef<HTMLInputElement>(null)
 
-  const sessionId = useExposeStore((st) => st.currentSessionId)
   const providers = useProviderOptions()
   const prefs = useProviderPrefs()
   /*

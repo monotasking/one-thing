@@ -3,7 +3,8 @@ import { useT } from '../../i18n'
 import { IconButton } from '../../ui/IconButton'
 import { resolveIcon, X } from '../../components/icons'
 import { ATT_GRACE_MS } from '../../components/motion'
-import { useComposerStore } from '../store'
+import { useComposerStoreOf } from '../store'
+import { useComposerSessionId } from '../session-context'
 import { fileExt, layoutAttachments } from '../transitions'
 import s from './Composer.module.css'
 
@@ -22,10 +23,12 @@ const FileIcon = resolveIcon('FolderTree')
  */
 export function AttachmentStack() {
   const t = useT()
-  const attachments = useComposerStore((st) => st.attachments)
-  const open = useComposerStore((st) => st.attOpen)
-  const setOpen = useComposerStore((st) => st.setAttOpen)
-  const remove = useComposerStore((st) => st.removeAttachment)
+  /* 这块面板对着哪条会话 —— 由 `Composer` 下发(W5-c-2)。 */
+  const sessionId = useComposerSessionId()
+  const attachments = useComposerStoreOf(sessionId, (st) => st.attachments)
+  const open = useComposerStoreOf(sessionId, (st) => st.attOpen)
+  const setOpen = useComposerStoreOf(sessionId, (st) => st.setAttOpen)
+  const remove = useComposerStoreOf(sessionId, (st) => st.removeAttachment)
   const stackRef = useRef<HTMLDivElement>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 

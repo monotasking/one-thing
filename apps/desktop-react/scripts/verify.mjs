@@ -316,6 +316,13 @@ run('gate:sessions', 'npm', ['run', '--silent', 'gate:sessions'])
  * 那步 build 已经产出),所以它比 dev 那一趟便宜,排在后面。
  */
 run('gate:chat-follow', 'npm', ['run', '--silent', 'gate:chat-follow'])
+/*
+ * `gate:composer-leaf`(W5-c-3)与 `gate:chat-follow` **同一条理由、同一个价位**:
+ * 它判的不是毫秒,是**哪一格上有输入框、它盖没盖住谁、两块之间串不串味** ——
+ * 三样都要真排版与真的两条会话才说得出来,jsdom 里 `getBoundingClientRect` 一律
+ * 答零。正本 `apps/desktop-react/docs/composer-in-leaf-2026-09.md`。
+ */
+run('gate:composer-leaf', 'npm', ['run', '--silent', 'gate:composer-leaf'])
 run('gate:continuity', 'npm', ['run', '--silent', 'gate:continuity'])
 /*
  * ── 终端与浏览器那两道门(T2,2026-09-12)────────────────────────────────────

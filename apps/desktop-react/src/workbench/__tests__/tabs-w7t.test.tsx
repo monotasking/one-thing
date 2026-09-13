@@ -91,7 +91,22 @@ describe('B3:「激活这一格,焦点落哪儿」是内容自述', () => {
     expect(focusIntoScopeOf(doc('a'))).toBeUndefined()
   })
 
-  it('自述的那块面在场 → 焦点送去它;不在场 → 回落内容层', () => {
+  /**
+   * W5-c 起这一条多钉一格:**问的是这一格自己登记的那份实例**(`owner: id`)。
+   *
+   * 路线 A 之后输入面板是会话叶的器官 —— 两片会话叶并排就是两份 `composer` 实例,
+   * 不点名 = 让 MRU 替用户猜,而 MRU 记的是「上一次焦点在哪一份」,与「人刚点的是
+   * 哪一格标签」正好是两件事(点 B 的标签,焦点会落回刚才用过的 A)。
+   *
+   * **两步**:点名点不到就**不点名再问一次** —— 今天只有 `composer` / `browser`
+   * 两格作用域把自己的 owner 报上来了,对没报的那几种点名等于一个都挑不到,
+   * 于是那一句会静默退到 `leaf`(判词整段在 `focus-into.ts` 上)。
+   *
+   * **反证**:把 `focus-into.ts` 那一句的 `owner: id` 去掉 → 下面第一格的 `owner`
+   * 答 `undefined`,这一条当场红;把第二问(不点名那一句)去掉 → 第三组
+   * 「没报 owner 的那一种」当场红。
+   */
+  it('自述的那块面在场 → 焦点送去它(点名这一格自己那份);不在场 → 回落内容层', () => {
     const tries: { scope: string; owner?: string }[] = []
     const spy = vi
       .spyOn(focusTree, 'activateScope')
@@ -100,7 +115,7 @@ describe('B3:「激活这一格,焦点落哪儿」是内容自述', () => {
         return scope === 'composer'
       })
     expect(focusIntoRef(refId(talk('x')))).toBe(true)
-    expect(tries).toEqual([{ scope: 'composer', owner: undefined }])
+    expect(tries).toEqual([{ scope: 'composer', owner: refId(talk('x')) }])
 
     /*
      * **反证**:把那块面撤下场(答 false)→ 这一句回落到内容层那一格,
@@ -112,7 +127,9 @@ describe('B3:「激活这一格,焦点落哪儿」是内容自述', () => {
       return false
     })
     expect(focusIntoRef(refId(talk('x')))).toBe(false)
+    /* 三句读的是**同一个 owner**:先点名问那块面、再不点名问一遍,最后回落内容层。 */
     expect(tries).toEqual([
+      { scope: 'composer', owner: refId(talk('x')) },
       { scope: 'composer', owner: undefined },
       { scope: 'leaf', owner: refId(talk('x')) },
     ])
@@ -121,6 +138,21 @@ describe('B3:「激活这一格,焦点落哪儿」是内容自述', () => {
     tries.length = 0
     focusIntoRef(refId(doc('a')))
     expect(tries).toEqual([{ scope: 'leaf', owner: refId(doc('a')) }])
+
+    /*
+     * **那块面在场、但它没把 owner 报上来**(今天的 `files` / `diff` / `terminal`):
+     * 点名那一问挑不到,不点名那一问挑得到 —— 焦点照旧送进去,不退到 `leaf`。
+     */
+    tries.length = 0
+    spy.mockImplementation((scope, opts) => {
+      tries.push({ scope, owner: opts?.owner })
+      return scope === 'composer' && opts?.owner === undefined
+    })
+    expect(focusIntoRef(refId(talk('x')))).toBe(true)
+    expect(tries).toEqual([
+      { scope: 'composer', owner: refId(talk('x')) },
+      { scope: 'composer', owner: undefined },
+    ])
     spy.mockRestore()
   })
 })

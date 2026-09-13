@@ -148,13 +148,17 @@ export function runShellCommand(id: string): boolean {
    * 真全屏(W2)。
    *
    * 拒绝那一档要**说出来**:一个按下去什么都不发生的键,用户读不出是「坏了」
-   * 还是「这里不支持」。今天唯一说 false 的是聊天(`ContentKind.fullable`,
-   * 判词写在那格上),所以这一句文案就是那一句;将来第二种拒绝进来时,
-   * 这里要按种类取话,不是再加一条 if。
+   * 还是「这里不支持」。W5-c-3 之前这句文案写的是「聊天区暂时不能全屏 —— 输入框
+   * 会被盖住」,那是照当时唯一说 false 的那一种(会话)写的;路线 A 之后会话与
+   * `pair` 两格一起解禁,那句话于是**连一个成立的场合都没有了**。
+   *
+   * 今天还走得到这一档的只剩「认不得的种类」(`canGoFull` 的第二半),所以文案
+   * 换成一句**不点名任何种类**的实话。将来第二种真要拒绝时,这里要按种类取话,
+   * 不是再加一条 if。
    */
   if (id === 'workbench.toggleFull') {
     if (useWorkbenchStore.getState().toggleFull() === 'refused') {
-      notify({ level: 'info', source: 'workbench.full', title: t('full.refuseChat') })
+      notify({ level: 'info', source: 'workbench.full', title: t('full.refused') })
     }
     return true
   }

@@ -37,6 +37,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { _electron as electron } from 'playwright'
+import { installComposerDockProbe } from './lib/composer-dock.mjs'
 import electronBinary from 'electron'
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -336,7 +337,7 @@ const READ_LAYOUT = () => {
     })),
     center: rectOf(document.querySelector('[data-pane-region="center"]')),
     centerTabs: tabsIn(top),
-    composer: rectOf(document.querySelector('[data-testid="composer-dock"]')),
+    composer: rectOf(window.__composerDock()),
     topBar: rectOf(document.querySelector('[data-testid="topbar-tabs"]')),
     full: Boolean(document.querySelector('[data-testid="full-layer"]')),
     /** 读屏那一口此刻在念的那句(拒绝播报量的就是它,W7-p 修一轮裁定 3)。 */
@@ -509,6 +510,9 @@ async function launch(store, userDataDir) {
   const page = await app.firstWindow()
   const cdp = await app.context().newCDPSession(page)
   await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+  /* **焦点叶里的那一块输入框**(W5-c-3):路线 A 之后屏幕上可以有好几块,
+   * 门要量的是人此刻在用的那一块。判词整段在 `scripts/lib/composer-dock.mjs` 上。 */
+  await installComposerDockProbe(page)
   await waitFor('渲染层完成一次 RPC 往返', async () => {
     const value = await page.evaluate(() => window.__d0 ?? null)
     return value && value.rpcOk ? value : undefined

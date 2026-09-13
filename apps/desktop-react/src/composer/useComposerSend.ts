@@ -46,8 +46,12 @@ export interface ComposerSendDeps {
   inputRef: RefObject<ComposerInputHandle | null>
   openAsk: (spec: AskSpec) => void
   closeDrawer: () => void
-  /** store 的那一口。返回 false = 没交出去(空话,或者还没有当前会话)。 */
-  send: (text: string) => boolean
+  /**
+   * store 的那一口。返回 false = 没交出去(空话,或者那条会话此刻不在)。
+   * `toSession` 缺席 = 发给这块面板自己的收件人;首开草稿态那一下点名刚建出来的
+   * 那一条(判词整段在 `composer/store.send` 上)。
+   */
+  send: (text: string, toSession?: string) => boolean
 }
 
 /**
@@ -187,12 +191,22 @@ export function useComposerSend({
       starting.current = true
       void (async () => {
         try {
-          const sessionId = await composerSink().startSession()
-          // 没建成:编排点已经 notify(error) 过了,这里**不再加一条 toast**,
-          // 也**不清输入框** —— 那句话还在人手里,人可以直接再按一次。
-          if (sessionId && send(text)) {
-            // 与上面那一句同一条(C2 转正之一):首开草稿态发出的第一句话同样算数。
-            promoteSessionSeat(sessionId)
+          const created = await composerSink().startSession()
+          /*
+           * 没建成:编排点已经 notify(error) 过了,这里**不再加一条 toast**,
+           * 也**不清输入框** —— 那句话还在人手里,人可以直接再按一次。
+           *
+           * 建成了就**点名发给刚建出来的那一条**(W5-c-2):这块面板自己的收件人
+           * 是空串(它就是那片「还没绑会话」的叶),而这一句的去处是新那条。
+           * 判词整段在 `composer/store.send` 的 `toSession` 上。
+           */
+          if (created && send(text, created)) {
+            /* 与上面那一句同一条(C2 转正之一):首开草稿态发出的第一句话同样算数。
+             * 转正的是**刚建出来那一条**的格子 —— 从前这里写 `sessionId`,靠的是
+             * 内层那个同名 const 把外面那个遮住;W5-c 之后外面那个是这块面板的
+             * prop(空串),遮不住了,所以名字换成 `created`,把那份隐式依赖
+             * 变成一句写出来的话。 */
+            promoteSessionSeat(created)
             inputRef.current?.clear()
           }
         } finally {

@@ -22,21 +22,29 @@ import { useExposeStore } from '../expose/store'
  * 默认实现就是聊天数据源那两口,一行包装都没有。
  */
 export interface ComposerSink {
-  /** 交出一条纯文本消息。返回 false = 没能交出去(空话 / 还没有当前会话)。 */
-  send(text: string, attachments: number): boolean
+  /**
+   * 交出一条纯文本消息。返回 false = 没能交出去(空话 / 这一格还没绑会话)。
+   *
+   * `sessionId` 是**交给谁**(W5-c-2):它由叫这一口的那块面板自己说,不再由
+   * 这只文件去问一句「当前会话是谁」—— 判词见下面 `realSink` 那一段。
+   */
+  send(text: string, attachments: number, sessionId: string): boolean
   /**
    * 挂一条**本地提示**。它说的正是「这件事没有进账本」(拒绝一组问题不是一条
    * 消息),所以它走 overlay 车道,而不是发送。
    */
-  notice(kind: 'ask-rejected'): void
+  notice(kind: 'ask-rejected', sessionId: string): void
   /**
    * 停下正在跑的那一轮(D1 开工批)。发送键在忙态下就是这颗按钮。
    *
    * 它进 sink 而不是让 composer 直接去调数据源,是同一条方向纪律:输入面板
    * 只知道有个地方能收下**一个动作**,不知道那边有个折叠器。没在跑时是恒等 ——
    * 判「在不在跑」的是下面那只 hook,不是这个组件。
+   *
+   * 停哪一条也由调用方说:消息流里那颗停止键(`content/message/StreamReadout`)
+   * 停的是**它自己那条会话**,与它所在那片叶的输入框按的是同一条。
    */
-  abort(): void
+  abort(sessionId: string): void
   /**
    * 惰性开一条会话(D1 尾批「首开草稿态」)。
    *
@@ -54,23 +62,21 @@ export interface ComposerSink {
 }
 
 /**
- * **输入框此刻对着哪条会话**(W5-b 裁定 4,路线 B)。
+ * **收件人由调用方说**(W5-c-2,路线 A;推翻 W5-b 裁定 4 那一句投影)。
  *
- * 路线 B 的全部工作量就是这一句:输入框仍旧留在 `.center` 上(几何、
- * `[data-dock-reserve]`、`--composer-gap`、三道门的采样点一字未动),
- * 只是它交出去的那句话有了明确的收件人 —— **焦点那片会话叶在看的那条**
- * (`currentSessionId`,W5-b 起是树的投影)。
+ * W5-b 走的是路线 B:输入框留在 `.center` 上只有一块,所以「交给谁」只能问一句
+ * 投影(焦点那片会话叶在看的那条)。路线 A 之后输入框**是会话叶自己渲染的** ——
+ * 屏幕上有几片会话叶就有几块面板,每一块从挂载那一刻起就知道自己对着哪一条。
+ * 于是那句投影在这里没有位置了:它答的是「焦点此刻在哪」,而按下发送的那只手
+ * 按的是**它手指底下那一块面板**,两者在分屏下不是一件事。
  *
- * 从前这里省略了这个参数,读作「当前会话那台机器」;那时全应用只有一台。
- * 会话多开之后「缺省」不再是一个说得清的东西:两片叶各有一台,不点名就是
- * 让注册表替用户猜。
+ * 所以这三口都收一个 `sessionId`,`targetSession()` 整只退役 —— 这只文件从此
+ * 不认识 `expose`(只剩 `startSession` 那一口还要它,而那一口本来就没有会话)。
  */
-const targetSession = (): string => useExposeStore.getState().currentSessionId
-
 const realSink: ComposerSink = {
-  send: (text, attachments) => sendChatMessage(text, attachments, targetSession()),
-  notice: (kind) => pushChatNotice(kind, targetSession()),
-  abort: () => abortChatRun(targetSession()),
+  send: (text, attachments, sessionId) => sendChatMessage(text, attachments, sessionId),
+  notice: (kind, sessionId) => pushChatNotice(kind, sessionId),
+  abort: (sessionId) => abortChatRun(sessionId),
   // 惰性建会话时没有「当前会话」,所以当前项目必然是 null —— 与 ⌘N 首开同义。
   startSession: () => useExposeStore.getState().newSessionInCurrentProject(),
 }
@@ -98,9 +104,9 @@ export function composerSink(): ComposerSink {
  * `useChatSource.setState({ activeMessageId: … })` —— 那正是真实现里唯一的开关,
  * 不需要为它再发明一个假的。
  */
-export function useComposerBusy(): boolean {
+export function useComposerBusy(sessionId: string): boolean {
   // 与 `realSink` 同一个收件人:忙态问的必须是**它要发给谁**那一条,
-  // 不然停止键会画着另一条会话的状态(W5-b 裁定 4)。
-  const sessionId = useExposeStore((st) => st.currentSessionId)
+  // 不然停止键会画着另一条会话的状态。W5-c-2 起那一条是叶递下来的 prop,
+  // 不再是一句「当前会话」投影 —— 分屏里两块面板各画各的忙态。
   return useChatSourceOf(sessionId, selectEngineBusy)
 }

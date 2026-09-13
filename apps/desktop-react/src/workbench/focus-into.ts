@@ -43,9 +43,26 @@ export function focusIntoRef(id: ContentRefId, reason: ActivateReason = 'switch-
    *
    * 送不进去就往下走(那块面此刻一份可交互的实例都没有,比如输入面板还没铺根)
    * —— 与整只函数「送不进去答 false、焦点原地不动」同一条纪律。
+   *
+   * ── 先点名**这一格自己**那一份(W5-c),点不到再不点名 ────────────────────
+   * 路线 A 之前输入面板全应用只有一块,`composer` 那格作用域因此只有一份实例,
+   * 不点名也不会挑错。现在它是会话叶的器官 —— 两片会话叶并排就是两份实例,
+   * 不点名 = 让 MRU 替用户猜,而 MRU 记的是「上一次焦点在哪一份」,与「人刚点的
+   * 是哪一格标签」正好是两件事(点 B 的标签,焦点会落回刚才用过的 A)。
+   * `owner` 就是这一格的 refId,而 `Composer` 的 `FocusScope` 上挂的正是它 ——
+   * 与下面 `leaf` 那句**同一个 owner、同一条判据**。
+   *
+   * **两步,不是一步**:`owner` 是一次**收窄**,不是一条新的前提。今天把自己的
+   * owner 报上来的只有 `composer` 与 `browser` 两格作用域(`FocusScope owner=`),
+   * `files` / `diff` / `terminal` 三格还没报 —— 对它们点名等于一个都挑不到,
+   * 于是这一句会静默地退到 `leaf`,而「激活这一格 = 焦点进它那块面」当场失效
+   * (W5-c-3 真机门逮到的:那三种的 `focusInto` 一并哑掉)。所以点不到就**不点名
+   * 再问一次** = 改前那一句逐字。等那三格也把 owner 报上来,第二问自然再也命中
+   * 不到第二份实例,这一行不必再改。
    */
   const ref = parseRefId(id)
   const into = ref ? focusIntoScopeOf(ref) : undefined
+  if (into && focusTree.activateScope(into, { owner: id, reason })) return true
   if (into && focusTree.activateScope(into, { reason })) return true
   return focusTree.activateScope('leaf', { owner: id, reason })
 }

@@ -245,7 +245,7 @@ export const zh = {
   'full.region': '全屏',
   'full.exit': '退出全屏',
   /* 这一种进不了全屏时的结构化拒绝(今天只有聊天;W5 撤)。 */
-  'full.refuseChat': '聊天区暂时不能全屏 —— 输入框会被盖住',
+  'full.refused': '这一格不能全屏',
   /* ── 四边架子(W2:钉栏泛化成四条边,名字按边给) ─────────────────── */
   'shelf.labelLeft': '左侧栏',
   'shelf.labelRight': '右侧栏',

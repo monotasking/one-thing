@@ -29,7 +29,8 @@ import '../content/kinds'
  * 那一格的高度。(09-13 起 `[data-dock-reserve]` 那四条让位规则打在 `.main` 上 ——
  * 平移形,整张网格朝那条边退,`.center` 与它的后代跟着缩;从前上下两边是内衬形、
  * 打在 `.center` 自己身上,那一版连同 `.composerDock` 的 bottom 覆写一起删了。)
- * `.composerDock` **留在 `.center` 上不进树**(W5 才归属焦点叶)。
+ * W5-c 起 `.composerDock` **在树里**:它是会话那一种内容自己的器官,所以这一层
+ * 与它之间没有任何关系 —— 屏幕上有几块输入框,是树上有几片会话叶的结果。
  */
 export function CenterRegion() {
   const tree = useWorkbenchStore((st) => st.regions[CENTER_REGION])

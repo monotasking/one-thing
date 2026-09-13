@@ -1336,7 +1336,20 @@ async function main() {
     /*
      * 整页重载一次:这一条问的是**刚起来那一刻**的事实,而前面六个场景已经把
      * 焦点摆到别处去了。重载之后照样要等那一次 RPC 往返(与开场同一条等待)。
+     *
+     * ── 先把中央区那一格换回**会话**(W5-c-3)────────────────────────────
+     * 规则 1 的原话是「应用启动时是主内容,**有会话则是它的输入面板**」——
+     * 路线 A 之后输入框是会话叶自己的器官,中央区活动那一格是文件查看器时屏幕上
+     * 根本没有一块可交互的输入面板(后台那一格的还挂在 DOM 里,但整层 `inert`,
+     * `activateScope` 按设计挑不到它)。而前面几个场景把活动格换成了文件。
+     * 所以这里先点回第一格(常驻那一格会话)再重载 —— 补的是**这一条的前提**,
+     * 不是放宽它:没有会话在场时「第一响应者是输入面板」本来就不成立。
      */
+    await page.evaluate((css) => {
+      const first = document.querySelectorAll(css)[0]
+      if (first instanceof HTMLElement) first.click()
+    }, CENTER_TABS)
+    await delay(400)
     await page.goto(shellUrl())
     await waitFor('壳回来了', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="composer-input"]'))),
@@ -2564,8 +2577,15 @@ async function main() {
        */
       await page.keyboard.type('焦')
       await delay(200)
+      /*
+       * 读的是**此刻有焦点的那一块**,不是文档序第一块(W5-c-3)。路线 A 之后
+       * 输入框是会话叶的器官 —— 这一场的夹具里中央区攒了三格 tab,于是屏幕上
+       * 有好几块 `composer-input`,而 `querySelector` 取的是文档序第一块。上一条
+       * 断言刚刚确认了焦点就在一块 `composer-input` 上,所以 `activeElement`
+       * 就是那一块,一个字都不用猜。
+       */
       const typed = await page.evaluate(
-        () => document.querySelector('[data-testid="composer-input"]')?.textContent ?? '',
+        () => document.activeElement?.textContent ?? '',
       )
       assert(typed.includes('焦'), '直接打字就落进那块可编辑区里', `(读到「${typed}」)`)
       await page.keyboard.press('Backspace')

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import type { RefObject } from 'react'
 import { refId, registerContentKind } from '../../workbench/kinds'
 import { CENTER_REGION } from '../../workbench/regions'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
@@ -12,6 +13,8 @@ import { t, useT } from '../../i18n'
 import { useExposeStore } from '../../expose/store'
 import { NEW_SESSION_KEY, SESSION_KIND, sessionIdOfRef } from '../session-ref'
 import { dropComposerDraft } from '../../composer/drafts'
+import { disposeComposerStore } from '../../composer/store'
+import { Composer } from '../../composer/components/Composer'
 import type { ContentRef } from '../../workbench/kinds'
 import s from './ChatLeaf.module.css'
 
@@ -34,9 +37,10 @@ import s from './ChatLeaf.module.css'
  *    于是 W3 那句「会话行落别处 = 结构化拒绝」自然解禁。拒绝那一句话现在由
  *    `ContentKind.regions` 生成(`workbench/useContentDrag.ts` 的缺省 accepts),
  *    没人再手写;
- *  · `fullable: false` —— **照旧**。W5-b 走的是路线 B(裁定 4:composer 留在
- *    `.center`,只把目标换成投影值),输入框仍然不在树里,所以会话叶进全屏
- *    还是会把它盖掉。要撤它得等路线 A(W5-c 可选加期)。
+ *  · ~~`fullable: false`~~ —— **W5-c 撤掉了**(正本 `composer-in-leaf-2026-09.md`
+ *    §2 / §6 第 5 条)。它从前存在的唯一理由是「输入框不在树里,会话叶进全屏
+ *    会把它盖掉」;路线 A 之后输入框**就在这片叶里**(下面那格 `.composerDock`),
+ *    跟着叶一起进全屏,那条理由当场没了。缺席 = 进得了全屏。
  *
  * ── 这片叶看哪条会话:`ref.key`,不是 expose 那一格 ──────────────────────
  * W5-a 时这一层读的是 `expose.currentSessionId`(全应用一份);本批换成
@@ -44,6 +48,15 @@ import s from './ChatLeaf.module.css'
  * 「当前会话」变成了**投影**:焦点叶的会话是哪条,那一格就是哪条
  * (`content/session-projection.ts`)。方向反了过来,而底下三件(消息流 /
  * 目录接缝 / 目录 rail)一个字都没改 —— 它们从 W5-a 起就只认收到的那个 id。
+ *
+ * ── 输入框是这一种内容自己的器官(W5-c 路线 A)────────────────────────────
+ * 从前它是外壳挂在整个中央区底部的一块浮层,显不显示与那一格装的是什么内容
+ * 无关 —— 于是焦点在终端 / 浏览器 / 改动面上时它照样浮着、照样盖住那一格的底部
+ * (用户报障:「composer 在其他 tab 页也存在,导致会遮挡内容」)。
+ * 现在它由 `SessionLeaf` 自己渲染:**哪里有会话叶,哪里才有输入框**是结构上的
+ * 事实,不需要任何判断。陌生能力演练:终端将来要一条自己的底栏,改的是
+ * `content/kinds/terminal.tsx`,外壳零改动;两条会话并成 `pair` 时每半格自带
+ * 一块,`pair` 模块零改动。
  */
 
 /**
@@ -58,9 +71,13 @@ import s from './ChatLeaf.module.css'
  *     —— 它由「树里 ∪ 隐藏表里还有没有这条会话」决定(判词在
  *     `content/session-projection.ts` 的那本引用账上),所以藏起来的会话叶
  *     照样收流。无模块级副作用 → 组件这一层不需要 HMR dispose。
+ *     **输入框跟着这片叶同生共死**(W5-c):一片会话叶恰好一块,换宿主不重挂,
+ *     藏起来时留着但不可交互(整片叶 `content-visibility: hidden` + inert),
+ *     这一格被关掉时连它那份 store 一起释放(见下面 `ContentKind.dispose`)。
  *  ② UI 生命状态:空 / 载入中 / 就绪 / 错误全部由 `ChatStream` 自己说;
- *     目录 rail 在没有锚点时整条不在场。
- *  ③ UI 交互状态:这一层不画任何控件,交互状态全在它包着的两件上。
+ *     目录 rail 在没有锚点时整条不在场;输入框自己那三张表在 `Composer` 的文件头。
+ *  ③ UI 交互状态:这一层不画任何控件 —— 它只摆三件半(消息流 / 目录 / 输入框
+ *     那一格落位带),交互状态全在它包着的那几件上。
  */
 function SessionLeaf({ contentRef }: { contentRef: ContentRef }) {
   /*
@@ -70,6 +87,10 @@ function SessionLeaf({ contentRef }: { contentRef: ContentRef }) {
   const sessionId = sessionIdOfRef(contentRef) ?? ''
   // 聊天滚动容器只有一个 ref,两个消费者:TOC 当前键 与 目录跳转。
   const chatRef = useRef<HTMLDivElement>(null)
+  /* 两个几何读数的量点(W5-c:整只 hook 从 `AppShell` 搬来,判词在它自己头上)。 */
+  const areaRef = useRef<HTMLDivElement>(null)
+  const dockRef = useRef<HTMLDivElement>(null)
+  useComposerGeometry(areaRef, dockRef)
   const { currentIndex, flashMessageId, syncFromScroll, pickTurn } = useChatToc(sessionId, chatRef)
   /*
    * 09-01 用户裁定退役了「滚动降淡」之后,这条监听只剩这一件事。
@@ -80,10 +101,9 @@ function SessionLeaf({ contentRef }: { contentRef: ContentRef }) {
   }, [syncFromScroll])
 
   return (
-    <div className={s.chatArea}>
+    <div className={s.chatArea} ref={areaRef}>
       <SessionIdentity contentRef={contentRef} sessionId={sessionId} />
-      {/* 聊天区与输入框**各一界**:消息流炸了还能打字,输入框炸了还能读历史。
-        * (输入框不在这片叶里 —— 它是 `.center` 上那一格落位带,路线 B 照旧。) */}
+      {/* 聊天区与输入框**各一界**:消息流炸了还能打字,输入框炸了还能读历史。 */}
       <ErrorBoundary where="chat">
         <ChatStream
           sessionId={sessionId}
@@ -93,8 +113,78 @@ function SessionLeaf({ contentRef }: { contentRef: ContentRef }) {
         />
       </ErrorBoundary>
       <TocPanel sessionId={sessionId} currentIndex={currentIndex} onPick={pickTurn} />
+      {/*
+        * ── 输入框的**落位带**(W5-c 路线 A)────────────────────────────────
+        * 它绝对定位贴着这片叶的底,于是不占一格 flex,正文从玻璃底下流过。
+        * 两个属性各有一个读者,都不是样式:`data-composer-dock` 是外壳那条
+        * 「Dock 停底边时让位」规则的抓手(跨 CSS module 的类名会被哈希,所以按
+        * 属性选,与 `[data-panel-layer]` 同一个先例);`data-testid` 是三道真机门
+        * 的采样点。
+        */}
+      <div className={s.composerDock} ref={dockRef} data-composer-dock data-testid="composer-dock">
+        <ErrorBoundary where="composer">
+          <Composer sessionId={sessionId} owner={refId(contentRef)} />
+        </ErrorBoundary>
+      </div>
     </div>
   )
+}
+
+/**
+ * **悬浮输入框的两个几何读数**(§5.6;W5-c 从 `components/AppShell.tsx` 原样搬来)。
+ *
+ * 输入框绝对定位在这片叶的底部之后,有两件事只有真实的排版说得出来:
+ *
+ *   `--composer-h`  输入框此刻多高。消息流的底部内衬、`scroll-padding-bottom`、
+ *                   跟随丸的落位全读它。它会变 —— 打字长高、抽屉开合、附件摞进出、
+ *                   状态条出现,每一样都改一次高度,所以它不能是一个魔法数。
+ *   `--center-h`    **这片叶多高**。抽屉的高度上限要读它(§5.6:`min(既有上限,
+ *                   40%)`)—— 「正文永远露出上半截」这句话只有知道一共有多高才成立。
+ *
+ * ── 搬家改了什么、没改什么 ────────────────────────────────────────────────
+ * 落点从 `.center` 换成 `.chatArea`:**三个消费者(消息流内衬、跟随丸、目录键列)
+ * 都在 `.chatArea` 之内**,变量靠继承走,它们一个字不改。`--center-h` 的语义
+ * 因此从「中央区多高」收窄成「这片叶多高」—— 而那正是那条上限该有的意思
+ * (中央区单叶时两者逐像素相同;分屏时上限跟着自己这半格缩,是对的)。
+ * 名字没改:它被三份样式表按名字读着,改名是另一单。
+ *
+ * ── 为什么不会打转 ────────────────────────────────────────────────────────
+ * 写 CSS 变量本身不改任何几何;它们的下游(滚动容器的内衬、抽屉的上限)也都
+ * 不反过来决定被观察那两件的高度 —— 叶的高度是拼贴树给的,输入框的高度是它
+ * 自己内容给的。所以这只观察者没有回路,不会触发 ResizeObserver 的「循环」告警。
+ *
+ * ── 生命周期 ──────────────────────────────────────────────────────────────
+ * 挂载即观察、卸载即断开并**把两格变量抹掉**(留着等于让下一次挂载先读到一份
+ * 陈旧的高度)。它是组件级的,不是模块级的 —— 没有跨模块实例存活的东西,
+ * 所以不需要 HMR dispose。
+ */
+function useComposerGeometry(
+  areaRef: RefObject<HTMLDivElement | null>,
+  dockRef: RefObject<HTMLDivElement | null>,
+): void {
+  useLayoutEffect(() => {
+    const area = areaRef.current
+    const dock = dockRef.current
+    if (!area || !dock || typeof ResizeObserver !== 'function') return
+
+    const write = (name: string, px: number) => {
+      area.style.setProperty(name, `${Math.round(px)}px`)
+    }
+    const measure = () => {
+      write('--composer-h', dock.getBoundingClientRect().height)
+      write('--center-h', area.getBoundingClientRect().height)
+    }
+    measure()
+
+    const observer = new ResizeObserver(measure)
+    observer.observe(dock)
+    observer.observe(area)
+    return () => {
+      observer.disconnect()
+      area.style.removeProperty('--composer-h')
+      area.style.removeProperty('--center-h')
+    }
+  }, [areaRef, dockRef])
 }
 
 /**
@@ -171,11 +261,6 @@ registerContentKind(
      * 那时的注脚是「撕进浮窗 / 钉到边由 W5 解禁,解禁 = 改这一行」——
      * 兑现的方式正是**删掉**这一行。
      */
-    /*
-     * 路线 B 之下输入框仍在树外,所以会话叶照旧进不了全屏(判词在
-     * `ContentKind.fullable` 上)。
-     */
-    fullable: false,
     /**
      * **静态那一半**。会话名是数据,所以能问到名册就问名册(两片叶的标签因此
      * 各画各的名字,不必等活标题那一半到);问不到(还没绑 / 名册还没到)才落回
@@ -211,9 +296,9 @@ registerContentKind(
      * 上原位换会话,这一条什么都不摆,由叫它的那片叶摆到当前标签旁边。判词整段
      * 在 `expose/store.ts` 的 `NewSessionSeat` 上。
      *
-     * 这一种**不点名焦点**:输入面板是 `.center` 上那一格常驻的 dock(路线 B),
-     * 它跟着焦点叶的会话投影走 —— 新那一格摆进来并激活之后,人手指下面的那个
-     * 输入框**就是**新会话的输入框,不需要把焦点搬到别处去。
+     * 这一种**不点名焦点**:摆进来的新那一格自带一块输入面板(W5-c),而摆放那
+     * 一头会激活它 —— 激活走 `focusIntoRef`,它读的正是下面那格 `focusInto`,
+     * 于是焦点落在**新那一格自己的**输入框上。不需要在这里搬第二次。
      *
      * 建不成(后端拒 / 一次创建已经在飞)答 `null`,叶那一头什么都不做。
      */
@@ -223,8 +308,9 @@ registerContentKind(
     },
     /**
      * **关掉 = 丢实例**(与 `file` / `pair` 同一条)。这一种要清的是**这条会话
-     * 那一份草稿**(W7-t / B2):输入框里没发出去的话、挂着的附件都跟着会话走,
-     * 会话被关掉之后留着它等于让下一次开同一条会话读到一份陈年的草稿。
+     * 那块输入面板留下的两样**:那一份草稿(W7-t / B2)与那一份面板状态
+     * (W5-c-2)。输入框里没发出去的话、挂着的附件、开着的抽屉都跟着会话走,
+     * 会话被关掉之后留着它们等于让下一次开同一条会话读到一份陈年的现场。
      *
      * 数据机器(`chat-source`)的寿命**不在这里** —— 它由引用账管(判词在
      * `content/session-projection.ts`:六条路会让一格会话离开树,`dispose` 只是
@@ -241,7 +327,15 @@ registerContentKind(
        * 丢不掉它的稿**(连同挂着的附件 URL),与「关掉 = 唯一的丢弃时机」相悖。
        */
       const id = sessionIdOfRef(ref)
-      if (id !== null) dropComposerDraft(id)
+      if (id === null) return
+      dropComposerDraft(id)
+      /*
+       * **这条会话那块输入面板的状态**(W5-c-2):抽屉、搜索词、ask、附件、状态条
+       * 都住在 `composerStoreFor(id)` 那一份里,与草稿同一个丢弃时机、同一条
+       * 「藏起来的会话叶照样留着」。少这一句 = 关掉再开同一条会话,人会看见上一
+       * 次留在那儿的抽屉与附件。
+       */
+      disposeComposerStore(id)
     },
   },
   import.meta.hot,

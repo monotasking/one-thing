@@ -448,7 +448,8 @@ export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
    * **进全屏**(W2)。`from` 缺席读作「问树」—— 它此刻在哪棵树的哪一格,
    * 就记哪一格;哪棵树都不在就是 `null`(那一路由 `FullLayer` 自己画)。
    *
-   * 这一种自述 `fullable: false`(今天只有 chat)时是**空动作**:拒绝那一句话
+   * 这一种自述 `fullable: false`(W5-c-3 起没有一种这么说,认不得的种类除外)时
+   * 是**空动作**:拒绝那一句话
    * 由 `toggleFull` 说,因为只有它是用户按键的落点 —— 而这一口还有别的调用方
    * (Dock 的「打开方式 = 全屏」),对它们「静默不做」才是对的。
    */
@@ -1810,7 +1811,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           const leaf = focusLeafOf(tree, s.focusLeafId)
           const ref = leaf.tabs[leaf.active]
           if (!ref) return 'none'
-          // 这一种自述进不了全屏(今天只有 chat)→ **结构化拒绝**,不静默。
+          // 这一种自述进不了全屏(W5-c-3 起只剩「认不得的种类」)→ **结构化拒绝**,不静默。
           if (!canGoFull(ref)) return 'refused'
           set({
             full: {

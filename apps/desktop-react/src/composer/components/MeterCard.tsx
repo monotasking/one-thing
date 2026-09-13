@@ -1,7 +1,8 @@
 import { useShallow } from 'zustand/react/shallow'
 import { useT } from '../../i18n'
 import type { TFn } from '../../i18n'
-import { useMeterSource, useMeterView } from '../../data/meter-source'
+import { useMeterView } from '../../data/meter-source'
+import { useComposerSessionId } from '../session-context'
 import type { MeterView } from '../../data/meter-source'
 import { useChatSourceOf } from '../../data/chat-source'
 import { selectCompactingReadout } from '../../content/compact/marker'
@@ -19,12 +20,14 @@ const RING_W = 2.6
  * **「这条会话此刻在压缩吗」的订阅口。**
  *
  * 判据一个字都不在这里 —— 它在 `content/compact/marker.ts`(账本上最新一条压缩
- * 标记的 status)。这只 hook 做的只有两件:问的是**读数自己开着的那条会话**
- * (与 `useMeterView` 同源,不就地再读一次总览 —— 那会多一条会漂的读法),
- * 以及用 `useShallow` 把那份**扁平**读数变成可比的快照(三个原始值,一次订阅)。
+ * 标记的 status)。这只 hook 做的只有一件:用 `useShallow` 把那份**扁平**读数
+ * 变成可比的快照(三个原始值,一次订阅)。
+ *
+ * 问哪一条会话由调用方递进来(W5-c-3,与 `useMeterView` 同源):从前它读的是
+ * 读数那条线上「开着哪一条」那一格,而路线 A 之后那格是一张引用账 —— 屏幕上
+ * 可以有两块面板,「开着哪一条」不再是一句说得清的话。
  */
-function useCompacting(): CompactingReadout {
-  const sessionId = useMeterSource((st) => st.sessionId)
+function useCompacting(sessionId: string): CompactingReadout {
   return useChatSourceOf(sessionId, useShallow(selectCompactingReadout))
 }
 
@@ -40,8 +43,10 @@ function useCompacting(): CompactingReadout {
  */
 export function ContextRing({ onEnter, onLeave }: { onEnter: () => void; onLeave: () => void }) {
   const t = useT()
-  const view = useMeterView()
-  const compacting = useCompacting()
+  /* 这块面板对着哪条会话 —— 由 `Composer` 下发(W5-c-2/3)。 */
+  const sessionId = useComposerSessionId()
+  const view = useMeterView(sessionId)
+  const compacting = useCompacting(sessionId)
   const pct =
     view.contextUsed === null || view.contextMax === null
       ? null
@@ -203,8 +208,10 @@ export function meterRowsOf(view: MeterView, t: TFn, compacting?: CompactingRead
 
 export function MeterCard({ open }: { open: boolean }) {
   const t = useT()
-  const view = useMeterView()
-  const rows = meterRowsOf(view, t, useCompacting())
+  /* 与环同一条会话(W5-c-3):卡是环悬停出来的那一张,分子分母必须同源。 */
+  const sessionId = useComposerSessionId()
+  const view = useMeterView(sessionId)
+  const rows = meterRowsOf(view, t, useCompacting(sessionId))
 
   return (
     <div className={open ? `${s.meterCard} ${s.meterOn}` : s.meterCard}>

@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { ReactNode } from 'react'
 import { act, render, screen } from '@testing-library/react'
 import { ContextRing, MeterCard } from './MeterCard'
 import { meterQuery, useMeterSource } from '../../data/meter-source'
+import { ComposerSessionContext } from '../session-context'
 import type { MeterFacts } from '../../data/meter-source'
 import { prefsQuery, useModelsSource } from '../../data/models-source'
 import { catalogQuery } from '../../providers/catalog-query'
@@ -67,6 +69,24 @@ const USAGE = {
 }
 
 /**
+ * **这一屏那块输入面板对着哪条会话**(W5-c-3)。
+ *
+ * 从前它是读数那条线上一格「开着哪一条」(`useMeterSource.setState({sessionId})`);
+ * 路线 A 之后输入框是会话叶的器官,屏幕上可以有两块面板,那一格于是换成了一张
+ * 引用账 —— 而「这一块画的是谁的数」成了**它宿主递下来的一格 context**。
+ * 所以这一族用例改成:摆现场时记下 `shown`,渲染时用它铺一格 Provider。
+ */
+let shown = ''
+
+/** 环与卡都住在输入面板那棵子树里,所以都要那一格 context。 */
+const inComposer = (node: ReactNode) => (
+  <ComposerSessionContext.Provider value={shown}>{node}</ComposerSessionContext.Provider>
+)
+const renderRing = () =>
+  render(inComposer(<ContextRing onEnter={() => {}} onLeave={() => {}} />))
+const renderCard = () => render(inComposer(<MeterCard open />))
+
+/**
  * 读数直接打进那一格 —— 「怎么拉」有它自己一组用例(data/meter-source.test.ts),
  * 这一层只管「画成什么样」。`patch` 是 kernel 交出来的就地补丁口,不绕过任何东西。
  */
@@ -82,7 +102,7 @@ function stage(window: number | null): void {
   // 窗口那一格的产地是目录那一族(批 7b 合并后与设置面共用一格)。
   // `window === null` = 那一格**从没拉过** —— 那正是「目录还没到」的真形状。
   if (window !== null) catalogQuery.get('xai').patch([openRouterModel('grok-4', window)])
-  useMeterSource.setState({ sessionId: 's1' })
+  shown = 's1'
   seedFacts({ sessionId: 's1', tokens: TOKENS, usage: USAGE })
 }
 
@@ -109,7 +129,7 @@ function stageOverride(window: number): void {
     },
     custom: [{ id: 'my-llm', name: '自建' }],
   })
-  useMeterSource.setState({ sessionId: 's1' })
+  shown = 's1'
   seedFacts({ sessionId: 's1', tokens: TOKENS, usage: USAGE })
 }
 
@@ -138,6 +158,7 @@ beforeEach(() => {
   // 不收它 —— 两个 reset 收同一格就是两个主人。所以用例自己收。
   catalogQuery.reset()
   useMeterSource.getState().reset()
+  shown = ''
   useSessionsSource.setState({ sessions: [] })
   chatSources.resetAll()
 })
@@ -158,7 +179,7 @@ afterEach(() => {
 describe('读数环', () => {
   it('窗口不知道:底圈是点线,不画那一段弧;读屏软件听见的是「未知」', () => {
     stage(null)
-    const { container } = render(<ContextRing onEnter={() => {}} onLeave={() => {}} />)
+    const { container } = renderRing()
     expect(screen.getByRole('img', { name: '上下文用量未知' })).toBeTruthy()
     const circles = container.querySelectorAll('circle')
     expect(circles).toHaveLength(1)
@@ -167,7 +188,7 @@ describe('读数环', () => {
 
   it('窗口知道:底圈实线 + 一段弧', () => {
     stage(200_000)
-    const { container } = render(<ContextRing onEnter={() => {}} onLeave={() => {}} />)
+    const { container } = renderRing()
     expect(screen.getByRole('img', { name: '上下文用量' })).toBeTruthy()
     const circles = container.querySelectorAll('circle')
     expect(circles).toHaveLength(2)
@@ -175,7 +196,7 @@ describe('读数环', () => {
   })
 
   it('没有会话:也是缺席态 —— 不画成 0%', () => {
-    const { container } = render(<ContextRing onEnter={() => {}} onLeave={() => {}} />)
+    const { container } = renderRing()
     expect(screen.getByRole('img', { name: '上下文用量未知' })).toBeTruthy()
     expect(container.querySelectorAll('circle')).toHaveLength(1)
   })
@@ -186,7 +207,7 @@ describe('读数环', () => {
    */
   it('目录里没有但用户填过窗口:照旧画弧,读屏软件听不到「未知」', () => {
     stageOverride(200_000)
-    const { container } = render(<ContextRing onEnter={() => {}} onLeave={() => {}} />)
+    const { container } = renderRing()
     const ring = screen.getByRole('img')
     expect(ring.getAttribute('aria-label')).toBe('上下文用量')
     expect(ring.getAttribute('aria-label')).not.toContain('未知')
@@ -201,7 +222,7 @@ describe('读数环', () => {
   it('压缩中:环带上 data-compacting,读屏软件也听见「正在压缩」', () => {
     stage(200_000)
     seedCompacting('compacting', { chunk: 2, totalChunks: 5 })
-    const { container } = render(<ContextRing onEnter={() => {}} onLeave={() => {}} />)
+    const { container } = renderRing()
     expect(container.querySelector('[data-compacting]')).toBeTruthy()
     expect(screen.getByRole('img', { name: '上下文用量 · 正在压缩' })).toBeTruthy()
   })
@@ -209,7 +230,7 @@ describe('读数环', () => {
   it('压完:那一格自己消失 —— 同一条 marker 的正文被刷成 completed', () => {
     stage(200_000)
     seedCompacting('completed')
-    const { container } = render(<ContextRing onEnter={() => {}} onLeave={() => {}} />)
+    const { container } = renderRing()
     expect(container.querySelector('[data-compacting]')).toBeNull()
     expect(screen.getByRole('img', { name: '上下文用量' })).toBeTruthy()
   })
@@ -218,19 +239,19 @@ describe('读数环', () => {
 describe('明细卡', () => {
   it('窗口知道:上下文那行给出用量 / 窗口 / 百分比', () => {
     stage(200_000)
-    render(<MeterCard open />)
+    renderCard()
     expect(screen.getByText('124k / 200k · 62%')).toBeTruthy()
   })
 
   it('窗口不知道:只说用量,并如实交代占比算不出来', () => {
     stage(null)
-    render(<MeterCard open />)
+    renderCard()
     expect(screen.getByText('124k · 窗口未知')).toBeTruthy()
   })
 
   it('目录里没有但用户填过窗口:那一行给全三格,不写「窗口未知」', () => {
     stageOverride(200_000)
-    render(<MeterCard open />)
+    renderCard()
     expect(screen.getByText('124k / 200k · 62%')).toBeTruthy()
     expect(screen.queryByText('124k · 窗口未知')).toBeNull()
   })
@@ -242,13 +263,13 @@ describe('明细卡', () => {
       tokens: TOKENS,
       usage: { ...USAGE, usage: { ...USAGE.usage, inputTokens: 0, cacheReadTokens: 0 } },
     })
-    render(<MeterCard open />)
+    renderCard()
     expect(screen.queryByText('缓存命中')).toBeNull()
   })
 
   it('送过但一次没命中:画 0% —— 那是**真值**,与「分母为 0」不是一件事', () => {
     stage(200_000)
-    render(<MeterCard open />)
+    renderCard()
     expect(screen.getByText('缓存命中')).toBeTruthy()
     expect(screen.getByText('0%')).toBeTruthy()
   })
@@ -260,7 +281,7 @@ describe('明细卡', () => {
       tokens: TOKENS,
       usage: { ...USAGE, usage: { ...USAGE.usage, inputTokens: 1_000, cacheReadTokens: 9_000 } },
     })
-    render(<MeterCard open />)
+    renderCard()
     expect(screen.getByText('缓存命中')).toBeTruthy()
     expect(screen.getByText('90%')).toBeTruthy()
     expect(screen.queryByText(/省/)).toBeNull()
@@ -268,7 +289,7 @@ describe('明细卡', () => {
 
   it('厂商没报价:只有本地估算那一行', () => {
     stage(200_000)
-    render(<MeterCard open />)
+    renderCard()
     expect(screen.getByText('$0.87')).toBeTruthy()
     expect(screen.queryByText('厂商报价')).toBeNull()
   })
@@ -276,14 +297,14 @@ describe('明细卡', () => {
   it('厂商报了价:多一行,**并存**不替换本地估算', () => {
     stage(200_000)
     seedFacts({ sessionId: 's1', tokens: TOKENS, usage: { ...USAGE, providerCostUSD: 1.5 } })
-    render(<MeterCard open />)
+    renderCard()
     expect(screen.getByText('$0.87')).toBeTruthy()
     expect(screen.getByText('厂商报价')).toBeTruthy()
     expect(screen.getByText('$1.50')).toBeTruthy()
   })
 
   it('没有会话:一行「还没有读数」,不是一张写着 0 的卡', () => {
-    render(<MeterCard open />)
+    renderCard()
     expect(screen.getByText('还没有读数')).toBeTruthy()
     expect(screen.queryByText(/%/)).toBeNull()
     expect(screen.queryByText(/\$/)).toBeNull()
@@ -293,27 +314,28 @@ describe('明细卡', () => {
   // 换一条会话读的就是另一格,别人的账根本到不了屏幕上。
   it('手上这份读数不属于当前会话时当没有 —— 不画别人的账', () => {
     stage(200_000)
-    useMeterSource.setState({ sessionId: 's2' })
-    render(<MeterCard open />)
+    // 这块面板挂在 s2 上,而摆好的那份读数是 s1 的 —— 键控缓存于是交不出东西。
+    shown = 's2'
+    renderCard()
     expect(screen.getByText('还没有读数')).toBeTruthy()
   })
 
   it('压缩中多一行;多块带 k/N,单块不编「1 / 1」;不压缩时这一行不存在', () => {
     stage(200_000)
     // ① 不压缩:一行都没有
-    const idle = render(<MeterCard open />)
+    const idle = renderCard()
     expect(idle.queryByText(/正在压缩/)).toBeNull()
     idle.unmount()
 
     // ② 多块:带 k/N
     seedCompacting('compacting', { chunk: 2, totalChunks: 5 })
-    const many = render(<MeterCard open />)
+    const many = renderCard()
     expect(many.getByText('正在压缩 · 2 / 5')).toBeTruthy()
     many.unmount()
 
     // ③ 单块(后端不写 progress):只说「正在压缩」
     seedCompacting('compacting')
-    const one = render(<MeterCard open />)
+    const one = renderCard()
     expect(one.getByText('正在压缩')).toBeTruthy()
     // 「2 / 5」那半句一个字都没有(上下文那行本来就带 /,所以判据是这一行的全文)
     expect(one.queryByText(/正在压缩 ·/)).toBeNull()

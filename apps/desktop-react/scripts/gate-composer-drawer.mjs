@@ -67,6 +67,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { _electron as electron } from 'playwright'
+import { installComposerDockProbe } from './lib/composer-dock.mjs'
 import electronBinary from 'electron'
 import { seedLargeLedger } from './lib/seed-large-ledger.mjs'
 
@@ -454,7 +455,7 @@ async function fadeContract(page) {
  */
 async function declaredDrawerHeight(page) {
   return page.evaluate(() => {
-    const dock = document.querySelector('[data-testid="composer-dock"]')
+    const dock = window.__composerDock()
     if (!dock) return undefined
     const css = getComputedStyle(dock)
     const px = (name) => {
@@ -475,7 +476,7 @@ async function readGeometry(page) {
     const scroll = document.querySelector('[data-testid="chat-stream"]')
     const messages = document.querySelectorAll('[data-message-id]')
     const last = messages[messages.length - 1]
-    const dock = document.querySelector('[data-testid="composer-dock"]')
+    const dock = window.__composerDock()
     return {
       scrollTop: scroll ? Math.round(scroll.scrollTop * 10) / 10 : null,
       scrollable: scroll ? scroll.scrollHeight - scroll.clientHeight : null,
@@ -617,6 +618,9 @@ async function main() {
     const page = await app.firstWindow()
     const cdp = await app.context().newCDPSession(page)
     await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+    /* **焦点叶里的那一块输入框**(W5-c-3):路线 A 之后屏幕上可以有好几块,
+     * 门要量的是人此刻在用的那一块。判词整段在 `scripts/lib/composer-dock.mjs` 上。 */
+    await installComposerDockProbe(page)
     await waitFor('渲染层完成一次 RPC 往返', async () => {
       const value = await page.evaluate(() => window.__d0 ?? null)
       return value && value.rpcOk ? value : undefined

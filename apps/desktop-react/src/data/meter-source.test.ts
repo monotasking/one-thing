@@ -235,7 +235,6 @@ describe('窗口:手填模型的用户覆盖', () => {
       },
       custom: [{ id: 'my-llm', name: '自建' }],
     })
-    useMeterSource.setState({ sessionId: 's1' })
     meterQuery.get('s1').patch({
       sessionId: 's1',
       tokens: {
@@ -249,7 +248,7 @@ describe('窗口:手填模型的用户覆盖', () => {
       usage: usageResponse(),
     })
 
-    const { result, unmount } = renderHook(() => useMeterView())
+    const { result, unmount } = renderHook(() => useMeterView('s1'))
     expect(result.current.contextMax).toBe(200_000)
     expect(result.current.contextUsed).toBe(124_000)
     expect(result.current.present).toBe(true)
@@ -285,11 +284,16 @@ describe('刷新时机', () => {
     expect(fetches).toEqual({ usage: 1, tokens: 1 })
   })
 
-  it('让路的那一段里切走了:这一发作废,新那条自己去拉', async () => {
+  /*
+   * W5-c-3 改口:判据从「还开着的是不是我」换成「**还有没有人在看我这条**」——
+   * 屏幕上可以有两块面板,前一句说不清。用户手势也因此换了一个:从前是「切走」,
+   * 现在是**那块面板下场**(叶被关掉 / 换成别的内容)。
+   */
+  it('让路的那一段里那块面板下场了:这一发作废', async () => {
     markFirstScreenPending('s1')
     const opening = useMeterSource.getState().open('s1')
     await flush()
-    useMeterSource.setState({ sessionId: 's2' })
+    useMeterSource.getState().close('s1')
     markFirstScreenLanded('s1')
     await opening
     expect(fetches).toEqual({ usage: 0, tokens: 0 })
@@ -362,7 +366,7 @@ describe('刷新时机', () => {
     expect(before?.tokens?.contextSize).toBe(124_000)
 
     shutGate()
-    const inflight = useMeterSource.getState().refresh()
+    const inflight = useMeterSource.getState().refresh('s1')
     await flush()
 
     const during = meterQuery.get('s1').get()
@@ -398,7 +402,7 @@ describe('刷新时机', () => {
 
   it('悬停开卡再拉一次 —— 那一眼要是最新的', async () => {
     await useMeterSource.getState().open('s1')
-    await useMeterSource.getState().refresh()
+    await useMeterSource.getState().refresh('s1')
     expect(fetches.usage).toBe(2)
   })
 
@@ -407,7 +411,7 @@ describe('刷新时机', () => {
     expect(fetches).toEqual({ usage: 0, tokens: 0 })
     expect(meterQuery.get('').get().data).toBeUndefined()
     // refresh 在草稿态是恒等,不发请求。
-    await useMeterSource.getState().refresh()
+    await useMeterSource.getState().refresh('')
     expect(fetches.usage).toBe(0)
   })
 
@@ -417,6 +421,67 @@ describe('刷新时机', () => {
     const facts = meterQuery.get('s1').get().data
     expect(facts?.usage).toBeNull()
     expect(facts?.tokens?.contextSize).toBe(124_000)
+  })
+
+  /**
+   * **两块面板并排:两条会话各读各的**(W5-c-3,正本 §4.3 / §5)。
+   *
+   * 路线 A 之后输入框是会话叶的器官 —— 两片叶并排就是两块面板,各 `open()` 自己
+   * 那条。从前这条线只有一格「开着哪一条」,后挂的那一块把前一块顶掉,于是分屏
+   * 下有一侧的圆环画的是**另一条会话**的用量。
+   *
+   * **反证**:把 `open` 里那句引用账换回 `set({ sessionId: next })` → 第一条断言
+   * 里 s1 那一格会掉出 `watching`,第三条(s1 的 hook 仍读到自己的数)照旧绿 ——
+   * 因为它读的是键控 query;真正会红的是第二条:s1 那块面板下场之前,那条账本
+   * 订阅就被 s2 顶掉了(下面 `emit` 那一发于是标不脏 s1)。
+   */
+  it('两块面板并排:两条会话各读各的,引用账各记各的', async () => {
+    await useMeterSource.getState().open('s1')
+    await useMeterSource.getState().open('s2')
+    expect(useMeterSource.getState().watching).toEqual({ s1: 1, s2: 1 })
+    expect(meterQuery.get('s1').get().data?.sessionId).toBe('s1')
+    expect(meterQuery.get('s2').get().data?.sessionId).toBe('s2')
+
+    // 两块都还在屏上,所以 s1 那一格照样收得到账本推送(从前它已经被 s2 顶掉了)。
+    const stop = watch('s1')
+    emit?.(ledger('s1', 'run/end'))
+    await flush()
+    expect(fetches.usage).toBe(3)
+    stop()
+
+    // 一块下场,另一块不受影响:订阅还在,引用账只少一格。
+    useMeterSource.getState().close('s1')
+    expect(useMeterSource.getState().watching).toEqual({ s2: 1 })
+    const stop2 = watch('s2')
+    emit?.(ledger('s2', 'run/end'))
+    await flush()
+    expect(fetches.usage).toBe(4)
+    stop2()
+  })
+
+  /**
+   * 同一条会话开两块面板(把同一条会话拖一份到旁边对照着看):**不重复订**,
+   * 而且**前一块下场不会把后一块的推送掐掉** —— 引用计数就是为这件事存在的。
+   */
+  it('同一条会话两块面板:引用计数,先下场那一块不掐掉另一块', async () => {
+    await useMeterSource.getState().open('s1')
+    await useMeterSource.getState().open('s1')
+    expect(useMeterSource.getState().watching).toEqual({ s1: 2 })
+    // 第二块没有多发一发请求(`ensure` 是「确保问过」)。
+    expect(fetches.usage).toBe(1)
+
+    useMeterSource.getState().close('s1')
+    expect(useMeterSource.getState().watching).toEqual({ s1: 1 })
+    const stop = watch('s1')
+    emit?.(ledger('s1', 'run/end'))
+    await flush()
+    expect(fetches.usage).toBe(2)
+    stop()
+
+    // 最后一块也下场 → 退订,此后账本一响也不再标脏。
+    useMeterSource.getState().close('s1')
+    expect(useMeterSource.getState().watching).toEqual({})
+    expect(emit, '整台一份都不剩 → 那条订阅退掉了').toBeUndefined()
   })
 
   it('只认账本活事件那条推送', () => {

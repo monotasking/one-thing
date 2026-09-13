@@ -10,7 +10,7 @@ import { buildPickView, pickEntryAt, PICK_EMPTY } from '../references/drawer'
 import { referenceKindOf, referencePickKinds } from '../references/registry'
 import type { PickInput, PickView } from '../references/drawer'
 import type { TokenHit } from '../references/registry'
-import { useComposerStore } from './store'
+import { composerStoreFor, useComposerStoreOf } from './store'
 import { isPickDrawer } from './types'
 import type { ComposerInputHandle } from './components/ComposerInput'
 import type { AskSpec, DrawerKind } from './types'
@@ -90,10 +90,10 @@ export function usePickDrawer({
    * 所以它们自己订 —— 别人也要的那几口(`drawerKind` / `openAsk` /
    * `closeDrawer`)才由编排点交下来。
    */
-  const pickQuery = useComposerStore((st) => st.pickQuery)
-  const pickIndex = useComposerStore((st) => st.pickIndex)
-  const setPickIndex = useComposerStore((st) => st.setPickIndex)
-  const showPick = useComposerStore((st) => st.showPick)
+  const pickQuery = useComposerStoreOf(sessionId, (st) => st.pickQuery)
+  const pickIndex = useComposerStoreOf(sessionId, (st) => st.pickIndex)
+  const setPickIndex = useComposerStoreOf(sessionId, (st) => st.setPickIndex)
+  const showPick = useComposerStoreOf(sessionId, (st) => st.showPick)
 
   const picking = isPickDrawer(drawerKind)
   const trigger = picking ? drawerKind.trigger : null
@@ -158,9 +158,9 @@ export function usePickDrawer({
         showPick(hit.trigger, hit.query)
         return
       }
-      if (isPickDrawer(useComposerStore.getState().drawerKind)) closeDrawer()
+      if (isPickDrawer(composerStoreFor(sessionId).getState().drawerKind)) closeDrawer()
     },
-    [showPick, closeDrawer],
+    [sessionId, showPick, closeDrawer],
   )
 
   /**

@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { RefObject } from 'react'
 import { startStage, useStageStore } from '../stage/store'
 import { startSessionProjection } from '../content/session-projection'
 import { currentSessionOf, sessionRefIdOf } from '../content/session-ref'
@@ -10,9 +9,8 @@ import { FocusScope } from '../focus/FocusScope'
 import { useFocusDispatch } from '../focus/dispatch'
 import { startKeymapDownlink } from '../content/native-view/keymap-downlink'
 import { focusTree } from '../focus/registry'
+import { runAfterCommit } from '../focus/after-commit'
 import { TopBar } from './TopBar'
-import { ErrorBoundary } from './ErrorBoundary'
-import { Composer } from '../composer/components/Composer'
 import { Dock } from './Dock'
 import { StageOverlay } from './StageOverlay'
 import { FullLayer } from './FullLayer'
@@ -159,6 +157,19 @@ export function AppShell() {
    *
    * 只在**挂载**时发一次:再往后「焦点该在哪」由用户的手与那几条规则说了算,
    * 这一句不该在任何重渲染里再抢一次。
+   *
+   * ── **发两拍,不是一拍**(W5-c-3,真机门 `gate:focus` 场景 10 逮到的)────────
+   * W5-c 之前输入面板是**这一层自己渲染的**,所以壳这只 effect 跑的时候它必然已经
+   * 登记完了(孩子的 effect 排在父亲前面)。路线 A 之后它在会话叶里,而叶的内容
+   * 是按 refId 挂进来的一格 —— 它**可能晚一拍才铺上根**,那时这一句已经跑过、
+   * ①落空、②或③接住了,随后架子上那块自带 `activateOnMount` 的面(会话总览)
+   * 把键盘拿走:真机读到的正是「第一响应者是 expose」。
+   *
+   * 修法不是把顺序改回去,是**排到提交之后再发一遍**:`runAfterCommit` 是这台壳里
+   * 「把键盘送进某一层」的那副唯一队列(一拍微任务 + 一帧,判词整段在
+   * `focus/after-commit.ts` 上)。两遍都发是安全的 —— 焦点已经在那一层里时
+   * `activate` 自己不动(注册表判据①),所以这不是抢两次,是**同一句话说两遍**,
+   * 第二遍只在第一遍落空时才有效果。
    */
   useEffect(() => {
     /*
@@ -167,13 +178,23 @@ export function AppShell() {
      * 焦点叶此刻没有会话(或者树还没播种)时 `owner` 是 undefined —— 那时
      * `activateScope` 退回 MRU,与 W5-b 之前逐字相同。
      */
-    const chatOwner = focusLeafSessionOwner()
-    const landed =
-      focusTree.activateScope('composer', { reason: 'restore' })
-      || focusTree.activateScope('chat', { reason: 'restore', owner: chatOwner })
-      || focusTree.activateScope('root', { reason: 'restore' })
-    // 三格都答不出 = 树还一格都没登记完(理论上到不了这儿,因为根就在这一层)。
-    if (!landed) focusTree.recoverOrphanFocus()
+    const send = () => {
+      const chatOwner = focusLeafSessionOwner()
+      const landed =
+        focusTree.activateScope('composer', { reason: 'restore' })
+        || focusTree.activateScope('chat', { reason: 'restore', owner: chatOwner })
+        || focusTree.activateScope('root', { reason: 'restore' })
+      // 三格都答不出 = 树还一格都没登记完(理论上到不了这儿,因为根就在这一层)。
+      if (!landed) focusTree.recoverOrphanFocus()
+      return landed
+    }
+    /*
+     * 第一遍当场发(输入面板已经在场时这就够了,而且不欠任何一拍);
+     * 第二遍排在提交之后,**只在第一遍没落到输入面板上时才发** —— 否则它会在
+     * 用户手已经动过之后再抢一次(「只在挂载时发一次」那条纪律)。
+     */
+    send()
+    if (focusTree.current()?.scope !== 'composer') runAfterCommit(send)
   }, [])
 
   /**
@@ -196,13 +217,13 @@ export function AppShell() {
    */
 
   /*
-   * 悬浮输入框那两个几何读数(§5.6)。两个 ref 一只观察者,产地在这里而不是
-   * Composer 里 —— **谁定的布局谁量**:是这一层决定了输入框绝对定位在 `.center`
-   * 底部,Composer 自己一行都不必知道它浮着。
+   * ── 输入框也不再长在外壳身上(W5-c,路线 A)────────────────────────────
+   * 从前这儿有两个 ref 与一只 `useComposerGeometry`:输入框是 `.center` 底部的
+   * 一块绝对定位浮层,**谁定的布局谁量**,所以量点在这一层。现在那块面板是
+   * **会话叶自己的器官**(`content/kinds/session.tsx` 的 `.composerDock`),
+   * 它的两个几何读数也跟着搬了过去 —— 判据仍是「谁定的布局谁量」,只是定布局
+   * 的那一层换了人。外壳从此**不认识输入框**:它只知道「这儿摆着中央区那棵树」。
    */
-  const centerRef = useRef<HTMLDivElement>(null)
-  const composerDockRef = useRef<HTMLDivElement>(null)
-  useComposerGeometry(centerRef, composerDockRef)
 
   const [peeking, setPeeking] = useState(false)
   /*
@@ -562,25 +583,11 @@ export function AppShell() {
             {SHELF_SIDES.map((side) => (
               <EdgeShelf key={side} side={side} />
             ))}
-            <div className={s.center} ref={centerRef}>
-              {/* 键列与跟随丸都钉在聊天区上,所以定位参考系是这一层。
-                * 09-05(§5.6):这一层现在**铺满 `.center`** —— 输入框浮在它上面,
-                * 正文从玻璃底下流过。 */}
-              {/* 中央区 = 一棵拼贴树(W1)。第一片叶就是聊天区 —— 它是 `chat` 那一种
+            <div className={s.center}>
+              {/* 中央区 = 一棵拼贴树(W1)。第一片叶就是会话 —— 它是 `session` 那一种
                 * 内容自述的常驻格(`ContentKind.resident`),外壳这一层因此**不认识
-                * 聊天**:它只知道「这儿摆着中央区那棵树」。 */}
+                * 会话**(W5-c 起也不认识输入框):它只知道「这儿摆着中央区那棵树」。 */}
               <CenterRegion />
-              {/*
-                * 输入框仍然在 `.center` 的 DOM 里(错误边界、响应链作用域、
-                * `useFloatDismiss` 的点外关一字不动),只是外面多了一格**落位带**:
-                * 它绝对定位贴底,于是不再占一格 flex。量高的活儿也在这一格上
-                * (见 `useComposerHeight`)—— Composer 自己不必知道它浮着。
-                */}
-              <div className={s.composerDock} ref={composerDockRef} data-testid="composer-dock">
-                <ErrorBoundary where="composer">
-                  <Composer />
-                </ErrorBoundary>
-              </div>
             </div>
           </main>
 
@@ -672,61 +679,6 @@ export function AppShell() {
       )}
     </FocusScope>
   )
-}
-
-/**
- * **悬浮输入框的两个几何读数**(§5.6)。
- *
- * 输入框绝对定位在 `.center` 底部之后,有两件事只有真实的排版说得出来:
- *
- *   `--composer-h`  输入框此刻多高。消息流的底部内衬、`scroll-padding-bottom`、
- *                   跟随丸的落位全读它。它会变 —— 打字长高、抽屉开合、附件摞进出、
- *                   状态条出现,每一样都改一次高度,所以它不能是一个魔法数。
- *   `--center-h`    中央区多高。抽屉的高度上限要读它(§5.6:`min(既有上限,
- *                   .center 高度的 40%)`)—— 「正文永远露出上半截」这句话
- *                   只有知道一共有多高才成立。
- *
- * 两个数都写在 `.center` 上,于是聊天区、输入框、丸三棵子树**继承**它们,
- * 谁都不必再拿一次 ref。
- *
- * ── 为什么不会打转 ────────────────────────────────────────────────────────
- * 写 CSS 变量本身不改任何几何;它们的下游(滚动容器的内衬、抽屉的上限)也都
- * 不反过来决定被观察那两件的高度 —— `.center` 的高度是三明治网格给的,输入框的
- * 高度是它自己内容给的。所以这只观察者没有回路,不会触发 ResizeObserver 的
- * 「循环」告警。
- *
- * ── 生命周期 ──────────────────────────────────────────────────────────────
- * 挂载即观察、卸载即断开并**把两格变量抹掉**(留着等于让下一次挂载先读到一份
- * 陈旧的高度)。它是组件级的,不是模块级的 —— 没有跨模块实例存活的东西,
- * 所以不需要 HMR dispose。
- */
-function useComposerGeometry(
-  centerRef: RefObject<HTMLDivElement | null>,
-  composerDockRef: RefObject<HTMLDivElement | null>,
-): void {
-  useLayoutEffect(() => {
-    const center = centerRef.current
-    const dock = composerDockRef.current
-    if (!center || !dock || typeof ResizeObserver !== 'function') return
-
-    const write = (name: string, px: number) => {
-      center.style.setProperty(name, `${Math.round(px)}px`)
-    }
-    const measure = () => {
-      write('--composer-h', dock.getBoundingClientRect().height)
-      write('--center-h', center.getBoundingClientRect().height)
-    }
-    measure()
-
-    const observer = new ResizeObserver(measure)
-    observer.observe(dock)
-    observer.observe(center)
-    return () => {
-      observer.disconnect()
-      center.style.removeProperty('--composer-h')
-      center.style.removeProperty('--center-h')
-    }
-  }, [centerRef, composerDockRef])
 }
 
 /**

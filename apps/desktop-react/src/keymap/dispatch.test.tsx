@@ -6,6 +6,7 @@ import { useExposeStore } from '../expose/store'
 import { useStageStore } from '../stage/store'
 import { initialStageState } from '../stage/transitions'
 import { focusTree } from '../focus/registry'
+import { startWorkbench, useWorkbenchStore } from '../workbench/store'
 import { useKeymapStore } from './store'
 import { findCommand, initialKeymapState } from './transitions'
 import { pinMacUserAgent } from '../test/mac-ua'
@@ -22,6 +23,17 @@ beforeEach(() => {
   useAgentMenu.setState({ open: false })
   // 响应链是模块级单例(同 store):一份用例留下的作用域不该被下一份看见。
   focusTree.reset()
+  /*
+   * **出厂那棵树要在第一次渲染之前就位** —— 与 `main.tsx` 逐字同序
+   * (`startWorkbench()` 排在 `createRoot().render` 之前)。
+   *
+   * W5-c 之前这一句可以省:输入框是外壳直接渲染的一件,树播没播种它都在屏上。
+   * 路线 A 之后它是**会话叶自己的器官**,树没播种 = 屏幕上没有输入面板,于是
+   * §3.5 规则 1 的第一格(壳一挂起来第一响应者是输入面板)落不到它身上,⌘N 也
+   * 没有响应者。不是被测行为变了,是这份夹具从前不必像真机那样开机。
+   */
+  useWorkbenchStore.getState().reset()
+  startWorkbench()
 })
 
 describe('快捷键派发', () => {

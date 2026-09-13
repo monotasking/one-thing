@@ -21,9 +21,8 @@ function read(rel: string): string {
 /**
  * 取一条规则的整块声明(`.sel {...}` 里那一段)。
  *
- * 选择器必须**从行首**起 —— 否则 `.composerDock` 会先命中
- * `.shell[data-dock-reserve='bottom'] .composerDock`(它把前者当子串包住了),
- * 断言于是读到隔壁那条规则的声明块,红得莫名其妙。
+ * 选择器必须**从行首**起 —— 否则 `.composerDock` 会先命中一条把它当子串包住的
+ * 规则,断言于是读到隔壁那条的声明块,红得莫名其妙。
  */
 function block(css: string, selector: string): string {
   const at = css.indexOf(`\n${selector} {`)
@@ -32,6 +31,13 @@ function block(css: string, selector: string): string {
 }
 
 const shell = read('src/components/AppShell.module.css')
+/*
+ * W5-c(路线 A):落位带那两条从外壳搬进了**会话叶自己的**样式表 —— 输入框是
+ * `session` 那一种内容的器官,「一块内容长什么样」跟着那块内容走。让位那一条
+ * 留在外壳(那是外壳的事),只是抓手从类名换成了 `[data-composer-dock]`:
+ * CSS Modules 的类名跨文件会被哈希成两个不同的名字。
+ */
+const leaf = read('src/content/kinds/ChatLeaf.module.css')
 const chat = read('src/content/ChatStream.module.css')
 const composer = read('src/composer/components/Composer.module.css')
 const pill = read('src/content/FollowPill.module.css')
@@ -40,12 +46,12 @@ const tokens = read('src/styles/tokens.css')
 
 describe('① 输入框浮起来,聊天区铺满', () => {
   it('落位带绝对定位贴底,且自己不接事件(不然它会吃掉底下正文的滚轮)', () => {
-    const dock = block(shell, '.composerDock')
+    const dock = block(leaf, '.composerDock')
     expect(dock).toMatch(/position:\s*absolute/)
     expect(dock).toMatch(/bottom:\s*0/)
     expect(dock).toMatch(/pointer-events:\s*none/)
     // 孩子收回事件 —— 否则输入框自己也点不动。
-    expect(block(shell, '.composerDock > *')).toMatch(/pointer-events:\s*auto/)
+    expect(block(leaf, '.composerDock > *')).toMatch(/pointer-events:\s*auto/)
   })
 
   /**
@@ -67,6 +73,16 @@ describe('① 输入框浮起来,聊天区铺满', () => {
     expect(block(shell, ".shell[data-dock-reserve='bottom'] .main")).toMatch(
       /padding-block-end:\s*var\(--dock-reserve-h\)/,
     )
+    /*
+     * W5-c(路线 A)再补三句:落位带搬进了会话叶(`ChatLeaf.module.css`),外壳的样式表里
+     * 不许再有 `.composerDock` 的任何规则,也不许按 `[data-composer-dock]` 属性给它
+     * 单独让位 —— 它住在 `.main` 已经缩好的内容盒里,让位按构造继承,再写一条就是
+     * 让两遍(真机读数在 `gate:chat-follow` ②:气口里压着一条消息,差 44px)。
+     * 落位带身上那个属性仍旧要挂着:真机门按它找人(`scripts/lib/composer-dock.mjs`)。
+     */
+    expect(shell).not.toMatch(/data-dock-reserve='bottom'\]\s*\[data-composer-dock\]/)
+    expect(shell).not.toMatch(/\.composerDock\s*\{/)
+    expect(read('src/content/kinds/session.tsx')).toMatch(/data-composer-dock/)
   })
 })
 
@@ -89,7 +105,10 @@ describe('② 气口:正文与玻璃上缘之间那 40px', () => {
 
   it('输入框实高不是魔法数:token 里只有一个兜底 0,真值由 ResizeObserver 写', () => {
     expect(tokens).toMatch(/--composer-h:\s*0px/)
-    expect(read('src/components/AppShell.tsx')).toMatch(/setProperty\(name, `\$\{Math\.round\(px\)\}px`\)/)
+    // W5-c:量它的那只观察者跟着输入框搬进了会话叶(`useComposerGeometry`)。
+    expect(read('src/content/kinds/session.tsx')).toMatch(
+      /setProperty\(name, `\$\{Math\.round\(px\)\}px`\)/,
+    )
   })
 
   /*
@@ -101,7 +120,7 @@ describe('② 气口:正文与玻璃上缘之间那 40px', () => {
    *
    * 治法是几何:抽屉改成 `position: absolute`,绝对定位的子元素**不进父级布局高**。
    * 所以这条断言与上面那一条是**一对**:一条说这个数怎么量,一条说什么东西不该
-   * 被量进去。AppShell 那只观察者、`.scroll` 那两条内衬都因此一行没改。
+   * 被量进去。那只观察者(W5-c 起住在会话叶里)、`.scroll` 那两条内衬都因此一行没改。
    */
   it('抽屉不进这个数:它绝对定位挂在面板上沿,布局高里没有它', () => {
     const drawer = block(composer, '.drawer')

@@ -75,6 +75,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { _electron as electron } from 'playwright'
+import { installComposerDockProbe } from './lib/composer-dock.mjs'
 import electronBinary from 'electron'
 import {
   startFakeProvider,
@@ -239,7 +240,7 @@ function readGeometry(page) {
       return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, height: r.height }
     }
     const scroll = q('[data-testid="chat-stream"]')
-    const dock = q('[data-testid="composer-dock"]')
+    const dock = window.__composerDock()
     const panel = q('[data-testid="composer-panel"]')
     const center = dock?.parentElement ?? null
     const rows = Array.from(document.querySelectorAll('[data-message-id]'))
@@ -438,6 +439,9 @@ async function main() {
     const cdp = await app.context().newCDPSession(page)
     // 离屏窗自己把「我有焦点」补上 —— 只进这个窗口,不碰真光标(同 gate-focus)。
     await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+    /* **焦点叶里的那一块输入框**(W5-c-3):路线 A 之后屏幕上可以有好几块,
+     * 门要量的是人此刻在用的那一块。判词整段在 `scripts/lib/composer-dock.mjs` 上。 */
+    await installComposerDockProbe(page)
     await waitFor('渲染层完成一次 RPC 往返', async () => {
       const value = await page.evaluate(() => window.__d0 ?? null)
       return value && value.rpcOk ? value : undefined

@@ -14,10 +14,12 @@ import type { Attachment } from './types'
  * 「一条会话一台 + 一张注册表」),这一格走的是同一条路:
  *
  *  · **按 `sessionId` 键**的一张表 —— 一条会话一份稿;
- *  · `.composerDock` 那只输入框组件**仍旧只有一个**(路线 B:它在 `.center` 上
- *    不进树),但它渲染的是**当前活动会话那份**:换会话时先把旧那份存下来,
+ *  · W7-t/B2 时 `.composerDock` 那只输入框组件**只有一个**(路线 B:它在
+ *    `.center` 上不进树),渲染的是当前活动会话那份:换会话时先把旧那份存下来,
  *    再把新那份铺上去(接线在 `composer/components/Composer.tsx` 那一句
- *    layout effect 上);
+ *    layout effect 上)。**W5-c 路线 A 之后一片会话叶一只**,`sessionId` 是叶递
+ *    下来的 prop、一格叶一辈子不变,于是那句接线在生产上只剩「挂载铺稿 / 卸载
+ *    存稿」两条边 —— 这张表因此比从前更简单,而它一行都没改;
  *  · 丢弃时机只有一个 —— **那条会话被真的关掉**(`ContentKind.dispose`,
  *    在 `content/kinds/session.tsx` 上)。藏起来的会话叶照样留着稿。
  *

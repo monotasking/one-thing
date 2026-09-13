@@ -95,9 +95,10 @@ function useNow(tickMs: number): number {
 }
 
 export function StreamReadout({
+  sessionId,
   startedAt,
   lastActivityAt,
-}: { startedAt: number; lastActivityAt?: number }) {
+}: { sessionId: string; startedAt: number; lastActivityAt?: number }) {
   const t = useT()
   const now = useNow(READOUT_TICK_MS)
 
@@ -122,13 +123,15 @@ export function StreamReadout({
         停止走 composer 那条 sink —— **同一条通道**,不新开。发送键在忙态下翻成的
         那颗停止键按的也是它,于是"停"这件事在这台上只有一个实现、一个失败处理
         (`chat-source.abort`:没在跑就是恒等,发不出去是 error 档通知)。
+        停哪一条**由这一行自己说**(W5-c-2):它长在某一条会话的消息流里,
+        那就是收件人 —— 从前那一口读「当前会话」投影,分屏下能停到隔壁去。
       */}
       {/* 与动作行那两颗同判(见 MessageActions):幽灵皮肤留本地,清 UA 归基座。
         * 这一颗还比它们再小一档(`.readout .ghost`)—— 它是读数的一部分。 */}
       <ButtonBase
         className={s.ghost}
         data-testid="chat-stop"
-        onClick={() => composerSink().abort()}
+        onClick={() => composerSink().abort(sessionId)}
       >
         {t('chat.stop')}
       </ButtonBase>

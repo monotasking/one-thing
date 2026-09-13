@@ -5,7 +5,8 @@ import type { FilesListRequest } from '@shared/ipc/files'
 import { Composer } from './Composer'
 import { focusTree } from '../../focus/registry'
 import { FocusDispatchHarness } from '../../test/focus-harness'
-import { useComposerStore, resetComposerStore } from '../store'
+import { composerStoreFor, resetComposerStore } from '../store'
+import type { ComposerState } from '../types'
 /*
  * `drawerKind` 的来源那半边 09-12 从两个**种类名**(`'files' | 'commands'`)收成了
  * 「哪个触发字符」—— 下面两条断言因此换了形,说的还是同一句话:「`@` 那一档开着」。
@@ -32,7 +33,6 @@ import { useProviderSettings } from '../../providers/store'
 import type { OpenRouterModel } from '@shared/ipc/providers'
 import { prefsQuery, providersQuery, useModelsSource } from '../../data/models-source'
 import { configureModelsPort } from '../../data/models-port'
-import { useExposeStore } from '../../expose/store'
 import { catalogQuery } from '../../providers/catalog-query'
 import { openRouterModel, providerModelPrefs } from '../../data/__fixtures__/models'
 
@@ -45,6 +45,13 @@ const handed: ({ kind: 'text'; text: string; attachments: number } | { kind: 'no
 
 /** 交给 sink 的「停一轮」有几次。忙态是**真 store 的那一格**,不另造一个假的。 */
 let aborts = 0
+
+/**
+ * **每一次出站动作交给了哪条会话**(W5-c-2)。上面那个 `handed` 记的是「交了什么」,
+ * 这一格记的是「交给谁」—— 路线 A 之后屏幕上可以有两块面板,收件人不再是一句
+ * 说得清的投影,所以它是一件要单独钉的事实。
+ */
+const handedTo: string[] = []
 
 /**
  * 假 sink 眼里「有没有当前会话」—— 首开草稿态就是这一格为 false:
@@ -69,15 +76,17 @@ beforeEach(() => {
   useStageStore.setState({ locale: 'zh' })
   resetComposerStore()
   handed.length = 0
+  handedTo.length = 0
   aborts = 0
   hasSession = true
   starts = 0
   answerStart = async () => 'created-1'
   configureComposerSink({
-    send: (text, attachments) => {
+    send: (text, attachments, sessionId) => {
       // 没有当前会话就交不出去 —— 与真实现同判据(见 sink.ts 上的 send 注释)。
       if (!hasSession) return false
       handed.push({ kind: 'text', text, attachments })
+      handedTo.push(sessionId)
       return true
     },
     notice: (notice) => void handed.push({ kind: 'notice', notice }),
@@ -155,9 +164,19 @@ afterEach(() => {
   })
   // 响应链是模块级单例(同 store):一份用例留下的作用域不该被下一份看见。
   focusTree.reset()
+  rendered = undefined
+  shown = ''
 })
 
-const state = () => useComposerStore.getState()
+/**
+ * **这块面板此刻对着哪条会话**(W5-c:`Composer` 收 `sessionId` prop,store 按它
+ * 分家)。`renderComposer` / `switchTo` 记在这里,下面两口读它 —— 于是这一族
+ * 用例里那八十来处 `state()` 一个字都不必改:它们问的一直是「屏幕上这块面板
+ * 此刻那一份状态」,只是那句话从前恰好只有一个答案。
+ */
+let shown = ''
+const state = () => composerStoreFor(shown).getState()
+const setState = (partial: Partial<ComposerState>) => composerStoreFor(shown).setState(partial)
 /**
  * **输入面板 + 那一格派发器**(09-03 R2)。
  *
@@ -167,17 +186,41 @@ const state = () => useComposerStore.getState()
  * 「一台真机器」:①那个派发器;②**这块面在活动路径上** —— 路由问的是
  * 「composer 是不是当前」,不是「这一下按键经不经过它的根」。
  */
-function renderComposer() {
-  const view = render(
-    <>
-      <FocusDispatchHarness />
-      <Composer />
-    </>,
-  )
+/**
+ * 这块面板挂在哪一格上。真机上是内容层那一格的 refId(`session:<key>`),
+ * 用例只需要一个**稳定且各会话不同**的形状 —— 它是 `FocusScope` 的 `owner`,
+ * 「切标签 → 焦点进这一格自己的输入面板」靠的正是它(见 `workbench/focus-into`)。
+ */
+const ownerOf = (sessionId: string) => `session:${sessionId || 'new'}`
+
+/** 最近一次渲染交出来的句柄,`switchTo` 拿它换 prop。 */
+let rendered: ReturnType<typeof render> | undefined
+
+const tree = (sessionId: string) => (
+  <>
+    <FocusDispatchHarness />
+    <Composer sessionId={sessionId} owner={ownerOf(sessionId)} />
+  </>
+)
+
+function renderComposer(sessionId = '') {
+  shown = sessionId
+  const view = render(tree(sessionId))
+  rendered = view
   act(() => {
     focusTree.activateScope('composer')
   })
   return view
+}
+
+/**
+ * **换一条会话**。真机上那是「这一格的 refId 换了 → 这一格重挂」(内容层按 refId
+ * 分格);用例里换的是 prop,走的是 `Composer` 那两只 layout effect 的同一条路
+ * —— 先把旧那份稿存下来,再把新那份铺上去。
+ */
+function switchTo(id: string): void {
+  shown = id
+  act(() => void rendered!.rerender(tree(id)))
 }
 
 /** 输入面板那一格作用域的根。ask 的 ← → 是**行内结构键**,派在它身上。 */
@@ -222,6 +265,32 @@ function type(el: HTMLElement, text: string) {
   }
   fireEvent.input(el)
 }
+
+/**
+ * **两格 prop 都是这一格叶自己的事实**(W5-c,正本 §4.3)。
+ *
+ * 这一族的其余用例只顺手用着它们(`renderComposer(sessionId)`),所以「它们真的
+ * 落到了该落的地方」由这两条单独钉:
+ *  · `owner` 挂在作用域根上 —— `focusIntoRef` 靠它挑**这一格自己**那份实例
+ *    (判词在 `workbench/focus-into.ts`;它那一头的用例在 `tabs-w7t.test.tsx`);
+ *  · `sessionId` 决定读写哪一份 store —— 两块面板并排时互不相干。
+ *
+ * **反证**:把 `Composer` 的 `FocusScope` 上那句 `owner={owner}` 去掉 → 第一条红。
+ */
+describe('W5-c:这块面板的两格 prop', () => {
+  it('作用域根登记的 owner 就是这一格的 refId', () => {
+    renderComposer('s-1')
+    const registered = focusTree.dump().nodes.find((node) => node.scope === 'composer')
+    expect(registered?.owner).toBe('session:s-1')
+  })
+
+  it('两块面板并排:一块开抽屉,另一块一个字不动', () => {
+    renderComposer('A')
+    fireEvent.click(modelPill())
+    expect(composerStoreFor('A').getState().drawerKind).toBe('model')
+    expect(composerStoreFor('B').getState().drawerKind).toBeNull()
+  })
+})
 
 describe('抽屉:一个槽,后来者顶替先来者', () => {
   it('打出 @ 就开文件抽屉;模型抽屉正开着时被它直接顶掉', async () => {
@@ -1231,6 +1300,16 @@ describe('首开草稿态:没有会话时发送 = 先建一条,再把这句话�
     expect(starts).toBe(1)
     expect(handed).toEqual([{ kind: 'text', text: '先建一条会话再说', attachments: 0 }])
     expect(box().textContent).toBe('')
+    /*
+     * **收件人是刚建出来那一条,不是这块面板出厂时那个空串**(W5-c-2)。
+     * 这是这块面板一辈子唯一一次收件人与自己不同的时刻 —— W5-c-2 之前它白拿
+     * (sink 每次现问「当前会话是谁」),收件人钉进 store 之后就得说出来。
+     *
+     * **反证**:把 `useComposerSend` 那句 `send(text, created)` 的第二个参数删掉 →
+     * 这一条读到空串。真机上那是**首开第一句话静默发不出去**
+     * (`chatSources.get('')` 查无此人)。
+     */
+    expect(handedTo).toEqual(['created-1'])
   })
 
   it('空话不建会话 —— 「开始一段对话」的前提是真有一句话要说', async () => {
@@ -1298,6 +1377,10 @@ describe('首开草稿态:没有会话时发送 = 先建一条,再把这句话�
  *  · 抽屉 commit 的那道闸(在飞时**连抽屉都不收**,因为它根本没走到 `choose`)。
  */
 describe('律③:切模型在飞时,药丸自报忙、抽屉不接第二下', () => {
+  /* 这一族要一条**真会话**:`selectKey(sessionId)` 是药丸忙态与抽屉那道闸共读的
+   * 那一格,空串(草稿态)走的是另一条路(记成「下一条新会话用谁」)。
+   * W5-c 之前它由 `expose.currentSessionId` 立,现在由这块面板的 prop 立。 */
+  const SESSION = 's1'
   const updates: string[] = []
   let land: (value: { success: boolean }) => void = () => undefined
 
@@ -1314,7 +1397,6 @@ describe('律③:切模型在飞时,药丸自报忙、抽屉不接第二下', ()
 
   beforeEach(() => {
     updates.length = 0
-    useExposeStore.setState({ currentSessionId: 's1' })
     configureModelsPort({
       ready: async () => undefined,
       listProviders: async () => ({ success: true, providers: [] }),
@@ -1341,11 +1423,10 @@ describe('律③:切模型在飞时,药丸自报忙、抽屉不接第二下', ()
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
     configureModelsPort(undefined)
-    useExposeStore.setState({ currentSessionId: '' })
   })
 
   it('在飞时药丸 aria-busy,而且它自己不被禁用', async () => {
-    renderComposer()
+    renderComposer(SESSION)
     fireEvent.click(pill())
     await act(async () => void fireEvent.mouseDown(row()))
 
@@ -1362,7 +1443,7 @@ describe('律③:切模型在飞时,药丸自报忙、抽屉不接第二下', ()
    * 收窄成它真正要守的那一件:**在飞时第二下一个字都不发**(闸在 commit)。
    */
   it('在飞时抽屉的第二下**不发**(闸在 commit,不在 store)', async () => {
-    renderComposer()
+    renderComposer(SESSION)
     fireEvent.click(pill())
     await act(async () => void fireEvent.mouseDown(row()))
     expect(updates).toEqual(['grok-4'])
@@ -1727,26 +1808,17 @@ describe('庚:模型选择器带思考档位', () => {
  * 里躺着 A 的稿;在 B 里接着打 → 回到 A,A 的稿已经被顶掉了。
  *
  * 病根是**输入框是外壳级的一件、而它的内容没有主人**。修法与 W5-a 同一条路:
- * 状态按 `sessionId` 分家(表在 `composer/drafts.ts`),这只组件渲染的是「当前活动
- * 会话那一份」—— 所以这一组用例走的正是用户那三步:A 打字 → 切 B → 回 A。
+ * 状态按 `sessionId` 分家(表在 `composer/drafts.ts`)—— 所以这一组用例走的正是
+ * 用户那三步:A 打字 → 切 B → 回 A。
  *
- * 这里换会话是**直接改 `currentSessionId`**,而不是去点一格 tab:那一格是
- * 投影(`content/session-projection`),点标签与从列表里换会话最后都落在它上面,
- * 组件这一层认得的只有它。
+ * W5-c 之后换会话是**换这块面板的 `sessionId` prop**(`switchTo`),而不是改一格
+ * 全局投影:真机上那是「这一格的 refId 换了 → 这一格重挂」,而重挂与换 prop 在
+ * `Composer` 这一层走的是同一条 layout effect(先存旧稿、再铺新稿)。
  */
 describe('B2:一条会话一份草稿', () => {
-  beforeEach(() => {
-    useExposeStore.setState({ currentSessionId: 'A' })
-  })
-  afterEach(() => {
-    useExposeStore.setState({ currentSessionId: '' })
-  })
-
-  /** 换一条会话(与点一格会话标签、从列表里换会话走的是同一格投影)。 */
-  const switchTo = (id: string) => act(() => void useExposeStore.setState({ currentSessionId: id }))
 
   it('A 打字 → 切 B 是空的 → B 打字 → 回 A 仍是 A 的稿', () => {
-    renderComposer()
+    renderComposer('A')
     act(() => type(inputBox(), 'A 的稿'))
 
     switchTo('B')
@@ -1778,7 +1850,7 @@ describe('B2:一条会话一份草稿', () => {
   it('@ 引用是真节点:切走再回来,它仍旧是一枚 chip,交出去的仍是那截 token', async () => {
     // `@` 候选那条口是去抖的,所以这一条要一台假钟(与那一族用例同一手)。
     vi.useFakeTimers()
-    renderComposer()
+    renderComposer('A')
     const box = inputBox()
     act(() => type(box, '@model'))
     await settleMentions()
@@ -1804,9 +1876,9 @@ describe('B2:一条会话一份草稿', () => {
    * **摞开着没有**是同一件事的两半,所以两格一起搬。
    */
   it('附件与那只摞的开合跟着会话走', () => {
-    renderComposer()
+    renderComposer('A')
     act(() => {
-      useComposerStore.setState({
+      setState({
         attachments: [{ id: 'a1', name: 'a.png' }],
         attOpen: true,
       })
@@ -1824,7 +1896,7 @@ describe('B2:一条会话一份草稿', () => {
    * (判词与反证在 `composer/drafts.test.ts`;这一条量的是编排这一头真的走到了它)。
    */
   it('打完又清空的那条会话,切走时不在表里留空壳', () => {
-    renderComposer()
+    renderComposer('A')
     act(() => type(inputBox(), '写了又删'))
     act(() => type(inputBox(), ''))
     switchTo('B')
