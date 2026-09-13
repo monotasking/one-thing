@@ -254,15 +254,15 @@ browser(`openBrowser({near})`,url 快照)、terminal(`openTerminal near`)、sess
 反证:拆 `spawn` 读取 → 四段前三段红。
 
 **K3 · 内容族命令统一(行为变化:浏览器 ⌘R 重载、⌘[ ⌘] 后退前进、⌘+ − 0 页面缩放;检索面 ⌘[ ⌘]
-不变)。** 命令表加 `view.reload`、`view.zoomIn/Out/Reset`;`nav.back/forward` 收编检索面的两条;
+不变)。 已入库 `a56c11c50`(2026-09-13;`zoom` op 归 `ui_change`、梯子一个产地 `nextZoomLevel`、无历史不交 `nav.*` 处理器;`nav.back/forward` 通名 `keymap.nav*`,检索面说法挂回 `answers`;`gate:browser` ㉓d 证「页面 `did-start-navigation` 1 次、壳 0 次」——P2 闭环)。** 命令表加 `view.reload`、`view.zoomIn/Out/Reset`;`nav.back/forward` 收编检索面的两条;
 浏览器叶实现六条(`browserOps.reload/back/forward` 现成,缩放走 `resource-spec` 加 `zoom` 一个 op)。
 门:`gate:browser` 各一条。
 
-**K4 · 菜单栏从命令表画(行为变化:macOS 菜单栏列出全部命令与当前键位)。** `keymap` 下沉 verb 扩成
+**K4 · 菜单栏从命令表画(行为变化:macOS 菜单栏列出全部命令与当前键位)。已入库 `265614e73`(2026-09-13;`keymap` 动词扩 `{chords, menu}`、`menu-projection.ts` 纯函数按 id 形状分四节、`routeCommand` 与 `routeKey` 同判据、`registerAccelerator: false` 全表、菜单点击经 `dispatchHostCommand` 走唯一派发器、㉕ 四句)。** `keymap` 下沉 verb 扩成
 `{ chords, menu }`,主进程按表建菜单,点击推 `{ kind: 'command', id }` 回壳走 `runCommand`;改绑即重画。
 这一期做完,「哪个键干什么」在设置页、菜单栏、保留表三处只有一个产地。
 
-**K5 · 键位组与导入 / 导出(09-12 用户提出)。** 改绑今天是「一格一格录」;用户要的是**成组切换**
+**K5 · 键位组与导入 / 导出(09-12 用户提出)。已入库 `2a2b327b3`(2026-09-13;三层落 `effectiveCombos`、内置三组按平台算、`bindCombo` 改追加一枚 + `removeCombo`、`comboFromEvent` 认 offHand、`keymap/chord.ts` 两向、`profile-io` / `import-vscode` / `profile-file`;K3 那四条内容族命令两组不映射——VS Code 的 reload / zoom 作用在整台窗口不是焦点内容;留账:VS Code 组 ⌥⌘→ 与右架子共键、chord 串平台解释过不跨机器、`gate:a11y` 不扫设置页快捷键屏)。** 改绑今天是「一格一格录」;用户要的是**成组切换**
 (VS Code 组、JetBrains 组)与**从文件导入**。模型加一层:`KeymapProfile { id, name, bindings:
 Partial<Record<CommandId, Combo | null>> }`,有效键 = 用户逐格覆盖 ▷ 当前键位组 ▷ 出厂表(三层,
 缺席往下落,显式 `null` = 解绑)。内置三组:`default`(本文 §3「应当」列)、`vscode`、`jetbrains`——
@@ -290,7 +290,15 @@ Partial<Record<CommandId, Combo | null>> }`,有效键 = 用户逐格覆盖 ▷ �
 设置页:顶部一个「键位组」选择器 + 导入 / 导出两钮;逐格改绑照旧,改绑落在覆盖层,换组不丢。
 门:三组文件全部通过冲突规则(单测);导入一份含未知命令的文件 → 列出未知行、已知行生效。
 
-K0 是骨架,K1 独立(可先于 K0),K2 / K3 是「加行 + 加响应者」,K4 / K5 是投影与配置层。派工按用户的分工:
+**K6 · 收口(零行为改动)。** 三件:①**法文改口** —— 壳 `CLAUDE.md` 的「快捷键三层」整节按 K0–K5 的终态
+重写(命令表两轴 / `answers` 与 `claims` / `routeKey` 五问 / 冲突规则一条 / 有效键三层 / 保留表判据 /
+应用菜单与 `registerAccelerator: false` / 出厂键一览与四条裁定 / 陌生能力演练),「响应链」那条 I5 与
+「原生视图②」里 `FOCUS_SCOPES.browser.keys` 那个已退役的名字一并改口;②**删无用 i18n 键** ——
+`keymap.conflict` / `keymap.scopedConflict` / `keymap.scopedNote`(K0 的 `conflictApp` / `conflictOverlap` /
+`scopedNote2` 取代了它们)与 `session.new`(那条命令 K2 退役)四条,零读者,zh / en 成对删;
+③**跑 `gate:packaged`** —— 这条线从 K1 起一直留账没跑的那道门。不动任何 `src/` 行为代码。
+
+K0 是骨架,K1 独立(可先于 K0),K2 / K3 是「加行 + 加响应者」,K4 / K5 是投影与配置层,K6 收口。派工按用户的分工:
 Fable 拆分审查、opus 执行、haiku 提交;每单交卷 Fable 亲自读 diff。
 
 ## 6. 拍板记录(09-12,用户口述,三条推荐全部被否)
@@ -310,7 +318,9 @@ Fable 拆分审查、opus 执行、haiku 提交;每单交卷 Fable 亲自读 dif
 - P2 的「⌘R 重载整台壳」按 Electron 文档推断,K1 开工先真机量;若量出来默认菜单不在场,K1 只剩
   「补 Edit 角色」一件。
 - `formatCombo` 在 mac 上把 Ctrl 画成 ⌘、`toggle:terminal` 出厂键读作「主修饰键 + 反引号」
-  (T1 留账)未在本方案范围;K0 顺手不动。
+  (T1 留账)未在本方案范围;K0 顺手不动。**K2 已结清两条**:`Combo.offHand` 让声明侧说得出
+  「就是另一枚」而 `formatCombo` 据此在 mac 上画 ⌃ / 别处画 Win,`toggle:terminal` 走出厂表
+  `byPlatform` 分档(两档写出来是同一个手势)。
 - `⌘,` 绑 `toggle:settings` 只是出厂表加一格,归 K2 顺带。
 - ⌘⇧F 是替 ⌘P 选的键,理由是两家 IDE 的「全局搜索」都是它;用户不喜欢换一格即可,一行的事。
 - 浏览器关闭的 tab 没有历史(B3-b 留账)——K2 的 `snapshot` 就是给它补的那一格,不另起机制。

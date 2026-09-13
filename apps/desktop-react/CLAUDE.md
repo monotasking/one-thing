@@ -40,55 +40,139 @@
 - **浮层行为单产地 = `ui/float`(09-01 库自审立法,09-02 R1 收窄一格)**:点外关、定位与跟随只许经 `useFloatDismiss`/`useFloatPosition`,库件与业务面一律禁止手写(判例:Menu 与 Popover 曾各抄一份,产地越多越漂)。**Esc 那一件已经不在这里** —— 它归响应链:浮层声明 `onEscape`(`float`/`modal` 档缺省就是「关自己」),由唯一那个派发器沿活动路径由深到浅问(见下「响应链」节)。「Esc 该由谁认领」那条判例修过三轮(microtask → 改相位 → 浮层栈),三轮都是在没有树的情况下拿 DOM 事件顺序硬凑,`useFloatDismiss` 的 `escape` 参数与整只浮层栈随 R1 一起退役。定位两档的裁定:**矩锚跟滚**(rect 档,贴着元素的浮层 —— Select 面板/Tooltip —— 滚动/resize 时跟随锚点重定位),**点锚不跟滚**(point 档,光标坐标开出的右键菜单滚动时维持原位,变更此裁定须再拍板);两档都在 resize 时重 clamp 进视口。
 - **原生视图三条(09-12 立法,B0 `69219d30` 深查 §9 + B2 `76d98911` 落地;占位格 `content/native-view/NativeViewSlot.tsx`,通道词汇表 `electron/native-view-protocol.ts`)**。这三条是**为所有原生视图立的**,不是浏览器的家规——`NativeViewSlot` 里没有一个 tab / url / 导航的字,第二种原生视图(方案 §7 演练乙点名的 PDF 阅读器)不会长出第二只占位格,也不会长出第二条 IPC,只会多几个 id。
   - **① 原生视图永远压在 DOM 之上,所以「盖上去」必须走「遮挡 = 快照」。** 那一格 DOM 这一侧永远是空的,CSS 的 z-index 对它一个字都不管用:任何浮层盖上来,不发 `occlude` 就是**盖不住**。判据三支(**之一命中即 `occlude`,全不命中才 `unocclude`**):①压在这片地**上面**的浮窗与它相交——「上面」是硬的,要比 `floatOrder` 的名次,不比名次的话一片长在浮窗里的视图会拿自己那扇窗把自己永远遮住,而且矩形要从 `[data-float-body]` 上**现读**(拖窗那一段 store 里的矩形是落后的);②`focus/registry` 上挂着 `kind: 'float' | 'modal'` 的活作用域(菜单 / 弹层 / 命令面板);③拖拽中。撤图要**晚一帧**(`unocclude` 发出去之后主进程还要一拍才把视图放回来,当场撤图会露一帧底色),铺图要等 `img.decode()` 之后那一帧。**`visible` 与「被遮」是两格不许并**:主进程 `layout.ts` 的 `applyVisibility` 本来就是 `visible && !occluded`,并起来等于同一个判据算两遍,更要命的是惰性视图——一格「生下来就被遮」的 tab 会永远 materialize 不出来,于是永远拍不到快照,人看见的是一块底色而不是一张图。
-  - **② 原生视图拿着焦点时,渲染进程的派发器是失明的——键位表要**下沉**,不是在壳里再加一个监听。** 页面里按的键根本不经过壳的 window,所以:`content/native-view/keymap-downlink.ts` 把**全局命令 ∪ `browser` 局部键**(实测 18 条)整壳一份、引用计数地推给主进程 `keymap-bridge.ts`,主进程 `before-input-event` 截住保留键 `preventDefault` 并推回,壳收到后经 `focus/dispatch.ts` 的 `dispatchSyntheticKey` 合成一个事件交给**那唯一的派发器**——**不许挂第二个 keydown 监听**(I2 一个字没松)。推论是这条法最值钱的一半:**新增一条全局键、或往 `FOCUS_SCOPES.browser.keys` 加一条局部键,自动就在下沉表里,不用手加第二处**(B3-a 把 ⌘F 加进 `BROWSER_KEYS` 时「键位下沉表自然带上」,零改 downlink)。焦点是**双向**的:树把焦点交给这块地 → 发 `focus` 动词 → 主进程 `webContents.focus()`;主进程推 `focus` → `activateScope`;推 `blur` → **什么都不做**(焦点去哪由那一边决定,抢回来只会打架)。
+  - **② 原生视图拿着焦点时,渲染进程的派发器是失明的——键位表要**下沉**,不是在壳里再加一个监听。** 页面里按的键根本不经过壳的 window,所以:`content/native-view/keymap-downlink.ts` 把**保留表**(判据见上一节 ⑦:`reserve` ∧ 真绑着 ∧「`app` ∨ 在场作用域答得出」− `claims`;在场的是那片视图自己那一格 ∪ `NATIVE_VIEW_HOST_SCOPES`)整壳一份、引用计数地推给主进程 `keymap-bridge.ts`,主进程 `before-input-event` 截住保留键 `preventDefault` 并推回,壳收到后经 `focus/dispatch.ts` 的 `dispatchSyntheticKey` 合成一个事件交给**那唯一的派发器**——**不许挂第二个 keydown 监听**(I2 一个字没松)。推论是这条法最值钱的一半:**新增一条命令、或往 `FOCUS_SCOPES.browser.answers` 加一格,自动就在下沉表里,不用手加第二处**(B3-a 把 ⌘F 加进浏览器那一族时「键位下沉表自然带上」,零改 downlink)。焦点是**双向**的:树把焦点交给这块地 → 发 `focus` 动词 → 主进程 `webContents.focus()`;主进程推 `focus` → `activateScope`;推 `blur` → **什么都不做**(焦点去哪由那一边决定,抢回来只会打架)。
   - **③ 禁拿页面侧 `document.hasFocus()` 当判据。** B0 实测:壳这一侧与原生视图那一侧对「谁有焦点」的回答不一致,拿它当判据是拿一个会说谎的读数做分支。焦点归属只认 `focus/` 那棵树与这条通道上的 `focus` / `blur` 事实。
 - **检索面的正本是 `docs/search-panel-2026-09.md`**(2026-09-06 十步落地;规矩 R1–R12、三张状态表、分页状态机、十步表逐行带 sha)。改 `src/search/**` 之前读它,别照 `SearchPanel.tsx` 的注释猜 —— 那张文件头的表与代码不符地活过两个月,正是 09-05 报障的一半。
 - **分页四条不变量(检索面立的,凡「一页一页往下加」的列表都算)**:同一把键(`limit` / 页码 / cursor **不进**查询键,翻页是对同一格 `patch` 追加)、页在格内累加、加载时旧行一像素不动、**行集增长绝不触发滚动**(滚动只随「选中换了」变,而且落位那一下 `by==='reconcile'` 不滚)。第四条的反证要数**滚动指令的次数**,不是量 `scrollTop` —— 落位恰好在视野内时 `scrollIntoView` 是恒等操作,量位移会让反证空过(⑦ 真踩过,⑨ 补的 `SearchList.scroll.test.tsx` 是补票)。
 
-## 快捷键三层(09-01 立法,报障「快捷键要分清局部和全局」)
+## 快捷键:一张命令表、响应者认领(09-01 立法「三层」,09-12/13 K0–K5 重铸;正本 `docs/keymap-responder-2026-09.md`)
 
-一个键属于哪一层,由**它需不需要一个目标**决定,不由它好不好按决定。
+09-01 那条判据一个字没变:**一个键属于哪一层,由它需不需要一个「由焦点决定的目标」决定**,不由它好不好按决定。
+变的是它靠什么成立。从前这句话散在五个产地(全局表、七块面各自的 `keys`、终端礼让表、Electron 默认菜单、
+以及「没人认领所以掉给页面」这一档),于是**没有一个人持有「⌘T 是什么」这句话** —— 起因就是用户报的
+「焦点在浏览器里按 ⌘T,该开的是一格新浏览器标签,不是一条新会话」。K0–K5 把那五处合成一张表。
 
-1. **全局档** —— `keymap/transitions.ts` 的 `KEYMAP_COMMANDS`。焦点在哪儿都响,**可改绑**,
-   由 `focus/dispatch.ts` 那**唯一的派发器**在活动路径都没接住时兜底跑
-   (`keymap/dispatch.ts` 09-02 R1 起只剩 `useKeymapCommandRunner` —— 命令的**落点**
-   那张动作表,监听已经删了)。语义:呼出一块面 / 做一件全局的事。
-   **加全局键 = 表里加一行**;改既有键位是用户的拍点,不许顺手动。
-2. **面域局部键** —— 声明的**正本**是 `focus/scopes.ts` 的 `FOCUS_SCOPES[id].keys`;
-   落点是**作用域实例注入的 `keyHandlers`**(不再是那块面自己根元素上的监听,
-   09-03 R2 迁完)。那块面在**活动路径**上才响 —— 不是「焦点落在它的根里」:
-   portal 出去的子面在 DOM 上根本不在那个根里,而用户报的 ⌘F 死的正是旧那条判据。
-   今天两格:查看器 `⌘S/⌘L/⌘F`、文件树 `⌘I/⌘↵`(旧名 `files.row` 随兼容层退役 ——
-   树上不会有「一行」这么细的作用域,行是文件树内部的 roving 目标)。
-   两处会不会分叉由 `keymap/__tests__/keymap-scopes.test.ts` 的比对表(声明这一头)
-   与各面自己读 `focusTree.dump()` 的用例(实例注入的名单那一头)一起钉着;
-   `keymap/scopes.ts` 现在只剩 `scopedCollisionsOf` 一件事 —— 把撞车说给设置页听。
-3. **行内结构键** —— 方向键 / ↵ / Space / Tab / Esc 的 DOM 焦点语义。**不进任何表**
-   (理由见 `keymap/types.ts` 顶部:它们是这套形态语法本身,可配置就等于不一致)。
+**① 命令表是唯一产地(`src/keymap/commands.ts`)。** 一条命令一行,`app`(应用层有没有兜底)与
+`nativeView`(焦点在原生视图里时要不要先于页面截下来)两格是**数据** —— 派发器、菜单投影、保留表
+一行都不读命令名。从前的「全局档」原样进表成了 `app: true` 那一族,从前七块面的局部键原样进表成了 `app: false` 那一族
+(K2 / K3 后来新长出来的标签族与内容族也在后者里):**「没有应用层兜底」正是「它要一个由焦点决定的
+目标」那句判据的另一种说法**。**一条命令多个键面是一等形状**
+(`defaultCombos: readonly Combo[]`):`files.detail` 的 ⌘I 与 ⌘↵、`tab.next` 的 ⌘⇧] 与 ⌃Tab 各是
+**一行两键**而不是两行两义 —— 说得出「谁占着 ⌃Tab」的是冲突规则(按组合找命令),不是表的行数。
+两格声明纪律随之立住:`Combo.offHand` = 「按住**另一枚**修饰键、主修饰键没按」(mac 上是 ⌃、
+Win / Linux 上是 Win 键),与 `meta` / `ctrl` 互斥,补的正是 T1 立法时说不出口的「我要的就是 Ctrl 那一枚」;
+而当一行在两台机器上**本来就是两档**时(召唤终端要的是「两台都按 Ctrl」——mac 上那是另一枚、别处恰是
+主修饰键),走**出厂表**的 `byPlatform` 分档,**不给 `Combo` 再开一根轴**:加一根轴等于
+`matchCombo` / `sameCombo` / `formatCombo` / `chordOfCombo` 四处各多一支,而这件事的真名是
+「**表的这一行**在两台机器上不一样」。
 
-**撞键裁决:局部先接,没接住放行全局。** 这条裁定一个字没变,变的是它靠什么成立:
-那个「先」由**活动路径的深度**保证,不再靠冒泡序。全壳**唯一的派发器**是
-`src/focus/dispatch.ts`(**捕获**相位的一条 window keydown,`keydown-outside-focus`
-硬闸守着它的唯一性),它沿活动路径由深到浅问局部键表,都没命中才轮到全局命令表 ——
-局部接住了全局当场轮不到。`if (e.defaultPrevented) return` 那一句**留为契约**:
-捕获相位是整条传播路径的第一站,所以它今天恒不触发,但「别人真接住了就让开」
-不是一处优化 —— 哪天前面再站一个更早的消费者,这一句就是它的出口。
-判例:F1 时 `⌘I` 长在文件行上却不在任何表里,用户一旦把某条全局命令改绑到 `⌘I`,
-两者会同时响(09-01 结清);今天它进了正本表,设置页那一行还会说出「被『文件』里的
-『详情』占着」(`scopedCollisionsOf`)—— 撞车不是错误,但不许**静默**。
+**② 谁答得出由作用域自述,命令表里一个作用域的名字都没有。** 声明这一头是 `focus/scopes.ts` 的
+`FOCUS_SCOPES[id].answers: ScopeAnswer[]`(「这种面**可能**答哪些命令」,每格可带一个 `labelKey` 覆盖
+命令的通名 —— 查找的通名是「查找」,终端说「在这块屏幕里查找」、浏览器说「在这一页里查找」、查看器说
+「在这份文件里检索」:三句话仍然是三句,只是挂在**响应者**上,不再各绑一次键)。实例那一头是
+`FocusScope` 的 `commands={{ 'view.find': fn }}` —— 键是**命令 id**,不是各面自造的 action 名 ——
+而且是**动态**的:叶没有活动 tab 时 `tab.close` 是 `undefined`,浏览器刚开那一格没有历史时 `nav.back`
+是 `undefined`。「声明里有」与「此刻交得出」是两件事,派发器问的永远是后者。`ScopedKey` / `keyHandlers` /
+`scopedCollisionsOf` 三个名字**已退役**,别照旧文档写。
+
+**③ 认领(`claims`)是「接住并放行」,与 `answers` 方向相反。** 作用域声明 `claims: Combo[]` =
+「这几个键归里面那台程序,壳别碰」;派发器命中时**不跑任何东西、不 `preventDefault`、不再往外问**,
+事件照常落到 xterm / 页面手里。今天只有 `terminal` 一格有(Win / Linux 上 PTY 要的那五个 Ctrl+字母,
+判词整段在 `content/terminal/key-courtesy.ts`);实例侧一格开关 `claiming`(终端的查找框开着、光标在
+里面时整族让开),与 `commands[id]` 缺席同一个形。它**不是命令** —— 不进改绑表、不进原生视图保留表
+(页面本来就该拿到它)。从前它被塞进「局部键 + 一个把控制字节写回 PTY 的 action」的形里,那是两类东西
+挤在一个壳里:让开之后 xterm 收到原生 keydown 自己写 `\x10`,**少一次翻译也就少一份「哪个字母对哪个
+字节」的第二真相**。
+
+**④ 派发器仍是那唯一一条(`focus/dispatch.ts`),`routeKey` 五问。** 候选集(`lookupCommands` 回这个键上
+绑着的**全部**命令)→ 沿活动路径由深到浅,先问 `claims`(命中即 `target:'claim'`,让开)→ 再问
+`node.commands[c]`(命中即那格响应者做)→ 都没有才轮到候选里 `app: true` 那一条 → 否则**放行**,
+不 `preventDefault`,页面 / PTY / 系统菜单接着走。「局部先接、没接住放行全局」这条 09-01 的裁定一个字
+没变,它由**活动路径的深度**保证,不靠冒泡序。菜单栏点一项走的是 `routeCommand`:**与 `routeKey`
+同一条判据**,少了「按键」那一半(`nodeAnswers` + `findCommand(...).app` 是抽出来共用的,单测钉
+「两只对同一棵树逐字相等」),所以**菜单画灰与按键不响永远是同一件事**;它不问 `claims` —— 那是
+「别截这个键」,不是「别做这件事」。
+
+**⑤ 冲突规则一条,出厂表自己也要过(`comboConflictBetween`)。** 一个键上的多条命令:`app: true` 的
+**至多一条**(应用层兜底没有「谁先」可言,两条就一定有一条永远轮不到);其余每两条的 `answers` 作用域
+集合**两两不交**(不同时在场才许共键)。⌘L 上 `browser.address` 与 `viewer.gotoLine` 合法;一条 app 级
+与一条跟焦点的共键合法 —— 那正是三层那句裁定。`bindCombo` 拒绝用户改绑时说得出**撞的是谁、按哪一条
+规则撞**:撞车不是错误,但不许**静默**。判例:从前那张「撞车表」把本该是**设计**的东西当**事故**列给
+设置页(「查找在每块面里都是 ⌘F」不该是三行恰好相同的巧合),它随 K0 退役;而出厂表从前**没有**冲突
+检查,08-31 的 ⌘⇧O 撞车正是长在那块土壤上,今天全表过规则由用例钉着,三个内置键位组各跑一遍同一条。
+
+**⑥ 有效键三层:用户逐格覆盖 ▷ 当前键位组 ▷ 出厂表(`effectiveCombos`,K5)。** 缺席往下落,
+**显式 `null` = 解绑**且赢过下一层(所以问的是 `in`,不是真值)。内置三组 `default` / `vscode` /
+`jetbrains`(`keymap/profiles.ts`),只映射**有对应物**的命令,没有的留空往下落到出厂表;用户组 id 一律
+`user:` 打头,**导入即多一组**、不覆盖内置组,导出的是**当下那张有效表**。认不出的组名落回出厂组 ——
+一个认不出的组名最坏的后果应该是「键位回到出厂」,不是整台壳一个快捷键都没有。改表形要迁移
+(`KEYMAP_PERSIST_VERSION` 今天是 5:K0 把旧的单个 `Combo` 包成 `[Combo]`,K2 把退役的 `session.new`
+覆盖项丢掉)。
+
+**⑦ 原生视图保留表从命令表派生,不是第二张表(`content/native-view/keymap-downlink.ts` 的
+`boundChordsFor`)。** 判据写成了数据:`nativeView === 'reserve'` ∧ **此刻真绑着键** ∧
+(`app` ∨ 这几格在场的作用域里有人答得出)− 在场作用域的 `claims`。第三条是「⌘S 不该被推下去」的判据
+(只有查看器答得出,而查看器与那片原生视图不会同时在场,推下去只会让页面自己的 ⌘S 变成一个哑键);
+减 claims 是因为那几个键页面本来就该拿到。在场集合除了那片视图自己报的那一格(`browser` / 将来的
+`pdf`),还要加上 `NATIVE_VIEW_HOST_SCOPES = ['leaf']` —— **一片原生视图永远住在一格 tab 里**是这条
+下沉链的**结构前提**,不是浏览器的属性,所以 ⌘T / ⌘W / ⌘⇧T / ⌘⇧[ ⌘⇧] / ⌃Tab / ⌘1–9 在网页焦点下
+也到得了壳(Chrome / Safari 对自己那几个键就是这么做的)。推论仍是这条法最值钱的一半:**加一条命令、
+或给某块面的 `answers` 加一格,自动就在下沉表里,不用手加第二处**。
+
+**⑧ 应用菜单是壳自己设的,而且它是命令表的投影**(`electron/app-menu.ts` + `app-menu-install.ts` +
+`src/keymap/menu-projection.ts`)。起因量在 K1 开工第一步:Electron 在没人设菜单时会**自动装一张没人
+审过的键表**(File→Close ⌘W、View→Reload ⌘R / Force Reload ⇧⌘R / Toggle DevTools ⌥⌘I / ⌘0 / ⌘+ /
+⌘−、Window→Minimize ⌘M…),而它的目标永远是**整台壳**:焦点在网页里按 ⌘R,页面不处理 → 默认菜单的
+`reload` 角色 → `BrowserWindow.reload()` → **重载整台壳**(终端全 detach、拼贴树重建、在飞的流丢 UI
+状态,`electron/terminal-reload.ts` 就是给这件事收尸的)。所以三条:①壳自己 `setApplicationMenu`,
+prod 档 reload / forceReload / zoom* / toggleDevTools / close **一个都不放**,Edit 那八个角色
+(undo/redo/cut/copy/paste/pasteAndMatchStyle/delete/selectAll)**必须留** —— 没有它们 macOS 上输入框里
+⌘C/⌘V 不工作(这一条真机门证不了,靠单测);②`KEYS_RESERVED_FOR_CONTENT`(⌘R / ⌘W / ⌘T / ⌘N / ⌘+ /
+⌘− / ⌘0)是「还给内容层的键」的**唯一产地** —— 菜单这一侧要能单独证明「我没占着别人的键」,而那个
+证明只有对着同一张表做才算数;③K4 起菜单栏那几节由 `projectAppMenu` **纯函数**画出来(`menuFamilyOf`
+按 id 的**形状**分命令 / 标签 / 内容 / 面板四节,不列名单;i18n 与「此刻谁答得出」都是参数),骑
+`keymap` 那条下沉动词(`{chords, menu}`)过去,点击 `{kind:'command', id}` 推回壳走 `dispatchHostCommand`
+→ 那唯一的派发器,**不合成假按键、不挂第二个监听**。**每一项 `registerAccelerator: false`** ——
+菜单只是投影,真正的派发仍是壳这一条;注册了就是同一个键响两次。
+
+**⑨ 出厂键一览与 09-12 的四条裁定。** 跟焦点的:⌘N `content.new`(新建**这一种**内容)、⌘T `tab.new`
+(同类再开一格)、⌘W 关这一格、⌘⇧T 重开、⌘⇧[ ⌘⇧] 与 ⌃Tab ⌃⇧Tab 换格、⌘1–9 第 n 格(第 9 条是
+「最后一格」)、⌘F 查找、⌘S 保存、⌘L 地址栏 / 跳到某行、⌘I 与 ⌘↵ 详情、⌘[ ⌘] 后退 / 前进、
+⌘R 重载**这块内容**、⌘= ⌘− ⌘0 页面缩放。应用级的:⌘⇧F 检索面、⌘, 设置、⌃\` 召唤终端(两档写出来是
+同一个手势)、⌘E 会话总览、⌘J agent、⌘⇧O 目录、⌘⇧W 工作区面板、⌘⇧↵ 真全屏、⌘⌥⇧← → 标签换序、
+⌘⌥← → ↓ ↑ 四条架子(方向即语义)。**四条裁定**(09-12 用户口述,三条推荐全部被否):
+①**⌘N 不是全局键** —— 原话「我正在看浏览器,点了 ⌘N,后面新建了一条会话,怎么个事」:`session.new`
+这条全局命令**退役**,⌘N 跟焦点走,焦点不在任何内容里就**不响**;「不响」是裁定的直接推论,
+真机用下来觉得空就补一个**响应者**(Dock 答「新会话」),**不许加回全局兜底**。②**⌘1–9 不给工作区
+槽位**(原话「非常讨厌这个设计」,推翻 08-31):`workspace.slot:*` 命令留着、**出厂解绑**,想要的人自己
+绑一个。③**⌘P 不给检索面** —— ⌘P 在全世界的浏览器里是「打印这一页」,而保留表会把它截在页面前面,
+那不是决定是副作用:检索面出厂改 ⌘⇧F(VS Code / JetBrains 两家「全局搜索」的同一个键),⌘P 出厂不绑。
+④**键位组与导入**是用户当场提的新需求,落在 K5。**改既有键位是用户的拍点,不许顺手动。**
+
+**行内结构键仍不进任何表**:方向键 / ↵ / Space / Tab / Esc 的 DOM 焦点语义(理由在 `keymap/types.ts`
+顶部:它们是这套形态语法本身,可配置就等于不一致)。Esc 那一件归下面的响应链。
 
 **键位内核:`matchCombo` 按下侧分平台,`platform` 必填(09-12 立法,T1 `d6e31abb`)。**
 起因是终端进壳当天真机挖出来的:内核把 **⌘ 与 Ctrl 当同一位**,于是 mac 上打字打一半
 按 Ctrl+W(readline 的删词)命中了 `⌘W`,把跑着的 shell 连叶一起关掉。修法是把
-「主修饰键」拆成两侧:**声明侧** `primaryOf` 不动(`sameCombo` / 撞键表照旧按抽象的
+「主修饰键」拆成两侧:**声明侧** `primaryOf` 不动(`sameCombo` / 冲突规则照旧按抽象的
 「主键」说话),**按下侧** `primaryPressedIn(e, platform)` 认真键——**mac = `meta && !ctrl`,
-其余 = `ctrl && !meta`**;再加一句 `offHandPressed`:那枚**永不参与绑定**的修饰键按着
-就不是这一条(否则 mac 上 Ctrl+⌥X 会命中 `{alt,x}`)。`matchCombo` / `lookupCommand` /
+其余 = `ctrl && !meta`**;再加一句 `offHandPressed`:那枚修饰键按着
+就不是这一条(否则 mac 上 Ctrl+⌥X 会命中 `{alt,x}`)。`matchCombo` / `lookupCommands` /
 `routeKey` 的 `platform` 因此是**必填参数**,`focus/dispatch.ts` 量一次递进去——
 新写一条判键的路,拿不到 `platform` 就编译不过,这是有意的。
-**留账两条**(未改,别当成已治):`formatCombo` 在 mac 上仍把 Ctrl 画成 ⌘;
-今天没有任何绑定表达得出「就是 Ctrl 那一枚」,所以 `toggle:terminal` 的出厂键读作
-「主修饰键 + 反引号」(mac ⌘\` / Win·Linux Ctrl+\`),`DEFAULT_COMBOS` 行上标着 ⚠️。
+**T1 留的那两条账 K2 已结清**(别再当成开着的):`offHand` 让声明侧说得出「就是另一枚」,
+`formatCombo` 在 mac 上把它画成 ⌃、别处画 Win;`toggle:terminal` 走出厂表分档,
+不再读作「主修饰键 + 反引号」。
+
+**陌生能力演练(仓根 09-02 法)。** 加**一条命令** = `keymap/commands.ts` 一行 + 那块面 `commands` 里
+一格(设置页、冲突检查、原生视图保留表、菜单栏自动带上)。加**一块面** = `focus/scopes.ts` 一行
+`answers`(要礼让就再一格 `claims`)+ `focus/types.ts` 一格 id + i18n 一句;`keymap/commands.ts` /
+`focus/dispatch.ts` / `KeymapSettings.tsx` / `keymap-downlink.ts` / 主进程**零改动**,设置页自动多出
+「也在:这块面」。加**一种内容** = `workbench/kinds.ts` 那份 manifest 里的 `spawn` / `snapshot` /
+`restore` 三格 —— **叶是这些能力的唯一读者**(`tab.new` 问活动 tab 的种类有没有 `spawn`,没有就答不了、
+让出去),派发器与命令表里**不出现任何种类的名字**。三条的答案都是「能力自己的模块 + 一行登记」,
+所以这根骨架抽到位了。
 
 ## 响应链(09-02/03 立法,设计 `docs/design/react-shell-focus-2026-09.md`)
 
@@ -103,7 +187,9 @@
 - **I2** `keydown` 监听只许住在 `src/focus/` —— 全仓就那一条(`focus/dispatch.ts` 的 window 捕获)。唯一的例外是 `ui/a11y/roving.ts` 的容器级方向键,理由写在它自己的命中处(容器级、只接结构键、只在作用域内部移动)。
 - **I3** `.focus()` 只许出现在 `src/focus/` 与 `ui/a11y/roving.ts` / `ui/a11y/list-selection.ts` / `ui/inline-edit.ts` —— 后三处是作用域**内部**的移动,不跨作用域;跨作用域搬焦点一律走 `activateScope()`。
 - **I4** 每个 Placement 宿主层(舞台 / 浮窗 / 架子 tab 层 / 盖层)的根元素都带 `data-focus-scope`。
-- **I5** 快捷键三层的语义不变:全局可改绑、局部先接、结构键不进表(见上一节)。
+- **I5** 快捷键那条判据不变,只是产地合一(K0–K5,见上一节):**一张命令表**(`keymap/commands.ts`)、
+  响应者沿活动路径由深到浅认领、应用层兜底只给 `app: true` 那一族、结构键不进表。「局部先接、没接住
+  放行全局」靠的是**活动路径的深度**,不是冒泡序;菜单栏点一项走 `routeCommand`,与按键同一条判据。
 
 **七条行为规则**(用户 09-02 口述模型,与 Apple HIG / WAI-ARIA APG「管理焦点」一致):
 

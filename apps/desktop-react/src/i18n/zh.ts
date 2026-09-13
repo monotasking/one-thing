@@ -31,8 +31,6 @@ export const zh = {
   /* 模型切换失败(上行没被后端认下)—— 药丸会变回原来那个,所以这句话要说出来。 */
   'model.switchFailed': '切换模型失败',
 
-  /* ── 会话(新建那条命令的命令名;标题本身由后端落默认值,不进字典)──── */
-  'session.new': '新建会话',
   /* 点会话列表一行是什么意思(C2,设计 session-continuity-2026-09.md §4.2)。
    * 三档的名字说的是**结果**不是机制 —— 用户看的是「点完屏幕上多不多一格」。 */
   'sessions.openMode': '点会话时',
@@ -313,13 +311,10 @@ export const zh = {
   'keymap.hint': '点键位槽尾的 ＋ 再按下组合(追加一个键);Esc 取消,Backspace 整条解绑,键帽上的 × 只删那一个',
   'keymap.recording': '按下组合…',
   'keymap.unbound': '未绑定',
-  'keymap.conflict': '与「{name}」冲突',
   'keymap.reset': '恢复默认',
   'keymap.resetOf': '恢复「{name}」的默认组合',
   'keymap.recordOf': '为「{name}」添加一个快捷键',
   'keymap.structuralNote': 'Esc 逐层退出、总览的方向键与回车、浮窗拖拽是形态语法的一部分,不参与改键',
-  'keymap.scopedNote': '面域局部键(查看器 ⌘S/⌘L/⌘F、文件行 ⌘I)只在焦点落在那块面里时生效,局部先接、没接住才轮到全局',
-  'keymap.scopedConflict': '「{scope}」里被「{action}」占着',
 
   /* ── 响应链的作用域名(focus/scopes.ts 的 labelKey)──────────────────
    *    只补**真缺**的那几格:根 / 查看器 / 文件 / 检索 / 会话总览 / 设置 / Dock

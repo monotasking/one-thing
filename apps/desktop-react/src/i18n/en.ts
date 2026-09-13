@@ -24,7 +24,6 @@ export const en: Record<MessageKey, string> = {
   'agent.switchFailed': 'Could not switch agent',
   'model.switchFailed': 'Could not switch model',
 
-  'session.new': 'New session',
   /* What clicking a row in the session list means (C2). */
   'sessions.openMode': 'Clicking a session',
   'sessions.openModeHint': 'Where a row from the session list opens',
@@ -254,13 +253,10 @@ export const en: Record<MessageKey, string> = {
   'keymap.hint': 'Click the ＋ at the end of a slot, then press the combo (it is added, not replaced); Esc cancels, Backspace unbinds the whole command, the × on a cap removes just that one',
   'keymap.recording': 'Press a combo…',
   'keymap.unbound': 'Unbound',
-  'keymap.conflict': 'Conflicts with “{name}”',
   'keymap.reset': 'Reset',
   'keymap.resetOf': 'Reset the default combo for “{name}”',
   'keymap.recordOf': 'Add a shortcut for “{name}”',
   'keymap.structuralNote': 'Esc stepping back, the overview arrow keys and Enter, and float-window dragging are part of the layout grammar and are not rebindable',
-  'keymap.scopedNote': 'Pane-local keys (viewer ⌘S/⌘L/⌘F, file row ⌘I) only fire while focus is inside that pane; local takes it first, global gets whatever local did not consume',
-  'keymap.scopedConflict': 'Taken by “{action}” inside “{scope}”',
 
   /* ── responder-chain scope names (labelKey in focus/scopes.ts) ──────
    *    Only the ones that were genuinely missing: root / viewer / files /
