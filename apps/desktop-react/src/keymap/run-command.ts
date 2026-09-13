@@ -138,14 +138,12 @@ export function runShellCommand(id: string): boolean {
     return true
   }
   /*
-   * 新建会话。它是个 async action;`getState()` 的引用是稳的(与 Overview 里
-   * 事件处理器一律走 getState 同一口径)。
-   * 落在哪个项目下由那条 action 自己判(当前会话的项目),这里不判。
+   * ── `session.new` 那一段 **K2 删掉**(09-12 用户裁定 1)────────────────────
+   * 「新建」不再有应用层兜底:⌘N 是 `content.new`,由**响应者**答 —— 会话叶 /
+   * 会话总览 / composer 答「新会话」,浏览器叶答「新标签」,终端叶答「新终端」;
+   * 焦点不在任何一种内容里就不响。`useExposeStore.newSessionInCurrentProject`
+   * 一个字没改,只是它的调用点从这张表搬到了那几格响应者上。
    */
-  if (id === 'session.new') {
-    void useExposeStore.getState().newSessionInCurrentProject()
-    return true
-  }
   /*
    * 真全屏(W2)。
    *

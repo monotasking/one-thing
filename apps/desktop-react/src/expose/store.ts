@@ -178,6 +178,15 @@ interface ExposeStore extends ExposeState, PerSpaceState<ExposeFurniture> {
   newSession: (projectId: string | null) => Promise<string | undefined>
   /** ⌘N 那一条:落在**当前会话所属的项目**下;没有当前会话就不属于任何项目。 */
   newSessionInCurrentProject: () => Promise<string | undefined>
+  /**
+   * **只建,不摆**(K2:⌘T 在一片会话叶上那条路)。
+   *
+   * 与 `newSessionInCurrentProject` 同一条创建路、同一个项目判据,差的只是
+   * **摆放那一半**:那一条在焦点会话叶上原位换会话(⌘N 的语义是「在这一片开
+   * 一条新的」),这一条什么都不摆 —— 摆到哪儿由叫它的那片叶说了算(⌘T 的
+   * 语义是「紧挨着当前那一格再来一格」)。拆法见下面的 `NewSessionSeat`。
+   */
+  newSessionDetached: () => Promise<string | undefined>
 }
 
 /**
@@ -230,6 +239,124 @@ let creating = false
  */
 function focusComposerAfterCommit(): void {
   activateScopeAfterCommit('composer', { reason: 'open' })
+}
+
+/**
+ * **「当前项目」= 环境会话的那个**(W5-b 裁定 3 的第三义)。没有环境会话
+ * (刚启动 / 上一条被删)就是 null —— 不去猜一个「最近用过的项目」,那是编。
+ *
+ * 读 `envSessionId` 而不是 `currentSessionId`:焦点此刻可能停在一片文件叶
+ * 上,而「我上一次在哪条会话里干活」才是新建那一下该继承的那个项目 —— 与文件树
+ * 的根、检索的 cwd 是同一句话,所以读同一格。
+ *
+ * K2 把它从 `newSessionInCurrentProject` 里抽出来,因为⌘T 那条路(只建不摆)
+ * 要的是**同一个**判据 —— 抄第二遍就是两个产地。
+ */
+function currentProjectIdOf(envSessionId: string | null): string | null {
+  return findSession(currentSessions(), envSessionId)?.projectId ?? null
+}
+
+/**
+ * **建一条会话时,那一格摆在哪**(K2)。
+ *
+ * ── 为什么是一格注入的对象,而不是一个 `detached` 布尔 ─────────────────────
+ * 摆放这件事在建会话的流程里有**三个落点**(建之前占位、建成那一刻绑真 id、
+ * 收尾时成为当前会话并落焦),而且它们之间夹着「兑现预选 agent / 模型」这些
+ * 与摆放无关的步骤 —— 一个布尔要在三处各写一次 `if`,那正是「按能力枚举」。
+ * 交一格座位进来,创建那一半于是一个 `if` 都没有:`null` = 不摆。
+ *
+ * 两种实现各在它的调用点上:⌘N 那条是「在焦点会话叶原位换成新的」,
+ * ⌘T 那条是 `null`(叶自己摆)。
+ */
+interface NewSessionSeat {
+  /** 建之前先在屏幕上占好位。答一口「建不成就换回去」(没占到位 = null)。 */
+  reserve(): (() => void) | null
+  /** 建成的那一刻:把占位那一格原位绑成真 id(叶不重挂)。 */
+  bind(sessionId: string): void
+  /** 收尾:让它成为当前会话、焦点进输入面板。 */
+  enter(sessionId: string): void
+}
+
+/**
+ * **建一条会话:创建那一半**(K2 从 `newSession` 里原样拆出来,次序一个字没动)。
+ *
+ * 「一次一条」那道飞行闸(`creating`)、失败提示、workdir 警告、兑现预选
+ * agent / 模型、以及最后那一次 `chatSources.open` 都在这里 —— 它们是**建一条
+ * 会话**这件事的一部分,与它摆在屏幕上的哪一格无关。摆放那一半由 `seat` 说,
+ * `null` = 不摆(⌘T:摆到哪儿由叫它的那片叶说了算)。
+ */
+async function createSession(
+  projectId: string | null,
+  seat: NewSessionSeat | null,
+): Promise<string | undefined> {
+  if (creating) return undefined
+  creating = true
+  /*
+   * **先在焦点会话叶原位开一片空会话,再去建**(W5-b 交付 3)。
+   * 屏幕当场就是那片空会话,人可以立刻打字;建成之后由 `bindNewSessionRef`
+   * 把那一格原位绑成真 id(叶不重挂)。建不成就换回去 —— 判词与那口
+   * 「换回去」写在 `openNewSessionPlaceholder` 上。
+   *
+   * 首开草稿态那条路(焦点叶已经是保留键)整件是恒等变换。
+   */
+  const undoPlaceholder = seat?.reserve() ?? null
+  let outcome
+  try {
+    outcome = await useSessionsSource.getState().create(projectId)
+  } finally {
+    creating = false
+  }
+  if (!outcome.ok) {
+    undoPlaceholder?.()
+    notify({
+      level: 'error',
+      source: 'session.create',
+      title: t('notify.createSessionFailed'),
+      body: outcome.error,
+      detail: outcome.error,
+    })
+    return undefined
+  }
+  // 那一格保留键当场绑成真 id(原位,叶不重挂)。
+  seat?.bind(outcome.sessionId)
+  if (outcome.workdirError) {
+    // 会话建成但没归进项目(第二步落目录被后端拒了)。warn 不拦路:
+    // 人还能聊,只是外部 agent 这类要目录的活会拒启 —— 后端原话给全。
+    notify({
+      level: 'warn',
+      source: 'session.create',
+      title: t('notify.bindWorkdirFailed'),
+      body: outcome.workdirError,
+      detail: outcome.workdirError,
+    })
+  }
+  void useAgentsSource.getState().applyPendingAgent(outcome.sessionId)
+  /*
+   * 同一步的第二笔:草稿态选过的模型也在这里兑现(D2 波一)。
+   *
+   * 接缝选在这里而不是 `composer/sink.startSession` 的返回处,理由是这个
+   * 函数头上那句话:**建会话的唯一编排点**。「新会话要带上哪些预选」是
+   * 建会话这件事的一部分,agent 与模型是同一类账;摊到 sink 里就成了
+   * 两处各兑现一格,而 ⌘N 那条路(不经过 composer)会漏掉模型那一格。
+   * 同样**不 await**:顺手落一笔,失败自己 notify(warn)。
+   */
+  void useModelsSource.getState().applyPendingModel(outcome.sessionId)
+  // 焦点进输入面板那一句在 `enterSession` 里(下面那一行就走了它)——
+  // R2 之前这里还要自己叫一次那口单槽接缝(`composer/focus.ts`,本批退役)。
+  seat?.enter(outcome.sessionId)
+  /*
+   * 平时没人在这里显式开聊天面 —— ChatStream 有个 effect 盯着「当前会话」,
+   * 换一条它就 open 一次。但 effect 要等 React 提交完那一帧才跑,而
+   * **紧接着就要发第一句话**的那条路(首开草稿态)等不了:发送读的是
+   * chat-source 里的当前会话,那一格正是 open 设的。
+   *
+   * 所以这层壳自己开一次。两条理由让它是 await 而不是 void:
+   *  - open 先订阅再起底,等它回来才保证这一轮的事件一条不漏;
+   *  - open 对同一条会话是**幂等**的(已经开着就当场返回),
+   *    所以后来那次 effect 里的 open 是恒等变换,不是第二次起底。
+   */
+  await chatSources.acquire(outcome.sessionId).open()
+  return outcome.sessionId
 }
 
 export const useExposeStore = create<ExposeStore>()(
@@ -423,89 +550,30 @@ export const useExposeStore = create<ExposeStore>()(
        * 失败:notify(error)(error 档**不自动消失**,人回头还能看见),
        * 形态一格不动 —— 尤其**不碰输入框**:那句还没发出去的话还在人手里。
        */
-      newSession: async (projectId) => {
-        if (creating) return undefined
-        creating = true
+      newSession: (projectId) =>
         /*
-         * **先在焦点会话叶原位开一片空会话,再去建**(W5-b 交付 3)。
-         * 屏幕当场就是那片空会话,人可以立刻打字;建成之后由 `bindNewSessionRef`
-         * 把那一格原位绑成真 id(叶不重挂)。建不成就换回去 —— 判词与那口
-         * 「换回去」写在 `openNewSessionPlaceholder` 上。
-         *
-         * 首开草稿态那条路(焦点叶已经是保留键)整件是恒等变换。
+         * ⌘N 那条路的座位:**在焦点会话叶原位换成新的**。三格落点分别是
+         * `openNewSessionPlaceholder`(占位 + 一口换回去)、`bindNewSessionRef`
+         * (原位绑真 id)、`enterSession`(成为当前会话 + 焦点进输入面板)。
+         * 创建那一半在模块级的 `createSession` 上,判词在它头上。
          */
-        const undoPlaceholder = openNewSessionPlaceholder()
-        let outcome
-        try {
-          outcome = await useSessionsSource.getState().create(projectId)
-        } finally {
-          creating = false
-        }
-        if (!outcome.ok) {
-          undoPlaceholder?.()
-          notify({
-            level: 'error',
-            source: 'session.create',
-            title: t('notify.createSessionFailed'),
-            body: outcome.error,
-            detail: outcome.error,
-          })
-          return undefined
-        }
-        // 那一格保留键当场绑成真 id(原位,叶不重挂)。
-        bindNewSessionRef(outcome.sessionId)
-        if (outcome.workdirError) {
-          // 会话建成但没归进项目(第二步落目录被后端拒了)。warn 不拦路:
-          // 人还能聊,只是外部 agent 这类要目录的活会拒启 —— 后端原话给全。
-          notify({
-            level: 'warn',
-            source: 'session.create',
-            title: t('notify.bindWorkdirFailed'),
-            body: outcome.workdirError,
-            detail: outcome.workdirError,
-          })
-        }
-        void useAgentsSource.getState().applyPendingAgent(outcome.sessionId)
-        /*
-         * 同一步的第二笔:草稿态选过的模型也在这里兑现(D2 波一)。
-         *
-         * 接缝选在这里而不是 `composer/sink.startSession` 的返回处,理由是这个
-         * 函数头上那句话:**建会话的唯一编排点**。「新会话要带上哪些预选」是
-         * 建会话这件事的一部分,agent 与模型是同一类账;摊到 sink 里就成了
-         * 两处各兑现一格,而 ⌘N 那条路(不经过 composer)会漏掉模型那一格。
-         * 同样**不 await**:顺手落一笔,失败自己 notify(warn)。
-         */
-        void useModelsSource.getState().applyPendingModel(outcome.sessionId)
-        // 焦点进输入面板那一句在 `enterSession` 里(上面那一行就走了它)——
-        // R2 之前这里还要自己叫一次那口单槽接缝(`composer/focus.ts`,本批退役)。
-        get().enterSession(outcome.sessionId)
-        /*
-         * 平时没人在这里显式开聊天面 —— ChatStream 有个 effect 盯着「当前会话」,
-         * 换一条它就 open 一次。但 effect 要等 React 提交完那一帧才跑,而
-         * **紧接着就要发第一句话**的那条路(首开草稿态)等不了:发送读的是
-         * chat-source 里的当前会话,那一格正是 open 设的。
-         *
-         * 所以这层壳自己开一次。两条理由让它是 await 而不是 void:
-         *  - open 先订阅再起底,等它回来才保证这一轮的事件一条不漏;
-         *  - open 对同一条会话是**幂等**的(已经开着就当场返回),
-         *    所以后来那次 effect 里的 open 是恒等变换,不是第二次起底。
-         */
-        await chatSources.acquire(outcome.sessionId).open()
-        return outcome.sessionId
-      },
+        createSession(projectId, {
+          reserve: openNewSessionPlaceholder,
+          bind: (sessionId) => {
+            bindNewSessionRef(sessionId)
+          },
+          enter: (sessionId) => {
+            get().enterSession(sessionId)
+          },
+        }),
 
-      newSessionInCurrentProject: async () => {
-        /*
-         * 「当前项目」= **环境会话**的那个(W5-b 裁定 3 的第三义)。没有环境会话
-         * (刚启动 / 上一条被删)就是 null —— 不去猜一个「最近用过的项目」,那是编。
-         *
-         * 读 `envSessionId` 而不是 `currentSessionId`:焦点此刻可能停在一片文件叶
-         * 上,而「我上一次在哪条会话里干活」才是 ⌘N 该继承的那个项目 —— 与文件树
-         * 的根、检索的 cwd 是同一句话,所以读同一格。
-         */
-        const current = findSession(currentSessions(), get().envSessionId)
-        return get().newSession(current?.projectId ?? null)
-      },
+      newSessionInCurrentProject: () => get().newSession(currentProjectIdOf(get().envSessionId)),
+
+      /*
+       * 只建不摆(K2)。**项目判据与上面那一条逐字相同** —— 它们是同一句话的
+       * 两种摆法,不是两条不同的「新建」。
+       */
+      newSessionDetached: () => createSession(currentProjectIdOf(get().envSessionId), null),
     }),
     {
       name: 'onething.expose',

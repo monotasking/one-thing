@@ -4,7 +4,9 @@ import { FOCUS_SCOPE_LIST } from '../focus/scopes'
 import type { ShelfSide } from '../stage/types'
 import type { MessageKey } from '../i18n'
 import type { FocusScopeId } from '../focus/types'
-import type { Combo, CommandId, KeymapCommand } from './types'
+import { TAB_SELECT_SLOTS, tabSelectCommandId } from './tab-commands'
+import { platformOf } from './platform'
+import type { Combo, CommandId, KeymapCommand, KeymapPlatform } from './types'
 
 /**
  * **命令表:键 ↔ 意义,全壳唯一一份**(K0,方案
@@ -35,6 +37,18 @@ import type { Combo, CommandId, KeymapCommand } from './types'
 /** toggle 族的 id 前缀。派发器按它分流,迁移按它铸新 id —— 全仓只此一处字面量。 */
 export const TOGGLE_COMMAND_PREFIX = 'toggle:'
 
+/**
+ * 「第 n 格标签」那一族的 id 拼法住在 `./tab-commands.ts`(**断模块环** ——
+ * 判词整段在那只文件头上:这张表要读 `focus/scopes.ts`,而 `focus/scopes.ts`
+ * 要声明「叶答得出 ⌘1–⌘9」)。这里原样再导出,于是调用点只认识一张表。
+ */
+export {
+  TAB_SELECT_COMMAND_PREFIX,
+  TAB_SELECT_SLOTS,
+  tabSelectCommandId,
+  tabSelectSlotOf,
+} from './tab-commands'
+
 export function toggleCommandId(itemId: string): CommandId {
   return `${TOGGLE_COMMAND_PREFIX}${itemId}`
 }
@@ -57,6 +71,23 @@ const WORKSPACE_SLOT_LABEL_KEYS: MessageKey[] = [
 export function workspaceSlotCommandId(slot: number): CommandId {
   return `${WORKSPACE_SLOT_COMMAND_PREFIX}${slot}`
 }
+
+/**
+ * 九条各一句,而不是一句带 {n} —— 与 `WORKSPACE_SLOT_LABEL_KEYS` 逐字同一条
+ * 理由(`KeymapCommand.labelKey` 这一格不带插值)。第 9 条说的是「最后一格」,
+ * 因为它做的就是那件事。长度必须等于 `TAB_SELECT_SLOTS`,由用例钉住。
+ */
+const TAB_SELECT_LABEL_KEYS: MessageKey[] = [
+  'keymap.tabSelect1',
+  'keymap.tabSelect2',
+  'keymap.tabSelect3',
+  'keymap.tabSelect4',
+  'keymap.tabSelect5',
+  'keymap.tabSelect6',
+  'keymap.tabSelect7',
+  'keymap.tabSelect8',
+  'keymap.tabSelect9',
+]
 
 /**
  * 四条架子的**收 / 展**命令(09-01 用户放权:「四条架子的快捷键」)。
@@ -97,6 +128,61 @@ export function shelfSideOfCommand(id: string): ShelfSide | null {
   return found?.side ?? null
 }
 
+/* ── 出厂键按平台分档(K2 修一轮)────────────────────────────────────────── */
+
+/**
+ * 一条出厂键的**两档**:这台机器是 mac 就用 `mac`,其余用 `other`。
+ *
+ * ── 它为什么存在,而不是给 `Combo` 再开一根轴 ────────────────────────────
+ * `Combo.offHand`(「另一枚」)指的是**非主修饰键**,所以同一行声明在两台机器上
+ * 指的是两枚不同的物理键:mac 上是 ⌃、Win / Linux 上是 Win 键。对**召唤终端**
+ * 那一条这正好错了半边 —— 它要的是「两台机器上都按 Ctrl」(VS Code /
+ * Windows Terminal 三十年的手势),而那在 mac 上是「另一枚」、在 Win / Linux 上
+ * 恰恰是**主修饰键**。一根新轴(「按物理键声明」)会让 `matchCombo` /
+ * `sameCombo` / `formatCombo` / `chordOfCombo` 四处各多一支;而这件事的真名就是
+ * 「**出厂表**这一行在两台机器上不一样」—— 那是**表**的事,不是 `Combo` 的事。
+ *
+ * ── 量一次,而且量在这儿 ────────────────────────────────────────────────
+ * 判例与 `content/terminal/key-courtesy.ts` 的 `TERMINAL_CLAIMS` 逐字相同:
+ * `FOCUS_SCOPES` / `KEYMAP_COMMANDS` 都是**静态封闭表**,所以平台必须在模块加载
+ * 时就定下来;纯函数一行不许读 `navigator`,所以量它的是这只文件,分档那一半
+ * (`comboForPlatform`)是导出的纯函数 —— 两档因此都测得到,不必去改 UA。
+ */
+export interface PlatformCombos {
+  readonly mac: Combo
+  readonly other: Combo
+}
+
+/** 这台机器是什么。**模块加载时量一次**(判词见上)。 */
+const PLATFORM: KeymapPlatform = platformOf(
+  typeof navigator === 'undefined' ? '' : navigator.userAgent,
+)
+
+/** 分档那一半,**纯函数**:给定平台,这一行是哪个组合。 */
+export function comboForPlatform(rows: PlatformCombos, platform: KeymapPlatform): Combo {
+  return platform === 'mac' ? rows.mac : rows.other
+}
+
+/** 出厂表里写「这一行按平台分档」的那一格。 */
+function byPlatform(rows: PlatformCombos): readonly Combo[] {
+  return [comboForPlatform(rows, PLATFORM)]
+}
+
+/**
+ * **召唤终端**的出厂键两档。导出是为了用例能把两台机器都走一遍 ——
+ * 它与 `terminalClaims(platform)` 是同一条纪律的两处用法。
+ *
+ *  · mac  = **⌃\`**(`offHand`:那台机器上 Ctrl 是「另一枚」,⌘\` 会与系统的
+ *    「在本应用的窗口间轮换」撞车 —— T1 留的那条账就是这个);
+ *  · 其余 = **Ctrl+\`**(`ctrl` 读作主修饰键,而那台机器上主修饰键就是 Ctrl)。
+ *
+ * 两档写出来是**同一个手势**:两台机器上按的都是 Ctrl 那一枚物理键。
+ */
+export const TERMINAL_SUMMON_COMBOS: PlatformCombos = {
+  mac: { offHand: true, key: '`' },
+  other: { ctrl: true, key: '`' },
+}
+
 /**
  * 出厂绑定表。只列**有**默认键的那几条,别的一律空 ——
  * 「大多数命令出厂不绑键」是有意的:键位是稀缺资源,预占等于替用户做主。
@@ -120,7 +206,21 @@ export function shelfSideOfCommand(id: string): ShelfSide | null {
  * 「打开总览」的入口。两个入口够了,第三个只是在花键位预算。
  */
 const DEFAULT_COMBOS: Partial<Record<CommandId, readonly Combo[]>> = {
-  'toggle:search': [{ meta: true, key: 'p' }],
+  /*
+   * **检索面出厂改 ⌘⇧F**(K2,09-12 用户裁定 3)。⌘P 在全世界的浏览器里是
+   * 「打印这一页」,而这台壳把已绑定的全局键**先于页面**截下来(保留表),
+   * 于是在内嵌浏览器里按 ⌘P 弹出来的是 onething 的检索面 —— 那不是决定,
+   * 是副作用。让出 ⌘P 之后它自然回到页面自己手里;⌘⇧F 是 VS Code
+   * (Search)与 JetBrains(Find in Path)两家「全局搜索」的同一个键,
+   * 而 ⌘F(`view.find`)差的正是那一格 ⇧,读起来是「找得更远一点」。
+   */
+  'toggle:search': [{ meta: true, shift: true, key: 'f' }],
+  /*
+   * **⌘,打开设置**(K2;方案 §7 留账「`⌘,` 绑 `toggle:settings` 归 K2 顺带」)。
+   * 三十年来每一个 mac 应用的偏好设置都是这个键,不给它才是替用户做主。
+   * 它是 `toggle:` 那一族里的一条,所以这里只补一个键位,零新命令。
+   */
+  'toggle:settings': [{ meta: true, key: ',' }],
   /*
    * **召唤终端**(T1,方案 §2.1-6;`desktop-os` §8.2 核过三平台都空着)。
    *
@@ -139,20 +239,23 @@ const DEFAULT_COMBOS: Partial<Record<CommandId, readonly Combo[]>> = {
    * 反引号这个位子没有第二个人占),而且它是 VS Code / Windows Terminal 一族
    * 三十年的手势。
    *
-   * **写 `ctrl` 还是写 `meta` 在这里是同义的**(`primaryOf`:声明这一侧两种拼法
-   * 都读作「主修饰键」);真正按下的那一枚由平台定(T1-fix 的 `matchCombo`):
-   * **Win / Linux 上是 `Ctrl+\``(要的就是它),mac 上是 `⌘\``**。
+   * ── K2:两台机器上都按 Ctrl 那一枚,而那要**出厂表分档**才说得出 ──────────
+   * T1 写的是 `{ ctrl: true }`,而声明侧 `ctrl` 与 `meta` 同义(都读作「主修饰
+   * 键」)—— 于是这一行在 mac 上实际是 **⌘`**,与系统的「在本应用的窗口间轮换」
+   * 撞车,设置页还把它画成「⌘ + 反引号」。那是 T1 自己留下的两条账之一
+   * (壳 CLAUDE.md 记着),K2 结清它。
    *
-   * ⚠️ **mac 上的 `⌘\`` 与系统的「在本应用的窗口间轮换」撞车** —— 那是 AppKit
-   * 一级的手势,这台壳抢不抢得到要看窗口此刻有没有应用菜单接它。
-   * **mac 上换哪个键是用户的拍点**,在拍之前这一行照旧,因为它在 Win / Linux
-   * 上是对的、在 mac 上至多是按不响。
+   * 结清的方式**不是**让整行改用 `offHand`:`offHand` 是「非主修饰键」,mac 上
+   * 是 ⌃ 没错,Win / Linux 上却是 **Win 键** —— 那两台机器上要的恰恰是 Ctrl,
+   * 而 Ctrl 在那儿就是主修饰键。一行声明说不出「两台都按 Ctrl」,因为那**本来
+   * 就是两档**。所以走 `byPlatform`(判词整段在它上头):mac = `offHand`、
+   * 其余 = `ctrl`,两档写出来是**同一个手势**,零键位回退。
    */
-  'toggle:terminal': [{ ctrl: true, key: '`' }],
+  'toggle:terminal': byPlatform(TERMINAL_SUMMON_COMBOS),
   [toggleCommandId(SESSIONS_ITEM_ID)]: [{ meta: true, key: 'e' }],
   'toc.toggle': [{ meta: true, shift: true, key: 'o' }],
   'agent.menu': [{ meta: true, key: 'j' }],
-  'session.new': [{ meta: true, key: 'n' }],
+
   /*
    * 真全屏(W2 / 拍点 ④,09-04 用户已拍 `⌘⇧↩`)。**全表零冲突**:出厂表里带 shift
    * 的只有 `⌘⇧O`(目录)与 `⌘⇧W`(工作区面板),回车这个位子没有第二个人占。
@@ -169,9 +272,12 @@ const DEFAULT_COMBOS: Partial<Record<CommandId, readonly Combo[]>> = {
    */
   'workbench.moveTabLeft': [{ meta: true, alt: true, shift: true, key: 'arrowleft' }],
   'workbench.moveTabRight': [{ meta: true, alt: true, shift: true, key: 'arrowright' }],
-  [workspaceSlotCommandId(1)]: [{ meta: true, key: '1' }],
-  [workspaceSlotCommandId(2)]: [{ meta: true, key: '2' }],
-  [workspaceSlotCommandId(3)]: [{ meta: true, key: '3' }],
+  /*
+   * **工作区序号 ⌘1/2/3 出厂解绑**(K2,09-12 用户裁定 2,原话「非常讨厌这个
+   * 设计」,推翻 08-31 那条)。命令本身留在表上 —— 想要的人自己绑一个,能力
+   * 一格没少;⌘1–9 归下面那一族 `tab.select:n`(焦点叶的第 n 格标签),与
+   * 浏览器 / 终端 / 编辑器的手一致。这里**一行都不写**就是「出厂不绑」。
+   */
   /* ── 从前的面域局部键(K0:同一张表,`app: false`)────────────────────── */
   'view.find': [{ meta: true, key: 'f' }],
   'view.save': [{ meta: true, key: 's' }],
@@ -191,6 +297,33 @@ const DEFAULT_COMBOS: Partial<Record<CommandId, readonly Combo[]>> = {
   'nav.forward': [{ meta: true, key: ']' }],
   'expose.pin': [{ meta: true, shift: true, key: 'p' }],
   'tab.close': [{ meta: true, key: 'w' }],
+  /* ── 标签族(K2,方案 §3 那张跨应用对照表的「本壳应当」列)────────────── */
+  'tab.new': [{ meta: true, key: 't' }],
+  'content.new': [{ meta: true, key: 'n' }],
+  'tab.reopen': [{ meta: true, shift: true, key: 't' }],
+  /*
+   * **一条命令两组出厂键**(⌘⇧] 与 ⌃Tab)。两家惯例都在:Safari / Chrome /
+   * Terminal 的 ⌘⇧] ⌘⇧[,以及跨平台通用的 ⌃Tab ⌃⇧Tab。K0 起「一条命令好几个
+   * 键面」是一等形状,所以它是**一行两键**而不是两行两义 —— 说得出「谁占着
+   * ⌃Tab」的是冲突规则(按组合找命令),不是表的行数。
+   *
+   * ⌃Tab 那一枚用的是 `offHand`(判词在 `Combo.offHand` 上):它要的**就是**
+   * Ctrl 那一枚物理键,而不是「主修饰键」。
+   */
+  'tab.next': [
+    { meta: true, shift: true, key: ']' },
+    { offHand: true, key: 'tab' },
+  ],
+  'tab.prev': [
+    { meta: true, shift: true, key: '[' },
+    { offHand: true, shift: true, key: 'tab' },
+  ],
+  ...Object.fromEntries(
+    Array.from({ length: TAB_SELECT_SLOTS }, (_, i) => [
+      tabSelectCommandId(i + 1),
+      [{ meta: true, key: String(i + 1) }],
+    ]),
+  ),
 }
 
 function defaultCombosOf(id: CommandId): readonly Combo[] {
@@ -222,13 +355,22 @@ const WORKSPACE_SLOT_COMMANDS: KeymapCommand[] = Array.from(
 )
 
 /**
- * 跟随焦点那九条(`app: false`)。**没有应用层兜底** —— 活动路径上没人答得出
+ * 跟随焦点那十五条(`app: false`;K2 起标签族也在其中)。**没有应用层兜底** —— 活动路径上没人答得出
  * 就放行,而不是「退一步找个人做掉」。每块面的说法挂在 `FOCUS_SCOPES[*].answers`
  * 的 `labelKey` 上,这里只写命令自己那一句通名。
  */
 function scopedCommand(id: CommandId, labelKey: MessageKey): KeymapCommand {
   return { id, labelKey, defaultCombos: defaultCombosOf(id), app: false, nativeView: 'reserve' }
 }
+
+/**
+ * 第 n 格标签那九条。数目由 `TAB_SELECT_SLOTS` 说了算,这里不写死一个 9
+ * (与 `WORKSPACE_SLOT_COMMANDS` 逐字同一条纪律)。
+ */
+const TAB_SELECT_COMMANDS: KeymapCommand[] = Array.from(
+  { length: TAB_SELECT_SLOTS },
+  (_, i): KeymapCommand => scopedCommand(tabSelectCommandId(i + 1), TAB_SELECT_LABEL_KEYS[i]),
+)
 
 const SCOPED_COMMANDS: KeymapCommand[] = [
   /*
@@ -246,12 +388,24 @@ const SCOPED_COMMANDS: KeymapCommand[] = [
   scopedCommand('nav.forward', 'search.historyForward'),
   scopedCommand('expose.pin', 'expose.pin'),
   scopedCommand('tab.close', 'common.close'),
+  /*
+   * ── 标签族六条(K2)。全是 `app: false` —— 判词在 `keymap/types.ts` 的
+   *    `CommandId` 那一段:它们要的目标是**焦点那片叶的那一排标签**,没有叶
+   *    在场就放行,而不是退一步找个人做掉。⌘N 从前在浏览器里开出一条会话,
+   *    病根正是它当年有一层应用兜底。
+   */
+  scopedCommand('tab.new', 'keymap.tabNew'),
+  scopedCommand('content.new', 'keymap.contentNew'),
+  scopedCommand('tab.reopen', 'keymap.tabReopen'),
+  scopedCommand('tab.next', 'keymap.tabNext'),
+  scopedCommand('tab.prev', 'keymap.tabPrev'),
+  ...TAB_SELECT_COMMANDS,
 ]
 
 /**
  * 命令表 —— **封闭**。加一个命令就是在这里多一行:
  * 每块 Dock 瓦自动有一条 toggle(所以瓦表长出新瓦时这里不用改),
- * 加上不属于任何一块瓦的那些开关,再加上跟随焦点那九条。
+ * 加上不属于任何一块瓦的那些开关,再加上跟随焦点那一族(K0 的九条 + K2 的标签族)。
  *
  * 会话总览也在瓦那一族里:它有 Placement,「呼出 / 收回」对它和别的瓦是同一句话。
  */
@@ -264,8 +418,6 @@ export const KEYMAP_COMMANDS: KeymapCommand[] = [
   appCommand('toc.toggle', 'toc.title'),
   // 顶栏 agent 切换器:同样不是瓦,同样是「呼出一块面」的命令(08-30)。
   appCommand('agent.menu', 'agent.menuLabel'),
-  // 新建会话(D1 开工批)。它不开面,它**做一件事** —— 这一族里的第一条。
-  appCommand('session.new', 'session.new'),
   /*
    * 真全屏(W2)。它是**应用级**而不是跟随焦点的:按下去时焦点可能在任何地方
    * (侧栏、输入框、总览),而它要的目标是「焦点叶的活动 tab」—— 那是 store 答

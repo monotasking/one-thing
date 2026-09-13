@@ -213,7 +213,7 @@ describe('焦点归属靠 owner,不靠 DOM 位置', () => {
     // 两份:叶身体那一格,与顶栏上它的标签组那一格。少了后者 = 焦点落在标签上时
     // ⌘W 没人接,而屏幕上看不出任何异样。
     expect(nodes).toHaveLength(2)
-    for (const node of nodes) expect(node.keys).toEqual(['tab.close'])
+    for (const node of nodes) expect(node.keys).toContain('tab.close')
   })
 
   it('焦点摆在顶栏那一组上,⌘W 照样关得掉当前 tab(owner 那第二份实例的用处)', async () => {
@@ -227,7 +227,7 @@ describe('焦点归属靠 owner,不靠 DOM 位置', () => {
      */
     const nodes = focusTree.dump().nodes.filter((n) => n.scope === 'leaf' && n.owner === leafId)
     expect(nodes).toHaveLength(2)
-    for (const node of nodes) expect(node.keys).toEqual(['tab.close'])
+    for (const node of nodes) expect(node.keys).toContain('tab.close')
     act(() => {
       focusTree.activateScope('leaf', { owner: leafId, reason: 'open' })
     })

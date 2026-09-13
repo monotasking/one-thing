@@ -1473,4 +1473,21 @@ export const en: Record<MessageKey, string> = {
   'keymap.conflictApp': 'Conflicts with “{name}”: a key can carry only one global command',
   'keymap.conflictOverlap': 'Conflicts with “{name}”: both could answer inside “{scope}”',
 
+  /* ── Tab family (K2) ──────────────────────────────────────────────────── */
+  'keymap.tabNew': 'New tab (one more of the same)',
+  'keymap.contentNew': 'New content of this kind',
+  'keymap.tabReopen': 'Reopen closed tab',
+  'keymap.tabNext': 'Next tab',
+  'keymap.tabPrev': 'Previous tab',
+  'keymap.tabSelect1': 'Go to tab 1',
+  'keymap.tabSelect2': 'Go to tab 2',
+  'keymap.tabSelect3': 'Go to tab 3',
+  'keymap.tabSelect4': 'Go to tab 4',
+  'keymap.tabSelect5': 'Go to tab 5',
+  'keymap.tabSelect6': 'Go to tab 6',
+  'keymap.tabSelect7': 'Go to tab 7',
+  'keymap.tabSelect8': 'Go to tab 8',
+  'keymap.tabSelect9': 'Go to the last tab',
+  'keymap.contentNewSession': 'New session',
+
 }

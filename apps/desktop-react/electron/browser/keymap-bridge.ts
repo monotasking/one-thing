@@ -56,6 +56,13 @@ export interface PreventableEvent {
  * 修饰键次序固定 `cmd` → `ctrl` → `alt` → `shift`,主键小写。单独按修饰键
  * (`key === 'Meta'` 之类)不构成组合键,答空串 —— 空串永远不在表里,于是
  * 「按住 ⌘ 不放」不会被截下来。
+ *
+ * **这一侧不认识「主修饰键」「另一枚」这两个词,也不该认识**(K2):它收到的是
+ * 一次**真按键**,只报哪几枚修饰键按着。壳那一侧的 `chordOfCombo` 负责把
+ * `meta` / `ctrl` / `offHand` 三种**声明**按平台翻成同一套串 —— 于是 mac 上
+ * 一条 `{offHand:true,key:'tab'}` 写出 `ctrl+tab`,而这里收到 `control: true`
+ * 也写出 `ctrl+tab`,两端逐字相等(`browser-host.test.ts` 与
+ * `keymap-downlink.test.ts` 各钉一半,后者还拿这只函数对过一遍)。
  */
 export function chordOf(input: {
   key: string

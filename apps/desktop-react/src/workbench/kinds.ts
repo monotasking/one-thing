@@ -293,6 +293,44 @@ export interface ContentKind {
    */
   companion?: ContentCompanion
   /**
+   * **同类再开一格**(K2,方案 §4 ④)。缺席 = 这一种开不出第二格
+   * (查看器 / 面板:⌘T 在它们身上就是一个**不响**的键)。
+   *
+   * ── 契约:**只创建,不摆放** ────────────────────────────────────────────
+   * 答一格新 ref,摆到哪儿由**叫它的那片叶**说了算(⌘T 是「紧挨着当前那一格」,
+   * ⌘N 是「按这种内容自己的打开方式」)。两件事分开,是因为同一次创建有两种
+   * 摆法,而把摆法焊进创建里就等于两条键各要一条创建路。
+   *
+   * **焦点归它点名**:响应链规则 2 的落焦形是「开的人点名、被开的那一格挂载时
+   * 自己取走」(`requestTerminalFocus` / `requestBrowserFocus` 那一族),而
+   * 「开的人」正是这只函数 —— 核心层不认识任何一种内容的点名机制,也不该认识。
+   *
+   * 开不出来(后端拒绝 / 这台宿主没有这种东西 / 一次创建已经在飞)答 `null`,
+   * 叶那一头什么都不做:摆一格指着不存在的东西的标签比不摆更糟。
+   */
+  spawn?(ref: ContentRef): Promise<ContentRef | null>
+  /**
+   * **关闭时留一份影**(K2;`restore` 是它的逆)。缺席 = **用 ref 本身当快照** ——
+   * 会话 / 文件 / 目录 / 终端的 ref 就是它的全部身份,重开把同一格 ref 放回去
+   * 就是原来那一格。
+   *
+   * 有它的是那些「ref 会随着关闭一起作废」的种类:浏览器关一格 tab 是**删一行**,
+   * 那个 tabId 从此不存在,所以它留的影是 `{ url, profile }`,重开 = 按 url
+   * 再开一格(方案 §7 留账:「浏览器关闭的 tab 没有历史」那一格就是这里补的,
+   * 不另起机制)。
+   *
+   * 内容是**不透明**的:核心层只负责把它原样存进那片叶的关闭栈,再原样交回
+   * `restore` —— 它不解释里面有什么。
+   */
+  snapshot?(ref: ContentRef): unknown
+  /**
+   * **照着影重开一格**(K2)。收的是自己 `snapshot` 交出去的那份;答 `null` =
+   * 重开不了(那一份影已经没意义了,比如 url 为空),叶那一头当这一下没发生。
+   *
+   * 与 `spawn` 同一条契约:**只创建,不摆放**,焦点由它自己点名。
+   */
+  restore?(snapshot: unknown): Promise<ContentRef | null>
+  /**
    * **这一种在标签条上要更宽的上限**(W7-t / B6,设计 v3 §6:「最大宽度 260px」)。
    * 缺席 = 常规上限。它经 `LeafStrip.tabSpecOf` 变成 `TabSpec.wide` 那一格事实;
    * `ui/Tabs` 与样式表照旧认不得任何一种内容(判词在 `TabSpec.wide` 上)。
@@ -463,6 +501,47 @@ export function residencyLevelOf(ref: ContentRef): ResidencyLevel {
   const declared = REGISTRY.get(ref.kind)?.level
   if (declared === undefined) return 'space'
   return typeof declared === 'function' ? declared(ref) : declared
+}
+
+/* ── 标签族那三只读法(K2)。核心层只经这三只说话,一个种类名都不出现。 ──── */
+
+/**
+ * **同类再开一格**(`tab.new` / `content.new` 与浏览器叶檐那颗 `+` 共用的唯一一只)。
+ * 这一种开不出第二格(没自述 `spawn`)= `null`,调用方据此**不交出 handler**,
+ * 于是那个键在这种内容上是一个诚实的哑键,而不是一个「按了没反应」的键。
+ */
+export function canSpawnContent(ref: ContentRef): boolean {
+  return REGISTRY.get(ref.kind)?.spawn !== undefined
+}
+
+export function spawnContent(ref: ContentRef): Promise<ContentRef | null> {
+  const spawn = REGISTRY.get(ref.kind)?.spawn
+  return spawn ? spawn(ref) : Promise.resolve(null)
+}
+
+/**
+ * **关这一格之前留的那份影**。没自述 `snapshot` 就是 ref 自己(判词在
+ * `ContentKind.snapshot` 上:多数种类的 ref 就是它的全部身份)。
+ */
+export function snapshotContent(ref: ContentRef): unknown {
+  const kind = REGISTRY.get(ref.kind)
+  return kind?.snapshot ? kind.snapshot(ref) : ref
+}
+
+/**
+ * **照着影重开**。`kindId` 是关掉的那一格是哪一种 —— 影可能是一份不带种类的
+ * 裸对象,所以种类要单独记(关闭栈那一格记的正是 `{ kind, snapshot }`)。
+ *
+ * 没自述 `restore` 的种类走「影就是 ref」那一档:原样交回去。影的形状不对
+ * (手改过的档案 / 换过版本)一律 `null` —— 宁可这一下不响。
+ */
+export async function restoreContent(kindId: string, snapshot: unknown): Promise<ContentRef | null> {
+  const kind = REGISTRY.get(kindId)
+  if (!kind) return null
+  if (kind.restore) return kind.restore(snapshot)
+  const ref = snapshot as ContentRef | null
+  if (!ref || typeof ref !== 'object') return null
+  return typeof ref.kind === 'string' && typeof ref.key === 'string' ? ref : null
 }
 
 /** 按登记序。 */

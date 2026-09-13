@@ -137,8 +137,24 @@ describe('右键快切表', () => {
 })
 
 describe('序号注记', () => {
-  it('读的是注册表**当下**的绑定;解绑之后一个键帽都不画', async () => {
+  /*
+   * ── **K2:出厂不绑,所以出厂一个键帽都不画**(09-12 用户裁定 2)────────────
+   * 从前这一条反着读:出厂是 ⌘1/2/3,解绑之后键帽消失。⌘1–9 归了焦点叶的第 n 格
+   * 标签之后,序号直达**出厂没有键**(命令还在,想要的人自己绑)—— 于是这一条要
+   * 证的那句话(「读的是注册表**当下**的绑定,不是一份写死的注记」)换个方向量:
+   * 出厂零键帽,用户绑上一个就画出来。方向反了,判据一个字没变。
+   */
+  it('读的是注册表**当下**的绑定:出厂不绑 → 零键帽,绑上就画', async () => {
     await renderDock()
+    act(() => void fireEvent.contextMenu(tile()))
+    expect(screen.queryByText('1')).toBeNull()
+
+    act(() => void fireEvent.keyDown(document.body, { key: 'Escape' }))
+    act(() => {
+      useKeymapStore.setState({
+        overrides: { 'workspace.slot:1': [{ meta: true, alt: true, key: '1' }] },
+      })
+    })
     act(() => void fireEvent.contextMenu(tile()))
     /*
      * 断言键面上那个**数字**而不是 ⌘:主修饰键的字面按平台变(mac 画 ⌘,
@@ -146,15 +162,6 @@ describe('序号注记', () => {
      * 依赖跑在哪台机器上(与「不拿翻译过的 aria-label 当选择器」同一条判据)。
      */
     expect(screen.getAllByText('1').length).toBeGreaterThan(0)
-
-    act(() => void fireEvent.keyDown(document.body, { key: 'Escape' }))
-    act(() => {
-      useKeymapStore.setState({
-        overrides: { 'workspace.slot:1': null, 'workspace.slot:2': null, 'workspace.slot:3': null },
-      })
-    })
-    act(() => void fireEvent.contextMenu(tile()))
-    expect(screen.queryByText('1')).toBeNull()
   })
 })
 

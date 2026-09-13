@@ -99,11 +99,18 @@ describe('比对表:旧表每一条在新表里都有唯一的落点', () => {
     ])
   })
 
-  it('礼让那五行改成了认领,**一个键都没变**,而且不再是命令', () => {
+  it('礼让那五行改成了认领(K0 一个键都没变;K2 换了一格),而且不再是命令', () => {
     const legacy = LEGACY_ROWS.filter((r) => r.command === null)
     expect(legacy.map((r) => r.chord)).toEqual(['mod+p', 'mod+e', 'mod+j', 'mod+n', 'mod+w'])
     const claims = (FOCUS_SCOPES.terminal.claims ?? []).map(key)
-    expect(claims).toEqual(legacy.map((r) => r.chord))
+    /*
+     * **K0 那一版逐字相等,K2 换了一格**:`mod+p` 出去(检索面让出 ⌘P,于是
+     * `Ctrl+P` 不再与任何命令抢键,它本来就到得了 PTY)、`mod+t` 进来(⌘T
+     * `tab.new` 占了一个字母,而 `^T` 在 readline 下是交换前后两个字符)。
+     * 判据一个字没改 —— 变的是被判的那张出厂表,判词在 `key-courtesy.ts` 上。
+     */
+    expect(new Set(claims)).toEqual(new Set(['mod+e', 'mod+j', 'mod+n', 'mod+w', 'mod+t']))
+    expect(new Set(claims)).not.toContain('mod+p')
     // 它们不在命令表上(认领不是命令,不进设置页的改绑表)。
     for (const claim of FOCUS_SCOPES.terminal.claims ?? []) {
       const asCommand = KEYMAP_COMMANDS.find((c) =>
@@ -112,16 +119,23 @@ describe('比对表:旧表每一条在新表里都有唯一的落点', () => {
       // 撞得上的只会是**本来就占着那个字母**的那几条全局命令,不是一条新长出来的。
       expect(
         asCommand === undefined ||
-          ['toggle:search', 'toggle:sessions', 'agent.menu', 'session.new', 'tab.close'].includes(
+          ['toggle:sessions', 'agent.menu', 'tab.close', 'tab.new', 'content.new'].includes(
             asCommand.id,
           ),
       ).toBe(true)
     }
   })
 
-  it('新表没有多长出一条跟随焦点的命令(十六行旧表 → 九条,一条不多)', () => {
+  /*
+   * **K0 那九条一条不多、一条不少**;K2 在它们之后又加了一族(标签),而那一族
+   * 与旧表无关 —— 所以这一条改成「前九条逐字相等 ∧ 它们恰好就是旧表那十六行
+   * 归出来的集合」,后面新长出来的逐条列在下面那一句里。这样既守住了 K0 的
+   * 「没多长出来」,也不会在每次加一条命令时无声失效。
+   */
+  it('K0 那九条跟随焦点的命令一条不多,K2 之后新长出来的是标签族', () => {
     const scoped = KEYMAP_COMMANDS.filter((c) => !c.app).map((c) => c.id)
-    expect(scoped).toEqual([
+    const fromLegacy = new Set(LEGACY_ROWS.map((r) => r.command).filter(Boolean))
+    expect(scoped.slice(0, 9)).toEqual([
       'view.find',
       'view.save',
       'viewer.gotoLine',
@@ -132,8 +146,15 @@ describe('比对表:旧表每一条在新表里都有唯一的落点', () => {
       'expose.pin',
       'tab.close',
     ])
-    const fromLegacy = new Set(LEGACY_ROWS.map((r) => r.command).filter(Boolean))
-    expect(new Set(scoped)).toEqual(fromLegacy)
+    expect(new Set(scoped.slice(0, 9))).toEqual(fromLegacy)
+    expect(scoped.slice(9)).toEqual([
+      'tab.new',
+      'content.new',
+      'tab.reopen',
+      'tab.next',
+      'tab.prev',
+      ...Array.from({ length: 9 }, (_, i) => `tab.select:${i + 1}`),
+    ])
   })
 })
 
@@ -147,7 +168,12 @@ describe('结构键一格都不在表里(§4.3 的封闭裁定)', () => {
      */
     for (const command of KEYMAP_COMMANDS) {
       for (const combo of effectiveCombos({ overrides: {} }, command.id)) {
-        const bare = !combo.meta && !combo.ctrl && !combo.alt
+        /*
+         * K2:`offHand` **也是一枚修饰键**(mac 的 ⌃、Win / Linux 的 Win 键)——
+         * 漏掉它的话 ⌃Tab 会被读成「一条裸 Tab」,这一条当场假红,而假红比不测
+         * 更糟:下一个人会把它删掉。
+         */
+        const bare = !combo.meta && !combo.ctrl && !combo.alt && !combo.offHand
         expect(bare, `${command.id} ${key(combo)}`).toBe(false)
       }
     }
@@ -172,15 +198,20 @@ describe('共键与认领:合法,但不许静默', () => {
    * 那只函数退役,这句话改由 `claimantsOf` 说 —— 而且比从前多说一条:
    * `tab.close`(⌘W)从前不是全局命令,所以旧表说不出它的 `^W`。
    */
+  /*
+   * **K2 起换了一格**:`toggle:search` 出去(它的出厂键从 ⌘P 改成 ⌘⇧F,
+   * 09-12 裁定 3,于是终端认领的 `^P` 不再与任何一条命令共键),`tab.new` 进来
+   * (⌘T);⌘N 那一行还在,只是命令换了名字(`session.new` → `content.new`)。
+   */
   it('出厂档下「这个键在终端里归 PTY」恰好五条,一条都不静默', () => {
     const state = { overrides: {} }
     const claimed = KEYMAP_COMMANDS.filter((c) => claimantsOf(state, c.id).length > 0).map((c) => c.id)
     expect(claimed).toEqual([
-      'toggle:search', // ^P ↔ ⌘P 检索面
       'toggle:sessions', // ^E ↔ ⌘E 会话总览
       'agent.menu', // ^J ↔ ⌘J agent 切换器
-      'session.new', // ^N ↔ ⌘N 新建会话
       'tab.close', // ^W ↔ ⌘W 关当前 tab(K0 起它也是一条命令,所以也说得出口)
+      'tab.new', // ^T ↔ ⌘T 同类再开一格(K2 新长出来的那一格)
+      'content.new', // ^N ↔ ⌘N 新建这一种内容(K2 之前是 `session.new`,次序随表)
     ])
     for (const id of claimed) expect(claimantsOf(state, id)).toEqual(['terminal'])
   })

@@ -18,7 +18,7 @@
  *
  * ── 十二个场景(1-6 设计 §8 逐条;7-12 是 R2 那几条规则与拍点的读数)────────
  *  1. 树行 ↵ 开文件 → ⌘F → Esc → ⌘F 再开。**用户报的那条**。
- *  2. ⌘P 开检索 → Esc → 焦点回到开它之前那块面里。
+ *  2. ⌘⇧F 开检索 → Esc → 焦点回到开它之前那块面里。
  *  3. 架子两 tab 切换 → 焦点落在新层内;旧层 `inert`(§11 拍点 2)。
  *  4. 对话框里开菜单 → Esc 只关菜单 → 再 Esc 关对话框 → 焦点回触发钮。
  *  5. 焦点在输入面板 + 旁边**真开着一扇浮窗**时按 Esc(§11 拍点 3:按树 =
@@ -31,7 +31,7 @@
  *  9. 拼舞台 → 钉右边 → 撕浮窗,每步之后焦点都在那块面所在的那一层里(规则 3)。
  * 10. 文件树单击开文件**焦点留树**,↵ 开文件**焦点进查看器**(§11 拍点 1 的 (a) 档)。
  * 11. ⌘F 在浮窗里的查看器与架子 tab 里的查看器**各开一次**(多实例:路由看实例)。
- * 12. ⌘P → Esc → 焦点回到开它之前**那个输入框**(§4.5 的 returnTo,兄弟之间的归还)。
+ * 12. ⌘⇧F → Esc → 焦点回到开它之前**那个输入框**(§4.5 的 returnTo,兄弟之间的归还)。
  * 13. 召唤三态(S1,§14):Dock 里 → 开 + 焦点进(**①-a 用一块自己不入焦、也没有
  *     region 的面**——工作区;自入焦的面会把「键盘开面焦点跟过去」整条盖住,
  *     09-04 S2 用户报障时这道门正是这么一声不吭的);焦点在面里 → 回输入框;看得见没聚焦
@@ -532,18 +532,18 @@ async function main() {
     await delay(300)
     assert(await findBar(), '**第二次 ⌘F:检索条还开得出来**(用户报的那条)')
 
-    /* ── 场景 2:⌘P → Esc → 焦点回原处 ───────────────────────────────── */
-    scenario('⌘P 开检索 → Esc → 焦点回到开它之前那块面里')
+    /* ── 场景 2:⌘⇧F → Esc → 焦点回原处 ───────────────────────────────── */
+    scenario('⌘⇧F 开检索 → Esc → 焦点回到开它之前那块面里')
     const before = await page.evaluate(
       () => document.activeElement?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope') ?? null,
     )
-    await page.keyboard.press('Meta+p')
+    await page.keyboard.press('Meta+Shift+f')
     await delay(400)
     const searchOpen = await page.evaluate(() =>
       Boolean(document.querySelector('[data-testid="search-panel"], [data-pane-tab="panel:search"]')),
     )
-    assert(searchOpen, '⌘P 把检索面开出来了')
-    await assertNoOrphan(page, '⌘P 开面之后')
+    assert(searchOpen, '⌘⇧F 把检索面开出来了')
+    await assertNoOrphan(page, '⌘⇧F 开面之后')
     await page.keyboard.press('Escape')
     await delay(400)
     await assertNoOrphan(page, 'Esc 收面之后')
@@ -558,7 +558,7 @@ async function main() {
 
     /* ── 场景 2b:检索面的三条焦点纪律(检索面终稿 R10)────────────────────
      * 三件都只有真机量得到,而三件都是 09-05 报障里点过名的:
-     *  ① **⌘P 开面,焦点进的是那格输入框**(不是面板根,也不是 Dock 上那颗瓦)——
+     *  ① **⌘⇧F 开面,焦点进的是那格输入框**(不是面板根,也不是 Dock 上那颗瓦)——
      *    落点由作用域的 `restingTarget` 答,第 ⑦ 步它从 `activateOnMount` 换成了
      *    `SearchBindings` 的 `placed` 上升沿,行为必须一个字不变;
      *  ② **Tab 在这块面里是「换搜索范围」**,不是把焦点交出去(行内结构键,
@@ -566,21 +566,21 @@ async function main() {
      *  ③ **IME 组字期间不接键**:`isComposing` 的那一下 ↓ 不许去走行 ——
      *    中文输入法选字用的正是方向键,抢走它就打不出字。
      */
-    scenario('检索面:⌘P 落焦进输入框 / Tab 换档不交焦点 / IME 组字期间不接键')
-    await page.keyboard.press('Meta+p')
+    scenario('检索面:⌘⇧F 落焦进输入框 / Tab 换档不交焦点 / IME 组字期间不接键')
+    await page.keyboard.press('Meta+Shift+f')
     await delay(400)
     const searchInputReady = await page.evaluate(() =>
       Boolean(document.querySelector('[data-testid="search-panel"] input')),
     )
     if (!searchInputReady) {
-      skip('检索面没开出来', '这台的默认布局里 ⌘P 没把它摆出来')
+      skip('检索面没开出来', '这台的默认布局里 ⌘⇧F 没把它摆出来')
     } else {
       const landed = await page.evaluate(() => {
         const input = document.querySelector('[data-testid="search-panel"] input')
         return document.activeElement === input
       })
-      assert(landed, '① ⌘P 开面之后焦点落在**那格输入框**上')
-      await assertNoOrphan(page, '⌘P 开检索面之后')
+      assert(landed, '① ⌘⇧F 开面之后焦点落在**那格输入框**上')
+      await assertNoOrphan(page, '⌘⇧F 开检索面之后')
 
       const tabbed = await page.evaluate(() => {
         const panel = document.querySelector('[data-testid="search-panel"]')
@@ -1524,8 +1524,8 @@ async function main() {
     scenario('文件树:单击开文件但焦点留树,↵ 开文件并把焦点送进查看器(§11 拍点 1)')
     /*
      * ── 步①为什么**必须**用一块自己不入焦的面(09-04 S2 改)──────────────────
-     * 这一步从前按 ⌘P 量检索面,而 `SearchPanel` 自己声明了 `activateOnMount`
-     * (⌘P 敲出来就打字是它的产品语义)—— 于是**就算召唤那条路一句焦点都不送,
+     * 这一步从前按检索面那个键量,而 `SearchPanel` 自己声明了 `activateOnMount`
+     * (那个键敲出来就打字是它的产品语义)—— 于是**就算召唤那条路一句焦点都不送,
      * 这一步照样绿**:它把「键盘开面 → 焦点跟过去」(§3.5 规则 2)整条盖住了。
      * R2 派工时踩过同款(那次改用文件树才量出真读数),S2 用户报「触发一块面之后
      * 焦点还在输入框里」时,这道门也是一声不吭。
@@ -1536,7 +1536,7 @@ async function main() {
      * 判据因此是「焦点落在**装着工作区总览的那一层**里」,而不是某个 scope id
      * (它没有自己的 scope)。**这一步禁止换回任何自入焦的面**。
      *
-     * 出厂键位表里只有检索(⌘P)与总览(⌘E)有键,所以这里先给
+     * 出厂键位表里只有检索(K2 起是 ⌘⇧F)与总览(⌘E)有键,所以这里先给
      * `toggle:workspace` 种一个 ⌘⇧U(全表未占用),再整页重载让键位 store 吃进去。
      */
     await page.evaluate(() => {
@@ -1707,8 +1707,8 @@ async function main() {
       }
     }
 
-    /* ── 场景 12:⌘P → Esc → 回到开它之前那个输入框(returnTo)────────── */
-    scenario('⌘P → Esc → 焦点回到**开它之前那个元素**(§4.5 的 returnTo)')
+    /* ── 场景 12:⌘⇧F → Esc → 回到开它之前那个输入框(returnTo)────────── */
+    scenario('⌘⇧F → Esc → 焦点回到**开它之前那个元素**(§4.5 的 returnTo)')
     await page.goto(shellUrl())
     await waitFor('壳回来了', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="composer-input"]'))),
@@ -1722,15 +1722,15 @@ async function main() {
       () => document.activeElement?.getAttribute?.('data-testid') ?? null,
     )
     assert(beforePalette === 'composer-input', '开检索面之前焦点在输入框里(前提)')
-    await page.keyboard.press('Meta+p')
+    await page.keyboard.press('Meta+Shift+f')
     await delay(400)
     assert(
       await page.evaluate(() =>
         Boolean(document.querySelector('[data-testid="search-panel"], [data-pane-tab="panel:search"]')),
       ),
-      '⌘P 把检索面开出来了',
+      '⌘⇧F 把检索面开出来了',
     )
-    await assertNoOrphan(page, '⌘P 开面之后')
+    await assertNoOrphan(page, '⌘⇧F 开面之后')
     await page.keyboard.press('Escape')
     await delay(500)
     const backTo = await page.evaluate(() => ({
@@ -1988,13 +1988,13 @@ async function main() {
     if (await searchOnScreen()) {
       skip('①-b Dock 里 → 召唤把检索面开出来', '检索面此刻还在场(Esc 没退干净)')
     } else {
-      await page.keyboard.press('Meta+p')
+      await page.keyboard.press('Meta+Shift+f')
       await delay(500)
       assert(await searchOnScreen(), '①-b 召唤把检索面开出来了')
       const at = await focusNow()
       /*
        * 这一步的**焦点那一半不是判召唤的读数**:检索面自己声明了 `activateOnMount`
-       * (⌘P 敲出来就打字是它的产品语义),所以就算召唤一句焦点都不送它照样入焦。
+       * (那个键敲出来就打字是它的产品语义),所以就算召唤一句焦点都不送它照样入焦。
        * 留着它是因为设计 §14 的门要这一格产品行为在场;**分辨得出召唤**的是
        * ①-a(自己不入焦的那块面)与下面三步(②③④ 全是「形态一个字节不变」)。
        */
@@ -2015,7 +2015,7 @@ async function main() {
       if (box instanceof HTMLElement) box.focus()
     })
     const sigBeforeFocus = await placementsSig()
-    await page.keyboard.press('Meta+p')
+    await page.keyboard.press('Meta+Shift+f')
     await delay(450)
     /*
      * 两条一起量:焦点**进了装着检索面的那一扇窗**(与场景 10 同一把尺),
@@ -2058,7 +2058,7 @@ async function main() {
      * 那时作用域还没卸载),所以这一条只有真机门说得清。
      */
     const rawBeforeHide = await placementsRaw()
-    await page.keyboard.press('Meta+p')
+    await page.keyboard.press('Meta+Shift+f')
     await delay(700)
     const hidden = await focusNow()
     assert(!(await searchOnScreen()), '④-a 浮窗:焦点在面里 → 再按一下**把它收回 Dock**')
@@ -2122,7 +2122,7 @@ async function main() {
           if (box instanceof HTMLElement) box.focus()
         })
         const sigBeforeReveal = await placementsSig()
-        await page.keyboard.press('Meta+p')
+        await page.keyboard.press('Meta+Shift+f')
         await delay(600)
         const revealed = await page.evaluate(() => {
           const layer = document.querySelector('[data-pane-tab="panel:search"]')
@@ -2160,7 +2160,7 @@ async function main() {
          */
         const sigBeforeCollapse = await placementsSig()
         const shelvesBefore = await shelvesRaw()
-        await page.keyboard.press('Meta+p')
+        await page.keyboard.press('Meta+Shift+f')
         await delay(700)
         const shelvesAfter = await shelvesRaw()
         const collapsedNow = await page.evaluate(() =>

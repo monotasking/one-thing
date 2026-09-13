@@ -101,14 +101,15 @@ describe('冲突规则:一条,两种红', () => {
     // 用户把检索面改绑到 ⌘F:合法(唯一那条应用级,三块面在场时局部先接)。
     const ok = bindCombo(factory, 'toggle:search', { meta: true, key: 'f' })
     expect('ok' in ok).toBe(true)
-    // 再把「新建会话」也改到 ⌘F:两条应用级共键 —— 拦住。
+    // 再把「会话总览」也改到 ⌘F:两条应用级共键 —— 拦住。
+    // (K2 之前这一句用的是 `session.new`,它随 09-12 裁定 1 退役。)
     const after = 'ok' in ok ? ok.ok : factory
-    const bad = bindCombo(after, 'session.new', { meta: true, key: 'f' })
+    const bad = bindCombo(after, 'toggle:sessions', { meta: true, key: 'f' })
     expect(bad).toEqual({ conflict: { rule: 'app', with: 'toggle:search' } })
   })
 
   it('绑到自己身上是恒等成功(再按一次同一个组合不该报「与自己冲突」)', () => {
-    const again = bindCombo(factory, 'toggle:search', { meta: true, key: 'p' })
+    const again = bindCombo(factory, 'toggle:search', { meta: true, shift: true, key: 'f' })
     expect('ok' in again).toBe(true)
   })
 
@@ -148,7 +149,7 @@ describe('一个键 → 候选集', () => {
   })
 })
 
-describe('persist 迁移 v2 → v3', () => {
+describe('persist 迁移 v2 → v3 → v4', () => {
   it('老档案里那一格 `Combo` 包成 `[Combo]`', () => {
     const out = migrateKeymapPersisted(
       { overrides: { 'toc.toggle': { meta: true, key: 'y' } } },
@@ -180,8 +181,49 @@ describe('persist 迁移 v2 → v3', () => {
     expect(out.overrides['toc.toggle']).toEqual([{ meta: true, key: 'y' }])
   })
 
+  /*
+   * ── v4(K2):`session.new` 退役,⌘N 归 `content.new` ─────────────────────
+   * 「用户改过的键跟着搬家,没改过的跟着新出厂表走」那句话的两半:搬家这一半
+   * 由下面三条钉住;「没改过的」那一半**不必做任何事** —— 档案里只存覆盖,
+   * 表上没有它就当场落到出厂值(这一点由上面的出厂表用例负责)。
+   */
+  it('v4:`session.new` 的覆盖搬到 `content.new`', () => {
+    const out = migrateKeymapPersisted(
+      { overrides: { 'session.new': [{ meta: true, key: 'y' }] } },
+      3,
+    ) as { overrides: Record<string, unknown> }
+    expect(out.overrides['session.new']).toBeUndefined()
+    expect(out.overrides['content.new']).toEqual([{ meta: true, key: 'y' }])
+  })
+
+  it('v4:**显式的 null 也搬** ——「用户把 ⌘N 解绑了」也是用户的意思', () => {
+    const out = migrateKeymapPersisted({ overrides: { 'session.new': null } }, 3) as {
+      overrides: Record<string, unknown>
+    }
+    expect(out.overrides['session.new']).toBeUndefined()
+    expect(out.overrides['content.new']).toBeNull()
+  })
+
+  it('v4:新 id 上已经有值时老值让路(不覆盖用户当下的设置)', () => {
+    const out = migrateKeymapPersisted(
+      { overrides: { 'session.new': [{ meta: true, key: 'y' }], 'content.new': null } },
+      3,
+    ) as { overrides: Record<string, unknown> }
+    expect(out.overrides['session.new']).toBeUndefined()
+    expect(out.overrides['content.new']).toBeNull()
+  })
+
+  it('v2 与 v4 两段**同一次跑完**(老档案一步到位)', () => {
+    const out = migrateKeymapPersisted(
+      { overrides: { 'session.new': { meta: true, key: 'y' } } },
+      1,
+    ) as { overrides: Record<string, unknown> }
+    // v3 把它包成数组,v4 再把它改挂过去 —— 两段的次序也被这一条钉住。
+    expect(out.overrides['content.new']).toEqual([{ meta: true, key: 'y' }])
+  })
+
   it('版本号与迁移段同生共死(改一个就要动另一个)', () => {
-    expect(KEYMAP_PERSIST_VERSION).toBe(3)
+    expect(KEYMAP_PERSIST_VERSION).toBe(4)
   })
 })
 

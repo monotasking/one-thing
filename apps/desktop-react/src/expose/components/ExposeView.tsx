@@ -152,6 +152,20 @@ export function ExposeView() {
         const { focusId } = useExposeStore.getState()
         if (focusId) togglePinAndAnnounce(focusId)
       },
+      /*
+       * **⌘N = 新建会话**(K2,09-12 用户裁定 1)。声明的正本是
+       * `FOCUS_SCOPES.expose.answers` 那一行;这里是它的落点。
+       *
+       * 它为什么落在总览而不是靠一层全局兜底:裁定的原话是「⌘N 跟着焦点走,
+       * 新建**这一种**内容」—— 人在总览里按 ⌘N,想的就是「再开一条」。少了这
+       * 一格,焦点停在总览上时那一下会一路放行到什么都不发生。
+       *
+       * 走的是与 ⌘N 从前那条**同一只** action(落在当前会话所属的项目下,
+       * 摆法按 `sessions.openMode`)—— 一件事一个产地。
+       */
+      'content.new': () => {
+        void useExposeStore.getState().newSessionInCurrentProject()
+      },
     }),
     [],
   )

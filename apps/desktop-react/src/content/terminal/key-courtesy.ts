@@ -47,18 +47,27 @@ import type { Combo, KeymapPlatform } from '../../keymap/types'
  * 出厂命令表里占着「主修饰键 + 单个字母」的,一共五条(`keymap/commands.ts`
  * 的 `DEFAULT_COMBOS`,K0 之后 `tab.close` 也在同一张表里):
  *
- *   ⌘P `toggle:search` · ⌘E `toggle:sessions` · ⌘J `agent.menu` ·
- *   ⌘N `session.new` · ⌘W `tab.close`
+ *   ⌘E `toggle:sessions` · ⌘J `agent.menu` · ⌘W `tab.close` ·
+ *   ⌘T `tab.new` · ⌘N `content.new`
  *
  * 而这五个字母在 readline / emacs 键位下全是每天都在按的:
- * `^P` 上一条历史、`^E` 行尾、`^J` 换行、`^N` 下一条历史、`^W` 删一个词。
+ * `^E` 行尾、`^J` 换行、`^W` 删一个词、`^T` 交换前后两个字符、`^N` 下一条历史。
  * 于是这张表恰好就是那五行。用户把别的命令改绑到别的 Ctrl+字母上时会撞 ——
  * 那条撞车由设置页的「谁答」列说出来(撞车不是错误,但不许静默)。
+ *
+ * ── K2 换了一格:`p` 出去、`t` 进来 ──────────────────────────────────────
+ * **判据一个字没改,变的是被判的那张表**:检索面的出厂键从 ⌘P 改成了 ⌘⇧F
+ * (09-12 裁定 3),于是 `Ctrl+P` 不再与任何一条命令抢键 —— 它**本来就到得了
+ * PTY**,再给它写一行只会是一条永远不会撞的声明;而新长出来的 ⌘T(`tab.new`)
+ * 占了一个字母,`^T` 在 readline 下是「交换前后两个字符」,所以它必须进来。
+ * `^P`(上一条历史)照旧好使,靠的是「问不到人就不 preventDefault」那条缺省。
  *
  * ── 三条例外:`Ctrl+Tab` 族 / `Ctrl+\`` / `Ctrl+,`,一个都不在表上 ────────
  * 方案 §2.1-7 点名它们要留给应用。这里**结构上就进不来**:这张表只收字母,
  * 而 Tab 是结构键(§4.3 的封闭裁定:结构键不进任何表)、反引号与逗号不是字母。
- * `Ctrl+\`` 尤其要紧 —— 它是召唤终端那条全局命令,进了这张表就**再也收不起来**。
+ * 反引号那一条 K2 之后写的是 `offHand`(「另一枚」:mac = ⌃、Win / Linux = Win 键),
+ * 所以在 Win / Linux 上召唤终端已经不是 `Ctrl+\`` 了;这一行仍旧留着,因为
+ * 「只收字母」这条结构判据不许它进来这件事没变。
  * 这一段写在这里,是为了让下一个想「把表扩成 a–z」的人先看见代价。
  *
  * ── 平台在**模块加载时**量一次 ──────────────────────────────────────────
@@ -72,9 +81,11 @@ import type { Combo, KeymapPlatform } from '../../keymap/types'
 
 /**
  * 被认领的那几个字母。**只有字母** —— 判词见文件头「三条例外」。
- * 次序 = 出厂全局表里那五条命令的声明序,好让设置页的「谁答」列读起来与键位页同序。
+ * 次序 = 出厂全局表里那五条命令的声明序(K2 之后是 `toggle:sessions` /
+ * `agent.menu` / `tab.close` / `tab.new` / `content.new`),好让设置页的
+ * 「谁答」列读起来与键位页同序。
  */
-export const TERMINAL_COURTESY_LETTERS: readonly string[] = ['p', 'e', 'j', 'n', 'w']
+export const TERMINAL_COURTESY_LETTERS: readonly string[] = ['e', 'j', 'w', 't', 'n']
 
 /**
  * 这台机器上要认领的那几个组合。**mac 是空的**,判词整段在文件头。

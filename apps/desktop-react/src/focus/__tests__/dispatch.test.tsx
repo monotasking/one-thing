@@ -165,7 +165,8 @@ describe('⑤ 输入面里的无修饰单键归输入框', () => {
     fireEvent.keyDown(box, { key: 'p' })
     expect(runCommand).not.toHaveBeenCalled()
 
-    fireEvent.keyDown(box, { key: 'p', metaKey: true })
+    // K2 起检索面的出厂键是 ⌘⇧F(⌘P 让给网页打印,09-12 裁定 3)。
+    fireEvent.keyDown(box, { key: 'f', metaKey: true, shiftKey: true })
     expect(runCommand).toHaveBeenCalledWith('toggle:search')
   })
 })
@@ -193,10 +194,10 @@ describe('⑥⑦ 局部先接,没接住放行全局', () => {
     expect(find).toHaveBeenCalledTimes(1)
   })
 
-  it('查看器没这个键 → 放行全局(⌘P 照样开检索)', () => {
+  it('查看器没这个键 → 放行全局(⌘⇧F 照样开检索)', () => {
     render(<Harness run={runCommand} />)
     viewerPath({ 'view.find': vi.fn() })
-    fireEvent.keyDown(document.body, { key: 'p', metaKey: true })
+    fireEvent.keyDown(document.body, { key: 'f', metaKey: true, shiftKey: true })
     expect(runCommand).toHaveBeenCalledWith('toggle:search')
   })
 
@@ -224,13 +225,18 @@ describe('⑧ 认领:壳不碰,原样交给里面那台程序(K0)', () => {
   /**
    * **Win / Linux 那条路的等价性**(派工单 §5 点名的那一条)。
    *
-   * 改之前:`Ctrl+P` 在终端里命中一条 `pty:p` 局部键 → 派发器 `preventDefault`
-   * 并跑处理器 → 处理器往 PTY 写 `\x10`(xterm 那条守卫因为 `defaultPrevented`
+   * 改之前:`Ctrl+E` 在终端里命中一条 `pty:e` 局部键 → 派发器 `preventDefault`
+   * 并跑处理器 → 处理器往 PTY 写 `\x05`(xterm 那条守卫因为 `defaultPrevented`
    * 已经让开了)。改之后:它命中 `claims` → 派发器**不** `preventDefault`、不跑
-   * 任何东西 → xterm 收到原生 keydown 自己把 `\x10` 写下去。
+   * 任何东西 → xterm 收到原生 keydown 自己把 `\x05` 写下去。
    *
-   * 所以这一条要证三件:路由答 `claim`、`toggle:search` 没被跑、事件**未被**
+   * 所以这一条要证三件:路由答 `claim`、`toggle:sessions` 没被跑、事件**未被**
    * `preventDefault`(最后那一件正是 xterm 那条守卫的入口)。
+   *
+   * **K2 换了样本键**:样本从 `^P` 换成 `^E`。⌘P 让出去之后 `^P` 不再与任何
+   * 一条命令抢键 —— 拿它当样本会让这一条**为了错的理由绿**(没人认领它也不会
+   * 跑任何东西);`^E` 抢的是 `toggle:sessions`(⌘E,`app: true`),拆掉认领这
+   * 一条当场红。
    */
   function terminalPath(): void {
     const shell = document.createElement('div')
@@ -260,10 +266,10 @@ describe('⑧ 认领:壳不碰,原样交给里面那台程序(K0)', () => {
     })
   })
 
-  it('Ctrl+P 在终端里:不跑 `toggle:search`,而且**没有** preventDefault', () => {
+  it('Ctrl+E 在终端里:不跑 `toggle:sessions`,而且**没有** preventDefault', () => {
     render(<Harness run={runCommand} />)
     terminalPath()
-    const e = new KeyboardEvent('keydown', { key: 'p', ctrlKey: true, cancelable: true })
+    const e = new KeyboardEvent('keydown', { key: 'e', ctrlKey: true, cancelable: true })
     window.dispatchEvent(e)
     expect(runCommand).not.toHaveBeenCalled()
     expect(e.defaultPrevented).toBe(false)
@@ -423,7 +429,7 @@ describe('瞬态口(Tooltip 那一族)', () => {
     focusTree.registerTransient(asked)
     focusTree.register('root', null).activate()
 
-    fireEvent.keyDown(document.body, { key: 'p', metaKey: true })
+    fireEvent.keyDown(document.body, { key: 'f', metaKey: true, shiftKey: true })
     expect(asked).not.toHaveBeenCalled()
     expect(runCommand).toHaveBeenCalledWith('toggle:search')
   })

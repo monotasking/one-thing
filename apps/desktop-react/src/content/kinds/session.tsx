@@ -203,6 +203,24 @@ registerContentKind(
      * 文件里一个种类名都没有(判词在 `ContentKind.focusInto` 上)。
      */
     focusInto: 'composer',
+    /*
+     * **同类再开一格 = 建一条新会话**(K2,⌘T / ⌘N 在一片会话叶上)。
+     *
+     * 走的是 `newSessionDetached` —— 与 ⌘N 那条老路**同一条创建路、同一个项目
+     * 判据**(当前环境会话所属的项目),差的只是摆放那一半:那一条在焦点会话叶
+     * 上原位换会话,这一条什么都不摆,由叫它的那片叶摆到当前标签旁边。判词整段
+     * 在 `expose/store.ts` 的 `NewSessionSeat` 上。
+     *
+     * 这一种**不点名焦点**:输入面板是 `.center` 上那一格常驻的 dock(路线 B),
+     * 它跟着焦点叶的会话投影走 —— 新那一格摆进来并激活之后,人手指下面的那个
+     * 输入框**就是**新会话的输入框,不需要把焦点搬到别处去。
+     *
+     * 建不成(后端拒 / 一次创建已经在飞)答 `null`,叶那一头什么都不做。
+     */
+    spawn: async () => {
+      const id = await useExposeStore.getState().newSessionDetached()
+      return id ? { kind: SESSION_KIND, key: id } : null
+    },
     /**
      * **关掉 = 丢实例**(与 `file` / `pair` 同一条)。这一种要清的是**这条会话
      * 那一份草稿**(W7-t / B2):输入框里没发出去的话、挂着的附件都跟着会话走,

@@ -80,19 +80,23 @@ export function visibleTerminalRef(): ContentRef | null {
 }
 
 /**
- * **开一格终端并摆出来**(点瓦、右键「新建终端」、「在目录…新建」三处共用的唯一一只)。
+ * **创建半段:建一格 PTY,不摆、不点名**(K2 从 `openTerminal` 里拆出来的那一半)。
+ *
+ * 拆它的理由与 `browser-launcher.createBrowserTab` 逐字相同:同一次创建有**两种**
+ * 摆法(启动瓦那条「记忆 > 天生 > 底架」,与叶响应者那条 ⌘T「紧挨着当前标签」),
+ * 而把摆法焊在创建里就等于两条键各要一条创建路。
  *
  * `cwd` 缺席 = 当前会话那个工作目录;会话没绑目录 = **不给 cwd**,让后端按它
  * 自己那条 spawn 规矩落地(`buildSpawnProfile`)—— 壳这边编一个 `~` 出来只是
  * 把一条本来就有产地的判据抄第二遍。
  */
-export async function openTerminal(cwd?: string): Promise<void> {
+export async function createTerminalTab(cwd?: string): Promise<string> {
   const at = cwd ?? sessionDirOf() ?? undefined
   /*
    * **先把叶那个 chunk 拉下来,再去建 PTY**(两件事并发,等的是慢的那一件)。
    *
    * 叶是 `lazy` 进来的(xterm 在 import 的那一刻就探 canvas —— 判词在
-   * `content/kinds/terminal.tsx` 上)。不预拉的话下面那句 `focusIntoRef` 会落空:
+   * `content/kinds/terminal.tsx` 上)。不预拉的话随后那句 `focusIntoRef` 会落空:
    * 它排在 React 提交之后,而那一拍提交的是 Suspense 的 `fallback`,作用域实例
    * 还没登记 —— 「送不进去不追」于是当场生效,人点开一格终端却不能打字。
    * 预拉之后 `lazy` 已经 resolved,第一次渲染就是真身,提交与登记在同一拍。
@@ -101,6 +105,15 @@ export async function openTerminal(cwd?: string): Promise<void> {
     createTerminal(at ? { cwd: at } : {}),
     import('./terminal/TerminalLeaf'),
   ])
+  return id
+}
+
+/**
+ * **开一格终端并摆出来**(点瓦、右键「新建终端」、「在目录…新建」三处共用的唯一一只)。
+ * 创建那一半在上面的 `createTerminalTab`,这里只剩点名与摆放。
+ */
+export async function openTerminal(cwd?: string): Promise<void> {
+  const id = await createTerminalTab(cwd)
   const ref = terminalRef(id)
   /*
    * **打开什么,焦点进什么**(响应链规则 2)。次序即语义:**先点名再摆** ——

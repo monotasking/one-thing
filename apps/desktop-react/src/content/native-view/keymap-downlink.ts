@@ -35,7 +35,12 @@ import type { FocusScopeId } from '../../focus/types'
  * 一枚由平台定(`keymap/transitions.ts` 的 `matchCombo`,T1-fix)。主进程收到的是
  * 一次**真按键**(mac 上 `meta: true`),所以推下去的串必须已经解释过平台:
  * mac 写 `cmd+…`、其余写 `ctrl+…`。把 `meta`/`ctrl` 原样推下去,mac 上一条写成
- * `{ctrl:true}` 的绑定(出厂的 `toggle:terminal` 就是)会永远对不上。
+ * `{ctrl:true}` 的绑定会永远对不上。
+ *
+ * **K2 起还有第三种拼法** `offHand: true`(「另一枚」,判词在 `Combo.offHand`):
+ * 它同样在这里落地 —— mac 写 `ctrl+…`(⌃Tab / ⌃\`),Win / Linux 写 `cmd+…`
+ * (主进程把 `meta: true` 写成 `cmd`,那一侧不认识「另一枚」这个词,它只认
+ * 真按下的那几枚修饰键)。
  *
  * ## 整表覆盖,而且**整壳一份**
  *
@@ -49,6 +54,17 @@ export function chordOfCombo(combo: Combo, platform: KeymapPlatform): string {
   const parts: string[] = []
   const primary = combo.meta === true || combo.ctrl === true
   if (primary) parts.push(platform === 'mac' ? 'cmd' : 'ctrl')
+  /*
+   * **「另一枚」也要在这里解释掉**(K2,`Combo.offHand`):mac 上它是 Ctrl
+   * (于是串写 `ctrl+…`),Win / Linux 上它是 Win 键 —— 而主进程那一侧把
+   * `meta: true` 写成 `cmd`,所以这里也写 `cmd+…`。两端因此对同一次真按键
+   * 算出同一个串(`ctrl+tab` / `cmd+tab`),用例逐条钉着。
+   *
+   * 次序:它排在主修饰之后、⌥ 之前 —— 与 `chordOf` 的 `cmd → ctrl → alt →
+   * shift` 逐字对齐(`offHand` 在 mac 上就是那个 `ctrl` 位、在别处就是那个
+   * `cmd` 位,而一条绑定不会同时要两枚,所以两个位子永不同时占用)。
+   */
+  if (combo.offHand === true) parts.push(platform === 'mac' ? 'ctrl' : 'cmd')
   if (combo.alt === true) parts.push('alt')
   if (combo.shift === true) parts.push('shift')
   parts.push(combo.key.toLowerCase())
@@ -100,6 +116,27 @@ export function boundChordsFor(
   return [...out].sort()
 }
 
+/**
+ * **一片原生视图永远住在一格 tab 里**(K2)。
+ *
+ * 所以「叶答得出的那一族」与这片视图自己那一格作用域一样在活动路径上,一样要
+ * 先于页面被截下来:⌘T 同类再开一格、⌘W 关这一格、⌘⇧T 重开、⌘⇧[ ⌘⇧] 与
+ * ⌃Tab 换格、⌘1–9 直达 —— 这正是 Chrome / Safari 对自己那几个键的做法
+ * (网页拿不到 ⌘T / ⌘W / ⌘1–9)。
+ *
+ * ── 它为什么是这只文件里的一格常量,而不是 `NativeViewSlot` 传进来的 ──────
+ * 「视图住在一格 tab 里」是**这条下沉链的结构前提**,不是某一片视图的属性:
+ * 下一种原生视图(PDF 阅读器)照样住在一格 tab 里,不该再想一遍这件事。
+ * 占位格那一侧只报**它自己**那一格作用域(`browser` / 将来的 `pdf`),这里补上
+ * 它必然的宿主。
+ *
+ * ── 与 K0 的口径差在哪(**可感知的行为变化,逐条列在交卷报里**)────────────
+ * K0 的判据是「`app` ∨ **在场作用域**答得出」,而那时在场的只有 `browser` 一格,
+ * 于是 ⌘W 这类只有叶答得出的命令被让给了页面 —— 结果是「焦点在网页里按 ⌘W
+ * 什么都不发生」。K2 把叶补进在场集合,那一档因此变成「关掉这一格」。
+ */
+export const NATIVE_VIEW_HOST_SCOPES: readonly FocusScopeId[] = ['leaf']
+
 /** 谁在挂着 → 要收哪几个作用域的局部键。引用计数,见文件头。 */
 const SCOPES = new Map<FocusScopeId, number>()
 let unsubscribe: (() => void) | undefined
@@ -109,7 +146,7 @@ function push(): void {
   const bridge = nativeViewBridge()
   if (!bridge) return
   const chords = boundChordsFor(
-    [...SCOPES.keys()],
+    [...SCOPES.keys(), ...NATIVE_VIEW_HOST_SCOPES],
     useKeymapStore.getState().overrides,
     currentKeymapPlatform(),
   )

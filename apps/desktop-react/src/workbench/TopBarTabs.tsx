@@ -6,6 +6,7 @@ import { LeafActions } from './LeafActions'
 import { openLeafMenuAt } from './leaf-menu'
 import { LeafStrip } from './LeafStrip'
 import { useReportOverflow } from './leaf-overflow'
+import { useLeafCommands } from './leaf-commands'
 import { useCloseLeafTab, useLeafTabSpecs } from './leaf-tabs'
 import { topStrips } from './layout'
 import { CENTER_REGION } from './regions'
@@ -126,11 +127,11 @@ const LeafTabGroup = memo(function LeafTabGroup({
   const closeAt = useCloseLeafTab(leaf)
   const active = leaf.tabs[leaf.active] ?? null
 
-  /** ⌘W:关当前 tab。声明在 `focus/scopes.ts` 的 `FOCUS_SCOPES.leaf.answers`(命令 `tab.close`)。 */
-  const leafKeys = useMemo(
-    () => ({ 'tab.close': active ? () => void closeAt(leaf.active) : undefined }),
-    [active, closeAt, leaf.active],
-  )
+  /**
+   * 这片叶此刻答得出的那几条命令(⌘W / ⌘T / ⌘⇧T / ⌘⇧[ ] / ⌃Tab / ⌘1–9)。
+   * **与叶身上那一份是同一张表** —— 判词在 `./leaf-commands.ts` 的文件头上。
+   */
+  const leafKeys = useLeafCommands(leaf)
 
   const onSelect = useCallback(
     (id: string) => {

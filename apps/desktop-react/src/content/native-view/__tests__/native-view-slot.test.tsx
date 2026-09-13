@@ -310,7 +310,14 @@ describe('键位下沉', () => {
     const chords = (keymap as { chords: readonly string[] }).chords
     // ⌘L / Ctrl+L —— 主修饰键随平台,两种拼法认一种即可。
     expect(chords.some((c) => c === 'cmd+l' || c === 'ctrl+l')).toBe(true)
-    // 全局命令也在表里(出厂的 ⌘P 检索面)。
-    expect(chords.some((c) => c === 'cmd+p' || c === 'ctrl+p')).toBe(true)
+    // 全局命令也在表里(K2 起检索面的出厂键是 ⌘⇧F)。
+    expect(chords.some((c) => c === 'cmd+shift+f' || c === 'ctrl+shift+f')).toBe(true)
+    /*
+     * **叶那一族也在**(K2):一片原生视图永远住在一格 tab 里,所以 ⌘T / ⌘W /
+     * ⌘1–9 同样要先于页面截下来(Chrome 对自己那几个键的做法)。判词整段在
+     * `keymap-downlink.NATIVE_VIEW_HOST_SCOPES` 上;拆掉它这两句当场红。
+     */
+    expect(chords.some((c) => c === 'cmd+t' || c === 'ctrl+t')).toBe(true)
+    expect(chords.some((c) => c === 'cmd+w' || c === 'ctrl+w')).toBe(true)
   })
 })

@@ -12,6 +12,7 @@ import {
   refId,
   residencyLevelOf,
   sameRef,
+  snapshotContent,
 } from './kinds'
 import { nextLeafId, nextSplitId } from './ids'
 import {
@@ -20,6 +21,7 @@ import {
   rewriteRefsInPersisted,
 } from './persist-migrate'
 import { CENTER_REGION } from './regions'
+import { popClosedTab, pushClosedTab } from './closed-tabs'
 import {
   companionSeatsIn,
   EMPTY_COMPANION_RECORD,
@@ -49,6 +51,7 @@ import {
   type PerSpaceState,
 } from '../workspace/per-space'
 import type { ContentRef, ContentRefId } from './kinds'
+import type { ClosedTab } from './closed-tabs'
 import type { RegionId } from './regions'
 import type { PaneLeafNode, PaneLocation, PaneNode } from './tree'
 
@@ -196,6 +199,15 @@ export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
    * 看见它的全貌。
    */
   full: FullState | null
+  /**
+   * **每片叶刚关掉的那几格**(K2,⌘⇧T)。**瞬态**:不落盘、不进 per-space 的
+   * `pick` —— 判词整段在 `./closed-tabs.ts` 上(重启之后没有「刚关的」这回事)。
+   *
+   * 键是叶 id。那片叶自己被剪掉之后它那一格账会留在表上 —— 留着不清是有意的:
+   * 清它要在每一处剪枝后面各挂一句,而这张表既不落盘也不进任何投影,一条死账
+   * 的代价是几十个字节,而「每一处剪枝都记得清」这件事迟早漏一处。
+   */
+  closedTabs: Record<string, readonly ClosedTab[]>
 
   /** 出厂播种 + 洗一遍存量。幂等,由 `startWorkbench()` 调。 */
   seed(): void
@@ -234,6 +246,15 @@ export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
    * 关不掉(常驻那一种的最后一格)时什么都不做。
    */
   closeTab(leafId: string, index: number): void
+  /**
+   * **取走这片叶最近关掉的那一格**(K2,⌘⇧T 的第一步)。空栈 = `null`。
+   *
+   * 「取走」而不是「看一眼」:重开是一次往返(要问种类的 `restore`),而
+   * 「按两下 ⌘⇧T 回来两格」要求第一下当场把栈顶拿下来。代价是**重开失败那一
+   * 格也从栈上没了** —— 那是有意的:一份 `restore` 答 `null` 的影(url 空了、
+   * 档案换过版本)留在栈上只会让下一下 ⌘⇧T 继续哑,人按第二下会以为坏了。
+   */
+  takeClosedTab(leafId: string): ClosedTab | null
   /**
    * **把这一格内容从「开着它的每一处」都摘掉**(A2,会话侧栏菜单「关闭」那一行)。
    *
@@ -1041,6 +1062,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
         panelPath: null,
         dragging: false,
         full: null,
+        closedTabs: {},
 
         seed: () =>
           set((s) => {
@@ -1199,9 +1221,36 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           const tree = s.regions[region]
           if (!canDetachTab(tree, leafId, index, region)) return
           const ref = T.findLeaf(tree, leafId)?.tabs[index]
+          /*
+           * **关之前先留一份影**(K2,⌘⇧T)。次序是硬的:`dispose` 会把那一格
+           * 真的销毁(浏览器 tab 被删行、终端 PTY 被杀),那之后再问
+           * `snapshot` 读到的就是一份空壳。
+           *
+           * 影的内容由种类自述(`ContentKind.snapshot`,缺席 = ref 自己),
+           * 这只文件因此一个种类名都不出现。
+           */
+          if (ref) {
+            set({
+              closedTabs: {
+                ...s.closedTabs,
+                [leafId]: pushClosedTab(s.closedTabs[leafId], {
+                  kind: ref.kind,
+                  snapshot: snapshotContent(ref),
+                  index,
+                }),
+              },
+            })
+          }
           writeRegion(region, T.removeTab(tree, leafId, index))
           // **关掉 = 丢实例**(隐藏不丢)。种类自己清它自己的状态。
           if (ref) contentKindOf(ref.kind)?.dispose?.(ref)
+        },
+
+        takeClosedTab: (leafId) => {
+          const taken = popClosedTab(get().closedTabs[leafId])
+          if (!taken) return null
+          set((s) => ({ closedTabs: { ...s.closedTabs, [leafId]: taken.rest } }))
+          return taken.entry
         },
 
         /*

@@ -1,4 +1,5 @@
 import { TERMINAL_CLAIMS } from '../content/terminal/key-courtesy'
+import { TAB_SELECT_SLOTS, tabSelectCommandId } from '../keymap/tab-commands'
 import type { Combo, CommandId } from '../keymap/types'
 import type { FocusScopeId, FocusScopeSpec, ScopeAnswer } from './types'
 
@@ -91,7 +92,11 @@ const SEARCH_ANSWERS: readonly ScopeAnswer[] = [answer('nav.back'), answer('nav.
  * 命令的通名复用行上那颗图钉的名字(`expose.pin`),不新开一句:同一个动作在
  * 两处出现只该有一个说法。
  */
-const EXPOSE_ANSWERS: readonly ScopeAnswer[] = [answer('expose.pin')]
+const EXPOSE_ANSWERS: readonly ScopeAnswer[] = [
+  answer('expose.pin'),
+  /* ⌘N = 新建会话(K2)。判词在 `SESSION_NEW_ANSWERS` 上 —— 同一句话两块面。 */
+  answer('content.new', 'keymap.contentNewSession'),
+]
 
 /**
  * 一片叶一条:⌘W = 关当前 tab(设计 §2.3 / 拍点 ④,09-04 用户已拍)。
@@ -100,7 +105,43 @@ const EXPOSE_ANSWERS: readonly ScopeAnswer[] = [answer('expose.pin')]
  * 而「需不需要一个目标」正是三层立法的判据。⌘⇧W 是工作区命令面板,shift 那一格
  * 就是两者的分界。命令的通名复用 `common.close`(i18n 纪律)。
  */
-const LEAF_ANSWERS: readonly ScopeAnswer[] = [answer('tab.close')]
+const LEAF_ANSWERS: readonly ScopeAnswer[] = [
+  answer('tab.close'),
+  /*
+   * ── **标签族**(K2,方案 §5 K2)。叶是它们唯一的响应者 ─────────────────
+   * 这一排标签是什么东西,只有叶知道:多少格、哪一格是活动的、关掉的那几格
+   * 压在哪个栈上。所以「新标签 / 重开 / 上下一格 / 第 n 格」六条全挂在这儿,
+   * 而不是各自去找一块面。
+   *
+   * **声明在场 ≠ 此刻答得出**:单格叶交不出 `tab.next`、栈空交不出
+   * `tab.reopen`、活动 tab 那一种没有 `spawn` 就交不出 `tab.new` —— 那一头是
+   * 实例的事(`ScopeNode.commands` 缺席即穿过去),这张表只说「这种面可能答」。
+   *
+   * `content.new` 也在:浏览器 / 终端叶里它与 `tab.new` 同义(它们只有标签
+   * 一种摆法),会话叶里它是「按 `sessions.openMode` 开一条新会话」。
+   */
+  answer('tab.new'),
+  answer('content.new'),
+  answer('tab.reopen'),
+  answer('tab.next'),
+  answer('tab.prev'),
+  ...Array.from({ length: TAB_SELECT_SLOTS }, (_, i) => answer(tabSelectCommandId(i + 1))),
+]
+
+/**
+ * 会话总览与 composer 各答一条:**⌘N = 新建会话**(K2)。
+ *
+ * 它们不是叶,却是「焦点在会话这种内容里」的另外两种形 —— 人在总览里按 ⌘N
+ * 想的是「开一条新的」,在输入框里按 ⌘N 同理。少了这两行,焦点落在它们身上
+ * 时 ⌘N 会一路放行到什么都不发生,而那正是 09-12 裁定要治的反面(⌘N 从前
+ * 有一层全局兜底,于是在**浏览器**里也开会话)。
+ *
+ * 说法覆盖成「新建会话」—— 命令的通名是「新建这一种内容」,而这两块面里
+ * 那一种就是会话,说得出口比说通名有用。
+ */
+const SESSION_NEW_ANSWERS: readonly ScopeAnswer[] = [
+  answer('content.new', 'keymap.contentNewSession'),
+]
 
 /**
  * 内嵌浏览器两条:⌘L 回地址栏(B2,方案 §9-1 末段)、⌘F 在这一页里查找(B3-a)。
@@ -155,7 +196,12 @@ export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
   /* ── region:内容面(§4.1 第三行)───────────────────────────────────── */
   viewer: { id: 'viewer', kind: 'region', labelKey: 'viewer.label', answers: VIEWER_ANSWERS },
   files: { id: 'files', kind: 'region', labelKey: 'item.files', answers: FILES_ANSWERS },
-  composer: { id: 'composer', kind: 'region', labelKey: 'focus.scope.composer' },
+  composer: {
+    id: 'composer',
+    kind: 'region',
+    labelKey: 'focus.scope.composer',
+    answers: SESSION_NEW_ANSWERS,
+  },
   search: { id: 'search', kind: 'region', labelKey: 'item.search', answers: SEARCH_ANSWERS },
   expose: { id: 'expose', kind: 'region', labelKey: 'item.sessions', answers: EXPOSE_ANSWERS },
   /*

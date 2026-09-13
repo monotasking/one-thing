@@ -235,12 +235,23 @@ describe('关一格:先问种类,答 close 才真关', () => {
   it('⌘W 关当前 tab —— 声明在 `FOCUS_SCOPES.leaf.answers`,落点是叶注入的处理器', async () => {
     act(() => store().openRef(doc('a')))
     renderCenter()
-    // 声明这一头。
-    expect(FOCUS_SCOPES.leaf.answers?.map((a) => a.command)).toEqual(['tab.close'])
+    /*
+     * 声明这一头。K2 起叶答**十四条**(标签族);⌘W 那一条一个字没动,而
+     * 「答得出」与「此刻交得出处理器」仍旧是两头 —— 下面那一句量的是后者。
+     */
+    expect(FOCUS_SCOPES.leaf.answers?.map((a) => a.command)).toEqual([
+      'tab.close',
+      'tab.new',
+      'content.new',
+      'tab.reopen',
+      'tab.next',
+      'tab.prev',
+      ...Array.from({ length: 9 }, (_, i) => `tab.select:${i + 1}`),
+    ])
     // 落点那一头:真的挂起来的那个实例交出了同名处理器。
     const leafId = centerLeaves()[0].id
     const node = focusTree.dump().nodes.find((n) => n.scope === 'leaf' && n.owner === leafId)
-    expect(node?.keys).toEqual(['tab.close'])
+    expect(node?.keys).toContain('tab.close')
     // 焦点摆进这片叶,再按下去。
     act(() => {
       focusTree.activateScope('leaf', { owner: leafId, reason: 'open' })

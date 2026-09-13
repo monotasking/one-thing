@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { WORKSPACE_ITEM_ID } from '../stage/items'
 import { WORKSPACE_SLOT_COUNT } from '../workspace/types'
+import { tabSelectCommandId } from './tab-commands'
 import {
   KEYMAP_COMMANDS,
   effectiveCombos,
@@ -36,15 +37,18 @@ describe('序号直达那一族', () => {
     }
   })
 
-  it('出厂键是 ⌘1 / ⌘2 / ⌘3', () => {
+  /*
+   * **K2:出厂不绑**(09-12 用户裁定 2,原话「非常讨厌这个设计」,推翻 08-31)。
+   * 命令仍在表上 —— 想要的人自己绑一个,少的只是出厂占着的那三个键位;
+   * ⌘1–9 归焦点叶的第 n 格标签(下面那一条量的正是它)。
+   */
+  it('出厂**不绑键**(K2)——⌘1/2/3 让给了焦点叶的第 n 格标签', () => {
     for (let n = 1; n <= WORKSPACE_SLOT_COUNT; n += 1) {
-      expect(effectiveCombos(initialKeymapState, workspaceSlotCommandId(n))).toEqual([
-        { meta: true, key: String(n) },
-      ])
+      expect(effectiveCombos(initialKeymapState, workspaceSlotCommandId(n))).toEqual([])
     }
   })
 
-  it('⌘2 落到第二个序号的命令上', () => {
+  it('⌘2 落到**第二格标签**上(K2 之前它是第二个工作区)', () => {
     // T1-fix:`lookupCommands` 从这一批起要知道「主修饰键是哪一枚物理键」。
     // 这一组的夹具按的都是 ⌘,所以递 `'mac'`(判词在 `matchCombo` 上)。
     const id = lookupCommands(
@@ -52,7 +56,7 @@ describe('序号直达那一族', () => {
       { key: '2', metaKey: true, ctrlKey: false, altKey: false, shiftKey: false },
       'mac',
     )
-    expect(id).toEqual([workspaceSlotCommandId(2)])
+    expect(id).toEqual([tabSelectCommandId(2)])
   })
 })
 

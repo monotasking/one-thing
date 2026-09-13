@@ -38,13 +38,20 @@ export type { ComboConflict } from './commands'
 export { platformOf } from './platform'
 
 /** persist 档案版本。改这个数就必须在 migrateKeymapPersisted 里加一段,两者同生共死。 */
-export const KEYMAP_PERSIST_VERSION = 3
+export const KEYMAP_PERSIST_VERSION = 4
 
 /**
  * 退役的命令 id。它只作为**老档案里的一个键**存在(v2 迁移读它、改挂它),
  * 不再是这套注册表认识的命令 —— 会话总览去接管化之后,它的开关就是它自己那条 toggle。
  */
 const RETIRED_EXPOSE_TOGGLE_ID = 'expose.toggle'
+
+/**
+ * 同上,K2 退役的那一条(09-12 用户裁定 1:⌘N 不是全局键)。它只作为**老档案
+ * 里的一个键**存在 —— v4 迁移把挂在它上头的覆盖整条改挂到 `content.new`,
+ * 包括显式的 null(「用户把 ⌘N 解绑了」也是用户的意思)。
+ */
+const RETIRED_SESSION_NEW_ID = 'session.new'
 
 export const initialKeymapState: KeymapState = { overrides: {} }
 
@@ -95,15 +102,34 @@ export function primaryPressedIn(e: ComboEvent, platform: KeymapPlatform): boole
   return platform === 'mac' ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
 }
 
-/** 那枚**永远不参与绑定**的修饰键此刻按着没有(见上面的 ②)。 */
+/**
+ * 那枚**另一枚**修饰键此刻按着没有(见上面的 ②)。
+ *
+ * **K2 起它不再是「永远不参与绑定」**:`Combo.offHand` 让声明这一侧说得出
+ * 「我要的就是这一枚」(mac 的 ⌃Tab / ⌃ 反引号)。对**不带** `offHand` 的绑定
+ * 它照旧是那道闸 —— 判词与病历一个字没改。
+ */
 function offHandPressed(e: ComboEvent, platform: KeymapPlatform): boolean {
   return platform === 'mac' ? e.ctrlKey : e.metaKey
+}
+
+/**
+ * 主修饰键那一枚**按着没有**(不问另一枚)。
+ *
+ * 它与 `primaryPressedIn` 差的正是 ② 那一句:`offHand` 的绑定要的是
+ * 「另一枚按着 **且主修饰键没按**」,而 `primaryPressedIn` 在两枚同按时也答
+ * false —— 拿它当判据的话 mac 上 ⌃⌘Tab 会命中 ⌃Tab。
+ */
+function primaryHeldIn(e: ComboEvent, platform: KeymapPlatform): boolean {
+  return platform === 'mac' ? e.metaKey : e.ctrlKey
 }
 
 /** 两个组合是不是同一个。冲突判定用它,所以 ⌘P 与 Ctrl+P 判为同一个。 */
 export function sameCombo(a: Combo, b: Combo): boolean {
   return (
     primaryOf(a) === primaryOf(b) &&
+    /* K2:「另一枚」是身份的一部分 —— ⌃Tab 与 ⌘Tab 不是同一条绑定。 */
+    (a.offHand === true) === (b.offHand === true) &&
     (a.alt === true) === (b.alt === true) &&
     (a.shift === true) === (b.shift === true) &&
     a.key === b.key
@@ -118,12 +144,24 @@ export function sameCombo(a: Combo, b: Combo): boolean {
  * 而那正是这一改要治的病,所以让 tsc 在每一处问一遍。
  */
 export function matchCombo(e: ComboEvent, combo: Combo, platform: KeymapPlatform): boolean {
+  const alt = (combo.alt === true) === e.altKey
+  const shift = (combo.shift === true) === e.shiftKey
+  const key = normalizeKey(e.key) === combo.key
+  /*
+   * **`offHand` 那一支先判**(K2):这条绑定要的是「另一枚」那一枚物理键
+   * (mac 的 ⌃、Win / Linux 的 Win 键),所以两条同时成立才算 —— 另一枚按着,
+   * **而且主修饰键没按**(判词在 `primaryHeldIn` 上:拿 `primaryPressedIn`
+   * 当这一句会让 mac 上的 ⌃⌘Tab 命中 ⌃Tab)。
+   */
+  if (combo.offHand === true) {
+    return offHandPressed(e, platform) && !primaryHeldIn(e, platform) && alt && shift && key
+  }
   return (
     primaryOf(combo) === primaryPressedIn(e, platform) &&
     !offHandPressed(e, platform) &&
-    (combo.alt === true) === e.altKey &&
-    (combo.shift === true) === e.shiftKey &&
-    normalizeKey(e.key) === combo.key
+    alt &&
+    shift &&
+    key
   )
 }
 
@@ -166,12 +204,14 @@ export function keyCap(key: string): string {
 
 /**
  * 组合 → 一串键面。返回数组而不是一句话,是因为呈现方式是「一枚键帽一个 <Kbd>」——
- * 拼接留给视图,这里只回答「有哪几枚」。顺序固定:主修饰、⌥、⇧、键。
+ * 拼接留给视图,这里只回答「有哪几枚」。顺序固定:主修饰、另一枚、⌥、⇧、键。
  */
 export function formatCombo(combo: Combo, platform: KeymapPlatform): string[] {
   const mac = platform === 'mac'
   const caps: string[] = []
   if (primaryOf(combo)) caps.push(mac ? '⌘' : 'Ctrl')
+  /* 「另一枚」按平台画出它真正的名字:mac 是 ⌃,Win / Linux 是 Win 键(K2)。 */
+  if (combo.offHand === true) caps.push(mac ? '⌃' : 'Win')
   if (combo.alt === true) caps.push(mac ? '⌥' : 'Alt')
   if (combo.shift === true) caps.push(mac ? '⇧' : 'Shift')
   caps.push(keyCap(combo.key))
@@ -310,6 +350,12 @@ export function recordKey(e: ComboEvent): RecordOutcome {
 /**
  * persist 迁移。
  *
+ * v4(K2):`session.new` 退役,⌘N 换成响应者级的 `content.new`。**用户改过的
+ * 键跟着搬家,没改过的自然跟着新出厂表走** —— 后者不必做任何事:档案里只存
+ * 覆盖(`partialize`),覆盖表里没有那一条时 `effectiveCombos` 当场落到出厂值,
+ * 于是 `toggle:search` 改 ⌘⇧F、`workspace.slot:*` 出厂解绑、⌘1–9 归标签这三件
+ * 对没改过的人是免费的。
+ *
  * v3(K0):覆盖的值从一个 `Combo` 变成一串 `Combo[]` —— 一条命令可以有好几个
  * 键面。判词写在下面那一段上。
  *
@@ -346,6 +392,18 @@ export function migrateKeymapPersisted(persisted: unknown, version: number): unk
         wrapped[id] = value === null || Array.isArray(value) ? value : [value]
       }
       out = { ...out, overrides: wrapped }
+    }
+  }
+  if (version < 4) {
+    /*
+     * v4(K2):`session.new` → `content.new`。与 v2 那一段逐字同一条判词 ——
+     * 显式的 null 也搬(「用户把 ⌘N 解绑了」也是用户的意思,不搬就等于替他把
+     * ⌘N 又装了回去),新 id 上已经有值则老值让路(不覆盖用户当下的设置)。
+     */
+    const overrides = out.overrides
+    if (overrides && typeof overrides === 'object' && RETIRED_SESSION_NEW_ID in overrides) {
+      const { [RETIRED_SESSION_NEW_ID]: legacy, ...rest } = overrides as Record<string, unknown>
+      out = { ...out, overrides: 'content.new' in rest ? rest : { ...rest, 'content.new': legacy } }
     }
   }
   return out

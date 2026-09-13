@@ -858,9 +858,18 @@ async function main() {
       lastTable.some((c) => c === 'cmd+l' || c === 'ctrl+l'),
       `⑦ 键位下沉:推给主进程那张保留键表里有 ⌘L(整表 ${lastTable.length} 条)`,
     )
+    /*
+     * **K2 起检索面的出厂键是 ⌘⇧F**(09-12 裁定 3:⌘P 让给网页打印)。所以这一句
+     * 量的键换了一个,而它要证的事一个字没变 —— 全局命令照样先于页面。
+     * ⌘P 那一格现在归页面:同一张表里**不该**有它,下面那一句把这件事也钉住。
+     */
     assert(
-      lastTable.some((c) => c === 'cmd+p' || c === 'ctrl+p'),
-      '⑦ 同一张表里也有全局命令(⌘P 检索面)—— 页面拿到焦点时它们照样先于页面',
+      lastTable.some((c) => c === 'cmd+shift+f' || c === 'ctrl+shift+f'),
+      '⑦ 同一张表里也有全局命令(⌘⇧F 检索面)—— 页面拿到焦点时它们照样先于页面',
+    )
+    assert(
+      !lastTable.some((c) => c === 'cmd+p' || c === 'ctrl+p'),
+      '⑦ ⌘P **不在**表里 —— 它让给了页面(网页里那一下是「打印」)',
     )
 
     /*
@@ -959,6 +968,204 @@ async function main() {
       (findChords.at(-1) ?? []).some((c) => c === 'cmd+f' || c === 'ctrl+f'),
       '⑫ ⌘F 也在推给主进程那张保留键表里(页面有焦点时它先于页面自己的查找条)',
     )
+
+    console.log('\n[7c-2] ㉒ 页面焦点下按 ⌘T:保留键先于页面,壳里真的多一格浏览器标签(K2)')
+    /*
+     * ── 这一段量的是**整条链**,而不是表里有没有那个串 ─────────────────────
+     * 链是:页面里的一次真按键 → 主进程 `before-input-event` 认出它在保留表里 →
+     * `preventDefault` 并把它推回壳 → 壳的 `dispatchSyntheticKey` 合成一个事件交给
+     * **那唯一的派发器** → 活动路径上的叶答 `tab.new` → 种类自述 `spawn` 开一格 →
+     * 摆到当前那一格旁边。K2 之前这条链在 ⌘T 上根本不存在:那个键谁都不认领
+     * (方案 §2 的 P1),页面不处理、默认菜单也没有它,于是**什么都不发生**。
+     *
+     * ── 键怎么送进那一页:主进程 `sendInputEvent` ──────────────────────────
+     * CDP 的 `Input.dispatchKeyEvent` 打进的是**壳那个 webContents**,页面那片
+     * `WebContentsView` 根本不吃它(判词与病历在 ⑭ 与 ㉑ 两段上都写着);而系统级
+     * 合成输入被「真机门不许抢用户的机器」那条纪律禁着。`sendInputEvent` 是第三条
+     * 路:它把事件喂给**那一片视图自己的** webContents,于是 `before-input-event`
+     * 真的会跑 —— 这一段因此是保留表**唯一**量得准的地方。
+     *
+     * ── 跑完把它关掉 ──────────────────────────────────────────────────────
+     * 后面 ⑨(「关标签 —— 账上不留残渣」)与 ⑩(八格超量)都数表的行数,所以这一段
+     * 自己收尾:开出来那一格当场关掉,并核回原来的行数。
+     */
+    /*
+     * 一只**只读**探针:壳的 window 上有没有收到那一下推回来的合成键
+     * (`focus/dispatch.dispatchSyntheticKey` 派发在 window 上)。它把「主进程没截住」
+     * 与「截住了但壳这边没人接」分成两种红 —— 这道门第一趟就是靠它定位的。
+     */
+    await page.evaluate(() => {
+      window.__k2Keys = []
+      window.addEventListener(
+        'keydown',
+        (e) => {
+          if (e.key === 't' || e.key === 'T') {
+            window.__k2Keys.push({ key: e.key, meta: e.metaKey, ctrl: e.ctrlKey })
+          }
+        },
+        true,
+      )
+    })
+    const tabsBeforeT = await rpc(record, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+    const idsBeforeT = (tabsBeforeT.value?.tabs ?? []).map((t) => t.id)
+    assert(
+      (findChords.at(-1) ?? []).some((c) => c === 'cmd+t' || c === 'ctrl+t'),
+      '㉒ ⌘T 在推给主进程那张保留键表里(叶那一族随「视图永远住在一格 tab 里」一起下沉)',
+    )
+    /*
+     * ── 键怎么送:**在 `before-input-event` 这个边界上合成**,理由是硬的 ──────
+     * 页面里那一下真按键,这道门**送不进去**,而那不是量法没想周全:
+     *  · CDP `Input.dispatchKeyEvent` 喂的是**壳那个 webContents**,页面那片
+     *    `WebContentsView` 根本不吃它(判词在 ⑭ 与 ㉑ 两段上都写着);
+     *  · `webContents.sendInputEvent` 喂给了**那一片视图自己**(这一趟实测
+     *    `focusedAfter: true`,喂的就是活动那一格),可 `before-input-event`
+     *    **一次都没跑** —— 壳 window 上收到的 t 键是 `[]`。它是从 widget 那一层
+     *    注入的合成事件,不经过浏览器侧那个 pre-handler;
+     *  · 系统级合成输入被「真机门不许抢用户的机器」那条纪律禁着。
+     * 所以这一段在**处理器的入口**合成:`wc.emit('before-input-event', evt, input)`
+     * 跑的是这台壳**真的挂上去的那个监听**,吃的是它**真的推下来的那张表**
+     * (⑦ 刚量过整表 33 条)。往后的每一寸都是真的:`preventDefault` → 经真 IPC
+     * 推回壳 → `dispatchSyntheticKey` → **唯一那个派发器** → 活动路径上的叶答
+     * `tab.new` → 种类自述 `spawn` 开一格 → 摆到旁边。合成的只有 Chromium 递给
+     * 处理器的那一毫米,而那一毫米正是 Chromium 不让测试驱动的那一段。
+     *
+     * **不 `wc.focus()`**:第一趟那样干,壳这一侧的 DOM 焦点被抢走,活动路径当场
+     * 塌成 `["root","composer"]` —— 那时就算键推回来也没有叶可答(⌘T 一族是叶
+     * 响应者)。所以这里先把路径那一格前提读出来并断言,再合成那一下。
+     */
+    const pathBeforeT = await page.evaluate(() => {
+      const d = window.__focus?.dump?.()
+      if (!d) return null
+      return d.path.map((id) => {
+        const n = d.nodes.find((x) => x.instanceId === id)
+        return n ? { scope: n.scope, owner: n.owner, keys: n.keys.length } : null
+      })
+    })
+    const leafOnPath = (pathBeforeT ?? []).find((n) => n?.scope === 'leaf' && n?.keys > 0)
+    assert(
+      Boolean(leafOnPath),
+      `㉒ 前提:活动路径上有一片答得出命令的叶(读到 ${JSON.stringify(pathBeforeT)})`,
+    )
+    console.log('  · ㉒ 活动路径:', JSON.stringify(pathBeforeT))
+    /*
+     * **目标那一格由「壳此刻在看哪一格」决定,不由账本的 `active` 决定**
+     * (第二趟的真因):推回来的那一条带着 `viewId`,而 `NativeViewSlot` 只认
+     * **自己这一格**(`message.viewId !== viewId` 当场 return)。这一趟实测账本说
+     * `/second` 那一格 `active: true`,而壳的活动路径上是另一格 —— 喂给账本那一格,
+     * 键被截下来了、也推回来了,却落在一格**没在屏上**的占位格上,于是壳 window
+     * 上一下都没收到。
+     *
+     * 焦点路径那一格 `browser(browser:<id>)` 的 owner 就是答案:它是「此刻键盘
+     * 真的在哪一页里」的唯一产地(判词与「`visible` 与被遮是两格」同源 —— 账本
+     * 那个 `active` 说的是主进程的活动 tab,不是壳这一侧摆在屏上的那一格)。
+     */
+    const focusedTabId = (pathBeforeT ?? [])
+      .filter((n) => n?.scope === 'browser' && typeof n.owner === 'string')
+      .map((n) => n.owner.replace(/^browser:/, ''))
+      .at(-1)
+    const activeRowForT =
+      (tabsBeforeT.value?.tabs ?? []).find((t) => t.id === focusedTabId)
+      ?? (tabsBeforeT.value?.tabs ?? []).find((t) => t.id === tabsBeforeT.value?.activeId)
+      ?? (tabsBeforeT.value?.tabs ?? [])[0]
+    assert(
+      Boolean(activeRowForT?.url) && activeRowForT.id === focusedTabId,
+      `㉒ 前提:活动路径上那一页在账本里有 url(路径说 ${focusedTabId} / 取到 ${JSON.stringify(activeRowForT ?? null)})`,
+    )
+    const fed = await app.evaluate(async ({ webContents }, url) => {
+      const all = webContents.getAllWebContents().map((w) => {
+        let u = ''
+        try { u = w.getURL() } catch { u = '(gone)' }
+        return { wc: w, url: u, type: w.getType() }
+      })
+      const hit = all.find((row) => row.url === url)
+      if (!hit) return { how: 'no-view', all: all.map(({ url: u, type }) => ({ url: u, type })) }
+      const ON_MAC = process.platform === 'darwin'
+      let prevented = 0
+      const evt = { preventDefault: () => { prevented += 1 } }
+      const input = {
+        type: 'keyDown',
+        key: 't',
+        code: 'KeyT',
+        control: !ON_MAC,
+        alt: false,
+        shift: false,
+        meta: ON_MAC,
+      }
+      const listeners = hit.wc.listenerCount('before-input-event')
+      hit.wc.emit('before-input-event', evt, input)
+      return { how: 'sent', prevented, listeners, to: { url: hit.url, type: hit.type } }
+    }, activeRowForT.url)
+    assert(fed?.how === 'sent', `㉒ 找到活动那一格自己的 webContents(读回 ${JSON.stringify(fed)})`)
+    assert(fed.listeners > 0, `㉒ 那片视图上真的挂着 \`before-input-event\`(${fed.listeners} 个监听)`)
+    /*
+     * **`preventDefault` 就是「保留键先于页面」那句话本身**:它被调过 = 主进程
+     * 认出这个键在表里、把它从页面手上截下来了。拆掉 `NATIVE_VIEW_HOST_SCOPES`
+     * → 表里没有 `cmd+t` → 这一句当场红(而且是它先红,后面那一句才红)。
+     */
+    assert(fed.prevented === 1, `㉒ 主进程把 ⌘T 从页面手上截下来了(preventDefault ${fed.prevented} 次)`)
+    console.log('  · ㉒ 喂给:', JSON.stringify(fed.to), '监听', fed.listeners, '截下', fed.prevented)
+    const grown = await waitFor('⌘T 之后账上多一行', async () => {
+      const now = await rpc(record, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+      const rows = now.value?.tabs ?? []
+      return rows.length === idsBeforeT.length + 1 ? rows : undefined
+    }, 20_000).catch(async (error) => {
+      const seenKeys = await page.evaluate(() => window.__k2Keys ?? [])
+      const focusNow = await page.evaluate(() => {
+        const d = window.__focus?.dump?.()
+        if (!d) return null
+        return d.path.map((id) => {
+          const n = d.nodes.find((x) => x.instanceId === id)
+          return n ? `${n.scope}${n.owner ? `(${n.owner})` : ''}${n.keys.length ? `[${n.keys.length}]` : ''}` : id
+        })
+      })
+      const tabsNow = await rpc(record, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+      throw new Error(
+        `${error.message}\n壳 window 上收到的 t 键:${JSON.stringify(seenKeys)}`
+        + `\n此刻活动路径:${JSON.stringify(focusNow)}`
+        + `\n账上 tabs:${JSON.stringify((tabsNow.value?.tabs ?? []).map((t) => t.id))}`
+        + `\n喂给了:${JSON.stringify(fed.to)}(监听 ${fed.listeners} 个,截下 ${fed.prevented} 次)`
+        + `\n按键之前的活动路径:${JSON.stringify(pathBeforeT)}`,
+      )
+    })
+    const bornFromPage = grown.map((t) => t.id).find((id) => !idsBeforeT.includes(id))
+    console.log('  · ㉒ 页面按 ⌘T 开出:', bornFromPage, `(表 ${idsBeforeT.length} → ${grown.length})`)
+    assert(Boolean(bornFromPage), '㉒ 页面焦点下 ⌘T **真的开出了一格新浏览器标签**')
+    /*
+     * 「它在标签条上」是**顺带**的一句读数,不是这一步的判据 —— 所以它
+     * `.catch` 成 null:新那一格落进来的那一拍壳这一侧在重排,`page.evaluate` 偶发
+     * 「Execution context was destroyed」(真机撞过一次)。这一步要证的事(账上真
+     * 多了一格浏览器标签)已经由上面那句断言钉住了,而「摆在旁边」由
+     * `gate:workspace` ⑬a/⑬f 与 `gate:terminal` ⑪ 读树读得更准。
+     */
+    const seatOfBorn = await page
+      .evaluate((id) => Boolean(document.querySelector(`[data-pane-tab="browser:${id}"]`)), bornFromPage)
+      .catch(() => null)
+    report.pageCmdT = { born: bornFromPage, onStrip: seatOfBorn }
+    /*
+     * ── 收尾:**两条路都走**(⑨⑩⑲ 三段后面都数行数 / 数叶)────────────────
+     * 只 `do close` 不够:账上那一行没了,而壳这一侧那片叶还在,上面画的是
+     * 「这一页找不到了」+ 一颗「关掉」。留着它会**顶掉 ⑲ 的收尾** —— ⑲ 那一段
+     * 点的是第一颗 `browser-gone-close`,而那时候第一颗会是**这里留下的**
+     * (真机上就是这么红的一趟:⑲「那片叶被自己那颗『关掉』收走」超时)。
+     * 所以照 ⑲ 同一手把叶也收掉:`do close` → 点它自己那颗「关掉」。
+     */
+    await rpc(record, 'resources', 'do', { ref: `browser:${bornFromPage}`, op: 'close' })
+    await waitFor('㉒ 收尾:那一格关掉,叶与行数都回到原样', async () => {
+      await page
+        .evaluate((id) => {
+          const leaf = [...document.querySelectorAll('[data-testid="browser-leaf"]')].find(
+            (el) => el.dataset.tabId === id,
+          )
+          const btn = leaf?.querySelector('[data-testid="browser-gone-close"]')
+          if (btn instanceof HTMLElement) btn.click()
+        }, bornFromPage)
+        .catch(() => {})
+      const ids = await leafIds(page).catch(() => [])
+      const now = await rpc(record, 'resources', 'read', { ref: 'browser:@all', name: 'tabs' })
+      return !ids.includes(bornFromPage) && (now.value?.tabs ?? []).length === idsBeforeT.length
+        ? true
+        : undefined
+    }, 20_000)
 
     console.log('\n[7d] ⑭ 下载:页面里点一颗 `<a download>` → 落到临时下载目录')
     /*
@@ -1948,7 +2155,7 @@ async function main() {
       await rm(menuStore, { recursive: true, force: true })
     }
 
-    console.log(`\n[browser-gate] ok(${LANE} 档)—— 二十一条全过`)
+    console.log(`\n[browser-gate] ok(${LANE} 档)—— 二十二条全过`)
     console.log(`[browser-gate] 读数:${JSON.stringify(report)}`)
   } finally {
     if (app) await app.close().catch(() => {})

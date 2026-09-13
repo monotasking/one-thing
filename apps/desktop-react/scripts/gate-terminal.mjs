@@ -199,26 +199,33 @@ async function rpc(record, domain, method, payload = {}) {
  * 键位层从 T1-fix 起分得清 ⌘ 与 Ctrl:一条绑定写 `meta` 还是写 `ctrl` 只是
  * 两种拼法(都读作「主修饰键」),而**按下**的那一枚由平台定 —— mac 是 ⌘、
  * 其余是 Ctrl(判词整段在 `src/keymap/transitions.ts` 的 `matchCombo` 上)。
- * 所以 `toggle:terminal` 那条出厂键位(`{ctrl:true, key:'`'}`)在 mac 上要按
- * **⌘\`**、在 Win / Linux 上按 **Ctrl+\`**。门跟着平台走,不写死一枚。
+ * ── **K2 改口:召唤终端那一条走的是「另一枚」**(`Combo.offHand`)────────────
+ * T1 写的是 `{ctrl:true, key:'`'}`,而声明侧 `ctrl` 与 `meta` 同义 —— 于是它在
+ * mac 上实际是 **⌘\`**,与系统的「在本应用的窗口间轮换」撞车(T1 自己留的账)。
+ * K2 把它改成 `{offHand:true, key:'`'}`:**另一枚**,mac = ⌃、Win / Linux = Win 键。
+ * 所以这道门的召唤键从 `PRIMARY_MODIFIER` 换成 `OFF_HAND_MODIFIER` —— 别处那几段
+ * (⌘F / ⌘⇧↩ / ⌘T)照旧按主修饰键,两枚各归各的。
  *
  * CDP 的 modifiers 位:2 = Ctrl,4 = Meta。
  */
 const ON_MAC = process.platform === 'darwin'
 const PRIMARY_MODIFIER = ON_MAC ? 4 : 2
+/** 「另一枚」:mac 是 ⌃(2),其余平台是 Win / Meta(4)。 */
+const OFF_HAND_MODIFIER = ON_MAC ? 2 : 4
 /** 屏幕上写给人看的那个键面(与 `formatCombo` 同一口径)。 */
-const SUMMON_CAP = ON_MAC ? '⌘`' : 'Ctrl+`'
+const SUMMON_CAP = ON_MAC ? '⌃`' : 'Win+`'
 
 /**
  * 一下按键。**只进这个窗口**(CDP `Input.dispatchKeyEvent`),不动真光标
  * (09-01 那条「真机输入探针禁抢用户的机器」)。
  *
  * `primary = true` = 按住这台机器的主修饰键(见 `PRIMARY_MODIFIER`);
+ * `offHand = true` = 按住**另一枚**(K2,召唤终端那一条要它);
  * `shift = true` 再叠一枚 ⇧(⌘⇧↩ 那条全屏命令要它)。
  */
-async function press(cdp, { key, code, keyCode, text, primary = false, shift = false, windowsVirtualKeyCode }) {
+async function press(cdp, { key, code, keyCode, text, primary = false, offHand = false, shift = false, windowsVirtualKeyCode }) {
   // CDP 的 modifiers 位:1 = Alt,2 = Ctrl,4 = Meta,8 = Shift。
-  const modifiers = (primary ? PRIMARY_MODIFIER : 0) | (shift ? 8 : 0)
+  const modifiers = (primary ? PRIMARY_MODIFIER : 0) | (offHand ? OFF_HAND_MODIFIER : 0) | (shift ? 8 : 0)
   await cdp.send('Input.dispatchKeyEvent', {
     type: text ? 'keyDown' : 'rawKeyDown',
     key,
@@ -311,7 +318,7 @@ async function main() {
   try {
     let rendererUrl = ''
     if (!PROD) {
-      console.log(`\n[0/10] dev 档:起一台 vite(端口 ${DEV_PORT},**不是用户的 5175**)`)
+      console.log(`\n[0/11] dev 档:起一台 vite(端口 ${DEV_PORT},**不是用户的 5175**)`)
       const { createServer } = await import('vite')
       vite = await createServer({
         configFile: path.join(appRoot, 'vite.config.ts'),
@@ -322,7 +329,7 @@ async function main() {
       rendererUrl = vite.resolvedUrls?.local?.[0] ?? `http://127.0.0.1:${DEV_PORT}/`
       console.log(`      ${rendererUrl}`)
     }
-    console.log(`\n[1/10] 壳自己装配 core(不起 server —— 判词在文件头;${LANE} 档)`)
+    console.log(`\n[1/11] 壳自己装配 core(不起 server —— 判词在文件头;${LANE} 档)`)
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -356,16 +363,16 @@ async function main() {
     await installLoaf(page)
 
     console.log(
-      `\n[2/10] ${SUMMON_CAP} 召唤一格终端(主修饰键随平台,见 PRIMARY_MODIFIER)`,
+      `\n[2/11] ${SUMMON_CAP} 召唤一格终端(K2:走「另一枚」,见 OFF_HAND_MODIFIER)`,
     )
-    await press(cdp, { key: '`', code: 'Backquote', keyCode: 192, primary: true })
+    await press(cdp, { key: '`', code: 'Backquote', keyCode: 192, offHand: true })
     const leaf = await waitFor('那格终端叶出现', () =>
       page.evaluate(() => {
         const el = document.querySelector('[data-testid="terminal-leaf"]')
         return el ? { state: el.dataset.terminalState } : undefined
       }),
     )
-    assert(Boolean(leaf), `② Ctrl+\` 开出一格终端叶(state=${leaf.state})`)
+    assert(Boolean(leaf), `② ${SUMMON_CAP} 开出一格终端叶(state=${leaf.state})`)
     const focused = await waitFor('xterm 的 textarea 拿到焦点', () =>
       page.evaluate(() => {
         const active = document.activeElement
@@ -376,7 +383,7 @@ async function main() {
     )
     assert(Boolean(focused), `② 焦点落在终端里(${focused.tag}.${focused.cls})`)
 
-    console.log('\n[3/10] 打一行命令 —— 后端真的 spawn 了一台 shell 吗')
+    console.log('\n[3/11] 打一行命令 —— 后端真的 spawn 了一台 shell 吗')
     await waitFor('终端接上了(live)', () =>
       page.evaluate(
         () =>
@@ -395,7 +402,7 @@ async function main() {
     })
     assert(true, `③ \`printf\` 的输出经 SSE 回到 xterm(屏幕上找到 ${MARK})`)
 
-    console.log('\n[4/10] ⌘F 查找 —— 真的搜索插件,不是那张记事本屏幕')
+    console.log('\n[4/11] ⌘F 查找 —— 真的搜索插件,不是那张记事本屏幕')
     /*
      * 上面 ③ 刚把 `MARK` 打上屏,所以这一趟找的就是它:一处命中,读数必须写
      * 「1/1」。这一条量的是**单测量不到的那一半** —— `@xterm/addon-search` 真的
@@ -434,7 +441,7 @@ async function main() {
     )
     assert(closedFind === true, '⑨ Esc 收起查找行,键盘回到那块屏幕上')
 
-    console.log('\n[5/10] 刷新页面 —— attach 回放把它找回来')
+    console.log('\n[5/11] 刷新页面 —— attach 回放把它找回来')
     await page.reload()
     await waitFor('渲染层重新连上', async () => {
       const value = await page.evaluate(() => window.__d0 ?? null)
@@ -453,10 +460,10 @@ async function main() {
     /*
      * 刷新之后焦点**不在**终端里(那一格没被人点名 —— 判词在
      * `content/terminal/registry.requestTerminalFocus` 上:只有「刚被人亲手开
-     * 出来」才抢焦点,布局恢复不抢)。所以这里再按一下 Ctrl+\` —— 它走的是召唤
+     * 出来」才抢焦点,布局恢复不抢)。所以这里再按一下召唤键(K2 起是「另一枚」+ \`)—— 它走的是召唤
      * 四态里的「看得见、没聚焦 → 只把键盘送进去」那一档,顺带把那一档也量了。
      */
-    await press(cdp, { key: '`', code: 'Backquote', keyCode: 192, primary: true })
+    await press(cdp, { key: '`', code: 'Backquote', keyCode: 192, offHand: true })
     const refocused = await waitFor('召唤键把焦点送回终端', () =>
       page.evaluate(() =>
         document.activeElement?.closest('[data-terminal-screen]') ? true : undefined,
@@ -464,7 +471,7 @@ async function main() {
     )
     assert(refocused === true, '④b 再按一下召唤键:看得见没聚焦 → 只把键盘送进去')
 
-    console.log('\n[6/10] 喷两万行 —— 流式期间的长帧读数')
+    console.log('\n[6/11] 喷两万行 —— 流式期间的长帧读数')
     const mark = await loafMark(page)
     const frames = await sampleFrames(page, async () => {
       await cdp.send('Input.insertText', { text: 'seq 1 20000' })
@@ -495,7 +502,7 @@ async function main() {
         + `(实测 ${cost.long.length} 个,最长一帧间隔 ${frames.longestGap}ms)`,
     )
 
-    console.log('\n[7/10] 经 RPC kill 杀掉 —— 死讯要走到屏幕上')
+    console.log('\n[7/11] 经 RPC kill 杀掉 —— 死讯要走到屏幕上')
     const list = await rpc(record, 'terminal', 'list', {})
     const alive = (list.terminals ?? []).filter((row) => !row.exited)
     assert(alive.length === 1, `杀之前 terminal.list 里恰好一格活着(${alive.length})`)
@@ -519,7 +526,7 @@ async function main() {
     )
     assert(exited.text.length > 0, `⑥ 经 RPC kill 之后屏幕上说了一句「${exited.text.trim()}」`)
 
-    console.log('\n[8/10] 关标签 = 杀 —— 账上不留残渣')
+    console.log('\n[8/11] 关标签 = 杀 —— 账上不留残渣')
     /*
      * 点那颗 ×。**不走 ⌘W** —— 那个组合在终端里是礼让给 PTY 的
      * (`content/terminal/key-courtesy.ts` 的五行之一),按下去是删一个词,
@@ -547,14 +554,14 @@ async function main() {
       `⑦ terminal.list 里没有活着的它了(整表 ${JSON.stringify(after.terminals ?? [])})`,
     )
 
-    console.log('\n[9/10] axe 扫这一屏(与 gate:a11y 同一套标签)')
+    console.log('\n[9/11] axe 扫这一屏(与 gate:a11y 同一套标签)')
     /*
      * 这一屏扫的是**终端刚被关掉之后**那台壳?不 —— 上面 ⑦ 把它关了,所以这里
      * 先开一格新的:axe 要扫的是**有终端在场**的那棵树(xterm 自己会往里长一堆
      * `aria-live` 的行、一个 helper textarea、一层 `aria-hidden` 的画布,而壳这
      * 半边要说清的是状态条那一行字与那颗钮)。
      */
-    await press(cdp, { key: '`', code: 'Backquote', keyCode: 192, primary: true })
+    await press(cdp, { key: '`', code: 'Backquote', keyCode: 192, offHand: true })
     await waitFor('再开一格用来扫', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="terminal-leaf"]'))),
     )
@@ -577,7 +584,7 @@ async function main() {
       `⑧ 终端这一屏 axe 零违例(过了 ${axe.passes.length} 条规则)`,
     )
 
-    console.log('\n[10/10] 组件级停靠的那一问:终端被藏起来、被搬家,各要多少钱')
+    console.log('\n[10/11] 组件级停靠的那一问:终端被藏起来、被搬家,各要多少钱')
     /*
      * ── 这一步在回答什么(T2 派工单第 2 条)──────────────────────────────
      * 派工单的原话是「同一片叶上 `session:A → terminal:X → session:A` 的切换」,
@@ -716,9 +723,163 @@ async function main() {
       '⑩ 藏 / 搬两条路上那块屏幕每一次都真的回到了屏幕上(读数已打表,判词在这一步上头)',
     )
 
+    console.log('\n[11/11] ⑪ 终端叶 ⌘T:同类再开一格,而且就在当前那一格旁边(K2)')
+    /*
+     * ── 为什么这一段住在这道门,而不是 `gate:workspace` ────────────────────
+     * K2 的派工单点名「终端叶 ⌘T 开出终端」由 `gate:workspace` 量,而那道门实测
+     * 量不到:它的 core 是**独立起的那台 server**,壳是**attach** 上去的,所以
+     * `installBrowserHost()` / terminal 宿主都没在那个进程里跑 —— 那道门里
+     * `resources read browser:@all` 原话答的是 `No resource is registered for
+     * scheme: browser`,`capabilities.terminal` 也问不到。**它不是产品缺陷,是
+     * 那道门的架构**(一台 server core + 一个附身的壳)。终端宿主只在**自己装配
+     * core** 的壳里存在,而这道门起的正是那样一台壳,所以这一段的家在这儿。
+     * `gate:workspace` ⑬h 因此是一句带现场读数的 skip,不是假绿。
+     *
+     * 键怎么送:CDP `Input.dispatchKeyEvent`(只进这个窗口,不动真光标、不抢前台)
+     * —— 与本门其余几段逐字同一手。终端是 DOM(xterm),不是原生视图,所以这一下
+     * 直接到得了壳那唯一的派发器。
+     */
+    const spawnSeat = await page.evaluate((leafId) => {
+      const el = document.querySelector(`[data-pane-leaf="${leafId}"]`)
+      if (!(el instanceof HTMLElement)) return { why: 'no-leaf' }
+      el.focus()
+      const d = window.__focus?.dump?.()
+      const onPath = Boolean(
+        d
+          && d.path
+            .map((id) => d.nodes.find((n) => n.instanceId === id))
+            .some((n) => n?.scope === 'leaf' && n?.owner === leafId),
+      )
+      const tabs = Array.from(el.querySelectorAll('[data-pane-tab]'))
+        .map((x) => x.getAttribute('data-pane-tab'))
+        .filter(Boolean)
+      return { onPath, tabs, why: onPath ? '' : 'off-path' }
+    }, seat.leaf)
+    assert(spawnSeat.onPath === true, `⑪ 前提:焦点进了那片终端叶(读回 ${spawnSeat.why || 'ok'})`)
+    const termsBefore = spawnSeat.tabs.filter((id) => id.startsWith('terminal:'))
+    await press(cdp, { key: 't', code: 'KeyT', keyCode: 84, primary: true })
+    const termsAfter = await waitFor(
+      '⌘T 之后这片叶上多一格终端',
+      () =>
+        page.evaluate(
+          (leafId) => {
+            const el = document.querySelector(`[data-pane-leaf="${leafId}"]`)
+            if (!el) return undefined
+            const ids = Array.from(el.querySelectorAll('[data-pane-tab]'))
+              .map((x) => x.getAttribute('data-pane-tab'))
+              .filter(Boolean)
+            return ids.filter((id) => id.startsWith('terminal:')).length >= 3 ? ids : undefined
+          },
+          seat.leaf,
+        ),
+      25_000,
+    )
+    const bornTerm = termsAfter
+      .filter((id) => id.startsWith('terminal:'))
+      .find((id) => !termsBefore.includes(id))
+    report.cmdTOnTerminalLeaf = { before: termsBefore.length, after: termsAfter.length, born: bornTerm }
+    console.log(`      ⑪ ⌘T:${termsBefore.length} 格 → ${termsAfter.filter((id) => id.startsWith('terminal:')).length} 格,新的是 ${bornTerm}`)
+    assert(
+      Boolean(bornTerm),
+      `⑪ 终端叶 ⌘T 开出的是**一格终端**(种类自述 spawn;账上 ${JSON.stringify(termsAfter)})`,
+    )
+    /*
+     * **就在旁边**:新那一格坐在原来那几格之后、而且是活动格。判据读的是标签条
+     * 的 DOM 次序(`[data-pane-tab]` 按标签序),与 `gate:workspace` ⑬ 读盘上那份
+     * 树是同一件事的两个口 —— 这道门手上有 DOM,就不必再去解一遍 localStorage。
+     */
+    const bornIsActive = await page.evaluate(
+      (id) => Boolean(document.querySelector(`[data-pane-tab="${id}"][data-pane-on]`)),
+      bornTerm,
+    )
+    assert(bornIsActive === true, '⑪ 新那一格当场是活动格(开什么就看什么)')
+
+    /*
+     * ── ⑪ 续:⌘W 关掉 → ⌘⇧T **拿回一台能用的终端**(K2 修一轮)────────────
+     * 关一格终端 = 杀 PTY,所以「重开」在这一种上**不能**走缺省那一档(影 = ref
+     * 自己)—— 那样拿回来的是一格 `exited` 的死壳,屏幕上写着「Process exited」,
+     * 而人按 ⌘⇧T 要的是「刚才那台终端回来」。所以这一种自述 `snapshot = {cwd}` /
+     * `restore = 照这个目录开一台新的`,而这一步量的正是那句话的两半:
+     *  ① 格数回来了(重开确实发生了);
+     *  ② 新那一格**不是** `exited` / `dead`(它是一台活着的 shell,不是尸体)。
+     * 反证:把 `terminal.tsx` 的 `snapshot` / `restore` 拆掉 → ② 当场读到 `exited`。
+     */
+    const beforeClose = termsAfter.filter((id) => id.startsWith('terminal:'))
+    await page.evaluate((leafId) => {
+      const el = document.querySelector(`[data-pane-leaf="${leafId}"]`)
+      if (el instanceof HTMLElement) el.focus()
+    }, seat.leaf)
+    await press(cdp, { key: 'w', code: 'KeyW', keyCode: 87, primary: true })
+    await waitFor(
+      '⌘W 关掉一格',
+      () =>
+        page.evaluate(
+          (args) => {
+            const el = document.querySelector(`[data-pane-leaf="${args.leafId}"]`)
+            if (!el) return undefined
+            const ids = Array.from(el.querySelectorAll('[data-pane-tab]'))
+              .map((x) => x.getAttribute('data-pane-tab'))
+              .filter((id) => id && id.startsWith('terminal:'))
+            return ids.length === args.want - 1 ? ids : undefined
+          },
+          { leafId: seat.leaf, want: beforeClose.length },
+        ),
+      20_000,
+    )
+    await page.evaluate((leafId) => {
+      const el = document.querySelector(`[data-pane-leaf="${leafId}"]`)
+      if (el instanceof HTMLElement) el.focus()
+    }, seat.leaf)
+    await press(cdp, { key: 't', code: 'KeyT', keyCode: 84, primary: true, shift: true })
+    const reopened = await waitFor(
+      '⌘⇧T 把它拿回来',
+      () =>
+        page.evaluate(
+          (args) => {
+            const el = document.querySelector(`[data-pane-leaf="${args.leafId}"]`)
+            if (!el) return undefined
+            const ids = Array.from(el.querySelectorAll('[data-pane-tab]'))
+              .map((x) => x.getAttribute('data-pane-tab'))
+              .filter((id) => id && id.startsWith('terminal:'))
+            if (ids.length !== args.want) return undefined
+            const born = ids.find((id) => !args.before.includes(id))
+            const live = document.querySelector('[data-testid="terminal-leaf"][data-terminal-state]')
+            return { ids, born, state: live?.getAttribute('data-terminal-state') ?? null }
+          },
+          { leafId: seat.leaf, want: beforeClose.length, before: beforeClose },
+        ),
+      25_000,
+    )
+    report.reopenTerminal = reopened
+    console.log(`      ⑪ ⌘W → ⌘⇧T:回到 ${reopened.ids.length} 格,新的是 ${reopened.born},屏上那一格 state=${reopened.state}`)
+    assert(
+      Boolean(reopened.born),
+      `⑪ ⌘⇧T 拿回来的是一格**新**终端(不是被关掉的那个 id;账上 ${JSON.stringify(reopened.ids)})`,
+    )
+    /*
+     * 等它真的活过来再判 —— `attaching` 是合法的中间态,`exited` / `dead` 不是。
+     * 等不到活就把读到的那一档原样报出来(不假装绿)。
+     */
+    const settled = await waitFor(
+      '新那一格活过来',
+      () =>
+        page.evaluate((id) => {
+          const layer = document.querySelector(`[data-pane-tab="${id}"]`)
+          const leafEl = layer?.querySelector('[data-terminal-state]')
+          const state = leafEl?.getAttribute('data-terminal-state') ?? null
+          return state && state !== 'attaching' ? state : undefined
+        }, reopened.born),
+      20_000,
+    ).catch(() => 'attaching')
+    console.log(`      ⑪ 新那一格 state=${settled}`)
+    assert(
+      settled !== 'exited' && settled !== 'dead',
+      `⑪ **拿回来的是一台活着的 shell,不是「已退出」的死壳**(state=${settled})`,
+    )
+
     await app.close()
     app = undefined
-    console.log(`\n[terminal-gate] ok(${LANE} 档)—— 十条全过`)
+    console.log(`\n[terminal-gate] ok(${LANE} 档)—— 十一条全过`)
     console.log(`[terminal-gate] 读数:${JSON.stringify(report)}`)
   } finally {
     if (app) await app.close().catch(() => {})

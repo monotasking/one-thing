@@ -7,6 +7,7 @@ import { Input } from '../../ui/Input'
 import { useT } from '../../i18n'
 import { useLiveTitleStore } from '../../stage/live-title'
 import { refId } from '../../workbench/kinds'
+import { spawnTabNextToRef } from '../../workbench/leaf-commands'
 import { locateRef } from '../../workbench/tree'
 import { useWorkbenchStore } from '../../workbench/store'
 import { Button } from '../../ui/Button'
@@ -419,7 +420,9 @@ export function BrowserLeaf({ id }: { id: string }) {
                * 不走位置记忆那条路:一格新 tab 在记忆里没有自己的位置,于是那条
                * 路上每按一次 + 就要一扇新浮窗(真机报障「点新建开出来一个窗口」)。
                */
-              onClick={() => void import('../browser-launcher').then((m) => m.openBrowser(undefined, { near: id }))}
+              /* **与 ⌘T 同一条路**(K2:一件事一个产地)—— 种类自述 `spawn` 开一格,
+               * 摆到这一格旁边。判词在 `workbench/leaf-commands.spawnTabNextTo` 上。 */
+              onClick={() => void spawnTabNextToRef(browserRef(id))}
               testId="browser-new-tab"
             />
             <IconButton

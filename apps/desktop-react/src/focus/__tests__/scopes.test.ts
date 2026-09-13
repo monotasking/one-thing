@@ -109,8 +109,17 @@ describe('答哪些命令:查看器 / 文件树 / 检索面 / 会话总览 / 终
     expect(focusScopeAnswersOf('files').map((a) => a.command)).toEqual(['files.detail'])
     // 检索重建 S4b:⌘[ / ⌘] = 查询历史的后退 / 前进(§4.6,与浏览器地址栏同形)。
     expect(focusScopeAnswersOf('search').map((a) => a.command)).toEqual(['nav.back', 'nav.forward'])
-    // 09-04 方向 A:⌘⇧P = 置顶 / 取消置顶活动行。
-    expect(focusScopeAnswersOf('expose').map((a) => a.command)).toEqual(['expose.pin'])
+    /*
+     * 09-04 方向 A:⌘⇧P = 置顶 / 取消置顶活动行。
+     * K2 起还多一条 `content.new`(⌘N = 新建会话)—— 会话总览与 composer 是
+     * 「焦点在会话这种内容里」的另外两种形,判词在 `SESSION_NEW_ANSWERS` 上。
+     */
+    expect(focusScopeAnswersOf('expose').map((a) => a.command)).toEqual([
+      'expose.pin',
+      'content.new',
+    ])
+    // composer 只答那一条(它没有「这一排标签」,所以不答 `tab.*`)。
+    expect(focusScopeAnswersOf('composer').map((a) => a.command)).toEqual(['content.new'])
     /*
      * T2:终端答一条 `view.find`(出厂 ⌘F)。它与 `claims` 那一族是**反着的**
      * 两句话:那五个键归 PTY,这一条归应用 —— 判词在 `scopes.ts` 的
@@ -126,11 +135,33 @@ describe('答哪些命令:查看器 / 文件树 / 检索面 / 会话总览 / 终
       'browser.address',
       'view.find',
     ])
-    // W1 拍点 ④:⌘W 关当前 tab(`app: false` —— 它需要一个目标)。
-    expect(focusScopeAnswersOf('leaf').map((a) => a.command)).toEqual(['tab.close'])
+    /*
+     * W1 拍点 ④:⌘W 关当前 tab(`app: false` —— 它需要一个目标)。
+     * K2 起叶还答**标签族**那十三条(⌘T / ⌘N / ⌘⇧T / 上下一格 / 九格直达)——
+     * 这一排标签是什么东西只有叶知道,判词在 `LEAF_ANSWERS` 上。
+     */
+    expect(focusScopeAnswersOf('leaf').map((a) => a.command)).toEqual([
+      'tab.close',
+      'tab.new',
+      'content.new',
+      'tab.reopen',
+      'tab.next',
+      'tab.prev',
+      ...Array.from({ length: 9 }, (_, i) => `tab.select:${i + 1}`),
+    ])
     const withAnswers = FOCUS_SCOPE_LIST.filter((s) => (s.answers?.length ?? 0) > 0).map((s) => s.id)
     // 次序 = 表里的声明序(`terminal` 在 region 那一族里,`leaf` 排在它们末尾)。
-    expect(withAnswers).toEqual(['viewer', 'files', 'search', 'expose', 'terminal', 'browser', 'leaf'])
+    // K2 起 `composer` 也在里面(它答 ⌘N = 新建会话)。
+    expect(withAnswers).toEqual([
+      'viewer',
+      'files',
+      'composer',
+      'search',
+      'expose',
+      'terminal',
+      'browser',
+      'leaf',
+    ])
   })
 
   /**
@@ -159,7 +190,13 @@ describe('答哪些命令:查看器 / 文件树 / 检索面 / 会话总览 / 终
     const withClaims = FOCUS_SCOPE_LIST.filter((s) => (s.claims?.length ?? 0) > 0).map((s) => s.id)
     // 测试跑在 jsdom 上(UA 不是 mac),所以这里是 Win / Linux 那一档。
     expect(withClaims).toEqual(['terminal'])
-    expect(focusScopeClaimsOf('terminal').map((c) => c.key)).toEqual(['p', 'e', 'j', 'n', 'w'])
+    /*
+     * K2 换了一格(`p` 出去、`t` 进来):检索面让出 ⌘P 之后 `Ctrl+P` 不再与
+     * 任何一条命令抢键,而新长出来的 ⌘T(`tab.new`)占了一个字母,`^T` 在
+     * readline 下是「交换前后两个字符」。判据一个字没改 —— 判词在
+     * `content/terminal/key-courtesy.ts` 上。
+     */
+    expect(focusScopeClaimsOf('terminal').map((c) => c.key)).toEqual(['e', 'j', 'w', 't', 'n'])
     for (const claim of focusScopeClaimsOf('terminal')) {
       expect(claim.ctrl).toBe(true)
       expect(claim.key).toMatch(/^[a-z]$/)

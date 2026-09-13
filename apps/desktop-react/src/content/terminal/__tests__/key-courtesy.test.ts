@@ -6,8 +6,18 @@ import {
   terminalClaims,
 } from '../key-courtesy'
 import { FOCUS_SCOPES } from '../../../focus/scopes'
-import { KEYMAP_COMMANDS, effectiveCombos, matchCombo, sameCombo } from '../../../keymap/transitions'
-import { scopesAnswering } from '../../../keymap/commands'
+import {
+  KEYMAP_COMMANDS,
+  effectiveCombos,
+  matchCombo,
+  platformOf,
+  sameCombo,
+} from '../../../keymap/transitions'
+import {
+  TERMINAL_SUMMON_COMBOS,
+  comboForPlatform,
+  scopesAnswering,
+} from '../../../keymap/commands'
 import { en } from '../../../i18n/en'
 import { zh } from '../../../i18n/zh'
 
@@ -67,9 +77,14 @@ describe('表是算出来的,不是抄出来的', () => {
 
   it('三条例外(Ctrl+Tab 族 / Ctrl+` / Ctrl+,)结构上就进不来:这张表只收单个字母', () => {
     for (const letter of TERMINAL_COURTESY_LETTERS) expect(letter).toMatch(/^[a-z]$/)
-    // 召唤终端那条命令用的正是反引号 —— 它进了表就再也收不起来。
+    /*
+     * 召唤终端那条命令用的正是反引号 —— 它进了表就再也收不起来。
+     * K2 起它**按平台分档**(`byPlatform`):两台机器上按的都是 Ctrl 那一枚
+     * 物理键,只是 mac 上那枚叫「另一枚」、别处那枚就是主修饰键。判词整段在
+     * `keymap/commands.ts` 的 `byPlatform` 上。
+     */
     expect(effectiveCombos({ overrides: {} }, 'toggle:terminal')).toEqual([
-      { ctrl: true, key: '`' },
+      comboForPlatform(TERMINAL_SUMMON_COMBOS, platformOf(navigator.userAgent)),
     ])
     expect(TERMINAL_COURTESY_LETTERS).not.toContain('`')
   })
@@ -83,22 +98,24 @@ describe('表是算出来的,不是抄出来的', () => {
    */
   it('mac:空表,因为 Ctrl 那一枚根本命中不了任何绑定', () => {
     expect(terminalClaims('mac')).toEqual([])
-    const searchCombo = effectiveCombos({ overrides: {} }, 'toggle:search')[0]
-    expect(searchCombo).toEqual({ meta: true, key: 'p' })
-    const ctrlP = { metaKey: false, ctrlKey: true, altKey: false, shiftKey: false, key: 'p' }
-    const cmdP = { metaKey: true, ctrlKey: false, altKey: false, shiftKey: false, key: 'p' }
-    expect(matchCombo(ctrlP, searchCombo, 'mac')).toBe(false) // ^P 归 PTY
-    expect(matchCombo(cmdP, searchCombo, 'mac')).toBe(true) // ⌘P 照旧开检索面
+    // 拿 ⌘W(关当前 tab)当样本 —— K2 之后 ⌘P 已经不在出厂表上了。
+    const closeCombo = effectiveCombos({ overrides: {} }, 'tab.close')[0]
+    expect(closeCombo).toEqual({ meta: true, key: 'w' })
+    const ctrlW = { metaKey: false, ctrlKey: true, altKey: false, shiftKey: false, key: 'w' }
+    const cmdW = { metaKey: true, ctrlKey: false, altKey: false, shiftKey: false, key: 'w' }
+    expect(matchCombo(ctrlW, closeCombo, 'mac')).toBe(false) // ^W 归 PTY(删一个词)
+    expect(matchCombo(cmdW, closeCombo, 'mac')).toBe(true) // ⌘W 照旧关 tab
   })
 
   it('win / linux:那五个在场,而且每一个都与它挡下的那条绑定是同一个组合', () => {
     const claims = terminalClaims('other')
     expect(claims).toEqual(TERMINAL_COURTESY_LETTERS.map((letter) => ({ ctrl: true, key: letter })))
-    const searchCombo = effectiveCombos({ overrides: {} }, 'toggle:search')[0]
+    const closeCombo = effectiveCombos({ overrides: {} }, 'tab.close')[0]
     // 同一个组合 → 认领先命中才拦得住(这件事由设置页的「谁答」列说出口)。
-    expect(sameCombo(claims[0], searchCombo)).toBe(true)
-    const ctrlP = { metaKey: false, ctrlKey: true, altKey: false, shiftKey: false, key: 'p' }
-    expect(matchCombo(ctrlP, claims[0], 'other')).toBe(true)
+    const ctrlW = claims.find((c) => c.key === 'w')!
+    expect(sameCombo(ctrlW, closeCombo)).toBe(true)
+    const pressed = { metaKey: false, ctrlKey: true, altKey: false, shiftKey: false, key: 'w' }
+    expect(matchCombo(pressed, ctrlW, 'other')).toBe(true)
   })
 
   it('这台机器上那一份就是按它的平台算出来的(模块加载时量一次)', () => {

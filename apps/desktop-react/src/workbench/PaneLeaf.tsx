@@ -11,6 +11,7 @@ import { LeafActions } from './LeafActions'
 import { openLeafMenuAt } from './leaf-menu'
 import { LeafStrip } from './LeafStrip'
 import { useReportOverflow } from './leaf-overflow'
+import { useLeafCommands } from './leaf-commands'
 import { useCloseLeafTab, useLeafTabSpecs } from './leaf-tabs'
 import { CENTER_REGION } from './regions'
 import { renderRef } from './render'
@@ -140,7 +141,6 @@ export const PaneLeaf = memo(function PaneLeaf({
    * 真的搬家时才变。
    */
   const region = useWorkbenchStore((st) => regionOfLeafIn(st.regions, leaf.id))
-  const closeAt = useCloseLeafTab(leaf)
   const active = leaf.tabs[leaf.active] ?? null
 
   /**
@@ -268,16 +268,16 @@ export const PaneLeaf = memo(function PaneLeaf({
   useLayoutEffect(() => () => holder.remove(), [holder])
 
   /**
-   * ⌘W:关当前 tab。声明在 `focus/scopes.ts` 的 `FOCUS_SCOPES.leaf.answers`(命令 `tab.close`)。
+   * **这片叶此刻答得出的那几条命令**(⌘W 关这一格、⌘T 同类再开一格、⌘⇧T 重开、
+   * ⌘⇧[ ⌘⇧] 与 ⌃Tab 换格、⌘1–9 直达)。声明在 `focus/scopes.ts` 的
+   * `FOCUS_SCOPES.leaf.answers`,表本身在 `./leaf-commands.ts`。
    *
-   * 中央区那一组标签在顶栏上也注入同名的一口(同一个 `owner`,两份实例)—— 于是
-   * 焦点在**叶的身体里**还是在**它的标签上**,⌘W 都关得掉这一格。少了这一边,
-   * 「在查看器里按 ⌘W」就没人接。
+   * 中央区那一组标签在顶栏上也注入**同一张表**(同一个 `owner`,两份实例)——
+   * 于是焦点在**叶的身体里**还是在**它的标签上**,这一族都接得住。少了这一边,
+   * 「在查看器里按 ⌘W」就没人接;而 K2 之后这张表有十四条,所以它是一只共用的
+   * hook 而不是两处各写一遍(判词整段在 `leaf-commands.ts` 的文件头上)。
    */
-  const leafKeys = useMemo(
-    () => ({ 'tab.close': active ? () => void closeAt(leaf.active) : undefined }),
-    [active, closeAt, leaf.active],
-  )
+  const leafKeys = useLeafCommands(leaf)
 
   return (
     /*

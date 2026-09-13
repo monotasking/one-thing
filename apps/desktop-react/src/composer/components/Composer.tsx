@@ -230,6 +230,30 @@ export function Composer() {
     [mode],
   )
 
+  /**
+   * **⌘N = 新建会话**(K2,09-12 用户裁定 1)。声明的正本是
+   * `FOCUS_SCOPES.composer.answers` 那一行;这里是它的落点。
+   *
+   * ── 为什么输入框也要答它 ────────────────────────────────────────────────
+   * 裁定的原话是「⌘N 跟着焦点走,新建**这一种**内容;焦点不在内容里就不响」。
+   * 而人在会话里绝大多数时间焦点就在这格输入框上(§3.5 规则 1:「应用启动时是
+   * 主内容,有会话则是它的输入面板」)—— 输入框在树上是**叶外面**那一格
+   * (路线 B:composer 挂在 `.center`,不在叶里),所以叶那一族的 ⌘T / ⌘W 在
+   * 这儿接不住是对的,但「再开一条会话」这件事它必须接得住,否则出厂最常见的
+   * 那一格焦点位置上 ⌘N 是个哑键。
+   *
+   * 走的是与总览那一格**同一只** action(`newSessionInCurrentProject`:落在当前
+   * 会话所属的项目下,摆法按 `sessions.openMode`)—— 一件事一个产地。
+   */
+  const composerCommands = useMemo(
+    () => ({
+      'content.new': () => {
+        void useExposeStore.getState().newSessionInCurrentProject()
+      },
+    }),
+    [],
+  )
+
   /* ── 点 composer 外面:瞬态抽屉(模型)一律关,选没选都关 ────────────────
    * 只关模型:files / commands 由输入驱动,状态抽屉是人主动开的,都不该被一次
    * 别处的点击收走。
@@ -338,6 +362,7 @@ export function Composer() {
       rootRef={panelRef}
       restingTarget={restingTarget}
       onEscape={onEscape}
+      commands={composerCommands}
     >
       {({ scopeProps }) => (
     <div className={s.wrap}>

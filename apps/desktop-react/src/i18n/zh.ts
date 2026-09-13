@@ -1731,4 +1731,22 @@ export const zh = {
   'keymap.conflictApp': '与「{name}」冲突:同一个键上只能有一条全局命令',
   'keymap.conflictOverlap': '与「{name}」冲突:在「{scope}」里两者都可能答',
 
+  /* ── 标签族(K2,方案 docs/keymap-responder-2026-09.md §3 / §5 K2)──────── */
+  'keymap.tabNew': '新标签(同类再开一格)',
+  'keymap.contentNew': '新建这一种内容',
+  'keymap.tabReopen': '重开刚关掉的标签',
+  'keymap.tabNext': '下一个标签',
+  'keymap.tabPrev': '上一个标签',
+  'keymap.tabSelect1': '切到第 1 格标签',
+  'keymap.tabSelect2': '切到第 2 格标签',
+  'keymap.tabSelect3': '切到第 3 格标签',
+  'keymap.tabSelect4': '切到第 4 格标签',
+  'keymap.tabSelect5': '切到第 5 格标签',
+  'keymap.tabSelect6': '切到第 6 格标签',
+  'keymap.tabSelect7': '切到第 7 格标签',
+  'keymap.tabSelect8': '切到第 8 格标签',
+  'keymap.tabSelect9': '切到最后一格标签',
+  /** 会话总览 / composer 对「新建这一种内容」的说法(它们是「焦点在会话里」的两种形)。 */
+  'keymap.contentNewSession': '新建会话',
+
 } as const

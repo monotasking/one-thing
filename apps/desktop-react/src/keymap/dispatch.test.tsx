@@ -7,7 +7,7 @@ import { useStageStore } from '../stage/store'
 import { initialStageState } from '../stage/transitions'
 import { focusTree } from '../focus/registry'
 import { useKeymapStore } from './store'
-import { initialKeymapState } from './transitions'
+import { findCommand, initialKeymapState } from './transitions'
 import { pinMacUserAgent } from '../test/mac-ua'
 
 /**
@@ -25,29 +25,58 @@ beforeEach(() => {
 })
 
 describe('快捷键派发', () => {
-  it('⌘P 经注册表开检索面板,再按一下收回 Dock', () => {
+  /* **K2 起检索面的出厂键是 ⌘⇧F**(⌘P 让给网页打印,09-12 裁定 3)。 */
+  it('⌘⇧F 经注册表开检索面板,再按一下收回 Dock', () => {
     render(<AppShell />)
-    act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))
+    act(() => void fireEvent.keyDown(document.body, { key: 'f', metaKey: true, shiftKey: true }))
     // 打开统一是浮窗(08-30 拍板:档定形态)
     expect(useStageStore.getState().placements.search).toEqual({ kind: 'float' })
 
+    act(() => void fireEvent.keyDown(document.body, { key: 'f', metaKey: true, shiftKey: true }))
+    expect(useStageStore.getState().placements.search).toBeUndefined()
+  })
+
+  /*
+   * **⌘P 从此不再是这台壳的键**(09-12 裁定 3):出厂表里没人占它,所以这一下
+   * 什么都不发生 —— 在内嵌浏览器里它于是自然回到页面自己手里(打印)。
+   */
+  it('⌘P 出厂不绑:按下去检索面**不开**', () => {
+    render(<AppShell />)
     act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))
     expect(useStageStore.getState().placements.search).toBeUndefined()
   })
 
-  it('⌘N 经注册表落到「新建会话」上 —— 派发器不判落在哪个项目,那是 action 的事', () => {
+  /*
+   * ── **⌘N 不再是全局键,而是一条响应者命令**(K2,09-12 裁定 1)──────────────
+   * 从前它是 `session.new`,有一层**应用兜底** —— 于是「焦点在浏览器里按 ⌘N 开出
+   * 一条会话」,正是这次报障。K2 起它是 `content.new`(`app: false`):新建哪一种
+   * 由焦点说了算,活动路径上没人答就放行。
+   *
+   * 这一条量两件事,而第二件才是那次报障的治法:
+   *  ① **有响应者时它照旧开一条会话**:AppShell 里第一响应者是输入面板
+   *     (§3.5 规则 1),而 composer 答 `content.new`(判词在 `Composer` 的
+   *     `composerCommands` 上)—— 所以这一下仍然落在同一只 action 上,落在哪个
+   *     项目下由那条 action 自己判;
+   *  ② **表上它没有应用层兜底**(`app: false`)。没有这一格,「焦点在浏览器里
+   *     按 ⌘N」会一路退到应用层再开一条会话 —— 那正是报障。
+   * 「浏览器 / 终端叶里它开的是那一种」由 `gate:workspace` ⑬g 与叶那边的
+   * `leaf-commands` 用例量。
+   */
+  it('⌘N 落在**响应者**上(输入面板答它),而且表上没有应用层兜底(K2)', () => {
     render(<AppShell />)
     const calls: (string | null)[] = []
-    const before = useExposeStore.getState().newSession
+    const before = useExposeStore.getState().newSessionInCurrentProject
     useExposeStore.setState({
-      newSession: async (projectId) => void calls.push(projectId),
+      newSessionInCurrentProject: async () => void calls.push(null),
     })
     try {
       act(() => void fireEvent.keyDown(document.body, { key: 'n', metaKey: true }))
       expect(calls).toEqual([null])
     } finally {
-      useExposeStore.setState({ newSession: before })
+      useExposeStore.setState({ newSessionInCurrentProject: before })
     }
+    expect(findCommand('content.new')?.app).toBe(false)
+    expect(findCommand('session.new' as never)).toBeUndefined()
   })
 
   it('⌘J 开顶栏 agent 切换器的菜单,再按一下关 —— 只开菜单,不替人换人', () => {
@@ -157,11 +186,11 @@ describe('规则 1 / 2:焦点跟着「打开」走(09-03 R2)', () => {
 
   it('同一个键**焦点已经在它里面**时把它收起来,焦点由结构归还自己回去(S1b 第四格)', () => {
     render(<AppShell />)
-    act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))
+    act(() => void fireEvent.keyDown(document.body, { key: 'f', metaKey: true, shiftKey: true }))
     // 检索面自己声明了 activateOnMount,所以第一下之后键盘已经在它里面。
     expect(firstResponder()).toBe('search')
 
-    act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))
+    act(() => void fireEvent.keyDown(document.body, { key: 'f', metaKey: true, shiftKey: true }))
     /*
      * 用户 09-04 改判的第四格是**隐藏**(推翻 09-03 的「回去」;VS Code 终端 ⌃`
      * 那一族)。反证:把 store 那条 `case 'hide'` 改回 09-03 的 `returnFrom` →
@@ -188,11 +217,11 @@ describe('设置页里的录制', () => {
     act(() => useStageStore.getState().openAs('settings', { kind: 'stage' }))
   }
 
-  it('录制态吃掉这一下按键:录 ⌘P 的时候检索面板不会真的弹出来,而是报冲突', () => {
+  it('录制态吃掉这一下按键:录 ⌘⇧F 的时候检索面板不会真的弹出来,而是报冲突', () => {
     openSettings()
     const slot = screen.getByLabelText('为「目录」设置快捷键')
     fireEvent.click(slot)
-    act(() => void fireEvent.keyDown(slot, { key: 'p', metaKey: true }))
+    act(() => void fireEvent.keyDown(slot, { key: 'f', metaKey: true, shiftKey: true }))
 
     // 撞了检索那条,所以既没绑上,也没有人替它开面板。
     expect(useKeymapStore.getState().overrides['toggle:files']).toBeUndefined()
@@ -209,11 +238,13 @@ describe('设置页里的录制', () => {
     openSettings()
     const slot = screen.getByLabelText('为「目录」设置快捷键')
     fireEvent.click(slot)
-    act(() => void fireEvent.keyDown(slot, { key: 'f', metaKey: true, shiftKey: true }))
+    // ⌘⌃P:K2 之后 ⌘P 空出来了,但它**不是**「没人占」的好例子(它空着是有意的),
+    // 所以这里挑一个出厂表里从头到尾没人碰过的组合。
+    act(() => void fireEvent.keyDown(slot, { key: 'y', metaKey: true, altKey: true }))
 
     // K0:覆盖的值是**一串**组合(录一次 = 整条换成那一个键)。
     expect(useKeymapStore.getState().overrides['toggle:files']).toEqual([
-      { key: 'f', meta: true, shift: true },
+      { key: 'y', meta: true, alt: true },
     ])
     expect(screen.getByLabelText('恢复「目录」的默认组合')).toBeTruthy()
   })

@@ -2,7 +2,8 @@ import { Suspense, lazy } from 'react'
 import { registerContentKind } from '../../workbench/kinds'
 import { t } from '../../i18n'
 import { browserOps, browserTabOf } from '../../data/browser-source'
-import { BROWSER_KIND } from '../browser/browser-ref'
+import { BROWSER_KIND, browserRef } from '../browser/browser-ref'
+import { requestBrowserFocus } from '../browser/focus-request'
 import type { ContentRef } from '../../workbench/kinds'
 
 /**
@@ -81,6 +82,48 @@ registerContentKind(
      */
     focusInto: 'browser',
     fullable: true,
+    /*
+     * **同类再开一格 = 再开一格空白页**(K2,⌘T / ⌘N / 叶檐那颗 `+` 共用)。
+     *
+     * 身份跟着**开它的那一格**走:在「工作」身份那一页上按 ⌘T,新那一格也该是
+     * 「工作」—— 而不是回落成缺省身份(那会让人在两个身份之间无声地漂)。
+     * 表里读不到这一格(刚开、表还没回来)就**不给** `profile`,由后端现问设置,
+     * 与 `resource-provider.payloadOf` 那条「壳这边不替它拍板」逐字相同。
+     *
+     * **只创建不摆放**,焦点在这儿点名(条子由那一格挂载时自己取走 —— 判词整段
+     * 在 `content/browser/focus-request.ts` 上)。创建那一半复用启动瓦拆出来的
+     * `createBrowserTab`,**动态** import 是为了不让这张种类表(被 `main.tsx` 与
+     * 一大票渲染类测试静态 import)拖上启动瓦那整条边。
+     */
+    spawn: async (ref) => {
+      const { createBrowserTab } = await import('../browser-launcher')
+      const profile = browserTabOf(ref.key)?.profile
+      const tabId = await createBrowserTab(profile ? { profile } : {})
+      if (!tabId) return null
+      requestBrowserFocus(tabId)
+      return browserRef(tabId)
+    },
+    /*
+     * **关一格 tab 是删一行,那个 tabId 从此不存在** —— 所以这一种是全表唯一
+     * 需要自述快照的:留的影是 `{ url, profile }`,⌘⇧T 按 url 再开一格。
+     * (方案 §7 留账「浏览器关闭的 tab 没有历史」补的正是这一格,不另起机制。)
+     */
+    snapshot: (ref) => {
+      const row = browserTabOf(ref.key)
+      return { url: row?.url ?? '', profile: row?.profile }
+    },
+    restore: async (snapshot) => {
+      const shot = snapshot as { url?: unknown; profile?: unknown } | null
+      const url = typeof shot?.url === 'string' ? shot.url : ''
+      // 空 url 重开不出东西 —— 一格指着空白的「重开」比不响更糟(它占着栈顶)。
+      if (!url) return null
+      const { createBrowserTab } = await import('../browser-launcher')
+      const profile = typeof shot?.profile === 'string' ? shot.profile : undefined
+      const tabId = await createBrowserTab({ url, ...(profile ? { profile } : {}) })
+      if (!tabId) return null
+      requestBrowserFocus(tabId)
+      return browserRef(tabId)
+    },
     dispose: (ref) => {
       void browserOps.close.run({ tabId: ref.key })
     },

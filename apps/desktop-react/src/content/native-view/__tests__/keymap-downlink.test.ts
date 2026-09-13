@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { boundChordsFor, chordOfCombo } from '../keymap-downlink'
+import { NATIVE_VIEW_HOST_SCOPES, boundChordsFor, chordOfCombo } from '../keymap-downlink'
+import { chordOf } from '../../../../electron/browser/keymap-bridge'
 import { KEYMAP_COMMANDS, effectiveCombos } from '../../../keymap/transitions'
 import { focusScopeAnswersOf } from '../../../focus/scopes'
+import { TERMINAL_SUMMON_COMBOS, comboForPlatform } from '../../../keymap/commands'
+import { platformOf } from '../../../keymap/platform'
+import type { Combo, KeymapPlatform } from '../../../keymap/types'
 
 /**
  * **两端要对同一个键说同一个名字**(B2 §9-1)。
@@ -17,10 +21,61 @@ describe('一条绑定 → 一个串', () => {
   it('主修饰键按平台落地:mac 写 cmd,其余写 ctrl', () => {
     expect(chordOfCombo({ meta: true, key: 'l' }, 'mac')).toBe('cmd+l')
     expect(chordOfCombo({ meta: true, key: 'l' }, 'other')).toBe('ctrl+l')
-    // **出厂的 `toggle:terminal` 写的是 `ctrl`**,而它在 mac 上按的是 ⌘ ——
-    // 两种拼法都读作「主修饰键」(`matchCombo`,T1-fix)。
+    // **一条写成 `ctrl` 的绑定在 mac 上按的是 ⌘** —— 两种拼法都读作「主修饰键」
+    // (`matchCombo`,T1-fix)。
     expect(chordOfCombo({ ctrl: true, key: '`' }, 'mac')).toBe('cmd+`')
     expect(chordOfCombo({ ctrl: true, key: '`' }, 'other')).toBe('ctrl+`')
+  })
+
+  /**
+   * **第三种拼法 `offHand`**(K2,`Combo.offHand`:「另一枚」)。它在这一侧也要
+   * 按平台落地 —— mac 上「另一枚」就是 Ctrl,Win / Linux 上是 Win 键,而主进程
+   * 把 `meta: true` 写成 `cmd`,所以那两台机器上串写 `cmd+…`。
+   *
+   * 反证:把 `chordOfCombo` 里那一句 `offHand` 拆掉 → ⌃Tab 写出 `tab`,主进程
+   * 那张保留表里就永远没有它,于是**网页拿走了 ⌃Tab**(页面自己换标签),
+   * 而壳这一侧的 ⌘⇧] 照常好使 —— 那是最难查的一类不一致。
+   */
+  it('`offHand`(另一枚)按平台落地:mac 写 ctrl,其余写 cmd', () => {
+    expect(chordOfCombo({ offHand: true, key: 'tab' }, 'mac')).toBe('ctrl+tab')
+    expect(chordOfCombo({ offHand: true, key: 'tab' }, 'other')).toBe('cmd+tab')
+    expect(chordOfCombo({ offHand: true, shift: true, key: 'tab' }, 'mac')).toBe('ctrl+shift+tab')
+    // 出厂的 `toggle:terminal`(K2 起是 `offHand`)在 mac 上是 ⌃ 反引号。
+    expect(chordOfCombo({ offHand: true, key: '`' }, 'mac')).toBe('ctrl+`')
+  })
+
+  /**
+   * **两端逐字相等**(K2 派工单 §5 点名的那一条)。左边是**声明** → 串,
+   * 右边是**一次真按键** → 串;两串必须一个字都不差,否则主进程截不住
+   * (或者截住了一个壳这边根本不认的键)。
+   *
+   * 主进程那一侧的 `chordOf` 是被直接 import 进来的同一只函数 —— 这一条因此
+   * 不是「抄一份规则再比一次」,而是把两个真产地放在一起对。
+   */
+  it('两端对同一次真按键算出同一个串(offHand 那一族)', () => {
+    const cases: Array<{
+      combo: Combo
+      platform: KeymapPlatform
+      pressed: Parameters<typeof chordOf>[0]
+    }> = [
+      // mac:⌃Tab —— 真按键里 control 按着、meta 没按。
+      { combo: { offHand: true, key: 'tab' }, platform: 'mac', pressed: { key: 'Tab', control: true } },
+      {
+        combo: { offHand: true, shift: true, key: 'tab' },
+        platform: 'mac',
+        pressed: { key: 'Tab', control: true, shift: true },
+      },
+      // mac:⌃ 反引号(`toggle:terminal` 的出厂键)。
+      { combo: { offHand: true, key: '`' }, platform: 'mac', pressed: { key: '`', control: true } },
+      // Win / Linux:Win+Tab —— 真按键里 meta 按着。
+      { combo: { offHand: true, key: 'tab' }, platform: 'other', pressed: { key: 'Tab', meta: true } },
+      // 主修饰那一族(K0 就成立,一并钉住:两端没有第二套规则)。
+      { combo: { meta: true, shift: true, key: ']' }, platform: 'mac', pressed: { key: ']', meta: true, shift: true } },
+      { combo: { meta: true, key: 't' }, platform: 'other', pressed: { key: 'T', control: true } },
+    ]
+    for (const row of cases) {
+      expect(chordOfCombo(row.combo, row.platform)).toBe(chordOf(row.pressed))
+    }
   })
 
   it('修饰键次序固定,主键小写', () => {
@@ -37,9 +92,10 @@ describe('整表', () => {
     const chords = boundChordsFor(['browser'], {}, 'mac')
     // `browser` 那条局部键(⌘L)在表里 —— 它是保留键,得先于页面。
     expect(chords).toContain('cmd+l')
-    // 全局命令也在(⌘P 检索面 / ⌘E 会话总览)。
-    expect(chords).toContain('cmd+p')
+    // 全局命令也在(⌘⇧F 检索面 / ⌘E 会话总览;K2 起 ⌘P 出厂不绑)。
+    expect(chords).toContain('cmd+shift+f')
     expect(chords).toContain('cmd+e')
+    expect(chords).not.toContain('cmd+p')
     // 去重 + 排序:同一个串只出现一次,整表有序(两端比对的是集合)。
     expect(new Set(chords).size).toBe(chords.length)
     expect([...chords].sort()).toEqual(chords)
@@ -48,14 +104,14 @@ describe('整表', () => {
   it('改绑跟着走 —— 表是从 `overrides` 现算的,不是一份快照', () => {
     const before = boundChordsFor([], {}, 'mac')
     const after = boundChordsFor([], { 'toggle:search': [{ meta: true, key: 'k' }] }, 'mac')
-    expect(before).toContain('cmd+p')
-    expect(after).not.toContain('cmd+p')
+    expect(before).toContain('cmd+shift+f')
+    expect(after).not.toContain('cmd+shift+f')
     expect(after).toContain('cmd+k')
   })
 
   it('解绑(`null`)的命令不进表 —— 那个组合该归页面', () => {
     const chords = boundChordsFor([], { 'toggle:search': null }, 'mac')
-    expect(chords).not.toContain('cmd+p')
+    expect(chords).not.toContain('cmd+shift+f')
   })
 
   it('表里每一条都真的对应一条**有绑定的应用级**命令(不多不少)', () => {
@@ -81,18 +137,35 @@ describe('整表', () => {
   })
 
   /**
-   * **K0 零行为变化的那把尺子**:改前推下去的键集逐字写成字面量,改后必须相等。
+   * **那把尺子**:推下去的键集逐字写成字面量。**多一条**就是某个跟随焦点的命令
+   * 被错误地下沉了(页面自己的那个键会变成哑键);**少一条**就是壳的某个保留键
+   * 被让给了页面。
    *
-   * 这十九条是 2026-09-12 K0 开工前在 `boundChordsFor(['browser'], {}, …)` 上
-   * 实测出来的(13 条应用级出厂键 + `browser` 那两条局部键 ⌘L / ⌘F,再加四条
-   * 架子)。**多一条**就是某个跟随焦点的命令被错误地下沉了(页面自己的那个键
-   * 会变成哑键);**少一条**就是壳的某个保留键被让给了页面。
+   * ── K0 的十九条 → K2 的三十三条,差额逐条对得上 ─────────────────────────
+   * **出去两条**:`cmd+p`(检索面让出 ⌘P,09-12 裁定 3)、`cmd+1/2/3` 里那三条
+   * 工作区序号(出厂解绑,裁定 2)—— 一共四条。
+   * **进来十八条**:`cmd+,`(⌘,开设置)、`cmd+1`…`cmd+9`(九格标签直达,裁定 2
+   * 的另一半)、`cmd+shift+f`(检索面的新键)、`cmd+t` / `cmd+n` / `cmd+shift+t`
+   * / `cmd+shift+]` / `cmd+shift+[` / `ctrl+tab` / `ctrl+shift+tab`(标签族)、
+   * `cmd+w`(**这一条是 K2 才进来的**:它只有叶答得出,而叶从今天起在在场集合里
+   * —— 判词整段在 `NATIVE_VIEW_HOST_SCOPES` 上)。
+   * **换了一格写法**:`cmd+\`` → `ctrl+\``(`toggle:terminal` 改按平台分档 ——
+   * 真机 mac 与真机 Win 上都是 `ctrl+\``,**同一个手势**;那一格因此不写字面量,
+   * 判词在下面 `summonChordOn` 上)。
+   *
+   * 19 − 4 + 18 = 33。这一行算术就是这张表的审计。
    */
-  const LEGACY_BROWSER_CHORDS_MAC = [
+  const K2_BROWSER_CHORDS_MAC = [
+    'cmd+,',
     'cmd+1',
     'cmd+2',
     'cmd+3',
-    'cmd+`',
+    'cmd+4',
+    'cmd+5',
+    'cmd+6',
+    'cmd+7',
+    'cmd+8',
+    'cmd+9',
     'cmd+alt+arrowdown',
     'cmd+alt+arrowleft',
     'cmd+alt+arrowright',
@@ -104,20 +177,70 @@ describe('整表', () => {
     'cmd+j',
     'cmd+l',
     'cmd+n',
-    'cmd+p',
+    'cmd+shift+[',
+    'cmd+shift+]',
     'cmd+shift+enter',
+    'cmd+shift+f',
     'cmd+shift+o',
+    'cmd+shift+t',
     'cmd+shift+w',
+    'cmd+t',
+    'cmd+w',
+    'ctrl+shift+tab',
+    'ctrl+tab',
   ]
 
-  it('推下去的键集与 K0 之前逐字相等(mac 档)', () => {
-    expect(boundChordsFor(['browser'], {}, 'mac')).toEqual(LEGACY_BROWSER_CHORDS_MAC)
+  /**
+   * **召唤终端那一条不写成字面量**(K2 修一轮):它的出厂键**按平台分档**
+   * (`commands.byPlatform`),而那一档是**模块加载时按跑用例这台机器**定的,
+   * 与 `boundChordsFor` 收的那个 `platform` 参数是两回事 —— 生产上两者恒等
+   * (真机 mac 上是 `ctrl+\``,真机 Win 上是 `ctrl+\``,**同一个手势**),
+   * 用例里可能不等(jsdom 的 UA 不是 mac)。所以这一格跟着**声明**算,
+   * 别的三十二条照旧逐字钉死。
+   */
+  const summonChordOn = (lane: KeymapPlatform) =>
+    chordOfCombo(comboForPlatform(TERMINAL_SUMMON_COMBOS, platformOf(navigator.userAgent)), lane)
+
+  it('推下去的键集逐字就是这三十三条(mac 档)', () => {
+    const expected = [...K2_BROWSER_CHORDS_MAC, summonChordOn('mac')].sort()
+    expect(boundChordsFor(['browser', ...NATIVE_VIEW_HOST_SCOPES], {}, 'mac')).toEqual(expected)
+    expect(expected).toHaveLength(33)
   })
 
-  it('Win / Linux 档同一张表,只换主修饰键的写法', () => {
-    expect(boundChordsFor(['browser'], {}, 'other')).toEqual(
-      LEGACY_BROWSER_CHORDS_MAC.map((c) => c.replace(/^cmd\+/, 'ctrl+')).sort(),
-    )
+  /**
+   * Win / Linux 档同一张表,**但不是一次 `cmd+` → `ctrl+` 的整体替换**:
+   * `offHand`(「另一枚」)在两台机器上指的是两枚不同的键,所以它那三条反着走
+   * (mac 的 `ctrl+…` 在那边是 `cmd+…`)。K0 那条 `.replace(/^cmd\+/, 'ctrl+')`
+   * 因此不再成立 —— 它会把 ⌃Tab 说成 Win 上的 Ctrl+Tab,而那一枚在那边是主
+   * 修饰键、归应用的别的命令。
+   */
+  it('Win / Linux 档:主修饰那一族换写法,`offHand` 那三条反着走', () => {
+    const other = boundChordsFor(['browser', ...NATIVE_VIEW_HOST_SCOPES], {}, 'other')
+    // 三十二条字面量 + 召唤那一格(判词在 `summonChordOn` 上)。
+    expect(other).toHaveLength(K2_BROWSER_CHORDS_MAC.length + 1)
+    // 主修饰那一族:mac 的 `cmd+x` ↔ 别处的 `ctrl+x`。
+    for (const chord of K2_BROWSER_CHORDS_MAC.filter((c) => c.startsWith('cmd+'))) {
+      expect(other).toContain(chord.replace(/^cmd\+/, 'ctrl+'))
+    }
+    // `offHand` 那两条:mac 写 ctrl,别处写 cmd。
+    expect(other).toContain('cmd+tab')
+    expect(other).toContain('cmd+shift+tab')
+    expect(other).not.toContain('ctrl+tab')
+    // 召唤终端那一条跟着**声明**走(判词在 `summonChordOn` 上)。
+    expect(other).toContain(summonChordOn('other'))
+  })
+
+  /**
+   * **叶补进在场集合之后,⌘T / ⌘W 那一族才到得了主进程**(K2)。
+   * 拆掉 `NATIVE_VIEW_HOST_SCOPES` → 这一条红,而真机门 `gate:browser` 那一步
+   * 「页面焦点下 ⌘T 开出一格新标签」同时红。
+   */
+  it('只报 `browser` 一格时,叶那一族一条都不在表里(所以宿主那一格必须补)', () => {
+    const withoutLeaf = boundChordsFor(['browser'], {}, 'mac')
+    expect(withoutLeaf).not.toContain('cmd+t')
+    expect(withoutLeaf).not.toContain('cmd+w')
+    expect(withoutLeaf).not.toContain('ctrl+tab')
+    expect(NATIVE_VIEW_HOST_SCOPES).toEqual(['leaf'])
   })
 
   it('⌘L / ⌘F 进表是因为 `browser` **答得出**那两条命令,不是因为它叫 browser', () => {

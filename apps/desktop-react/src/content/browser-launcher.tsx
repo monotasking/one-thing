@@ -189,6 +189,30 @@ if (import.meta.hot) {
 }
 
 /**
+ * **创建半段:开一格 tab,不摆、不点名**(K2 从 `openBrowser` 里拆出来的那一半)。
+ *
+ * 拆它的理由是同一次创建有**两种**摆法:`openBrowser` 那条老路(记忆 > 天生 >
+ * 中央区,或者 `near` 指的那一格旁边),与叶响应者那条新路(⌘T:紧挨着当前
+ * 标签)。把摆法焊在创建里就等于两条键各要一条创建路,而那是「一件事两个产地」。
+ *
+ * **先把叶那个 chunk 拉下来,再去开 tab**(两件事并发,等的是慢的那一件)——
+ * 与 `terminal-launcher` 逐字同一条判例:叶是 `lazy` 进来的,不预拉的话随后那句
+ * 送焦点会排在「这一拍提交的还是 Suspense 的 fallback」上,作用域实例根本还没
+ * 登记,「送不进去不追」当场生效,人开了一格浏览器却不能打地址。
+ */
+export async function createBrowserTab(
+  init: { url?: string; profile?: string } = {},
+): Promise<string | null> {
+  const [tabId] = await Promise.all([
+    // 身份**缺席就是缺席**:回落成哪一格由后端现问设置(`service.open`),
+    // 壳这边替它拍板等于同一句话两个产地(判词在 `resource-provider.payloadOf`)。
+    openBrowserTab({ ...(init.url ? { url: init.url } : {}), ...(init.profile ? { profile: init.profile } : {}) }),
+    import('./browser/BrowserLeaf'),
+  ])
+  return tabId
+}
+
+/**
  * **开一格新的并摆出来**。开不出来(后端拒绝 / 这台宿主没有浏览器)什么都不做 ——
  * 摆一片指着不存在的 tab 的叶,比不摆更糟。
  *
@@ -199,18 +223,10 @@ export async function openBrowser(
   url?: string,
   init: { profile?: string; near?: string } = {},
 ): Promise<void> {
-  /*
-   * **先把叶那个 chunk 拉下来,再去开 tab**(两件事并发,等的是慢的那一件)——
-   * 与 `terminal-launcher.openTerminal` 逐字同一条判例:叶是 `lazy` 进来的,
-   * 不预拉的话下面那句送焦点会排在「这一拍提交的还是 Suspense 的 fallback」上,
-   * 作用域实例根本还没登记,「送不进去不追」当场生效,人开了一格浏览器却不能打地址。
-   */
-  const [tabId] = await Promise.all([
-    // 身份**缺席就是缺席**:回落成哪一格由后端现问设置(`service.open`),
-    // 壳这边替它拍板等于同一句话两个产地(判词在 `resource-provider.payloadOf`)。
-    openBrowserTab({ ...(url ? { url } : {}), ...(init.profile ? { profile: init.profile } : {}) }),
-    import('./browser/BrowserLeaf'),
-  ])
+  const tabId = await createBrowserTab({
+    ...(url ? { url } : {}),
+    ...(init.profile ? { profile: init.profile } : {}),
+  })
   if (!tabId) return
   if (init.near) {
     placeBrowserTabNear(init.near, tabId)

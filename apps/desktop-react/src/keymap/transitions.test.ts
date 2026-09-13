@@ -22,6 +22,7 @@ import {
   toggleCommandId,
   unbindCombo,
 } from './transitions'
+import { TERMINAL_SUMMON_COMBOS, comboForPlatform } from './commands'
 import type { Combo, ComboEvent, KeymapState } from './types'
 
 /** 真事件的五个字段,给个趁手的构造器 —— 测试里不该到处写 false, false, false。 */
@@ -36,6 +37,8 @@ function press(key: string, mods: Partial<Omit<ComboEvent, 'key'>> = {}): ComboE
 }
 
 const CMD_P: Combo = { meta: true, key: 'p' }
+/** 检索面 K2 起的出厂键(⌘⇧F;⌘P 让给网页打印 —— 09-12 用户裁定 3)。 */
+const CMD_SHIFT_F: Combo = { meta: true, shift: true, key: 'f' }
 
 describe('命令表', () => {
   it('每块瓦恰有一条 toggle,一块不漏(会话总览去接管化之后也在其中)', () => {
@@ -44,7 +47,7 @@ describe('命令表', () => {
     expect(toggles).toContain(toggleCommandId(SESSIONS_ITEM_ID))
   })
 
-  it('出厂绑这二十六条,别的一律未绑定;次序即注册表次序', () => {
+  it('出厂绑这三十七条,别的一律未绑定;次序即注册表次序', () => {
     const bound = KEYMAP_COMMANDS.filter((c) => c.defaultCombos.length > 0).map((c) => c.id)
     /*
      * 检索 ⌘P、总览 ⌘E、四条架子 ⌘⌥←/→/↓/↑(09-01 用户放权后新绑)、
@@ -63,17 +66,14 @@ describe('命令表', () => {
       'toggle:terminal',
       'toggle:search',
       toggleCommandId(SESSIONS_ITEM_ID),
+      'toggle:settings',
       'shelf.left.toggle',
       'shelf.right.toggle',
       'shelf.bottom.toggle',
       'shelf.top.toggle',
       'workspace.palette',
-      'workspace.slot:1',
-      'workspace.slot:2',
-      'workspace.slot:3',
       'toc.toggle',
       'agent.menu',
-      'session.new',
       'workbench.toggleFull',
       'workbench.moveTabLeft',
       'workbench.moveTabRight',
@@ -90,14 +90,47 @@ describe('命令表', () => {
       'nav.forward',
       'expose.pin',
       'tab.close',
+      /* ── K2 的标签族六条(⌘T / ⌘N / ⌘⇧T / ⌘⇧] ⌃Tab / ⌘⇧[ ⌃⇧Tab / ⌘1–9)── */
+      'tab.new',
+      'content.new',
+      'tab.reopen',
+      'tab.next',
+      'tab.prev',
+      ...Array.from({ length: 9 }, (_, i) => `tab.select:${i + 1}`),
     ])
     // ⌘⇧↩(W2)。全表零冲突由下面那条「两两不同」的断言钉着。
     expect(findCommand('workbench.toggleFull')?.defaultCombos).toEqual([
       { meta: true, shift: true, key: 'enter' },
     ])
     expect(findCommand('agent.menu')?.defaultCombos).toEqual([{ meta: true, key: 'j' }])
-    expect(findCommand('session.new')?.defaultCombos).toEqual([{ meta: true, key: 'n' }])
-    expect(findCommand('toggle:search')?.defaultCombos).toEqual([{ meta: true, key: 'p' }])
+    /*
+     * ── K2 的三条出厂键改(09-12 拍板记录 1/2/3)──────────────────────────
+     * `session.new` 退役、⌘N 归响应者级的 `content.new`;工作区序号出厂解绑,
+     * ⌘1–9 归焦点叶的第 n 格;检索面让出 ⌘P 改 ⌘⇧F。
+     */
+    expect(findCommand('session.new' as never)).toBeUndefined()
+    expect(findCommand('content.new')?.defaultCombos).toEqual([{ meta: true, key: 'n' }])
+    expect(findCommand('workspace.slot:1')?.defaultCombos).toEqual([])
+    expect(findCommand('tab.select:1')?.defaultCombos).toEqual([{ meta: true, key: '1' }])
+    expect(findCommand('tab.select:9')?.defaultCombos).toEqual([{ meta: true, key: '9' }])
+    expect(findCommand('toggle:search')?.defaultCombos).toEqual([CMD_SHIFT_F])
+    expect(findCommand('toggle:settings')?.defaultCombos).toEqual([{ meta: true, key: ',' }])
+    expect(findCommand('tab.new')?.defaultCombos).toEqual([{ meta: true, key: 't' }])
+    expect(findCommand('tab.reopen')?.defaultCombos).toEqual([
+      { meta: true, shift: true, key: 't' },
+    ])
+    /*
+     * **一条命令两组出厂键**(⌘⇧] 与 ⌃Tab)。⌃ 那一枚写的是 `offHand` ——
+     * 它要的**就是** Ctrl 那一枚物理键,而不是「主修饰键」(判词在 `Combo.offHand`)。
+     */
+    expect(findCommand('tab.next')?.defaultCombos).toEqual([
+      { meta: true, shift: true, key: ']' },
+      { offHand: true, key: 'tab' },
+    ])
+    expect(findCommand('tab.prev')?.defaultCombos).toEqual([
+      { meta: true, shift: true, key: '[' },
+      { offHand: true, shift: true, key: 'tab' },
+    ])
     expect(findCommand(toggleCommandId(SESSIONS_ITEM_ID))?.defaultCombos).toEqual([
       { meta: true, key: 'e' },
     ])
@@ -180,7 +213,7 @@ describe('匹配', () => {
 
 describe('注册表读写', () => {
   it('effectiveCombos:覆盖赢默认,显式 null(用户解绑)也赢默认', () => {
-    expect(effectiveCombos(initialKeymapState, 'toggle:search')).toEqual([CMD_P])
+    expect(effectiveCombos(initialKeymapState, 'toggle:search')).toEqual([CMD_SHIFT_F])
     const rebound: KeymapState = { overrides: { 'toggle:search': [{ meta: true, key: 'k' }] } }
     expect(effectiveCombos(rebound, 'toggle:search')).toEqual([{ meta: true, key: 'k' }])
     const unbound = unbindCombo(initialKeymapState, 'toggle:search')
@@ -189,18 +222,18 @@ describe('注册表读写', () => {
   })
 
   it('bind 撞车时返回撞的是谁 + 哪一条规则,一个字都不写(不静默覆盖)', () => {
-    const result = bindCombo(initialKeymapState, 'toggle:files', CMD_P)
+    const result = bindCombo(initialKeymapState, 'toggle:files', CMD_SHIFT_F)
     // 两条都是 `app: true` —— 一个键上只能有一条应用级命令。
     expect(result).toEqual({ conflict: { rule: 'app', with: 'toggle:search' } })
     expect(initialKeymapState.overrides).toEqual({})
   })
 
   it('绑到自己身上不算撞车;被占的那条解绑之后位子就让出来了', () => {
-    expect(bindCombo(initialKeymapState, 'toggle:search', CMD_P)).toHaveProperty('ok')
+    expect(bindCombo(initialKeymapState, 'toggle:search', CMD_SHIFT_F)).toHaveProperty('ok')
     const freed = unbindCombo(initialKeymapState, 'toggle:search')
-    const result = bindCombo(freed, 'toggle:files', CMD_P)
+    const result = bindCombo(freed, 'toggle:files', CMD_SHIFT_F)
     expect(result).toHaveProperty('ok')
-    expect('ok' in result && result.ok.overrides['toggle:files']).toEqual([CMD_P])
+    expect('ok' in result && result.ok.overrides['toggle:files']).toEqual([CMD_SHIFT_F])
   })
 
   it('reset 摘掉覆盖、落回出厂值;没覆盖时是恒等变换', () => {
@@ -209,34 +242,52 @@ describe('注册表读写', () => {
     expect(hasOverride(state, 'toggle:search')).toBe(true)
     const back = resetCombo(state, 'toggle:search')
     expect(hasOverride(back, 'toggle:search')).toBe(false)
-    expect(effectiveCombos(back, 'toggle:search')).toEqual([CMD_P])
+    expect(effectiveCombos(back, 'toggle:search')).toEqual([CMD_SHIFT_F])
     expect(resetCombo(back, 'toggle:search')).toBe(back)
   })
 
   it('lookupCommands:按键落在**哪几条**命令上,没人认领就是空表', () => {
-    expect(lookupCommands(initialKeymapState, press('p', { metaKey: true }), 'mac')).toEqual([
-      'toggle:search',
-    ])
+    expect(
+      lookupCommands(initialKeymapState, press('f', { metaKey: true, shiftKey: true }), 'mac'),
+    ).toEqual(['toggle:search'])
     expect(lookupCommands(initialKeymapState, press('e', { metaKey: true }), 'mac')).toEqual([
       toggleCommandId(SESSIONS_ITEM_ID),
     ])
     expect(lookupCommands(initialKeymapState, press('p'), 'mac')).toEqual([])
     const rebound: KeymapState = { overrides: { 'toggle:search': [{ meta: true, key: 'k' }] } }
-    expect(lookupCommands(rebound, press('p', { metaKey: true }), 'mac')).toEqual([])
+    expect(
+      lookupCommands(rebound, press('f', { metaKey: true, shiftKey: true }), 'mac'),
+    ).toEqual([])
     expect(lookupCommands(rebound, press('k', { metaKey: true }), 'mac')).toEqual(['toggle:search'])
     /*
-     * T1-fix:同一条命令在两台机器上认的是**两枚不同的物理键**。
-     * `toggle:terminal` 的出厂键位写的是 `ctrl`(它要的就是 Ctrl 那一枚),
-     * 而声明两种拼法同义 —— 所以 mac 上它由 ⌘\` 触发,Win 上由 Ctrl+\` 触发。
+     * ── **K2:召唤终端那一条按平台分档**(`byPlatform`,判词整段在 `commands.ts`)──
+     * 两台机器上按的都是 **Ctrl 那一枚物理键**(VS Code / Windows Terminal 的手势),
+     * 而那要两档才说得出:mac = `offHand`(那儿 Ctrl 是「另一枚」)、其余 = `ctrl`
+     * (那儿 Ctrl 就是主修饰键)。T1 留的「mac 上读作 ⌘\`」那条账因此结清,而
+     * **Win / Linux 一个键都没变**。
+     *
+     * 声明是**模块加载时**按这台机器定的一档,而 `lookupCommands` 的平台是**参数**
+     * —— 生产上两者恒等,用例里可能不等(jsdom 的 UA 不是 mac)。所以这里按
+     * 「这台机器那一档」问,两档本身由下面那一对纯函数断言钉。
      */
-    expect(lookupCommands(initialKeymapState, press('`', { metaKey: true }), 'mac')).toEqual([
-      'toggle:terminal',
+    expect(comboForPlatform(TERMINAL_SUMMON_COMBOS, 'mac')).toEqual({ offHand: true, key: '`' })
+    expect(comboForPlatform(TERMINAL_SUMMON_COMBOS, 'other')).toEqual({ ctrl: true, key: '`' })
+    const here = platformOf(navigator.userAgent)
+    expect(effectiveCombos(initialKeymapState, 'toggle:terminal')).toEqual([
+      comboForPlatform(TERMINAL_SUMMON_COMBOS, here),
     ])
-    expect(lookupCommands(initialKeymapState, press('`', { ctrlKey: true }), 'mac')).toEqual([])
-    expect(lookupCommands(initialKeymapState, press('`', { ctrlKey: true }), 'other')).toEqual([
-      'toggle:terminal',
-    ])
-    expect(lookupCommands(initialKeymapState, press('`', { metaKey: true }), 'other')).toEqual([])
+    // 这台机器那一档,按它自己的平台问 —— 按下去的是 Ctrl 那一枚。
+    expect(
+      lookupCommands(
+        initialKeymapState,
+        press('`', here === 'mac' ? { ctrlKey: true } : { ctrlKey: true }),
+        here,
+      ),
+    ).toEqual(['toggle:terminal'])
+    // 另一枚(mac 的 ⌘ / 别处的 Win 键)不是它。
+    expect(
+      lookupCommands(initialKeymapState, press('`', { metaKey: true }), here),
+    ).toEqual([])
   })
 })
 

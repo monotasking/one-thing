@@ -245,15 +245,21 @@ describe('routeKey —— 认领(`claims`):壳不碰,原样交给里面那台程
    * 从前这里是「局部键 + 一个把控制字节写回 PTY 的 action」——壳先截下来,
    * 再自己写一遍 xterm 本来就会写的那个字节。
    */
-  const CTRL_P = { key: 'p', metaKey: false, ctrlKey: true, altKey: false, shiftKey: false }
+  /*
+   * **K2 换了样本键**:检索面让出 ⌘P 之后 `^P` 不再与任何一条命令抢键(那一档
+   * 由「问不到人就不 preventDefault」这条缺省覆盖,不必走认领),于是这一节改用
+   * `^N` —— 它抢的是 `content.new`(⌘N),而 `^N` 在 readline 下是「下一条历史」。
+   * 认领那条路一个字没改,只是拿一个**此刻真的会撞**的键来量它。
+   */
+  const CTRL_N = { key: 'n', metaKey: false, ctrlKey: true, altKey: false, shiftKey: false }
 
-  it('Win / Linux:Ctrl+P 在终端里答 `claim`,不落到 `toggle:search`', () => {
+  it('Win / Linux:Ctrl+N 在终端里答 `claim`,不落到 `content.new`', () => {
     const t = tree(
       scopeNode('r', 'root', null),
       scopeNode('leaf', 'leaf', 'r', { commands: { 'tab.close': () => {} } }),
       scopeNode('term', 'terminal', 'leaf', { commands: { 'view.find': () => {} } }),
     )
-    expect(routeKey(t, ['r', 'leaf', 'term'], CTRL_P, ['toggle:search'], 'other')).toEqual({
+    expect(routeKey(t, ['r', 'leaf', 'term'], CTRL_N, ['content.new'], 'other')).toEqual({
       target: 'claim',
       instanceId: 'term',
       scope: 'terminal',
@@ -277,13 +283,13 @@ describe('routeKey —— 认领(`claims`):壳不碰,原样交给里面那台程
     })
   })
 
-  it('mac:认领表是空的,Ctrl+P 谁都不命中(⌘ 与 Ctrl 分得开)', () => {
+  it('mac:认领表是空的,Ctrl+N 谁都不命中(⌘ 与 Ctrl 分得开)', () => {
     const t = tree(
       scopeNode('r', 'root', null),
       scopeNode('term', 'terminal', 'r', { commands: { 'view.find': () => {} } }),
     )
-    // mac 上 Ctrl+P 连候选都算不出来(`lookupCommands` 那一头),这里直接给空候选。
-    expect(routeKey(t, ['r', 'term'], CTRL_P, [], 'mac')).toBeNull()
+    // mac 上 Ctrl+N 连候选都算不出来(`lookupCommands` 那一头),这里直接给空候选。
+    expect(routeKey(t, ['r', 'term'], CTRL_N, [], 'mac')).toBeNull()
   })
 
   it('`claiming: false` = 里面那台程序此刻不收键(查找框在打字)→ 认领整族让开', () => {
@@ -296,7 +302,7 @@ describe('routeKey —— 认领(`claims`):壳不碰,原样交给里面那台程
       scopeNode('r', 'root', null),
       scopeNode('term', 'terminal', 'r', { claiming: false, commands: { 'view.find': () => {} } }),
     )
-    expect(routeKey(t, ['r', 'term'], CTRL_P, ['toggle:search'], 'other')).toEqual({
+    expect(routeKey(t, ['r', 'term'], CTRL_N, ['toggle:search'], 'other')).toEqual({
       target: 'root',
       command: 'toggle:search',
     })
@@ -307,7 +313,7 @@ describe('routeKey —— 认领(`claims`):壳不碰,原样交给里面那台程
       scopeNode('r', 'root', null),
       scopeNode('term', 'terminal', 'r', { inert: true }),
     )
-    expect(routeKey(t, ['r', 'term'], CTRL_P, ['toggle:search'], 'other')).toEqual({
+    expect(routeKey(t, ['r', 'term'], CTRL_N, ['toggle:search'], 'other')).toEqual({
       target: 'root',
       command: 'toggle:search',
     })
