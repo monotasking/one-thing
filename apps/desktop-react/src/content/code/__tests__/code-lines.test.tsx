@@ -185,6 +185,13 @@ describe('三条硬规矩(样式源文本)', () => {
     expect(at, `${selector} 不在样式表里`).toBeGreaterThan(-1)
     return css.slice(at, css.indexOf('}', at))
   }
+  /** 同一个选择器既出现在共用的选择器表上、又有一条自己的规则时,取**自己那条**(在后)。 */
+  const ownBlock = (selector: string) => {
+    // 行首锚定:`.numSingle .line::before {` 也是 `.marksCurrent.numSingle …` 的后缀。
+    const at = css.lastIndexOf('\n' + selector) + 1
+    expect(at, `${selector} 不在样式表里`).toBeGreaterThan(-1)
+    return css.slice(at, css.indexOf('}', at))
+  }
 
   it('①横滚纪律:根按内容定宽,折行档退回 0', () => {
     expect(block('.root {')).toContain('min-width: max-content;')
@@ -204,8 +211,28 @@ describe('三条硬规矩(样式源文本)', () => {
     expect(block('.line {')).not.toContain('border-left')
     const gutterMark = block('.marksCurrent.numSingle .line::before,')
     expect(gutterMark).toContain('border-left: var(--bw-3) solid transparent;')
-    // 补回那 2px,数字与正文的起笔线才一个像素没动。
-    expect(gutterMark).toContain('width: calc(var(--code-num-w) + var(--bw-3));')
+    // 补回那 2px,数字与正文的起笔线才一个像素没动(列宽把空隙也算进来 —— 见下一条)。
+    expect(ownBlock('.marksCurrent.numSingle .line::before {')).toContain(
+      'width: calc(var(--code-num-w) + var(--bw-3) + var(--code-num-gap));',
+    )
+    expect(ownBlock('.marksCurrent.numBoth .line::before {')).toContain(
+      'width: calc(var(--code-num-w) + var(--bw-3) + var(--sp-1));',
+    )
+  })
+
+  it('列与列之间的空隙是内边距不是外边距(09-14 横滚露正文的缝)', () => {
+    // 外边距那一段不属于任何盒、不上底色,横滚时正文从那里透出来;内边距是列自己的。
+    for (const sel of [
+      '.numSingle .line::before {',
+      '.numBoth .line::before {',
+      '.numBoth .line::after {',
+      '.sign {',
+    ]) {
+      const rule = ownBlock(sel)
+      expect(rule, sel).not.toContain('margin-right')
+      expect(rule, sel).toContain('padding-right')
+      expect(rule, sel).toMatch(/width: calc\(/)
+    }
     expect(block(".marksCurrent .line[data-current='true']::before {")).toContain(
       'border-left-color: var(--accent);',
     )

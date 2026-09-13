@@ -370,6 +370,21 @@ function compareColumns(before, after) {
   return { leftSame: leftMoved <= 4, leftMoved, midMoved }
 }
 
+/** 同一块矩形(CSS px,相对容器)在两张设备像素截图上逐像素比对。 */
+function compareBand(before, after, band) {
+  const a = before.img, b = after.img
+  const dpr = Math.round(a.width / (before.box?.w || a.width)) || 2
+  const x0 = Math.max(0, Math.floor(band.left * dpr)), x1 = Math.min(a.width, Math.ceil(band.right * dpr))
+  const y0 = Math.max(0, Math.floor(band.top * dpr)), y1 = Math.min(a.height, Math.ceil(band.bottom * dpr))
+  let changed = 0, total = 0
+  for (let y = y0; y < y1; y += 1) for (let x = x0; x < x1; x += 1) {
+    const i = (y * a.width + x) * a.bpp, j = (y * b.width + x) * b.bpp
+    total += 1
+    if (a.data[i] !== b.data[j] || a.data[i + 1] !== b.data[j + 1] || a.data[i + 2] !== b.data[j + 2]) changed += 1
+  }
+  return { changed, total, x0, x1, y0, y1 }
+}
+
 /**
  * **dpr-2 缝数**(量法照提交 `592103be9`,批 ② 的探针进门)。
  *
@@ -741,6 +756,38 @@ async function main() {
     )
     const afterShot = await shotOfBody(page, cdp)
     const pinned = compareColumns(beforeShot, afterShot)
+    /*
+     * ⑧-b **行号带里一个正文像素都不许有**(2026-09-14 用户报「行号左右两边是透明的,横滚时
+     * 正文从缝里透出来」):三根粘住的列之间从前用外边距留空,外边距不上底色,滚过来的字就从
+     * 那两道竖条里露出来。量法:长行那一行(第 5 行)在行号带(从容器左缘到正文起笔)那一段,
+     * 横滚前后逐像素相同 —— 带子是粘住的,滚动不该改变它一个像素;露出来的字正好落在这一段。
+     * 上面那条「左 80 列墨量」抓不住它:只有一行有长行,漏进来的字对整列的墨量只是零头。
+     */
+    const band = await page.evaluate(() => {
+      const body = document.querySelector('[data-testid="changes-body"]')
+      // 长行按内容找(正文最长的那一行),不按下标:行表里加删行会把「文件第 5 行」推到别的下标上。
+      const rows = Array.from(body?.querySelectorAll('[data-line-index]') ?? [])
+      const row = rows.reduce((best, el) => {
+        const len = el.querySelector('[class*="text"]')?.textContent?.length ?? 0
+        return len > (best?.len ?? -1) ? { el, len } : best
+      }, null)?.el
+      const text = row?.querySelector('[class*="text"]')
+      if (!(body instanceof HTMLElement) || !(row instanceof HTMLElement) || !(text instanceof HTMLElement)) return null
+      const b = body.getBoundingClientRect(), r = row.getBoundingClientRect()
+      // 带宽 = 正文起笔到容器左缘的距离 —— 按 DOM 现读,不去解 `--code-gutter-w` 那条 calc
+      // (自定义属性的计算值仍是 calc 串,parseFloat 读出来是 0,带就只剩标记位那 2px)。
+      const scrollLeft = body.scrollLeft
+      const textLeft = text.getBoundingClientRect().left - b.left + scrollLeft
+      // 右缘退一像素:正文第一个字的抗锯齿边正压在起笔线上,横滚前有、横滚后没有。
+      return { top: r.top - b.top, bottom: r.bottom - b.top, left: 0, right: textLeft - 1 }
+    })
+    assert(band !== null && band.right > 40, `⑧-b 行号带有宽度(正文起笔在 ${band?.right}px)`)
+    assert(band !== null, '⑧-b 找得到第 5 行与它的正文')
+    const bandDiff = compareBand(beforeShot, afterShot, band)
+    assert(
+      bandDiff.changed === 0,
+      `⑧-b 长行那一行的行号带横滚前后逐像素相同(变了 ${bandDiff.changed} / ${bandDiff.total} 像素;非零 = 正文从列缝里透出来了)`,
+    )
     assert(
       pinned.leftSame && pinned.midMoved > 100,
       `⑧ 行号列左缘贴容器:左边那一叠 80 列里只有 ${pinned.leftMoved} 列的墨量动过`

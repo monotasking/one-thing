@@ -150,12 +150,21 @@
     calc(var(--code-gutter-bleed) * -1) 0 0 0 var(--code-face);
 }
 
+/*
+ * ── 列与列之间的空隙是**内边距不是外边距**(2026-09-14 用户报「行号左右两边是透明的,
+ * 横滚时正文从缝里透出来」;真机 dpr-2 截图复现:两列行号之间、行号与符号之间各一道
+ * 竖条露出滚过来的字,列剖面上那两段的颜色种类从 6 跳到 50+)。sticky 的列只画自己
+ * 的盒,外边距那一段不属于任何盒、不上底色,底下的正文就从那里露出来;改成内边距
+ * 之后那一段是列自己的,与列同底色。列宽把空隙算进来(`border-box`),`text-align:
+ * right` 让数字仍贴在原来的位置上 —— 邻列的 `left` 与 `--code-gutter-w` 一个数不改。
+ */
 /* 单列:新文件的行号(查看器就是这一档)。 */
 .numSingle .line::before {
   content: attr(data-new-no);
   order: 1;
   left: 0;
-  margin-right: var(--code-num-gap);
+  width: calc(var(--code-num-w) + var(--code-num-gap));
+  padding-right: var(--code-num-gap);
 }
 
 /* 两列:旧 / 新。`order` 是必需的 —— `::after` 在 DOM 序上排在正文之后。 */
@@ -163,7 +172,8 @@
   content: attr(data-old-no);
   order: 1;
   left: 0;
-  margin-right: var(--sp-1);
+  width: calc(var(--code-num-w) + var(--sp-1));
+  padding-right: var(--sp-1);
 }
 
 .numBoth .line::after {
@@ -171,7 +181,8 @@
   order: 2;
   /* 粘住的位子要与它左边那些列的总宽对得上,否则两列一贴边就叠在一起。 */
   left: calc(var(--code-mark-w) + var(--code-num-w) + var(--sp-1));
-  margin-right: var(--code-num-gap);
+  width: calc(var(--code-num-w) + var(--code-num-gap));
+  padding-right: var(--code-num-gap);
 }
 
 /*
@@ -194,8 +205,13 @@
  */
 .marksCurrent.numSingle .line::before,
 .marksCurrent.numBoth .line::before {
-  width: calc(var(--code-num-w) + var(--bw-3));
   border-left: var(--bw-3) solid transparent;
+}
+.marksCurrent.numSingle .line::before {
+  width: calc(var(--code-num-w) + var(--bw-3) + var(--code-num-gap));
+}
+.marksCurrent.numBoth .line::before {
+  width: calc(var(--code-num-w) + var(--bw-3) + var(--sp-1));
 }
 
 .marksCurrent .line[data-current='true']::before {
@@ -241,8 +257,8 @@
   order: 3;
   position: sticky;
   left: var(--code-gutter-w);
-  width: var(--code-sign-w);
-  margin-right: var(--code-num-gap);
+  width: calc(var(--code-sign-w) + var(--code-num-gap));
+  padding-right: var(--code-num-gap);
   color: var(--text-3);
   user-select: none;
   -webkit-user-select: none;
