@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dock 常驻 · 整边浮栏 · 2026-09-13</title>
+<style>
+  :root{
+    --paper:#faf8f4; --surface-2:#f6f3ee; --surface-3:#efebe4; --text-1:#2b2926; --text-2:#6b665f; --text-3:#9a948b; --text-4:#b8b2a8;
+    --line-1:#e6e1d8; --line-2:#d8d2c7; --accent:#c9782a; --st-sel:#efe9df; --st-hover:#f1ece4;
+    --font-ui:-apple-system,"PingFang SC","Helvetica Neue",system-ui,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    --shadow:0 10px 30px -12px rgba(43,41,38,.28),0 2px 6px -2px rgba(43,41,38,.12);
+    --sh-glass:0 6px 20px -8px rgba(43,41,38,.28),0 1px 2px rgba(43,41,38,.10);
+    --glass:rgba(250,248,244,.72);
+    /* Dock 几何:与 tokens.css 同一组数 */
+    --tile:40px; --pad:8px; --gap:9px; --inset:12px;
+    --thick:calc(var(--tile) + var(--pad)*2 + 2px);          /* 栏的厚度 */
+    --reserve:calc(var(--thick) + var(--inset)*2);            /* 让位 = 栏厚 + 两侧留白 */
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--paper);color:var(--text-1);font:14px/1.5 var(--font-ui)}
+  main{max-width:1200px;margin:0 auto;padding:28px 20px 80px}
+  h1{font-size:20px;margin:0 0 6px}
+  p.note{color:var(--text-2);font-size:13px;margin:0 0 8px;max-width:960px;line-height:1.65}
+  p.note b{color:var(--text-1)}
+  .ctl{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin:14px 0 6px;font-size:12.5px;color:var(--text-2)}
+  .seg{display:inline-flex;border:1px solid var(--line-1);border-radius:8px;overflow:hidden;background:var(--surface-2)}
+  .seg button{border:0;background:transparent;padding:5px 11px;font:inherit;color:var(--text-2);cursor:pointer}
+  .seg button+button{border-left:1px solid var(--line-1)}
+  .seg button.on{background:var(--st-sel);color:var(--text-1);font-weight:600}
+  .row2{display:flex;gap:28px;justify-content:center;align-items:flex-start;flex-wrap:wrap;margin:14px 0 10px;padding:22px;border:1px dashed var(--line-1);border-radius:18px;background:repeating-linear-gradient(45deg,transparent 0 10px,rgba(43,41,38,.025) 10px 20px)}
+  .cell{display:flex;flex-direction:column;gap:8px;align-items:center}
+  .cell h3{margin:0;font-size:13px;color:var(--text-2);font-weight:600}
+  .cell h3 b{color:var(--accent)}
+  .cap{font-size:12.5px;color:var(--text-2);line-height:1.7;max-width:960px;margin:12px auto 0}
+  .cap b{color:var(--text-1)}
+
+  /* ── 窗 ── */
+  .win{position:relative;display:flex;flex-direction:column;width:548px;height:440px;border:1px solid var(--line-1);border-radius:14px;background:var(--paper);box-shadow:var(--shadow);overflow:hidden;flex:none;font-size:12px}
+  .titlebar{flex:none;height:34px;display:flex;align-items:center;padding-left:14px;gap:7px;background:var(--paper);border-bottom:1px solid var(--line-1)}
+  .titlebar i{width:11px;height:11px;border-radius:50%;display:block}
+  .titlebar i:nth-child(1){background:#ff5f57}.titlebar i:nth-child(2){background:#febc2e}.titlebar i:nth-child(3){background:#28c840}
+  .titlebar .t{margin-left:10px;font-size:11.5px;color:var(--text-3)}
+  .body{flex:1;min-height:0;position:relative}
+  .grid{position:absolute;inset:0;display:grid;grid-template-columns:120px minmax(0,1fr) 120px;gap:8px;padding:8px;transition:padding .18s ease}
+  .pane{position:relative;min-height:0;min-width:0;border:1px solid var(--line-1);border-radius:10px;background:var(--surface-2);overflow:hidden;display:flex;flex-direction:column}
+  .pane .ph{flex:none;height:26px;display:flex;align-items:center;padding:0 10px;font-size:11px;font-weight:600;letter-spacing:.03em;color:var(--text-3);border-bottom:1px solid var(--line-1)}
+  .layer{flex:1;min-height:0;position:relative;overflow:hidden;display:flex;flex-direction:column;transition:padding .18s ease}
+  .rows{flex:1;min-height:0;overflow:hidden;padding:4px 6px}
+  .r{height:24px;display:flex;align-items:center;gap:6px;padding:0 6px;border-radius:5px;color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .r.cur{background:var(--st-sel)}
+  .r i{flex:none;width:10px;height:10px;border-radius:3px;background:var(--line-2)}
+  .tabs{flex:none;height:28px;display:flex;align-items:stretch;border-bottom:1px solid var(--line-1);background:var(--paper)}
+  .tabs span{display:flex;align-items:center;padding:0 10px;font-size:11.5px;color:var(--text-3);border-right:1px solid var(--line-1)}
+  .content{flex:1;min-height:0;position:relative;overflow:hidden;display:none;flex-direction:column}
+  [data-tab="chat"] .content.chat,[data-tab="term"] .content.term,[data-tab="diff"] .content.diff,[data-tab="web"] .content.web{display:flex}
+  [data-tab="chat"] .tabs .chat,[data-tab="term"] .tabs .term,[data-tab="diff"] .tabs .diff,[data-tab="web"] .tabs .web{color:var(--text-1);background:var(--surface-2);margin-bottom:-1px;border-bottom:1px solid var(--surface-2)}
+  .msgs{flex:1;min-height:0;overflow:hidden;padding:12px 14px 76px;display:flex;flex-direction:column;gap:10px;justify-content:flex-end}
+  .m{max-width:78%;padding:6px 10px;border-radius:10px;background:var(--surface-3);line-height:1.5;color:var(--text-2)}
+  .m.me{align-self:flex-end;background:var(--st-sel);color:var(--text-1)}
+  /* Composer:悬浮玻璃 —— 栏用的就是它这身皮 */
+  .composer{position:absolute;left:14px;right:14px;bottom:12px;height:52px;border:1px solid var(--line-1);border-radius:14px;background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:var(--sh-glass);padding:8px 10px;color:var(--text-4);transition:bottom .18s ease}
+  .composer b{position:absolute;right:8px;bottom:8px;width:22px;height:22px;border-radius:50%;background:var(--accent)}
+  .term .scr{flex:1;min-height:0;background:#1f1d1a;color:#d8d2c7;font:11px/1.55 var(--mono);padding:8px 10px;display:flex;flex-direction:column;justify-content:flex-end}
+  .term .scr .p{color:#8fbf7f}.term .scr .cur{color:#fff;background:#fff3;padding:0 1px}
+  .diff .lines{flex:1;min-height:0;font:11px/1.55 var(--mono);padding:6px 0;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
+  .diff .lines div{padding:0 10px;white-space:pre}
+  .diff .add{background:#e6f1df;color:#2f6b2a}.diff .del{background:#f7e2df;color:#9a3b32}
+  .diff .stat{flex:none;height:24px;display:flex;align-items:center;gap:10px;padding:0 10px;border-top:1px solid var(--line-1);background:var(--paper);font-size:11px;color:var(--text-2)}
+  .web .url{flex:none;height:26px;margin:6px 8px 0;border:1px solid var(--line-1);border-radius:7px;background:#fff;display:flex;align-items:center;padding:0 8px;font-size:11px;color:var(--text-3);white-space:nowrap;overflow:hidden}
+  .web .native{flex:1;min-height:0;margin:6px 8px 8px;border-radius:6px;background:#fff;border:1px dashed var(--line-2);display:flex;flex-direction:column;overflow:hidden}
+  .web .native .pg{flex:1;padding:10px 12px;color:var(--text-3);line-height:1.6}
+  .web .native .ft{flex:none;height:22px;border-top:1px solid var(--line-1);background:var(--surface-3);display:flex;align-items:center;padding:0 10px;font-size:10.5px;color:var(--text-3)}
+
+  /* 瓦 */
+  .tiles{display:flex;align-items:flex-end;gap:var(--gap)}
+  .tile{width:var(--tile);height:var(--tile);border-radius:calc(var(--tile)*.25);background:var(--surface-2);border:1px solid var(--line-1);box-shadow:0 1px 2px rgba(43,41,38,.08);display:grid;place-items:center;color:var(--text-2);transform-origin:center bottom;transition:transform .14s ease;flex:none}
+  .tile svg{width:44%;height:44%}
+  .tile:hover{transform:scale(1.35)}
+  .tile.ws{background:var(--accent);border-color:transparent;color:#fff}
+  .sep{width:1px;height:calc(var(--tile)*.82);background:var(--line-2);align-self:center;flex:none}
+  .dot{position:absolute;bottom:-6px;left:50%;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:var(--accent)}
+
+  /* ── 现状:药丸 + 让位(内衬形,面板底色继续画到底) ── */
+  .now .layer{padding-bottom:calc(var(--thick) + var(--inset)*2 - 8px)}
+  .now .composer{bottom:calc(12px + var(--thick) + var(--inset)*2 - 8px)}
+  .now .pill{position:absolute;left:50%;bottom:var(--inset);transform:translateX(-50%);padding:var(--pad) 10px;border-radius:16px;background:var(--glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--line-1);box-shadow:var(--sh-glass)}
+
+  /* ── 样例:整边浮栏 —— 让出来的那条带就是它自己 ── */
+  .bar{position:absolute;display:flex;align-items:center;justify-content:center;background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--line-1);border-radius:14px;box-shadow:var(--sh-glass);padding:var(--pad);transition:all .18s ease}
+  .bar .tiles{transition:none}
+  /* 四条边:栏贴边、三面留 --inset;网格朝那条边让 --reserve */
+  [data-edge="bottom"] .next .bar{left:var(--inset);right:var(--inset);bottom:var(--inset);height:var(--thick)}
+  [data-edge="bottom"] .next .grid{padding-bottom:var(--reserve)}
+  [data-edge="top"] .next .bar{left:var(--inset);right:var(--inset);top:var(--inset);height:var(--thick)}
+  [data-edge="top"] .next .grid{padding-top:var(--reserve)}
+  [data-edge="left"] .next .bar{top:var(--inset);bottom:var(--inset);left:var(--inset);width:var(--thick)}
+  [data-edge="left"] .next .grid{padding-left:var(--reserve)}
+  [data-edge="right"] .next .bar{top:var(--inset);bottom:var(--inset);right:var(--inset);width:var(--thick)}
+  [data-edge="right"] .next .grid{padding-right:var(--reserve)}
+  /* 竖边:这扇 440 高的样例窗装不下 9 块 40 的瓦,缩到 32(真机上竖栏吃的是整窗高度,不必缩) */
+  [data-edge="left"] .next,[data-edge="right"] .next{--tile:32px;--gap:7px}
+  [data-edge="left"] .next .tiles,[data-edge="right"] .next .tiles{flex-direction:column;align-items:center}
+  [data-edge="left"] .next .sep,[data-edge="right"] .next .sep{width:calc(var(--tile)*.82);height:1px}
+  [data-edge="left"] .next .tile{transform-origin:left center}
+  [data-edge="right"] .next .tile{transform-origin:right center}
+  [data-edge="top"] .next .tile{transform-origin:center top}
+  [data-edge="top"] .next .dot{bottom:auto;top:-6px}
+  [data-edge="left"] .next .dot{left:-6px;top:50%;bottom:auto;margin:-2px 0 0 0}
+  [data-edge="right"] .next .dot{left:auto;right:-6px;top:50%;bottom:auto;margin:-2px 0 0 0}
+  /* 沿边对齐三档:栏满边,瓦在栏里对齐 */
+  [data-align="start"] .next .bar{justify-content:flex-start}
+  [data-align="end"] .next .bar{justify-content:flex-end}
+  /* 现状那扇窗:四边中只演底边(它今天在左右两边是另一种形,不在这张页的题目里) */
+  [data-edge]:not([data-edge="bottom"]) .now::after{content:"现状只演底边";position:absolute;inset:0;display:grid;place-items:center;background:rgba(250,248,244,.72);color:var(--text-3);font-size:12px;z-index:9}
+</style>
+</head>
+<body>
+<main>
+  <h1>Dock 常驻 · 让出来的那条带就是 Dock 自己</h1>
+  <p class="note"><b>已被推翻,留档。</b>这一页是 2026-09-13 早些拍板的「整边浮栏」(实现见 0aa2a0026),同日晚被用户两句话推翻:「dock 的长度不要默认占满,他应该该多长就多长」「我要的效果是,他不影响其他 element 元素的 background,不需要自己设置,他就是一个独立的悬浮的块」。今天的形是:<b>两档都是药丸</b>,常驻档只多一条让位带,带子<b>不设任何底色</b>。留住的三件是平移形让位、<code>--dock-thick</code> 式子、容器不进顶栏带 —— 现行判词在 <code>apps/desktop-react/CLAUDE.md</code>。下面的图与文字保留原样,只作为那一版的记录。</p>
+  <p class="note">让位保留 —— 主区仍朝 Dock 那条边退一段,别的东西一件不被盖。变的只是<b>常驻形态下 Dock 长什么样</b>:不再是一枚浮在空带中央的药丸,而是一条<b>贴满整条边的浮栏</b>,皮与 Composer 同一身(玻璃、描边、圆角、四周 12px 留白),瓦在栏里居中(或按沿边对齐档靠前 / 靠后)。带子的颜色于是永远是栏自己的玻璃,底下换哪一页都一样;栏外那圈 12px 留白与 Composer 四周的留白是同一块地。四条边同一个形:横边是一条横栏,竖边是一条竖栏。</p>
+
+  <div class="ctl">
+    <span>停在</span>
+    <span class="seg" data-k="edge"><button data-v="bottom" class="on">下</button><button data-v="top">上</button><button data-v="left">左</button><button data-v="right">右</button></span>
+    <span>沿边</span>
+    <span class="seg" data-k="align"><button data-v="start">前</button><button data-v="center" class="on">中</button><button data-v="end">后</button></span>
+    <span>主区 tab</span>
+    <span class="seg" data-k="tab"><button data-v="chat" class="on">聊天</button><button data-v="term">终端</button><button data-v="diff">改动</button><button data-v="web">浏览器</button></span>
+  </div>
+
+  <div class="row2" id="stage" data-edge="bottom" data-align="center" data-tab="chat">
+    <div class="cell"><h3>现状 · 药丸 + 让位带</h3><div class="win now" data-kind="now"></div></div>
+    <div class="cell"><h3><b>样例</b> · 整边浮栏</h3><div class="win next" data-kind="next"></div></div>
+  </div>
+
+  <p class="cap"><b>怎么看</b>:切「终端」—— 左边终端的黑底停在半空,底下露一条纸色,药丸压在纸色中央,那条纸色就是你说的「颜色不一样」;右边终端照样在让位线上结束,但让出来的那截整个是 Dock 的玻璃栏,没有第二种颜色。切「左 / 右」—— 同一条栏竖起来,主区整体朝里退,Sessions 面板照旧是整块。<b>沿边</b>三档只挪栏里的瓦,栏自己永远满边。放大仍在(悬停瓦),向栏内侧长。</p>
+</main>
+
+<template id="tpl">
+  <div class="titlebar"><i></i><i></i><i></i><span class="t">onething</span></div>
+  <div class="body">
+    <div class="grid">
+      <div class="pane"><div class="ph">SESSIONS</div><div class="layer"><div class="rows">
+        <div class="r cur"><i></i>Dock 常驻的让位</div><div class="r"><i></i>diff 面板 a11y</div><div class="r"><i></i>索引重折事故</div><div class="r"><i></i>Composer 引用</div><div class="r"><i></i>会话侧栏对齐</div><div class="r"><i></i>笔记 Obsidian CLI</div><div class="r"><i></i>模型覆盖 UI</div><div class="r"><i></i>静默截断</div><div class="r"><i></i>终端与浏览器</div><div class="r"><i></i>折痕出场</div><div class="r"><i></i>设置页分页</div><div class="r"><i></i>markdown 图片</div><div class="r"><i></i>Dock 作用域</div><div class="r"><i></i>会话连续性</div><div class="r"><i></i>快捷键响应者</div>
+      </div></div></div>
+      <div class="pane center">
+        <div class="tabs"><span class="chat">聊天</span><span class="term">终端</span><span class="diff">改动</span><span class="web">浏览器</span></div>
+        <div class="layer">
+          <div class="content chat">
+            <div class="msgs"><div class="m me">常驻的时候会把其他元素挤出来,带子的颜色和页面不一样</div><div class="m">让位保留,让出来的那条带画成 Dock 自己的玻璃栏,和 Composer 同一身皮。</div><div class="m me">给我一个简单的样例</div><div class="m">就是这一页。</div></div>
+            <div class="composer">给 onething 发消息…<b></b></div>
+          </div>
+          <div class="content term"><div class="scr"><div><span class="p">~/code/start-electron</span> $ npm run gate:dock</div><div>① still 60 frames: 0 changed</div><div>② sweep reversals: max 1 (limit 6)</div><div>⑤ gap drift: 0.00px</div><div>[gate:dock] ok</div><div><span class="p">~/code/start-electron</span> $ <span class="cur"> </span></div></div></div>
+          <div class="content diff">
+            <div class="lines"><div>@@ -103,9 +103,4 @@ AppShell.module.css</div><div class="del">-.shell[data-dock-reserve='bottom'] .center,</div><div class="del">-.shell[data-dock-reserve='bottom'] [data-panel-layer] {</div><div class="del">-  padding-block-end: var(--dock-reserve-h);</div><div class="add">+.shell[data-dock-reserve='bottom'] .main {</div><div class="add">+  padding-block-end: var(--dock-reserve-h);</div><div class="add">+}</div></div>
+            <div class="stat">1 file · <span style="color:#2f6b2a">+3</span> <span style="color:#9a3b32">−5</span></div>
+          </div>
+          <div class="content web">
+            <div class="url">developer.apple.com/design/human-interface-guidelines/dock-menus</div>
+            <div class="native"><div class="pg">The Dock is a system-provided area at the edge of the screen. It occupies its own space; app windows do not extend beneath it …</div><div class="ft">© Apple · Terms · Privacy</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="pane"><div class="ph">查看器</div><div class="layer"><div class="rows">
+        <div class="r"><i></i>AppShell.tsx</div><div class="r cur"><i></i>AppShell.module.css</div><div class="r"><i></i>Dock.tsx</div><div class="r"><i></i>Dock.module.css</div><div class="r"><i></i>useDockLens.ts</div><div class="r"><i></i>dock-lens.ts</div><div class="r"><i></i>tokens.css</div><div class="r"><i></i>motion.css</div><div class="r"><i></i>transitions.ts</div><div class="r"><i></i>gate-dock.mjs</div><div class="r"><i></i>gate-layout.mjs</div><div class="r"><i></i>gate-squeeze.mjs</div><div class="r"><i></i>CLAUDE.md</div><div class="r"><i></i>dock-scope-2026-09.md</div><div class="r"><i></i>Composer.module.css</div>
+      </div></div></div>
+    </div>
+  </div>
+</template>
+
+<template id="tiles">
+  <div class="tiles">
+    <div class="tile ws"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="3" width="18" height="18" rx="4"/></svg></div>
+    <div class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 5h16v11H8l-4 4z"/></svg><span class="dot"></span></div>
+    <div class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg><span class="dot"></span></div>
+    <div class="sep"></div>
+    <div class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 6h6l2 2h8v10H4z"/></svg></div>
+    <div class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13 6l-2 12"/></svg><span class="dot"></span></div>
+    <div class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 6h16v12H4zM7 10l3 2-3 2M12 14h5"/></svg></div>
+    <div class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg></div>
+    <div class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4zM10 20a2 2 0 004 0"/></svg></div>
+    <div class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></div>
+  </div>
+</template>
+
+<script>
+  const tpl = document.getElementById('tpl'), tiles = document.getElementById('tiles')
+  for (const w of document.querySelectorAll('.win')) {
+    w.appendChild(tpl.content.cloneNode(true))
+    const host = document.createElement('div')
+    host.className = w.classList.contains('now') ? 'pill' : 'bar'
+    host.appendChild(tiles.content.cloneNode(true))
+    w.querySelector('.body').appendChild(host)
+  }
+  const stage = document.getElementById('stage')
+  for (const seg of document.querySelectorAll('.seg')) {
+    seg.addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return
+      for (const x of seg.querySelectorAll('button')) x.classList.toggle('on', x === b)
+      stage.dataset[seg.dataset.k] = b.dataset.v
+    })
+  }
+</script>
+</body>
+</html>

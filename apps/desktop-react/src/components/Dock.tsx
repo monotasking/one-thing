@@ -23,7 +23,7 @@ import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
 import { useT } from '../i18n'
 import { isItemHidden, memoryIsAt } from '../stage/transitions'
 import { DOCK_AXIS, OPEN_PLACEMENT_CHOICES } from '../stage/types'
-import type { DockAlign, DockEdge, DockMagnifyLevel, DockSize, StageItemSpec } from '../stage/types'
+import type { DockEdge, DockMagnifyLevel, DockSize, StageItemSpec } from '../stage/types'
 import type { LabelSide } from './DockTile'
 import s from './Dock.module.css'
 
@@ -78,17 +78,6 @@ const LABEL_SIDE: Record<DockEdge, LabelSide> = {
   right: 'left',
 }
 
-/**
- * 栏形下沿边三档 → 那三条 `justify-content`。横竖共用一张表:主轴由
- * `flex-direction` 决定,`justify-content` 说的始终是「沿主轴怎么排」。
- * 药丸形不挂这一族 —— 它的长度就是瓦之和,「沿主轴怎么排」无从谈起。
- */
-const BAR_ALIGN_CLASS: Record<DockAlign, string> = {
-  start: s.alignStart,
-  center: s.alignCenter,
-  end: s.alignEnd,
-}
-
 /** 瓦朝内长:下/右边锚末端(默认),上/左边锚起点。 */
 const ANCHOR_START: Record<DockEdge, boolean> = {
   bottom: false,
@@ -124,24 +113,20 @@ export function Dock() {
   const dockMagnifyLevel = useStageStore((st) => st.dockMagnifyLevel)
   const dockRunningDot = useStageStore((st) => st.dockRunningDot)
   /*
-   * 沿边对齐档有两个消费者(条自己的**贴边**定位仍在 AppShell 那层):
-   * ①磁性放大 —— 它决定条长大时朝哪边退,见 dock-lens.ts 的 GROWTH_BIAS;
-   * ②**栏形下瓦在栏里靠哪头**(09-13)—— 栏满边,所以「沿边对齐」在这一形里
-   *   落成栏内的 justify-content,而不是整条的定位。
+   * 沿边对齐档在这里**只有磁性放大读它** —— 它决定条长大时朝哪边退,
+   * 见 dock-lens.ts 的 GROWTH_BIAS。条自己摆在哪(贴边 + 沿边)整件在 AppShell
+   * 那一层:常驻档下是让位带里的 `justify-content`,自动隐藏档下是那两条百分比
+   * 定位,两条路 Dock 都不参与。
    */
   const dockAlign = useStageStore((st) => st.dockAlign)
   /*
-   * **形由「有没有自己那条地」决定**(09-13 拍板):常驻 = 主区已经让出一条带,
-   * 那条带就是 Dock 本身 → 贴满整条边的浮栏;自动隐藏 = 盖在内容上的浮层 → 药丸。
-   *
-   * 判据读的是**用户那一格档**,与外壳挂 `data-dock-reserve` 的判据(`reserveOff`)
-   * 是**同一个事实**——形与让位必须同生同灭:让了位却画药丸,带里就露出别人的底色
-   * (这一改的起因);没让位却画满边栏,栏会盖住内容。真全屏期间外壳把**藏不藏**
-   * 换成自动隐藏档(`effectiveDockDisplay`)而让位一格不动,所以那一段里 Dock 仍是
-   * 栏形、只是平时藏着 —— 判词在 AppShell 那两格「两个自动隐藏」的注释上。
+   * **条不知道此刻是哪一档**(09-13 晚用户拍板「dock 的长度不要默认占满,他应该
+   * 该多长就多长」「他就是一个独立的悬浮的块」,推翻同日早些那版「常驻 = 整边浮栏」):
+   * 两档同一个形,条永远是一枚长度 = 瓦之和的药丸,差别只有**让位** —— 常驻档
+   * 主区朝那条边退一截,药丸摆在那条带里,而带**不设底色**、别人的 background
+   * 一个字不动。所以这里**不订阅 `dockDisplay`**:订了也没有一个字要因它而变,
+   * 而多一份订阅就是多一次重渲。
    */
-  const dockDisplay = useStageStore((st) => st.dockDisplay)
-  const bar = dockDisplay === 'always'
   // 藏起来的瓦不在条上露面。它是**配置**(见 StageSettings.hiddenItems),
   // 与「这块瓦此刻在哪」无关 —— 所以它与 placements 是两条独立的订阅。
   const hiddenItems = useStageStore((st) => st.hiddenItems)
@@ -238,16 +223,12 @@ export function Dock() {
            * 而没有这一句时它落进的是条底下那片叶(判据在按几何工作,但那不是
            * 用户瞄准的地方)。判据不认识 Dock,只扫 `[data-nodrop]`。 */
           data-nodrop=""
-          /* 形的取件口(门与将来的探针读它,不去反推类名):bar = 整边浮栏,pill = 药丸。 */
-          data-dock-form={bar ? 'bar' : 'pill'}
           className={[
             s.strip,
             SIZE_CLASS[dockSize],
             MAGNIFY_CLASS[dockMagnifyLevel],
             axis === 'y' && s.vertical,
             ANCHOR_START[dockEdge] && s.anchorStart,
-            bar && s.bar,
-            bar && BAR_ALIGN_CLASS[dockAlign],
           ]
             .filter(Boolean)
             .join(' ')}
