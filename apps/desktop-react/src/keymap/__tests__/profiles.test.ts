@@ -5,7 +5,7 @@ import {
   isBuiltinProfileId,
   keymapProfilesFor,
 } from '../profiles'
-import { findCommand } from '../commands'
+import { TAB_SELECT_SLOTS, findCommand, tabSelectCommandId, toggleCommandId } from '../commands'
 import {
   activeProfile,
   addUserProfile,
@@ -14,12 +14,13 @@ import {
   initialKeymapState,
   isProfileBound,
   listProfiles,
+  lookupCommands,
   profileCombos,
   profileConflicts,
   setProfile,
 } from '../transitions'
 import type { KeymapProfile } from '../profiles'
-import type { CommandId, KeymapState } from '../types'
+import type { CommandId, ComboEvent, KeymapState } from '../types'
 
 /**
  * **键位组:三层落法 + 三组各自过冲突规则**(K5)。
@@ -171,6 +172,61 @@ describe('键位组:三层', () => {
       'jetbrains',
       'user:x',
     ])
+  })
+})
+
+/**
+ * **JetBrains 组的 ⌘n 是工具窗,不是标签**(K7,09-13 用户原话「jetbrains cmd 1
+ * 绑定 project,cmd 0 绑定 changes」)。
+ *
+ * 三件事在这儿钉着:①三条工具窗键真的在这一组里;②序号直达那九条是**显式
+ * `null`**(解绑)而不是缺席 —— 缺席会往下落回出厂的 ⌘1–⌘9,那正好是要让开的
+ * 那九个键;③这一组的改动**不外溢**:出厂组下 ⌘1 仍旧是「第 1 个标签」。
+ *
+ * 反证:把那一段 `null` 改成不写(缺席)→ 第二条与第三条里「⌘1 在这一组里只
+ * 落在文件列表上」当场红(候选会多出 `tab.select:1`)。
+ */
+describe('键位组:JetBrains 的工具窗三键(K7)', () => {
+  const jetbrains = findBuiltinProfile('jetbrains') as KeymapProfile
+  const onJetbrains: KeymapState = { ...initialKeymapState, profileId: 'jetbrains' }
+
+  /** 一次按键的五个字段(与 `transitions.test.ts` 里那只构造器同形)。 */
+  function press(key: string): ComboEvent {
+    return { key, metaKey: true, ctrlKey: false, altKey: false, shiftKey: false }
+  }
+
+  it('⌘1 = 文件列表、⌘7 = 目录、⌘0 = 改动面(三块瓦,不是三格标签)', () => {
+    expect(profileCombos(jetbrains, toggleCommandId('files'))).toEqual([{ meta: true, key: '1' }])
+    expect(profileCombos(jetbrains, 'toc.toggle')).toEqual([{ meta: true, key: '7' }])
+    expect(profileCombos(jetbrains, toggleCommandId('diff'))).toEqual([{ meta: true, key: '0' }])
+  })
+
+  it('序号直达那九条是**显式解绑**(在表里、值是 null),不是缺席', () => {
+    for (let slot = 1; slot <= TAB_SELECT_SLOTS; slot += 1) {
+      const id = tabSelectCommandId(slot)
+      // 「在表里」与「有值」是两件事 —— 这一条问的正是前者(判词在 profiles.ts 上)。
+      expect(isProfileBound(jetbrains, id), id).toBe(true)
+      expect(jetbrains.bindings[id], id).toBeNull()
+      // 于是有效键是空的:它**没有**落回出厂的 ⌘1–⌘9。
+      expect(effectiveCombos(onJetbrains, id), id).toEqual([])
+    }
+    // 同一条在出厂组下照旧是 ⌘n(对照组:上面那句说的是「这一组解绑了」)。
+    expect(effectiveCombos(initialKeymapState, tabSelectCommandId(1))).toEqual([
+      { meta: true, key: '1' },
+    ])
+  })
+
+  it('切到这一组之后 ⌘1 / ⌘7 / ⌘0 各只落在那块瓦上(标签那一族不在候选里)', () => {
+    expect(lookupCommands(onJetbrains, press('1'), 'mac')).toEqual([toggleCommandId('files')])
+    expect(lookupCommands(onJetbrains, press('7'), 'mac')).toEqual(['toc.toggle'])
+    /*
+     * ⌘0 上两条:改动面(应用级)与 `view.zoomReset`(跟焦点,只有浏览器答得出)
+     * —— 合法共键,谁做由活动路径说了算。这一条要证的是「改动面真的在候选里」,
+     * 所以按包含判,次序不入断言(次序是表的声明序,不是优先级)。
+     */
+    expect(lookupCommands(onJetbrains, press('0'), 'mac')).toContain(toggleCommandId('diff'))
+    // 出厂组下同一个键仍旧是那一格标签 —— 这一组的改动不外溢。
+    expect(lookupCommands(initialKeymapState, press('1'), 'mac')).toEqual([tabSelectCommandId(1)])
   })
 })
 

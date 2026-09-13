@@ -210,6 +210,22 @@ describe('⑥⑦ 局部先接,没接住放行全局', () => {
     expect(e.defaultPrevented).toBe(false)
   })
 
+  it('切了键位组之后按键走的是那一组(K7 顺手修的 K5 真 bug:派发器从前只递覆盖那一格)', () => {
+    render(<Harness run={runCommand} />)
+    focusTree.register('root', null).activate()
+    act(() => useKeymapStore.setState({ profileId: 'jetbrains' }))
+    // JetBrains 组:⌘1 = 文件面(Project 工具窗),不是出厂的「第 1 个标签」。
+    fireEvent.keyDown(document.body, { key: '1', metaKey: true })
+    expect(runCommand).toHaveBeenCalledWith('toggle:files')
+    // 出厂组里 ⌘⇧W 是工作区面板;VS Code 组把它换成 ⌘⇧P,⌘⇧W 就该不响。
+    act(() => useKeymapStore.setState({ profileId: 'vscode' }))
+    runCommand.mockClear()
+    fireEvent.keyDown(document.body, { key: 'w', metaKey: true, shiftKey: true })
+    expect(runCommand).not.toHaveBeenCalled()
+    fireEvent.keyDown(document.body, { key: 'p', metaKey: true, shiftKey: true })
+    expect(runCommand).toHaveBeenCalledWith('workspace.palette')
+  })
+
   it('用户改绑之后走的是新组合(全局那一档仍然读注册表)', () => {
     render(<Harness run={runCommand} />)
     focusTree.register('root', null).activate()

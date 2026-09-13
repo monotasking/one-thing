@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { hasModifier, lookupCommands } from '../keymap/transitions'
 import { currentKeymapPlatform, useKeymapStore } from '../keymap/store'
 import { focusTree } from './registry'
@@ -165,7 +165,19 @@ export interface FocusDispatchOptions {
 }
 
 export function useFocusDispatch(opts: FocusDispatchOptions): void {
+  /*
+   * 递**整份**键位状态,不只是覆盖那一格(K7 顺手修的 K5 真 bug):`lookupCommands`
+   * → `effectiveCombos` 是三层落(覆盖 ▷ 键位组 ▷ 出厂),只递 `{ overrides }` 它读不到
+   * `profileId`,当场落回出厂组 —— 于是切到 VS Code / JetBrains 组之后设置页、菜单栏、
+   * 原生视图保留表三处都画新键,唯独按下去还是出厂那一套。
+   */
   const overrides = useKeymapStore((st) => st.overrides)
+  const profileId = useKeymapStore((st) => st.profileId)
+  const userProfiles = useKeymapStore((st) => st.userProfiles)
+  const keymap = useMemo(
+    () => ({ overrides, profileId, userProfiles }),
+    [overrides, profileId, userProfiles],
+  )
   const { runCommand } = opts
   /*
    * 「主修饰键是哪一枚」(T1-fix)。两只纯函数(`routeKey` / `lookupCommand`)
@@ -244,7 +256,7 @@ export function useFocusDispatch(opts: FocusDispatchOptions): void {
        * 原生 keydown 自己就会把 `^P` 写成 `\x10` 发下去。从前是壳先截下来、
        * 再自己往 PTY 写一遍同一个字节。
        */
-      const candidates = lookupCommands({ overrides }, e, platform)
+      const candidates = lookupCommands(keymap, e, platform)
       const route = routeKey(nodes, path, e, candidates, platform)
       if (!route) return
       if (route.target === 'claim') return
@@ -267,5 +279,5 @@ export function useFocusDispatch(opts: FocusDispatchOptions): void {
     return () => {
       window.removeEventListener('keydown', onKeyDown, true)
     }
-  }, [overrides, runCommand, platform])
+  }, [keymap, runCommand, platform])
 }

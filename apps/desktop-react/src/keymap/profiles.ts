@@ -1,5 +1,11 @@
 import { SESSIONS_ITEM_ID } from '../stage/items'
-import { TERMINAL_SUMMON_COMBOS, comboForPlatform, toggleCommandId } from './commands'
+import {
+  TAB_SELECT_SLOTS,
+  TERMINAL_SUMMON_COMBOS,
+  comboForPlatform,
+  tabSelectCommandId,
+  toggleCommandId,
+} from './commands'
 import { platformOf } from './platform'
 import type { PlatformCombos } from './commands'
 import type { Combo, CommandId, KeymapPlatform } from './types'
@@ -163,10 +169,22 @@ const vscodeProfile = (platform: KeymapPlatform): KeymapProfile => ({
  * 没有对应物的那几条**不写**,于是它们往下落回出厂表:`workspace.palette`
  * (JetBrains 是 ⇧⇧ 双击 —— 这台壳的组合键表达不出「同一枚键连按两下」,
  * 硬塞一个别的键就是编造)、`tab.reopen`(JetBrains 没有「重开刚关掉的标签」
- * 这一条)、`tab.select:n`(它没有编辑器序号直达),以及内容族那四条
+ * 这一条),以及内容族那四条
  * (`view.reload` / `view.zoom*`,K3)—— JetBrains 的缩放是改编辑器字号、
  * 它没有「重载这块内容」,判词与 VS Code 组那一段同一条:不是同一件事就不写。
  * 它的 Back / Forward(⌘[ / ⌘])**与出厂键逐字相同**,所以写了也是白写。
+ *
+ * ── K7:**⌘n 在 JetBrains 那边是工具窗,不是标签**(09-13 用户原话
+ *    「jetbrains cmd 1 绑定 project,cmd 0 绑定 changes」)──────────────────
+ * JetBrains 的 ⌘1 / ⌘7 / ⌘0 是**激活某个工具窗**(Project / Structure /
+ * Commit),换标签在那边是 ⌃→ / ⌃←(本组上面已有那两条)。这台壳里与它们对应
+ * 的东西就是三块**瓦**:文件列表 / 目录 / 改动面 —— 所以这一组把 ⌘1 / ⌘7 / ⌘0
+ * 给它们,并且把 `tab.select:1`…`tab.select:9` **逐条显式写成 `null`**。
+ *
+ * 为什么是显式 `null` 而不是缺席:缺席**往下落**(判词在文件头「有效键三层」
+ * 那一段),落下去就是出厂表的 ⌘1–⌘9 —— 那正好是要让开的那九个键,于是 ⌘1
+ * 会同时落在「文件列表」与「第 1 个标签」两条命令上。`null` 是这一组说的一句
+ * 话(「这一组里没有编辑器序号直达」),它赢过出厂值。
  */
 const jetbrainsProfile = (platform: KeymapPlatform): KeymapProfile => ({
   id: 'jetbrains',
@@ -191,6 +209,31 @@ const jetbrainsProfile = (platform: KeymapPlatform): KeymapProfile => ({
     ),
     /* Close Tab —— ⌘W。 */
     'tab.close': [{ meta: true, key: 'w' }],
+    /*
+     * ── 工具窗三条(K7,判词整段在上面文件注释里)──────────────────────────
+     * `ActivateProjectToolWindow` —— **⌘1**,JetBrains 的 Project 面板,
+     * 这台壳里对应的是「文件列表」那块瓦。
+     */
+    [toggleCommandId('files')]: [{ meta: true, key: '1' }],
+    /* `ActivateStructureToolWindow` —— **⌘7**,那边的 Structure = 这台壳的目录。 */
+    'toc.toggle': [{ meta: true, key: '7' }],
+    /*
+     * `ActivateCommitToolWindow` —— **⌘0**,那边叫 Commit / Changes(用户原话
+     * 「cmd 0 绑定 changes」),这台壳里是「改动」那块瓦。
+     *
+     * ⌘0 上还有一条 `view.zoomReset`(出厂键,跟焦点那一族),两条**合法共键**:
+     * 冲突规则问的是「`app: true` 的至多一条 + 其余作用域两两不交」,而瓦的
+     * toggle 是应用级、`view.zoomReset` 只有浏览器答得出 —— 一条 app 级与一条
+     * 跟焦点的共键正是三层立法那句裁定。`profileConflicts` 跑这一组时会再证一遍。
+     */
+    [toggleCommandId('diff')]: [{ meta: true, key: '0' }],
+    /*
+     * 序号直达那九条在这一组里**全部解绑**:JetBrains 换标签是 ⌃→ / ⌃←,
+     * ⌘n 在那边从来不是标签。写 `null` 而不是不写,理由在文件注释 K7 那一段。
+     */
+    ...Object.fromEntries(
+      Array.from({ length: TAB_SELECT_SLOTS }, (_, i) => [tabSelectCommandId(i + 1), null]),
+    ),
     /* Navigate | Line/Column… —— ⌘L。与出厂同键。 */
     'viewer.gotoLine': [{ meta: true, key: 'l' }],
     /* Terminal 工具窗 —— ⌥F12。 */
