@@ -124,6 +124,13 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
   const offMenuSender = configureAppMenuCommandSender(id => {
     push({ kind: 'command', id })
   })
+  /*
+   * **窗口失焦由这里说**(2026-09-15,判词在 `native-view-protocol.ts` 的 `window-blur`
+   * 与壳侧 `focus/window-focus.ts`):焦点在壳与 WebContentsView 之间换手时窗口不 blur,
+   * 只有用户真的离开这扇窗(Cmd-Tab / 点了别的窗)才推这一发。
+   */
+  const onWindowBlur = (): void => { push({ kind: 'window-blur' }) }
+  window.on('blur', onWindowBlur)
   /** 每格 tab 一份「摘 keymap 监听」的退订。 */
   const keymapOff = new Map<string, () => void>()
 
@@ -386,6 +393,7 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
        * 点一下只记一行 debug,而菜单本身**不拆** —— 它是 `app` 级的,比这块地长命。
        */
       offMenuSender()
+      if (!window.isDestroyed()) window.removeListener('blur', onWindowBlur)
       /*
        * 先把还悬着的每一问按拒结掉,**再**摘 provider:反过来的话那几条
        * `permissionResolved` 会打在一只已经 dispose 的 hub 上(它自己吞得掉,

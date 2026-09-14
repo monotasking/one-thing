@@ -94,7 +94,8 @@
  * 活动态那条(0,3,0),悬上去脸被抹成透明、整格沉进檐里 —— 2026-09-14 用户报
  * 「只有一个 tab 时 hover 的颜色和 tab header 一致」就是它。joined 档活动 tab 本来
  * 就不响应 hover(`.tab:hover` 输给 `.tabOn`),所以这里什么都不用写。 */
+/* `cursor` 不在这里改写(2026-09-15 用户两次点名):单 tab 照样拖得走,光标是
+ * 「能不能拖」的第一句话,不因为「切不了」就收回。 */
 .chrome[data-single] [role='tab'] {
   box-shadow: none;
-  cursor: default;
 }

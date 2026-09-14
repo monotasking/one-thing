@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
 import { DragLayer, DropOverlay, resetDragSession, setDropFeedback, useDragSource } from '../drag'
 import { focusTree } from '../../focus/registry'
+import { installWindowFocusSource, reportWindowBlur, resetWindowFocus } from '../../focus/window-focus'
 import type { DragSourceSpec } from '../drag'
 
 /**
@@ -286,5 +287,51 @@ describe('拒绝态松手:播报那句理由', () => {
     })
     expect(document.querySelector('[data-live="polite"]')?.textContent?.trim() ?? '').toBe('')
     vi.useRealTimers()
+  })
+})
+
+
+/**
+ * **「窗口失焦」只认 `focus/window-focus` 那一个产地**(2026-09-15)。
+ *
+ * 真机记录(用户四轮真手势拖浏览器 tab):按下 → 这扇窗刚成 key 窗 → 40ms 后 macOS 把
+ * 第一响应者还给 WebContentsView → 壳的 `window` 收到 DOM `blur` → 从前这里 `abort()`,
+ * 起手前这一场就没了。窗口并没有失焦,所以那一发不算;桌面上「失焦」由主进程推。
+ * 反证:把 `subscribeWindowBlur(onWindowBlur)` 换回 `window.addEventListener('blur', …)`
+ * → 第一条红(blur 之后拖拽起不了手)。
+ */
+describe('宿主接管「窗口失焦」时 DOM blur 不取消拖拽', () => {
+  afterEach(() => resetWindowFocus())
+
+  it('起手前 DOM blur:照样起手;起手后 DOM blur:照样在拖;宿主报失焦才取消', () => {
+    const restore = installWindowFocusSource()
+    const onDrop = vi.fn()
+    const onCancel = vi.fn()
+    render(<Source spec={{ onDrop, onCancel }} />)
+    const src = screen.getByTestId('src')
+    act(() => { down(src, 0, 0) })
+    act(() => { window.dispatchEvent(new Event('blur')) })
+    act(() => { move(src, 30, 0) })
+    expect(document.documentElement.hasAttribute('data-drag-active')).toBe(true)
+    act(() => { window.dispatchEvent(new Event('blur')) })
+    expect(document.documentElement.hasAttribute('data-drag-active')).toBe(true)
+    act(() => { reportWindowBlur() })
+    expect(document.documentElement.hasAttribute('data-drag-active')).toBe(false)
+    expect(onCancel).toHaveBeenCalledTimes(1)
+    expect(onDrop).not.toHaveBeenCalled()
+    restore()
+  })
+
+  it('没有宿主源(web 壳):DOM blur 仍旧取消(切走应用那一档一个字没变)', () => {
+    const onDrop = vi.fn()
+    const onCancel = vi.fn()
+    render(<Source spec={{ onDrop, onCancel }} />)
+    const src = screen.getByTestId('src')
+    act(() => { down(src, 0, 0) })
+    act(() => { move(src, 30, 0) })
+    expect(document.documentElement.hasAttribute('data-drag-active')).toBe(true)
+    act(() => { window.dispatchEvent(new Event('blur')) })
+    expect(document.documentElement.hasAttribute('data-drag-active')).toBe(false)
+    expect(onCancel).toHaveBeenCalledTimes(1)
   })
 })

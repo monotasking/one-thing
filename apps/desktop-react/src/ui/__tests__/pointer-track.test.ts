@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PointerTrack } from '../drag'
 import { focusTree } from '../../focus/registry'
+import { installWindowFocusSource, reportWindowBlur, resetWindowFocus } from '../../focus/window-focus'
 
 /**
  * **`ui/drag/PointerTrack` 的守卫**(U5,2026-09-08)。
@@ -153,5 +154,27 @@ describe('PointerTrack:结束就是结束', () => {
     source.dispatchEvent(pointer('pointermove', 5, 5))
     source.dispatchEvent(pointer('pointerup'))
     expect(focusTree.transientEscapeHandlers().length).toBe(before)
+  })
+})
+
+
+/**
+ * **「窗口失焦」只认 `focus/window-focus` 那一个产地**(2026-09-15)。桌面上焦点换到
+ * 本窗原生视图时 DOM `blur` 也响,而窗口没失焦 —— 那一发不许取消。
+ * 反证:把 `open()` 里 `subscribeWindowBlur` 换回 `window.addEventListener('blur', …)` → 第一条红。
+ */
+describe('PointerTrack:窗口失焦的产地', () => {
+  afterEach(() => resetWindowFocus())
+
+  it('宿主接管时 DOM blur 不取消,宿主报的那一发才取消', () => {
+    const restore = installWindowFocusSource()
+    const end = vi.fn()
+    const cancel = vi.fn()
+    PointerTrack.open(source, 1, { end, cancel })
+    window.dispatchEvent(new Event('blur'))
+    expect(cancel).not.toHaveBeenCalled()
+    reportWindowBlur()
+    expect(cancel).toHaveBeenCalledWith('blur')
+    restore()
   })
 })

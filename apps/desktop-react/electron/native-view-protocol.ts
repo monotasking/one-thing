@@ -167,6 +167,13 @@ export type NativeViewPush =
    * 局部先接、没接住才应用层兜底。**菜单不是第二条键盘路**。
    */
   | { readonly kind: 'command'; readonly id: string }
+  /**
+   * **这扇窗真的失焦了**(2026-09-15)。渲染进程自己的 DOM `blur` 说的是 webContents
+   * 失焦 —— 焦点在壳与原生视图之间换手时它也响,而窗口并没有失去 key 状态。
+   * 只有 `BrowserWindow` 的 `blur` 是「用户离开了这扇窗」,由主进程推;
+   * 接的人是 `content/native-view/window-focus-downlink.ts`(判词在 `focus/window-focus.ts`)。
+   */
+  | { readonly kind: 'window-blur' }
 
 /** preload 挂出来的那两口(`window.onethingHost.nativeView`)。 */
 export interface NativeViewBridge {

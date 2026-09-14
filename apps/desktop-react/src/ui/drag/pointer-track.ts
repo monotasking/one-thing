@@ -1,4 +1,5 @@
 import { focusTree } from '../../focus/registry'
+import { subscribeWindowBlur } from '../../focus/window-focus'
 
 /**
  * **一次「按下即拖」的指针跟踪**(U5,2026-09-08;设计:拖拽 v4)。
@@ -98,6 +99,8 @@ export class PointerTrack {
   /** 拆过没有。三条结束路径 + 外部 `dispose()` 共用它,所以拆卸天然幂等。 */
   private closed = false
   private offEscape: (() => void) | null = null
+  /** 「窗口失焦」的退订(产地只有一个:`focus/window-focus`)。 */
+  private offWindowBlur: (() => void) | null = null
 
   private constructor(source: HTMLElement, pointerId: number, run: PointerTrackRun) {
     this.source = source
@@ -128,7 +131,7 @@ export class PointerTrack {
     window.addEventListener('pointercancel', track.onPointerCancel)
     // 窗口失焦 = 这一下作废(切了应用、系统弹框抢走了指针)。它不是 keydown,
     // 与不变量 I2 无关。
-    window.addEventListener('blur', track.onBlur)
+    track.offWindowBlur = subscribeWindowBlur(track.onBlur)
     track.offEscape = focusTree.registerTransient(() => {
       track.cancel('escape')
       return true
@@ -151,7 +154,8 @@ export class PointerTrack {
     window.removeEventListener('pointermove', this.onMove)
     window.removeEventListener('pointerup', this.onUp)
     window.removeEventListener('pointercancel', this.onPointerCancel)
-    window.removeEventListener('blur', this.onBlur)
+    this.offWindowBlur?.()
+    this.offWindowBlur = null
     this.offEscape?.()
     this.offEscape = null
     try {
@@ -186,6 +190,7 @@ export class PointerTrack {
   }
 
   private readonly onBlur = (): void => {
+    // 「窗口失焦」只认 `focus/window-focus` 那一个产地(判词在那只模块头上)。
     this.cancel('blur')
   }
 }

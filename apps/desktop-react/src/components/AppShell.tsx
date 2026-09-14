@@ -8,6 +8,7 @@ import { useKeymapCommandRunner } from '../keymap/dispatch'
 import { FocusScope } from '../focus/FocusScope'
 import { useFocusDispatch } from '../focus/dispatch'
 import { startKeymapDownlink } from '../content/native-view/keymap-downlink'
+import { startWindowFocusDownlink } from '../content/native-view/window-focus-downlink'
 import { focusTree } from '../focus/registry'
 import { runAfterCommit } from '../focus/after-commit'
 import { TopBar } from './TopBar'
@@ -133,6 +134,8 @@ export function AppShell() {
    * 没有宿主(`--mode web`)时它是一只空退订。
    */
   useEffect(() => startKeymapDownlink(), [])
+  /* 「窗口失焦」在桌面上由主进程说(判词在 `focus/window-focus.ts`);web 壳同样是空退订。 */
+  useEffect(() => startWindowFocusDownlink(), [])
 
   /**
    * **窗子改了尺寸 → 浮窗回到视口里**(09-04 §4)。与上面那一条同一个形:判据在

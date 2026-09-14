@@ -1,6 +1,7 @@
 import { useCallback, useRef, useSyncExternalStore } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { focusTree } from '../../focus/registry'
+import { subscribeWindowBlur } from '../../focus/window-focus'
 import { announce } from '../a11y/live-region'
 import { LAND_MS } from '../../components/motion'
 import { DRAG_START_PX } from './constants'
@@ -384,6 +385,8 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
     const declared = specRef.current.threshold ?? DRAG_START_PX
     const gate = typeof declared === 'number' ? { x: declared, y: declared } : declared
     let payload: T | null = null
+    /** 「窗口失焦」的退订(产地只有一个:`focus/window-focus`)。 */
+    let offWindowBlur: () => void = () => {}
     /**
      * 三态,不是一个布尔(`cancelled` 那一格是 09-05 真机门量出来的,见
      * `swallowNextClick` 的判词):
@@ -429,7 +432,8 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       window.removeEventListener('pointercancel', abort)
-      window.removeEventListener('blur', abort)
+      offWindowBlur()
+      offWindowBlur = () => {}
       offEscape?.()
       offEscape = null
       const landing =
@@ -618,6 +622,15 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
       if (was === 'dragging' && refused) announce(refused)
     }
 
+    /**
+     * **窗口失焦 = 取消**。「失焦」这格事实只认 `focus/window-focus` 那一个产地
+     * (2026-09-15):桌面上由主进程按 `BrowserWindow` 的 blur 说,渲染进程自己的
+     * DOM `blur` 在焦点换到本窗原生视图时也会响、不算数(病历整段在那只模块头上)。
+     */
+    const onWindowBlur = (): void => {
+      abort()
+    }
+
     /** 指针没了(pointercancel / 窗口失焦):不会再有 click,整个拆干净。 */
     const abort = (): void => {
       if (phase !== 'dragging') {
@@ -642,8 +655,8 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
     window.addEventListener('pointerup', up)
     window.addEventListener('pointercancel', abort)
     // 窗口失焦 = 这一下拖拽作废(点了系统 Dock、切了应用)。它不是 keydown,
-    // 与 I2 无关。
-    window.addEventListener('blur', abort)
+    // 与 I2 无关。事实的产地是 `focus/window-focus`,不是 `window` 的 `blur`。
+    offWindowBlur = subscribeWindowBlur(onWindowBlur)
   }, [])
 }
 
