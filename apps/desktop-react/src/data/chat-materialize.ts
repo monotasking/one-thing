@@ -292,12 +292,28 @@ function mergeWater(message: ProjectedMessage, water?: StreamWater): ProjectedMe
    *    整段作废。两条都不静默:它们各是一次 `stream.water.divergence` 之外的
    *    「照不到」,写在这里而不是假装已经盖住。
    */
+  /*
+   * ── 只补 assistant(09-14 真机报障:`/skill:名` 落账后气泡里跟着整份 SKILL.md)──
+   *
+   * 这一段补的是「当前请求已经流出来、parts 还画不出来的正文」,按定义是**模型
+   * 正在说的话**。用户消息的 `content` 是另一回事:引擎在落库之前把 `@路径` 展成
+   * 整份 `<file>` 块、`/skill:x` 展成整份 SKILL.md 写进去 —— 那是**给模型看的版本**,
+   * 屏幕永远读 `contentParts`(`content/user-message` 三来源判据链)。拿这一条
+   * 「账本比画得出来的长」去量一条用户消息,差额正好是那整份模型版,于是 chip
+   * 后面拖着一整段 `<skill …>`。判据是 role,不是「有没有引用部件」:一条只有
+   * 文字的用户消息,`content` 与 text 部件本来就逐字相同,补不出东西;一条带引用
+   * 的,`content` 与屏幕从来就不是同一句,一个字都不该补。
+   */
   const drawnText = parts
     .filter(part => part.type === 'text')
     .map(part => part.content ?? '')
     .join('')
   const ledgerContent = message.content ?? ''
-  if (ledgerContent.length > drawnText.length && ledgerContent.startsWith(drawnText)) {
+  if (
+    message.role === 'assistant'
+    && ledgerContent.length > drawnText.length
+    && ledgerContent.startsWith(drawnText)
+  ) {
     /*
      * 回合号取「这条消息此刻**最佳可知**的那个」:水位章上的(最准)、账本 parts 上的、
      * steps 上的,三者取大。这一截按定义属于**当前**这个请求,而当前请求排在所有

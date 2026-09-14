@@ -348,3 +348,64 @@ describe('进度盖在账本那次调用上(C2-b)', () => {
     expect(callOf(messages).progress).toBeUndefined()
   })
 })
+
+describe('用户消息的 content 是模型版,补账那一段不碰它', () => {
+  /**
+   * 09-14 真机:发 `/skill:lenovo-scripts` → 引擎落库前把整份 SKILL.md 内联进
+   * `content`(`<skill …>…</skill>`),`contentParts` 只有一格 `skill-ref`。
+   * 从前「账本比画得出来的长」那一段对每条消息都跑:drawnText 是空串、content
+   * 是 18KB 的 skill 块,于是补出一格 text 部件 —— chip 后面拖着整份 SKILL.md。
+   */
+  function skillLedger(): Ev[] {
+    return [
+      { seq: 1, time: T0, type: 'session/created', data: { sessionId: 's1' } },
+      {
+        seq: 2,
+        time: T0,
+        type: 'user/message',
+        data: {
+          message: {
+            id: 'u1',
+            role: 'user',
+            content: '<skill name="x" location="/s/SKILL.md">\n# X\n整份 SKILL.md 正文\n</skill>',
+            contentParts: [
+              { type: 'skill-ref', skillId: 'x', name: 'x', description: 'd', source: 'user', content: '# X', bodyHash: 'h' },
+            ],
+            timestamp: T0,
+          },
+        },
+      },
+      { seq: 3, time: T0, type: 'run/start', data: { runId: 'r1', kind: 'chat', assistantMessageId: 'a1', timestamp: T0 } },
+      {
+        seq: 4,
+        time: T0,
+        type: 'assistant/chunks',
+        data: { runId: 'r1', requestIndex: 0, messageId: 'a1', partIndex: 0, kind: 'text', time0: T0, dt: [0], text: ['好'] },
+      },
+    ]
+  }
+
+  it('带 skill-ref 的用户消息:parts 一格不多,模型版正文一个字不上屏', () => {
+    const state = fold(skillLedger())
+    const { messages } = materializeChatMessagesCached(state, R2_OPTS, 0, new StreamWater())
+    const user = messages.find((m) => m.id === 'u1')
+    const types = (user?.contentParts ?? []).map((p) => (p as { type?: string }).type)
+    expect(types).toEqual(['skill-ref'])
+    const drawn = (user?.contentParts ?? [])
+      .filter((p) => (p as { type?: string }).type === 'text')
+      .map((p) => (p as { content?: string }).content ?? '')
+      .join('')
+    expect(drawn).not.toContain('<skill')
+  })
+
+  it('反证同形的 assistant 消息:账本比 parts 长的那截照旧补出来', () => {
+    const state = fold(skillLedger())
+    const { messages } = materializeChatMessagesCached(state, R2_OPTS, 0, new StreamWater())
+    const a1 = messages.find((m) => m.id === 'a1')
+    const drawn = (a1?.contentParts ?? [])
+      .filter((p) => (p as { type?: string }).type === 'text')
+      .map((p) => (p as { content?: string }).content ?? '')
+      .join('')
+    expect(drawn).toBe('好')
+  })
+})
