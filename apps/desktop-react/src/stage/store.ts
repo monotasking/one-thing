@@ -116,6 +116,12 @@ interface StageStore extends StageState, StageSettings, PerSpaceState<T.StageFur
   stageToFloat: () => void
   stageToEdge: (side: ShelfSide) => void
   floatToEdge: (id: string, side: ShelfSide) => void
+  /**
+   * **整扇窗塌进一条边**(2026-09-14)。收的是**窗号**,不是瓦 id —— 拖窗到边带
+   * 松手、与窗标题栏菜单里的「钉到边 ▸」走的都是它。`floatToEdge` 说的是瓦的话
+   * (窗号是 `win-…` 时它一格都不动,病历整段在 `placement.placeFloatIn` 上)。
+   */
+  floatWindowToEdge: (winId: string, side: ShelfSide) => void
   edgeToFloat: (id: string) => void
   focusFloat: (id: string) => void
   /**
@@ -693,6 +699,9 @@ export const useStageStore = create<StageStore>()(
       floatToEdge: (id, side) => {
         if (T.placementOf(get(), id).kind !== 'float') return
         land(id, orchestrate(() => P.placeAs(stagePlacementDeps, id, { kind: 'edge', side })))
+      },
+      floatWindowToEdge: (winId, side) => {
+        land(winId, orchestrate(() => P.placeFloatIn(stagePlacementDeps, winId, side)))
       },
       edgeToFloat: (id) => {
         if (T.placementOf(get(), id).kind !== 'edge') return

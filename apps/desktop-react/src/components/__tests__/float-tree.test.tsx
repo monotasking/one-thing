@@ -99,13 +99,16 @@ describe('那颗 ✕:关这扇窗 = 里面的标签全部隐藏', () => {
 })
 
 /**
- * **那两件只对瓦说得通的事**(W7-c 起它们是菜单项,不是钮)。
+ * **只对瓦说得通的那一件**(W7-c 起它是菜单项,不是钮;2026-09-14 起只剩「上舞台」)。
  *
- * 判据一个字没变:活动那格不是瓦时「钉到边 / 上舞台」**禁灰**,不是画出来点了
- * 没反应 —— 变的只是它们住在哪儿(檐上的钮 → 叶菜单里的两行,裁定 4)。
+ * 判据:活动那格不是瓦时「上舞台」**禁灰**,不是画出来点了没反应 —— 舞台是瓦的瞬态。
  * `ui/Menu` 走的是**原生 `disabled`**,所以判据仍是那格属性。
+ *
+ * 「钉到边 ▸」**不在这一组里了**(2026-09-14,报障「浏览器拖到四条边都滑回原位」的同病):
+ * 它开在窗的标题栏上,钉的是**这扇窗**(`floatWindowToEdge`),窗里装着文件 / 浏览器 /
+ * 终端一样钉得上 —— 所以活动格是文件时它**不灰**,而且点下去整扇窗进架子。
  */
-describe('那两件只对瓦说得通的事(叶菜单里)', () => {
+describe('只对瓦说得通的那一件(叶菜单里)', () => {
   /** 右键这扇窗的标题栏(= 根叶那条檐)= 开它的叶菜单。 */
   function leafMenu() {
     const chrome = win().querySelector('[data-pane-chrome]') as HTMLElement
@@ -115,13 +118,13 @@ describe('那两件只对瓦说得通的事(叶菜单里)', () => {
     return screen.getByRole('menu', { name: '标签动作' })
   }
 
-  it('活动那格不是瓦时,「钉到边」与「上舞台」禁灰(不是画出来点了没反应)', () => {
+  it('活动那格不是瓦时,「上舞台」禁灰(不是画出来点了没反应);「钉到边」照旧活着', () => {
     render(<AppShell />)
     openFloat('files')
     act(() => useWorkbenchStore.getState().openRef(fileRef('/a.ts'), { region: 'float:files' }))
     // 文件成了活动 tab。
     const menu = leafMenu()
-    expect(within(menu).getByText('钉到边').closest('button')).toHaveProperty('disabled', true)
+    expect(within(menu).getByText('钉到边').closest('button')).toHaveProperty('disabled', false)
     expect(within(menu).getByText('上舞台').closest('button')).toHaveProperty('disabled', true)
     act(() => {
       fireEvent.keyDown(menu, { key: 'Escape' })
@@ -132,6 +135,19 @@ describe('那两件只对瓦说得通的事(叶菜单里)', () => {
       useWorkbenchStore.getState().activateTab(leaf.id, 0)
     })
     const again = leafMenu()
-    expect(within(again).getByText('钉到边').closest('button')).toHaveProperty('disabled', false)
+    expect(within(again).getByText('上舞台').closest('button')).toHaveProperty('disabled', false)
+  })
+
+  it('活动格是文件时点「钉到边 ▸ 右边」:整扇窗(瓦 + 文件)一起进右架子', () => {
+    render(<AppShell />)
+    openFloat('files')
+    act(() => useWorkbenchStore.getState().openRef(fileRef('/a.ts'), { region: 'float:files' }))
+    const menu = leafMenu()
+    act(() => { fireEvent.click(within(menu).getByText('钉到边')) })
+    const sub = screen.getByRole('menu', { name: '钉到边' })
+    act(() => { fireEvent.click(within(sub).getByText('右边')) })
+    expect(tabsOf('edge:right')).toEqual(['panel:files', 'file:/a.ts'])
+    expect(useStageStore.getState().placements.files).toEqual({ kind: 'edge', side: 'right' })
+    expect(useWorkbenchStore.getState().regions['float:files']).toBeUndefined()
   })
 })

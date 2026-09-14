@@ -94,7 +94,7 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
   const moveFloat = useStageStore((st) => st.moveFloat)
   const resizeFloat = useStageStore((st) => st.resizeFloat)
   const openAs = useStageStore((st) => st.openAs)
-  const floatToEdge = useStageStore((st) => st.floatToEdge)
+  const floatWindowToEdge = useStageStore((st) => st.floatWindowToEdge)
   const closeFloat = useStageStore((st) => st.closeFloat)
   const titles = useLiveTitleStore((st) => st.titles)
 
@@ -121,7 +121,7 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
    * `LeafStrip.tabSpecOf`(活的盖静的),这里只取根叶活动那一格的那句话。
    */
   const title = useMemo(() => activeTitleOf(shownTree, titles) ?? t('float.window'), [shownTree, titles, t])
-  /** 「钉到边 / 放大」那两颗只对**瓦**说得通(见 `placement.ts` 的判词)。 */
+  /** 「上舞台」只对**瓦**说得通(舞台是瓦的瞬态,见 `placement.ts` 的判词)。 */
   const activeItemId = useMemo(() => activeItemOf(shownTree), [shownTree])
 
   /**
@@ -173,21 +173,26 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
             resizeFloat(id, final)
             return
           }
-          // 松手在热带里 = 钉上去(浮窗塌进架子,那一次形变走 --dur-enter);
-          // 不在热带里就照常落位 —— 高亮散了不改变松手的语义。
-          if (landing) floatToEdge(id, landing)
+          /*
+           * 松手在热带里 = 钉上去(浮窗塌进架子,那一次形变走 --dur-enter);
+           * 不在热带里就照常落位 —— 高亮散了不改变松手的语义。
+           * **递的是窗号,所以要说窗的话**(2026-09-14 报障「浏览器拖到四条边上都滑回
+           * 原位」):从前这里调 `floatToEdge(id, …)`,而那一只说的是瓦的话 ——
+           * 窗号不是瓦 id 时它一格都不动。病历整段在 `placement.placeFloatIn` 上。
+           */
+          if (landing) floatWindowToEdge(id, landing)
           else moveFloat(id, final.x, final.y)
         },
         /*
          * **取消 = 只清场**(U5):活矩形与吸边预示一起归零,`moveFloat` /
-         * `resizeFloat` / `floatToEdge` 一个都不叫 —— 渲染当场回到 `stored`
+         * `resizeFloat` / `floatWindowToEdge` 一个都不叫 —— 渲染当场回到 `stored`
          * 那份,窗子滑回按下那一刻的位置与身量。`focusFloat` 那一下不撤:
          * 它是「按了这扇窗」的后果,与「这一下拖不算数」是两件事。
          */
         cancel: clearLive,
       })
     },
-    [rect, id, focusFloat, moveFloat, resizeFloat, floatToEdge],
+    [rect, id, focusFloat, moveFloat, resizeFloat, floatWindowToEdge],
   )
 
   /**
@@ -212,7 +217,12 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
    *
    * 「钉到边」那张四边表随之从一格本地 `useState` 变成叶菜单里的一格 `Submenu`,
    * `pinRef` 与那格 `menu` state 一起退役 —— 菜单不再需要贴着某颗钮开。
-   * 两组菜单项调的是**与从前那两颗钮同一只** store 动作(`floatToEdge` / `openAs`)。
+   *
+   * **「钉到边 ▸」钉的是这扇窗,不是根叶活动那一格瓦**(2026-09-14,与拖窗到边带
+   * 松手同一只 `floatWindowToEdge`):这张菜单开在**窗的标题栏**上,而从前它读
+   * `activeItemId` —— 一扇装着浏览器 / 终端 / 文件的窗,那一格是 null,整组灰着,
+   * 与拖到边上滑回原位是同一个病(说的是瓦的话)。「上舞台」照旧只对瓦说得通
+   * (舞台是瓦的瞬态),仍读 `activeItemId`。
    */
   const host = useMemo<PaneHostChrome>(
     () => ({
@@ -230,12 +240,9 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
       menuRows: (
         <>
           <MenuSeparator />
-          <Submenu label={t('stage.pinToEdge')} disabled={activeItemId === null}>
+          <Submenu label={t('stage.pinToEdge')}>
             {SHELF_SIDE_CHOICES.map((c) => (
-              <MenuItem
-                key={c.value}
-                onClick={() => activeItemId && floatToEdge(activeItemId, c.value)}
-              >
+              <MenuItem key={c.value} onClick={() => floatWindowToEdge(id, c.value)}>
                 {t(c.labelKey)}
               </MenuItem>
             ))}
@@ -249,7 +256,7 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
         </>
       ),
     }),
-    [onChromePointerDown, t, activeItemId, openAs, closeFloat, floatToEdge, id],
+    [onChromePointerDown, t, activeItemId, openAs, closeFloat, floatWindowToEdge, id],
   )
 
   if (!shownTree || !rect) return null

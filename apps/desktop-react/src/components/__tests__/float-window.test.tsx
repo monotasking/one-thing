@@ -8,6 +8,9 @@ import { useWorkbenchStore } from '../../workbench/store'
 import { refId } from '../../workbench/kinds'
 import { initialStageState } from '../../stage/transitions'
 import { focusTree } from '../../focus/registry'
+import { nextFloatId } from '../../stage/placement'
+import { floatRegion } from '../../workbench/regions'
+import { leavesOf } from '../../workbench/tree'
 
 /**
  * 浮窗的挂载路径:形态机说「它是 float」,外壳就该画出一扇有标题、有三个控件的窗,
@@ -254,4 +257,82 @@ describe('拖窗的三条结束路径', () => {
       expect(rectNow()).toEqual(before)
     })
   }
+})
+
+/**
+ * **非瓦的窗也钉得到边上**(2026-09-14 报障「浏览器无法拖拽到四处的架子上,
+ * 拖过去又回到原位」)。
+ *
+ * 病根:拖窗 `end` 那句从前调 `floatToEdge(id, landing)`,`id` 是**窗号**,而那一只
+ * 说的是瓦的话 —— `placements` 只按瓦 id 记,`win-…` 查无此人,当场 `return`,
+ * 一格状态都不写,松手后窗滑回 `stored`。浏览器 / 终端 / 文件 / diff 的窗全是
+ * `nextFloatId` 铸的号,所以全都钉不上;瓦撕出来的窗窗号就是瓦 id,所以只有它们
+ * 钉得上,这条病在 `openFloat('files')` 那一族用例里永远量不到。
+ *
+ * 这里用一份**文件**的窗(与浏览器同是「窗号 ≠ 瓦 id」那一类;判据里一个种类名
+ * 都没有,所以一种就够)。两条路同一只 `floatWindowToEdge`:拖到边带松手、标题栏
+ * 菜单「钉到边 ▸」(从前后者对非瓦的窗整组灰着 —— 同一个病)。
+ *
+ * 反证:把 `FloatWindow` 拖窗 `end` 里 `floatWindowToEdge(id, landing)` 换回
+ * `floatToEdge(id, landing)` → 第一条红(文件还在窗里);把菜单那组换回
+ * `activeItemId && floatToEdge(activeItemId, …)` + `disabled={activeItemId === null}`
+ * → 第二条红(菜单项灰着 / 点了没反应)。
+ */
+describe('非瓦的窗(窗号 ≠ 瓦 id)钉到边', () => {
+  function setViewport(w: number, h: number) {
+    Object.defineProperty(window, 'innerWidth', { value: w, configurable: true })
+    Object.defineProperty(window, 'innerHeight', { value: h, configurable: true })
+  }
+  afterEach(() => setViewport(1024, 768))
+
+  const pointerAt = (type: string, x = 0, y = 0) =>
+    new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y })
+
+  const tabIdsOf = (region: string): string[] => {
+    const tree = useWorkbenchStore.getState().regions[region]
+    return tree ? leavesOf(tree).flatMap((leaf) => leaf.tabs.map(refId)) : []
+  }
+
+  /** 铸一扇装着一份文件的窗,答窗号与它的对话框。 */
+  function openFileFloat() {
+    const win = nextFloatId()
+    act(() => {
+      useStageStore.getState().placeRef({ kind: 'file', key: '/tmp/a.md' }, floatRegion(win), {
+        rect: { x: 400, y: 200, w: 600, h: 400 },
+      })
+    })
+    const body = document.querySelector(`[data-pane-region="${floatRegion(win)}"]`) as HTMLElement
+    const dialog = body.closest('[role="dialog"]') as HTMLElement
+    return { win, dialog }
+  }
+
+  it('拖到右边带里松手:文件进了右架子,这扇窗没了', () => {
+    setViewport(1600, 1100)
+    render(<AppShell />)
+    const { win, dialog } = openFileFloat()
+    expect(tabIdsOf(floatRegion(win))).toEqual(['file:/tmp/a.md'])
+    const chrome = dialog.querySelector('[data-pane-chrome]') as HTMLElement
+    act(() => {
+      fireEvent(chrome, pointerAt('pointerdown', 500, 300))
+      chrome.dispatchEvent(pointerAt('pointermove', 1590, 300))
+    })
+    act(() => { chrome.dispatchEvent(pointerAt('pointerup', 1590, 300)) })
+    expect(tabIdsOf('edge:right')).toEqual(['file:/tmp/a.md'])
+    expect(useWorkbenchStore.getState().regions[floatRegion(win)]).toBeUndefined()
+    expect(useStageStore.getState().shelves.right.collapsed).toBe(false)
+  })
+
+  it('标题栏菜单「钉到边 ▸」对文件的窗不灰,点一条真的钉过去', () => {
+    setViewport(1600, 1100)
+    render(<AppShell />)
+    const { win, dialog } = openFileFloat()
+    const menu = openLeafMenu(dialog)
+    const entry = within(menu).getByText('钉到边')
+    expect(entry.closest('[aria-disabled="true"]')).toBeNull()
+    act(() => { fireEvent.click(entry) })
+    const sub = screen.getByRole('menu', { name: '钉到边' })
+    act(() => { fireEvent.click(within(sub).getByText('左边')) })
+    expect(tabIdsOf('edge:left')).toEqual(['file:/tmp/a.md'])
+    expect(useWorkbenchStore.getState().regions[floatRegion(win)]).toBeUndefined()
+  })
 })

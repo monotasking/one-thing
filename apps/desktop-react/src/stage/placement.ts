@@ -2,7 +2,7 @@ import { useWorkbenchStore } from '../workbench/store'
 import { refId } from '../workbench/kinds'
 import { edgeRegion, floatRegion } from '../workbench/regions'
 import { findLeaf, leavesOf } from '../workbench/tree'
-import { floatMinOfItem } from './items'
+import { findItem, floatMinOfItem } from './items'
 import { panelIdOf, panelRef } from './panel-ref'
 import { floatIdOfRegion, leafIndexForPanelIndex, regionOfPanel } from './residency'
 import {
@@ -16,7 +16,7 @@ import {
 } from './transitions'
 import type { PaneNode } from '../workbench/tree'
 import type { RegionId } from '../workbench/regions'
-import type { ContentRef } from '../workbench/kinds'
+import type { ContentRef, ContentRefId } from '../workbench/kinds'
 import type {
   FloatRect,
   PlacementTarget,
@@ -293,10 +293,14 @@ function clearTransientOf(deps: PlacementDeps, id: string): void {
 
 /** 把这块瓦在它那片叶里点成活动的(新来的一格该看得见)。 */
 function activateInLeaf(region: RegionId, id: string): void {
+  activateRefIn(region, refId(panelRef(id)))
+}
+
+/** 同一句话的内容版:把这一格(任何一种 ref)在它那片叶里点成活动的。 */
+function activateRefIn(region: RegionId, target: ContentRefId): void {
   const store = workbench()
   const tree = store.regions[region]
   if (!tree) return
-  const target = refId(panelRef(id))
   for (const leaf of leavesOf(tree)) {
     const at = leaf.tabs.findIndex((tab) => refId(tab) === target)
     if (at >= 0) {
@@ -538,6 +542,57 @@ export function placeRefIn(
     viewport,
   )
   deps.patchStage({ floats: { ...deps.stage().floats, [floatId]: rect } })
+  return null
+}
+
+/**
+ * **整扇浮窗塌进一条边的架子**(2026-09-14;`FloatWindow` 文件头状态表 ① 那一行
+ * 「换宿主 —— 吸到边上:树整棵搬进 `edge:<side>`,这扇窗随之卸载」的落定本体)。
+ *
+ * ── 病历:浏览器窗拖到四条边上都滑回原位 ────────────────────────────────────
+ * 拖窗那条路的落定从前写的是 `floatToEdge(id, side)`,而 `id` 递的是**窗号**。
+ * `floatToEdge` 说的是**瓦**的形态语言:它先问 `placementOf(state, id).kind === 'float'`,
+ * 而 `placements` 那张表只按瓦 id 记 —— 一扇装着浏览器 / 终端 / 文件 / diff 的窗,
+ * 窗号是 `nextFloatId` 铸的 `win-…`,表里查无此人,那一句当场 `return`,一格状态都
+ * 没写,松手后屏幕上的窗回到 `stored` 那一份。瓦撕出来的窗**窗号就是瓦 id**
+ * (`residency.regionOfPlacement` 的判词),所以只有它们钉得上去,用户在浏览器上
+ * 第一个踩到。
+ *
+ * ── 治法:说窗的话,不说瓦的话 ─────────────────────────────────────────────
+ * 这一只收的是**窗号**,做的是「这扇窗里每一格都搬进那条边」:一格是瓦就走
+ * `placeAs`(记忆 / 瞬态 / 独占都在那条老路上),其余走 `moveRef` —— 两条路
+ * 本来就合在 `placeRefIn` 里,这里只是按**阅读序**逐格调它,所以架子上的次序与
+ * 窗里逐字相同(`insertTab` 缺 `at` = 追加到末尾)。这只函数里 grep `'browser'` /
+ * `'file'` / `'terminal'` 零命中:再多一种能撕成浮窗的内容,这条路一个字不改。
+ *
+ *  · 预算**先问一次**再动手(W7-p 裁定 3「拒绝 = 一格状态都不写」):判据与逐格那
+ *    一次读的是同一只 `canNailShelf`,而对侧架子在整个循环里不变,所以要么全进
+ *    要么全拒,不会进一半;
+ *  · 活动那一格**搬完再点回来**:逐格搬时每一格都把自己点成活动的(那是「新来的
+ *    一格该看得见」那条老规矩),但用户拖的是整扇窗,松手后看着的该还是松手前
+ *    看着的那一格;
+ *  · 窗号不是瓦 id 时,`floats[窗号]` 那格矩形随窗一起退役 —— 没有任何一条路会
+ *    再拿这个窗号开窗(下一次撕出来是新号),留着只是账上一格死数。瓦的那一格
+ *    照旧留着,它是 `edgeToFloat` 的记忆。
+ */
+export function placeFloatIn(deps: PlacementDeps, winId: string, side: ShelfSide): PlacementOutcome {
+  const region = floatRegion(winId)
+  const tree = workbench().regions[region]
+  if (!tree) return null
+  const leaves = leavesOf(tree)
+  const refs = leaves.flatMap((leaf) => leaf.tabs)
+  if (refs.length === 0) return null
+  const first = leaves[0]
+  const active = first?.tabs[first.active] ?? refs[0]
+  if (!canNailShelf(deps.stage(), side, deps.viewport())) {
+    return { kind: 'refused', reason: 'shelf-budget', side }
+  }
+  for (const ref of refs) placeRefIn(deps, ref, edgeRegion(side))
+  activateRefIn(edgeRegion(side), refId(active))
+  if (!findItem(winId) && winId in deps.stage().floats) {
+    const { [winId]: _gone, ...floats } = deps.stage().floats
+    deps.patchStage({ floats })
+  }
   return null
 }
 
