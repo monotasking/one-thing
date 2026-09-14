@@ -28,7 +28,6 @@ import {
   defaultFloatRect,
   freshFloatRect,
   FLOAT_CASCADE_STEP,
-  FLOAT_SPAWN_INSET,
   defaultOpenMemory,
   factoryStageFurniture,
   fitFloatRect,
@@ -567,44 +566,47 @@ describe('closeStage', () => {
 })
 
 describe('浮窗', () => {
-  it('开一扇:登记落点、进置顶序、给一个锚在右上角的默认矩形(W7-p 裁定 5)', () => {
+  /** 中央区正中的锚:窗心对中央区心,取整到整像素(09-14 用户裁定「始终在中心打开」)。 */
+  const centeredAnchor = (center: { left: number; top: number; right: number; bottom: number }, w: number, h: number) => ({
+    x: Math.round(center.left + (center.right - center.left - w) / 2),
+    y: Math.round(center.top + (center.bottom - center.top - h) / 2),
+  })
+
+  it('开一扇:登记落点、进置顶序、给一个锚在中央区正中的默认矩形(09-14 裁定,改自 W7-p 裁定 5)', () => {
     const st = openAs(base, 'files', FLOAT, VP)
     expect(formOf(st, 'files')).toBe('float')
     expect(st.floatOrder).toEqual(['files'])
-    // 反证:把 defaultFloatRect 换回「恒定居中」→ x 变成 (VP.w - w)/2,这条红。
-    expect(st.floats.files).toEqual({
-      w: FLOAT_DEFAULT_W,
-      h: FLOAT_DEFAULT_H,
-      x: VP.w - FLOAT_SPAWN_INSET - FLOAT_DEFAULT_W,
-      // **顶栏那条带切在中央区之外**(W7-p 裁定 5 的修正,判词在 `TOP_CHROME` 上):
-      // 不切的话新窗一开就盖住标签条的右半截(`gate:drag` 场景①③的真机现场)。
-      y: TOP_CHROME + FLOAT_SPAWN_INSET,
-    })
+    // 反证:把锚换回裁定 5 的「右上角内缩 24」→ x 变成 VP.w − 24 − w,这条红。
+    const anchor = centeredAnchor(centerRectOf(base, VP), FLOAT_DEFAULT_W, FLOAT_DEFAULT_H)
+    expect(st.floats.files).toEqual({ w: FLOAT_DEFAULT_W, h: FLOAT_DEFAULT_H, ...anchor })
+    // **顶栏那条带切在中央区之外**(判词在 `TOP_CHROME` 上):居中是对顶栏之下那块地居中。
+    expect(anchor.y).toBe(Math.round(TOP_CHROME + (VP.h - TOP_CHROME - FLOAT_DEFAULT_H) / 2))
   })
 
-  it('层叠:已有 n 扇未关时往左下挪 n×28,挪不动了就回绕到起点(W7-p 裁定 5)', () => {
+  it('层叠:已有 n 扇未关时往右下挪 n×28,挪不动了就回绕到起点(W7-p 裁定 5)', () => {
     // 层叠级数**从状态里读**(`floatOrder` 有几扇),不再由调用方递一个数进来 ——
     // W7-p 修一轮裁定 1:新窗矩形只有 `freshFloatRect` 一个产地,读数装配在它里面。
     const spawn = (open: number) =>
       freshFloatRect({ ...base, floatOrder: Array.from({ length: open }, (_, i) => `w${i}`) }, VP)
-    const anchorX = VP.w - FLOAT_SPAWN_INSET - FLOAT_DEFAULT_W
+    const center = centerRectOf(base, VP)
+    const anchor = centeredAnchor(center, FLOAT_DEFAULT_W, FLOAT_DEFAULT_H)
     const first = spawn(0)
     const second = spawn(1)
-    expect(second.x).toBe(anchorX - FLOAT_CASCADE_STEP)
-    expect(second.y).toBe(TOP_CHROME + FLOAT_SPAWN_INSET + FLOAT_CASCADE_STEP)
+    expect(first).toEqual({ w: FLOAT_DEFAULT_W, h: FLOAT_DEFAULT_H, ...anchor })
+    expect(second.x).toBe(anchor.x + FLOAT_CASCADE_STEP)
+    expect(second.y).toBe(anchor.y + FLOAT_CASCADE_STEP)
     // 四扇两两不同:审计 A 的 A6 现场是四扇一模一样地叠在一起。
     const four = [0, 1, 2, 3].map(spawn)
     expect(new Set(four.map((r) => `${r.x},${r.y}`)).size).toBe(4)
     // 回绕:挪到出中央区就回起点(steps 由视口算,所以这里问的是「有没有回绕」)。
-    const center = centerRectOf(base, VP)
     const steps = Math.min(
-      Math.floor((anchorX - center.left) / FLOAT_CASCADE_STEP),
-      Math.floor((center.bottom - center.top - FLOAT_SPAWN_INSET - FLOAT_DEFAULT_H) / FLOAT_CASCADE_STEP),
+      Math.floor((center.right - anchor.x - FLOAT_DEFAULT_W) / FLOAT_CASCADE_STEP),
+      Math.floor((center.bottom - anchor.y - FLOAT_DEFAULT_H) / FLOAT_CASCADE_STEP),
     )
     expect(spawn(steps + 1)).toEqual(first)
   })
 
-  it('锚是**中央区**的右上角,不是视口的 —— 钉了右架子就往里让(W7-p 裁定 5)', () => {
+  it('锚是**中央区**的正中,不是视口的 —— 钉了右架子就往左让(W7-p 裁定 5 的参考系)', () => {
     const withShelf = {
       ...base,
       shelves: {
@@ -616,8 +618,9 @@ describe('浮窗', () => {
     expect(center.right).toBe(VP.w - 400)
     const rect = freshFloatRect(withShelf, VP)
     // 反证:把 `freshFloatRect` 换回 `defaultFloatRect`(参考系是整个视口)→
-    // x 回到贴视口右缘,新窗开在右架子底下。
-    expect(rect.x).toBe(VP.w - 400 - FLOAT_SPAWN_INSET - FLOAT_DEFAULT_W)
+    // x 回到视口正中,新窗右半截探进右架子底下。
+    expect(rect.x).toBe(centeredAnchor(center, FLOAT_DEFAULT_W, FLOAT_DEFAULT_H).x)
+    expect(rect.x + rect.w).toBeLessThanOrEqual(VP.w - 400)
   })
 
   /* ── W7-d 裁定 1:身量 = 默认与「那块面自述的下限」取大 ─────────────────── */
@@ -630,9 +633,9 @@ describe('浮窗', () => {
     const wide = freshFloatRect(base, VP, { w: 800 })
     expect(wide.w).toBe(800)
     expect(wide.h).toBe(FLOAT_DEFAULT_H)
-    // 仍旧锚在中央区右上角内缩 —— 自述改的是身量,不是那条锚。
-    expect(wide.x).toBe(VP.w - FLOAT_SPAWN_INSET - 800)
-    expect(wide.y).toBe(TOP_CHROME + FLOAT_SPAWN_INSET)
+    // 仍旧锚在中央区正中 —— 自述改的是身量,不是那条锚(窗宽了,窗心还在中央区心上)。
+    expect(wide.x).toBe(centeredAnchor(centerRectOf(base, VP), 800, FLOAT_DEFAULT_H).x)
+    expect(wide.y).toBe(bare.y)
   })
 
   it('自述比默认小 = 没意见(取大的那个,不许把窗压小)', () => {
@@ -652,8 +655,7 @@ describe('浮窗', () => {
     // 中央区只剩 VP.w − 700 = 580 宽 —— 900 装不下,缩到中央区那么大。
     expect(center.right - center.left).toBe(VP.w - 700)
     expect(rect.w).toBe(center.right - center.left)
-    // 贴中央区左上,而不是探到左架子底下去(反证:把 `Math.max(center.left, …)`
-    // 那一句拆掉 → x 变成 center.right − 24 − w,比 center.left 还小)。
+    // 贴中央区左缘,而不是探到左架子底下去(窗与中央区同宽,居中就是贴左)。
     expect(rect.x).toBe(center.left)
   })
 
@@ -748,13 +750,14 @@ describe('浮窗', () => {
      * 09-08 修单改了竖轴的两个读数,横轴一个字没动:
      *  · 高的上界从 `2*MARGIN` 换成 `TOP_CHROME + MARGIN` —— 竖轴可用的地是
      *    `[TOP_CHROME, vp.h - MARGIN]`,顶上那 44 是原生拖拽带不是气口;
-     *  · y 从 `FLOAT_SPAWN_INSET`(24,这条兜底的参考系是整个视口,所以锚就落在顶栏
-     *    带里)被 `clampFloatRect` 抬到 `TOP_CHROME`。
+     *  · y 由居中算出 30(这条兜底的参考系是整个视口,所以锚就落在顶栏带里)
+     *    被 `clampFloatRect` 抬到 `TOP_CHROME`。
      * 反证:把 `clampFloatSize` 的 h 换回 `2*MARGIN` → 高读到 368;把 y 下界换回 0
-     * → y 读到 24(两条各红各的,所以这里逐格写死而不是写不等式)。
+     * → y 读到 30(两条各红各的,所以这里逐格写死而不是写不等式)。
+     * x:窗宽 = 视口减两道气口,居中恰好落在左气口上。
      */
     expect(defaultFloatRect(small)).toEqual({
-      x: 500 - FLOAT_SPAWN_INSET - (500 - 2 * FLOAT_MARGIN),
+      x: FLOAT_MARGIN,
       y: TOP_CHROME,
       w: 500 - 2 * FLOAT_MARGIN,
       h: 400 - TOP_CHROME - FLOAT_MARGIN,

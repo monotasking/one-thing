@@ -815,8 +815,8 @@ function fitFloatAxis(
 /**
  * **中央区此刻的矩形**(W7-p 裁定 5)。四条架子各占一截,剩下的就是它。
  *
- * 它是新浮窗那个锚点的参考系 —— 「贴视口右上角」在钉了右架子的时候会开在架子
- * **底下**,而用户看到的「右上角」从来是主区的右上角。**顶栏那条带也切掉**
+ * 它是新浮窗那个锚点的参考系 —— 「视口正中」在钉了右架子的时候会偏进架子
+ * **底下**,而用户看到的「正中」从来是主区的正中。**顶栏那条带也切掉**
  * (`TOP_CHROME`,判词写在那格常量上):标签条就长在顶栏里,不切的话新窗一开
  * 就盖住它的右半截。
  */
@@ -835,8 +835,7 @@ export function centerRectOf(state: Pick<StageState, 'shelves'>, viewport: Viewp
   }
 }
 
-/** 新窗锚在中央区右上角往里缩这么多;第 n 扇往左下层叠这么多(W7-p 裁定 5)。 */
-export const FLOAT_SPAWN_INSET = 24
+/** 第 n 扇未关的窗在场时,新窗从中央区正中往右下层叠这么多(W7-p 裁定 5;09-14 锚改居中)。 */
 export const FLOAT_CASCADE_STEP = 28
 
 /**
@@ -847,12 +846,16 @@ export const FLOAT_CASCADE_STEP = 28
  * 正在读的东西盖掉;②连开四扇,四扇一模一样地叠在一起 —— 屏幕上看起来只有一扇,
  * 前三扇要靠拖才找得到。
  *
- * ── 今天:锚 + 层叠 + 回绕 ────────────────────────────────────────────────
- * 锚在**中央区右上角**往里缩 24px:右上角是这台壳上最空的一块地(输入框在下、
- * 正文靠左),而「往里缩」让它一眼看得出是浮在上面而不是钉在边上。已经有 n 扇
- * 未关的窗时整体往**左下**挪 n×28 —— 左下是远离锚点的方向,于是每一扇的**标题栏
- * 左上角**都露在外面,拿得住。挪到出了中央区就**回绕到起点**:层叠是为了都看得见,
- * 而挪出屏幕正好相反。
+ * ── 09-14 用户裁定:**锚回到中央区正中** ──────────────────────────────────
+ * 裁定 5 把锚放到右上角,真机上用户的感受是「浮窗总是偏右,拖到中间下次开还在旁边」
+ * (文件 / 终端 / 浏览器 / diff 每次开都铸一个新窗号,位置记忆从来接不上,所以每一次
+ * 都是产地说了算)。用户点名「始终在中心打开」—— 于是锚 = 中央区**正中**(窗心对
+ * 中央区心,取整到整像素)。「压着聊天区」那条从前的病由用户自己权衡过,放弃。
+ *
+ * ── 层叠 + 回绕(裁定 5 的另一半,保留)────────────────────────────────────
+ * 已经有 n 扇未关的窗时新窗往**右下**挪 n×28:第一扇永远正中,后面每一扇的**标题栏
+ * 左上角**都露在前一扇外面,拿得住 —— 四扇一模一样叠成一摞那条病(审计 A 的 A6)
+ * 仍旧治着。挪到出了中央区就**回绕到起点**:层叠是为了都看得见,而挪出屏幕正好相反。
  *
  * **它是算术,不是产地**:谁该拿到什么参考系由 `freshFloatRect`(唯一的产地)
  * 与 `defaultFloatRect`(只要身量的那两个存量调用点)各自说,判词见它们各自的头上。
@@ -881,23 +884,24 @@ function floatRectAt(
   const roomW = centerW > 0 ? Math.min(centerW, viewport.w) : viewport.w
   const roomH = centerH > 0 ? Math.min(centerH, viewport.h) : viewport.h
   // 身量先过一次那把尺(视口比默认还小的时候 640 会被压到 `视口 − 两道气口`),
-  // **锚点才拿得到真身量** —— 拿没钳过的宽去算右上角,窄视口下会算出负的 x。
+  // **锚点才拿得到真身量** —— 拿没钳过的宽去算居中,窄视口下会算出负的 x。
   const size = clampFloatSize(
     { x: 0, y: 0, w: Math.min(wantW, roomW), h: Math.min(wantH, roomH) },
     viewport,
   )
   const { w, h } = size
-  // 锚在中央区右上角内缩;缩过还是塞不进去(中央区比 FLOAT_MIN_* 还窄)就贴左上。
-  const anchorX = Math.max(center.left, center.right - FLOAT_SPAWN_INSET - w)
-  const anchorY = center.top + FLOAT_SPAWN_INSET
-  // 还能往左下挪几步(挪到锚点左边/下边出了中央区就不算一步)。
-  const stepsX = Math.floor(Math.max(0, anchorX - center.left) / FLOAT_CASCADE_STEP)
+  // 锚在中央区正中(窗心对中央区心,取整到整像素);中央区比窗还窄时贴中央区左上
+  // —— 与身量那道钳同一个理由:窗子不许一开就探到架子底下。
+  const anchorX = Math.max(center.left, Math.round(center.left + (roomW - w) / 2))
+  const anchorY = Math.max(center.top, Math.round(center.top + (roomH - h) / 2))
+  // 还能往右下挪几步(挪到右边/下边出了中央区就不算一步)。
+  const stepsX = Math.floor(Math.max(0, center.right - anchorX - w) / FLOAT_CASCADE_STEP)
   const stepsY = Math.floor(Math.max(0, center.bottom - anchorY - h) / FLOAT_CASCADE_STEP)
   const steps = Math.max(0, Math.min(stepsX, stepsY))
   // 回绕:第 steps+1 扇回到起点(steps = 0 时每一扇都在锚点上,那是「实在挪不动」)。
   const at = steps === 0 ? 0 : Math.max(0, Math.trunc(cascade)) % (steps + 1)
   return clampFloatRect(
-    { w, h, x: anchorX - at * FLOAT_CASCADE_STEP, y: anchorY + at * FLOAT_CASCADE_STEP },
+    { w, h, x: anchorX + at * FLOAT_CASCADE_STEP, y: anchorY + at * FLOAT_CASCADE_STEP },
     viewport,
   )
 }
@@ -946,15 +950,15 @@ export function freshFloatRect(
 }
 
 /**
- * **只要身量的那条兜底**:视口右上角、不层叠、不问架子。
+ * **只要身量的那条兜底**:视口正中、不层叠、不问架子。
  *
  * 它**不是**「新窗开在哪」的答案(那一只是 `freshFloatRect`),留着只为两个
  * 存量调用点,而它们要的都只是**多大**:`workbench/drop-commit` 的
  * 「这扇窗还没有矩形时先按默认身量落」与 `workbench/useContentDrag` 的
  * 「从指针位置反推撕出来那扇窗的矩形」(位置由指针给,不由锚点给)。
  *
- * 它的参考系是**整个视口**(顶栏也在里面),所以它算出来的锚 y = 24 会落进顶栏那条
- * 带 —— 收笔那一句 `clampFloatRect` 把它抬回 `TOP_CHROME`(09-08 修单)。「顶栏在哪」
+ * 它的参考系是**整个视口**(顶栏也在里面),所以视口矮到窗子几乎撑满时它算出来的锚
+ * y 会落进顶栏那条带 —— 收笔那一句 `clampFloatRect` 把它抬回 `TOP_CHROME`(09-08 修单)。「顶栏在哪」
  * 全壳只有 `TOP_CHROME` 一个说法:`freshFloatRect` 那条路由 `centerRectOf` 切掉它,
  * 这条兜底由那把尺兜住,两条路读的是同一格常量。
  */

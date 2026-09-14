@@ -107,7 +107,6 @@ const CENTER_MIN_H = num('CENTER_MIN_H')
 const FLOAT_MARGIN = num('FLOAT_MARGIN')
 const FLOAT_DEFAULT_W = num('FLOAT_DEFAULT_W')
 const FLOAT_DEFAULT_H = num('FLOAT_DEFAULT_H')
-const FLOAT_SPAWN_INSET = num('FLOAT_SPAWN_INSET')
 const FLOAT_CASCADE_STEP = num('FLOAT_CASCADE_STEP')
 /**
  * 顶栏那条带(`--topbar-h`)。中央区从它**之下**起算 —— 标签条就长在顶栏里。
@@ -715,6 +714,21 @@ const shelfExtent = (shelf, side) => {
   if (shelf.collapsed) return SHELF_RAIL
   return side === 'left' || side === 'right' ? shelf.rect.w : shelf.rect.h
 }
+/**
+ * 新窗锚点:**中央区正中**(09-14 用户裁定,改自 W7-p 裁定 5 的右上角)。参考系是
+ * `transitions.centerRectOf` —— 四条架子切完、顶栏之下剩下的那块地 —— 这里按同一把尺
+ * 现算,而不是拿 `[data-pane-region="center"]` 的矩形去比(判词在 ④⑤ 那一档的注释上)。
+ */
+const spawnAnchorOf = (layout, w, h) => {
+  const left = shelfExtent(layout.shelves.left, 'left')
+  const right = layout.vp.w - shelfExtent(layout.shelves.right, 'right')
+  const top = TOP_CHROME + shelfExtent(layout.shelves.top, 'top')
+  const bottom = layout.vp.h - shelfExtent(layout.shelves.bottom, 'bottom')
+  return {
+    x: Math.max(left, Math.round(left + (right - left - w) / 2)),
+    y: Math.max(top, Math.round(top + (bottom - top - h) / 2)),
+  }
+}
 const inViewport = (r, vp) =>
   r.x >= FLOAT_MARGIN - 1
   && r.y >= 0
@@ -1130,13 +1144,9 @@ async function sceneFloats(store, udd) {
      * 所以这里也按同一把尺现算,而不是拿 `[data-pane-region="center"]` 的矩形去比:
      * 拿后者比就是把「门自己的一套算法」和产品的对不上,红了也说不清是谁错。
      */
-    const anchorOf = (layout) => ({
-      x: layout.vp.w - shelfExtent(layout.shelves.right, 'right') - FLOAT_SPAWN_INSET - FLOAT_DEFAULT_W,
-      y: TOP_CHROME + shelfExtent(layout.shelves.top, 'top') + FLOAT_SPAWN_INSET,
-    })
-    const anchor = anchorOf(wide)
+    const anchor = spawnAnchorOf(wide, FLOAT_DEFAULT_W, FLOAT_DEFAULT_H)
     check(
-      '新窗锚在中央区右上角内缩 24px',
+      '新窗锚在中央区正中(09-14 用户裁定「始终在中心打开」)',
       first?.rect.x === anchor.x && first?.rect.y === anchor.y,
       `rect=${JSON.stringify(first?.rect)} 锚=${JSON.stringify(anchor)}`,
     )
@@ -1192,11 +1202,11 @@ async function sceneFloats(store, udd) {
     )
     const steps = rects
       .map((r) => r.x)
-      .sort((a, b) => b - a)
-      .map((x, i, arr) => (i === 0 ? 0 : arr[i - 1] - x))
+      .sort((a, b) => a - b)
+      .map((x, i, arr) => (i === 0 ? 0 : x - arr[i - 1]))
       .slice(1)
     check(
-      `层叠步长 = ${FLOAT_CASCADE_STEP}px(往左下)`,
+      `层叠步长 = ${FLOAT_CASCADE_STEP}px(往右下)`,
       steps.every((d) => d === FLOAT_CASCADE_STEP),
       JSON.stringify(steps),
     )
@@ -1374,16 +1384,14 @@ async function sceneSpawn(store, udd) {
       rects.every((r) => inViewport(r, many.vp)),
       JSON.stringify(many.vp),
     )
-    // 第一扇锚在中央区右上角内缩一格 —— 与右键那条路**同一个**产地算出来的。
-    const anchor = {
-      x: many.vp.w - shelfExtent(many.shelves.right, 'right') - FLOAT_SPAWN_INSET - FLOAT_DEFAULT_W,
-      y: TOP_CHROME + shelfExtent(many.shelves.top, 'top') + FLOAT_SPAWN_INSET,
-    }
-    const topmost = rects.reduce((a, b) => (b.x > a.x ? b : a))
+    // 第一扇锚在中央区正中 —— 与右键那条路**同一个**产地算出来的;层叠往右下,
+    // 所以 x 最小的那扇就是第一扇。
+    const anchor = spawnAnchorOf(many, FLOAT_DEFAULT_W, FLOAT_DEFAULT_H)
+    const first = rects.reduce((a, b) => (b.x < a.x ? b : a))
     check(
       '第一扇就在锚点上(点瓦与右键菜单同一个产地)',
-      topmost.x === anchor.x && topmost.y === anchor.y,
-      `第一扇=${JSON.stringify(topmost)} 锚=${JSON.stringify(anchor)}`,
+      first.x === anchor.x && first.y === anchor.y,
+      `第一扇=${JSON.stringify(first)} 锚=${JSON.stringify(anchor)}`,
     )
   } finally {
     await shut(handle)
@@ -2039,7 +2047,7 @@ async function main() {
     process.exit(1)
   }
   process.stdout.write(
-    '[gate:layout] ok —— 重启 / 全屏 + A9 / 架子预算 + 拒绝播报 + 细梁 / 三档挤压 / 浮窗锚与层叠 / 点瓦开窗 / 召唤两条路 + 二合一 / 三处按下即拖的取消路 / 架子厚度拖拽下标签条不炸 RO\n',
+    '[gate:layout] ok —— 重启 / 全屏 + A9 / 架子预算 + 拒绝播报 + 细梁 / 三档挤压 / 浮窗居中锚与层叠 / 点瓦开窗 / 召唤两条路 + 二合一 / 三处按下即拖的取消路 / 架子厚度拖拽下标签条不炸 RO\n',
   )
 }
 
