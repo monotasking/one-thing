@@ -97,9 +97,14 @@ export function Table({ model }: { model: TableModel }) {
                     // 反馈也走同一条拍板(08-31):就地换形(⧉ → ✓)一拍 + 播报,不弹通知。
                     void runBlockAction(
                       { verb: 'copy', what: 'column', text: columnToText(model, col) },
-                      // 壳的那两件能力(源码开关 / 放大浮层)在块内热区这条路上都用不上,
-                      // 但接口是一份 —— 给两个空实现,而不是给执行器开一条「可以缺席」的口子。
-                      { toggleSource: () => undefined, openZoom: () => undefined },
+                      // 壳的那三件能力(源码开关 / 放大浮层 / 跑脚本)在块内热区这条路上
+                      // 都用不上,但接口是一份 —— 给三个空实现,而不是给执行器开一条
+                      // 「可以缺席」的口子。
+                      {
+                        toggleSource: () => undefined,
+                        openZoom: () => undefined,
+                        runScript: () => Promise.resolve(),
+                      },
                     ).then((ok) => {
                       if (ok === undefined) return
                       announce(t(ok ? 'common.copied' : 'common.copyFailed'))

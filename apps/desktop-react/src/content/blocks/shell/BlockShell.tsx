@@ -13,6 +13,7 @@ import { ZoomOverlay } from './ZoomOverlay'
 import { COPY_FEEDBACK_MS } from '../../../components/motion'
 import { announce } from '../../../ui/a11y/live-region'
 import { blockActionLabelKey, isBlockActionRunnable, runBlockAction, type ZoomContent } from './actions'
+import { blockRunPort } from './run-port'
 import { clampMeasurer } from './clamp-measurer'
 import { readBlockLoader } from './loader'
 import { blockSourceText } from './source'
@@ -121,6 +122,7 @@ export function BlockShell({
             <BlockActions
               t={t}
               actions={actions}
+              ctx={ctx}
               front={def.frontActions ?? 2}
               onToggleSource={toggleSource}
               onZoom={setZoom}
@@ -191,12 +193,15 @@ function BlockFailure({ t, model, error }: { t: TFn; model: BlockModel; error: E
 function BlockActions({
   t,
   actions,
+  ctx,
   front: budget,
   onToggleSource,
   onZoom,
 }: {
   t: TFn
   actions: LabelledAction[]
+  /** 现场:`run` 要把「哪条会话 / 哪个目录」补进请求里(见下面 `runScript`)。 */
+  ctx: BlockCtx
   /** 露出预算(块可以把它压到 1 —— 图卡定稿只留「放大」)。 */
   front: 1 | 2
   onToggleSource: () => void
@@ -214,7 +219,19 @@ function BlockActions({
   const rest = actions.slice(budget)
 
   const run = (action: BlockAction, key?: string) => {
-    void runBlockAction(action, { toggleSource: onToggleSource, openZoom: onZoom }).then((ok) => {
+    void runBlockAction(action, {
+      toggleSource: onToggleSource,
+      openZoom: onZoom,
+      /*
+       * 现场两格在这里补上:动作声明里只有 `shell` / `script`,而「这块内容长在
+       * 哪条会话、哪个目录下」是壳手里的事实。`!` 不是偷懒 —— 走到这一句说明
+       * 这颗钮画出来了,而它画得出来的前提正是 `hasBlockRunPort()` 为真
+       * (筛在 `BlockShell` 那一句 `isBlockActionRunnable` 里),再判一次空
+       * 等于让「露出条件」有第二个产地。
+       */
+      runScript: (request) =>
+        blockRunPort()!.run({ ...request, sessionId: ctx.sessionId, baseDir: ctx.baseDir }),
+    }).then((ok) => {
       if (ok === undefined) return
       // 读屏两路都播报(菜单里的复制钮点完菜单就没了,视觉反馈无处可长,
       // 播报是它唯一的回音);视觉就地换字只给还留在屏上的那颗钮。

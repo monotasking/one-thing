@@ -255,6 +255,26 @@ describe('生死', () => {
     expect(port.writes).toEqual([])
   })
 
+  /*
+   * 程序化写入(2026-09-14,代码块那颗「运行」)。守的是**它与键盘同一条路**:
+   * 同一个 `send`、同一条生死判据。反证:把 `input` 改成直调 `deps.port.write`
+   * → 「`exited` 之后一字节都不发」当场红(那条判据只写在 `send` 里)。
+   */
+  it('`input` 直达 PTY —— 与键盘同一条路', async () => {
+    const { port, session } = build()
+    await session.attach()
+    await session.input('echo hi\n')
+    expect(port.writes).toEqual(['echo hi\n'])
+  })
+
+  it('`exited` 之后 `input` 同样一个字节都不发', async () => {
+    const { port, session } = build()
+    await session.attach()
+    port.exit(0)
+    await session.input('echo hi\n')
+    expect(port.writes).toEqual([])
+  })
+
   it('一发往返报了不成功 → `detached`(这份订阅不再可信),屏幕停在最后一帧', async () => {
     const { screen, port, session } = build()
     await session.attach()

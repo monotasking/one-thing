@@ -1,6 +1,8 @@
 import type { MessageKey } from '../../../i18n'
 import type { BlockAction } from '../registry'
 import { exportSvgAsPng } from './export-png'
+import { hasBlockRunPort, type BlockRunRequest } from './run-port'
+import { getLogger } from '../../../services/log'
 
 /**
  * 动作执行器 —— **住壳,不住块**(§4.2)。
@@ -10,7 +12,8 @@ import { exportSvgAsPng } from './export-png'
  * 图、工具详情各自实现一遍剪贴板的路,从一开始就被这条分界堵死。
  *
  * ── 词表是封闭的,露出是有条件的 ──────────────────────────────────────
- * 四个动词(copy / download / view-source / zoom)是六轮 UI 定稿拍下来的封闭词表,
+ * 五个动词(copy / download / view-source / zoom / run)是六轮 UI 定稿拍下来的
+ * 封闭词表(`run` 是 2026-09-14 用户拍的第五格),
  * 加一格是拍板件。但**声明了不等于露得出来**:一个动作要同时有标签和执行器才上屏。
  * P3 把 download.png(SVG→PNG,见 export-png.ts)与 zoom(放大浮层)两个执行器
  * 补齐了 —— 于是**任何**能交出一段 SVG 的图种自动获得这两样,自己不写一行。
@@ -32,6 +35,12 @@ export interface BlockActionRuntime {
   toggleSource(): void
   /** 开放大浮层。内容是**点下去那一刻**取到的那份,不是声明时的。 */
   openZoom(content: ZoomContent): void
+  /**
+   * 跑这一段脚本。**现场那两格由壳补**(`ctx.sessionId` / `ctx.baseDir`)——
+   * 动作声明里只有 `shell` 与 `script`,「这块内容长在哪条会话 / 哪个目录下」
+   * 是壳手里的事实,不该让每个块各报一遍(与 `BlockCtx` 那条分界同源)。
+   */
+  runScript(request: BlockRunRequest): Promise<void>
 }
 
 /**
@@ -54,6 +63,8 @@ export function blockActionLabelKey(action: BlockAction, sourceOpen: boolean): M
       return action.what === 'png' ? 'block.action.downloadPng' : undefined
     case 'zoom':
       return 'block.action.zoom'
+    case 'run':
+      return 'block.action.run'
   }
 }
 
@@ -76,6 +87,12 @@ export function isBlockActionRunnable(action: BlockAction): boolean {
       // **两个取件口有其一**:矢量的(图块)或位图的(图片块)。一个都没有 = 这一型
       // 交不出可放大的东西,檐上就不该多一颗死钮。
       return action.svg !== undefined || action.image !== undefined
+    case 'run':
+      // 有没有人装了执行器 —— 同一条判据换了一种取件口(见 `run-port.ts`)。
+      // 没装 = 檐上只剩「复制源码」。**装了不等于跑得了**:装配点是种类表
+      // (`kinds/terminal.tsx`),web 模式同样加载它,对着一台没有终端能力的 core
+      // 点下去会在下面那个 catch 里落一条 warn —— 那一档留账在正本里。
+      return hasBlockRunPort()
   }
 }
 
@@ -118,6 +135,24 @@ export async function runBlockAction(
       }
       const image = action.image?.()
       if (image) runtime.openZoom({ image })
+      return
+    }
+    case 'run': {
+      /*
+       * **可见结果在终端里**,所以返回 undefined —— 复制那种「就地换字」的反馈
+       * 在这一格没有位置可长:人要看的是那台 shell 打出来的东西,而屏幕上那块面
+       * 已经被亮出来了(执行器自己会做这件事)。
+       *
+       * **失败只记一条日志**:开不出终端(后端没有终端能力、PTY 起不来)是
+       * 装配层的事故,不是这块内容的事故 —— 抛出去会把这块代码炸成降级物,
+       * 弹通知则违了「零 Toast」。所以这里就地吞掉并留下现场。
+       */
+      await runtime
+        .runScript({ shell: action.shell, script: action.script })
+        .catch((error: unknown) => {
+          // 错误对象走 `err` 那一格(仓根 CLAUDE.md:变量进 fields,错误进 err)。
+          getLogger('content.blocks.run').warn('跑这段脚本没成功', undefined, error)
+        })
       return
     }
   }

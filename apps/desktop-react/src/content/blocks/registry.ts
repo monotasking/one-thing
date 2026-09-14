@@ -55,8 +55,13 @@ export interface BlockCtx {
   baseDir?: string
 }
 
-/** 动作词表 —— **封闭**(§4.2)。加一格是拍板件,不是随手件。 */
-export type BlockActionVerb = 'copy' | 'download' | 'view-source' | 'zoom'
+/**
+ * 动作词表 —— **封闭**(§4.2)。加一格是拍板件,不是随手件。
+ *
+ * `run` 是 2026-09-14 用户拍的那一格(「聊天里的 bash 块檐上加一颗运行钮,
+ * 点下去把脚本写进终端并回车,像 IDE 一样」)。
+ */
+export type BlockActionVerb = 'copy' | 'download' | 'view-source' | 'zoom' | 'run'
 
 /**
  * 「到时候去取」的取件口(P3)。
@@ -94,6 +99,20 @@ export type BlockAction =
    * `isBlockActionRunnable`):矢量图给 `svg`,位图给 `image`。
    */
   | { verb: 'zoom'; svg?: SvgSource; image?: ImageSource }
+  /**
+   * 跑这一段脚本(2026-09-14 拍的第五格)。
+   *
+   * `script` 是**已经整理好、可以直接喂下去的那一份**(提示符剥过)——与
+   * `copy.text` 逐字同一条分界:整理归块,执行归壳。
+   *
+   * `shell` 今天只有 `'bash'` 一个值,它是**判据不是标签**:将来别的语言各走
+   * 各的执行器,靠的是这一格,而不是让执行器回头拿 `lang` 那个字符串再判一次
+   * (两处判必然分叉成两种「哪些语言能跑」)。
+   *
+   * 谁来跑、跑在哪由**安装执行口的人**说了算(见 `shell/run-port.ts`)——
+   * 块层到此为止:它只说「我要跑一段脚本」,不认识终端。
+   */
+  | { verb: 'run'; shell: 'bash'; script: string }
 
 /**
  * 檐上的几格:左端身份(id/meta,小写 mono 灰)· 中段标题 · 增删读数。

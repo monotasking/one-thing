@@ -6,6 +6,7 @@ import { BlockShell } from '../shell/BlockShell'
 import shellStyles from '../shell/BlockShell.module.css'
 import { clearBlockLoaderCache } from '../shell/loader'
 import { BlockView } from '../BlockView'
+import { configureBlockRunPort } from '../shell/run-port'
 import type { BlockCtx, BlockDef } from '../registry'
 import type { BlockModel } from '../../model/blocks'
 import { __resetLogForTests } from '../../../services/log'
@@ -231,6 +232,63 @@ describe('檐与动作组', () => {
     expect(screen.queryByText('复制 CSV')).toBeNull()
     fireEvent.click(screen.getByLabelText('更多动作'))
     expect(screen.getByText('复制 CSV')).toBeTruthy()
+  })
+
+  /**
+   * `run` 那一格的露出与顺序(2026-09-14)。走的是**真的代码块声明**
+   * (`BlockView` + 注册表),不是手搓的 def —— 要守的正是「bash 块檐上有没有
+   * 那颗钮、它排第几」。
+   *
+   * 反证(真跑过):把 `kinds/code/index.ts` 的两格调个个儿 → 顺序那条红;
+   * 把 `isBlockActionRunnable` 的 `run` 支改成恒真 → 「没装端口」那条红。
+   */
+  it('装了执行器:bash 块檐上「运行」在前、「复制源码」在后', () => {
+    configureBlockRunPort({ run: () => Promise.resolve() })
+    try {
+      const { container } = render(
+        <BlockView
+          block={{ kind: 'code', lang: 'bash', source: 'ls -l', closed: true }}
+          ctx={ctx}
+        />,
+      )
+      const labels = [...container.querySelectorAll('header button')].map((el) => el.textContent)
+      // 两颗都在檐上(露出预算缺省 2),所以没有 ⋯ 菜单。
+      expect(labels).toEqual(['运行', '复制源码'])
+      expect(screen.queryByLabelText('更多动作')).toBeNull()
+    } finally {
+      configureBlockRunPort(undefined)
+    }
+  })
+
+  it('没装执行器:同一块 bash 只剩「复制源码」', () => {
+    const { container } = render(
+      <BlockView block={{ kind: 'code', lang: 'bash', source: 'ls -l', closed: true }} ctx={ctx} />,
+    )
+    const labels = [...container.querySelectorAll('header button')].map((el) => el.textContent)
+    expect(labels).toEqual(['复制源码'])
+  })
+
+  it('点「运行」:请求带上声明那两格 + 壳补的现场两格', () => {
+    const run = vi.fn(() => Promise.resolve())
+    configureBlockRunPort({ run })
+    try {
+      render(
+        <BlockView
+          block={{ kind: 'code', lang: 'bash', source: '$ echo hi', closed: true }}
+          ctx={{ messageId: 'a1', streaming: false, sessionId: 's-1', baseDir: '/tmp/doc' }}
+        />,
+      )
+      fireEvent.click(screen.getByText('运行'))
+      expect(run).toHaveBeenCalledWith({
+        shell: 'bash',
+        // 提示符在块那一层就剥掉了(`runnable.runnableScriptOf`)。
+        script: 'echo hi',
+        sessionId: 's-1',
+        baseDir: '/tmp/doc',
+      })
+    } finally {
+      configureBlockRunPort(undefined)
+    }
   })
 
   it('查看源码是壳自己的状态:点一下换成源码,再点回去', () => {

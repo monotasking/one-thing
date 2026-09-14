@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react'
 import { registerContentKind } from '../../workbench/kinds'
 import { t } from '../../i18n'
+import { configureBlockRunPort } from '../blocks/shell/run-port'
 import { closeTerminal, peekTerminalSession, requestTerminalFocus } from '../terminal/registry'
 import { terminalCwdOf } from '../terminal/terminal-memory'
 import { TERMINAL_KIND, terminalRef } from '../terminal/terminal-ref'
@@ -157,3 +158,22 @@ registerContentKind(
   },
   import.meta.hot,
 )
+
+/**
+ * **代码块那颗「运行」的执行器,装在这里**(2026-09-14)。
+ *
+ * 装配点选这只文件,是因为「这台壳画得出终端」与「这台壳跑得了脚本」是**同一个
+ * 事实**:种类表上有 `terminal` 这一行,就说明宿主接得住 PTY。块层那一侧因此
+ * 什么都不必知道 —— 没人装这一口,檐上就没有那颗钮(判词在 `blocks/shell/run-port.ts`)。
+ *
+ * **动态** import 的理由与上面 `spawnTerminalAt` 那段逐字相同:这张种类表被
+ * `main.tsx` 与一大票渲染类测试静态 import,不该挂着启动瓦那整条边
+ * (`run-script.ts` 静态吃 `terminal-launcher`,而那只文件在模块作用域里登记启动瓦)。
+ *
+ * 模块级副作用配 HMR 退役(CLAUDE.md 09-01 立法),摘的口就是这一口本身。
+ */
+configureBlockRunPort({
+  run: (request) => import('../terminal/run-script').then((m) => m.runScriptInTerminal(request)),
+})
+
+import.meta.hot?.dispose(() => configureBlockRunPort(undefined))

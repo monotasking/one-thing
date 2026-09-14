@@ -688,6 +688,7 @@ export const en: Record<MessageKey, string> = {
 
   /* ── content block shell (eave actions, clamp, failure line) ────────── */
   'block.actions': 'More actions',
+  'block.action.run': 'Run',
   'block.action.copySource': 'Copy source',
   'block.action.copyMarkdown': 'Copy Markdown',
   'block.action.copyCsv': 'Copy CSV',

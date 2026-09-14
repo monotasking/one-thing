@@ -49,8 +49,14 @@ import type { RegionId } from '../workbench/regions'
 /** 「终端」那块启动瓦的 id(它就是从前那块「终端」面板瓦 —— id 不改)。 */
 export const TERMINAL_ITEM_ID = 'terminal'
 
-/** 这块瓦此刻该把内容开到哪个区域。**记忆 > 天生**(见文件头)。 */
-function regionForLauncher(ref: ContentRef): RegionId {
+/**
+ * 这块瓦此刻该把内容开到哪个区域。**记忆 > 天生**(见文件头)。
+ *
+ * 2026-09-14 起导出:代码块那颗「运行」新开的终端要落在**同一个地方** ——
+ * 「终端开在哪」是这块瓦的记忆说了算,再抄一份判据就是让用户摆过的位置在
+ * 某一条路上不算数。
+ */
+export function terminalLauncherRegion(ref: ContentRef): RegionId {
   const stage = useStageStore.getState()
   const memory: PlacementMemory | undefined = stage.memory[TERMINAL_ITEM_ID]
   const wanted = memory ?? findItem(TERMINAL_ITEM_ID)?.defaultPlacement
@@ -127,7 +133,7 @@ export async function openTerminal(cwd?: string): Promise<void> {
    * 还说得过去,对一格终端不行:人开终端就是为了打字。
    */
   requestTerminalFocus(id)
-  useStageStore.getState().placeRef(ref, regionForLauncher(ref))
+  useStageStore.getState().placeRef(ref, terminalLauncherRegion(ref))
 }
 
 /** 活着的那几格 + 新建两条。 */
@@ -154,7 +160,7 @@ function TerminalLauncherMenuRows({ onDone }: { onDone: () => void }) {
                 // 不在就摆出来 —— 与 `stage/open-item` 那条判例同源。
                 if (useStageStore.getState().summonRef(ref) === null) {
                   requestTerminalFocus(row.id)
-                  useStageStore.getState().placeRef(ref, regionForLauncher(ref))
+                  useStageStore.getState().placeRef(ref, terminalLauncherRegion(ref))
                 }
                 onDone()
               }}

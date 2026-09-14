@@ -826,6 +826,8 @@ export const zh = {
    * 块的 `reason`(unknown-kind:… / tool-default)是**标识**不是文案,
    * 与错误边界的 `where` 同一条判据:换语言它不该跟着变,所以它不在这儿。 */
   'block.actions': '更多动作',
+  /* 能跑的那几种围栏(bash/sh/zsh/shell/console)檐上多的这一颗,排在复制前面。 */
+  'block.action.run': '运行',
   'block.action.copySource': '复制源码',
   'block.action.copyMarkdown': '复制 Markdown',
   'block.action.copyCsv': '复制 CSV',
