@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>发送 · 等待 · 生成 · 收尾 · 重试 —— 一条座位(2026-09-14 样例)</title>
+<style>
+  /* 时长与曲线镜像 tokens.css(样例页不进构建,数字只为对拍) */
+  :root {
+    --dur: 120ms; --ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --dur-enter: 140ms; --ease-out: cubic-bezier(0, 0, 0.2, 1);
+    --dur-exit: 120ms; --dur-flash: 240ms; --dur-card-flip: 180ms; --dur-land: 180ms;
+    --dur-cursor-blink: 150ms;
+    --paper: #f7f5f0; --paper-2: #efece5; --ink: #2b2a27; --ink-2: #5d5a53; --ink-3: #8a867d; --ink-4: #aaa59b;
+    --line-1: #e6e1d8; --line-2: #d9d3c8; --accent: #b8652f; --user-bg: #ebe6dc;
+    --r-1: 8px; --r-2: 12px; --r-bubble: 16px;
+    --fs: 14px; --fs-meta: 12px; --lh: 1.6;
+    --send-line: 24px;        /* 置顶线:发送后自己那条的上缘落在这条线上 */
+    --seat-min: 4.8em;        /* 座位最少三行:视口太矮时的下限 */
+  }
+  :root[data-motion='none'] { --dur: 0ms; --dur-enter: 0ms; --dur-exit: 0ms; --dur-flash: 0ms; --dur-card-flip: 0ms; --dur-land: 0ms; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: var(--fs)/var(--lh) -apple-system, "PingFang SC", "Helvetica Neue", sans-serif; padding: 24px 24px 48px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .lede { color: var(--ink-3); margin: 0 0 18px; font-size: 13px; }
+  .grid { display: grid; grid-template-columns: 1fr 340px; gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+  /* ── 聊天面板(壳的形:滚动区 + 叶内输入框) ─────────────────────────── */
+  .panel { border: 1px solid var(--line-1); border-radius: var(--r-2); background: var(--paper); overflow: hidden; height: 600px; display: flex; flex-direction: column; position: relative; }
+  .scroll { flex: 1; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+  .column { padding: 8px 20px 16px; max-width: 640px; margin: 0 auto; }
+  .turn { display: flex; flex-direction: column; gap: 10px; padding: 12px 0; }
+  .turn + .turn { border-top: 1px solid var(--line-1); }
+  /* 座位:最后一轮把视口填到底,后面发生的一切都在座位里长,不顶别人 */
+  .turn.seat { min-height: var(--seat-h, 0px); }
+  .user { align-self: flex-end; background: var(--user-bg); border-radius: var(--r-bubble); padding: 8px 12px; max-width: 78%; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .user.enter { animation: bubbleIn var(--dur-enter) var(--ease-out) both; }
+  @keyframes bubbleIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  .reply { display: flex; flex-direction: column; gap: 6px; position: relative; }
+  /* 回合头折痕(提案 B 那一族):线 + 居中标签;等待 = 线上一束光来回扫。
+     **在流里占一行**(读数行排在它下面,两者不叠);首字到了:空折痕的移除与第一块内容的插入
+     在**同一个任务**里做,净变化 = 第一块高 − 一行 ≈ +1px,只长不缩;有标签的折痕原地留下。 */
+  .seam { position: relative; height: 18px; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  .seam::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--line-2); }
+  .seam.sweep::after { content: ''; position: absolute; top: 50%; height: 1px; width: 28%; background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: seamSweep 1.4s cubic-bezier(0.33, 0, 0.67, 1) infinite alternate; }
+  :root[data-motion='none'] .seam.sweep::after { animation: none; width: 100%; opacity: .35; }
+  @keyframes seamSweep { from { left: 0; } to { left: 72%; } }
+  .seam .label { position: relative; z-index: 1; background: var(--paper); padding: 0 8px; font-size: var(--fs-meta); color: var(--ink-3); opacity: 0; transition: opacity var(--dur-flash) var(--ease); }
+  .seam .label.on { opacity: 1; }
+  /* 落了上下文更新的折痕首字后不走:光扫停、线变实、标签常驻,正文从它下面起 —— 与真机上
+     「上下文更新折痕行」同一件东西。 */
+  .seam.settled::after { display: none; }
+  .seam.settled::before { background: var(--line-2); }
+  /* 等待标记的另一档(可切):首行位置一枚呼吸光标 */
+  .cursor { display: inline-block; width: 2px; height: 1.1em; background: var(--ink-2); vertical-align: -0.2em; animation: chatCursor var(--dur-cursor-blink) steps(1) infinite alternate; animation-duration: 600ms; }
+  :root[data-motion='none'] .cursor { animation: none; }
+  @keyframes chatCursor { from { opacity: 1; } to { opacity: .25; } }
+
+  /* 思考段:流式中展开;收尾折成一行,折叠**锚住正文首行** */
+  /* 空的正文容器不占 flex 间距:首字到之前它是空的,占了间距就是 6px 的假位移 */
+  .reply > .body:empty { display: none; }
+  .thought { color: var(--ink-4); font-style: italic; font-size: var(--fs-meta); border-radius: var(--r-1); cursor: pointer; overflow: hidden; }
+  .thought p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .thought.open { color: var(--ink-3); cursor: text; }
+  .thought .preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; }
+  .thought:hover { color: var(--ink-2); }
+
+  .text p { margin: 0 0 .7em; } .text p:last-child { margin-bottom: 0; }
+  .text h3 { font-size: 14px; margin: .9em 0 .35em; }
+  .text ul { margin: 0 0 .7em; padding-left: 1.3em; }
+  .text pre { background: var(--paper-2); border-radius: var(--r-1); padding: 8px 10px; font-size: 12px; margin: 0 0 .7em; overflow-x: auto; }
+
+  /* 消息外缘那一行:三张脸(读数 / 动作 / 收场通知)交叉淡入,**同一格同一高** */
+  .chrome { position: relative; height: 24px; font-size: var(--fs-meta); color: var(--ink-3); }
+  .chrome > div { position: absolute; left: 0; right: 0; top: 0; height: 24px; display: flex; align-items: center; gap: 12px; opacity: 0; transition: opacity var(--dur-flash) var(--ease); pointer-events: none; }
+  .chrome > div.on { opacity: 1; pointer-events: auto; }
+  .ghost { background: none; border: 0; padding: 0; color: var(--ink-3); font: inherit; cursor: pointer; opacity: .55; transition: opacity var(--dur) var(--ease), color var(--dur) var(--ease); }
+  .ghost:hover { opacity: 1; color: var(--ink); }
+  .ghost:disabled { opacity: .3; cursor: default; }
+  .ghost:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  .stop { color: var(--accent); }
+  .notice { color: var(--ink-3); }
+
+  /* 重试:旧回答整块向上折进座位的上缘,同一格里折痕接着扫 —— 视口一像素不动 */
+  .reply.retiring { transition: opacity var(--dur-card-flip) var(--ease); overflow: hidden; opacity: 0; }
+
+  /* 「回到最新」丸(既有件,三张脸) */
+  .pill { position: absolute; left: 50%; bottom: 76px; transform: translateX(-50%); background: var(--ink); color: var(--paper); border: 0; border-radius: 999px; padding: 6px 12px; font: 12px/1 inherit; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.18); opacity: 0; pointer-events: none; transition: opacity var(--dur-enter) var(--ease-out); }
+  .pill.on { opacity: 1; pointer-events: auto; }
+
+  /* 叶内输入框 */
+  .composer { border-top: 1px solid var(--line-1); padding: 10px 16px; display: flex; gap: 8px; align-items: flex-end; background: var(--paper); }
+  .composer textarea { flex: 1; resize: none; border: 1px solid var(--line-2); border-radius: var(--r-2); padding: 8px 12px; font: inherit; background: #fff; min-height: 40px; max-height: 120px; }
+  .btn { border: 1px solid var(--line-2); background: #fff; border-radius: 999px; padding: 8px 14px; font: inherit; cursor: pointer; }
+  .btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .btn:disabled { opacity: .4; cursor: default; }
+
+  /* ── 右栏:控制与读数 ───────────────────────────────────────────────── */
+  .side { display: flex; flex-direction: column; gap: 14px; font-size: 13px; }
+  .card { border: 1px solid var(--line-1); border-radius: var(--r-2); padding: 12px 14px; background: #fff; }
+  .card h2 { font-size: 13px; margin: 0 0 8px; color: var(--ink-2); }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; }
+  .row label { color: var(--ink-2); }
+  select, .seg { font: inherit; }
+  .seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 999px; overflow: hidden; }
+  .seg button { border: 0; background: #fff; padding: 4px 10px; font: inherit; cursor: pointer; color: var(--ink-2); }
+  .seg button.on { background: var(--ink); color: var(--paper); }
+  .meter { font-variant-numeric: tabular-nums; }
+  .meter b { display: inline-block; min-width: 3.5em; text-align: right; }
+  .meter .ok { color: #2f7a4b; } .meter .bad { color: #b83a2f; }
+  .log { font-size: 12px; color: var(--ink-3); max-height: 180px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+  .log li { padding: 2px 0; border-bottom: 1px dashed var(--line-1); }
+  .rule { font-size: 12px; color: var(--ink-2); line-height: 1.6; }
+  .rule b { color: var(--ink); }
+  table.states { border-collapse: collapse; width: 100%; font-size: 12px; }
+  table.states th, table.states td { border-top: 1px solid var(--line-1); padding: 5px 4px; text-align: left; vertical-align: top; }
+  table.states th { color: var(--ink-3); font-weight: 500; }
+</style>
+</head>
+<body>
+<h1>发送 · 等待 · 生成 · 收尾 · 重试 —— 一条座位</h1>
+<p class="lede">发送那一帧:自己的话原位变气泡,滚到置顶线,下面**整个视口**留给回复(座位)。之后的等待、上下文更新、思考、正文、工具卡全在座位里长;座位没长满之前视口一像素不动,长满了才转成跟底。收尾只做两件事:思考段**锚住正文首行**折回一行、外缘那一行交叉淡入成动作行。重试 = 旧回答向上折进座位上缘,同一格里折痕接着扫。</p>
+
+<div class="grid">
+  <div class="panel" id="panel">
+    <div class="scroll" id="scroll">
+      <div class="column" id="column">
+        <div class="turn"><div class="user">怎么是从 0921 拉出的分支呢?你要从主分支拉。</div>
+          <div class="reply"><div class="text"><p>你说得对,0921 是上一版需求的分支。我重新从 <code>main</code> 拉了 <code>0928</code>,把这两天的改动 cherry-pick 过去:</p><ul><li>siteHandlers.LA 补齐四个国家</li><li>nlp_test.lua 的批量档改成按 xlsx 逐行断言</li></ul><p>0921 分支保留不动,等你确认再删。</p></div><div class="chrome"><div class="on"><button class="ghost">复制</button><button class="ghost">重试</button></div></div></div></div>
+        <div class="turn"><div class="user">提交一下</div>
+          <div class="reply"><div class="text"><p>已提交到 <code>0928</code>:</p><pre>a41c9e2 IVA: LA 站点补齐 + 批量测试按 xlsx 断言
+ 3 files changed, 118 insertions(+), 27 deletions(-)</pre><p>没有推远端,等你看过 diff。</p></div><div class="chrome"><div class="on"><button class="ghost">复制</button><button class="ghost">重试</button></div></div></div></div>
+        <div class="turn"><div class="user">测试残留的两个差异是什么?</div>
+          <div class="reply"><div class="text"><p>跑了一遍批量测试,26 条用例里 24 条 MATCH,剩两条差异:</p><ul><li><b>MBG</b>:期望 <code>CallFlowKafkaWrite</code>,实际走了 <code>Refer</code>。</li><li><b>FAC</b>:单跑通过,批量失败在 <code>SITE_NODE</code> 缺 LA。</li></ul><p>我先把 FAC 那条查实。</p></div><div class="chrome"><div class="on"><button class="ghost">复制</button><button class="ghost">重试</button></div></div></div></div>
+        <div class="turn"><div class="user">把 FAC 那条查实,MBG/Sales 的已经确定是「直接 Refer」。</div>
+          <div class="reply"><div class="text"><p>单条 FAC 用例单独跑<b>通过了</b>(<code>intent=PriorityCustomer</code>),批量跑失败在 <code>SITE_NODE</code> 缺 LA 国家。</p><p>我把两处差异列成表再确认一遍。</p></div><div class="chrome"><div class="on"><button class="ghost">复制</button><button class="ghost">重试</button></div></div></div></div>
+        <div class="turn"><div class="user">测试残留的两个差异是什么?</div>
+          <div class="reply"><div class="text"><p>两个差异都定位清楚了(都是<b>测试用例本身的问题</b>,不是代码问题):</p><ul><li>MBG handler:<code>routeTo</code> 为空时应走 <code>Refer</code>。</li><li>FAC:单跑过、批量失败,已在 0928 分支补上 LA。</li></ul></div><div class="chrome"><div class="on"><button class="ghost">复制</button><button class="ghost">重试</button></div></div></div></div>
+      </div>
+    </div>
+    <button class="pill" id="pill">↓ 已发送</button>
+    <div class="composer">
+      <textarea id="input" placeholder="说点什么…(⌘↵ 发送)">按你说的把两条用例的期望改掉,重跑一遍</textarea>
+      <button class="btn primary" id="send">发送</button>
+      <button class="btn" id="stopBtn" disabled>停止</button>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="card">
+      <h2>模拟条件</h2>
+      <div class="row"><label>首字延迟</label><span class="seg" data-opt="firstToken"><button data-v="400">0.4s</button><button data-v="1400" class="on">1.4s</button><button data-v="4000">4s</button></span></div>
+      <div class="row"><label>上下文更新</label><span class="seg" data-opt="ctx"><button data-v="1" class="on">有</button><button data-v="0">无</button></span></div>
+      <div class="row"><label>思考</label><span class="seg" data-opt="thought"><button data-v="short" class="on">短</button><button data-v="long">长(溢出座位)</button><button data-v="none">无</button></span></div>
+      <div class="row"><label>等待标记</label><span class="seg" data-opt="wait"><button data-v="seam" class="on">折痕光扫(推荐)</button><button data-v="cursor">呼吸光标</button></span></div>
+      <div class="row"><label>收场</label><span class="seg" data-opt="ending"><button data-v="ok" class="on">正常</button><button data-v="length">额度用尽</button></span></div>
+      <div class="row"><label>动效档</label><span class="seg" data-opt="motion"><button data-v="on" class="on">有</button><button data-v="none">无</button></span></div>
+    </div>
+    <div class="card meter">
+      <h2>读数(页面每帧量,与探针同法)</h2>
+      <div class="row"><span>发送后滚动次数</span><b id="mScrolls">0</b></div>
+      <div class="row"><span>等待→首字 气泡位移</span><b id="mFirst">—</b></div>
+      <div class="row"><span>收尾那一帧 正文首行位移</span><b id="mEnd">—</b></div>
+      <div class="row"><span>重试那一帧 座位上缘位移</span><b id="mRetry">—</b></div>
+      <div class="row"><span>本轮 &gt;50ms 长帧</span><b id="mLong">0</b></div>
+      <ul class="log" id="log"></ul>
+    </div>
+    <div class="card rule">
+      <h2>七条规矩</h2>
+      ① <b>发送只滚一次,不切屏</b>:自己的话滑到置顶线(缓出;短路 180ms = <code>--dur-land</code>,一屏的路拉到 320ms;档「无」一步到位),之后视口不动,直到座位长满。<br>
+      ② <b>座位 = 视口减掉置顶线以上</b>,最少三行;窗子变矮只改座位不改滚动。<br>
+      ③ <b>等待画在折痕上</b>,不占布局。上下文更新落账 = 折痕转成在流里的一行、标签淡入(等待期间转,座位有地方)。首字到:<b>有</b>上下文更新的折痕留下(光停、线实、标签常驻,正文从它下面起);<b>空</b>折痕淡出(120ms),正文从线的位置起 → 位移 0。<br>
+      ④ <b>思考流式中展开,收尾折回一行</b>,折叠期间每帧把正文首行钉在原处(scrollTop 补差)。<br>
+      ⑤ <b>外缘那一行三张脸同格同高</b>:读数 → 动作 / 收场通知,只换 opacity。<br>
+      ⑥ <b>重试按下即开槽</b>:旧回答向上折进座位上缘(180ms),同一帧折痕开始扫;没有第二种「进行中」。<br>
+      ⑦ <b>人往上翻就是浏览</b>:座位不收、视口不追,丸说「已发送 / ··· / 回到最新」(既有三张脸)。
+    </div>
+    <div class="card">
+      <h2>状态先行 · 三表(摘要)</h2>
+      <table class="states">
+        <tr><th>阶段</th><th>座位里有什么</th><th>视口</th></tr>
+        <tr><td>已发送(账本未收)</td><td>气泡半透明 + 折痕光扫</td><td>滚到置顶线,一次</td></tr>
+        <tr><td>等待首字</td><td>气泡变实;折痕扫;上下文更新标签淡入</td><td>不动</td></tr>
+        <tr><td>生成中</td><td>线淡出;思考展开 / 正文 / 工具卡逐块长;读数行「生成中 · 0:03 · 停止」</td><td>不动 → 长满后跟底</td></tr>
+        <tr><td>收尾</td><td>思考锚定折回一行;读数 → 动作行;有收场原因多一行通知</td><td>不动</td></tr>
+        <tr><td>停止 / 出错</td><td>线停扫;读数 → 通知 + 动作(重试)</td><td>不动</td></tr>
+        <tr><td>重试</td><td>旧回答上折 → 折痕扫 → 同上</td><td>不动(座位上缘钉住)</td></tr>
+        <tr><td>浏览中(人翻上去)</td><td>照常长</td><td>不追;丸</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s)
+  const scroll = $('#scroll'), column = $('#column'), input = $('#input'), sendBtn = $('#send'), stopBtn = $('#stopBtn'), pill = $('#pill')
+  const opt = { firstToken: 1400, ctx: 1, thought: 'short', wait: 'seam', ending: 'ok', motion: 'on' }
+  document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return
+    seg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b))
+    const k = seg.dataset.opt; opt[k] = isNaN(+b.dataset.v) ? b.dataset.v : +b.dataset.v
+    if (k === 'motion') document.documentElement.dataset.motion = opt.motion === 'none' ? 'none' : ''
+  }))
+  const durMs = name => opt.motion === 'none' ? 0 : ({ land: 180, flip: 180, exit: 120, flash: 240, enter: 140 })[name]
+  const log = (s) => { const li = document.createElement('li'); li.textContent = s; $('#log').prepend(li) }
+  const sleep = ms => new Promise(r => setTimeout(r, ms))
+
+  /* ── 跟随:pinned / browsing,判据只有位置(与 follow.ts 同) ─────────── */
+  let mode = 'pinned', lastTop = 0, scrolls = 0
+  let seatTurn = null
+  let holding = false
+  const gap = () => scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop
+  scroll.addEventListener('scroll', () => {
+    if (scroll.scrollTop < lastTop - 1) { mode = 'browsing'; updatePill() }
+    else if (gap() <= 2) { mode = 'pinned'; updatePill() }
+    lastTop = scroll.scrollTop
+  })
+  const stick = () => { scroll.scrollTop = scroll.scrollHeight; lastTop = scroll.scrollTop }
+  /* 写完 DOM **同一个任务里**贴底:长一截与跟一截之间不许隔一帧,不然读数行先被推下去、下一拍才拉回来。 */
+  const stickIfPinned = () => { if (holding || phase === 'idle') return; if (mode === 'pinned' && gap() > 2) { scrolls += 1; $('#mScrolls').textContent = String(scrolls); stick() } }
+  let phase = 'idle'
+  function updatePill () {
+    const on = mode === 'browsing' && phase !== 'idle'
+    pill.classList.toggle('on', on)
+    pill.textContent = phase === 'generating' ? '···' : phase === 'waiting' ? '↓ 已发送' : '↓ 回到最新'
+  }
+  pill.addEventListener('click', () => { mode = 'pinned'; stick(); updatePill() })
+
+  /* 座位高度:视口高 − 置顶线;最少三行。窗子变矮只改座位不改滚动。 */
+  const seatH = () => Math.max(scroll.clientHeight - 24 /* send-line */ - 8, 0)
+  const applySeat = () => { if (seatTurn) seatTurn.style.setProperty('--seat-h', seatH() + 'px') }
+  new ResizeObserver(applySeat).observe(scroll)
+
+  /* 内容长高:座位没长满 → 视口不动;长满且 pinned → 跟底(与壳的 RO 同一条判据)。 */
+  /* 折叠 / 上折期间**跟底让位给锚定**(与壳里 expand-intent 的 hold 同一条法):
+     那几帧的尺寸变化说的是「上面的东西在缩」,不是「下面长出了没看的」。 */
+  new ResizeObserver(() => stickIfPinned()).observe(column)
+
+  /* 长帧计数 + 锚点位移(与探针同法:每帧 getBoundingClientRect) */
+  let longFrames = 0, lastT = performance.now(), anchorEl = null, anchorTop = null, drift = 0
+  const tick = t => {
+    if (t - lastT > 50 && phase !== 'idle') { longFrames += 1; $('#mLong').textContent = String(longFrames) }
+    lastT = t
+    // 折叠期间由 animateHeight 自己在补偿**之后**量(量画出来的那一帧,不量补偿前的中间态)
+    if (!holding && anchorEl && anchorTop !== null) { const d = anchorEl.getBoundingClientRect().top - anchorTop; drift = Math.max(drift, Math.abs(d)) }
+    requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+  const watch = el => { anchorEl = el; anchorTop = el ? el.getBoundingClientRect().top : null; drift = 0 }
+  const report = (id) => { const b = $(id); b.textContent = drift.toFixed(0) + ' px'; b.className = drift <= 1 ? 'ok' : 'bad'; watch(null) }
+
+  /* 滚动到置顶线:JS 插值 scrollTop(定位不是动效,档「无」一步到位) */
+  function scrollTo (target, ms) {
+    const from = scroll.scrollTop, delta = target - from
+    scrolls += 1; $('#mScrolls').textContent = String(scrolls)
+    if (ms === 0 || Math.abs(delta) < 1) { scroll.scrollTop = target; lastTop = scroll.scrollTop; return Promise.resolve() }
+    return new Promise(res => { const t0 = performance.now(); const step = t => { const k = Math.min(1, (t - t0) / ms); const e = 1 - Math.pow(1 - k, 3); scroll.scrollTop = from + delta * e; lastTop = scroll.scrollTop; if (k < 1) requestAnimationFrame(step); else res() }; requestAnimationFrame(step) })
+  }
+  /* 折叠 / 上折:JS 逐帧改高度,**同一帧**里读锚点、补 scrollTop —— 改高度与补位置之间不隔一帧,
+     人看到的每一帧锚点都在原处。CSS 过渡 + 事后补偿做不到这一点(过渡在帧首更新,补偿在 rAF,量具与画面就差一帧)。 */
+  function animateHeight (el, from, to, ms, anchor) {
+    const top = anchor ? anchor.getBoundingClientRect().top : null; const t0 = performance.now(); holding = true
+    el.style.height = from + 'px'; el.style.overflow = 'hidden'
+    return new Promise(res => {
+      const step = () => {
+        const k = ms === 0 ? 1 : Math.min(1, (performance.now() - t0) / ms); const e = 1 - Math.pow(1 - k, 3)
+        el.style.height = (from + (to - from) * e) + 'px'
+        if (anchor) { const d = anchor.getBoundingClientRect().top - top; if (Math.abs(d) >= 0.5) { scroll.scrollTop += d; lastTop = scroll.scrollTop } drift = Math.max(drift, Math.abs(anchor.getBoundingClientRect().top - top)) }
+        if (k < 1) requestAnimationFrame(step)
+        else { el.style.height = to === 0 ? '0px' : ''; holding = false; mode = gap() <= 2 ? 'pinned' : 'browsing'; updatePill(); res() }
+      }
+      requestAnimationFrame(step)
+    })
+  }
+
+  /* ── 假流:思考 → 正文 ────────────────────────────────────────────── */
+  const THOUGHT_SHORT = ['Hmm, 两条用例的期望要改在 nlp_test.lua 第 12 与 41 行。', '先跑 MBG 那条确认 Refer 参数,再跑 FAC。', 'OK. 开始改。']
+  const THOUGHT_LONG = Array.from({ length: 40 }, (_, i) => ['OK.', 'Emit.', 'Let me go.', 'Hmm, the test needs lua5.4.'][i % 4])
+  const ANSWER = [
+    ['h3', '改了两处期望'],
+    ['p', '`nlp_test.lua` 第 12 行:MBG 的期望从 `CallFlowKafkaWrite` 换成 `Refer("ServiceRequest", …)`;第 41 行:FAC 批量档补 `SITE_NODE.LA`。'],
+    ['pre', '$ lua5.4 nlp_test.lua --iva-intent | tail -3\n=== SUMMARY ===\nALL REFER PARAMETERS MATCH XLSX\nexit 0'],
+    ['p', '两条都过了。批量跑 26 条用例全部 MATCH,没有残留差异。'],
+    ['p', '下一步要不要我把 0928 分支上的这两处一起提交?'],
+  ]
+  let run = null
+  async function typeInto (el, text, cps) {
+    for (let i = 0; i < text.length; i += 3) { if (run?.aborted) return false; el.textContent = text.slice(0, i + 3); stickIfPinned(); await sleep(1000 / cps * 3) }
+    el.textContent = text; stickIfPinned(); return true
+  }
+  /* 折叠时锚谁:回复里**第一块还在视口里的东西**(人正在读的那一行),不是固定的正文首行 —— 正文首行早就滚出去时锚它等于把人拽走。 */
+  function pickAnchor (reply, chrome) {
+    const top = scroll.getBoundingClientRect().top
+    for (const el of reply.querySelectorAll('.text > *, .chrome')) { if (el.getBoundingClientRect().bottom > top + 1) return el }
+    return chrome
+  }
+
+  async function startRun (turn, reply, opts = {}) {
+    run = { aborted: false }; phase = 'waiting'; stopBtn.disabled = false; sendBtn.disabled = true; updatePill()
+    // 回合头折痕:等待 = 光扫;或另一档:首行一枚呼吸光标
+    const seam = document.createElement('div'); seam.className = 'seam sweep'; seam.innerHTML = '<span class="label"></span>'
+    const cur = document.createElement('div'); cur.innerHTML = '<span class="cursor"></span>'
+    reply.append(opt.wait === 'seam' ? seam : cur)
+    const chrome = document.createElement('div'); chrome.className = 'chrome'
+    chrome.innerHTML = '<div class="readout"><span class="tick">等待 · 0:00</span><button class="ghost stop">停止</button></div><div class="actions"><button class="ghost">复制</button><button class="ghost retry">重试</button></div><div class="notice"></div>'
+    reply.append(chrome)
+    const readout = chrome.querySelector('.readout'), actions = chrome.querySelector('.actions'), notice = chrome.querySelector('.notice')
+    readout.classList.add('on')
+    chrome.querySelector('.stop').addEventListener('click', () => stopRun())
+    const t0 = Date.now(); const tickTimer = setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); chrome.querySelector('.tick').textContent = (phase === 'waiting' ? '等待' : '生成中') + ' · ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') }, 250)
+
+    // 账本收下:气泡变实(120ms 后)
+    await sleep(120); turn.querySelector('.user').style.opacity = '1'
+    // 上下文更新落账:标签淡入,不插行
+    if (opt.ctx && opt.wait === 'seam') { await sleep(300); seam.classList.add('inflow'); seam.querySelector('.label').textContent = '上下文更新 · 变量 2'; seam.querySelector('.label').classList.add('on') }
+    await sleep(Math.max(0, opt.firstToken - 420))
+    if (run.aborted) return finish(reply, chrome, tickTimer, 'aborted')
+    // 首字:量「等待→首字」的位移,锚在**自己那条气泡**(第一块进来只许往下长,它上面的东西一像素不动;
+    // 读数行在正文下面,往下让一行是长,不算位移)。
+    phase = 'generating'; updatePill()
+    watch(turn.querySelector('.user'))
+    const body = document.createElement('div'); body.className = 'body'; reply.insertBefore(body, chrome)
+    const lines = opt.thought === 'long' ? THOUGHT_LONG : (opt.thought === 'short' ? THOUGHT_SHORT : [])
+    // **同一个任务里**:先把第一块(含前三个字)放进去,再拿走空折痕 / 光标 —— 中间不隔帧,读数行只会往下让,不会先上后下
+    let thought = null, text = null, firstEl = null, firstContent = ''
+    if (lines.length) { thought = document.createElement('div'); thought.className = 'thought open'; body.append(thought); firstEl = document.createElement('p'); thought.append(firstEl); firstContent = lines[0] }
+    else { text = document.createElement('div'); text.className = 'text'; body.append(text); firstEl = document.createElement(ANSWER[0][0]); text.append(firstEl); firstContent = ANSWER[0][1].replace(/`/g, '') }
+    firstEl.textContent = firstContent.slice(0, 3)
+    // 有上下文更新的折痕留下(光停、线实、标签常驻);空折痕当场拿走
+    if (seam.isConnected) { if (seam.classList.contains('inflow')) { seam.classList.remove('sweep'); seam.classList.add('settled') } else seam.remove() } else cur.remove()
+    stickIfPinned()
+    await sleep(durMs('exit') + 20); report('#mFirst')
+
+    // 思考(流式中展开):第一行接着上面那三个字打
+    if (thought) {
+      for (let i = 0; i < lines.length; i += 1) { if (run.aborted) break; const p = i === 0 ? firstEl : document.createElement('p'); if (i > 0) thought.append(p); await typeInto(p, lines[i], 60) }
+    }
+    // 正文
+    if (!text) { text = document.createElement('div'); text.className = 'text'; body.append(text) }
+    for (let i = 0; i < ANSWER.length; i += 1) {
+      if (run.aborted) break
+      const [tag, content] = ANSWER[i]
+      const el = (!thought && i === 0) ? firstEl : document.createElement(tag); if (el !== firstEl) text.append(el)
+      await typeInto(el, content.replace(/`/g, ''), 70)
+      if (opt.ending === 'length' && tag === 'pre') { run.aborted = true; run.reason = 'length'; break }
+    }
+    return finish(reply, chrome, tickTimer, run.reason || (run.aborted ? 'aborted' : 'ok'), thought, text)
+  }
+
+  async function finish (reply, chrome, tickTimer, reason, thought, text) {
+    clearInterval(tickTimer)
+    const readout = chrome.querySelector('.readout'), actions = chrome.querySelector('.actions'), notice = chrome.querySelector('.notice')
+    // 收尾:思考锚住正文首行折回一行;外缘那一行交叉淡入 —— 两件事同一帧起,视口不动
+    const anchor = pickAnchor(reply, chrome)
+    watch(anchor)
+    if (thought) {
+      const from = thought.getBoundingClientRect().height
+      const preview = document.createElement('p'); preview.className = 'preview'; preview.textContent = thought.textContent.slice(0, 240)
+      thought.style.height = from + 'px'; thought.classList.remove('open')
+      thought.replaceChildren(preview)
+      // 终点高度量**预览行自己**,不把容器设成 auto 去量:容器一缩,滚动区在底时浏览器当场钳 scrollTop,
+      // 那一跳发生在折叠开始之前 —— 这正是 09-14 样例首版量到的 639px 假位移。
+      const to = preview.getBoundingClientRect().height
+      thought.addEventListener('click', () => { thought.classList.toggle('open') })
+      await animateHeight(thought, from, to, durMs('flip'), anchor)
+    }
+    readout.classList.remove('on')
+    if (reason === 'length') { notice.textContent = '这一轮因输出额度用尽提前结束(2048 token)· 重试'; notice.classList.add('on'); notice.style.cursor = 'pointer'; notice.addEventListener('click', () => retry(reply)) }
+    else { actions.classList.add('on') }
+    actions.querySelector('.retry')?.addEventListener('click', () => retry(reply))
+    await sleep(durMs('flash') + 20); report('#mEnd')
+    phase = 'idle'; stopBtn.disabled = true; sendBtn.disabled = false; updatePill()
+    log(`收尾:${reason === 'ok' ? '正常' : reason === 'length' ? '额度用尽' : '已停止'};座位保留,视口不动`)
+  }
+  function stopRun () { if (run) run.aborted = true }
+
+  /* 重试:旧回答向上折进座位上缘(180ms),同一帧折痕开始扫,视口一像素不动 */
+  async function retry (oldReply) {
+    if (phase !== 'idle') return
+    const turn = oldReply.closest('.turn')
+    const fresh = document.createElement('div'); fresh.className = 'reply'
+    turn.append(fresh)
+    // 锚住自己那条气泡(座位上缘):旧回答折进去,气泡一像素不动
+    const bubble = turn.querySelector('.user'); watch(bubble)
+    oldReply.classList.add('retiring')
+    const p = startRun(turn, fresh)
+    await animateHeight(oldReply, oldReply.getBoundingClientRect().height, 0, durMs('flip'), bubble)
+    oldReply.remove(); report('#mRetry'); log('重试:旧回答上折 → 折痕接着扫(同一帧)')
+    await p
+  }
+
+  /* 发送:原位变气泡(半透明,账本收下变实)→ 滚到置顶线一次 → 座位 */
+  async function send () {
+    const value = input.value.trim(); if (!value || phase !== 'idle') return
+    input.value = ''; scrolls = 0; longFrames = 0; $('#mScrolls').textContent = '0'; $('#mLong').textContent = '0'
+    if (seatTurn) { seatTurn.classList.remove('seat'); seatTurn.style.removeProperty('--seat-h') }
+    const turn = document.createElement('div'); turn.className = 'turn seat'
+    const user = document.createElement('div'); user.className = 'user enter'; user.textContent = value; user.style.opacity = '.55'
+    const reply = document.createElement('div'); reply.className = 'reply'
+    turn.append(user, reply); column.append(turn); seatTurn = turn; applySeat()
+    mode = 'pinned'
+    // 置顶线:自己那条的上缘 = 视口上缘 + 24
+    // 不是切屏:一段带缓出的滑动。时长跟着路程走 —— 一屏的路 180ms 看着像切,拉到 320ms;
+    // 短路程仍是 180ms(与 --dur-land 同值)。档「无」一步到位。
+    const target = Math.min(user.offsetTop - 24, scroll.scrollHeight - scroll.clientHeight)
+    const distance = Math.abs(target - scroll.scrollTop)
+    const ms = durMs('land') === 0 ? 0 : Math.round(Math.min(320, 180 + Math.max(0, distance - 240) * 0.35))
+    await scrollTo(target, ms)
+    log(`发送:滚到置顶线一次(座位 ${seatH()}px)`)
+    startRun(turn, reply)
+  }
+  sendBtn.addEventListener('click', send)
+  input.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); send() } })
+  stopBtn.addEventListener('click', stopRun)
+  stick()
+})()
+</script>
+</body>
+</html>

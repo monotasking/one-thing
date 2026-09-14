@@ -328,15 +328,36 @@ describe('消息树:画的就是折叠器的输出', () => {
   })
 
   /**
-   * §5.3 拍点 ⑫:**回复槽位开出来到第一个字之间**画三个点。
-   * 从前那段是一片空白 —— 与用户报的「不知道它是不是卡住了」同源。
-   * 判据是「这条消息此刻画得出什么」(段序列空不空),不是拿 content 猜。
+   * §5.3 拍点 ⑫:**回复槽位开出来到第一个字之间**画一道在扫的折痕。
+   * 从前那段是一片空白 —— 与用户报的「不知道它是不是卡住了」同源;
+   * 09-15 之前它是三颗点(`ui/Dots`),正本 `docs/send-flow-2026-09.md` §2 ③ 换成折痕。
+   * 判据一个字没改:「这条消息此刻画得出什么」(段序列空不空),不是拿 content 猜。
    */
-  it('槽位开了、第一个字还没到 = 三个点在场,光标不在', async () => {
+  it('槽位开了、第一个字还没到 = 等待折痕在场(在扫),光标不在', async () => {
     await mount([created(1), userMessage(2, 'm1', '你好'), runStart(3, 'r1', 'a1')])
-    expect(screen.getByLabelText('正在生成')).toBeTruthy()
+    const seam = screen.getByTestId('waiting-seam')
+    expect(seam.getAttribute('data-state')).toBe('running')
+    // 无障碍名照旧由它担(退役的三颗点那一格 label 原样搬过来)。
+    expect(screen.getByLabelText('正在生成')).toBe(seam)
     // 两件都在场就是两个「还在跑」—— 第一个 delta 到达才换成正文与尾部光标。
     expect(screen.queryByTestId('chat-streaming')).toBeNull()
+  })
+
+  /**
+   * **首字到达 = 同一次提交里的换手**(正本 §2 ③)。折痕的卸载与第一块内容的挂载
+   * 由**同一份 `segments`** 推出来,所以中间没有一帧「两样都不在」。
+   * 这一层能证的是结局(换完之后折痕没了、正文在了);中间有没有空帧由真机门
+   * `gate:send-flow` ② 量(等待→首字,自己那条气泡的 top 位移 0px)。
+   */
+  it('第一个字到了 = 折痕没了、正文与光标在了(同一份 segments 推出来的两端)', async () => {
+    await mount([
+      created(1),
+      userMessage(2, 'm1', '你好'),
+      runStart(3, 'r1', 'a1'),
+      chunks(4, 'r1', 'a1', ['好的']),
+    ])
+    expect(screen.queryByTestId('waiting-seam')).toBeNull()
+    expect(screen.getByTestId('chat-streaming')).toBeTruthy()
   })
 })
 

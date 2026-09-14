@@ -159,7 +159,21 @@ export function contextDeltaSummary(t: TFn, rows: readonly ContextDeltaEntry[]):
   return [t('chat.contextDeltaTitle'), ...parts].join(' · ')
 }
 
-export function ContextDeltaSeam({ turnContext }: { turnContext?: TurnContextDelta }) {
+export function ContextDeltaSeam({ turnContext, sweeping = false }: {
+  turnContext?: TurnContextDelta
+  /**
+   * **这一轮还在等第一个字**(09-15,正本 `docs/send-flow-2026-09.md` §2 规矩 ③)。
+   *
+   * 等待与上下文更新说的是同一件事 ——「系统在这一回合开张时正在做的事」——
+   * 所以它们**合成一行**:这一轮有上下文更新时由这道折痕自己扫,`WaitingSeam`
+   * 不再单画一道空的(不插第二行:插了就是同一句话说两遍,首字到达时还要收两处)。
+   * 首字一到这一格翻回 `false`:光停、线实,**标签常驻** —— 它说的那件事已经发生完了。
+   *
+   * 缺省 `false`:一条早就落账的老消息旁边的这道折痕永远是 `settled`,
+   * 摆它的那一层不必为每一行都说一句话。
+   */
+  sweeping?: boolean
+}) {
   const t = useT()
   const note = useNoteUserExpand()
   const rows = contextDeltaEntries(turnContext)
@@ -175,9 +189,16 @@ export function ContextDeltaSeam({ turnContext }: { turnContext?: TurnContextDel
         if (open) note()
       }}
     >
-      {/* 上下文更新是**已经发生完**的事,恒 `settled` —— 没有「正在更新」这一档:
-          它是回合开张时一次性落的账,壳看见它的时候早已经完成了。 */}
-      <Seam data-state="settled" data-testid="context-delta-seam">
+      {/*
+        * 上下文更新本身是**已经发生完**的事(回合开张时一次性落的账,壳看见它的时候
+        * 早已经完成了)—— 所以缺省是 `settled`。09-15 多出来的 `running` 那一档说的
+        * **不是**「正在更新」,是「这一轮还在等第一个字」:等待与上下文更新合成一行,
+        * 由它替 `WaitingSeam` 把那道光扫出来(判词在上面那格 prop 上)。
+        */}
+      <Seam
+        data-state={sweeping ? 'running' : 'settled'}
+        data-testid="context-delta-seam"
+      >
         <SeamLine />
         <SeamLabel fold data-testid="context-delta-label">
           {contextDeltaSummary(t, rows)}

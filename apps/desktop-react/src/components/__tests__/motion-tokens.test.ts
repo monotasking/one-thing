@@ -16,6 +16,8 @@ import {
   DOCK_LENS_MS,
   DRAWER_MS,
   RELEASE_MS,
+  SEND_LAND_MAX_MS,
+  SEND_LAND_MS,
   TOAST_LIFE_MS,
   TOC_FLASH_MS,
   TOC_HOVER_MS,
@@ -97,6 +99,27 @@ describe('JS 侧的时长常量与 tokens.css 逐条相等', () => {
     ['--dur-land', LAND_MS],
   ])('%s', (name, js) => {
     expect(tokenMs(tokensCss, name), `tokens.css 里找不到 ${name}`).toBe(js)
+  })
+
+  /**
+   * **一个 token,两个 JS 读者**(2026-09-15):拖拽那一拍的 `LAND_MS` 与发送那一下
+   * 滑到置顶线的 `SEND_LAND_MS` 说的是同一件事 ——「一件东西跨过大半个屏幕落到它
+   * 该在的位置」—— 所以它们共用 `--dur-land`。单列一条而不是往上面那张 `it.each`
+   * 里再塞一行同名的:两行同名的用例读起来像一次复制粘贴的事故,而这里是**有意**
+   * 共用,理由要写得出来(全文在 `components/motion.ts` 那一段)。
+   */
+  it('发送落到置顶线的短路时长与拖拽落位共用 --dur-land', () => {
+    expect(SEND_LAND_MS).toBe(LAND_MS)
+    expect(tokenMs(tokensCss, '--dur-land')).toBe(SEND_LAND_MS)
+  })
+
+  /**
+   * 上限**没有** token,这一条就是那句话的执法:`--dur-send-land-max` 这种名字
+   * 一旦长出来,就说明有人把「判据」当成了「时长」(判词在 motion.ts)。
+   */
+  it('落位时长的上限不许长出一个 CSS token(它是判据不是时长)', () => {
+    expect(SEND_LAND_MAX_MS).toBeGreaterThan(SEND_LAND_MS)
+    expect(tokensCss).not.toMatch(/--dur-send-land/)
   })
 
   it('toast 的三档寿命也是一张表两处写(级别 → ms)', () => {

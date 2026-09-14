@@ -226,7 +226,7 @@ const LEDGER: Ledger[] = [
   },
 ]
 
-async function mountStream() {
+async function mountStream(ledger: Ledger[] = LEDGER) {
   configureChatPort({
     ready: async () => undefined,
     /*
@@ -236,7 +236,7 @@ async function mountStream() {
      */
     readPage: () => Promise.reject(new Error('no page in this fake port')),
     readToolResult: () => Promise.resolve(undefined),
-    listRaw: async () => ({ events: [...LEDGER] as never }),
+    listRaw: async () => ({ events: [...ledger] as never }),
     readBlob: async () => ({}),
     onSessionEvent: () => () => undefined,
     onSessionStream: () => () => undefined,
@@ -284,5 +284,55 @@ describe('落点:回合的事,不是用户说的话', () => {
     expect(userRow.querySelector('[data-testid="context-delta-label"]')).toBeNull()
     expect(userRow.querySelector('[data-testid="context-delta-body"]')).toBeNull()
     expect(userRow.textContent).toBe('你好')
+  })
+})
+
+/**
+ * ── 等待与上下文更新**合成一行**(09-15,正本 `docs/send-flow-2026-09.md` §2 ③)──
+ *
+ * 两者说的是同一件事 ——「系统在这一回合开张时正在做的事」—— 所以一轮只扫一道折痕:
+ * 有上下文更新行时由它扫(`sweeping`),没有时才由 `WaitingSeam` 画一道空的。
+ * 判据是**既有那一句**「这条活消息此刻 `segments.length === 0`」。
+ */
+describe('等待期间:一轮只扫一道折痕', () => {
+  /** 与 `LEDGER` 同形,只是回复还没开口(没有 `assistant/chunks`)。 */
+  const WAITING: Ledger[] = LEDGER.slice(0, 4)
+  /** 同上,但这一轮**没有**上下文更新 —— 那一行于是不存在。 */
+  const WAITING_NO_DELTA: Ledger[] = WAITING.filter((e) => e.type !== 'context/turn-update')
+
+  beforeEach(() => {
+    chatSources.ensure(SESSION).getState().reset()
+    useExposeStore.setState({ currentSessionId: '' })
+  })
+
+  it('直接渲染:sweeping 翻的是折痕自己那格状态,标签照旧在', () => {
+    const { rerender } = render(
+      <ContextDeltaSeam turnContext={{ set: { todo: 'x' } }} sweeping />,
+    )
+    const seam = screen.getByTestId('context-delta-seam')
+    expect(seam.getAttribute('data-state')).toBe('running')
+    expect(label()).toBeTruthy()
+    // 首字到 —— 光停、线实,标签常驻(它说的那件事已经发生完了)。
+    rerender(<ContextDeltaSeam turnContext={{ set: { todo: 'x' } }} />)
+    expect(screen.getByTestId('context-delta-seam').getAttribute('data-state')).toBe('settled')
+    expect(label()).toBeTruthy()
+  })
+
+  it('这一轮有上下文更新行:它在扫,不再另画一道空折痕', async () => {
+    await mountStream(WAITING)
+    expect(screen.getByTestId('context-delta-seam').getAttribute('data-state')).toBe('running')
+    expect(screen.queryByTestId('waiting-seam')).toBeNull()
+  })
+
+  it('这一轮没有上下文更新行:才轮到 WaitingSeam', async () => {
+    await mountStream(WAITING_NO_DELTA)
+    expect(screen.queryByTestId('context-delta-seam')).toBeNull()
+    expect(screen.getByTestId('waiting-seam').getAttribute('data-state')).toBe('running')
+  })
+
+  it('首字到了:折痕落定,等待那一道从头到尾没出现过', async () => {
+    await mountStream(LEDGER)
+    expect(screen.getByTestId('context-delta-seam').getAttribute('data-state')).toBe('settled')
+    expect(screen.queryByTestId('waiting-seam')).toBeNull()
   })
 })

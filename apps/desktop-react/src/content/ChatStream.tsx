@@ -23,10 +23,18 @@ import type { ProjectedMessage } from '../data/chat-fold'
 import type { ResolvedSegment } from '../references/segment'
 import { useT, type TFn } from '../i18n'
 import { resolveIcon } from '../components/icons'
-import { EXPAND_HOLD_MS, SCROLL_ANCHOR_SETTLE_MS } from '../components/motion'
+import {
+  EXPAND_HOLD_MS,
+  SCROLL_ANCHOR_SETTLE_MS,
+  currentMotionTier,
+  sendLandMs,
+} from '../components/motion'
 import { ButtonBase } from '../ui/ButtonBase'
+import { FrameCoalescer } from '../ui/frame-coalescer'
 import { assembleMessage, segmentKey } from './assemble'
 import { ContextDeltaSeam, hasContextDelta } from './ContextDeltaSeam'
+import { seatHeight, type SeatGeometry } from './seat'
+import { WaitingSeam } from './seam/WaitingSeam'
 import { ExpandIntentContext } from './expand-intent'
 import type { SegmentModel } from './model/segments'
 import { MessageActions } from './message/MessageActions'
@@ -38,7 +46,6 @@ import { UserMessageBody } from './user-message'
 import type { UserContentPart } from './user-message'
 import { FocusScope } from '../focus/FocusScope'
 import { usePanelVisibility } from './visibility'
-import { Dots } from '../ui/Dots'
 import { FollowPill } from './FollowPill'
 import {
   AT_BOTTOM_EPS,
@@ -62,6 +69,101 @@ const RetryIcon = resolveIcon('RotateCcw')
  * 停手比跟着跑一辈子好。判词全文在下面那只 ResizeObserver 的落位分支里。
  */
 const ANCHOR_RESETTLE_ROUNDS = 6
+
+/**
+ * 座位那一格的**属性名**(正本 `docs/send-flow-2026-09.md` §3)。
+ *
+ * 它**不带 `data-message-id`** —— 那个属性是 TOC / `locate-message` 找消息的唯一
+ * 接缝,给一块空白挂上去,钢琴键就会落到一块空白上(与上下文更新那一行同一条判例)。
+ * 量几何的那几处按这个名字把它剔出去:座位不是「这一轮长了多高」的一部分。
+ */
+const SEAT_ATTR = 'data-seat'
+
+/**
+ * 量座位时**从列尾往回数几格**。
+ *
+ * 它是一个**格数**不是一段长度,所以既不进 tokens 也不进 `components/motion.ts`
+ * (与 `ANCHOR_RESETTLE_ROUNDS` / `CHAT_NEAR_TOP_SCREENS` 同一族)。
+ * 这一轮在列尾最多占四格:自己那条气泡、上下文更新那一行、偶尔一张压缩折痕、
+ * 助手那一行,再加列尾那块座位垫块 —— 六格留一格富余。数不到就是「这一刻没有
+ * 座位可算」,答 `undefined`,不退回去扫全表(扫全表就是每帧按整份账本计价)。
+ */
+const SEAT_SCAN = 6
+
+/**
+ * **量这一刻的座位几何** —— 只读,一次读完(算在 `content/seat.ts` 里)。
+ *
+ * 读点两处:那只 ResizeObserver 的回调(排版之后,白拿)与发送那一拍的 layout
+ * effect(那一次要逼一次排版,躲不掉 —— 座位必须在滑动之前就写到位)。
+ * 拿不到就答 `undefined`,调用方当「没有座位」处理。
+ *
+ * 一次 `getComputedStyle` 取四格:置顶线、输入框那格内衬、字号与行高。
+ * 自定义属性是**继承**的,所以从滚动容器上就取得到阅读轴那两格(三档各不相同)。
+ */
+function measureSeat(el: HTMLElement): SeatGeometry | undefined {
+  const column = el.firstElementChild
+  if (!(column instanceof HTMLElement)) return undefined
+  /*
+   * ── 从**列尾往回数**,不是 `querySelectorAll`(2026-09-15)────────────────
+   * 这一句每一次尺寸变化都要跑一遍(流式期间约每秒 60 次),而
+   * `column.querySelectorAll('[data-role="user"]')` 是一次**整棵子树**的前序遍历
+   * ——400 条消息的会话上,那就是把 09-01 那笔「每帧按整份账本计价」的账又记一遍。
+   * 这一轮就住在列尾:自己那条气泡与它后面那几行(上下文更新行 / 压缩折痕 /
+   * 助手那一行),往回数几格就够。`SEAT_SCAN` 给的是上限 —— 数不到就答
+   * `undefined`(没有座位),而不是退回去扫全表。
+   */
+  const kids = column.children
+  let user: HTMLElement | undefined
+  /** 这一轮最后一件内容 —— 座位垫块自己不算(它正是要算的那个数)。 */
+  let last: Element | undefined
+  for (let i = kids.length - 1; i >= 0 && i >= kids.length - SEAT_SCAN; i -= 1) {
+    const node = kids[i]
+    if (node.hasAttribute(SEAT_ATTR)) continue
+    if (!last) last = node
+    if (node.getAttribute('data-role') === 'user' && node instanceof HTMLElement) {
+      user = node
+      break
+    }
+  }
+  if (!user || !last) return undefined
+  const style = getComputedStyle(el)
+  const px = (value: string) => Number.parseFloat(value)
+  const userRect = user.getBoundingClientRect()
+  return {
+    viewportHeight: el.clientHeight,
+    sendLine: px(style.getPropertyValue('--send-line')),
+    reserveBelow: px(style.paddingBlockEnd),
+    lineHeight: px(style.getPropertyValue('--pr-fs')) * px(style.getPropertyValue('--pr-lh')),
+    userHeight: userRect.height,
+    tailHeight: last.getBoundingClientRect().bottom - userRect.top,
+  }
+}
+
+/**
+ * 自己那条气泡该停在哪 —— **滑到置顶线**那一下的目标 `scrollTop`(规矩 ①)。
+ *
+ * 换算成内容坐标再减去置顶线,最后夹进 `[0, 最大可滚]`:座位写对了的时候这个夹子
+ * 是一次恒等(座位的定义就是「让这个位置恰好滚得到」),写不对时它保证不会去
+ * 要一个不存在的位置。
+ */
+function sendLineTarget(el: HTMLElement): number | undefined {
+  const column = el.firstElementChild
+  if (!(column instanceof HTMLElement)) return undefined
+  /* 同一条:从列尾往回数,别在 400 条的树上做整树前序遍历(判词在 `SEAT_SCAN`)。 */
+  const kids = column.children
+  let user: HTMLElement | undefined
+  for (let i = kids.length - 1; i >= 0 && i >= kids.length - SEAT_SCAN; i -= 1) {
+    const node = kids[i]
+    if (node.getAttribute('data-role') === 'user' && node instanceof HTMLElement) {
+      user = node
+      break
+    }
+  }
+  if (!user) return undefined
+  const sendLine = Number.parseFloat(getComputedStyle(el).getPropertyValue('--send-line')) || 0
+  const top = user.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop
+  return Math.max(0, Math.min(top - sendLine, el.scrollHeight - el.clientHeight))
+}
 
 interface Props {
   /**
@@ -212,8 +314,17 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
     onScroll?.()
   }, [expandOnScroll, onScroll])
 
-  const { follow, jumpToBottom, onScrollWithFollow, noteUserExpand } = useFollowBottom(
+  /**
+   * **座位垫块**(正本 `docs/send-flow-2026-09.md` §3)。
+   *
+   * ref 在这一层是因为**摆它的是这一层**(它是消息列的最后一格),而量它、写它的是
+   * 下面那只 hook —— 与 `scrollRef` 由外面那一层给、hook 只管用同一条分工。
+   */
+  const seatRef = useRef<HTMLDivElement | null>(null)
+
+  const { follow, jumpToBottom, onScrollWithFollow, noteUserExpand, seatActive } = useFollowBottom(
     scrollRef,
+    seatRef,
     foldedSessionId,
     messages,
     sentTick,
@@ -221,6 +332,47 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
     activeMessageId,
     onScrollOutward,
   )
+
+  /*
+   * ── 这一轮此刻在等第一个字吗(规矩 ③)────────────────────────────────────
+   * 判据是**既有那一句**:「这条活消息此刻画得出什么」= 装配管线的段序列空不空。
+   * 它从前只在 `MessageRow` 里问(三颗点的判据),09-15 之后这一层也要问一次 ——
+   * 等待折痕与上下文更新折痕**合成一行**,而「有没有上下文更新行」是这一层的事
+   * (那一行由 `flatMap` 摆在用户消息后面)。
+   *
+   * **取的是列尾那一条,不是 `find`**:活消息按定义是账本最后一条(这一轮的回复),
+   * 流式期间这一句每帧都要跑,`find` 就是每帧扫一遍整篇抄本。`assembleMessage` 是
+   * 纯函数 + 按消息引用 memo,所以这一句与 `MessageRow` 里那一句里**只有一次**真算,
+   * 另一次是 WeakMap 命中。
+   */
+  const tailMessage = messages[messages.length - 1]
+  const awaitingFirstToken =
+    tailMessage !== undefined
+    && tailMessage.id === activeMessageId
+    && assembleMessage(tailMessage).length === 0
+  /**
+   * 等着的这一轮**有没有**上下文更新行 —— 有就由它扫(`sweeping`),
+   * `WaitingSeam` 不再单画一道空的。
+   *
+   * 那一行挂在**发起这一轮的那条用户消息**上,所以要从列尾**往回找最近的一条用户
+   * 消息** —— 不是「倒数第二条」:两条之间夹得下别的东西(压缩折痕那条 `system`
+   * 消息在 50MB 的会话上每轮都来一条,还有系统消息),倒数第二条一撞上它就答
+   * `undefined`,于是 `WaitingSeam` 也画一道 —— 屏幕上并排两道折痕,而规矩 ③ 说的
+   * 是**一轮只扫一道**。
+   *
+   * 往回数而不是扫全表,纪律与 `measureSeat` 同一条(上限同 `SEAT_SCAN`):
+   * 这一句在流式期间每帧都跑,`findLast` 整份抄本就是每帧按整份账本计价。
+   * 数不到就答 `undefined` —— 那时 `WaitingSeam` 画一道空的,是对的降级。
+   */
+  const sweepingContextOf = (() => {
+    if (!awaitingFirstToken) return undefined
+    for (let i = messages.length - 2; i >= 0 && i >= messages.length - 2 - SEAT_SCAN; i -= 1) {
+      const owner = messages[i]
+      if (owner?.role !== 'user') continue
+      return hasContextDelta(owner.turnContext) ? owner.id : undefined
+    }
+    return undefined
+  })()
 
   /*
    * ── 消息流是响应链上的一格 `region`(09-03 R2)──────────────────────────────
@@ -324,7 +476,7 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
                   />
                 )
                 return hasContextDelta(message.turnContext)
-                  ? [row, contextSeamRow(message)]
+                  ? [row, contextSeamRow(message, message.id === sweepingContextOf)]
                   : [row]
               }
               const row = (
@@ -341,6 +493,12 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
                    * 全篇不重渲那条纪律一格没动)。
                    */
                   lastActivityAt={message.id === activeMessageId ? lastActivityAt : undefined}
+                  /*
+                   * **这一行要不要自己画那道等待折痕**(规矩 ③)。活消息之外的每一行
+                   * 拿到的都是 `false` —— 一个恒定的值,所以 `memo` 的浅比照旧短路。
+                   * 上下文更新那一行接过这件事时它也是 `false`:一轮只扫一道折痕。
+                   */
+                  waitingSeam={message.id === activeMessageId && sweepingContextOf === undefined}
                 />
               )
               /*
@@ -390,6 +548,32 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
                       />
                     )
               )),
+              /*
+               * ── 座位垫块(正本 §3;几何在 `content/seat.ts`)──────────────────
+               * **列尾一块让位给内容的空白**:发送那一帧自己的话滑到置顶线,底下
+               * 整个视口留给回复,回复长一截它缩一截,`scrollHeight` 一格不变 ——
+               * 于是「跟底」在座位长满之前什么都不用做,视口一像素不动。
+               *
+               * 它是消息列的孩子,却**不是一条消息**:不带 `data-message-id`(不进
+               * TOC / `locate-message`)、`aria-hidden`(它不是一件要念的东西)、
+               * 不吃指针。高度写在 `style.height` 上而不是一个 React prop:那是一个
+               * **量出来的数**,每一帧都可能不同,过 React 就是每一帧一次提交。
+               *
+               * key 恒为 `'seat'`:上一轮的座位由这一轮**原位接管**(同一个 DOM 节点
+               * 换一个高度),上面那些旧内容因此一像素不动 —— 与在飞那一格落账时
+               * 按 key 认出「还是它」是同一条纪律。
+               */
+              ...(seatActive
+                ? [
+                    <div
+                      key="seat"
+                      ref={seatRef}
+                      className={s.seat}
+                      data-seat=""
+                      aria-hidden="true"
+                    />,
+                  ]
+                : []),
             ]}
           </div>
         </div>
@@ -594,6 +778,7 @@ type IdleWindow = Window & {
  */
 function useFollowBottom(
   scrollRef: RefObject<HTMLDivElement | null> | undefined,
+  seatRef: RefObject<HTMLDivElement | null>,
   sessionId: string,
   messages: readonly ProjectedMessage[],
   sentTick: number,
@@ -605,6 +790,8 @@ function useFollowBottom(
   jumpToBottom: () => void
   onScrollWithFollow: () => void
   noteUserExpand: () => void
+  /** 这条会话此刻有没有座位(= 这次进场之后自己发过话)。摆垫块的判据。 */
+  seatActive: boolean
 } {
   const [follow, setFollow] = useState<FollowState>(FOLLOW_PINNED)
   /*
@@ -702,6 +889,88 @@ function useFollowBottom(
    */
   const noteUserExpand = useCallback(() => {
     holdUntilRef.current = performance.now() + EXPAND_HOLD_MS
+  }, [])
+
+  /* ── 座位(正本 `docs/send-flow-2026-09.md` §3;算法在 `content/seat.ts`)─────
+   *
+   * 三格状态,写点各只有一处:
+   *  · `sentBaseRef` —— **进场那一刻的发送号**。座位是「刚发送的这一轮」的产物,
+   *    不落盘:换会话就没有(写在渲染期,与 `entryRef` / `messageCountRef` 同一手)。
+   *    它顺带把一个旧毛病一起治了:`sentTick` 是**按会话读**的,换会话时那个号
+   *    自己就变了,从前那只 effect 会因此派一次根本没发生过的 `sent`(pinned 下
+   *    `reduceFollow` 恰好什么都不改,所以没人看见)—— 现在它还会顺手滑一次屏,
+   *    那就看得见了,所以基准必须跟着会话走。
+   *  · `seatHeightRef` —— 此刻算出来该多高。**算在观察器回调里(只读),写在下一帧**
+   *    (`content/../ui/frame-coalescer.ts`:观察器回调只读不写)。
+   *  · `seatWrittenRef` —— 已经写进 style 的那个数,省掉每帧一次同值写。
+   */
+  const sentBaseRef = useRef<{ sid: string; tick: number } | undefined>(undefined)
+  if (!sentBaseRef.current || sentBaseRef.current.sid !== sessionId) {
+    sentBaseRef.current = { sid: sessionId, tick: sentTick }
+  }
+  const seatActive = sentTick !== sentBaseRef.current.tick
+
+  const seatHeightRef = useRef(0)
+  const seatWrittenRef = useRef<number | undefined>(undefined)
+  /**
+   * **这一轮真的落到置顶线上了吗**。
+   *
+   * 座位与那一下滑动是**一件事**:座位的定义是「自己那条停在置顶线上之后,
+   * 底下留给回复的那块地」。没滑过就没有那块地 —— 人在上面翻着的时候发送
+   * (规矩 ⑦:那时视口不归这一轮)、或者那一拍量不到几何(停靠中 / jsdom),
+   * 座位一律是 0,行为与 09-15 之前逐字相同。
+   *
+   * 垫块本身照旧挂着(`seatActive`):它是一个高度为 0 的空 div,而**留着它**
+   * 意味着下一次发送由同一个节点原位接管 —— 上面那些旧内容一像素不动。
+   */
+  const seatLandedRef = useRef(false)
+
+  /** 把算好的那个数写到垫块上。**只有这一处**碰它的 style。 */
+  const writeSeat = useCallback(() => {
+    const el = seatRef.current
+    if (!el) return
+    const next = seatHeightRef.current
+    if (seatWrittenRef.current === next) return
+    seatWrittenRef.current = next
+    el.style.height = `${next}px`
+  }, [seatRef])
+  /**
+   * 下一帧交出去那一格读数。**观察器回调只读不写** —— 座位的第一个读者是这条列
+   * 自己的排版,在派发循环里改它正是 Chrome 判「同深度还有没派送的通知」的那一形
+   * (09-14 `--composer-h` 那条判例的同族)。
+   */
+  const seatCoalescerRef = useRef<FrameCoalescer | undefined>(undefined)
+  if (!seatCoalescerRef.current) seatCoalescerRef.current = new FrameCoalescer(() => writeSeat())
+
+  /**
+   * **量一次座位**(只读),把结果存进 `seatHeightRef` 并排下一帧写。返回算出来的高。
+   *
+   * 座位不存在(没发过话 / 量不到几何)时恒 0 —— 那正是「退化为今天的落底 + 跟随」。
+   */
+  const readSeat = useCallback((el: HTMLElement): number => {
+    const geometry = seatActive && seatLandedRef.current ? measureSeat(el) : undefined
+    const next = geometry ? seatHeight(geometry) : 0
+    seatHeightRef.current = next
+    /*
+     * **只在数真的变了时才排那一帧**。流式期间这一句每秒跑几十遍,而绝大多数
+     * 没有座位的会话上它算出来恒是 0 —— 照排的话就是白排一帧 rAF、白跑一次
+     * `writeSeat`(与「观察器不许自伤」同一条账)。
+     */
+    if (next !== seatWrittenRef.current) seatCoalescerRef.current?.schedule()
+    return next
+  }, [seatActive])
+
+  /* 垫块随会话卸载 / 座位退役时,那格「已写的数」也要归零 —— 不然下一条会话
+   * 的第一次写会被一个属于上一棵树的数短路掉。 */
+  useEffect(() => {
+    if (seatActive) return
+    seatWrittenRef.current = undefined
+    seatHeightRef.current = 0
+    seatLandedRef.current = false
+  }, [seatActive, sessionId])
+  useEffect(() => {
+    const coalescer = seatCoalescerRef.current
+    return () => coalescer?.cancel()
   }, [])
 
   /**
@@ -924,6 +1193,18 @@ function useFollowBottom(
         // 跟底档照旧往下走(停靠期间长出来的那几段要跟);浏览档到此为止。
         if (browsing) return
       }
+      /*
+       * ── 座位:量在这儿,写在下一帧(正本 §3)────────────────────────────────
+       * 排在最前面是因为**它与判不判跟底是同一帧的两句话**:回复长了一截 → 座位
+       * 缩同样多 → `scrollHeight` 不变 → 视口本来就不必动。量在这里是白拿的
+       * (RO 回调跑在排版之后);真正写 style 排在下一帧,那是观察器的纪律。
+       *
+       * 于是有**一帧的差**:内容先长了 Δ,座位下一帧才缩 Δ。那一帧里若照旧贴底,
+       * 屏幕会先往下跳 Δ、下一帧又被缩回来的 `scrollHeight` 钳回去 —— 一次肉眼可见
+       * 的抖,而且滚动写点从一次变成每段一次。所以下面那句「座位还没长满就不贴底」
+       * 不是保险,是这条链成立的前提。
+       */
+      const seat = readSeat(el)
       let contentGrew = false
       let containerChanged = false
       for (const entry of entries) {
@@ -998,6 +1279,28 @@ function useFollowBottom(
         return
       }
       if (followShouldStick(followRef.current)) {
+        /*
+         * ── 座位还没长满:视口一像素不动(正本 §2 规矩 ②)──────────────────
+         * 内容长进的是**座位里**,不是页面下面 —— 座位缩掉同样多,`scrollHeight`
+         * 一格不变,「贴底」这件事此刻恰好什么都不必做。上面那段判词说的一帧差
+         * 就靠这一句兜住。
+         *
+         * ── 第二格判据:**已经写进 style 的那个高还没归零就不贴** ──────────────
+         * 座位是「量在这一帧、写在下一帧」的(观察器只读不写)。所以**归零那一帧**
+         * 有一个缝:`readSeat` 已经算出 0,而垫块上挂着的还是上一次写进去的残高,
+         * `scrollHeight` 里仍含着那一截。此刻照旧 `stick()`,视口会**多滚那一截**;
+         * 下一帧垫块缩到 0、`scrollHeight` 变小,浏览器把 `scrollTop` 钳回来 ——
+         * 先下后上,一帧可见的抖,量级正是最后一次长高的 Δ(一行到一个块那么多)。
+         *
+         * 所以两格都要归零才贴。**这不会把跟底卡死**:写到 0 那一帧垫块自己缩了高,
+         * 那是一次尺寸变化,RO 会再来一次 —— 那一次 `seat` 与 `seatWrittenRef`
+         * 都是 0,照旧 `stick()`。座位不存在时 `seatWrittenRef` 是 `undefined`,
+         * `?? 0` 让它读作「没有残高」,所以没有座位的会话一格行为都没变。
+         */
+        if (seat > 0 || (seatWrittenRef.current ?? 0) > 0) {
+          lastGapRef.current = gap
+          return
+        }
         stick()
         lastGapRef.current = el.scrollHeight - el.clientHeight - el.scrollTop
         return
@@ -1008,7 +1311,7 @@ function useFollowBottom(
     observer.observe(column)
     observer.observe(el)
     return () => observer.disconnect()
-  }, [scrollRef, sessionId, dispatch, stick])
+  }, [scrollRef, sessionId, dispatch, stick, readSeat])
 
   /*
    * 「发送了一条」那一拍。号从 `chat-source` 来(产地在 `send()`),这里只比对它变没变。
@@ -1018,12 +1321,126 @@ function useFollowBottom(
    * 都得出同一个答案,因为纯函数里那条「`grew` 不覆盖 `sent`」的规则本身就是次序无关的
    * (理由写在 follow.ts 的 `grew` 分支)。
    */
+  /**
+   * **滑到置顶线**(正本 §2 规矩 ①)—— 这个文件的**第四处**写 `scrollTop`。
+   *
+   * 另外三处各答一个问题:`stick` 贴底、`applyScrollAnchor` 落回进场锚点、扩窗补位。
+   * 这一处答的是**「刚发出去的那句话停在多高」**:自己那条的上缘落在视口上缘下
+   * `--send-line`,底下整个视口(= 座位)留给回复。四处谁都不兼职。
+   *
+   * ── 为什么是 JS 插值,不是 `scrollTo({behavior:'smooth'})` ────────────────
+   * 与那三处同一条:**定位不是动效**。`behavior: 'smooth'` 在动效档「无」下照样
+   * 平滑(它听的是系统的 `prefers-reduced-motion`,不是壳自己那格档位),而这一下
+   * 在那一档必须一步到位;它也交不出「此刻滑到哪了」这个读数,而下面那句
+   * `lastTopRef` 的同步必须逐帧做。
+   *
+   * ── 滑动期间不许被读成「人往上翻」────────────────────────────────────────
+   * `onScrollWithFollow` 判的是 `scrollTop` 比上一次小没小(2026-09-12 那条判例)。
+   * 我们自己每帧写的那个数要**当场**记进 `lastTopRef` —— 与 `stick` 里那一句
+   * 逐字同源(滚动事件比写点晚一帧,不在这里写就会拿滑动之前的位置当参照)。
+   *
+   * ── 人在滑动中间自己滚了 ──────────────────────────────────────────────────
+   * 当场收手:下一帧读到的 `scrollTop` 不是我们上一帧写下去的那个数,就说明这台
+   * 机器上有第二只手。判据仍然只有位置,没有标志位。
+   */
+  const landFrameRef = useRef(0)
+  const landWroteRef = useRef<number | undefined>(undefined)
+  const cancelLanding = useCallback(() => {
+    if (landFrameRef.current && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(landFrameRef.current)
+    }
+    landFrameRef.current = 0
+    landWroteRef.current = undefined
+  }, [])
+
+  const landOnSendLine = useCallback(() => {
+    // 这一轮先当作「没落过」——下面每一条早退都让座位留在 0 上(判词在 `seatLandedRef`)。
+    seatLandedRef.current = false
+    const el = scrollRef?.current
+    // 停靠中 / jsdom:没有排版,量出来的一切都是 0(与 `stick` 同一把尺子)。
+    if (!el || el.clientHeight === 0) return
+    /*
+     * **人在上面翻着的时候发送:一像素不动**(规矩 ⑦「人往上翻就是浏览」)。
+     * 座位也不留 —— 座位是「把视口让给这一轮」的意思,而此刻视口不归这一轮。
+     * 这也正是 `gate:chat-follow` ⑥ 量的那一条:上翻时发送不滚。
+     */
+    if (!followShouldStick(followRef.current)) return
+    seatLandedRef.current = true
+    cancelLanding()
+    // 先把座位写到位(同步,绘制之前):没有它,下面那个目标就是一个滚不到的位置。
+    readSeat(el)
+    writeSeat()
+    const target = sendLineTarget(el)
+    if (target === undefined) return
+    const from = el.scrollTop
+    const distance = Math.abs(target - from)
+    const ms = currentMotionTier() === 'none' ? 0 : sendLandMs(distance)
+    const settle = () => {
+      lastGapRef.current = el.scrollHeight - el.clientHeight - el.scrollTop
+    }
+    if (ms === 0 || distance < 1) {
+      el.scrollTop = target
+      lastTopRef.current = el.scrollTop
+      settle()
+      return
+    }
+    const started = performance.now()
+    const step = () => {
+      landFrameRef.current = 0
+      // 第二只手:我们上一帧写下去的那个数不在了,就是人自己滚了 —— 收手。
+      if (landWroteRef.current !== undefined && Math.abs(el.scrollTop - landWroteRef.current) > 1) {
+        landWroteRef.current = undefined
+        return
+      }
+      const k = Math.min(1, (performance.now() - started) / ms)
+      // 缓出(三次):起步快、落点轻,与 `--ease-out` 的形同族。
+      const eased = 1 - (1 - k) ** 3
+      el.scrollTop = from + (target - from) * eased
+      lastTopRef.current = el.scrollTop
+      landWroteRef.current = el.scrollTop
+      if (k < 1) landFrameRef.current = requestAnimationFrame(step)
+      else {
+        landWroteRef.current = undefined
+        settle()
+      }
+    }
+    if (typeof requestAnimationFrame !== 'function') {
+      el.scrollTop = target
+      lastTopRef.current = el.scrollTop
+      settle()
+      return
+    }
+    landFrameRef.current = requestAnimationFrame(step)
+  }, [scrollRef, cancelLanding, readSeat, writeSeat])
+
+  /*
+   * 「发送了一条」那一拍。号从 `chat-source` 来(产地在 `send()`),这里只比对它变没变。
+   * 基准是 `sentBaseRef`(**按会话**记,见它自己那段判词)—— 所以首帧那一次与换会话
+   * 那一次都不算:前者读到的是这个进程此前发过的总数,后者读到的是另一条会话的账。
+   *
+   * **排在长高那只 effect 之后**是有意的,但正确性不靠它:`sent` 与 `grew` 谁先到
+   * 都得出同一个答案,因为纯函数里那条「`grew` 不覆盖 `sent`」的规则本身就是次序无关的
+   * (理由写在 follow.ts 的 `grew` 分支)。
+   *
+   * **`useLayoutEffect` 而不是 `useEffect`**(09-15):座位要在这一帧**绘制之前**
+   * 就位,不然人会先看见一屏没有座位的旧排版、下一帧才补上 —— 与「首帧就在底,
+   * 不许先画顶部再跳」是同一条纪律。
+   */
   const seenTick = useRef(sentTick)
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (!seatActive) {
+      // 换会话 / 还没发过话:把基准对齐,不派 `sent`、不滑屏。
+      seenTick.current = sentTick
+      return
+    }
     if (sentTick === seenTick.current) return
     seenTick.current = sentTick
     dispatch({ type: 'sent' })
-  }, [sentTick, dispatch])
+    landOnSendLine()
+  }, [sentTick, seatActive, dispatch, landOnSendLine])
+
+  /** 滑动那一帧属于已经不在的那棵树 —— 卸载 / 换会话时撤掉。 */
+  useEffect(() => cancelLanding, [cancelLanding, sessionId])
 
   /*
    * 「回复到了」那一拍。判据是 `lastDeltaAt` 变了**且此刻有一轮在跑** ——
@@ -1116,7 +1533,7 @@ function useFollowBottom(
    */
   useParkedScroll(visible, lastTopRef, unparkTopRef)
 
-  return { follow, jumpToBottom, onScrollWithFollow, noteUserExpand }
+  return { follow, jumpToBottom, onScrollWithFollow, noteUserExpand, seatActive }
 }
 
 /**
@@ -1185,6 +1602,15 @@ interface RowProps {
    * `ChatStream` 顶层直接读 store 喂给 `useFollowBottom`,所以这里不留一格死 prop。
    */
   lastActivityAt?: number
+  /**
+   * **这一行要不要自己画那道等待折痕**(09-15,正本 §2 规矩 ③)。
+   *
+   * 「在等第一个字」是这条消息自己的事(判据 `segments.length === 0` 就在这一层),
+   * 但「这一轮有没有上下文更新行」不是 —— 那一行由 `ChatStream` 摆在上一条用户消息
+   * 后面,所以由它说了算。有的话这一格是 `false`:一轮只扫一道折痕。
+   * 活消息之外的每一行恒 `false`,`memo` 的浅比照旧短路。
+   */
+  waitingSeam?: boolean
 }
 
 /**
@@ -1224,6 +1650,7 @@ const MessageRow = memo(function MessageRow({
   streaming,
   flash,
   lastActivityAt,
+  waitingSeam = false,
 }: RowProps) {
   const role = message.role
   const className = [s.row, flash && s.flash].filter(Boolean).join(' ')
@@ -1260,19 +1687,22 @@ const MessageRow = memo(function MessageRow({
       {prose && (
         <>
           {/*
-            * ── 第一个字之前那段空档(§5.3 拍点 ⑫)────────────────────────────
+            * ── 第一个字之前那段空档(§5.3 拍点 ⑫;09-15 换成一道折痕)──────────
             * 回复的槽位已经开出来(`run/start` 到了、活消息立着),但**此刻一个字
-            * 都画不出来**:模型在思考、请求还在路上。今天那段是一片空白,与用户报的
-            * 「不知道它是不是卡住了」同源。
+            * 都画不出来**:模型在思考、请求还在路上。
             *
-            * 判据是 `segments.length === 0` —— 装配管线对这条消息**此刻画得出什么**
-            * 的完整答案。它不是拿 `content` 猜:一条只有工具活儿、正文还是空的消息
-            * 段序列非空,那时候槽位里有东西可看,不该再画点。换句话说,判据问的是
-            * 「屏幕上有没有东西」,而这正是这三颗点要回答的那个问题。
-            * 第一个 delta 到达 → 段序列非空 → 点当场换成正文与尾部那枚光标。
+            * 判据一个字没改,仍是 `segments.length === 0` —— 装配管线对这条消息
+            * **此刻画得出什么**的完整答案。它不是拿 `content` 猜:一条只有工具活儿、
+            * 正文还是空的消息段序列非空,那时候槽位里有东西可看,不该再画。
+            * 第一个 delta 到达 → 段序列非空 → 折痕当场换成正文与尾部那枚光标,
+            * **同一次提交**(两边由同一份 `segments` 推出来,中间没有一帧两样都不在)。
+            *
+            * 换的是**形**:三颗点(`ui/Dots` + 退役的 `.firstToken`)变成一道在扫的
+            * 折痕(正本 §2 规矩 ③)—— 它与上下文更新那一行说的是同一件事,所以两者
+            * 合成一行,由 `waitingSeam` 那一格决定这一轮归谁扫。丸上那三个点不动。
             */}
-          {streaming && segments.length === 0 && (
-            <Dots className={s.firstToken} label={t('chat.streaming')} />
+          {streaming && segments.length === 0 && waitingSeam && (
+            <WaitingSeam label={t('chat.streaming')} />
           )}
           {segments.map((segment, index) => {
             const key = segmentKey(message.id, index, segment)
@@ -1467,14 +1897,17 @@ function NoticeRow({ t }: { t: TFn }) {
  * `.rowLate` = **事后出现的行**(判词在 `ChatStream.module.css`):这一行不是随
  * 消息一起来的,它在回合开张之后才补上,所以高度 / 行距 / 不透明度三量一起软着陆。
  */
-function contextSeamRow(message: ProjectedMessage) {
+function contextSeamRow(message: ProjectedMessage, sweeping: boolean) {
   return (
     <article
       key={`${message.id}#context`}
       className={`${s.row} ${s.rowLate}`}
       data-context-of={message.id}
     >
-      <ContextDeltaSeam turnContext={message.turnContext} />
+      {/* `sweeping` = 这一轮还在等第一个字:等待折痕与这一行**合成一行**,由它扫
+          (判词在 `ContextDeltaSeam` 那格 prop 上)。首字一到它翻回 false:光停、
+          线实,标签常驻 —— 它说的那件事已经发生完了。 */}
+      <ContextDeltaSeam turnContext={message.turnContext} sweeping={sweeping} />
     </article>
   )
 }

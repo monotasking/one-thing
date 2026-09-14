@@ -223,3 +223,39 @@ export const DRAWER_MS = 80
  * 接住那一拍长高,之后 gap 判据照旧;清零反而要为「档位」这件事在跟随链上开一个口子。
  */
 export const EXPAND_HOLD_MS = 220
+
+/* ── 发送那一下滑到置顶线(2026-09-15,正本 `docs/send-flow-2026-09.md` §2 ①)──
+ *
+ * **定位不是动效**:滑的是 `scrollTop`,由 JS 逐帧插值(`ChatStream` 的第四处写点),
+ * 不是 `scrollTo({behavior:'smooth'})` —— 后者在动效档「无」下照样平滑,而这一下
+ * 在那一档必须一步到位。所以这里有两个数,而 CSS 那一侧只有其中一个有 token。
+ *
+ * `SEND_LAND_MS` 镜像 `--dur-land`(180ms,`__tests__/motion-tokens.test.ts` 逐条比对)。
+ * 它与拖拽那一拍的 `LAND_MS` **是同一个 token 的两个读者**,不是两个数:两处说的
+ * 也确实是同一件事 ——「一件东西跨过大半个屏幕落到它该在的位置」。各留一个名是因为
+ * 改其中一件的手感时,读代码的人要能看出另一件跟不跟着改(答案在这段判词里:
+ * 跟着改,它们共用产地)。
+ *
+ * `SEND_LAND_MAX_MS` **没有 token**:CSS 里没有任何一条规则播这段时长,它是
+ * 那条插值的**上限**,与 `EXPAND_HOLD_MS` / `MIN_BUSY_MS` 同处「判据不是时长」
+ * 那一族。凭空给它一个没人读的 token,就是凭空多一处会和 JS 说岔的地方。
+ */
+export const SEND_LAND_MS = 180
+export const SEND_LAND_MAX_MS = 320
+
+/**
+ * 路程短就按 `SEND_LAND_MS` 走,路长了往 `SEND_LAND_MAX_MS` 拉。
+ *
+ * 为什么要跟着路程走:一屏的路(700–900px)用 180ms 走完看着像**切屏**,而
+ * 「发送只滚一次,不切屏」正是规矩 ① 那句话;反过来,短路程拉到 320ms 又会让
+ * 按下发送到看见自己那句话之间空出一段。所以是一条折线,不是一个常数。
+ *
+ * 两个拐点都不是随手取的:**240** ≈ 一屏的三分之一(短过它的路眼睛跟得住,不必
+ * 拉长),**0.35** 是让「一屏的路」恰好落在上限上的斜率(240 + (900−240)×0.35 ≈ 471,
+ * 夹到 320)。动效档「无」由调用方判(`currentMotionTier()`),不在这只函数里 ——
+ * 它只回答「这段路该走多久」,不回答「这台此刻动不动」。
+ */
+export function sendLandMs(distancePx: number): number {
+  const extra = Math.max(0, distancePx - 240) * 0.35
+  return Math.round(Math.min(SEND_LAND_MAX_MS, SEND_LAND_MS + extra))
+}
