@@ -165,3 +165,48 @@ describe('瓦撕出来的窗(窗号 = 瓦 id)走的仍是瓦那条老路', () =>
     expect(st.memory.files).toEqual({ kind: 'edge', side: 'left', index: 0 })
   })
 })
+
+/**
+ * **反向:整条架子弹成一扇窗**(`store.shelfToFloat` → `placement.placeShelfInFloat`)。
+ * 同一个病:架子檐菜单「弹出 X 为浮窗」从前调 `edgeToFloat(根叶活动格的瓦 id)`,
+ * 装着浏览器 / 文件的架子那一行整个灰着。
+ * 反证:把 `EdgeShelf` 那一行换回 `activeItemId && edgeToFloat(activeItemId)` +
+ * `disabled` → `edge-shelf.test` 的「文件架子」那条红。
+ */
+describe('整条架子弹成一扇窗', () => {
+  it('只装着文件的架子:铸一个窗号,文件进那扇窗,架子没了', () => {
+    const stage = useStageStore.getState()
+    stage.placeRef(fileRef('/a.md'), edgeRegion('right'))
+    stage.placeRef(fileRef('/b.md'), edgeRegion('right'), { activate: false })
+    expect(activeIdOf(edgeRegion('right'))).toBe('file:/a.md')
+    useStageStore.getState().shelfToFloat('right')
+    const st = useStageStore.getState()
+    expect(st.floatOrder).toHaveLength(1)
+    const win = st.floatOrder[0]
+    expect(win.startsWith('win-')).toBe(true)
+    expect(tabIdsOf(floatRegion(win))).toEqual(['file:/a.md', 'file:/b.md'])
+    expect(activeIdOf(floatRegion(win))).toBe('file:/a.md')
+    expect(st.floats[win]).toBeTruthy()
+    expect(useWorkbenchStore.getState().regions[edgeRegion('right')]).toBeUndefined()
+  })
+
+  it('瓦 + 文件的架子:窗号就是瓦 id,两格同一扇窗,瓦走老路(placements / memory 都是 float)', () => {
+    seedStage({ shelves: shelvesWith({ right: 400 }) })
+    useStageStore.getState().placeRef(fileRef('/a.md'), edgeRegion('right'), { activate: false })
+    expect(tabIdsOf(edgeRegion('right'))).toEqual(['panel:right', 'file:/a.md'])
+    useStageStore.getState().shelfToFloat('right')
+    const st = useStageStore.getState()
+    expect(st.floatOrder).toEqual(['right'])
+    expect(tabIdsOf(floatRegion('right'))).toEqual(['panel:right', 'file:/a.md'])
+    expect(activeIdOf(floatRegion('right'))).toBe('panel:right')
+    expect(st.placements.right).toEqual({ kind: 'float' })
+    expect(st.memory.right?.kind).toBe('float')
+    expect(useWorkbenchStore.getState().regions[edgeRegion('right')]).toBeUndefined()
+  })
+
+  it('空着的边是空动作', () => {
+    const before = useWorkbenchStore.getState().regions
+    useStageStore.getState().shelfToFloat('top')
+    expect(useWorkbenchStore.getState().regions).toBe(before)
+  })
+})

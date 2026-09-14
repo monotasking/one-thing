@@ -157,7 +157,7 @@ export function EdgeShelf({ side }: Props) {
    */
   const shelfRail = useStageStore((st) => st.shelfRail)
   const setShelfRail = useStageStore((st) => st.setShelfRail)
-  const edgeToFloat = useStageStore((st) => st.edgeToFloat)
+  const shelfToFloat = useStageStore((st) => st.shelfToFloat)
 
   const asideRef = useRef<HTMLElement>(null)
 
@@ -291,8 +291,12 @@ export function EdgeShelf({ side }: Props) {
    * 收回 Dock(有后果的写操作,与 `keymap/types.ts` 那条「不该被盲按的键直接触发」
    * 同一条纪律),弹成浮窗是一次搬家。
    *
-   * 两行菜单项调的是**与从前那两颗钮同一只** store 动作(`edgeToFloat` /
-   * `closeShelf`)—— parity 测试逐项钉着这一条。
+   * 两行菜单项调的是 store 动作 `shelfToFloat` / `closeShelf` —— parity 测试逐项
+   * 钉着这一条。
+   *
+   * **「弹出为浮窗」弹的是这条架子,不是根叶活动格的瓦**(2026-09-14,与浮窗那一头的
+   * 「钉到边 ▸」同一个病的反向):从前它调 `edgeToFloat(activeItemId)`,一条装着浏览器 /
+   * 文件的架子那一行整个灰着,而它开在**架子的檐**上,说的本来就是这条架子。
    */
   const host = useMemo<PaneHostChrome>(
     () => ({
@@ -308,12 +312,7 @@ export function EdgeShelf({ side }: Props) {
         <>
           <MenuSeparator />
           <MenuSection>{name}</MenuSection>
-          <MenuItem
-            disabled={activeItemId === null}
-            onClick={() => activeItemId && edgeToFloat(activeItemId)}
-          >
-            {t('shelf.popOut', { name })}
-          </MenuItem>
+          <MenuItem onClick={() => shelfToFloat(side)}>{t('shelf.popOut', { name })}</MenuItem>
           <MenuItem onClick={() => closeShelf(side)}>{t('shelf.closeAll', { name })}</MenuItem>
           {/*
             **第三处入口,同一格真相**(2026-09-12):细梁右键 / 这一行 / 设置页
@@ -332,7 +331,7 @@ export function EdgeShelf({ side }: Props) {
         </>
       ),
     }),
-    [activeItemId, edgeToFloat, t, name, side, toggleCollapsed, closeShelf, shelfRail, setShelfRail],
+    [shelfToFloat, t, name, side, toggleCollapsed, closeShelf, shelfRail, setShelfRail],
   )
 
   // 空架子不渲染 —— 也就不占一丝布局。

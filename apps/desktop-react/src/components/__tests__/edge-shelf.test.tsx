@@ -178,7 +178,7 @@ describe('架子檐:只剩「收起」,弹出与关整栏进叶菜单', () => {
     expect(screen.queryByLabelText(`关闭整栏 ${NAME.right}`)).toBeNull()
   })
 
-  it('叶菜单里的「弹出为浮窗」= 从前那颗钮走的 edgeToFloat', () => {
+  it('叶菜单里的「弹出为浮窗」:瓦的架子弹出去,与从前那颗钮走 edgeToFloat 同一个结果', () => {
     render(<AppShell />)
     openOnEdge('files', 'right')
     const menu = leafMenu('right')
@@ -186,6 +186,29 @@ describe('架子檐:只剩「收起」,弹出与关整栏进叶菜单', () => {
       fireEvent.click(within(menu).getByText(`弹出 ${NAME.right} 为浮窗`))
     })
     expect(useStageStore.getState().placements.files).toEqual({ kind: 'float' })
+  })
+
+  /**
+   * **只装着文件的架子也弹得出去**(2026-09-14,与浮窗那头「钉到边 ▸」同一个病的反向):
+   * 从前这一行读 `activeItemId`,根叶活动格不是瓦就整行灰着 —— 浏览器 / 文件的架子
+   * 从此弹不成窗。反证:把 `EdgeShelf` 那一行换回 `disabled={activeItemId === null}` +
+   * `edgeToFloat(activeItemId)` → 这条当场红。
+   */
+  it('只装着文件的架子:「弹出为浮窗」不灰,点了整条架子进一扇新窗', () => {
+    render(<AppShell />)
+    act(() => {
+      useStageStore.getState().placeRef({ kind: 'file', key: '/tmp/a.md' }, 'edge:right')
+    })
+    const menu = leafMenu('right')
+    const row = within(menu).getByText(`弹出 ${NAME.right} 为浮窗`).closest('button')
+    expect(row).toHaveProperty('disabled', false)
+    act(() => {
+      fireEvent.click(row as HTMLElement)
+    })
+    expect(useWorkbenchStore.getState().regions['edge:right']).toBeUndefined()
+    const win = useStageStore.getState().floatOrder[0]
+    expect(win?.startsWith('win-')).toBe(true)
+    expect(useWorkbenchStore.getState().regions[`float:${win}`]).toBeTruthy()
   })
 
   it('叶菜单里的「关闭整栏」= 从前那颗钮走的 closeShelf', () => {

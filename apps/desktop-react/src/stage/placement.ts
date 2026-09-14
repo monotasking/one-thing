@@ -596,6 +596,46 @@ export function placeFloatIn(deps: PlacementDeps, winId: string, side: ShelfSide
   return null
 }
 
+/**
+ * **整条架子弹成一扇浮窗**(2026-09-14;`placeFloatIn` 的反向,同一个病的另一半)。
+ *
+ * 架子檐菜单里「弹出 X 为浮窗」从前调 `edgeToFloat(根叶活动格的瓦 id)`,于是一条
+ * 装着浏览器 / 文件的架子那一行整个灰着 —— 判据还是瓦的话。这一只收的是**边**,
+ * 做的是「这条架子上每一格都搬进一扇窗」:
+ *  · 窗号:架子上**第一块瓦**的 id(瓦撕出来的窗窗号就是瓦 id,矩形 / 置顶 / 记忆
+ *    三张表都按它记,一个字不用改);一块瓦都没有就铸一个 `win-…`;
+ *  · 第一块瓦经 `placeRefIn` → `placeAs`(记忆 / 瞬态一件不少),其余每一格
+ *    (别的瓦也算)经 `moveRef` 搬进**同一扇**窗 —— 直接调 `placeRefIn` 的话
+ *    第二块瓦会按自己的 id 另开一扇,而用户点的是「弹出**这条架子**」;
+ *    这些瓦的位置记忆因此不在这里改写(它们下次从 Dock 开出来仍按旧记忆,可接受:
+ *    记忆说的是「上次自己在哪」,而它们这次不是自己走的);
+ *  · 活动那一格搬完点回来,新窗置顶(投影把新长出来的窗排末位 = 最上)。
+ * 架子空了,`moveRef` 里的 `pruneRegions` 会把那棵树收掉,`shelves[side]` 的投影
+ * 随之清空 —— 与瓦那条老路留下的架子状态逐字相同。
+ */
+export function placeShelfInFloat(deps: PlacementDeps, side: ShelfSide): PlacementOutcome {
+  const region = edgeRegion(side)
+  const tree = workbench().regions[region]
+  if (!tree) return null
+  const leaves = leavesOf(tree)
+  const refs = leaves.flatMap((leaf) => leaf.tabs)
+  if (refs.length === 0) return null
+  const first = leaves[0]
+  const active = first?.tabs[first.active] ?? refs[0]
+  const anchor = refs.find((ref) => panelIdOf(ref) !== null)
+  const winId = anchor ? panelIdOf(anchor)! : nextFloatId()
+  const floatAt = floatRegion(winId)
+  if (anchor) placeRefIn(deps, anchor, floatAt)
+  for (const ref of refs) {
+    if (ref === anchor) continue
+    if (anchor) workbench().moveRef(ref, floatAt)
+    else placeRefIn(deps, ref, floatAt)
+  }
+  activateRefIn(floatAt, refId(active))
+  focusFloatIn(deps, winId)
+  return null
+}
+
 /** 一扇新窗的 id。**单调计数 + 启动戳**,理由与 `workbench/ids` 逐字相同。 */
 let floatSeq = 0
 const floatBoot = Date.now().toString(36).slice(-5)

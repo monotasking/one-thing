@@ -353,6 +353,9 @@ W3 那时是反过来的:中心区**内缩 25%**、其余全是分屏 —— 一
 再动手(要么全进要么全拒),搬完把松手前活动的那一格点回来,非瓦窗号的那格矩形随窗退役。
 标题栏菜单「钉到边 ▸」同一只 —— 从前它读根叶活动格的瓦 id,对非瓦的窗整组灰着,是同一个病。
 `floatToEdge(瓦 id, side)` 留给舞台檐与 `focus-follow` 那一族,不删。
+反向同病同治:架子檐菜单「弹出 X 为浮窗」从前调 `edgeToFloat(根叶活动格的瓦 id)`,装着浏览器 / 文件的
+架子那一行整个灰着;今天是 `stage/store.shelfToFloat(side)` → `placement.placeShelfInFloat` —— 窗号取架子上
+第一块瓦的 id(没有瓦就铸 `win-…`),其余每一格搬进同一扇窗,活动格点回来。
 
 判据全部是纯函数 `workbench/drop.ts` 的 `dropTargetAt(pointer, geometry)`,
 `geometry` 由宿主量一次叶矩形与**条矩形**递进去。返回:
