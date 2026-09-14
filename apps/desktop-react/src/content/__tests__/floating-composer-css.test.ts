@@ -111,6 +111,20 @@ describe('② 气口:正文与玻璃上缘之间那 40px', () => {
     )
   })
 
+  it('观察者回调只读不写:两格变量在下一帧写,不在 RO 派发循环里写(09-14)', () => {
+    /*
+     * `--composer-h` 的第一个读者是消息流滚动容器的 `padding-block-end`,RO 量的是
+     * content-box,内边距一变那只容器就在**同深度**再变一次 —— 回调里直接写就是
+     * 「loop completed with undelivered notifications」,用户每打一行字弹一次。
+     * **反证**:把 `new ResizeObserver(() => coalescer.schedule())` 换回
+     * `new ResizeObserver(measure)` → 这条当场红,隔离真机 12 行字 5 次报错回来。
+     */
+    const src = read('src/content/kinds/session.tsx')
+    expect(src).toMatch(/new ResizeObserver\(\(\) => coalescer\.schedule\(\)\)/)
+    expect(src).not.toMatch(/new ResizeObserver\(measure\)/)
+    expect(src).toMatch(/coalescer\.cancel\(\)/)
+  })
+
   /*
    * ── 09-12 报障「会把内容往上顶,有时顶有时不顶」的产地 ────────────────────
    * `--composer-h` 量的是 `.composerDock` 的 `getBoundingClientRect().height`,

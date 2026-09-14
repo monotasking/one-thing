@@ -3,6 +3,7 @@ import type { RefObject } from 'react'
 import { refId, registerContentKind } from '../../workbench/kinds'
 import { CENTER_REGION } from '../../workbench/regions'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
+import { FrameCoalescer } from '../../ui/frame-coalescer'
 import { ChatStream } from '../ChatStream'
 import { TocPanel } from '../../toc/TocPanel'
 import { useChatToc } from '../../toc/useChatToc'
@@ -148,10 +149,18 @@ function SessionLeaf({ contentRef }: { contentRef: ContentRef }) {
  * (中央区单叶时两者逐像素相同;分屏时上限跟着自己这半格缩,是对的)。
  * 名字没改:它被三份样式表按名字读着,改名是另一单。
  *
- * ── 为什么不会打转 ────────────────────────────────────────────────────────
- * 写 CSS 变量本身不改任何几何;它们的下游(滚动容器的内衬、抽屉的上限)也都
- * 不反过来决定被观察那两件的高度 —— 叶的高度是拼贴树给的,输入框的高度是它
- * 自己内容给的。所以这只观察者没有回路,不会触发 ResizeObserver 的「循环」告警。
+ * ── 它为什么曾经打转,以及为什么现在写在下一帧(09-14)────────────────────
+ * 这里从前写着「写 CSS 变量本身不改任何几何,所以没有回路」—— 那句话错了一半。
+ * `--composer-h` 的第一个读者是消息流滚动容器的 `padding-block-end`
+ * (`ChatStream.module.css`),而 ResizeObserver 缺省量的是 **content-box**:内边距
+ * 一变,那只容器的 content-box 当场变,它与输入框底座是 `.chatArea` 下**同深度的
+ * 兄弟** —— Chrome 于是判「同深度上还有没派送的通知」,用户屏幕上每打一行字弹一次
+ * 「ResizeObserver loop completed with undelivered notifications」(隔离真机:
+ * 12 行 5 次、清空 1 次、6 行长文 5 次,每一次前 1ms 都是这只回调)。
+ * 治法与 `ui/Tabs` 同一条律(`ui/frame-coalescer.ts` 文件头):**观察器回调只读不写,
+ * 量到的东西在下一帧交出去**。挂载那一次仍同步 —— 它不在任何派发循环里,而消息流
+ * 的首帧内衬要靠它。代价是输入框长高之后内衬晚一帧跟上(60Hz 下 16ms),而从前
+ * 那一帧浏览器本来就把这份通知推到了下一帧,只是顺手报了个错。
  *
  * ── 生命周期 ──────────────────────────────────────────────────────────────
  * 挂载即观察、卸载即断开并**把两格变量抹掉**(留着等于让下一次挂载先读到一份
@@ -176,10 +185,12 @@ function useComposerGeometry(
     }
     measure()
 
-    const observer = new ResizeObserver(measure)
+    const coalescer = new FrameCoalescer(measure)
+    const observer = new ResizeObserver(() => coalescer.schedule())
     observer.observe(dock)
     observer.observe(area)
     return () => {
+      coalescer.cancel()
       observer.disconnect()
       area.style.removeProperty('--composer-h')
       area.style.removeProperty('--center-h')
