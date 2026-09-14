@@ -10,7 +10,7 @@ import { useSessionsSource } from './data/sessions-source'
 import { useAgentsSource } from './data/agents-source'
 import { useModelsSource } from './data/models-source'
 import { useWorkspaceStore } from './workspace/store'
-import { startThemeSource } from './theme/theme-source'
+import { restoreThemeSnapshot, startThemeSource } from './theme/theme-source'
 import { startShellResources } from './resources/shell-host'
 import { startReadingAxes } from './reading/apply'
 import { startWorkspaceApply } from './workspace/apply'
@@ -61,6 +61,14 @@ startReadingAxes()
 // 首帧的瓦面就是最终的那一格色 —— 先画一格默认紫再跳成用户的蓝同样是可见的。
 // 列表本身要等连通(Dock 挂上时 load 一次),那时这条订阅会把真名字的字标补上。
 startWorkspaceApply()
+
+// 颜色同理,而且它是这几条里最刺眼的一条:主题表从前只能等连上 core、问完设置
+// 与系统明暗、再等 themes.apply 整趟回来才贴,真店上半秒的暖纸闪成 one-light。
+// 这一句读的是 localStorage 里**上一次 apply 成功的那张表**,不经过 core,贴在
+// createRoot 之前 —— 首帧就是最终色。没快照(从没连上过 core 的 origin)什么都不
+// 做,palette.css 的静态值照旧顶着。连通之后 startThemeSource() 照常真 apply 一次
+// 做校正:快照只贴像素、不记判据(判词在 theme/theme-source.ts 文件头)。
+restoreThemeSnapshot()
 
 // 家具跟着工作区走(T-W1)。同样在 createRoot 之前,同样一个字节的网都不碰 ——
 // 五个面的家具账全在 localStorage 里,它们的**首帧**已经由各自 persist 的 merge

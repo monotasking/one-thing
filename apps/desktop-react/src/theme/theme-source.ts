@@ -1,5 +1,6 @@
 import type { AppSettings } from '@shared/ipc/settings'
 import { themePort } from './theme-port'
+import { themeSnapshotStore } from './theme-snapshot'
 
 /**
  * 新壳的**颜色来源**(D2,方案 §0「token 策略三段结构」的第 ② 段)。
@@ -28,11 +29,33 @@ import { themePort } from './theme-port'
  * `getComputedStyle(document.documentElement)` 上读得到的键与值不受影响(自定义
  * 属性来自样式表照样进计算样式),验收门照读不误。
  *
- * ## 没连上 core 会怎样
+ * ## 没连上 core 会怎样 / 首帧是什么颜色
  *
- * 什么都不做:不打 `data-theme-bridge` 标记,不插 `<style>`。palette.css 的静态
- * 值原样生效 —— 浏览器直开(`npm run dev` 不带 Electron、连不上 core)零变化。
- * 这与 D1「不回退 mock」是同一条纪律的两面:**接不上就诚实地维持原状**。
+ * **有快照就是上一次的主题,没快照才是 palette 的静态值。**
+ *
+ * 快照(`theme-snapshot.ts`)是「上一次 apply 成功的那张表」,由
+ * `restoreThemeSnapshot()` 在 `createRoot` 之前**同步**贴上 —— 与
+ * `reading/apply.ts`、`workspace/apply.ts` 同一条纪律:读 localStorage、不经过
+ * core、首帧就是最终值。从前这里写的是「没连上 core 就什么都不做」,那句话今天
+ * 只对**从没连上过 core 的那个 origin** 成立:快照只会由一次真的 apply 写下来,
+ * 所以它在场就意味着这台壳连上过。
+ *
+ * 连不上的那一路仍然诚实:不重贴、不打新标记,屏幕上顶着的是上一次的真主题,
+ * 而不是一份猜出来的颜色。这与 D1「不回退 mock」不矛盾 —— 快照不是 mock,
+ * 是 core 自己上一次给的答案。
+ *
+ * 快照走的是**同一只** `applyThemeVariables`,所以那道「挡掉能破坏 CSS 语法的
+ * 键值」的护栏一个字都绕不过去。
+ *
+ * ## 快照不动 `lastDecision`,所以连通后必定校正一次
+ *
+ * `lastDecision` 的语义是「**上一次真 apply 的判据**」,`applyIfChanged` 拿它做
+ * 「变了才重贴」。快照贴的是上一次开机的表,这一次的设置、系统明暗、插件覆盖、
+ * 自定义主题文件都可能已经不同了 —— 若让快照去记 `lastDecision`,连通后第一趟
+ * `pull()` 固然照样无条件 apply(它本来就不看 `lastDecision`),但两条推送
+ * (系统明暗 / 设置变更)若抢在 `pull()` 之前到达,就会被「和快照一样」短路掉,
+ * 于是一张**陈旧的表**顶到下一次判据真变为止。所以快照只贴像素、不写判据:
+ * 它是一层顶着的图,校正的账仍然由 core 的那一次真 apply 记。
  */
 
 /** 主题表落在这一个 style 元素里;重 apply 是整体换 textContent。 */
@@ -68,6 +91,12 @@ export type ThemeProbe = {
   mode?: 'dark' | 'light'
   /** 贴上去的键数。 */
   count: number
+  /**
+   * 屏幕上这张表是**哪来的**:`'snapshot'` = localStorage 里上一次的表(启动那
+   * 一瞬),`'core'` = 刚刚从 `themes.apply` 拿回来的。真机排障要的就是这一格 ——
+   * 「闪没闪」与「顶着的是不是旧色」是两个不同的问题。
+   */
+  source?: 'snapshot' | 'core'
   error?: string
 }
 
@@ -164,6 +193,29 @@ export function applyThemeVariables(
   return lines.length
 }
 
+/**
+ * **开机第一句颜色:把上一次的表同步贴上**(启动闪色的治法,判词在文件头)。
+ *
+ * 在 `main.tsx` 里排在 `createRoot` 之前、`startThemeSource()` 之前 —— 它一个
+ * 字节的网都不碰,是纯粹的「读 localStorage → 贴 `:root`」,与
+ * `startReadingAxes()` / `startWorkspaceApply()` 同一格纪律。
+ *
+ * 没快照 = 什么都不做,与从前逐字一样(palette 静态值顶着)。
+ * **不设 `lastDecision`** —— 理由整段写在文件头「快照不动 lastDecision」那一节。
+ */
+export function restoreThemeSnapshot(): ThemeProbe {
+  const snapshot = themeSnapshotStore.read()
+  if (!snapshot) return probe
+  const count = applyThemeVariables(snapshot.cssVariables, snapshot.mode)
+  if (count === 0) return probe
+  probe.applied = true
+  probe.count = count
+  probe.themeId = snapshot.themeId
+  probe.mode = snapshot.mode
+  probe.source = 'snapshot'
+  return probe
+}
+
 /** 拿一次设置 + 系统色 → 判 → apply → 贴。失败就什么都不动(见文件头)。 */
 async function pull(): Promise<ThemeProbe> {
   const port = await themePort()
@@ -219,8 +271,20 @@ async function applyDecision(decision: ThemeDecision): Promise<ThemeProbe> {
   probe.count = count
   probe.themeId = decision.themeId
   probe.mode = decision.mode
+  probe.source = 'core'
   probe.error = undefined
   lastDecision = decision
+  // 存一份给下次开机(判词在文件头)。**贴成了才存** —— 一张贴不上去的表
+  // (空表 / 整表都被护栏挡掉)存下来只会让下一次开机白读一趟。
+  // 存的是 core 给的原表,不是过滤后的行:护栏在 `applyThemeVariables` 里,
+  // 快照走的是同一只函数,所以下次读回来照样过一遍同一道闸。
+  if (count > 0) {
+    themeSnapshotStore.write({
+      themeId: decision.themeId,
+      mode: decision.mode,
+      cssVariables: response.cssVariables,
+    })
+  }
   // 一声通知,给「把 CSS 变量读成 JS 值」的那一族(见 `onThemeApplied`)。
   // 一个监听炸了不许拦住别的 —— 这是通知,不是一条链。
   for (const listener of [...themeAppliedListeners]) {
@@ -325,6 +389,7 @@ export function resetThemeSourceForTest(): void {
   probe.count = 0
   probe.themeId = undefined
   probe.mode = undefined
+  probe.source = undefined
   probe.error = undefined
   if (typeof document !== 'undefined') {
     document.getElementById(STYLE_ELEMENT_ID)?.remove()

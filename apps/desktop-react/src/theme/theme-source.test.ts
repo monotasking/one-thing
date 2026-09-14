@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { AppSettings } from '@shared/ipc/settings'
+import type { AppSettings, GetSettingsResponse } from '@shared/ipc/settings'
 import { configureThemePort, type ThemePort } from './theme-port'
+import { THEME_SNAPSHOT_KEY, type ThemeSnapshot } from './theme-snapshot'
 import {
   applyThemeVariables,
   decideTheme,
   refreshThemeFromSettings,
   resetThemeSourceForTest,
+  restoreThemeSnapshot,
   startThemeSource,
   themeProbe,
 } from './theme-source'
@@ -26,6 +28,12 @@ function fakePort(options: {
   cssVariables?: Record<string, string> | undefined
   applyError?: string
   ready?: () => Promise<unknown>
+  /**
+   * `getSettings` 永不 resolve —— 于是 `pull()` 一直挂着,而两条推送(它们在
+   * `ready()` 之后、`pull()` 之前就订好了)是这一局里唯一还能走通的路。
+   * 快照那一组要的就是这个窗口:开场那一趟还没回来时,推送该不该被短路。
+   */
+  holdSettings?: boolean
 }): {
   port: ThemePort
   calls: PortCalls
@@ -41,6 +49,7 @@ function fakePort(options: {
     ready: options.ready ?? (async () => undefined),
     getSettings: async () => {
       getSettingsCalls += 1
+      if (options.holdSettings) return new Promise<GetSettingsResponse>(() => {})
       return { success: true, settings: options.settings ?? settings('system') }
     },
     getSystemTheme: async () => ({ success: true, theme: options.systemTheme ?? 'dark' }),
@@ -74,8 +83,19 @@ function fakePort(options: {
 afterEach(() => {
   resetThemeSourceForTest()
   configureThemePort(undefined)
+  window.localStorage.clear()
   vi.restoreAllMocks()
 })
+
+/** 往 localStorage 里塞一份快照(产品路径读的就是这个键)。 */
+function seedSnapshot(snapshot: unknown): void {
+  window.localStorage.setItem(THEME_SNAPSHOT_KEY, JSON.stringify(snapshot))
+}
+
+function readSnapshot(): ThemeSnapshot | null {
+  const text = window.localStorage.getItem(THEME_SNAPSHOT_KEY)
+  return text ? (JSON.parse(text) as ThemeSnapshot) : null
+}
 
 describe('decideTheme —— 当前主题的判据(与旧 Vue 壳同源)', () => {
   it('theme=system 时明暗跟系统色走', () => {
@@ -352,5 +372,161 @@ describe('设置变更 → 自动重判(H 批)', () => {
     await Promise.resolve()
 
     expect(calls.applied).toHaveLength(1)
+  })
+})
+
+/**
+ * **启动快照**(启动闪色的治法)。钉四件事:贴得上、坏存档不许贴、apply 成功要
+ * 存、以及「快照贴过之后连通仍然真的校正一次」—— 最后那条是 `lastDecision`
+ * 故意不写的全部理由(判词在 theme-source.ts 文件头)。
+ */
+describe('restoreThemeSnapshot —— createRoot 之前那一句同步颜色', () => {
+  it('有合法快照:变量上 root、桥的标记在场、color-mode 跟快照的 mode', () => {
+    seedSnapshot({
+      v: 1,
+      themeId: 'one-light',
+      mode: 'light',
+      cssVariables: { '--ui-surface-app-bg': '#FAFAFA', '--ui-text-primary-fg': '#383A42' },
+    })
+
+    const result = restoreThemeSnapshot()
+
+    expect(result.applied).toBe(true)
+    expect(result.count).toBe(2)
+    expect(result.themeId).toBe('one-light')
+    expect(result.source).toBe('snapshot')
+    const style = document.getElementById('onething-theme-vars')
+    expect(style?.textContent).toContain('--ui-surface-app-bg: #FAFAFA;')
+    expect(document.documentElement.hasAttribute('data-theme-bridge')).toBe(true)
+    expect(document.documentElement.getAttribute('data-color-mode')).toBe('light')
+    expect(document.documentElement.style.colorScheme).toBe('light')
+  })
+
+  it('没有快照:什么都不做(与从前逐字一样,palette 静态值顶着)', () => {
+    const result = restoreThemeSnapshot()
+
+    expect(result.applied).toBe(false)
+    expect(result.source).toBeUndefined()
+    expect(document.getElementById('onething-theme-vars')).toBeNull()
+    expect(document.documentElement.hasAttribute('data-theme-bridge')).toBe(false)
+  })
+
+  it.each([
+    ['不是 JSON', undefined],
+    ['版本号不对', { v: 2, themeId: 'nord', mode: 'dark', cssVariables: { '--ui-a': '#111' } }],
+    ['mode 不在两档里', { v: 1, themeId: 'nord', mode: 'sepia', cssVariables: { '--ui-a': '#111' } }],
+    ['表里有非字符串值', { v: 1, themeId: 'nord', mode: 'dark', cssVariables: { '--ui-a': 111 } }],
+    ['themeId 空', { v: 1, themeId: '', mode: 'dark', cssVariables: { '--ui-a': '#111' } }],
+  ])('坏存档(%s):不贴、不打标记、不抛', (_label, payload) => {
+    if (payload === undefined) window.localStorage.setItem(THEME_SNAPSHOT_KEY, '{半截')
+    else seedSnapshot(payload)
+
+    expect(() => restoreThemeSnapshot()).not.toThrow()
+    expect(themeProbe().applied).toBe(false)
+    expect(document.getElementById('onething-theme-vars')).toBeNull()
+    expect(document.documentElement.hasAttribute('data-theme-bridge')).toBe(false)
+  })
+
+  it('快照整表都被 CSS 护栏挡掉 = 当作没贴上(走的是同一只 applyThemeVariables)', () => {
+    seedSnapshot({
+      v: 1,
+      themeId: 'nord',
+      mode: 'dark',
+      cssVariables: { '--ui-bad': '#fff } :root { --surface-0: red' },
+    })
+
+    const result = restoreThemeSnapshot()
+
+    expect(result.applied).toBe(false)
+    expect(document.documentElement.hasAttribute('data-theme-bridge')).toBe(false)
+  })
+})
+
+describe('apply 成功 → 存一份快照给下次开机', () => {
+  it('存的是这一次的 themeId / mode / 那张表', async () => {
+    const { port } = fakePort({
+      settings: settings('dark', { darkThemeId: 'nord' }),
+      cssVariables: { '--ui-surface-app-bg': '#2E3440', '--ui-text-primary-fg': '#D8DEE9' },
+    })
+    configureThemePort(port)
+
+    await startThemeSource()
+
+    expect(readSnapshot()).toEqual({
+      v: 1,
+      themeId: 'nord',
+      mode: 'dark',
+      cssVariables: { '--ui-surface-app-bg': '#2E3440', '--ui-text-primary-fg': '#D8DEE9' },
+    })
+    expect(themeProbe().source).toBe('core')
+  })
+
+  it('apply 失败 / 表贴不上 = 不存(下次开机白读一趟没意义)', async () => {
+    const { port } = fakePort({ settings: settings('light'), applyError: 'theme not found' })
+    configureThemePort(port)
+    await startThemeSource()
+    expect(readSnapshot()).toBeNull()
+
+    resetThemeSourceForTest()
+    configureThemePort(undefined)
+    const empty = fakePort({ settings: settings('light'), cssVariables: {} })
+    configureThemePort(empty.port)
+    await startThemeSource()
+    expect(readSnapshot()).toBeNull()
+  })
+})
+
+describe('快照不短路校正 —— lastDecision 故意不写', () => {
+  it('贴过快照之后 startThemeSource() 仍然真的 apply 一次,而且新表盖掉旧表', async () => {
+    // 上一次开机是 one-light;这一次设置里已经换成 nord/dark。
+    seedSnapshot({
+      v: 1,
+      themeId: 'one-light',
+      mode: 'light',
+      cssVariables: { '--ui-surface-app-bg': '#FAFAFA' },
+    })
+    restoreThemeSnapshot()
+    expect(themeProbe().source).toBe('snapshot')
+
+    const { port, calls } = fakePort({
+      settings: settings('dark', { darkThemeId: 'nord' }),
+      cssVariables: { '--ui-surface-app-bg': '#2E3440' },
+    })
+    configureThemePort(port)
+
+    await startThemeSource()
+
+    expect(calls.applied).toEqual([{ themeId: 'nord', mode: 'dark' }])
+    const text = document.getElementById('onething-theme-vars')?.textContent ?? ''
+    expect(text).toContain('--ui-surface-app-bg: #2E3440;')
+    expect(text).not.toContain('#FAFAFA')
+    expect(document.documentElement.getAttribute('data-color-mode')).toBe('dark')
+    expect(themeProbe().source).toBe('core')
+    expect(readSnapshot()?.themeId).toBe('nord')
+  })
+
+  it('推送抢在 pull 之前到达时也不被快照短路(applyIfChanged 的判据只认真 apply)', async () => {
+    // 快照说的是 catppuccin/light;若 restore 去写了 lastDecision,下面这条设置推送
+    // 就会被 applyIfChanged 判成「没变」而短路掉,屏幕上顶着一张陈旧的表。
+    seedSnapshot({
+      v: 1,
+      themeId: 'catppuccin',
+      mode: 'light',
+      cssVariables: { '--ui-surface-app-bg': '#EFF1F5' },
+    })
+    restoreThemeSnapshot()
+
+    const { port, calls, emitSettings, getSettingsCalls } = fakePort({
+      settings: settings('dark', { darkThemeId: 'nord' }),
+      holdSettings: true, // 开场那一趟挂着,只剩推送这一条路(见 fakePort 那一格)
+    })
+    configureThemePort(port)
+    void startThemeSource()
+    await vi.waitFor(() => expect(getSettingsCalls()).toBe(1)) // 订阅已就位
+
+    emitSettings(settings('light', { lightThemeId: 'catppuccin' }))
+
+    await vi.waitFor(() => expect(calls.applied).toHaveLength(1))
+    expect(calls.applied[0]).toEqual({ themeId: 'catppuccin', mode: 'light' })
   })
 })
