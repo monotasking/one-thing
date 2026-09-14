@@ -8,18 +8,26 @@
  * (`configureAuthHost`),而那个口必须由**拿着 Electron app 身份的进程**注入。
  * 所以壳自己装配 backend:与旧 Vue 桌面同一份 `createOnethingBackend` 配方。
  *
- * 它现在做五件事:
+ * ── 启动次序(2026-09-15 改过一次,这里写的是**今天**的真话)──────────────
+ * 顺序就是下面这个顺序,而它的要点是**开窗排在装配之前**:
  *
- *  1. **发现**这个 store 正在跑的 core(`<store>/run/http.json`)。有活的就挂它 ——
- *     旧 Vue 桌面(owner `desktop`)、别人起的 `server:start`(owner `server`)、
- *     另一个壳(owner `shell`)都一样。这正是 A 期「一个 core 任何 UI」的目标:
- *     两个 UI 订同一条事件流,而不是两台引擎各写各的。
- *  2. 没有活的 core 时**自己当 core**:configureLogging → 宿主端口注入 →
- *     `createOnethingBackend` → 开窗 → 非阻塞挂 HTTP/SSE 面(发现文件 owner=`shell`)。
- *  3. 开窗口。
- *  4. 一条 IPC:`host:connection` → `{ baseUrl, token }`。发现文件是 0600 的秘密,
+ *  1. `app.whenReady()` → 装应用菜单(必须在第一扇窗之前)。
+ *  2. **开窗**。页面从这一刻开始加载(dev 下 873 个模块过 vite,冷 2.4–5s)。
+ *  3. **发现**这个 store 正在跑的 core(`<store>/run/http.json`,探活最多 500ms)。
+ *     有活的就挂它 —— 别人起的 `server:start`(owner `server`)、另一个壳
+ *     (owner `shell`)都一样。这正是 A 期「一个 core 任何 UI」的目标:两个 UI 订
+ *     同一条事件流,而不是两台引擎各写各的。
+ *  4. 没有活的 core 时**自己当 core**:`createOnethingBackend`(真店 ≈1.7s:498 会话、
+ *     72 skills、3 个 MCP)→ 非阻塞挂 HTTP/SSE 面(发现文件 owner=`shell`)+ 调度器
+ *     + MCP + 内嵌浏览器。**这一段与第 2 步的页面加载是并行的** —— 它们本来就互不
+ *     依赖(见下一条),从前排成一条队纯粹是代码次序造成的。
+ *  5. 一条 IPC:`host:connection` → `{ baseUrl, token }`。发现文件是 0600 的秘密,
  *     渲染层不许自己读盘 —— 挂别人的面和挂自己的面,渲染层看到的形状逐字相同。
- *  5. 退出由 Backend 的资源阶段协调:停止接入 → 排空 → 保存 → 摘发现文件。
+ *     **它是一个承诺,不是一个值**:窗比答案先出现,所以这条口在模块求值那一刻就
+ *     持有一个待定的 promise(`./host-connection.ts`),渲染层
+ *     `await host.getConnection()` 等的是答案、不是开窗的次序。
+ *  6. 退出由 Backend 的资源阶段协调:停止接入 → 排空 → 保存 → 摘发现文件。
+ *     装配途中被 Cmd+Q 截住时,收尾先等 `ownCoreAssembly` 落地再 dispose。
  *
  * 它**仍然不**做的事(边界,别越):不取 StoreLock、不注册第二张 IPC 表。
  * 不取锁是 08-24 的拍板(「store 不要锁」),与 apps/server 同口径:单写者靠发现
@@ -47,6 +55,8 @@ import { getLogger } from '@onething/backend/wiring/logging/index.js'
 import { installAppMenu } from './app-menu-install.js'
 import { applyShellNetworkProxySettings, createShellHostPorts } from './host-ports.js'
 import { createDesktopShutdownRequest } from './shutdown.js'
+// 「连接」是开窗之前就存在的承诺(整段判词在那只文件的文件头)。
+import { HostConnectionGate, type HostConnectionResult } from './host-connection.js'
 // T2:页面重载时把「消费者走了」当场说给终端服务听(判词在那只文件的文件头)。
 import { installTerminalReloadDetach } from './terminal-reload.js'
 /*
@@ -102,11 +112,6 @@ type HttpDiscoveryRecord = {
   startedAt?: number
   owner: 'desktop' | 'server' | 'shell'
 }
-
-/** `host:connection` 的回执:成功给基址与 token,失败给一句人话(启发式⑨)。 */
-type HostConnectionResult =
-  | { ok: true; baseUrl: string; token?: string }
-  | { ok: false; error: string }
 
 /** 打包后是 `.../dist-electron/main.cjs`,dev 时同路径 —— 两跳到 apps/。 */
 const appRoot = path.resolve(__dirname, '..')
@@ -204,11 +209,15 @@ let ownCoreAssembly: Promise<OnethingBackend> | undefined
 let shellWindow: BrowserWindow | undefined
 let quitting = false
 /**
- * `host:connection` 的答案。是 Promise 而不是值:内嵌那条路上 HTTP 面是**开窗之后**
- * 才起来的(非阻塞,不让一次 listen 拖住第一帧),而渲染层第一件事就是问这条。
- * 让 handler await 这个 Promise,渲染层的契约(返回一个 Promise)一个字不用改。
+ * `host:connection` 的答案。**模块级 `const`,不是 `let`** —— 一个进程只服务一个
+ * store、只连一台 core,那是这个宿主的结构性事实(与 `installAppMenu` 那张进程级
+ * 单槽同一条判据),不是一格会被重新赋值的状态;而且 `ipcMain.handle` 在模块求值
+ * 那一刻就注册了,handler 闭包必须现在就抓得到它。
+ *
+ * 为什么非得是一个**先于窗口存在**的承诺:启动次序(2026-09-15)把开窗提到了装配
+ * 之前,于是渲染层会赶在装配落地之前问这条。整段判词在 `./host-connection.ts`。
  */
-let connectionReady: Promise<HostConnectionResult> | undefined
+const connection = new HostConnectionGate()
 
 function connectionOf(record: { host: string; port: number; token?: string }): HostConnectionResult {
   return { ok: true, baseUrl: `http://${record.host}:${record.port}`, token: record.token }
@@ -265,7 +274,17 @@ function startPostWindowServices(): void {
        */
       discoveryExtras: cdpDiscoveryExtras(app.commandLine),
     })
-    connectionReady = mounting
+    /*
+     * 挂面的结局有两种,**两种都要落到 gate 上**:listen 成功给基址,listen 抛了
+     * 给那句原话。少了后者渲染层就永远停在 `await getConnection()` 上 —— 一扇画着
+     * 空白的窗、日志里一条错、没有任何人把这两件事连起来。
+     *
+     * 为什么保留这一格 `mounted` 而不让收尾直接等 gate:下面那两条收尾等的是
+     * **「listen 这件事有结果了没有」**(判词在它们自己那一段),而 gate 等的是
+     * 「连接答案有没有」—— 今天这条路上两者同源,但 gate 是可以被别的分支先答掉的
+     * (借用活 core / 装配失败),那时收尾就会提前放行。等哪一件,写哪一件。
+     */
+    const mounted: Promise<HostConnectionResult> = mounting
       .then(embedded => {
         log.info('embedded core http surface listening', { url: embedded.url })
         return connectionOf(embedded)
@@ -277,24 +296,25 @@ function startPostWindowServices(): void {
           error: error instanceof Error ? error.message : String(error),
         }
       })
+    void mounted.then(result => connection.resolve(result))
 
     /*
      * A3(方案 §2.4「谁起的,谁 `own()`」):这三件从前散在 `shutdownOwnCore`
      * 的 finally 里(HTTP 面)或者根本没有收尾(调度器、MCP)。
      *
      * 登记是**同步的**(就在 listen 那一行之后),而收尾里第一件事是
-     * `await connectionReady` —— 挂面是非阻塞起的,dispose 可能比 listen 还早
+     * `await mounted` —— 挂面是非阻塞起的,dispose 可能比 listen 还早
      * 到(壳起来两秒内 Cmd+Q)。不等它起完就 stop,`stopEmbeddedOnethingHttpServer`
      * 看到的 `current` 还是 null,于是它一句 no-op 就返回,而随后 listen 成功
      * 的那台面留在进程里,连带一份指向它的发现文件。等一下就没这条竞速。
-     * `connectionReady` 自带 catch,永不 reject,所以这一等不会翻车。
+     * `mounted` 自带 catch,永不 reject,所以这一等不会翻车。
      */
     b.own(async () => {
-      await connectionReady
+      await mounted
       getEmbeddedOnethingHttpServer()?.stopAccepting()
     }, 'embeddedHttpIngress', 'quiesce')
     b.own(async () => {
-      await connectionReady
+      await mounted
       await stopEmbeddedOnethingHttpServer()
     }, 'embeddedHttpSurface')
     b.own(() => removeHttpDiscovery({ lease: b.storeLease }), 'httpDiscovery', 'endpoints')
@@ -487,6 +507,37 @@ async function loadDevServer(window: BrowserWindow, devServerUrl: string): Promi
   await window.loadURL(devServerUrl)
 }
 
+/**
+ * ── 这扇窗现在**开在装配之前**(2026-09-15 启动次序)────────────────────────
+ * 于是这个函数里每一件事都可能在「后端还不存在」时被触发,而装配层那 121 个
+ * `getXxx()` 访问器在那之前一律抛 `BackendNotAssembledError`。逐件过了一遍,
+ * 一件都不碰访问器 —— 结论写在这里,不靠 try/catch 兜:
+ *
+ *  · `new BrowserWindow` / `preload.cjs` / `loadFile` / `loadURL` —— 纯 Electron。
+ *    preload 只有 `contextBridge` + `ipcRenderer`,连 `@onething/*` 都不 import。
+ *  · `ready-to-show` → `show()` / `showInactive()` —— 纯窗口。
+ *  · `pushFullScreen`(`enter/leave-full-screen` + `did-finish-load`)——
+ *    `webContents.send`,一条单向推送,没有后端那一侧。
+ *  · `installTerminalReloadDetach` —— 它缺省调的那只 detach 住在
+ *    `@onething/runtime/terminal/service.wiring`,读的是**那只包自己的模块级
+ *    单例**(`serviceInstance?.markAllDetached()`),不是 backend 访问器;没开过
+ *    终端时是一句安全的空话。而且它只在**第二次**主框架导航才响(第一次是开窗
+ *    那一发,判词在 `./terminal-reload.ts`),装配窗口期内根本不会被调到。
+ *  · `loadDevServer` 的 `session.clearCache()` —— 窗口自己的 session,与后端无关;
+ *    它失败时那句 `getLogger('shell.boot').warn` 也安全:根 logger 在模块求值时
+ *    就存在(只挂内存环),`configureLogging` 之前的记录留在环里
+ *    (`backend/wiring/logging/index.ts` 的判词)。**代价**:落在装配之前的那几条
+ *    只进环、不进 `shell.jsonl`(文件 sink 是 `configureLogging` 才挂上的)——
+ *    崩溃现场 `dumpRecentLogRecords()` 仍然捞得到,见文件末留账③。
+ *  · `installAppMenu` / `FRAMELESS_ON_MAC` —— 本来就在装配之前(前者是
+ *    `whenReady` 第一句,后者是模块级常量),这一批没有改变它们的处境。
+ *
+ * 唯一真的晚了一拍的是 `host:native-view` 那条 `ipcMain.on`(它在
+ * `installBrowserHost` 里,属后窗服务)。它**接不漏**:渲染层是
+ * `whenConnected().finally(() => createRoot(...))`,React 根挂载在连接落定之后,
+ * 而连接落定要等 HTTP 面 listen —— `installBrowserHost` 与那次 listen 在同一拍
+ * 同步跑完,必定更早。`AppShell` 的 `startKeymapDownlink()` 那一推因此仍有人收。
+ */
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1280,
@@ -555,10 +606,16 @@ function createWindow(): BrowserWindow {
   return window
 }
 
-// 渲染层唯一的宿主口。发现文件是 0600 的秘密,渲染层不许自己读盘。
-ipcMain.handle('host:connection', async (): Promise<HostConnectionResult> => (
-  connectionReady ? connectionReady : { ok: false, error: 'core 尚未连接' }
-))
+/*
+ * 渲染层唯一的宿主口。发现文件是 0600 的秘密,渲染层不许自己读盘。
+ *
+ * **永远交回同一个承诺**,不做「有就给、没有就编一句」的三元。那句现编的
+ * 「还没连上」曾经是一条走不到的路(旧次序里装配跑完才开窗),启动次序一改它
+ * 就成了主路,而渲染层的 `whenConnected()` 是一次性的、不重试 —— 一次竞速会
+ * 变成永久故障。判词整段在 `./host-connection.ts` 的文件头,反证钉在
+ * `__tests__/host-connection.test.ts`(那句假话一回来就红)。
+ */
+ipcMain.handle('host:connection', (): Promise<HostConnectionResult> => connection.promise)
 
 void app.whenReady().then(async () => {
   // 离屏档连 Dock 图标都不冒(macOS 上 `app.dock` 才有;别的平台是 undefined)。
@@ -566,25 +623,56 @@ void app.whenReady().then(async () => {
   // K1:壳自己设菜单,把 Electron 默认那张没人审过的键表拿掉(判词在 `app-menu.ts`
   // 的文件头)。**必须在第一扇窗之前**,否则窗已经在那张默认表底下站了一会儿。
   installAppMenu()
+
+  /*
+   * ── 开窗在**一切之前**(2026-09-15 启动次序)────────────────────────────
+   * 从前这一段是「探发现文件(最多 500ms)→ 没有活 core 就 `await
+   * assembleOwnCore()`(真店 ≈1.7s)→ 才 `createWindow()`」。页面加载(dev 下
+   * 873 个模块过 vite,冷 2.4–5s)只能从装配完那一刻才开始数 —— 两段本来互不相干
+   * 的等待被排成了一条队。
+   *
+   * 它们互不相干是有依据的,不是猜的:渲染层拿连接走的就是
+   * `await host.getConnection()`(`src/platform/connection.ts`),它等的是**答案**,
+   * 不是开窗的次序。所以窗先开、页面先加载,装配在旁边跑,答案到了再喂进去。
+   *
+   * 代价与它的落点:这扇窗在装配完成之前就已经在加载页面了,于是
+   * `createWindow()` 里那几件(重载 detach / 全屏推送 / 清缓存)都可能在后端
+   * 还不存在时被触发 —— 逐件确认过它们一件都不碰 `getXxx()` 访问器,判词写在
+   * 各自那一行上。
+   */
+  if (quitting) return
+  createWindow()
+
   const existing = readDiscovery()
   if (existing && (await isAlive(existing))) {
     // 借用活的core只建立窗口连接;自有写者始终由Backend的store lease排他。
-    connectionReady = Promise.resolve(connectionOf(existing))
-    createWindow()
+    connection.resolve(connectionOf(existing))
   } else {
     try {
       ownCoreAssembly = assembleOwnCore()
       backend = await ownCoreAssembly
     } catch (error) {
-      // 装配失败也要开窗:错误交给渲染层显示,比静默白屏强(启发式⑨)。
+      // 装配失败:窗已经在那儿了,错误交给渲染层显示,比静默白屏强(启发式⑨)。
       getLogger('shell.boot').error('embedded backend assembly failed', { stage: 'backend-assembly' }, error)
-      connectionReady = Promise.resolve({
+      connection.resolve({
         ok: false,
         error: error instanceof Error ? error.message : String(error),
       })
     }
-    if (quitting) return
-    createWindow()
+    /*
+     * 装配途中被 Cmd+Q / SIGTERM 截住(`ownCoreAssembly` 那一格已经让收尾等到了
+     * 实例)。从前这一句挡的是「别开窗了」,今天窗早就开了,它挡的是**别再起那
+     * 一堆后窗服务**:HTTP 面 / 调度器 / MCP / 内嵌浏览器起到一半又被 dispose,
+     * 是白费功夫,也是孤儿进程的产地。
+     *
+     * 连接照样要落定,而且落的是真话:这台壳不会再连 core 了。不落 = 渲染层
+     * 永远停在 `await getConnection()` 上 —— 退出这条路上那是一扇画不出东西也
+     * 说不出原因的窗,而永久待定正是 gate 这只文件要根治的病。
+     */
+    if (quitting) {
+      connection.resolve({ ok: false, error: '壳正在退出,不再连接 core' })
+      return
+    }
     if (backend) startPostWindowServices()
   }
 
@@ -624,6 +712,17 @@ function requestShutdown(reason: string): Promise<void> {
 // D0 是单窗薄壳:窗关了就退(mac 上的常驻托盘行为留给 P4 的窗口系批)。
 app.on('window-all-closed', () => app.quit())
 
+/*
+ * 启动次序改了之后这条路**更容易走到**:窗子开在装配之前,所以「装配还在跑就被
+ * Cmd+Q / 关窗」不再是两秒钟的窄缝,而是整整 1.7s 的常态。它仍然接得住 ——
+ * `ownCoreAssembly` 那一格在 `assembleOwnCore()` 调用那一行**同步**就写上了
+ * (不是等它 resolve 才写),于是这里的 `!backend && !ownCoreAssembly` 判不成真,
+ * `shutdownOwnCore` 里那句 `backend ?? await ownCoreAssembly` 会等装配落地再
+ * `requestShutdown` → dispose,窗随进程一起走,不留孤儿。
+ *
+ * 另一半在 `whenReady` 里:那边 `await` 醒来时先看 `quitting`,看见了就**不起**
+ * 后窗服务(HTTP 面 / 调度器 / MCP / 内嵌浏览器)—— 起一半再 dispose 才是孤儿的产地。
+ */
 app.on('will-quit', event => {
   if (!backend && !ownCoreAssembly) return
   // `will-quit` 不等 Promise,所以先拦一次、收完尾再真退。
@@ -646,5 +745,12 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
  * ② 内建 skills 目录按 cwd 解析成 `apps/desktop-react/resources/skills`(不存在),
  *    于是自演化那颗默认关闭的 builtin skill 在这个壳里加载不到。旧壳靠
  *    `configureSkillsEnvironmentHost` 指路;这个壳还没注入那个端口。
+ * ③(2026-09-15)开窗提前之后,落在装配之前的那几条日志(今天只有 `loadDevServer`
+ *    清缓存失败那一句 warn)只进内存环、不进 `shell.jsonl` —— 文件 sink 是
+ *    `configureLogging` 挂的,而它住在装配第一步里。要让它们也落盘,得把
+ *    `configureLogging()` 从 `createOnethingBackend` 的 `logging:` 选项里提出来、
+ *    由壳在 `whenReady` 第一句自己调(装配层允许:它是幂等的,而且宿主本来就该
+ *    在装配**之前**调 —— CLAUDE.md 把 `configureLogging` 明写在宿主端口表之外)。
+ *    本批不动,因为那会改掉 `shell.jsonl` 这本账的开账时刻,是另一单。
  * ──────────────────────────────────────────────────────────────────────
  */
