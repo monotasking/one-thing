@@ -216,9 +216,22 @@ function mergeWater(message: ProjectedMessage, water?: StreamWater): ProjectedMe
     else inline.push(part)
   }
 
+  /**
+   * ── 按 partIndex 去重,只保留长度最长的那一个 ────────────────────────
+   * 流式内容只增长不缩小,如果同一个 partIndex 有多条(重复 delta / 分片边界),
+   * 取长的那个即可。插入时只需处理一次。
+   */
+  const deduped = new Map<number, WaterPartView>()
+  for (const part of inline) {
+    const existing = deduped.get(part.partIndex)
+    if (!existing || part.length > existing.length) {
+      deduped.set(part.partIndex, part)
+    }
+  }
+
   let parts = ledger
   let changed = false
-  for (const part of inline) {
+  for (const part of deduped.values()) {
     const seat = byIndex.get(part.partIndex)
     const ledgerLength = seat?.content?.length ?? 0
     if (ledgerLength >= part.length) continue // 账本已经追平:水位这一格无话可说
