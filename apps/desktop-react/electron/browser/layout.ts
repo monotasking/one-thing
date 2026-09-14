@@ -165,8 +165,17 @@ export class NativeViewLayout {
   async occlude(viewId: string): Promise<void> {
     const entry = this.entries.get(viewId)
     if (!entry || entry.occluded) return
-    const dataUrl = await this.snapshot(entry)
+    /*
+     * **先记账,再拍照**(2026-09-15)。从前是拍完才写 `occluded = true`,于是拍照那
+     * 几十毫秒里到的 `unocclude`(一下就松手的拖拽、一闪而过的提示条)看见的还是
+     * `occluded: false`、什么都不撤;随后拍照落地,这里照旧把视图藏起来、开 1Hz 重拍
+     * —— 盖的东西早走了,视图却从此藏着。所以账先立、拍完再问一次:这期间被撤了
+     * (`unocclude` 把它翻回 false,或整格 `release` 了)就当这一发没发生过 ——
+     * 不藏、不推图、不开表。视图在拍照期间仍然是显的,「先拍后藏」一个字没变。
+     */
     entry.occluded = true
+    const dataUrl = await this.snapshot(entry)
+    if (this.entries.get(viewId) !== entry || !entry.occluded) return
     this.applyVisibility(entry)
     if (dataUrl) this.push({ kind: 'snapshot', viewId, dataUrl })
     this.startResnap(viewId)

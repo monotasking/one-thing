@@ -1965,17 +1965,16 @@ async function main() {
     /*
      * **把它挪到架子上,靠的是产品里那条路**:右键那一格标签 →「移到架子 ▸ 右侧栏」。
      *
-     * ── 挪完要先把一处**既有病**抖掉,这一段是有意的,不是凑绿 ────────────────
-     * 换宿主(中央区 → 架子)那一拍,开它的那张右键菜单还挂在焦点树上(`menu` 是
-     * `modal`,正是遮挡三支判据的第②支),于是新占位格一生下来就发了一句 `occlude`;
-     * 菜单随后走了,可**没有人再叫它重量一次** —— `lastOccluded` 就永远停在 true,
-     * 屏幕上那格是一张快照,主进程那边 `getVisible()` 恒 false。
-     * **这是既有病,不是本单引入的**:把本单的 `EdgeShelf` / `PaneLeaf` / 那份 CSS
-     * 全还原成 HEAD 再跑,同一条断言逐字同样红(读数 `slots[0].shot === true`、
-     * `floats 0`、无 overlay 作用域)。已单独记账,修它要动遮挡回路的重量时机,
-     * 那是浏览器那条线的事,不在本单。
-     * 抖它的手法是**产品里真实的一来一回**:⌘⇧W 开命令面板(遮挡回路走一遍)、
-     * Esc 关掉(`unocclude` 发出去)—— 与 ⑥ 逐字同一条路,这道门本来就跑过一次。
+     * ── 挪完之后架子上那片视图**必须直接可见**,这一句是 ㉖ 的守卫,不是前提 ────
+     * 09-12 这道门第一次跑就撞上一处病,当时判成「既有病、单独记账」并用一次
+     * ⌘⇧W / Esc 把它抖掉:换宿主(中央区 → 架子)是一次重挂,上一任占位格在菜单
+     * 开着(`menu` 是 `modal`)时说过 `occlude`,新的一任出厂 `lastOccluded = false`、
+     * 量到没被遮就一个字不发 —— 主进程那边 `occluded` 永远是 true,`getVisible()`
+     * 恒 false,1Hz 重拍照跑。**2026-09-15 用户报「拖拽后不能自适应 / 搜索时闪烁」,
+     * 正是这一根**(隔离真机:拖到右架子后 `visible:false`、2.5s 内换图 2 次)。
+     * 治法在 `content/native-view/view-claim.ts`:遮挡与快照按 `viewId` 记账、跨挂载
+     * 交接。于是这里**不再抖**:挪完直接量「架子上那片视图可见」—— 反证:把
+     * `NativeViewSlot` 里 `lastOccluded` 的起点改回 `false`,这一条当场红。
      */
     let lastSeen = null
     /** 失败时把现场交出来 —— 「谁遮着它」是这一步唯一有用的读数。 */
@@ -2019,11 +2018,10 @@ async function main() {
     /*
      * **中央区那一格「此刻可见吗」不做前提**:这道门跑到这里已经开了八格 tab、
      * 开过菜单 / 命令面板 / 权限卡,树上随时可能还挂着一格 `float` / `modal`
-     * 作用域 —— 那正是遮挡三支判据的第②支,而「盖的东西走了却没人叫占位格
-     * 再量一次」是一处**既有病**(判词见上面那一段,已单独记账)。拿一个会偶发
-     * 为假的读数当前提,红的是门不是产品。
-     * ⑳ 要证的三句都在**架子上**那一格(展开可见 → 收起藏起来 → 展开回来),
-     * 前提由下面那一句「抖一次遮挡回路之后架子上那片视图可见」担。
+     * 作用域 —— 那正是遮挡三支判据的第②支,拿一个会随前面几步漂的读数当前提,
+     * 红的是门不是产品。⑳ 要证的三句都在**架子上**那一格(展开可见 → 收起藏起来
+     * → 展开回来);而「挪过去之后架子上那片视图可见」自 09-15 起是 ㉖ 那条守卫
+     * (换宿主要把遮挡账交接过去),不再靠抖一次遮挡回路来担。
      */
     const tabMenuOpened = await page.evaluate((id) => {
       const tab = document.querySelector(`[role="tab"][data-tab-id="browser:${id}"]`)
@@ -2070,15 +2068,17 @@ async function main() {
     ).catch(shelfFail)
     assert(onShelf === true, '⑳ 前提:那一格浏览器钉在右架子上')
 
-    // 把上面判词里那处既有病抖掉:⌘⇧W 开命令面板 → Esc 关掉(遮挡回路走一个来回)。
-    await press(cdp, { key: 'W', code: 'KeyW', keyCode: 87, primary: true, shift: true })
-    await delay(400)
-    await press(cdp, { key: 'Escape', code: 'Escape', keyCode: 27 })
-    const visibleBefore = await waitFor('前提:架子上那片视图是可见的', async () => {
+    /*
+     * ㉖ 换宿主之后视图**直接**可见 —— 不抖遮挡回路(判词在上面那一段)。这一拍
+     * 右键菜单刚关、树刚提交,新占位格从账本上接过「遮着」再量到「没遮」才发
+     * `unocclude`,所以给它几拍;等到的是主进程那一侧的 `getVisible()`,不是壳里
+     * 有没有 `<img>`。
+     */
+    const visibleBefore = await waitFor('换宿主之后架子上那片视图可见', async () => {
       lastSeen = await viewVisible(shelfUrl)
       return lastSeen && lastSeen.hits.length === 1 && lastSeen.hits[0] === true ? lastSeen : undefined
     }, 12_000).catch(shelfFail)
-    assert(Boolean(visibleBefore), '⑳ 前提:展开态下架子上那片视图可见')
+    assert(Boolean(visibleBefore), '㉖ 换宿主(中央区 → 右架子)之后,主进程那一侧 `getVisible() === true` —— 遮挡账跟着交接,不靠抖一次遮挡回路')
     /*
      * 记住树身**里面**那一层 —— 「同一个 DOM 节点」只有引用比得出来,所以它存在页内。
      * 量的是 `[data-pane-tab]`(`PaneLeaf` 画的 tab 层)而不是 `[data-shelf-body]`

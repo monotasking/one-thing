@@ -7,6 +7,7 @@ import { useStageStore } from '../../stage/store'
 import { useWorkbenchStore } from '../../workbench/store'
 import { usePanelVisibility } from '../visibility'
 import { startNativeViewKeymapDownlink } from './keymap-downlink'
+import { adoptViewClaim, recordViewSnapshot, releaseViewClaim, viewClaimOf } from './view-claim'
 import s from './NativeViewSlot.module.css'
 import type { MutableRefObject } from 'react'
 import type { FocusScopeId } from '../../focus/types'
@@ -32,6 +33,7 @@ import type { NativeViewBounds, NativeViewPush } from '../../data/browser-port'
  * | 活 | 报过 `visible: true` 的帧 | 原生视图压在这块地上(DOM 这一侧永远是空的) |
  * | 被遮 | 三判据之一命中 | 主进程推来的那张快照铺满;没收到图就仍然是底色 |
  * | 隐藏 | 容器尺寸为 0(切走 tab / `content-visibility` 隐藏层) | 视图 `setVisible(false)`,DOM 这一格照旧在树上 |
+ * | 换宿主 | 同一 `viewId` 的占位格卸载后**一帧内**又挂上(拖去别的叶 / 架子 / 浮窗) | 账本交接(`view-claim.ts`):上一任的快照先铺着,遮挡从上一任说到的那一句接着量,量到没被遮才发 `unocclude`;一帧内没人接手才替它收回 |
  *
  * ══════════════════════════════════════════════════════════════════════════
  * ③ 交互状态
@@ -157,7 +159,11 @@ export function NativeViewSlot({ viewId, scope, elementRef, className }: NativeV
   /** 主 effect 里那只 `schedule` 的出口 —— 宿主翻脸时要**立刻**重量一次。 */
   const remeasureRef = useRef<() => void>(() => {})
   const { activate } = useFocusScope()
-  const [snapshot, setSnapshot] = useState<string | null>(null)
+  /*
+   * 快照的起点是**上一任留下的那张**(`view-claim.ts`):换宿主那一拍新占位格第一帧
+   * 画的就是旧图,不是一块底色。没有上一任 = `null`,与从前一样。
+   */
+  const [snapshot, setSnapshot] = useState<string | null>(() => viewClaimOf(viewId)?.snapshot ?? null)
   const [snapshotShown, setSnapshotShown] = useState(false)
   const imgRef = useRef<HTMLImageElement | null>(null)
 
@@ -180,12 +186,18 @@ export function NativeViewSlot({ viewId, scope, elementRef, className }: NativeV
 
     let lastFrame: Frame | null = null
     /*
-     * **出厂就是「没被遮」**,不是「还不知道」。主进程那边新登记的一片视图
-     * `occluded: false`(`layout.register`),所以一片刚挂上来、什么都没盖着的地
-     * 报一句 `unocclude` 是在说一件对方已经知道的事 —— 它不会出错,但会让
-     * 「发了几条」这个读数从此说不清,而那正是这只组件唯一好量的东西。
+     * **遮挡的起点是账本上的那一格,不是出厂值**(`view-claim.ts`,2026-09-15)。
+     *
+     * 从前这里是 `let lastOccluded = false`,判词是「主进程那边新登记的一片视图
+     * `occluded: false`,所以一片刚挂上来的地报 `unocclude` 是在说对方已经知道的事」。
+     * 那句话只对**第一任**成立:换宿主是一次重挂,上一任在拖拽期间说过的 `occlude`
+     * 主进程还记着,新的一任若从 `false` 起量,量到「没被遮」就与起点相同、一个字
+     * 都不发 —— 主进程那边的视图从此藏着、按 1Hz 推截图(真机读数在那只文件头上)。
+     * 所以起点从账本接:上一任说到哪,这一任从哪接着说。第一任接到的仍是 `false`,
+     * 「发了几条」这个读数一格都没变。
      */
-    let lastOccluded = false
+    const claim = adoptViewClaim(viewId)
+    let lastOccluded = claim.occluded
     /** 「撤图」那一帧的排期(见下面 `unocclude` 那一段)。 */
     let clearing = 0
     let scheduled = 0
@@ -237,22 +249,31 @@ export function NativeViewSlot({ viewId, scope, elementRef, className }: NativeV
         (coveredByFloat || overlayScopeCount() > 0 || useWorkbenchStore.getState().dragging)
       if (occluded !== lastOccluded) {
         lastOccluded = occluded
+        // 写回账本:下一任(换宿主)从这一句接着量。
+        claim.occluded = occluded
         bridge.send({ verb: occluded ? 'occlude' : 'unocclude', viewId })
-        /*
-         * **不再被遮 = 把图扔了**,而扔图这件事只有壳这一侧知道:主进程在
-         * `unocclude` 上什么都不推(它只是让视图回来)。
-         *
-         * **扔晚一帧**:`unocclude` 这一发出去之后,主进程要在它自己那一拍
-         * `setVisible(true)`,视图才重新画上来。这一侧当场把图撤掉的话,中间
-         * 那一帧是空的 —— 真机上就是一下闪白。所以排下一帧再撤(反过来写,
-         * 单测里那条「撤图要多留一帧」当场红)。
-         */
-        if (!occluded && !clearing) {
-          clearing = requestAnimationFrame(() => {
-            clearing = 0
-            setSnapshot(null)
-          })
-        }
+      }
+      /*
+       * **不再被遮 = 把图扔了**,而扔图这件事只有壳这一侧知道:主进程在
+       * `unocclude` 上什么都不推(它只是让视图回来)。
+       *
+       * **扔晚一帧**:`unocclude` 这一发出去之后,主进程要在它自己那一拍
+       * `setVisible(true)`,视图才重新画上来。这一侧当场把图撤掉的话,中间
+       * 那一帧是空的 —— 真机上就是一下闪白。所以排下一帧再撤(反过来写,
+       * 单测里那条「撤图要多留一帧」当场红)。
+       *
+       * **判据是「此刻没被遮而手上还有图」,不是「这一拍刚从遮变成不遮」**
+       * (2026-09-15)。那张图可能是从账本接来的 —— 转折发生在上一任;而
+       * StrictMode 的模拟卸载再挂载会把这一任排好的那一帧取消掉(清理里
+       * `cancelAnimationFrame(clearing)`),只认转折的话第二次挂上来什么都不排,
+       * 旧图就永远铺在一片已经回来的视图底下(真机读数:`shot: true` 不落)。
+       */
+      if (!occluded && !clearing && claim.snapshot !== null) {
+        clearing = requestAnimationFrame(() => {
+          clearing = 0
+          recordViewSnapshot(viewId, null)
+          setSnapshot(null)
+        })
       }
     }
 
@@ -335,6 +356,14 @@ export function NativeViewSlot({ viewId, scope, elementRef, className }: NativeV
         visible: false,
         z: 0,
       })
+      /*
+       * 遮挡那句话**不在这里收回**,交给账本:换宿主那一拍新的一任在同一次提交里
+       * 接手,从「遮着」接着量,量到没被遮才发 `unocclude`(快照也随账交接,新占位格
+       * 第一帧不空)。一帧之内没人接手 = 这片地真的没了,账本替这一任把话收回 ——
+       * 不然主进程那边是一片藏着的视图配一只永远在跑的 1Hz 重拍。
+       * 判词全文在 `view-claim.ts` 文件头。
+       */
+      releaseViewClaim(viewId, () => bridge.send({ verb: 'unocclude', viewId }))
     }
     // `setSnapshot` 是 React 给的稳定口,不必进依赖表(进了这只 effect 就会跟着
     // 每一次快照重挂,而重挂 = 重新观察 + 重发一帧)。
@@ -368,6 +397,8 @@ export function NativeViewSlot({ viewId, scope, elementRef, className }: NativeV
       if (message.viewId !== viewId) return
       switch (message.kind) {
         case 'snapshot':
+          // 图也记进账本:换宿主那一拍下一任接的就是这一张。
+          recordViewSnapshot(viewId, message.dataUrl)
           setSnapshot(message.dataUrl)
           return
         case 'focus':

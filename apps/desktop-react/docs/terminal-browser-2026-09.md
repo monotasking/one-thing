@@ -475,6 +475,32 @@ B0-② 顺手核「registry 能不能列出挂载中的作用域」,不能就加
    `BUDGET` 写 100ms(方案 §2.2-1 的口径),`TRANSITIONAL` dev 320 / prod 300 并
    写明退场判据 —— 差的那一百多毫秒在壳这一侧的 `img.decode()` + 留一帧,治到
    100ms 以内就删掉那两行。
+4. **遮挡账跨挂载交接(2026-09-15,用户报「浏览器拖拽后不能自适应」「搜索时会闪烁」)。**
+   两句报障一个根,隔离真机(临时 store + 屏外窗 + CDP 注入拖拽)逐拍读数:起拖 →
+   旧占位格发 `occlude`(第③支)→ 主进程藏视图、1Hz 重拍;松手落到右架子 →
+   **换宿主是一次重挂**(内容层随叶走,`[data-native-view]` 是新元素)→ 新占位格
+   出厂 `lastOccluded = false`、量到没被遮与起点相同 → **一个字不发** → 主进程
+   `occluded` 永远 true:矩形照着新宿主更新(399×650)但 `getVisible()` 恒 false,
+   新格先空一秒、随后每秒换一张截图(2.5s 内 src 换 2 次)。「不自适应」是藏着的视图
+   按 1Hz 重排、「闪烁」是每秒换图。**09-12 ⑳ 施工时撞过同一处**,当时判成既有病、
+   用 ⌘⇧W / Esc 抖一次绕过去 —— 那句「新占位格一生下来就发了 occlude、没人再叫它
+   重量」是猜的,真相是上一任的 `occlude` 被孤儿了。
+   **治**:`content/native-view/view-claim.ts` —— 「主进程此刻被告知的遮挡状态」与
+   「最后一张快照」是那片视图的事实,按 `viewId` 记账(与 `data/browser-find.ts` 同一
+   条判词);实例挂载 `adoptViewClaim` 从上一任说到的那一句接着量、图也接着铺,卸载
+   `releaseViewClaim` 不当场撤,**一帧内没人接手**才替上一任发 `unocclude` 并销账
+   (与 `focus/registry.unregister` 同形:摘掉与真的走了是两件事)。撤图判据改成
+   「此刻没被遮而手上还有图」而不是「刚从遮变不遮」—— StrictMode 的模拟卸载会取消
+   排好的那一帧,只认转折时第二次挂上来永远不撤(真机 `shot: true` 不落)。顺带
+   主进程 `layout.occlude` 改成**先记账再拍照、拍完再问一次**:从前拍照那几十毫秒里
+   到的 `unocclude` 看见 `occluded: false` 什么都不撤,拍完照旧藏视图、开重拍
+   (一下就松手的拖拽、一闪而过的提示条都走得到)。
+   **读数**:修后拖 / 菜单两条路 +100ms `visible: true`、矩形跟新宿主、快照撤掉、
+   2.5s 内换图 0 次。门:`native-view-slot.test` +4 / `view-claim.test` 6 /
+   `browser-host.test` +1(三处反证各真跑一次);`gate:browser` ⑳ 那次「抖」删掉,
+   改成 ㉖「换宿主之后主进程那一侧 `getVisible() === true`」直接断言。
+   **留账**:`gate:browser` ⑰(把这一页交给对话 → 发送)在这份检出上 09-15 存量红
+   (`session-command.emit` 20s 等不到),与本单无关,本单跑的是跳过 ⑰ 的同一份门。
 
 ---
 

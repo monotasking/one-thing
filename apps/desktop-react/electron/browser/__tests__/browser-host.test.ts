@@ -275,6 +275,38 @@ describe('NativeViewLayout', () => {
     expect(pushed).toEqual([])
   })
 
+  /**
+   * 拍照那几十毫秒里 `unocclude` 到了(一下就松手的拖拽、一闪而过的提示条):
+   * 拍完**不许**再藏、不推图、不开表 —— 盖的东西早走了。从前先拍后记账,
+   * `unocclude` 看见 `occluded: false` 什么都不撤,拍完照旧藏起来开 1Hz 重拍,
+   * 视图从此藏着(2026-09-15)。反证:把 `entry.occluded = true` 挪回 `await` 之后,
+   * 下面三句一起红。
+   */
+  it('拍照期间 unocclude 到了 → 拍完不藏、不推图、不开表', async () => {
+    vi.useFakeTimers()
+    const pushed: unknown[] = []
+    const layout = new NativeViewLayout(fakeHost() as never, message => { pushed.push(message) })
+    let resolveCapture: (() => void) | undefined
+    const view = fakeView()
+    view.webContents.capturePage = vi.fn(
+      () =>
+        new Promise<{ isEmpty: () => boolean; toDataURL: () => string }>(resolve => {
+          resolveCapture = () => resolve({ isEmpty: () => false, toDataURL: () => 'data:image/png;base64,AAA' })
+        }),
+    ) as never
+    layout.register('v', view as never)
+    layout.applyFrame({ viewId: 'v', bounds: { x: 0, y: 0, width: 2, height: 2 }, visible: true, z: 0 })
+    view.calls.length = 0
+    const occluding = layout.occlude('v')
+    layout.unocclude('v')
+    resolveCapture?.()
+    await occluding
+    expect(view.calls).not.toContain('setVisible:false')
+    expect(pushed).toEqual([])
+    await vi.advanceTimersByTimeAsync(OCCLUDED_RESNAP_MS * 2)
+    expect(pushed).toEqual([])
+  })
+
   it('没登记过的 viewId 静默忽略(惰性视图:帧可能比视图早一拍)', () => {
     const layout = new NativeViewLayout(fakeHost() as never, () => {})
     expect(() => {

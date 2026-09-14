@@ -8,6 +8,7 @@ import { useStageStore } from '../../../stage/store'
 import { useWorkbenchStore } from '../../../workbench/store'
 import { NativeViewSlot } from '../NativeViewSlot'
 import { resetNativeViewKeymapDownlink } from '../keymap-downlink'
+import { resetViewClaims } from '../view-claim'
 
 /**
  * **占位格那三条判据的守卫**(B2)。
@@ -107,6 +108,8 @@ beforeEach(() => {
 afterEach(() => {
   configureBrowserPort(undefined)
   resetNativeViewKeymapDownlink()
+  // 账本按 viewId 活过挂载,不清的话上一条用例说过的「遮着」会漏进下一条的起点。
+  resetViewClaims()
   Element.prototype.getBoundingClientRect = realRect
   focusTree.reset()
 })
@@ -251,6 +254,100 @@ describe('快照:显与隐的次序', () => {
     expect(img()).not.toBeNull()
     await flushFrames(3)
     expect(img()).toBeNull()
+  })
+})
+
+/**
+ * **换宿主 = 一次重挂**(拖去别的叶 / 架子 / 浮窗;2026-09-15 用户报障「拖拽后不能
+ * 自适应」「搜索时闪烁」的根)。真机读数与判词在 `view-claim.ts` 文件头。这里量的
+ * 是占位格这一侧的三句话:
+ *  · 拖拽期间发过 `occlude` 的那一任卸载、新的一任在同一拍挂上(拖完了)→ 新的一任
+ *    要**补上** `unocclude`(反证:把 `lastOccluded` 的起点改回 `false`,第一条当场红);
+ *  · 上一任手上的快照跟着交接:新占位格**第一帧**就有那张图,不是空一秒;
+ *  · 卸载之后没人接手 → 一帧后替它收回一次;没遮着就一个字不发。
+ */
+describe('换宿主(重挂)', () => {
+  it('拖拽中卸载、拖完挂上 → 新的一任补发 unocclude(一条,不多不少)', async () => {
+    const bridge = installBridge()
+    const first = renderSlot()
+    await flushFrames()
+    act(() => {
+      useWorkbenchStore.setState({ dragging: true })
+    })
+    await flushFrames()
+    expect(bridge.sent.filter((m) => m.verb === 'occlude').length).toBe(1)
+    // 松手:`setDragging(false)` 与落定同一拍 —— 旧的卸载、新的挂上,中间不隔一帧。
+    act(() => {
+      useWorkbenchStore.setState({ dragging: false })
+      first.unmount()
+    })
+    renderSlot()
+    await flushFrames()
+    expect(bridge.sent.filter((m) => m.verb === 'unocclude').length).toBe(1)
+    expect(bridge.sent.filter((m) => m.verb === 'occlude').length).toBe(1)
+    // 新的一任报了一帧「看得见」——主进程那边 visible ∧ !occluded 才画得出来。
+    expect(bridge.sent.at(-1)).toMatchObject({ verb: 'unocclude' })
+    expect(bridge.sent.filter((m) => m.verb === 'frame' && m.visible).length).toBe(2)
+  })
+
+  it('快照跟着账交接:新占位格第一帧就画着上一任那张图', async () => {
+    const bridge = installBridge()
+    const first = renderSlot()
+    await flushFrames()
+    act(() => {
+      useWorkbenchStore.setState({ dragging: true })
+    })
+    await flushFrames()
+    act(() => {
+      bridge.push({ kind: 'snapshot', viewId: 'v1', dataUrl: 'data:image/png;base64,AA' })
+    })
+    await flushFrames()
+    act(() => first.unmount())
+    const second = renderSlot()
+    const img = second.container.querySelector<HTMLImageElement>('[data-testid="native-view-snapshot"]')
+    expect(img).not.toBeNull()
+    expect(img?.getAttribute('src')).toBe('data:image/png;base64,AA')
+  })
+
+  it('仍在拖拽中换宿主 → 新的一任不重复发 occlude(主进程已经知道)', async () => {
+    const bridge = installBridge()
+    const first = renderSlot()
+    await flushFrames()
+    act(() => {
+      useWorkbenchStore.setState({ dragging: true })
+    })
+    await flushFrames()
+    act(() => first.unmount())
+    renderSlot()
+    await flushFrames()
+    expect(bridge.sent.filter((m) => m.verb === 'occlude').length).toBe(1)
+    expect(bridge.sent.filter((m) => m.verb === 'unocclude').length).toBe(0)
+  })
+
+  it('卸载之后没人接手 → 一帧后替它收回一次;没遮着就一个字不发', async () => {
+    const bridge = installBridge()
+    const view = renderSlot()
+    await flushFrames()
+    act(() => {
+      useWorkbenchStore.setState({ dragging: true })
+    })
+    await flushFrames()
+    act(() => view.unmount())
+    // 卸载那一拍:只有一帧「看不见」,还没收回(留一帧给重挂)。
+    expect(bridge.sent.at(-1)).toMatchObject({ verb: 'frame', visible: false })
+    await flushFrames()
+    expect(bridge.sent.filter((m) => m.verb === 'unocclude').length).toBe(1)
+
+    // 没遮着的那一任走了:一条 unocclude 都不多。
+    act(() => {
+      useWorkbenchStore.setState({ dragging: false })
+    })
+    const quiet = installBridge()
+    const plain = renderSlot('v2')
+    await flushFrames()
+    act(() => plain.unmount())
+    await flushFrames()
+    expect(quiet.sent.filter((m) => m.verb === 'unocclude').length).toBe(0)
   })
 })
 
