@@ -42,6 +42,29 @@
  *     屏幕滞后于 provider 收尾 ≤ 1s、core 进程 CPU 中位 < 40%。
  *     ③ 与 ④ 的差别正是设计 §1.4 说的那句:③ 只注入一条**用户**消息,没有 assistant
  *     流、也不是大会话 —— 报障的现场它一条都没量到。
+ *  ⑥ **20 万字思考流式**(09-14 T3,正本 `apps/desktop-react/docs/thinking-stream-2026-09.md` §5)
+ *     —— 报障那条会话 95.6% 的流式字符是**思考**(1,247,359 字 vs 正文 57,315),而
+ *     T1 之前整段思考塞在一个 `<p>` 里、每帧换一次完整文本 = 整段重排(正本 §0 真机:
+ *     2,000 字 0.7ms,163,775 字 71–136ms)。上面四格一条都没量到它:①②⑤ 根本没有
+ *     assistant 流,③④ 的假 provider 只吐 `delta.content`。这一格把现场搭出来 ——
+ *     假 provider 吐一条 **200,000 字**思考(成段、每段 300–900 字、`\n\n` 分段、中英
+ *     混排,与真数据同形:真会话 166 段思考里最长无换行段 968 字)+ 一小段正文收尾,
+ *     节奏 **16ms 一帧、每帧 60–120 字**(与 `SessionStreamCoalescer` 的 16ms 合批同拍),
+ *     总时长 40–60s。三条判据 = 正本 §5 T3 的那三条:
+ *      ⑥a **思考阶段**(第一个思考 `<p>` 上屏 → provider 吐完思考、块数不再涨):
+ *          LoAF 里 >`longFrameMs` 的长帧 **0 条**;每帧 style+layout 的 **p95 < 8ms**
+ *          (数从正本 §1 来:活动尾钉死在 4,000 字 ≤ 1.5ms,8ms 是那之上的余量);
+ *          每 500ms 采一次 `[data-testid="chat-thought"]` 里**最后一个 `<p>`** 的字数
+ *          **≤ 4,000**(正本 §2 规则 ③ 的 `TAIL_LIMIT`),`<p>` 条数**单调不减**,
+ *          第一块冻住之后**逐字不变**(正本 §2 那条「冻住的块永不重切」)。
+ *      ⑥b **视觉等价**(正本 §4「块之间零外边距……视觉与今天单段逐像素一致」):流完
+ *          之后把这段思考展开,量它的 `offsetHeight`;同一份文本按**旧法**(一个
+ *          `<p>` 装全文)塞进同宽的离屏克隆里再量一次,两者在 **900 / 1280 / 1600**
+ *          三个窗宽下各自相等。**只对自然切点断言** —— 正本 §7 记着强切边界等于一个
+ *          原文没有的换行,而这份夹具(段长 ≤ 900)与真数据一样,规则 ③ 从不触发。
+ *      ⑥c **收起态的常驻 DOM**:5 条各带 3 段 3 万字思考的会话依次打开进停靠池之后,
+ *          整份 document 里 `[data-testid="chat-thought"]` 的文字总量 **< 5,000 字**
+ *          (15 段 × ≤240 字预览,对着正本 §0 那 104 万字)。
  *
  * ── 量法:CDP Tracing,不是页面里的秒表 ───────────────────────────────
  * `Tracing.start` 录的是渲染进程自己的任务流水。我们从中取**主线程(CrRendererMain)
@@ -57,6 +80,9 @@
  *
  * 跑法:`node scripts/gate-perf.mjs`
  * (仓根先 `bun run server:build`,本目录先 `npm run app:build`)。
+ * 只跑点名的那几格:`node scripts/gate-perf.mjs --only=6`(逗号分隔,键就是场景表上的
+ * 编号 `1` `2` `3` `4` `5` `5b` `5c` `6`)。**种子跟着闸走** —— 不点 ④ 就不种那条 6MB
+ * 的大会话,不点 ①② 就只种一条会话;否则「只跑一格」照样要等十分钟的种子,等于没有。
  * 门红时 trace 会留在 /tmp/onething-perf-*.json,直接拖进 DevTools 的 Performance 面板看。
  */
 import { execFileSync, spawn } from 'node:child_process'
@@ -106,6 +132,39 @@ function readBudget() {
 }
 
 const BUDGET = readBudget()
+
+/**
+ * **一片叶最多停靠几条会话** —— 产地是 `src/content/session-park.ts` 的
+ * `SESSION_VIEW_PARK_LIMIT`(今天是 3;判词写在那里:它是一个内存上限)。
+ * 场景⑥c 要拿它算「依次开 5 条之后,屏幕上还该挂着几条」= 上限 + 活动那一条。
+ * 与 `readBudget` 同一手:**不重抄一份数字**,读不到就明说。
+ */
+function readParkLimit() {
+  const source = readFileSync(path.join(appRoot, 'src/content/session-park.ts'), 'utf-8')
+  const hit = source.match(/SESSION_VIEW_PARK_LIMIT\s*=\s*(\d+)/)
+  if (!hit) throw new Error('src/content/session-park.ts 里读不到 SESSION_VIEW_PARK_LIMIT')
+  return Number(hit[1])
+}
+
+const PARK_LIMIT = readParkLimit()
+
+/**
+ * `--only=<场景>[,<场景>…]` —— **只跑点名的那几格**(09-14 T3 加)。
+ * 键就是文件头场景表上的编号:`1` `2` `3` `4` `5` `5b` `5c` `6`。不给 = 全跑。
+ *
+ * 它**只加闸,不改任何一格的内容**:场景块原样裹进一层 `if (want(…))`,里面一行不动
+ * (重排缩进会连多行模板串里的空白一起改掉,那是在改门的输出)。种子也跟着闸走 ——
+ * 理由写在文件头「跑法」那一段上。
+ */
+const ONLY = (() => {
+  const arg = process.argv.slice(2).find(a => a.startsWith('--only='))
+  if (!arg) return null
+  const keys = new Set(
+    arg.slice('--only='.length).split(',').map(s => s.trim()).filter(Boolean),
+  )
+  return keys.size > 0 ? keys : null
+})()
+const want = key => ONLY === null || ONLY.has(key)
 
 /**
  * 种子会话数。08-30 这一批从 120 抬到 400:场景②要量的是「重面板重挂」,
@@ -226,6 +285,87 @@ const PERF4_SEED_ANSWER = buildPerf4Answer(false, 1200, 120_000)
 /** 场景⑤的种子答案:**常规档** —— 4k 字正文 + 20 行表格的 ```html 围栏。 */
 const PERF5_SEED_ANSWER = buildPerf4Answer(false, 20, 4000)
 
+/* ── 场景⑥:20 万字思考流式(T3;正本 `docs/thinking-stream-2026-09.md` §5)────────
+ *
+ * 记号与上面两档**再分一支**:三档的答案形状完全不同(50KB 正文 / 4k 正文 / 20 万字
+ * 思考),混用一个记号就只剩一档了。
+ */
+const PERF6_MARKER = '@@perf6@@'
+const PERF6_SEED_MARKER = '@@perf6seed@@'
+/** 思考之后那一小段正文里的记号。它只用来证明「正文也到了」,不当窗口判据(见下)。 */
+const PERF6_BODY_MARK = 'PERF6BODYMARK'
+const PERF6_THOUGHT_CHARS = 200_000
+const PERF6_POOL_SESSIONS = 5
+const PERF6_POOL_THOUGHTS = 3
+const PERF6_POOL_THOUGHT_CHARS = 30_000
+/**
+ * ⑥a 的三个数,**一个都不是这里拍的**:
+ *  · 4,000 = `src/content/text/text-stream.ts` 的 `TAIL_LIMIT`(正本 §1/§2 规则 ③);
+ *  · 8ms   = 正本 §1 把活动尾钉死在「4,000 字一次重排 ≤ 1.5ms」之上留的余量;
+ *  · 5,000 = 正本 §5 T3 ③(15 段 × ≤240 字预览)。
+ */
+const PERF6_TAIL_LIMIT = 4000
+const PERF6_STYLE_LAYOUT_P95_MS = 8
+const PERF6_COLLAPSED_CHARS = 5000
+/** 每 500ms 采一次(正本 §5 T3 ①)。 */
+const PERF6_SAMPLE_MS = 500
+
+/**
+ * 造一段**与真数据同形**的思考:成段、段内不带换行、每段 300–900 字、`\n\n` 分段、
+ * 中英混排。
+ *
+ * 段长上限 900 是抄真数据的(正本 §7:那条会话 166 段思考、144,136 行,最长无换行段
+ * 968 字),于是**规则 ③ 的强切在这份夹具里和在真店里一样从不触发** —— ⑥b 的高度等价
+ * 因此只对自然切点断言,与正本 §7 记的那条留账逐字对齐。
+ *
+ * 用自带的线性同余而不是 `Math.random()`:同一份夹具每趟逐字相同,两趟读数才可比。
+ */
+function buildThought(totalChars, seed) {
+  let x = seed >>> 0
+  const rnd = () => {
+    x = (x * 1664525 + 1013904223) >>> 0
+    return x / 4294967296
+  }
+  const zh = '这一段是性能门造出来的思考正文它要和真数据同形所以成段而且段内不带换行'
+  const en = ' alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu '
+  const paragraphs = []
+  let total = 0
+  let cursor = 0
+  while (total < totalChars) {
+    const width = 300 + Math.floor(rnd() * 601)
+    let para = ''
+    while (para.length < width) {
+      para += rnd() < 0.6 ? zh.slice(cursor % zh.length) : en
+      cursor += 7
+    }
+    paragraphs.push(para.slice(0, width))
+    total += width + 2
+  }
+  return paragraphs.join('\n\n').slice(0, totalChars)
+}
+
+/**
+ * 量的那一条(20 万字)与停靠池那几条(3 万字)。
+ *
+ * **开头那一句是身份,不是装饰**(09-14 首跑当场踩的):两份文本各自的随机种子不同,
+ * 但第一段都有 60% 的概率从同一句中文起笔 —— 首跑时 30 字的指纹因此匹配到了停靠池里
+ * 那一段,⑥a 于是整趟盯着一段**收起着的 3 万字**采样(活动尾恒 240 字、`<p>` 恒 1 条),
+ * 四条判据全绿,而它们一条都没量到那条真在流的思考。指纹要由**产地钉死**,不能指望
+ * 随机数替你区分两件东西。
+ */
+const PERF6_THOUGHT = `PERF6LIVE ${buildThought(PERF6_THOUGHT_CHARS, 20260914)}`
+const PERF6_POOL_THOUGHT = `PERF6POOL ${buildThought(PERF6_POOL_THOUGHT_CHARS, 815)}`
+/**
+ * 认出「屏幕上这一段是量的那一条」的指纹 —— 拿**第一个 `<p>` 的开头**比,不是
+ * `el.textContent`:后者在展开态是 20 万字,每 500ms 取一次就是量具自己变成负载
+ * (本目录 CLAUDE.md 那条「门的读数不许把门自己的时间算进产品」的同族)。
+ */
+const PERF6_THOUGHT_HEAD = PERF6_THOUGHT.slice(0, 30)
+if (PERF6_POOL_THOUGHT.startsWith(PERF6_THOUGHT_HEAD)) {
+  // 夹具自证:两段思考的开头必须分得开,否则 ⑥a 会盯着错的那一段量(见上面那段病历)。
+  throw new Error('场景⑥ 的两份夹具文本开头相同 —— 指纹分不开,判据会落在错的那一段上')
+}
+
 /**
  * 场景④要的那份设置。`withProvider` 决定假 provider **在不在场**。
  *
@@ -251,7 +391,18 @@ function perf4Settings(mockPort, withProvider) {
               selectedModels: ['deepseek-chat'],
               enabled: true,
               modelCapabilitiesByModel: {
-                'deepseek-chat': { tools: true, reasoning: false, vision: false },
+                /*
+                 * `reasoning: true` 是 09-14 T3 改的**一格设置**(不碰 runtime):场景⑥
+                 * 的假 provider 吐 `delta.reasoning_content`。读回来那一侧其实不看这一格
+                 * ——`openai-chat-wire` 的 `thinking.decode()` 是**无条件**跑的,
+                 * `deepseek-inferred` 只认 `reasoning_content`;而写出去那一侧对
+                 * `deepseek-chat` 也不受影响(`resolveDeepSeekThinking` 对非 reasoner
+                 * 型号答 undefined,请求里一个思考字段都不发)。所以它改的只是「账本
+                 * 对这个模型有没有话说」那一句,**从种子那一刻起就开着**:开在场景⑥
+                 * 自己那一段里会让**种子**那 15 段思考落在关着的世界里,⑥c 于是拿一个
+                 * 空盘子答「< 5,000 字」—— 一句绿的谎话。
+                 */
+                'deepseek-chat': { tools: true, reasoning: true, vision: false },
               },
             },
           }
@@ -304,12 +455,16 @@ function startMockProvider(port, state) {
       const seedingBig = flat.includes(PERF4_SEED_MARKER)
       const seedingNormal = flat.includes(PERF5_SEED_MARKER)
       const seeding = seedingBig || seedingNormal
+      // 场景⑥ 的两支:量的那一条 / 停靠池那几条。
+      const thoughtMeasured = flat.includes(PERF6_MARKER)
+      const thoughtSeed = flat.includes(PERF6_SEED_MARKER)
+      const thought = thoughtMeasured || thoughtSeed
       res.writeHead(200, {
         'content-type': 'text/event-stream',
         'cache-control': 'no-cache',
         connection: 'keep-alive',
       })
-      if (!measured && !seeding) {
+      if (!measured && !seeding && !thought) {
         // **不带记号的请求空手收尾**(一帧 `stop`,零正文)。场景①②③ 与自动标题都
         // 走这一支:批 A 之前这道门根本没配过 provider,那时场景③注入的用户消息
         // 引不出任何 assistant 流 —— 这一支要尽量还原那个现场。
@@ -327,7 +482,45 @@ function startMockProvider(port, state) {
         return
       }
       try {
-        {
+        if (thought) {
+          /*
+           * ── 场景⑥:一条不断追加的**纯思考** ────────────────────────────
+           *
+           * 节奏是**判据的一部分**,不是随手取的:16ms 一帧、每帧 60–120 字 —— 与
+           * `SessionStreamCoalescer` 的 16ms 合批同拍,所以渲染层每一帧真的收到一批
+           * 新字,而不是攒成一大口。种子那一支不讲节拍(它只要把账本喂饱)。
+           *
+           * **量的那一条只服务一次**:自动标题那一发会把整份历史拼进请求,于是同一个
+           * 记号会再命中一次 —— 不拦的话 20 万字会被再吐一遍,而那一遍落在任何窗口
+           * 之外(它甚至会在 ⑥b 量高度的时候还在跑)。
+           */
+          const serveMeasured = thoughtMeasured && !state.perf6Served
+          if (thoughtMeasured) state.perf6Served = true
+          if (thoughtMeasured && !serveMeasured) {
+            send(frame({}, 'stop'))
+          } else {
+            const text = thoughtMeasured ? PERF6_THOUGHT : PERF6_POOL_THOUGHT
+            if (serveMeasured) state.thoughtStartAt = Date.now()
+            let cursor = 0
+            let parts = 0
+            while (cursor < text.length) {
+              if (res.destroyed) return
+              const size = serveMeasured ? 60 + Math.floor(Math.random() * 61) : 4000
+              send(frame({ reasoning_content: text.slice(cursor, cursor + size) }))
+              cursor += size
+              parts += 1
+              if (serveMeasured) await delay(16)
+            }
+            if (serveMeasured) {
+              state.thoughtDoneAt = Date.now()
+              state.thoughtChunks = parts
+            }
+            // 一小段正文收尾:思考段要**收尾**才折得回去(`live` 翻 false),而
+            // ⑥b/⑥c 量的都是收尾之后的那一态。
+            send(frame({ content: `思考结束,下面是结论。${PERF6_BODY_MARK}` }))
+            send(frame({}, 'stop', { prompt_tokens: 100, completion_tokens: 100, total_tokens: 200 }))
+          }
+        } else {
           // **本回合**已经交过几次工具结果 —— 整份历史里数会让第二回合起再也不调工具。
           const lastUser = messages.map(m => m.role).lastIndexOf('user')
           const toolTurns = messages.slice(lastUser + 1).filter(m => m.role === 'tool').length
@@ -552,8 +745,14 @@ async function clickTestId(page, testId) {
  * 永远是空的 —— 也就永远判不出「是不是脚本同步读版逼出来的」。它只多让浏览器
  * 在这几类事件上多记一段调用栈,不改变任何计时语义,所以挂在这里全局生效,
  * 不必只给场景⑤开一份专属 trace。
+ *
+ * `categories` 是**可选**的窄口(09-14 T3 加):场景⑥ 要录的是一段 40–60s 的真流,
+ * 默认这张全表在那么长的窗口里会攒出几百 MB 的事件(`ReportEvents` 是往 node 进程里
+ * 推的)。⑥ 只要 `RunTask`(toplevel)、`Layout`/`UpdateLayoutTree`(devtools.timeline)
+ * 与两枚记号(blink.user_timing),**不要** `disabled-by-default-*` 那两条 ——
+ * 它要的判据里没有一条问调用栈。
  */
-async function recordTrace(cdp, label, body) {
+async function recordTrace(cdp, label, body, categories) {
   const events = []
   const onData = params => events.push(...(params.value ?? []))
   cdp.on('Tracing.dataCollected', onData)
@@ -562,8 +761,9 @@ async function recordTrace(cdp, label, body) {
   await cdp.send('Tracing.start', {
     transferMode: 'ReportEvents',
     categories:
-      'devtools.timeline,disabled-by-default-devtools.timeline,toplevel,blink.user_timing,'
-      + 'disabled-by-default-devtools.timeline.stack',
+      categories
+      ?? ('devtools.timeline,disabled-by-default-devtools.timeline,toplevel,blink.user_timing,'
+        + 'disabled-by-default-devtools.timeline.stack'),
     options: 'sampling-frequency=10000',
   })
   // 录制刚起来时缓冲区还没铺开,先让一拍,免得把 start 自己的抖动算进场景里。
@@ -624,6 +824,82 @@ function forcedLayouts(events, fromTs, toTs) {
     if (Array.isArray(stack) && stack.length > 0) count += 1
   }
   return count
+}
+
+/**
+ * **一帧花在 style + layout 上多少毫秒**(场景⑥a 的第二条判据),外加两路参考读数。
+ *
+ * ── 为什么不问 LoAF ──────────────────────────────────────────────────
+ * `window.__perf.dump()` 的 `longFrame` 条目自带 `styleAndLayoutMs`,但浏览器
+ * **只报 ≥50ms 的帧**(long-animation-frame 的规格阈值)。于是「长帧 0 条」与
+ * 「style+layout 的 p95」如果都问它,前者绿的那一刻后者就一个样本都没有,p95 成了
+ * 一个由空集算出来的 0 —— 一句**绿的谎话**。所以这一条改问 trace。
+ *
+ * ── 口径 ─────────────────────────────────────────────────────────────
+ * trace 里每一帧的 style+layout 阶段自己就是一对事件:`AnimationFrame::StyleAndLayout`
+ * 的 `b` / `e`(`devtools.timeline`,异步对,按 ts 顺序配)。它与 LoAF 那格
+ * `styleAndLayoutMs` 说的是同一段,只是**每帧都有**,不必等一帧长到 50ms。
+ * 另外两路只打印不判红绿:
+ *  · `reflow*` = 单个 `Layout` / `UpdateLayoutTree` 的时长 —— 正本
+ *    `docs/thinking-stream-2026-09.md` §0 那把尺子(同样式同宽度,一段字**一次重排**
+ *    多少毫秒:2,000 字 0.7ms、163,775 字 71–136ms),两版读数可以直接对着看;
+ *  · `tasks` = 主线程 toplevel 任务(窄分类下它叫 `ThreadControllerImpl::RunTask`)。
+ */
+function styleAndLayoutPerFrame(events, fromTs, toTs) {
+  const mains = new Set()
+  for (const e of events) {
+    if (e.ph === 'M' && e.name === 'thread_name' && e.args?.name === 'CrRendererMain') {
+      mains.add(`${e.pid}:${e.tid}`)
+    }
+  }
+  const scoped = mains.size > 0
+  const onMain = e => !scoped || mains.has(`${e.pid}:${e.tid}`)
+  const marks = []
+  const reflows = []
+  const tasks = []
+  for (const e of events) {
+    if (!onMain(e)) continue
+    if (e.name === 'AnimationFrame::StyleAndLayout' && (e.ph === 'b' || e.ph === 'e')) {
+      if (e.ts >= fromTs && e.ts <= toTs) marks.push(e)
+      continue
+    }
+    if (e.ph !== 'X' || typeof e.dur !== 'number') continue
+    if (e.ts + e.dur < fromTs || e.ts > toTs) continue
+    if (e.name === 'Layout' || e.name === 'UpdateLayoutTree') reflows.push(e.dur / 1000)
+    // 窄分类下 toplevel 给的名字是 `ThreadControllerImpl::RunTask`;DevTools 那个
+    // 光秃秃的 `RunTask` 只在 `disabled-by-default-devtools.timeline` 里(见
+    // recordTrace 的 `categories`)。这里不动 `mainThreadTaskDurations` —— 让它同时
+    // 认两个名字会在默认分类下把同一段任务数两遍。
+    else if (e.name === 'ThreadControllerImpl::RunTask' || e.name === 'RunTask') {
+      tasks.push(e.dur / 1000)
+    }
+  }
+  marks.sort((a, b) => a.ts - b.ts)
+  const frames = []
+  let open
+  for (const e of marks) {
+    if (e.ph === 'b') open = e.ts
+    else if (open !== undefined) {
+      frames.push((e.ts - open) / 1000)
+      open = undefined
+    }
+  }
+  const round = v => Math.round((v ?? 0) * 100) / 100
+  const desc = list => [...list].sort((a, b) => b - a)
+  const fs = desc(frames)
+  const rs = desc(reflows)
+  const ts = desc(tasks)
+  return {
+    frames: fs.length,
+    p95: round(fs.length ? percentile(fs, 95) : 0),
+    max: round(fs[0]),
+    /** **一次重排**多少毫秒 —— 正本 §0 那把尺子(2,000 字 0.7ms / 163,775 字 71–136ms)。 */
+    reflows: rs.length,
+    reflowP95: round(rs.length ? percentile(rs, 95) : 0),
+    reflowMax: round(rs[0]),
+    tasks: ts.length,
+    taskMax: Math.round(ts[0] ?? 0),
+  }
 }
 
 /**
@@ -964,11 +1240,27 @@ async function main() {
   /** 场景⑤的三条常规档会话与它们各自的正文记号。 */
   const normalIds = []
   const normalMarks = []
+  /** 场景②③ 共用的那条会话 —— 它的产地在 `[5/8]`,读它的人在 `[7/8]`。 */
+  let targetId
+  /** 场景⑥:停靠池那 5 条(⑥c)与量的那一条(⑥a/⑥b)。 */
+  const perf6PoolIds = []
+  let thoughtSessionId
   const mockState = {
     sendStartAt: 0, sendDoneAt: 0, chunks: 0, toolCalls: 0, seedToolCalls: 0, seedNormalToolCalls: 0,
+    // 场景⑥:`perf6Served` 是「量的那一条只服务一次」的闩;两枚时刻是思考阶段的**窗口**。
+    perf6Served: false, thoughtStartAt: 0, thoughtDoneAt: 0, thoughtChunks: 0,
   }
   try {
-    console.log(`\n[1/8] 起一台 core,种 ${SEED_SESSIONS} 条会话 + 一条大会话`)
+    /*
+     * 种多少条跟着闸走:①(冷开总览)与 ②(重面板架子)是**唯一**要那 400 张卡的
+     * 两格;别的场景只要「有一条会话在」。留 1 条是因为 `created[0]` 是 ②③ 的靶子。
+     */
+    const seedCount = want('1') || want('2') ? SEED_SESSIONS : 1
+    console.log(
+      `\n[1/9] 起一台 core,种 ${seedCount} 条会话`
+        + `${want('4') ? ' + 一条大会话' : ''}${want('6') ? ` + ${PERF6_POOL_SESSIONS} 条思考型会话` : ''}`
+        + `${ONLY ? `(--only=${[...ONLY].join(',')})` : ''}`,
+    )
     // 假 provider 必须先于 core 起来:设置在 core 启动时读一次。
     mockPort = 44100 + Math.floor(Math.random() * 400)
     mock = await startMockProvider(mockPort, mockState)
@@ -994,7 +1286,7 @@ async function main() {
     if (!(await portConnects(rec.host, rec.port))) throw new Error('core 端口连不上')
 
     const created = []
-    for (let i = 0; i < SEED_SESSIONS; i += 1) {
+    for (let i = 0; i < seedCount; i += 1) {
       const result = await rpc(rec, 'sessions', 'create', { name: `perf-${String(i).padStart(3, '0')}` })
       const id = result?.session?.id
       if (!id) throw new Error(`sessions.create 没给出会话 id:${JSON.stringify(result)}`)
@@ -1007,6 +1299,7 @@ async function main() {
      * 排在大会话**之前**:两档共用同一台 mock,记号不同(见 PERF5_SEED_MARKER),
      * 而大会话「够不够大」的判据只数它自己那一档的工具调用,先后不互相干扰。
      */
+    if (want('5') || want('5b') || want('5c')) {
     for (let i = 0; i < PERF5_SESSIONS; i += 1) {
       const id = (await rpc(rec, 'sessions', 'create', { name: `perf-normal-${i}` }))?.session?.id
       if (!id) throw new Error('常规档会话没建出来')
@@ -1028,9 +1321,38 @@ async function main() {
       console.log(`  · 常规档 ${i}:账本 ${(bytes / 1024).toFixed(0)}KB`)
     }
     console.log(`  ✓ 种了 ${normalIds.length} 条常规档会话(工具调用 ${mockState.seedNormalToolCalls} 次)`)
+    }
+
+    /*
+     * ── 场景⑥的种子 ────────────────────────────────────────────────────
+     * 两样:停靠池那 5 条(各 3 段 3 万字思考,⑥c 的对象)与量的那一条(空会话,
+     * ⑥a 在应用里当场让它流)。种子那一支不讲节拍 —— 它只要把思考落进账本。
+     */
+    if (want('6')) {
+      for (let i = 0; i < PERF6_POOL_SESSIONS; i += 1) {
+        const id = (await rpc(rec, 'sessions', 'create', { name: `perf-thought-${i}` }))?.session?.id
+        if (!id) throw new Error('思考型会话没建出来')
+        perf6PoolIds.push(id)
+        for (let k = 0; k < PERF6_POOL_THOUGHTS; k += 1) {
+          await rpc(rec, 'session-command', 'emit', {
+            sessionId: id,
+            command: { type: 'command:send-message', content: `${PERF6_SEED_MARKER} 第 ${k + 1} 段` },
+          })
+          await waitLedgerSettled(store, id)
+        }
+      }
+      thoughtSessionId = (await rpc(rec, 'sessions', 'create', { name: 'perf-thought-live' }))?.session?.id
+      if (!thoughtSessionId) throw new Error('场景⑥ 量的那条会话没建出来')
+      console.log(
+        `  ✓ 种了 ${perf6PoolIds.length} 条思考型会话`
+          + `(各 ${PERF6_POOL_THOUGHTS} 段 × ${PERF6_POOL_THOUGHT_CHARS} 字),`
+          + `量的那条已备好`,
+      )
+    }
 
     // ── 种那条大会话。**在拉起应用之前**:此刻这台 core 上没有任何 SSE 订阅者,
     // 所以种的过程不受订阅侧过滤影响 —— 反证跑的时候种子也不会跟着慢下来。
+    if (want('4')) {
     bigSessionId = (await rpc(rec, 'sessions', 'create', { name: 'perf-big' }))?.session?.id
     if (!bigSessionId) throw new Error('大会话没建出来')
     const ledgerPath = path.join(store, 'sessions', bigSessionId, 'events.jsonl')
@@ -1079,14 +1401,18 @@ async function main() {
           + `工具调用 ${mockState.seedToolCalls} 次(要 ≥${PERF4_MIN_TOOL_CALLS})`,
       )
     }
+    }
 
     // 种完就把假 provider 摘掉:①②③ 的基线是「没有可用 provider」(见
     // `perf4Settings` 的注释)。走的是设置页自己那条 RPC,不是改盘 —— 设置有
     // 进程内缓存,改盘那份进不了活着的 core。
-    await rpc(rec, 'settings', 'saveSettings', perf4Settings(mockPort, false))
-    console.log('  ✓ 假 provider 已摘(场景①②③ 在无 provider 下跑)')
+    // 一格都没点到 ①②③ 时这一步整步跳过:摘了下面 ④/⑥ 还要装回来,白跑两趟 RPC。
+    if (want('1') || want('2') || want('3')) {
+      await rpc(rec, 'settings', 'saveSettings', perf4Settings(mockPort, false))
+      console.log('  ✓ 假 provider 已摘(场景①②③ 在无 provider 下跑)')
+    }
 
-    console.log('\n[2/8] 拉起应用(独立 --user-data-dir),等它连上同一台 core')
+    console.log('\n[2/9] 拉起应用(独立 --user-data-dir),等它连上同一台 core')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -1126,7 +1452,9 @@ async function main() {
     console.log('  ✓ window.__log / __crash / __perf 三个 dump 口都在')
 
     /* ── 场景 ①:冷开会话总览 ─────────────────────────────────────────── */
-    console.log(`\n[3/8] 场景① 冷开会话总览(${SEED_SESSIONS} 条会话)`)
+    /* `--only` 的闸只裹一层壳,里面一行不动 —— 重排缩进会把多行模板串里的空白也改掉。 */
+    if (want('1')) {
+    console.log(`\n[3/9] 场景① 冷开会话总览(${SEED_SESSIONS} 条会话)`)
     await waitFor('Dock 上的「会话总览」瓦就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-sessions"]'))),
     )
@@ -1173,12 +1501,15 @@ async function main() {
           + '      含「行自己的 outline 不会被自己的 paint containment 剪掉」的截图反证)。',
       )
     }
+    }
 
     /* ── 场景 ⑤:常规档 ↔ 常规档 切会话 ×8 ────────────────────────────────
      * 排在②之前是刻意的:②要先把默认打开档改成「钉栏」并重载,而这一格量的是
      * **默认档(舞台)下从总览点一张卡进会话**——那正是用户报障时的手势。
      */
-    console.log(`\n[4/8] 场景⑤ 常规档 ↔ 常规档 切会话 ×${PERF5_SWITCHES}`)
+    /* `--only` 的闸只裹一层壳,里面一行不动 —— 重排缩进会把多行模板串里的空白也改掉。 */
+    if (want('5')) {
+    console.log(`\n[4/9] 场景⑤ 常规档 ↔ 常规档 切会话 ×${PERF5_SWITCHES}`)
     // 先进头一条(起底那一次不计时:它带着首开的一次性开销)。
     await enterSession(page, normalIds[0])
     await delay(1500)
@@ -1235,6 +1566,7 @@ async function main() {
       `切会话强制排版 最大 ${maxForcedLayouts} 次 ≤ 预算 ${BUDGET.sessionSwitchForcedLayouts} 次`,
       switchRun.events,
     )
+    }
 
     /* ── 场景 ⑤b:**二合一 / 拆开 ×10**(W6-p 重写)────────────────────────
      *
@@ -1257,7 +1589,9 @@ async function main() {
      * 时间 p95 一起断言当参考;另加一条「零长帧」——这一下屏幕上换的是同一块地方
      * 的画法,不该出现 50ms 以上的任务。
      */
-    console.log(`\n[4b/8] 场景⑤b 二合一 / 拆开 ×${PERF5B_ACTIONS}`)
+    /* `--only` 的闸只裹一层壳,里面一行不动 —— 重排缩进会把多行模板串里的空白也改掉。 */
+    if (want('5b')) {
+    console.log(`\n[4b/9] 场景⑤b 二合一 / 拆开 ×${PERF5B_ACTIONS}`)
     /*
      * 夹具搭不起来 = **红**,不是跳过(与 `boundary:gate` 那两条反脚枪守卫同源)。
      * 两格标签才有得并,所以先确保这条条上有两格 —— `ensureSecondTab` 是幂等的,
@@ -1337,6 +1671,7 @@ async function main() {
           + `>${BUDGET.longFrameMs}ms 的长帧 ${pairOverLong} 段 —— 判词见预算表`,
       )
     }
+    }
 
     /* ── 场景 ⑤c:条内换序 ×20(W6-b)────────────────────────────────────
      *
@@ -1349,7 +1684,9 @@ async function main() {
      * 判据与 ⑤a/⑤b 同形:强制排版次数是红绿主判据(整数、不抖),时间 p95 一起
      * 断言当参考。
      */
-    console.log(`\n[4c/8] 场景⑤c 条内换序 ×${PERF5C_REORDERS}`)
+    /* `--only` 的闸只裹一层壳,里面一行不动 —— 重排缩进会把多行模板串里的空白也改掉。 */
+    if (want('5c')) {
+    console.log(`\n[4c/9] 场景⑤c 条内换序 ×${PERF5C_REORDERS}`)
     /*
      * **⑤c 自己确认自己的夹具,不借 ⑤b 留下的**(09-05 A/B 当场量出来的一条):
      * 从前它靠「⑤b 开出来的第二片叶恰好在同一条条上多出一格」白拿两格标签,
@@ -1448,16 +1785,22 @@ async function main() {
         reorderRun.events,
       )
     }
+    }
 
     /* ── 场景②③ 共用的现场:钉栏默认档 + 进一条会话 ─────────────────── */
-    console.log('\n[5/8] 切成「钉栏」默认档并进一条会话(场景②③ 共用这个现场)')
+    /* `--only` 的闸只裹一层壳,里面一行不动 —— 重排缩进会把多行模板串里的空白也改掉。 */
+    if (want('2') || want('3')) {
+    console.log('\n[5/9] 切成「钉栏」默认档并进一条会话(场景②③ 共用这个现场)')
     await switchDefaultOpenToPinned(page)
-    const targetId = created[0]
+    targetId = created[0]
     await enterSession(page, targetId)
     console.log('  ✓ 已进入会话,聊天区起底完成')
+    }
 
     /* ── 场景 ②:架子 tab 连续切换 ×10 ────────────────────────────────── */
-    console.log(`\n[6/8] 场景② 右架子 tab 连续切换 ×10(真实负载:${SHELF_PANELS.join(' / ')} 同组)`)
+    /* `--only` 的闸只裹一层壳,里面一行不动 —— 重排缩进会把多行模板串里的空白也改掉。 */
+    if (want('2')) {
+    console.log(`\n[6/9] 场景② 右架子 tab 连续切换 ×10(真实负载:${SHELF_PANELS.join(' / ')} 同组)`)
     const pinned = await pinPanels(page, SHELF_PANELS)
     console.log(`  · 右架子 tab 次序:${pinned.join(' / ') || '(空)'}`)
     // 现场对不上就红,不降级成「没量到」:场景②的全部意义是**重面板**在这条架子上。
@@ -1537,6 +1880,7 @@ async function main() {
       `期间 >${BUDGET.longFrameMs}ms 的长帧 ${longFrames.length} 条 ≤ ${BUDGET.animationLongFrames}`,
       sw.events,
     )
+    }
 
     /* ── 场景 ③:5k 字消息流式回放 ────────────────────────────────────────
      * 排在场景②**之后**是刻意的:那时右架子上三块面板全挂着(keep-alive),
@@ -1544,7 +1888,9 @@ async function main() {
      * 「后台面板会不会因为数据源一动就跟着重渲,把流式那条链拖慢」。
      * 排在前面就量不到,因为那时架子还是空的。
      */
-    console.log('\n[7/8] 场景③ 5k 字长消息注入 → 上屏')
+    /* `--only` 的闸只裹一层壳,里面一行不动 —— 重排缩进会把多行模板串里的空白也改掉。 */
+    if (want('3')) {
+    console.log('\n[7/9] 场景③ 5k 字长消息注入 → 上屏')
 
     const stream = await recordTrace(cdp, 'long-message', async () => {
       const started = Date.now()
@@ -1577,12 +1923,15 @@ async function main() {
       `稳态里 >${BUDGET.streamFrameMs}ms 的帧 ${streamStats.over} 段 ≤ ${BUDGET.streamOverBudgetFrames}`,
       stream.events,
     )
+    }
 
     /* ── 场景 ④:大会话 + 真流(批 A)────────────────────────────────────
      * 场景③量的是「注入一条用户消息」;这一格量的是用户真正报障的那条链:
      * **大会话** + assistant 流 + 工具调用,而屏幕上那一头有一条活着的 SSE 订阅。
      */
-    console.log('\n[8/8] 场景④ 大会话 + 假 provider 吐 50KB 带围栏回答 + 2 次工具调用')
+    /* `--only` 的闸只裹一层壳,里面一行不动 —— 重排缩进会把多行模板串里的空白也改掉。 */
+    if (want('4')) {
+    console.log('\n[8/9] 场景④ 大会话 + 假 provider 吐 50KB 带围栏回答 + 2 次工具调用')
     // 装回假 provider。目录键变了,`saveSettings` 之后 provider 缓存自己重拉。
     await rpc(rec, 'settings', 'saveSettings', perf4Settings(mockPort, true))
     await delay(500)
@@ -1642,6 +1991,353 @@ async function main() {
       `core 进程 CPU 中位 ${cpuStats.median}% < ${PERF4_CORE_CPU_PCT}%`,
       perf4.events,
     )
+    }
+
+
+    /* ── 场景 ⑥:20 万字思考流式(09-14 T3;正本 docs/thinking-stream-2026-09.md §5)──
+     *
+     * **排在最后**有两个理由,都不是习惯:① ⑥b 要用
+     * `Emulation.setDeviceMetricsOverride` 换三个窗宽,中途换会把后面每一格的读数都
+     * 挪到另一个视口上;② ⑥a 那 40–60s 里屏幕上还挂着 ②③④ 留下的整份现场
+     * (右架子三块面板 keep-alive、一条 6MB 的大会话),**那正是用户报障时的屏幕** ——
+     * 单独起一间干净屋子量出来的「零长帧」证不了它。
+     *
+     * 三格的次序是 ⑥c → ⑥a → ⑥b,**不是编号序**:⑥b 要把那条 20 万字的思考**展开**
+     * 才量得了高度,而展开之后它自己就有 20 万字在 DOM 里 —— ⑥c 那句「整份 document
+     * 的收起思考 < 5,000 字」当场变成一条永远红的假线。
+     */
+    /* `--only` 的闸只裹一层壳,里面一行不动 —— 重排缩进会把多行模板串里的空白也改掉。 */
+    if (want('6')) {
+    console.log('\n[9/9] 场景⑥ 20 万字思考流式(T3)')
+    // 装回假 provider(④ 没跑时它还是摘着的;跑过 ④ 则这一发是幂等的)。
+    await rpc(rec, 'settings', 'saveSettings', perf4Settings(mockPort, true))
+    await delay(500)
+
+    /*
+     * 下面三格里反复出现的那句「找出屏幕上量的那一条思考」:拿**第一个 `<p>` 的开头**
+     * 比指纹(`PERF6_THOUGHT_HEAD`)。收起态那一个 `<p>` 是 240 字的预览、展开态第一个
+     * `<p>` 是块 0,两态的开头都是这段文本的开头,所以同一句判据两态都成立;而它读的
+     * 永远只是一个 ≤900 字的节点 —— `el.textContent` 在展开态是 20 万字,每 500ms 取
+     * 一次就是量具自己变成负载。**它必须写在页面里**(`page.evaluate` 的闭包只带得走
+     * 参数),所以这三处各有一份同形的循环,不是可以提出去的公共函数。
+     */
+
+    /* ── ⑥c:5 条思考型会话依次进停靠池,数收起态的常驻 DOM ─────────────── */
+    for (const id of perf6PoolIds) {
+      await enterSession(page, id)
+      await delay(600)
+    }
+    const collapsed = await page.evaluate(() => {
+      const all = Array.from(document.querySelectorAll('[data-testid="chat-thought"]'))
+      return {
+        segments: all.length,
+        chars: all.reduce((n, el) => n + (el.textContent?.length ?? 0), 0),
+        longest: all.reduce((n, el) => Math.max(n, el.textContent?.length ?? 0), 0),
+      }
+    })
+    /*
+     * **该挂着几段**:开了 5 条,但一片叶只停靠 `SESSION_VIEW_PARK_LIMIT` 条(今天 3)
+     * —— 加上活动那一条,屏幕上挂着的是 4 条 × 3 段 = 12 段,不是 15 段。首跑时这里
+     * 写死了 15,红在「画出了 12 段 ≥ 15 段」上;那不是产品少画了,是门不认识停靠池
+     * 自己的上限。数从 `session-park.ts` 读回来(见 `readParkLimit`),不抄第二份。
+     */
+    const seededSegments = PERF6_POOL_SESSIONS * PERF6_POOL_THOUGHTS
+    const wantSegments = Math.min(PARK_LIMIT + 1, PERF6_POOL_SESSIONS) * PERF6_POOL_THOUGHTS
+    console.log(
+      `  · ⑥c 停靠池:开了 ${perf6PoolIds.length} 条会话(共种下 ${seededSegments} 段 × `
+        + `${PERF6_POOL_THOUGHT_CHARS} 字 = ${seededSegments * PERF6_POOL_THOUGHT_CHARS} 字),`
+        + `停靠上限 ${PARK_LIMIT} + 活动 1 条 ⇒ 该挂着 ${wantSegments} 段;`
+        + `实挂 ${collapsed.segments} 段,常驻 DOM 文字 ${collapsed.chars} 字,`
+        + `最长一段 ${collapsed.longest} 字`,
+    )
+    record_('⑥c 收起思考的常驻 DOM', { tasks: 0, longest: 0, p95: 0, over: 0 }, { ms: collapsed.chars })
+    // **段数也要断言**:一段都没画出来时「0 < 5,000」会绿,那是最贵的一种假绿。
+    assertScenario(
+      'thought-collapsed',
+      collapsed.segments >= wantSegments,
+      `停靠池里画出了 ${collapsed.segments} 段思考 ≥ 该挂着的 ${wantSegments} 段`,
+      [],
+    )
+    assertScenario(
+      'thought-collapsed',
+      collapsed.segments >= wantSegments && collapsed.chars < PERF6_COLLAPSED_CHARS,
+      `收起思考的常驻 DOM ${collapsed.chars} 字 < ${PERF6_COLLAPSED_CHARS}`
+        + `(挂着 ${collapsed.segments} 段 × ${PERF6_POOL_THOUGHT_CHARS} 字的思考)`,
+      [],
+    )
+
+    /* ── ⑥a:让它流,盯着活动尾 ───────────────────────────────────────── */
+    await enterSession(page, thoughtSessionId)
+    await delay(1200)
+    const tailSamples = []
+    const blockCounts = []
+    let frozenFirst
+    let frozenFirstChanged = false
+    let countWentBackwards = false
+    let thoughtStartWall = 0
+    let thoughtEndWall = 0
+    /** 最后一采**还展开着**的那一枚记号的序号 —— 它就是窗口的右沿。 */
+    let lastTick = -1
+    const thoughtRun = await recordTrace(
+      cdp,
+      'thought-stream',
+      async () => {
+        await rpc(rec, 'session-command', 'emit', {
+          sessionId: thoughtSessionId,
+          command: { type: 'command:send-message', content: `${PERF6_MARKER} 请仔细想一想` },
+        })
+        const deadline = Date.now() + 300_000
+        let previousCount = 0
+        while (Date.now() < deadline) {
+          await delay(PERF6_SAMPLE_MS)
+          /*
+           * **每一采自己打一枚记号**(`perf6:tick:<n>`)。窗口的两沿因此是
+           * 「第一采」与「最后一采**还展开着**」—— 见下面 `expanded` 那一段的判词。
+           * 记号打在读 DOM **之前**:它要标的是「这一采发生在什么时候」。
+           */
+          const tick = tailSamples.length
+          const s = await page.evaluate(({ head, n }) => {
+            performance.mark(`perf6:tick:${n}`)
+            const all = document.querySelectorAll('[data-testid="chat-thought"]')
+            let el = null
+            for (const candidate of all) {
+              const p0 = candidate.querySelector('p')
+              if (p0 && (p0.textContent ?? '').startsWith(head)) {
+                el = candidate
+                break
+              }
+            }
+            if (!el) return { found: false }
+            const ps = el.querySelectorAll('p')
+            const first = ps[0]
+            const last = ps[ps.length - 1]
+            return {
+              found: true,
+              // 流式中思考段跟着 `live` 自动展开;`live` 翻 false 的那一刻它自己折回去。
+              expanded: el.getAttribute('aria-expanded') === 'true',
+              count: ps.length,
+              last: (last?.textContent ?? '').length,
+              firstLen: (first?.textContent ?? '').length,
+              firstHead: (first?.textContent ?? '').slice(0, 60),
+            }
+          }, { head: PERF6_THOUGHT_HEAD, n: tick })
+          if (!s.found) continue
+          /*
+           * ── 窗口的右沿 = **它折回去那一刻**(首跑判例)────────────────────
+           * 第一版拿「provider 吐完 + 块数不再涨」当右沿,于是窗口一路开到收尾之后:
+           * 最后三采读到的是**收起态**(1 个 `<p>`、240 字预览),`<p>` 条数从 342 掉到 1,
+           * 「单调不减」当场红 —— 而那根本不是回退,是思考段收尾自动折叠。收尾那几帧
+           * (折回去 = 20 万字离开 DOM、正文上屏)**不属于思考阶段**,它们留在窗口外面。
+           * 判据用 `aria-expanded`(`Fold` 自己报的),不用「块数掉了没有」:后者是把
+           * 一个正常的状态变化读成回退。
+           */
+          if (!s.expanded && thoughtStartWall !== 0) break
+          if (thoughtStartWall === 0) {
+            /*
+             * 窗口的左沿 = **第一个思考 `<p>` 上屏**。往前一格(发命令那一刻)会把
+             * 「进这条会话 + 起一条流」的一次性开销算进思考阶段,那不是这一批治的东西。
+             */
+            thoughtStartWall = Date.now()
+          }
+          thoughtEndWall = Date.now()
+          lastTick = tick
+          tailSamples.push(s.last)
+          blockCounts.push(s.count)
+          const priorCount = previousCount
+          if (s.count < priorCount) countWentBackwards = true
+          previousCount = s.count
+          /*
+           * 第一块**冻住之后**才比:`count === 1` 时那一个 `<p>` 还是活动尾,它本来
+           * 就该每帧变。`count >= 2` 之后 ps[0] 结构上必定是块 0(正本 §2:切点只往前)。
+           */
+          if (s.count >= 2) {
+            if (!frozenFirst) frozenFirst = { len: s.firstLen, head: s.firstHead }
+            else if (frozenFirst.len !== s.firstLen || frozenFirst.head !== s.firstHead) {
+              frozenFirstChanged = true
+            }
+          }
+          // 兜底:provider 早吐完了、它却一直没折回去(流卡住 / 用户态被谁改了)。
+          if (mockState.thoughtDoneAt !== 0 && Date.now() - mockState.thoughtDoneAt > 60_000) break
+        }
+        return {}
+      },
+      // 窄分类:这一格的判据里没有一条问调用栈(见 recordTrace 的判词)。
+      'devtools.timeline,toplevel,blink.user_timing',
+    )
+    keepTrace('thought-stream', thoughtRun.events)
+    // 账落完再往下走:⑥b 量的是**收尾之后**那一态。
+    await waitLedgerSettled(store, thoughtSessionId)
+    await delay(1200)
+
+    const thoughtFrom = markTs(thoughtRun.events, 'perf6:tick:0')
+    const thoughtTo = lastTick >= 0 ? markTs(thoughtRun.events, `perf6:tick:${lastTick}`) : undefined
+    if (thoughtFrom === undefined || thoughtTo === undefined) {
+      throw new Error('场景⑥ 的采样记号没落进 trace —— 量具本身坏了')
+    }
+    const sl = styleAndLayoutPerFrame(thoughtRun.events, thoughtFrom, thoughtTo)
+    const thoughtStats = { tasks: sl.tasks, longest: sl.taskMax, p95: 0, over: 0 }
+    const loafAll = await page.evaluate(() => (window.__perf ? window.__perf.dump() : []))
+    const loafWindow = loafAll.filter(
+      e => e.kind === 'longFrame' && e.ts >= thoughtStartWall && e.ts <= thoughtEndWall,
+    )
+    const loafLong = loafWindow.filter(e => e.ms > BUDGET.longFrameMs)
+    const maxTail = tailSamples.length ? Math.max(...tailSamples) : -1
+    console.log(
+      `  · ⑥a provider 净吐思考 ${mockState.thoughtDoneAt - mockState.thoughtStartAt}ms / `
+        + `${mockState.thoughtChunks} 片 / ${PERF6_THOUGHT_CHARS} 字;`
+        + `屏幕上的思考阶段 ${thoughtEndWall - thoughtStartWall}ms,采了 ${tailSamples.length} 次`
+        + `\n  · 活动尾字数(每 500ms 一采):${tailSamples.join(' ')}`
+        + `\n  · 思考里 <p> 的条数:${blockCounts.join(' ')}`
+        + `\n  · 每帧 style+layout:p95 ${sl.p95}ms、最长 ${sl.max}ms(${sl.frames} 帧)`
+        + `\n  · 参考 · **一次重排**:${sl.reflows} 次,p95 ${sl.reflowP95}ms、最长 ${sl.reflowMax}ms`
+        + `(正本 §0 的同一把尺子:2,000 字 0.7ms / 163,775 字 71–136ms);`
+        + `主线程 toplevel 任务 ${sl.tasks} 段,最长 ${sl.taskMax}ms`
+        + `\n  · 页面侧 LoAF:窗口内 ${loafWindow.length} 条,其中 >${BUDGET.longFrameMs}ms 的 `
+        + `${loafLong.length} 条`,
+    )
+    for (const frame of loafLong.slice(0, 5)) {
+      const who = (frame.scripts ?? []).map(x => `${x.invoker} ${x.ms}ms`).join(' | ') || '(无归因)'
+      console.log(`    · 长帧 ${frame.ms}ms(style+layout ${frame.styleAndLayoutMs ?? '?'}ms):${who}`)
+    }
+    record_('⑥a 思考阶段·style+layout p95', thoughtStats, { ms: sl.p95 })
+    record_('⑥a 思考阶段·活动尾最长', thoughtStats, { ms: maxTail })
+    assertScenario(
+      'thought-stream',
+      tailSamples.length >= 10,
+      `思考阶段采到 ${tailSamples.length} 次(要 ≥10 —— 采不到就没有判据,不是没问题)`,
+      thoughtRun.events,
+    )
+    assertScenario(
+      'thought-stream',
+      maxTail >= 0 && maxTail <= PERF6_TAIL_LIMIT,
+      `活动尾最长 ${maxTail} 字 ≤ ${PERF6_TAIL_LIMIT}(text-stream.ts 的 TAIL_LIMIT)`,
+      thoughtRun.events,
+    )
+    assertScenario(
+      'thought-stream',
+      !countWentBackwards,
+      `思考里 \`<p>\` 的条数单调不减(${blockCounts[0] ?? 0} → ${blockCounts[blockCounts.length - 1] ?? 0})`,
+      thoughtRun.events,
+    )
+    assertScenario(
+      'thought-stream',
+      !frozenFirstChanged,
+      `第一块冻住之后逐字不变(${frozenFirst ? `${frozenFirst.len} 字` : '没冻出第二块 —— 判据落空'})`,
+      thoughtRun.events,
+    )
+    assertScenario(
+      'thought-stream',
+      loafLong.length <= BUDGET.animationLongFrames,
+      `思考阶段 >${BUDGET.longFrameMs}ms 的长帧 ${loafLong.length} 条 ≤ ${BUDGET.animationLongFrames}`,
+      thoughtRun.events,
+    )
+    assertScenario(
+      'thought-stream',
+      sl.frames > 0 && sl.p95 < PERF6_STYLE_LAYOUT_P95_MS,
+      `思考阶段每帧 style+layout p95 ${sl.p95}ms < ${PERF6_STYLE_LAYOUT_P95_MS}ms`
+        + `(${sl.frames} 帧 —— 0 帧就是窗口圈错了,不是「没排版」)`,
+      thoughtRun.events,
+    )
+
+    /* ── ⑥b:视觉等价(分块 vs 单段,三个窗宽)────────────────────────── */
+    const expanded = await page.evaluate((head) => {
+      const all = document.querySelectorAll('[data-testid="chat-thought"]')
+      for (const el of all) {
+        const p0 = el.querySelector('p')
+        if (p0 && (p0.textContent ?? '').startsWith(head)) {
+          // 收尾之后它跟着 `live` 折回去了 —— 点开。`Fold` 的受控档,一格持久化都不写。
+          if (el.getAttribute('aria-expanded') !== 'true') el.click()
+          return true
+        }
+      }
+      return false
+    }, PERF6_THOUGHT_HEAD)
+    assertScenario('thought-equiv', expanded, '流完之后那段思考点得开(⑥b 的现场)', [])
+    await delay(600)
+    const equivalence = []
+    for (const width of [900, 1280, 1600]) {
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width,
+        height: 900,
+        deviceScaleFactor: 1,
+        mobile: false,
+      })
+      await delay(800)
+      const row = await page.evaluate((head) => {
+        const all = document.querySelectorAll('[data-testid="chat-thought"]')
+        let el = null
+        for (const candidate of all) {
+          const p0 = candidate.querySelector('p')
+          if (p0 && (p0.textContent ?? '').startsWith(head)) {
+            el = candidate
+            break
+          }
+        }
+        if (!el) return null
+        const ps = Array.from(el.querySelectorAll('p'))
+        const full = ps.map(x => x.textContent ?? '').join('')
+        const rect = el.getBoundingClientRect()
+        /*
+         * **旧法**:一个 `<p class=thoughtBlock>` 装全文。克隆的是这一段思考自己那个
+         * 盒子(`cloneNode(false)` 留住 class 与 role),塞回**同一个父节点**里,所以
+         * 字体 / 行高 / 继承下来的一切逐字相同;宽度显式钉成同一个数,再离屏量高。
+         */
+        const clone = el.cloneNode(false)
+        clone.removeAttribute('data-testid')
+        const one = document.createElement('p')
+        one.className = ps[0]?.className ?? ''
+        one.textContent = full
+        clone.appendChild(one)
+        clone.style.position = 'absolute'
+        clone.style.left = '-99999px'
+        clone.style.top = '0'
+        clone.style.width = `${rect.width}px`
+        clone.style.visibility = 'hidden'
+        el.parentElement.appendChild(clone)
+        const out = {
+          blocks: ps.length,
+          chars: full.length,
+          split: el.offsetHeight,
+          single: clone.offsetHeight,
+          width: Math.round(rect.width * 100) / 100,
+          cloneWidth: Math.round(clone.getBoundingClientRect().width * 100) / 100,
+        }
+        clone.remove()
+        return out
+      }, PERF6_THOUGHT_HEAD)
+      if (!row) throw new Error(`场景⑥b 在 ${width}px 下找不到那段思考 —— 现场塌了`)
+      equivalence.push({ width, ...row })
+      console.log(
+        `  · ⑥b 窗宽 ${width}px:思考段宽 ${row.width}px(克隆 ${row.cloneWidth}px)、`
+          + `${row.blocks} 块 / ${row.chars} 字;分块 ${row.split}px vs 单段 ${row.single}px`,
+      )
+    }
+    await cdp.send('Emulation.clearDeviceMetricsOverride').catch(() => {})
+    const equalAll = equivalence.every(r => r.split === r.single && r.width === r.cloneWidth)
+    /*
+     * **三个窗宽不一定换出三种正文宽**:聊天区正文栏有上限(实测 704px),1280 与 1600
+     * 落在同一个数上。那不是夹具错了 —— 三个窗宽换出两种折行几何仍然是两种排版;
+     * 但「三次都量了同一个宽度」会让这条判据缩水成一次,所以这里把它**说出来并断言**。
+     */
+    const distinctWidths = new Set(equivalence.map(r => r.width))
+    record_('⑥b 视觉等价(高度差)', { tasks: 0, longest: 0, p95: 0, over: 0 }, {
+      ms: Math.max(...equivalence.map(r => Math.abs(r.split - r.single))),
+    })
+    assertScenario(
+      'thought-equiv',
+      distinctWidths.size >= 2,
+      `900/1280/1600 三个窗宽换出了 ${distinctWidths.size} 种思考段宽度`
+        + `(${[...distinctWidths].join(' / ')}px;正文栏有上限,1280 与 1600 会落在同一个数上)`,
+      [],
+    )
+    assertScenario(
+      'thought-equiv',
+      equalAll,
+      `分块渲染与单段渲染在 900/1280/1600 三个窗宽下 offsetHeight 各自相等`
+        + `(${equivalence.map(r => `${r.width}:${r.split}/${r.single}`).join(' ')})`,
+      [],
+    )
+    }
 
     /* ── 第二路读数:页面自己的 LoAF 观察者 ──────────────────────────── */
     const inPage = await page.evaluate(() => (window.__perf ? window.__perf.dump() : []))
@@ -1669,7 +2365,7 @@ async function main() {
     console.error(`\n[perf-gate] FAILED(${failures.length} 条):\n  ${failures.join('\n  ')}`)
     process.exit(1)
   }
-  console.log('\n[perf-gate] ok —— 五个场景都在预算内')
+  console.log(`\n[perf-gate] ok —— ${ONLY ? `点名的那 ${ONLY.size} 格` : '全部场景'}都在预算内`)
 }
 
 /**
@@ -2002,7 +2698,7 @@ async function measureClickToPaint(page, testId, appearSelector) {
 }
 
 function printTable() {
-  console.log('\n── 五场景实测 ──')
+  console.log('\n── 场景实测 ──')
   const pad = (s, n) => String(s).padEnd(n)
   console.log(
     `${pad('场景', 26)}${pad('耗时', 10)}${pad('任务数', 8)}${pad('最长', 8)}${pad('p95', 8)}超标段`,
