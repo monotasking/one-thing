@@ -1,6 +1,7 @@
 import type { ProjectedMessage } from '../../data/chat-fold'
 import type { MessageKey, MessageVars } from '../../i18n'
 import type { CompactMarker } from '../compact/marker'
+import type { TextBlock } from '../text/text-stream'
 import type { BlockModel } from './blocks'
 import type { TitleTip } from './title-tip'
 
@@ -244,8 +245,26 @@ export interface ResearchEpisodeModel {
 }
 
 export type SegmentModel =
-  /** 思考。`live` 的产地是折叠器给的 `isStreaming`;P0 没有渲染器读它。 */
-  | { kind: 'thinking'; text: string; live: boolean }
+  /**
+   * 思考。`live` 的产地是折叠器给的 `isStreaming`。
+   *
+   * **它不是一个字符串,是一串块 + 一条活动尾**(正本 `docs/thinking-stream-2026-09.md`
+   * §3)。理由与 `rich-text` 带 `offsets`/`ids` 那一条完全相同:流式期间同一段字每帧
+   * 重画一次,而「哪一截已经定了、哪一截还在长」是**装配的事实**,不该让渲染层每帧
+   * 自己猜一遍。`blocks` 里的对象跨帧是**同一个实例**(`content/text/text-stream.ts`),
+   * 所以渲染层 memo 的那一层连比都不用比。
+   *
+   * `preview` 是收起时唯一挂载的那点字(前 240)。它进模型而不是渲染层现切,是因为
+   * 「收起时挂什么」是这一段的事实:正本 §0 量到停靠池里 175 段旧思考共 104 万字,
+   * 收起态若挂全文,那 104 万字就一直在 DOM 里。
+   */
+  | {
+      kind: 'thinking'
+      blocks: readonly TextBlock[]
+      tail: string
+      live: boolean
+      preview: string
+    }
   /**
    * markdown 解析的产物。
    *

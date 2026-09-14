@@ -7,6 +7,7 @@ import { anchorMessage } from './anchor'
 import { groupNodes } from './group'
 import { markdownToFrame } from './markdown'
 import { presentToolCard } from './present'
+import { textPreview, textToFrame } from './text'
 import { presentResearchEpisode } from '../research/episode'
 
 /**
@@ -112,11 +113,26 @@ function runPipeline(message: ProjectedMessage): SegmentModel[] {
 
   for (const node of groupNodes(anchorMessage(message))) {
     switch (node.node) {
-      case 'reasoning':
+      case 'reasoning': {
         // 顶部推理与行内推理都是思考段 —— 它们的差别是**落点**(placement),
         // 而落点已经由锚点步兑现成了序列上的位置。到这一层就没有第二个问题了。
-        segments.push({ kind: 'thinking', text: node.text, live: message.isStreaming === true })
+        //
+        // **与下面 `text` 那一格逐字同形**(正本 `docs/thinking-stream-2026-09.md` §3):
+        // 同样的身份(消息 id + 段序号)、同样把 `isStreaming` 传下去、同样由产地
+        // 决定「哪一截已经定了」。差别只有一个:正文的切点问 markdown 语法,思考的
+        // 切点只问换行。那条会话里 95.6% 的流式字符是思考(1,247,359 字),把它当
+        // 一个字符串整段重画,就是 PerfHud 上每帧 100–136ms 的产地。
+        const live = message.isStreaming === true
+        const { blocks, tail } = textToFrame(`${message.id}#${segments.length}`, node.text, live)
+        segments.push({
+          kind: 'thinking',
+          blocks,
+          tail,
+          live,
+          preview: textPreview(blocks, tail),
+        })
         break
+      }
       case 'text': {
         // 活跃与否要传下去:流式那条路(稳定前缀 / 未闭合原子块 / 节拍)全靠它。
         // 缓存的身份带上段序号 —— 一条消息将来会有不止一段正文(锚点真算法进来之后)。

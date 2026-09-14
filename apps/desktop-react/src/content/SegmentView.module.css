@@ -11,7 +11,7 @@
 
 /*
  * ── 这个盒子不许有自己的上下留白(08-31 真机回访 · 报障一)───────────────────
- * 从前这里写着 `padding: var(--sp-1) 0`,而里面那个 `<p class=thoughtBody>` 还带着
+ * 从前这里写着 `padding: var(--sp-1) 0`,而里面那个思考正文的 `<p>` 还带着
  * UA 的 `margin-block: 1em`(fs-meta 12px 下就是 12px)—— ChatStream 的
  * `.row > * { margin-block: 0 }` **够不着它**:那条规则只清直接子项,而这个 `<p>`
  * 是孙辈。于是每一段思考在自己上下各偷偷带了 4 + 12 = 16px。
@@ -40,18 +40,35 @@
   color: var(--text-3);
 }
 
-.thoughtBody {
-  /* UA 的 `margin-block: 1em`。清在这里,理由见 `.thought` 上面那段。 */
+/*
+ * ── 两态的字,两个类(09-14 分块流式;正本 `docs/thinking-stream-2026-09.md` §4)──
+ *
+ * 从前这里是一个 `.thoughtBody`:两态同一个 `<p>`,收起靠 line-clamp 钳。那对短思考
+ * 没问题,对 20 万字的思考是两场事故(每帧重排整段 / 收起后全文常驻 DOM)。现在
+ * 收起挂 `.thoughtPreview`(≤ 240 字),展开挂一串 `.thoughtBlock`。
+ *
+ * **字面(字号 / 斜体 / 行高 / 换行规矩)是同一份**,写在下面这条并列选择器上 ——
+ * 两态本来就是「同一段字的两个读法」,字面分两处写迟早分叉。
+ */
+.thoughtPreview,
+.thoughtBlock {
+  /* UA 的 `margin-block: 1em`。清在这里,理由见 `.thought` 上面那段。
+     块与块之间因此**零外边距** —— 它们是被流切开的同一段字,不是一串段落。 */
   margin-block: 0;
   font-size: var(--fs-meta);
   font-style: italic;
+  /* 块自己带着自己的换行(pre-wrap 照排),所以拼起来与单段逐像素同形。 */
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.thoughtPreview {
   /*
-   * 收起 = 原文钳一行。用 line-clamp 而不是截字符串:钳在**排版**上做,换字号、
+   * 收起 = 钳一行。用 line-clamp 而不是截字符串:钳在**排版**上做,换字号、
    * 换窗宽都自动对;截字符串是在渲染前替浏览器猜一遍宽度,永远猜不准。
    * 一行的省略号由 line-clamp 自己给。
+   * (装配层那一刀 240 字不是拿来当「一行」的 —— 它是给 DOM 封的顶,见 §4。)
    */
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -61,15 +78,15 @@
   user-select: none;
 }
 
+/* 展开态的正文可圈选(从前是 `.thoughtOpen .thoughtBody` 那条覆写;块只在展开态
+   挂载,所以它不必再绕一层后代选择器 —— 少一条覆写就少一次特异性打架)。 */
+.thoughtBlock {
+  user-select: text;
+}
+
 .thoughtOpen {
   color: var(--text-3);
   cursor: text;
-}
-
-.thoughtOpen .thoughtBody {
-  display: block;
-  overflow: visible;
-  user-select: text;
 }
 
 /* ── 压缩折痕自己的那一件:行内重试 ─────────────────────────────────────────

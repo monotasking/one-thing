@@ -67,7 +67,15 @@ describe('段序列:一条消息算成哪几段', () => {
   it('顶部推理 → 思考段,排在正文前面(与从前屏幕上的顺序逐字相同)', () => {
     const segments = assembleMessage(message({ reasoning: '想一下', content: '好的' }))
     expect(segments.map((s) => s.kind)).toEqual(['thinking', 'rich-text'])
-    expect(segments[0]).toEqual({ kind: 'thinking', text: '想一下', live: false })
+    // 09-14 起思考段是**一串块 + 活动尾**(正本 `docs/thinking-stream-2026-09.md` §3)。
+    // 不流的那一份全冻:尾是空的,原文整份在块里,预览是开头那 240 字。
+    expect(segments[0]).toEqual({
+      kind: 'thinking',
+      blocks: [{ id: 'a1#0#0', text: '想一下' }],
+      tail: '',
+      live: false,
+      preview: '想一下',
+    })
   })
 
   it('isStreaming 是思考段 live 的产地(今天没有渲染器读它,但事实得对)', () => {

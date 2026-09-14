@@ -37,7 +37,14 @@ export const SegmentView = memo(function SegmentView({
 }) {
   switch (segment.kind) {
     case 'thinking':
-      return <ThinkingSegment text={segment.text} live={segment.live} />
+      return (
+        <ThinkingSegment
+          blocks={segment.blocks}
+          tail={segment.tail}
+          live={segment.live}
+          preview={segment.preview}
+        />
+      )
 
     case 'rich-text':
       return (

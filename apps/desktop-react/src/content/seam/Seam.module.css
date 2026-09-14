@@ -228,7 +228,7 @@
 /*
  * 里面装的东西常自带 UA 边距(`<p>` 的 `margin-block: 1em`),而 ChatStream 那张
  * 节奏表只清 `.row` 的**直接子项** —— 这些是孙辈,清不到。间距由上面那格 gap
- * 一处说了算(与思考段 `.thoughtBody` 清 UA 边距是同一条判例、同一个理由)。
+ * 一处说了算(与思考段 `.thoughtPreview` / `.thoughtBlock` 清 UA 边距是同一条判例、同一个理由)。
  */
 .seamBody > * {
   margin-block: 0;
