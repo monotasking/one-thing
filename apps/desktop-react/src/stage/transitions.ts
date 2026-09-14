@@ -815,8 +815,8 @@ function fitFloatAxis(
 /**
  * **中央区此刻的矩形**(W7-p 裁定 5)。四条架子各占一截,剩下的就是它。
  *
- * 它是新浮窗那个锚点的参考系 —— 「视口正中」在钉了右架子的时候会偏进架子
- * **底下**,而用户看到的「正中」从来是主区的正中。**顶栏那条带也切掉**
+ * 09-14 之前它是新浮窗那个锚点的参考系(今天开窗读的是整个视口,判词在
+ * `viewportRect` 上);架子预算(`shelf-budget`)仍旧读它。**顶栏那条带也切掉**
  * (`TOP_CHROME`,判词写在那格常量上):标签条就长在顶栏里,不切的话新窗一开
  * 就盖住它的右半截。
  */
@@ -846,11 +846,13 @@ export const FLOAT_CASCADE_STEP = 28
  * 正在读的东西盖掉;②连开四扇,四扇一模一样地叠在一起 —— 屏幕上看起来只有一扇,
  * 前三扇要靠拖才找得到。
  *
- * ── 09-14 用户裁定:**锚回到中央区正中** ──────────────────────────────────
+ * ── 09-14 用户裁定:**锚回到整个视口的正中** ─────────────────────────────
  * 裁定 5 把锚放到右上角,真机上用户的感受是「浮窗总是偏右,拖到中间下次开还在旁边」
  * (文件 / 终端 / 浏览器 / diff 每次开都铸一个新窗号,位置记忆从来接不上,所以每一次
- * 都是产地说了算)。用户点名「始终在中心打开」—— 于是锚 = 中央区**正中**(窗心对
- * 中央区心,取整到整像素)。「压着聊天区」那条从前的病由用户自己权衡过,放弃。
+ * 都是产地说了算)。用户点名「始终在中心打开」,并追了一句「居中是整个屏幕,不是聊天区」
+ * —— 于是锚 = **视口**正中(窗心对整扇窗的心,取整到整像素),`center` 那个参数由
+ * `floatSpawnContext` 递进来的就是整个视口(判词在 `viewportRect` 上)。「压着聊天区 /
+ * 输入框」那条从前的病由用户自己权衡过,放弃。
  *
  * ── 层叠 + 回绕(裁定 5 的另一半,保留)────────────────────────────────────
  * 已经有 n 扇未关的窗时新窗往**右下**挪 n×28:第一扇永远正中,后面每一扇的**标题栏
@@ -890,11 +892,11 @@ function floatRectAt(
     viewport,
   )
   const { w, h } = size
-  // 锚在中央区正中(窗心对中央区心,取整到整像素);中央区比窗还窄时贴中央区左上
-  // —— 与身量那道钳同一个理由:窗子不许一开就探到架子底下。
+  // 锚在参考系正中(窗心对 center 的心,取整到整像素);参考系比窗还窄时贴它的左上
+  // —— 与身量那道钳同一个理由:窗子不许一开就探出参考系。
   const anchorX = Math.max(center.left, Math.round(center.left + (roomW - w) / 2))
   const anchorY = Math.max(center.top, Math.round(center.top + (roomH - h) / 2))
-  // 还能往右下挪几步(挪到右边/下边出了中央区就不算一步)。
+  // 还能往右下挪几步(挪到右边/下边出了参考系就不算一步)。
   const stepsX = Math.floor(Math.max(0, center.right - anchorX - w) / FLOAT_CASCADE_STEP)
   const stepsY = Math.floor(Math.max(0, center.bottom - anchorY - h) / FLOAT_CASCADE_STEP)
   const steps = Math.max(0, Math.min(stepsX, stepsY))
@@ -917,7 +919,17 @@ export function floatSpawnContext(
   state: Pick<StageState, 'shelves' | 'floatOrder'>,
   viewport: Viewport,
 ): { center: Rect; cascade: number } {
-  return { center: centerRectOf(state, viewport), cascade: state.floatOrder.length }
+  return { center: viewportRect(viewport), cascade: state.floatOrder.length }
+}
+
+/**
+ * **新窗的参考系是整个视口**(09-14 用户裁定第二句:「居中是整个屏幕,不是聊天区」)。
+ * 裁定 5 的参考系 `centerRectOf`(架子与顶栏切完剩下的那块地)只在 `shelf-budget` 与
+ * 顶栏那格常量的判词里还活着;开窗不再问架子 —— 钉了右架子,新窗照旧在整扇窗的正中,
+ * 压着架子就压着。顶栏那条带由收笔那句 `clampFloatRect` 兜住(窗高到只剩顶栏可让时才会碰到)。
+ */
+function viewportRect(viewport: Viewport): Rect {
+  return { left: 0, top: 0, right: viewport.w, bottom: viewport.h }
 }
 
 /**

@@ -566,21 +566,20 @@ describe('closeStage', () => {
 })
 
 describe('浮窗', () => {
-  /** 中央区正中的锚:窗心对中央区心,取整到整像素(09-14 用户裁定「始终在中心打开」)。 */
-  const centeredAnchor = (center: { left: number; top: number; right: number; bottom: number }, w: number, h: number) => ({
-    x: Math.round(center.left + (center.right - center.left - w) / 2),
-    y: Math.round(center.top + (center.bottom - center.top - h) / 2),
+  /** 视口正中的锚:窗心对整扇窗的心,取整到整像素(09-14 用户裁定「始终在中心打开,居中是整个屏幕」)。 */
+  const centeredAnchor = (vp: Viewport, w: number, h: number) => ({
+    x: Math.round((vp.w - w) / 2),
+    y: Math.round((vp.h - h) / 2),
   })
 
-  it('开一扇:登记落点、进置顶序、给一个锚在中央区正中的默认矩形(09-14 裁定,改自 W7-p 裁定 5)', () => {
+  it('开一扇:登记落点、进置顶序、给一个锚在视口正中的默认矩形(09-14 裁定,改自 W7-p 裁定 5)', () => {
     const st = openAs(base, 'files', FLOAT, VP)
     expect(formOf(st, 'files')).toBe('float')
     expect(st.floatOrder).toEqual(['files'])
-    // 反证:把锚换回裁定 5 的「右上角内缩 24」→ x 变成 VP.w − 24 − w,这条红。
-    const anchor = centeredAnchor(centerRectOf(base, VP), FLOAT_DEFAULT_W, FLOAT_DEFAULT_H)
+    // 反证:把锚换回裁定 5 的「右上角内缩 24」→ x 变成 VP.w − 24 − w,这条红;
+    // 把参考系换回 `centerRectOf`(顶栏之下那块地)→ y 多出 22,这条也红。
+    const anchor = centeredAnchor(VP, FLOAT_DEFAULT_W, FLOAT_DEFAULT_H)
     expect(st.floats.files).toEqual({ w: FLOAT_DEFAULT_W, h: FLOAT_DEFAULT_H, ...anchor })
-    // **顶栏那条带切在中央区之外**(判词在 `TOP_CHROME` 上):居中是对顶栏之下那块地居中。
-    expect(anchor.y).toBe(Math.round(TOP_CHROME + (VP.h - TOP_CHROME - FLOAT_DEFAULT_H) / 2))
   })
 
   it('层叠:已有 n 扇未关时往右下挪 n×28,挪不动了就回绕到起点(W7-p 裁定 5)', () => {
@@ -588,8 +587,7 @@ describe('浮窗', () => {
     // W7-p 修一轮裁定 1:新窗矩形只有 `freshFloatRect` 一个产地,读数装配在它里面。
     const spawn = (open: number) =>
       freshFloatRect({ ...base, floatOrder: Array.from({ length: open }, (_, i) => `w${i}`) }, VP)
-    const center = centerRectOf(base, VP)
-    const anchor = centeredAnchor(center, FLOAT_DEFAULT_W, FLOAT_DEFAULT_H)
+    const anchor = centeredAnchor(VP, FLOAT_DEFAULT_W, FLOAT_DEFAULT_H)
     const first = spawn(0)
     const second = spawn(1)
     expect(first).toEqual({ w: FLOAT_DEFAULT_W, h: FLOAT_DEFAULT_H, ...anchor })
@@ -598,15 +596,15 @@ describe('浮窗', () => {
     // 四扇两两不同:审计 A 的 A6 现场是四扇一模一样地叠在一起。
     const four = [0, 1, 2, 3].map(spawn)
     expect(new Set(four.map((r) => `${r.x},${r.y}`)).size).toBe(4)
-    // 回绕:挪到出中央区就回起点(steps 由视口算,所以这里问的是「有没有回绕」)。
+    // 回绕:挪到出视口就回起点(steps 由视口算,所以这里问的是「有没有回绕」)。
     const steps = Math.min(
-      Math.floor((center.right - anchor.x - FLOAT_DEFAULT_W) / FLOAT_CASCADE_STEP),
-      Math.floor((center.bottom - anchor.y - FLOAT_DEFAULT_H) / FLOAT_CASCADE_STEP),
+      Math.floor((VP.w - anchor.x - FLOAT_DEFAULT_W) / FLOAT_CASCADE_STEP),
+      Math.floor((VP.h - anchor.y - FLOAT_DEFAULT_H) / FLOAT_CASCADE_STEP),
     )
     expect(spawn(steps + 1)).toEqual(first)
   })
 
-  it('锚是**中央区**的正中,不是视口的 —— 钉了右架子就往左让(W7-p 裁定 5 的参考系)', () => {
+  it('锚是**整个视口**的正中,不问架子 —— 钉了右架子也不让(09-14 裁定「居中是整个屏幕,不是聊天区」)', () => {
     const withShelf = {
       ...base,
       shelves: {
@@ -614,13 +612,9 @@ describe('浮窗', () => {
         right: { ...base.shelves.right, thickness: 400, tabs: ['diff'], collapsed: false },
       },
     }
-    const center = centerRectOf(withShelf, VP)
-    expect(center.right).toBe(VP.w - 400)
-    const rect = freshFloatRect(withShelf, VP)
-    // 反证:把 `freshFloatRect` 换回 `defaultFloatRect`(参考系是整个视口)→
-    // x 回到视口正中,新窗右半截探进右架子底下。
-    expect(rect.x).toBe(centeredAnchor(center, FLOAT_DEFAULT_W, FLOAT_DEFAULT_H).x)
-    expect(rect.x + rect.w).toBeLessThanOrEqual(VP.w - 400)
+    expect(centerRectOf(withShelf, VP).right).toBe(VP.w - 400)
+    // 反证:把 `floatSpawnContext` 的参考系换回 `centerRectOf` → x 往左让 200,这条红。
+    expect(freshFloatRect(withShelf, VP)).toEqual(freshFloatRect(base, VP))
   })
 
   /* ── W7-d 裁定 1:身量 = 默认与「那块面自述的下限」取大 ─────────────────── */
@@ -634,7 +628,7 @@ describe('浮窗', () => {
     expect(wide.w).toBe(800)
     expect(wide.h).toBe(FLOAT_DEFAULT_H)
     // 仍旧锚在中央区正中 —— 自述改的是身量,不是那条锚(窗宽了,窗心还在中央区心上)。
-    expect(wide.x).toBe(centeredAnchor(centerRectOf(base, VP), 800, FLOAT_DEFAULT_H).x)
+    expect(wide.x).toBe(centeredAnchor(VP, 800, FLOAT_DEFAULT_H).x)
     expect(wide.y).toBe(bare.y)
   })
 
@@ -642,21 +636,12 @@ describe('浮窗', () => {
     expect(freshFloatRect(base, VP, { w: 320, h: 100 })).toEqual(freshFloatRect(base, VP))
   })
 
-  it('自述装不下时:缩到中央区那么大、贴中央区左上,不探出中央区(裁定 1)', () => {
-    const withShelf: StageState = {
-      ...base,
-      shelves: {
-        ...base.shelves,
-        left: { ...base.shelves.left, thickness: 700, tabs: ['diff'], collapsed: false },
-      },
-    }
-    const center = centerRectOf(withShelf, VP)
-    const rect = freshFloatRect(withShelf, VP, { w: 900 })
-    // 中央区只剩 VP.w − 700 = 580 宽 —— 900 装不下,缩到中央区那么大。
-    expect(center.right - center.left).toBe(VP.w - 700)
-    expect(rect.w).toBe(center.right - center.left)
-    // 贴中央区左缘,而不是探到左架子底下去(窗与中央区同宽,居中就是贴左)。
-    expect(rect.x).toBe(center.left)
+  it('自述装不下时:缩到视口减两道气口那么大、落在左气口上,不探出视口(裁定 1)', () => {
+    const rect = freshFloatRect(base, VP, { w: 2000 })
+    // 视口 1600 宽 —— 2000 装不下,先夹到视口、再被 `clampFloatSize` 减掉两道气口。
+    expect(rect.w).toBe(VP.w - 2 * FLOAT_MARGIN)
+    // 窗与视口只差两道气口,居中就是落在左气口上。
+    expect(rect.x).toBe(FLOAT_MARGIN)
   })
 
   it('撕窗那条兜底也读同一格自述(菜单开 800、拖拽撕 640 是同一块面的两个答案)', () => {

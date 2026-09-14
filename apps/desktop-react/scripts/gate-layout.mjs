@@ -708,27 +708,15 @@ async function shut(handle) {
 /* ── 场景 ──────────────────────────────────────────────────────────────── */
 
 const rectEq = (a, b) => Boolean(a && b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h)
-/** 这条边此刻真占了多厚(与 `transitions.shelfExtentOf` 三档逐字同义:空 0 / 细梁 / 厚度)。 */
-const shelfExtent = (shelf, side) => {
-  if (!shelf) return 0
-  if (shelf.collapsed) return SHELF_RAIL
-  return side === 'left' || side === 'right' ? shelf.rect.w : shelf.rect.h
-}
 /**
- * 新窗锚点:**中央区正中**(09-14 用户裁定,改自 W7-p 裁定 5 的右上角)。参考系是
- * `transitions.centerRectOf` —— 四条架子切完、顶栏之下剩下的那块地 —— 这里按同一把尺
- * 现算,而不是拿 `[data-pane-region="center"]` 的矩形去比(判词在 ④⑤ 那一档的注释上)。
+ * 新窗锚点:**整个视口的正中**(09-14 用户裁定「始终在中心打开,居中是整个屏幕,不是聊天区」,
+ * 改自 W7-p 裁定 5 的中央区右上角)。参考系是整扇窗,不问架子也不切顶栏 —— 判词在
+ * `transitions.viewportRect` 上;这里按同一把尺现算。
  */
-const spawnAnchorOf = (layout, w, h) => {
-  const left = shelfExtent(layout.shelves.left, 'left')
-  const right = layout.vp.w - shelfExtent(layout.shelves.right, 'right')
-  const top = TOP_CHROME + shelfExtent(layout.shelves.top, 'top')
-  const bottom = layout.vp.h - shelfExtent(layout.shelves.bottom, 'bottom')
-  return {
-    x: Math.max(left, Math.round(left + (right - left - w) / 2)),
-    y: Math.max(top, Math.round(top + (bottom - top - h) / 2)),
-  }
-}
+const spawnAnchorOf = (layout, w, h) => ({
+  x: Math.max(0, Math.round((layout.vp.w - w) / 2)),
+  y: Math.max(0, Math.round((layout.vp.h - h) / 2)),
+})
 const inViewport = (r, vp) =>
   r.x >= FLOAT_MARGIN - 1
   && r.y >= 0
@@ -1139,27 +1127,21 @@ async function sceneFloats(store, udd) {
       `${first?.rect.w}×${first?.rect.h}`,
     )
     /*
-     * 锚点的参考系是 `transitions.centerRectOf` —— **四条架子切完剩下的那块地**,
-     * 顶栏那 44px 不在其中(判词写在那只纯函数上:这是一个开窗锚点,不是布局约束)。
-     * 所以这里也按同一把尺现算,而不是拿 `[data-pane-region="center"]` 的矩形去比:
-     * 拿后者比就是把「门自己的一套算法」和产品的对不上,红了也说不清是谁错。
+     * 锚点的参考系是**整个视口**(09-14 裁定;`transitions.viewportRect`),这里按同一把尺
+     * 现算,而不是拿哪个 DOM 矩形去比:拿后者比就是把「门自己的一套算法」和产品的对不上,
+     * 红了也说不清是谁错。「新窗不压着输入框」那条随裁定 5 一起退役 —— 整屏居中就是会压着
+     * 聊天区,用户权衡过。
      */
     const anchor = spawnAnchorOf(wide, FLOAT_DEFAULT_W, FLOAT_DEFAULT_H)
     check(
-      '新窗锚在中央区正中(09-14 用户裁定「始终在中心打开」)',
+      '新窗锚在视口正中(09-14 用户裁定「始终在中心打开,居中是整个屏幕」)',
       first?.rect.x === anchor.x && first?.rect.y === anchor.y,
       `rect=${JSON.stringify(first?.rect)} 锚=${JSON.stringify(anchor)}`,
     )
-    check(
-      '新窗不压着输入框',
-      !intersects(first?.rect, wide.composer),
-      `composer=${JSON.stringify(wide.composer)}`,
-    )
     /*
-     * **也不压着标签条**(W7-p 裁定 5 的修正)。第一版的中央区算式把顶栏留在里面,
-     * 于是新窗锚在 y = 24 —— 真机上它盖住标签条的右半截,`gate:drag` 场景①③当场红
-     * (指针按在「最右那格标签」上,落到的是这扇窗)。锚点从顶栏之下起算之后这一条
-     * 才成立;它是那次真机反证的机器化。
+     * **不压着标签条**(W7-p 裁定 5 的修正留下的那条真机反证的机器化:`gate:drag` 场景①③
+     * 曾因新窗盖住标签条右半截而红)。整屏居中的 640×480 在最小 700×500 的视口里顶边也在
+     * 顶栏之下;视口再矮由 `clampFloatRect` 抬回 `TOP_CHROME`。
      */
     check(
       '新窗不压着顶栏上的标签条',
@@ -1384,7 +1366,7 @@ async function sceneSpawn(store, udd) {
       rects.every((r) => inViewport(r, many.vp)),
       JSON.stringify(many.vp),
     )
-    // 第一扇锚在中央区正中 —— 与右键那条路**同一个**产地算出来的;层叠往右下,
+    // 第一扇锚在视口正中 —— 与右键那条路**同一个**产地算出来的;层叠往右下,
     // 所以 x 最小的那扇就是第一扇。
     const anchor = spawnAnchorOf(many, FLOAT_DEFAULT_W, FLOAT_DEFAULT_H)
     const first = rects.reduce((a, b) => (b.x < a.x ? b : a))
