@@ -299,7 +299,7 @@ export function EdgeShelf({ side }: Props) {
       actions: (
         <IconButton
           icon={COLLAPSE_ICON[side]}
-          className={s.collapse}
+          size="xs"
           onClick={toggleCollapsed}
           label={t('shelf.collapse', { name })}
         />

@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { CenterRegion } from '../CenterRegion'
 import { TopBarLeafActions, TopBarLeafTabs } from '../TopBarTabs'
@@ -184,6 +186,16 @@ describe('一格一檐:叶檐就是 tab 条', () => {
     // **不是换一个组件** —— 同一个 DOM 节点,只是那一格属性没了。
     expect(document.querySelector('[data-pane-chrome]')).toBe(chrome)
     expect(chrome.getAttribute('data-single')).toBeNull()
+  })
+
+  it('单 tab 的悬停不许抹掉它的脸(2026-09-14 报障:只有一格时 hover 与檐同色)', () => {
+    // jsdom 不算 CSS Module 的层叠,这条只能读源文本:joined 档活动 tab 的底是它的脸,
+    // 从前那条 `[data-single] [role=tab]:hover { background: transparent }` 特异性压过活动态,
+    // 悬上去整格沉进檐里。判词在 LeafStrip.module.css 那一节。
+    const css = readFileSync(resolve(__dirname, '../LeafStrip.module.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(css).not.toMatch(/\[data-single\][^{]*:hover\s*\{/)
+    // 而 tab 条**贴底**是连体的前提(真机量过:不贴底时活动 tab 与叶之间空出 3px 的檐色)。
+    expect(css).toMatch(/\.tabs\s*\{[^}]*align-items:\s*flex-end;/)
   })
 })
 

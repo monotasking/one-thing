@@ -108,7 +108,9 @@
  * 在新增行上是**空的**,计数器表达不了「这一行没有号」。
  *
  * 底色两层:`background-color` 是宿主那块面的脸(横滚时代码从底下穿过,这一层
- * 必须不透明;读的是 `--code-face`,宿主自己那块面的脸),`background-image` 叠的是
+ * 必须不透明;读的是 `--code-face`,宿主自己那块面的脸,**没说就是叶的脸**
+ * `--pane-face` —— 缺省写在这里而不是根上,根上求出来的是中央区的脸,跟不进
+ * 架子 / 浮窗对 `--pane-face` 的改写),`background-image` 叠的是
  * **这一行自己的那层色**(加 / 删 / 悬停 /
  * 当前行都走同一个自定义属性,所以行号列与正文永远同色,不存在第二处要同步)。
  */
@@ -122,7 +124,7 @@
   color: var(--text-3);
   user-select: none;
   -webkit-user-select: none;
-  background-color: var(--code-face);
+  background-color: var(--code-face, var(--pane-face));
   background-image: linear-gradient(
     var(--code-row-tint, transparent),
     var(--code-row-tint, transparent)
@@ -147,7 +149,7 @@
 .root:not(.numSingle):not(.numBoth) .sign {
   box-shadow:
     calc(var(--code-gutter-bleed) * -1) 0 0 0 var(--code-row-tint, transparent),
-    calc(var(--code-gutter-bleed) * -1) 0 0 0 var(--code-face);
+    calc(var(--code-gutter-bleed) * -1) 0 0 0 var(--code-face, var(--pane-face));
 }
 
 /*
@@ -262,7 +264,7 @@
   color: var(--text-3);
   user-select: none;
   -webkit-user-select: none;
-  background-color: var(--code-face);
+  background-color: var(--code-face, var(--pane-face));
   background-image: linear-gradient(
     var(--code-row-tint, transparent),
     var(--code-row-tint, transparent)

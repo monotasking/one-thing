@@ -396,8 +396,13 @@
    *    坐在 `--surface-2` 的卡片上,不说就会在数字底下露出一条别的颜色
    *    (批 ② 真机截图上那条竖带)。判词与 `--code-gutter-bleed` 同源:**谁画背景
    *    谁说**,基础件不去猜宿主长什么样。
+   *
+   *    **它在这里没有声明**(2026-09-14):缺省「= 叶的脸」写在**读它的地方**
+   *    (`CodeLines.module.css` 的 `var(--code-face, var(--pane-face))`),不写在根上。
+   *    根上写 `--code-face: var(--pane-face)` 的话它在根处求值 = surface-0,架子把
+   *    `--pane-face` 改写成 surface-2 它也跟不进去 —— 用户主题真机读数:架子里的
+   *    查看器正文 #ECECED、行号列 #FAFAFA,「文件在架子里,列的背景色不一致」。
    */
-  --code-face: var(--pane-face);
   /*
    * ⑤ `--code-sign-w`:加删符号那一列的宽。一个字符 —— 那一列里只会出现 `+` / `−`
    *    / 空格三种字形,而它与正文同字体同字号,所以 `1ch` 就是「恰好一个字」。
@@ -879,6 +884,7 @@
    * 档直接读源头)与 `--topbar-tab-face-dim`(裁定 2:**非焦点组不再降底色** ——
    * 「哪一组是活的」改由叶的焦点圈与活动标签的字色说)。 */
   --pane-face: var(--surface-0);
+  --strip-face: var(--strip-face-0);
   /*
    *   --strip-face  标签**后面**那块面:窗口顶栏与架子 / 浮窗叶檐的底。joined 档的
    *                 活动标签读 `--pane-face`,它要从这块面上「长出来」,所以这块面
@@ -886,10 +892,24 @@
    *                 条比页暗)。真机读数(W3-b 交卷截图):暗色主题里 surface-0 与
    *                 surface-1 逐字相同 (40,39,38),连体标签整颗看不见 —— 所以不能
    *                 拿现成的 surface 台阶,要从叶的脸往黑里兑;明暗各兑一个量,
-   *                 `light-dark()` 由主题桥写的 `color-scheme` 选边。 */
-  --strip-face: light-dark(
+   *                 `light-dark()` 由主题桥写的 `color-scheme` 选边。
+   *
+   * ── 它与 `--pane-face` 是**一对**,谁改写脸谁就得改写檐(2026-09-14)────────
+   * 从前这里直接从 `--surface-0` 兑,而架子 / 浮窗把脸改写成了 `--surface-2`:
+   * 自定义属性在**声明处**求值,根上兑出来的檐跟不进架子。用户主题真机读数:
+   * surface-0 #FAFAFA → 檐 #E9E9E9,架子里的脸却是 surface-2 #ECECED —— 檐与
+   * 活动 tab 差 3 个灰阶,「架子里 tab 和 tab header 无法区分」。所以檐按脸的
+   * **档位**各兑一格(`-0` / `-2`),根读 `-0`;四个改写 `--pane-face: var(--surface-2)`
+   * 的宿主(架子 / 浮窗 / 舞台 / 全屏)在同一条规则里配 `--strip-face:
+   * var(--strip-face-2)`。配方只写在这里;`face-pair.test.ts` 守着「改写了脸的规则
+   * 必须同时改写檐」。 */
+  --strip-face-0: light-dark(
     color-mix(in srgb, var(--surface-0) 93%, black),
     color-mix(in srgb, var(--surface-0) 70%, black)
+  );
+  --strip-face-2: light-dark(
+    color-mix(in srgb, var(--surface-2) 93%, black),
+    color-mix(in srgb, var(--surface-2) 70%, black)
   );
 
   /* ── 拼贴树的跨度读数 `--leaf-x-*` / `--leaf-w-*` **W7-c 整族退役** ─────────

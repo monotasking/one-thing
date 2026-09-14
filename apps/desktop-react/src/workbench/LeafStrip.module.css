@@ -19,6 +19,14 @@
   flex: 1;
   min-width: 0;
   display: flex;
+  /*
+   * **tab 贴底**(2026-09-14 真机读数:架子檐 37 高、joined 条 34 高、条顶着檐顶排,
+   * 于是活动 tab 的底与叶之间空出 3px 的檐色 —— 「像浏览器 tab 长在页面上」那句话
+   * 在架子里从来没成立过,只有顶栏那一组因为 `TopBarTabs` 自己写了 `align-items:
+   * flex-end` 才连着)。joined 档的连体靠条自己那句 `margin-bottom: -1px` 盖住宿主
+   * 的底线,前提是条**坐在檐的底沿上**;这一句就是那个前提,四个宿主一起兑现。
+   */
+  align-items: flex-end;
 }
 
 .tabs > * {
@@ -52,29 +60,41 @@
   padding-inline-start: var(--strip-lead, var(--tab-pad-x));
 }
 
-/* 型工具条与动作组都长在**檐的底线之上**,所以它们各自补一条同色的底线 ——
- * 不补的话 tab 条那条线会在中途断掉一截。 */
+/*
+ * 型工具条与动作组:与 joined 条**同高**,里面的钮居中。
+ *
+ * 从前这里各补一条 `border-bottom`,理由是「tab 条那条线会在中途断掉一截」——
+ * 那是扁平档的事。这条檐只走 joined 档,而 joined 档的条**没有底线**(它靠活动
+ * tab 与叶连成一块),于是那两条补线成了檐上**唯一**的线:只在右端画一小截,
+ * 2026-09-14 用户截图里收起钮底下那一道就是它。同一条线的第三个产地(架子收起钮
+ * 自己那条 `border-bottom`)同批删掉。
+ *
+ * 高度写 `--tab-joined-h` 而不是随内容:动作组里只有 18px 的钮,不定高的话檐会被
+ * 条(34 − 1)定成 33,钮居中落在半像素上。
+ */
 .tool,
 .actions {
   flex: none;
+  height: var(--tab-joined-h);
   display: flex;
   align-items: center;
   gap: var(--sp-1);
   padding-inline: var(--sp-2);
-  border-bottom: var(--bw-1) solid var(--line-1);
 }
 
 /* ── 单 tab = 身份带 ─────────────────────────────────────────────────────
  * 「这条檐只有一格」时那条 tab 条读起来该是**这块内容的名字**,不是一个可选的
- * 选项卡。所以收掉两样:活动指示条(只有一格,指给谁看)与 hover 底
- * (没有第二格可切,hover 反馈是在骗人可以点)。字色照旧是活动那一档。
+ * 选项卡。所以收掉活动指示条(只有一格,指给谁看)与光标。字色照旧是活动那一档。
  * **不换组件** —— 换组件会在开出第二个 tab 那一刻整条重挂(零重挂断言盯的正是它)。
- * 面板内那一档恒定落在这一形:它永远只有一格。 */
+ * 面板内那一档恒定落在这一形:它永远只有一格。
+ *
+ * 从前还有一条 `:hover { background: transparent }`,是扁平档的「没有第二格可切,
+ * hover 底是在骗人可以点」。joined 档里那一格是**活动 tab**,它的底色是它的脸
+ * (`--pane-face`,与叶连成一块),不是 hover 反馈;而这条规则特异性(0,4,0)压过
+ * 活动态那条(0,3,0),悬上去脸被抹成透明、整格沉进檐里 —— 2026-09-14 用户报
+ * 「只有一个 tab 时 hover 的颜色和 tab header 一致」就是它。joined 档活动 tab 本来
+ * 就不响应 hover(`.tab:hover` 输给 `.tabOn`),所以这里什么都不用写。 */
 .chrome[data-single] [role='tab'] {
   box-shadow: none;
   cursor: default;
-}
-
-.chrome[data-single] [role='tab']:hover {
-  background: transparent;
 }

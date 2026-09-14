@@ -27,6 +27,7 @@
   --surface-host: var(--surface-2);
   /* 舞台里那片内容的脸(W3-b:查看器等内容读 `--pane-face`,不再自涂 surface-2)。 */
   --pane-face: var(--surface-2);
+  --strip-face: var(--strip-face-2);
   box-shadow: var(--sh-3);
   animation: var(--kf-panel-in) var(--dur-enter) var(--ease-out);
 }

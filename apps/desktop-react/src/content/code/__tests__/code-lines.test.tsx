@@ -202,7 +202,7 @@ describe('三条硬规矩(样式源文本)', () => {
     const gutter = block('.numSingle .line::before,')
     expect(gutter).toContain('position: sticky;')
     // 不透明的一层(横滚时代码从底下穿过)+ 与行同源的那一层色。
-    expect(gutter).toContain('background-color: var(--code-face);')
+    expect(gutter).toContain('background-color: var(--code-face, var(--pane-face));')
     expect(gutter).toContain('var(--code-row-tint, transparent)')
     expect(block('.numSingle .line::before {')).toContain('left: 0;')
   })
@@ -284,7 +284,7 @@ describe('三条硬规矩(样式源文本)', () => {
     expect(sign).toContain('position: sticky;')
     expect(sign).toContain('left: var(--code-gutter-w);')
     // 底色两层与行号列同一条:不透明那一层是横滚时正文从底下穿过去的必需品。
-    expect(sign).toContain('background-color: var(--code-face);')
+    expect(sign).toContain('background-color: var(--code-face, var(--pane-face));')
     expect(sign).toContain('var(--code-row-tint, transparent)')
     // 满饱和色只上在符号身上,不上在整行文字上(行底只有 12%)。
     expect(block('.lineAdd .sign {')).toContain('color: var(--ok);')

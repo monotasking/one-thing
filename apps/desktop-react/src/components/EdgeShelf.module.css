@@ -159,47 +159,17 @@
 .sideBottom .handle { top: 0; }
 .sideTop .handle { bottom: 0; }
 
-/* 头 = tab 条 + 收起键。tab 条自己带底缘线,收起键补上同一条线,两半接成一根。
- * 上下架子的 tab 条也是这一条横排 —— 「架子横过来」改的是外形,不是头的排法。 */
-.head {
-  flex: none;
-  display: flex;
-  align-items: stretch;
-}
-
-.tabsWrap {
-  flex: 1;
-  min-width: 0;
-  /* tab 可以被按住拖出去变浮窗,所以按住时不许顺手选中标题文字。
-   * 用 user-select 而不是在 pointerdown 里 preventDefault:后者在某些浏览器上
-   * 会连带吞掉 click,而「没拖动的一次按下松开仍然是普通点击」是这条交互的前提。 */
-  user-select: none;
-}
-
 /*
- * 檐上三颗钮的**落点几何**。配方(rest / hover / active / focus)全部来自
- * `ui/IconButton` —— 这里从前那份 `.collapse:hover` 已经删掉,它与库件那条
- * 逐字相同,留着就是第二个产地(09-01「图标钮必须消费 ui 库件」)。
- *
- * 留下的三件都是「它站在哪」而不是「它长什么样」:
- *  · 36×36 = 与 tab 条同高(库件的三档说的是檐上 / 行内 / 与 Button 同高,
- *    说不出「与 tab 同高」);
- *  · 下轨与 tab 一条线;
- *  · 直角 —— 它嵌在 tab 条里,圆角悬停底会在这条直线上啃出一个缺口。
+ * ── 檐上那颗收起钮**没有本地样式**(2026-09-14)──────────────────────────────
+ * 从前它是 36×36 直角、自带一条 `border-bottom`,理由是「与 tab 条同高、下轨与
+ * tab 一条线、圆角悬停底会在直线上啃出缺口」—— 三条都是扁平档的几何。这条檐
+ * 只走 joined 档:条没有底线,同一条檐上的另一颗钮(`LeafActions` 的 ⋯)是库件
+ * `xs` 档(18×18、圆角 6、居中),于是一条檐上两颗钮两种悬停:一颗整格方的、
+ * 一颗小圆的,用户报「架子 icon 的 hover 体验不一致」。现在它与 ⋯ 逐字同档
+ * (`EdgeShelf.tsx` 上 `size="xs"`),图标 12px 也正是 tab 上 ✕ 那一档
+ * (`--icon-btn-glyph-xs` 与 `--tab-icon` 同为 `--icon-xs`),本地一格都不用写。
+ * `.head` / `.tabsWrap` 两格随 W4「架子的身子是一棵拼贴树」早已没有消费者,同批删。
  */
-.collapse {
-  width: var(--tab-h);
-  height: var(--tab-h);
-  border-radius: 0;
-  border-bottom: 1px solid var(--line-1);
-}
-
-/* 图标与旁边 tab 的关闭 ✕ 同一档(--tab-icon),不是库件默认那 14px:
- * 同一行里两种字号的图标一眼就看得出来。 */
-.collapse svg {
-  width: var(--tab-icon);
-  height: var(--tab-icon);
-}
 
 .body {
   flex: 1;
@@ -212,6 +182,7 @@
      ——那格 token 的全局值是**中央区**那片叶的脸(surface-0,与顶栏活动标签连体)。
      架子这块地的脸是 surface-2,所以在这儿就地声明,而不是让叶去判自己在哪儿。 */
   --pane-face: var(--surface-2);
+  --strip-face: var(--strip-face-2);
   /* 身子是一棵拼贴树(W4):`PaneTree` 那层 `.panes` 是 `flex:1` 的定位参考系,
      所以这一格要是一条定高的 flex 列 —— 与 `CenterRegion.module.css` 的 `.panes`
      逐字同一条,两个区域的叶因此量到同一种高度。 */
