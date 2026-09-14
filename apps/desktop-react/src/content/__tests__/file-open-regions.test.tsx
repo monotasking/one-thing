@@ -71,8 +71,42 @@ describe('五档解灰:每一档都真的落到那儿', () => {
       const region = `edge:${sideOf(mode)}`
       expect(regionOfRefIn(wb().regions, REF_ID)).toBe(region)
       expect(tabsOf(region)).toEqual([REF_ID])
+      /*
+       * 这一句从前只写在标题里、没有断言(2026-09-14 真机报障「点击文件打不开了,
+       * 选择的是 Pinned right」:右架子收着且把手藏着,文件开进去了一格都看不见)。
+       * 把手藏着那一档一并盖住 —— 藏的是把手不是架子,展开照旧要露脸。
+       */
+      expect(useStageStore.getState().shelves[sideOf(mode)].collapsed).toBe(false)
     },
   )
+
+  it('把手藏着(shelfRail=hidden)的收起架子,开文件进去同样展开 —— 藏的是把手不是架子', () => {
+    act(() => useFileOpenMode.setState({ mode: 'edge-right' }))
+    act(() => useStageStore.getState().setShelfRail('hidden'))
+    act(() => useStageStore.getState().toggleShelfCollapsed('right'))
+    expect(useStageStore.getState().shelves.right.collapsed).toBe(true)
+
+    act(() => openFileInCurrentTarget(PATH))
+
+    expect(tabsOf('edge:right')).toEqual([REF_ID])
+    expect(useStageStore.getState().shelves.right.collapsed).toBe(false)
+    expect(useStageStore.getState().shelfRail).toBe('hidden')
+  })
+
+  it('开进一扇被别的窗盖着的浮窗 = 那扇窗置顶(露脸这句话对浮窗的读法)', () => {
+    act(() => useFileOpenMode.setState({ mode: 'float' }))
+    act(() => openFileInCurrentTarget(PATH))
+    const region = regionOfRefIn(wb().regions, REF_ID)!
+    const winId = region.slice('float:'.length)
+    // 再开一扇别的窗压在它上面。
+    act(() => useFileOpenMode.setState({ mode: 'float' }))
+    act(() => openFileInCurrentTarget('/repo/b.ts'))
+    expect(useStageStore.getState().floatOrder.at(-1)).not.toBe(winId)
+
+    act(() => openFileInCurrentTarget(PATH))
+    expect(regionOfRefIn(wb().regions, REF_ID)).toBe(region)
+    expect(useStageStore.getState().floatOrder.at(-1)).toBe(winId)
+  })
 
   it('float → 一扇**新窗**,而且它有身量(不给的话那扇窗一帧都不画)', () => {
     act(() => useFileOpenMode.setState({ mode: 'float' }))
@@ -104,6 +138,17 @@ describe('换档即生效:手上那一份当场搬过去', () => {
     act(() => setFileOpenMode('edge-right'))
     expect(regionOfRefIn(wb().regions, REF_ID)).toBe('edge:right')
     expect(useFileOpenMode.getState().mode).toBe('edge-right')
+  })
+
+  it('中央区 → 右侧钉,而右架子正收着:搬过去的同时把架子展开(不然搬过去等于搬没了)', () => {
+    act(() => useFileOpenMode.setState({ mode: 'stage' }))
+    act(() => openFileInCurrentTarget(PATH))
+    act(() => useStageStore.getState().toggleShelfCollapsed('right'))
+    expect(useStageStore.getState().shelves.right.collapsed).toBe(true)
+
+    act(() => setFileOpenMode('edge-right'))
+    expect(regionOfRefIn(wb().regions, REF_ID)).toBe('edge:right')
+    expect(useStageStore.getState().shelves.right.collapsed).toBe(false)
   })
 
   it('面板内 → 浮窗:分栏收起来,窗开出来', () => {

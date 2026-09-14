@@ -20,7 +20,7 @@ import { findLeaf, leavesOf } from './tree'
 import type { DropTarget } from './drop'
 import type { ContentRef } from './kinds'
 import type { PaneNode } from './tree'
-import type { FloatRect, ShelfSide, Viewport } from '../stage/types'
+import type { FloatRect, Viewport } from '../stage/types'
 
 /**
  * **落定 —— 一个事务动作,菜单与拖拽共用**(W3 裁定 5 + W4 合入后的修正)。
@@ -172,8 +172,7 @@ function dropIntoStrip(ref: ContentRef, leafId: string, at: number): void {
     return
   }
   store.moveRefIntoLeaf(ref, leafId, { at: to })
-  const side = sideOfRegion(region)
-  if (side) expandShelf(side)
+  useStageStore.getState().revealRegion(region)
   land(ref)
 }
 
@@ -242,8 +241,7 @@ export function pairIntoIndex(
   if (!leaf || !host || at < 0 || at >= leaf.tabs.length) return
   const before = store.regions[region]
   store.pairRefs(leafId, at, ref, side)
-  const shelfSide = sideOfRegion(region)
-  if (shelfSide) expandShelf(shelfSide)
+  useStageStore.getState().revealRegion(region)
   land(ref)
   /*
    * **播报是落定的一部分**(设计 §7,与 `reorderTab` 那一只逐字同源):三条路
@@ -424,17 +422,12 @@ function pairIntoActive(ref: ContentRef, leafId: string, side: 'left' | 'right')
   pairIntoIndex(ref, leafId, leaf.active, side)
 }
 
-function sideOfRegion(region: string): ShelfSide | null {
-  if (!region.startsWith('edge:')) return null
-  const side = region.slice('edge:'.length)
-  return side === 'left' || side === 'right' || side === 'top' || side === 'bottom' ? side : null
-}
-
-/** 展开一条架子。形态机那一口是**切换**(`toggleShelfCollapsed`),所以先问再切。 */
-function expandShelf(side: ShelfSide): void {
-  const stage = useStageStore.getState()
-  if (stage.shelves[side].collapsed) stage.toggleShelfCollapsed(side)
-}
+/*
+ * 「落到边上顺手展开架子」从前是这只文件私有的 `sideOfRegion` + `expandShelf`
+ * 两只小函数。2026-09-14 并进形态机的 `revealRegion`:文件按打开方式落点那条路
+ * 没有这一句(真机上右架子收着、把手藏着,文件开进去了却一格都看不见),而
+ * 「往一个区域放了东西,让它露脸」只该有一个产地。
+ */
 
 /**
  * 落定的收笔:**点成活动的** + **焦点跟过去**(裁定 8)。

@@ -137,6 +137,12 @@ interface StageStore extends StageState, StageSettings, PerSpaceState<T.StageFur
   reclampFloats: (viewport: Viewport) => void
   activateShelfTab: (side: ShelfSide, id: string) => void
   toggleShelfCollapsed: (side: ShelfSide) => void
+  /**
+   * **让一个区域看得见**:边 → 展开那条架子,浮窗 → 置顶那扇窗,中央区 → 空动作。
+   * 「往一个区域里放了东西,顺手让它露脸」这句话的唯一产地(判词在
+   * `placement.revealRegionIn`);文件按打开方式落点、拖拽落定两条路都调它。
+   */
+  revealRegion: (region: RegionId) => void
   closeShelf: (side: ShelfSide) => void
   /**
    * **关一扇浮窗**(W4,设计 §2.2)= 把里面的 tab 全部**隐藏**,不是关闭。
@@ -710,6 +716,7 @@ export const useStageStore = create<StageStore>()(
       activateShelfTab: (side, id) => orchestrate(() => P.activateShelfTabIn(stagePlacementDeps, side, id)),
       toggleShelfCollapsed: (side) =>
         orchestrate(() => P.setShelfCollapsed(stagePlacementDeps, side, !get().shelves[side].collapsed)),
+      revealRegion: (region) => orchestrate(() => P.revealRegionIn(stagePlacementDeps, region)),
       closeShelf: (side) => orchestrate(() => P.closeShelf(stagePlacementDeps, side)),
       closeFloat: (id) => orchestrate(() => P.closeFloat(stagePlacementDeps, id)),
       // 递整个视口而不是那一条轴的长度(W7-p 裁定 3):共同预算要问对边,

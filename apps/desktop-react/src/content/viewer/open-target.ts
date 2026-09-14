@@ -74,7 +74,17 @@ function regionForMode(mode: FileOpenMode, ref: ContentRef): RegionId | 'panel' 
  */
 export function openRefByFileMode(ref: ContentRef): RegionId | 'panel' {
   const region = regionForMode(useFileOpenMode.getState().mode, ref)
-  if (region !== 'panel') useWorkbenchStore.getState().openRef(ref, { region })
+  if (region !== 'panel') {
+    useWorkbenchStore.getState().openRef(ref, { region })
+    /*
+     * **落完让那个区域露脸**(2026-09-14 报障「点击文件打不开了,选择的是 Pinned
+     * right」)。真机读数:右架子收着且把手藏着(宽 0px),树里已经躺着 8 个文件
+     * tab —— 每一次单击都开进去了,只是没人展开架子,屏幕上就是「点了没反应」。
+     * 瓦钉到边与拖拽落定两条路早就各写了一遍「顺手展开」,这条路漏了;现在三条路
+     * 同一句 `revealRegion`(判词在 `stage/placement.revealRegionIn`)。
+     */
+    useStageStore.getState().revealRegion(region)
+  }
   return region
 }
 
@@ -131,6 +141,8 @@ export function setFileOpenMode(mode: FileOpenMode): void {
    * 实例一路留着)。
    */
   workbench.moveRef(fileRef(moving), region)
+  // 搬完同样要露脸:换到「右侧钉」而右架子正收着,搬过去等于搬没了。
+  useStageStore.getState().revealRegion(region)
 }
 
 /** 焦点叶里那一格如果是个文件,回它的路径。 */

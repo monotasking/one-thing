@@ -4,7 +4,7 @@ import { edgeRegion, floatRegion } from '../workbench/regions'
 import { findLeaf, leavesOf } from '../workbench/tree'
 import { floatMinOfItem } from './items'
 import { panelIdOf, panelRef } from './panel-ref'
-import { leafIndexForPanelIndex, regionOfPanel } from './residency'
+import { floatIdOfRegion, leafIndexForPanelIndex, regionOfPanel } from './residency'
 import {
   canNailShelf,
   clampFloatRect,
@@ -389,6 +389,30 @@ export function setShelfCollapsed(deps: PlacementDeps, side: ShelfSide, collapse
   deps.patchStage({
     shelves: { ...shelves, [side]: { ...shelves[side], collapsed, collapsedBy: undefined } },
   })
+}
+
+/**
+ * **让一个区域看得见**(2026-09-14 报障「点击文件打不开了,选择的是 Pinned right」)。
+ *
+ * 真机读数:右架子 `collapsed` 且把手 `hidden`(宽 0px),树里已经躺着 8 个文件
+ * tab —— 每一次单击都真的开进去了,只是没人把架子展开。瓦钉到边那条路(上面
+ * `placeRefIn` 的 `setShelfCollapsed(false)`)与拖拽落定那条路(`drop-commit`)
+ * 各自写过一遍「新入架子顺手展开」,文件按「打开方式」落进 `edge:*` 那条路漏了
+ * —— 三处两份产地,第三处就没有。所以并成**这一句**:落点是哪个区域,就让那个
+ * 区域露脸。边 = 展开架子(把手藏着也照旧展开:藏的是把手不是架子,判词在
+ * `ShelfRail`);浮窗 = 置顶那扇窗;中央区永远看得见,空动作。
+ *
+ * 它不问「区域里有什么」,所以内容种类一个名字都不出现 —— 第三种内容要落进
+ * 架子时不必再动这只文件。
+ */
+export function revealRegionIn(deps: PlacementDeps, region: RegionId): void {
+  const side = sideOfRegion(region)
+  if (side) {
+    setShelfCollapsed(deps, side, false)
+    return
+  }
+  const floatId = floatIdOfRegion(region)
+  if (floatId !== null) focusFloatIn(deps, floatId)
 }
 
 /* ── 整栏 / 整扇 ───────────────────────────────────────────────────────── */
