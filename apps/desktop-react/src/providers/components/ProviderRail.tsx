@@ -10,6 +10,7 @@ import { ChevronsLeft, Plus, Search } from '../../components/icons'
 import { useT } from '../../i18n'
 import type { MessageKey, TFn } from '../../i18n'
 import type { Fact, RailGroup, RailRow } from '../types'
+import { ProviderGlyph } from './ProviderGlyph'
 import s from './ProviderRail.module.css'
 
 /**
@@ -173,12 +174,16 @@ export function ProviderRail({
                             收起档里 CSS 把它打开并用一层透明伪元素摊满全行(见 module.css)。
                             这样「宽档不出提示」是排版决定的,不需要 JS 知道容器多宽。 */}
                         <Tooltip content={spoken}>
-                          <span
-                            className={`${s.icon} ${row.custom ? s.iconCustom : ''}`}
-                            aria-hidden="true"
-                          >
-                            {row.initial}
-                          </span>
+                          {/* 方框的形与「画图标还是画首字母」都由 ProviderGlyph 说了算;
+                              `s.icon` 传进去的是**名册自己**那三条落点规则的把手
+                              (收起档的 pointer-events / ::after / 居中)——
+                              那是名册的事,不是图标件的事,所以它留在 rail 的 css 里。 */}
+                          <ProviderGlyph
+                            className={s.icon}
+                            familyId={row.familyId}
+                            label={row.label}
+                            custom={row.custom}
+                          />
                         </Tooltip>
                         <span className={s.text}>
                           <span className={s.name}>{row.label}</span>

@@ -31,24 +31,8 @@
   border-bottom: var(--bw-1) solid var(--line-1);
 }
 
-.icon {
-  flex: none;
-  width: var(--pv-head-icon);
-  height: var(--pv-head-icon);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: var(--bw-1) solid var(--line-1);
-  border-radius: var(--r-2);
-  background: var(--surface-2);
-  font-family: var(--font-mono);
-  font-size: var(--fs-label);
-  color: var(--text-2);
-}
-
-.iconCustom {
-  border-style: dashed;
-}
+/* 头那枚方图标 09-14 整件搬进了 `ProviderGlyph`(`size="md"`,--pv-head-icon 仍是
+ * 它的边长)—— 与名册行是同一件,于是真图标只长一遍。这里一格配方都不留。 */
 
 .headText {
   flex: 1;
@@ -143,7 +127,7 @@
  * `.state`(另有更早的 `.keySaved` / `.accountDot`)。
  *
  * 判据只有一条,逐条核过:**零消费者**。`ProviderDetail.tsx` 是本文件唯一的
- * 导入方,它用到的类是 detail / head / icon / iconCustom / headText / name /
+ * 导入方,它用到的类是 detail / head / headText / name /
  * desc / customEdit / enable / enableLabel / enableFamily / modes / modeLabel /
  * body —— 上面那 7 个一个都不在里面。同名的 `.mono` / `.state` 活在
  * ModeCard / OAuthCard / ModelCatalog / ProviderSettingsPanel 各自的

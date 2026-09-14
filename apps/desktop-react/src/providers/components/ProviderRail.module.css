@@ -124,26 +124,13 @@
  * 还是收起档」这件事只有 CSS 知道(`@container`),JS 这边没有第二个产地可问。
  * 于是关法落在指针上:宽档里图标不吃指针 → 悬停事件直接落到行上 → Tooltip 的
  * mouseenter 永远不触发;收起档里把它打开(见文件末尾那段 @container)。
+ *
+ * 方框的形(边长 / 边 / 底 / 圆角 / 首字母的字)09-14 搬进了
+ * `ProviderGlyph.module.css` —— 名册与详情头从前各写一遍同一副配方,而真图标要
+ * 两处同时长出来。这里**只留与落点有关的那一条**:收起档的那个开关。
  */
 .icon {
-  flex: none;
-  width: var(--pv-rail-icon);
-  height: var(--pv-rail-icon);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: var(--bw-1) solid var(--line-1);
-  border-radius: var(--r-1);
-  background: var(--surface-2);
-  font-family: var(--font-mono);
-  font-size: var(--fs-micro);
-  color: var(--text-2);
   pointer-events: none;
-}
-
-/* 自定义家的图标是虚线边 —— 「这是你自己建的」在扫列表时一眼看得出。 */
-.iconCustom {
-  border-style: dashed;
 }
 
 .text {
@@ -220,9 +207,10 @@
  * ── 收起档:一条 44px 的图标条(09-11,报障「模型配置页面没有响应式布局」)────
  *
  * 判据是**面板的宽**,不是窗口、不是宿主:`@container providers-panel`,容器声明在
- * ProviderSettingsPanel.module.css 的 `.panel` 上。阈值 899 与它的账在 tokens.css
- * 的 `--pv-panel-rail-collapse`:左栏 268 + 详情内衬 58 + 五列入场 568 = 894,
- * 进位 900 —— 也就是「让开左栏之后目录还保得住五列」的那条线。
+ * ProviderSettingsPanel.module.css 的 `.panel` 上。阈值 726 与它的账在 tokens.css
+ * 的 `--pv-panel-rail-collapse`:左栏 268 + 详情内衬 58 + 目录**地板** 400 = 726 ——
+ * 也就是「让开左栏之后目录连地板三列都保不住」的那条线(09-14 用户裁定;
+ * 09-11 那条「还保得住五列」的账 894/899 作废,理由与重算写在 token 那一格上)。
  * 改前左栏在六档面板宽下恒是 268,520 档里它一个人吃掉面板的 51.5%。
  *
  * `:not([data-expanded='true'])` 那一格是**用户临时展开**的出口(见 .tsx 里的
@@ -232,7 +220,7 @@
  * 切档不换 DOM、不重挂、不 FLIP(挤压四律「切档必须是布局连续的」第 1 条):
  * 同一棵树,只改宽与几个 display —— 选中态与滚动位天然保住,因为它们从来没被销毁过。
  */
-@container providers-panel (max-width: 899px) {
+@container providers-panel (max-width: 726px) {
   .rail:not([data-expanded='true']) {
     width: var(--pv-rail-collapsed-w);
   }

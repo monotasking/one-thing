@@ -3,8 +3,8 @@ import { Segmented } from '../../ui/Segmented'
 import { Switch } from '../../ui/Switch'
 import { Tooltip } from '../../ui/Tooltip'
 import { useT } from '../../i18n'
-import { initialOf } from '../projection'
 import type { ModeTab, ProviderFamilyView, ProviderMode } from '../types'
+import { ProviderGlyph } from './ProviderGlyph'
 import s from './ProviderDetail.module.css'
 
 /**
@@ -67,9 +67,13 @@ export function ProviderDetail({
      */
     <div className={s.detail}>
       <div className={s.head}>
-        <span className={`${s.icon} ${family.custom ? s.iconCustom : ''}`} aria-hidden="true">
-          {initialOf(family.label)}
-        </span>
+        {/* 与名册行同一件(09-14):有真图标就画图标,没有才回落首字母。 */}
+        <ProviderGlyph
+          familyId={family.id}
+          label={family.label}
+          custom={family.custom}
+          size="md"
+        />
         <div className={s.headText}>
           {/* 名字单行截断(律二),所以配一句 Tooltip 把全名说出来 ——
               壳 CLAUDE.md「标题截断须配 Tooltip 全名」,禁 native title=。 */}

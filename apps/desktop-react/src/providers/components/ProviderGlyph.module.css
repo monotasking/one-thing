@@ -1,0 +1,56 @@
+/*
+ * 方框的形。09-14 从 ProviderRail.module.css 的 `.icon` 与
+ * ProviderDetail.module.css 的 `.icon` 搬来 —— 两处从前逐条写着同一副配方
+ * (边 --line-1 / 底 --surface-2 / mono / --text-2),只有边长、圆角与字号两档不同。
+ *
+ * 这里**不写与落点有关的任何东西**:名册收起档那三条(pointer-events / ::after
+ * 摊满全行 / 居中)留在 rail 自己的样式表里 —— 那是**名册**的事,不是图标的事。
+ */
+.glyph {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: var(--bw-1) solid var(--line-1);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  color: var(--text-2);
+}
+
+/* 两档:名册行的 22 方 / 详情头的 36 方。圆角与字号跟着边长走(搬前两处的原值)。 */
+.sm {
+  width: var(--pv-rail-icon);
+  height: var(--pv-rail-icon);
+  border-radius: var(--r-1);
+  font-size: var(--fs-micro);
+}
+
+.md {
+  width: var(--pv-head-icon);
+  height: var(--pv-head-icon);
+  border-radius: var(--r-2);
+  font-size: var(--fs-label);
+}
+
+/* 自定义家的图标是虚线边 —— 「这是你自己建的」在扫列表时一眼看得出。 */
+.custom {
+  border-style: dashed;
+}
+
+/*
+ * 图标本体。svg 只当**形状**用(mask),颜色由 `currentColor` 从上面那格 `color`
+ * 取 —— 于是主题换色它跟着换,而 `<img>` 做不到这一点(理由写在 .tsx 头上)。
+ * 地址由消费方以 `--pv-glyph-icon` 递进来(JSX 那一行只递地址,配方在这里)。
+ */
+.mark {
+  flex: none;
+  width: var(--pv-glyph-icon-size);
+  height: var(--pv-glyph-icon-size);
+  background: currentColor;
+  mask: var(--pv-glyph-icon) center / contain no-repeat;
+}
+
+.md .mark {
+  width: var(--pv-glyph-icon-size-md);
+  height: var(--pv-glyph-icon-size-md);
+}
