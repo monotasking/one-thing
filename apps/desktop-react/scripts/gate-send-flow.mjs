@@ -129,6 +129,25 @@ const RETRY_SEAM_MS = 100
  * 说的就是有人在事后重挂它(§0 三处病之二的病根之一)。
  */
 const CHURN_WATCH_MS = 6000
+/**
+ * **等「这一轮开张」(停止钮上屏)最多这么久**。
+ *
+ * 它**不是**一格预算,是一条「别把机器忙判成产品红」的闸:开张这一段里产品做的事
+ * 是 core 折账本 + 跑一轮上下文压缩 + 开 run,与屏幕上的任何一条判据无关(这道门
+ * 判的全是像素位置与结构,见 `verify.mjs` 里那段判词)。
+ *
+ * 实测(闲机,两档各一趟):常态 / 长回 **124–126ms**(= 一个 120ms 轮询间隔,
+ * 也就是「一问就在」),超量 **dev 4758 / prod 4001ms** —— 那 4 秒是 50.9MB 账本
+ * 折出来 + 压缩那一发的往返。定 30_000 的那一版在机器重载时崩过一次(2026-09-15,
+ * 同机连跑十几趟门之后,swap 吃满):**最慢那一档的 6 倍都不够**,所以这里按
+ * 「最慢那一档 × 25」取整到 120s —— 三倍(≈14s)挡不住已经发生过的那一次。
+ * 它仍然比这一档自己的收场闸(300s)小一个身位,所以真卡死了照样在这一格上报,
+ * 不会拖到收场那一格才显形。
+ *
+ * **一个常数服务三档**:定的是最慢那一档,快的两档白拿一点余量 —— 分档写就是
+ * 三个数、三处判词,而它们要答的是同一个问题(机器忙不忙)。
+ */
+const OPEN_TIMEOUT_MS = 120_000
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -359,12 +378,20 @@ function portConnects(host, port) {
   })
 }
 
+/**
+ * 等一件事发生。**等了多久记在 `waitFor.lastMs` 上** —— 超时值该定多少,判据是
+ * 「这件事实测要多久」,而那个数只有它自己说得出(判词在 `OPEN_TIMEOUT_MS`)。
+ */
 async function waitFor(label, predicate, timeoutMs = 30_000) {
-  const deadline = Date.now() + timeoutMs
+  const started = Date.now()
+  const deadline = started + timeoutMs
   let last
   while (Date.now() < deadline) {
     last = await predicate()
-    if (last) return last
+    if (last) {
+      waitFor.lastMs = Date.now() - started
+      return last
+    }
     await delay(120)
   }
   throw new Error(`超时(${timeoutMs}ms)等待:${label}\n最后一次读数:${JSON.stringify(last)}`)
@@ -1195,7 +1222,8 @@ function report(name, m) {
   console.log(
     `      ${' '.repeat(name.length)}  收尾窗 ${m.endFrames} 帧:锚点位移 ${m.endAnchorShift.toFixed(1)}px`
     + ` · 折叠中 scrollTop 最低 ${m.endScrollMin.toFixed(0)} · 收尾之后 DOM 增删 ${m.churnAfterEnd}`
-    + (m.churnWatch === undefined ? '' : ` · 收摊后 ${CHURN_WATCH_MS / 1000}s 内增删 ${m.churnWatch}`),
+    + (m.churnWatch === undefined ? '' : ` · 收摊后 ${CHURN_WATCH_MS / 1000}s 内增删 ${m.churnWatch}`)
+    + (m.laneMs === undefined ? '' : ` · 这一档 ${(m.laneMs / 1000).toFixed(1)}s`),
   )
 }
 
@@ -1365,6 +1393,7 @@ async function main() {
      * (`command:retry-message` 发出去之后账本还什么都没有)。
      */
     const runRetry = async (page) => {
+      const runStartedAt = Date.now()
       await startSampler(page)
       const pressed = await page.evaluate(() => {
         const leaf = window.__seatLeaf()
@@ -1396,7 +1425,7 @@ async function main() {
         page.evaluate(() =>
           Boolean(window.__seatLeaf()
             .querySelector('[data-testid="chat-stream"] [data-testid="chat-stop"]')))
-      await waitFor('重试这一轮开张(停止钮上屏)', stopShown, 60_000)
+      await waitFor('重试这一轮开张(停止钮上屏)', stopShown, OPEN_TIMEOUT_MS)
       await waitFor('重试这一轮收场(停止钮下屏)', async () => !(await stopShown()), 120_000)
       await delay(600)
       const { frames, ...marks } = await stopSampler(page)
@@ -1418,6 +1447,7 @@ async function main() {
         ...retryMetrics(frames, pressedAt),
         churnWatch: churn.added + churn.removed,
         userKept,
+        laneMs: Date.now() - runStartedAt,
       }
     }
 
@@ -1432,6 +1462,7 @@ async function main() {
      * 所以判据取**屏幕自己的事实**:停止钮在场 = 这一轮在跑,它没了 = 收场了。
      */
     const runOnce = async (_sessionId, text, timeoutMs) => {
+      const runStartedAt = Date.now()
       await startSampler(page)
       await sendViaComposer(page, text)
       // 同一条判据:问的是**屏上那一片**在不在跑(停靠池里那几片不算)。
@@ -1439,8 +1470,10 @@ async function main() {
         page.evaluate(() =>
           Boolean(window.__seatLeaf()
             .querySelector('[data-testid="chat-stream"] [data-testid="chat-stop"]')))
-      await waitFor('这一轮开张(停止钮上屏)', stopShown, 30_000)
+      await waitFor('这一轮开张(停止钮上屏)', stopShown, OPEN_TIMEOUT_MS)
+      const openMs = waitFor.lastMs
       await waitFor('这一轮收场(停止钮下屏)', async () => !(await stopShown()), timeoutMs)
+      console.log(`      开张 ${openMs}ms(闸 ${OPEN_TIMEOUT_MS}ms)`)
       // 收场那一下的重排也录进来(思考折回一行就发生在这几帧里)。
       await delay(600)
       const { frames, ...marks } = await stopSampler(page)
@@ -1451,7 +1484,12 @@ async function main() {
       const watching = await startChurnWatch(page)
       await delay(CHURN_WATCH_MS)
       const churn = watching ? await stopChurnWatch(page) : { added: 0, removed: 0 }
-      const out = { ...analyze(frames, marks), churnWatch: churn.added + churn.removed }
+      const out = {
+        ...analyze(frames, marks),
+        churnWatch: churn.added + churn.removed,
+        // 这一档在墙上钟里占多久 —— verify 里它是最贵的一条,谁贵得说得出来。
+        laneMs: Date.now() - runStartedAt,
+      }
       if (process.argv.includes('--trace')) {
         const t0 = frames[0]?.t ?? 0
         const row = (f) => [

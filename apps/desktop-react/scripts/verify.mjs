@@ -356,6 +356,38 @@ run('gate:changes(prod)', 'npm', ['run', '--silent', 'gate:changes', '--', '--pr
 run('gate:chat-layout(dev)', 'npm', ['run', '--silent', 'gate:chat-layout'])
 run('gate:chat-layout(prod)', 'npm', ['run', '--silent', 'gate:chat-layout', '--', '--prod'])
 /*
+ * ── 发送 · 等待 · 生成 · 收尾 · 重试那一条座位(单 C,2026-09-15)──────────────
+ * 正本 `apps/desktop-react/docs/send-flow-2026-09.md`(§2 七条规矩 / §9 落地记)。
+ *
+ * **它凭什么进得来**:判据是**像素位置与结构**,不是毫秒读数 ——
+ *  · ① 发送到首字滚动**几段**(段数,不是耗时);
+ *  · ② / ②b 自己那条气泡的**位移**(0.0px / 最远 ≤ 1px);
+ *  · ③ 读数行与折痕 / 思考段**相交的帧数**(0);④ 读数行方向**反转次数**(0);
+ *  · [收尾锚定] 收尾那 300ms 里视口内第一块在读的东西的**位移**(≤ 1px),外加
+ *    「收摊后 6s 那条助手行**增删几个节点**」(0)与「折叠中 `scrollTop` 有没有余量」;
+ *  · ⑥ 重试:折痕与上折**多少毫秒内开始**(≤100ms,而实测 8–18ms,余量一个数量级)、
+ *    用户行**是不是同一个 DOM 节点**。
+ * 同一份代码跑一百遍是同一个答案,与 `gate:chat-follow` / `gate:continuity` 同族,
+ * 与本文件顶部「gate:perf 不进来」那条裁定**不冲突**(那条说的是薄余量的毫秒门)。
+ *
+ * **唯一一格毫秒读数是长帧**:常态 / 长回 / 重试三档判 0(实测最长 dev 25 / prod
+ * 17ms,离 50ms 那条线一个身位),超量那一档**只报不判** —— 20 万字思考的首屏与
+ * 收尾重排今天就是一秒多的帧,把它判红等于把一条已知的旧病钉成恒红,而恒红的门
+ * 只会被人加 `|| true`(文件顶部对 gate:perf 的第二条理由)。
+ *
+ * **超量那一档不能为省时间摘掉**:它是 [收尾锚定] **唯一量得出差别**的一档 ——
+ * 反证实测(§9.3)把 `ThinkingSegment` 的高度过渡与 `fold-intent` 整个拆掉重跑,
+ * 常态 / 长回 / 重试三档仍是 0.0px(那三档折两三千像素,浏览器自己的滚动锚定接得住),
+ * **超量当场 1459.8px**。摘了它,④ 这一条就退回成三条恒绿的断言。
+ *
+ * **两档都跑**(第 5 轴那句话:用户跑的是 `electron:dev`)。它自己起窗、自己收尸,
+ * 走屏外档、不连 5175、不碰 `~/.onething`;超量那一档的夹具是 50.9MB / 400 条,
+ * 每一趟自己建一份临时 store。它是这份 verify 里**最贵的一条**(dev 与 prod 各 ~4 分钟,
+ * 其中超量档约占一半),所以排在真机门的最后。
+ */
+run('gate:send-flow(dev)', 'npm', ['run', '--silent', 'gate:send-flow'])
+run('gate:send-flow(prod)', 'npm', ['run', '--silent', 'gate:send-flow', '--', '--prod'])
+/*
  * gate:credentials 不在这里,理由与 gate:perf 不同:它**读的是这台机器上真实的
  * 生产 store**(要一份真的 safeStorage 密文才有得比),而 verify 必须在任何一台
  * checkout 上都能跑。它自己跑:`npm run gate:credentials`。
@@ -365,5 +397,6 @@ process.stdout.write(
   '\n[verify] ok —— typecheck / lint(含 jsx-a11y)/ squeeze-gate / motion-gate / test / build'
     + ' / offline-fonts / buttonbase-css'
     + ' / 真机门(connect·data·theme·chat·files·search·monotone·squeeze·motion·a11y·focus·layout'
-    + '·chat-follow·continuity·terminal[dev+prod]·browser[dev+prod]·chat-layout[dev+prod])全绿\n',
+    + '·chat-follow·continuity·terminal[dev+prod]·browser[dev+prod]·chat-layout[dev+prod]'
+    + '·send-flow[dev+prod])全绿\n',
 )
