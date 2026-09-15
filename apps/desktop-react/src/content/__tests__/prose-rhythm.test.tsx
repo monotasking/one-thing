@@ -204,13 +204,16 @@ describe('节奏换轨:只许间距变,不许次序变', () => {
      * 两条都是**换轨之前**就有的行为。这条门的职责是「换轨没动它们」,
      * 要改这两件事得另开一批(改了这里就得连着改基线,那正是它该被看见的时刻)。
      *
-     * ── 基线动过一次(08-31 流式台一定稿)────────────────────────────────
-     * 末尾多出 `div[data-testid=chat-readout]`:光标之后那一行流式读数
-     * (正在生成 · {耗时}s + 停止)。这**正是**上一段说的「该被看见的时刻」——
-     * 它是一次有意的排布变化,不是回归:两条素材都停在 run 里(没有 run/end),
-     * 所以读数行在场;它与光标一样是消息的外缘件,同样是消息框的直接子项、
-     * 同样吃节奏表的默认档(什么都不报)。收摊之后它退场、幽灵动作行接位,
-     * 那一半由 message/__tests__/message-chrome.test.tsx 钉。
+     * ── 基线动过两次,两次都是**有意的排布变化** ──────────────────────────
+     * ① 08-31 流式台一定稿:末尾多出光标之后那一行流式读数。
+     * ② **2026-09-15 单 B ⑤**:那一行换成 `div[data-testid=chat-chrome]` ——
+     *    读数行与幽灵动作行从「两句条件渲染」收成**一格 grid 里的两张脸**
+     *    (同格同高,只换 opacity;判词整段在 `message/MessageChrome.tsx`)。
+     *    对这张表来说变的只有**那一格叫什么**:它仍然是消息框的直接子项、仍然
+     *    什么都不报、仍然吃节奏表的默认档,前面八项一个字没动。
+     *    治的是收尾那一帧「两张脸高度不同 → 内容缩一截 → 视口被钳一下」那 12px。
+     * 这**正是**上一段说的「该被看见的时刻」—— 它是一次有意的排布变化,不是回归。
+     * 两张脸各自在场不在场那一半由 message/__tests__/message-chrome.test.tsx 钉。
      */
     expect(children).toEqual([
       'div[data-testid=chat-thought]',
@@ -221,7 +224,7 @@ describe('节奏换轨:只许间距变,不许次序变', () => {
       'p',
       'div[data-tool-card=true]',
       'span[data-testid=chat-streaming]',
-      'div[data-testid=chat-readout]',
+      'div[data-testid=chat-chrome]',
     ])
   })
 
@@ -236,7 +239,7 @@ describe('节奏换轨:只许间距变,不许次序变', () => {
       'div[data-tool-card=true]',
       'span[data-testid=chat-streaming]',
       // 见上一条的「基线动过一次」:这条素材同样停在 run 里,所以读数行在场。
-      'div[data-testid=chat-readout]',
+      'div[data-testid=chat-chrome]',
     ])
   })
 
@@ -247,7 +250,7 @@ describe('节奏换轨:只许间距变,不许次序变', () => {
       'p',
       'ul',
       'span[data-testid=chat-streaming]',
-      'div[data-testid=chat-readout]',
+      'div[data-testid=chat-chrome]',
     ])
     const nested = row.querySelector('li [data-block-kind="code"]')
     expect(nested, '围栏应当画成代码块的壳,且就长在 <li> 里').toBeTruthy()

@@ -136,11 +136,23 @@ afterEach(async () => {
 })
 
 describe('① / ② 同一个位置,永远只有一个在', () => {
-  it('流式中:读数行在场,动作行不在', async () => {
+  /**
+   * **2026-09-15 单 B ⑤ 改的就是这一条的后半句。**
+   *
+   * 从前它写的是「动作行**不在**」—— 条件渲染,于是收尾那一帧卸掉读数行、挂上
+   * 动作行,两者高度不同,内容缩一截、贴着底的页面被钳一下 `scrollTop`
+   * (单 A 的门量到 12px)。现在两张脸**同格同高**:动作行常驻在 DOM 里,
+   * 流式中只是 `opacity: 0` + `inert`。所以判据从「在不在 DOM 里」换成
+   * **「哪张脸亮着」**(`data-face`)与**「暗的那张点不动也念不到」**(`inert`)。
+   */
+  it('流式中:读数行亮着,动作行在同一格里暗着(inert)', async () => {
     await mount(streamingLedger())
     expect(screen.getByTestId('chat-readout')).toBeTruthy()
     expect(screen.getByTestId('chat-stop')).toBeTruthy()
-    expect(screen.queryByTestId('chat-actions')).toBeNull()
+    expect(screen.getByTestId('chat-chrome').getAttribute('data-face')).toBe('readout')
+    // 动作行在 DOM 里(这一格的高由它说了算),但这一刻不许被 Tab 走到、不许被念到。
+    const actions = screen.getByTestId('chat-actions')
+    expect(actions.closest('[inert]')).toBeTruthy()
   })
 
   it('读数行说的那句话是「正在生成 · {耗时}」(单位由 formatDuration 带出来)', async () => {
@@ -152,8 +164,12 @@ describe('① / ② 同一个位置,永远只有一个在', () => {
 
   it('完成后:读数行退场,动作行接位(复制 / 重试)', async () => {
     await mount(settledLedger())
+    // 读数行**真的卸载**(它身上挂着一只 100ms 的表,常驻就是按会话长度计价)——
+    // 高度稳定靠的是动作行那一张常驻,判词在 `MessageChrome.tsx`。
     expect(screen.queryByTestId('chat-readout')).toBeNull()
+    expect(screen.getByTestId('chat-chrome').getAttribute('data-face')).toBe('actions')
     const actions = screen.getByTestId('chat-actions')
+    expect(actions.closest('[inert]')).toBeNull()
     expect(actions.textContent).toContain('复制')
     expect(actions.textContent).toContain('重试')
   })
@@ -249,9 +265,27 @@ describe('重试钮:引擎在跑时禁灰', () => {
     expect(button.disabled).toBe(false)
   })
 
+  /**
+   * **单 B ⑤ 之后这两条要点名是哪一条消息的钮**(2026-09-15)。
+   *
+   * 这份账本上有两条助手消息:收摊的 a1 与在跑的 a2。从前在跑的那一条**不渲染**
+   * 动作行,所以 `screen.getByTestId` 全文唯一;现在两张脸同格同高,a2 那一格里
+   * 也有一份(暗着 + `inert`),`getByTestId` 于是撞上两个。
+   *
+   * 这不是放宽判据,是**把判据说准**:这两条问的从来就是「**a1 那条**的重试钮
+   * 禁没禁」,而「全文只有一个」是当时的巧合。
+   */
+  const actionIn = (messageId: string, testId: string): HTMLButtonElement => {
+    const row = document.querySelector(`[data-message-id="${messageId}"]`)
+    if (!row) throw new Error(`账本上没有 ${messageId} 这一行`)
+    const el = row.querySelector(`[data-testid="${testId}"]`)
+    if (!(el instanceof HTMLButtonElement)) throw new Error(`${messageId} 那一行里没有 ${testId}`)
+    return el
+  }
+
   it('引擎在跑:钮禁着,点下去一条命令都不发', async () => {
     await mount(busyAgainLedger())
-    const button = screen.getByTestId('chat-action-retry') as HTMLButtonElement
+    const button = actionIn('a1', 'chat-action-retry')
     expect(button.disabled).toBe(true)
 
     await act(async () => {
@@ -262,7 +296,7 @@ describe('重试钮:引擎在跑时禁灰', () => {
 
   it('复制钮不受牵连(禁的是重试这一件事,不是整行)', async () => {
     await mount(busyAgainLedger())
-    expect((screen.getByTestId('chat-action-copy') as HTMLButtonElement).disabled).toBe(false)
+    expect(actionIn('a1', 'chat-action-copy').disabled).toBe(false)
   })
 
   it('禁灰配方与库件同源:只降透明度,hover 那一格挂 :not(:disabled)', () => {

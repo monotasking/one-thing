@@ -272,6 +272,69 @@
   margin-block-start: var(--pr-think);
 }
 
+/*
+ * ── 一条消息**里面**事后出现的那一件:软着陆(2026-09-15 单 B ⑤)────────────
+ *
+ * 与上面那条 `.rowLate` 是同一件事的两个尺度:那一条管的是**消息与消息之间**
+ * 事后多出来的一行(上下文更新折痕),这一条管的是**一条消息里面**事后多出来的
+ * 一件(收场通知 —— 收尾那一帧才知道这一轮为什么提前结束)。
+ *
+ * 三量一起过渡的理由逐字同上:淡入盖不住位移。差别只有塌掉的**那一格间距**从
+ * `.column` 的 gap(`--sp-6`)换成节奏表给它的段距(`--pr-gap`)—— 它是 `.row`
+ * 的直接子项,吃的是那张表。
+ *
+ * **排在节奏表之后**是有意的:`@starting-style` 里那句 `margin-block-start: 0`
+ * 要压过 `.row > * + *`(两条都是 0-2-0,同一个文件里后写的赢)。跨文件靠
+ * 打包先后决定胜负那条坑(⓪ 那一段的判词)在这里同样成立,所以这一条**必须**
+ * 待在这个文件里,不能搬进 `MessageChrome.module.css`。
+ */
+.lateRow {
+  interpolate-size: allow-keywords;
+  height: auto;
+  overflow: clip;
+  overflow-clip-margin: var(--sp-2);
+  transition:
+    height var(--dur-release) var(--ease-out),
+    margin-block-start var(--dur-release) var(--ease-out),
+    opacity var(--dur-release) var(--ease-out);
+}
+
+@starting-style {
+  .row > .lateRow {
+    height: 0;
+    margin-block-start: 0;
+    opacity: 0;
+  }
+}
+
+/*
+ * ── 重试:旧回答**上折**进座位上缘(2026-09-15 单 B ⑥,正本 §2 规矩 ⑥)────────
+ *
+ * 按下重试那一帧就开槽:这条旧回答当场开始往回折(高度 → 0),而不是干等
+ * core 把它从账本上删掉再整块消失。判词三句:
+ *  ① **按下即开槽**是规矩 ⑥ 的字面 —— 从前按下去屏幕一动不动,等账本删完旧回复
+ *     才从头画,中间那一段人不知道自己按中了没有;
+ *  ② 折的锚是**自己那条气泡**(`fold-intent` 报一句,补偿在 `ChatStream` 那只 RO
+ *     的折叠分支里做)—— 旧回答在气泡下面,它缩多少,视口就该跟着补多少;
+ *  ③ `interpolate-size` + `height: auto → 0` 与 `.rowLate` / `.lateRow` 同一手,
+ *     **不是** FLIP:这里没有「改后」可量(它要去的地方是 0),而
+ *     `@starting-style` 那一套解的是「从无到有」,方向正好相反。
+ *
+ * 动效档「无」下 `--dur-card-flip` 是 0ms,一步到位 —— 不另写 reduced-motion 块。
+ */
+.rowRetiring {
+  interpolate-size: allow-keywords;
+  height: 0;
+  margin-block-start: 0;
+  overflow: clip;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    height var(--dur-card-flip) var(--ease-out),
+    margin-block-start var(--dur-card-flip) var(--ease-out),
+    opacity var(--dur-card-flip) var(--ease-out);
+}
+
 .flash {
   animation: var(--kf-turn-flash) var(--dur-toc-flash) var(--ease-out) forwards;
 }

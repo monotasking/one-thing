@@ -1,7 +1,11 @@
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { CARD_FLIP_MS, currentMotionTier } from '../components/motion'
 import { useT } from '../i18n'
 import { Fold, FoldTrigger } from '../ui/Fold'
+import { useFlipHeight } from '../ui/flip-height'
 import { useNoteUserExpand } from './expand-intent'
+import { useNoteFold } from './fold-intent'
+import { thoughtHeights } from './thought-heights'
 import s from './SegmentView.module.css'
 import type { TextBlock } from './text/text-stream'
 
@@ -67,6 +71,7 @@ export function ThinkingSegment({
 }) {
   const t = useT()
   const note = useNoteUserExpand()
+  const noteFold = useNoteFold()
   const [expanded, setExpanded] = useState(live)
 
   // 跟着 live 走:开始想就展开,想完就折回去。用户在**非流式**时手动展开的那一份
@@ -74,6 +79,53 @@ export function ThinkingSegment({
   useEffect(() => {
     setExpanded(live)
   }, [live])
+
+  /**
+   * ── 收尾那一下**折起来,不是跳回去**(单 B ④,正本 §2 规矩 ④)────────────
+   *
+   * 病历:一轮跑完那一帧,20 万字的思考从 6 万像素**一帧**缩成一行 783px,整屏
+   * 跳变(`probe-stream-end.mjs` 量到上一条用户消息的 top 从 −60,879 跳到 −286)。
+   *
+   * 机制整只复用 `ui/flip-height`(基础件先行:第二个消费者不许再抄一份):
+   *  · 「改前」由这一族自己的账本(`thought-heights.ts`)**报**过来,不现问 ——
+   *    现问一次 `offsetHeight` 会把整棵跳渲的消息树逼出来排一次版;
+   *  · 「改后」由那只原语在 React 提交完**折起来的 DOM 之后**同步量一次 ——
+   *    量的就是**预览行自己**,这正是样例页 `animateHeight` 那段判词说的
+   *    「不许把容器设成 auto 去量」(首版那么量,量到 639px 的假高、跳一下);
+   *  · 动效档 `none` 整段跳过(那只原语第一句就判)。
+   *
+   * `structure` 只有开 / 合两态:流式期间字每帧在变,高度跟着长 —— 那是 RO 记账的事,
+   * 不该每帧触发一次 FLIP。
+   */
+  const boxRef = useRef<HTMLElement>(null)
+  useFlipHeight(boxRef, expanded ? 'open' : 'closed', {
+    book: thoughtHeights,
+    durVar: '--dur-card-flip',
+    durMs: CARD_FLIP_MS,
+  })
+
+  /**
+   * 开始折的那一帧报一句「钉住视口」(`content/fold-intent.ts`)。
+   *
+   * **只在折起那一侧报**,展开那一侧归 `expand-intent`(两条通道,两件事:一件说
+   * 「别贴底」,一件说「别让内容往上抽」)。**手动收起也报** —— 几何上它与自动折
+   * 逐字相同,人正读着的那一行同样不该往上蹿;`Fold` 的 `onOpenChange` 与 `live`
+   * 那只 effect 都会落到这里,所以判据挂在**结果**(展开态翻成了 false)上,
+   * 不挂在「谁翻的」上。
+   *
+   * 排在 `useFlipHeight` **之后**声明,所以它的 layout effect 也排在后面跑:
+   * 那只原语已经把起点钉住(内联 height = 改前)、把终点写下去了,此刻报出去的
+   * 那一段时长说的正是接下来要走的那一段。动效档 `none` 下不报 —— 那一档没有
+   * 「一段过渡」,高度当场到位,聊天流按它自己的几何判据走就对了。
+   */
+  const wasExpanded = useRef(expanded)
+  useLayoutEffect(() => {
+    const folding = wasExpanded.current && !expanded
+    wasExpanded.current = expanded
+    if (!folding) return
+    if (currentMotionTier() === 'none') return
+    noteFold(CARD_FLIP_MS)
+  }, [expanded, noteFold])
 
   return (
     <Fold
@@ -86,6 +138,7 @@ export function ThinkingSegment({
       }}
     >
       <FoldTrigger
+        ref={boxRef}
         className={expanded ? `${s.thought} ${s.thoughtOpen}` : s.thought}
         aria-label={t('chat.thought')}
         /*

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from 'react'
-import type { HTMLAttributes, KeyboardEvent, MouseEvent, ReactNode } from 'react'
+import type { HTMLAttributes, KeyboardEvent, MouseEvent, ReactNode, Ref } from 'react'
 
 /**
  * **折叠基座**(09-09 立件,起因:压缩折痕的摘要、上下文更新 chip、思考段
@@ -139,6 +139,21 @@ export interface FoldTriggerProps extends HTMLAttributes<HTMLElement> {
    * 别把这件掰成两套。
    */
   as?: TriggerTag
+  /**
+   * **消费方也要这个节点**(2026-09-15 单 B ④ 加的一格)。
+   *
+   * 起因:思考段收尾那一下要给**这一块自己**做高度过渡(`ui/flip-height`),而那只
+   * 原语要的正是这个 DOM 节点。三条不走的路,理由各写一句:①包一层 `<div ref>` ——
+   * 那会让 `data-prose="thought"` 从 `.row` 的**直接子项**变成孙辈,节奏表(邻接选择器)
+   * 当场失效;②把 `data-prose` / `data-testid` 搬到外层 —— 那两个属性与
+   * `role="button"` / `aria-expanded` 在**同一个元素**上是 `gate:focus` / `gate:a11y`
+   * 的取件口,搬走就是换了取件口;③在消费方 `querySelector` 一次 —— 那是拿 DOM 当
+   * 通道,而这里本来就有一个正经通道。
+   *
+   * 合并由**这里**做,不推给消费方:这一格与内部那只 `headRef`(底把手要找头把手)
+   * 是两个人要同一个节点,而「两个人要同一个节点怎么办」是库件的事。
+   */
+  ref?: Ref<HTMLElement>
   children?: ReactNode
 }
 
@@ -146,7 +161,14 @@ export interface FoldTriggerProps extends HTMLAttributes<HTMLElement> {
  * 可点的那一块。`role="button"` + `tabIndex=0` + `aria-expanded`,
  * 键鼠两路都通向同一次 `toggle`。
  */
-export function FoldTrigger({ as = 'div', onClick, onKeyDown, children, ...rest }: FoldTriggerProps) {
+export function FoldTrigger({
+  as = 'div',
+  onClick,
+  onKeyDown,
+  children,
+  ref: outerRef,
+  ...rest
+}: FoldTriggerProps) {
   const { open, toggle, bodyId, headRef } = useFold('FoldTrigger')
   const hasBody = useContext(HasBodyCtx)
   const Tag = as
@@ -155,8 +177,12 @@ export function FoldTrigger({ as = 'div', onClick, onKeyDown, children, ...rest 
   const register = useCallback(
     (el: HTMLElement | null) => {
       headRef.current = el
+      // 消费方那一格(判词在 `FoldTriggerProps.ref` 上)。两种形都接:
+      // 函数 ref 与对象 ref —— 合并是库件的事,不是消费方的事。
+      if (typeof outerRef === 'function') outerRef(el)
+      else if (outerRef) outerRef.current = el
     },
-    [headRef],
+    [headRef, outerRef],
   )
 
   const handleClick = (event: MouseEvent<HTMLElement>) => {

@@ -76,6 +76,12 @@ const BUDGET = {
   longFrames: 0,
   /** ⑥ 座位归零前后 300ms 内的方向反转(打回一那条抖)。 */
   seatZeroFlips: 0,
+  /** ④ 收尾那一帧起 300ms 内,视口内第一块在读的东西的位移(px)。 */
+  endAnchorShiftPx: 1,
+  /** ④ 收尾之后 DOM 还在翻腾的元素数(重挂 = 一批同时走一批同时来)。 */
+  churnAfterEnd: 0,
+  /** ⑥ 重试那一帧起 300ms 内,自己那条气泡的位移(px)。 */
+  retryShiftPx: 1,
 }
 
 /** 会话名与两份夹具。 */
@@ -108,6 +114,21 @@ const THOUGHT_CHARS = 200_000
 /** 思考开头走慢档的段数与段间隔(判词在吐思考那一段循环里)。 */
 const THOUGHT_RAMP_PARTS = 24
 const THOUGHT_RAMP_GAP_MS = 60
+/**
+ * **按下重试到折痕在扫**,最多这么久(单 B ⑥「按下即开槽」)。
+ *
+ * 它是一个**上限判据**不是一段时长:壳这一侧那一格 `retryPending` 与那道折痕是
+ * **同一次 React 提交**,所以真值该是一两帧;100ms 给的是采样与调度的余量
+ * (与 `QUIET_MS` 同一个量级、同一条理由 —— 帧不是时间)。治前这里是**几百毫秒到
+ * 一秒**:壳要等 core 删完旧回复、开完新 run,账本回来才画。
+ */
+const RETRY_SEAM_MS = 100
+/**
+ * **收摊之后盯多久**(单 B ④)。6s:比一趟自动起名的往返、比账本落盘的节流
+ * (300ms)、比任何一次收尾重排都长一个量级 —— 这段时间里那条助手行还在增删节点,
+ * 说的就是有人在事后重挂它(§0 三处病之二的病根之一)。
+ */
+const CHURN_WATCH_MS = 6000
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -163,6 +184,27 @@ const LONG_REPLY_TEXT = Array.from(
 ).join('\n\n')
 
 /**
+ * **长回那一支自己的思考段**(2026-09-15 单 B ④ 补的夹具)。
+ *
+ * 病历:④「收尾锚定折叠」第一版把断言挂在常态与长回上,可这两支的假 provider
+ * **只吐正文、一个 reasoning 字节都不吐** —— 屏幕上根本没有思考段,收尾那一帧没有
+ * 任何东西在折,锚点位移恒为 0.0px。**一条恒绿的断言不是守卫**:反证(把补偿那一句
+ * 拆掉重跑)照样全绿,当场证伪了它。而真有思考的那一支(超量 20 万字)那一帧长达
+ * 一秒多、窗口里只采到一两帧,只报不判。所以长回这一支要自己长出一段**看得见、
+ * 采得到**的思考:
+ *  · 6,000 字 ≈ 展开两三千像素,收尾折回一行是一次真正的大收缩(正是 §0 那条病的
+ *    小号版本);
+ *  · 16ms 一帧满速吐完约 1.5s,整支仍然是小会话、帧率满格,收尾那一帧采得到几十帧;
+ *  · 排在正文**之前**,所以「座位被吃到 0」那一刻照旧发生(⑥ 一个字不动)。
+ */
+const LONG_THOUGHT = Array.from(
+  { length: 40 },
+  (_, i) => `第 ${i + 1} 段思考:这一段存在的理由是让收尾那一帧真的有东西可折 —— `
+    + '思考段流式期间展开、收尾自动折回一行,而那一下如果没人钉住视口,人正在读的'
+    + '那一行会当场往上抽走一大截(正本 §0 三处病之二)。',
+).join('\n')
+
+/**
  * 一台记号驱动的假 provider(OpenAI 兼容 SSE)。
  *
  * **不带记号的请求两帧收尾** —— 自动起名那一发走这一支,它不该在任何一个采样窗口
@@ -210,11 +252,17 @@ function startProvider(state) {
        * **量的那一条只服务一次**:自动起名那一发会把整份历史拼进请求,同一个记号
        * 于是会再命中一次;不拦的话 20 万字会被再吐一遍,而那一遍落在窗口之外。
        */
-      const first = (normal && !state.normalServed)
-        || (long && !state.longServed)
+      /*
+       * **重试那一轮带的还是同一个记号**(它重跑的就是那条消息),所以正文那两支
+       * 各服务**两次**:第一次是那一轮本身,第二次是重试。第三次起(自动起名把整份
+       * 历史拼进请求)照旧空手收尾。思考那一支只服务一次 —— 没人重试它,而多吐一遍
+       * 20 万字要多花 35 秒。
+       */
+      const first = (normal && state.normalServed < 2)
+        || (long && state.longServed < 2)
         || (thought && !state.thoughtServed)
-      if (normal) state.normalServed = true
-      if (long) state.longServed = true
+      if (normal) state.normalServed += 1
+      if (long) state.longServed += 1
       if (thought) state.thoughtServed = true
       if ((!normal && !long && !thought) || !first) {
         send(frame({}, 'stop'))
@@ -253,6 +301,24 @@ function startProvider(state) {
         }
         send(frame({ content: '思考结束,下面是结论。' }))
       } else {
+        /*
+         * 长回那一支先吐一段思考(判词在 `LONG_THOUGHT`):④ 要量的那一下折叠,
+         * 只有屏幕上真有一段展开着的思考时才发生。满速 16ms,与合批同拍。
+         */
+        if (long) {
+          /*
+           * **开头那几段走慢档**,理由与超量那一支逐字相同:满速吐,座位(518px)
+           * 会在换手那 250ms 的窗口里就被吃光,② 量到的就不再是「换手那一下」而是
+           * 「座位满了之后照旧跟底」(真机实测 149px)。慢档只铺开头约 1.4s。
+           */
+          let parts = 0
+          for (let at = 0; at < LONG_THOUGHT.length; at += 90) {
+            if (res.destroyed) return
+            send(frame({ reasoning_content: LONG_THOUGHT.slice(at, at + 90) }))
+            parts += 1
+            await delay(parts <= THOUGHT_RAMP_PARTS ? THOUGHT_RAMP_GAP_MS : 16)
+          }
+        }
         const text = long ? LONG_REPLY_TEXT : REPLY_TEXT
         const pieces = long ? LONG_REPLY_PIECES : REPLY_PIECES
         const size = Math.max(1, Math.ceil(text.length / pieces))
@@ -376,6 +442,82 @@ async function clickTestId(page, testId) {
  */
 async function startSampler(page) {
   await page.evaluate(() => {
+    /*
+     * ── 折痕在不在,**不靠采样**(2026-09-15 改)────────────────────────────
+     * 超量那一趟的等待段有 900ms,可主线程在那 900ms 里被压缩 + 扩窗 + 400 条物化
+     * 占满,`requestAnimationFrame` 一共只回调**两次** —— 十三趟实测每一趟都恰好
+     * 2 帧,而这一趟 0 帧:同一份产品,读数在 2 与 0 之间抛硬币,于是「折痕真的
+     * 上过屏」那条断言、以及靠它切落位窗的 ① 一起变成掷骰子。
+     * `MutationObserver` 的回调不在 rAF 这条线上:它在长任务结束时的微任务检查点
+     * 一次性交出**期间的全部记录**,所以「折痕来过又走了」照样记得住。
+     * 它只latch两件事:**来过没有**、**最后一次走是什么时候**(后者供落位窗兜底)。
+     */
+    window.__seatSawWaiting = false
+    window.__seatWaitingGoneAt = undefined
+    /*
+     * 「在扫的那一道」**两种形都算**,与采样那一侧逐字同一句话:空折痕(一个新挂
+     * 上来的节点),或上下文更新折痕自己在扫(**同一个节点上 `data-state` 翻成
+     * `running`**)。第一版只盯 `childList`,于是超量那一趟(账本大、每轮都有上下文
+     * 更新行)latch 恒为 false —— 那一档的折痕从来不是新挂的节点,是一格属性。
+     */
+    const leaf = window.__seatLeaf()
+    const sweeping = () => Boolean(leaf.querySelector('[data-testid="waiting-seam"]'))
+      || Boolean(leaf.querySelector('[data-testid="context-delta-seam"][data-state="running"]'))
+    let wasSweeping = sweeping()
+    window.__seatSawWaiting = wasSweeping
+    /*
+     * **落位窗的右边界还要一个不靠折痕的答案**(2026-09-15,prod 真机逼出来的)。
+     * 超量那一档的等待段有 900ms,可主线程在那段时间里被压缩 / 扩窗 / 400 条物化
+     * 占满 —— 机器一忙,壳给这一轮提交的第一帧会**晚于第一个字**落地,于是折痕
+     * 一帧都没画过(latch 与采样两边都说没有,它们是一致的,不是漏看)。
+     * 折痕没画过,①「发送到首字只滚一段」的窗口就没了右边界,整轮都算进去 ——
+     * 那量的不是产品,是机器忙不忙。
+     * 所以再latch一格**这一轮的第一块内容什么时候上屏**:它与「首字」是同一件事,
+     * 而且不管折痕有没有来得及画都成立。latch 一次就不再算(早退)。
+     */
+    window.__seatFirstContentAt = undefined
+    /*
+     * **上一轮那条助手行的身份**,开录时记一次:这只 latch 要答的是「**这一轮**的第一块
+     * 内容什么时候上屏」,而回调第一次跑往往在用户气泡挂上来**之前**(输入框清空也是
+     * 一次 `leaf` 里的 DOM 变动,而输入框就住在这片叶里),那一刻列尾还是上一轮那条
+     * 满屏正文的助手行 —— 不认身份就会当场 latch,落位窗被切成 1 帧、① 报「0 段」
+     * (dev 真机量到两次)。
+     */
+    const tailAssistant = () => {
+      const stream = leaf.querySelector('[data-testid="chat-stream"]')
+      const column = stream?.firstElementChild
+      const kids = column?.children ?? []
+      for (let i = kids.length - 1; i >= 0 && i >= kids.length - 6; i -= 1) {
+        const el = kids[i]
+        if (!el.hasAttribute('data-message-id')) continue
+        if (el.getAttribute('data-role') === 'user') return null
+        return el
+      }
+      return null
+    }
+    const baseLiveId = tailAssistant()?.getAttribute('data-message-id') ?? null
+    const liveRowContent = () => {
+      const row = tailAssistant()
+      // 还是上一轮那一条(或者列尾还停在用户气泡上)= 这一轮的内容还没上屏。
+      if (!row || row.getAttribute('data-message-id') === baseLiveId) return false
+      return Boolean(row.querySelector('[data-prose], [data-testid="chat-thought"]'))
+    }
+    window.__seatSeamWatch?.disconnect()
+    window.__seatSeamWatch = new MutationObserver(() => {
+      const now = sweeping()
+      if (now) window.__seatSawWaiting = true
+      else if (wasSweeping) window.__seatWaitingGoneAt = performance.now()
+      wasSweeping = now
+      if (window.__seatFirstContentAt === undefined && liveRowContent()) {
+        window.__seatFirstContentAt = performance.now()
+      }
+    })
+    window.__seatSeamWatch.observe(leaf, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-state'],
+    })
     window.__seatFrames = []
     window.__seatStop = false
     const rect = (el) => {
@@ -399,6 +541,52 @@ async function startSampler(page) {
      * 判据取宿主自述的「此刻在屏上的那一格」。
      */
     const liveStream = () => window.__seatLeaf().querySelector('[data-testid="chat-stream"]')
+    /*
+     * **视口内第一块在读的东西**(单 B ④ 的锚)—— 与产品那一侧的 `pickFoldAnchor`
+     * 逐字同一条规则:列里第一件下缘还在视口内的东西,座位垫块跳过。
+     * 门与产品各写一遍是有意的:产品说「我按这条规则钉」,门说「按这条规则量,
+     * 它真的没动」—— 两边引用同一句话,不共享同一行代码。
+     */
+    const firstVisibleChild = (node, top) => {
+      const kids = node.children
+      let lo = 0
+      let hi = kids.length - 1
+      let found = null
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1
+        const el = kids[mid]
+        if (el.getBoundingClientRect().bottom > top + 1) {
+          found = el
+          hi = mid - 1
+        } else lo = mid + 1
+      }
+      return found && !found.hasAttribute('data-seat') ? found : null
+    }
+    /*
+     * **往里钻到「块」,不停在「行」上**(09-15 真机纠正的第二处量法,与产品那一侧
+     * 的 `pickFoldAnchor` 同一条改判)。行不是人读的东西:一轮长回答的那条助手行
+     * 从视口上面几千像素处起头,思考段折回一行时**行里的正文一动不动**,而
+     * `scrollHeight` 塌了一截、浏览器把 `scrollTop` 钳回来 —— 于是**行**相对视口
+     * 往下走了 1517px,正文却在原地。量行就是把这一下读成「屏幕跳了」,真机上
+     * 这门第一版红的 1517px 正是它。所以一层层钻到第一件**整个**落在视口上缘之下
+     * 的东西为止(段 / 正文块 / 工具卡),那才是「他正在读的那一行」所在的那一块。
+     */
+    const anchorOf = (scroll, kids) => {
+      void kids
+      const top = scroll.getBoundingClientRect().top
+      let anchor = null
+      let cursor = scroll.firstElementChild
+      for (let depth = 0; cursor && depth < 4; depth += 1) {
+        const next = firstVisibleChild(cursor, top)
+        if (!next) break
+        anchor = next
+        if (next.getBoundingClientRect().top >= top - 1) break
+        cursor = next
+      }
+      return anchor
+    }
+    /** 这一轮那条助手行里**新建 / 移除**了几个元素(重挂 = 一批同时走又一批同时来)。 */
+    const tracked = new Set()
     const tick = (t) => {
       if (window.__seatStop) return
       const scroll = liveStream()
@@ -408,15 +596,33 @@ async function startSampler(page) {
         let live = null // 这一轮的助手那一行(列尾,座位垫块之后往回数)
         let user = null // 这一轮自己那条气泡
         let ctxRow = null // 这一轮那道上下文更新折痕所在的行
+        let retryRow = null // 重试那一路:旧回答后面那道空折痕自己的一行
+        let retiringRow = null // 正在上折的那条旧回答(`.rowRetiring`)
         for (let i = kids.length - 1; i >= 0 && i >= kids.length - 6; i -= 1) {
           const el = kids[i]
           if (el.hasAttribute('data-seat')) continue
+          /*
+           * **这一格只有壳给得出**:`.rowRetiring` 挂上去的唯一判据是那格
+           * `retryPending`(账本此刻一个字都没变)。账本那条路改不出它 —— 所以它是
+           * 「按下即开槽」唯一量得出差别的读数(判词在 ⑥ 那两条断言上)。
+           * CSS Module 在两档下都把类名留在哈希里(prod 实测 `_rowRetiring_ttaw1_325`)。
+           */
+          if (!retiringRow && typeof el.className === 'string' && el.className.includes('Retiring')) {
+            retiringRow = el
+          }
           if (!ctxRow && el.hasAttribute('data-context-of')) ctxRow = el
+          if (!retryRow && el.hasAttribute('data-retry-of')) retryRow = el
           if (!user && el.getAttribute('data-role') === 'user') user = el
           if (!live && el.hasAttribute('data-message-id') && el.getAttribute('data-role') !== 'user') live = el
         }
         const readout = rect(live?.querySelector('[data-testid="chat-readout"]') ?? null)
-        const waiting = live?.querySelector('[data-testid="waiting-seam"]') ?? null
+        /*
+         * 折痕有两个住处,都要看:常态住在那条活消息里;**重试那一路自己一行**
+         * (`data-retry-of`)—— 它不许画在正在上折的那一行里(那一行 `height: 0` +
+         * `overflow: clip`,画进去屏幕上就看不见了),所以探针也不能只在那一行里找。
+         */
+        const waiting = (live?.querySelector('[data-testid="waiting-seam"]')
+          ?? retryRow?.querySelector('[data-testid="waiting-seam"]')) ?? null
         /*
          * 上下文更新折痕住在**用户那一行与助手那一行之间**的独立一行上 —— 要的是
          * **这一轮那一道**,所以同样从列尾往回找(上面那个循环顺手收下 `ctxRow`)。
@@ -428,10 +634,33 @@ async function startSampler(page) {
         const seamRunning = seam?.getAttribute('data-state') === 'running'
         const thought = rect(live?.querySelector('[data-testid="chat-thought"]') ?? null)
         const seat = kids[kids.length - 1]?.hasAttribute('data-seat') ? kids[kids.length - 1] : null
+        const anchor = rect(anchorOf(scroll, kids))
+        let created = 0
+        let removed = 0
+        if (live) {
+          for (const el of live.querySelectorAll('*')) {
+            if (!tracked.has(el)) {
+              tracked.add(el)
+              created += 1
+            }
+          }
+          for (const el of tracked) {
+            if (!el.isConnected) {
+              tracked.delete(el)
+              removed += 1
+            }
+          }
+        }
         window.__seatFrames.push({
+          retiring: Boolean(retiringRow),
+          anchor,
+          created,
+          removed,
+          thoughtOpen: live?.querySelector('[data-testid="chat-thought"]')?.getAttribute('aria-expanded') ?? null,
           t,
           st: scroll.scrollTop,
           sh: scroll.scrollHeight,
+          ch: scroll.clientHeight,
           user: rect(user),
           readout,
           /*
@@ -459,8 +688,52 @@ async function startSampler(page) {
 async function stopSampler(page) {
   return page.evaluate(() => {
     window.__seatStop = true
-    return window.__seatFrames ?? []
+    window.__seatSeamWatch?.disconnect()
+    return {
+      frames: window.__seatFrames ?? [],
+      sawWaiting: Boolean(window.__seatSawWaiting),
+      waitingGoneAt: window.__seatWaitingGoneAt,
+      firstContentAt: window.__seatFirstContentAt,
+    }
   })
+}
+
+/**
+ * **收摊之后那条助手行还翻不翻腾**(单 B ④ 的第二格判据)。
+ *
+ * 逐帧采样那一只答不了这个问题:它每帧只看得见「此刻树上有谁」,一件东西**在两次
+ * 采样之间**摘掉再挂回来,它一个字都看不见 —— 而重挂正是这个形(病历在
+ * `scripts/probe-stream-end.mjs`:一批同时走、一批同时来)。所以这一格换一只
+ * `MutationObserver`:它记的是**事件**,漏不掉。
+ *
+ * 窗口从**采样停掉之后**开始数,不含收尾那一帧自己 —— 那一帧本来就该有增删
+ * (收场通知挂上来、读数行摘掉),要判的是「那之后还动不动」。
+ */
+async function startChurnWatch(page) {
+  return page.evaluate(() => {
+    const leaf = window.__seatLeaf()
+    const rows = leaf.querySelectorAll('[data-testid="chat-stream"] [data-message-id]')
+    const row = rows[rows.length - 1]
+    if (!row) return false
+    window.__seatChurn = { added: 0, removed: 0 }
+    const mo = new MutationObserver((records) => {
+      for (const r of records) {
+        window.__seatChurn.added += r.addedNodes.length
+        window.__seatChurn.removed += r.removedNodes.length
+      }
+    })
+    mo.observe(row, { childList: true, subtree: true })
+    window.__seatChurnStop = () => {
+      mo.disconnect()
+      return window.__seatChurn
+    }
+    return true
+  })
+}
+
+async function stopChurnWatch(page) {
+  return page.evaluate(() =>
+    (window.__seatChurnStop ? window.__seatChurnStop() : { added: 0, removed: 0 }))
 }
 
 /**
@@ -480,31 +753,58 @@ async function stopSampler(page) {
  * 不判红,理由写在断言那一行上。
  *
  * ── 一段滚动的定义 ────────────────────────────────────────────────────────
- * 一段 = 一串**连续在变**的帧,中间静过 `QUIET` 帧就算断开,而且**至少走够 1px**。
+ * 一段 = 一串**连续在变**的帧,中间静过 `QUIET_MS` 就算断开,而且**至少走够 1px**。
  * 落到置顶线那一下是逐帧插值(缓出的末几帧可能连着几帧一动不动),所以静默门槛取
  * 得比它宽;座位缩一截与内容长一截差**一帧**(量在观察器里、写在下一帧),那一帧
  * 里浏览器按新的 `scrollHeight` 把 `scrollTop` 亚像素地钳一下 —— 实测 0.6px,
  * 肉眼与产品语义上都不是一次滚动,另记一格报出来。同一条判词在检索面那条分页
  * 不变量上写过:**反证要数滚动指令的次数,不是量 `scrollTop`**。
  */
-const QUIET = 4
+/**
+ * 一段滚动与下一段之间**静多久算断开** —— 单位是**毫秒,不是帧**(2026-09-15 改)。
+ *
+ * 病历:原先写的是「静过 4 **帧**」。400 条 / 50MB 那条会话上,一轮开张前后主线程
+ * 被压缩 + 扩窗 + 物化占满,采样间隔从 8ms 掉到**一秒多** —— 4 帧于是等于 5 秒,
+ * 相隔 1.3 秒的两件事(t=3233 的扩窗补位与 t=4575 的内容落地)被并成**同一段**,
+ * 而合并之后那一段的两端气泡差 189px,于是「屏幕真的动了」那道筛子放它过去,
+ * ① 判红。判据不许跟着采样率变:**帧不是时间**。
+ *
+ * 100ms:比一帧(8–16ms)大一个量级,所以落到置顶线那一段(每帧都在动)仍是一段;
+ * 比「座位漏了」那种每段 delta 贴一次底的间隔(`REPLY_GAP_MS` 120ms)小,所以那一族
+ * 照旧一段一段分得开 —— 反证因此仍然红。
+ */
+const QUIET_MS = 100
 const RUN_MIN_PX = 1
 
 /** 一段窗口里的读数。窗口由调用方切,这只函数只负责算。 */
 function measure(frames) {
   const all = []
-  let still = QUIET
+  let lastMovedAt
+  let lastMovedIdx = -1
   for (let i = 1; i < frames.length; i += 1) {
     const moved = Math.abs(frames[i].st - frames[i - 1].st) > 0.5
-    if (moved) {
-      if (still >= QUIET) {
-        all.push({ from: frames[i - 1].st, to: frames[i].st, at: i - 1, until: i })
-      } else {
-        all[all.length - 1].to = frames[i].st
-        all[all.length - 1].until = i
-      }
-      still = 0
-    } else still += 1
+    if (!moved) continue
+    /*
+     * **断开要看得见地停过**(2026-09-15 单 B 补的第二半):既要静够 `QUIET_MS`,
+     * 又要**至少有一帧采到它没动**(`i - 1 > lastMovedIdx`)。
+     *
+     * 病历:超量那一趟落位那一段里有一帧长达 1125ms(400 条的首屏重排),那段时间
+     * `requestAnimationFrame` 一次都没回调 —— 采样器什么都没看见。只按时间判,这一下
+     * 「没采到样」被读成「停了一秒」,一段连续的落位插值于是被劈成两段
+     * (`11619→11887` / `11887→12214`,两端首尾相接),① 判红 —— 红的不是产品,是
+     * 那一帧太长。**没采到 ≠ 停住**:真的停过,以这里 100fps 的采样率必然留下至少
+     * 一帧「没动」的样本(反证那一族「每段 delta 贴一次底」间隔 `REPLY_GAP_MS` 120ms,
+     * 中间有十几帧不动),所以这一条收紧不掉反证、只挡住「没看见」。
+     */
+    const quiet = lastMovedAt === undefined
+      || (frames[i].t - lastMovedAt > QUIET_MS && i - 1 > lastMovedIdx)
+    if (quiet) all.push({ from: frames[i - 1].st, to: frames[i].st, at: i - 1, until: i })
+    else {
+      all[all.length - 1].to = frames[i].st
+      all[all.length - 1].until = i
+    }
+    lastMovedAt = frames[i].t
+    lastMovedIdx = i
   }
   /**
    * **一段滚动 = 屏幕真的动了**。
@@ -528,6 +828,16 @@ function measure(frames) {
     return Math.abs(b - a) >= RUN_MIN_PX
   }
   const runs = all.filter((r) => Math.abs(r.to - r.from) >= RUN_MIN_PX && screenMoved(r))
+  if (process.argv.includes('--trace')) {
+    for (const r of all) {
+      const a = frames[r.at]
+      const b = frames[r.until]
+      console.log(`        run ${r.from.toFixed(0)}→${r.to.toFixed(0)}`
+        + ` t ${Math.round(a.t - frames[0].t)}→${Math.round(b.t - frames[0].t)}`
+        + ` user ${a.user ? a.user.top.toFixed(1) : 'null'}→${b.user ? b.user.top.toFixed(1) : 'null'}`
+        + ` seat ${a.seat}→${b.seat}`)
+    }
+  }
   /*
    * ② 等待 → 首字:**换手那一下**气泡动没动。
    *
@@ -589,7 +899,65 @@ function measure(frames) {
   }
 }
 
-function analyze(frames) {
+/**
+ * 重试那一段自己的三个读数(单 B ⑥)。
+ *
+ * 与 `analyze` 分开是因为它们都以**按下那一刻**为原点,而 `analyze` 说的是
+ * 「这一轮」——两个原点,两只函数,不把一个塞进另一个的参数里。
+ */
+function retryMetrics(frames, pressedAt) {
+  const retryAt = frames.findIndex((f) => f.t >= pressedAt)
+  if (retryAt < 0) return { retryAt: -1, retryFrames: 0, retryShift: 0, seamAtMs: undefined }
+  const base = frames[retryAt].user?.top
+  const until = frames[retryAt].t + 300
+  let retryShift = 0
+  let retryFrames = 0
+  for (let i = retryAt; i < frames.length && frames[i].t <= until; i += 1) {
+    retryFrames += 1
+    const top = frames[i].user?.top
+    if (base === undefined || base === null || top === undefined || top === null) continue
+    retryShift = Math.max(retryShift, Math.abs(top - base))
+  }
+  /* 「按下即开槽」:按下之后多久屏幕上真的有一道在扫的折痕。 */
+  const seam = frames.findIndex((f, i) => i >= retryAt && f.waiting)
+  /*
+   * 同一句话的**另一半,也是量得出差别的那一半**:旧回答多久开始上折。
+   * 折痕那一格在这台机器上分不出治没治 —— 假 provider + 同进程 core,账本删旧回复、
+   * 开新 run 只要一帧(反证:把 `retryPending` 那条路整个拆掉重跑,折痕照旧 17ms
+   * 就在扫,因为那已经是新一轮自己的折痕了)。而 `.rowRetiring` 只有壳给得出。
+   */
+  const retire = frames.findIndex((f, i) => i >= retryAt && f.retiring)
+  /*
+   * 按下那一刻气泡在不在视口里 —— 规矩 ⑥ 两档的判据(`landOnRetry` 那一句)。
+   * 在:一像素不动;不在:**有控制地**滑到置顶线(一段,不是浏览器随手钳一下)。
+   */
+  const at = frames[retryAt]
+  const bubbleVisible = at.user !== null && at.user !== undefined
+    && at.user.top >= -1 && at.user.top < 2000
+  /*
+   * 落位那一段的窗口**比 300ms 宽**:按下那一拍只开槽(折痕在扫、旧回答开始上折),
+   * 真正落到置顶线是在 core 把旧回复删掉、新一轮开张之后(判词在 `landOnRetry` 的
+   * 那只 effect 上)。1.5s 盖得住「上折 180ms + 一趟命令往返 + 滑动 ≤320ms」。
+   */
+  const LAND_WINDOW_MS = 1500
+  const window = frames.filter((f) => f.t >= frames[retryAt].t && f.t <= frames[retryAt].t + LAND_WINDOW_MS)
+  const retryRuns = measure(window).scrollRuns
+  /* 落定之后气泡停在哪(置顶线 24 附近)。窗口末帧就够 —— 滑动 ≤320ms。 */
+  const landed = window[window.length - 1]?.user?.top
+  return {
+    retryAt,
+    retryFrames,
+    retryShift,
+    retryRuns,
+    retryBubbleVisible: bubbleVisible,
+    retryLandedTop: landed === null || landed === undefined ? undefined : landed,
+    retryViewport: window[window.length - 1]?.ch,
+    seamAtMs: seam >= 0 ? Math.round(frames[seam].t - frames[retryAt].t) : undefined,
+    retireAtMs: retire >= 0 ? Math.round(frames[retire].t - frames[retryAt].t) : undefined,
+  }
+}
+
+function analyze(frames, marks = {}) {
   /*
    * ── 窗口由**等待那一段**切,不由座位垫块那个高度切 ────────────────────────
    *
@@ -606,7 +974,20 @@ function analyze(frames) {
    * 超量整轮上百段(20 万字思考是座位的 100 倍,必然长满,长满之后照旧 pinned
    * 跟底 —— §5 表 1 最后一格)。两句都是设计,所以一句判、一句报。
    */
-  const lastWaiting = frames.map((f) => f.waiting).lastIndexOf(true)
+  /*
+   * 落位窗的右边界:先问采样,采样没看见就问那只 `MutationObserver` 记下的
+   * 「折痕最后一次走是什么时候」(判词在 `startSampler` 的 latch 上)。两者都没有
+   * 才退回整轮 —— 那时候 ① 量的就不是落位窗了,所以上面那条「折痕真的上过屏」
+   * 必须与它同生共死。
+   */
+  const sampledWaiting = frames.map((f) => f.waiting).lastIndexOf(true)
+  let lastWaiting = sampledWaiting
+  const cutAt = marks.waitingGoneAt ?? marks.firstContentAt
+  if (lastWaiting < 0 && cutAt !== undefined) {
+    for (let i = frames.length - 1; i >= 0; i -= 1) {
+      if (frames[i].t <= cutAt) { lastWaiting = i; break }
+    }
+  }
   const landing = measure(frames.slice(0, lastWaiting >= 0 ? lastWaiting + 1 : frames.length))
   const whole = measure(frames)
   // ④ 读数行 400ms 内先上后下(判据抄种子探针的 `flips`)—— 整轮都要成立。
@@ -683,8 +1064,58 @@ function analyze(frames) {
       seatZeroFlips = Math.max(seatZeroFlips, n)
     }
   }
+  /*
+   * ── ④ 收尾锚定折叠(单 B ④)──────────────────────────────────────────────
+   * 收尾那一帧起 `END_WINDOW_MS` 内,**视口内第一块在读的东西**不许动。
+   * 治前的样子(§0 三处病之二):思考段一帧从 6 万像素缩成一行,上一条用户消息的
+   * top 从 −60,879 跳到 −286 —— 那一跳落在这一格上。
+   *
+   * 「收尾那一帧」= `streaming` 从真翻假那一帧(停止钮下屏)。折叠是从那儿起算的:
+   * `live` 翻 false → 思考段那只 effect 折 → FLIP + fold-hold。
+   */
+  const END_WINDOW_MS = 300
+  let endAt = -1
+  for (let i = 1; i < frames.length; i += 1) {
+    if (frames[i - 1].streaming && !frames[i].streaming) {
+      endAt = i
+      break
+    }
+  }
+  let endAnchorShift = 0
+  let endScrollMin = Number.POSITIVE_INFINITY
+  let endFrames = 0
+  if (endAt >= 0) {
+    const base = frames[endAt].anchor?.top
+    const until = frames[endAt].t + END_WINDOW_MS
+    for (let i = endAt; i < frames.length && frames[i].t <= until; i += 1) {
+      endFrames += 1
+      endScrollMin = Math.min(endScrollMin, frames[i].st)
+      const top = frames[i].anchor?.top
+      if (base === undefined || base === null || top === undefined || top === null) continue
+      endAnchorShift = Math.max(endAnchorShift, Math.abs(top - base))
+    }
+  }
+  /*
+   * **收尾之后 DOM 不许再翻腾**(判据抄 `scripts/probe-stream-end.mjs`:重挂 =
+   * 一批同时移除又一批同时新建)。收尾那一帧起到采样结束,这一轮那条助手行里
+   * 新建 / 移除的元素数应当归零 —— 折叠换的是**高度**,不是一棵新树。
+   * 那一帧自己不算(换脸、折叠都在那一帧提交,本来就该有增删)。
+   */
+  let churnAfterEnd = 0
+  if (endAt >= 0) {
+    for (let i = endAt + 1; i < frames.length; i += 1) {
+      churnAfterEnd += (frames[i].created ?? 0) + (frames[i].removed ?? 0)
+    }
+  }
   const seats = frames.map((f) => f.seat).filter((v) => typeof v === 'number')
   return {
+    /** 折痕**来过没有** —— 由 DOM 记录答,不由采到几帧答。 */
+    sawWaiting: marks.sawWaiting ?? sampledWaiting >= 0,
+    endAt,
+    endFrames,
+    endAnchorShift,
+    endScrollMin: Number.isFinite(endScrollMin) ? endScrollMin : -1,
+    churnAfterEnd,
     seatZeroAt,
     seatZeroFlips,
     seatZeroSamples,
@@ -761,6 +1192,11 @@ function report(name, m) {
     + ` · 座位归零`
     + (m.seatZeroAt >= 0 ? `前后 ${m.seatZeroFrames} 帧反转 ${m.seatZeroFlips}` : '没发生'),
   )
+  console.log(
+    `      ${' '.repeat(name.length)}  收尾窗 ${m.endFrames} 帧:锚点位移 ${m.endAnchorShift.toFixed(1)}px`
+    + ` · 折叠中 scrollTop 最低 ${m.endScrollMin.toFixed(0)} · 收尾之后 DOM 增删 ${m.churnAfterEnd}`
+    + (m.churnWatch === undefined ? '' : ` · 收摊后 ${CHURN_WATCH_MS / 1000}s 内增删 ${m.churnWatch}`),
+  )
 }
 
 async function main() {
@@ -779,7 +1215,7 @@ async function main() {
 
   const store = await mkdtemp(path.join(tmpdir(), 'send-flow-store-'))
   const userDataDir = await mkdtemp(path.join(tmpdir(), 'send-flow-udd-'))
-  const providerState = { normalServed: false, longServed: false, thoughtServed: false }
+  const providerState = { normalServed: 0, longServed: 0, thoughtServed: false }
   let provider
   let server
   let app
@@ -922,6 +1358,70 @@ async function main() {
     }
 
     /**
+     * **按下重试,逐帧录到这一轮收场**(单 B ⑥)。
+     *
+     * 走的是真钮(`chat-action-retry`),不是直接发命令 —— 「按下即开槽」量的正是
+     * 按下与屏幕有回音之间那一段,而那一段的产地是壳自己那格 `retryPending`
+     * (`command:retry-message` 发出去之后账本还什么都没有)。
+     */
+    const runRetry = async (page) => {
+      await startSampler(page)
+      const pressed = await page.evaluate(() => {
+        const leaf = window.__seatLeaf()
+        const rows = leaf.querySelectorAll('[data-testid="chat-stream"] [data-message-id]')
+        /*
+         * **按下之前给自己那条气泡盖个戳**(单 B ⑥ 那句「账本换手时用户行不重挂」)。
+         * core 的 retry 是**删掉旧回复 + 截断其后 + 开新 run**,账本在那一瞬换手;
+         * 用户行的 key 没变,React 就该原地复用同一个 DOM 节点 —— 重挂的话它上面
+         * 这个戳(一个 expando,不进 DOM 属性、不影响样式与选择器)就没了。
+         */
+        for (let i = rows.length - 1; i >= 0; i -= 1) {
+          if (rows[i].getAttribute('data-role') === 'user') {
+            rows[i].__seatUserMark = 1
+            break
+          }
+        }
+        for (let i = rows.length - 1; i >= 0; i -= 1) {
+          const button = rows[i].querySelector('[data-testid="chat-action-retry"]')
+          if (button instanceof HTMLButtonElement && !button.disabled) {
+            window.__seatRetryAt = performance.now()
+            button.click()
+            return true
+          }
+        }
+        return false
+      })
+      if (!pressed) throw new Error('重试钮点不动(不在场或者两道闸禁着)')
+      const stopShown = () =>
+        page.evaluate(() =>
+          Boolean(window.__seatLeaf()
+            .querySelector('[data-testid="chat-stream"] [data-testid="chat-stop"]')))
+      await waitFor('重试这一轮开张(停止钮上屏)', stopShown, 60_000)
+      await waitFor('重试这一轮收场(停止钮下屏)', async () => !(await stopShown()), 120_000)
+      await delay(600)
+      const { frames, ...marks } = await stopSampler(page)
+      /* 戳还在不在 = 账本换手那一下用户行有没有被重挂(判词在盖戳那一处)。 */
+      const userKept = await page.evaluate(() => {
+        const leaf = window.__seatLeaf()
+        const rows = leaf.querySelectorAll('[data-testid="chat-stream"] [data-message-id]')
+        for (let i = rows.length - 1; i >= 0; i -= 1) {
+          if (rows[i].getAttribute('data-role') === 'user') return rows[i].__seatUserMark === 1
+        }
+        return false
+      })
+      const watching = await startChurnWatch(page)
+      await delay(CHURN_WATCH_MS)
+      const churn = watching ? await stopChurnWatch(page) : { added: 0, removed: 0 }
+      const pressedAt = await page.evaluate(() => window.__seatRetryAt ?? 0)
+      return {
+        ...analyze(frames, marks),
+        ...retryMetrics(frames, pressedAt),
+        churnWatch: churn.added + churn.removed,
+        userKept,
+      }
+    }
+
+    /**
      * 发一条、逐帧录到这一轮**真的收场**,返回算好的读数。
      *
      * ── 「这一轮跑完了」问的不是账本条数 ──────────────────────────────────
@@ -943,8 +1443,15 @@ async function main() {
       await waitFor('这一轮收场(停止钮下屏)', async () => !(await stopShown()), timeoutMs)
       // 收场那一下的重排也录进来(思考折回一行就发生在这几帧里)。
       await delay(600)
-      const frames = await stopSampler(page)
-      const out = analyze(frames)
+      const { frames, ...marks } = await stopSampler(page)
+      /*
+       * 收摊之后再盯 `CHURN_WATCH_MS`:这一轮那条助手行上一个节点都不许增删
+       * (判词在 `startChurnWatch`)。折叠换的是高度,不是一棵新树。
+       */
+      const watching = await startChurnWatch(page)
+      await delay(CHURN_WATCH_MS)
+      const churn = watching ? await stopChurnWatch(page) : { added: 0, removed: 0 }
+      const out = { ...analyze(frames, marks), churnWatch: churn.added + churn.removed }
       if (process.argv.includes('--trace')) {
         const t0 = frames[0]?.t ?? 0
         const row = (f) => [
@@ -954,6 +1461,14 @@ async function main() {
           f.seat === null ? -1 : Number(f.seat.toFixed(1)),
           f.readout ? Number(f.readout.top.toFixed(1)) : null,
         ]
+        {
+          /* 落位窗那一段的原始帧 —— ① 判红时要看得见是哪一段在动。 */
+          const lw = frames.map((f) => f.waiting).lastIndexOf(true)
+          const end = lw >= 0 ? lw + 1 : frames.length
+          const step = Math.max(1, Math.floor(end / 26))
+          console.log('      trace(落位窗采样) [t,st,user,seat,readout]:',
+            JSON.stringify(frames.slice(0, end).filter((_, i) => i % step === 0).map(row)))
+        }
         if (out.seatZeroAt >= 0) {
           const a = Math.max(0, out.seatZeroAt - 4)
           console.log('      trace(座位归零 −4…+28 帧) [t,st,user,seat,readout]:',
@@ -1029,10 +1544,48 @@ async function main() {
      * 元素,不关滚动容器 —— 扩窗补位那条路靠的就是浏览器锚定)。
      * 规矩 ① 那句「之后视口不动」说的就是这个数,所以它与 ② 同一个预算。
      */
+    /*
+     * ── ②b 09-15 单 B ⑤ 落地之后**转判最远**,不只判终值 ────────────────────
+     * 单 A 收工时它是「终值 0.0px / 中途最远 12.0px 一帧」,那 12px 是收尾那一帧
+     * 换脸(读数行 → 动作行)与流式光标让位带来的内容收缩。单 B ⑤ 把那一行做成
+     * 「三张脸同格同高」、并在收尾那一拍把座位同步补到位,两处一起把它治到 0。
+     * 所以退场判据兑现:这一行从「只报不判」转正,判的是**最远**。
+     */
     assert(
-      main.settledDrift <= BUDGET.firstTokenShiftPx,
-      `②b 换手之后气泡**停在原位**:${main.settledDrift.toFixed(1)}px ≤ ${BUDGET.firstTokenShiftPx}`
-      + `(整段最远 ${main.handoffDrift.toFixed(1)}px / ${main.handoffDriftFrames} 帧)`,
+      main.handoffDrift <= BUDGET.firstTokenShiftPx,
+      `②b 换手之后气泡**全程**不动:最远 ${main.handoffDrift.toFixed(1)}px`
+      + ` / ${main.handoffDriftFrames} 帧 ≤ ${BUDGET.firstTokenShiftPx}`
+      + `(终值 ${main.settledDrift.toFixed(1)}px;单 B ⑤ 之前这里是 12.0px 一帧)`,
+    )
+    /*
+     * ── 「收尾锚定」这一族先判**量到没量到**(2026-09-15 审查补的)────────────
+     *
+     * 位移那条判据有一个恒绿的逃生口:收尾那一帧没采到时 `endAt < 0`、`endFrames`
+     * 为 0,`endAnchorShift` 于是**与自己比**恒为 0 —— 整条直接放行。这正是
+     * `docs/thinking-stream-2026-09.md` §7.1「量法四条」第一条那句 `p95 of []` = 0:
+     * **一句绿的谎话**。而收尾窗口恰恰是最脆的一格:它挂在 `streaming` 翻假那一帧上,
+     * 而那一帧的钩子(停止钮在不在)会随实现漂。所以每一档都先判「窗口里有几帧」,
+     * 判的是**没量到**这一支,不是位移本身;长回那一档从一开始就这么防的,
+     * 常态与超量两档今天补齐。
+     *
+     * 标号:这一族说的是**正本 §2 规矩 ④**(收尾锚定折叠),与上面那条「④ 读数行
+     * 方向反转」(单 A 的 ④)不是一件事 —— 两边都写 ④ 看报告的人会串,所以这一族
+     * 一律写名字 `[收尾锚定]`,不再挂号。
+     */
+    assert(
+      main.endAt >= 0 && main.endFrames > 1,
+      `[收尾锚定] 常态:收尾那一帧采到了(窗口里 ${main.endFrames} 帧)`,
+    )
+    assert(
+      main.endAnchorShift <= BUDGET.endAnchorShiftPx,
+      `[收尾锚定] 常态收尾那一帧起 300ms,视口内第一块在读的东西位移`
+      + ` ${main.endAnchorShift.toFixed(1)}px ≤ ${BUDGET.endAnchorShiftPx}`,
+    )
+    assert(
+      main.churnWatch <= BUDGET.churnAfterEnd,
+      `[收尾锚定] 常态收摊之后 ${CHURN_WATCH_MS / 1000}s,那条助手行增删`
+      + ` ${main.churnWatch} 个节点 ≤ ${BUDGET.churnAfterEnd} —— 收尾折的是高度,`
+      + `没人在事后重挂它`,
     )
     /*
      * 「最远 12px」那一下**不是滚动锚定**(09-15 真机 trace 推翻了那个猜测:
@@ -1080,9 +1633,107 @@ async function main() {
       `长回 ③ 读数行与折痕 / 思考段相交 ${long.overlapFrames} 帧 ≤ ${BUDGET.overlapFrames}`,
     )
     assert(
+      long.endAt >= 0 && long.endFrames > 1,
+      `[收尾锚定] 长回:收尾那一帧采到了(窗口里 ${long.endFrames} 帧)`,
+    )
+    assert(
+      long.endAnchorShift <= BUDGET.endAnchorShiftPx,
+      `[收尾锚定] 长回收尾那一帧起 300ms,视口内第一块在读的东西位移`
+      + ` ${long.endAnchorShift.toFixed(1)}px ≤ ${BUDGET.endAnchorShiftPx}`
+      + ` —— 思考段折回一行,锚定把视口钉住`,
+    )
+    assert(
+      long.churnAfterEnd <= BUDGET.churnAfterEnd,
+      `[收尾锚定] 长回收尾之后 DOM 不再翻腾(那一帧之后新建 / 移除`
+      + ` ${long.churnAfterEnd} 个元素 ≤ ${BUDGET.churnAfterEnd})—— 折叠换的是高度,`
+      + `不是一棵新树`,
+    )
+    assert(
+      long.churnWatch <= BUDGET.churnAfterEnd,
+      `[收尾锚定] 长回收摊之后 ${CHURN_WATCH_MS / 1000}s,那条助手行增删`
+      + ` ${long.churnWatch} 个节点 ≤ ${BUDGET.churnAfterEnd}`,
+    )
+    assert(
       long.whole.longFrames <= BUDGET.longFrames,
       `长回 ⑤ 整轮流式 >${BUDGET.longFrameMs}ms 长帧 ${long.whole.longFrames} 个 ≤ ${BUDGET.longFrames}`
       + `(最长 ${long.whole.longestFrameMs}ms)`,
+    )
+
+    /* ── ⑥ 重试:按下即开槽(单 B ⑥,正本 §2 规矩 ⑥)──────────────────────── */
+    console.log('\n[常态 · 重试] 对刚收摊的那一条按重试')
+    const retry = await runRetry(page)
+    readings.retry = retry
+    report('重试', retry)
+    assert(
+      retry.retryAt >= 0,
+      `重试:按下那一帧采到了(窗口里 ${retry.retryFrames} 帧)`,
+    )
+    assert(
+      retry.seamAtMs !== undefined && retry.seamAtMs <= RETRY_SEAM_MS,
+      `⑥ 按下即开槽:折痕在按下后 ${retry.seamAtMs ?? '没出现'}ms 就在扫`
+      + ` ≤ ${RETRY_SEAM_MS}ms —— 不等账本删完旧回复`,
+    )
+    assert(
+      retry.retireAtMs !== undefined && retry.retireAtMs <= RETRY_SEAM_MS,
+      `⑥ 按下即开槽:旧回答在按下后 ${retry.retireAtMs ?? '没开始'}ms 就在上折`
+      + ` ≤ ${RETRY_SEAM_MS}ms —— 这一格只有壳那一路(retryPending)给得出`,
+    )
+    assert(
+      retry.userKept,
+      `⑥ 账本换手(删旧回复 + 截断其后 + 开新 run)那一下,自己那条用户行没被重挂`
+      + `(按下之前盖的戳还在)`,
+    )
+    assert(
+      retry.churnWatch <= BUDGET.churnAfterEnd,
+      `⑥ 重试这一轮收摊之后 ${CHURN_WATCH_MS / 1000}s,那条助手行增删 ${retry.churnWatch} 个节点`
+      + ` ≤ ${BUDGET.churnAfterEnd}`,
+    )
+    /*
+     * ── ⑥ 气泡两档,判据是**按下那一刻它在不在视口里**(正本 §2 规矩 ⑥)────────
+     * 在 —— 一像素不动(人正看着这条回答按的钮,屏幕不该自己跑)。
+     * 不在 —— 旧回答常有一两千像素高,人是滚到底部按的钮;它一折 `scrollHeight`
+     * 塌一大截,**总得有人管**。治前是浏览器随手钳(真机量到 1,419px 的跳变),
+     * 治后是按发送那一条路**有控制地**滑一段到置顶线 —— 所以这一档判的是
+     * 「只滑一段」与「停在置顶线上」,不是「不许动」。
+     */
+    if (retry.retryBubbleVisible) {
+      assert(
+        retry.retryShift <= BUDGET.retryShiftPx,
+        `⑥ 气泡本来就在视口里:重试那一帧起 300ms 位移 ${retry.retryShift.toFixed(1)}px`
+        + ` ≤ ${BUDGET.retryShiftPx}`,
+      )
+    } else {
+      assert(
+        retry.retryRuns <= BUDGET.scrollRuns,
+        `⑥ 气泡本来在视口外:只滑过 ${retry.retryRuns} 段 ≤ ${BUDGET.scrollRuns}`
+        + `(治前是浏览器随手钳一下,量到 1419px 的跳变)`,
+      )
+      /*
+       * **落点判「回到视口里」,不判「正好压在置顶线上」**(09-15 真机纠正的一处量法)。
+       * 正本 §2 规矩 ⑥ 那句话是有条件的:「气泡已在视口内就不动;不在视口内时滑到
+       * 置顶线」—— 而那个条件是**落位那一刻**问的,不是按下那一刻。旧回答上折 180ms
+       * 之后气泡自己就回到了视口里(实测停在 471),于是产品按字面**不再滑** ——
+       * 判它「≈24」等于把两档合成一档,那是门读错了规矩,不是产品跑偏。
+       * 判得住的是这一句:**按下之前它在视口外,落位之后它在视口里**,而且中间
+       * 只滑过一段(上面那一条)。
+       */
+      assert(
+        retry.retryLandedTop !== undefined
+          && retry.retryLandedTop >= -1
+          && retry.retryLandedTop <= (retry.retryViewport ?? 0),
+        `⑥ 落位之后气泡回到视口里(top ${retry.retryLandedTop?.toFixed(1) ?? '?'}`
+        + ` ∈ [0, ${retry.retryViewport ?? '?'}];按下之前它在视口外)`,
+      )
+    }
+    /*
+     * **重试档读数行允许一次反转**(正本 §8 留账第一条写着的那一格):读数行跟着
+     * 正文下缘走,而重试那一下「旧回答上折」与「新一轮首字到」会撞在 400ms 内 ——
+     * 一次先上后下是设计上说得通的,两次就不是。
+     */
+    assert(
+      retry.readoutFlips <= 1,
+      `⑥ 重试档读数行 400ms 内方向反转 ${retry.readoutFlips} 次 ≤ 1`
+      + `(上折与首字撞在一起,§8 留账允许一次)`,
     )
 
     console.log('\n[超量] 400 条账本之上,一条 20 万字思考')
@@ -1090,9 +1741,21 @@ async function main() {
     const big = await runOnce(idBig, `座位门 · 超量 ${MARK_THOUGHT}`, 300_000)
     readings.big = big
     report('超量', big)
-    assert(
-      big.waitingFrames > 0,
-      `超量:等待折痕真的上过屏(录到 ${big.waitingFrames} 帧)`,
+    /*
+     * ── 超量这一档的折痕**只报不判**(2026-09-15,prod 真机改判)────────────────
+     * 它是**夹具的前提**不是产品的判据(单 A 立它是为了证明「等待段真的量到了」)。
+     * 这一档的等待段 900ms 全在主线程被占满的那段里:机器闲时壳能挤出一两帧把折痕
+     * 画上(dev 实测恒 2 帧),机器忙时壳给这一轮提交的第一帧**晚于第一个字**落地,
+     * 折痕于是一帧都没画过 —— latch 与采样两边同时说没有,它们一致,不是漏看。
+     * 判它等于判机器忙不忙。而它原本还牵着 ① 的窗口:折痕没来过,落位窗就没了右
+     * 边界、整轮都算进去(prod 实测 ① 因此报 4 段)。窗口现在另有一个不靠折痕的
+     * 答案(`firstContentAt`,判词在 `startSampler` 的 latch 上),所以这一条摘掉
+     * 断言、留下读数。常态与长回那两档的同名断言照旧判红 —— 那两档量得稳。
+     */
+    console.log(
+      `  · (只报不判)超量:等待折痕上没上过屏 = ${big.sawWaiting}`
+      + `(采样录到 ${big.waitingFrames} 帧)—— 这一档的 900ms 静默全落在主线程被`
+      + `压缩 / 扩窗 / 400 条物化占满的那一段里,画不画得出看机器,不看产品`,
     )
     assert(
       big.seatMax > 0,
@@ -1117,7 +1780,7 @@ async function main() {
      * 常态那一档两档都是 0,判据留在那里。
      */
     console.log(
-      `  · (只报不判)超量 ④ 读数行 400ms 内方向反转 ${big.readoutFlips} 次`
+      `  · (只报不判)超量 ④(读数行)400ms 内方向反转 ${big.readoutFlips} 次`
       + (big.flipSamples.length ? `(${big.flipSamples.join(' | ')})` : '')
       + ` —— 读数行跟着正文下缘走(§8 留账),收尾折叠那一下归单 B ④`,
     )
@@ -1152,9 +1815,46 @@ async function main() {
       + ` ${big.waitingFrames} 帧(主线程被压缩 / 扩窗 / 400 条物化占满),换手那一下没有一帧`
       + `落在中间;拆掉座位重跑同一趟读数一样,量的不是产品`,
     )
+    /* 与常态那一处同一条:先判「量到没量到」,判词写在那儿。 */
+    assert(
+      big.endAt >= 0 && big.endFrames > 1,
+      `[收尾锚定] 超量:收尾那一帧采到了(窗口里 ${big.endFrames} 帧)`,
+    )
+    assert(
+      big.endScrollMin > 0,
+      `[收尾锚定] 超量收尾折叠中 \`scrollTop\` 有余量(最低 ${big.endScrollMin.toFixed(0)} > 0)`
+      + ` —— 上面压着 400 条,锚定补得动;补到 0 才轮到内容动`,
+    )
+    assert(
+      big.churnAfterEnd <= BUDGET.churnAfterEnd,
+      `[收尾锚定] 超量收尾之后 DOM 不再翻腾(新建 / 移除 ${big.churnAfterEnd} 个`
+      + ` ≤ ${BUDGET.churnAfterEnd})`,
+    )
+    assert(
+      big.churnWatch <= BUDGET.churnAfterEnd,
+      `[收尾锚定] 超量收摊之后 ${CHURN_WATCH_MS / 1000}s,那条助手行增删`
+      + ` ${big.churnWatch} 个节点 ≤ ${BUDGET.churnAfterEnd} —— 400 条之上,收尾折叠照样不重挂`,
+    )
+    /*
+     * ── ④ 在超量这一档**转判**(2026-09-15 反证逼出来的)────────────────────────
+     * 它一度是「只报不判」,理由写的是「那一帧长达一秒多,窗口里常常只采到一两帧」。
+     * 09-15 把长回那一支补上真思考段之后,四趟实测这一档的收尾窗恒为 31–36 帧 ——
+     * 采得到。而它是**唯一**量得出这条治法的一档:把 `ThinkingSegment` 那段高度过渡
+     * 与 `fold-intent` 整个拆掉重跑(反证 ④'),常态 / 长回 / 重试三档仍是 0.0px
+     * (那三档的折叠幅度两三千像素,浏览器自己的滚动锚定接得住),**超量当场
+     * 1459.8px** —— 正本 §0 三处病之二的原样。判据落在量得出差别的那一档上,
+     * 不落在恒绿的那三档上:一条恒绿的断言不是守卫。
+     * 采样太薄时 `base` 与自己比恒为 0,所以这一条只会因为**真的动了**而红。
+     */
+    assert(
+      big.endAnchorShift <= BUDGET.endAnchorShiftPx,
+      `[收尾锚定] 超量收尾锚点位移 ${big.endAnchorShift.toFixed(1)}px`
+      + ` ≤ ${BUDGET.endAnchorShiftPx}(窗口 ${big.endFrames} 帧;拆掉高度过渡 +`
+      + ` fold-intent 重跑同一趟是 1459.8px)`,
+    )
     console.log(
       `  · (只报不判)超量整轮 >${BUDGET.longFrameMs}ms 长帧 ${big.whole.longFrames} 个,`
-      + `最长 ${big.whole.longestFrameMs}ms —— 20 万字思考首屏与收尾折叠那两帧,归单 B ④`,
+      + `最长 ${big.whole.longestFrameMs}ms —— 20 万字思考首屏与收尾折叠那两帧`,
     )
   } finally {
     if (app) await app.close().catch(() => undefined)
