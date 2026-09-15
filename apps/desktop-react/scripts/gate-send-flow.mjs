@@ -1017,27 +1017,6 @@ function analyze(frames, marks = {}) {
   }
   const landing = measure(frames.slice(0, lastWaiting >= 0 ? lastWaiting + 1 : frames.length))
   const whole = measure(frames)
-  // ④ 读数行 400ms 内先上后下(判据抄种子探针的 `flips`)—— 整轮都要成立。
-  let lastDir = 0
-  let lastT = 0
-  let flips = 0
-  const flipSamples = []
-  for (let i = 1; i < frames.length; i += 1) {
-    const a = frames[i - 1].readout?.top
-    const b = frames[i].readout?.top
-    if (a === undefined || b === undefined || a === null || b === null) continue
-    const d = b - a
-    if (Math.abs(d) < 2) continue
-    const dir = Math.sign(d)
-    if (lastDir && dir !== lastDir && frames[i].t - lastT < 400) {
-      flips += 1
-      if (flipSamples.length < 5) {
-        flipSamples.push(`${(frames[i].t / 1000).toFixed(2)}s ${a.toFixed(0)}→${b.toFixed(0)}`)
-      }
-    }
-    lastDir = dir
-    lastT = frames[i].t
-  }
   /*
    * ── ⑥ 座位**归零那一帧**不许弹(2026-09-15 打回一)──────────────────────
    * 座位是「量在这一帧、写在下一帧」的。归零那一帧垫块上还挂着残高,照旧贴底就会
@@ -1090,6 +1069,57 @@ function analyze(frames, marks = {}) {
       }
       seatZeroFlips = Math.max(seatZeroFlips, n)
     }
+  }
+  /*
+   * ── ④ 读数行 400ms 内先上后下(抖)───────────────────────────────────────
+   *
+   * **2026-09-15 改了两处**,起因是用户报「尾部的正在生成在有内容时还是有抖动」
+   * 而这道门一片绿:①阈值原本是 `2px`,而真机上那一抖是 **0.1–0.4px**(整轮 400 次
+   * 方向反转,单次最大 0.6px)—— 一条看不见亚像素的判据,判的是另一回事;
+   * ②它原本只在常态与重试两档判,而常态那一档座位从头到尾没长满(518→324),
+   * 抖得最凶的那一段(座位被吃光、回到普通跟底)在**长回**那一档,没人判。
+   *
+   * **窗口:量的是「它本该站着不动」的那一段**。读数行有两处**该动**:
+   *   · 落位段(等待 → 首字换手):那一段整块内容在换手,它跟着走;
+   *   · 座位归零前后(§9.2 已有判词):内容往下长、页面跟底,它一去一回本来就是
+   *     设计 —— 那一刻由 `seatZeroFlips` 拿**视口**(`st` / 气泡)去判,不拿这条线。
+   * 两段都剔掉,剩下的就是「内容在长,而它该站着不动」的那一段 —— 也正是人眼盯着
+   * 的那一段。剔法与 §9.2 那条「一条恒绿的断言不是守卫」配套:窗口里有几帧一并
+   * 报出来,断言先判「量到没量到」。
+   */
+  /**
+   * **多小算没动**。`getBoundingClientRect` 报的是 `LayoutUnit`,量子是 **1/64 px
+   * = 0.015625** —— 位置真没变时两帧读出来的是**同一个数**,噪声一格都没有。所以这个
+   * 阈值只要①比那个量子大(约三倍,采样自己的舍入进不来)、②比任何一档 dpr 的**半个
+   * 设备像素**小(抖的幅度就是它:dpr 2 上 0.25、dpr 4 上 0.125)即可。0.05 同时满足,
+   * 也是种子探针用的那个数。实测复核:治后 1843 帧读数行 `top` 恒为 `605.000`
+   * (逐字相同),离这条线还有整整一位数 —— 它不会被噪声刷红。
+   */
+  const READOUT_FLIP_EPS = 0.05
+  const flipFrom = lastWaiting >= 0 ? lastWaiting + 1 : 1
+  const seatZeroT = seatZeroAt >= 0 ? frames[seatZeroAt].t : undefined
+  let lastDir = 0
+  let lastT = 0
+  let flips = 0
+  let flipFrames = 0
+  const flipSamples = []
+  for (let i = Math.max(1, flipFrom); i < frames.length; i += 1) {
+    if (seatZeroT !== undefined && Math.abs(frames[i].t - seatZeroT) <= ZERO_WINDOW_MS) continue
+    const a = frames[i - 1].readout?.top
+    const b = frames[i].readout?.top
+    if (a === undefined || b === undefined || a === null || b === null) continue
+    flipFrames += 1
+    const d = b - a
+    if (Math.abs(d) < READOUT_FLIP_EPS) continue
+    const dir = Math.sign(d)
+    if (lastDir && dir !== lastDir && frames[i].t - lastT < 400) {
+      flips += 1
+      if (flipSamples.length < 5) {
+        flipSamples.push(`${(frames[i].t / 1000).toFixed(2)}s ${a.toFixed(2)}→${b.toFixed(2)}`)
+      }
+    }
+    lastDir = dir
+    lastT = frames[i].t
   }
   /*
    * ── ④ 收尾锚定折叠(单 B ④)──────────────────────────────────────────────
@@ -1165,6 +1195,9 @@ function analyze(frames, marks = {}) {
     overlapFrames: frames.filter((f) => f.overlap > 0.5).length,
     overlapMax: Math.max(0, ...frames.map((f) => f.overlap)),
     readoutFlips: flips,
+    /** ④ 的窗口里有几帧 —— 「量到没量到」那一支的读数(§9.2 最后一条)。 */
+    readoutFlipFrames: flipFrames,
+    readoutFlipEps: READOUT_FLIP_EPS,
     flipSamples,
     streamFrames: frames.filter((f) => f.streaming).length,
     seatMax: seats.length ? Math.max(...seats) : 0,
@@ -1565,8 +1598,14 @@ async function main() {
       `③ 读数行与折痕 / 思考段相交 ${main.overlapFrames} 帧 ≤ ${BUDGET.overlapFrames}(整轮)`,
     )
     assert(
+      main.readoutFlipFrames > 30,
+      `④ 读数行那一段真的量到了(窗口里 ${main.readoutFlipFrames} 帧,`
+      + `阈值 ${main.readoutFlipEps}px)`,
+    )
+    assert(
       main.readoutFlips <= BUDGET.readoutFlips,
       `④ 读数行 400ms 内方向反转 ${main.readoutFlips} 次 ≤ ${BUDGET.readoutFlips}`
+      + `(亚像素,阈值 ${main.readoutFlipEps}px)`
       + (main.flipSamples.length ? `(${main.flipSamples.join(' | ')})` : ''),
     )
     assert(
@@ -1669,6 +1708,26 @@ async function main() {
     assert(
       long.overlapFrames <= BUDGET.overlapFrames,
       `长回 ③ 读数行与折痕 / 思考段相交 ${long.overlapFrames} 帧 ≤ ${BUDGET.overlapFrames}`,
+    )
+    /*
+     * ── ④ 长回这一档也要判(2026-09-15,用户报「尾部的正在生成在有内容时还是有
+     * 抖动」)──────────────────────────────────────────────────────────────────
+     * **这一档才是人看见的那一段**:常态那一档座位从头到尾没长满(518→324),视口
+     * 一像素不动,根本抖不起来;长回这一档座位被吃光、回到普通跟底,内容每长一截
+     * 就贴一次底 —— 抖就出在这里。从前它只在常态与重试两档判,于是这道门对着病灶
+     * 一片绿了两天。窗口与阈值同常态那一条(落位段与座位归零那一段剔掉,
+     * 判据 `READOUT_FLIP_EPS`)。
+     */
+    assert(
+      long.readoutFlipFrames > 30,
+      `长回 ④ 读数行那一段真的量到了(窗口里 ${long.readoutFlipFrames} 帧,`
+      + `阈值 ${long.readoutFlipEps}px)`,
+    )
+    assert(
+      long.readoutFlips <= BUDGET.readoutFlips,
+      `长回 ④ 读数行 400ms 内方向反转 ${long.readoutFlips} 次 ≤ ${BUDGET.readoutFlips}`
+      + `(亚像素,阈值 ${long.readoutFlipEps}px;座位吃光之后那一段就是人看见的那一段)`
+      + (long.flipSamples.length ? `(${long.flipSamples.join(' | ')})` : ''),
     )
     assert(
       long.endAt >= 0 && long.endFrames > 1,

@@ -35,6 +35,7 @@ import { FrameCoalescer } from '../ui/frame-coalescer'
 import { assembleMessage, segmentKey } from './assemble'
 import { ContextDeltaSeam, hasContextDelta } from './ContextDeltaSeam'
 import { seatHeight, type SeatGeometry } from './seat'
+import { devicePixelSize, resolveTailSnap } from './tail-snap'
 import { WaitingSeam } from './seam/WaitingSeam'
 import { ExpandIntentContext } from './expand-intent'
 import { FoldIntentContext, useNoteFold } from './fold-intent'
@@ -954,6 +955,54 @@ function useFollowBottom(
   const lastTopRef = useRef<number | undefined>(undefined)
 
   /**
+   * **上一次把尾巴推去哪了**(2026-09-15,判词全文在 `content/tail-snap.ts`)。
+   * 一件事三格账:推的是哪个 DOM 节点、认下的落点、此刻推了多少。
+   * 换了一件(新一条消息接手列尾)就把上一件那格 `translate` 撤干净再重认。
+   */
+  const tailSnapRef = useRef<{ el: HTMLElement; held: number; nudge: number } | undefined>(undefined)
+
+  /**
+   * **把尾巴推回设备像素格上**——贴底那一句写完 `scrollTop` 之后,同一帧里做的第二件事。
+   *
+   * 为什么贴完底还要推:`scrollTop` 只取得到整数个设备像素,而最大滚动位是分数,
+   * 于是内容底与视口底之间每一帧剩下一个不同的亚像素残值,尾巴(唯一该站着不动的
+   * 那一段)跟着每帧换一个亚像素位置 —— 那就是「正在生成」那一行的抖。**改落点治
+   * 不了**(实测:亚像素修正写进 `scrollTop` 一次都落不住,Chromium 本来就钳到最近
+   * 的设备像素),所以治在画这一侧。三条安全判据(不改布局 / 推行不推列 / 只往上推)
+   * 逐条写在 `tail-snap.ts` 的文件头。
+   *
+   * **两次取件都是 O(1)**:列是滚动容器的独子,尾巴是列的最后一件(座位垫块不算,
+   * 它在读数行**下面** —— 推它对读数行一点用都没有,判词见 `tail-snap.ts` ②)。
+   * 不扫全表(扫全表就是每帧按整份账本计价,09-10 那笔 834ms 的账)。矩形是白拿的:
+   * RO 回调跑在排版之后,另两个调用点上一行的 `scrollHeight` 已经逼过一次排版,
+   * 而写 `scrollTop` 不弄脏布局,所以这一读不会再逼出第二次。
+   */
+  const snapTail = useCallback((el: HTMLDivElement) => {
+    const column = el.firstElementChild
+    if (!(column instanceof HTMLElement)) return
+    const last = column.lastElementChild
+    const tail =
+      last instanceof HTMLElement && last.hasAttribute(SEAT_ATTR)
+        ? last.previousElementSibling
+        : last
+    const previous = tailSnapRef.current
+    if (previous && previous.el !== tail) {
+      previous.el.style.removeProperty('translate')
+      tailSnapRef.current = undefined
+    }
+    if (!(tail instanceof HTMLElement)) return
+    const applied = tailSnapRef.current?.nudge ?? 0
+    const { held, nudge } = resolveTailSnap({
+      bottom: tail.getBoundingClientRect().bottom,
+      applied,
+      held: tailSnapRef.current?.held,
+      devicePx: devicePixelSize(window.devicePixelRatio),
+    })
+    if (nudge !== applied) tail.style.translate = `0 ${nudge}px`
+    tailSnapRef.current = { el: tail, held, nudge }
+  }, [])
+
+  /**
    * 贴底。**唯一**一处写 `scrollTop`,三个调用点(进场 / 长高 / 点丸)都经它。
    *
    * **停靠中不写**(2026-09-10 组件级停靠):`content-visibility: hidden` 的子树
@@ -975,7 +1024,9 @@ function useFollowBottom(
      * 要等再翻一下才逃得出去。在这里写掉,参照永远是真的底,一下就认出来。
      */
     lastTopRef.current = el.scrollTop
-  }, [scrollRef])
+    // 落点只落得到格子上,剩下的半个设备像素由尾巴自己让回来(2026-09-15)。
+    snapTail(el)
+  }, [scrollRef, snapTail])
 
   /** 「下面还有多少没露脸」。判据与 `follow.ts` 的 `scrolled` 用的是同一个式子。 */
   const readGap = useCallback(() => {
