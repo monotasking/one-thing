@@ -107,8 +107,11 @@
   /* 它不再是 <button> 了(理由见 Tabs.tsx),所以全局 `button { cursor: pointer }`
    * 那一句也就不落到它头上 —— 自己写。 */
   cursor: pointer;
-  width: var(--tab-close);
-  height: var(--tab-close);
+  /* 热区(`--tab-close-hit`)与字形(`--tab-close`,见 `.closeIcon`)是两格数 ——
+   * 09-14 之前两者是同一个 token,热区与 12px 的字形一样大,鼠标必须精确落在
+   * 那 12 个像素里才按得中。撑大这一格,`.closeIcon` 的视觉尺寸不变。 */
+  width: var(--tab-close-hit);
+  height: var(--tab-close-hit);
   display: inline-flex;
   align-items: center;
   justify-content: center;

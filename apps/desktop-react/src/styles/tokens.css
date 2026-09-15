@@ -817,6 +817,13 @@
   --tab-gap: 6px;
   --tab-icon: var(--icon-xs);
   --tab-close: var(--icon-xs);
+  /* × 的可点击热区(09-14 用户报「hover 太小,手感很差」——从前 `.close` 的
+   * 热区与字形本身一样大,12×12px 零冗余,是全仓密度最高的交互点里最小的靶)。
+   * 取库里 IconButton 最小档同一个数(18px),字形视觉大小不变(仍是
+   * `--tab-close` 12px)只把热区撑大;`.close` 已是
+   * `display:inline-flex; justify-content:center; align-items:center`,
+   * 撑大这一格会自动把字形居中,不必再写第二句定位。 */
+  --tab-close-hit: var(--icon-btn-xs);
   --tab-indicator: var(--bw-3);
   --tab-max-w: 160px;
   /* **更宽的那一档**(W7-t / B6):一格标签天生装着两个名字时的上限,
