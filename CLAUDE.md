@@ -48,7 +48,7 @@ bun run boundary:gate      # zero-baseline hard gate: any `[boundary] failed:` l
 bun run log:gate           # console.* ratchet (baseline docs/audit/log-gate-baseline-2026-08-20.txt)
 bun run log:check          # the full console.* call-site list behind that gate
 bun run gate:native        # every native .node loads under BOTH Node and Electron (N-API law)
-bun run gate:search-index  # real-machine gate (8 steps): boots dist/server on temp stores behind a
+bun run gate:search-index  # real-machine gate (10 steps): boots dist/server on temp stores behind a
                            # fake provider — index worker is owner, a just-sent message is searchable,
                            # rename/archive/delete land through the feed, main-thread loop delay stays
                            # under budget, and ⑧ semantic recall end to end with a deterministic fake
@@ -376,8 +376,16 @@ Notes:
   half is `sqlite-vec`'s `vec0` virtual table inside the **same** `search.v1.sqlite`, one row
   per 512-token chunk, plus an `Embedder` registry (`runtime/search/embedding/`) whose real
   entry is `@huggingface/transformers` on the **wasm** backend, dynamically imported inside
-  the worker so nothing loads until the user turns `settings.search.semantic.enabled` on
-  (that switch is read at assembly — changing it takes effect on the next core start).
+  the worker so nothing loads until the user turns `settings.search.semantic.enabled` on.
+  **That switch is hot-applied** (2026-09-17): `wiring/search/index.ts` chains onto the
+  `settings:changed` broadcaster and calls `handle.applySemantic(settings)`, which replaces
+  the index Worker when the effective value changed (same value = identity). The swap stops
+  the old Worker before starting the new one — two Workers on one `search.v1.sqlite` are two
+  writers — and requests arriving in the gap **queue instead of failing**
+  (`IndexWorkerHost.restart()`); the lexical index file is untouched and `vec_docs` survives
+  a switch-off. The shell surface is the settings page's 「搜索」 page
+  (`apps/desktop-react/src/content/settings/SearchSettings.tsx`). `gate:search-index` ⑩
+  proves it on a real `dist/server` (31ms to leave `'off'`, 29ms back).
   Two rules carry over unchanged and are gate-enforced: **the lexical path is untouched**
   (S7 proved this with `search:parity-B`, retired in S5 together with the old scan path;
   the standing guard is the strict-tier hit-set snapshot) and **authorization is a query
@@ -389,8 +397,9 @@ Notes:
   in §13 留账 — the desktop packaging of the embedding runtime (拍点癸': today
   `electron-builder.yml` excludes `@huggingface/transformers` and both onnxruntime
   packages — route (c) — so a packaged app answers `vector: 'off'` and degrades cleanly;
-  semantic recall runs on dev / server / CLI), the missing distance floor on KNN, and the
-  settings switch not being hot-applied.
+  semantic recall runs on dev / server / CLI) and the missing distance floor on KNN. The
+  third one — the settings switch not being hot-applied, and having no UI at all — was
+  closed on 2026-09-17 (see above).
 - **Session event sourcing is the production write model, not a shadow** (F line landed
   F4-c, 2026-08-27; `docs/design/session-event-sourcing-2026-08.md` §17 系统宪法 is the
   three-law summary). Every fact — a user message, one streamed delta, a tool step,

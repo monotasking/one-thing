@@ -5,7 +5,8 @@
  * 删除不经账本,靠总线与指纹)/ §5.3(增量挂在同步观察者上)/ §10 S2·S3 行。
  *
  * 这个文件就是「加一类 = 一个文件 + **一行注册**」里的那一行住的地方。S3b 之后它
- * 做六件事:
+ * 做六件事(2026-09-17 多了第 ⑦ 件 —— 订「设置刚保存过」,语义召回那一格改了就换
+ * 一条 Worker,见 `semanticWorkerConfig` 与 `watchSettingsChanged`):
  *  ① 起 `SearchIndexService` —— 一条 Worker,库在 `<store>/index/search.v1.sqlite`;
  *  ② 把**三条订阅**接上:进程内 append 观察者(毫秒级)、总线的 `session:renamed`
  *     与 `session:deleted`。三条都只喊一声 sessionId,不带内容(§5.2 / §5.3);
@@ -67,6 +68,12 @@ import path from 'node:path'
 import { getEventBus } from '../../events/index.js'
 import { getSettings } from '../../stores/settings.js'
 import { registerSessionLogEventAppendObserver } from '../../session/event-log.js'
+import {
+  configureSettingsEventBroadcaster,
+  getSettingsEventBroadcaster,
+  type SettingsEvent,
+  type SettingsEventBroadcaster,
+} from '../settings/events.js'
 import { getLogger } from '../logging/index.js'
 import { createAppSearchProvidersAdapters } from './adapters.js'
 import { syncPluginSearchCapabilities } from './plugin-search-registry.js'
@@ -104,11 +111,16 @@ export function getOnethingEmbeddingModelsDir(): string {
 /**
  * 设置 → Worker 的语义召回那一格(拍点壬 a:**默认关**)。
  *
- * **它只在装配时读一次**:`workerData` 在 `new Worker(...)` 那一刻就定死了,改开关
- * 要换一条 Worker。今天的做法是「下次起 core 时生效」,而不是保存即热重启 ——
- * 热重启一条索引 Worker 要一格装配级的可变状态,而 `assembly:gate` 正是立来禁这个的
- * (§13 留账里记了这一条与它的治法)。开关本身是**默认关**,所以这个延迟只影响
- * 「刚打开的那一次」。
+ * **保存即生效**(2026-09-17;它结清了 §13 留账「S7 待拍(三)——开关保存后不热
+ * 生效」)。`workerData` 确实在 `new Worker(...)` 那一刻定死,所以改开关就是**换一条
+ * Worker**;留账里担心的「要一格装配级可变状态」并没有发生 —— 那一格状态挂在
+ * `createAppSearchService` 这次调用的闭包里,而这次调用的产物已经被
+ * `backend.own(() => searchService.dispose())` 收着了。模块作用域一个 `let` 都没多,
+ * `assembly:gate` 读的正是行首的 `let`。
+ *
+ * 换 Worker 的两条硬规矩(细节在 `IndexWorkerHost.restart()`):**先停旧的再起新的**
+ * (两条 Worker 同开一个库就是两个写者),**换的过程里查询排队不拒**。
+ * 词法索引文件一个字节不动;关掉时向量表**留着不删**(下次开省一次重嵌)。
  */
 export function semanticWorkerConfig(settings: AppSettings): IndexWorkerData['semantic'] {
   const semantic = settings.search?.semantic
@@ -127,6 +139,14 @@ export interface AppSearchServiceHandle {
   service: OnethingSearchService
   /** 索引服务;这台宿主起不来 Worker 时是 `undefined`。 */
   index: SearchIndexService | undefined
+  /**
+   * 设置变了就把这一份递进来。**与当前生效的那一份逐格相同 = 一个字都不做**;
+   * 不同就换一条 Worker(答 `true`)。没有索引的宿主上恒 `false`。
+   *
+   * 它挂在**实例**上而不是一个模块槽:这个句柄本身已经被
+   * `backend.own(() => searchService.dispose())` 收着了,状态跟着它生灭。
+   */
+  applySemantic(settings: AppSettings): Promise<boolean>
   dispose(): Promise<void>
 }
 
@@ -215,7 +235,8 @@ export async function createAppSearchService(
    * 那个端口连同这一行一起没了。
    */
   const access = createAppSearchAuthorization(adapters)
-  const indexService = await startSearchIndexService(adapters, overrides)
+  const started = await startSearchIndexService(adapters, overrides)
+  const indexService = started?.service
   const unsubscribes = indexService === undefined ? [] : subscribeLedger(indexService)
 
   const service = createOnethingSearchService(adapters, {
@@ -233,11 +254,24 @@ export async function createAppSearchService(
   // 宿主的 `search` 结构化答「不可用」,而不是抛。
   const restoreToolAdapters = configureSearchToolAdapters(createAppSearchToolAdapters(service))
 
+  const applySemantic = async (settings: AppSettings): Promise<boolean> => {
+    if (started === undefined) return false
+    return await started.applySemantic(semanticWorkerConfig(settings))
+  }
+  // 设置面一保存就问一句。**settings 域不认识 search**(见 `watchSettingsChanged`)。
+  const unwatchSettings = watchSettingsChanged(event => {
+    void applySemantic(event.settings).catch((error: unknown) => {
+      log.error('applying the semantic-recall setting failed', { err: error })
+    })
+  })
+
   return {
     service,
     index: indexService,
+    applySemantic,
     async dispose() {
-      // 还原次序与装配次序相反(工具面 → 授权面 → 服务槽)。
+      // 还原次序与装配次序相反(设置订阅 → 工具面 → 授权面 → 服务槽)。
+      unwatchSettings()
       restoreToolAdapters()
       restoreVisibility()
       restoreSlot()
@@ -255,11 +289,31 @@ export async function createAppSearchService(
   }
 }
 
+/**
+ * 起好的索引:服务本体 + 「换一份语义配置」那一手。
+ *
+ * **那一格可变状态就住在 `startSearchIndexService` 的闭包里** —— 起 Worker 的工厂
+ * 读它,所以崩溃重起与换配置重起拿到的是同一份最新值,新旧配置不会分家。
+ */
+interface StartedSearchIndex {
+  service: SearchIndexService
+  /** 与当前生效的那一份逐格相同 = 恒等(答 `false`);不同就换一条 Worker。 */
+  applySemantic(next: IndexWorkerData['semantic']): Promise<boolean>
+}
+
+/** 两份语义配置是不是同一件事。`modelsDir` 由 store 派生,进程内是常量。 */
+function sameSemantic(
+  a: IndexWorkerData['semantic'],
+  b: IndexWorkerData['semantic'],
+): boolean {
+  return a?.enabled === b?.enabled && a?.modelId === b?.modelId && a?.modelsDir === b?.modelsDir
+}
+
 /** 起 Worker + 服务。产物不在(vitest / 没构建过)= `undefined`,如实降级。 */
 async function startSearchIndexService(
   adapters: OnethingSearchProvidersAdapters,
   overrides: AppSearchServiceOverrides,
-): Promise<SearchIndexService | undefined> {
+): Promise<StartedSearchIndex | undefined> {
   const workerPath = overrides.createWorker === undefined ? resolveSearchWorkerPath() : ''
   if (workerPath === undefined) return undefined
 
@@ -283,27 +337,79 @@ async function startSearchIndexService(
     log.warn('cannot resolve daily-note directories; the daily feed is not installed', { err: error })
   }
 
-  const workerData: IndexWorkerData = {
+  const base = {
     databasePath,
     sessionsDir: getOnethingSessionsDir(),
     ...(notesDirs.length > 0 ? { notesDirs } : {}),
     schemas: schemasOf(INDEXED_MANIFESTS),
     // 分析器换了实现就换这个串 —— 库头对不上就丢库重建(§5.4)。
-    analyzerId: 'composite',
-    semantic: semanticWorkerConfig(getSettings()),
+    analyzerId: 'composite' as const,
   }
+
+  /*
+   * **唯一那格可变状态**(函数作用域,不是模块作用域)。工厂每次造 Worker 都现读
+   * 它,所以「崩溃重起」与「换配置重起」走的是同一份值。
+   */
+  let semantic = semanticWorkerConfig(getSettings())
+  const workerDataNow = (): IndexWorkerData => ({ ...base, semantic })
 
   const override = overrides.createWorker
   const service = new SearchIndexService({
     createWorker: override === undefined
-      ? createSearchWorkerFactory(workerPath, workerData)
-      : () => override(workerData),
+      ? () => createSearchWorkerFactory(workerPath, workerDataNow())()
+      : () => override(workerDataNow()),
   })
   service.start()
   log.info('search index worker started', {
-    fields: { workerPath, databasePath, notesDirs: notesDirs.length },
+    fields: { workerPath, databasePath, notesDirs: notesDirs.length, semantic: semantic?.enabled === true },
   })
-  return service
+
+  return {
+    service,
+    async applySemantic(next) {
+      // 同值不换:一次「只改了主题」的保存不该把索引 Worker 掀掉重起。
+      if (sameSemantic(semantic, next)) return false
+      semantic = next
+      log.info('semantic recall setting changed; replacing the index worker', {
+        fields: { enabled: next?.enabled === true, modelId: next?.modelId },
+      })
+      await service.restart()
+      return true
+    },
+  }
+}
+
+/**
+ * 订「设置刚保存过」。
+ *
+ * **串联,不是占槽**:`configureSettingsEventBroadcaster` 是个单槽端口(桌面 / server
+ * 各自往自己那条推送面上扇出),直接写进去会把宿主那条推送掐掉。所以照
+ * `server/runtime.ts` 那条既有判例串一层:先把上一位的活干掉,再干自己的。
+ *
+ * **方向是单向的**:search 认识 settings 的推送端口,settings 域一个字都不知道有
+ * search 这回事 —— 与 `backend.mcp.applySettings` 那条链相反的接法,理由是那一条要
+ * 在保存的**副作用链里同步**跑完(工具目录要跟着重建),而换一条索引 Worker 是
+ * 后台的事,保存不必等它。
+ *
+ * 还原带**身份守卫**(与 `localTrust` 同判):后来又有人串了一层的话,还原就会把
+ * 那一层抹掉,所以只在槽里还是自己那只时才还原。
+ */
+function watchSettingsChanged(listener: (event: SettingsEvent) => void): () => void {
+  const previous = getSettingsEventBroadcaster()
+  const ours: SettingsEventBroadcaster = event => {
+    // 先让宿主那条推送走 —— 屏幕上的设置页不该等一次索引重起。
+    previous?.(event)
+    try {
+      listener(event)
+    } catch (error) {
+      log.warn('settings-changed listener failed', { err: error })
+    }
+  }
+  configureSettingsEventBroadcaster(ours)
+  return () => {
+    if (getSettingsEventBroadcaster() !== ours) return
+    configureSettingsEventBroadcaster(previous)
+  }
 }
 
 /**

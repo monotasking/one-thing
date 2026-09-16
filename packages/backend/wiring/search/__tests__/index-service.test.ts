@@ -40,6 +40,12 @@ import type { IndexEndpoint } from '@onething/runtime/search/index'
 import type { IndexWorkerData } from '@onething/runtime/search/index/worker-data'
 import type { IndexWorkerHandle } from '@onething/runtime/search/index/worker-host'
 import type { OnethingSearchProvidersAdapters } from '@onething/runtime/search'
+import {
+  broadcastSettingsChanged,
+  configureSettingsEventBroadcaster,
+  getSettingsEventBroadcaster,
+} from '../../settings/events.js'
+import { DEFAULT_SEMANTIC_MODEL_ID, type AppSettings } from '@shared/ipc/settings'
 
 /** 总线:装配从 `getEventBus()` 拿,用例给一只真的 `EventBus`。 */
 let bus = new EventBus()
@@ -193,10 +199,20 @@ function writeMeta(sessionId: string, name: string): void {
 let started: SameThread | undefined
 let handle: Awaited<ReturnType<typeof createAppSearchService>> | undefined
 
+/**
+ * **这一轮起过的每一条 Worker**(⑤ 语义召回热生效要的账)。
+ *
+ * 从前这里只留最后一条(`started`),因为一次装配只起一条。热生效之后「换了几条、
+ * 每一条带的是哪份 `workerData`」正是要判的东西,所以逐条记下来 —— `started` 仍然
+ * 是最后那条,别处的用例一个字不用改。
+ */
+const spawned: SameThread[] = []
+
 async function mount() {
   handle = await createAppSearchService({
     createWorker: data => {
       started = sameThreadWorker(data)
+      spawned.push(started)
       return started.handle
     },
   })
@@ -204,10 +220,22 @@ async function mount() {
   return handle
 }
 
+/** 等一件事成真(热生效那一路是后台的:广播是同步的,换 Worker 不是)。 */
+async function waitFor(label: string, predicate: () => boolean, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error(`等不到:${label}`)
+    await new Promise(resolve => setTimeout(resolve, 5))
+  }
+}
+
 beforeEach(() => {
   bus = new EventBus()
   appendObservers.clear()
   lastSeqOf.clear()
+  spawned.length = 0
+  // 单槽端口:上一条用例没还原干净(比如它中途红了)不该漏给下一条。
+  configureSettingsEventBroadcaster(null)
   fs.rmSync(sessionsDir, { recursive: true, force: true })
   fs.mkdirSync(sessionsDir, { recursive: true })
   fs.rmSync(path.join(storeRoot, 'index'), { recursive: true, force: true })
@@ -217,8 +245,11 @@ beforeEach(() => {
 afterEach(async () => {
   await handle?.dispose()
   handle = undefined
-  started?.close()
+  // 起过的每一条都要收尸 —— 热生效那一路一轮里会起两三条。
+  for (const worker of spawned) worker.close()
+  spawned.length = 0
   started = undefined
+  configureSettingsEventBroadcaster(null)
   vi.restoreAllMocks()
 })
 
@@ -538,5 +569,110 @@ describe('createAppSearchService:daily 是懒的(§5.2b「文件树 lazy(首次�
     await search('开局', 'chats')
     await handle!.index!.drain()
     expect((await handle!.index!.status()).feeds).toEqual([LEDGER_FEED_ID])
+  })
+})
+
+// ---- ⑤ 语义召回开关:保存即生效 ----------------------------------------
+
+/**
+ * **开关保存即生效**(2026-09-17;结清 `docs/design/search-index-2026-09.md` §13
+ * 「S7 待拍(三)——开关保存后不热生效」)。
+ *
+ * 判的是**装配这一层**的四件事,与嵌入器、sqlite-vec、模型统统无关(那几样由
+ * `semantic.test.ts` 与 `gate:search-index` ⑧ 判):
+ *
+ *  ① 关 → 开:换了一条 Worker,新那条拿到的 `workerData.semantic.enabled` 是真;
+ *  ② 开 → 关:再换一条,又回到假;
+ *  ③ 同值不换:一次「只改了主题」的保存不该把索引掀掉重起;
+ *  ④ 换 Worker 的那个空窗里来的查询**不抛** —— 它们排队等新的那条(候诊室)。
+ *
+ * **入口是产品那条真路**:`broadcastSettingsChanged` 就是 `settings` 域保存成功后
+ * 喊的那一声。**反证**:把 `createAppSearchService` 里 `watchSettingsChanged(...)`
+ * 那一行注掉 → ① 当场红(只起过一条 Worker)。
+ */
+describe('createAppSearchService:语义召回开关保存即生效', () => {
+  const settingsWith = (enabled: boolean): AppSettings =>
+    ({ search: { semantic: { enabled, modelId: DEFAULT_SEMANTIC_MODEL_ID } } }) as unknown as AppSettings
+
+  it('① 关 → 开:换一条 Worker,新那条的 semantic.enabled 为真;词法索引一个字没丢', async () => {
+    writeSession('s1', '身份牌已经私发四人了', '开局')
+    await mount()
+    expect(spawned.length).toBe(1)
+    expect(spawned[0]!.data.semantic?.enabled).toBe(false)
+
+    // 产品那条真路:设置域保存成功之后喊的正是这一声。
+    broadcastSettingsChanged(settingsWith(true))
+    await waitFor('第二条 Worker 起来了', () => spawned.length === 2)
+
+    expect(spawned[1]!.data.semantic?.enabled).toBe(true)
+    expect(spawned[1]!.data.semantic?.modelId).toBe(DEFAULT_SEMANTIC_MODEL_ID)
+    // 换的只是 Worker:库路径、会话目录、字段表逐格照旧。
+    expect(spawned[1]!.data.databasePath).toBe(spawned[0]!.data.databasePath)
+    expect(spawned[1]!.data.schemas).toEqual(spawned[0]!.data.schemas)
+
+    // 词法那一路一个字不受影响 —— 同一个库文件,刚才那句照旧搜得到。
+    await handle!.index!.drain()
+    expect((await search('身份牌', 'messages')).map(result => result.sessionId)).toEqual(['s1'])
+  })
+
+  it('② 开 → 关:再换一条,回到 enabled: false', async () => {
+    writeSession('s1', '身份牌已经私发四人了', '开局')
+    await mount()
+
+    broadcastSettingsChanged(settingsWith(true))
+    await waitFor('开了', () => spawned.length === 2)
+    broadcastSettingsChanged(settingsWith(false))
+    await waitFor('关了', () => spawned.length === 3)
+
+    expect(spawned[2]!.data.semantic?.enabled).toBe(false)
+    await handle!.index!.drain()
+    expect((await search('身份牌', 'messages')).map(result => result.sessionId)).toEqual(['s1'])
+  })
+
+  it('③ 同值不换:一次「只改了主题」的保存不掀 Worker', async () => {
+    writeSession('s1', '身份牌已经私发四人了', '开局')
+    await mount()
+
+    // 直接问那一手:答 false = 一个字都没做。
+    await expect(handle!.applySemantic(settingsWith(false))).resolves.toBe(false)
+    // 经广播再走一遍(设置里别的格改了的那一形)。
+    broadcastSettingsChanged(settingsWith(false))
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(spawned.length).toBe(1)
+  })
+
+  it('④ 换 Worker 的空窗里来的查询不抛 —— 排队等新的那条', async () => {
+    writeSession('s1', '身份牌已经私发四人了', '开局')
+    await mount()
+
+    // 故意不 await:这一发查询正落在「旧的停了、新的还没起」那一格里。
+    const swapping = handle!.applySemantic(settingsWith(true))
+    const during = search('身份牌', 'messages')
+    await swapping
+    await expect(during).resolves.toBeTruthy()
+    expect((await during).map(result => result.sessionId)).toEqual(['s1'])
+    expect(spawned.length).toBe(2)
+  })
+
+  it('dispose 之后设置推送端口还给上一位,而且不再换 Worker', async () => {
+    const hostBroadcasts: unknown[] = []
+    const hostBroadcaster = (event: unknown): void => void hostBroadcasts.push(event)
+    configureSettingsEventBroadcaster(hostBroadcaster)
+
+    writeSession('s1', '身份牌已经私发四人了', '开局')
+    const mounted = await mount()
+    // 串联不是占槽:宿主那条推送照样收得到。
+    broadcastSettingsChanged(settingsWith(true))
+    await waitFor('换过一条', () => spawned.length === 2)
+    expect(hostBroadcasts.length).toBe(1)
+
+    await mounted.dispose()
+    handle = undefined
+    expect(getSettingsEventBroadcaster()).toBe(hostBroadcaster)
+
+    broadcastSettingsChanged(settingsWith(false))
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(hostBroadcasts.length).toBe(2)
+    expect(spawned.length).toBe(2)
   })
 })

@@ -7,7 +7,7 @@
  * (`dist/server/search-worker.cjs`)真的被 `worker_threads` 起了起来、真的在折账本。
  * 单测里的 Worker 是同线程的 `MessageChannel`(S3a 的手法),那条路证不了这一件。
  *
- * 九条(①–④ S3b,⑤–⑦ S3c,⑧ S7,⑨ 检索面终稿):
+ * 十条(①–④ S3b,⑤–⑦ S3c,⑧ S7,⑨ 检索面终稿,⑩ 设置页那一格与热生效):
  *   ① `search.status` → `mode: 'owner'`(起不来就是 `'error'`)
  *   ② 发一条消息(假 provider 回一段固定文本)→ 1s 内 messages 档搜得到**用户那句**
  *      与**助手那段**(这条走的是完整链:`user/message` / `run/end` → append 观察者
@@ -36,6 +36,10 @@
  *      → `status.vector` 走过 downloading / embedding 到 `'ready'` → 黄金复述集里
  *      的一条**改写句**经 HTTP 命中那条消息。假嵌入器证的是**链路**不是模型
  *      (`packages/core/search/__tests__/fixtures/paraphrase.json` 的头注写着这句)。
+ *   ⑩ **开关保存即生效**(2026-09-17;结清 §13「S7 待拍(三)——开关保存后不热生效」):
+ *      出厂档起一条 server(`vector: 'off'`)→ 经 `settings.saveSettings` 打开那一格 →
+ *      `status.vector` **不重启就**离开 `'off'` → 再关回去 → 回到 `'off'`。全程词法路
+ *      照答(换 Worker 期间查询排队不抛),`mode` 一直是 `'owner'`。
  *
  * ## ⑤ 的量法:`--require` 预加载探针 + SIGUSR2
  *
@@ -402,6 +406,7 @@ try {
  */
 await runLoopDelayPhase()
 await runSemanticPhase()
+await runSemanticHotApplyPhase()
 
 if (failures.length > 0) {
   console.error(`[gate:search-index] ${failures.length} check(s) failed`)
@@ -808,5 +813,144 @@ async function runSemanticPhase() {
     }
     if (provider) provider.close()
     fs.rmSync(storeC, { recursive: true, force: true })
+  }
+}
+
+/* ═══════════════════ ⑩ 开关保存即生效(自己的一间 store、自己的一条 server)══════
+ *
+ * 结清 §13 留账「S7 待拍(三)——开关保存后不热生效」。⑧ 证的是「**开着**的时候整条
+ * 链是通的」,这一条证的是**另一件事**:从出厂档(关着)起,经 `settings.saveSettings`
+ * 打开那一格之后,**不重启这条 server**,`search.status.vector` 就离开了 `'off'`;再关
+ * 回去又回到 `'off'`。
+ *
+ * 为什么必须真机证:换的是一条 `worker_threads` 线程,而单测里的 Worker 是同线程的
+ * `MessageChannel`(`wiring/search/__tests__/index-service.test.ts` 判的是装配算术)。
+ * 「真起得来第二条线程、而且它开得了同一个库文件」只有产物上跑得出来。
+ *
+ * **走的是设置那条真路**(`settings.saveSettings` RPC → `settings:changed` →
+ * `wiring/search/index.ts` 的那条订阅),不是一个门专用的后门。
+ */
+async function runSemanticHotApplyPhase() {
+  const storeD = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-search-hotapply-gate-'))
+  const paraphrasePath = path.join(repoRoot, 'packages/core/search/__tests__/fixtures/paraphrase.json')
+  let server
+  let provider
+  try {
+    console.log(`[gate:search-index] ⑩ temp store: ${storeD}`)
+    provider = await startFakeProvider(MOCK_PORT + 3, REPLY_TEXT)
+    // **出厂档**:`search` 那一段整个不写 —— 拍点壬 a 的默认关就该是「什么都没说」。
+    fs.writeFileSync(path.join(storeD, 'settings.json'), JSON.stringify({
+      ai: fakeProviderAiSettings(MOCK_PORT + 3),
+      tools: { enableToolCalls: false, permissionMode: 'dangerously-allow-all', tools: {} },
+      diagnostics: { enabled: false },
+    }, null, 2))
+
+    server = spawn(process.execPath, [serverEntry], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        ...FAKE_PROVIDER_ENV,
+        ONETHING_STORE_PATH: storeD,
+        ONETHING_SERVER_DATA_ROOT: storeD,
+        ONETHING_SERVER_HOST: '127.0.0.1',
+        ONETHING_SERVER_PORT: '',
+        // 假嵌入器:门不下 110MB 模型(与 ⑧ 同一个口子)。
+        ONETHING_SEARCH_EMBEDDER: 'fake',
+        ONETHING_SEARCH_EMBEDDER_FAKE_TABLE: paraphrasePath,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    const out = []
+    server.stdout.on('data', chunk => out.push(chunk.toString()))
+    server.stderr.on('data', chunk => out.push(chunk.toString()))
+
+    const discovery = await waitForDiscovery(storeD)
+    const rpc = createRpc(discovery)
+
+    // 一条会话:换 Worker 前后拿它证「词法路一个字没丢」。
+    const made = await rpc('sessions', 'create', { name: `热生效门 ${MARKER}` })
+    const sessionId = made?.session?.id
+    if (!sessionId) throw new Error(`⑩ sessions.create 没给出会话 id:${JSON.stringify(made)}`)
+    await rpc('session-command', 'emit', {
+      sessionId,
+      command: { type: 'command:send-message', content: `身份牌 ${MARKER} 已经私发四人了`, suppressTitleGeneration: true },
+    })
+
+    const statusOf = () => rpc('search', 'status')
+    const waitForVector = async (predicate, label, timeoutMs = 30_000) => {
+      const startedAt = Date.now()
+      const seen = new Set()
+      let status
+      while (Date.now() - startedAt < timeoutMs) {
+        status = await statusOf()
+        if (status?.vector) seen.add(status.vector)
+        else seen.add('(absent)')
+        if (predicate(status)) return { status, seen, ms: Date.now() - startedAt }
+        await sleep(150)
+      }
+      throw new Error(`⑩ 等不到「${label}」(走过 ${[...seen].join(' → ')})`)
+    }
+
+    const before = await statusOf()
+    check(before?.vector === 'off',
+      `⑩ 出厂档 status.vector 是 'off'(读到 ${JSON.stringify(before?.vector)})`)
+    check(before?.vectorExtension === 'loadable',
+      `⑩ 出厂档扩展照旧装得上(读到 ${JSON.stringify(before?.vectorExtension)})`)
+
+    /** 只改 `search.semantic.enabled` 那一格,别的原样写回(与设置页同一条纪律)。 */
+    const setSemantic = async enabled => {
+      const current = await rpc('settings', 'getSettings')
+      if (!current?.settings) throw new Error('⑩ settings.getSettings 没给出设置')
+      const saved = await rpc('settings', 'saveSettings', {
+        ...current.settings,
+        search: { ...current.settings.search, semantic: { enabled, modelId: 'fake' } },
+      })
+      if (saved?.success !== true) throw new Error(`⑩ settings.saveSettings 未成功:${JSON.stringify(saved)}`)
+    }
+
+    // ── 关 → 开:**不重启**这条 server ────────────────────────────────────
+    await setSemantic(true)
+    const on = await waitForVector(status => status?.vector !== 'off', "开关打开后离开 'off'")
+    check(true, `⑩ 保存即生效:${on.ms}ms 内 status.vector 离开 'off'(走过 ${[...on.seen].join(' → ')})`)
+    check(on.status?.mode === 'owner',
+      `⑩ 换 Worker 之后索引仍是写者(mode = ${JSON.stringify(on.status?.mode)})`)
+
+    // 词法路一个字没丢 —— 换的只是 Worker,库文件还是那一个。
+    const lexical = await (async () => {
+      const startedAt = Date.now()
+      while (Date.now() - startedAt < 10_000) {
+        const page = await rpc('search', 'query', { query: MARKER, category: 'messages', limit: 10 })
+        if ((page?.results ?? []).some(result => result.sessionId === sessionId)) {
+          return { ok: true, ms: Date.now() - startedAt }
+        }
+        await sleep(150)
+      }
+      return { ok: false, ms: Date.now() - startedAt }
+    })()
+    check(lexical.ok, `⑩ 换 Worker 之后词法路照答(${lexical.ms}ms 内命中那条消息)`)
+
+    // ── 开 → 关:回到 'off',而且向量表留着(下次开省一次重嵌)────────────
+    await setSemantic(false)
+    const off = await waitForVector(status => status?.vector === 'off', "关回去之后回到 'off'")
+    check(true, `⑩ 关回去:${off.ms}ms 内 status.vector 回到 'off'`)
+    check((off.status?.vectorPending ?? 0) === 0,
+      `⑩ 关着的时候没有在排队的嵌入(读到 ${JSON.stringify(off.status?.vectorPending)})`)
+    check(fs.existsSync(path.join(storeD, 'index', 'search.v1.sqlite')),
+      '⑩ 换过两次 Worker,库文件还是那一个(没有被丢掉重建)')
+
+    if (failures.length > 0) {
+      console.error(`[gate:search-index] ⑩ server 输出尾:\n${out.slice(-40).join('')}`)
+    }
+  } catch (error) {
+    failures.push(String(error?.stack || error))
+    console.error(`[gate:search-index] ⑩ ${error?.stack || error}`)
+  } finally {
+    if (server && server.exitCode === null && server.signalCode === null) {
+      server.kill('SIGTERM')
+      await sleep(1500)
+      try { server.kill('SIGKILL') } catch { /* 已经没了就算了 */ }
+    }
+    if (provider) provider.close()
+    fs.rmSync(storeD, { recursive: true, force: true })
   }
 }

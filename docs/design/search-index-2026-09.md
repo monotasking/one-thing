@@ -1217,13 +1217,25 @@ S1 与 S0 并行;S2 依赖 S1;S3 依赖 S0 + S2;S4 依赖 S3;S5 依赖 S4;S6 依
   读数定,而 e5 的余弦天生偏高、不相关的一对也常在 0.7 以上,凭空拍一个数会把该召回的切掉。
   今天的默认行为因此是「向量路把最近的几条无条件答回来」;它只在词法严格档零命中之后才
   加入(§15.4 的 `'relaxed'`),所以用户看到它时本来就在「没有字面命中」的处境里。
-- **S7 待拍(三)——开关保存后不热生效**。`workerData` 在起 Worker 那一刻定死,改
-  `search.semantic.enabled` 要下次起 core 才算数。热换要在装配层留一格可变状态去重启那条
-  Worker,而 `assembly:gate` 正是立来禁这个的(它是**减少型**棘轮,新文件带 `let` 直接红)。
-  治法有两条:把索引服务句柄挂到 `OnethingBackend` 的字段上并 `own()` 它(顺着组合根 A 的
-  方向,那时 `stores/settings.ts` 可以经 `current.ts` 拿到它),或者给 Worker 加一条
-  「换嵌入器」的消息(库不重开、只换 `VectorWriter`)。第二条便宜得多,但要先想清楚
-  `vec_docs` 的维度换了怎么办(vec0 的维度写在建表语句里)。
+- ~~**S7 待拍(三)——开关保存后不热生效**~~ —— **2026-09-17 结清,现在是保存即生效**。
+  留账当年担心的是「热换要在装配层留一格可变状态,而 `assembly:gate` 正是立来禁这个的」;
+  实际落地里那一格状态住在 **`createAppSearchService` 这次调用的闭包**里(
+  `startSearchIndexService` 的 `let semantic`,函数作用域),而这次调用的产物已经被
+  `backend.own(() => searchService.dispose())` 收着 —— 模块作用域一个 `let` 都没多,
+  `assembly:gate` 读的正是**行首**的 `let`(93 / 58 文件,零新增)。
+  三件落地:①`AppSearchServiceHandle.applySemantic(settings)`(同值恒等,不同就换一条
+  Worker);②触发是 `wiring/settings/events.ts` 的 `settings:changed` —— **串联**到那个
+  单槽推送端口上(与 `server/runtime.ts` 同一条既有判例,带身份守卫的还原),**settings 域
+  一个字不知道有 search 这回事**;③换 Worker 的两条硬规矩写在
+  `IndexWorkerHost.restart()` 上 —— **先停旧的再起新的**(两条 Worker 同开一个库就是两个
+  写者,`SQLITE_BUSY` 是迟早的事),空窗期的请求进**候诊室**排队、不拒(所以换的过程里
+  查询不抛;在飞的那几发等旧 Worker 答完,`WORKER_SWAP_SETTLE_MS = 2000` 封顶,到点如实拒)。
+  词法索引文件一个字节不动;关掉时 `vec_docs` **留着不删**(下次开省一次重嵌)。
+  取的是当年写的第一条治法(句柄 + `own()`),不是第二条(给 Worker 加「换嵌入器」消息)——
+  后者便宜但要先想清楚 vec0 的维度换了怎么办,而换一条 Worker 把那个问题一并绕开了。
+  证据:`gate:search-index` **⑩**(真 `dist/server`:出厂档 `'off'` → 保存 → **31ms** 离开
+  `'off'` → 词法路 167ms 内照答 → 关回去 **29ms** 回到 `'off'`,库文件还是那一个)+
+  `wiring/search/__tests__/index-service.test.ts` 的四条(换 / 换回 / 同值不换 / 空窗查询不抛)。
 - **S7:真模型冒烟没做成 —— 本机连不上 HuggingFace**。`huggingface.co` 的元数据是通的
   (`config.json` 答 307),但 `cdn-lfs.huggingface.co` **连不上**(curl 读数 `000`),
   `pipeline()` 在拉 tokenizer 时 `ECONNRESET`,两趟都一样。所以交卷用的是假嵌入器,
@@ -1234,9 +1246,16 @@ S1 与 S0 并行;S2 依赖 S1;S3 依赖 S0 + S2;S4 依赖 S3;S5 依赖 S4;S6 依
   `Object.keys` 只见到 `wasmPaths` / `proxy`,**没有 `numThreads`** —— 嵌入器里那句
   「wasm 单线程」是尽力而为,不是保证。`wasmPaths` 这一格还提醒了上面待拍(一)的另一半:
   ORT-web 按**文件路径**读 `.wasm`,asar 里的路径不是真路径。
-- **S7:设置页没有 UI**。`settings.search.semantic.{enabled,modelId}` 契约、默认值、归一化、
-  装配读取全落了,**壳的设置页一格都没画**(那是壳线的活)。今天开它的办法是改
-  `settings.json` 或走 `settings` 域的 RPC。
+- ~~**S7:设置页没有 UI**~~ —— **2026-09-17 结清**。设置页多了一页「搜索」
+  (`SETTINGS_PAGES` 上一行,`content/settings/SearchSettings.tsx`),一节三行:开关
+  「按含义找」(副文案说清「下约 110 MB、后台建索引、只在本机算」)、一行**只读**的模型档位
+  (注册表今天只有一档,一个只有一项可选的选择器是纯噪音)、一行状态读数。
+  状态读的是**检索面已有的那一格** `searchStatusQuery`(不新起第二条口),开着时这一页
+  自己 5s 轻轮询、离开即停;八个态的判据收在纯函数 `semanticPhaseOf` 里,
+  `vectorExtension === 'missing'` 时开关**禁着而不是藏起来**。
+  一处非显然的取舍:翻开关那一下,写路的乐观补丁顺手把 `status.vector` 抹成**缺席**
+  (= 不知道),所以屏幕上写的是「正在启动」而不是闪一下上一条 Worker 答的「没跑起来」。
+  数据层 `data/search-settings-{port,source}.ts` 照 browser-settings 那一对的形。
 - **S7:切段是按字符边界回退,没有按 CJK 语义切**。`chunkForEmbedding` 找最近的换行 / 句号 /
   空格,回退超过一成就硬切。中文长段落里句号少的那种(代码块、日志)会切在词中间;真模型
   的读数出来之前不动它。
@@ -1579,6 +1598,6 @@ KNN 数不出「一共有多少条相似的」,取词法那个数会在「词法
 | `VectorIndex.search(embedding, k, filter?: (doc) => boolean)`(S1 定的形) | `search(embedding, k, scope?: { capability, filters })` | 谓词是**结果过滤**,而 §6.4b 立的法是「授权是查询的输入」——闭包过不了 SQL 的 WHERE。改成与词法路同形的 facet 表 |
 | `retrievers?: { vector?: { when } }` | `retrievers?: Record<string, RetrieverPolicy>` | 键写成「vector」就是在 core 里点名一条召回路。改成按召回器 id 索引之后,加第三条召回路是这张表多一行,core 一个字不改 |
 | `gate:packaged` 断言 `vector === 'ready'` | 断言 `vector === 'off'` + `vectorExtension === 'loadable'` | 见 §15.5 那条 |
-| 「开关保存后重读」 | **装配时读一次**,改开关下次起 core 才生效 | `workerData` 在 `new Worker(...)` 那一刻定死,热换开关要换一条 Worker,而那要一格装配级可变状态 —— `assembly:gate` 正是立来禁这个的。开关默认关,所以延迟只影响「刚打开的那一次」。§13 有这一条 |
+| 「开关保存后重读」 | S7 当时:**装配时读一次**;**2026-09-17 起:保存即生效**(换一条 Worker) | 当年的理由是「热换要一格装配级可变状态,而 `assembly:gate` 正是立来禁这个的」——**这句判断是错的**:那一格状态住在 `createAppSearchService` 的**闭包**里,跟着已经被 `own()` 的句柄生灭,模块作用域一个 `let` 都没多。详见 §13 那条结清 |
 | (方案没提) | `RetrieverPolicy.maxDistance` | KNN 没有下限,见 §15.4 末段 |
 | (方案没提) | `status` 多两格:`vectorPending` / `vectorExtension` | 前者与 `pending` 同一种诚实(那一格数会话,这一格数文档);后者是 `gate:packaged` 在默认档上唯一能问的东西 |

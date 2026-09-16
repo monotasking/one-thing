@@ -64,6 +64,15 @@ export class SearchIndexService {
     await this.host.dispose()
   }
 
+  /**
+   * **换一条 Worker**(装配那一侧的 `workerData` 变了 —— 今天唯一的用例是语义召回
+   * 那一格开关被改了)。换出来的那条长什么样由**工厂**说,这一层与 host 一样不
+   * 认识「语义召回」四个字。换的过程里查询不抛,详见 `IndexWorkerHost.restart()`。
+   */
+  restart(): Promise<void> {
+    return this.host.restart()
+  }
+
   search(request: IndexSearchRequest): Promise<IndexSearchResult> {
     return this.host.search(request)
   }

@@ -64,6 +64,23 @@ interface InFlight {
   reject(error: Error): void
 }
 
+/** 候诊室里的一发:换 Worker 期间到达的请求,等新的那条起来再发。 */
+interface Waiting {
+  message: IndexWorkerRequestBody
+  resolve(value: unknown): void
+  reject(error: Error): void
+}
+
+/**
+ * 换 Worker 时**等旧 Worker 把在飞的那几发答完**的上限。
+ *
+ * 为什么要等:一发 `query` 已经交给旧 Worker 了,直接 `terminate()` 它就永远
+ * 等不到答复 —— 那是「换一次设置,正在打字的那个人看见一句搜不了」。
+ * 为什么有上限:`drain` 这类请求可以等很久,而换 Worker 不该被它无限期拖住;
+ * 到点还没答完的**如实拒掉**(`index worker replaced`),不让调用方挂死。
+ */
+export const WORKER_SWAP_SETTLE_MS = 2000
+
 export class IndexWorkerHost {
   private readonly factory: IndexWorkerFactory
   private handle: IndexWorkerHandle | undefined
@@ -72,6 +89,12 @@ export class IndexWorkerHost {
   private consecutiveCrashes = 0
   private dead = false
   private disposed = false
+  /** 正在换 Worker 的那一发(合流用:同时来两条换的请求只换一次)。 */
+  private swap: Promise<void> | undefined
+  /** 换 Worker 期间到达的请求。换完按原序发出去。 */
+  private readonly waiting: Waiting[] = []
+  /** 「在飞的都答完了」的等待者。 */
+  private idleWaiters: Array<() => void> = []
 
   constructor(factory: IndexWorkerFactory) {
     this.factory = factory
@@ -86,6 +109,10 @@ export class IndexWorkerHost {
   async dispose(): Promise<void> {
     this.disposed = true
     this.rejectInFlight(new IndexWorkerUnavailableError('index worker disposed'))
+    // 候诊室也要清:正赶上换 Worker 的那一刻退出,排着的那几发没有人会来发它们。
+    for (const entry of this.waiting.splice(0, this.waiting.length)) {
+      entry.reject(new IndexWorkerUnavailableError('index worker disposed'))
+    }
     const handle = this.handle
     this.handle = undefined
     if (handle !== undefined) await handle.terminate()
@@ -94,6 +121,102 @@ export class IndexWorkerHost {
   /** 停了没有(连崩两次)。`status()` 的 `mode` 由它翻成 `'error'`。 */
   get stopped(): boolean {
     return this.dead
+  }
+
+  /**
+   * **换一条 Worker**(设置里的语义召回开关改了;`workerData` 在 `new Worker(...)`
+   * 那一刻定死,所以换配置就是换线程)。
+   *
+   * 这里不认识「语义召回」四个字 —— 换出来的那一条长什么样全由**工厂**说,工厂
+   * 读的是装配那一侧此刻的配置(`wiring/search/index.ts`)。于是崩溃重起走的也是
+   * 同一只工厂,新旧配置不会分家。
+   *
+   * ## 次序:先静默 → 等在飞的答完 → 停旧的 → 起新的
+   *
+   * **不先起新的**:两条 Worker 同时开同一个 `search.v1.sqlite` 就是两个写者
+   * (新那条一上来就跑启动校对,那是写),`SQLITE_BUSY` 是迟早的事。
+   * 那样换来的「零空窗」由候诊室(`waiting`)更便宜地拿到了:空窗期的请求不拒、
+   * 排着,新 Worker 一起来就按原序发出去。**所以换 Worker 期间查询不会抛**,
+   * 只是慢那么一下。
+   */
+  restart(): Promise<void> {
+    if (this.disposed) return Promise.resolve()
+    // 合流:两条设置一起落地(或者用户连点两下)只换一条 Worker。
+    if (this.swap !== undefined) return this.swap
+    const swap = this.performSwap().finally(() => {
+      this.swap = undefined
+      this.flushWaiting()
+    })
+    this.swap = swap
+    return swap
+  }
+
+  private async performSwap(): Promise<void> {
+    const handle = this.handle
+    // 从这一刻起 `send()` 进候诊室 —— `swap` 已经挂上,`handle` 已经摘掉。
+    this.handle = undefined
+    if (handle !== undefined) {
+      await this.whenIdle(WORKER_SWAP_SETTLE_MS)
+      try {
+        await handle.terminate()
+      } catch (error) {
+        log.warn('index worker terminate failed while swapping', { err: error })
+      }
+    } else {
+      // 旧的已经不在了(崩过 / 还没起过):在飞的那几发没人会答,如实拒掉。
+      this.rejectInFlight(new IndexWorkerUnavailableError('index worker replaced'))
+    }
+    if (this.disposed) return
+    /*
+     * 换过一条 Worker 就是**重新开张**:连崩计数与「停了」都清零。上一条的崩溃史
+     * 说的是上一份配置(比如一个装不上的嵌入器),不该判新的这一条死刑。
+     */
+    this.consecutiveCrashes = 0
+    this.dead = false
+    try {
+      this.spawn()
+    } catch (error) {
+      // 起不来就如实停摆:候诊室里那几发会拿到 `index unavailable`,不是挂死。
+      this.dead = true
+      this.handle = undefined
+      log.error('index worker could not be replaced', { err: error })
+    }
+  }
+
+  /** 在飞的都答完了(或者到点了)。到点还欠着的**如实拒掉**。 */
+  private whenIdle(timeoutMs: number): Promise<void> {
+    if (this.inFlight.size === 0) return Promise.resolve()
+    return new Promise<void>(resolve => {
+      let settled = false
+      const finish = (): void => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        resolve()
+      }
+      const timer = setTimeout(() => {
+        this.rejectInFlight(new IndexWorkerUnavailableError('index worker replaced'))
+        finish()
+      }, timeoutMs)
+      // 这只计时器不该拦住进程退出(与 Worker 自己 `unref()` 同一条理由)。
+      timer.unref?.()
+      this.idleWaiters.push(finish)
+    })
+  }
+
+  private notifyIdle(): void {
+    if (this.inFlight.size > 0) return
+    const waiters = this.idleWaiters
+    this.idleWaiters = []
+    for (const waiter of waiters) waiter()
+  }
+
+  /** 候诊室排空:按原序重发。此刻停摆了的话,它们在 `send()` 里如实被拒。 */
+  private flushWaiting(): void {
+    const waiting = this.waiting.splice(0, this.waiting.length)
+    for (const entry of waiting) {
+      this.send(entry.message).then(entry.resolve, entry.reject)
+    }
   }
 
   // ---- 四种消息 ---------------------------------------------------------
@@ -140,7 +263,17 @@ export class IndexWorkerHost {
   // ---- 往返 -------------------------------------------------------------
 
   private send(message: IndexWorkerRequestBody): Promise<unknown> {
-    if (this.dead || this.disposed) return Promise.reject(new IndexWorkerUnavailableError())
+    if (this.disposed) return Promise.reject(new IndexWorkerUnavailableError())
+    /*
+     * 换 Worker 期间**排队而不是拒绝**(见 `restart()` 的头注):空窗只有几十毫秒,
+     * 而一句「搜不了」会留在屏幕上。排在这里的那几发由 `flushWaiting()` 原序发出。
+     */
+    if (this.swap !== undefined) {
+      return new Promise<unknown>((resolve, reject) => {
+        this.waiting.push({ message, resolve, reject })
+      })
+    }
+    if (this.dead) return Promise.reject(new IndexWorkerUnavailableError())
     if (this.handle === undefined) this.spawn()
     const handle = this.handle
     if (handle === undefined) return Promise.reject(new IndexWorkerUnavailableError())
@@ -166,6 +299,7 @@ export class IndexWorkerHost {
       const pending = this.inFlight.get(response.id)
       if (pending === undefined) return
       this.inFlight.delete(response.id)
+      this.notifyIdle()
       if (response.ok) {
         // 一次成功的往返 = 这一条 Worker 活过来了 —— 「连续」的计数在这里清零,
         // 否则一天里前后崩两次(各自恢复过)也会被当成「连崩两次」。
@@ -175,7 +309,11 @@ export class IndexWorkerHost {
         pending.reject(new Error(response.error))
       }
     })
+    // 两条监听都按**句柄身份**认领:换 Worker 时我们自己 `terminate()` 的那一条
+    // 会照样喊 error / exit,而它的死是我们要的,不是崩溃(不然换一次设置就会被
+    // 记一次「连崩」,两次就把索引判死)。
     handle.onError(error => {
+      if (this.disposed || this.handle !== handle) return
       log.error('index worker errored', { err: error })
       this.onCrash()
     })
@@ -207,5 +345,6 @@ export class IndexWorkerHost {
   private rejectInFlight(error: Error): void {
     for (const pending of this.inFlight.values()) pending.reject(error)
     this.inFlight.clear()
+    this.notifyIdle()
   }
 }
