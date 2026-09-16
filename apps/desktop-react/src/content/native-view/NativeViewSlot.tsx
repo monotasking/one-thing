@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { focusTree } from '../../focus/registry'
 import { useFocusScope } from '../../focus/useFocusScope'
+import { focusElement, registerFocusTarget } from '../../focus/target'
+import { installNativeFocusSync, observeNativeFocus, requestNativeFocus } from '../../focus/native-focus'
 import { dispatchSyntheticKey } from '../../focus/dispatch'
 import { nativeViewBridge } from '../../data/browser-port'
 import { useStageStore } from '../../stage/store'
@@ -40,8 +42,8 @@ import type { NativeViewBounds, NativeViewPush } from '../../data/browser-port'
  * ══════════════════════════════════════════════════════════════════════════
  * | 交互 | 这一侧做什么 |
  * | --- | --- |
- * | 树把焦点交给这块地 | 占位格 DOM `focus` → 发 `focus` 动词 → 主进程 `webContents.focus()` |
- * | 页面自己拿到焦点 | 主进程推 `focus` → `activate()` 这一格作用域(I1:activeElement = 占位格,视图是它的「里面」) |
+ * | 树把焦点交给这块地 | `focusElement` 调用注册的原生目标 → 发带版本的 `focus` → 主进程 `webContents.focus()` |
+ * | 页面自己拿到焦点 | 主进程推 `focus` → 确认没有更新的壳焦点意图 → `activate()`;不回发原生聚焦请求 |
  * | 页面失去焦点 | 推 `blur` → **什么都不做**(焦点去哪由那一边决定,抢回来只会打架) |
  * | 页面里按下一个保留键 | 主进程 `preventDefault` + 推 `key` → `dispatchSyntheticKey` → 壳里**唯一那个派发器** |
  * | 拖拽 / 弹层 / 浮窗盖上来 | 发 `occlude` → 收 `snapshot` → 铺图;走了发 `unocclude` |
@@ -166,17 +168,23 @@ export function NativeViewSlot({ viewId, scope, elementRef, className }: NativeV
   const [snapshot, setSnapshot] = useState<string | null>(() => viewClaimOf(viewId)?.snapshot ?? null)
   const [snapshotShown, setSnapshotShown] = useState(false)
   const imgRef = useRef<HTMLImageElement | null>(null)
+  const releaseFocusTarget = useRef<(() => void) | undefined>(undefined)
 
   const setHost = useCallback(
     (el: HTMLDivElement | null) => {
+      releaseFocusTarget.current?.()
+      releaseFocusTarget.current = el
+        ? registerFocusTarget(el, () => requestNativeFocus(el, viewId))
+        : undefined
       hostRef.current = el
       if (elementRef) elementRef.current = el
     },
-    [elementRef],
+    [elementRef, viewId],
   )
 
   /* ── 键位下沉:整壳一次,不是每片视图一次 ──────────────────────────── */
   useEffect(() => startNativeViewKeymapDownlink(scope), [scope])
+  useEffect(() => installNativeFocusSync(), [])
 
   /* ── 帧与遮挡 ────────────────────────────────────────────────────────── */
   useEffect(() => {
@@ -402,9 +410,9 @@ export function NativeViewSlot({ viewId, scope, elementRef, className }: NativeV
           setSnapshot(message.dataUrl)
           return
         case 'focus':
-          // 页面自己拿到了键盘焦点 → 让树知道第一响应者换人了(I1 在这一格的
-          // 读法:activeElement = 占位格,原生视图是它的「里面」)。
-          activate('pointer')
+          if (hostRef.current && hostVisibleRef.current && !overlayScopeCount()) {
+            observeNativeFocus(hostRef.current, message.revision, () => activate('pointer'))
+          }
           return
         case 'blur':
           // **什么都不做**。焦点去哪由那一边决定;抢回来只会与真正接手的那一格打架。
@@ -463,7 +471,7 @@ export function NativeViewSlot({ viewId, scope, elementRef, className }: NativeV
        * DOM 焦点就等于「树把键盘交给了里面那片视图」,所以顺手告诉主进程。
        */
       tabIndex={-1}
-      onFocus={() => nativeViewBridge()?.send({ verb: 'focus', viewId })}
+      onPointerDown={() => focusElement(hostRef.current)}
     >
       {snapshot !== null && (
         <img
@@ -479,4 +487,3 @@ export function NativeViewSlot({ viewId, scope, elementRef, className }: NativeV
     </div>
   )
 }
-

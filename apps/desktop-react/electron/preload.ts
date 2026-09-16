@@ -64,6 +64,7 @@ contextBridge.exposeInMainWorld('onethingHost', {
    * 否则热更 / 重挂之后旧回调还挂在 ipcRenderer 上。
    */
   nativeView: {
+    nativePopup: true,
     send: (message: NativeViewRequest): void => { ipcRenderer.send(NATIVE_VIEW_CHANNEL, message) },
     on: (handler: (message: NativeViewPush) => void): (() => void) => {
       const listener = (_event: unknown, message: NativeViewPush) => handler(message)

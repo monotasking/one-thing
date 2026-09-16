@@ -1,4 +1,5 @@
 import { FOCUS_SCOPES } from './scopes'
+import { focusElement } from './target'
 import {
   activePathOf,
   isInteractive,
@@ -464,7 +465,7 @@ export class FocusTree {
        * 那时第一响应者已经是 `instanceId` 了(上面刚写),所以「换人」不成立,
        * `returnTo` 不会被自己覆盖一遍。次序在这里是判据,不是巧合。
        */
-      el?.focus({ preventScroll: true })
+      focusElement(el)
     }
     this.notify()
   }
@@ -561,7 +562,7 @@ export class FocusTree {
     const target = restingElementOf(this.current()) ?? restingElementOf(this.rootNode())
     // 收回**不算换人**(§4.5 裁定点名排除):不写 `returnTo`,否则「开检索面之前
     // 我在输入框」会被记成「我在壳根」。
-    if (target) this.withoutReturnSeat(() => target.focus({ preventScroll: true }))
+    if (target) this.withoutReturnSeat(() => focusElement(target))
   }
 
   /* ── 内部 ────────────────────────────────────────────────────────────── */
@@ -740,7 +741,7 @@ export class FocusTree {
     if (!this.policy.moveFocus) return
     const back =
       returnTargetOf(this.map, departing) ?? (departing === gone ? null : returnTargetOf(this.map, gone))
-    if (back) this.withoutReturnSeat(() => back.element.focus({ preventScroll: true }))
+    if (back) this.withoutReturnSeat(() => focusElement(back.element))
   }
 
   private isDescendantOf(
@@ -817,7 +818,7 @@ export class FocusTree {
     const root = node.root
     // 抢根**不算换人**(§4.5 裁定点名排除的第二种):点在空白处说的是「我在看这块面」,
     // 不是「我从别处交接过来」。
-    if (root) this.withoutReturnSeat(() => root.focus({ preventScroll: true }))
+    if (root) this.withoutReturnSeat(() => focusElement(root))
   }
 
   private attach(): void {

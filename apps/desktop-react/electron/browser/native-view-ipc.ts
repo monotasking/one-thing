@@ -26,7 +26,7 @@
  * 帧不该让主进程抛。所以每条动词自己校验形状,认不出来的静默丢掉(记一条 debug)。
  */
 
-import type { AppMenuSpec, NativeViewRequest } from '../native-view-protocol.js'
+import type { AppMenuSpec, NativePopupItem, NativeViewRequest } from '../native-view-protocol.js'
 import { NATIVE_VIEW_CHANNEL } from '../native-view-protocol.js'
 
 /** `ipcMain` 上用到的那两口。真实现是 electron 的 `ipcMain`。 */
@@ -40,7 +40,10 @@ export interface NativeViewHandlers {
   frame(request: Extract<NativeViewRequest, { verb: 'frame' }>): void
   occlude(viewId: string): void
   unocclude(viewId: string): void
-  focus(viewId: string): void
+  focus(viewId: string, revision?: number): void
+  focusShell?(revision: number): void
+  popup?(request: Extract<NativeViewRequest, { verb: 'popup' }>): void
+  popupClose?(requestId: string): void
   /**
    * 键位表 + 菜单表(K4 起是两半)。`menu` 缺席 = 这一帧没说菜单(保留上一份),
    * **不是**「菜单是空的」—— 判词在协议那条动词上。
@@ -109,10 +112,35 @@ export function parseNativeViewRequest(raw: unknown): NativeViewRequest | undefi
     }
     case 'occlude':
     case 'unocclude':
-    case 'focus':
     case 'findStop': {
       const viewId = viewIdOf(raw)
       return viewId ? { verb: raw.verb, viewId } : undefined
+    }
+    case 'focus': {
+      const viewId = viewIdOf(raw)
+      if (!viewId || (raw.revision !== undefined && !isRevision(raw.revision))) return undefined
+      return { verb: 'focus', viewId, ...(raw.revision !== undefined ? { revision: raw.revision as number } : {}) }
+    }
+    case 'focus-shell':
+      return isRevision(raw.revision) ? { verb: 'focus-shell', revision: raw.revision } : undefined
+    case 'popup-close':
+      return isPopupId(raw.requestId) ? { verb: 'popup-close', requestId: raw.requestId } : undefined
+    case 'popup': {
+      if (!isPopupId(raw.requestId) || typeof raw.x !== 'number' || !Number.isFinite(raw.x)
+        || typeof raw.y !== 'number' || !Number.isFinite(raw.y)
+        || !Array.isArray(raw.items) || raw.items.length === 0 || raw.items.length > 100) return undefined
+      const items: NativePopupItem[] = []
+      const ids = new Set<string>()
+      for (const item of raw.items) {
+        if (!isRecord(item)) return undefined
+        if (item.type === 'separator') { items.push({ type: 'separator' }); continue }
+        if (item.type !== 'item' || !isPopupId(item.id) || ids.has(item.id)
+          || typeof item.label !== 'string' || item.label.length > 1024
+          || typeof item.enabled !== 'boolean') return undefined
+        ids.add(item.id)
+        items.push({ type: 'item', id: item.id, label: item.label, enabled: item.enabled })
+      }
+      return { verb: 'popup', requestId: raw.requestId, x: Math.round(raw.x), y: Math.round(raw.y), items }
     }
     case 'find': {
       const viewId = viewIdOf(raw)
@@ -132,19 +160,35 @@ export function parseNativeViewRequest(raw: unknown): NativeViewRequest | undefi
   }
 }
 
+function isRevision(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+}
+
+function isPopupId(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 256
+}
+
 /** 挂上那一条监听。返回退订(`backend.own()` 收)。 */
 export function installNativeViewIpc(
   ipcMain: NativeViewIpcMain,
   handlers: NativeViewHandlers,
+  accepts: (event: unknown) => boolean = () => true,
 ): () => void {
   const listener = (_event: unknown, raw: unknown): void => {
+    if (!accepts(_event)) return
     const request = parseNativeViewRequest(raw)
     if (!request) return
     switch (request.verb) {
       case 'frame': handlers.frame(request); return
       case 'occlude': handlers.occlude(request.viewId); return
       case 'unocclude': handlers.unocclude(request.viewId); return
-      case 'focus': handlers.focus(request.viewId); return
+      case 'focus':
+        if (request.revision === undefined) handlers.focus(request.viewId)
+        else handlers.focus(request.viewId, request.revision)
+        return
+      case 'focus-shell': handlers.focusShell?.(request.revision); return
+      case 'popup': handlers.popup?.(request); return
+      case 'popup-close': handlers.popupClose?.(request.requestId); return
       case 'keymap': handlers.keymap(request.chords, request.menu); return
       case 'find': handlers.find(request); return
       case 'findStop': handlers.findStop(request.viewId); return

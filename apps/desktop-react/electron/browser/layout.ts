@@ -93,6 +93,10 @@ function sameBounds(a: NativeViewBounds, b: NativeViewBounds): boolean {
 }
 
 export class NativeViewLayout {
+  isVisible(viewId: string): boolean {
+    const entry = this.entries.get(viewId)
+    return !!entry && entry.visible && !entry.occluded
+  }
   private readonly host: NativeViewHost
   private readonly push: NativeViewPushSink
   private readonly entries = new Map<string, LayoutEntry>()

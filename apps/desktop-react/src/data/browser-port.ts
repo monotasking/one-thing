@@ -138,6 +138,7 @@ export function nativeViewBridge(): NativeViewBridge | undefined {
 }
 
 export type { NativeViewBounds, NativeViewBridge, NativeViewPush, NativeViewRequest }
+export type { NativePopupItem, NativePopupSpec } from '../../electron/native-view-protocol'
 /*
  * 菜单表(K4)。它与上面那四个同一条判词:**词汇表只有一份**,住在
  * `electron/native-view-protocol.ts`;渲染层经这只端口拿到它,不直接伸手去

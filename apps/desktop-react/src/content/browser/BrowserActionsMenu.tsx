@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../../ui/Menu'
+import { NativeMenu, type NativeMenuAction } from '../../ui/NativeMenu'
+import { nativeViewBridge } from '../../data/browser-port'
 import { useT } from '../../i18n'
 import { useQuery } from '../../data/kernel'
 import { browserSettingsQuery } from '../../data/browser-settings-source'
@@ -31,11 +33,12 @@ import type { BrowserTabRow } from '../../data/browser-source'
  * ① 生命周期:开着的那一段就是它活着的那一段(叶按 `at !== null` 渲染它);
  *    挂载时 `ensure()` 问一次设置(名册)—— **一张只在右键那一下出现的菜单不值得
  *    让全壳挂一条订阅**(与 `browser-launcher` 的菜单逐字同一条)。零计时器、零监听
- *    (点外关 / Esc / roving 全在 `ui/Menu` 里)。
+ *    (点外关 / Esc / 键盘导航由原生菜单或 `ui/Menu` 承担)。
  * ② UI 生命状态:名册还没问到 → 只有第一节(不画一张空的「身份」节);
  *    只有一格身份 → 同上;多格 → 两节;出错 → 同「还没问到」(名册拉不到时
  *    设置页那一侧已经说过一次,这里不再报第二遍)。
- * ③ UI 交互状态:全部随 `ui/Menu`(roving / hover / 点外关 / Esc)。
+ * ③ UI 交互状态:桌面使用系统原生菜单,其余环境使用 `ui/Menu`。
+ *    两者共用动作表;原生菜单关闭后通过请求编号回传一次选择。
  */
 export function BrowserActionsMenu({
   tab,
@@ -85,29 +88,31 @@ export function BrowserActionsMenu({
         title: t('browser.giveToChatNoComposer'),
       })
     }
-    onClose()
+  }
+
+  // Both native and DOM menus project this same list of actions.
+  const actions: NativeMenuAction[] = [
+    { type: 'item', id: 'give-to-chat', label: t('browser.giveToChat'), enabled: true, onSelect: giveToChat },
+    ...(others.length > 0 ? [
+      { type: 'separator' as const },
+      { type: 'item' as const, id: 'profiles', label: t('browser.profileSection'), enabled: false },
+      ...others.map(profile => ({ type: 'item' as const, id: `profile:${profile.id}`,
+        label: t('browser.openInProfile', { name: profileDisplayName(profile, t) }), enabled: true,
+        onSelect: () => onOpenInProfile(profile.id) })),
+    ] : []),
+  ]
+
+  if (nativeViewBridge()?.nativePopup) {
+    return <NativeMenu x={at.x} y={at.y} items={actions} onClose={onClose} />
   }
 
   return (
     <Menu x={at.x} y={at.y} onClose={onClose} label={t('browser.actions')}>
-      <MenuItem onClick={giveToChat}>{t('browser.giveToChat')}</MenuItem>
-      {others.length > 0 ? (
-        <>
-          <MenuSeparator />
-          <MenuSection>{t('browser.profileSection')}</MenuSection>
-          {others.map((profile) => (
-            <MenuItem
-              key={profile.id}
-              onClick={() => {
-                onOpenInProfile(profile.id)
-                onClose()
-              }}
-            >
-              {t('browser.openInProfile', { name: profileDisplayName(profile, t) })}
-            </MenuItem>
-          ))}
-        </>
-      ) : null}
+      {actions.map((action, index) => action.type === 'separator'
+        ? <MenuSeparator key={`separator:${index}`} />
+        : !action.enabled
+          ? <MenuSection key={action.id}>{action.label}</MenuSection>
+          : <MenuItem key={action.id} onClick={() => { onClose(); action.onSelect?.() }}>{action.label}</MenuItem>)}
     </Menu>
   )
 }

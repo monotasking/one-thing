@@ -81,11 +81,23 @@ export interface NativeViewBounds {
   readonly height: number
 }
 
+/** A popup is a presentation of renderer-owned actions, never a second executor. */
+export type NativePopupItem =
+  | { readonly type: 'separator' }
+  | { readonly type: 'item'; readonly id: string; readonly label: string; readonly enabled: boolean }
+
+export interface NativePopupSpec {
+  readonly requestId: string
+  readonly x: number
+  readonly y: number
+  readonly items: readonly NativePopupItem[]
+}
+
 /**
  * 渲染进程 → 主进程。
  *
- * `frame` 由占位格的 ResizeObserver 按 rAF 合批发出;其余四条是离散动作。
- * 一条通道一个 `verb`,而不是四条通道 —— 见文件头。
+ * `frame` 由占位格的 ResizeObserver 按 rAF 合批发出;其余请求是离散动作。
+ * 同一条通道用 `verb` 区分动作 —— 见文件头。
  */
 export type NativeViewRequest =
   /** 这片叶此刻的几何与堆叠序。 */
@@ -98,7 +110,11 @@ export type NativeViewRequest =
   /** 盖的东西走了。 */
   | { readonly verb: 'unocclude'; readonly viewId: string }
   /** 树把焦点交给了这片叶(开 tab、点瓦、规则 2)。 */
-  | { readonly verb: 'focus'; readonly viewId: string }
+  | { readonly verb: 'focus'; readonly viewId: string; readonly revision?: number }
+  /** A newer DOM focus intent cancels pending native focus. */
+  | { readonly verb: 'focus-shell'; readonly revision: number }
+  | ({ readonly verb: 'popup' } & NativePopupSpec)
+  | { readonly verb: 'popup-close'; readonly requestId: string }
   /**
    * 「已绑定的组合键」全表(全局命令 ∪ 该作用域的局部键),规范化成
    * `ctrl+shift+p` 这种串。主进程给每片视图挂 `before-input-event`:在表里的
@@ -144,7 +160,7 @@ export type NativeViewPush =
   /** 一次被主进程截下来的组合键,交还给渲染进程那**唯一**的派发器。 */
   | { readonly kind: 'key'; readonly viewId: string; readonly key: string; readonly code: string; readonly modifiers: readonly string[] }
   /** 页面自己拿到 / 失去了键盘焦点。 */
-  | { readonly kind: 'focus'; readonly viewId: string }
+  | { readonly kind: 'focus'; readonly viewId: string; readonly revision?: number }
   | { readonly kind: 'blur'; readonly viewId: string }
   /**
    * 一次查找的读数(B3-a)。`active` 是**从 1 起**的当前命中序号(Chromium 的
@@ -174,9 +190,12 @@ export type NativeViewPush =
    * 接的人是 `content/native-view/window-focus-downlink.ts`(判词在 `focus/window-focus.ts`)。
    */
   | { readonly kind: 'window-blur' }
+  | { readonly kind: 'popup-result'; readonly requestId: string; readonly itemId?: string }
 
 /** preload 挂出来的那两口(`window.onethingHost.nativeView`)。 */
 export interface NativeViewBridge {
+  /** Capability negotiation also permits a renderer to outlive an older main process. */
+  readonly nativePopup?: boolean
   send(message: NativeViewRequest): void
   /** 返回退订。订阅者卸载时必须调用,否则重挂之后旧回调还挂在 ipcRenderer 上。 */
   on(handler: (message: NativeViewPush) => void): () => void

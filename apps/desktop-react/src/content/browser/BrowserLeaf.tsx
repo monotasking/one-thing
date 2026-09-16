@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, Ellipsis, Plus, RotateCw, X } from '../../components/icons'
 import { FocusScope } from '../../focus/FocusScope'
 import { focusTree } from '../../focus/registry'
+import { focusElement } from '../../focus/target'
 import { IconButton } from '../../ui/IconButton'
 import { Input } from '../../ui/Input'
 import { useT } from '../../i18n'
@@ -193,7 +194,7 @@ export function BrowserLeaf({ id }: { id: string }) {
     const el = addressInput()
     if (!el) return
     // ui-consume-allow: focus-outside-focus — 作用域内部的移动(判词见上一段)
-    el.focus()
+    focusElement(el)
     el.select()
   }, [])
 
@@ -219,7 +220,7 @@ export function BrowserLeaf({ id }: { id: string }) {
      * `browser` 这一格上,这一句只是把它从占位格 / 地址栏交给查找行那只输入框。
      * 判词与这只文件上面 `focusAddress` 那一段逐字相同。
      */
-    el.focus()
+    focusElement(el)
     el.select()
   }, [])
 
@@ -228,7 +229,7 @@ export function BrowserLeaf({ id }: { id: string }) {
     const input = findInputRef.current
     if (input) {
       /* ui-consume-allow: focus-outside-focus — 同上:作用域内部的移动。 */
-      input.focus()
+      focusElement(input)
       input.select()
       return
     }
@@ -240,7 +241,7 @@ export function BrowserLeaf({ id }: { id: string }) {
     findFocusWanted.current = false
     // 键盘还给那片页面(占位格就是它的落点)。
     // ui-consume-allow: focus-outside-focus — 作用域内部的移动(判词同上)
-    slotRef.current?.focus()
+    focusElement(slotRef.current)
   }, [id])
 
   const respondPermission = useCallback((requestId: string, allow: boolean) => {
@@ -268,7 +269,7 @@ export function BrowserLeaf({ id }: { id: string }) {
     void browserOps.navigate.run({ tabId: id, url })
     // 回车之后键盘回到页面里:人要的是看那一页,不是继续待在地址栏。
     // ui-consume-allow: focus-outside-focus — 作用域内部的移动(判词在 focusAddress 上)
-    slotRef.current?.focus()
+    focusElement(slotRef.current)
   }, [draft, id])
 
   /* ── 此宿主没有内嵌浏览器(`--mode web`)────────────────────────────── */
@@ -420,7 +421,7 @@ export function BrowserLeaf({ id }: { id: string }) {
                   e.stopPropagation()
                   draft.end()
                   // ui-consume-allow: focus-outside-focus — 作用域内部的移动(同上)
-                  slotRef.current?.focus()
+                  focusElement(slotRef.current)
                 }
               }}
               aria-label={t('browser.address')}

@@ -1635,6 +1635,17 @@ async function main() {
         return real(input, init)
       }
     })
+    // Capture the real native menu in this isolated gate process. Its selection
+    // still returns through popup-result and the renderer-owned action callback.
+    await app.evaluate(({ Menu, BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.focus()
+      const popup = Menu.prototype.popup
+      globalThis.__b3bRestorePopup = () => { Menu.prototype.popup = popup }
+      Menu.prototype.popup = function (options) {
+        globalThis.__b3bNativePopup = this
+        return popup.call(this, options)
+      }
+    })
     const menuOpened = await page.evaluate(() => {
       const button = document.querySelector('[data-testid="browser-actions"]')
       if (!(button instanceof HTMLElement)) return false
@@ -1642,22 +1653,27 @@ async function main() {
       return true
     })
     assert(menuOpened, '⑰ 叶檐上那颗 ⋯ 在')
-    const chip = await waitFor('引用 chip 落进输入框', async () => {
-      const ok = await page.evaluate(() => {
-        const item = [...document.querySelectorAll('[role="menuitem"]')].find((el) =>
-          /交给对话|Give this page/.test(el.textContent ?? ''),
-        )
-        if (!(item instanceof HTMLElement)) return null
-        item.click()
+    await waitFor('原生菜单动作选中', () =>
+      app.evaluate(({ BrowserWindow }) => {
+        const menu = globalThis.__b3bNativePopup
+        if (!menu) return false
+        const item = menu.items.find(item => /交给对话|Give this page/.test(item.label))
+        if (!item) return false
+        globalThis.__b3bNativePopup = undefined
+        const window = BrowserWindow.getAllWindows()[0]
+        item.click(item, window, {})
+        menu.closePopup(window)
+        globalThis.__b3bRestorePopup?.()
         return true
-      })
-      if (!ok) return undefined
-      return page.evaluate(() => {
+      }),
+    )
+    const chip = await waitFor('引用 chip 落进输入框', () =>
+      page.evaluate(() => {
         const input = document.querySelector('[data-testid="composer-input"]')
         const token = input?.querySelector('[data-token^="{{page:"]')
         return token ? token.getAttribute('data-token') : undefined
-      })
-    })
+      }),
+    )
     assert(
       chip === `{{page:${two[0].id}}}`,
       `⑰ 输入框里那枚 chip 代表的是这一格 tab(${chip})`,

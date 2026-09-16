@@ -60,7 +60,7 @@
 
 import fs from 'node:fs'
 import nodePath from 'node:path'
-import { WebContentsView, app, ipcMain, session, type BrowserWindow } from 'electron'
+import { Menu, WebContentsView, app, ipcMain, session, type BrowserWindow } from 'electron'
 import type { OnethingBackend } from '@onething/backend'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
 import {
@@ -80,6 +80,8 @@ import {
 } from './profiles.js'
 import { NativeViewLayout, type NativeViewHost } from './layout.js'
 import { installNativeViewIpc } from './native-view-ipc.js'
+import { NativeFocus } from './native-focus.js'
+import { NativePopup } from './native-popup.js'
 import { applyAppMenuSpec, configureAppMenuCommandSender } from '../app-menu-install.js'
 import { BrowserResourceProvider, type BrowserOps, type BrowserTabView } from './resource-provider.js'
 import { BrowserSessionPolicy, type BrowserSessionLike } from './session-policy.js'
@@ -109,8 +111,29 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
 
   const push = (message: NativeViewPush): void => {
     if (window.isDestroyed()) return
+    if (message.kind === 'focus') {
+      if (popup.open || !window.isFocused()) return
+      message = { ...message, revision: nativeFocus.revision }
+    }
     window.webContents.send(NATIVE_VIEW_CHANNEL, message)
   }
+
+  const nativeFocus = new NativeFocus(viewId => {
+    if (window.isDestroyed() || !window.isFocused()) return
+    if (viewId === null) {
+      if (!window.webContents.isFocused()) window.webContents.focus()
+    } else {
+      const tab = service.get(viewId)
+      if (tab?.nativeView && layout.isVisible(viewId)) tab.focus()
+    }
+  })
+  const popup = new NativePopup(items => {
+    const menu = Menu.buildFromTemplate(items)
+    return {
+      popup: args => menu.popup({ ...args, window }),
+      closePopup: () => menu.closePopup(window),
+    }
+  }, push, open => nativeFocus.suspend(open))
 
   // `contentView` 就是 `NativeViewHost`(结构上逐格对上)—— 这一处 cast 是本模块里
   // 「结构化端口」与真 Electron 对接的那一道缝,全部五处 cast 都集中在这只文件里。
@@ -129,7 +152,7 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
    * 与壳侧 `focus/window-focus.ts`):焦点在壳与 WebContentsView 之间换手时窗口不 blur,
    * 只有用户真的离开这扇窗(Cmd-Tab / 点了别的窗)才推这一发。
    */
-  const onWindowBlur = (): void => { push({ kind: 'window-blur' }) }
+  const onWindowBlur = (): void => { popup.close(); push({ kind: 'window-blur' }) }
   window.on('blur', onWindowBlur)
   /** 每格 tab 一份「摘 keymap 监听」的退订。 */
   const keymapOff = new Map<string, () => void>()
@@ -326,7 +349,13 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
     },
     occlude: viewId => { void layout.occlude(viewId) },
     unocclude: viewId => { layout.unocclude(viewId) },
-    focus: viewId => { service.get(viewId)?.focus() },
+    focus: (viewId, revision) => { nativeFocus.request(viewId, revision) },
+    focusShell: revision => { nativeFocus.request(null, revision) },
+    popup: request => {
+      if (window.isFocused()) popup.show(request)
+      else push({ kind: 'popup-result', requestId: request.requestId })
+    },
+    popupClose: requestId => { popup.close(requestId) },
     keymap: (chords, menu) => {
       keymap.setBoundChords(chords)
       /*
@@ -339,7 +368,7 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
     // 查找是视图状态,所以它走这条通道而不是资源面(判词在协议那两条上)。
     find: request => { service.get(request.viewId)?.findInPage(request.text, { forward: request.forward }) },
     findStop: viewId => { service.get(viewId)?.stopFindInPage() },
-  })
+  }, event => (event as { sender?: unknown })?.sender === window.webContents)
 
   /*
    * 设置里那一格 CDP 开关 → `<store>/run/cdp.json`(B2′,§9-4)。
@@ -388,6 +417,8 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
       offCdpSettings()
       offProfiles()
       offIpc()
+      popup.close()
+      nativeFocus.dispose()
       /*
        * 菜单的推送口(K4)。排在 `offIpc()` 之后、别的一切之前:这一刻起菜单上
        * 点一下只记一行 debug,而菜单本身**不拆** —— 它是 `app` 级的,比这块地长命。
