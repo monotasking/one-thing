@@ -4,6 +4,7 @@ import { DockPage } from './DockPage'
 import { OpenPage } from './OpenPage'
 import { BrowserSettings } from './BrowserSettings'
 import { NetworkSettings } from './NetworkSettings'
+import { SearchSettings } from './SearchSettings'
 import { PermissionGrants } from './PermissionGrants'
 import { Section } from './Section'
 import { KeymapSettings } from '../KeymapSettings'
@@ -27,7 +28,7 @@ import type { MessageKey } from '../../i18n'
  * 真机门那一屏也是照着这张表的 id 逐页点过去的。
  *
  * ── `layout` 这一格答的是「这一页的内容自己管不管滚动」 ────────────────────
- *  · `'form'` —— 单列表单,外面那层给内边距、给 `overflow: auto`(今天七页);
+ *  · `'form'` —— 单列表单,外面那层给内边距、给 `overflow: auto` (今天八页);
  *  · `'fill'` —— 内容吃满整页、自己管滚动,页这一层不加内边距也不滚
  *    (今天只有模型服务:`ProviderSettingsPanel` 的 `.panel` 是 `height: 100%`)。
  * 它是**页自述的一格数据**,不是外壳里的一句 `if (id === 'models')`。
@@ -38,6 +39,7 @@ export type SettingsPageId =
   | 'appearance'
   | 'dock'
   | 'open'
+  | 'search'
   | 'browser'
   | 'network'
   | 'permissions'
@@ -54,7 +56,7 @@ export interface SettingsPageSpec {
 
 /**
  * 次序判据照旧是「**用户想改的是哪件事**」,从最常改的往最少改的排:
- * 通用 → 模型服务 → 外观 → Dock → 打开方式 → 内置浏览器 → 网络代理 → 已授权 → 快捷键。
+ * 通用 → 模型服务 → 外观 → Dock → 打开方式 → 搜索 → 内置浏览器 → 网络代理 → 已授权 → 快捷键。
  *
  * 模型服务排第二而不是最后:它是这台产品里改得最勤的一页(换家、换模型、
  * 贴一把新密钥),而「已授权」与「快捷键」是**看一眼就走**的两页。
@@ -71,9 +73,23 @@ export const SETTINGS_PAGES: readonly SettingsPageSpec[] = [
   { id: 'dock', titleKey: 'settings.sectionDock', layout: 'form', render: () => <DockPage /> },
   { id: 'open', titleKey: 'dock.openWith', layout: 'form', render: () => <OpenPage /> },
   /*
-   * 下面三页各自只有一节,所以节标与页标题是同一句话 —— 但**节仍然画**:
-   * 一页里将来多一节时不必回头补,而且 `<h3>` 是这三块面里辅助技术唯一的层级锚。
+   * 下面四页各自只有一节,所以节标与页标题是同一句话 —— 但**节仍然画**:
+   * 一页里将来多一节时不必回头补,而且 `<h3>` 是这几块面里辅助技术唯一的层级锚。
+   *
+   * 「搜索」排在「打开方式」与「内置浏览器」之间:前面五页是**每天都在改**的东西,
+   * 它和内置浏览器一样是「配一次就不再看」的一页;而它排在浏览器前面,是因为搜索
+   * 是这台产品每天都在用的能力,浏览器不是。
    */
+  {
+    id: 'search',
+    titleKey: 'settings.sectionSearch',
+    layout: 'form',
+    render: () => (
+      <Section titleKey="settings.sectionSearch">
+        <SearchSettings />
+      </Section>
+    ),
+  },
   {
     id: 'browser',
     titleKey: 'settings.sectionBrowser',

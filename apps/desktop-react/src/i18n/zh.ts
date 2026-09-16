@@ -1051,6 +1051,28 @@ export const zh = {
   'permission.effect.external-agent': '调用外部 agent',
   'permission.effect.ui_change': '改界面',
   'permission.effect.browser_navigate': '让内置浏览器去一个地址',
+  /* ── 搜索 · 语义召回(content/settings/SearchSettings.tsx;设计
+   * docs/design/search-index-2026-09.md §15)────────────────────────────────
+   * 「开了会怎样」那句是**会造成后果的告知**(下 110MB、后台占 CPU),所以它是文案
+   * 不是数据,双语成对。模型 id 是数据(嵌入器注册表的键),不进这里。
+   * 八句状态各说一个态,判据在 `data/search-settings-source.ts` 的 `semanticPhaseOf`。 */
+  'settings.sectionSearch': '搜索',
+  'search.semanticLabel': '按含义找',
+  'search.semanticHint':
+    '打开后会下载约 110 MB 的模型,并在后台给全部消息建一份向量索引;全程只在本机算,不上传。按字面找一直都开着,不受这一格影响。',
+  'search.semanticLoadFailed': '搜索设置拉不到',
+  'search.semanticSaveFailed': '这一格没能存上',
+  'search.semanticStatusUnknown': '检查中…',
+  'search.semanticStatusUnsupported': '这个版本不带语义召回的运行时,开不了。',
+  'search.semanticStatusDisabled': '未启用',
+  'search.semanticStatusStarting': '正在启动…',
+  'search.semanticStatusDownloading': '正在下载模型…',
+  'search.semanticStatusEmbedding': '正在建立索引…',
+  'search.semanticStatusEmbeddingCount': '正在建立索引,还有 {count} 条。',
+  'search.semanticStatusReady': '就绪',
+  'search.semanticStatusFailed': '没跑起来。原因在日志里(log/app.jsonl,search.index.worker)。',
+  'search.semanticModelLabel': '模型',
+  'search.semanticModelHint': '在本机运行的多语言小模型。今天只有这一档。',
   /* ── 内置浏览器(B2′:content/settings/BrowserSettings.tsx)──────────────────
    * 「开着会有什么后果」那两句是**会造成后果的警告**,所以它们是文案不是数据,
    * 双语成对。端口是数据,由 `{port}` 插进来 —— 换一门语言它不该变。 */

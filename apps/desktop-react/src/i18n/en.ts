@@ -882,6 +882,25 @@ export const en: Record<MessageKey, string> = {
   'permission.effect.external-agent': 'Call an external agent',
   'permission.effect.ui_change': 'Change the interface',
   'permission.effect.browser_navigate': 'Send the built-in browser somewhere',
+  /* ── search · semantic recall (content/settings/SearchSettings.tsx) ─────── */
+  'settings.sectionSearch': 'Search',
+  'search.semanticLabel': 'Find by meaning',
+  'search.semanticHint':
+    'Downloads a model of about 110 MB and builds a vector index over every message in the background. It all runs on this machine — nothing is uploaded. Finding by wording stays on regardless.',
+  'search.semanticLoadFailed': 'Could not load the search settings',
+  'search.semanticSaveFailed': 'That setting did not save',
+  'search.semanticStatusUnknown': 'Checking…',
+  'search.semanticStatusUnsupported': 'This build does not include the semantic-recall runtime.',
+  'search.semanticStatusDisabled': 'Off',
+  'search.semanticStatusStarting': 'Starting…',
+  'search.semanticStatusDownloading': 'Downloading the model…',
+  'search.semanticStatusEmbedding': 'Building the index…',
+  'search.semanticStatusEmbeddingCount': 'Building the index, {count} left.',
+  'search.semanticStatusReady': 'Ready',
+  'search.semanticStatusFailed':
+    'It did not start. The reason is in the log (log/app.jsonl, search.index.worker).',
+  'search.semanticModelLabel': 'Model',
+  'search.semanticModelHint': 'A small multilingual model that runs on this machine. One choice today.',
   /* ── built-in browser (B2′: content/settings/BrowserSettings.tsx) ───────── */
   'settings.sectionBrowser': 'Built-in browser',
   'settings.sectionNetwork': 'Network proxy',

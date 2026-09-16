@@ -945,6 +945,7 @@ async function main() {
       'appearance',
       'dock',
       'open',
+      'search',
       'browser',
       'network',
       'permissions',
