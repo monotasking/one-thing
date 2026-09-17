@@ -20,6 +20,17 @@ interface Entry {
 
 const registry = new Map<string, Entry>()
 
+/**
+ * 每份文档上次滚到哪儿(计划抽屉关了再开、切会话回来、清单面板切走切回都接着看)。
+ * 只在内存里:重启应用回到顶部是可以接受的,跨重启记它不值一格存档。
+ */
+const scrolls = new Map<string, number>()
+
+export const todoScrollPorts = {
+  read: (ref: string): number | undefined => scrolls.get(ref),
+  write: (ref: string, top: number): void => { scrolls.set(ref, top) },
+}
+
 function acquire(ref: string, view: TodoDocumentView): EditorDocument {
   const existing = registry.get(ref)
   if (existing) {
@@ -83,6 +94,7 @@ export function useTodoEditorDocument(ref: string): TodoEditorDocumentState {
 export function resetTodoDocuments(): void {
   for (const entry of registry.values()) void entry.document.dispose()
   registry.clear()
+  scrolls.clear()
 }
 
 if (import.meta.hot) {

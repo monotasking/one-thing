@@ -72,6 +72,8 @@ export class EditorDocument {
   private waitingServer: { content: string; revision: string; external: boolean } | null = null
   private readonly listeners = new Set<(change: DocumentChange) => void>()
   private disposed = false
+  /** 最近一次提交被判冲突、本地那批改动没能落盘(只报一次,见 `takeLostEdits`)。 */
+  private lostEdits = false
   /** 外部改动带来的新行,屏幕据它闪一下。键是行号,值是出现的时刻。 */
   readonly recentlyChanged = new Map<number, number>()
 
@@ -138,6 +140,7 @@ export class EditorDocument {
       .then(result => {
         if (result.conflict) {
           this.pending = []
+          this.lostEdits = true
           this.channel.requestReload()
         } else if (result.revision) {
           // 后端确认的那一份 = 本地此刻(若期间又攒了新改动,它们还在 pending 里,基于这一版继续发)。
@@ -162,6 +165,16 @@ export class EditorDocument {
         }
       })
     return this.inflight
+  }
+
+  /**
+   * 上一次提交冲突时本地有没有丢掉没落盘的改动。**读一次就清**:它只回答「接下来这一次
+   * 后端版本到达时,编辑区里那段字是不是还没存过」—— 除此之外,编辑区里的字一定已经在文件里了。
+   */
+  takeLostEdits(): boolean {
+    const lost = this.lostEdits
+    this.lostEdits = false
+    return lost
   }
 
   dispose(): Promise<void> {

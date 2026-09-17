@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -119,8 +120,13 @@ async function writeFileEnsured(filePath: string, content: string): Promise<void
 
 // A write the store performs itself already broadcasts through notifyChanged.
 // The file watcher would see that same write land on disk and broadcast a second
-// time, so self-writes are remembered briefly and skipped by the watcher.
-const SELF_WRITE_TTL_MS = 2_000
+// time, so self-writes are remembered and skipped by the watcher — **by content, not
+// by time**. The old rule skipped every change to that path for 2 seconds after our
+// own write, which swallowed a real external write (an AI tool, another editor) that
+// landed inside the window; the UI then kept the stale copy and its next edit wrote
+// the stale lines back into the file (09-17, reproduced on a real machine). The window
+// below only bounds how long a memo is kept, it no longer decides anything.
+const SELF_WRITE_TTL_MS = 10_000
 
 /** Directory lookup is a pure query; it does not require opening a writable store. */
 export function resolveOnethingTodoPlanDirectory(storePath: string, configuredDirectory?: string): string {
@@ -132,35 +138,43 @@ export function resolveOnethingTodoPlanDirectory(storePath: string, configuredDi
 }
 
 export class OnethingTodoPlanStore {
-  private readonly selfWrites = new Map<string, number>()
+  /** `content: null` = we deleted it (the echo is "the file is gone"). */
+  private readonly selfWrites = new Map<string, { content: string | null; at: number }>()
 
   constructor(private readonly options: OnethingTodoPlanStoreOptions) {}
 
-  private markSelfWrite(filePath: string): void {
+  private markSelfWrite(filePath: string, content: string | null): void {
     const now = Date.now()
-    for (const [key, at] of this.selfWrites) {
-      if (now - at > SELF_WRITE_TTL_MS) this.selfWrites.delete(key)
+    for (const [key, memo] of this.selfWrites) {
+      if (now - memo.at > SELF_WRITE_TTL_MS) this.selfWrites.delete(key)
     }
-    this.selfWrites.set(path.resolve(filePath), now)
+    this.selfWrites.set(path.resolve(filePath), { content, at: now })
   }
 
+  /** The file on disk is still exactly what we last wrote there (so the watcher event is our own echo). */
   wasSelfWrite(filePath: string): boolean {
-    const at = this.selfWrites.get(path.resolve(filePath))
-    if (at === undefined) return false
-    if (Date.now() - at > SELF_WRITE_TTL_MS) {
-      this.selfWrites.delete(path.resolve(filePath))
+    const key = path.resolve(filePath)
+    const memo = this.selfWrites.get(key)
+    if (!memo) return false
+    if (Date.now() - memo.at > SELF_WRITE_TTL_MS) {
+      this.selfWrites.delete(key)
       return false
     }
-    return true
+    try {
+      return readFileSync(key, 'utf8') === memo.content
+    } catch {
+      // Unreadable = absent: that is our echo only if what we did was delete it.
+      return memo.content === null
+    }
   }
 
   private async writeOwn(filePath: string, content: string): Promise<void> {
-    this.markSelfWrite(filePath)
+    this.markSelfWrite(filePath, content)
     await writeFileEnsured(filePath, content)
   }
 
   private async unlinkOwn(filePath: string): Promise<void> {
-    this.markSelfWrite(filePath)
+    this.markSelfWrite(filePath, null)
     await fs.unlink(filePath).catch(() => {})
   }
 
@@ -296,7 +310,7 @@ export class OnethingTodoPlanStore {
   async deleteSessionAiTodo(sessionId: string): Promise<void> {
     if (!sessionId) return
     const directory = path.dirname(this.sessionAiTodoPath(sessionId))
-    this.markSelfWrite(this.sessionAiTodoPath(sessionId))
+    this.markSelfWrite(this.sessionAiTodoPath(sessionId), null)
     await fs.rm(directory, { recursive: true, force: true }).catch(() => {})
   }
 

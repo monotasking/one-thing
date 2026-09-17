@@ -81,6 +81,19 @@ interface UnitRowProps {
 }
 
 /**
+ * 光标要滚进的那一层:从文档往上找**第一个真在滚动**的祖先(`overflow-y` 是 auto / scroll)。
+ * 从前取的是直接父元素(实验台里恰好是滚动容器),而计划抽屉与清单面板的滚动层隔着两层,
+ * 于是回车、打字、⌘↑↓ 之后光标跑出视野、容器一动不动(09-17 真机)。都没有就交给整页。
+ */
+function nearestScroller(from: HTMLElement | null): HTMLElement | null {
+  for (let el = from?.parentElement ?? null; el; el = el.parentElement) {
+    const overflow = getComputedStyle(el).overflowY
+    if (overflow === 'auto' || overflow === 'scroll') return el
+  }
+  return (document.scrollingElement as HTMLElement | null) ?? null
+}
+
+/**
  * 一项。内容元素的子节点**只经 `innerHTML`**:渲染态在这里写,编辑态由控制器写。
  * memo 的键是这一项的原文 + 是否在编辑 + 是否刚被改过 —— 打字只重画那一格。
  */
@@ -181,7 +194,7 @@ export function EditableDoc({ document, mode, label, addLabel, checkLabel, densi
         const element = contents.current.get(start)
         return element?.isConnected ? element : null
       },
-      scroller: () => containerRef.current?.closest<HTMLElement>('[data-scroll-root]') ?? containerRef.current?.parentElement ?? null,
+      scroller: () => nearestScroller(containerRef.current),
       commit: () => flushSync(() => bump()),
     }
     return new CaretController(document, dom, {

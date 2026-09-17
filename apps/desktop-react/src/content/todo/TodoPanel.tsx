@@ -28,7 +28,8 @@ import { REVEAL_MODES } from '../editing/reveal'
 import { openFileInCurrentTarget } from '../viewer/open-target'
 import { useTodoPreferences } from './preferences'
 import { TodoDocView } from './TodoDocView'
-import { useTodoEditorDocument } from './todo-document'
+import { todoScrollPorts, useTodoEditorDocument } from './todo-document'
+import { useScrollMemory } from '../../ui/scroll-memory'
 import s from './TodoPanel.module.css'
 
 /**
@@ -170,13 +171,16 @@ export function TodoPanel() {
 
 function NoteBody({ note }: { note: TodoNoteSummary }) {
   const t = useT()
-  const { document, error } = useTodoEditorDocument(todoNoteRef(note.id))
+  const ref = todoNoteRef(note.id)
+  const { document, error } = useTodoEditorDocument(ref)
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const { onScroll } = useScrollMemory(scrollRef, ref, todoScrollPorts)
   return (
-    <div className={s.body}>
+    <div ref={scrollRef} className={s.body} onScroll={onScroll}>
       {error && !document && (
         <p className={s.notice}>
           {t('todo.readFailed')}{' '}
-          <Button size="sm" onClick={() => void todoDocumentFamily.get(todoNoteRef(note.id)).refetch()}>{t('todo.retry')}</Button>
+          <Button size="sm" onClick={() => void todoDocumentFamily.get(ref).refetch()}>{t('todo.retry')}</Button>
         </p>
       )}
       {document && <TodoDocView document={document} density="panel" owner={`note:${note.id}`} />}

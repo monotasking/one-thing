@@ -4,6 +4,7 @@ import { DocHistory, type EditKind, type HistoryEntry } from './doc-history'
 import type { EditorDocument } from './editor-document'
 import { analyzeUnit, type Analysis } from './inline-tokens'
 import { paint, type PaintClasses } from './paint'
+import { splitValueAt } from './split'
 import { canonicalPosition, insideGroups, REVEAL_POLICIES, sourceToView, viewToSource, type RevealMode } from './reveal'
 import {
   continuedPrefix,
@@ -294,7 +295,8 @@ export class CaretController {
     const scroller = this.dom.scroller()
     if (!a || !ed || !scroller) return
     const rect = rectAt(ed, sourceToView(a.vis, a.focus))
-    const box = scroller.getBoundingClientRect()
+    // 整页滚动时量的是视口,不是整篇文档那只盒子。
+    const box = scroller === document.scrollingElement ? { top: 0, bottom: window.innerHeight } : scroller.getBoundingClientRect()
     const pad = 8
     if (rect.bottom > box.bottom - pad) scroller.scrollTop += rect.bottom - box.bottom + pad
     else if (rect.top < box.top + pad) scroller.scrollTop -= box.top + pad - rect.top
@@ -321,6 +323,15 @@ export class CaretController {
     const spanChanged = next.length !== a.span
     a.span = next.length
     this.doc.setLines(lines)
+    // 这一行改完之后不再是原来那一种单元了(比如标题删掉了空格变成段落):按新形重新打开,
+    // 否则编辑区还按旧形画,文字会整行消失、光标丢掉(09-17 真机)。
+    const reparsed = parseUnits(this.doc.lines).find(u => u.start === a.start)
+    if (!reparsed || reparsed.type !== a.unit.type) {
+      const keep = { anchor: a.anchor, focus: a.focus }
+      this.dom.commit()
+      this.open(a.start, keep.anchor, keep.focus)
+      return
+    }
     if (spanChanged) this.dom.commit()
   }
 
@@ -338,7 +349,7 @@ export class CaretController {
     a.sticky = undefined
     a.goalX = undefined
     this.writeThrough()
-    this.refresh(true)
+    if (this.active === a) this.refresh(true)
   }
 
   /** 不显示记号档:内容被删空的元素连记号一起拿掉(刚用 ⌘B 插进来、光标还夹在中间的那一对留着)。 */
@@ -390,28 +401,23 @@ export class CaretController {
     const a = this.active
     if (!a) return
     const unit = a.unit
-    const pos = a.focus
     if (isList(unit)) {
       if (!a.value.trim()) {
         if (unit.indent > 0) { this.indent(-1); return }
-        const previous = this.neighbour(-1)
-        const next = this.neighbour(1)
-        this.withLines(lines => { lines.splice(unit.start, 1) })
-        if (previous) this.open(previous.start, 'end')
-        else if (next) this.open(next.start - 1, 0)
-        else this.close()
+        this.removeEmptyUnit(unit)
         return
       }
+      const { left, right } = splitValueAt(a.analysis, a.value, a.focus)
       this.withLines(lines => {
-        lines.splice(unit.start, 1, prefixOf(unit) + a.value.slice(0, pos), continuedPrefix(unit) + a.value.slice(pos).replace(/^\s+/, ''))
+        lines.splice(unit.start, 1, prefixOf(unit) + left.replace(/\s+$/, ''), continuedPrefix(unit) + right.replace(/^\s+/, ''))
       })
       this.open(unit.start + 1, 0)
       return
     }
     if (unit.type === 'heading') {
       const head = a.value.match(/^#{1,6}\s+/)?.[0] ?? ''
-      const at = Math.max(pos, head.length)
-      this.withLines(lines => { lines.splice(unit.start, 1, a.value.slice(0, at), `- [ ] ${a.value.slice(at).replace(/^\s+/, '')}`) })
+      const { left, right } = splitValueAt(a.analysis, a.value, Math.max(a.focus, head.length))
+      this.withLines(lines => { lines.splice(unit.start, 1, left.replace(/\s+$/, ''), `- [ ] ${right.replace(/^\s+/, '')}`) })
       this.open(unit.start + 1, 0)
       return
     }
@@ -429,16 +435,44 @@ export class CaretController {
     this.open(start, keep.anchor, keep.focus)
   }
 
-  /** 行首退格:空项删掉 → 标题 / 引用降成段落 → 缩进的项退一层 → 并到上一项 → 列表项变段落。 */
+  /**
+   * 删掉一个空的列表项,光标去上一项末尾(没有上一项就去下一项开头)。
+   * 夹在两个空行之间的项,连它前面那一个空行一起拿掉 —— 否则松散列表里会留下两连空行。
+   */
+  private removeEmptyUnit(unit: Unit): void {
+    const previous = this.neighbour(-1)
+    const next = this.neighbour(1)
+    let removedAbove = 0
+    this.withLines(lines => {
+      const before = unit.start - 1
+      const after = unit.end + 1
+      const blankAround = before >= 0 && !lines[before].trim() && (after >= lines.length || !lines[after].trim())
+      const from = blankAround ? before : unit.start
+      removedAbove = unit.start - from
+      lines.splice(from, unit.end - from + 1)
+    })
+    if (previous) this.open(previous.start, 'end')
+    else if (next) this.open(next.start - (unit.end - unit.start + 1) - removedAbove, 0)
+    else this.close()
+  }
+
+  /**
+   * 行首退格。规则与项在第几个位置无关(09-17 用户报「删除」:同一个动作,第一项是去记号、
+   * 其余项是直接并进上一项,勾选状态跟着丢):
+   *  1. 缩进的列表项先退一层;空的列表项整项删掉;
+   *  2. 有字的列表项 / 标题 / 引用:先去掉行首记号,变成段落,光标留在开头;
+   *  3. 段落:并进上一个有字的单元的末尾,中间的空行一起拿掉(空行是分隔,不是一个能停光标的东西);
+   *     上一个是代码块就只拿掉空行。
+   */
   private backspaceAtStart(): void {
     const a = this.active
     if (!a) return
     const unit = a.unit
-    const previous = this.neighbour(-1)
-    const bare = a.value.replace(/^(#{1,6}\s+|>\s?)/, '')
-    if (!bare.length && previous) {
-      this.withLines(lines => { lines.splice(unit.start, unit.end - unit.start + 1) })
-      this.open(previous.start, 'end')
+    if (isList(unit)) {
+      if (unit.indent > 0) { this.indent(-1); return }
+      if (!a.value.trim()) { this.removeEmptyUnit(unit); return }
+      this.withLines(lines => { lines[unit.start] = a.value })
+      this.open(unit.start, 0)
       return
     }
     if (unit.type === 'heading' || unit.type === 'quote') {
@@ -448,37 +482,83 @@ export class CaretController {
       this.open(unit.start, 0)
       return
     }
-    if (isList(unit) && unit.indent > 0) { this.indent(-1); return }
-    if (previous && (isList(previous) || previous.type === 'para') && (isList(unit) || unit.type === 'para')) {
-      const previousValue = editValueOf(previous, this.doc.lines)
-      const text = a.value.split('\n').join(' ')
-      this.withLines(lines => {
-        lines.splice(previous.end, 1, isList(previous) ? prefixOf(previous) + previousValue + text : lines[previous.end] + text)
-        lines.splice(unit.start, unit.end - unit.start + 1)
-      })
-      this.open(previous.start, previousValue.length)
+    if (unit.type !== 'para') return
+    const previous = this.neighbour(-1)
+    if (!previous) {
+      if (unit.start === 0) return
+      const gap = unit.start
+      this.withLines(lines => { lines.splice(0, gap) })
+      this.open(0, 0)
       return
     }
-    if (isList(unit)) {
-      this.withLines(lines => { lines[unit.start] = a.value })
-      this.open(unit.start, 0)
+    if (previous.type === 'code') {
+      const gap = unit.start - previous.end - 1
+      if (!gap) return
+      this.withLines(lines => { lines.splice(previous.end + 1, gap) })
+      this.open(unit.start - gap, 0)
+      return
     }
+    const previousValue = editValueOf(previous, this.doc.lines)
+    const appended = isMultiline(previous) ? a.value : a.value.split('\n').join(' ')
+    this.withLines(lines => {
+      lines.splice(previous.start, unit.end - previous.start + 1, ...linesFromEdit(previous, previousValue + appended))
+    })
+    this.open(previous.start, previousValue.length)
   }
 
-  /** 行尾 Delete:把下一项的文字并进来,光标不动。 */
+  /** 行尾 Delete:把下一个有字的单元的文字并上来(去掉它的行首记号,中间的空行一起拿掉),光标不动。 */
   private deleteAtEnd(): void {
     const a = this.active
     if (!a) return
     const unit = a.unit
+    if (unit.type === 'code') return
     const next = this.neighbour(1)
-    if (!next || !(isList(next) || next.type === 'para') || !(isList(unit) || unit.type === 'para')) return
+    if (!next) return
     const keep = a.focus
-    const nextValue = editValueOf(next, this.doc.lines).split('\n').join(' ')
+    if (next.type === 'code') {
+      const gap = next.start - unit.end - 1
+      if (!gap) return
+      this.withLines(lines => { lines.splice(unit.end + 1, gap) })
+      this.open(unit.start, keep)
+      return
+    }
+    const raw = editValueOf(next, this.doc.lines)
+    const bare = next.type === 'heading' || next.type === 'quote'
+      ? raw.split('\n').map(line => line.replace(/^(#{1,6}\s+|>\s?)/, '')).join('\n')
+      : raw
+    const appended = isMultiline(unit) ? bare : bare.split('\n').join(' ')
     this.withLines(lines => {
-      lines.splice(next.start, next.end - next.start + 1)
-      lines[unit.end] = lines[unit.end] + nextValue
+      lines.splice(unit.start, next.end - unit.start + 1, ...linesFromEdit(unit, a.value + appended))
     })
     this.open(unit.start, keep)
+  }
+
+  /** 粘贴多行进一个列表项:第一行接在光标处,其余每行各成一项(自带列表记号的行照它自己的写)。 */
+  private pasteLines(text: string): boolean {
+    const a = this.active
+    if (!a || !isList(a.unit) || !text.includes('\n')) return false
+    const unit = a.unit
+    const pasted = text.replace(/\r\n/g, '\n').split('\n').filter(line => line.trim())
+    if (pasted.length < 2) return false
+    const lo = Math.min(a.anchor, a.focus)
+    const hi = Math.max(a.anchor, a.focus)
+    const head = a.value.slice(0, lo)
+    const tail = a.value.slice(hi)
+    const LIST = /^\s*([-*+]\s+(\[[ xX]\]\s+)?|\d+[.)]\s+)/
+    const rest = pasted.slice(1).map(line => (LIST.test(line) ? line : continuedPrefix(unit) + line.trim()))
+    const lastIndex = rest.length - 1
+    const caretInLast = rest[lastIndex].length
+    rest[lastIndex] = rest[lastIndex] + tail
+    this.withLines(lines => {
+      lines.splice(unit.start, 1, prefixOf(unit) + head + pasted[0].replace(LIST, ''), ...rest)
+    })
+    const lastLine = unit.start + rest.length
+    const lastUnit = parseUnits(this.doc.lines).find(u => u.start === lastLine)
+    if (lastUnit) {
+      const prefixLength = isList(lastUnit) ? this.doc.lines[lastLine].length - editValueOf(lastUnit, this.doc.lines).length : 0
+      this.open(lastLine, Math.max(0, caretInLast - prefixLength))
+    }
+    return true
   }
 
   /** 点勾选框:只翻那一格;正在编辑时原地保留光标。 */
@@ -782,7 +862,7 @@ export class CaretController {
         return
       case 'insertFromPaste':
       case 'insertFromDrop':
-        this.replaceRange(lo, hi, text, 'struct')
+        if (!this.pasteLines(text)) this.replaceRange(lo, hi, text, 'struct')
         return
       case 'insertLineBreak':
       case 'insertParagraph':
@@ -790,6 +870,9 @@ export class CaretController {
         return
       case 'deleteContentBackward': {
         if (lo !== hi) { this.replaceRange(lo, hi, ''); return }
+        // 光标还在标题 / 引用的行首记号里(`## ` 展开着):不一个字一个字地删记号,整体降成段落。
+        const prefix = a.analysis.groups.find(g => g.kind === 'prefix' && g.start === 0)
+        if (prefix && a.focus <= prefix.end) { this.backspaceAtStart(); return }
         const cluster = this.visibleCluster(a, -1)
         if (cluster) this.replaceRange(cluster[0], cluster[1], '')
         else this.backspaceAtStart()
@@ -932,8 +1015,11 @@ export class CaretController {
   /* ── 外部改动:正在编辑的那一项按原文找回来 ──────────────────────────── */
 
   private rebaseAfterServerChange(previous: readonly string[]): void {
+    // 撤销栈里存的是外部改动之前的整份原文:留着的话 ⌘Z 会把别人(AI)刚写的东西一起撤掉。
+    this.history.clear()
     const a = this.active
     if (!a) return
+    const lostEdits = this.doc.takeLostEdits()
     const mine = previous.slice(a.start, a.start + a.span)
     const found = locate(this.doc.lines, { start: a.start, expect: mine, lines: mine })
     if (found.ok) {
@@ -947,14 +1033,30 @@ export class CaretController {
         return
       }
     }
-    // 那几行被别人改了或删了:把人正在改的这一段放回原处,不让刚打的字消失。
-    const lines = this.doc.lines.slice()
-    const at = Math.min(a.start, lines.length)
-    lines.splice(at, 0, ...linesFromEdit(a.unit, a.value))
-    a.start = at
-    this.doc.setLines(lines)
-    this.options.onActiveChange?.(a.start)
+    /*
+     * 那几行被别人改了或删了。**后端版本为准**:走到这里时本地改动一定已经落盘(文档只在
+     * 没有待发改动时才接后端版本),编辑区里的字文件里本来就有过 —— 从前在这里把它「放回原处」,
+     * 等于把别人刚删掉 / 改掉的内容当新行写回文件(09-17 真机:清单里多出一整行重复)。
+     * 唯一要救的是**冲突时没存进去**、而新文件里也确实找不到的那段字。
+     */
+    const text = a.value.trim()
+    if (lostEdits && text && !this.doc.lines.some(line => line.includes(text))) {
+      const lines = this.doc.lines.slice()
+      const at = Math.min(a.start, lines.length)
+      lines.splice(at, 0, ...linesFromEdit(a.unit, a.value))
+      a.start = at
+      this.doc.setLines(lines)
+      this.options.onActiveChange?.(a.start)
+      this.dom.commit()
+      this.refresh(true)
+      return
+    }
+    const units = parseUnits(this.doc.lines)
+    const target = units.find(u => u.end >= a.start) ?? units[units.length - 1]
+    const focus = a.focus
     this.dom.commit()
-    this.refresh(true)
+    if (target) this.open(target.start, focus)
+    else this.close()
   }
+
 }

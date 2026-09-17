@@ -147,9 +147,10 @@ export function TodoLab() {
       await at('## 待修', 3); input('deleteContentBackward'); if (!ctl()?.snapshot()) lost++
       check(`${tag}｜回车 / 退格之后光标还在`, lost === 0, `丢失 ${lost} 次`)
       // 6 行首退格并入上一项、行尾 Delete 并入下一项
-      await at('跑一遍', 0); input('deleteContentBackward'); const merged1 = ctl()?.snapshot()?.value ?? ''
+      // 行首退格两步:先去掉勾选框变段落,再并进上一项(与项排第几无关)。
+      await at('跑一遍', 0); input('deleteContentBackward'); input('deleteContentBackward'); const merged1 = ctl()?.snapshot()?.value ?? ''
       await at('确认备份**，再动手', 11); input('deleteContentForward'); const merged2 = ctl()?.snapshot()?.value ?? ''
-      check(`${tag}｜行首退格并入上一项、行尾 Delete 并入下一项`, merged1.includes('再动手跑一遍') && merged2.includes('再动手跑一遍'), `${merged1.slice(-12)} | ${merged2.slice(-12)}`)
+      check(`${tag}｜行首退格两步并入上一项、行尾 Delete 并入下一项`, merged1.includes('再动手跑一遍') && merged2.includes('再动手跑一遍'), `${merged1.slice(-12)} | ${merged2.slice(-12)}`)
       // 7 跨项撤销
       await at('只保留最近', 5); input('insertText', '甲'); key('Enter'); input('insertText', '乙')
       key('z', { metaKey: true }); key('z', { metaKey: true }); key('z', { metaKey: true })
@@ -193,7 +194,7 @@ export function TodoLab() {
       )}
       <MessageTasksDemo />
       <ConfirmHost />
-      <div data-lab-doc="" data-scroll-root="" style={{ maxWidth: width === 'drawer' ? '640px' : '340px', maxHeight: '560px', overflow: 'auto', background: 'var(--surface-2)', padding: 'var(--sp-4)', borderRadius: 'var(--r-3)' }}>
+      <div data-lab-doc="" style={{ maxWidth: width === 'drawer' ? '640px' : '340px', maxHeight: '560px', overflow: 'auto', background: 'var(--surface-2)', padding: 'var(--sp-4)', borderRadius: 'var(--r-3)' }}>
         <EditableDoc
           key={generation}
           document={document}

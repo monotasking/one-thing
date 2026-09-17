@@ -12,6 +12,11 @@ describe('计划条读法', () => {
     expect(summarizePlan('# 空\n\n正文').total).toBe(0)
   })
 
+  it('词中间的下划线是字,不是强调', () => {
+    expect(plainTaskText('NA 的 elcc_holiday_tranfer deflect')).toBe('NA 的 elcc_holiday_tranfer deflect')
+    expect(plainTaskText('一个 _斜体_ 与 __粗体__')).toBe('一个 斜体 与 粗体')
+  })
+
   it('纯文字去掉链接、强调、行内码与转义', () => {
     expect(plainTaskText('看[文档](https://x.y) *里* 的 ~~旧~~ \\* 号')).toBe('看文档 里 的 旧 * 号')
   })

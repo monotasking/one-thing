@@ -186,6 +186,13 @@ function createEntryQuery<T>(
   let state = freshEntry<T>()
   let running: { promise: Promise<void>; force: boolean; abort: AbortController } | undefined
   let inflight = false
+  /**
+   * 在飞那一发**出发之后**又有人说「变了」。那一发的答案是变化之前取的,不能当作
+   * 「已经对过账」—— 它落定之后还得再问一次(09-17 待办真机报障:应用刚写完一份清单、
+   * 自己那条事件引起的重读还在路上,紧接着外部把文件写回原样,这一句标脏被并进了
+   * 在飞那一发,界面就一直停在旧内容上,下一次编辑把旧内容当新行写回了文件)。
+   */
+  let staleWhileRunning = false
   const listeners = new Set<() => void>()
 
   /**
@@ -289,7 +296,12 @@ function createEntryQuery<T>(
         // 所以这一刻 `running` 一定还是自己(时序与加信号之前逐字相同)。
         running = undefined
         inflight = false
+        if (staleWhileRunning) {
+          staleWhileRunning = false
+          state = { ...state, dirty: true }
+        }
         emit()
+        if (state.dirty && listeners.size > 0 && !abort.signal.aborted) void start(true)
       }
     })()
 
@@ -339,6 +351,8 @@ function createEntryQuery<T>(
     },
     invalidate() {
       state = { ...state, dirty: true }
+      // 在飞的那一发是这次变化之前出发的:记一笔,等它落定再问(见 `staleWhileRunning`)。
+      if (running) { staleWhileRunning = true; return }
       // 有人在看就后台补拉(**不清屏**);没人看就留着脏标记,下次 ensure 会问。
       if (listeners.size > 0) void start(true)
       else emit()

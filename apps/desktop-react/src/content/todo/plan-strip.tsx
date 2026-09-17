@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { PLAN_JUST_DONE_MS } from '../../components/motion'
 import type { ComposerStrip, StripBarModel } from '../../composer/strip'
 import { useQuery } from '../../data/kernel'
@@ -8,7 +8,8 @@ import { Button } from '../../ui/Button'
 import { openFileInCurrentTarget } from '../viewer/open-target'
 import { newlyDone, summarizePlan } from './plan-model'
 import { TodoDocView } from './TodoDocView'
-import { useTodoEditorDocument } from './todo-document'
+import { todoScrollPorts, useTodoEditorDocument } from './todo-document'
+import { useScrollMemory } from '../../ui/scroll-memory'
 import s from './PlanStrip.module.css'
 
 /**
@@ -86,17 +87,27 @@ function useJustDone(sessionId: string, doneTexts: readonly string[] | null): st
 }
 
 function PlanDrawer({ sessionId }: { sessionId: string }) {
-  const t = useT()
   const { view, document } = useTodoEditorDocument(todoSessionRef(sessionId))
   if (!document) return null
+  return <PlanDrawerBody sessionId={sessionId} filePath={view?.filePath} document={document} />
+}
+
+function PlanDrawerBody({ sessionId, filePath, document }: {
+  sessionId: string
+  filePath: string | undefined
+  document: NonNullable<ReturnType<typeof useTodoEditorDocument>['document']>
+}) {
+  const t = useT()
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const { onScroll } = useScrollMemory(scrollRef, todoSessionRef(sessionId), todoScrollPorts)
   return (
     <div className={s.drawer} aria-label={t('todo.plan.drawerLabel')} role="region">
-      <div className={s.doc}>
+      <div ref={scrollRef} className={s.doc} onScroll={onScroll}>
         <TodoDocView document={document} density="drawer" owner={`plan:${sessionId}`} />
       </div>
-      {view?.filePath && (
+      {filePath && (
         <div className={s.footer}>
-          <Button size="sm" onClick={() => openFileInCurrentTarget(view.filePath)}>
+          <Button size="sm" onClick={() => openFileInCurrentTarget(filePath)}>
             {t('todo.openSource')}
           </Button>
         </div>

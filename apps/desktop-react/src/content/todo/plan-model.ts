@@ -19,8 +19,10 @@ export interface PlanSummary {
 export function plainTaskText(markdown: string): string {
   return markdown
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/(\*\*|__|~~)(.+?)\1/g, '$2')
-    .replace(/(\*|_)(.+?)\1/g, '$2')
+    .replace(/(\*\*|~~)(.+?)\1/g, '$2')
+    .replace(/\*(.+?)\*/g, '$1')
+    // 下划线只在词边界上才是强调(`elcc_real_product` 里的下划线是字,09-17 真机被吞掉过)。
+    .replace(/(^|[^\p{L}\p{N}_])(__?)(?=\S)(.+?)\2(?![\p{L}\p{N}_])/gu, '$1$3')
     .replace(/`([^`]*)`/g, '$1')
     .replace(/\\([\\`*_{}[\]()#+\-.!~])/g, '$1')
     .trim()

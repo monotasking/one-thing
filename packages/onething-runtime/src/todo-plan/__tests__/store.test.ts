@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -59,6 +59,20 @@ describe('OnethingTodoPlanStore', () => {
     })).rejects.toThrow('session-ai-todo content is empty')
 
     expect(await pathExists(path.join(root, 'sessions'))).toBe(false)
+  })
+
+  it('treats a watcher event as our own echo only while the file still holds what we wrote', async () => {
+    const store = createStore()
+    const document = await store.updateDocument({
+      scope: 'session-ai-todo',
+      sessionId: 'session-a',
+      content: '- [ ] one\n',
+    })
+    expect(store.wasSelfWrite(document.filePath)).toBe(true)
+    // Another writer (an AI tool) lands inside the old 2-second window: that is not our echo.
+    await writeFile(document.filePath, '- [ ] one\n- [ ] two\n')
+    expect(store.wasSelfWrite(document.filePath)).toBe(false)
+    expect(store.wasSelfWrite(path.join(root, 'sessions', 'other', 'ai-todo.md'))).toBe(false)
   })
 
   it('creates the session AI todo only when it is written with content', async () => {

@@ -312,6 +312,24 @@ describe('ensure / invalidate 的边界', () => {
     expect(fetcher).toHaveBeenCalledTimes(2)
   })
 
+  it('在飞时再标脏:那一发落定之后**再问一次**(它的答案是变化之前取的)', async () => {
+    let answer = 'old'
+    let release: () => void = () => undefined
+    const fetcher = vi.fn(() => new Promise<string[]>(resolve => { const now = answer; release = () => resolve([now]) }))
+    const q = createQuery<string[]>('t.inv3', fetcher)
+    q.subscribe(() => undefined)
+    const first = q.refetch()
+    answer = 'new'
+    q.invalidate() // 外部在这一刻改了数据
+    release()
+    await first
+    await Promise.resolve()
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    release()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(q.get().data).toEqual(['new'])
+  })
+
   it('有订阅者时 invalidate 后台补拉', async () => {
     const fetcher = vi.fn(async () => ['a'])
     const q = createQuery<string[]>('t.inv2', fetcher)
