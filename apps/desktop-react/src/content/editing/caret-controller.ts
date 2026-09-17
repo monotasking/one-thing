@@ -48,6 +48,11 @@ export interface CaretControllerOptions {
   readonly classes: PaintClasses
   /** 编辑开始 / 结束(视图据它认领键、画行底)。 */
   readonly onActiveChange?: (start: number | null) => void
+  /**
+   * 此刻**收起**的单元(起始行)。折叠小节、「已完成」收起都是视图事实,原文一个字不动 ——
+   * 光标只在看得见的单元之间走,结构编辑也不许吃掉看不见的行(待办 B 形 U4)。缺席 = 全都看得见。
+   */
+  readonly hidden?: () => ReadonlySet<number>
 }
 
 interface ActiveState {
@@ -75,6 +80,8 @@ type Bias = 'low' | 'high'
 
 /** 渲染态 HTML 缓存上限(一份几百行的清单足够;超了整份清掉重来,不做 LRU 记账)。 */
 const RESTING_CACHE_LIMIT = 2000
+
+const EMPTY_SET: ReadonlySet<number> = new Set()
 
 const MARK_OF = { strong: '**', emphasis: '*', code: '`' } as const
 type MarkKind = keyof typeof MARK_OF
@@ -387,12 +394,53 @@ export class CaretController {
     this.doc.setLines(lines)
   }
 
+  private hiddenSet(): ReadonlySet<number> {
+    return this.options.hidden?.() ?? EMPTY_SET
+  }
+
+  /** 看得见的单元(光标能停的那些)。 */
+  private visibleUnits(): Unit[] {
+    const hidden = this.hiddenSet()
+    const units = parseUnits(this.doc.lines)
+    return hidden.size ? units.filter(u => !hidden.has(u.start)) : units
+  }
+
+  /** 上一个 / 下一个**看得见的**单元:导航与「光标落到哪」都问它。 */
   private neighbour(delta: -1 | 1): Unit | undefined {
     const a = this.active
     if (!a) return undefined
+    const hidden = this.hiddenSet()
     const units = parseUnits(this.doc.lines)
     const index = units.findIndex(u => u.start === a.start)
-    return units[index + delta]
+    for (let i = index + delta; i >= 0 && i < units.length; i += delta) if (!hidden.has(units[i].start)) return units[i]
+    return undefined
+  }
+
+  /**
+   * 紧挨着的那一个单元(不管看不看得见)。结构合并问它:紧挨着的是收起的单元时**不合并**,
+   * 只拿掉中间的空行 —— 并进去就等于把看不见的行一起删了(与上一个是代码块同一种处置)。
+   */
+  private adjacent(delta: -1 | 1): { unit: Unit; hidden: boolean } | undefined {
+    const a = this.active
+    if (!a) return undefined
+    const units = parseUnits(this.doc.lines)
+    const unit = units[units.findIndex(u => u.start === a.start) + delta]
+    return unit ? { unit, hidden: this.hiddenSet().has(unit.start) } : undefined
+  }
+
+  /**
+   * 正在编辑的那一项被收起了(勾完之后的停留时间到了、外部改动、刚折叠了它所在的小节):
+   * 就近重开下一个看得见的单元,没有就上一个,都没有就关。视图每次提交之后调一次。
+   */
+  ensureVisible(): void {
+    const a = this.active
+    if (!a || !this.hiddenSet().has(a.start)) return
+    const units = this.visibleUnits()
+    const next = units.find(u => u.start > a.start)
+    if (next) { this.open(next.start, 0); return }
+    const previous = [...units].reverse().find(u => u.start < a.start)
+    if (previous) this.open(previous.start, 'end')
+    else this.close()
   }
 
   /* ── 结构编辑(每一条都交回一个光标)───────────────────────────────────── */
@@ -483,7 +531,8 @@ export class CaretController {
       return
     }
     if (unit.type !== 'para') return
-    const previous = this.neighbour(-1)
+    const before = this.adjacent(-1)
+    const previous = before?.unit
     if (!previous) {
       if (unit.start === 0) return
       const gap = unit.start
@@ -491,7 +540,7 @@ export class CaretController {
       this.open(0, 0)
       return
     }
-    if (previous.type === 'code') {
+    if (previous.type === 'code' || before?.hidden) {
       const gap = unit.start - previous.end - 1
       if (!gap) return
       this.withLines(lines => { lines.splice(previous.end + 1, gap) })
@@ -512,10 +561,11 @@ export class CaretController {
     if (!a) return
     const unit = a.unit
     if (unit.type === 'code') return
-    const next = this.neighbour(1)
+    const after = this.adjacent(1)
+    const next = after?.unit
     if (!next) return
     const keep = a.focus
-    if (next.type === 'code') {
+    if (next.type === 'code' || after?.hidden) {
       const gap = next.start - unit.end - 1
       if (!gap) return
       this.withLines(lines => { lines.splice(unit.end + 1, gap) })
@@ -785,7 +835,7 @@ export class CaretController {
     const a = this.active
     if (!a) return
     if (extend) { a.focus = toEnd ? a.value.length : 0; a.goalX = undefined; this.refresh(false); return }
-    const units = parseUnits(this.doc.lines)
+    const units = this.visibleUnits()
     const target = toEnd ? units[units.length - 1] : units[0]
     if (target) this.open(target.start, toEnd ? 'end' : 0)
   }
@@ -1051,7 +1101,7 @@ export class CaretController {
       this.refresh(true)
       return
     }
-    const units = parseUnits(this.doc.lines)
+    const units = this.visibleUnits()
     const target = units.find(u => u.end >= a.start) ?? units[units.length - 1]
     const focus = a.focus
     this.dom.commit()

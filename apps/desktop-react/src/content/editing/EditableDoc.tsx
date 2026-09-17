@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { flushSync } from 'react-dom'
+import { ChevronRight } from '../../components/icons'
 import { LINE_CHANGED_MS } from '../../components/motion'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { Checkbox } from '../../ui/Checkbox'
@@ -12,6 +13,7 @@ import inlineStyles from '../blocks/inline/InlineRun.module.css'
 import shellStyles from '../blocks/shell/BlockShell.module.css'
 import { CaretController, type EditorDom } from './caret-controller'
 import type { EditorDocument } from './editor-document'
+import type { FoldRow } from './fold-row'
 import type { PaintClasses } from './paint'
 import type { RevealMode } from './reveal'
 import { isList, parseUnits, type ListUnit, type Unit } from './units'
@@ -33,7 +35,9 @@ import s from './EditableDoc.module.css'
  *   卸载  —— 控制器 dispose;文档的 flush 由持有文档的一层负责。
  * ② UI 生命状态
  *   空文档 → 只有「+ 添加一项」;ready → 块;编辑中 → 那一项换成编辑区,其余不动;
- *   外部改动 → 新出现的行淡底一次(`--dur-line-changed`);超量 → 按行解析每次按键只重画一格。
+ *   外部改动 → 新出现的行淡底一次(`--dur-line-changed`);超量 → 按行解析每次按键只重画一格;
+ *   收起的单元(`hidden`)不画,提示行(`folds`)画在它们该在的位置;刚勾上的那一项先留
+ *   `LINE_CHANGED_MS` 再收(否则点完那一行从鼠标底下跳走)。
  * ③ UI 交互状态
  *   列表行:rest / hover(整行淡底,包住勾选框)/ 编辑中(底色与 hover 同,光标 + 淡灰记号);
  *   标题 / 段落 / 引用:rest / hover 无底只换文字光标 / 编辑中;代码卡:hover 与编辑中边线加深;
@@ -53,7 +57,14 @@ export interface EditableDocProps {
   readonly onEditingChange?: (editing: boolean) => void
   /** 拿到这份文档的光标控制器(外层要「打开第一项」、实验台要读光标时用)。 */
   readonly controllerRef?: { current: CaretController | null }
+  /** 收起的单元(起始行)。视图事实,原文不动;光标跳过它们。 */
+  readonly hidden?: ReadonlySet<number>
+  /** 「收起了一段」的提示行。 */
+  readonly folds?: readonly FoldRow[]
 }
+
+const NO_HIDDEN: ReadonlySet<number> = new Set()
+const NO_FOLDS: readonly FoldRow[] = []
 
 const PAINT_CLASSES: PaintClasses = {
   code: inlineStyles.code,
@@ -169,7 +180,7 @@ const UnitRow = memo(function UnitRow({ unit, active, changed, html, register, o
 }, (a, b) => a.text === b.text && a.active === b.active && a.changed === b.changed && a.html === b.html
   && a.unit.type === b.unit.type && a.unit.start === b.unit.start && a.checkLabel === b.checkLabel)
 
-export function EditableDoc({ document, mode, label, addLabel, checkLabel, density = 'panel', onEditingChange, controllerRef }: EditableDocProps): ReactNode {
+export function EditableDoc({ document, mode, label, addLabel, checkLabel, density = 'panel', onEditingChange, controllerRef, hidden = NO_HIDDEN, folds = NO_FOLDS }: EditableDocProps): ReactNode {
   const lines = useSyncExternalStore(
     useCallback((notify: () => void) => document.subscribe(notify), [document]),
     () => document.lines,
@@ -182,6 +193,13 @@ export function EditableDoc({ document, mode, label, addLabel, checkLabel, densi
   modeRef.current = mode
   const editingRef = useRef(onEditingChange)
   editingRef.current = onEditingChange
+  /*
+   * 刚勾上的项在场再留一会儿:行号 → 勾的时刻。到点由定时器重渲一次,那一刻它才进 `hidden`。
+   * 只认勾选框这一条路 —— 折叠一节、外部改动收起的单元当场收,那是人要的结果不是副作用。
+   */
+  const lingering = useRef(new Map<number, number>())
+  const lingerTimers = useRef(new Set<ReturnType<typeof setTimeout>>())
+  const hiddenRef = useRef<ReadonlySet<number>>(NO_HIDDEN)
 
   const register = useCallback((start: number, element: HTMLElement | null) => {
     if (element) contents.current.set(start, element)
@@ -199,6 +217,7 @@ export function EditableDoc({ document, mode, label, addLabel, checkLabel, densi
     }
     return new CaretController(document, dom, {
       mode: () => modeRef.current,
+      hidden: () => hiddenRef.current,
       classes: PAINT_CLASSES,
       onActiveChange: start => {
         setActiveStart(start)
@@ -208,6 +227,17 @@ export function EditableDoc({ document, mode, label, addLabel, checkLabel, densi
   }, [document])
 
   useEffect(() => controller.attach(), [controller])
+
+  useEffect(() => {
+    const timers = lingerTimers.current
+    return () => { for (const timer of timers) clearTimeout(timer); timers.clear() }
+  }, [])
+
+  // 正在编辑的那一项被收起了:下一拍就近换一个看得见的(不在提交里同步开,开一项要同步提交视图)。
+  useEffect(() => {
+    if (controller.activeStart === null || !hiddenRef.current.has(controller.activeStart)) return
+    queueMicrotask(() => controller.ensureVisible())
+  })
 
   useEffect(() => {
     if (!controllerRef) return undefined
@@ -248,10 +278,16 @@ export function EditableDoc({ document, mode, label, addLabel, checkLabel, densi
   const units = useMemo(() => parseUnits(lines), [lines])
   const now = Date.now()
   for (const [line, at] of document.recentlyChanged) if (now - at > LINE_CHANGED_MS) document.recentlyChanged.delete(line)
+  for (const [line, at] of lingering.current) if (now - at >= LINE_CHANGED_MS) lingering.current.delete(line)
+  const effectiveHidden = lingering.current.size && hidden.size
+    ? new Set([...hidden].filter(line => !lingering.current.has(line)))
+    : hidden
+  hiddenRef.current = effectiveHidden
+  const visibleUnits = effectiveHidden.size ? units.filter(u => !effectiveHidden.has(u.start)) : units
 
   const onMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement
-    if (target.closest('[data-check]') || target.closest('[data-add]')) return
+    if (target.closest('[data-check]') || target.closest('[data-add]') || target.closest('[data-fold]')) return
     const row = target.closest<HTMLElement>('[data-unit]') ?? nearestRow(containerRef.current, event.clientY)
     const handled = controller.handlePointerDown(event.nativeEvent, row ? Number(row.dataset.unit) : null)
     if (handled) event.preventDefault()
@@ -263,7 +299,7 @@ export function EditableDoc({ document, mode, label, addLabel, checkLabel, densi
       // 文档本身拿着焦点(键盘 Tab 进来):↵ / ↓ 进第一项,↑ 进最后一项。
       if (event.target !== containerRef.current) return
       if (event.key === 'Enter' || event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        const target = event.key === 'ArrowUp' ? units[units.length - 1] : units[0]
+        const target = event.key === 'ArrowUp' ? visibleUnits[visibleUnits.length - 1] : visibleUnits[0]
         if (target) { event.preventDefault(); controller.open(target.start, event.key === 'ArrowUp' ? 'end' : 0) }
       }
       return
@@ -271,11 +307,37 @@ export function EditableDoc({ document, mode, label, addLabel, checkLabel, densi
     controller.handleKeyDown(event.nativeEvent)
   }
 
-  const onToggle = useCallback((line: number) => controller.toggleTask(line), [controller])
+  const onToggle = useCallback((line: number) => {
+    lingering.current.set(line, Date.now())
+    const timer = setTimeout(() => { lingerTimers.current.delete(timer); bump() }, LINE_CHANGED_MS)
+    lingerTimers.current.add(timer)
+    controller.toggleTask(line)
+  }, [controller])
+
+  const foldsAt = new Map<number, FoldRow[]>()
+  const lastLine = units.length ? units[units.length - 1].start : -1
+  for (const fold of folds) {
+    const at = fold.at > lastLine ? Number.POSITIVE_INFINITY : fold.at
+    foldsAt.set(at, [...(foldsAt.get(at) ?? []), fold])
+  }
+  const foldRow = (fold: FoldRow) => (
+    <ButtonBase
+      key={`fold:${fold.key}`}
+      className={cx(s.fold, INDENT_CLASS[Math.min(3, fold.depth ?? 0)])}
+      data-fold={fold.key}
+      aria-expanded={fold.open}
+      onClick={fold.onToggle}
+    >
+      <ChevronRight className={s.foldIcon} data-open={fold.open} strokeWidth={1.75} aria-hidden="true" />
+      {fold.label}
+    </ButtonBase>
+  )
 
   const rows: ReactNode[] = []
+  const emitFolds = (line: number) => { for (const fold of foldsAt.get(line) ?? []) rows.push(foldRow(fold)) }
   for (let index = 0; index < units.length;) {
     const unit = units[index]
+    emitFolds(unit.start)
     const row = (u: Unit) => {
       const text = lines.slice(u.start, u.end + 1).join('\n')
       return (
@@ -296,18 +358,22 @@ export function EditableDoc({ document, mode, label, addLabel, checkLabel, densi
       const ordered = unit.type === 'ordered'
       const items: ReactNode[] = []
       const first = unit.start
-      while (index < units.length && isList(units[index]) && (units[index].type === 'ordered') === ordered) {
-        items.push(row(units[index]))
+      // 一行提示行落在列表中间:列表在那里断开,提示行不是一个列表项。
+      while (index < units.length && isList(units[index]) && (units[index].type === 'ordered') === ordered
+        && (units[index].start === first || !foldsAt.has(units[index].start))) {
+        if (!effectiveHidden.has(units[index].start)) items.push(row(units[index]))
         index++
       }
+      if (items.length === 0) continue
       rows.push(ordered
         ? <ol key={`ol:${first}`} className={listStyles.list} data-prose="text">{items}</ol>
         : <ul key={`ul:${first}`} className={listStyles.list} data-prose="text">{items}</ul>)
       continue
     }
-    rows.push(row(unit))
+    if (!effectiveHidden.has(unit.start)) rows.push(row(unit))
     index++
   }
+  emitFolds(Number.POSITIVE_INFINITY)
 
   return (
     /* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions --

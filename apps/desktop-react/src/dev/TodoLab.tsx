@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { CaretController } from '../content/editing/caret-controller'
 import { EditableDoc } from '../content/editing/EditableDoc'
 import { EditorDocument } from '../content/editing/editor-document'
@@ -13,6 +13,8 @@ import { MessageTasksDemo } from './todo-lab-message'
 import { configureTodoPort, resetTodoSource } from '../data/todo-source'
 import { LAB_PLAN_SESSION, TodoLabPort } from './todo-lab-port'
 import { Segmented } from '../ui/Segmented'
+import type { FoldRow } from '../content/editing/fold-row'
+import { todoViewOf } from '../content/todo/todo-view'
 
 /**
  * `?todo-lab`:待办编辑器实验台(dev 工具页,不进产品路由)。
@@ -77,6 +79,27 @@ export function TodoLab() {
   const [rows, setRows] = useState<Row[]>([])
   const modeRef = useRef(mode)
   modeRef.current = mode
+  /*
+   * 收起的单元(B 形 U4):「已完成收起」与折叠「待修 bug」一节两个开关,算法与待办窗是同一只
+   * `todoViewOf`。自测里直接拨这几格,拨完等两拍再量。
+   */
+  const [view, setView] = useState({ collapseDone: false, doneOpen: false, foldBug: false })
+  const lines = useSyncExternalStore(
+    useCallback((notify: () => void) => document.subscribe(notify), [document]),
+    () => document.lines,
+  )
+  const todoView = useMemo(() => todoViewOf(lines, {
+    showDone: !view.collapseDone,
+    doneOpen: new Set(view.doneOpen ? [''] : []),
+    folded: new Set(view.foldBug ? ['待修 bug'] : []),
+  }), [lines, view])
+  const folds = useMemo<FoldRow[]>(() => todoView.folds.map(f => ({
+    key: f.key,
+    at: f.at,
+    open: f.kind === 'done' ? f.open : false,
+    label: f.kind === 'done' ? `已完成 ${f.count} 项` : `${f.remaining} 项未完成`,
+    onToggle: () => setView(v => (f.kind === 'done' ? { ...v, doneOpen: !v.doneOpen } : { ...v, foldBug: !v.foldBug })),
+  })), [todoView])
 
   const runSuite = async () => {
     const results: Row[] = []
@@ -168,6 +191,34 @@ export function TodoLab() {
       setWidth('drawer'); await tick(); await tick()
       check(`${tag}｜窄宽度折行项里 ↑↑↓↓↓↑ 回到原位`, e9 === s9, `${s9} → ${e9}`)
     }
+
+    // ── 收起的单元(B 形 U4,元素档跑一次)──────────────────────────────────
+    await setModeNow('element')
+    const lines0 = TODO_LAB_ORIGINAL.split('\n')
+    const lineOf = (find: string) => lines0.findIndex(line => line.includes(find))
+    const setViewNow = async (next: { collapseDone: boolean; doneOpen: boolean; foldBug: boolean }) => { setView(next); await tick(); await tick() }
+    // 10 ↓ / ⌘↓ 跳过收起的项:已完成收起时标题上 ↓ 越过那一行勾完的;折起一节时 ⌘↓ 停在标题
+    //    (这一节后面没有别的标题,折叠盖到文末,引用也在里面 —— 与 Typora 按标题折叠同一个范围)
+    await setViewNow({ collapseDone: true, doneOpen: false, foldBug: false })
+    await at('待修 bug', 2); key('ArrowDown')
+    const down10 = ctl()?.snapshot()?.start
+    await setViewNow({ collapseDone: false, doneOpen: false, foldBug: true })
+    await at('实现自动化', 0); key('ArrowDown', { metaKey: true })
+    const end10 = ctl()?.snapshot()?.start
+    check('收起｜↓ / ⌘↓ 跳过收起的项', down10 === lineOf('重启服务前先') && end10 === lineOf('待修 bug'), `${down10} / ${end10}`)
+    // 11 已完成收起时,紧挨着收起项的那一项行首退格两次:去记号,但不并进看不见的那一行
+    await setViewNow({ collapseDone: true, doneOpen: false, foldBug: false })
+    await at('重启服务前先', 0); input('deleteContentBackward'); input('deleteContentBackward')
+    const text11 = controllerDocText()
+    check('收起｜已完成收起时退格合并不吃隐藏行', text11.includes(lines0[lineOf('git rev-parse')]) && text11.split('\n').length === lines0.length && !!ctl()?.snapshot(), where())
+    // 12 展开「已完成」、光标放进那一项,再收起:光标就近落到下一个看得见的项,不丢
+    await setViewNow({ collapseDone: true, doneOpen: true, foldBug: false })
+    await at('git rev-parse', 2)
+    await setViewNow({ collapseDone: true, doneOpen: false, foldBug: false })
+    await tick()
+    const s12 = ctl()?.snapshot()
+    check('收起｜展开再收起,光标不丢', s12?.start === lineOf('重启服务前先'), where())
+    await setViewNow({ collapseDone: false, doneOpen: false, foldBug: false })
     setRows(results)
     ;(globalThis as { __todoLabResults?: Row[] }).__todoLabResults = results
   }
@@ -185,6 +236,8 @@ export function TodoLab() {
         <Button data-lab-suite="" onClick={() => void runSuite()}>run suite</Button>
         <Button data-lab-ai-check="" onClick={() => labPort.checkNext()}>AI 勾一项</Button>
         <Button onClick={() => labPort.reset()}>plan reset</Button>
+        <Button onClick={() => setView(v => ({ ...v, collapseDone: !v.collapseDone }))}>{view.collapseDone ? 'show done' : 'collapse done'}</Button>
+        <Button onClick={() => setView(v => ({ ...v, foldBug: !v.foldBug }))}>{view.foldBug ? 'unfold 待修' : 'fold 待修'}</Button>
       </div>
       {portReady && <PlanStripDemo />}
       {portReady && (
@@ -204,6 +257,8 @@ export function TodoLab() {
           addLabel="添加一项"
           checkLabel={done => (done ? 'uncheck' : 'check')}
           controllerRef={controllerRef}
+          hidden={todoView.hidden}
+          folds={folds}
         />
       </div>
       {rows.length > 0 && (

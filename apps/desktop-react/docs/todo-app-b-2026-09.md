@@ -151,3 +151,11 @@ stripHeader?: ComponentType<{ contentRef: ContentRef; placement: 'strip' | 'inli
 - 门:根 typecheck(node + desktop)0;壳 vitest 375 文件 / 6048;backend todo 34;eslint 0;`ui:consume` / `squeeze-gate` / `motion-gate` 基线内;`boundary:gate` 0;`gate:a11y` 绿。
 - **U1 验收里两道真机门没绿,红的都不是这一笔**:`gate:layout` 崩在 `sceneRestart` 右键 `diff` 瓦找「Right」—— `diff` 早已是启动瓦(`content/diff-launcher.tsx`),菜单里没有落点那一排,与门文件头记的 terminal / browser 同一个病;`gate:focus` 场景 4 两红是 `5762ae671` 记档的存量,场景 12 点 `expose-search-row` 超时(会话总览,本笔零改动;没有跑干净基线对照)。已起独立任务。
 - 没做 / 挪到后面:叶里两格时「头画在正文顶上」那一档只有单测与组件分支,没有真机截图(要拖第二格进待办窗);⋯ 菜单里「显示已完成」归 U5。
+
+### U4(2026-09-17)
+
+- **编辑器**:`EditableDoc` 收 `hidden`(收起的单元起始行)与 `folds`(`editing/fold-row.ts` 的 `FoldRow`:`at` / `label` / `open` / `depth` / `onToggle`);提示行是一颗 `ButtonBase`,落在列表中间时列表在那里断开。刚点勾选框的那一项留 `LINE_CHANGED_MS`(1400ms)再收 —— 真机量:900ms 还在、1600ms 已收。
+- **光标控制器**:选项多一格 `hidden()`。导航与「光标落到哪」问 `neighbour`(只看得见的);结构合并问 `adjacent`(紧挨着的,收起的就**只拿掉空行、不合并**,与上一个是代码块同一种处置);⌘↑↓ 与外部改动后的回落只在看得见的单元里挑;`ensureVisible()` —— 正在编辑的那一项被收起时就近换下一个看得见的(没有就上一个、都没有就关),视图在提交后的下一拍调(不在提交里同步开)。
+- **怎么看**:`content/todo/todo-view.ts` 纯函数 `todoViewOf(lines, { showDone, doneOpen, folded })` → `{ hidden, folds }`;小节 = 二、三级标题,自己的单元到下一个标题、折叠范围到同级或更高级标题;键 = 标题文字。7 条单测。U5 把它接进待办窗与偏好。
+- **实验台** `?todo-lab`:加「collapse done」「fold 待修」两个开关与三条自测,**30 / 30**(离屏真机)。反证:把 `neighbour` / `adjacent` / 文档边缘 / `ensureVisible` 四处的「看得见」拆掉 → 新三条全红、原 27 条不动。第一次跑自测 29/30 是自测写错:「待修 bug」后面没有别的标题,折叠盖到文末,引用也在里面 —— 改成 ↓ 越过勾完的一项 + ⌘↓ 停在标题。
+- 门:壳 tsc 0 / eslint 0 / vitest 6055 / ui:consume / squeeze / motion 基线内。

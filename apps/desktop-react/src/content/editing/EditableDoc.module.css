@@ -157,6 +157,36 @@
 }
 
 /* 外部(AI、别的编辑器)刚改过的那一行。 */
+/* 「收起了一段」的提示行:一颗行内微型文字钮(ButtonBase),字色与「添加一项」同一档。 */
+.fold {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  width: 100%;
+  padding-inline-start: calc(var(--indent-2) - var(--indent-1));
+  text-align: start;
+  color: var(--text-3);
+  font-size: var(--fs-meta);
+  line-height: var(--pr-lh);
+  border-radius: var(--r-1);
+}
+
+.fold:hover {
+  color: var(--text-2);
+  background-color: var(--st-hover);
+}
+
+.foldIcon {
+  flex: none;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  transition: transform var(--dur) var(--ease);
+}
+
+.foldIcon[data-open='true'] {
+  transform: rotate(90deg);
+}
+
 .changed {
   animation: var(--kf-line-changed) var(--dur-line-changed) var(--ease-out);
   border-radius: var(--r-1);
