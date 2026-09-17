@@ -21,10 +21,13 @@ export const TODO_VIEW_DOCS_LIMIT = 200
 
 type SectionTable = Readonly<Record<string, readonly string[]>>
 
-/** 在一份文档的节集合里翻一个键;空了就把这份文档摘掉;最近动过的挪到最后,超了删最早的。 */
-function toggleIn(table: SectionTable, doc: string, section: string): SectionTable {
+/** 在一份文档的节集合里设一个键(`on` 缺省 = 翻转);空了就把这份文档摘掉;最近动过的挪到最后,超了删最早的。 */
+function setIn(table: SectionTable, doc: string, section: string, on?: boolean): SectionTable {
   const current = table[doc] ?? []
-  const next = current.includes(section) ? current.filter(key => key !== section) : [...current, section]
+  const has = current.includes(section)
+  const want = on ?? !has
+  if (want === has && doc in table) return table
+  const next = want ? (has ? current : [...current, section]) : current.filter(key => key !== section)
   const rest = Object.fromEntries(Object.entries(table).filter(([key]) => key !== doc))
   const entries = next.length ? [...Object.entries(rest), [doc, next] as const] : Object.entries(rest)
   return Object.fromEntries(entries.slice(Math.max(0, entries.length - TODO_VIEW_DOCS_LIMIT)))
@@ -59,6 +62,9 @@ interface TodoPreferences {
   setShowDone: (showDone: boolean) => void
   toggleDoneOpen: (doc: string, section: string) => void
   toggleFolded: (doc: string, section: string) => void
+  /** 设成确定的一档(幂等;从搜索结果打开一项要露出来时用,StrictMode 双跑也不翻回去)。 */
+  setDoneOpen: (doc: string, section: string, open: boolean) => void
+  setFolded: (doc: string, section: string, folded: boolean) => void
   setRevealMode: (mode: RevealMode) => void
   /** 换当前清单,并记进「最近」。 */
   setActiveNoteId: (id: string | null) => void
@@ -77,8 +83,10 @@ export const useTodoPreferences = create<TodoPreferences>()(
       folded: {},
       setRevealMode: revealMode => set({ revealMode }),
       setShowDone: showDone => set({ showDone }),
-      toggleDoneOpen: (doc, section) => set(st => ({ doneOpen: toggleIn(st.doneOpen, doc, section) })),
-      toggleFolded: (doc, section) => set(st => ({ folded: toggleIn(st.folded, doc, section) })),
+      toggleDoneOpen: (doc, section) => set(st => ({ doneOpen: setIn(st.doneOpen, doc, section) })),
+      toggleFolded: (doc, section) => set(st => ({ folded: setIn(st.folded, doc, section) })),
+      setDoneOpen: (doc, section, open) => set(st => ({ doneOpen: setIn(st.doneOpen, doc, section, open) })),
+      setFolded: (doc, section, folded) => set(st => ({ folded: setIn(st.folded, doc, section, folded) })),
       setActiveNoteId: activeNoteId => set(st => ({
         activeNoteId,
         recent: activeNoteId ? [activeNoteId, ...st.recent.filter(id => id !== activeNoteId)].slice(0, TODO_RECENT_LIMIT) : st.recent,

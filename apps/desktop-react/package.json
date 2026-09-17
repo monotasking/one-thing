@@ -63,6 +63,7 @@
     "gate:music": "node scripts/gate-music.mjs",
     "gate:terminal": "node scripts/gate-terminal.mjs",
     "gate:browser": "node scripts/gate-browser.mjs",
+    "gate:todo": "node scripts/gate-todo.mjs",
     "gate:changes": "node scripts/gate-changes.mjs"
   },
   "dependencies": {

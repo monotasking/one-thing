@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sectionsOf, todoViewOf, type TodoViewPrefs } from '../todo-view'
+import { sectionsOf, todoViewOf, unhideSteps, type TodoViewPrefs } from '../todo-view'
 
 /**
  * 待办文档怎么看(B 形 U4):小节切分、已完成收起、小节折叠。纯函数,原文一个字不动。
@@ -88,5 +88,21 @@ describe('小节折叠', () => {
     const view = todoViewOf(['## 空', '## 下一节', '- [ ] x'], prefs({ showDone: true, folded: new Set(['空']) }))
     expect(view.folds).toEqual([{ kind: 'section', key: 'section:空', section: '空', at: 1, remaining: 0 }])
     expect(view.hidden.size).toBe(0)
+  })
+})
+
+describe('要露出一行得拨哪几格', () => {
+  it('收起的已完成项:展开它那一节的「已完成」', () => {
+    expect(unhideSteps(DOC, 6, prefs())).toEqual({ unfold: [], openDone: '甲' })
+    expect(unhideSteps(DOC, 1, prefs())).toEqual({ unfold: [], openDone: '' })
+  })
+
+  it('折起来的节盖住它:外层与内层都展开;已完成那一格照样算', () => {
+    expect(unhideSteps(DOC, 9, prefs({ folded: new Set(['甲', '甲下']) }))).toEqual({ unfold: ['甲', '甲下'], openDone: '甲下' })
+  })
+
+  it('本来就看得见:什么都不拨', () => {
+    expect(unhideSteps(DOC, 5, prefs())).toEqual({ unfold: [], openDone: null })
+    expect(unhideSteps(DOC, 6, prefs({ showDone: true }))).toEqual({ unfold: [], openDone: null })
   })
 })

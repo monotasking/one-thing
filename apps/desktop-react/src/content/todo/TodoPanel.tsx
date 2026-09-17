@@ -111,35 +111,20 @@ function NoteBody({ note }: { note: TodoNoteSummary }) {
   const { document, error } = useTodoEditorDocument(ref)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const { onScroll } = useScrollMemory(scrollRef, ref, todoScrollPorts)
-  const reveal = useTodoPanelState(st => st.reveal)
+  const reveal = useTodoPanelState(st => (st.reveal && st.reveal.id === note.id ? st.reveal : null))
   const consumeReveal = useTodoPanelState(st => st.consumeReveal)
 
-  // 从搜索结果打开的那一项:文档与那一行都到场之后才算数,然后把这件事消费掉。
-  useEffect(() => {
-    if (!reveal || reveal.id !== note.id || !document) return
-    const land = () => {
-      const row = scrollRef.current?.querySelector<HTMLElement>(`[data-unit="${reveal.line}"]`)
-      if (!row) return false
-      row.scrollIntoView({ block: 'center' })
-      document.flash([reveal.line])
-      consumeReveal()
-      return true
-    }
-    if (land()) return
-    // 文档刚到手那一拍行还没画出来:下一帧再落一次,仍落不到就算了(那一行已经不在了)。
-    const frame = requestAnimationFrame(() => { if (!land()) consumeReveal() })
-    return () => cancelAnimationFrame(frame)
-  }, [reveal, note.id, document, consumeReveal])
-
   return (
-    <div ref={scrollRef} className={s.body} onScroll={onScroll}>
+    <div ref={scrollRef} className={s.body} onScroll={onScroll} data-todo-body="">
       {error && !document && (
         <p className={s.notice}>
           {t('todo.readFailed')}{' '}
           <Button size="sm" onClick={() => void todoDocumentFamily.get(ref).refetch()}>{t('todo.retry')}</Button>
         </p>
       )}
-      {document && <TodoDocView document={document} density="panel" owner={todoNoteViewKey(note.id)} />}
+      {document && (
+        <TodoDocView document={document} density="panel" owner={todoNoteViewKey(note.id)} reveal={reveal} onRevealed={consumeReveal} />
+      )}
     </div>
   )
 }

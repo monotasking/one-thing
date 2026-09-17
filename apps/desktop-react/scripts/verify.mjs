@@ -346,6 +346,8 @@ run('gate:terminal(dev)', 'npm', ['run', '--silent', 'gate:terminal'])
 run('gate:terminal(prod)', 'npm', ['run', '--silent', 'gate:terminal', '--', '--prod'])
 run('gate:browser(dev)', 'npm', ['run', '--silent', 'gate:browser'])
 run('gate:browser(prod)', 'npm', ['run', '--silent', 'gate:browser', '--', '--prod'])
+run('gate:todo(dev)', 'npm', ['run', '--silent', 'gate:todo'])
+run('gate:todo(prod)', 'npm', ['run', '--silent', 'gate:todo', '--', '--prod'])
 /*
  * gate:changes(改动面,2026-09-13,方案 `docs/changes-panel-2026-09.md` §4)与终端 / 浏览器
  * 两道门同一个价位、同一条理由进得来:自己起壳自己收尸、临时仓零残留,两档各量第五轴

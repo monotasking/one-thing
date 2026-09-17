@@ -104,3 +104,18 @@ export function todoViewOf(lines: readonly string[], prefs: TodoViewPrefs): Todo
   folds.sort((a, b) => a.at - b.at)
   return { hidden, folds, headings }
 }
+
+/**
+ * 要让第 `line` 行露出来得拨哪几格(从搜索结果打开一项时用):盖住它的那几个折起来的节要展开,
+ * 它若是本节里被收起的已完成项,这一节的「已完成」要展开。偏好不动就露得出来 = 两格都空。
+ */
+export function unhideSteps(lines: readonly string[], line: number, prefs: TodoViewPrefs): { unfold: string[]; openDone: string | null } {
+  const sections = sectionsOf(lines)
+  const unfold = sections
+    .filter(section => section.heading && prefs.folded.has(section.key) && line > section.heading.start && line < section.foldEnd)
+    .map(section => section.key)
+  const own = [...sections].reverse().find(section => (section.heading?.start ?? -1) < line)
+  const unit = parseUnits(lines).find(u => u.start === line)
+  const openDone = !prefs.showDone && unit?.type === 'task' && unit.done && own && !prefs.doneOpen.has(own.key) ? own.key : null
+  return { unfold, openDone }
+}

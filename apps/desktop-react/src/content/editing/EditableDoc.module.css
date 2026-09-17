@@ -176,14 +176,20 @@
   background-color: var(--st-hover);
 }
 
-/* 标题前那颗折叠三角:坐在标题左边的留白里,悬停这一行(或它自己拿着键盘焦点、或这一节折着)才显。 */
+/*
+ * 标题前那颗折叠三角:悬停这一行(或它自己拿着键盘焦点、或这一节折着)才显。
+ * 它坐在**标题自己的**左内边距里,不挂到标题外面:挂出去会落到浮窗左缘的缩放把手底下,
+ * 鼠标点不到(B 形 U6 `gate:todo` ④ 真机量出来的:三角中心那一点命中的是 `_hW` 把手)。
+ * 这一格内边距顺带让二、三级标题的字与任务项的勾选框同一列起笔。
+ */
 .foldable {
   position: relative;
+  padding-inline-start: calc(var(--icon-sm) + var(--sp-1));
 }
 
 .headingFold {
   position: absolute;
-  inset-inline-start: calc((var(--icon-sm) + var(--sp-1)) * -1);
+  inset-inline-start: 0;
   top: 50%;
   translate: 0 -50%;
   display: flex;
