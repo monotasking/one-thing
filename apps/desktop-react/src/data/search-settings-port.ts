@@ -1,3 +1,4 @@
+import { searchRouter, type SearchModelResponse } from '@shared/ipc/search'
 import {
   settingsRouter,
   type AppSettings,
@@ -30,6 +31,23 @@ export interface SearchSettingsPort {
   readSettings(): Promise<GetSettingsResponse>
   /** 整份写回。见文件头。 */
   saveSettings(settings: AppSettings): Promise<SaveSettingsResponse>
+  /**
+   * ── 模型那三个动作(2026-09-17)──────────────────────────────────────
+   *
+   * 它们走的是 **`search` 域**,不是 settings —— 模型不是一格设置,它是一件东西
+   * (用户裁定「把开关和下载模型拆开」)。放在这条端口上而不是 `search-port` 上的
+   * 理由与这份文件头第一条相同:**这一页的写路要能被这一页的用例整只换掉**;
+   * `search-port` 是检索面那一族的窄面,它的替身不该顺手替掉这里的三颗钮。
+   *
+   * **读路不在这里**:模型状态跟着 `search.status` 一起回来(`searchStatusQuery`),
+   * 那是同一份真相的同一个产地。
+   *
+   * `download` **不等下完就答**(112.8 MB 冷下 191 秒),回执是起了这一发之后那一刻
+   * 的状态;之后的进度由那只 1s 轮询读。
+   */
+  downloadModel(): Promise<SearchModelResponse>
+  cancelModelDownload(): Promise<SearchModelResponse>
+  removeModel(): Promise<SearchModelResponse>
 }
 
 let port: SearchSettingsPort | undefined
@@ -45,10 +63,14 @@ async function realPort(): Promise<SearchSettingsPort> {
   const { onethingClient, whenConnected } = await import('../platform/connection')
   const client = await onethingClient()
   const api = client.api(settingsRouter)
+  const search = client.api(searchRouter)
   return {
     ready: () => whenConnected(),
     readSettings: () => api.getSettings({}),
     saveSettings: (settings) => api.saveSettings(settings),
+    downloadModel: () => search.semanticModelDownload({}),
+    cancelModelDownload: () => search.semanticModelCancel({}),
+    removeModel: () => search.semanticModelRemove({}),
   }
 }
 

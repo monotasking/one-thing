@@ -1,16 +1,20 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { SearchSettings, statusMessage } from '../SearchSettings'
+import { SearchSettings, downloadRatio, modelHint, statusMessage } from '../SearchSettings'
 import {
   configureSearchSettingsPort,
   type SearchSettingsPort,
 } from '../../../data/search-settings-port'
 import {
+  semanticModelPhaseOf,
   semanticPhaseOf,
   semanticSearchQuery,
-  semanticStatusWorthPolling,
+  semanticStatusPollMs,
   setSemanticSearchEnabledMutation,
   toSemanticSearchView,
+  cancelSemanticModelMutation,
+  downloadSemanticModelMutation,
+  removeSemanticModelMutation,
   type SemanticPhase,
 } from '../../../data/search-settings-source'
 import { resetSearchCatalog } from '../../../data/search-catalog-source'
@@ -45,12 +49,20 @@ const BASE: AppSettings = {
 interface Fake extends SearchSettingsPort {
   settings: AppSettings
   saves: AppSettings[]
+  /** 模型那三颗钮各按过几次(写路证据;回执由 `model` 那一格给)。 */
+  modelCalls: string[]
+  model?: NonNullable<SearchStatusResponse['model']>
 }
 
 function fakePort(settings: AppSettings): Fake {
+  const answer = (op: string) => async () => {
+    fake.modelCalls.push(op)
+    return { success: true, ...(fake.model === undefined ? {} : { model: fake.model }) }
+  }
   const fake: Fake = {
     settings,
     saves: [],
+    modelCalls: [],
     ready: async () => undefined,
     readSettings: async () => ({ success: true, settings: fake.settings }),
     saveSettings: async (next) => {
@@ -58,6 +70,9 @@ function fakePort(settings: AppSettings): Fake {
       fake.settings = next
       return { success: true, settings: next }
     },
+    downloadModel: answer('download'),
+    cancelModelDownload: answer('cancel'),
+    removeModel: answer('remove'),
   }
   return fake
 }
@@ -82,6 +97,9 @@ function stubStatus(status: Partial<SearchStatusResponse>): void {
 const reset = (): void => {
   semanticSearchQuery.reset()
   setSemanticSearchEnabledMutation.reset()
+  downloadSemanticModelMutation.reset()
+  cancelSemanticModelMutation.reset()
+  removeSemanticModelMutation.reset()
   // 索引状态那一格的产地在检索面 —— 归零走它自己那一口,不写第二套。
   resetSearchCatalog()
 }
@@ -136,16 +154,20 @@ describe('八个态(纯函数)', () => {
     expect(semanticPhaseOf(on, status({}))).toBe('starting')
   })
 
-  it('关着 / 装不上时不轮询 —— 那两态下什么都不会动', () => {
-    const idle: SemanticPhase[] = ['disabled', 'unsupported']
-    for (const phase of idle) expect(semanticStatusWorthPolling(phase)).toBe(false)
+  it('轮询三档:下模型 1s / 会动的 5s / 什么都不会动的不问', () => {
+    const idle: SemanticPhase[] = ['disabled', 'unsupported', 'needsModel']
+    for (const phase of idle) expect(semanticStatusPollMs(phase, 'absent')).toBeUndefined()
     const moving: SemanticPhase[] = ['unknown', 'starting', 'downloading', 'embedding', 'ready', 'failed']
-    for (const phase of moving) expect(semanticStatusWorthPolling(phase)).toBe(true)
+    for (const phase of moving) expect(semanticStatusPollMs(phase, 'ready')).toBe(5000)
+    // 正在下模型 = 有一条会走的进度条,**哪一个 phase 都问得更勤**(1s)。
+    for (const phase of [...idle, ...moving]) {
+      expect(semanticStatusPollMs(phase, 'downloading')).toBe(1000)
+    }
   })
 
   it('每个态都说得出一句话,而且 zh / en 两本都译过', () => {
     const phases: SemanticPhase[] = [
-      'unknown', 'unsupported', 'disabled', 'starting',
+      'unknown', 'unsupported', 'needsModel', 'disabled', 'starting',
       'downloading', 'embedding', 'ready', 'failed',
     ]
     for (const phase of phases) {
@@ -298,6 +320,9 @@ describe('这一节(渲染)', () => {
       ready: async () => undefined,
       readSettings: async () => ({ success: false, error: '拉不到' }),
       saveSettings: async () => ({ success: true }),
+      downloadModel: async () => ({ success: true }),
+      cancelModelDownload: async () => ({ success: true }),
+      removeModel: async () => ({ success: true }),
     })
     stubStatus({ vector: 'off' })
     render(<SearchSettings />)
@@ -309,5 +334,150 @@ describe('这一节(渲染)', () => {
     // 设置那一格没答案 → 状态行说「检查中」,不说「未启用」。
     expect(screen.getByTestId('search-semantic-status').textContent)
       .toBe(t('search.semanticStatusUnknown'))
+  })
+})
+
+/**
+ * ══════════════════════════════════════════════════════════════════════════
+ * 模型那一行(2026-09-17;用户裁「把开关和下载模型拆开,另外下载模型要能够知道进度」)
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * 钉住四件事:
+ *  ① **五个态各有各的副文案与各自那一颗钮**(没有一颗钮在两个态里换文案);
+ *  ② **翻开关不再触发下载**:模型没下全时开关禁着,说明行写「先下载模型」;
+ *  ③ **开着的时候永远许关** —— 老用户那一形(`enabled: true` 但模型从没下过)
+ *     不能被锁死;
+ *  ④ 三颗钮各打各的那条写路,乐观那一拍就把屏上那一行改过去。
+ */
+describe('模型那一行', () => {
+  const MODEL = (extra: Partial<NonNullable<SearchStatusResponse['model']>> = {}) => ({
+    id: DEFAULT_SEMANTIC_MODEL_ID,
+    state: 'absent' as const,
+    ...extra,
+  })
+
+  it('五个态各说得出一句话,zh / en 两本都译过', () => {
+    const cases: Array<[Parameters<typeof modelHint>[1], SearchStatusResponse['model']]> = [
+      ['unknown', undefined],
+      ['absent', MODEL({ totalBytes: 118_300_000 })],
+      ['downloading', MODEL({ state: 'downloading', loadedBytes: 40_000_000, totalBytes: 118_300_000 })],
+      ['ready', MODEL({ state: 'ready', loadedBytes: 118_300_000, totalBytes: 118_300_000 })],
+      ['failed', MODEL({ state: 'failed', errorKind: 'network', error: 'fetch failed' })],
+    ]
+    for (const [phase, status] of cases) {
+      const line = modelHint(t, phase, status)
+      expect(line, `${phase} 没话说`).toBeTruthy()
+      expect(line).not.toContain('{')
+    }
+    // 四类原因各查一行,中英成对(与状态行那四句是**两族**:主语不同)。
+    for (const key of [
+      'search.semanticModelFailedNetwork',
+      'search.semanticModelFailedRuntime',
+      'search.semanticModelFailedFiles',
+      'search.semanticModelFailedReason',
+    ] as const) {
+      expect(zh[key]).toContain('{reason}')
+      expect(en[key]).toContain('{reason}')
+    }
+  })
+
+  it('不知道总数就画「不知道进度」那一档,不画一条停在 0% 的槽', () => {
+    expect(downloadRatio(undefined)).toBeUndefined()
+    expect(downloadRatio(MODEL({ state: 'downloading', loadedBytes: 10 }))).toBeUndefined()
+    expect(downloadRatio(MODEL({ state: 'downloading', loadedBytes: 10, totalBytes: 0 }))).toBeUndefined()
+    expect(downloadRatio(MODEL({ state: 'downloading', loadedBytes: 25, totalBytes: 100 }))).toBe(0.25)
+    // 后端的读数偶尔会越过分母(最后一个文件收尾那一拍),夹住而不是画 120%。
+    expect(downloadRatio(MODEL({ state: 'downloading', loadedBytes: 120, totalBytes: 100 }))).toBe(1)
+  })
+
+  it('模型没下:开关**禁着**、说明行写「先下载模型」、状态行不写「未启用」', async () => {
+    configureSearchSettingsPort(fakePort(structuredClone(BASE)))
+    stubStatus({ vector: 'off', model: MODEL({ totalBytes: 118_300_000 }) })
+    render(<SearchSettings />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('search-semantic-status').textContent)
+        .toBe(t('search.semanticStatusNeedsModel'))
+    })
+    expect(screen.getByRole('switch').hasAttribute('disabled')).toBe(true)
+    expect(screen.getByTestId('search-semantic-row').textContent)
+      .toContain(t('search.semanticNeedsModelHint'))
+    expect(screen.getByTestId('search-semantic-model-download')).toBeTruthy()
+  })
+
+  it('开着但模型没下(老用户那一形):开关**照样关得掉**,而且屏上同时给下载', async () => {
+    configureSearchSettingsPort(fakePort({
+      ...structuredClone(BASE),
+      search: { semantic: { enabled: true, modelId: DEFAULT_SEMANTIC_MODEL_ID } },
+    }))
+    stubStatus({
+      vector: 'off',
+      vectorErrorKind: 'model',
+      vectorError: 'embedding model files are not downloaded',
+      model: MODEL(),
+    })
+    render(<SearchSettings />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('search-semantic-model-download')).toBeTruthy()
+    })
+    expect(screen.getByRole('switch').hasAttribute('disabled')).toBe(false)
+    expect(screen.getByTestId('search-semantic-status').textContent)
+      .toBe(t('search.semanticStatusFailedModel', { reason: 'embedding model files are not downloaded' }))
+  })
+
+  it('按下载:打的是那条写路,乐观那一拍屏上就换成「取消」', async () => {
+    const port = fakePort(structuredClone(BASE))
+    configureSearchSettingsPort(port)
+    stubStatus({ vector: 'off', model: MODEL({ totalBytes: 118_300_000 }) })
+    render(<SearchSettings />)
+    await waitFor(() => expect(screen.getByTestId('search-semantic-model-download')).toBeTruthy())
+
+    act(() => void fireEvent.click(screen.getByTestId('search-semantic-model-download')))
+    // 乐观:这一拍就换成下载中那一态(取消钮 + 进度条),不等一个来回。
+    expect(screen.getByTestId('search-semantic-model-cancel')).toBeTruthy()
+    expect(screen.getByRole('progressbar')).toBeTruthy()
+    await waitFor(() => expect(port.modelCalls).toEqual(['download']))
+  })
+
+  it('已下载:画真数与删除钮;开关开着时那颗钮**禁着**(正在用的不许抽走)', async () => {
+    const ready = MODEL({ state: 'ready', loadedBytes: 118_300_000, totalBytes: 118_300_000 })
+    const port = fakePort(structuredClone(BASE))
+    configureSearchSettingsPort(port)
+    stubStatus({ vector: 'off', model: ready })
+    const view = render(<SearchSettings />)
+    await waitFor(() => expect(screen.getByTestId('search-semantic-model-remove')).toBeTruthy())
+
+    // `formatBytes` 的进位口径:≥10 不留小数(全壳唯一把字节念成人话的地方)。
+    expect(screen.getByTestId('search-semantic-model-row').textContent).toContain('113 MB')
+    expect(screen.getByTestId('search-semantic-model-remove').hasAttribute('disabled')).toBe(false)
+    act(() => void fireEvent.click(screen.getByTestId('search-semantic-model-remove')))
+    await waitFor(() => expect(port.modelCalls).toEqual(['remove']))
+
+    view.unmount()
+    reset()
+    configureSearchSettingsPort(fakePort({
+      ...structuredClone(BASE),
+      search: { semantic: { enabled: true, modelId: DEFAULT_SEMANTIC_MODEL_ID } },
+    }))
+    stubStatus({ vector: 'ready', model: ready })
+    render(<SearchSettings />)
+    await waitFor(() => expect(screen.getByTestId('search-semantic-model-remove')).toBeTruthy())
+    expect(screen.getByTestId('search-semantic-model-remove').hasAttribute('disabled')).toBe(true)
+  })
+
+  it('这台宿主管不了模型(`model` 缺席):一颗钮都不画,而且**不拦开关**', async () => {
+    configureSearchSettingsPort(fakePort(structuredClone(BASE)))
+    stubStatus({ vector: 'off' })
+    render(<SearchSettings />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('search-semantic-status').textContent)
+        .toBe(t('search.semanticStatusDisabled'))
+    })
+    expect(screen.queryByTestId('search-semantic-model-download')).toBeNull()
+    expect(screen.queryByTestId('search-semantic-model-remove')).toBeNull()
+    expect(screen.getByRole('switch').hasAttribute('disabled')).toBe(false)
+    expect(semanticModelPhaseOf({ mode: 'owner', pending: 0 })).toBe('unknown')
   })
 })

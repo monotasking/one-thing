@@ -90,12 +90,36 @@ export const semanticSearchQuery = createQuery<SemanticSearchView>(
 export type SemanticPhase =
   | 'unknown'
   | 'unsupported'
+  | 'needsModel'
   | 'disabled'
   | 'starting'
   | 'downloading'
   | 'embedding'
   | 'ready'
   | 'failed'
+
+/**
+ * **模型那一行此刻在说哪句话**(2026-09-17;与开关那一行是两件事)。
+ *
+ * 用户裁定「把开关和下载模型拆开」之后,屏幕上是两行,于是判据也是两只纯函数:
+ * 这一只只读 `status.model`,与开关开没开、与向量路在干什么都无关。
+ *
+ * | 态 | 判据 | 屏幕上 |
+ * | --- | --- | --- |
+ * | unknown | 状态还没问到,或者这台宿主管不了模型(`model` 缺席) | 「检查中…」,一颗钮都不画 |
+ * | absent | `model.state === 'absent'` | 「未下载 · 约 113 MB」+ 下载 |
+ * | downloading | `'downloading'` | 进度条 + 「43 MB / 113 MB · 38%」+ 取消 |
+ * | ready | `'ready'` | 「已下载 · 113 MB」+ 删除(开关开着时禁) |
+ * | failed | `'failed'` | 按 `errorKind` 一句人话 +(原话)+ 重试 |
+ *
+ * **「管不了」与「没下载」不是一回事**:前者(独立 server 上没有索引、或者门跑的是
+ * 假嵌入器)画一颗按不动的下载钮是骗人,所以它落在 `unknown` 里。
+ */
+export type SemanticModelPhase = 'unknown' | 'absent' | 'downloading' | 'ready' | 'failed'
+
+export function semanticModelPhaseOf(status: SearchStatusResponse | undefined): SemanticModelPhase {
+  return status?.model?.state ?? 'unknown'
+}
 
 export function semanticPhaseOf(
   view: SemanticSearchView | undefined,
@@ -105,6 +129,22 @@ export function semanticPhaseOf(
   if (view === undefined || status === undefined) return 'unknown'
   // 装不上扩展 = 这份产物**结构上**做不了,与开关开没开无关 —— 所以排在最前面。
   if (status.vectorExtension === 'missing') return 'unsupported'
+  /*
+   * **关着 + 模型还没下全 = 「先下载模型」**(2026-09-17)。开关此刻是禁着的:
+   * 打开它只会得到一条立刻把自己关回去的 Worker,那是一次白跑的失败。
+   *
+   * 判据里那句 `!view.enabled` 不是多余的 —— **开着的时候永远许人关掉**。老用户的
+   * 设置里 `enabled: true` 是上一版留下的(那时打开开关就是下载),而模型一个字节
+   * 都没下:那一形下要是把开关也禁了,他就被锁在一个开着却不工作的状态里。
+   * 那一形走的是下面的 `failed`(后端答 `vectorErrorKind: 'model'`),屏上写
+   * 「模型文件不完整」,而模型那一行同时画着「下载」。
+   *
+   * **「不知道」不拦路**:`model` 那一格缺席说的是「这台宿主管不了模型」(老后端、
+   * 独立 server、门跑的假嵌入器),不是「没下载」。那时拦着开关就是拿一件我们不知道
+   * 的事去挡人 —— 与上面「还没问到不许写未启用」同一条。
+   */
+  const modelPhase = semanticModelPhaseOf(status)
+  if (!view.enabled && modelPhase !== 'ready' && modelPhase !== 'unknown') return 'needsModel'
   if (!view.enabled) return 'disabled'
   switch (status.vector) {
     case 'downloading':
@@ -121,9 +161,24 @@ export function semanticPhaseOf(
   }
 }
 
-/** 这一节要不要一直问索引状态。关着 / 装不上的时候什么都不会动,问了也是白问。 */
-export function semanticStatusWorthPolling(phase: SemanticPhase): boolean {
-  return phase !== 'disabled' && phase !== 'unsupported'
+/**
+ * 这一节要不要一直问索引状态,以及**多勤**。
+ *
+ * 三档,判据是「有没有东西在动、动得有多快」:
+ *  - 正在下模型 → **1s**。那是一条会走的进度条,5s 一跳的读数比没有进度更糟。
+ *  - 别的会动的态(启动 / 建索引 / 检查中 / 就绪)→ 5s(与 09-17 那一版同)。
+ *  - 关着 / 装不上 / 只等人按「下载」→ **不问**。什么都不会动,问了是白问。
+ *
+ * 返回毫秒数或 `undefined`(= 别起计时器)—— 一个数比「要不要 + 多久」两格好:
+ * 调用方那只 `useEffect` 的依赖就是它,档位一变计时器自己换。
+ */
+export function semanticStatusPollMs(
+  phase: SemanticPhase,
+  model: SemanticModelPhase,
+): number | undefined {
+  if (model === 'downloading') return 1000
+  if (phase === 'disabled' || phase === 'unsupported' || phase === 'needsModel') return undefined
+  return 5000
 }
 
 /**
@@ -208,10 +263,91 @@ function withoutVectorState(status: SearchStatusResponse): SearchStatusResponse 
   return rest
 }
 
+/* ── 模型那三颗钮(2026-09-17)──────────────────────────────────────────────
+ *
+ * 三条写路,一个模子:**当场把模型那一格改成我们要的那个态**(乐观),发出去,
+ * 回执里带着后端那一刻的真状态就照抄一遍,最后 `settle` 去对一次账。
+ *
+ * ── 为什么乐观只改 `model.state`,不动别的 ────────────────────────────────
+ * 进度那两格(`loadedBytes` / `totalBytes`)是**后端在数的东西**,壳猜不出来;
+ * 猜一个 0 会让进度条从 0 跳到 43%,像是重来了一次。所以点下「下载」那一刻屏上
+ * 是一条**不知道进度**的滑条(`Progress` 缺席 `value` 那一档),第一发轮询回来才
+ * 变成真读数 —— 那正是「不知道就别给」。
+ *
+ * ── 为什么没有 `onError` 的 notify ────────────────────────────────────────
+ * 与开关那一条不同:开关失败了屏上什么都看不出来(它自己弹回去),所以要一声通知。
+ * 这三条失败了,**回执里的模型状态就是屏上那一行** —— 下载失败画的是 failed 那一态
+ * 带原话,取消 / 删除失败画的是它们没能改掉的那个态。再弹一条 toast 是说两遍。
+ */
+
+/** 一条模型写路。`want` 是点下去那一刻屏上该变成的态(乐观)。 */
+function modelMutation(
+  name: string,
+  want: SemanticModelPhase,
+  call: (port: Awaited<ReturnType<typeof searchSettingsPort>>) => Promise<{
+    success: boolean
+    error?: string
+    model?: NonNullable<SearchStatusResponse['model']>
+  }>,
+): Mutation<void, void> {
+  return createMutation<void, void>(name, {
+    optimistic: () => searchStatusQuery.patch((prev) => (prev === undefined
+      ? prev
+      : { ...prev, ...patchModelState(prev, want) })),
+    run: async () => {
+      const port = await searchSettingsPort()
+      const response = await call(port)
+      // 后端答得出此刻的状态就照抄 —— 那比再等一轮轮询早一个来回。
+      if (response.model !== undefined) {
+        const model = response.model
+        searchStatusQuery.patch((prev) => (prev === undefined ? prev : { ...prev, model }))
+      }
+      if (!response.success) throw new Error(response.error || `${name} 未成功`)
+    },
+    settle: () => {
+      searchStatusQuery.invalidate()
+    },
+  })
+}
+
+/**
+ * 把模型那一格改成某个态,**其余格子原样留着**。
+ *
+ * 「管不了模型」的那台宿主(`model` 缺席)上一格都不动:凭空造一个 `model` 出来,
+ * 屏幕上就会长出一行本不该有的模型行(见 `semanticModelPhaseOf` 的 unknown 那一格)。
+ */
+function patchModelState(
+  status: SearchStatusResponse,
+  state: SemanticModelPhase,
+): Pick<SearchStatusResponse, 'model'> {
+  const model = status.model
+  if (model === undefined || state === 'unknown') return {}
+  // 换了态就把上一任的读数与死因一起抹掉(与翻开关那一下抹 `vector` 同一条判例)。
+  return { model: { id: model.id, state, ...(state === 'ready' ? { loadedBytes: model.loadedBytes, totalBytes: model.totalBytes } : {}) } }
+}
+
+export const downloadSemanticModelMutation = modelMutation(
+  'search.downloadSemanticModel',
+  'downloading',
+  (port) => port.downloadModel(),
+)
+
+export const cancelSemanticModelMutation = modelMutation(
+  'search.cancelSemanticModel',
+  'absent',
+  (port) => port.cancelModelDownload(),
+)
+
+export const removeSemanticModelMutation = modelMutation(
+  'search.removeSemanticModel',
+  'absent',
+  (port) => port.removeModel(),
+)
+
 /**
  * **HMR 退役**(壳规范「模块级副作用必须配 HMR dispose」,09-01 立法)。
  *
- * 这个文件的模块级副作用有两样:那只 query 与那只 mutation(各自带监听表)。
+ * 这个文件的模块级副作用是那只 query 与四只 mutation(各自带监听表)。
  * 退役**复用它们各自已有的那一口拆卸**,不写第二套。`searchStatusQuery` 不在这里
  * 退役 —— 它的产地是 `search-catalog-source.ts`,那个文件自己管自己。
  */
@@ -219,5 +355,8 @@ if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     semanticSearchQuery.reset()
     setSemanticSearchEnabledMutation.reset()
+    downloadSemanticModelMutation.reset()
+    cancelSemanticModelMutation.reset()
+    removeSemanticModelMutation.reset()
   })
 }

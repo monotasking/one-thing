@@ -117,6 +117,7 @@
   /* 读数与状态 */
   --kf-toast-life: toastLife;
   --kf-spin: spin;
+  --kf-progress-slide: progressSlide;
   --kf-tool-pulse: toolPulse;
   --kf-dots: dots;
   --kf-seam-sweep: seamSweep;
@@ -296,6 +297,27 @@
 @keyframes spin {
   to {
     transform: rotate(1turn);
+  }
+}
+
+/*
+ * `ui/Progress` 不知道进度那一档:一小段在槽里来回滑(2026-09-17)。
+ *
+ * 走 `transform` 而不是 `left` —— 合成器上那一格,布局一帧不变(与 Switch 的钮同一条)。
+ * `translateX` 的百分比是**自身宽**的百分比,而那一段宽 `--progress-indeterminate-w`
+ * (40%),所以走到槽的右缘正好是 150%(=(100−40)/40)。**这两个数是一对**:改了
+ * 那一格 token,这里的 150% 要跟着改 —— 写在这儿就是那句提醒(CSS 里除不了百分比,
+ * 所以只能这样对齐,不能算出来)。
+ *
+ * 往返由 `animation-direction: alternate` 给,不在关键帧里写第二段。
+ */
+@keyframes progressSlide {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(150%);
   }
 }
 

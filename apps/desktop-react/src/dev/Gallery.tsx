@@ -22,6 +22,7 @@ import { Reveal, REVEAL_SCOPE } from '../ui/Reveal'
 import { SecretInput } from '../ui/SecretInput'
 import { Segmented } from '../ui/Segmented'
 import { Select } from '../ui/Select'
+import { Progress } from '../ui/Progress'
 import { Spinner } from '../ui/Spinner'
 import { Switch } from '../ui/Switch'
 import { Tabs } from '../ui/Tabs'
@@ -486,6 +487,15 @@ export function Gallery() {
             <Spinner size="sm" />
             <Spinner size="md" />
             <Note>status bar / button loading only</Note>
+          </Section>
+
+          <Section name="Progress">
+            <div style={{ width: 220, display: 'grid', gap: 'var(--sp-3)' }}>
+              <Progress value={0.38} label="Gallery progress" />
+              <Progress value={1} label="Gallery progress done" />
+              <Progress label="Gallery progress unknown" />
+            </div>
+            <Note>determinate 0.38 / 1 · 缺席 value = 不知道(来回滑)</Note>
           </Section>
 
           <Section name="Menu">

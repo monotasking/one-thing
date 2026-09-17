@@ -1047,6 +1047,14 @@
   --spinner-w: var(--bw-2);
   --dur-spin: 700ms;
 
+  /* Progress(`ui/Progress`,2026-09-17)。比工具卡底缘那条 2px 的细线粗一格:
+   * 那一条是卡的边饰,这一条是一行里**要被读数的**内容。
+   * 不知道进度那一档滑一小段,1200ms 慢于 --dur-spin —— 它说的是「分钟级的活」,
+   * 转得太快反而像卡住了。 */
+  --progress-h: 4px;
+  --progress-indeterminate-w: 40%;
+  --dur-progress-slide: 1200ms;
+
   /* 工具行「运行中」那枚呼吸图标(V2 三态)。比 --dur-toc-hover(150ms,光标的
    * 闪)慢一个量级:光标是「还在打字」,这是「还在做一件事」—— 后者该像呼吸,
    * 不该像心跳。降级见 content/tools/ToolCard.module.css。 */

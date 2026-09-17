@@ -1,0 +1,51 @@
+/* 关键帧 progressSlide 住在 styles/motion.css(全仓唯一的 @keyframes 产地)。 */
+
+/*
+ * 槽:一条 --line-1 的细带。**它自己不留外边距** —— 一条进度条在不同的行里离上下
+ * 多远是那一行的事,不是这件的事(与 `ui/Switch` 不管自己在行里靠哪边同一条)。
+ */
+.track {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: var(--progress-h);
+  border-radius: var(--r-full);
+  background: var(--line-1);
+}
+
+/*
+ * 已完成的那一段。**只改 `width`**(合成器上那一格),不改任何参与布局的属性 ——
+ * 同一个节点从 12% 走到 87% 不换元素、不推动同一行里的别的东西。
+ */
+.fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width var(--dur) var(--ease-out);
+}
+
+/*
+ * 不知道进度的那一档:一小段来回滑。它说的是「在动,但说不出还有多久」——
+ * 与 spinner 是同一句话的两种形,**用哪一种由地方决定**:这里已经有一条槽了,
+ * 再在旁边放一枚转圈就是两个东西说同一件事。
+ */
+.indeterminate {
+  width: var(--progress-indeterminate-w);
+  transition: none;
+  animation: var(--kf-progress-slide) var(--dur-progress-slide) var(--ease) infinite alternate;
+}
+
+/*
+ * 降级不是「关掉反馈」(与 `ui/Spinner` 同一条):槽还在,那一段停在起点并变淡 ——
+ * 还是「在忙」的信号,只是不再动。
+ */
+@media (prefers-reduced-motion: reduce) {
+  .fill {
+    transition: none;
+  }
+
+  .indeterminate {
+    animation: none;
+    opacity: var(--btn-disabled-o);
+  }
+}

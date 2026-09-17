@@ -1,20 +1,27 @@
 import { useEffect } from 'react'
+import { Button } from '../../ui/Button'
+import { Progress } from '../../ui/Progress'
 import { Switch } from '../../ui/Switch'
+import { Tooltip } from '../../ui/Tooltip'
 import { useAsyncPending, useQuery } from '../../data/kernel'
 import {
+  cancelSemanticModelMutation,
+  downloadSemanticModelMutation,
+  removeSemanticModelMutation,
+  semanticModelPhaseOf,
   semanticPhaseOf,
   semanticSearchQuery,
-  semanticStatusWorthPolling,
+  semanticStatusPollMs,
   setSemanticSearchEnabledMutation,
+  type SemanticModelPhase,
 } from '../../data/search-settings-source'
 import { searchStatusQuery } from '../../data/search-catalog-source'
 import type { SearchStatusResponse } from '@shared/ipc/search'
+import { formatBytes } from '../../format/quantity'
 import { useT } from '../../i18n'
 import type { MessageKey, MessageVars, TFn } from '../../i18n'
 import shared from './Settings.module.css'
-
-/** 开着的时候多久问一次索引状态。下载 / 建索引是分钟级的事,5s 够慢也够跟手。 */
-const STATUS_POLL_MS = 5000
+import s from './SearchSettings.module.css'
 
 /** 后端答的那几类原因(`SearchStatusResponse.vectorErrorKind`;判据在后端,壳只查表)。 */
 type VectorErrorKind = NonNullable<SearchStatusResponse['vectorErrorKind']>
@@ -32,6 +39,20 @@ const FAILED_REASON_KEY: Record<VectorErrorKind, MessageKey> = {
   runtime: 'search.semanticStatusFailedRuntime',
   model: 'search.semanticStatusFailedModel',
   unknown: 'search.semanticStatusFailedReason',
+}
+
+/**
+ * 同一张判据表的**另一族句子**:下载那一发败了(2026-09-17)。
+ *
+ * 为什么不复用上面那四句:主语不同。上面说的是「语义召回没跑起来」,这里说的是
+ * 「模型没下下来」—— 把「没跑起来」写在模型那一行上,人会去找一个此刻还不存在的
+ * 功能的毛病。**码是同一张表,句子按行分**。
+ */
+const MODEL_FAILED_REASON_KEY: Record<VectorErrorKind, MessageKey> = {
+  network: 'search.semanticModelFailedNetwork',
+  runtime: 'search.semanticModelFailedRuntime',
+  model: 'search.semanticModelFailedFiles',
+  unknown: 'search.semanticModelFailedReason',
 }
 
 /**
@@ -84,6 +105,9 @@ export function SearchSettings() {
   const { data, error } = useQuery(semanticSearchQuery)
   const status = useQuery(searchStatusQuery).data
   const toggling = useAsyncPending(setSemanticSearchEnabledMutation)
+  const downloading = useAsyncPending(downloadSemanticModelMutation)
+  const cancelling = useAsyncPending(cancelSemanticModelMutation)
+  const removing = useAsyncPending(removeSemanticModelMutation)
 
   useEffect(() => {
     void semanticSearchQuery.ensure()
@@ -91,33 +115,83 @@ export function SearchSettings() {
   }, [])
 
   const phase = semanticPhaseOf(data, status)
+  const model = semanticModelPhaseOf(status)
 
   /*
-   * 轻轮询:**只在有东西会动的时候问**。下载与冷嵌是分钟级的事,而这一页正开着 ——
-   * 一行不会自己更新的进度读数比没有进度更糟。离开这一页(或者翻到别的设置页,
-   * 那也是卸载)计时器就没了。
+   * 轻轮询:**只在有东西会动的时候问**,而且**下模型那一段问得更勤**(1s)——
+   * 那是一条会走的进度条,5s 一跳的读数比没有进度更糟。档位由纯函数说
+   * (`semanticStatusPollMs`),这里只照它起 / 清计时器;离开这一页(翻到别的设置页
+   * 也是卸载)计时器就没了。
    */
-  const polling = semanticStatusWorthPolling(phase)
+  const pollMs = semanticStatusPollMs(phase, model)
   useEffect(() => {
-    if (!polling) return
-    const timer = setInterval(() => void searchStatusQuery.refetch(), STATUS_POLL_MS)
+    if (pollMs === undefined) return
+    const timer = setInterval(() => void searchStatusQuery.refetch(), pollMs)
     return () => clearInterval(timer)
-  }, [polling])
+  }, [pollMs])
 
   const enabled = data?.enabled === true
   const unsupported = phase === 'unsupported'
+  // 模型没下全就不许打开(打开只会得到一条立刻自己关回去的 Worker);
+  // **开着的时候永远许关** —— 老用户那一形不能被锁死,判据写在 `semanticPhaseOf`。
+  const blockedByModel = !enabled && phase === 'needsModel'
 
   return (
     <>
+      {/*
+        模型那一行**在开关上面**:它是前置条件。先问「这台机器上有没有那份模型」,
+        再问「要不要用它」—— 反过来摆,一个禁着的开关下面才解释为什么禁,那是让人
+        先撞墙再读说明。
+      */}
+      <div className={shared.settingRow} data-testid="search-semantic-model-row">
+        <div>
+          <div className={shared.settingRowLabel}>
+            {t('search.semanticModelLabel')}
+            {/*
+              `modelId` 是**数据**(嵌入器注册表的键),所以它不进字典 —— 换一门语言
+              它不该跟着变。注册表长出第二档时这里换 `ui/Segmented`,形状那一层不用改。
+            */}
+            {data ? <span className={s.modelId}>{data.modelId}</span> : null}
+          </div>
+          <div className={shared.settingRowHint}>{modelHint(t, model, status?.model)}</div>
+        </div>
+        <ModelAction
+          t={t}
+          model={model}
+          enabled={enabled}
+          busy={downloading || cancelling || removing}
+        />
+      </div>
+
+      {/*
+        下载中才画进度条。**画在两行之间、通栏** —— 它是那一行的读数,不是一颗控件;
+        塞进右边那一格会把「43 MB / 113 MB」挤成两行。
+      */}
+      {model === 'downloading' ? (
+        <Progress
+          className={s.modelProgress}
+          {...(downloadRatio(status?.model) === undefined
+            ? {}
+            : { value: downloadRatio(status?.model) })}
+          label={t('search.semanticModelDownloading')}
+        />
+      ) : null}
+
       <div className={shared.settingRow} data-testid="search-semantic-row">
         <div>
           <div className={shared.settingRowLabel}>{t('search.semanticLabel')}</div>
-          <div className={shared.settingRowHint}>{t('search.semanticHint')}</div>
+          <div className={shared.settingRowHint}>
+            {blockedByModel ? t('search.semanticNeedsModelHint') : t('search.semanticHint')}
+          </div>
         </div>
         <Switch
           checked={enabled}
-          // 两个产地:还没问到(翻它等于拿猜测当底本写设置)、这份产物结构上做不了。
-          disabled={!data || unsupported || toggling}
+          /*
+           * 四个产地:还没问到(翻它等于拿猜测当底本写设置)、这份产物结构上做不了、
+           * 模型还没下全、上一发还在飞(一开一关两发打在同一份设置上,后到的那发会
+           * 拿旧底本把前一发写回去)。
+           */
+          disabled={!data || unsupported || blockedByModel || toggling}
           onChange={(next) => void setSemanticSearchEnabledMutation.run(next)}
           label={t('search.semanticLabel')}
         />
@@ -131,23 +205,133 @@ export function SearchSettings() {
       <div className={shared.settingRowNote} data-testid="search-semantic-status">
         {statusLine(t, phase, status?.vectorPending, status?.vectorError, status?.vectorErrorKind)}
       </div>
-
-      {/*
-        模型那一行。**只读**(见文件头):今天注册表里只有一档,一个只有一项可选的
-        选择器是纯噪音。`modelId` 是**数据**(嵌入器注册表的键),所以它不进字典 ——
-        换一门语言它不该跟着变。
-      */}
-      {data ? (
-        <div className={shared.settingRow} data-testid="search-semantic-model-row">
-          <div>
-            <div className={shared.settingRowLabel}>{t('search.semanticModelLabel')}</div>
-            <div className={shared.settingRowHint}>{t('search.semanticModelHint')}</div>
-          </div>
-          <div className={shared.settingRowHint}>{data.modelId}</div>
-        </div>
-      ) : null}
     </>
   )
+}
+
+/**
+ * 模型那一行右边那颗钮。**一态一颗,没有一颗钮在两个态里换文案** —— 换文案的钮
+ * 会让人按下去才知道刚才按的是什么。
+ *
+ * | 态 | 钮 | 禁着的理由 |
+ * | --- | --- | --- |
+ * | unknown | 一颗都不画 | 还不知道有没有这件事 |
+ * | absent | 下载 | — |
+ * | downloading | 取消 | — |
+ * | ready | 删除 | 开关开着(Tooltip 说「先关掉按含义找」) |
+ * | failed | 重试 | — |
+ *
+ * 「重试」与「下载」是同一发(`downloadSemanticModelMutation`),字不同是因为人
+ * 此刻要做的判断不同:一个是「要不要开始」,一个是「刚才那次不算,再来」。
+ */
+function ModelAction({ t, model, enabled, busy }: {
+  t: TFn
+  model: SemanticModelPhase
+  enabled: boolean
+  busy: boolean
+}) {
+  if (model === 'unknown') return null
+  if (model === 'downloading') {
+    return (
+      <Button
+        disabled={busy}
+        onClick={() => void cancelSemanticModelMutation.run()}
+        data-testid="search-semantic-model-cancel"
+      >
+        {t('search.semanticModelCancel')}
+      </Button>
+    )
+  }
+  if (model === 'ready') {
+    const remove = (
+      <Button
+        variant="danger"
+        // 正在用的东西不许从底下抽走。**后端还有第二道**(`model-in-use`)——
+        // 这一颗禁着是礼貌,那一道是结构。
+        disabled={enabled || busy}
+        onClick={() => void removeSemanticModelMutation.run()}
+        data-testid="search-semantic-model-remove"
+      >
+        {t('search.semanticModelRemove')}
+      </Button>
+    )
+    /*
+     * Tooltip 包在一个 `<span>` 上而不是直接包那颗钮:**禁着的 `<button>` 收不到
+     * 指针事件**,包在钮上的提示永远不出现(那种提示比没有更糟 —— 人会以为坏了)。
+     */
+    return enabled
+      ? (
+        <Tooltip content={t('search.semanticModelRemoveBlocked')}>
+          <span className={s.blockedAction}>{remove}</span>
+        </Tooltip>
+        )
+      : remove
+  }
+  return (
+    <Button
+      variant={model === 'absent' ? 'primary' : 'ghost'}
+      disabled={busy}
+      onClick={() => void downloadSemanticModelMutation.run()}
+      data-testid="search-semantic-model-download"
+    >
+      {t(model === 'failed' ? 'search.semanticModelRetry' : 'search.semanticModelDownload')}
+    </Button>
+  )
+}
+
+/**
+ * 模型那一行的副文案。**导出**,所以「每个态都说得出话」可以逐条单测。
+ *
+ * 字节数走 `format/quantity` 的 `formatBytes`(全壳唯一把字节念成人话的地方);
+ * 单位符号是**数据**不是文案,所以它不进字典。
+ */
+export function modelHint(
+  t: TFn,
+  model: SemanticModelPhase,
+  status: SearchStatusResponse['model'],
+): string {
+  switch (model) {
+    case 'unknown':
+      return t('search.semanticModelUnknown')
+    case 'absent':
+      // 总数在这一态是**估计值**,所以那一句里写着「约」。不知道就不给数。
+      return status?.totalBytes === undefined
+        ? t('search.semanticModelAbsent')
+        : t('search.semanticModelAbsentSize', { size: formatBytes(status.totalBytes) })
+    case 'downloading': {
+      const loaded = formatBytes(status?.loadedBytes ?? 0)
+      const total = status?.totalBytes
+      const ratio = downloadRatio(status)
+      return total === undefined || ratio === undefined
+        ? t('search.semanticModelDownloadingSize', { loaded })
+        : t('search.semanticModelDownloadingProgress', {
+          loaded,
+          total: formatBytes(total),
+          percent: Math.round(ratio * 100),
+        })
+    }
+    case 'ready':
+      return status?.totalBytes === undefined
+        ? t('search.semanticModelReady')
+        : t('search.semanticModelReadySize', { size: formatBytes(status.totalBytes) })
+    case 'failed': {
+      const reason = status?.error
+      if (reason === undefined || reason.length === 0) return t('search.semanticModelFailed')
+      const key = MODEL_FAILED_REASON_KEY[status?.errorKind ?? 'unknown']
+        ?? MODEL_FAILED_REASON_KEY.unknown
+      return t(key, { reason })
+    }
+  }
+}
+
+/**
+ * 下载走了几成。**总数不知道 / 是 0 就答缺席** —— 那时进度条画的是「不知道进度」
+ * 那一档(来回滑),而不是一条停在 0% 的空槽(见 `ui/Progress` 的两态表)。
+ */
+export function downloadRatio(status: SearchStatusResponse['model']): number | undefined {
+  const total = status?.totalBytes
+  if (total === undefined || total <= 0) return undefined
+  return Math.min(1, (status?.loadedBytes ?? 0) / total)
 }
 
 /**
@@ -165,6 +349,10 @@ export function statusMessage(
       return { key: 'search.semanticStatusUnknown' }
     case 'unsupported':
       return { key: 'search.semanticStatusUnsupported' }
+    case 'needsModel':
+      // 开关关着、模型也还没下全。**这不是「未启用」** —— 那一句会让人去找一个
+      // 此刻按不动的开关;这一句说的是下一步该做什么。
+      return { key: 'search.semanticStatusNeedsModel' }
     case 'disabled':
       return { key: 'search.semanticStatusDisabled' }
     case 'starting':

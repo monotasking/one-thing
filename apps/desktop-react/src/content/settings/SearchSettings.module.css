@@ -1,0 +1,40 @@
+/*
+ * 设置 → 搜索这一页自己的三格。行形本身用的是共享的 `.settingRow` 一族
+ * (`Settings.module.css`)—— 这里只补它说不出的三件事。
+ */
+
+/*
+ * 模型 id 跟在标签后面。它是**数据**(嵌入器注册表的键),所以画得比标签淡一档、
+ * 用等宽字 —— 一眼看出「这不是一句话,这是一个名字」。
+ *
+ * `min-width: 0` + 截断:那个 id 由注册表说了算(将来可能是一长串仓库名),
+ * 不封顶会把右边那颗钮挤出去(律一)。
+ */
+.modelId {
+  margin-left: var(--sp-2);
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * 进度条通栏,压在模型那一行下面。往上收一格抵掉节内的 gap —— 它是那一行的读数,
+ * 不是下一行的开头(与 `.settingRowNote` 同一条)。
+ */
+.modelProgress {
+  margin-top: calc(var(--sp-3) * -1);
+}
+
+/*
+ * 禁着的钮外面那层 Tooltip 锚点。**禁着的 `<button>` 收不到指针事件**,所以提示得
+ * 挂在这一层上;它自己不占额外的地方(`display: contents` 不行 —— 那样它就没有
+ * 盒子,也就没有可悬停的区域)。
+ */
+.blockedAction {
+  display: inline-flex;
+  flex: none;
+}

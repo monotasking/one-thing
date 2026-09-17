@@ -1995,9 +1995,11 @@ async function main() {
       console.log('  · 此刻屏上没有权限卡 —— 跳过(造卡那一半在 `gate:permission` 里,不是红)')
     }
 
-    // 28 = `src/dev/Gallery.tsx` 今天的 <Section> 展位数(25 件组件 +
-    // useScrolledPast / useSettlePulse / useInlineEdit 三件 hook)。日志读数,不是断言。
-    console.log('\n[13/14] 组件规格页(?gallery):28 个展位一次全在场')
+    // 30 = `src/dev/Gallery.tsx` 今天的 <Section> 展位数(27 件组件 +
+    // useScrolledPast / useSettlePulse / useInlineEdit 三件 hook)。**日志读数,不是断言**
+    // —— 所以它会漂:09-17 数过来是 30(`ui/Progress` 新入库一格,而在那之前这个数
+    // 已经比真数少一格了)。加展位时顺手改这一行。
+    console.log('\n[13/14] 组件规格页(?gallery):30 个展位一次全在场')
     /*
      * 生产窗口是 loadFile 读本地文件,没有 router —— 换页靠改 location.search
      * 再等一次重载(App.tsx 读的就是这个查询参数)。
