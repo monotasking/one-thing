@@ -16,7 +16,7 @@ class FakeClock {
   advance(ms: number): void { this.t += ms }
 }
 
-const PARROT: PetManifest = { id: 'parrot', name: '鹦鹉', rig: 'parrot-svg', voice: { pitch: 'high', timbre: 'bright', rate: 'fast' }, persona: '学舌' }
+const PARROT: PetManifest = { id: 'parrot', name: '鹦鹉', rig: 'parrot-svg', voice: { pitch: 'high', timbre: 'bright', rate: 'fast' }, persona: '学舌', sample: '学舌' }
 
 function moment(clock: FakeClock, weight: MomentWeight, say?: string, event = 'changed'): Moment {
   return { scheme: 'demo', event, weight, gist: '有事发生', payload: say === undefined ? {} : { say }, at: clock.now() }
@@ -273,5 +273,65 @@ describe('PetHost · voicing an own line (P4 §11.3)', () => {
     const claimed = host.claim({ scheme: 'music', event: 'radio-patter' }, '压过去', { preempt: true })
     expect(claimed.kind).toBe('claimed')
     expect(host.markVoicing(first.id)).toBe(false)
+  })
+})
+
+describe('PetHost · chattiness (P5 §12.4)', () => {
+  function hostAt(chattiness: 'quiet' | 'balanced' | 'chatty', clock = new FakeClock()) {
+    return { clock, host: new PetHost({ pet: HEIDOU, composer: new SayPassthroughComposer(), clock, chattiness }) }
+  }
+
+  it('balanced holds normal moments to 240s', async () => {
+    const { clock, host } = hostAt('balanced')
+    await host.onMoment(moment(clock, 'normal', '第一句'))
+    clock.advance(239_000)
+    expect((await host.onMoment(moment(clock, 'normal', '太快'))).dropped).toBe('cooldown')
+    clock.advance(1_000)
+    expect((await host.onMoment(moment(clock, 'normal', '可以了'))).utterance?.text).toBe('可以了')
+  })
+
+  it('chatty holds normal moments to 90s', async () => {
+    const { clock, host } = hostAt('chatty')
+    await host.onMoment(moment(clock, 'normal', '第一句'))
+    clock.advance(89_000)
+    expect((await host.onMoment(moment(clock, 'normal', '太快'))).dropped).toBe('cooldown')
+    clock.advance(1_000)
+    expect((await host.onMoment(moment(clock, 'normal', '可以了'))).utterance?.text).toBe('可以了')
+  })
+
+  it('quiet never speaks for a moment — normal or high — but records it; say and claim still work', async () => {
+    const { clock, host } = hostAt('quiet')
+    const normal = await host.onMoment(moment(clock, 'normal', '闲聊'))
+    expect(normal.utterance).toBeUndefined()
+    expect(normal.dropped).toBe('cooldown')
+    expect(normal.lines.map(line => line.kind)).toEqual(['moment', 'dropped'])
+    const high = await host.onMoment(moment(clock, 'high', '要紧的'))
+    expect(high.dropped).toBe('cooldown')
+    expect(host.say('speak', '试听一句').utterance?.text).toBe('试听一句')
+    clock.advance(60_000)
+    expect(host.claim({ scheme: 'music', event: 'patter' }, '下一首').kind).toBe('claimed')
+  })
+
+  it('chatty lets a low `liked` speak (still on the 90s cooldown); other low moments stay silent', async () => {
+    const { clock, host } = hostAt('chatty')
+    const liked = await host.onMoment(moment(clock, 'low', '记住了', 'liked'))
+    expect(liked.utterance?.text).toBe('记住了')
+    clock.advance(30_000)
+    expect((await host.onMoment(moment(clock, 'low', '又喜欢', 'liked'))).dropped).toBe('cooldown')
+    clock.advance(90_000)
+    const poked = await host.onMoment(moment(clock, 'low', '戳', 'poked'))
+    expect(poked.utterance).toBeUndefined()
+    expect(poked.dropped).toBeUndefined()
+    const balanced = hostAt('balanced')
+    expect((await balanced.host.onMoment(moment(balanced.clock, 'low', '记住了', 'liked'))).utterance).toBeUndefined()
+  })
+
+  it('switches level hot: the next moment follows the new level', async () => {
+    const { clock, host } = hostAt('balanced')
+    expect(host.chattinessLevel).toBe('balanced')
+    host.setChattiness('quiet')
+    expect((await host.onMoment(moment(clock, 'high', '不说'))).dropped).toBe('cooldown')
+    host.setChattiness('chatty')
+    expect((await host.onMoment(moment(clock, 'high', '说了'))).utterance?.text).toBe('说了')
   })
 })

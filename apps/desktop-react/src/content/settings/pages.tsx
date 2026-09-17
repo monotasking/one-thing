@@ -7,6 +7,7 @@ import { NetworkSettings } from './NetworkSettings'
 import { SearchSettings } from './SearchSettings'
 import { SearchStorage } from './SearchStorage'
 import { PermissionGrants } from './PermissionGrants'
+import { PetSettings } from './PetSettings'
 import { Section } from './Section'
 import { KeymapSettings } from '../KeymapSettings'
 import { ProviderSettingsPanel } from '../../providers/components/ProviderSettingsPanel'
@@ -36,6 +37,7 @@ import type { MessageKey } from '../../i18n'
  */
 export type SettingsPageId =
   | 'general'
+  | 'pet'
   | 'models'
   | 'appearance'
   | 'dock'
@@ -57,13 +59,19 @@ export interface SettingsPageSpec {
 
 /**
  * 次序判据照旧是「**用户想改的是哪件事**」,从最常改的往最少改的排:
- * 通用 → 模型服务 → 外观 → Dock → 打开方式 → 搜索 → 内置浏览器 → 网络代理 → 已授权 → 快捷键。
+ * 通用 → 宠物 → 模型服务 → 外观 → Dock → 打开方式 → 搜索 → 内置浏览器 → 网络代理 → 已授权 → 快捷键。
  *
  * 模型服务排第二而不是最后:它是这台产品里改得最勤的一页(换家、换模型、
  * 贴一把新密钥),而「已授权」与「快捷键」是**看一眼就走**的两页。
  */
 export const SETTINGS_PAGES: readonly SettingsPageSpec[] = [
   { id: 'general', titleKey: 'settings.sectionGeneral', layout: 'form', render: () => <GeneralPage /> },
+  /*
+   * 宠物(P5,`docs/design/pet-system-2026-09.md` §12.4)。正本说「放在音乐附近,没有音乐页就放
+   * 通用之后」—— 今天没有音乐页,所以它在这一行。页里自己分两节(谁陪你 / 多久开口一次),
+   * 没有宠物的宿主上整页只一句话,所以节由 `PetSettings` 自己画,这里不包 `Section`。
+   */
+  { id: 'pet', titleKey: 'settings.pagePet', layout: 'form', render: () => <PetSettings /> },
   /*
    * 模型服务。**整块面直接摆进页里,不再包一层 `Section`** —— 它自己就有檐、
    * 有左栏、有分坑,再罩一个 11px 的节标只会多一层边界。

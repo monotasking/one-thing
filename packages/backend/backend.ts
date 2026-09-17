@@ -34,6 +34,7 @@ import { BackendResources, type BackendShutdownPhase, type Quiescible } from './
 import { PracticeService, configurePracticeService } from '@onething/runtime/practice/service.wiring'
 import { MusicSubsystem } from './wiring/music/subsystem.js'
 import { PetsSubsystem } from './wiring/pets/subsystem.js'
+import { petChattinessOf, watchPetChattiness } from './wiring/pets/chattiness.js'
 import { ModelMomentComposer } from './wiring/pets/model-composer.js'
 import { createVoiceService, configureVoiceService } from './wiring/voice/service.js'
 import { createTaskDispatchLayer, type TaskDispatchLayer } from './wiring/tasks/dispatch.js'
@@ -916,11 +917,14 @@ export class OnethingBackend implements BackendHandle {
         fallbackComposer: new ModelMomentComposer(),
         // P4 §11.3:自己开口也出声 —— 现问音乐要同一份口播缓存与出声路。
         voiceKit: () => music.voiceKit(),
+        // P5 §12.4:开口频率初值取设置,之后订 `settings:changed` 热换(下面那一行)。
+        chattiness: petChattinessOf(getSettings()),
       })
       : null
     if (pets) {
       this.own(() => pets.dispose(), 'pets')
       await pets.start()
+      this.own(watchPetChattiness(pets), 'petsChattiness')
       /*
        * 宠物 P3(§10.2「宠物接管」)—— 电台的话交给宠物说。音乐域只认 `HostVoice` 接口,
        * 这一行是两边唯一见面的地方。登记在 `pets` 之后,关机时先解绑(电台退回缺省实现)

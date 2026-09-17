@@ -13,6 +13,7 @@ export const HEIDOU: PetManifest = {
   id: 'heidou',
   name: 'pet.heidou.name',
   rig: 'heidou-svg',
+  blurb: 'pet.heidou.blurb',
   mutters: {
     poked: [
       { key: 'pet.heidou.poked1', holdMs: POKE_HOLD_MS },

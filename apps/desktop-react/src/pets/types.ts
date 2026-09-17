@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react'
+import type { DeclarativeRigSpec } from '@onething/runtime/pets/rig-spec'
 
 /**
  * 宠物系统壳侧的类型(P0,正本 `docs/design/pet-system-2026-09.md` §2.4 / §2.5 / §7)。
@@ -21,6 +22,7 @@ export type PetActivity =
 
 /**
  * 姿势 —— §7.2 那张优先级表的九行,各一个名字。**算出来,不存**(`pose.ts`)。
+ * 与产品层声明式形象的 `RigPose` 逐字相同(`rigs/__tests__/declarative-rig.test.tsx` 钉住)。
  *
  *   petted     正在被撸
  *   dizzy      fault
@@ -57,6 +59,12 @@ export interface PetRigProps {
 }
 
 export type PetRig = ComponentType<PetRigProps>
+
+/**
+ * 形象从哪来(P5 §12.3):手画形象的 id(查 `rigs/index.ts`),或一份声明式形象(交给
+ * `DeclarativeRig`)。后者由 `pet:` 的 `roster` 读法整份交来。
+ */
+export type PetRigSource = string | DeclarativeRigSpec
 
 /** 栖位尺寸(§2.5):大场景 / 角落小图。 */
 export type PerchSize = 'stage' | 'corner'

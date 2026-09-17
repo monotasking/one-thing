@@ -10,9 +10,9 @@ import { FrameCoalescer } from '../ui/frame-coalescer'
 import { placeBubble } from './bubble'
 import type { PetManifest } from './manifest'
 import { beatSecondsOf, resolvePose } from './pose'
-import { rigFor } from './rigs'
+import { PetRigView } from './rigs/PetRigView'
 import { PetStageController } from './stage-controller'
-import type { PerchSize, PetActivity, PetGesture, PetUtterance } from './types'
+import type { PerchSize, PetActivity, PetGesture, PetRigSource, PetUtterance } from './types'
 import s from './PetStage.module.css'
 
 /**
@@ -40,7 +40,8 @@ import s from './PetStage.module.css'
  *
  * ── ② UI 生命状态 ───────────────────────────────────────────────────────
  *  · 没有 loading / error:形象是本地资产,台词是本地字典。
- *  · manifest 的 rig 查不到 → 只画那颗宠物按钮(可点、有名字),不画形象,不抛。
+ *  · 形象查不到(手画 id 不在表里 / 没有形象)→ 只画那颗宠物按钮(可点、有名字),不画形象,不抛。
+ *    形象来源的分叉只在 `rigs/PetRigView.tsx`(手画查表 / 声明式交给 `DeclarativeRig`)。
  *  · 空 = 没有气泡;气泡四种:开口(逐字 + 声波)/ 嘀咕 / 带选项 / 常驻(可带动作)。
  *  · 超量:一句很长的话 —— 气泡最大宽钳在栖位内(`--pet-bubble-max-w` 与栖位宽取小),
  *    高度随字长,放不下时贴栖位顶、盖住宠物(§7.4),不出栖位。
@@ -59,6 +60,11 @@ export interface PetStageHandle {
 
 export interface PetStageProps {
   manifest: PetManifest
+  /**
+   * 形象(P5 §12.3)。缺席 = 用 manifest 里手画形象的 id。声明式形象(阿绿)由宿主从
+   * `pet:` 的 `roster` 读数里取来递进来。
+   */
+  rig?: PetRigSource
   activity: PetActivity
   /** 新对象身份 = 新话语;`null` = 宿主清掉当前气泡。 */
   utterance?: PetUtterance | null
@@ -79,6 +85,7 @@ export interface PetStageProps {
 
 export function PetStage({
   manifest,
+  rig,
   activity,
   utterance = null,
   hushed = false,
@@ -252,7 +259,7 @@ export function PetStage({
   if (bubble) lastBubble.current = bubble
   const shown = bubble ?? lastBubble.current
 
-  const Rig = rigFor(manifest.rig)
+  const rigSource = rig ?? manifest.rig
   const pose = resolvePose({
     activity: snap.activity,
     stillSince: snap.stillSince,
@@ -334,14 +341,13 @@ export function PetStage({
               ) : null}
             </div>
             <div className={s.pet}>
-              {Rig && (
-                <Rig
-                  pose={pose}
-                  beat={pose === 'grooving' ? beatSecondsOf(snap.activity) : undefined}
-                  mouth={snap.speaking && !snap.petted ? 'talking' : 'closed'}
-                  oneShot={snap.oneShot}
-                />
-              )}
+              <PetRigView
+                rig={rigSource}
+                pose={pose}
+                beat={pose === 'grooving' ? beatSecondsOf(snap.activity) : undefined}
+                mouth={snap.speaking && !snap.petted ? 'talking' : 'closed'}
+                oneShot={snap.oneShot}
+              />
               <ButtonBase
                 ref={petButtonRef}
                 className={s.hit}

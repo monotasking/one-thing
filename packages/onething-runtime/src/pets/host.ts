@@ -30,6 +30,7 @@
  */
 
 import { estimateSpeechSeconds } from '../music/lyrics.js'
+import { PET_CHATTINESS, PET_DEFAULT_CHATTINESS, type PetChattiness } from './chattiness.js'
 import type { MomentComposer } from './composer.js'
 import {
   foldPetMemory,
@@ -42,8 +43,8 @@ import {
 import { summarizePet, type PetManifest, type PetSummary } from './manifest.js'
 import type { Moment, Utterance, UtteranceDropReason } from './types.js'
 
-/** 两次开口之间的缺省冷却(§2.3「默认 4 分钟一次」)。 */
-export const PET_DEFAULT_COOLDOWN_MS = 240_000
+/** 两次开口之间的缺省冷却(§2.3「默认 4 分钟一次」)= `balanced` 那一档。 */
+export const PET_DEFAULT_COOLDOWN_MS = PET_CHATTINESS.balanced.cooldownMs
 
 export interface PetClock {
   now(): number
@@ -62,6 +63,11 @@ export interface PetHostOptions {
   readonly clock?: PetClock
   /** 这只宠物账本尾部的行(旧的在前)。宿主据此接上冷却与记忆。 */
   readonly lines?: readonly PetLedgerLine[]
+  /**
+   * 开口频率(P5 §12.4)。缺省 `balanced`。冷却从这一档的表里取;`cooldownMs` 给了就盖过
+   * 有限的那两档(测试缩时钟用),`quiet` 的 ∞ 不被盖。
+   */
+  readonly chattiness?: PetChattiness
   readonly cooldownMs?: number
   /** 造话语 id。缺省 `<petId>-<at base36>-<序号>`。 */
   readonly newId?: () => string
@@ -105,7 +111,8 @@ export class PetHost {
   private manifest: PetManifest
   private readonly composer: MomentComposer
   private readonly clock: PetClock
-  private readonly cooldownMs: number
+  private readonly cooldownOverrideMs: number | undefined
+  private chattiness: PetChattiness
   private readonly mintId: (() => string) | undefined
   private lines: PetLedgerLine[] = []
   private utterances: Utterance[] = []
@@ -123,13 +130,23 @@ export class PetHost {
     this.manifest = options.pet
     this.composer = options.composer
     this.clock = options.clock ?? SYSTEM_CLOCK
-    this.cooldownMs = options.cooldownMs ?? PET_DEFAULT_COOLDOWN_MS
+    this.cooldownOverrideMs = options.cooldownMs
+    this.chattiness = options.chattiness ?? PET_DEFAULT_CHATTINESS
     this.mintId = options.newId
     this.seed(options.lines ?? [])
   }
 
   get pet(): PetManifest {
     return this.manifest
+  }
+
+  get chattinessLevel(): PetChattiness {
+    return this.chattiness
+  }
+
+  /** 换档(设置热生效,§12.4)。下一条时刻起按新档判;已经在说的那句不受影响。 */
+  setChattiness(level: PetChattiness): void {
+    this.chattiness = level
   }
 
   /** 内存里的账本行(旧的在前)。 */
@@ -156,10 +173,14 @@ export class PetHost {
   async onMoment(moment: Moment): Promise<PetHostOutcome> {
     const pet = this.manifest
     const produced: PetLedgerLine[] = [this.record(momentLine(pet.id, moment))]
-    if (moment.weight === 'low') return { lines: produced }
+    const profile = PET_CHATTINESS[this.chattiness]
+    const weight = moment.weight === 'low' && profile.lowEventsThatSpeak.includes(moment.event) ? 'normal' : moment.weight
+    if (weight === 'low') return { lines: produced }
 
     const about = { scheme: moment.scheme, event: moment.event }
-    const blocked = this.budgetBlock(this.clock.now(), moment.weight === 'high')
+    // 冷却 ∞(`quiet`):连 `high` 也不开口 —— 先判 busy,再判这一条,账本上的原因与 busy 分得开。
+    const blocked = this.budgetBlock(this.clock.now(), weight === 'high')
+      ?? (profile.cooldownMs === Number.POSITIVE_INFINITY ? 'cooldown' : null)
     if (blocked) return this.drop(produced, blocked, { about })
 
     this.composing = true
@@ -278,6 +299,13 @@ export class PetHost {
     this.voicing = undefined
   }
 
+  /** 有限档的冷却(`quiet` 的 ∞ 在 `onMoment` 里单独判:它连「从没开过口」也挡)。 */
+  private cooldownMs(): number {
+    const profile = PET_CHATTINESS[this.chattiness]
+    if (profile.cooldownMs === Number.POSITIVE_INFINITY) return profile.cooldownMs
+    return this.cooldownOverrideMs ?? profile.cooldownMs
+  }
+
   private isSpeaking(now: number): boolean {
     return this.composing
       || this.voicing !== undefined
@@ -287,7 +315,7 @@ export class PetHost {
   /** 预算挡不挡。`high` 无视冷却,但不无视「同一时刻一句」。 */
   private budgetBlock(now: number, high: boolean): UtteranceDropReason | null {
     if (this.isSpeaking(now)) return 'busy'
-    if (!high && this.lastSpokeAt !== undefined && now - this.lastSpokeAt < this.cooldownMs) return 'cooldown'
+    if (!high && this.lastSpokeAt !== undefined && now - this.lastSpokeAt < this.cooldownMs()) return 'cooldown'
     return null
   }
 

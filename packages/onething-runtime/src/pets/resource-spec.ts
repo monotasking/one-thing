@@ -34,9 +34,22 @@ const SUMMARY_SCHEMA: JsonSchema = {
   properties: {
     id: { type: 'string' },
     name: { type: 'string' },
-    rig: { type: 'string', description: 'Which drawing the shell uses for this pet.' },
+    rig: {
+      oneOf: [{ type: 'string' }, { type: 'object' }],
+      description: 'How the shell draws this pet: a hand-drawn rig id (string), or a whole declarative rig (object, validated).',
+    },
   },
   required: ['id', 'name', 'rig'],
+}
+
+/** `roster` 里每一只:摘要 + 试听句(P5 §12.4)。 */
+const ROSTER_ENTRY_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    ...(SUMMARY_SCHEMA.properties as Record<string, JsonSchema>),
+    sample: { type: 'string', description: 'The line the settings page plays as a voice preview.' },
+  },
+  required: ['id', 'name', 'rig', 'sample'],
 }
 
 const UTTERANCE_SCHEMA: JsonSchema = {
@@ -73,7 +86,7 @@ export const petResourceSpec: ResourceSpec = {
       query: EMPTY,
       result: {
         type: 'object',
-        properties: { pets: { type: 'array', items: SUMMARY_SCHEMA } },
+        properties: { pets: { type: 'array', items: ROSTER_ENTRY_SCHEMA } },
         required: ['pets'],
       },
     },

@@ -55,14 +55,17 @@ import {
   estimateSpeechMs,
   PetHost,
   PetRegistry,
+  rosterEntryOf,
   SayOrElseComposer,
   SayPassthroughComposer,
   summarizePet,
   type Moment,
   type MomentComposer,
+  type PetChattiness,
   type PetClock,
   type PetCurrentView,
   type PetHostOutcome,
+  type PetRosterEntry,
   type PetSummary,
   type Utterance,
 } from '@onething/runtime/pets'
@@ -112,6 +115,8 @@ export interface PetsSubsystemOptions {
    */
   readonly voiceKit?: () => HostVoiceKit | null
   readonly clock?: PetClock
+  /** 开口频率的初值(P5 §12.4)。之后由 `setChattiness` 热换(组合根订 `settings:changed`)。 */
+  readonly chattiness?: PetChattiness
   readonly cooldownMs?: number
   /** 认领最多等多久。缺省 `PET_CLAIM_WAIT_MS`;测试缩短它。 */
   readonly claimWaitMs?: number
@@ -132,6 +137,8 @@ export class PetsSubsystem {
   private chain: Promise<unknown> = Promise.resolve()
   private starting: Promise<void> | undefined
   private disposed = false
+  /** 还没起来时换的档先记在这里,宿主建好时带进去。 */
+  private chattiness: PetChattiness | undefined
   /** 在等上一句说完的认领方:任何一句 `hush`、超时或 dispose 都叫醒他们再问一次。 */
   private readonly claimWaiters = new Set<() => void>()
   /** 没出声的开口:估计时长到点发 `hushed`(见文件头)。 */
@@ -141,6 +148,7 @@ export class PetsSubsystem {
 
   constructor(options: PetsSubsystemOptions) {
     this.options = options
+    this.chattiness = options.chattiness
     this.roster = options.pets ?? new PetRegistry()
     this.store = new PetLedgerStore(options.dir, options.assertOwned)
   }
@@ -160,6 +168,7 @@ export class PetsSubsystem {
         composer: this.options.composer
           ?? (this.options.fallbackComposer ? new SayOrElseComposer(this.options.fallbackComposer) : new SayPassthroughComposer()),
         lines,
+        ...(this.chattiness ? { chattiness: this.chattiness } : {}),
         ...(this.options.clock ? { clock: this.options.clock } : {}),
         ...(this.options.cooldownMs !== undefined ? { cooldownMs: this.options.cooldownMs } : {}),
       })
@@ -177,8 +186,17 @@ export class PetsSubsystem {
     this.hub = hub
   }
 
-  listPets(): PetSummary[] {
-    return this.roster.list().map(summarizePet)
+  /** 名册:摘要 + 试听句。声明式形象整份交出去(§12.3)。 */
+  listPets(): PetRosterEntry[] {
+    return this.roster.list().map(rosterEntryOf)
+  }
+
+  /** 换开口频率(§12.4 热生效)。同档不动。 */
+  setChattiness(level: PetChattiness): void {
+    if (this.chattiness === level) return
+    this.chattiness = level
+    this.host?.setChattiness(level)
+    log.info('pet chattiness changed', { level })
   }
 
   current(): PetCurrentView {

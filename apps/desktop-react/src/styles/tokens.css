@@ -620,6 +620,9 @@
    * "Model services",168 装得下而不截断;窄档里这一栏整个翻成顶上一条横滚
    * (阈值与判词写在 content/settings/Settings.module.css 末尾那段 @container)。 */
   --settings-nav-w: 168px;
+  /* 设置「宠物」页一张宠物卡的下限宽(P5 §12.4):角落尺寸的形象 + 名字 + 一句人设
+   * 排得下两行;再窄一列一张。 */
+  --pet-settings-tile-min-w: 220px;
   --row-h: 28px;
 
   /* ── L2 会话总览 Exposé 几何(09-04 方向 A「档案」:三块面 + 一张树)───────

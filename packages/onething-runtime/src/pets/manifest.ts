@@ -15,6 +15,8 @@
  * 只有内置宠物才有的格子。
  */
 
+import { validateRigSpec, type DeclarativeRigSpec, type RigSpecProblem } from './rig-spec.js'
+
 /** 嗓子的描述。三格都是档位词,不是数值:具体换算归 P3 的语音那一层。 */
 export interface PetVoice {
   readonly pitch: 'low' | 'medium' | 'high'
@@ -27,20 +29,48 @@ export interface PetManifest {
   readonly id: string
   /** 名字(字面文本 —— 插件宠物带不进壳的字典)。 */
   readonly name: string
-  /** 形象用哪一套绘制。壳侧按这个 id 查表。 */
-  readonly rig: string
+  /**
+   * 形象(P5,§12.3):**手画的**只是一个 id,壳侧按它查形象表;**声明式的**是整份数据
+   * (`rig-spec.ts`),壳交给 `DeclarativeRig` 解释。`roster` 读法原样交出去。
+   */
+  readonly rig: PetRig
   readonly voice: PetVoice
   /** 开口时交给模型的口吻说明(P4 起真的交出去)。 */
   readonly persona: string
+  /** 试听句(P5,§12.4):设置页「让它说句话」说的那一句。 */
+  readonly sample: string
 }
+
+/** 手画形象的 id,或一份声明式形象。 */
+export type PetRig = string | DeclarativeRigSpec
 
 /** 读法里交出去的那一截:谁、叫什么、长什么样。 */
 export interface PetSummary {
   readonly id: string
   readonly name: string
-  readonly rig: string
+  readonly rig: PetRig
 }
 
 export function summarizePet(manifest: PetManifest): PetSummary {
   return { id: manifest.id, name: manifest.name, rig: manifest.rig }
+}
+
+/** `roster` 读法里的一只(P5 §12.4):摘要 + 试听句。 */
+export interface PetRosterEntry extends PetSummary {
+  readonly sample: string
+}
+
+export function rosterEntryOf(manifest: PetManifest): PetRosterEntry {
+  return { ...summarizePet(manifest), sample: manifest.sample }
+}
+
+/**
+ * 一只宠物能不能进名册(§12.2 末):声明式形象有任何问题 → 不进。手画形象只看 id 非空
+ * (画得对不对是壳侧组件与它的单测的事)。
+ */
+export function petManifestProblems(manifest: PetManifest): RigSpecProblem[] {
+  if (typeof manifest.rig === 'string') {
+    return manifest.rig ? [] : [{ path: 'rig', message: 'rig id must not be empty' }]
+  }
+  return validateRigSpec(manifest.rig)
 }

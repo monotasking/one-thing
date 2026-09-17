@@ -1,0 +1,112 @@
+/* ── 设置「宠物」页(宠物 P5,§12.4)──────────────────────────────────────
+ *
+ * 一页两节。卡片是一组单选:角落尺寸的形象(`--pet-corner-*`,与栖位 `corner` 同一格)+
+ * 名字 + 一句人设。三档、试听都是库件,这里只排版。
+ *
+ * 首载占位:卡片区与三档那一行**先占住高度、不画内容**(§12.5 第一行)—— 读数回来时页面
+ * 不跳,也不画骨架。
+ * ────────────────────────────────────────────────────────────────────────── */
+
+.intro {
+  margin: 0;
+  font-size: var(--fs-label);
+  color: var(--text-2);
+}
+
+.none {
+  margin: 0;
+  font-size: var(--fs-label);
+  color: var(--text-2);
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--pet-settings-tile-min-w)), 1fr));
+  gap: var(--sp-3);
+  min-height: calc(var(--pet-corner-h) + var(--sp-3) * 2);
+}
+
+.tileSlot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+/* 一张卡。选中态与导航行同一族底色(hover / sel / sel-hover),外加一道染色边。 */
+.tile {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-2);
+  background: var(--surface-1);
+  text-align: left;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.tile:hover {
+  background: var(--st-hover);
+}
+
+.tileOn,
+.tileOn:hover {
+  background: var(--st-sel);
+  /* 染色,不是焦点环(选中的那一张;与有没有焦点无关)。 */
+  border-color: var(--accent-ring);
+}
+
+.tileArt {
+  flex: none;
+  width: var(--pet-corner-w);
+  height: var(--pet-corner-h);
+}
+
+.tileText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  flex: 1;
+  min-width: 0;
+}
+
+.tileName {
+  font-size: var(--fs-label);
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tileBlurb {
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+.tileError {
+  font-size: var(--fs-meta);
+  color: var(--danger);
+}
+
+.levels {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  min-height: var(--btn-sm);
+}
+
+.preview {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+.previewNote {
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}

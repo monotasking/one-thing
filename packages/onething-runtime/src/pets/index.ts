@@ -4,7 +4,16 @@
  * `@onething/backend/wiring/pets/`。
  */
 
+export { ALU } from './builtin/alu.js'
+export { ALU_RIG } from './builtin/alu.rig.js'
 export { HEIDOU } from './builtin/heidou.js'
+export {
+  normalizePetChattiness,
+  PET_CHATTINESS,
+  PET_CHATTINESS_LEVELS,
+  PET_DEFAULT_CHATTINESS,
+} from './chattiness.js'
+export type { PetChattiness, PetChattinessProfile } from './chattiness.js'
 export { SayOrElseComposer, SayPassthroughComposer } from './composer.js'
 export type { MomentComposeInput, MomentComposer } from './composer.js'
 export {
@@ -23,9 +32,32 @@ export {
 export type { PetDroppedLine, PetHushedLine, PetLedgerLine, PetMemory, PetMomentLine, PetPreemptedLine, PetUtteranceLine } from './ledger.js'
 export { buildMomentPrompt, parseMomentReply, PET_PROMPT_MEMORY_LINES } from './prompt.js'
 export type { MomentPrompt, MomentPromptInput } from './prompt.js'
-export { summarizePet } from './manifest.js'
-export type { PetManifest, PetSummary, PetVoice } from './manifest.js'
-export { BUILTIN_PETS, PetIdTakenError, PetRegistry } from './registry.js'
+export { petManifestProblems, rosterEntryOf, summarizePet } from './manifest.js'
+export type { PetManifest, PetRig, PetRosterEntry, PetSummary, PetVoice } from './manifest.js'
+export { BUILTIN_PETS, PetIdTakenError, PetRegistry, PetRigInvalidError } from './registry.js'
+export {
+  isRigColor,
+  RIG_MAX_DEPTH,
+  RIG_MAX_PARTS,
+  RIG_MOTIONS,
+  RIG_ONE_SHOTS,
+  RIG_POSES,
+  RIG_SHAPES,
+  validateRigSpec,
+} from './rig-spec.js'
+export type {
+  DeclarativeRigSpec,
+  RigMotion,
+  RigOneShot,
+  RigOrigin,
+  RigPart,
+  RigPartPose,
+  RigPose,
+  RigPoseSpec,
+  RigShape,
+  RigSpecProblem,
+  RigTransform,
+} from './rig-spec.js'
 export {
   PET_CURRENT_PATH,
   PET_CURRENT_REF,

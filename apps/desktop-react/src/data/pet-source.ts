@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react'
-import type { ResourceReadView } from '@shared/ipc/resources'
-import type { PetUtterance } from '../pets/types'
+import type { ResourceOutcomeView, ResourceReadView } from '@shared/ipc/resources'
+import type { PetRigSource, PetUtterance } from '../pets/types'
 import { createQuery } from './kernel'
 import { ResourcePortSlot, type ResourceEventFact, type ResourcePort } from './resource-port'
 
@@ -63,7 +63,7 @@ export interface PetUtteranceView {
 
 /** `pet:current` 读法的形(§9.3)。 */
 export interface PetCurrentView {
-  pet: { id: string; name: string; rig: string }
+  pet: { id: string; name: string; rig: PetRigSource }
   speaking: boolean
   speakingUntil?: number
   utterances: PetUtteranceView[]
@@ -121,6 +121,100 @@ export function useCurrentPetId(): string | undefined {
 
 function currentPetId(): string | undefined {
   return petCurrentQuery.get().data?.pet.id
+}
+
+/* ── 名册(P5 §12.3 / §12.4)──────────────────────────────────────────────── */
+
+/**
+ * `roster` 里的一只:谁、叫什么、**长什么样**(手画的只是 id,声明式的是整份数据,后端已校验)、
+ * 试听句。
+ */
+export interface PetRosterEntryView {
+  id: string
+  name: string
+  rig: PetRigSource
+  sample: string
+}
+
+/**
+ * 名册读数。**不随话语标脏**:谁能领养、长什么样,不因为宠物说了一句话而变 —— 栖位按 id 从
+ * 这里取形象,于是每句话之后不会因为读数换了身份而重画一遍形象。
+ */
+export const petRosterQuery = createQuery<PetRosterEntryView[]>('pet.roster', async () => {
+  const port = await slot.get()
+  await port.ready()
+  const answer = await port.read(PET_CURRENT_REF, 'roster')
+  if (answer.kind !== 'ok') throw new Error(readFailureText(answer))
+  const pets = (answer.value as { pets?: unknown } | null)?.pets
+  return Array.isArray(pets) ? (pets.filter(isRosterEntry) as PetRosterEntryView[]) : []
+})
+
+function isRosterEntry(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false
+  const row = value as Record<string, unknown>
+  return typeof row.id === 'string'
+    && typeof row.name === 'string'
+    && typeof row.sample === 'string'
+    && (typeof row.rig === 'string' || (typeof row.rig === 'object' && row.rig !== null))
+}
+
+/** 名册里这只宠物的形象;名册没读到 / 名册里没有它 = `undefined`(栖位退回手画表)。 */
+export function usePetRosterRig(petId: string | undefined): PetRigSource | undefined {
+  const pick = (): PetRigSource | undefined =>
+    petId === undefined ? undefined : petRosterQuery.get().data?.find((pet) => pet.id === petId)?.rig
+  return useSyncExternalStore(petRosterQuery.subscribe, pick, pick)
+}
+
+/* ── 领养与试听(P5 §12.4)──────────────────────────────────────────────── */
+
+/** `say` 的回执(后端 `PetSayReceipt` 的形)。 */
+export type PetSayReceiptView =
+  | { said: true; utterance: PetUtteranceView }
+  | { said: false; reason: 'busy' | 'cooldown' | 'nothing-to-say' }
+
+function outcomeFailureText(outcome: ResourceOutcomeView): string {
+  switch (outcome.kind) {
+    case 'invalid':
+      return outcome.message
+    case 'denied':
+      return outcome.reason
+    case 'aborted':
+      return outcome.reason ?? 'aborted'
+    case 'failed':
+      return outcome.error.message
+    default:
+      return ''
+  }
+}
+
+async function doPet(op: string, params: Record<string, unknown>): Promise<string> {
+  const port = await slot.get()
+  await port.ready()
+  const outcome = await port.do(PET_CURRENT_REF, op, params)
+  if (outcome.kind === 'ok') return outcome.text
+  throw new Error(outcomeFailureText(outcome))
+}
+
+/**
+ * 换一只宠物。成功后 `current` 标脏 —— 栖位按新 id 取形象、重挂(§12.5)。失败抛,调用方就地
+ * 回滚(设置页那张卡片下一行错话)。
+ */
+export async function adoptPet(id: string): Promise<void> {
+  await doPet('adopt', { id })
+  // 先把读数里的「是哪一只」换掉(后端已经换了),再后台对账:栖位与设置页不等那一发重拉。
+  const entry = petRosterQuery.get().data?.find((pet) => pet.id === id)
+  if (entry) {
+    petCurrentQuery.patch((prev) =>
+      prev ? { ...prev, pet: { id: entry.id, name: entry.name, rig: entry.rig }, speaking: false, utterances: [] } : prev,
+    )
+  }
+  petCurrentQuery.invalidate()
+}
+
+/** 让它说一句(开口)。被「同一时刻一句」挡掉时答 `said: false`,不抛。 */
+export async function sayPet(text: string): Promise<PetSayReceiptView> {
+  const answer = await doPet('say', { mode: 'speak', text })
+  return JSON.parse(answer) as PetSayReceiptView
 }
 
 /* ── 最新一句、灯、说完 ─────────────────────────────────────────────────── */
@@ -239,7 +333,8 @@ export async function openPetSource(): Promise<void> {
     unsubscribe = port.onResourceEvent(PET_SCHEME_PREFIX, onPetFact)
     unsubscribeReconcile?.()
     unsubscribeReconcile = petCurrentQuery.subscribe(reconcileOnAir)
-    await petCurrentQuery.ensure()
+    // 名册同时拉一次:栖位要按当前 id 取形象(声明式形象只在名册里,P5 §12.3)。
+    await Promise.all([petCurrentQuery.ensure(), petRosterQuery.ensure()])
   } catch {
     // 连不上 / 没有 `pet:`:栖位照 P1 跑,零提示。
   }
@@ -262,6 +357,7 @@ export function resetPetSource(): void {
   unsubscribeReconcile?.()
   unsubscribeReconcile = undefined
   petCurrentQuery.reset()
+  petRosterQuery.reset()
   speech = EMPTY_SPEECH
   for (const listener of [...speechListeners]) listener()
 }

@@ -462,3 +462,77 @@ P3 的出声路只接在电台的 `hostVoice` 上。P4 把「合成 → 出声 �
 - **时刻回放测试**：假时钟 + 假作曲器，喂一段事件流（开台 → 3 首歌 → 90s 内连跳 3 次 → 暂停 6 分钟后继续 → 间奏），断言话语与丢弃序列逐条相等。
 - 音乐：连跳计数窗口与清零、暂停计时阈值、间奏检测（前奏 / 尾奏不算、每首一次、无时间轴不发）、`speech:activity` 压 / 恢复只在播放中。
 - `bun run typecheck`、`boundary:gate`、`assembly:gate`、`transport:gate`、`log:gate`；相关 vitest；壳若有改动跑壳门。
+
+## 12. P5：宠物可扩展
+
+### 12.1 这一期交什么、不交什么
+
+- **交**：声明式形象格式；用它**只写数据**做出第二只内置宠物「阿绿」（一只绿鹦鹉），证明「加一只宠物 = 数据 + 注册一行」；设置里「宠物」一页（换宠物、开口频率三档、试听）。
+- **不交** `contributes.pet`：React 壳今天没有装配插件宿主（`plugins` 域在壳上一律「desktop host only」降级），现在接插件入口只会是一段跑不到的代码。声明式形象格式与 `PetManifest` 的校验函数按「插件也能交」来定形，等「插件宿主回到桌面」那一期（`docs/design/app-intents-2026-09.md` §9.4）再加一格 `contributes.pet` 与一次注册。
+
+### 12.2 声明式形象 `DeclarativeRigSpec`（纯数据，壳侧解释，不执行任何代码）
+
+| 字段 | 含义 |
+| --- | --- |
+| `viewBox` | `[x, y, w, h]` |
+| `palette` | `{ 名字: 颜色字面量 }`，颜色只许 `#rgb` / `#rrggbb` / `rgb()` / `rgba()`（与主题覆盖同一白名单） |
+| `parts` | 有序数组，每项 `{ id, shape, fill?, stroke?, strokeWidth?, origin?, parent? }`；`shape` 只许 `path`（`d`）/ `ellipse` / `circle` / `rect` / `group`；`parent` 指向另一个 `group` 的 `id`（最多嵌 4 层）；`origin` 是变换原点（`'center'` 或 `[x%, y%]`） |
+| `poses` | `{ 姿势名: { parts: { 部件 id: { hidden?, transform?, motion? } } } }`。姿势名就是 §7.2 的九个 `PoseState`；`transform` 只许 `translate(x y)` / `rotate(deg)` / `scale(s)` 的组合（结构化对象，不是字符串）；`motion` 只许一张**固定动作词表**里的名字 |
+| `mouth` | `{ closed: 部件 id[], talking: 部件 id[] }` —— 说话时显示哪些、藏哪些 |
+| `oneShots` | 可选，`{ squish?, startle?, wake?, love?, twitch? }` 各自落到哪个部件（缺省落到整只） |
+
+**动作词表**（壳里 `motion.css` 已有或新增的关键帧，形象只能挑，不能造）：`bob`（随拍点头，时长 = 拍）、`tap`（随拍打拍子）、`sway`（慢摆）、`swayFast`、`breathe`、`spin`（慢转，用于眼睛类部件）、`wobble`（晕）、`twitch`（抖一下，持续）、`purr`（细抖）、`floatUp`（z / 爱心上浮）。
+
+**校验** `validateRigSpec(spec) → problems[]`（纯函数，放产品层 `runtime/src/pets/rig-spec.ts`，壳与未来的插件安装页共用）：未知字段、颜色不在白名单、`path.d` 含非路径字符、未知 motion、引用不存在的部件、嵌套超限、部件数 > 80、`viewBox` 非正。有任何问题 → 这只宠物不进宠物列表（内置宠物有问题 → 单测红）。
+
+壳侧 `src/pets/rigs/DeclarativeRig.tsx`：吃 `DeclarativeRigSpec` + `PetRigProps`，与 `HeidouRig` 同一套 props；不认识的东西一律不画。黑豆**保留**手画 SVG 组件（它是样板，不迁）。
+
+### 12.3 第二只宠物「阿绿」
+
+- 形象：一只坐着的绿鹦鹉，头顶一撮翘毛，圆眼、黄色弯喙；说话时喙张合；随拍时身体左右摇（不是点头）；睡觉时头埋进翅膀；挑歌时歪头用喙叼一张唱片；出错时羽毛炸开。全部用 §12.2 的格式写成 `runtime/src/pets/builtin/alu.rig.ts`（产品层纯数据，壳经数据源拿）或壳侧 `src/pets/builtin/alu.rig.ts` —— 放哪边以「后端 `pet:roster` 能不能把形象交给 web 壳」为准：**放产品层，`roster` 读法带上 `rig`（手画的只交 id，声明式的交整份数据）**。
+- 人设：话少、爱学舌，偶尔重复用户刚点的歌名；嘀咕组台词（壳本地 i18n，中英）：`poked`「别拽我尾巴。」「学你：嘿！」、`stroked`「咕咕……舒服。」、`sleepy`「……咕。」、`annoyed`「再戳我就学你说话。」、`liked`「记住了记住了。」、`woke`「我醒着我醒着！」、`busy`「在叼了在叼了。」、`dizzy`「羽毛乱了……」、`waiting`「放不放？」、`strokedAsleep`「咕……」。
+- 音色：`pitch: high, rate: fast`。
+
+### 12.4 设置「宠物」页
+
+放在设置页表里「音乐」附近（没有音乐页就放「通用」之后）。文案逐字定：
+
+| 位置 | 中文 | English |
+| --- | --- | --- |
+| 页标题 | 宠物 | Pet |
+| 页说明（一句） | 住在应用里陪你的那只小家伙。 | The little one that keeps you company in the app. |
+| 选择区标题 | 谁陪你 | Who keeps you company |
+| 每只卡片 | 形象小图（栖位 `corner` 尺寸、`idle` 姿势）+ 名字 + 一句人设（黑豆：「住在唱机上的黑猫，眼睛是两张小唱片。」阿绿：「话不多，爱学你说话的绿鹦鹉。」） | Heidou: "A black cat living on the turntable, with two tiny records for eyes." Alu: "A quiet green parrot that likes to repeat what you say." |
+| 频率标题 | 多久开口一次 | How often it talks |
+| 三档 | 安静 · 适中 · 话多 | Quiet · Balanced · Chatty |
+| 三档说明（选中那档下面一句） | 安静：只在电台换歌时说话。／适中：偶尔聊两句。／话多：有什么说什么。 | Quiet: only speaks between songs on the radio. / Balanced: chats now and then. / Chatty: says what's on its mind. |
+| 试听按钮 | 让它说句话 | Hear it talk |
+
+- **换宠物**：点卡片 → `pet:` `adopt`，乐观选中；失败回滚并在卡片下就地一行错话。
+- **频率**：设置键 `pets.chattiness: 'quiet' | 'balanced' | 'chatty'`（缺省 `balanced`），热生效（订 `settings:changed`）。映射：`quiet` = 冷却 ∞（`normal` / `high` 时刻都不开口，只记账；电台认领不受影响）；`balanced` = 240s；`chatty` = 90s，且 `low` 权重里的 `liked` 也可以开口（仍按 90s 冷却）。
+- **试听**：`pet:` `say { mode: 'speak', text: <这只宠物的试听句> }`，句子放在 manifest 的 `sample` 字段（黑豆：「我是黑豆。今晚想听点什么？」阿绿：「我是阿绿！我是阿绿！」）。受「同一时刻一句」约束，被挡时按钮下一行「它正在说话。」／ "It's already talking."。
+- 这一页**没有**宠物时（宿主没开 `pets`，`pet:roster` 读失败）：整页只一句「这台设备上没有宠物。」／ "No pet on this device."。
+
+### 12.5 状态表
+
+**设置页**
+
+| 状态 | 画面 |
+| --- | --- |
+| 首载 | 卡片区与三档按钮占位但不画内容（不画骨架） |
+| 读到 | 当前宠物卡片选中态；频率按设置值选中 |
+| 换宠物进行中 | 目标卡片选中、其余卡片可点（再点以最后一次为准） |
+| 换宠物失败 | 回到原选中；目标卡片下一行错话，下次操作清掉 |
+| 试听被挡 | 按钮下一行「它正在说话。」，3s 后消失 |
+| 无宠物 | 整页一句话 |
+
+**栖位换宠物**：`pet:current.pet.id` 变 → `TurntableScene` 按新 id 取形象（手画查表 / 声明式交给 `DeclarativeRig`），`PetStage` 重挂（气泡清空、姿势按当前活动直接摆，不播 wake）。
+
+### 12.6 门
+
+- `validateRigSpec` 单测：每条问题各一例；两只内置宠物零问题。
+- `DeclarativeRig`：九个姿势各渲染一次，断言部件显隐与 motion 类名；未知 motion / 部件不画不抛。
+- `PetHost` 频率：三档冷却与 `quiet` 不开口、`chatty` 的 `liked`、热生效。
+- 设置页：换宠物乐观与回滚、试听被挡提示、无宠物整页。
+- 壳：`?pet-lab` 加宠物切换段（黑豆 / 阿绿），阿绿九个姿势可看。
+- 根门：typecheck / boundary / assembly / transport / log；壳门：vitest 相关目录 / typecheck / eslint / ui:consume / motion-gate / squeeze-gate。

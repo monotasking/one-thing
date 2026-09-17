@@ -13,10 +13,12 @@ import type {
   ChatSettings,
   EditorSettings,
   NetworkSettings,
+  PetChattinessSetting,
   PluginPreferences,
 } from '../ipc/settings.js'
 import {
   DEFAULT_BROWSER_CDP_PORT,
+  DEFAULT_PET_CHATTINESS,
   DEFAULT_BROWSER_PROFILE_ID,
   DEFAULT_SEMANTIC_MODEL_ID,
 } from '../ipc/settings.js'
@@ -563,6 +565,8 @@ export function createDefaultSettings(): AppSettings {
       defaultProfile: DEFAULT_BROWSER_PROFILE_ID,
       searchEngine: DEFAULT_BROWSER_SEARCH_ENGINE,
     },
+    // 宠物开口频率:缺省「适中」(§12.4)。
+    pets: { chattiness: DEFAULT_PET_CHATTINESS },
   }
 }
 
@@ -570,6 +574,10 @@ export function createDefaultSettings(): AppSettings {
  * Deep merge settings with defaults
  * Ensures all required fields exist while preserving user values
  */
+function normalizePetChattinessSetting(value: unknown): PetChattinessSetting {
+  return value === 'quiet' || value === 'balanced' || value === 'chatty' ? value : DEFAULT_PET_CHATTINESS
+}
+
 export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
   const defaults = createDefaultSettings()
 
@@ -703,6 +711,9 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
           ? settings.browser.searchEngine
           : DEFAULT_BROWSER_SEARCH_ENGINE,
     },
+    // 与 diagnostics / search 同一条理由(白名单式重建漏掉的键会被静默丢弃):
+    // 用户选的「安静」下次启动会变回「适中」。不认识的档一律缺省档。
+    pets: { chattiness: normalizePetChattinessSetting(settings.pets?.chattiness) },
   }
 
   // 历史脏键 `localAddress`(剥在这里 + 剥在 `providers.json` 的写入归一里,

@@ -1,11 +1,15 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  adoptPet,
   closePetSource,
   configurePetPort,
   openPetSource,
   petCurrentQuery,
   petOps,
+  petRosterQuery,
+  sayPet,
+  usePetRosterRig,
   resetPetSource,
   usePetHushedId,
   usePetOnAir,
@@ -19,7 +23,9 @@ import type { ResourceEventFact, ResourcePort } from '../resource-port'
  *  ② `utterance` 事件 → 一份新的「最新一句」(新对象身份)+ `current` 标脏;读数里的旧话语不算;
  *  ③ 读失败(宿主没有宠物)不抛,最新一句一直是 null;
  *  ④ 戳 / 撸发完不等,失败被吞掉;
- *  ⑤ ON AIR:开口点灯、对得上的 `hushed` 灭灯;`hushed` 丢了,读数包含那句却不在说 → 灭灯(P3)。
+ *  ⑤ ON AIR:开口点灯、对得上的 `hushed` 灭灯;`hushed` 丢了,读数包含那句却不在说 → 灭灯(P3);
+ *  ⑥ 名册(P5):声明式形象整份交来、按 id 取;名册里格式不对的条目丢掉;领养成功先换读数再对账,
+ *     失败抛;试听被挡答 `said: false` 不抛。
  */
 
 const DENIED: ResourcePort = {
@@ -74,7 +80,7 @@ describe('pet-source', () => {
     configurePetPort(port)
     await openPetSource()
     await openPetSource()
-    expect(log).toEqual(['subscribe pet:', 'read pet:current current'])
+    expect(log).toEqual(['subscribe pet:', 'read pet:current current', 'read pet:current roster'])
     expect(petCurrentQuery.get().data?.utterances).toEqual([OLD])
     closePetSource()
     expect(log).not.toContain('unsubscribe')
@@ -175,5 +181,65 @@ describe('pet-source', () => {
     })
     expect(result.current).toBe(false)
     closePetSource()
+  })
+})
+
+
+describe('pet-source · roster, adopt and say (P5 §12.3 / §12.4)', () => {
+  const ALU_RIG = { viewBox: [0, 0, 120, 134], palette: {}, parts: [], poses: {}, mouth: { closed: [], talking: [] } }
+  const ROSTER = {
+    pets: [
+      { id: 'heidou', name: '黑豆', rig: 'heidou-svg', sample: '我是黑豆。' },
+      { id: 'alu', name: '阿绿', rig: ALU_RIG, sample: '我是阿绿！' },
+      { id: 'broken', name: 'x' },
+    ],
+  }
+
+  function rosterPort(doAnswer: ResourcePort['do']) {
+    return fakePort({
+      read: vi.fn(async (_ref: string, name: string) =>
+        name === 'roster'
+          ? { kind: 'ok' as const, value: ROSTER }
+          : { kind: 'ok' as const, value: { pet: { id: 'heidou', name: '黑豆', rig: 'heidou-svg' }, speaking: true, utterances: [OLD] } },
+      ),
+      do: doAnswer,
+    })
+  }
+
+  it('reads the roster, drops malformed entries, and hands out a pet\'s rig by id', async () => {
+    const { port } = rosterPort(async () => ({ kind: 'ok', text: '{}' }))
+    configurePetPort(port)
+    await openPetSource()
+    expect(petRosterQuery.get().data?.map((pet) => pet.id)).toEqual(['heidou', 'alu'])
+    const { result, rerender } = renderHook(({ id }: { id: string | undefined }) => usePetRosterRig(id), { initialProps: { id: 'alu' as string | undefined } })
+    expect(result.current).toEqual(ALU_RIG)
+    rerender({ id: 'heidou' })
+    expect(result.current).toBe('heidou-svg')
+    rerender({ id: undefined })
+    expect(result.current).toBeUndefined()
+  })
+
+  it('adopt swaps the current pet in the read before reconciling; a failure throws', async () => {
+    const calls: Array<[string, unknown]> = []
+    const { port } = rosterPort(async (_ref, op, params) => {
+      calls.push([op, params])
+      return op === 'adopt' && (params as { id?: string }).id === 'dragon'
+        ? { kind: 'failed', error: { name: 'UnknownPetError', message: 'No pet with id "dragon"' } }
+        : { kind: 'ok', text: '{}' }
+    })
+    configurePetPort(port)
+    await openPetSource()
+    await act(async () => {
+      await adoptPet('alu')
+    })
+    expect(calls).toEqual([['adopt', { id: 'alu' }]])
+    expect(petCurrentQuery.get().data?.pet.id).toBeDefined()
+    await expect(adoptPet('dragon')).rejects.toThrow('dragon')
+  })
+
+  it('say answers the receipt, including a blocked one, without throwing', async () => {
+    const { port } = rosterPort(async () => ({ kind: 'ok', text: '{"said":false,"reason":"busy"}' }))
+    configurePetPort(port)
+    expect(await sayPet('我是阿绿！')).toEqual({ said: false, reason: 'busy' })
   })
 })

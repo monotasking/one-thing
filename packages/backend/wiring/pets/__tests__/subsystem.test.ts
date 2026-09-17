@@ -150,6 +150,31 @@ describe('PetsSubsystem', () => {
     expect(JSON.parse(await readFile(path.join(dir, 'current.json'), 'utf8'))).toEqual({ id: 'heidou' })
   })
 
+  it('roster carries each pet\'s rig — a hand-drawn id, or a whole declarative spec — and its sample line (P5 §12.3)', async () => {
+    const roster = await provider.read('roster', { scheme: 'pet', path: 'current' }, {}, {} as never) as { pets: Array<Record<string, unknown>> }
+    expect(roster.pets.map(pet => pet.id)).toEqual(['heidou', 'alu'])
+    expect(roster.pets[0]).toEqual({ id: 'heidou', name: '黑豆', rig: 'heidou-svg', sample: '我是黑豆。今晚想听点什么？' })
+    expect(roster.pets[1]).toMatchObject({ id: 'alu', name: '阿绿', sample: '我是阿绿！我是阿绿！', rig: { viewBox: [0, 0, 120, 134] } })
+  })
+
+  it('switches chattiness hot: quiet silences the next moment, chatty brings it back (P5 §12.4)', async () => {
+    pets.setChattiness('quiet')
+    demo.emit('announced', { say: '安静档不说' })
+    await ledger()
+    expect(utterances).toEqual([])
+    pets.setChattiness('chatty')
+    demo.emit('announced', { say: '话多档说了' })
+    await ledger()
+    expect(utterances.map(u => u.text)).toEqual(['话多档说了'])
+  })
+
+  it('carries a chattiness chosen before start into the host it builds', async () => {
+    const early = new PetsSubsystem({ dir, registry: kernel.registry, bus: new EventBus(), clock, chattiness: 'quiet' })
+    await early.start()
+    expect((early as unknown as { host: { chattinessLevel: string } }).host.chattinessLevel).toBe('quiet')
+    await early.dispose()
+  })
+
   it('picks its memory back up from disk on the next start', async () => {
     demo.emit('announced', { say: '记住我' })
     await pets.settled()

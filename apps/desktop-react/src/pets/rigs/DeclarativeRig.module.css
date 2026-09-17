@@ -1,0 +1,151 @@
+/* ── 声明式形象(宠物 P5)──────────────────────────────────────────────────
+ *
+ * 形象的**颜色与几何**来自数据(`DeclarativeRigSpec`,落在 SVG 属性上),这里只有
+ * 「怎么动」:动作词表里每个名字一条类(§12.2),一次性动画五条,嘴一条。
+ * 关键帧全在 styles/motion.css(`--kf-pet-*` / `--kf-spin`),时长全是 `--dur-pet-*`
+ * —— 与黑豆的形象读同一族 token,两只宠物在同一个栖位上动得一样快。
+ *
+ * 降级与黑豆同一条(`prefers-reduced-motion` 与动效档「无」两个来源一个结论):
+ * 去掉装饰性的循环(随拍、摆、转、上浮),**姿势本身保留**。
+ * ────────────────────────────────────────────────────────────────────────── */
+
+.rig {
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 100%;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.svg g {
+  transform-box: fill-box;
+}
+
+/* 外层:姿势的位置与显隐 */
+.part {
+  transition: transform var(--dur-pet-pose) var(--ease), opacity var(--dur-pet-blush) var(--ease);
+}
+
+.hidden {
+  opacity: 0;
+}
+
+/* 中层 / 内层:只放动画 */
+.layer {
+  transform-box: fill-box;
+}
+
+/* ── 动作词表 ─────────────────────────────────────────────────────────── */
+
+.motionBob {
+  animation: var(--kf-pet-bob) var(--pet-beat, var(--dur-pet-beat-fallback)) ease-in-out infinite;
+}
+
+.motionTap {
+  animation: var(--kf-pet-tap) var(--pet-beat, var(--dur-pet-beat-fallback)) ease-in-out infinite;
+}
+
+.motionSway {
+  animation: var(--kf-pet-sway) var(--dur-pet-sway) ease-in-out infinite;
+}
+
+/* 快摆:有拍时一拍摆过去、一拍摆回来;没拍时与黑豆被撸时的尾巴同速 */
+.motionSwayFast {
+  animation: var(--kf-pet-sway) calc(var(--pet-beat, var(--dur-pet-beat-fallback)) * 2) ease-in-out infinite;
+}
+
+.motionBreathe {
+  animation: var(--kf-pet-breathe) var(--dur-pet-breathe) ease-in-out infinite;
+}
+
+.motionSpin {
+  animation: var(--kf-spin) var(--dur-pet-dizzy-spin) linear infinite;
+}
+
+.motionWobble {
+  animation: var(--kf-pet-wobble) var(--dur-pet-wobble) ease-in-out infinite;
+}
+
+.motionTwitch {
+  animation: var(--kf-pet-twitch) var(--dur-pet-listen-twitch) ease-in-out infinite;
+}
+
+.motionPurr {
+  animation: var(--kf-pet-purr) var(--dur-pet-purr) linear infinite alternate;
+}
+
+.motionFloatUp {
+  animation: var(--kf-pet-zz) var(--dur-pet-zz) ease-out infinite;
+}
+
+/* 嘴:张嘴那一组一张一合 */
+.talk {
+  animation: var(--kf-pet-talk) var(--dur-pet-talk) ease-in-out infinite alternate;
+}
+
+/* ── 一次性动画:点名了部件的落在那个部件上 ──────────────────────────── */
+
+.shotSquish {
+  animation: var(--kf-pet-squish) var(--dur-pet-squish) var(--ease-pet-spring);
+}
+
+.shotStartle {
+  animation: var(--kf-pet-startle) var(--dur-pet-startle) var(--ease-pet-spring);
+}
+
+.shotWake {
+  animation: var(--kf-pet-wake) var(--dur-pet-wake) var(--ease-pet-spring);
+}
+
+.shotTwitch {
+  animation: var(--kf-pet-twitch) var(--dur-pet-twitch) ease-in-out;
+}
+
+.shotLove {
+  animation: var(--kf-pet-heart) var(--dur-pet-heart) ease-out forwards;
+}
+
+/* ── 没点名部件的:落到整只 ─────────────────────────────────────────── */
+
+.rig[data-one-shot='squish'] {
+  animation: var(--kf-pet-squish) var(--dur-pet-squish) var(--ease-pet-spring);
+}
+
+.rig[data-one-shot='startle'] {
+  animation: var(--kf-pet-startle) var(--dur-pet-startle) var(--ease-pet-spring);
+}
+
+.rig[data-one-shot='wake'] {
+  animation: var(--kf-pet-wake) var(--dur-pet-wake) var(--ease-pet-spring);
+}
+
+.rig[data-one-shot='twitch'] {
+  animation: var(--kf-pet-twitch) var(--dur-pet-twitch) ease-in-out;
+}
+
+/* ── 降级:去掉装饰循环,姿势保留 ──────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .motionBob,
+  .motionTap,
+  .motionSway,
+  .motionSwayFast,
+  .motionSpin,
+  .motionFloatUp {
+    animation: none;
+  }
+}
+
+:root[data-motion-tier='none'] .motionBob,
+:root[data-motion-tier='none'] .motionTap,
+:root[data-motion-tier='none'] .motionSway,
+:root[data-motion-tier='none'] .motionSwayFast,
+:root[data-motion-tier='none'] .motionSpin,
+:root[data-motion-tier='none'] .motionFloatUp {
+  animation: none;
+}

@@ -584,3 +584,12 @@ describe('browser.cdp settings', () => {
     expect(portOf(65535)).toBe(65535)
   })
 })
+
+describe('pets.chattiness(宠物 P5 §12.4)', () => {
+  it('缺省「适中」,选过的档活过 merge,不认识的档回缺省', () => {
+    expect(createDefaultSettings().pets).toEqual({ chattiness: 'balanced' })
+    expect(mergeWithDefaults({ pets: { chattiness: 'quiet' } } as Partial<AppSettings>).pets).toEqual({ chattiness: 'quiet' })
+    expect(mergeWithDefaults({ pets: { chattiness: 'loud' } } as unknown as Partial<AppSettings>).pets).toEqual({ chattiness: 'balanced' })
+    expect(mergeWithDefaults({}).pets).toEqual({ chattiness: 'balanced' })
+  })
+})

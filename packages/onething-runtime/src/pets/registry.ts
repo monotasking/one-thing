@@ -5,15 +5,29 @@
  * 谁自己 new 一本」与资源注册表(`@onething/core/resource` 的 `ResourceRegistry`)同一条
  * 组合根纪律 —— 装配层把它当字段持有,测试起一本干净的。
  *
- * 陌生能力演练:加一只鹦鹉 = `builtin/parrot.ts` 一份自述 + `BUILTIN_PETS` 一行。
- * `host.ts` / 装配层里不出现任何一只宠物的名字。
+ * 陌生能力演练:加一只鹦鹉 = `builtin/alu.ts` 一份自述(形象是 `alu.rig.ts` 的数据)+
+ * `BUILTIN_PETS` 一行(P5 真的这样加了一只)。`host.ts` / 装配层里不出现任何一只宠物的名字。
+ *
+ * ── 形象有问题的宠物不进名册(§12.2 末)──────────────────────────────────
+ * 构造时交来的一批(内置名册)里,`petManifestProblems` 答出问题的那只**跳过** —— 不让一份
+ * 画错的数据把整个宿主的装配拖垮;内置宠物画错由单测兜住(`rig-spec.test.ts`)。
+ * 单独 `register` 一只画错的是调用方的错,当场抛 `PetRigInvalidError`。
  */
 
+import { ALU } from './builtin/alu.js'
 import { HEIDOU } from './builtin/heidou.js'
-import type { PetManifest } from './manifest.js'
+import { petManifestProblems, type PetManifest } from './manifest.js'
+import type { RigSpecProblem } from './rig-spec.js'
 
 /** 内置宠物。**第一只就是缺省那一只**(没有 `current.json` 时领养它)。 */
-export const BUILTIN_PETS: readonly PetManifest[] = [HEIDOU]
+export const BUILTIN_PETS: readonly PetManifest[] = [HEIDOU, ALU]
+
+export class PetRigInvalidError extends Error {
+  constructor(readonly petId: string, readonly problems: readonly RigSpecProblem[]) {
+    super(`Pet ${petId} has an invalid rig: ${problems.map(p => `${p.path}: ${p.message}`).join('; ')}`)
+    this.name = 'PetRigInvalidError'
+  }
+}
 
 export class PetIdTakenError extends Error {
   constructor(readonly petId: string) {
@@ -26,12 +40,16 @@ export class PetRegistry {
   private readonly pets = new Map<string, PetManifest>()
 
   constructor(manifests: readonly PetManifest[] = BUILTIN_PETS) {
-    for (const manifest of manifests) this.register(manifest)
+    for (const manifest of manifests) {
+      if (petManifestProblems(manifest).length === 0) this.register(manifest)
+    }
   }
 
-  /** 登记一只。重复 id 是装配错误,当场抛。返回幂等注销(身份判等)。 */
+  /** 登记一只。重复 id / 形象有问题是装配错误,当场抛。返回幂等注销(身份判等)。 */
   register(manifest: PetManifest): () => void {
     if (this.pets.has(manifest.id)) throw new PetIdTakenError(manifest.id)
+    const problems = petManifestProblems(manifest)
+    if (problems.length > 0) throw new PetRigInvalidError(manifest.id, problems)
     const frozen = Object.freeze(manifest)
     this.pets.set(frozen.id, frozen)
     return () => {

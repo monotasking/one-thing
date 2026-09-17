@@ -16,7 +16,15 @@ import type {
 import type { MusicRadioState, MusicRuntimeState } from '@shared/ipc/music'
 import { currentMotionTier } from '../../components/motion'
 import type { MusicNowPlayingView, MusicProgrammeView } from '../../data/music-source'
-import { petOps, useCurrentPetId, usePetHushedId, usePetLive, usePetOnAir, usePetUtterance } from '../../data/pet-source'
+import {
+  petOps,
+  useCurrentPetId,
+  usePetHushedId,
+  usePetLive,
+  usePetOnAir,
+  usePetRosterRig,
+  usePetUtterance,
+} from '../../data/pet-source'
 import { useT } from '../../i18n'
 import { findBuiltinPet } from '../../pets/builtin'
 import { PetStage } from '../../pets/PetStage'
@@ -52,8 +60,9 @@ import { clockOf, progressOf, splitTitle } from './turntable'
 import s from './TurntableScene.module.css'
 
 /**
- * 这块栖位缺省演的宠物。P2 起 `pet:` 资源的 `current` 读得到就按它交来的 id 查壳侧形象表;
- * 读不到(宿主没有宠物子系统)就是这一只,与 P1 一样。
+ * 这块栖位缺省演的宠物。P2 起 `pet:` 资源的 `current` 读得到就按它交来的 id 查壳侧台词表、
+ * 按名册取形象(P5:手画的查表,声明式的交给 `DeclarativeRig`);读不到(宿主没有宠物子系统)
+ * 就是这一只,与 P1 一样。
  */
 const DEFAULT_PET = findBuiltinPet('heidou')
 
@@ -319,6 +328,8 @@ export function TurntableScene({
   usePetLive()
   const petId = useCurrentPetId()
   const pet = (petId !== undefined ? findBuiltinPet(petId) : undefined) ?? DEFAULT_PET
+  // P5 §12.3:形象按 id 从名册取(声明式形象只在名册里);名册没读到就退回手画表(`pet.rig`)。
+  const rosterRig = usePetRosterRig(pet?.id)
   const backendSaid = usePetUtterance()
   // P3(§10.5):话语只有后端这一路。电台口播由宠物宿主认领、发 `utterance`;说完发 `hushed`。
   const utterance = backendSaid?.utterance ?? null
@@ -453,8 +464,11 @@ export function TurntableScene({
       <div ref={perchRef} className={s.perch}>
         {ready && pet && (
           <PetStage
+            // P5 §12.5:换宠物 = 栖位重挂(气泡清空、姿势按当前活动直接摆,不播 wake)。
+            key={pet.id}
             ref={petRef}
             manifest={pet}
+            rig={rosterRig}
             activity={activity}
             utterance={utterance}
             hushed={hushed}
