@@ -57,6 +57,8 @@ export type FocusScopeId =
   // 一份可编辑的待办文档(计划抽屉 / 清单面板)。编辑中认领编辑键(⌘B / ⌘Z / ⌘↑ …),
   // 判词在 `content/todo/editor-claims.ts`。
   | 'todo'
+  // 「我的清单」面板(标签条 + ⋯ 菜单 + 当前清单那一份 `todo`)。落点是选中的那个标签,不认 Esc。
+  | 'todoLists'
   // 一格终端(T1)。一格 PTY 一份实例;它是全表**唯一**带着「把这个键交给
   // 里面那台程序」这一族局部键的作用域(判词在 `content/terminal/key-courtesy.ts`)。
   | 'terminal'

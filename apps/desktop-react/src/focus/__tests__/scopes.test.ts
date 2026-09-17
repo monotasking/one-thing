@@ -34,6 +34,9 @@ const ALL_IDS: readonly FocusScopeId[] = [
   'settings',
   // 音乐面(音乐收尾 · 壳半边,2026-09-10)。
   'music',
+  // 一份可编辑的待办文档(待办 T1,2026-09-17)与「我的清单」面板(T3)。
+  'todo',
+  'todoLists',
   // 一格终端(T1,2026-09-12)。
   'terminal',
   // 一格内嵌浏览器(B2,2026-09-12)。
@@ -57,7 +60,7 @@ const ALL_IDS: readonly FocusScopeId[] = [
 ]
 
 describe('FOCUS_SCOPES 封闭表', () => {
-  it('27 格(「改动」面是第 27 格),一格不多一格不少', () => {
+  it('29 格(待办两格是第 28 / 29 格),一格不多一格不少', () => {
     expect(FOCUS_SCOPE_LIST.map((s) => s.id).sort()).toEqual([...ALL_IDS].sort())
   })
 
@@ -198,10 +201,11 @@ describe('答哪些命令:查看器 / 文件树 / 检索面 / 会话总览 / 终
    * `content/terminal/key-courtesy.ts`;这一条只钉「表上只有终端有、而且它只收
    * `Ctrl+字母`」。
    */
-  it('认领表:只有终端一格,五个 Ctrl+字母(Win / Linux 那一档)', () => {
+  it('认领表:终端五个 Ctrl+字母(Win / Linux 那一档)+ 待办编辑区的编辑键', () => {
     const withClaims = FOCUS_SCOPE_LIST.filter((s) => (s.claims?.length ?? 0) > 0).map((s) => s.id)
     // 测试跑在 jsdom 上(UA 不是 mac),所以这里是 Win / Linux 那一档。
-    expect(withClaims).toEqual(['terminal'])
+    // 待办那一格只在编辑时认领(实例侧 `claiming`),判词在 `content/todo/editor-claims.ts`。
+    expect(withClaims).toEqual(['terminal', 'todo'])
     /*
      * K2 换了一格(`p` 出去、`t` 进来):检索面让出 ⌘P 之后 `Ctrl+P` 不再与
      * 任何一条命令抢键,而新长出来的 ⌘T(`tab.new`)占了一个字母,`^T` 在

@@ -208,17 +208,26 @@ describe('共键与认领:合法,但不许静默', () => {
    * 09-12 裁定 3,于是终端认领的 `^P` 不再与任何一条命令共键),`tab.new` 进来
    * (⌘T);⌘N 那一行还在,只是命令换了名字(`session.new` → `content.new`)。
    */
-  it('出厂档下「这个键在终端里归 PTY」恰好五条,一条都不静默', () => {
+  it('出厂档下被认领的键:终端归 PTY 五条 + 待办编辑区认领的几条,一条都不静默', () => {
     const state = { overrides: {} }
     const claimed = KEYMAP_COMMANDS.filter((c) => claimantsOf(state, c.id).length > 0).map((c) => c.id)
     expect(claimed).toEqual([
-      'toggle:sessions', // ^E ↔ ⌘E 会话总览
+      'toggle:sessions', // ^E ↔ ⌘E 会话总览;待办编辑中 ⌘E = 行内码
       'agent.menu', // ^J ↔ ⌘J agent 切换器
+      'files.detail', // 待办编辑中 ⌘I = 斜体、⌘↵ = 勾选这一项(文件树与编辑区不会同时在活动路径上)
       'tab.close', // ^W ↔ ⌘W 关当前 tab(K0 起它也是一条命令,所以也说得出口)
       'tab.new', // ^T ↔ ⌘T 同类再开一格(K2 新长出来的那一格)
       'content.new', // ^N ↔ ⌘N 新建这一种内容(K2 之前是 `session.new`,次序随表)
     ])
-    for (const id of claimed) expect(claimantsOf(state, id)).toEqual(['terminal'])
+    const claimants = Object.fromEntries(claimed.map((id) => [id, claimantsOf(state, id)]))
+    expect(claimants).toEqual({
+      'toggle:sessions': ['terminal', 'todo'],
+      'agent.menu': ['terminal'],
+      'files.detail': ['todo'],
+      'tab.close': ['terminal'],
+      'tab.new': ['terminal'],
+      'content.new': ['terminal'],
+    })
   })
 
   it('用户把某条命令改绑到 ⌘I:共键**说得出口**(而不是静默盖住文件树那一条)', () => {

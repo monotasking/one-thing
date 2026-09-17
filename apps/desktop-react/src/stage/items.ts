@@ -261,6 +261,8 @@ export const STAGE_ITEMS: StageItemSpec[] = [
    * 其余一律 space —— 缺省 = 保持今天的行为,不顺手替用户改一格。
    */
   { id: 'music', titleKey: 'item.music', level: 'space', dockGroup: 'global', icon: 'Music' },
+  // 我的清单(待办 T3,正本 `docs/todo-2026-09.md` §5.4):用户自己的 `todo:note/*`,一块普通的瓦。
+  { id: 'todo', titleKey: 'item.todo', level: 'space', dockGroup: 'global', icon: 'ListChecks' },
   { id: SETTINGS_ITEM_ID, titleKey: 'item.settings', level: 'app', dockGroup: 'global', icon: 'Settings' },
   // 「所有应用」排在最后:它是**管理**入口,不是又一块日常要点的面。
   // 两条特殊都在这一行上,不散在代码里 —— 见 APPS_ITEM_ID 的注释。

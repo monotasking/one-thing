@@ -311,6 +311,12 @@ export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
    * 认领那一族是编辑键:只在「正在编辑某一项」时认领(实例侧 `claiming`),
    * 否则 ⌘E 会被会话总览截走、⌘Z 落到应用菜单。
    */
+  /*
+   * 「我的清单」面板(待办 T3)。与 `music` 同一句判词:一块摆在架子上的内容面,
+   * 落点 = 选中的那个清单标签(实例侧声明),不声明 Esc,没有局部键。
+   * 编辑里面那份清单时,深一层的 `todo` 作用域认领编辑键。
+   */
+  todoLists: { id: 'todoLists', kind: 'region', labelKey: 'item.todo' },
   todo: { id: 'todo', kind: 'region', labelKey: 'item.todo', claims: TODO_EDITOR_CLAIMS },
   /*
    * 一格内嵌浏览器(B2,方案 §9-1)。**三件声明**:

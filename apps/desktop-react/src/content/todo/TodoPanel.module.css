@@ -1,0 +1,63 @@
+/*
+ * 「我的清单」面板。三种落点(架子 / 浮窗 / 舞台)共用,不写与宿主有关的尺寸;
+ * 头部一行(标签条弯腰、⋯ 不弯),正文在面板里滚。
+ */
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--surface-2);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3) 0;
+  border-bottom: var(--bw-1) solid var(--line-1);
+}
+
+.tabs {
+  flex: 1;
+  min-width: 0;
+}
+
+.rename {
+  flex: 1;
+  min-width: 0;
+  padding-block: var(--sp-1);
+}
+
+.renameInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.notice {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+
+.empty {
+  display: grid;
+  justify-items: start;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+
+.empty p {
+  margin: 0;
+}

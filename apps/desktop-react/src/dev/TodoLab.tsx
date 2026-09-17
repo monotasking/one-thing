@@ -7,6 +7,8 @@ import { Button } from '../ui/Button'
 import { StripBar } from '../composer/components/StripBar'
 import composerStyles from '../composer/components/Composer.module.css'
 import { planStrip } from '../content/todo/plan-strip'
+import { TodoPanel } from '../content/todo/TodoPanel'
+import { ConfirmHost } from '../ui/Dialog'
 import { configureTodoPort, resetTodoSource } from '../data/todo-source'
 import { LAB_PLAN_SESSION, TodoLabPort } from './todo-lab-port'
 import { Segmented } from '../ui/Segmented'
@@ -183,6 +185,12 @@ export function TodoLab() {
         <Button onClick={() => labPort.reset()}>plan reset</Button>
       </div>
       {portReady && <PlanStripDemo />}
+      {portReady && (
+        <div data-lab-panel="" style={{ width: '360px', height: '360px', border: 'var(--bw-1) solid var(--line-1)', borderRadius: 'var(--r-3)', overflow: 'hidden' }}>
+          <TodoPanel />
+        </div>
+      )}
+      <ConfirmHost />
       <div data-lab-doc="" data-scroll-root="" style={{ maxWidth: width === 'drawer' ? '640px' : '340px', maxHeight: '560px', overflow: 'auto', background: 'var(--surface-2)', padding: 'var(--sp-4)', borderRadius: 'var(--r-3)' }}>
         <EditableDoc
           key={generation}

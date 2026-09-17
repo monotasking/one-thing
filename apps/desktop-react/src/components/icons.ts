@@ -1,5 +1,6 @@
 import {
   Brain,
+  ListChecks,
   ImagePlus,
   Mic,
   FolderTree,
@@ -185,6 +186,8 @@ const REGISTRY: Record<string, LucideIcon> = {
   SkipBack,
   SkipForward,
   Heart,
+  // 我的清单(待办 T3)那块瓦。
+  ListChecks,
   Sparkles,
   Trash2,
 }
