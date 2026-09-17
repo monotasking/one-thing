@@ -359,6 +359,7 @@ export const zh = {
   'focus.scope.dialog': '对话框',
   'focus.scope.menu': '菜单',
   'focus.scope.palette': '工作区快切',
+  'focus.scope.pet': '宠物',
 
   /* ── 浏览器面(壳,不是页面内容;B2:content/browser/BrowserLeaf.tsx)── */
   'browser.address': '地址',
@@ -2026,5 +2027,26 @@ export const zh = {
   'menu.sectionTab': '标签',
   'menu.sectionContent': '内容',
   'menu.sectionFace': '面板',
+
+  /* ── 宠物(src/pets,正本 docs/design/pet-system-2026-09.md)──────────────────
+   * 嘀咕台词按通用反应分组,台词表在 `pets/builtin/<id>.ts`。标点保留全角:
+   * 开口逐字出时在中文标点处停顿(pets/bubble.ts)。 */
+  'pet.heidou.name': '黑豆',
+  'pet.heidou.poked1': '喵？在听呢。',
+  'pet.heidou.poked2': '别闹，快到副歌了。',
+  'pet.heidou.poked3': '尾巴不是开关。',
+  'pet.heidou.poked4': '再戳我就跑调了。',
+  'pet.heidou.waiting1': '还放吗？',
+  'pet.heidou.waiting2': '我等你。',
+  'pet.heidou.busy1': '别催，在翻。',
+  'pet.heidou.busy2': '这摞里好像有你喜欢的。',
+  'pet.heidou.sleepy1': '……再睡五分钟……',
+  'pet.heidou.sleepy2': '呼……',
+  'pet.heidou.dizzy1': '头好晕……',
+  'pet.heidou.annoyed1': '再戳我就放《两只老虎》。',
+  'pet.heidou.stroked1': '呼噜……再来一下也行。',
+  'pet.heidou.strokedAsleep1': '呼噜……（没醒）',
+  'pet.heidou.woke1': '嗯？我没睡！',
+  'pet.heidou.liked1': '记住了，你好这口。',
 
 } as const

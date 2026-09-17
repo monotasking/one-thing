@@ -1745,6 +1745,126 @@
   /* 主持人的话用衬线:与歌词区分「谁在说」。壳没带这副字,落到系统宋体。 */
   --music-font-say: 'Noto Serif SC', 'Songti SC', 'STSong', serif;
 
+  /* ── 宠物(src/pets,宠物 P0,2026-09-17;正本 docs/design/pet-system-2026-09.md)──
+   * 黑豆逐笔搬自样例「黑豆电台」。**猫本身是内容色**:一只黑猫在哪个主题里都是黑的,
+   * 耳机是橙的,唱片眼睛的标签是琥珀的(与 --music-vinyl 同一条例外)。只有冒在猫外面、
+   * 落在栖位底色上的两样(z 与呼噜线)跟主题走 —— 样例的房间是暗的,壳的栖位不是。
+   * 气泡是一张暖纸,两个主题同一张(它说话的对象是「宠物」这个角色,不是界面)。
+   *
+   * 形象的几何是 SVG 用户单位(viewBox 0 0 120 130,1 单位 = 这里的 1px);
+   * 姿势位移整句是 token(`transform` 值),形象 CSS 只挑用哪一句。
+   *
+   * 字体:样例用 ZCOOL KuaiLe(网络字体),壳不加网络字体 —— 装了就用,没装落到系统圆体。 */
+  --pet-font: 'ZCOOL KuaiLe', 'Yuanti SC', 'HanziPen SC', 'PingFang SC', var(--font-ui);
+  --pet-fur: #161618;
+  --pet-fur-edge: rgba(255, 214, 170, 0.18);
+  --pet-fur-edge-w: 1px;
+  --pet-paw: #1f1f22;
+  --pet-ear-inner: #4a3a36;
+  --pet-vinyl: #0a0a0b;
+  --pet-vinyl-groove: #2c2c2e;
+  --pet-eye-label: #e39a3b;
+  --pet-eye-notch: #8c5a1d;
+  --pet-eye-glint: rgba(255, 255, 255, 0.55);
+  --pet-blush: #e0707a;
+  --pet-blush-on: 0.55;
+  --pet-nose: #7a564c;
+  --pet-mouth-open: #5a2f2c;
+  --pet-whisker: rgba(255, 240, 220, 0.22);
+  --pet-phones-band: #bdb6aa;
+  --pet-phones-cup: #e08a2e;
+  --pet-heart: #e8606b;
+  --pet-zz: color-mix(in srgb, var(--text-2) 75%, transparent);
+  --pet-zz-fs: 11px;
+  --pet-purr: color-mix(in srgb, var(--text-2) 60%, transparent);
+  /* 爱心各自往哪边飘 */
+  --pet-heart-dx-a: -10px;
+  --pet-heart-dx-b: 8px;
+  --pet-heart-dx-c: -4px;
+  /* 姿势位移(§7.2) */
+  --pet-head-petted: rotate(9deg) translateY(2px);
+  --pet-head-sleeping: translateY(12px) rotate(-8deg);
+  --pet-head-dozing: translateY(6px) rotate(-5deg);
+  --pet-head-speaking: translateY(-3px);
+  --pet-head-busy: translate(8px, 4px) rotate(16deg);
+  --pet-head-listening: rotate(-11deg);
+  --pet-ear-l-speaking: rotate(-8deg);
+  --pet-ear-r-speaking: rotate(8deg);
+  --pet-phones-asleep: translateY(31px);
+  /* 栖位里形象的身量:stage 是样例原大,corner 是一半。栖位窄于 160px(阈值在
+   * PetStage.module.css 的 @container 里 —— 查询条件写不了 var(),改 stage 身量时一起改)
+   * 时 stage 也退到 corner。 */
+  --pet-stage-w: 120px;
+  --pet-stage-h: 134px;
+  --pet-corner-w: 60px;
+  --pet-corner-h: 67px;
+  /* 宠物按钮比形象窄一圈(耳朵尖与尾巴梢不算「点到它」)。 */
+  --pet-hit-inset-x: 10px;
+  --pet-hit-r: 40px 40px 20px 20px;
+  /* 气泡。inset / gap 在 pets/bubble.ts 有同名 JS 镜像(定位要算)。 */
+  --pet-bubble-inset: 12px;
+  --pet-bubble-gap: 8px;
+  --pet-bubble-max-w: 300px;
+  --pet-bubble-bg: #fbf6ee;
+  --pet-bubble-ink: #2a211b;
+  --pet-bubble-shadow: 0 10px 24px -8px rgba(0, 0, 0, 0.55);
+  --pet-bubble-pad: 10px 14px 11px;
+  --pet-bubble-r: 16px;
+  --pet-bubble-fs: 17px;
+  --pet-bubble-lh: 1.5;
+  --pet-bubble-tail: 14px;
+  --pet-bubble-lift: 6px;
+  --pet-bubble-scale-from: 0.96;
+  --pet-mutter-bg: rgba(251, 246, 238, 0.9);
+  --pet-mutter-ink: #5a4e44;
+  --pet-mutter-pad: 6px 11px 7px;
+  --pet-mutter-r: 13px;
+  --pet-mutter-fs: 14px;
+  /* 开口的声波:三根红条,出完字变灰 */
+  --pet-onair: var(--danger);
+  --pet-wave-done: #c9bfb4;
+  --pet-wave-bar-w: 2.5px;
+  --pet-wave-bar-h: 4px;
+  --pet-wave-h: 12px;
+  --pet-wave-gap: 2px;
+  --pet-wave-gap-after: 6px;
+  /* 气泡里的选项 / 动作按钮(皮套在 ui/Button 上,只换纸色与字) */
+  --pet-act-bg: #ffffff;
+  --pet-act-bg-hover: #f3e7d8;
+  --pet-act-line: #d9cbbb;
+  --pet-act-fs: 14px;
+  --pet-act-gap: 6px;
+  --pet-act-top: 8px;
+  /* 时长:形象 */
+  --dur-pet-pose: 450ms;
+  --dur-pet-phones: 500ms;
+  --dur-pet-blush: 300ms;
+  --dur-pet-sway: 3200ms;
+  --dur-pet-sway-petted: 1200ms;
+  --dur-pet-beat-fallback: 600ms;
+  --dur-pet-eye-spin: 1800ms;
+  --dur-pet-dizzy-spin: 900ms;
+  --dur-pet-wobble: 1400ms;
+  --dur-pet-breathe: 3400ms;
+  --dur-pet-zz: 3000ms;
+  --dur-pet-zz-stagger: 1000ms;
+  --dur-pet-talk: 220ms;
+  --dur-pet-listen-twitch: 1600ms;
+  --dur-pet-twitch: 350ms;
+  --dur-pet-purr: 160ms;
+  --dur-pet-heart: 1400ms;
+  --dur-pet-heart-stagger: 180ms;
+  --dur-pet-squish: 420ms;
+  --dur-pet-startle: 500ms;
+  --dur-pet-wake: 1100ms;
+  /* 时长:气泡 */
+  --dur-pet-bubble-fade: 180ms;
+  --dur-pet-bubble-pop: 220ms;
+  --dur-pet-wave: 500ms;
+  --dur-pet-wave-stagger: 150ms;
+  --ease-pet-spring: cubic-bezier(0.3, 0.6, 0.3, 1);
+  --ease-pet-pop: cubic-bezier(0.3, 0.7, 0.2, 1);
+
   /* ── 面板内分栏(文件查看器 F1 → F2 可拖)────────────────────────────
    * F1 是两档写死的 fr(0.9 : 1.1 = 45%);F2 起比例是**用户的**,记在
    * `data/split-prefs`,出厂值逐字等于那个 45 —— 加的是「能拖」,不是换手感。

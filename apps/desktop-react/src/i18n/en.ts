@@ -297,6 +297,7 @@ export const en: Record<MessageKey, string> = {
   'focus.scope.dialog': 'Dialog',
   'focus.scope.menu': 'Menu',
   'focus.scope.palette': 'Workspace switcher',
+  'focus.scope.pet': 'Pet',
 
   /* ── browser shell (B2: content/browser/BrowserLeaf.tsx) ──────────── */
   'browser.address': 'Address',
@@ -1735,5 +1736,24 @@ export const en: Record<MessageKey, string> = {
   'menu.sectionTab': 'Tabs',
   'menu.sectionContent': 'Content',
   'menu.sectionFace': 'Panels',
+
+  /* ── pets (src/pets, design docs/design/pet-system-2026-09.md) ───────── */
+  'pet.heidou.name': 'Heidou',
+  'pet.heidou.poked1': 'Mrrp? I’m listening.',
+  'pet.heidou.poked2': 'Quit it, the chorus is coming.',
+  'pet.heidou.poked3': 'My tail is not a switch.',
+  'pet.heidou.poked4': 'Poke me again and I’ll sing off-key.',
+  'pet.heidou.waiting1': 'Playing some more?',
+  'pet.heidou.waiting2': 'I’ll wait for you.',
+  'pet.heidou.busy1': 'Don’t rush me, I’m digging.',
+  'pet.heidou.busy2': 'There’s something you’d like in this pile.',
+  'pet.heidou.sleepy1': '…five more minutes…',
+  'pet.heidou.sleepy2': 'Zzz…',
+  'pet.heidou.dizzy1': 'My head is spinning…',
+  'pet.heidou.annoyed1': 'One more poke and it’s Frère Jacques on repeat.',
+  'pet.heidou.stroked1': 'Purr… one more wouldn’t hurt.',
+  'pet.heidou.strokedAsleep1': 'Purr… (still asleep)',
+  'pet.heidou.woke1': 'Hm? I wasn’t asleep!',
+  'pet.heidou.liked1': 'Noted. That’s your kind of thing.',
 
 }

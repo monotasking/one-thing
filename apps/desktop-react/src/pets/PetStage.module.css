@@ -1,0 +1,178 @@
+/* ── 栖位(宠物 P0,正本 docs/design/pet-system-2026-09.md §2.5 / §7)─────────
+ *
+ * 栖位占满宿主给它的盒子;宠物站在盒底正中,气泡浮在头顶上方。
+ * 尺寸两档由 `data-size` 自述(stage 样例原大 / corner 一半),栖位窄到放不下
+ * stage 时也退到 corner(`@container pet-perch`,阈值只能写字面量,账在 tokens.css)。
+ *
+ * 气泡的 left / top / 尾巴位置由 PetStage.tsx 按 §7.4 算好写成行内值
+ * (`--pet-tail-x`),这里只画皮与出场。
+ * ────────────────────────────────────────────────────────────────────────── */
+
+.perch {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  container: pet-perch / inline-size;
+}
+
+/* 隐藏(架子收起 = 祖先 inert):暂停全部动画,计时器照走(§7.1)。
+ * `!important` 是目的本身:形象里每条 `animation:` 简写都会把 play-state 重置回
+ * running,不压过它们就等于没暂停。 */
+:global([inert]) .perch *,
+.perch:global([inert]) * {
+  animation-play-state: paused !important;
+}
+
+.pet {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: var(--pet-stage-w);
+  height: var(--pet-stage-h);
+  transform: translateX(-50%);
+}
+
+.perch[data-size='corner'] .pet {
+  width: var(--pet-corner-w);
+  height: var(--pet-corner-h);
+}
+
+@container pet-perch (max-width: 159px) {
+  .pet {
+    width: var(--pet-corner-w);
+    height: var(--pet-corner-h);
+  }
+}
+
+/* 宠物按钮:比形象窄一圈,透明,盖在形象上。手势要自己的指针序列,不许浏览器拿去滚动。 */
+.hit {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--pet-hit-inset-x);
+  right: var(--pet-hit-inset-x);
+  border-radius: var(--pet-hit-r);
+  cursor: pointer;
+  touch-action: none;
+}
+
+/* ── 气泡 ─────────────────────────────────────────────────────────────── */
+
+.bubble {
+  position: absolute;
+  z-index: var(--z-sticky);
+  left: var(--pet-bubble-inset);
+  top: 0;
+  max-width: min(var(--pet-bubble-max-w), calc(100% - var(--pet-bubble-inset) * 2));
+  padding: var(--pet-bubble-pad);
+  border-radius: var(--pet-bubble-r);
+  background: var(--pet-bubble-bg);
+  color: var(--pet-bubble-ink);
+  box-shadow: var(--pet-bubble-shadow);
+  font-family: var(--pet-font);
+  font-size: var(--pet-bubble-fs);
+  line-height: var(--pet-bubble-lh);
+  overflow-wrap: anywhere;
+  opacity: 0;
+  transform: translateY(var(--pet-bubble-lift)) scale(var(--pet-bubble-scale-from));
+  transform-origin: var(--pet-tail-x, 50%) 100%;
+  transition: opacity var(--dur-pet-bubble-fade) var(--ease), transform var(--dur-pet-bubble-pop) var(--ease-pet-pop);
+  pointer-events: none;
+}
+
+.bubble[data-show='true'] {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+/* 尾巴:一块转 45° 的同色方块,尖朝下指着头顶。 */
+.bubble::after {
+  content: '';
+  position: absolute;
+  left: var(--pet-tail-x, 50%);
+  bottom: calc(var(--pet-bubble-tail) / -2);
+  width: var(--pet-bubble-tail);
+  height: var(--pet-bubble-tail);
+  margin-left: calc(var(--pet-bubble-tail) / -2);
+  background: inherit;
+  transform: rotate(45deg);
+  border-radius: 0 0 var(--r-1) 0;
+}
+
+.bubble[data-mode='mutter'] {
+  padding: var(--pet-mutter-pad);
+  border-radius: var(--pet-mutter-r);
+  background: var(--pet-mutter-bg);
+  color: var(--pet-mutter-ink);
+  font-size: var(--pet-mutter-fs);
+}
+
+.text {
+  white-space: pre-wrap;
+}
+
+/* 开口的声波:三根红条上下跳;字出完变灰停住 */
+.wave {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pet-wave-gap);
+  height: var(--pet-wave-h);
+  margin-right: var(--pet-wave-gap-after);
+  vertical-align: middle;
+}
+
+.wave i {
+  width: var(--pet-wave-bar-w);
+  height: var(--pet-wave-bar-h);
+  border-radius: var(--pet-wave-bar-w);
+  background: var(--pet-onair);
+  animation: var(--kf-pet-wave) var(--dur-pet-wave) ease-in-out infinite alternate;
+}
+
+.wave i:nth-child(2) {
+  animation-delay: var(--dur-pet-wave-stagger);
+}
+
+.wave i:nth-child(3) {
+  animation-delay: calc(var(--dur-pet-wave-stagger) * 2);
+}
+
+.bubble[data-done='true'] .wave i {
+  animation: none;
+  background: var(--pet-wave-done);
+}
+
+/* 选项 / 动作:皮套在 ui/Button(ghost pill)上,只换纸色与字 */
+.acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pet-act-gap);
+  margin-top: var(--pet-act-top);
+}
+
+.bubble .act {
+  border-color: var(--pet-act-line);
+  background: var(--pet-act-bg);
+  color: var(--pet-bubble-ink);
+  font-family: var(--pet-font);
+  font-size: var(--pet-act-fs);
+  font-weight: normal;
+}
+
+.bubble .act:hover:not(:disabled) {
+  border-color: var(--pet-act-line);
+  background: var(--pet-act-bg-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wave i {
+    animation: none;
+  }
+}
+
+:root[data-motion-tier='none'] .wave i {
+  animation: none;
+}

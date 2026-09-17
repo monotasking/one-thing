@@ -129,6 +129,22 @@
   --kf-chat-cursor: chatCursor;
   /* 待办里被 AI(或别的编辑器)刚改过的那一行:淡底一次,自己退掉。 */
   --kf-line-changed: lineChanged;
+
+  /* 宠物(src/pets,逐字搬自样例「黑豆电台」;唱片眼睛与蚊香眼的转圈复用 --kf-spin) */
+  --kf-pet-bob: petBob;
+  --kf-pet-tap: petTap;
+  --kf-pet-sway: petSway;
+  --kf-pet-breathe: petBreathe;
+  --kf-pet-talk: petTalk;
+  --kf-pet-twitch: petTwitch;
+  --kf-pet-zz: petZz;
+  --kf-pet-wobble: petWobble;
+  --kf-pet-purr: petPurr;
+  --kf-pet-heart: petHeart;
+  --kf-pet-squish: petSquish;
+  --kf-pet-startle: petStartle;
+  --kf-pet-wake: petWake;
+  --kf-pet-wave: petWave;
 }
 
 /* ── 淡入:全系统最常见的一次出场 ─────────────────────────────────────── */
@@ -443,6 +459,185 @@
   }
   to {
     opacity: 0.9;
+  }
+}
+
+/* ── 宠物(src/pets)──────────────────────────────────────────────────────────
+ * 位移是 SVG 用户单位(形象 viewBox 120×130,1 单位 = 1px)。样例原文,一个数没改;
+ * 唯一的改写是爱心的横向漂移量从 `--hx` 换成了 `--pet-heart-dx`(token 名)。
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/* rhythm:点头 */
+@keyframes petBob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0);
+  }
+  50% {
+    transform: translateY(2.5px) rotate(-2.5deg);
+  }
+}
+
+/* rhythm:右爪打拍子 */
+@keyframes petTap {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+/* 尾巴甩 */
+@keyframes petSway {
+  0%,
+  100% {
+    transform: rotate(-7deg);
+  }
+  50% {
+    transform: rotate(9deg);
+  }
+}
+
+/* 睡着 / 打盹的呼吸 */
+@keyframes petBreathe {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(1.04);
+  }
+}
+
+/* 开口:嘴一张一合 */
+@keyframes petTalk {
+  from {
+    transform: scaleY(0.25);
+  }
+  to {
+    transform: scaleY(1.1);
+  }
+}
+
+/* 耳朵抖一下 */
+@keyframes petTwitch {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  40% {
+    transform: rotate(14deg);
+  }
+  60% {
+    transform: rotate(-4deg);
+  }
+}
+
+/* z 往右上飘 */
+@keyframes petZz {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.6);
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(12px, -26px) scale(1.15);
+  }
+}
+
+/* 出错:头左右晃 */
+@keyframes petWobble {
+  0%,
+  100% {
+    transform: rotate(-6deg);
+  }
+  50% {
+    transform: rotate(6deg);
+  }
+}
+
+/* 被撸:呼噜线抖 */
+@keyframes petPurr {
+  from {
+    transform: translateX(-0.6px);
+  }
+  to {
+    transform: translateX(0.6px);
+  }
+}
+
+/* 喜欢:爱心往上飘 */
+@keyframes petHeart {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.4);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--pet-heart-dx, 0px), -38px) scale(1.2);
+  }
+}
+
+/* 点一下:压扁弹回 */
+@keyframes petSquish {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.12, 0.84);
+  }
+  60% {
+    transform: scale(0.95, 1.07);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* 从打盹里被叫醒:跳一下 */
+@keyframes petStartle {
+  0% {
+    transform: translateY(0);
+  }
+  35% {
+    transform: translateY(-16px) scale(0.96, 1.06);
+  }
+  70% {
+    transform: translateY(0) scale(1.06, 0.94);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+/* 从关着醒来:伸个懒腰 */
+@keyframes petWake {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.1, 0.9);
+  }
+  60% {
+    transform: translateY(-8px) scale(0.94, 1.08);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+/* 开口气泡里的声波条 */
+@keyframes petWave {
+  to {
+    height: var(--pet-wave-h);
   }
 }
 

@@ -306,6 +306,13 @@ export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
   },
   music: { id: 'music', kind: 'region', labelKey: 'item.music' },
   /*
+   * 栖位里的宠物(宠物 P0,`docs/design/pet-system-2026-09.md` §7.3 / §7.4)。**三件声明**:
+   * 落点 = 宠物按钮;气泡亮出选项时落点换成第一颗选项(实例侧 `restingTarget`)。
+   * Esc 只在选项等着的时候认(= 不选,回调宿主 `onChoice(null)`),其余时候答 false
+   * 交给外层。没有局部键 —— 点一下是按钮自己的 Enter / Space。
+   */
+  pet: { id: 'pet', kind: 'region', labelKey: 'focus.scope.pet' },
+  /*
    * 一份可编辑的待办文档(`docs/todo-editor-2026-09.md` §6.0)。落点 = 文档容器(实例侧声明);
    * Esc 不声明 —— 编辑区自己接(退出编辑),不编辑时 Esc 归外层(抽屉关自己)。
    * 认领那一族是编辑键:只在「正在编辑某一项」时认领(实例侧 `claiming`),

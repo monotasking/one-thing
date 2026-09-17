@@ -1,6 +1,7 @@
 import { AppShell } from './components/AppShell'
 import { Gallery } from './dev/Gallery'
 import { MusicLab } from './dev/MusicLab'
+import { PetLab } from './dev/PetLab'
 import { TodoLab } from './dev/TodoLab'
 import { PerfHud, perfHudEnabled } from './dev/PerfHud'
 
@@ -19,9 +20,11 @@ export default function App() {
   const musicLab = params?.has('music-lab') ?? false
   // ?todo-lab:待办编辑器实验台(内存文档 + 一致性自测,不碰真 store)。
   const todoLab = params?.has('todo-lab') ?? false
+  // ?pet-lab:宠物实验台(活动与话语由开关喂,不接后端)。
+  const petLab = params?.has('pet-lab') ?? false
   return (
     <>
-      {todoLab ? <TodoLab /> : musicLab ? <MusicLab /> : gallery ? <Gallery /> : <AppShell />}
+      {petLab ? <PetLab /> : todoLab ? <TodoLab /> : musicLab ? <MusicLab /> : gallery ? <Gallery /> : <AppShell />}
       {perfHudEnabled() ? <PerfHud /> : null}
     </>
   )

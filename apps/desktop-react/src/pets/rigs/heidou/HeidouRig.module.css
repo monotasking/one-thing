@@ -1,0 +1,415 @@
+/* ── 黑豆的形象(宠物 P0)────────────────────────────────────────────────────
+ *
+ * 逐条搬自样例「黑豆电台」的 `.pet` 规则。三格属性挑动画:
+ *   data-pose      §7.2 九种姿势(pose.ts 算出来的)
+ *   data-mouth     closed / talking
+ *   data-one-shot  最近一次一次性动画(舞台换值重播)
+ *
+ * 颜色、时长、缓动、姿势位移全是 `--pet-*` / `--dur-pet-*` token(tokens.css「宠物」节),
+ * 关键帧在 styles/motion.css(`--kf-pet-*`)。
+ *
+ * 降级(§7.2 末):`prefers-reduced-motion` 与动效档「无」是两个来源一个结论 ——
+ * 去掉点头、打拍子、尾巴、z 上浮与唱片眼睛转动,**姿势本身保留**(眼睛开闭、
+ * 耳机位置、头的角度)。两条规则内容一模一样(与 ui/Dots 同一手)。
+ *
+ * 栖位被隐藏(架子收起 = `inert`)时暂停全部动画,计时器照走(§7.1)—— 那条规则
+ * 写在 PetStage.module.css,这里不必知道。
+ * ────────────────────────────────────────────────────────────────────────── */
+
+.rig {
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 100%;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.svg g {
+  transform-box: fill-box;
+}
+
+/* ── 静态的皮 ─────────────────────────────────────────────────────────── */
+
+.skull,
+.body {
+  fill: var(--pet-fur);
+  stroke: var(--pet-fur-edge);
+  stroke-width: var(--pet-fur-edge-w);
+}
+
+.ear {
+  fill: var(--pet-fur);
+}
+
+.earInner {
+  fill: var(--pet-ear-inner);
+}
+
+.tailPath {
+  fill: none;
+  stroke: var(--pet-fur);
+  stroke-linecap: round;
+}
+
+.paw {
+  fill: var(--pet-paw);
+}
+
+.vinylDisc {
+  fill: var(--pet-vinyl);
+}
+
+.vinylGroove {
+  fill: none;
+  stroke: var(--pet-vinyl-groove);
+}
+
+.vinylLabel {
+  fill: var(--pet-eye-label);
+}
+
+.vinylNotch {
+  fill: var(--pet-eye-notch);
+}
+
+.glint {
+  fill: var(--pet-eye-glint);
+}
+
+.eyesClosed,
+.eyesDizzy {
+  fill: none;
+  stroke: var(--pet-eye-label);
+  stroke-linecap: round;
+}
+
+.blush {
+  fill: var(--pet-blush);
+}
+
+.nose {
+  fill: var(--pet-nose);
+}
+
+.mouth {
+  fill: none;
+  stroke: var(--pet-nose);
+  stroke-linecap: round;
+}
+
+.mouthOpen {
+  fill: var(--pet-mouth-open);
+  transform-origin: 50% 0%;
+}
+
+.whiskers {
+  stroke: var(--pet-whisker);
+}
+
+.phonesBand {
+  fill: none;
+  stroke: var(--pet-phones-band);
+}
+
+.phonesCup {
+  fill: var(--pet-phones-cup);
+}
+
+.zz text {
+  font-family: var(--pet-font);
+  font-size: var(--pet-zz-fs);
+  font-weight: 700;
+  fill: var(--pet-zz);
+}
+
+.purr path {
+  fill: none;
+  stroke: var(--pet-purr);
+  stroke-linecap: round;
+}
+
+.hearts path {
+  fill: var(--pet-heart);
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  opacity: 0;
+}
+
+.heartA {
+  --pet-heart-dx: var(--pet-heart-dx-a);
+}
+
+.heartB {
+  --pet-heart-dx: var(--pet-heart-dx-b);
+}
+
+.heartC {
+  --pet-heart-dx: var(--pet-heart-dx-c);
+}
+
+/* ── 每个部件的轴心与缺省态 ───────────────────────────────────────────── */
+
+.head {
+  transform-origin: 50% 95%;
+  transition: transform var(--dur-pet-pose) var(--ease);
+}
+
+.headBob {
+  transform-origin: 50% 95%;
+}
+
+.tail {
+  transform-origin: 0% 100%;
+  animation: var(--kf-pet-sway) var(--dur-pet-sway) ease-in-out infinite;
+}
+
+.bodyG {
+  transform-origin: 50% 100%;
+}
+
+.earL {
+  transform-origin: 80% 100%;
+  transition: transform var(--dur-pet-pose) var(--ease);
+}
+
+.earR {
+  transform-origin: 20% 100%;
+  transition: transform var(--dur-pet-pose) var(--ease);
+}
+
+.vinyl {
+  transform-origin: 50% 50%;
+}
+
+.phones {
+  transition: transform var(--dur-pet-phones) var(--ease);
+}
+
+.eyesClosed,
+.eyesDizzy,
+.mouthOpen,
+.zz,
+.purr,
+.hearts {
+  opacity: 0;
+}
+
+.blush {
+  opacity: 0;
+  transition: opacity var(--dur-pet-blush) var(--ease);
+}
+
+/* ── 嘴 ───────────────────────────────────────────────────────────────── */
+
+.rig[data-mouth='talking'] .mouth {
+  opacity: 0;
+}
+
+.rig[data-mouth='talking'] .mouthOpen {
+  opacity: 1;
+  animation: var(--kf-pet-talk) var(--dur-pet-talk) ease-in-out infinite alternate;
+}
+
+/* ── §7.2 九种姿势 ────────────────────────────────────────────────────── */
+
+/* 1 被撸:闭眼、脸红、呼噜线抖、头歪、尾巴快甩 */
+.rig[data-pose='petted'] .eyesOpen {
+  opacity: 0;
+}
+
+.rig[data-pose='petted'] .eyesClosed {
+  opacity: 1;
+}
+
+.rig[data-pose='petted'] .blush {
+  opacity: var(--pet-blush-on);
+}
+
+.rig[data-pose='petted'] .purr {
+  opacity: 1;
+  animation: var(--kf-pet-purr) var(--dur-pet-purr) linear infinite alternate;
+}
+
+.rig[data-pose='petted'] .head {
+  transform: var(--pet-head-petted);
+}
+
+.rig[data-pose='petted'] .tail {
+  animation-duration: var(--dur-pet-sway-petted);
+}
+
+/* 2 出错:蚊香眼、头左右晃 */
+.rig[data-pose='dizzy'] .eyesOpen {
+  opacity: 0;
+}
+
+.rig[data-pose='dizzy'] .eyesDizzy {
+  opacity: 1;
+}
+
+.rig[data-pose='dizzy'] .swirl {
+  transform-origin: 50% 50%;
+  animation: var(--kf-spin) var(--dur-pet-dizzy-spin) linear infinite;
+}
+
+.rig[data-pose='dizzy'] .headBob {
+  animation: var(--kf-pet-wobble) var(--dur-pet-wobble) ease-in-out infinite;
+}
+
+/* 3 关着:耳机滑到脖子、闭眼、蜷低、呼吸起伏、冒 z;7 打盹同一套,耳机不摘 */
+.rig[data-pose='sleeping'] .phones {
+  transform: var(--pet-phones-asleep);
+}
+
+.rig[data-pose='sleeping'] .head {
+  transform: var(--pet-head-sleeping);
+}
+
+.rig[data-pose='dozing'] .head {
+  transform: var(--pet-head-dozing);
+}
+
+.rig[data-pose='sleeping'] .eyesOpen,
+.rig[data-pose='dozing'] .eyesOpen {
+  opacity: 0;
+}
+
+.rig[data-pose='sleeping'] .eyesClosed,
+.rig[data-pose='dozing'] .eyesClosed {
+  opacity: 1;
+}
+
+.rig[data-pose='sleeping'] .bodyG,
+.rig[data-pose='dozing'] .bodyG {
+  animation: var(--kf-pet-breathe) var(--dur-pet-breathe) ease-in-out infinite;
+}
+
+.rig[data-pose='sleeping'] .zz,
+.rig[data-pose='dozing'] .zz {
+  opacity: 1;
+}
+
+.rig[data-pose='sleeping'] .zz text,
+.rig[data-pose='dozing'] .zz text {
+  animation: var(--kf-pet-zz) var(--dur-pet-zz) ease-out infinite;
+}
+
+.rig[data-pose='sleeping'] .z2,
+.rig[data-pose='dozing'] .z2 {
+  animation-delay: var(--dur-pet-zz-stagger);
+}
+
+.rig[data-pose='sleeping'] .z3,
+.rig[data-pose='dozing'] .z3 {
+  animation-delay: calc(var(--dur-pet-zz-stagger) * 2);
+}
+
+.rig[data-pose='sleeping'] .tail,
+.rig[data-pose='dozing'] .tail {
+  animation: none;
+}
+
+/* 4 开口:坐直、耳朵外张(嘴那一半归 data-mouth) */
+.rig[data-pose='speaking'] .head {
+  transform: var(--pet-head-speaking);
+}
+
+.rig[data-pose='speaking'] .earL {
+  transform: var(--pet-ear-l-speaking);
+}
+
+.rig[data-pose='speaking'] .earR {
+  transform: var(--pet-ear-r-speaking);
+}
+
+/* 5 在翻:扭头看向身侧 */
+.rig[data-pose='busy'] .head {
+  transform: var(--pet-head-busy);
+}
+
+/* 6 你在打字:歪头、右耳抖 */
+.rig[data-pose='listening'] .head {
+  transform: var(--pet-head-listening);
+}
+
+.rig[data-pose='listening'] .earR {
+  animation: var(--kf-pet-twitch) var(--dur-pet-listen-twitch) ease-in-out infinite;
+}
+
+/* 8 有节奏:点头与右爪按拍、唱片眼睛转、尾巴两拍一甩 */
+.rig[data-pose='grooving'] .headBob {
+  animation: var(--kf-pet-bob) var(--pet-beat, var(--dur-pet-beat-fallback)) ease-in-out infinite;
+}
+
+.rig[data-pose='grooving'] .pawR {
+  animation: var(--kf-pet-tap) var(--pet-beat, var(--dur-pet-beat-fallback)) ease-in-out infinite;
+}
+
+.rig[data-pose='grooving'] .vinyl {
+  animation: var(--kf-spin) var(--dur-pet-eye-spin) linear infinite;
+}
+
+.rig[data-pose='grooving'] .tail {
+  animation-duration: calc(var(--pet-beat, var(--dur-pet-beat-fallback)) * 2);
+}
+
+/* 9 坐着:缺省态(尾巴慢甩)就是它,不必再写 */
+
+/* ── 一次性动画 ───────────────────────────────────────────────────────── */
+
+.rig[data-one-shot='squish'] {
+  animation: var(--kf-pet-squish) var(--dur-pet-squish) var(--ease-pet-spring);
+}
+
+.rig[data-one-shot='startle'] {
+  animation: var(--kf-pet-startle) var(--dur-pet-startle) var(--ease-pet-spring);
+}
+
+.rig[data-one-shot='wake'] {
+  animation: var(--kf-pet-wake) var(--dur-pet-wake) var(--ease-pet-spring);
+}
+
+.rig[data-one-shot='twitch'] .earL {
+  animation: var(--kf-pet-twitch) var(--dur-pet-twitch) ease-in-out;
+}
+
+.rig[data-one-shot='love'] .hearts {
+  opacity: 1;
+}
+
+.rig[data-one-shot='love'] .hearts path {
+  animation: var(--kf-pet-heart) var(--dur-pet-heart) ease-out forwards;
+}
+
+.rig[data-one-shot='love'] .heartB {
+  animation-delay: var(--dur-pet-heart-stagger);
+}
+
+.rig[data-one-shot='love'] .heartC {
+  animation-delay: calc(var(--dur-pet-heart-stagger) * 2);
+}
+
+/* ── 降级:去掉节奏与装饰循环,姿势保留 ─────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .tail,
+  .rig[data-pose='grooving'] .headBob,
+  .rig[data-pose='grooving'] .pawR,
+  .rig[data-pose='grooving'] .vinyl,
+  .rig[data-pose] .zz text {
+    animation: none;
+  }
+}
+
+:root[data-motion-tier='none'] .tail,
+:root[data-motion-tier='none'] .rig[data-pose='grooving'] .headBob,
+:root[data-motion-tier='none'] .rig[data-pose='grooving'] .pawR,
+:root[data-motion-tier='none'] .rig[data-pose='grooving'] .vinyl,
+:root[data-motion-tier='none'] .rig[data-pose] .zz text {
+  animation: none;
+}

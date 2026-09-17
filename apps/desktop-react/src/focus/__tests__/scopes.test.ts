@@ -34,6 +34,8 @@ const ALL_IDS: readonly FocusScopeId[] = [
   'settings',
   // 音乐面(音乐收尾 · 壳半边,2026-09-10)。
   'music',
+  // 栖位里的宠物(宠物 P0,2026-09-17)。
+  'pet',
   // 一份可编辑的待办文档(待办 T1,2026-09-17)与「我的清单」面板(T3)。
   'todo',
   'todoLists',
