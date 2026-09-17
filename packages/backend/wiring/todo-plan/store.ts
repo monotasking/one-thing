@@ -64,11 +64,34 @@ function broadcast(payload: TodoPlanChangedPayload): void {
   hostPorts.broadcastChanged?.(payload)
 }
 
+/** 谁改的:`app` = 经这台后端的 store 自己写;`external` = 文件监听器看到的别人写(AI 的写文件工具、用户自己的编辑器)。 */
+export type TodoPlanChangeOrigin = 'app' | 'external'
+export type TodoPlanChangeListener = (payload: TodoPlanChangedPayload, origin: TodoPlanChangeOrigin) => void
+
 /** One Backend owns the store's self-write cache and the watcher of that same store. */
 export class TodoPlanRuntime {
   readonly store: OnethingTodoPlanStore
   readonly watcher: OnethingTodoPlanWatcher
   private disposed = false
+  private readonly listeners = new Set<TodoPlanChangeListener>()
+
+  /**
+   * 订阅变更(`todo:` 资源 provider 用)。与宿主端口 `broadcastChanged` 并存而不是替代:
+   * 端口是宿主的推送面(React 壳注入的是 null),这里是进程内的读者,**不经过宿主端口**,
+   * 所以桌面 / server / CLI 三个宿主上资源事件的行为一致。
+   */
+  onChanged(listener: TodoPlanChangeListener): () => void {
+    this.listeners.add(listener)
+    return () => { this.listeners.delete(listener) }
+  }
+
+  private notify(payload: TodoPlanChangedPayload, origin: TodoPlanChangeOrigin): void {
+    if (this.disposed) return
+    broadcast(payload)
+    for (const listener of this.listeners) {
+      try { listener(payload, origin) } catch (error) { log.error('todo plan change listener failed', {}, error) }
+    }
+  }
 
   constructor(private readonly options: { storePath: string; assertActive(): void }) {
     this.store = new OnethingTodoPlanStore({
@@ -77,7 +100,7 @@ export class TodoPlanRuntime {
         return getSettings().general?.todoPlan?.directory
       },
       getDefaultStorePath: () => options.storePath,
-      notifyChanged: payload => { if (!this.disposed) broadcast(payload) },
+      notifyChanged: payload => this.notify(payload, 'app'),
       revealDirectory: directory => {
         if (this.disposed) throw new Error('Todo runtime is disposed')
         return hostPorts.revealDirectory?.(directory)
@@ -85,7 +108,7 @@ export class TodoPlanRuntime {
     })
     this.watcher = new OnethingTodoPlanWatcher({
       store: this.store,
-      notifyChanged: payload => { if (!this.disposed) broadcast(payload) },
+      notifyChanged: payload => this.notify(payload, 'external'),
       onError: error => log.error('todo plan watch failed', {}, error),
     })
   }
@@ -98,7 +121,7 @@ export class TodoPlanRuntime {
   stop(): void { this.watcher.stop() }
   quiesce(): void { this.watcher.quiesce() }
   drain(): Promise<void> { return this.watcher.drain() }
-  dispose(): void { this.disposed = true; this.watcher.quiesce() }
+  dispose(): void { this.disposed = true; this.listeners.clear(); this.watcher.quiesce() }
 }
 
 function getTodoPlanRuntime(): TodoPlanRuntime {
@@ -108,6 +131,11 @@ function getTodoPlanRuntime(): TodoPlanRuntime {
 }
 
 export function getTodoPlanStore(): OnethingTodoPlanStore { return getTodoPlanRuntime().store }
+
+/** 订阅当前装配的待办变更(带来源);返回退订。 */
+export function onTodoPlanChanged(listener: TodoPlanChangeListener): () => void {
+  return getTodoPlanRuntime().onChanged(listener)
+}
 
 export async function startTodoPlanWatcher(): Promise<void> {
   return getTodoPlanRuntime().start()

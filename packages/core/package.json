@@ -52,7 +52,8 @@
     "./session/render-anchors": "./session/render-anchors.ts",
     "./session/storage": "./session/storage/index.ts",
     "./session/storage/json-message-page-file": "./session/storage/json-message-page-file.ts",
-    "./slash-commands": "./slash-commands.ts"
+    "./slash-commands": "./slash-commands.ts",
+    "./text": "./text/index.ts"
   },
   "dependencies": {}
 }

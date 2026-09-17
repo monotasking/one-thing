@@ -33,6 +33,7 @@ import { GitResourceProvider } from './git-provider.js'
 import { createMusicResourceProvider } from './music-provider.js'
 import { createLocalOnlyReadGuard } from './read-guard.js'
 import { SessionResourceProvider } from './session-provider.js'
+import { TodoResourceProvider } from './todo-provider.js'
 import type { ToolCatalogTier } from '../toolkit/catalog.js'
 
 export { forwardResourceEventsToBus } from './event-bridge.js'
@@ -67,6 +68,8 @@ export {
   GitUnavailableError,
 } from './git-provider.js'
 export type { GitChangedFile, GitFileStatus } from './git-provider.js'
+export { TodoRefError, TodoResourceProvider, parseTodoTarget, revisionOf, summarizeTodoMarkdown } from './todo-provider.js'
+export type { TodoOpPayload, TodoTarget } from './todo-provider.js'
 export { createLocalOnlyReadGuard } from './read-guard.js'
 export type { LocalOnlyReadGuardOptions } from './read-guard.js'
 export { mountMcpResources } from './mcp-mount.js'
@@ -224,6 +227,14 @@ export function mountBuiltinResources(
      */
     kernel.mount(new GitResourceProvider()),
   ]
+  /*
+   * 待办(`apps/desktop-react/docs/todo-2026-09.md` §3)。**所有档都装**:它写的是
+   * 待办目录里的 markdown,server / CLI 上照样有人读写;自述里 `exposure.aiTool: false`,
+   * 所以任何一档都不会多出一只模型工具(AI 仍用写文件工具维护计划)。
+   * 两次 push 的顺序与音乐同一条理由:先摘 scheme、再退文件变更订阅。
+   */
+  const todo = new TodoResourceProvider()
+  disposers.push(() => todo.dispose(), kernel.mount(todo))
   /*
    * K3-b —— 音乐,**只在 `full` 档**(理由写在 `MountBuiltinResourcesOptions.tier`
    * 那一格上)。

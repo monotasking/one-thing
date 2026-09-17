@@ -313,6 +313,11 @@ export class OnethingTodoPlanStore {
     this.options.notifyChanged?.(payload)
   }
 
+  /** 一份用户清单的文件路径(`id` 经过与其余入口同一只路径段校验)。给 `todo:` 资源按地址读写用。 */
+  userNoteFilePath(id: string): string {
+    return this.userNotePath(id)
+  }
+
   private userNotePath(id: string): string {
     return path.join(this.userNotesDirectory(), `${assertPathSegment(id, 'note id')}.md`)
   }

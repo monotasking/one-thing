@@ -643,6 +643,13 @@ export class OnethingBackend implements BackendHandle {
     // Agents are read on every turn (and once per room member); warm the cache
     // here so nothing downstream pays a synchronous read + normalize.
     await initializeAgents()
+    /*
+     * 待办目录的文件监听器随装配启动(设置里的待办目录此刻才读得到)。从前全仓唯一的
+     * 启动点在「保存设置」之后,于是从开机到用户第一次保存设置之间,AI 用写文件工具改了
+     * 计划,界面收不到任何通知(`apps/desktop-react/docs/todo-2026-09.md` §1 缺口 2)。
+     * 起不来只记日志:待办监听不是装配能不能成的前提。收场在 `todoPlanRuntime` 那条 own 上。
+     */
+    await todoPlans.start().catch(error => log.error('todo plan watcher failed to start', {}, error))
     await options.hooks?.afterSettings?.(this)
 
     const { eventBus, streamChannel } = createEventSystem()
