@@ -82,6 +82,7 @@ function playerAdapters(overrides: Partial<MusicPlayerAdapters> = {}): MusicPlay
     nowPlaying: () => NOW_PLAYING,
     lyrics: () => LYRICS,
     watchNowPlaying: () => () => {},
+    watchFacts: () => () => {},
     ...overrides,
   }
 }
@@ -384,6 +385,45 @@ describe('music resource provider —— nowPlayingChanged 的转发', () => {
     provider.dispose()
     expect(unwatch).toHaveBeenCalledTimes(1)
     // 幂等 —— 第二次什么都不做(关机链上一条 disposer 被跑两次是常态)。
+    provider.dispose()
+    expect(unwatch).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('music resource provider —— 听歌的事实(宠物 P4 §11.1)', () => {
+  it('attach 时订一次,事实原样转成 music:player 上的事件,且每条都在自述里带着 moment;dispose 之后退订', () => {
+    let push: ((event: string, payload: Record<string, unknown>) => void) | undefined
+    const unwatch = vi.fn()
+    const provider = makeProvider(
+      radioAdapters(),
+      playerAdapters({
+        watchFacts: listener => {
+          push = listener
+          return unwatch
+        },
+      }),
+    )
+    const hub = new ResourceEventHub()
+    const seen: ResourceEvent[] = []
+    hub.watch('music:', event => seen.push(event))
+    provider.attach(hub)
+
+    push?.('skipStreak', { count: 3, titles: ['a', 'b', 'c'] })
+    expect(seen).toEqual([{ ref: 'music:player', event: 'skipStreak', payload: { count: 3, titles: ['a', 'b', 'c'] } }])
+
+    const moments = Object.fromEntries(
+      ['trackStarted', 'skipped', 'skipStreak', 'liked', 'resumedAfterPause', 'interlude']
+        .map(name => [name, provider.spec.events[name]?.moment?.weight]),
+    )
+    expect(moments).toEqual({
+      trackStarted: 'low',
+      skipped: 'low',
+      skipStreak: 'high',
+      liked: 'low',
+      resumedAfterPause: 'normal',
+      interlude: 'normal',
+    })
+
     provider.dispose()
     expect(unwatch).toHaveBeenCalledTimes(1)
   })

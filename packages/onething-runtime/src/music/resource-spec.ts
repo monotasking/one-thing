@@ -689,6 +689,84 @@ export const musicResourceSpec: ResourceSpec = {
         required: ['providerId'],
       },
     },
+    /**
+     * ── 听歌这件事本身的事实(宠物 P4,`docs/design/pet-system-2026-09.md` §11.1)──────
+     *
+     * 下面六条都是 `music:player` 上**音乐自己的事实**,各自带一格 `moment`:谁想对「用户
+     * 跳过了一首歌」起反应,读这一格就够了。音乐不知道有谁在听 —— 这里一个「宠物」都没有。
+     *
+     * 产地全在装配层(`wiring/music/moments.ts` 的 `MusicMoments` 与电台那几处调用),规矩写在
+     * 那一只文件头上。权重的判据:`low` = 只值得记住(每首歌都会有),`normal` = 值得在冷却
+     * 允许时说一句,`high` = 用户在用行动表达不满,值得插队说。
+     */
+    trackStarted: {
+      title: 'The radio confirmed a song is really playing',
+      payload: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: "The player's own title string." },
+          artist: { type: 'string' },
+          encryptedId: { type: 'string' },
+        },
+        required: ['title'],
+      },
+      moment: { weight: 'low', gist: '开始放一首歌' },
+    },
+    skipped: {
+      title: 'The user skipped the song while the radio was on',
+      payload: {
+        type: 'object',
+        properties: { title: { type: 'string' } },
+        required: ['title'],
+      },
+      moment: { weight: 'low', gist: '用户跳过了一首歌' },
+    },
+    skipStreak: {
+      title: 'The user skipped several songs in a short time (the third skip within 90 seconds)',
+      payload: {
+        type: 'object',
+        properties: {
+          count: { type: 'number' },
+          titles: { type: 'array', items: { type: 'string' }, description: 'The skipped titles, oldest first.' },
+        },
+        required: ['count', 'titles'],
+      },
+      moment: { weight: 'high', gist: '用户连着跳过了好几首,可能不喜欢现在的方向' },
+    },
+    liked: {
+      title: 'The user hearted the current song',
+      payload: {
+        type: 'object',
+        properties: { title: { type: 'string' } },
+        required: ['title'],
+      },
+      moment: { weight: 'low', gist: '用户喜欢了这首歌' },
+    },
+    resumedAfterPause: {
+      title: 'Playback resumed after being paused for at least five minutes',
+      payload: {
+        type: 'object',
+        properties: {
+          pausedMs: { type: 'number', description: 'How long it was paused, as observed by the now-playing watcher (accurate to one poll).' },
+          title: { type: 'string' },
+        },
+        required: ['pausedMs'],
+      },
+      moment: { weight: 'normal', gist: '用户暂停了一阵又回来继续听' },
+    },
+    interlude: {
+      title: 'The song reached an instrumental break in its middle (at least 12 seconds without vocals, by the lyric timeline)',
+      payload: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          atSeconds: { type: 'number', description: 'Where in the song the break starts.' },
+          lengthSeconds: { type: 'number', description: 'How long the break lasts.' },
+        },
+        required: ['title', 'atSeconds', 'lengthSeconds'],
+      },
+      moment: { weight: 'normal', gist: '这首歌到了一段没有人声的间奏' },
+    },
   },
   /**
    * `live` —— 一直在变,所以**不主动喂**提示词,只在工具结果里出现(§3 那张表的

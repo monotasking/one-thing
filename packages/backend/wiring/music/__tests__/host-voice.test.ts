@@ -4,7 +4,7 @@
  * 钉四件事:
  *  ① 没有出声端口、也没有语音宿主 → `speak` **立刻** resolve(回归:从前推给没人听的渲染进程,
  *     空等 30 秒回执);
- *  ② 有出声端口 → 在进程里放,`onVoiceStart` 排在放之前;
+ *  ② 有出声端口 → 在进程里放,前后成对报 `speech:activity`(P4 §11.3;合成失败不报);
  *  ③ 口播缓存只有一份:预取之后再说不重复合成;带调法(宠物的嗓子)是另一段录音;
  *  ④ 中止信号一路递到出声端口。
  *
@@ -55,41 +55,34 @@ describe('default host voice (dj-voice)', () => {
     scope = createDjVoiceScope()
     const kit = createHostVoiceKit(scope)
     const started = Date.now()
-    const onVoiceStart = vi.fn(async () => {})
-    await kit.fallback.speak('下一首是一首老歌。', { title: 'song', overMusic: false, onVoiceStart })
+    await kit.fallback.speak('下一首是一首老歌。', { title: 'song', overMusic: false })
     expect(Date.now() - started).toBeLessThan(1_000)
     expect(mocks.synthesize).toHaveBeenCalledTimes(1)
     expect(mocks.broadcast).not.toHaveBeenCalled()
   })
 
-  it('② 有出声端口:在进程里放,压音量的钩子排在放之前', async () => {
+  it('② 有出声端口:在进程里放,放之前报「开始出声」、放完报「说完了」', async () => {
     const order: string[] = []
     const play = vi.fn(async (audio: { base64: string; mimeType: string }) => {
       order.push(`play:${audio.base64}:${audio.mimeType}`)
     })
     configureSpeechOutputHost({ play })
     scope = createDjVoiceScope()
-    const kit = createHostVoiceKit(scope)
-    await kit.fallback.speak('下一首。', {
-      title: 'song',
-      overMusic: true,
-      onVoiceStart: async () => {
-        order.push('duck')
-      },
-    })
-    expect(order).toEqual(['duck', 'play:QUJD:audio/mpeg'])
+    const kit = createHostVoiceKit(scope, active => order.push(`activity:${active}`))
+    await kit.fallback.speak('下一首。', { title: 'song', overMusic: true })
+    expect(order).toEqual(['activity:true', 'play:QUJD:audio/mpeg', 'activity:false'])
     expect(mocks.broadcast).not.toHaveBeenCalled()
   })
 
-  it('② 合成失败(没配语音 / 网络):不放、不压音量', async () => {
+  it('② 合成失败(没配语音 / 网络):不放、不报出声', async () => {
     const play = vi.fn(async () => {})
     configureSpeechOutputHost({ play })
     mocks.synthesize.mockRejectedValue(new Error('no network'))
     scope = createDjVoiceScope()
-    const onVoiceStart = vi.fn(async () => {})
-    await createHostVoiceKit(scope).fallback.speak('下一首。', { title: 'song', overMusic: true, onVoiceStart })
+    const announce = vi.fn()
+    await createHostVoiceKit(scope, announce).fallback.speak('下一首。', { title: 'song', overMusic: true })
     expect(play).not.toHaveBeenCalled()
-    expect(onVoiceStart).not.toHaveBeenCalled()
+    expect(announce).not.toHaveBeenCalled()
   })
 
   it('③ 一份缓存:预取之后再说不重复合成;带调法是另一段录音', async () => {

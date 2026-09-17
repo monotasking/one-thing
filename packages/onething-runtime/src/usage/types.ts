@@ -51,6 +51,11 @@ export const ONETHING_USAGE_SOURCES = {
    * 到底省了多少。
    */
   collabPlan: 'collab-plan',
+  /**
+   * 宠物开口(宠物 P4,`docs/design/pet-system-2026-09.md` §11.2):一条时刻过了注意力预算、又没带
+   * 现成台词时,工具模型写的那一句。一次开口一次调用,被冷却挡掉的不调。
+   */
+  pet: 'pet',
 } as const
 
 export type OnethingUsageSource =

@@ -5,7 +5,7 @@
  */
 
 export { HEIDOU } from './builtin/heidou.js'
-export { SayPassthroughComposer } from './composer.js'
+export { SayOrElseComposer, SayPassthroughComposer } from './composer.js'
 export type { MomentComposeInput, MomentComposer } from './composer.js'
 export {
   estimateSpeechMs,
@@ -21,6 +21,8 @@ export {
   PET_RECENT_UTTERANCES,
 } from './ledger.js'
 export type { PetDroppedLine, PetHushedLine, PetLedgerLine, PetMemory, PetMomentLine, PetPreemptedLine, PetUtteranceLine } from './ledger.js'
+export { buildMomentPrompt, parseMomentReply, PET_PROMPT_MEMORY_LINES } from './prompt.js'
+export type { MomentPrompt, MomentPromptInput } from './prompt.js'
 export { summarizePet } from './manifest.js'
 export type { PetManifest, PetSummary, PetVoice } from './manifest.js'
 export { BUILTIN_PETS, PetIdTakenError, PetRegistry } from './registry.js'

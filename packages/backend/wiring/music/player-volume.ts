@@ -109,3 +109,62 @@ export class PatterDuck {
     }
   }
 }
+
+export interface SpeechActivityDuckPorts extends PatterDuckPorts {
+  /** 播放器此刻是不是正在放(暂停 / 停着 / 没有播放器 = 不压)。 */
+  isPlaying(): boolean
+}
+
+/**
+ * **有人在说话时把音乐压低**(宠物 P4,§11.3)。订的是进程内事件 `speech:activity`,不认识说话的是谁。
+ *
+ * P3 的压低是电台自己在口播前后调 `PatterDuck`;P4 起任何出声的一方(宠物自发开口、电台口播)都只
+ * 发一对 `speech:activity`,压 / 恢复只在这里做一次 —— 两处各压一次会把音量压到 35% 的 35%,再
+ * 「恢复」到一个已经被压过的值。
+ *
+ * 规矩:
+ *  · **叠着说按计数**:第一段开始时压,最后一段结束时恢复(交错的两段不会让音乐在中间弹回来);
+ *  · **只在播放器正在放时压**:开始那一刻不在放(暂停 / 在静音里说)→ 这一轮不压,结束也不恢复;
+ *  · 压与恢复排在一条链上:一次还没写完的设音量不会被下一次读成「当前音量」。
+ */
+export class SpeechActivityDuck {
+  private active = 0
+  private duck: PatterDuck | undefined
+  private chain: Promise<void> = Promise.resolve()
+
+  constructor(private readonly ports: SpeechActivityDuckPorts, private readonly ratio = PATTER_DUCK_RATIO) {}
+
+  onActivity(active: boolean): void {
+    if (active) {
+      this.active += 1
+      if (this.active !== 1) return
+      // 「在不在放」在事件到的那一刻判,不在链上轮到时判:链上排着的恢复可能还要几百毫秒。
+      if (!this.ports.isPlaying()) return
+      this.enqueue(async () => {
+        const duck = new PatterDuck(this.ports, this.ratio)
+        this.duck = duck
+        await duck.duck()
+      })
+      return
+    }
+    if (this.active === 0) return
+    this.active -= 1
+    if (this.active !== 0) return
+    this.enqueue(async () => {
+      const duck = this.duck
+      this.duck = undefined
+      await duck?.restore()
+    })
+  }
+
+  /** 等压 / 恢复都落地。测试与收尾用。 */
+  settled(): Promise<void> {
+    return this.chain
+  }
+
+  private enqueue(work: () => Promise<void>): void {
+    this.chain = this.chain.then(work).catch(error => {
+      this.ports.warn('speech ducking failed', { error: error instanceof Error ? error.message : String(error) })
+    })
+  }
+}

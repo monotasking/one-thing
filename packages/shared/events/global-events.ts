@@ -221,6 +221,25 @@ export interface TerminalExitGlobalEvent extends TerminalExitEvent {
   type: 'terminal:exit'
 }
 
+// ── 出声(宠物 P4)───────────────────────────────
+
+/**
+ * **这台机器上有一段话正在出声 / 刚说完**(`docs/design/pet-system-2026-09.md` §11.3)。
+ *
+ * 发的一方是「把一段合成好的话放出来」的那一处(今天是宠物子系统的 `voiceUtterance`,
+ * 与没有宠物时电台口播的缺省出声路);订的一方是正在出声的应用(音乐:播放器正在放时
+ * 压到 35%,说完恢复)。两边互不认识 —— 名字与负载里没有「宠物」「电台」,谁说话、谁压
+ * 音量都只是读这一条事实。
+ *
+ * `active: true` 与 `false` 成对发;同一段话一对。叠着说(两段交错)时订的一方自己数。
+ */
+export interface SpeechActivityEvent {
+  type: 'speech:activity'
+  active: boolean
+  /** epoch ms,发的一方盖。 */
+  at: number
+}
+
 // ── Union ───────────────────────────────────────
 
 export type GlobalEvent =
@@ -240,6 +259,7 @@ export type GlobalEvent =
   | ResourceShellCommandEvent
   | TerminalDataGlobalEvent
   | TerminalExitGlobalEvent
+  | SpeechActivityEvent
 
 // ── 出网名单(原子 K2a')────────────────────────────
 
@@ -304,4 +324,10 @@ export const GLOBAL_EVENT_LEAVES_PROCESS: Readonly<Record<GlobalEvent['type'], b
   'terminal:data': true,
   /** **出网 —— 同上**。载荷只有 `{terminalId, exitCode}`。 */
   'terminal:exit': true,
+  /**
+   * **不出网 —— 它是进程内的协调信号**(宠物 P4,§11.3「仅进程内,不出 SSE」)。壳要知道
+   * 「在说话」读的是 `pet:` 的 `utterance` / `hushed`;这一条只给同进程里正在出声的应用
+   * 让路用,送出去只会让客户端多一种要忽略的帧。
+   */
+  'speech:activity': false,
 })

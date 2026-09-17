@@ -36,18 +36,19 @@ export interface PatterVoiceStyle {
 export interface HostVoiceSpeakOptions {
   /** 这句口播介绍的那首歌(日志用)。 */
   readonly title: string
-  /** 压着音乐说(前奏够长,歌先放)。`false` = 在静音里说。 */
+  /**
+   * 压着音乐说(前奏够长,歌先放)。`false` = 在静音里说。
+   *
+   * P4 起它**不再决定压不压音量**:压音量改成订 `speech:activity`(§11.3),判据是「出声那一刻
+   * 播放器在不在放」—— 在静音里说时播放器本来就停着,自然不压。这一格留着是给日志与接管方
+   * 看的节目事实。
+   */
   readonly overMusic: boolean
   /**
    * 关台 / 停止电台 / 整代作废。中止 → 正在放的那一段立刻停,`speak` resolve。
    * (§10.2 的形状里没有这一格;§10.6「关台中途 signal 中止」要它,所以加在这里。)
    */
   readonly signal?: AbortSignal
-  /**
-   * 真要出声的前一刻(合成成功、认领完成、马上放)调一次。电台在这里压低音乐 ——
-   * 合成失败 / 没配语音就不会调,于是不会白压一次音量(§10.6「压音量」排在「发出」之后)。
-   */
-  readonly onVoiceStart?: () => Promise<void>
 }
 
 export interface HostVoice {
@@ -85,25 +86,35 @@ export interface PatterVoiceTools {
   playPatter(speech: PatterSpeech, options: { text: string; title: string; signal?: AbortSignal }): Promise<void>
 }
 
-/** 今天的 dj-voice 路:合成 → 出声。 */
-export function createDefaultHostVoice(tools: PatterVoiceTools): HostVoice {
+/**
+ * 「有一段话正在出声 / 说完了」的报告口(§11.3 `speech:activity`)。音乐子系统把它接到总线上;
+ * 没接(测试、还没装配完)= 不报。出声的一方只管成对地报,谁去压音量不归它管。
+ */
+export type SpeechActivityAnnouncer = (active: boolean) => void
+
+/** 今天的 dj-voice 路:合成 → (报「开始出声」)→ 出声 → (报「说完了」)。 */
+export function createDefaultHostVoice(tools: PatterVoiceTools, announce?: SpeechActivityAnnouncer): HostVoice {
   return {
     prefetch: (text, title) => tools.prefetchDjPatter(text, title),
-    speak: async (text, { title, signal, onVoiceStart }) => {
+    speak: async (text, { title, signal }) => {
       const speech = await tools.synthesizePatter(text, title)
       if (!speech || signal?.aborted) return
-      await onVoiceStart?.()
-      if (signal?.aborted) return
-      await tools.playPatter(speech, { text, title, ...(signal ? { signal } : {}) })
+      // 合成失败 / 没配语音走不到这里,于是不会白报一次(§10.6「压音量」排在「发出」之后)。
+      announce?.(true)
+      try {
+        await tools.playPatter(speech, { text, title, ...(signal ? { signal } : {}) })
+      } finally {
+        announce?.(false)
+      }
     },
   }
 }
 
 /** 装一个工具包:缺省实现 + 借出去的缓存与出声路。 */
-export function createHostVoiceKit(tools: PatterVoiceTools): HostVoiceKit {
+export function createHostVoiceKit(tools: PatterVoiceTools, announce?: SpeechActivityAnnouncer): HostVoiceKit {
   return {
     source: RADIO_PATTER_SOURCE,
-    fallback: createDefaultHostVoice(tools),
+    fallback: createDefaultHostVoice(tools, announce),
     synthesize: (text, title, style) => tools.synthesizePatter(text, title, style),
     prefetch: (text, title, style) => tools.prefetchDjPatter(text, title, style),
     play: (speech, options) => tools.playPatter(speech, options),

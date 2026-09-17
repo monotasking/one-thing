@@ -46,7 +46,7 @@ import { sessionReads } from '../../session/reads.js'
 import { DEFAULT_SESSION_OWNER, sessionAccess, SessionAccessError } from '../../session/access.js'
 import type { MusicServiceScope } from './service.js'
 import type { HostVoice } from './host-voice.js'
-import { PatterDuck, readProviderVolume, setProviderVolume } from './player-volume.js'
+import type { MusicMoments } from './moments.js'
 
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import { consolePort, getLogger } from '../logging/index.js'
@@ -93,41 +93,49 @@ export function createRadioScope(options: {
    * 才把宠物接管绑上来。电台只认这个接口,不认识谁在说。
    */
   hostVoice: () => HostVoice
+  /**
+   * 听歌这件事的事实(宠物 P4,§11.1)。实例住在音乐子系统上(寿命 = backend),电台只在
+   * 那几处真发生的地方报一声;缺席 = 不报(测试)。
+   */
+  moments?: MusicMoments
 }) {
   const owner = new MusicWorkOwner(options.assertOwned)
   const { getActiveMusicProvider, getMusicNowPlaying, getMusicService, nudgeMusicClients,
     refreshMusicNowPlaying, setMusicSampleListener } = options.service
   const prefetchDjPatter = (text: string, title: string): void => options.hostVoice().prefetch(text, title)
+  /**
+   * 报一件听歌的事实(§11.1)。**不抛**:一个坏掉的订阅者不该让起播 / 跳过 / 红心那条正事失败。
+   */
+  const reportMoment = (report: (moments: MusicMoments) => void): void => {
+    const moments = options.moments
+    if (!moments || owner.signal.aborted) return
+    try {
+      report(moments)
+    } catch (error) {
+      log.warn('music moment report failed', {}, error)
+    }
+  }
   /** 正在说的口播各自的中止源:关台 / 停止电台时一起拉掉(§10.6「关台中途」那一行)。 */
   const patterAborts = new Set<AbortController>()
 
   /**
    * 说一句口播,说完 resolve(不抛)。
    *
-   * `overMusic`(压着前奏说)时,真出声的前一刻把播放器音量压到当前的 35%,说完恢复原值;
-   * 恢复失败记 warn、不重试(§10.2「压低音乐」)。读不到音量(provider 不把它存在文件里)
-   * 就**不压**,不猜一个值(`player-volume.ts` 文件头)。静音里说不压。
+   * P4 起电台**不再自己压音量**(§11.3):出声的那一方在放之前 / 之后发一对 `speech:activity`,
+   * 音乐子系统订它,播放器正在放时压到 35%、说完恢复(`SpeechActivityDuck`)。两处各压一次会把
+   * 音量压到 35% 的 35%。
    */
   const speakDjPatter = async (text: string, title: string, overMusic = false): Promise<void> => {
     const abort = new AbortController()
     patterAborts.add(abort)
-    const duck = overMusic
-      ? new PatterDuck({
-        read: () => readProviderVolume(getActiveMusicProvider()),
-        set: level => setProviderVolume(options.service.runner, getActiveMusicProvider(), level),
-        warn: (message, fields) => log.warn(message, { title, ...fields }),
-      })
-      : null
     try {
       await options.hostVoice().speak(text, {
         title,
         overMusic,
         signal: AbortSignal.any([abort.signal, owner.signal]),
-        ...(duck ? { onVoiceStart: () => duck.duck() } : {}),
       })
     } finally {
       patterAborts.delete(abort)
-      await duck?.restore()
     }
   }
 let radioStore: OnethingRadioStore | null = null
@@ -443,6 +451,9 @@ async function wakeRadioDj(): Promise<void> {
 function onSongStarted(entry: OnethingRadioProgrammeEntry, playerTitle: string): void {
   const store = getRadioStore()
   store.recordPlayed(playerTitle, entry.encryptedId)
+  // 节目单条目没有单独的歌手一格(播放器的标题本来就是「歌名 - 歌手」),`artist` 就不填 —— 不从
+  // 标题里拆一个出来冒充。
+  reportMoment(moments => moments.trackStarted({ title: playerTitle, encryptedId: entry.encryptedId }))
   void pushLyricsFor(entry, playerTitle)
   // The song is on: minutes of idle ahead — warm the next entry's caches now
   // so its start pays neither the lyric fetch nor the TTS synthesis.
@@ -844,7 +855,10 @@ function recordRadioSkip(): void {
   const sample = getMusicNowPlaying()
   if (sample?.status !== 'playing' && sample?.status !== 'paused') return
   const title = sample.title ?? brief.onDeck?.title
-  if (title) store.recordSkipped(title, brief.onDeck?.encryptedId)
+  if (title) {
+    store.recordSkipped(title, brief.onDeck?.encryptedId)
+    reportMoment(moments => moments.skipped(title))
+  }
 }
 
 /**
@@ -1224,6 +1238,7 @@ async function likeCurrentSong(): Promise<{ success: boolean; error?: string }> 
       }),
     )
     store.recordLoved(playingTitle ?? candidate.title, candidate.encryptedId)
+    reportMoment(moments => moments.liked(playingTitle ?? candidate.title))
     return { success: true }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : '红心失败' }
@@ -1434,6 +1449,8 @@ function startRadioConductor(): void {
     if (!isMusicEnabled()) return
     logSampleTransition(sample)
     conductor?.onSample(sample)
+    // 间奏检测吃的是同一拍采样 + 此刻推着的歌词(对不上这首歌就不发,判据在 moments.ts)。
+    reportMoment(moments => moments.observeSample(sample, currentLyrics))
     void observeUnknownSong(sample)
   })
 }

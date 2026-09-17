@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { estimateSpeechSeconds, firstVocalStartAt, lyricLineAt, parseLrcLyric } from '../lyrics.js'
+import { estimateSpeechSeconds, findInterludes, firstVocalStartAt, lyricLineAt, parseLrcLyric } from '../lyrics.js'
 
 /** Head of a real `ncm-cli song lyric` reply (光 - 陈粒, captured 2026-07-16). */
 const REAL = '[00:00.000] 作词 : 陈粒\n[00:03.320]光落在你脸上\n[00:05.660]可爱一如往常\n'
@@ -66,5 +66,41 @@ describe('lyricLineAt', () => {
 
   it('is silent before the first line', () => {
     expect(lyricLineAt([{ at: 3, text: 'x' }], 1)).toBeUndefined()
+  })
+})
+
+describe('findInterludes (a mid-song break with no voice)', () => {
+  it('finds a break between two sung lines, counting the first line as sung', () => {
+    const lines = [
+      { at: 0, text: '作词 : 某人' },
+      { at: 20, text: '第一句歌词' }, // 5 chars → sung ~2s → voice stops at 22
+      { at: 24, text: '第二句歌词六个' }, // 7 chars → ~2.33s → stops at 26.33
+      { at: 50, text: '间奏之后' },
+      { at: 53, text: '最后一句' },
+    ]
+    const found = findInterludes(lines)
+    expect(found).toHaveLength(1)
+    expect(found[0]!.at).toBeCloseTo(26.333, 2)
+    expect(found[0]!.length).toBeCloseTo(23.667, 2)
+  })
+
+  it('never counts the intro (before the first vocal, credits included) or the outro', () => {
+    expect(findInterludes([
+      { at: 0, text: '作曲 : 某人' },
+      { at: 40, text: '很晚才开口' },
+      { at: 43, text: '然后结束' },
+    ])).toEqual([])
+  })
+
+  it('ignores gaps shorter than 12 seconds once the singing is subtracted', () => {
+    // start-to-start 14s, but a long line sings for 8s → only 6s of silence
+    expect(findInterludes([
+      { at: 10, text: '这是一句非常非常非常长的歌词一直唱下去' },
+      { at: 24, text: '下一句' },
+    ])).toEqual([])
+  })
+
+  it('answers empty for no timeline', () => {
+    expect(findInterludes([])).toEqual([])
   })
 })

@@ -41,3 +41,17 @@ export class SayPassthroughComposer implements MomentComposer {
     return text.length > 0 ? text : null
   }
 }
+
+/**
+ * P4 的组合(§11.2 最后一行):时刻自己带着现成台词(`payload.say`)就直通,否则交给后面那一只
+ * (模型作曲器)。现成台词是写好的节目,不该被一个小模型改写。
+ */
+export class SayOrElseComposer implements MomentComposer {
+  private readonly passthrough = new SayPassthroughComposer()
+
+  constructor(private readonly fallback: MomentComposer) {}
+
+  compose(input: MomentComposeInput): string | null | Promise<string | null> {
+    return this.passthrough.compose(input) ?? this.fallback.compose(input)
+  }
+}

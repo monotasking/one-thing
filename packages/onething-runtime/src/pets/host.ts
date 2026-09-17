@@ -232,6 +232,17 @@ export class PetHost {
   }
 
   /**
+   * 一句**自己开口**(时刻 / `say` 做法)的话真要出声了(P4,§11.3):从现在到它 `hush` 之前都算
+   * 「正在说」,与认领下来的口播同一档 —— 声音放多久,话就说多久,不按估计时长。只认最后一句开口;
+   * 已经被别的话压过去(`lastSpeakId` 不是它)答 `false`,调用方照估计时长收尾。
+   */
+  markVoicing(utteranceId: string): boolean {
+    if (this.lastSpeakId !== utteranceId) return false
+    this.voicing = utteranceId
+    return true
+  }
+
+  /**
    * 一句开口**真的说完了**(§10.4 `hushed`)。认领的那句:清 `voicing`;若它是最后一句开口,
    * `speakingUntil` 改成此刻(实际结束,不再是估计)。返回要写盘的账本行。
    *

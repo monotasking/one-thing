@@ -6,7 +6,13 @@ import { createRadioScope } from './radio.js'
 import { createDjVoiceScope } from './dj-voice.js'
 import { createMusicOperationsScope } from './operations.js'
 import { MusicWorkOwner } from './lifetime.js'
-import { createHostVoiceKit, type HostVoice, type HostVoiceFactory } from './host-voice.js'
+import { createHostVoiceKit, type HostVoice, type HostVoiceFactory, type HostVoiceKit, type SpeechActivityAnnouncer } from './host-voice.js'
+import { MusicMoments, type MusicMomentEvent } from './moments.js'
+import { readProviderVolume, setProviderVolume, SpeechActivityDuck } from './player-volume.js'
+import type { EventBus } from '../../events/event-bus.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('music')
 
 type MusicGeneration = {
   service: ReturnType<typeof createMusicServiceScope>
@@ -37,10 +43,87 @@ export class MusicSubsystem {
    * (`hostVoiceFor`),所以绑定可以晚于作用域建好,也不必在换代时重绑。
    */
   private hostVoiceFactory: HostVoiceFactory | undefined
+  /**
+   * 谁在看「听歌这件事的事实」(宠物 P4,§11.1:`music:player` 的 `trackStarted` / `skipped` / …)。
+   * 与 `nowPlayingListeners` 同理住在子系统上。
+   */
+  private readonly factListeners = new Set<(event: MusicMomentEvent, payload: Record<string, unknown>) => void>()
+  /**
+   * 连跳计数、暂停计时、间奏检测(§11.1「音乐自己的状态,放在已有的 music 实例上」)。一只,
+   * 寿命 = backend:换音乐 CLI 不该让「90 秒内第三次跳过」从零数起。
+   */
+  readonly moments: MusicMoments
+  /** `speech:activity` 的发送口(§11.3)。`attachSpeechActivity` 接上总线之前 = 不报。 */
+  private announceSpeech: SpeechActivityAnnouncer | undefined
 
-  constructor(private readonly options: { storePath: string; assertOwned: () => void }) {
+  constructor(private readonly options: { storePath: string; assertOwned: () => void; clock?: { now(): number } }) {
     this.owner = new MusicWorkOwner(options.assertOwned)
+    this.moments = new MusicMoments({
+      emit: (event, payload) => {
+        for (const listener of [...this.factListeners]) {
+          try {
+            listener(event, payload)
+          } catch (error) {
+            log.warn('music fact observer failed', { event }, error)
+          }
+        }
+      },
+      ...(options.clock ? { clock: options.clock } : {}),
+    })
     this.generation = this.createGeneration()
+  }
+
+  /** 订阅「听歌这件事的事实」。返回退订(幂等)。 */
+  onPlayerFact(listener: (event: MusicMomentEvent, payload: Record<string, unknown>) => void): () => void {
+    this.factListeners.add(listener)
+    return () => {
+      this.factListeners.delete(listener)
+    }
+  }
+
+  /**
+   * 接上总线(§11.3):① 缺省主持人声音出声前后发 `speech:activity`;② 订同一条事件,播放器正在
+   * 放时把音量压到 35%,说完恢复。返回解绑(组合根 `own()` 它)。
+   *
+   * 订与发都在这里,是因为音乐是「出声的应用」这一侧;发的另一方(宠物)用自己的总线把手发同一条,
+   * 两边互不认识。
+   */
+  attachSpeechActivity(bus: Pick<EventBus, 'emitGlobal' | 'onGlobal'>): () => void {
+    const duck = new SpeechActivityDuck({
+      isPlaying: () => {
+        // 收尾中的作用域会在读数上抛:那一刻不压,而不是把异常抛进总线的投递里。
+        try {
+          return this.generation.service.getMusicNowPlaying()?.status === 'playing'
+        } catch {
+          return false
+        }
+      },
+      read: () => readProviderVolume(this.generation.service.getActiveMusicProvider()),
+      set: level => {
+        const service = this.generation.service
+        return setProviderVolume(service.runner, service.getActiveMusicProvider(), level)
+      },
+      warn: (message, fields) => log.warn(message, fields),
+    })
+    const announce: SpeechActivityAnnouncer = active => {
+      bus.emitGlobal({ type: 'speech:activity', active, at: Date.now() })
+    }
+    this.announceSpeech = announce
+    const unsubscribe = bus.onGlobal('speech:activity', envelope => {
+      duck.onActivity(envelope.event.active)
+    })
+    return () => {
+      unsubscribe()
+      if (this.announceSpeech === announce) this.announceSpeech = undefined
+    }
+  }
+
+  /**
+   * 此刻的出声工具包:同一份口播缓存、同一条出声路(§11.3「电台认领与宠物自发开口共用」)。
+   * 电台以外想出声的一方(宠物自发开口)现问这一只,而不是自己复制一份缓存。
+   */
+  voiceKit(): HostVoiceKit {
+    return this.kitFor(this.djVoice)
   }
 
   /**
@@ -69,8 +152,12 @@ export class MusicSubsystem {
 
   /** 这一代作用域此刻该用的主持人声音:绑了接管就交接管,没绑就是缺省。 */
   private hostVoiceFor(djVoice: MusicGeneration['djVoice']): HostVoice {
-    const kit = createHostVoiceKit(djVoice)
+    const kit = this.kitFor(djVoice)
     return this.hostVoiceFactory ? this.hostVoiceFactory(kit) : kit.fallback
+  }
+
+  private kitFor(djVoice: MusicGeneration['djVoice']): HostVoiceKit {
+    return createHostVoiceKit(djVoice, active => this.announceSpeech?.(active))
   }
 
   private createGeneration(): MusicGeneration {
@@ -78,11 +165,13 @@ export class MusicSubsystem {
       ...this.options,
       onNowPlaying: nowPlaying => {
         // 拷一份再遍历:监听器在回调里退订是正常操作(一次 unmount)。
+        // 暂停计时排在订阅者之前:一个抛了的订阅者不该让「暂停了多久」少记一次状态变化。
+        this.moments.observeNowPlaying(nowPlaying)
         for (const listener of [...this.nowPlayingListeners]) listener(nowPlaying)
       },
     })
     const djVoice = createDjVoiceScope(this.options.assertOwned)
-    const radio = createRadioScope({ ...this.options, service, hostVoice: () => this.hostVoiceFor(djVoice) })
+    const radio = createRadioScope({ ...this.options, service, hostVoice: () => this.hostVoiceFor(djVoice), moments: this.moments })
     const operations = createMusicOperationsScope({ ...this.options, service, radio })
     const generation = { service, djVoice, radio, operations }
     this.generations.add(generation)
@@ -146,7 +235,7 @@ export class MusicSubsystem {
       this.owner.assertActive()
       this.generations.delete(previous)
       const djVoice = createDjVoiceScope(this.options.assertOwned)
-      const radio = createRadioScope({ ...this.options, service: previous.service, hostVoice: () => this.hostVoiceFor(djVoice) })
+      const radio = createRadioScope({ ...this.options, service: previous.service, hostVoice: () => this.hostVoiceFor(djVoice), moments: this.moments })
       const operations = createMusicOperationsScope({ ...this.options, service: previous.service, radio })
       this.generation = { service: previous.service, djVoice, radio, operations }
       this.generations.add(this.generation)

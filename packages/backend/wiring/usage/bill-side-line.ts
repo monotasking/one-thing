@@ -130,3 +130,11 @@ export function billSkillUsage(
 ): (usage: SideLineUsage) => void {
 	return bill("skill review", ONETHING_USAGE_SOURCES.skill, providerId, modelId, sessionId);
 }
+
+/** A pet line written by the tool-call model — one call per spoken moment (pet P4 §11.2). No session. */
+export function billPetUsage(
+	providerId: string,
+	modelId: string,
+): (usage: SideLineUsage) => void {
+	return bill("pet line", ONETHING_USAGE_SOURCES.pet, providerId, modelId);
+}

@@ -81,3 +81,45 @@ export function firstVocalStartAt(lines: OnethingMusicLyricLine[]): number | und
 export function estimateSpeechSeconds(text: string): number {
   return Math.max(3, text.length / 4.2)
 }
+
+/** A mid-song instrumental break must last at least this long to count (seconds). */
+export const INTERLUDE_MIN_SECONDS = 12
+
+/**
+ * How long a sung line is assumed to last: ~3 characters per second, clamped
+ * to 2–8s. LRC stamps only where a line STARTS — nothing says where it ends
+ * (`parseLrcLyric` drops the empty stamped lines some files use as end marks,
+ * and most files do not have them anyway) — so without this, the gap between
+ * two line starts would count the singing of the first line as silence.
+ */
+function sungLineSeconds(text: string): number {
+  return Math.min(8, Math.max(2, text.length / 3))
+}
+
+export interface OnethingMusicInterlude {
+  /** Seconds from song start where the voice stops (estimated end of the last sung line). */
+  at: number
+  /** Seconds until the next sung line. */
+  length: number
+}
+
+/**
+ * The instrumental breaks in the MIDDLE of a song: after the first sung line
+ * and before the last one, at least `INTERLUDE_MIN_SECONDS` long. The intro
+ * (before the first vocal) and the outro (after the last line) never count —
+ * nothing follows an outro, and the intro is the patter's slot. Credit lines
+ * (作词/作曲…) are not vocals. An empty array means "no mid-song break, or no
+ * usable timeline" — the caller must not guess one.
+ */
+export function findInterludes(lines: OnethingMusicLyricLine[]): OnethingMusicInterlude[] {
+  const vocals = lines.filter(line => !CREDIT_LINE.test(line.text))
+  const out: OnethingMusicInterlude[] = []
+  for (let i = 0; i + 1 < vocals.length; i += 1) {
+    const current = vocals[i]!
+    const next = vocals[i + 1]!
+    const at = current.at + sungLineSeconds(current.text)
+    const length = next.at - at
+    if (length >= INTERLUDE_MIN_SECONDS) out.push({ at, length })
+  }
+  return out
+}

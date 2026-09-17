@@ -124,6 +124,11 @@ export interface MusicPlayerAdapters {
   lyrics(executionContext?: unknown): MusicLyrics | null
   /** 「变了」的订阅。返回退订。 */
   watchNowPlaying(listener: (nowPlaying: OnethingMusicNowPlaying | null) => void): () => void
+  /**
+   * 听歌这件事的事实(宠物 P4,§11.1:`trackStarted` / `skipped` / `skipStreak` / `liked` /
+   * `resumedAfterPause` / `interlude`)的订阅。返回退订。事件名就是自述里的名字,负载原样转发。
+   */
+  watchFacts(listener: (event: string, payload: Record<string, unknown>) => void): () => void
 }
 
 /** 电台这一半里 `RadioToolAdapters` 没有的那三件:简报、节目单、节目单编辑。 */
@@ -439,6 +444,7 @@ export class MusicResourceProvider implements ResourceProvider<MusicOpPayload> {
   private readonly backend: MusicBackendAdapters
   private hub: ResourceEventHub | undefined
   private unwatch: (() => void) | undefined
+  private unwatchFacts: (() => void) | undefined
 
   constructor(adapters: MusicResourceAdapters) {
     this.radio = adapters.radio
@@ -457,6 +463,10 @@ export class MusicResourceProvider implements ResourceProvider<MusicOpPayload> {
         nowPlayingView(nowPlaying),
       )
     })
+    this.unwatchFacts?.()
+    this.unwatchFacts = this.player.watchFacts((event, payload) => {
+      hub.emit({ scheme: this.spec.scheme, path: MUSIC_PLAYER_PATH }, event, payload)
+    })
   }
 
   /**
@@ -465,6 +475,8 @@ export class MusicResourceProvider implements ResourceProvider<MusicOpPayload> {
   dispose(): void {
     this.unwatch?.()
     this.unwatch = undefined
+    this.unwatchFacts?.()
+    this.unwatchFacts = undefined
     this.hub = undefined
   }
 
@@ -805,6 +817,7 @@ export function musicPlayerAdapters(): MusicPlayerAdapters {
       return music().radio.getMusicLyrics()
     },
     watchNowPlaying: listener => music().onNowPlayingChanged(listener),
+    watchFacts: listener => music().onPlayerFact(listener),
   }
 }
 

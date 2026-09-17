@@ -415,3 +415,50 @@ React 壳的宿主表里 `voice: null`，没有渲染进程听这条推送：合
 - 单测：`PetHost.claim` 四行表；`hostVoice` 缺省实现在「无出声端口、无语音宿主」时立刻 resolve（回归 30s 空等）；`PetsSubsystem.hostVoice` 事件顺序 `utterance → hushed`、中止路径；`radio` 在 overMusic 时降音量并恢复（假播放器）；壳 `speech-output.ts` 选择播放器的判据（注入 `which` 与 spawn）；`TurntableScene` 灯亮灭。
 - `bun run typecheck`、`boundary:gate`、`assembly:gate`、`transport:gate`（不许新 IPC 通道）、`log:gate`、`gate:native`（不许引入原生依赖）；`packages/backend/__tests__/host-ports.type.test.ts` 同步第十七键；壳 `npm test` 相关目录、typecheck、eslint、`ui:consume`。
 - 不跑桌面真机；出声的真机验收留给用户（换歌时听到黑豆的声音、压着前奏说时音乐变小）。
+
+## 11. P4：更多时刻，模型写词
+
+P3 之后黑豆只在电台口播时开口（词是电台 DJ 会话写的）。P4 让它**自己**对几件事开口：词由模型按 persona 写，声音走 P3 的同一条出声路。
+
+### 11.1 音乐发出的新事实（`music:` 自述增补）
+
+音乐域只加**音乐自己的事实**，标 `moment`；不知道有宠物。
+
+| 地址 | 事件 | 负载 | 何时发 | moment |
+| --- | --- | --- | --- | --- |
+| `music:player` | `trackStarted` | `{ title, artist?, encryptedId? }` | 电台确认一首歌真的在放（`onSongStarted`） | `low`「开始放一首歌」 |
+| `music:player` | `skipped` | `{ title }` | 电台开着时 `next` 跳过（`recordRadioSkip` 那一处） | `low`「用户跳过了一首歌」 |
+| `music:player` | `skipStreak` | `{ count, titles }` | 90s 内第 3 次跳过（发完计数清零） | `high`「用户连着跳过了好几首，可能不喜欢现在的方向」 |
+| `music:player` | `liked` | `{ title }` | ♥ 成功 | `low`「用户喜欢了这首歌」 |
+| `music:player` | `resumedAfterPause` | `{ pausedMs, title? }` | 暂停 ≥ 5 分钟后继续 | `normal`「用户暂停了一阵又回来继续听」 |
+| `music:player` | `interlude` | `{ title, atSeconds, lengthSeconds }` | 播放中到达歌词时间轴里**歌中间**一段 ≥ 12s 的无词空档（不算前奏与尾奏），每首最多一次；没有歌词时间轴不发 | `normal`「这首歌到了一段没有人声的间奏」 |
+
+连跳计数、暂停计时、间奏检测都住在音乐的装配层（`wiring/music/`，音乐自己的状态，放在已有的 music 实例上，不新增模块级 `let`）。
+
+### 11.2 模型作曲器
+
+| 件 | 位置 | 内容 |
+| --- | --- | --- |
+| 提示词（纯函数） | `runtime/src/pets/prompt.ts` | `buildMomentPrompt({ pet, moment, memory, localTime, locale })` → `{ system, user }`。system = persona + 硬规矩（一次最多两句、不超过 60 字、用「我」、不说「为您播放」、不编造读数里没有的事、没什么值得说就答 `null`）；user = 时刻的 `gist` + 负载的精简 JSON + 最近 10 条账本行的人话摘要 + 本地时间（让「深夜」自然出现，不另立时刻）。要求只回 `{"say": string \| null}` |
+| 解析（纯函数） | 同上 `parseMomentReply(text)` | 容忍代码围栏与前后废话；取不到或 `say` 为空 → `null` |
+| 模型作曲器 | `wiring/pets/model-composer.ts` | 用 `createUtilityProvider(settings)`（`settings.tools.toolCallModel`，与会话目录同一只小模型）；超时 8s；失败 / 没配小模型 → `null` 并记 warn（没配只记一次）；用量记账照 `toc` 的 `bill-side-line` 做法 |
+| 组合 | `wiring/pets/subsystem.ts` | `payload.say` 有值 → 直通（P2 行为）；否则 → 模型作曲器 |
+
+### 11.3 宠物自己开口也要出声、也要压音乐
+
+P3 的出声路只接在电台的 `hostVoice` 上。P4 把「合成 → 出声 → hushed」抽成 `PetsSubsystem` 内部一段 `voiceUtterance(utterance, signal)`，电台认领与宠物自发开口共用。
+
+压音乐从「电台自己在说话前降音量」改成**订一条进程内事件**：出声那一段开始时在事件总线上发 `speech:activity { active: true }`，结束发 `{ active: false }`（仅进程内，不出 SSE）。音乐装配层订它：**播放器正在放**时才压到 35%，结束恢复；电台口播也走这一条（删掉 P3 在 `radio.ts` 里的直接压音量调用，避免两处各压一次）。事件名与负载不含「宠物」「电台」字样。
+
+### 11.4 规矩不变的部分
+
+- 冷却、一句一时、`low` 只记账：P2 的 §9.2 表原样适用。
+- 电台口播仍经 `claim`，永远不被预算丢掉；宠物自发开口遇到正在认领的口播 → `busy` 丢弃。
+- 模型答 `null` → `nothing-to-say` 进账本，不出气泡。
+
+### 11.5 门
+
+- 纯函数单测：`buildMomentPrompt` 快照（固定时钟 / 记忆）、`parseMomentReply` 各种脏回复。
+- **时刻回放测试**：假时钟 + 假作曲器，喂一段事件流（开台 → 3 首歌 → 90s 内连跳 3 次 → 暂停 6 分钟后继续 → 间奏），断言话语与丢弃序列逐条相等。
+- 音乐：连跳计数窗口与清零、暂停计时阈值、间奏检测（前奏 / 尾奏不算、每首一次、无时间轴不发）、`speech:activity` 压 / 恢复只在播放中。
+- `bun run typecheck`、`boundary:gate`、`assembly:gate`、`transport:gate`、`log:gate`；相关 vitest；壳若有改动跑壳门。

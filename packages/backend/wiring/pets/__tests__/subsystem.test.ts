@@ -193,17 +193,12 @@ describe('PetsSubsystem · host voice (P3)', () => {
     }))
   }
 
-  it('认领 → utterance → 合成 → 压音量 → 播放 → hushed;说完不再算在说', async () => {
+  it('认领 → utterance → 合成 → speech:activity 开 → 播放 → 关 → hushed;说完不再算在说', async () => {
     const { kit, order } = fakeKit()
     trackOrder(order)
-    await pets.createHostVoice(kit).speak('下一首是一首老歌。', {
-      title: 'song',
-      overMusic: true,
-      onVoiceStart: async () => {
-        order.push('duck')
-      },
-    })
-    expect(order).toEqual(['utterance', 'synthesize', 'duck', 'play', 'hushed'])
+    teardown.push(bus.onGlobal('speech:activity', ({ event }) => order.push(`activity:${event.active}`)))
+    await pets.createHostVoice(kit).speak('下一首是一首老歌。', { title: 'song', overMusic: true })
+    expect(order).toEqual(['utterance', 'synthesize', 'activity:true', 'play', 'activity:false', 'hushed'])
     expect(kit.fallbackSpeak).not.toHaveBeenCalled()
     // 合成用的是宠物的嗓子(调法 key 带着宠物 id)。
     expect((kit.synthesize as ReturnType<typeof vi.fn>).mock.calls[0]?.[2]).toMatchObject({ key: expect.stringContaining('heidou') })
@@ -212,13 +207,12 @@ describe('PetsSubsystem · host voice (P3)', () => {
     expect(lines.map(line => line.kind)).toEqual(['utterance', 'hushed'])
   })
 
-  it('没配语音(合成答 null):不放、不压,气泡照出、hushed 立刻到', async () => {
-    const onVoiceStart = vi.fn(async () => {})
+  it('没配语音(合成答 null):不放、不报出声,气泡照出、hushed 立刻到', async () => {
     const { kit, order } = fakeKit({ speech: null })
     trackOrder(order)
-    await pets.createHostVoice(kit).speak('没有声音的一句。', { title: 'song', overMusic: true, onVoiceStart })
+    teardown.push(bus.onGlobal('speech:activity', ({ event }) => order.push(`activity:${event.active}`)))
+    await pets.createHostVoice(kit).speak('没有声音的一句。', { title: 'song', overMusic: true })
     expect(order).toEqual(['utterance', 'synthesize', 'hushed'])
-    expect(onVoiceStart).not.toHaveBeenCalled()
   })
 
   it('中止:正在放的那段停下,照样发 hushed', async () => {
@@ -290,6 +284,110 @@ describe('PetsSubsystem · host voice (P3)', () => {
       expect(petEvents).toContain('hushed')
     } finally {
       vi.useRealTimers()
+    }
+  })
+})
+
+/**
+ * 宠物自己开口(P4 §11.2 / §11.3):没带台词的时刻交给后备作曲器;说出来的 `speak` 走同一段出声路,
+ * 前后一对 `speech:activity`;出声期间算「正在说」。
+ */
+describe('PetsSubsystem · own lines (P4)', () => {
+  const SPEECH: PatterSpeech = { audioBase64: 'QUJD', mimeType: 'audio/mpeg' }
+
+  async function fresh(options: { fallback?: (text: string) => string | null; play?: () => Promise<void>; withKit?: boolean }) {
+    const order: string[] = []
+    const composed: string[] = []
+    const kit: HostVoiceKit = {
+      source: { scheme: 'music', event: 'radio-patter' },
+      fallback: { prefetch: vi.fn(), speak: vi.fn(async () => {}) },
+      synthesize: vi.fn(async () => {
+        order.push('synthesize')
+        return SPEECH
+      }),
+      prefetch: vi.fn(),
+      play: vi.fn(async () => {
+        order.push('play')
+        await options.play?.()
+      }),
+    }
+    const localBus = new EventBus()
+    const sub = new PetsSubsystem({
+      dir,
+      registry: kernel.registry,
+      bus: localBus,
+      clock,
+      ...(options.fallback
+        ? { fallbackComposer: { compose: ({ moment }) => { composed.push(moment.event); return options.fallback!(moment.event) } } }
+        : {}),
+      ...(options.withKit === false ? {} : { voiceKit: () => kit }),
+    })
+    await sub.start()
+    const localProvider = new PetResourceProvider(sub)
+    const stops = [kernel.mount(localProvider), forwardResourceEventsToBus(kernel, localBus)]
+    localBus.onGlobal('resource:event', ({ event }) => {
+      if (event.ref.startsWith('pet:') && (event.event === 'utterance' || event.event === 'hushed')) order.push(event.event)
+    })
+    localBus.onGlobal('speech:activity', ({ event }) => order.push(`activity:${event.active}`))
+    return { sub, kit, order, composed, stop: async () => { for (const s of stops.reverse()) await s(); await sub.dispose() } }
+  }
+
+  beforeEach(async () => {
+    // 外层 beforeEach 挂的那只 pet provider 与这里各自的那只会抢同一个 scheme:先摘掉外层的。
+    for (const stop of teardown.splice(0).reverse()) await stop()
+    await pets.dispose()
+  })
+
+  it('a moment without a ready line is written by the fallback composer; a ready line is passed through', async () => {
+    const h = await fresh({ fallback: event => `模型为 ${event} 写的一句` })
+    const unmountDemo = kernel.mount(demo)
+    try {
+      demo.emit('announced', {})
+      await h.sub.settled()
+      await vi.waitFor(() => expect(h.order).toContain('hushed'))
+      expect(h.composed).toEqual(['announced'])
+      expect(h.sub.current().utterances.map(u => u.text)).toEqual(['模型为 announced 写的一句'])
+
+      clock.t += 1_000_000
+      demo.emit('announced', { say: '现成的台词' })
+      await h.sub.settled()
+      expect(h.composed).toEqual(['announced'])
+      expect(h.sub.current().utterances.map(u => u.text).at(-1)).toBe('现成的台词')
+    } finally {
+      unmountDemo()
+      await h.stop()
+    }
+  })
+
+  it('a spoken own line is voiced: utterance → synthesize → activity on → play → activity off → hushed, speaking until hushed', async () => {
+    let release: (() => void) | undefined
+    const h = await fresh({ play: () => new Promise<void>(resolve => { release = resolve }) })
+    const unmountDemo = kernel.mount(demo)
+    try {
+      demo.emit('announced', { say: '我自己想说一句' })
+      await vi.waitFor(() => expect(h.order).toContain('play'))
+      clock.t += 60_000 // 远超估计时长:还在出声就还算在说
+      expect(h.sub.current().speaking).toBe(true)
+      release?.()
+      await vi.waitFor(() => expect(h.order).toContain('hushed'))
+      expect(h.order).toEqual(['utterance', 'synthesize', 'activity:true', 'play', 'activity:false', 'hushed'])
+      expect(h.sub.current().speaking).toBe(false)
+    } finally {
+      unmountDemo()
+      await h.stop()
+    }
+  })
+
+  it('a say speak is voiced too; a mutter never is', async () => {
+    const h = await fresh({})
+    try {
+      await h.sub.say('mutter', '呼噜')
+      await h.sub.say('speak', '说出声')
+      await vi.waitFor(() => expect(h.order).toContain('hushed'))
+      expect(h.kit.synthesize).toHaveBeenCalledTimes(1)
+      expect(h.order).toEqual(['utterance', 'utterance', 'synthesize', 'activity:true', 'play', 'activity:false', 'hushed'])
+    } finally {
+      await h.stop()
     }
   })
 })

@@ -34,9 +34,18 @@
  * (音乐借出的同一条出声路)→ 发 `hushed`,`speakingUntil` 改成实际结束时刻。不认领
  * (还没起来 / 已 dispose)→ 照音乐的缺省实现说,电台不因为宠物缺席而哑。
  *
- * **没出声的开口也会 `hushed`**:`say` 做法与时刻说出来的 `speak` 不经过出声路,它们的
+ * **没出声的开口也会 `hushed`**:拿不到出声工具包的开口(测试、音乐还没起来),它们的
  * `hushed` 在估计时长到点时发(`estimatedHushes`)。否则壳上那盏 ON AIR 灯等不到回执,
  * 亮着不灭。
+ *
+ * ── P4:宠物自己开口也出声,出声时让音乐让路(§11.2 / §11.3)────────────────────
+ * 时刻没带现成台词时,作曲交给模型(`fallbackComposer`,组合根递 `ModelMomentComposer`)。
+ * 「合成 → 出声 → hushed」抽成一段 `voiceUtterance`,电台认领与宠物自发开口(时刻、`say` 做法的
+ * `speak`)共用;工具包现问音乐要(`voiceKit`),同一份口播缓存、同一条出声路。
+ *
+ * 出声那一段前后在总线上发一对 `speech:activity`(仅进程内)。**这里不压音量**:谁在出声、谁该
+ * 让路,是订这条事件的应用自己的事(音乐:播放器正在放时压到 35%)。自发开口从真要出声到
+ * `hushed` 之前算「正在说」(`PetHost.markVoicing`),于是这段时间里电台来认领会等它说完。
  */
 
 import type { ResourceEventHub, ResourceRegistry } from '@onething/core/resource'
@@ -46,6 +55,7 @@ import {
   estimateSpeechMs,
   PetHost,
   PetRegistry,
+  SayOrElseComposer,
   SayPassthroughComposer,
   summarizePet,
   type Moment,
@@ -90,7 +100,17 @@ export interface PetsSubsystemOptions {
   readonly bus: EventBus
   readonly assertOwned?: () => void
   readonly pets?: PetRegistry
+  /** 整只换掉作曲端口(测试)。给了它,`fallbackComposer` 不看。 */
   readonly composer?: MomentComposer
+  /**
+   * 时刻没带现成台词时交给谁写(P4:模型作曲器)。缺席 = P2 行为,只认 `payload.say`。
+   */
+  readonly fallbackComposer?: MomentComposer
+  /**
+   * 出声工具包(P4 §11.3):同一份口播缓存、同一条出声路。每句现问一次;答 `null` / 抛 / 缺席 =
+   * 这句不出声,按估计时长收尾。
+   */
+  readonly voiceKit?: () => HostVoiceKit | null
   readonly clock?: PetClock
   readonly cooldownMs?: number
   /** 认领最多等多久。缺省 `PET_CLAIM_WAIT_MS`;测试缩短它。 */
@@ -116,6 +136,8 @@ export class PetsSubsystem {
   private readonly claimWaiters = new Set<() => void>()
   /** 没出声的开口:估计时长到点发 `hushed`(见文件头)。 */
   private readonly estimatedHushes = new Map<string, ReturnType<typeof setTimeout>>()
+  /** 自发开口出声的中止源:dispose 时拉掉,正在放的那段停下。 */
+  private readonly voiceAbort = new AbortController()
 
   constructor(options: PetsSubsystemOptions) {
     this.options = options
@@ -135,7 +157,8 @@ export class PetsSubsystem {
       if (this.disposed) return
       this.host = new PetHost({
         pet: manifest,
-        composer: this.options.composer ?? new SayPassthroughComposer(),
+        composer: this.options.composer
+          ?? (this.options.fallbackComposer ? new SayOrElseComposer(this.options.fallbackComposer) : new SayPassthroughComposer()),
         lines,
         ...(this.options.clock ? { clock: this.options.clock } : {}),
         ...(this.options.cooldownMs !== undefined ? { cooldownMs: this.options.cooldownMs } : {}),
@@ -173,7 +196,7 @@ export class PetsSubsystem {
       const host = this.requireHost()
       const outcome = host.say(mode, text)
       await this.settle(host.pet.id, outcome)
-      this.scheduleEstimatedHush(host.pet.id, outcome.utterance)
+      this.voiceOwnLine(host, outcome.utterance)
       if (outcome.utterance) return { said: true, utterance: outcome.utterance }
       return { said: false, reason: outcome.dropped ?? 'nothing-to-say' }
     })
@@ -215,6 +238,7 @@ export class PetsSubsystem {
 
   async dispose(): Promise<void> {
     this.disposed = true
+    this.voiceAbort.abort()
     this.wakeClaimWaiters()
     for (const timer of this.estimatedHushes.values()) clearTimeout(timer)
     this.estimatedHushes.clear()
@@ -248,7 +272,8 @@ export class PetsSubsystem {
       const petId = host.pet.id
       const outcome = await host.onMoment(moment)
       await this.settle(petId, outcome)
-      this.scheduleEstimatedHush(petId, outcome.utterance)
+      if (host.pet.id === petId) this.voiceOwnLine(host, outcome.utterance)
+      else this.scheduleEstimatedHush(petId, outcome.utterance)
     }).catch(error => log.warn('pet host failed on a moment', { scheme: moment.scheme, event }, error))
   }
 
@@ -258,26 +283,83 @@ export class PetsSubsystem {
     await this.store.append(petId, outcome.lines)
   }
 
-  /** §10.6 那张表的后端一列:认领 → `utterance` → 合成 → (压音量)→ 播放 → `hushed`。 */
+  /** §10.6 那张表的后端一列:认领 → `utterance` → 合成 → 出声(前后各一条 `speech:activity`)→ `hushed`。 */
   private async speakClaimed(kit: HostVoiceKit, text: string, options: HostVoiceSpeakOptions): Promise<void> {
     const claimed = await this.claim(kit.source, text).catch(error => {
       log.warn('pet claim failed; the host voice speaks instead', { title: options.title }, error)
       return null
     })
     if (!claimed) return kit.fallback.speak(text, options)
-    const { petId, utterance, pet } = claimed
-    const { signal } = options
+    await this.voiceUtterance(kit, claimed.pet, claimed.petId, claimed.utterance, {
+      // 合成用电台递来的原文,不用话语里 trim 过的那份:预取是按原文进缓存的,差一个空白就是一次重合成。
+      text,
+      title: options.title,
+      ...(options.signal ? { signal: options.signal } : {}),
+    })
+  }
+
+  /**
+   * 一句开口的出声(§11.3):合成(宠物的嗓子)→ 发 `speech:activity {active:true}` → 放 → 发
+   * `{active:false}` → `hushed`。合成失败 / 没配语音 → 不放、不发 activity,直接 `hushed`。不抛。
+   */
+  private async voiceUtterance(
+    kit: HostVoiceKit,
+    pet: PetHost['pet'],
+    petId: string,
+    utterance: Utterance,
+    options: { title: string; text?: string; signal?: AbortSignal },
+  ): Promise<void> {
+    const { title, signal } = options
+    const text = options.text ?? utterance.text
     try {
       if (signal?.aborted) return
-      const speech = await kit.synthesize(text, options.title, petVoiceStyle(pet.id, pet.voice))
+      const speech = await kit.synthesize(text, title, petVoiceStyle(pet.id, pet.voice))
       if (!speech || signal?.aborted) return
-      await options.onVoiceStart?.()
-      if (signal?.aborted) return
-      await kit.play(speech, { text, title: options.title, ...(signal ? { signal } : {}) })
+      this.announceSpeech(true)
+      try {
+        await kit.play(speech, { text, title, ...(signal ? { signal } : {}) })
+      } finally {
+        this.announceSpeech(false)
+      }
     } catch (error) {
-      log.warn('pet patter voicing failed', { title: options.title }, error)
+      log.warn('pet voicing failed', { title }, error)
     } finally {
       await this.hush(petId, utterance.id)
+    }
+  }
+
+  /**
+   * 宠物自己开口的一句(时刻 / `say` 做法)真要出声(§11.3):拿得到工具包就出声,从此刻到
+   * `hushed` 算「正在说」;拿不到就按估计时长收尾(P3 行为)。嘀咕不出声。**不等**:出声在喂食链
+   * 之外跑,否则一句几秒的话会把这几秒里到的每条时刻都卡住。
+   */
+  private voiceOwnLine(host: PetHost, utterance: Utterance | undefined): void {
+    if (!utterance || utterance.mode !== 'speak' || this.disposed) return
+    const kit = this.currentVoiceKit()
+    if (!kit || !host.markVoicing(utterance.id)) {
+      this.scheduleEstimatedHush(host.pet.id, utterance)
+      return
+    }
+    const title = utterance.about ? `${utterance.about.scheme}:${utterance.about.event}` : 'pet:say'
+    void this.voiceUtterance(kit, host.pet, host.pet.id, utterance, { title, signal: this.voiceAbort.signal })
+  }
+
+  private currentVoiceKit(): HostVoiceKit | null {
+    if (!this.options.voiceKit) return null
+    try {
+      return this.options.voiceKit()
+    } catch (error) {
+      log.warn('no voice kit for the pet; the line stays text-only', {}, error)
+      return null
+    }
+  }
+
+  /** 进程内的「有一段话正在出声 / 说完了」(§11.3)。名字与负载里没有宠物。 */
+  private announceSpeech(active: boolean): void {
+    try {
+      this.options.bus.emitGlobal({ type: 'speech:activity', active, at: this.now() })
+    } catch (error) {
+      log.warn('speech activity announce failed', { active }, error)
     }
   }
 

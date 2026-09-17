@@ -252,3 +252,26 @@ describe('PetHost · claim (P3, §10.3)', () => {
     expect(host.hush(out.utterance.id)).toEqual([])
   })
 })
+
+describe('PetHost · voicing an own line (P4 §11.3)', () => {
+  it('a voiced own line counts as speaking until it is hushed, not for its estimated length', async () => {
+    const { clock, host } = makeHost()
+    const out = await host.onMoment(moment(clock, 'high', '我想说一句'))
+    expect(host.markVoicing(out.utterance!.id)).toBe(true)
+    clock.advance(estimateSpeechMs('我想说一句') * 10)
+    expect(host.current().speaking).toBe(true)
+    // 正在出声时,自发开口照旧 busy 丢弃;电台认领要等。
+    expect((await host.onMoment(moment(clock, 'high', '插一句'))).dropped).toBe('busy')
+    expect(host.claim({ scheme: 'music', event: 'radio-patter' }, '口播')).toEqual({ kind: 'wait', retryInMs: null })
+    host.hush(out.utterance!.id)
+    expect(host.current().speaking).toBe(false)
+  })
+
+  it('refuses to mark a line that is no longer the latest spoken one', () => {
+    const { host } = makeHost()
+    const first = host.say('speak', '第一句').utterance!
+    const claimed = host.claim({ scheme: 'music', event: 'radio-patter' }, '压过去', { preempt: true })
+    expect(claimed.kind).toBe('claimed')
+    expect(host.markVoicing(first.id)).toBe(false)
+  })
+})

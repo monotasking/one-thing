@@ -64,6 +64,7 @@ const OWNED_LABELS = [
   'flushSessionEventLedger',
   'flushAllPendingSaves',
   'eventSystem',
+  'musicSpeechActivity',
   'collabInspectorBinding',
   'collabInspectorAdmission',
   'collabInspectorDrain',

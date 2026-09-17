@@ -9,7 +9,7 @@
  * store 隔离与全动态 import 的写法照 `resource-music.test.ts`:`stores/*` 在 import 期就解析
  * store 根,所以环境变量要在任何 backend 模块被 import 之前设好。
  */
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -100,8 +100,12 @@ describe('pet 这一 scheme 在真装配里(宠物 P2)', () => {
       expect(read.kind).toBe('ok')
       const view = read.kind === 'ok' ? (read.value as { pet: { id: string }; speaking: boolean; utterances: Array<{ text: string }> }) : undefined
       expect(view?.pet.id).toBe('heidou')
-      expect(view?.speaking).toBe(true)
       expect(view?.utterances.map(u => u.text)).toEqual(['晚上好'])
+      // P4(§11.3):`say` 的 `speak` 也走出声路。这台装配没配语音 → 合成答空 → 不放,`hushed`
+      // 几乎立刻到(与 P3 电台口播「没配语音」那一行同一条规矩),之后不再算在说。
+      await vi.waitFor(() => expect(seen).toContainEqual({ ref: 'pet:current', event: 'hushed' }))
+      const after = await backend.resources.read('pet:current', 'current', {}, { principal: PRINCIPAL })
+      expect(after.kind === 'ok' && (after.value as { speaking: boolean }).speaking).toBe(false)
     } finally {
       stop()
       await backend.dispose()

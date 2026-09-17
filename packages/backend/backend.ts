@@ -34,6 +34,7 @@ import { BackendResources, type BackendShutdownPhase, type Quiescible } from './
 import { PracticeService, configurePracticeService } from '@onething/runtime/practice/service.wiring'
 import { MusicSubsystem } from './wiring/music/subsystem.js'
 import { PetsSubsystem } from './wiring/pets/subsystem.js'
+import { ModelMomentComposer } from './wiring/pets/model-composer.js'
 import { createVoiceService, configureVoiceService } from './wiring/voice/service.js'
 import { createTaskDispatchLayer, type TaskDispatchLayer } from './wiring/tasks/dispatch.js'
 import { createSessionDeletionRecovery, type SessionDeletionRecovery } from '@onething/runtime/sessions'
@@ -667,6 +668,12 @@ export class OnethingBackend implements BackendHandle {
       streamChannel.shutdown()
       log.info('event system shut down')
     }, 'eventSystem')
+    /*
+     * 宠物 P4(§11.3)—— 音乐接上总线:缺省主持人声音出声前后发 `speech:activity`,并订同一条
+     * 事件在播放器正在放时压低音乐。与有没有宠物无关(没有宠物时电台口播也要让音乐让路),
+     * 所以不挂在 `pets` 那一格下面。登记在事件系统之后,关机时先解绑、再关总线。
+     */
+    this.own(music.attachSpeechActivity(eventBus), 'musicSpeechActivity')
 
     /**
      * 删一条会话之前要排空的**生产者表** —— 每一台在自己造出来的那一行登记自己
@@ -905,6 +912,10 @@ export class OnethingBackend implements BackendHandle {
         registry: resourceKernel.registry,
         bus: eventBus,
         assertOwned: () => lease.assertHeld(),
+        // P4 §11.2:没带现成台词的时刻交给工具模型写。
+        fallbackComposer: new ModelMomentComposer(),
+        // P4 §11.3:自己开口也出声 —— 现问音乐要同一份口播缓存与出声路。
+        voiceKit: () => music.voiceKit(),
       })
       : null
     if (pets) {
