@@ -50,6 +50,23 @@
   background: var(--accent-ring);
 }
 
+/*
+ * 正文那一块地(2026-09-17)。**它存在只为一件事:给当底的起始页一个定位上下文**
+ * —— `warming` 那一档里占位格与起始页是叠着的两层(判词在 `start-backdrop.ts`),
+ * 而绝对定位要有一个 `position: relative` 的爹才知道往哪儿贴。
+ *
+ * 除此之外它是透明的:自己不画底(底由里面那两层各自给),按列排,吃掉檐之下
+ * 剩下的全部 —— 与从前占位格 / 起始页直接挂在 `.leaf` 上时逐字等价,里面两件
+ * 那句 `flex: 1` 一个字不用改。
+ */
+.body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* 出错那一行:后端原话,单行截断(全文由 tooltip 那一族另说,B3)。 */
 .error {
   margin: 0;

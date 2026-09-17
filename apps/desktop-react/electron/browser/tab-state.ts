@@ -23,7 +23,13 @@
 /** 一格 tab 对外的全部事实。`profile` 决定它跑在哪个持久分区上。 */
 export interface BrowserTabState {
   readonly id: string
-  /** 已经**提交**的地址。空串 = 这一格还停在起始页(什么都没加载)。 */
+  /**
+   * **这一格的地址(要去哪儿),不是「已经提交的地址」**(2026-09-17 收口)。
+   *
+   * 空串 = 这一格还停在起始页(没有人给过它地址)。**到没到看 `loading`** ——
+   * `open` 与 `navigate` 两条路都在动手那一刻把它写成目标地址,判词整段在
+   * `tab.ts` 的 `navigate` 上。
+   */
   readonly url: string
   readonly title: string
   readonly favicon?: string

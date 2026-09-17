@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
 import { configureBrowserPort } from '../../../data/browser-port'
 import type { BrowserPort } from '../../../data/browser-port'
-import { resetBrowserSource } from '../../../data/browser-source'
+import { browserTabsQuery, resetBrowserSource } from '../../../data/browser-source'
 import {
   browserSettingsQuery,
   saveBrowserProfilesMutation,
@@ -91,6 +91,12 @@ function settingsPort(settings: AppSettings): BrowserSettingsPort & { saves: App
 interface Harness {
   reads: { ref: string; name: string }[]
   did: { ref: string; op: string; params?: Record<string, unknown> }[]
+  /**
+   * 这一格 tab 此刻那一行。**可改** —— 改完 `browserTabsQuery.refetch()` 就是
+   * 「后端推来一条新事实、壳重拉了一次表」的最小夹具(起始页留作底那两条用它
+   * 走一条真的时间线,而不是靠换 props 装出来)。
+   */
+  row: typeof TAB
 }
 
 function harness(tab: Partial<typeof TAB> = {}, over: Partial<BrowserPort> = {}): Harness {
@@ -102,7 +108,9 @@ function harness(tab: Partial<typeof TAB> = {}, over: Partial<BrowserPort> = {})
     read: (ref, name) => {
       reads.push({ ref, name })
       if (name === 'tabs') {
-        return Promise.resolve({ kind: 'ok', value: { tabs: [row], activeId: row.id } })
+        // 每一发交一份**新的**行(真后端每次答的也是新对象)—— 不然改了 `row`
+        // 再重拉,拿到的是同一个引用,读数那一格看不出变过。
+        return Promise.resolve({ kind: 'ok', value: { tabs: [{ ...row }], activeId: row.id } })
       }
       return Promise.resolve({
         kind: 'ok',
@@ -125,7 +133,7 @@ function harness(tab: Partial<typeof TAB> = {}, over: Partial<BrowserPort> = {})
     ...over,
   }
   configureBrowserPort(port)
-  return { reads, did }
+  return { reads, did, row }
 }
 
 beforeEach(() => {
@@ -197,6 +205,52 @@ describe('起始页', () => {
     expect(port.saves.at(-1)?.browser?.searchEngine).toBe('bing')
     // 一发导航都没有 —— 挑引擎不是「现在带我去谷歌首页」。
     expect(h.did.filter((call) => call.op === 'navigate')).toEqual([])
+  })
+
+  /*
+   * ── 起始页留作底(2026-09-17)──────────────────────────────────────────
+   *
+   * 提交到网页首帧之间原生视图是透明的(实测约 500ms),从前起始页那时已经摘掉
+   * 了,于是那一段露的是壳 DOM 的一片空底。判词与三档整段在 `start-backdrop.ts`
+   * 上;这两条量的是**屏幕上的形**:那一段里两件同在、起始页是装饰;首帧之后它
+   * 永远撤掉。
+   *
+   * **反证**:把 `BrowserLeaf` 里 `phase === 'warming'` 那一行删掉 → 第一条红。
+   */
+  it('从起始页出发的第一次加载:占位格与当底的起始页同在,起始页 inert', async () => {
+    harness({ url: 'http://x.test', title: '', loading: true })
+    settingsPort(settingsWith([{ id: 'default', name: '' }]))
+    await act(async () => { render(<BrowserLeaf id="t1" />) })
+    await settle()
+
+    expect(document.querySelector('[data-native-view="t1"]')).toBeTruthy()
+    const start = screen.getByTestId('browser-start')
+    expect(start.dataset.backdrop).toBe('true')
+    // 装饰:不进 Tab 序、不进无障碍树 —— 那排引擎丸此刻不是一组能按的钮。
+    expect(start.hasAttribute('inert')).toBe(true)
+    expect(start.getAttribute('aria-hidden')).toBe('true')
+  })
+
+  it('第一次加载完成 → 起始页撤掉;第二次导航不再回来', async () => {
+    const h = harness({ url: 'http://x.test', title: '', loading: true })
+    settingsPort(settingsWith([{ id: 'default', name: '' }]))
+    await act(async () => { render(<BrowserLeaf id="t1" />) })
+    await settle()
+    expect(screen.getByTestId('browser-start').dataset.backdrop).toBe('true')
+
+    // 首帧落地:这一格这辈子成功停下来过了。
+    h.row.loading = false
+    await act(async () => { await browserTabsQuery.refetch() })
+    await settle()
+    expect(screen.queryByTestId('browser-start')).toBeNull()
+
+    // 第二次导航:换页由 Chromium 自己留着上一页的画面,壳不必再兜一次底。
+    h.row.loading = true
+    h.row.url = 'http://y.test'
+    await act(async () => { await browserTabsQuery.refetch() })
+    await settle()
+    expect(screen.queryByTestId('browser-start')).toBeNull()
+    expect(document.querySelector('[data-native-view="t1"]')).toBeTruthy()
   })
 })
 

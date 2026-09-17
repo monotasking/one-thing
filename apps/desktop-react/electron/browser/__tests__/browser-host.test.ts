@@ -598,6 +598,8 @@ describe('BrowserService', () => {
 
   function build() {
     const created: unknown[] = []
+    /** 每一发真的打出去的 `loadURL`(navigate 那一族用它证明「那一发也走了」)。 */
+    const loads: string[] = []
     const observer = {
       onOpened: vi.fn(), onClosed: vi.fn(), onNavigated: vi.fn(), onLoading: vi.fn(),
       onMaterialized: vi.fn(), onDematerialized: vi.fn(), onFind: vi.fn(), onSpawned: vi.fn(), onSpawnBlocked: vi.fn(),
@@ -614,7 +616,7 @@ describe('BrowserService', () => {
       createView: () => {
         const view = {
           webContents: {
-            on: () => {}, setWindowOpenHandler: () => {}, loadURL: async () => {},
+            on: () => {}, setWindowOpenHandler: () => {}, loadURL: async (url: string) => { loads.push(url) },
             reload: () => {}, stop: () => {}, focus: () => {}, close: () => {},
             isDestroyed: () => false, executeJavaScript: async () => '', capturePage: async () => ({ isEmpty: () => true, toDataURL: () => '' }),
             navigationHistory: { canGoBack: () => false, canGoForward: () => false, goBack: () => {}, goForward: () => {} },
@@ -626,7 +628,7 @@ describe('BrowserService', () => {
       },
       observer,
     })
-    return { service, created, observer }
+    return { service, created, observer, loads }
   }
 
   it('开一格前台 tab 会建视图;后台那格不建(惰性)', () => {
@@ -662,6 +664,69 @@ describe('BrowserService', () => {
     expect(service.list()).toEqual([])
     expect(service.activeId).toBeNull()
     expect(observer.onClosed).toHaveBeenCalledWith(tab.id)
+  })
+
+  /*
+   * ── `navigate` 让状态说真话(2026-09-17)──────────────────────────────────
+   *
+   * **`url` 是这一格的地址(要去哪儿),到没到看 `loading`** —— 与 `open` 同一
+   * 口径,判词整段在 `tab.ts` 的 `navigate` 上。从前它一个字都不改状态,于是
+   * 壳重拉 tabs 表时读到的是一个落后一整次导航的地址,一格刚从起始页出发的 tab
+   * 会把起始页摘了又装回去(逐帧实测 8ms → 23ms)。
+   *
+   * **反证**:把 `navigate` 里那句 `this.patch({ url, loading: true, error: undefined })`
+   * 删掉 → 前两条当场红(状态仍是旧地址、`onNavigated` 一发都没有)。
+   */
+  it('navigate:惰性的那一格也当场进状态,而且不为此把视图建出来', () => {
+    const { service, created, observer } = build()
+    // 第一格恒前台(`this.active === null` 那一支),所以拿第二格当「没有视图」的那一格。
+    service.open({ url: 'https://a.test' })
+    const idle = service.open({ background: true })
+    expect(created).toHaveLength(1)
+    observer.onNavigated.mockClear()
+    observer.onLoading.mockClear()
+
+    service.get(idle.id)!.navigate('https://b.test')
+
+    expect(service.get(idle.id)!.state.url).toBe('https://b.test')
+    expect(service.get(idle.id)!.state.loading).toBe(true)
+    // 一发 `navigated`(`onTabState` 见 `'url' in patch` 就发),一发 `loading`。
+    expect(observer.onNavigated).toHaveBeenCalledTimes(1)
+    expect(observer.onLoading).toHaveBeenCalledTimes(1)
+    // 一次导航不该把惰性视图建出来 —— 状态进了,视图仍旧没有。
+    expect(created).toHaveLength(1)
+    expect(service.get(idle.id)!.materialized).toBe(false)
+  })
+
+  it('navigate:有视图的那一格状态照样当场改,而且那一发真的打了出去', async () => {
+    const { service, observer, loads } = build()
+    const tab = service.open({})
+    observer.onNavigated.mockClear()
+
+    service.get(tab.id)!.navigate('https://b.test')
+
+    // 状态是**同步**改的 —— `loadURL` 还要等代理回放那一拍,而屏幕不该等它。
+    expect(service.get(tab.id)!.state.url).toBe('https://b.test')
+    expect(service.get(tab.id)!.state.loading).toBe(true)
+    expect(observer.onNavigated).toHaveBeenCalledTimes(1)
+
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(loads).toEqual(['https://b.test'])
+  })
+
+  it('navigate:被拒的地址 url 一个字不动,只留一句错话(行为不变)', async () => {
+    const { service, loads } = build()
+    const tab = service.open({ url: 'https://a.test' })
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    service.get(tab.id)!.navigate('file:///etc/passwd')
+
+    // 那一格没有去、也不会去,不该顶着一个它永远到不了的地址。
+    expect(service.get(tab.id)!.state.url).toBe('https://a.test')
+    expect(service.get(tab.id)!.state.loading).toBe(false)
+    expect(service.get(tab.id)!.state.error).toMatch(/Blocked navigation/)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(loads).toEqual(['https://a.test'])
   })
 })
 

@@ -53,8 +53,15 @@ import s from './BrowserStartPage.module.css'
  * 这块面**一个焦点都不抢**。空标签页的落点是地址栏,判据写在 `BrowserLeaf` 的
  * `restingTarget` 上(`row?.url ? 占位格 : 地址栏`)—— 一格空标签页人第一件想做的
  * 事就是打地址,全世界的浏览器都这样。
+ *
+ * ── `backdrop`:同一块 DOM 的第二种身份(2026-09-17)────────────────────────
+ * 从起始页出发的第一次加载还没画出首帧的那一段(`browserBodyPhase` 的 `warming`),
+ * 这块面**留在占位格底下当底**:原生视图首帧之前是透明的,底下的 DOM 会露出来,
+ * 留着它就没有那段空底。它那时是**装饰**——不占地(绝对定位)、不接指针、不进
+ * 无障碍树(`inert` + `aria-hidden`),所以那排引擎丸不会变成一组点不着又能 Tab
+ * 到的假按钮。判词整段在 `start-backdrop.ts` 上。
  */
-export function BrowserStartPage() {
+export function BrowserStartPage({ backdrop = false }: { backdrop?: boolean } = {}) {
   const t = useT()
   const settings = useQuery(browserSettingsQuery)
   /*
@@ -64,7 +71,13 @@ export function BrowserStartPage() {
   const current = settings.data?.searchEngine ?? DEFAULT_BROWSER_SEARCH_ENGINE_ID
 
   return (
-    <div className={s.start} data-testid="browser-start">
+    <div
+      className={s.start}
+      data-testid="browser-start"
+      data-backdrop={backdrop || undefined}
+      inert={backdrop}
+      aria-hidden={backdrop || undefined}
+    >
       <Search className={s.glyph} strokeWidth={1.5} aria-hidden="true" />
       <p className={s.hint}>{t('browser.startHint')}</p>
       <div className={s.engines} role="group" aria-label={t('browser.startEngineSection')}>

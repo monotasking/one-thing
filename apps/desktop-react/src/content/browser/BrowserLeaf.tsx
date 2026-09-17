@@ -32,6 +32,7 @@ import { BrowserActionsMenu } from './BrowserActionsMenu'
 import { BrowserDownloadRow } from './BrowserDownloadRow'
 import { BrowserFindBar } from './BrowserFindBar'
 import { BrowserStartPage } from './BrowserStartPage'
+import { browserBodyPhase, type BrowserBodyPhase } from './start-backdrop'
 import { browserRef } from './browser-ref'
 import { takeBrowserFocusRequest } from './focus-request'
 import s from './BrowserLeaf.module.css'
@@ -60,6 +61,11 @@ import s from './BrowserLeaf.module.css'
  * | 加载中 | `row.loading` | 顶上那条 1px 描线在走;刷新钮变成停止钮 |
  * | 出错 | `row.error` | 地址栏下面一行原话(**后端那句,不发明文案**) |
  * | 找不到 | 表到了、里面没有这一格(账本坏 / 别人关掉了) | 「这一页找不到了」+ 一颗「关掉」 |
+ *
+ * **正文那一块地自己还有三档**(`browserBodyPhase`,与上面五档正交):
+ * `start` 只画起始页(空标签页,不报帧)/ `warming` 占位格 + 起始页当底(从起始页
+ * 出发的第一次加载还没画出首帧)/ `live` 只画占位格。判词整段在
+ * `start-backdrop.ts` 上。
  *
  * **B3-a 加的三条檐与上面五档正交**(哪一档都可能同时挂着它们),每一条自己那
  * 张状态表在它自己的组件 / 数据层文件头上,这里只说落点与次序:
@@ -150,6 +156,19 @@ export function BrowserLeaf({ id }: { id: string }) {
    */
   const openedByUser = useRef<boolean | undefined>(undefined)
   if (openedByUser.current === undefined) openedByUser.current = takeBrowserFocusRequest(id)
+  /*
+   * **这一格这辈子成功停下来过没有** —— 按 tabId 的一格闩(判词在
+   * `start-backdrop.ts` 上:`browserBodyPhase` 只看得见此刻那一行,而「有没有过」
+   * 是一段历史)。
+   *
+   * 它**在渲染里推导**,不是一格 state:闩翻过来的那一帧正是要画 `live` 的那一帧,
+   * 而写 state 要等下一次渲染,中间那一帧起始页会多留一手。同一条理由它也不是
+   * store —— 寿命是这片叶挂着的这一段,与上面 `openedByUser` 那格同族,
+   * 所以它也跟那一格一样站在**任何一条提前 return 之前**(hooks 的次序)。
+   */
+  const settled = useRef<{ tabId: string; once: boolean }>({ tabId: id, once: false })
+  if (settled.current.tabId !== id) settled.current = { tabId: id, once: false }
+  if (row?.url && !row.loading) settled.current.once = true
   const draft = useOmniboxDraft(row)
   const setLiveTitle = useLiveTitleStore((st) => st.setLiveTitle)
   const bridge = nativeViewBridge()
@@ -303,6 +322,12 @@ export function BrowserLeaf({ id }: { id: string }) {
 
   const loading = row?.loading === true
   const known = row !== undefined
+  /*
+   * `!known` 那一档照旧画占位格(表还没到 ≠ 空标签页)—— 纯函数收 `row` 缺席答
+   * `'start'` 是它自己那一口径的完备,叶这一侧的判据从 B3-b 起就是「表到了才敢说
+   * 这是一格空标签页」,这一单一个字没改。
+   */
+  const phase: BrowserBodyPhase = known ? browserBodyPhase(row, settled.current.once) : 'live'
   /*
    * 身份丸上写什么(`null` = 不画)。三支:名册还没到 / 只有一格 / 这一格 tab
    * 的身份在名册里认不出来(名册被手改过)—— 都不画。**不编一个名字出来**:
@@ -498,18 +523,33 @@ export function BrowserLeaf({ id }: { id: string }) {
           {/* 下载读数一行。画的永远是最近变动的那一条(判词同上)。 */}
           {notices.downloads[0] && <BrowserDownloadRow notice={notices.downloads[0]} />}
           {/*
-            **空标签页画壳自己的起始页,不画占位格**(B3-b)。这不是「在网页上面
-            盖一块 DOM」——原生视图永远压在 DOM 之上,盖不住;这里是**根本不报帧**,
-            于是 `layout` 那一侧那片视图保持 `setVisible(false)`(`register` 的第一句)。
-            判据是 `row.url` 为空,而它是**精确**的:一格开在某个地址上的 tab,
-            `createTabState` 那一刻 `url` 就已经是那个地址了(不必等 `did-navigate`),
-            所以「开着 URL 的 tab 先闪一下起始页」这件事结构上不存在。
+            **正文那一块地按 `phase` 画三档**(2026-09-17,判词整段在
+            `start-backdrop.ts` 上)。
+
+            `start` —— **空标签页画壳自己的起始页,不画占位格**(B3-b)。这不是
+            「在网页上面盖一块 DOM」——原生视图永远压在 DOM 之上,盖不住;这里是
+            **根本不报帧**,于是 `layout` 那一侧那片视图保持 `setVisible(false)`
+            (`register` 的第一句)。
+
+            `warming` —— 从起始页出发的第一次加载还在路上:占位格已经在(视图建
+            起来、开始加载),起始页**留作底**。原生视图在首帧之前是透明的,底下
+            的 DOM 会露出来,所以留着它就没有提交到首帧之间那段空底(实测约 500ms)。
+            它排在占位格**之后** —— `.slot` 有一层不透明的 `--surface-1`,DOM 里
+            后来的那个在上。
+
+            `live` —— 第一次加载完成过,起始页永远撤掉。之后的换页由 Chromium 自己
+            保留上一页的画面,壳不必兜底。
           */}
-          {known && !row.url ? (
-            <BrowserStartPage />
-          ) : (
-            <NativeViewSlot viewId={id} scope="browser" elementRef={slotRef} />
-          )}
+          <div className={s.body}>
+            {phase === 'start' ? (
+              <BrowserStartPage />
+            ) : (
+              <>
+                <NativeViewSlot viewId={id} scope="browser" elementRef={slotRef} />
+                {phase === 'warming' && <BrowserStartPage backdrop />}
+              </>
+            )}
+          </div>
           {actionsAt && row && (
             <BrowserActionsMenu
               tab={row}

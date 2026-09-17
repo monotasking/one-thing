@@ -137,7 +137,12 @@ export class BrowserTab {
   private current: BrowserTabState
   private view: NativeView | undefined
   private readonly deps: BrowserTabDeps
-  /** 还没建视图时攒下的那一发导航(`navigate` 先于第一次 `activate` 到)。 */
+  /**
+   * 还没建视图时攒下的那一发导航(`navigate` 先于第一次 `activate` 到)。
+   *
+   * **它不是「这一格的地址」** —— 地址那一句已经进状态了(判词在 `navigate` 上)。
+   * 这里攒的只是「视图建起来那一刻要打出去的那一发」,寿命到 `materialize` 为止。
+   */
   private pendingUrl: string | undefined
   /**
    * 上一次找的那个词(B3-a)。**只为算 `findNext` 而存在** —— 它不是状态,
@@ -179,9 +184,31 @@ export class BrowserTab {
   }
 
   /**
-   * 去一个地址。视图还没建 = 记下来,等 `materialize` 那一刻再打 —— 而不是
-   * 「为了导航顺手把视图建出来」:那会让 AI 的一次 `navigate` 悄悄花掉一个
-   * 渲染进程,而屏幕上什么都没有。
+   * 去一个地址。
+   *
+   * ── 判词:**`url` 是这一格的地址(要去哪儿),到没到看 `loading`** ─────────
+   *
+   * `navigate` 与 `open` 从此同一口径 —— `createTabState(init)` 那一刻 `url` 就
+   * 已经是目标地址了(`BrowserLeaf` 起始页那段注释写着「不必等 `did-navigate`」),
+   * 所以走这条路的一格没有理由是另一种说法。于是这里**先**把状态改成「这一格
+   * 现在的地址是它、而且在路上」,**再**去打那一发。
+   *
+   * 从前它一个字都不改状态,代价是 2026-09-17 逐帧量到的那一闪:壳的乐观补丁在
+   * 8ms 把 `row.url` 写成目标地址、起始页摘掉;18ms 后端推来 `loading` 事实、壳
+   * 重拉 tabs 表,读到的 `url` **仍是空串**(它要等到 1238ms 的 `did-navigate`
+   * 才进状态)→ 23ms 起始页又装了回来。判词一句话:**一个会说谎半秒的读数,
+   * 上游每个人都要替它写一段兜底**。
+   *
+   * 视图还没建 = 把那一发记下来,等 `materialize` 那一刻再打 —— 而不是「为了导航
+   * 顺手把视图建出来」:那会让 AI 的一次 `navigate` 悄悄花掉一个渲染进程,而屏幕
+   * 上什么都没有。**状态那一句两支都走**:账上这一格的地址就是它,只是还没有一片
+   * 视图去兑现。
+   *
+   * 被拒的地址(`isAllowedNavigation` 假)**行为不变**:只留一句错话,`url` 一个
+   * 字不动 —— 那一格没有去、也不会去,不该顶着一个它永远到不了的地址。
+   *
+   * 重复的那一发不会多发事件:`did-navigate` 之后 patch 同一个 url,
+   * `reduceTabState` 逐格比完答的是**同一个对象**,`patch()` 见身份相等就返回。
    */
   navigate(url: string): void {
     if (this.disposed) return
@@ -189,6 +216,7 @@ export class BrowserTab {
       this.patch({ error: `Blocked navigation to ${url}`, loading: false })
       return
     }
+    this.patch({ url, loading: true, error: undefined })
     if (!this.view) {
       this.pendingUrl = url
       return

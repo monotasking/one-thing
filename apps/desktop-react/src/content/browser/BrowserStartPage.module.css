@@ -24,6 +24,19 @@
   overflow: hidden;
 }
 
+/*
+ * 当底的那一档(2026-09-17,`browserBodyPhase` 的 `warming`):同一块 DOM 铺满
+ * 正文那块地、**不占布局的地**(占位格照旧吃满 `flex: 1`),指针一律穿过去 ——
+ * 它此刻是一块底,不是一块面(不接指针这件事与 `inert` 是两回事:后者管键盘与
+ * 无障碍树,这一条管鼠标)。它排在占位格**之后**,因为 `.slot` 有一层不透明的
+ * `--surface-1`,DOM 后来者在上。
+ */
+.start[data-backdrop] {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
 /* 图标梯里最大的那一档(`--icon-lg`)—— 起始页不值得为一枚装饰性字形在梯外
  * 加一个新档(08-31「梯外只剩两类例外」那条纪律)。 */
 .glyph {
