@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
-import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactElement, ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { ChevronRight } from '../../components/icons'
 import { LINE_CHANGED_MS } from '../../components/motion'
@@ -14,6 +14,7 @@ import shellStyles from '../blocks/shell/BlockShell.module.css'
 import { CaretController, type EditorDom } from './caret-controller'
 import type { EditorDocument } from './editor-document'
 import type { FoldRow } from './fold-row'
+import { initialLineIds, nextLineIds, type LineIdentity } from './line-ids'
 import type { PaintClasses } from './paint'
 import type { RevealMode } from './reveal'
 import { isList, parseUnits, type ListUnit, type Unit } from './units'
@@ -61,10 +62,33 @@ export interface EditableDocProps {
   readonly hidden?: ReadonlySet<number>
   /** 「收起了一段」的提示行。 */
   readonly folds?: readonly FoldRow[]
+  /** 能折的标题:标题行 → 折没折 + 钮上那句话 + 按下去做什么。标题前画一颗悬停才显的三角。 */
+  readonly headingFolds?: ReadonlyMap<number, HeadingFold>
+}
+
+export interface HeadingFold {
+  readonly folded: boolean
+  readonly label: string
+  readonly onToggle: () => void
 }
 
 const NO_HIDDEN: ReadonlySet<number> = new Set()
 const NO_FOLDS: readonly FoldRow[] = []
+const NO_HEADING_FOLDS: ReadonlyMap<number, HeadingFold> = new Map()
+
+/** 上一次渲染交出去的那一项的元素与它的全部输入(见 `EditableDoc` 里 `rowCache` 那一段)。 */
+interface CachedRow {
+  readonly unit: Unit
+  readonly text: string
+  readonly active: boolean
+  readonly changed: boolean
+  readonly html: string
+  readonly fold: HeadingFold | undefined
+  readonly register: UnitRowProps['register']
+  readonly onToggle: UnitRowProps['onToggle']
+  readonly checkLabel: UnitRowProps['checkLabel']
+  readonly element: ReactElement
+}
 
 const PAINT_CLASSES: PaintClasses = {
   code: inlineStyles.code,
@@ -82,13 +106,27 @@ const INDENT_CLASS = ['', s.indent1, s.indent2, s.indent3]
 
 interface UnitRowProps {
   readonly unit: Unit
+  /** 这一项此刻在第几行 —— 跟着行身份走的一格可变槽,不进比较(见 `RowSlot`)。 */
+  readonly slot: RowSlot
   readonly text: string
   readonly active: boolean
   readonly changed: boolean
   readonly html: string
-  readonly register: (start: number, element: HTMLElement | null) => void
+  readonly register: (id: string, element: HTMLElement | null) => void
   readonly onToggle: (line: number) => void
   readonly checkLabel: (done: boolean) => string
+  readonly fold?: HeadingFold
+}
+
+/**
+ * 一项的**行号槽**。在长清单中间回车,后面每一项只是行号挪了一格:把行号当 prop 比,它们就全部
+ * 重渲一遍(连勾选框;dev 渲染层上 500 项清单一次回车 60–104ms 的主项,CPU 画像量出来的)。
+ * 行号改由这一格可变槽带着 —— 父组件每次渲染写进当下的行号,用到它的地方(点勾选框)在用的那一刻读;
+ * `data-unit` 属性由父组件提交后逐项对一遍。`id` 是行身份(`line-ids.ts`),内容元素也按它登记。
+ */
+interface RowSlot {
+  readonly id: string
+  start: number
 }
 
 /**
@@ -108,12 +146,12 @@ function nearestScroller(from: HTMLElement | null): HTMLElement | null {
  * 一项。内容元素的子节点**只经 `innerHTML`**:渲染态在这里写,编辑态由控制器写。
  * memo 的键是这一项的原文 + 是否在编辑 + 是否刚被改过 —— 打字只重画那一格。
  */
-const UnitRow = memo(function UnitRow({ unit, active, changed, html, register, onToggle, checkLabel }: UnitRowProps) {
+const UnitRow = memo(function UnitRow({ unit, slot, active, changed, html, register, onToggle, checkLabel, fold }: UnitRowProps) {
   const contentRef = useRef<HTMLElement | null>(null)
   const setContent = useCallback((element: HTMLElement | null) => {
     contentRef.current = element
-    register(unit.start, element)
-  }, [register, unit.start])
+    register(slot.id, element)
+  }, [register, slot])
 
   useLayoutEffect(() => {
     if (!active && contentRef.current) contentRef.current.innerHTML = html || '​'
@@ -135,25 +173,30 @@ const UnitRow = memo(function UnitRow({ unit, active, changed, html, register, o
   switch (unit.type) {
     case 'heading':
       return (
-        <div className={cx(headingStyles[`h${unit.level}`], s.unit)} data-prose={`h${unit.level}`} data-unit={unit.start} data-active={active}>
+        <div className={cx(headingStyles[`h${unit.level}`], s.unit, fold && s.foldable)} data-prose={`h${unit.level}`} data-unit={slot.start} data-active={active} data-folded={fold?.folded}>
+          {fold && (
+            <ButtonBase className={s.headingFold} data-fold={`heading:${slot.id}`} aria-expanded={!fold.folded} aria-label={fold.label} onClick={fold.onToggle}>
+              <ChevronRight className={s.foldIcon} data-open={!fold.folded} strokeWidth={1.75} aria-hidden="true" />
+            </ButtonBase>
+          )}
           {content}
         </div>
       )
     case 'quote':
       return (
-        <blockquote className={cx(quoteStyles.quote, s.unit)} data-prose="text" data-unit={unit.start} data-active={active}>
+        <blockquote className={cx(quoteStyles.quote, s.unit)} data-prose="text" data-unit={slot.start} data-active={active}>
           {content}
         </blockquote>
       )
     case 'code':
       return (
-        <div className={cx(shellStyles.block, s.codeCard, s.unit)} data-prose="object" data-unit={unit.start} data-active={active}>
+        <div className={cx(shellStyles.block, s.codeCard, s.unit)} data-prose="object" data-unit={slot.start} data-active={active}>
           {content}
         </div>
       )
     case 'para':
       return (
-        <div className={cx(paragraphStyles.paragraph, s.unit)} data-prose="text" data-unit={unit.start} data-active={active}>
+        <div className={cx(paragraphStyles.paragraph, s.unit)} data-prose="text" data-unit={slot.start} data-active={active}>
           {content}
         </div>
       )
@@ -164,13 +207,14 @@ const UnitRow = memo(function UnitRow({ unit, active, changed, html, register, o
         <li
           className={cx(listStyles.item, s.item, s.unit, task && s.task, item.done && s.done, INDENT_CLASS[Math.min(3, Math.floor(item.indent / 2))])}
           value={item.type === 'ordered' ? item.num : undefined}
-          data-unit={unit.start}
+          data-unit={slot.start}
           data-active={active}
         >
           {content}
-          {task && (
+          {/* 空的一项不画勾选框(勾一个什么都没写的项没有意义),编辑它时才画。 */}
+          {task && (active || item.content.trim() !== '') && (
             <span className={s.check} data-check="">
-              <Checkbox checked={item.done} onChange={() => onToggle(unit.start)} label={checkLabel(item.done)} />
+              <Checkbox checked={item.done} onChange={() => onToggle(slot.start)} label={checkLabel(item.done)} />
             </span>
           )}
         </li>
@@ -178,9 +222,11 @@ const UnitRow = memo(function UnitRow({ unit, active, changed, html, register, o
     }
   }
 }, (a, b) => a.text === b.text && a.active === b.active && a.changed === b.changed && a.html === b.html
-  && a.unit.type === b.unit.type && a.unit.start === b.unit.start && a.checkLabel === b.checkLabel)
+  && a.unit.type === b.unit.type && a.slot === b.slot && a.checkLabel === b.checkLabel
+  // 折叠钮的回调每次渲染都是新闭包:比「折没折 + 那句话」就够,话里带着节名,节换了话就换。
+  && a.fold?.folded === b.fold?.folded && a.fold?.label === b.fold?.label)
 
-export function EditableDoc({ document, mode, label, addLabel, checkLabel, density = 'panel', onEditingChange, controllerRef, hidden = NO_HIDDEN, folds = NO_FOLDS }: EditableDocProps): ReactNode {
+export function EditableDoc({ document, mode, label, addLabel, checkLabel, density = 'panel', onEditingChange, controllerRef, hidden = NO_HIDDEN, folds = NO_FOLDS, headingFolds = NO_HEADING_FOLDS }: EditableDocProps): ReactNode {
   const lines = useSyncExternalStore(
     useCallback((notify: () => void) => document.subscribe(notify), [document]),
     () => document.lines,
@@ -188,7 +234,14 @@ export function EditableDoc({ document, mode, label, addLabel, checkLabel, densi
   const [activeStart, setActiveStart] = useState<number | null>(null)
   const [, bump] = useReducer((n: number) => n + 1, 0)
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const contents = useRef(new Map<number, HTMLElement>())
+  const contents = useRef(new Map<string, HTMLElement>())
+  /*
+   * 一项的 React key、内容元素的登记都按它第一行的**身份**(`line-ids.ts`),不按行号:在长清单中间
+   * 回车,后面的项只是行号挪了一格,不该被整排卸掉重建(真机:改前每次回车卸掉重建 155 项、67–84ms)。
+   * 派生缓存,同一份行进来原样交回(StrictMode 双渲染无害)。
+   */
+  const identity = useRef<LineIdentity | null>(null)
+  const slots = useRef(new Map<string, RowSlot>())
   const modeRef = useRef(mode)
   modeRef.current = mode
   const editingRef = useRef(onEditingChange)
@@ -201,15 +254,16 @@ export function EditableDoc({ document, mode, label, addLabel, checkLabel, densi
   const lingerTimers = useRef(new Set<ReturnType<typeof setTimeout>>())
   const hiddenRef = useRef<ReadonlySet<number>>(NO_HIDDEN)
 
-  const register = useCallback((start: number, element: HTMLElement | null) => {
-    if (element) contents.current.set(start, element)
-    else if (contents.current.get(start)?.isConnected === false) contents.current.delete(start)
+  const register = useCallback((id: string, element: HTMLElement | null) => {
+    if (element) contents.current.set(id, element)
+    else if (contents.current.get(id)?.isConnected === false) contents.current.delete(id)
   }, [])
 
   const controller = useMemo(() => {
     const dom: EditorDom = {
       unitContent: start => {
-        const element = contents.current.get(start)
+        const id = identity.current?.ids[start]
+        const element = id === undefined ? undefined : contents.current.get(id)
         return element?.isConnected ? element : null
       },
       scroller: () => nearestScroller(containerRef.current),
@@ -245,6 +299,15 @@ export function EditableDoc({ document, mode, label, addLabel, checkLabel, densi
     return () => { if (controllerRef.current === controller) controllerRef.current = null }
   }, [controller, controllerRef])
 
+  // 行号挪了但没重渲的项:把 `data-unit` 对成槽里的行号(按下鼠标、跳到某一行都按它找项)。
+  useLayoutEffect(() => {
+    for (const [id, element] of contents.current) {
+      const slot = slots.current.get(id)
+      const row = element.parentElement
+      if (slot && row && row.dataset.unit !== String(slot.start)) row.dataset.unit = String(slot.start)
+    }
+  })
+
   // 档位变了:正在编辑的那一格按新规则重画。
   useLayoutEffect(() => { controller.repaint() }, [controller, mode])
 
@@ -276,6 +339,13 @@ export function EditableDoc({ document, mode, label, addLabel, checkLabel, densi
   }, [controller])
 
   const units = useMemo(() => parseUnits(lines), [lines])
+  /*
+   * **输入没变的项交回上一次的元素对象**:同一个元素对象 React 连 memo 比较都不做。输入逐项比过
+   * (比法与 `UnitRow` 的 memo 同一张表),缓存每次渲染换新表,不在场的项自然出局。
+   */
+  const rowCache = useRef(new Map<string, CachedRow>())
+  identity.current = identity.current ? nextLineIds(identity.current, lines) : initialLineIds(lines)
+  const lineIds = identity.current.ids
   const now = Date.now()
   for (const [line, at] of document.recentlyChanged) if (now - at > LINE_CHANGED_MS) document.recentlyChanged.delete(line)
   for (const [line, at] of lingering.current) if (now - at >= LINE_CHANGED_MS) lingering.current.delete(line)
@@ -334,25 +404,47 @@ export function EditableDoc({ document, mode, label, addLabel, checkLabel, densi
   )
 
   const rows: ReactNode[] = []
+  const nextRowCache = new Map<string, CachedRow>()
+  const nextSlots = new Map<string, RowSlot>()
   const emitFolds = (line: number) => { for (const fold of foldsAt.get(line) ?? []) rows.push(foldRow(fold)) }
   for (let index = 0; index < units.length;) {
     const unit = units[index]
     emitFolds(unit.start)
     const row = (u: Unit) => {
-      const text = lines.slice(u.start, u.end + 1).join('\n')
-      return (
+      const id = lineIds[u.start]
+      const key = `${id}:${u.type}`
+      const slot = slots.current.get(id) ?? { id, start: u.start }
+      slot.start = u.start
+      nextSlots.set(id, slot)
+      const text = u.start === u.end ? lines[u.start] : lines.slice(u.start, u.end + 1).join('\n')
+      const active = activeStart === u.start
+      const changed = document.recentlyChanged.has(u.start)
+      const html = controller.restingHtml(u, lines)
+      const fold = headingFolds.get(u.start)
+      const hit = rowCache.current.get(key)
+      if (hit && hit.text === text && hit.active === active
+        && hit.changed === changed && hit.html === html && hit.register === register && hit.onToggle === onToggle
+        && hit.checkLabel === checkLabel && hit.fold?.folded === fold?.folded && hit.fold?.label === fold?.label) {
+        nextRowCache.set(key, hit)
+        return hit.element
+      }
+      const element = (
         <UnitRow
-          key={`${u.start}:${u.type}`}
+          key={key}
           unit={u}
+          slot={slot}
           text={text}
-          active={activeStart === u.start}
-          changed={document.recentlyChanged.has(u.start)}
-          html={controller.restingHtml(u, lines)}
+          active={active}
+          changed={changed}
+          html={html}
           register={register}
           onToggle={onToggle}
           checkLabel={checkLabel}
+          fold={fold}
         />
       )
+      nextRowCache.set(key, { unit: u, text, active, changed, html, fold, register, onToggle, checkLabel, element })
+      return element
     }
     if (isList(unit)) {
       const ordered = unit.type === 'ordered'
@@ -366,14 +458,16 @@ export function EditableDoc({ document, mode, label, addLabel, checkLabel, densi
       }
       if (items.length === 0) continue
       rows.push(ordered
-        ? <ol key={`ol:${first}`} className={listStyles.list} data-prose="text">{items}</ol>
-        : <ul key={`ul:${first}`} className={listStyles.list} data-prose="text">{items}</ul>)
+        ? <ol key={`ol:${lineIds[first]}`} className={listStyles.list} data-prose="text">{items}</ol>
+        : <ul key={`ul:${lineIds[first]}`} className={listStyles.list} data-prose="text">{items}</ul>)
       continue
     }
     if (!effectiveHidden.has(unit.start)) rows.push(row(unit))
     index++
   }
   emitFolds(Number.POSITIVE_INFINITY)
+  rowCache.current = nextRowCache
+  slots.current = nextSlots
 
   return (
     /* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions --

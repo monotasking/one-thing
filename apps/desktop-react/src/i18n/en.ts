@@ -1614,6 +1614,11 @@ export const en: Record<MessageKey, string> = {
   'todo.openCount': '{count} open',
   'todo.current': 'Current',
   'todo.searchFailed': 'Couldn\'t search items',
+  'todo.doneCount': '{count} completed',
+  'todo.remainingCount': '{count} open',
+  'todo.foldSection': 'Fold “{title}”',
+  'todo.unfoldSection': 'Unfold “{title}”',
+  'todo.showDone': 'Show completed',
 
   /* ── music panel (music wrap-up · shell half, 2026-09-10) ───────────── */
   'music.player': 'Now playing',

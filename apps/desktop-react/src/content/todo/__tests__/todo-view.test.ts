@@ -63,6 +63,13 @@ describe('已完成收起', () => {
     expect(view.hidden.size).toBe(0)
     expect(view.folds).toEqual([])
   })
+
+  it('能折的标题:二、三级标题都在;被外层折叠盖住的不在', () => {
+    expect([...todoViewOf(DOC, prefs()).headings.keys()]).toEqual([4, 8, 11])
+    const folded = todoViewOf(DOC, prefs({ folded: new Set(['甲']) })).headings
+    expect([...folded.keys()]).toEqual([4, 11])
+    expect(folded.get(4)).toEqual({ section: '甲', folded: true })
+  })
 })
 
 describe('小节折叠', () => {

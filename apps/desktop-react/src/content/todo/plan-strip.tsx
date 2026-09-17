@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { PLAN_JUST_DONE_MS } from '../../components/motion'
 import type { ComposerStrip, StripBarModel } from '../../composer/strip'
 import { useQuery } from '../../data/kernel'
@@ -6,6 +6,7 @@ import { todoDocumentFamily, todoSessionRef, useTodoLive } from '../../data/todo
 import { useT } from '../../i18n'
 import { Button } from '../../ui/Button'
 import { openFileInCurrentTarget } from '../viewer/open-target'
+import { parseUnits } from '../editing/units'
 import { newlyDone, summarizePlan } from './plan-model'
 import { TodoDocView } from './TodoDocView'
 import { todoScrollPorts, useTodoEditorDocument } from './todo-document'
@@ -99,7 +100,24 @@ function PlanDrawerBody({ sessionId, filePath, document }: {
 }) {
   const t = useT()
   const scrollRef = useRef<HTMLDivElement | null>(null)
-  const { onScroll } = useScrollMemory(scrollRef, todoSessionRef(sessionId), todoScrollPorts)
+  const ref = todoSessionRef(sessionId)
+  // 这份计划之前滚过没有 —— 在滚动记忆还原之前取(第一次渲染时读,之后那只还原会写进去)。
+  const remembered = useRef(todoScrollPorts.read(ref) !== undefined)
+  const { onScroll } = useScrollMemory(scrollRef, ref, todoScrollPorts)
+  /*
+   * 第一次打开这份计划:落到第一条没做完的那一项,上面留一行看得见来处(B 形 §2.3)。
+   * 滚过就听滚动记忆的 —— 人自己滚到哪儿比「第一条未完成」更说明他在看什么。
+   */
+  useLayoutEffect(() => {
+    if (remembered.current) return
+    remembered.current = true
+    const scroller = scrollRef.current
+    const first = parseUnits(document.lines).find(unit => unit.type === 'task' && !unit.done)
+    const row = first && scroller?.querySelector<HTMLElement>(`[data-unit="${first.start}"]`)
+    if (!scroller || !row) return
+    const rowBox = row.getBoundingClientRect()
+    scroller.scrollTop += rowBox.top - scroller.getBoundingClientRect().top - rowBox.height
+  }, [document])
   return (
     <div className={s.drawer} aria-label={t('todo.plan.drawerLabel')} role="region">
       <div ref={scrollRef} className={s.doc} onScroll={onScroll}>

@@ -15,7 +15,7 @@ import { useScrollMemory } from '../../ui/scroll-memory'
 import { PANEL_KIND } from '../../stage/panel-ref'
 import { usePanelVisibility } from '../visibility'
 import { useTodoPanelState } from './panel-state'
-import { useTodoPreferences } from './preferences'
+import { todoNoteViewKey, useTodoPreferences } from './preferences'
 import { TodoDocView } from './TodoDocView'
 import { TodoHeader } from './TodoHeader'
 import { todoScrollPorts, useTodoEditorDocument } from './todo-document'
@@ -139,7 +139,7 @@ function NoteBody({ note }: { note: TodoNoteSummary }) {
           <Button size="sm" onClick={() => void todoDocumentFamily.get(ref).refetch()}>{t('todo.retry')}</Button>
         </p>
       )}
-      {document && <TodoDocView document={document} density="panel" owner={`note:${note.id}`} />}
+      {document && <TodoDocView document={document} density="panel" owner={todoNoteViewKey(note.id)} />}
     </div>
   )
 }

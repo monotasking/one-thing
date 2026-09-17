@@ -1892,6 +1892,11 @@ export const zh = {
   'todo.openCount': '{count} 项未完成',
   'todo.current': '当前',
   'todo.searchFailed': '搜不到项',
+  'todo.doneCount': '已完成 {count} 项',
+  'todo.remainingCount': '{count} 项未完成',
+  'todo.foldSection': '折叠「{title}」',
+  'todo.unfoldSection': '展开「{title}」',
+  'todo.showDone': '显示已完成',
 
   /* ── 音乐面(音乐收尾 · 壳半边,2026-09-10)─────────────────────────────
    * 面里每一颗按钮走的都是 `resources.do`(与模型调的同一条),所以这里的话

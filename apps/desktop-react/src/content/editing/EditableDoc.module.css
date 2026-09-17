@@ -176,6 +176,33 @@
   background-color: var(--st-hover);
 }
 
+/* 标题前那颗折叠三角:坐在标题左边的留白里,悬停这一行(或它自己拿着键盘焦点、或这一节折着)才显。 */
+.foldable {
+  position: relative;
+}
+
+.headingFold {
+  position: absolute;
+  inset-inline-start: calc((var(--icon-sm) + var(--sp-1)) * -1);
+  top: 50%;
+  translate: 0 -50%;
+  display: flex;
+  color: var(--text-3);
+  border-radius: var(--r-1);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.foldable:hover > .headingFold,
+.headingFold:focus-visible,
+.foldable[data-folded='true'] > .headingFold {
+  opacity: 1;
+}
+
+.headingFold:hover {
+  color: var(--text-1);
+}
+
 .foldIcon {
   flex: none;
   width: var(--icon-sm);

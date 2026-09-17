@@ -18,7 +18,7 @@ import s from './TodoHeader.module.css'
  * 待办窗的两张菜单与改名框(从 T3 的面板里搬出来:B 形之后它们挂在**头**上,
  * 头与正文是两个宿主位置,见 `TodoHeader`)。
  *
- *  · ⋯ 菜单:新建清单 / 打开源文件 / 在访达中显示 / 编辑时显示记号(三档);
+ *  · ⋯ 菜单:新建清单 / 打开源文件 / 在访达中显示 / 显示已完成 / 编辑时显示记号(三档);
  *  · 右键清单名:重命名 / 在访达中显示 / 删除(`useConfirm` 二次确认,删的是文件)。
  */
 
@@ -36,6 +36,8 @@ export function TodoMenu({ at, note, contextual, anchor, onClose, onCreate, onRe
   const confirm = useConfirm()
   const revealMode = useTodoPreferences(st => st.revealMode)
   const setRevealMode = useTodoPreferences(st => st.setRevealMode)
+  const showDone = useTodoPreferences(st => st.showDone)
+  const setShowDone = useTodoPreferences(st => st.setShowDone)
   const act = (action: () => void) => () => { onClose(); action() }
 
   return (
@@ -62,6 +64,8 @@ export function TodoMenu({ at, note, contextual, anchor, onClose, onCreate, onRe
         <>
           <MenuItem onClick={act(onCreate)}>{t('todo.newList')}</MenuItem>
           {note && <NoteFileItems note={note} withOpen act={act} />}
+          <MenuSeparator />
+          <MenuItem checked={showDone} onClick={act(() => setShowDone(!showDone))}>{t('todo.showDone')}</MenuItem>
           <MenuSeparator />
           <MenuSection>{t('todo.revealMode')}</MenuSection>
           {REVEAL_MODES.map(mode => (

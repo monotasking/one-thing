@@ -31,6 +31,8 @@ export type TodoFoldSpec =
 export interface TodoView {
   readonly hidden: ReadonlySet<number>
   readonly folds: readonly TodoFoldSpec[]
+  /** 能折的标题(二、三级,且没被外层折叠盖住):标题行 → 节的键 + 此刻折没折。 */
+  readonly headings: ReadonlyMap<number, { readonly section: string; readonly folded: boolean }>
 }
 
 export interface TodoSection {
@@ -44,7 +46,6 @@ export interface TodoSection {
   readonly foldEnd: number
 }
 
-export const EMPTY_TODO_VIEW: TodoView = { hidden: new Set(), folds: [] }
 
 export function sectionsOf(lines: readonly string[]): TodoSection[] {
   const units = parseUnits(lines)
@@ -65,7 +66,6 @@ export function sectionsOf(lines: readonly string[]): TodoSection[] {
 }
 
 export function todoViewOf(lines: readonly string[], prefs: TodoViewPrefs): TodoView {
-  if (prefs.showDone && prefs.folded.size === 0) return EMPTY_TODO_VIEW
   const hidden = new Set<number>()
   const folds: TodoFoldSpec[] = []
   const sections = sectionsOf(lines)
@@ -94,6 +94,13 @@ export function todoViewOf(lines: readonly string[], prefs: TodoViewPrefs): Todo
     }
   }
 
+  const headings = new Map<number, { section: string; folded: boolean }>()
+  for (const section of sections) {
+    if (section.heading && !isCovered(section.heading.start)) {
+      headings.set(section.heading.start, { section: section.key, folded: prefs.folded.has(section.key) })
+    }
+  }
+
   folds.sort((a, b) => a.at - b.at)
-  return { hidden, folds }
+  return { hidden, folds, headings }
 }

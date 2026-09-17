@@ -5,7 +5,7 @@ import { focusTree } from '../../../focus/registry'
 import { FocusDispatchHarness } from '../../../test/focus-harness'
 import { useStageStore } from '../../../stage/store'
 import { resetTodoPanelState, useTodoPanelState } from '../panel-state'
-import { TODO_RECENT_LIMIT, useTodoPreferences } from '../preferences'
+import { TODO_RECENT_LIMIT, TODO_VIEW_DOCS_LIMIT, todoNoteViewKey, useTodoPreferences } from '../preferences'
 import { TODO_SEARCH_DEBOUNCE_MS, TodoSwitcher } from '../TodoSwitcher'
 
 /**
@@ -156,5 +156,33 @@ describe('最近打开', () => {
     expect(useTodoPreferences.getState()).toMatchObject({ activeNoteId: 'f2', recent: ['f2', 'e', 'd', 'a', 'c'] })
     replaceNoteId('d', null)
     expect(useTodoPreferences.getState().recent).toEqual(['f2', 'e', 'a', 'c'])
+  })
+})
+
+describe('按文档记的折叠状态', () => {
+  it('翻一个节键;空了摘掉这份文档;改名跟过去、删除摘掉', () => {
+    useTodoPreferences.setState({ doneOpen: {}, folded: {} })
+    const { toggleFolded, toggleDoneOpen, replaceNoteId } = useTodoPreferences.getState()
+    toggleFolded(todoNoteViewKey('a'), '甲')
+    toggleFolded(todoNoteViewKey('a'), '乙')
+    toggleDoneOpen(todoNoteViewKey('a'), '')
+    expect(useTodoPreferences.getState().folded).toEqual({ 'note:a': ['甲', '乙'] })
+    toggleFolded(todoNoteViewKey('a'), '甲')
+    toggleFolded(todoNoteViewKey('a'), '乙')
+    expect(useTodoPreferences.getState().folded).toEqual({})
+    replaceNoteId('a', 'b')
+    expect(useTodoPreferences.getState().doneOpen).toEqual({ 'note:b': [''] })
+    replaceNoteId('b', null)
+    expect(useTodoPreferences.getState().doneOpen).toEqual({})
+  })
+
+  it('封顶:最近动过的留着,最早的先走', () => {
+    useTodoPreferences.setState({ folded: {} })
+    const { toggleFolded } = useTodoPreferences.getState()
+    for (let i = 0; i <= TODO_VIEW_DOCS_LIMIT; i++) toggleFolded(`plan:${i}`, 'x')
+    const keys = Object.keys(useTodoPreferences.getState().folded)
+    expect(keys).toHaveLength(TODO_VIEW_DOCS_LIMIT)
+    expect(keys[0]).toBe('plan:1')
+    expect(keys.at(-1)).toBe(`plan:${TODO_VIEW_DOCS_LIMIT}`)
   })
 })
