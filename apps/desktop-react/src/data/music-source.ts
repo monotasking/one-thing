@@ -19,7 +19,7 @@ import type { MusicResourceEvent } from './music-port'
  * 「界面点按钮也走它」。
  *
  * ── 表在这里,分支不在这里 ──────────────────────────────────────────────
- * 这只文件里有两张**数据**表:读法四条(外加节目单一条,见下)与做法十三条。
+ * 这只文件里有两张**数据**表:读法四条(外加节目单一条,见下)与做法十四条。
  * 每一条做法只说三件事 —— 它作用在哪个单例上、按下去屏幕先怎么变(乐观补丁)、
  * 跑完之后要重问哪几条读数。除此之外一行 `if (op === …)` 都没有:发命令那一段
  * 是同一句 `port.do(ref, op, params)`。
@@ -42,7 +42,7 @@ import type { MusicResourceEvent } from './music-port'
  * 组件头上(它们说的是屏幕);这里只写 ① 生命周期,因为这条线不是一个组件。
  * ══════════════════════════════════════════════════════════════════════════
  *
- *  · 挂载    —— import 这只文件只建了五格空 query 与十三只 mutation,
+ *  · 挂载    —— import 这只文件只建了五格空 query 与十四只 mutation,
  *                **零往返、零订阅**;
  *  · 首载    —— `openMusicSource()`(面板挂载时调一次):等传输面 ready →
  *                订上 `resource:event`(前缀 `music:`)→ 五条读数各 `ensure()`
@@ -172,7 +172,7 @@ const ALL_QUERIES: readonly Query<unknown>[] = [
   musicRuntimeQuery,
 ] as unknown as readonly Query<unknown>[]
 
-/* ── 十三条做法 ──────────────────────────────────────────────────────────── */
+/* ── 十四条做法 ──────────────────────────────────────────────────────────── */
 
 export type MusicOpName =
   | 'open'
@@ -188,6 +188,7 @@ export type MusicOpName =
   | 'seek'
   | 'volume'
   | 'like'
+  | 'programmeAction'
 
 export type MusicOpParams = Record<string, unknown>
 
@@ -209,6 +210,30 @@ function patchBrief(next: (prev: MusicRadioState) => MusicRadioState): Rollback 
   return musicBriefQuery.patch((prev) => (prev ? next(prev) : prev))
 }
 
+/**
+ * 节目单的一次编辑,纯函数(`programmeAction` 的乐观补丁与单测共用)。
+ * 形状照后端 `PROGRAMME_ACTION_PARAMS`:`{ action: { kind, encryptedId, toIndex? } }`。
+ * 认不出的编辑原样交回 —— 读不懂就不猜,等对账那一发把真相拉回来。
+ */
+export function applyProgrammeAction(view: MusicProgrammeView, params: MusicOpParams): MusicProgrammeView {
+  const action = params.action as { kind?: unknown; encryptedId?: unknown; toIndex?: unknown } | undefined
+  if (!action || typeof action.encryptedId !== 'string') return view
+  const from = view.entries.findIndex((e) => e.encryptedId === action.encryptedId)
+  if (from < 0) return view
+  const entries = [...view.entries]
+  const [entry] = entries.splice(from, 1)
+  if (action.kind === 'remove') return { ...view, entries }
+  const to =
+    action.kind === 'promote'
+      ? 0
+      : action.kind === 'move' && typeof action.toIndex === 'number' && Number.isFinite(action.toIndex)
+        ? Math.max(0, Math.min(entries.length, Math.trunc(action.toIndex)))
+        : undefined
+  if (to === undefined) return view
+  entries.splice(to, 0, entry)
+  return { ...view, entries }
+}
+
 function numberParam(params: MusicOpParams, key: string): number | undefined {
   const value = params[key]
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
@@ -216,7 +241,7 @@ function numberParam(params: MusicOpParams, key: string): number | undefined {
 
 /**
  * 做法表。**每一行三格,一个分支都没有** —— 加一条做法 = 这张表加一行
- * (以及面板上一颗钮),`runMusicOp` 与十三只 mutation 的装配一个字不动。
+ * (以及面板上一颗钮),`runMusicOp` 与十四只 mutation 的装配一个字不动。
  */
 const OPS: Readonly<Record<MusicOpName, MusicOpSpec>> = {
   /* ── 电台六条 ───────────────────────────────────────────────────────── */
@@ -273,9 +298,18 @@ const OPS: Readonly<Record<MusicOpName, MusicOpSpec>> = {
   // 红心不改任何一条读数上的格子(它落在服务端的喜欢列表里)。**不对账** ——
   // 为一件读不回来的事发一发请求,是拿刷新冒充反馈。
   like: { ref: MUSIC_PLAYER_REF, affects: [] },
+
+  /* ── 节目单编辑(唱机面 M1,2026-09-17)──────────────────────────────── */
+  // 拿掉 / 提前 / 挪位。行先在屏上动(律①),简报里那格「还剩几首」跟着对账。
+  programmeAction: {
+    ref: MUSIC_RADIO_REF,
+    optimistic: (params) =>
+      musicProgrammeQuery.patch((prev) => (prev ? applyProgrammeAction(prev, params) : prev)),
+    affects: [musicProgrammeQuery, musicBriefQuery],
+  },
 }
 
-/** 发一条命令。**十三条共用这一句** —— 非 ok 一律抛,理由在文件头。 */
+/** 发一条命令。**十四条共用这一句** —— 非 ok 一律抛,理由在文件头。 */
 async function runMusicOp(op: MusicOpName, params: MusicOpParams): Promise<void> {
   const port = await musicPort()
   const outcome = await port.do(OPS[op].ref, op, params)
@@ -355,7 +389,7 @@ export function closeMusicSource(): void {
   unsubscribe = undefined
 }
 
-/** 回到出厂:退订 + 五格读数归零 + 十三只 mutation 归零。测试与 HMR 用。 */
+/** 回到出厂:退订 + 五格读数归零 + 十四只 mutation 归零。测试与 HMR 用。 */
 export function resetMusicSource(): void {
   openCount = 0
   unsubscribe?.()

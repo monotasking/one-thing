@@ -1696,8 +1696,43 @@
    * 节目单与歌词两张长表各自的最高身量。一张一百条的节目单不该把歌词那一块
    * 挤出屏幕 —— 与「浮层/抽屉列表必有最大高度约束」是同一条纪律的长列表版。
    * 220px ≈ 八行(--list-row-h)加一点余量:够看出这是一张单子,又不至于
-   * 一块吃掉半屏。 */
-  --music-list-max-h: 220px;
+   * 一块吃掉半屏。唱机面(09-17)起每行多一行主持人口播,一行约 46px,
+   * 220 只装得下四行半、五首歌就出滚轨;改 320 ≈ 七行。 */
+  --music-list-max-h: 320px;
+
+  /* ── 唱机面(唱机音乐面 M1,2026-09-17)────────────────────────────────
+   * 唱盘底座、唱臂都从主题色里混出来,换主题跟着走;**黑胶本身是内容色**
+   * (一张唱片在哪个主题里都是黑的,与 --fb-* 品牌色数据节同一条例外)。
+   * 唱片三档身量对应**唱机区**自己的宽(阈值在 MusicPanel.module.css 的
+   * @container 里,查询条件里写不了 var(),两处一起改):
+   *   deck < 520  小唱片,不画唱臂(唱臂要的横向余量这一档给不起),控制条铺在下面
+   *   deck ≥ 520  中唱片 + 唱臂
+   *   deck ≥ 680  大唱片
+   *   面板 ≥ 960  分两栏,歌词单列右边
+   * 转一圈 1.8s = 33⅓ 转/分;唱片只是显示,不接手势(搓碟播放器做不到)。 */
+  --music-deck-face: color-mix(in srgb, var(--text-1) 4%, var(--surface-1));
+  --music-platter: color-mix(in srgb, var(--text-1) 70%, var(--surface-2));
+  --music-platter-rim: var(--line-2);
+  --music-vinyl: #121211;
+  --music-groove: rgba(255, 255, 255, 0.045);
+  --music-sheen: rgba(255, 255, 255, 0.11);
+  --music-label: color-mix(in srgb, var(--accent) 78%, var(--surface-2));
+  --music-label-ink: #ffffff;
+  --music-arm: color-mix(in srgb, var(--text-1) 22%, var(--surface-2));
+  --music-arm-head: color-mix(in srgb, var(--text-1) 88%, var(--surface-2));
+  --music-arm-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+  --music-spin-dur: 1.8s;
+  --music-record-sm: 84px;
+  --music-record-md: 220px;
+  --music-record-lg: 300px;
+  --music-lyrics-h: 150px;
+  --music-lyrics-h-lg: 360px;
+  --music-popover-w: 320px;
+  /* 开台 / 点歌输入框的最小宽:再窄就让钮折到下一行,不把提示字挤成半句。 */
+  --music-input-min: 180px;
+  --music-lamp: var(--danger);
+  /* 主持人的话用衬线:与歌词区分「谁在说」。壳没带这副字,落到系统宋体。 */
+  --music-font-say: 'Noto Serif SC', 'Songti SC', 'STSong', serif;
 
   /* ── 面板内分栏(文件查看器 F1 → F2 可拖)────────────────────────────
    * F1 是两档写死的 fr(0.9 : 1.1 = 45%);F2 起比例是**用户的**,记在

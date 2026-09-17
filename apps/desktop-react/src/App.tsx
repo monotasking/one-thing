@@ -1,5 +1,6 @@
 import { AppShell } from './components/AppShell'
 import { Gallery } from './dev/Gallery'
+import { MusicLab } from './dev/MusicLab'
 import { PerfHud, perfHudEnabled } from './dev/PerfHud'
 
 /**
@@ -11,11 +12,13 @@ import { PerfHud, perfHudEnabled } from './dev/PerfHud'
  * 这是刻意的:HUD 自己不该为了响应一个排障开关而每次渲染都去读盘。
  */
 export default function App() {
-  const gallery =
-    typeof location !== 'undefined' && new URLSearchParams(location.search).has('gallery')
+  const params = typeof location !== 'undefined' ? new URLSearchParams(location.search) : undefined
+  const gallery = params?.has('gallery') ?? false
+  // ?music-lab:音乐面宽度实验台(假端口喂样本,不碰真 store)。
+  const musicLab = params?.has('music-lab') ?? false
   return (
     <>
-      {gallery ? <Gallery /> : <AppShell />}
+      {musicLab ? <MusicLab /> : gallery ? <Gallery /> : <AppShell />}
       {perfHudEnabled() ? <PerfHud /> : null}
     </>
   )

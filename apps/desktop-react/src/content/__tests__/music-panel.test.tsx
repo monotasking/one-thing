@@ -159,7 +159,8 @@ describe('首载:五条读数,五个地址', () => {
 
   it('读回来的东西上了屏', async () => {
     await mount()
-    await screen.findByText('可惜没如果 - 林俊杰')
+    // 展示串「歌名 - 歌手」只为显示拆两半,不当键用。
+    await waitFor(() => expect(screen.getByTestId('music-now-title').textContent).toBe('可惜没如果'))
     expect(screen.getByText('第一首')).toBeTruthy()
     expect(screen.getByTestId('music-programme')).toBeTruthy()
   })
@@ -172,8 +173,7 @@ describe('每颗钮发出去的是那一条 do', () => {
     ['music-play', 'music:player', 'pause', {}],
     ['music-next', 'music:player', 'next', {}],
     ['music-like', 'music:player', 'like', {}],
-    ['music-close', 'music:radio', 'close', {}],
-    ['music-radio-resume', 'music:radio', 'radioResume', {}],
+    // 「关台」只有一颗:`close` 与 `radioStop` 在后端是同一件事的两个回执。
     ['music-radio-stop', 'music:radio', 'radioStop', {}],
   ]
 
@@ -189,8 +189,10 @@ describe('每颗钮发出去的是那一条 do', () => {
     })
   }
 
-  it('换台带着输入框里那句意图', async () => {
+  it('换台要先开浮层、填意图、按「换台」才发 —— 开浮层本身什么都不发', async () => {
     await mount()
+    fireEvent.click(await screen.findByTestId('music-retune-open'))
+    expect(fake.dos).toEqual([])
     const input = await screen.findByTestId('music-intent')
     fireEvent.change(input, { target: { value: '深夜爵士' } })
     await act(async () => {
@@ -253,7 +255,7 @@ describe('事件到了要重拉', () => {
     await waitFor(() =>
       expect(fake.reads.filter((r) => r.name === 'nowPlaying').length).toBeGreaterThan(before),
     )
-    await screen.findByText('晴天 - 周杰伦')
+    await waitFor(() => expect(screen.getByTestId('music-now-title').textContent).toBe('晴天'))
   })
 })
 
@@ -305,7 +307,9 @@ describe('空态两句', () => {
       },
     })
     expect(await screen.findByText('播放器没在跑。')).toBeTruthy()
-    expect(screen.getByText('电台没开 —— 说一句想听什么就能开台。')).toBeTruthy()
+    expect(
+      screen.getByText('电台关着。说一句现在想听什么,主持人会排一张节目单,每首歌前说几句。'),
+    ).toBeTruthy()
   })
 })
 
@@ -317,5 +321,106 @@ describe('拆卸', () => {
       resetMusicSource()
     })
     expect(fake.listeners.length).toBe(0)
+  })
+})
+
+describe('唱机面:操作不许有两个意思', () => {
+  it('电台开着时 ⏮ ⏭ 说出后端真做的事', async () => {
+    await mount()
+    expect((await screen.findByTestId('music-prev')).getAttribute('aria-label')).toBe('重播这首')
+    expect(screen.getByTestId('music-next').getAttribute('aria-label')).toBe('跳过(以后少排这类)')
+  })
+
+  it('电台关着:开台卡 + 继续这一台 → do(music:radio, radioResume)', async () => {
+    const table = fullTable()
+    table['music:radio#brief'] = { ...BRIEF_OFF, intent: '下雨天', canResume: true, programmeLength: 3 }
+    await mount(table)
+    expect(screen.queryByTestId('music-radio-stop')).toBeNull()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('music-radio-resume'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(fake.dos).toEqual([{ ref: 'music:radio', op: 'radioResume', params: {} }])
+  })
+
+  it('♥ 一次性:成功后停用并改名「已收藏到网易云」', async () => {
+    await mount()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('music-like'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    const like = screen.getByTestId('music-like')
+    expect(like.getAttribute('aria-label')).toBe('已收藏到网易云')
+    expect((like as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('串联单「⋯」开的菜单:拿掉 → programmeAction remove,行当场消失', async () => {
+    await mount()
+    fireEvent.click(await screen.findByTestId('music-entry-more:a'))
+    fake.hold = { release: () => undefined }
+    await act(async () => {
+      fireEvent.click(await screen.findByText('拿掉(以后少排这类)'))
+    })
+    expect(fake.dos).toEqual([
+      { ref: 'music:radio', op: 'programmeAction', params: { action: { encryptedId: 'a', kind: 'remove' } } },
+    ])
+    // do 还挂着,行已经没了(乐观补丁)。
+    expect(screen.getByTestId('music-programme').textContent).not.toContain('第一首')
+    await act(async () => {
+      fake.hold?.release()
+      fake.hold = undefined
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  })
+
+  it('右键一行开的是同一张菜单;第一行「提到下一首」停用', async () => {
+    await mount()
+    const row = (await screen.findByText('第一首')).closest('li')
+    expect(row).toBeTruthy()
+    fireEvent.contextMenu(row as HTMLElement)
+    const promote = await screen.findByText('提到下一首')
+    expect((promote.closest('button') as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('唱臂:只表示「跳到这里」', () => {
+  /** 唱盘那一格量出来是 100×100 —— 坐标系就是 turntable.ts 里的百分比。 */
+  function stubPlatRect() {
+    const plat = screen.getByTestId('music-turntable')
+    plat.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+  }
+  // jsdom 没有 PointerEvent:手搓一个带 button 与坐标的 MouseEvent,类型名仍是 pointer*
+  // (与 ui/__tests__/Splitter.test.tsx 同一条判词)。
+  const pointer = (type: string, x: number, y: number) =>
+    new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: x, clientY: y })
+
+  it('拖到最内圈松手 → 一条 seek 到结尾;拖动期间一发都不发', async () => {
+    await mount()
+    const grab = await screen.findByTestId('music-arm')
+    stubPlatRect()
+    await act(async () => {
+      grab.dispatchEvent(pointer('pointerdown', 99, 70))
+      window.dispatchEvent(pointer('pointermove', 50, 40))
+    })
+    expect(fake.dos).toEqual([])
+    await act(async () => {
+      window.dispatchEvent(pointer('pointerup', 50, 40))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(fake.dos).toEqual([{ ref: 'music:player', op: 'seek', params: { position: 298 } }])
+  })
+
+  it('指针被系统收走 = 这一下不算,什么都不发', async () => {
+    await mount()
+    const grab = await screen.findByTestId('music-arm')
+    stubPlatRect()
+    await act(async () => {
+      grab.dispatchEvent(pointer('pointerdown', 99, 70))
+      window.dispatchEvent(pointer('pointermove', 50, 40))
+      window.dispatchEvent(pointer('pointercancel', 50, 40))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(fake.dos).toEqual([])
   })
 })
