@@ -9,6 +9,7 @@ import composerStyles from '../composer/components/Composer.module.css'
 import { planStrip } from '../content/todo/plan-strip'
 import { TodoPanel } from '../content/todo/TodoPanel'
 import { ConfirmHost } from '../ui/Dialog'
+import { MessageTasksDemo } from './todo-lab-message'
 import { configureTodoPort, resetTodoSource } from '../data/todo-source'
 import { LAB_PLAN_SESSION, TodoLabPort } from './todo-lab-port'
 import { Segmented } from '../ui/Segmented'
@@ -190,6 +191,7 @@ export function TodoLab() {
           <TodoPanel />
         </div>
       )}
+      <MessageTasksDemo />
       <ConfirmHost />
       <div data-lab-doc="" data-scroll-root="" style={{ maxWidth: width === 'drawer' ? '640px' : '340px', maxHeight: '560px', overflow: 'auto', background: 'var(--surface-2)', padding: 'var(--sp-4)', borderRadius: 'var(--r-3)' }}>
         <EditableDoc

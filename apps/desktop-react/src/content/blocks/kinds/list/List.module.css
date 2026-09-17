@@ -58,3 +58,39 @@ ol.list {
 .item::marker {
   color: var(--text-4);
 }
+
+/*
+ * ── 任务项与层级(待办 E1)────────────────────────────────────────────
+ * 任务项不画圆点,在圆点的位置画勾选框(与待办编辑器同一套几何:
+ * `content/editing/EditableDoc.module.css` 的 `.check`)。完成项文字降一档、加删除线。
+ * 层级按 `--indent-1` 一格一格缩;拍平的裁定不翻,所以缩的是项本身,不是套一层列表。
+ */
+.task {
+  position: relative;
+  list-style: none;
+}
+
+.check {
+  position: absolute;
+  inset-inline-start: calc(var(--indent-1) * -1 + var(--sp-1));
+  top: calc((var(--pr-lh) * 1em - var(--check-size)) / 2);
+  display: flex;
+  height: var(--check-size);
+  line-height: 0;
+}
+
+/* 它排在项内块之后:上面 `.item > * + *`(0-1-0)的项内间距会落到它头上,把框压低一截。
+ * 写成 0-2-0 压过去,不靠源序。 */
+.item > .check {
+  margin: 0;
+}
+
+.done > :not(.check) {
+  color: var(--text-3);
+  text-decoration: line-through;
+  text-decoration-color: var(--line-2);
+}
+
+.depth1 { margin-inline-start: var(--indent-1); }
+.depth2 { margin-inline-start: calc(var(--indent-1) * 2); }
+.depth3 { margin-inline-start: calc(var(--indent-1) * 3); }

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { BlockView } from '../BlockView'
 import type { BlockCtx } from '../registry'
-import type { BlockModel } from '../../model/blocks'
+import type { BlockModel, ListItemModel } from '../../model/blocks'
 import { useStageStore } from '../../../stage/store'
 
 /**
@@ -32,6 +32,7 @@ const ctx: BlockCtx = { messageId: 'a1', streaming: false }
 const text = (value: string) => [{ type: 'text' as const, text: value }]
 /** 一项 / 一段最常见的那一形:纯文本的段落块。 */
 const para = (value: string): BlockModel => ({ kind: 'paragraph', inline: text(value) })
+const item = (blocks: BlockModel[], checked: boolean | null = null, depth = 0): ListItemModel => ({ blocks, checked, depth })
 
 function draw(block: BlockModel) {
   return render(<BlockView block={block} ctx={ctx} />)
@@ -44,18 +45,34 @@ describe('P1 六块上屏', () => {
   })
 
   it('列表:有序画 ol,无序画 ul,项按模型逐条', () => {
-    const { container } = draw({ kind: 'list', ordered: true, items: [[para('甲')], [para('乙')]] })
+    const { container } = draw({ kind: 'list', ordered: true, items: [item([para('甲')]), item([para('乙')])] })
     expect(container.querySelectorAll('ol > li')).toHaveLength(2)
     // 最常见的那一形(单段落项)长成 `<li><p>` —— 像素守恒的那半由 UA 边距清零守
     // (kinds/list/List.module.css 的 `.item > *`),jsdom 量不出层叠,那是真机的活。
     expect(container.querySelectorAll('ol > li > p')).toHaveLength(2)
   })
 
+  it('任务项(待办 E1):圆点位置画只读勾选框,点了不变;普通项没有框;层级按 depth 缩进', () => {
+    const { container } = draw({
+      kind: 'list',
+      ordered: false,
+      items: [item([para('待做')], false), item([para('做完')], true, 1), item([para('普通')])],
+    })
+    const boxes = [...container.querySelectorAll<HTMLInputElement>('li input[type="checkbox"]')]
+    expect(boxes.map((box) => box.checked)).toEqual([false, true])
+    expect(boxes.every((box) => box.getAttribute('aria-readonly') === 'true' && box.tabIndex === -1)).toBe(true)
+    fireEvent.click(boxes[0])
+    expect(boxes[0].checked).toBe(false)
+    const lis = [...container.querySelectorAll('ul > li')]
+    expect(lis[2].querySelector('input')).toBeNull()
+    expect(lis[1].className).not.toBe(lis[0].className)
+  })
+
   it('列表项递归回块视图 —— 项里的围栏真的画成代码块,不再是字面 ``` 文本', async () => {
     const { container } = draw({
       kind: 'list',
       ordered: false,
-      items: [[para('看这段:'), { kind: 'code', lang: 'lua', source: 'print(1)', closed: true }]],
+      items: [item([para('看这段:'), { kind: 'code', lang: 'lua', source: 'print(1)', closed: true }])],
     })
     // 代码块的懒加载闸是异步的(拉高亮器);等它落定再断言。
     await act(async () => undefined)

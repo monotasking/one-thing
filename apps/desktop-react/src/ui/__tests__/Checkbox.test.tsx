@@ -40,4 +40,16 @@ describe('Checkbox:三态与受控', () => {
     expect((screen.getByLabelText('c') as HTMLInputElement).disabled).toBe(true)
     expect(container.firstElementChild?.className).toMatch(/disabled/)
   })
+
+  it('只读:不变淡、不进 Tab 序、读屏念只读,点了不翻也不交值', () => {
+    const onChange = vi.fn()
+    const { container } = render(<Checkbox checked={false} onChange={onChange} readOnly label="c" />)
+    const el = screen.getByLabelText('c') as HTMLInputElement
+    expect(el.getAttribute('aria-readonly')).toBe('true')
+    expect(el.tabIndex).toBe(-1)
+    expect(container.firstElementChild?.className).not.toMatch(/disabled/)
+    fireEvent.click(el)
+    expect(el.checked).toBe(false)
+    expect(onChange).not.toHaveBeenCalled()
+  })
 })

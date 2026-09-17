@@ -61,22 +61,33 @@ describe('翻译表:mdast → BlockModel', () => {
       kind: 'list',
       ordered: false,
       items: [
-        [{ kind: 'paragraph', inline: [{ type: 'text', text: 'a' }] }],
-        [{ kind: 'paragraph', inline: [{ type: 'text', text: 'b' }] }],
+        { blocks: [{ kind: 'paragraph', inline: [{ type: 'text', text: 'a' }] }], checked: null, depth: 0 },
+        { blocks: [{ kind: 'paragraph', inline: [{ type: 'text', text: 'b' }] }], checked: null, depth: 0 },
       ],
     })
     expect(one('1. a\n2. b')).toMatchObject({ kind: 'list', ordered: true })
   })
 
-  it('嵌套列表拍平一层 —— 内容一个字不丢,层级丢了(记档的过渡形)', () => {
+  it('嵌套列表拍平一层 —— 内容一个字不丢,层级留在 depth 上(待办 E1)', () => {
     const list = one('- a\n  - a1\n- b')
     expect(list).toMatchObject({ kind: 'list', ordered: false })
-    expect(list.kind === 'list' && list.items.map((item) => item[0])).toEqual([
+    expect(list.kind === 'list' && list.items.map((item) => item.depth)).toEqual([0, 1, 0])
+    expect(list.kind === 'list' && list.items.map((item) => item.blocks[0])).toEqual([
       { kind: 'paragraph', inline: [{ type: 'text', text: 'a' }] },
       { kind: 'paragraph', inline: [{ type: 'text', text: 'a1' }] },
       { kind: 'paragraph', inline: [{ type: 'text', text: 'b' }] },
     ])
   })
+  it('GFM 任务项:checked 是 true / false,普通项是 null(待办 E1)', () => {
+    const list = one('- [ ] 待做\n- [x] 做完\n- 普通\n  - [X] 嵌套做完')
+    expect(list.kind === 'list' && list.items.map((item) => [item.checked, item.depth])).toEqual([
+      [false, 0],
+      [true, 0],
+      [null, 0],
+      [true, 1],
+    ])
+  })
+
   it('GFM 表:第一行是表头,其余是数据行', () => {
     expect(one('| a | b |\n|---|---|\n| 1 | 2 |')).toEqual({
       kind: 'table',
@@ -117,7 +128,7 @@ describe('列表项里嵌块 —— 注册表复用,不再拍平成字面文本'
   const itemsOf = (text: string): BlockModel[][] => {
     const list = one(text)
     if (list.kind !== 'list') throw new Error(`不是列表:${list.kind}`)
-    return list.items
+    return list.items.map((item) => item.blocks)
   }
 
   it('项含围栏 → [paragraph, code(lang=lua)],不再是一段 ``` 字面文本', () => {

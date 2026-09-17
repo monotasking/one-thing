@@ -1854,6 +1854,8 @@ export const zh = {
   'todo.add': '添加一项',
   'todo.check': '标为完成',
   'todo.uncheck': '标为未完成',
+  'todo.checked': '已完成',
+  'todo.unchecked': '未完成',
   'todo.plan.drawerLabel': '这个会话的计划',
   'todo.plan.toggle': '展开计划',
   'todo.plan.progress': '计划 {done}/{total}',

@@ -1,5 +1,5 @@
 import type { BlockContent, Code, List, ListItem, Paragraph, PhrasingContent, RootContent, Table } from 'mdast'
-import type { BlockModel } from '../model/blocks'
+import type { BlockModel, ListItemModel } from '../model/blocks'
 import { routeFence } from './fence'
 import { toInline } from './to-inline'
 
@@ -146,14 +146,14 @@ const CLOSING_FENCE = /\n\s{0,3}(`{3,}|~{3,})[ \t]*$/
  * 不是这一批顺手改的东西。
  */
 function translateList(node: List, source: string): BlockModel {
-  const items: BlockModel[][] = []
+  const items: ListItemModel[] = []
   for (const child of node.children) {
-    collectListItem(child, source, items)
+    collectListItem(child, source, items, 0)
   }
   return { kind: 'list', ordered: node.ordered === true, items }
 }
 
-function collectListItem(item: ListItem, source: string, out: BlockModel[][]): void {
+function collectListItem(item: ListItem, source: string, out: ListItemModel[], depth: number): void {
   const own: BlockModel[] = []
   const nested: List[] = []
 
@@ -167,9 +167,10 @@ function collectListItem(item: ListItem, source: string, out: BlockModel[][]): v
     own.push(translate(child, source))
   }
 
-  out.push(own)
+  // GFM 任务项:mdast 的 `checked` 是 true / false / null(null = 不是任务项)。
+  out.push({ blocks: own, checked: typeof item.checked === 'boolean' ? item.checked : null, depth })
   for (const list of nested) {
-    for (const child of list.children) collectListItem(child, source, out)
+    for (const child of list.children) collectListItem(child, source, out, depth + 1)
   }
 }
 

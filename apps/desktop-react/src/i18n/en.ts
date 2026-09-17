@@ -1576,6 +1576,8 @@ export const en: Record<MessageKey, string> = {
   'todo.add': 'Add item',
   'todo.check': 'Mark done',
   'todo.uncheck': 'Mark not done',
+  'todo.checked': 'Done',
+  'todo.unchecked': 'Not done',
   'todo.plan.drawerLabel': 'This session\'s plan',
   'todo.plan.toggle': 'Show plan',
   'todo.plan.progress': 'Plan {done}/{total}',

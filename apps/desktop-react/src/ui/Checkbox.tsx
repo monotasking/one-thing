@@ -27,6 +27,12 @@ interface CheckboxProps {
   onChange: (v: boolean) => void
   indeterminate?: boolean
   disabled?: boolean
+  /**
+   * 只读:画法与可勾时逐字相同(**不**像 disabled 那样变淡 —— 它说的是「这是一个事实」,
+   * 不是「此刻用不了」),不进 Tab 序,点了不变,读屏念「只读」。第一个消费者是消息里
+   * AI 写的任务清单(`content/blocks/kinds/list`)。
+   */
+  readOnly?: boolean
   /** 无障碍名。有可见文字标签时由调用方传 children 更好,这里只管纯图形那种。 */
   label?: string
   className?: string
@@ -37,6 +43,7 @@ export function Checkbox({
   onChange,
   indeterminate,
   disabled,
+  readOnly,
   label,
   className,
 }: CheckboxProps) {
@@ -67,7 +74,11 @@ export function Checkbox({
         checked={checked}
         disabled={disabled}
         aria-label={label}
-        onChange={(e) => onChange(e.target.checked)}
+        aria-readonly={readOnly || undefined}
+        tabIndex={readOnly ? -1 : undefined}
+        // 原生 checkbox 不认 readOnly 属性。不在 click 上 preventDefault:那会连 change 一起吞掉,
+        // React 就不做受控回填(jsdom 实测框被翻过去了);受控 + 不转发 onChange,React 自己把它按回去。
+        onChange={(e) => { if (!readOnly) onChange(e.target.checked) }}
       />
       <span className={s.mark} aria-hidden="true">
         {indeterminate ? (

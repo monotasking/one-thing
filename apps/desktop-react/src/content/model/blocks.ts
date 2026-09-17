@@ -55,7 +55,7 @@ export type BlockModel =
    * **嵌套列表仍然拍平一层**(子列表的项提升成同层后续项)—— 那是既有拍板,
    * 与这一格无关:词汇现在装得下子树了,但那条裁定要不要翻是另一件事。
    */
-  | { kind: 'list'; ordered: boolean; items: BlockModel[][] }
+  | { kind: 'list'; ordered: boolean; items: ListItemModel[] }
   | { kind: 'quote'; blocks: BlockModel[] }
   /** `closed:false` = 流式中还没闭合的围栏(§6 的流式契约靠它成立)。 */
   | { kind: 'code'; lang: string | null; source: string; file?: string; closed: boolean }
@@ -108,3 +108,17 @@ export type BlockKind = BlockModel['kind']
 
 /** 注册表查不到时兜到的那个 kind —— 写成常量,免得三处各拼一遍字符串。 */
 export const SOURCE_FALLBACK_KIND = 'source-fallback' satisfies BlockKind
+
+/**
+ * 列表的一项(待办 E1,正本 `apps/desktop-react/docs/todo-editor-2026-09.md` §2)。
+ *
+ * 从前一项只是 `BlockModel[]`:勾选状态丢了,拍平之后也不知道原来在第几层。
+ * **拍平的裁定不翻** —— 屏幕上仍然没有 `<ul>` 套 `<ul>`,只是每项按 `depth` 缩进。
+ */
+export interface ListItemModel {
+  readonly blocks: BlockModel[]
+  /** `- [ ]` / `- [x]`;null = 不是任务项。 */
+  readonly checked: boolean | null
+  /** 拍平前的嵌套层级,0 起。 */
+  readonly depth: number
+}
