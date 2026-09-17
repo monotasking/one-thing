@@ -1,0 +1,21 @@
+/* Flow lessons extend the shared course stylesheet. */
+.flow-roles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:20px 22px;border-bottom:1px solid var(--line)}
+.flow-role{padding:8px 0;color:var(--muted);border-bottom:3px solid var(--line);font-size:14px}
+.flow-role small{display:block;font-size:11px}
+.flow-role.is-active{color:var(--green);border-color:var(--green);font-weight:700}
+.flow-stage{padding:24px;min-height:320px}
+.flow-stage h3{font-size:22px;line-height:1.5}
+.flow-direction{color:var(--green);font-size:12px;letter-spacing:.06em;margin:0 0 10px;font-weight:700}
+.flow-stage p{max-width:750px}
+.flow-stage .screen-state{border-left:3px solid var(--gold);padding:7px 15px;margin:22px 0 14px;font-size:14px}
+.flow-stage .screen-state strong{font-size:11px;letter-spacing:.05em;display:block;color:var(--muted)}
+.flow-stage .source-link{font-size:12px;overflow-wrap:anywhere}
+.flow-stage code{overflow-wrap:anywhere}
+.reference td code{overflow-wrap:anywhere;word-break:break-word}
+.talkback{font-family:"Iowan Old Style","Songti SC",serif;font-size:21px;line-height:1.9;max-width:760px}
+.source-map details{border-bottom:1px solid var(--line);padding:16px 0}
+.source-map summary{cursor:pointer;font-weight:600}
+.source-map ul{padding-left:22px;font-size:14px}
+.source-map li{margin:10px 0;overflow-wrap:anywhere}
+@media(max-width:700px){.flow-roles{gap:8px;padding:15px}.flow-role{font-size:12px}.flow-role small{font-size:10px}.flow-stage{padding:18px;min-height:400px}.flow-stage h3{font-size:20px}.talkback{font-size:19px}}
+@media print{.flow-stage[hidden]{display:block!important}.flow-stage{min-height:0;padding:15px 0;break-inside:avoid}.flow-roles{display:none}.source-map details>ul{display:block!important}.talkback{font-size:13pt}}

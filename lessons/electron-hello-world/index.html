@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Electron Hello World · preload</title>
+    <style>
+      body { font-family: -apple-system, sans-serif; margin: 48px; line-height: 1.7; }
+      code { background: #f3f3f3; padding: 2px 6px; border-radius: 4px; }
+      button { font: inherit; padding: 8px 14px; }
+      #reply { min-height: 1.7em; color: #285c49; }
+    </style>
+  </head>
+  <body>
+    <h1>页面自己没有 Node</h1>
+    <p>本页是渲染进程。它不能 <code>require</code>，也读不到 <code>process.versions</code>。</p>
+    <p>下面这两行数字，是 preload 从 Node 里取出、再交给页面的：</p>
+    <p id="versions"></p>
+    <p>点按钮时，页面只能喊 <code>bridge.askMain()</code>。真正的句子在主进程里生成。</p>
+    <p><button type="button" id="ask">问主进程一句话</button></p>
+    <p id="reply"></p>
+    <script src="./renderer.js"></script>
+  </body>
+</html>

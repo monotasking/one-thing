@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>06 · OneThing 项目怎样启动</title><link rel="stylesheet" href="../assets/teaching.css"><link rel="stylesheet" href="../assets/flow-lesson.css"><link rel="stylesheet" href="../assets/startup-map.css"><script src="../assets/flow-lesson.js" defer></script><script src="../assets/teaching-widgets.js" defer></script></head>
+<body><main>
+<nav><span class="brand">ONETHING · 源码小课</span><a href="0005-how-emit-reaches-backend.html">上一课：emit</a><a href="0007-project-map.html">下一课：四层地图</a><a href="../reference/project-startup.html">启动速查 ↗</a></nav>
+<header><p class="eyebrow">06 / 还原执行顺序 / 约 7 分钟</p><h1>从一条启动命令，<br>走到可用的界面。</h1><p class="intro">先抓住一条主线：<strong>启动脚本 → Electron 主进程 → 准备后端 → 创建窗口 → 页面取得连接 → React 挂载。</strong>学完后，你能解释“这些文件为什么会依次运行”，并找到启动卡在哪一步。</p><p class="caption">依据 2026-09-11 当前工作区源码静态核对。以开发模式、没有现成 core 的正常桌面启动为主线；复用 core 和网页分支另列。此页只演示流程，不会启动应用或调用 AI。</p></header>
+
+<section class="section" id="overview"><div class="section-head"><span class="number">01</span><h2>先把三种角色放对位置</h2></div>
+<p><strong>进程</strong>可以先理解为操作系统里独立运行的一份程序。这个项目的启动脚本、Electron 主进程、窗口里的页面，各有自己的执行路线。</p>
+<div class="principle"><div><h3>主进程：开窗口，也承载后端</h3><p><code>electron/main.ts</code> 在 Electron 的 Node.js 环境里运行。没有可复用 core 时，它在本进程中装配后端。这里的 core 泛指提供会话、工具和 AI 执行能力的后端实例，不只指 <code>packages/core</code> 文件夹。</p></div><div><h3>渲染进程：画界面、请求数据</h3><p><code>src/main.tsx</code> 是窗口内页面的入口。preload 在页面代码前运行，提供向主进程询问连接信息的小接口；它不是第三个独立后端进程。</p></div></div>
+<p class="caption">概念依据：<a href="https://www.electronjs.org/docs/latest/tutorial/process-model">Electron 官方：Process Model</a>；本项目的后端归属见 <a href="../apps/desktop-react/electron/main.ts">electron/main.ts · assembleOwnCore</a>。</p>
+<div class="startup-map" aria-label="桌面启动总览"><ol>
+<li><strong>启动脚本先准备可执行文件与页面服务器</strong><small>编译主进程 / preload → 启动 Vite → 启动 Electron。</small></li>
+<li><strong>Electron 就绪，决定后端从哪里来</strong><div class="startup-fork"><div><b>发现可用 core</b>复用地址，直接创建窗口。</div><div><b>没有可用 core · 本课主线</b>等待后端装配，再创建窗口。</div></div></li>
+<li><strong>创建窗口后，两条路线开始交汇</strong><div class="startup-fork"><div><b>主进程</b>启动 HTTP/SSE 服务，准备连接信息。</div><div><b>窗口页面</b>执行 preload 和页面入口，询问并等待连接信息。</div></div></li>
+<li><strong>页面发起连接探测，再挂载 React</strong><small>建立客户端 → 订阅事件并请求 sessions.list → 探测结束 → 发起数据加载，渲染 App。</small></li>
+<li><strong>数据陆续返回，界面继续更新</strong><small>会话列表、助手、设置等异步加载；窗口出现不代表这些数据已经全部到齐。</small></li>
+</ol></div>
+</section>
+
+<section class="section" id="trace"><div class="section-head"><span class="number">02</span><h2>沿着“谁调用了谁”走一遍</h2></div><p>每次只看当前一步。<code>await 某个操作()</code> 表示当前异步函数等它完成再往下走；其他进程仍能继续运行。下面的小段代码保留关键调用，省略选项与异常处理。</p>
+<div class="lab" data-flow-lesson><div class="lab-top"><strong>桌面开发启动 · 正常路径</strong><span class="badge">点击下一步</span></div><div class="flow-roles"><div class="flow-role" data-flow-role="script">启动脚本<small>准备与拉起</small></div><div class="flow-role" data-flow-role="main">主进程<small>窗口与后端</small></div><div class="flow-role" data-flow-role="bridge">连接交接<small>IPC → HTTP/SSE</small></div><div class="flow-role" data-flow-role="page">页面<small>数据与 React</small></div></div>
+<div aria-live="polite" aria-atomic="true">
+<article class="flow-stage" data-flow-step data-roles="script"><p class="flow-direction">01 · 命令入口</p><h3>npm 按 scripts 找到启动程序</h3><pre><code>npm run dev
+→ node scripts/dev-unified.mjs
+→ startElectronLane()
+→ npm run electron:dev
+→ node apps/desktop-react/scripts/dev-app.mjs</code></pre><p><code>npm run 名字</code> 查找根目录 package.json 的 <code>scripts</code>。默认 dev 同时安排桌面和网页路线，桌面不必等网页启动完成。只读桌面这条线时，对应命令是 <code>npm run dev:electron</code>。</p><div class="screen-state"><strong>现在到了哪里？</strong>运行的是负责拉起应用的脚本，还没走进 Electron 主进程。</div><p class="source-link">源码：<a href="../package.json">package.json · scripts</a> / <a href="../scripts/dev-unified.mjs">dev-unified.mjs · startElectronLane、main</a>。</p></article>
+<article class="flow-stage" data-flow-step data-roles="script"><p class="flow-direction">02 · 构建与启动</p><h3>先打包主进程，再给窗口准备网页</h3><pre><code>build-electron.mjs 完成
+→ createServer(...) → await server.listen()
+→ spawn(electronPath, ["…/main.cjs"], ...)</code></pre><p>构建把 TypeScript 源码整理成 Electron 能执行的文件，包括 <code>main.cjs</code>、<code>preload.cjs</code> 和检索 worker。随后 Vite 提供开发页面（默认桌面端口 5175），脚本把它的地址通过 <code>ONETHING_REACT_DEV_SERVER_URL</code> 传给 Electron。</p><p><code>spawn</code> 的作用是启动一个子进程；这是执行路线跨到另一份运行程序的地方。</p><p class="source-link">源码：<a href="../apps/desktop-react/scripts/dev-app.mjs">dev-app.mjs · 构建 → server.listen → spawn</a> / <a href="../apps/desktop-react/scripts/build-electron.mjs">build-electron.mjs</a> / <a href="../apps/desktop-react/vite.config.ts">vite.config.ts</a>。</p></article>
+<article class="flow-stage" data-flow-step data-roles="main"><p class="flow-direction">03 · 主进程就绪</p><h3>先找现成后端，找不到才自己装配</h3><pre><code>app.whenReady().then(async () => {
+  const existing = readDiscovery()
+  if (existing &amp;&amp; await isAlive(existing)) {
+    // 复用连接，创建窗口
+  } else {
+    backend = await assembleOwnCore()
+    // 接下一步
+  }
+})</code></pre><p><code>whenReady().then(函数)</code> 把后续工作交给 Electron，在它初始化完成后执行。<code>readDiscovery()</code> 读取当前数据目录下 <code>run/http.json</code>；代码再检查进程和端口，判断已有 core 是否可用。</p><p>若可用，就跳过本次后端装配；否则在这个 Electron 主进程里创建后端。默认数据目录是 <code>~/.onething</code>，可以由环境变量覆盖。</p><p class="source-link">源码：<a href="../apps/desktop-react/electron/main.ts">electron/main.ts · L92、L142、L429</a>。概念：<a href="https://www.electronjs.org/docs/latest/api/app#appwhenready">Electron：app.whenReady()</a>。</p></article>
+<article class="flow-stage" data-flow-step data-roles="main"><p class="flow-direction">04 · 后端装配</p><h3>把以后要接收请求的系统准备好</h3><pre><code>assembleOwnCore()
+→ createOnethingBackend(options)
+→ OnethingBackend.assemble(options)
+→ await backend.assembleSteps()</code></pre><p>“装配”就是创建各个部件，并把它们接到一起。压缩来看：接入桌面宿主能力 → 获取数据目录的独占使用权 → 恢复数据、加载设置和助手 → 创建会话层与引擎 → 准备工具、注册 RPC 处理函数。</p><p>这一步承接上一课：<strong>后端先登记方法，之后客户端发来的 emit 才有地方执行。</strong>更完整的装配顺序放在速查页，第一遍不用记住所有函数。</p><p class="source-link">源码：<a href="../apps/desktop-react/electron/main.ts">main.ts · assembleOwnCore</a> / <a href="../packages/backend/backend.ts">backend.ts · assembleSteps、createOnethingBackend</a> / <a href="0005-how-emit-reaches-backend.html#trace">上一课：注册与调用</a>。</p></article>
+<article class="flow-stage" data-flow-step data-roles="main bridge"><p class="flow-direction">05 · 创建窗口后，启动连接服务</p><h3>窗口加载与 HTTP 服务启动可以重叠</h3><pre><code>createWindow()
+startPostWindowServices()
+  → startEmbeddedOnethingHttpServer(backend)
+  → connectionReady = mounting.then(...)</code></pre><p><code>createWindow()</code> 创建隐藏的 BrowserWindow，指定 preload，然后加载 Vite 地址；收到 <code>ready-to-show</code> 才显示窗口。紧接着，主进程启动 HTTP/SSE 服务，成功监听后写出发现文件。</p><p><code>connectionReady</code> 保存一个 Promise，可理解为“连接信息稍后交付的结果”。同时会启动调度任务、发起 MCP 连接和首次模型目录刷新；后两项不作为首屏完成的前提。</p><div class="screen-state"><strong>这里不要误读成严格先后</strong>创建窗口在前；但 ready-to-show 与 HTTP 监听完成谁先发生，没有固定顺序。</div><p class="source-link">源码：<a href="../apps/desktop-react/electron/main.ts">main.ts · L214、L380、L450</a> / <a href="../packages/backend/server/embed.ts">embed.ts · startEmbeddedOnethingHttpServer</a>。</p></article>
+<article class="flow-stage" data-flow-step data-roles="bridge page"><p class="flow-direction">06 · 页面询问连接信息</p><h3>preload 留下入口，页面再调用它</h3><pre><code>index.html → src/main.tsx → whenConnected()
+→ window.onethingHost.getConnection()
+→ ipcRenderer.invoke("host:connection")
+→ 主进程返回 connectionReady 的结果</code></pre><p>preload 先通过 <code>contextBridge</code> 暴露 <code>onethingHost</code>。页面入口做完本地布局等准备后，调用 <code>whenConnected()</code>。它向主进程要 <code>baseUrl</code>（后端地址）和 token（访问凭证）；HTTP 尚未就绪时，等待上一步的 Promise。</p><p>这一小段交接走 IPC，也就是进程间通信。之后正常的业务请求走 HTTP，后端事件走 SSE；不是每条业务调用都再经过 preload。</p><p class="source-link">源码：<a href="../apps/desktop-react/electron/preload.ts">preload.ts · L14</a> / <a href="../apps/desktop-react/electron/main.ts">main.ts · host:connection</a> / <a href="../apps/desktop-react/src/platform/connection.ts">connection.ts · connect</a>。</p></article>
+<article class="flow-stage" data-flow-step data-roles="bridge page"><p class="flow-direction">07 · 建立客户端</p><h3>先订事件，再做一次真实请求探测</h3><pre><code>client = createOnethingClient({
+  transport: createHttpTransport({ baseUrl, token })
+})
+hub.on(IPC_CHANNELS.SESSION_EVENT, ...)
+await client.api(sessionsRouter).list({})</code></pre><p>客户端封装“怎么把请求送过去”。首次事件订阅会触发 SSE 连接；SSE 是后端持续推送事件的 HTTP 长连接。随后 <code>sessions.list</code> 探测一次请求往返，记录成功或错误。</p><div class="screen-state"><strong>两个检查不能混为一谈</strong>RPC 返回成功，不表示已经收到首条 SSE 事件，也不表示界面所需数据全部加载完成。</div><p class="source-link">源码：<a href="../apps/desktop-react/src/platform/connection.ts">connection.ts · L136–161</a> / <a href="../packages/client/transport/http.ts">transport/http.ts</a>。</p></article>
+<article class="flow-stage" data-flow-step data-roles="page"><p class="flow-direction">08 · 挂载与后续更新</p><h3>发起数据加载，马上让 React 画外壳</h3><pre><code>whenConnected().finally(() => {
+  void useSessionsSource.getState().start()
+  // 还会启动助手、设置、主题、工作区等加载
+  createRoot(root).render(&lt;App /&gt;)
+})</code></pre><p><code>finally</code> 表示连接尝试结束后执行，不要求探测成功；失败也会显示外壳和错误反馈。这里的 <code>void ...start()</code> 没有等待加载完成，React 可以先画出 loading 状态，等数据回来再更新。</p><p><code>App</code> 在普通模式下渲染 <code>AppShell</code>。到这里，启动主线就接上了你之前读过的“发消息 → 后端执行 → 事件更新界面”。</p><p class="source-link">源码：<a href="../apps/desktop-react/src/main.tsx">main.tsx · L87–127</a> / <a href="../apps/desktop-react/src/App.tsx">App.tsx · App</a> / <a href="0002-message-lifecycle.html">回看消息生命周期</a>。</p></article>
+</div><div class="controls"><span class="caption" data-flow-count></span><div class="buttons"><button type="button" data-flow-prev>上一步</button><button class="primary" type="button" data-flow-next>下一步</button></div></div></div>
+</section>
+
+<section class="section" id="practice"><div class="section-head"><span class="number">03</span><h2>合上流程，做两次判断</h2></div>
+<fieldset class="quiz" data-quiz data-correct="http"><legend>窗口已经出现，HTTP 服务还没准备好。页面此时等什么？</legend><div class="quiz-options"><button type="button" data-answer="model" data-feedback="模型目录刷新不是这一步的前提。页面正通过 host:connection 等后端连接信息。">模型刷新完成</button><button type="button" data-answer="http" data-feedback="对。主进程的 connectionReady 等 HTTP 服务挂载结果，再交付 baseUrl 和 token。">连接信息返回</button><button type="button" data-answer="all" data-feedback="列表加载更晚：连接探测结束后才发起，React 挂载也不等列表到齐。">会话加载完成</button></div><p class="feedback" data-feedback role="status">选择后立即反馈。</p></fieldset>
+<fieldset class="quiz" data-quiz data-correct="reuse"><legend>主进程发现当前数据目录已有可用 core，会怎样处理？</legend><div class="quiz-options"><button type="button" data-answer="new" data-feedback="正常分支会复用现成 core，跳过 assembleOwnCore；不是每次都创建后端。">再建一个后端</button><button type="button" data-answer="quit" data-feedback="主进程会继续创建窗口，把已有后端的连接信息交给页面。">直接退出应用</button><button type="button" data-answer="reuse" data-feedback="对。已有连接 → createWindow。多个界面可以连接同一个 core。">复用已有后端</button></div><p class="feedback" data-feedback role="status">先回忆分支，再作答。</p></fieldset>
+<div class="closing"><h3>用自己的话串起这五个词</h3><p>启动脚本 → 主进程 → 后端装配 → 连接交接 → 页面挂载。</p><p>明天不看图，再解释一次“为什么窗口出现了，列表还在加载”。任何一步卡住，都可以直接追问我，例如：“第 6 步为什么能等到第 5 步的结果？”</p></div>
+</section>
+<section class="section" id="reading"><h2>下一次查代码，从这里开始</h2><p>首选原始资料：<a href="../apps/desktop-react/electron/main.ts">本项目 electron/main.ts 的 app.whenReady 回调</a>，先看 L429–452 这一小段，再展开它调用的函数。外部概念只需读 <a href="https://www.electronjs.org/docs/latest/tutorial/process-model">Electron 官方进程模型</a>中的主进程、渲染进程和 preload 三节。</p><p>命令差异、后端装配细节、卡点定位，放在 <a href="../reference/project-startup.html">项目启动速查页</a>。基础语法可回看 <a href="0003-function-before-events.html">函数基础课</a>。</p></section>
+<footer>此页复用课程回放与练习组件。练习只在本页反馈，不会自动回传聊天；讲过不等于已经掌握。源码行号会变化，优先按函数名查找。</footer>
+</main></body></html>

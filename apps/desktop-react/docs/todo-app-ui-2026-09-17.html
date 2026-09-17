@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>待办 App 样例</title>
+<style>
+  :root {
+    --bg: #e8e8e6; --win: #f2f2f0; --pane: #ececea; --side: #e6e6e3; --card: #fafaf8;
+    --ink: #232321; --ink-2: #55544f; --ink-3: #85847d; --ink-4: #a9a8a1;
+    --line-1: #dcdcd8; --line-2: #cfcfca; --hover: rgba(0,0,0,.045); --sel: rgba(0,0,0,.075);
+    --accent: #4a74e8; --accent-soft: rgba(74,116,232,.14); --mark: rgba(255, 196, 0, .35);
+    --r-1: 6px; --r-2: 10px; --r-3: 14px;
+    --dur: 120ms; --ease: cubic-bezier(.4,0,.2,1);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1c1c1b; --win: #262624; --pane: #2a2a28; --side: #232321; --card: #2e2e2c;
+      --ink: #ecebe6; --ink-2: #c3c2bb; --ink-3: #908f88; --ink-4: #6d6c66;
+      --line-1: #363633; --line-2: #42423f; --hover: rgba(255,255,255,.05); --sel: rgba(255,255,255,.09);
+      --accent: #7896f0; --accent-soft: rgba(120,150,240,.18); --mark: rgba(255, 196, 0, .28);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.6 -apple-system, "PingFang SC", "Helvetica Neue", sans-serif; padding: 24px 16px 60px; }
+  button, input { font: inherit; color: inherit; }
+  .page { max-width: 1120px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  .lede { color: var(--ink-2); margin: 0 0 16px; max-width: 860px; }
+
+  .picks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+  @media (max-width: 860px) { .picks { grid-template-columns: 1fr; } }
+  .pick { text-align: left; border: 1px solid var(--line-1); background: var(--card); border-radius: var(--r-3); padding: 10px 14px; cursor: pointer; color: var(--ink-2); font-size: 13px; transition: border-color var(--dur) var(--ease); }
+  .pick:hover { border-color: var(--line-2); }
+  .pick.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .pick b { display: block; color: var(--ink); font-size: 14px; margin-bottom: 2px; }
+
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 13px; color: var(--ink-3); }
+  .seg { display: inline-flex; background: var(--pane); border: 1px solid var(--line-1); border-radius: 999px; padding: 2px; }
+  .seg button { border: 0; background: none; padding: 3px 12px; border-radius: 999px; cursor: pointer; color: var(--ink-2); }
+  .seg button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
+  /* ── 窗:应用自己的头,不是一格 tab ─────────────────── */
+  .stage { overflow-x: auto; padding: 4px; }
+  .win { width: 100%; min-width: 360px; height: 640px; background: var(--win); border: 1px solid var(--line-2); border-radius: var(--r-3); box-shadow: 0 18px 50px rgba(0,0,0,.14); display: flex; flex-direction: column; overflow: hidden; margin: 0 auto; }
+  .win.narrow { max-width: 420px; }
+  .whead { height: 44px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line-1); }
+  .whead .icon { width: 22px; height: 22px; border-radius: 6px; background: var(--accent); color: white; display: grid; place-items: center; font-size: 13px; }
+  .whead .title { font-weight: 600; font-size: 13px; }
+  .whead .sp { flex: 1; }
+  .ibtn { width: 28px; height: 28px; border: 0; background: none; border-radius: var(--r-1); cursor: pointer; color: var(--ink-3); display: grid; place-items: center; }
+  .ibtn:hover { background: var(--hover); color: var(--ink); }
+  .wbody { flex: 1; min-height: 0; display: flex; }
+
+  .search { display: flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--line-1); border-radius: var(--r-2); padding: 0 8px; height: 30px; color: var(--ink-3); }
+  .search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .search input { border: 0; outline: 0; background: none; flex: 1; min-width: 0; color: var(--ink); font-size: 13px; }
+  .search kbd { font: 11px/1 -apple-system, sans-serif; color: var(--ink-4); border: 1px solid var(--line-2); border-radius: 4px; padding: 2px 4px; }
+
+  .scroll { overflow-y: auto; overscroll-behavior: contain; }
+  .h { font-size: 11px; color: var(--ink-4); padding: 10px 10px 4px; letter-spacing: .02em; }
+  .row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: 0; background: none; border-radius: var(--r-1); padding: 5px 10px; cursor: pointer; color: var(--ink-2); font-size: 13px; }
+  .row:hover { background: var(--hover); }
+  .row.on { background: var(--sel); color: var(--ink); }
+  .row .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .meta { color: var(--ink-4); font-size: 12px; white-space: nowrap; }
+  .gly { width: 16px; text-align: center; color: var(--ink-3); flex: none; }
+
+  /* 文档 */
+  .doc { flex: 1; min-width: 0; padding: 18px 26px 28px; }
+  .doc h2 { font-size: 22px; margin: 0; line-height: 1.3; }
+  .docmeta { font-size: 12px; color: var(--ink-3); margin: 2px 0 14px; display: flex; gap: 10px; align-items: center; }
+  .sec { margin-top: 10px; }
+  .sech { display: flex; align-items: center; gap: 6px; border: 0; background: none; padding: 2px 4px 2px 0; cursor: pointer; font-weight: 600; font-size: 14px; color: var(--ink); border-radius: var(--r-1); }
+  .sech .tw { color: var(--ink-4); width: 14px; display: inline-block; transition: transform var(--dur) var(--ease); }
+  .sech.shut .tw { transform: rotate(-90deg); }
+  .sech .sm { font-weight: 400; color: var(--ink-4); font-size: 12px; }
+  .item { display: flex; gap: 10px; align-items: flex-start; padding: 4px 6px; margin: 1px -6px; border-radius: var(--r-1); }
+  .item:hover { background: var(--hover); }
+  .box { flex: none; width: 16px; height: 16px; margin-top: 3px; border: 1.5px solid var(--line-2); border-radius: 5px; background: var(--card); cursor: pointer; display: grid; place-items: center; color: white; font-size: 11px; }
+  .box.on { background: var(--accent); border-color: var(--accent); }
+  .item .tx { flex: 1; min-width: 0; }
+  .item.done .tx { color: var(--ink-4); text-decoration: line-through; text-decoration-color: var(--line-2); }
+  .item .from { font-size: 11px; color: var(--ink-4); }
+  code { font: 12px/1.5 "JetBrains Mono", ui-monospace, Menlo, monospace; background: var(--pane); border: 1px solid var(--line-1); padding: 0 4px; border-radius: 4px; }
+  .fold { border: 0; background: none; color: var(--ink-3); font-size: 12px; padding: 6px 0; cursor: pointer; }
+  .fold:hover { color: var(--ink); }
+  .add { color: var(--ink-4); font-size: 13px; padding: 6px 0 0 26px; }
+  mark { background: var(--mark); color: inherit; border-radius: 2px; }
+  .empty { color: var(--ink-3); font-size: 13px; padding: 24px 10px; }
+
+  /* A 侧栏 */
+  .aside { width: 232px; flex: none; background: var(--side); border-right: 1px solid var(--line-1); display: flex; flex-direction: column; }
+  .aside .top { padding: 10px 10px 4px; }
+  .aside .lists { flex: 1; min-height: 0; padding: 0 6px 10px; }
+
+  /* B 单栏 */
+  .bcol { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
+  .btop { padding: 10px 14px; border-bottom: 1px solid var(--line-1); display: flex; flex-direction: column; gap: 8px; }
+  .switcher { display: flex; align-items: center; gap: 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-1); background: var(--card); border-radius: var(--r-2); height: 30px; padding: 0 10px; cursor: pointer; font-size: 13px; max-width: 60%; }
+  .chip .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pop { position: absolute; left: 14px; right: 14px; top: 52px; background: var(--card); border: 1px solid var(--line-2); border-radius: var(--r-2); box-shadow: 0 12px 36px rgba(0,0,0,.18); max-height: 420px; display: flex; flex-direction: column; z-index: 5; }
+  .pop .scroll { padding: 4px 6px 8px; }
+
+  /* C 总览 */
+  .ccol { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .ctop { padding: 14px 22px 10px; }
+  .next { background: var(--card); border: 1px solid var(--line-1); border-radius: var(--r-3); padding: 6px 12px; margin: 8px 0 4px; }
+  .crumb { border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; font-size: 13px; }
+  .az { display: flex; gap: 2px; flex-wrap: wrap; font-size: 11px; color: var(--ink-4); padding: 4px 22px 0; }
+  .az button { border: 0; background: none; color: var(--ink-3); cursor: pointer; padding: 0 3px; font-size: 11px; }
+  .az button:hover { color: var(--accent); }
+
+  .notes { margin-top: 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; font-size: 13px; color: var(--ink-2); }
+  @media (max-width: 860px) { .notes { grid-template-columns: 1fr; } }
+  .notes div { background: var(--card); border: 1px solid var(--line-1); border-radius: var(--r-3); padding: 10px 14px; }
+  .notes b { color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>待办:做成一个 App,不是一排标签</h1>
+  <p class="lede">三个候选都能点:搜索会同时搜清单名和清单里的每一项;切到「100 份清单」看数量上去之后还好不好找。窗口头是 App 自己的(图标 + 名字 + 搜索入口),不再是一格 tab 叠一排 tab。已完成的项默认收起,小节可以折叠。</p>
+
+  <div class="picks" role="radiogroup" aria-label="候选">
+    <button class="pick on" data-pick="A" role="radio" aria-checked="true"><b>A · 清单库(侧栏)</b>左边是可搜索的清单目录,右边是正文。像「提醒事项」「Things」。宽窗最舒服。</button>
+    <button class="pick" data-pick="B" role="radio" aria-checked="false"><b>B · 一个输入框(单栏)</b>顶上一个框既是搜索也是切换清单,正文独占整宽。窄到计划抽屉的宽度也能用。</button>
+    <button class="pick" data-pick="C" role="radio" aria-checked="false"><b>C · 总览 → 进入</b>首页是搜索 + 「接着做」+ 全部清单,点进一份再返回。像「备忘录」,第一眼看到的是要做的事。</button>
+  </div>
+
+  <div class="bar">
+    <span>数量</span>
+    <div class="seg" data-seg="scale"><button class="on" data-v="7">7 份清单</button><button data-v="100">100 份清单</button></div>
+    <span>窗口</span>
+    <div class="seg" data-seg="width"><button class="on" data-v="wide">浮窗宽</button><button data-v="narrow">窄(架子 / 抽屉)</button></div>
+  </div>
+
+  <div class="stage"><div class="win" id="win"></div></div>
+
+  <div class="notes">
+    <div><b>三个都一样的</b><br>搜索同时命中清单名与项;已完成默认收起成一行「已完成 N 项」;小节可折叠;空项不画勾选框;代码块按消息的画法。</div>
+    <div><b>怎么选</b><br>常在宽浮窗 / 舞台里用选 A;常钉在侧边或想和计划抽屉同一套交互选 B;打开时最想先看到「接下来做什么」选 C。</div>
+    <div><b>要壳配合的一件</b><br>浮窗现在自带一格 tab 头。做成 App 需要这种内容自述「我有自己的头」,浮窗不再画 tab 头(一行登记,不是给待办开特例)。</div>
+  </div>
+</div>
+
+<script>
+const REAL = [
+  { name: '0611 WOKR', sections: [{ title: '', items: [
+    ['x', '6.14 重启cap frontend'], ['x', '6.15 号更新印度ec'], ['x', '6.16号同步6.15 上线代码'], ['x', '0617 CAP 重启，改site'], ['x', '0617 NA（0615）上线，8点warm room'],
+    ['', 'IN premier ec holiday 逻辑判断'], ['', '报表 4 个漏洞问题：adfs、token 在 url 中泄露'] ] }], code: 'tail -f /data/recording/freeswitch/pbxlog/freeswitch.log' },
+  { name: 'TODO', sections: [{ title: '本周', items: [['', '整理 onething 待办面板的交互'], ['', '回 CAP 的邮件'], ['x', '续费域名']] }, { title: '以后', items: [['', '读一遍 ProseMirror 的 Decoration'], ['', '换机械键盘轴']] }] },
+  { name: 'daily锻炼', sections: [{ title: '', items: [['x', '俯卧撑 3×20'], ['x', '跑步 5km'], ['', '拉伸 15 分钟'], ['', '平板支撑 3 分钟']] }] },
+  { name: 'oenthing learn', sections: [{ title: 'React', items: [['x', 'useSyncExternalStore 的快照身份'], ['', 'startTransition 与紧急更新'], ['', 'content-visibility 的代价']] }, { title: '后端', items: [['', 'node:sqlite 在 Worker 里的生命周期'], ['x', 'N-API 与 V8 ABI']] }] },
+  { name: 'work', sections: [{ title: '', items: [['x', 'IN premire/Idea,Think iva流程 - 5.25'], ['x', 'ANZ/CAP premire iva流程；下周一上线'], ['', 'report cors跨域问题修复'], ['x', '调查IN 站点用户名字异常的问题'], ['x', 'nginx漏洞问题调查'], ['', '6.29 IVA'], ['', 'IN premier ec holiday逻辑判断'], ['', 'EMEA/LA/ CAP ivrbot路由分析，调整为iva']] }] },
+  { name: '日志保留一年 · 执行 TODO', sections: [{ title: '准备', items: [['x', '确认各站点日志目录'], ['', '评估磁盘占用'], ['', '写 logrotate 配置']] }, { title: '上线', items: [['', '灰度 CAP'], ['', '全量']] }] },
+  { name: '上周回顾 & 本周 TODO', sections: [{ title: '📅 上周回顾（7/6 - 7/12）', items: [['x', 'JP PremiumCare 需求实现'], ['x', 'TransReader menubar 修复'], ['x', '贪吃蛇自撞检测 bug']] }, { title: '🎯 本周', items: [['', '0720 JP PremiumCare 上线'], ['', '补 IVA skill 文档模板'], ['', 'call_transfer_agent_info 表建好']] }] },
+]
+const WORDS = ['周计划', '0921 批次', 'IVA 上线', '读书', '采购', '搬家', 'CAP 巡检', 'EMEA FAC', '面试', '季度复盘', '家里', '旅行准备', '健身', '学日语', 'onething 发布', '报税', 'JP Premier', 'BR Premier', '日志清理', '设备']
+function more(count) {
+  const out = []
+  for (let i = 0; out.length < count; i++) {
+    const name = `${WORDS[i % WORDS.length]}${i >= WORDS.length ? ' ' + (Math.floor(i / WORDS.length) + 1) : ''}`
+    out.push({ name, sections: [{ title: '', items: [['x', `${name}：先列出要做的事`], ['', `${name}：跟进上次没做完的`], ['', `${name}：确认时间`]] }] })
+  }
+  return out
+}
+const state = { pick: 'A', scale: 7, width: 'wide', current: 0, query: '', shut: {}, showDone: {}, bOpen: false, cIn: null }
+let lists = []
+function buildLists() {
+  lists = state.scale === 7 ? REAL : [...REAL, ...more(93)]
+  lists = lists.map((l, i) => ({ ...l, id: i, touched: i < 7 ? 7 - i : Math.random() }))
+}
+buildLists()
+
+const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
+function hl(text) {
+  const q = state.query.trim()
+  const safe = esc(text)
+  if (!q) return safe.replace(/`([^`]+)`/g, '<code>$1</code>')
+  const i = text.toLowerCase().indexOf(q.toLowerCase())
+  if (i < 0) return safe
+  return esc(text.slice(0, i)) + '<mark>' + esc(text.slice(i, i + q.length)) + '</mark>' + esc(text.slice(i + q.length))
+}
+function counts(l) { let open = 0, done = 0; for (const s of l.sections) for (const [d] of s.items) d ? done++ : open++; return { open, done } }
+function matches() {
+  const q = state.query.trim().toLowerCase()
+  if (!q) return { lists: [], items: [] }
+  const ls = lists.filter(l => l.name.toLowerCase().includes(q))
+  const items = []
+  for (const l of lists) for (const s of l.sections) s.items.forEach(([d, t]) => { if (t.toLowerCase().includes(q)) items.push({ l, d, t }) })
+  return { lists: ls, items }
+}
+const recent = () => [...lists].sort((a, b) => b.touched - a.touched).slice(0, 5)
+
+function docHtml(l) {
+  const { open, done } = counts(l)
+  let h = `<h2>${esc(l.name)}</h2><div class="docmeta"><span>${open} 项未完成</span></div>`
+  l.sections.forEach((s, si) => {
+    const key = `${l.id}:${si}`
+    const shut = state.shut[key]
+    const openItems = s.items.filter(([d]) => !d)
+    const doneItems = s.items.filter(([d]) => d)
+    h += `<div class="sec">`
+    if (s.title) h += `<button class="sech ${shut ? 'shut' : ''}" data-act="sec" data-k="${key}"><span class="tw">▾</span>${esc(s.title)}${shut ? `<span class="sm">${openItems.length} 项未完成</span>` : ''}</button>`
+    if (!shut) {
+      h += openItems.map(([, t]) => `<div class="item"><span class="box" data-act="tick"></span><span class="tx">${hl(t)}</span></div>`).join('')
+      if (doneItems.length) {
+        const showing = state.showDone[key]
+        h += `<button class="fold" data-act="done" data-k="${key}">${showing ? '▾' : '▸'} 已完成 ${doneItems.length} 项</button>`
+        if (showing) h += doneItems.map(([, t]) => `<div class="item done"><span class="box on">✓</span><span class="tx">${hl(t)}</span></div>`).join('')
+      }
+    }
+    h += `</div>`
+  })
+  if (l.code) h += `<div style="margin-top:12px"><code style="display:block;padding:8px 12px">${esc(l.code)}</code></div>`
+  h += `<div class="add">＋ 添加一项</div>`
+  return h
+}
+function resultsHtml(onList, onItem) {
+  const m = matches()
+  if (!m.lists.length && !m.items.length) return `<div class="empty">没有找到「${esc(state.query)}」</div>`
+  let h = ''
+  if (m.lists.length) h += `<div class="h">清单</div>` + m.lists.slice(0, 8).map(l => `<button class="row" data-act="${onList}" data-id="${l.id}"><span class="gly">☰</span><span class="nm">${hl(l.name)}</span></button>`).join('')
+  if (m.items.length) h += `<div class="h">项</div>` + m.items.slice(0, 30).map(x => `<button class="row" data-act="${onItem}" data-id="${x.l.id}" style="align-items:flex-start"><span class="gly">${x.d ? '✓' : '○'}</span><span class="nm" style="white-space:normal">${hl(x.t)}<div class="from">${esc(x.l.name)}</div></span></button>`).join('')
+  return h
+}
+const searchBox = (ph) => `<label class="search"><span>⌕</span><input data-act="q" placeholder="${ph}" value="${esc(state.query)}" /><kbd>⌘F</kbd></label>`
+const head = (extra = '') => `<div class="whead"><span class="icon">✓</span><span class="title">待办</span>${extra}<span class="sp"></span><button class="ibtn" title="">⋯</button><button class="ibtn">✕</button></div>`
+
+function renderA() {
+  const l = lists[state.current]
+  const q = state.query.trim()
+  let side = `<div class="top">${searchBox('搜索清单和项')}</div><div class="lists scroll">`
+  if (q) {
+    side += resultsHtml('open', 'open')
+  } else {
+    side += `<div class="h">视图</div><button class="row"><span class="gly">☀</span><span class="nm">今天</span></button><button class="row"><span class="gly">◷</span><span class="nm">会话计划</span></button>`
+    side += `<div class="h">最近</div>` + recent().map(x => `<button class="row ${x.id === state.current ? 'on' : ''}" data-act="open" data-id="${x.id}"><span class="gly">☰</span><span class="nm">${esc(x.name)}</span></button>`).join('')
+    side += `<div class="h">全部清单</div>` + [...lists].sort((a, b) => a.name.localeCompare(b.name, 'zh')).map(x => `<button class="row ${x.id === state.current ? 'on' : ''}" data-act="open" data-id="${x.id}"><span class="gly">☰</span><span class="nm">${esc(x.name)}</span></button>`).join('')
+    side += `<button class="row" style="color:var(--ink-3)"><span class="gly">＋</span><span class="nm">新建清单</span></button>`
+  }
+  side += `</div>`
+  return head() + `<div class="wbody"><div class="aside">${side}</div><div class="doc scroll">${docHtml(l)}</div></div>`
+}
+function renderB() {
+  const l = lists[state.current]
+  let pop = ''
+  if (state.bOpen) {
+    pop = `<div class="pop"><div style="padding:8px">${searchBox('搜索清单和项,或输入清单名切换')}</div><div class="scroll">`
+    pop += state.query.trim() ? resultsHtml('open', 'open') : `<div class="h">最近</div>` + recent().map(x => `<button class="row" data-act="open" data-id="${x.id}"><span class="gly">☰</span><span class="nm">${esc(x.name)}</span></button>`).join('') + `<div class="h">全部 ${lists.length} 份</div>` + [...lists].sort((a, b) => a.name.localeCompare(b.name, 'zh')).map(x => `<button class="row" data-act="open" data-id="${x.id}"><span class="gly">☰</span><span class="nm">${esc(x.name)}</span></button>`).join('')
+    pop += `</div></div>`
+  }
+  const top = `<div class="btop"><div class="switcher"><button class="chip" data-act="bopen"><span>☰</span><span class="nm">${esc(l.name)}</span><span style="color:var(--ink-4)">▾</span></button><span class="sp" style="flex:1"></span><button class="ibtn" data-act="bopen" title="">⌕</button></div></div>`
+  return head() + `<div class="wbody"><div class="bcol">${top}${pop}<div class="doc scroll">${docHtml(l)}</div></div></div>`
+}
+function renderC() {
+  const q = state.query.trim()
+  if (state.cIn !== null) {
+    const l = lists[state.cIn]
+    return head() + `<div class="wbody"><div class="ccol"><div class="ctop" style="padding-bottom:0"><button class="crumb" data-act="cback">‹ 全部清单</button></div><div class="doc scroll" style="padding-top:6px">${docHtml(l)}</div></div></div>`
+  }
+  let body = `<div class="ctop">${searchBox('搜索清单和项')}</div><div class="scroll" style="flex:1;padding:0 16px 16px">`
+  if (q) {
+    body += resultsHtml('cin', 'cin')
+  } else {
+    const next = []
+    for (const l of recent()) { for (const s of l.sections) { const it = s.items.find(([d]) => !d); if (it) { next.push({ l, t: it[1] }); break } } }
+    body += `<div class="h">接着做</div><div class="next">` + next.map(x => `<div class="item"><span class="box" data-act="tick"></span><span class="tx">${hl(x.t)}<div class="from">${esc(x.l.name)}</div></span></div>`).join('') + `</div>`
+    const sorted = [...lists].sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+    body += `<div class="h">全部清单</div>` + sorted.map(x => { const c = counts(x); return `<button class="row" data-act="cin" data-id="${x.id}"><span class="gly">☰</span><span class="nm">${esc(x.name)}</span><span class="meta">${c.open ? c.open + ' 项未完成' : '都做完了'}</span></button>` }).join('')
+  }
+  body += `</div>`
+  return head() + `<div class="wbody"><div class="ccol">${body}</div></div>`
+}
+
+function render(keepFocus) {
+  const win = document.getElementById('win')
+  const active = document.activeElement
+  const hadQuery = active && active.dataset && active.dataset.act === 'q'
+  const caret = hadQuery ? active.selectionStart : 0
+  win.className = 'win' + (state.width === 'narrow' ? ' narrow' : '')
+  const narrowA = state.pick === 'A' && state.width === 'narrow'
+  win.innerHTML = state.pick === 'A' ? renderA() : state.pick === 'B' ? renderB() : renderC()
+  if (narrowA) {
+    const aside = win.querySelector('.aside'); if (aside) aside.style.width = '150px'
+  }
+  if (hadQuery || keepFocus) {
+    const input = win.querySelector('[data-act="q"]')
+    if (input) { input.focus(); input.setSelectionRange(caret, caret) }
+  }
+}
+
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-act],[data-pick],.seg button')
+  if (!t) { if (state.bOpen && !e.target.closest('.pop')) { state.bOpen = false; state.query = ''; render() } return }
+  if (t.dataset.pick) {
+    state.pick = t.dataset.pick; state.query = ''; state.bOpen = false; state.cIn = null
+    document.querySelectorAll('.pick').forEach(p => { p.classList.toggle('on', p === t); p.setAttribute('aria-checked', String(p === t)) })
+    return render()
+  }
+  if (t.parentElement && t.parentElement.dataset.seg) {
+    const seg = t.parentElement.dataset.seg
+    t.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === t))
+    if (seg === 'scale') { state.scale = Number(t.dataset.v); buildLists(); state.current = 0; state.cIn = null }
+    if (seg === 'width') state.width = t.dataset.v
+    return render()
+  }
+  const act = t.dataset.act
+  if (act === 'open') { state.current = Number(t.dataset.id); state.query = ''; state.bOpen = false; render() }
+  if (act === 'cin') { state.cIn = Number(t.dataset.id); state.query = ''; render() }
+  if (act === 'cback') { state.cIn = null; render() }
+  if (act === 'bopen') { state.bOpen = !state.bOpen; state.query = ''; render(state.bOpen) }
+  if (act === 'sec') { state.shut[t.dataset.k] = !state.shut[t.dataset.k]; render() }
+  if (act === 'done') { state.showDone[t.dataset.k] = !state.showDone[t.dataset.k]; render() }
+  if (act === 'tick') { t.classList.toggle('on'); t.textContent = t.classList.contains('on') ? '✓' : '' }
+})
+document.addEventListener('input', e => { if (e.target.dataset.act === 'q') { state.query = e.target.value; render() } })
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); if (state.pick === 'B') { state.bOpen = true } render(true) }
+  if (e.key === 'Escape') { if (state.bOpen) { state.bOpen = false; state.query = ''; render() } else if (state.query) { state.query = ''; render(true) } }
+})
+render()
+</script>
+</body>
+</html>
