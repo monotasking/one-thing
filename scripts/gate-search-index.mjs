@@ -40,7 +40,9 @@
  *   ⑫ **真嵌入器真的跑得起来**(2026-09-17;**默认不跑** —— 它要下 130MB 模型、要出外网)。
  *      `ONETHING_GATE_REAL_EMBEDDER=1` 且 `HTTPS_PROXY` / `HF_ENDPOINT` 至少有一个在场
  *      才跑;否则打印跳过的理由。判的是「`device: 'cpu'` 那条路通到底」:状态走到
- *      `ready`,再拿一句**与原文零词重叠**的改写句经 HTTP 命中它自己那条。
+ *      `ready`,再拿一句**与原文零词重叠**的改写句经 HTTP 命中它自己那条。⑫b 顺带证
+ *      **认领**:把清单删掉、代理指到一个连不上的口、换一条 Worker → 它只读本地就
+ *      认得回 `ready`,清单也补了回来(2026-09-17 那条「下载了也当做没下载」的事故)。
  *   ⑪ **模型下载走 app 的代理 + Worker 的话落得了地**(2026-09-17,09-17 用户真机事故):
  *      ⑪a 下不来时 `status.vector` 翻 `'off'`、`status.vectorError` 说得出「下载模型失败」,
  *          而且 Worker 那句 warn 真的出现在宿主的 `server.jsonl` 里(`fields.thread`);
@@ -124,6 +126,17 @@ function check(condition, message) {
 }
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+/** 一个目录里的每个文件(相对路径,递归)。⑬e 数「试装前后文件一件没少」用。 */
+function listFilesDeep(root, base = root) {
+  const out = []
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const full = path.join(root, entry.name)
+    if (entry.isDirectory()) out.push(...listFilesDeep(full, base))
+    else out.push(path.relative(base, full))
+  }
+  return out.sort()
+}
 
 async function waitForDiscovery(storePath, timeoutMs = 30_000) {
   const discoveryFile = path.join(storePath, 'run', 'http.json')
@@ -671,6 +684,10 @@ async function startCountingProxy() {
  *  ⑬c **取消**:中途 `semanticModelCancel` → 当场回 `absent`,而且此后**不会**变成
  *      `ready`(半截文件说不了「下全了」——判据是那份落定才写的清单,`model-store.ts`)。
  *  ⑬d **删除**:`semanticModelRemove` → `absent`,模型目录清干净。
+ *  ⑬e **认领的另一半**(2026-09-17 §15.8):取消之后盘上留着几件、清单不在 —— 关开关
+ *      换出来的那条 Worker 于是撞上「文件在、清单不在」那一形。这台假站的东西**装不
+ *      起来**,所以正确答案是不认领:维持 `absent`、文件一件不少、清单没有、零网络。
+ *      (「装得上就认领」那一半在单测与可选的 ⑫b。)
  *
  * ## 这台假站给的 onnx 是假的,所以这一条**证不到 `ready`**(写清楚,免得下次误读)
  *
@@ -779,6 +796,23 @@ async function runSemanticModelPhase() {
     check(afterCancel?.model?.state !== 'ready',
       `⑬c 半截文件不会被当成下全了(读到 ${JSON.stringify(afterCancel?.model?.state)})`)
 
+    /*
+     * ── ⑬e 认领:装不上的那一堆不许被认领(2026-09-17 §15.8「认领」)──────
+     *
+     * 取消之后盘上留着几件(三份 json 下全了,那份 onnx 被 `FileCache` 自己删了),
+     * 而清单**不在**。下面那一步关开关会换一条 Worker,新 Worker 于是撞上「清单缺席、
+     * 文件却在」那一形 —— 正是认领要处理的那一形。这台假站给的东西**装不起来**,
+     * 所以正确答案是「不认领」:维持 `absent`、**文件一个都不删**、不出网。
+     *
+     * 「装得上就认领」那一半这一条证不到(假 onnx 建不出会话),它归单测
+     * (`model-download.test.ts`)与可选的 ⑫(真模型、删掉清单重起)。
+     */
+    const modelDirG = path.join(storeG, 'models', 'embeddings', 'multilingual-e5-small')
+    const beforeAdopt = fs.existsSync(modelDirG) ? listFilesDeep(modelDirG) : []
+    check(beforeAdopt.length > 0,
+      `⑬e 取消之后盘上确实留着东西,认领有得可试(${beforeAdopt.length} 件:${beforeAdopt.slice(0, 4).join(', ')})`)
+    const hitsBeforeAdopt = station.hits.length
+
     // ── ⑬d 删除:正在用的不许抽走,关掉之后才删得动 ──────────────────────
     const refused = await rpc('search', 'semanticModelRemove', {})
     check(refused?.success === false && refused?.error === 'model-in-use',
@@ -791,9 +825,23 @@ async function runSemanticModelPhase() {
       search: { ...current.settings.search, semantic: { ...current.settings.search?.semantic, enabled: false } },
     })
     if (saved?.success !== true) throw new Error(`⑬ settings.saveSettings 未成功:${JSON.stringify(saved)}`)
-    // 关开关 = 换一条 Worker(热生效,⑩);等新的那条起来再删。
-    await waitForStatus(rpc, status => status?.model !== undefined && status?.vector === 'off',
+    /*
+     * 关开关 = 换一条 Worker(热生效,⑩);等新的那条起来再删。
+     *
+     * **这条等待同时是认领那一格的等待**:试装期间 `status.model` 整格缺席(壳读成
+     * 「检查中…」),所以 `model !== undefined` 就是「认领已经落定」。
+     */
+    const adopted = await waitForStatus(rpc, status => status?.model !== undefined && status?.vector === 'off',
       '关掉之后新 Worker 就位', 20_000)
+    check(adopted.status?.model?.state === 'absent',
+      `⑬e 装不上的那一堆没有被认领(读到 ${JSON.stringify(adopted.status?.model?.state)};${(adopted.ms / 1000).toFixed(1)}s)`)
+    const afterAdopt = listFilesDeep(modelDirG)
+    check(afterAdopt.length === beforeAdopt.length,
+      `⑬e 认领失败**不删文件**(试装前 ${beforeAdopt.length} 件 / 试装后 ${afterAdopt.length} 件)`)
+    check(!afterAdopt.includes('.onething-model.json'),
+      '⑬e 装不上就没有清单(清单是「下全了」这句话本身)')
+    check(station.hits.length === hitsBeforeAdopt,
+      `⑬e 认领**一个网络请求都不发**(试装前后假站计数 ${hitsBeforeAdopt} → ${station.hits.length})`)
 
     const removed = await rpc('search', 'semanticModelRemove', {})
     check(removed?.success === true && removed?.model?.state === 'absent',
@@ -1061,6 +1109,60 @@ async function runRealEmbedderPhase() {
       check(rank === 0,
         `⑫ 零词重叠的改写句「${item.query}」把自己那条排第一(名次 ${rank},共 ${results.length} 条)`)
     }
+
+    /*
+     * ── ⑫b 认领:删掉清单、换一条 Worker → 自己认回 `ready`,**零网络** ────────
+     *
+     * 2026-09-17 下午的事故就是这一形:上一版下全了 113 MB,这一版把判据换成清单,
+     * 于是那份真下全了的模型被当成没下过(用户原话「为什么下载了也当做没下载?」)。
+     * 这里把现场还原出来 —— 把清单删掉就是「文件在、清单不在」——
+     * 再把代理指到一个**连不上的口**:认领只准读本地,所以它照样要走到 `ready`。
+     *
+     * 「装不上就不认领」那一半由 ⑬e(假站那份零填 onnx)与单测守。
+     */
+    const manifestPath = path.join(storeF, 'models', 'embeddings', 'multilingual-e5-small',
+      // 清单文件名,`embedding/model-store.ts` 的 `MODEL_MANIFEST_FILE`。
+      '.onething-model.json')
+    check(fs.existsSync(manifestPath), '⑫b 下全之后盘上有一份清单(它就是「下全了」这句话)')
+    fs.rmSync(manifestPath, { force: true })
+
+    const beforeAdopt = await rpc('settings', 'getSettings')
+    const deadProxy = { enabled: true, url: 'http://127.0.0.1:1', bypassRules: '' }
+    // 关开关 = 换一条 Worker;顺手把代理指死 —— 认领要是偷偷出网,这一步就走不到 ready。
+    const offed = await rpc('settings', 'saveSettings', {
+      ...beforeAdopt.settings,
+      network: { ...beforeAdopt.settings?.network, proxy: deadProxy },
+      search: { ...beforeAdopt.settings?.search, semantic: { ...beforeAdopt.settings?.search?.semantic, enabled: false } },
+    })
+    if (offed?.success !== true) throw new Error(`⑫b settings.saveSettings 未成功:${JSON.stringify(offed)}`)
+    const readopted = await waitForStatus(rpc, status => status?.model?.state === 'ready',
+      '清单没了也认得回来(只读本地)', 120_000)
+    check(true, `⑫b 认领回 ready(${(readopted.ms / 1000).toFixed(1)}s;`
+      + `${Math.round((readopted.status?.model?.totalBytes ?? 0) / 1e6)} MB)`)
+    check(fs.existsSync(manifestPath), '⑫b 认领把清单补了回来')
+
+    // 再把开关打开:模型就在本地,代理死着也照样走到 ready。
+    const nowSettings = await rpc('settings', 'getSettings')
+    const backOn = await rpc('settings', 'saveSettings', {
+      ...nowSettings.settings,
+      search: { ...nowSettings.settings?.search, semantic: { ...nowSettings.settings?.search?.semantic, enabled: true } },
+    })
+    if (backOn?.success !== true) throw new Error(`⑫b settings.saveSettings 未成功:${JSON.stringify(backOn)}`)
+    /*
+     * **判据是那句改写句,不是 `vector === 'ready'`**:文档在上一段早就嵌完了,新
+     * Worker 没有待嵌的东西,于是 `vectorState` 一直停在开局的 `'downloading'`
+     * ——「没活干」与「没装上」在那一格上长得一样(第一版这一条就是这么卡住 120s 的)。
+     * 一句零词重叠的改写句要命中,查询侧必须真的把它嵌出来,所以它才是判据。
+     */
+    const liveAgain = await waitForStatus(rpc, status =>
+      status?.vector !== 'off' && status?.model?.state === 'ready',
+    '认领回来之后语义召回重新装上', 120_000)
+    check(true, `⑫b 认领之后语义召回重新装上(${(liveAgain.ms / 1000).toFixed(1)}s,全程代理指着一个连不上的口)`)
+    const readopted0 = CASES[0]
+    const againPage = await rpc('search', 'query', { query: readopted0.query, category: 'messages', limit: 10 })
+    const againRank = (againPage?.results ?? []).findIndex(result => result.sessionId === readopted0.sessionId)
+    check(againRank === 0,
+      `⑫b 认领之后那句零词重叠的改写句照样排第一(名次 ${againRank},共 ${(againPage?.results ?? []).length} 条)`)
 
     if (failures.length > 0) {
       console.error(`[gate:search-index] ⑫ server 输出尾:\n${out.slice(-40).join('')}`)

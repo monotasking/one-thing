@@ -486,6 +486,7 @@ export class IndexWorkerCore {
   status(): IndexStatus {
     // 缺席 = 「没关过」。**显式的 `undefined` 与没有这一格是两回事**,所以条件展开。
     const failure = this.vectorWriter?.lastError()
+    const model = this.model?.status()
     return {
       mode: 'owner',
       docs: this.index.size(),
@@ -502,8 +503,13 @@ export class IndexWorkerCore {
       ...(failure !== undefined
         ? { vectorError: failure.reason, vectorErrorKind: failure.kind }
         : {}),
-      // 模型那一格:管得了就说,管不了就缺席(缺席 = 不知道,不是「没下」)。
-      ...(this.model === undefined ? {} : { model: this.model.status() }),
+      /*
+       * 模型那一格:管得了就说,管不了就缺席(缺席 = 不知道,不是「没下」)。
+       * **正在认领的那几秒也缺席** —— `ModelDownloader.status()` 自己答
+       * `undefined`(2026-09-17):那时「有没有」真的还不知道,而屏幕上「不知道」
+       * 早有画法(壳的 unknown「检查中…」),报一句「未下载」再翻过来才是错话。
+       */
+      ...(model === undefined ? {} : { model }),
     }
   }
 

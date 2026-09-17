@@ -18,6 +18,7 @@ import type { Embedder } from '@onething/core/search'
 import { probeEmbedderModel } from '../../embedding/model-store.js'
 import type { EmbedderDownloadOptions, EmbedderFactory } from '../../embedding/registry.js'
 import { MODEL_IN_USE_ERROR, MODEL_NOT_DOWNLOADABLE_ERROR, ModelDownloader } from '../model-download.js'
+import type { ModelStatus } from '../model-download.js'
 
 const ID = 'fake-downloadable'
 const APPROX = 9_000
@@ -94,6 +95,16 @@ function makeFactory(): FakeDownload {
   }
 }
 
+/**
+ * `status()` 在**试装**(认领)那几秒答 `undefined`(见 `ModelDownloader.status()`)。
+ * 下面这些用例都不在那一态里,所以取出来判就是了 —— 真答了 `undefined` 就是回归。
+ */
+function statusOf(model: ModelDownloader): ModelStatus {
+  const status = model.status()
+  if (status === undefined) throw new Error('这一刻不该答「检查中」')
+  return status
+}
+
 describe('模型是一件独立的东西:四个态 + 三个动作', () => {
   it('没下过 = absent,总数报的是嵌入器自述的**估计值**', () => {
     const fake = makeFactory()
@@ -110,16 +121,16 @@ describe('模型是一件独立的东西:四个态 + 三个动作', () => {
     expect(model.download().state).toBe('downloading')
 
     fake.progress('config.json', 100, 100)
-    const one = model.status()
+    const one = statusOf(model)
     expect(one).toMatchObject({ state: 'downloading', loadedBytes: 100, totalBytes: 100 })
 
     // 第二个文件露面 → 总数长一截;分子也跟着涨,两条都不许回头。
     fake.progress('model.onnx', 400, 8_000)
-    const two = model.status()
+    const two = statusOf(model)
     expect(two.loadedBytes).toBe(500)
     expect(two.totalBytes).toBe(8_100)
     fake.progress('model.onnx', 8_000, 8_000)
-    expect(model.status().loadedBytes).toBe(8_100)
+    expect(statusOf(model).loadedBytes).toBe(8_100)
 
     fake.finishFile('config.json', 100)
     fake.finishFile('model.onnx', 8_000)
@@ -166,10 +177,10 @@ describe('模型是一件独立的东西:四个态 + 三个动作', () => {
     expect(model.cancel().state).toBe('absent')
     await model.drain()
 
-    expect(model.status().state).toBe('absent')
+    expect(statusOf(model).state).toBe('absent')
     expect(probeEmbedderModel(dir, ID).state).toBe('absent')
     // 取消**不是失败**:不留错话。
-    expect(model.status().errorKind).toBeUndefined()
+    expect(statusOf(model).errorKind).toBeUndefined()
     expect(settled).toEqual(['absent'])
 
     expect(model.download().state).toBe('downloading')
@@ -183,7 +194,7 @@ describe('模型是一件独立的东西:四个态 + 三个动作', () => {
     fake.fail(new Error('TypeError: fetch failed'))
     await model.drain()
 
-    const status = model.status()
+    const status = statusOf(model)
     expect(status.state).toBe('failed')
     expect(status.errorKind).toBe('network')
     expect(status.error).toContain('fetch failed')
@@ -195,7 +206,7 @@ describe('模型是一件独立的东西:四个态 + 三个动作', () => {
     model.download()
     fake.settle()
     await model.drain()
-    expect(model.status().state).toBe('absent')
+    expect(statusOf(model).state).toBe('absent')
   })
 
   it('删除:开关开着时拒,关着时把目录清干净', async () => {
@@ -206,10 +217,10 @@ describe('模型是一件独立的东西:四个态 + 三个动作', () => {
     fake.finishFile('config.json', 100)
     fake.settle()
     await model.drain()
-    expect(model.status().state).toBe('ready')
+    expect(statusOf(model).state).toBe('ready')
 
     expect(() => model.remove()).toThrow(MODEL_IN_USE_ERROR)
-    expect(model.status().state).toBe('ready')
+    expect(statusOf(model).state).toBe('ready')
 
     inUse = false
     expect(model.remove()).toEqual({ id: ID, state: 'absent', totalBytes: APPROX })
@@ -222,5 +233,156 @@ describe('模型是一件独立的东西:四个态 + 三个动作', () => {
     expect(() => model.download()).toThrow(MODEL_NOT_DOWNLOADABLE_ERROR)
     // `model` 那一格缺席时连估计值都不报 —— 不知道就不说。
     expect(model.status()).toEqual({ id: 'fake', state: 'absent' })
+  })
+})
+
+/**
+ * **认领**(2026-09-17;§15.8「认领」)。事故原话:「为什么下载了也当做没下载?」——
+ * 上一版「翻开关即下载」把 113 MB 完整下到了盘上,这一版换成「清单说了算」,于是那份
+ * 真下全了的模型因为没有清单被当成没下过。
+ *
+ * 这一组钉的是补法的四条边:**装得上才认**(不是「文件在就认」)、**装不上不删**、
+ * **空目录一次装载都不发生**、**试装期间不说话**(`status()` 答 `undefined`)。
+ * 「真的 onnx 装不装得上」不在这里证 —— 那是 `gate:search-index` ⑬e / ⑫ 的活。
+ */
+describe('认领:清单缺席、文件却在', () => {
+  /** 一只手动挡的「试装」:`settle()` / `fail()` 决定它装不装得上,`calls` 数它被叫了几次。 */
+  function makeTryLoad() {
+    let resolveLoad: (() => void) | undefined
+    let rejectLoad: ((error: Error) => void) | undefined
+    const state = { calls: 0 }
+    return {
+      get calls() { return state.calls },
+      tryLoad: (): Promise<void> => {
+        state.calls += 1
+        return new Promise<void>((resolve, reject) => { resolveLoad = resolve; rejectLoad = reject })
+      },
+      settle: () => resolveLoad?.(),
+      fail: (error: Error) => rejectLoad?.(error),
+    }
+  }
+
+  /** 上一版留在盘上的那一份:文件齐,**没有清单**。 */
+  function writeOldFiles(): void {
+    fs.mkdirSync(path.join(dir, 'onnx'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'config.json'), Buffer.alloc(658, 7))
+    fs.writeFileSync(path.join(dir, 'tokenizer.json'), Buffer.alloc(1_024, 7))
+    fs.writeFileSync(path.join(dir, 'onnx', 'model_quantized.onnx'), Buffer.alloc(4_096, 7))
+  }
+
+  it('装得上 = 这堆文件是完整的 → 补一份清单,answer ready', async () => {
+    const fake = makeFactory()
+    const loader = makeTryLoad()
+    writeOldFiles()
+
+    const model = new ModelDownloader({ factory: fake.factory, modelDir: dir, tryLoad: loader.tryLoad })
+    expect(loader.calls).toBe(1)
+
+    loader.settle()
+    await model.drain()
+
+    expect(statusOf(model)).toEqual({
+      id: ID, state: 'ready', loadedBytes: 5_778, totalBytes: 5_778,
+    })
+    // 清单是**这一步**才写下的 —— 此后它才是那句「下全了」。
+    expect(probeEmbedderModel(dir, ID)).toEqual({ state: 'ready', bytes: 5_778 })
+    // 一个字节都没下过:认领不是下载。
+    expect(fake.started).toBe(0)
+  })
+
+  it('装不上 = 半截的 → 维持 absent,而且**文件一个都不删**(下一次下载等于续传)', async () => {
+    const fake = makeFactory()
+    const loader = makeTryLoad()
+    writeOldFiles()
+    const model = new ModelDownloader({ factory: fake.factory, modelDir: dir, tryLoad: loader.tryLoad })
+
+    loader.fail(new Error('Unexpected end of ONNX protobuf'))
+    await model.drain()
+
+    expect(statusOf(model)).toEqual({ id: ID, state: 'absent', totalBytes: APPROX })
+    expect(fs.existsSync(path.join(dir, 'onnx', 'model_quantized.onnx'))).toBe(true)
+    expect(fs.existsSync(path.join(dir, '.onething-model.json'))).toBe(false)
+  })
+
+  it('空目录 = 从没下过 → **一次试装都不发生**(⑬a 那个「零网络」的一半)', () => {
+    const fake = makeFactory()
+    const loader = makeTryLoad()
+
+    const model = new ModelDownloader({ factory: fake.factory, modelDir: dir, tryLoad: loader.tryLoad })
+
+    expect(loader.calls).toBe(0)
+    expect(statusOf(model)).toEqual({ id: ID, state: 'absent', totalBytes: APPROX })
+  })
+
+  it('试装期间**整格缺席**(壳读成「检查中…」),落定之后才有话说', async () => {
+    const fake = makeFactory()
+    const loader = makeTryLoad()
+    writeOldFiles()
+
+    const model = new ModelDownloader({ factory: fake.factory, modelDir: dir, tryLoad: loader.tryLoad })
+    // 还不知道 —— 报「未下载」再翻成「已下载」是闪一下错话。
+    expect(model.status()).toBeUndefined()
+
+    loader.settle()
+    await model.drain()
+    expect(model.status()?.state).toBe('ready')
+  })
+
+  it('开关开着:认领走的就是嵌入器那一次装载 —— **只装一次**,而且不喊宿主换 Worker', async () => {
+    const fake = makeFactory()
+    writeOldFiles()
+
+    // 一只记账的嵌入器:`ready()` 记过账(第二次不重装),与真嵌入器同一种形。
+    let loads = 0
+    let loaded: Promise<void> | undefined
+    const embedder = {
+      ready: async (): Promise<void> => {
+        if (loaded === undefined) {
+          loads += 1
+          loaded = Promise.resolve()
+        }
+        await loaded
+      },
+    }
+
+    const settled: string[] = []
+    const model = new ModelDownloader({
+      factory: fake.factory,
+      modelDir: dir,
+      // 开关开着 = 这条 Worker 装了嵌入器。
+      inUse: () => true,
+      tryLoad: () => embedder.ready(),
+    })
+    model.onSettled(state => settled.push(state))
+    await model.drain()
+
+    expect(statusOf(model).state).toBe('ready')
+    // 向量写路稍后照样问一次 —— 那是同一次装载,118 MB 不装第二遍。
+    await embedder.ready()
+    expect(loads).toBe(1)
+    /*
+     * **不喊那一声**:它的用处只有「让宿主换一条 Worker 使模型生效」,而这条 Worker
+     * 自己就是认领的那一条,它已经生效了 —— 换一条只会把装好的扔掉重装。
+     */
+    expect(settled).toEqual([])
+  })
+
+  it('认领在飞时按「下载」:试装作废,照常下,状态由下载那一发说了算', async () => {
+    const fake = makeFactory()
+    const loader = makeTryLoad()
+    writeOldFiles()
+    const model = new ModelDownloader({ factory: fake.factory, modelDir: dir, tryLoad: loader.tryLoad })
+    expect(model.status()).toBeUndefined()
+
+    expect(model.download().state).toBe('downloading')
+    // 作废之后那一发试装落定也改不动状态(它的 round 早过期了)。
+    loader.settle()
+    await Promise.resolve()
+    expect(statusOf(model).state).toBe('downloading')
+
+    fake.finishFile('config.json', 100)
+    fake.settle()
+    await model.drain()
+    expect(statusOf(model).state).toBe('ready')
   })
 })

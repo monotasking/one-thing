@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   MODEL_MANIFEST_FILE,
   captureModelManifest,
+  hasEmbedderModelFiles,
   isEmbedderModelPresent,
   probeEmbedderModel,
   readModelManifest,
@@ -105,6 +106,22 @@ describe('模型清单 = 下全了的唯一判据', () => {
     fs.writeFileSync(path.join(dir, MODEL_MANIFEST_FILE), '{ 这不是 json')
     expect(readModelManifest(dir)).toBeUndefined()
     expect(probeEmbedderModel(dir, ID).state).toBe('absent')
+  })
+
+  /**
+   * 「认领」的前置(2026-09-17,§15.8):清单缺席时,**空目录**与**满目录**是两件事 ——
+   * 前者当场 `absent`(一次试装都不发生),后者才值得试装一次。它不是「下全了没有」
+   * 的判据,那句话只有 `probeEmbedderModel` 说得出口。
+   */
+  it('有没有东西:空目录 / 目录不存在 / 只有一份清单,三样都是「没有」', () => {
+    expect(hasEmbedderModelFiles(path.join(dir, '不存在'))).toBe(false)
+    expect(hasEmbedderModelFiles(dir)).toBe(false)
+    // 清单自己不算「东西」(否则删掉文件只剩清单时会去试装一次空气)。
+    captureModelManifest(dir, ID)
+    expect(hasEmbedderModelFiles(dir)).toBe(false)
+
+    write('Xenova/m/config.json', 12)
+    expect(hasEmbedderModelFiles(dir)).toBe(true)
   })
 
   it('删除:整个目录连清单一起没了', () => {

@@ -187,6 +187,12 @@ describe('八个态(纯函数)', () => {
   it('轮询三档:下模型 1s / 会动的 5s / 什么都不会动的不问', () => {
     const idle: SemanticPhase[] = ['disabled', 'unsupported', 'needsModel']
     for (const phase of idle) expect(semanticStatusPollMs(phase, 'absent')).toBeUndefined()
+    /*
+     * **模型那一格「不知道」时要问**(2026-09-17 认领):缺席有两种意思,其中一种
+     * (后端正在试装盘上那堆没清单的文件)几秒后就会变。少了这一句,「开关关着 +
+     * 正在认领」会永远停在「检查中…」。
+     */
+    for (const phase of idle) expect(semanticStatusPollMs(phase, 'unknown')).toBe(5000)
     const moving: SemanticPhase[] = ['unknown', 'starting', 'embedding', 'ready', 'failed']
     for (const phase of moving) expect(semanticStatusPollMs(phase, 'ready')).toBe(5000)
     // 正在下模型 = 有一条会走的进度条,**哪一个 phase 都问得更勤**(1s)。

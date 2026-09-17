@@ -32,11 +32,33 @@
  * 不算,而且这件事是**结构上**成立的,不是靠这里的 if:判据在 `model-store.ts` —— 清单
  * 是下载**落定之后**才写的,取消 / 半途死掉都没有清单。这个类每次要答「在不在」时
  * 都去问它,不靠自己记(进程重启、别的进程删了目录,记忆都会说谎)。
+ *
+ * ## 认领:清单缺席、文件却在(2026-09-17 下午的事故,§15.8「认领」)
+ *
+ * 上一版「翻开关即下载」把 113 MB 完整地下到了盘上;这一版把判据换成清单,于是那份
+ * **真的下全了的**模型因为没有清单被当成没下过 —— 用户的原话是「为什么下载了也当做
+ * 没下载?」。这是新判据的迁移漏洞,不是它错。
+ *
+ * 补法不是退回「看文件在不在」(那条路为什么不成立,`model-store.ts` 头上写着),而是
+ * **试装一次**:清单缺席但目录里有东西时,拿嵌入器自己那条只读本地的装载路走一遍 ——
+ * **装得上是唯一一个不联网就说得出口的「这堆文件是完整的」**。装得上就照磁盘上真实的
+ * 文件与字节数补一份清单(`ready`);装不上就维持 `absent`,**文件一个都不删**(下一次
+ * 「下载」等于续传,transformers 自己认得已经下全的那几个)。
+ *
+ * 三件配套的规矩,都在下面的代码里:
+ *  - **空目录不试装** —— 那是「从没下过」,一次装载都不该发生(`gate:search-index` ⑬a
+ *    的「零网络」有一半是它);
+ *  - **试装期间 `status()` 答 `undefined`**(整格缺席 = 壳的 unknown「检查中…」)。
+ *    不为它加第五个态:契约少一格是一格,而「还不知道」这件事屏幕上早就有画法了;
+ *  - **不装第二遍 118 MB** —— 开关开着时试装走的**就是**这条 Worker 的嵌入器那一次
+ *    装载(`tryLoad` 由 `worker.ts` 递进来),所以认领成功时它已经在用了,不必再喊
+ *    宿主换 Worker。
  */
 
 import { getLogger } from '../../logging/index.js'
 import {
   captureModelManifest,
+  hasEmbedderModelFiles,
   probeEmbedderModel,
   removeEmbedderModel,
 } from '../embedding/model-store.js'
@@ -82,6 +104,17 @@ export interface ModelDownloaderOptions {
    * 向量写路」答。
    */
   inUse?(): boolean
+  /**
+   * **试装一次**(2026-09-17 认领):把 `modelDir` 里那堆文件在本地装起来,装得上就
+   * 正常返回、装不上就抛。不出网(嵌入器那一侧钉着 `allowRemoteModels = false`)。
+   *
+   * 由 `worker.ts` 递进来,因为「装哪一次」是**装配**的事:这条 Worker 有嵌入器
+   * (开关开着)就递它的 `ready()` —— 认领与正经装载共用同一次,不装第二遍 118 MB;
+   * 没有嵌入器才递嵌入器工厂自述的 `verify`(装完就把会话还回去)。
+   *
+   * 缺席 = 这条 Worker 没法试装,于是没有认领这回事(清单缺席就一律 `absent`)。
+   */
+  tryLoad?(): Promise<void>
 }
 
 export class ModelDownloader {
@@ -97,12 +130,25 @@ export class ModelDownloader {
   /** 下全了多少字节(`ready` 那一态的真数,来自清单)。 */
   private readyBytes = 0
   private readonly listeners = new Set<(state: ModelState) => void>()
+  /** 正在试装的那一发(2026-09-17 认领)。在飞 = 这台机器上「有没有」还没答得出。 */
+  private adopting: Promise<void> | undefined
 
   constructor(options: ModelDownloaderOptions) {
     this.options = options
     const probe = probeEmbedderModel(options.modelDir, options.factory.id)
     this.state = probe.state
     this.readyBytes = probe.bytes
+    /*
+     * **认领**(见文件头):清单缺席、目录里却有东西 —— 那多半是上一版下全的那一份。
+     * 异步做,`start()` 与词法查询一步都不等它。空目录不试装:那是「从没下过」。
+     */
+    if (
+      probe.state === 'absent'
+      && options.tryLoad !== undefined
+      && hasEmbedderModelFiles(options.modelDir)
+    ) {
+      this.beginAdoption(options.tryLoad)
+    }
   }
 
   /**
@@ -117,7 +163,19 @@ export class ModelDownloader {
     return () => this.listeners.delete(listener)
   }
 
-  status(): ModelStatus {
+  /**
+   * 此刻的模型状态,**或者 `undefined` = 还在试装、说不出口**(2026-09-17 认领)。
+   *
+   * 缺席与「没下载」不是一回事:`IndexWorkerCore` 把缺席原样传下去(`status.model`
+   * 整格不出现),壳读成 unknown「检查中…」,一颗钮都不画。试装几秒钟里报一句
+   * 「未下载」再翻成「已下载」,那是**闪一下错话**,比不说话糟。
+   */
+  status(): ModelStatus | undefined {
+    return this.adopting === undefined ? this.describe() : undefined
+  }
+
+  /** 这一刻磁盘与状态机合起来的样子。**一定答得出** —— 三个动作的回执用它。 */
+  private describe(): ModelStatus {
     const id = this.options.factory.id
     switch (this.state) {
       case 'ready':
@@ -153,10 +211,12 @@ export class ModelDownloader {
    * 答的是「这一发起来了」,进度由调用方轮 `status()` 读。
    */
   download(): ModelStatus {
-    if (this.state === 'downloading' || this.state === 'ready') return this.status()
+    if (this.state === 'downloading' || this.state === 'ready') return this.describe()
     const download = this.options.factory.download
     if (download === undefined) throw new Error(MODEL_NOT_DOWNLOADABLE_ERROR)
 
+    // 人按了「下载」就下载:在飞的那一发试装作废(它的结论此后不许改状态)。
+    this.abandonAdoption()
     this.round += 1
     const round = this.round
     this.cancelled = false
@@ -181,7 +241,7 @@ export class ModelDownloader {
       (error: unknown) => this.settle(round, error),
     )
     log.info('embedding model download started', { fields: { model: this.options.factory.id } })
-    return this.status()
+    return this.describe()
   }
 
   /**
@@ -192,12 +252,12 @@ export class ModelDownloader {
    * 不是 `absent` —— 说磁盘上真有的那件事,不说我们刚才想要的那件事。
    */
   cancel(): ModelStatus {
-    if (this.state !== 'downloading') return this.status()
+    if (this.state !== 'downloading') return this.describe()
     this.cancelled = true
     this.options.signals?.abort()
     this.state = 'absent'
     log.info('embedding model download cancelled', { fields: { model: this.options.factory.id } })
-    return this.status()
+    return this.describe()
   }
 
   /**
@@ -207,21 +267,28 @@ export class ModelDownloader {
   remove(): ModelStatus {
     if (this.options.inUse?.() === true) throw new Error(MODEL_IN_USE_ERROR)
     if (this.state === 'downloading') this.cancel()
+    // 文件正要没了,在飞的那一发试装说什么都不算数了。
+    this.abandonAdoption()
+    this.round += 1
     removeEmbedderModel(this.options.modelDir)
     this.files.clear()
     this.failure = undefined
     this.readyBytes = 0
     this.state = 'absent'
     log.info('embedding model removed', { fields: { model: this.options.factory.id } })
-    return this.status()
+    return this.describe()
   }
 
-  /** 在飞的那一发落定再答(单测与门用;生产没有人等它)。 */
+  /**
+   * 在飞的那一发落定再答(单测与门用;生产没有人等它)。**试装也算一发** ——
+   * 认领与下载是同一个状态机上的两条路,等一件事不该只等其中一条。
+   */
   async drain(): Promise<void> {
-    while (this.running !== undefined) {
+    while (this.running !== undefined || this.adopting !== undefined) {
       const running = this.running
-      await running
-      if (this.running === running) this.running = undefined
+      const adopting = this.adopting
+      await Promise.all([running, adopting])
+      if (running !== undefined && this.running === running) this.running = undefined
     }
   }
 
@@ -264,6 +331,82 @@ export class ModelDownloader {
     this.failure = describeEmbedderFailure(error)
     log.warn('embedding model download failed', { fields: { kind: this.failure.kind } }, error)
     this.emit('failed')
+  }
+
+  /**
+   * 试装那一发起飞。**不 await** —— Worker 起身、词法查询一步都不等它;它在飞的这
+   * 几秒里 `status()` 答 `undefined`(壳画「检查中…」)。
+   */
+  private beginAdoption(tryLoad: () => Promise<void>): void {
+    const round = this.round
+    this.adopting = this.adopt(tryLoad, round).finally(() => {
+      // 中途有人按了下载 / 删除(round 变了)= 这一发已经被作废,别把新的清掉。
+      if (round === this.round) this.adopting = undefined
+    })
+  }
+
+  /**
+   * 认领一份**盘上已经有、却没有清单**的模型(见文件头)。
+   *
+   * 顺序是死的:**先装得上,再写清单,最后照清单核对一遍** —— 清单永远是「下载 /
+   * 认领落定之后」才落的那一笔,`probeEmbedderModel` 仍然是唯一的判据。
+   */
+  private async adopt(tryLoad: () => Promise<void>, round: number): Promise<void> {
+    const startedAt = Date.now()
+    try {
+      await tryLoad()
+    } catch (error) {
+      if (round !== this.round) return
+      /*
+       * 装不上 = 这堆文件不完整(截断的 onnx / 少一件)。维持 `absent`,而且
+       * **一个文件都不删**:transformers 自己认得已经下全的那几个,下一次「下载」
+       * 就是续传。原话记一条,人问起来时日志里有。
+       */
+      log.warn('model files on disk could not be adopted; they are left as they are', {
+        fields: { model: this.options.factory.id },
+      }, error)
+      return
+    }
+    if (round !== this.round) return
+
+    let files: number
+    try {
+      files = Object.keys(captureModelManifest(this.options.modelDir, this.options.factory.id).files).length
+    } catch (error) {
+      log.warn('writing the adopted model manifest failed', undefined, error)
+      return
+    }
+    const probe = probeEmbedderModel(this.options.modelDir, this.options.factory.id)
+    if (probe.state !== 'ready') {
+      // 装得上却核对不过 = 写清单与核对之间文件动过。不猜,维持 `absent`。
+      log.warn('the adopted model did not survive its own check', {
+        fields: { model: this.options.factory.id },
+      })
+      return
+    }
+    this.readyBytes = probe.bytes
+    this.failure = undefined
+    this.state = 'ready'
+    log.info('adopted model files found on disk', {
+      fields: {
+        model: this.options.factory.id,
+        files,
+        bytes: probe.bytes,
+        ms: Date.now() - startedAt,
+      },
+    })
+    /*
+     * **喊不喊这一声,看这条 Worker 自己用不用得上**。这一声的用处只有一个:让宿主
+     * 换一条 Worker,好让模型生效(`backend/wiring/search/index.ts`)。而 `inUse()`
+     * 为真时,试装走的**就是**这条 Worker 的嵌入器那一次装载(接线在 `worker.ts`)
+     * —— 它已经装好、向量路已经能走,换一条只会把它扔掉再装一遍 118 MB。
+     */
+    if (this.options.inUse?.() !== true) this.emit('ready')
+  }
+
+  /** 在飞的那一发试装作废(按下载 / 删除时)。它落定时会看 round,什么都不会改。 */
+  private abandonAdoption(): void {
+    this.adopting = undefined
   }
 
   private emit(state: ModelState): void {

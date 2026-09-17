@@ -61,12 +61,13 @@ import type { EmbedKind, Embedder } from '@onething/core/search'
 import { getLogger } from '../../logging/index.js'
 import { resolveHuggingFaceEndpoint } from '../index/worker-network.js'
 import { normalizeVector } from './embedder.js'
-import { isEmbedderModelPresent } from './model-store.js'
+import { hasEmbedderModelFiles, isEmbedderModelPresent } from './model-store.js'
 import type {
   EmbedderCreateOptions,
   EmbedderDownloadOptions,
   EmbedderFactory,
   EmbedderModelSpec,
+  EmbedderVerifyOptions,
 } from './registry.js'
 
 const log = getLogger('search.embedding')
@@ -249,6 +250,59 @@ function whenAborted(signal: AbortSignal | undefined): Promise<never> {
   })
 }
 
+/**
+ * **本地装一次**,一个字节的网络都不发。装载与「认领」(`verifyE5SmallModel`)共用
+ * 这一条,所以两边的 `allowRemoteModels = false` 与 `PIPELINE_OPTIONS` 必然逐字相同。
+ *
+ * 门槛只有一句:**目录里连东西都没有就当场抛**(`MODEL_NOT_DOWNLOADED_ERROR`,判据表
+ * 里的 `'model'` 一类)—— 那是「从没下过」,连 `import()` 都不必走,`gate:search-index`
+ * ⑬a 的「假站计数 0」守的就是这一刀。
+ *
+ * **清单不在、文件在**那一形**不拦**(2026-09-17 认领,§15.8):判据由「清单在不在」
+ * 松成「装不装得上」—— 装得上就说明这些文件是完整的,而清单该不该补是
+ * `ModelDownloader` 的账(它是清单的**唯一**写者)。真出网这条路照旧被
+ * `allowRemoteModels = false` 堵死,松的只是「先问一句清单」。
+ */
+async function loadLocalPipeline(
+  modelDir: string,
+  onProgress?: EmbedderCreateOptions['onProgress'],
+): Promise<TransformersPipeline> {
+  if (!isEmbedderModelPresent(modelDir, E5_SMALL_EMBEDDER_ID) && !hasEmbedderModelFiles(modelDir)) {
+    throw new Error(MODEL_NOT_DOWNLOADED_ERROR)
+  }
+  const transformers = await openTransformers(modelDir, false)
+  return await transformers.pipeline('feature-extraction', E5_SMALL_REPO, {
+    ...PIPELINE_OPTIONS,
+    progress_callback: info => {
+      const record = info as TransformersProgress
+      onProgress?.({
+        ...(typeof record.progress === 'number' ? { ratio: record.progress / 100 } : {}),
+        ...(record.status !== undefined ? { message: `${record.status} ${record.file ?? ''}`.trim() } : {}),
+      })
+    },
+  })
+}
+
+/**
+ * **试装一次,别的什么都不做**(2026-09-17 认领,§15.8)。
+ *
+ * 装得上就正常返回 —— 那是「不联网就能证明这堆文件是完整的」**唯一**的办法
+ * (`FileCache` 直写最终路径,所以「文件在、大小 > 0」证明不了任何事)。装不上就抛,
+ * 原话原样交给调用方。
+ *
+ * 会话当场还回去:这一路要的只是**那句判断**,不是一份能跑推理的管线。这条路只在
+ * 「这条 Worker 没装嵌入器」(开关关着)时走 —— 开关开着时认领直接用嵌入器自己那一次
+ * 装载,不装第二遍 118 MB(接线在 `search/index/worker.ts`)。
+ */
+export async function verifyE5SmallModel(options: EmbedderVerifyOptions): Promise<void> {
+  const pipe = await loadLocalPipeline(options.modelDir)
+  try {
+    await pipe.dispose?.()
+  } catch (error) {
+    log.warn('releasing the verification-time inference session failed', undefined, error)
+  }
+}
+
 export function createTransformersOnnxEmbedder(options: EmbedderCreateOptions): Embedder {
   let pipe: TransformersPipeline | undefined
   let loading: Promise<void> | undefined
@@ -261,26 +315,9 @@ export function createTransformersOnnxEmbedder(options: EmbedderCreateOptions): 
      * 一百多兆的网络动作。现在模型是一件自己有状态的东西(下载 / 取消 / 删除在
      * 设置页的「模型」那一行),而这里只回答「它在不在」。
      *
-     * 先问清单再进库(`isEmbedderModelPresent`):
-     *  - 不在 → 当场抛,`describeEmbedderFailure` 判成 `'model'`,屏上说「模型文件
-     *    不完整」,**一个字节的网络请求都不会发**;
-     *  - 在 → 进库,`allowRemoteModels = false` 再兜一道:万一清单与真实文件之间
-     *    有缝,它宁可抛,也不会背着人去下东西。
+     * 判据与门槛都在 `loadLocalPipeline` 里(装载与认领共用那一条)。
      */
-    if (!isEmbedderModelPresent(options.modelDir, E5_SMALL_EMBEDDER_ID)) {
-      throw new Error(MODEL_NOT_DOWNLOADED_ERROR)
-    }
-    const transformers = await openTransformers(options.modelDir, false)
-    pipe = await transformers.pipeline('feature-extraction', E5_SMALL_REPO, {
-      ...PIPELINE_OPTIONS,
-      progress_callback: info => {
-        const record = info as TransformersProgress
-        options.onProgress?.({
-          ...(typeof record.progress === 'number' ? { ratio: record.progress / 100 } : {}),
-          ...(record.status !== undefined ? { message: `${record.status} ${record.file ?? ''}`.trim() } : {}),
-        })
-      },
-    })
+    pipe = await loadLocalPipeline(options.modelDir, options.onProgress)
     log.info('embedding model loaded', { model: E5_SMALL_REPO, dir: options.modelDir })
   }
 
@@ -323,7 +360,8 @@ export function createTransformersOnnxEmbedder(options: EmbedderCreateOptions): 
 export const transformersOnnxEmbedderFactory: EmbedderFactory = {
   id: E5_SMALL_EMBEDDER_ID,
   create: createTransformersOnnxEmbedder,
-  // 这一条有一份要先下载的模型,所以它自述这两格;假嵌入器两格都缺席。
+  // 这一条有一份要先下载的模型,所以它自述这三格;假嵌入器三格都缺席。
   model: E5_SMALL_MODEL_SPEC,
   download: downloadE5SmallModel,
+  verify: verifyE5SmallModel,
 }

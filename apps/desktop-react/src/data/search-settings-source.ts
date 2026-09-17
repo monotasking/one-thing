@@ -123,14 +123,17 @@ export type SemanticPhase =
  *
  * | 态 | 判据 | 屏幕上 |
  * | --- | --- | --- |
- * | unknown | 状态还没问到,或者这台宿主管不了模型(`model` 缺席) | 「检查中…」,一颗钮都不画 |
+ * | unknown | 状态还没问到,或者 `model` 缺席 | 「检查中…」,一颗钮都不画 |
  * | absent | `model.state === 'absent'` | 「未下载 · 约 113 MB」+ 下载 |
  * | downloading | `'downloading'` | 进度条 + 「43 MB / 113 MB · 38%」+ 取消 |
  * | ready | `'ready'` | 「已下载 · 113 MB」+ 删除(开关开着时禁) |
  * | failed | `'failed'` | 按 `errorKind` 一句人话 +(原话)+ 重试 |
  *
- * **「管不了」与「没下载」不是一回事**:前者(独立 server 上没有索引、或者门跑的是
- * 假嵌入器)画一颗按不动的下载钮是骗人,所以它落在 `unknown` 里。
+ * **「不知道」与「没下载」不是一回事**,所以后端那一格缺席时落在 `unknown`:画一颗
+ * 按不动的下载钮是骗人。缺席有两种意思,屏幕上分不出,也不必分 —— 这台宿主管不了
+ * 模型(独立 server 上没有索引、门跑的是假嵌入器),或者后端**正在试装**盘上那堆没有
+ * 清单的文件(2026-09-17 认领,§15.8b)。后一种几秒后就会变,所以
+ * `semanticStatusPollMs` 在这一格上照问不误。
  */
 export type SemanticModelPhase = 'unknown' | 'absent' | 'downloading' | 'ready' | 'failed'
 
@@ -194,6 +197,13 @@ function hasVectorFailure(status: SearchStatusResponse): boolean {
  *  - 别的会动的态(启动 / 建索引 / 检查中 / 就绪)→ 5s(与 09-17 那一版同)。
  *  - 关着 / 装不上 / 只等人按「下载」→ **不问**。什么都不会动,问了是白问。
  *
+ * **「不知道」要问**(2026-09-17 认领那一批补的):模型那一格缺席有两种意思 —— 这台
+ * 宿主管不了模型(问一辈子也不会变),或者后端**正在试装**盘上那堆没有清单的文件
+ * (几秒之后就会变成「已下载」)。屏幕上分不出这两种,而其中一种会动,所以问。
+ * 少了这一句,开关关着 + 正在认领那一形会永远停在「检查中…」—— 页面没有第二个
+ * 重新去问的由头。代价是前一种情形下每 5s 一发很便宜的 `search.status`,只在这一节
+ * 在屏上时才发。
+ *
  * 返回毫秒数或 `undefined`(= 别起计时器)—— 一个数比「要不要 + 多久」两格好:
  * 调用方那只 `useEffect` 的依赖就是它,档位一变计时器自己换。
  */
@@ -202,6 +212,7 @@ export function semanticStatusPollMs(
   model: SemanticModelPhase,
 ): number | undefined {
   if (model === 'downloading') return 1000
+  if (model === 'unknown') return 5000
   if (phase === 'disabled' || phase === 'unsupported' || phase === 'needsModel') return undefined
   return 5000
 }

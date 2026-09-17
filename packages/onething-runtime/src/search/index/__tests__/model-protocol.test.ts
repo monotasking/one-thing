@@ -95,6 +95,52 @@ describe('模型三动作过协议', () => {
     await service.dispose()
   })
 
+  /**
+   * 认领(2026-09-17,§15.8):试装那几秒 `status.model` **整格不出现**,与「这条
+   * Worker 管不了模型」同一种缺席 —— 壳两边都读成 unknown「检查中…」,一颗钮不画。
+   * 这里钉的是**缺席真的过得了协议**(`undefined` 不会被序列化成一个空对象)。
+   */
+  it('试装期间 status.model 缺席,落定之后才出现', async () => {
+    const store = newStore()
+    const modelDir = path.join(store.root, 'models', 'embeddings', ID)
+    // 上一版留下的那一份:文件在、清单不在。
+    fs.mkdirSync(modelDir, { recursive: true })
+    fs.writeFileSync(path.join(modelDir, 'model.bin'), Buffer.alloc(64, 1))
+
+    let settleLoad: (() => void) | undefined
+    const model = new ModelDownloader({
+      factory: instantFactory(modelDir),
+      modelDir,
+      tryLoad: () => new Promise<void>(resolve => { settleLoad = resolve }),
+    })
+
+    const service = new SearchIndexService({
+      createWorker: () => {
+        const worker = createSameThreadWorker({
+          indexPath: store.indexPath,
+          feeds: [],
+          debounceMs: 5,
+          model,
+        })
+        spawned.push(worker)
+        return worker.handle
+      },
+    })
+    service.start()
+
+    expect((await service.status()).model).toBeUndefined()
+
+    settleLoad?.()
+    await model.drain()
+
+    expect((await service.status()).model).toEqual({
+      id: ID, state: 'ready', loadedBytes: 64, totalBytes: 64,
+    })
+    expect(probeEmbedderModel(modelDir, ID).state).toBe('ready')
+
+    await service.dispose()
+  })
+
   it('这条 Worker 管不了模型 = 结构化拒绝,不假装收下', async () => {
     const store = newStore()
     const service = new SearchIndexService({

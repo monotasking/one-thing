@@ -29,6 +29,18 @@ export interface EmbedderFactory {
    * 下载是一个自己有状态、有进度、可取消的动作。
    */
   download?(options: EmbedderDownloadOptions): Promise<void>
+  /**
+   * **试装一次**:`modelDir` 里那堆文件能不能装起来(2026-09-17 认领,§15.8)。
+   * 装得上就正常返回,装不上就抛原话。**不出网、不写盘、不留会话。**
+   *
+   * 它存在的理由是一次真实的事故:上一版「翻开关即下载」把模型完整下到了盘上,
+   * 这一版把判据换成「下载落定才写的清单」—— 于是那份**下全了的**模型因为没有清单
+   * 被当成没下过。清单缺席时,「文件在不在」证明不了完整(`FileCache` 直写最终路径),
+   * 而**装得上**是唯一一个不联网就说得出口的证明。
+   *
+   * 缺席 = 这条嵌入器没法自证(假嵌入器),那就没有认领这回事。
+   */
+  verify?(options: EmbedderVerifyOptions): Promise<void>
 }
 
 /**
@@ -63,6 +75,11 @@ export interface EmbedderDownloadOptions {
   signal?: AbortSignal
   /** 逐文件的读数。喊几次由实现决定;不喊也合法(那时屏上只有「正在下载」)。 */
   onFile?(progress: EmbedderFileProgress): void
+}
+
+export interface EmbedderVerifyOptions {
+  /** 要试装的那个目录:`<store>/models/embeddings/<id>/`。 */
+  modelDir: string
 }
 
 export interface EmbedderCreateOptions {

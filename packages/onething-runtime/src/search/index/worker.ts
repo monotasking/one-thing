@@ -83,6 +83,20 @@ const embedder = embedderFactory === undefined || modelDir === undefined || sema
   : embedderFactory.create({ modelDir })
 
 /*
+ * **试装一次**用哪一条(2026-09-17 认领,§15.8)。清单缺席而文件在时,`ModelDownloader`
+ * 拿它去问「这堆文件装得起来吗」—— 这是装配的判断,不是它的:
+ *  - 这条 Worker 装了嵌入器(开关开着)→ 就用**它自己那一次装载**(`ready()` 是记过账
+ *    的,认领与正经装载合成一次),不装第二遍 118 MB;
+ *  - 没装 → 用嵌入器工厂自述的 `verify`(装完把会话还回去,这一路只要那句判断)。
+ */
+const verify = embedderFactory?.verify
+const tryLoad = embedder !== undefined
+  ? () => embedder.ready()
+  : verify === undefined || modelDir === undefined
+    ? undefined
+    : () => verify({ modelDir })
+
+/*
  * 模型的下载 / 取消 / 删除。**只有自述了「我有一份要下的模型」的嵌入器才有它**
  * (假嵌入器没有,于是门跑假嵌入器时那三个动作结构化拒绝,而不是画一个假进度条)。
  */
@@ -94,6 +108,7 @@ const model = embedderFactory?.model === undefined || modelDir === undefined
     signals: downloadSignal,
     // 「正在用」= 这条 Worker 真的装了嵌入器。判据不在 ModelDownloader 里。
     inUse: () => embedder !== undefined,
+    ...(tryLoad === undefined ? {} : { tryLoad }),
   })
 
 const index = new SqliteIndex({

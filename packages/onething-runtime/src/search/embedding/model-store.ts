@@ -165,6 +165,20 @@ export function isEmbedderModelPresent(modelDir: string, id: string): boolean {
 }
 
 /**
+ * 这个目录里**有没有东西**(清单不算)。
+ *
+ * 唯一的用处是「认领」那一步的前置(2026-09-17;见 `model-download.ts` 的
+ * `beginAdoption`):清单缺席时,**空目录**与**满目录**是两件完全不同的事 ——
+ * 前者是「从没下过」,当场答 `absent`,一次装载都不许发生(`gate:search-index` ⑬a
+ * 守的「零网络」有一半是它);后者是「文件在、清单不在」,那就该试装一次。
+ *
+ * 它**不是**「下全了没有」的判据 —— 那件事只有 `probeEmbedderModel` 说得出口。
+ */
+export function hasEmbedderModelFiles(modelDir: string): boolean {
+  return Object.keys(walkFiles(modelDir)).length > 0
+}
+
+/**
  * 整个模型目录删掉(设置页那颗「删除」)。**连清单一起** —— 留下清单而删掉文件,
  * 核对那一侧照样答 `'absent'`,但那是靠运气对,不是靠意图对。
  */
