@@ -21,8 +21,9 @@ import type { TurntableSceneProps } from '../TurntableScene'
  *  ③ 唱头聚焦 ←/→ → 各一次 ±10s;
  *  ④ 换歌那一串跑着时唱头不接手;
  *  ⑤ 歌名变 → 跑那一串;卸载 → 计时器清零;
- *  ⑥ brief.starting 出现 + 节目单有匹配的 say → 黑豆开口;
- *  ⑦ 后端 `pet:` 发来一句 → 与本地那一路比谁后到;戳 → 发 `pet:` 的 poke,失败零提示(宠物 P2)。
+ *  ⑥ brief.starting 出现 → 壳本地不再开口(P3 删了那一路);
+ *  ⑦ 后端 `pet:` 发来一句 → 栖位演它;戳 → 发 `pet:` 的 poke,失败零提示(宠物 P2);
+ *  ⑧ 开口到 `hushed` 之间 ON AIR 灯亮;声音比字先说完 → 字一次出齐、灯灭、1.5s 后气泡收(宠物 P3)。
  *
  * jsdom 里容器宽是 0,视口 = 原大不缩放,所以 client 坐标就是画布坐标。
  */
@@ -216,22 +217,9 @@ describe('换歌那一串', () => {
 describe('黑豆', () => {
   const bubble = () => screen.getByTestId('pet-bubble')
 
-  it('brief.starting 出现 + 节目单有匹配的 say → 一句开口', () => {
+  it('P3:简报里出现 starting 不再由壳本地开口(口播归宠物宿主)', () => {
     const { rerender } = mount()
-    expect(bubble().dataset.show).toBeUndefined()
     rerender({ brief: { ...RADIO, starting: '潮汐表 - 北岸电台' } })
-    expect(bubble().dataset.show).toBe('true')
-    expect(bubble().dataset.mode).toBe('speak')
-    expect(bubble().textContent).toContain('潮汐表。')
-  })
-
-  it('挂载时就带着的 starting 不算「出现」;匹配那条没有 say → 不说', () => {
-    const { rerender } = mount({ brief: { ...RADIO, starting: '慢车 - 林间录音' } })
-    expect(bubble().dataset.show).toBeUndefined()
-    rerender({
-      brief: { ...RADIO, starting: '十二楼的风' },
-      programme: { entries: [...PROGRAMME.entries, { encryptedId: 'c', title: '十二楼的风' }] },
-    })
     expect(bubble().dataset.show).toBeUndefined()
   })
 
@@ -297,17 +285,45 @@ describe('黑豆 · 宠物宿主(P2)', () => {
     })
   })
 
-  it('后端发来一句 → 栖位演它;之后本地那一路再来一句 → 演后到的那句', async () => {
-    const { rerender } = mount()
+  it('后端发来一句开口 → 栖位演它、灯亮;hushed 到了 → 字一次出齐、灯灭、1.5s 后气泡收', async () => {
+    mount()
     await flush()
+    const lamp = () => screen.getByTestId('music-onair')
+    expect(lamp().dataset.lit).toBeUndefined()
+    const text = '后端这一句话说得比较长,字还没打完声音就已经说完了。'
     act(() => {
-      emit({ ref: 'pet:current', event: 'utterance', payload: { id: 'u1', petId: 'heidou', mode: 'speak', text: '后端这句。', at: 1, duck: true } })
+      emit({ ref: 'pet:current', event: 'utterance', payload: { id: 'u1', petId: 'heidou', mode: 'speak', text, at: 1, duck: true } })
     })
     expect(bubble().dataset.show).toBe('true')
-    expect(bubble().textContent).toContain('后端这句。')
-    act(() => void vi.advanceTimersByTime(1_000))
-    rerender({ brief: { ...RADIO, starting: '潮汐表 - 北岸电台' } })
-    expect(bubble().textContent).toContain('潮汐表。')
+    expect(lamp().dataset.lit).toBe('true')
+    const typed = () => screen.getByTestId('pet-bubble-text').textContent ?? ''
+    act(() => void vi.advanceTimersByTime(600))
+    expect(typed()).not.toBe(text)
+    expect(bubble().dataset.done).toBeUndefined()
+    // 别的一句的回执不灭这盏灯。
+    act(() => {
+      emit({ ref: 'pet:current', event: 'hushed', payload: { utteranceId: 'someone-else', at: 2 } })
+    })
+    expect(lamp().dataset.lit).toBe('true')
+    act(() => {
+      emit({ ref: 'pet:current', event: 'hushed', payload: { utteranceId: 'u1', at: 3 } })
+    })
+    expect(lamp().dataset.lit).toBeUndefined()
+    expect(typed()).toBe(text)
+    expect(bubble().dataset.done).toBe('true')
+    act(() => void vi.advanceTimersByTime(1_400))
+    expect(bubble().dataset.show).toBe('true')
+    act(() => void vi.advanceTimersByTime(200))
+    expect(bubble().dataset.show).toBeUndefined()
+  })
+
+  it('嘀咕不点灯', async () => {
+    mount()
+    await flush()
+    act(() => {
+      emit({ ref: 'pet:current', event: 'utterance', payload: { id: 'm1', petId: 'heidou', mode: 'mutter', text: '嗯。', at: 1, duck: false } })
+    })
+    expect(screen.getByTestId('music-onair').dataset.lit).toBeUndefined()
   })
 
   it('戳黑豆 → 发一次 pet:current 的 poke;后端失败不改屏上任何东西', async () => {

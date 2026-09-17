@@ -18,8 +18,8 @@
  *
  * 这个壳真的交出来的:auth(凭证解密的唯一口)、sandbox(下载目录)、
  * storePath(打包资源目录)、terminal(T0:PTY 输出的出网口)、settings
- * (深浅色 + **代理重套**,2026-09-12)与 localTrust(`desktop-embedded`,B3);
- * 其余十项是 `null`。
+ * (深浅色 + **代理重套**,2026-09-12)、localTrust(`desktop-embedded`,B3)与
+ * speechOutput(宠物 P3:主进程起子进程出声);其余十项是 `null`。
  */
 import { app, nativeTheme, net, safeStorage, session } from 'electron'
 import type { OnethingTokenCryptoAdapter } from '@onething/runtime/auth'
@@ -33,6 +33,7 @@ import { createEventBusTerminalBroadcaster } from '@onething/backend/wiring/term
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
 import type { ProxySettings } from '@shared/ipc.js'
 import { ShellProxyPolicy } from './network-proxy.js'
+import { createShellSpeechOutput } from './speech-output.js'
 
 const log = getLogger('shell.host-ports')
 
@@ -185,5 +186,11 @@ export function createShellHostPorts(): OnethingHostPorts {
      * 面挂上来(B2 之前正是那样:面起来之前 `search.query` 直接抛)。
      */
     localTrust: { origin: 'desktop-embedded' },
+    /**
+     * 主进程出声(宠物 P3,`docs/design/pet-system-2026-09.md` §10.2)。这个壳的 `voice`
+     * 是 `null` —— 没有渲染进程在听 `MUSIC_DJ_SPEAK` 那条推送,电台口播从前合成成功也要空等
+     * 30 秒回执、一个字都不出声。出声不需要窗口:mpv / afplay 子进程就能放。
+     */
+    speechOutput: createShellSpeechOutput(),
   }
 }

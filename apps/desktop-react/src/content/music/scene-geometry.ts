@@ -47,6 +47,8 @@ export const SCENE_LAYOUT = {
   sleeve: { x: 36, y: 150, w: 150, h: 150 },
   plinth: { x: 92, y: 128, w: 488, h: 286 },
   brand: { x: 470, y: 396, w: 90, h: 10 },
+  /** ON AIR 灯(宠物 P3,§10.5):底座前沿、唱牌左边,样例那一格。 */
+  onAir: { x: 396, y: 390, w: 56, h: 16 },
   platter: { x: 124, y: 154, w: 252, h: 252 },
   record: { x: 132, y: 162, w: 236, h: 236 },
   armBase: { x: 406, y: 151, w: 48, h: 48 },

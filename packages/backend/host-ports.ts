@@ -98,6 +98,11 @@ import {
   resetScratchpadHost,
   type ScratchpadHostPorts,
 } from '@onething/runtime/scratchpad/service-bound'
+import {
+  configureSpeechOutputHost,
+  resetSpeechOutputHost,
+  type SpeechOutputPort,
+} from '@onething/runtime/voice/speech-output'
 import { configureMCPClientHost } from '@onething/runtime/mcp/manager'
 import {
   configureMCPClientIdentity,
@@ -185,6 +190,17 @@ export interface OnethingHostPorts {
    * `ONETHING_SERVER_FILES_SANDBOX=1` 照旧压得住这条声明(端口每次现读)。
    */
   localTrust: HostLocalTrustDeclaration | null
+  /**
+   * **在进程里出声**(第十七格,宠物 P3,`docs/design/pet-system-2026-09.md` §10.2)。
+   *
+   * 一段合成好的音频交给宿主放,放完 resolve。电台口播(以及接管它的宠物)先问这一格:
+   * 有就在这台进程里放;没有才退到 `voice` 那一格的渲染进程推送;两者都没有就**立刻**
+   * 算这句说完了(从前那条路会空等 30 秒回执)。
+   *
+   * React 壳注入(主进程起子进程放:mpv / afplay);独立 server 与 CLI 守护进程写
+   * `null` —— 它们跑在没有扬声器可言的地方,也没有人在那台机器前听。
+   */
+  speechOutput: SpeechOutputPort | null
 }
 
 /**
@@ -195,7 +211,7 @@ export interface OnethingHostPorts {
  * 等于把宿主早先注入的东西擦掉(桌面的 sandbox 就是在装配前由 ready 钩子注入的),
  * 所以"没有"必须是**不调**,不是"调一个空的"。
  *
- * **返回一个还原函数,十六格全部可还原**(C0 R6,方案
+ * **返回一个还原函数,十七格全部可还原**(P3 加了 `speechOutput`)(C0 R6,方案
  * `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.3)。
  *
  * B3 那版只还原 `localTrust` 一格,因为当时只有它带 restore;其余十五格是没有
@@ -303,6 +319,10 @@ export function applyHostPorts(host: OnethingHostPorts): () => void | Promise<vo
       configureMCPClientIdentity(host.mcp.identity)
       restores.push(resetMCPClientIdentity)
     }
+  }
+  if (host.speechOutput) {
+    configureSpeechOutputHost(host.speechOutput)
+    restores.push(resetSpeechOutputHost)
   }
   // `null` 与其它端口同义:不调 —— 独立 server 要自己按绑定地址声明,替它调一次
   // `configureHostLocalTrust(null)` 会把它待会儿的声明之前的状态搅乱(那个函数的

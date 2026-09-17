@@ -100,6 +100,7 @@ async function assemble(tier: 'full' | 'headless'): Promise<Backend> {
       evals: null,
       mcp: null,
       localTrust: null,
+      speechOutput: null,
     },
     toolRegistry: tier,
     sender: new NoopSender() as never,

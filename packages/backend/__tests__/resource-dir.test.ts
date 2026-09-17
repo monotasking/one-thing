@@ -99,6 +99,7 @@ describe('目录资源在真装配里(K3-c)', () => {
         mcp: null,
         // 见文件头:没有它,内核那只读守卫会拒掉②与④。
         localTrust: { origin: 'desktop-embedded' },
+        speechOutput: null,
       },
       toolRegistry: 'headless',
       sender: new NoopSender() as never,

@@ -188,6 +188,24 @@ export class PetStageController {
     }
   }
 
+  /**
+   * 这一句开口的**声音**说完了(宠物 P3,§10.5 最后一条)。字还在一个一个出就不等了:
+   * 剩下的字一次出齐、声波停、停留 `SPEAK_HOLD_MS` 后收起 —— 与字自己打完之后那一段同一个形。
+   * 字早就出完了(声音比字慢)→ 什么都不做,停留那只计时器照走。当前气泡不是开口
+   * (被一句嘀咕顶掉了)→ 也不做:那一句声音早已不在屏上。
+   */
+  hush(): void {
+    const bubble = this.snap.bubble
+    if (!bubble || bubble.mode !== 'speak' || bubble.done) return
+    this.clearTimer('type')
+    this.patch({ bubble: { ...bubble, typed: bubble.glyphs.length, done: true } })
+    this.setSpeaking(false)
+    if (bubble.choices?.length || bubble.sticky) return
+    this.clearTimer('hold')
+    const id = bubble.id
+    this.holdTimer = setTimeout(() => this.hideIf(id), SPEAK_HOLD_MS)
+  }
+
   /** 选了一个选项(`null` = Esc,等于不选)。只在选项已经亮出来时成立。 */
   choose(value: string | null): boolean {
     const bubble = this.snap.bubble

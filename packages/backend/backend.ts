@@ -910,6 +910,12 @@ export class OnethingBackend implements BackendHandle {
     if (pets) {
       this.own(() => pets.dispose(), 'pets')
       await pets.start()
+      /*
+       * 宠物 P3(§10.2「宠物接管」)—— 电台的话交给宠物说。音乐域只认 `HostVoice` 接口,
+       * 这一行是两边唯一见面的地方。登记在 `pets` 之后,关机时先解绑(电台退回缺省实现)
+       * 再停宠物子系统。
+       */
+      this.own(music.bindHostVoice(kit => pets.createHostVoice(kit)), 'petsHostVoice')
     }
     this.own(mountBuiltinResources(resourceKernel, { tier: toolRegistryTier, pets }), 'builtinResources')
     /*

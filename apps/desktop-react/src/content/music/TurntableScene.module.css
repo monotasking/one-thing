@@ -172,6 +172,32 @@
   color: var(--music-scene-brand-ink);
 }
 
+/* ON AIR 灯(宠物 P3,§10.5):嵌在底座里的一块灯。灭着是暗红的玻璃,亮起来发光。 */
+.onAir {
+  display: grid;
+  place-items: center;
+  border-radius: var(--music-scene-onair-r);
+  font-family: var(--font-mono);
+  font-size: var(--music-scene-onair-fs);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: var(--music-scene-onair-track);
+  white-space: nowrap;
+  color: var(--music-scene-onair-ink);
+  background: var(--music-scene-onair-glass);
+  box-shadow: var(--music-scene-onair-inset);
+  transition:
+    color var(--dur-music-onair) var(--ease),
+    background-color var(--dur-music-onair) var(--ease),
+    box-shadow var(--dur-music-onair) var(--ease);
+}
+
+.onAir[data-lit='true'] {
+  color: var(--music-scene-onair-ink-lit);
+  background: var(--music-scene-onair-lit);
+  box-shadow: var(--music-scene-onair-glow);
+}
+
 /* ── 转盘与唱片 ───────────────────────────────────────────────────────── */
 
 .platter {

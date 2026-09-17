@@ -85,6 +85,7 @@ async function probe(): Promise<void> {
       evals: null,
       mcp: null,
       localTrust: { origin: 'desktop-embedded' },
+      speechOutput: null,
     },
     toolRegistry: 'full',
     promptVersion: true,
@@ -155,6 +156,7 @@ async function probeMcpEarlyExit(): Promise<void> {
       evals: null,
       mcp: null,
       localTrust: { origin: 'desktop-embedded' },
+      speechOutput: null,
     },
     // 这条场景只走 MCP 那一格,其余按最轻的档 —— 它量的不是启动预算。
     toolRegistry: 'headless',

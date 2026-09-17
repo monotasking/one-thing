@@ -13,9 +13,6 @@
  *
  * 逐字保留:三个函数的函数体、注释与文案与迁移前一字不差。
  */
-import { readFileSync } from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import type {
   MusicCommand,
   MusicCommandRequest,
@@ -26,6 +23,7 @@ import type { MusicServiceScope } from './service.js'
 import type { RadioScope } from './radio.js'
 
 import { MusicWorkOwner } from './lifetime.js'
+import { readProviderVolume, volumeArgs } from './player-volume.js'
 import { getCurrentBackend } from '../../current.js'
 import { listMusicProviderDescriptors } from '@onething/runtime/music'
 import { getSettings } from '../../stores/settings.js'
@@ -41,22 +39,8 @@ export function createMusicOperationsScope(options: { service: MusicServiceScope
  * format — read defensively, absence just means the knob shows nothing.
  */
 function readPlayerVolume(): number | undefined {
-  const provider = getActiveMusicProvider()
-  if (provider.reliability.volumeSource !== 'prefs-file') return undefined
-  const prefsPath = provider.reliability.probePaths?.volumePrefs
-  if (!prefsPath) return undefined
-  try {
-    const expanded = prefsPath.startsWith('~')
-      ? path.join(os.homedir(), prefsPath.slice(1))
-      : prefsPath
-    const raw = readFileSync(expanded, 'utf8')
-    const volume = (JSON.parse(raw) as { volume?: unknown }).volume
-    return typeof volume === 'number' && Number.isFinite(volume)
-      ? Math.max(0, Math.min(100, Math.round(volume)))
-      : undefined
-  } catch {
-    return undefined
-  }
+  // 读法搬去了 `player-volume.ts`(宠物 P3:电台口播压低音乐也要读它,同一把尺子)。
+  return readProviderVolume(getActiveMusicProvider())
 }
 
 /** 播放条要的那份电台简报。组合逻辑逐字沿用迁移前的 `getRadio` handler。 */
@@ -97,8 +81,8 @@ function argsWithValue(request: MusicCommandRequest): string[] | { error: string
   if (request.command === 'seek') {
     return ['seek', String(Math.max(0, Math.round(value)))]
   }
-  // volume: ncm-cli takes absolute 0-100.
-  return ['volume', String(Math.max(0, Math.min(100, Math.round(value))))]
+  // volume: ncm-cli takes absolute 0-100 (argv shared with the patter duck).
+  return volumeArgs(value)
 }
 
 async function runMusicCommand(

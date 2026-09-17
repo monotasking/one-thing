@@ -1,13 +1,17 @@
 /**
- * DJ patter voicing: synthesize the host's line and play it in the renderer,
- * on a track separate from mpv, resolving only once the renderer says it
- * finished. The start flow speaks into the pre-song silence and, when the
+ * DJ patter voicing: synthesize the host's line and play it on a track separate
+ * from mpv, resolving only once it finished. Where it sounds (宠物 P3, §10.2):
+ * in this process through the host's `speechOutput` port when there is one;
+ * otherwise pushed to a renderer when the host has voice; otherwise nowhere —
+ * resolved at once instead of waiting 30s for an ack nobody will send. The start flow speaks into the pre-song silence and, when the
  * song loads faster than the host talks, simply lets the two overlap — the
  * round-trip ack here is what tells the start flow the voice is done (and
  * what unblocks a 停止电台 pressed mid-sentence).
  */
 import { randomUUID } from 'node:crypto'
-import { broadcastVoiceHostMessage } from '@onething/runtime/voice/host-ports.wiring'
+import { broadcastVoiceHostMessage, hasVoiceHost } from '@onething/runtime/voice/host-ports.wiring'
+import { getSpeechOutput } from '@onething/runtime/voice/speech-output'
+import type { PatterSpeech, PatterVoiceStyle } from './host-voice.js'
 import { synthesizeSpeech } from '../voice/providers.js'
 import { getSettings } from '../../stores/settings.js'
 import { IPC_CHANNELS, type MusicDjSpeak } from '@shared/ipc.js'
@@ -59,10 +63,7 @@ function resolveDjSpeakDone(id: string): void {
   pending.get(id)?.()
 }
 
-interface DjSpeech {
-  audioBase64: string
-  mimeType: string
-}
+type DjSpeech = PatterSpeech
 
 /**
  * Synthesized patter, keyed by text: a prefetch (fired while the previous song
@@ -75,20 +76,27 @@ const patterCache = new Map<string, DjSpeech>()
 const patterInflight = new Map<string, Promise<DjSpeech | null>>()
 const PATTER_CACHE_MAX = 10
 
+/** The same line in two voices is two recordings: the style key joins the text. */
+function patterCacheKey(text: string, style: PatterVoiceStyle | undefined): string {
+  return style ? `${style.key}\u0000${text}` : text
+}
+
 /**
  * Cache-aware synthesis: joins an in-flight request for the same text instead
  * of duplicating it. Resolves null (never rejects) on failure/timeout — the
  * speak path treats that as "skip the patter", and a failed attempt is not
  * cached, so the next caller retries.
  */
-function synthesizeDjPatterCached(text: string, title: string): Promise<DjSpeech | null> {
-  const cached = patterCache.get(text)
+function synthesizeDjPatterCached(text: string, title: string, style?: PatterVoiceStyle): Promise<DjSpeech | null> {
+  const key = patterCacheKey(text, style)
+  const cached = patterCache.get(key)
   if (cached) return Promise.resolve(cached)
-  let inflight = patterInflight.get(text)
+  let inflight = patterInflight.get(key)
   if (!inflight) {
     inflight = (async () => {
-      const settings = getSettings().voice
-      if (!settings) return null
+      const base = getSettings().voice
+      if (!base) return null
+      const settings = style ? style.apply(base) : base
       const synthStart = Date.now()
       try {
         const speech = await withTimeout(
@@ -107,24 +115,24 @@ function synthesizeDjPatterCached(text: string, title: string): Promise<DjSpeech
           const oldest = patterCache.keys().next().value
           if (oldest !== undefined) patterCache.delete(oldest)
         }
-        patterCache.set(text, speech)
+        patterCache.set(key, speech)
         return speech
       } catch (error) {
         log.warn('dj patter synthesis failed, skipping', { title }, error)
         return null
       } finally {
-        patterInflight.delete(text)
+        patterInflight.delete(key)
       }
     })()
-    patterInflight.set(text, inflight)
+    patterInflight.set(key, inflight)
   }
   return inflight
 }
 
 /** Fire-and-forget synthesis warm-up; speakDjPatter later joins the result. */
-function prefetchDjPatter(text: string, title: string): void {
+function prefetchDjPatter(text: string, title: string, style?: PatterVoiceStyle): void {
   owner.assertActive()
-  void owner.track(synthesizeDjPatterCached(text, title))
+  void owner.track(synthesizeDjPatterCached(text, title, style))
 }
 
 /** Test/dispose seam: forget cached and in-flight synthesis. */
@@ -134,14 +142,40 @@ function resetDjPatterCache(): void {
 }
 
 /**
- * Synthesize `text` and play it in the renderer, resolving when playback ends.
- * Resolves (never rejects) on synth failure or timeout too — the caller's job
- * is to resume the music no matter what, so a swallowed error here beats a
- * radio stuck on pause.
+ * Play one synthesized line and resolve when it has ended — played out,
+ * aborted, or failed. Never rejects: the caller resumes the music no matter
+ * what, so a swallowed error here beats a radio stuck on pause.
+ *
+ * Three honest routes, first match wins:
+ *  1. `speechOutput` (the host plays audio in this process — the React shell);
+ *  2. a voice host (a renderer that plays the push and acks it, 30s ceiling);
+ *  3. neither — nothing can sound here, so the line is over right now. The old
+ *     code broadcast into the void and waited the full 30s for an ack.
  */
-async function speakDjPatter(text: string, title: string): Promise<void> {
-  const speech = await synthesizeDjPatterCached(text, title)
-  if (owner.signal.aborted || !speech) return
+async function playPatter(
+  speech: DjSpeech,
+  options: { text: string; title: string; signal?: AbortSignal },
+): Promise<void> {
+  const { text, title, signal } = options
+  if (owner.signal.aborted || signal?.aborted) return
+  const stop = signal ? AbortSignal.any([signal, owner.signal]) : owner.signal
+  const playStart = Date.now()
+
+  const output = getSpeechOutput()
+  if (output) {
+    try {
+      await output.play({ base64: speech.audioBase64, mimeType: speech.mimeType }, stop)
+    } catch (error) {
+      log.warn('dj patter playback failed', { title }, error)
+    }
+    log.debug('dj patter played in process', { title, ms: Date.now() - playStart, aborted: stop.aborted })
+    return
+  }
+
+  if (!hasVoiceHost()) {
+    log.debug('dj patter has nowhere to sound; skipped', { title })
+    return
+  }
 
   const id = randomUUID()
   const payload: MusicDjSpeak = {
@@ -151,8 +185,6 @@ async function speakDjPatter(text: string, title: string): Promise<void> {
     text,
     title,
   }
-
-  const playStart = Date.now()
   await new Promise<void>(resolve => {
     let settled = false
     const finish = () => {
@@ -160,13 +192,22 @@ async function speakDjPatter(text: string, title: string): Promise<void> {
       settled = true
       pending.delete(id)
       clearTimeout(timer)
+      stop.removeEventListener('abort', finish)
       resolve()
     }
     const timer = setTimeout(finish, DJ_SPEAK_MAX_MS)
     pending.set(id, finish)
+    stop.addEventListener('abort', finish, { once: true })
     broadcastVoiceHostMessage({ channel: IPC_CHANNELS.MUSIC_DJ_SPEAK, payload })
   })
   log.debug('dj patter played in renderer', { title, ms: Date.now() - playStart })
+}
+
+/** Synthesize `text` (cache-aware) and play it; see `playPatter`. */
+async function speakDjPatter(text: string, title: string, signal?: AbortSignal): Promise<void> {
+  const speech = await synthesizeDjPatterCached(text, title)
+  if (owner.signal.aborted || signal?.aborted || !speech) return
+  await playPatter(speech, { text, title, ...(signal ? { signal } : {}) })
 }
 
   function quiesce(): void {
@@ -182,6 +223,8 @@ async function speakDjPatter(text: string, title: string): Promise<void> {
   return { quiesce, drain,
     resolveDjSpeakDone: owner.wrap(resolveDjSpeakDone),
     prefetchDjPatter: owner.wrap(prefetchDjPatter),
+    synthesizePatter: owner.wrap(synthesizeDjPatterCached),
+    playPatter: owner.wrap(playPatter),
     resetDjPatterCache: owner.wrap(resetDjPatterCache),
     speakDjPatter: owner.wrap(speakDjPatter),
   }

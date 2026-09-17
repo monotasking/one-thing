@@ -18,6 +18,10 @@
  * ② **记忆**:每条时刻、每条话语、每次丢弃都成一行账,内存里留最近 50 行;
  *    冷却与「还在不在说」从这串行**折**出来(`foldPetMemory`),不另存状态,所以重启接得上。
  * ③ **决定说什么**:交给作曲端口(`composer.ts`),宿主只管问不问、问了之后算不算数。
+ * ④ **认领节目的话**(P3,§10.3):电台口播是节目的一部分,不能被预算丢掉 —— `claim`
+ *    无视冷却;正在说别的就让调用方**等**(不丢、不记账),等够了再带 `preempt` 来压过去。
+ *    认领下来的一句从开口到 `hush` 之前都算「正在说」(`voicing`),不按估计时长 ——
+ *    声音放多久,话就说多久。
  *
  * ── 为什么「估计时长」复用音乐那一只 ─────────────────────────────────────
  * `music/lyrics.ts` 的 `estimateSpeechSeconds` 是电台口播今天判「这句话要说多久」的同一把
@@ -73,6 +77,20 @@ export interface PetHostOutcome {
   readonly dropped?: UtteranceDropReason
 }
 
+/**
+ * `claim` 的三种回答(§10.3):
+ *   · `claimed` —— 这一句归宿主了:账本行(话语,压过去时多一行 `preempted`)与那句话语;
+ *   · `wait`    —— 正在说别的。`retryInMs` = 估计还要多久;`null` = 那一句在出声,要等它 `hush`;
+ *   · `refused` —— 没什么可说(空白文本)。
+ */
+export type PetClaimOutcome =
+  | { readonly kind: 'claimed'; readonly lines: readonly PetLedgerLine[]; readonly utterance: Utterance; readonly preempted: boolean }
+  | { readonly kind: 'wait'; readonly retryInMs: number | null }
+  | { readonly kind: 'refused' }
+
+/** 作曲在飞时让认领方隔多久再问一次。 */
+const COMPOSING_RETRY_MS = 250
+
 /** `pet:current` 读法的形(§9.3)。 */
 export interface PetCurrentView {
   readonly pet: PetSummary
@@ -93,6 +111,10 @@ export class PetHost {
   private utterances: Utterance[] = []
   private lastSpokeAt: number | undefined
   private speakingUntil: number | undefined
+  /** 认领下来、正在出声的那一句(§10.4:认领后到 `hushed` 之前都算在说)。 */
+  private voicing: string | undefined
+  /** 最后一句开口的 id:`hush` 只有对它才把 `speakingUntil` 改成实际结束时刻。 */
+  private lastSpeakId: string | undefined
   /** 作曲在飞。它与「正在说」同一档:一句还没想好的话也占着那一个说话的位置。 */
   private composing = false
   private seq = 0
@@ -176,6 +198,55 @@ export class PetHost {
   }
 
   /**
+   * **认领**一句节目的话(§10.3 那张表)。同步:要等的时候不在这里等,答 `wait`,由装配层
+   * 等到上一句 `hush` 或估计时长到了再来问;等满 10 秒带 `preempt: true` 来,直接开口并记
+   * 一行 `preempted`。「换宠物中 / 已 dispose → 不认领」是装配层答的(宿主自己没有那两种状态)。
+   *
+   * `source` 形同资源事件的出处(`{ scheme, event }`),落进话语的 `about`。
+   */
+  claim(source: { scheme: string; event: string }, text: string, options: { preempt?: boolean } = {}): PetClaimOutcome {
+    const trimmed = text.trim()
+    if (!trimmed) return { kind: 'refused' }
+    const now = this.clock.now()
+    if (this.isSpeaking(now) && !options.preempt) {
+      if (this.voicing !== undefined) return { kind: 'wait', retryInMs: null }
+      if (this.composing) return { kind: 'wait', retryInMs: COMPOSING_RETRY_MS }
+      return { kind: 'wait', retryInMs: Math.max(0, (this.speakingUntil ?? now) - now) }
+    }
+    const over = this.isSpeaking(now) ? this.voicing ?? this.lastSpeakId : undefined
+    const preempted = this.isSpeaking(now)
+    const produced: PetLedgerLine[] = []
+    const outcome = this.speak(produced, trimmed, now, { scheme: source.scheme, event: source.event })
+    const utterance = outcome.utterance!
+    this.voicing = utterance.id
+    if (preempted) {
+      produced.push(this.record({
+        kind: 'preempted',
+        petId: this.manifest.id,
+        at: now,
+        utteranceId: utterance.id,
+        ...(over !== undefined ? { over } : {}),
+      }))
+    }
+    return { kind: 'claimed', lines: produced, utterance, preempted }
+  }
+
+  /**
+   * 一句开口**真的说完了**(§10.4 `hushed`)。认领的那句:清 `voicing`;若它是最后一句开口,
+   * `speakingUntil` 改成此刻(实际结束,不再是估计)。返回要写盘的账本行。
+   *
+   * 不是这只宠物的话(换宠物之后上一只的回执)→ 不改状态、不记账,返回空。
+   */
+  hush(utteranceId: string): readonly PetLedgerLine[] {
+    const known = this.voicing === utteranceId || this.utterances.some(u => u.id === utteranceId)
+    if (!known) return []
+    const now = this.clock.now()
+    if (this.voicing === utteranceId) this.voicing = undefined
+    if (this.lastSpeakId === utteranceId) this.speakingUntil = now
+    return [this.record({ kind: 'hushed', petId: this.manifest.id, at: now, utteranceId })]
+  }
+
+  /**
    * 换一只宠物(§9.2 最后一行):换自述、清「正在说」、记忆换成那一只自己的账本尾部。
    * 账本按宠物分目录,旧那一只的账本不动。
    */
@@ -183,6 +254,7 @@ export class PetHost {
     this.manifest = pet
     this.seed(lines)
     this.speakingUntil = undefined
+    this.voicing = undefined
   }
 
   private seed(lines: readonly PetLedgerLine[]): void {
@@ -191,10 +263,14 @@ export class PetHost {
     this.utterances = [...memory.utterances]
     this.lastSpokeAt = memory.lastSpokeAt
     this.speakingUntil = memory.speakingUntil
+    this.lastSpeakId = [...memory.utterances].reverse().find(u => u.mode === 'speak')?.id
+    this.voicing = undefined
   }
 
   private isSpeaking(now: number): boolean {
-    return this.composing || (this.speakingUntil !== undefined && now < this.speakingUntil)
+    return this.composing
+      || this.voicing !== undefined
+      || (this.speakingUntil !== undefined && now < this.speakingUntil)
   }
 
   /** 预算挡不挡。`high` 无视冷却,但不无视「同一时刻一句」。 */
@@ -212,6 +288,7 @@ export class PetHost {
   ): PetHostOutcome {
     const utterance = this.utter('speak', text, now, about)
     this.lastSpokeAt = now
+    this.lastSpeakId = utterance.id
     this.speakingUntil = now + estimateSpeechMs(text)
     produced.push(this.record({ kind: 'utterance', petId: this.manifest.id, at: now, utterance }))
     return { lines: produced, utterance }

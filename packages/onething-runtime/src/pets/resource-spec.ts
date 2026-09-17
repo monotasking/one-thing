@@ -16,8 +16,8 @@
  *
  * ── 事件与时刻 ────────────────────────────────────────────────────────────
  * `poked` / `stroked` 带 `moment: { weight: 'low' }`,所以它们本身也是时刻 —— 走与别的
- * 应用的事实完全相同的那条路进宿主(§9.4),落进账本,不开口。`utterance` **不带**
- * `moment`:宠物不对自己说的话起反应。
+ * 应用的事实完全相同的那条路进宿主(§9.4),落进账本,不开口。`utterance` 与 `hushed`(P3,§10.4:
+ * 一句开口真的说完了)**不带** `moment`:宠物不对自己说的话起反应。
  */
 
 import type { JsonSchema, ResourceSpec } from '@onething/core/resource'
@@ -84,7 +84,7 @@ export const petResourceSpec: ResourceSpec = {
         type: 'object',
         properties: {
           pet: SUMMARY_SCHEMA,
-          speaking: { type: 'boolean' },
+          speaking: { type: 'boolean', description: 'A spoken line is still sounding: from when it was claimed until its hushed event (text-only lines: their estimated length).' },
           speakingUntil: { type: 'number', description: 'Present only while speaking. Epoch milliseconds.' },
           utterances: { type: 'array', items: UTTERANCE_SCHEMA },
         },
@@ -134,6 +134,17 @@ export const petResourceSpec: ResourceSpec = {
     utterance: {
       title: 'The pet said a line',
       payload: UTTERANCE_SCHEMA,
+    },
+    hushed: {
+      title: 'A spoken line has really ended (played out, failed or was stopped)',
+      payload: {
+        type: 'object',
+        properties: {
+          utteranceId: { type: 'string', description: 'The id of the utterance that ended.' },
+          at: { type: 'number', description: 'Epoch milliseconds.' },
+        },
+        required: ['utteranceId', 'at'],
+      },
     },
     poked: {
       title: 'The user poked the pet',

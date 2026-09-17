@@ -96,6 +96,7 @@ describe('sessions 域的写面 = 资源投影(K2c-1)', () => {
         evals: null,
         mcp: null,
         localTrust: null,
+        speechOutput: null,
       },
       toolRegistry: 'headless',
       sender: new NoopSender() as never,

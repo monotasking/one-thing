@@ -17,8 +17,15 @@ import { ResourcePortSlot, type ResourceEventFact, type ResourcePort } from './r
  * 产生(`latest` 那一格),读数只负责对账那 20 条。每条事件造一个新对象 ——
  * `PetStage` 按引用认人,新对象身份 = 新话语。
  *
- * `receivedAt` 是**壳这边的钟**:宿主拿它和本地那一路开口(P1 的 `startingSay`)比谁更新,
- * 两个时间都出自同一台机器的同一个钟,浏览器壳连远端 server 时也不怕两台机器的钟差。
+ * `receivedAt` 是**壳这边的钟**(P2 时宿主拿它和本地那一路开口比谁更新;P3 删了本地那一路,
+ * 它留着给排障与测试读)。
+ *
+ * ── ON AIR 与「声音说完了」(P3,§10.4 / §10.5)────────────────────────────
+ * `hushed` 事件说「这一句真的说完了」。两格从它折出来,都不存进读数:
+ *   · `onAirId`   —— 最近一句**开口**的 id,到它的 `hushed` 为止。嘀咕不点灯、也不灭灯;
+ *   · `hushedId`  —— 最近一次说完的那一句的 id。栖位拿「最新一句 === 它」判气泡该不该收。
+ * `hushed` 丢了(断线重连那一截)灯不能一直亮着:`current` 读数回来时若**已经包含**那句
+ * 开口却答 `speaking: false`,那一句必然已经说完 —— 灯灭(读数早于那句开口就不作数)。
  *
  * ── 宿主没有宠物子系统时 ─────────────────────────────────────────────────
  * `pet:` 没登记(CLI 守护进程那种宿主)= `current` 读失败,`latest` 永远是 `null`,手势发出去
@@ -31,7 +38,8 @@ import { ResourcePortSlot, type ResourceEventFact, type ResourcePort } from './r
  *  · 挂载    —— import 只建一格空 query、一格空 `latest`,零往返、零订阅;
  *  · 首载    —— `openPetSource()`:等传输面 ready → 订 `pet:` 前缀 → `current` ensure 一次。
  *               先订后拉,拉的那一刻说的话不漏;
- *  · 事件到达 —— `utterance`:造一份新的 `latest`、`current` 标脏(后台对账不清屏);
+ *  · 事件到达 —— `utterance`:造一份新的 `latest`(开口还点灯)、`current` 标脏(后台对账不清屏);
+ *               `hushed`:记下说完的那一句、对得上就灭灯;
  *               其余(`poked` / `stroked`)不改屏上任何东西,当没看见;
  *  · 读失败  —— query 留着 error,没人读它的 error:栖位零提示;
  *  · 卸载    —— refcount 归零才退订,`latest` 留着(重新挂载的栖位不会重播它:舞台只播
@@ -63,6 +71,8 @@ export interface PetCurrentView {
 
 /** 一句刚到的话:给舞台的那个对象,和它在壳这边到达的时刻。 */
 export interface PetUtteranceArrival {
+  /** 后端话语的 id(`hushed` 按它对上)。 */
+  id: string
   utterance: PetUtterance
   receivedAt: number
 }
@@ -113,26 +123,33 @@ function currentPetId(): string | undefined {
   return petCurrentQuery.get().data?.pet.id
 }
 
-/* ── 最新一句 ─────────────────────────────────────────────────────────────── */
+/* ── 最新一句、灯、说完 ─────────────────────────────────────────────────── */
 
-let latest: PetUtteranceArrival | null = null
-const latestListeners = new Set<() => void>()
+interface PetSpeechState {
+  latest: PetUtteranceArrival | null
+  onAirId: string | null
+  hushedId: string | null
+}
 
-function subscribeLatest(listener: () => void): () => void {
-  latestListeners.add(listener)
+const EMPTY_SPEECH: PetSpeechState = { latest: null, onAirId: null, hushedId: null }
+let speech: PetSpeechState = EMPTY_SPEECH
+const speechListeners = new Set<() => void>()
+
+function subscribeSpeech(listener: () => void): () => void {
+  speechListeners.add(listener)
   return () => {
-    latestListeners.delete(listener)
+    speechListeners.delete(listener)
   }
 }
 
-function getLatest(): PetUtteranceArrival | null {
-  return latest
+function setSpeech(next: Partial<PetSpeechState>): void {
+  speech = { ...speech, ...next }
+  for (const listener of [...speechListeners]) listener()
 }
 
-function setLatest(next: PetUtteranceArrival | null): void {
-  latest = next
-  for (const listener of [...latestListeners]) listener()
-}
+const getLatest = (): PetUtteranceArrival | null => speech.latest
+const getOnAir = (): boolean => speech.onAirId !== null
+const getHushedId = (): string | null => speech.hushedId
 
 function asUtterance(payload: unknown): PetUtteranceView | null {
   if (!payload || typeof payload !== 'object') return null
@@ -143,11 +160,30 @@ function asUtterance(payload: unknown): PetUtteranceView | null {
 }
 
 function onPetFact(fact: ResourceEventFact): void {
-  if (fact.event !== 'utterance') return
-  const view = asUtterance(fact.payload)
-  if (!view) return
-  setLatest({ utterance: { mode: view.mode, text: view.text }, receivedAt: Date.now() })
-  petCurrentQuery.invalidate()
+  if (fact.event === 'utterance') {
+    const view = asUtterance(fact.payload)
+    if (!view) return
+    setSpeech({
+      latest: { id: view.id, utterance: { mode: view.mode, text: view.text }, receivedAt: Date.now() },
+      ...(view.mode === 'speak' ? { onAirId: view.id } : {}),
+    })
+    petCurrentQuery.invalidate()
+    return
+  }
+  if (fact.event === 'hushed') {
+    const payload = fact.payload as { utteranceId?: unknown } | null
+    const id = typeof payload?.utteranceId === 'string' ? payload.utteranceId : null
+    if (!id) return
+    setSpeech({ hushedId: id, ...(speech.onAirId === id ? { onAirId: null } : {}) })
+  }
+}
+
+/** 读数回来:包含那句开口却已经不在说 → 那句的 `hushed` 丢了,灯灭(见文件头)。 */
+function reconcileOnAir(): void {
+  const onAirId = speech.onAirId
+  const data = petCurrentQuery.get().data
+  if (!onAirId || !data || data.speaking) return
+  if (data.utterances.some((utterance) => utterance.id === onAirId)) setSpeech({ onAirId: null })
 }
 
 /**
@@ -155,7 +191,17 @@ function onPetFact(fact: ResourceEventFact): void {
  * 每条事件一个新对象。
  */
 export function usePetUtterance(): PetUtteranceArrival | null {
-  return useSyncExternalStore(subscribeLatest, getLatest, getLatest)
+  return useSyncExternalStore(subscribeSpeech, getLatest, getLatest)
+}
+
+/** ON AIR:最近一句开口还没 `hushed`。 */
+export function usePetOnAir(): boolean {
+  return useSyncExternalStore(subscribeSpeech, getOnAir, getOnAir)
+}
+
+/** 最近一次说完的那一句的 id;没有过是 `null`。 */
+export function usePetHushedId(): string | null {
+  return useSyncExternalStore(subscribeSpeech, getHushedId, getHushedId)
 }
 
 /* ── 手势 ─────────────────────────────────────────────────────────────────── */
@@ -180,6 +226,7 @@ export const petOps = {
 
 let openCount = 0
 let unsubscribe: (() => void) | undefined
+let unsubscribeReconcile: (() => void) | undefined
 
 export async function openPetSource(): Promise<void> {
   openCount += 1
@@ -190,6 +237,8 @@ export async function openPetSource(): Promise<void> {
     if (openCount === 0) return
     unsubscribe?.()
     unsubscribe = port.onResourceEvent(PET_SCHEME_PREFIX, onPetFact)
+    unsubscribeReconcile?.()
+    unsubscribeReconcile = petCurrentQuery.subscribe(reconcileOnAir)
     await petCurrentQuery.ensure()
   } catch {
     // 连不上 / 没有 `pet:`:栖位照 P1 跑,零提示。
@@ -201,6 +250,8 @@ export function closePetSource(): void {
   if (openCount > 0) return
   unsubscribe?.()
   unsubscribe = undefined
+  unsubscribeReconcile?.()
+  unsubscribeReconcile = undefined
 }
 
 /** 回到出厂:退订 + 读数归零 + 最新一句清空。测试与 HMR 用。 */
@@ -208,8 +259,11 @@ export function resetPetSource(): void {
   openCount = 0
   unsubscribe?.()
   unsubscribe = undefined
+  unsubscribeReconcile?.()
+  unsubscribeReconcile = undefined
   petCurrentQuery.reset()
-  setLatest(null)
+  speech = EMPTY_SPEECH
+  for (const listener of [...speechListeners]) listener()
 }
 
 /** 栖位挂着的那一段就是这条线活着的那一段。唯一的挂载点。 */

@@ -917,6 +917,7 @@ async function createRealServerBackend(storePath: string, logging?: ConfigureLog
 			 * 是另一张表,那张表里 `localTrust` 是 `desktop-embedded`。
 			 */
 			localTrust: null,
+			speechOutput: null,
 		},
 		toolRegistry: serverToolRegistry,
 		sessionSkills: true,

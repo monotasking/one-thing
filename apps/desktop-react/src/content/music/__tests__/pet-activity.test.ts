@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { MusicRadioState, MusicRuntimeState } from '@shared/ipc/music'
 import type { MusicNowPlayingView, MusicProgrammeView } from '../../../data/music-source'
-import { MUSIC_DEFAULT_BPM, musicPetActivity, startingSay } from '../pet-activity'
+import { MUSIC_DEFAULT_BPM, musicPetActivity } from '../pet-activity'
 
 /**
  * §8.1 那张表逐行钉:每一行一条用例,并且每一条都给出「下一行本来会命中」的读数,
@@ -98,32 +98,5 @@ describe('§8.1 活动表', () => {
 
   it('7 · 什么都还没读到 → idle', () => {
     expect(musicPetActivity({})).toBe('idle')
-  })
-})
-
-describe('换歌时那一句开口', () => {
-  const entries: MusicProgrammeView = {
-    entries: [
-      { encryptedId: 'a', title: '慢车 - 林间录音', say: '第一条的话。' },
-      { encryptedId: 'b', title: '潮汐表 - 北岸电台', say: '  潮汐表那一句。 ' },
-      { encryptedId: 'c', title: '十二楼的风 - 苏河' },
-    ],
-  }
-
-  it('标题匹配那一条的 say(去掉首尾空白)', () => {
-    expect(startingSay('潮汐表 - 北岸电台', entries)).toBe('潮汐表那一句。')
-  })
-
-  it('找不到匹配 → 第一条的 say', () => {
-    expect(startingSay('不在单子上', entries)).toBe('第一条的话。')
-  })
-
-  it('匹配到了但那一条没有 say → 不说(不去借第一条的)', () => {
-    expect(startingSay('十二楼的风 - 苏河', entries)).toBeUndefined()
-  })
-
-  it('节目单空 / 没读到 → 不说', () => {
-    expect(startingSay('慢车 - 林间录音', { entries: [] })).toBeUndefined()
-    expect(startingSay('慢车 - 林间录音', undefined)).toBeUndefined()
   })
 })

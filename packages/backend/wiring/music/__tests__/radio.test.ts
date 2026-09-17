@@ -15,6 +15,10 @@ const mocks = vi.hoisted(() => ({
   searchRecords: [] as unknown[],
   /** Live settings snapshot; tests flip music.enabled through this. */
   settings: { music: {} } as { music: Record<string, unknown> },
+  /** `song lyric` 的 LRC 文本;缺席 = 没歌词(口播在静音里说)。 */
+  lyric: undefined as string | undefined,
+  /** 播放器此刻的音量读数(压低音乐那一段读它);`undefined` = 读不到。 */
+  volume: undefined as number | undefined,
 }))
 
 vi.mock('@onething/runtime/music/process-runner', () => ({
@@ -36,6 +40,9 @@ vi.mock('@onething/runtime/music/process-runner', () => ({
           stderr: '',
         }
       }
+      if (options.args[0] === 'song' && options.args[1] === 'lyric') {
+        return { code: 0, stdout: JSON.stringify({ code: 200, data: { lyric: mocks.lyric ?? '' } }), stderr: '' }
+      }
       if (options.args[0] === 'login') {
         // Real ncm-cli refuses with exit 0 + a success:false envelope.
         const body = mocks.loginOk
@@ -47,6 +54,12 @@ vi.mock('@onething/runtime/music/process-runner', () => ({
     },
     spawn: () => ({ done: Promise.resolve({ code: 0, stdout: '', stderr: '' }), kill: () => {} }),
   }),
+}))
+
+// 音量读数本来读 `~/.config/ncm-cli/user-prefs.json` —— 测试里换成脚本值,绝不碰真文件。
+vi.mock('../player-volume.js', async importOriginal => ({
+  ...(await importOriginal<typeof import('../player-volume.js')>()),
+  readProviderVolume: () => mocks.volume,
 }))
 
 vi.mock('@onething/runtime/voice/host-ports.wiring', () => ({
@@ -76,7 +89,8 @@ vi.mock('../service.js', async () => {
 // music/__tests__/ 下,radio.ts 的 '@onething/runtime/storage/index' 对本文件是 '@onething/runtime/storage/index'。
 // 曾因少写一层目录,paths mock 静默失效、getOnethingStorePath 走真实实现,7 个夹具把
 // ~/.onething/music/ 的真实电台状态反复清空(2026-07-17 事故),而测试自读自写全绿。
-vi.mock('../dj-voice.js', () => ({ speakDjPatter: vi.fn().mockResolvedValue(undefined), prefetchDjPatter: vi.fn() }))
+/** 主持人声音(宠物 P3 起电台只认 `hostVoice`):假的,从不合成、从不出声。 */
+const hostVoice = { prefetch: vi.fn(), speak: vi.fn().mockResolvedValue(undefined) }
 vi.mock('@onething/runtime/agents/store-bound.wiring', () => ({
   agentExists: () => true,
   createAgent: vi.fn(),
@@ -100,7 +114,7 @@ async function loadRadio() {
   activeRadio ??= radio.createRadioScope({
     storePath: mocks.dir,
     service: { ...await import('../service.js'), runner: (await import('@onething/runtime/music/process-runner')).createElectronMusicProcessRunner() },
-    djVoice: await import('../dj-voice.js'),
+    hostVoice: () => hostVoice,
   } as unknown as Parameters<typeof radio.createRadioScope>[0])
   return { ...radio, ...activeRadio }
 }
@@ -117,6 +131,10 @@ describe('main radio playback (legacy starter)', () => {
     mocks.loginOk = true
     mocks.searchRecords = []
     mocks.settings = { music: {} }
+    mocks.lyric = undefined
+    mocks.volume = undefined
+    hostVoice.speak.mockReset()
+    hostVoice.speak.mockResolvedValue(undefined)
   })
 
   afterEach(async () => {
@@ -317,7 +335,7 @@ describe('main radio playback (legacy starter)', () => {
   it('resume steps over curation-flagged grey entries — no patter, no play attempt', async () => {
     vi.useFakeTimers()
     const radio = await loadRadio()
-    const { speakDjPatter } = await import('../dj-voice.js')
+    hostVoice.speak.mockClear()
     const store = radio.getRadioStore()
     store.writeBrief({ active: true, intent: 'x', played: [], skipped: [], loved: [] })
     store.writeProgramme({
@@ -334,7 +352,7 @@ describe('main radio playback (legacy starter)', () => {
 
     // The grey entry cost nothing: its patter never synthesized, its play
     // never issued; song 2 is what actually started.
-    expect(speakDjPatter).not.toHaveBeenCalled()
+    expect(hostVoice.speak).not.toHaveBeenCalled()
     const plays = mocks.runs.filter(run => run.args[0] === 'play')
     expect(plays).toHaveLength(1)
     expect(plays[0]?.args).toContain(entry(2).encryptedId)
@@ -455,5 +473,91 @@ describe('main radio playback (legacy starter)', () => {
     const result = await radio.likeCurrentSong()
     expect(result.success).toBe(false)
     expect(mocks.runs.filter(run => run.args[0] === 'song')).toHaveLength(0)
+  })
+
+  it('宠物 P3:压着前奏说时,出声前把音乐压到 35%,说完恢复原值', async () => {
+    vi.useFakeTimers()
+    // 第一句歌词在 30 秒:口播(估计 3 秒)远放得下 → 歌先放、话压着前奏说。
+    mocks.lyric = '[00:30.00]第一句歌词'
+    mocks.volume = 80
+    const volumesAtVoiceStart: string[][] = []
+    hostVoice.speak.mockImplementation(async (_text: string, options: { overMusic: boolean; onVoiceStart?: () => Promise<void> }) => {
+      expect(options.overMusic).toBe(true)
+      await options.onVoiceStart?.()
+      volumesAtVoiceStart.push(...mocks.runs.filter(run => run.args[0] === 'volume').map(run => run.args))
+    })
+    const radio = await loadRadio()
+    const store = radio.getRadioStore()
+    store.writeBrief({ active: true, intent: 'x', played: [], skipped: [], loved: [] })
+    store.writeProgramme({ entries: [{ ...entry(1), say: '下一首是一首老歌。' }] })
+    mocks.stateReplies = ['playing']
+
+    const resume = radio.resumeRadioPlayback()
+    await vi.advanceTimersByTimeAsync(3_000)
+    await expect(resume).resolves.toBe(true)
+    await vi.advanceTimersByTimeAsync(10)
+
+    expect(hostVoice.speak).toHaveBeenCalledTimes(1)
+    // 出声那一刻音乐已经压下去了;说完恢复成原值,不多不少两次。
+    expect(volumesAtVoiceStart).toEqual([['volume', '28']])
+    expect(mocks.runs.filter(run => run.args[0] === 'volume').map(run => run.args)).toEqual([
+      ['volume', '28'],
+      ['volume', '80'],
+    ])
+  })
+
+  it('宠物 P3:静音里说不压音量;读不到音量就不压(不猜一个值)', async () => {
+    vi.useFakeTimers()
+    hostVoice.speak.mockImplementation(async (_text: string, options: { onVoiceStart?: () => Promise<void> }) => {
+      await options.onVoiceStart?.()
+    })
+    const radio = await loadRadio()
+    const store = radio.getRadioStore()
+    store.writeBrief({ active: true, intent: 'x', played: [], skipped: [], loved: [] })
+    // 没有歌词 → 在静音里说。
+    store.writeProgramme({ entries: [{ ...entry(1), say: '先说一句。' }, { ...entry(2), say: '再说一句。' }] })
+    mocks.volume = 80
+    mocks.stateReplies = ['playing']
+    await (async () => {
+      const resume = radio.resumeRadioPlayback()
+      await vi.advanceTimersByTimeAsync(3_000)
+      await expect(resume).resolves.toBe(true)
+    })()
+    expect(hostVoice.speak.mock.calls[0]?.[1]).toMatchObject({ overMusic: false })
+    expect(hostVoice.speak.mock.calls[0]?.[1]).not.toHaveProperty('onVoiceStart')
+    expect(mocks.runs.filter(run => run.args[0] === 'volume')).toHaveLength(0)
+  })
+
+  it('宠物 P3:停止电台时正在说的那句被中止,压下去的音量恢复', async () => {
+    vi.useFakeTimers()
+    mocks.lyric = '[00:30.00]第一句歌词'
+    mocks.volume = 60
+    let seenSignal: AbortSignal | undefined
+    hostVoice.speak.mockImplementation((_text: string, options: { signal?: AbortSignal; onVoiceStart?: () => Promise<void> }) => {
+      seenSignal = options.signal
+      return (async () => {
+        await options.onVoiceStart?.()
+        // 一直说,直到被中止。
+        await new Promise<void>(resolve => options.signal?.addEventListener('abort', () => resolve(), { once: true }))
+      })()
+    })
+    const radio = await loadRadio()
+    const store = radio.getRadioStore()
+    store.writeBrief({ active: true, intent: 'x', played: [], skipped: [], loved: [] })
+    store.writeProgramme({ entries: [{ ...entry(1), say: '下一首是一首老歌。' }] })
+    mocks.stateReplies = ['playing']
+
+    const resume = radio.resumeRadioPlayback()
+    await vi.advanceTimersByTimeAsync(3_000)
+    await expect(resume).resolves.toBe(true)
+    expect(seenSignal?.aborted).toBe(false)
+
+    await radio.radioToolClose()
+    await vi.advanceTimersByTimeAsync(10)
+    expect(seenSignal?.aborted).toBe(true)
+    expect(mocks.runs.filter(run => run.args[0] === 'volume').map(run => run.args)).toEqual([
+      ['volume', '21'],
+      ['volume', '60'],
+    ])
   })
 })

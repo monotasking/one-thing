@@ -45,7 +45,8 @@ import * as sessions from '../../stores/sessions.js'
 import { sessionReads } from '../../session/reads.js'
 import { DEFAULT_SESSION_OWNER, sessionAccess, SessionAccessError } from '../../session/access.js'
 import type { MusicServiceScope } from './service.js'
-import type { DjVoiceScope } from './dj-voice.js'
+import type { HostVoice } from './host-voice.js'
+import { PatterDuck, readProviderVolume, setProviderVolume } from './player-volume.js'
 
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import { consolePort, getLogger } from '../logging/index.js'
@@ -86,12 +87,49 @@ export function pickReusableRadioDjSession(
 }
 
 export function createRadioScope(options: {
-  storePath: string; assertOwned?: () => void; service: MusicServiceScope; djVoice: DjVoiceScope
+  storePath: string; assertOwned?: () => void; service: MusicServiceScope
+  /**
+   * 主持人声音(宠物 P3,§10.2):每次说话现问一次 —— 组合根可能在这一代作用域建好之后
+   * 才把宠物接管绑上来。电台只认这个接口,不认识谁在说。
+   */
+  hostVoice: () => HostVoice
 }) {
   const owner = new MusicWorkOwner(options.assertOwned)
   const { getActiveMusicProvider, getMusicNowPlaying, getMusicService, nudgeMusicClients,
     refreshMusicNowPlaying, setMusicSampleListener } = options.service
-  const { prefetchDjPatter, speakDjPatter } = options.djVoice
+  const prefetchDjPatter = (text: string, title: string): void => options.hostVoice().prefetch(text, title)
+  /** 正在说的口播各自的中止源:关台 / 停止电台时一起拉掉(§10.6「关台中途」那一行)。 */
+  const patterAborts = new Set<AbortController>()
+
+  /**
+   * 说一句口播,说完 resolve(不抛)。
+   *
+   * `overMusic`(压着前奏说)时,真出声的前一刻把播放器音量压到当前的 35%,说完恢复原值;
+   * 恢复失败记 warn、不重试(§10.2「压低音乐」)。读不到音量(provider 不把它存在文件里)
+   * 就**不压**,不猜一个值(`player-volume.ts` 文件头)。静音里说不压。
+   */
+  const speakDjPatter = async (text: string, title: string, overMusic = false): Promise<void> => {
+    const abort = new AbortController()
+    patterAborts.add(abort)
+    const duck = overMusic
+      ? new PatterDuck({
+        read: () => readProviderVolume(getActiveMusicProvider()),
+        set: level => setProviderVolume(options.service.runner, getActiveMusicProvider(), level),
+        warn: (message, fields) => log.warn(message, { title, ...fields }),
+      })
+      : null
+    try {
+      await options.hostVoice().speak(text, {
+        title,
+        overMusic,
+        signal: AbortSignal.any([abort.signal, owner.signal]),
+        ...(duck ? { onVoiceStart: () => duck.duck() } : {}),
+      })
+    } finally {
+      patterAborts.delete(abort)
+      await duck?.restore()
+    }
+  }
 let radioStore: OnethingRadioStore | null = null
 let conductor: OnethingRadioConductor | null = null
 /** Sessions this process already pre-granted music-dir writes to. */
@@ -697,7 +735,7 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
     if (entry.say && talkOverIntro) {
       // Fire alongside the starting song: with the prefetched synthesis the
       // voice lands right at the top of the intro, before the first vocal.
-      void speakDjPatter(entry.say, entry.title).catch(error => {
+      void speakDjPatter(entry.say, entry.title, true).catch(error => {
         log.warn('patter over intro failed', {}, error)
       })
     }
@@ -1005,6 +1043,8 @@ async function radioToolClose(): Promise<ReturnType<typeof radioToolStatus>> {
   const store = getRadioStore()
   writeJsonFile(store.intentPath, { active: false })
   store.mergeIntent()
+  // 正在说的那句口播跟着关台停下(出声的子进程被杀,压下去的音量恢复)。
+  for (const abort of patterAborts) abort.abort()
   try {
     await getReliableRunner().run('transport', getActiveMusicProvider().cli.build.stop())
   } catch (error) {

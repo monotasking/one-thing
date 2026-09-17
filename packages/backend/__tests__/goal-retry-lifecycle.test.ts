@@ -19,7 +19,7 @@ it('cancels a real Backend goal retry on shutdown and flushes pending usage befo
     const assemble = () => createOnethingBackend({ storePath: directory, owner: 'daemon', toolRegistry: 'headless', host: {
       storePath: {}, sandbox: {}, auth: null, logging: null, shell: null, voice: null,
       terminal: null, skillsEnvironment: null, todoPlan: null, scratchpad: null, plugins: null,
-      gateway: null, settings: null, evals: null, mcp: null, localTrust: null,
+      gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null,
     } })
     backend = await assemble()
     store.createSession('session', 'Goal')

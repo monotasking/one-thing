@@ -11,9 +11,10 @@
  * 测试报告里留个名,真正的判据在它上面的类型层。
  */
 import { describe, expect, it } from 'vitest'
+import { getSpeechOutput } from '@onething/runtime/voice/speech-output'
 import { applyHostPorts, type OnethingHostPorts } from '../host-ports.js'
 
-/** 十五项写全 = 合法。这也是四个宿主(与冒烟探针)交出来的那张表的形状。 */
+/** 十七项写全 = 合法(P3 加了第十七格 `speechOutput`)。这也是四个宿主(与冒烟探针)交出来的那张表的形状。 */
 const complete: OnethingHostPorts = {
   storePath: {},
   sandbox: {},
@@ -31,6 +32,7 @@ const complete: OnethingHostPorts = {
   evals: null,
   mcp: null,
   localTrust: null,
+  speechOutput: null,
 }
 
 // 缺 `voice` 一项 → 不能赋给 `OnethingHostPorts`。这就是方案要的那道门:
@@ -51,6 +53,7 @@ const missingVoice: OnethingHostPorts = {
   evals: null,
   mcp: null,
   localTrust: null,
+  speechOutput: null,
 }
 
 // `storePath` / `sandbox` 是**不可 null** 的两项(没有它们连 store 与工具沙箱的
@@ -68,5 +71,18 @@ describe('OnethingHostPorts 的类型门(A1)', () => {
     expect(missingVoice).toBeDefined()
     expect(nullStorePath).toBeDefined()
     expect(nullSandbox).toBeDefined()
+  })
+})
+
+describe('speechOutput(第十七格,宠物 P3)', () => {
+  it('注入即可取;null 不调;还原回到未注入', async () => {
+    const port = { play: async () => {} }
+    const restore = applyHostPorts({ ...complete, speechOutput: port })
+    expect(getSpeechOutput()).toBe(port)
+    await restore()
+    expect(getSpeechOutput()).toBeNull()
+    const restoreNull = applyHostPorts(complete)
+    expect(getSpeechOutput()).toBeNull()
+    await restoreNull()
   })
 })

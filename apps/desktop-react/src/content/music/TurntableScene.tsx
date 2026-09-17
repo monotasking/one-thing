@@ -16,16 +16,16 @@ import type {
 import type { MusicRadioState, MusicRuntimeState } from '@shared/ipc/music'
 import { currentMotionTier } from '../../components/motion'
 import type { MusicNowPlayingView, MusicProgrammeView } from '../../data/music-source'
-import { petOps, useCurrentPetId, usePetLive, usePetUtterance } from '../../data/pet-source'
+import { petOps, useCurrentPetId, usePetHushedId, usePetLive, usePetOnAir, usePetUtterance } from '../../data/pet-source'
 import { useT } from '../../i18n'
 import { findBuiltinPet } from '../../pets/builtin'
 import { PetStage } from '../../pets/PetStage'
 import type { PetStageHandle } from '../../pets/PetStage'
-import type { PetGesture, PetUtterance } from '../../pets/types'
+import type { PetGesture } from '../../pets/types'
 import { PointerTrack } from '../../ui/drag'
 import { FrameCoalescer } from '../../ui/frame-coalescer'
 import { usePanelVisibility } from '../visibility'
-import { musicPetActivity, startingSay } from './pet-activity'
+import { musicPetActivity } from './pet-activity'
 import { browserFrames, DeckController, SpinLoop } from './scene-controller'
 import type { FrameSource } from './scene-controller'
 import {
@@ -71,6 +71,8 @@ const KEY_SEEK_S = 10
  * 弧形歌名的黑胶与不随转的反光、唱臂、右边那摞唱片、右下角的黑豆(`PetStage`
  * 栖位 `music.turntable`)。画面上**没有一句说明**:放没放、在挑歌、关没关台,全由
  * 转盘、唱臂、灯和黑豆演出来。屏上的字只有封套与标签上印的歌名,以及拖唱头时那枚时间。
+ * 底座上那盏 **ON AIR 灯**(宠物 P3,§10.5)是一件物件:黑豆的一句开口出声的那一段亮着,
+ * `hushed` 到了就灭 —— 灯上印的两个词与底座上的「33⅓ RPM」同一类,是物件上的字,不是说明。
  *
  * ── 一个手势一个意思(§8.3)─────────────────────────────────────────────
  *  · 唱头 = 「跳到这里」:按住拖,松手发**一次** `seek`;Esc / 切走 / 指针被收走 = 不算,
@@ -95,10 +97,10 @@ const KEY_SEEK_S = 10
  * | 开始放(同一首) | 先起转(0.9s 到满速),450ms 后唱臂抬着移到当前位置(900ms)再落下 | rhythm |
  * | 暂停 | 唱臂原地抬起,转盘靠惯性 1.6s 停 | still,9s 后打盹 |
  * | 换歌(歌名 A → B,都非空) | 归位(900)+ 减速 → 收片(680)→ 封套换歌(600)→ 放片(680)→ 在放就起转 + 落针到此刻位置;期间唱臂不可拖;跑着时又换歌,跑完直接换到最新那首 | 不变 |
- * | `brief.starting` 出现 | — | 节目单里标题匹配那条(找不到取第一条)的 say 作一句开口;没有 say 不说 |
- * | 后端 `pet:` 发来一句话语(P2) | — | 与上一行那一路比谁**后到**,演后到的那一句(P3 删本地那一路) |
+ * | 后端 `pet:` 发来一句话语(P2) | 开口:ON AIR 灯亮(P3) | 演它(P3 删了 P1 本地 `startingSay` 那一路:电台口播由宠物宿主认领后发来) |
+ * | 后端 `pet:` 发来 `hushed`(P3) | 那句开口的灯灭 | 字没出完就一次出齐,1.5s 后气泡收 |
  * | 戳 / 撸(P2) | — | P0 的本地嘀咕照旧;另发 `pet:` 的 poke / stroke,发完不等、失败零提示 |
- * | `pet:current` 读不到(宿主没有宠物) | — | 照 P1 跑,零提示 |
+ * | `pet:current` 读不到(宿主没有宠物) | 灯不亮 | 不出气泡(P3 删了本地那一路),姿势照 P1 跑,零提示 |
  * | 播放器停了(有歌 → 无歌) | 归位 → 收片 → 封套变素面 | 按 §8.1 |
  * | 电台关台 | 同上,墙面灯暗一半 | 睡 |
  * | 进度被别处 seek | 唱臂 300ms 过渡到新位置 | 不变 |
@@ -318,26 +320,11 @@ export function TurntableScene({
   const petId = useCurrentPetId()
   const pet = (petId !== undefined ? findBuiltinPet(petId) : undefined) ?? DEFAULT_PET
   const backendSaid = usePetUtterance()
-
-  // ── 黑豆:换歌时的那一句开口(P1 本地那一路)──────────────────────────────
-  const [localSaid, setLocalSaid] = useState<{ utterance: PetUtterance; receivedAt: number } | null>(null)
-  /** 上一份简报里的 `starting`;`null` = 简报还没读到过(第一份不算「出现」)。 */
-  const lastStarting = useRef<string | null>(null)
-  useEffect(() => {
-    if (brief === undefined) return
-    const starting = brief.starting ?? ''
-    const previous = lastStarting.current
-    lastStarting.current = starting
-    if (previous === null || !starting || starting === previous) return
-    const say = startingSay(starting, programme)
-    // 一次外部事实(简报里出现了新的 starting)→ 交给栖位一句话;不是派生状态。
-    if (say) setLocalSaid({ utterance: { mode: 'speak', text: say }, receivedAt: Date.now() })
-  }, [brief, programme])
-  // 两路里后到的那一句(§9.5)。同一时刻到的算后端那一路:它是 P3 之后唯一留下的那条。
-  const utterance =
-    backendSaid && (!localSaid || backendSaid.receivedAt >= localSaid.receivedAt)
-      ? backendSaid.utterance
-      : (localSaid?.utterance ?? null)
+  // P3(§10.5):话语只有后端这一路。电台口播由宠物宿主认领、发 `utterance`;说完发 `hushed`。
+  const utterance = backendSaid?.utterance ?? null
+  const hushedId = usePetHushedId()
+  const hushed = backendSaid !== null && backendSaid.id === hushedId
+  const onAir = usePetOnAir()
 
   // ── 画面 ────────────────────────────────────────────────────────────────
   const shown = splitTitle(snap.title)
@@ -385,6 +372,15 @@ export function TurntableScene({
         <div className={s.plinth} style={rectStyle(SCENE_LAYOUT.plinth)} aria-hidden="true" />
         <span className={s.brand} style={rectStyle(SCENE_LAYOUT.brand)} aria-hidden="true">
           33⅓ RPM
+        </span>
+        <span
+          className={s.onAir}
+          style={rectStyle(SCENE_LAYOUT.onAir)}
+          data-lit={onAir ? 'true' : undefined}
+          aria-hidden="true"
+          data-testid="music-onair"
+        >
+          ON AIR
         </span>
         <div className={s.platter} style={rectStyle(SCENE_LAYOUT.platter)} aria-hidden="true" />
         <div ref={strobeRef} className={s.strobe} style={rectStyle(SCENE_LAYOUT.platter)} aria-hidden="true" />
@@ -461,6 +457,7 @@ export function TurntableScene({
             manifest={pet}
             activity={activity}
             utterance={utterance}
+            hushed={hushed}
             size="stage"
             onGesture={reportGesture}
           />

@@ -40,7 +40,7 @@ async function assemble(storePath: string, sendCommand: (command: import('@share
     storePath: {}, sandbox: {}, auth: null, logging: null, shell: null,
     voice: { runtimeWindow: { sendCommand } }, terminal: null, skillsEnvironment: null,
     todoPlan: null, scratchpad: null, plugins: null, gateway: null, settings: null,
-    evals: null, mcp: null, localTrust: null,
+    evals: null, mcp: null, localTrust: null, speechOutput: null,
   } })
 }
 

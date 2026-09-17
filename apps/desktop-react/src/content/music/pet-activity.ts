@@ -37,14 +37,3 @@ export function musicPetActivity({ runtime, brief, nowPlaying, nowError, program
   /* 6 */ if (nowPlaying?.status === 'paused') return 'still'
   /* 7 */ return 'idle'
 }
-
-/**
- * 换歌时主持人要说的那一句(§8.2「换歌时恰好有口播」):节目单里标题与
- * `starting` 相同的那一条的 `say`,找不到取第一条的;都没有就不说。
- */
-export function startingSay(starting: string, programme: MusicProgrammeView | undefined): string | undefined {
-  const entries = programme?.entries ?? []
-  const match = entries.find((entry) => entry.title === starting) ?? entries[0]
-  const say = match?.say?.trim()
-  return say ? say : undefined
-}

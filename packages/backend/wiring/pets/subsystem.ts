@@ -26,12 +26,24 @@
  * `poked` / `stroked` 带 `low` 的 moment,于是它们就是这样进账本的 —— provider 的
  * `poke` 做法只发事件、不自己记账,否则同一下手势会记两行。`utterance` 没有 moment,
  * 绕回来被忽略,不会自激。
+ *
+ * ── P3:电台的话交给宠物说(§10.2「宠物接管」/ §10.3)────────────────────────
+ * `createHostVoice(kit)` 交出一个 `HostVoice`,组合根把它绑到音乐子系统上。电台说一句 →
+ * 宿主**认领**(`PetHost.claim`,无视冷却;正在说别的就等,最多 10 秒,超时压过去)→ 发
+ * `utterance`(壳上出气泡、亮灯)→ 合成(音乐借出的同一份缓存,宠物的嗓子作调法)→ 出声
+ * (音乐借出的同一条出声路)→ 发 `hushed`,`speakingUntil` 改成实际结束时刻。不认领
+ * (还没起来 / 已 dispose)→ 照音乐的缺省实现说,电台不因为宠物缺席而哑。
+ *
+ * **没出声的开口也会 `hushed`**:`say` 做法与时刻说出来的 `speak` 不经过出声路,它们的
+ * `hushed` 在估计时长到点时发(`estimatedHushes`)。否则壳上那盏 ON AIR 灯等不到回执,
+ * 亮着不灭。
  */
 
 import type { ResourceEventHub, ResourceRegistry } from '@onething/core/resource'
 import {
   PET_CURRENT_PATH,
   PET_RESOURCE_SCHEME,
+  estimateSpeechMs,
   PetHost,
   PetRegistry,
   SayPassthroughComposer,
@@ -45,8 +57,10 @@ import {
   type Utterance,
 } from '@onething/runtime/pets'
 import type { EventBus } from '../../events/event-bus.js'
+import type { HostVoice, HostVoiceKit, HostVoiceSpeakOptions } from '../music/host-voice.js'
 import { getLogger } from '../logging/index.js'
 import { PetLedgerStore } from './ledger-store.js'
+import { petVoiceStyle } from './voice.js'
 
 const log = getLogger('pets')
 
@@ -64,6 +78,9 @@ export class PetsNotStartedError extends Error {
   }
 }
 
+/** 电台口播等上一句说完,最多等这么久;超时直接开口(§10.3 第三行)。 */
+export const PET_CLAIM_WAIT_MS = 10_000
+
 export interface PetsSubsystemOptions {
   /** `<store>/pets`。 */
   readonly dir: string
@@ -76,6 +93,8 @@ export interface PetsSubsystemOptions {
   readonly composer?: MomentComposer
   readonly clock?: PetClock
   readonly cooldownMs?: number
+  /** 认领最多等多久。缺省 `PET_CLAIM_WAIT_MS`;测试缩短它。 */
+  readonly claimWaitMs?: number
 }
 
 /** `say` 的回执:说了什么,或者为什么没说。 */
@@ -93,6 +112,10 @@ export class PetsSubsystem {
   private chain: Promise<unknown> = Promise.resolve()
   private starting: Promise<void> | undefined
   private disposed = false
+  /** 在等上一句说完的认领方:任何一句 `hush`、超时或 dispose 都叫醒他们再问一次。 */
+  private readonly claimWaiters = new Set<() => void>()
+  /** 没出声的开口:估计时长到点发 `hushed`(见文件头)。 */
+  private readonly estimatedHushes = new Map<string, ReturnType<typeof setTimeout>>()
 
   constructor(options: PetsSubsystemOptions) {
     this.options = options
@@ -150,6 +173,7 @@ export class PetsSubsystem {
       const host = this.requireHost()
       const outcome = host.say(mode, text)
       await this.settle(host.pet.id, outcome)
+      this.scheduleEstimatedHush(host.pet.id, outcome.utterance)
       if (outcome.utterance) return { said: true, utterance: outcome.utterance }
       return { said: false, reason: outcome.dropped ?? 'nothing-to-say' }
     })
@@ -175,8 +199,25 @@ export class PetsSubsystem {
     await this.store.flush()
   }
 
+  /**
+   * 交给音乐子系统的主持人声音(§10.2「宠物接管」)。每次调用造一个薄对象,状态全在这只
+   * 子系统上 —— 音乐那边每说一句现问一次也无妨。
+   */
+  createHostVoice(kit: HostVoiceKit): HostVoice {
+    return {
+      prefetch: (text, title) => {
+        const host = this.host
+        kit.prefetch(text, title, host ? petVoiceStyle(host.pet.id, host.pet.voice) : undefined)
+      },
+      speak: (text, options) => this.speakClaimed(kit, text, options),
+    }
+  }
+
   async dispose(): Promise<void> {
     this.disposed = true
+    this.wakeClaimWaiters()
+    for (const timer of this.estimatedHushes.values()) clearTimeout(timer)
+    this.estimatedHushes.clear()
     this.unsubscribe?.()
     this.unsubscribe = undefined
     await this.starting?.catch(() => {})
@@ -207,6 +248,7 @@ export class PetsSubsystem {
       const petId = host.pet.id
       const outcome = await host.onMoment(moment)
       await this.settle(petId, outcome)
+      this.scheduleEstimatedHush(petId, outcome.utterance)
     }).catch(error => log.warn('pet host failed on a moment', { scheme: moment.scheme, event }, error))
   }
 
@@ -214,6 +256,112 @@ export class PetsSubsystem {
   private async settle(petId: string, outcome: PetHostOutcome): Promise<void> {
     if (outcome.utterance) this.emit('utterance', outcome.utterance)
     await this.store.append(petId, outcome.lines)
+  }
+
+  /** §10.6 那张表的后端一列:认领 → `utterance` → 合成 → (压音量)→ 播放 → `hushed`。 */
+  private async speakClaimed(kit: HostVoiceKit, text: string, options: HostVoiceSpeakOptions): Promise<void> {
+    const claimed = await this.claim(kit.source, text).catch(error => {
+      log.warn('pet claim failed; the host voice speaks instead', { title: options.title }, error)
+      return null
+    })
+    if (!claimed) return kit.fallback.speak(text, options)
+    const { petId, utterance, pet } = claimed
+    const { signal } = options
+    try {
+      if (signal?.aborted) return
+      const speech = await kit.synthesize(text, options.title, petVoiceStyle(pet.id, pet.voice))
+      if (!speech || signal?.aborted) return
+      await options.onVoiceStart?.()
+      if (signal?.aborted) return
+      await kit.play(speech, { text, title: options.title, ...(signal ? { signal } : {}) })
+    } catch (error) {
+      log.warn('pet patter voicing failed', { title: options.title }, error)
+    } finally {
+      await this.hush(petId, utterance.id)
+    }
+  }
+
+  /**
+   * 认领一句(§10.3)。`null` = 不认领(还没起来 / 已 dispose / 空白文本),调用方退回缺省实现。
+   *
+   * 问宿主走喂食链(与时刻、`say` 同一条,先来的先占说话位);**等**不在链上等 —— 在链上
+   * 等 10 秒会把那 10 秒里到的每一条时刻都卡住。
+   */
+  private async claim(
+    source: { scheme: string; event: string },
+    text: string,
+  ): Promise<{ petId: string; utterance: Utterance; pet: PetHost['pet'] } | null> {
+    if (this.disposed || !this.host) return null
+    let preempt = false
+    const deadline = setTimeout(() => {
+      preempt = true
+      this.wakeClaimWaiters()
+    }, this.options.claimWaitMs ?? PET_CLAIM_WAIT_MS)
+    try {
+      for (;;) {
+        if (this.disposed) return null
+        const answer = await this.enqueue(async () => {
+          const host = this.host
+          if (this.disposed || !host) return null
+          const outcome = host.claim(source, text, { preempt })
+          if (outcome.kind !== 'claimed') return outcome
+          await this.settle(host.pet.id, outcome)
+          if (outcome.preempted) log.info('radio patter preempted the pet', { petId: host.pet.id })
+          return { kind: 'claimed' as const, petId: host.pet.id, utterance: outcome.utterance, pet: host.pet }
+        })
+        if (!answer || answer.kind === 'refused') return null
+        if (answer.kind === 'claimed') return answer
+        await this.waitForTurn(answer.retryInMs)
+      }
+    } finally {
+      clearTimeout(deadline)
+    }
+  }
+
+  private waitForTurn(retryInMs: number | null): Promise<void> {
+    return new Promise(resolve => {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const wake = () => {
+        if (timer) clearTimeout(timer)
+        this.claimWaiters.delete(wake)
+        resolve()
+      }
+      this.claimWaiters.add(wake)
+      // 估计时长到点再问;+1 让钟确实走过 `speakingUntil`。
+      if (retryInMs !== null) timer = setTimeout(wake, retryInMs + 1)
+    })
+  }
+
+  private wakeClaimWaiters(): void {
+    for (const wake of [...this.claimWaiters]) wake()
+  }
+
+  /** 一句开口结束:宿主记账、发 `hushed`、叫醒在等的认领方。不抛。 */
+  private hush(petId: string, utteranceId: string): Promise<void> {
+    const pending = this.estimatedHushes.get(utteranceId)
+    if (pending) {
+      clearTimeout(pending)
+      this.estimatedHushes.delete(utteranceId)
+    }
+    return this.enqueue(async () => {
+      if (this.disposed) return
+      const host = this.host
+      const at = this.now()
+      if (host && host.pet.id === petId) await this.store.append(petId, host.hush(utteranceId))
+      this.emit('hushed', { utteranceId, at })
+    })
+      .catch(error => log.warn('pet hush failed', { petId }, error))
+      .finally(() => this.wakeClaimWaiters())
+  }
+
+  /** 没出声的开口(`say` 做法 / 时刻):估计时长到点发 `hushed`。嘀咕不算开口。 */
+  private scheduleEstimatedHush(petId: string, utterance: Utterance | undefined): void {
+    if (!utterance || utterance.mode !== 'speak' || this.disposed) return
+    const timer = setTimeout(() => {
+      this.estimatedHushes.delete(utterance.id)
+      void this.hush(petId, utterance.id)
+    }, estimateSpeechMs(utterance.text))
+    this.estimatedHushes.set(utterance.id, timer)
   }
 
   private enqueue<T>(work: () => Promise<T>): Promise<T> {

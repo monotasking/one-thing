@@ -1790,6 +1790,16 @@
   --music-scene-brand-ink: rgba(255, 230, 200, 0.35);
   --music-scene-brand-fs: 8px;
   --music-scene-brand-track: 0.3em;
+  /* ON AIR 灯(宠物 P3,§10.5):灭 = 暗红玻璃里看得见字的轮廓,亮 = 红底白字外发光。 */
+  --music-scene-onair-r: 3px;
+  --music-scene-onair-fs: 8px;
+  --music-scene-onair-track: 0.18em;
+  --music-scene-onair-ink: rgba(255, 255, 255, 0.25);
+  --music-scene-onair-ink-lit: #ffffff;
+  --music-scene-onair-glass: #3a2a22;
+  --music-scene-onair-lit: #e0473a;
+  --music-scene-onair-inset: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+  --music-scene-onair-glow: 0 0 14px rgba(224, 71, 58, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.3);
 
   --music-scene-platter: conic-gradient(#8b8a86, #d7d5cf, #7c7b77, #cfcdc7, #8b8a86, #dcdad4, #8b8a86);
   --music-scene-strobe: repeating-conic-gradient(#3b3a37 0 1.6deg, transparent 1.6deg 5deg);
@@ -1862,6 +1872,7 @@
   --dur-music-fan: 350ms;
   --dur-music-fan-flick: 1100ms;
   --dur-music-fan-stagger: 360ms;
+  --dur-music-onair: 250ms;
   --ease-music-arm: cubic-bezier(0.45, 0, 0.25, 1);
   --ease-music-disc: cubic-bezier(0.5, 0, 0.3, 1);
 

@@ -183,3 +183,72 @@ describe('ledger lines', () => {
     expect(memory.utterances.map(u => u.id)).toEqual(['a', 'b'])
   })
 })
+
+describe('PetHost · claim (P3, §10.3)', () => {
+  const RADIO = { scheme: 'music', event: 'radio-patter' }
+
+  it('空闲:立刻开口、记账,认领后到 hush 之前都算在说(不按估计时长)', () => {
+    const { clock, host } = makeHost()
+    const out = host.claim(RADIO, '下一首是晴天')
+    expect(out.kind).toBe('claimed')
+    if (out.kind !== 'claimed') return
+    expect(out.preempted).toBe(false)
+    expect(out.utterance).toMatchObject({ mode: 'speak', text: '下一首是晴天', about: RADIO, duck: true })
+    expect(out.lines.map(line => line.kind)).toEqual(['utterance'])
+    // 估计时长过了很久,声音还在放 —— 仍在说。
+    clock.advance(estimateSpeechMs('下一首是晴天') * 5)
+    expect(host.current().speaking).toBe(true)
+    const hushed = host.hush(out.utterance.id)
+    expect(hushed).toEqual([{ kind: 'hushed', petId: 'heidou', at: clock.now(), utteranceId: out.utterance.id }])
+    expect(host.current().speaking).toBe(false)
+    // speakingUntil 改成了实际结束时刻:折回来也是它。
+    expect(foldPetMemory(host.memory(), estimateSpeechMs).speakingUntil).toBe(clock.now())
+  })
+
+  it('冷却中:无视冷却(同 high)', async () => {
+    const { clock, host } = makeHost()
+    await host.onMoment(moment(clock, 'high', '刚说过'))
+    clock.advance(estimateSpeechMs('刚说过'))
+    // 还在 4 分钟冷却里:normal 时刻会被挡,认领不会。
+    expect((await host.onMoment(moment(clock, 'normal', '被冷却挡'))).dropped).toBe('cooldown')
+    expect(host.claim(RADIO, '电台的话').kind).toBe('claimed')
+  })
+
+  it('正在说别的:答 wait(不记账);估计时长那种给出剩余毫秒,出声那种等 hush;带 preempt 压过去并记 preempted', async () => {
+    const { clock, host } = makeHost()
+    await host.onMoment(moment(clock, 'high', '宠物自己的一句话'))
+    clock.advance(1_000)
+    const before = host.memory().length
+    expect(host.claim(RADIO, '电台')).toEqual({ kind: 'wait', retryInMs: estimateSpeechMs('宠物自己的一句话') - 1_000 })
+    expect(host.memory().length).toBe(before)
+
+    clock.advance(estimateSpeechMs('宠物自己的一句话'))
+    const first = host.claim(RADIO, '第一段口播')
+    expect(first.kind).toBe('claimed')
+    if (first.kind !== 'claimed') return
+    expect(host.claim(RADIO, '第二段口播')).toEqual({ kind: 'wait', retryInMs: null })
+
+    const second = host.claim(RADIO, '第二段口播', { preempt: true })
+    expect(second.kind).toBe('claimed')
+    if (second.kind !== 'claimed') return
+    expect(second.preempted).toBe(true)
+    expect(second.lines.map(line => line.kind)).toEqual(['utterance', 'preempted'])
+    expect(second.lines[1]).toMatchObject({ kind: 'preempted', utteranceId: second.utterance.id, over: first.utterance.id })
+    // 被压住的那一句晚到的回执不许把新的那一句「说完」。
+    host.hush(first.utterance.id)
+    expect(host.current().speaking).toBe(true)
+    host.hush(second.utterance.id)
+    expect(host.current().speaking).toBe(false)
+    for (const line of host.memory()) expect(parsePetLedgerLine(JSON.stringify(line))).toEqual(line)
+  })
+
+  it('空白文本不认领;换宠物之后上一只的回执不记账', () => {
+    const { host } = makeHost()
+    expect(host.claim(RADIO, '   ')).toEqual({ kind: 'refused' })
+    const out = host.claim(RADIO, '黑豆说的')
+    if (out.kind !== 'claimed') throw new Error('expected claimed')
+    host.adopt(PARROT)
+    expect(host.current().speaking).toBe(false)
+    expect(host.hush(out.utterance.id)).toEqual([])
+  })
+})

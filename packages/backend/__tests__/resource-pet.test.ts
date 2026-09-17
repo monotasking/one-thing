@@ -56,6 +56,7 @@ async function assemble(pets: boolean): Promise<Backend> {
       evals: null,
       mcp: null,
       localTrust: null,
+      speechOutput: null,
     },
     toolRegistry: 'headless',
     ...(pets ? { pets: true } : {}),

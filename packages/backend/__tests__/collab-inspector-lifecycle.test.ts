@@ -37,7 +37,7 @@ async function assemble(name: string, collab = false) {
   return backend = await createOnethingBackend({ storePath, owner: 'daemon', collab, toolRegistry: 'headless', host: {
     storePath: {}, sandbox: {}, auth: null, logging: null, shell: null, voice: null,
     terminal: null, skillsEnvironment: null, todoPlan: null, scratchpad: null, plugins: null,
-    gateway: null, settings: null, evals: null, mcp: null, localTrust: null,
+    gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null,
   } })
 }
 

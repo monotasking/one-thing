@@ -20,6 +20,7 @@ describe('pet resource spec', () => {
     expect(petResourceSpec.events.poked.moment?.weight).toBe('low')
     expect(petResourceSpec.events.stroked.moment?.weight).toBe('low')
     expect(petResourceSpec.events.utterance.moment).toBeUndefined()
+    expect(petResourceSpec.events.hushed.moment).toBeUndefined()
   })
 
   it('the builtin roster starts with heidou, matching the shell rig id', () => {

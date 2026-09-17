@@ -70,6 +70,7 @@ describe("readonly 档不给资源工具(K3-a')", () => {
         evals: null,
         mcp: null,
         localTrust: null,
+        speechOutput: null,
       },
       toolRegistry: 'readonly',
       sender: new NoopSender() as never,

@@ -55,6 +55,7 @@ const BASE: OnethingHostPorts = {
   evals: null,
   mcp: null,
   localTrust: null,
+  speechOutput: null,
 }
 
 describe('宿主表 terminal 那一格的收尾(T0)', () => {

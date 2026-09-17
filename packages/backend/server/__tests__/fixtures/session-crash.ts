@@ -10,7 +10,7 @@ class Sender extends EventEmitter { isDestroyed() { return false } send() {} }
 const backend = await createOnethingBackend({
   host: { storePath: {}, sandbox: {}, auth: null, logging: null, shell: null, voice: null,
     terminal: null, skillsEnvironment: null, todoPlan: null, scratchpad: null, plugins: null,
-    gateway: null, settings: null, evals: null, mcp: null, localTrust: null },
+    gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null },
   sender: new Sender() as never, toolRegistry: 'headless',
 })
 const stores = await import('../../../stores/sessions.js')

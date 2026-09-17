@@ -12,7 +12,7 @@ export {
   PET_DEFAULT_COOLDOWN_MS,
   PetHost,
 } from './host.js'
-export type { PetClock, PetCurrentView, PetHostOptions, PetHostOutcome } from './host.js'
+export type { PetClaimOutcome, PetClock, PetCurrentView, PetHostOptions, PetHostOutcome } from './host.js'
 export {
   foldPetMemory,
   momentLine,
@@ -20,7 +20,7 @@ export {
   PET_MEMORY_LINES,
   PET_RECENT_UTTERANCES,
 } from './ledger.js'
-export type { PetDroppedLine, PetLedgerLine, PetMemory, PetMomentLine, PetUtteranceLine } from './ledger.js'
+export type { PetDroppedLine, PetHushedLine, PetLedgerLine, PetMemory, PetMomentLine, PetPreemptedLine, PetUtteranceLine } from './ledger.js'
 export { summarizePet } from './manifest.js'
 export type { PetManifest, PetSummary, PetVoice } from './manifest.js'
 export { BUILTIN_PETS, PetIdTakenError, PetRegistry } from './registry.js'

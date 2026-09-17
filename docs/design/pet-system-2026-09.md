@@ -348,3 +348,70 @@ P2 不给任何应用标 `moment`（音乐的标注是 P3）。验证用测试�
 - `PetHost` 单测：冷却、high 插队、一句时丢弃、low 只记账、mutter 不占预算、adopt 清 speaking、账本行形。
 - provider / 子系统测试：假资源发带 moment 的事件 → `pet:` 发出 `utterance`；不带 moment 的被忽略；`pets` 不开时 `pet:` 不在注册表。
 - `bun run boundary:gate`、`bun run assembly:gate`（新状态住实例上，不许新增模块级 `let`）、`bun run transport:gate`、`bun run typecheck`、根 `bun run test` 相关目录、壳 `npm test` / `typecheck` / eslint 本批文件 / `ui:consume`。
+
+## 10. P3：电台交给宠物说，主进程出声
+
+### 10.1 今天的路与它的毛病
+
+电台开口是 `wiring/music/radio.ts` 的 `playProgrammeEntry` 调 `dj-voice.ts` 的 `speakDjPatter(say, title)`：合成（带缓存与预取）→ 把音频经 `broadcastVoiceHostMessage(MUSIC_DJ_SPEAK)` 推给渲染进程播 → 等渲染进程回执（上限 30s）。两条时机：前奏够长就**压着前奏说**（`talkOverIntro`，歌先放、话并行），否则**先停、在静音里说**、与起播命令并行。
+
+React 壳的宿主表里 `voice: null`，没有渲染进程听这条推送：合成成功时电台会**空等 30 秒回执**，口播永远没声音。
+
+### 10.2 改成什么
+
+| 件 | 位置 | 内容 |
+| --- | --- | --- |
+| 出声端口 `speechOutput` | `OnethingHostPorts` 新键（第十七个）+ `runtime/src/voice/speech-output.ts`（`configureSpeechOutputHost` / `reset…` / `getSpeechOutput`） | `{ play(audio: { base64, mimeType }, signal): Promise<void> }`，播完 resolve，signal 中止即停。React 壳注入实现；server 与 CLI 守护进程传 `null` |
+| 壳的实现 | `apps/desktop-react/electron/speech-output.ts` | 写临时文件（`os.tmpdir()`，播完删）→ 子进程播放：`mpv --no-video --really-quiet`（`PATH` 里有就用），否则 macOS `afplay`；都没有 → `play` 立刻 resolve 并记一条 warn。中止 = 杀子进程。同一时刻只播一段：新的一段先停旧的 |
+| 主持人声音端口 `hostVoice` | `wiring/music/host-voice.ts` | 电台只认这一个接口：`prefetch(text, title)` / `speak(text, { title, overMusic }): Promise<void>`。**缺省实现**＝今天的 `dj-voice`（合成 → 有 `speechOutput` 就在进程内播、没有且有语音宿主就推渲染进程、两者都没有就立刻 resolve，不再空等） |
+| 宠物接管 | `wiring/pets/subsystem.ts` | `pets` 开着时，组合根把 `hostVoice` 换成 `PetsSubsystem.hostVoice`：先让宿主**认领**这句话（§10.3），发 `utterance` 事件（壳上出气泡），再合成 + 播放，播完发 `hushed` 事件并把 `speakingUntil` 改成实际结束时刻。合成走同一份缓存（复用 dj-voice 的缓存函数，不复制） |
+| 压低音乐 | `radio.ts` | `overMusic: true`（压着前奏说）时，电台自己在说话前把播放器音量降到当前的 35%，说完恢复原值；恢复失败记 warn、不重试。静音里说不压 |
+| 音色 | `PetVoice → VoiceSettings` 映射，`wiring/pets/voice.ts` | 只映射当前语音设置里真有的旋钮（语速；有音调就音调）；没有的旋钮忽略。没配语音 → 合成返回空 → 不出声，但气泡照出 |
+
+音乐域**不 import 宠物**：它只拿 `hostVoice`。
+
+### 10.3 宿主认领电台口播
+
+电台口播不是「宠物想说」，是节目的一部分，**不能被预算丢掉**。`PetHost` 加一条入口 `claim({ source, text })`：
+
+| 情况 | 结果 |
+| --- | --- |
+| 空闲 | 立刻开口：记账、`lastSpokeAt = now`、`speakingUntil = now + 估计时长`（播完改成实际） |
+| 冷却中 | 无视冷却（同 `high`） |
+| 正在说别的 | **等**当前那句结束再开口，最多等 10s；超时就直接开口（电台的时机更要紧），并在账本记 `preempted` |
+| 换宠物中 / 子系统已 dispose | 返回「不认领」，`hostVoice` 退回缺省实现照播 |
+
+### 10.4 `pet:` 自述增补
+
+| 类 | 名字 | 说明 |
+| --- | --- | --- |
+| 看 | `hushed` | `{ utteranceId, at }` —— 这一句真的说完了（播完、失败或被中止）。无 `moment` |
+
+`current.speaking` 从「估计时长」改为「认领后到 `hushed` 之前」；没有出声的话语（嘀咕、无语音）仍按估计时长。
+
+### 10.5 壳
+
+- `TurntableScene` 删 P1 的本地 `startingSay` 那一路（后端话语已经覆盖）；`pet:current` 读失败时（宿主没有宠物）气泡就不出。
+- **ON AIR 灯**回来：底座上一块灯，`pet:` 最近一条 `speak` 话语到它的 `hushed` 之间亮。它是唱机场景的一件物件，不是文字标签。
+- 栖位里开口的逐字速度不变；声音比字先说完时，气泡在 `hushed` 到达后收起（不等字打完就把剩下的字一次出齐）。
+
+### 10.6 状态表
+
+**口播一句话的生命周期**
+
+| 步 | 后端 | 壳 |
+| --- | --- | --- |
+| 预取 | `hostVoice.prefetch` → 合成进缓存 | — |
+| 认领 | `PetHost.claim` 成功 → 账本记 utterance | — |
+| 发出 | `utterance` 事件 | 气泡开始逐字，灯亮 |
+| 压音量（仅 overMusic） | 播放器音量 → 35% | — |
+| 播放 | `speechOutput.play` | — |
+| 结束 | 恢复音量；`hushed` 事件；`speakingUntil = now` | 字出齐、灯灭、1.5s 后气泡收 |
+| 关台 / 停止电台中途 | signal 中止 → 子进程被杀 → 同「结束」 | 同上 |
+| 合成失败 / 没配语音 | 跳过播放，直接「结束」 | 气泡照出、灯亮到 `hushed`（几乎立刻） |
+
+### 10.7 门
+
+- 单测：`PetHost.claim` 四行表；`hostVoice` 缺省实现在「无出声端口、无语音宿主」时立刻 resolve（回归 30s 空等）；`PetsSubsystem.hostVoice` 事件顺序 `utterance → hushed`、中止路径；`radio` 在 overMusic 时降音量并恢复（假播放器）；壳 `speech-output.ts` 选择播放器的判据（注入 `which` 与 spawn）；`TurntableScene` 灯亮灭。
+- `bun run typecheck`、`boundary:gate`、`assembly:gate`、`transport:gate`（不许新 IPC 通道）、`log:gate`、`gate:native`（不许引入原生依赖）；`packages/backend/__tests__/host-ports.type.test.ts` 同步第十七键；壳 `npm test` 相关目录、typecheck、eslint、`ui:consume`。
+- 不跑桌面真机；出声的真机验收留给用户（换歌时听到黑豆的声音、压着前奏说时音乐变小）。

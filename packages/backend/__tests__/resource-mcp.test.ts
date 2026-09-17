@@ -129,6 +129,7 @@ async function assemble(): Promise<Backend> {
       // 现成的注入口:这台宿主用自己的客户端,不起 stdio 子进程。
       mcp: { clientFactory: (config: MCPServerConfig) => new FakeMCPClient(config), identity: null },
       localTrust: null,
+      speechOutput: null,
     },
     toolRegistry: 'headless',
     sender: new NoopSender() as never,

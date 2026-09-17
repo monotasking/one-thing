@@ -5,10 +5,12 @@
  * 装配层 `wiring/pets/ledger-store.ts`)。这只文件只管两件纯的事:一行长什么样、一串行
  * 折成「最近的记忆」长什么样。
  *
- * ── 三种行,不多 ────────────────────────────────────────────────────────────
+ * ── 五种行,不多 ────────────────────────────────────────────────────────────
  *   · `moment`    —— 一条时刻进来了(不论最后开没开口,§9.2「每条时刻……都进账本」);
  *   · `utterance` —— 宠物说了一句;
- *   · `dropped`   —— 一次开口请求被预算或作曲端口挡掉了,连同原因。
+ *   · `dropped`   —— 一次开口请求被预算或作曲端口挡掉了,连同原因;
+ *   · `hushed`    —— 一句开口真的说完了(P3,§10.4:播完、失败、被中止,或没出声的那句估计时长到了);
+ *   · `preempted` —— 电台口播等了 10 秒还没等到上一句说完,直接开口压过去(P3,§10.3 第三行)。
  *
  * 没有「当前在不在说话」「上次什么时候说的」这类格子:它们是**折出来**的,不存
  * (`foldPetMemory`)。于是重启之后冷却照样接得上,不必另存一份会和账本漂开的状态。
@@ -49,7 +51,24 @@ export interface PetDroppedLine {
   readonly text?: string
 }
 
-export type PetLedgerLine = PetMomentLine | PetUtteranceLine | PetDroppedLine
+export interface PetHushedLine {
+  readonly kind: 'hushed'
+  readonly petId: string
+  readonly at: number
+  readonly utteranceId: string
+}
+
+export interface PetPreemptedLine {
+  readonly kind: 'preempted'
+  readonly petId: string
+  readonly at: number
+  /** 压过去的那一句(新开口)。 */
+  readonly utteranceId: string
+  /** 被压住的那一句;它当时若只是估计时长还没到(没在出声),这一格缺席。 */
+  readonly over?: string
+}
+
+export type PetLedgerLine = PetMomentLine | PetUtteranceLine | PetDroppedLine | PetHushedLine | PetPreemptedLine
 
 export function momentLine(petId: string, moment: Moment): PetMomentLine {
   return {
@@ -111,6 +130,12 @@ export function parsePetLedgerLine(text: string): PetLedgerLine | null {
         : null
     case 'utterance':
       return isUtterance(value.utterance) ? (value as unknown as PetUtteranceLine) : null
+    case 'hushed':
+      return typeof value.utteranceId === 'string' ? (value as unknown as PetHushedLine) : null
+    case 'preempted':
+      return typeof value.utteranceId === 'string' && (value.over === undefined || typeof value.over === 'string')
+        ? (value as unknown as PetPreemptedLine)
+        : null
     case 'dropped':
       return (value.reason === 'busy' || value.reason === 'cooldown' || value.reason === 'nothing-to-say')
         && (value.about === undefined || isAbout(value.about))
@@ -130,7 +155,7 @@ export interface PetMemory {
   readonly utterances: readonly Utterance[]
   /** 最后一次**开口**(不含嘀咕)的时刻;没开过口是 `undefined`。冷却从这里算。 */
   readonly lastSpokeAt?: number
-  /** 最后一次开口说到什么时候(`at + 估计时长`)。 */
+  /** 最后一次开口说到什么时候:`at + 估计时长`;那一句有 `hushed` 行就是它的 `at`(实际说完的时刻)。 */
   readonly speakingUntil?: number
 }
 
@@ -146,11 +171,17 @@ export function foldPetMemory(
   const utterances: Utterance[] = []
   let lastSpokeAt: number | undefined
   let speakingUntil: number | undefined
+  let lastSpeakId: string | undefined
   for (const line of kept) {
+    if (line.kind === 'hushed') {
+      if (line.utteranceId === lastSpeakId) speakingUntil = line.at
+      continue
+    }
     if (line.kind !== 'utterance') continue
     utterances.push(line.utterance)
     if (line.utterance.mode === 'speak') {
       lastSpokeAt = line.utterance.at
+      lastSpeakId = line.utterance.id
       speakingUntil = line.utterance.at + estimateMs(line.utterance.text)
     }
   }

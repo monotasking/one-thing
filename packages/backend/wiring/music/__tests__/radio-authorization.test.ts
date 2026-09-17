@@ -53,7 +53,6 @@ vi.mock('../service.js', async () => {
     nudgeMusicClients: vi.fn(), refreshMusicNowPlaying: vi.fn(async () => {}), setMusicSampleListener: vi.fn(),
   }
 })
-vi.mock('../dj-voice.js', () => ({ prefetchDjPatter: vi.fn(), resetDjPatterCache: vi.fn(), speakDjPatter: vi.fn() }))
 
 
 let activeRadio: ReturnType<typeof import('../radio.js')['createRadioScope']> | undefined
@@ -62,7 +61,7 @@ async function loadRadio() {
   activeRadio ??= createRadioScope({
     storePath: fixture.dir,
     service: { ...await import('../service.js'), runner: { run: vi.fn(), spawn: vi.fn() } },
-    djVoice: await import('../dj-voice.js'),
+    hostVoice: () => ({ prefetch: vi.fn(), speak: vi.fn(async () => {}) }),
   } as unknown as Parameters<typeof createRadioScope>[0])
   return activeRadio
 }

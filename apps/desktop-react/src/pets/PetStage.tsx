@@ -62,6 +62,11 @@ export interface PetStageProps {
   activity: PetActivity
   /** 新对象身份 = 新话语;`null` = 宿主清掉当前气泡。 */
   utterance?: PetUtterance | null
+  /**
+   * 当前这句开口的**声音**已经说完(宠物 P3,§10.5)。变成 `true` 那一刻:字没出完就一次出齐,
+   * 1.5s 后气泡收起。随着新话语一起换(宿主按话语 id 判),不是一个持久开关。
+   */
+  hushed?: boolean
   /** 你在打字。 */
   listening?: boolean
   size: PerchSize
@@ -76,6 +81,7 @@ export function PetStage({
   manifest,
   activity,
   utterance = null,
+  hushed = false,
   listening = false,
   size,
   onSpeakingChange,
@@ -127,6 +133,11 @@ export function PetStage({
     seenUtterance.current = utterance
     controller.say(utterance)
   }, [controller, utterance])
+
+  // ── 声音说完:排在话语那一格之后,同一次提交里「新话语 + 已经说完」先说再收(§10.6 最后一行)──
+  useEffect(() => {
+    if (hushed) controller.hush()
+  }, [controller, hushed, utterance])
 
   // ── 手势 ──────────────────────────────────────────────────────────────
   const onPointerDown = useCallback(

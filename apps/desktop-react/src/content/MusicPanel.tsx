@@ -42,8 +42,9 @@ import s from './MusicPanel.module.css'
  * 只印歌名,不画占位图:一张灰方块会被读成「封面还没加载出来」,而它永远不会来。
  *
  * ── DJ 语音**不在这块面上播**(M3 用户 09-17 拍板:改在主进程播)──────────
- * 今天 React 壳的 `voice: null`,`MUSIC_DJ_SPEAK` 在这台壳上是哑的;拍板是让主进程
- * 自己出声(电台是后台常驻的,面板没开也该开口),所以这里不订语音、不放音频。
+ * React 壳的 `voice: null`,`MUSIC_DJ_SPEAK` 在这台壳上是哑的;主进程自己出声(电台是后台
+ * 常驻的,面板没开也该开口)—— 宠物 P3 起宿主表 `speechOutput` 那一格在主进程里起 mpv / afplay
+ * 放口播(`electron/speech-output.ts`),所以这里不订语音、不放音频。
  * 主持人从宠物 P1 起是唱机上的黑豆(`music/TurntableScene.tsx`,正本
  * `docs/design/pet-system-2026-09.md` §8):换歌时的那句口播是它的一个气泡,
  * 挑歌 / 关台 / 出错由它的姿势演,面上不再有「主持人一行」那句说明。

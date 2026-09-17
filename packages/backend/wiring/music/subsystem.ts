@@ -6,6 +6,7 @@ import { createRadioScope } from './radio.js'
 import { createDjVoiceScope } from './dj-voice.js'
 import { createMusicOperationsScope } from './operations.js'
 import { MusicWorkOwner } from './lifetime.js'
+import { createHostVoiceKit, type HostVoice, type HostVoiceFactory } from './host-voice.js'
 
 type MusicGeneration = {
   service: ReturnType<typeof createMusicServiceScope>
@@ -28,6 +29,14 @@ export class MusicSubsystem {
    * 订阅者悄悄失聪。每一代作用域拿到的是同一只扇出闭包。
    */
   private readonly nowPlayingListeners = new Set<(nowPlaying: OnethingMusicNowPlaying | null) => void>()
+  /**
+   * 接管主持人声音的那一方(宠物 P3,§10.2「宠物接管」)。没绑 = 电台用 dj-voice 缺省实现。
+   *
+   * 与 `nowPlayingListeners` 同理住在子系统上:换 provider / 重置电台会整代重建作用域,
+   * 但「谁来说电台的话」是组合根定的,寿命是 backend 的寿命。电台每说一句现问一次
+   * (`hostVoiceFor`),所以绑定可以晚于作用域建好,也不必在换代时重绑。
+   */
+  private hostVoiceFactory: HostVoiceFactory | undefined
 
   constructor(private readonly options: { storePath: string; assertOwned: () => void }) {
     this.owner = new MusicWorkOwner(options.assertOwned)
@@ -47,6 +56,23 @@ export class MusicSubsystem {
     }
   }
 
+  /**
+   * 让别人来说电台的话。返回解绑函数(只解自己绑的那一个)。音乐域不认识交进来的是谁 ——
+   * 它只拿到一个 `HostVoice`。
+   */
+  bindHostVoice(factory: HostVoiceFactory): () => void {
+    this.hostVoiceFactory = factory
+    return () => {
+      if (this.hostVoiceFactory === factory) this.hostVoiceFactory = undefined
+    }
+  }
+
+  /** 这一代作用域此刻该用的主持人声音:绑了接管就交接管,没绑就是缺省。 */
+  private hostVoiceFor(djVoice: MusicGeneration['djVoice']): HostVoice {
+    const kit = createHostVoiceKit(djVoice)
+    return this.hostVoiceFactory ? this.hostVoiceFactory(kit) : kit.fallback
+  }
+
   private createGeneration(): MusicGeneration {
     const service = createMusicServiceScope({
       ...this.options,
@@ -56,7 +82,7 @@ export class MusicSubsystem {
       },
     })
     const djVoice = createDjVoiceScope(this.options.assertOwned)
-    const radio = createRadioScope({ ...this.options, service, djVoice })
+    const radio = createRadioScope({ ...this.options, service, hostVoice: () => this.hostVoiceFor(djVoice) })
     const operations = createMusicOperationsScope({ ...this.options, service, radio })
     const generation = { service, djVoice, radio, operations }
     this.generations.add(generation)
@@ -120,7 +146,7 @@ export class MusicSubsystem {
       this.owner.assertActive()
       this.generations.delete(previous)
       const djVoice = createDjVoiceScope(this.options.assertOwned)
-      const radio = createRadioScope({ ...this.options, service: previous.service, djVoice })
+      const radio = createRadioScope({ ...this.options, service: previous.service, hostVoice: () => this.hostVoiceFor(djVoice) })
       const operations = createMusicOperationsScope({ ...this.options, service: previous.service, radio })
       this.generation = { service: previous.service, djVoice, radio, operations }
       this.generations.add(this.generation)

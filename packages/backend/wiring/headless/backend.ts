@@ -158,6 +158,7 @@ export class HeadlessBackend {
           // CLI daemon 不分发 RPC(它走自己那套 NDJSON 命令),没有"可信的 HTTP
           // 调用方"这回事 —— 六个信任判据在它这里一条都到不了。
           localTrust: null,
+          speechOutput: null,
           skillsEnvironment: null,
           todoPlan: null,
           scratchpad: null,

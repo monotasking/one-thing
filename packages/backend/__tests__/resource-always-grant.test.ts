@@ -71,6 +71,7 @@ async function assemble(): Promise<Backend> {
       // 账页那个域要一台**本机可信**的宿主才不夹沙箱(`rpc/sandbox.ts` 的不变量 2)。
       // 桌面壳声明的就是这一句。
       localTrust: { origin: 'desktop-embedded' },
+      speechOutput: null,
     },
     toolRegistry: 'headless',
     sender: new NoopSender() as never,
