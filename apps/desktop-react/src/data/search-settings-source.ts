@@ -23,6 +23,14 @@ import type { SearchStatusResponse } from '@shared/ipc/search'
  *  | 向量路在干什么 | `searchStatusQuery`(`search-catalog-source.ts`) | 它是**索引的状态**,只读,而且检索面已经在订它了 |
  *
  * 两者在屏幕上合成一句话,那一步是纯函数 `semanticPhaseOf` —— 投影不是画画。
+ *
+ * ── 判词:后端那几个枚举名**不照字面读**(2026-09-17 报障)─────────────────
+ * `status.vector` 的 `'downloading'` 是 `VectorWriter` 的**初始态名**,它诞生在
+ * 「打开开关就顺带下模型」那一版;09-17 把下载拆成一件独立的东西之后,这一格的
+ * 真实含义已经变成「**正在把模型装进内存**」。后端那个名字不改(契约不为文案动),
+ * 但壳照字面画出来就是一句假话 —— 真机截图上模型行写着「已下载 · 129 MB」,
+ * 底下同时写着「正在下载模型…」,用户的原话是「上面显示已下载,下面正在下载中,
+ * 有毛病?」。所以这一侧把它并进 `starting`:**屏上「下载」二字只属于模型行**。
  */
 
 /** 屏幕上那一节的设置形状(两格)。 */
@@ -70,11 +78,21 @@ export const semanticSearchQuery = createQuery<SemanticSearchView>(
  * 这一节此刻在说哪句话。**八个态,判据全在参数里**(没有计时器、没有「刚才点过」
  * 这种记忆),所以它可以被逐态单测。
  *
- * ── 为什么 `starting` 判的是「`vector` 缺席」而不是一段宽限时间 ──────────────
+ * ── 为什么没有 `downloading` 这一态(2026-09-17 报障)──────────────────────
+ * 见文件头那条判词:后端 `vector === 'downloading'` 今天说的是「正在把模型装进
+ * 内存」,而不是在下载。它并进 `starting` —— **开关那一行永远不说「下载」**,
+ * 下载这件事整个归模型行。
+ *
+ * ── 为什么 `starting` 判的是「`vector` 缺席**或者 off 而说不出死因**」 ───────
  * 契约上 `SearchStatusResponse.vector` 缺席的意思就是**不知道**。翻开关那一下,
  * 写路的 `optimistic` 顺手把这一格抹成 undefined —— 上一条 Worker 答的 `'off'`
- * 说的是上一份配置,拿它画「没跑起来」是拿旧答案回答新问题。真答案由那一发对账
- * 带回来(几十到几百毫秒),中间这一段屏幕上写的是「正在启动」,不是一次闪红。
+ * 说的是上一份配置,拿它画「没跑起来」是拿旧答案回答新问题。
+ *
+ * 光抹那一格还不够:对账那一发回来时,换 Worker 这件事在后端**还没走完**,答回来
+ * 的仍然是上一条(没装向量写路,于是 `vector: 'off'`、一句死因都没有)。那一帧照
+ * 字面画就是一次闪红。而**真的失败一定带着死因** —— `VectorWriter.markOff` 每一条
+ * 路都 `failure ??= describeEmbedderFailure(error)`,所以「off 且没有死因」在这一侧
+ * 的意思只能是「这条 Worker 压根没带向量写路」= 还没换过来。
  *
  * ── 为什么这一格只答 `failed`,不答「为什么 failed」 ───────────────────────
  * 打包版的桌面 app 里 `vectorExtension` 是 `loadable`(`vec0.dylib` 有
@@ -85,7 +103,7 @@ export const semanticSearchQuery = createQuery<SemanticSearchView>(
  *
  * 原因是**后端答的**(2026-09-17 R12):`status.vectorErrorKind` 一个码 +
  * `status.vectorError` 一句原话,由 `SearchSettings.tsx` 的 `FAILED_REASON_KEY` 查成
- * 一句人话。后端答不出就还是那句「没跑起来。原因在日志里」——**编一个原因比不说更糟**。
+ * 一句人话。后端答不出就只写「没跑起来」——**编一个原因比不说更糟**。
  */
 export type SemanticPhase =
   | 'unknown'
@@ -93,7 +111,6 @@ export type SemanticPhase =
   | 'needsModel'
   | 'disabled'
   | 'starting'
-  | 'downloading'
   | 'embedding'
   | 'ready'
   | 'failed'
@@ -130,35 +147,43 @@ export function semanticPhaseOf(
   // 装不上扩展 = 这份产物**结构上**做不了,与开关开没开无关 —— 所以排在最前面。
   if (status.vectorExtension === 'missing') return 'unsupported'
   /*
-   * **关着 + 模型还没下全 = 「先下载模型」**(2026-09-17)。开关此刻是禁着的:
-   * 打开它只会得到一条立刻把自己关回去的 Worker,那是一次白跑的失败。
+   * **模型还没到位 = 「先下载模型」**(2026-09-17;09-17 报障后扩到开关开着那一形)。
    *
-   * 判据里那句 `!view.enabled` 不是多余的 —— **开着的时候永远许人关掉**。老用户的
-   * 设置里 `enabled: true` 是上一版留下的(那时打开开关就是下载),而模型一个字节
-   * 都没下:那一形下要是把开关也禁了,他就被锁在一个开着却不工作的状态里。
-   * 那一形走的是下面的 `failed`(后端答 `vectorErrorKind: 'model'`),屏上写
-   * 「模型文件不完整」,而模型那一行同时画着「下载」。
+   * 这一支**不问开关开没开**,理由是两行不许互相打架:模型行此刻正一条一条地说
+   * 「未下载 · 约 113 MB」/「40 MB / 113 MB · 35%」/「没下成:连不上」,那就是全部
+   * 实情,而下一步动作在两种开关位置下是同一个 —— 去按那颗「下载」。开关开着时若
+   * 照旧走 `failed`,屏上会在一条**正在走的进度条**底下写「模型文件不完整,重新下载」,
+   * 那正是用户报的那一类自相矛盾。
+   *
+   * **它只说话,不锁开关**:禁不禁是 `SearchSettings.tsx` 里那句
+   * `!enabled && phase === 'needsModel'` 的事 —— **开着的时候永远许人关掉**。老用户的
+   * 设置里 `enabled: true` 是上一版留下的(那时打开开关就是下载),而模型一个字节都
+   * 没下;那一形下要是把开关也禁了,他就被锁在一个开着却不工作的状态里。
    *
    * **「不知道」不拦路**:`model` 那一格缺席说的是「这台宿主管不了模型」(老后端、
-   * 独立 server、门跑的假嵌入器),不是「没下载」。那时拦着开关就是拿一件我们不知道
-   * 的事去挡人 —— 与上面「还没问到不许写未启用」同一条。
+   * 独立 server、门跑的假嵌入器),不是「没下载」。那时拿一件我们不知道的事去挡人,
+   * 与上面「还没问到不许写未启用」是同一条。
    */
   const modelPhase = semanticModelPhaseOf(status)
-  if (!view.enabled && modelPhase !== 'ready' && modelPhase !== 'unknown') return 'needsModel'
+  if (modelPhase !== 'ready' && modelPhase !== 'unknown') return 'needsModel'
   if (!view.enabled) return 'disabled'
   switch (status.vector) {
-    case 'downloading':
-      return 'downloading'
     case 'embedding':
       return 'embedding'
     case 'ready':
       return 'ready'
     case 'off':
-      return 'failed'
+      // 死因说得出才是真失败;说不出 = 答话的还是上一条 Worker(见上面那段)。
+      return hasVectorFailure(status) ? 'failed' : 'starting'
     default:
-      // 缺席 = 不知道。开关刚翻过去的那一段就落在这里(见上面那段)。
+      // 缺席 = 不知道;`'downloading'` = 正在把模型装进内存。两者都是「正在启动」。
       return 'starting'
   }
+}
+
+/** 后端说得出「为什么关回去了」吗 —— 说得出才算真的失败(空串 = 没说)。 */
+function hasVectorFailure(status: SearchStatusResponse): boolean {
+  return status.vectorError !== undefined && status.vectorError.length > 0
 }
 
 /**

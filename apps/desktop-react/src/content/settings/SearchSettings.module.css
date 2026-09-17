@@ -4,21 +4,17 @@
  */
 
 /*
- * 模型 id 跟在标签后面。它是**数据**(嵌入器注册表的键),所以画得比标签淡一档、
- * 用等宽字 —— 一眼看出「这不是一句话,这是一个名字」。
+ * 「这一行背后还有一句机器原话」的**唯一提示**(2026-09-17)。原话从句子里搬进了
+ * Tooltip,悬上去才看得到 —— 没有这条点线,那条提示就只有碰巧把指针停在上面的人
+ * 才会发现,等于没有。
  *
- * `min-width: 0` + 截断:那个 id 由注册表说了算(将来可能是一长串仓库名),
- * 不封顶会把右边那颗钮挤出去(律一)。
+ * `cursor: help` 是这件事在 Web 上的既有说法;下划线用点线而不是实线,因为实线
+ * 在这台壳里是链接的意思(它不是链接,按下去什么都不会发生)。
  */
-.modelId {
-  margin-left: var(--sp-2);
-  min-width: 0;
-  overflow: hidden;
-  font-family: var(--font-mono);
-  font-size: var(--fs-micro);
-  color: var(--text-3);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.detail {
+  cursor: help;
+  text-decoration: underline dotted currentcolor;
+  text-underline-offset: 2px;
 }
 
 /*

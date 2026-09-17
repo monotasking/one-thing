@@ -142,22 +142,52 @@ describe('八个态(纯函数)', () => {
       .toBe('unsupported')
   })
 
-  it('关着 = disabled;开着按 `vector` 那一格分四档', () => {
+  it('关着 = disabled;开着按 `vector` 那一格分档', () => {
     expect(semanticPhaseOf(off, status({ vector: 'off' }))).toBe('disabled')
-    expect(semanticPhaseOf(on, status({ vector: 'downloading' }))).toBe('downloading')
     expect(semanticPhaseOf(on, status({ vector: 'embedding' }))).toBe('embedding')
     expect(semanticPhaseOf(on, status({ vector: 'ready' }))).toBe('ready')
-    expect(semanticPhaseOf(on, status({ vector: 'off' }))).toBe('failed')
+    expect(semanticPhaseOf(on, status({ vector: 'off', vectorError: '死因' }))).toBe('failed')
+  })
+
+  /**
+   * 09-17 报障:后端 `'downloading'` 是 `VectorWriter` 的初始态名,今天的意思是
+   * 「正在把模型装进内存」。照字面画就是屏上同时写着「已下载」与「正在下载模型…」。
+   */
+  it('`vector === downloading` 并进 starting —— 下载二字只属于模型行', () => {
+    expect(semanticPhaseOf(on, status({ vector: 'downloading' }))).toBe('starting')
   })
 
   it('开着但 `vector` **缺席** = starting(缺席的意思是「不知道」,不是 off)', () => {
     expect(semanticPhaseOf(on, status({}))).toBe('starting')
   })
 
+  /**
+   * `off` 而**说不出死因** = 答话的还是上一条 Worker(它压根没装向量写路)。真的
+   * 失败一定带死因(`VectorWriter.markOff` 每条路都 `failure ??= …`),所以这一帧
+   * 画「没跑起来」是拿换 Worker 的中途当结论。
+   */
+  it('开着 + off 但没有死因 = starting;有死因才是 failed', () => {
+    expect(semanticPhaseOf(on, status({ vector: 'off' }))).toBe('starting')
+    expect(semanticPhaseOf(on, status({ vector: 'off', vectorError: '' }))).toBe('starting')
+    expect(semanticPhaseOf(on, status({ vector: 'off', vectorError: 'fetch failed' }))).toBe('failed')
+  })
+
+  /** 模型没到位时**两种开关位置说同一句话** —— 下一步动作是同一个:去按那颗「下载」。 */
+  it('模型不是 ready 也不是「管不了」= needsModel,开关开着也一样', () => {
+    const notReady = ['absent', 'downloading', 'failed'] as const
+    for (const state of notReady) {
+      const s = status({ vector: 'off', model: { id: 'm', state } })
+      expect(semanticPhaseOf(off, s), state).toBe('needsModel')
+      expect(semanticPhaseOf(on, s), state).toBe('needsModel')
+    }
+    // 「管不了模型」的宿主(`model` 缺席)不拦路。
+    expect(semanticPhaseOf(off, status({ vector: 'off' }))).toBe('disabled')
+  })
+
   it('轮询三档:下模型 1s / 会动的 5s / 什么都不会动的不问', () => {
     const idle: SemanticPhase[] = ['disabled', 'unsupported', 'needsModel']
     for (const phase of idle) expect(semanticStatusPollMs(phase, 'absent')).toBeUndefined()
-    const moving: SemanticPhase[] = ['unknown', 'starting', 'downloading', 'embedding', 'ready', 'failed']
+    const moving: SemanticPhase[] = ['unknown', 'starting', 'embedding', 'ready', 'failed']
     for (const phase of moving) expect(semanticStatusPollMs(phase, 'ready')).toBe(5000)
     // 正在下模型 = 有一条会走的进度条,**哪一个 phase 都问得更勤**(1s)。
     for (const phase of [...idle, ...moving]) {
@@ -165,73 +195,86 @@ describe('八个态(纯函数)', () => {
     }
   })
 
-  it('每个态都说得出一句话,而且 zh / en 两本都译过', () => {
+  it('每个会说话的态都译过 zh / en;`disabled` **一个字都不说**', () => {
     const phases: SemanticPhase[] = [
-      'unknown', 'unsupported', 'needsModel', 'disabled', 'starting',
-      'downloading', 'embedding', 'ready', 'failed',
+      'unknown', 'unsupported', 'needsModel', 'starting', 'embedding', 'ready', 'failed',
     ]
     for (const phase of phases) {
-      const { key } = statusMessage(phase, undefined)
-      expect(zh[key], `zh 缺 ${key}`).toBeTruthy()
-      expect(en[key], `en 缺 ${key}`).toBeTruthy()
+      const message = statusMessage(phase, 'ready', undefined)
+      expect(message, `${phase} 没话说`).toBeDefined()
+      expect(zh[message!.key], `zh 缺 ${message!.key}`).toBeTruthy()
+      expect(en[message!.key], `en 缺 ${message!.key}`).toBeTruthy()
     }
+    // 关着的开关本身就是那句「未启用」,底下再写一行是凑字(09-17)。
+    expect(statusMessage('disabled', 'ready', undefined)).toBeUndefined()
+    // 首载那一帧模型行也写着「检查中…」—— 同一句不印两遍(09-17)。
+    expect(statusMessage('unknown', 'unknown', undefined)).toBeUndefined()
+    expect(statusMessage('unknown', 'ready', undefined)?.key).toBe('search.semanticStatusUnknown')
     // 数得出来才给数(§7.3「不知道就别给」),不是画一个 0。
-    expect(statusMessage('embedding', undefined).vars).toBeUndefined()
-    expect(statusMessage('embedding', 0).vars).toBeUndefined()
-    expect(statusMessage('embedding', 7).vars).toEqual({ count: 7 })
+    expect(statusMessage('embedding', 'ready', undefined)?.vars).toBeUndefined()
+    expect(statusMessage('embedding', 'ready', 0)?.vars).toBeUndefined()
+    expect(statusMessage('embedding', 'ready', 7)?.vars).toEqual({ count: 7 })
   })
 
   /**
    * 失败态的那句原因(2026-09-17)。在这之前这一行只会写「原因在日志里」,而 Worker 的
-   * 日志真机上从来没有落过地 —— 那是一句假话。后端答得出 `vectorError` 就插进来;
-   * 答不出就退回老那句(编一个原因比不说更糟)。
+   * 日志真机上从来没有落过地 —— 那是一句假话。后端答得出 `vectorError` 就用上;
+   * 答不出就退回光秃秃那句(编一个原因比不说更糟)。
    *
-   * R12 起原因分**四类**(后端只答码 + 原话,句子由这一侧查字典):每一类查一行、
-   * 四句中英都带 `{reason}`,不认识的码退回只说原话那一句。
+   * **09-17 报障后改**:认得出的那三类**不再把原话括在屏上**(真机上那是一串
+   * `Unsupported device: "wasm"…`),原话改挂 Tooltip = `detail`;只有不认识那一类
+   * 把原话直接上屏。
    */
-  it('failed:后端给了原因就说原因,给不出才退回「原因在日志里」', () => {
-    const withReason = statusMessage('failed', undefined, 'fetch failed')
-    expect(withReason.key).toBe('search.semanticStatusFailedReason')
-    expect(withReason.vars).toEqual({ reason: 'fetch failed' })
-    expect(zh[withReason.key]).toContain('{reason}')
-    expect(en[withReason.key]).toContain('{reason}')
+  it('failed:不认识的码只说原话,连原话都没有才说光秃秃那句', () => {
+    const withReason = statusMessage('failed', 'ready', undefined, 'fetch failed')
+    expect(withReason?.key).toBe('search.semanticStatusFailedReason')
+    expect(withReason?.vars).toEqual({ reason: 'fetch failed' })
+    expect(withReason?.detail).toBeUndefined()
+    expect(zh[withReason!.key]).toContain('{reason}')
+    expect(en[withReason!.key]).toContain('{reason}')
 
-    expect(statusMessage('failed', undefined).key).toBe('search.semanticStatusFailed')
-    expect(statusMessage('failed', undefined, '').key).toBe('search.semanticStatusFailed')
+    expect(statusMessage('failed', 'ready', undefined)?.key).toBe('search.semanticStatusFailed')
+    expect(statusMessage('failed', 'ready', undefined, '')?.key).toBe('search.semanticStatusFailed')
   })
 
-  it('failed:四类原因各查一行,中英都带 {reason}', () => {
+  it('failed:三类认得出的原因各查一行,**句子里没有 {reason},原话进 Tooltip**', () => {
     const byKind = {
       network: 'search.semanticStatusFailedNetwork',
       runtime: 'search.semanticStatusFailedRuntime',
       model: 'search.semanticStatusFailedModel',
-      unknown: 'search.semanticStatusFailedReason',
     } as const
     for (const [kind, key] of Object.entries(byKind)) {
-      const message = statusMessage('failed', undefined, '原话', kind as keyof typeof byKind)
-      expect(message.key).toBe(key)
-      expect(message.vars).toEqual({ reason: '原话' })
-      expect(zh[message.key]).toContain('{reason}')
-      expect(en[message.key]).toContain('{reason}')
+      const message = statusMessage('failed', 'ready', undefined, '原话', kind as keyof typeof byKind)
+      expect(message?.key).toBe(key)
+      expect(message?.vars).toBeUndefined()
+      expect(message?.detail).toBe('原话')
+      expect(zh[key], key).not.toContain('{')
+      expect(en[key], key).not.toContain('{')
     }
-    // 老后端不带这一格 = 不认识 = 只说原话(与 `unknown` 同一行)。
-    expect(statusMessage('failed', undefined, '原话').key).toBe('search.semanticStatusFailedReason')
+    // 认得出码但后端一句原话都没给 → 还是那句人话,只是没有可挂的提示。
+    const bare = statusMessage('failed', 'ready', undefined, undefined, 'network')
+    expect(bare?.key).toBe('search.semanticStatusFailedNetwork')
+    expect(bare?.detail).toBeUndefined()
+    // 老后端不带这一格 = 不认识 = 只说原话。
+    expect(statusMessage('failed', 'ready', undefined, '原话')?.key).toBe('search.semanticStatusFailedReason')
   })
 })
 
 describe('这一节(渲染)', () => {
-  it('出厂档:开关关着、状态行写「未启用」、模型那一行画着 id', async () => {
+  /**
+   * 09-17 报障后两处改法都钉在这一条上:**关着不画状态行**(一个关着的开关本身就是
+   * 那句「未启用」),**模型 id 不上屏**(它不构成任何一个可做的决定)。
+   */
+  it('出厂档:开关关着、**状态行整行不画**、模型那一行不写 id', async () => {
     configureSearchSettingsPort(fakePort(structuredClone(BASE)))
     stubStatus({ vector: 'off' })
     render(<SearchSettings />)
 
-    await waitFor(() => {
-      expect(screen.getByTestId('search-semantic-status').textContent)
-        .toBe(t('search.semanticStatusDisabled'))
-    })
+    await waitFor(() => expect(screen.getByRole('switch').hasAttribute('disabled')).toBe(false))
     expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('false')
+    expect(screen.queryByTestId('search-semantic-status')).toBeNull()
     expect(screen.getByTestId('search-semantic-model-row').textContent)
-      .toContain(DEFAULT_SEMANTIC_MODEL_ID)
+      .not.toContain(DEFAULT_SEMANTIC_MODEL_ID)
   })
 
   it('翻开开关:**写回时 modelId 跟着一起交**,而且中间那一段写的是「正在启动」不是「没跑起来」', async () => {
@@ -243,10 +286,7 @@ describe('这一节(渲染)', () => {
     configureSearchSettingsPort(port)
     stubStatus({ vector: 'off' })
     render(<SearchSettings />)
-    await waitFor(() => {
-      expect(screen.getByTestId('search-semantic-status').textContent)
-        .toBe(t('search.semanticStatusDisabled'))
-    })
+    await waitFor(() => expect(screen.getByRole('switch').hasAttribute('disabled')).toBe(false))
 
     act(() => void fireEvent.click(screen.getByRole('switch')))
     // 乐观那一拍:开关翻过去了,状态行是「正在启动」——**不是**「没跑起来」。
@@ -258,9 +298,15 @@ describe('这一节(渲染)', () => {
     expect(port.saves[0]!.search?.semantic).toEqual({ enabled: true, modelId: 'fake' })
   })
 
-  it('装不上扩展:开关**禁着而不是藏起来** —— 藏起来的开关说不出「这台机器做不了」', async () => {
+  it('装不上扩展:开关**禁着而不是藏起来**,而模型那一行**整行不画**', async () => {
     configureSearchSettingsPort(fakePort(structuredClone(BASE)))
-    stubStatus({ vectorExtension: 'missing', vector: 'off' })
+    stubStatus({
+      vectorExtension: 'missing',
+      vector: 'off',
+      // 后端照样答得出模型那一格(`ModelDownloader` 与 vec0 装不装得上无关)——
+      // 但在一台结构上做不了语义召回的机器上请人下 113MB 是骗人。
+      model: { id: DEFAULT_SEMANTIC_MODEL_ID, state: 'absent', totalBytes: 118_300_000 },
+    })
     render(<SearchSettings />)
 
     await waitFor(() => {
@@ -268,6 +314,8 @@ describe('这一节(渲染)', () => {
         .toBe(t('search.semanticStatusUnsupported'))
     })
     expect(screen.getByRole('switch').hasAttribute('disabled')).toBe(true)
+    expect(screen.queryByTestId('search-semantic-model-row')).toBeNull()
+    expect(screen.queryByTestId('search-semantic-model-download')).toBeNull()
   })
 
   it('建索引中:读数带着还欠几条', async () => {
@@ -284,7 +332,7 @@ describe('这一节(渲染)', () => {
     })
   })
 
-  it('没跑起来:后端那句原因按类上屏(不是只写「去看日志」)', async () => {
+  it('没跑起来:屏上只有那句人话,**机器原话不上屏**(它挂在 Tooltip 上)', async () => {
     configureSearchSettingsPort(fakePort({
       ...structuredClone(BASE),
       search: { semantic: { enabled: true, modelId: DEFAULT_SEMANTIC_MODEL_ID } },
@@ -294,8 +342,40 @@ describe('这一节(渲染)', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('search-semantic-status').textContent)
-        .toBe(t('search.semanticStatusFailedNetwork', { reason: 'fetch failed' }))
+        .toBe(t('search.semanticStatusFailedNetwork'))
     })
+    expect(screen.getByTestId('search-semantic-status').textContent).not.toContain('fetch failed')
+  })
+
+  /**
+   * 这一条就是 09-17 那张截图:后端 `vector === 'downloading'` 说的是「正在把模型装进
+   * 内存」,模型明明已经下完了。**开关那一行不许出现「下载」二字** —— 归并拆掉当场红。
+   */
+  it('模型 ready + 开着 + `vector === downloading`:状态行写「正在启动…」,一个「下载」都没有', async () => {
+    configureSearchSettingsPort(fakePort({
+      ...structuredClone(BASE),
+      search: { semantic: { enabled: true, modelId: DEFAULT_SEMANTIC_MODEL_ID } },
+    }))
+    stubStatus({
+      vector: 'downloading',
+      model: {
+        id: DEFAULT_SEMANTIC_MODEL_ID,
+        state: 'ready',
+        loadedBytes: 118_300_000,
+        totalBytes: 118_300_000,
+      },
+    })
+    render(<SearchSettings />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('search-semantic-status').textContent)
+        .toBe(t('search.semanticStatusStarting'))
+    })
+    expect(screen.getByTestId('search-semantic-row').textContent).not.toContain('下载')
+    expect(screen.getByTestId('search-semantic-status').textContent).not.toContain('下载')
+    // 模型行照旧说它自己那半句真话。
+    expect(screen.getByTestId('search-semantic-model-row').textContent)
+      .toContain(t('search.semanticModelReadySize', { size: '113 MB' }))
   })
 
   it('翻开关那一下连原因一起抹掉 —— 上一任的死因不许跟在「正在启动」后面', async () => {
@@ -305,10 +385,9 @@ describe('这一节(渲染)', () => {
     }))
     stubStatus({ vector: 'off', vectorError: '上一条 Worker 的死因', vectorErrorKind: 'runtime' })
     render(<SearchSettings />)
-    await waitFor(() => {
-      expect(screen.getByTestId('search-semantic-status').textContent)
-        .toBe(t('search.semanticStatusDisabled'))
-    })
+    // 关着 = 状态行整行不画(09-17),所以这一等等的是开关活过来。
+    await waitFor(() => expect(screen.getByRole('switch').hasAttribute('disabled')).toBe(false))
+    expect(screen.queryByTestId('search-semantic-status')).toBeNull()
 
     act(() => void fireEvent.click(screen.getByRole('switch')))
     expect(screen.getByTestId('search-semantic-status').textContent)
@@ -331,9 +410,32 @@ describe('这一节(渲染)', () => {
       expect(screen.getByText(/拉不到/)).toBeTruthy()
     })
     expect(screen.getByRole('switch')).toBeTruthy()
-    // 设置那一格没答案 → 状态行说「检查中」,不说「未启用」。
-    expect(screen.getByTestId('search-semantic-status').textContent)
-      .toBe(t('search.semanticStatusUnknown'))
+    // 设置那一格没答案 → **绝不写「未启用」**(那是在编)。这台替身的状态里没有
+    // `model`,模型行已经在写「检查中…」,所以状态行让位、整行不画(同一句不印两遍)。
+    expect(screen.queryByTestId('search-semantic-status')).toBeNull()
+    expect(screen.getByTestId('search-semantic-model-row').textContent)
+      .toBe(`${t('search.semanticModelLabel')}${t('search.semanticModelUnknown')}`)
+  })
+
+  it('设置没答案但模型行有答案:状态行照写「检查中…」', async () => {
+    configureSearchSettingsPort({
+      ready: async () => undefined,
+      readSettings: async () => ({ success: false, error: '拉不到' }),
+      saveSettings: async () => ({ success: true }),
+      downloadModel: async () => ({ success: true }),
+      cancelModelDownload: async () => ({ success: true }),
+      removeModel: async () => ({ success: true }),
+    })
+    stubStatus({
+      vector: 'off',
+      model: { id: DEFAULT_SEMANTIC_MODEL_ID, state: 'ready', totalBytes: 118_300_000 },
+    })
+    render(<SearchSettings />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('search-semantic-status').textContent)
+        .toBe(t('search.semanticStatusUnknown'))
+    })
   })
 })
 
@@ -366,19 +468,30 @@ describe('模型那一行', () => {
     ]
     for (const [phase, status] of cases) {
       const line = modelHint(t, phase, status)
-      expect(line, `${phase} 没话说`).toBeTruthy()
-      expect(line).not.toContain('{')
+      expect(line.text, `${phase} 没话说`).toBeTruthy()
+      expect(line.text).not.toContain('{')
     }
-    // 四类原因各查一行,中英成对(与状态行那四句是**两族**:主语不同)。
+    // 认得出的三类:人话上屏、原话挂 Tooltip(句子里没有 {reason})。
     for (const key of [
       'search.semanticModelFailedNetwork',
       'search.semanticModelFailedRuntime',
       'search.semanticModelFailedFiles',
-      'search.semanticModelFailedReason',
     ] as const) {
-      expect(zh[key]).toContain('{reason}')
-      expect(en[key]).toContain('{reason}')
+      expect(zh[key], key).not.toContain('{')
+      expect(en[key], key).not.toContain('{')
     }
+    const network = modelHint(t, 'failed', MODEL({ state: 'failed', errorKind: 'network', error: 'fetch failed' }))
+    expect(network.text).toBe(t('search.semanticModelFailedNetwork'))
+    expect(network.detail).toBe('fetch failed')
+    // 不认识的码(老后端不带这一格)= 只说原话,中英都带 {reason}。
+    const unknown = modelHint(t, 'failed', MODEL({ state: 'failed', error: '原话' }))
+    expect(unknown.text).toBe(t('search.semanticModelFailedReason', { reason: '原话' }))
+    expect(unknown.detail).toBeUndefined()
+    expect(zh['search.semanticModelFailedReason']).toContain('{reason}')
+    expect(en['search.semanticModelFailedReason']).toContain('{reason}')
+    // 连原话都没有 = 光秃秃那一句。
+    expect(modelHint(t, 'failed', MODEL({ state: 'failed' })).text)
+      .toBe(t('search.semanticModelFailed'))
   })
 
   it('不知道总数就画「不知道进度」那一档,不画一条停在 0% 的槽', () => {
@@ -390,7 +503,7 @@ describe('模型那一行', () => {
     expect(downloadRatio(MODEL({ state: 'downloading', loadedBytes: 120, totalBytes: 100 }))).toBe(1)
   })
 
-  it('模型没下:开关**禁着**、说明行写「先下载模型」、状态行不写「未启用」', async () => {
+  it('模型没下:开关**禁着**、状态行写「先下载模型」、说明句**不换**', async () => {
     configureSearchSettingsPort(fakePort(structuredClone(BASE)))
     stubStatus({ vector: 'off', model: MODEL({ totalBytes: 118_300_000 }) })
     render(<SearchSettings />)
@@ -400,12 +513,18 @@ describe('模型那一行', () => {
         .toBe(t('search.semanticStatusNeedsModel'))
     })
     expect(screen.getByRole('switch').hasAttribute('disabled')).toBe(true)
+    // 说明句恒定一句(09-17):「该先下载」这件事状态行已经在说了。
     expect(screen.getByTestId('search-semantic-row').textContent)
-      .toContain(t('search.semanticNeedsModelHint'))
+      .toContain(t('search.semanticHint'))
     expect(screen.getByTestId('search-semantic-model-download')).toBeTruthy()
   })
 
-  it('开着但模型没下(老用户那一形):开关**照样关得掉**,而且屏上同时给下载', async () => {
+  /**
+   * 老用户那一形 + 正在下载那一形,合在一条里量的是同一条规矩:**模型行正在说这件事
+   * 的时候,开关行不许说第二遍**。从前这里写的是「没跑起来:模型文件不完整,重新
+   * 下载」—— 在一条正在走的进度条底下叫人重新下载,正是 09-17 报的那一类。
+   */
+  it('开着但模型没下(老用户那一形):开关照样关得掉,状态行说「先下载模型」而不是死因', async () => {
     configureSearchSettingsPort(fakePort({
       ...structuredClone(BASE),
       search: { semantic: { enabled: true, modelId: DEFAULT_SEMANTIC_MODEL_ID } },
@@ -423,7 +542,28 @@ describe('模型那一行', () => {
     })
     expect(screen.getByRole('switch').hasAttribute('disabled')).toBe(false)
     expect(screen.getByTestId('search-semantic-status').textContent)
-      .toBe(t('search.semanticStatusFailedModel', { reason: 'embedding model files are not downloaded' }))
+      .toBe(t('search.semanticStatusNeedsModel'))
+  })
+
+  it('开着 + 模型正在下载:状态行不叫人「重新下载」,进度由模型行一处说', async () => {
+    configureSearchSettingsPort(fakePort({
+      ...structuredClone(BASE),
+      search: { semantic: { enabled: true, modelId: DEFAULT_SEMANTIC_MODEL_ID } },
+    }))
+    stubStatus({
+      vector: 'off',
+      vectorErrorKind: 'model',
+      vectorError: 'embedding model files are not downloaded',
+      model: MODEL({ state: 'downloading', loadedBytes: 40_000_000, totalBytes: 118_300_000 }),
+    })
+    render(<SearchSettings />)
+
+    await waitFor(() => expect(screen.getByTestId('search-semantic-model-cancel')).toBeTruthy())
+    expect(screen.getByTestId('search-semantic-status').textContent)
+      .toBe(t('search.semanticStatusNeedsModel'))
+    expect(screen.getByTestId('search-semantic-status').textContent)
+      .not.toContain(t('search.semanticStatusFailedModel'))
+    expect(screen.getByRole('progressbar')).toBeTruthy()
   })
 
   it('按下载:打的是那条写路,乐观那一拍屏上就换成「取消」', async () => {
@@ -471,10 +611,9 @@ describe('模型那一行', () => {
     stubStatus({ vector: 'off' })
     render(<SearchSettings />)
 
-    await waitFor(() => {
-      expect(screen.getByTestId('search-semantic-status').textContent)
-        .toBe(t('search.semanticStatusDisabled'))
-    })
+    await waitFor(() => expect(screen.getByRole('switch').hasAttribute('disabled')).toBe(false))
+    expect(screen.getByTestId('search-semantic-model-row').textContent)
+      .toContain(t('search.semanticModelUnknown'))
     expect(screen.queryByTestId('search-semantic-model-download')).toBeNull()
     expect(screen.queryByTestId('search-semantic-model-remove')).toBeNull()
     expect(screen.getByRole('switch').hasAttribute('disabled')).toBe(false)

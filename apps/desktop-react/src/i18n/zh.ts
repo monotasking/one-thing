@@ -1053,52 +1053,57 @@ export const zh = {
   'permission.effect.browser_navigate': '让内置浏览器去一个地址',
   /* ── 搜索 · 语义召回(content/settings/SearchSettings.tsx;设计
    * docs/design/search-index-2026-09.md §15)────────────────────────────────
-   * 「开了会怎样」那句是**会造成后果的告知**(下 110MB、后台占 CPU),所以它是文案
-   * 不是数据,双语成对。模型 id 是数据(嵌入器注册表的键),不进这里。
-   * 八句状态各说一个态,判据在 `data/search-settings-source.ts` 的 `semanticPhaseOf`。 */
+   * 判据在 `data/search-settings-source.ts` 的 `semanticPhaseOf` / `semanticModelPhaseOf`,
+   * 两族句子(开关行 / 模型行)各说各的。模型 id 是数据,不进这里 —— 09-17 报障后
+   * 它连屏都不上了。
+   *
+   * **09-17 报障后整族重写**(用户:「你的 label 这么冗余吗?上面显示已下载,下面
+   * 正在下载中,有毛病?……这是给用户看的吗?」)。三条规矩:
+   *  ① 一句话只说一件事,能省的字省掉(「打开后会在后台给全部消息建一份向量索引」
+   *     那种交代实现的长句退役);
+   *  ② 「下载」二字只属于模型行;
+   *  ③ 认得出的失败**不把机器原话括在屏上** —— 原话挂 Tooltip,只有「不认识」那一类
+   *     把原话直接上屏(不认识时没有人话可说)。 */
   'settings.sectionSearch': '搜索',
   'search.semanticLabel': '按含义找',
-  'search.semanticHint':
-    '打开后会在后台给全部消息建一份向量索引;全程只在本机算,不上传。按字面找一直都开着,不受这一格影响。',
-  'search.semanticNeedsModelHint': '先把上面那份模型下下来,这一格才能打开。',
+  'search.semanticHint': '字面搜不到时,再按意思相近的找。',
   'search.semanticLoadFailed': '搜索设置拉不到',
   'search.semanticSaveFailed': '这一格没能存上',
   'search.semanticStatusUnknown': '检查中…',
-  'search.semanticStatusUnsupported': '这个版本不带语义召回的运行时,开不了。',
-  'search.semanticStatusDisabled': '未启用',
+  'search.semanticStatusUnsupported': '这个版本不支持',
   'search.semanticStatusNeedsModel': '先下载模型',
   'search.semanticStatusStarting': '正在启动…',
-  'search.semanticStatusDownloading': '正在下载模型…',
   'search.semanticStatusEmbedding': '正在建立索引…',
-  'search.semanticStatusEmbeddingCount': '正在建立索引,还有 {count} 条。',
-  'search.semanticStatusReady': '就绪',
-  'search.semanticStatusFailed': '没跑起来。原因在日志里(log/app.jsonl,search.index.worker)。',
+  'search.semanticStatusEmbeddingCount': '正在建立索引,还剩 {count} 条',
+  'search.semanticStatusReady': '已就绪',
+  'search.semanticStatusFailed': '没跑起来',
   'search.semanticStatusFailedReason': '没跑起来:{reason}',
-  'search.semanticStatusFailedNetwork': '没跑起来:下载模型失败,检查网络代理({reason})',
-  'search.semanticStatusFailedRuntime': '没跑起来:本机的推理运行时装不上({reason})',
-  'search.semanticStatusFailedModel': '没跑起来:模型文件不完整({reason})',
+  'search.semanticStatusFailedNetwork': '没跑起来:连不上,检查网络代理',
+  'search.semanticStatusFailedRuntime': '没跑起来:这台机器跑不了这个模型',
+  'search.semanticStatusFailedModel': '没跑起来:模型文件不完整,重新下载',
   'search.semanticModelLabel': '模型',
   /* ── 模型那一行(2026-09-17:用户裁「把开关和下载模型拆开,下载要能知道进度」)──
    * 字节数由 `format/quantity` 的 formatBytes 念(单位符号是数据,不进字典),
-   * 这里的句子只负责它周围那半句人话。副文案五态,判据在 `semanticModelPhaseOf`。 */
+   * 这里的句子只负责它周围那半句人话。副文案五态,判据在 `semanticModelPhaseOf`。
+   * `semanticModelDownloading` 只当进度条的 aria-label(屏上那半句由下面两行说)。 */
   'search.semanticModelUnknown': '检查中…',
   'search.semanticModelAbsent': '未下载',
-  'search.semanticModelAbsentSize': '未下载 · 约 {size} · 在本机运行的多语言小模型',
+  'search.semanticModelAbsentSize': '未下载 · 约 {size}',
   'search.semanticModelDownloading': '正在下载模型',
-  'search.semanticModelDownloadingSize': '正在下载 · 已下 {loaded}',
-  'search.semanticModelDownloadingProgress': '正在下载 · {loaded} / {total} · {percent}%',
+  'search.semanticModelDownloadingSize': '已下载 {loaded}',
+  'search.semanticModelDownloadingProgress': '{loaded} / {total} · {percent}%',
   'search.semanticModelReady': '已下载',
-  'search.semanticModelReadySize': '已下载 · {size} · 只在本机运行',
-  'search.semanticModelFailed': '没下下来。原因在日志里(log/app.jsonl,search.index.model)。',
-  'search.semanticModelFailedReason': '没下下来:{reason}',
-  'search.semanticModelFailedNetwork': '没下下来:连不上,检查网络代理({reason})',
-  'search.semanticModelFailedRuntime': '没下下来:本机的推理运行时装不上({reason})',
-  'search.semanticModelFailedFiles': '没下下来:模型文件不完整({reason})',
+  'search.semanticModelReadySize': '已下载 · {size}',
+  'search.semanticModelFailed': '没下成',
+  'search.semanticModelFailedReason': '没下成:{reason}',
+  'search.semanticModelFailedNetwork': '没下成:连不上,检查网络代理',
+  'search.semanticModelFailedRuntime': '没下成:这台机器跑不了这个模型',
+  'search.semanticModelFailedFiles': '没下成:文件不完整,重试一次',
   'search.semanticModelDownload': '下载',
   'search.semanticModelRetry': '重试',
   'search.semanticModelCancel': '取消',
   'search.semanticModelRemove': '删除',
-  'search.semanticModelRemoveBlocked': '先关掉「按含义找」',
+  'search.semanticModelRemoveBlocked': '先关掉开关',
   /* ── 内置浏览器(B2′:content/settings/BrowserSettings.tsx)──────────────────
    * 「开着会有什么后果」那两句是**会造成后果的警告**,所以它们是文案不是数据,
    * 双语成对。端口是数据,由 `{port}` 插进来 —— 换一门语言它不该变。 */
