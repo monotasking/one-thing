@@ -24,7 +24,7 @@ import { encodeSessionLogEventLine } from '@onething/core/session'
 
 import { SqliteIndex } from '../sqlite-index.js'
 import { IndexWorkerCore } from '../worker-core.js'
-import type { IndexEndpoint } from '../worker-core.js'
+import type { IndexEndpoint, IndexWorkerCoreOptions } from '../worker-core.js'
 import type { IndexWorkerHandle } from '../worker-host.js'
 
 export const MESSAGE_CAPABILITY = 'messages'
@@ -259,6 +259,8 @@ export interface SameThreadWorkerOptions {
   feeds: readonly DocumentFeed<string>[]
   filters?: readonly DocumentFilter[]
   debounceMs?: number
+  /** 模型那件东西(2026-09-17)。不给 = 这条 Worker 管不了模型,三个动作结构化拒绝。 */
+  model?: IndexWorkerCoreOptions['model']
 }
 
 /**
@@ -275,6 +277,7 @@ export function createSameThreadWorker(options: SameThreadWorkerOptions): SameTh
     ...(options.filters !== undefined ? { filters: options.filters } : {}),
     schemas: INDEX_SCHEMAS,
     ...(options.debounceMs !== undefined ? { debounceMs: options.debounceMs } : {}),
+    ...(options.model === undefined ? {} : { model: options.model }),
   })
   core.start()
 

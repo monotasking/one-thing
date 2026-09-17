@@ -420,6 +420,7 @@ await runLoopDelayPhase()
 await runSemanticPhase()
 await runSemanticHotApplyPhase()
 await runSemanticProxyPhase()
+await runSemanticModelPhase()
 await runRealEmbedderPhase()
 
 if (failures.length > 0) {
@@ -499,20 +500,30 @@ async function runSemanticProxyPhase() {
       command: { type: 'command:send-message', content: `身份牌 ${MARKER} 已经私发四人了`, suppressTitleGeneration: true },
     })
 
-    // ── ⑪a 原因说得出 ────────────────────────────────────────────────────
-    const offed = await waitForStatus(rpc, status => status?.vector === 'off', "下不来之后翻回 'off'", 60_000)
-    check(true, `⑪a 模型下不来 → status.vector 翻回 'off'(${offed.ms}ms;走过 ${[...offed.seen].join(' → ')})`)
     /*
-     * 判的是**原因码**,不是那句人话(R12,2026-09-17 晚)。后端从此一个中文字都不拼 ——
-     * 句子由壳按 `vectorErrorKind` 查字典。门要是继续对着中文断言,后端改文案这门就红,
-     * 而它本来该守的是「这一类判对了没有」。
+     * ── ⑪a 原因说得出 ────────────────────────────────────────────────────
+     *
+     * **口径换过一次**(2026-09-17 晚,§15.8):在「开关 = 下载」的那一版里,打开开关
+     * 就会去下模型,所以这一格读的是 `vectorErrorKind`。拆开之后翻开关不再下载 ——
+     * 下载是 `search.semanticModelDownload` 这一发,失败的原因也就落在
+     * **`status.model.errorKind`** 上(`vectorErrorKind` 此刻答的是 `'model'`:
+     * 「模型还没下」,那是另一句真话)。
      */
-    const kind = offed.status?.vectorErrorKind
-    const reason = offed.status?.vectorError
+    const noModel = await waitForStatus(rpc, status => status?.model?.state === 'absent',
+      '模型那一格说得出「没下」', 60_000)
+    check(noModel.status?.vectorErrorKind === 'model',
+      `⑪a 模型没下时 vectorErrorKind 说的是 model(读到 ${JSON.stringify(noModel.status?.vectorErrorKind)})`)
+
+    const kicked = await rpc('search', 'semanticModelDownload', {})
+    check(kicked?.success === true, `⑪a 起了一发下载(读到 ${JSON.stringify(kicked?.model?.state)})`)
+    const failed = await waitForStatus(rpc, status => status?.model?.state === 'failed',
+      '下不来之后落在 failed', 60_000)
+    const kind = failed.status?.model?.errorKind
+    const reason = failed.status?.model?.error
     check(kind === 'network',
-      `⑪a status.vectorErrorKind 判成 network(读到 ${JSON.stringify(kind)})`)
+      `⑪a status.model.errorKind 判成 network(读到 ${JSON.stringify(kind)})`)
     check(typeof reason === 'string' && reason.length > 0,
-      `⑪a status.vectorError 带着原话(读到 ${JSON.stringify(reason)})`)
+      `⑪a status.model.error 带着原话(读到 ${JSON.stringify(reason)})`)
 
     /*
      * Worker 那句话真的进了宿主的 jsonl —— 这一格就是「日志落地」那一半的证据。
@@ -539,16 +550,16 @@ async function runSemanticProxyPhase() {
     if (saved?.success !== true) throw new Error(`⑪ settings.saveSettings 未成功:${JSON.stringify(saved)}`)
 
     /*
-     * 换完 Worker 还要**再给它一份活**:新那条起来时启动校对发现这条会话的检查点没变,
-     * 一份文档都不会排队,于是写路根本不去装模型 —— 那样数到 0 次 CONNECT 是「没人下过」,
-     * 不是「代理没接上」。再发一条消息 = 一份新文档 = 写路真的去下模型。
-     * (施工时就是这么红了一次,这段注释是那次的病历。)
+     * 换完 Worker 还要**再按一次下载**:改代理 = 换一条 Worker,新那条起来时模型那件
+     * 东西是新造的(它去问一次磁盘,答「没下」),而**没有人会替人按那颗钮** ——
+     * 那样数到 0 次 CONNECT 是「没人下过」,不是「代理没接上」。
+     *
+     * (2026-09-17 晚改:这里原本是「再发一条消息」—— 那一版里写路装模型时顺带下载,
+     * 现在写路只读本地。病历留着:判据换了,理由是产品的形换了。)
      */
-    await rpc('search', 'status')
-    await rpc('session-command', 'emit', {
-      sessionId,
-      command: { type: 'command:send-message', content: `换了代理之后再说一句 ${MARKER}`, suppressTitleGeneration: true },
-    })
+    await waitForStatus(rpc, status => status?.model?.state === 'absent',
+      '换完 Worker 之后模型那一格回到 absent', 20_000)
+    await rpc('search', 'semanticModelDownload', {})
 
     /*
      * 等的是**镜像站那一条**来过,不是「来过任何一条」。代理那一格一改,provider 的
@@ -637,6 +648,271 @@ async function startCountingProxy() {
   return {
     url: `http://127.0.0.1:${port}`,
     connects,
+    close: () => new Promise(resolve => {
+      for (const socket of sockets) socket.destroy()
+      server.close(() => resolve())
+    }),
+  }
+}
+
+/* ═══════════════════ ⑬ 模型是一件独立的东西:开关不下载,下载看得见进度 ═══════════
+ *
+ * 2026-09-17 用户裁定:「把开关和下载模型拆开,另外下载模型要能够知道进度。」
+ * 在这之前,翻一下开关 = 换一条 Worker = 嵌入器 `ready()` 里顺带下 112.8MB(真机冷下
+ * 191 秒),屏上只有一句「正在下载模型…」,没有进度也取消不了。
+ *
+ * 这一条在**真产物**上证四件事(自己一间 store、自己一条 server、一台**本机假 HF 站**):
+ *  ⑬a **开关不再触发下载**:模型没下 + 开关开着 → `vector` 翻 `'off'`、
+ *      `vectorErrorKind` 判成 `'model'`,而且假站的**请求计数是 0** —— 一个字节的网络
+ *      请求都没发。这是这一批的主判据。
+ *  ⑬b **下载真的出网、进度真的在走**:`search.semanticModelDownload` 之后
+ *      `status.model.loadedBytes` 单调增、`totalBytes` 不缩,假站真的收到了请求
+ *      (这一格同时是 ⑬a 那个 0 的**对照组** —— 不然「0 次」可能只是假站没接上)。
+ *  ⑬c **取消**:中途 `semanticModelCancel` → 当场回 `absent`,而且此后**不会**变成
+ *      `ready`(半截文件说不了「下全了」——判据是那份落定才写的清单,`model-store.ts`)。
+ *  ⑬d **删除**:`semanticModelRemove` → `absent`,模型目录清干净。
+ *
+ * ## 这台假站给的 onnx 是假的,所以这一条**证不到 `ready`**(写清楚,免得下次误读)
+ *
+ * 真要走到 `ready`,`onnxruntime-node` 得能把那份 onnx 建成一个推理会话 —— 一份用零
+ * 填出来的文件做不到,而在门里生成一份**真的**小 onnx 要么得引 protobuf、要么得预置一份
+ * 二进制产物,两样都比它们要守的东西贵。所以分工是:
+ *  - **走到 `ready`** 由可选的 ⑫(真嵌入器、真出网)守;
+ *  - **状态机**(进度怎么聚、取消是什么语义、清单什么时候写、半截文件为什么不算数)
+ *    由单测守(`search/index/__tests__/model-download.test.ts` +
+ *    `search/embedding/__tests__/model-store.test.ts`);
+ *  - 这一条守的是**只有真机才说得出的那三句**:零网络、真出网、真取消。
+ *
+ * **反证**:把嵌入器装载第一句那个 `isEmbedderModelPresent` 拆掉(或把
+ * `allowRemoteModels` 改回 true)→ ⑬a 的计数不再是 0 → 红。
+ */
+async function runSemanticModelPhase() {
+  const storeG = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-search-model-gate-'))
+  let server
+  let provider
+  let station
+  try {
+    console.log(`[gate:search-index] ⑬ temp store: ${storeG}`)
+    provider = await startFakeProvider(MOCK_PORT + 6, REPLY_TEXT)
+    station = await startFakeModelStation()
+
+    fs.writeFileSync(path.join(storeG, 'settings.json'), JSON.stringify({
+      ai: fakeProviderAiSettings(MOCK_PORT + 6),
+      tools: { enableToolCalls: false, permissionMode: 'dangerously-allow-all', tools: {} },
+      diagnostics: { enabled: false },
+      // 开关**开着**,模型**没下** —— 这一批要守的就是这一形。
+      search: { semantic: { enabled: true } },
+    }, null, 2))
+
+    server = spawn(process.execPath, [serverEntry], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        ...FAKE_PROVIDER_ENV,
+        ONETHING_STORE_PATH: storeG,
+        ONETHING_SERVER_DATA_ROOT: storeG,
+        ONETHING_SERVER_HOST: '127.0.0.1',
+        ONETHING_SERVER_PORT: '',
+        // 出网只许去这台假站;真代理一律清掉(开发机上常有)。
+        HF_ENDPOINT: station.url,
+        HTTP_PROXY: '', HTTPS_PROXY: '', http_proxy: '', https_proxy: '', ALL_PROXY: '',
+        ONETHING_SEARCH_EMBEDDER: '',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    const out = []
+    server.stdout.on('data', chunk => out.push(chunk.toString()))
+    server.stderr.on('data', chunk => out.push(chunk.toString()))
+
+    const discovery = await waitForDiscovery(storeG)
+    const rpc = createRpc(discovery)
+
+    // 一条消息 = 一份待嵌的文档 = 写路真的会去装载嵌入器(不然什么都不会发生)。
+    const made = await rpc('sessions', 'create', { name: `模型门 ${MARKER}` })
+    const sessionId = made?.session?.id
+    if (!sessionId) throw new Error(`⑬ sessions.create 没给出会话 id:${JSON.stringify(made)}`)
+    await rpc('session-command', 'emit', {
+      sessionId,
+      command: { type: 'command:send-message', content: `身份牌 ${MARKER} 已经私发四人了`, suppressTitleGeneration: true },
+    })
+
+    // ── ⑬a 开关不再触发下载 ──────────────────────────────────────────────
+    const offed = await waitForStatus(rpc, status => status?.vector === 'off', "模型没下 → 翻回 'off'", 60_000)
+    check(offed.status?.vectorErrorKind === 'model',
+      `⑬a 模型没下 → vectorErrorKind 判成 model(读到 ${JSON.stringify(offed.status?.vectorErrorKind)})`)
+    check(offed.status?.model?.state === 'absent',
+      `⑬a status.model 说得出「没下」(读到 ${JSON.stringify(offed.status?.model?.state)})`)
+    check(station.hits.length === 0,
+      `⑬a **一个网络请求都没发**(假站计数 ${station.hits.length}:${[...new Set(station.hits)].join(', ')})`)
+
+    // ── ⑬b 按下载:真出网、进度真的在走 ──────────────────────────────────
+    const started = await rpc('search', 'semanticModelDownload', {})
+    check(started?.success === true && started?.model?.state === 'downloading',
+      `⑬b download 当场答「起来了」(读到 ${JSON.stringify(started?.model?.state)})`)
+
+    const samples = []
+    const deadline = Date.now() + 60_000
+    while (Date.now() < deadline) {
+      const status = await rpc('search', 'status')
+      const model = status?.model
+      if (model === undefined) break
+      samples.push({ loaded: model.loadedBytes ?? 0, total: model.totalBytes ?? 0, state: model.state })
+      if (model.state !== 'downloading') break
+      if (samples.filter(s => s.loaded > 0).length >= 3) break
+      await sleep(150)
+    }
+    const moving = samples.filter(s => s.loaded > 0)
+    check(moving.length >= 2 && moving[moving.length - 1].loaded >= moving[0].loaded,
+      `⑬b loadedBytes 单调增(读到 ${samples.map(s => s.loaded).join(' → ')})`)
+    check(moving.every(s => s.total >= s.loaded),
+      `⑬b totalBytes 不小于已下(读到 ${samples.map(s => s.total).join(' → ')})`)
+    check(station.hits.length > 0,
+      `⑬b 请求真的到了假站(${station.hits.length} 条:${[...new Set(station.hits)].slice(0, 4).join(', ')})`)
+
+    // ── ⑬c 取消:当场回 absent,而且此后不会变成 ready ────────────────────
+    const cancelled = await rpc('search', 'semanticModelCancel', {})
+    check(cancelled?.success === true && cancelled?.model?.state === 'absent',
+      `⑬c cancel 当场回 absent(读到 ${JSON.stringify(cancelled?.model?.state)})`)
+    // 给在飞的那一发一点时间落定 —— 它落定之后照样只能是 absent(没有清单)。
+    await sleep(1500)
+    const afterCancel = await rpc('search', 'status')
+    check(afterCancel?.model?.state !== 'ready',
+      `⑬c 半截文件不会被当成下全了(读到 ${JSON.stringify(afterCancel?.model?.state)})`)
+
+    // ── ⑬d 删除:正在用的不许抽走,关掉之后才删得动 ──────────────────────
+    const refused = await rpc('search', 'semanticModelRemove', {})
+    check(refused?.success === false && refused?.error === 'model-in-use',
+      `⑬d 开关开着时 remove 结构化拒绝(读到 ${JSON.stringify(refused?.error)})`)
+
+    const current = await rpc('settings', 'getSettings')
+    if (!current?.settings) throw new Error('⑬ settings.getSettings 没给出设置')
+    const saved = await rpc('settings', 'saveSettings', {
+      ...current.settings,
+      search: { ...current.settings.search, semantic: { ...current.settings.search?.semantic, enabled: false } },
+    })
+    if (saved?.success !== true) throw new Error(`⑬ settings.saveSettings 未成功:${JSON.stringify(saved)}`)
+    // 关开关 = 换一条 Worker(热生效,⑩);等新的那条起来再删。
+    await waitForStatus(rpc, status => status?.model !== undefined && status?.vector === 'off',
+      '关掉之后新 Worker 就位', 20_000)
+
+    const removed = await rpc('search', 'semanticModelRemove', {})
+    check(removed?.success === true && removed?.model?.state === 'absent',
+      `⑬d 关掉之后 remove 成了(读到 ${JSON.stringify(removed?.model?.state)} / ${JSON.stringify(removed?.error)})`)
+    const modelsDir = path.join(storeG, 'models', 'embeddings')
+    const leftovers = fs.existsSync(modelsDir) ? fs.readdirSync(modelsDir) : []
+    check(leftovers.length === 0,
+      `⑬d 模型目录清干净了(剩 ${leftovers.length} 项:${leftovers.join(', ')})`)
+
+    // 词法路自始至终没被这一整段碰过。
+    const lexical = await rpc('search', 'query', { query: MARKER, category: 'messages', limit: 10 })
+    check((lexical?.results ?? []).some(result => result.sessionId === sessionId),
+      '⑬ 全程词法路照答(模型那一摊与它无关)')
+
+    if (failures.length > 0) {
+      console.error(`[gate:search-index] ⑬ server 输出尾:\n${out.slice(-40).join('')}`)
+    }
+  } catch (error) {
+    failures.push(String(error?.stack || error))
+    console.error(`[gate:search-index] ⑬ ${error?.stack || error}`)
+  } finally {
+    if (server && server.exitCode === null && server.signalCode === null) {
+      server.kill('SIGTERM')
+      await sleep(1500)
+      try { server.kill('SIGKILL') } catch { /* 已经没了就算了 */ }
+    }
+    if (provider) provider.close()
+    if (station) await station.close()
+    fs.rmSync(storeG, { recursive: true, force: true })
+  }
+}
+
+/**
+ * 一台**本机假 HuggingFace 站**:按 `{model}/resolve/{revision}/{file}` 答几份小文件
+ * 外加一份**慢慢吐**的大「onnx」。
+ *
+ * 路径模板不是猜的 —— `@huggingface/transformers` 3.8.1 的 `env.remotePathTemplate`
+ * 就是 `'{model}/resolve/{revision}/'`(`src/env.js:143`),`HF_ENDPOINT` 换掉的是它
+ * 前面的 `remoteHost`。
+ *
+ * 大文件**分块慢答**(每块之间歇一下)是有意的:进度要看得见、取消要有得取消。
+ * 它当然不是一份真的 onnx —— 这一条证不到 `ready`,理由写在段首。
+ */
+async function startFakeModelStation() {
+  const hits = []
+  const sockets = new Set()
+  const CHUNK = 256 * 1024
+  const CHUNKS = 48 // ≈ 12MB,按每块 25ms 算约 1.2s
+  /*
+   * 三份小文件。`tokenizer.json` **必须是一份能真的构造出来的分词器**(BertNormalizer +
+   * BertPreTokenizer + WordPiece)—— 缺一格 transformers 在
+   * `Normalizer.fromConfig` 就抛,那一发在**请求 onnx 之前**就结束了,于是进度与取消
+   * 两条都没得量(施工时第一版正是这么红的:`Cannot read properties of undefined
+   * (reading 'type')`,一个字节的大文件都没下)。
+   */
+  const small = {
+    'config.json': JSON.stringify({ model_type: 'bert', hidden_size: 384 }),
+    'tokenizer_config.json': JSON.stringify({ model_max_length: 512 }),
+    'tokenizer.json': JSON.stringify({
+      version: '1.0',
+      truncation: null,
+      padding: null,
+      added_tokens: [],
+      normalizer: {
+        type: 'BertNormalizer',
+        clean_text: true,
+        handle_chinese_chars: true,
+        strip_accents: null,
+        lowercase: true,
+      },
+      pre_tokenizer: { type: 'BertPreTokenizer' },
+      post_processor: null,
+      decoder: { type: 'WordPiece', prefix: '##', cleanup: true },
+      model: {
+        type: 'WordPiece',
+        unk_token: '[UNK]',
+        continuing_subword_prefix: '##',
+        max_input_chars_per_word: 100,
+        vocab: { '[UNK]': 0, '[CLS]': 1, '[SEP]': 2, a: 3 },
+      },
+    }),
+  }
+
+  const server = http.createServer(async (request, response) => {
+    const url = request.url ?? ''
+    hits.push(url)
+    const file = url.split('/resolve/main/')[1] ?? ''
+    const body = small[file]
+    if (body !== undefined) {
+      response.writeHead(200, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) })
+      response.end(body)
+      return
+    }
+    if (!file.endsWith('.onnx')) {
+      response.writeHead(404, { 'content-length': 0 })
+      response.end()
+      return
+    }
+    response.writeHead(200, {
+      'content-type': 'application/octet-stream',
+      'content-length': CHUNK * CHUNKS,
+    })
+    const block = Buffer.alloc(CHUNK, 0)
+    for (let at = 0; at < CHUNKS; at += 1) {
+      if (response.writableEnded || response.destroyed) return
+      response.write(block)
+      await sleep(25)
+    }
+    response.end()
+  })
+  server.on('connection', socket => {
+    sockets.add(socket)
+    socket.on('close', () => sockets.delete(socket))
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address()
+  return {
+    url: `http://127.0.0.1:${port}`,
+    hits,
     close: () => new Promise(resolve => {
       for (const socket of sockets) socket.destroy()
       server.close(() => resolve())
@@ -747,13 +1023,36 @@ async function runRealEmbedderPhase() {
       })
     }
 
+    /*
+     * **先下模型,再等它生效**(2026-09-17 那一刀之后的流程)。开关开着不再等于开始
+     * 下载 —— 那一格现在只说「要不要用」,下载是这一发 RPC。
+     *
+     * 下完之后**不用再翻一次开关**:Worker 把「落定了」喊回宿主,装配在开关本来就开着
+     * 时换一条 Worker(`wiring/search/index.ts`)。所以下面那条等待既是「真模型装得起来」
+     * 的判据,也是「下完就生效」这条链的真机证据。
+     */
+    const already = (await rpc('search', 'status'))?.model?.state
+    if (already !== 'ready') {
+      const kicked = await rpc('search', 'semanticModelDownload', {})
+      check(kicked?.success === true, `⑫ 起了一发下载(读到 ${JSON.stringify(kicked?.model?.state)})`)
+    }
     // 第一趟要下 130MB,所以这条等待是分钟级的(缺省 15 分钟封顶)。
+    const downloaded = await waitForStatus(rpc, status => status?.model?.state === 'ready',
+      '真模型下全', timeoutMs)
+    check(true, `⑫ 模型下到 ready(${(downloaded.ms / 1000).toFixed(1)}s;`
+      + `${Math.round((downloaded.status?.model?.totalBytes ?? 0) / 1e6)} MB)`)
+
     const ready = await waitForStatus(rpc, status =>
       status?.vector === 'ready' && (status?.vectorPending ?? 1) === 0 && (status?.pending ?? 1) === 0,
-    "真模型装好、嵌完", timeoutMs)
+    "真模型装好、嵌完(下完自动生效,没有再翻开关)", timeoutMs)
     check(true, `⑫ status.vector 走到 ready(${(ready.ms / 1000).toFixed(1)}s;走过 ${[...ready.seen].join(' → ')})`)
-    check(!ready.seen.has('off'),
-      `⑫ 一路没有自己关回去(若关过,原因是 ${JSON.stringify(ready.status?.vectorErrorKind)} / ${JSON.stringify(ready.status?.vectorError)})`)
+    /*
+     * **「一路没关过」那条断言退役了**(2026-09-17):冷跑时开关开着而模型还没下,
+     * 第一条 Worker 本来就该翻 `'off'`(原因码 `'model'`)—— 那是这一批要的行为,不是
+     * 回归。现在判的是**落定那一刻**:没有残留的死因。
+     */
+    check(ready.status?.vectorErrorKind === undefined && ready.status?.vectorError === undefined,
+      `⑫ 走到 ready 之后没有残留死因(读到 ${JSON.stringify(ready.status?.vectorErrorKind)} / ${JSON.stringify(ready.status?.vectorError)})`)
 
     for (const item of CASES) {
       const page = await rpc('search', 'query', { query: item.query, category: 'messages', limit: 10 })

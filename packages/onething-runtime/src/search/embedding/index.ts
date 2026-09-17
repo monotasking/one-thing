@@ -17,7 +17,23 @@ export {
   resetEmbedderRegistry,
   resolveEmbedder,
 } from './registry.js'
-export type { EmbedderCreateOptions, EmbedderFactory, EmbedderProgress } from './registry.js'
+export type {
+  EmbedderCreateOptions,
+  EmbedderDownloadOptions,
+  EmbedderFactory,
+  EmbedderFileProgress,
+  EmbedderModelSpec,
+  EmbedderProgress,
+} from './registry.js'
+export {
+  MODEL_MANIFEST_FILE,
+  captureModelManifest,
+  isEmbedderModelPresent,
+  probeEmbedderModel,
+  readModelManifest,
+  removeEmbedderModel,
+} from './model-store.js'
+export type { ModelManifest, ModelPresence, ModelProbe } from './model-store.js'
 export {
   FAKE_EMBEDDER_DIMS,
   FAKE_EMBEDDER_ID,
@@ -27,10 +43,14 @@ export {
   loadFakeSynonyms,
 } from './fake.js'
 export {
+  E5_SMALL_APPROX_BYTES,
   E5_SMALL_DIMS,
   E5_SMALL_EMBEDDER_ID,
   E5_SMALL_MAX_TOKENS,
+  E5_SMALL_MODEL_SPEC,
+  MODEL_NOT_DOWNLOADED_ERROR,
   createTransformersOnnxEmbedder,
+  downloadE5SmallModel,
   transformersOnnxEmbedderFactory,
 } from './transformers-onnx.js'
 

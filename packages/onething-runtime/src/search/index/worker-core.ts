@@ -48,6 +48,7 @@ import {
 import type { AnalyzerRegistry, CapabilityManifest, ExpanderRegistry } from '@onething/core/search'
 
 import { getLogger } from '../../logging/index.js'
+import type { ModelDownloader, ModelState, ModelStatus } from './model-download.js'
 import type { SqliteIndex } from './sqlite-index.js'
 import { VectorWriter } from './vector-writer.js'
 import type { VectorState } from './vector-writer.js'
@@ -56,6 +57,9 @@ const log = getLogger('search.index.worker')
 
 /** 去抖窗口(§5.3「队列去抖 50ms 成批」)。 */
 export const ENQUEUE_DEBOUNCE_MS = 50
+
+/** 这条 Worker 管不了模型(没装 `ModelDownloader`)时那三个动作的答复。 */
+export const MODEL_UNAVAILABLE_ERROR = 'model management is not available on this host'
 
 // ---- 协议 ---------------------------------------------------------------
 
@@ -171,7 +175,21 @@ export interface IndexStatus {
    * `unknown` 不认识(壳就只说原话,不猜)。判据表在 `vector-writer.ts`。
    */
   vectorErrorKind?: 'network' | 'runtime' | 'model' | 'unknown'
+  /**
+   * **嵌入模型这件东西自己的状态**(2026-09-17;与开关无关)。
+   *
+   * 它与 `vector` 是两件事,分开的理由就是用户那句裁定「把开关和下载模型拆开」:
+   * `vector` 说的是「语义召回此刻在干什么」(开关开着才有意义),这一格说的是
+   * 「这台机器上有没有那份模型、下到哪儿了」——**开关关着的时候它照样要说得出话**,
+   * 因为设置页那颗「下载」就是在开关关着的时候按的。
+   *
+   * 这条 Worker 管不了模型时缺席(假嵌入器 / 配置里没有语义那一段)。
+   */
+  model?: ModelStatus
 }
+
+/** 模型那三个动作。**没有 `'status'`** —— 状态由 `status` 那一发一起带回去。 */
+export type IndexModelOp = 'download' | 'cancel' | 'remove'
 
 export type IndexWorkerRequest =
   | { id: number; type: 'enqueue'; feedId: string; key: string; hint?: unknown }
@@ -179,8 +197,30 @@ export type IndexWorkerRequest =
   | { id: number; type: 'vector-query'; request: IndexVectorSearchRequest }
   | { id: number; type: 'status' }
   | { id: number; type: 'rebuild' }
+  /** 模型的下载 / 取消 / 删除(2026-09-17)。答的是**动作之后**那一刻的模型状态。 */
+  | { id: number; type: 'model'; op: IndexModelOp }
   /** 队列排空再答 —— 单测与「刚发的消息搜得到吗」这类判定用。 */
   | { id: number; type: 'drain' }
+
+/**
+ * Worker → 宿主的**通知帧**(不带 `id`,不是往返)—— 与日志帧同一种形。
+ *
+ * 今天只有一句话要说:模型那一发落定了。宿主据此在「开关本来就开着」时换一条
+ * Worker,于是下完就生效,不要求用户再翻一次开关。
+ */
+export const WORKER_MODEL_MESSAGE_TYPE = 'model-event'
+
+export interface WorkerModelMessage {
+  type: typeof WORKER_MODEL_MESSAGE_TYPE
+  state: ModelState
+}
+
+/** 这一帧是不是模型通知。**逐格验**(结构化克隆过来的东西类型上是 `unknown`)。 */
+export function isWorkerModelMessage(value: unknown): value is WorkerModelMessage {
+  if (typeof value !== 'object' || value === null) return false
+  const frame = value as { type?: unknown; state?: unknown }
+  return frame.type === WORKER_MODEL_MESSAGE_TYPE && typeof frame.state === 'string'
+}
 
 export type IndexWorkerResponse =
   | { id: number; ok: true; result: unknown }
@@ -223,6 +263,11 @@ export interface IndexWorkerCoreOptions {
   vector?: { index: VectorIndex; embedder: Embedder }
   /** 这份产物装得上 sqlite-vec 扩展吗(开关关着也答得出;`gate:packaged` 读它)。 */
   vectorExtension?: 'loadable' | 'missing'
+  /**
+   * 模型的下载 / 取消 / 删除(2026-09-17)。**与 `vector` 那一格互不依赖** —— 开关
+   * 关着的 Worker 照样带着它,因为「下载」这颗钮就是在开关关着的时候按的。
+   */
+  model?: ModelDownloader
 }
 
 /**
@@ -278,6 +323,8 @@ export class IndexWorkerCore {
   private readonly vectorIndex: VectorIndex | undefined
   private readonly vectorExtension: 'loadable' | 'missing'
   private vectorState: VectorState = 'off'
+  /** 模型那件东西(2026-09-17)。这条 Worker 管不了模型时缺席。 */
+  private readonly model: ModelDownloader | undefined
 
   constructor(options: IndexWorkerCoreOptions) {
     this.endpoint = options.endpoint
@@ -305,8 +352,21 @@ export class IndexWorkerCore {
         onState: state => { this.vectorState = state },
       })
       this.vectorState = 'downloading'
-      this.applyEmbeddingModelHeader(options.vector.embedder.id)
+      this.applyEmbeddingModelHeader(options.vector.embedder.id, options.vector.index)
     }
+
+    /*
+     * 模型那一发落定了就**主动喊一声**(不带 `id` 的通知帧)。宿主据此在「开关本来
+     * 就开着」时换一条 Worker —— 那正是老用户的处境:设置里 `enabled: true` 是上一版
+     * 留下的,而模型从来没下过。下完就生效,不要求他再翻一次开关。
+     */
+    this.model = options.model
+    this.model?.onSettled(state => {
+      this.endpoint.postMessage({
+        type: WORKER_MODEL_MESSAGE_TYPE,
+        state,
+      } satisfies WorkerModelMessage)
+    })
 
     this.endpoint.on('message', message => {
       void this.handle(message as IndexWorkerRequest)
@@ -375,6 +435,8 @@ export class IndexWorkerCore {
       case 'rebuild':
         await this.rebuild()
         return null
+      case 'model':
+        return this.modelOp(message.op)
       case 'drain':
         await this.drain()
         return null
@@ -440,6 +502,28 @@ export class IndexWorkerCore {
       ...(failure !== undefined
         ? { vectorError: failure.reason, vectorErrorKind: failure.kind }
         : {}),
+      // 模型那一格:管得了就说,管不了就缺席(缺席 = 不知道,不是「没下」)。
+      ...(this.model === undefined ? {} : { model: this.model.status() }),
+    }
+  }
+
+  /**
+   * 模型的三个动作。**都当场答**(连 `download` 也是)—— 112.8 MB 冷下 191 秒,
+   * 一条 HTTP 往返等不了那么久,进度由调用方轮 `status` 读。
+   *
+   * 这条 Worker 管不了模型时**结构化拒绝**,不假装成功:调用方(设置页)据此知道
+   * 「这台宿主上没有这件事」,而不是画一个永远停在 0% 的进度条。
+   */
+  private modelOp(op: IndexModelOp): ModelStatus {
+    const model = this.model
+    if (model === undefined) throw new Error(MODEL_UNAVAILABLE_ERROR)
+    switch (op) {
+      case 'download':
+        return model.download()
+      case 'cancel':
+        return model.cancel()
+      case 'remove':
+        return model.remove()
     }
   }
 
@@ -448,14 +532,34 @@ export class IndexWorkerCore {
    * (§5.4「换模型 = 后台全量重嵌,词法路照常」)。**词法路的库头三格里只有这一格
    * 变了,所以只有向量那一半重建** —— `version` / `analyzerId` 不符才是丢整个库。
    */
-  private applyEmbeddingModelHeader(embedderId: string): void {
+  private applyEmbeddingModelHeader(embedderId: string, vector: VectorIndex): void {
     const recorded = this.index.readMeta('embeddingModelId')
     this.index.writeMeta('embeddingModelId', embedderId)
-    if (recorded === embedderId) return
-    log.info('embedding model changed; the vector half is rebuilt', {
-      fields: { from: recorded ?? null, to: embedderId },
-    })
-    this.vectorWriter?.reembedAll()
+    if (recorded !== embedderId) {
+      log.info('embedding model changed; the vector half is rebuilt', {
+        fields: { from: recorded ?? null, to: embedderId },
+      })
+      this.vectorWriter?.reembedAll()
+      return
+    }
+    /*
+     * **头对得上,可向量表是空的**(2026-09-17)。那句头说的是「这个模型嵌过这个库」,
+     * 而空表说明它根本没嵌成 —— 最典型的一形就是这一批造出来的:开关开着、模型还没下,
+     * 上一条 Worker 在 `ready()` 第一句就把自己关回去了(`'off'` 是吸收态),但它**已经
+     * 把头写下了**。等模型下完、宿主换上一条新 Worker,头一对得上就什么都不排队,
+     * 状态会永远停在「正在启动」——下完也不生效。
+     *
+     * 判据是**空表 + 有文档**,不是「上一条关过没有」:后者要跨 Worker 记忆,而这一格
+     * 在库里、看得见、重启也还在。代价是一种退化情形 —— 库里所有文档都没有可嵌的字段时,
+     * 每次起 Worker 都会白排一遍队(逐份文档算出空正文、`remove` 一下就过),那是一趟
+     * 便宜的空转,换的是「下完就生效」永远成立。
+     */
+    if (vector.size() === 0 && this.index.size() > 0) {
+      log.info('the vector half is empty under this model; queueing the whole index', {
+        fields: { docs: this.index.size(), embedder: embedderId },
+      })
+      this.vectorWriter?.reembedAll()
+    }
   }
 
   /**

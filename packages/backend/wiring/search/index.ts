@@ -394,6 +394,28 @@ async function startSearchIndexService(
       ? () => createSearchWorkerFactory(workerPath, workerDataNow())()
       : () => override(workerDataNow()),
   })
+  /*
+   * **模型下完就生效**(2026-09-17)。
+   *
+   * 这条线存在的理由是老用户的处境:设置里 `enabled: true` 是上一版留下的(那时
+   * 打开开关**就是**下载),而模型一个字节都没下过。今天翻开关不再下载,所以他们
+   * 那条 Worker 里的嵌入器在第一次装载时就抛「模型文件没下载」,`VectorWriter` 把
+   * 向量路钉成 `'off'` —— 那是个**吸收态**,同一条 Worker 此后不会再试。
+   *
+   * 于是模型下完之后必须换一条。走的是与「改代理 / 翻开关」**同一条** `restart()`:
+   * 先停旧的再起新的、空窗里的查询排队不拒。开关关着就不换 —— 那时换出来的 Worker
+   * 与现在这条逐字相同。
+   */
+  service.onModelSettled(state => {
+    if (state !== 'ready') return
+    if (semantic?.enabled !== true) return
+    log.info('embedding model is ready; replacing the index worker so it takes effect', {
+      fields: { modelId: semantic.modelId },
+    })
+    void service.restart().catch((error: unknown) => {
+      log.error('replacing the index worker after the model download failed', { err: error })
+    })
+  })
   service.start()
   log.info('search index worker started', {
     fields: { workerPath, databasePath, notesDirs: notesDirs.length, semantic: semantic?.enabled === true },
@@ -405,6 +427,16 @@ async function startSearchIndexService(
       // 同值不换:一次「只改了主题」的保存不该把索引 Worker 掀掉重起。
       if (sameSemantic(semantic, next)) return false
       semantic = next
+      /*
+       * **换 Worker 之前先把在下的那一发停掉**(2026-09-17)。旧 Worker 一 terminate,
+       * 那条正在写盘的流就被硬断在半路 —— 停在自己手里,`FileCache` 的 `catch` 才有
+       * 机会把半截文件删掉。新 Worker **不自动续**:它起来时问一次清单,没有清单就是
+       * 「还没下」,人再按一次「下载」——而已经下全的那几个文件 transformers 自己认得,
+       * 所以续的那一次只补差额。
+       *
+       * 取消失败不拦路(这条 Worker 可能根本没有模型可管:假嵌入器、或者上一条已经崩了)。
+       */
+      await service.cancelModelDownload().catch(() => undefined)
       log.info('semantic recall setting changed; replacing the index worker', {
         fields: {
           enabled: next?.enabled === true,

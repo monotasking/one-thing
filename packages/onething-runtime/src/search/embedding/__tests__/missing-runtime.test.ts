@@ -22,13 +22,23 @@
  * 「开关开着 + 库已经建好 + 没有新文档」那一形下第一条查询会把装载失败原样抛给调用方。
  */
 
-import { describe, expect, it, vi } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { IndexedDoc, VectorIndex } from '@onething/core/search'
 
 import { captureRuntimeLogs } from '../../../logging/index.js'
 import { VectorWriter } from '../../index/vector-writer.js'
-import { E5_SMALL_DIMS, createTransformersOnnxEmbedder } from '../transformers-onnx.js'
+import { describeEmbedderFailure } from '../../index/vector-writer.js'
+import { captureModelManifest } from '../model-store.js'
+import {
+  E5_SMALL_DIMS,
+  E5_SMALL_EMBEDDER_ID,
+  createTransformersOnnxEmbedder,
+} from '../transformers-onnx.js'
 
 /**
  * 逐字重现打包档里的现场:模块不在,node 的动态 import 抛 `ERR_MODULE_NOT_FOUND`。
@@ -46,6 +56,25 @@ interface Harness {
   upserts: number
   logs: ReturnType<typeof captureRuntimeLogs>
 }
+
+/**
+ * **模型得先在场**(2026-09-17 那一刀之后):装载的第一句问的是「本地有没有这份
+ * 模型」,没有就当场抛 `'model'` 那一类,连 `import()` 都不走。而这个文件要证的是
+ * **另一堵墙** —— 模型在、运行时不在(打包档的真实处境)。所以夹具先在临时目录里
+ * 摆一份「下全了」的模型:一个假文件 + 一份清单(清单是判据的产地,见 `model-store.ts`)。
+ */
+let modelDir: string
+
+beforeEach(() => {
+  modelDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-embed-model-'))
+  fs.mkdirSync(path.join(modelDir, 'Xenova', 'multilingual-e5-small'), { recursive: true })
+  fs.writeFileSync(path.join(modelDir, 'Xenova', 'multilingual-e5-small', 'config.json'), '{}')
+  captureModelManifest(modelDir, E5_SMALL_EMBEDDER_ID)
+})
+
+afterEach(() => {
+  fs.rmSync(modelDir, { recursive: true, force: true })
+})
 
 function makeWriter(): Harness {
   const states: string[] = []
@@ -73,7 +102,7 @@ function makeWriter(): Harness {
       allDocIds: () => [1],
     },
     vector,
-    embedder: createTransformersOnnxEmbedder({ modelDir: '/nonexistent/models/e5' }),
+    embedder: createTransformersOnnxEmbedder({ modelDir }),
     embedFields: () => ['text'],
     onState: state => { states.push(state) },
   })
@@ -93,7 +122,7 @@ describe('运行时缺席:语义召回把自己关回去(S7 / 拍点癸\' c)', (
    * node 的原话本身(`normalizeError` 会顺着 `cause` 链往下记,两种形状都读得出)。
    */
   it('⓪ 嵌入器自己抛的就是 `ERR_MODULE_NOT_FOUND`(打包档里 node 的原话)', async () => {
-    const embedder = createTransformersOnnxEmbedder({ modelDir: '/nonexistent/models/e5' })
+    const embedder = createTransformersOnnxEmbedder({ modelDir })
     await expect(embedder.ready()).rejects.toMatchObject({
       cause: { code: 'ERR_MODULE_NOT_FOUND' },
     })
@@ -154,6 +183,29 @@ describe('运行时缺席:语义召回把自己关回去(S7 / 拍点癸\' c)', (
     } finally {
       h.logs.restore()
       h.writer.dispose()
+    }
+  })
+
+  /**
+   * **另一堵墙,排在运行时前面**(2026-09-17 用户裁定「把开关和下载模型拆开」)。
+   *
+   * 模型没下的时候,装载**连 `import()` 都不走** —— 这不是省一次 import 的优化,
+   * 它是那条裁定的落点本身:开关不许再是一次一百多兆的下载。而这个 `vi.mock` 工厂
+   * 一被求值就抛,所以「模块那句话没出现在错误链里」正好是「import 没走到」的证据。
+   */
+  it('⓪b 模型没下:当场答「模型文件没下载」,连运行时都不去碰', async () => {
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-embed-empty-'))
+    try {
+      const embedder = createTransformersOnnxEmbedder({ modelDir: empty })
+      const error = await embedder.ready().then(() => undefined, (e: unknown) => e)
+      expect(error).toBeInstanceOf(Error)
+      expect((error as Error).message).toContain('are not downloaded')
+      // 判成 `'model'`,屏上于是写「去下载模型」,而不是「运行时装不上」。
+      expect(describeEmbedderFailure(error).kind).toBe('model')
+      // 那句 mock 的话不在链上 = 这一发没走到 `import('@huggingface/transformers')`。
+      expect(JSON.stringify(describeEmbedderFailure(error).reason)).not.toContain('Cannot find package')
+    } finally {
+      fs.rmSync(empty, { recursive: true, force: true })
     }
   })
 

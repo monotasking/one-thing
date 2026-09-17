@@ -48,6 +48,7 @@ import {
 import type { OnethingSearchProvidersAdapters } from './providers.js'
 import { createBuiltinSearchCapabilities } from './capabilities/index.js'
 import type { SearchIndexQueryFace } from './capabilities/indexed.js'
+import type { ModelStatus } from './index/model-download.js'
 import { searchResultOf, type SearchServiceResult } from './capabilities/scan-adapter.js'
 
 /** 命令面板一页给多少条(旧路那个缺省值,数没变)。 */
@@ -177,7 +178,24 @@ export interface SearchIndexStatus {
   vectorError?: string
   /** 那句原因属于哪一类(R12;与 `vectorError` 同生同灭,判据在 `vector-writer.ts`)。 */
   vectorErrorKind?: 'network' | 'runtime' | 'model' | 'unknown'
+  /**
+   * **嵌入模型这件东西自己的状态**(2026-09-17)。与 `vector` 那一格是两件事:
+   * 那一格说「语义召回在干什么」(要开关开着才有意义),这一格说「这台机器上有没有
+   * 那份模型、下到哪儿了」——**开关关着时它照样说得出话**。
+   *
+   * 这台宿主管不了模型(没有索引 / 假嵌入器)时缺席。
+   */
+  model?: SearchSemanticModelStatus
 }
+
+/**
+ * 嵌入模型此刻的样子。**形与 Worker 那一侧的 `ModelStatus` 逐格相同** —— 这里不
+ * 重新发明,直接引它:两份同形的东西在两个包里各写一遍,迟早漂开。
+ */
+export type SearchSemanticModelStatus = ModelStatus
+
+/** 这台宿主管不了模型时,那三个动作的答复。 */
+export const SEMANTIC_MODEL_UNAVAILABLE_ERROR = 'semantic model management is not available on this host'
 
 /**
  * 预览 / 动作请求里指一条结果(§4.5 ③;契约层 `SearchItemRef` 的同形件)。
@@ -321,6 +339,37 @@ export class OnethingSearchService {
       vectorExtension: status.vectorExtension,
       ...(status.vectorError !== undefined ? { vectorError: status.vectorError } : {}),
       ...(status.vectorErrorKind !== undefined ? { vectorErrorKind: status.vectorErrorKind } : {}),
+      ...(status.model !== undefined ? { model: status.model } : {}),
+    }
+  }
+
+  /**
+   * 嵌入模型的三个动作(2026-09-17;`search` 域那三条路由的落点)。
+   *
+   * **为什么挂在服务上而不是开一条新端口**:这台进程里「索引是哪一份」这件事已经
+   * 有唯一答案了 —— 就是这份服务手上的 `indexFace()`,`status()` 读的也是它。
+   * 再立一个进程单槽就是第二份真相(而且 `assembly:gate` 立着的那条规矩正是
+   * 「装配层不许再长模块级状态」)。
+   *
+   * 这台宿主管不了模型时**结构化拒绝**:没有索引(`unavailableIndexFace`)、或者
+   * 这条 Worker 的嵌入器根本没有可下的模型(假嵌入器),都走这一句。
+   */
+  async semanticModel(op: 'download' | 'cancel' | 'remove'): Promise<SearchSemanticModelStatus> {
+    const index = this.index
+    if (index === undefined) throw new Error(SEMANTIC_MODEL_UNAVAILABLE_ERROR)
+    switch (op) {
+      case 'download': {
+        if (index.downloadModel === undefined) throw new Error(SEMANTIC_MODEL_UNAVAILABLE_ERROR)
+        return await index.downloadModel()
+      }
+      case 'cancel': {
+        if (index.cancelModelDownload === undefined) throw new Error(SEMANTIC_MODEL_UNAVAILABLE_ERROR)
+        return await index.cancelModelDownload()
+      }
+      case 'remove': {
+        if (index.removeModel === undefined) throw new Error(SEMANTIC_MODEL_UNAVAILABLE_ERROR)
+        return await index.removeModel()
+      }
     }
   }
 

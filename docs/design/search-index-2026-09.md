@@ -1730,3 +1730,68 @@ off)`),同一发在 Worker 那一层读到
 `globalThis[Symbol.for('onnxruntime')]`(保住「零原生」,多一个包),或换一条嵌入器(注册表多
 一行)。选它们的理由只剩一个:想让**打包桌面档**也能跑语义召回 —— 那是拍点癸' 那一格的事,
 不是这一格的。
+
+### 15.8 2026-09-17 晚:模型与开关拆开,下载看得见进度
+
+**用户原话**:「把开关和下载模型拆开,另外下载模型要能够知道进度。」
+
+**病**:在这之前,翻一下设置里那格「按含义找」= 换一条索引 Worker = 嵌入器 `ready()` 里顺带
+下载 112.8 MB(真机冷下 191 秒)。屏幕上只有一句「正在下载模型…」——**没有进度,取消不了,
+也看不出它到底在下还是卡住了**。一个设置开关不该是一次一百多兆的网络动作。
+
+#### 落地:模型成了一件**有自己状态与动作**的东西
+
+| 件 | 改动 |
+| --- | --- |
+| `runtime/search/embedding/registry.ts` | `EmbedderFactory` 多两格**自述**:`model?: { approxBytes }`(有没有一份要先下的模型)与 `download?(options)`。假嵌入器两格都缺席,于是设置页在它身上不画模型行 |
+| `runtime/search/embedding/model-store.ts`(新) | **「下全了没有」的唯一判据**:下载落定才写的一份清单(`.onething-model.json`,记下磁盘上真的落了哪些文件、各多少字节),此后逐个核对字节数 |
+| `runtime/search/embedding/transformers-onnx.ts` | ① `ready()` 第一句问清单,不在就抛 `embedding model files are not downloaded`(判据表里 `'model'` 那一类),**连 `import()` 都不走**;进库之后 `allowRemoteModels = false` 再兜一道。② 新的 `downloadE5SmallModel`:用那个库**自己的**下载机制(`pipeline` + `progress_callback`),装完 `dispose()` 把会话还回去 —— 这一路要的只是磁盘上的文件 |
+| `runtime/search/index/model-download.ts`(新) | `ModelDownloader`:四态(`absent` / `downloading` / `ready` / `failed`)、逐文件进度聚合、取消、删除;**取消不是失败**(回 `absent`,不留错话),失败才留 `errorKind` + 原话(与语义召回自己关回去**共用** `describeEmbedderFailure`) |
+| `runtime/search/index/worker-network.ts` | `WorkerDownloadSignal`:那个库没有 signal 口,所以取消长在这条线程的全局 `fetch` 上,装在代理**之上** —— 代理配没配都取消得了 |
+| `runtime/search/index/worker-core.ts` | 协议多一条 `{ type:'model', op:'download'|'cancel'|'remove' }`;`IndexStatus` 多一格 `model`;模型落定时 `postMessage` 一帧**不带 `id` 的通知**(与日志帧同一种形) |
+| `runtime/search/index/worker-host.ts` / `service.ts` | 认领那帧通知(`onModelSettled`)、三个动作的往返 |
+| `backend/wiring/search/index.ts` | 收到「落定 = ready」且开关本来就开着 → 走**同一条** `restart()`,**下完就生效,不要求用户再翻一次开关**;换 Worker 前先 `cancelModelDownload()`(在飞的那一发停在自己手里,半截文件才有人删) |
+| `@shared/ipc/search.ts` | 契约只加:三条路由 `semanticModel{Download,Cancel,Remove}` + `SearchStatusResponse.model` |
+| 壳 | `ui/Progress`(新基础件,determinate / indeterminate 两态)、设置页「模型」一行(五态 × 一颗钮)、`semanticModelPhaseOf` / `semanticStatusPollMs`(下模型时 1s 轮询,别的 5s,不动的不问) |
+
+#### 三条判断,写下来免得下次反悔
+
+1. **「下全了没有」由清单说,不由文件清单说。** 派工单写的是「config / tokenizer / onnx 都在且
+   onnx 大小 > 0」。真去读 `@huggingface/transformers` 3.8.1 的 `FileCache.put`
+   (`src/utils/hub.js:319`)才发现它**直接写最终路径**(没有 `.part`、没有先写临时名),
+   `match()` 只问一句 `file.exists`。取消那一路它自己会 `unlink`,但进程被杀那一路不会 ——
+   磁盘上就留下一个大小不对的 onnx,而「文件在、大小 > 0」会把它当成下全了,下一次装载在
+   ONNX 那一层抛,屏上写「运行时装不上」,与真因差着十万八千里。而且「要哪几个文件」是那个库
+   的事(换 dtype、升一版就换一批),在我们这儿抄一份迟早漂开 —— 漂开的后果是「下完了却永远
+   说没下」,那是个死循环。所以判据反过来:**记下它真的落了什么**,此后核对字节数。
+2. **`ready()` 只读本地,`allowRemoteModels = false`。** 这是那句裁定的落点本身,也是
+   `gate:search-index` ⑬a 唯一守得住的东西:模型没下的时候,打开开关**一个网络请求都不发**。
+3. **头对得上也可能一行向量都没嵌过。** 开关开着 + 模型没下的那条 Worker **已经把库头
+   `embeddingModelId` 写下了**,然后才把自己关回去。等模型下完、宿主换上新 Worker,头一对得上
+   就什么都不排队 —— 状态会永远停在「正在启动」,「下完就生效」在最后一米断掉。所以
+   `applyEmbeddingModelHeader` 的判据从「头变没变」扩成「头变没变 **或** 这个头下面向量表是空的」。
+
+#### 门:`gate:search-index` 第 ⑬ 步(真机,一台本机假 HF 站,不碰外网)
+
+- ⑬a **开关不再触发下载**:模型没下 + 开关开着 → `vector` 翻 `'off'`、`vectorErrorKind` 判成
+  `'model'`、`status.model.state` 答 `'absent'`,**假站计数 0**;
+- ⑬b **下载真的出网、进度真的在走**:`loadedBytes` 单调增(读数 0 → 1.57MB → 3.15MB → 4.72MB)、
+  `totalBytes` 稳在 12.58MB、假站收到四条请求(三份 json + 那份 onnx)——同时是 ⑬a 那个 0 的对照组;
+- ⑬c **取消**:当场回 `absent`,落定之后**仍然**不是 `ready`(半截文件说不了「下全了」);
+- ⑬d **删除**:开关开着时结构化拒绝(`model-in-use`),关掉之后删干净。
+
+**这一条证不到 `ready`**,写清楚免得下次误读:假站给的是一份用零填出来的 onnx,
+`onnxruntime-node` 建不出会话。分工是 —— 走到 `ready` 由可选的 ⑫(真嵌入器、真出网)守;
+**状态机**(进度怎么聚、取消是什么语义、清单什么时候写、半截为什么不算数)由单测守
+(`model-download.test.ts` / `model-store.test.ts` / `vector-rebuild-on-empty.test.ts`);
+⑬ 守的是只有真机才说得出的那三句:零网络、真出网、真取消。
+
+**⑪ 的口径跟着换了一次**:那一条从前读 `vectorErrorKind === 'network'`,而现在打开开关不再下载
+—— 下载是那一发 RPC,失败原因落在 `status.model.errorKind` 上(`vectorErrorKind` 此刻答的是
+`'model'`:「模型还没下」,那是另一句真话)。**⑫ 也跟着换**:先 `semanticModelDownload`、等
+`model.state === 'ready'`,再等 `vector === 'ready'` —— 后半段同时是「下完就生效」那条链的真机证据,
+所以它那条「一路没关过」的断言退役了(冷跑时第一条 Worker 本来就该翻 `'off'`),改判**落定那一刻
+没有残留死因**。
+
+**反证**(都真跑过):拆掉 `ready()` 里那句清单探问(或把 `allowRemoteModels` 改回 `true`)→
+⑬a 的假站计数从 0 变 4,红;把进度聚合写死 0 → ⑬b 的「单调增」读到 `0 → 0 → …`,红。

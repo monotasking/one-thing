@@ -15,6 +15,8 @@ import { parentPort, workerData } from 'node:worker_threads'
 
 import { registerBuiltinEmbedders, resolveEmbedder } from '../embedding/index.js'
 
+import { ModelDownloader } from './model-download.js'
+
 import { DAILY_FEED_ID, DailyNotesFeed } from './daily-feed.js'
 import { defaultDocumentFilters } from './filters.js'
 import { LedgerFeed } from './ledger-feed.js'
@@ -25,7 +27,7 @@ import type { IndexEndpoint } from './worker-core.js'
 
 import type { IndexWorkerData } from './worker-data.js'
 import { installWorkerLogging } from './worker-logging.js'
-import { installWorkerProxyFetch } from './worker-network.js'
+import { WorkerDownloadSignal, installWorkerProxyFetch } from './worker-network.js'
 
 if (parentPort === null) throw new Error('search index worker must run inside a Worker')
 
@@ -48,6 +50,14 @@ installWorkerLogging(value => { port.postMessage(value) })
  */
 installWorkerProxyFetch(data.semantic?.proxy)
 
+/*
+ * **取消那一层装在代理之上**(2026-09-17)。代理换的是「这一发怎么出去」,这一层
+ * 加的是「这一发还要不要」—— 于是代理配没配都取消得了。那个库没有 signal 口,
+ * 所以只能长在全局 `fetch` 上(理由写在 `worker-network.ts` 的 `WorkerDownloadSignal`)。
+ */
+const downloadSignal = new WorkerDownloadSignal()
+downloadSignal.install()
+
 /**
  * 语义召回的装配(S7)。三件事按顺序问,任何一件答不上来就是「这次没有向量路」
  * —— 词法路照常开库、照常答查询(§15 的第一条纪律)。
@@ -61,10 +71,30 @@ installWorkerProxyFetch(data.semantic?.proxy)
  */
 registerBuiltinEmbedders()
 const semantic = data.semantic
-const embedderFactory = semantic?.enabled === true ? resolveEmbedder(semantic.modelId) : undefined
-const embedder = embedderFactory === undefined || semantic === undefined
+const modelDir = semantic === undefined ? undefined : path.join(semantic.modelsDir, semantic.modelId)
+/*
+ * **模型那一件与开关无关**(2026-09-17 用户裁定):嵌入器工厂按 `modelId` 解析一次,
+ * 开关关着照样解析 —— 设置页那颗「下载」就是在开关关着的时候按的。只有**装不装
+ * 嵌入器**才看开关。
+ */
+const embedderFactory = semantic === undefined ? undefined : resolveEmbedder(semantic.modelId)
+const embedder = embedderFactory === undefined || modelDir === undefined || semantic?.enabled !== true
   ? undefined
-  : embedderFactory.create({ modelDir: path.join(semantic.modelsDir, semantic.modelId) })
+  : embedderFactory.create({ modelDir })
+
+/*
+ * 模型的下载 / 取消 / 删除。**只有自述了「我有一份要下的模型」的嵌入器才有它**
+ * (假嵌入器没有,于是门跑假嵌入器时那三个动作结构化拒绝,而不是画一个假进度条)。
+ */
+const model = embedderFactory?.model === undefined || modelDir === undefined
+  ? undefined
+  : new ModelDownloader({
+    factory: embedderFactory,
+    modelDir,
+    signals: downloadSignal,
+    // 「正在用」= 这条 Worker 真的装了嵌入器。判据不在 ModelDownloader 里。
+    inUse: () => embedder !== undefined,
+  })
 
 const index = new SqliteIndex({
   path: data.databasePath,
@@ -93,5 +123,6 @@ const core = new IndexWorkerCore({
   ...(embedder !== undefined && index.vector !== undefined
     ? { vector: { index: index.vector, embedder } }
     : {}),
+  ...(model === undefined ? {} : { model }),
 })
 core.start()

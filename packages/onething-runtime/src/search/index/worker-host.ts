@@ -24,8 +24,11 @@ import {
   workerLogLevelOf,
   type WorkerLogMessage,
 } from './worker-logging.js'
+import { isWorkerModelMessage } from './worker-core.js'
+import type { ModelState, ModelStatus } from './model-download.js'
 import type {
   IndexEndpoint,
+  IndexModelOp,
   IndexSearchRequest,
   IndexSearchResult,
   IndexVectorSearchRequest,
@@ -121,6 +124,11 @@ export class IndexWorkerHost {
   private readonly waiting: Waiting[] = []
   /** 「在飞的都答完了」的等待者。 */
   private idleWaiters: Array<() => void> = []
+  /**
+   * 「模型那一发落定了」的听众。**挂在 host 上而不是某一条 Worker 上** —— 换一条
+   * Worker(改代理 / 翻开关)之后它照样在,否则一次设置改动就会把监听悄悄弄丢。
+   */
+  private readonly modelListeners = new Set<(state: ModelState) => void>()
 
   constructor(factory: IndexWorkerFactory) {
     this.factory = factory
@@ -260,6 +268,21 @@ export class IndexWorkerHost {
     return await this.send({ type: 'vector-query', request }) as IndexVectorSearchResult
   }
 
+  /**
+   * 模型的下载 / 取消 / 删除(2026-09-17)。停摆了就**如实拒**,不假装收下 ——
+   * 一条没人执行的「下载」比一句「现在不行」糟得多。
+   */
+  async model(op: IndexModelOp): Promise<ModelStatus> {
+    if (this.dead) throw new IndexWorkerUnavailableError()
+    return await this.send({ type: 'model', op }) as ModelStatus
+  }
+
+  /** 模型那一发落定了。返回退订。 */
+  onModelSettled(listener: (state: ModelState) => void): () => void {
+    this.modelListeners.add(listener)
+    return () => this.modelListeners.delete(listener)
+  }
+
   async enqueue(feedId: string, key: string, hint?: unknown): Promise<void> {
     await this.send({ type: 'enqueue', feedId, key, ...(hint !== undefined ? { hint } : {}) })
   }
@@ -325,6 +348,17 @@ export class IndexWorkerHost {
       // (2026-09-17 以前正是这样 —— Worker 里的每一句话都掉在地上,见 `worker-logging.ts`)。
       if (isWorkerLogMessage(value)) {
         relayWorkerLog(value)
+        return
+      }
+      // 模型通知帧同理:它也不带 `id`,也不是谁在等的一条答复。
+      if (isWorkerModelMessage(value)) {
+        for (const listener of this.modelListeners) {
+          try {
+            listener(value.state)
+          } catch (error) {
+            log.warn('a model-settled listener threw', { err: error })
+          }
+        }
         return
       }
       const response = value as IndexWorkerResponse

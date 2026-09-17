@@ -34,6 +34,7 @@ import {
   scoreOfDistance,
 } from '@onething/core/search'
 
+import type { ModelState, ModelStatus } from './model-download.js'
 import type {
   IndexSearchRequest,
   IndexSearchResult,
@@ -80,6 +81,30 @@ export class SearchIndexService {
   /** 向量召回(S7)。查询嵌入也在 Worker 里做 —— 主线程不碰 wasm(§15.2)。 */
   vectorSearch(request: IndexVectorSearchRequest): Promise<IndexVectorSearchResult> {
     return this.host.vectorSearch(request)
+  }
+
+  /**
+   * 嵌入模型的三个动作(2026-09-17)。下载**当场答**「起来了」,进度轮 `status()` 读
+   * ——112.8 MB 冷下 191 秒,一条 HTTP 往返等不了那么久。
+   *
+   * 这一层与 host 一样不认识「语义召回」四个字:哪个模型、下到哪儿去,全在
+   * Worker 那一侧由 `workerData` 说了算。
+   */
+  downloadModel(): Promise<ModelStatus> {
+    return this.host.model('download')
+  }
+
+  cancelModelDownload(): Promise<ModelStatus> {
+    return this.host.model('cancel')
+  }
+
+  removeModel(): Promise<ModelStatus> {
+    return this.host.model('remove')
+  }
+
+  /** 模型那一发落定了(装配据此在开关开着时换一条 Worker)。返回退订。 */
+  onModelSettled(listener: (state: ModelState) => void): () => void {
+    return this.host.onModelSettled(listener)
   }
 
   /** 观察者那一路的入口:一条事件喊一声 key(§5.3)。 */

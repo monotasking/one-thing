@@ -142,6 +142,58 @@ export function installWorkerProxyFetch(
 }
 
 /**
+ * **取消一次模型下载**(2026-09-17)。
+ *
+ * ## 为什么它必须长在 `fetch` 上
+ *
+ * `@huggingface/transformers` 3.8.1 **没有 signal 口**:`hub.js` 的 `getFile()` 调的是
+ * 裸 `fetch(url, { headers })`,`pipeline()` 的参数表里也没有一格能递进去。所以「停」
+ * 这件事只有一个落点 —— 这条线程的全局 `fetch`,把 signal 替调用方塞进去。
+ *
+ * 这与代理那一半是**两层**,不是一件事:代理换的是「这一发怎么出去」,这一层加的是
+ * 「这一发还要不要」。所以它装在代理**之上**(`worker.ts` 里先代理后它),于是代理
+ * 配没配都一样能取消 —— 直连也要停得下来。
+ *
+ * ## 「这条线程上别的请求呢」
+ *
+ * 没有别的:索引 Worker 这条线程上会出网的只有模型下载。真长出第二种时,这里要换成
+ * 按请求带 signal(那时 `begin()` 就该返回一只 signal 给调用方自己递),而不是继续
+ * 往全局上挂。这一句写在这儿,就是那天的判据。
+ *
+ * `init.signal` 已经有的那一发**不覆盖** —— 调用方自己说的话优先。
+ */
+export class WorkerDownloadSignal {
+  private controller: AbortController | undefined
+
+  /** 包在当前 `holder.fetch` 之上。**返回还原函数**(单测用)。 */
+  install(holder: FetchHolder = globalThis as unknown as FetchHolder): () => void {
+    const original = holder.fetch
+    holder.fetch = async (input, init) => {
+      const signal = init?.signal ?? this.controller?.signal
+      return await original(input, signal === undefined ? init : { ...init, signal })
+    }
+    return () => { holder.fetch = original }
+  }
+
+  /** 开一次可取消的活。返回那只 signal —— 实现方也可以自己拿去赛 `Promise.race`。 */
+  begin(): AbortSignal {
+    this.controller = new AbortController()
+    return this.controller.signal
+  }
+
+  /** 停。没在跑就什么都不做(取消一次没开始的下载不是错)。 */
+  abort(): void {
+    this.controller?.abort()
+    this.controller = undefined
+  }
+
+  /** 这一次干完了(成了或败了都算)。此后的请求不再带这只 signal。 */
+  end(): void {
+    this.controller = undefined
+  }
+}
+
+/**
  * 镜像站那一格。`HF_ENDPOINT` 设了就赋给 `env.remoteHost`,没设就不碰。
  *
  * 住在这个文件而不是嵌入器里,理由与代理同一条:**它是「这台机器怎么上网」**,

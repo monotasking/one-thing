@@ -48,15 +48,18 @@ bun run boundary:gate      # zero-baseline hard gate: any `[boundary] failed:` l
 bun run log:gate           # console.* ratchet (baseline docs/audit/log-gate-baseline-2026-08-20.txt)
 bun run log:check          # the full console.* call-site list behind that gate
 bun run gate:native        # every native .node loads under BOTH Node and Electron (N-API law)
-bun run gate:search-index  # real-machine gate (11 steps + 1 opt-in): boots dist/server on temp stores
+bun run gate:search-index  # real-machine gate (12 steps + 1 opt-in): boots dist/server on temp stores
                            # behind a fake provider — index worker is owner, a just-sent message is
                            # searchable, rename/archive/delete land through the feed, main-thread loop
                            # delay stays under budget, ⑧ semantic recall end to end with a deterministic
                            # fake embedder (no 130MB download), ⑩ the switch hot-applies, ⑪ the model
                            # download rides the app proxy while the Worker's log lines reach the host
-                           # jsonl, and ⑫ (skipped unless ONETHING_GATE_REAL_EMBEDDER=1 plus HTTPS_PROXY
-                           # or HF_ENDPOINT) the REAL embedder reaches 'ready' and a zero-word-overlap
-                           # paraphrase ranks its own message first. node only — bun has no node:sqlite
+                           # jsonl, ⑬ the model is its own thing (switch on + model absent sends ZERO
+                           # network requests; download shows real progress; cancel; delete is refused
+                           # while in use) against a local fake HF station, and ⑫ (skipped unless
+                           # ONETHING_GATE_REAL_EMBEDDER=1 plus HTTPS_PROXY or HF_ENDPOINT) the REAL
+                           # embedder downloads, auto-applies and a zero-word-overlap paraphrase ranks
+                           # its own message first. node only — bun has no node:sqlite
 
 # Logs
 bun run log:tail           # pretty-print + follow <store>/log/app.jsonl ([--ns engine.*] [--level warn] [--session id])
@@ -384,8 +387,24 @@ Notes:
   half is `sqlite-vec`'s `vec0` virtual table inside the **same** `search.v1.sqlite`, one row
   per 512-token chunk, plus an `Embedder` registry (`runtime/search/embedding/`) whose real
   entry is `@huggingface/transformers` on the **onnxruntime-node (cpu)** backend, dynamically
-  imported inside the worker so nothing loads until the user turns
-  `settings.search.semantic.enabled` on.
+  imported inside the worker.
+  **The switch and the model download are two separate things** (2026-09-17, §15.8 — user: "把开关和
+  下载模型拆开,另外下载模型要能够知道进度"). Turning the switch on no longer downloads anything:
+  the embedder's `ready()` asks a manifest on disk first and throws `embedding model files are not
+  downloaded` (reason code `'model'`) without so much as an `import()`, and then loads with
+  `allowRemoteModels = false`. The model is a thing with its own state and its own three verbs —
+  `search.semanticModel{Download,Cancel,Remove}` over the generic RPC, state and byte counters on
+  `search.status.model` (`absent` / `downloading` / `ready` / `failed`). It downloads **inside the
+  index Worker** (that thread already has the managed fetch and the log relay) through the library's
+  own mechanism, cancels by way of `WorkerDownloadSignal` wrapping that thread's `globalThis.fetch`
+  (transformers has no signal parameter), and when it lands the Worker posts an id-less notify frame
+  so `wiring/search/index.ts` swaps the Worker — **a finished download takes effect without the user
+  touching the switch again**. "Downloaded in full" is judged by a manifest written *after* the
+  download settles (`embedding/model-store.ts`), never by "the files are there": transformers'
+  `FileCache.put` writes straight to the final path, so a killed process leaves a truncated `.onnx`
+  that a file-existence check would happily call complete. Same reason the empty-vector-table case
+  re-queues: a Worker that wrote the header and then turned itself off must not make the next one
+  think the index is already embedded.
   **That switch is hot-applied** (2026-09-17): `wiring/search/index.ts` chains onto the
   `settings:changed` broadcaster and calls `handle.applySemantic(settings)`, which replaces
   the index Worker when the effective value changed (same value = identity). The swap stops

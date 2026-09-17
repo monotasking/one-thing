@@ -68,10 +68,29 @@ export type { SqliteVecOpenOptions, SqliteVectorIndexOptions } from './sqlite-ve
 export { EMBED_BATCH_SIZE, VectorWriter } from './vector-writer.js'
 export type { VectorState, VectorWriterIndexFace, VectorWriterOptions } from './vector-writer.js'
 
-export { ENQUEUE_DEBOUNCE_MS, IndexWorkerCore } from './worker-core.js'
+export {
+  MODEL_IN_USE_ERROR,
+  MODEL_NOT_DOWNLOADABLE_ERROR,
+  ModelDownloader,
+} from './model-download.js'
+export type {
+  ModelDownloadSignalSource,
+  ModelDownloaderOptions,
+  ModelState,
+  ModelStatus,
+} from './model-download.js'
+
+export {
+  ENQUEUE_DEBOUNCE_MS,
+  IndexWorkerCore,
+  MODEL_UNAVAILABLE_ERROR,
+  WORKER_MODEL_MESSAGE_TYPE,
+  isWorkerModelMessage,
+} from './worker-core.js'
 export type {
   IndexEndpoint,
   IndexKeyError,
+  IndexModelOp,
   IndexSearchRequest,
   IndexSearchResult,
   IndexStatus,
@@ -81,6 +100,7 @@ export type {
   IndexWorkerRequest,
   IndexWorkerResponse,
   IndexWriteFace,
+  WorkerModelMessage,
 } from './worker-core.js'
 
 export { IndexWorkerHost, IndexWorkerUnavailableError, MAX_CONSECUTIVE_CRASHES } from './worker-host.js'

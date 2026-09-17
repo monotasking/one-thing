@@ -45,6 +45,7 @@ import type {
   SearchCapabilityManifestDto,
   SearchInvokeRequest,
   SearchInvokeResponse,
+  SearchModelResponse,
   SearchPreviewPayload,
   SearchPreviewRequest,
   SearchPreviewResponse,
@@ -282,4 +283,41 @@ export const searchRpcHandlers: RpcRouteHandlers<SearchRoutes> = {
   async status(): Promise<SearchStatusResponse> {
     return await requireSearchService().status()
   },
+
+  /**
+   * ── 嵌入模型的三个动作(2026-09-17,§15.8)──────────────────────────────
+   *
+   * 用户裁定「把开关和下载模型拆开」:模型从此是一件**独立的东西**,有自己的状态
+   * 与动作,而不是「翻开关」的副作用。三条路由的落点都在
+   * `OnethingSearchService.semanticModel` —— 那里问的是这台进程手上那份索引面,
+   * 与 `status` 同一份(不是第二个产地)。
+   *
+   * **不按本机可信分叉**(与 `status` / `capabilities` 同):`query` 那条分叉存在的
+   * 理由是「不可信调用者该看 per-owner 沙箱里的那一份」,而模型是 **store 级**的一份
+   * 文件 —— 沙箱里没有第二份模型可言。留账:独立部署的 server 上,一个远端调用者
+   * 能按下这颗「下载」;今天它与「能读 `status`」同权,真要收紧就得先给
+   * `server/search-providers.ts` 那个端口补上这三口。
+   *
+   * 失败不抛,答 `{ success: false, error }`:`error` 是**码**(`model-in-use` 等),
+   * 后端一个中文字不拼。
+   */
+  async semanticModelDownload(): Promise<SearchModelResponse> {
+    return await runSemanticModelOp('download')
+  },
+
+  async semanticModelCancel(): Promise<SearchModelResponse> {
+    return await runSemanticModelOp('cancel')
+  },
+
+  async semanticModelRemove(): Promise<SearchModelResponse> {
+    return await runSemanticModelOp('remove')
+  },
+}
+
+async function runSemanticModelOp(op: 'download' | 'cancel' | 'remove'): Promise<SearchModelResponse> {
+  try {
+    return { success: true, model: await requireSearchService().semanticModel(op) }
+  } catch (error) {
+    return { success: false, error: (error as Error).message }
+  }
 }

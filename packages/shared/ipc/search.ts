@@ -271,6 +271,19 @@ export type SearchRoutes = {
   preview: { input: SearchPreviewRequest; output: SearchPreviewResponse }
   invoke: { input: SearchInvokeRequest; output: SearchInvokeResponse }
   status: { input: SearchStatusRequest; output: SearchStatusResponse }
+  /**
+   * 嵌入模型的三个动作(2026-09-17;契约只加)。
+   *
+   * 它们与 `settings.saveSettings` 里那格开关**是两件事** —— 那正是用户当天的裁定
+   * (「把开关和下载模型拆开,另外下载模型要能够知道进度」)。在这之前翻一下开关
+   * 就等于开始下 112.8 MB,屏上只有一句「正在下载模型…」,没有进度也取消不了。
+   *
+   * **`download` 不等下完就答**(冷下 191 秒,一条 HTTP 往返等不了),回执里是
+   * 起了这一发之后那一刻的模型状态;进度由 `status` 那一发的 `model` 那一格读。
+   */
+  semanticModelDownload: { input: SearchModelRequest; output: SearchModelResponse }
+  semanticModelCancel: { input: SearchModelRequest; output: SearchModelResponse }
+  semanticModelRemove: { input: SearchModelRequest; output: SearchModelResponse }
 }
 
 export const searchRouter = defineRouter<SearchRoutes>('search', [
@@ -279,6 +292,9 @@ export const searchRouter = defineRouter<SearchRoutes>('search', [
   'preview',
   'invoke',
   'status',
+  'semanticModelDownload',
+  'semanticModelCancel',
+  'semanticModelRemove',
 ])
 
 /* ───────────────────────── 能力自述 · 预览 · 动作 · 索引状态(S0)─────────────────────────
@@ -496,4 +512,62 @@ export interface SearchStatusResponse {
    * 出现过哪几个字)在产地那个文件里,这里不复制。
    */
   vectorErrorKind?: 'network' | 'runtime' | 'model' | 'unknown'
+  /**
+   * **嵌入模型这件东西自己的状态**(2026-09-17;契约只加)。
+   *
+   * 与 `vector` 那一格是两件事,这正是用户那句裁定的形:`vector` 说「语义召回此刻
+   * 在干什么」(开关开着才有意义),这一格说「这台机器上有没有那份模型、下到哪儿
+   * 了」——**开关关着的时候它照样要说得出话**,因为设置页那颗「下载」就是在开关
+   * 关着的时候按的。
+   *
+   * 缺席 = 这台宿主管不了模型(没有索引 / 这条嵌入器没有可下的模型),**不是**
+   * 「没下载」。
+   */
+  model?: SearchSemanticModelStatus
+}
+
+/** 三个动作的入参:一格都不要(模型是哪个由后端的设置说了算,不由调用方点名)。 */
+export type SearchModelRequest = Record<string, never>
+
+/**
+ * 嵌入模型此刻的样子(§15.8)。
+ *
+ * 四个态的意思各不相同,屏幕上的画法也各不相同:
+ * `absent` 没下(画「未下载 · 约 113 MB」+ 下载钮)/ `downloading` 正在下(画进度条
+ * + 取消)/ `ready` 下全了(画「已下载 · 真数」+ 删除)/ `failed` 那一发败了
+ * (画人话 + 原话 + 重试)。
+ */
+export interface SearchSemanticModelStatus {
+  /** 嵌入器注册 id。**是数据不是文案** —— 换一门语言它不变,所以壳不把它送进字典。 */
+  id: string
+  state: 'absent' | 'downloading' | 'ready' | 'failed'
+  /** 已经下了多少字节(`ready` 时 = 磁盘上的真数)。 */
+  loadedBytes?: number
+  /**
+   * 一共多少字节。三态三个意思:`downloading` = 已知 `Content-Length` 的和(**单调
+   * 不减**,认识一个新文件就长一截);`ready` = 磁盘上的真数;`absent` = 嵌入器自述的
+   * **估计值**(屏上那句「约 113 MB」)。缺席 = 不知道。
+   */
+  totalBytes?: number
+  /**
+   * 那一发**失败**的原因分类 + 原话 —— 与 `vectorErrorKind` / `vectorError` 同一张
+   * 判据表(`vector-writer.ts` 的 `describeEmbedderFailure`),所以壳查的是同一族
+   * i18n 键。**取消不留这两格**:人自己按的那一下不是错。
+   */
+  errorKind?: 'network' | 'runtime' | 'model' | 'unknown'
+  error?: string
+}
+
+/**
+ * 三个动作的回执:**动作之后那一刻的模型状态**。
+ *
+ * `success: false` 时 `error` 是一个**码**(`model-in-use` / `model-not-downloadable` /
+ * 「这台宿主管不了模型」),不是给人看的句子 —— 后端一个中文字都不拼(R12 那条)。
+ * 壳今天不画它:那几种失败在屏幕上都已经被「钮禁着」挡在前面了,这一格是结构上的
+ * 第二道。
+ */
+export interface SearchModelResponse {
+  success: boolean
+  error?: string
+  model?: SearchSemanticModelStatus
 }

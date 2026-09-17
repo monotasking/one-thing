@@ -61,7 +61,13 @@ import type { EmbedKind, Embedder } from '@onething/core/search'
 import { getLogger } from '../../logging/index.js'
 import { resolveHuggingFaceEndpoint } from '../index/worker-network.js'
 import { normalizeVector } from './embedder.js'
-import type { EmbedderCreateOptions, EmbedderFactory } from './registry.js'
+import { isEmbedderModelPresent } from './model-store.js'
+import type {
+  EmbedderCreateOptions,
+  EmbedderDownloadOptions,
+  EmbedderFactory,
+  EmbedderModelSpec,
+} from './registry.js'
 
 const log = getLogger('search.embedding')
 
@@ -75,6 +81,27 @@ const E5_SMALL_REPO = 'Xenova/multilingual-e5-small'
 export const E5_SMALL_DIMS = 384
 export const E5_SMALL_MAX_TOKENS = 512
 
+/**
+ * 下载**大约**多少字节。真机冷下量到 112.8 MB(`gate:search-index` ⑫ 的读数),
+ * 这里写的就是那一次的数。
+ *
+ * 它只在「还没下」那一态露脸(屏上「未下载 · 约 113 MB」)—— 一下完,屏上写的就是
+ * 磁盘上的**真数**(`model-store.ts` 的清单)。所以它偏几个百分点无伤大雅,
+ * 而**它永远不是「下全了没有」的判据**。
+ */
+export const E5_SMALL_APPROX_BYTES = 118_300_000
+
+export const E5_SMALL_MODEL_SPEC: EmbedderModelSpec = { approxBytes: E5_SMALL_APPROX_BYTES }
+
+/**
+ * 模型不在本地时 `ready()` 抛的那句话。
+ *
+ * **要能被 `describeEmbedderFailure` 判成 `'model'`** —— 判据表里那一行认
+ * `are not downloaded`(它与 `Could not locate` / `404` 同属「文件那一侧」)。
+ * 于是开关开着而模型没下时,设置页写的是「模型文件不完整」而不是「运行时装不上」。
+ */
+export const MODEL_NOT_DOWNLOADED_ERROR = 'embedding model files are not downloaded'
+
 /** e5 的两个前缀。调用方永远不用记它们。 */
 const PREFIX: Record<EmbedKind, string> = { query: 'query: ', passage: 'passage: ' }
 
@@ -83,6 +110,8 @@ interface TransformersPipeline {
     tolist(): number[][]
   }>
   tokenizer?: { encode(text: string): unknown[] }
+  /** 把 ONNX 会话还回去。下载那一路装完管线就调它(文件已经落盘,会话是副产物)。 */
+  dispose?(): Promise<void>
 }
 
 interface TransformersModule {
@@ -90,6 +119,11 @@ interface TransformersModule {
     localModelPath?: string
     cacheDir?: string
     allowLocalModels?: boolean
+    /**
+     * 允不允许出网拿文件。**两条路在这一格上分道**:装载(`load`)钉死 `false`,
+     * 下载(`downloadE5SmallModel`)才 `true`。
+     */
+    allowRemoteModels?: boolean
     /** 从哪儿下(缺省 `https://huggingface.co/`)。`HF_ENDPOINT` 设了就换成镜像站。 */
     remoteHost?: string
   }
@@ -106,41 +140,141 @@ interface TransformersModule {
   ): Promise<TransformersPipeline>
 }
 
+/** 两条路共用的那几格 —— dtype / device / 线程数在装载与下载里必须逐字相同。 */
+const PIPELINE_OPTIONS = {
+  dtype: 'q8',
+  // 见文件头:macOS 上 `supportedDevices` 就是 `['cpu']`,别的字面量当场抛。
+  device: 'cpu',
+  /*
+   * **单线程**:Worker 里再开线程池会跟宿主抢核,而这条路本来就是后台活。
+   *
+   * 换过口径了(2026-09-17):wasm 那一侧的旋钮是 `env.backends.onnx.wasm.numThreads`,
+   * 而 onnxruntime-node 的线程数是**每个会话**的 `intraOpNumThreads`,只能经
+   * `session_options` 递 —— transformers 3.8.1 的 7787 行把它原样并进
+   * `InferenceSession.create` 的参数。不设 = ORT 按物理核数开满。
+   */
+  session_options: { intraOpNumThreads: 1 },
+} as const
+
+/** 那个库的进度回声(`{status, file, loaded, total, progress}`)。 */
+interface TransformersProgress {
+  status?: string
+  file?: string
+  loaded?: number
+  total?: number
+  progress?: number
+}
+
+/**
+ * 装载 / 下载都要先把 `env` 摆好。**两条路唯一的区别是 `allowRemoteModels`** ——
+ * 摆在一处,免得哪天只改了一边。
+ */
+async function openTransformers(modelDir: string, allowRemote: boolean): Promise<TransformersModule> {
+  // **动态 import**:开关不打开、也没人点下载,就不加载(见文件头)。
+  const transformers = await import('@huggingface/transformers') as unknown as TransformersModule
+  transformers.env.cacheDir = modelDir
+  transformers.env.localModelPath = modelDir
+  transformers.env.allowLocalModels = true
+  transformers.env.allowRemoteModels = allowRemote
+  /*
+   * 镜像站(2026-09-17)。`HF_ENDPOINT` 是 huggingface 生态里既有的那条逃生口,
+   * 国内常用;**只读环境变量,不加设置项**(设置极简:它不是必填项)。判据住
+   * `search/index/worker-network.ts` —— 与「这台机器怎么上网」的另一半(代理)同一处,
+   * 换一条嵌入器时这两件事都不该跟着搬。
+   */
+  const endpoint = resolveHuggingFaceEndpoint()
+  if (endpoint !== undefined) {
+    transformers.env.remoteHost = endpoint
+    log.info('embedding model downloads use a mirror', { fields: { remoteHost: endpoint } })
+  }
+  return transformers
+}
+
+/**
+ * **把模型文件下下来**,别的什么都不做(2026-09-17 用户裁定的那一刀)。
+ *
+ * 用的是那个库**自己的**下载机制:`pipeline(...)` 走一遍,`progress_callback` 把逐
+ * 文件的字节数喊出来,文件由它自己的 `FileCache` 落进 `modelDir`。**不在这里抄一份
+ * 文件清单** —— 要哪几个文件、摆成什么目录是它的事(理由写在 `model-store.ts` 头上)。
+ *
+ * 代价是装完管线顺带建了一次 ONNX 会话(几秒、几百 MB 常驻)。所以最后一句
+ * `dispose()` 把它还回去:这一路要的只是磁盘上的那些文件。
+ *
+ * **取消**走 `signal`:Worker 那条线程的全局 `fetch` 被 `WorkerDownloadSignal` 包过一层,
+ * 这只 signal 会被它塞进每一发请求(`worker-network.ts`)。中止之后 `FileCache.put` 的
+ * `catch` 自己把半截文件删掉,而这只 promise 以 abort 错误拒绝。
+ */
+export async function downloadE5SmallModel(options: EmbedderDownloadOptions): Promise<void> {
+  const transformers = await openTransformers(options.modelDir, true)
+  const loading = transformers.pipeline('feature-extraction', E5_SMALL_REPO, {
+    ...PIPELINE_OPTIONS,
+    progress_callback: info => {
+      const record = info as TransformersProgress
+      if (record.status !== 'progress' || record.file === undefined) return
+      options.onFile?.({
+        file: record.file,
+        loaded: record.loaded ?? 0,
+        ...(typeof record.total === 'number' && record.total > 0 ? { total: record.total } : {}),
+      })
+    },
+  })
+  /*
+   * **取消要当场答**。signal 一路是经全局 `fetch` 塞进去的(那个库没有 signal 口),
+   * 所以在飞的那一发确实会断 —— 但「断」到「`pipeline()` 那只 promise 拒绝」之间隔着
+   * 它自己的几层 await。赛一把:abort 赢了就当场拒绝,输的那一边**不许变成
+   * unhandledRejection**,而且万一它后来还是装成了,会话要还回去。
+   */
+  void loading.then(pipe => pipe.dispose?.(), () => undefined).catch(() => undefined)
+  const pipe = await Promise.race([loading, whenAborted(options.signal)])
+  // 会话还回去。它抛不该让「文件已经下好了」这件事变成一次失败 —— 记一条就走。
+  try {
+    await pipe.dispose?.()
+  } catch (error) {
+    log.warn('releasing the download-time inference session failed', undefined, error)
+  }
+  log.info('embedding model downloaded', { model: E5_SMALL_REPO, dir: options.modelDir })
+}
+
+/** 取消那一边。没给 signal = 一只永不落地的 promise(`Promise.race` 里等于不存在)。 */
+function whenAborted(signal: AbortSignal | undefined): Promise<never> {
+  return new Promise<never>((_resolve, reject) => {
+    if (signal === undefined) return
+    const fail = (): void => {
+      const error = new Error('model download cancelled')
+      error.name = 'AbortError'
+      reject(error)
+    }
+    if (signal.aborted) { fail(); return }
+    signal.addEventListener('abort', fail, { once: true })
+  })
+}
+
 export function createTransformersOnnxEmbedder(options: EmbedderCreateOptions): Embedder {
   let pipe: TransformersPipeline | undefined
   let loading: Promise<void> | undefined
 
   const load = async (): Promise<void> => {
-    // **动态 import**:开关不打开就不加载(见文件头)。
-    const transformers = await import('@huggingface/transformers') as unknown as TransformersModule
-    transformers.env.cacheDir = options.modelDir
-    transformers.env.localModelPath = options.modelDir
     /*
-     * 镜像站(2026-09-17)。`HF_ENDPOINT` 是 huggingface 生态里既有的那条逃生口,
-     * 国内常用;**只读环境变量,不加设置项**(设置极简:它不是必填项)。判据住
-     * `search/index/worker-network.ts` —— 与「这台机器怎么上网」的另一半(代理)同一处,
-     * 换一条嵌入器时这两件事都不该跟着搬。
+     * **装载只读本地**(2026-09-17 用户裁定「把开关和下载模型拆开」)。
+     *
+     * 在这之前,翻一下开关就等于开始下 112.8 MB —— 一个设置开关**不该是**一次
+     * 一百多兆的网络动作。现在模型是一件自己有状态的东西(下载 / 取消 / 删除在
+     * 设置页的「模型」那一行),而这里只回答「它在不在」。
+     *
+     * 先问清单再进库(`isEmbedderModelPresent`):
+     *  - 不在 → 当场抛,`describeEmbedderFailure` 判成 `'model'`,屏上说「模型文件
+     *    不完整」,**一个字节的网络请求都不会发**;
+     *  - 在 → 进库,`allowRemoteModels = false` 再兜一道:万一清单与真实文件之间
+     *    有缝,它宁可抛,也不会背着人去下东西。
      */
-    const endpoint = resolveHuggingFaceEndpoint()
-    if (endpoint !== undefined) {
-      transformers.env.remoteHost = endpoint
-      log.info('embedding model downloads use a mirror', { fields: { remoteHost: endpoint } })
+    if (!isEmbedderModelPresent(options.modelDir, E5_SMALL_EMBEDDER_ID)) {
+      throw new Error(MODEL_NOT_DOWNLOADED_ERROR)
     }
+    const transformers = await openTransformers(options.modelDir, false)
     pipe = await transformers.pipeline('feature-extraction', E5_SMALL_REPO, {
-      dtype: 'q8',
-      // 见文件头:macOS 上 `supportedDevices` 就是 `['cpu']`,别的字面量当场抛。
-      device: 'cpu',
-      /*
-       * **单线程**:Worker 里再开线程池会跟宿主抢核,而这条路本来就是后台活。
-       *
-       * 换过口径了(2026-09-17):wasm 那一侧的旋钮是 `env.backends.onnx.wasm.numThreads`,
-       * 而 onnxruntime-node 的线程数是**每个会话**的 `intraOpNumThreads`,只能经
-       * `session_options` 递 —— transformers 3.8.1 的 7787 行把它原样并进
-       * `InferenceSession.create` 的参数。不设 = ORT 按物理核数开满。
-       */
-      session_options: { intraOpNumThreads: 1 },
+      ...PIPELINE_OPTIONS,
       progress_callback: info => {
-        const record = info as { progress?: number; status?: string; file?: string }
+        const record = info as TransformersProgress
         options.onProgress?.({
           ...(typeof record.progress === 'number' ? { ratio: record.progress / 100 } : {}),
           ...(record.status !== undefined ? { message: `${record.status} ${record.file ?? ''}`.trim() } : {}),
@@ -189,4 +323,7 @@ export function createTransformersOnnxEmbedder(options: EmbedderCreateOptions): 
 export const transformersOnnxEmbedderFactory: EmbedderFactory = {
   id: E5_SMALL_EMBEDDER_ID,
   create: createTransformersOnnxEmbedder,
+  // 这一条有一份要先下载的模型,所以它自述这两格;假嵌入器两格都缺席。
+  model: E5_SMALL_MODEL_SPEC,
+  download: downloadE5SmallModel,
 }

@@ -34,7 +34,15 @@ import type { SearchResultSnippetWindow } from './scan-adapter.js'
  * 它是 `SearchIndexService` 的一个 `Pick` 而不是一份新接口:形状要跟着服务走,
  * 而单测里塞一个字面量对象也照样过(两个方法各答一句)。
  */
-export type SearchIndexQueryFace = Pick<SearchIndexService, 'search' | 'status' | 'vectorSearch'>
+export type SearchIndexQueryFace =
+  Pick<SearchIndexService, 'search' | 'status' | 'vectorSearch'>
+  /**
+   * 模型那三个动作是**可选**的(2026-09-17)。能力一个都不用 —— 它们的读者只有
+   * `search` 域那三条路由。选填是因为「有没有索引」与「这台宿主管不管得了模型」
+   * 是两件事:`unavailableIndexFace()` 与单测里的字面量替身都没有这一半,而它们
+   * 不该因此写三个空函数(写了就得选一个谎:抛,还是假装成功)。
+   */
+  & Partial<Pick<SearchIndexService, 'downloadModel' | 'cancelModelDownload' | 'removeModel'>>
 
 /** 与 `SqliteIndex` 索引时用的是同一条归一化链 —— 两边不许分家。 */
 const normalize = composeNormalizers(DEFAULT_NORMALIZERS)

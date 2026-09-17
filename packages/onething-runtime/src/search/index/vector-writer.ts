@@ -57,7 +57,9 @@ export type VectorErrorKind = 'network' | 'runtime' | 'model' | 'unknown'
  *   `Cannot find package` / `ERR_MODULE_NOT_FOUND`(打包档路线 c 根本没带 transformers,
  *   那也是「这台宿主的运行时不成立」,不是未知)。
  * - `model` —— 文件那一侧:transformers 找不到某个文件时说 `Could not locate`,
- *   HF 答 `404`,`config.json` 是它第一个要的文件。
+ *   HF 答 `404`,`config.json` 是它第一个要的文件;`are not downloaded` 是**我们自己**
+ *   在装载第一句抛的那一句(2026-09-17:开关不再触发下载,模型没下就是这一类 ——
+ *   屏上该说「去下载模型」,不是「运行时装不上」)。
  *
  * **网络排在运行时前面**是有讲究的:下载失败时 transformers 常常把话说成
  * 「`Could not locate file: "<url>/config.json"`」,而真因在 `cause` 里的 `fetch failed` ——
@@ -66,7 +68,7 @@ export type VectorErrorKind = 'network' | 'runtime' | 'model' | 'unknown'
 const FAILURE_MARKERS: ReadonlyArray<readonly [VectorErrorKind, readonly string[]]> = [
   ['network', ['fetch failed', 'ENOTFOUND', 'ECONNREFUSED', 'ETIMEDOUT']],
   ['runtime', ['Unsupported device', 'onnxruntime', '.node', 'ERR_DLOPEN', 'Cannot find package', 'ERR_MODULE_NOT_FOUND']],
-  ['model', ['Could not locate', '404', 'config.json']],
+  ['model', ['are not downloaded', 'Could not locate', '404', 'config.json']],
 ]
 
 /** 错误链上的每一句话(`cause` 逐层,`normalizeError` 已经替我们展平过)。 */
