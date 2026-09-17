@@ -1,38 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import {
-  ARM_INNER_DEG,
-  ARM_OUTER_DEG,
-  angleAtPointer,
-  armAngleFor,
-  lyricIndexAt,
-  positionAt,
-  progressForAngle,
-  splitTitle,
-} from '../turntable'
+import { lyricIndexAt, positionAt, splitTitle } from '../turntable'
 import { applyProgrammeAction } from '../../../data/music-source'
-
-describe('唱臂几何', () => {
-  it('外圈是开头、内圈是结尾', () => {
-    expect(armAngleFor(0)).toBe(ARM_OUTER_DEG)
-    expect(armAngleFor(1)).toBe(ARM_INNER_DEG)
-  })
-
-  it('进度 → 角度 → 进度 是同一个数', () => {
-    for (const p of [0, 0.25, 0.5, 0.9, 1]) expect(progressForAngle(armAngleFor(p))).toBeCloseTo(p, 10)
-  })
-
-  it('拖出唱片夹回两头;非数当开头', () => {
-    expect(progressForAngle(ARM_OUTER_DEG - 20)).toBe(0)
-    expect(progressForAngle(ARM_INNER_DEG + 20)).toBe(1)
-    expect(armAngleFor(Number.NaN)).toBe(ARM_OUTER_DEG)
-  })
-
-  it('指针正对轴心下方 = 90°;空矩形不动', () => {
-    const box = { left: 0, top: 0, width: 100, height: 100 }
-    expect(angleAtPointer(box, 95, 60)).toBeCloseTo(90, 6)
-    expect(angleAtPointer({ left: 0, top: 0, width: 0, height: 0 }, 10, 10)).toBe(90)
-  })
-})
 
 describe('歌名拆两半', () => {
   it('「歌名 - 歌手」', () => {

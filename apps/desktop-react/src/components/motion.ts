@@ -266,3 +266,21 @@ export function sendLandMs(distancePx: number): number {
   const extra = Math.max(0, distancePx - 240) * 0.35
   return Math.round(Math.min(SEND_LAND_MAX_MS, SEND_LAND_MS + extra))
 }
+
+/* ── 唱机场景(宠物 P1,正本 `docs/design/pet-system-2026-09.md` §8.2)──────────────
+ *
+ * 场景里有两样东西不是 CSS 过渡能单独说完的,所以 JS 要一份数:
+ *  · 转盘的惯性 —— 角速度只在 rAF 里改(不进 React 状态),起转 / 停转要多久是 JS 算的;
+ *  · 换歌那一串 —— 唱臂归位 → 唱片收进封套 → 封套换歌 → 唱片滑出 → 落针,每一段
+ *    的 CSS 过渡播完才排下一段,次序由控制器的计时器说。
+ * 八个数的产地都是 tokens.css「唱机场景」节,`__tests__/motion-tokens.test.ts` 逐条比对。
+ * 动效档「无」不改这几个数:那一档由控制器自己换成 `MUSIC_FADE_MS` 的淡入淡出(§8.3 末)。
+ */
+export const MUSIC_SPIN_UP_MS = 900 // --dur-music-spin-up:转盘从停到满速
+export const MUSIC_SPIN_DOWN_MS = 1600 // --dur-music-spin-down:靠惯性停下来
+export const MUSIC_NEEDLE_LEAD_MS = 450 // --dur-music-needle-lead:先转,过这么久唱臂才动
+export const MUSIC_ARM_MOVE_MS = 900 // --dur-music-arm-move:唱臂抬着移到位 / 归位
+export const MUSIC_ARM_SETTLE_MS = 300 // --dur-music-arm-settle:落下,或被别处 seek 挪一小段
+export const MUSIC_STOW_MS = 680 // --dur-music-stow:唱片收进封套 / 从封套滑出
+export const MUSIC_SWAP_MS = 600 // --dur-music-swap:封套换成下一张(抽出一半 + 放回一半)
+export const MUSIC_FADE_MS = 150 // --dur-music-fade:减弱动态效果时换歌只淡出淡入

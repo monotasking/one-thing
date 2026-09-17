@@ -25,13 +25,23 @@
   animation-play-state: paused !important;
 }
 
+/*
+ * 宠物站在哪:缺省是盒底正中。**栖位宿主可以改三格**(宠物 P1 加,唱机场景要它站在
+ * 画面里的一个点上、并跟着画面一起缩放,而气泡仍要在整块场景里找地方,不能被一只
+ * 120px 的小盒子夹住):
+ *   --pet-anchor-x       脚底正中离栖位左边多远
+ *   --pet-anchor-bottom  脚底离栖位底边多远
+ *   --pet-scale          形象跟着画面缩放多少(以脚底正中为原点)
+ * 气泡按宠物按钮的**实际**矩形定位(PetStage.tsx 的 place),所以这三格不必告诉它。
+ */
 .pet {
   position: absolute;
-  bottom: 0;
-  left: 50%;
+  bottom: var(--pet-anchor-bottom, 0);
+  left: var(--pet-anchor-x, 50%);
   width: var(--pet-stage-w);
   height: var(--pet-stage-h);
-  transform: translateX(-50%);
+  transform: translateX(-50%) scale(var(--pet-scale, 1));
+  transform-origin: 50% 100%;
 }
 
 .perch[data-size='corner'] .pet {
@@ -56,6 +66,9 @@
   border-radius: var(--pet-hit-r);
   cursor: pointer;
   touch-action: none;
+  /* 宿主可以让整块栖位对指针透明(唱机场景:栖位盖满画面,底下的唱臂要接得到手),
+   * 宠物本身永远接得到。 */
+  pointer-events: auto;
 }
 
 /* ── 气泡 ─────────────────────────────────────────────────────────────── */

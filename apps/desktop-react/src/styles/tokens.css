@@ -1711,31 +1711,10 @@
    * 220 只装得下四行半、五首歌就出滚轨;改 320 ≈ 七行。 */
   --music-list-max-h: 320px;
 
-  /* ── 唱机面(唱机音乐面 M1,2026-09-17)────────────────────────────────
-   * 唱盘底座、唱臂都从主题色里混出来,换主题跟着走;**黑胶本身是内容色**
-   * (一张唱片在哪个主题里都是黑的,与 --fb-* 品牌色数据节同一条例外)。
-   * 唱片三档身量对应**唱机区**自己的宽(阈值在 MusicPanel.module.css 的
-   * @container 里,查询条件里写不了 var(),两处一起改):
-   *   deck < 520  小唱片,不画唱臂(唱臂要的横向余量这一档给不起),控制条铺在下面
-   *   deck ≥ 520  中唱片 + 唱臂
-   *   deck ≥ 680  大唱片
-   *   面板 ≥ 960  分两栏,歌词单列右边
-   * 转一圈 1.8s = 33⅓ 转/分;唱片只是显示,不接手势(搓碟播放器做不到)。 */
-  --music-deck-face: color-mix(in srgb, var(--text-1) 4%, var(--surface-1));
-  --music-platter: color-mix(in srgb, var(--text-1) 70%, var(--surface-2));
-  --music-platter-rim: var(--line-2);
-  --music-vinyl: #121211;
-  --music-groove: rgba(255, 255, 255, 0.045);
-  --music-sheen: rgba(255, 255, 255, 0.11);
-  --music-label: color-mix(in srgb, var(--accent) 78%, var(--surface-2));
-  --music-label-ink: #ffffff;
-  --music-arm: color-mix(in srgb, var(--text-1) 22%, var(--surface-2));
-  --music-arm-head: color-mix(in srgb, var(--text-1) 88%, var(--surface-2));
-  --music-arm-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
-  --music-spin-dur: 1.8s;
-  --music-record-sm: 84px;
-  --music-record-md: 220px;
-  --music-record-lg: 300px;
+  /* ── 唱机面(唱机音乐面 M1,2026-09-17;宠物 P1 起唱盘换成下面那一整块场景)──
+   * 面板 ≥ 960 分两栏,歌词单列右边(阈值在 MusicPanel.module.css 的 @container 里)。 */
+  /* 音量条最宽多少:控制条一行里它是最后让的那一件。 */
+  --music-volume-w: 84px;
   --music-lyrics-h: 150px;
   --music-lyrics-h-lg: 360px;
   --music-popover-w: 320px;
@@ -1744,6 +1723,140 @@
   --music-lamp: var(--danger);
   /* 主持人的话用衬线:与歌词区分「谁在说」。壳没带这副字,落到系统宋体。 */
   --music-font-say: 'Noto Serif SC', 'Songti SC', 'STSong', serif;
+
+  /* ── 唱机场景(content/music/TurntableScene,宠物 P1,2026-09-17;正本
+   * docs/design/pet-system-2026-09.md §8)────────────────────────────────────
+   * 逐格搬自样例「黑豆电台」。场景是一间**夜里的屋子**:墙、灯、窗外的雨、木底座、
+   * 金属转盘、黑胶 —— 全是**画面里的物件色**,在哪个主题里都是这一间屋子(与
+   * --music-vinyl 从前那条、--pet-* 形象色同一条例外),所以不从主题色里混。
+   * 位置与尺寸不在这里:它们是画布几何,住在 content/music/scene-geometry.ts 的
+   * SCENE_LAYOUT(判词在那只文件头)。画布宽高与裁切阈值两边都要,两处一对数,
+   * scene-geometry.test.ts 逐条比对。
+   *
+   * 惯性:转盘 0.9s 到满速(200°/s = 33⅓ 转/分)、1.6s 靠惯性停下。换歌一串:
+   * 唱臂归位 900 → 唱片收进封套 680 → 封套换歌 600 → 唱片滑出 680 → 起转,450 后落针。
+   * 八个时长在 components/motion.ts 有 JS 镜像(计时器要一个数)。 */
+  --music-scene-w: 640px;
+  --music-scene-h: 420px;
+  /* JS 还没量到容器宽的那一帧,场景按画布比例撑开。 */
+  --music-scene-ratio: 640 / 420;
+  --music-scene-crop-below: 520px;
+  --music-scene-font-display: 'ZCOOL XiaoWei', 'Noto Serif SC', 'Songti SC', 'STSong', serif;
+
+  --music-scene-bg: #1f1c1a;
+  --music-scene-wall: linear-gradient(#2b2724, #1e1b19 70%);
+  --music-scene-lamp: radial-gradient(420px 260px at 560px 30px, rgba(255, 196, 128, 0.22), transparent 70%);
+  /* 关台:屋里的灯暗一半。 */
+  --music-scene-room-dim: brightness(0.55);
+
+  --music-scene-window-frame: #3a322b;
+  --music-scene-window-frame-w: 6px;
+  --music-scene-window-mullion-w: 4px;
+  --music-scene-window-r: 6px;
+  --music-scene-window-glass: linear-gradient(#17222a, #233642);
+  --music-scene-window-inset: inset 0 0 18px rgba(0, 0, 0, 0.5);
+  --music-scene-rain: repeating-linear-gradient(104deg, transparent 0 11px, rgba(170, 205, 225, 0.2) 11px 12px);
+  --music-scene-rain-tile: 44px 60px;
+  /* 雨那一层往上多铺一截,斜着漂下来时顶上不露白。 */
+  --music-scene-rain-overscan: -60px;
+
+  --music-scene-sleeve-tilt: rotate(-5deg);
+  /* 封套换歌时往下抽出去的那一段。 */
+  --music-scene-sleeve-drop: 40px;
+  --music-scene-sleeve-r: 3px;
+  --music-scene-sleeve-shadow: 6px 10px 18px rgba(0, 0, 0, 0.45);
+  --music-scene-sleeve-gloss: linear-gradient(120deg, rgba(255, 255, 255, 0.12), transparent 40%, rgba(0, 0, 0, 0.12));
+  --music-scene-sleeve-ring: rgba(255, 255, 255, 0.12);
+  --music-scene-sleeve-fade: #15191b;
+  /* 没歌时的素面封套。 */
+  --music-scene-sleeve-blank: linear-gradient(165deg, #3b3531, #1d1a18);
+  --music-scene-sleeve-pad: 10px;
+  --music-scene-sleeve-title-fs: 15px;
+  --music-scene-sleeve-who-fs: 8px;
+  --music-scene-sleeve-who-track: 0.14em;
+  --music-scene-sleeve-title-track: 0.06em;
+
+  --music-scene-plinth: linear-gradient(170deg, #7a553a, #5a3d29 60%, #4b3222);
+  --music-scene-plinth-grain: repeating-linear-gradient(92deg, transparent 0 6px, rgba(0, 0, 0, 0.05) 6px 7px, transparent 7px 19px);
+  --music-scene-plinth-r: 16px;
+  --music-scene-plinth-shadow: inset 0 1px 0 rgba(255, 220, 180, 0.25), inset 0 -6px 0 rgba(0, 0, 0, 0.25), 0 22px 28px -10px rgba(0, 0, 0, 0.6);
+  --music-scene-brand-ink: rgba(255, 230, 200, 0.35);
+  --music-scene-brand-fs: 8px;
+  --music-scene-brand-track: 0.3em;
+
+  --music-scene-platter: conic-gradient(#8b8a86, #d7d5cf, #7c7b77, #cfcdc7, #8b8a86, #dcdad4, #8b8a86);
+  --music-scene-strobe: repeating-conic-gradient(#3b3a37 0 1.6deg, transparent 1.6deg 5deg);
+  --music-scene-strobe-mask: radial-gradient(circle, transparent 0 120px, #000 121px 124px, transparent 125px);
+
+  /* 黑胶:两圈空白纹带 + 外沿 + 细密的纹。 */
+  --music-scene-disc:
+    radial-gradient(circle, transparent 0 58%, rgba(255, 255, 255, 0.07) 58.4%, transparent 59.2%),
+    radial-gradient(circle, transparent 0 78%, rgba(255, 255, 255, 0.06) 78.3%, transparent 79%),
+    radial-gradient(circle, transparent 0 96%, #262627 96.5% 100%),
+    repeating-radial-gradient(circle, #121213 0 1px, #1c1c1d 1px 2.1px);
+  --music-scene-disc-shadow: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.55));
+  --music-scene-disc-shadow-lift: drop-shadow(0 12px 12px rgba(0, 0, 0, 0.5));
+  --music-scene-disc-lift: scale(1.02);
+  /* 唱片收进左边的封套:朝封套飞过去、缩小、跟着封套歪一点、淡掉。 */
+  --music-scene-disc-stow: translate(-142px, -50px) scale(0.6) rotate(-5deg);
+  --music-scene-label-rim: rgba(0, 0, 0, 0.3);
+  --music-scene-label-ring: rgba(255, 255, 255, 0.18);
+  --music-scene-spindle: #d6d3cc;
+  /* 反光不随唱片转(光是灯的位置,不是唱片的)。 */
+  --music-scene-sheen: conic-gradient(from 18deg, transparent 0 6%, rgba(255, 255, 255, 0.16) 11%, transparent 17% 50%, rgba(255, 255, 255, 0.1) 60%, transparent 67%);
+  --music-scene-sheen-mask: radial-gradient(circle, transparent 0 35%, #000 36%);
+
+  --music-scene-arm-base: radial-gradient(circle at 40% 35%, #e3e1db, #8e8c87 70%);
+  --music-scene-arm-base-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+  --music-scene-cue: #b9b6af;
+  --music-scene-cue-shadow: 0 2px 3px rgba(0, 0, 0, 0.4);
+  --music-scene-cue-r: 3px;
+  --music-scene-arm-weight: #3a3936;
+  --music-scene-arm-weight-cap: #56544f;
+  --music-scene-arm-tube: #d9d7d1;
+  --music-scene-arm-tube-glint: rgba(255, 255, 255, 0.6);
+  --music-scene-arm-head: #2b2a28;
+  --music-scene-arm-lift-tab: #bdbab3;
+  --music-scene-arm-stylus: #d2a54a;
+  /* 唱臂落着时影子贴近;抬起来影子拉远变淡,唱臂本身往上挪一点。 */
+  --music-scene-arm-shadow: drop-shadow(3px 5px 3px rgba(0, 0, 0, 0.5));
+  --music-scene-arm-shadow-lift: drop-shadow(10px 16px 7px rgba(0, 0, 0, 0.32));
+  --music-scene-arm-lift: translate(-1px, -4px);
+
+  --music-scene-fan-a: linear-gradient(150deg, #7b5a3e, #3b2a1d);
+  --music-scene-fan-b: linear-gradient(150deg, #3e4d7a, #1f2745);
+  --music-scene-fan-c: linear-gradient(150deg, #2f6b62, #16362f);
+  --music-scene-fan-size: 58px;
+  --music-scene-fan-step: 5px;
+  --music-scene-fan-r: 2px;
+  --music-scene-fan-shadow: 2px 3px 6px rgba(0, 0, 0, 0.45);
+  --music-scene-fan-tilt-a: rotate(-14deg);
+  --music-scene-fan-tilt-b: rotate(-2deg);
+  --music-scene-fan-tilt-c: rotate(10deg);
+  --music-scene-fan-hidden: translateY(20px);
+
+  --music-scene-tip-bg: rgba(0, 0, 0, 0.7);
+  --music-scene-tip-ink: #ffffff;
+  --music-scene-tip-fs: 11px;
+  --music-scene-tip-pad: 2px 7px;
+  --music-scene-tip-r: 5px;
+
+  --dur-music-spin-up: 900ms;
+  --dur-music-spin-down: 1600ms;
+  --dur-music-needle-lead: 450ms;
+  --dur-music-arm-move: 900ms;
+  --dur-music-arm-settle: 300ms;
+  --dur-music-arm-lift: 250ms;
+  --dur-music-stow: 680ms;
+  --dur-music-swap: 600ms;
+  --dur-music-fade: 150ms;
+  --dur-music-room: 800ms;
+  --dur-music-rain: 700ms;
+  --dur-music-fan: 350ms;
+  --dur-music-fan-flick: 1100ms;
+  --dur-music-fan-stagger: 360ms;
+  --ease-music-arm: cubic-bezier(0.45, 0, 0.25, 1);
+  --ease-music-disc: cubic-bezier(0.5, 0, 0.3, 1);
 
   /* ── 宠物(src/pets,宠物 P0,2026-09-17;正本 docs/design/pet-system-2026-09.md)──
    * 黑豆逐笔搬自样例「黑豆电台」。**猫本身是内容色**:一只黑猫在哪个主题里都是黑的,

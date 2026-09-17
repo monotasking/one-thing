@@ -21,6 +21,9 @@ import s from '../MusicPanel.module.css'
  *
  * 进度条与唱臂发的是同一条 `seek`;进度条是键盘与读屏的入口。
  *
+ * ♥ 成功(做法回来且没有错话)之后调一次 `onLiked` —— 唱机场景里的黑豆据此冒爱心
+ * (宠物 P1 §8.3)。失败不调:`mutation.run` 从不抛,判据是跑完之后 `get().error` 空着。
+ *
  * 三张状态表:① 本地只有「这几首已收藏」一格,跟组件实例走;② 没有总长 → 进度条停用
  * (`ui/Slider` 的 `undefined` 形);没有音量读数 → 音量条停用;③ 每颗钮各自 pending
  * (律③),错误就地一行 `music-player-error`。
@@ -31,12 +34,15 @@ export function Transport({
   position,
   duration,
   playRef,
+  onLiked,
 }: {
   title: string | undefined
   playing: boolean
   position: number | undefined
   duration: number | undefined
   playRef: { current: HTMLButtonElement | null }
+  /** ♥ 做法成功回来之后调一次。 */
+  onLiked?: () => void
 }) {
   const t = useT()
   const brief = useQuery(musicBriefQuery)
@@ -106,6 +112,7 @@ export function Transport({
             void musicOps.like.run({}).then(() => {
               if (musicOps.like.get().error) return
               setLiked((prevSet) => new Set(prevSet).add(title))
+              onLiked?.()
             })
           }}
         />

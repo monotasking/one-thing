@@ -1,10 +1,10 @@
 /*
  * 音乐面 · 唱机形(唱机音乐面 M1,2026-09-17)。
  *
- * 三种落点(架子 / 浮窗 / 舞台)共用这一份,**不写任何与宿主有关的尺寸**。形分两层看:
- *   面板(`@container music`,容器在 `.panel`):≥ 960 分两栏,歌词单列右边;
- *   唱机区(`@container deck`,容器在 `.deck`):唱片身量、唱臂画不画、控制条摆哪
- *   —— 见「唱机」一节。两层分开,是因为舞台两栏时唱机区比面板窄得多。
+ * 三种落点(架子 / 浮窗 / 舞台)共用这一份,**不写任何与宿主有关的尺寸**。
+ *   面板(`@container music`,容器在 `.panel`):≥ 960 分两栏,歌词单列右边。
+ *   唱机区:场景铺满这一块的宽(`music/TurntableScene` 自己量宽、自己缩放,
+ *   < 520 自己裁),歌名与控制条摞在场景下面 —— 这里不再按唱机区的宽分档。
  * 阈值在查询条件里只能写字面量(`@container` 里写不了 var()),账在 tokens.css
  * 「唱机面」那一节,两处一起改。
  */
@@ -187,48 +187,21 @@
 
 /* ── 唱机 ─────────────────────────────────────────────────────────────── */
 
-/*
- * 唱机区是自己的尺寸容器(`deck`)。三档看的是**这一块**的宽:
- *   < 520  小唱片在左、歌名与主持人在右,控制条整行铺在下面,不画唱臂
- *   ≥ 520  中唱片 + 唱臂,歌名 / 主持人 / 控制条都摞在唱片右边
- *   ≥ 680  大唱片
- * 阈值在查询条件里只能写字面量,账在 tokens.css「唱机面」那一节。
- */
+/* 场景画布铺满这一块;圆角裁在外框上,场景的屋子跟着圆。 */
 .deck {
   grid-area: deck;
-  container: deck / inline-size;
   min-width: 0;
+  overflow: hidden;
   border-radius: var(--r-3);
-  background: var(--music-deck-face);
+  background: var(--surface-1);
 }
 
-.deckGrid {
-  display: grid;
-  grid-template-columns: var(--music-record-sm) minmax(0, 1fr);
-  grid-template-areas:
-    'record info'
-    'transport transport';
-  align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-3);
-}
-
-.deckRecord {
-  grid-area: record;
-  min-width: 0;
-}
-
-.deckInfo {
-  grid-area: info;
+.deckBody {
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
   min-width: 0;
-}
-
-.deckTransport {
-  grid-area: transport;
-  min-width: 0;
+  padding: var(--sp-3);
 }
 
 .nowText {
@@ -252,237 +225,6 @@
   white-space: nowrap;
   font-size: var(--fs-meta);
   color: var(--text-3);
-}
-
-/*
- * 唱盘那一格。它自己是一个尺寸容器 —— 唱片、唱臂、轴心全部按 `cqw` 摆,
- * 唱盘多大它们跟着多大。轴心 (95, 6) 与 `content/music/turntable.ts` 的
- * `ARM_PIVOT` 是同一对数。
- */
-.plat {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 1;
-  container-type: inline-size;
-  user-select: none;
-}
-
-.platter {
-  position: absolute;
-  inset: 0;
-  border-radius: var(--r-full);
-  background: var(--music-platter);
-  box-shadow: 0 0 0 var(--bw-1) var(--music-platter-rim);
-}
-
-.vinyl {
-  position: absolute;
-  inset: 3.5cqw;
-  border-radius: var(--r-full);
-  display: grid;
-  place-items: center;
-  background:
-    repeating-radial-gradient(circle, var(--music-groove) 0 0.4cqw, transparent 0.4cqw 1cqw),
-    var(--music-vinyl);
-  animation: var(--kf-spin) var(--music-spin-dur) linear infinite;
-  animation-play-state: paused;
-}
-
-.plat[data-playing='true'] .vinyl {
-  animation-play-state: running;
-}
-
-/* 标签:印歌名。没有封面这件事实(判词在 MusicPanel.tsx 文件头),所以只印字。 */
-.label {
-  width: 34cqw;
-  aspect-ratio: 1;
-  border-radius: var(--r-full);
-  background: var(--music-label);
-  color: var(--music-label-ink);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1cqw;
-  padding: 3cqw;
-  text-align: center;
-  overflow: hidden;
-}
-
-.labelName {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 4.2cqw;
-  font-weight: 600;
-}
-
-.labelArtist {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 2.8cqw;
-  opacity: 0.8;
-}
-
-/* 高光不随唱片转(真唱片的反光是灯的位置,不是唱片的)。 */
-.sheen {
-  position: absolute;
-  inset: 3.5cqw;
-  border-radius: var(--r-full);
-  pointer-events: none;
-  background: conic-gradient(
-    from 210deg,
-    transparent 0,
-    var(--music-sheen) 7%,
-    transparent 17%,
-    transparent 50%,
-    var(--music-sheen) 57%,
-    transparent 67%
-  );
-  mask: radial-gradient(circle, transparent 0 18cqw, black 18.5cqw);
-}
-
-/* 唱臂:架子那一档(< 540)不画 —— 这一档给不起横向余量,跳转走进度条。 */
-.arm,
-.pivot {
-  display: none;
-}
-
-.arm {
-  position: absolute;
-  left: 95cqw;
-  top: 6cqw;
-  width: 62cqw;
-  height: 0;
-  transform-origin: 0 0;
-  transform: rotate(var(--arm-deg, var(--arm-rest-deg)));
-  transition: transform var(--dur-settle) var(--ease);
-}
-
-.arm[data-dragging='true'] {
-  transition: none;
-}
-
-.armBar,
-.armWeight,
-.armHead,
-.armGrab {
-  position: absolute;
-  display: block;
-}
-
-.armBar {
-  left: -8cqw;
-  right: 5cqw;
-  top: -0.7cqw;
-  height: 1.4cqw;
-  border-radius: 1cqw;
-  background: var(--music-arm);
-  box-shadow: var(--music-arm-shadow);
-}
-
-.armWeight {
-  left: -14cqw;
-  top: -2.4cqw;
-  width: 7cqw;
-  height: 4.8cqw;
-  border-radius: 1cqw;
-  background: var(--music-arm-head);
-}
-
-.armHead {
-  right: -2cqw;
-  top: -2.4cqw;
-  width: 9cqw;
-  height: 4.8cqw;
-  border-radius: 1cqw;
-  background: var(--music-arm-head);
-}
-
-/* 手柄:比唱头大一圈的透明热区,只在拿得到总长时接指针。 */
-.armGrab {
-  right: -4cqw;
-  top: -5cqw;
-  width: 30cqw;
-  height: 10cqw;
-  pointer-events: none;
-}
-
-.arm[data-seekable='true'] .armGrab {
-  pointer-events: auto;
-  cursor: grab;
-}
-
-.arm[data-seekable='true']:hover .armHead {
-  background: var(--text-1);
-}
-
-.arm[data-dragging='true'] .armGrab {
-  cursor: grabbing;
-}
-
-.pivot {
-  position: absolute;
-  left: 95cqw;
-  top: 6cqw;
-  width: 10cqw;
-  height: 10cqw;
-  margin: -5cqw;
-  border-radius: var(--r-full);
-  background: var(--music-arm);
-  box-shadow: var(--music-arm-shadow);
-  pointer-events: none;
-}
-
-.armTip {
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  transform: translate(-50%, 50%);
-  padding: var(--sp-1) var(--sp-2);
-  border-radius: var(--r-1);
-  background: var(--text-1);
-  color: var(--surface-2);
-  font-family: var(--font-mono);
-  font-size: var(--fs-micro);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  pointer-events: none;
-}
-
-/* ── 主持人一行 ───────────────────────────────────────────────────────── */
-
-.host {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: baseline;
-  gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--r-2);
-  background: var(--surface-2);
-  box-shadow: var(--sh-1);
-}
-
-.hostWho {
-  font-size: var(--fs-micro);
-  font-weight: 600;
-  color: var(--accent);
-  white-space: nowrap;
-}
-
-.hostSay {
-  margin: 0;
-  font-family: var(--music-font-say);
-  font-size: var(--fs-label);
-  line-height: var(--pr-lh);
-  color: var(--text-2);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
 /* ── 控制条 ───────────────────────────────────────────────────────────── */
@@ -511,7 +253,7 @@
 .volume {
   flex: 1;
   min-width: 0;
-  max-width: var(--music-record-sm);
+  max-width: var(--music-volume-w);
   margin-left: auto;
 }
 
@@ -659,43 +401,6 @@
 }
 
 /* ── 档位 ─────────────────────────────────────────────────────────────── */
-
-@container deck (min-width: 520px) {
-  .deckGrid {
-    grid-template-columns: var(--music-record-md) minmax(0, 1fr);
-    grid-template-areas:
-      'record info'
-      'record transport';
-    align-content: center;
-    row-gap: var(--sp-3);
-    column-gap: var(--sp-5);
-    padding: var(--sp-5) var(--sp-4);
-  }
-
-  /* 唱臂的轴心在唱盘右上角外侧、支架还要再往右一截:给它留出这一段。 */
-  .deckRecord {
-    padding-right: var(--sp-5);
-  }
-
-  .deckInfo {
-    align-self: end;
-  }
-
-  .deckTransport {
-    align-self: start;
-  }
-
-  .arm,
-  .pivot {
-    display: block;
-  }
-}
-
-@container deck (min-width: 680px) {
-  .deckGrid {
-    grid-template-columns: var(--music-record-lg) minmax(0, 1fr);
-  }
-}
 
 /* 面板够宽才分两栏:左边唱机 + 串联单,右边歌词。 */
 @container music (min-width: 960px) {

@@ -17,7 +17,8 @@ import type { ResourceOutcomeView, ResourceReadView } from '@shared/ipc/resource
  *  ④ `resource:event` 的 `nowPlayingChanged` 到了要重拉;
  *  ⑤ 一次 `failed` 就地一行,零 Toast;
  *  ⑥ 空态两句(播放器没在跑 / 电台没开);
- *  ⑦ HMR dispose 走的那一口(`resetMusicSource`)真的退订。
+ *  ⑦ HMR dispose 走的那一口(`resetMusicSource`)真的退订;
+ *  ⑧ 唱臂(唱机场景上)只发一条 seek;♥ 成功才让黑豆冒爱心。
  */
 
 /** 一次读的答案表:`<ref>#<name>` → 值。 */
@@ -383,29 +384,24 @@ describe('唱机面:操作不许有两个意思', () => {
   })
 })
 
-describe('唱臂:只表示「跳到这里」', () => {
-  /** 唱盘那一格量出来是 100×100 —— 坐标系就是 turntable.ts 里的百分比。 */
-  function stubPlatRect() {
-    const plat = screen.getByTestId('music-turntable')
-    plat.getBoundingClientRect = () =>
-      ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
-  }
+describe('唱臂:只表示「跳到这里」(宠物 P1 起在唱机场景上)', () => {
+  // jsdom 里场景容器宽是 0,视口 = 原大,client 坐标就是 640×420 画布坐标。
   // jsdom 没有 PointerEvent:手搓一个带 button 与坐标的 MouseEvent,类型名仍是 pointer*
   // (与 ui/__tests__/Splitter.test.tsx 同一条判词)。
   const pointer = (type: string, x: number, y: number) =>
     new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: x, clientY: y })
 
-  it('拖到最内圈松手 → 一条 seek 到结尾;拖动期间一发都不发', async () => {
+  it('拖到唱片最内圈之内松手 → 一条 seek 到结尾;拖动期间一发都不发', async () => {
     await mount()
     const grab = await screen.findByTestId('music-arm')
-    stubPlatRect()
     await act(async () => {
-      grab.dispatchEvent(pointer('pointerdown', 99, 70))
-      window.dispatchEvent(pointer('pointermove', 50, 40))
+      grab.dispatchEvent(pointer('pointerdown', 400, 330))
+      // 唱片左边很远:夹到结尾那一圈
+      window.dispatchEvent(pointer('pointermove', 0, 175))
     })
     expect(fake.dos).toEqual([])
     await act(async () => {
-      window.dispatchEvent(pointer('pointerup', 50, 40))
+      window.dispatchEvent(pointer('pointerup', 0, 175))
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
     expect(fake.dos).toEqual([{ ref: 'music:player', op: 'seek', params: { position: 298 } }])
@@ -414,13 +410,32 @@ describe('唱臂:只表示「跳到这里」', () => {
   it('指针被系统收走 = 这一下不算,什么都不发', async () => {
     await mount()
     const grab = await screen.findByTestId('music-arm')
-    stubPlatRect()
     await act(async () => {
-      grab.dispatchEvent(pointer('pointerdown', 99, 70))
-      window.dispatchEvent(pointer('pointermove', 50, 40))
-      window.dispatchEvent(pointer('pointercancel', 50, 40))
+      grab.dispatchEvent(pointer('pointerdown', 400, 330))
+      window.dispatchEvent(pointer('pointermove', 0, 175))
+      window.dispatchEvent(pointer('pointercancel', 0, 175))
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
     expect(fake.dos).toEqual([])
+  })
+
+  it('♥ 成功 → 黑豆冒爱心', async () => {
+    await mount()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('music-like'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    // 一次性动画要等一帧(先撤后给)
+    await waitFor(() => expect(screen.getByTestId('pet-rig').dataset.oneShot).toBe('love'))
+  })
+
+  it('♥ 被拒 → 黑豆不冒爱心', async () => {
+    await mount()
+    fake.outcome = { kind: 'denied', reason: '没登录' }
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('music-like'))
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+    expect(screen.getByTestId('pet-rig').dataset.oneShot).toBeUndefined()
   })
 })

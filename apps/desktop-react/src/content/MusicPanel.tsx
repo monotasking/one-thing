@@ -1,14 +1,21 @@
 import { useCallback, useRef } from 'react'
 import { FocusScope } from '../focus/FocusScope'
 import { useQuery } from '../data/kernel'
-import { musicNowPlayingQuery, musicOps, musicRuntimeQuery, useMusicLive } from '../data/music-source'
+import {
+  musicBriefQuery,
+  musicNowPlayingQuery,
+  musicOps,
+  musicProgrammeQuery,
+  musicRuntimeQuery,
+  useMusicLive,
+} from '../data/music-source'
 import { useT } from '../i18n'
-import { HostLine } from './music/HostLine'
+import type { PetStageHandle } from '../pets/PetStage'
 import { LyricsPane } from './music/LyricsPane'
 import { ProgrammeSheet } from './music/ProgrammeSheet'
 import { StationStrip } from './music/StationStrip'
 import { Transport } from './music/Transport'
-import { TurntableDeck } from './music/TurntableDeck'
+import { TurntableScene } from './music/TurntableScene'
 import { splitTitle } from './music/turntable'
 import { usePlaybackPosition } from './music/usePlaybackPosition'
 import s from './MusicPanel.module.css'
@@ -37,7 +44,9 @@ import s from './MusicPanel.module.css'
  * ── DJ 语音**不在这块面上播**(M3 用户 09-17 拍板:改在主进程播)──────────
  * 今天 React 壳的 `voice: null`,`MUSIC_DJ_SPEAK` 在这台壳上是哑的;拍板是让主进程
  * 自己出声(电台是后台常驻的,面板没开也该开口),所以这里不订语音、不放音频。
- * 「主持人」那一行只说读得到的事实(见 `music/HostLine.tsx`)。
+ * 主持人从宠物 P1 起是唱机上的黑豆(`music/TurntableScene.tsx`,正本
+ * `docs/design/pet-system-2026-09.md` §8):换歌时的那句口播是它的一个气泡,
+ * 挑歌 / 关台 / 出错由它的姿势演,面上不再有「主持人一行」那句说明。
  *
  * ══════════════════════════════════════════════════════════════════════════
  * 状态先行:三张状态表(施工纪律第一条)
@@ -56,8 +65,8 @@ import s from './MusicPanel.module.css'
  *
  * ── ② UI 生命状态 ───────────────────────────────────────────────────────
  *  · 后端没配好 → 顶上一句 `music.backendNotReady`;后端报错 → 一句原话;
- *  · 播放器没在跑 → 空唱盘(唱臂靠在支架上)+ `music.playerIdle`;
- *  · 电台关着 → 电台条换成开台卡,主持人一行与串联单不画;
+ *  · 播放器没在跑 → 唱片收在素面封套里、唱臂归位 + `music.playerIdle`;
+ *  · 电台关着 → 电台条换成开台卡,串联单不画;唱机屋里的灯暗一半,黑豆睡着;
  *  · 首载 → 各块身子不画(不画骨架:内容只有几行字,骨架比内容还吵);
  *  · error → 旧内容留着,错误就地一行,零 Toast;
  *  · 超量 → 串联单封顶 `PROGRAMME_LIMIT` 行 + 文字读数,两张长表各自有最大高度。
@@ -65,15 +74,20 @@ import s from './MusicPanel.module.css'
  * ── ③ UI 交互状态 ───────────────────────────────────────────────────────
  *  · rest / hover / focus 随库件(IconButton / Button / Slider / ButtonBase / Menu);
  *  · pending **逐格**:一只做法一只 mutation(律③);
- *  · disabled:没有总长 → 进度条与唱臂停用;没有音量读数 → 音量条停用;已收藏 → ♥ 停用;
+ *  · disabled:没有总长 → 进度条与唱臂停用(换歌那一串跑着时唱臂也停用);没有音量读数 →
+ *    音量条停用;已收藏 → ♥ 停用;
  *  · active:拖进度条 / 拖唱臂(`data-sliding` / `data-dragging`)。
+ *  唱机场景自己的三张表在 `music/TurntableScene.tsx` 文件头。
  */
 export function MusicPanel() {
   const t = useT()
   useMusicLive()
   const runtime = useQuery(musicRuntimeQuery)
   const now = useQuery(musicNowPlayingQuery)
+  const brief = useQuery(musicBriefQuery)
+  const programme = useQuery(musicProgrammeQuery)
   const playRef = useRef<HTMLButtonElement | null>(null)
+  const petRef = useRef<PetStageHandle | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const position = usePlaybackPosition(now.data)
 
@@ -86,6 +100,7 @@ export function MusicPanel() {
   const { name, artist } = splitTitle(title)
 
   const seek = useCallback((seconds: number) => void musicOps.seek.run({ position: seconds }), [])
+  const onLiked = useCallback(() => petRef.current?.love(), [])
 
   return (
     <FocusScope
@@ -116,40 +131,43 @@ export function MusicPanel() {
             <StationStrip />
 
             {/*
-              * 唱机区自己是一个尺寸容器(`deck`):唱片多大、唱臂画不画、控制条摆在唱片
-              * 旁边还是下面,看的是**这一块**的宽,不是面板的宽 —— 舞台两栏时左栏比面板窄得多。
+              * 唱机区:场景铺满这一块的宽(画布按它缩放),歌名与控制条摆在场景下面。
+              * 舞台两栏时它是左栏,比面板窄得多 —— 场景自己量自己的宽。
               */}
             <section className={s.deck} data-testid="music-player">
-              <div className={s.deckGrid}>
-                <div className={s.deckRecord}>
-                  <TurntableDeck title={title} playing={playing} position={position} duration={duration} onSeek={seek} />
-                </div>
-                <div className={s.deckInfo}>
-                  {now.phase === 'ready' && !hasSong ? (
-                    <p className={s.none}>{t('music.playerIdle')}</p>
-                  ) : (
-                    hasSong && (
-                      <div className={s.nowText}>
-                        <p className={s.nowTitle} data-testid="music-now-title">
-                          {name || t('music.untitled')}
-                        </p>
-                        {artist && <p className={s.nowArtist}>{artist}</p>}
-                      </div>
-                    )
-                  )}
-                  <HostLine />
-                  {now.error && <p className={s.bad}>{now.error}</p>}
-                </div>
+              <TurntableScene
+                runtime={state}
+                brief={brief.data}
+                nowPlaying={now.data}
+                nowError={now.error}
+                programme={programme.data}
+                position={position}
+                onSeek={seek}
+                petRef={petRef}
+              />
+              <div className={s.deckBody}>
+                {now.phase === 'ready' && !hasSong ? (
+                  <p className={s.none}>{t('music.playerIdle')}</p>
+                ) : (
+                  hasSong && (
+                    <div className={s.nowText}>
+                      <p className={s.nowTitle} data-testid="music-now-title">
+                        {name || t('music.untitled')}
+                      </p>
+                      {artist && <p className={s.nowArtist}>{artist}</p>}
+                    </div>
+                  )
+                )}
+                {now.error && <p className={s.bad}>{now.error}</p>}
                 {hasSong && (
-                  <div className={s.deckTransport}>
-                    <Transport
-                      title={title}
-                      playing={playing}
-                      position={position}
-                      duration={duration}
-                      playRef={playRef}
-                    />
-                  </div>
+                  <Transport
+                    title={title}
+                    playing={playing}
+                    position={position}
+                    duration={duration}
+                    playRef={playRef}
+                    onLiked={onLiked}
+                  />
                 )}
               </div>
             </section>

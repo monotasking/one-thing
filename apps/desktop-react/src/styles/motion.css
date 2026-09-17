@@ -145,6 +145,9 @@
   --kf-pet-startle: petStartle;
   --kf-pet-wake: petWake;
   --kf-pet-wave: petWave;
+  /* 唱机场景(content/music/TurntableScene,宠物 P1):窗外的雨、翻唱片堆时封套一张张翘起来 */
+  --kf-music-rain: musicRain;
+  --kf-music-fan-flick: musicFanFlick;
 }
 
 /* ── 淡入:全系统最常见的一次出场 ─────────────────────────────────────── */
@@ -638,6 +641,27 @@
 @keyframes petWave {
   to {
     height: var(--pet-wave-h);
+  }
+}
+
+/* ── 唱机场景(content/music/TurntableScene,宠物 P1)──────────────────────────
+ * 逐字搬自样例「黑豆电台」的 `rain` / `flick`。雨那一层是一张斜纹贴图,往左下漂一格
+ * 就接上下一格;封套那一下是整张往左上翘起再落回(`translate`,不碰 `transform` ——
+ * 三张封套各自的歪角写在 transform 上)。 */
+@keyframes musicRain {
+  to {
+    background-position: -14px 60px;
+  }
+}
+
+@keyframes musicFanFlick {
+  0%,
+  70%,
+  100% {
+    translate: 0 0;
+  }
+  35% {
+    translate: -4px -16px;
   }
 }
 
