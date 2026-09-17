@@ -1,4 +1,5 @@
 import { TERMINAL_CLAIMS } from '../content/terminal/key-courtesy'
+import { TODO_EDITOR_CLAIMS } from '../content/todo/editor-claims'
 import { TAB_SELECT_SLOTS, tabSelectCommandId } from '../keymap/tab-commands'
 import type { Combo, CommandId } from '../keymap/types'
 import type { FocusScopeId, FocusScopeSpec, ScopeAnswer } from './types'
@@ -304,6 +305,13 @@ export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
     claims: TERMINAL_CLAIMS,
   },
   music: { id: 'music', kind: 'region', labelKey: 'item.music' },
+  /*
+   * 一份可编辑的待办文档(`docs/todo-editor-2026-09.md` §6.0)。落点 = 文档容器(实例侧声明);
+   * Esc 不声明 —— 编辑区自己接(退出编辑),不编辑时 Esc 归外层(抽屉关自己)。
+   * 认领那一族是编辑键:只在「正在编辑某一项」时认领(实例侧 `claiming`),
+   * 否则 ⌘E 会被会话总览截走、⌘Z 落到应用菜单。
+   */
+  todo: { id: 'todo', kind: 'region', labelKey: 'item.todo', claims: TODO_EDITOR_CLAIMS },
   /*
    * 一格内嵌浏览器(B2,方案 §9-1)。**三件声明**:
    *  · 落点(`restingTarget`)= 那片原生视图的占位格(实例侧声明)。进去之后键盘

@@ -1,6 +1,7 @@
 import { AppShell } from './components/AppShell'
 import { Gallery } from './dev/Gallery'
 import { MusicLab } from './dev/MusicLab'
+import { TodoLab } from './dev/TodoLab'
 import { PerfHud, perfHudEnabled } from './dev/PerfHud'
 
 /**
@@ -16,9 +17,11 @@ export default function App() {
   const gallery = params?.has('gallery') ?? false
   // ?music-lab:音乐面宽度实验台(假端口喂样本,不碰真 store)。
   const musicLab = params?.has('music-lab') ?? false
+  // ?todo-lab:待办编辑器实验台(内存文档 + 一致性自测,不碰真 store)。
+  const todoLab = params?.has('todo-lab') ?? false
   return (
     <>
-      {musicLab ? <MusicLab /> : gallery ? <Gallery /> : <AppShell />}
+      {todoLab ? <TodoLab /> : musicLab ? <MusicLab /> : gallery ? <Gallery /> : <AppShell />}
       {perfHudEnabled() ? <PerfHud /> : null}
     </>
   )

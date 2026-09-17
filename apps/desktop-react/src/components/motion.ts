@@ -12,6 +12,7 @@ export const DUR_MS = 120 // --dur
 export const EXIT_MS = 120 // --dur-exit
 export const RELEASE_MS = 160 // --dur-release
 export const FLASH_MS = 240 // --dur-flash
+export const LINE_CHANGED_MS = 1400 // --dur-line-changed:待办里外部刚改过的那一行淡底多久
 export const TOOLTIP_DELAY_MS = 300 // --dur-tooltip-delay
 // --dur-dock-hide-delay:自动隐藏的收回宽限,离开留驻区后缓这么久才收,路过抖动不塌
 export const DOCK_HIDE_DELAY_MS = 300

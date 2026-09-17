@@ -1,0 +1,960 @@
+import { locate } from '@onething/core/text'
+import { focusElement } from '../../focus/target'
+import { DocHistory, type EditKind, type HistoryEntry } from './doc-history'
+import type { EditorDocument } from './editor-document'
+import { analyzeUnit, type Analysis } from './inline-tokens'
+import { paint, type PaintClasses } from './paint'
+import { canonicalPosition, insideGroups, REVEAL_POLICIES, sourceToView, viewToSource, type RevealMode } from './reveal'
+import {
+  continuedPrefix,
+  editValueOf,
+  isList,
+  isMultiline,
+  linesFromEdit,
+  parseUnits,
+  prefixOf,
+  type Unit,
+} from './units'
+
+/**
+ * 光标控制器 —— 光标的**唯一产地**(正本 `docs/todo-editor-2026-09.md` §6.0)。
+ *
+ * 总则:同一个画面 + 同一个动作 = 同一个结果。为此:
+ *  · 光标是文档级的一个位置 { 哪一项, 原文第几个字(anchor / focus), 目标列 },屏幕选区只是投影,
+ *    每次改完都由模型重新设一遍;
+ *  · 导航键全部在 keydown 里由这里算完、画完、`preventDefault`;浏览器自带的 `selection.modify`
+ *    只当量尺,在同一个事件里同步调一次;
+ *  · 鼠标按下时按「当前画面」量,一律取靠左;
+ *  · 输入一律改原文模型再从模型重画(`beforeinput` 全部拦下);绕过它的改动在 `input` 里丢弃重画;
+ *  · 结构编辑每条都交回一个光标 —— 键盘动作永远不让光标消失,只有 Esc / ⌘↵ / 点到外面会;
+ *  · 一条文档级撤销历史。
+ *
+ * 样例 `docs/todo-editor-reveal-2026-09-17.html` 是它的原型(页内一致性自测三档 27 / 27)。
+ * 这一份是那份逻辑的类化,DOM 经 `EditorDom` 递进来,React 视图只负责按行渲染与提交。
+ */
+
+export interface EditorDom {
+  /** 某一项的内容元素(没打开时是渲染态,打开时就是编辑区本身)。 */
+  unitContent(start: number): HTMLElement | null
+  /** 滚动容器。 */
+  scroller(): HTMLElement | null
+  /** 同步提交一次视图渲染(打开 / 关闭 / 结构编辑之后要立刻量 DOM)。 */
+  commit(): void
+}
+
+export interface CaretControllerOptions {
+  readonly mode: () => RevealMode
+  readonly classes: PaintClasses
+  /** 编辑开始 / 结束(视图据它认领键、画行底)。 */
+  readonly onActiveChange?: (start: number | null) => void
+}
+
+interface ActiveState {
+  start: number
+  unit: Unit
+  span: number
+  value: string
+  anchor: number
+  focus: number
+  analysis: Analysis
+  vis: readonly number[]
+  revealed: ReadonlySet<number>
+  current: number | null
+  goalX?: number
+  goalFor?: number
+  sticky?: number
+  freshPair?: number
+  composing: boolean
+  compositionRange?: [number, number]
+  pointer: boolean
+  dragFrom: number
+}
+
+type Bias = 'low' | 'high'
+
+/** 渲染态 HTML 缓存上限(一份几百行的清单足够;超了整份清掉重来,不做 LRU 记账)。 */
+const RESTING_CACHE_LIMIT = 2000
+
+const MARK_OF = { strong: '**', emphasis: '*', code: '`' } as const
+type MarkKind = keyof typeof MARK_OF
+
+let segmenter: Intl.Segmenter | null | undefined
+
+function graphemeAt(text: string, index: number): [number, number] {
+  if (segmenter === undefined) segmenter = typeof Intl !== 'undefined' && 'Segmenter' in Intl ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null
+  if (!segmenter) return [index, index + 1]
+  for (const part of segmenter.segment(text)) {
+    if (part.index <= index && index < part.index + part.segment.length) return [part.index, part.index + part.segment.length]
+  }
+  return [index, index + 1]
+}
+
+function viewOffsetOf(root: Node, node: Node, offset: number): number {
+  const range = document.createRange()
+  range.setStart(root, 0)
+  try { range.setEnd(node, offset) } catch { return 0 }
+  return range.toString().length
+}
+
+function domPoint(root: HTMLElement, viewOffset: number): { node: Node; offset: number } {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let acc = 0
+  let last: Text | null = null
+  for (let n = walker.nextNode() as Text | null; n; n = walker.nextNode() as Text | null) {
+    last = n
+    if (acc + n.length >= viewOffset) return { node: n, offset: viewOffset - acc }
+    acc += n.length
+  }
+  return last ? { node: last, offset: last.length } : { node: root, offset: 0 }
+}
+
+function rectAt(root: HTMLElement, viewOffset: number): DOMRect {
+  const point = domPoint(root, viewOffset)
+  const range = document.createRange()
+  range.setStart(point.node, point.offset)
+  range.collapse(true)
+  let rect = range.getClientRects()[0]
+  if (!rect) {
+    // 折叠选区量不出矩形(空项、换行之后):临时插一个零宽字量完就拿掉。
+    const marker = document.createElement('span')
+    marker.textContent = '​'
+    range.insertNode(marker)
+    rect = marker.getBoundingClientRect()
+    marker.remove()
+    root.normalize()
+  }
+  return rect
+}
+
+function lineHeightOf(element: HTMLElement): number {
+  return Number.parseFloat(getComputedStyle(element).lineHeight) || 22
+}
+
+/** 屏幕上一点 → 这块元素里离它最近的第几个字(点在行尾空白 / 缝里 / 勾选框左边,都夹回元素里再量)。 */
+function offsetAtPoint(element: HTMLElement, x: number, y: number): number {
+  const box = element.getBoundingClientRect()
+  const cx = Math.min(Math.max(x, box.left + 1), box.right - 1)
+  const cy = Math.min(Math.max(y, box.top + 2), box.bottom - 2)
+  let node: Node | null = null
+  let offset = 0
+  const doc = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
+    caretRangeFromPoint?: (x: number, y: number) => Range | null
+  }
+  if (doc.caretPositionFromPoint) {
+    const position = doc.caretPositionFromPoint(cx, cy)
+    if (position) { node = position.offsetNode; offset = position.offset }
+  } else if (doc.caretRangeFromPoint) {
+    const range = doc.caretRangeFromPoint(cx, cy)
+    if (range) { node = range.startContainer; offset = range.startOffset }
+  }
+  if (!node || !element.contains(node)) return cx > box.left + box.width / 2 ? Number.POSITIVE_INFINITY : 0
+  return viewOffsetOf(element, node, offset)
+}
+
+export class CaretController {
+  private active: ActiveState | null = null
+  private readonly history = new DocHistory()
+  private applying = false
+  private readonly restingCache = new Map<string, string>()
+
+  constructor(
+    private readonly doc: EditorDocument,
+    private readonly dom: EditorDom,
+    private readonly options: CaretControllerOptions,
+  ) {}
+
+  /**
+   * 订文档的外部改动(返回退订)。不放在构造里:React StrictMode 下挂载效应会跑「挂 → 拆 → 再挂」,
+   * 订阅要跟着效应走,构造一次订一次的话拆掉之后就再也订不回来。
+   */
+  attach(): () => void {
+    return this.doc.subscribe(change => { if (change.kind === 'server') this.rebaseAfterServerChange(change.previous) })
+  }
+
+  get activeStart(): number | null {
+    return this.active?.start ?? null
+  }
+
+  /** 此刻的光标(只读快照)。给实验台 / 真机门自检用:屏幕选区换算回原文要等于 `focus`。 */
+  snapshot(): { start: number; anchor: number; focus: number; value: string; viewFocus: number; visible: readonly number[] } | null {
+    const a = this.active
+    return a ? { start: a.start, anchor: a.anchor, focus: a.focus, value: a.value, viewFocus: sourceToView(a.vis, a.focus), visible: a.vis } : null
+  }
+
+
+  /* ── 渲染态(没打开的项)的 HTML:与编辑态同一份切分,只是记号全收起 ─────── */
+
+  restingHtml(unit: Unit, lines: readonly string[]): string {
+    const value = editValueOf(unit, lines)
+    // 每次按键整篇重渲一遍行,但只有一格的原文变了:按「类型 + 原文」缓存,其余各格不重新解析。
+    const key = `${unit.type}\u0000${value}`
+    const cached = this.restingCache.get(key)
+    if (cached !== undefined) return cached
+    const html = paint(analyzeUnit(unit, value), new Set(), null, this.options.classes).html
+    if (this.restingCache.size > RESTING_CACHE_LIMIT) this.restingCache.clear()
+    this.restingCache.set(key, html)
+    return html
+  }
+
+  /* ── 进出一项 ─────────────────────────────────────────────────────────── */
+
+  open(start: number, anchor: number | 'end', focus?: number | 'end'): void {
+    const unit = parseUnits(this.doc.lines).find(u => u.start === start)
+    if (!unit) { this.close(); return }
+    const value = editValueOf(unit, this.doc.lines)
+    const clamp = (x: number | 'end') => Math.max(0, Math.min(value.length, x === 'end' ? value.length : x))
+    const analysis = analyzeUnit(unit, value)
+    const resting = paint(analysis, new Set(), null, this.options.classes)
+    const state: ActiveState = {
+      start, unit, span: unit.end - unit.start + 1, value, analysis, vis: resting.vis, revealed: new Set(), current: null,
+      anchor: clamp(anchor), focus: clamp(focus ?? anchor), composing: false, pointer: false, dragFrom: 0,
+    }
+    if (this.options.mode() === 'none') {
+      state.focus = canonicalPosition(analysis, resting.vis, value.length, sourceToView(resting.vis, state.focus))
+      state.anchor = focus === undefined || focus === anchor
+        ? state.focus
+        : canonicalPosition(analysis, resting.vis, value.length, sourceToView(resting.vis, state.anchor))
+    }
+    const changed = this.active?.start !== start
+    this.active = state
+    if (changed) this.options.onActiveChange?.(start)
+    this.dom.commit()
+    this.refresh(true)
+  }
+
+  close(): void {
+    if (!this.active) return
+    this.active = null
+    this.options.onActiveChange?.(null)
+    this.dom.commit()
+    void this.doc.flush()
+  }
+
+  /** 视图重画之后(档位变了、外部改了):把编辑区与选区再对一遍。 */
+  repaint(): void {
+    if (this.active) this.refresh(true)
+  }
+
+  /* ── 模型 → 屏幕 ─────────────────────────────────────────────────────── */
+
+  private editor(): HTMLElement | null {
+    return this.active ? this.dom.unitContent(this.active.start) : null
+  }
+
+  private resolve(a: ActiveState, viewOffset: number, bias: Bias): number {
+    const length = a.value.length
+    if (viewOffset === Number.POSITIVE_INFINITY) return length
+    return this.options.mode() === 'none'
+      ? canonicalPosition(a.analysis, a.vis, length, viewOffset)
+      : viewToSource(a.vis, length, viewOffset, bias)
+  }
+
+  private refresh(force: boolean): void {
+    const a = this.active
+    const ed = this.editor()
+    if (!a || !ed) return
+    const analysis = analyzeUnit(a.unit, a.value)
+    const lo = Math.min(a.anchor, a.focus)
+    const hi = Math.max(a.anchor, a.focus)
+    const mode = this.options.mode()
+    const revealed = REVEAL_POLICIES[mode].revealed(analysis, lo, hi)
+    const current = mode === 'none' ? (insideGroups(analysis, a.focus)[0]?.id ?? null) : null
+    a.analysis = analysis
+    const same = revealed.size === a.revealed.size && [...revealed].every(id => a.revealed.has(id))
+    if (force || !same || current !== a.current) {
+      a.revealed = revealed
+      a.current = current
+      const painted = paint(analysis, revealed, current, this.options.classes)
+      a.vis = painted.vis
+      ed.innerHTML = painted.html + (a.value.endsWith('\n') ? '<br>' : '')
+    }
+    this.applySelection()
+    this.scrollCaretIntoView()
+  }
+
+  private applySelection(): void {
+    const a = this.active
+    const ed = this.editor()
+    if (!a || !ed) return
+    this.applying = true
+    try {
+      focusElement(ed)
+      const pa = domPoint(ed, sourceToView(a.vis, a.anchor))
+      const pf = domPoint(ed, sourceToView(a.vis, a.focus))
+      getSelection()?.setBaseAndExtent(pa.node, pa.offset, pf.node, pf.offset)
+    } finally {
+      this.applying = false
+    }
+  }
+
+  private scrollCaretIntoView(): void {
+    const a = this.active
+    const ed = this.editor()
+    const scroller = this.dom.scroller()
+    if (!a || !ed || !scroller) return
+    const rect = rectAt(ed, sourceToView(a.vis, a.focus))
+    const box = scroller.getBoundingClientRect()
+    const pad = 8
+    if (rect.bottom > box.bottom - pad) scroller.scrollTop += rect.bottom - box.bottom + pad
+    else if (rect.top < box.top + pad) scroller.scrollTop -= box.top + pad - rect.top
+  }
+
+  /* ── 改原文 ───────────────────────────────────────────────────────────── */
+
+  private caretMemo(): HistoryEntry['caret'] {
+    const a = this.active
+    return a ? { start: a.start, anchor: a.anchor, focus: a.focus } : null
+  }
+
+  private record(kind: EditKind): void {
+    this.history.record(kind, { lines: this.doc.lines.slice(), caret: this.caretMemo() })
+  }
+
+  /** 正在编辑的这一项随改随写回文档(不等离开)。行数变了要整篇重画(后面各项的行号都变了)。 */
+  private writeThrough(): void {
+    const a = this.active
+    if (!a) return
+    const next = linesFromEdit(a.unit, a.value)
+    const lines = this.doc.lines.slice()
+    lines.splice(a.start, a.span, ...next)
+    const spanChanged = next.length !== a.span
+    a.span = next.length
+    this.doc.setLines(lines)
+    if (spanChanged) this.dom.commit()
+  }
+
+  private replaceRange(from: number, to: number, text: string, kind: EditKind = 'type'): void {
+    const a = this.active
+    if (!a) return
+    this.record(kind)
+    if (!isMultiline(a.unit)) text = text.replace(/\n/g, ' ')
+    a.value = a.value.slice(0, from) + text + a.value.slice(to)
+    a.anchor = a.focus = from + text.length
+    if (this.options.mode() === 'none') {
+      if (text) a.freshPair = undefined
+      this.dropEmptyElements(a)
+    }
+    a.sticky = undefined
+    a.goalX = undefined
+    this.writeThrough()
+    this.refresh(true)
+  }
+
+  /** 不显示记号档:内容被删空的元素连记号一起拿掉(刚用 ⌘B 插进来、光标还夹在中间的那一对留着)。 */
+  private dropEmptyElements(a: ActiveState): void {
+    const pattern = /\*\*\*\*|~~~~|``/g
+    let out = ''
+    let last = 0
+    let caret = a.focus
+    for (let m = pattern.exec(a.value); m; m = pattern.exec(a.value)) {
+      const middle = m.index + m[0].length / 2
+      if (a.freshPair !== undefined && middle === a.freshPair && middle === a.focus) continue
+      out += a.value.slice(last, m.index)
+      last = m.index + m[0].length
+      if (m.index < a.focus) caret -= Math.min(m[0].length, a.focus - m.index)
+    }
+    a.value = out + a.value.slice(last)
+    a.anchor = a.focus = caret
+  }
+
+  /** 光标左 / 右边**看得见的**那一个字形簇;没有返回 null(= 在这一项的头 / 尾)。 */
+  private visibleCluster(a: ActiveState, direction: -1 | 1): [number, number] | null {
+    let index: number | undefined
+    if (direction < 0) {
+      for (let i = a.vis.length - 1; i >= 0; i--) if (a.vis[i] < a.focus) { index = a.vis[i]; break }
+    } else {
+      index = a.vis.find(x => x >= a.focus)
+    }
+    return index === undefined ? null : graphemeAt(a.value, index)
+  }
+
+  private withLines(mutate: (lines: string[]) => void): void {
+    this.record('struct')
+    const lines = this.doc.lines.slice()
+    mutate(lines)
+    this.doc.setLines(lines)
+  }
+
+  private neighbour(delta: -1 | 1): Unit | undefined {
+    const a = this.active
+    if (!a) return undefined
+    const units = parseUnits(this.doc.lines)
+    const index = units.findIndex(u => u.start === a.start)
+    return units[index + delta]
+  }
+
+  /* ── 结构编辑(每一条都交回一个光标)───────────────────────────────────── */
+
+  private enter(): void {
+    const a = this.active
+    if (!a) return
+    const unit = a.unit
+    const pos = a.focus
+    if (isList(unit)) {
+      if (!a.value.trim()) {
+        if (unit.indent > 0) { this.indent(-1); return }
+        const previous = this.neighbour(-1)
+        const next = this.neighbour(1)
+        this.withLines(lines => { lines.splice(unit.start, 1) })
+        if (previous) this.open(previous.start, 'end')
+        else if (next) this.open(next.start - 1, 0)
+        else this.close()
+        return
+      }
+      this.withLines(lines => {
+        lines.splice(unit.start, 1, prefixOf(unit) + a.value.slice(0, pos), continuedPrefix(unit) + a.value.slice(pos).replace(/^\s+/, ''))
+      })
+      this.open(unit.start + 1, 0)
+      return
+    }
+    if (unit.type === 'heading') {
+      const head = a.value.match(/^#{1,6}\s+/)?.[0] ?? ''
+      const at = Math.max(pos, head.length)
+      this.withLines(lines => { lines.splice(unit.start, 1, a.value.slice(0, at), `- [ ] ${a.value.slice(at).replace(/^\s+/, '')}`) })
+      this.open(unit.start + 1, 0)
+      return
+    }
+    this.replaceRange(Math.min(a.anchor, a.focus), Math.max(a.anchor, a.focus), '\n', 'struct')
+  }
+
+  private indent(delta: -1 | 1): void {
+    const a = this.active
+    if (!a || !isList(a.unit)) return
+    const keep = { anchor: a.anchor, focus: a.focus }
+    const start = a.start
+    this.withLines(lines => {
+      lines[start] = delta > 0 ? `  ${lines[start]}` : lines[start].replace(/^ {1,2}/, '')
+    })
+    this.open(start, keep.anchor, keep.focus)
+  }
+
+  /** 行首退格:空项删掉 → 标题 / 引用降成段落 → 缩进的项退一层 → 并到上一项 → 列表项变段落。 */
+  private backspaceAtStart(): void {
+    const a = this.active
+    if (!a) return
+    const unit = a.unit
+    const previous = this.neighbour(-1)
+    const bare = a.value.replace(/^(#{1,6}\s+|>\s?)/, '')
+    if (!bare.length && previous) {
+      this.withLines(lines => { lines.splice(unit.start, unit.end - unit.start + 1) })
+      this.open(previous.start, 'end')
+      return
+    }
+    if (unit.type === 'heading' || unit.type === 'quote') {
+      this.withLines(lines => {
+        lines.splice(unit.start, unit.end - unit.start + 1, ...a.value.split('\n').map(line => line.replace(/^(#{1,6}\s+|>\s?)/, '')))
+      })
+      this.open(unit.start, 0)
+      return
+    }
+    if (isList(unit) && unit.indent > 0) { this.indent(-1); return }
+    if (previous && (isList(previous) || previous.type === 'para') && (isList(unit) || unit.type === 'para')) {
+      const previousValue = editValueOf(previous, this.doc.lines)
+      const text = a.value.split('\n').join(' ')
+      this.withLines(lines => {
+        lines.splice(previous.end, 1, isList(previous) ? prefixOf(previous) + previousValue + text : lines[previous.end] + text)
+        lines.splice(unit.start, unit.end - unit.start + 1)
+      })
+      this.open(previous.start, previousValue.length)
+      return
+    }
+    if (isList(unit)) {
+      this.withLines(lines => { lines[unit.start] = a.value })
+      this.open(unit.start, 0)
+    }
+  }
+
+  /** 行尾 Delete:把下一项的文字并进来,光标不动。 */
+  private deleteAtEnd(): void {
+    const a = this.active
+    if (!a) return
+    const unit = a.unit
+    const next = this.neighbour(1)
+    if (!next || !(isList(next) || next.type === 'para') || !(isList(unit) || unit.type === 'para')) return
+    const keep = a.focus
+    const nextValue = editValueOf(next, this.doc.lines).split('\n').join(' ')
+    this.withLines(lines => {
+      lines.splice(next.start, next.end - next.start + 1)
+      lines[unit.end] = lines[unit.end] + nextValue
+    })
+    this.open(unit.start, keep)
+  }
+
+  /** 点勾选框:只翻那一格;正在编辑时原地保留光标。 */
+  toggleTask(line: number): void {
+    const keep = this.active ? { start: this.active.start, anchor: this.active.anchor, focus: this.active.focus } : null
+    this.withLines(lines => {
+      lines[line] = lines[line].replace(/\[( |x|X)\]/, mark => (mark === '[ ]' ? '[x]' : '[ ]'))
+    })
+    if (keep) this.open(keep.start, keep.anchor, keep.focus)
+    else this.dom.commit()
+  }
+
+  /** 「+ 添加一项」:在最后一个任务后面插一行,记号照文档里已有任务项的写法。 */
+  insertAfterLastTask(): void {
+    const units = parseUnits(this.doc.lines)
+    const lastTask = [...units].reverse().find(u => u.type === 'task')
+    const at = lastTask ? lastTask.end + 1 : this.doc.lines.length
+    const marker = lastTask && isList(lastTask) ? lastTask.marker : '-'
+    const indent = lastTask && isList(lastTask) ? ' '.repeat(lastTask.indent) : ''
+    this.withLines(lines => {
+      if (!lastTask && lines.length && lines[lines.length - 1].trim()) lines.push('')
+      lines.splice(lastTask ? at : lines.length, 0, `${indent}${marker} [ ] `)
+    })
+    const inserted = parseUnits(this.doc.lines).find(u => u.type === 'task' && u.start >= (lastTask ? at : 0) && editValueOf(u, this.doc.lines) === '')
+    if (inserted) this.open(inserted.start, 'end')
+  }
+
+  /** ⌘B / ⌘I / ⌘E(规则照 Word,§6.5)。 */
+  private toggleMark(kind: MarkKind): void {
+    const a = this.active
+    if (!a) return
+    const mark = MARK_OF[kind]
+    const L = mark.length
+    const analysis = analyzeUnit(a.unit, a.value)
+    const v = a.value
+    let lo = Math.min(a.anchor, a.focus)
+    let hi = Math.max(a.anchor, a.focus)
+    const groups = analysis.groups.filter(g => g.kind === kind)
+    if (lo === hi) {
+      const inner = groups.find(g => g.start < lo && lo < g.end)
+      if (inner && (lo === inner.end - L || lo === inner.start + L)) {
+        a.anchor = a.focus = a.sticky = lo === inner.end - L ? inner.end : inner.start
+        this.refresh(true)
+        return
+      }
+      const outer = groups.find(g => g.end === lo || g.start === lo)
+      if (outer) {
+        a.anchor = a.focus = a.sticky = outer.end === lo ? outer.end - L : outer.start + L
+        this.refresh(true)
+        return
+      }
+      this.record('struct')
+      if (inner) {
+        a.value = v.slice(0, inner.start) + v.slice(inner.start + L, inner.end - L) + v.slice(inner.end)
+        a.anchor = a.focus = lo - L
+      } else {
+        a.value = v.slice(0, lo) + mark + mark + v.slice(lo)
+        a.anchor = a.focus = a.freshPair = lo + L
+      }
+      this.writeThrough()
+      this.refresh(true)
+      return
+    }
+    while (lo < hi && /\s/.test(v[lo])) lo++
+    while (hi > lo && /\s/.test(v[hi - 1])) hi--
+    for (let grew = true; grew;) {
+      grew = false
+      for (const g of analysis.groups) {
+        if (g.kind === 'prefix' || g.kind === 'escape') continue
+        const inLo = g.start < lo && lo < g.end
+        const inHi = g.start < hi && hi < g.end
+        if (inLo !== inHi) {
+          const nlo = Math.min(lo, g.start)
+          const nhi = Math.max(hi, g.end)
+          if (nlo !== lo || nhi !== hi) { lo = nlo; hi = nhi; grew = true }
+        }
+      }
+    }
+    this.record('struct')
+    const same = groups.find(g => (g.start === lo && g.end === hi) || (g.start + L === lo && g.end - L === hi))
+    if (same) {
+      a.value = v.slice(0, same.start) + v.slice(same.start + L, same.end - L) + v.slice(same.end)
+      a.anchor = same.start
+      a.focus = same.end - 2 * L
+    } else {
+      a.value = v.slice(0, lo) + mark + v.slice(lo, hi) + mark + v.slice(hi)
+      a.anchor = lo + L
+      a.focus = hi + L
+    }
+    this.writeThrough()
+    this.refresh(true)
+  }
+
+  private undoRedo(redo: boolean): void {
+    const current: HistoryEntry = { lines: this.doc.lines.slice(), caret: this.caretMemo() }
+    const entry = redo ? this.history.redo(current) : this.history.undo(current)
+    if (!entry) return
+    this.doc.setLines(entry.lines)
+    const caret = entry.caret
+    if (caret && parseUnits(this.doc.lines).some(u => u.start === caret.start)) this.open(caret.start, caret.anchor, caret.focus)
+    else this.close()
+  }
+
+  /* ── 导航 ───────────────────────────────────────────────────────────── */
+
+  private moveHorizontal(direction: 'forward' | 'backward', granularity: 'character' | 'word' | 'lineboundary', extend: boolean): void {
+    const a = this.active
+    const ed = this.editor()
+    const selection = getSelection()
+    if (!a || !ed || !selection) return
+    a.goalX = undefined
+    a.sticky = undefined
+    if (!extend && a.anchor !== a.focus && granularity === 'character') {
+      a.anchor = a.focus = direction === 'forward' ? Math.max(a.anchor, a.focus) : Math.min(a.anchor, a.focus)
+      this.refresh(false)
+      return
+    }
+    const before = sourceToView(a.vis, a.focus)
+    const modify = (selection as Selection & { modify?: (alter: string, direction: string, granularity: string) => void }).modify
+    modify?.call(selection, extend ? 'extend' : 'move', direction, granularity)
+    const viewOffset = selection.focusNode && ed.contains(selection.focusNode)
+      ? viewOffsetOf(ed, selection.focusNode, selection.focusOffset)
+      : before
+    if (viewOffset === before && granularity !== 'lineboundary') {
+      const target = this.neighbour(direction === 'forward' ? 1 : -1)
+      if (!extend && target) { this.open(target.start, direction === 'forward' ? 0 : 'end'); return }
+      this.applySelection()
+      return
+    }
+    const bias: Bias = granularity === 'lineboundary' ? 'high' : direction === 'forward' ? 'low' : 'high'
+    a.focus = this.resolve(a, viewOffset, bias)
+    if (!extend) a.anchor = a.focus
+    this.refresh(false)
+  }
+
+  /** 静止画面量尺:在「记号全收起」的同位置副本上量,一串 ↑↓ 用同一把尺子。 */
+  private withResting<T>(measure: (clone: HTMLElement, vis: readonly number[], analysis: Analysis) => T): T | null {
+    const a = this.active
+    const ed = this.editor()
+    if (!a || !ed || !ed.parentNode) return null
+    const analysis = analyzeUnit(a.unit, a.value)
+    const painted = paint(analysis, new Set(), null, this.options.classes)
+    const clone = ed.cloneNode(false) as HTMLElement
+    clone.removeAttribute('contenteditable')
+    clone.setAttribute('aria-hidden', 'true')
+    clone.innerHTML = painted.html + (a.value.endsWith('\n') ? '<br>' : '')
+    Object.assign(clone.style, {
+      position: 'absolute', left: `${ed.offsetLeft}px`, top: `${ed.offsetTop}px`, width: `${ed.offsetWidth}px`,
+      margin: '0', opacity: '0', zIndex: '50',
+    })
+    ed.parentNode.insertBefore(clone, ed.nextSibling)
+    try {
+      return measure(clone, painted.vis, analysis)
+    } finally {
+      clone.remove()
+    }
+  }
+
+  private moveVertical(up: boolean, extend: boolean): void {
+    const a = this.active
+    const ed = this.editor()
+    if (!a || !ed) return
+    ed.scrollIntoView({ block: 'nearest' })
+    const goalValid = a.goalX !== undefined && a.goalFor === a.focus
+    const measured = this.withResting((clone, vis, analysis) => {
+      const caret = rectAt(clone, sourceToView(vis, a.focus))
+      const lineHeight = lineHeightOf(clone)
+      const box = clone.getBoundingClientRect()
+      const x = goalValid ? (a.goalX as number) : caret.left
+      const y = up ? caret.top - lineHeight / 2 : caret.bottom + lineHeight / 2
+      if (y > box.top + 2 && y < box.bottom - 2) {
+        const viewOffset = offsetAtPoint(clone, x, y)
+        const length = a.value.length
+        const focus = viewOffset === Number.POSITIVE_INFINITY
+          ? length
+          : this.options.mode() === 'none'
+            ? canonicalPosition(analysis, vis, length, viewOffset)
+            : viewToSource(vis, length, viewOffset, 'low')
+        return { x, focus }
+      }
+      return { x, focus: undefined as number | undefined }
+    })
+    if (!measured) return
+    if (measured.focus !== undefined) {
+      a.focus = measured.focus
+      if (!extend) a.anchor = a.focus
+      this.refresh(false)
+      a.goalX = measured.x
+      a.goalFor = a.focus
+      return
+    }
+    if (extend) {
+      a.focus = up ? 0 : a.value.length
+      this.refresh(false)
+      return
+    }
+    const target = this.neighbour(up ? -1 : 1)
+    if (!target) { a.goalX = measured.x; a.goalFor = a.focus; return }
+    this.moveToUnit(target, measured.x, up ? 'bottom' : 'top')
+  }
+
+  /** 进到另一项:在它**还没打开**时按「当前画面」量(与鼠标点下去量的是同一个画面)。 */
+  private moveToUnit(target: Unit, x: number, edge: 'top' | 'bottom'): void {
+    const element = this.dom.unitContent(target.start)
+    if (!element) { this.open(target.start, edge === 'bottom' ? 'end' : 0); return }
+    element.scrollIntoView({ block: 'nearest' })
+    const box = element.getBoundingClientRect()
+    const viewOffset = offsetAtPoint(element, x, edge === 'bottom' ? box.bottom - 4 : box.top + 4)
+    this.open(target.start, this.restingCaret(target, viewOffset))
+    if (this.active) { this.active.goalX = x; this.active.goalFor = this.active.focus }
+  }
+
+  private restingCaret(unit: Unit, viewOffset: number): number {
+    const value = editValueOf(unit, this.doc.lines)
+    if (viewOffset === Number.POSITIVE_INFINITY) return value.length
+    const analysis = analyzeUnit(unit, value)
+    const { vis } = paint(analysis, new Set(), null, this.options.classes)
+    return this.options.mode() === 'none'
+      ? canonicalPosition(analysis, vis, value.length, viewOffset)
+      : viewToSource(vis, value.length, viewOffset, 'low')
+  }
+
+  private moveDocumentEdge(toEnd: boolean, extend: boolean): void {
+    const a = this.active
+    if (!a) return
+    if (extend) { a.focus = toEnd ? a.value.length : 0; a.goalX = undefined; this.refresh(false); return }
+    const units = parseUnits(this.doc.lines)
+    const target = toEnd ? units[units.length - 1] : units[0]
+    if (target) this.open(target.start, toEnd ? 'end' : 0)
+  }
+
+  /* ── 事件入口 ───────────────────────────────────────────────────────── */
+
+  // ui-consume-allow: kbd-select-handwritten — 文本光标的走字 / 走行(量尺是 selection.modify),不是列表选择
+  /** 编辑区上的 keydown(React `onKeyDown` 交进来)。返回 true = 已处理并 preventDefault。 */
+  handleKeyDown(event: KeyboardEvent): boolean {
+    const a = this.active
+    if (!a) return false
+    if (a.composing || event.isComposing || event.keyCode === 229) return false
+    const mod = event.metaKey || event.ctrlKey
+    const key = event.key
+    if (key !== 'ArrowUp' && key !== 'ArrowDown') a.goalX = undefined
+    const run = (action: () => void): boolean => { event.preventDefault(); action(); return true }
+    switch (key) {
+      case 'ArrowLeft':
+        return run(() => this.moveHorizontal('backward', mod ? 'lineboundary' : event.altKey ? 'word' : 'character', event.shiftKey))
+      case 'ArrowRight':
+        return run(() => this.moveHorizontal('forward', mod ? 'lineboundary' : event.altKey ? 'word' : 'character', event.shiftKey))
+      case 'ArrowUp':
+        return run(() => (mod ? this.moveDocumentEdge(false, event.shiftKey) : this.moveVertical(true, event.shiftKey)))
+      case 'ArrowDown':
+        return run(() => (mod ? this.moveDocumentEdge(true, event.shiftKey) : this.moveVertical(false, event.shiftKey)))
+      case 'Home':
+        return run(() => this.moveHorizontal('backward', 'lineboundary', event.shiftKey))
+      case 'End':
+        return run(() => this.moveHorizontal('forward', 'lineboundary', event.shiftKey))
+      case 'Escape':
+        return run(() => this.close())
+      case 'Enter':
+        return run(() => {
+          if (mod) this.close()
+          else if (!(event.shiftKey && isList(a.unit))) this.enter()
+        })
+      case 'Tab':
+        if (!isList(a.unit)) return false
+        return run(() => this.indent(event.shiftKey ? -1 : 1))
+    }
+    if (mod && !event.altKey) {
+      const lower = key.toLowerCase()
+      if (lower === 'z') return run(() => this.undoRedo(event.shiftKey))
+      if (lower === 'b') return run(() => this.toggleMark('strong'))
+      if (lower === 'i') return run(() => this.toggleMark('emphasis'))
+      if (lower === 'e') return run(() => this.toggleMark('code'))
+      if (lower === 'a') return run(() => { a.anchor = 0; a.focus = a.value.length; this.refresh(false) })
+    }
+    return false
+  }
+
+  handleBeforeInput(event: InputEvent): void {
+    const a = this.active
+    if (!a || a.composing || /Composition/.test(event.inputType)) return
+    event.preventDefault()
+    const lo = Math.min(a.anchor, a.focus)
+    const hi = Math.max(a.anchor, a.focus)
+    const ed = this.editor()
+    const extendTo = (direction: 'forward' | 'backward', granularity: string): number => {
+      const selection = getSelection()
+      const modify = (selection as Selection & { modify?: (alter: string, direction: string, granularity: string) => void } | null)?.modify
+      if (!selection || !modify || !ed) return a.focus
+      modify.call(selection, 'extend', direction, granularity)
+      const viewOffset = selection.focusNode && ed.contains(selection.focusNode) ? viewOffsetOf(ed, selection.focusNode, selection.focusOffset) : sourceToView(a.vis, a.focus)
+      const position = this.resolve(a, viewOffset, direction === 'forward' ? 'low' : 'high')
+      this.applySelection()
+      return position
+    }
+    const text = event.data ?? event.dataTransfer?.getData('text/plain') ?? ''
+    switch (event.inputType) {
+      case 'insertText':
+      case 'insertReplacementText':
+        this.replaceRange(lo, hi, text)
+        return
+      case 'insertFromPaste':
+      case 'insertFromDrop':
+        this.replaceRange(lo, hi, text, 'struct')
+        return
+      case 'insertLineBreak':
+      case 'insertParagraph':
+        this.enter()
+        return
+      case 'deleteContentBackward': {
+        if (lo !== hi) { this.replaceRange(lo, hi, ''); return }
+        const cluster = this.visibleCluster(a, -1)
+        if (cluster) this.replaceRange(cluster[0], cluster[1], '')
+        else this.backspaceAtStart()
+        return
+      }
+      case 'deleteContentForward': {
+        if (lo !== hi) { this.replaceRange(lo, hi, ''); return }
+        const cluster = this.visibleCluster(a, 1)
+        if (cluster) this.replaceRange(cluster[0], cluster[1], '')
+        else this.deleteAtEnd()
+        return
+      }
+      case 'deleteWordBackward':
+      case 'deleteSoftLineBackward':
+      case 'deleteHardLineBackward': {
+        if (lo !== hi) { this.replaceRange(lo, hi, ''); return }
+        const position = extendTo('backward', event.inputType === 'deleteWordBackward' ? 'word' : 'lineboundary')
+        if (position < lo) this.replaceRange(position, lo, '')
+        else this.backspaceAtStart()
+        return
+      }
+      case 'deleteWordForward':
+      case 'deleteSoftLineForward':
+      case 'deleteHardLineForward': {
+        if (lo !== hi) { this.replaceRange(lo, hi, ''); return }
+        const position = extendTo('forward', event.inputType === 'deleteWordForward' ? 'word' : 'lineboundary')
+        if (position > hi) this.replaceRange(hi, position, '')
+        else this.deleteAtEnd()
+        return
+      }
+      case 'historyUndo':
+        this.undoRedo(false)
+        return
+      case 'historyRedo':
+        this.undoRedo(true)
+        return
+    }
+  }
+
+  /** 兜底:任何没经过 beforeinput 的改动(拼写纠正、脚本 execCommand)一律丢弃,从模型重画。 */
+  handleInput(): void {
+    if (this.active && !this.active.composing) this.refresh(true)
+  }
+
+  handleCompositionStart(): void {
+    const a = this.active
+    if (!a) return
+    a.composing = true
+    a.compositionRange = [Math.min(a.anchor, a.focus), Math.max(a.anchor, a.focus)]
+  }
+
+  handleCompositionEnd(data: string): void {
+    const a = this.active
+    if (!a) return
+    a.composing = false
+    const [from, to] = a.compositionRange ?? [a.focus, a.focus]
+    this.replaceRange(from, to, data, 'struct')
+  }
+
+  selectedText(): string | null {
+    const a = this.active
+    return a ? a.value.slice(Math.min(a.anchor, a.focus), Math.max(a.anchor, a.focus)) : null
+  }
+
+  cutSelection(): void {
+    const a = this.active
+    if (!a) return
+    this.replaceRange(Math.min(a.anchor, a.focus), Math.max(a.anchor, a.focus), '', 'struct')
+  }
+
+  /**
+   * 鼠标按下(文档区域里)。一切在按下那一刻完成 —— 不等 click:click 要求按下与松开落在同一个
+   * 元素上,而保存上一项会换掉 DOM(第一版样例「要点两次」的病根)。
+   *
+   * @returns 是否处理了(处理了由调用方 preventDefault)。
+   */
+  handlePointerDown(event: MouseEvent, unitStart: number | null): boolean {
+    if (event.button !== 0 || unitStart === null) {
+      if (this.active && unitStart === null) { this.close(); return true }
+      return false
+    }
+    const element = this.dom.unitContent(unitStart)
+    if (!element) return false
+    const viewOffset = offsetAtPoint(element, event.clientX, event.clientY)
+    const a = this.active
+    if (a && a.start === unitStart) {
+      // 正在编辑的这一项:按它此刻(展开后)的画面量,取靠左。
+      a.focus = a.anchor = this.resolve(a, viewOffset, 'low')
+      a.goalX = undefined
+      a.sticky = undefined
+      a.pointer = true
+      a.dragFrom = a.anchor
+      this.refresh(false)
+      return true
+    }
+    const unit = parseUnits(this.doc.lines).find(u => u.start === unitStart)
+    if (!unit) return false
+    this.open(unitStart, this.restingCaret(unit, viewOffset))
+    if (this.active) { this.active.pointer = true; this.active.dragFrom = this.active.anchor }
+    return true
+  }
+
+  /** 按住拖动:在按下的那一项里扩选区(跨项不做);量法与按下相同。 */
+  handlePointerMove(event: MouseEvent): void {
+    const a = this.active
+    const ed = this.editor()
+    if (!a || !ed || !a.pointer || !(event.buttons & 1)) return
+    const focus = this.resolve(a, offsetAtPoint(ed, event.clientX, event.clientY), 'low')
+    if (focus === a.focus) return
+    a.anchor = a.dragFrom
+    a.focus = focus
+    this.applySelection()
+  }
+
+  handlePointerUp(): void {
+    const a = this.active
+    if (a?.pointer) { a.pointer = false; this.refresh(false) }
+  }
+
+  /**
+   * 选区变了但不是我们设的(应用菜单的「全选」、辅助技术):读回来,按靠左换算。
+   * 我们自己设的那一次回声读回来与模型相同,是恒等变换。
+   */
+  handleSelectionChange(): void {
+    const a = this.active
+    const ed = this.editor()
+    const selection = getSelection()
+    if (!a || !ed || !selection || this.applying || a.composing || a.pointer) return
+    if (!selection.focusNode || !ed.contains(selection.focusNode) || !selection.anchorNode || !ed.contains(selection.anchorNode)) return
+    const focus = this.resolve(a, viewOffsetOf(ed, selection.focusNode, selection.focusOffset), 'low')
+    const anchor = selection.isCollapsed ? focus : this.resolve(a, viewOffsetOf(ed, selection.anchorNode, selection.anchorOffset), 'low')
+    if (focus === a.focus && anchor === a.anchor) return
+    if (sourceToView(a.vis, focus) === sourceToView(a.vis, a.focus) && sourceToView(a.vis, anchor) === sourceToView(a.vis, a.anchor)) return
+    a.focus = focus
+    a.anchor = anchor
+    a.goalX = undefined
+    this.refresh(false)
+  }
+
+  /* ── 外部改动:正在编辑的那一项按原文找回来 ──────────────────────────── */
+
+  private rebaseAfterServerChange(previous: readonly string[]): void {
+    const a = this.active
+    if (!a) return
+    const mine = previous.slice(a.start, a.start + a.span)
+    const found = locate(this.doc.lines, { start: a.start, expect: mine, lines: mine })
+    if (found.ok) {
+      const unit = parseUnits(this.doc.lines).find(u => u.start === found.start)
+      if (unit) {
+        a.start = found.start
+        a.unit = unit
+        this.options.onActiveChange?.(a.start)
+        this.dom.commit()
+        this.refresh(true)
+        return
+      }
+    }
+    // 那几行被别人改了或删了:把人正在改的这一段放回原处,不让刚打的字消失。
+    const lines = this.doc.lines.slice()
+    const at = Math.min(a.start, lines.length)
+    lines.splice(at, 0, ...linesFromEdit(a.unit, a.value))
+    a.start = at
+    this.doc.setLines(lines)
+    this.options.onActiveChange?.(a.start)
+    this.dom.commit()
+    this.refresh(true)
+  }
+}

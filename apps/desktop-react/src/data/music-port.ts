@@ -1,5 +1,4 @@
-import { resourcesRouter } from '@shared/ipc/resources'
-import type { ResourceOutcomeView, ResourceReadView } from '@shared/ipc/resources'
+import { ResourcePortSlot, type ResourceEventFact, type ResourcePort } from './resource-port'
 
 /**
  * 音乐面取数与 core 之间的那一层**端口**(音乐收尾 · 壳半边,正本
@@ -35,81 +34,24 @@ import type { ResourceOutcomeView, ResourceReadView } from '@shared/ipc/resource
  * 理由(mutation 要靠一次 throw 才会回滚乐观补丁)写在那只文件里。
  */
 
-/** 一条到了的资源事实。`event` 是自述 `events` 里的名字。 */
-export interface MusicResourceEvent {
-  /** `<scheme>:<path>`,出事的那个资源。 */
-  ref: string
-  /** 自述 `events` 里的名字(`nowPlayingChanged` / `radioOpened` / …)。 */
-  event: string
-  payload: unknown
-}
+/**
+ * 端口的真实现与形状从 2026-09-17 起住在 `resource-port.ts`(待办成了第二个消费者)。
+ * 这只文件只剩音乐自己的那一格槽,以及原来那几个名字 —— 调用方(面板、MusicLab、
+ * 测试 setup)一行不用改。
+ */
 
-export interface MusicPort {
-  /** 传输面就绪(D0 的 whenConnected);浏览器直开时它也会 resolve。 */
-  ready(): Promise<unknown>
-  read(
-    ref: string,
-    name: string,
-    query?: Record<string, unknown>,
-  ): Promise<ResourceReadView>
-  do(
-    ref: string,
-    op: string,
-    params?: Record<string, unknown>,
-  ): Promise<ResourceOutcomeView>
-  /** 订这个前缀底下的资源事实。返回退订。 */
-  onResourceEvent(prefix: string, callback: (event: MusicResourceEvent) => void): () => void
-}
+/** 一条到了的资源事实。`event` 是自述 `events` 里的名字(`nowPlayingChanged` / `radioOpened` / …)。 */
+export type MusicResourceEvent = ResourceEventFact
 
-let port: MusicPort | undefined
+export type MusicPort = ResourcePort
+
+const slot = new ResourcePortSlot()
 
 /** 测试用:换掉端口实现。传 undefined 恢复真实现。 */
 export function configureMusicPort(next: MusicPort | undefined): void {
-  port = next
+  slot.configure(next)
 }
-
-/** 事件载荷 → 这一条认不认。名字与形都对得上才算数(SSE 是广播)。 */
-function asResourceEvent(data: unknown): MusicResourceEvent | null {
-  if (!data || typeof data !== 'object') return null
-  const row = data as Record<string, unknown>
-  if (typeof row.ref !== 'string' || typeof row.event !== 'string') return null
-  return { ref: row.ref, event: row.event, payload: row.payload }
-}
-
-/**
- * 真实现是**惰性**建的,理由与 `files-port` / `sessions-port` 逐字相同:它要的是
- * 那个连通之后才存在的客户端,而端口被换掉的测试根本不该把连通面拖进来。
- */
-async function realPort(): Promise<MusicPort> {
-  const { onethingClient, whenConnected } = await import('../platform/connection')
-  const client = await onethingClient()
-  const resources = client.api(resourcesRouter)
-  return {
-    ready: () => whenConnected(),
-    read: (ref, name, query) =>
-      resources.read({ ref, name, ...(query ? { query } : {}) }),
-    do: (ref, op, params) => resources.do({ ref, op, ...(params ? { params } : {}) }),
-    onResourceEvent: (prefix, callback) =>
-      /*
-       * **`onAny` 而不是 `on('resource:event')`** —— 与 `resources/shell-host.ts`
-       * 那一处逐字同一个理由:`EventHub.on` 的键收窄在 `TransportEvents` 那三条上
-       * (`@onething/client`),而 `resource:event` 是一条**全局事件**,不在那张表
-       * 里。给那张表加一行要改 `packages/client`,那是那个包自己的一次改动。
-       * `onAny` 正是为这一档留的口(「含表里没登记的名字」是它自己的判词)。
-       */
-      client.events.onAny((frame) => {
-        if (frame.name !== 'resource:event') return
-        const fact = asResourceEvent(frame.data)
-        if (!fact || !fact.ref.startsWith(prefix)) return
-        callback(fact)
-      }),
-  }
-}
-
-let pending: Promise<MusicPort> | undefined
 
 export function musicPort(): Promise<MusicPort> {
-  if (port) return Promise.resolve(port)
-  pending ??= realPort()
-  return pending
+  return slot.get()
 }

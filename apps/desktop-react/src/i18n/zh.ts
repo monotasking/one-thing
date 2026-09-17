@@ -225,6 +225,7 @@ export const zh = {
   'item.apps': '所有应用',
   /* 音乐(音乐收尾 · 壳半边)。面里是电台 + 播放器 + 歌词三块。 */
   'item.music': '音乐',
+  'item.todo': '待办',
 
   /* ── 所有应用(Dock 露面管理)─────────────────────────────────────── */
   'apps.subtitle': '这台壳里能打开的全部。关掉一行,它的 Dock 瓦就不见了 —— 随时能从这里打开它。',
@@ -1847,6 +1848,35 @@ export const zh = {
   'workspace.color.amber': '琥珀',
   'workspace.color.rose': '玫瑰',
   'workspace.color.teal': '青',
+
+  /* ── 待办(todo-2026-09 / todo-editor-2026-09)──────────────────────── */
+  'todo.docLabel': '待办文档',
+  'todo.add': '添加一项',
+  'todo.check': '标为完成',
+  'todo.uncheck': '标为未完成',
+  'todo.plan.drawerLabel': '这个会话的计划',
+  'todo.plan.toggle': '展开计划',
+  'todo.plan.progress': '计划 {done}/{total}',
+  'todo.plan.allDone': '计划完成 {done}/{total}',
+  'todo.plan.next': '下一步 {text}',
+  'todo.plan.justDone': '刚完成 {text}',
+  'todo.openSource': '打开源文件',
+  'todo.lists': '我的清单',
+  'todo.newList': '新建清单',
+  'todo.newListTitle': '新清单',
+  'todo.rename': '重命名',
+  'todo.delete': '删除',
+  'todo.deleteTitle': '删除清单',
+  'todo.deleteConfirm': '删除「{title}」?它的文件会被删掉。',
+  'todo.reveal': '在访达中显示',
+  'todo.more': '更多',
+  'todo.empty': '还没有清单',
+  'todo.readFailed': '读不到这份清单',
+  'todo.retry': '重试',
+  'todo.revealMode': '编辑时显示记号',
+  'todo.revealMode.element': '光标所在的元素',
+  'todo.revealMode.block': '整项',
+  'todo.revealMode.none': '不显示',
 
   /* ── 音乐面(音乐收尾 · 壳半边,2026-09-10)─────────────────────────────
    * 面里每一颗按钮走的都是 `resources.do`(与模型调的同一条),所以这里的话

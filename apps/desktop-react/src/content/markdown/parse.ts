@@ -17,6 +17,14 @@ import { mdastToBlocks, type ParsedBlock } from './to-blocks'
 const EXTENSIONS = [gfm()]
 const MDAST_EXTENSIONS = [gfmFromMarkdown()]
 
+/**
+ * 原样交出一棵带源偏移的 mdast(同一套扩展)。待办编辑器按它切行内记号
+ * (`content/editing/inline-tokens.ts`)—— 编辑时认成粗体的,与消息里认成粗体的是同一份判断。
+ */
+export function parseMarkdownTree(text: string) {
+  return fromMarkdown(text, { extensions: EXTENSIONS, mdastExtensions: MDAST_EXTENSIONS })
+}
+
 export function parseMarkdown(text: string): ParsedBlock[] {
   if (!text) return []
   const tree = fromMarkdown(text, {

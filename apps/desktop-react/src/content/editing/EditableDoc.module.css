@@ -1,0 +1,181 @@
+/*
+ * 可编辑文档的外形(正本 `docs/todo-editor-2026-09.md` §6.1 / §7.3)。
+ *
+ * 字形、字号、标题阶梯、列表缩进、行内码小底、引用大引号 —— **一律是消息块组件自己的
+ * 样式类**(`EditableDoc.tsx` 里 import 的那几份 module),这里只写消息里没有的几件:
+ * 块与块的节奏(与 `ChatStream.module.css` 的节奏表同一组 token)、勾选框的位置、
+ * 整行悬停底、编辑中的记号颜色、外部刚改过的那一行的淡底。
+ *
+ * 编辑中**没有框、没有边、没有环**(第二版起的定稿):行底与悬停同一层,光标出现,记号淡灰。
+ */
+
+.flow {
+  font-size: var(--pr-fs);
+  line-height: var(--pr-lh);
+  color: var(--text-1);
+  /* 行底画在 ::before 上、z-index 为负:在这一层里叠在字的下面。 */
+  isolation: isolate;
+}
+
+/* 节奏:与消息列同一组量(`ChatStream.module.css` 的节奏表),清零在前、邻接在后。 */
+.flow > * {
+  margin-block: 0;
+}
+
+.flow > * + * {
+  margin-block-start: var(--pr-gap);
+}
+
+.flow > [data-prose='h1'] + *,
+.flow > [data-prose='h2'] + * {
+  margin-block-start: var(--pr-h2-btm);
+}
+
+.flow > [data-prose='h3'] + * {
+  margin-block-start: var(--pr-h3-btm);
+}
+
+.flow > * + [data-prose='h1'],
+.flow > * + [data-prose='h2'] {
+  margin-block-start: var(--pr-h2-top);
+}
+
+.flow > * + [data-prose='h3'] {
+  margin-block-start: var(--pr-h3-top);
+}
+
+.flow > [data-prose='object'] + *,
+.flow > * + [data-prose='object'] {
+  margin-block-start: var(--pr-obj);
+}
+
+.flow[data-density='drawer'] {
+  font-size: var(--pr-fs);
+}
+
+/* ── 可点的一项 ─────────────────────────────────────────────────────── */
+
+.unit {
+  cursor: text;
+}
+
+.content {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-height: calc(var(--pr-lh) * 1em);
+}
+
+/* 列表项:整行都是命中区,悬停底从勾选框左边铺到行尾,上下各探出半个行距盖住缝。 */
+.item {
+  position: relative;
+}
+
+.item::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--pr-li) / -2) calc(var(--sp-2) * -1) calc(var(--pr-li) / -2) calc(var(--indent-1) * -1 - var(--sp-1));
+  border-radius: var(--r-1);
+  z-index: -1;
+  transition: background-color var(--dur) var(--ease);
+}
+
+.item:hover::before,
+.item[data-active='true']::before {
+  background-color: var(--st-hover);
+}
+
+.task {
+  list-style: none;
+}
+
+/* 勾选框坐在圆点的位置上,与首行居中。 */
+.check {
+  position: absolute;
+  inset-inline-start: calc(var(--indent-1) * -1 + var(--sp-1));
+  top: calc((var(--pr-lh) * 1em - var(--check-size)) / 2);
+  /* 装勾选框的这一格不许有自己的行盒:否则框被推到行内基线上,比首行低一截。 */
+  display: flex;
+  height: var(--check-size);
+  line-height: 0;
+  /* 它是 li 里内容之后的兄弟:消息列表「项内相邻块」的节奏间距会落到它头上,把框压低一截。 */
+  margin: 0;
+}
+
+.done > .content {
+  color: var(--text-3);
+  text-decoration: line-through;
+  text-decoration-color: var(--line-2);
+}
+
+.done[data-active='true'] > .content {
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.indent1 { margin-inline-start: var(--indent-1); }
+.indent2 { margin-inline-start: calc(var(--indent-1) * 2); }
+.indent3 { margin-inline-start: calc(var(--indent-1) * 3); }
+
+/* 代码块:消息块壳的卡片外形,正文等宽。 */
+.codeBody {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.codeCard:hover,
+.codeCard[data-active='true'] {
+  border-color: var(--line-2);
+}
+
+/* ── 编辑中 ─────────────────────────────────────────────────────────── */
+
+.mark,
+.url {
+  color: var(--text-4);
+  font-weight: normal;
+  font-style: normal;
+  text-decoration: none;
+}
+
+/* 不显示记号档:光标所在的那个元素铺一层淡底,告诉人接着打字会是什么格式。 */
+.current {
+  background-color: var(--st-sel);
+  border-radius: var(--r-1);
+}
+
+/* 外部(AI、别的编辑器)刚改过的那一行。 */
+.changed {
+  animation: var(--kf-line-changed) var(--dur-line-changed) var(--ease-out);
+  border-radius: var(--r-1);
+}
+
+/* ── 添加一项 ───────────────────────────────────────────────────────── */
+
+.add {
+  display: block;
+  width: 100%;
+  margin-block-start: var(--pr-li);
+  padding-inline-start: var(--indent-2);
+  position: relative;
+  text-align: start;
+  color: var(--text-4);
+  font-size: var(--pr-fs);
+  line-height: var(--pr-lh);
+  border-radius: var(--r-1);
+}
+
+.add::before {
+  content: '+';
+  position: absolute;
+  inset-inline-start: calc(var(--indent-2) - var(--indent-1) + var(--sp-1));
+}
+
+.add:hover {
+  color: var(--text-2);
+  background-color: var(--st-hover);
+}

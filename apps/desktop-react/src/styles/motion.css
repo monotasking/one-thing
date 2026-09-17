@@ -127,6 +127,8 @@
   --kf-turn-flash: turnFlash;
   --kf-tab-land: tabLand;
   --kf-chat-cursor: chatCursor;
+  /* 待办里被 AI(或别的编辑器)刚改过的那一行:淡底一次,自己退掉。 */
+  --kf-line-changed: lineChanged;
 }
 
 /* ── 淡入:全系统最常见的一次出场 ─────────────────────────────────────── */
@@ -397,6 +399,16 @@
   }
 }
 
+/* 文档里外部刚改过的那一行(待办编辑器):选中色淡底退回透明。时长 --dur-line-changed。 */
+@keyframes lineChanged {
+  from {
+    background-color: var(--st-sel);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
 /* 跳到某一轮之后,落点消息的柔光环从 accent 淡回透明。 */
 @keyframes turnFlash {
   from {
@@ -456,6 +468,7 @@
 
 :root[data-motion-tier='none'] {
   --dur: 0ms;
+  --dur-line-changed: 0ms;
   --dur-enter: 0ms;
   --dur-exit: 0ms;
   --dur-release: 0ms;

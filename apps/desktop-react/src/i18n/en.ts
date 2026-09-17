@@ -175,6 +175,7 @@ export const en: Record<MessageKey, string> = {
   'item.workspace': 'Workspaces',
   'item.apps': 'All apps',
   'item.music': 'Music',
+  'item.todo': 'Todo',
 
   /* ── all apps(Dock 露面管理)──────────────────────────────────────── */
   'apps.subtitle': 'Everything that can open in this shell. Turn a row off and its Dock tile goes away — open it from here any time.',
@@ -1569,6 +1570,35 @@ export const en: Record<MessageKey, string> = {
   'workspace.color.amber': 'Amber',
   'workspace.color.rose': 'Rose',
   'workspace.color.teal': 'Teal',
+
+  /* ── 待办(todo-2026-09 / todo-editor-2026-09)──────────────────────── */
+  'todo.docLabel': 'Todo document',
+  'todo.add': 'Add item',
+  'todo.check': 'Mark done',
+  'todo.uncheck': 'Mark not done',
+  'todo.plan.drawerLabel': 'This session\'s plan',
+  'todo.plan.toggle': 'Show plan',
+  'todo.plan.progress': 'Plan {done}/{total}',
+  'todo.plan.allDone': 'Plan done {done}/{total}',
+  'todo.plan.next': 'Next: {text}',
+  'todo.plan.justDone': 'Just done: {text}',
+  'todo.openSource': 'Open source file',
+  'todo.lists': 'My lists',
+  'todo.newList': 'New list',
+  'todo.newListTitle': 'New list',
+  'todo.rename': 'Rename',
+  'todo.delete': 'Delete',
+  'todo.deleteTitle': 'Delete list',
+  'todo.deleteConfirm': 'Delete “{title}”? Its file will be deleted.',
+  'todo.reveal': 'Show in Finder',
+  'todo.more': 'More',
+  'todo.empty': 'No lists yet',
+  'todo.readFailed': 'Couldn\'t read this list',
+  'todo.retry': 'Retry',
+  'todo.revealMode': 'Markdown marks while editing',
+  'todo.revealMode.element': 'Element under the cursor',
+  'todo.revealMode.block': 'Whole item',
+  'todo.revealMode.none': 'Hidden',
 
   /* ── music panel (music wrap-up · shell half, 2026-09-10) ───────────── */
   'music.player': 'Now playing',

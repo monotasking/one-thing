@@ -1,0 +1,936 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>待办编辑 · 三档实时预览(2026-09-17 样例)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;600;700&family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --surface-0: #f5f4f1; --surface-1: #faf9f7; --surface-2: #ffffff;
+    --text-1: #2b2a26; --text-2: #5f5d56; --text-3: #78756d; --text-4: #b7b4ac;
+    --line-1: #e6e4de; --line-2: #d3d0c8; --accent: #7c6fa0; --accent-deep: #655887; --ok: #6f8f4e; --danger: #c4483d;
+    --st-hover: rgba(43, 42, 38, 0.05); --st-sel: rgba(124, 111, 160, 0.1);
+    --font-ui: 'Schibsted Grotesk', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --r-1: 6px; --r-2: 10px; --r-3: 14px; --sp-1: 4px; --sp-2: 8px; --sp-3: 12px;
+    --fs-code: 12.5px; --indent-2: 42px;
+    --quote-pad: 26px; --quote-mark: 26px; --quote-lift: -2px;
+    --pr-fs: 14px; --pr-lh: 1.6; --pr-gap: 0.7em; --pr-h2-top: 1.43em; --pr-h2-btm: 0.55em;
+    --pr-h3-top: 1.15em; --pr-h3-btm: 0.43em; --pr-li: 0.28em; --pr-obj: 0.85em;
+    --dur: 120ms; --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--surface-0); color: var(--text-1); font: 14px/1.6 var(--font-ui); padding: 28px 24px 60px; }
+  button { font: inherit; color: inherit; }
+  .page { max-width: 1180px; margin: 0 auto; }
+  h1.pt { font-size: 20px; margin: 0 0 6px; }
+  .lede { color: var(--text-2); max-width: 900px; margin: 0 0 12px; }
+  code.x { font-family: var(--font-mono); font-size: 12.5px; background: rgba(43,42,38,.06); border-radius: var(--r-1); padding: 0 4px; }
+  .kbd { font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; background: var(--surface-2); color: var(--text-2); }
+  .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 10px; font-size: 13px; color: var(--text-3); }
+  .seg { display: inline-flex; background: #ebe9e3; border-radius: 999px; padding: 2px; }
+  .seg button { border: 0; background: none; border-radius: 999px; padding: 3px 12px; cursor: pointer; color: var(--text-3); font-size: 13px; }
+  .seg button.on { background: var(--surface-2); color: var(--text-1); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .pill { border: 1px solid var(--line-2); background: var(--surface-2); border-radius: 999px; padding: 3px 12px; cursor: pointer; color: var(--text-2); font-size: 13px; }
+  .grid { display: grid; grid-template-columns: 1fr 360px; gap: 16px; align-items: start; }
+  @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+  .host { background: var(--surface-2); border: 1px solid var(--line-1); border-radius: var(--r-3); overflow: hidden; margin: 0 auto; }
+  .host.drawer { max-width: 640px; } .host.panel { max-width: 340px; }
+  .hosthead { padding: 8px 14px; border-bottom: 1px solid var(--line-1); background: var(--surface-1); font-size: 12px; color: var(--text-3); }
+  .docwrap { padding: 14px 22px 16px 18px; max-height: 560px; overflow: auto; }
+  .readout { border-top: 1px solid var(--line-1); background: var(--surface-1); padding: 8px 14px; font-size: 12px; color: var(--text-3); min-height: 54px; }
+  .readout .src { font: 12px/1.6 var(--font-mono); color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .readout .caret { color: var(--danger); font-weight: 700; }
+  .readout .okk { color: var(--ok); } .readout .bad { color: var(--danger); font-weight: 600; }
+  .side { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 12px; }
+  .box { background: var(--surface-2); border: 1px solid var(--line-1); border-radius: var(--r-3); overflow: hidden; }
+  .box .head { padding: 8px 12px; border-bottom: 1px solid var(--line-1); background: var(--surface-1); font-size: 12px; color: var(--text-3); display: flex; }
+  .box .head .sp { flex: 1; }
+  .cases { font-size: 12.5px; }
+  .case { display: grid; grid-template-columns: 1fr auto; gap: 6px; padding: 7px 12px; border-top: 1px solid var(--line-1); align-items: center; }
+  .case:first-child { border-top: 0; }
+  .case b { color: var(--text-1); font-weight: 600; }
+  .case .how { color: var(--text-3); font-size: 12px; }
+  .case button { border: 1px solid var(--line-2); background: var(--surface-2); border-radius: var(--r-1); padding: 1px 8px; cursor: pointer; font-size: 12px; }
+  .raw .body { font: 11.5px/1.7 var(--font-mono); max-height: 300px; overflow: auto; padding: 6px 0; }
+  .rl { display: flex; white-space: pre-wrap; overflow-wrap: anywhere; padding-right: 10px; }
+  .rl .n { flex: none; width: 34px; text-align: right; padding-right: 10px; color: var(--text-4); user-select: none; }
+  .rl.chg { background: rgba(111, 143, 78, 0.12); } .rl.chg .n { color: var(--ok); }
+  .suitebox { max-width: 640px; margin: 10px auto 0; font-size: 12.5px; }
+  .srow { display: grid; grid-template-columns: 18px 1fr auto; gap: 6px; padding: 3px 0; border-top: 1px solid var(--line-1); }
+  .srow.ok span:first-child { color: var(--ok); } .srow.no span:first-child, .srow.no { color: var(--danger); }
+  .srow .d { color: var(--text-3); font-family: var(--font-mono); font-size: 11px; }
+  .ssum { padding: 6px 0; color: var(--text-2); font-weight: 600; }
+  .rules { background: var(--surface-2); border: 1px solid var(--line-1); border-radius: var(--r-3); padding: 10px 14px; font-size: 13px; color: var(--text-2); margin: 0 0 12px; }
+  .rules b { color: var(--text-1); } .rules ol { margin: 4px 0 0; padding-left: 1.3em; } .rules li { margin: 2px 0; }
+
+  /* ════ 消息的 markdown 样式 ════ */
+  .flow { font-size: var(--pr-fs); line-height: var(--pr-lh); color: var(--text-1); isolation: isolate; }
+  .flow > * { margin-block: 0; }
+  .flow > * + * { margin-block-start: var(--pr-gap); }
+  .flow > [data-prose='h2'] + * { margin-block-start: var(--pr-h2-btm); }
+  .flow > [data-prose='h3'] + * { margin-block-start: var(--pr-h3-btm); }
+  .flow > * + [data-prose='h2'] { margin-block-start: var(--pr-h2-top); }
+  .flow > * + [data-prose='h3'] { margin-block-start: var(--pr-h3-top); }
+  .flow > :first-child { margin-block-start: 0 !important; }
+  .h1, .h2, .h3 { color: var(--text-1); line-height: 1.4; overflow-wrap: anywhere; }
+  .h1 { font-size: calc(var(--pr-fs) + 4px); font-weight: 650; }
+  .h2 { font-size: calc(var(--pr-fs) + 2px); font-weight: 620; }
+  .h3 { font-size: var(--pr-fs); font-weight: 600; }
+  .p { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .list { padding-inline-start: var(--indent-2); margin-inline: 0; }
+  ul.list { list-style: disc outside; } ol.list { list-style: decimal outside; }
+  .li { white-space: pre-wrap; overflow-wrap: anywhere; position: relative; }
+  .li + .li { margin-block-start: var(--pr-li); }
+  .li::marker { color: var(--text-4); }
+  .ic { font-family: var(--font-mono); font-size: var(--fs-code); padding: 0 var(--sp-1); border-radius: var(--r-1); background: rgba(43,42,38,.06); }
+  .lk { color: var(--accent-deep); text-decoration: underline; text-underline-offset: 2px; }
+  .b { font-weight: 700; } .i { font-style: italic; } .del { text-decoration: line-through; }
+  .quote { position: relative; margin-inline: 0; padding-inline-start: var(--quote-pad); color: var(--text-2); }
+  .quote::before { content: '\201C'; position: absolute; inset-inline-start: 0; top: var(--quote-lift); font-size: var(--quote-mark); line-height: 1; font-weight: 700; color: var(--line-2); }
+  .li.task { list-style: none; }
+  .cb { position: absolute; left: -22px; top: calc((var(--pr-lh) * 1em - 15px) / 2); width: 15px; height: 15px; padding: 0; border: 1.5px solid var(--text-4); border-radius: 4px; background: var(--surface-2); cursor: pointer; display: grid; place-items: center; }
+  .cb:hover { border-color: var(--text-2); }
+  .cb svg { width: 9px; height: 9px; opacity: 0; }
+  .li.done > .cb { background: var(--ok); border-color: var(--ok); }
+  .li.done > .cb svg { opacity: 1; }
+  .li.done > .cx { color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--line-2); }
+  .flow .u { cursor: text; }
+  .li::before { content: ''; position: absolute; inset: calc(var(--pr-li) / -2) -8px calc(var(--pr-li) / -2) -30px; border-radius: var(--r-1); z-index: -1; transition: background var(--dur) var(--ease); }
+  .li:hover::before, .li.act::before { background: var(--st-hover); }
+  .li > .cx { display: block; }
+  .ed { outline: none; caret-color: var(--text-1); }
+  .li.done.act > .cx { color: var(--text-2); text-decoration: none; }
+  .mk, .url { color: var(--text-4); font-weight: 400; font-style: normal; text-decoration: none; }
+  .ic .mk { color: var(--text-4); }
+  /* 不显示记号档:光标所在的那个元素铺一层淡底 —— 看不到记号,就用它告诉你「接着打字会是什么格式」 */
+  .cur { background: var(--st-sel); border-radius: 3px; box-shadow: 0 0 0 1px var(--st-sel); }
+  .ic.cur { background: rgba(124,111,160,.16); }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1 class="pt">待办编辑 · 三档实时预览</h1>
+  <p class="lede">
+    <b>元素</b>档（默认，和 Typora 默认一致）：只展开光标所在或贴着光标的那一个行内元素；<b>整块</b>档（Typora 的「聚焦时显示简单块的源码」）：点进哪一项，整项记号都露出来；<b>不显示记号</b>档：编辑时也永远看不到 markdown 记号（像 Notion），光标所在的元素铺一层淡紫底，<span class="kbd">⌘B</span> <span class="kbd">⌘I</span> <span class="kbd">⌘E</span> 加 / 去粗体、斜体、行内码。<br>
+    为了回答「光标会不会对不上、看不到」：编辑框下面有一行<b>光标读数</b>，实时显示光标在原文里的位置（红色 <span style="color:var(--danger);font-weight:700">‸</span>）、展开了哪些元素，以及一项自检——屏幕上的光标和原文位置对不对得上、光标两边的字是不是都看得见。右边是测试用例，点「放到这里」把光标放到指定位置，然后按提示用键盘走一遍。
+  </p>
+
+  <div class="rules"><b>光标规则（三档共用，唯一的区别是记号显不显示）</b>
+    <ol>
+      <li><b>同一个画面、同一个动作，结果相同</b>：光标落在哪只取决于屏幕上现在是什么、光标在哪，不取决于你之前按过什么。</li>
+      <li><b>整篇是一个文档</b>：← → ↑ ↓、⌥←→（按词）、⌘←→ / Home End（行首行尾）、⌘↑↓（全文首尾）都不在项与项之间断开；第一项再按 ↑、最后一项再按 ↓，光标不动。</li>
+      <li><b>目标列</b>：第一次按 ↑↓ 记下光标的横坐标，之后只要光标没被别的动作挪过就一直用它（同一项的折行和跨项同一种量法）；点鼠标、←→、打字、Home/End 都会重新定列。</li>
+      <li><b>一步 = 一个看得见的字</b>（emoji 算一个）；两个看得见的字之间藏着记号时：往右走停在记号左侧、往左走停在记号右侧、鼠标一律取靠左；不显示记号档只有一个位置：跟左边那个字走。</li>
+      <li><b>键盘动作永远不让光标消失</b>（只有 Esc 和点到外面会）：回车拆项 / 标题回车新起一项 / 空项回车退一层或删掉；行首退格依次是 删空项 → 标题引用降成段落 → 退一层缩进 → 并到上一项；行尾 Delete 把下一项并进来。</li>
+      <li><b>一条撤销历史</b>：打字、拆项、并项、缩进、勾选、加格式都在里面；撤销把光标放回那次改动发生的地方，不管你之后去了哪一项。</li>
+      <li><b>⇧ 扩选只在一项之内</b>：扩到这一项头尾就停（跨项选区不做）。</li>
+    </ol>
+  </div>
+  <div class="bar">
+    <span>展开粒度</span>
+    <span class="seg"><button data-mode="element">元素（默认）</button><button data-mode="block">整块</button><button data-mode="none">不显示记号</button></span>
+    <span style="width:10px"></span>
+    <span>放在</span>
+    <span class="seg"><button data-width="drawer">抽屉（宽）</button><button data-width="panel">面板（窄）</button></span>
+    <button class="pill" data-act="reset">重置</button>
+    <button class="pill suite" data-act="suite">跑一致性自测</button>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="host" id="host">
+        <div class="hosthead" id="hosttitle"></div>
+        <div class="docwrap" id="docwrap"><div id="doc"></div></div>
+        <div class="readout" id="readout"></div>
+      </div>
+      <div class="suitebox" id="suiteOut"></div>
+    </div>
+    <div class="side">
+      <div class="box">
+        <div class="head"><span>光标测试</span><span class="sp"></span><span>在当前档下试</span></div>
+        <div class="cases" id="cases"></div>
+      </div>
+      <div class="box raw">
+        <div class="head"><span>ai-todo.md（原文）</span><span class="sp"></span><span id="chgcount"></span></div>
+        <div class="body" id="raw"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const ORIGINAL = `# 实现自动化部署脚本
+
+## 待修 bug
+- [x] 服务器端 \`git rev-parse\` 拿 HASH 必失败 → **本地算好**再传过去
+- [ ] 重启服务前先 **确认备份**，再动手
+- [ ] 跑一遍 \`make deploy\` 看输出
+- [ ] 详见[部署文档](https://example.com/deploy)里的回滚一节
+- [ ] 只保留最近 *3* 个版本
+- [ ] **重要**\`v2\` 两个元素紧挨着
+- [ ] 中英混排折行：health check 改成 127.0.0.1 + retry polling，失败三次就 **rollback** 到上一个 release 版本
+
+> 回滚不要动线上内容，先用**同一个版本**冒烟。`;
+
+const CASES = [
+  { title: '粗体 · 从左边进出', how: '按 → 一次一次走过「确认备份」，看 ** 什么时候出现、光标经过 * 时看不看得见', find: '**确认备份**', at: 'before', minus: 1 },
+  { title: '粗体 · 从右边进出', how: '按 ← 往回走', find: '**确认备份**', at: 'after', plus: 1 },
+  { title: '行内码 · 边界', how: '按 → 进出 `make deploy`，光标不应落在底色的内边距里', find: '`make deploy`', at: 'before', minus: 1 },
+  { title: '链接 · 地址隐藏', how: '按 → 走进「部署文档」，地址会整段露出；再走出去地址收起', find: '[部署文档]', at: 'before', minus: 1 },
+  { title: '斜体', how: '按 → 走过「3」', find: '*3*', at: 'before', minus: 1 },
+  { title: '两个元素紧挨着', how: '按 → 从「重要」走到「v2」：中间那个边界同时贴着两个元素，两个都展开', find: '**重要**', at: 'inside', offset: 3 },
+  { title: '标题行首', how: '光标在「待修」前面时 ## 露出来；按 → 离开行首后收起。按 ⌫ 会删掉一个 #', unit: 'heading', find: '待修', at: 'before' },
+  { title: '中英混排折行', how: '切到「面板（窄）」再试：按 ↓ ↑ 在折行之间移动，并走过「rollback」', find: '**rollback**', at: 'before', minus: 1 },
+  { title: '选区跨两个元素', how: '已选中从「重要」中间到「v2」中间：两个元素都应展开；按 ⇧→ 继续扩大', find: '**重要**', select: ['**重要**', 3, '`v2`', 2] },
+];
+
+const CHECK = '<svg viewBox="0 0 10 10"><path d="M1.8 5.2 4 7.3 8.2 2.8" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+let S;
+function reset() {
+  S = { width: S ? S.width : 'drawer', mode: S ? S.mode : 'element', src: ORIGINAL, active: null, hist: { undo: [], redo: [], t: 0, key: null } };
+}
+reset();
+const lines = () => S.src.split('\n');
+const setLines = L => { S.src = L.join('\n'); };
+
+/* ── 块级解析(样例简化;真实现用消息那一份 mdast)────────────── */
+const RE = { heading: /^(#{1,6}\s+)(.*)$/, task: /^(\s*)([-*+])\s+\[( |x|X)\]\s?(.*)$/, bullet: /^(\s*)([-*+])\s+(.*)$/, quote: /^>\s?(.*)$/ };
+const isStart = l => RE.heading.test(l) || RE.bullet.test(l) || RE.quote.test(l);
+function parse(L) {
+  const units = []; let i = 0;
+  while (i < L.length) {
+    const l = L[i]; let m;
+    if (!l.trim()) { i++; continue; }
+    if ((m = l.match(RE.heading))) { units.push({ type: 'heading', start: i, end: i, level: Math.min(3, m[1].trim().length) }); i++; continue; }
+    if ((m = l.match(RE.task))) { units.push({ type: 'task', start: i, end: i, indent: m[1].length, bullet: m[2], done: m[3] !== ' ', content: m[4] }); i++; continue; }
+    if ((m = l.match(RE.bullet))) { units.push({ type: 'bullet', start: i, end: i, indent: m[1].length, bullet: m[2], content: m[3] }); i++; continue; }
+    if (RE.quote.test(l)) { let j = i; while (j < L.length && RE.quote.test(L[j])) j++; units.push({ type: 'quote', start: i, end: j - 1 }); i = j; continue; }
+    let j = i; while (j < L.length && L[j].trim() && (j === i || !isStart(L[j]))) j++;
+    units.push({ type: 'para', start: i, end: j - 1 }); i = j;
+  }
+  return units;
+}
+const isList = u => u.type === 'task' || u.type === 'bullet';
+const prefixOf = u => `${' '.repeat(u.indent || 0)}${u.bullet} ${u.type === 'task' ? `[${u.done ? 'x' : ' '}] ` : ''}`;
+const continuedPrefix = u => `${' '.repeat(u.indent || 0)}${u.bullet} ${u.type === 'task' ? '[ ] ' : ''}`;
+const unitAt = start => parse(lines()).find(u => u.start === start);
+function editValue(u) { return isList(u) ? u.content : lines().slice(u.start, u.end + 1).join('\n'); }
+function linesFromEdit(u, v) { return isList(u) ? [prefixOf(u) + v.replace(/\n/g, ' ')] : u.type === 'heading' ? [v.replace(/\n/g, ' ')] : v.split('\n'); }
+
+/* ── 行内切分:带原文位置与「元素」────────────────────────────
+ * 每个元素(粗体 / 斜体 / 删除线 / 行内码 / 链接 / 行首记号)是一段原文区间 [start, end];
+ * 记号与链接地址属于它的元素,元素展开时才画出来;文字永远画。 */
+function tokenize(md, base, f, parents, groups) {
+  const out = []; let i = 0, buf = '', bufFrom = 0;
+  const flush = () => { if (buf) { out.push({ k: 'text', s: buf, from: base + bufFrom, f: { ...f }, g: parents }); buf = ''; } };
+  const group = (kind, len) => { const g = { id: groups.length, kind, start: base + i, end: base + i + len }; groups.push(g); return [...parents, g.id]; };
+  while (i < md.length) {
+    const c = md[i], rest = md.slice(i), two = md.substr(i, 2);
+    if (c === '`') {
+      const j = md.indexOf('`', i + 1);
+      if (j > i) { flush(); const gp = group('行内码', j + 1 - i);
+        out.push({ k: 'mark', s: '`', from: base + i, g: gp, f: { ...f, code: true } }, { k: 'text', s: md.slice(i + 1, j), from: base + i + 1, f: { ...f, code: true }, g: gp }, { k: 'mark', s: '`', from: base + j, g: gp, f: { ...f, code: true } });
+        i = j + 1; bufFrom = i; continue; }
+    }
+    if (c === '[') {
+      const m = rest.match(/^\[([^\]]*)\]\(([^)\s]*)\)/);
+      if (m) { flush(); const gp = group('链接', m[0].length); const t = m[1].length;
+        out.push({ k: 'mark', s: '[', from: base + i, g: gp }, ...tokenize(m[1], base + i + 1, { ...f, link: true }, gp, groups),
+          { k: 'mark', s: '](', from: base + i + 1 + t, g: gp }, { k: 'url', s: m[2], from: base + i + 3 + t, g: gp }, { k: 'mark', s: ')', from: base + i + 3 + t + m[2].length, g: gp });
+        i += m[0].length; bufFrom = i; continue; }
+    }
+    if (two === '**' || two === '__' || two === '~~') {
+      const j = md.indexOf(two, i + 2);
+      if (j > i + 2) { flush(); const gp = group(two === '~~' ? '删除线' : '粗体', j + 2 - i);
+        out.push({ k: 'mark', s: two, from: base + i, g: gp }, ...tokenize(md.slice(i + 2, j), base + i + 2, { ...f, [two === '~~' ? 'del' : 'b']: true }, gp, groups), { k: 'mark', s: two, from: base + j, g: gp });
+        i = j + 2; bufFrom = i; continue; }
+    }
+    if ((c === '*' || c === '_') && md[i + 1] && md[i + 1] !== ' ' && md[i + 1] !== c && !(c === '_' && /\w/.test(md[i - 1] || ''))) {
+      let j = i + 1; while (j < md.length && !(md[j] === c && md[j - 1] !== ' ' && md[j + 1] !== c && md[j - 1] !== c)) j++;
+      if (j < md.length && j > i + 1) { flush(); const gp = group('斜体', j + 1 - i);
+        out.push({ k: 'mark', s: c, from: base + i, g: gp }, ...tokenize(md.slice(i + 1, j), base + i + 1, { ...f, i: true }, gp, groups), { k: 'mark', s: c, from: base + j, g: gp });
+        i = j + 1; bufFrom = i; continue; }
+    }
+    if (!buf) bufFrom = i;
+    buf += c; i++;
+  }
+  flush(); return out;
+}
+function analyze(u, v) {
+  const groups = [], tokens = [];
+  if (isList(u)) { tokens.push(...tokenize(v, 0, {}, [], groups)); return { tokens, groups }; }
+  let off = 0;
+  v.split('\n').forEach((line, n) => {
+    if (n) { tokens.push({ k: 'text', s: '\n', from: off - 1, f: {}, g: [] }); }
+    const m = u.type === 'heading' ? line.match(/^(#{1,6}\s+)(.*)$/) : u.type === 'quote' ? line.match(/^(>\s?)(.*)$/) : null;
+    if (m) {
+      const g = { id: groups.length, kind: u.type === 'heading' ? '标题记号' : '引用记号', start: off, end: off + m[1].length }; groups.push(g);
+      tokens.push({ k: 'mark', s: m[1], from: off, g: [g.id] }, ...tokenize(m[2], off + m[1].length, {}, [], groups));
+    } else tokens.push(...tokenize(line, off, {}, [], groups));
+    off += line.length + 1;
+  });
+  return { tokens, groups };
+}
+
+/* ── 展开规则:两档是两个可替换的规则对象 ─────────────────────── */
+const REVEAL = {
+  element: (groups, a, b) => new Set(groups.filter(g => g.start <= b && g.end >= a).map(g => g.id)),
+  block: groups => new Set(groups.map(g => g.id)),
+  none: () => new Set(),
+};
+const PREFIX_KINDS = new Set(['标题记号', '引用记号']);
+const MARK_OF = { 粗体: '**', 斜体: '*', 行内码: '`', 删除线: '~~' };
+/**
+ * 不显示记号档的「光标规范位置」。两个看得见的字之间藏着记号时,原文里有好几个位置在屏幕上一模一样;
+ * 规则只有一条:**跟左边那个字走**(Word / Google Docs 同一条)——粗体结尾后面打字仍是粗体,粗体开头前面打字是普通字。
+ * 唯一的例外是行首的 `## ` / `> `:光标永远落在它们后面,否则打字会把标题拆坏。
+ */
+function canonical(an, vis, len, vo) {
+  let pos = vo <= 0 ? 0 : vis[vo - 1] + 1;
+  let moved = true;
+  while (moved) { moved = false; for (const g of an.groups) if (PREFIX_KINDS.has(g.kind) && g.start === pos) { pos = g.end; moved = true; } }
+  return Math.min(pos, len);
+}
+/** 光标此刻「在里面」的元素(严格在两端记号之间),由内到外。 */
+const insideGroups = (an, pos) => an.groups.filter(g => !PREFIX_KINDS.has(g.kind) && g.start < pos && pos < g.end).sort((x, y) => (x.end - x.start) - (y.end - y.start));
+/** 画:返回 HTML 与「屏幕上第 n 个字 = 原文第几个字」的表。 */
+function paint({ tokens }, revealed, cur) {
+  const vis = []; let html = '', openCode = null;
+  const isCur = t => cur !== undefined && cur !== null && t.g && t.g.includes(cur);
+  for (const t of tokens) {
+    const own = t.g && t.g.length ? t.g[t.g.length - 1] : null;
+    const show = t.k === 'text' || (own !== null && revealed.has(own));
+    if (!show) continue;
+    const f = t.f || {};
+    /* 行内码是**一颗**小底:两个反引号和里面的字装进同一个 .ic,而不是每段各起一颗(那会画成三颗药丸)。 */
+    const codeId = f.code ? own : null;
+    if (codeId !== openCode) {
+      if (openCode !== null) html += '</span>';
+      if (codeId !== null) html += `<span class="ic${isCur(t) ? ' cur' : ''}">`;
+      openCode = codeId;
+    }
+    for (let n = 0; n < t.s.length; n++) vis.push(t.from + n);
+    if (t.k !== 'text') { html += `<span class="${t.k === 'url' ? 'url' : 'mk'}">${esc(t.s)}</span>`; continue; }
+    const cls = [f.b && 'b', f.i && 'i', f.del && 'del', f.link && 'lk', !f.code && isCur(t) && 'cur'].filter(Boolean).join(' ');
+    html += cls ? `<span class="${cls}">${esc(t.s)}</span>` : esc(t.s);
+  }
+  if (openCode !== null) html += '</span>';
+  return { html, vis };
+}
+const sourceToView = (vis, s) => { let n = 0; while (n < vis.length && vis[n] < s) n++; return n; };
+function viewToSource(vis, len, vo, prefer) {
+  const lo = vo <= 0 ? 0 : vis[vo - 1] + 1;
+  const hi = vo >= vis.length ? len : vis[vo];
+  return lo >= hi ? lo : prefer === 'high' ? hi : lo;
+}
+const sameSet = (a, b) => a.size === b.size && [...a].every(x => b.has(x));
+
+/* ── 渲染 ───────────────────────────────────────────────── */
+
+
+const docEl = document.getElementById('doc');
+const wrap = document.getElementById('docwrap');
+function render() {
+  document.querySelectorAll('[data-width]').forEach(b => b.classList.toggle('on', b.dataset.width === S.width));
+  document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === S.mode));
+  document.getElementById('host').className = 'host ' + S.width;
+  document.getElementById('hosttitle').textContent = `${S.width === 'drawer' ? '计划抽屉' : '我的清单面板'} · 展开粒度：${{ element: '元素', block: '整块', none: '不显示记号' }[S.mode]}`;
+  const units = parse(lines()); const out = []; let k = 0;
+  while (k < units.length) {
+    const u = units[k];
+    if (isList(u)) { const items = []; while (k < units.length && isList(units[k])) { items.push(unitHtml(units[k])); k++; } out.push(`<ul class="list" data-prose="text">${items.join('')}</ul>`); continue; }
+    out.push(unitHtml(u)); k++;
+  }
+  patchDom(docEl, `<div class="flow">${out.join('')}</div>`);
+  renderRaw();
+  if (S.active) { applySelection(); scrollCaretIntoView(); }
+  readout();
+}
+function unitHtml(u) {
+  const a = S.active && S.active.start === u.start ? S.active : null;
+  const v = a ? a.value : editValue(u);
+  const an = analyze(u, v);
+  let revealed = new Set();
+  if (a) { revealed = REVEAL[S.mode](an.groups, Math.min(a.anchor, a.focus), Math.max(a.anchor, a.focus)); a.revealed = revealed; a.an = an; }
+  const cur = a && S.mode === 'none' ? (insideGroups(an, a.focus)[0] || {}).id : null;
+  if (a) a.cur = cur;
+  const p = paint(an, revealed, cur); if (a) a.vis = p.vis;
+  const body = p.html + (a && v.endsWith('\n') ? '<br>' : '');
+  const ce = a ? ` contenteditable="true" spellcheck="false" role="textbox"` : '';
+  const cx = `cx${a ? ' ed' : ''}`;
+  if (isList(u)) {
+    const cb = u.type === 'task' ? `<button class="cb" data-act="toggle" data-line="${u.start}" tabindex="-1">${CHECK}</button>` : '';
+    const style = u.indent ? ` style="margin-left:${Math.floor(u.indent / 2) * 26}px"` : '';
+    return `<li class="li u${u.type === 'task' ? ' task' : ''}${u.done ? ' done' : ''}${a ? ' act' : ''}"${style} data-u="${u.start}">${cb}<div class="${cx}"${ce}>${body || (a ? '' : '&#8203;')}</div></li>`;
+  }
+  if (u.type === 'heading') return `<div class="h${u.level} u ${cx}" data-prose="h${u.level}" data-u="${u.start}"${ce}>${body}</div>`;
+  if (u.type === 'quote') return `<blockquote class="quote u" data-prose="text" data-u="${u.start}"><div class="p ${cx}"${ce}>${body}</div></blockquote>`;
+  return `<p class="p u ${cx}" data-prose="text" data-u="${u.start}"${ce}>${body}</p>`;
+}
+function renderRaw() {
+  const pool = new Map(); ORIGINAL.split('\n').forEach(l => pool.set(l, (pool.get(l) || 0) + 1)); let n = 0;
+  document.getElementById('raw').innerHTML = S.src.split('\n').map((l, i) => {
+    const c = pool.get(l) || 0; if (c) pool.set(l, c - 1); else n++;
+    return `<div class="rl${c ? '' : ' chg'}"><span class="n">${i + 1}</span><span>${esc(l) || ' '}</span></div>`;
+  }).join('');
+  document.getElementById('chgcount').textContent = n ? `改动 ${n} 行` : '未改动';
+}
+
+/* ── 只改变了的地方 ───────────────────────────────────────────
+ * 从前每次光标移动都把整张列表的 innerHTML 换掉:鼠标底下那一行变成一个**新元素**,新元素还没被判成
+ * :hover,悬停底色先掉成透明、再按 120ms 过渡淡回来 —— 就是那一下闪。
+ * 现在按位置逐个比:同标签、同 data-u 的节点**留着**,只同步属性、只往下改真正不同的子树。
+ * (React 实现里这是 key 稳定的列表自然得到的;样例里手写一个最小版。) */
+function patchDom(parent, html) {
+  const tpl = document.createElement('template'); tpl.innerHTML = html;
+  patchChildren(parent, tpl.content);
+}
+function patchChildren(oldParent, newParent) {
+  const olds = [...oldParent.childNodes], news = [...newParent.childNodes];
+  news.forEach((n, i) => {
+    const o = olds[i];
+    if (!o) { oldParent.appendChild(n); return; }
+    if (!sameKind(o, n)) { oldParent.replaceChild(n, o); return; }
+    if (n.nodeType === 3) { if (o.nodeValue !== n.nodeValue) o.nodeValue = n.nodeValue; return; }
+    if (o.outerHTML === n.outerHTML) return;
+    for (const { name } of [...o.attributes]) if (!n.hasAttribute(name)) o.removeAttribute(name);
+    for (const { name, value } of [...n.attributes]) if (o.getAttribute(name) !== value) o.setAttribute(name, value);
+    if (o.innerHTML !== n.innerHTML) patchChildren(o, n);
+  });
+  for (let i = olds.length - 1; i >= news.length; i--) olds[i].remove();
+}
+function sameKind(o, n) {
+  if (o.nodeType !== n.nodeType) return false;
+  if (o.nodeType !== 1) return true;
+  return o.tagName === n.tagName && o.getAttribute('data-u') === n.getAttribute('data-u');
+}
+
+
+
+/* ════════════════════════════════════════════════════════════════════
+ * 光标模型(本页的核心,方案 §6 的样例实现)
+ *
+ * 一条总则:**同一个画面 + 同一个动作 = 同一个结果**。结果只取决于「现在屏幕上是什么、光标在哪」,
+ * 不取决于你之前按过什么 —— 唯一有意保留的历史是「目标列」,而且它的寿命写死(见 goal)。
+ *
+ * 为此光标只有一个产地:
+ *   · 光标是文档级的一个位置 { 哪一项, 原文第几个字(anchor / focus), 目标列 }。屏幕上的选区只是它的投影。
+ *   · 所有导航键(←→↑↓、⌥/⌘ 组合、Home/End、⇧ 扩选)都在 keydown 里由这一处算完、画完,不交给浏览器。
+ *     浏览器自带的移动(selection.modify)只在这一处当「量尺」同步调用一次:它最懂字形簇、单词和行尾。
+ *   · 鼠标:按下时按「当前画面」量,一律取靠左的那个原文位置(bias low),不看之前光标在哪。
+ *   · 结构编辑(拆项、并项、降级、缩进、勾选)和打字进同一个撤销历史;撤销把光标放回改动发生的地方。
+ * ════════════════════════════════════════════════════════════════════ */
+const edEl = () => docEl.querySelector('.ed');
+function viewOffsetOf(root, node, offset) { const r = document.createRange(); r.setStart(root, 0); try { r.setEnd(node, offset); } catch { return 0; } return r.toString().length; }
+function domPoint(root, vo) {
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let acc = 0, n, last = null;
+  while ((n = w.nextNode())) { last = n; if (acc + n.length >= vo) return { node: n, offset: vo - acc }; acc += n.length; }
+  return last ? { node: last, offset: last.length } : { node: root, offset: 0 };
+}
+/** 屏幕位置 → 原文位置。bias:两个看得见的字之间藏着记号时取哪边。不显示记号档只有一个规范位置,不看 bias。 */
+function resolve(a, vo, bias) {
+  const len = a.value.length;
+  if (vo === Infinity) return len;
+  return S.mode === 'none' ? canonical(a.an, a.vis, len, vo) : viewToSource(a.vis, len, vo, bias);
+}
+function applySelection() {
+  const ed = edEl(), a = S.active; if (!ed || !a) return;
+  if (document.activeElement !== ed) ed.focus({ preventScroll: true });
+  const pa = domPoint(ed, sourceToView(a.vis, a.anchor)), pf = domPoint(ed, sourceToView(a.vis, a.focus));
+  getSelection().setBaseAndExtent(pa.node, pa.offset, pf.node, pf.offset);
+}
+function lineHeightOf(el) { return parseFloat(getComputedStyle(el).lineHeight) || 22; }
+/** 光标此刻的矩形。折叠选区量不出矩形时(空项、换行之后)临时插一个零宽字量完就拿掉。 */
+function caretRect() {
+  const ed = edEl(), a = S.active;
+  const p = domPoint(ed, sourceToView(a.vis, a.focus));
+  const r = document.createRange(); r.setStart(p.node, p.offset); r.collapse(true);
+  let rect = r.getClientRects()[0];
+  if (!rect) { const m = document.createElement('span'); m.textContent = '​'; r.insertNode(m); rect = m.getBoundingClientRect(); m.remove(); ed.normalize(); applySelection(); }
+  return rect;
+}
+function scrollCaretIntoView() {
+  if (!S.active || !edEl()) return;
+  const r = caretRect(), w = wrap.getBoundingClientRect(), pad = 8;
+  if (r.bottom > w.bottom - pad) wrap.scrollTop += r.bottom - w.bottom + pad;
+  else if (r.top < w.top + pad) wrap.scrollTop -= w.top + pad - r.top;
+  const r2 = caretRect();
+  if (r2.bottom > innerHeight - pad) scrollBy(0, r2.bottom - innerHeight + pad); else if (r2.top < pad) scrollBy(0, r2.top - pad);
+}
+/** 模型变了之后唯一的收尾:算展开集合 → 需要才重画这一项 → 选区对上模型 → 光标滚进可视区 → 读数。 */
+function refresh(force) {
+  const a = S.active, ed = edEl(); if (!a || !ed) return;
+  const an = analyze(a.unit, a.value);
+  const lo = Math.min(a.anchor, a.focus), hi = Math.max(a.anchor, a.focus);
+  const next = REVEAL[S.mode](an.groups, lo, hi);
+  const cur = S.mode === 'none' ? (insideGroups(an, a.focus)[0] || {}).id : null;
+  a.an = an;
+  if (force || !a.revealed || !sameSet(next, a.revealed) || cur !== a.cur) {
+    a.revealed = next; a.cur = cur;
+    const p = paint(an, next, cur); a.vis = p.vis;
+    ed.innerHTML = p.html + (a.value.endsWith('\n') ? '<br>' : '');
+  }
+  applySelection(); scrollCaretIntoView(); readout();
+}
+
+/* ── 进出一项 ─────────────────────────────────────────────── */
+function open(start, anchor, focus) {
+  const u = unitAt(start); if (!u) { S.active = null; render(); return; }
+  const value = editValue(u);
+  const clamp = x => Math.max(0, Math.min(value.length, x === 'end' ? value.length : x));
+  S.active = { start, unit: u, span: u.end - u.start + 1, value, anchor: clamp(anchor), focus: clamp(focus ?? anchor), goalX: undefined, goalFor: undefined, composing: false, pointer: false };
+  if (S.mode === 'none') {
+    const a = S.active; a.an = analyze(u, value); a.vis = paint(a.an, new Set()).vis;
+    a.focus = resolve(a, sourceToView(a.vis, a.focus), 'low');
+    a.anchor = (focus === undefined || anchor === focus) ? a.focus : resolve(a, sourceToView(a.vis, a.anchor), 'low');
+  }
+  render();
+}
+function close() { S.active = null; render(); }
+/** 光标所在项的原文随改随写回文档(不等「离开这一项」):撤销、原文面板、跨项操作看到的永远是同一份。 */
+function writeThrough() {
+  const a = S.active; const L = lines();
+  const next = linesFromEdit(a.unit, a.value);
+  L.splice(a.start, a.span, ...next); a.span = next.length; setLines(L); renderRaw();
+}
+const neighbour = d => { const all = parse(lines()); const i = all.findIndex(u => u.start === S.active.start); return all[i + d]; };
+
+/* ── 撤销:一条文档级历史 ─────────────────────────────────────
+ * 打字在同一项里 600ms 内合并成一步;结构编辑(拆项 / 并项 / 缩进 / 勾选 / 加格式)每次单独一步。
+ * 撤销恢复整份原文,并把光标放回改动之前的位置 —— 不管你之后去了哪一项。 */
+function snapshot(kind) {
+  const h = S.hist, a = S.active, now = Date.now(), key = a ? a.start : null;
+  if (kind === 'type' && now - h.t < 600 && h.key === key) { h.t = now; return; }
+  h.undo.push({ src: S.src, caret: a && { start: a.start, anchor: a.anchor, focus: a.focus } }); h.redo = [];
+  h.t = kind === 'type' ? now : 0; h.key = key;
+}
+function undoRedo(redo) {
+  const h = S.hist, from = redo ? h.redo : h.undo, to = redo ? h.undo : h.redo; const st = from.pop(); if (!st) return;
+  const a = S.active; to.push({ src: S.src, caret: a && { start: a.start, anchor: a.anchor, focus: a.focus } });
+  S.src = st.src; h.t = 0;
+  if (st.caret && unitAt(st.caret.start)) open(st.caret.start, st.caret.anchor, st.caret.focus); else close();
+}
+
+/* ── 改原文 ───────────────────────────────────────────────── */
+function replaceRange(from, to, text, kind = 'type') {
+  const a = S.active; snapshot(kind);
+  if (isList(a.unit) || a.unit.type === 'heading') text = text.replace(/\n/g, ' ');
+  a.value = a.value.slice(0, from) + text + a.value.slice(to);
+  a.anchor = a.focus = from + text.length;
+  if (S.mode === 'none') { if (text) a.freshPair = undefined; dropEmptyElements(a); }
+  a.sticky = undefined; a.goalX = undefined;
+  const spanBefore = a.span; writeThrough();
+  if (a.span !== spanBefore) render(); else refresh(true);   // 行数变了:后面各项的行号都变了,整篇对一遍
+}
+/** 不显示记号档:内容被删空的元素连记号一起拿掉;光标正夹在中间、刚用 ⌘B 插进来的那一对留着。 */
+function dropEmptyElements(s) {
+  const re = /\*\*\*\*|~~~~|``/g; let m, v = s.value, out = '', last = 0, caret = s.focus;
+  while ((m = re.exec(v))) {
+    const mid = m.index + m[0].length / 2;
+    if (s.freshPair !== undefined && mid === s.freshPair && mid === s.focus) continue;
+    out += v.slice(last, m.index); last = m.index + m[0].length;
+    if (m.index < s.focus) caret -= Math.min(m[0].length, s.focus - m.index);
+  }
+  s.value = out + v.slice(last); s.anchor = s.focus = caret;
+}
+const seg = typeof Intl !== 'undefined' && Intl.Segmenter ? new Intl.Segmenter('zh', { granularity: 'grapheme' }) : null;
+/** 光标左 / 右边**看得见的**那一个字形簇(emoji 算一个),返回它在原文里的区间;没有就 null。 */
+function visibleCluster(a, dir) {
+  const v = a.value;
+  const idx = dir < 0 ? [...a.vis].reverse().find(x => x < a.focus) : a.vis.find(x => x >= a.focus);
+  if (idx === undefined) return null;
+  if (!seg) return [idx, idx + 1];
+  for (const g of seg.segment(v)) if (g.index <= idx && idx < g.index + g.segment.length) return [g.index, g.index + g.segment.length];
+  return [idx, idx + 1];
+}
+
+/* ── 结构编辑:每一条都保留光标(键盘动作永远不让光标消失,只有 Esc 和点到外面会) ── */
+function withLines(fn) { snapshot('struct'); const L = lines(); fn(L); setLines(L); }
+function enter() {
+  const a = S.active, u = a.unit, pos = a.focus, v = a.value;
+  if (isList(u)) {
+    if (!v.trim()) {                                   // 空项回车:有缩进先退一层,没有就删掉这项回到上一项末尾
+      if (u.indent > 0) return indent(-1);
+      const prev = neighbour(-1), next = neighbour(1);
+      withLines(L => L.splice(u.start, 1));
+      return prev ? open(prev.start, 'end') : next ? open(next.start - 1, 0) : close();
+    }
+    withLines(L => L.splice(u.start, 1, prefixOf(u) + v.slice(0, pos), continuedPrefix(u) + v.slice(pos).replace(/^\s+/, '')));
+    return open(u.start + 1, 0);
+  }
+  if (u.type === 'heading') {                          // 标题回车:光标后面的字带着,新起一个待办项
+    const pre = (v.match(/^#{1,6}\s+/) || [''])[0]; const at = Math.max(pos, pre.length);
+    withLines(L => L.splice(u.start, 1, v.slice(0, at), '- [ ] ' + v.slice(at).replace(/^\s+/, '')));
+    return open(u.start + 1, 0);
+  }
+  replaceRange(pos, Math.max(a.anchor, a.focus), '\n', 'struct');   // 段落 / 引用:换行
+}
+function indent(d) {
+  const a = S.active, u = a.unit; if (!isList(u)) return;
+  const keep = { anchor: a.anchor, focus: a.focus };
+  withLines(L => { L[u.start] = d > 0 ? '  ' + L[u.start] : L[u.start].replace(/^ {1,2}/, ''); });
+  open(u.start, keep.anchor, keep.focus);
+}
+/** 行首退格(光标左边在这一项里没有看得见的字):按顺序 —— 空项删掉 → 标题 / 引用降成段落 → 缩进的项退一层 → 并到上一项 → 列表项变段落。 */
+function backspaceAtStart() {
+  const a = S.active, u = a.unit, v = a.value, prev = neighbour(-1);
+  if (!v.replace(/^(#{1,6}\s+|>\s?)/, '').length && prev) { withLines(L => L.splice(u.start, u.end - u.start + 1)); return open(prev.start, 'end'); }
+  if (u.type === 'heading' || u.type === 'quote') { withLines(L => { L.splice(u.start, u.end - u.start + 1, ...v.split('\n').map(l => l.replace(/^(#{1,6}\s+|>\s?)/, ''))); }); return open(u.start, 0); }
+  if (isList(u) && u.indent > 0) return indent(-1);
+  if (prev && (isList(prev) || prev.type === 'para') && (isList(u) || u.type === 'para')) {
+    const pv = editValue(prev); const text = v.split('\n').join(' ');
+    withLines(L => {
+      const merged = isList(prev) ? prefixOf(prev) + pv + text : L[prev.end] + text;
+      L.splice(prev.end, 1, merged);
+      L.splice(u.start, u.end - u.start + 1);
+    });
+    return open(prev.start, isList(prev) ? pv.length : pv.length);
+  }
+  if (isList(u)) { withLines(L => { L[u.start] = v; }); return open(u.start, 0); }
+}
+/** 行尾 Delete(光标右边在这一项里没有看得见的字):把下一项的文字并进来,光标不动。 */
+function deleteAtEnd() {
+  const a = S.active, u = a.unit, next = neighbour(1);
+  if (!next || !(isList(next) || next.type === 'para') || !(isList(u) || u.type === 'para')) return;
+  const keep = a.focus; const nv = editValue(next).split('\n').join(' ');
+  withLines(L => { L.splice(next.start, next.end - next.start + 1); L[u.end] = L[u.end] + nv; });
+  open(u.start, keep);
+}
+
+/* ── ⌘B / ⌘I / ⌘E(规则照 Word,见上一轮说明)──────────────────── */
+function toggleMark(kind) {
+  const s = S.active; const mark = MARK_OF[kind]; const L = mark.length;
+  const an = analyze(s.unit, s.value); const v = s.value;
+  let a = Math.min(s.anchor, s.focus), b = Math.max(s.anchor, s.focus);
+  if (a === b) {
+    const inner = an.groups.find(g => g.kind === kind && g.start < a && a < g.end);
+    if (inner && (a === inner.end - L || a === inner.start + L)) { s.anchor = s.focus = s.sticky = a === inner.end - L ? inner.end : inner.start; refresh(true); return; }
+    const outer = an.groups.find(g => g.kind === kind && (g.end === a || g.start === a));
+    if (outer) { s.anchor = s.focus = s.sticky = outer.end === a ? outer.end - L : outer.start + L; refresh(true); return; }
+    snapshot('struct');
+    if (inner) { s.value = v.slice(0, inner.start) + v.slice(inner.start + L, inner.end - L) + v.slice(inner.end); s.anchor = s.focus = a - L; }
+    else { s.value = v.slice(0, a) + mark + mark + v.slice(a); s.anchor = s.focus = s.freshPair = a + L; }
+    writeThrough(); refresh(true); return;
+  }
+  while (a < b && /\s/.test(v[a])) a++; while (b > a && /\s/.test(v[b - 1])) b--;
+  let grew = true;
+  while (grew) { grew = false; for (const g of an.groups) { if (PREFIX_KINDS.has(g.kind)) continue; const ia = g.start < a && a < g.end, ib = g.start < b && b < g.end; if (ia !== ib) { const na = Math.min(a, g.start), nb = Math.max(b, g.end); if (na !== a || nb !== b) { a = na; b = nb; grew = true; } } } }
+  snapshot('struct');
+  const same = an.groups.find(g => g.kind === kind && ((g.start === a && g.end === b) || (g.start + L === a && g.end - L === b)));
+  if (same) { s.value = v.slice(0, same.start) + v.slice(same.start + L, same.end - L) + v.slice(same.end); s.anchor = same.start; s.focus = same.end - 2 * L; }
+  else { s.value = v.slice(0, a) + mark + v.slice(a, b) + mark + v.slice(b); s.anchor = a + L; s.focus = b + L; }
+  writeThrough(); refresh(true);
+}
+
+/* ── 导航:全部在这里 ─────────────────────────────────────────── */
+/**
+ * 水平移动。granularity:character / word / lineboundary。
+ * 用浏览器的 selection.modify 在**当前画面**上同步量一步,读回屏幕位置,按方向取原文位置(往右取靠左、往左取靠右:
+ * 从哪边来就停在记号的哪一侧),同一个事件里重画 —— 浏览器来不及画出中间态。
+ * 量完屏幕位置没变 = 到了这一项的头 / 尾:不带 ⇧ 时进上 / 下一项,带 ⇧ 时停住(跨项选区不做)。
+ */
+function moveHorizontal(dir, gran, extend) {
+  const a = S.active, ed = edEl(), sel = getSelection();
+  a.goalX = undefined; a.sticky = undefined;
+  if (!extend && a.anchor !== a.focus && gran === 'character') {   // 有选区时按 ← → 先收拢到那一侧
+    a.anchor = a.focus = dir === 'forward' ? Math.max(a.anchor, a.focus) : Math.min(a.anchor, a.focus); refresh(false); return;
+  }
+  const before = sourceToView(a.vis, a.focus);
+  sel.modify(extend ? 'extend' : 'move', dir, gran);
+  const vo = sel.focusNode && ed.contains(sel.focusNode) ? viewOffsetOf(ed, sel.focusNode, sel.focusOffset) : before;
+  if (vo === before && gran !== 'lineboundary') {
+    const t = neighbour(dir === 'forward' ? 1 : -1);
+    if (!extend && t) { open(t.start, dir === 'forward' ? 0 : 'end'); return; }
+    applySelection(); return;
+  }
+  const p = resolve(a, vo, gran === 'lineboundary' ? 'high' : dir === 'forward' ? 'low' : 'high');
+  a.focus = p; if (!extend) a.anchor = p;
+  refresh(false);
+}
+/**
+ * 垂直移动。目标列 goalX:第一次按 ↑↓ 时取光标的横坐标,之后**只要光标没被别的动作挪过**就一直沿用;
+ * 同一项里的折行与跨项用的是同一个目标列、同一种量法(在目标行上按横坐标取最近的字),所以一串 ↑↓ 不漂。
+ * 到了这一项的第一 / 最后一行:进上 / 下一项;已经是整篇第一 / 最后一项:光标不动。带 ⇧:扩到这一项的头 / 尾。
+ */
+function moveVertical(up, extend) {
+  const a = S.active, ed = edEl();
+  ed.scrollIntoView({ block: 'nearest' });   // 量之前这一项必须在窗口里:浏览器只肯告诉你窗口里的点下面是哪个字
+  const goalValid = a.goalX !== undefined && a.goalFor === a.focus;
+  const r = withResting((clone, vis, an) => {
+    const cr = rectAt(clone, sourceToView(vis, a.focus)), lh = lineHeightOf(clone), box = clone.getBoundingClientRect();
+    const x = goalValid ? a.goalX : cr.left;
+    const y = up ? cr.top - lh / 2 : cr.bottom + lh / 2;
+    if (y > box.top + 2 && y < box.bottom - 2) {
+      const vo = offsetAtPoint(clone, x, y), len = a.value.length;
+      return { x, focus: vo === Infinity ? len : S.mode === 'none' ? canonical(an, vis, len, vo) : viewToSource(vis, len, vo, 'low') };
+    }
+    return { x };
+  });
+  if (r.focus !== undefined) { a.focus = r.focus; if (!extend) a.anchor = a.focus; refresh(false); a.goalX = r.x; a.goalFor = a.focus; return; }
+  if (extend) { a.focus = up ? 0 : a.value.length; refresh(false); return; }
+  const t = neighbour(up ? -1 : 1);
+  if (!t) { a.goalX = r.x; a.goalFor = a.focus; return; }
+  moveToUnit(t, { x: r.x, edge: up ? 'bottom' : 'top' });
+}
+/**
+ * 「静止画面」量尺:所有横坐标(目标列)都在**记号全部收起**的画面上量 —— 未打开的项本来就是这个样子,
+ * 打开着的项临时叠一个不可见的同位置副本来量。这样一串 ↑↓ 无论经过的项此刻展没展开,用的都是同一把尺子,
+ * 走过去再走回来落在同一个字上。(副本不可见但必须可被命中测试,所以用 opacity 而不是 visibility。)
+ */
+function withResting(fn) {
+  const a = S.active, ed = edEl();
+  const an = analyze(a.unit, a.value), p = paint(an, new Set(), null);
+  const clone = ed.cloneNode(false);
+  clone.removeAttribute('contenteditable'); clone.classList.remove('ed');
+  clone.innerHTML = p.html + (a.value.endsWith('\n') ? '<br>' : '');
+  Object.assign(clone.style, { position: 'absolute', left: ed.offsetLeft + 'px', top: ed.offsetTop + 'px', width: ed.offsetWidth + 'px', margin: '0', opacity: '0', zIndex: '50' });
+  ed.parentNode.insertBefore(clone, ed.nextSibling);
+  try { return fn(clone, p.vis, an); } finally { clone.remove(); }
+}
+function rectAt(root, vo) {
+  const pt = domPoint(root, vo); const r = document.createRange(); r.setStart(pt.node, pt.offset); r.collapse(true);
+  let rect = r.getClientRects()[0];
+  if (!rect) { const m = document.createElement('span'); m.textContent = '\u200b'; r.insertNode(m); rect = m.getBoundingClientRect(); m.remove(); root.normalize(); }
+  return rect;
+}
+/** 进到另一项:在它**还没打开**时按「当前画面」量(和鼠标点下去量的是同一个画面)。 */
+function moveToUnit(target, where) {
+  const el = docEl.querySelector(`[data-u="${target.start}"]`);
+  const cx = el.matches('.cx') ? el : el.querySelector('.cx');
+  // 浏览器只肯告诉你「窗口里」某个点下面是哪个字:先把目标滚进窗口(列表和整页都滚),再量
+  cx.scrollIntoView({ block: 'nearest' });
+  const r = cx.getBoundingClientRect();
+  const vo = offsetAtPoint(cx, where.x, where.edge === 'bottom' ? r.bottom - 4 : r.top + 4);
+  const v = editValue(target), an = analyze(target, v), vis = paint(an, new Set()).vis;
+  const caret = vo === Infinity ? v.length : S.mode === 'none' ? canonical(an, vis, v.length, vo) : viewToSource(vis, v.length, vo, 'low');
+  open(target.start, caret);
+  S.active.goalX = where.x; S.active.goalFor = S.active.focus;
+}
+function moveDocEdge(toEnd, extend) {
+  if (extend) { const a = S.active; a.focus = toEnd ? a.value.length : 0; a.goalX = undefined; refresh(false); return; }
+  const all = parse(lines()); const t = toEnd ? all[all.length - 1] : all[0];
+  open(t.start, toEnd ? 'end' : 0);
+}
+
+/* ── 键盘 ───────────────────────────────────────────────────── */
+docEl.addEventListener('keydown', e => {
+  const a = S.active; const ed = e.target.closest && e.target.closest('.ed'); if (!a || !ed) return;
+  if (a.composing || e.isComposing || e.keyCode === 229) return;          // 组字中:一切交给输入法
+  const mod = e.metaKey || e.ctrlKey, k = e.key;
+  const nav = {
+    ArrowLeft: () => moveHorizontal('backward', mod ? 'lineboundary' : e.altKey ? 'word' : 'character', e.shiftKey),
+    ArrowRight: () => moveHorizontal('forward', mod ? 'lineboundary' : e.altKey ? 'word' : 'character', e.shiftKey),
+    ArrowUp: () => mod ? moveDocEdge(false, e.shiftKey) : moveVertical(true, e.shiftKey),
+    ArrowDown: () => mod ? moveDocEdge(true, e.shiftKey) : moveVertical(false, e.shiftKey),
+    Home: () => moveHorizontal('backward', 'lineboundary', e.shiftKey),
+    End: () => moveHorizontal('forward', 'lineboundary', e.shiftKey),
+  }[k];
+  if (nav) { e.preventDefault(); nav(); return; }
+  if (mod && k.toLowerCase() === 'z') { e.preventDefault(); undoRedo(e.shiftKey); return; }
+  if (mod && ['b', 'i', 'e'].includes(k.toLowerCase())) { e.preventDefault(); toggleMark({ b: '粗体', i: '斜体', e: '行内码' }[k.toLowerCase()]); return; }
+  if (mod && k.toLowerCase() === 'a') { e.preventDefault(); a.anchor = 0; a.focus = a.value.length; refresh(false); return; }
+  if (k === 'Escape') { e.preventDefault(); close(); return; }
+  if (k === 'Enter') { e.preventDefault(); if (mod) close(); else if (!(e.shiftKey && isList(a.unit))) enter(); return; }
+  if (k === 'Tab' && isList(a.unit)) { e.preventDefault(); indent(e.shiftKey ? -1 : 1); return; }
+});
+docEl.addEventListener('beforeinput', e => {
+  const a = S.active; if (!a || !e.target.closest || !e.target.closest('.ed')) return;
+  if (a.composing || /Composition/.test(e.inputType)) return;
+  e.preventDefault();
+  const lo = Math.min(a.anchor, a.focus), hi = Math.max(a.anchor, a.focus);
+  const range = (dir, gran) => { const sel = getSelection(); sel.modify('extend', dir, gran); const vo = viewOffsetOf(edEl(), sel.focusNode, sel.focusOffset); const p = resolve(a, vo, dir === 'forward' ? 'low' : 'high'); applySelection(); return p; };
+  switch (e.inputType) {
+    case 'insertText': case 'insertReplacementText': replaceRange(lo, hi, e.data ?? (e.dataTransfer && e.dataTransfer.getData('text/plain')) ?? ''); break;
+    case 'insertFromPaste': case 'insertFromDrop': replaceRange(lo, hi, e.dataTransfer ? e.dataTransfer.getData('text/plain') : '', 'struct'); break;
+    case 'deleteContentBackward': {
+      if (lo !== hi) { replaceRange(lo, hi, ''); break; }
+      const c = visibleCluster(a, -1); c ? replaceRange(c[0], c[1], '') : backspaceAtStart(); break;
+    }
+    case 'deleteContentForward': {
+      if (lo !== hi) { replaceRange(lo, hi, ''); break; }
+      const c = visibleCluster(a, 1); c ? replaceRange(c[0], c[1], '') : deleteAtEnd(); break;
+    }
+    case 'deleteWordBackward': { if (lo !== hi) { replaceRange(lo, hi, ''); break; } const p = range('backward', 'word'); p < lo ? replaceRange(p, lo, '') : backspaceAtStart(); break; }
+    case 'deleteWordForward': { if (lo !== hi) { replaceRange(lo, hi, ''); break; } const p = range('forward', 'word'); p > hi ? replaceRange(hi, p, '') : deleteAtEnd(); break; }
+    case 'deleteSoftLineBackward': case 'deleteHardLineBackward': { if (lo !== hi) { replaceRange(lo, hi, ''); break; } const p = range('backward', 'lineboundary'); p < lo ? replaceRange(p, lo, '') : backspaceAtStart(); break; }
+    case 'historyUndo': undoRedo(false); break;
+    case 'historyRedo': undoRedo(true); break;
+  }
+});
+// 兜底:任何没经过 beforeinput 的改动(拼写纠正、脚本 execCommand)一律丢弃,从模型重画
+docEl.addEventListener('input', e => { const a = S.active; if (!a || a.composing || !e.target.closest || !e.target.closest('.ed')) return; refresh(true); });
+docEl.addEventListener('compositionstart', () => { const a = S.active; if (!a) return; a.composing = true; a.compSel = [Math.min(a.anchor, a.focus), Math.max(a.anchor, a.focus)]; });
+docEl.addEventListener('compositionend', e => { const a = S.active; if (!a) return; a.composing = false; const [x, y] = a.compSel; replaceRange(x, y, e.data || '', 'struct'); });
+docEl.addEventListener('copy', e => { const a = S.active; if (!a || !e.target.closest('.ed')) return; e.preventDefault(); e.clipboardData.setData('text/plain', a.value.slice(Math.min(a.anchor, a.focus), Math.max(a.anchor, a.focus))); });
+docEl.addEventListener('cut', e => { const a = S.active; if (!a || !e.target.closest('.ed')) return; e.preventDefault(); const lo = Math.min(a.anchor, a.focus), hi = Math.max(a.anchor, a.focus); e.clipboardData.setData('text/plain', a.value.slice(lo, hi)); replaceRange(lo, hi, '', 'struct'); });
+
+/* ── 鼠标:按下即完成,按当前画面量,一律取靠左 ─────────────────────── */
+function nearestUnit(y) { let best = null, bd = Infinity; docEl.querySelectorAll('[data-u]').forEach(el => { const r = el.getBoundingClientRect(); const d = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0; if (d < bd) { bd = d; best = el; } }); return bd <= 24 ? best : null; }
+function offsetAtPoint(el, x, y) {
+  const r = el.getBoundingClientRect(); x = Math.min(Math.max(x, r.left + 1), r.right - 1); y = Math.min(Math.max(y, r.top + 2), r.bottom - 2);
+  let node, off; if (document.caretPositionFromPoint) { const p = document.caretPositionFromPoint(x, y); if (p) { node = p.offsetNode; off = p.offset; } }
+  else if (document.caretRangeFromPoint) { const p = document.caretRangeFromPoint(x, y); if (p) { node = p.startContainer; off = p.startOffset; } }
+  if (!node || !el.contains(node)) return x > r.left + r.width / 2 ? Infinity : 0;
+  return viewOffsetOf(el, node, off);
+}
+wrap.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  const t = e.target;
+  const cb = t.closest('[data-act="toggle"]');
+  if (cb) {
+    e.preventDefault(); const line = +cb.dataset.line; const keep = S.active && { start: S.active.start, anchor: S.active.anchor, focus: S.active.focus };
+    withLines(L => { L[line] = L[line].replace(/\[( |x|X)\]/, m => m === '[ ]' ? '[x]' : '[ ]'); });
+    keep ? open(keep.start, keep.anchor, keep.focus) : render(); return;
+  }
+  const unitEl = t.closest('[data-u]') || nearestUnit(e.clientY);
+  if (!unitEl) { if (S.active) { e.preventDefault(); close(); } return; }
+  e.preventDefault();
+  const start = +unitEl.dataset.u;
+  const cx = unitEl.matches('.cx') ? unitEl : unitEl.querySelector('.cx');
+  const vo = offsetAtPoint(cx, e.clientX, e.clientY);
+  if (S.active && S.active.start === start) {          // 正在编辑的这一项:按它此刻(展开后)的画面量
+    const a = S.active; a.focus = a.anchor = resolve(a, vo, 'low'); a.goalX = undefined; a.sticky = undefined;
+    a.pointer = true; a.dragFrom = a.anchor; refresh(false); return;
+  }
+  const u = unitAt(start), v = editValue(u), an = analyze(u, v), vis = paint(an, new Set()).vis;
+  const caret = vo === Infinity ? v.length : S.mode === 'none' ? canonical(an, vis, v.length, vo) : viewToSource(vis, v.length, vo, 'low');
+  open(start, caret);
+  S.active.pointer = true; S.active.dragFrom = S.active.anchor;
+});
+// 拖选:按下的那一项里跟着鼠标扩选区(跨项不做);量法与按下相同
+document.addEventListener('mousemove', e => {
+  const a = S.active; if (!a || !a.pointer || !(e.buttons & 1)) return;
+  const ed = edEl(); const vo = offsetAtPoint(ed, e.clientX, e.clientY);
+  const f = resolve(a, vo, 'low'); if (f === a.focus) return;
+  a.anchor = a.dragFrom; a.focus = f; applySelection(); readout();
+});
+document.addEventListener('mouseup', () => { const a = S.active; if (a && a.pointer) { a.pointer = false; refresh(false); } });
+document.addEventListener('mousedown', e => { if (S.active && !wrap.contains(e.target) && !e.target.closest('.cases, [data-mode], [data-width], .suite')) close(); }, true);
+
+/* ── 光标读数与自检 ────────────────────────────────────────── */
+function readout() {
+  const el = document.getElementById('readout'); const s = S.active;
+  if (!s) { el.innerHTML = '光标读数：点进任意一项开始'; return; }
+  const a = Math.min(s.anchor, s.focus), b = Math.max(s.anchor, s.focus), v = s.value;
+  const ctx = a === b
+    ? `${esc(v.slice(Math.max(0, a - 14), a))}<span class="caret">‸</span>${esc(v.slice(a, a + 14))}`
+    : `${esc(v.slice(Math.max(0, a - 8), a))}<span class="caret">[</span>${esc(v.slice(a, b))}<span class="caret">]</span>${esc(v.slice(b, b + 8))}`;
+  const groups = s.an ? s.an.groups.filter(g => s.revealed && s.revealed.has(g.id)).map(g => `${g.kind}「${esc(v.slice(g.start, g.end))}」`) : [];
+  // 自检:①屏幕上的光标换算回原文 = 模型里的光标;②光标左右两个原文字符都画在屏幕上
+  let ok = true, why = [];
+  const ed = edEl(), sel = getSelection();
+  if (ed && sel.rangeCount && ed.contains(sel.focusNode)) {
+    const fv = viewOffsetOf(ed, sel.focusNode, sel.focusOffset);
+    if (fv !== sourceToView(s.vis, s.focus)) { ok = false; why.push('屏幕光标与原文位置不一致'); }
+  }
+  const visSet = new Set(s.vis);
+  let typing = '';
+  if (S.mode === 'none') {
+    const an = s.an || analyze(unitAt(s.start), v);
+    const canon = canonical(an, s.vis, v.length, sourceToView(s.vis, s.focus));
+    if (canon !== s.focus && s.sticky !== s.focus) { ok = false; why.push('光标不在规范位置(同一个屏幕位置有两种可能)'); }
+    const ins = insideGroups(an, s.focus).map(g => g.kind).filter(k => k !== '链接');
+    const inLink = insideGroups(an, s.focus).some(g => g.kind === '链接');
+    typing = ` · 接着打字会是：<b>${[...ins, inLink ? '链接文字' : ''].filter(Boolean).join(' + ') || '普通字'}</b>`;
+  } else {
+    if (s.focus > 0 && !visSet.has(s.focus - 1)) { ok = false; why.push('光标左边的字没画出来'); }
+    if (s.focus < v.length && !visSet.has(s.focus)) { ok = false; why.push('光标右边的字没画出来'); }
+  }
+  el.innerHTML = `<div class="src">原文第 ${s.focus} 字 · ${ctx}</div>
+    <div>${S.mode === 'none' ? '记号：全部隐藏' : `展开：${groups.length ? groups.join('、') : '无'}`}${typing} · 自检 ${ok ? `<span class="okk">✓ ${S.mode === 'none' ? '对得上、位置唯一' : '对得上、看得见'}</span>` : `<span class="bad">✗ ${why.join('；')}</span>`}</div>`;
+}
+
+
+
+/* ── 测试用例 ─────────────────────────────────────────────── */
+document.getElementById('cases').innerHTML = CASES.map((c, i) => `<div class="case"><div><b>${c.title}</b><div class="how">${esc(c.how)}</div></div><button data-case="${i}">放到这里</button></div>`).join('');
+function runCase(c) {
+  const units = parse(lines());
+  const u = units.find(x => (c.unit ? x.type === c.unit : isList(x)) && editValue(x).includes(c.find));
+  if (!u) return;
+  const v = editValue(u); const at = v.indexOf(c.find);
+  if (c.select) { const [f1, o1, f2, o2] = c.select; open(u.start, v.indexOf(f1) + o1, v.indexOf(f2) + o2); return; }
+  let caret = at;
+  if (c.at === 'after') caret = at + c.find.length + (c.plus || 0);
+  else if (c.at === 'inside') caret = at + c.offset;
+  else caret = at - (c.minus || 0);
+  open(u.start, caret);
+}
+
+/* ── 一致性自测:键盘全部由上面的光标模型处理,所以合成按键走的就是真实路径 ── */
+const key = (k, o = {}) => { const ed = edEl(); if (!ed) return; ed.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...o })); };
+const input = (type, data) => { const ed = edEl(); ed.dispatchEvent(new InputEvent('beforeinput', { inputType: type, data, bubbles: true, cancelable: true })); };
+const where = () => S.active ? `${S.active.start}:${S.active.focus}` : 'closed';
+const at = (find, off = 0) => { reset(); render(); const u = parse(lines()).find(x => editValue(x).includes(find)); if (!u) throw new Error('测试文本不存在:' + find); open(u.start, editValue(u).indexOf(find) + off); };
+const healthy = () => { const a = S.active; if (!a) return true; const ed = edEl(), sel = getSelection(); const fv = viewOffsetOf(ed, sel.focusNode, sel.focusOffset); if (fv !== sourceToView(a.vis, a.focus)) return false; if (S.mode === 'none') return true; const vs = new Set(a.vis); return !(a.focus > 0 && !vs.has(a.focus - 1)) && !(a.focus < a.value.length && !vs.has(a.focus)); };
+function suite() {
+  const rows = [], check = (name, ok, detail = '') => rows.push({ name, ok, detail });
+  const modeBefore = S.mode;
+  for (const mode of ['element', 'block', 'none']) {
+    S.mode = mode; const tag = { element: '元素', block: '整块', none: '不显示记号' }[mode];
+    // 1 同一画面同一动作同一结果:三种来路到「待修 bug」末尾,按 ↓
+    const results = [];
+    at('待修 bug', 6); key('ArrowDown'); results.push(where());
+    at('`git rev-parse`', 6); key('ArrowUp'); key('End'); key('ArrowDown'); results.push(where());
+    at('`git rev-parse`', 6); key('ArrowUp'); { const r = edEl().getBoundingClientRect(); const a = S.active; a.anchor = a.focus = a.value.length; a.goalX = undefined; refresh(false); } key('ArrowDown'); results.push(where());
+    check(`${tag}｜同一位置按 ↓，三种来路结果相同`, new Set(results).size === 1, results.join(' / '));
+    // 2 从头 → 走到尾,再 ← 走回来,每一步自检;走回来的位置序列与走过去的相反
+    at('实现自动化', 0); key('ArrowUp', { metaKey: true });
+    const fwd = [where()]; let bad = 0;
+    for (let i = 0; i < 400; i++) { const w = where(); key('ArrowRight'); if (!healthy()) bad++; if (where() === w) break; fwd.push(where()); }
+    const back = [where()];
+    for (let i = 0; i < 400; i++) { const w = where(); key('ArrowLeft'); if (!healthy()) bad++; if (where() === w) break; back.push(where()); }
+    check(`${tag}｜→ 走完全篇再 ← 走回，每一步对得上`, bad === 0 && back[back.length - 1] === fwd[0], `${fwd.length} 步，自检失败 ${bad} 次`);
+    // 3 目标列:连续 ↓↓↑↑ 回到原处
+    at('`make deploy`', 3); const start3 = where(); key('ArrowDown'); key('ArrowDown'); key('ArrowUp'); key('ArrowUp');
+    check(`${tag}｜↓↓↑↑ 回到原位置`, where() === start3, `${start3} → ${where()}`);
+    // 4 第一项 ↑ / 最后一项 ↓:不动
+    at('实现自动化', 2); const s4 = where(); key('ArrowUp'); const u4 = where();
+    at('冒烟', 0); const s4b = where(); key('ArrowDown');
+    check(`${tag}｜第一项 ↑、最后一项 ↓ 光标不动`, u4 === s4 && where() === s4b, `${u4} / ${where()}`);
+    // 5 键盘动作不让光标消失:空项回车、标题回车、行首退格
+    let lost = 0;
+    at('待修 bug', 6); key('Enter'); if (!S.active) lost++;
+    key('Enter'); if (!S.active) lost++;                          // 新起的空项再回车
+    at('重启服务前先', 0); input('deleteContentBackward'); if (!S.active) lost++;
+    at('## 待修', 3); input('deleteContentBackward'); if (!S.active) lost++;
+    check(`${tag}｜回车 / 退格之后光标还在`, lost === 0, `丢失 ${lost} 次`);
+    // 6 行首退格并到上一项、行尾 Delete 并入下一项,光标落在接缝处
+    at('跑一遍', 0); input('deleteContentBackward'); const m1 = S.active && S.active.value;
+    at('确认备份**，再动手', 11); input('deleteContentForward'); const m2 = S.active && S.active.value;
+    check(`${tag}｜行首退格并入上一项、行尾 Delete 并入下一项`, !!m1 && m1.includes('再动手跑一遍') && !!m2 && m2.includes('再动手跑一遍'), `${(m1 || '').slice(-14)} | ${(m2 || '').slice(-14)}`);
+    // 7 跨项撤销:在 A 打字 → 回车拆项 → 在 B 打字 → ⌘Z×3 回到原文,光标回到 A
+    at('只保留最近', 5); input('insertText', '甲'); key('Enter'); input('insertText', '乙'); key('z', { metaKey: true }); key('z', { metaKey: true }); key('z', { metaKey: true });
+    check(`${tag}｜跨项撤销回到原文，光标回到第一次改动处`, S.src === ORIGINAL && S.active && S.active.value.startsWith('只保留最近') && S.active.focus === 5, where());
+    // 9 折行的项里和跨项用同一把尺子:窄面板里 ↓↓↓↑↑↑ 回到原位
+    { const w = S.width; S.width = 'panel'; at('中英混排', 3); const s9 = where(); ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowDown','ArrowUp'].forEach(k => key(k)); const e9 = where(); S.width = w; render();
+      check(`${tag}｜窄面板折行项里 ↑↑↓↓↓↑ 回到原位`, e9 === s9, `${s9} → ${e9}`); }
+    // 8 emoji 退格删一整个
+    at('只保留最近', 0); input('insertText', '👍🏽'); input('deleteContentBackward');
+    check(`${tag}｜退格删掉整个 emoji`, S.active.value.startsWith('只保留最近') && !/[\uD800-\uDFFF]/.test(S.active.value), JSON.stringify(S.active.value.slice(0, 6)));
+  }
+  S.mode = modeBefore; reset(); render();
+  return rows;
+}
+function showSuite() {
+  const rows = suite();
+  document.getElementById('suiteOut').innerHTML = rows.map(r => `<div class="srow ${r.ok ? 'ok' : 'no'}"><span>${r.ok ? '✓' : '✗'}</span><span>${esc(r.name)}</span><span class="d">${esc(r.detail)}</span></div>`).join('')
+    + `<div class="ssum">${rows.filter(r => r.ok).length} / ${rows.length} 通过</div>`;
+}
+
+document.addEventListener('click', e => {
+  const m = e.target.closest('[data-mode]'); if (m) { const a = S.active; S.mode = m.dataset.mode; a ? open(a.start, a.anchor, a.focus) : render(); return; }
+  const w = e.target.closest('[data-width]'); if (w) { S.width = w.dataset.width; render(); return; }
+  const c = e.target.closest('[data-case]'); if (c) { runCase(CASES[+c.dataset.case]); return; }
+  if (e.target.closest('[data-act="suite"]')) { showSuite(); return; }
+  if (e.target.closest('[data-act="reset"]')) { reset(); render(); }
+});
+render();
+</script>
+</body>
+</html>

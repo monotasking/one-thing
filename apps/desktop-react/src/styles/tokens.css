@@ -95,6 +95,8 @@
   /* 跟手形变(Dock 放大/拖拽)在手离开后的回位档(动效板·释放回位) */
   --dur-release: 160ms;
   --dur-flash: 240ms;
+  /* 待办里外部刚改过的那一行淡底多久(JS 侧镜像 LINE_CHANGED_MS 见 components/motion.ts) */
+  --dur-line-changed: 1400ms;
   --dur-tooltip-delay: 300ms;
   /* 悬停淡入(会话卡上的幽灵入口):比 --dur 慢,是为了「不抢眼」而不是「慢」 */
   --dur-hover-fade: 300ms;

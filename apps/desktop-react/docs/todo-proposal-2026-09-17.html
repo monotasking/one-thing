@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>待办接进 React 壳(2026-09-17 样例)</title>
+<style>
+  /* 数字镜像 tokens.css(样例页不进构建) */
+  :root {
+    --dur: 120ms; --ease: cubic-bezier(0.4, 0, 0.2, 1); --dur-enter: 140ms; --ease-out: cubic-bezier(0, 0, 0.2, 1);
+    --paper: #f7f5f0; --paper-2: #efece5; --paper-3: #e9e5dc; --card: #fffdf9;
+    --ink: #2b2a27; --ink-2: #5d5a53; --ink-3: #8a867d; --ink-4: #aaa59b;
+    --line-1: #e6e1d8; --line-2: #d9d3c8; --accent: #b8652f; --accent-soft: rgba(184,101,47,.14);
+    --user-bg: #ebe6dc; --ok: #4f7a57;
+    --r-1: 6px; --r-2: 10px; --r-3: 14px;
+    --fs: 14px; --fs-meta: 12px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper-2); color: var(--ink); font: var(--fs)/1.6 -apple-system, "PingFang SC", "Helvetica Neue", sans-serif; padding: 28px 24px 60px; }
+  button { font: inherit; color: inherit; }
+  .page { max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  .lede { color: var(--ink-2); margin: 0 0 18px; max-width: 820px; }
+  .brief { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 0 0 18px; }
+  @media (max-width: 900px) { .brief { grid-template-columns: 1fr; } }
+  .brief .c { background: var(--card); border: 1px solid var(--line-1); border-radius: var(--r-3); padding: 12px 14px; font-size: 13px; color: var(--ink-2); cursor: pointer; transition: border-color var(--dur) var(--ease); }
+  .brief .c:hover { border-color: var(--line-2); }
+  .brief .c.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .brief .c b { display: block; color: var(--ink); font-size: 14px; margin-bottom: 4px; }
+  .brief .rec { color: var(--accent); font-size: 12px; margin-left: 6px; font-weight: 500; }
+  .shared { background: var(--card); border: 1px solid var(--line-1); border-radius: var(--r-3); padding: 12px 16px; font-size: 13px; color: var(--ink-2); margin-bottom: 18px; }
+  .shared b { color: var(--ink); }
+  .shared ol { margin: 6px 0 0; padding-left: 1.3em; }
+  .shared li { margin: 2px 0; }
+
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; font-size: 13px; color: var(--ink-3); }
+  .pillbtn { border: 1px solid var(--line-2); background: var(--card); border-radius: 999px; padding: 4px 12px; cursor: pointer; color: var(--ink-2); }
+  .pillbtn:hover { color: var(--ink); border-color: var(--ink-4); }
+  .pillbtn.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+  /* ── 窗 ───────────────────────────────────────────── */
+  .stagewrap { overflow-x: auto; border-radius: var(--r-3); }
+  .win { min-width: 980px; height: 640px; background: var(--paper); border: 1px solid var(--line-2); border-radius: var(--r-3); display: grid; grid-template-columns: 196px 1fr auto; overflow: hidden; box-shadow: 0 10px 30px rgba(60,50,30,.08); }
+  .win.c { grid-template-columns: 196px 1fr; }
+  .side { border-right: 1px solid var(--line-1); padding: 38px 8px 8px; background: var(--paper); position: relative; }
+  .side::before { content: ''; position: absolute; left: 16px; top: 14px; width: 52px; height: 12px; background: radial-gradient(circle at 6px 6px, #e0685c 5px, transparent 5.5px), radial-gradient(circle at 26px 6px, #e3b04b 5px, transparent 5.5px), radial-gradient(circle at 46px 6px, #6fbf5a 5px, transparent 5.5px); }
+  .side .h { font-size: 11px; color: var(--ink-4); padding: 6px 8px 4px; }
+  .srow { display: block; width: 100%; text-align: left; border: 0; background: none; border-radius: var(--r-1); padding: 6px 8px; font-size: 13px; color: var(--ink-2); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .srow:hover { background: var(--paper-3); }
+  .srow.on { background: var(--paper-3); color: var(--ink); }
+
+  .chat { display: flex; flex-direction: column; min-width: 0; position: relative; }
+  .chat .top { height: 38px; border-bottom: 1px solid var(--line-1); display: flex; align-items: center; padding: 0 16px; font-size: 13px; color: var(--ink-2); gap: 8px; }
+  .chat .top .sp { flex: 1; }
+  .msgs { flex: 1; overflow: auto; padding: 18px 28px; display: flex; flex-direction: column; gap: 12px; }
+  .u { align-self: flex-end; background: var(--user-bg); border-radius: 16px; padding: 7px 12px; max-width: 70%; }
+  .a { color: var(--ink); max-width: 560px; }
+  .a .tool { font-size: 12px; color: var(--ink-3); border-left: 2px solid var(--line-2); padding-left: 8px; margin: 4px 0; }
+  .composerwrap { padding: 0 20px 16px; }
+  .composer { border: 1px solid var(--line-2); background: var(--card); border-radius: var(--r-3); padding: 10px 12px; color: var(--ink-4); min-height: 70px; display: flex; flex-direction: column; justify-content: space-between; }
+  .composer .row { display: flex; justify-content: space-between; font-size: 12px; }
+  .composer .send { width: 26px; height: 26px; border-radius: 50%; background: var(--ink); display: inline-block; }
+
+  /* ── 候选 B:输入框上方计划条 ─────────────────────── */
+  .strip { width: 100%; display: flex; align-items: center; gap: 10px; border: 1px solid var(--line-1); border-bottom: 0; background: var(--paper-2); border-radius: var(--r-3) var(--r-3) 0 0; padding: 6px 12px; margin: 0 10px; width: calc(100% - 20px); cursor: pointer; font-size: 13px; color: var(--ink-2); text-align: left; transition: background var(--dur) var(--ease); }
+  .strip:hover { background: var(--paper-3); }
+  .strip .lbl { color: var(--ink); white-space: nowrap; }
+  .strip .next { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-3); }
+  .strip .next em { font-style: normal; color: var(--ink-2); }
+  .strip .next.just em { color: var(--accent); }
+  .strip .chev { color: var(--ink-4); transition: transform var(--dur) var(--ease); }
+  .strip.open .chev { transform: rotate(180deg); }
+  .drawer { margin: 0 10px; border: 1px solid var(--line-1); border-bottom: 0; background: var(--paper-2); max-height: 250px; overflow: auto; padding: 2px 12px 8px; }
+  .drawer .foot { display: flex; gap: 12px; font-size: 12px; color: var(--ink-4); padding-top: 6px; }
+
+  /* ── 右侧 Dock 面板(A / B) ───────────────────────── */
+  .panel { width: 320px; border-left: 1px solid var(--line-1); display: flex; flex-direction: column; min-height: 0; background: var(--paper); }
+  .panel .ph { height: 38px; border-bottom: 1px solid var(--line-1); display: flex; align-items: center; gap: 8px; padding: 0 10px 0 14px; font-size: 13px; }
+  .panel .ph .t { font-weight: 600; }
+  .panel .ph .sp { flex: 1; }
+  .seg { display: inline-flex; background: var(--paper-3); border-radius: 999px; padding: 2px; }
+  .seg button { border: 0; background: none; padding: 2px 10px; border-radius: 999px; cursor: pointer; color: var(--ink-3); font-size: 12px; }
+  .seg button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .ico { border: 0; background: none; color: var(--ink-3); cursor: pointer; border-radius: var(--r-1); padding: 3px 6px; font-size: 12px; }
+  .ico:hover { background: var(--paper-3); color: var(--ink); }
+  .ico.on { color: var(--accent); }
+  .pbody { flex: 1; overflow: auto; padding: 10px 14px 14px; }
+  .pfoot { border-top: 1px solid var(--line-1); padding: 6px 14px; font-size: 11px; color: var(--ink-4); display: flex; gap: 8px; align-items: center; }
+  .pfoot .sp { flex: 1; }
+
+  .lists { display: flex; gap: 4px; overflow-x: auto; padding: 0 0 8px; scrollbar-width: none; }
+  .lists button { border: 1px solid transparent; background: none; border-radius: 999px; padding: 2px 10px; font-size: 12px; color: var(--ink-3); cursor: pointer; white-space: nowrap; }
+  .lists button:hover { color: var(--ink); background: var(--paper-3); }
+  .lists button.on { border-color: var(--line-2); background: var(--card); color: var(--ink); }
+
+  /* ── 文档头 ───────────────────────────────────────── */
+  .dhead { margin: 2px 0 8px; }
+  .dhead .title { font-size: 15px; font-weight: 600; line-height: 1.4; }
+  .dhead .meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); margin-top: 6px; }
+  .prog { flex: 1; height: 3px; background: var(--line-1); border-radius: 2px; overflow: hidden; }
+  .prog i { display: block; height: 100%; background: var(--ok); border-radius: 2px; transition: width 240ms var(--ease); }
+  .aibadge { color: var(--accent); opacity: 0; transition: opacity 240ms var(--ease); }
+  .aibadge.on { opacity: 1; }
+
+  /* ── 文档正文:markdown 的一种读法 ─────────────────── */
+  .doc { font-size: 13.5px; }
+  .sec { font-size: 12px; color: var(--ink-3); font-weight: 500; margin: 12px 0 2px; }
+  .sec:first-child { margin-top: 2px; }
+  .task { display: flex; align-items: flex-start; gap: 8px; padding: 3px 4px; margin: 0 -4px; border-radius: var(--r-1); position: relative; }
+  .task:hover { background: var(--paper-3); }
+  .task.flash { animation: flash 1400ms var(--ease-out); }
+  @keyframes flash { 0%, 30% { background: var(--accent-soft); } 100% { background: transparent; } }
+  .box { flex: none; width: 16px; height: 16px; margin-top: 3px; border: 1.5px solid var(--ink-4); border-radius: 5px; background: var(--card); cursor: pointer; padding: 0; display: grid; place-items: center; transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease); }
+  .box:hover { border-color: var(--ink-2); }
+  .box svg { width: 10px; height: 10px; opacity: 0; }
+  .task.done .box { background: var(--ok); border-color: var(--ok); }
+  .task.done .box svg { opacity: 1; }
+  .txt { flex: 1; min-width: 0; outline: none; overflow-wrap: anywhere; border-radius: 3px; }
+  .txt:focus { background: var(--card); box-shadow: 0 0 0 1px var(--line-2); padding: 0 3px; margin: 0 -3px; }
+  .task.done .txt { color: var(--ink-4); text-decoration: line-through; text-decoration-color: var(--line-2); }
+  .del { flex: none; opacity: 0; border: 0; background: none; color: var(--ink-4); cursor: pointer; padding: 0 2px; font-size: 14px; line-height: 22px; }
+  .task:hover .del { opacity: 1; }
+  .del:hover { color: var(--ink); }
+  .bullet { color: var(--ink-2); padding: 1px 0 1px 24px; position: relative; font-size: 13px; }
+  .bullet::before { content: '·'; position: absolute; left: 10px; color: var(--ink-4); }
+  .para { color: var(--ink-2); margin: 4px 0; font-size: 13px; }
+  .code { background: var(--paper-3); border-radius: var(--r-1); padding: 6px 8px; margin: 4px 0 4px 24px; font: 11.5px/1.5 ui-monospace, Menlo, monospace; color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .add { display: flex; gap: 8px; align-items: center; color: var(--ink-4); cursor: pointer; padding: 4px 4px; margin: 2px -4px 0; border-radius: var(--r-1); font-size: 13px; border: 0; background: none; width: calc(100% + 8px); text-align: left; }
+  .add:hover { color: var(--ink-2); background: var(--paper-3); }
+  .add span { width: 16px; text-align: center; }
+  .hidden-row { font-size: 12px; color: var(--ink-4); padding: 6px 0 0 24px; }
+  .hidden-row button { border: 0; background: none; color: var(--ink-3); cursor: pointer; padding: 0; text-decoration: underline; text-decoration-color: var(--line-2); }
+  .raw { margin: 0; background: var(--paper-2); border: 1px solid var(--line-1); border-radius: var(--r-2); padding: 10px; font: 11.5px/1.55 ui-monospace, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); }
+  .rawnote { font-size: 11px; color: var(--ink-4); margin: 0 0 6px; }
+
+  .empty { text-align: center; color: var(--ink-3); padding: 48px 16px; font-size: 13px; }
+  .empty .big { font-size: 26px; color: var(--ink-4); margin-bottom: 6px; }
+  .empty p { margin: 4px 0 14px; }
+  .empty .pillbtn { margin: 0 4px; }
+  .doneall { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ok); margin: 0 0 6px; }
+
+  /* ── 候选 C:独立待办应用(台面一格) ─────────────── */
+  .app { display: grid; grid-template-columns: 220px 1fr; min-height: 0; }
+  .nav { border-right: 1px solid var(--line-1); padding: 10px 8px; overflow: auto; background: var(--paper); }
+  .nav .h { font-size: 11px; color: var(--ink-4); padding: 10px 8px 3px; }
+  .nav .h:first-child { padding-top: 2px; }
+  .nrow { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: none; text-align: left; border-radius: var(--r-1); padding: 5px 8px; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+  .nrow:hover { background: var(--paper-3); }
+  .nrow.on { background: var(--paper-3); color: var(--ink); }
+  .nrow .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nrow .dim { color: var(--ink-4); font-size: 11px; }
+  .nrow.newlist { color: var(--ink-4); }
+  .main { overflow: auto; padding: 22px 36px 30px; }
+  .main .inner { max-width: 620px; margin: 0 auto; }
+  .main .dhead .title { font-size: 20px; }
+  .main .doc { font-size: 14px; }
+  .main .tools { display: flex; gap: 4px; margin-left: auto; }
+  .from { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+  .from a { color: var(--accent); text-decoration: none; cursor: pointer; }
+
+  .states { margin-top: 18px; background: var(--card); border: 1px solid var(--line-1); border-radius: var(--r-3); padding: 12px 16px; font-size: 13px; }
+  .states h2 { font-size: 14px; margin: 0 0 8px; }
+  .states table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  .states th, .states td { border-top: 1px solid var(--line-1); padding: 6px 6px; text-align: left; vertical-align: top; color: var(--ink-2); }
+  .states th { color: var(--ink-3); font-weight: 500; }
+  .states td:first-child { color: var(--ink); white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>待办接进 React 壳 · 三个候选</h1>
+  <p class="lede">后端早就有了：待办就是 <code>~/.onething/todo-plan/</code> 下的 markdown 文件，分两种——你自己的清单（<code>user-notes/*.md</code>，全局），和 AI 在每个会话里给自己写的计划（<code>sessions/&lt;会话&gt;/ai-todo.md</code>，AI 用普通的写文件工具维护）。缺的只是 React 壳里没有任何一处能看见它们。下面三台都能点：勾选、改字、回车加一项、清空后退格删掉、左栏切会话、点「模拟 AI 推进一步」看 AI 改文件时界面怎么反应。</p>
+
+  <div class="brief" id="brief">
+    <div class="c" data-cand="A"><b>A · 一个 Dock 面板装两种</b>右边一块「待办」面板，顶上切「本会话 / 我的清单」。一处入口，好找；代价是看 AI 计划要先开面板、再切到那一页，平时聊天时看不见。</div>
+    <div class="c" data-cand="B"><b>B · 计划跟着对话，清单进 Dock<span class="rec">推荐</span></b>AI 计划收成输入框上方一行：进度 + 下一步，点开是抽屉；会话没有计划就不出现。你自己的清单是全局的，放右边 Dock 面板。两种东西性质不同，各放在它被用到的地方。</div>
+    <div class="c" data-cand="C"><b>C · 独立待办应用</b>作为一格内容打开，占整个台面：左栏列出本会话计划、你的清单、其他会话的计划，右边大字编辑。适合集中整理、回看所有会话的计划；代价是和对话不在同一屏。</div>
+  </div>
+
+  <div class="shared">
+    <b>三台共用的规矩</b>（不管选哪台都这么做）
+    <ol>
+      <li><b>文件是真相，界面只是它的一种读法。</b>勾一项只改那一行的 <code>[ ]</code>→<code>[x]</code>；标题、说明文字、代码块原样保留并照样显示。右上「源文件」可以随时看到原文。</li>
+      <li><b>AI 改了文件，界面当场跟上。</b>被改的那一行淡淡闪一下，头部出现「AI 刚更新」，一秒多后自己褪掉——你知道它动了哪里，但不会被打断。</li>
+      <li><b>AI 计划跟随当前会话。</b>切会话就换成那个会话的计划；没有计划的会话不显示空壳（B）或给一句说明（A / C）。</li>
+      <li><b>一项的其余动作（删除、挪位置、复制）只放右键菜单</b>，行上不挂悬停按钮——照壳里「动作单产地=右键菜单」那条规矩；样例里没画菜单。</li>
+      <li><b>AI 计划按原顺序显示</b>（步骤有先后）；你自己的清单可以「隐藏已完成」。</li>
+    </ol>
+  </div>
+
+  <div class="bar">
+    <span>候选</span>
+    <button class="pillbtn" data-cand="A">A</button>
+    <button class="pillbtn" data-cand="B">B</button>
+    <button class="pillbtn" data-cand="C">C</button>
+    <span style="width:16px"></span>
+    <button class="pillbtn" data-act="ai-step">模拟 AI 推进一步</button>
+    <button class="pillbtn" data-act="reset">重置数据</button>
+  </div>
+
+  <div class="stagewrap"><div id="stage"></div></div>
+
+  <div class="states">
+    <h2>状态表（以 B 为例，A / C 同一套状态换位置）</h2>
+    <table>
+      <tr><th>状态</th><th>计划条（输入框上方）</th><th>清单面板（Dock）</th></tr>
+      <tr><td>会话没有计划</td><td>不出现，输入框上方什么都没有</td><td>照常</td></tr>
+      <tr><td>有计划、进行中</td><td>「计划 9/12 · 下一步 …」，点开抽屉可勾可改</td><td>照常</td></tr>
+      <tr><td>AI 刚改了计划</td><td>「刚完成 …」橙字 1.4 秒后退回「下一步」；抽屉开着时那一行闪一下</td><td>—</td></tr>
+      <tr><td>计划全部完成</td><td>「计划完成 12/12」灰字，不再提「下一步」</td><td>—</td></tr>
+      <tr><td>文件读不到 / 被外部删了</td><td>计划条消失（同「没有计划」）</td><td>该清单从列表里去掉，选中项落到第一张</td></tr>
+      <tr><td>还没有任何清单</td><td>—</td><td>一句「还没有清单」+「新建清单」</td></tr>
+      <tr><td>正在编辑一项时 AI 也改了同一个文件</td><td colspan="2">以文件为准重读；你正在打字的那一行不被覆盖，失焦时再按行写回（实现时要做行级合并，样例不演示）</td></tr>
+    </table>
+  </div>
+</div>
+
+<script>
+const CHECK = '<svg viewBox="0 0 10 10"><path d="M1.8 5.2 4 7.3 8.2 2.8" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+const SEED = {
+  sessions: [
+    { id: 's1', title: '实现自动化部署脚本', msgs: [['u', '帮我把 personal-site 的部署做成 make deploy + rollback'], ['a', '先列一份计划，然后从修草稿版的 bug 开始。', '写入 ai-todo.md'], ['a', 'Makefile 三个 target 重写完了，缺参校验也补上，接着真机跑一遍 make deploy。', 'bash · make deploy']] },
+    { id: 's2', title: '检索设置页「搜索」', msgs: [['u', '语义召回的开关放进设置页'], ['a', '计划已写好，先做数据层的读写口。', '写入 ai-todo.md']] },
+    { id: 's3', title: '随便聊聊唱机的手感', msgs: [['u', '唱机那个拖针的手感你觉得怎么样？'], ['a', '拖针时唱片减速到 0 再跟手，比直接跳位更像实物。']] },
+  ],
+  plans: {
+    s1: `# 实现自动化部署脚本（make deploy + rollback）
+
+## 背景
+- 服务器无法访问 GitHub → git archive + scp 方案
+- compose 项目 personal-site，当前仅 latest tag
+
+## 待修 bug（草稿版）
+- [x] 服务器端 git rev-parse 拿 HASH 必失败 → 本地算 HASH 传过去
+- [x] 旧版本清理方向反了 → 按 CreatedAt 排序
+- [x] 健康检查单次 curl → 127.0.0.1 + 重试轮询
+- [x] rollback 无 --force-recreate → 补上
+- [x] 镜像名硬编码 → APP_IMAGE 变量
+
+## 步骤
+- [x] 重写 Makefile 三个 target
+- [x] make -n / make rollback 缺参校验
+- [x] git commit
+- [x] 真机 make deploy
+- [ ] make releases 验证
+- [ ] make rollback HASH=同版本 冒烟（不动线上内容）
+- [ ] 群里汇报`,
+    s2: `# 设置页「搜索」一页
+
+- [x] 数据层 search-settings-port / -source
+- [x] 开关写路 optimistic
+- [ ] 状态行八态纯函数 semanticPhaseOf
+- [ ] 页表插入「打开方式」与「内置浏览器」之间
+- [ ] gate-a11y 页名单同步
+- [ ] i18n 中英成对
+- [ ] 反证：拆掉写路 status patch 应红`,
+    s3: null,
+  },
+  lists: [
+    { id: 'recent', title: '近期', md: `# 近期
+
+- [ ] BR、LAS 白名单更新
+- [ ] 0625 EMEA 服务器重启
+- [ ] 部署 webapp2 到 cap
+- [x] 中国区 asr、tts 更新 x-api-key
+- [x] work order 从加密字段中拿出
+- [ ] summary 三个区 backend 更新 x-api-key` },
+    { id: 'log', title: '日志保留一年', md: `# 日志保留一年
+
+先确认各区磁盘余量再动。
+
+- [ ] 盘点各区日志目录大小
+- [ ] logrotate 改成按月归档 + 压缩
+- [ ] 冷数据挪到对象存储` },
+    { id: 'wokr', title: '0611 WOKR', md: `# 0611 WOKR
+
+- [x] 6.14 重启 cap frontend
+- [x] 6.15 更新印度 ec
+- [x] 0617 NA 上线，8 点 warm room
+
+\`\`\`bash
+tail -f /data/recording/freeswitch/pbxlog/freeswitch.log
+\`\`\`` },
+  ],
+};
+
+let S;
+function reset() {
+  S = {
+    cand: S ? S.cand : 'B',
+    sid: 's1',
+    plans: { ...SEED.plans },
+    lists: SEED.lists.map(l => ({ ...l })),
+    activeList: 'recent',
+    tabA: 'session',
+    stripOpen: false,
+    raw: false,
+    hideDone: false,
+    cSel: 'session',
+    flash: null,        // { doc, line, until }
+    aiJust: null,       // { doc, text, until }
+    focus: null,        // { doc, line }
+  };
+}
+reset();
+
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const TASK = /^(\s*)[-*]\s+\[( |x|X)\]\s?(.*)$/;
+
+/* doc 键:plan:<sid> | list:<id> */
+function getMd(doc) {
+  const [k, id] = doc.split(':');
+  if (k === 'plan') return S.plans[id];
+  return (S.lists.find(l => l.id === id) || {}).md;
+}
+function setMd(doc, md) {
+  const [k, id] = doc.split(':');
+  if (k === 'plan') S.plans[id] = md; else S.lists.find(l => l.id === id).md = md;
+}
+function stats(md) {
+  let total = 0, done = 0, next = null;
+  for (const line of (md || '').split('\n')) {
+    const m = line.match(TASK); if (!m) continue;
+    total++; if (m[2] !== ' ') done++; else if (next === null) next = m[3];
+  }
+  return { total, done, next };
+}
+function titleOf(md) { const m = (md || '').match(/^#\s+(.*)$/m); return m ? m[1] : '未命名'; }
+
+function renderDoc(doc, { hideDone = false } = {}) {
+  const md = getMd(doc);
+  if (S.raw) {
+    const file = doc.startsWith('plan') ? `sessions/${doc.slice(5)}/ai-todo.md` : `user-notes/${doc.slice(5)}.md`;
+    return `<p class="rawnote">${file} —— 这就是真相，上面的界面只是它的一种读法</p><pre class="raw">${esc(md)}</pre>`;
+  }
+  const lines = md.split('\n');
+  const now = Date.now();
+  const out = [];
+  let inCode = false, code = [], hidden = 0;
+  lines.forEach((line, i) => {
+    if (/^```/.test(line)) {
+      if (inCode) { out.push(`<div class="code">${esc(code.join('\n'))}</div>`); code = []; }
+      inCode = !inCode; return;
+    }
+    if (inCode) { code.push(line); return; }
+    if (/^#\s/.test(line)) return; // 标题在文档头里
+    let m;
+    if ((m = line.match(/^#{2,6}\s+(.*)$/))) { out.push(`<div class="sec">${esc(m[1])}</div>`); return; }
+    if ((m = line.match(TASK))) {
+      const done = m[2] !== ' ';
+      if (done && hideDone) { hidden++; return; }
+      const fl = S.flash && S.flash.doc === doc && S.flash.line === i && S.flash.until > now ? ' flash' : '';
+      const indent = Math.min(3, Math.floor(m[1].length / 2)) * 20;
+      out.push(`<div class="task${done ? ' done' : ''}${fl}" style="padding-left:${indent + 4}px" data-doc="${doc}" data-line="${i}">
+        <button class="box" data-act="toggle" aria-pressed="${done}" aria-label="${done ? '标为未完成' : '标为完成'}">${CHECK}</button>
+        <span class="txt" contenteditable="plaintext-only" spellcheck="false" data-edit>${esc(m[3])}</span></div>`);
+      return;
+    }
+    if ((m = line.match(/^\s*[-*]\s+(.*)$/))) { out.push(`<div class="bullet">${esc(m[1])}</div>`); return; }
+    if (line.trim()) out.push(`<p class="para">${esc(line)}</p>`);
+  });
+  if (hidden) out.push(`<div class="hidden-row">已隐藏完成的 ${hidden} 项 · <button data-act="hide-done">显示</button></div>`);
+  out.push(`<button class="add" data-act="add" data-doc="${doc}"><span>+</span>添加一项</button>`);
+  return `<div class="doc">${out.join('')}</div>`;
+}
+
+function docHead(doc, big) {
+  const md = getMd(doc);
+  const st = stats(md);
+  const pct = st.total ? Math.round(st.done / st.total * 100) : 0;
+  const ai = S.aiJust && S.aiJust.doc === doc && S.aiJust.until > Date.now();
+  return `<div class="dhead"><div class="title">${esc(titleOf(md))}</div>
+    <div class="meta">${st.total ? `<div class="prog"><i style="width:${pct}%"></i></div><span>${st.done}/${st.total}</span>` : '<span>还没有勾选项</span>'}
+    <span class="aibadge${ai ? ' on' : ''}">AI 刚更新</span></div></div>`;
+}
+
+function chatHtml(withStrip) {
+  const sess = SEED.sessions.find(s => s.id === S.sid);
+  const msgs = sess.msgs.map(m => m[0] === 'u'
+    ? `<div class="u">${esc(m[1])}</div>`
+    : `<div class="a">${m[2] ? `<div class="tool">${esc(m[2])}</div>` : ''}${esc(m[1])}</div>`).join('');
+  let strip = '';
+  if (withStrip && S.plans[S.sid]) {
+    const doc = 'plan:' + S.sid;
+    const st = stats(S.plans[S.sid]);
+    const ai = S.aiJust && S.aiJust.doc === doc && S.aiJust.until > Date.now();
+    let next;
+    if (st.total && st.done === st.total) next = `<span class="next">全部完成</span>`;
+    else if (ai) next = `<span class="next just">刚完成 <em>${esc(S.aiJust.text)}</em></span>`;
+    else next = `<span class="next">下一步 <em>${esc(st.next || '')}</em></span>`;
+    strip = `<button class="strip${S.stripOpen ? ' open' : ''}" data-act="strip" aria-expanded="${S.stripOpen}">
+      ${ring(st)}<span class="lbl">${st.total && st.done === st.total ? '计划完成' : '计划'} ${st.done}/${st.total}</span>${next}<span class="chev">⌃</span></button>`;
+    if (S.stripOpen) strip += `<div class="drawer">${docHead(doc)}${renderDoc(doc)}
+      <div class="foot"><button class="ico${S.raw ? ' on' : ''}" data-act="raw">源文件</button><span>AI 按这份计划推进，你也可以直接改</span></div></div>`;
+  }
+  return `<div class="chat">
+    <div class="top"><span>${esc(sess.title)}</span><span class="sp"></span>${S.cand === 'A' ? '' : ''}</div>
+    <div class="msgs">${msgs}</div>
+    <div class="composerwrap">${strip}<div class="composer"><span>接着说…</span><div class="row"><span>deepseek-v4 · 思考</span><span class="send"></span></div></div></div>
+  </div>`;
+}
+
+function ring(st) {
+  const r = 6, c = 2 * Math.PI * r, p = st.total ? st.done / st.total : 0;
+  return `<svg width="16" height="16" viewBox="0 0 16 16" style="flex:none"><circle cx="8" cy="8" r="${r}" fill="none" stroke="var(--line-2)" stroke-width="2"/><circle cx="8" cy="8" r="${r}" fill="none" stroke="var(--ok)" stroke-width="2" stroke-dasharray="${c * p} ${c}" transform="rotate(-90 8 8)" stroke-linecap="round"/></svg>`;
+}
+
+function sideHtml() {
+  return `<div class="side"><div class="h">会话</div>${SEED.sessions.map(s =>
+    `<button class="srow${s.id === S.sid ? ' on' : ''}" data-act="sess" data-id="${s.id}">${esc(s.title)}</button>`).join('')}</div>`;
+}
+
+function listsBody() {
+  if (!S.lists.length) return `<div class="empty"><div class="big">☐</div><p>还没有清单</p><button class="pillbtn" data-act="newlist">新建清单</button></div>`;
+  const doc = 'list:' + S.activeList;
+  return `<div class="lists">${S.lists.map(l => `<button class="${l.id === S.activeList ? 'on' : ''}" data-act="list" data-id="${l.id}">${esc(l.title)}</button>`).join('')}<button data-act="newlist">+ 新清单</button></div>
+    ${docHead(doc)}${renderDoc(doc, { hideDone: S.hideDone })}`;
+}
+
+function planBody() {
+  const md = S.plans[S.sid];
+  if (!md) return `<div class="empty"><div class="big">☐</div><p>这个会话还没有计划。<br>AI 接到多步的活时会在这里写下来。</p><button class="pillbtn" data-act="newplan">自己写一份</button></div>`;
+  const doc = 'plan:' + S.sid;
+  const st = stats(md);
+  return `${st.total && st.done === st.total && !S.raw ? '<div class="doneall">✓ 计划全部完成</div>' : ''}${docHead(doc)}${renderDoc(doc)}`;
+}
+
+function panelA() {
+  const onSession = S.tabA === 'session';
+  const file = onSession ? (S.plans[S.sid] ? `sessions/${S.sid}/ai-todo.md` : '') : `user-notes/${S.activeList}.md`;
+  return `<div class="panel">
+    <div class="ph"><span class="t">待办</span><div class="seg"><button class="${onSession ? 'on' : ''}" data-act="tabA" data-id="session">本会话</button><button class="${onSession ? '' : 'on'}" data-act="tabA" data-id="lists">我的清单</button></div><span class="sp"></span>
+    ${onSession ? '' : `<button class="ico${S.hideDone ? ' on' : ''}" data-act="hide-done" title="隐藏已完成">隐藏已完成</button>`}
+    <button class="ico${S.raw ? ' on' : ''}" data-act="raw">源文件</button></div>
+    <div class="pbody">${onSession ? planBody() : listsBody()}</div>
+    ${file ? `<div class="pfoot"><span>${file}</span><span class="sp"></span><button class="ico" title="在访达中显示">在访达中显示</button></div>` : ''}
+  </div>`;
+}
+
+function panelB() {
+  return `<div class="panel">
+    <div class="ph"><span class="t">我的清单</span><span class="sp"></span>
+    <button class="ico${S.hideDone ? ' on' : ''}" data-act="hide-done">隐藏已完成</button>
+    <button class="ico${S.raw ? ' on' : ''}" data-act="raw">源文件</button></div>
+    <div class="pbody">${listsBody()}</div>
+    <div class="pfoot"><span>user-notes/${S.activeList}.md</span><span class="sp"></span><button class="ico">在访达中显示</button></div>
+  </div>`;
+}
+
+function appC() {
+  const sess = SEED.sessions.find(s => s.id === S.sid);
+  const others = SEED.sessions.filter(s => s.id !== S.sid && S.plans[s.id]);
+  let doc = null, from = '';
+  if (S.cSel === 'session') { doc = S.plans[S.sid] ? 'plan:' + S.sid : null; from = `跟随当前会话 · ${esc(sess.title)}`; }
+  else if (S.cSel.startsWith('list:')) doc = S.cSel;
+  else if (S.cSel.startsWith('plan:')) { doc = S.cSel; const o = SEED.sessions.find(s => 'plan:' + s.id === S.cSel); from = `来自会话 · <a data-act="sess" data-id="${o.id}">${esc(o.title)} ↗</a>`; }
+  const isList = doc && doc.startsWith('list:');
+  const st = doc ? stats(getMd(doc)) : null;
+  const body = doc
+    ? `${from ? `<div class="from">${from}</div>` : ''}${st.total && st.done === st.total && !S.raw ? '<div class="doneall" style="margin-top:6px">✓ 全部完成</div>' : ''}${docHead(doc, true)}${renderDoc(doc, { hideDone: isList && S.hideDone })}`
+    : `<div class="from">${from}</div><div class="empty"><div class="big">☐</div><p>这个会话还没有计划。<br>AI 接到多步的活时会在这里写下来。</p><button class="pillbtn" data-act="newplan">自己写一份</button></div>`;
+  return `<div class="chat" style="display:grid;grid-template-rows:38px 1fr">
+    <div class="top"><span>待办</span><span class="sp"></span>
+      ${isList ? `<button class="ico${S.hideDone ? ' on' : ''}" data-act="hide-done">隐藏已完成</button>` : ''}
+      ${doc ? `<button class="ico${S.raw ? ' on' : ''}" data-act="raw">源文件</button>` : ''}</div>
+    <div class="app">
+      <div class="nav">
+        <div class="h">本会话</div>
+        <button class="nrow${S.cSel === 'session' ? ' on' : ''}" data-act="csel" data-id="session"><span class="nm">${S.plans[S.sid] ? esc(titleOf(S.plans[S.sid])) : '（还没有计划）'}</span></button>
+        <div class="h">我的清单</div>
+        ${S.lists.map(l => `<button class="nrow${S.cSel === 'list:' + l.id ? ' on' : ''}" data-act="csel" data-id="list:${l.id}"><span class="nm">${esc(l.title)}</span></button>`).join('')}
+        <button class="nrow newlist" data-act="newlist"><span class="nm">+ 新清单</span></button>
+        ${others.length ? `<div class="h">其他会话的计划</div>${others.map(o => { const s2 = stats(S.plans[o.id]); return `<button class="nrow${S.cSel === 'plan:' + o.id ? ' on' : ''}" data-act="csel" data-id="plan:${o.id}"><span class="nm">${esc(o.title)}</span>${s2.done === s2.total ? '<span class="dim">已完成</span>' : ''}</button>`; }).join('')}` : ''}
+      </div>
+      <div class="main"><div class="inner">${body}</div></div>
+    </div>
+  </div>`;
+}
+
+const stage = document.getElementById('stage');
+function render() {
+  document.querySelectorAll('[data-cand]').forEach(el => el.classList.toggle('on', el.dataset.cand === S.cand));
+  let html;
+  if (S.cand === 'A') html = `<div class="win">${sideHtml()}${chatHtml(false)}${panelA()}</div>`;
+  else if (S.cand === 'B') html = `<div class="win">${sideHtml()}${chatHtml(true)}${panelB()}</div>`;
+  else html = `<div class="win c">${sideHtml()}${appC()}</div>`;
+  stage.innerHTML = html;
+  if (S.focus) {
+    const el = stage.querySelector(`.task[data-doc="${S.focus.doc}"][data-line="${S.focus.line}"] .txt`);
+    S.focus = null;
+    if (el) { el.focus(); const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); }
+  }
+}
+
+function lineCtx(el) {
+  const t = el.closest('.task'); if (!t) return null;
+  return { doc: t.dataset.doc, line: +t.dataset.line, el: t };
+}
+function editLine(doc, i, fn) {
+  const lines = getMd(doc).split('\n');
+  fn(lines, i);
+  setMd(doc, lines.join('\n'));
+}
+function lastTaskIndex(lines) { let k = -1; lines.forEach((l, i) => { if (TASK.test(l)) k = i; }); return k; }
+
+document.addEventListener('click', e => {
+  const c = e.target.closest('[data-cand]');
+  if (c) { S.cand = c.dataset.cand; S.raw = false; render(); return; }
+  const a = e.target.closest('[data-act]'); if (!a) return;
+  const act = a.dataset.act;
+  if (act === 'toggle') {
+    const ctx = lineCtx(a);
+    editLine(ctx.doc, ctx.line, (L, i) => { L[i] = L[i].replace(/\[( |x|X)\]/, m => m === '[ ]' ? '[x]' : '[ ]'); });
+    render();
+  } else if (act === 'del') {
+    const ctx = lineCtx(a); editLine(ctx.doc, ctx.line, (L, i) => L.splice(i, 1)); render();
+  } else if (act === 'add') {
+    const doc = a.dataset.doc; let at;
+    editLine(doc, 0, L => { const k = lastTaskIndex(L); at = k >= 0 ? k + 1 : L.length; L.splice(at, 0, '- [ ] '); });
+    S.focus = { doc, line: at }; render();
+  } else if (act === 'sess') { S.sid = a.dataset.id; S.stripOpen = false; if (S.cSel.startsWith('plan:')) S.cSel = 'session'; render(); }
+  else if (act === 'tabA') { S.tabA = a.dataset.id; S.raw = false; render(); }
+  else if (act === 'list') { S.activeList = a.dataset.id; S.raw = false; render(); }
+  else if (act === 'csel') { S.cSel = a.dataset.id; S.raw = false; render(); }
+  else if (act === 'strip') { S.stripOpen = !S.stripOpen; render(); }
+  else if (act === 'raw') { S.raw = !S.raw; render(); }
+  else if (act === 'hide-done') { S.hideDone = !S.hideDone; render(); }
+  else if (act === 'newlist') {
+    const id = 'n' + Date.now(); S.lists.push({ id, title: '新清单', md: '# 新清单\n\n- [ ] ' });
+    S.activeList = id; S.cSel = 'list:' + id; S.tabA = 'lists'; S.focus = { doc: 'list:' + id, line: 2 }; render();
+  } else if (act === 'newplan') {
+    S.plans[S.sid] = '# 计划\n\n- [ ] '; S.focus = { doc: 'plan:' + S.sid, line: 2 }; S.stripOpen = true; S.cSel = 'session'; render();
+  } else if (act === 'ai-step') aiStep();
+  else if (act === 'reset') { reset(); render(); }
+});
+
+document.addEventListener('keydown', e => {
+  const t = e.target; if (!t.matches || !t.matches('[data-edit]')) return;
+  const ctx = lineCtx(t);
+  if (e.key === 'Enter' && !e.isComposing) {
+    e.preventDefault();
+    commit(t);
+    editLine(ctx.doc, ctx.line, (L, i) => L.splice(i + 1, 0, (L[i].match(/^\s*/)[0]) + '- [ ] '));
+    S.focus = { doc: ctx.doc, line: ctx.line + 1 }; render();
+  } else if (e.key === 'Backspace' && t.textContent === '') {
+    e.preventDefault();
+    let prev = -1;
+    editLine(ctx.doc, ctx.line, (L, i) => { L.splice(i, 1); for (let k = i - 1; k >= 0; k--) if (TASK.test(L[k])) { prev = k; break; } });
+    if (prev >= 0) S.focus = { doc: ctx.doc, line: prev };
+    render();
+  } else if (e.key === 'Escape') t.blur();
+});
+function commit(t) {
+  const ctx = lineCtx(t); if (!ctx) return;
+  const text = t.textContent.replace(/\n/g, ' ');
+  editLine(ctx.doc, ctx.line, (L, i) => { const m = L[i].match(TASK); if (m) L[i] = `${m[1]}- [${m[2]}] ${text}`; });
+}
+document.addEventListener('focusout', e => { if (e.target.matches && e.target.matches('[data-edit]')) commit(e.target); });
+
+/* 模拟 AI 用写文件工具推进一步:当前会话计划的第一条未完成项打勾 */
+function aiStep() {
+  const doc = 'plan:' + S.sid, md = S.plans[S.sid];
+  if (!md) { alert('这个会话没有计划 —— 切到「实现自动化部署脚本」或「检索设置页」再试'); return; }
+  const lines = md.split('\n');
+  const i = lines.findIndex(l => { const m = l.match(TASK); return m && m[2] === ' '; });
+  if (i < 0) return;
+  const text = lines[i].match(TASK)[3];
+  lines[i] = lines[i].replace('[ ]', '[x]');
+  S.plans[S.sid] = lines.join('\n');
+  const until = Date.now() + 1400;
+  S.flash = { doc, line: i, until }; S.aiJust = { doc, text, until };
+  if (S.cand === 'A') S.tabA = 'session';
+  if (S.cand === 'C') S.cSel = 'session';
+  render();
+  setTimeout(render, 1450);
+}
+
+render();
+</script>
+</body>
+</html>
