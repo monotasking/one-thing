@@ -1,5 +1,6 @@
 import { synthesizeCoreToolAnchors } from '@onething/core/session/render-anchors'
 import type { ProjectedMessage } from '../../data/chat-fold'
+import { missingAssistantText } from '../../data/missing-assistant-text'
 import type { BlobRef, ProjectedToolCall } from '../model/segments'
 
 /**
@@ -126,7 +127,17 @@ export function anchorMessage(message: ProjectedMessage): AnchoredNode[] {
  */
 function anchoredParts(message: ProjectedMessage): AnchorPart[] {
   const parts = ((message.contentParts ?? []) as AnchorPart[]).slice()
-  if (parts.length === 0 && message.content) {
+  const missingText = missingAssistantText(message, parts)
+  if (missingText) {
+    // Cold history bypasses the live overlay. An aborted request's text still
+    // exists in content even when the core's settled-parts gate excludes it.
+    // If a snapshot already has tool anchors, keep this text before its tool.
+    const anchor = parts.findIndex(part =>
+      (part.type === 'data-steps' && (part.turnIndex ?? 0) >= missingText.turnIndex)
+      || (part.type === 'tool-call' && (part.turnIndex === undefined || part.turnIndex >= missingText.turnIndex)),
+    )
+    parts.splice(anchor < 0 ? parts.length : anchor, 0, missingText)
+  } else if (parts.length === 0 && message.content) {
     // 老消息 / 脱水过的消息:按正文现搭一格,再走同一条合成(Vue 壳的
     // `rebuildLoadedContentParts` 同款)。
     parts.push({ type: 'text', content: message.content })

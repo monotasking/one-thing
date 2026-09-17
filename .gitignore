@@ -74,6 +74,7 @@ apps/desktop-react/ds-bundle/
 apps/desktop-react/.design-sync/.cache/
 apps/desktop-react/.design-sync/learnings/
 apps/desktop-react/.design-sync/node_modules
+apps/desktop-react/build/ts/
 
 # 浏览器 spike 的登录态(scripts/spike-browser/google-login.mjs 的 user-data-dir),永不入库
 .spike/

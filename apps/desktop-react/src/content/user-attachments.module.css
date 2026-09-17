@@ -1,0 +1,189 @@
+/*
+ * 用户消息里的附件(判词在 user-attachments.tsx 文件头)。
+ * 图站在气泡外面:这里没有一格气泡底色,图自己带一圈细描边把边界说清楚
+ * (浅色截图压在纸色底上,没有这一圈就分不出哪里是图)。
+ */
+
+/* ── 气泡里的文件 chip ──────────────────────────────────────────────── */
+
+.files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  max-width: 100%;
+  margin-block-start: var(--sp-2);
+}
+
+.files:only-child {
+  margin-block-start: 0;
+}
+
+/* 有图的那一条:图在上、气泡在下,两件之间一格 sp-2(比段距近 —— 它们是同一句话)。 */
+.withImages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* ── 气泡外的图 ─────────────────────────────────────────────────────── */
+
+.images {
+  align-self: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  max-width: 80%;
+}
+
+/* 与气泡的 `.pending` 同一档:还在飞的那一条整体淡一点。 */
+.pending {
+  opacity: 0.72;
+}
+
+/* 摞要一个确定的宽做横滚的参照 —— 收缩盒里 `min(…, 100%)` 解析不出百分比。 */
+.images[data-shape='stack'] {
+  width: 80%;
+}
+
+.cell {
+  display: block;
+}
+
+.tile {
+  position: relative;
+  display: flex;
+  overflow: hidden;
+  border-radius: var(--r-2);
+  background: var(--st-hover);
+  box-shadow: 0 0 0 var(--bw-1) var(--line-1);
+}
+
+.single {
+  height: var(--umsg-img-single-h);
+  max-width: var(--umsg-img-single-max-w);
+}
+
+.single.placeholder,
+.single.honest {
+  width: var(--umsg-img-single-placeholder-w);
+}
+
+.thumb {
+  width: var(--umsg-img-thumb);
+  height: var(--umsg-img-thumb);
+}
+
+.ready {
+  cursor: zoom-in;
+  transition: box-shadow var(--dur) var(--ease);
+}
+
+.ready:hover {
+  box-shadow:
+    0 0 0 var(--bw-1) var(--line-2),
+    var(--sh-1);
+}
+
+.img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 一张图:钉高、宽按比例(`width: auto`),封顶之后裁边。 */
+.single .img {
+  width: auto;
+  max-width: var(--umsg-img-single-max-w);
+}
+
+/* 诚实态:图形字 + 文件名。名字是这一格仅剩的信息,所以是看得见的字。 */
+.honest {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  padding: var(--sp-2);
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+  text-align: center;
+}
+
+.glyph {
+  flex: none;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.name {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* ── 摞(≥ 5 张;排布在 ui/card-stack)──────────────────────────────── */
+
+.stack {
+  position: relative;
+  height: var(--umsg-img-stack-h);
+  max-width: 100%;
+  margin-inline-start: auto;
+  overflow: hidden;
+}
+
+.stackOpen {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.stackOpen::-webkit-scrollbar {
+  display: none;
+}
+
+.stackRow {
+  position: relative;
+  height: 100%;
+}
+
+.stackCard {
+  position: absolute;
+  top: calc((var(--umsg-img-stack-h) - var(--umsg-img-thumb)) / 2);
+  transition:
+    left var(--dur-att-move) var(--ease-out),
+    transform var(--dur-att-move) var(--ease-out);
+}
+
+.stackHidden {
+  display: none;
+}
+
+/* 收拢时叠着的几张要看得出是几层:每张带一点投影。 */
+.stack:not(.stackOpen) .tile {
+  box-shadow:
+    0 0 0 var(--bw-1) var(--line-1),
+    var(--sh-1);
+}
+
+.count {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: var(--z-sticky);
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-mono);
+  font-size: var(--fs-tiny);
+  pointer-events: none;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.countHidden {
+  opacity: 0;
+}

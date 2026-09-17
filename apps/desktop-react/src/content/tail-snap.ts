@@ -39,9 +39,10 @@
  *     让那一行的变换后盒子探到列的下缘之外、把滚动范围撑大一丁点,于是贴底位跟着
  *     变 —— 一条会自激的路。往上推没有这个出口。
  *
- * 那一行本来就是 `content-visibility: auto`(= 常驻 `contain: layout style paint`),
- * **早就是**绝对 / 固定定位子孙的包含块,所以多一格 `translate` 在结构上什么都没改
- * (图片放大那一件是 `createPortal` 出去的,不在这条链上)。
+ * 后续像素回放补充:这个补偿只能保证几何落点,不能独自保证文字绘制稳定。
+ * 列尾行已在 ChatStream.module.css 中改为 content-visibility: visible,
+ * 避开 auto 隐含的布局/绘制隔离与补偿的交互;其余历史行仍用 auto。
+ * translate 仍会建立定位包含块;图片放大等浮层通过 createPortal 渲染。
  */
 
 /** 一个设备像素在 CSS 像素里有多长(dpr 2 → 0.5;dpr 1 → 1)。 */
@@ -85,12 +86,14 @@ export interface TailSnap {
  * 「尾巴自然会在哪」→「它该在哪」→「那就推这么多」。
  *
  * 落点认的是 `floor(自然位置)` 再往上让一个设备像素:`floor` 保证落点不高于
- * 自然位置,让出的那一格保证接下来的抖动怎么摆都不会把 `nudge` 摆成正数。
+ * 自然位置,让出的那一格覆盖正常取整抖动。内容真正缩短并越过原落点时,
+ * 必须提前重认,不能仅凭还在距离门槛内就给出正补偿。
  */
 export function resolveTailSnap({ bottom, applied, held, devicePx }: TailSnapInput): TailSnap {
   const natural = bottom - applied
   const keep =
-    held !== undefined && Math.abs(natural - held) <= TAIL_SNAP_REACQUIRE_DEVICE_PX * devicePx
+    held !== undefined && held <= natural &&
+    Math.abs(natural - held) <= TAIL_SNAP_REACQUIRE_DEVICE_PX * devicePx
   const next = keep ? held : Math.floor(natural / devicePx) * devicePx - devicePx
   return { held: next, nudge: next - natural, reacquired: !keep }
 }

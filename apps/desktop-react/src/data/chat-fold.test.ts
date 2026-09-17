@@ -573,6 +573,17 @@ describe('overlay:以折叠为准的认领', () => {
     status: 'sending' | 'failed' = 'sending',
   ): PendingSend => ({ id, kind: 'pending', text, attachments: 0, status, seenUserIds: seen })
 
+  it('文件读取乱序:后发的附件先落账,只按身份认领并保留先发文件供失败重试', () => {
+    const fileA = new File(['A'], 'A.txt')
+    const fileB = new File(['B'], 'B.txt')
+    const first: PendingSend = { ...pending('o1', ''), messageId: 'mA', attachments: 1, files: [fileA] }
+    const second: PendingSend = { ...pending('o2', ''), messageId: 'mB', attachments: 1, files: [fileB] }
+    const out = reconcileOverlay([first, second], [message({ id: 'mB', role: 'user', content: '' })])
+    expect(out).toEqual([first])
+    expect((out[0] as PendingSend).files?.[0]).toBe(fileA)
+    expect(reconcileOverlay(out, [message({ id: 'mA', role: 'user', content: '' })])).toEqual([])
+  })
+
   it('账本长出同一句话 = 那一格 pending 被接管,丢掉', () => {
     const out = reconcileOverlay(
       [pending('o1', '发一句')],

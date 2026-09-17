@@ -74,6 +74,7 @@ export type OnethingReasoningWire =
   | 'grok-effort'
   | 'openrouter-reasoning'
   | 'codex'
+  | 'custom'
   | 'none'
 
 export interface OnethingReasoningProfile {
@@ -89,6 +90,160 @@ export interface OnethingReasoningProfile {
   efforts: readonly OnethingReasoningEffortOption[]
   defaultEffort: OnethingReasoningEffortLevel
   wire: OnethingReasoningWire
+  /** Explicit compatibility behavior for an old disabled selection on an always-on model. */
+  disabledEffort?: OnethingReasoningEffortLevel
+  effortLabels?: Partial<Record<OnethingReasoningEffortLevel, string>>
+  custom?: OnethingCustomReasoningConfig
+  /** Runtime marker: apply the user's declared defaults before native encoding. */
+  configured?: boolean
+  configuredWire?: boolean
+}
+
+export interface OnethingCustomReasoningConfig {
+  /** Dot-separated request field, e.g. reasoning.effort or thinking.budget_tokens. */
+  effortPath: string
+  effortValues?: Partial<Record<OnethingReasoningEffortLevel, string | number>>
+  disabledValue?: string | number | boolean | null
+  enabledBody?: Record<string, unknown>
+  disabledBody?: Record<string, unknown>
+}
+
+/** Stored under providerOptions.reasoningProfile or a per-model capability override. */
+export interface OnethingReasoningProfileOverride {
+  toggleable?: boolean
+  defaultOn?: boolean
+  efforts?: readonly OnethingReasoningEffortOption[]
+  defaultEffort?: OnethingReasoningEffortLevel
+  disabledEffort?: OnethingReasoningEffortLevel
+  wire?: OnethingReasoningWire
+  effortLabels?: Partial<Record<OnethingReasoningEffortLevel, string>>
+  /** null restores the native encoder when a provider default uses custom mapping. */
+  custom?: OnethingCustomReasoningConfig | null
+}
+
+const REASONING_LEVELS: readonly OnethingReasoningEffortLevel[] = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+const REASONING_WIRES: readonly OnethingReasoningWire[] = ['anthropic-adaptive', 'anthropic-budget', 'anthropic-always', 'openai-effort', 'gemini-level', 'gemini-budget', 'thinking-type', 'zhipu-thinking', 'qwen-thinking', 'grok-effort', 'openrouter-reasoning', 'codex', 'custom', 'none']
+const UNSAFE_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
+
+function profileRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function safeProfileJson(value: unknown, depth = 0): boolean {
+  if (depth > 20) return false
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true
+  if (typeof value === 'number') return Number.isFinite(value)
+  if (Array.isArray(value)) return value.every(item => safeProfileJson(item, depth + 1))
+  return profileRecord(value) && Object.entries(value).every(([key, item]) => !key.split('.').some(segment => UNSAFE_KEYS.has(segment)) && safeProfileJson(item, depth + 1))
+}
+
+/** Reject malformed definitions as a whole; never send half a custom API contract. */
+export function normalizeOnethingReasoningProfileOverride(value: unknown): OnethingReasoningProfileOverride | undefined {
+  if (!profileRecord(value)) return undefined
+  const result: OnethingReasoningProfileOverride = {}
+  for (const key of ['toggleable', 'defaultOn'] as const) {
+    if (value[key] !== undefined) {
+      if (typeof value[key] !== 'boolean') return undefined
+      result[key] = value[key]
+    }
+  }
+  for (const key of ['defaultEffort', 'disabledEffort'] as const) {
+    if (value[key] !== undefined) {
+      if (!REASONING_LEVELS.includes(value[key] as OnethingReasoningEffortLevel)) return undefined
+      result[key] = value[key] as OnethingReasoningEffortLevel
+    }
+  }
+  if (value.efforts !== undefined) {
+    if (!Array.isArray(value.efforts) || !value.efforts.every(level => level === 'none' || REASONING_LEVELS.includes(level))) return undefined
+    result.efforts = [...new Set(value.efforts)]
+  }
+  if (value.wire !== undefined) {
+    if (!REASONING_WIRES.includes(value.wire as OnethingReasoningWire)) return undefined
+    result.wire = value.wire as OnethingReasoningWire
+  }
+  if (value.effortLabels !== undefined) {
+    if (!profileRecord(value.effortLabels)) return undefined
+    result.effortLabels = {}
+    for (const [level, label] of Object.entries(value.effortLabels)) {
+      if (!REASONING_LEVELS.includes(level as OnethingReasoningEffortLevel) || typeof label !== 'string' || !label.trim() || label.length > 80) return undefined
+      result.effortLabels[level as OnethingReasoningEffortLevel] = label.trim()
+    }
+  }
+  if (value.custom === null) result.custom = null
+  else if (value.custom !== undefined) {
+    const custom = value.custom
+    if (!profileRecord(custom) || typeof custom.effortPath !== 'string' || !/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/.test(custom.effortPath) || custom.effortPath.split('.').some(key => UNSAFE_KEYS.has(key))) return undefined
+    const config: OnethingCustomReasoningConfig = { effortPath: custom.effortPath }
+    if (custom.effortValues !== undefined) {
+      if (!profileRecord(custom.effortValues)) return undefined
+      config.effortValues = {}
+      for (const [level, mapped] of Object.entries(custom.effortValues)) {
+        if (!REASONING_LEVELS.includes(level as OnethingReasoningEffortLevel) || (typeof mapped !== 'string' && !(typeof mapped === 'number' && Number.isFinite(mapped)))) return undefined
+        config.effortValues[level as OnethingReasoningEffortLevel] = mapped
+      }
+    }
+    if (custom.disabledValue !== undefined) {
+      if (custom.disabledValue !== null && !['string', 'boolean', 'number'].includes(typeof custom.disabledValue)) return undefined
+      if (!safeProfileJson(custom.disabledValue)) return undefined
+      config.disabledValue = custom.disabledValue as string | number | boolean | null
+    }
+    for (const key of ['enabledBody', 'disabledBody'] as const) {
+      if (custom[key] !== undefined) {
+        if (!profileRecord(custom[key]) || !safeProfileJson(custom[key])) return undefined
+        config[key] = custom[key]
+      }
+    }
+    result.custom = config
+  }
+  if (result.wire === 'custom' && !result.custom) return undefined
+  return Object.keys(result).length ? result : undefined
+}
+
+/** Validate all saved definitions before any persistence or runtime side effects. */
+export function validateOnethingProviderReasoningSettings(value: unknown): void {
+  if (!profileRecord(value)) return
+  const providers = profileRecord(value.providers) ? Object.entries(value.providers) : []
+  const customProviders = Array.isArray(value.customProviders)
+    ? value.customProviders.filter(profileRecord).map(config => [String(config.id ?? 'custom'), config] as const)
+    : []
+  const check = (profile: unknown, location: string) => {
+    if (profile !== undefined && !normalizeOnethingReasoningProfileOverride(profile)) {
+      throw new Error(`Invalid reasoning profile at ${location}`)
+    }
+  }
+  for (const [providerId, config] of [...providers, ...customProviders]) {
+    if (!profileRecord(config)) continue
+    if (profileRecord(config.providerOptions)) check(config.providerOptions.reasoningProfile, `${providerId}.providerOptions.reasoningProfile`)
+    if (!profileRecord(config.modelCapabilitiesByModel)) continue
+    for (const [modelId, override] of Object.entries(config.modelCapabilitiesByModel)) {
+      if (profileRecord(override)) check(override.reasoningProfile, `${providerId}.${modelId}.reasoningProfile`)
+    }
+  }
+}
+
+export function resolveOnethingReasoningEffort(effort: string | undefined, allowed: readonly string[], fallback: OnethingReasoningEffortLevel): OnethingReasoningEffortLevel {
+  const levels = allowed.filter((level): level is OnethingReasoningEffortLevel => REASONING_LEVELS.includes(level as OnethingReasoningEffortLevel))
+  const requested = REASONING_LEVELS.includes(effort as OnethingReasoningEffortLevel) ? effort as OnethingReasoningEffortLevel : fallback
+  if (levels.includes(requested)) return requested
+  const index = REASONING_LEVELS.indexOf(requested)
+  return [...REASONING_LEVELS.slice(0, index).reverse(), ...REASONING_LEVELS.slice(index + 1)].find(level => levels.includes(level)) ?? fallback
+}
+
+export function clampOnethingReasoningEffort(effort: string | undefined, profile: OnethingReasoningProfile): OnethingReasoningEffortLevel {
+  return resolveOnethingReasoningEffort(effort, profile.efforts, profile.defaultEffort)
+}
+
+function withReasoningProfileOverrides(base: OnethingReasoningProfile, provider?: OnethingReasoningProfileOverride, model?: OnethingReasoningProfileOverride): OnethingReasoningProfile {
+  const { custom, ...merged } = { ...base, ...provider, ...model }
+  const labels = { ...base.effortLabels, ...provider?.effortLabels, ...model?.effortLabels }
+  const profile: OnethingReasoningProfile = { ...merged, ...(custom ? { custom, wire: 'custom' } : {}), ...(Object.keys(labels).length ? { effortLabels: labels } : {}), ...(provider || model ? { configured: true } : {}), ...(provider?.wire || model?.wire ? { configuredWire: true } : {}) }
+  if (custom === null && profile.wire === 'custom') profile.wire = base.wire
+  // A configured always-on policy must agree with the picker and the request
+  // normalization, including families whose unconfigured default is off.
+  if (!profile.toggleable && (profile.configured || base.defaultOn)) profile.defaultOn = true
+  profile.defaultEffort = clampOnethingReasoningEffort(profile.defaultEffort, profile)
+  if (profile.disabledEffort) profile.disabledEffort = clampOnethingReasoningEffort(profile.disabledEffort, profile)
+  return profile
 }
 
 /**
@@ -112,6 +267,8 @@ export interface OnethingThinkingLevelProjection {
   thinkingDefaultOn: boolean
   /** 什么档都没设时的有效档;`null` = 这一型不思考。 */
   thinkingDefaultLevel: OnethingReasoningEffortLevel | null
+  thinkingDisabledLevel?: OnethingReasoningEffortLevel | null
+  thinkingLevelLabels?: Partial<Record<OnethingReasoningEffortLevel, string>>
 }
 
 export function projectOnethingThinkingLevels(
@@ -132,6 +289,8 @@ export function projectOnethingThinkingLevels(
     thinkingToggleable: profile.toggleable,
     thinkingDefaultOn: profile.defaultOn,
     thinkingDefaultLevel: profile.defaultEffort,
+    ...(profile.disabledEffort ? { thinkingDisabledLevel: profile.disabledEffort } : {}),
+    ...(profile.effortLabels && Object.keys(profile.effortLabels).length ? { thinkingLevelLabels: { ...profile.effortLabels } } : {}),
   }
 }
 
@@ -208,6 +367,7 @@ export interface OnethingResolvedModelCapabilities {
 
 /** Per-model override stored in settings (modelCapabilitiesByModel). */
 export interface OnethingCapabilityOverrideLike {
+  reasoningProfile?: OnethingReasoningProfileOverride
   tools?: boolean
   vision?: boolean
   reasoning?: boolean
@@ -255,6 +415,7 @@ export interface ResolveOnethingModelCapabilitiesInput {
   /** apiType of a custom provider ('custom-*'), when known. */
   customApiType?: 'openai' | 'anthropic'
   override?: OnethingCapabilityOverrideLike
+  providerReasoningProfile?: unknown
   registryEntry?: OnethingCapabilityEntryLike
   modelMetadata?: OnethingModelMetadataLike
 }
@@ -741,15 +902,52 @@ const PROVIDER_MODEL_RULES: Record<OnethingProviderKind, OnethingModelRule[]> = 
     { test: /(?:)/, caps: { reasoning: false } },
   ],
   grok: [
+    { test: /non-reasoning|grok-imagine/, caps: { reasoning: false, vision: true } },
     {
-      test: /grok-(?:4\.5|4\.20|3-mini)/,
+      test: /grok-4\.(?:6(?:$|-)|20.*multi-agent)/,
       caps: { reasoning: true },
       profile: {
-        // Grok reasoning cannot be disabled — effort is the only knob.
         toggleable: false,
         defaultOn: true,
-        efforts: ONETHING_GROK_EFFORTS,
+        efforts: ['low', 'medium', 'high', 'xhigh'],
         defaultEffort: 'high',
+        disabledEffort: 'low',
+        wire: 'grok-effort',
+      },
+    },
+    {
+      // xAI capability guide (2026-09-16): 4.5 cannot disable reasoning;
+      // xhigh is not a distinct supported level on this model.
+      test: /grok-4\.5(?:$|-)/,
+      caps: { reasoning: true },
+      profile: {
+        toggleable: false, defaultOn: true, efforts: ONETHING_GROK_EFFORTS,
+        defaultEffort: 'high', disabledEffort: 'low', wire: 'grok-effort',
+      },
+    },
+    {
+      // Model-specific 4.3 docs list none / low / medium / high, default low.
+      test: /grok-4\.3(?:$|-)/,
+      caps: { reasoning: true },
+      profile: {
+        toggleable: true, defaultOn: true, efforts: ['none', 'low', 'medium', 'high'],
+        defaultEffort: 'low', wire: 'grok-effort',
+      },
+    },
+    {
+      test: /grok-3-mini(?:$|-)/,
+      caps: { reasoning: true },
+      profile: {
+        toggleable: false, defaultOn: true, efforts: ['low', 'high'],
+        defaultEffort: 'low', disabledEffort: 'low', wire: 'grok-effort',
+      },
+    },
+    {
+      // Older reasoning families do not expose a configurable effort knob.
+      test: /grok-4(?:$|-)|grok-4\.(?:1|20)(?:$|-)|grok-code-fast/,
+      caps: { reasoning: true },
+      profile: {
+        toggleable: false, defaultOn: true, efforts: [], defaultEffort: 'high',
         wire: 'grok-effort',
       },
     },
@@ -779,7 +977,10 @@ const PROVIDER_MODEL_RULES: Record<OnethingProviderKind, OnethingModelRule[]> = 
       caps: { vision: true },
     },
     {
-      test: /(^|[^a-z])v4/,
+      // V4.1 起官方目录改名为 `deepseek-flash` / `deepseek-pro`(models.dev 名字仍写
+      // 「DeepSeek V4.1 Flash」),id 里不再带 v4 —— 只认 v4 的话它会落进下面那条
+      // 兜底行,抽屉里档位整条消失。
+      test: /(^|[^a-z])v4|^deepseek-(flash|pro)(\b|$)/,
       caps: { reasoning: true },
       profile: {
         toggleable: true,
@@ -1207,7 +1408,13 @@ export function resolveOnethingModelCapabilities(
   const kind = resolveOnethingProviderKind(input.providerId, input.customApiType)
   const modelLower = input.modelId.toLowerCase()
 
-  const reasoning = resolveCapability('reasoning', input, kind, modelLower)
+  const providerProfile = normalizeOnethingReasoningProfileOverride(input.providerReasoningProfile)
+  const modelProfile = normalizeOnethingReasoningProfileOverride(input.override?.reasoningProfile)
+  if (input.providerReasoningProfile !== undefined && !providerProfile) throw new Error(`Invalid reasoning profile for provider '${input.providerId}'`)
+  if (input.override?.reasoningProfile !== undefined && !modelProfile) throw new Error(`Invalid reasoning profile for model '${input.modelId}'`)
+  const reasoning = (providerProfile || modelProfile) && input.override?.reasoning !== false
+    ? verdict(true, 'override')
+    : resolveCapability('reasoning', input, kind, modelLower)
   const vision = resolveCapability('vision', input, kind, modelLower)
   const fileInput = resolveCapability('fileInput', input, kind, modelLower)
   const tools = resolveCapability('tools', input, kind, modelLower)
@@ -1215,7 +1422,7 @@ export function resolveOnethingModelCapabilities(
   const temperature = resolveCapability('temperature', input, kind, modelLower)
 
   const reasoningProfile = reasoning.value
-    ? resolveProfile(kind, input.modelId, modelLower) ?? GENERIC_REASONING_PROFILE
+    ? withReasoningProfileOverrides(resolveProfile(kind, input.modelId, modelLower) ?? GENERIC_REASONING_PROFILE, providerProfile, modelProfile)
     : undefined
   const forcedToolUse = fromRules('forcedToolUse', PROVIDER_MODEL_RULES[kind], modelLower)
   const servedBy = resolveImageOutputServedBy(input, kind, modelLower, imageOutput)

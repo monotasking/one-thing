@@ -122,7 +122,7 @@ export function PerfHud() {
           data-testid="perf-hud-report"
           aria-label={t('perf.reportHint')}
           onClick={() => {
-            // eslint-disable-next-line no-console -- HUD 的「聚合」就是往控制台打表
+             
             console.table(perfReport())
           }}
         >

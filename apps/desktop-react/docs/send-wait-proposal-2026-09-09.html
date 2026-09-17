@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>发送与等待 · 样例</title>
+<style>
+  :root{
+    --paper:#faf8f4; --paper-2:#f3f0ea; --text-1:#2b2926; --text-2:#6b665f; --text-3:#9a948b;
+    --line-1:#e6e1d8; --line-2:#d8d2c7; --accent:#c9782a; --st-sel:#efe9df; --st-hover:#f1ece4;
+    --r-2:12px; --sp-1:4px; --sp-2:6px; --sp-3:10px; --sp-4:14px;
+    --fs-micro:11.5px; --pr-fs:15px; --pr-lh:1.65;
+    --dur:120ms; --dur-release:260ms; --dur-seam-sweep:1600ms; --dur-dots:900ms;
+    --ease-out:cubic-bezier(.2,.7,.2,1);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--text-1);font:14px/1.5 -apple-system,"PingFang SC","Helvetica Neue",sans-serif}
+  main{max-width:1180px;margin:0 auto;padding:28px 20px 60px}
+  h1{font-size:20px;margin:0 0 6px}
+  p.note{color:var(--text-2);font-size:13px;margin:0 0 18px;max-width:900px}
+  .lanes{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .lane{display:flex;flex-direction:column;border:1px solid var(--line-1);border-radius:16px;background:#fff9;overflow:hidden;height:560px}
+  .lane h2{margin:0;padding:10px 14px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-2);border-bottom:1px solid var(--line-1);display:flex;justify-content:space-between;align-items:center}
+  .lane h2 .pick{font-size:11px;color:var(--accent);font-weight:600;text-transform:none;letter-spacing:0}
+  .scroll{flex:1;overflow:auto;padding:16px 16px 8px;display:flex;flex-direction:column;gap:16px}
+  .prose{font-size:var(--pr-fs);line-height:var(--pr-lh)}
+  .prose p{margin:0 0 .6em}
+  .user{align-self:flex-end;max-width:80%;padding:var(--sp-3) var(--sp-4);border-radius:var(--r-2);background:var(--st-sel);font-size:var(--pr-fs);line-height:var(--pr-lh);transition:opacity var(--dur)}
+  .user.pending{opacity:.72}
+  .reply{display:flex;flex-direction:column;gap:6px;font-size:var(--pr-fs);line-height:var(--pr-lh)}
+  .reply .text{white-space:pre-wrap}
+  .cursor{display:inline-block;width:.5em;height:var(--pr-fs);background:var(--text-2);border-radius:1px;vertical-align:-2px;animation:blink 1s steps(2) infinite}
+  .dots{display:inline-flex;gap:4px;height:calc(var(--pr-fs)*var(--pr-lh));align-items:center;color:var(--text-3)}
+  .dots i{width:5px;height:5px;border-radius:50%;background:currentColor;animation:dots var(--dur-dots) ease-in-out infinite}
+  .dots i:nth-child(2){animation-delay:150ms}.dots i:nth-child(3){animation-delay:300ms}
+
+  /* 折痕 */
+  .seam{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;margin:2px 0;opacity:1}
+  .seam .line{position:relative;height:1px;background:var(--line-1);overflow:hidden;border-radius:1px}
+  .seam .line::before{content:"";position:absolute;top:0;bottom:0;width:38%;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:0;transform:translateX(-100%)}
+  .seam[data-state="running"] .line::before{opacity:.9;animation:seamSweep var(--dur-seam-sweep) ease-in-out infinite alternate}
+  .seam[data-state="running"] .line:last-child::before{animation-delay:calc(var(--dur-seam-sweep)*-1)}
+  .seam .label{font-size:var(--fs-micro);color:var(--text-3);white-space:nowrap;padding:3px 10px;border-radius:999px;transition:color var(--dur-release)}
+  .seam .label b{font-weight:500;color:var(--text-2)}
+  .seam.settle{animation:settle var(--dur-release) var(--ease-out)}
+  .seam .label.swap{animation:labelIn var(--dur-release) var(--ease-out)}
+
+  .composer{border-top:1px solid var(--line-1);padding:10px 12px;display:flex;gap:8px;background:#fff8}
+  .composer input{flex:1;font:inherit;font-size:14px;padding:8px 12px;border:1px solid var(--line-2);border-radius:10px;background:#fff;outline:none}
+  .composer input:focus{border-color:var(--accent)}
+  .composer button{font:inherit;font-size:13px;padding:8px 14px;border:0;border-radius:10px;background:var(--text-1);color:#fff;cursor:pointer}
+  .composer button:disabled{opacity:.4;cursor:default}
+  .timeline{font-size:11px;color:var(--text-3);padding:6px 14px 10px;border-top:1px dashed var(--line-1);min-height:44px;font-variant-numeric:tabular-nums}
+  .timeline span{margin-right:10px}
+  .cap{font-size:12px;color:var(--text-2);margin:14px 0 0;line-height:1.6}
+  .cap b{color:var(--text-1);font-weight:600}
+  .explain{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:14px}
+  .explain div{font-size:12.5px;color:var(--text-2);line-height:1.65}
+  .explain div b{display:block;color:var(--text-1);margin-bottom:4px}
+  .ctl{display:flex;gap:10px;align-items:center;margin:0 0 14px;font-size:13px;color:var(--text-2)}
+  .ctl label{display:inline-flex;gap:6px;align-items:center;cursor:pointer}
+
+  @keyframes blink{50%{opacity:0}}
+  @keyframes dots{0%,60%,100%{opacity:.35;transform:translateY(0)}30%{opacity:1;transform:translateY(-30%)}}
+  @keyframes seamSweep{from{transform:translateX(-100%)}to{transform:translateX(265%)}}
+  @keyframes settle{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+  @keyframes labelIn{from{opacity:0}to{opacity:1}}
+  @media (max-width:960px){.lanes,.explain{grid-template-columns:1fr}.lane{height:420px}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+<main>
+  <h1>发送 → 等待 → 回复 · 三台并排</h1>
+  <p class="note">每台底下都有输入框,自己发一条看。时间线按真机的量级模拟:账本收下 120ms,run/start 700ms,上下文更新再 250ms,首字再 1.4s。左台是现状照实重放,中、右两台是两种改法。</p>
+  <div class="ctl">
+    <span>模拟条件:</span>
+    <label><input type="checkbox" id="withDelta" checked> 这一轮有上下文更新</label>
+    <label><input type="checkbox" id="slowFirst"> 首字更慢(4s)</label>
+  </div>
+
+  <div class="lanes">
+    <section class="lane" data-lane="now">
+      <h2>现状</h2>
+      <div class="scroll"></div>
+      <form class="composer"><input placeholder="发一条…" value="帮我看看这个报错"><button>发送</button></form>
+      <div class="timeline"></div>
+    </section>
+    <section class="lane" data-lane="a">
+      <h2>提案 A · 回复槽位同帧出</h2>
+      <div class="scroll"></div>
+      <form class="composer"><input placeholder="发一条…" value="帮我看看这个报错"><button>发送</button></form>
+      <div class="timeline"></div>
+    </section>
+    <section class="lane" data-lane="b">
+      <h2>提案 B · 回合头折痕 <span class="pick">推荐</span></h2>
+      <div class="scroll"></div>
+      <form class="composer"><input placeholder="发一条…" value="帮我看看这个报错"><button>发送</button></form>
+      <div class="timeline"></div>
+    </section>
+  </div>
+
+  <div class="explain">
+    <div><b>现状:三段空档、一次顶开</b>发送后只有气泡(半透明)。账本收下才变实。run/start 到了三点才出来 —— 这之前用户不知道它收没收到。上下文更新落账时整行插在气泡和三点之间,三点被往下顶一格。</div>
+    <div><b>A:按下即开槽,三点同帧</b>发送那一帧同时画气泡和回复槽位,三点从第一帧就在。上下文更新落到槽位<b>里面</b>、三点上方,淡入;三点下移一行但那是「回复区在长」,不是「我的消息变了」。没有上下文更新时槽位就是三点,什么都不多。</div>
+    <div><b>B:回合头是一条折痕,等待就画在线上</b>发送那一帧气泡下面开一条折痕:线上光束来回扫 = 在等;标签空着。上下文更新落账时标签淡入「上下文更新 · 变量 2」,<b>不占新行</b>。首字到,光扫停、线变实、正文在线下开始。没有上下文更新时标签一直空,线在首字后淡出,正文往上补 1px 都不动(线的高度不算进正文)。同一条线三段话:在等 → 补了什么 → 从这儿开始回。</div>
+  </div>
+  <p class="cap">与压缩折痕同一族(线 + 居中标签,光扫 = 进行中),读数环照旧压缩时脉动、每轮滑到新值。B 里三点整个不要了 —— 一个回合只有一种「进行中」的动作:线上的光。</p>
+</main>
+
+<script>
+const history = [
+  ['assistant','上一轮回答的最后一段。工具结果占了请求的大头,这一轮结束时窗口用到了 60% 左右。'],
+];
+const REPLY = '这个报错是 deepseek 拒单:请求里 701,297 个 token 的记录,加上 384,000 的回复上限,超过了 1,048,576 的窗口。修法是把回复上限按窗口剩余来夹。';
+const T = { ledger:120, run:700, delta:250, first:1400, firstSlow:4000, char:18 };
+
+function el(tag, cls, html){ const e=document.createElement(tag); if(cls) e.className=cls; if(html!==undefined) e.innerHTML=html; return e; }
+function seamEl(state,label){ const s=el('div','seam'); s.dataset.state=state; s.innerHTML=`<span class="line"></span><span class="label">${label||''}</span><span class="line"></span>`; return s; }
+function dotsEl(){ return el('span','dots','<i></i><i></i><i></i>'); }
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+for (const lane of document.querySelectorAll('.lane')) {
+  const scroll = lane.querySelector('.scroll');
+  const form = lane.querySelector('form');
+  const tl = lane.querySelector('.timeline');
+  const kind = lane.dataset.lane;
+  for (const [role,text] of history) {
+    const n = el('div', role==='user'?'user':'prose'); n.innerHTML = role==='user'?text:`<p>${text}</p>`; scroll.appendChild(n);
+  }
+  const mark = (t0,label)=>{ const s=el('span','',`${label} ${((performance.now()-t0)/1000).toFixed(2)}s`); tl.appendChild(s); };
+  const pin = ()=>{ scroll.scrollTop = scroll.scrollHeight; };
+  form.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const input = form.querySelector('input'); const btn=form.querySelector('button');
+    const text = input.value.trim() || '帮我看看这个报错'; input.value=''; btn.disabled=true; tl.innerHTML='';
+    const withDelta = document.getElementById('withDelta').checked;
+    const firstMs = document.getElementById('slowFirst').checked ? T.firstSlow : T.first;
+    const t0 = performance.now();
+    await run[kind]({scroll, text, withDelta, firstMs, mark:(l)=>mark(t0,l), pin});
+    btn.disabled=false; input.focus();
+  });
+}
+
+async function stream(target, pin){
+  const cur = el('span','cursor');
+  target.textContent=''; target.appendChild(cur);
+  for (const ch of REPLY) { cur.before(document.createTextNode(ch)); pin(); await sleep(T.char); }
+  cur.remove();
+}
+
+const run = {
+  // 现状:气泡(半透明)→ 变实 → run/start 才出三点 → 上下文更新插在气泡与三点之间 → 首字
+  async now({scroll,text,withDelta,firstMs,mark,pin}){
+    const u = el('div','user pending',text); scroll.appendChild(u); pin(); mark('发送');
+    await sleep(T.ledger); u.classList.remove('pending'); mark('账本收下');
+    await sleep(T.run);
+    const r = el('div','reply'); r.appendChild(dotsEl()); scroll.appendChild(r); pin(); mark('run/start·三点');
+    if (withDelta) { await sleep(T.delta); scroll.insertBefore(seamEl('settled','上下文更新 · <b>变量 2</b> · <b>待办 1</b>'), r); pin(); mark('上下文更新·插入'); }
+    await sleep(firstMs - (withDelta?T.delta:0));
+    r.innerHTML=''; const t=el('div','text'); r.appendChild(t); mark('首字');
+    await stream(t,pin);
+  },
+  // A:发送那一帧 = 气泡 + 回复槽位(三点);上下文更新落到槽位里、三点上方,淡入
+  async a({scroll,text,withDelta,firstMs,mark,pin}){
+    const u = el('div','user pending',text); scroll.appendChild(u);
+    const r = el('div','reply'); const d=dotsEl(); r.appendChild(d); scroll.appendChild(r); pin(); mark('发送·气泡+槽位');
+    await sleep(T.ledger); u.classList.remove('pending'); mark('账本收下');
+    await sleep(T.run); mark('run/start');
+    if (withDelta) { await sleep(T.delta); const s=seamEl('settled','上下文更新 · <b>变量 2</b> · <b>待办 1</b>'); s.classList.add('settle'); r.insertBefore(s,d); pin(); mark('上下文更新·槽位内淡入'); }
+    await sleep(firstMs - (withDelta?T.delta:0));
+    d.remove(); const t=el('div','text'); r.appendChild(t); mark('首字');
+    await stream(t,pin);
+  },
+  // B:发送那一帧 = 气泡 + 回合头折痕(光扫,标签空);上下文更新 = 标签淡入不占行;首字 = 光扫停、线实、正文在线下
+  async b({scroll,text,withDelta,firstMs,mark,pin}){
+    const u = el('div','user pending',text); scroll.appendChild(u);
+    const r = el('div','reply'); const s=seamEl('running',''); r.appendChild(s); scroll.appendChild(r); pin(); mark('发送·气泡+折痕光扫');
+    await sleep(T.ledger); u.classList.remove('pending'); mark('账本收下');
+    await sleep(T.run); mark('run/start');
+    if (withDelta) { await sleep(T.delta); const l=s.querySelector('.label'); l.innerHTML='上下文更新 · <b>变量 2</b> · <b>待办 1</b>'; l.classList.add('swap'); mark('上下文更新·标签淡入'); }
+    await sleep(firstMs - (withDelta?T.delta:0));
+    s.dataset.state='settled'; mark('首字·光扫停');
+    if (!withDelta) { s.style.transition='opacity 260ms'; s.style.opacity='0'; setTimeout(()=>s.remove(),260); }
+    const t=el('div','text'); r.appendChild(t);
+    await stream(t,pin);
+  },
+};
+</script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-import type { KeyboardEvent, RefObject } from 'react'
+import { useLayoutEffect, type KeyboardEvent, type RefObject } from 'react'
 import { useFocusScope } from '../../focus/useFocusScope'
 import { useT } from '../../i18n'
 import { Button } from '../../ui/Button'
@@ -52,13 +52,20 @@ export function AskForm({
   const move = useComposerStoreOf(sessionId, (st) => st.moveAsk)
   const submit = useComposerStoreOf(sessionId, (st) => st.submitAsk)
   const reject = useComposerStoreOf(sessionId, (st) => st.rejectAsk)
+  const submitting = useComposerStoreOf(sessionId, (st) => st.askSubmitting)
+  const error = useComposerStoreOf(sessionId, (st) => st.askError)
   /** 这块表单住在输入面板那一格作用域里,所以拿到的是它的句柄。 */
   const { activate } = useFocusScope()
 
   const question = spec.questions[idx]
+  const ans = answers[idx]
+  const freeText = question && isCustomAnswer(question, ans) && typeof ans === 'string' ? ans : ''
+  useLayoutEffect(() => {
+    const element = freeRef.current
+    if (element && element.textContent?.trim() !== freeText.trim()) element.textContent = freeText
+  }, [freeRef, freeText, idx, spec])
   if (!question) return null
 
-  const ans = answers[idx]
   const picked = new Set(Array.isArray(ans) ? ans : [])
   const customOn = isCustomAnswer(question, ans)
   const done = askAnsweredCount(answers)
@@ -66,7 +73,7 @@ export function AskForm({
   const rows = askMaxRows(spec)
 
   const onFreeKey = (e: KeyboardEvent<HTMLSpanElement>) => {
-    if (e.key !== 'Enter') return
+    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return
     e.preventDefault()
     setCustom(freeRef.current?.textContent ?? '')
   }
@@ -113,7 +120,7 @@ export function AskForm({
           * 批 3 迁进库件时因为库件没有这一档而退役的危险语义,回填在这里)。
           * 本地只留一格落点(`margin-left: auto`,把它顶到行尾);
           * rest / hover / disabled / 焦点环全部随件走。 */}
-        <Button variant="danger" className={s.askReject} onClick={reject}>
+        <Button variant="danger" className={s.askReject} onClick={reject} disabled={submitting}>
           {t('ask.reject')}
         </Button>
       </div>
@@ -133,6 +140,8 @@ export function AskForm({
               key={o.l}
               className={on ? `${s.askBar} ${s.askBarOn}` : s.askBar}
               aria-pressed={on}
+              data-ask-option=""
+              disabled={submitting}
               onClick={() => answer(i)}
             >
               <span className={mark} aria-hidden="true" />
@@ -144,7 +153,7 @@ export function AskForm({
 
         {/* 「其他」行:点记号 = 取消这句自定义答案,点行内文字 = 直接改,不新开输入框。 */}
         {/* 文本载体:同一条横条上那枚记号落焦时不点亮它 —— 判据只认能打字的那个。 */}
-        <div
+        {question.allowFreeText !== false && <div
           className={customOn ? `${s.askBar} ${s.askBarOn} ${s.askOther}` : `${s.askBar} ${s.askOther}`}
           data-focus-ring="text"
         >
@@ -160,44 +169,44 @@ export function AskForm({
              * 「送进去」走 `activate()`(输入面板的落点在 ask 形态下就是那一行),
              * 不再自己 `.focus()` —— 落点是声明,不是每个调用方各记一遍。
              */
-            onClick={() => (customOn ? setCustom('') : activate('open'))}
+            onClick={() => !submitting && (customOn ? setCustom('') : activate('open'))}
             onKeyDown={(e) => {
               if (e.key !== 'Enter' && e.key !== ' ') return
               e.preventDefault()
+              if (submitting) return
               if (customOn) setCustom('')
               else activate('open')
             }}
           />
           <span className={s.askLabel}>{t('ask.other')}</span>
           <span
-            key={`free-${idx}-${customOn ? 'on' : 'off'}`}
+            key={`free-${idx}`}
             ref={freeRef}
             className={s.askFree}
-            contentEditable
+            contentEditable={!submitting}
             tabIndex={0}
             suppressContentEditableWarning
             role="textbox"
             aria-label={t('ask.otherPlaceholder')}
             data-placeholder={t('ask.otherPlaceholder')}
             onKeyDown={onFreeKey}
-          >
-            {customOn && typeof ans === 'string' ? ans : ''}
-          </span>
-        </div>
+            onInput={(event) => setCustom(event.currentTarget.textContent ?? '')}
+          />
+        </div>}
       </div>
 
       <div className={s.askFoot}>
-        <span className={s.askEsc}>{t('ask.hint')}</span>
+        <span className={s.askEsc}>{error ? <span role="alert">{error}</span> : t('ask.hint')}</span>
         {/* 提交是这张表上唯一的主动作 → `ui/Button` 的 primary + pill
           * (从前那份 accent 实底 + r-full 的手写皮肤逐字就是这两档)。 */}
         <Button
           variant="primary"
           pill
           className={s.askSubmit}
-          disabled={!all}
+          disabled={!all || submitting}
           onClick={onSubmit}
         >
-          {t('ask.submit', { done, total: spec.questions.length })}
+          {submitting ? t('ask.sending') : t('ask.submit', { done, total: spec.questions.length })}
         </Button>
       </div>
     </div>

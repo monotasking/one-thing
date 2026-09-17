@@ -197,10 +197,24 @@ export const sessionCommandRpcHandlers: RpcRouteHandlers<SessionCommandRoutes> =
       throw new SessionAccessError()
     }
 
+    const record = (command && typeof command === 'object'
+      ? command
+      : {}) as Record<string, unknown>
+    // Files cannot enter the text-only steering queue. Check after their bytes
+    // reach the server: a response may have started while the client read them.
+    // Bus delivery does not await the engine, so its stream:error alone cannot
+    // reject this RPC or give the composer a retryable send failure.
+    if (record.type === SESSION_COMMAND_TYPES.SEND_MESSAGE
+      && !record.persistOnly
+      && Array.isArray(record.attachments) && record.attachments.length > 0
+      && getStreamEngine().getController(sessionId)) {
+      return {
+        success: false,
+        error: 'A response is still running — messages with files wait until it finishes.',
+      }
+    }
+
     if (context.transport === 'http') {
-      const record = (command && typeof command === 'object'
-        ? command
-        : {}) as Record<string, unknown>
       if (record.type === SESSION_COMMAND_TYPES.ABORT) {
         getStreamEngine().abort(sessionId, 'HTTP abort')
         Permission.clearSession(sessionId)

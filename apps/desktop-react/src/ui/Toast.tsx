@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { create } from 'zustand'
 import { CircleAlert, CircleCheck, Info, TriangleAlert, X } from '../components/icons'
 import { announce } from './a11y/live-region'
+import { IconButton } from './IconButton'
 import s from './Toast.module.css'
 
 /**
@@ -223,9 +224,13 @@ function ToastRow({ spec, closeLabel }: { spec: ToastSpec; closeLabel?: string }
         ) : null}
       </span>
       {spec.lifeMs === null ? (
-        <button type="button" className={s.close} aria-label={closeLabel} onClick={() => dismiss(spec.id)}>
-          <X className={s.closeIcon} strokeWidth={1.75} aria-hidden="true" />
-        </button>
+        <IconButton
+          icon={X}
+          label={closeLabel ?? ''}
+          size="xs"
+          className={s.close}
+          onClick={() => dismiss(spec.id)}
+        />
       ) : (
         <span
           className={s.life}

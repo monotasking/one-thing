@@ -69,7 +69,7 @@ export function record(level: LogLevel, ns: string, msg: string, args: unknown[]
   ring.push(entry)
   if (ring.length > LOG_RING_CAPACITY) ring.splice(0, ring.length - LOG_RING_CAPACITY)
   if (mirrorToConsole) {
-    // eslint-disable-next-line no-console -- 这就是那个唯一的镜像出口
+     
     const sink = level === 'debug' ? console.debug : console[level]
     sink(`[${ns}]`, msg, ...args)
   }

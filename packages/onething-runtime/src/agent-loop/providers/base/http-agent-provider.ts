@@ -34,6 +34,8 @@ import {
 } from "./tool-choice-policy.js";
 import { TurnContext } from "./turn-context.js";
 import type { UsageNormalizer } from "./usage.js";
+import { customReasoningWire } from "../thinking/custom-reasoning.js";
+import { clampOnethingReasoningEffort } from "../../../providers/model-capability.js";
 
 /** wire 的流解析器读完之后交回来的原始收尾信息。 */
 export interface RawTurnFinish {
@@ -79,6 +81,21 @@ export abstract class HttpAgentProvider<
 	): AsyncGenerator<AgentTurnStreamEvent, void, void> {
 		// 1 profile
 		const profile = await this.ctx.profiles.resolve(this.id, request.model);
+    const reasoning = profile.reasoningProfile;
+    // User-defined defaults and supported tiers are resolved once, before all
+    // native encoders. Ordinary built-in profiles retain their existing defaults.
+    if (reasoning?.configured) {
+      const requestedThinking = request.thinking ?? (reasoning.defaultOn ? "enabled" : "disabled");
+      const enabled = requestedThinking === "enabled" || (!reasoning.toggleable && reasoning.defaultOn);
+      request = {
+        ...request,
+        thinking: enabled ? "enabled" : "disabled",
+        reasoningEffort: enabled ? clampOnethingReasoningEffort(
+          requestedThinking === "disabled" ? reasoning.disabledEffort ?? reasoning.defaultEffort : request.reasoningEffort,
+          reasoning,
+        ) : undefined,
+      };
+    }
 		// 副请求通道(P4-6):与主请求同一个 `fetchImpl`、同一套凭据、同一个
 		// base URL。`headers()` 是闭包而不是提前算好的对象 —— auth 仍然晚绑定
 		// (策略要用的时候才现拿),纪律与主请求那一步逐字相同。
@@ -263,6 +280,22 @@ export abstract class HttpAgentProvider<
 	protected thinkingFor(turn: TurnContext): ThinkingWire {
 		const wanted = turn.profile.reasoningWire;
 		const registered = this.dialect.reasoning;
+    const profile = turn.profile.reasoningProfile;
+    const native = registered.find((wire) => wire.id === wanted) ?? registered[0] ?? noThinkingWire;
+    if (profile?.custom) {
+      return {
+        ...customReasoningWire,
+        // Changing request knobs must preserve native reasoning parsing and replay.
+        ...(native.decode ? { decode: native.decode.bind(native) } : {}),
+        ...(native.replay ? { replay: native.replay.bind(native) } : {}),
+      };
+    }
+    if (profile?.configuredWire) {
+      if (wanted === "none") return noThinkingWire;
+      const explicit = registered.find((wire) => wire.id === wanted);
+      if (!explicit) throw new Error(`Reasoning wire '${wanted}' is not supported by provider '${this.id}'; configure a custom reasoning mapping instead`);
+      return explicit;
+    }
 		return (
 			registered.find((wire) => wire.id === wanted) ?? registered[0] ?? noThinkingWire
 		);

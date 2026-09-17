@@ -388,6 +388,11 @@ describe('reasoning profiles per provider', () => {
       efforts: [],
     })
     expect(resolve('deepseek', 'deepseek-chat').reasoning).toBe(false)
+    // V4.1 改名后的 id 不带 v4,仍是同一族 high|max 两档、可关
+    expect(resolve('deepseek', 'deepseek-flash').reasoningProfile).toMatchObject({
+      toggleable: true, efforts: ['high', 'max'], defaultEffort: 'high',
+    })
+    expect(resolve('deepseek', 'deepseek-pro').reasoningProfile?.efforts).toEqual(['high', 'max'])
   })
 
   it('deepseek: only the vision-exp family takes image input', () => {

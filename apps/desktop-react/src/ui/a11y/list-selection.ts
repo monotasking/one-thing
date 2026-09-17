@@ -58,6 +58,8 @@ export function stepListIndex(index: number, delta: number, count: number, loop:
 export interface ListSelectionOptions {
   /** 当前候选条数。变化时 active 自动夹回范围内。 */
   count: number
+  /** 自持档首次挂载的键盘位。后续显式落位仍通过 select。 */
+  initialActive?: number
   /** 受控档:外部持有 active(composer 的 pickIndex 在 store 里)。不给就自持。 */
   active?: number
   onActiveChange?: (index: number) => void
@@ -107,7 +109,7 @@ export function useListSelection(options: ListSelectionOptions): ListSelection {
   } = options
   const scrollBlock = options.scrollBlock === undefined ? 'nearest' : options.scrollBlock
 
-  const [own, setOwn] = useState(0)
+  const [own, setOwn] = useState(options.initialActive ?? 0)
   const raw = controlled ?? own
   const active = clampListIndex(raw, count)
 

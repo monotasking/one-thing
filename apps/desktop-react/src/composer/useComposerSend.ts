@@ -15,6 +15,7 @@ import { focusTree } from '../focus/registry'
 import { notify } from '../services/notify'
 import { ASK_DEMO_SPEC, DEV_COMMANDS } from './data'
 import { composerSink } from './sink'
+import { composerStoreFor } from './store'
 import type { ComposerInputHandle } from './components/ComposerInput'
 import type { ResolvedSegment } from '../references/segment'
 import type { AskSpec } from './types'
@@ -191,7 +192,8 @@ export function useComposerSend({
        * 判空在这里自己做一次,是因为 send 的 false 不区分原因,而这两条路的
        * 归宿完全不同(一条什么都不做,一条要建会话)。
        */
-      if (!text.trim() || starting.current) {
+      const hasFiles = composerStoreFor(sessionId).getState().attachments.some((attachment) => attachment.file)
+      if ((!text.trim() && !hasFiles) || starting.current) {
         backToComposer()
         return
       }

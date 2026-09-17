@@ -481,6 +481,15 @@ export const settingsMutation = createMutation<SettingsCommit, SpaceProviderSett
        * 会静静地留下一个过期的抽屉。
        */
       prefsQuery.invalidate(input.spaceId)
+      // 思考能力也投影在目录中；覆盖改动后让已打开的模型抽屉重新取数。
+      for (const [providerId, config] of Object.entries(input.next.ai?.providers ?? {})) {
+        const before = input.base.ai?.providers?.[providerId]
+        if (config.modelCapabilitiesByModel !== before?.modelCapabilitiesByModel ||
+            config.providerOptions !== before?.providerOptions ||
+            config.selectedModels !== before?.selectedModels || config.model !== before?.model) {
+          catalogQuery.invalidate(providerId)
+        }
+      }
       // 后端没回那一份就保持乐观值 —— 它已经被后端认下了,只是没把结果说回来。
       if (!ai) return
       // 底本永远是后端认下的最后一份 —— 连 `settings` 那一格也照它重合一次,
@@ -1029,7 +1038,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       // 重复是**用户看得见的事实**,不是错误 —— 当场说清,不发请求(与手填同一句)。
       if (selected.includes(id)) return t('providers.addModelDuplicate', { model: id })
       // 要改的那个 id 根本不在这一坑的列表里 = 没有可改的东西,一发都不发。
-      if (!selected.includes(oldId)) return undefined
+      if (!selected.includes(oldId) && config?.model !== oldId) return undefined
 
       const delta: Partial<ProviderConfig> = {
         // **原位替换**:手填模型的次序是用户自己排的,改个名不该把它挪到队尾。
@@ -1108,6 +1117,18 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
           else delete table[modelId]
           delta.modelCapabilitiesByModel = Object.keys(table).length > 0 ? table : undefined
         }
+      }
+
+      if (patch.reasoningProfile !== undefined) {
+        const source = Object.prototype.hasOwnProperty.call(delta, 'modelCapabilitiesByModel')
+          ? delta.modelCapabilitiesByModel : config?.modelCapabilitiesByModel
+        const table = { ...(source ?? {}) }
+        const entry = { ...(table[modelId] ?? {}) }
+        if (patch.reasoningProfile === null) delete entry.reasoningProfile
+        else entry.reasoningProfile = patch.reasoningProfile
+        if (Object.keys(entry).length > 0) table[modelId] = entry
+        else delete table[modelId]
+        delta.modelCapabilitiesByModel = Object.keys(table).length > 0 ? table : undefined
       }
 
       if (Object.keys(delta).length === 0) return

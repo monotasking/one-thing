@@ -21,7 +21,7 @@ import { formatQuantity } from '../../format/quantity'
 import { formatPrice } from '../../providers/projection'
 import { settingsKey, settingsMutation, useProviderSettings } from '../../providers/store'
 import type { ThinkingRung } from '../../providers/store'
-import { filterProviders, THINKING_LABEL_KEY, THINKING_NOTE_KEY } from '../transitions'
+import { filterProviders, thinkingLabel, THINKING_NOTE_KEY } from '../transitions'
 import { useComposerStoreOf } from '../store'
 import { useComposerSessionId } from '../session-context'
 import { useListSelection } from '../../ui/a11y/list-selection'
@@ -38,13 +38,13 @@ import s from './Composer.module.css'
  *
  * 三条判据钉在这个形上,每一条都对着一次真机报障:
  *
- *  ① **点一行只做一件事:选中它** —— 抽屉**不关**(`composer/store.chooseModel`
- *     那句 `set({drawerKind:null})` 随本批删)。选完当场关掉,等于把刚翻开的那一页
- *     合上:右栏讲的正是「刚选中的这一型」。收起还剩两个手势,一个没变:点面板
- *     外面、Esc。
+ *  ① **点一行 = 换成它并收起**(09-17 用户报「选中后不会自己收起来」,推翻 09-05
+ *     庚的「选中不关」;收起那句在 `composer/store.chooseModel`)。右栏讲的是**当前**
+ *     那一型:要调档,开抽屉先调再选,或选完再开一次。
  *  ② **只有列表滚,卡不滚** —— 滚动区仍然只有 `.pickScroll` 一个,右栏那张卡是它
- *     的**兄弟**(不是它的内容)。面板高度因此由卡定:卡在流里撑出行高,列表
- *     absolute 铺满自己那一格。
+ *     的**兄弟**(不是它的内容)。**面板是定高的**(09-17 用户报「选模型时高度会变」):
+ *     从前高由卡定,换一型、目录晚到,卡的行数一变整块面板就跳。今天两栏格子吃
+ *     `--composer-model-drawer-h`,卡与列表各在自己那一格里。
  *  ③ **改档只打补丁** —— 右栏是按 selection 重渲的兄弟组件,列表这棵 DOM 一个节点
  *     都不重建、滚动位一格不动(用例 `选另一行:.pickScroll 是同一个节点且
  *     scrollTop 不变` 守着它)。
@@ -117,12 +117,22 @@ export function DrawerModelPicker() {
     [groups],
   )
 
-  const { active, move, select, rowRef } = useListSelection({ count: rows.length, loop: false })
+  const currentIndex = rows.findIndex((row) =>
+    row.providerId === current?.provider && row.model === current?.model,
+  )
+  const { active, move, select, rowRef } = useListSelection({
+    count: rows.length, loop: false, initialActive: Math.max(0, currentIndex),
+  })
+  const previousQuery = useRef(query)
 
-  // 换词就把键盘位拉回第一条:候选变了还停在第五行,↵ 会选错模型。
+  // 打开和清空搜索时对准当前模型，也涵盖设置/名册稍后到达的情况。
+  // 输入搜索词才回到首个结果；目录读数更新不重置用户已经移动的键盘位。
   useEffect(() => {
-    select(0)
-  }, [query, select])
+    const queryChanged = previousQuery.current !== query
+    previousQuery.current = query
+    if (!query.trim()) select(Math.max(0, currentIndex))
+    else if (queryChanged) select(0)
+  }, [query, currentIndex, select])
 
   const commit = (index: number) => {
     // 在飞就不接第二下(律③的另一半:反馈是「不可再点」)。草稿态永远不在飞。
@@ -185,8 +195,11 @@ export function DrawerModelPicker() {
         <div {...scopeProps}>
           <div className={s.pickCols}>
             <div className={s.pickListCol}>
-              {/* 文本载体(里层赢:它长在 composer 面板那格 text 载体里面)。 */}
-              <div className={s.modelSearch} data-focus-ring="text">
+              {/* 不自称文本载体(09-16):抽屉是面板自己的第一格,搜索框落焦时亮的是
+                  **整块面板**那一格 text 载体,环围住抽屉与输入区。这里再挂一格
+                  `text` 就按「里层赢」把环抢回这一行,整块反而不亮 —— 那正是用户报的
+                  「焦点只在一小块上」(正本 docs/composer-unified-drawer-2026-09-16.md §3.4)。 */}
+              <div className={s.modelSearch}>
                 <Search className={s.searchIcon} strokeWidth={2} aria-hidden="true" />
                 <input
                   ref={ref}
@@ -380,11 +393,12 @@ function ThinkingLadder({
       >
         {rungs.map((rung) => (
           <Radio key={rung} value={rung} className={s.thinkRung}>
-            <span className={s.thinkRungName}>{t(THINKING_LABEL_KEY[rung])}</span>
+            <span className={s.thinkRungName}>{thinkingLabel(t, rung, thinking.levelLabels)}</span>
             <span className={s.thinkRungNote}>{t(THINKING_NOTE_KEY[rung])}</span>
           </Radio>
         ))}
       </RadioGroup>
+      {!thinking.toggleable && <div className={s.modelCardNote}>{t('composer.thinkAlwaysOn')}</div>}
     </div>
   )
 }

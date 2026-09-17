@@ -81,17 +81,31 @@ describe('resolveTailSnap', () => {
     expect(moved.held).toBeCloseTo(611.5, 10)
   })
 
-  it('重认的门槛按设备像素计,比抖动大、比真实位移小', () => {
+  it('落点仍在自然位置上方时,门槛以内的变化保留落点', () => {
     const first = resolveTailSnap({ bottom: 632.2, applied: 0, held: undefined, devicePx: DP2 })
     const withinBand = TAIL_SNAP_REACQUIRE_DEVICE_PX * DP2 - 0.2
     const inside = resolveTailSnap({
-      bottom: 632.2 - withinBand + first.nudge,
+      bottom: first.held + withinBand + first.nudge,
       applied: first.nudge,
       held: first.held,
       devicePx: DP2,
     })
     expect(inside.reacquired).toBe(false)
     expect(inside.held).toBe(first.held)
+  })
+
+  it('内容缩短越过原落点时重新对齐,不能用正补偿撑大滚动范围', () => {
+    let held: number | undefined
+    let applied = 0
+    for (const natural of [632.2, 631.3, 632.2]) {
+      const snap = resolveTailSnap({ bottom: natural + applied, applied, held, devicePx: DP2 })
+      expect(snap.nudge).toBeLessThanOrEqual(0)
+      expect(snap.held).toBeLessThanOrEqual(natural)
+      expect(natural + snap.nudge).toBeCloseTo(snap.held, 10)
+      if (held !== undefined && natural < held) expect(snap.reacquired).toBe(true)
+      held = snap.held
+      applied = snap.nudge
+    }
   })
 
   it('dpr 1 上落点落在整像素上(格子换了,判词没换)', () => {

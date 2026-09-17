@@ -9,14 +9,12 @@ import type { AskSpec } from './types'
  *
  * **D3 / D4 波二之后这里只剩 dev 扳机那一条路**(下面两块 + 那份 spec):
  * 文件 / 命令 / 模型 / 读数四块假数据都已经各自搬去真产地,搬迁账在中间那段注里。
- * 剩下这条不是「还没接」,而是「它要接的那件事(引擎的 `ask_user` 事件)本身
- * 还不存在」—— 那两者不该混为一谈。
+ * 真实 `ask_user` 由 data/composer-interactions 接入。这里保留开发演示与测试题面。
  */
 
 /**
- * `/ask-demo` 是 **dev-only 扳机**:ask 形态今天没有真正的产地(引擎的
- * `ask_user` 事件还没接),所以给它留一条命令当入口。真接上之后删掉这一条
- * 与下面那份 spec 即可 —— 形态本身一行不动。
+ * `/ask-demo` 是 **dev-only 扳机**:仅用于离线查看表单样式。真实请求带 interaction
+ * 应答口,不会走演示命令的聊天发送路径。
  *
  * 它是一张**表**而不是一条常量,因为它要和真表并起来
  * (`mergeCommands(BUILTIN_COMMANDS, pluginCommands, DEV_COMMANDS)`):
@@ -56,7 +54,7 @@ export const DEV_COMMANDS: CommandEntry[] = [
  *    是被删掉的 —— 连同 i18n 里 `meter.cacheValue` 的那半句。
  */
 
-/** dev-only:`/ask-demo` 用的三题。接 ask_user 事件后,spec 由事件带来。 */
+/** dev-only:`/ask-demo` 与表单测试用的三题。 */
 export const ASK_DEMO_SPEC: AskSpec = {
   questions: [
     {

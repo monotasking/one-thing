@@ -1,6 +1,6 @@
 # onething React UI — 设计约定
 
-这是 onething React 桌面壳的**真组件库**(`apps/desktop-react/src/ui`),不是重绘。20 件组件全部从 `window.OnethingUI.*` 可导入可渲染;每件的 API 契约在 `<Name>.d.ts`,用法在 `<Name>.prompt.md`。**优先用这些组件搭界面,不要用裸元素重造轮子。**
+这是 onething React 桌面壳的**真组件库**(`apps/desktop-react/src/ui`),不是重绘。42 件组件全部从 `window.OnethingUI.*` 可导入可渲染;每件的 API 契约在 `<Name>.d.ts`,用法在 `<Name>.prompt.md`。**优先用这些组件搭界面,不要用裸元素重造轮子。**
 
 ## 设置
 
@@ -36,6 +36,13 @@
 - 确认框:`useConfirm()` 返回 promise,页面挂 `<ConfirmHost/>`;普通对话框用受控 `<Dialog open onClose title footer>`。
 - `Tabs` 的 `items[].icon` 是字符串图标名(lucide 名,如 `'FolderTree'`),不是元素。
 - `Spinner` 只出现在状态栏或按钮内加载态,不做整页 loading。
+- `Fold` / `FoldTrigger` / `FoldBody` / `FoldFoot` 是一组:三个叶子必须放在 `<Fold>` 里;它们**一个像素都不画**(只管 role/aria-expanded/键盘),开合两态的皮肤整份由你写在 `style`/`className` 上。`Submenu` 只在 `<Menu>` 里用。
+- `Field` 不 cloneElement:控件自己 `const f = useFieldControlProps()` 再 `{...f}` 摊上去,`label` 必填(可 `labelHidden`),`hint`/`error` 是文字不是节点。
+- `IconButton` 的 `icon` 收一个组件(LucideIcon 形:`(props) => <svg …{...props}/>`),`label` 必填且同时是 aria-label 与 Tooltip;`Submenu`/`FilterChip` 的 `icon` 同形。
+- `ButtonBase` 是无样式基座(只清 UA):瓦 / 行 / 选项丸 / 行内微型文字动作这类结构性交互件用它,皮肤自己给;文字动作钮用 `Button` / `AsyncButton`,图标钮用 `IconButton`。`AsyncButton` 的 `action` 是 `{ subscribe, isPending(key?) }`,忙态从它读,不自己记 useState。
+- 视觉词汇件 `StatusDot`(六档 tone)/ `Dots`(流式等待)/ `OpenDot`(行尾「开着」三态)只画一颗点,颜色只上点不换底;旁边已有文字就别给 `label`。
+- `Slider` 自己 `flex:1`、`Splitter` 是 `align-self:stretch` 的一条界:两件都必须住在有尺寸的 flex 容器里,单放会塌成零宽。
+- `FilterChip` 的 `value` 是 `options[].value` 的键不是文案;`Reveal` 的现身态靠 `[data-reveal-scope]:hover / :focus-within`,把它挂在**行**上。
 
 ## 禁令(全部有既有拍板)
 

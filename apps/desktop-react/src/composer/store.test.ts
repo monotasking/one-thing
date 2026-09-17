@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   composerStoreFor,
   disposeComposerStore,
@@ -30,6 +30,27 @@ afterEach(() => {
 })
 
 describe('W5-c-2:输入面板状态按会话分家', () => {
+  it('只发文件也携带原始字节;收件人未就绪时保留附件', () => {
+    const file = new File(['文件的实际内容'], 'note.txt', { type: 'text/plain' })
+    const send = vi.fn(() => false)
+    configureComposerSink({
+      send,
+      notice: () => undefined,
+      abort: () => undefined,
+      startSession: async () => undefined,
+    })
+    const store = composerStoreFor('A')
+    store.getState().addFiles([file])
+    expect(store.getState().attachments[0].file).toBe(file)
+    expect(store.getState().send('')).toBe(false)
+    expect(store.getState().attachments).toHaveLength(1)
+
+    send.mockReturnValue(true)
+    expect(store.getState().send('')).toBe(true)
+    expect(send).toHaveBeenLastCalledWith('', 1, 'A', undefined, [file])
+    expect(store.getState().attachments).toEqual([])
+  })
+
   it('① A 开抽屉,B 那一份一个字不动', () => {
     composerStoreFor('A').getState().toggleModelDrawer()
     expect(composerStoreFor('A').getState().drawerKind).toBe('model')

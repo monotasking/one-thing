@@ -26,6 +26,8 @@ import {
 } from './chat-source'
 import { resetSessionViewStates, saveSessionScrollAnchor } from './session-view-state'
 import { t } from '../i18n'
+import { anchorMessage } from '../content/assemble/anchor'
+import { dumpPerf } from '../services/perf'
 
 /**
  * 聊天数据源的判据 —— 全是纯逻辑,所以这里一台 core 都不起:端口换成假的,
@@ -120,7 +122,7 @@ interface Harness {
    * 端口收到的每一次发送的**整条**载荷 —— `sent` 只记正文,而 09-13 之后
    * 「壳有没有把预铸的 id 带出去」是这条链的判据,它只在这一格里看得见。
    */
-  sentCommands: { content: string; messageId?: string }[]
+  sentCommands: { content: string; messageId?: string; files?: readonly File[] }[]
   /** 端口收到的每一次 abort 的 sessionId —— 「打空的 abort 一次都不许发」靠它钉。 */
   aborted: string[]
   /** 端口收到的每一次重跑的 messageId。 */
@@ -138,11 +140,13 @@ interface Harness {
   emitEvent(envelope: SessionEventEnvelope): void
   emitLedger(record: Ledger): void
   emitStream(payload: SessionStreamPayload): void
+  reconnect(): void
 }
 
 function harness(initial: Ledger[]): Harness {
   const eventSubs: ((envelope: SessionEventEnvelope) => void)[] = []
   const streamSubs: ((payload: SessionStreamPayload) => void)[] = []
+  const reconnectSubs: (() => void)[] = []
   const h: Harness = {
     listRawCalls: 0,
     ledger: [...initial],
@@ -179,9 +183,13 @@ function harness(initial: Ledger[]): Harness {
         streamSubs.push(callback)
         return () => void streamSubs.splice(streamSubs.indexOf(callback), 1)
       },
-      sendMessage: async (_sessionId, content, messageId) => {
+      onReconnect: (callback: () => void) => {
+        reconnectSubs.push(callback)
+        return () => void reconnectSubs.splice(reconnectSubs.indexOf(callback), 1)
+      },
+      sendMessage: async (_sessionId, content, messageId, files) => {
         h.sent.push(content)
-        h.sentCommands.push({ content, messageId })
+        h.sentCommands.push({ content, messageId, ...(files ? { files } : {}) })
         return h.sendResult()
       },
       abort: async (sessionId) => {
@@ -210,6 +218,7 @@ function harness(initial: Ledger[]): Harness {
         event: { type: SESSION_EVENT_TYPES.SESSION_LEDGER_EVENT, record } as never,
       }),
     emitStream: (payload) => streamSubs.forEach((fn) => fn(payload)),
+    reconnect: () => reconnectSubs.forEach(fn => fn()),
   }
   return h
 }
@@ -335,6 +344,58 @@ describe('增量:账本活事件一条一条折', () => {
 })
 
 describe('缺号:不补拼,整会话重折(节流合并)', () => {
+  it('结束事件在断线期间丢失:重连后即使没有下一条事件也会退出生成', async () => {
+    const h = harness([created(1), runStart(2, 'r1', 'a1'), chunks(3, 'r1', 'a1', ['已经写完'])])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    expect(state().activeMessageId).toBe('a1')
+    const visible = state().messages
+    h.ledger.push(runEnd(4, 'r1')) // 已落账,但推送断了;不 emitLedger。
+    vi.useFakeTimers()
+    h.reconnect()
+    expect(state().messages).toBe(visible)
+    await vi.advanceTimersByTimeAsync(REFOLD_THROTTLE_MS + 100)
+    expect(state().activeMessageId).toBeUndefined()
+    expect(state().messages.find(m => m.id === 'a1')?.content).toBe('已经写完')
+    expect(h.listRawCalls).toBe(2)
+    vi.useRealTimers()
+  })
+
+  it('重连时仍在执行:核对后继续生成,不能用断线或静默时间判完成', async () => {
+    const h = harness([created(1), runStart(2, 'r1', 'a1'), chunks(3, 'r1', 'a1', ['还在思考'])])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    vi.useFakeTimers()
+    h.reconnect()
+    h.reconnect()
+    await vi.advanceTimersByTimeAsync(REFOLD_THROTTLE_MS + 100)
+    expect(state().activeMessageId).toBe('a1')
+    expect(h.listRawCalls).toBe(2)
+    vi.useRealTimers()
+  })
+
+  it('核对请求在飞时又重连:旧快照返回后再核对,不能漏掉刚完成的状态', async () => {
+    const h = harness([created(1), runStart(2, 'r1', 'a1'), chunks(3, 'r1', 'a1', ['写完'])])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    const old = [...h.ledger]
+    const read = h.port.listRaw
+    let release!: () => void
+    h.port.listRaw = vi.fn().mockImplementationOnce(() => new Promise(resolve => {
+      release = () => resolve({ events: old })
+    })).mockImplementation(read)
+    vi.useFakeTimers()
+    h.reconnect()
+    await vi.advanceTimersByTimeAsync(REFOLD_THROTTLE_MS + 100)
+    h.ledger.push(runEnd(4, 'r1'))
+    h.reconnect()
+    release()
+    await vi.advanceTimersByTimeAsync(REFOLD_THROTTLE_MS + 100)
+    expect(h.port.listRaw).toHaveBeenCalledTimes(2)
+    expect(state().activeMessageId).toBeUndefined()
+    vi.useRealTimers()
+  })
+
   it('缺号触发一次 listRaw 重折,窗口内的多次缺号塌成一次', async () => {
     const h = harness([created(1), userMessage(2, 'm1', '第一句')])
     configureChatPort(h.port)
@@ -368,6 +429,21 @@ describe('缺号:不补拼,整会话重折(节流合并)', () => {
  * 用例留着,是因为「结构上恒成立」这句话也得有人替屏幕验一次。
  */
 describe('活水位:平滑上屏,打包行一到就清格', () => {
+  it('没有身份章的正文留下丢弃原因,同时刷新收到内容的时间', async () => {
+    const h = harness([created(1), runStart(2, 'r1', 'a1')])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+    const receivedAfter = Date.now()
+    h.emitStream({ sessionId: SESSION, chunk: { type: 'text-delta', messageId: 'a1', text: '未盖章内容' } as never })
+    await settle()
+    expect(state().lastDeltaAt).toBeGreaterThanOrEqual(receivedAfter)
+    expect(state().messages.find(message => message.id === 'a1')?.content).not.toContain('未盖章内容')
+    expect(dumpPerf().some(entry => entry.name === 'stream.water.drop'
+      && entry.detail?.includes('reason=missing-stamp')
+      && !entry.detail?.includes('未盖章内容'))).toBe(true)
+  })
+
   it('裸 delta 当场追加到正文上(不等 2s 的打包行)', async () => {
     const h = harness([created(1), userMessage(2, 'm1', '你好'), runStart(3, 'r1', 'a1')])
     configureChatPort(h.port)
@@ -448,6 +524,28 @@ describe('活水位:平滑上屏,打包行一到就清格', () => {
 })
 
 describe('发送:pending 立刻上屏,账本认领之后丢掉', () => {
+  it('只有文件也发出;读取失败后重试仍携带相同文件和消息 id', async () => {
+    const h = harness([created(1)])
+    h.sendResult = async () => { throw new Error('无法读取附件「note.txt」') }
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    const file = new File(['附件正文'], 'note.txt', { type: 'text/plain' })
+    expect(state().send('', 1, undefined, [file])).toBe(true)
+    await settle()
+    const failed = state().overlay[0]
+    expect(failed).toMatchObject({ status: 'failed', files: [file], attachments: 1 })
+    expect(h.sentCommands[0].files?.[0]).toBe(file)
+
+    h.sendResult = async () => ({ success: true })
+    state().retry(failed.id)
+    await settle()
+    expect(h.sentCommands).toHaveLength(2)
+    expect(h.sentCommands[1]).toEqual(h.sentCommands[0])
+    expect(h.sentCommands[1].files?.[0]).toBe(file)
+  })
+
   it('空话不发;没有当前会话也不发', async () => {
     const h = harness([])
     configureChatPort(h.port)
@@ -1908,6 +2006,45 @@ function pageHarness(initial: Ledger[]): PageHarness {
 }
 
 describe('冷载走页:不再把整份账本搬进渲染进程', () => {
+  it('停止后的重连从活投影切到历史页,未结算正文不能消失', async () => {
+    const h = pageHarness([
+      created(1), runStart(2, 'r1', 'a1'), chunks(3, 'r1', 'a1', ['前文']),
+      { seq: 4, time: T0, type: 'request/end', data: { runId: 'r1', requestIndex: 0, time: T0 } },
+      { seq: 5, time: T0, type: 'assistant/chunks', data: {
+        runId: 'r1', messageId: 'a1', requestIndex: 1, partIndex: 1, turnIndex: 1,
+        kind: 'text', time0: T0, dt: [0], text: ['等待提问前已经输出的正文'],
+      } },
+    ])
+    // 活 run 走账本;停止后同一条消息的页形只有已结算的第一段。
+    h.serve = () => ({ messages: [], results: {}, hasMoreBefore: false, watermark: 5, activeMessageId: 'a1' })
+    await state().open(SESSION)
+    await settle()
+    const visibleText = () => anchorMessage(state().messages.find(m => m.id === 'a1')!)
+      .flatMap(node => node.node === 'text' ? [node.text] : []).join('')
+    const expected = '前文等待提问前已经输出的正文'
+    expect(visibleText()).toBe(expected)
+    const stoppedPage = {
+      ...state().messages.find(m => m.id === 'a1')!,
+      content: expected,
+      contentParts: [{ type: 'text', content: '前文', turnIndex: 0 }],
+      isStreaming: false,
+    }
+    h.serve = () => ({ messages: [stoppedPage], results: {}, hasMoreBefore: false, watermark: 6 })
+    h.emitLedger({ seq: 6, time: T0, type: 'run/end', data: { runId: 'r1', outcome: 'aborted' } })
+    await settle()
+    expect(visibleText()).toBe(expected)
+    vi.useFakeTimers()
+    try {
+      h.reconnect()
+      await vi.advanceTimersByTimeAsync(REFOLD_THROTTLE_MS + 100)
+      expect(h.pages).toHaveLength(2)
+      expect(state().activeMessageId).toBeUndefined()
+      expect(visibleText()).toBe(expected)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('页给得出来就走页 —— `listRaw` 一次都不发', async () => {
     const h = pageHarness([created(1), userMessage(2, 'm1', '整份那条路的内容')])
     h.serve = () => ({

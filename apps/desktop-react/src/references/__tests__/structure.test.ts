@@ -122,6 +122,7 @@ describe('② 注册表', () => {
       'plugin',
       'prompt',
       'page',
+      'attachment',
     ])
   })
 

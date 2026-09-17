@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dock 常显 · 三案 · 2026-09-13</title>
+<style>
+  :root{
+    --paper:#faf8f4; --surface-2:#f6f3ee; --surface-3:#efebe4; --text-1:#2b2926; --text-2:#6b665f; --text-3:#9a948b; --text-4:#b8b2a8;
+    --line-1:#e6e1d8; --line-2:#d8d2c7; --accent:#c9782a; --accent-soft:#f3e3cf; --st-sel:#efe9df; --st-hover:#f1ece4;
+    --font-ui:-apple-system,"PingFang SC","Helvetica Neue",system-ui,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    --shadow:0 10px 30px -12px rgba(43,41,38,.28),0 2px 6px -2px rgba(43,41,38,.12);
+    --sh-dock:0 8px 24px -8px rgba(43,41,38,.35),0 1px 2px rgba(43,41,38,.12);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--paper);color:var(--text-1);font:14px/1.5 var(--font-ui)}
+  main{max-width:1280px;margin:0 auto;padding:28px 20px 80px}
+  h1{font-size:20px;margin:0 0 6px}
+  p.note{color:var(--text-2);font-size:13px;margin:0 0 8px;max-width:1000px;line-height:1.65}
+  p.note b{color:var(--text-1)}
+  code{font:12px var(--mono);background:var(--surface-3);padding:0 4px;border-radius:4px}
+  .ctl{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin:14px 0 6px;font-size:12.5px;color:var(--text-2)}
+  .seg{display:inline-flex;border:1px solid var(--line-1);border-radius:8px;overflow:hidden;background:var(--surface-2)}
+  .seg button{border:0;background:transparent;padding:5px 11px;font:inherit;color:var(--text-2);cursor:pointer}
+  .seg button+button{border-left:1px solid var(--line-1)}
+  .seg button.on{background:var(--st-sel);color:var(--text-1);font-weight:600}
+  .row3{display:flex;gap:22px;justify-content:center;align-items:flex-start;flex-wrap:wrap;margin:14px 0 10px;padding:20px;border:1px dashed var(--line-1);border-radius:18px;background:repeating-linear-gradient(45deg,transparent 0 10px,rgba(43,41,38,.025) 10px 20px)}
+  .cell{display:flex;flex-direction:column;gap:8px;align-items:center;width:384px}
+  .cell h3{margin:0;font-size:13px;color:var(--text-2);font-weight:600}
+  .cell h3 b{color:var(--accent)}
+  .cell .seed{font:10.5px var(--mono);color:var(--text-4)}
+  .cell p{margin:0;font-size:12px;color:var(--text-2);line-height:1.65}
+  .cell p b{color:var(--text-1)}
+  table{border-collapse:collapse;font-size:12.5px;margin:18px auto 0;max-width:1000px;width:100%}
+  th,td{text-align:left;padding:6px 8px;border-top:1px solid var(--line-1);vertical-align:top;line-height:1.55}
+  th{color:var(--text-3);font-weight:500;white-space:nowrap;width:130px}
+  td b{color:var(--accent)}
+
+  /* ── 窗 ── */
+  .win{position:relative;display:flex;flex-direction:column;width:384px;height:330px;border:1px solid var(--line-1);border-radius:12px;background:var(--paper);box-shadow:var(--shadow);overflow:hidden;flex:none;font-size:10.5px}
+  .titlebar{flex:none;height:32px;display:flex;align-items:center;padding-left:12px;gap:6px;background:var(--paper);border-bottom:1px solid var(--line-1)}
+  .titlebar i{width:10px;height:10px;border-radius:50%;display:block;flex:none}
+  .titlebar i:nth-child(1){background:#ff5f57}.titlebar i:nth-child(2){background:#febc2e}.titlebar i:nth-child(3){background:#28c840}
+  .titlebar .t{margin-left:8px;font-size:10.5px;color:var(--text-3);white-space:nowrap}
+  .grid{flex:1;min-height:0;display:grid;grid-template-columns:96px minmax(0,1fr) 96px;gap:6px;padding:6px}
+  .pane{position:relative;min-height:0;border:1px solid var(--line-1);border-radius:8px;background:var(--surface-2);overflow:hidden;display:flex;flex-direction:column}
+  .pane .ph{flex:none;height:22px;display:flex;align-items:center;padding:0 8px;font-size:9.5px;font-weight:600;letter-spacing:.03em;color:var(--text-3);border-bottom:1px solid var(--line-1)}
+  .layer{flex:1;min-height:0;position:relative;overflow:hidden;display:flex;flex-direction:column}
+  .rows{flex:1;min-height:0;overflow:hidden;padding:3px 4px}
+  .r{height:20px;display:flex;align-items:center;gap:5px;padding:0 5px;border-radius:4px;color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .r.cur{background:var(--st-sel)}
+  .r i{flex:none;width:8px;height:8px;border-radius:2px;background:var(--line-2)}
+  .tabs{flex:none;height:24px;display:flex;align-items:stretch;border-bottom:1px solid var(--line-1);background:var(--paper)}
+  .tabs span{display:flex;align-items:center;padding:0 8px;font-size:10px;color:var(--text-3);border-right:1px solid var(--line-1)}
+  .content{flex:1;min-height:0;position:relative;overflow:hidden;display:none;flex-direction:column}
+  [data-tab="chat"] .content.chat,[data-tab="term"] .content.term,[data-tab="diff"] .content.diff,[data-tab="web"] .content.web{display:flex}
+  [data-tab="chat"] .tabs .chat,[data-tab="term"] .tabs .term,[data-tab="diff"] .tabs .diff,[data-tab="web"] .tabs .web{color:var(--text-1);background:var(--surface-2);margin-bottom:-1px;border-bottom:1px solid var(--surface-2)}
+  .msgs{flex:1;min-height:0;overflow:hidden;padding:8px 10px 60px;display:flex;flex-direction:column;gap:7px;justify-content:flex-end}
+  .m{max-width:82%;padding:5px 8px;border-radius:8px;background:var(--surface-3);line-height:1.45;color:var(--text-2)}
+  .m.me{align-self:flex-end;background:var(--st-sel);color:var(--text-1)}
+  .composer{position:absolute;left:10px;right:10px;bottom:8px;height:42px;border:1px solid var(--line-2);border-radius:10px;background:#fff;box-shadow:0 4px 14px -6px rgba(43,41,38,.25);padding:6px 8px;color:var(--text-4)}
+  .composer b{position:absolute;right:6px;bottom:6px;width:18px;height:18px;border-radius:50%;background:var(--accent)}
+  .term .scr{flex:1;min-height:0;background:#1f1d1a;color:#d8d2c7;font:9.5px/1.5 var(--mono);padding:6px 8px;display:flex;flex-direction:column;justify-content:flex-end}
+  .term .scr .p{color:#8fbf7f}.term .scr .cur{color:#fff;background:#fff3;padding:0 1px}
+  .diff .lines{flex:1;min-height:0;font:9.5px/1.5 var(--mono);padding:4px 0;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
+  .diff .lines div{padding:0 8px;white-space:pre}
+  .diff .add{background:#e6f1df;color:#2f6b2a}.diff .del{background:#f7e2df;color:#9a3b32}
+  .diff .stat{flex:none;height:20px;display:flex;align-items:center;gap:8px;padding:0 8px;border-top:1px solid var(--line-1);background:var(--paper);font-size:9.5px;color:var(--text-2)}
+  .web .url{flex:none;height:22px;margin:5px 6px 0;border:1px solid var(--line-1);border-radius:6px;background:#fff;display:flex;align-items:center;padding:0 6px;font-size:9.5px;color:var(--text-3);white-space:nowrap;overflow:hidden}
+  .web .native{flex:1;min-height:0;margin:5px 6px 6px;border-radius:5px;background:#fff;border:1px dashed var(--line-2);display:flex;flex-direction:column;overflow:hidden}
+  .web .native .pg{flex:1;padding:8px 10px;color:var(--text-3);line-height:1.5}
+  .web .native .ft{flex:none;height:18px;border-top:1px solid var(--line-1);background:var(--surface-3);display:flex;align-items:center;padding:0 8px;font-size:9px;color:var(--text-3)}
+
+  /* 瓦(三案共用一枚图标语汇) */
+  .tile{display:grid;place-items:center;color:var(--text-2);background:var(--surface-2);border:1px solid var(--line-1);border-radius:7px;position:relative;flex:none}
+  .tile svg{width:46%;height:46%}
+  .tile.ws{background:var(--accent);border-color:transparent;color:#fff}
+  .cap{display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:12px;background:rgba(250,248,244,.78);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--line-1);box-shadow:var(--sh-dock)}
+
+  /* ── 案 1 · 胶囊群(底边,让位,运行=实心)── */
+  .p1 .grid{padding-bottom:calc(30px + 10px + 10px + 10px)}
+  .p1 .dock{position:absolute;left:0;right:0;bottom:10px;display:flex;justify-content:center;gap:8px}
+  .p1 .cap{gap:5px;padding:5px}
+  .p1 .tile{width:30px;height:30px;transform-origin:center bottom;transition:transform .14s ease}
+  .p1 .tile:hover{transform:scale(1.35)}
+  /* 「线变实」:描边加粗一档 + 强调色 + 淡底。不能真的 fill —— 线性图标填实会成两团墨 */
+  .p1 .tile.run{color:var(--accent);background:var(--accent-soft);border-color:var(--accent-soft)}
+  .p1 .tile.run svg{stroke-width:2.6}
+  .p1 .cap.ws-cap{padding:5px}
+  .p1 .cap.plus{padding:5px}
+  .p1 .tile.plus{border-style:dashed;background:transparent;color:var(--text-3)}
+
+  /* ── 案 2 · 工作条(底边整条,内容随 tab 变,徽记)── */
+  .p2 .bar{flex:none;height:34px;display:flex;align-items:center;gap:8px;padding:0 8px;border-top:1px solid var(--line-1);background:var(--paper)}
+  .p2 .cap{padding:2px 3px;border-radius:9px;box-shadow:none;backdrop-filter:none;background:var(--surface-2);gap:2px}
+  .p2 .tile{width:24px;height:24px;border-radius:6px;border-color:transparent;background:transparent}
+  .p2 .tile:hover{background:var(--st-hover)}
+  .p2 .tile.run::after{content:"";position:absolute;left:8px;right:8px;bottom:1px;height:2px;border-radius:2px;background:var(--accent)}
+  .p2 .badge{position:absolute;top:-3px;right:-3px;min-width:13px;height:13px;padding:0 3px;border-radius:7px;background:var(--accent);color:#fff;font-size:8.5px;font-weight:600;display:grid;place-items:center;line-height:1}
+  .p2 .ctx{flex:1;min-width:0;display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text-2);white-space:nowrap;overflow:hidden}
+  .p2 .ctx span{display:none;align-items:center;gap:6px}
+  .p2 .ctx i{font-style:normal;color:var(--text-4)}
+  .p2 .ctx b{font-weight:500;color:var(--text-1)}
+  [data-tab="chat"] .p2 .ctx .chat,[data-tab="term"] .p2 .ctx .term,[data-tab="diff"] .p2 .ctx .diff,[data-tab="web"] .p2 .ctx .web{display:flex}
+  .p2 .right{display:flex;align-items:center;gap:6px;color:var(--text-3);font-size:10px}
+  .p2 .right .k{display:flex;align-items:center;gap:4px}
+  .p2 .right .dot{width:6px;height:6px;border-radius:50%;background:#5aa469}
+
+  /* ── 案 3 · 顶栏坞(与红绿灯同行,按工作区过滤,边缘高亮)── */
+  .p3 .titlebar{height:36px;gap:0;padding-right:8px}
+  .p3 .titlebar .lights{display:flex;gap:6px;margin-right:12px}
+  .p3 .cap{padding:2px;border-radius:8px;box-shadow:none;backdrop-filter:none;background:var(--surface-2);gap:1px}
+  .p3 .tile{width:26px;height:26px;border-radius:6px;border-color:transparent;background:transparent}
+  .p3 .tile:hover{background:var(--st-hover)}
+  .p3 .tile.run::after{content:"";position:absolute;left:0;right:0;bottom:-3px;height:2px;border-radius:2px;background:var(--accent)}
+  .p3 .tile[data-ws]{display:none}
+  [data-ws="a"] .p3 .tile[data-ws~="a"],[data-ws="b"] .p3 .tile[data-ws~="b"]{display:grid}
+  .p3 .more{width:26px;height:26px;display:none;place-items:center;font-size:9.5px;color:var(--text-3)}
+  [data-ws="a"] .p3 .more[data-ws="a"],[data-ws="b"] .p3 .more[data-ws="b"]{display:grid}
+  .p3 .tile.run::after{bottom:-1px}
+  .p3 .titlebar .t{flex:1;min-width:0;text-align:center;margin:0 8px;overflow:hidden;text-overflow:ellipsis}
+  .p3 .wsw{flex:none}
+  .p3 .wsw{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-2);padding:2px 6px;border-radius:6px;background:var(--surface-2)}
+  .p3 .wsw i{width:9px;height:9px;border-radius:3px;background:var(--accent)}
+  [data-ws="b"] .p3 .wsw i{background:#5a8fbf}
+  .p3 .lead{position:absolute;top:0;bottom:0;left:calc(12px + 5px);width:0;border-left:1px dashed rgba(201,120,42,.45);pointer-events:none}
+</style>
+</head>
+<body>
+<main>
+  <h1>Dock 常显 · 三案(掷骰子起的)</h1>
+  <p class="note">先跑脚本得三串数字、三串字符串(<code>seeds.mjs</code>,系统随机源),数字前四位各翻一根设计轴:落点 / 形 / 密度 / 运行态怎么画。三次「形」都掷到了<b>胶囊分组</b>,那就当三案的共同点。三扇窗内容同步,切上面的 tab 与工作区,看每案怎么应对。<b>三案都独占自己那条边</b>,内容区从一开始就不被盖 —— 上一张页论证过的前提这里不再重复。</p>
+
+  <div class="ctl">
+    <span>主区 tab</span>
+    <span class="seg" data-k="tab"><button data-v="chat" class="on">聊天</button><button data-v="term">终端</button><button data-v="diff">改动</button><button data-v="web">浏览器</button></span>
+    <span>工作区</span>
+    <span class="seg" data-k="ws"><button data-v="a" class="on">onething</button><button data-v="b">TransReader</button></span>
+  </div>
+
+  <div class="row3" id="stage" data-tab="chat" data-ws="a">
+    <div class="cell">
+      <h3><b>案 1</b> · 胶囊群</h3>
+      <span class="seed">79094236 · UhXoj8oQ9v</span>
+      <div class="win p1" data-p="1"></div>
+      <p><b>一条药丸拆成三粒胶囊</b>:工作区 | 会话组 | 工具组 | 加号,各是一粒,粒间露地。药丸「浮在一片空地中央」的怪感来自它是一整块;拆开之后它是几件小家具摆在自己的地上,像 iPad 的坞。运行态不再画点,<b>图标描边加粗一档、换强调色,再垫一层淡底</b>,远看就分得出「开着的」。放大保留,但只在胶囊内。字符串里连着的 o、Q、9 就是这几粒圆。</p>
+    </div>
+    <div class="cell">
+      <h3><b>案 2</b> · 工作条</h3>
+      <span class="seed">09959116 · 5tvPlbBaFL</span>
+      <div class="win p2" data-p="2"></div>
+      <p><b>Dock 变成一条整边的工作条</b>(VS Code 状态栏 + Windows 任务栏的合体):左边一粒胶囊是启动器,中段<b>随当前 tab 变</b> —— 聊天显示模型与用量,终端显示 cwd 与 shell,改动显示分支与加减行,浏览器显示域名与安全态;右边是通知、agent 状态、时钟。它常显不奇怪,因为<b>它每时每刻都在告诉你一件事</b>,不只是一排入口。徽记直接落在瓦角上。放大关。</p>
+    </div>
+    <div class="cell">
+      <h3><b>案 3</b> · 顶栏坞</h3>
+      <span class="seed">29663798 · mgiCIWMaMi</span>
+      <div class="win p3" data-p="3"></div>
+      <p><b>坞搬进顶栏,与红绿灯同一行</b>(Arc / Safari 的工具栏位置):底边整个还给内容,没有让位这回事。瓦缩到 26,只画<b>当前工作区用得上的</b>那几块,其余折进「+N」;切工作区那一粒色块就在右端,坞跟着换一组。运行态是<b>瓦底一道 2px 边缘高亮</b>,与 tab 条的选中线同一种语汇。顶栏本来就是常显家具,坞住进去就不再是「第二条常显的东西」。</p>
+    </div>
+  </div>
+
+  <table>
+    <tr><th></th><td><b>案 1</b> 胶囊群</td><td><b>案 2</b> 工作条</td><td><b>案 3</b> 顶栏坞</td></tr>
+    <tr><th>占哪条边</th><td>底边,让位 66px(瓦 36)</td><td>底边整条 34px</td><td>不占新边,顶栏加高 4px</td></tr>
+    <tr><th>为什么常显不怪</th><td>几件小家具而不是一整块浮板</td><td>它承载状态,不只是入口</td><td>住进本来就常显的家具里</td></tr>
+    <tr><th>与今天代码的距离</th><td>最近:Dock 拆组 + 让位改 `.main`</td><td>中:新中段(读活动 tab 的自述)+ 右段</td><td>远:TopBar 接管瓦、工作区过滤是新数据</td></tr>
+    <tr><th>放大</th><td>保留</td><td>关</td><td>关</td></tr>
+    <tr><th>运行态</th><td>描边加粗 + 强调色 + 淡底</td><td>底边 2px 线 + 徽记</td><td>底边 2px 线</td></tr>
+    <tr><th>自动隐藏档</th><td>整组滑出屏外(今天的形)</td><td>整条滑出</td><td>不需要:顶栏不藏</td></tr>
+    <tr><th>怕什么</th><td>三粒胶囊在窄窗上要折行</td><td>中段文案要每种内容自述一格 `statusLine`</td><td>顶栏在 900px 窗上挤(标题、坞、工作区三件抢一行)</td></tr>
+  </table>
+</main>
+
+<template id="tpl">
+  <div class="grid">
+    <div class="pane"><div class="ph">SESSIONS</div><div class="layer"><div class="rows">
+      <div class="r cur"><i></i>Dock 常显的让位</div><div class="r"><i></i>diff 面板 a11y</div><div class="r"><i></i>索引重折事故</div><div class="r"><i></i>Composer 引用</div><div class="r"><i></i>会话侧栏对齐</div><div class="r"><i></i>笔记 Obsidian CLI</div><div class="r"><i></i>模型覆盖 UI</div><div class="r"><i></i>静默截断</div><div class="r"><i></i>终端与浏览器</div><div class="r"><i></i>折痕出场</div><div class="r"><i></i>设置页分页</div><div class="r"><i></i>markdown 图片</div>
+    </div></div></div>
+    <div class="pane center">
+      <div class="tabs"><span class="chat">聊天</span><span class="term">终端</span><span class="diff">改动</span><span class="web">浏览器</span></div>
+      <div class="layer">
+        <div class="content chat">
+          <div class="msgs"><div class="m me">dock 不同的大小,划过 item 行为不一致</div><div class="m">真因是交叉轴判据拿条盒判「离开」,放大后瓦探出条外那截是死带……</div><div class="m me">常显还是很奇怪</div><div class="m">掷了三把骰子,三案见页。</div></div>
+          <div class="composer">给 onething 发消息…<b></b></div>
+        </div>
+        <div class="content term"><div class="scr"><div><span class="p">~/code/start-electron</span> $ npm run gate:dock</div><div>① still 60 frames: 0 changed</div><div>② sweep reversals: max 1</div><div>[gate:dock] ok</div><div><span class="p">~/code/start-electron</span> $ <span class="cur"> </span></div></div></div>
+        <div class="content diff">
+          <div class="lines"><div>@@ -103,9 +103,4 @@</div><div class="del">-.shell[data-dock-reserve='bottom'] .center,</div><div class="del">-  padding-block-end: var(--dock-reserve-h);</div><div class="add">+.shell[data-dock-reserve='bottom'] .main {</div><div class="add">+  padding-block-end: var(--dock-reserve-h);</div><div class="add">+}</div></div>
+          <div class="stat">1 file · <span style="color:#2f6b2a">+3</span> <span style="color:#9a3b32">−5</span></div>
+        </div>
+        <div class="content web">
+          <div class="url">developer.apple.com/design/human-interface-guidelines/dock-menus</div>
+          <div class="native"><div class="pg">The Dock occupies its own space; app windows do not extend beneath it …</div><div class="ft">© Apple · Terms · Privacy</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="pane"><div class="ph">查看器</div><div class="layer"><div class="rows">
+      <div class="r"><i></i>AppShell.tsx</div><div class="r cur"><i></i>AppShell.module.css</div><div class="r"><i></i>Dock.tsx</div><div class="r"><i></i>Dock.module.css</div><div class="r"><i></i>useDockLens.ts</div><div class="r"><i></i>dock-lens.ts</div><div class="r"><i></i>tokens.css</div><div class="r"><i></i>motion.css</div><div class="r"><i></i>transitions.ts</div><div class="r"><i></i>gate-dock.mjs</div><div class="r"><i></i>gate-layout.mjs</div><div class="r"><i></i>CLAUDE.md</div>
+    </div></div></div>
+  </div>
+</template>
+
+<template id="icons">
+  <svg data-i="ws" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="3" width="18" height="18" rx="4"/></svg>
+  <svg data-i="chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 5h16v11H8l-4 4z"/></svg>
+  <svg data-i="agent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+  <svg data-i="files" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 6h6l2 2h8v10H4z"/></svg>
+  <svg data-i="diff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13 6l-2 12"/></svg>
+  <svg data-i="term" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 6h16v12H4zM7 10l3 2-3 2M12 14h5"/></svg>
+  <svg data-i="web" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg>
+  <svg data-i="bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4zM10 20a2 2 0 004 0"/></svg>
+  <svg data-i="gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
+  <svg data-i="plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 5v14M5 12h14"/></svg>
+</template>
+
+<script>
+  const tpl = document.getElementById('tpl')
+  const icons = document.getElementById('icons').content
+  const ic = (n) => icons.querySelector(`[data-i="${n}"]`).cloneNode(true)
+  const tile = (n, cls = '', attrs = {}) => { const d = document.createElement('div'); d.className = `tile ${n === 'ws' ? 'ws' : ''} ${cls}`.trim(); for (const [k, v] of Object.entries(attrs)) d.setAttribute(k, v); d.appendChild(ic(n)); return d }
+  const cap = (...kids) => { const c = document.createElement('div'); c.className = 'cap'; kids.forEach(k => c.appendChild(k)); return c }
+  const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e }
+  const lights = () => el('div', 'lights', '<i></i><i></i><i></i>')
+
+  for (const w of document.querySelectorAll('.win')) {
+    const p = w.dataset.p
+    if (p !== '3') {
+      const tb = el('div', 'titlebar', '<i></i><i></i><i></i><span class="t">onething</span>')
+      w.appendChild(tb)
+    }
+    if (p === '3') {
+      const tb = el('div', 'titlebar')
+      tb.appendChild(lights())
+      const c = cap(tile('chat', 'run', { 'data-ws': 'a b' }), tile('agent', 'run', { 'data-ws': 'a' }), tile('files', '', { 'data-ws': 'a b' }), tile('diff', 'run', { 'data-ws': 'a' }), tile('term', '', { 'data-ws': 'a' }), tile('web', '', { 'data-ws': 'b' }), tile('bell', '', { 'data-ws': 'a b' }))
+      const more = el('div', 'more', '+3'); more.dataset.ws = 'a'
+      const more2 = el('div', 'more', '+5'); more2.dataset.ws = 'b'
+      c.appendChild(more); c.appendChild(more2)
+      tb.appendChild(c)
+      tb.appendChild(el('span', 't', 'Dock 常显的让位'))
+      const wsw = el('div', 'wsw', '<i></i><span class="n">onething</span>')
+      tb.appendChild(wsw)
+      w.appendChild(tb)
+    }
+    w.appendChild(tpl.content.cloneNode(true))
+    if (p === '1') {
+      const d = el('div', 'dock')
+      d.appendChild(cap(tile('ws'))); d.querySelector('.cap').classList.add('ws-cap')
+      d.appendChild(cap(tile('chat', 'run'), tile('agent', 'run'), tile('bell')))
+      d.appendChild(cap(tile('files'), tile('diff', 'run'), tile('term'), tile('web')))
+      const pl = cap(tile('plus', 'plus')); pl.classList.add('plus'); d.appendChild(pl)
+      w.appendChild(d)
+    }
+    if (p === '2') {
+      const bar = el('div', 'bar')
+      const launch = cap(tile('ws'), tile('chat', 'run'), tile('agent', 'run'), tile('files'), tile('diff', 'run'), tile('term'), tile('web'))
+      const b = el('span', 'badge', '3'); launch.children[4].appendChild(b)
+      bar.appendChild(launch)
+      bar.appendChild(el('div', 'ctx',
+        '<span class="chat"><i>模型</i><b>claude-fable-5-1</b><i>·</i><b>32k</b><i>/ 200k</i></span>' +
+        '<span class="term"><i>cwd</i><b>~/code/start-electron</b><i>·</i><b>zsh</b><i>· 运行 2m14s</i></span>' +
+        '<span class="diff"><i>分支</i><b>main</b><i>·</i><b style="color:#2f6b2a">+3</b><b style="color:#9a3b32">−5</b><i>· 1 文件</i></span>' +
+        '<span class="web"><i>🔒</i><b>developer.apple.com</b><i>· profile</i><b>默认</b></span>'))
+      const right = el('div', 'right', '<span class="k"><span class="dot"></span>空闲</span><span class="k">14:32</span>')
+      bar.appendChild(right)
+      w.appendChild(bar)
+    }
+  }
+  const stage = document.getElementById('stage')
+  for (const seg of document.querySelectorAll('.seg')) {
+    seg.addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return
+      for (const x of seg.querySelectorAll('button')) x.classList.toggle('on', x === b)
+      stage.dataset[seg.dataset.k] = b.dataset.v
+      if (seg.dataset.k === 'ws') document.querySelector('.p3 .wsw .n').textContent = b.textContent
+    })
+  }
+</script>
+</body>
+</html>

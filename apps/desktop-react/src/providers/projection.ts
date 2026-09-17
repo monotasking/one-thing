@@ -463,14 +463,16 @@ export function overrideOf(config: ProviderConfig | undefined, id: string): Mode
   const context = positive(config?.contextLengthByModel?.[id])
   const maxOutput = positive(config?.maxOutputByModel?.[id])
   const entry = config?.modelCapabilitiesByModel?.[id]
+  const reasoningProfile = entry?.reasoningProfile
   const caps: Partial<Record<CapabilityKey, boolean>> = {}
   for (const key of CAPABILITY_KEYS) {
     const value = entry?.[key]
     if (typeof value === 'boolean') caps[key] = value
   }
   const hasCaps = Object.keys(caps).length > 0
-  if (context === null && maxOutput === null && !hasCaps) return NO_MODEL_OVERRIDE
+  if (context === null && maxOutput === null && !hasCaps && !reasoningProfile) return NO_MODEL_OVERRIDE
   return {
+    ...(reasoningProfile ? { reasoningProfile } : {}),
     ...(context !== null ? { contextLength: context } : {}),
     ...(maxOutput !== null ? { maxOutput } : {}),
     caps: hasCaps ? caps : NO_OVERRIDE_CAPS,
@@ -520,23 +522,33 @@ export function buildCatalogRows(
   const current = (config?.model ?? '').trim()
   const rows: CatalogRow[] = models.map((model) => {
     const override = overrideOf(config, model.id)
-    const baseCaps = capsOf(model)
+    const manual = model.configuredOnly === true
+    const baseCaps = manual ? [] : capsOf(model)
     return {
       id: model.id,
       name: (model.name ?? '').trim() || model.id,
       selected: selected.has(model.id),
       current: current === model.id,
       // **交生效值**:覆盖优先,与引擎 `getOnethingModelContextLength` 同一条读法。
-      contextLength: override.contextLength ?? contextOf(model),
-      maxOutput: override.maxOutput ?? maxOutputOf(model),
+      contextLength: override.contextLength ?? (manual ? null : contextOf(model)),
+      maxOutput: override.maxOutput ?? (manual ? null : maxOutputOf(model)),
       caps: capsWithOverride(baseCaps, override),
-      price: priceOf(model),
-      manual: false,
+      price: manual ? null : priceOf(model),
+      manual,
       override,
       catalog: {
-        contextLength: contextOf(model),
-        maxOutput: maxOutputOf(model),
-        caps: catalogCapsOf(baseCaps),
+        ...(model.thinkingLevels ? {
+          reasoningProfile: {
+            efforts: model.thinkingLevels,
+            toggleable: model.thinkingToggleable,
+            defaultOn: model.thinkingDefaultOn,
+            defaultEffort: model.thinkingDefaultLevel ?? undefined,
+            effortLabels: model.thinkingLevelLabels,
+          },
+        } : {}),
+        contextLength: manual ? null : contextOf(model),
+        maxOutput: manual ? null : maxOutputOf(model),
+        caps: manual ? NO_CATALOG_FACTS.caps : catalogCapsOf(baseCaps),
       },
     }
   })
@@ -565,7 +577,7 @@ export function buildCatalogRows(
       }
     })
 
-  const all = [...orphans, ...rows]
+  const all = [...orphans, ...rows.filter(row => row.manual), ...rows.filter(row => !row.manual)]
   const needle = query.trim().toLowerCase()
   if (!needle) return all
   return all.filter(

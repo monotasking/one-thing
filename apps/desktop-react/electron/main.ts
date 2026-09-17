@@ -551,6 +551,8 @@ function createWindow(): BrowserWindow {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
+      // Keep streaming UI updates running while the app is covered or in the background.
+      backgroundThrottling: false,
     },
   })
   // 离屏档**什么都不做**:窗子本来就是 `show: false` 起的,不接这一发就永远不上屏。

@@ -71,14 +71,22 @@ async function fetchCodexModelsRaw(): Promise<OpenRouterModel[]> {
  * 的那一件事 —— 把设置里的 override / 目录条目喂给能力裁定,与
  * `getModelCapabilities` 下面那段「不解析凭据」同一手:**一次网络都不打**。
  */
-function thinkingProjectionOf(providerId: string, modelId: string) {
-  const providerConfig = getSettings()?.ai?.providers?.[providerId] as
+function modelProviderConfig(providerId: string) {
+  const ai = getSettings()?.ai
+  const custom = ai?.customProviders?.find(provider => provider.id === providerId)
+  const configured = ai?.providers?.[providerId]
+  return (custom ? { ...custom, ...configured } : configured) as
     | (ProviderConfig & { apiType?: 'openai' | 'anthropic' })
     | undefined
+}
+
+function thinkingProjectionOf(providerId: string, modelId: string) {
+  const providerConfig = modelProviderConfig(providerId)
   const apiType = providerConfig?.apiType
   const caps = resolveOnethingModelCapabilities({
     providerId,
     modelId,
+    providerReasoningProfile: (providerConfig as ProviderConfig & { providerOptions?: OnethingProviderOptions })?.providerOptions?.reasoningProfile,
     ...(apiType === 'openai' || apiType === 'anthropic' ? { customApiType: apiType } : {}),
     ...(providerConfig?.modelCapabilitiesByModel?.[modelId]
       ? { override: providerConfig.modelCapabilitiesByModel[modelId] }
@@ -93,7 +101,20 @@ function withThinkingLevels(
   providerId: string,
   models: readonly OpenRouterModel[],
 ): OpenRouterModel[] {
-  return models.map((model) => ({ ...model, ...thinkingProjectionOf(providerId, model.id) }))
+  const config = modelProviderConfig(providerId)
+  const configuredIds = new Set([
+    ...(config?.selectedModels ?? []),
+    config?.model,
+  ].filter((id): id is string => typeof id === 'string' && id.trim().length > 0).map(id => id.trim()))
+  const known = new Set(models.map(model => model.id))
+  const all = [...models]
+  for (const id of configuredIds) {
+    if (known.has(id)) continue
+    // The legacy envelope overstates which metadata fields are required. Keep
+    // absent prices/context/capabilities absent instead of inventing catalog data.
+    all.push({ id, name: id, configuredOnly: true } as OpenRouterModel)
+  }
+  return all.map((model) => ({ ...model, ...thinkingProjectionOf(providerId, model.id) }))
 }
 
 export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
@@ -127,8 +148,8 @@ export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
     )
     // 这一口是抽屉的目录口:思考档位随行走(逐 (provider, model) 再发一次
     // `getModelCapabilities` 对一张几十上百行的表不成立)。失败那一支原样交回。
-    if (!result.success || !result.models) return result
-    return { ...result, models: withThinkingLevels(providerId, result.models) }
+    if (!result.success) return result
+    return { ...result, models: withThinkingLevels(providerId, result.models ?? []) }
   },
   async getAll() {
     const getAllOnethingModelRegistryModelsOptions: GetAllOnethingModelRegistryModelsOptions<OpenRouterModel> & { logger?: OnethingModelQueryIpcLogger | undefined; } = {
@@ -213,4 +234,3 @@ export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
     })
   },
 }
-

@@ -14,6 +14,7 @@ import { formatQuantity, parseQuantity } from '../../format/quantity'
 import { CAPABILITY_KEYS, CAP_OF_KEY, CATALOG_CONTEXT_FALLBACK, requestedMaxOutputOf } from '../types'
 import type { CapabilityKey, CatalogRow, ModelOverridePatch } from '../types'
 import { CAP_ICONS, CAP_LABELS } from './model-capability-icons'
+import { ReasoningProfileEditor } from './ReasoningProfileEditor'
 import s from './ModelOverridePopover.module.css'
 
 /**
@@ -282,6 +283,7 @@ export function ModelOverridePopover({
   const [idError, setIdError] = useState<string | undefined>(undefined)
 
   const hasOverride =
+    row.override.reasoningProfile !== undefined ||
     row.override.contextLength != null ||
     row.override.maxOutput != null ||
     CAPABILITY_KEYS.some((key) => row.override.caps[key] !== undefined)
@@ -517,6 +519,14 @@ export function ModelOverridePopover({
           <CapabilityGroup row={row} disabled={pending} onPick={pickCap} />
         </Field>
 
+        <ReasoningProfileEditor
+          key={JSON.stringify([row.override.reasoningProfile, row.catalog.reasoningProfile])}
+          value={row.override.reasoningProfile}
+          inherited={row.catalog.reasoningProfile}
+          disabled={pending}
+          onWrite={(reasoningProfile) => onWrite({ reasoningProfile })}
+        />
+
         <div className={s.foot}>
           <span className={s.footNote}>{t('providers.overrideFoot')}</span>
           {/*
@@ -537,6 +547,7 @@ export function ModelOverridePopover({
               onWrite({
                 contextLength: null,
                 maxOutput: null,
+                ...(row.override.reasoningProfile ? { reasoningProfile: null } : {}),
                 caps: Object.fromEntries(CAPABILITY_KEYS.map((key) => [key, null])),
               })
             }}

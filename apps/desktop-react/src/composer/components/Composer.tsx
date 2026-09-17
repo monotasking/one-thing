@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { DragEvent } from 'react'
+import type { ClipboardEvent, DragEvent } from 'react'
 import { useT } from '../../i18n'
 import { ChevronDown, resolveIcon } from '../../components/icons'
 import { DEV_COMMANDS } from '../data'
@@ -21,8 +21,9 @@ import type { ComposerDraft } from '../drafts'
 import { composerStoreFor, revokeAllAttachments, useComposerStoreOf } from '../store'
 import { ComposerSessionContext } from '../session-context'
 import { configureComposerReferenceSink } from '../references'
-import { isTypingTarget, THINKING_LABEL_KEY, thinkingRungOf } from '../transitions'
+import { isTypingTarget, thinkingLabel, thinkingRungOf } from '../transitions'
 import { useComposerSend } from '../useComposerSend'
+import { transferFiles } from '../transfer-files'
 import { useEscStop } from '../useEscStop'
 import { usePickDrawer } from '../usePickDrawer'
 import { FocusScope } from '../../focus/FocusScope'
@@ -30,6 +31,8 @@ import { ButtonBase } from '../../ui/ButtonBase'
 import { useFloatDismiss } from '../../ui/float'
 import { IconButton } from '../../ui/IconButton'
 import { AskForm } from './AskForm'
+import { bindComposerInteractions } from '../../data/composer-interactions'
+import { interactionPort } from '../../data/interaction-port'
 import { AttachmentStack } from './AttachmentStack'
 import { ComposerInput } from './ComposerInput'
 import type { ComposerInputHandle } from './ComposerInput'
@@ -131,6 +134,15 @@ export interface ComposerProps {
 
 export function Composer({ sessionId, owner }: ComposerProps) {
   const t = useT()
+  useEffect(() => {
+    if (!sessionId) return
+    let disposed = false
+    let disconnect: (() => void) | undefined
+    void interactionPort().then(port => {
+      if (!disposed) disconnect = bindComposerInteractions(sessionId, composerStoreFor(sessionId), port)
+    }).catch(() => { /* Connection failures are reported by the platform. */ })
+    return () => { disposed = true; disconnect?.() }
+  }, [sessionId])
   const drawerKind = useComposerStoreOf(sessionId, (st) => st.drawerKind)
   const mode = useComposerStoreOf(sessionId, (st) => st.mode)
   const askSpec = useComposerStoreOf(sessionId, (st) => st.askSpec)
@@ -259,8 +271,11 @@ export function Composer({ sessionId, owner }: ComposerProps) {
    * `activate()`,焦点落哪儿由这一格答)。
    */
   const askFreeRef = useRef<HTMLSpanElement>(null)
+  const askPanelRef = useRef<HTMLDivElement>(null)
   const restingTarget = useCallback(
-    () => (mode === 'ask' ? askFreeRef.current : inputRef.current?.element() ?? null),
+    () => (mode === 'ask'
+      ? askFreeRef.current ?? askPanelRef.current?.querySelector<HTMLButtonElement>('[data-ask-option]:not(:disabled)') ?? null
+      : inputRef.current?.element() ?? null),
     [mode],
   )
 
@@ -388,8 +403,21 @@ export function Composer({ sessionId, owner }: ComposerProps) {
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     setDragging(false)
-    const list = Array.from(e.dataTransfer?.files ?? [])
-    if (list.length) addFiles(list)
+    const list = transferFiles(e.dataTransfer)
+    if (list.length) {
+      e.stopPropagation()
+      addFiles(list)
+    }
+  }
+
+  const onPaste = (e: ClipboardEvent<HTMLDivElement>) => {
+    if (mode !== 'write' || e.defaultPrevented) return
+    const files = transferFiles(e.clipboardData)
+    if (!files.length) return
+    // Finder also supplies the filenames as text; consume the file paste once.
+    e.preventDefault()
+    e.stopPropagation()
+    addFiles(files)
   }
 
   return (
@@ -438,6 +466,7 @@ export function Composer({ sessionId, owner }: ComposerProps) {
           }}
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
+          onPaste={onPaste}
           onKeyDown={(e) => {
             if (mode !== 'ask') return
             if (e.target instanceof Element && isTypingTarget(e.target)) return
@@ -451,26 +480,18 @@ export function Composer({ sessionId, owner }: ComposerProps) {
             }
           }}
         >
-          {status && (
-            <StatusBar
-              status={status}
-              open={drawerKind === 'status'}
-              onToggle={toggleStatusDrawer}
-            />
-          )}
-
           {/*
             * 抽屉:一个槽,四种住户,内容按 kind 换。
             *
-            * ── 09-12 两处改动,骨架一格没动 ─────────────────────────────────
-            * ① 它**浮在面板上方**(`position: absolute; bottom: 100%`),不再占
-            *    面板的高 —— 于是 `--composer-h` 与抽屉开不开无关,消息流不再被顶。
-            *    判词整段在 `.drawer` 的 CSS 上;DOM 上它仍是 `.panel` 的孩子,
-            *    响应链作用域 / `useFloatDismiss` 的「外面」/ `:has(.drawerOpen)`
-            *    三样因此一个字不改。
-            * ② `.drawerInner` 那层没了:它唯一的活是给 `grid-rows 0fr↔1fr` 当
-            *    裁剪盒,而那条展开已经判掉(高度一帧到位)。裁剪归 `.drawer`
-            *    自己的 `overflow: hidden`(圆角也要它)。
+            * ── 09-16 并入面板(正本 docs/composer-unified-drawer-2026-09-16.md)──
+            * 用户报「弹出来的抽屉像一个独立的外层;焦点环只围面板、上沿被磨平」。
+            * 抽屉从「面板上方的另一块」改回**面板自己的第一格**:外框、圆角、描边、
+            * 阴影、焦点环只有 `.panel` 一份,开不开抽屉都不变,面板往上长。
+            * 09-12 买下的两件照旧成立:高度一帧到位(没有高度过渡),正文不被推
+            * —— 后者靠 `data-composer-rest` 那格:`--composer-h` 量的是静止部分,
+            * 不是整块面板(`content/kinds/session.tsx` 的 `useComposerGeometry`)。
+            * DOM 上它仍是 `.panel` 的孩子,响应链作用域 / `useFloatDismiss` 的
+            * 「外面」一个字不改。
             *
             * `drawerFixed` 只挂给**打字驱动**的两位住户(`pick.picking`):它们的
             * 内容逐字在变,所以要一个不变的框(用户:「直接看到一个固定长度、
@@ -496,6 +517,17 @@ export function Composer({ sessionId, owner }: ComposerProps) {
               {drawerKind === 'status' && status && <DrawerStatus status={status} />}
             </div>
           </div>
+
+          {/* 静止部分:抽屉以下的一切。`data-composer-rest` 是会话叶量
+              `--composer-h` 的那一格(几何契约,判词在 `useComposerGeometry`)。 */}
+          <div className={s.rest} data-composer-rest="">
+          {status && (
+            <StatusBar
+              status={status}
+              open={drawerKind === 'status'}
+              onToggle={toggleStatusDrawer}
+            />
+          )}
 
           <div className={s.bodyRow}>
             <div className={mode === 'write' ? s.mode : `${s.mode} ${s.modeOff}`}>
@@ -564,7 +596,7 @@ export function Composer({ sessionId, owner }: ComposerProps) {
                           ? thinkingRung
                             ? t('composer.modelWithThinking', {
                                 name: selection.model,
-                                level: t(THINKING_LABEL_KEY[thinkingRung]),
+                                level: thinkingLabel(t, thinkingRung, thinking.levelLabels),
                               })
                             : t('composer.model', { name: selection.model })
                           : t('composer.modelUnset')
@@ -587,7 +619,7 @@ export function Composer({ sessionId, owner }: ComposerProps) {
                         */}
                       {thinkingRung && (
                         <span className={s.modelPillLevel}>
-                          {t(THINKING_LABEL_KEY[thinkingRung])}
+                          {thinkingLabel(t, thinkingRung, thinking.levelLabels)}
                         </span>
                       )}
                       <ChevronDown className={s.pillChev} strokeWidth={2} aria-hidden="true" />
@@ -663,9 +695,10 @@ export function Composer({ sessionId, owner }: ComposerProps) {
             </div>
 
             {/* ask 形态:本体的另一副样子,不是抽屉里的一块内容。 */}
-            <div className={mode === 'ask' ? s.mode : `${s.mode} ${s.modeOff}`}>
+            <div ref={askPanelRef} className={mode === 'ask' ? s.mode : `${s.mode} ${s.modeOff}`}>
               {askSpec && <AskForm spec={askSpec} freeRef={askFreeRef} />}
             </div>
+          </div>
           </div>
         </div>
       </div>

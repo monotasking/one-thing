@@ -1,8 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
 import { useT } from '../../i18n'
 import { IconButton } from '../../ui/IconButton'
 import { resolveIcon, X } from '../../components/icons'
-import { ATT_GRACE_MS } from '../../components/motion'
+import { useCardStackOpen } from '../../ui/card-stack'
 import { useComposerStoreOf } from '../store'
 import { useComposerSessionId } from '../session-context'
 import { fileExt, layoutAttachments } from '../transitions'
@@ -19,7 +19,7 @@ const FileIcon = resolveIcon('FolderTree')
  * 3. **收拢带 200ms 宽限** —— 卡缝与删卡瞬间的出界不塌摞,再进即取消
  *    (同 Dock 留驻区判例)。
  *
- * 坐标全部由 transitions.layoutAttachments 算,这个文件只把数贴上去。
+ * 坐标全部由 transitions.layoutAttachments(→ `ui/card-stack`)算,这个文件只把数贴上去。
  */
 export function AttachmentStack() {
   const t = useT()
@@ -30,50 +30,13 @@ export function AttachmentStack() {
   const setOpen = useComposerStoreOf(sessionId, (st) => st.setAttOpen)
   const remove = useComposerStoreOf(sessionId, (st) => st.removeAttachment)
   const stackRef = useRef<HTMLDivElement>(null)
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // 滚轮纵转横:超长一排不该逼人按住 shift。preventDefault 要非被动监听,
-  // React 的 onWheel 是被动的,所以这里手挂。
-  useEffect(() => {
-    const el = stackRef.current
-    if (!el) return
-    const onWheel = (e: WheelEvent) => {
-      if (!open) return
-      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-        el.scrollLeft += e.deltaY
-        e.preventDefault()
-      }
-    }
-    el.addEventListener('wheel', onWheel, { passive: false })
-    return () => el.removeEventListener('wheel', onWheel)
-  }, [open])
-
-  useEffect(
-    () => () => {
-      if (timer.current) clearTimeout(timer.current)
-    },
-    [],
-  )
+  // 开合手势(宽限 / 滚轮纵转横)归 `ui/card-stack`,与聊天流的图片摞同一只。
+  const gesture = useCardStackOpen(stackRef, open, setOpen)
 
   if (attachments.length === 0) return null
 
   const layout = layoutAttachments(attachments, open)
   const byId = new Map(attachments.map((a) => [a.id, a]))
-
-  const enter = () => {
-    if (timer.current) {
-      clearTimeout(timer.current)
-      timer.current = null
-    }
-    if (!open) setOpen(true)
-  }
-  const leave = () => {
-    if (timer.current) clearTimeout(timer.current)
-    timer.current = setTimeout(() => {
-      timer.current = null
-      setOpen(false)
-    }, ATT_GRACE_MS)
-  }
 
   return (
     <div className={s.attFloat}>
@@ -82,8 +45,8 @@ export function AttachmentStack() {
         className={open ? `${s.attStack} ${s.attStackOpen}` : s.attStack}
         style={{ width: layout.stackWidth === null ? '100%' : `${layout.stackWidth}px` }}
         aria-label={t('composer.attachments')}
-        onMouseEnter={enter}
-        onMouseLeave={leave}
+        onMouseEnter={gesture.onMouseEnter}
+        onMouseLeave={gesture.onMouseLeave}
       >
         <div className={s.attRow} style={{ width: `${layout.rowWidth}px` }}>
           {layout.cards.map((card) => {

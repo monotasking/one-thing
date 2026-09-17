@@ -23,10 +23,8 @@ import type { ReferenceKind } from '../kind'
  * `{kindId, ref}`,于是这一份的 `toRef` / `token` / `render` 三格全部上岗:
  * 输入框里那一枚网页 chip 与别的引用**是同一个组件画的**。
  *
- * **留账**:落账之后的气泡里没有这一枚 —— 它在发送那一刻变成了附件,正文里那截
- * 记号被 `materializePageReferences` 摘掉了。于是「在飞的气泡有一枚网页 chip、
- * 落账之后它变成一枚回形针」是今天的事实,不是这一单能治的(治它要动附件那条路
- * 的呈现,归浏览器批)。
+ * 落账后这枚引用由消息顶层的附件元信息呈现(`content/user-attachments`):
+ * `materializePageReferences` 摘掉正文里的记号,附件仍以名称显示在用户消息里。
  */
 
 const PageIcon = resolveIcon('Globe')

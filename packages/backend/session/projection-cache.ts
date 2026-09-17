@@ -49,6 +49,9 @@ import type { sessionProjectionOptions } from './projection-blobs.js'
 import { getCurrentBackend } from '../current.js'
 
 export interface SessionProjectionPorts {
+  /** Pure, synchronous guard. A cache release never waits between this check and deletion. */
+  evictionProtection?(sessionId: string): SessionProjectionProtection | undefined
+  onEvict?(sessionId: string): void
   /**
    * 这条会话的事件。`fromByte` 在场 = 只要账本从那个**行首**往后的那一段
    * (工单 4 B 的检查点冷载路);缺席 = 整份(没有检查点的老路)。
@@ -74,6 +77,9 @@ export interface SessionProjectionPorts {
 }
 
 interface LiveProjection {
+  lastAccessedAt: number
+  estimatedBytes: number
+  estimatedSeq: number
   state: SessionProjectionState
   /**
    * 这条会话的**会话账**(§17.7.1 批 2 / #8b-i)—— 与消息投影同源同刷新点:
@@ -91,6 +97,53 @@ interface LiveProjection {
   aheadDeltas: number
 }
 
+export type SessionProjectionProtection = 'active-run' | 'pending-deltas' | 'pending-write' | 'selected'
+
+export interface SessionProjectionCachePolicy {
+  maxIdleEntries: number
+  maxIdleBytes: number
+  idleTtlMs: number
+  maintenanceIntervalMs: number
+}
+
+const DEFAULT_CACHE_POLICY: SessionProjectionCachePolicy = {
+  maxIdleEntries: 8,
+  maxIdleBytes: 64 * 1024 * 1024,
+  idleTtlMs: 10 * 60_000,
+  maintenanceIntervalMs: 60_000,
+}
+
+/** Approximate retained projection data, not V8 heap/RSS or materialized messages. */
+function estimateProjectionBytes(live: LiveProjection): number {
+  let bytes = 0
+  const seen = new Set<object>()
+  const pending: unknown[] = [live.state, live.account]
+  while (pending.length) {
+    const value = pending.pop()
+    if (typeof value === 'string') { bytes += value.length * 2; continue }
+    if (!value || typeof value !== 'object') { bytes += 8; continue }
+    if (seen.has(value)) continue
+    seen.add(value)
+    bytes += 32
+    if (value instanceof Map) {
+      bytes += value.size * 24
+      for (const [key, item] of value) pending.push(key, item)
+    } else if (value instanceof Set) {
+      bytes += value.size * 16
+      for (const item of value) pending.push(item)
+    } else if (Array.isArray(value)) {
+      bytes += value.length * 8
+      for (const item of value) pending.push(item)
+    } else {
+      for (const [key, item] of Object.entries(value)) {
+        bytes += key.length * 2 + 8
+        pending.push(item)
+      }
+    }
+  }
+  return bytes
+}
+
 /**
  * **这里没有失效号**(§17.7.1 批 1)。
  *
@@ -99,8 +152,77 @@ interface LiveProjection {
  * 现在这件事住在节点自己身上(`BaseNode.rev`,由归约器的 `forWrite` 前进),
  * 这一层只管把事件折进去。
  */
-export function createSessionProjectionCache(ports: SessionProjectionPorts) {
+export function createSessionProjectionCache(
+  ports: SessionProjectionPorts,
+  options: Partial<SessionProjectionCachePolicy> & { now?: () => number } = {},
+) {
 const projections = new Map<string, LiveProjection>()
+const policy = { ...DEFAULT_CACHE_POLICY, ...options }
+const now = options.now ?? Date.now
+
+function protection(sessionId: string, live: LiveProjection): SessionProjectionProtection | undefined {
+  if (live.state.activeRun) return 'active-run'
+  if (live.aheadDeltas > 0) return 'pending-deltas'
+  return ports.evictionProtection?.(sessionId)
+}
+
+/** Reads cached counters only; polling this must not warm caches or scan message payloads. */
+function getMemoryStats() {
+  const entries = [...projections].map(([sessionId, live]) => ({
+    sessionId,
+    nodeCount: live.state.nodes.length,
+    lastAccessedAt: live.lastAccessedAt,
+    estimatedBytes: live.estimatedBytes,
+    estimateStale: live.estimatedSeq !== live.lastSeq || live.aheadDeltas > 0,
+    protectedReason: protection(sessionId, live),
+  }))
+  const protectedCount = entries.filter(entry => entry.protectedReason !== undefined).length
+  return {
+    size: entries.length,
+    idleCount: entries.length - protectedCount,
+    protectedCount,
+    estimatedBytes: entries.reduce((sum, entry) => sum + entry.estimatedBytes, 0),
+    limits: { maxIdleEntries: policy.maxIdleEntries, maxIdleBytes: policy.maxIdleBytes, idleTtlMs: policy.idleTtlMs },
+    entries,
+  }
+}
+
+/** Reconstructible caches only. Never clears the ledger tail or ends an execution. */
+function releaseIdle(options: { all?: boolean; protectedSessionIds?: readonly string[] } = {}) {
+  const selected = new Set(options.protectedSessionIds)
+  const idle = [...projections].filter(([id, live]) => !selected.has(id) && !protection(id, live))
+  for (const [, live] of idle) {
+    if (live.estimatedSeq !== live.lastSeq) {
+      live.estimatedBytes = estimateProjectionBytes(live)
+      live.estimatedSeq = live.lastSeq
+    }
+  }
+  idle.sort(([, a], [, b]) => a.lastAccessedAt - b.lastAccessedAt)
+  let idleCount = idle.length
+  let idleBytes = idle.reduce((sum, [, live]) => sum + live.estimatedBytes, 0)
+  let releasedEstimatedBytes = 0
+  const releasedSessionIds: string[] = []
+  const time = now()
+  for (const [id, live] of idle) {
+    if (!options.all && idleCount <= policy.maxIdleEntries && idleBytes <= policy.maxIdleBytes
+      && time - live.lastAccessedAt < policy.idleTtlMs) continue
+    // Recheck after injected ports: even synchronous callbacks may append reentrantly.
+    if (projections.get(id) !== live || protection(id, live)) continue
+    ports.onEvict?.(id)
+    if (projections.get(id) !== live || protection(id, live)) continue
+    projections.delete(id)
+    idleCount--
+    idleBytes -= live.estimatedBytes
+    releasedEstimatedBytes += live.estimatedBytes
+    releasedSessionIds.push(id)
+  }
+  return { releasedSessionIds, releasedEstimatedBytes, remainingCount: projections.size }
+}
+
+const maintenance = policy.maintenanceIntervalMs > 0
+  ? setInterval(() => releaseIdle(), policy.maintenanceIntervalMs)
+  : undefined
+maintenance?.unref?.()
 /**
  * 观察者的注册发生在**运行期**(第一次要建活投影的那一刻),不在 import 期 ——
  * 装配层的 import 纯净栅栏管着这条(`__tests__/import-side-effect-free.test.ts`)。
@@ -136,6 +258,7 @@ const unsubscribe = ports.observe((sessionId, record, options) => {
     const live = projections.get(sessionId)
     if (!live) return
     if (record.seq <= live.lastSeq) return
+    live.lastAccessedAt = now()
     try {
       // F4-c c3-a:这一行的每一条 delta 在**盖章那一刻**就已经折进去了
       // (`foldLiveSessionLogicalDelta`)。再折一遍 = 同一段正文进两次。
@@ -186,12 +309,16 @@ function getLiveSessionProjection(sessionId: string): SessionProjectionState {
     // 补出来的那几条才会被算成"检查点之后的那一段"。
     const restored = ports.restore?.(sessionId)
     live = restored
-      ? { state: restored.state, account: restored.account, lastSeq: restored.lastSeq, aheadDeltas: 0 }
+      ? { state: restored.state, account: restored.account, lastSeq: restored.lastSeq, aheadDeltas: 0,
+        lastAccessedAt: now(), estimatedBytes: 0, estimatedSeq: -1 }
       : {
         state: createSessionProjectionState(),
         account: createSessionAccountState(),
         lastSeq: 0,
         aheadDeltas: 0,
+        lastAccessedAt: now(),
+        estimatedBytes: 0,
+        estimatedSeq: -1,
       }
     for (const event of ports.readEvents(sessionId, restored?.fromByte)) {
       // 检查点覆盖到的那一段本来就不该再出现在这里(`fromByte` 是行首,读的是
@@ -209,8 +336,12 @@ function getLiveSessionProjection(sessionId: string): SessionProjectionState {
       foldRecord(sessionId, live, event)
       live.lastSeq = event.seq
     }
+    live.estimatedBytes = estimateProjectionBytes(live)
+    live.estimatedSeq = live.lastSeq
     return live.state
   }
+
+  live.lastAccessedAt = now()
 
   const { records, overflowed } = ports.drainTail(sessionId)
   if (overflowed) {
@@ -243,6 +374,7 @@ function foldLiveSessionLogicalDelta(
 ): boolean {
   const live = projections.get(sessionId)
   if (!live) return false
+  live.lastAccessedAt = now()
   try {
     if (!foldSessionLogicalDeltaAhead(live.state, runId, delta)) return false
     live.aheadDeltas += 1
@@ -309,6 +441,8 @@ function peekSessionProjection(sessionId: string): SessionProjectionState | unde
 }
 
   return {
+    getMemoryStats,
+    releaseIdle,
     getLiveSessionProjection,
     foldLiveSessionLogicalDelta,
     liveSessionProjectionAheadDeltas,
@@ -317,7 +451,7 @@ function peekSessionProjection(sessionId: string): SessionProjectionState | unde
     peekSessionAccount,
     resetSessionProjectionCache,
     peekSessionProjection,
-    dispose() { unsubscribe(); projections.clear() },
+    dispose() { if (maintenance) clearInterval(maintenance); unsubscribe(); projections.clear() },
   }
 }
 

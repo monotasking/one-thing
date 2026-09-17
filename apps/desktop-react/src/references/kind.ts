@@ -256,9 +256,7 @@ export interface ReferencePartParse<Ref> {
   typed?(part: ReferencePart): string | null
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any -- 注册表装的是异构的自述:
- * 每一份自述内部 `Hit` / `Ref` 都是具体类型(在它自己那只模块里闭合),
- * 而表这一层只知道「有这么五格」。写成 unknown 会让每一家在登记那一行都得断言一次。 */
+ 
 export interface ReferenceKind<Hit = any, Ref = any> {
   /** 这一种的名字。全表唯一(重复登记直接抛,见 registry)。 */
   id: string
@@ -273,4 +271,4 @@ export interface ReferenceKind<Hit = any, Ref = any> {
    */
   open?(ref: Ref): boolean | Promise<boolean>
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
+ 

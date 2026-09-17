@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react'
 import { create } from 'zustand'
 import { isProviderEnabledIn } from '@onething/client/model/provider-model'
+import { resolveOnethingReasoningEffort } from '@onething/runtime/providers/model-capability'
 import type {
   OpenRouterModel,
   ProviderInfo,
@@ -176,6 +177,8 @@ export interface CatalogModel {
   thinkingDefaultOn: boolean
   /** 什么档都没设时的有效档;null = 不知道 / 不思考。 */
   thinkingDefaultLevel: ThinkingEffort | null
+  thinkingDisabledLevel?: ThinkingEffort | null
+  thinkingLevelLabels?: Partial<Record<ThinkingEffort, string>>
 }
 
 /** 抽屉里的一行 = 目录那条的全部读数 + 它的 id。`contextLength` 为 null = 不画那一格。 */
@@ -277,6 +280,8 @@ function toThinking(model: OpenRouterModel): Omit<CatalogModel, 'id' | 'contextL
     thinkingToggleable: model.thinkingToggleable ?? false,
     thinkingDefaultOn: model.thinkingDefaultOn ?? false,
     thinkingDefaultLevel: model.thinkingDefaultLevel ?? null,
+    thinkingDisabledLevel: model.thinkingDisabledLevel,
+    thinkingLevelLabels: model.thinkingLevelLabels,
   }
 }
 
@@ -453,6 +458,8 @@ export function readingsOf(
     thinkingToggleable: entry.thinkingToggleable,
     thinkingDefaultOn: entry.thinkingDefaultOn,
     thinkingDefaultLevel: entry.thinkingDefaultLevel,
+    thinkingDisabledLevel: entry.thinkingDisabledLevel,
+    thinkingLevelLabels: entry.thinkingLevelLabels,
   }
 }
 
@@ -505,6 +512,7 @@ export function resolveModelSelection(
  * 两处各判一次就是两处会漂。
  */
 export interface ThinkingState {
+  levelLabels?: Partial<Record<ThinkingEffort, string>>
   /** 这一型思不思考。假 = 药丸不写档、右栏不画控件。 */
   supported: boolean
   /** 此刻(以及下一发)到底想不想。 */
@@ -531,7 +539,8 @@ const NO_THINKING: ThinkingState = {
 export function thinkingStateOf(
   readings: Pick<
     CatalogModel,
-    'thinkingLevels' | 'thinkingToggleable' | 'thinkingDefaultOn' | 'thinkingDefaultLevel'
+    'thinkingLevels' | 'thinkingToggleable' | 'thinkingDefaultOn' | 'thinkingDefaultLevel' |
+    'thinkingDisabledLevel' | 'thinkingLevelLabels'
   >,
   config: Pick<ProviderModelPrefs, 'thinking' | 'thinkingEffort'> | undefined,
   modelId: string,
@@ -539,12 +548,18 @@ export function thinkingStateOf(
   const levels = readings.thinkingLevels
   if (!levels) return NO_THINKING
   const chosen = config?.thinking?.[modelId]
-  const on = chosen ?? readings.thinkingDefaultOn
+  const on = !readings.thinkingToggleable || (chosen ?? readings.thinkingDefaultOn)
   const effort = chosen === true ? config?.thinkingEffort?.[modelId] : undefined
   // 一档都没有的型(qwen3.5 / 智谱)只有开 / 关 —— 那时 `level` 恒为 null,
   // 哪怕盘上莫名其妙存着一个档:屏幕不写一个这一型根本不接受的字。
-  const level = levels.length === 0 ? null : (effort ?? readings.thinkingDefaultLevel)
+  const requestedLevel = chosen === false && !readings.thinkingToggleable
+    ? readings.thinkingDisabledLevel ?? readings.thinkingDefaultLevel
+    : effort
+  const level = levels.length === 0 ? null : resolveOnethingReasoningEffort(
+    requestedLevel ?? undefined, levels, readings.thinkingDefaultLevel ?? levels[levels.length - 1],
+  )
   return {
+    ...(readings.thinkingLevelLabels ? { levelLabels: readings.thinkingLevelLabels } : {}),
     supported: true,
     on,
     level: on ? level : null,

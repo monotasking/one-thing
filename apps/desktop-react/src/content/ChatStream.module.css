@@ -102,6 +102,19 @@
 }
 
 /*
+ * 尾部消息不使用 content-visibility 隐含的布局/绘制隔离。
+ * 真会话像素回放中,auto 与贴底 translate 叠加时,DOM 坐标不变但文字仍会
+ * 往返一个设备像素;改为 visible 后同一用例像素稳定。保留贴底补偿,只让
+ * 列尾的一行退出隔离,其余历史行保留跳渲。用尾部身份而不是 streaming:
+ * 收尾时切回 auto 会引入一帧高度跳变;等下一行接替它才恢复隔离。
+ * 座位是 div、消息行是 article,所以用 last-of-type 越过座位。不能只用 rect 验收。
+ * 证据:docs/audit/follow-pixel-jitter-2026-09-15.md(仓根)。
+ */
+.column > .row:last-of-type {
+  content-visibility: visible;
+}
+
+/*
  * ── 事后出现的那一行:软着陆(2026-09-12 报障一)─────────────────────────
  *
  * **它说的不是「上下文更新」**,说的是「这一行不是随消息一起来的,它是**回合开张

@@ -3,6 +3,7 @@ import { AppearancePage } from './AppearancePage'
 import { DockPage } from './DockPage'
 import { OpenPage } from './OpenPage'
 import { BrowserSettings } from './BrowserSettings'
+import { NetworkSettings } from './NetworkSettings'
 import { PermissionGrants } from './PermissionGrants'
 import { Section } from './Section'
 import { KeymapSettings } from '../KeymapSettings'
@@ -38,6 +39,7 @@ export type SettingsPageId =
   | 'dock'
   | 'open'
   | 'browser'
+  | 'network'
   | 'permissions'
   | 'keymap'
 
@@ -52,7 +54,7 @@ export interface SettingsPageSpec {
 
 /**
  * 次序判据照旧是「**用户想改的是哪件事**」,从最常改的往最少改的排:
- * 通用 → 模型服务 → 外观 → Dock → 打开方式 → 内置浏览器 → 已授权 → 快捷键。
+ * 通用 → 模型服务 → 外观 → Dock → 打开方式 → 内置浏览器 → 网络代理 → 已授权 → 快捷键。
  *
  * 模型服务排第二而不是最后:它是这台产品里改得最勤的一页(换家、换模型、
  * 贴一把新密钥),而「已授权」与「快捷键」是**看一眼就走**的两页。
@@ -79,6 +81,16 @@ export const SETTINGS_PAGES: readonly SettingsPageSpec[] = [
     render: () => (
       <Section titleKey="settings.sectionBrowser">
         <BrowserSettings />
+      </Section>
+    ),
+  },
+  {
+    id: 'network',
+    titleKey: 'settings.sectionNetwork',
+    layout: 'form',
+    render: () => (
+      <Section titleKey="settings.sectionNetwork">
+        <NetworkSettings />
       </Section>
     ),
   },

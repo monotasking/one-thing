@@ -37,6 +37,9 @@
     "model": "grok-4.6",
     "parallel_tool_calls": false,
     "prompt_cache_key": "session-fixture-0001",
+    "reasoning": {
+      "effort": "low"
+    },
     "store": false,
     "stream": true,
     "tools": []

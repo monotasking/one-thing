@@ -15,6 +15,7 @@ import { sessionCommandRouter } from '@shared/ipc/session-command'
 import { permissionRouter } from '@shared/ipc/permissions'
 import { resourcesRouter } from '@shared/ipc/resources'
 import { materializePageReferences } from './page-references'
+import { materializeFileAttachments } from './file-attachments'
 import type { PageResultSlot, SessionTailPage } from './page-results'
 
 /**
@@ -69,10 +70,12 @@ export interface ChatPort {
   onSessionEvent(callback: (envelope: SessionEventEnvelope) => void): () => void
   /** 流分片推送(活尾巴的唯一进料口)。 */
   onSessionStream(callback: (payload: SessionStreamPayload) => void): () => void
+  /** 推送连接恢复后重新核对账本;不等待下一条事件(结束事件可能已丢失)。 */
+  onReconnect?(callback: () => void): () => void
   /**
    * 发一条用户消息。
    *
-   * **签名仍然只有正文**(B3-b 一个参数都没加):页面引用在草稿里是一枚
+   * 页面引用在草稿里是一枚
    * `{{page:<tabId>}}`,与 `@` 文件引用逐字同一种占位法,所以它跟着正文一起
    * 到达这一口,由下面那一步物化成一件附件。调用方(输入面板 /
    * ask 交卷 / 将来的草稿纸)一个字都不必知道有「页面附件」这回事。
@@ -100,7 +103,7 @@ export interface ChatPort {
    *
    * ── 第二格:`messageId`(09-13)──────────────────────────────────────────
    * 调用方在发出去**之前**铸好这条消息将来在账本上的 id,随命令一起过去。
-   * 它是这一口唯一多出来的那一格,而且是**透传**:这里不铸、不校验、不改写
+   * 它在这一口**透传**:这里不铸、不校验、不改写
    * (引擎自己判形与会话内唯一,不合格就当没给 —— 判词在
    * `CoreStreamEngine.resolveUserMessageId`)。
    *
@@ -110,7 +113,7 @@ export interface ChatPort {
    * 「乐观上屏的那句话与账本上的那句话必须是同一串字节」旁边:今天认领不再
    * 比字节了,比的是这一格 id。
    */
-  sendMessage(sessionId: string, content: string, messageId?: string): Promise<SessionCommandEmitResult>
+  sendMessage(sessionId: string, content: string, messageId?: string, files?: readonly File[]): Promise<SessionCommandEmitResult>
   /*
    * `/compact` **不在这条端口上**(D4 波二)。它骑的确实是同一条命令总线
    * (`command:compact-context`),但它不是「聊天这块屏幕的一个动作」——
@@ -223,9 +226,20 @@ async function realPort(): Promise<ChatPort> {
     readBlob: (sessionId, hash) => sessionEventsApi.readBlob({ sessionId, hash }),
     onSessionEvent: (callback) => client.events.on(IPC_CHANNELS.SESSION_EVENT, callback),
     onSessionStream: (callback) => client.events.on(IPC_CHANNELS.SESSION_STREAM, callback),
+    onReconnect: (callback) => {
+      let interrupted = client.events.status() === 'reconnecting'
+      return client.events.onStatusChange(status => {
+        if (status === 'reconnecting') interrupted = true
+        else if (interrupted && (status === 'connecting' || status === 'live')) {
+          interrupted = false
+          // connecting 在 HTTP 重连成功时就到达;新连接可以一直没有事件。
+          callback()
+        }
+      })
+    },
     // 命令**整条透传**,一个字段都不多给:`channel` 缺席时引擎按会话自己的
     // 频道走(默认 'ipc'),渲染层替它拍这个板就是在两处定义同一件事。
-    sendMessage: async (sessionId, content, messageId) => {
+    sendMessage: async (sessionId, content, messageId, files) => {
       /*
        * 正文**原样过去**,只物化页面引用(见接口上的注)。文件 token 那道展开在
        * 输入面的草稿出口就做完了,这里不再扫第二遍 —— 也正因为这一口不展,
@@ -236,7 +250,11 @@ async function realPort(): Promise<ChatPort> {
        * 这一步**只有正文里真有 `{{page:` 时才发生**(那只函数第一句就是这道闸),
        * 所以绝大多数消息的出站路一发往返都不多。
        */
-      const { text, attachments } = await materializePageReferences(content)
+      const [{ text, attachments: pageAttachments }, fileAttachments] = await Promise.all([
+        materializePageReferences(content),
+        files?.length ? materializeFileAttachments(files) : Promise.resolve([]),
+      ])
+      const attachments = [...fileAttachments, ...pageAttachments]
       return sessionCommands.emit({
         sessionId,
         command: {
@@ -244,7 +262,7 @@ async function realPort(): Promise<ChatPort> {
           content: text,
           // 没铸就**这一格根本不出现**(契约上它是可选的,缺席 = 引擎自己铸)。
           ...(messageId ? { messageId } : {}),
-          // 没有页面引用时**这一格根本不出现** —— 一个空数组与「没有附件」在
+          // 没有文件或页面引用时**这一格根本不出现** —— 一个空数组与「没有附件」在
           // 账本上不是同一件事(契约上它是可选的)。
           ...(attachments.length > 0 ? { attachments } : {}),
         },

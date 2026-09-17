@@ -1,5 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFileToken } from '@onething/runtime/prompts/prompt-references'
+import { buildMessageContent } from '../../../../packages/core/engine/message-content'
+import type { MessageAttachment } from '@shared/ipc/chat'
 import { SESSION_COMMAND_TYPES } from '@shared/events/session-commands'
 import { createMemoryTransport, createOnethingClient } from '@onething/client'
 import type { RpcRequest } from '@shared/ipc/rpc'
@@ -25,6 +27,11 @@ const transport = createMemoryTransport({
     'session-command.emit': () => ({ success: true }),
   },
 })
+const connectionListeners = new Set<(state: 'open' | 'retrying') => void>()
+transport.onConnectionChange = callback => {
+  connectionListeners.add(callback)
+  return () => void connectionListeners.delete(callback)
+}
 const client = createOnethingClient({ transport })
 
 vi.mock('../platform/connection', () => ({
@@ -104,6 +111,83 @@ afterAll(() => {
 })
 
 describe('sendMessage:正文逐字过去,端口不改一个字', () => {
+  it.each([
+    ['photo.PNG', 'image/png', 'image'],
+    ['photo.jpg', 'image/jpeg', 'image'],
+    ['photo.jpeg', 'image/jpeg', 'image'],
+    ['photo.webp', 'image/webp', 'image'],
+    ['photo.gif', 'image/gif', 'image'],
+    ['report.PDF', 'application/pdf', 'document'],
+    ['unknown.bin', 'application/octet-stream', 'file'],
+    ['png', 'application/octet-stream', 'file'],
+  ])('空 MIME 的 %s 按扩展名保留模型输入类型', async (fileName, mimeType, mediaType) => {
+    const port = await chatPort()
+    await port.sendMessage('s1', '', undefined, [new File([new Uint8Array([0, 128, 255])], fileName)])
+    const envelope = emittedEnvelopes()[0] as { command: { content: string; attachments: MessageAttachment[] } }
+    expect(envelope.command.attachments[0]).toMatchObject({ fileName, mimeType, mediaType, base64Data: 'AID/' })
+    expect(buildMessageContent(envelope.command)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: mediaType === 'image' ? 'image' : 'file' }),
+    ]))
+  })
+
+  it('文件自带 MIME 时尊重原值,不被扩展名覆盖', async () => {
+    const port = await chatPort()
+    await port.sendMessage('s1', '', undefined, [new File(['PDF bytes'], 'renamed.png', { type: 'application/pdf' })])
+    const envelope = emittedEnvelopes()[0] as { command: { attachments: MessageAttachment[] } }
+    expect(envelope.command.attachments[0]).toMatchObject({ mimeType: 'application/pdf', mediaType: 'document' })
+  })
+
+  it('文件字节和图片按既有附件契约落进命令,允许只有附件', async () => {
+    const port = await chatPort()
+    const text = new File(['真实内容 {{file:/not-a-reference}}'], 'note.txt', { type: 'text/plain' })
+    const image = new File([new Uint8Array([0, 128, 255])], 'shot.png', { type: 'image/png' })
+    await port.sendMessage('s1', '', 'user-id', [text, image])
+    expect(emittedEnvelopes()).toEqual([{
+      sessionId: 's1',
+      command: {
+        type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
+        content: '',
+        messageId: 'user-id',
+        attachments: [
+          { id: expect.any(String), fileName: 'note.txt', mimeType: 'text/plain', size: text.size,
+            mediaType: 'file', base64Data: Buffer.from('真实内容 {{file:/not-a-reference}}').toString('base64') },
+          { id: expect.any(String), fileName: 'shot.png', mimeType: 'image/png', size: 3,
+            mediaType: 'image', base64Data: 'AID/' },
+        ],
+      },
+    }])
+    const envelope = emittedEnvelopes()[0] as { command: { content: string; attachments: MessageAttachment[] } }
+    const modelContent = buildMessageContent(envelope.command)
+    expect(modelContent).toEqual(expect.arrayContaining([
+      { type: 'text', text: expect.stringContaining('真实内容 {{file:/not-a-reference}}') },
+      { type: 'image', image: 'data:image/png;base64,AID/' },
+    ]))
+  })
+
+  it('原文件与页面引用一起发送,互不覆盖', async () => {
+    configureBrowserPort(browserPortSpy({ pageText: '页面内容' }))
+    const port = await chatPort()
+    await port.sendMessage('s1', '比较 {{page:t1}}', undefined, [new File(['file'], 'note.txt')])
+    const envelope = emittedEnvelopes()[0] as { command: { attachments: Array<Record<string, unknown>> } }
+    expect(envelope.command.attachments).toHaveLength(2)
+    expect(envelope.command.attachments[0]).toMatchObject({ fileName: 'note.txt', base64Data: 'ZmlsZQ==' })
+    expect(envelope.command.attachments[1]).toMatchObject({ sourceUrl: PAGE_TAB.url, excerpt: '页面内容' })
+  })
+
+  it('读文件失败时整条消息不发送,错误交给发送失败/重试流程', async () => {
+    const read = vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementationOnce(function (this: FileReader) {
+      this.dispatchEvent(new ProgressEvent('error'))
+    })
+    try {
+      const port = await chatPort()
+      await expect(port.sendMessage('s1', '看看附件', undefined, [new File(['x'], 'broken.txt')]))
+        .rejects.toThrow('无法读取附件「broken.txt」')
+      expect(emittedEnvelopes()).toEqual([])
+    } finally {
+      read.mockRestore()
+    }
+  })
+
   it('草稿出口交来的 `@<绝对路径>` 原样落进信封', async () => {
     const port = await chatPort()
     await port.sendMessage('s1', '读一下 @/repo/src/a.ts 这个文件')
@@ -240,6 +324,28 @@ describe('sendMessage:正文逐字过去,端口不改一个字', () => {
 })
 
 describe('C1:域客户端由 router 泛型取用,信封上写的是契约里的名字', () => {
+  it('重连成功就通知核对,不等新事件;首次连接不触发,退订后不再通知', async () => {
+    const port = await chatPort()
+    const recovered = vi.fn()
+    const offReconnect = port.onReconnect!(recovered)
+    const offEvent = port.onSessionEvent(() => {})
+    const connection = (state: 'open' | 'retrying') => connectionListeners.forEach(fn => fn(state))
+    connection('open')
+    expect(recovered).not.toHaveBeenCalled()
+    connection('retrying')
+    expect(recovered).not.toHaveBeenCalled()
+    connection('open') // 没有任何 session:event,也必须恢复核对。
+    expect(recovered).toHaveBeenCalledTimes(1)
+    transport.emit({ name: 'session:event', data: {} })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(recovered).toHaveBeenCalledTimes(1)
+    offReconnect()
+    connection('retrying')
+    connection('open')
+    expect(recovered).toHaveBeenCalledTimes(1)
+    offEvent()
+  })
+
   it('sendMessage 打的是 `session-command.emit`,listRaw 打的是 `sessionEvents.listRaw`', async () => {
     const port = await chatPort()
     await port.sendMessage('s1', 'hi')

@@ -24,7 +24,7 @@ import type { ResolvedSegment } from '../references/segment'
  */
 export interface ComposerSink {
   /**
-   * 交出一条纯文本消息。返回 false = 没能交出去(空话 / 这一格还没绑会话)。
+   * 交出一条消息与原始附件。返回 false = 没能交出去(空话 / 这一格还没绑会话)。
    *
    * `sessionId` 是**交给谁**(W5-c-2):它由叫这一口的那块面板自己说,不再由
    * 这只文件去问一句「当前会话是谁」—— 判词见下面 `realSink` 那一段。
@@ -39,6 +39,7 @@ export interface ComposerSink {
     attachments: number,
     sessionId: string,
     segments?: readonly ResolvedSegment[],
+    files?: readonly File[],
   ): boolean
   /**
    * 挂一条**本地提示**。它说的正是「这件事没有进账本」(拒绝一组问题不是一条
@@ -85,8 +86,8 @@ export interface ComposerSink {
  * 不认识 `expose`(只剩 `startSession` 那一口还要它,而那一口本来就没有会话)。
  */
 const realSink: ComposerSink = {
-  send: (text, attachments, sessionId, segments) =>
-    sendChatMessage(text, attachments, sessionId, segments),
+  send: (text, attachments, sessionId, segments, files) =>
+    sendChatMessage(text, attachments, sessionId, segments, files),
   notice: (kind, sessionId) => pushChatNotice(kind, sessionId),
   abort: (sessionId) => abortChatRun(sessionId),
   // 惰性建会话时没有「当前会话」,所以当前项目必然是 null —— 与 ⌘N 首开同义。

@@ -181,3 +181,27 @@
   text-decoration: none;
   cursor: default;
 }
+
+.reasoning {
+  margin-top: var(--sp-3);
+  font-size: var(--fs-meta);
+  color: var(--text-1);
+}
+
+.reasoning summary { cursor: pointer; }
+.reasoningHint { color: var(--text-3); font-size: var(--fs-ext); }
+.reasoningLevel { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); min-width: 0; }
+.reasoningChoice { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); }
+.reasoningJson {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: var(--sp-2);
+  background: var(--surface-2);
+  color: var(--text-1);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-ext);
+}
+.reasoningError { color: var(--danger); font-size: var(--fs-ext); }

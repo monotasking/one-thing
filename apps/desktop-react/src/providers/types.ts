@@ -1,4 +1,4 @@
-import type { OAuthFlowType } from '@shared/ipc/providers'
+import type { OAuthFlowType, ReasoningProfileOverride } from '@shared/ipc/providers'
 import type { MessageKey, MessageVars } from '../i18n'
 
 /**
@@ -204,6 +204,7 @@ export interface CatalogRow {
 
 /** 目录对这一型说过的那几句。`null` = 没说过。 */
 export interface CatalogFacts {
+  reasoningProfile?: ReasoningProfileOverride
   contextLength: number | null
   /** 最大输出。目录条目里的 `top_provider.max_completion_tokens`。 */
   maxOutput: number | null
@@ -230,6 +231,7 @@ export const NO_CATALOG_FACTS: CatalogFacts = Object.freeze({
 
 /** 一个模型上的覆盖:两个数 + 五项能力。全缺席 = 这一型没被动过。 */
 export interface ModelOverride {
+  reasoningProfile?: ReasoningProfileOverride
   /** 上下文窗口。正数才算数(0 / 负数 / 非数按「没覆盖」处理)。 */
   contextLength?: number
   /** 最大输出。同一把尺(正数才算数)。 */
@@ -244,6 +246,7 @@ export interface ModelOverride {
 
 /** 覆盖的写补丁。`null` = 删掉这一格;缺席 = 这一格不动(能力逐键同此)。 */
 export interface ModelOverridePatch {
+  reasoningProfile?: ReasoningProfileOverride | null
   contextLength?: number | null
   maxOutput?: number | null
   caps?: Partial<Record<CapabilityKey, boolean | null>>

@@ -11,6 +11,24 @@ export type AIProviderId = 'openai' | 'claude' | 'deepseek' | 'kimi' | 'kimi-cod
 
 export type ThinkingEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
+/** Declarative provider default or per-model reasoning configuration. */
+export interface ReasoningProfileOverride {
+  toggleable?: boolean
+  defaultOn?: boolean
+  efforts?: (ThinkingEffort | 'none')[]
+  defaultEffort?: ThinkingEffort
+  disabledEffort?: ThinkingEffort
+  wire?: 'anthropic-adaptive' | 'anthropic-budget' | 'anthropic-always' | 'openai-effort' | 'gemini-level' | 'gemini-budget' | 'thinking-type' | 'zhipu-thinking' | 'qwen-thinking' | 'grok-effort' | 'openrouter-reasoning' | 'codex' | 'custom' | 'none'
+  effortLabels?: Partial<Record<ThinkingEffort, string>>
+  custom?: {
+    effortPath: string
+    effortValues?: Partial<Record<ThinkingEffort, string | number>>
+    disabledValue?: string | number | boolean | null
+    enabledBody?: JsonObject
+    disabledBody?: JsonObject
+  } | null
+}
+
 // Legacy enum for backwards compatibility
 export enum AIProvider {
   OpenAI = 'openai',
@@ -56,6 +74,9 @@ export interface OAuthToken {
 export interface OpenRouterModel {
   id: string
   name: string
+  /** Configured locally but absent from the provider's catalog. Metadata may be
+   * absent; consumers must preserve manual-model actions and unknown readings. */
+  configuredOnly?: boolean
   description?: string
   context_length: number
   architecture: {
@@ -97,6 +118,8 @@ export interface OpenRouterModel {
   thinkingDefaultOn?: boolean
   // 什么档都没设时的有效档(`profile.defaultEffort`);`null` = 这一型不思考。
   thinkingDefaultLevel?: ThinkingEffort | null
+  thinkingDisabledLevel?: ThinkingEffort | null
+  thinkingLevelLabels?: Partial<Record<ThinkingEffort, string>>
 }
 
 // Provider metadata for UI display
@@ -139,6 +162,7 @@ export type KimiRegion = 'cn' | 'intl'
 
 // Per-provider configuration
 export interface ProviderConfig {
+  providerOptions?: { reasoningProfile?: ReasoningProfileOverride; [key: string]: unknown }
   apiKey?: string           // Optional for OAuth providers
   baseUrl?: string
   zhipuApiMode?: ZhipuApiMode
@@ -184,6 +208,7 @@ export interface ProviderConfig {
 }
 
 export interface ModelCapabilityOverride {
+  reasoningProfile?: ReasoningProfileOverride
   tools?: boolean        // function / tool calling
   vision?: boolean       // accepts image input
   reasoning?: boolean    // supports thinking / reasoning mode
@@ -476,6 +501,8 @@ export interface RendererModelCapabilities {
   thinkingToggleable?: boolean
   thinkingDefaultOn?: boolean
   thinkingDefaultLevel?: ThinkingEffort | null
+  thinkingDisabledLevel?: ThinkingEffort | null
+  thinkingLevelLabels?: Partial<Record<ThinkingEffort, string>>
 }
 
 export interface ModelCapabilitiesResponse {

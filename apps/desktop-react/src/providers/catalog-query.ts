@@ -61,7 +61,8 @@ export const catalogQuery = createQueryFamily<readonly OpenRouterModel[]>(
         return (
           model.id === other.id &&
           model.name === other.name &&
-          model.context_length === other.context_length
+          model.context_length === other.context_length &&
+          JSON.stringify(model) === JSON.stringify(other)
         )
       }),
   },

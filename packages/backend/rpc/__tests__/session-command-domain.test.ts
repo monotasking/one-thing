@@ -24,7 +24,10 @@ import { sessionCommandRouter } from '@shared/ipc/session-command.js'
 const bus = vi.hoisted(() => ({
   emit: vi.fn(async (_sessionId: string, _command: unknown): Promise<unknown> => 'emitted'),
 }))
-const engine = vi.hoisted(() => ({ abort: vi.fn(() => true) }))
+const engine = vi.hoisted(() => ({
+  abort: vi.fn(() => true),
+  getController: vi.fn((_sessionId: string): AbortController | undefined => undefined),
+}))
 const permission = vi.hoisted(() => ({
   getPendingPrompts: vi.fn(() => [] as Array<Record<string, unknown>>),
   clearSession: vi.fn(),
@@ -73,6 +76,7 @@ describe('session-command RPC domain', () => {
   beforeEach(async () => {
     bus.emit.mockReset().mockResolvedValue('emitted')
     engine.abort.mockReset().mockReturnValue(true)
+    engine.getController.mockReset().mockReturnValue(undefined)
     permission.getPendingPrompts.mockReset().mockReturnValue([])
     permission.clearSession.mockReset()
     incident.createIncidentForTurn.mockClear()
@@ -307,6 +311,53 @@ describe('session-command RPC domain', () => {
 
     expect(bus.emit).toHaveBeenCalledWith('s1', command, { executionContext: { userId: 'local-user', workspaceId: 'default' } })
     expect(incident.createIncidentForTurn).not.toHaveBeenCalled()
+  })
+
+  it.each([['ipc', IPC], ['http', HTTP]] as const)('%s: busy attachment sends fail before delivery and can retry when idle', async (_transport, context) => {
+    const { dispatchRpc } = await loadDomain()
+    const controller = new AbortController()
+    engine.getController.mockImplementation(sessionId => sessionId === 's1' ? controller : undefined)
+    const request = {
+      domain: 'session-command',
+      method: 'emit',
+      payload: {
+        sessionId: 's1',
+        command: {
+          type: 'command:send-message',
+          content: '',
+          messageId: 'file-message',
+          attachments: [{ id: 'file', fileName: 'note.txt', mimeType: 'text/plain', size: 4, mediaType: 'file', base64Data: 'bm90ZQ==' }],
+        },
+      },
+    }
+
+    expect(await dispatchRpc(request, context)).toEqual({
+      ok: true,
+      data: { success: false, error: 'A response is still running — messages with files wait until it finishes.' },
+    })
+    expect(bus.emit).not.toHaveBeenCalled()
+    expect(controller.signal.aborted).toBe(false)
+
+    engine.getController.mockReturnValue(undefined)
+    expect(await dispatchRpc(request, context)).toMatchObject({ ok: true, data: { success: true } })
+    expect(bus.emit).toHaveBeenCalledWith('s1', expect.objectContaining(request.payload.command), expect.any(Object))
+  })
+
+  it.each([['ipc', IPC], ['http', HTTP]] as const)('%s: busy text steering and persist-only attachments still reach the bus', async (_transport, context) => {
+    const { dispatchRpc } = await loadDomain()
+    engine.getController.mockReturnValue(new AbortController())
+    for (const command of [
+      { type: 'command:send-message', content: '补一句' },
+      { type: 'command:send-message', content: '补一句', attachments: [] },
+      { type: 'command:send-message', content: '', persistOnly: true, attachments: [{ id: 'file' }] },
+    ]) {
+      expect(await dispatchRpc({
+        domain: 'session-command',
+        method: 'emit',
+        payload: { sessionId: 's1', command },
+      }, context)).toMatchObject({ ok: true, data: { success: true } })
+    }
+    expect(bus.emit).toHaveBeenCalledTimes(3)
   })
 
   it('a bus failure comes back as a structured result, not a thrown RPC', async () => {

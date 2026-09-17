@@ -468,7 +468,7 @@ async function clickTestId(page, testId) {
  * 而这道门比的正是「同一瞬间这几个矩形的相对位置」。
  */
 async function startSampler(page) {
-  await page.evaluate(() => {
+  await page.evaluate((captureSettled) => {
     /*
      * ── 折痕在不在,**不靠采样**(2026-09-15 改)────────────────────────────
      * 超量那一趟的等待段有 900ms,可主线程在那 900ms 里被压缩 + 扩窗 + 400 条物化
@@ -678,7 +678,7 @@ async function startSampler(page) {
             }
           }
         }
-        window.__seatFrames.push({
+        const frame = {
           retiring: Boolean(retiringRow),
           anchor,
           created,
@@ -704,12 +704,23 @@ async function startSampler(page) {
           ),
           seat: seat ? seat.getBoundingClientRect().height : null,
           streaming: Boolean(live?.querySelector('[data-testid="chat-stop"]')),
-        })
+        }
+        window.__seatFrames.push(frame)
+        if (captureSettled) {
+          frame.translate = live?.style.translate
+          setTimeout(() => {
+            frame.afterTask = {
+              t: performance.now(), st: scroll.scrollTop, sh: scroll.scrollHeight,
+              readout: rect(live?.querySelector('[data-testid="chat-readout"]') ?? null),
+              translate: live?.style.translate,
+            }
+          }, 0)
+        }
       }
       requestAnimationFrame(tick)
     }
     requestAnimationFrame(tick)
-  })
+  }, process.argv.includes('--follow-trace'))
 }
 
 async function stopSampler(page) {
@@ -1116,6 +1127,7 @@ function analyze(frames, marks = {}) {
       flips += 1
       if (flipSamples.length < 5) {
         flipSamples.push(`${(frames[i].t / 1000).toFixed(2)}s ${a.toFixed(2)}→${b.toFixed(2)}`)
+        if (process.argv.includes('--follow-trace')) console.log('[follow-trace]', JSON.stringify(frames.slice(Math.max(0, i - 3), i + 2)))
       }
     }
     lastDir = dir
@@ -1385,6 +1397,10 @@ async function main() {
       },
     })
     const page = await app.firstWindow()
+    // Diagnostic control: restore the original row containment in this isolated renderer only.
+    if (process.argv.includes('--containment-baseline')) {
+      await page.addStyleTag({ content: '[data-message-id] { content-visibility: auto !important; }' })
+    }
     const cdp = await app.context().newCDPSession(page)
     await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
     await page.addInitScript(LIVE_LEAF_PROBE)

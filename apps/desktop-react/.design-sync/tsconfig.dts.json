@@ -1,0 +1,19 @@
+{
+  // design-sync 专用:只为 src/ui 吐 .d.ts 声明树到 build/ts,让转换器(.ds-sync/lib/dts.mjs
+  // findTypesRoot 的候选表第一项就是 build/ts)抽到真 props 契约。这仓没有 dist,
+  // 不跑它的话每件组件的 <Name>Props 都会退化成 `[key: string]: unknown`(2026-09-16 发现,
+  // 08-30 首建起就一直如此)。由 .design-sync/build-dts.mjs 跑(config.json 的 buildCmd),它随后只留 src/ui 那一棵(其余是 import 拖进来的邻居,留着会被当成组件枚举)。
+  // 不写 rootDir:ui 件的 import 会拖进 packages/shared 与 electron/ 的类型,rootDir 一钉就 TS6059。
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "declarationMap": false,
+    "outDir": "../build/ts",
+    "composite": false,
+    "incremental": false,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["../src/ui/*.tsx", "../src/ui/*.ts", "../src/vite-env.d.ts", "../../../packages/shared/types"]
+}

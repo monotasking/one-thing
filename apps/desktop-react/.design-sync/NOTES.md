@@ -84,3 +84,47 @@
 - conventions.md 新增「状态与交互规范」八条(设计稿必须画全状态/异步进行中形/就地更新等)——README 已随本次上行,claude design 出稿代理从此读得到。
 - **锚点未更新(有意)**:本次只传 bundle/styling/aux;新增件 AsyncButton(K1 在飞半成品)与 Popover/Kbd 的组件卡**缓发**,待 K1 落库后跑一次完整 resync(会重新列为 added/changed,补预览与评格再上)。remote-sync.json 保持旧值即此意,勿手动对齐。
 - 自链接再次被 npm install 清掉(a11y 批 devDeps),已重建——这坑第二次踩,重申:凡本目录跑过 npm install,resync 前必查链接。
+
+### 2026-09-16 · 重同步:22 件新件预览 + 真 props 契约
+
+- **`.d.ts` 从首建起就是空契约**:这仓没有 dist,转换器合成入口时抽不到类型,42 件全部
+  `[key: string]: unknown`(远端 08-30 的 Button.d.ts 就是这样)。治法:`.design-sync/build-dts.mjs`
+  (`config.buildCmd`)跑 `tsc -p .design-sync/tsconfig.dts.json --emitDeclarationOnly` 到 `build/ts`
+  (仓根 .gitignore 已加),只留 `src/ui/*.d.ts` + `src/components/icons.d.ts`(IconButton 的 LucideIcon 型);
+  转换器 `findTypesRoot` 候选表第一项就是 `build/ts`,自动接上。**每次同步前先跑它**(1.8s),不跑
+  就回到空契约。不写 rootDir(ui 的 import 会拖进 packages/shared,钉 rootDir 就 TS6059)。
+- 排除项 `componentSrcMap`:DragGhost / DragLayer / DropOverlay(拖拽层内部件,要活的 drag session)、
+  NativeMenu(走主进程原生弹菜单,DOM 上零渲染)。
+- override 新增:Popover single 420x320、Submenu single 420x300(两件都是浮层)。
+- 22 件全部作了预览(与首建同档),评分全 good。四组并行 + 我先手作 StatusDot / Fold 族 / PathText 校准。
+- **打回一处**:Reveal 的现身态曾用 `<style>` 注入预览专用覆盖画出来 —— `.prompt.md` 会把预览原样喂给
+  设计代理,代理照抄就会往设计里塞覆盖组件 CSS 的样式;规矩是「静态渲不出的态跳过、记档」。已改回休止态。
+- 静态渲不出、且**有意不改源码**的态:Slider 的钮(平时 scale(0))、SecretInput 的 revealed(自持无受控口)、
+  Submenu 子面板与 FilterChip 多值菜单(点击才挂载)、Reveal 的 hover / focus-within、IconButton 的
+  size 轴静止态几乎不可见(命中区在变,底透明;预览并排一颗 pressed 才看得出)。
+- 预览写法新增判例:视觉词汇件(Dots/OpenDot/StatusDot)必须进真语境行;grid 容器会把 inline-flex 药丸
+  拉通栏(`justifyItems:'start'`);要演截断/挤压的容器写 `gridTemplateColumns:'minmax(0,1fr)'`;
+  网格子项的 `min-width:auto` 会让长 mono 路径撑出浮层(Popover 真踩);`ui/Input` 的 rest 落里层
+  `<input>`、根是 inline-flex 固有宽,预览里撑不开(产品靠 className 给 flex:1);AsyncButton 忙态用字面量
+  `{subscribe:()=>()=>{}, isPending:()=>true}` 定格;Splitter 传 `containerRef={{current:null}}` 免 import react。
+- **Known render warns** 更新:`[TOKENS_MISSING] --ui-*` 现在 **20** 枚(theme-bridge 多了一格),仍合法。
+- 另一条并行会话在同一工作树上改 src(git status 里 src/ 的 M 不是本次同步的);同步读的是工作树,
+  bundle 里带着那些未提交改动 —— 与首建一样,同步不是「HEAD 的快照」。
+- **`guidelinesGlob: []`(有意)**:缺省通配 `docs/*.md` 会把 `apps/desktop-react/docs/` 里 24 份施工正本
+  (send-flow / dock-scope / keymap-responder…,带「已被推翻」记档的工程记录)当设计准则整份上传给设计代理。
+  它们不是给出稿代理读的东西,所以关掉;真要给,挑几份写成给设计代理的准则再指回来。
+
+### Re-sync 风险(2026-09-16 增补,下次先看)
+
+- **`build/ts` 不是产物就是空契约**:同步前必须 `node .design-sync/build-dts.mjs`(config `buildCmd`),
+  没跑 / 跑失败,42 件 `.d.ts` 会静默退回 `[key: string]: unknown`,validate 不会红。判据:
+  `grep -l 'key: string' ds-bundle/components/general/*/*.d.ts` 只该剩 ConfirmHost / MenuSeparator(真无 props)。
+- **内联参数类型的组件靠 build-dts.mjs 补的 `Parameters<typeof X>[0]` 别名抽 props**:新写的组件若还是
+  内联 `({…}: {…})` 形,自动覆盖;但无参函数不补(会得假契约)。
+- **自链接**(`node_modules/@onething/desktop-react -> ../..`)这次又是丢的(第三次),`npm install` 会清掉;
+  resync 前必查。
+- **另一条会话可能同时在改 src/**:同步读工作树不读 HEAD,交卷时看一眼 `git status src/ui`,
+  bundle 带进去的未提交改动要写进报告。
+- **Node**:这次在 v22.18 下跑(nvm 无 24),与 .nvmrc 不一致但 tsc / esbuild 无差别。
+- 预览与 Gallery 仍是两份手抄;22 件新件的 API 若改名,capture 会因 .tsx 未变而 carried forward,要主动过一眼。
+- conventions.md 的 token 表与「42 件」计数是手抄快照;组件增删后要改数。

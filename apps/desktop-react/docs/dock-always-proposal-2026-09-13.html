@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dock 常显 · 独占底边 · 2026-09-13</title>
+<style>
+  :root{
+    --paper:#faf8f4; --surface-2:#f6f3ee; --surface-3:#efebe4; --text-1:#2b2926; --text-2:#6b665f; --text-3:#9a948b; --text-4:#b8b2a8;
+    --line-1:#e6e1d8; --line-2:#d8d2c7; --accent:#c9782a; --st-sel:#efe9df; --st-hover:#f1ece4;
+    --font-ui:-apple-system,"PingFang SC","Helvetica Neue",system-ui,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    --shadow:0 10px 30px -12px rgba(43,41,38,.28),0 2px 6px -2px rgba(43,41,38,.12);
+    --sh-dock:0 8px 24px -8px rgba(43,41,38,.35),0 1px 2px rgba(43,41,38,.12);
+    /* Dock 几何:与 tokens.css 同一组数 */
+    --tile:44px; --pad-y:8px; --pad-x:10px; --gap:9px; --inset:12px; --sp-3:12px;
+    --reserve:calc(var(--tile) + var(--pad-y)*2 + var(--sp-3)*2);
+  }
+  [data-size="sm"]{--tile:36px} [data-size="md"]{--tile:44px} [data-size="lg"]{--tile:52px}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--paper);color:var(--text-1);font:14px/1.5 var(--font-ui)}
+  main{max-width:1200px;margin:0 auto;padding:28px 20px 80px}
+  h1{font-size:20px;margin:0 0 6px}
+  p.note{color:var(--text-2);font-size:13px;margin:0 0 8px;max-width:960px;line-height:1.65}
+  p.note b{color:var(--text-1)}
+  .ctl{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin:14px 0 6px;font-size:12.5px;color:var(--text-2)}
+  .seg{display:inline-flex;border:1px solid var(--line-1);border-radius:8px;overflow:hidden;background:var(--surface-2)}
+  .seg button{border:0;background:transparent;padding:5px 11px;font:inherit;color:var(--text-2);cursor:pointer}
+  .seg button+button{border-left:1px solid var(--line-1)}
+  .seg button.on{background:var(--st-sel);color:var(--text-1);font-weight:600}
+  .row2{display:flex;gap:28px;justify-content:center;align-items:flex-start;flex-wrap:wrap;margin:14px 0 10px;padding:22px;border:1px dashed var(--line-1);border-radius:18px;background:repeating-linear-gradient(45deg,transparent 0 10px,rgba(43,41,38,.025) 10px 20px)}
+  .cell{display:flex;flex-direction:column;gap:8px;align-items:center}
+  .cell h3{margin:0;font-size:13px;color:var(--text-2);font-weight:600}
+  .cell h3 b{color:var(--accent)}
+  .cap{font-size:12.5px;color:var(--text-2);line-height:1.7;max-width:960px;margin:12px auto 0}
+  .cap b{color:var(--text-1)}
+  table{border-collapse:collapse;font-size:12.5px;margin:14px auto 0;max-width:960px;width:100%}
+  th,td{text-align:left;padding:6px 8px;border-top:1px solid var(--line-1);vertical-align:top;line-height:1.55}
+  th{color:var(--text-3);font-weight:500;white-space:nowrap;width:150px}
+
+  /* ── 窗 ─────────────────────────────────────────────────────── */
+  .win{position:relative;display:flex;flex-direction:column;width:548px;height:430px;border:1px solid var(--line-1);border-radius:14px;background:var(--paper);box-shadow:var(--shadow);overflow:hidden;flex:none;font-size:12px}
+  .titlebar{flex:none;height:34px;display:flex;align-items:center;padding-left:14px;gap:7px;background:var(--paper);border-bottom:1px solid var(--line-1)}
+  .titlebar i{width:11px;height:11px;border-radius:50%;display:block}
+  .titlebar i:nth-child(1){background:#ff5f57}.titlebar i:nth-child(2){background:#febc2e}.titlebar i:nth-child(3){background:#28c840}
+  .titlebar .t{margin-left:10px;font-size:11.5px;color:var(--text-3)}
+  /* 三明治网格:左架子 | 主区 | 右架子 */
+  .grid{flex:1;min-height:0;display:grid;grid-template-columns:150px minmax(0,1fr) 150px;gap:8px;padding:8px;transition:padding .18s ease}
+  .pane{position:relative;min-height:0;border:1px solid var(--line-1);border-radius:10px;background:var(--surface-2);overflow:hidden;display:flex;flex-direction:column}
+  .pane .ph{flex:none;height:26px;display:flex;align-items:center;padding:0 10px;font-size:11px;font-weight:600;letter-spacing:.03em;color:var(--text-3);border-bottom:1px solid var(--line-1)}
+  .layer{flex:1;min-height:0;position:relative;overflow:hidden;display:flex;flex-direction:column;transition:padding .18s ease}
+  .rows{flex:1;min-height:0;overflow:hidden;padding:4px 6px}
+  .r{height:24px;display:flex;align-items:center;gap:6px;padding:0 6px;border-radius:5px;color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .r.cur{background:var(--st-sel)}
+  .r i{flex:none;width:10px;height:10px;border-radius:3px;background:var(--line-2)}
+  /* 主区:tab 条 + 内容 */
+  .tabs{flex:none;height:28px;display:flex;align-items:stretch;border-bottom:1px solid var(--line-1);background:var(--paper)}
+  .tabs span{display:flex;align-items:center;padding:0 10px;font-size:11.5px;color:var(--text-3);border-right:1px solid var(--line-1)}
+  .tabs span.on{color:var(--text-1);background:var(--surface-2);margin-bottom:-1px;border-bottom:1px solid var(--surface-2)}
+  .content{flex:1;min-height:0;position:relative;overflow:hidden;display:none;flex-direction:column}
+  [data-tab="chat"] .content.chat,[data-tab="term"] .content.term,[data-tab="diff"] .content.diff,[data-tab="web"] .content.web{display:flex}
+  [data-tab="chat"] .tabs .chat,[data-tab="term"] .tabs .term,[data-tab="diff"] .tabs .diff,[data-tab="web"] .tabs .web{color:var(--text-1);background:var(--surface-2);margin-bottom:-1px;border-bottom:1px solid var(--surface-2)}
+  /* 聊天 */
+  .msgs{flex:1;min-height:0;overflow:hidden;padding:12px 14px 76px;display:flex;flex-direction:column;gap:10px;justify-content:flex-end}
+  .m{max-width:78%;padding:6px 10px;border-radius:10px;background:var(--surface-3);line-height:1.5;color:var(--text-2)}
+  .m.me{align-self:flex-end;background:var(--st-sel);color:var(--text-1)}
+  .composer{position:absolute;left:14px;right:14px;bottom:12px;height:52px;border:1px solid var(--line-2);border-radius:12px;background:#fff;box-shadow:0 4px 14px -6px rgba(43,41,38,.25);padding:8px 10px;color:var(--text-4);transition:bottom .18s ease}
+  .composer b{position:absolute;right:8px;bottom:8px;width:22px;height:22px;border-radius:50%;background:var(--accent)}
+  /* 终端 */
+  .term .scr{flex:1;min-height:0;background:#1f1d1a;color:#d8d2c7;font:11px/1.55 var(--mono);padding:8px 10px;display:flex;flex-direction:column;justify-content:flex-end}
+  .term .scr .p{color:#8fbf7f}.term .scr .cur{color:#fff;background:#fff3;padding:0 1px}
+  /* 改动 */
+  .diff .lines{flex:1;min-height:0;font:11px/1.55 var(--mono);padding:6px 0;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
+  .diff .lines div{padding:0 10px;white-space:pre}
+  .diff .add{background:#e6f1df;color:#2f6b2a}.diff .del{background:#f7e2df;color:#9a3b32}
+  .diff .stat{flex:none;height:24px;display:flex;align-items:center;gap:10px;padding:0 10px;border-top:1px solid var(--line-1);background:var(--paper);font-size:11px;color:var(--text-2)}
+  /* 浏览器 */
+  .web .url{flex:none;height:26px;margin:6px 8px 0;border:1px solid var(--line-1);border-radius:7px;background:#fff;display:flex;align-items:center;padding:0 8px;font-size:11px;color:var(--text-3)}
+  .web .native{flex:1;min-height:0;margin:6px 8px 8px;border-radius:6px;background:#fff;border:1px dashed var(--line-2);display:flex;flex-direction:column;overflow:hidden}
+  .web .native .pg{flex:1;padding:10px 12px;color:var(--text-3);line-height:1.6}
+  .web .native .ft{flex:none;height:22px;border-top:1px solid var(--line-1);background:var(--surface-3);display:flex;align-items:center;padding:0 10px;font-size:10.5px;color:var(--text-3)}
+  /* Dock */
+  .dock{position:absolute;left:50%;bottom:var(--inset);transform:translateX(-50%);display:flex;align-items:flex-end;gap:var(--gap);padding:var(--pad-y) var(--pad-x);border-radius:16px;background:rgba(250,248,244,.72);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--line-1);box-shadow:var(--sh-dock);z-index:20;transition:transform .18s ease,bottom .18s ease}
+  .dock .tile{width:var(--tile);height:var(--tile);border-radius:calc(var(--tile)*.25);background:var(--surface-2);border:1px solid var(--line-1);box-shadow:0 1px 2px rgba(43,41,38,.08);transform-origin:center bottom;transition:transform .14s ease;display:grid;place-items:center;color:var(--text-2)}
+  .dock .tile svg{width:41%;height:41%}
+  .dock .tile:hover{transform:scale(1.35)}
+  .dock .sep{width:1px;height:calc(var(--tile)*.82);background:var(--line-2);align-self:center}
+  .dock .tile.ws{background:#c9782a;border-color:transparent;color:#fff}
+  /* 标注 */
+  .band{position:absolute;left:0;right:0;bottom:0;height:var(--reserve);pointer-events:none;z-index:15;border-top:1px dashed rgba(201,120,42,.55);transition:height .18s ease}
+  .band::after{content:attr(data-l);position:absolute;right:8px;top:4px;font-size:9.5px;color:var(--accent);background:rgba(250,248,244,.9);padding:0 3px;border-radius:3px}
+
+  /* ── 现状:内衬形 ── 让位打在 .center 与每块面板层身上;输入框再抬一次 */
+  [data-mode="always"] .now .layer{padding-bottom:var(--reserve)}
+  [data-mode="always"] .now .composer{bottom:calc(12px + var(--reserve))}
+  /* ── 建议:平移形 ── 让位只打在三明治网格上;Dock 独占那条边 */
+  [data-mode="always"] .next .grid{padding-bottom:calc(var(--reserve) + 0px)}
+  /* 自动隐藏:两台都一格不让,Dock 推出屏外(悬停窗底才回来) */
+  [data-mode="autohide"] .dock{transform:translate(-50%,calc(100% + 20px))}
+  [data-mode="autohide"] .win:hover .dock{transform:translate(-50%,0)}
+  [data-mode="autohide"] .band{display:none}
+</style>
+</head>
+<body>
+<main>
+  <h1>Dock 常显 · 从「内衬」到「独占底边」</h1>
+  <p class="note">两扇窗同一份内容、同一个 Dock。左边是今天入库的形(09-01 方案乙,底边走内衬):Dock 是浮层,让位塞进聊天列和每块面板层自己的底部内边距,输入框再单独抬一次。右边是建议:<b>常显 = 版面的一部分</b>,让位只打在三明治网格上,整块主区(左栏、拼贴台、右架子)一起变矮,底下那条地皮归 Dock,任何 tab 都不用知道它存在 —— 左右两边今天已经是这个形。橙色虚线 = 让位线(`--dock-reserve-h`)。切一遍下面四个 tab,看每种内容在两边各自落在哪。</p>
+
+  <div class="ctl">
+    <span>主区 tab</span>
+    <span class="seg" data-k="tab"><button data-v="chat" class="on">聊天</button><button data-v="term">终端</button><button data-v="diff">改动</button><button data-v="web">浏览器</button></span>
+    <span>Dock 大小</span>
+    <span class="seg" data-k="size"><button data-v="sm">小</button><button data-v="md" class="on">中</button><button data-v="lg">大</button></span>
+    <span>显示</span>
+    <span class="seg" data-k="mode"><button data-v="always" class="on">常显</button><button data-v="autohide">自动隐藏</button></span>
+  </div>
+
+  <div class="row2" id="stage" data-tab="chat" data-size="md" data-mode="always">
+    <div class="cell"><h3>现状 · 内衬形</h3><div class="win now" data-kind="now"></div></div>
+    <div class="cell"><h3><b>建议</b> · 独占底边</h3><div class="win next" data-kind="next"></div></div>
+  </div>
+
+  <p class="cap"><b>怎么看</b>:切到「终端」—— 左边终端的最后一行提示符悬在离窗底 80px 的地方,底下一条黑色空带只有中间那截压着 Dock;右边终端一直画到自己的底,Dock 在它下面自己的地上。切到「改动」—— 左边底部状态条被顶到半空;右边贴着面板底。切到「浏览器」—— 原生视图的边界由占位盒算出来,左边跟着占位盒缩,页脚上方留一条白;右边整块视图落满。左右两栏在左边都是「行停了、底色还在」,也就是 09-01 报障那句「像被截断」;右边整排面板齐一条线结束。<b>切「自动隐藏」</b>:两边一模一样 —— 这一档一个字不改。</p>
+
+  <table>
+    <tr><th></th><td><b>现状 · 内衬</b></td><td><b>建议 · 独占底边</b></td></tr>
+    <tr><th>让位落点</th><td>三处:聊天列、每块面板层、输入框</td><td>一处:三明治网格 `.main` 的底内距(与左右形同一条规则)</td></tr>
+    <tr><th>新加一种 tab 内容</th><td>要问「它让不让、让在谁身上」</td><td>不用问,它落在已经变矮的主区里</td></tr>
+    <tr><th>面板底缘</th><td>行停了、底色继续画到窗底(截断感)</td><td>面板整块结束在同一条线;底下是 Dock 的地</td></tr>
+    <tr><th>Dock 两侧的空地</th><td>属于各个面的内边距,看起来是内容缺一块</td><td>属于 Dock,与左右形一样是它的地皮</td></tr>
+    <tr><th>放大时探出的那截</th><td>盖到内容边缘 13–22px</td><td>同样,短暂,macOS 亦然</td></tr>
+    <tr><th>自动隐藏档</th><td colspan="2">零让位,两边完全相同,不动</td></tr>
+    <tr><th>缺省档</th><td colspan="2">建议常显(多 tab 工作流里每次唤醒 180ms 的停留会被反复付);全屏已自动转自动隐藏</td></tr>
+  </table>
+</main>
+
+<template id="tpl">
+  <div class="titlebar"><i></i><i></i><i></i><span class="t">onething</span></div>
+  <div class="grid">
+    <div class="pane"><div class="ph">SESSIONS</div><div class="layer"><div class="rows">
+      <div class="r cur"><i></i>Dock 常显的让位</div><div class="r"><i></i>diff 面板 a11y</div><div class="r"><i></i>索引重折事故</div><div class="r"><i></i>Composer 引用</div><div class="r"><i></i>会话侧栏对齐</div><div class="r"><i></i>笔记 Obsidian CLI</div><div class="r"><i></i>模型覆盖 UI</div><div class="r"><i></i>静默截断</div><div class="r"><i></i>终端与浏览器</div><div class="r"><i></i>折痕出场</div><div class="r"><i></i>设置页分页</div><div class="r"><i></i>markdown 图片</div><div class="r"><i></i>Dock 作用域</div><div class="r"><i></i>会话连续性</div>
+    </div></div></div>
+    <div class="pane center">
+      <div class="tabs"><span class="chat">聊天</span><span class="term">终端</span><span class="diff">改动</span><span class="web">浏览器</span></div>
+      <div class="layer">
+        <div class="content chat">
+          <div class="msgs"><div class="m me">dock 不同的大小,划过所有 item 的行为不一致</div><div class="m">中线横扫三档几何一致;真因是交叉轴判据拿条盒判「离开」,放大后瓦探出条外那截是死带……</div><div class="m me">现在 always show 的表现不太好</div><div class="m">常显 = 版面的一部分,自动隐藏 = 浮层。底边并到左右已有的平移形。</div></div>
+          <div class="composer">给 onething 发消息…<b></b></div>
+        </div>
+        <div class="content term"><div class="scr"><div><span class="p">~/code/start-electron</span> $ npm run gate:dock</div><div>① still 60 frames: 0 changed</div><div>② sweep reversals: max 1 (limit 6)</div><div>⑤ gap drift: 0.00px</div><div>⑨ off sweep: 0 changed</div><div>[gate:dock] ok</div><div><span class="p">~/code/start-electron</span> $ <span class="cur"> </span></div></div></div>
+        <div class="content diff">
+          <div class="lines"><div>@@ -103,9 +103,4 @@ AppShell.module.css</div><div class="del">-.shell[data-dock-reserve='bottom'] .center,</div><div class="del">-.shell[data-dock-reserve='bottom'] [data-panel-layer] {</div><div class="del">-  padding-block-end: var(--dock-reserve-h);</div><div class="del">-}</div><div class="del">-.shell[data-dock-reserve='bottom'] .composerDock { bottom: var(--dock-reserve-h); }</div><div class="add">+.shell[data-dock-reserve='bottom'] .main {</div><div class="add">+  padding-block-end: var(--dock-reserve-h);</div><div class="add">+}</div></div>
+          <div class="stat">1 file · <span style="color:#2f6b2a">+3</span> <span style="color:#9a3b32">−5</span></div>
+        </div>
+        <div class="content web">
+          <div class="url">developer.apple.com/design/human-interface-guidelines/dock-menus</div>
+          <div class="native"><div class="pg">The Dock is a system-provided area at the edge of the screen. It occupies its own space; app windows do not extend beneath it …</div><div class="ft">© Apple · Terms · Privacy<span style="margin-left:auto;color:var(--text-4)">WebContentsView · 原生,边界由占位盒算</span></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="pane"><div class="ph">查看器</div><div class="layer"><div class="rows">
+      <div class="r"><i></i>AppShell.tsx</div><div class="r cur"><i></i>AppShell.module.css</div><div class="r"><i></i>Dock.tsx</div><div class="r"><i></i>Dock.module.css</div><div class="r"><i></i>useDockLens.ts</div><div class="r"><i></i>dock-lens.ts</div><div class="r"><i></i>tokens.css</div><div class="r"><i></i>motion.css</div><div class="r"><i></i>transitions.ts</div><div class="r"><i></i>gate-dock.mjs</div><div class="r"><i></i>gate-layout.mjs</div><div class="r"><i></i>gate-squeeze.mjs</div><div class="r"><i></i>CLAUDE.md</div><div class="r"><i></i>dock-scope-2026-09.md</div>
+    </div></div></div>
+  </div>
+  <div class="band" data-l="让位线 --dock-reserve-h"></div>
+  <div class="dock">
+    <div class="tile ws"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="3" width="18" height="18" rx="4"/></svg></div>
+    <div class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 5h16v11H8l-4 4z"/></svg></div>
+    <div class="sep"></div>
+    <div class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 7h16M4 12h16M4 17h10"/></svg></div>
+    <div class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 6h16v12H4zM4 10h16"/></svg></div>
+    <div class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13 6l-2 12"/></svg></div>
+    <div class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg></div>
+    <div class="tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></div>
+  </div>
+</template>
+
+<script>
+  const tpl = document.getElementById('tpl')
+  for (const w of document.querySelectorAll('.win')) w.appendChild(tpl.content.cloneNode(true))
+  const stage = document.getElementById('stage')
+  for (const seg of document.querySelectorAll('.seg')) {
+    seg.addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return
+      for (const x of seg.querySelectorAll('button')) x.classList.toggle('on', x === b)
+      stage.dataset[seg.dataset.k] = b.dataset.v
+    })
+  }
+</script>
+</body>
+</html>

@@ -362,6 +362,116 @@ describe('消息树:画的就是折叠器的输出', () => {
 })
 
 describe('overlay 车道', () => {
+  it.each(['inline', 'blob'] as const)('历史图片实际渲染,包括 %s 数据来源', async (source) => {
+    const base64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1ZkAAAAASUVORK5CYII='
+    configureChatPort({
+      ...port([]),
+      readBlob: async (_session, hash) => {
+        expect(_session).toBe(SESSION)
+        expect(hash).toBe('image-blob')
+        return { base64 }
+      },
+      readPage: async () => ({
+        messages: [{
+          id: 'image-message', role: 'user', content: '', timestamp: T0,
+          attachments: [{
+            id: 'image-1', fileName: '历史图片.png', mimeType: 'image/png',
+            base64Data: source === 'inline' ? base64 : { hash: 'image-blob', bytes: 68, mime: 'image/png' },
+          }],
+        }],
+        watermark: 2, hasMoreBefore: false,
+      }),
+    })
+    render(<ChatStream sessionId={SESSION} />)
+    const image = await screen.findByRole('img', { name: '历史图片.png' })
+    expect(image.getAttribute('src')).toBe(`data:image/png;base64,${base64}`)
+    // 比稿 A(09-16):图站在气泡外,图下不再挂文件名 chip;只有图 = 不画气泡。
+    const message = image.closest('article[data-role="user"]')
+    expect(message?.querySelector('[data-ref-kind="attachmentRef"]')).toBeNull()
+    expect(message?.textContent).not.toContain('历史图片.png')
+  })
+
+  it('只发附件时文件名立即可见,落账后仍在同一条用户消息中', async () => {
+    const { container } = await mount([created(1)])
+    const files = [new File(['body'], '报告.txt'), new File(['pixels'], '截图.png')]
+    await act(async () => {
+      sessionSource().getState().send('', files.length, [], files)
+    })
+    const pending = container.querySelector('article[data-role="user"]')
+    expect(pending?.textContent).toContain('报告.txt')
+    expect(pending?.textContent).toContain('截图.png')
+    const entry = sessionSource().getState().overlay[0]
+    const messageId = entry.kind === 'pending' ? entry.messageId : undefined
+
+    await act(async () => {
+      sessionSource().setState({
+        messages: [{
+          id: messageId!, role: 'user', content: '', timestamp: T0,
+          attachments: files.map((file, index) => ({
+            id: `${index}`, fileName: file.name, filePath: `/stored/${file.name}`,
+          })),
+        }],
+        overlay: [],
+      })
+    })
+    const landed = container.querySelector('article[data-role="user"]')
+    expect(landed).toBe(pending)
+    expect(landed?.textContent).toContain('报告.txt')
+    expect(landed?.getAttribute('data-pending')).toBeNull()
+    // 文件是气泡里的 chip,图是气泡外的一张图(落盘路径有了,图就画得出来)。
+    expect(landed?.querySelectorAll('[data-ref-kind="attachmentRef"]')).toHaveLength(1)
+    expect(landed?.querySelector('img[alt="截图.png"]')).toBeTruthy()
+  })
+
+  it('附件发送失败后文件名与重试入口都保留', async () => {
+    sendResult = async () => ({ success: false, error: '暂时无法发送' })
+    await mount([created(1)])
+    await act(async () => {
+      sessionSource().getState().send('', 1, [], [new File(['body'], '重试.txt')])
+    })
+    const failed = await screen.findByTestId('chat-pending-failed')
+    expect(failed.textContent).toContain('重试.txt')
+    expect(failed.textContent).toContain('暂时无法发送')
+    expect(screen.getByText('重试')).toBeTruthy()
+  })
+
+  it('重新打开的尾页即使只保留附件字节引用,空正文消息仍显示文件名', async () => {
+    configureChatPort({
+      ...port([]),
+      readPage: async () => ({
+        messages: [{
+          id: 'attachment-only', role: 'user', content: '', timestamp: T0,
+          attachments: [{
+            id: 'file-1', fileName: '历史.pdf', mimeType: 'application/pdf',
+            base64Data: { hash: 'saved-blob', bytes: 100, mime: 'text/plain' },
+          }],
+        }],
+        watermark: 2,
+        hasMoreBefore: false,
+      }),
+    })
+    const { container } = render(<ChatStream sessionId={SESSION} />)
+    await waitFor(() => expect(screen.getByText('历史.pdf')).toBeTruthy())
+    const message = container.querySelector('[data-message-id="attachment-only"]')
+    expect(message?.getAttribute('data-role')).toBe('user')
+    expect(message?.querySelector('[data-ref-kind="attachmentRef"]')).toBeTruthy()
+  })
+
+  it('账本中的附件和用户正文一起显示,不把文件正文展开进气泡', async () => {
+    const { container } = await mount([
+      created(1),
+      { seq: 2, time: T0, type: 'user/message', data: { message: {
+        id: 'with-file', role: 'user', content: '帮我看看', timestamp: T0,
+        contentParts: [{ type: 'text', content: '帮我看看' }],
+        attachments: [{ id: 'file-1', fileName: 'notes.md', base64Data: 'secret-file-bytes' }],
+      } } },
+    ])
+    const message = container.querySelector('[data-message-id="with-file"]')
+    expect(message?.textContent).toContain('帮我看看')
+    expect(message?.textContent).toContain('notes.md')
+    expect(message?.textContent).not.toContain('secret-file-bytes')
+  })
+
   it('发出去的那条立刻上屏(还没落账,所以是 pending)', async () => {
     await mount([created(1)])
     await act(async () => {

@@ -52,6 +52,47 @@ function twoTurnMessage(): ProjectedMessage {
 }
 
 describe('锚点归位:工具段插在它发生的那处正文之间', () => {
+  it('停止等待提问后,历史页中未结算的正文仍在本轮工具之前', () => {
+    const input = message({
+      content: '前文这次已输出的正文',
+      contentParts: [
+        { type: 'text', content: '前文', turnIndex: 1 },
+        { type: 'reasoning', content: '想一想', turnIndex: 2 },
+      ],
+      steps: [step('read', 1), step('ask', 3)],
+      toolCalls: [call('read'), call('ask', { toolName: 'ask_user', status: 'cancelled' })],
+    } as Partial<ProjectedMessage>)
+    const nodes = anchorMessage(input)
+    expect(nodes.map(node => node.node)).toEqual(['text', 'tool', 'reasoning', 'text', 'tool'])
+    expect(nodes[3]).toEqual({ node: 'text', text: '这次已输出的正文' })
+    expect(input.contentParts).toHaveLength(2)
+    expect(anchorMessage(input)).toEqual(nodes)
+  })
+
+  it('已经带工具锚点的停止快照也保留正文,不挪到提问之后', () => {
+    const input = message({
+      content: '前文尾段',
+      contentParts: [
+        { type: 'text', content: '前文', turnIndex: 1 },
+        { type: 'data-steps', turnIndex: 1 },
+        { type: 'data-steps', turnIndex: 2 },
+      ],
+      steps: [step('read', 1), step('ask', 2)],
+      toolCalls: [call('read'), call('ask', { status: 'cancelled' })],
+    } as Partial<ProjectedMessage>)
+    expect(anchorMessage(input).map(node => node.node === 'text' ? node.text : node.node)).toEqual([
+      '前文', 'tool', '尾段', 'tool',
+    ])
+  })
+
+  it('不补用户消息中的模型上下文,也不拼接与 parts 不同源的正文', () => {
+    for (const input of [
+      message({ role: 'user', content: '显示文本<skill>隐藏上下文</skill>', contentParts: [{ type: 'text', content: '显示文本' }] }),
+      message({ content: '另一份内容', contentParts: [{ type: 'text', content: '显示文本' }] }),
+      message({ content: '显示文本', contentParts: [{ type: 'text', content: '显示文本' }] }),
+    ]) expect(anchorMessage(input)).toEqual([{ node: 'text', text: '显示文本' }])
+  })
+
   it('按 turnIndex 织进序列 —— 不再一律挂尾', () => {
     const nodes = anchorMessage(twoTurnMessage())
     expect(nodes.map((node) => node.node)).toEqual(['text', 'tool', 'text', 'tool'])

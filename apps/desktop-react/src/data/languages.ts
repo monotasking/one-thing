@@ -43,7 +43,7 @@ export interface LanguageSpec {
    * 别的模块(node 侧的门与纯函数测试)是不该认识 shiki 的。
    * 形状对不对由消费方那一侧的类型来判(`createHighlighterCore({ langs })`)。
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 见上
+   
   grammar: () => Promise<any>
 }
 

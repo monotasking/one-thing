@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>带图的用户消息 · 比稿</title>
+<style>
+  :root{
+    --paper:#faf8f4;--surface:#fffdf9;--text-1:#2b2926;--text-2:#6b665f;--text-3:#9a948b;--text-4:#b8b2a8;
+    --line-1:#e6e1d8;--line-2:#d8d2c7;--accent:#c9782a;--accent-deep:#9a5a1c;--accent-soft:#f6e9d8;
+    --st-sel:#efe9df;--st-hover:#f1ece4;--danger:#b4442f;
+    --pr-fs:15px;--pr-lh:1.65;--font-ui:-apple-system,"PingFang SC","Helvetica Neue",system-ui,sans-serif;--font-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--text-1);font:14px/1.5 var(--font-ui)}
+  main{max-width:1240px;margin:0 auto;padding:26px 20px 80px}
+  h1{font-size:21px;margin:0 0 6px}
+  p.note{color:var(--text-2);font-size:13px;line-height:1.65;margin:0 0 18px;max-width:920px}
+  .lanes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+  .lane{border:1px solid var(--line-1);border-radius:16px;background:var(--surface);overflow:hidden;display:flex;flex-direction:column}
+  .lane h2{margin:0;padding:10px 14px;font-size:12px;color:var(--text-2);border-bottom:1px solid var(--line-1);display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .lane h2 b{font-size:13px;color:var(--text-1)}
+  .lane h2 button{font:12px var(--font-ui);padding:3px 10px;border:1px solid var(--line-2);border-radius:999px;background:#fff;color:var(--text-2);cursor:pointer;flex:none}
+  .lane h2 button.on{background:var(--text-1);color:#fff;border-color:var(--text-1)}
+  .chat{padding:16px;display:flex;flex-direction:column;gap:14px;font-size:var(--pr-fs);line-height:var(--pr-lh);flex:1}
+  .reply{color:var(--text-1)}
+  .lab{font-size:11px;color:var(--text-3);letter-spacing:.04em;margin:6px 0 -8px}
+  .cap{padding:10px 14px 14px;font-size:12.5px;color:var(--text-2);line-height:1.65;border-top:1px dashed var(--line-1)}
+  .cap b{color:var(--text-1)}
+  .user{align-self:flex-end;max-width:80%;padding:10px 14px;border-radius:12px;background:var(--st-sel);white-space:pre-wrap;overflow-wrap:anywhere}
+  .stack{align-self:flex-end;display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:80%}
+  svg.i{width:1em;height:1em;flex:none;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ── 假图:不连网,用渐变画几种常见的「用户会发的图」 ── */
+  .ph{position:relative;display:block;overflow:hidden;background:#ddd;cursor:zoom-in}
+  .ph.shot{background:
+      linear-gradient(#f4f2ee 0 14%,transparent 14%),
+      linear-gradient(90deg,#e8e3da 0 26%,transparent 26%),
+      linear-gradient(transparent 26%,#d9d3c8 26% 30%,transparent 30% 38%,#e2ddd4 38% 41%,transparent 41% 49%,#e2ddd4 49% 52%,transparent 52%),
+      #fbfaf7;
+    background-size:100% 100%,100% 100%,62% 100%;background-position:0 0,0 0,90% 0;background-repeat:no-repeat}
+  .ph.shot::before{content:"";position:absolute;left:4%;top:4.5%;width:18px;height:5px;background:radial-gradient(circle at 2.5px 2.5px,#e0605a 2.5px,transparent 3px),radial-gradient(circle at 9px 2.5px,#e3b341 2.5px,transparent 3px),radial-gradient(circle at 15.5px 2.5px,#5dbb63 2.5px,transparent 3px)}
+  .ph.photo{background:linear-gradient(180deg,#9cc2dc 0%,#d9c9a8 55%,#8f7a55 56%,#6f5d40 100%)}
+  .ph.photo::after{content:"";position:absolute;left:58%;top:16%;width:18%;aspect-ratio:1;border-radius:50%;background:#f6e3b5;opacity:.9}
+  .ph.phone{background:linear-gradient(#1f2a36 0 9%,transparent 9%),repeating-linear-gradient(transparent 0 22px,#eef1f4 22px 23px),#fff}
+  .ph.chart{background:
+      linear-gradient(0deg,transparent 0 18%,#3f6b48 18% 60%,transparent 60%) 14% 100%/10% 100% no-repeat,
+      linear-gradient(0deg,transparent 0 18%,#c9782a 18% 78%,transparent 78%) 34% 100%/10% 100% no-repeat,
+      linear-gradient(0deg,transparent 0 18%,#8a6a3a 18% 45%,transparent 45%) 54% 100%/10% 100% no-repeat,
+      linear-gradient(0deg,transparent 0 18%,#6b8fb0 18% 88%,transparent 88%) 74% 100%/10% 100% no-repeat,
+      #fbfaf7}
+  .ph.err{background:repeating-linear-gradient(135deg,#f3eee6 0 8px,#ece6dc 8px 16px);cursor:default}
+  .ph.loading{background:linear-gradient(100deg,#ece7df 30%,#f6f2ec 50%,#ece7df 70%);background-size:300% 100%;animation:shim 1.4s linear infinite;cursor:default}
+  @keyframes shim{from{background-position:100% 0}to{background-position:-100% 0}}
+
+  /* ══ A · 图在气泡外 ══ 图自己站着,气泡只装字。像 iMessage / claude.ai */
+  .A .imgs{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+  .A .imgs .ph{border-radius:12px;box-shadow:0 0 0 1px rgba(43,41,38,.08)}
+  .A .imgs.one .ph{width:240px;height:150px}
+  .A .imgs.one .ph.phone{width:120px;height:230px}
+  .A .imgs.many{display:grid;grid-template-columns:repeat(4,1fr);width:min(320px,100%)}
+  .A .imgs.many.two{grid-template-columns:repeat(2,1fr);width:min(160px,100%)}
+  .A .imgs.many .ph{aspect-ratio:1}
+  .A .imgs .ph:hover{box-shadow:0 0 0 1px rgba(43,41,38,.2),0 4px 14px rgba(43,41,38,.12)}
+  .A .more{position:absolute;inset:0;display:grid;place-items:center;background:rgba(43,41,38,.45);color:#fff;font-size:15px;font-weight:600}
+  .A .ph .bad{position:absolute;inset:0;display:grid;place-items:center;font-size:12px;color:var(--text-3);text-align:center;padding:6px}
+
+  /* ══ B · 图在气泡里 ══ 气泡变成一张卡:上半是图拼图,下半是字 */
+  .B .card{align-self:flex-end;width:min(300px,80%);border-radius:14px;background:var(--st-sel);padding:4px;display:flex;flex-direction:column}
+  .B .card .txt{padding:6px 10px 6px;white-space:pre-wrap;overflow-wrap:anywhere}
+  .B .grid{display:grid;gap:3px;border-radius:10px;overflow:hidden}
+  .B .grid .ph{width:100%;height:100%}
+  .B .g1{grid-template-columns:1fr;aspect-ratio:16/10}
+  .B .g1.tall{aspect-ratio:auto;height:260px;width:140px}
+  .B .card.slim{width:auto}
+  .B .g3{grid-template-columns:2fr 1fr;grid-template-rows:1fr 1fr;aspect-ratio:16/11}
+  .B .g3 .ph:first-child{grid-row:1/3}
+  .B .g4{grid-template-columns:1fr 1fr;aspect-ratio:1/1}
+  .B .grid .ph{position:relative}
+  .B .more{position:absolute;inset:0;display:grid;place-items:center;background:rgba(43,41,38,.45);color:#fff;font-size:18px;font-weight:600}
+  .B .meta{display:flex;align-items:center;gap:4px;padding:2px 10px 4px;font-size:11.5px;color:var(--text-3)}
+  .B .meta .sp{flex:1}
+  .B .bad{position:absolute;inset:0;display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;font-size:12px;color:var(--text-3)}
+
+  /* ══ C · 缩略条 ══ 字是主角,图压成一排小方块;点开才看大图 */
+  .C .user{display:flex;flex-direction:column;gap:8px}
+  .C .strip{display:flex;flex-wrap:wrap;gap:6px}
+  .C .tile{display:flex;align-items:center;gap:8px;padding:3px 10px 3px 3px;border-radius:9px;background:rgba(255,255,255,.72);box-shadow:0 0 0 1px rgba(43,41,38,.06);font-size:12.5px;line-height:1.3;max-width:100%;cursor:zoom-in;white-space:nowrap}
+  .C .tile:hover{background:#fff;box-shadow:0 0 0 1px rgba(43,41,38,.14)}
+  .C .tile .ph{width:40px;height:40px;border-radius:6px;flex:none}
+  .C .tile .nm{display:flex;flex-direction:column;min-width:0}
+  .C .tile .nm span:first-child{overflow:hidden;text-overflow:ellipsis;max-width:16ch;color:var(--text-1)}
+  .C .tile .nm span:last-child{color:var(--text-3);font-size:11px}
+  .C .tile.err .nm span:last-child{color:var(--danger)}
+  .C .sq{display:flex;gap:4px}
+  .C .sq .ph{width:56px;height:56px;border-radius:8px;box-shadow:0 0 0 1px rgba(43,41,38,.08)}
+  .C .sq .ph .more{position:absolute;inset:0;display:grid;place-items:center;background:rgba(43,41,38,.45);color:#fff;font-size:13px;font-weight:600}
+  .C .solo{padding:4px}
+  .C .solo .tile{background:transparent;box-shadow:none;padding:0}
+  .C .solo .tile .ph{width:64px;height:64px;border-radius:8px}
+
+  /* 预览:点任一张图 */
+  .lb{position:fixed;inset:0;background:rgba(30,28,25,.72);display:none;place-items:center;z-index:9;cursor:zoom-out}
+  .lb.on{display:grid}
+  .lb .ph{width:min(760px,86vw);height:min(480px,70vh);border-radius:10px;cursor:zoom-out}
+  .lb .ph.phone{width:260px;height:520px}
+  .lb p{position:absolute;bottom:22px;left:0;right:0;text-align:center;color:#f4efe7;font-size:13px;margin:0}
+
+  @media (max-width:980px){.lanes{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+  <h1>带图的用户消息 · 三种形</h1>
+  <p class="note">同一组对话在三台里各画一遍:① 一张截图 + 一句话,② 四张图 + 一段较长的话,③ 只发了一张竖长的手机截图,④ 一张还在加载、一张读不出来。今天的样子是「字在上、每张图 14rem 宽排在下面、每张图下面再挂一枚文件名 chip」—— 三张图时气泡被拉得很长,文件名重复了一遍图本身已经说的事。三台都去掉了逐张的文件名 chip(文件名在悬停提示和大图预览里)。点任意一张图看预览,点右上角「选这个」。</p>
+
+  <div class="lanes">
+    <!-- ══════════ A ══════════ -->
+    <div class="lane A">
+      <h2><span><b>A · 图在气泡外</b>&nbsp; 图自己站着</span><button data-pick="A">选这个</button></h2>
+      <div class="chat">
+        <p class="lab">① 一张图 + 一句话</p>
+        <div class="stack">
+          <div class="imgs one"><span class="ph shot" title="截屏2026-09-16 10.42.png · 1.2 MB"></span></div>
+          <div class="user">侧栏这里的对齐是不是又歪了?</div>
+        </div>
+        <div class="reply">是的,图标列中心在 x=24,比红灯中心偏了 2px。</div>
+
+        <p class="lab">② 四张图 + 一段话</p>
+        <div class="stack">
+          <div class="imgs many">
+            <span class="ph shot" title="设置页.png"></span>
+            <span class="ph chart" title="延迟分布.png"></span>
+            <span class="ph photo" title="IMG_2031.jpg"></span>
+            <span class="ph shot" title="会话列表.png" style="filter:hue-rotate(160deg)"></span>
+          </div>
+          <div class="user">这四张是今天真机上截的,帮我看看设置页和会话列表的间距是不是一套,延迟那张是切会话的读数。</div>
+        </div>
+
+        <p class="lab">③ 只有图</p>
+        <div class="stack">
+          <div class="imgs one"><span class="ph phone" title="IMG_2044.PNG"></span></div>
+        </div>
+
+        <p class="lab">④ 加载中 / 读不出来</p>
+        <div class="stack">
+          <div class="imgs many two">
+            <span class="ph loading"></span>
+            <span class="ph err"><span class="bad">读不出来</span></span>
+          </div>
+          <div class="user">这两张呢</div>
+        </div>
+      </div>
+      <div class="cap"><b>取舍</b>:图不进气泡,没有底色衬,原样摆在字的上方、右对齐;一张图按原比例放到 240 宽,多张一律等宽方块、一行最多四张。只有图时根本没有气泡。像 iMessage 和 claude.ai —— 图最「是图」,字和图各管各的。代价是一条消息在视觉上分成两块,和上下文靠得不够紧。</div>
+    </div>
+
+    <!-- ══════════ B ══════════ -->
+    <div class="lane B">
+      <h2><span><b>B · 图在气泡里</b>&nbsp; 一张卡片</span><button data-pick="B">选这个</button></h2>
+      <div class="chat">
+        <p class="lab">① 一张图 + 一句话</p>
+        <div class="card">
+          <div class="grid g1"><span class="ph shot" title="截屏2026-09-16 10.42.png · 1.2 MB"></span></div>
+          <div class="txt">侧栏这里的对齐是不是又歪了?</div>
+        </div>
+        <div class="reply">是的,图标列中心在 x=24,比红灯中心偏了 2px。</div>
+
+        <p class="lab">② 四张图 + 一段话</p>
+        <div class="card">
+          <div class="grid g3">
+            <span class="ph shot" title="设置页.png"></span>
+            <span class="ph chart" title="延迟分布.png"></span>
+            <span class="ph photo" title="IMG_2031.jpg"><span class="more">+1</span></span>
+          </div>
+          <div class="txt">这四张是今天真机上截的,帮我看看设置页和会话列表的间距是不是一套,延迟那张是切会话的读数。</div>
+        </div>
+
+        <p class="lab">③ 只有图</p>
+        <div class="card slim">
+          <div class="grid g1 tall"><span class="ph phone" title="IMG_2044.PNG"></span></div>
+        </div>
+
+        <p class="lab">④ 加载中 / 读不出来</p>
+        <div class="card">
+          <div class="grid g4" style="aspect-ratio:2/1;grid-template-rows:1fr">
+            <span class="ph loading"></span>
+            <span class="ph err"><span class="bad"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 16l5-5 5 5M14 14l2-2 5 5"/><path d="M4 4l16 16"/></svg>读不出来</span></span>
+          </div>
+          <div class="txt">这两张呢</div>
+        </div>
+      </div>
+      <div class="cap"><b>取舍</b>:气泡变成一张卡,内边距只留 4px,图贴着卡边拼成一块:一张占满,三张以上「左一大、右两小」,超出的叠一个 +N。字在图下面。整条消息是一个整体,和今天文字气泡同一个底色,最像 Telegram / 微信。代价是拼图会裁图(点开看原图),竖长截图只能给窄卡。</div>
+    </div>
+
+    <!-- ══════════ C ══════════ -->
+    <div class="lane C">
+      <h2><span><b>C · 缩略条</b>&nbsp; 字是主角</span><button data-pick="C">选这个</button></h2>
+      <div class="chat">
+        <p class="lab">① 一张图 + 一句话</p>
+        <div class="user">
+          <div class="strip"><span class="tile"><span class="ph shot"></span><span class="nm"><span>截屏2026-09-16 10.42.png</span><span>PNG · 1.2 MB</span></span></span></div>
+          <span>侧栏这里的对齐是不是又歪了?</span>
+        </div>
+        <div class="reply">是的,图标列中心在 x=24,比红灯中心偏了 2px。</div>
+
+        <p class="lab">② 四张图 + 一段话</p>
+        <div class="user">
+          <div class="sq">
+            <span class="ph shot" title="设置页.png"></span>
+            <span class="ph chart" title="延迟分布.png"></span>
+            <span class="ph photo" title="IMG_2031.jpg"></span>
+            <span class="ph shot" title="会话列表.png" style="filter:hue-rotate(160deg)"></span>
+          </div>
+          <span>这四张是今天真机上截的,帮我看看设置页和会话列表的间距是不是一套,延迟那张是切会话的读数。</span>
+        </div>
+
+        <p class="lab">③ 只有图</p>
+        <div class="user solo">
+          <span class="tile"><span class="ph phone"></span></span>
+        </div>
+
+        <p class="lab">④ 加载中 / 读不出来</p>
+        <div class="user">
+          <div class="strip">
+            <span class="tile" style="cursor:default"><span class="ph loading"></span><span class="nm"><span>IMG_2050.HEIC</span><span>载入中…</span></span></span>
+            <span class="tile err" style="cursor:default"><span class="ph err"></span><span class="nm"><span>scan.tiff</span><span>读不出来</span></span></span>
+          </div>
+          <span>这两张呢</span>
+        </div>
+      </div>
+      <div class="cap"><b>取舍</b>:图压成小方块塞进气泡顶上,字才是主体。一两张图时连名字和大小一起给(一枚文件卡),三张以上只留 56 方块一排。整条消息高度几乎和纯文字一样,长会话里滚得最省。代价是图的内容在对话里看不清,想看就得点开 —— 适合「图是附件、话才是问题」的用法,不适合「就是想让它看这张图」。</div>
+    </div>
+  </div>
+</main>
+
+<div class="lb" id="lb"><span class="ph"></span><p></p></div>
+<script>
+document.querySelectorAll('[data-pick]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-pick]').forEach(x=>x.classList.toggle('on',x===b));}));
+const lb=document.getElementById('lb'),big=lb.querySelector('.ph'),cap=lb.querySelector('p');
+document.querySelectorAll('.chat .ph').forEach(p=>{
+  if(p.classList.contains('loading')||p.classList.contains('err'))return;
+  p.addEventListener('click',()=>{big.className=p.className;big.style.filter=p.style.filter;cap.textContent=p.title||p.closest('.tile')?.querySelector('.nm span')?.textContent||'';lb.classList.add('on');});
+});
+lb.addEventListener('click',()=>lb.classList.remove('on'));
+</script>
+</body>
+</html>

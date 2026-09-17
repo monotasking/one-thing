@@ -6,6 +6,8 @@ import {
 } from '@onething/core/session'
 import type { ProjectedMessage } from './chat-fold'
 import type { StreamWater, WaterPartView, WaterProgressView } from './stream-water'
+import { missingAssistantText } from './missing-assistant-text'
+import { perfCount } from '../services/perf'
 
 /**
  * **增量物化**(09-01 P0,用户真机日志:60 万 token 长会话流式期间 chat-source 的
@@ -110,6 +112,8 @@ function cachedNode(
   const hit = memos.get(node)
   if (hit && hit.rev === node.rev && hit.epoch === epoch) return hit.message
   const message = materializeNode(node, options) as ProjectedMessage
+  const textTurn = latestLedgerTextTurn(node)
+  if (textTurn !== undefined) ledgerTextTurns.set(message, textTurn)
   memos.set(node, { rev: node.rev, epoch, message })
   stamps.set(message, `${message.id}@${node.rev}@${epoch}`)
   return message
@@ -135,6 +139,8 @@ function cachedNode(
  * 那个对象不在这张表里 —— 于是流式那一条永远拿不到章,也就永远不会误用旧成品。
  */
 const stamps = new WeakMap<ProjectedMessage, string>()
+/** Metadata for text still behind the request-settled display gate. */
+const ledgerTextTurns = new WeakMap<ProjectedMessage, number>()
 
 /** 这条成品消息的身份章;`undefined` = 它不是账本投影的原样成品(活消息)。 */
 export function messageStamp(message: ProjectedMessage): string | undefined {
@@ -304,36 +310,17 @@ function mergeWater(message: ProjectedMessage, water?: StreamWater): ProjectedMe
    * 文字的用户消息,`content` 与 text 部件本来就逐字相同,补不出东西;一条带引用
    * 的,`content` 与屏幕从来就不是同一句,一个字都不该补。
    */
-  const drawnText = parts
-    .filter(part => part.type === 'text')
-    .map(part => part.content ?? '')
-    .join('')
-  const ledgerContent = message.content ?? ''
-  if (
-    message.role === 'assistant'
-    && ledgerContent.length > drawnText.length
-    && ledgerContent.startsWith(drawnText)
-  ) {
-    /*
-     * 回合号取「这条消息此刻**最佳可知**的那个」:水位章上的(最准)、账本 parts 上的、
-     * steps 上的,三者取大。这一截按定义属于**当前**这个请求,而当前请求排在所有
-     * 已经落地的工具之后 —— 取大正好让 `insertDataStepsByTurn` 把那些锚点排在它前面。
-     *
-     * 它是**推断**不是事实:真正权威的号在身份章上,而中途入场这一形按定义没有章
-     * (第一条 delta 就被连续前缀律丢了)。所以这里写明是最佳可知值,不假装是事实。
-     */
-    const currentTurn = Math.max(
-      0,
-      ...live.map(part => part.turnIndex ?? 0),
-      ...ledger.map(part => part.turnIndex ?? 0),
-      ...((message.steps ?? []) as Array<{ turnIndex?: number }>).map(step => step.turnIndex ?? 0),
-    )
-    if (!changed) { parts = [...ledger]; changed = true }
-    parts.push({
-      type: 'text',
-      content: ledgerContent.slice(drawnText.length),
-      turnIndex: currentTurn,
+  const missingText = missingAssistantText(message, parts, live, ledgerTextTurns.get(message))
+  if (missingText) {
+    // Keep the identity and failure mode, never the model's text. Stable fields
+    // let perfCount throttle repeated frames for the same missing continuation.
+    perfCount('stream.water.fallback', {
+      message: message.id,
+      turn: missingText.turnIndex,
+      reason: live.some(part => part.kind === 'text') ? 'incomplete-text-water' : 'missing-text-water',
     })
+    if (!changed) { parts = [...ledger]; changed = true }
+    parts.push(missingText)
   }
 
   const ledgerCallIds = new Set((message.toolCalls ?? []).map(call => call.id))
@@ -390,6 +377,20 @@ function mergeWater(message: ProjectedMessage, water?: StreamWater): ProjectedMe
 }
 
 type MaterializedCall = NonNullable<ProjectedMessage['toolCalls']>[number]
+
+/** Unsettled parts are absent from the display projection, but retain their
+ * actual round in the ledger. Request indexes alone are not rounds (steering
+ * and external executors can make them differ).
+ */
+function latestLedgerTextTurn(node?: ProjectionNode): number | undefined {
+  if (node?.kind !== 'assistant') return
+  let latest: { partIndex: number; turnIndex?: number; requestIndex: number; synthetic?: boolean } | undefined
+  for (const part of node.parts.values()) {
+    if (part.kind !== 'text' || (!part.text && !part.blob)) continue
+    if (!latest || part.partIndex > latest.partIndex) latest = part
+  }
+  return latest && !latest.synthetic ? latest.turnIndex ?? node.turnByRequest.get(latest.requestIndex) : undefined
+}
 
 /** 「这次调用还在跑」的那两档(与 `chat-fold.ts` 的同名表逐字相同)。 */
 const LIVE_CALL_STATUSES: ReadonlySet<string> = new Set(['executing', 'input-streaming'])

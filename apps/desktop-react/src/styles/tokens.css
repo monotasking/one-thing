@@ -1147,12 +1147,13 @@
    * 卡里那几行读数与档名有天然的最短宽,再窄就要折行;弯腰的是左栏的列表(它以
    * 截断收场)。208 ≈ 一行「价格 / 1M   $2.5 进 / $10 出」加内边距。
    *
-   * `--composer-pick-min-h`:列表格的保底高。**面板的高由卡定**(卡是必须一直
-   * 看得见的那一半,列表在这个高度里自己滚),而不思考的型那张卡只有三行 ——
-   * 那时列表会矮到只剩两条,看着像出了错。保底 220 让它至少有 5 条可读。
+   * `--composer-model-drawer-h`:模型抽屉两栏的**定高**(09-17,用户报「选模型时
+   * 高度会变」)。从前高由卡定、列表保底 220,换一型卡行数一变面板就跳。
+   * 360 ≈ 卡在常见的型上(名 + 窗口 + 价格 + 思考组头 + 关/两到四档)一格装下,
+   * 左栏搜索行之下约 9 行列表;档位更多的型卡自己滚。
    */
   --composer-pick-card-w: 208px;
-  --composer-pick-min-h: 220px;
+  --composer-model-drawer-h: 360px;
   /*
    * 两栏塌成一栏的门槛(容器查询,容器是 `.drawerBody`)。低于它:卡折到列表
    * **上方**固定不滚,列表接着占满剩下的高 —— 挤压纪律「一行一个弯腰件」在
@@ -1783,6 +1784,19 @@
    * `max-height:100%` 在收缩盒里解析不出百分比参照(病历在 ZoomOverlay.module.css)。 */
   --img-placeholder-h: 120px;
   --img-zoom-max-h: 80vh;
+
+  /* ── 用户消息里的图(content/user-attachments,2026-09-16 比稿 A + 图多折叠)──
+   * 图不进气泡,站在气泡上方、右对齐。一张图**钉高不钉宽**:高度是一个定值,
+   * 字节到之前的占位盒与到之后的图同高 —— 图到了往下推人的那一下不存在。
+   * 多张图是等宽方块;五张起收成一摞(形与 composer 附件摞同源,ui/card-stack),
+   * 摞的两态同高(= 方块 + 上下各一格内衬),展开只横向变。
+   * `--umsg-img-thumb` 与 `--umsg-img-stack-h` 各有一处 JS 镜像,在
+   * content/user-attachments.tsx 的 USER_IMG_THUMB / USER_IMG_STACK。 */
+  --umsg-img-single-h: 180px;
+  --umsg-img-single-max-w: 320px;
+  --umsg-img-single-placeholder-w: 240px;
+  --umsg-img-thumb: 88px;
+  --umsg-img-stack-h: 100px;
 
   /* Composer 用到、既有字号梯里没有的四档 */
   --fs-pill: 11.5px;

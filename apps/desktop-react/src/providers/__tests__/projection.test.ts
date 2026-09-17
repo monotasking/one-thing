@@ -304,6 +304,24 @@ describe('capsOf / priceOf / format', () => {
 describe('buildCatalogRows', () => {
   const models = [model('a'), model('b')]
 
+  it('后端补齐的已配置项仍是手填模型,未知目录事实不变且不会重复', () => {
+    const configured = { id: 'ghost', name: 'ghost', configuredOnly: true,
+      thinkingLevels: ['low', 'high'], thinkingDefaultLevel: 'low',
+    } as OpenRouterModel
+    const rows = buildCatalogRows([...models, configured], config({
+      selectedModels: ['ghost'], model: 'ghost', contextLengthByModel: { ghost: 96000 },
+      modelCapabilitiesByModel: { ghost: { tools: true, reasoningProfile: { efforts: ['low', 'high'] } } },
+    }))
+    expect(rows.map(row => row.id)).toEqual(['ghost', 'a', 'b'])
+    expect(rows[0]).toMatchObject({
+      manual: true, selected: true, current: true, contextLength: 96000, maxOutput: null, price: null,
+      caps: ['tools'], catalog: { contextLength: null, maxOutput: null, caps: NO_CATALOG_FACTS.caps,
+        reasoningProfile: { efforts: ['low', 'high'], defaultEffort: 'low' },
+      },
+    })
+    expect(rows[1].manual).toBe(false)
+  })
+
   it('勾选态与当前模型都从设置来', () => {
     const rows = buildCatalogRows(models, config({ selectedModels: ['b'], model: 'b' }))
     expect(rows.map((r) => [r.id, r.selected, r.current])).toEqual([

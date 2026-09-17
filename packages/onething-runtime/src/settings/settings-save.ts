@@ -1,3 +1,5 @@
+import { validateOnethingProviderReasoningSettings } from '../providers/model-capability.js'
+
 type MaybePromise<T> = T | Promise<T>
 
 export interface OnethingSettingsWithRuntimeEffects<
@@ -104,6 +106,7 @@ export async function saveOnethingSettingsWithRuntimeEffects<
     TInputSettings
   >,
 ): Promise<SaveOnethingSettingsWithRuntimeEffectsResult<TSettings>> {
+  validateOnethingProviderReasoningSettings((options.settings as { ai?: unknown } | null)?.ai)
   const settingsToSave = preserveOnethingRegistryOwnedProviderFields(
     options.settings,
     options.getSettings(),

@@ -786,8 +786,10 @@ export interface PendingSend {
    * 建的 —— 画的那一头照旧切 `text`(`segmentReferenceText`),行为逐字不变。
    */
   segments?: readonly ResolvedSegment[]
-  /** 随这条消息一起离开输入框的附件数(D3 不传附件,只如实显示计数)。 */
+  /** 随这条消息一起离开输入框的附件数。 */
   attachments: number
+  /** 未落账前保留原始字节,读取或发送失败时重试仍携带同一批文件。 */
+  files?: readonly File[]
   status: 'sending' | 'failed'
   /** 失败时那句人话(照抄后端说的,不改写)。 */
   error?: string
@@ -841,6 +843,8 @@ function displayTextOf(message: ProjectedMessage): string {
  * (`CoreStreamEngine.performSendMessage` 的忙时闸门),而 steering 那一段自己
  * 铸 id。那条路上正文恰好**没有**被改写(steering 收的是原话),所以兜底认得上。
  * 「有 id 就只按 id 认」在那条路上就是又一格永不消失的气泡。
+ * 带文件的消息不走 steering,只能按 id 认领。它们异步读取,落账顺序可能不同;
+ * 用正文兜底会把两条只有附件的空正文互认,丢掉尚未发出的文件与重试入口。
  *
  * 兜底比的是**显示文本**而不是 `content`:账本上的 `content` 是模型版。
  *
@@ -865,7 +869,9 @@ export function reconcileOverlay(
       (entry.messageId !== undefined
         ? messages.find((message) => message.id === entry.messageId && free(message))
         : undefined)
-      ?? messages.find((message) => free(message) && displayTextOf(message) === entry.text)
+      ?? (entry.files?.length
+        ? undefined
+        : messages.find((message) => free(message) && displayTextOf(message) === entry.text))
     if (!hit) return true
     claimed.add(hit.id)
     return false

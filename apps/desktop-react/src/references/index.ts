@@ -35,6 +35,7 @@ import './kinds/plugin'
 import './kinds/prompt'
 /* 网页:只有落稿与呈现两半(它不从抽屉进,也不在正文里 —— 判词在它文件头)。 */
 import './kinds/page'
+import './kinds/attachment'
 
 export { registerReferenceKind, resetReferenceKinds, referenceKindOf, referenceKindList } from './registry'
 export { parseToken } from './registry'

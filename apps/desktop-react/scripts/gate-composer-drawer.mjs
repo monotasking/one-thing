@@ -26,8 +26,9 @@
  *      不成立的话(第一批立的,一个字没改)。
  *  (e) 命令徽之后那个空格真的占了宽度(第一批立的,一个字没改)。
  *  (f) **另两位住户**(模型 / 执行状态)没被落下:它们不吃固定框(高按内容),
- *      但同样浮在面板上方、同样不推正文;顺手量一次接缝 —— 抽屉的下边缘就是
- *      面板的上边缘(一条线,不是两层描边也不是一道缝)。
+ *      但同样不推正文;顺手量**一体**(09-16,正本
+ *      `docs/composer-unified-drawer-2026-09-16.md`)—— 抽屉矩形在面板矩形之内、
+ *      开合前后面板四角圆角与输入区矩形不变、焦点在搜索框时环画在整块面板上。
  *
  * ── 夹具 ──────────────────────────────────────────────────────────────────
  * 两份,各服务一半:
@@ -921,11 +922,12 @@ async function main() {
      * 这一条守的是另两位没有被落下 —— 它们不吃固定框(高按内容),但**同样浮在
      * 面板上方、同样不推正文**。少了它,「四位共用一个槽」就只有两位被门看着。
      *
-     * 它顺手证一件几何:抽屉的**下边缘就是面板的上边缘**(接缝处一条线,不是
-     * 两层描边也不是一道缝)—— 这件事在固定框那两位身上同样成立,而这里量一次
-     * 就够:两位共用同一条 `.drawer` 规则。
+     * 它顺手证**一体**(09-16 用户报「抽屉像一个独立的外层、焦点环上沿被磨平」):
+     * 抽屉在面板**里面**,面板开合前后的圆角与输入区的矩形一个像素不变,焦点落在
+     * 模型搜索框时环画在整块面板上(不是搜索框那一行)。`@` / `/` 两位共用同一条
+     * `.drawer` 规则,焦点又本来就在输入区(面板那格载体),这里量模型一位就够。
      */
-    console.log('\n[5/6] (f) 模型抽屉:不吃固定框,但同样浮在上方、同样不推正文')
+    console.log('\n[5/6] (f) 模型抽屉:不吃固定框、不推正文、与面板是一块')
     await cdp.send('Emulation.setDeviceMetricsOverride', {
       width: 900,
       height: 900,
@@ -937,6 +939,26 @@ async function main() {
     await scrollChat(page, 'pinned')
     await delay(500)
     const beforeModel = await readGeometry(page)
+    /** 面板的形(四角圆角)与静止部分(输入区)的矩形 —— 开合前后逐值比。 */
+    const readFrame = () =>
+      page.evaluate(() => {
+        const panel = document.querySelector('[data-testid="composer-panel"]')
+        const input = document.querySelector('[data-testid="composer-input"]')
+        if (!panel || !input) return undefined
+        const cs = getComputedStyle(panel)
+        const r = input.getBoundingClientRect()
+        return {
+          radii: [
+            cs.borderTopLeftRadius,
+            cs.borderTopRightRadius,
+            cs.borderBottomRightRadius,
+            cs.borderBottomLeftRadius,
+          ].join(' '),
+          border: `${cs.borderTopWidth} ${cs.borderTopStyle}`,
+          input: [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 10) / 10).join(','),
+        }
+      })
+    const frameClosed = await readFrame()
     const openedModel = await page.evaluate(() => {
       /* 模型药丸没有 testid,但它是这块面里唯一带 `aria-expanded` 的钮
        * (状态条那一枚只在有执行流水时才在,这条门跑在一条闲着的会话上)。 */
@@ -952,13 +974,26 @@ async function main() {
       if (!el || !panel) return undefined
       const a = el.getBoundingClientRect()
       const b = panel.getBoundingClientRect()
+      /* 焦点此刻应在模型搜索框里(抽屉挂载即落焦);环画在谁身上,读 outline。 */
+      const search = el.querySelector('input')
+      const ringOn = (node) => {
+        const cs = getComputedStyle(node)
+        return cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0
+      }
       return {
         open: /drawerOpen/i.test(String(el.className)),
         fixed: /drawerFixed/i.test(String(el.className)),
         h: Math.round(a.height * 10) / 10,
-        seam: Math.round((a.bottom - b.top) * 10) / 10,
+        inside:
+          a.top >= b.top - 1 && a.bottom <= b.bottom + 1
+          && a.left >= b.left - 1 && a.right <= b.right + 1,
+        searchFocused: search !== null && document.activeElement === search,
+        panelRing: ringOn(panel),
+        searchRowRing: search?.parentElement ? ringOn(search.parentElement) : false,
       }
     })
+    const frameOpen = await readFrame()
+    await shot(page, cdp, '900-model')
     const afterModel = await readGeometry(page)
     console.log(
       `  现场:${JSON.stringify(modelShape)} · --composer-h ${beforeModel.composerH} → ${afterModel.composerH}`
@@ -973,8 +1008,23 @@ async function main() {
       `(f) 它**不**吃固定框 —— 高按内容(右栏那张卡定),固定框只给打字驱动的两位`,
     )
     assert(
-      modelShape !== undefined && Math.abs(modelShape.seam) <= 1,
-      `(f) 接缝:抽屉下缘就是面板上缘(差 ${modelShape?.seam ?? '—'}px ≤ 1 —— 一条线,不是两层描边也不是一道缝)`,
+      modelShape?.inside === true,
+      `(f) 一体:抽屉的矩形在面板的矩形之内(不是贴在面板头上的另一块)`,
+    )
+    assert(
+      frameClosed !== undefined && frameOpen !== undefined
+        && frameClosed.radii === frameOpen.radii && frameClosed.border === frameOpen.border,
+      `(f) 一体:开抽屉前后面板的形不变(圆角 ${frameClosed?.radii ?? '—'} → ${frameOpen?.radii ?? '—'};`
+        + `边 ${frameClosed?.border ?? '—'} → ${frameOpen?.border ?? '—'})`,
+    )
+    assert(
+      frameClosed !== undefined && frameOpen !== undefined && frameClosed.input === frameOpen.input,
+      `(f) 一体:面板往上长,输入区一个像素不动(${frameClosed?.input ?? '—'} → ${frameOpen?.input ?? '—'})`,
+    )
+    assert(
+      modelShape?.searchFocused === true && modelShape.panelRing === true && modelShape.searchRowRing === false,
+      `(f) 一体:焦点在模型搜索框时环画在整块面板上(搜索框落焦=${modelShape?.searchFocused};`
+        + `面板环=${modelShape?.panelRing};搜索行环=${modelShape?.searchRowRing})`,
     )
     assert(
       beforeModel.composerH === afterModel.composerH

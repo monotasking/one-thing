@@ -57,37 +57,31 @@
   backdrop-filter: blur(var(--composer-blur)) saturate(var(--composer-saturate));
   -webkit-backdrop-filter: blur(var(--composer-blur)) saturate(var(--composer-saturate));
   box-shadow: var(--sh-2);
-  transition:
-    border-color var(--dur) var(--ease),
-    background var(--dur) var(--ease);
+  /* 底不进过渡:抽屉开合时整块换底与抽屉出现 / 消失落在同一帧(见下一段)。 */
+  transition: border-color var(--dur) var(--ease);
 }
 
 /*
- * ── 抽屉开着 = 整块转不透明 ───────────────────────────────────────────────
+ * ── 抽屉开着 = 整块转不透明,**只换材质不换形** ─────────────────────────────
  * 命令 / @ 文件 / 模型 / 状态四张清单**是要读的**,不能叠在正文上(§5.6)。
- * 所以抽屉一开,底从玻璃换回实底 `--surface-2`、磨砂一并撤掉(留着只是白烧
- * 一层合成),边线也回到实的那一档;关掉自己回玻璃。
+ * 所以抽屉一开,**整块面板**的底从玻璃换成实底 `--surface-2`、磨砂一并撤掉
+ * (留着只是白烧一层合成);关掉整块回玻璃。不带过渡:抽屉是即显的,底要是
+ * 慢半拍,那一段看到的就是清单叠在正文上。
  *
  * 判据是 `:has(.drawerOpen)` —— **那格状态类本来就在**(抽屉的开合就是它),
  * 不必为这条规则新造一个「玻璃/不透明」的状态位:两个位说同一件事迟早分叉。
  *
- * ── 09-12 多出来的两句:让路给浮在上方的抽屉 ─────────────────────────────
- * `overflow: visible` —— 抽屉改成 `position: absolute; bottom: 100%`(判词整段在
- * `.drawer` 上)之后它长在面板**外面**,而 `.panel` 常态那句 `overflow: hidden`
- * 会把它整片剪掉。只在开着时放开:关着时那句 `hidden` 照旧把状态条的底、
- * 拖拽虚线这些贴边的东西剪进圆角里。
- *
- * 上两角改直角 —— 那两个角此刻不是这块玻璃的顶,抽屉才是;圆角留着会在接缝
- * 两端各露出一小牙底色。**只动上两角**,下两角一个像素没变。
+ * ── 09-16:圆角 / 描边 / overflow 三句删了 ────────────────────────────────
+ * 09-12 抽屉浮在面板**外面**时,这里另有三句:`overflow: visible`(不然外面那块
+ * 被剪掉)、上两角改直角、描边换一档 —— 面板为了接住别人把自己改了形,
+ * 焦点环跟着上沿被削平(用户报「被磨平」)。抽屉 09-16 回到面板**里面**
+ * (正本 `docs/composer-unified-drawer-2026-09-16.md`),外框只有一份,
+ * 这三句一句都不需要了:开不开抽屉,面板的形逐像素相同。
  */
 .panel:has(.drawerOpen) {
-  overflow: visible;
   background: var(--surface-2);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  border-color: var(--line-1);
-  border-start-start-radius: 0;
-  border-start-end-radius: 0;
 }
 
 /*
@@ -183,52 +177,49 @@
  *  ②「先很短、再慢慢长出来」。0fr→1fr 走 220ms,内容还是从上往下擦出来的;
  *    候选列表又叠了一次高度 FLIP,于是「一行『正在找…』→ 整列」再长一次。
  *
- * ── 治法:把它从「面板的一格」改成「面板上方的一片」 ──────────────────────
- * `position: absolute; bottom: 100%` —— **绝对定位的子元素不进父级的布局高**,
- * 所以 `.composerDock` 的 `getBoundingClientRect().height` 与抽屉开不开无关,
- * `--composer-h` 自然不动,消息流一个像素都不必让。那只观察者(W5-c 起住在
- * `content/kinds/session.tsx` 里)、`ChatStream` 那两条内衬**一行都没改** ——
- * 病根在几何,治在几何。
+ * 09-12 的治法是把它挪到面板**外面**(`position: absolute; bottom: 100%`)。
+ * 两条病治好了,却换来第三条(09-16 用户报):抽屉成了贴在面板头上的另一块,
+ * 面板为接住它改圆角改描边,焦点环只围面板、上沿被削平。
  *
- * ── 为什么留在 `.panel` 里面,而不是提到 `.anchor` 上 ─────────────────────
- * 三样东西都认这个父子关系,搬出去就要各修一遍:`FocusScope` 的根是 `.panel`
- * (`panelRef`)、`useFloatDismiss(panelRef, …)` 的「外面」是 `.panel` 之外
- * (抽屉搬出去 = 点抽屉里的模型行等于点了外面,当场关掉自己)、
- * 还有下面那条 `.panel:has(.drawerOpen)` 的换底。留在里面,这三样一个字不动;
- * 代价只有一条 `overflow: visible`(见 `.panel:has(.drawerOpen)` 那段)。
+ * ── 09-16 的形:面板自己的第一格,几何契约另立 ──────────────────────────────
+ * (正本 `docs/composer-unified-drawer-2026-09-16.md`)
+ *  ① 病一换个地方治:抽屉回到流里,面板真的往上长;但 `--composer-h` 不再量
+ *    整块 dock,而量「静止部分顶端 → dock 底」(`[data-composer-rest]`,
+ *    `content/kinds/session.tsx` 的 `useComposerGeometry`)。抽屉只长在静止
+ *    部分**上方**,这个差值与它开不开无关 —— 消息流一个像素都不必让,落位带
+ *    本来就是贴底的绝对定位浮层,往上长 = 盖住正文,不推。
+ *  ② 病二的治法原样保留:高度那一维**一个过渡都没有**。关着 `display: none`
+ *    (不占高、立刻消失);开着一帧到位,只有内容 80ms 淡入,起点由
+ *    `@starting-style` 给(`display` 从 none 翻过来的那一帧浏览器才有东西可过渡)。
+ *    `--dur-drawer` 在动效档 `none` 下是 0ms,自动退化成直切。
+ *  ③ 外框只有 `.panel` 一份:抽屉自己没有描边、圆角、底、阴影,与下面的静止
+ *    部分只隔一条内分隔线。裁剪归 `.panel` 的 `overflow: hidden`,圆角随之一致。
  *
- * ── 接缝:一块玻璃的上半截,不是第二张卡 ─────────────────────────────────
- * `inset-inline: calc(-1 * var(--bw-1))` 让抽屉的**边框盒**与面板的边框盒左右
- * 齐平(绝对定位量的是父级的 padding box,差的正好是那一道边框);
- * `bottom: 100%` 让抽屉的下边框与面板的上边框**落在同一排像素上** —— 于是接缝
- * 处恰好一条线,不是两层描边也不是一道缝。抽屉只圆上两角,面板开着抽屉时上两角
- * 改直角(下面那段),两块合起来仍是一块玻璃的外形。
- *
- * ── 出现 = 只淡入,不长高(用户原话:「直接看到一个固定长度、固定宽度的最终
- * 结果」)──────────────────────────────────────────────────────────────────
- * 关着时 `visibility: hidden` 且**不写 transition**,所以**关是立刻的**;
- * 开着时才声明那一条 80ms 的 opacity 过渡 —— 加类那一刻 0→1 才动,去类那一刻
- * 落回 `.drawer` 的「无过渡」当场消失。`--dur-drawer` 在动效档 `none` 下是 0ms,
- * 于是这一档自动退化成直切,**不另写 reduced-motion 块**(第二份真相)。
- * 高度那一维**一个过渡都没有**:这正是这次改动要买的东西。
+ * DOM 上它一直是 `.panel` 的孩子:`FocusScope` 的根、`useFloatDismiss` 的「外面」
+ * 都认这个父子关系,一个字不用改。
  */
 .drawer {
-  position: absolute;
-  inset-inline: calc(-1 * var(--bw-1));
-  bottom: 100%;
-  overflow: hidden;
-  border: var(--bw-1) solid var(--line-1);
-  border-radius: var(--r-3) var(--r-3) 0 0;
-  background: var(--surface-2);
-  box-shadow: var(--sh-2);
-  opacity: 0;
-  visibility: hidden;
+  display: none;
 }
 
 .drawerOpen {
+  display: block;
+  border-bottom: var(--bw-1) solid var(--line-1);
   opacity: 1;
-  visibility: visible;
   transition: opacity var(--dur-drawer) var(--ease-out);
+}
+
+/* 顶层写法,理由同 ChatStream.module.css `.rowLate` 那段(CSS Modules 改写逐字可预期)。 */
+@starting-style {
+  .drawerOpen {
+    opacity: 0;
+  }
+}
+
+/* 静止部分:抽屉以下的一切(状态条 + 本体行)。它只是几何契约的落点
+ * (`data-composer-rest`),自己一个像素都不画。 */
+.rest {
+  position: relative;
 }
 
 /*
@@ -337,38 +328,41 @@
 
 /*
  * ── 模型抽屉的两栏(09-05 庚,设计 §5.8)──────────────────────────────────
- * **只有列表滚,卡不滚**:滚动区仍然只有 `.pickScroll` 一个,右栏那张卡是它的
- * 兄弟。于是面板的高由**卡**定(它在流里,撑出这一行的高),列表 absolute 铺满
- * 自己那一格 —— 反过来(卡跟着列表长)会让「不思考的型」那张三行的卡拖着一张
- * 320px 的空列表。
+ * **只有列表滚**:列表的滚动区只有 `.pickScroll` 一个,右栏那张卡是它的兄弟。
+ *
+ * **面板定高**(09-17,用户报「选模型的时候高度会改变」):从前高由卡定,
+ * 换一型(档位几根、有没有价格)或目录晚到一拍,卡的行数一变整块面板就跳。
+ * 今天高由 `--composer-model-drawer-h` 一格说了算,与 `.drawerFixed` 同一句
+ * 「开出来就是最终大小」;矮窗上同样夹 `--center-h` 的一半。卡只在极端的型
+ * (档位多到超出这一格)时自己滚,平常一格装得下。
  */
 .pickCols {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--composer-pick-card-w);
   align-items: stretch;
+  height: min(var(--composer-model-drawer-h), calc(var(--center-h, 200vh) * 0.5));
 }
 
 .pickListCol {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   /* 列表与卡之间的那根发丝线。它是**分栏线**,不是滚动槽(见 .pickScroll 那段)。 */
   border-right: 1px solid var(--line-1);
 }
 
-/*
- * 列表格:相对定位的那一格,列表在里面 absolute 铺满。
- * `min-height` 是保底 —— 卡矮时列表不该跟着塌到只剩两行(理由在 token 上)。
- */
+/* 列表格:相对定位的那一格,列表在里面 absolute 铺满(框已经定高,不再另设封顶)。 */
 .pickListCell {
   position: relative;
   flex: 1;
-  min-height: var(--composer-pick-min-h);
+  min-height: 0;
 }
 
 .pickListCell .pickScroll {
   position: absolute;
   inset: 0;
+  max-height: none;
 }
 
 /*
@@ -380,6 +374,9 @@
   flex-direction: column;
   gap: var(--sp-1);
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--sp-2) var(--sp-3);
   background: none;
 }
@@ -482,8 +479,10 @@
  * 两处** —— `composer-css.test.ts` 里那条用例把两处比一遍,漂开当场红。
  */
 @container composerDrawer (max-width: 448px) {
+  /* 一栏时卡在上、至多占一半,列表吃剩下的 —— 总高仍是那一格,不随卡变。 */
   .pickCols {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: fit-content(50%) minmax(0, 1fr);
   }
 
   .pickListCol {

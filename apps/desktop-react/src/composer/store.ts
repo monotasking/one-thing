@@ -2,6 +2,7 @@ import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'
 import { useModelsSource } from '../data/models-source'
 import { composerSink } from './sink'
+import { t } from '../i18n'
 import type { ResolvedSegment } from '../references/segment'
 import { configureDraftRevoke, resetComposerDrafts } from './drafts'
 import * as T from './transitions'
@@ -22,7 +23,7 @@ import type {
  *
  * 三条纪律钉在这里:
  * 1. 抽屉是**一个槽**:任何 open* 都直接改写 drawerKind,后来者顶替先来者;
- * 2. ask 形态由 openAsk / submitAsk / rejectAsk 三口进出,没有第四条路;
+ * 2. ask 由 openAsk 进入,提交/拒绝通过原交互应答口,结算后按请求 id 关闭;
  * 3. 对象 URL 谁造谁销:附件的 revoke 落在删除与清空两处,别处不许造 URL。
  *
  * ── **一条会话一份**(W5-c-2,正本 `composer-in-leaf-2026-09.md` §4.3)───────
@@ -49,6 +50,8 @@ const initialState: ComposerState = {
   modelQuery: '',
   mode: 'write',
   askSpec: null,
+  askSubmitting: false,
+  askError: null,
   askAnswers: [],
   askIdx: 0,
   attachments: [],
@@ -107,6 +110,7 @@ export interface ComposerStore extends ComposerState {
 
   /* ask 形态 */
   openAsk: (spec: AskSpec) => void
+  closeAsk: (interactionId: string) => void
   answerAsk: (optIndex: number) => void
   setAskCustom: (text: string) => void
   moveAsk: (delta: number) => void
@@ -154,11 +158,11 @@ function createComposerStore(sessionId: string): ComposerStoreApi {
      * 上行失败由数据源自己撤牌 + notify(warn) —— 那时药丸会变回原来那个模型,
      * 屏幕上不留一块后端没认下的牌(与 agent 徽逐条同构)。
      *
-     * ── 09-05(庚):这一口从前还顺手 `set({drawerKind: null})` ────────────────
-     * 抽屉从此**不因为选中而关**。理由是这块面板长出了第二件事:右栏那张卡与它的
-     * 思考阶梯讲的就是「刚选中的这一型」——选完当场关掉,等于把刚打开的那一页合上。
-     * 「点一行只做一件事:选中它」是设计稿(§5.8 庚)的原话。收起抽屉的手势还剩两个
-     * 且一个没变:点面板外面(`useFloatDismiss`)、Esc(`Composer.onEscape` 第②层)。
+     * ── 09-17:选中即收起(推翻 09-05 庚「选中不关」)────────────────────────
+     * 用户报「选中后不会自己收起来」。庚那一版的理由是右栏卡讲的是「刚选中的这一型」,
+     * 可人点一行的意图就是「换成它」,换完还得再点外面 / 按 Esc 才能回去打字,是多一手。
+     * 右栏卡与思考阶梯讲的仍是**当前**那一型:要调档,开抽屉先调再走,或选完再开一次。
+     * 在飞时被 `commit` 拦下的那一下不走到这里,抽屉也就不关(反馈是「不可再点」)。
      *
      * 收件人由组件递进来(与 `AgentChip` 同一手):输入面板不认识总览 store,
      * 「当前是哪条会话」是调用现场的事实,不是这块面板的状态。参数在这里叫
@@ -167,6 +171,7 @@ function createComposerStore(sessionId: string): ComposerStoreApi {
      */
     chooseModel: (target, provider, model) => {
       void useModelsSource.getState().selectModel(target, provider, model)
+      set({ drawerKind: null })
     },
 
     toggleStatusDrawer: () =>
@@ -196,7 +201,7 @@ function createComposerStore(sessionId: string): ComposerStoreApi {
       set((s) => ({
         attachments: [
           ...s.attachments,
-          ...files.map<Attachment>((f) => ({ id: nextId('att'), name: f.name, url: objectUrl(f) })),
+          ...files.map<Attachment>((f) => ({ id: nextId('att'), name: f.name, url: objectUrl(f), file: f })),
         ],
       })),
 
@@ -212,24 +217,33 @@ function createComposerStore(sessionId: string): ComposerStoreApi {
     setAttOpen: (open) => set({ attOpen: open }),
 
     openAsk: (spec) =>
-      set({
+      set((s) => ({
         mode: 'ask',
         askSpec: spec,
-        askAnswers: T.initAskAnswers(spec),
-        askIdx: 0,
+        askAnswers: spec.interaction && spec.interaction.id === s.askSpec?.interaction?.id
+          ? s.askAnswers : T.initAskAnswers(spec),
+        askIdx: spec.interaction && spec.interaction.id === s.askSpec?.interaction?.id ? s.askIdx : 0,
+        askSubmitting: spec.interaction && spec.interaction.id === s.askSpec?.interaction?.id ? s.askSubmitting : false,
+        askError: spec.interaction && spec.interaction.id === s.askSpec?.interaction?.id ? s.askError : null,
         // 变形即收抽屉:本体都换了样,原来那个抽屉说的是上一形态的事。
         drawerKind: null,
-      }),
+      })),
+
+    closeAsk: (id) => {
+      if (get().askSpec?.interaction?.id !== id) return
+      set({ mode: 'write', askSpec: null, askAnswers: [], askIdx: 0, askSubmitting: false, askError: null })
+    },
 
     answerAsk: (optIndex) =>
       set((s) =>
-        s.askSpec
+        s.askSpec && !s.askSubmitting
           ? { askAnswers: T.toggleAskOption(s.askSpec, s.askAnswers, s.askIdx, optIndex) }
           : {},
       ),
 
     setAskCustom: (text) =>
-      set((s) => ({ askAnswers: T.setAskCustomAnswer(s.askAnswers, s.askIdx, text) })),
+      set((s) => s.askSpec && !s.askSubmitting && s.askSpec.questions[s.askIdx]?.allowFreeText !== false
+        ? { askAnswers: T.setAskCustomAnswer(s.askAnswers, s.askIdx, text) } : {}),
 
     moveAsk: (delta) =>
       set((s) => ({
@@ -241,7 +255,22 @@ function createComposerStore(sessionId: string): ComposerStoreApi {
      * 这里只负责把它拼成一句(`标签: 答案`,一行一题),交给 sink;账本认下之后
      * 屏幕上那一条由折叠器画。
      */
-    submitAsk: (lines) => {
+    submitAsk: async (lines) => {
+      const { askSpec, askAnswers, askSubmitting } = get()
+      if (askSubmitting) return
+      if (askSpec?.interaction) {
+        if (!T.askAllAnswered(askSpec, askAnswers)) return
+        set({ askSubmitting: true, askError: null })
+        try {
+          await askSpec.interaction.submit(askAnswers)
+          get().closeAsk(askSpec.interaction.id)
+        } catch (error) {
+          if (get().askSpec?.interaction?.id === askSpec.interaction.id) {
+            set({ askSubmitting: false, askError: error instanceof Error ? error.message : t('ask.failed') })
+          }
+        }
+        return
+      }
       composerSink().send(
         lines.map((line) => `${line.tag}: ${line.answer}`).join('\n'),
         0,
@@ -254,7 +283,21 @@ function createComposerStore(sessionId: string): ComposerStoreApi {
      * 拒绝也进流:一次没回答**也是一次回答**,不该在记录里消失 —— 但它进不了
      * 账本(引擎那边什么都没发生),所以走的是本地提示那条车道,不是发送。
      */
-    rejectAsk: () => {
+    rejectAsk: async () => {
+      const { askSpec, askSubmitting } = get()
+      if (askSubmitting) return
+      if (askSpec?.interaction) {
+        set({ askSubmitting: true, askError: null })
+        try {
+          await askSpec.interaction.decline()
+          get().closeAsk(askSpec.interaction.id)
+        } catch (error) {
+          if (get().askSpec?.interaction?.id === askSpec.interaction.id) {
+            set({ askSubmitting: false, askError: error instanceof Error ? error.message : t('ask.failed') })
+          }
+        }
+        return
+      }
       composerSink().notice('ask-rejected', sessionId)
       set({ mode: 'write', askSpec: null, askAnswers: [], askIdx: 0 })
     },
@@ -265,8 +308,8 @@ function createComposerStore(sessionId: string): ComposerStoreApi {
      * 输入框要不要清空由它决定,store 不去碰 DOM。
      *
      * D3 起真正的收件人是会话命令总线(经 `sink`)。**sink 说没交出去就当没发**:
-     * 还没有当前会话时输入框不该被清空,那句话还在人手里。附件计数照实带过去 ——
-     * 载荷本身不在 D3(纯文本 content),但「这条消息本来带着几个附件」是事实。
+     * 还没有当前会话时输入框不该被清空,那句话还在人手里。附件计数与原文件一起
+     * 带过去;端口负责异步读取字节,发送失败的气泡保留原文件供重试。
      *
      * ── `toSession`:这块面板一辈子唯一一次「收件人不是自己」(W5-c-2)───────
      * 保留键那片叶的收件人是空串(「还没绑会话」)。人在它上面打一句话按发送 =
@@ -278,15 +321,19 @@ function createComposerStore(sessionId: string): ComposerStoreApi {
      */
     send: (text, toSession, segments) => {
       const body = text.trim()
-      if (!body) return false
       const atts = get().attachments
+      const files = atts.flatMap((attachment) => attachment.file ? [attachment.file] : [])
+      if (!body && files.length === 0) return false
       /*
        * **段跟着这句话一起走**(09-14):乐观气泡画的是段,发出去的是它的投影。
        * 这里一个字都不碰段 —— 输入面读出来什么,交出去的就是什么(`trim` 只作用
        * 在那句话上;段是原样,首尾空白由画的那一层按 `pre-wrap` 处理,与账本
        * 回来之后的那一条逐字同)。
        */
-      if (!composerSink().send(body, atts.length, toSession ?? sessionId, segments)) return false
+      const handed = files.length > 0
+        ? composerSink().send(body, atts.length, toSession ?? sessionId, segments, files)
+        : composerSink().send(body, atts.length, toSession ?? sessionId, segments)
+      if (!handed) return false
       revoke(atts)
       set({ attachments: [], attOpen: false, drawerKind: null })
       return true

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { isProviderEnabledIn } from '@onething/client/model/provider-model'
 import type {
   OpenRouterModel,
   ProviderInfo,
@@ -329,6 +330,24 @@ describe('可见的家:两道闸', () => {
     )
     const groups = buildProviderGroups([provider('kimi-code', 'Kimi Code')], prefs, {}, null)
     expect(groups.map((g) => g.id)).toEqual(['kimi-code'])
+  })
+
+  /*
+   * 09-17 报障:设置里 Claude Code 关了,抽屉里 `claude-opus-4-20250514` 还在。
+   * 那个空间的 providers 里根本没有 `claude` 这一格 —— API 成员的「开着」只是缺省,
+   * 不能拿来把关着的订阅成员捞出来。卡上那个开关此时也读订阅成员自己那一格。
+   */
+  it('家族派生:API 成员从没配过时,不替关着的订阅成员开门', () => {
+    const prefs = toProviderPrefs(
+      settingsWith({ 'claude-code': { selectedModels: ['claude-opus-4-20250514'], enabled: false } }),
+    )
+    const members = [provider('claude', 'Claude'), provider('claude-code', 'Claude Code')]
+    expect(buildProviderGroups(members, prefs, {}, null)).toEqual([])
+    expect(isProviderEnabledIn(prefs.configs, 'claude')).toBe(false)
+    const on = toProviderPrefs(
+      settingsWith({ 'claude-code': { selectedModels: ['claude-opus-4-20250514'] } }),
+    )
+    expect(buildProviderGroups(members, on, {}, null).map((g) => g.id)).toEqual(['claude-code'])
   })
 
   it('目录没到照样出组,只是窗口那一格是 null', () => {
@@ -689,6 +708,21 @@ describe('思考态:屏幕与发送链是同一句话', () => {
     expect(state).toMatchObject({ on: true, level: 'max', explicit: true })
   })
 
+  it('不可关闭模型显示声明的兼容等级，旧档按发送层规则映射到邻近档', () => {
+    const grok = {
+      thinkingLevels: ['low', 'medium', 'high', 'xhigh'] as ThinkingEffort[],
+      thinkingToggleable: false,
+      thinkingDefaultOn: true,
+      thinkingDefaultLevel: 'high' as ThinkingEffort,
+      thinkingDisabledLevel: 'low' as ThinkingEffort,
+      thinkingLevelLabels: { low: '快速' },
+    }
+    expect(thinkingStateOf(grok, providerModelPrefs({ thinking: { m: false } }), 'm'))
+      .toMatchObject({ on: true, level: 'low', toggleable: false, levelLabels: { low: '快速' } })
+    expect(thinkingStateOf(grok, providerModelPrefs({ thinking: { m: true }, thinkingEffort: { m: 'max' } }), 'm'))
+      .toMatchObject({ on: true, level: 'xhigh' })
+  })
+
   it('没设过 → 读 profile 的缺省:claude 缺省不想,gpt-5 缺省想「中」', () => {
     expect(thinkingStateOf(claude, undefined, 'm')).toMatchObject({ on: false, explicit: false })
     expect(thinkingStateOf(gpt5, undefined, 'm')).toMatchObject({ on: true, level: 'medium' })
@@ -707,6 +741,24 @@ describe('思考态:屏幕与发送链是同一句话', () => {
 /* ── 合并守卫(批 7b):目录在这个进程里只有一格 ─────────────────────────── */
 
 describe('目录只有一个产地', () => {
+  it('同模型只改变思考等级或名称，目录也发布新读数', async () => {
+    let levels: ThinkingEffort[] = ['high']
+    installCatalogPort(async () => ({ success: true, models: [{
+      ...model('grok-4.6', 500_000), thinkingLevels: levels,
+      thinkingToggleable: false, thinkingDefaultOn: true, thinkingDefaultLevel: 'high',
+      thinkingLevelLabels: { low: '快速' }, thinkingDisabledLevel: 'low',
+    }] }))
+    const q = catalogQuery.get('xai')
+    await q.ensure()
+    const rev = q.get().dataRev
+    levels = ['low', 'high']
+    await q.refetch()
+    expect(q.get().dataRev).toBeGreaterThan(rev)
+    expect(toCatalogModels(q.get().data ?? [])[0]).toMatchObject({
+      thinkingLevels: ['low', 'high'], thinkingLevelLabels: { low: '快速' }, thinkingDisabledLevel: 'low',
+    })
+  })
+
   it('设置面拉过之后,模型侧**不再发第二发**;两边读到的 id 集合逐字相同', async () => {
     // 设置面那一路(ProviderSettingsPanel 走的就是这一句)。
     await catalogQuery.get('xai').ensure()

@@ -127,21 +127,19 @@ describe('② 气口:正文与玻璃上缘之间那 40px', () => {
 
   /*
    * ── 09-12 报障「会把内容往上顶,有时顶有时不顶」的产地 ────────────────────
-   * `--composer-h` 量的是 `.composerDock` 的 `getBoundingClientRect().height`,
-   * 而那只是它**布局盒**的高。抽屉从前是面板里的一格流内元素 —— 一开就把这个数
-   * 抬高一整列,消息流的内衬跟着抬,**贴底跟随**时列表为了继续贴底把正文往上推
-   * (上翻浏览时滚动位不动,所以只是被盖住:「有时顶有时不顶」= 两种状态)。
-   *
-   * 治法是几何:抽屉改成 `position: absolute`,绝对定位的子元素**不进父级布局高**。
-   * 所以这条断言与上面那一条是**一对**:一条说这个数怎么量,一条说什么东西不该
-   * 被量进去。那只观察者(W5-c 起住在会话叶里)、`.scroll` 那两条内衬都因此一行没改。
+   * 抽屉一开 `--composer-h` 就跟着变,消息流内衬跟着抬,**贴底跟随**时正文被推。
+   * 09-12 的治法是把抽屉绝对定位挪出布局;09-16 抽屉回到面板里面(正本
+   * `docs/composer-unified-drawer-2026-09-16.md`),病换个地方治:这个数不再量
+   * 整块 dock,而量「dock 底 − 静止部分顶」。这一对断言守的就是量法本身 ——
+   * 有人把它改回 `dock.getBoundingClientRect().height`,抽屉当场又被算进去。
    */
-  it('抽屉不进这个数:它绝对定位挂在面板上沿,布局高里没有它', () => {
-    const drawer = block(composer, '.drawer')
-    expect(drawer).toMatch(/position:\s*absolute/)
-    expect(drawer).toMatch(/bottom:\s*100%/)
-    // 反面:它一旦回到文档流(grid 展开那一形),这个数当场又把它算进去。
-    expect(drawer).not.toMatch(/grid-template-rows/)
+  it('这个数只量静止部分:dock 底 − [data-composer-rest] 顶,抽屉不在里面', () => {
+    const src = read('src/content/kinds/session.tsx')
+    expect(src).toMatch(/write\('--composer-h', composerReserveOf\(dock\)\)/)
+    expect(src).toMatch(/querySelector\('\[data-composer-rest\]'\)/)
+    expect(src).toMatch(/dockRect\.bottom - rest\.getBoundingClientRect\(\)\.top/)
+    // 标记的另一头:输入框自己标出哪一截是静止的。
+    expect(read('src/composer/components/Composer.tsx')).toMatch(/data-composer-rest=""/)
   })
 })
 

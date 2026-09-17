@@ -343,6 +343,20 @@ describe('setCurrentModel / addManualModel / removeManualModel', () => {
  */
 
 describe('renameManualModel', () => {
+  it('仅为当前模型的手填项仍可改名，保留未勾选状态和思考覆盖', async () => {
+    const ai = renamable()
+    ai.providers.claude.selectedModels = []
+    ai.providers.claude.modelCapabilitiesByModel = { ghost: { reasoningProfile: { efforts: ['low', 'high'] } } }
+    const port = installPort({ readProviderSettings: vi.fn(async () => ({ success: true, ai })) })
+    await useProviderSettings.getState().start()
+    useProviderSettings.getState().renameManualModel('claude', 'ghost', 'renamed')
+    await vi.waitFor(() => expect(port.writeProviderSettings).toHaveBeenCalledTimes(1))
+    const config = vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.providers.claude
+    expect(config.model).toBe('renamed')
+    expect(config.selectedModels).toEqual([])
+    expect(config.modelCapabilitiesByModel).toEqual({ renamed: { reasoningProfile: { efforts: ['low', 'high'] } } })
+  })
+
   /** 一份七张表全填过、当前模型正好就是要改的那一个的空间设置。 */
   function renamable(): SpaceProviderSettings {
     return {
@@ -489,6 +503,37 @@ describe('renameManualModel', () => {
 /* ── 逐型覆盖(09-09):两张按模型的表,整张换,删要删干净 ─────────────────── */
 
 describe('setModelOverride', () => {
+  it('保存与清除思考配置保留同模型其他能力及其他模型配置', async () => {
+    const ai = overridden()
+    const profile = { efforts: ['low', 'high'] as const, defaultEffort: 'low' as const }
+    const port = installPort({ readProviderSettings: vi.fn(async () => ({ success: true, ai })) })
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().setModelOverride('claude', 'claude-opus-5', {
+      reasoningProfile: { ...profile, efforts: [...profile.efforts] },
+    })
+    let saved = vi.mocked(port.writeProviderSettings).mock.calls.at(-1)![0].ai.providers.claude
+    expect(saved.modelCapabilitiesByModel?.['claude-opus-5']).toMatchObject({
+      tools: false, vision: true, audio: true, reasoningProfile: profile,
+    })
+    expect(saved.modelCapabilitiesByModel?.ghost).toEqual({ tools: true })
+    await useProviderSettings.getState().setModelOverride('claude', 'claude-opus-5', {
+      reasoningProfile: null, caps: { tools: null, vision: null },
+    })
+    saved = vi.mocked(port.writeProviderSettings).mock.calls.at(-1)![0].ai.providers.claude
+    expect(saved.modelCapabilitiesByModel?.['claude-opus-5']).toEqual({ audio: true })
+  })
+
+  it('同时清除最后一个能力和思考覆盖不会恢复已删除的能力', async () => {
+    const ai = overridden()
+    const port = installPort({ readProviderSettings: vi.fn(async () => ({ success: true, ai })) })
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().setModelOverride('claude', 'ghost', {
+      reasoningProfile: null, caps: { tools: null },
+    })
+    expect(vi.mocked(port.writeProviderSettings).mock.calls.at(-1)![0].ai.providers.claude
+      .modelCapabilitiesByModel).not.toHaveProperty('ghost')
+  })
+
   /** 一份已经带着两格覆盖(外加一格别人的能力键)的空间设置。 */
   function overridden(): SpaceProviderSettings {
     return {

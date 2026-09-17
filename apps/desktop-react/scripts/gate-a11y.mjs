@@ -946,6 +946,7 @@ async function main() {
       'dock',
       'open',
       'browser',
+      'network',
       'permissions',
       'keymap',
     ]) {

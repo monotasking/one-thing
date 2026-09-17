@@ -1,4 +1,5 @@
 import type { AgentProvider } from "@onething/core/agent-loop";
+import type { OnethingCapabilityOverrideLike } from "../../providers/model-capability.js";
 import {
 	BaseAgentProvider,
 	BearerApiKeyAuth,
@@ -103,15 +104,7 @@ export interface AgentProviderRuntimeConfig {
 	 * 哪条 entry」—— 刷新发生在 provider 内部,那里早就没有 sessionId 了。
 	 */
 	spaceCredential?: { spaceId?: string; entryId?: string; authType?: string };
-	modelCapabilitiesByModel?: Record<
-		string,
-		{
-			tools?: boolean;
-			vision?: boolean;
-			reasoning?: boolean;
-			fileInput?: boolean;
-		}
-	>;
+  modelCapabilitiesByModel?: Record<string, OnethingCapabilityOverrideLike>;
 	/**
 	 * 运行时传进来的就是完整的 `OnethingModelCapabilityEntry`;这里只列账本
 	 * (`ModelProfile` → `resolveOnethingModelCapabilities`)真正会读的字段。
@@ -300,6 +293,7 @@ function ledgerProfiles(
 			? { modelCapabilitiesByModel: config.modelCapabilitiesByModel }
 			: {}),
 		...(config.models ? { models: config.models } : {}),
+    ...(config.providerOptions ? { providerOptions: config.providerOptions } : {}),
 	});
 }
 

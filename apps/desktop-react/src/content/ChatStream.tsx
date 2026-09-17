@@ -47,6 +47,10 @@ import { StreamReadout } from './message/StreamReadout'
 import { MessageSourceFoot } from './research/SourceFoot'
 import { SegmentView } from './SegmentView'
 import { UserMessageBody } from './user-message'
+import { UserFiles, UserImages, isImageAttachment } from './user-attachments'
+import u from './user-attachments.module.css'
+import { messageAttachmentMetadata } from '../data/message-attachments'
+import type { MessageAttachmentMetadata } from '../data/message-attachments'
 import type { UserContentPart } from './user-message'
 import { FocusScope } from '../focus/FocusScope'
 import { usePanelVisibility } from './visibility'
@@ -588,7 +592,7 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
                     text={message.content}
                     parts={message.contentParts}
                     status="landed"
-                    attachments={0}
+                    attachments={messageAttachmentMetadata(message)}
                     flash={message.id === flashMessageId}
                   />
                 )
@@ -664,7 +668,11 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
                         text={entry.text}
                         segments={entry.segments}
                         status={entry.status === 'failed' ? 'failed' : 'pending'}
-                        attachments={entry.attachments}
+                        attachments={messageAttachmentMetadata({
+                          id: entry.id,
+                          attachments: entry.files?.map((file) => ({ file, fileName: file.name, mimeType: file.type, size: file.size })),
+                        })}
+                        attachmentCount={entry.attachments}
                         error={entry.error}
                         entryId={entry.id}
                       />
@@ -1463,6 +1471,7 @@ function useFollowBottom(
         }
       }
       let contentGrew = false
+      let contentChanged = false
       let containerChanged = false
       for (const entry of entries) {
         if (entry.target === el) {
@@ -1470,6 +1479,7 @@ function useFollowBottom(
           continue
         }
         const height = entry.contentRect.height || column.getBoundingClientRect().height
+        if (height !== lastHeightRef.current) contentChanged = true
         if (height > lastHeightRef.current) contentGrew = true
         lastHeightRef.current = height
       }
@@ -1495,7 +1505,9 @@ function useFollowBottom(
         lastGapRef.current = el.scrollHeight - el.clientHeight - el.scrollTop
         return
       }
-      if (!contentGrew && !containerChanged) return
+      // 贴底也要处理缩短:很小的高度回退就可能让浏览器钳回半个设备像素。
+      // browsing 的「有新内容」仍只由下方 contentGrew 判定;折叠/恢复优先分支照旧。
+      if (!contentChanged && !containerChanged) return
       /*
        * ── 长出来的那一截在视口下面吗(2026-09-10,`content-visibility` 的第二个
        *    后果)────────────────────────────────────────────────────────────
@@ -2220,6 +2232,7 @@ const UserBubble = memo(function UserBubble({
   segments,
   status,
   attachments,
+  attachmentCount = 0,
   error,
   entryId,
   flash,
@@ -2232,7 +2245,8 @@ const UserBubble = memo(function UserBubble({
   parts?: readonly UserContentPart[]
   segments?: readonly ResolvedSegment[]
   status: 'pending' | 'failed' | 'landed'
-  attachments: number
+  attachments?: readonly MessageAttachmentMetadata[]
+  attachmentCount?: number
   error?: string
   /** overlay 那一格的号(两口动作按它认)。落账之后缺席。 */
   entryId?: string
@@ -2243,6 +2257,48 @@ const UserBubble = memo(function UserBubble({
   const dismiss = useChatSourceOf(sessionId, (st) => st.dismiss)
   const landed = status === 'landed'
   const failed = status === 'failed'
+  const images = attachments?.filter(isImageAttachment) ?? []
+  const files = attachments?.filter((a) => !isImageAttachment(a)) ?? []
+  const hasBody = Boolean(segments?.length || parts?.length || text?.trim())
+  const showBubble = hasBody || files.length > 0 || failed
+  const bubble = (
+    <div
+      className={[s.user, !landed && s.pending, failed && s.pendingFailed]
+        .filter(Boolean)
+        .join(' ')}
+      /* 门与用例按它找在飞那一格;落账之后它**不在了** —— 那正是「认领成了」。 */
+      data-testid={landed ? undefined : `chat-pending-${failed ? 'failed' : 'sending'}`}
+    >
+      {/* 三个来源一条判据链:现成的段 ▷ 部件 ▷ 正文(判词在 user-message 文件头)。 */}
+      <UserMessageBody text={text} parts={parts} segments={segments} />
+      <UserFiles attachments={files} />
+      {!attachments?.length && attachmentCount > 0 && (
+        <span className={s.sentAtt}>
+          <ClipIcon className={s.sentAttIcon} strokeWidth={1.8} aria-hidden="true" />
+          {attachmentCount}
+        </span>
+      )}
+      {failed && entryId !== undefined && (
+        <span className={s.pendingFoot}>
+          {/* 失败的理由照抄后端说的 —— 渲染层不替它编一句更好听的。 */}
+          <span className={s.pendingError}>{error}</span>
+          {/*
+            * 三类判的第三类:脚注上的**微型静默文字动作**(fs-micro / 无边框无底 /
+            * 长在一行错误说明的旁边),视觉本该定制 —— 与批 3 把「加载更多」判进
+            * 基座同一形。换成 `ui/Button` 会在这一行里塞进两颗 28 高的描边钮,
+            * 那不是等价替换而是改版。皮肤留本地,清 UA 归 `ui/ButtonBase`。
+            */}
+          <ButtonBase className={s.pendingAction} onClick={() => retry(entryId)}>
+            <RetryIcon className={s.pendingIcon} strokeWidth={1.9} aria-hidden="true" />
+            {t('chat.retry')}
+          </ButtonBase>
+          <ButtonBase className={s.pendingAction} onClick={() => dismiss(entryId)}>
+            {t('chat.discard')}
+          </ButtonBase>
+        </span>
+      )}
+    </div>
+  )
 
   return (
     /*
@@ -2256,41 +2312,18 @@ const UserBubble = memo(function UserBubble({
       data-role="user"
       data-pending={landed ? undefined : status}
     >
-      <div
-        className={[s.user, !landed && s.pending, failed && s.pendingFailed]
-          .filter(Boolean)
-          .join(' ')}
-        /* 门与用例按它找在飞那一格;落账之后它**不在了** —— 那正是「认领成了」。 */
-        data-testid={landed ? undefined : `chat-pending-${failed ? 'failed' : 'sending'}`}
-      >
-        {/* 三个来源一条判据链:现成的段 ▷ 部件 ▷ 正文(判词在 user-message 文件头)。 */}
-        <UserMessageBody text={text} parts={parts} segments={segments} />
-        {attachments > 0 && (
-          <span className={s.sentAtt}>
-            <ClipIcon className={s.sentAttIcon} strokeWidth={1.8} aria-hidden="true" />
-            {attachments}
-          </span>
-        )}
-        {failed && entryId !== undefined && (
-          <span className={s.pendingFoot}>
-            {/* 失败的理由照抄后端说的 —— 渲染层不替它编一句更好听的。 */}
-            <span className={s.pendingError}>{error}</span>
-            {/*
-              * 三类判的第三类:脚注上的**微型静默文字动作**(fs-micro / 无边框无底 /
-              * 长在一行错误说明的旁边),视觉本该定制 —— 与批 3 把「加载更多」判进
-              * 基座同一形。换成 `ui/Button` 会在这一行里塞进两颗 28 高的描边钮,
-              * 那不是等价替换而是改版。皮肤留本地,清 UA 归 `ui/ButtonBase`。
-              */}
-            <ButtonBase className={s.pendingAction} onClick={() => retry(entryId)}>
-              <RetryIcon className={s.pendingIcon} strokeWidth={1.9} aria-hidden="true" />
-              {t('chat.retry')}
-            </ButtonBase>
-            <ButtonBase className={s.pendingAction} onClick={() => dismiss(entryId)}>
-              {t('chat.discard')}
-            </ButtonBase>
-          </span>
-        )}
-      </div>
+      {/*
+        * 图站在气泡**外面**(2026-09-16 比稿 A):图在上、气泡在下。只有图、又没有要说的话
+        * (没有正文、没有别的文件、也没失败要挂重试)时,气泡整个不画。判词在 user-attachments。
+        */}
+      {images.length > 0 ? (
+        <div className={u.withImages}>
+          <UserImages sessionId={sessionId} images={images} pending={!landed && !failed} />
+          {showBubble && bubble}
+        </div>
+      ) : (
+        bubble
+      )}
     </article>
   )
 })

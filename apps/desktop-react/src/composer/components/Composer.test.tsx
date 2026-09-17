@@ -16,6 +16,8 @@ import { pickDrawer } from '../types'
 import { composerDraftKeys, readComposerDraft } from '../drafts'
 import { configureComposerSink } from '../sink'
 import { ASK_DEMO_SPEC } from '../data'
+import { configureInteractionPort, type InteractionPort } from '../../data/interaction-port'
+import type { InteractionRequest } from '@shared/ipc/interaction'
 import { useStageStore } from '../../stage/store'
 import { useChatSource } from '../../data/chat-source'
 import { useCommandsSource } from '../../data/commands-source'
@@ -52,6 +54,7 @@ let aborts = 0
  * 说得清的投影,所以它是一件要单独钉的事实。
  */
 const handedTo: string[] = []
+const handedFiles: (readonly File[])[] = []
 
 /**
  * 假 sink 眼里「有没有当前会话」—— 首开草稿态就是这一格为 false:
@@ -73,20 +76,28 @@ const REPO_FILES = ['/repo/src/model-capability.ts', '/repo/src/codex.ts']
  * 抽屉纪律(一个槽、后来者顶替、Esc 收)与 ask 形态的进出是这一层的主戏。
  */
 beforeEach(() => {
+  configureInteractionPort({
+    getPending: async () => ({ success: true, pending: [] }),
+    respond: async () => ({ success: true }),
+    onEvent: () => () => {},
+    onReconnect: () => () => {},
+  })
   useStageStore.setState({ locale: 'zh' })
   resetComposerStore()
   handed.length = 0
   handedTo.length = 0
+  handedFiles.length = 0
   aborts = 0
   hasSession = true
   starts = 0
   answerStart = async () => 'created-1'
   configureComposerSink({
-    send: (text, attachments, sessionId) => {
+    send: (text, attachments, sessionId, _segments, files) => {
       // 没有当前会话就交不出去 —— 与真实现同判据(见 sink.ts 上的 send 注释)。
       if (!hasSession) return false
       handed.push({ kind: 'text', text, attachments })
       handedTo.push(sessionId)
+      handedFiles.push(files ?? [])
       return true
     },
     notice: (notice) => void handed.push({ kind: 'notice', notice }),
@@ -149,6 +160,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  configureInteractionPort(undefined)
   vi.useRealTimers()
   configureComposerSink(undefined)
   configureFilesPort(undefined)
@@ -337,18 +349,17 @@ describe('抽屉:一个槽,后来者顶替先来者', () => {
   })
 
   /**
-   * 09-05(庚)改口:**点一行只做一件事 —— 选中它,抽屉不关**。
-   *
-   * 从前这一口是「一个手势,两件事」(选中 + 收抽屉)。设计 §5.8 之后右栏那张卡
-   * 讲的正是「刚选中的这一型」,选完当场关掉等于把刚翻开的那一页合上。
-   * 反证:把 `composer/store.chooseModel` 里那句 `set({drawerKind:null})` 加回去 →
+   * 09-17 改口(推翻 09-05 庚「选中不关」):**选中即收起**。
+   * 用户报「选中后不会自己收起来」—— 点一行的意图就是「换成它」,换完还要再点外面
+   * 才回得去输入框是多一手。
+   * 反证:删掉 `composer/store.chooseModel` 里那句 `set({drawerKind:null})` →
    * 这一条当场红。
    */
-  it('选一个模型:pill 换名,抽屉**不关**(右栏立刻换成这一型)', () => {
+  it('选一个模型:pill 换名,抽屉收起', () => {
     renderComposer()
     fireEvent.click(modelPill())
     fireEvent.mouseDown(screen.getByText('grok-4'))
-    expect(state().drawerKind).toBe('model')
+    expect(state().drawerKind).toBeNull()
     // 没有当前会话:这次选择是「下一条新会话用谁」,记在 pending 上,不发请求。
     expect(useModelsSource.getState().pending).toEqual({ provider: 'xai', model: 'grok-4' })
     expect(modelPill().textContent).toContain('grok-4')
@@ -399,6 +410,39 @@ describe('抽屉:一个槽,后来者顶替先来者', () => {
  * 这枚 chip 的位置 —— 它在**草稿的出口**展成 `@<绝对路径>`(09-12,见
  * `ComposerInput.test.tsx`;从前这一步在 chat-port,那正是重复气泡的病根)。
  */
+describe('真实 ask_user 表单', () => {
+  const req: InteractionRequest = {
+    id: 'live-ask', sessionId: 'ask-session', toolCallId: 'ask-call', origin: 'host-tool',
+    createdAt: Date.now(), deadlineAt: Date.now() + 60_000,
+    questions: [
+      { id: 'q1', question: '选一个方案', header: '方案', options: [{ label: '甲方案' }, { label: '乙方案' }], allowFreeText: false },
+      { id: 'q2', question: '补充说明', header: '说明', options: [], allowFreeText: true },
+    ],
+  }
+
+  it('挂载恢复真实问题,输入自由文本可直接提交,没有额外聊天消息', async () => {
+    const respond = vi.fn<InteractionPort['respond']>().mockResolvedValue({ success: true })
+    configureInteractionPort({ getPending: async () => ({ success: true, pending: [req] }), respond,
+      onEvent: () => () => {}, onReconnect: () => () => {},
+    })
+    renderComposer(req.sessionId)
+    await act(async () => { await Promise.resolve() })
+    expect(screen.getByText('选一个方案')).toBeTruthy()
+    expect(screen.queryByRole('textbox', { name: /就在这行写/ })).toBeNull()
+    fireEvent.click(screen.getByText('甲方案'))
+    fireEvent.click(screen.getByLabelText('下一题'))
+    const free = screen.getByRole('textbox', { name: /就在这行写/ })
+    free.textContent = '按我的补充执行'
+    fireEvent.input(free)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '提交 2/2' })) })
+    expect(respond).toHaveBeenCalledExactlyOnceWith({ sessionId: req.sessionId, interactionId: req.id, toolCallId: req.toolCallId,
+      answers: { q1: { selected: ['甲方案'] }, q2: { selected: [], freeText: '按我的补充执行' } },
+    })
+    expect(handed).toEqual([])
+    expect(state().mode).toBe('write')
+  })
+})
+
 describe('@ 引用:候选是真的,插进去的是 token', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -978,6 +1022,67 @@ describe('拍立得附件', () => {
     fireEvent.change(input, { target: { files: names.map(drop) } })
   }
 
+  it('粘贴文件保留真实文件并阻止文件名作为正文插入,回车发送这些文件', () => {
+    renderComposer()
+    const box = screen.getByTestId('composer-input')
+    type(box, '看看附件')
+    const files = [drop('报告.txt'), drop('notes.md')]
+    const unhandled = fireEvent.paste(box, {
+      clipboardData: {
+        files,
+        items: files.map((file) => ({ kind: 'file', getAsFile: () => file })),
+        getData: () => '报告.txt\nnotes.md',
+      },
+    })
+    expect(unhandled).toBe(false)
+    expect(box.textContent).toBe('看看附件')
+    expect(state().attachments.map((attachment) => attachment.name)).toEqual(['报告.txt', 'notes.md'])
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(handedFiles).toEqual([files])
+    expect(handed.at(-1)).toEqual({ kind: 'text', text: '看看附件', attachments: 2 })
+  })
+
+  it('剪贴板只通过 items 提供图片时也作为附件接收', () => {
+    renderComposer()
+    const image = new File(['pixels'], 'screenshot.png', { type: 'image/png' })
+    fireEvent.paste(screen.getByTestId('composer-input'), {
+      clipboardData: {
+        files: [],
+        items: [
+          { kind: 'string', getAsFile: () => null },
+          { kind: 'file', getAsFile: () => null },
+          { kind: 'file', getAsFile: () => image },
+        ],
+      },
+    })
+    expect(state().attachments).toHaveLength(1)
+    expect(state().attachments[0].file).toBe(image)
+  })
+
+  it('普通文本粘贴交给输入框,不生成附件', () => {
+    renderComposer()
+    const unhandled = fireEvent.paste(screen.getByTestId('composer-input'), {
+      clipboardData: {
+        files: [],
+        items: [{ kind: 'string', getAsFile: () => null }],
+        getData: () => '普通文本',
+      },
+    })
+    expect(unhandled).toBe(true)
+    expect(state().attachments).toEqual([])
+  })
+
+  it('拖进输入框的文件保留内容,可直接点击发送', () => {
+    renderComposer()
+    const file = drop('dragged.txt')
+    fireEvent.drop(screen.getByTestId('composer-input'), { dataTransfer: { files: [file] } })
+    expect(state().attachments[0].file).toBe(file)
+    fireEvent.click(screen.getByLabelText('发送'))
+    expect(handedFiles).toEqual([[file]])
+    expect(handed.at(-1)).toEqual({ kind: 'text', text: '', attachments: 1 })
+    expect(state().attachments).toEqual([])
+  })
+
   it('📎 进来几张就有几张卡,计数徽念总数;删一张其余就位', () => {
     const { container } = renderComposer()
     attach(container, ['a.log', 'b.png'])
@@ -1018,11 +1123,10 @@ describe('发送', () => {
     const { container } = renderComposer()
     const box = screen.getByRole('textbox', { name: /说点什么/ })
     const input = container.querySelector('input[type="file"]') as HTMLInputElement
-    fireEvent.change(input, { target: { files: [new File(['x'], 'a.log')] } })
-
     fireEvent.click(screen.getByLabelText('发送'))
     expect(handed).toHaveLength(0)
 
+    fireEvent.change(input, { target: { files: [new File(['x'], 'a.log')] } })
     type(box, '把徽标那处也改了')
     fireEvent.click(screen.getByLabelText('发送'))
     expect(handed.at(-1)).toEqual({
@@ -1091,6 +1195,82 @@ describe('发送', () => {
  * 这里守的是**限高必然带出来的那另一半**:选中项走出视野时要滚回来。
  * 只做限高不做滚入视野,比不限高更糟 —— 键盘还在动,屏幕上什么都不变。
  */
+describe('模型抽屉打开时对准当前模型', () => {
+  const roster = [{ id: 'deepseek', name: 'DeepSeek' }, { id: 'xai', name: 'Grok' }]
+  const rows = () => screen.getAllByRole('button').filter((button) => /pickRow/.test(button.className))
+  const activeRow = () => rows().find((button) => /pickSel/.test(button.className))!
+  const search = () => screen.getByRole('textbox', { name: '搜模型或 Provider…' })
+
+  function stageModels() {
+    providersQuery.patch(roster)
+    prefsQuery.get('default').patch({
+      prefs: {
+        defaultProvider: 'xai',
+        configs: {
+          deepseek: providerModelPrefs({ model: 'deepseek-v4-flash', selectedModels: ['deepseek-v4-flash'] }),
+          xai: providerModelPrefs({ model: 'grok-4.6', selectedModels: ['grok-4.5', 'grok-4.6'] }),
+        },
+      },
+      custom: [],
+    })
+    catalogQuery.get('deepseek').patch([openRouterModel('deepseek-v4-flash', 1_000_000)])
+    catalogQuery.get('xai').patch([openRouterModel('grok-4.5', 500_000), openRouterModel('grok-4.6', 500_000)])
+  }
+
+  it('跨服务商的末项为当前模型时，首次高亮并滚到该项，直接回车不切到首项', () => {
+    stageModels()
+    const scrolled: HTMLElement[] = []
+    const spy = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (this: HTMLElement) {
+      scrolled.push(this)
+    })
+    try {
+      renderComposer()
+      fireEvent.click(modelPill())
+      expect(activeRow().textContent).toContain('grok-4.6')
+      expect(scrolled.at(-1)).toBe(activeRow())
+      expect(spy).toHaveBeenLastCalledWith({ block: 'nearest' })
+      fireEvent.keyDown(search(), { key: 'Enter' })
+      expect(modelPill().textContent).toContain('grok-4.6')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('键盘浏览不被目录读数刷新重置，重新打开回到实际选中模型', () => {
+    stageModels()
+    renderComposer()
+    fireEvent.click(modelPill())
+    fireEvent.keyDown(search(), { key: 'ArrowUp' })
+    expect(activeRow().textContent).toContain('grok-4.5')
+    act(() => catalogQuery.get('xai').patch([
+      openRouterModel('grok-4.5', 1_000_000), openRouterModel('grok-4.6', 1_000_000),
+    ]))
+    expect(activeRow().textContent).toContain('grok-4.5')
+    fireEvent.click(modelPill())
+    fireEvent.click(modelPill())
+    expect(activeRow().textContent).toContain('grok-4.6')
+  })
+
+  it('搜索定位首个结果，清空搜索恢复当前模型', () => {
+    stageModels()
+    renderComposer()
+    fireEvent.click(modelPill())
+    fireEvent.change(search(), { target: { value: 'grok' } })
+    expect(activeRow().textContent).toContain('grok-4.5')
+    fireEvent.change(search(), { target: { value: '' } })
+    expect(activeRow().textContent).toContain('grok-4.6')
+  })
+
+  it('名册晚到时仍按当前 provider/model 定位', () => {
+    stageModels()
+    providersQuery.patch([])
+    renderComposer()
+    fireEvent.click(modelPill())
+    act(() => providersQuery.patch(roster))
+    expect(activeRow().textContent).toContain('grok-4.6')
+  })
+})
+
 describe('抽屉列表封顶之后:选中项要滚进视野', () => {
   it('↑↓ 换选中项时,对那一行调 scrollIntoView({ block: "nearest" })', async () => {
     const original = Element.prototype.scrollIntoView
@@ -1300,6 +1480,35 @@ describe('首开草稿态:没有会话时发送 = 先建一条,再把这句话�
   const sendBtn = () => screen.getByLabelText('发送')
   const box = () => screen.getByRole('textbox', { name: /说点什么/ })
 
+  it('只有粘贴文件也会建会话,文件交给刚建的会话', async () => {
+    hasSession = false
+    renderComposer()
+    const file = new File(['first attachment'], 'first.txt', { type: 'text/plain' })
+    fireEvent.paste(box(), { clipboardData: { files: [file] } })
+
+    await act(async () => void fireEvent.keyDown(box(), { key: 'Enter' }))
+
+    expect(starts).toBe(1)
+    expect(handedTo).toEqual(['created-1'])
+    expect(handedFiles).toEqual([[file]])
+    expect(handed).toEqual([{ kind: 'text', text: '', attachments: 1 }])
+    expect(state().attachments).toEqual([])
+  })
+
+  it('仅文件的首条消息建会话失败,保留附件供再次发送', async () => {
+    hasSession = false
+    answerStart = async () => undefined
+    renderComposer()
+    const file = new File(['keep me'], 'retry.txt')
+    fireEvent.paste(box(), { clipboardData: { files: [file] } })
+
+    await act(async () => void fireEvent.click(sendBtn()))
+
+    expect(starts).toBe(1)
+    expect(handed).toEqual([])
+    expect(state().attachments[0].file).toBe(file)
+  })
+
   it('恰好建一条会话,原话发进去,输入框清空', async () => {
     hasSession = false
     renderComposer()
@@ -1449,16 +1658,18 @@ describe('律③:切模型在飞时,药丸自报忙、抽屉不接第二下', ()
   })
 
   /**
-   * 09-05(庚)之后抽屉**两下都不关**(选中不再收抽屉),所以这一条守的东西
-   * 收窄成它真正要守的那一件:**在飞时第二下一个字都不发**(闸在 commit)。
+   * 09-17 起选中即收起,所以第二下要先把抽屉再开一次。这一条守的是:
+   * **在飞时第二下一个字都不发**(闸在 commit),而且被拦下的那一下不收抽屉。
    */
   it('在飞时抽屉的第二下**不发**(闸在 commit,不在 store)', async () => {
     renderComposer(SESSION)
     fireEvent.click(pill())
     await act(async () => void fireEvent.mouseDown(row()))
     expect(updates).toEqual(['grok-4'])
+    expect(state().drawerKind).toBeNull()
 
-    // 再点同一行:commit 那道闸把它整下拦掉,不发第二发。
+    // 再开抽屉、再点同一行:commit 那道闸把它整下拦掉,不发第二发。
+    fireEvent.click(pill())
     await act(async () => void fireEvent.mouseDown(row()))
     expect(updates).toEqual(['grok-4'])
     expect(state().drawerKind).toBe('model')
@@ -1669,11 +1880,11 @@ describe('庚:模型选择器带思考档位', () => {
    *  ① **卡是列表的兄弟,不是它的内容** —— 卡在滚动区里,滚列表就会把卡滚走,
    *     而卡恰恰是「必须一直看得见」的那一半(设计 §5.8)。
    *     反证:把 `<ModelDetailCard/>` 搬进 `.pickScroll` 里 → 这一条当场红。
-   *  ② **换选中之后列表不许重挂** —— 否则滚动位当场归零:用户滚到第 40 条
-   *     点了一下,列表跳回顶。
-   *     反证:给列表那棵子树加一个跟着选中变的 `key` → 这一条当场红。
+   *  ② **键盘位移动时列表不许重挂** —— 否则滚动位当场归零:用户滚到第 40 条
+   *     按一下 ↓,列表跳回顶。(09-17 起点选即收起,守的从「点另一行」换成 ↑↓。)
+   *     反证:给列表那棵子树加一个跟着键盘位变的 `key` → 这一条当场红。
    */
-  it('右栏是兄弟不是内容;选另一行时 `.pickScroll` 是同一个节点、scrollTop 不动', () => {
+  it('右栏是兄弟不是内容;移动键盘位时 `.pickScroll` 是同一个节点、scrollTop 不动', () => {
     providersQuery.patch([{ id: 'xai', name: 'xAI' }])
     prefsQuery.get('default').patch({
       prefs: {
@@ -1702,7 +1913,7 @@ describe('庚:模型选择器带思考档位', () => {
     //    「这棵子树没被重建」,重建的话赋上去的值当然也就没了。
     scroll.scrollTop = 120
 
-    fireEvent.mouseDown(screen.getByText('grok-4-fast'))
+    fireEvent.keyDown(screen.getByLabelText('搜模型或 Provider…'), { key: 'ArrowDown' })
 
     expect(container.querySelector('[class*="pickScroll"]')).toBe(scroll)
     expect(scroll.scrollTop).toBe(120)

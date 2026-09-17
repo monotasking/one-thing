@@ -37,6 +37,11 @@ import { PERF_BUDGET } from '../perf-budget'
 import { record } from './log'
 import { notify } from './notify'
 import { t } from '../i18n'
+import {
+  rememberApplicationMark,
+  startPerformanceRecordRetention,
+  stopPerformanceRecordRetention,
+} from './perf-records'
 
 export type PerfKind = 'longFrame' | 'interaction' | 'span'
 
@@ -589,7 +594,10 @@ export function __resetPerfCountThrottleForTests(): void {
 export function perfMark(name: string): void {
   push({ ts: Date.now(), kind: 'span', ms: 0, name })
   try {
-    performance.mark?.(name)
+    if (typeof performance.mark === 'function') {
+      performance.mark(name)
+      rememberApplicationMark(name)
+    }
   } catch {
     // mark 名冲突 / 环境没有 —— 少一个时间轴标记,不该拖垮应用。
   }
@@ -959,9 +967,10 @@ let started = false
  * 环境不支持 PerformanceObserver(jsdom 就是)时整步跳过,返回一个空卸载。
  */
 export function startPerfProbe(): () => void {
-  if (typeof PerformanceObserver === 'undefined') return () => undefined
   if (started) return stopPerfProbe
   started = true
+  startPerformanceRecordRetention()
+  if (typeof PerformanceObserver === 'undefined') return stopPerfProbe
 
   observe('long-animation-frame', { type: 'long-animation-frame', buffered: true }, QK_LOAF)
 
@@ -979,6 +988,7 @@ export function startPerfProbe(): () => void {
 }
 
 export function stopPerfProbe(): void {
+  stopPerformanceRecordRetention()
   observers.forEach((o) => o.disconnect())
   observers = []
   started = false

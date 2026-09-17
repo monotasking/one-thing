@@ -103,6 +103,29 @@ const outBox = () => screen.getByTestId('model-override-output') as HTMLInputEle
 const openModelId = () =>
   screen.getByTestId('model-override').querySelector('[data-model]')?.getAttribute('data-model')
 
+describe('自定义思考配置', () => {
+  it('等级与名称一次保存，非法映射不会写入', async () => {
+    const onWriteOverride = vi.fn()
+    renderCatalog([row('grok-4.6')], { onWriteOverride })
+    await openOverride('grok-4.6')
+    fireEvent.click(screen.getByText('自定义思考配置'))
+    fireEvent.change(screen.getByLabelText('低档的显示名称'), { target: { value: '快速' } })
+    fireEvent.click(screen.getByText('高级：请求参数映射'))
+    fireEvent.change(screen.getByLabelText('高级：请求参数映射'), { target: { value: '{broken' } })
+    fireEvent.click(screen.getByText('保存思考配置'))
+    expect(screen.getByRole('alert')).toBeTruthy()
+    expect(onWriteOverride).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText('高级：请求参数映射'), { target: {
+      value: '{"effortPath":"reasoning.effort","effortValues":{"low":"fast","high":"deep"}}',
+    } })
+    fireEvent.click(screen.getByText('保存思考配置'))
+    expect(onWriteOverride).toHaveBeenCalledWith('grok-4.6', expect.objectContaining({ reasoningProfile: expect.objectContaining({
+      efforts: ['low', 'high'], effortLabels: { low: '快速' },
+      custom: { effortPath: 'reasoning.effort', effortValues: { low: 'fast', high: 'deep' } },
+    }) }))
+  })
+})
+
 /* ══ ① 那颗钮 ═══════════════════════════════════════════════════════════ */
 
 describe('行尾第三颗钮', () => {

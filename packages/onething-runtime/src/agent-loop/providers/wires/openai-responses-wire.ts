@@ -128,6 +128,9 @@ export interface CodexSseEvent {
 	itemId?: string;
 	call_id?: string;
 	callId?: string;
+	summary_index?: number;
+	content_index?: number;
+	part?: AgentJsonValue;
 	summary?: AgentJsonValue;
 	summary_text?: AgentJsonValue;
 	summaryText?: AgentJsonValue;
@@ -140,10 +143,6 @@ export interface CodexSseEvent {
 		error?: { message?: string };
 	};
 	error?: { message?: string };
-}
-
-function previewText(value: string, maxLength = 160): string {
-	return value.replace(/\s+/g, " ").trim().slice(0, maxLength);
 }
 
 function codexRecord(value: AgentJsonValue | undefined): CodexRawRecord {
@@ -517,6 +516,32 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 		let emittedTextFromDelta = false;
 		let activeReasoningItemId: string | undefined;
 		const reasoningSummaryByItem = new Map<string, string>();
+		const reasoningPartsByItem = new Map<string, Map<number, string>>();
+		const activeReasoningPartByItem = new Map<string, number>();
+		const streamStartedAt = Date.now();
+		const streamStats = {
+			events: 0,
+			reasoningDeltaEvents: 0,
+			reasoningDeltaChars: 0,
+			maxReasoningDeltaChars: 0,
+			toolArgumentDeltaEvents: 0,
+			reasoningDeltas: 0,
+			reasoningChars: 0,
+			textDeltas: 0,
+			textChars: 0,
+			firstReasoningMs: undefined as number | undefined,
+			firstTextMs: undefined as number | undefined,
+			reasoningSnapshotMismatches: 0,
+		};
+		const unhandledEvents = new Map<string, number>();
+		const unhandledOutputItems = new Map<string, number>();
+		const countUnhandled = (counts: Map<string, number>, value: unknown): void => {
+			// Types only: no arguments, response text, IDs, or encrypted reasoning.
+			const type = typeof value === "string" && /^[a-zA-Z0-9_.:-]{1,80}$/.test(value)
+				? value : "unknown";
+			const key = counts.has(type) || counts.size < 32 ? type : "other";
+			counts.set(key, (counts.get(key) ?? 0) + 1);
+		};
 
 		const toolInputByItemId = new Map<string, ActiveFunctionCallInput>();
 		const toolInputByCallId = new Map<string, ActiveFunctionCallInput>();
@@ -527,6 +552,9 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 			itemId = "reasoning-0",
 		): Generator<AgentTurnStreamEvent> {
 			if (!delta) return;
+			streamStats.reasoningDeltas += 1;
+			streamStats.reasoningChars += delta.length;
+			streamStats.firstReasoningMs ??= Date.now() - streamStartedAt;
 			reasoningSummaryByItem.set(
 				itemId,
 				`${reasoningSummaryByItem.get(itemId) ?? ""}${delta}`,
@@ -535,20 +563,69 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 				log.trace("reasoning delta", {
 					turn: turnIndex,
 					chars: delta.length,
-					text: previewText(delta, 240),
 				});
 			}
 			yield { type: "reasoning-delta", turn: turnIndex, delta };
 		};
 
+		const reasoningPartIndex = (event: CodexSseEvent, itemId: string): number =>
+			event.summary_index ?? event.content_index ?? activeReasoningPartByItem.get(itemId) ?? 0;
+
+		const emitReasoningPart = function* (
+			delta: string,
+			itemId: string,
+			partIndex: number,
+		): Generator<AgentTurnStreamEvent> {
+			if (!delta) return;
+			let parts = reasoningPartsByItem.get(itemId);
+			if (!parts) reasoningPartsByItem.set(itemId, parts = new Map());
+			if (!parts.has(partIndex) && reasoningSummaryByItem.get(itemId)?.trim()) {
+				yield* emitReasoning("\n\n", itemId);
+			}
+			parts.set(partIndex, `${parts.get(partIndex) ?? ""}${delta}`);
+			activeReasoningPartByItem.set(itemId, partIndex);
+			yield* emitReasoning(delta, itemId);
+		};
+
+		const emitReasoningSnapshot = function* (
+			summary: string,
+			itemId: string,
+			partIndex: number,
+		): Generator<AgentTurnStreamEvent> {
+			if (!summary) return;
+			const streamed = reasoningPartsByItem.get(itemId)?.get(partIndex) ?? "";
+			if (summary.startsWith(streamed)) {
+				yield* emitReasoningPart(summary.slice(streamed.length), itemId, partIndex);
+			} else if (!streamed.startsWith(summary)) {
+				// A completed snapshot may revise already emitted text. The stream
+				// contract is append-only; record the mismatch without duplicating it.
+				streamStats.reasoningSnapshotMismatches += 1;
+			}
+		};
+
+		const emitReasoningItem = function* (
+			item: CodexRawRecord,
+			itemId: string,
+		): Generator<AgentTurnStreamEvent> {
+			if (Array.isArray(item.summary) && item.summary.length > 0) {
+				for (const [index, part] of item.summary.entries()) {
+					yield* emitReasoningSnapshot(collectReasoningSummaryText(part).join(""), itemId, index);
+				}
+			} else {
+				yield* emitReasoningSnapshot(extractReasoningSummaryText(item), itemId, 0);
+			}
+		};
+
 		const emitText = function* (delta: string): Generator<AgentTurnStreamEvent> {
 			if (!delta) return;
+			streamStats.textDeltas += 1;
+			streamStats.textChars += delta.length;
+			streamStats.firstTextMs ??= Date.now() - streamStartedAt;
 			emittedTextFromDelta = true;
 			if (debugStream) {
 				log.trace("text delta", {
 					turn: turnIndex,
 					chars: delta.length,
-					text: previewText(delta, 240),
 				});
 			}
 			yield { type: "text-delta", turn: turnIndex, delta };
@@ -786,12 +863,11 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 		};
 
 		for await (const event of parseCodexResponsesSse(response.body)) {
+			streamStats.events += 1;
 			if (debugStream) {
 				log.trace("sse event", {
 					type: event.type,
 					deltaChars: typeof event.delta === "string" ? event.delta.length : 0,
-					deltaPreview:
-						typeof event.delta === "string" ? previewText(event.delta, 240) : "",
 					itemType: event.item?.type,
 					hasUsage: Boolean(event.response?.usage),
 				});
@@ -803,13 +879,18 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 				case "response.output_text.delta":
 					yield* emitText(event.delta ?? "");
 					break;
+				case "response.reasoning_text.delta":
 				case "response.reasoning_summary_text.delta": {
+					const delta = event.delta ?? event.text ?? "";
+					streamStats.reasoningDeltaEvents += 1;
+					streamStats.reasoningDeltaChars += delta.length;
+					streamStats.maxReasoningDeltaChars = Math.max(streamStats.maxReasoningDeltaChars, delta.length);
 					const itemId = getReasoningItemId(
 						undefined,
 						event,
 						activeReasoningItemId ?? "reasoning-0",
 					);
-					yield* emitReasoning(event.delta ?? event.text ?? "", itemId);
+					yield* emitReasoningPart(delta, itemId, reasoningPartIndex(event, itemId));
 					break;
 				}
 				case "response.reasoning_summary_part.added": {
@@ -818,10 +899,14 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 						event,
 						activeReasoningItemId ?? "reasoning-0",
 					);
-					if (reasoningSummaryByItem.get(itemId)?.trim())
-						yield* emitReasoning("\n\n", itemId);
+					activeReasoningPartByItem.set(itemId, event.summary_index ?? (
+						reasoningPartsByItem.has(itemId) ? (activeReasoningPartByItem.get(itemId) ?? 0) + 1 : 0
+					));
+					yield* emitReasoningSnapshot(collectReasoningSummaryText(event.part).join(""), itemId, reasoningPartIndex(event, itemId));
 					break;
 				}
+				case "response.reasoning_text.done":
+				case "response.reasoning_summary_part.done":
 				case "response.reasoning_summary_text.done": {
 					const itemId = getReasoningItemId(
 						undefined,
@@ -833,25 +918,21 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 						event.summary,
 						event.summary_text,
 						event.summaryText,
+						event.part,
 					]).join("");
-					if (summary && !reasoningSummaryByItem.get(itemId)?.trim())
-						yield* emitReasoning(summary, itemId);
+					yield* emitReasoningSnapshot(summary, itemId, reasoningPartIndex(event, itemId));
 					break;
 				}
 				case "response.function_call_arguments.delta":
 				case "response.custom_tool_call_input.delta":
+					streamStats.toolArgumentDeltaEvents += 1;
 					yield* emitFunctionCallInputDelta(event);
 					break;
 				case "response.output_item.added": {
 					const item = event.item ?? {};
 					if (item.type === "reasoning") {
 						activeReasoningItemId = getReasoningItemId(item, event, "reasoning-0");
-						const summary = extractReasoningSummaryText(item);
-						if (
-							summary &&
-							!reasoningSummaryByItem.get(activeReasoningItemId)?.trim()
-						)
-							yield* emitReasoning(summary, activeReasoningItemId);
+						yield* emitReasoningItem(item, activeReasoningItemId);
 						break;
 					}
 					if (isCodexFunctionCallItem(item)) {
@@ -875,6 +956,8 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 								},
 							};
 						}
+					} else if (item.type !== "message") {
+						countUnhandled(unhandledOutputItems, item.type);
 					}
 					break;
 				}
@@ -918,9 +1001,7 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 							event,
 							activeReasoningItemId ?? "reasoning-0",
 						);
-						const summary = extractReasoningSummaryText(item);
-						if (summary && !reasoningSummaryByItem.get(itemId)?.trim())
-							yield* emitReasoning(summary, itemId);
+						yield* emitReasoningItem(item, itemId);
 						const encryptedContent = optionalString(item.encrypted_content);
 						if (encryptedContent) {
 							yield {
@@ -939,6 +1020,8 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 					}
 					if (item.type === "message" && !emittedTextFromDelta) {
 						yield* emitText(extractOutputText(item));
+					} else if (item.type !== "message") {
+						countUnhandled(unhandledOutputItems, item.type);
 					}
 					break;
 				}
@@ -954,7 +1037,17 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 					break;
 				case "response.failed":
 					throw errors.fromFailedResponse(event.response?.error?.message);
+				case "response.created":
+				case "response.in_progress":
+				case "response.content_part.added":
+				case "response.content_part.done":
+				case "response.output_text.done":
+				case "response.function_call_arguments.done":
+				case "response.custom_tool_call_input.done":
+					usage = keepCodexUsage(event, usage);
+					break;
 				default:
+					countUnhandled(unhandledEvents, event.type);
 					usage = keepCodexUsage(event, usage);
 					break;
 			}
@@ -986,6 +1079,15 @@ export class OpenAIResponsesWire extends HttpAgentProvider<
 		if (completedToolCallCount === 0 && finishReason === "tool_calls") {
 			finishReason = "stop";
 		}
+		log.info("responses stream summary", {
+			turn: turnIndex,
+			...streamStats,
+			durationMs: Date.now() - streamStartedAt,
+			completedToolCalls: completedToolCallCount,
+			finishReason: completedToolCallCount > 0 ? "tool_calls" : finishReason,
+			unhandledEvents: Object.fromEntries(unhandledEvents),
+			unhandledOutputItems: Object.fromEntries(unhandledOutputItems),
+		});
 		return {
 			finishReason:
 				completedToolCallCount > 0 ? "tool_calls" : finishReason,

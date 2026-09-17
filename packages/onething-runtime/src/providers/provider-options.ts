@@ -35,6 +35,7 @@ import {
   normalizeOnethingQwenRegion,
 } from './qwen.js'
 import type { OnethingZhipuApiMode } from './zhipu.js'
+import { normalizeOnethingReasoningProfileOverride } from './model-capability.js'
 
 /** Opaque to everything between the settings store and the owning factory. */
 export type OnethingProviderOptions = Record<string, unknown>
@@ -97,7 +98,17 @@ export function pickOnethingProviderOptions(
   // overwritten by the packed bag below (the failure is silent: the knob simply
   // never reaches the turn).
   const request = readStoredRequestOptions(storedConfig)
-  const carried = request ? { [ONETHING_PROVIDER_REQUEST_OPTIONS_KEY]: request } : undefined
+  const storedBag = storedConfig.providerOptions
+  const reasoningProfile = storedBag && typeof storedBag === 'object' && !Array.isArray(storedBag)
+    ? normalizeOnethingReasoningProfileOverride((storedBag as Record<string, unknown>).reasoningProfile)
+    : undefined
+  if (storedBag && typeof storedBag === 'object' && 'reasoningProfile' in storedBag && storedBag.reasoningProfile !== undefined && !reasoningProfile) {
+    throw new Error(`Invalid reasoning profile for provider '${providerId}'`)
+  }
+  const carried = request || reasoningProfile ? {
+    ...(request ? { [ONETHING_PROVIDER_REQUEST_OPTIONS_KEY]: request } : {}),
+    ...(reasoningProfile ? { reasoningProfile } : {}),
+  } : undefined
 
   if (providerId === ONETHING_ZHIPU_PROVIDER_ID) {
     const zhipuApiMode = normalizeZhipuApiMode(storedConfig.zhipuApiMode)

@@ -36,6 +36,26 @@
   animation: var(--kf-block-zoom-canvas-in) var(--dur-enter) var(--ease-out);
 }
 
+/*
+ * 位图不要画布(2026-09-16 用户报「overlay 有自己的 background,看起来很奇怪」):
+ * 一张照片外面再垫一块浅色卡、留一圈内距,读起来是「一张卡里放着一张图」,
+ * 不是「这张图」。所以位图那一支把卡的三样皮(底 / 内距 / 投影)都拿掉,
+ * 圆角与投影落到图自己身上 —— 图就是浮在遮罩上的那件东西。
+ * SVG 那一支照旧留卡:mermaid 的线条是按浅底画的,没有底它在遮罩上看不清。
+ */
+.canvasBare {
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  /* 位图已被两条上限夹进视口,不需要这一层滚;留着 `auto` 会把图自己的投影裁掉。 */
+  overflow: visible;
+}
+
+.canvasBare .image {
+  border-radius: var(--r-3);
+  box-shadow: var(--sh-3);
+}
+
 /* SVG 按自己的尺寸铺开;装不下就靠上面那层滚,不缩放(缩糊了就白放大了)。 */
 .figure {
   /* 给 `width="100%"` 的 SVG 一个确定的参照宽度(同 Figure.module.css 那条理由)。 */

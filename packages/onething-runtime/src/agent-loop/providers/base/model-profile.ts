@@ -282,6 +282,7 @@ export interface ModelProfileResolver {
  * `__tests__/architecture.test.ts` 里的编译期断言守着。
  */
 export interface LedgerModelProfileConfig {
+  providerOptions?: Record<string, unknown>;
 	/** 默认模型 —— 静态 capabilities 投影用的那一个。 */
 	model?: string;
 	apiType?: "openai" | "anthropic";
@@ -305,6 +306,7 @@ export class LedgerModelProfileResolver implements ModelProfileResolver {
 			customApiType: this.config.apiType,
 			override: this.config.modelCapabilitiesByModel?.[model],
 			registryEntry: entry,
+      providerReasoningProfile: this.config.providerOptions?.reasoningProfile,
 		});
 		return new ModelProfile(providerId, model, resolved, {
 			contextLength: entry?.contextLength,

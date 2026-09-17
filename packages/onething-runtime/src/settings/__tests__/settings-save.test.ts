@@ -11,6 +11,26 @@ interface TestSettings {
 }
 
 describe('saveOnethingSettingsWithRuntimeEffects', () => {
+  it('rejects malformed reasoning configuration before persistence and runtime effects', async () => {
+    const persist = vi.fn()
+    const invalidate = vi.fn()
+    await expect(saveOnethingSettingsWithRuntimeEffects({
+      settings: { ai: { providers: { grok: { providerOptions: { reasoningProfile: { wire: 'custom' } } } } } },
+      saveSettings: persist,
+      getSettings: () => ({}),
+      invalidateProviderCache: invalidate,
+      applyNetworkProxySettings: vi.fn(),
+      registerGlobalWindowShortcuts: vi.fn(),
+      updateMCPSettings: vi.fn(),
+      registerMCPTools: vi.fn(),
+      updateACPSettings: vi.fn(),
+      defaultMCPSettings: {},
+      defaultACPSettings: {},
+    })).rejects.toThrow('Invalid reasoning profile at grok.providerOptions.reasoningProfile')
+    expect(persist).not.toHaveBeenCalled()
+    expect(invalidate).not.toHaveBeenCalled()
+  })
+
   it('saves input settings, reads normalized settings, applies runtime effects, and returns normalized settings', async () => {
     const calls: string[] = []
     const normalizedSettings: TestSettings = {

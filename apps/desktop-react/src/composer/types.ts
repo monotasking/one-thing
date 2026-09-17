@@ -61,6 +61,7 @@ export interface AskOption {
 }
 
 export interface AskQuestion {
+  allowFreeText?: boolean
   /** 提交进流里时挂在答案前的短标 */
   tag: string
   q: string
@@ -70,6 +71,12 @@ export interface AskQuestion {
 
 export interface AskSpec {
   questions: AskQuestion[]
+  /** Live requests answer their original tool call, never send a new chat turn. */
+  interaction?: {
+    id: string
+    submit: (answers: readonly AskAnswer[]) => Promise<void>
+    decline: () => Promise<void>
+  }
 }
 
 /**
@@ -86,6 +93,8 @@ export interface Attachment {
   id: string
   name: string
   url?: string
+  /** 原始字节随消息发送;对象 URL 只用于预览,不能代替文件。 */
+  file?: File
 }
 
 /**
@@ -161,6 +170,8 @@ export interface ComposerState {
   askSpec: AskSpec | null
   askAnswers: AskAnswer[]
   askIdx: number
+  askSubmitting: boolean
+  askError: string | null
   attachments: Attachment[]
   /** 展开是**状态**,不是 hover 的副作用:删卡重排也保持展开 */
   attOpen: boolean

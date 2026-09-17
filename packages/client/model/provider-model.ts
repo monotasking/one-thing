@@ -63,8 +63,21 @@ export function isProviderEnabledIn(
     spaceOverride?.[id] ?? isProviderConfigEnabled(providers?.[id])
   const own = enabledOf(providerId)
   const family = providerFamilyOf(providerId)
-  if (!family || providerId === family.apiProviderId) return own
-  return own || enabledOf(family.apiProviderId)
+  if (!family) return own
+  /*
+   * 家族开关挂在 API 成员上,但「没设过 = 开着」只对**配过的**成员成立。
+   * API 成员一格配置都没有(从没碰过 API 那一坑,只用订阅那一坑)时,它的
+   * 「开着」是缺省值,不是用户说过的话 —— 拿它去把订阅成员捞出来,会让设置里
+   * 明明关掉的 Claude Code 模型照样出现在模型选择器里(09-17 报障)。
+   * 这时整张卡的开关就是订阅成员自己那一格。
+   */
+  const expressed = (id: string): boolean =>
+    spaceOverride?.[id] !== undefined || providers?.[id] != null
+  const api = family.apiProviderId
+  const sub = family.subscriptionProviderId
+  const familyOn = expressed(api) || !expressed(sub) ? enabledOf(api) : enabledOf(sub)
+  if (providerId === api) return familyOn
+  return own || familyOn
 }
 
 export interface SessionModelLike {

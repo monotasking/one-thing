@@ -61,7 +61,7 @@ export interface CommandEntry extends CommandSpec {
    * 不许再解析一遍 usage —— 两处解析同一句语法,迟早给出两个答案。
    */
   argHint?: string
-  /** dev-only 扳机(`/ask-demo`)。真接上 ask_user 事件后这一格连同那条命令一起删。 */
+  /** dev-only 表单演示;真实提问走 composer-interactions 的应答通道。 */
   action?: 'ask-demo'
 }
 

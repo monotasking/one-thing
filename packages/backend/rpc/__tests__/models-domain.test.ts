@@ -298,6 +298,58 @@ describe('models RPC domain — getModelCapabilities', () => {
  * 反证:把 `projectOnethingThinkingLevels` 里那句 `effort !== 'none'` 摘掉 →
  * gpt-5.5 那一行当场红。
  */
+describe('models RPC domain — 手填模型思考投影', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+
+  it('补齐已选和当前模型、去重,缺席的目录元数据保持缺席', async () => {
+    mocks.settings = { ai: { providers: { grok: {
+      selectedModels: ['listed', 'my-grok', 'my-grok'], model: 'current-only',
+      modelCapabilitiesByModel: {
+        'my-grok': { reasoningProfile: { efforts: ['low', 'high'], defaultEffort: 'low', effortLabels: { low: '快速' } } },
+        'current-only': { reasoningProfile: { efforts: ['medium'], defaultEffort: 'medium' } },
+      },
+    } } } } as unknown as AppSettings
+    const listed = model('listed')
+    mocks.getModelsForProvider.mockResolvedValue([listed])
+    const response = await modelsRpcHandlers.getWithCapabilities({ providerId: 'grok' })
+    expect(response.success).toBe(true)
+    expect(response.models?.map(row => row.id)).toEqual(['listed', 'my-grok', 'current-only'])
+    expect(response.models?.[0]).toMatchObject(listed)
+    expect(response.models?.[0].configuredOnly).toBeUndefined()
+    expect(response.models?.[1]).toMatchObject({ configuredOnly: true, thinkingLevels: ['low', 'high'], thinkingDefaultLevel: 'low', thinkingLevelLabels: { low: '快速' } })
+    expect(response.models?.[2]).toMatchObject({ configuredOnly: true, thinkingLevels: ['medium'], thinkingDefaultLevel: 'medium' })
+    for (const row of response.models!.slice(1)) {
+      for (const field of ['pricing', 'architecture', 'context_length', 'top_provider', 'supported_parameters']) {
+        expect(row).not.toHaveProperty(field)
+      }
+    }
+    expect(mocks.saveProviderModels).not.toHaveBeenCalled()
+  })
+
+  it('空目录也返回自定义 provider 默认模型,并应用它的思考配置', async () => {
+    mocks.settings = { ai: {
+      providers: {},
+      customProviders: [{ id: 'custom-local', model: 'local-model', apiType: 'openai',
+        providerOptions: { reasoningProfile: { efforts: ['low', 'high'], defaultEffort: 'high', toggleable: false } },
+      }],
+    } } as unknown as AppSettings
+    mocks.getModelsForProvider.mockResolvedValue([])
+    const response = await modelsRpcHandlers.getWithCapabilities({ providerId: 'custom-local' })
+    expect(response.models).toEqual([expect.objectContaining({
+      id: 'local-model', configuredOnly: true, thinkingLevels: ['low', 'high'], thinkingDefaultLevel: 'high',
+    })])
+  })
+
+  it('随后目录收录该模型时改回正式目录项,不保留手填标记', async () => {
+    mocks.settings = { ai: { providers: { grok: { selectedModels: ['new-model'], model: 'new-model' } } } } as unknown as AppSettings
+    mocks.getModelsForProvider.mockResolvedValue([model('new-model')])
+    const response = await modelsRpcHandlers.getWithCapabilities({ providerId: 'grok' })
+    expect(response.models).toHaveLength(1)
+    expect(response.models?.[0].configuredOnly).toBeUndefined()
+    expect(response.models?.[0].context_length).toBe(192000)
+  })
+})
+
 describe('models RPC domain — 目录行带上思考档位', () => {
   beforeEach(() => {
     vi.clearAllMocks()

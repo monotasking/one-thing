@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>引用 chip 三种皮 · 比稿</title>
+<style>
+  :root{
+    --paper:#faf8f4;--surface:#fffdf9;--text-1:#2b2926;--text-2:#6b665f;--text-3:#9a948b;--text-4:#b8b2a8;
+    --line-1:#e6e1d8;--line-2:#d8d2c7;--accent:#c9782a;--accent-deep:#9a5a1c;--accent-soft:#f6e9d8;
+    --st-sel:#efe9df;--st-hover:#f1ece4;--skill:#3f6b48;--skill-soft:#e9f0e6;--dir:#8a6a3a;
+    --pr-fs:15px;--pr-lh:1.65;--font-ui:-apple-system,"PingFang SC","Helvetica Neue",system-ui,sans-serif;--font-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--text-1);font:14px/1.5 var(--font-ui)}
+  main{max-width:1180px;margin:0 auto;padding:26px 20px 80px}
+  h1{font-size:21px;margin:0 0 6px}
+  p.note{color:var(--text-2);font-size:13px;line-height:1.65;margin:0 0 18px;max-width:900px}
+  .lanes{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .lane{border:1px solid var(--line-1);border-radius:16px;background:var(--surface);overflow:hidden;display:flex;flex-direction:column}
+  .lane h2{margin:0;padding:10px 14px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-2);border-bottom:1px solid var(--line-1);display:flex;justify-content:space-between;align-items:center}
+  .lane h2 b{font-size:13px;letter-spacing:0;text-transform:none;color:var(--text-1)}
+  .lane h2 button{font:12px var(--font-ui);padding:3px 10px;border:1px solid var(--line-2);border-radius:999px;background:#fff;color:var(--text-2);cursor:pointer}
+  .lane h2 button.on{background:var(--text-1);color:#fff;border-color:var(--text-1)}
+  .chat{padding:16px;display:flex;flex-direction:column;gap:14px;font-size:var(--pr-fs);line-height:var(--pr-lh)}
+  .reply{max-width:100%}
+  .user{align-self:flex-end;max-width:88%;padding:10px 14px;border-radius:14px;background:var(--st-sel);white-space:pre-wrap;overflow-wrap:anywhere}
+  .composer{margin:6px 12px 12px;border:1px solid var(--line-1);border-radius:16px;background:#fff;box-shadow:0 0 0 3px rgba(201,120,42,.12)}
+  .input{min-height:44px;padding:12px 14px;font-size:var(--pr-fs);line-height:1.65;white-space:pre-wrap;caret-color:var(--accent)}
+  .tools{display:flex;align-items:center;gap:6px;padding:4px 8px 8px 10px;border-top:1px solid var(--line-1)}
+  .tools .sp{flex:1}
+  .model{font:12px var(--font-ui);padding:4px 10px;border:1px solid var(--line-1);border-radius:999px;background:#fff;color:var(--text-2)}
+  .send{width:30px;height:30px;border:0;border-radius:999px;background:var(--text-1);color:#fff;font-size:14px;display:grid;place-items:center}
+  .cap{padding:10px 14px 14px;font-size:12.5px;color:var(--text-2);line-height:1.6;border-top:1px dashed var(--line-1)}
+  .cap b{color:var(--text-1)}
+  .lab{font-size:11px;color:var(--text-3);letter-spacing:.04em;text-transform:uppercase;margin:0 0 -6px}
+  svg.i{width:1em;height:1em;flex:none;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+
+  /* 共同:一枚 chip 的骨架 —— 图标 + 名字,行内,不折行,超长省略 */
+  .ref{display:inline-flex;align-items:center;max-width:100%;vertical-align:baseline;white-space:nowrap;cursor:pointer;text-decoration:none;color:inherit}
+  .ref .n{overflow:hidden;text-overflow:ellipsis;max-width:22ch}
+  .ref.cmd{cursor:default}
+
+  /* ── A 暖纸 ── Notion 那种 mention:轻底、正文字体、真图标、圆角小 */
+  .A .ref{gap:.3em;padding:.05em .4em .05em .3em;border-radius:6px;background:rgba(43,41,38,.055);font:inherit;font-weight:500;color:var(--text-1);transition:background .12s}
+  .A .ref:hover{background:rgba(43,41,38,.11)}
+  .A .ref svg.i{color:var(--text-3);font-size:.95em}
+  .A .ref.dir svg.i{color:var(--dir)}
+  .A .ref.skill svg.i{color:var(--skill)}
+  .A .ref.cmd{background:transparent;padding-left:0;color:var(--accent-deep);font-weight:600}
+  .A .ref.cmd svg.i{color:var(--accent)}
+  .A .user .ref{background:rgba(255,255,255,.7)}
+  .A .user .ref:hover{background:#fff}
+
+  /* ── B 链接 ── 无底无框,图标 + 强调色文字 + 细下划线;像正文里的一个词 */
+  .B .ref{gap:.28em;padding:0;color:var(--accent-deep);font:inherit;font-weight:500;text-decoration:underline;text-decoration-color:rgba(154,90,28,.35);text-underline-offset:.2em;text-decoration-thickness:1px;transition:text-decoration-color .12s}
+  .B .ref:hover{text-decoration-color:var(--accent)}
+  .B .ref svg.i{color:var(--accent);font-size:.9em;opacity:.85}
+  .B .ref.skill{color:var(--skill);text-decoration-color:rgba(63,107,72,.35)}
+  .B .ref.skill svg.i{color:var(--skill)}
+  .B .ref.cmd{color:var(--text-1);text-decoration:none;font-family:var(--font-mono);font-size:.92em;font-weight:600;background:rgba(43,41,38,.06);padding:.02em .35em;border-radius:5px}
+  .B .ref.cmd svg.i{display:none}
+
+  /* ── C 药丸 ── 圆角满、柔底、小图标;像 macOS token field / GitHub label */
+  .C .ref{gap:.3em;padding:.1em .6em .1em .45em;border-radius:999px;background:var(--accent-soft);color:var(--accent-deep);font:inherit;font-size:.93em;font-weight:500;border:1px solid rgba(201,120,42,.18);transition:background .12s,border-color .12s}
+  .C .ref:hover{background:#f0dcc0;border-color:rgba(201,120,42,.45)}
+  .C .ref svg.i{font-size:.9em}
+  .C .ref.dir{background:#f3ece0;color:var(--dir);border-color:rgba(138,106,58,.22)}
+  .C .ref.skill{background:var(--skill-soft);color:var(--skill);border-color:rgba(63,107,72,.22)}
+  .C .ref.skill:hover{background:#dbe8d6}
+  .C .ref.cmd{background:var(--text-1);color:#fff;border-color:var(--text-1);font-family:var(--font-mono);font-size:.88em}
+  .C .ref.cmd svg.i{color:#fff}
+
+  @media (max-width:960px){.lanes{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+  <h1>引用 chip · 三种皮</h1>
+  <p class="note">同一枚 chip 要住三个地方:输入框、你的气泡、AI 的回复。四种引用:文件、目录、技能、命令。三台的骨架一样(图标 + 名字,悬停全路径,超长省略),差的是皮。图标是真图标,不再是 ◇ ▸ ⌘ 这种字符。点右上角「选这个」。</p>
+
+  <div class="lanes">
+    <!-- A -->
+    <div class="lane A">
+      <h2><span><b>A · 暖纸</b> &nbsp;Notion 式 mention</span><button data-pick="A">选这个</button></h2>
+      <div class="chat">
+        <p class="lab">AI 回复</p>
+        <div class="reply">读完 <span class="ref file" title="/Users/yitiansong/data/work/lenovo-scripts/ChatBot.lua"><svg class="i" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg><span class="n">ChatBot.lua</span></span> 的前 773 行,IVR 路由在 <span class="ref dir" title="/Users/yitiansong/data/work/lenovo-scripts/"><svg class="i" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="n">lenovo-scripts</span></span> 下另有三份。</div>
+        <p class="lab">你的气泡</p>
+        <div class="user">用 <span class="ref skill" title="打开技能目录 obsidian-cli"><svg class="i" viewBox="0 0 24 24"><path d="M12 2l3 7 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z"/></svg><span class="n">obsidian-cli</span></span> 检查一下 <span class="ref file" title="/Users/yitiansong/data/work/lenovo-scripts/ChatBot.lua"><svg class="i" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg><span class="n">ChatBot.lua</span></span> 里的 TTS 调用</div>
+        <div class="user"><span class="ref cmd" title="/cd &lt;路径&gt;"><svg class="i" viewBox="0 0 24 24"><path d="M4 17l6-5-6-5"/><path d="M12 19h8"/></svg><span class="n">/cd</span></span> ~/data/work/lenovo-scripts</div>
+        <p class="lab">输入框</p>
+      </div>
+      <div class="composer"><div class="input">对照 <span class="ref dir" title="/Users/yitiansong/data/work/lenovo-scripts/config/"><svg class="i" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="n">config</span></span> 审 <span class="ref file" title="/Users/yitiansong/data/work/lenovo-scripts/IVARouter.lua"><svg class="i" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg><span class="n">IVARouter.lua</span></span> </div><div class="tools"><span class="model">claude-opus-5 ▾</span><span class="sp"></span><button class="send">↑</button></div></div>
+      <div class="cap"><b>取舍</b>:与正文同字体同字号,只靠一层 5% 的墨底把它从字里托出来,图标用弱色、目录和技能各一点色。不抢眼,像 Notion 里 @ 一个页面。命令不带底,只是强调色的粗字。</div>
+    </div>
+
+    <!-- B -->
+    <div class="lane B">
+      <h2><span><b>B · 链接</b> &nbsp;正文里的一个词</span><button data-pick="B">选这个</button></h2>
+      <div class="chat">
+        <p class="lab">AI 回复</p>
+        <div class="reply">读完 <span class="ref file" title="/Users/yitiansong/data/work/lenovo-scripts/ChatBot.lua"><svg class="i" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg><span class="n">ChatBot.lua</span></span> 的前 773 行,IVR 路由在 <span class="ref dir" title="/Users/yitiansong/data/work/lenovo-scripts/"><svg class="i" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="n">lenovo-scripts</span></span> 下另有三份。</div>
+        <p class="lab">你的气泡</p>
+        <div class="user">用 <span class="ref skill" title="打开技能目录 obsidian-cli"><svg class="i" viewBox="0 0 24 24"><path d="M12 2l3 7 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z"/></svg><span class="n">obsidian-cli</span></span> 检查一下 <span class="ref file" title="/Users/yitiansong/data/work/lenovo-scripts/ChatBot.lua"><svg class="i" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg><span class="n">ChatBot.lua</span></span> 里的 TTS 调用</div>
+        <div class="user"><span class="ref cmd" title="/cd &lt;路径&gt;"><span class="n">/cd</span></span> ~/data/work/lenovo-scripts</div>
+        <p class="lab">输入框</p>
+      </div>
+      <div class="composer"><div class="input">对照 <span class="ref dir" title="/Users/yitiansong/data/work/lenovo-scripts/config/"><svg class="i" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="n">config</span></span> 审 <span class="ref file" title="/Users/yitiansong/data/work/lenovo-scripts/IVARouter.lua"><svg class="i" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg><span class="n">IVARouter.lua</span></span> </div><div class="tools"><span class="model">claude-opus-5 ▾</span><span class="sp"></span><button class="send">↑</button></div></div>
+        <div class="cap"><b>取舍</b>:没有任何盒子,就是一个带图标的链接词,下划线淡到只在悬停时变实。最轻、最像文章。代价是在输入框里「它是一整枚、退格整枚删」这件事看不出来。命令改成一小块代码样。</div>
+    </div>
+
+    <!-- C -->
+    <div class="lane C">
+      <h2><span><b>C · 药丸</b> &nbsp;token field</span><button data-pick="C">选这个</button></h2>
+      <div class="chat">
+        <p class="lab">AI 回复</p>
+        <div class="reply">读完 <span class="ref file" title="/Users/yitiansong/data/work/lenovo-scripts/ChatBot.lua"><svg class="i" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg><span class="n">ChatBot.lua</span></span> 的前 773 行,IVR 路由在 <span class="ref dir" title="/Users/yitiansong/data/work/lenovo-scripts/"><svg class="i" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="n">lenovo-scripts</span></span> 下另有三份。</div>
+        <p class="lab">你的气泡</p>
+        <div class="user">用 <span class="ref skill" title="打开技能目录 obsidian-cli"><svg class="i" viewBox="0 0 24 24"><path d="M12 2l3 7 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z"/></svg><span class="n">obsidian-cli</span></span> 检查一下 <span class="ref file" title="/Users/yitiansong/data/work/lenovo-scripts/ChatBot.lua"><svg class="i" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg><span class="n">ChatBot.lua</span></span> 里的 TTS 调用</div>
+        <div class="user"><span class="ref cmd" title="/cd &lt;路径&gt;"><svg class="i" viewBox="0 0 24 24"><path d="M4 17l6-5-6-5"/><path d="M12 19h8"/></svg><span class="n">/cd</span></span> ~/data/work/lenovo-scripts</div>
+        <p class="lab">输入框</p>
+      </div>
+      <div class="composer"><div class="input">对照 <span class="ref dir" title="/Users/yitiansong/data/work/lenovo-scripts/config/"><svg class="i" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="n">config</span></span> 审 <span class="ref file" title="/Users/yitiansong/data/work/lenovo-scripts/IVARouter.lua"><svg class="i" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg><span class="n">IVARouter.lua</span></span> </div><div class="tools"><span class="model">claude-opus-5 ▾</span><span class="sp"></span><button class="send">↑</button></div></div>
+      <div class="cap"><b>取舍</b>:圆角满、柔底、按种类分色(文件暖橙 / 目录土黄 / 技能绿 / 命令墨底反白),一眼分得出四种。最像「一枚东西」,在输入框里整枚删的手感最对。代价是一句话里三四枚会有点花。</div>
+    </div>
+  </div>
+</main>
+<script>
+document.querySelectorAll('[data-pick]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-pick]').forEach(x=>x.classList.toggle('on',x===b));}));
+</script>
+</body>
+</html>

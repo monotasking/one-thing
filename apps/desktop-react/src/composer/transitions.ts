@@ -2,7 +2,6 @@ import type {
   AskAnswer,
   AskQuestion,
   AskSpec,
-  AttCardLayout,
   AttStackLayout,
   Attachment,
   CommandSpec,
@@ -11,6 +10,8 @@ import type { ThinkingEffort } from '@shared/ipc/providers'
 import type { ProviderGroup } from '../data/models-source'
 import type { ThinkingRung } from '../providers/store'
 import type { MessageKey } from '../i18n'
+import { layoutCardStack } from '../ui/card-stack'
+import type { CardStackGeometry } from '../ui/card-stack'
 
 /**
  * Composer 的纯函数层。规矩同 stage/transitions.ts:
@@ -209,7 +210,7 @@ export function askAnswerText(
  * 于是翻题时面板一动不动 —— 翻页不该让整块面板跳。
  */
 export function askMaxRows(spec: AskSpec): number {
-  return Math.max(0, ...spec.questions.map((q) => q.opts.length)) + 1
+  return Math.max(1, ...spec.questions.map((q) => q.opts.length + (q.allowFreeText === false ? 0 : 1)))
 }
 
 /* ── 附件收拢 / 展开的排布 ──────────────────────────────────────────────────
@@ -245,38 +246,23 @@ export function attachmentWidth(a: Attachment): number {
   return a.url ? ATT_PHOTO_W : ATT_DOC_W
 }
 
-/**
- * 一次算完整摞的排布。两态是**同一个函数的两条分支**,不是两套代码:
- *   展开 = 从左往右累计 x,零旋转,总宽撑出横滚;
- *   收拢 = 只留最上三张,逐张 offset + 错角,宽度按「最宽可见卡的右缘」。
- */
+/** 附件摞的几何:与 Composer.module.css 的 --att-* 同一份事实。 */
+export const ATT_STACK_GEOMETRY: CardStackGeometry = {
+  visible: ATT_VISIBLE,
+  inset: ATT_INSET,
+  offset: ATT_OFFSET,
+  rotate: ATT_ROTATE,
+  gap: ATT_GAP,
+  slack: ATT_SLACK,
+}
+
+/** 排布本身归 `ui/card-stack`(聊天流里的图片摞是同一种形);这里只报每张卡多宽。 */
 export function layoutAttachments(atts: readonly Attachment[], open: boolean): AttStackLayout {
-  const cards: AttCardLayout[] = []
-  const first = Math.max(0, atts.length - ATT_VISIBLE)
-  let x = 0
-  let stackW = 0
-
-  atts.forEach((a, i) => {
-    if (open) {
-      cards.push({ id: a.id, hidden: false, left: x, rotate: 0, zIndex: i })
-      x += attachmentWidth(a) + ATT_GAP
-      return
-    }
-    if (i < first) {
-      cards.push({ id: a.id, hidden: true, left: 0, rotate: 0, zIndex: i })
-      return
-    }
-    const k = i - first // 0..2,顶卡 = 最新一张
-    const off = ATT_INSET + k * ATT_OFFSET
-    cards.push({ id: a.id, hidden: false, left: off, rotate: ((k % 3) - 1) * ATT_ROTATE, zIndex: i })
-    stackW = Math.max(stackW, off + attachmentWidth(a))
-  })
-
-  return {
-    cards,
-    rowWidth: open ? Math.max(x - ATT_GAP, 0) : stackW + ATT_SLACK,
-    stackWidth: open ? null : stackW + ATT_SLACK,
-  }
+  return layoutCardStack(
+    atts.map((a) => ({ id: a.id, width: attachmentWidth(a) })),
+    open,
+    ATT_STACK_GEOMETRY,
+  )
 }
 
 /* ── 模型抽屉 ────────────────────────────────────────────────────────────── */
@@ -328,6 +314,11 @@ export const THINKING_NOTE_KEY: Record<ThinkingRung, MessageKey> = {
   high: 'composer.thinkNoteHigh',
   xhigh: 'composer.thinkNoteXhigh',
   max: 'composer.thinkNoteMax',
+}
+
+export function thinkingLabel(t: (key: MessageKey) => string, rung: ThinkingRung,
+  labels?: Partial<Record<ThinkingEffort, string>>): string {
+  return (rung !== 'on' && rung !== 'off' && labels?.[rung]?.trim()) || t(THINKING_LABEL_KEY[rung])
 }
 
 /**

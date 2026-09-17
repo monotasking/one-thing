@@ -166,7 +166,27 @@ function SessionLeaf({ contentRef }: { contentRef: ContentRef }) {
  * 挂载即观察、卸载即断开并**把两格变量抹掉**(留着等于让下一次挂载先读到一份
  * 陈旧的高度)。它是组件级的,不是模块级的 —— 没有跨模块实例存活的东西,
  * 所以不需要 HMR dispose。
+ *
+ * ── `--composer-h` 量的是「静止部分」,不是整块落位带(09-16)──────────────
+ * 抽屉 09-16 回到面板里面、排在最上面(正本
+ * `apps/desktop-react/docs/composer-unified-drawer-2026-09-16.md`),面板开抽屉时
+ * 真的往上长。消息流该让出的仍然只是**静止那一截**:量整块 dock 的话,抽屉一开
+ * 内衬就跟着变,贴底时正文被顶上去 —— 那正是 09-12 治过的病。所以量法是
+ * `dock 底 − [data-composer-rest] 顶`:输入框自己标出哪一截是静止的,这里不认识
+ * 抽屉、也不认识任何一位住户。标记不在(输入框还没挂上 / 挂在错误边界的兜底里)
+ * 就退回整块 dock 的高。
+ *
+ * 不必另外观察那一格:它长高 dock 必然跟着长高,已经在观察之列;抽屉开合改的是
+ * dock 的高而不是这个差值,量出来原值,写回去是恒等。每次量都现查,那一格换了
+ * 节点(输入框重挂)也读得到。
  */
+function composerReserveOf(dock: HTMLElement): number {
+  const dockRect = dock.getBoundingClientRect()
+  const rest = dock.querySelector('[data-composer-rest]')
+  if (!rest) return dockRect.height
+  return dockRect.bottom - rest.getBoundingClientRect().top
+}
+
 function useComposerGeometry(
   areaRef: RefObject<HTMLDivElement | null>,
   dockRef: RefObject<HTMLDivElement | null>,
@@ -180,7 +200,7 @@ function useComposerGeometry(
       area.style.setProperty(name, `${Math.round(px)}px`)
     }
     const measure = () => {
-      write('--composer-h', dock.getBoundingClientRect().height)
+      write('--composer-h', composerReserveOf(dock))
       write('--center-h', area.getBoundingClientRect().height)
     }
     measure()

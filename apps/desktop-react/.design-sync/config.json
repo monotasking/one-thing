@@ -3,22 +3,94 @@
   "projectId": "76d62ee9-58dc-4a7d-857e-d249cb6959b5",
   "globalName": "OnethingUI",
   "shape": "package",
+  "buildCmd": "node .design-sync/build-dts.mjs",
   "srcDir": "src/ui",
   "tsconfig": "tsconfig.json",
   "tokensPkg": "@onething/desktop-react",
   "tokensGlob": "src/styles/*.css",
-  "extraFonts": ["src/assets/fonts/fonts.css"],
+  "extraFonts": [
+    "src/assets/fonts/fonts.css"
+  ],
   "readmeHeader": ".design-sync/conventions.md",
   "overrides": {
-    "Menu": { "cardMode": "single", "viewport": "320x280" },
-    "ToastHost": { "cardMode": "single", "viewport": "420x320" },
-    "Dialog": { "cardMode": "single", "viewport": "560x400" },
-    "ConfirmHost": { "cardMode": "single", "viewport": "560x360" },
-    "MenuItem": { "cardMode": "single", "primaryStory": "ItemStates", "viewport": "320x280" },
-    "MenuSection": { "cardMode": "single", "primaryStory": "GroupHeaders", "viewport": "320x280" },
-    "MenuSeparator": { "cardMode": "single", "primaryStory": "DividedGroups", "viewport": "320x280" },
-    "Select": { "cardMode": "column" },
-    "Tabs": { "cardMode": "column" },
-    "Input": { "cardMode": "column" }
+    "Menu": {
+      "cardMode": "single",
+      "viewport": "320x280"
+    },
+    "ToastHost": {
+      "cardMode": "single",
+      "viewport": "420x320"
+    },
+    "Dialog": {
+      "cardMode": "single",
+      "viewport": "560x400"
+    },
+    "ConfirmHost": {
+      "cardMode": "single",
+      "viewport": "560x360"
+    },
+    "MenuItem": {
+      "cardMode": "single",
+      "primaryStory": "ItemStates",
+      "viewport": "320x280"
+    },
+    "MenuSection": {
+      "cardMode": "single",
+      "primaryStory": "GroupHeaders",
+      "viewport": "320x280"
+    },
+    "MenuSeparator": {
+      "cardMode": "single",
+      "primaryStory": "DividedGroups",
+      "viewport": "320x280"
+    },
+    "Select": {
+      "cardMode": "column"
+    },
+    "Tabs": {
+      "cardMode": "column"
+    },
+    "Input": {
+      "cardMode": "column"
+    },
+    "Popover": {
+      "cardMode": "single",
+      "viewport": "420x320"
+    },
+    "Submenu": {
+      "cardMode": "single",
+      "viewport": "420x300"
+    },
+    "ButtonBase": {
+      "cardMode": "column"
+    },
+    "Fold": {
+      "cardMode": "column"
+    },
+    "FoldBody": {
+      "cardMode": "column"
+    },
+    "IconButton": {
+      "cardMode": "column"
+    },
+    "Reveal": {
+      "cardMode": "column"
+    },
+    "Slider": {
+      "cardMode": "column"
+    },
+    "Splitter": {
+      "cardMode": "column"
+    }
+  },
+  "componentSrcMap": {
+    "DragGhost": null,
+    "DragLayer": null,
+    "DropOverlay": null,
+    "NativeMenu": null
+  },
+  "guidelinesGlob": [],
+  "libOverrides": {
+    "source-kit.mjs": "synth-entry must honor componentSrcMap:null (NativeMenu/drag pull the whole shell into the bundle)"
   }
 }

@@ -5,6 +5,9 @@ import {
 } from '@onething/core/session/projection/reducer'
 import { __countMemoMisses, materializeChatMessagesCached, trimToGraphemeBoundary } from './chat-materialize'
 import { StreamWater } from './stream-water'
+import { synthesizeCoreToolAnchors } from '@onething/core/session/render-anchors'
+import { missingAssistantText } from './missing-assistant-text'
+import { dumpPerf } from '../services/perf'
 
 /**
  * 增量物化的四条守卫(09-01 P0)。钉的是**引用契约**,不是值:下游(MessageRow
@@ -223,13 +226,13 @@ describe('账本比 parts 长的那截照样画(中途入场)', () => {
     expect(texts[1].content).toBe('正在飞的这一段。')
   })
 
-  it('补出来那一格的回合号取最佳可知值 —— 已落地的工具锚点排在它前面', () => {
+  it('补出来那一格使用未结算账本段的真实轮次', () => {
     const state = fold(midJoinLedger())
     const water = new StreamWater()
     const { messages } = materializeChatMessagesCached(state, R2_OPTS, 0, water)
     const target = messages.find((m) => m.id === 'a1')!
     const texts = partsOf(target).filter((p) => p.type === 'text')
-    expect(texts[1].turnIndex).toBeGreaterThanOrEqual(texts[0].turnIndex ?? 0)
+    expect(texts[1].turnIndex).toBe(2)
   })
 
   it('不是前缀关系就一个字都不补 —— 宁可少画一截,不肯画错位置', () => {
@@ -245,6 +248,88 @@ describe('账本比 parts 长的那截照样画(中途入场)', () => {
     const texts = partsOf(target).filter((p) => p.type === 'text')
     // 只有水位那一格,没有凭空补出来的第二格。
     expect(texts).toHaveLength(1)
+  })
+})
+
+describe('工具之后的正文在缺水位、结算前后保持顺序', () => {
+  const body = '最终回复'
+  const before = '先查资料。'
+  function toolRounds(): Ev[] {
+    const events: Ev[] = []
+    const add = (type: string, data: unknown) => events.push({ seq: events.length + 1, time: T0, type, data })
+    add('session/created', { sessionId: 's1' })
+    add('run/start', { runId: 'r1', kind: 'chat', assistantMessageId: 'a1', timestamp: T0 })
+    for (let turn = 1; turn <= 6; turn += 1) {
+      add('request/start', { runId: 'r1', requestIndex: turn - 1, time: T0 })
+      if (turn === 1) add('assistant/chunks', {
+        runId: 'r1', requestIndex: 0, messageId: 'a1', partIndex: 0, turnIndex: 1,
+        kind: 'text', time0: T0, dt: [0], text: [before],
+      })
+      add('tool/call', { runId: 'r1', messageId: 'a1', callId: `c${turn}`, name: 'read_file', arguments: {}, turnIndex: turn })
+      add('request/end', { runId: 'r1', requestIndex: turn - 1, time: T0 })
+    }
+    add('request/start', { runId: 'r1', requestIndex: 6, time: T0 })
+    add('assistant/chunks', {
+      runId: 'r1', requestIndex: 6, messageId: 'a1', partIndex: 7, turnIndex: 7,
+      kind: 'text', time0: T0, dt: [0], text: [body],
+    })
+    return events
+  }
+  function order(message: Parameters<typeof synthesizeCoreToolAnchors>[1] & { contentParts?: unknown }) {
+    const parts = (message.contentParts ?? []) as Array<{ type: string; content?: string; turnIndex?: number }>
+    return (synthesizeCoreToolAnchors(parts, message) ?? parts)
+      .map(part => part.type === 'data-steps' ? `tools:${part.turnIndex}` : part.content)
+  }
+  const expected = [before, ...[1, 2, 3, 4, 5, 6].map(turn => `tools:${turn}`), body]
+
+  it('水位从零开始缺席、半途加入丢首片、正常活流以及请求结算都同序', () => {
+    const events = toolRounds()
+    const state = fold(events)
+    for (const mode of ['empty', 'gap', 'live']) {
+      const water = new StreamWater()
+      if (mode !== 'empty') water.feed({
+        messageId: 'a1', runId: 'r1', requestIndex: 6, partIndex: 7,
+        kind: 'text', turnIndex: 7, charOffset: mode === 'gap' ? 2 : 0, gen: 0,
+      }, mode === 'gap' ? body.slice(2) : body)
+      const message = materializeChatMessagesCached(state, R2_OPTS, 0, water).messages.find(m => m.id === 'a1')!
+      expect(order(message), mode).toEqual(expected)
+      expect(message.content).toBe(before + body)
+      if (mode === 'gap') expect(water.gapCount).toBe(1)
+    }
+    const settled = fold([...events, {
+      seq: events.length + 1, time: T0, type: 'request/end', data: { runId: 'r1', requestIndex: 6, time: T0 },
+    }])
+    expect(order(materializeChatMessagesCached(settled, R2_OPTS, 0, new StreamWater()).messages.find(m => m.id === 'a1')!))
+      .toEqual(expected)
+    expect(dumpPerf().some(entry => entry.name === 'stream.water.fallback' && entry.detail?.includes('reason=missing-text-water'))).toBe(true)
+  })
+
+  it('有工具的当前轮还未结算时,正文仍在同轮工具之前', () => {
+    const events = toolRounds()
+    // Remove the first request/end and retain only that request's text/tool.
+    const state = fold(events.slice(0, 5))
+    const message = materializeChatMessagesCached(state, R2_OPTS, 0, new StreamWater()).messages.find(m => m.id === 'a1')!
+    expect(order(message)).toEqual([before, 'tools:1'])
+  })
+
+  it('外部执行器的显式轮次优先于 requestIndex 推导', () => {
+    const events = toolRounds()
+    const last = events[events.length - 1]
+    last.data = { ...(last.data as object), turnIndex: 12 }
+    const message = materializeChatMessagesCached(fold(events), R2_OPTS, 0, new StreamWater()).messages.find(m => m.id === 'a1')!
+    expect((message.contentParts?.at(-1) as { turnIndex?: number }).turnIndex).toBe(12)
+    expect(order(message)).toEqual(expected)
+  })
+
+  it('只有旧 flat content 的历史页也把补正文放在最后工具轮之后', () => {
+    const parts = [{ type: 'text', content: before, turnIndex: 1 }]
+    const message = {
+      role: 'assistant', content: before + body,
+      steps: [1, 2, 3, 4, 5, 6].map(turnIndex => ({ turnIndex, toolCallId: `c${turnIndex}` })),
+    }
+    const missing = missingAssistantText(message, parts)!
+    expect(missing.turnIndex).toBe(7)
+    expect(order({ ...message, contentParts: [...parts, missing] })).toEqual(expected)
   })
 })
 

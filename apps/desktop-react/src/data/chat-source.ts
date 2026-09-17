@@ -291,7 +291,7 @@ export interface ChatSourceState {
    * W5-b 把 `current` 换成焦点叶投影时这一口跟着退役。
    */
   open: (sessionId: string) => Promise<void>
-  /** 发一条纯文本消息。返回 false = 空话,压根没离开输入框。 */
+  /** 发一条消息。返回 false = 没有正文也没有文件,压根没离开输入框。 */
   send: (
     text: string,
     attachments?: number,
@@ -301,6 +301,7 @@ export interface ChatSourceState {
      * (非输入框那几条路),画的那一头照旧切 `text`。
      */
     segments?: readonly ResolvedSegment[],
+    files?: readonly File[],
   ) => boolean
   /** 中止正在跑的那一轮。没有在跑的轮次时是**恒等**(不发命令、不报错)。 */
   abort: () => void
@@ -532,6 +533,8 @@ export interface ChatSource {
   handleEvent: (envelope: SessionEventEnvelope) => void
   /** 注册表按 `sessionId` 分发进来的流分片。 */
   handleStream: (payload: SessionStreamPayload) => void
+  /** 连接恢复时核对真相,保留当前内容直到新快照返回。 */
+  handleReconnect: () => void
   /** 拆机器:停掉在飞的重折、那只等收尾的表、按帧合并的推屏。幂等。 */
   dispose: () => void
 }
@@ -540,6 +543,8 @@ export function createChatSource(sessionId: string): ChatSource {
   /* ── 这台机器的活状态(W5-a 之前它们是 15 个模块级可变量)──────────────── */
 
   let fold: LiveFold | undefined
+  let resyncInFlight = false
+  let reconnectAfterResync = false
   let tail: Tail | undefined
   /**
    * **尾巴已经交给账本多少**(三条车道各一格,判据见 chat-fold 的 `FoldLens`)。
@@ -679,6 +684,7 @@ export function createChatSource(sessionId: string): ChatSource {
     load: () => Promise<void>
     onEvent: (envelope: SessionEventEnvelope) => void
     onStream: (payload: SessionStreamPayload) => void
+    onReconnect: () => void
     tearDown: () => void
   } | undefined
 
@@ -1031,14 +1037,30 @@ export function createChatSource(sessionId: string): ChatSource {
      */
     async function resync(token: number): Promise<void> {
       const mine = fold
-      if (!mine) return
+      if (!mine || token !== openSeq || disposed) return
       mine.refoldScheduled = false
       mine.lastRefoldAt = Date.now()
-      // 冷载盖锚点(⑦),缺号重取盖手里最老的那一条(⑤)。两次问的是同一个问题:
-      // 「重取回来之后,屏幕上此前有的东西还得在」。
-      if (await runPageLoad(token, pageBase?.[0]?.id ?? anchorMessageId())) return
-      if (token !== openSeq || fold !== mine || disposed) return
-      await refoldFromLedger(token)
+      resyncInFlight = true
+      try {
+        // 冷载盖锚点(⑦),缺号重取盖手里最老的那一条(⑤)。两次问的是同一个问题:
+        // 「重取回来之后,屏幕上此前有的东西还得在」。
+        if (await runPageLoad(token, pageBase?.[0]?.id ?? anchorMessageId())) return
+        if (token !== openSeq || fold !== mine || disposed) return
+        await refoldFromLedger(token)
+      } finally {
+        resyncInFlight = false
+        if (reconnectAfterResync && token === openSeq && fold === mine && !disposed) {
+          reconnectAfterResync = false
+          scheduleRefold(mine)
+        }
+      }
+    }
+
+    function onReconnect(): void {
+      if (!fold || disposed) return
+      // 在飞的请求可能取的是断线前的快照;等它落地后再核对一次,不并发覆盖。
+      if (resyncInFlight) reconnectAfterResync = true
+      else if (fold.hydrated) scheduleRefold(fold)
     }
 
     /** 这一台此刻记着的锚点(冷载够页用)。`'bottom'` 与没有锚点是同一件事。 */
@@ -1629,9 +1651,6 @@ export function createChatSource(sessionId: string): ChatSource {
        * 只活在账本里,水位不认领它 —— 也不必:账本 ≤2s 就把它画出来。
        */
       if (STREAM_R2) {
-        if (!water) return
-        const stamp = chunk.stamp
-        if (!stamp) return
         const text = chunk.type === 'text-delta'
           ? chunk.text
           : chunk.type === 'reasoning-delta'
@@ -1640,6 +1659,18 @@ export function createChatSource(sessionId: string): ChatSource {
               ? chunk.argsTextDelta
               : undefined
         if (!text) return
+        const stamp = chunk.stamp
+        if (!water || !stamp) {
+          perfCount('stream.water.drop', {
+            session: sessionId,
+            message: messageId,
+            kind: chunk.type,
+            reason: !water ? 'water-unavailable' : 'missing-stamp',
+          })
+          // The model did send new data even if this lane cannot draw it.
+          schedulePush()
+          return
+        }
         if (chunk.type === 'tool-input-delta') {
           // 参数那一路按 toolCallId 落格(章上没有这一格 —— 名字与身份由
           // `tool:input-start` 给,章只负责说偏移)。
@@ -1776,10 +1807,12 @@ export function createChatSource(sessionId: string): ChatSource {
      * 原样递给端口。重试递的仍然是**同一个** —— 上一次既然没能到账本,这个
      * 位置就还空着;换一个新的等于让重试后的认领又失去身份。
      */
-    async function dispatch(entryId: string, target: string, text: string, messageId?: string): Promise<void> {
+    async function dispatch(entryId: string, target: string, text: string, messageId?: string, files?: readonly File[]): Promise<void> {
       try {
         const port = await chatPort()
-        const result = await port.sendMessage(target, text, messageId)
+        const result = files?.length
+          ? await port.sendMessage(target, text, messageId, files)
+          : await port.sendMessage(target, text, messageId)
         if (result?.success) return
         failEntry(entryId, result?.error || 'session-command.emit 未成功')
       } catch (error) {
@@ -1847,7 +1880,7 @@ export function createChatSource(sessionId: string): ChatSource {
     }
 
     // 内部那几口交给外面那层(实例对象)—— store 之外的世界只认这三件。
-    internals = { load, onEvent, onStream, tearDown }
+    internals = { load, onEvent, onStream, onReconnect, tearDown }
 
     return {
       sessionId,
@@ -1864,9 +1897,9 @@ export function createChatSource(sessionId: string): ChatSource {
       // 「换当前会话」是注册表的活,不是这台机器的(见类型上的注)。
       open: (next: string) => chatSources.openCurrent(next),
 
-      send: (text, attachments = 0, segments) => {
+      send: (text, attachments = 0, segments, files) => {
         const body = text.trim()
-        if (!body) return false
+        if (!body && !files?.length) return false
         const target = get().sessionId
         if (!target) return false
         const entry = {
@@ -1890,6 +1923,7 @@ export function createChatSource(sessionId: string): ChatSource {
           // 认领用的那个身份是同一个动作的两半(判词在 `PendingSend.segments`)。
           ...(segments && segments.length > 0 ? { segments } : {}),
           attachments,
+          ...(files?.length ? { files: [...files] } : {}),
           status: 'sending' as const,
           seenUserIds: userMessageIds(get().messages),
         }
@@ -1899,7 +1933,7 @@ export function createChatSource(sessionId: string): ChatSource {
          * 只有真交出去的那一下才 +1 —— 空话与「还没有当前会话」上面已经 return 掉了。
          */
         set((prev) => ({ overlay: [...prev.overlay, entry], sentTick: prev.sentTick + 1 }))
-        void dispatch(entry.id, target, body, entry.messageId)
+        void dispatch(entry.id, target, body, entry.messageId, entry.files)
         return true
       },
 
@@ -1974,7 +2008,7 @@ export function createChatSource(sessionId: string): ChatSource {
         // 同一个 `messageId`(见 `dispatch` 的注)。上一版建的那几格没有这一格,
         // 那就**不给** —— 现铸一个的话,引擎会用一个这台屏幕上没人记得的 id,
         // 而那一格 overlay 只能再回去比正文,等于白铸。
-        void dispatch(entryId, target, entry.text, entry.messageId)
+        void dispatch(entryId, target, entry.text, entry.messageId, entry.files)
       },
 
       /**
@@ -2220,6 +2254,7 @@ export function createChatSource(sessionId: string): ChatSource {
     open: () => inner.load(),
     handleEvent: (envelope) => inner.onEvent(envelope),
     handleStream: (payload) => inner.onStream(payload),
+    handleReconnect: () => inner.onReconnect(),
     dispose: () => inner.tearDown(),
   }
 }
@@ -2337,6 +2372,7 @@ function ensureRosterHook(): void {
 }
 /** **全进程只有这一对**推送订阅(见文件头)。 */
 let unsubEvent: (() => void) | undefined
+let unsubReconnect: (() => void) | undefined
 let unsubStream: (() => void) | undefined
 let subscribing: Promise<void> | undefined
 /** 「当前会话」那一格 + 它自己持的那一份引用。 */
@@ -2421,6 +2457,10 @@ function ensureSubscribed(): Promise<void> {
     if (unsubEvent) return
     unsubEvent = port.onSessionEvent(dispatchSessionEvent)
     unsubStream = port.onSessionStream(dispatchSessionStream)
+    unsubReconnect = port.onReconnect?.(() => {
+      for (const { source } of entries.values()) source.handleReconnect()
+      for (const source of docked.values()) source.handleReconnect()
+    })
   })()
   return subscribing
 }
@@ -2452,8 +2492,10 @@ function dispatchSessionStream(payload: SessionStreamPayload): void {
 function unsubscribeAll(): void {
   unsubEvent?.()
   unsubStream?.()
+  unsubReconnect?.()
   unsubEvent = undefined
   unsubStream = undefined
+  unsubReconnect = undefined
   subscribing = undefined
 }
 
@@ -2614,8 +2656,9 @@ export function sendChatMessage(
   attachments = 0,
   sessionId?: string,
   segments?: readonly ResolvedSegment[],
+  files?: readonly File[],
 ): boolean {
-  return sourceFor(sessionId)?.getState().send(text, attachments, segments) ?? false
+  return sourceFor(sessionId)?.getState().send(text, attachments, segments, files) ?? false
 }
 
 export function pushChatNotice(kind: 'ask-rejected', sessionId?: string): void {
