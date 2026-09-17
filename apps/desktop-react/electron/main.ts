@@ -242,6 +242,8 @@ async function assembleOwnCore(): Promise<OnethingBackend> {
     // 表现是协作会话发不出话。
     collab: true,
     sessionSkills: true,
+    // 宠物宿主(`docs/design/pet-system-2026-09.md` §9.1):登记 `pet:`、订资源事件里的时刻。
+    pets: true,
     sender: new ShellNoopSender() as never,
     hooks: {
       afterSettings: async () => {

@@ -920,6 +920,9 @@ async function createRealServerBackend(storePath: string, logging?: ConfigureLog
 		},
 		toolRegistry: serverToolRegistry,
 		sessionSkills: true,
+		// 宠物宿主(`docs/design/pet-system-2026-09.md` §9.1):与 React 壳同一格,
+		// 浏览器壳连 server 时栖位照样有 `pet:` 可读。CLI 守护进程不传。
+		pets: true,
 		sender: new ServerNoopSender() as never,
 	});
 }

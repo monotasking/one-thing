@@ -108,10 +108,35 @@ export interface OpSpec {
   readonly entity?: string
 }
 
+/**
+ * 一条事实打断人的价值(`docs/design/pet-system-2026-09.md` §2.2)。
+ *
+ *   · `high`   —— 值得当场说出来;
+ *   · `normal` —— 只在旁边安静的时候才值得说;
+ *   · `low`    —— 记住就够了,最多嘀咕一句。
+ */
+export type MomentWeight = 'high' | 'normal' | 'low'
+
+/**
+ * 「这条事实值得在场的旁观者知道」的声明。
+ *
+ * **内核不解释它,只透传**:登记时查形状(`contract.ts`)、`describe` 时带出去,
+ * 谁读、读了之后怎么做都不是这一层的事。它写在事件自述上而不是某张订阅名单里,
+ * 理由与 `ResourceExposure` 同一条:名单是「按能力枚举」的形状,自述才是读表。
+ * 发这条事实的资源因此**不知道**谁在看。
+ */
+export interface EventMoment {
+  readonly weight: MomentWeight
+  /** 给模型看的一句话:这条事实在人话里是什么意思。 */
+  readonly gist: string
+}
+
 /** 一种事件。事件是事实,不是命令(§2 `Watch`)。 */
 export interface EventSpec {
   readonly title: string
   readonly payload: JsonSchema
+  /** 这条事实值得旁观者知道。缺省 = 旁观者看不见它。内核不解释,只透传。 */
+  readonly moment?: EventMoment
 }
 
 /**

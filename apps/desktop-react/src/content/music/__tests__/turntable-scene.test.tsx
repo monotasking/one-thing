@@ -4,6 +4,8 @@ import type { ReactNode } from 'react'
 import type { MusicRadioState } from '@shared/ipc/music'
 import { MUSIC_ARM_MOVE_MS, MUSIC_STOW_MS, MUSIC_SWAP_MS } from '../../../components/motion'
 import type { MusicNowPlayingView, MusicProgrammeView } from '../../../data/music-source'
+import { configurePetPort, resetPetSource } from '../../../data/pet-source'
+import type { ResourceEventFact, ResourcePort } from '../../../data/resource-port'
 import { FocusScope } from '../../../focus/FocusScope'
 import { focusTree } from '../../../focus/registry'
 import { useStageStore } from '../../../stage/store'
@@ -19,7 +21,8 @@ import type { TurntableSceneProps } from '../TurntableScene'
  *  ③ 唱头聚焦 ←/→ → 各一次 ±10s;
  *  ④ 换歌那一串跑着时唱头不接手;
  *  ⑤ 歌名变 → 跑那一串;卸载 → 计时器清零;
- *  ⑥ brief.starting 出现 + 节目单有匹配的 say → 黑豆开口。
+ *  ⑥ brief.starting 出现 + 节目单有匹配的 say → 黑豆开口;
+ *  ⑦ 后端 `pet:` 发来一句 → 与本地那一路比谁后到;戳 → 发 `pet:` 的 poke,失败零提示(宠物 P2)。
  *
  * jsdom 里容器宽是 0,视口 = 原大不缩放,所以 client 坐标就是画布坐标。
  */
@@ -245,5 +248,79 @@ describe('黑豆', () => {
     })
     expect(screen.getByTestId('music-turntable').dataset.room).toBe('dim')
     expect(screen.getByTestId('pet-button').dataset.pose).toBe('sleeping')
+  })
+})
+
+describe('黑豆 · 宠物宿主(P2)', () => {
+  const bubble = () => screen.getByTestId('pet-bubble')
+  let emit: (fact: ResourceEventFact) => void = () => undefined
+  let calls: Array<{ ref: string; op: string }> = []
+
+  const flush = async () => {
+    await act(async () => {
+      for (let i = 0; i < 50; i += 1) await Promise.resolve()
+    })
+  }
+
+  beforeEach(() => {
+    calls = []
+    const port: ResourcePort = {
+      ready: async () => undefined,
+      read: async () => ({
+        kind: 'ok',
+        value: { pet: { id: 'heidou', name: '黑豆', rig: 'heidou-svg' }, speaking: false, utterances: [] },
+      }),
+      do: async (ref, op) => {
+        calls.push({ ref, op })
+        throw new Error('backend is gone')
+      },
+      onResourceEvent: (_prefix, callback) => {
+        emit = callback
+        return () => {
+          emit = () => undefined
+        }
+      },
+    }
+    resetPetSource()
+    configurePetPort(port)
+  })
+
+  afterEach(() => {
+    // 先卸载再清:`latest` 清空会通知还挂着的栖位,在 act 外就是一次无主更新。
+    cleanup()
+    resetPetSource()
+    configurePetPort({
+      ready: async () => undefined,
+      read: async () => ({ kind: 'denied', reason: 'fake port' }),
+      do: async () => ({ kind: 'denied', reason: 'fake port' }),
+      onResourceEvent: () => () => undefined,
+    })
+  })
+
+  it('后端发来一句 → 栖位演它;之后本地那一路再来一句 → 演后到的那句', async () => {
+    const { rerender } = mount()
+    await flush()
+    act(() => {
+      emit({ ref: 'pet:current', event: 'utterance', payload: { id: 'u1', petId: 'heidou', mode: 'speak', text: '后端这句。', at: 1, duck: true } })
+    })
+    expect(bubble().dataset.show).toBe('true')
+    expect(bubble().textContent).toContain('后端这句。')
+    act(() => void vi.advanceTimersByTime(1_000))
+    rerender({ brief: { ...RADIO, starting: '潮汐表 - 北岸电台' } })
+    expect(bubble().textContent).toContain('潮汐表。')
+  })
+
+  it('戳黑豆 → 发一次 pet:current 的 poke;后端失败不改屏上任何东西', async () => {
+    mount()
+    await flush()
+    const button = screen.getByTestId('pet-button')
+    act(() => {
+      button.dispatchEvent(pointer('pointerdown', 50, 50))
+      window.dispatchEvent(pointer('pointermove', 52, 50))
+      window.dispatchEvent(pointer('pointerup', 52, 50))
+    })
+    await flush()
+    expect(calls).toEqual([{ ref: 'pet:current', op: 'poke' }])
+    expect(bubble().dataset.mode).toBe('mutter')
   })
 })

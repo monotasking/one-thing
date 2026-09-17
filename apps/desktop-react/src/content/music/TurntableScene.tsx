@@ -16,11 +16,12 @@ import type {
 import type { MusicRadioState, MusicRuntimeState } from '@shared/ipc/music'
 import { currentMotionTier } from '../../components/motion'
 import type { MusicNowPlayingView, MusicProgrammeView } from '../../data/music-source'
+import { petOps, useCurrentPetId, usePetLive, usePetUtterance } from '../../data/pet-source'
 import { useT } from '../../i18n'
 import { findBuiltinPet } from '../../pets/builtin'
 import { PetStage } from '../../pets/PetStage'
 import type { PetStageHandle } from '../../pets/PetStage'
-import type { PetUtterance } from '../../pets/types'
+import type { PetGesture, PetUtterance } from '../../pets/types'
 import { PointerTrack } from '../../ui/drag'
 import { FrameCoalescer } from '../../ui/frame-coalescer'
 import { usePanelVisibility } from '../visibility'
@@ -50,8 +51,16 @@ import {
 import { clockOf, progressOf, splitTitle } from './turntable'
 import s from './TurntableScene.module.css'
 
-/** 这块栖位演的是哪只宠物。P2 起由 `pet:` 资源的 `current` 交来。 */
-const PET = findBuiltinPet('heidou')
+/**
+ * 这块栖位缺省演的宠物。P2 起 `pet:` 资源的 `current` 读得到就按它交来的 id 查壳侧形象表;
+ * 读不到(宿主没有宠物子系统)就是这一只,与 P1 一样。
+ */
+const DEFAULT_PET = findBuiltinPet('heidou')
+
+/** 手势 → `pet:` 的做法(§9.5)。发完不等、失败不提示。 */
+function reportGesture(gesture: PetGesture): void {
+  petOps[gesture.kind]()
+}
 /** 唱头 ←/→ 一下跳多少秒(§8.3)。 */
 const KEY_SEEK_S = 10
 
@@ -87,6 +96,9 @@ const KEY_SEEK_S = 10
  * | 暂停 | 唱臂原地抬起,转盘靠惯性 1.6s 停 | still,9s 后打盹 |
  * | 换歌(歌名 A → B,都非空) | 归位(900)+ 减速 → 收片(680)→ 封套换歌(600)→ 放片(680)→ 在放就起转 + 落针到此刻位置;期间唱臂不可拖;跑着时又换歌,跑完直接换到最新那首 | 不变 |
  * | `brief.starting` 出现 | — | 节目单里标题匹配那条(找不到取第一条)的 say 作一句开口;没有 say 不说 |
+ * | 后端 `pet:` 发来一句话语(P2) | — | 与上一行那一路比谁**后到**,演后到的那一句(P3 删本地那一路) |
+ * | 戳 / 撸(P2) | — | P0 的本地嘀咕照旧;另发 `pet:` 的 poke / stroke,发完不等、失败零提示 |
+ * | `pet:current` 读不到(宿主没有宠物) | — | 照 P1 跑,零提示 |
  * | 播放器停了(有歌 → 无歌) | 归位 → 收片 → 封套变素面 | 按 §8.1 |
  * | 电台关台 | 同上,墙面灯暗一半 | 睡 |
  * | 进度被别处 seek | 唱臂 300ms 过渡到新位置 | 不变 |
@@ -301,8 +313,14 @@ export function TurntableScene({
     [duration, onSeek, position, seekable],
   )
 
-  // ── 黑豆:换歌时的那一句开口 ─────────────────────────────────────────────
-  const [utterance, setUtterance] = useState<PetUtterance | null>(null)
+  // ── 黑豆:是哪一只、后端说的话 ───────────────────────────────────────────
+  usePetLive()
+  const petId = useCurrentPetId()
+  const pet = (petId !== undefined ? findBuiltinPet(petId) : undefined) ?? DEFAULT_PET
+  const backendSaid = usePetUtterance()
+
+  // ── 黑豆:换歌时的那一句开口(P1 本地那一路)──────────────────────────────
+  const [localSaid, setLocalSaid] = useState<{ utterance: PetUtterance; receivedAt: number } | null>(null)
   /** 上一份简报里的 `starting`;`null` = 简报还没读到过(第一份不算「出现」)。 */
   const lastStarting = useRef<string | null>(null)
   useEffect(() => {
@@ -313,8 +331,13 @@ export function TurntableScene({
     if (previous === null || !starting || starting === previous) return
     const say = startingSay(starting, programme)
     // 一次外部事实(简报里出现了新的 starting)→ 交给栖位一句话;不是派生状态。
-    if (say) setUtterance({ mode: 'speak', text: say })
+    if (say) setLocalSaid({ utterance: { mode: 'speak', text: say }, receivedAt: Date.now() })
   }, [brief, programme])
+  // 两路里后到的那一句(§9.5)。同一时刻到的算后端那一路:它是 P3 之后唯一留下的那条。
+  const utterance =
+    backendSaid && (!localSaid || backendSaid.receivedAt >= localSaid.receivedAt)
+      ? backendSaid.utterance
+      : (localSaid?.utterance ?? null)
 
   // ── 画面 ────────────────────────────────────────────────────────────────
   const shown = splitTitle(snap.title)
@@ -432,8 +455,15 @@ export function TurntableScene({
         </div>
       </div>
       <div ref={perchRef} className={s.perch}>
-        {ready && PET && (
-          <PetStage ref={petRef} manifest={PET} activity={activity} utterance={utterance} size="stage" />
+        {ready && pet && (
+          <PetStage
+            ref={petRef}
+            manifest={pet}
+            activity={activity}
+            utterance={utterance}
+            size="stage"
+            onGesture={reportGesture}
+          />
         )}
       </div>
       <span ref={tipRef} className={s.tip} hidden aria-hidden="true" />

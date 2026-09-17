@@ -312,12 +312,38 @@ describe('resource spec contract', () => {
       { kind: 'bad-state-read', scheme: 'demo', name: 'count', read: 'nope' },
       { kind: 'bad-state-scope', scheme: 'demo', name: 'count', scope: 'per-window' },
       { kind: 'bad-exposure', scheme: 'demo', field: 'aiTool', value: 'no' },
+      { kind: 'bad-moment', scheme: 'demo', name: 'changed', field: 'weight' },
     ] as const
     for (const problem of problems) {
       expect(formatResourceSpecProblem(problem), problem.kind).toBeTruthy()
     }
-    // 十三支 = 联合的全部分支。少一支这条就该改。
-    expect(new Set(problems.map(item => item.kind)).size).toBe(13)
+    // 十四支 = 联合的全部分支。少一支这条就该改。
+    expect(new Set(problems.map(item => item.kind)).size).toBe(14)
+  })
+
+  /**
+   * 事件上的 `moment`(宠物 P2)。契约只查形状,不解释 —— 与 `exposure` 同一条。
+   */
+  describe('event moment', () => {
+    const event = (moment: unknown): unknown =>
+      baseSpec({ events: { changed: { title: 'Changed', payload: anySchema, moment } } })
+
+    it('accepts absence and each of the three weights', () => {
+      expect(describeResourceSpecProblem(baseSpec({ events: { changed: { title: 'Changed', payload: anySchema } } }))).toBeNull()
+      for (const weight of ['high', 'normal', 'low']) {
+        expect(describeResourceSpecProblem(event({ weight, gist: 'something changed' }))).toBeNull()
+      }
+    })
+
+    it('refuses a non-object, an unknown weight and an empty gist', () => {
+      expect(describeResourceSpecProblem(event('high'))).toEqual({ kind: 'not-object', where: 'event:changed.moment' })
+      expect(describeResourceSpecProblem(event({ weight: 'urgent', gist: 'x' }))).toEqual({
+        kind: 'bad-moment', scheme: 'demo', name: 'changed', field: 'weight',
+      })
+      expect(describeResourceSpecProblem(event({ weight: 'low', gist: '' }))).toEqual({
+        kind: 'bad-moment', scheme: 'demo', name: 'changed', field: 'gist',
+      })
+    })
   })
 
   /**

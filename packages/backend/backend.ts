@@ -18,7 +18,7 @@
  */
 import { initializeStores, flushAllPendingSaves, getSession } from './store.js'
 import { acquireSessionEventLogStore, type SessionEventLogStoreHandle } from './session/event-log.js'
-import { createStoreLease, getOnethingMediaIndexPath, getOnethingMediaImagesDir, getOnethingMediaFilesDir, type StoreLease, type StoreLockOwner } from '@onething/runtime/storage'
+import { createStoreLease, getOnethingMediaIndexPath, getOnethingMediaImagesDir, getOnethingMediaFilesDir, getOnethingPetsDir, type StoreLease, type StoreLockOwner } from '@onething/runtime/storage'
 import { MediaLibraryService } from '@onething/runtime/media'
 import { configureMediaLibraryService } from '@onething/runtime/media/library-service-bound'
 import { OnethingUsageLedger } from '@onething/runtime/usage'
@@ -33,6 +33,7 @@ import { TodoPlanRuntime } from './wiring/todo-plan/store.js'
 import { BackendResources, type BackendShutdownPhase, type Quiescible } from './lifecycle.js'
 import { PracticeService, configurePracticeService } from '@onething/runtime/practice/service.wiring'
 import { MusicSubsystem } from './wiring/music/subsystem.js'
+import { PetsSubsystem } from './wiring/pets/subsystem.js'
 import { createVoiceService, configureVoiceService } from './wiring/voice/service.js'
 import { createTaskDispatchLayer, type TaskDispatchLayer } from './wiring/tasks/dispatch.js'
 import { createSessionDeletionRecovery, type SessionDeletionRecovery } from '@onething/runtime/sessions'
@@ -218,6 +219,12 @@ export interface OnethingBackendOptions {
   shutdownTimeoutMs?: number
   /** File logging and its janitor start only after this Backend owns the store. */
   logging?: ConfigureLoggingOptions
+  /**
+   * 宠物宿主(`docs/design/pet-system-2026-09.md` §9.1)。React 壳与 server 传 `true`,
+   * CLI 守护进程不传。**缺席 = 这台宿主没有宠物**:不建 `PetsSubsystem`、不订资源事件、
+   * 不登记 `pet:`。
+   */
+  pets?: boolean
 }
 
 /**
@@ -886,7 +893,25 @@ export class OnethingBackend implements BackendHandle {
      * K3-b:递的是这台宿主建目录时用的那一档。「哪一档挂哪些内置资源」的判据住在
      * `mountBuiltinResources` 里 —— 这里照旧一个资源的名字都不出现。
      */
-    this.own(mountBuiltinResources(resourceKernel, { tier: toolRegistryTier }), 'builtinResources')
+    /*
+     * 宠物 P2 —— 宠物子系统。它要**这台内核的注册表**(查事件自述上的 `moment`)与总线
+     * (订 `resource:event`),所以排在内核之后;`pet:` 这一格随内置资源一起登记。
+     * 构造即 `own()`:收尾不依赖 `start()` 有没有跑完。登记在 `builtinResources` 之前,
+     * 于是关机链上先摘 `pet:`、再停子系统(等喂食链与写盘链落地)。
+     */
+    const pets = options.pets
+      ? new PetsSubsystem({
+        dir: getOnethingPetsDir({ storePath: lease.storePath }),
+        registry: resourceKernel.registry,
+        bus: eventBus,
+        assertOwned: () => lease.assertHeld(),
+      })
+      : null
+    if (pets) {
+      this.own(() => pets.dispose(), 'pets')
+      await pets.start()
+    }
+    this.own(mountBuiltinResources(resourceKernel, { tier: toolRegistryTier, pets }), 'builtinResources')
     /*
      * K2b-2 —— 壳侧提供者的登记簿。登记在内置资源**之后**,所以关机链上跑在它
      * **之前**:壳交的那几种资源要先按 §10.2 的三步收场(断路由 → 在飞以

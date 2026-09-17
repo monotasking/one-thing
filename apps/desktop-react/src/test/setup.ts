@@ -316,6 +316,19 @@ configureMusicPort({
 })
 
 /**
+ * 宠物的端口(宠物 P2):同一手。默认读一律 `denied` —— 与「宿主没有宠物子系统」同一个结局,
+ * 于是任何渲染了栖位的用例默认照 P1 行为跑。要验 `pet:` 的用例自己 `configurePetPort` 换一个。
+ */
+import { configurePetPort } from '../data/pet-source'
+
+configurePetPort({
+  ready: async () => undefined,
+  read: async () => ({ kind: 'denied', reason: 'fake port' }),
+  do: async () => ({ kind: 'denied', reason: 'fake port' }),
+  onResourceEvent: () => () => undefined,
+})
+
+/**
  * 文字查询不看**播报口**(A11y 线 · A2)。
  *
  * `ui/a11y/live-region.ts` 在 body 末尾挂一块常驻的 visually-hidden 区,一条

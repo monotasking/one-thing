@@ -31,6 +31,8 @@ import { createSandboxPolicy } from '../toolkit/runner.js'
 import { DirResourceProvider } from './dir-provider.js'
 import { GitResourceProvider } from './git-provider.js'
 import { createMusicResourceProvider } from './music-provider.js'
+import { PetResourceProvider } from './pet-provider.js'
+import type { PetsSubsystem } from '../pets/subsystem.js'
 import { createLocalOnlyReadGuard } from './read-guard.js'
 import { SessionResourceProvider } from './session-provider.js'
 import { TodoResourceProvider } from './todo-provider.js'
@@ -96,6 +98,8 @@ export {
   musicPlayerAdapters,
   musicStationAdapters,
 } from './music-provider.js'
+export { PetParamError, PetRefError, PetResourceProvider } from './pet-provider.js'
+export type { PetOpPayload } from './pet-provider.js'
 export type {
   MusicBackendAdapters,
   MusicOpPayload,
@@ -198,6 +202,12 @@ export interface MountBuiltinResourcesOptions {
    * 与今天 CLI 上没有 `radio` 一致。
    */
   readonly tier?: ToolCatalogTier
+  /**
+   * 这台宿主的宠物子系统(宠物 P2,`docs/design/pet-system-2026-09.md` §9.1)。缺席 = 这台
+   * 宿主没有宠物,`pet:` 不登记 —— 与 `tier` 管音乐同一种「不 mount」而不是「mount 了但不给」:
+   * 没有宿主的 `pet:` 连一条读法都答不出来。
+   */
+  readonly pets?: PetsSubsystem | null
 }
 
 export function mountBuiltinResources(
@@ -247,6 +257,14 @@ export function mountBuiltinResources(
   if (options.tier === 'full') {
     const music = createMusicResourceProvider()
     disposers.push(() => music.dispose(), kernel.mount(music))
+  }
+  /*
+   * 宠物 P2 —— `pet:`,**只在宿主交来了宠物子系统时**。两次 push 的顺序与音乐同一条理由:
+   * 逆序跑时先摘 scheme(等在飞收场),再撤子系统手里那只 hub。
+   */
+  if (options.pets) {
+    const pet = new PetResourceProvider(options.pets)
+    disposers.push(() => pet.dispose(), kernel.mount(pet))
   }
   return async () => {
     for (const dispose of [...disposers].reverse()) await dispose()

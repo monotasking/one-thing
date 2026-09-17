@@ -116,7 +116,11 @@ export function serializeSpec(spec: ResourceSpec): SerializedResourceSpec {
   const events: Record<string, SerializedEventSpec> = {}
   for (const name of Object.keys(spec.events).sort()) {
     const event = spec.events[name]
-    events[name] = { title: event.title, payload: event.payload }
+    events[name] = {
+      title: event.title,
+      payload: event.payload,
+      ...(event.moment ? { moment: { weight: event.moment.weight, gist: event.moment.gist } } : {}),
+    }
   }
 
   const projected: SerializedResourceSpec = { scheme: spec.scheme, title: spec.title, reads, ops, events }

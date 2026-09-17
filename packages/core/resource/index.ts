@@ -58,6 +58,7 @@ export {
 export type { Ref, ResourceRef } from './ref.js'
 
 export type {
+  EventMoment,
   EventSpec,
   JsonSchema,
   OpContext,
@@ -65,6 +66,7 @@ export type {
   OpSpec,
   ReadSpec,
   ResourceExposure,
+  MomentWeight,
   ResourceSpec,
   StateScope,
   StateSpec,

@@ -87,6 +87,8 @@ export type ResourceSpecProblem =
   | { readonly kind: 'bad-state-read'; readonly scheme: string; readonly name: string; readonly read: unknown }
   /** `state.scope` 不是 `singleton` / `turn-origin`。 */
   | { readonly kind: 'bad-state-scope'; readonly scheme: string; readonly name: string; readonly scope: unknown }
+  /** 事件上的 `moment` 形状不对:不是对象、`weight` 不在三档里、或 `gist` 不是非空字符串。 */
+  | { readonly kind: 'bad-moment'; readonly scheme: string; readonly name: string; readonly field: 'weight' | 'gist' }
   /** `exposure` 里某一格不是布尔(K5-a)。 */
   | { readonly kind: 'bad-exposure'; readonly scheme: string; readonly field: string; readonly value: unknown }
 
@@ -130,6 +132,8 @@ export function formatResourceSpecProblem(problem: ResourceSpecProblem): string 
       return `resource spec ${problem.scheme}: state ${problem.name}.read ${JSON.stringify(problem.read)} names no read of this resource`
     case 'bad-state-scope':
       return `resource spec ${problem.scheme}: state ${problem.name}.scope must be 'singleton' or 'turn-origin'`
+    case 'bad-moment':
+      return `resource spec ${problem.scheme}: event ${problem.name}.moment.${problem.field} is invalid (weight: 'high' | 'normal' | 'low', gist: a non-empty string)`
     case 'bad-exposure':
       return `resource spec ${problem.scheme}: exposure.${problem.field} must be a boolean`
   }
@@ -190,6 +194,7 @@ export function describeResourceSpecProblem(spec: unknown): ResourceSpecProblem 
   if (!isJsonObject(events)) return { kind: 'not-object', where: 'events' }
   for (const name of sortedKeys(events)) {
     const problem = checkEntry(scheme, 'event', name, events[name], ['payload'])
+      ?? checkMoment(scheme, name, events[name])
     if (problem) return problem
   }
 
@@ -220,6 +225,23 @@ function checkEntry(
   for (const field of schemaFields) {
     if (!isJsonObject(record[field])) return { kind: 'bad-schema', scheme, member, name, field }
   }
+  return null
+}
+
+/**
+ * 事件的 `moment` 声明。与 `exposure` 同一条纪律:只查**形状**,不查语义 ——
+ * 「这条事实值不值得打断人」是写自述的人的判断;契约门只保证读表的人不会读到
+ * 一个 `'urgent'` 然后按某种缺省去猜。
+ */
+function checkMoment(scheme: string, name: string, entry: unknown): ResourceSpecProblem | null {
+  const moment = (entry as Record<string, unknown>).moment
+  if (moment === undefined) return null
+  if (!isJsonObject(moment)) return { kind: 'not-object', where: `event:${name}.moment` }
+  const record = moment as Record<string, unknown>
+  if (record.weight !== 'high' && record.weight !== 'normal' && record.weight !== 'low') {
+    return { kind: 'bad-moment', scheme, name, field: 'weight' }
+  }
+  if (!isNonEmptyString(record.gist)) return { kind: 'bad-moment', scheme, name, field: 'gist' }
   return null
 }
 

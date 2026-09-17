@@ -289,3 +289,62 @@ M1 的 `TurntableDeck`（CSS 唱片 + 唱臂）与 `HostLine`（主持人一行�
 | ♥ 成功 | Transport 的 like 做法回来且无错 | 黑豆 `love()`：冒爱心 + 嘀咕「记住了，你好这口。」 | （like 本身由 Transport 发） |
 
 `prefers-reduced-motion`：窗外雨停、唱片摆动去掉、换歌动画变成 150ms 淡入淡出；转盘照转（转不转是信息）。
+
+## 9. P2：宠物宿主（后端）
+
+P2 只立骨架与一条真路：**时刻进来 → 宿主记账、按预算决定 → 话语作为 `pet:` 事件出去 → 壳上的栖位演出来**。开口的文字生成（模型写词）是 P4，出声是 P3；P2 里能开口的只有「时刻自己带着现成台词」的那一类（`payload.say`），以及 `pet:` 的 `say` 做法。
+
+### 9.1 分层与文件
+
+| 层 | 位置 | 内容 |
+| --- | --- | --- |
+| 内核 | `packages/core/resource/spec.ts` | `EventSpec.moment?: { weight: 'high' \| 'normal' \| 'low'; gist: string }`。内核只透传（`describe` 里带出去），不解释 |
+| 产品 | `packages/onething-runtime/src/pets/` | `manifest.ts`（`PetManifest`：id / name / rig / voice / persona，**不含**嘀咕台词 —— 嘀咕是壳本地的）、`builtin/heidou.ts`、`registry.ts`（内置宠物一张表）、`host.ts`（`PetHost` 纯类）、`ledger.ts`（账本行的形与折叠）、`composer.ts`（`MomentComposer` 端口 + P2 缺省实现 `SayPassthroughComposer`）、`resource-spec.ts`（`pet:` 自述，纯数据） |
+| 装配 | `packages/backend/wiring/pets/` | `subsystem.ts`（`PetsSubsystem`：建宿主、订资源事件、写账本、`dispose`）、`ledger-store.ts`（`<store>/pets/<id>/ledger.jsonl` 追加写 + 启动读尾部 N 行；`<store>/pets/current.json` 记当前宠物） |
+| 装配 | `packages/backend/wiring/resource/pet-provider.ts` | `pet:` 的 provider，读 / 做都转给 `PetsSubsystem` |
+| 组合根 | `OnethingBackendOptions.pets?: boolean` | React 壳与 server 传 `true`，CLI 守护进程不传。**缺席 = 这台宿主没有宠物**：不注册 `pet:`、不订事件、电台照旧自己播（P3 用到） |
+| 壳 | `apps/desktop-react/src/data/pet-source.ts` | `petCurrentQuery`、订 `resource:event` 前缀 `pet:`、`usePetUtterance()`（最新一条话语，新对象身份 = 新话语）、`petOps.poke / stroke`（发完不等） |
+
+### 9.2 `PetHost` 的规矩（纯类，时钟注入）
+
+| 规矩 | 细则 |
+| --- | --- |
+| 同一时刻只有一句开口 | 开口开始后 `speakingUntil = at + estimateSpeechMs(text)`（字数 / 4.2 秒，复用 `music/lyrics.ts` 的 `estimateSpeechSeconds`；P3 换成语音回执）。这段时间里再来的开口请求**丢弃并记账**（`dropped: 'busy'`），不排队 |
+| 冷却 | 两次开口之间至少 `cooldownMs`（缺省 240_000）。`normal` 撞冷却 → 丢弃记账（`dropped: 'cooldown'`）；`high` 无视冷却，但仍受「同一时刻一句」约束 |
+| `low` 权重 | 永远不开口，只记账 |
+| 没台词 | 作曲端口答 `null` → 只记账（`dropped: 'nothing-to-say'`）。P2 缺省作曲器只认 `payload.say`（非空字符串） |
+| `say` 做法 | 调用方指定 `mode`。`speak` 走与时刻相同的「一句 + 冷却」规矩但**视为 high**（人或模型明确要它说）；`mutter` 不占预算、不改 `speakingUntil` |
+| 记忆 | 每条时刻、每条话语、每次丢弃都进账本；宿主内存里保留最近 50 行，`current` 读法交出最近 20 条话语 |
+| 换宠物 | `adopt` 换 manifest、写 `current.json`、清 `speakingUntil`；账本按宠物分目录，不清 |
+
+### 9.3 `pet:` 自述
+
+| 类 | 名字 | 效果 | 说明 |
+| --- | --- | --- | --- |
+| 读 | `roster` | — | 内置宠物列表 `{ id, name, rig }` |
+| 读 | `current` | — | `{ pet: { id, name, rig }, speaking: boolean, speakingUntil?: number, utterances: Utterance[] }`（最近 20 条，新的在后） |
+| 做 | `adopt` | `ui_change` | `{ id }`；未知 id 当场拒绝 |
+| 做 | `say` | `ui_change` | `{ mode, text }`；被预算挡掉时回执里说原因，不抛 |
+| 做 | `poke` / `stroke` | `[]` | 壳的手势。只发对应事件、记账，**不产生话语**（嘀咕在壳本地） |
+| 看 | `utterance` | — | `Utterance`（§2.3 的形），无 `moment` 声明（宠物不对自己说的话起反应） |
+| 看 | `poked` / `stroked` | — | `{ at }`，`moment: { weight: 'low', gist: '用户戳了 / 撸了宠物' }` |
+
+`pet:` 是单例（与 `music:radio` 同理）：地址 `pet:current`，`ref` 可省。
+
+### 9.4 时刻从哪来
+
+`PetsSubsystem` 挂在事件总线上已经在转发的资源事件上（`forwardResourceEventsToBus` 那一路），对每条事件查 `ResourceRegistry` 里那种资源自述的 `events[name].moment`：没有声明就忽略；有就折成 `Moment { scheme, event, weight, gist, payload, at }` 喂给宿主。**`pet:` 自己的事件同样走这条路**（`poked` / `stroked` 只进账本）。
+
+P2 不给任何应用标 `moment`（音乐的标注是 P3）。验证用测试里的假 provider。
+
+### 9.5 壳侧消费
+
+- `TurntableScene` 的 `PetStage.utterance` 改为「后端最新话语」与 P1 本地 `startingSay` 两路里**更新的那一条**（P3 删本地那路）。
+- 戳 / 撸除了 P0 的本地嘀咕，另发 `petOps.poke / stroke`（失败不提示、不重试 —— 手势不该因为后端掉线而有任何可见变化）。
+- `pet:` 读法没配（宿主没有宠物子系统）时：`current` 读失败 → 栖位照 P1 行为跑，零提示。
+
+### 9.6 门
+
+- `PetHost` 单测：冷却、high 插队、一句时丢弃、low 只记账、mutter 不占预算、adopt 清 speaking、账本行形。
+- provider / 子系统测试：假资源发带 moment 的事件 → `pet:` 发出 `utterance`；不带 moment 的被忽略；`pets` 不开时 `pet:` 不在注册表。
+- `bun run boundary:gate`、`bun run assembly:gate`（新状态住实例上，不许新增模块级 `let`）、`bun run transport:gate`、`bun run typecheck`、根 `bun run test` 相关目录、壳 `npm test` / `typecheck` / eslint 本批文件 / `ui:consume`。

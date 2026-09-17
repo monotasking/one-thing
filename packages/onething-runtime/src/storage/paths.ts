@@ -312,6 +312,13 @@ export function getOnethingRunDir(
 	return path.join(getOnethingStorePath(options), "run");
 }
 
+/** 宠物系统的目录:`<store>/pets/<id>/ledger.jsonl` 与 `current.json` 住这里。 */
+export function getOnethingPetsDir(
+	options: OnethingStorePathOptions = {},
+): string {
+	return path.join(getOnethingStorePath(options), "pets");
+}
+
 export function getOnethingEvalsDir(
 	options: OnethingStorePathOptions = {},
 ): string {

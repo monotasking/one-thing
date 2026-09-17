@@ -76,6 +76,11 @@ export interface SerializedOpSpec {
 export interface SerializedEventSpec {
 	title: string;
 	payload: JsonSchema;
+	/**
+	 * 这条事实值得在场的旁观者知道(宠物 P2,`docs/design/pet-system-2026-09.md` §9.1)。
+	 * 自述里没写就不出现;出口原样透传,不解释。
+	 */
+	moment?: { weight: "high" | "normal" | "low"; gist: string };
 }
 
 export interface SerializedStateSpec {

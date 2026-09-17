@@ -102,6 +102,8 @@
 		"./plugins/*": "./src/plugins/*.ts",
 		"./tools": "./src/tools/index.ts",
 		"./tools/*": "./src/tools/*.ts",
+		"./pets": "./src/pets/index.ts",
+		"./pets/*": "./src/pets/*.ts",
 		"./perf": "./src/perf/index.ts",
 		"./perf/*": "./src/perf/*.ts",
 		"./usage": "./src/usage/index.ts",
