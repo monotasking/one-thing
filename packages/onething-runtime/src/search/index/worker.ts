@@ -24,10 +24,29 @@ import { IndexWorkerCore } from './worker-core.js'
 import type { IndexEndpoint } from './worker-core.js'
 
 import type { IndexWorkerData } from './worker-data.js'
+import { installWorkerLogging } from './worker-logging.js'
+import { installWorkerProxyFetch } from './worker-network.js'
 
 if (parentPort === null) throw new Error('search index worker must run inside a Worker')
 
 const data = workerData as IndexWorkerData
+const port = parentPort
+
+/*
+ * **第一句就接日志**(2026-09-17)。这条线程里 `setRuntimeLoggerRoot()` 从来没有人调过,
+ * 于是产品层的兜底 root 生效 —— 一只 200 条的内存环,线程一死就没了。下面第一句
+ * `new SqliteIndex(...)` 就可能 warn(sqlite-vec 装不上),那句话也该落到宿主的
+ * `app.jsonl` 里。理由与机制写在 `worker-logging.ts` 的文件头。
+ */
+installWorkerLogging(value => { port.postMessage(value) })
+
+/*
+ * **出网先接代理**。模型是下载来的,而这条线程的 `fetch` 与主进程那只受管 fetch 毫无
+ * 关系(09-17 事故:provider 走得好好的,模型一个字节下不来)。判据与手法在
+ * `worker-network.ts`;代理没配就是一个字都不做,还原函数这里用不上 —— 线程活多久
+ * 这只 fetch 就活多久。
+ */
+installWorkerProxyFetch(data.semantic?.proxy)
 
 /**
  * 语义召回的装配(S7)。三件事按顺序问,任何一件答不上来就是「这次没有向量路」
@@ -64,7 +83,7 @@ const feeds = [
   })),
 ]
 const core = new IndexWorkerCore({
-  endpoint: parentPort as unknown as IndexEndpoint,
+  endpoint: port as unknown as IndexEndpoint,
   index,
   feeds,
   filters: defaultDocumentFilters(),

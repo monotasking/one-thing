@@ -76,12 +76,16 @@ export const semanticSearchQuery = createQuery<SemanticSearchView>(
  * 说的是上一份配置,拿它画「没跑起来」是拿旧答案回答新问题。真答案由那一发对账
  * 带回来(几十到几百毫秒),中间这一段屏幕上写的是「正在启动」,不是一次闪红。
  *
- * ── 为什么 `failed` 不猜原因 ──────────────────────────────────────────────
+ * ── 为什么这一格只答 `failed`,不答「为什么 failed」 ───────────────────────
  * 打包版的桌面 app 里 `vectorExtension` 是 `loadable`(`vec0.dylib` 有
  * `asarUnpack`),缺的是嵌入运行时(`electron-builder.yml` 排掉了
  * `@huggingface/transformers`,§13 拍点癸');而开发机上同一个 `'off'` 也可能是模型
- * 没下下来。**两件事在这一格上长得一模一样**,所以文案只说「没跑起来 + 去哪儿看
- * 原因」,不替用户猜是哪一种。
+ * 没下下来。**两件事在这一格上长得一模一样** —— 这一格手上只有一个 `'off'`,
+ * 它凭什么都猜不出来,所以它不猜。
+ *
+ * 原因是**后端答的**(2026-09-17 R12):`status.vectorErrorKind` 一个码 +
+ * `status.vectorError` 一句原话,由 `SearchSettings.tsx` 的 `FAILED_REASON_KEY` 查成
+ * 一句人话。后端答不出就还是那句「没跑起来。原因在日志里」——**编一个原因比不说更糟**。
  */
 export type SemanticPhase =
   | 'unknown'
@@ -183,14 +187,24 @@ export const setSemanticSearchEnabledMutation: Mutation<boolean, void> = createM
 )
 
 /**
- * 把 `vector` 那一格抹成**缺席**(= 不知道)。
+ * 把 `vector` 与那两格原因抹成**缺席**(= 不知道)。
  *
  * 写成一只函数而不是 `{ ...prev, vector: undefined }`:契约上那一格是可选的,而
  * `exactOptionalPropertyTypes` 下「显式的 undefined」与「没有这一格」是两回事 ——
  * 前者过不了类型,后者才是我们要说的话。
+ *
+ * **`vectorError` / `vectorErrorKind` 必须跟着一起抹**(2026-09-17 与那两格同批加):
+ * 它们说的是「上一条 Worker 为什么关回去了」。翻开关那一下新的一条还没起来,留着
+ * 就是在「正在启动…」之后紧跟着一句上一任的死因 —— 与留着旧 `vector` 画「没跑起来」
+ * 是同一个错。两格同生同灭,所以在同一处抹掉。
  */
 function withoutVectorState(status: SearchStatusResponse): SearchStatusResponse {
-  const { vector: _vector, ...rest } = status
+  const {
+    vector: _vector,
+    vectorError: _vectorError,
+    vectorErrorKind: _vectorErrorKind,
+    ...rest
+  } = status
   return rest
 }
 

@@ -38,5 +38,24 @@ export interface IndexWorkerData {
     enabled: boolean
     modelId: string
     modelsDir: string
+    /**
+     * 这台机器上网要不要走代理(2026-09-17 加;**契约只加**)。
+     *
+     * 为什么它必须在 `workerData` 里:模型是**下载**来的,而 Worker 是另一条线程 ——
+     * `@huggingface/transformers` 在它里面调的是那条线程自己的全局 `fetch`,与主进程
+     * 里 provider 那只受管 fetch(`providers/bound-fetch.ts`)完全无关。09-17 用户真机
+     * 事故就是这一条:设置里代理开着、provider 通得好好的,语义召回的模型却一个字节都
+     * 下不来(`TypeError: fetch failed`,967ms),状态行只说「没跑起来」。
+     *
+     * 形状与 `settings.network.proxy` 逐格相同(这里**重写一遍形状**而不是引契约层的
+     * 那个类型 —— 产品层不许认识跨进程词汇表),
+     * 由装配层照抄进来;**判据不在这里**:装与不装、哪些主机绕过,由
+     * `worker-network.ts` 用 provider 那条路**同一份**纯函数判(不抄第二份)。
+     */
+    proxy?: {
+      enabled: boolean
+      url: string
+      bypassRules?: string
+    }
   }
 }

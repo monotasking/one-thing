@@ -593,6 +593,10 @@ describe('createAppSearchService:daily 是懒的(§5.2b「文件树 lazy(首次�
 describe('createAppSearchService:语义召回开关保存即生效', () => {
   const settingsWith = (enabled: boolean): AppSettings =>
     ({ search: { semantic: { enabled, modelId: DEFAULT_SEMANTIC_MODEL_ID } } }) as unknown as AppSettings
+  const withProxy = (
+    settings: AppSettings,
+    proxy: { enabled: boolean; url: string; bypassRules?: string },
+  ): AppSettings => ({ ...settings, network: { proxy } }) as unknown as AppSettings
 
   it('① 关 → 开:换一条 Worker,新那条的 semantic.enabled 为真;词法索引一个字没丢', async () => {
     writeSession('s1', '身份牌已经私发四人了', '开局')
@@ -652,6 +656,38 @@ describe('createAppSearchService:语义召回开关保存即生效', () => {
     await expect(during).resolves.toBeTruthy()
     expect((await during).map(result => result.sessionId)).toEqual(['s1'])
     expect(spawned.length).toBe(2)
+  })
+
+  /**
+   * ⑤ **代理那三格也算「换了配置」**(2026-09-17;事故:设置里代理开着、provider 通得
+   * 好好的,语义召回的模型一个字节也下不来)。`workerData` 在 `new Worker(...)` 那一刻
+   * 定死,而 Worker 里那只受管 fetch 是按这三格现造的 —— 改了代理却不换 Worker,就是
+   * 「设置页上代理已经改好了,模型还在照旧连不上」。
+   *
+   * 反证:把 `sameSemantic` 里那三行 `proxy` 比较删掉 → 这一条当场红(只起过一条 Worker)。
+   */
+  it('⑤ 代理改了也换一条 Worker,新那条的 workerData 带着它', async () => {
+    writeSession('s1', '身份牌已经私发四人了', '开局')
+    await mount()
+    expect(spawned[0]!.data.semantic?.proxy).toBeUndefined()
+
+    broadcastSettingsChanged(withProxy(settingsWith(false), {
+      enabled: true, url: 'http://127.0.0.1:7890', bypassRules: 'localhost;127.0.0.1',
+    }))
+    await waitFor('代理落地换了一条', () => spawned.length === 2)
+    expect(spawned[1]!.data.semantic?.proxy).toEqual({
+      enabled: true, url: 'http://127.0.0.1:7890', bypassRules: 'localhost;127.0.0.1',
+    })
+
+    // 关掉代理 = 再换一条,那一格回到缺席(缺席 = 直连)。
+    broadcastSettingsChanged(settingsWith(false))
+    await waitFor('代理撤了再换一条', () => spawned.length === 3)
+    expect(spawned[2]!.data.semantic?.proxy).toBeUndefined()
+
+    // 代理关着的那一份再来一遍 = 同值,不换。
+    broadcastSettingsChanged(settingsWith(false))
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(spawned.length).toBe(3)
   })
 
   it('dispose 之后设置推送端口还给上一位,而且不再换 Worker', async () => {

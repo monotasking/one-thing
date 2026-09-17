@@ -8,12 +8,31 @@ import {
   setSemanticSearchEnabledMutation,
 } from '../../data/search-settings-source'
 import { searchStatusQuery } from '../../data/search-catalog-source'
+import type { SearchStatusResponse } from '@shared/ipc/search'
 import { useT } from '../../i18n'
-import type { MessageKey, TFn } from '../../i18n'
+import type { MessageKey, MessageVars, TFn } from '../../i18n'
 import shared from './Settings.module.css'
 
 /** 开着的时候多久问一次索引状态。下载 / 建索引是分钟级的事,5s 够慢也够跟手。 */
 const STATUS_POLL_MS = 5000
+
+/** 后端答的那几类原因(`SearchStatusResponse.vectorErrorKind`;判据在后端,壳只查表)。 */
+type VectorErrorKind = NonNullable<SearchStatusResponse['vectorErrorKind']>
+
+/**
+ * 原因码 → 那一句人话(2026-09-17 R12)。**一张表,不是一串 if** —— 后端将来多一类,
+ * 这里多一行 + 字典两句,`statusMessage` 一个字不改。
+ *
+ * 每一句后面都跟着 `({reason})` 的原话:人话说的是「该去做什么」,原话说的是
+ * 「机器到底说了什么」,两样都要 —— 只给人话没法排障,只给原话没人看得懂。
+ * `unknown` 那一行没有人话 —— **不认识就不猜**。
+ */
+const FAILED_REASON_KEY: Record<VectorErrorKind, MessageKey> = {
+  network: 'search.semanticStatusFailedNetwork',
+  runtime: 'search.semanticStatusFailedRuntime',
+  model: 'search.semanticStatusFailedModel',
+  unknown: 'search.semanticStatusFailedReason',
+}
 
 /**
  * 设置页「搜索」那一页,今天只有一节:**语义召回**(`docs/design/search-index-2026-09.md`
@@ -51,7 +70,7 @@ const STATUS_POLL_MS = 5000
  * | downloading | `vector === 'downloading'` | 「正在下载模型…」 |
  * | embedding | `vector === 'embedding'` | 「正在建立索引(还有 N 条)」;`vectorPending` 缺席时退回不带数字的那句 |
  * | ready | `vector === 'ready'` | 「就绪」 |
- * | failed | 开着但 `vector === 'off'` | 「没跑起来。原因在日志里」——**不猜是哪一种**,理由写在 `semanticPhaseOf` 上 |
+ * | failed | 开着但 `vector === 'off'` | 后端答得出原因就按 `vectorErrorKind` 查一句人话、把 `vectorError` 原话括在后面(网络 / 运行时 / 模型 / 不认识四行,表在 `FAILED_REASON_KEY`);连原话都答不出才退回「没跑起来。原因在日志里」——**三句都不猜**,理由写在 `semanticPhaseOf` 与 `statusMessage` 的 `failed` 支上 |
  * | error | 设置那一发红了 | 错话与**旧值并陈**(律②):拉不到不把开关那一行抹掉 |
  * | 超量 | 不存在:这一节是定长的三行,不随数据长 | — |
  *
@@ -110,7 +129,7 @@ export function SearchSettings() {
       ) : null}
 
       <div className={shared.settingRowNote} data-testid="search-semantic-status">
-        {statusLine(t, phase, status?.vectorPending)}
+        {statusLine(t, phase, status?.vectorPending, status?.vectorError, status?.vectorErrorKind)}
       </div>
 
       {/*
@@ -138,7 +157,9 @@ export function SearchSettings() {
 export function statusMessage(
   phase: ReturnType<typeof semanticPhaseOf>,
   vectorPending: number | undefined,
-): { key: MessageKey; vars?: { count: number } } {
+  vectorError?: string,
+  vectorErrorKind?: VectorErrorKind,
+): { key: MessageKey; vars?: MessageVars } {
   switch (phase) {
     case 'unknown':
       return { key: 'search.semanticStatusUnknown' }
@@ -158,7 +179,26 @@ export function statusMessage(
     case 'ready':
       return { key: 'search.semanticStatusReady' }
     case 'failed':
-      return { key: 'search.semanticStatusFailed' }
+      /*
+       * **原因说得出就说出来**(2026-09-17)。在这之前这一行只写「原因在日志里」,
+       * 而真机上 Worker 的日志从来没有落过地 —— 那是一句假话(`worker-logging.ts`
+       * 那一半修的就是它)。
+       *
+       * 后端答的是**码 + 原话**,不是一句中文(R12:后端替壳写文案,英文界面上就是
+       * 一句中文)。码查 `FAILED_REASON_KEY`,原话原样插进 `{reason}` 的括号里 ——
+       * 代理没配、这台机器装不出推理运行时、模型文件不完整,三件事各说各的;
+       * 码不认识(`unknown` / 老后端没这一格)就**只说原话**,连原话也没有才退回
+       * 老那句。编一个原因比不说更糟。
+       */
+      if (vectorError === undefined || vectorError.length === 0) {
+        return { key: 'search.semanticStatusFailed' }
+      }
+      return {
+        // 第二个 `??` 不是多余的:类型上这张表是全的,但那个码是**从后端来的字符串** ——
+        // 将来后端多一类而壳还没跟上时,落回「只说原话」比渲染出 `undefined` 好。
+        key: FAILED_REASON_KEY[vectorErrorKind ?? 'unknown'] ?? FAILED_REASON_KEY.unknown,
+        vars: { reason: vectorError },
+      }
   }
 }
 
@@ -167,7 +207,9 @@ function statusLine(
   t: TFn,
   phase: ReturnType<typeof semanticPhaseOf>,
   vectorPending: number | undefined,
+  vectorError: string | undefined,
+  vectorErrorKind: VectorErrorKind | undefined,
 ): string {
-  const message = statusMessage(phase, vectorPending)
+  const message = statusMessage(phase, vectorPending, vectorError, vectorErrorKind)
   return message.vars === undefined ? t(message.key) : t(message.key, message.vars)
 }

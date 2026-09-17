@@ -1071,6 +1071,10 @@ export const zh = {
   'search.semanticStatusEmbeddingCount': '正在建立索引,还有 {count} 条。',
   'search.semanticStatusReady': '就绪',
   'search.semanticStatusFailed': '没跑起来。原因在日志里(log/app.jsonl,search.index.worker)。',
+  'search.semanticStatusFailedReason': '没跑起来:{reason}',
+  'search.semanticStatusFailedNetwork': '没跑起来:下载模型失败,检查网络代理({reason})',
+  'search.semanticStatusFailedRuntime': '没跑起来:本机的推理运行时装不上({reason})',
+  'search.semanticStatusFailedModel': '没跑起来:模型文件不完整({reason})',
   'search.semanticModelLabel': '模型',
   'search.semanticModelHint': '在本机运行的多语言小模型。今天只有这一档。',
   /* ── 内置浏览器(B2′:content/settings/BrowserSettings.tsx)──────────────────

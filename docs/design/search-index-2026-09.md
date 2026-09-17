@@ -114,7 +114,7 @@ packages/onething-runtime/src/search/
                       / worker.ts(Worker 入口:持有 SqliteIndex,收 enqueue / query / status / preview)
                       / worker-host.ts(主线程侧代理:起 Worker、postMessage 往返、崩了重起)
                       / SearchIndexService(主线程门面,只认 worker-host)
-  embedding/          S7:Embedder 接口 + 注册表 + transformers-wasm.ts(§15)
+  embedding/          S7:Embedder 接口 + 注册表 + transformers-onnx.ts(§15)
   capabilities/       messages.ts sessions.ts daily.ts(索引型)files.ts(扫描型)actions.ts prompts.ts(静态型)
   service.ts          SearchService = registry + pipeline + index 的门面
 packages/onething-runtime/src/toolkit/builtin/search.ts   S6:`search` 工具(§14),吃注入的 SearchAdapter,不 import backend
@@ -1465,11 +1465,13 @@ SqliteIndex(同线程 `MessageChannel` Worker,与 `index-service.test.ts` 同一
 | 件 | 是什么 | 法条怎么过 |
 | --- | --- | --- |
 | `sqlite-vec` | 纯 C 的 SQLite 可加载扩展,npm 包 `sqlite-vec` 带平台子包(`sqlite-vec-darwin-arm64` 等,各一个 `vec0.dylib/.so/.dll`) | **门证,不是注释**:`gate:native` 多一列 `sqlite-vec-<platform>-<arch>`,在系统 Node 与 `ELECTRON_RUN_AS_NODE=1` 的 Electron 下各 `new DatabaseSync(':memory:', { allowExtension: true }).loadExtension(path)` 并跑 `select vec_version()`(装得上还得真能用);`nm -u` 只许 `sqlite3_*` 与 libc。**本机读数:未定义符号 21 条,全是 libc(`___memcpy_chk` / `_strtod` …),`sqlite3_*` 零条**(扩展靠 `sqlite3_api` 结构体调宿主,不必导入 sqlite3 符号),V8 / Node 内部符号 0 |
-| 嵌入运行时 | 拍点癸 a:`@huggingface/transformers` wasm 后端(实测版本 3.8.1),模型 `multilingual-e5-small`(q8,384 维);**动态 import**,开关不打开一行不加载 | 它自己零原生。但**它拖进来两个原生包**:`onnxruntime-node`(prebuild 是 `bin/napi-v3/**`)与 `sharp` / `@img/sharp-<platform>`。产品从不加载它们(嵌入器写死 `device: 'wasm'`),可它们真的被打进 app —— 所以两块二进制**都进了 `gate:native` 的表**,实测都是 N-API,绿 |
+| 嵌入运行时 | **`@huggingface/transformers` 的 onnxruntime-node(cpu)后端**(实测版本 3.8.1),模型 `multilingual-e5-small`(q8,384 维);**动态 import**,开关不打开一行不加载。**2026-09-17 改判**:S7 写的是「wasm 后端、零原生依赖」(拍点癸 a),而那句话**在这个仓的任何一个宿主上都没有成立过** —— 见 §15.7b | 它自己零 JS 原生,但**拖进来两个原生包**:`onnxruntime-node`(prebuild 是 `bin/napi-v3/**`)与 `sharp` / `@img/sharp-<platform>`。09-17 起**产品真的会加载前者**(`device: 'cpu'`),`sharp` 仍然从不加载 —— 两块二进制照旧都在 `gate:native` 的表里(法条判的是「真的装了 / 真的产出」,不是「用不用」),实测都是 N-API,绿 |
 | 打包 | 扩展文件 `asarUnpack`;mac 硬化运行时下未签名的 dylib 装载会失败 | `electron-builder.yml` 加了 `sqlite-vec*` 六行;实测 `app.asar.unpacked/node_modules/sqlite-vec-darwin-arm64/vec0.dylib` 在,且 `codesign -dvv` 读到 `flags=0x10002(adhoc,runtime)` —— electron-builder 真的签了它。`gate:packaged` 断言的是 `vectorExtension === 'loadable'`(见 §15.5 那条改判) |
 
 **gate:native 现在 6 个目标,0 失败**:node-pty / sherpa-onnx-node / sherpa-onnx-darwin-arm64 /
 **sqlite-vec-darwin-arm64** / **onnxruntime-node** / **@img/sharp-darwin-arm64**。
+(**09-17 复量更正**:`0d722b38c` 之后 `fsevents` 也进了表,今天是 **7 个目标 0 失败**;
+S7 当时写的 6 个是那一刻的事实。)
 
 ### 15.3 嵌入器是注册表,模型是数据
 
@@ -1488,7 +1490,7 @@ registerEmbedder(factory)                              // runtime/search/embeddi
 ```
 
 - **`kind` 这一格是为前缀留的**:e5 要求查询写 `query: `、正文写 `passage: `。这条知识住
-  `transformers-wasm.ts`,不许漏给调用方。
+  `transformers-onnx.ts`,不许漏给调用方。
 - 模型文件落 `<store>/models/embeddings/<modelId>/`(`getOnethingEmbeddingModelsDir()`,经
   `getOnethingStorePath()` 派生)。首次开启时下载,进度进 `status.vector = 'downloading'`;
   失败 = `VectorWriter` 把状态钉成 `'off'` 并 `warn`,**不重试到死**。
@@ -1601,3 +1603,130 @@ KNN 数不出「一共有多少条相似的」,取词法那个数会在「词法
 | 「开关保存后重读」 | S7 当时:**装配时读一次**;**2026-09-17 起:保存即生效**(换一条 Worker) | 当年的理由是「热换要一格装配级可变状态,而 `assembly:gate` 正是立来禁这个的」——**这句判断是错的**:那一格状态住在 `createAppSearchService` 的**闭包**里,跟着已经被 `own()` 的句柄生灭,模块作用域一个 `let` 都没多。详见 §13 那条结清 |
 | (方案没提) | `RetrieverPolicy.maxDistance` | KNN 没有下限,见 §15.4 末段 |
 | (方案没提) | `status` 多两格:`vectorPending` / `vectorExtension` | 前者与 `pending` 同一种诚实(那一格数会话,这一格数文档);后者是 `gate:packaged` 在默认档上唯一能问的东西 |
+
+### 15.7 2026-09-17:代理 / Worker 日志 / 失败原因(09-17 用户真机事故)
+
+**现场**:用户在设置页把语义召回打开,状态行停在「没跑起来。原因在日志里」。复现读数:
+桌面的 `dist-electron/search-worker.cjs` 在 node 下按同样 `workerData` 跑 —— `vector` 先
+`downloading`、8 秒内翻 `off`,模型目录**一个文件都没下**;直接调
+`pipeline('feature-extraction','Xenova/multilingual-e5-small',{dtype:'q8',device:'wasm'})` 得
+`TypeError: fetch failed`(cause `AggregateError`,967ms)。这台机器 huggingface.co 只有走代理才通,
+而 app 的设置里 `network.proxy` 是开着的、provider 的请求走得好好的。
+
+三条病,三条修,一笔:
+
+| # | 病 | 修 |
+| --- | --- | --- |
+| 1 | **Worker 里的 `fetch` 与 app 的代理无关**。`bound-fetch` 是主进程那一侧的事;Worker 是另一条线程,`@huggingface/transformers` 调的是它自己的全局 `fetch`,直连 | `semantic.proxy` 进 `workerData`(装配层 `proxyWorkerConfig` 照抄设置);Worker 入口 `installWorkerProxyFetch` 把这条线程的 `globalThis.fetch` **换成 provider 那只受管 fetch**(`createOnethingAppFetch`,`policy: 'streaming'`)。绕过判据、dispatcher、SOCKS5 一份实现两处用,**没有抄第二份**。`sameSemantic` 把代理三格也算进「换了配置」,所以改代理 = 换一条 Worker |
+| 2 | **Worker 的日志从来没有落过地**。`setRuntimeLoggerRoot()` 是主线程上 `configureLogging()` 调的,Worker 里没人调 → 兜底 root 只有一只 200 条内存环,线程一死就没了。于是设置页那句「原因在日志里」**是假话** | `installWorkerLogging` 把这条线程的 root 换成一只 `postMessage` sink(`{type:'log', record}`);`IndexWorkerHost.spawn()` 的消息监听**先认领日志帧**,用宿主的 `getLogger(record.ns)` 原样重发,多一格 `fields.thread='search-worker'`。Worker 侧 level 写死 `trace` 不过滤(诊断模式改的是宿主那份 spec,Worker 的 `workerData` 起线程那一刻就定死了) |
+| 3 | **失败原因只在日志里**(而且见 ②) | `VectorWriter.markOff` 记下 `describeEmbedderFailure(error)`(纯函数:错误链里有 `fetch failed` / `ENOTFOUND` / `ECONNREFUSED` / `ETIMEDOUT` 就贴「下载模型失败(检查网络代理):」前缀,别的类型原话交出去,200 字封顶),经 `status.vectorError` 一路投影到设置页;`failed` 态文案变成「没跑起来:{reason}」,答不出原因才退回老那句 |
+
+**两件施工时才知道的事,写在这儿免得下次再撞**:
+
+- **`init.dispatcher` 递给 Node 的全局 `fetch` 不通** —— 本机实测 `fetch failed: invalid
+  onRequestStart method`:Node 内建的那份 undici 与 npm 上的 undici 8 不是同一份代码。要走
+  npm undici 的 `fetch`。而 undici 的 `ProxyAgent` 对 `http://` 的目标**也发 CONNECT**(不是
+  绝对 URI 的转发式),所以门里那台假代理必须是隧道式的。
+- **答复必须裹回全局 `Response`**:`hub.js:566` 判 `response instanceof Response` 才决定
+  `toCacheResponse`,而 npm undici 的 `Response` 不是全局那一个类 —— 不裹就是**模型永远不写磁盘
+  缓存**,每次起 Worker 重下 110MB。`toGlobalResponse` 就是这一句。
+- `HF_ENDPOINT` 设了就赋给 `transformers.env.remoteHost`(镜像站,国内常用)。**只读环境变量,
+  不加设置项**。
+
+**门**:`gate:search-index` 加第 ⑪ 步(真机,不下真模型也不碰外网 —— `HF_ENDPOINT` 指一个没人
+监听的本机端口):⑪a 下不来时 `vector` 翻 `'off'`、`vectorError` 说得出「下载模型失败」、宿主
+`server.jsonl` 里真的有 `fields.thread='search-worker'` 的 warn;⑪b 把 `network.proxy` 指向一台
+本机假代理 → 换一条 Worker → 模型请求经过了它(数 CONNECT)。十一步全绿。反证:注掉
+`installWorkerProxyFetch` → ⑪b 红(代理上只剩 provider 那一条);注掉 `installWorkerLogging` →
+⑪a 的两条日志断言红(0 条)。
+
+**真机复跑**(桌面 `dist-electron/search-worker.cjs`,`HTTPS_PROXY` 不进环境、代理只从
+`workerData` 走):不配代理 = 0 字节 + 一句说得出「连不上」的原因;配上
+`http://127.0.0.1:7890` = **16MB 的 `tokenizer.json` 真的下下来并落进 `<modelsDir>/…`**
+(这一条同时证了上面那条「裹回全局 `Response`」—— 不裹的话磁盘上会是空的)。
+
+**R12(同日晚改判):后端不拼人话,只答「原因码 + 原话」。** 第一版在
+`describeEmbedderFailure` 里拼了一句中文前缀「下载模型失败(检查网络代理):」—— 那是**后端替
+壳写文案**,英文界面上就是一句中文,而这条仓规(「给人看的句子由壳按 i18n 键查出」)与
+「产品层不认识 UI」是同一条。改成:后端答
+`vectorErrorKind: 'network' | 'runtime' | 'model' | 'unknown'` + `vectorError`(原话,200 字封顶),
+壳按 kind 查一行字典、把原话括在后面(`FAILED_REASON_KEY`,四行,中英成对)。判据表(错误链里
+真的出现过哪几个字)住产地那个文件,**网络排在运行时 / 模型前面** —— 下载失败时 transformers
+常把话说成「找不到 config.json」,真因在 `cause` 里的 `fetch failed`,判反了就会让人去查模型文件
+而不是去改代理。`gate:search-index` ⑪a 的断言随之从「那句中文」改成
+`vectorErrorKind === 'network'`:门要守的是「这一类判对了没有」,不是后端的文案。
+
+#### 15.7b 顺带挖出的**下一道墙**:`device: 'wasm'` 在 node 上不成立(**已修**,见 §15.7c)
+
+代理接通之后,同一发跑到了下一个错:
+
+```
+Error: Unsupported device: "wasm". Should be one of: cpu.
+```
+
+`@huggingface/transformers` 3.8.1 的 **node 产物**(`dist/transformers.node.mjs`,`package.json`
+的 `exports.node` 指的就是它)在 `IS_NODE_ENV` 下把 ONNX 绑到 **`onnxruntime-node`**,
+`supportedDevices` 在 macOS 上只有 `['cpu']`(源码 2934–2957 行:win 加 `dml`、linux x64 加
+`cuda`,darwin 什么都不加,最后统一 push `'cpu'`)。而当时的 `transformers-wasm.ts`(§15.7c 起
+改名 `transformers-onnx.ts`)写死
+`device: 'wasm'` —— **那是 web 产物才有的后端**。结论:§15.2 / §15.3 里「wasm 后端、零原生依赖」
+这句话**在这个仓的任何一个宿主上都没有成立过**;S7 的门只跑假嵌入器,所以两周没人发现。
+
+三条路(**编排者当天拍了第 1 条,落地记录在 §15.7c**):
+
+1. **`device: 'cpu'`(= onnxruntime-node)—— 选定**。法条上过得去 —— `gate:native` 早就把
+   `onnxruntime-node` 收进表里且实测 N-API 绿;代价是**它真的是原生依赖**,而且
+   `electron-builder.yml` 今天把它排掉了(拍点癸' 路线 (c)),**打包桌面档仍旧
+   `vector: 'off'`**(优雅降级,与这一改无关)。
+2. 装 `onnxruntime-web`,在 Worker 里 `globalThis[Symbol.for('onnxruntime')] = ort` —— 3.8.1 认这个
+   口(源码 2929 行),于是 wasm 后端在 node 上也成立,拍点癸 a 的「零原生」保住。代价是多一个包。
+3. 换嵌入器(拍点癸 b 早就留了那一格:注册表多一行)。
+
+改之前那半天里的行为是**诚实降级**:`vector: 'off'` + `vectorError: 'Unsupported device: "wasm".
+Should be one of: cpu.'` 上屏,词法路一个字不受影响。
+
+#### 15.7c 2026-09-17 晚:`device: 'cpu'` 落地(§15.7b 的第一条路)
+
+§15.7b 那堵墙由编排者拍了**第一条路**。三条理由都可查:`gate:native` 早就把
+`onnxruntime-node` 收进六目标(两个运行时下都 `require` 得动、`nm -u` 无 V8 私有符号);
+打包档按拍点癸' 路线 (c) 本来就排除了 transformers 与两个 onnxruntime 包,所以**打包桌面档
+照旧 `vector: 'off'` 优雅降级**,这一改一个字都影响不到它;dev / server / CLI 三个宿主由此
+**真能用**,这是唯一的行为变化。
+
+落地:
+
+| 件 | 改动 |
+| --- | --- |
+| `runtime/search/embedding/transformers-wasm.ts` | **改名 `transformers-onnx.ts`**;`device: 'cpu'`;导出符号 `createTransformersOnnxEmbedder` / `transformersOnnxEmbedderFactory`。**注册表 id 不动**(`multilingual-e5-small` —— 它同时是设置里的 `modelId`,是数据) |
+| 线程数 | wasm 那一侧的旋钮 `env.backends.onnx.wasm.numThreads` **删掉**(对 node 产物是死的),换成 `pipeline(..., { session_options: { intraOpNumThreads: 1 } })` —— onnxruntime 的线程数是**每个会话**的,3.8.1 的 7787 行把 `session_options` 原样并进 `InferenceSession.create`。不设 = ORT 按物理核数开满,而这条路本来就是后台活 |
+| 门 | `gate:search-index` 加**可选**第 ⑫ 步(默认跳过,见下) |
+
+**第 ⑫ 步:真嵌入器,默认不跑。** ①–⑪ 全跑假嵌入器 —— §15.7b 那堵墙恰恰藏在假嵌入器照不到的
+地方,活了两周,所以这道缺口要一道门。它要**两把钥匙同时在**:`ONETHING_GATE_REAL_EMBEDDER=1`
+(人明说要跑)+ `HTTPS_PROXY` 或 `HF_ENDPOINT` 至少一个在场(这台机器说得出怎么出网);少一把
+就**打印**跳过的理由走人(静默跳过的门等于没有门)。代理走**产品那条路**(写进
+`settings.network.proxy`,子进程的 `HTTPS_PROXY` 一律清掉 —— 09-17 事故量的就是设置里那一格);
+模型缓存软链 `<store>/models/embeddings` → `ONETHING_GATE_EMBEDDER_CACHE`(缺省
+`<tmp>/onething-gate-embeddings`),产品那一侧一个字不改。
+
+**本机读数**(2026-09-17,M 系列 mac,代理 `http://127.0.0.1:7890`):
+
+| 量项 | 冷(空缓存) | 热(缓存命中) |
+| --- | --- | --- |
+| `status.vector` 走到 `ready` | **191.5s**(走过 embedding → ready) | **1.0s** |
+| 下载的字节 | `model_quantized.onnx` **112.8MB** + `tokenizer.json` 16.3MB + 两个 json | 0 |
+| 零词重叠的改写句经 HTTP 命中 | 「这局游戏怎么分配角色」→ 狼人那条**排第一**;「出行安排变动了」→ 机票那条**排第一** | 同 |
+
+Worker 那一层的同一发(桌面 `dist-electron/search-worker.cjs` + 五份文档):模型装好后
+`vector-query` 21ms / 6ms,三条零词重叠的改写句**各把自己那条排第一**(距离 0.447 / 0.469 /
+0.571,次名都在 0.58 以上)。
+
+**反证**:把 `device` 改回 `'wasm'` → ⑫ **红**(`等不到「真模型装好、嵌完」(走过 downloading →
+off)`),同一发在 Worker 那一层读到
+`vectorErrorKind: 'runtime'` / `vectorError: 'Unsupported device: "wasm". Should be one of: cpu.'`
+—— 也就是说这堵墙今天**有门守着了**,而且屏幕上说得出是哪一类。
+
+**§15.7b 的另外两条路没有作废**,只是没被选:装 `onnxruntime-web` 走
+`globalThis[Symbol.for('onnxruntime')]`(保住「零原生」,多一个包),或换一条嵌入器(注册表多
+一行)。选它们的理由只剩一个:想让**打包桌面档**也能跑语义召回 —— 那是拍点癸' 那一格的事,
+不是这一格的。

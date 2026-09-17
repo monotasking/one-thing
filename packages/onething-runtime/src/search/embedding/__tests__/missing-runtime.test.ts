@@ -5,7 +5,7 @@
  *
  * 打包桌面档**不带**语义召回的运行时 —— `electron-builder.yml` 的 `files:` 排除了
  * `@huggingface/transformers` 与它拖来的 onnxruntime / sharp(理由与三条待拍的路
- * 写在那几行注释里)。于是打包 app 里,`transformers-wasm.ts` 那句
+ * 写在那几行注释里)。于是打包 app 里,`transformers-onnx.ts` 那句
  * `await import('@huggingface/transformers')` 抛 `ERR_MODULE_NOT_FOUND`。
  *
  * 这个文件钉死那一刻**该发生什么**:
@@ -28,7 +28,7 @@ import type { IndexedDoc, VectorIndex } from '@onething/core/search'
 
 import { captureRuntimeLogs } from '../../../logging/index.js'
 import { VectorWriter } from '../../index/vector-writer.js'
-import { E5_SMALL_DIMS, createTransformersWasmEmbedder } from '../transformers-wasm.js'
+import { E5_SMALL_DIMS, createTransformersOnnxEmbedder } from '../transformers-onnx.js'
 
 /**
  * 逐字重现打包档里的现场:模块不在,node 的动态 import 抛 `ERR_MODULE_NOT_FOUND`。
@@ -73,7 +73,7 @@ function makeWriter(): Harness {
       allDocIds: () => [1],
     },
     vector,
-    embedder: createTransformersWasmEmbedder({ modelDir: '/nonexistent/models/e5' }),
+    embedder: createTransformersOnnxEmbedder({ modelDir: '/nonexistent/models/e5' }),
     embedFields: () => ['text'],
     onState: state => { states.push(state) },
   })
@@ -93,7 +93,7 @@ describe('运行时缺席:语义召回把自己关回去(S7 / 拍点癸\' c)', (
    * node 的原话本身(`normalizeError` 会顺着 `cause` 链往下记,两种形状都读得出)。
    */
   it('⓪ 嵌入器自己抛的就是 `ERR_MODULE_NOT_FOUND`(打包档里 node 的原话)', async () => {
-    const embedder = createTransformersWasmEmbedder({ modelDir: '/nonexistent/models/e5' })
+    const embedder = createTransformersOnnxEmbedder({ modelDir: '/nonexistent/models/e5' })
     await expect(embedder.ready()).rejects.toMatchObject({
       cause: { code: 'ERR_MODULE_NOT_FOUND' },
     })

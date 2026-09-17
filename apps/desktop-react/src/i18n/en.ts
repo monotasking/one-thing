@@ -899,6 +899,12 @@ export const en: Record<MessageKey, string> = {
   'search.semanticStatusReady': 'Ready',
   'search.semanticStatusFailed':
     'It did not start. The reason is in the log (log/app.jsonl, search.index.worker).',
+  'search.semanticStatusFailedReason': 'It did not start: {reason}',
+  'search.semanticStatusFailedNetwork':
+    'It did not start: the model download failed — check the network proxy ({reason})',
+  'search.semanticStatusFailedRuntime':
+    'It did not start: the inference runtime will not load on this machine ({reason})',
+  'search.semanticStatusFailedModel': 'It did not start: the model files are incomplete ({reason})',
   'search.semanticModelLabel': 'Model',
   'search.semanticModelHint': 'A small multilingual model that runs on this machine. One choice today.',
   /* ── built-in browser (B2′: content/settings/BrowserSettings.tsx) ───────── */

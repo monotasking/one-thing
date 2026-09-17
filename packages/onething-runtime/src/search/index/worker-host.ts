@@ -18,6 +18,12 @@
  */
 
 import { getLogger } from '../../logging/index.js'
+import {
+  WORKER_LOG_THREAD_FIELD,
+  isWorkerLogMessage,
+  workerLogLevelOf,
+  type WorkerLogMessage,
+} from './worker-logging.js'
 import type {
   IndexEndpoint,
   IndexSearchRequest,
@@ -33,6 +39,26 @@ const log = getLogger('search.index.host')
 
 /** 连崩几次就不再重起(§5.3 末句)。 */
 export const MAX_CONSECUTIVE_CRASHES = 2
+
+/**
+ * Worker 那一侧的一条记录 → 宿主这一侧的同一条记录(2026-09-17)。
+ *
+ * **原样重发,只多一格**:`ns`(`search.index.worker` / `search.embedding` / …)、级别、
+ * `msg`、`fields`、`err` 一个都不改 —— 改了 `log:tail --ns search.*` 就对不上了。加的
+ * 那一格是 `thread`,它回答的是「这条是哪条线程说的」,在 `app.jsonl` 里一眼可筛。
+ *
+ * `record.time` 由宿主的 `LoggerRoot` 重新盖(跨线程那一跳是微秒级;理由写在
+ * `worker-logging.ts` 的文件头)。
+ */
+function relayWorkerLog(frame: WorkerLogMessage): void {
+  const { record } = frame
+  const relay = getLogger(record.ns)
+  relay[workerLogLevelOf(record)](
+    record.msg,
+    { ...record.fields, thread: WORKER_LOG_THREAD_FIELD },
+    record.err,
+  )
+}
 
 export interface IndexWorkerHandle {
   readonly endpoint: IndexEndpoint
@@ -295,6 +321,12 @@ export class IndexWorkerHost {
     const handle = this.factory()
     this.handle = handle
     handle.endpoint.on('message', value => {
+      // **日志帧先认领**:它不带 `id`,否则下一行会把它当成一条没人等的答复扔掉
+      // (2026-09-17 以前正是这样 —— Worker 里的每一句话都掉在地上,见 `worker-logging.ts`)。
+      if (isWorkerLogMessage(value)) {
+        relayWorkerLog(value)
+        return
+      }
       const response = value as IndexWorkerResponse
       const pending = this.inFlight.get(response.id)
       if (pending === undefined) return

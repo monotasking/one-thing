@@ -7,7 +7,8 @@
  * (`dist/server/search-worker.cjs`)真的被 `worker_threads` 起了起来、真的在折账本。
  * 单测里的 Worker 是同线程的 `MessageChannel`(S3a 的手法),那条路证不了这一件。
  *
- * 十条(①–④ S3b,⑤–⑦ S3c,⑧ S7,⑨ 检索面终稿,⑩ 设置页那一格与热生效):
+ * 十一条常跑 + 一条**可选**(①–④ S3b,⑤–⑦ S3c,⑧ S7,⑨ 检索面终稿,⑩ 设置页那一格与
+ * 热生效,⑪ 代理与 Worker 日志,⑫ 真嵌入器 —— 默认跳过,见它自己的段首):
  *   ① `search.status` → `mode: 'owner'`(起不来就是 `'error'`)
  *   ② 发一条消息(假 provider 回一段固定文本)→ 1s 内 messages 档搜得到**用户那句**
  *      与**助手那段**(这条走的是完整链:`user/message` / `run/end` → append 观察者
@@ -36,6 +37,15 @@
  *      → `status.vector` 走过 downloading / embedding 到 `'ready'` → 黄金复述集里
  *      的一条**改写句**经 HTTP 命中那条消息。假嵌入器证的是**链路**不是模型
  *      (`packages/core/search/__tests__/fixtures/paraphrase.json` 的头注写着这句)。
+ *   ⑫ **真嵌入器真的跑得起来**(2026-09-17;**默认不跑** —— 它要下 130MB 模型、要出外网)。
+ *      `ONETHING_GATE_REAL_EMBEDDER=1` 且 `HTTPS_PROXY` / `HF_ENDPOINT` 至少有一个在场
+ *      才跑;否则打印跳过的理由。判的是「`device: 'cpu'` 那条路通到底」:状态走到
+ *      `ready`,再拿一句**与原文零词重叠**的改写句经 HTTP 命中它自己那条。
+ *   ⑪ **模型下载走 app 的代理 + Worker 的话落得了地**(2026-09-17,09-17 用户真机事故):
+ *      ⑪a 下不来时 `status.vector` 翻 `'off'`、`status.vectorError` 说得出「下载模型失败」,
+ *          而且 Worker 那句 warn 真的出现在宿主的 `server.jsonl` 里(`fields.thread`);
+ *      ⑪b 把 `network.proxy` 指向一台本机假代理 → 换一条 Worker → 模型请求经过了它。
+ *      全程不下真模型、不碰外网(`HF_ENDPOINT` 指一个没人监听的本机端口)。
  *   ⑩ **开关保存即生效**(2026-09-17;结清 §13「S7 待拍(三)——开关保存后不热生效」):
  *      出厂档起一条 server(`vector: 'off'`)→ 经 `settings.saveSettings` 打开那一格 →
  *      `status.vector` **不重启就**离开 `'off'` → 再关回去 → 回到 `'off'`。全程词法路
@@ -65,6 +75,8 @@
  */
 import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
+import net from 'node:net'
+import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -407,12 +419,367 @@ try {
 await runLoopDelayPhase()
 await runSemanticPhase()
 await runSemanticHotApplyPhase()
+await runSemanticProxyPhase()
+await runRealEmbedderPhase()
 
 if (failures.length > 0) {
   console.error(`[gate:search-index] ${failures.length} check(s) failed`)
   process.exit(1)
 }
 console.log('[gate:search-index] ok')
+
+/* ═══════════════════ ⑪ 模型下载走代理 + Worker 的话落得了地 ════════════════════
+ *
+ * 09-17 用户真机事故的两条,各一半:
+ *  ⑪a **原因说得出**:语义召回开着、模型下不来 → `status.vector` 翻 `'off'`,
+ *      `status.vectorError` 里有那句人话,**而且 Worker 那句 warn 真的出现在宿主的
+ *      `server.jsonl` 里**(这一条就是「设置页写着『原因在日志里』而日志里一行都没有」
+ *      的验尸报告 —— Worker 从来没有接过宿主的 sink)。
+ *  ⑪b **代理真的用上了**:把 `network.proxy` 指向一台本机假代理 → 换一条 Worker →
+ *      模型请求经过了它(数 CONNECT;实测 undici 的 `ProxyAgent` 对 `http://` 的目标
+ *      **也发 CONNECT**,所以数的就是它)。
+ *
+ * **不下载真模型,也不碰外网**:`HF_ENDPOINT` 指到一个**没人监听**的本机端口。
+ * 于是 ⑪a 的失败原因是货真价实的 `fetch failed / ECONNREFUSED`(那正是人话前缀的判据,
+ * 答 404 的假站不是 —— 404 是一个真答复,不是「连不上」),而 ⑪b 里同一条 URL 换成
+ * 走代理之后,代理那一侧就能数到它。
+ *
+ * 这一条**不能**开 `ONETHING_SEARCH_EMBEDDER=fake`:假嵌入器根本不出网,那就什么都证不了。
+ */
+async function runSemanticProxyPhase() {
+  const storeE = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-search-proxy-gate-'))
+  let server
+  let provider
+  let proxy
+  let deadPort
+  try {
+    console.log(`[gate:search-index] ⑪ temp store: ${storeE}`)
+    provider = await startFakeProvider(MOCK_PORT + 4, REPLY_TEXT)
+    proxy = await startCountingProxy()
+    deadPort = await findClosedPort()
+
+    // 语义召回开着、**真嵌入器**、镜像站指向一个没人监听的端口。
+    fs.writeFileSync(path.join(storeE, 'settings.json'), JSON.stringify({
+      ai: fakeProviderAiSettings(MOCK_PORT + 4),
+      tools: { enableToolCalls: false, permissionMode: 'dangerously-allow-all', tools: {} },
+      diagnostics: { enabled: false },
+      search: { semantic: { enabled: true } },
+    }, null, 2))
+
+    server = spawn(process.execPath, [serverEntry], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        ...FAKE_PROVIDER_ENV,
+        ONETHING_STORE_PATH: storeE,
+        ONETHING_SERVER_DATA_ROOT: storeE,
+        ONETHING_SERVER_HOST: '127.0.0.1',
+        ONETHING_SERVER_PORT: '',
+        // 这一条的整个前提:**不出外网**。没人监听 = 连不上 = 那句人话前缀的判据。
+        HF_ENDPOINT: `http://127.0.0.1:${deadPort}`,
+        // 环境里可能有真代理(开发机上常有);这一条要的是「设置里那一格」说了算。
+        HTTP_PROXY: '', HTTPS_PROXY: '', http_proxy: '', https_proxy: '', ALL_PROXY: '',
+        ONETHING_SEARCH_EMBEDDER: '',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    const out = []
+    server.stdout.on('data', chunk => out.push(chunk.toString()))
+    server.stderr.on('data', chunk => out.push(chunk.toString()))
+
+    const discovery = await waitForDiscovery(storeE)
+    const rpc = createRpc(discovery)
+
+    // 一条消息 = 一份待嵌的文档 = 写路真的会去装载模型(不然什么都不会发生)。
+    const made = await rpc('sessions', 'create', { name: `代理门 ${MARKER}` })
+    const sessionId = made?.session?.id
+    if (!sessionId) throw new Error(`⑪ sessions.create 没给出会话 id:${JSON.stringify(made)}`)
+    await rpc('session-command', 'emit', {
+      sessionId,
+      command: { type: 'command:send-message', content: `身份牌 ${MARKER} 已经私发四人了`, suppressTitleGeneration: true },
+    })
+
+    // ── ⑪a 原因说得出 ────────────────────────────────────────────────────
+    const offed = await waitForStatus(rpc, status => status?.vector === 'off', "下不来之后翻回 'off'", 60_000)
+    check(true, `⑪a 模型下不来 → status.vector 翻回 'off'(${offed.ms}ms;走过 ${[...offed.seen].join(' → ')})`)
+    /*
+     * 判的是**原因码**,不是那句人话(R12,2026-09-17 晚)。后端从此一个中文字都不拼 ——
+     * 句子由壳按 `vectorErrorKind` 查字典。门要是继续对着中文断言,后端改文案这门就红,
+     * 而它本来该守的是「这一类判对了没有」。
+     */
+    const kind = offed.status?.vectorErrorKind
+    const reason = offed.status?.vectorError
+    check(kind === 'network',
+      `⑪a status.vectorErrorKind 判成 network(读到 ${JSON.stringify(kind)})`)
+    check(typeof reason === 'string' && reason.length > 0,
+      `⑪a status.vectorError 带着原话(读到 ${JSON.stringify(reason)})`)
+
+    /*
+     * Worker 那句话真的进了宿主的 jsonl —— 这一格就是「日志落地」那一半的证据。
+     * **要等**:`JsonlFileSink` 是缓冲写的,`status` 一翻 `'off'` 那一刻它还没落盘
+     * (施工时这么红过一次,是时序不是回归)。
+     */
+    const logFile = path.join(storeE, 'log', 'server.jsonl')
+    const workerWarns = () => readJsonl(logFile)
+      .filter(record => record?.fields?.thread === 'search-worker')
+    await waitFor(() => workerWarns().some(record => record.level === 'warn'), 20_000)
+    const fromWorker = workerWarns()
+    check(fromWorker.length > 0,
+      `⑪a 宿主 server.jsonl 里有 Worker 说的话(${fromWorker.length} 条;ns: ${[...new Set(fromWorker.map(r => r.ns))].join(', ')})`)
+    check(fromWorker.some(record => record.level === 'warn' && record.ns?.startsWith('search.')),
+      '⑪a 其中有那句 warn(语义召回自己关回去了)')
+
+    // ── ⑪b 代理真的用上了 ────────────────────────────────────────────────
+    const current = await rpc('settings', 'getSettings')
+    if (!current?.settings) throw new Error('⑪ settings.getSettings 没给出设置')
+    const saved = await rpc('settings', 'saveSettings', {
+      ...current.settings,
+      network: { proxy: { enabled: true, url: proxy.url, bypassRules: '' } },
+    })
+    if (saved?.success !== true) throw new Error(`⑪ settings.saveSettings 未成功:${JSON.stringify(saved)}`)
+
+    /*
+     * 换完 Worker 还要**再给它一份活**:新那条起来时启动校对发现这条会话的检查点没变,
+     * 一份文档都不会排队,于是写路根本不去装模型 —— 那样数到 0 次 CONNECT 是「没人下过」,
+     * 不是「代理没接上」。再发一条消息 = 一份新文档 = 写路真的去下模型。
+     * (施工时就是这么红了一次,这段注释是那次的病历。)
+     */
+    await rpc('search', 'status')
+    await rpc('session-command', 'emit', {
+      sessionId,
+      command: { type: 'command:send-message', content: `换了代理之后再说一句 ${MARKER}`, suppressTitleGeneration: true },
+    })
+
+    /*
+     * 等的是**镜像站那一条**来过,不是「来过任何一条」。代理那一格一改,provider 的
+     * 调用也跟着走代理了(它本来就该 —— `bound-fetch` 读的是同一格设置),于是假代理上
+     * 先看见的多半是假 provider 那一条;拿「有没有 CONNECT」当判据会提前收工,
+     * 然后在下一行说「镜像站没来过」。施工时这么红过一次。
+     */
+    const mirrorTarget = `127.0.0.1:${deadPort}`
+    const seenMirror = await waitFor(() => proxy.connects.includes(mirrorTarget), 60_000)
+    check(seenMirror,
+      `⑪b 改完代理换了一条 Worker,模型请求经过了它(CONNECT ${proxy.connects.length} 次:${[...new Set(proxy.connects)].join(', ')})`)
+
+    if (failures.length > 0) {
+      console.error(`[gate:search-index] ⑪ server 输出尾:\n${out.slice(-40).join('')}`)
+    }
+  } catch (error) {
+    failures.push(String(error?.stack || error))
+    console.error(`[gate:search-index] ⑪ ${error?.stack || error}`)
+  } finally {
+    if (server && server.exitCode === null && server.signalCode === null) {
+      server.kill('SIGTERM')
+      await sleep(1500)
+      try { server.kill('SIGKILL') } catch { /* 已经没了就算了 */ }
+    }
+    if (provider) provider.close()
+    if (proxy) await proxy.close()
+    fs.rmSync(storeE, { recursive: true, force: true })
+  }
+}
+
+/** 轮询到 `predicate` 为真(或到点),把走过的每一格 `vector` 记下来。 */
+async function waitForStatus(rpc, predicate, label, timeoutMs) {
+  const startedAt = Date.now()
+  const seen = new Set()
+  let status
+  while (Date.now() - startedAt < timeoutMs) {
+    status = await rpc('search', 'status')
+    seen.add(status?.vector ?? '(absent)')
+    if (predicate(status)) return { status, seen, ms: Date.now() - startedAt }
+    await sleep(200)
+  }
+  throw new Error(`等不到「${label}」(走过 ${[...seen].join(' → ')})`)
+}
+
+async function waitFor(predicate, timeoutMs) {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < timeoutMs) {
+    if (predicate()) return true
+    await sleep(200)
+  }
+  return false
+}
+
+function readJsonl(file) {
+  if (!fs.existsSync(file)) return []
+  return fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean).flatMap(line => {
+    try { return [JSON.parse(line)] } catch { return [] }
+  })
+}
+
+/** 一个没人监听的本机端口(开一只 listener 问出端口号再关掉)。 */
+async function findClosedPort() {
+  const probe = net.createServer()
+  await new Promise(resolve => probe.listen(0, '127.0.0.1', resolve))
+  const { port } = probe.address()
+  await new Promise(resolve => probe.close(resolve))
+  return port
+}
+
+/**
+ * 一台只数数的假代理。CONNECT 一律答 502 并关掉 —— 这一条要证的是「请求**来过这里**」,
+ * 不是「它能不能通」。
+ */
+async function startCountingProxy() {
+  const connects = []
+  const sockets = new Set()
+  const server = http.createServer((_req, res) => { res.writeHead(400); res.end() })
+  server.on('connect', (request, socket) => {
+    connects.push(request.url ?? '')
+    sockets.add(socket)
+    socket.write('HTTP/1.1 502 Bad Gateway\r\n\r\n')
+    socket.end()
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address()
+  return {
+    url: `http://127.0.0.1:${port}`,
+    connects,
+    close: () => new Promise(resolve => {
+      for (const socket of sockets) socket.destroy()
+      server.close(() => resolve())
+    }),
+  }
+}
+
+/* ═══════════════════ ⑫ 真嵌入器真的跑得起来(**可选**,默认跳过)═══════════════
+ *
+ * ①–⑪ 全都跑假嵌入器,所以它们证的是**链路**不是模型 —— 而 §15.7b 那堵墙(嵌入器
+ * 写死 `device: 'wasm'`,可 `@huggingface/transformers` 的 node 产物在 macOS 上只认
+ * `'cpu'`)恰恰就藏在假嵌入器照不到的地方,活了两周。这一条是那道缺口的门:**真模型、
+ * 真 onnxruntime-node、真出网**,一路走到 `ready`,再拿一句与原文**零词重叠**的改写句
+ * 经 HTTP 命中它自己那条。
+ *
+ * **默认不跑**,两个理由都很硬:要下 130MB(`model_quantized.onnx` 112.8MB +
+ * `tokenizer.json` 16.3MB),要连 huggingface。所以它要**两把钥匙同时在**:
+ *   - `ONETHING_GATE_REAL_EMBEDDER=1` —— 人明说要跑;
+ *   - `HTTPS_PROXY` 或 `HF_ENDPOINT` 至少一个在场 —— 这台机器说得出「怎么出网」。
+ * 少一把就打印跳过的理由走人(**打印**,不是静默:一条悄悄没跑的门等于没有门)。
+ *
+ * 两件施工上的安排:
+ *  - **代理走产品那条路**:`HTTPS_PROXY` 的值写进 `settings.network.proxy`,而子进程的
+ *    `HTTPS_PROXY` 等环境变量一律清掉 —— 09-17 事故的原话就是「设置里代理开着、
+ *    provider 通得好好的、模型一个字节下不来」,所以门要量的是**设置里那一格**。
+ *  - **模型有缓存**:`<store>/models/embeddings` 软链到 `ONETHING_GATE_EMBEDDER_CACHE`
+ *    (缺省 `<tmp>/onething-gate-embeddings`)。第一趟下 130MB / 本机约 200s,之后每趟
+ *    约 3s。产品那一侧一个字不改 —— 它照旧只认 `<store>/models/embeddings`。
+ */
+async function runRealEmbedderPhase() {
+  const wanted = process.env.ONETHING_GATE_REAL_EMBEDDER === '1'
+  const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy || ''
+  const endpoint = process.env.HF_ENDPOINT || ''
+  if (!wanted) {
+    console.log('[gate:search-index] ⑫ 跳过:要真下模型、真出网 —— 置 ONETHING_GATE_REAL_EMBEDDER=1 才跑')
+    return
+  }
+  if (proxyUrl === '' && endpoint === '') {
+    console.log('[gate:search-index] ⑫ 跳过:ONETHING_GATE_REAL_EMBEDDER=1 但 HTTPS_PROXY 与 HF_ENDPOINT 都不在场'
+      + '(这台机器说不出怎么出网,跑了也是一条必红的门)')
+    return
+  }
+
+  const timeoutMs = Number(process.env.ONETHING_GATE_REAL_EMBEDDER_TIMEOUT_MS || 900_000)
+  const cacheDir = process.env.ONETHING_GATE_EMBEDDER_CACHE
+    || path.join(os.tmpdir(), 'onething-gate-embeddings')
+  const storeF = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-search-real-embedder-gate-'))
+  let server
+  let provider
+  try {
+    console.log(`[gate:search-index] ⑫ temp store: ${storeF};模型缓存 ${cacheDir}`
+      + `;出网 ${proxyUrl ? `代理 ${proxyUrl}` : `镜像 ${endpoint}`}`)
+    fs.mkdirSync(cacheDir, { recursive: true })
+    fs.mkdirSync(path.join(storeF, 'models'), { recursive: true })
+    fs.symlinkSync(cacheDir, path.join(storeF, 'models', 'embeddings'), 'dir')
+
+    provider = await startFakeProvider(MOCK_PORT + 5, REPLY_TEXT)
+    fs.writeFileSync(path.join(storeF, 'settings.json'), JSON.stringify({
+      ai: fakeProviderAiSettings(MOCK_PORT + 5),
+      tools: { enableToolCalls: false, permissionMode: 'dangerously-allow-all', tools: {} },
+      diagnostics: { enabled: false },
+      // 出厂那一档的 modelId(不给 `ONETHING_SEARCH_EMBEDDER`)= 真嵌入器。
+      search: { semantic: { enabled: true } },
+      ...(proxyUrl !== ''
+        ? { network: { proxy: { enabled: true, url: proxyUrl, bypassRules: 'localhost;127.0.0.1;::1;*.local' } } }
+        : {}),
+    }, null, 2))
+
+    server = spawn(process.execPath, [serverEntry], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        ...FAKE_PROVIDER_ENV,
+        ONETHING_STORE_PATH: storeF,
+        ONETHING_SERVER_DATA_ROOT: storeF,
+        ONETHING_SERVER_HOST: '127.0.0.1',
+        ONETHING_SERVER_PORT: '',
+        // 代理只许从**设置**走(见段首)。镜像站是环境变量那条既有逃生口,照传。
+        HTTP_PROXY: '', HTTPS_PROXY: '', http_proxy: '', https_proxy: '', ALL_PROXY: '',
+        ...(endpoint !== '' ? { HF_ENDPOINT: endpoint } : {}),
+        ONETHING_SEARCH_EMBEDDER: '',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    const out = []
+    server.stdout.on('data', chunk => out.push(chunk.toString()))
+    server.stderr.on('data', chunk => out.push(chunk.toString()))
+
+    const discovery = await waitForDiscovery(storeF)
+    const rpc = createRpc(discovery)
+
+    /*
+     * 两条原文各进一间会话,查询句与各自原文**零词重叠** —— 词法严格档捞不着,
+     * 命中只可能来自向量路。判据与 ⑧ 同一条:**各回各家**(KNN 没有下限,所以判的是
+     * 区分度,不是「不相关的不该命中」)。
+     */
+    const CASES = [
+      { content: '身份牌已经私发四人了,狼人那一组今晚先动手。', query: '这局游戏怎么分配角色' },
+      { content: '明天上午的机票改签到下午三点,酒店那边我已经打过电话。', query: '出行安排变动了' },
+    ]
+    for (const item of CASES) {
+      const made = await rpc('sessions', 'create', { name: `真嵌入器门 ${MARKER}` })
+      item.sessionId = made?.session?.id
+      if (!item.sessionId) throw new Error(`⑫ sessions.create 没给出会话 id:${JSON.stringify(made)}`)
+      await rpc('session-command', 'emit', {
+        sessionId: item.sessionId,
+        command: { type: 'command:send-message', content: item.content, suppressTitleGeneration: true },
+      })
+    }
+
+    // 第一趟要下 130MB,所以这条等待是分钟级的(缺省 15 分钟封顶)。
+    const ready = await waitForStatus(rpc, status =>
+      status?.vector === 'ready' && (status?.vectorPending ?? 1) === 0 && (status?.pending ?? 1) === 0,
+    "真模型装好、嵌完", timeoutMs)
+    check(true, `⑫ status.vector 走到 ready(${(ready.ms / 1000).toFixed(1)}s;走过 ${[...ready.seen].join(' → ')})`)
+    check(!ready.seen.has('off'),
+      `⑫ 一路没有自己关回去(若关过,原因是 ${JSON.stringify(ready.status?.vectorErrorKind)} / ${JSON.stringify(ready.status?.vectorError)})`)
+
+    for (const item of CASES) {
+      const page = await rpc('search', 'query', { query: item.query, category: 'messages', limit: 10 })
+      const results = page?.results ?? []
+      const rank = results.findIndex(result => result.sessionId === item.sessionId)
+      check(rank === 0,
+        `⑫ 零词重叠的改写句「${item.query}」把自己那条排第一(名次 ${rank},共 ${results.length} 条)`)
+    }
+
+    if (failures.length > 0) {
+      console.error(`[gate:search-index] ⑫ server 输出尾:\n${out.slice(-40).join('')}`)
+    }
+  } catch (error) {
+    failures.push(String(error?.stack || error))
+    console.error(`[gate:search-index] ⑫ ${error?.stack || error}`)
+  } finally {
+    if (server && server.exitCode === null && server.signalCode === null) {
+      server.kill('SIGTERM')
+      await sleep(1500)
+      try { server.kill('SIGKILL') } catch { /* 已经没了就算了 */ }
+    }
+    if (provider) provider.close()
+    // `models/embeddings` 是软链 —— `rmSync` 删的是链本身,缓存里的模型留着给下一趟。
+    fs.rmSync(storeF, { recursive: true, force: true })
+  }
+}
 
 async function runLoopDelayPhase() {
   const storeB = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-search-loop-gate-'))
@@ -438,7 +805,7 @@ async function runLoopDelayPhase() {
      *
      * ⑤a–⑤c 三个窗口跑的是**开关关着**的默认档,所以它们量不到嵌入 —— 「嵌入搬回
      * 主线程」这条反证在那三个窗口上照不出来。能照出来的是结构:
-     * `@huggingface/transformers` 只许出现在 `search/embedding/transformers-wasm.ts`
+     * `@huggingface/transformers` 只许出现在 `search/embedding/transformers-onnx.ts`
      * 一个文件里(而且是**动态** import),`packages/backend/**` 与主线程那一侧的
      * 检索代码里一次都不许出现。把它 import 到主线程 = 这一条当场红。
      */

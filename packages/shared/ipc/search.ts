@@ -471,4 +471,29 @@ export interface SearchStatusResponse {
    * 装不上就晚了。装配时探一次(一个 `:memory:` 库,不碰真库),此后是常量。
    */
   vectorExtension?: 'loadable' | 'missing'
+  /**
+   * **语义召回为什么关回去了** —— 一句话,给设置页的状态行用(2026-09-17;契约只加)。
+   *
+   * 缺席有两种意思,都不是「没出错」:开关就没开过,或者这一条起来之后没关过。
+   * 屏幕上只在「开着 + `vector === 'off'`」那一态读它;在那之前设置页写的是
+   * 「没跑起来。原因在日志里」,而真机上 Worker 的日志从来没有落过地 —— 那句话是假的,
+   * 这一格与 `worker-logging.ts` 那半边一起把它变成真话。
+   *
+   * 产地在 Worker 里(`runtime/search/index/vector-writer.ts` 的
+   * `describeEmbedderFailure`):**原话**,200 字封顶,后端一个中文字都不拼。
+   * **它是诊断串,不是 UI 文案** —— 壳按 `vectorErrorKind` 查一句人话,再把这一格
+   * 括在后面(`{reason}`)。
+   */
+  vectorError?: string
+  /**
+   * 那句原因属于**哪一类**(2026-09-17 R12;契约只加,与 `vectorError` 同生同灭)。
+   *
+   * 这一格存在的理由:第一版让后端拼了「下载模型失败(检查网络代理):」——那是后端替
+   * 壳写文案,英文界面上会出现一句中文。现在后端只答码,句子由壳按 i18n 键查出。
+   *
+   * `network` 下载不通(改代理)/ `runtime` 本机装不出推理运行时 / `model` 模型文件
+   * 不完整 / `unknown` 不认识 —— 不认识时壳**只说原话**,不猜。判据表(错误链里真的
+   * 出现过哪几个字)在产地那个文件里,这里不复制。
+   */
+  vectorErrorKind?: 'network' | 'runtime' | 'model' | 'unknown'
 }

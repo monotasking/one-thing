@@ -1,6 +1,6 @@
 /**
  * `VectorWriter` —— 嵌入的**写路**:文档落库之后把该嵌的字段切段、成批喂模型、
- * 写进向量索引。它住 Worker 里(§15.2「wasm 在 Worker 里跑,主线程零 CPU」)。
+ * 写进向量索引。它住 Worker 里(§15.2「推理在 Worker 里跑,主线程零 CPU」)。
  *
  * 设计:docs/design/search-index-2026-09.md §15.3 / §15.4
  *
@@ -21,6 +21,7 @@
  */
 
 import type { Embedder, IndexedDoc, VectorIndex } from '@onething/core/search'
+import { normalizeError, type NormalizedLogError } from '@onething/core/logging'
 
 import { getLogger } from '../../logging/index.js'
 import { chunkForEmbedding } from '../embedding/embedder.js'
@@ -29,6 +30,74 @@ const log = getLogger('search.index.vector')
 
 /** 一批喂多少段。§15.3 写的就是 32。 */
 export const EMBED_BATCH_SIZE = 32
+
+/** `status.vectorError` 的长度上限 —— 它是状态行上的一句话,不是一份栈。 */
+export const VECTOR_ERROR_MAX_LENGTH = 200
+
+/**
+ * 「它为什么关回去了」的**四类**(2026-09-17 R12 起,原话之外多这一格)。
+ *
+ * 为什么是码而不是中文:这里是产品层,**给人看的句子由壳按 i18n 键查出**(仓顶那条)。
+ * 09-17 第一版在这里拼了一句「下载模型失败(检查网络代理):」—— 那是后端替壳写文案,
+ * 英文界面上就是一句中文。所以后端只答「哪一类 + 原话」,怎么说是壳的事。
+ *
+ * 四类的意思各不相同,用户要做的事也各不相同:改代理 / 这台机器装不出运行时 /
+ * 模型文件不完整 / 不认识(那就别猜,把原话端上去)。
+ */
+export type VectorErrorKind = 'network' | 'runtime' | 'model' | 'unknown'
+
+/**
+ * 判据表。**是错误链里真的出现过这几个字,不是猜**;顺序即优先级,先到先得。
+ *
+ * - `network` —— 09-17 真机现场的原话是 `TypeError: fetch failed`,`cause` 是一只
+ *   `AggregateError`(967ms 就放弃了,那是连不上不是超时)。四个词是同一件事的四种
+ *   说法:undici 的笼统外壳、DNS 不通、连接被拒、连接超时。
+ * - `runtime` —— 本机的推理运行时不成立。`Unsupported device`(§15.7b 那堵墙的原话)、
+ *   `onnxruntime` / `.node` / `ERR_DLOPEN`(那块 N-API 二进制装不上)、
+ *   `Cannot find package` / `ERR_MODULE_NOT_FOUND`(打包档路线 c 根本没带 transformers,
+ *   那也是「这台宿主的运行时不成立」,不是未知)。
+ * - `model` —— 文件那一侧:transformers 找不到某个文件时说 `Could not locate`,
+ *   HF 答 `404`,`config.json` 是它第一个要的文件。
+ *
+ * **网络排在运行时前面**是有讲究的:下载失败时 transformers 常常把话说成
+ * 「`Could not locate file: "<url>/config.json"`」,而真因在 `cause` 里的 `fetch failed` ——
+ * 先判网络,`model` 才不会把「连不上」冒领走。
+ */
+const FAILURE_MARKERS: ReadonlyArray<readonly [VectorErrorKind, readonly string[]]> = [
+  ['network', ['fetch failed', 'ENOTFOUND', 'ECONNREFUSED', 'ETIMEDOUT']],
+  ['runtime', ['Unsupported device', 'onnxruntime', '.node', 'ERR_DLOPEN', 'Cannot find package', 'ERR_MODULE_NOT_FOUND']],
+  ['model', ['Could not locate', '404', 'config.json']],
+]
+
+/** 错误链上的每一句话(`cause` 逐层,`normalizeError` 已经替我们展平过)。 */
+function messagesOf(error: NormalizedLogError | undefined): string[] {
+  const messages: string[] = []
+  let current = error
+  while (current !== undefined) {
+    messages.push(`${current.name}: ${current.message}`)
+    current = current.cause
+  }
+  return messages
+}
+
+/**
+ * 一只装载失败 → **哪一类 + 原话**。纯函数,所以判据逐条可单测。
+ *
+ * `reason` 是**诊断串**,原样交出去(200 字封顶)——「不认识就不猜」这条没变,只是
+ * 「认识的那几类」现在用码说,而不是在后端拼中文。
+ */
+export function describeEmbedderFailure(error: unknown): { kind: VectorErrorKind; reason: string } {
+  const normalized = normalizeError(error)
+  const chain = messagesOf(normalized).map(line => line.toLowerCase())
+  const head = normalized?.message ?? String(error)
+  const matched = FAILURE_MARKERS.find(([, markers]) =>
+    markers.some(marker => chain.some(line => line.includes(marker.toLowerCase()))),
+  )
+  const reason = head.length <= VECTOR_ERROR_MAX_LENGTH
+    ? head
+    : `${head.slice(0, VECTOR_ERROR_MAX_LENGTH - 1)}…`
+  return { kind: matched?.[0] ?? 'unknown', reason }
+}
 
 /** 语义召回此刻在干什么(投影成 `SearchStatusResponse.vector`)。 */
 export type VectorState = 'off' | 'downloading' | 'embedding' | 'ready'
@@ -58,6 +127,14 @@ export class VectorWriter {
   private readyPromise: Promise<void> | undefined
   private state: VectorState = 'downloading'
   private disposed = false
+  /**
+   * 「它为什么关回去了」—— **哪一类 + 原话**,给状态行用(2026-09-17)。
+   *
+   * 这一格存在的理由是设置页那句「原因在日志里」在真机上是**假话**(Worker 的日志
+   * 从来没有落过地,见 `worker-logging.ts`)。日志那一半已经修好了,但让一个人为了
+   * 知道「代理没配」去开 `app.jsonl` 仍然太远,所以原因也上屏。
+   */
+  private failure: { kind: VectorErrorKind; reason: string } | undefined
 
   constructor(options: VectorWriterOptions) {
     this.options = options
@@ -73,7 +150,15 @@ export class VectorWriter {
   }
 
   /**
-   * 装载模型(下载 / 解压 / 编译 wasm)。**幂等**,失败把状态钉在 `'off'` 并把原话
+   * 关回去的原因(没关过 = `undefined`;投影成 `status.vectorError` +
+   * `status.vectorErrorKind`)。
+   */
+  lastError(): { kind: VectorErrorKind; reason: string } | undefined {
+    return this.failure
+  }
+
+  /**
+   * 装载模型(下载 / 解压 / 建 ONNX 会话)。**幂等**,失败把状态钉在 `'off'` 并把原话
    * 交给调用方 —— 调用方(worker-core)据此关掉开关,不在这里重试到死(§15.3)。
    */
   ready(): Promise<void> {
@@ -169,6 +254,9 @@ export class VectorWriter {
     // 早退到 `queue.clear()` 前面会留下一个永远不动的队列,`drain()` 当场空转)。
     this.state = 'off'
     this.queue.clear()
+    // **留第一条**:写路与查询路 await 的是同一条拒绝,后到的那一次说的是同一件事;
+    // 而万一不是同一件,先关掉的那一条才是「它为什么关的」。
+    this.failure ??= describeEmbedderFailure(error)
     if (alreadyOff) return
     this.options.onState?.('off')
     // 错误进**第三格**(`Logger.warn(msg, fields, err)`),不是塞进 fields —— 仓顶那条

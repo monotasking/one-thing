@@ -132,6 +132,30 @@ export function semanticWorkerConfig(settings: AppSettings): IndexWorkerData['se
     enabled: semantic?.enabled === true,
     modelId: override || semantic?.modelId || DEFAULT_SEMANTIC_MODEL_ID,
     modelsDir: getOnethingEmbeddingModelsDir(),
+    ...proxyWorkerConfig(settings),
+  }
+}
+
+/**
+ * 网络那一格照抄进 `workerData`(2026-09-17)。
+ *
+ * **为什么要抄**:Worker 是另一条线程,它的全局 `fetch` 与主进程那只受管 fetch
+ * (`provider-binding/bound-fetch.ts`)毫无关系。09-17 用户真机事故:设置里代理开着、
+ * provider 通得好好的,语义召回的模型却一个字节也下不来。判据与手法住 Worker 那一侧
+ * (`runtime/search/index/worker-network.ts`),装配这一侧只负责把数据递过去 ——
+ * 递的是**设置里那一份**,不是这里现算的什么东西。
+ *
+ * 关着 / 没填 URL = 不递(缺席 = 直连)。
+ */
+function proxyWorkerConfig(settings: AppSettings): Pick<NonNullable<IndexWorkerData['semantic']>, 'proxy'> {
+  const proxy = settings.network?.proxy
+  if (proxy?.enabled !== true || !proxy.url) return {}
+  return {
+    proxy: {
+      enabled: true,
+      url: proxy.url,
+      ...(proxy.bypassRules !== undefined ? { bypassRules: proxy.bypassRules } : {}),
+    },
   }
 }
 
@@ -301,12 +325,23 @@ interface StartedSearchIndex {
   applySemantic(next: IndexWorkerData['semantic']): Promise<boolean>
 }
 
-/** 两份语义配置是不是同一件事。`modelsDir` 由 store 派生,进程内是常量。 */
+/**
+ * 两份语义配置是不是同一件事。`modelsDir` 由 store 派生,进程内是常量。
+ *
+ * **代理三格也算进来**(2026-09-17):`workerData` 在 `new Worker(...)` 那一刻定死,
+ * 而 Worker 里那只受管 fetch 是按这三格现造的 —— 改了代理却不换 Worker,就是「设置页
+ * 上代理已经改好了,模型还在照旧连不上」。改代理 = 换一条 Worker,词法索引文件不动。
+ */
 function sameSemantic(
   a: IndexWorkerData['semantic'],
   b: IndexWorkerData['semantic'],
 ): boolean {
-  return a?.enabled === b?.enabled && a?.modelId === b?.modelId && a?.modelsDir === b?.modelsDir
+  return a?.enabled === b?.enabled
+    && a?.modelId === b?.modelId
+    && a?.modelsDir === b?.modelsDir
+    && a?.proxy?.enabled === b?.proxy?.enabled
+    && a?.proxy?.url === b?.proxy?.url
+    && a?.proxy?.bypassRules === b?.proxy?.bypassRules
 }
 
 /** 起 Worker + 服务。产物不在(vitest / 没构建过)= `undefined`,如实降级。 */
@@ -371,7 +406,12 @@ async function startSearchIndexService(
       if (sameSemantic(semantic, next)) return false
       semantic = next
       log.info('semantic recall setting changed; replacing the index worker', {
-        fields: { enabled: next?.enabled === true, modelId: next?.modelId },
+        fields: {
+          enabled: next?.enabled === true,
+          modelId: next?.modelId,
+          // 代理也会换 Worker(见 `sameSemantic`)—— 只记「有没有」,不记 URL。
+          proxy: next?.proxy?.enabled === true,
+        },
       })
       await service.restart()
       return true

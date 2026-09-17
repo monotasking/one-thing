@@ -301,7 +301,7 @@ export interface SearchSettings {
 /**
  * 缺省模型 id。**契约层记它**,因为 defaults 与设置页都要用同一个值,而 runtime 的
  * 嵌入器模块不该被契约层 import(方向反了)。真正的模型知识住
- * `runtime/src/search/embedding/transformers-wasm.ts`,那边的 `E5_SMALL_EMBEDDER_ID`
+ * `runtime/src/search/embedding/transformers-onnx.ts`,那边的 `E5_SMALL_EMBEDDER_ID`
  * 与这一行必须是同一个串——一处改了另一处不改,注册表就解析不到,开关会自己关回去。
  */
 export const DEFAULT_SEMANTIC_MODEL_ID = "multilingual-e5-small";

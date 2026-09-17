@@ -158,6 +158,43 @@ describe('八个态(纯函数)', () => {
     expect(statusMessage('embedding', 0).vars).toBeUndefined()
     expect(statusMessage('embedding', 7).vars).toEqual({ count: 7 })
   })
+
+  /**
+   * 失败态的那句原因(2026-09-17)。在这之前这一行只会写「原因在日志里」,而 Worker 的
+   * 日志真机上从来没有落过地 —— 那是一句假话。后端答得出 `vectorError` 就插进来;
+   * 答不出就退回老那句(编一个原因比不说更糟)。
+   *
+   * R12 起原因分**四类**(后端只答码 + 原话,句子由这一侧查字典):每一类查一行、
+   * 四句中英都带 `{reason}`,不认识的码退回只说原话那一句。
+   */
+  it('failed:后端给了原因就说原因,给不出才退回「原因在日志里」', () => {
+    const withReason = statusMessage('failed', undefined, 'fetch failed')
+    expect(withReason.key).toBe('search.semanticStatusFailedReason')
+    expect(withReason.vars).toEqual({ reason: 'fetch failed' })
+    expect(zh[withReason.key]).toContain('{reason}')
+    expect(en[withReason.key]).toContain('{reason}')
+
+    expect(statusMessage('failed', undefined).key).toBe('search.semanticStatusFailed')
+    expect(statusMessage('failed', undefined, '').key).toBe('search.semanticStatusFailed')
+  })
+
+  it('failed:四类原因各查一行,中英都带 {reason}', () => {
+    const byKind = {
+      network: 'search.semanticStatusFailedNetwork',
+      runtime: 'search.semanticStatusFailedRuntime',
+      model: 'search.semanticStatusFailedModel',
+      unknown: 'search.semanticStatusFailedReason',
+    } as const
+    for (const [kind, key] of Object.entries(byKind)) {
+      const message = statusMessage('failed', undefined, '原话', kind as keyof typeof byKind)
+      expect(message.key).toBe(key)
+      expect(message.vars).toEqual({ reason: '原话' })
+      expect(zh[message.key]).toContain('{reason}')
+      expect(en[message.key]).toContain('{reason}')
+    }
+    // 老后端不带这一格 = 不认识 = 只说原话(与 `unknown` 同一行)。
+    expect(statusMessage('failed', undefined, '原话').key).toBe('search.semanticStatusFailedReason')
+  })
 })
 
 describe('这一节(渲染)', () => {
@@ -223,6 +260,37 @@ describe('这一节(渲染)', () => {
       expect(screen.getByTestId('search-semantic-status').textContent)
         .toBe(t('search.semanticStatusEmbeddingCount', { count: 42 }))
     })
+  })
+
+  it('没跑起来:后端那句原因按类上屏(不是只写「去看日志」)', async () => {
+    configureSearchSettingsPort(fakePort({
+      ...structuredClone(BASE),
+      search: { semantic: { enabled: true, modelId: DEFAULT_SEMANTIC_MODEL_ID } },
+    }))
+    stubStatus({ vector: 'off', vectorError: 'fetch failed', vectorErrorKind: 'network' })
+    render(<SearchSettings />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('search-semantic-status').textContent)
+        .toBe(t('search.semanticStatusFailedNetwork', { reason: 'fetch failed' }))
+    })
+  })
+
+  it('翻开关那一下连原因一起抹掉 —— 上一任的死因不许跟在「正在启动」后面', async () => {
+    configureSearchSettingsPort(fakePort({
+      ...structuredClone(BASE),
+      search: { semantic: { enabled: false, modelId: DEFAULT_SEMANTIC_MODEL_ID } },
+    }))
+    stubStatus({ vector: 'off', vectorError: '上一条 Worker 的死因', vectorErrorKind: 'runtime' })
+    render(<SearchSettings />)
+    await waitFor(() => {
+      expect(screen.getByTestId('search-semantic-status').textContent)
+        .toBe(t('search.semanticStatusDisabled'))
+    })
+
+    act(() => void fireEvent.click(screen.getByRole('switch')))
+    expect(screen.getByTestId('search-semantic-status').textContent)
+      .toBe(t('search.semanticStatusStarting'))
   })
 
   it('设置拉不到:错话与**旧值并陈**,开关那一行不抹掉', async () => {

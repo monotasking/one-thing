@@ -48,11 +48,15 @@ bun run boundary:gate      # zero-baseline hard gate: any `[boundary] failed:` l
 bun run log:gate           # console.* ratchet (baseline docs/audit/log-gate-baseline-2026-08-20.txt)
 bun run log:check          # the full console.* call-site list behind that gate
 bun run gate:native        # every native .node loads under BOTH Node and Electron (N-API law)
-bun run gate:search-index  # real-machine gate (10 steps): boots dist/server on temp stores behind a
-                           # fake provider — index worker is owner, a just-sent message is searchable,
-                           # rename/archive/delete land through the feed, main-thread loop delay stays
-                           # under budget, and ⑧ semantic recall end to end with a deterministic fake
-                           # embedder (no 110MB download). node only — bun has no node:sqlite
+bun run gate:search-index  # real-machine gate (11 steps + 1 opt-in): boots dist/server on temp stores
+                           # behind a fake provider — index worker is owner, a just-sent message is
+                           # searchable, rename/archive/delete land through the feed, main-thread loop
+                           # delay stays under budget, ⑧ semantic recall end to end with a deterministic
+                           # fake embedder (no 130MB download), ⑩ the switch hot-applies, ⑪ the model
+                           # download rides the app proxy while the Worker's log lines reach the host
+                           # jsonl, and ⑫ (skipped unless ONETHING_GATE_REAL_EMBEDDER=1 plus HTTPS_PROXY
+                           # or HF_ENDPOINT) the REAL embedder reaches 'ready' and a zero-word-overlap
+                           # paraphrase ranks its own message first. node only — bun has no node:sqlite
 
 # Logs
 bun run log:tail           # pretty-print + follow <store>/log/app.jsonl ([--ns engine.*] [--level warn] [--session id])
@@ -225,12 +229,16 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
 - `bun run log:gate` — `scripts/log-gate.mjs` ratchet over `scripts/log-check.mjs`: counts `console.*` call sites in non-test source, baseline `docs/audit/log-gate-baseline-2026-08-20.txt` (854 at L1; **822** after the L2/L3 gateway + crash-log migration; L4 消掉其余). Whitelist: `scripts/` and the CLI's product-output helper `apps/cli/src/stdout.ts` (**给人/管道看的 = `stdout()`;给排障看的 = `getLogger(ns)`**). New code must not add a `console.*` — use `getLogger`.
 - `bun run assembly:gate` — `scripts/assembly-gate.mjs` ratchet (组合根 A3, 2026-09-03): counts module-level `let` per non-test file under `packages/backend`, baseline `docs/audit/assembly-baseline-2026-09-02.txt` (99 across 63 files; `packages/backend/current.ts` is the one exempt slot). **Decrease-only**: a file above its baseline or a file not in the baseline is red. `bun run assembly:check` prints the full table; `--write-baseline` tightens it after a real drop. The intent is that new assembly-scoped state lives on the `OnethingBackend` instance and is `own()`'d, never in a fresh module slot.
 - `bun run gate:native` — `scripts/gate-native-abi.mjs`, the running half of the **原生模块只许 N-API** law
-  at the top of this file. It enumerates every native binary this repo actually ships — six targets
-  since 检索重建 S7 (2026-09-05): `node-pty`, `sherpa-onnx-node` + its platform package,
+  at the top of this file. It enumerates every native binary this repo actually ships — **seven targets**
+  today (the line said six until 2026-09-17; `fsevents`, the optional macOS workspace-watch dependency,
+  joined in `0d722b38c` and the count here was never updated): `fsevents`, `node-pty`,
+  `sherpa-onnx-node` + its platform package,
   the `sqlite-vec` platform package (`vec0.dylib`, semantic recall), and the two natives
   `@huggingface/transformers` drags in (`onnxruntime-node`, `@img/sharp-<platform>-<arch>`) —
-  **the product never loads those last two** (the embedder pins `device: 'wasm'`) **but electron-builder
-  ships them, and the law judges what is actually installed/shipped, not what is used**. For each binary:
+  since 2026-09-17 **the Worker really loads `onnxruntime-node` whenever semantic recall is on**
+  (the embedder pins `device: 'cpu'`; see the semantic-recall note below), `sharp` is still never
+  loaded, **and the law judges what is actually installed/shipped, not what is used**, so both stay
+  on the table either way. For each binary:
   (a) `require`s it under the **system Node**
   and again under **`ELECTRON_RUN_AS_NODE=1` Electron** — a `NODE_MODULE_VERSION` mismatch prints the
   runtime's own words and turns the gate red — and (b) on macOS runs `nm -u` over it: any undefined
@@ -375,8 +383,9 @@ Notes:
   `packages/core/search` never names a retriever, a capability, or a surface. The vector
   half is `sqlite-vec`'s `vec0` virtual table inside the **same** `search.v1.sqlite`, one row
   per 512-token chunk, plus an `Embedder` registry (`runtime/search/embedding/`) whose real
-  entry is `@huggingface/transformers` on the **wasm** backend, dynamically imported inside
-  the worker so nothing loads until the user turns `settings.search.semantic.enabled` on.
+  entry is `@huggingface/transformers` on the **onnxruntime-node (cpu)** backend, dynamically
+  imported inside the worker so nothing loads until the user turns
+  `settings.search.semantic.enabled` on.
   **That switch is hot-applied** (2026-09-17): `wiring/search/index.ts` chains onto the
   `settings:changed` broadcaster and calls `handle.applySemantic(settings)`, which replaces
   the index Worker when the effective value changed (same value = identity). The swap stops
@@ -386,6 +395,35 @@ Notes:
   a switch-off. The shell surface is the settings page's 「搜索」 page
   (`apps/desktop-react/src/content/settings/SearchSettings.tsx`). `gate:search-index` ⑩
   proves it on a real `dist/server` (31ms to leave `'off'`, 29ms back).
+  **The model download rides the app proxy, and the Worker's log lines reach the host file**
+  (2026-09-17, §15.7 — 09-17 user incident: the switch was on, `network.proxy` was on, provider
+  calls worked, and the model still downloaded zero bytes while the status line said "the reason
+  is in the log" — a lie, because nothing in that Worker had ever reached a sink). Three fixes:
+  `semantic.proxy` rides `workerData` and `installWorkerProxyFetch` swaps that thread's
+  `globalThis.fetch` for the **same** managed fetch providers use (bypass rules, dispatcher and
+  SOCKS5 are one implementation, not two; changing the proxy swaps the Worker like changing the
+  switch does); `installWorkerLogging` posts every `LogRecord` to the host, which re-emits it under
+  the same `ns` with one extra `fields.thread='search-worker'`; and `status.vectorError` carries the
+  reason to the settings page. Two mechanics worth not re-discovering: `init.dispatcher` on Node's
+  **global** fetch does not work with npm undici 8 (`invalid onRequestStart method`) — it has to be
+  `undici.fetch`; and the answer must be re-wrapped into a **global** `Response`, because
+  transformers gates its disk cache on `response instanceof Response`. `gate:search-index` ⑪ proves
+  both halves on a real `dist/server` without downloading anything.
+  **The embedder runs on `device: 'cpu'`, and that is a fact about the library, not a preference**
+  (§15.7b/c, found by that same fix and closed the same evening): S7 pinned `device: 'wasm'`, but
+  `@huggingface/transformers`'s **node** build binds ONNX to `onnxruntime-node`, whose macOS device
+  list is `['cpu']` (3.8.1, `dist/transformers.node.mjs` lines 2934–2957) — so `wasm` had never been
+  reachable on any host here, and S7's gates never caught it because they run the fake embedder.
+  Route 1 of the three was taken: `transformers-wasm.ts` → **`transformers-onnx.ts`** with
+  `device: 'cpu'` and `session_options.intraOpNumThreads = 1` (the wasm `numThreads` knob is dead on
+  the node build). The registry id (= the settings `modelId`) is unchanged. **The packaged desktop is
+  unaffected**: `electron-builder.yml` excludes transformers and both onnxruntime packages (拍点癸',
+  route (c)), so it still answers `vector: 'off'` and degrades cleanly — semantic recall really runs
+  on dev / server / CLI. `gate:search-index` ⑫ is the gate for it, opt-in because it downloads 130MB:
+  cold 191.5s to `ready`, warm 1.0s, and two zero-word-overlap paraphrases each rank their own message
+  first over HTTP. **Backend answers a reason code, never a sentence** (R12): `status.vectorErrorKind`
+  (`network` / `runtime` / `model` / `unknown`) plus `status.vectorError` (the raw words, 200 chars);
+  the shell looks the code up in its own dictionary and puts the raw words in brackets after it.
   Two rules carry over unchanged and are gate-enforced: **the lexical path is untouched**
   (S7 proved this with `search:parity-B`, retired in S5 together with the old scan path;
   the standing guard is the strict-tier hit-set snapshot) and **authorization is a query

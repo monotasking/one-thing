@@ -170,6 +170,13 @@ export interface SearchIndexStatus {
    * 「`asarUnpack` 那一行没漏」。等到用户去设置里打开才发现装不上,那就晚了。
    */
   vectorExtension?: 'loadable' | 'missing'
+  /**
+   * `vector === 'off'` 是因为**它自己关回去了**时,那一句原因(2026-09-17;契约只加)。
+   * 缺席 = 「没关过 / 没开过」,不是「没出错」。契约层那一份的注释里有同一段话。
+   */
+  vectorError?: string
+  /** 那句原因属于哪一类(R12;与 `vectorError` 同生同灭,判据在 `vector-writer.ts`)。 */
+  vectorErrorKind?: 'network' | 'runtime' | 'model' | 'unknown'
 }
 
 /**
@@ -312,6 +319,8 @@ export class OnethingSearchService {
       vector: status.vector,
       vectorPending: status.vectorPending,
       vectorExtension: status.vectorExtension,
+      ...(status.vectorError !== undefined ? { vectorError: status.vectorError } : {}),
+      ...(status.vectorErrorKind !== undefined ? { vectorErrorKind: status.vectorErrorKind } : {}),
     }
   }
 

@@ -153,6 +153,24 @@ export interface IndexStatus {
   /** 还有几份文档没嵌进去(与 `pending` 同一种诚实,只是另一条派生数据)。 */
   vectorPending: number
   vectorExtension: 'loadable' | 'missing'
+  /**
+   * `vector === 'off'` **是因为它自己关回去了**时,那一句原因(2026-09-17;契约只加)。
+   *
+   * 缺席有两种意思,都不是「没出错」:没开过(开关关着)、或者这一条还没关过。
+   * 屏幕上只在「开着 + `'off'`」那一态读它 —— 别的态下它不该出现在句子里。
+   * 产地是 `VectorWriter.describeEmbedderFailure`(判据在那里,不在这)。
+   *
+   * **是诊断原话,不是文案**:它与 `vectorErrorKind` 成对出现,壳按 kind 查一句人话、
+   * 把这一格括在后面。后端一个中文字都不拼(R12,2026-09-17)。
+   */
+  vectorError?: string
+  /**
+   * 那句原因属于**哪一类**(2026-09-17 R12;与 `vectorError` 同生同灭)。
+   *
+   * `network` 改代理 / `runtime` 本机装不出推理运行时 / `model` 模型文件不完整 /
+   * `unknown` 不认识(壳就只说原话,不猜)。判据表在 `vector-writer.ts`。
+   */
+  vectorErrorKind?: 'network' | 'runtime' | 'model' | 'unknown'
 }
 
 export type IndexWorkerRequest =
@@ -404,6 +422,8 @@ export class IndexWorkerCore {
   }
 
   status(): IndexStatus {
+    // 缺席 = 「没关过」。**显式的 `undefined` 与没有这一格是两回事**,所以条件展开。
+    const failure = this.vectorWriter?.lastError()
     return {
       mode: 'owner',
       docs: this.index.size(),
@@ -417,6 +437,9 @@ export class IndexWorkerCore {
       vector: this.vectorState,
       vectorPending: this.vectorWriter?.pending() ?? 0,
       vectorExtension: this.vectorExtension,
+      ...(failure !== undefined
+        ? { vectorError: failure.reason, vectorErrorKind: failure.kind }
+        : {}),
     }
   }
 
