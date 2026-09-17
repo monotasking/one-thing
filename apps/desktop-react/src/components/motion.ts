@@ -49,6 +49,12 @@ export const ESC_STOP_WINDOW_MS = 2000
 export const COPY_FEEDBACK_MS = 1500
 
 /**
+ * 计划条上「刚完成 <那一项>」停留多久再退回「下一步」(正本 `docs/todo-2026-09.md` §5.3)。
+ * 与那一行在抽屉里淡闪同长,但这是读认窗口不是动画:动效档(none)不清零它。
+ */
+export const PLAN_JUST_DONE_MS = 1400
+
+/**
  * 滚动**停下来**多久算「停稳了,可以记一笔看到哪儿」(C1 · §5.2 的写点,
  * 正本 `docs/session-continuity-2026-09.md`)。
  *

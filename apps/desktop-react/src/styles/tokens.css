@@ -1113,6 +1113,7 @@
   --composer-input-max: 120px; /* 输入框长到这么高就自己滚,面板不再往上长 */
   --composer-spinner: 12px;
   --composer-done-dot: 8px;
+  --composer-strip-progress-w: 28px;
   /*
    * `@` 文件 / `/` 命令两个抽屉的**列表区上限**。08-31 真机报障:候选一多,
    * 抽屉就一直往上长,把整块聊天顶出屏外 —— 抽屉本身用 grid 0fr↔1fr

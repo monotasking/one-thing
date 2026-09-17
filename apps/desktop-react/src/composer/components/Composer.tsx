@@ -38,9 +38,10 @@ import { ComposerInput } from './ComposerInput'
 import type { ComposerInputHandle } from './ComposerInput'
 import { DrawerModelPicker } from './DrawerModelPicker'
 import { DrawerPickList } from './DrawerPickList'
-import { DrawerStatus } from './DrawerStatus'
 import { ContextRing, MeterCard } from './MeterCard'
-import { StatusBar } from './StatusBar'
+import { StripBar } from './StripBar'
+import { findComposerStrip, useComposerStripBars } from '../strips'
+import { isStripDrawer } from '../types'
 import s from './Composer.module.css'
 
 const PaperclipIcon = resolveIcon('Paperclip')
@@ -146,10 +147,12 @@ export function Composer({ sessionId, owner }: ComposerProps) {
   const drawerKind = useComposerStoreOf(sessionId, (st) => st.drawerKind)
   const mode = useComposerStoreOf(sessionId, (st) => st.mode)
   const askSpec = useComposerStoreOf(sessionId, (st) => st.askSpec)
-  const status = useComposerStoreOf(sessionId, (st) => st.status)
   const closeDrawer = useComposerStoreOf(sessionId, (st) => st.closeDrawer)
   const toggleModelDrawer = useComposerStoreOf(sessionId, (st) => st.toggleModelDrawer)
-  const toggleStatusDrawer = useComposerStoreOf(sessionId, (st) => st.toggleStatusDrawer)
+  const toggleStripDrawer = useComposerStoreOf(sessionId, (st) => st.toggleStripDrawer)
+  // 顶条:登记表里每一条此刻出不出现(判词在 `composer/strips/index.ts`)。
+  const stripBars = useComposerStripBars(sessionId)
+  const openStrip = isStripDrawer(drawerKind) ? findComposerStrip(drawerKind.id) : undefined
   const addFiles = useComposerStoreOf(sessionId, (st) => st.addFiles)
   const openAsk = useComposerStoreOf(sessionId, (st) => st.openAsk)
   const moveAsk = useComposerStoreOf(sessionId, (st) => st.moveAsk)
@@ -514,20 +517,21 @@ export function Composer({ sessionId, owner }: ComposerProps) {
                 />
               )}
               {drawerKind === 'model' && <DrawerModelPicker />}
-              {drawerKind === 'status' && status && <DrawerStatus status={status} />}
+              {openStrip && <openStrip.Drawer sessionId={sessionId} />}
             </div>
           </div>
 
           {/* 静止部分:抽屉以下的一切。`data-composer-rest` 是会话叶量
               `--composer-h` 的那一格(几何契约,判词在 `useComposerGeometry`)。 */}
           <div className={s.rest} data-composer-rest="">
-          {status && (
-            <StatusBar
-              status={status}
-              open={drawerKind === 'status'}
-              onToggle={toggleStatusDrawer}
+          {stripBars.map(({ strip, bar }) => bar && (
+            <StripBar
+              key={strip.id}
+              bar={bar}
+              open={openStrip === strip}
+              onToggle={() => toggleStripDrawer(strip.id)}
             />
-          )}
+          ))}
 
           <div className={s.bodyRow}>
             <div className={mode === 'write' ? s.mode : `${s.mode} ${s.modeOff}`}>

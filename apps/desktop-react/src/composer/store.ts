@@ -6,7 +6,7 @@ import { t } from '../i18n'
 import type { ResolvedSegment } from '../references/segment'
 import { configureDraftRevoke, resetComposerDrafts } from './drafts'
 import * as T from './transitions'
-import { pickDrawer } from './types'
+import { pickDrawer, stripDrawer } from './types'
 import type { ReferenceTrigger } from '../references/kind'
 import type {
   AskSpec,
@@ -95,7 +95,8 @@ export interface ComposerStore extends ComposerState {
   toggleModelDrawer: () => void
   setModelQuery: (q: string) => void
   chooseModel: (sessionId: string | null, provider: string, model: string) => void
-  toggleStatusDrawer: () => void
+  /** 开合顶条里那一条的抽屉(`composer/strip.ts`)。 */
+  toggleStripDrawer: (id: string) => void
   closeDrawer: () => void
 
   /* 状态条:结构做全,没有引擎 —— 这三口就是将来引擎的接线柱 */
@@ -174,12 +175,12 @@ function createComposerStore(sessionId: string): ComposerStoreApi {
       set({ drawerKind: null })
     },
 
-    toggleStatusDrawer: () =>
-      set((s) => ({ drawerKind: s.drawerKind === 'status' ? null : ('status' as DrawerKind) })),
+    toggleStripDrawer: (id) =>
+      set((s) => ({ drawerKind: s.drawerKind === stripDrawer(id) ? null : (stripDrawer(id) as DrawerKind) })),
     closeDrawer: () => set({ drawerKind: null }),
 
     beginStatus: (spec) =>
-      set({ status: { ...spec, stepIdx: 0, running: true }, drawerKind: 'status' }),
+      set({ status: { ...spec, stepIdx: 0, running: true }, drawerKind: stripDrawer('status') }),
 
     /**
      * 走一步。到最后一步就自己落定成「完成」—— 没有「跑到第 5 步」这种状态,

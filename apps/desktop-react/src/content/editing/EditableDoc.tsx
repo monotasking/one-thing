@@ -297,6 +297,9 @@ export function EditableDoc({ document, mode, label, addLabel, checkLabel, densi
   }
 
   return (
+    /* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions --
+       一份可编辑文档的容器:键盘 / 指针 / 输入法事件在这里汇给唯一的光标控制器,
+       真正拿焦点、可输入的是里面那一格 contentEditable;容器本身没有「按一下」的语义可给 role */
     <div
       ref={containerRef}
       className={s.flow}

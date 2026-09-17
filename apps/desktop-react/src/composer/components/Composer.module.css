@@ -150,6 +150,25 @@
   white-space: nowrap;
 }
 
+/* 顶条的两种语气与淡色半句(`StripBar` 的 `tone` / `detail`)。 */
+.stripAccent {
+  color: var(--accent);
+}
+
+.stripMuted {
+  color: var(--text-3);
+}
+
+.stripDetail {
+  color: var(--text-3);
+}
+
+/* 说得出走到哪儿的那枚记号:一截短槽,占 spinner 那一格的位置。 */
+.stripProgress {
+  flex: none;
+  width: var(--composer-strip-progress-w);
+}
+
 .chev {
   flex: none;
   width: var(--att-icon);

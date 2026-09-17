@@ -1,9 +1,14 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CaretController } from '../content/editing/caret-controller'
 import { EditableDoc } from '../content/editing/EditableDoc'
 import { EditorDocument } from '../content/editing/editor-document'
 import { REVEAL_MODES, type RevealMode } from '../content/editing/reveal'
 import { Button } from '../ui/Button'
+import { StripBar } from '../composer/components/StripBar'
+import composerStyles from '../composer/components/Composer.module.css'
+import { planStrip } from '../content/todo/plan-strip'
+import { configureTodoPort, resetTodoSource } from '../data/todo-source'
+import { LAB_PLAN_SESSION, TodoLabPort } from './todo-lab-port'
 import { Segmented } from '../ui/Segmented'
 
 /**
@@ -34,11 +39,37 @@ function newDocument(): EditorDocument {
   return new EditorDocument(TODO_LAB_ORIGINAL, 'lab', { submit: async () => ({ conflict: false, revision: 'lab' }), requestReload: () => {} })
 }
 
+const labPort = new TodoLabPort()
+
+/** 计划条 + 抽屉,照输入框里那一格的结构摆(面板皮 + 抽屉槽 + 静止部分),数据走内存端口。 */
+function PlanStripDemo() {
+  const [open, setOpen] = useState(false)
+  const bar = planStrip.useBar(LAB_PLAN_SESSION)
+  const Drawer = planStrip.Drawer
+  return (
+    <div data-lab-plan="" className={composerStyles.panel} style={{ maxWidth: '640px' }}>
+      <div className={[composerStyles.drawer, open ? composerStyles.drawerOpen : ''].join(' ')}>
+        <div className={composerStyles.drawerBody}>{open && <Drawer sessionId={LAB_PLAN_SESSION} />}</div>
+      </div>
+      <div className={composerStyles.rest}>
+        {bar ? <StripBar bar={bar} open={open} onToggle={() => setOpen(o => !o)} /> : <div data-lab-plan-empty="">(no plan bar)</div>}
+      </div>
+    </div>
+  )
+}
+
 export function TodoLab() {
+  const [portReady, setPortReady] = useState(false)
+  useEffect(() => {
+    configureTodoPort(labPort)
+    setPortReady(true)
+    return () => { configureTodoPort(undefined); resetTodoSource() }
+  }, [])
   const [mode, setMode] = useState<RevealMode>('element')
   const [width, setWidth] = useState<'drawer' | 'panel'>('drawer')
   const [generation, setGeneration] = useState(0)
-  const document = useMemo(() => newDocument(), [generation])
+  // 「重置」= 换一代:generation 变了才换一份新文档。
+  const document = useMemo(() => { void generation; return newDocument() }, [generation])
   const controllerRef = useRef<CaretController | null>(null)
   const [rows, setRows] = useState<Row[]>([])
   const modeRef = useRef(mode)
@@ -148,7 +179,10 @@ export function TodoLab() {
         <Segmented label="width" options={[{ value: 'drawer', label: 'drawer' }, { value: 'panel', label: 'panel' }]} value={width} onChange={setWidth} />
         <Button onClick={() => setGeneration(g => g + 1)}>reset</Button>
         <Button data-lab-suite="" onClick={() => void runSuite()}>run suite</Button>
+        <Button data-lab-ai-check="" onClick={() => labPort.checkNext()}>AI 勾一项</Button>
+        <Button onClick={() => labPort.reset()}>plan reset</Button>
       </div>
+      {portReady && <PlanStripDemo />}
       <div data-lab-doc="" data-scroll-root="" style={{ maxWidth: width === 'drawer' ? '640px' : '340px', maxHeight: '560px', overflow: 'auto', background: 'var(--surface-2)', padding: 'var(--sp-4)', borderRadius: 'var(--r-3)' }}>
         <EditableDoc
           key={generation}

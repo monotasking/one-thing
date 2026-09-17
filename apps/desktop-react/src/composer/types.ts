@@ -26,7 +26,13 @@ export interface PickDrawerKind {
   readonly trigger: ReferenceTrigger
 }
 
-export type DrawerKind = PickDrawerKind | 'model' | 'status' | null
+/** 输入框顶条之一的抽屉(`composer/strip.ts`)。id 是登记表里那一条的 id。 */
+export interface StripDrawerKind {
+  readonly kind: 'strip'
+  readonly id: string
+}
+
+export type DrawerKind = PickDrawerKind | StripDrawerKind | 'model' | null
 
 /**
  * 每个触发字符**恒是同一个对象**。
@@ -47,6 +53,22 @@ export function pickDrawer(trigger: ReferenceTrigger): PickDrawerKind {
 }
 
 /** 打字驱动的那两位住户在不在场。抽屉开着时上下键与回车归它,不归输入框。 */
+const STRIP_DRAWERS = new Map<string, StripDrawerKind>()
+
+/** 同一条恒是同一个对象,理由同 `pickDrawer`。 */
+export function stripDrawer(id: string): StripDrawerKind {
+  let now = STRIP_DRAWERS.get(id)
+  if (!now) {
+    now = { kind: 'strip', id }
+    STRIP_DRAWERS.set(id, now)
+  }
+  return now
+}
+
+export function isStripDrawer(drawer: DrawerKind): drawer is StripDrawerKind {
+  return typeof drawer === 'object' && drawer !== null && drawer.kind === 'strip'
+}
+
 export function isPickDrawer(drawer: DrawerKind): drawer is PickDrawerKind {
   return typeof drawer === 'object' && drawer !== null && drawer.kind === 'pick'
 }

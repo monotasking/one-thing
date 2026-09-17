@@ -1,0 +1,23 @@
+/*
+ * 计划抽屉(输入框抽屉槽里的一位住户)。高按内容,矮窗上夹到会话叶的一半 ——
+ * 与 `.drawerFixed` 同一条「正文永远露出上半截」的判词;超出在文档里滚。
+ */
+.drawer {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(var(--center-h, 200vh) * 0.5);
+}
+
+.doc {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-2) var(--composer-pad-x);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--sp-1) var(--composer-pad-x);
+  border-top: var(--bw-1) solid var(--line-1);
+}
