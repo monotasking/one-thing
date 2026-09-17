@@ -52,6 +52,7 @@
  * (title / content / attachments / reasoning),超了当场抛,不静默错乱。
  */
 
+import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import type { DatabaseSync, StatementSync } from 'node:sqlite'
 
@@ -77,6 +78,12 @@ import {
 import type { AnalyzerRegistry } from '@onething/core/search'
 
 import { SqliteVectorIndex, attachVectorIndex, probeSqliteVecExtension } from './sqlite-vec.js'
+import { vectorTableFamily } from './storage.js'
+import type { IndexMaintenanceStats, IndexStorageBreakdown } from './storage.js'
+
+import { getLogger } from '../../logging/index.js'
+
+const log = getLogger('search.index.sqlite')
 
 /** §5.5:单文档字段上限,超出只索引前这么多字,文档标 truncated。 */
 export const DEFAULT_MAX_FIELD_CHARS = 200_000
@@ -182,6 +189,8 @@ interface ClauseRow {
 
 export class SqliteIndex implements InvertedIndex, DocTable, LexicalSearcher, IndexWriter, Vocabulary {
   private readonly db: DatabaseSync
+  /** 库文件在哪儿。`storage()` 要它去 stat 文件与 `-wal`;`:memory:` 那份没有文件。 */
+  private readonly path: string
   private readonly analyzers: AnalyzerRegistry
   private readonly maxFieldChars: number
   private readonly normalize: (text: string) => { text: string }
@@ -198,6 +207,7 @@ export class SqliteIndex implements InvertedIndex, DocTable, LexicalSearcher, In
 
   constructor(options: SqliteIndexOptions) {
     const DatabaseSyncCtor = loadDatabaseSync()
+    this.path = options.path
     this.analyzers = options.analyzers ?? createDefaultAnalyzerRegistry()
     this.maxFieldChars = options.maxFieldChars ?? DEFAULT_MAX_FIELD_CHARS
     this.normalize = options.normalize ?? composeNormalizers(DEFAULT_NORMALIZERS)
@@ -275,6 +285,137 @@ export class SqliteIndex implements InvertedIndex, DocTable, LexicalSearcher, In
     this.closed = true
     this.statements.clear()
     this.db.close()
+  }
+
+  // ---- 占地方,与收拾一下(2026-09-18)-----------------------------------
+
+  /**
+   * 这个库占了多少地方,按「字面 / 向量 / 预写日志」分开。判据是纯的
+   * (`storage.ts` 的 `vectorTableFamily`),这里只负责问库与问文件系统。
+   *
+   * ## 为什么只按名字量向量那一族,不做一遍全表统计
+   *
+   * `dbstat` 是**扫 btree** 的:真店那一份(161 MB)上
+   * `SELECT name, SUM(pgsize) FROM dbstat GROUP BY name` 要 **790–1120ms** ——
+   * 那一整段 Worker 线程被按住,什么查询都答不了。而按名字问
+   * (`WHERE name = ?`,SQLite 会把这个约束下推进 dbstat 的扫描)只扫那一张表:
+   * 向量那一族十一张表合起来 **33ms 冷 / 0.3ms 热**。
+   *
+   * 于是「字面」那一格改成**减出来的**:整个库文件减去向量那一族。它因此天然包含
+   * FTS5 的影子表、关系表、各索引与空闲页 —— 那正是我们要的口径(见 `storage.ts`
+   * 文件头「其余一律归字面」)。
+   *
+   * `:memory:` 那份没有文件,退回 `page_count * page_size`(单测走这一支)。
+   */
+  storage(): IndexStorageBreakdown {
+    const dbBytes = this.databaseBytes()
+    const walBytes = fileBytes(`${this.path}-wal`)
+    const family = this.vectorTables()
+    if (family.virtualTables.length === 0) {
+      // 这个库里根本没有向量表 —— `vectorBytes` **缺席**(不是 0:屏幕上要分得出)。
+      return { lexicalBytes: dbBytes, walBytes }
+    }
+    let vectorBytes = 0
+    try {
+      for (const name of family.names) vectorBytes += this.tableBytes(name)
+    } catch (error) {
+      // `dbstat` 这台机器上没编进去:分不出向量那一半,全算字面,并且**说出来**。
+      log.warn('dbstat is unavailable; storage is reported without the vector half', { err: error })
+      return { lexicalBytes: dbBytes, walBytes, approximate: true }
+    }
+    return {
+      lexicalBytes: Math.max(0, dbBytes - vectorBytes),
+      vectorBytes,
+      walBytes,
+    }
+  }
+
+  /** 决定「要不要收拾」的那几个数。全是 O(1) 或近似 O(1)(段数实测 0.3ms)。 */
+  maintenanceStats(): IndexMaintenanceStats {
+    return {
+      segments: this.count('SELECT COUNT(DISTINCT segid) AS n FROM docs_fts_idx'),
+      pageCount: this.pragma('page_count'),
+      freelistCount: this.pragma('freelist_count'),
+      pageSize: this.pragma('page_size'),
+    }
+  }
+
+  /**
+   * 把 FTS5 的段合成一个。**这是那 100 MB 的去处**(`storage.ts` 文件头的读数表)。
+   *
+   * 它是一次普通的写,不独占库;真店副本上 636ms。
+   */
+  optimizeFullText(): void {
+    this.db.exec("INSERT INTO docs_fts(docs_fts) VALUES('optimize')")
+  }
+
+  /**
+   * 把空闲页还给文件系统。**要独占库** —— 别的进程(daemon / 第二个 core)开着这个
+   * 库时会 `SQLITE_BUSY`,那时**抛**给调用方,由它记一条 warn 就过(`worker-core`)。
+   */
+  vacuum(): void {
+    this.db.exec('VACUUM')
+  }
+
+  /**
+   * 把 WAL 折回主库并把 `-wal` 截断。
+   *
+   * VACUUM **之后必须做一次**:WAL 模式下 VACUUM 把整个新库写进 WAL —— 副本上量到
+   * 主库缩到 58.8 MB 的同时 `-wal` 涨到 59.1 MB。少了这一句,「占用空间」那一行会在
+   * 收拾完之后报得比收拾前还大。
+   *
+   * 有别的读者时它答「忙」(一行读数),不抛。
+   */
+  checkpointTruncate(): void {
+    this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+  }
+
+  /**
+   * 库有多大。**按页数算,不按文件大小算**(施工时踩过)。
+   *
+   * WAL 模式下刚写完还没 checkpoint 的页只在 `-wal` 里,主库文件此刻可能只有一个
+   * 头页 —— 拿 `statSync` 去减向量那一族,减出来是负数(真店那份 checkpoint 勤,
+   * 两个数相等,所以这个坑只在单测那种「写完就量」的现场露头)。`page_count` 数的
+   * 是**逻辑上的库**,与 `dbstat` 是同一套坐标,两格相减才对得上。
+   *
+   * 代价是**只在 WAL 里的那几页被数了两遍**(这里一遍、`walBytes` 一遍)。真店那一份
+   * 两个文件加起来 166.8 MB,与磁盘上真实占用逐字节相同,所以这是个上界很小的高估;
+   * 而反过来(漏报)在一个「告诉用户占了多少」的功能上更糟。
+   *
+   * `:memory:` 那份没有文件,这条路自然也对。
+   */
+  private databaseBytes(): number {
+    return this.pragma('page_count') * this.pragma('page_size')
+  }
+
+  /** 一张表 / 一个索引占了多少字节(`dbstat`;这张表不在就是 0)。 */
+  private tableBytes(name: string): number {
+    const row = this.prepare('SELECT SUM(pgsize) AS n FROM dbstat WHERE name = ?')
+      .get(name) as { n: number | null } | undefined
+    return Number(row?.n ?? 0)
+  }
+
+  /**
+   * 向量那一族的表名。**问库,不抄清单**(判据在 `storage.ts` 文件头)。
+   *
+   * 认 `vec0` 虚表用的是建表语句里的 `USING vec0`,而不是表名 —— 名字是
+   * `sqlite-vec.ts` 的 `vecTableName(dims)` 拼的,这里不该知道它的拼法。
+   */
+  private vectorTables(): { virtualTables: string[]; names: string[] } {
+    const virtualTables = (this.prepare(
+      "SELECT name FROM sqlite_schema WHERE type = 'table' AND sql LIKE '%USING vec0%'",
+    ).all() as Array<{ name: string }>).map(row => row.name)
+    if (virtualTables.length === 0) return { virtualTables, names: [] }
+    const all = (this.prepare(
+      "SELECT name FROM sqlite_schema WHERE type IN ('table', 'index')",
+    ).all() as Array<{ name: string }>).map(row => row.name)
+    return { virtualTables, names: vectorTableFamily(all, virtualTables) }
+  }
+
+  /** 一格 pragma 读数。`PRAGMA x` 回的那一行的列名就是 `x`。 */
+  private pragma(name: 'page_count' | 'freelist_count' | 'page_size'): number {
+    const row = this.db.prepare(`PRAGMA ${name}`).get() as Record<string, number> | undefined
+    return Number(row?.[name] ?? 0)
   }
 
   // ---- 写面 -------------------------------------------------------------
@@ -854,6 +995,18 @@ export class SqliteIndex implements InvertedIndex, DocTable, LexicalSearcher, In
 }
 
 // ---- 纯函数 -------------------------------------------------------------
+
+/**
+ * 一个文件多少字节。**不在就是 0** —— `-wal` 在 checkpoint 之后会被截断甚至删掉,
+ * 那不是错,是「此刻它不占地方」。
+ */
+function fileBytes(path: string): number {
+  try {
+    return fs.statSync(path).size
+  } catch {
+    return 0
+  }
+}
 
 type SqlValue = string | number | null
 

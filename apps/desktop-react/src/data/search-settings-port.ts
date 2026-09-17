@@ -1,4 +1,4 @@
-import { searchRouter, type SearchModelResponse } from '@shared/ipc/search'
+import { searchRouter, type SearchModelResponse, type SearchStorageResponse } from '@shared/ipc/search'
 import {
   settingsRouter,
   type AppSettings,
@@ -48,6 +48,15 @@ export interface SearchSettingsPort {
   downloadModel(): Promise<SearchModelResponse>
   cancelModelDownload(): Promise<SearchModelResponse>
   removeModel(): Promise<SearchModelResponse>
+  /**
+   * ── 占了多少地方(2026-09-18)────────────────────────────────────────
+   *
+   * 也走 `search` 域。**读路在这里而不是跟着 `search.status` 走**,与模型那三格的
+   * 理由正好相反:模型状态每秒都要问、检索面自己也在订它,所以它跟着那一格;而
+   * 这一发要去扫库(真店 48.7ms 冷 / 0.5ms 热),问它的**只有这一页**,而且是
+   * 「进页问一次、有东西变了再问一次」。并进那一格就等于让每一次轮询都去扫一遍库。
+   */
+  storage(): Promise<SearchStorageResponse>
 }
 
 let port: SearchSettingsPort | undefined
@@ -71,6 +80,7 @@ async function realPort(): Promise<SearchSettingsPort> {
     downloadModel: () => search.semanticModelDownload({}),
     cancelModelDownload: () => search.semanticModelCancel({}),
     removeModel: () => search.semanticModelRemove({}),
+    storage: () => search.storage({}),
   }
 }
 

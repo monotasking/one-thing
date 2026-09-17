@@ -65,6 +65,18 @@ export {
 } from './sqlite-vec.js'
 export type { SqliteVecOpenOptions, SqliteVectorIndexOptions } from './sqlite-vec.js'
 
+export {
+  DEFAULT_INDEX_MAINTENANCE_POLICY,
+  shouldOptimizeFullText,
+  shouldVacuum,
+  vectorTableFamily,
+} from './storage.js'
+export type {
+  IndexMaintenancePolicy,
+  IndexMaintenanceStats,
+  IndexStorageBreakdown,
+} from './storage.js'
+
 export { EMBED_BATCH_SIZE, VectorWriter } from './vector-writer.js'
 export type { VectorState, VectorWriterIndexFace, VectorWriterOptions } from './vector-writer.js'
 
@@ -94,6 +106,7 @@ export type {
   IndexSearchRequest,
   IndexSearchResult,
   IndexStatus,
+  IndexStorage,
   IndexVectorSearchRequest,
   IndexVectorSearchResult,
   IndexWorkerCoreOptions,

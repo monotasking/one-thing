@@ -4,7 +4,7 @@ import { searchStatusQuery } from './search-catalog-source'
 import { notify } from '../services/notify'
 import { t } from '../i18n'
 import { DEFAULT_SEMANTIC_MODEL_ID, type AppSettings } from '@shared/ipc/settings'
-import type { SearchStatusResponse } from '@shared/ipc/search'
+import type { SearchStatusResponse, SearchStorageResponse } from '@shared/ipc/search'
 
 /**
  * 设置页「搜索 → 按含义找」那一节的取数与一条写路。
@@ -73,6 +73,66 @@ export const semanticSearchQuery = createQuery<SemanticSearchView>(
     return toSemanticSearchView(response.settings)
   },
 )
+
+/* ── 占用空间(2026-09-18;用户 09-17「我要知道搜索占得空间」)──────────────
+ *
+ * **第三个产地**,理由与前两个各不相同:
+ *
+ * | 要什么 | 产地 | 为什么不合并 |
+ * | --- | --- | --- |
+ * | 开关 / 模型 | `semanticSearchQuery` | 它是**设置**,写得动 |
+ * | 向量路在干什么 | `searchStatusQuery` | 它是**索引的状态**,每秒轮询,检索面也在订 |
+ * | 占了多少地方 | `searchStorageQuery`(这里) | 它**贵**(要扫库),而且**不会自己动** |
+ *
+ * 所以它**不轮询**:进页问一次,然后只在「地方真的变了」的那几件事之后再问一次
+ * (模型下载落定 / 删掉模型 / 翻开关 / 向量那一半刚嵌完)。一个每 5s 去扫一遍库的
+ * 读数,换来的只是看着秒表跳字。
+ */
+export const searchStorageQuery = createQuery<SearchStorageResponse>(
+  'search.storage',
+  async () => {
+    const port = await searchSettingsPort()
+    await port.ready()
+    // 后端答不出(这台宿主没有索引)会抛 —— kernel 记进 error,屏上写「没量出来」
+    // 并**留住上一份**(律②)。答一堆零会把「没这个库」画成「它是空的」。
+    return await port.storage()
+  },
+)
+
+/**
+ * 「占用空间」那一节此刻在说哪句话(2026-09-18)。**三态,判据全在参数里**。
+ *
+ * | 态 | 判据 | 屏幕上 |
+ * | --- | --- | --- |
+ * | loading | 一份都还没有,也没出错 | 「计算中…」 |
+ * | ready | 拿到了(哪怕更早前红过 —— 有数就画数) | 三行 + 合计 |
+ * | error | 这一发红了 | 旧值留着,底下补一行「没量出来」;一份都没有过就是那一句 |
+ *
+ * **有数就不算 loading,哪怕正在重量** —— 一个每次重量都翻回「计算中…」的读数会
+ * 在屏上闪,而它上一秒说的话此刻并没有变假。
+ */
+export type SearchStoragePhase = 'loading' | 'ready' | 'error'
+
+export function storagePhaseOf(
+  data: SearchStorageResponse | undefined,
+  error: string | undefined,
+): SearchStoragePhase {
+  if (error !== undefined) return 'error'
+  return data === undefined ? 'loading' : 'ready'
+}
+
+/**
+ * 向量那一半**刚嵌完**了吗 —— 嵌完那一刻库真的长大了,该重新量一次。
+ *
+ * 纯函数、导出,所以「首载就是 ready 不算变化」这条可以被单测。判据是**跃迁**而不是
+ * 当前值:首载那一帧上一个值是 `undefined`,那时刚 `ensure()` 过一发,再量一遍是白量。
+ */
+export function shouldRemeasureStorage(
+  previous: SearchStatusResponse['vector'],
+  next: SearchStatusResponse['vector'],
+): boolean {
+  return previous !== undefined && previous !== next && next === 'ready'
+}
 
 /**
  * 这一节此刻在说哪句话。**八个态,判据全在参数里**(没有计时器、没有「刚才点过」
@@ -269,10 +329,13 @@ export const setSemanticSearchEnabledMutation: Mutation<boolean, void> = createM
         detail: error.message,
       })
     },
-    // 两格都要对账:设置那格确认后端收下了,状态那格去问新起来的那条 Worker。
+    // 三格都要对账:设置那格确认后端收下了,状态那格去问新起来的那条 Worker,
+    // 占用那格是因为**开了语义召回就会长出一张向量表**(关掉则不会缩 —— 那也是
+    // 一句要说准的话,所以两个方向都重量一次)。
     settle: () => {
       semanticSearchQuery.invalidate()
       searchStatusQuery.invalidate()
+      searchStorageQuery.invalidate()
     },
   },
 )
@@ -342,6 +405,8 @@ function modelMutation(
     },
     settle: () => {
       searchStatusQuery.invalidate()
+      // 下完 / 删掉之后磁盘上真的多了 / 少了一百多兆 —— 那一行得跟着变。
+      searchStorageQuery.invalidate()
     },
   })
 }
@@ -390,6 +455,7 @@ export const removeSemanticModelMutation = modelMutation(
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     semanticSearchQuery.reset()
+    searchStorageQuery.reset()
     setSemanticSearchEnabledMutation.reset()
     downloadSemanticModelMutation.reset()
     cancelSemanticModelMutation.reset()

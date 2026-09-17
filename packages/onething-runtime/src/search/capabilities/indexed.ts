@@ -42,7 +42,12 @@ export type SearchIndexQueryFace =
    * 是两件事:`unavailableIndexFace()` 与单测里的字面量替身都没有这一半,而它们
    * 不该因此写三个空函数(写了就得选一个谎:抛,还是假装成功)。
    */
-  & Partial<Pick<SearchIndexService, 'downloadModel' | 'cancelModelDownload' | 'removeModel'>>
+  /**
+   * 「占了多少地方」同理**可选**(2026-09-18):能力一个都不用,它唯一的读者是
+   * `search` 域那条 `storage` 路由。`unavailableIndexFace()` 与单测里的字面量替身
+   * 都没有这一半。
+   */
+  & Partial<Pick<SearchIndexService, 'downloadModel' | 'cancelModelDownload' | 'removeModel' | 'storage'>>
 
 /** 与 `SqliteIndex` 索引时用的是同一条归一化链 —— 两边不许分家。 */
 const normalize = composeNormalizers(DEFAULT_NORMALIZERS)

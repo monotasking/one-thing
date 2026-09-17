@@ -394,6 +394,26 @@ try {
   const goneChats = await gone(RENAME_MARKER, 'chats')
   check(goneChats !== undefined, `⑥ 删除后 chats 档不再命中(${goneChats}ms)`)
 
+  /*
+   * ── ⑭ 占了多少地方(2026-09-18;用户 09-17「我要知道搜索占得空间」)─────────
+   *
+   * 这里只判**加法与符号**:四个数各自 ≥ 0、`totalBytes` 恰是四项之和、而且
+   * 字面那一格真的大于零(库文件就在盘上,量它得出来)。**向量那一格这一条判不了**
+   * —— 这间 store 从没开过语义召回,所以它该是**缺席**(还没有向量表)。真有向量
+   * 数据那一形归 ⑧(那一间开着假嵌入器)。
+   */
+  const storage = await rpc('search', 'storage')
+  const parts = [storage?.lexicalBytes, storage?.walBytes, storage?.modelBytes]
+  check(parts.every(value => typeof value === 'number' && value >= 0),
+    `⑭ 三个数都 ≥ 0(读到 ${JSON.stringify(storage)})`)
+  check(storage.vectorBytes === undefined,
+    '⑭ 没开过语义召回 → vectorBytes **整格缺席**(与「0 字节」分得开)')
+  check(storage.totalBytes === storage.lexicalBytes + (storage.vectorBytes ?? 0)
+    + storage.walBytes + storage.modelBytes,
+    `⑭ totalBytes 恰是四项之和(${storage.totalBytes})`)
+  check(storage.lexicalBytes > 0, `⑭ 字面那一格 > 0(${(storage.lexicalBytes / 1024).toFixed(1)} KiB)`)
+  check(typeof storage.measuredAt === 'number' && storage.measuredAt > 0, '⑭ 带着量的那一刻')
+
   // ── ④ 退干净 ──────────────────────────────────────────────────────
   child.kill('SIGTERM')
   for (let i = 0; i < 100 && child.exitCode === null && child.signalCode === null; i += 1) await sleep(100)
@@ -1566,6 +1586,20 @@ async function runSemanticPhase() {
       ?.results?.[0]
     check(mineFirst?.sessionId === sessionId,
       `⑧ 区分度:${probe.id} 的改写句把自己那条排第一`)
+
+    /*
+     * ── ⑭b 嵌完之后向量库真的占了地方(2026-09-18)─────────────────────────
+     *
+     * 上面那几条已经证明向量路在答话,所以此刻 `vec_docs_<dims>` 里一定有行。
+     * **这一条是归类判据的反证口**:把 `vectorTableFamily` 的判据写反(比如漏掉
+     * 影子表、或者把 `sqlite_autoindex_` 那一支剥错),这个数当场变 0,红。
+     */
+    const storage = await rpc('search', 'storage')
+    check(typeof storage?.vectorBytes === 'number' && storage.vectorBytes > 0,
+      `⑭b 嵌完之后 vectorBytes > 0(${JSON.stringify(storage)})`)
+    check(storage.totalBytes === storage.lexicalBytes + storage.vectorBytes
+      + storage.walBytes + storage.modelBytes,
+      '⑭b totalBytes 仍是四项之和')
 
     if (failures.length > 0) {
       console.error(`[gate:search-index] ⑧ server 输出尾:\n${out.slice(-40).join('')}`)

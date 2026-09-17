@@ -49,6 +49,7 @@ import type { OnethingSearchProvidersAdapters } from './providers.js'
 import { createBuiltinSearchCapabilities } from './capabilities/index.js'
 import type { SearchIndexQueryFace } from './capabilities/indexed.js'
 import type { ModelStatus } from './index/model-download.js'
+import type { IndexStorage } from './index/worker-core.js'
 import { searchResultOf, type SearchServiceResult } from './capabilities/scan-adapter.js'
 
 /** 命令面板一页给多少条(旧路那个缺省值,数没变)。 */
@@ -194,8 +195,17 @@ export interface SearchIndexStatus {
  */
 export type SearchSemanticModelStatus = ModelStatus
 
+/**
+ * **检索占了多少地方**(2026-09-18)。同上一条判例:形与 Worker 那一侧的
+ * `IndexStorage` 逐格相同,所以直接引它,不在这里再写一遍。
+ */
+export type SearchStorageReport = IndexStorage
+
 /** 这台宿主管不了模型时,那三个动作的答复。 */
 export const SEMANTIC_MODEL_UNAVAILABLE_ERROR = 'semantic model management is not available on this host'
+
+/** 这台宿主答不出「占了多少地方」时的那一句(没有索引 —— 那就没有地方可占)。 */
+export const SEARCH_STORAGE_UNAVAILABLE_ERROR = 'search storage is not measurable on this host'
 
 /**
  * 预览 / 动作请求里指一条结果(§4.5 ③;契约层 `SearchItemRef` 的同形件)。
@@ -341,6 +351,23 @@ export class OnethingSearchService {
       ...(status.vectorErrorKind !== undefined ? { vectorErrorKind: status.vectorErrorKind } : {}),
       ...(status.model !== undefined ? { model: status.model } : {}),
     }
+  }
+
+  /**
+   * **检索占了多少地方**(2026-09-18;`search` 域那条 `storage` 路由的落点)。
+   *
+   * 与 `semanticModel` 同一条落位判据:这台进程里「索引是哪一份」已经有唯一答案
+   * (这份服务手上的 `indexFace()`),不再立第二个产地。
+   *
+   * 没有索引就**结构化拒绝**,不答一堆零 —— 屏幕上「没量出来」与「0 MB」是两句
+   * 完全不同的话(而且这台机器上很可能压根没有那个库)。
+   */
+  async storage(): Promise<SearchStorageReport> {
+    const measure = this.index?.storage
+    if (this.index === undefined || measure === undefined) {
+      throw new Error(SEARCH_STORAGE_UNAVAILABLE_ERROR)
+    }
+    return await measure.call(this.index)
   }
 
   /**

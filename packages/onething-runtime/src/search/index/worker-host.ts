@@ -31,6 +31,7 @@ import type {
   IndexModelOp,
   IndexSearchRequest,
   IndexSearchResult,
+  IndexStorage,
   IndexVectorSearchRequest,
   IndexVectorSearchResult,
   IndexStatus,
@@ -307,6 +308,15 @@ export class IndexWorkerHost {
       }
     }
     return await this.send({ type: 'status' }) as IndexStatus
+  }
+
+  /**
+   * 占了多少地方(2026-09-18)。停摆了就**如实拒**,不答一堆零 —— 屏幕上
+   * 「没量出来」与「0 MB」是两句完全不同的话。
+   */
+  async storage(): Promise<IndexStorage> {
+    if (this.dead) throw new IndexWorkerUnavailableError()
+    return await this.send({ type: 'storage' }) as IndexStorage
   }
 
   // ---- 往返 -------------------------------------------------------------

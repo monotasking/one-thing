@@ -1104,6 +1104,17 @@ export const zh = {
   'search.semanticModelCancel': '取消',
   'search.semanticModelRemove': '删除',
   'search.semanticModelRemoveBlocked': '先关掉开关',
+  /* ── 占用空间(2026-09-18;content/settings/SearchStorage.tsx)──────────────
+   * 用户 09-17:「我要知道搜索占得空间,不管是现在的 fts5 还是向量库。」
+   * 这一节只回答「占了多少」,所以没有一句解释性的文案 —— 四个名词 + 两句状态。
+   * 字节数由 `format/quantity` 的 `formatBytes` 念,单位符号是数据不进字典。 */
+  'search.storageTitle': '占用空间',
+  'search.storageLexical': '字面索引',
+  'search.storageVector': '向量库',
+  'search.storageModel': '模型',
+  'search.storageTotal': '合计',
+  'search.storageMeasuring': '计算中…',
+  'search.storageFailed': '没量出来',
   /* ── 内置浏览器(B2′:content/settings/BrowserSettings.tsx)──────────────────
    * 「开着会有什么后果」那两句是**会造成后果的警告**,所以它们是文案不是数据,
    * 双语成对。端口是数据,由 `{port}` 插进来 —— 换一门语言它不该变。 */

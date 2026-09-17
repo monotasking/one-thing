@@ -73,6 +73,14 @@ function fakePort(settings: AppSettings): Fake {
     downloadModel: answer('download'),
     cancelModelDownload: answer('cancel'),
     removeModel: answer('remove'),
+    // 「占用空间」是隔壁那一节的读路(2026-09-18);这一节不画它,替身给一份就够。
+    storage: async () => ({
+      lexicalBytes: 0,
+      walBytes: 0,
+      modelBytes: 0,
+      totalBytes: 0,
+      measuredAt: 0,
+    }),
   }
   return fake
 }
@@ -408,6 +416,9 @@ describe('这一节(渲染)', () => {
       downloadModel: async () => ({ success: true }),
       cancelModelDownload: async () => ({ success: true }),
       removeModel: async () => ({ success: true }),
+      storage: async () => ({
+        lexicalBytes: 0, walBytes: 0, modelBytes: 0, totalBytes: 0, measuredAt: 0,
+      }),
     })
     stubStatus({ vector: 'off' })
     render(<SearchSettings />)
@@ -431,6 +442,9 @@ describe('这一节(渲染)', () => {
       downloadModel: async () => ({ success: true }),
       cancelModelDownload: async () => ({ success: true }),
       removeModel: async () => ({ success: true }),
+      storage: async () => ({
+        lexicalBytes: 0, walBytes: 0, modelBytes: 0, totalBytes: 0, measuredAt: 0,
+      }),
     })
     stubStatus({
       vector: 'off',

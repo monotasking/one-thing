@@ -174,6 +174,18 @@ export class ModelDownloader {
     return this.adopting === undefined ? this.describe() : undefined
   }
 
+  /**
+   * 这份模型在磁盘上占了多少(2026-09-18 的「占用空间」那一节)。
+   *
+   * 答的是**清单核对过的那个真数**(`readyBytes`),所以它与设置页模型行上那句
+   * 「已下载 · 129 MB」是同一个数,不是第二个产地。没下全 = 0(半截文件不算数,
+   * 与 `probeEmbedderModel` 同一条判据);**估计值一个字都不进来** —— 这一格问的是
+   * 「此刻占了多少地方」,而「约 113 MB」是「下下来会占多少」,那是另一句话。
+   */
+  storageBytes(): number {
+    return this.state === 'ready' ? this.readyBytes : 0
+  }
+
   /** 这一刻磁盘与状态机合起来的样子。**一定答得出** —— 三个动作的回执用它。 */
   private describe(): ModelStatus {
     const id = this.options.factory.id

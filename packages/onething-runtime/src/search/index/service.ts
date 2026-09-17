@@ -39,6 +39,7 @@ import type {
   IndexSearchRequest,
   IndexSearchResult,
   IndexStatus,
+  IndexStorage,
   IndexVectorSearchRequest,
   IndexVectorSearchResult,
 } from './worker-core.js'
@@ -123,6 +124,17 @@ export class SearchIndexService {
 
   status(): Promise<IndexStatus> {
     return this.host.status()
+  }
+
+  /**
+   * **检索占了多少地方**(2026-09-18;用户 09-17「我要知道搜索占得空间」)。
+   *
+   * 与 `status()` 分开的理由是**代价**:那一发每秒被轮询、答的是几个内存里的计数;
+   * 这一发要扫向量那一族的 btree(真店 33ms 冷),所以它只在被问的时候算 ——
+   * 今天唯一的问话人是设置页那一节,进页问一次、几件事变了再问一次。
+   */
+  storage(): Promise<IndexStorage> {
+    return this.host.storage()
   }
 }
 

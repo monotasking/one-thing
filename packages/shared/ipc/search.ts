@@ -284,6 +284,15 @@ export type SearchRoutes = {
   semanticModelDownload: { input: SearchModelRequest; output: SearchModelResponse }
   semanticModelCancel: { input: SearchModelRequest; output: SearchModelResponse }
   semanticModelRemove: { input: SearchModelRequest; output: SearchModelResponse }
+  /**
+   * **检索占了多少地方**(2026-09-18;契约只加。用户 09-17:「我要知道搜索占得空间,
+   * 不管是现在的 fts5 还是向量库。」)。
+   *
+   * **不并进 `status`**:那一发每秒被轮询、答的是几个内存里的计数;这一发要去扫库
+   * (真店 33ms 冷),只在被问的时候算。两件事的问法因此也不同 —— `status` 是订阅式
+   * 的轮询,这一条是「进页问一次、有东西变了再问一次」。
+   */
+  storage: { input: SearchStorageRequest; output: SearchStorageResponse }
 }
 
 export const searchRouter = defineRouter<SearchRoutes>('search', [
@@ -295,6 +304,7 @@ export const searchRouter = defineRouter<SearchRoutes>('search', [
   'semanticModelDownload',
   'semanticModelCancel',
   'semanticModelRemove',
+  'storage',
 ])
 
 /* ───────────────────────── 能力自述 · 预览 · 动作 · 索引状态(S0)─────────────────────────
@@ -558,6 +568,40 @@ export interface SearchSemanticModelStatus {
    */
   errorKind?: 'network' | 'runtime' | 'model' | 'unknown'
   error?: string
+}
+
+/** 「占了多少地方」的入参:一格都不要。 */
+export type SearchStorageRequest = Record<string, never>
+
+/**
+ * **检索占了多少地方**(2026-09-18)。四个数 + 它们的和 + 量的是哪一刻。
+ *
+ * 归类规矩(判据在 `runtime/search/index/storage.ts`,那里一张表名清单都没有):
+ *
+ * | 格 | 装什么 |
+ * | --- | --- |
+ * | `lexicalBytes` | 库文件**减去**向量那一族 —— 于是 FTS5 的影子表、关系表、各索引与空闲页都在这里 |
+ * | `vectorBytes` | `sqlite-vec` 替当前那张 `vec0` 虚表建的影子表族。**缺席 = 这个库里还没有向量表**(开关从没开过),或者这台机器上量不出来 |
+ * | `walBytes` | `-wal`。它是同一个库的预写日志,屏幕上不单列,并进「字面索引」那一行的数 |
+ * | `modelBytes` | 嵌入模型那堆文件(清单核对过的真数;没下全 / 管不了模型 = 0) |
+ *
+ * `totalBytes` 由**后端**加,不让屏幕去加:四个数与它们的和必须是同一次测量的结果,
+ * 分两处算就会在两次轮询之间对不上。
+ */
+export interface SearchStorageResponse {
+  lexicalBytes: number
+  /** 缺席 = 还没有向量库,或者量不出来。**与 0 不是一回事**(屏幕上前者画「—」)。 */
+  vectorBytes?: number
+  walBytes: number
+  modelBytes: number
+  totalBytes: number
+  /** 量的是哪一刻(epoch ms)。 */
+  measuredAt: number
+  /**
+   * 量得不准:这台机器的 SQLite 没编进 `dbstat`,向量那一半分不出来,全算进了字面。
+   * 屏幕上今天不画它(四行照旧),它是给排障与门看的一句实话。
+   */
+  approximate?: boolean
 }
 
 /**

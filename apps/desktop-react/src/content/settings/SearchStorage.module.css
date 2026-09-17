@@ -1,0 +1,34 @@
+/*
+ * 设置 → 搜索 →「占用空间」那一节自己的两格。行形本身用的是共享的 `.settingRow`
+ * 一族(`Settings.module.css`)—— 这里只补它说不出的两件事。
+ */
+
+/*
+ * 右边那一格读数。
+ *
+ * `tabular-nums` 是这一节的全部理由:四行数字上下排在一起,比例宽度下「1」比「8」
+ * 窄一大截,个位数就对不齐,一列读数会看着像一堆碎片。右对齐同理 —— 人比较的是
+ * 数量级,而数量级在右端对齐时一眼可见。
+ */
+.value {
+  flex: none;
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text-2);
+}
+
+/*
+ * 合计那一行:上面一条细线把它和三行分项隔开,字色回到主文字。
+ *
+ * 用线而不是加粗 + 空行:这是一张四行的小账,「分项到合计」是一次**结构上的**跳转,
+ * 而这条仓里表达结构跳转的既有说法就是 `--line-1` 那条细线(节标底下用的也是它)。
+ */
+.total {
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line-1);
+}
+
+.total .value {
+  color: var(--text-1);
+}

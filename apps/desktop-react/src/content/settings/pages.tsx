@@ -5,6 +5,7 @@ import { OpenPage } from './OpenPage'
 import { BrowserSettings } from './BrowserSettings'
 import { NetworkSettings } from './NetworkSettings'
 import { SearchSettings } from './SearchSettings'
+import { SearchStorage } from './SearchStorage'
 import { PermissionGrants } from './PermissionGrants'
 import { Section } from './Section'
 import { KeymapSettings } from '../KeymapSettings'
@@ -84,10 +85,21 @@ export const SETTINGS_PAGES: readonly SettingsPageSpec[] = [
     id: 'search',
     titleKey: 'settings.sectionSearch',
     layout: 'form',
+    /*
+     * 两节(2026-09-18):语义召回那一节 + **占用空间**。分两节而不是往下接几行,
+     * 是因为它们回答的是两个问题(「要不要按意思找」/「这些东西占了多少地方」),
+     * 而节与节之间那一档更大的间距正是这个仓表达「两件事」的说法(`Section` 的
+     * 文件头:页说的是哪类事,节说的是哪件事)。
+     */
     render: () => (
-      <Section titleKey="settings.sectionSearch">
-        <SearchSettings />
-      </Section>
+      <>
+        <Section titleKey="settings.sectionSearch">
+          <SearchSettings />
+        </Section>
+        <Section titleKey="search.storageTitle">
+          <SearchStorage />
+        </Section>
+      </>
     ),
   },
   {

@@ -49,6 +49,8 @@ import type { AnalyzerRegistry, CapabilityManifest, ExpanderRegistry } from '@on
 
 import { getLogger } from '../../logging/index.js'
 import type { ModelDownloader, ModelState, ModelStatus } from './model-download.js'
+import { DEFAULT_INDEX_MAINTENANCE_POLICY, shouldOptimizeFullText, shouldVacuum } from './storage.js'
+import type { IndexMaintenancePolicy } from './storage.js'
 import type { SqliteIndex } from './sqlite-index.js'
 import { VectorWriter } from './vector-writer.js'
 import type { VectorState } from './vector-writer.js'
@@ -120,6 +122,32 @@ export interface IndexKeyError {
   message: string
 }
 
+/**
+ * **检索占了多少地方**(2026-09-18;用户 09-17:「我要知道搜索占得空间,不管是现在
+ * 的 fts5 还是向量库。」)。
+ *
+ * 四个数,加起来就是 `totalBytes`。归类判据在 `storage.ts`,那里一张表名清单都没有。
+ *
+ * **不在 `status` 里**:`status` 每秒被轮询,而这一问要扫向量那一族的 btree
+ * (真店 33ms 冷)。只在被问的时候算。
+ */
+export interface IndexStorage {
+  /** 字面索引(含 FTS5 影子表、关系表、各索引与空闲页)。 */
+  lexicalBytes: number
+  /** 向量库。**缺席 = 这个库里还没有向量表**,或者 `dbstat` 量不出来。 */
+  vectorBytes?: number
+  /** 预写日志(`-wal`);同一个库的另一个文件。 */
+  walBytes: number
+  /** 嵌入模型那堆文件(清单核对过的真数)。没模型 / 管不了模型 = 0。 */
+  modelBytes: number
+  /** 上面几格之和(缺席的那格按 0 算)。 */
+  totalBytes: number
+  /** 量的是哪一刻(epoch ms)。 */
+  measuredAt: number
+  /** 量得不准(`dbstat` 不可用:向量那一半没分出来,全算进了字面)。 */
+  approximate?: boolean
+}
+
 export interface IndexStatus {
   /**
    * 拍点庚(一个 store 两个 core)09-04 用户裁「先不做」,所以这一格**暂恒
@@ -186,6 +214,17 @@ export interface IndexStatus {
    * 这条 Worker 管不了模型时缺席(假嵌入器 / 配置里没有语义那一段)。
    */
   model?: ModelStatus
+  /**
+   * 正在收拾库(2026-09-18 的 `optimize` / `VACUUM`)。**缺席 = 没在收**。
+   *
+   * 它只在 `optimize` 与 `VACUUM` 之间那一小段答得出来 —— 两句 SQL 各自是同步的,
+   * 跑着的时候这条线程连 `status` 都答不了。留着这一格是因为那一小段**真的存在**,
+   * 而且它是「为什么刚才那一发查询慢了 300ms」唯一的书面答案。
+   *
+   * **不上线上契约**:屏幕上没有它的位置(收拾是后台的、一生一次的),给
+   * `SearchStatusResponse` 加一格没有读者的字段是噪音。
+   */
+  maintaining?: boolean
 }
 
 /** 模型那三个动作。**没有 `'status'`** —— 状态由 `status` 那一发一起带回去。 */
@@ -196,6 +235,8 @@ export type IndexWorkerRequest =
   | { id: number; type: 'query'; request: IndexSearchRequest }
   | { id: number; type: 'vector-query'; request: IndexVectorSearchRequest }
   | { id: number; type: 'status' }
+  /** 占了多少地方(2026-09-18)。**只在被问时算** —— 它比 `status` 贵得多。 */
+  | { id: number; type: 'storage' }
   | { id: number; type: 'rebuild' }
   /** 模型的下载 / 取消 / 删除(2026-09-17)。答的是**动作之后**那一刻的模型状态。 */
   | { id: number; type: 'model'; op: IndexModelOp }
@@ -240,6 +281,8 @@ export type IndexWriteFace = Pick<SqliteIndex,
   | 'setSchema' | 'terms' | 'readCheckpoint' | 'writeCheckpoint' | 'dropCheckpoint'
   | 'checkpointKeys' | 'readCheckpointOwnedKeys' | 'byKey' | 'allDocIds'
   | 'readMeta' | 'writeMeta'
+  // 占地方与收拾一下(2026-09-18)。
+  | 'storage' | 'maintenanceStats' | 'optimizeFullText' | 'vacuum' | 'checkpointTruncate'
 >
 
 export interface IndexWorkerCoreOptions {
@@ -268,6 +311,14 @@ export interface IndexWorkerCoreOptions {
    * 关着的 Worker 照样带着它,因为「下载」这颗钮就是在开关关着的时候按的。
    */
   model?: ModelDownloader
+  /**
+   * 启动后那一次**有界的收拾**(2026-09-18)。缺省 =
+   * `DEFAULT_INDEX_MAINTENANCE_POLICY`;`false` = 这条 Worker 不收拾。
+   *
+   * 给得出 `false` 是为了单测:一张几十份文档的临时库永远够不着阈值,但「够不着
+   * 就不做」与「压根没这回事」是两件事,后者要能被明确地要来。
+   */
+  maintenance?: IndexMaintenancePolicy | false
 }
 
 /**
@@ -325,6 +376,11 @@ export class IndexWorkerCore {
   private vectorState: VectorState = 'off'
   /** 模型那件东西(2026-09-17)。这条 Worker 管不了模型时缺席。 */
   private readonly model: ModelDownloader | undefined
+  /** 启动后那一次收拾的档位;`false` = 这条 Worker 不收拾(2026-09-18)。 */
+  private readonly maintenance: IndexMaintenancePolicy | false
+  /** 正在收拾。**这条 Worker 一生最多真一次**(收过就不再收)。 */
+  private maintaining = false
+  private maintained = false
 
   constructor(options: IndexWorkerCoreOptions) {
     this.endpoint = options.endpoint
@@ -335,6 +391,7 @@ export class IndexWorkerCore {
     this.expanders = options.expanders ?? createDefaultExpanderRegistry()
     this.debounceMs = options.debounceMs ?? ENQUEUE_DEBOUNCE_MS
     this.schemas = options.schemas ?? {}
+    this.maintenance = options.maintenance ?? DEFAULT_INDEX_MAINTENANCE_POLICY
     for (const [capability, schema] of Object.entries(this.schemas)) {
       this.index.setSchema(capability, schema)
     }
@@ -386,10 +443,12 @@ export class IndexWorkerCore {
   start(): void {
     if (this.started) return
     this.started = true
+    const activations: Array<Promise<void>> = []
     for (const feed of this.feeds) {
       if ((feed.policy?.build ?? 'eager') !== 'eager') continue
-      void this.activate(feed)
+      activations.push(this.activate(feed))
     }
+    void this.maintainAfterStartup(activations)
   }
 
   dispose(): void {
@@ -432,6 +491,8 @@ export class IndexWorkerCore {
         return this.vectorSearch(message.request)
       case 'status':
         return this.status()
+      case 'storage':
+        return this.storage()
       case 'rebuild':
         await this.rebuild()
         return null
@@ -510,7 +571,120 @@ export class IndexWorkerCore {
        * 早有画法(壳的 unknown「检查中…」),报一句「未下载」再翻过来才是错话。
        */
       ...(model === undefined ? {} : { model }),
+      ...(this.maintaining ? { maintaining: true } : {}),
     }
+  }
+
+  /**
+   * **检索占了多少地方**(2026-09-18)。三件东西各问各的产地:
+   *
+   *  - 库(字面 / 向量 / `-wal`)—— `SqliteIndex.storage()`,判据在 `storage.ts`;
+   *  - 模型 —— 问 `ModelDownloader`(它手上那份是**清单核对过的真数**,与设置页
+   *    「已下载 · 129 MB」是同一个数,不是第二个产地);管不了模型就是 0。
+   *
+   * `totalBytes` 在这里加,不让屏幕去加:四个数与它们的和是**同一次测量**的结果,
+   * 分两处算就会在两次轮询之间对不上。
+   */
+  storage(): IndexStorage {
+    const db = this.index.storage()
+    const modelBytes = this.model?.storageBytes() ?? 0
+    const totalBytes = db.lexicalBytes + (db.vectorBytes ?? 0) + db.walBytes + modelBytes
+    return {
+      lexicalBytes: db.lexicalBytes,
+      ...(db.vectorBytes === undefined ? {} : { vectorBytes: db.vectorBytes }),
+      walBytes: db.walBytes,
+      modelBytes,
+      totalBytes,
+      measuredAt: Date.now(),
+      ...(db.approximate === true ? { approximate: true } : {}),
+    }
+  }
+
+  /**
+   * ── 启动后那一次**有界的收拾**(2026-09-18)────────────────────────────────
+   *
+   * 起因是真店的读数:161 MB 的库里 **100 MB 是陈旧的 FTS5 段**(整键重折 =
+   * 删掉再插一遍的必然产物),`optimize` 636ms 收回它们、`VACUUM` 290ms 把文件从
+   * 161 MB 缩到 59 MB。读数与安全性的证据全写在 `storage.ts` 的文件头。
+   *
+   * ## 四道界
+   *
+   * 1. **一条 Worker 一次**(`maintained`)—— 收拾不是常驻活计;
+   * 2. **欠的活都干完了才收**(`drain()`):正在冷建的库刚折出来的段,当场合并
+   *    就是白做;VACUUM 与正在写的嵌入路抢独占锁更是自找的;
+   * 3. **够不着阈值就不收**(`storage.ts` 的两只纯函数):健康的库一条语句都不跑;
+   * 4. **收不动就不收**:VACUUM 要照搬活数据,活数据超过预算(256 MB ≈ 1.3s)时
+   *    只做 `optimize`,文件不缩,空页留着下次写入重用。
+   *
+   * 失败**只记一条 warn**:别的进程开着这个库时 VACUUM 会 `SQLITE_BUSY`,那是
+   * 常态(桌面 + daemon 同在),不是事故 —— 派生数据收拾不成,下次再说。
+   */
+  private async maintainAfterStartup(activations: ReadonlyArray<Promise<void>>): Promise<void> {
+    if (this.maintenance === false || this.maintained) return
+    const policy = this.maintenance
+    try {
+      await Promise.allSettled(activations)
+      // 「启动校对完成且队列排空」—— 一直有新事件进来就一直不收拾,那正是想要的。
+      await this.drain()
+    } catch (error) {
+      log.warn('index maintenance skipped: the startup drain failed', { err: error })
+      return
+    }
+    if (this.maintained) return
+    this.maintained = true
+    this.maintaining = true
+    try {
+      this.maintainNow(policy)
+    } catch (error) {
+      log.warn('index maintenance failed; the index is unaffected', { err: error })
+    } finally {
+      this.maintaining = false
+    }
+  }
+
+  /**
+   * 收拾那一段本身。**同步**(`node:sqlite` 只有同步 API),所以它是这条 Worker
+   * 上的一段静默 —— 真店副本上 optimize 636ms + vacuum 290ms。
+   *
+   * 量两次:**空闲页要在 `optimize` 之后再问一遍**。真店那一份在 optimize 之前
+   * 空闲页只有 0.5%,之后才是 64% —— 陈旧段在 optimize 之前还算「活数据」。拿
+   * 之前的读数问 VACUUM,答案永远是「不用缩」(`storage.ts` 的 `shouldVacuum`
+   * 头注记着这一条)。
+   */
+  private maintainNow(policy: IndexMaintenancePolicy): void {
+    const before = this.index.storage()
+    const stats = this.index.maintenanceStats()
+    if (!shouldOptimizeFullText(stats, policy) && !shouldVacuum(stats, policy)) return
+
+    const startedAt = Date.now()
+    let optimizeMs = 0
+    if (shouldOptimizeFullText(stats, policy)) {
+      const at = Date.now()
+      this.index.optimizeFullText()
+      optimizeMs = Date.now() - at
+    }
+    const afterOptimize = this.index.maintenanceStats()
+    let vacuumMs = 0
+    if (shouldVacuum(afterOptimize, policy)) {
+      const at = Date.now()
+      this.index.vacuum()
+      // VACUUM 在 WAL 模式下把整个新库写进 `-wal`(副本上 59 MB)。少了这一句,
+      // 「占用空间」会在收拾完之后报得比收拾前还大。
+      this.index.checkpointTruncate()
+      vacuumMs = Date.now() - at
+    }
+    const after = this.index.storage()
+    log.info('search index compacted', {
+      fields: {
+        beforeBytes: before.lexicalBytes + (before.vectorBytes ?? 0) + before.walBytes,
+        afterBytes: after.lexicalBytes + (after.vectorBytes ?? 0) + after.walBytes,
+        segmentsBefore: stats.segments,
+        segmentsAfter: this.index.maintenanceStats().segments,
+        optimizeMs,
+        vacuumMs,
+        totalMs: Date.now() - startedAt,
+      },
+    })
   }
 
   /**

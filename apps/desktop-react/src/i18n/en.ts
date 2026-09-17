@@ -919,6 +919,14 @@ export const en: Record<MessageKey, string> = {
   'search.semanticModelCancel': 'Cancel',
   'search.semanticModelRemove': 'Delete',
   'search.semanticModelRemoveBlocked': 'Turn the switch off first',
+  /* ── Storage (2026-09-18; content/settings/SearchStorage.tsx) ─────────────── */
+  'search.storageTitle': 'Storage',
+  'search.storageLexical': 'Text index',
+  'search.storageVector': 'Vector index',
+  'search.storageModel': 'Model',
+  'search.storageTotal': 'Total',
+  'search.storageMeasuring': 'Measuring…',
+  'search.storageFailed': "Couldn't measure",
   /* ── built-in browser (B2′: content/settings/BrowserSettings.tsx) ───────── */
   'settings.sectionBrowser': 'Built-in browser',
   'settings.sectionNetwork': 'Network proxy',

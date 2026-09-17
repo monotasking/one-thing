@@ -53,6 +53,7 @@ import type {
   SearchResponse,
   SearchRoutes,
   SearchStatusResponse,
+  SearchStorageResponse,
 } from '@shared/ipc/search.js'
 import { getServerSearchPort } from '../../server/search-providers.js'
 import { requestSessionOwner } from '../../session/access.js'
@@ -311,6 +312,20 @@ export const searchRpcHandlers: RpcRouteHandlers<SearchRoutes> = {
 
   async semanticModelRemove(): Promise<SearchModelResponse> {
     return await runSemanticModelOp('remove')
+  },
+
+  /**
+   * **检索占了多少地方**(2026-09-18,用户 09-17「我要知道搜索占得空间」)。
+   *
+   * 落点与 `status` 同一份(`OnethingSearchService` 手上那份索引面),所以这里
+   * 与它一样**不按本机可信分叉**:它只读几个数字,而库是 **store 级**的一份文件 ——
+   * per-owner 沙箱里没有第二个库可言。
+   *
+   * 量不出来就**抛**(这台进程没有索引),由 `dispatchRpc` 折成 `{ ok:false }` ——
+   * 壳据此画「没量出来」。答一堆零会把「这台机器上没有这个库」画成「它是空的」。
+   */
+  async storage(): Promise<SearchStorageResponse> {
+    return await requireSearchService().storage()
   },
 }
 
