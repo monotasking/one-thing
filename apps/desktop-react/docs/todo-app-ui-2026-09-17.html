@@ -100,7 +100,16 @@
   .switcher { display: flex; align-items: center; gap: 8px; }
   .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-1); background: var(--card); border-radius: var(--r-2); height: 30px; padding: 0 10px; cursor: pointer; font-size: 13px; max-width: 60%; }
   .chip .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .pop { position: absolute; left: 14px; right: 14px; top: 52px; background: var(--card); border: 1px solid var(--line-2); border-radius: var(--r-2); box-shadow: 0 12px 36px rgba(0,0,0,.18); max-height: 420px; display: flex; flex-direction: column; z-index: 5; }
+  .hsearch { display: flex; align-items: center; gap: 6px; height: 28px; min-width: 0; width: 220px; max-width: 40%; border: 1px solid var(--line-1); background: var(--card); border-radius: var(--r-2); padding: 0 8px; color: var(--ink-4); font-size: 12px; cursor: pointer; }
+  /* 窄的时候搜索收成一颗放大镜,清单名吃剩下的宽 */
+  .win.narrow .hsearch { width: 28px; padding: 0; justify-content: center; }
+  .win.narrow .hsearch .t, .win.narrow .hsearch kbd { display: none; }
+  .win.narrow .whead .chip { max-width: none; flex: 1; min-width: 0; }
+  .hsearch:hover { border-color: var(--line-2); color: var(--ink-3); }
+  .hsearch span.t { flex: 1; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .whead .chip { border-color: transparent; background: none; font-weight: 600; max-width: 45%; }
+  .whead .chip:hover { background: var(--hover); }
+  .pop { position: absolute; left: 10px; right: 10px; top: 6px; background: var(--card); border: 1px solid var(--line-2); border-radius: var(--r-2); box-shadow: 0 12px 36px rgba(0,0,0,.18); max-height: 420px; display: flex; flex-direction: column; z-index: 5; }
   .pop .scroll { padding: 4px 6px 8px; }
 
   /* C 总览 */
@@ -125,7 +134,7 @@
 
   <div class="picks" role="radiogroup" aria-label="候选">
     <button class="pick on" data-pick="A" role="radio" aria-checked="true"><b>A · 清单库(侧栏)</b>左边是可搜索的清单目录,右边是正文。像「提醒事项」「Things」。宽窗最舒服。</button>
-    <button class="pick" data-pick="B" role="radio" aria-checked="false"><b>B · 一个输入框(单栏)</b>顶上一个框既是搜索也是切换清单,正文独占整宽。窄到计划抽屉的宽度也能用。</button>
+    <button class="pick" data-pick="B" role="radio" aria-checked="false"><b>B · 一个输入框(单栏)</b>窗口头里就是清单名(点开切换)和搜索框,头下面直接是正文。窄到计划抽屉的宽度也能用。</button>
     <button class="pick" data-pick="C" role="radio" aria-checked="false"><b>C · 总览 → 进入</b>首页是搜索 + 「接着做」+ 全部清单,点进一份再返回。像「备忘录」,第一眼看到的是要做的事。</button>
   </div>
 
@@ -227,6 +236,7 @@ function resultsHtml(onList, onItem) {
   return h
 }
 const searchBox = (ph) => `<label class="search"><span>⌕</span><input data-act="q" placeholder="${ph}" value="${esc(state.query)}" /><kbd>⌘F</kbd></label>`
+const headB = (extra, right) => `<div class="whead"><span class="icon">✓</span>${extra}<span class="sp"></span>${right}<button class="ibtn">⋯</button><button class="ibtn">✕</button></div>`
 const head = (extra = '') => `<div class="whead"><span class="icon">✓</span><span class="title">待办</span>${extra}<span class="sp"></span><button class="ibtn" title="">⋯</button><button class="ibtn">✕</button></div>`
 
 function renderA() {
@@ -252,8 +262,10 @@ function renderB() {
     pop += state.query.trim() ? resultsHtml('open', 'open') : `<div class="h">最近</div>` + recent().map(x => `<button class="row" data-act="open" data-id="${x.id}"><span class="gly">☰</span><span class="nm">${esc(x.name)}</span></button>`).join('') + `<div class="h">全部 ${lists.length} 份</div>` + [...lists].sort((a, b) => a.name.localeCompare(b.name, 'zh')).map(x => `<button class="row" data-act="open" data-id="${x.id}"><span class="gly">☰</span><span class="nm">${esc(x.name)}</span></button>`).join('')
     pop += `</div></div>`
   }
-  const top = `<div class="btop"><div class="switcher"><button class="chip" data-act="bopen"><span>☰</span><span class="nm">${esc(l.name)}</span><span style="color:var(--ink-4)">▾</span></button><span class="sp" style="flex:1"></span><button class="ibtn" data-act="bopen" title="">⌕</button></div></div>`
-  return head() + `<div class="wbody"><div class="bcol">${top}${pop}<div class="doc scroll">${docHtml(l)}</div></div></div>`
+  // 切换清单与搜索都在窗口头里:头 = 这个 App 的名字位 + 此刻看的是哪一份 + 搜索入口,下面直接是正文。
+  const extra = `<button class="chip" data-act="bopen"><span class="nm">${esc(l.name)}</span><span style="color:var(--ink-4)">▾</span></button>`
+  const right = `<button class="hsearch" data-act="bopen"><span>⌕</span><span class="t">搜索清单和项</span><kbd style="font-size:10px;border:1px solid var(--line-2);border-radius:4px;padding:1px 4px">⌘F</kbd></button>`
+  return headB(extra, right) + `<div class="wbody"><div class="bcol">${pop}<div class="doc scroll">${docHtml(l)}</div></div></div>`
 }
 function renderC() {
   const q = state.query.trim()

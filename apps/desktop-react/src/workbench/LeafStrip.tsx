@@ -78,6 +78,11 @@ import s from './LeafStrip.module.css'
 
 /** 宿主给这条檐的那几格。`single` 由格数自己判 —— 两个宿主不各判一遍。 */
 interface LeafStripProps {
+  /**
+   * 非空 = 这条檐不画标签,改画这条头(内容自带的头,`ContentKind.stripHeader`)。
+   * `tabs` 照旧收:溢出名单、无障碍名的数据来源不因为换画法而消失。
+   */
+  header?: ReactNode
   tabs: readonly TabSpec[]
   activeId: string | null
   /** tablist 的无障碍名(宿主经 i18n 给,组件里不落字面)。 */
@@ -125,6 +130,7 @@ interface LeafStripProps {
 }
 
 export function LeafStrip({
+  header,
   tabs,
   activeId,
   label,
@@ -189,6 +195,13 @@ export function LeafStrip({
       onPointerDown={onChromePointerDown}
       onContextMenu={onChromeContextMenu}
     >
+      {header ? (
+        /*
+          **内容自带的头占掉标签那一块**(待办 B 形 U1)。叶里只有这一格时才会走到这里
+          (判据在 `PaneLeaf`),所以不画标签不会藏掉任何一格;宿主的钮与叶的动作组照旧在右端。
+        */
+        <div className={s.header} data-strip-header="">{header}</div>
+      ) : (
       <div className={s.tabs}>
         {/*
           **四个宿主一套标签语言**(W3-b 裁定 1;09-05 用户看真机后选甲)。
@@ -209,6 +222,7 @@ export function LeafStrip({
           onOverflow={onOverflow}
         />
       </div>
+      )}
       {/* **型工具条那一格 W7-c 整格删掉**(裁定 2):内容的动作单产地是它自己的
         * 右键菜单,檐上不再有第二个入口。留在这里的只有宿主那一组钮。 */}
       {actions && <span className={s.actions}>{actions}</span>}

@@ -45,6 +45,7 @@ export function renderRef(
       refKey={ref.key}
       visible={visibility.visible}
       interactive={visibility.interactive}
+      headerInStrip={visibility.headerInStrip === true}
     />
   )
 }
@@ -58,13 +59,15 @@ function RefInstance({
   refKey,
   visible,
   interactive,
+  headerInStrip,
 }: {
   refKind: string
   refKey: string
   visible: boolean
   interactive: boolean
+  headerInStrip: boolean
 }) {
-  const visibility = useMemo<PanelVisibility>(() => ({ visible, interactive }), [visible, interactive])
+  const visibility = useMemo<PanelVisibility>(() => ({ visible, interactive, headerInStrip }), [visible, interactive, headerInStrip])
   const id = `${refKind}:${refKey}`
   // 可见性挂在**边界外面**:错误卡也是这一份实例的一部分,后台那一份的错误卡
   // 同样不该抢键盘。边界在里面,所以「重试」重挂的仍然只有内容自己。

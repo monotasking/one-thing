@@ -1880,6 +1880,18 @@ export const zh = {
   'todo.revealMode.element': '光标所在的元素',
   'todo.revealMode.block': '整项',
   'todo.revealMode.none': '不显示',
+  'todo.search': '搜索清单和项',
+  'todo.switchList': '切换清单(当前:{title})',
+  'todo.recent': '最近',
+  'todo.allLists': '全部清单',
+  'todo.searchLists': '清单',
+  'todo.searchItems': '项',
+  'todo.noHit': '没有找到「{query}」',
+  'todo.createNamed': '新建清单「{title}」',
+  'todo.moreHits': '还有 {count} 条没列出,换个更具体的词',
+  'todo.openCount': '{count} 项未完成',
+  'todo.current': '当前',
+  'todo.searchFailed': '搜不到项',
 
   /* ── 音乐面(音乐收尾 · 壳半边,2026-09-10)─────────────────────────────
    * 面里每一颗按钮走的都是 `resources.do`(与模型调的同一条),所以这里的话

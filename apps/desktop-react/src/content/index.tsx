@@ -11,6 +11,9 @@ import { WorkspaceOverview } from '../workspace/components/WorkspaceOverview'
 import { AppsPanel } from './AppsPanel'
 import { MusicPanel } from './MusicPanel'
 import { TodoPanel } from './todo/TodoPanel'
+import { TodoStripHeader } from './todo/TodoHeader'
+import type { ComponentType } from 'react'
+import type { StripHeaderProps } from '../workbench/kinds'
 import {
   APPS_ITEM_ID,
   NOTIFICATIONS_ITEM_ID,
@@ -85,6 +88,15 @@ const RENDERERS: Record<string, () => ReactNode> = {
 }
 
 /**
+ * **瓦自带的头**(待办 B 形,正本 `docs/todo-app-b-2026-09.md` §3)。与上面那张表并排、一行一瓦:
+ * 这块瓦独占一片叶时,叶的标签条不画标签、改画这里交出来的头;查不到 = 不自带头。
+ * `panel` 这一种的 `stripHeader` 读的就是这张表(`content/kinds/panel.tsx`)。
+ */
+export const PANEL_HEADERS: Readonly<Record<string, ComponentType<StripHeaderProps>>> = {
+  todo: TodoStripHeader,
+}
+
+/**
  * 内容的**唯一出口**,所以错误边界包在这一层而不是每块面板自己包 ——
  * 一块面板炸了只塌它自己(舞台上的、钉栏里的、浮窗里的都一样),
  * 外壳和别的面板照常活着。
@@ -102,7 +114,7 @@ export function renderContent(
 ): ReactNode {
   if (!id) return null
   if (!RENDERERS[id]) return null
-  return <PanelInstance id={id} visible={visibility.visible} interactive={visibility.interactive} />
+  return <PanelInstance id={id} visible={visibility.visible} interactive={visibility.interactive} headerInStrip={visibility.headerInStrip === true} />
 }
 
 /**
@@ -118,8 +130,8 @@ export function renderContent(
  * 可见性以两个布尔量进 props(不收对象):宿主侧无需为引用稳定操心,
  * 对象在这里按值重组。
  */
-function PanelInstance({ id, visible, interactive }: { id: string; visible: boolean; interactive: boolean }) {
-  const visibility = useMemo<PanelVisibility>(() => ({ visible, interactive }), [visible, interactive])
+function PanelInstance({ id, visible, interactive, headerInStrip }: { id: string; visible: boolean; interactive: boolean; headerInStrip: boolean }) {
+  const visibility = useMemo<PanelVisibility>(() => ({ visible, interactive, headerInStrip }), [visible, interactive, headerInStrip])
   // 可见性挂在**边界外面**:错误卡也是这一份实例的一部分,后台那一份的错误卡
   // 同样不该抢键盘。边界在里面,所以「重试」重挂的仍然只有面板自己。
   /*

@@ -6,7 +6,7 @@ import { useT } from '../i18n'
 import { claimContentSlot, registerContentHolder, unregisterContentHolder } from './content-slots'
 import { useFullSlot } from './full-slot'
 import { useKeptContents } from './kept-contents'
-import { flattenContent, partsOfContent, refId } from './kinds'
+import { flattenContent, partsOfContent, refId, stripHeaderOf } from './kinds'
 import { LeafActions } from './LeafActions'
 import { openLeafMenuAt } from './leaf-menu'
 import { LeafStrip } from './LeafStrip'
@@ -186,6 +186,13 @@ export const PaneLeaf = memo(function PaneLeaf({
 
   /** 檐在不在这片叶身上。**唯一判据**,见文件头那张区域表。 */
   const stripInLeaf = region !== CENTER_REGION
+  /**
+   * **标签条让给内容自带的头**(待办 B 形 U1):叶里只有一格、那一种自述了 `stripHeader`、
+   * 而且这片叶有自己的条(中央区的标签在顶栏上,头只能画在正文顶上)。判据只有这一处 ——
+   * 条那一半与内容那一半读的是同一个 `headerRef`,两边不可能各说各的。
+   */
+  const soleRef = leaf.tabs.length === 1 ? leaf.tabs[0] : null
+  const headerRef = stripInLeaf && soleRef && stripHeaderOf(soleRef) ? soleRef : null
 
   /**
    * **宿主此刻把这块地露出来了吗**(2026-09-12「收起 ≠ 关闭」)。
@@ -302,7 +309,7 @@ export const PaneLeaf = memo(function PaneLeaf({
            */
           onPointerDownCapture={() => setFocusLeaf(leaf.id)}
         >
-          {stripInLeaf && <PaneLeafStrip leaf={leaf} host={host} />}
+          {stripInLeaf && <PaneLeafStrip leaf={leaf} host={host} headerRef={headerRef} />}
 
           {/*
             身 = 这片叶里**每一个** tab 的内容(keep-alive,与架子同一条判据):
@@ -350,6 +357,7 @@ export const PaneLeaf = memo(function PaneLeaf({
                   on={liveIds.has(refId(ref))}
                   hostShown={hostShown}
                   tabbed={tabbedIds.has(refId(ref))}
+                  headerInStrip={headerRef !== null && refId(headerRef) === refId(ref)}
                 />
               ))}
             </>,
@@ -376,9 +384,12 @@ export const PaneLeaf = memo(function PaneLeaf({
 const PaneLeafStrip = memo(function PaneLeafStrip({
   leaf,
   host,
+  headerRef,
 }: {
   leaf: PaneLeafNode
   host?: PaneHostChrome
+  /** 非空 = 条上不画标签,改画这一格自带的头(判据在 `PaneLeaf` 的 `headerRef`)。 */
+  headerRef: ContentRef | null
 }) {
   const t = useT()
   const activateTab = useWorkbenchStore((st) => st.activateTab)
@@ -452,8 +463,10 @@ const PaneLeafStrip = memo(function PaneLeafStrip({
   /** 条上有几格没露全 → 这条檐右端那颗 ⋯(W7-t / B1,与顶栏那一档同一只 hook)。 */
   const onOverflow = useReportOverflow(leaf.id)
 
+  const Header = headerRef ? stripHeaderOf(headerRef) : undefined
   return (
     <LeafStrip
+      header={Header && headerRef ? <Header contentRef={headerRef} /> : undefined}
       tabs={tabs}
       activeId={active ? refId(active) : null}
       label={t('workbench.leafTabs')}
@@ -500,9 +513,12 @@ const PaneContentLayer = memo(function PaneContentLayer({
   on,
   hostShown,
   tabbed,
+  headerInStrip,
 }: {
   refKind: string
   refKey: string
+  /** 这一格的头此刻画在叶的标签条上(`PanelVisibility.headerInStrip`)。 */
+  headerInStrip: boolean
   on: boolean
   /**
    * **宿主此刻把这块地露出来了吗**(2026-09-12「收起 ≠ 关闭」)。
@@ -528,7 +544,7 @@ const PaneContentLayer = memo(function PaneContentLayer({
   const id = `${refKind}:${refKey}`
   const contentRef = useMemo<ContentRef>(() => ({ kind: refKind, key: refKey }), [refKind, refKey])
   const shown = on && hostShown
-  const visibility = useMemo(() => ({ visible: shown, interactive: shown }), [shown])
+  const visibility = useMemo(() => ({ visible: shown, interactive: shown, headerInStrip }), [shown, headerInStrip])
   /*
    * **身份恒定的 holder**(`display: contents`,零盒子)。它是这一格内容在
    * 屏幕上的那个节点,由 `content-slots` 那张表挂进当下该去的槽里 —— 换序、

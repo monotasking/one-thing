@@ -77,9 +77,28 @@ describe('Tooltip:延迟出现,离开即收', () => {
         <button type="button">anchor</button>
       </Tooltip>,
     )
-    fireEvent.focus(screen.getByText('anchor'))
+    const anchor = screen.getByText('anchor')
+    // 键盘会话 = 浏览器说 `:focus-visible` 成立(jsdom 的 fireEvent.focus 不是真聚焦,这里替它说)。
+    const matches = vi.spyOn(anchor, 'matches').mockImplementation(selector => selector === ':focus-visible')
+    fireEvent.focus(anchor)
     act(() => void vi.advanceTimersByTime(TOOLTIP_DELAY_MS))
     expect(tip()?.textContent).toBe('hint')
+    matches.mockRestore()
+  })
+
+  it('程序置焦(不是键盘会话,`:focus-visible` 不成立)不出提示', () => {
+    render(
+      <Tooltip content="hint">
+        <button type="button">anchor</button>
+      </Tooltip>,
+    )
+    const anchor = screen.getByText('anchor')
+    // 鼠标点开一扇窗、树把焦点送进来 = `:focus-visible` 不成立。
+    const matches = vi.spyOn(anchor, 'matches').mockImplementation(selector => selector !== ':focus-visible')
+    fireEvent.focus(anchor)
+    act(() => void vi.advanceTimersByTime(TOOLTIP_DELAY_MS))
+    expect(tip()).toBe(null)
+    matches.mockRestore()
   })
 
   it('delayMs 可由调用方改,组件不写死这个数', () => {

@@ -171,7 +171,9 @@
   padding-inline-start: var(--indent-2);
   position: relative;
   text-align: start;
-  color: var(--text-4);
+  /* `--text-3` 而不是 `--text-4`:它是一颗**钮**,不是占位符(`--text-4` 那一档 2:1 只给水印 /
+   * 禁用)。`gate:a11y` 待办窗一屏第一次扫到它时量出 1.43:1(B 形 U3)。 */
+  color: var(--text-3);
   font-size: var(--pr-fs);
   line-height: var(--pr-lh);
   border-radius: var(--r-1);

@@ -198,6 +198,7 @@ export function resolveIcon(name: string): LucideIcon {
 
 export {
   Brain,
+  ListChecks,
   Image,
   ImagePlus,
   Mic,

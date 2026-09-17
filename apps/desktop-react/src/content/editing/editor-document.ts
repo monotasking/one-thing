@@ -23,7 +23,8 @@ export interface DocumentChannel {
   requestReload(): void
 }
 
-export type DocumentChangeKind = 'local' | 'server'
+/** `view` = 原文没变、只是屏幕要重画一次(淡闪某一行)。 */
+export type DocumentChangeKind = 'local' | 'server' | 'view'
 
 export interface DocumentChange {
   readonly kind: DocumentChangeKind
@@ -127,6 +128,14 @@ export class EditorDocument {
       for (const index of changedLineIndices(previous, this.current)) this.recentlyChanged.set(index, at)
     }
     this.emit({ kind: 'server', previous, lines: this.current })
+  }
+
+  /** 让这几行淡闪一下(从搜索结果跳过来那一行)。原文一个字不动。 */
+  flash(lines: readonly number[]): void {
+    if (this.disposed || lines.length === 0) return
+    const at = Date.now()
+    for (const index of lines) this.recentlyChanged.set(index, at)
+    this.emit({ kind: 'view', previous: this.current, lines: this.current })
   }
 
   /** 立刻把排着的改动发出去(离开编辑、卸载前)。 */

@@ -104,6 +104,24 @@ describe('todo resource provider', () => {
     expect(events.map(e => `${e.path}:${e.event}`)).toEqual(expect.arrayContaining(['note/weekly:created', 'note/monthly:deleted']))
   })
 
+  it('searches every list by title and by task text, with line numbers and a limit', async () => {
+    await mkdir(path.join(root, 'user-notes'), { recursive: true })
+    await writeFile(path.join(root, 'user-notes', 'work.md'), '# Work\n\n- [ ] Fix IVA route\n- [x] iva deploy\n- plain iva bullet\n')
+    await writeFile(path.join(root, 'user-notes', 'iva-launch.md'), '# IVA launch\n- [ ] book room\n')
+    const hits = await provider.read('search', ref('notes'), { q: 'IVA' }, readCtx) as {
+      lists: Array<{ id: string }>; items: Array<{ id: string; line: number; text: string; done: boolean }>; more: number
+    }
+    expect(hits.lists.map(l => l.id)).toEqual(['iva-launch'])
+    expect(hits.items).toEqual([
+      expect.objectContaining({ id: 'work', line: 2, text: 'Fix IVA route', done: false }),
+      expect.objectContaining({ id: 'work', line: 3, text: 'iva deploy', done: true }),
+    ])
+    const limited = await provider.read('search', ref('notes'), { q: 'iva', limit: 1 }, readCtx) as { items: unknown[]; more: number }
+    expect(limited.items).toHaveLength(1)
+    expect(limited.more).toBe(1)
+    expect(await provider.read('search', ref('notes'), { q: '  ' }, readCtx)).toEqual({ lists: [], items: [], more: 0 })
+  })
+
   it('rejects addresses that escape the todo directory', async () => {
     await expect(provider.read('document', ref('note/../../etc'), {}, readCtx)).rejects.toThrow()
     await expect(provider.read('document', ref('session/..'), {}, readCtx)).rejects.toThrow()

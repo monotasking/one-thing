@@ -323,7 +323,7 @@ export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
    * 落点 = 选中的那个清单标签(实例侧声明),不声明 Esc,没有局部键。
    * 编辑里面那份清单时,深一层的 `todo` 作用域认领编辑键。
    */
-  todoLists: { id: 'todoLists', kind: 'region', labelKey: 'item.todo' },
+  todoLists: { id: 'todoLists', kind: 'region', labelKey: 'item.todo', answers: [answer('view.find', 'todo.search')] },
   todo: { id: 'todo', kind: 'region', labelKey: 'item.todo', claims: TODO_EDITOR_CLAIMS },
   /*
    * 一格内嵌浏览器(B2,方案 §9-1)。**三件声明**:

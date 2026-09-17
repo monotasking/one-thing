@@ -72,10 +72,10 @@ function failureText(view: ResourceReadView | ResourceOutcomeView): string {
   }
 }
 
-async function read<T>(ref: string, name: string): Promise<T> {
+async function read<T>(ref: string, name: string, query?: Record<string, unknown>): Promise<T> {
   const port = await slot.get()
   await port.ready()
-  const answer = await port.read(ref, name)
+  const answer = await port.read(ref, name, query)
   if (answer.kind === 'ok') return answer.value as T
   throw new Error(failureText(answer))
 }
@@ -102,6 +102,23 @@ export const todoNotesQuery: Query<{ notes: TodoNoteSummary[] }> = createQuery('
 export const todoDocumentFamily = createQueryFamily<TodoDocumentView>('todo.document', ({ key }) =>
   read<TodoDocumentView>(key, 'document'),
 )
+
+export interface TodoSearchHits {
+  readonly lists: readonly { ref: string; id: string; title: string }[]
+  readonly items: readonly { ref: string; id: string; title: string; line: number; text: string; done: boolean }[]
+  /** 被上限截掉的项命中还有几条。 */
+  readonly more: number
+}
+
+/**
+ * 跨全部清单搜(待办 B 形 U2)。一个词一格,键就是那个词(已去首尾空白)。
+ * 停手节流在调用方(弹层):这一层只管「这个词的答案」;空词恒答空、不发请求。
+ */
+export const todoSearchFamily = createQueryFamily<TodoSearchHits>('todo.search', ({ key }) =>
+  key ? read<TodoSearchHits>(TODO_NOTES_REF, 'search', { q: key }) : Promise.resolve(EMPTY_SEARCH_HITS),
+)
+
+const EMPTY_SEARCH_HITS: TodoSearchHits = { lists: [], items: [], more: 0 }
 
 /* ── 写 ─────────────────────────────────────────────────────────────────── */
 
@@ -155,6 +172,8 @@ export function lastTodoChangeOrigin(ref: string): 'app' | 'external' | undefine
 }
 
 function onTodoFact(fact: ResourceEventFact): void {
+  // 任何一份清单变了,已经搜过的词都可能换答案;没人看的格只标脏,不发请求。
+  for (const key of todoSearchFamily.keys()) todoSearchFamily.invalidate(key)
   const origin = (fact.payload as { origin?: unknown } | undefined)?.origin
   if (origin === 'app' || origin === 'external') lastOrigin.set(fact.ref, origin)
   if (fact.ref === TODO_NOTES_REF) {
@@ -205,6 +224,7 @@ export function resetTodoSource(): void {
   lastOrigin.clear()
   todoNotesQuery.reset()
   todoDocumentFamily.reset()
+  todoSearchFamily.reset()
   createTodoNote.reset()
   renameTodoNote.reset()
   deleteTodoNote.reset()

@@ -80,6 +80,47 @@ export const todoResourceSpec: ResourceSpec = {
         required: ['notes'],
       },
     },
+    search: {
+      title: 'Search every user list by title and by task text (address: todo:notes)',
+      query: {
+        type: 'object',
+        properties: {
+          q: { type: 'string', description: 'Case-insensitive substring.' },
+          limit: { type: 'number', description: 'Most task hits to return (default 50).' },
+        },
+        required: ['q'],
+      },
+      result: {
+        type: 'object',
+        properties: {
+          lists: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: { ref: { type: 'string' }, id: { type: 'string' }, title: { type: 'string' } },
+              required: ['ref', 'id', 'title'],
+            },
+          },
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                ref: { type: 'string' },
+                id: { type: 'string' },
+                title: { type: 'string', description: 'Title of the list the task belongs to.' },
+                line: { type: 'number', description: 'Zero-based line index of the task.' },
+                text: { type: 'string', description: 'The task text without its "- [ ] " prefix.' },
+                done: { type: 'boolean' },
+              },
+              required: ['ref', 'id', 'title', 'line', 'text', 'done'],
+            },
+          },
+          more: { type: 'number', description: 'How many task hits were left out by the limit.' },
+        },
+        required: ['lists', 'items', 'more'],
+      },
+    },
     document: {
       title: 'Read one list or one session plan as markdown (address: todo:note/<id> or todo:session/<id>)',
       query: EMPTY,

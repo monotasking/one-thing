@@ -1,7 +1,7 @@
 import { registerContentKind } from '../../workbench/kinds'
 import { PANEL_KIND } from '../../stage/panel-ref'
 import { findItem } from '../../stage/items'
-import { renderContent } from '../index'
+import { PANEL_HEADERS, renderContent } from '../index'
 import { t } from '../../i18n'
 import type { ContentRef } from '../../workbench/kinds'
 
@@ -59,6 +59,8 @@ registerContentKind(
     icon: (ref: ContentRef) => findItem(ref.key)?.icon ?? 'LayoutGrid',
     // 内容表那一层一个字没改:它仍然是「瓦 id → 组件」的唯一产地。
     render: (ref, visibility) => renderContent(ref.key, visibility),
+    // 自带的头也是逐瓦的事实:查 `PANEL_HEADERS` 那张表,查不到就照常画标签。
+    stripHeader: (ref: ContentRef) => PANEL_HEADERS[ref.key],
   },
   import.meta.hot,
 )

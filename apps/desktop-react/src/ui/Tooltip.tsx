@@ -1,6 +1,6 @@
 import { cloneElement, useCallback, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { ReactElement, ReactNode, Ref } from 'react'
+import type { FocusEvent, ReactElement, ReactNode, Ref } from 'react'
 import { TOOLTIP_DELAY_MS } from '../components/motion'
 import { focusTree } from '../focus/registry'
 import { useFloatPosition } from './float'
@@ -100,6 +100,21 @@ export function Tooltip({ content, delayMs = TOOLTIP_DELAY_MS, children }: Toolt
   useEffect(() => hide, [hide])
 
   /*
+   * ── 聚焦只在**键盘会话**里出提示(待办 B 形 U3 真机挖出来的)────────────────
+   * 从前任何一次 focus 都出提示,于是「点 Dock 瓦开一扇窗 → 树把焦点送进窗里第一颗钮」
+   * 这种**程序置焦**也会在鼠标用户眼前弹出一条提示(那颗钮连焦点环都没亮,环的判据是
+   * `:focus-visible`)。APG 的 tooltip 模式说的是「悬停或**键盘**聚焦」—— 判据就用浏览器
+   * 自己那一格 `:focus-visible`,与焦点环同一个事实,不另起一套「是不是键盘」的猜法。
+   * 认不出这个伪类的环境(`matches` 抛错)照旧出,行为与改前逐字相同。
+   */
+  const showOnKeyboardFocus = useCallback(
+    (event: FocusEvent) => {
+      if (focusIsKeyboardish(event.currentTarget as Element | null)) show()
+    },
+    [show],
+  )
+
+  /*
    * ── Esc 消提示:走响应链的**瞬态口**,不是一个作用域(09-02 R1)────────────
    *
    * 收编时的二选一,选的是 (b)。理由是这件组件**没有一个包着触发元素的根**:
@@ -128,7 +143,7 @@ export function Tooltip({ content, delayMs = TOOLTIP_DELAY_MS, children }: Toolt
     ref: composeRef<HTMLElement>(childProps.ref as Ref<HTMLElement> | undefined, anchor),
     onMouseEnter: chain(childProps.onMouseEnter, show),
     onMouseLeave: chain(childProps.onMouseLeave, hide),
-    onFocus: chain(childProps.onFocus, show),
+    onFocus: chain(childProps.onFocus, showOnKeyboardFocus),
     onBlur: chain(childProps.onBlur, hide),
     // 只在提示在场时指过去 —— 指一个还没渲染出来的 id 是一条断掉的引用。
     'aria-describedby': shown ? tipId : undefined,
@@ -152,4 +167,13 @@ export function Tooltip({ content, delayMs = TOOLTIP_DELAY_MS, children }: Toolt
         )}
     </>
   )
+}
+
+function focusIsKeyboardish(element: Element | null): boolean {
+  if (!element) return true
+  try {
+    return element.matches(':focus-visible')
+  } catch {
+    return true
+  }
 }

@@ -26,6 +26,13 @@ import { createContext, useContext } from 'react'
 export interface PanelVisibility {
   visible: boolean
   interactive: boolean
+  /**
+   * **这一份的头此刻画在叶的标签条上**(待办 B 形 U1,`docs/todo-app-b-2026-09.md` §3)。
+   * 只对自述了 `ContentKind.stripHeader` 的内容有意义:叶里只有它一格时,标签条的位置
+   * 改画它的头,内容自己就**不许**再画一条(否则两条带子);叶里多格时这一格是 `false`,
+   * 内容把头画在正文顶上。缺席 = `false`。头永远只有一条,在哪儿由宿主说。
+   */
+  headerInStrip?: boolean
 }
 
 export const DEFAULT_PANEL_VISIBILITY: PanelVisibility = { visible: true, interactive: true }

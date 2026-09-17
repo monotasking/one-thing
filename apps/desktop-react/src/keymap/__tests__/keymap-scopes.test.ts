@@ -92,9 +92,11 @@ describe('比对表:旧表每一条在新表里都有唯一的落点', () => {
     expect(legacy.map((r) => r.scope)).toEqual(['viewer', 'browser', 'terminal'])
     // 三行的键逐字相同 —— 那正是「它本该是一条命令」的证据。
     expect(new Set(legacy.map((r) => r.chord))).toEqual(new Set(['mod+f']))
+    // 待办 B 形起多一个响应者(「我的清单」开切换 / 搜索弹层)—— 旧表里没有它,所以上面那两行不变。
     expect(answerersOf('view.find').map((a) => a.scope).sort()).toEqual([
       'browser',
       'terminal',
+      'todoLists',
       'viewer',
     ])
   })

@@ -1602,6 +1602,18 @@ export const en: Record<MessageKey, string> = {
   'todo.revealMode.element': 'Element under the cursor',
   'todo.revealMode.block': 'Whole item',
   'todo.revealMode.none': 'Hidden',
+  'todo.search': 'Search lists and items',
+  'todo.switchList': 'Switch list (current: {title})',
+  'todo.recent': 'Recent',
+  'todo.allLists': 'All lists',
+  'todo.searchLists': 'Lists',
+  'todo.searchItems': 'Items',
+  'todo.noHit': 'Nothing found for “{query}”',
+  'todo.createNamed': 'New list “{title}”',
+  'todo.moreHits': '{count} more not shown — try a more specific word',
+  'todo.openCount': '{count} open',
+  'todo.current': 'Current',
+  'todo.searchFailed': 'Couldn\'t search items',
 
   /* ── music panel (music wrap-up · shell half, 2026-09-10) ───────────── */
   'music.player': 'Now playing',

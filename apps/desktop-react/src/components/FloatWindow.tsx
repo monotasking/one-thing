@@ -324,7 +324,8 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
  */
 function isDragBlank(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return true
-  return target.closest('button,[role="tab"]') === null
+  // 输入框也让开:内容自带的头(`ContentKind.stripHeader`)里有搜索框,按下去是要打字。
+  return target.closest('button,[role="tab"],input,textarea,[contenteditable="true"]') === null
 }
 
 /** 根叶此刻活动那一格的标题(活的盖静的)。答不出就交回 null。 */

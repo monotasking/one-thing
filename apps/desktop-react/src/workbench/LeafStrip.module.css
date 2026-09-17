@@ -29,6 +29,16 @@
   align-items: flex-end;
 }
 
+.header {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  /* 与标签条同高、同底线:这条檐换画法不许改几何(几何契约在 `ui/Tabs` 的 --tab-h)。 */
+  min-height: var(--tab-h);
+  border-bottom: var(--bw-1) solid var(--line-1);
+}
+
 .tabs > * {
   flex: 1;
   min-width: 0;

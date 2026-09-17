@@ -1,0 +1,156 @@
+/*
+ * 待办窗的切换 / 搜索弹层(B 形,正本 `docs/todo-app-b-2026-09.md` §2.2)。
+ *
+ * 皮与 `ui/Popover` 同源(贴着锚点开出去的那一族:z / 圆角 / 底 / 边 / 投影 / 入场);
+ * 行的两档高亮与 `WorkspacePalette` 逐字同源(`:hover` = 鼠标位、`.rowOn` = 键盘位)。
+ * 宽 = 头宽减两侧 `--sp-2`,头宽由组件写进 `--todo-switcher-anchor-w`。
+ */
+.panel {
+  position: fixed;
+  z-index: var(--z-dropdown);
+  display: flex;
+  flex-direction: column;
+  width: calc(var(--todo-switcher-anchor-w) - var(--sp-2) * 2);
+  margin-inline-start: var(--sp-2);
+  max-height: min(var(--todo-switcher-max-h), calc(100vh - var(--tab-h) - var(--sp-4)));
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+  border: var(--bw-1) solid var(--line-1);
+  box-shadow: var(--sh-2);
+  overflow: hidden;
+  animation: var(--kf-menu-in) var(--dur-enter) var(--ease-out);
+}
+
+.head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: var(--bw-1) solid var(--line-1);
+}
+
+.headIcon {
+  flex: none;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--text-3);
+}
+
+/* 整块面就是那个字段,再套 ui/Input 会画出盒中盒(判例 WorkspacePalette.module.css)。 */
+.input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: var(--fs-label);
+}
+
+.input::placeholder {
+  color: var(--text-3);
+}
+
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-1);
+}
+
+.groupLabel {
+  padding: var(--sp-2) var(--sp-3) var(--sp-1);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-1);
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: var(--fs-label);
+  text-align: start;
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--st-hover);
+}
+
+.rowOn {
+  background: var(--st-sel);
+}
+
+.rowOn:hover {
+  background: var(--st-sel-hover);
+}
+
+.rowIcon {
+  flex: none;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--text-3);
+}
+
+/* 这一行唯一的弯腰件。 */
+.rowText {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.done {
+  color: var(--text-3);
+}
+
+.check {
+  flex: none;
+  display: inline-flex;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--text-3);
+}
+
+.check svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* 所属清单名 / 「当前」/「N 项未完成」:只截断不换行,宽度让给正文。 */
+.meta {
+  flex: none;
+  max-width: 40%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+.mark {
+  background: none;
+  color: inherit;
+  font-weight: 600;
+}
+
+.note {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel {
+    animation: none;
+  }
+}

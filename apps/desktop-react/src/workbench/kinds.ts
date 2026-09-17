@@ -1,5 +1,5 @@
 import { formatRef, parseRef, sameRef as sameResourceRef } from '@onething/core/resource'
-import type { ReactNode } from 'react'
+import type { ComponentType, ReactNode } from 'react'
 import type { ResourceRef } from '@onething/core/resource'
 import type { PanelVisibility } from '../content/visibility'
 import type { FocusScopeId } from '../focus/types'
@@ -362,6 +362,29 @@ export interface ContentKind {
    * `ui/Tabs` 与样式表照旧认不得任何一种内容(判词在 `TabSpec.wide` 上)。
    */
   tabWide?: boolean
+  /**
+   * **这一种内容自带一条头**(待办 B 形 U1,2026-09-17;正本 `docs/todo-app-b-2026-09.md` §3)。
+   *
+   * 起因是用户看真机上的待办浮窗:「要想一个 app,而不是一堆 tab 的组装,这一个窗口太像
+   * 一个 tab 页了」—— 浮窗 / 架子 / 分屏的标题栏**就是**那片叶的标签条(W4 判例),于是
+   * 条上一格「待办」、内容里又一排清单切换,两条带子叠着。
+   *
+   * 答一个组件 = 这一格**独占一片叶**时,叶的标签条不画标签、改画这条头(叶的动作组与宿主
+   * 那几颗钮照旧挂在右端,条上空白处照旧拖窗);叶里有两格以上时标签条照常,内容读
+   * `PanelVisibility.headerInStrip === false` 自己把头画在正文顶上。答 `undefined` = 不自带头。
+   * 是函数而不是一个组件,因为 `panel` 那一种是所有瓦共用的,要按 key 问。
+   */
+  stripHeader?(ref: ContentRef): ComponentType<StripHeaderProps> | undefined
+}
+
+/** 自带的头拿到的东西:它是哪一格。其余(清单、搜索)由内容自己的数据层给。 */
+export interface StripHeaderProps {
+  readonly contentRef: ContentRef
+}
+
+/** 这一格有没有自带的头(叶与宿主问这一句,不认识任何一种内容)。 */
+export function stripHeaderOf(ref: ContentRef | null | undefined): ComponentType<StripHeaderProps> | undefined {
+  return ref ? REGISTRY.get(ref.kind)?.stripHeader?.(ref) : undefined
 }
 
 /** Vite 的 `import.meta.hot` 里这一批只用得到 `dispose` 一口(照 `content/blocks/registry` 的形)。 */

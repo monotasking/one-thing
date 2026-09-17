@@ -158,6 +158,8 @@ describe('IconButton:提示走 ui/Tooltip,禁 native title', () => {
     render(<IconButton icon={X} label="关闭查看器" />)
     const btn = screen.getByRole('button')
     expect(btn.getAttribute('title')).toBeNull()
+    // 键盘会话(`:focus-visible` 成立)才出提示 —— 判词在 `ui/Tooltip` 的 `showOnKeyboardFocus` 上。
+    vi.spyOn(btn, 'matches').mockImplementation((selector) => selector === ':focus-visible')
     fireEvent.focus(btn)
     await waitFor(() => expect(screen.getByRole('tooltip').textContent).toBe('关闭查看器'), {
       timeout: 2000,

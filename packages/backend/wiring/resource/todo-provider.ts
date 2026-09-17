@@ -73,6 +73,9 @@ export function parseTodoTarget(ref: ResourceRef | null): TodoTarget {
 }
 
 const TASK_LINE = /^\s*[-*+]\s+\[( |x|X)\]/
+/** 任务行:勾没勾 + 前缀之后的文字。 */
+const TASK_TEXT = /^\s*[-*+]\s+\[( |x|X)\]\s?(.*)$/
+const SEARCH_DEFAULT_LIMIT = 50
 
 export function summarizeTodoMarkdown(content: string, fallbackTitle: string): { title: string; total: number; done: number } {
   let total = 0
@@ -155,12 +158,19 @@ export class TodoResourceProvider implements ResourceProvider<TodoOpPayload> {
     this.hub = undefined
   }
 
-  async read(name: string, ref: ResourceRef | null, _query: unknown, _ctx: ResourceReadContext): Promise<unknown> {
+  async read(name: string, ref: ResourceRef | null, query: unknown, _ctx: ResourceReadContext): Promise<unknown> {
     const target = parseTodoTarget(ref)
     switch (name) {
       case 'list':
         if (target.kind !== 'notes') throw new TodoRefError('list reads the address "todo:notes"')
         return this.list()
+      case 'search': {
+        if (target.kind !== 'notes') throw new TodoRefError('search reads the address "todo:notes"')
+        const params = recordParam(query)
+        const q = typeof params.q === 'string' ? params.q : ''
+        const limit = typeof params.limit === 'number' && params.limit > 0 ? Math.floor(params.limit) : SEARCH_DEFAULT_LIMIT
+        return this.search(q, limit)
+      }
       case 'document':
         if (target.kind === 'notes') throw new TodoRefError('document reads "todo:note/<id>" or "todo:session/<sessionId>"')
         return this.document(target)
@@ -298,6 +308,31 @@ export class TodoResourceProvider implements ResourceProvider<TodoOpPayload> {
         }
       }),
     }
+  }
+
+  /**
+   * 一次搜完全部清单(待办 B 形 U2):名字包含 + 任务项文字包含,大小写不敏感。
+   * 待办窗的切换弹层一打字就问这一句 —— 前端逐份读 100 份文件是 100 次往返。
+   */
+  private async search(q: string, limit: number) {
+    const needle = q.trim().toLowerCase()
+    if (!needle) return { lists: [], items: [], more: 0 }
+    const snapshot = await this.ports.store().readSnapshot({})
+    const lists: Array<{ ref: string; id: string; title: string }> = []
+    const items: Array<{ ref: string; id: string; title: string; line: number; text: string; done: boolean }> = []
+    let more = 0
+    for (const note of snapshot.userNotes) {
+      const ref = `${TODO_RESOURCE_SCHEME}:note/${note.id}`
+      const title = summarizeTodoMarkdown(note.content, note.id.replace(/-/g, ' ')).title
+      if (title.toLowerCase().includes(needle)) lists.push({ ref, id: note.id, title })
+      splitLines(note.content).forEach((raw, line) => {
+        const task = raw.match(TASK_TEXT)
+        if (!task || !task[2].toLowerCase().includes(needle)) return
+        if (items.length >= limit) { more += 1; return }
+        items.push({ ref, id: note.id, title, line, text: task[2], done: task[1] !== ' ' })
+      })
+    }
+    return { lists, items, more }
   }
 
   private withLock<T>(key: string, work: () => Promise<T>): Promise<T> {

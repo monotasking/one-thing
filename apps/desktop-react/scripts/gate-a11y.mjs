@@ -1031,6 +1031,40 @@ async function main() {
     )
 
     /*
+     * 待办窗(待办 B 形 U3,正本 `docs/todo-app-b-2026-09.md` §8)。三块各扫一次:
+     *  · 头 —— 独占浮窗那片叶时它画在**叶的标签条上**(`ContentKind.stripHeader`),不在
+     *    `todo-panel` 里面,所以单独给一个 include;清单名钮 / 搜索钮 / 放大镜 / ⋯ 四颗都要说得出名字;
+     *  · 正文 —— 临时 store 上后端会自己种一份缺省清单,扫的是有内容的那一屏;
+     *  · 切换 / 搜索弹层 —— `role="dialog"` 里一格输入 + 一个 `listbox`,每一行 `option`。
+     * 真红过一次:加这一屏的当天正文那一扫就红了 —— 「添加一项」那颗钮用的是水印档 `--text-4`
+     * (1.43:1,serious color-contrast),改成 `--text-3` 之后绿。
+     */
+    console.log('\n[7b/14] 待办窗:头 / 正文 / 切换弹层各扫一次')
+    await clickSelector(page, '[data-testid="dock-tile-todo"]')
+    await waitFor('待办窗就位', () =>
+      page.evaluate(() =>
+        Boolean(document.querySelector('[data-testid="todo-header"]') && document.querySelector('[data-testid="todo-panel"] [data-unit]')),
+      ),
+    )
+    await settle(page, '待办窗')
+    await scanAxe(page, '待办窗·头', '[data-testid="todo-header"]')
+    await scanAxe(page, '待办窗·正文', '[data-testid="todo-panel"]')
+    await clickSelector(page, '[data-testid="todo-switcher-trigger"]')
+    await waitFor('切换弹层就位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="todo-switcher"] [role="option"]'))),
+    )
+    await settle(page, '切换弹层')
+    await scanAxe(page, '待办窗·切换弹层', '[data-testid="todo-switcher"]')
+    await page.keyboard.press('Escape')
+    await waitFor('切换弹层已关', () =>
+      page.evaluate(() => !document.querySelector('[data-testid="todo-switcher"]')),
+    )
+    await clickSelector(page, '[data-testid="dock-tile-todo"]')
+    await waitFor('待办窗已收回', () =>
+      page.evaluate(() => !document.querySelector('[data-testid="todo-panel"]')),
+    )
+
+    /*
      * 「所有应用」面(08-31 Dock/形态批)。进这道门的理由与模型服务面逐字相同 ——
      * **外壳那一屏看不见它**,而它是一整列 `role="switch"` 加一整列打开钮:
      * 每一枚开关都得说得出「什么的开关」(Switch 的 `label`),每一颗打开钮都得

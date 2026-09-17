@@ -166,6 +166,11 @@ describe('答哪些命令:查看器 / 文件树 / 检索面 / 会话总览 / 终
       'tab.prev',
       ...Array.from({ length: 9 }, (_, i) => `tab.select:${i + 1}`),
     ])
+    /*
+     * 待办 B 形:「我的清单」答 ⌘F = 开头上那个切换 / 搜索弹层(正本
+     * `docs/todo-app-b-2026-09.md` §3)。头与正文是这一种作用域的两个实例,两处都交得出。
+     */
+    expect(focusScopeAnswersOf('todoLists').map((a) => a.command)).toEqual(['view.find'])
     const withAnswers = FOCUS_SCOPE_LIST.filter((s) => (s.answers?.length ?? 0) > 0).map((s) => s.id)
     // 次序 = 表里的声明序(`terminal` 在 region 那一族里,`leaf` 排在它们末尾)。
     // K2 起 `composer` 也在里面(它答 ⌘N = 新建会话)。
@@ -176,6 +181,7 @@ describe('答哪些命令:查看器 / 文件树 / 检索面 / 会话总览 / 终
       'search',
       'expose',
       'terminal',
+      'todoLists',
       'browser',
       'leaf',
     ])
