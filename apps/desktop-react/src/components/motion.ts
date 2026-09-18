@@ -303,12 +303,3 @@ export const MUSIC_FADE_MS = 150 // --dur-music-fade:减弱动态效果时换歌
  */
 export const MUSIC_LOGIN_POLL_MS = 2_500
 
-/**
- * 登录成了之后,「进电台了」那句话在屏上留多久(正本 §6.5 末行)。
- *
- * 它存在是因为**后端那一步走得比眼睛快**:`login --check` 答成的同一发里
- * `setupStage` 就变成了 `ready`,向导会当场消失 —— 人只看见界面闪了一下,读不到
- * 「成了」。所以这一格是**读认窗口**:把已经完成的事实在屏上按住 1.5 秒。
- * 与 `COPY_FEEDBACK_MS` 同一个数不是巧合,它们问的是同一句话:一句话读得完要多久。
- */
-export const MUSIC_SETUP_DONE_MS = 1_500

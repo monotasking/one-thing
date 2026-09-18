@@ -44,6 +44,44 @@ function createHarness() {
 }
 
 describe('MusicSetupService', () => {
+  it('种子在:一起来就停在上次那一步,不用先探一遍', () => {
+    // 用户 09-18:「每次打开都会 check 状态,上一次都 check 过了」。探一次要跑
+    // `login --check`(必要时还有 ~10s 的 `config list`),两条都吃每日额度。
+    const h = createHarness()
+    const seeded = new MusicSetupService({
+      backend: h.backend,
+      emit: () => {},
+      getSource: () => 'daily',
+      logger: { warn: () => {} },
+      seed: {
+        env: { tools: { 'ncm-cli': { installed: true }, mpv: { installed: true } }, npmAvailable: true, brewAvailable: true },
+        configured: true,
+        loggedIn: true,
+        playerBackend: 'mpv',
+      },
+    })
+    const state = seeded.getState()
+    expect(state.setupStage).toBe('ready')
+    expect(state.env?.tools['ncm-cli']?.installed).toBe(true)
+    expect(state.loggedIn).toBe(true)
+  })
+
+  it('种子里有一件没装:停在第 ① 步', () => {
+    const h = createHarness()
+    const seeded = new MusicSetupService({
+      backend: h.backend,
+      emit: () => {},
+      getSource: () => 'daily',
+      logger: { warn: () => {} },
+      seed: {
+        env: { tools: { 'ncm-cli': { installed: true }, mpv: { installed: false } }, npmAvailable: true, brewAvailable: true },
+        configured: true,
+        loggedIn: true,
+      },
+    })
+    expect(seeded.getState().setupStage).toBe('env')
+  })
+
   it('closes admission and drains a real backend promise without late state emissions or new probes', async () => {
     const h = createHarness()
     let release!: () => void

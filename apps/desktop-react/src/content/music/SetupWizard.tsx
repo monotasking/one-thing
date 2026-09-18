@@ -8,7 +8,7 @@ import { SecretInput } from '../../ui/SecretInput'
 import { useMutation } from '../../data/kernel'
 import { musicSetupOp } from '../../data/music-source'
 import { useInstallLog } from '../../data/music-setup-log'
-import { COPY_FEEDBACK_MS, MUSIC_LOGIN_POLL_MS, MUSIC_SETUP_DONE_MS } from '../../components/motion'
+import { COPY_FEEDBACK_MS, MUSIC_LOGIN_POLL_MS } from '../../components/motion'
 import { announce } from '../../ui/a11y/live-region'
 import { copyText } from '../../services/clipboard'
 import { openBrowser } from '../browser-launcher'
@@ -81,19 +81,14 @@ type WizardStep = MusicSetupStage
  *
  * 只有「从别的格走到 ready」才按;一开始就 ready(后端本来就配好了)一帧都不按。
  */
+/**
+ * 向导画不画。**登上了就立刻换成唱机** —— 从前这里留屏 1.5s 写一句「进电台了」,
+ * 用户 09-18 的原话:「这是让用户读的吗」。登录成功这件事由**唱机出现**自己说,
+ * 一句旁白只是把画面已经说过的话再念一遍。
+ */
 export function useSetupWizardVisible(stage: MusicSetupStage | undefined): boolean {
-  const [holding, setHolding] = useState(false)
-  const previous = useRef(stage)
-  useEffect(() => {
-    const was = previous.current
-    previous.current = stage
-    if (!(was !== undefined && was !== 'ready' && stage === 'ready')) return undefined
-    setHolding(true)
-    const timer = setTimeout(() => setHolding(false), MUSIC_SETUP_DONE_MS)
-    return () => clearTimeout(timer)
-  }, [stage])
   if (stage === undefined) return false
-  return stage !== 'ready' || holding
+  return stage !== 'ready'
 }
 
 export function SetupWizard({ state }: { state: MusicRuntimeState }) {
@@ -108,11 +103,6 @@ export function SetupWizard({ state }: { state: MusicRuntimeState }) {
       {step === 'env' && <EnvStep t={t} state={state} />}
       {step === 'credentials' && <CredentialsStep t={t} />}
       {step === 'login' && <LoginStep t={t} state={state} />}
-      {step === 'ready' && (
-        <p className={s.wizardDone} data-testid="music-setup-done">
-          {t('music.setup.done')}
-        </p>
-      )}
     </section>
   )
 }
@@ -173,6 +163,24 @@ function EnvStep({ t, state }: { t: TFn; state: MusicRuntimeState }) {
           {probe.error}
         </p>
       )}
+      {/*
+       * 重新检查。上一次的答案是**过夜的**(后端把它记在设置里,见
+       * `MusicProbeCache`)—— 因为探一次要跑 `login --check`,必要时还要
+       * `config list`(~10s),两条都吃网易云的每日额度。所以这块面不会每次打开
+       * 都去问一遍;要问是人按这一下。
+       */}
+      <div className={s.wizardFoot}>
+        <AsyncButton
+          action={probeOp}
+          pendingLabel={t('music.setup.probing')}
+          variant="ghost"
+          size="sm"
+          data-testid="music-setup-recheck"
+          onClick={() => void probeOp.run({})}
+        >
+          {t('music.setup.recheck')}
+        </AsyncButton>
+      </div>
     </>
   )
 }

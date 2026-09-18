@@ -40,6 +40,19 @@ export interface MusicSetupServiceOptions {
   tools?: MusicProviderToolSpec[]
   now?(): number
   logger?: { warn(message: string, ...args: unknown[]): void }
+  /**
+   * 上一次探测的答案(宿主从设置里读出来递进来;`MusicProbeCache`)。
+   *
+   * 探一次要跑 `login --check`,必要时还要 `config list`(~10s),**两条都吃网易云的
+   * 每日额度**。所以「这台电脑上有什么」这件事要过夜:进程重起、面板重开,先按上次
+   * 的答案摆,人按了「重新检查」再真去问。没有种子 = 从没探过。
+   */
+  seed?: {
+    env?: OnethingMusicEnvStatus
+    configured?: boolean
+    loggedIn?: boolean
+    playerBackend?: OnethingMusicPlayerBackend
+  }
 }
 
 const DEFAULT_TOOLS: MusicProviderToolSpec[] = [
@@ -47,7 +60,32 @@ const DEFAULT_TOOLS: MusicProviderToolSpec[] = [
   { id: 'mpv', label: 'mpv', install: { brew: ['install', 'mpv'] }, requiredWhenPlayerBackend: 'mpv' },
 ]
 
-function createInitialState(source: OnethingMusicRadioSource): OnethingMusicRuntimeState {
+function createInitialState(
+  source: OnethingMusicRadioSource,
+  seed: MusicSetupServiceOptions['seed'],
+): OnethingMusicRuntimeState {
+  if (seed?.env) {
+    const configured = seed.configured ?? false
+    const loggedIn = seed.loggedIn ?? false
+    const playerBackend = seed.playerBackend ?? 'mpv'
+    return {
+      // 种子这一路没有 provider 的工具表(那张表在实例上),所以按「上次记下的每件
+      // 工具都装着」判;真不对,人按「重新检查」或起播失败时自己会现形。
+      setupStage: Object.values(seed.env.tools).some(tool => !tool.installed)
+        ? 'env'
+        : !configured
+          ? 'credentials'
+          : !loggedIn
+            ? 'login'
+            : 'ready',
+      env: seed.env,
+      configured,
+      loggedIn,
+      playerBackend,
+      source,
+      login: { status: 'idle' },
+    }
+  }
   return {
     setupStage: 'env',
     configured: false,
@@ -89,7 +127,7 @@ export class MusicSetupService {
   private readonly pending = new Set<Promise<unknown>>()
 
   constructor(private readonly options: MusicSetupServiceOptions) {
-    this.state = createInitialState(options.getSource())
+    this.state = createInitialState(options.getSource(), options.seed)
     const backend = options.backend
     this.options = { ...options, backend: this.guarded(backend) }
     this.cancelBackendLogin = () => backend.cancelLogin()

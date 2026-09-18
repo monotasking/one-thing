@@ -323,6 +323,24 @@ export interface MusicSetProviderRequest {
 // Settings
 // ============================================================================
 
+/**
+ * 上一次「这台电脑上有什么」的答案(2026-09-18,用户报障:「每次打开都会 check 状态,
+ * 上一次都 check 过了」)。
+ *
+ * 探一次不只是看文件在不在:它还要跑 `login --check`,必要时再跑 `config list`
+ * (实测 ~10s),**这两条都吃网易云的每日额度**。所以答案要过夜 —— 记在设置里,
+ * 进程重起、面板重开都不再白探一遍。人要重探有一颗钮(向导第 ① 步)。
+ *
+ * 它是**缓存不是真相**:装了 / 登了 / 退了这些改变它的动作,自己会把它刷新。
+ */
+export interface MusicProbeCache {
+	/** 探完的时刻(epoch ms)。 */
+	at: number
+	env: MusicEnvStatus
+	loggedIn: boolean
+	playerBackend: MusicPlayerBackend
+}
+
 export interface MusicSettings {
 	/** Radio feature switch; everything stays dormant while false. */
 	enabled: boolean
@@ -338,6 +356,8 @@ export interface MusicSettings {
 	 * The app never persists appId/privateKey itself.
 	 */
 	configured: boolean
+	/** 上一次探测的答案(见 `MusicProbeCache`)。没有 = 从没探过。 */
+	probe?: MusicProbeCache
 	/**
 	 * The DJ curation turns' dedicated model, same shape as
 	 * tools.toolCallModel: a curation turn is background work in a session

@@ -736,13 +736,6 @@
   gap: var(--sp-2);
 }
 
-/* 「进电台了」那一句。留屏 1.5 秒,不是提示条 —— 它报的是一件好事。 */
-.wizardDone {
-  margin: 0;
-  font-size: var(--fs-body);
-  color: var(--text-1);
-}
-
 /* 一行工具:名字 | 状态或钮,输出块与错话折到第二行占满宽。 */
 .toolLine {
   display: grid;

@@ -135,10 +135,24 @@ function emitMusicEvent(event: OnethingMusicEvent): void {
   // wizard step instead of re-asking for credentials.
   if (event.type === 'state') {
     const current = getMusicSettings()
-    const { configured, source } = event.state
+    const { configured, source, env, loggedIn, playerBackend } = event.state
+    const patch: Parameters<typeof persistMusicSettings>[0] = {}
     if (current.configured !== configured || current.source !== source) {
-      persistMusicSettings({ configured, source })
+      Object.assign(patch, { configured, source })
     }
+    // 探测的答案也记下来(见 seed 那一段):env 在 = 刚探过,把这一份连同登录与出声方式
+    // 一起存成缓存,下次起来先按它摆,不再白探一遍。
+    if (env) {
+      const probe = { at: Date.now(), env, loggedIn, playerBackend }
+      const before = current.probe
+      const changed =
+        !before ||
+        before.loggedIn !== loggedIn ||
+        before.playerBackend !== playerBackend ||
+        JSON.stringify(before.env) !== JSON.stringify(env)
+      if (changed) Object.assign(patch, { probe })
+    }
+    if (Object.keys(patch).length > 0) persistMusicSettings(patch)
   }
 }
 
@@ -154,6 +168,22 @@ function getMusicService(): MusicSetupService {
     }),
     emit: emitMusicEvent,
     getSource: (): OnethingMusicRadioSource => getMusicSettings().source,
+    /*
+     * 上次探测的答案(用户 09-18 报障:「每次打开都会 check 状态,上一次都 check 过了」)。
+     * 探一次要跑 `login --check`,必要时再跑 `config list`(~10s),两条都吃网易云的每日
+     * 额度 —— 所以这件事要过夜。种子只是**上次的答案**,不是真相:装 / 登 / 退这些会改变
+     * 它的动作自己会把它刷新,人也可以按「重新检查」。
+     */
+    seed: (() => {
+      const probe = getMusicSettings().probe
+      if (!probe) return undefined
+      return {
+        env: probe.env,
+        configured: getMusicSettings().configured,
+        loggedIn: probe.loggedIn,
+        playerBackend: probe.playerBackend,
+      }
+    })(),
     tools: provider.descriptor.tools,
     logger: consoleLog,
   };

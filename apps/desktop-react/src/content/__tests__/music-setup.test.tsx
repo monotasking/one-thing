@@ -413,22 +413,13 @@ describe('③ 登录', () => {
     expect(setupCalls()).toHaveLength(before)
   })
 
-  it('登上了:向导留屏说一句「进电台了」,1.5s 后自己消失', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
+  it('登上了:向导当场换成唱机,不留一句旁白', async () => {
     await mount(tableWith(login({ status: 'waiting', url: LOGIN_URL })))
     await backendMovedTo(runtime({ setupStage: 'ready', configured: true, loggedIn: true, env: READY_TOOLS, login: { status: 'ok' } }))
 
-    expect(screen.getByTestId('music-setup-done').textContent).toContain('进电台了')
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1_500)
-    })
+    // 「登上了」这件事由唱机出现自己说(用户 09-18:「进电台了」这是让用户读的吗)。
     await waitFor(() => expect(screen.queryByTestId('music-setup')).toBeNull())
     expect(screen.getByTestId('music-radio')).toBeTruthy()
-  })
-
-  it('本来就配好的:一帧都不按住那句话', async () => {
-    await mount(tableWith(runtime({ setupStage: 'ready', configured: true, loggedIn: true, env: READY_TOOLS })))
-    expect(screen.queryByTestId('music-setup-done')).toBeNull()
   })
 })
 
