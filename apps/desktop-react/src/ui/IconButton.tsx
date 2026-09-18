@@ -66,10 +66,16 @@ export interface IconButtonProps
   icon: LucideIcon
   /** 这颗钮叫什么。aria-label 与 Tooltip 共用它 —— 说给眼睛和说给读屏的是同一句。 */
   label: string
-  /** xs = 行内挂件(树行尾的 ⋯);sm = 檐上;md = 与 Button 同高的场合。 */
-  size?: 'xs' | 'sm' | 'md'
+  /** xs = 行内挂件(树行尾的 ⋯);sm = 檐上;md = 与 Button 同高的场合;lg = 一组里唯一的主角(配 `solid`)。 */
+  size?: 'xs' | 'sm' | 'md' | 'lg'
   /** 危险动作只换字色不换底(四轴:状态色永不换底)。 */
   tone?: 'danger'
+  /**
+   * 一组钮里**唯一的主角**:墨色实心圆底、反白图标(2026-09-18 立,音乐面 v8 的 ⏯ ——
+   * 播放器上「放 / 停」那颗是全世界同一个形:比两边的大一圈、实心)。它不是强调色:
+   * 强调色留给「开着」(`pressed`),两件事不共用一种颜色。
+   */
+  solid?: boolean
   /** 开着(aria-pressed)。缺席 = 这颗钮没有开关语义,不报 aria-pressed。 */
   pressed?: boolean
   /** 旁边已经写着同一句话时关掉提示 —— 唯一正当的关法。 */
@@ -84,13 +90,14 @@ export function IconButton({
   size = 'sm',
   tone,
   pressed,
+  solid,
   disabled,
   tip = true,
   className,
   testId,
   ...rest
 }: IconButtonProps) {
-  const cls = [s.btn, s[size], pressed && s.on, tone === 'danger' && s.danger, className]
+  const cls = [s.btn, s[size], pressed && s.on, solid && s.solid, tone === 'danger' && s.danger, className]
     .filter(Boolean)
     .join(' ')
 

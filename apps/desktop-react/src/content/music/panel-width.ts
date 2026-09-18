@@ -44,7 +44,7 @@ const NARROW: MusicPanelForm = { wide: false, drawer: 'sheet' }
  * (仓里那条 09-14 判例 —— 观察器回调里当场写,写的那一格又被别人读回来就成了环)。
  *
  * jsdom 没有 `ResizeObserver`,挂载那一次 `useLayoutEffect` 的量仍然跑得到 ——
- * 用例要演「跨过 900」就自己装一只(与 `TurntableScene` 同一条守法)。
+ * 用例要演「跨过 900」就自己装一只(与 `RecordDeck` 同一条守法)。
  */
 export function useMusicPanelForm(ref: { current: HTMLElement | null }): MusicPanelForm {
   const [form, setForm] = useState<MusicPanelForm>(NARROW)

@@ -31,35 +31,10 @@
 }
 
 .layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: 'notice' 'station' 'deck' 'talk';
-  align-content: start;
-  gap: var(--sp-3);
-  padding: var(--sp-3);
-}
-
-/* 两栏:左唱机 + 歌名 + 歌条,右常驻歌词。歌词那一栏与唱机区同高起步。 */
-.layout[data-wide='true'] {
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-  grid-template-areas:
-    'notice notice'
-    'station station'
-    'deck lyrics'
-    'talk talk';
-  align-items: start;
-  column-gap: var(--sp-5);
-}
-
-.notices {
-  grid-area: notice;
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
-}
-
-.notices:empty {
-  display: none;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
 }
 
 /* ── 共用的字 ─────────────────────────────────────────────────────────── */
@@ -71,22 +46,6 @@
   font-weight: 400;
   letter-spacing: var(--ls-section);
   text-transform: lowercase;
-  color: var(--text-3);
-}
-
-.row {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  min-width: 0;
-}
-
-/* 时间读数:等宽,免得秒数跳动时整行左右抖。 */
-.clock {
-  flex: none;
-  font-family: var(--font-mono);
-  font-size: var(--fs-meta);
-  font-variant-numeric: tabular-nums;
   color: var(--text-3);
 }
 
@@ -106,12 +65,6 @@
   color: var(--text-3);
 }
 
-/* 没歌时那一行:只剩「播放列表」一颗钮 —— 歌条不画,歌单仍要够得着。 */
-.idleKeys {
-  display: flex;
-  align-items: center;
-}
-
 /* 一句坏消息。**只换字色不换底**(状态色永不换底)。 */
 .bad {
   margin: 0;
@@ -129,61 +82,6 @@
   color: var(--text-2);
 }
 
-/* ── 电台条 ───────────────────────────────────────────────────────────── */
-
-.station {
-  grid-area: station;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  min-width: 0;
-}
-
-.stationRow {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  min-width: 0;
-}
-
-/* 电台开着的那盏灯。状态色只上点,永不换底。主持人正在开口(换歌中)时呼吸。 */
-.lamp {
-  flex: none;
-  width: var(--sp-2);
-  height: var(--sp-2);
-  border-radius: var(--r-full);
-  background: var(--music-lamp);
-}
-
-.lamp[data-speaking='true'] {
-  animation: var(--kf-dots) var(--dur-dots) var(--ease-soft) infinite;
-}
-
-/* 唯一的弯腰件:意图那一段截断,钮不让。 */
-.stationName {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: var(--sp-2);
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.intent {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: var(--fs-body);
-  color: var(--text-1);
-}
-
-.offAir {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-}
-
 /* 输入框 + 钮那一行(开台 / 点歌):输入框吸宽;窄到放不下时钮折到下一行,不探出面板。 */
 .formRow {
   display: flex;
@@ -197,188 +95,14 @@
   min-width: min(var(--music-input-min), 100%);
 }
 
-.presets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-1);
-}
-
-/* ── §8.6 四枚心情色块 ────────────────────────────────────────────────────
- * 一行铺开,窄下来自己折。每一枚的色由 `--music-mood`(那个心情自己的一对颜色
- * 画成的斜向渐变)从落点传进来 —— 色是内容,不进主题。 */
-.moods {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(var(--music-mood-min), 1fr));
-  gap: var(--sp-2);
-}
-
-.mood {
-  position: relative;
-  display: grid;
-  place-items: center;
-  height: var(--music-mood-h);
-  border-radius: var(--music-mood-r);
-  background: var(--music-mood);
-  box-shadow: var(--sh-1);
-  transition: transform var(--dur) var(--ease), filter var(--dur) var(--ease);
-}
-
-.mood:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-
-.mood:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-.mood:disabled {
-  opacity: var(--btn-disabled-o);
-}
-
-/* 块上印的那两个字。渐变底上永远是浅字 —— 四块底都是暗的,这是内容色的一部分。 */
-.moodInk {
-  font-size: var(--fs-title);
-  font-weight: 600;
-  letter-spacing: var(--ls-section);
-  color: var(--music-mood-ink);
-}
-
-.moodSpin {
-  position: absolute;
-  right: var(--sp-2);
-  bottom: var(--sp-2);
-}
-
-/* ── 跟主持人说话(2026-09-18,正本 §7.2)──────────────────────────────────
- * 整面最底下一行。它**不吸底也不粘住** —— 这块面自己就是一整块可滚区,
- * 粘住的话窄宽两形各要一套 z 与让位,而它的内容只有一行高。 */
-.talkbar {
-  grid-area: talk;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  min-width: 0;
-}
-
-/* 输入框吸宽、发送键恒定 —— 与 `.formRow` 同一条判据,只是这一行永不折行
- * (折了之后发送键会落到下一行的左边,读起来像另一颗钮)。 */
-.talkForm {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-}
-
-.talkForm > :first-child {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
-/* 你自己说的那一句:右对齐、深底浅字 —— 与黑豆那边的浅底气泡分得开「谁在说」。 */
-.youSaid {
-  margin: 0;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.youSaid > span {
-  max-width: var(--music-echo-max);
-  padding: var(--sp-1) var(--sp-3);
-  border-radius: var(--music-echo-r) var(--music-echo-r) var(--music-echo-r-tail) var(--music-echo-r);
-  background: var(--text-1);
-  color: var(--surface-2);
-  font-size: var(--fs-meta);
-  line-height: var(--pr-lh);
-  /* 它是回执不是记录:长到三行就截断(判词在 TalkBar 的状态表 ②)。 */
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.tuner {
-  width: min(var(--music-popover-w), 100%);
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-}
-
-.tunerActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--sp-2);
-}
-
 /* ── 唱机 ─────────────────────────────────────────────────────────────── */
 
 /* 场景画布铺满这一块;圆角裁在外框上,场景的屋子跟着圆。歌词页换进来的是同一块地。 */
 .deck {
-  grid-area: deck;
   min-width: 0;
   overflow: hidden;
   border-radius: var(--r-3);
   background: var(--surface-1);
-}
-
-.deckBody {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  min-width: 0;
-  padding: var(--sp-3);
-}
-
-.nowText {
-  min-width: 0;
-}
-
-.nowTitle {
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--fs-title);
-  font-weight: 600;
-  color: var(--text-1);
-}
-
-.nowArtist {
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--fs-meta);
-  color: var(--text-3);
-}
-
-/* ── 歌条 ─────────────────────────────────────────────────────────────── */
-
-.transport {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-1);
-  min-width: 0;
-}
-
-/* 钮在上、进度条在下(正本 §2)。音量是这一行里最后让的那一件,靠右。 */
-.controls {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-1);
-  min-width: 0;
-}
-
-.seekRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--sp-2);
-}
-
-.volume {
-  flex: 1;
-  min-width: 0;
-  max-width: var(--music-volume-w);
-  margin-left: auto;
 }
 
 /* ── 播放列表抽屉 ─────────────────────────────────────────────────────── */
@@ -707,292 +431,6 @@
   background: var(--text-2);
 }
 
-/* ── 歌词 ─────────────────────────────────────────────────────────────── */
-
-/*
- * 两形共用这一份,差别全在 `data-mode`:
- *  · column —— 右栏常驻,身量是 --music-lyrics-h-lg,没有页头;
- *  · page   —— 换掉唱机场景那一块,身量是 --music-lyrics-page-h,顶上一颗小碟。
- */
-.lyricsBlock {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  min-width: 0;
-}
-
-.lyricsBlock[data-mode='column'] {
-  grid-area: lyrics;
-}
-
-.lyricsBlock[data-mode='page'] {
-  height: var(--music-lyrics-page-h);
-}
-
-.lyricsHead {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  min-width: 0;
-  padding: var(--sp-3) var(--sp-3) 0;
-}
-
-/* 一张小唱片:回唱机的那条路。放着的时候它转。 */
-.miniDisc {
-  flex: none;
-  width: var(--sp-5);
-  height: var(--sp-5);
-  border-radius: var(--r-full);
-  cursor: pointer;
-  background: var(--music-mini-disc);
-  box-shadow: var(--sh-1);
-}
-
-.miniDisc[data-spinning='true'] {
-  animation: var(--kf-spin) var(--dur-music-mini-disc) linear infinite;
-}
-
-.lyricsHeadName {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--fs-label);
-  color: var(--text-2);
-}
-
-/* 一句「这首没有歌词」。两形共用,居中 —— 它替的是一整屏歌词的位置。 */
-.lyricsNone {
-  flex: 1;
-  display: grid;
-  place-items: center;
-  margin: 0;
-  min-height: var(--music-lyrics-h);
-  font-size: var(--fs-meta);
-  color: var(--text-3);
-}
-
-/* ── §8.5 歌词骨架 ────────────────────────────────────────────────────────
- * 三行灰条,宽度 70 / 55 / 62(逐格搬自样例),轻微呼吸。**只动 opacity**:
- * 样例那道扫光在一块只有三行的区域里读起来像有东西在飞过。 */
-.lyricsSkel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: var(--sp-3);
-  min-height: var(--music-lyrics-h);
-  padding: 0 var(--sp-3);
-}
-
-.lyricsSkel i {
-  height: var(--music-skel-h);
-  border-radius: var(--music-skel-r);
-  background: var(--line-1);
-  animation: var(--kf-music-skel) var(--dur-music-skel) var(--ease-soft) infinite;
-}
-
-.lyricsSkel i:nth-child(1) {
-  width: var(--music-skel-w-a);
-}
-
-.lyricsSkel i:nth-child(2) {
-  width: var(--music-skel-w-b);
-}
-
-.lyricsSkel i:nth-child(3) {
-  width: var(--music-skel-w-c);
-}
-
-/* 动效档「无」/ 系统偏好:三条不呼吸的灰条(停在看得清的那一档,不是最淡那一帧)。 */
-@media (prefers-reduced-motion: reduce) {
-  .lyricsSkel i {
-    animation: none;
-    opacity: var(--music-skel-hi);
-  }
-}
-
-:root[data-motion-tier='none'] .lyricsSkel i {
-  animation: none;
-  opacity: var(--music-skel-hi);
-}
-
-/* 定位条要贴着滚动区画,所以中间隔一层定位上下文。 */
-.lyricsStage {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-}
-
-.lyricsScroll {
-  position: relative;
-  height: 100%;
-  min-height: var(--music-lyrics-h);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: none;
-  padding: 0 var(--sp-3);
-  mask-image: linear-gradient(transparent, black 14%, black 80%, transparent);
-  transition: opacity var(--dur-music-hush) var(--ease);
-}
-
-.lyricsScroll::-webkit-scrollbar {
-  display: none;
-}
-
-/* ── §8.4 他开口时歌词让位 ────────────────────────────────────────────────
- * 整块压暗一档;跟唱那一半停在 JS 里(LyricsPane 的 `hushed`)—— 压暗是**样子**,
- * 不跟唱是**行为**,两件事各在各的产地。压暗期间那一块地仍然可滚、每一句仍然可点:
- * 让位不是禁用(人想自己翻歌词,凭什么不让)。 */
-.lyricsStage[data-hushed] .lyricsScroll {
-  opacity: var(--music-hush-dim);
-}
-
-/* 他的话:浮在歌词上方居中,与唱机那边的气泡同一套皮 —— 但**不带尾巴**
- * (那块话底下没有人站着,画一条指向空处的尖是假的)。不接指针:它是一句话。 */
-.hostSay {
-  position: absolute;
-  left: 50%;
-  top: var(--sp-4);
-  transform: translateX(-50%);
-  z-index: var(--z-sticky);
-  max-width: min(var(--pet-bubble-max-w), calc(100% - var(--sp-5)));
-  padding: var(--pet-bubble-pad);
-  border-radius: var(--pet-bubble-r);
-  background: var(--pet-bubble-bg);
-  color: var(--pet-bubble-ink);
-  box-shadow: var(--pet-bubble-shadow);
-  font-family: var(--pet-font);
-  font-size: var(--pet-bubble-fs);
-  line-height: var(--pet-bubble-lh);
-  overflow-wrap: anywhere;
-  pointer-events: none;
-}
-
-.lyricsBlock[data-mode='column'] .lyricsScroll {
-  height: var(--music-lyrics-h-lg);
-}
-
-/* 上下各留出四成:第一句与最后一句也能停到跟唱那条线上。 */
-.lyricsPad {
-  height: 38%;
-}
-
-.lyrics {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.lyricLine {
-  line-height: var(--music-lyric-lh);
-  transition: opacity var(--dur-hover-fade) var(--ease);
-}
-
-.lyricLine[data-far='true'] {
-  opacity: var(--music-lyric-far);
-}
-
-.lyricButton {
-  display: block;
-  width: 100%;
-  padding: var(--sp-1) var(--sp-2);
-  border-radius: var(--r-2);
-  text-align: left;
-  font-size: var(--music-lyric-fs);
-  font-weight: 600;
-  line-height: var(--music-lyric-lh);
-  color: var(--text-4);
-  cursor: pointer;
-  transition: color var(--dur-hover-fade) var(--ease);
-}
-
-.lyricLine:not([data-current='true']) .lyricButton:hover {
-  background: var(--st-hover);
-  color: var(--text-3);
-}
-
-/*
- * 逐字填色:一条硬边渐变卡在 --music-lyric-p 上,字本身透明,底色透过字形露出来。
- * 左半是唱过的(--text-1),右半是还没唱到的(同色淡一档)—— **一种颜色两个浓度**,
- * 不是两种颜色:填色说的是「走到哪儿了」,换色会被读成「这两半不是一句话」。
- */
-.lyricLine[data-current='true'] .lyricButton {
-  color: transparent;
-  background-image: linear-gradient(
-    90deg,
-    var(--text-1) var(--music-lyric-p, 0%),
-    color-mix(in srgb, var(--text-1) var(--music-lyric-ahead), transparent) var(--music-lyric-p, 0%)
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-}
-
-/* 间奏:三个点。当前那一段里它们一下一下地起伏(与打字指示器同一段关键帧)。 */
-.interlude {
-  display: flex;
-  gap: var(--sp-2);
-  padding: var(--sp-2);
-}
-
-.interlude i {
-  width: var(--music-lyric-dot);
-  height: var(--music-lyric-dot);
-  border-radius: var(--r-full);
-  background: var(--text-4);
-}
-
-.lyricLine[data-current='true'] .interlude i {
-  background: var(--text-2);
-  animation: var(--kf-dots) var(--dur-dots) var(--ease-soft) infinite;
-}
-
-.lyricLine[data-current='true'] .interlude i:nth-child(2) {
-  animation-delay: calc(var(--dur-dots) / 6);
-}
-
-.lyricLine[data-current='true'] .interlude i:nth-child(3) {
-  animation-delay: calc(var(--dur-dots) / 3);
-}
-
-/*
- * 手动滚动时那条定位条:时间 + 一条线 + 一颗播放钮。线与时间不接事件(它们是读数),
- * 只有那颗钮接 —— 所以整条 pointer-events: none,钮自己再打开。
- */
-.guide {
-  position: absolute;
-  left: var(--sp-3);
-  right: var(--sp-3);
-  top: var(--music-lyric-anchor);
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--sp-2);
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.guide > * {
-  pointer-events: auto;
-}
-
-.guideTime {
-  font-family: var(--font-mono);
-  font-size: var(--fs-micro);
-  font-variant-numeric: tabular-nums;
-  color: var(--text-2);
-  padding: 0 var(--sp-1);
-  border-radius: var(--r-1);
-  background: var(--surface-1);
-}
-
-.guideLine {
-  height: 1px;
-  background: var(--line-2);
-  pointer-events: none;
-}
-
 /* ── 接入向导(2026-09-18;正本 apps/desktop-react/docs/music-panel-2026-09.md §6)──
  *
  * 它占的是唱机那一块的位置(`.deck` 里),所以这里不定位、不设高 —— 身量归那一格。
@@ -1185,10 +623,59 @@
   transition: background var(--dur) var(--ease);
 }
 
-/* 电台关着时那一行:一句话靠左,账号钮靠右。 */
-.offAirHead {
+/* ── 播放列表抽屉的檐:关台 + 账号 + 关闭(音乐面 v8)──────────────────────── */
+.drawerTools {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-2);
+  gap: var(--sp-1);
+}
+
+/* 「翻面以后」:这一面到哪首为止。是一条记号,不是一行歌。 */
+.flipLine {
+  padding: var(--sp-2) var(--sp-2) var(--sp-1);
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: var(--music-deck-flip-track);
+  list-style: none;
+}
+
+/* 「放过的」:段头本身就是那颗展开钮。 */
+.historyToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.historyChevron {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+  transition: transform var(--dur-hover-fade) var(--ease-out);
+}
+
+.historyToggle[aria-expanded='true'] .historyChevron {
+  transform: rotate(90deg);
+}
+
+.verdict {
+  flex: none;
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+  white-space: nowrap;
+}
+
+.verdict[data-verdict='love'] {
+  color: var(--music-deck-loved);
+}
+
+.entryDur {
+  flex: none;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
 }

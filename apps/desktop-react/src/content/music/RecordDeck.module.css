@@ -1,0 +1,525 @@
+/* ── 唱片面(音乐面 v8 · 唱针读歌词,2026-09-18;样例「黑豆电台」v7)──────────
+ *
+ * 一整块深色画面,没有分条、没有第二种底色:整张唱片 + 唱臂 + 唱针旁边流出来的歌词 +
+ * 坐在唱片左下角的黑豆。几何(唱片多大、枢轴在哪、歌词从哪起)由 RecordDeck.tsx 量完
+ * 画面之后写成这一格的变量:
+ *   --deck-r  唱片半径(无单位数,CSS 里乘 token 里带 px 的系数)
+ *   --deck-l  臂长(px)
+ *   --deck-d / --deck-rx / --deck-ry / --deck-px / --deck-py
+ *   --deck-lx / --deck-lr / --deck-ay   歌词栏左缘 / 右缘 / 正在唱的那句的高度
+ * 画面里的颜色全是物件色,在哪个主题里都是这一张唱片(token 注释里写着那条例外)。
+ * ────────────────────────────────────────────────────────────────────────── */
+
+.surface {
+  position: relative;
+  height: var(--music-deck-h);
+  overflow: hidden;
+  background: var(--music-deck-bg);
+  color: var(--music-deck-ink);
+}
+
+.surface[data-wide='true'] {
+  height: var(--music-deck-h-wide);
+}
+
+.roomLight {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--music-deck-light);
+  transition: opacity var(--dur-music-room) var(--ease-out);
+}
+
+.surface[data-off='true'] .roomLight {
+  opacity: var(--music-deck-light-off);
+}
+
+/* ── 唱片 ── */
+.rec {
+  position: absolute;
+  left: var(--deck-rx);
+  top: var(--deck-ry);
+  width: var(--deck-d);
+  height: var(--deck-d);
+}
+
+.rec[data-flip='a'] {
+  animation: var(--kf-music-deck-flip-a) var(--dur-music-flip) var(--ease-music-disc);
+}
+
+.rec[data-flip='b'] {
+  animation: var(--kf-music-deck-flip-b) var(--dur-music-flip) var(--ease-music-disc);
+}
+
+.rim {
+  position: absolute;
+  inset: var(--music-deck-rim-inset);
+  border-radius: 50%;
+  background: var(--music-deck-rim);
+  box-shadow: var(--music-deck-rim-shadow);
+}
+
+.disc {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--music-deck-disc);
+  box-shadow: var(--music-deck-disc-shadow);
+}
+
+.discSvg,
+.fixedSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.gap {
+  fill: none;
+  stroke: var(--music-deck-gap);
+  stroke-width: var(--music-deck-gap-w);
+}
+
+.gapShade {
+  fill: none;
+  stroke: var(--music-deck-gap-shade);
+  stroke-width: var(--music-deck-gap-shade-w);
+}
+
+.glow {
+  fill: none;
+  stroke: var(--music-deck-glow);
+  transition:
+    r var(--dur-music-arm-move) var(--ease-out),
+    stroke-width var(--dur-music-arm-move) var(--ease-out);
+}
+
+.talkDot {
+  fill: var(--music-deck-talk);
+  filter: var(--music-deck-talk-glow);
+}
+
+/* 标签纸跟着唱片转(它在 .disc 里);上面的字不在 .disc 里,所以永远正着。 */
+.paper {
+  position: absolute;
+  left: var(--music-deck-label-at);
+  top: var(--music-deck-label-at);
+  width: var(--music-deck-label-size);
+  height: var(--music-deck-label-size);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--label-paper) 0 88%, var(--label-ink) 88.6% 100%);
+  box-shadow: var(--music-deck-label-edge);
+}
+
+.paper::before {
+  content: '';
+  position: absolute;
+  inset: var(--music-deck-label-ring-at);
+  border-radius: 50%;
+  border: var(--bw-1) solid var(--music-deck-label-ring);
+}
+
+.sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background: var(--music-scene-sheen);
+  mask: var(--music-deck-sheen-mask);
+  mix-blend-mode: screen;
+}
+
+/* 「在转」靠这道淡反光:唱片不是绝对平的,转起来光会轻轻晃;停住就定住。
+ * 角度与明暗由 SpinLoop 每帧写进来(--warp-deg / --warp-o)。 */
+.warp {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background: var(--music-deck-warp);
+  mask: var(--music-deck-warp-mask);
+  mix-blend-mode: screen;
+  opacity: var(--warp-o, var(--music-deck-warp-o));
+  transform: rotate(var(--warp-deg, 0deg));
+}
+
+.labelText {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: var(--label-ink);
+}
+
+.rec[data-swap='a'] .labelText {
+  animation: var(--kf-music-deck-label-a) var(--dur-music-swap) var(--ease-out);
+}
+
+.rec[data-swap='b'] .labelText {
+  animation: var(--kf-music-deck-label-b) var(--dur-music-swap) var(--ease-out);
+}
+
+/* 歌名在转轴上方,歌手与「A 面 · 2 / 5」在下方:中间留给转轴那颗钉。 */
+.labelUp {
+  position: absolute;
+  left: 50%;
+  bottom: calc(50% + var(--deck-r) * var(--music-deck-k-label-gap));
+  width: calc(var(--deck-r) * var(--music-deck-k-title-w));
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+.labelDown {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + var(--deck-r) * var(--music-deck-k-label-gap));
+  width: calc(var(--deck-r) * var(--music-deck-k-artist-w));
+  transform: translateX(-50%);
+  display: grid;
+  gap: calc(var(--deck-r) * var(--music-deck-k-label-row-gap));
+  text-align: center;
+}
+
+.title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0;
+  font-family: var(--music-scene-font-display);
+  font-size: calc(var(--deck-r) * var(--music-deck-k-title-fs));
+  font-weight: 400;
+  line-height: var(--music-deck-title-lh);
+  letter-spacing: var(--music-deck-title-track);
+  text-wrap: balance;
+}
+
+.artist {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: calc(var(--deck-r) * var(--music-deck-k-artist-fs));
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.sideMark {
+  font-family: var(--font-mono);
+  font-size: calc(var(--deck-r) * var(--music-deck-k-side-fs));
+  letter-spacing: var(--music-deck-side-track);
+  opacity: var(--music-deck-side-o);
+  line-height: 1;
+}
+
+.spindle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--deck-r) * var(--music-deck-k-spindle));
+  height: calc(var(--deck-r) * var(--music-deck-k-spindle));
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--music-deck-spindle);
+  box-shadow: var(--music-deck-spindle-shadow);
+}
+
+/* ── 唱臂:枢轴在唱片右上,唱针沿弧线从外圈往里走 ── */
+.pivot {
+  position: absolute;
+  left: var(--deck-px);
+  top: var(--deck-py);
+  width: calc(var(--deck-r) * var(--music-deck-k-pivot));
+  height: calc(var(--deck-r) * var(--music-deck-k-pivot));
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--music-scene-arm-base);
+  box-shadow: var(--music-scene-arm-base-shadow);
+}
+
+.arm {
+  position: absolute;
+  left: var(--deck-px);
+  top: var(--deck-py);
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+  transform: rotate(var(--arm-deg));
+  filter: var(--music-scene-arm-shadow);
+  transition:
+    transform var(--dur-music-arm-settle) linear,
+    filter var(--dur-music-arm-lift) var(--ease-out);
+}
+
+.arm[data-lifted='true'] {
+  filter: var(--music-scene-arm-shadow-lift);
+}
+
+.arm[data-dragging='true'] {
+  transform: rotate(var(--arm-drag-deg, var(--arm-deg)));
+  transition: filter var(--dur-music-arm-lift) var(--ease-out);
+}
+
+.weight {
+  position: absolute;
+  left: calc(var(--deck-r) * var(--music-deck-k-weight-x));
+  top: calc(var(--deck-r) * var(--music-deck-k-weight-y));
+  width: calc(var(--deck-r) * var(--music-deck-k-weight-w));
+  height: calc(var(--deck-r) * var(--music-deck-k-weight-h));
+  border-radius: var(--music-deck-weight-r);
+  background: var(--music-deck-weight);
+}
+
+.hub {
+  position: absolute;
+  left: calc(var(--deck-r) * var(--music-deck-k-hub-at));
+  top: calc(var(--deck-r) * var(--music-deck-k-hub-at));
+  width: calc(var(--deck-r) * var(--music-deck-k-hub));
+  height: calc(var(--deck-r) * var(--music-deck-k-hub));
+  border-radius: 50%;
+  background: var(--music-deck-hub);
+}
+
+.tube {
+  position: absolute;
+  left: calc(var(--music-deck-tube-w) / -2);
+  top: 0;
+  width: var(--music-deck-tube-w);
+  height: calc(var(--deck-l) - var(--deck-r) * var(--music-deck-k-head-len));
+  border-radius: var(--music-deck-tube-w);
+  background: var(--music-deck-tube);
+}
+
+.head {
+  position: absolute;
+  left: 0;
+  top: var(--deck-l);
+  width: 0;
+  height: 0;
+  transform: rotate(var(--music-deck-head-tilt));
+}
+
+.shell {
+  position: absolute;
+  left: calc(var(--deck-r) * var(--music-deck-k-shell-x));
+  top: calc(var(--deck-r) * var(--music-deck-k-shell-y));
+  width: calc(var(--deck-r) * var(--music-deck-k-shell-w));
+  height: calc(var(--deck-r) * var(--music-deck-k-shell-h));
+  border-radius: var(--music-deck-shell-r);
+  background: var(--music-scene-arm-head);
+}
+
+.cartridge {
+  position: absolute;
+  left: calc(var(--deck-r) * var(--music-deck-k-cart-x));
+  top: calc(var(--deck-r) * var(--music-deck-k-cart-y));
+  width: calc(var(--deck-r) * var(--music-deck-k-cart));
+  height: calc(var(--deck-r) * var(--music-deck-k-cart));
+  border-radius: var(--music-deck-shell-r);
+  background: var(--music-deck-cartridge);
+  box-shadow: var(--music-deck-cartridge-shine);
+}
+
+.lift {
+  position: absolute;
+  left: calc(var(--deck-r) * var(--music-deck-k-lift-x));
+  top: calc(var(--deck-r) * var(--music-deck-k-lift-y));
+  width: calc(var(--deck-r) * var(--music-deck-k-lift-w));
+  height: var(--music-deck-lift-h);
+  border-radius: var(--music-deck-lift-h);
+  background: var(--music-scene-arm-lift-tab);
+}
+
+/* 唱头:拖 = 跳到这里。`ButtonBase` 不画任何东西,这里只给它一块圆形的手。 */
+.grab {
+  position: absolute;
+  left: calc(var(--deck-r) * var(--music-deck-k-grab) / -2);
+  top: calc(var(--deck-l) - var(--deck-r) * var(--music-deck-k-grab) / 2);
+  width: calc(var(--deck-r) * var(--music-deck-k-grab));
+  height: calc(var(--deck-r) * var(--music-deck-k-grab));
+  border-radius: 50%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.arm[data-dragging='true'] .grab {
+  cursor: grabbing;
+}
+
+.grab[aria-disabled='true'] {
+  cursor: default;
+}
+
+.tip {
+  position: absolute;
+  z-index: var(--z-sticky);
+  padding: var(--music-scene-tip-pad);
+  border-radius: var(--music-scene-tip-r);
+  background: var(--music-scene-tip-bg);
+  color: var(--music-scene-tip-ink);
+  font-family: var(--font-mono);
+  font-size: var(--music-scene-tip-fs);
+  line-height: 1.5;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, var(--music-deck-tip-rise));
+}
+
+/* ── 歌词:从唱针旁边流出来 ── */
+.lyricsWin {
+  position: absolute;
+  left: var(--deck-lx);
+  right: var(--deck-lr);
+  top: 0;
+  bottom: 0;
+  overflow: hidden;
+  mask: var(--music-deck-lyrics-mask);
+  transition: opacity var(--dur-music-room) var(--ease-out);
+}
+
+.surface[data-off='true'] .lyricsWin {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.lyrics {
+  position: absolute;
+  left: 0;
+  right: var(--sp-4);
+  top: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  transform: translateY(var(--lyrics-y, 0px));
+  transition: transform var(--dur-music-lyric) var(--ease-out);
+}
+
+.lyrics[data-jump='true'] {
+  transition: none;
+}
+
+.line {
+  display: block;
+  max-width: 100%;
+  padding: var(--music-deck-line-pad);
+  color: var(--music-deck-line);
+  font-size: var(--music-deck-line-fs);
+  line-height: var(--lh-body);
+  text-align: start;
+  transform-origin: 0 50%;
+  transition:
+    color var(--dur-music-lyric) var(--ease-out),
+    transform var(--dur-music-lyric) var(--ease-out);
+}
+
+.surface[data-wide='true'] .line {
+  font-size: var(--music-deck-line-fs-wide);
+}
+
+.line:hover {
+  color: var(--music-deck-line-hover);
+}
+
+.line[data-past='true'] {
+  color: var(--music-deck-line-past);
+}
+
+.line[data-current='true'] {
+  color: var(--music-deck-line-current);
+  transform: scale(var(--music-deck-line-current-scale));
+}
+
+.line[data-gap='true'] {
+  padding: var(--music-deck-gap-pad);
+  color: var(--music-deck-line-gap);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: var(--music-deck-gap-track);
+}
+
+.line[data-gap='true'][data-current='true'] {
+  color: var(--accent);
+  transform: none;
+}
+
+.note {
+  position: absolute;
+  left: var(--deck-lx);
+  right: calc(var(--deck-lr) + var(--sp-4));
+  top: var(--deck-ay);
+  margin: 0;
+  transform: translateY(-50%);
+  color: var(--music-deck-line);
+  font-family: var(--music-font-say);
+  font-size: var(--music-deck-line-fs);
+  line-height: var(--lh-body);
+  pointer-events: none;
+}
+
+/* ── 黑豆与他翻的那几张唱片 ── */
+.perch {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.fan {
+  position: absolute;
+  left: var(--fan-x);
+  bottom: var(--music-deck-fan-bottom);
+  width: var(--music-deck-fan-w);
+  height: var(--music-deck-fan-h);
+  transform: scale(var(--fan-scale, 1));
+  transform-origin: 0 100%;
+  pointer-events: none;
+}
+
+.fan i {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: var(--music-scene-fan-size);
+  height: var(--music-scene-fan-size);
+  border-radius: var(--music-scene-fan-r);
+  box-shadow: var(--music-scene-fan-shadow);
+  transform-origin: 50% 100%;
+  opacity: 0;
+  transform: var(--music-scene-fan-hidden);
+  transition:
+    transform var(--dur-music-fan) var(--ease-out),
+    opacity var(--dur-music-fan) var(--ease-out);
+}
+
+.fan i:nth-child(1) {
+  background: var(--music-scene-fan-a);
+  --fan-tilt: var(--music-scene-fan-tilt-a);
+}
+
+.fan i:nth-child(2) {
+  left: var(--music-scene-fan-step);
+  background: var(--music-scene-fan-b);
+  --fan-tilt: var(--music-scene-fan-tilt-b);
+  animation-delay: var(--dur-music-fan-stagger);
+}
+
+.fan i:nth-child(3) {
+  left: calc(var(--music-scene-fan-step) * 2);
+  background: var(--music-scene-fan-c);
+  --fan-tilt: var(--music-scene-fan-tilt-c);
+  animation-delay: calc(var(--dur-music-fan-stagger) * 2);
+}
+
+.fan[data-show='true'] i {
+  opacity: 1;
+  transform: var(--fan-tilt);
+  animation: var(--kf-music-fan-flick) var(--dur-music-fan-flick) var(--ease) infinite;
+}
+
+.fan[data-show='true'] i:nth-child(2) {
+  animation-delay: var(--dur-music-fan-stagger);
+}
+
+.fan[data-show='true'] i:nth-child(3) {
+  animation-delay: calc(var(--dur-music-fan-stagger) * 2);
+}

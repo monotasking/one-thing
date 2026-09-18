@@ -5,6 +5,7 @@ import { FocusDispatchHarness } from '../../test/focus-harness'
 import { configureMusicPort } from '../../data/music-port'
 import type { MusicPort, MusicResourceEvent } from '../../data/music-port'
 import { resetMusicSource } from '../../data/music-source'
+import { angleForSide, deckGeometry, needleAt } from '../music/record-geometry'
 import { useStageStore } from '../../stage/store'
 import type { ResourceOutcomeView, ResourceReadView } from '@shared/ipc/resources'
 
@@ -17,14 +18,13 @@ import type { ResourceOutcomeView, ResourceReadView } from '@shared/ipc/resource
  *  ③ 暂停**就地更新**(律①):`do` 还没回来,屏幕上那颗钮已经变成「播放」;
  *  ④ `resource:event` 的 `nowPlayingChanged` 到了要重拉;
  *  ⑤ 一次 `failed` 就地一行,零 Toast;
- *  ⑥ 空态两句(播放器没在跑 / 电台没开);
+ *  ⑥ 关着 / 没歌:唱片与按钮那一行照样在,只换里面的字(v8「布局从不跟着状态变」);
  *  ⑦ HMR dispose 走的那一口(`resetMusicSource`)真的退订;
- *  ⑧ 唱臂(唱机场景上)只发一条 seek;♥ 成功才让黑豆冒爱心。
+ *  ⑧ 唱臂:这一圈里松手 = 一条 seek,拖到后面那一圈 = 放那首;♥ 成功才让黑豆冒爱心。
  *
- * v7(整面布局)又加了一组,判的是**形与那两格开合**(正本 §5):抽屉开关与焦点归还、
- * Esc 两级、≥900 两栏时没有歌词钮、跨 900 的两条规矩、歌词页进出。
- * 节目单从 v7 起住在抽屉里,所以凡是要碰它的用例先 `openPlaylist()` ——
- * 这不是夹具绕路,那正是今天人要走的路。
+ * v8(唱针读歌词,2026-09-18)那一组判的是**形**:没有歌词钮、歌词一直在;宽的面板只是
+ * `data-wide`;抽屉开关与焦点归还、Esc 先关抽屉再退出说话;关台与「放过的」住在抽屉里。
+ * 节目单住在抽屉里,所以凡是要碰它的用例先 `openPlaylist()` —— 那正是今天人要走的路。
  */
 
 /** 一次读的答案表:`<ref>#<name>` → 值。 */
@@ -132,6 +132,8 @@ let fake: FakeMusic
  * `resizePanel()` 改宽之后亲手敲一下 —— 真机上那一下是浏览器敲的。
  */
 let panelWidth = 620
+const deckWidth = () => panelWidth - 24
+const deckHeight = () => (panelWidth >= 900 ? 380 : 300)
 const resizeCallbacks: Array<() => void> = []
 
 class FakeResizeObserver {
@@ -194,7 +196,17 @@ beforeEach(() => {
   Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
     configurable: true,
     get(this: HTMLElement) {
-      return this.dataset.testid === 'music-panel' ? panelWidth : 0
+      if (this.dataset.testid === 'music-panel') return panelWidth
+      // 唱片面自己量自己(`RecordDeck` 的几何吃它):宽 = 面板减两侧内距,高由 token 定
+      // (窄 300 / 宽 380)—— jsdom 不读 CSS,这里直接答。
+      if (this.dataset.testid === 'music-deck') return deckWidth()
+      return 0
+    },
+  })
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+    configurable: true,
+    get(this: HTMLElement) {
+      return this.dataset.testid === 'music-deck' ? deckHeight() : 0
     },
   })
   ;(globalThis as { ResizeObserver?: unknown }).ResizeObserver = FakeResizeObserver
@@ -209,6 +221,7 @@ afterEach(() => {
   configureMusicPort(undefined)
   // 把原型上那一格还回去(jsdom 自己的 clientWidth 长在 Element.prototype 上)。
   delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth
+  delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight
   delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver
 })
 
@@ -240,12 +253,9 @@ describe('首载:五条读数,五个地址', () => {
 describe('每颗钮发出去的是那一条 do', () => {
   /** 钮的 testId → 期望的 `(ref, op, params)`。**这张表就是那条缝的契约**。 */
   const TABLE: Array<[string, string, string, Record<string, unknown>]> = [
-    ['music-prev', 'music:player', 'prev', {}],
     ['music-play', 'music:player', 'pause', {}],
     ['music-next', 'music:player', 'next', {}],
     ['music-like', 'music:player', 'like', {}],
-    // 「关台」只有一颗:`close` 与 `radioStop` 在后端是同一件事的两个回执。
-    ['music-radio-stop', 'music:radio', 'radioStop', {}],
   ]
 
   for (const [testId, ref, op, params] of TABLE) {
@@ -260,19 +270,14 @@ describe('每颗钮发出去的是那一条 do', () => {
     })
   }
 
-  it('换台要先开浮层、填意图、按「换台」才发 —— 开浮层本身什么都不发', async () => {
+  it('关台住在抽屉的檐上,只有一颗 → do(music:radio, radioStop)', async () => {
     await mount()
-    fireEvent.click(await screen.findByTestId('music-retune-open'))
-    expect(fake.dos).toEqual([])
-    const input = await screen.findByTestId('music-intent')
-    fireEvent.change(input, { target: { value: '深夜爵士' } })
+    await openPlaylist()
     await act(async () => {
-      fireEvent.click(screen.getByTestId('music-retune'))
+      fireEvent.click(await screen.findByTestId('music-radio-close'))
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
-    expect(fake.dos).toEqual([
-      { ref: 'music:radio', op: 'retune', params: { intent: '深夜爵士' } },
-    ])
+    expect(fake.dos).toEqual([{ ref: 'music:radio', op: 'radioStop', params: {} }])
   })
 
   it('点歌带着歌名', async () => {
@@ -311,7 +316,7 @@ describe('就地更新(律①)', () => {
 })
 
 describe('事件到了要重拉', () => {
-  it('nowPlayingChanged 一到,nowPlaying 那一格重问一次', async () => {
+  it('nowPlayingChanged 一到,nowPlaying 那一格重问一次;标签上换成新歌名', async () => {
     await mount()
     await waitFor(() => expect(fake.reads.length).toBeGreaterThanOrEqual(5))
     const before = fake.reads.filter((r) => r.name === 'nowPlaying').length
@@ -332,7 +337,7 @@ describe('事件到了要重拉', () => {
 })
 
 describe('错误就地一行', () => {
-  it('do 回 failed,面上多一行原话,零 Toast', async () => {
+  it('do 回 failed,唱片上方多一行原话,零 Toast', async () => {
     await mount()
     await screen.findByTestId('music-play')
     fake.outcome = { kind: 'failed', error: { name: 'MusicCommandFailedError', message: '播放器没起来' } }
@@ -340,14 +345,13 @@ describe('错误就地一行', () => {
       fireEvent.click(screen.getByTestId('music-play'))
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
-    const line = await screen.findByTestId('music-player-error')
+    const line = await screen.findByTestId('music-backend-error')
     expect(line.textContent).toBe('播放器没起来')
   })
 
   it('failed 之后乐观补丁回滚 —— 屏幕上不留一张后端没认下的牌', async () => {
     await mount()
     await screen.findByTestId('music-play')
-    // 「被拒绝」不是错误,但对屏幕来说与失败是同一件事:这一下没算数,退回去。
     fake.outcome = { kind: 'denied', reason: '不行' }
     await act(async () => {
       fireEvent.click(screen.getByTestId('music-play'))
@@ -357,33 +361,85 @@ describe('错误就地一行', () => {
   })
 })
 
-describe('空态两句', () => {
-  it('播放器没在跑说一句;电台没开只给心情色块与开台,不写旁白', async () => {
-    await mount({
-      'music:radio#brief': BRIEF_OFF,
-      'music:radio#programme': { entries: [] },
-      'music:player#nowPlaying': {
-        playing: false,
-        status: 'stopped',
-        position: 0,
-        queueLength: 0,
-        currentIndex: 0,
-      },
-      'music:player#lyrics': null,
-      'music:provider#state': {
-        setupStage: 'ready',
-        configured: true,
-        loggedIn: true,
-        playerBackend: 'ncm',
-        source: 'daily',
-      },
+describe('关着 / 没歌:唱片与那一行照样在,只换里面的字', () => {
+  const offTable = (): ReadTable => ({
+    ...fullTable(),
+    'music:radio#brief': BRIEF_OFF,
+    'music:radio#programme': { entries: [] },
+    'music:player#nowPlaying': {
+      playing: false,
+      status: 'stopped',
+      position: 0,
+      queueLength: 0,
+      currentIndex: 0,
+    },
+  })
+
+  it('关着:标签「黑豆电台 · 关着」、歌词位置一句提示、⏯ 就是开台 → do(music:radio, open)', async () => {
+    await mount(offTable())
+    expect(screen.getByTestId('music-label').textContent).toContain('黑豆电台')
+    expect(screen.getByTestId('music-label').textContent).toContain('关着')
+    expect(screen.getByTestId('music-lyrics-off').textContent).toBe('开台以后，歌词在这里跟着走')
+    const play = screen.getByTestId('music-play')
+    expect(play.getAttribute('aria-label')).toBe('开台')
+    // 那一行的每一件都还在,只是不能按(布局不跟着状态变)。
+    expect((screen.getByTestId('music-next') as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByTestId('music-talk')).toBeTruthy()
+    expect(screen.getByTestId('music-playlist-toggle')).toBeTruthy()
+    await act(async () => {
+      fireEvent.click(play)
+      await new Promise((resolve) => setTimeout(resolve, 0))
     })
-    expect(await screen.findByText('播放器没在跑。')).toBeTruthy()
-    // 「电台关着」那句旁白已删(用户 09-17 的那条:界面不是用来跟用户解释设计的)——
-    // 关着这件事由开台卡自己说:意图输入 + 开台 + 四枚心情色块。
-    expect(screen.queryByText(/电台关着/)).toBeNull()
-    expect(screen.getByTestId('music-open')).toBeTruthy()
-    expect(screen.getAllByTestId(/^music-mood:/).length).toBe(4)
+    expect(fake.dos).toEqual([{ ref: 'music:radio', op: 'open', params: { intent: '' } }])
+  })
+
+  it('电台开着但播放器没在跑:⏯ 走 radio-resume', async () => {
+    const table = fullTable()
+    table['music:player#nowPlaying'] = {
+      playing: false,
+      status: 'stopped',
+      position: 0,
+      queueLength: 0,
+      currentIndex: 0,
+    }
+    await mount(table)
+    const play = await screen.findByTestId('music-play')
+    expect(play.getAttribute('aria-label')).toBe('播放')
+    await act(async () => {
+      fireEvent.click(play)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(fake.dos).toEqual([{ ref: 'music:radio', op: 'radioResume', params: {} }])
+  })
+
+  it('电台关着但播放器自己在放:⏯ 只听播放器的(暂停,不是开台)', async () => {
+    const table = fullTable()
+    table['music:radio#brief'] = BRIEF_OFF
+    await mount(table)
+    expect(screen.getByTestId('music-play').getAttribute('aria-label')).toBe('暂停')
+    // 「A 面 · …」只在电台开着时有意义。
+    expect(screen.queryByTestId('music-side')).toBeNull()
+  })
+
+  it('四种状态下唱片面与那一行都是同一对节点(零重挂)', async () => {
+    await mount()
+    const deck = screen.getByTestId('music-deck')
+    const row = screen.getByTestId('music-row')
+    fake.table['music:player#nowPlaying'] = {
+      playing: false,
+      status: 'stopped',
+      position: 0,
+      queueLength: 0,
+      currentIndex: 0,
+    }
+    fake.table['music:radio#brief'] = BRIEF_OFF
+    await act(async () => {
+      for (const listener of [...fake.listeners]) listener({ ref: 'music:radio', event: 'radioClosed', payload: {} })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    await waitFor(() => expect(screen.getByTestId('music-play').getAttribute('aria-label')).toBe('开台'))
+    expect(screen.getByTestId('music-deck')).toBe(deck)
+    expect(screen.getByTestId('music-row')).toBe(row)
   })
 })
 
@@ -398,23 +454,10 @@ describe('拆卸', () => {
   })
 })
 
-describe('唱机面:操作不许有两个意思', () => {
-  it('电台开着时 ⏮ ⏭ 说出后端真做的事', async () => {
+describe('按钮那一行:操作不许有两个意思', () => {
+  it('电台开着时 ⏭ 说出后端真做的事', async () => {
     await mount()
-    expect((await screen.findByTestId('music-prev')).getAttribute('aria-label')).toBe('重播这首')
-    expect(screen.getByTestId('music-next').getAttribute('aria-label')).toBe('跳过(以后少排这类)')
-  })
-
-  it('电台关着:开台卡 + 继续这一台 → do(music:radio, radioResume)', async () => {
-    const table = fullTable()
-    table['music:radio#brief'] = { ...BRIEF_OFF, intent: '下雨天', canResume: true, programmeLength: 3 }
-    await mount(table)
-    expect(screen.queryByTestId('music-radio-stop')).toBeNull()
-    await act(async () => {
-      fireEvent.click(await screen.findByTestId('music-radio-resume'))
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
-    expect(fake.dos).toEqual([{ ref: 'music:radio', op: 'radioResume', params: {} }])
+    expect((await screen.findByTestId('music-next')).getAttribute('aria-label')).toBe('跳过(以后少排这类)')
   })
 
   it('♥ 一次性:成功后停用并改名「已收藏到网易云」', async () => {
@@ -590,39 +633,74 @@ describe('串联单:拖拽换序', () => {
   })
 })
 
-describe('唱臂:只表示「跳到这里」(宠物 P1 起在唱机场景上)', () => {
-  // jsdom 里场景容器宽是 0,视口 = 原大,client 坐标就是 640×420 画布坐标。
-  // jsdom 没有 PointerEvent:手搓一个带 button 与坐标的 MouseEvent,类型名仍是 pointer*
-  // (与 ui/__tests__/Splitter.test.tsx 同一条判词)。
+describe('唱臂:这一圈里 = 跳到这一秒,后面那一圈 = 放那首', () => {
+  // jsdom 里唱片面的矩形在 (0,0):client 坐标就是画面坐标。几何与组件吃的是同一只函数。
   const pointer = (type: string, x: number, y: number) =>
     new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: x, clientY: y })
+  /** 这一面放到 `p` 时唱针所在的那一点。 */
+  const at = (p: number) => {
+    const g = deckGeometry(deckWidth(), deckHeight(), false)
+    return needleAt(g, angleForSide(g, p))
+  }
+  // 这一面 = 正在放的这首(298s)+ 节目单里两首(不知道时长,各按 210s):共 718s。
+  const TOTAL = 298 + 210 + 210
 
-  it('拖到唱片最内圈之内松手 → 一条 seek 到结尾;拖动期间一发都不发', async () => {
+  it('在这一圈里松手 → 一条 seek 到那一秒;拖动期间一发都不发', async () => {
     await mount()
     const grab = await screen.findByTestId('music-arm')
+    const target = at(0.2)
     await act(async () => {
-      grab.dispatchEvent(pointer('pointerdown', 400, 330))
-      // 唱片左边很远:夹到结尾那一圈
-      window.dispatchEvent(pointer('pointermove', 0, 175))
+      grab.dispatchEvent(pointer('pointerdown', target.x, target.y))
+      window.dispatchEvent(pointer('pointermove', target.x, target.y))
     })
     expect(fake.dos).toEqual([])
     await act(async () => {
-      window.dispatchEvent(pointer('pointerup', 0, 175))
+      window.dispatchEvent(pointer('pointerup', target.x, target.y))
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
-    expect(fake.dos).toEqual([{ ref: 'music:player', op: 'seek', params: { position: 298 } }])
+    expect(fake.dos).toEqual([{ ref: 'music:player', op: 'seek', params: { position: Math.round(0.2 * TOTAL) } }])
+  })
+
+  it('拖到最后那一圈松手 → 放那首:先提到第一位,再换歌', async () => {
+    await mount()
+    const grab = await screen.findByTestId('music-arm')
+    const target = at(0.95)
+    await act(async () => {
+      grab.dispatchEvent(pointer('pointerdown', target.x, target.y))
+      window.dispatchEvent(pointer('pointermove', target.x, target.y))
+      window.dispatchEvent(pointer('pointerup', target.x, target.y))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    await waitFor(() =>
+      expect(fake.dos).toEqual([
+        { ref: 'music:radio', op: 'programmeAction', params: { action: { kind: 'promote', encryptedId: 'b' } } },
+        { ref: 'music:player', op: 'next', params: {} },
+      ]),
+    )
   })
 
   it('指针被系统收走 = 这一下不算,什么都不发', async () => {
     await mount()
     const grab = await screen.findByTestId('music-arm')
+    const target = at(0.3)
     await act(async () => {
-      grab.dispatchEvent(pointer('pointerdown', 400, 330))
-      window.dispatchEvent(pointer('pointermove', 0, 175))
-      window.dispatchEvent(pointer('pointercancel', 0, 175))
+      grab.dispatchEvent(pointer('pointerdown', target.x, target.y))
+      window.dispatchEvent(pointer('pointermove', target.x, target.y))
+      window.dispatchEvent(pointer('pointercancel', target.x, target.y))
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
     expect(fake.dos).toEqual([])
+  })
+
+  it('点歌词里的一句 → seek 到那一句', async () => {
+    const table = fullTable()
+    table['music:player#lyrics'] = { title: NOW_PLAYING.title, lines: [{ at: 12, text: '第一句' }, { at: 40, text: '第二句' }] }
+    await mount(table)
+    await act(async () => {
+      fireEvent.click(await screen.findByText('第二句'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(fake.dos).toEqual([{ ref: 'music:player', op: 'seek', params: { position: 40 } }])
   })
 
   it('♥ 成功 → 黑豆冒爱心', async () => {
@@ -631,7 +709,6 @@ describe('唱臂:只表示「跳到这里」(宠物 P1 起在唱机场景上)', 
       fireEvent.click(await screen.findByTestId('music-like'))
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
-    // 一次性动画要等一帧(先撤后给)
     await waitFor(() => expect(screen.getByTestId('pet-rig').dataset.oneShot).toBe('love'))
   })
 
@@ -646,8 +723,33 @@ describe('唱臂:只表示「跳到这里」(宠物 P1 起在唱机场景上)', 
   })
 })
 
-describe('v7 整面布局:抽屉 · 两栏 · 歌词页(正本 §5)', () => {
+describe('v8 整面:一块唱片 + 一行按钮', () => {
   const esc = () => fireEvent.keyDown(window, { key: 'Escape' })
+
+  it('没有歌词钮;歌词一直在唱片旁边;宽面板只是 data-wide', async () => {
+    await mount()
+    expect(screen.queryByTestId('music-lyrics-toggle')).toBeNull()
+    expect(screen.getByTestId('music-lyrics')).toBeTruthy()
+    expect(screen.getByTestId('music-deck').dataset.wide).toBeUndefined()
+    await resizePanel(1040)
+    await waitFor(() => expect(screen.getByTestId('music-deck').dataset.wide).toBe('true'))
+    expect(screen.getByTestId('music-lyrics')).toBeTruthy()
+  })
+
+  it('标签上印着歌名与歌手,还有这是第几面第几首', async () => {
+    const table = fullTable()
+    table['music:radio#brief'] = {
+      ...BRIEF_ON,
+      recent: [
+        { title: NOW_PLAYING.title, at: '2026-09-18T12:10:00Z' },
+        { title: '慢车 - 林间录音', at: '2026-09-18T12:05:00Z' },
+      ],
+    }
+    await mount(table)
+    expect(screen.getByTestId('music-now-title').textContent).toBe('可惜没如果')
+    expect(screen.getByTestId('music-label').textContent).toContain('林俊杰')
+    expect(screen.getByTestId('music-side').textContent).toBe('A 面 · 2 / 4')
+  })
 
   it('抽屉:那颗钮开 / 关,关掉时焦点结构性地回到它身上', async () => {
     await mount()
@@ -658,7 +760,6 @@ describe('v7 整面布局:抽屉 · 两栏 · 歌词页(正本 §5)', () => {
     await openPlaylist()
     expect(screen.getByTestId('music-playlist')).toBeTruthy()
     expect(screen.getByTestId('music-playlist-toggle').getAttribute('aria-expanded')).toBe('true')
-    // 开出来焦点落在抽屉里第一个可聚焦元素(✕)。
     expect(document.activeElement).toBe(screen.getByTestId('music-playlist-close'))
 
     await act(async () => {
@@ -684,38 +785,33 @@ describe('v7 整面布局:抽屉 · 两栏 · 歌词页(正本 §5)', () => {
     await mount()
     await openPlaylist()
     expect(screen.getByTestId('music-playlist').getAttribute('data-form')).toBe('sheet')
-
     await resizePanel(620)
     expect(screen.getByTestId('music-playlist').getAttribute('data-form')).toBe('side')
-    // 换档不关抽屉。
     expect(screen.getByTestId('music-playlist-toggle').getAttribute('aria-expanded')).toBe('true')
   })
 
-  it('Esc 两级:有抽屉先关抽屉,再一下才从歌词页回唱机;都没有不拦', async () => {
+  it('Esc:说话时退出说话(焦点回到那一行);抽屉开着先关抽屉;都没有不拦', async () => {
     await mount()
     await act(async () => {
-      fireEvent.click(await screen.findByTestId('music-lyrics-toggle'))
-      await new Promise((resolve) => setTimeout(resolve, 0))
+      fireEvent.click(await screen.findByTestId('music-talk'))
+      await new Promise((resolve) => setTimeout(resolve, 20))
     })
-    await openPlaylist()
-    expect(screen.getByTestId('music-playlist')).toBeTruthy()
+    // 说话那一刻,焦点由这块面的落点交给输入框(响应链,不是一句手写 focus)。
+    expect(document.activeElement).toBe(screen.getByTestId('music-talk-input'))
+    await act(async () => {
+      esc()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(screen.queryByTestId('music-talk-input')).toBeNull()
+    expect(document.activeElement).toBe(screen.getByTestId('music-play'))
 
-    // 第一下:抽屉。歌词页还在。
+    await openPlaylist()
     await act(async () => {
       esc()
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
     expect(screen.queryByTestId('music-playlist')).toBeNull()
-    expect(screen.getByTestId('music-lyrics-back')).toBeTruthy()
 
-    // 第二下:歌词页。
-    await act(async () => {
-      esc()
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
-    expect(screen.queryByTestId('music-lyrics-back')).toBeNull()
-
-    // 第三下:都没有 —— 不拦(没人 preventDefault)。
     const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
     await act(async () => {
       window.dispatchEvent(event)
@@ -723,91 +819,36 @@ describe('v7 整面布局:抽屉 · 两栏 · 歌词页(正本 §5)', () => {
     expect(event.defaultPrevented).toBe(false)
   })
 
-  it('歌词页:进去唱机场景整块换成歌词,页头小碟点回唱机', async () => {
-    await mount()
-    expect(screen.getByTestId('music-turntable')).toBeTruthy()
-
-    await act(async () => {
-      fireEvent.click(await screen.findByTestId('music-lyrics-toggle'))
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
-    expect(screen.queryByTestId('music-turntable')).toBeNull()
-    expect(screen.getByTestId('music-lyrics').getAttribute('data-mode')).toBe('page')
-    expect(screen.getByTestId('music-lyrics-toggle').getAttribute('aria-pressed')).toBe('true')
-
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('music-lyrics-back'))
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
-    expect(screen.getByTestId('music-turntable')).toBeTruthy()
-    // 一栏下歌词**整件不在场** —— 它不是收起来了,是这块面上没有它(§1)。
-    expect(screen.queryByTestId('music-lyrics')).toBeNull()
-  })
-
-  it('≥ 900 两栏:歌词常驻右栏,歌条上没有「歌词」钮', async () => {
-    panelWidth = 1040
-    await mount()
-    await waitFor(() => expect(screen.getByTestId('music-lyrics')).toBeTruthy())
-    expect(screen.getByTestId('music-lyrics').getAttribute('data-mode')).toBe('column')
-    expect(screen.queryByTestId('music-lyrics-toggle')).toBeNull()
-  })
-
-  it('跨 900 两条规矩:两栏 → 一栏不自动进歌词页;一栏(停在歌词页)→ 两栏退回唱机', async () => {
-    panelWidth = 1040
-    await mount()
-    await waitFor(() => expect(screen.queryByTestId('music-lyrics-toggle')).toBeNull())
-
-    // 规矩一:变一栏,回到唱机(不是歌词页),歌词钮长出来。
-    await resizePanel(620)
-    expect(screen.getByTestId('music-turntable')).toBeTruthy()
-    expect(screen.getByTestId('music-lyrics-toggle').getAttribute('aria-pressed')).toBe('false')
-
-    // 规矩二:停在歌词页时变两栏 → 退回唱机,歌词改在右栏。
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('music-lyrics-toggle'))
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
-    expect(screen.queryByTestId('music-turntable')).toBeNull()
-
-    await resizePanel(1040)
-    expect(screen.getByTestId('music-turntable')).toBeTruthy()
-    expect(screen.getByTestId('music-lyrics').getAttribute('data-mode')).toBe('column')
-
-    // 再变回一栏:仍然是唱机 —— 「变一栏不自动进歌词页」对这条路也成立。
-    await resizePanel(620)
-    expect(screen.getByTestId('music-turntable')).toBeTruthy()
-    expect(screen.getByTestId('music-lyrics-toggle').getAttribute('aria-pressed')).toBe('false')
-  })
-
-  it('没歌:歌词页退回唱机,抽屉留着', async () => {
-    await mount()
-    await act(async () => {
-      fireEvent.click(await screen.findByTestId('music-lyrics-toggle'))
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
+  it('抽屉里:这一面在哪首之后结束画一条「翻面以后」;「放过的」默认收起,展开有喜欢 / 跳过', async () => {
+    const table = fullTable()
+    table['music:radio#brief'] = {
+      ...BRIEF_ON,
+      recent: [
+        { title: NOW_PLAYING.title, at: '2026-09-18T12:20:00Z' },
+        { title: '三 - 丙', at: '2026-09-18T12:15:00Z', durationS: 200, verdict: 'skip' },
+        { title: '二 - 乙', at: '2026-09-18T12:10:00Z', durationS: 190, verdict: 'love' },
+        { title: '一 - 甲', at: '2026-09-18T12:05:00Z' },
+      ],
+    }
+    await mount(table)
     await openPlaylist()
-
-    fake.table['music:player#nowPlaying'] = {
-      playing: false,
-      status: 'stopped',
-      position: 0,
-      queueLength: 0,
-      currentIndex: 0,
-    }
+    // 本场第 4 首 → 这一面还能再排 1 首:线画在节目单第 2 首之前。
+    const line = await screen.findByTestId('music-flip-line')
+    expect(line.nextElementSibling?.getAttribute('data-music-entry')).toBe('b')
+    expect(screen.queryByTestId('music-history')).toBeNull()
     await act(async () => {
-      for (const listener of [...fake.listeners]) {
-        listener({ ref: 'music:player', event: 'nowPlayingChanged', payload: {} })
-      }
+      fireEvent.click(screen.getByTestId('music-history-toggle'))
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
-
-    await waitFor(() => expect(screen.getByTestId('music-turntable')).toBeTruthy())
-    expect(screen.getByTestId('music-playlist')).toBeTruthy()
+    const history = screen.getByTestId('music-history')
+    expect(history.querySelectorAll('li')).toHaveLength(3)
+    expect(history.textContent).toContain('跳过')
+    expect(history.textContent).toContain('♥ 喜欢')
+    // 正在放的那一首已经在顶上那一段了,这里不重复。
+    expect(history.textContent).not.toContain('可惜没如果')
   })
 
-  it('电台开着但播放器没在跑:有一颗播放钮,按下去走 radio-resume', async () => {
-    // 用户 09-18:「我现在没办法控制播放,好像没有播放按钮」。没歌有两种,
-    // 电台开着那一种必须留一条让它响的路。
+  it('没歌:「播放列表」钮还在(歌单要够得着)', async () => {
     const table = fullTable()
     table['music:player#nowPlaying'] = {
       playing: false,
@@ -817,27 +858,6 @@ describe('v7 整面布局:抽屉 · 两栏 · 歌词页(正本 §5)', () => {
       currentIndex: 0,
     }
     await mount(table)
-
-    const play = await screen.findByTestId('music-idle-play')
-    await act(async () => {
-      fireEvent.click(play)
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
-    expect(fake.dos.filter((call) => call.op === 'radioResume')).toHaveLength(1)
-  })
-
-  it('没歌:歌条不画,但「播放列表」钮还在(歌单要够得着)', async () => {
-    const table = fullTable()
-    table['music:player#nowPlaying'] = {
-      playing: false,
-      status: 'stopped',
-      position: 0,
-      queueLength: 0,
-      currentIndex: 0,
-    }
-    await mount(table)
-
-    await waitFor(() => expect(screen.queryByTestId('music-play')).toBeNull())
     const toggle = await screen.findByTestId('music-playlist-toggle')
     await act(async () => {
       fireEvent.click(toggle)

@@ -2,12 +2,10 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ReactNode } from 'react'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { MusicPanel } from '../MusicPanel'
-import { LyricsPane } from '../music/LyricsPane'
 import { ProgrammeSheet } from '../music/ProgrammeSheet'
-import { StationStrip } from '../music/StationStrip'
 import { FocusDispatchHarness } from '../../test/focus-harness'
 import { configureMusicPort } from '../../data/music-port'
 import type { MusicPort, MusicResourceEvent } from '../../data/music-port'
@@ -26,10 +24,8 @@ import type { ResourceOutcomeView, ResourceReadView } from '@shared/ipc/resource
  *     `programmeAction` / `next`(不是一条新做法);第一条没成就停在那儿;
  *  ③ 失败那句话留在**那一行**下面,三角回到可按;
  *  ④ 小话筒只在 `entry.say` 有值时画;
- *  ⑤ 他开口 → 歌词压暗 + 跟唱暂停,说完 → 亮回来、跟唱接上;
- *  ⑥ 还在读歌词 = 三行骨架(读到了 / 读失败都不是它);
- *  ⑦ 心情色块点一下**直接开台**,带的是那句完整意图(不是两个字);
- *  ⑧ 均衡器与骨架呼吸在动效档「无」/ 系统偏好下停住 —— 这一条判的是**样式表源文本**
+ *  (⑤–⑦ 歌词让位 / 歌词骨架 / 心情色块随音乐面 v8 退役,见下方那段说明)
+ *  ⑧ 均衡器在动效档「无」/ 系统偏好下停住 —— 这一条判的是**样式表源文本**
  *     (jsdom 不排版,算不出 animation;而这两条规则是写法层面的事实)。
  */
 
@@ -115,8 +111,6 @@ const PROGRAMME = {
   ],
   onDeck: NOW_PLAYING.title,
 }
-
-const BRIEF_OFF = { active: false, intent: '', programmeLength: 0, canResume: false }
 
 const LYRICS = {
   title: NOW_PLAYING.title,
@@ -304,176 +298,15 @@ describe('§8.3 主持人要先说话的那一首', () => {
   })
 })
 
-/* ── §8.4 / §8.5 歌词那一屏 ──────────────────────────────────────────────── */
-
-async function mountLyrics(position: number, table: ReadTable = fullTable()) {
-  fake = makeFake(table)
-  configureMusicPort(fake.port)
-  const view = render(
-    <Live>
-      <LyricsPane mode="column" position={position} duration={200} title={NOW_PLAYING.title} playing />
-    </Live>,
-  )
-  await settle()
-  return view
-}
-
-describe('§8.4 他开口时歌词让位', () => {
-  it('压暗起止:他一开口就暗,`hushed` 到了亮回来', async () => {
-    await mountLyrics(25)
-    const stage = () => document.querySelector('[data-testid="music-lyrics"] > div') as HTMLElement
-    expect(stage().getAttribute('data-hushed')).toBeNull()
-
-    await act(async () => {
-      pet.push('utterance', { id: 'u1', petId: 'heidou', mode: 'speak', text: '这首是旧电扇的。', at: Date.now(), duck: false })
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
-    expect(stage().getAttribute('data-hushed')).toBe('true')
-    expect(screen.getByTestId('music-host-say')).toBeTruthy()
-
-    await act(async () => {
-      pet.push('hushed', { utteranceId: 'u1' })
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
-    expect(stage().getAttribute('data-hushed')).toBeNull()
-    expect(screen.queryByTestId('music-host-say')).toBeNull()
-  })
-
-  it('他的话逐字出现(一开始是空的,一会儿才有字)', async () => {
-    await mountLyrics(25)
-    await act(async () => {
-      pet.push('utterance', { id: 'u2', petId: 'heidou', mode: 'speak', text: '雨还没停。', at: Date.now(), duck: false })
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
-    expect(screen.getByTestId('music-host-say').textContent).toBe('')
-    await settle(500)
-    expect(screen.getByTestId('music-host-say').textContent?.length).toBeGreaterThan(0)
-  })
-
-  it('嘀咕不算开口:歌词不让位', async () => {
-    await mountLyrics(25)
-    await act(async () => {
-      pet.push('utterance', { id: 'u3', petId: 'heidou', mode: 'mutter', text: '先放起来嘛。', at: Date.now(), duck: false })
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
-    expect(screen.queryByTestId('music-host-say')).toBeNull()
-  })
-
-  it('跟唱暂停:他说着的时候换了句也不滚,说完了才接上', async () => {
-    const scrollTo = vi.fn()
-    Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, writable: true, value: scrollTo })
-    try {
-      const { rerender } = await mountLyrics(5)
-      await act(async () => {
-        pet.push('utterance', { id: 'u4', petId: 'heidou', mode: 'speak', text: '听这一句。', at: Date.now(), duck: false })
-        await new Promise((resolve) => setTimeout(resolve, 0))
-      })
-      scrollTo.mockClear()
-      // 他说着的时候当前句换了 —— 一下都不许滚。
-      await act(async () => {
-            rerender(
-          <Live>
-            <LyricsPane mode="column" position={25} duration={200} title={NOW_PLAYING.title} playing />
-          </Live>,
-        )
-        await new Promise((resolve) => setTimeout(resolve, 0))
-      })
-      expect(scrollTo).not.toHaveBeenCalled()
-      // 说完了:接上当前句,而且**不补滚动动画**。
-      await act(async () => {
-        pet.push('hushed', { utteranceId: 'u4' })
-        await new Promise((resolve) => setTimeout(resolve, 0))
-      })
-      expect(scrollTo).toHaveBeenCalled()
-      expect(scrollTo.mock.calls.at(-1)?.[0]).toMatchObject({ behavior: 'auto' })
-    } finally {
-      delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo
-    }
-  })
-})
-
-describe('§8.5 歌词加载骨架', () => {
-  it('还在读:三行灰条,不是空白', async () => {
-    fake = makeFake(fullTable())
-    fake.held.add('music:player#lyrics')
-    configureMusicPort(fake.port)
-    render(
-      <Live>
-        <LyricsPane mode="column" position={10} duration={200} title={NOW_PLAYING.title} playing />
-      </Live>,
-    )
-    await settle()
-    const skeleton = screen.getByTestId('music-lyrics-skeleton')
-    expect(skeleton.querySelectorAll('i')).toHaveLength(3)
-    expect(screen.queryByTestId('music-lyrics-empty')).toBeNull()
-  })
-
-  it('读到了:骨架让位给歌词', async () => {
-    await mountLyrics(25)
-    expect(screen.queryByTestId('music-lyrics-skeleton')).toBeNull()
-    expect(screen.getByTestId('music-lyrics-scroll').textContent).toContain('铁皮雨棚')
-  })
-
-  it('读到的是「没有歌词」:是那一句话,不是骨架', async () => {
-    await mountLyrics(25, { ...fullTable(), 'music:player#lyrics': { title: NOW_PLAYING.title, lines: [] } })
-    expect(screen.queryByTestId('music-lyrics-skeleton')).toBeNull()
-    expect(screen.getByTestId('music-lyrics-empty')).toBeTruthy()
-  })
-})
-
-/* ── §8.6 心情色块 ───────────────────────────────────────────────────────── */
-
-describe('§8.6 电台关着:四枚心情色块', () => {
-  async function mountStrip() {
-    fake = makeFake({ ...fullTable(), 'music:radio#brief': BRIEF_OFF })
-    configureMusicPort(fake.port)
-    render(
-      <Live>
-        <StationStrip />
-      </Live>,
-    )
-    await settle()
-  }
-
-  it('四枚,每一枚上印两个字', async () => {
-    await mountStrip()
-    const moods = await screen.findByTestId('music-moods')
-    expect(moods.querySelectorAll('button')).toHaveLength(4)
-    expect(moods.textContent).toBe('下雨专注周五开车')
-  })
-
-  it('点一下**直接开台**,带的是那句完整意图(不是块上那两个字)', async () => {
-    await mountStrip()
-    const rain = await screen.findByTestId('music-mood:rain')
-    await act(async () => {
-      fireEvent.click(rain)
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
-    expect(fake.dos).toHaveLength(1)
-    expect(fake.dos[0]).toMatchObject({ ref: 'music:radio', op: 'open', params: { intent: '下雨天,安静点的' } })
-  })
-
-  it('名字说给读屏听的是整句意图', async () => {
-    await mountStrip()
-    expect((await screen.findByTestId('music-mood:drive')).getAttribute('aria-label')).toBe('深夜开车回家')
-  })
-
-  it('自己打字那条路一个字没改', async () => {
-    await mountStrip()
-    const input = await screen.findByTestId('music-intent')
-    fireEvent.change(input, { target: { value: '想听点吵的' } })
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('music-open'))
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
-    await waitFor(() => expect(fake.dos.some((d) => d.op === 'open')).toBe(true))
-    expect(fake.dos.at(-1)?.params).toEqual({ intent: '想听点吵的' })
-  })
-})
+/*
+ * §8.4 他开口时歌词让位 / §8.5 歌词加载骨架 / §8.6 心情色块 —— 随音乐面 v8(唱针读歌词,
+ * 2026-09-18)一起退役:歌词住到了唱针旁边、没有骨架那一屏;电台条连同心情色块并掉,
+ * 开台改成 ⏯ 或「说话」说一句想听什么(判据在 music-panel / music-talk 两份用例里)。
+ */
 
 /* ── §8.8 动效档「无」/ 系统偏好下不动 ───────────────────────────────────── */
 
-describe('§8.8 均衡器与骨架在动效档「无」下停住', () => {
+describe('§8.8 均衡器在动效档「无」下停住', () => {
   /** 读样式表源文本的门先剥注释 —— 病历文本里有「animation」这个词。 */
   const css = readFileSync(
     path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'MusicPanel.module.css'),
@@ -481,7 +314,7 @@ describe('§8.8 均衡器与骨架在动效档「无」下停住', () => {
   ).replace(/\/\*[\s\S]*?\*\//g, '')
 
   it('两个来源一个结论:系统偏好与动效档「无」各有一条,都是 animation: none', () => {
-    for (const selector of ['.eq[data-playing] i', '.lyricsSkel i']) {
+    for (const selector of ['.eq[data-playing] i']) {
       const reduced = css.match(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\n\}/g) ?? []
       expect(reduced.some((block) => block.includes(selector) && block.includes('animation: none'))).toBe(true)
       const tier = new RegExp(`:root\\[data-motion-tier='none'\\] ${selector.replace(/[.[\]]/g, '\\$&')} \\{[^}]*animation: none`)
@@ -491,7 +324,6 @@ describe('§8.8 均衡器与骨架在动效档「无」下停住', () => {
 
   it('时长与关键帧都是 token,不写字面量', () => {
     expect(css).toContain('animation: var(--kf-music-eq) var(--dur-music-eq)')
-    expect(css).toContain('animation: var(--kf-music-skel) var(--dur-music-skel)')
   })
 
   it('停住之后是三根**不等高**的条(等高会读成三个点)', () => {

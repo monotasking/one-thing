@@ -165,83 +165,87 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('跟主持人说话', () => {
-  it('电台关着不画:没有主持人可说话', async () => {
+/** 按「说话」:那一行就地换成输入框。 */
+async function openTalk() {
+  await act(async () => {
+    fireEvent.click(await screen.findByTestId('music-talk'))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
+}
+
+describe('跟黑豆说话(音乐面 v8:那一行就地换成输入框)', () => {
+  it('关着也有「说话」:占位问今晚想听什么', async () => {
     await mount(tableWith(BRIEF_OFF))
-    expect(screen.queryByTestId('music-talk')).toBeNull()
+    await openTalk()
+    expect(screen.getByTestId('music-talk-input').getAttribute('placeholder')).toBe('今晚想听点什么')
   })
 
-  it('电台开着才画,占位问的是那只宠物的名字', async () => {
+  it('开着:占位是跟黑豆说点什么', async () => {
     await mount()
-    const input = await screen.findByTestId('music-talk-input')
-    // 名册读不到(壳里没有宠物端口)时落到通名「主持人」—— 不留一个空格。
-    expect(input.getAttribute('placeholder')).toBe('跟主持人说点什么')
+    await openTalk()
+    expect(screen.getByTestId('music-talk-input').getAttribute('placeholder')).toBe('跟黑豆说点什么')
   })
 
-  it('回车发一次且只发一次,发的是 music:radio 上的 tell', async () => {
+  it('开着:回车发一次且只发一次(music:radio 上的 tell),那一行回到按钮', async () => {
     await mount()
+    await openTalk()
     await type('换个心情,别太吵')
     await pressEnter()
-    await pressEnter() // 框已经清空了,第二下什么都不该发
-
-    expect(fake.dos).toEqual([
-      { ref: 'music:radio', op: 'tell', params: { text: '换个心情,别太吵' } },
-    ])
+    expect(fake.dos).toEqual([{ ref: 'music:radio', op: 'tell', params: { text: '换个心情,别太吵' } }])
+    expect(screen.queryByTestId('music-talk-input')).toBeNull()
+    expect(screen.getByTestId('music-play')).toBeTruthy()
   })
 
-  it('空话不发', async () => {
+  it('关着:说的那句话就是开台的意图 → do(music:radio, open)', async () => {
+    await mount(tableWith(BRIEF_OFF))
+    await openTalk()
+    await type('下雨天,安静点的')
+    await pressEnter()
+    expect(fake.dos).toEqual([{ ref: 'music:radio', op: 'open', params: { intent: '下雨天,安静点的' } }])
+  })
+
+  it('空话不发,框还开着', async () => {
     await mount()
+    await openTalk()
     await type('   ')
     await pressEnter()
     expect(fake.dos).toHaveLength(0)
+    expect(screen.getByTestId('music-talk-input')).toBeTruthy()
   })
 
-  it('发出去:框当场清空、你自己那枚气泡冒出来', async () => {
+  it('取消:回到按钮,一发都不发', async () => {
     await mount()
-    await type('慢一点')
-    await pressEnter()
-
-    expect((await screen.findByTestId('music-talk-input') as HTMLInputElement).value).toBe('')
-    expect((await screen.findByTestId('music-talk-echo')).textContent).toBe('慢一点')
-  })
-
-  it('发送失败:气泡撤掉、字还回来、错话就地一行(后端原话)', async () => {
-    await mount()
-    fake.outcome = { kind: 'denied', reason: '电台没开' }
-    await type('慢一点')
-    await pressEnter()
-
-    expect((await screen.findByTestId('music-talk-input') as HTMLInputElement).value).toBe('慢一点')
-    expect(screen.queryByTestId('music-talk-echo')).toBeNull()
-    expect((await screen.findByTestId('music-talk-error')).textContent).toBe('电台没开')
-  })
-
-  it('建议词只填进输入框,不直接发', async () => {
-    await mount()
-    await type('')
-    const chips = await screen.findAllByTestId('music-talk-suggestion')
-    expect(chips.map((chip) => chip.textContent)).toEqual(['换个心情', '点一首歌', '现在放的是什么'])
-
+    await openTalk()
+    await type('算了')
     await act(async () => {
-      fireEvent.click(chips[0])
+      fireEvent.click(screen.getByTestId('music-talk-cancel'))
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
-
-    expect((await screen.findByTestId('music-talk-input') as HTMLInputElement).value).toBe('换个心情')
+    expect(screen.queryByTestId('music-talk-input')).toBeNull()
     expect(fake.dos).toHaveLength(0)
+  })
+
+  it('发送失败:错话在唱片上方就地一行(后端原话),字留着 —— 再按「说话」还在框里', async () => {
+    await mount()
+    fake.outcome = { kind: 'denied', reason: '电台没开' }
+    await openTalk()
+    await type('慢一点')
+    await pressEnter()
+    expect((await screen.findByTestId('music-backend-error')).textContent).toBe('电台没开')
+    await openTalk()
+    expect((screen.getByTestId('music-talk-input') as HTMLInputElement).value).toBe('慢一点')
   })
 
   it('打字时黑豆 listening;发出去之后 busy,他回了就回到该在的姿势', async () => {
     await mount()
     const pet = () => screen.getByTestId('pet-button')
-
+    await openTalk()
     await type('慢一点')
     expect(pet().dataset.pose).toBe('listening')
 
     await pressEnter()
     expect(pet().dataset.pose).toBe('busy')
 
-    // 他回了一句:那条事实推过来(壳这边只认「回了」这一下,那句话走宠物那条路)。
     await act(async () => {
       for (const listener of [...fake.listeners]) {
         listener({ ref: 'music:radio', event: 'hostReplied', payload: { text: '好。', say: '好。' } })
@@ -264,6 +268,10 @@ describe('跟主持人说话', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
     })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('music-talk'))
+      await vi.advanceTimersByTimeAsync(0)
+    })
     const input = screen.getByTestId('music-talk-input')
     await act(async () => {
       fireEvent.change(input, { target: { value: '在吗' } })
@@ -276,8 +284,7 @@ describe('跟主持人说话', () => {
       await vi.advanceTimersByTimeAsync(60_000)
     })
     expect(screen.getByTestId('pet-button').dataset.pose).not.toBe('busy')
-    // 放手是安静的:屏上不留一句「他没回你」。
-    expect(screen.queryByTestId('music-talk-error')).toBeNull()
+    expect(screen.queryByTestId('music-backend-error')).toBeNull()
   })
 })
 

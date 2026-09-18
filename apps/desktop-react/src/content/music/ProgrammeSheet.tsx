@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react'
+import { Fragment, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { Ellipsis, GripVertical, MicVocal, Play } from '../../components/icons'
+import { ChevronRight, Ellipsis, GripVertical, MicVocal, Play } from '../../components/icons'
 import { AsyncButton } from '../../ui/AsyncButton'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { IconButton } from '../../ui/IconButton'
@@ -12,11 +12,11 @@ import { Tooltip } from '../../ui/Tooltip'
 import { useMutation, useQuery } from '../../data/kernel'
 import type { MusicProgrammeEntryDTO } from '@shared/ipc/music'
 import type { MusicNowPlayingView } from '../../data/music-source'
-import { musicOps, musicProgrammeQuery } from '../../data/music-source'
+import { musicBriefQuery, musicOps, musicProgrammeQuery } from '../../data/music-source'
 import { copyText } from '../../services/clipboard'
 import { useT } from '../../i18n'
-import { sleeveColorsFor } from './scene-geometry'
-import { PROGRAMME_LIMIT, firstError, splitTitle } from './turntable'
+import { labelColorsFor } from './record-geometry'
+import { PROGRAMME_LIMIT, clockOf, firstError, splitTitle } from './turntable'
 import s from '../MusicPanel.module.css'
 
 interface RowMenu {
@@ -34,15 +34,15 @@ interface PlayNow {
 
 /**
  * **碟形色块**(§8.2):一张唱片的最简形 —— 中心一个孔、一圈标签、外面是盘面。
- * 标签色由歌名散列(`sleeveColorsFor`,与唱机场景那张封套同一只函数,所以同一首歌
+ * 标签色由歌名散列(`labelColorsFor`,与唱片标签同一只函数,所以同一首歌
  * 在列表里、在唱机上是同一个颜色)。
  *
  * **它不是封面占位图**:封面这件事后端没有(判词在 `MusicPanel.tsx` 文件头),
  * 一块灰方块会被读成「还没加载出来」,而它永远不会来。
  */
 function discStyle(title: string | undefined): CSSProperties {
-  const colors = sleeveColorsFor(title ?? '')
-  return { '--sleeve-light': colors.light, '--sleeve-dark': colors.dark } as CSSProperties
+  const colors = labelColorsFor(title ?? '')
+  return { '--sleeve-light': colors.paper, '--sleeve-dark': colors.ink } as CSSProperties
 }
 
 /**
@@ -81,7 +81,7 @@ function discStyle(title: string | undefined): CSSProperties {
  *  · **头上一段「正在播放」**:`nowPlaying` 有歌时画一行 —— 碟形色块 + 歌名歌手 +
  *    均衡器条 + 贴着行底边一条进度。那一行**不可点、没有把手、没有 ⋯**:它已经在放了,
  *    「提到下一首」「拿掉」对它都不是一句有意义的话。读数由**父级递进来**而不是这里
- *    再订一次(与 `StationStrip` 的 `state` 同一条:`usePlaybackPosition` 起的是一只
+ *    再订一次(同一份真相只订一遍:`usePlaybackPosition` 起的是一只
  *    250ms 的钟,订两遍就是两只钟,迟早差一帧)。
  *  · **悬停即放**:每行左边那枚色块上浮一颗三角,点它 = `promote` + `next` ——
  *    与右键菜单里「提到下一首」走**同一条** `programmeAction`,不新开做法。
@@ -91,14 +91,22 @@ function discStyle(title: string | undefined): CSSProperties {
 export function ProgrammeSheet({
   nowPlaying,
   position,
+  sideRoom,
 }: {
   /** 正在放的那一首。缺席(或没歌名)= 顶上那一段整段不画,不留空段头。 */
   nowPlaying?: MusicNowPlayingView
   /** 播放钟推出来的位置。与唱臂、进度条、歌词高亮吃同一个数。 */
   position?: number
+  /**
+   * 这一面还能再排几首(音乐面 v8:唱片就是这一面的节目单)。列表在第 `sideRoom` 首之后画一条
+   * 「翻面以后」—— 那之后的歌不在这张唱片的这一面上。缺席 = 没歌在放,说不出这一面在哪结束,不画。
+   */
+  sideRoom?: number
 } = {}) {
   const t = useT()
   const programme = useQuery(musicProgrammeQuery)
+  const brief = useQuery(musicBriefQuery)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const request = useMutation(musicOps.request)
   const edit = useMutation(musicOps.programmeAction)
   const [song, setSong] = useState('')
@@ -115,6 +123,8 @@ export function ProgrammeSheet({
   const shown = entries.slice(0, PROGRAMME_LIMIT)
   const hidden = entries.length - shown.length
   const error = firstError(request, edit)
+  const recent = brief.data?.recent ?? []
+  const history = recent[0]?.title === nowPlaying?.title ? recent.slice(1) : recent
   const nowTitle = nowPlaying?.title
   const now = nowTitle ? splitTitle(nowTitle) : undefined
   const duration = nowPlaying?.duration
@@ -211,9 +221,15 @@ export function ProgrammeSheet({
             const { name, artist } = splitTitle(entry.title)
             const busy = playNow?.encryptedId === entry.encryptedId && playNow.error === undefined
             const failed = playNow?.encryptedId === entry.encryptedId ? playNow.error : undefined
+            const flipBefore = sideRoom !== undefined && sideRoom > 0 && index === sideRoom
             return (
+              <Fragment key={entry.encryptedId}>
+              {flipBefore && (
+                <li className={s.flipLine} data-testid="music-flip-line" aria-hidden="true">
+                  {t('music.deckFlipAfter')}
+                </li>
+              )}
               <li
-                key={entry.encryptedId}
                 className={s.entry}
                 data-music-entry={entry.encryptedId}
                 {...reorder.itemProps(entry.encryptedId)}
@@ -296,11 +312,55 @@ export function ProgrammeSheet({
                   }}
                 />
               </li>
+              </Fragment>
             )
           })}
         </ol>
       )}
       {hidden > 0 && <p className={s.meta}>{t('music.programmeMore', { count: hidden })}</p>}
+
+      {/* ── 放过的(音乐面 v8)─────────────────────────────────────────────
+        * 本场开台以来放过的歌,新的在前;正在放的那一首已经在顶上那一段了,这里不重复。
+        * 默认收起:它是回头看的地方,不是这张单子的主角。 */}
+      {history.length > 0 && (
+        <>
+          <h2 className={s.head}>
+            <ButtonBase
+              className={s.historyToggle}
+              aria-expanded={historyOpen}
+              data-testid="music-history-toggle"
+              onClick={() => setHistoryOpen((open) => !open)}
+            >
+              <ChevronRight className={s.historyChevron} aria-hidden="true" />
+              {t('music.deckHistory')}
+            </ButtonBase>
+          </h2>
+          {historyOpen && (
+            <ol className={s.list} data-testid="music-history">
+              {history.map((spin) => {
+                const { name, artist } = splitTitle(spin.title)
+                return (
+                  <li key={`${spin.at}:${spin.title}`} className={s.entry} data-past="true">
+                    <span className={s.disc} style={discStyle(spin.title)} aria-hidden="true" />
+                    <div className={s.entryText}>
+                      <span className={s.entryTitle}>
+                        <span className={s.entryName}>{name}</span>
+                        {artist && <span className={s.entryArtist}>{artist}</span>}
+                      </span>
+                    </div>
+                    {spin.verdict && (
+                      <span className={s.verdict} data-verdict={spin.verdict}>
+                        {t(spin.verdict === 'love' ? 'music.deckLoved' : 'music.deckSkipped')}
+                      </span>
+                    )}
+                    {spin.durationS !== undefined && <span className={s.entryDur}>{clockOf(spin.durationS)}</span>}
+                  </li>
+                )
+              })}
+            </ol>
+          )}
+        </>
+      )}
 
       <form
         className={s.formRow}

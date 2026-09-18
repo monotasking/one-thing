@@ -1,150 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  MUSIC_ARM_MOVE_MS,
-  MUSIC_FADE_MS,
-  MUSIC_NEEDLE_LEAD_MS,
-  MUSIC_SPIN_DOWN_MS,
-  MUSIC_SPIN_UP_MS,
-  MUSIC_STOW_MS,
-  MUSIC_SWAP_MS,
-} from '../../../components/motion'
-import { DeckController, SPIN_DEG_PER_S, SpinLoop } from '../scene-controller'
+import { describe, expect, it } from 'vitest'
+import { MUSIC_SPIN_DOWN_MS, MUSIC_SPIN_UP_MS } from '../../../components/motion'
+import { SPIN_DEG_PER_S, SpinLoop } from '../scene-controller'
 import type { FrameSource } from '../scene-controller'
-
-/**
- * 两台小机器的判据(§8.2)。控制器脱离 DOM:计时器由假时钟推,快照逐格断言。
- */
-
-const A = { title: '雨棚下 - 旧电扇', present: true, playing: true }
-const B = { title: '慢车 - 林间录音', present: true, playing: true }
-const NONE = { title: '', present: false, playing: false }
-
-beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-})
-
-afterEach(() => {
-  vi.useRealTimers()
-})
-
-describe('DeckController', () => {
-  it('第一份想要 = 挂载:直接摆,不起计时器', () => {
-    const deck = new DeckController()
-    deck.sync(A)
-    expect(deck.getSnapshot()).toMatchObject({ title: A.title, disc: 'on', arm: 'track', lifted: false, spinning: true, busy: false })
-    expect(deck.pendingTimers()).toBe(0)
-    const paused = new DeckController()
-    paused.sync({ ...A, playing: false })
-    expect(paused.getSnapshot()).toMatchObject({ disc: 'on', arm: 'track', lifted: true, spinning: false })
-    const empty = new DeckController()
-    empty.sync(NONE)
-    // 没歌:素面唱片留在盘上(空转盘会被读成「坏了」),唱臂归位、不转。
-    expect(empty.getSnapshot()).toMatchObject({ title: '', disc: 'on', arm: 'rest', spinning: false })
-  })
-
-  it('暂停:唱臂原地抬起、转盘停,不起计时器;再放:先转,450ms 后落针', () => {
-    const deck = new DeckController()
-    deck.sync(A)
-    deck.sync({ ...A, playing: false })
-    expect(deck.getSnapshot()).toMatchObject({ lifted: true, spinning: false, arm: 'track' })
-    deck.sync(A)
-    expect(deck.getSnapshot()).toMatchObject({ spinning: true, lifted: true })
-    vi.advanceTimersByTime(MUSIC_NEEDLE_LEAD_MS)
-    expect(deck.getSnapshot()).toMatchObject({ lifted: false, armMotion: 'settle' })
-  })
-
-  it('起转还没落针就又暂停:那只计时器作废', () => {
-    const deck = new DeckController()
-    deck.sync({ ...A, playing: false })
-    deck.sync(A)
-    expect(deck.pendingTimers()).toBe(1)
-    deck.sync({ ...A, playing: false })
-    expect(deck.pendingTimers()).toBe(0)
-    vi.advanceTimersByTime(5000)
-    expect(deck.getSnapshot()).toMatchObject({ lifted: true, spinning: false })
-  })
-
-  it('换歌那一串:归位 → 收片 → 换封套 → 放片 → 起转落针', () => {
-    const deck = new DeckController()
-    deck.sync(A)
-    deck.sync(B)
-    expect(deck.getSnapshot()).toMatchObject({ busy: true, arm: 'rest', lifted: true, armMotion: 'move', spinning: false, title: A.title })
-    vi.advanceTimersByTime(MUSIC_ARM_MOVE_MS)
-    expect(deck.getSnapshot()).toMatchObject({ disc: 'stowed', lifted: false })
-    vi.advanceTimersByTime(MUSIC_STOW_MS)
-    expect(deck.getSnapshot()).toMatchObject({ sleeve: 'out', title: A.title })
-    vi.advanceTimersByTime(MUSIC_SWAP_MS / 2)
-    expect(deck.getSnapshot()).toMatchObject({ sleeve: 'in', title: B.title, disc: 'stowed' })
-    vi.advanceTimersByTime(MUSIC_SWAP_MS / 2)
-    expect(deck.getSnapshot()).toMatchObject({ disc: 'on', busy: true })
-    vi.advanceTimersByTime(MUSIC_STOW_MS)
-    expect(deck.getSnapshot()).toMatchObject({ busy: false, spinning: true, arm: 'rest' })
-    vi.advanceTimersByTime(MUSIC_NEEDLE_LEAD_MS)
-    expect(deck.getSnapshot()).toMatchObject({ arm: 'track', lifted: true, armMotion: 'move' })
-    vi.advanceTimersByTime(MUSIC_ARM_MOVE_MS)
-    expect(deck.getSnapshot()).toMatchObject({ arm: 'track', lifted: false })
-    expect(deck.pendingTimers()).toBe(0)
-  })
-
-  it('一串跑着时又换了一首:封套直接换成最新那首,不补播中间那首', () => {
-    const deck = new DeckController()
-    deck.sync(A)
-    deck.sync(B)
-    vi.advanceTimersByTime(100)
-    deck.sync({ ...B, title: '潮汐表 - 北岸电台' })
-    vi.advanceTimersByTime(MUSIC_ARM_MOVE_MS + MUSIC_STOW_MS + MUSIC_SWAP_MS)
-    expect(deck.getSnapshot().title).toBe('潮汐表 - 北岸电台')
-    vi.advanceTimersByTime(10_000)
-    expect(deck.getSnapshot()).toMatchObject({ busy: false, title: '潮汐表 - 北岸电台', disc: 'on' })
-  })
-
-  it('有歌 → 无歌:换成素面唱片、封套变素面;无歌 → 有歌:换片放上', () => {
-    const deck = new DeckController()
-    deck.sync(A)
-    deck.sync(NONE)
-    vi.advanceTimersByTime(10_000)
-    expect(deck.getSnapshot()).toMatchObject({ title: '', disc: 'on', arm: 'rest', busy: false, spinning: false })
-    deck.sync({ ...B, playing: false })
-    // 素面唱片也要先收回封套再换上新的一首:同一串,没有捷径。
-    expect(deck.getSnapshot()).toMatchObject({ busy: true, disc: 'stowed' })
-    vi.advanceTimersByTime(10_000)
-    expect(deck.getSnapshot()).toMatchObject({ title: B.title, disc: 'on', arm: 'track', lifted: true, busy: false })
-  })
-
-  it('隐藏时:在飞的那一串作废直接摆;藏着期间的变化只摆不演', () => {
-    const deck = new DeckController()
-    deck.sync(A)
-    deck.sync(B)
-    deck.setSuspended(true)
-    expect(deck.pendingTimers()).toBe(0)
-    expect(deck.getSnapshot()).toMatchObject({ title: B.title, disc: 'on', busy: false, spinning: true })
-    deck.sync({ ...B, title: '潮汐表 - 北岸电台' })
-    expect(deck.pendingTimers()).toBe(0)
-    expect(deck.getSnapshot().title).toBe('潮汐表 - 北岸电台')
-  })
-
-  it('减弱动态效果:换歌只淡出淡入', () => {
-    const deck = new DeckController({ reducedMotion: () => true })
-    deck.sync(A)
-    deck.sync(B)
-    expect(deck.getSnapshot()).toMatchObject({ busy: true, fading: true, title: A.title })
-    vi.advanceTimersByTime(MUSIC_FADE_MS)
-    expect(deck.getSnapshot()).toMatchObject({ busy: true, fading: false, title: B.title, disc: 'on', spinning: true })
-    vi.advanceTimersByTime(MUSIC_FADE_MS)
-    expect(deck.getSnapshot()).toMatchObject({ busy: false })
-    expect(deck.pendingTimers()).toBe(0)
-  })
-
-  it('dispose 清全部计时器;跑到一半被拆,落到「想要的」而不是挂着 busy', () => {
-    const deck = new DeckController()
-    deck.sync(A)
-    deck.sync(B)
-    expect(deck.pendingTimers()).toBeGreaterThan(0)
-    deck.dispose()
-    expect(deck.pendingTimers()).toBe(0)
-    expect(deck.getSnapshot()).toMatchObject({ busy: false, title: B.title })
-  })
-})
 
 describe('SpinLoop:惯性', () => {
   function crank() {
@@ -209,5 +66,40 @@ describe('SpinLoop:惯性', () => {
     spin.set(true)
     expect(spin.running()).toBe(false)
     spin.dispose()
+  })
+})
+
+describe('SpinLoop:把每一帧的角度交出去(音乐面 v8 的淡反光)', () => {
+  it('转的时候每帧报角度;停住之后不再报', () => {
+    let pending: ((now: number) => void) | null = null
+    let now = 0
+    const frames: FrameSource = {
+      request: (cb) => {
+        pending = cb
+        return 1
+      },
+      cancel: () => {
+        pending = null
+      },
+    }
+    const seen: number[] = []
+    const loop = new SpinLoop(frames, (deg) => seen.push(deg))
+    loop.set(true, true)
+    for (let i = 0; i < 5; i++) {
+      now += 16
+      const cb = pending as ((t: number) => void) | null
+      pending = null
+      cb?.(now)
+    }
+    expect(seen.length).toBeGreaterThanOrEqual(5)
+    expect(new Set(seen.map((d) => d.toFixed(2))).size).toBeGreaterThan(1)
+    loop.set(false, true)
+    const before = seen.length
+    const cb = pending as ((t: number) => void) | null
+    pending = null
+    cb?.(now + 16)
+    expect(pending).toBeNull()
+    expect(seen.length - before).toBeLessThanOrEqual(1)
+    loop.dispose()
   })
 })

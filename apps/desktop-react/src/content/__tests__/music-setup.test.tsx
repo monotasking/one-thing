@@ -179,12 +179,12 @@ afterEach(() => {
 })
 
 describe('后端没配好:画向导,不是画一句话', () => {
-  it('向导占唱机那一块;电台条与歌条这几步里不画', async () => {
+  it('向导占唱片那一块;唱片面与按钮那一行这几步里不画', async () => {
     await mount(tableWith(runtime()))
     expect(screen.getByTestId('music-setup').dataset.step).toBe('env')
     // 今天那句提示只留给「后端整个读不到」那一档。
     expect(screen.queryByTestId('music-not-ready')).toBeNull()
-    expect(screen.queryByTestId('music-radio')).toBeNull()
+    expect(screen.queryByTestId('music-deck')).toBeNull()
     expect(screen.queryByTestId('music-playlist-toggle')).toBeNull()
   })
 
@@ -194,10 +194,10 @@ describe('后端没配好:画向导,不是画一句话', () => {
     expect(screen.getByTestId('music-not-ready')).toBeTruthy()
   })
 
-  it('配好了:向导不在场,电台条回来', async () => {
+  it('配好了:向导不在场,唱片面回来', async () => {
     await mount(tableWith(runtime({ setupStage: 'ready', configured: true, loggedIn: true })))
     expect(screen.queryByTestId('music-setup')).toBeNull()
-    expect(screen.getByTestId('music-radio')).toBeTruthy()
+    expect(screen.getByTestId('music-deck')).toBeTruthy()
   })
 })
 
@@ -419,11 +419,17 @@ describe('③ 登录', () => {
 
     // 「登上了」这件事由唱机出现自己说(用户 09-18:「进电台了」这是让用户读的吗)。
     await waitFor(() => expect(screen.queryByTestId('music-setup')).toBeNull())
-    expect(screen.getByTestId('music-radio')).toBeTruthy()
+    expect(screen.getByTestId('music-deck')).toBeTruthy()
   })
 })
 
-describe('账号菜单', () => {
+/** 账号那颗钮住在播放列表抽屉的檐上(音乐面 v8:电台条并掉之后)。 */
+async function openAccount() {
+  if (!screen.queryByTestId('music-playlist')) await click('music-playlist-toggle')
+  await click('music-account')
+}
+
+describe('账号菜单(在播放列表抽屉的檐上)', () => {
   const READY = runtime({
     setupStage: 'ready',
     configured: true,
@@ -438,7 +444,7 @@ describe('账号菜单', () => {
 
   it('出声方式两项:当前那个打勾,换一个发一次 set-player', async () => {
     await mount(tableWith(READY))
-    await click('music-account')
+    await openAccount()
 
     const here = screen.getByRole('menuitemradio', { name: '在这台电脑上出声' })
     const inApp = screen.getByRole('menuitemradio', { name: '交给网易云音乐 App' })
@@ -456,7 +462,7 @@ describe('账号菜单', () => {
 
   it('点已经打着勾的那一项:一发都不发', async () => {
     await mount(tableWith(READY))
-    await click('music-account')
+    await openAccount()
     await act(async () => {
       fireEvent.click(screen.getByRole('menuitemradio', { name: '在这台电脑上出声' }))
       await new Promise((resolve) => setTimeout(resolve, 0))
@@ -466,19 +472,20 @@ describe('账号菜单', () => {
 
   it('退出登录:先确认 —— 取消 = 一发都不发,确认才发 logout', async () => {
     await mount(tableWith(READY))
-    await click('music-account')
+    await openAccount()
     await act(async () => {
       fireEvent.click(screen.getByRole('menuitem', { name: '退出登录' }))
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
-    expect(screen.getByRole('dialog')).toBeTruthy()
+    // 抽屉本身就是一格 dialog;确认框是叠在它上面的第二格。
+    expect(screen.getAllByRole('dialog')).toHaveLength(2)
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: '取消' }))
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
     expect(setupCalls()).toEqual([])
 
-    await click('music-account')
+    await openAccount()
     await act(async () => {
       fireEvent.click(screen.getByRole('menuitem', { name: '退出登录' }))
       await new Promise((resolve) => setTimeout(resolve, 0))
@@ -492,13 +499,4 @@ describe('账号菜单', () => {
     ])
   })
 
-  it('右键电台条开的是同一张表(动作单产地)', async () => {
-    await mount(tableWith(READY))
-    await act(async () => {
-      fireEvent.contextMenu(screen.getByTestId('music-radio'), { clientX: 40, clientY: 40 })
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
-    expect(screen.getByRole('menuitemradio', { name: '在这台电脑上出声' })).toBeTruthy()
-    expect(screen.getByRole('menuitem', { name: '退出登录' })).toBeTruthy()
-  })
 })

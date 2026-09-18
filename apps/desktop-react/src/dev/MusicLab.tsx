@@ -105,6 +105,7 @@ function table(state: LabState): Record<string, ResourceReadView> {
     title: i === 0 ? nextTitle : ['凌晨便利店 - 霜降乐队', '潮汐表 - 北岸电台', '十二楼的风 - 苏河'][i % 3],
     say: i === 0 ? (state.starting === 'say' ? '下一张,旧电扇的《雨棚下》。前奏那点雨声是录进去的。' : SAY_LONG) : i % 3 === 2 ? undefined : '接下来,这一首。',
     note: i === 1 ? '点歌' : undefined,
+    durationS: [188, 221, 176, 204, 233][i % 5],
   }))
   // 换过序就按那串 id 重排 —— 没有这一步,lab 里拖完会弹回去(假端口不认 move)。
   const ordered = state.order
@@ -125,6 +126,13 @@ function table(state: LabState): Record<string, ResourceReadView> {
             programmeLength: entries.length,
             canResume: true,
             volume: 62,
+            startedAt: '2026-09-18T12:00:00Z',
+            // 本场放过的歌,新的在前;有歌在放时头一个就是这首(唱片上那几圈「放过的」由它算)。
+            recent: [
+              ...(title ? [{ title, at: '2026-09-18T12:09:00Z', durationS: 197 }] : []),
+              { title: '慢车 - 林间录音', at: '2026-09-18T12:05:00Z', durationS: 221, verdict: 'skip' },
+              { title: '七楼的猫 - 小满', at: '2026-09-18T12:01:00Z', durationS: 201, verdict: 'love' },
+            ],
             ...(state.starting === 'say' ? { starting: nextTitle } : {}),
           }
         : { active: false, intent: '下雨天,安静点的', programmeLength: 4, canResume: true },
@@ -515,7 +523,6 @@ export function MusicLab() {
    * 去控它,只是换一台从那个态开始的。假端口与读数都在外面,重挂不丢样本。
    */
   const [drawer, setDrawer] = useState<'closed' | 'open'>('closed')
-  const [view, setView] = useState<'turntable' | 'lyrics'>('turntable')
   const [port] = useState(() => new LivePort())
   const [petPort] = useState(() => new LabPetPort())
   const [ready, setReady] = useState(false)
@@ -599,15 +606,6 @@ export function MusicLab() {
           onChange={(next) => setDrawer(next as 'closed' | 'open')}
         />
         <Segmented
-          label="view"
-          options={[
-            { value: 'turntable', label: 'turntable' },
-            { value: 'lyrics', label: 'lyrics page' },
-          ]}
-          value={view}
-          onChange={(next) => setView(next as 'turntable' | 'lyrics')}
-        />
-        <Segmented
           label="locale"
           options={[
             { value: 'zh', label: '中' },
@@ -632,9 +630,8 @@ export function MusicLab() {
       >
         {ready && (
           <MusicPanel
-            key={`${drawer}-${view}`}
+            key={drawer}
             initialPlaylistOpen={drawer === 'open'}
-            initialView={view}
           />
         )}
       </div>

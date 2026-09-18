@@ -145,14 +145,16 @@
   --kf-pet-startle: petStartle;
   --kf-pet-wake: petWake;
   --kf-pet-wave: petWave;
-  /* 唱机场景(content/music/TurntableScene,宠物 P1):窗外的雨、翻唱片堆时封套一张张翘起来 */
-  --kf-music-rain: musicRain;
+  /* 唱片面(content/music/RecordDeck,音乐面 v8):翻面、标签换歌;黑豆翻唱片时封套一张张翘起来 */
+  --kf-music-deck-flip-a: musicDeckFlipA;
+  --kf-music-deck-flip-b: musicDeckFlipB;
+  --kf-music-deck-label-a: musicDeckLabelA;
+  --kf-music-deck-label-b: musicDeckLabelB;
   --kf-music-fan-flick: musicFanFlick;
   /* 音乐面 v7:播放列表抽屉的两种出场 —— < 560 从底下升起,≥ 560 从右边滑进来。 */
   --kf-music-drawer-up: musicDrawerUp;
   --kf-music-drawer-in: musicDrawerIn;
   --kf-music-eq: musicEq;
-  --kf-music-skel: musicSkel;
 }
 
 /* ── 淡入:全系统最常见的一次出场 ─────────────────────────────────────── */
@@ -649,13 +651,30 @@
   }
 }
 
-/* ── 唱机场景(content/music/TurntableScene,宠物 P1)──────────────────────────
- * 逐字搬自样例「黑豆电台」的 `rain` / `flick`。雨那一层是一张斜纹贴图,往左下漂一格
- * 就接上下一格;封套那一下是整张往左上翘起再落回(`translate`,不碰 `transform` ——
- * 三张封套各自的歪角写在 transform 上)。 */
-@keyframes musicRain {
-  to {
-    background-position: -14px 60px;
+/* ── 唱片面(content/music/RecordDeck,音乐面 v8)────────────────────────────
+ * 一面放完:唱片翻过来(转到侧面再转回)。换一首:标签上的字淡入。每只动画两份名字
+ * 轮流用 —— 换一个名字浏览器就从头再播一次,不用计时器(RecordDeck 的 useTurn)。 */
+@keyframes musicDeckFlipA {
+  50% {
+    transform: perspective(900px) rotateY(88deg) scale(0.96);
+  }
+}
+
+@keyframes musicDeckFlipB {
+  50% {
+    transform: perspective(900px) rotateY(88deg) scale(0.96);
+  }
+}
+
+@keyframes musicDeckLabelA {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes musicDeckLabelB {
+  from {
+    opacity: 0;
   }
 }
 
@@ -699,16 +718,6 @@
 
 /* 歌词骨架的呼吸。**只动 opacity** —— 样例那道扫光(shimmer)是背景位移,在一块
  * 只有三行的区域里读起来像有东西在飞过;这里要说的只是「在等」。 */
-@keyframes musicSkel {
-  0%,
-  100% {
-    opacity: var(--music-skel-lo);
-  }
-  50% {
-    opacity: var(--music-skel-hi);
-  }
-}
-
 /* ── 档位表 ────────────────────────────────────────────────────────────────
  * standard 不写块 —— 它就是 tokens.css 的原值。写一个把每个数抄一遍的
  * `[data-motion-tier='standard']` 块只会制造第二份真相。
@@ -768,6 +777,7 @@
    * 灰条)。`--dur-music-hush`(他开口时歌词压暗)也在这里:压暗本身是状态,
    * 走多久是装饰。 */
   --dur-music-eq: 0ms;
-  --dur-music-skel: 0ms;
-  --dur-music-hush: 0ms;
+  /* 唱片面(v8):翻面与标签淡入瞬时;歌词换句直接落位。唱片照转 —— 转不转是信息。 */
+  --dur-music-flip: 0ms;
+  --dur-music-lyric: 0ms;
 }

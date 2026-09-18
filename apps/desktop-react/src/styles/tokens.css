@@ -169,7 +169,6 @@
   --sh-2: 0 8px 24px rgba(43, 42, 38, 0.14);
   --sh-3: 0 20px 48px rgba(43, 42, 38, 0.22);
 
-
   /* 层级 */
   --z-sticky: 10;
   /* 浮窗:在内容之上、在 overlay(500)之下 —— 舞台/Exposé 开着时浮窗被 scrim 压住
@@ -955,6 +954,9 @@
   --icon-btn-xs: 18px;
   --icon-btn-sm: 22px;
   --icon-btn-md: 28px;
+  /* lg:一组钮里唯一的主角(`solid`,音乐面 ⏯)—— 比两边大一圈。 */
+  --icon-btn-lg: 44px;
+  --icon-btn-glyph-lg: 20px;
   --icon-btn-glyph: 14px;
   --icon-btn-glyph-xs: 12px;
 
@@ -1719,23 +1721,14 @@
    * 220px ≈ 八行(--list-row-h)加一点余量:够看出这是一张单子,又不至于
    * 一块吃掉半屏。唱机面(09-17)起每行多一行主持人口播,一行约 46px,
    * 220 只装得下四行半、五首歌就出滚轨;改 320 ≈ 七行。 */
-  --music-list-max-h: 320px;
 
   /* ── 唱机面(唱机音乐面 M1,2026-09-17;宠物 P1 起唱盘换成下面那一整块场景)──
    * 面板 ≥ 960 分两栏,歌词单列右边(阈值在 MusicPanel.module.css 的 @container 里)。 */
   /* 音量条最宽多少:控制条一行里它是最后让的那一件。 */
-  --music-volume-w: 84px;
-  --music-lyrics-h: 150px;
-  --music-lyrics-h-lg: 360px;
-  --music-popover-w: 320px;
   /* 开台 / 点歌输入框的最小宽:再窄就让钮折到下一行,不把提示字挤成半句。 */
   --music-input-min: 180px;
   /* 跟主持人说话(§7.2):你自己那枚回执气泡最宽占这条的多少,以及它的圆角
    * —— 右下角收成小圆(说话的是右边那个人),与宠物气泡的方向相反。 */
-  --music-echo-max: 80%;
-  --music-echo-r: 14px;
-  --music-echo-r-tail: 4px;
-  --music-lamp: var(--danger);
   /* 主持人的话用衬线:与歌词区分「谁在说」。壳没带这副字,落到系统宋体。 */
   --music-font-say: 'Noto Serif SC', 'Songti SC', 'STSong', serif;
 
@@ -1752,29 +1745,9 @@
    * 比 --dur-enter 那种淡入长一倍多 —— 位移要看得见走了多远)。 */
   --music-drawer-dur: 280ms;
   --ease-music-drawer: cubic-bezier(0.3, 0.7, 0.2, 1);
-  /* 歌词页:唱机场景那一块换成歌词时,这一块的身量。 */
-  --music-lyrics-page-h: 340px;
-  /* 逐字填色那一行的字号与行距 —— 歌词是这块面上**最大的字**,它是主角。 */
-  --music-lyric-fs: 19px;
-  --music-lyric-lh: 1.45;
-  /* 当前句里「还没唱到」的那一半有多淡(逐字填色的后半段颜色)。 */
-  --music-lyric-ahead: 38%;
-  /* 离当前句两行以外的淡出。 */
-  --music-lyric-far: 0.55;
-  /* 歌词跟唱:当前句停在窗口这个高度上(0.4 = 四成,留出下半屏看「接下来唱什么」)。 */
-  --music-lyric-anchor: 40%;
-  /* 间奏那三点。 */
-  --music-lyric-dot: 8px;
-  /* 歌词页页头那颗小碟(点它回唱机)。一张黑胶的最简形:中心一圈标签 + 一圈盘面。
-   * 与场景里那张真唱片(--music-scene-disc,四层渐变)刻意**不共用** —— 那一张要
-   * 看得出纹路与反光,这一颗只有 24px,四层渐变在这个身量上糊成一团灰。 */
-  --music-mini-disc: radial-gradient(circle, var(--accent) 0 30%, #17171a 31%);
-  /* 转一圈多久。比场景里的慢一档:它是个记号,不是主角。 */
-  --dur-music-mini-disc: 1800ms;
-
   /* ── 样例剩下的六条(2026-09-18,正本 §8)────────────────────────────────
    * 行上那枚**碟形色块**:一张唱片的最简形 —— 中心一个孔、一圈标签(颜色由歌名
-   * 散列出来,`scene-geometry.ts` 的 `sleeveColorsFor`,同一首歌在哪儿都是同一色)、
+   * 散列出来,`record-geometry.ts` 的 `labelColorsFor`,同一首歌在哪儿都是同一色)、
    * 外面是盘面。**它不是封面占位图** —— 封面这件事后端没有,画一块灰方块会被读成
    * 「还没加载出来」,而它永远不会来(与场景里那张封套同一条判词)。
    * 盘面色与 --music-vinyl 同族:画面里的物件色,不从主题色里混。 */
@@ -1805,30 +1778,14 @@
   --music-now-bar-inset: 12px;
 
   /* 歌词骨架:三行灰条,宽度按样例 70 / 55 / 62,轻微呼吸。 */
-  --music-skel-h: 18px;
-  --music-skel-r: 6px;
-  --music-skel-w-a: 70%;
-  --music-skel-w-b: 55%;
-  --music-skel-w-c: 62%;
   --music-skel-lo: 0.45;
   --music-skel-hi: 0.9;
-  --dur-music-skel: 1600ms;
 
   /* 他开口时歌词让位:整块压到这个不透明度,230ms 走完。 */
-  --music-hush-dim: 0.26;
-  --dur-music-hush: 230ms;
 
   /* 四枚心情色块。**色是内容**(每个心情自己的一对颜色画成斜向渐变),
    * 与 --music-scene-* / --pet-* 同一条例外:画面里的物件色,不从主题色里混。 */
-  --music-mood-h: 56px;
-  --music-mood-r: 12px;
   /* 一枚最窄多宽 —— 窄面板上四枚自己折成两行两列,不硬挤成四条竖缝。 */
-  --music-mood-min: 64px;
-  --music-mood-ink: #ffffff;
-  --music-mood-rain: linear-gradient(135deg, #4a6b8a, #26364a);
-  --music-mood-focus: linear-gradient(135deg, #3f6b5e, #1e3a33);
-  --music-mood-friday: linear-gradient(135deg, #b5643f, #6d3324);
-  --music-mood-drive: linear-gradient(135deg, #4b4470, #211d3a);
 
   /* ── 接入向导(content/music/SetupWizard,2026-09-18;正本
    * apps/desktop-react/docs/music-panel-2026-09.md §6)──────────────────────── */
@@ -1844,114 +1801,21 @@
   --qr-ink: #141414;
   --qr-paper: #ffffff;
 
-  /* ── 唱机场景(content/music/TurntableScene,宠物 P1,2026-09-17;正本
-   * docs/design/pet-system-2026-09.md §8)────────────────────────────────────
-   * 逐格搬自样例「黑豆电台」。场景是一间**夜里的屋子**:墙、灯、窗外的雨、木底座、
-   * 金属转盘、黑胶 —— 全是**画面里的物件色**,在哪个主题里都是这一间屋子(与
-   * --music-vinyl 从前那条、--pet-* 形象色同一条例外),所以不从主题色里混。
-   * 位置与尺寸不在这里:它们是画布几何,住在 content/music/scene-geometry.ts 的
-   * SCENE_LAYOUT(判词在那只文件头)。画布宽高与裁切阈值两边都要,两处一对数,
-   * scene-geometry.test.ts 逐条比对。
-   *
-   * 惯性:转盘 0.9s 到满速(200°/s = 33⅓ 转/分)、1.6s 靠惯性停下。换歌一串:
-   * 唱臂归位 900 → 唱片收进封套 680 → 封套换歌 600 → 唱片滑出 680 → 起转,450 后落针。
-   * 八个时长在 components/motion.ts 有 JS 镜像(计时器要一个数)。 */
-  --music-scene-w: 640px;
-  --music-scene-h: 420px;
-  /* JS 还没量到容器宽的那一帧,场景按画布比例撑开。 */
-  --music-scene-ratio: 640 / 420;
-  --music-scene-crop-below: 520px;
+  /* ── 唱机的几件物件色(宠物 P1 起;音乐面 v8 的唱片面还在用的那几格)──────────────
+   * 旧唱机场景(一间夜里的屋子:墙、窗外的雨、木底座、封套)随音乐面 v8 删了,这里只留
+   * 唱片面照样要用的:标签上的显示字体、不随唱片转的反光、唱臂的底座 / 唱头 / 影子、
+   * 黑豆翻的那几张封套、拖唱头时那枚提示。全是画面里的物件色,不从主题色里混。 */
   --music-scene-font-display: 'ZCOOL XiaoWei', 'Noto Serif SC', 'Songti SC', 'STSong', serif;
 
-  --music-scene-bg: #1f1c1a;
-  --music-scene-wall: linear-gradient(#2b2724, #1e1b19 70%);
-  --music-scene-lamp: radial-gradient(420px 260px at 560px 30px, rgba(255, 196, 128, 0.22), transparent 70%);
-  /* 关台:屋里的灯暗一半。 */
-  --music-scene-room-dim: brightness(0.55);
-
-  --music-scene-window-frame: #3a322b;
-  --music-scene-window-frame-w: 6px;
-  --music-scene-window-mullion-w: 4px;
-  --music-scene-window-r: 6px;
-  --music-scene-window-glass: linear-gradient(#17222a, #233642);
-  --music-scene-window-inset: inset 0 0 18px rgba(0, 0, 0, 0.5);
-  --music-scene-rain: repeating-linear-gradient(104deg, transparent 0 11px, rgba(170, 205, 225, 0.2) 11px 12px);
-  --music-scene-rain-tile: 44px 60px;
-  /* 雨那一层往上多铺一截,斜着漂下来时顶上不露白。 */
-  --music-scene-rain-overscan: -60px;
-
-  --music-scene-sleeve-tilt: rotate(-5deg);
-  /* 封套换歌时往下抽出去的那一段。 */
-  --music-scene-sleeve-drop: 40px;
-  --music-scene-sleeve-r: 3px;
-  --music-scene-sleeve-shadow: 6px 10px 18px rgba(0, 0, 0, 0.45);
-  --music-scene-sleeve-gloss: linear-gradient(120deg, rgba(255, 255, 255, 0.12), transparent 40%, rgba(0, 0, 0, 0.12));
-  --music-scene-sleeve-ring: rgba(255, 255, 255, 0.12);
-  --music-scene-sleeve-fade: #15191b;
-  /* 没歌时的素面封套。 */
-  --music-scene-sleeve-blank: linear-gradient(165deg, #3b3531, #1d1a18);
-  --music-scene-sleeve-pad: 10px;
-  --music-scene-sleeve-title-fs: 15px;
-  --music-scene-sleeve-who-fs: 8px;
-  --music-scene-sleeve-who-track: 0.14em;
-  --music-scene-sleeve-title-track: 0.06em;
-
-  --music-scene-plinth: linear-gradient(170deg, #7a553a, #5a3d29 60%, #4b3222);
-  --music-scene-plinth-grain: repeating-linear-gradient(92deg, transparent 0 6px, rgba(0, 0, 0, 0.05) 6px 7px, transparent 7px 19px);
-  --music-scene-plinth-r: 16px;
-  --music-scene-plinth-shadow: inset 0 1px 0 rgba(255, 220, 180, 0.25), inset 0 -6px 0 rgba(0, 0, 0, 0.25), 0 22px 28px -10px rgba(0, 0, 0, 0.6);
-  --music-scene-brand-ink: rgba(255, 230, 200, 0.35);
-  --music-scene-brand-fs: 8px;
-  --music-scene-brand-track: 0.3em;
-  /* ON AIR 灯(宠物 P3,§10.5):灭 = 暗红玻璃里看得见字的轮廓,亮 = 红底白字外发光。 */
-  --music-scene-onair-r: 3px;
-  --music-scene-onair-fs: 8px;
-  --music-scene-onair-track: 0.18em;
-  --music-scene-onair-ink: rgba(255, 255, 255, 0.25);
-  --music-scene-onair-ink-lit: #ffffff;
-  --music-scene-onair-glass: #3a2a22;
-  --music-scene-onair-lit: #e0473a;
-  --music-scene-onair-inset: inset 0 1px 2px rgba(0, 0, 0, 0.5);
-  --music-scene-onair-glow: 0 0 14px rgba(224, 71, 58, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-
-  --music-scene-platter: conic-gradient(#8b8a86, #d7d5cf, #7c7b77, #cfcdc7, #8b8a86, #dcdad4, #8b8a86);
-  --music-scene-strobe: repeating-conic-gradient(#3b3a37 0 1.6deg, transparent 1.6deg 5deg);
-  --music-scene-strobe-mask: radial-gradient(circle, transparent 0 120px, #000 121px 124px, transparent 125px);
-
-  /* 黑胶:两圈空白纹带 + 外沿 + 细密的纹。 */
-  --music-scene-disc:
-    radial-gradient(circle, transparent 0 58%, rgba(255, 255, 255, 0.07) 58.4%, transparent 59.2%),
-    radial-gradient(circle, transparent 0 78%, rgba(255, 255, 255, 0.06) 78.3%, transparent 79%),
-    radial-gradient(circle, transparent 0 96%, #262627 96.5% 100%),
-    repeating-radial-gradient(circle, #121213 0 1px, #1c1c1d 1px 2.1px);
-  --music-scene-disc-shadow: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.55));
-  --music-scene-disc-shadow-lift: drop-shadow(0 12px 12px rgba(0, 0, 0, 0.5));
-  --music-scene-disc-lift: scale(1.02);
-  /* 唱片收进左边的封套:朝封套飞过去、缩小、跟着封套歪一点、淡掉。 */
-  --music-scene-disc-stow: translate(-142px, -50px) scale(0.6) rotate(-5deg);
-  --music-scene-label-rim: rgba(0, 0, 0, 0.3);
-  --music-scene-label-ring: rgba(255, 255, 255, 0.18);
-  --music-scene-spindle: #d6d3cc;
   /* 反光不随唱片转(光是灯的位置,不是唱片的)。 */
   --music-scene-sheen: conic-gradient(from 18deg, transparent 0 6%, rgba(255, 255, 255, 0.16) 11%, transparent 17% 50%, rgba(255, 255, 255, 0.1) 60%, transparent 67%);
-  --music-scene-sheen-mask: radial-gradient(circle, transparent 0 35%, #000 36%);
 
   --music-scene-arm-base: radial-gradient(circle at 40% 35%, #e3e1db, #8e8c87 70%);
   --music-scene-arm-base-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
-  --music-scene-cue: #b9b6af;
-  --music-scene-cue-shadow: 0 2px 3px rgba(0, 0, 0, 0.4);
-  --music-scene-cue-r: 3px;
-  --music-scene-arm-weight: #3a3936;
-  --music-scene-arm-weight-cap: #56544f;
-  --music-scene-arm-tube: #d9d7d1;
-  --music-scene-arm-tube-glint: rgba(255, 255, 255, 0.6);
   --music-scene-arm-head: #2b2a28;
   --music-scene-arm-lift-tab: #bdbab3;
-  --music-scene-arm-stylus: #d2a54a;
-  /* 唱臂落着时影子贴近;抬起来影子拉远变淡,唱臂本身往上挪一点。 */
   --music-scene-arm-shadow: drop-shadow(3px 5px 3px rgba(0, 0, 0, 0.5));
   --music-scene-arm-shadow-lift: drop-shadow(10px 16px 7px rgba(0, 0, 0, 0.32));
-  --music-scene-arm-lift: translate(-1px, -4px);
 
   --music-scene-fan-a: linear-gradient(150deg, #7b5a3e, #3b2a1d);
   --music-scene-fan-b: linear-gradient(150deg, #3e4d7a, #1f2745);
@@ -1971,22 +1835,137 @@
   --music-scene-tip-pad: 2px 7px;
   --music-scene-tip-r: 5px;
 
+  /* ── 唱片面(content/music/RecordDeck,音乐面 v8 · 唱针读歌词,2026-09-18;样例「黑豆电台」v7)──
+   * 一整块深色画面:整张唱片 + 唱臂 + 唱针旁边的歌词 + 黑豆。画面里的颜色是**物件色**,在哪个
+   * 主题里都是这一张唱片(与 --music-scene-* / --pet-* 同一条例外),所以不从主题色里混。
+   * 尺寸按唱片半径走:`--music-deck-k-*` 是「乘唱片半径」的系数(带 px,RecordDeck.module.css
+   * 里写 `calc(var(--deck-r) * var(--music-deck-k-…))`),几何本身在 music/record-geometry.ts。
+   * 两格高度定死(窄 300 / 宽 380,按钮那一行 88):开台、关台、说话,面板都不变形。 */
+  --music-deck-h: 300px;
+  --music-deck-h-wide: 380px;
+  --music-deck-row-h: 88px;
+  --music-deck-keys-h: 44px;
+  --music-deck-bg: linear-gradient(#231f1c, #1a1715);
+  --music-deck-ink: #e9dcc8;
+  --music-deck-light: radial-gradient(52% 78% at 24% 50%, rgba(255, 196, 128, 0.16), transparent 70%);
+  --music-deck-light-off: 0.25;
+
+  --music-deck-rim-inset: -3.5%;
+  --music-deck-rim: conic-gradient(from 20deg, #6f6d69, #c4c2bc, #5f5d5a, #b8b6b0, #6f6d69, #c9c7c1, #6f6d69);
+  --music-deck-rim-shadow: 0 16px 30px -10px rgba(0, 0, 0, 0.75);
+  --music-deck-disc:
+    radial-gradient(circle, transparent 0 50%, rgba(255, 255, 255, 0.06) 50.4%, transparent 51.4%),
+    radial-gradient(circle, transparent 0 96.2%, #262627 96.6%),
+    repeating-radial-gradient(circle, #121213 0 1px, #1c1c1d 1px 2.1px);
+  --music-deck-disc-shadow: 0 2px 5px rgba(0, 0, 0, 0.6);
+  /* 纹带之间的空白:一道亮线 + 紧贴外侧一道暗线。 */
+  --music-deck-gap: rgba(255, 255, 255, 0.1);
+  --music-deck-gap-w: 1.5;
+  --music-deck-gap-shade: #0b0b0c;
+  --music-deck-gap-shade-w: 1;
+  /* 正在放的那一圈微微发亮;黑豆会开口的那一首,纹带起点一枚红点。 */
+  --music-deck-glow: rgba(231, 154, 69, 0.14);
+  --music-deck-talk: #e0473a;
+  --music-deck-talk-glow: drop-shadow(0 0 3px rgba(224, 71, 58, 0.9));
+  --music-deck-sheen-mask: radial-gradient(circle, transparent 0 42%, #000 43%);
+  /* 「在转」的那道淡反光(角度与明暗由转盘每帧写进来)。 */
+  --music-deck-warp: conic-gradient(from -30deg, transparent 0 3%, rgba(255, 236, 210, 0.1) 8%, transparent 14% 52%, rgba(255, 236, 210, 0.06) 58%, transparent 64%);
+  --music-deck-warp-mask: radial-gradient(circle, transparent 0 50%, #000 52% 95%, transparent 96.5%);
+  --music-deck-warp-o: 0.8;
+
+  /* 标签:纸跟着唱片转,字正着。关着 / 没歌时一张素面。 */
+  --music-deck-label-at: 29%;
+  --music-deck-label-size: 42%;
+  --music-deck-label-edge: inset 0 0 0 1px rgba(0, 0, 0, 0.22);
+  --music-deck-label-ring-at: 7%;
+  --music-deck-label-ring: rgba(0, 0, 0, 0.14);
+  --music-deck-label-idle-paper: #d9d2c4;
+  --music-deck-label-idle-ink: #4a443c;
+  --music-deck-title-lh: 1.12;
+  --music-deck-title-track: 0.03em;
+  --music-deck-side-track: 0.14em;
+  --music-deck-side-o: 0.6;
+  --music-deck-spindle: radial-gradient(circle at 35% 30%, #ffffff, #9d9b96);
+  --music-deck-spindle-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+
+  /* 唱臂:S 形换成一根直管 + 唱头壳 + 橙色唱头(与黑豆的耳机同色)。 */
+  --music-deck-weight: linear-gradient(90deg, #34322f, #6b6864, #2c2a28);
+  --music-deck-weight-r: 3px;
+  --music-deck-hub: radial-gradient(circle at 40% 35%, #f3f1ec, #8d8b86);
+  --music-deck-tube: linear-gradient(90deg, #8d8b86, #f4f2ed 45%, #8d8b86);
+  --music-deck-tube-w: 3.4px;
+  --music-deck-head-tilt: 22deg;
+  --music-deck-shell-r: 2px;
+  --music-deck-cartridge: #e08a2e;
+  --music-deck-cartridge-shine: inset 0 2px 0 rgba(255, 255, 255, 0.25);
+  --music-deck-lift-h: 2.4px;
+  --music-deck-tip-rise: -170%;
+
+  /* 乘唱片半径的系数。 */
+  --music-deck-k-label-gap: 0.06px;
+  --music-deck-k-title-w: 0.74px;
+  --music-deck-k-artist-w: 0.6px;
+  --music-deck-k-label-row-gap: 0.02px;
+  --music-deck-k-title-fs: 0.155px;
+  --music-deck-k-artist-fs: 0.066px;
+  --music-deck-k-side-fs: 0.036px;
+  --music-deck-k-spindle: 0.05px;
+  --music-deck-k-pivot: 0.3px;
+  --music-deck-k-weight-x: -0.065px;
+  --music-deck-k-weight-y: -0.34px;
+  --music-deck-k-weight-w: 0.13px;
+  --music-deck-k-weight-h: 0.21px;
+  --music-deck-k-hub-at: -0.075px;
+  --music-deck-k-hub: 0.15px;
+  --music-deck-k-head-len: 0.13px;
+  --music-deck-k-shell-x: -0.06px;
+  --music-deck-k-shell-y: -0.18px;
+  --music-deck-k-shell-w: 0.12px;
+  --music-deck-k-shell-h: 0.21px;
+  --music-deck-k-cart-x: -0.048px;
+  --music-deck-k-cart-y: -0.1px;
+  --music-deck-k-cart: 0.096px;
+  --music-deck-k-lift-x: 0.05px;
+  --music-deck-k-lift-y: -0.155px;
+  --music-deck-k-lift-w: 0.1px;
+  --music-deck-k-grab: 0.34px;
+
+  /* 歌词:从唱针旁边流出来,正在唱的那句放大变亮。 */
+  --music-deck-lyrics-mask: linear-gradient(transparent, #000 24%, #000 80%, transparent);
+  --music-deck-line: #80766b;
+  --music-deck-line-past: #5d564e;
+  --music-deck-line-current: #fbefdc;
+  --music-deck-line-hover: #d9cbb6;
+  --music-deck-line-gap: #5f574e;
+  --music-deck-line-fs: 15px;
+  --music-deck-line-fs-wide: 20px;
+  --music-deck-line-pad: 4px 0;
+  --music-deck-line-current-scale: 1.1;
+  --music-deck-gap-pad: 10px 0;
+  --music-deck-gap-track: 0.18em;
+
+  /* 黑豆身边翘起的那几张封套。 */
+  --music-deck-fan-bottom: 4px;
+  --music-deck-fan-w: 70px;
+  --music-deck-fan-h: 90px;
+
+  /* 播放列表里「翻面以后」那条线、「放过的」那一节。 */
+  --music-deck-flip-track: 0.2em;
+  --music-deck-loved: #c43f4b;
+
+  --dur-music-flip: 880ms;
+  --dur-music-lyric: 550ms;
+
   --dur-music-spin-up: 900ms;
   --dur-music-spin-down: 1600ms;
-  --dur-music-needle-lead: 450ms;
   --dur-music-arm-move: 900ms;
   --dur-music-arm-settle: 300ms;
   --dur-music-arm-lift: 250ms;
-  --dur-music-stow: 680ms;
   --dur-music-swap: 600ms;
-  --dur-music-fade: 150ms;
   --dur-music-room: 800ms;
-  --dur-music-rain: 700ms;
   --dur-music-fan: 350ms;
   --dur-music-fan-flick: 1100ms;
   --dur-music-fan-stagger: 360ms;
-  --dur-music-onair: 250ms;
-  --ease-music-arm: cubic-bezier(0.45, 0, 0.25, 1);
   --ease-music-disc: cubic-bezier(0.5, 0, 0.3, 1);
 
   /* ── 宠物(src/pets,宠物 P0,2026-09-17;正本 docs/design/pet-system-2026-09.md)──

@@ -8,14 +8,8 @@ import {
   DOCK_WAKE_DWELL_MS,
   DUR_MS,
   LAND_MS,
-  MUSIC_ARM_MOVE_MS,
-  MUSIC_ARM_SETTLE_MS,
-  MUSIC_FADE_MS,
-  MUSIC_NEEDLE_LEAD_MS,
   MUSIC_SPIN_DOWN_MS,
   MUSIC_SPIN_UP_MS,
-  MUSIC_STOW_MS,
-  MUSIC_SWAP_MS,
   NEIGHBOR_MS,
   SETTLE_MS,
   EXIT_MS,
@@ -105,15 +99,9 @@ describe('JS 侧的时长常量与 tokens.css 逐条相等', () => {
     ['--dur-neighbor', NEIGHBOR_MS],
     ['--dur-settle', SETTLE_MS],
     ['--dur-land', LAND_MS],
-    /* 唱机场景(宠物 P1):惯性与换歌那一串的计时器跟着 CSS 过渡走(判词在 motion.ts)。 */
+    /* 唱片的惯性:起转 / 停转由 JS 算(判词在 motion.ts)。 */
     ['--dur-music-spin-up', MUSIC_SPIN_UP_MS],
     ['--dur-music-spin-down', MUSIC_SPIN_DOWN_MS],
-    ['--dur-music-needle-lead', MUSIC_NEEDLE_LEAD_MS],
-    ['--dur-music-arm-move', MUSIC_ARM_MOVE_MS],
-    ['--dur-music-arm-settle', MUSIC_ARM_SETTLE_MS],
-    ['--dur-music-stow', MUSIC_STOW_MS],
-    ['--dur-music-swap', MUSIC_SWAP_MS],
-    ['--dur-music-fade', MUSIC_FADE_MS],
   ])('%s', (name, js) => {
     expect(tokenMs(tokensCss, name), `tokens.css 里找不到 ${name}`).toBe(js)
   })

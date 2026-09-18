@@ -36,6 +36,11 @@
   height: var(--icon-btn-md);
 }
 
+.lg {
+  width: var(--icon-btn-lg);
+  height: var(--icon-btn-lg);
+}
+
 /* ── 状态表(rest / hover / active / pressed / disabled;focus 走全局环)── */
 .btn:hover:not(:disabled) {
   background: var(--st-hover);
@@ -71,6 +76,26 @@
   cursor: default;
 }
 
+/*
+ * `solid`:一组钮里唯一的主角(音乐面 ⏯)。墨色实心圆,悬停变浅一点、按住再浅一点 ——
+ * 与透明那一档同一副「hover 浅一档、active 深一档」的方向,只是底从透明换成墨。
+ */
+.solid {
+  border-radius: 50%;
+  background: var(--text-1);
+  color: var(--surface-2);
+}
+
+.solid:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text-1) 86%, var(--surface-2));
+  color: var(--surface-2);
+}
+
+.solid:active:not(:disabled) {
+  background: color-mix(in srgb, var(--text-1) 76%, var(--surface-2));
+  color: var(--surface-2);
+}
+
 /* 危险动作只换**字色**,不换底 —— 「状态色只上图标 / 点,永不换底」(四轴之一)。 */
 .danger:not(:disabled) {
   color: var(--danger);
@@ -89,4 +114,9 @@
 .xs .icon {
   width: var(--icon-btn-glyph-xs);
   height: var(--icon-btn-glyph-xs);
+}
+
+.lg .icon {
+  width: var(--icon-btn-glyph-lg);
+  height: var(--icon-btn-glyph-lg);
 }
