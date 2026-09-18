@@ -19,6 +19,9 @@
  * `sessions/` 里,不新开一棵同名树。
  */
 
+import type { AmbientSource } from '@onething/runtime/ambient'
+import { defaultAmbientSources } from '../ambient/sources.js'
+import { AmbientResourceProvider } from './ambient-provider.js'
 import { NO_ORIGIN_SESSION, ResourceInputValidator, ResourceKernel, ResourceRegistry } from '@onething/core/resource'
 import type { ResourceKernelOptions } from '@onething/core/resource'
 import { combineValidators, type ToolRunner, type Validator } from '@onething/core/toolkit'
@@ -208,6 +211,8 @@ export interface MountBuiltinResourcesOptions {
    * 没有宿主的 `pet:` 连一条读法都答不出来。
    */
   readonly pets?: PetsSubsystem | null
+  /** 外界来源表(测试换成手摇的)。缺席 = `defaultAmbientSources()`。 */
+  readonly ambientSources?: readonly AmbientSource[]
 }
 
 export function mountBuiltinResources(
@@ -265,6 +270,14 @@ export function mountBuiltinResources(
   if (options.pets) {
     const pet = new PetResourceProvider(options.pets)
     disposers.push(() => pet.dispose(), kernel.mount(pet))
+  }
+  /*
+   * 外界那几件事(时间、天气……,09-19)。**只在有宠物的宿主上装**:它们是给旁观者看的事实,没有宠物
+   * 就没人听 —— 装了只是每半小时白白问一次天。顺序同上:先摘 scheme,再停来源。
+   */
+  if (options.pets) {
+    const ambient = new AmbientResourceProvider(options.ambientSources ?? defaultAmbientSources())
+    disposers.push(() => ambient.dispose(), kernel.mount(ambient))
   }
   return async () => {
     for (const dispose of [...disposers].reverse()) await dispose()

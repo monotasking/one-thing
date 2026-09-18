@@ -25,6 +25,8 @@ import type { Utterance } from '@onething/runtime/pets'
 import { EventBus } from '../../../events/event-bus.js'
 import { forwardResourceEventsToBus } from '../../resource/event-bridge.js'
 import { PetResourceProvider } from '../../resource/pet-provider.js'
+import { AmbientResourceProvider } from '../../resource/ambient-provider.js'
+import type { AmbientSource } from '@onething/runtime/ambient'
 import type { HostVoiceKit, PatterSpeech } from '../../music/host-voice.js'
 import { PetsSubsystem, UnknownPetError } from '../subsystem.js'
 
@@ -119,6 +121,24 @@ describe('PetsSubsystem', () => {
     expect(utterances).toEqual([expect.objectContaining({ petId: 'heidou', mode: 'speak', text: '下一首来了', about: { scheme: 'demo', event: 'announced' } })])
     expect(lines.map(line => line.kind)).toEqual(['moment', 'utterance'])
     expect(pets.current().utterances.map(u => u.text)).toEqual(['下一首来了'])
+  })
+
+  it('09-19 外界来源(时间 / 天气)走同一条路:ambient: 报的事实进账本,宠物子系统一个来源的名字都不认识', async () => {
+    let emitWeather: ((event: string, payload: Record<string, unknown>) => void) | undefined
+    const weather: AmbientSource = {
+      id: 'weather',
+      events: {
+        weatherChanged: { title: 'weather changed', payload: EMPTY, moment: { weight: 'high', gist: '外面的天气变了' } },
+      },
+      snapshot: () => undefined,
+      start: emit => ((emitWeather = emit), () => {}),
+    }
+    const ambient = new AmbientResourceProvider([weather])
+    teardown.push(kernel.mount(ambient), () => ambient.dispose())
+    emitWeather?.('weatherChanged', { kind: 'rain', from: 'clear', say: '下雨了。' })
+    const lines = await ledger()
+    expect(lines).toContainEqual(expect.objectContaining({ kind: 'moment', scheme: 'ambient', event: 'weatherChanged' }))
+    expect(utterances).toEqual([expect.objectContaining({ text: '下雨了。', about: { scheme: 'ambient', event: 'weatherChanged' } })])
   })
 
   it('ignores a resource event whose spec declares no moment', async () => {
