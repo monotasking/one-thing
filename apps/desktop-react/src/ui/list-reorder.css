@@ -1,0 +1,85 @@
+/*
+ * **一列行在一次换序里的样子**(09-18,`ui/list-reorder.ts` 的样式那一半)。
+ *
+ * ── 为什么是普通 `.css` 而不是 `.module.css` ─────────────────────────────
+ * 两条理由,与 `ui/ButtonBase.css` 逐字同源:
+ *  ① 这里一个本地类名都没有 —— 画的全是 `ui/list-reorder.ts` **自己写上去的那几格
+ *    `data-*`**(谁被抬起、谁在让位、谁在收笔)。属性选择器不需要 CSS Modules 的
+ *    改名,套上去只会多一层把戏;
+ *  ② 「只为副作用」的 CSS Module import 会被 `vite build` 摇掉、整份不进产物
+ *    (09-02 病历,全文在 `ButtonBase.css` 文件头)。普通 CSS 的 import 摇不掉。
+ *
+ * ── 为什么这几句不许搬进消费面 ──────────────────────────────────────────
+ * 「抬起的那一格关掉过渡、让位的邻居**要**过渡」是**同一件事的两半**:跟手期每帧
+ * 直接写 transform,留着过渡就是让它追着指针跑一段固定的滞后(手感上是「粘在
+ * 后面」);而邻居一帧只跳一次,不过渡反而看不出发生了什么。两句拆到两个文件里
+ * 写,迟早只改得动一句 —— 这正是「基础件先行」要治的那一种病。
+ *
+ * ── 动效两档,一个结论,零 JS 分支 ──────────────────────────────────────
+ * 时长全部读 `--dur-neighbor` / `--dur-settle`,而动效档「无」在 `styles/motion.css`
+ * 里把这两格**归 0**(那条纪律的原话:「档位只换 --dur 族」)。所以「动效档 none 下
+ * 不做让位动画、直接落位」是**结构保证**,JS 里一句 `currentMotionTier()` 都不必写。
+ * 系统的 `prefers-reduced-motion` 是另一条来源(它在 `reading/` 里落成的是 `calm` 档,
+ * 不是 `none`),所以底下那一块把两条过渡再关一次 —— 两个来源一个结论,与
+ * `ui/Dots` / `ui/Spinner` 同一手。
+ */
+
+/*
+ * 把手:它是这一行**唯一**的起拖口。整行可拖会与行内的点击、右键菜单打架
+ * (这条判词写在 `list-reorder.ts` 的文件头)。
+ * `touch-action: none` 让触摸板 / 触屏上的纵向手势归我们,而不是先滚一段列表。
+ */
+[data-list-reorder-handle] {
+  cursor: grab;
+  touch-action: none;
+}
+
+/*
+ * 换序全程整条列表不选中文字。**不是 pointerdown 里 `preventDefault`**:
+ * 那一句会连把手自己的聚焦一起挡掉,于是「按一下把手再用方向键」当场失效
+ * (键盘那条路的入口正是这颗钮拿到焦点)。
+ */
+[data-list-reorder][data-reordering] {
+  user-select: none;
+}
+
+[data-list-reorder][data-reordering] [data-list-reorder-handle] {
+  cursor: grabbing;
+}
+
+/*
+ * `data-lift` = 这一行被拎起来了。**只做三件事**:浮到邻居上面、加一层很轻的
+ * 投影、**关掉过渡**。不放大、不改形、不换底色。
+ * `will-change` 提前声明,让合成层在抬起那一刻就备好,而不是第一帧现建。
+ */
+[data-list-reorder-item][data-lift] {
+  position: relative;
+  z-index: 2;
+  transition: none;
+  will-change: transform;
+  box-shadow: var(--drag-lift-shadow);
+}
+
+/* 让位的邻居:只动 transform,过渡吃 `--dur-neighbor`。 */
+[data-list-reorder-item][data-shift] {
+  transition: transform var(--dur-neighbor) var(--ease);
+}
+
+/*
+ * `data-settle` = 松手了,正从手上那个位置滑进新槽(FLIP)。位移的两端由
+ * `list-reorder.ts` 的 `settle()` 写:先用 `transition: none` 把它按回手上的位置,
+ * 强制一次回流,再挂上这一格让过渡把它送回 0。
+ * 它与 `data-lift` **互斥**(一个是跟手期、一个是收笔)。
+ */
+[data-list-reorder-item][data-settle] {
+  position: relative;
+  z-index: 2;
+  transition: transform var(--dur-settle) var(--ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-list-reorder-item][data-shift],
+  [data-list-reorder-item][data-settle] {
+    transition: none;
+  }
+}

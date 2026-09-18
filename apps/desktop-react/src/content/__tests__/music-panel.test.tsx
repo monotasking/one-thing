@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MusicPanel } from '../MusicPanel'
 import { FocusDispatchHarness } from '../../test/focus-harness'
 import { configureMusicPort } from '../../data/music-port'
@@ -454,6 +454,137 @@ describe('唱机面:操作不许有两个意思', () => {
     fireEvent.contextMenu(row as HTMLElement)
     const promote = await screen.findByText('提到下一首')
     expect((promote.closest('button') as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+/**
+ * **拖拽换序**(09-18:节目单接上 `ui/list-reorder`)。判的是这块面与那件基础件
+ * 之间的那条缝 —— 编舞本身的守卫在 `ui/__tests__/list-reorder.test.tsx`,这里只问
+ * 三句话:发出去的 `programmeAction` 逐字对不对、失败回不回滚、抽屉两档都拖得动。
+ *
+ * **几何要自己摆**:jsdom 里 `getBoundingClientRect` 恒为全 0,而落点判据全靠它。
+ * 桩按「第 i 行在 y = i × 40」摆(与那件的用例同一手);事件仍是手搓 `MouseEvent`,
+ * 类型名是 pointer*(jsdom 没有 `PointerEvent` 构造器)。
+ */
+describe('串联单:拖拽换序', () => {
+  const ROW_H = 40
+  const rect = (top: number, height: number): DOMRect =>
+    ({
+      top,
+      bottom: top + height,
+      height,
+      left: 0,
+      right: 100,
+      width: 100,
+      x: 0,
+      y: top,
+      toJSON: () => ({}),
+    }) as DOMRect
+
+  const rowsOf = (list: Element) => Array.from(list.querySelectorAll<HTMLElement>('[data-list-reorder-item]'))
+
+  beforeEach(() => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.hasAttribute('data-list-reorder')) return rect(0, ROW_H * rowsOf(this).length)
+      if (this.hasAttribute('data-list-reorder-item')) {
+        const list = this.closest('[data-list-reorder]')
+        const at = list ? rowsOf(list).indexOf(this) : -1
+        return rect(at < 0 ? 0 : at * ROW_H, ROW_H)
+      }
+      return rect(0, 0)
+    })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const pointer = (type: string, y: number) =>
+    new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: 0, clientY: y })
+
+  /**
+   * 把某一行从把手拖到下一行下面再松手。
+   *
+   * **`fake.hold` 在这里不是可选项**:`do` 一回来 `settle` 就把五条读数作废重拉,
+   * 而假口的答案表是**不动的**(它不认识刚发出去那条命令),于是乐观补丁当场被
+   * 一份原序盖回去 —— 那不是回滚,是夹具没有后端。所以「补丁真的上了屏」这句话
+   * 只有在 `do` 还挂着的那一帧问得出来(与上面「拿掉」那条用例逐字同一手)。
+   */
+  async function dragDown(entryId: string) {
+    const handle = await screen.findByTestId(`music-entry-drag:${entryId}`)
+    await act(async () => {
+      handle.dispatchEvent(pointer('pointerdown', 10))
+      handle.dispatchEvent(pointer('pointermove', 60))
+      handle.dispatchEvent(pointer('pointerup', 60))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  }
+
+  async function release() {
+    await act(async () => {
+      fake.hold?.release()
+      fake.hold = undefined
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  }
+
+  const titles = () =>
+    Array.from(screen.getByTestId('music-programme').querySelectorAll('li')).map((li) =>
+      li.getAttribute('data-music-entry'),
+    )
+
+  it('拖完发的是 move,`toIndex` 是最终位置;行当场就换了(乐观补丁)', async () => {
+    await mount()
+    await openPlaylist()
+    fake.hold = { release: () => undefined }
+    await dragDown('a')
+    expect(fake.dos).toEqual([
+      { ref: 'music:radio', op: 'programmeAction', params: { action: { kind: 'move', encryptedId: 'a', toIndex: 1 } } },
+    ])
+    // do 还挂着,行已经换位了。
+    expect(titles()).toEqual(['b', 'a'])
+    await release()
+  })
+
+  it('后端不认就回滚 —— 屏幕上不留一张后端没认下的牌', async () => {
+    await mount()
+    await openPlaylist()
+    fake.hold = { release: () => undefined }
+    await dragDown('a')
+    expect(titles()).toEqual(['b', 'a'])
+    fake.outcome = { kind: 'failed', error: { name: 'MusicCommandFailedError', message: '挪不动' } }
+    await release()
+    expect(titles()).toEqual(['a', 'b'])
+    expect((await screen.findByTestId('music-programme-error')).textContent).toBe('挪不动')
+  })
+
+  it('抽屉两档都拖得动(sheet 与 side 装的是同一件)', async () => {
+    panelWidth = 360
+    await mount()
+    await openPlaylist()
+    expect(screen.getByTestId('music-playlist').getAttribute('data-form')).toBe('sheet')
+    await dragDown('a')
+    expect(fake.dos).toHaveLength(1)
+
+    await resizePanel(620)
+    expect(screen.getByTestId('music-playlist').getAttribute('data-form')).toBe('side')
+    fake.dos.length = 0
+    await dragDown('a')
+    expect(fake.dos).toEqual([
+      { ref: 'music:radio', op: 'programmeAction', params: { action: { kind: 'move', encryptedId: 'a', toIndex: 1 } } },
+    ])
+  })
+
+  it('键盘那条路同样落在这块面上:把手上按 ↓ 也发一条 move', async () => {
+    await mount()
+    await openPlaylist()
+    await act(async () => {
+      fireEvent.keyDown(await screen.findByTestId('music-entry-drag:a'), { key: 'ArrowDown' })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(fake.dos).toEqual([
+      { ref: 'music:radio', op: 'programmeAction', params: { action: { kind: 'move', encryptedId: 'a', toIndex: 1 } } },
+    ])
   })
 })
 

@@ -85,6 +85,10 @@ import {
   Sparkles,
   // B3-b:设置页「身份」那一行的删钮(X 会被读成「关掉」;会删数据的钮该长得像删)。
   Trash2,
+  // 09-18 列表换序(`ui/list-reorder`)那颗把手。**竖排的那一枚**:它说的是
+  // 「这一行在一列里上下挪」,横排的 `GripHorizontal` 说的是左右挪 —— 两枚形近
+  // 而意不同,拿错一枚等于在屏幕上说反了方向。
+  GripVertical,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -262,5 +266,6 @@ export {
   ListMusic,
   MicVocal,
   Trash2,
+  GripVertical,
 }
 export type { LucideIcon }

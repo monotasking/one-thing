@@ -48,6 +48,8 @@ interface LabState {
   fault: 'none' | 'player' | 'backend'
   setup: 'ready' | 'login'
   programme: 'five' | 'many' | 'empty'
+  /** 节目单的当下顺序(按 encryptedId)。`undefined` = 还没动过,按生成序。 */
+  order?: readonly string[]
   position: number
 }
 
@@ -72,6 +74,14 @@ function table(state: LabState): Record<string, ResourceReadView> {
     say: i === 0 ? (state.starting === 'say' ? '下一张,旧电扇的《雨棚下》。前奏那点雨声是录进去的。' : SAY_LONG) : i % 3 === 2 ? undefined : '接下来,这一首。',
     note: i === 1 ? '点歌' : undefined,
   }))
+  // 换过序就按那串 id 重排 —— 没有这一步,lab 里拖完会弹回去(假端口不认 move)。
+  const ordered = state.order
+    ? [...entries].sort((a, b) => {
+        const ai = state.order?.indexOf(a.encryptedId) ?? -1
+        const bi = state.order?.indexOf(b.encryptedId) ?? -1
+        return (ai < 0 ? entries.length : ai) - (bi < 0 ? entries.length : bi)
+      })
+    : entries
   const title = state.song >= 0 ? SONGS[state.song] : undefined
   const ok = (value: unknown): ResourceReadView => ({ kind: 'ok', value })
   return {
@@ -87,7 +97,7 @@ function table(state: LabState): Record<string, ResourceReadView> {
           }
         : { active: false, intent: '下雨天,安静点的', programmeLength: 4, canResume: true },
     ),
-    'music:radio#programme': ok({ entries: on ? entries : [], onDeck: title }),
+    'music:radio#programme': ok({ entries: on ? ordered : [], onDeck: title }),
     'music:player#nowPlaying':
       state.fault === 'player'
         ? { kind: 'failed', error: { name: 'MusicCommandFailedError', message: '播放器没起来' } }
@@ -173,6 +183,21 @@ function applyOp(state: LabState, op: string, params: Record<string, unknown> | 
     case 'retune':
     case 'radioResume':
       return { ...state, radio: 'on' }
+    case 'programmeAction': {
+      // 只演 move / remove / promote 三种里的顺序那一半:lab 要看的是拖完留不留得住。
+      const action = params?.action as { kind?: string; encryptedId?: string; toIndex?: number } | undefined
+      const count = state.programme === 'many' ? 64 : state.programme === 'empty' ? 0 : 5
+      const ids = state.order ?? Array.from({ length: count }, (_, i) => `e${i}`)
+      const from = action?.encryptedId ? ids.indexOf(action.encryptedId) : -1
+      if (from < 0) return state
+      const rest = ids.filter((id) => id !== action?.encryptedId)
+      if (action?.kind === 'remove') return { ...state, order: rest }
+      const to =
+        action?.kind === 'promote'
+          ? 0
+          : Math.max(0, Math.min(rest.length, typeof action?.toIndex === 'number' ? action.toIndex : from))
+      return { ...state, order: [...rest.slice(0, to), ids[from], ...rest.slice(to)] }
+    }
     default:
       return state
   }

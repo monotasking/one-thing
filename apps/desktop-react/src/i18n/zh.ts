@@ -1946,6 +1946,10 @@ export const zh = {
   'music.armLabel': '唱臂',
   'music.rowMore': '这首的操作',
   'music.rowPromote': '提到下一首',
+  /* 09-18 列表换序:把手的名字 + 落定播报(`ui/list-reorder` 的两句话由消费方给)。
+   * 位次对人说的是「第几首」,所以是 1 起,不是下标。 */
+  'music.rowDrag': '换序:第 {position} 首',
+  'music.rowMoved': '已挪到第 {position} 首,共 {total} 首',
   'music.rowUp': '上移',
   'music.rowDown': '下移',
   'music.rowRemove': '拿掉(以后少排这类)',

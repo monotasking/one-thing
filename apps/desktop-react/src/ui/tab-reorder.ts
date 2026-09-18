@@ -1,4 +1,5 @@
 import { FLASH_MS, SETTLE_MS } from '../components/motion'
+import { clampLead, reorderFrame } from './reorder-math'
 import s from './Tabs.module.css'
 
 /**
@@ -146,30 +147,12 @@ export interface TabStripChoreo {
    * `left` 钳在 `[条左缘, 条右缘 - 这一格的宽]`。不钳的话把标签往条外一甩,那一格
    * 会飞出条去而槽位早就到头了 —— 屏幕上是「它跑了但什么都没发生」。
    *
-   * ── 判据:**被拖标签朝运动方向的那条边越过邻居中心**(§4.2,Chrome 的规则)──
-   * 往右拖看被拖那格的**右边缘**:右边某个邻居的中心被它越过,那个邻居就滑到左边
-   * 去;往左拖看**左边缘**。写出来是一句话:
-   *
-   *   左边的邻居(i < index)  被拖的**左缘**仍在它中心右侧 → 它仍排在左边,计入
-   *   右边的邻居(i > index)  被拖的**右缘**越过了它中心   → 它滑到左边,计入
-   *   最终下标 = 计入的个数,**不再另外加减**
-   *
-   * 三条被这一句一起解决,而它们全是前几版真机上量出来的病:
-   *  · **不是中心对中心**。那一版比的是被拖那格的中线与邻居中线 —— 宽标签要整个
-   *    越过窄邻居才换位,手感发黏;而且条被填满时钳位让中线最多只能**等于**末格
-   *    中线,「拖到最后一位」在结构上到不了。当时的补法是两句两端特例
-   *    (`want <= min` 判 0、`want >= max` 判 last),那是**错判据的症状,不是设计
-   *    的一部分** —— 现在判据自己在两端就对,两句一起删掉了:
-   *      顶到左端 `left = bounds.left` < 首个邻居中心 → 一个都不计入 → 0;
-   *      顶到右端 `left + w = bounds.right` > 每个右邻居中心 → 全计入 → last。
-   *  · **不是「拿走被拖那格之后」的位置**。上一版把右边的邻居整体左移一格宽再算
-   *    中心 —— 那样宽标签一抬起来,右邻居就先跳一下(手还没动,屏幕已经变了)。
-   *  · **邻居中心一律读抬起那一刻的基准矩形,不读活矩形**。邻居此刻正走在 120ms
-   *    的让位过渡里,读它等于让判据自己晃:让一次位 → 中心变了 → 落点变了 →
-   *    让位反向,一帧一次来回,拖快了槽位会漂。
-   *
-   * 让位与落点是**同一句话**算出来的,不是两处:每个邻居的让位量就是「它在落点
-   * 之后就挪一格宽,否则不挪」。两处分开算 = 屏幕上的空档与松手的结果对不上。
+   * ── 判据与让位整段住在 `ui/reorder-math.reorderFrame` ─────────────────────
+   * 「被拖标签朝运动方向的那条边越过邻居中心」(§4.2,Chrome 的规则)、它的三条
+   * 前科、以及「让位与落点是同一句话算出来的」那条纪律,09-18 起是**那一只纯函数**
+   * 的判词 —— 因为竖列表的换序(`ui/list-reorder`)要的是逐字同一句话,而抄一份
+   * 的代价是两份各自漂。这只文件从此只管**这条条自己的形**:抬起、跟手、把那格
+   * 让位量写成 `transform`、空位、撕下、收笔。
    *
    * ── 坐标系:与 `workbench/drop.ts` 的 `stripIndexAt` **同一个** ──────────
    * 答的是「插到第 at 格**之前**」,而且对着**没摘掉任何东西**的那张原始表算。
@@ -303,9 +286,8 @@ export function tabStripChoreo(list: HTMLElement): TabStripChoreo {
    */
   const follow = (held: LiftedState, x: number): number => {
     const self = held.boxes[held.index]
-    const min = held.bounds.left
-    const max = held.bounds.right - self.width
-    const left = Math.max(min, Math.min(x - held.grabDx, max))
+    // 夹紧那一句住在 `ui/reorder-math.clampLead`(竖列表用的是同一句)。
+    const left = clampLead(x - held.grabDx, held.bounds.left, held.bounds.right - self.width)
     held.el.style.transform = `translateX(${left - self.left}px)`
     return left
   }
@@ -340,36 +322,23 @@ export function tabStripChoreo(list: HTMLElement): TabStripChoreo {
     track(x) {
       if (!lifted) return null
       const { index, boxes } = lifted
-      const self = boxes[index]
       const left = follow(lifted, x)
-      const w = self.width
 
       /*
-       * **被拖标签朝运动方向的那条边越过邻居中心**(§4.2;完整判词与三条前科写在
-       * 接口上 `track` 的那一段)。往右拖看右缘、往左拖看左缘,合成一句:
-       *   i < index → 被拖的左缘还在它中心右侧,它仍排在左边,计入;
-       *   i > index → 被拖的右缘越过了它中心,它滑到左边,计入。
-       *
-       * 这条判据静止时答 `next === index`(一个邻居都不动),两端也各自到得了 ——
-       * 所以这里**一句两端特例都没有**。上一版那两句(`want <= min` 判 0、
-       * `want >= max` 判 last)是「中心对中心」那个错判据的症状,随它一起删掉。
+       * 判据与让位量整段由 `ui/reorder-math` 算(判词、三条前科与「两个下标别弄混」
+       * 都在那只文件上)。这里只把答案写成 `transform` —— 那才是这条条自己的形。
+       * 喂进去的是抬起那一刻量的基准矩形:读活矩形会让判据自己晃(前科之三)。
        */
-      let next = 0
+      const frame = reorderFrame(
+        boxes.map((box) => ({ start: box.left, size: box.width })),
+        index,
+        left,
+      )
       boxes.forEach((box, i) => {
+        // 抬起那一格的 transform 是 `follow()` 刚写的跟手位移,不是让位量 ——
+        // 它在 `shifts` 里恒为 0,顺手清掉就是把跟手抹掉(这一行拆掉即红)。
         if (i === index) return
-        const c = box.left + box.width / 2
-        if (i < index ? left >= c : left + w > c) next += 1
-      })
-      /*
-       * 让位:把每个邻居在「摘掉抬起那格之后」的下标 `j` 算出来,`j >= next` 的
-       * 往抬起那格原本的方向挪一格宽。抬起那格左边的往右挪、右边的往左挪 ——
-       * 两句合成一句:`i < index` 的挪 +w 当且仅当它排到了落点之后,`i > index`
-       * 的挪 -w 当且仅当它没排到落点之后。
-       */
-      boxes.forEach((box, i) => {
-        if (i === index) return
-        const j = i < index ? i : i - 1
-        const shift = i < index ? (j >= next ? w : 0) : (j >= next ? 0 : -w)
+        const shift = frame.shifts[i]
         if (shift === 0) {
           box.el.style.transform = ''
           delete box.el.dataset.shift
@@ -379,11 +348,10 @@ export function tabStripChoreo(list: HTMLElement): TabStripChoreo {
         box.el.style.transform = `translateX(${shift}px)`
       })
       /*
-       * `next` 是**最终排第几位**(让位那一段要的就是它);交出去的是**插到第几格
-       * 之前**(见 `track` 的坐标系判词)。往左挪时两者相同,往右挪时差一格 ——
-       * 因为「插到第 k 格之前」这句话是对着还没摘掉自己的那张表说的。
+       * 交出去的是**插到第几格之前**(见 `track` 的坐标系判词)——
+       * `workbench` 那一族收的是它,而让位那一段用的是 `settleIndex`。
        */
-      return next <= index ? next : next + 1
+      return frame.insertIndex
     },
 
     lifted: () => lifted?.boxes[lifted.index].id ?? null,

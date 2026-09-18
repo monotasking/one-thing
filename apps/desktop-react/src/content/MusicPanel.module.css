@@ -376,13 +376,18 @@
   list-style: none;
 }
 
+/*
+ * 三列:把手 / 字 / 「⋯」。把手那一列 09-18 随 `ui/list-reorder` 加进来 ——
+ * 左内距同时从 `--sp-2` 收成 `--sp-1`,让把手的**图标**仍旧落在从前那行字的
+ * 起笔线附近(加一列不等于把整行往右推一格)。
+ */
 .entry {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--sp-2);
   min-height: var(--list-row-h);
-  padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-2);
+  padding: var(--sp-1);
   border-radius: var(--r-1);
 }
 

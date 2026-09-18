@@ -1663,6 +1663,10 @@ export const en: Record<MessageKey, string> = {
   'music.armLabel': 'Tonearm',
   'music.rowMore': 'Actions for this song',
   'music.rowPromote': 'Play next',
+  /* 09-18 列表换序:把手的名字 + 落定播报(`ui/list-reorder` 的两句话由消费方给)。
+   * 位次对人说的是「第几首」,所以是 1 起,不是下标。 */
+  'music.rowDrag': 'Reorder: song {position}',
+  'music.rowMoved': 'Moved to {position} of {total}',
   'music.rowUp': 'Move up',
   'music.rowDown': 'Move down',
   'music.rowRemove': 'Remove (fewer like this)',
