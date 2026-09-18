@@ -20,12 +20,15 @@ import s from './Gallery.module.css'
  * 假端口不碰任何真实 store;面板上的钮也能用:暂停 / 继续 / 跳过 / 拖唱臂改的是
  * 这一台的样本。
  */
+/*
+ * 正本 §5 那六档:300 / 360(底部弹层)· 620(右侧抽屉,仍是一栏)· 900(两栏的门槛)·
+ * 1040 / 1280(两栏)。截图就照这六档 × 四态(有歌 / 没歌 / 抽屉开 / 歌词页)。
+ */
 const WIDTHS = [
   { value: '300', label: '300' },
   { value: '360', label: '360' },
-  { value: '480', label: '480' },
   { value: '620', label: '620' },
-  { value: '820', label: '820' },
+  { value: '900', label: '900' },
   { value: '1040', label: '1040' },
   { value: '1280', label: '1280' },
 ] as const
@@ -244,6 +247,13 @@ const CHOICES: readonly Choice<keyof LabState>[] = [
 export function MusicLab() {
   const [width, setWidth] = useState<string>('620')
   const [state, setState] = useState<LabState>(INITIAL)
+  /*
+   * 两个开关 = 面板的**初始**态。它们换的时候整块面重挂(`key`)—— 抽屉开合的主人
+   * 自始至终是那块面自己(正本 §3.1「卸载:抽屉与歌词页状态不落盘」),这里不越权
+   * 去控它,只是换一台从那个态开始的。假端口与读数都在外面,重挂不丢样本。
+   */
+  const [drawer, setDrawer] = useState<'closed' | 'open'>('closed')
+  const [view, setView] = useState<'turntable' | 'lyrics'>('turntable')
   const [port] = useState(() => new LivePort())
   const [ready, setReady] = useState(false)
   const locale = useStageStore((st) => st.locale)
@@ -284,6 +294,24 @@ export function MusicLab() {
           />
         ))}
         <Segmented
+          label="drawer"
+          options={[
+            { value: 'closed', label: '—' },
+            { value: 'open', label: 'open' },
+          ]}
+          value={drawer}
+          onChange={(next) => setDrawer(next as 'closed' | 'open')}
+        />
+        <Segmented
+          label="view"
+          options={[
+            { value: 'turntable', label: 'turntable' },
+            { value: 'lyrics', label: 'lyrics page' },
+          ]}
+          value={view}
+          onChange={(next) => setView(next as 'turntable' | 'lyrics')}
+        />
+        <Segmented
           label="locale"
           options={[
             { value: 'zh', label: '中' },
@@ -295,9 +323,24 @@ export function MusicLab() {
       </div>
       <div
         data-testid="music-lab-frame"
-        style={{ width: Number(width), height: 760, border: '1px solid var(--line-1)', borderRadius: 12, overflow: 'hidden' }}
+        /* box-sizing 明写成 content-box:全局是 border-box,那条 1px 的框会把
+         * 面板真正拿到的宽吃掉 2px —— 选 900 量到 898,正好落在阈值的另一边。 */
+        style={{
+          boxSizing: 'content-box',
+          width: Number(width),
+          height: 760,
+          border: '1px solid var(--line-1)',
+          borderRadius: 12,
+          overflow: 'hidden',
+        }}
       >
-        {ready && <MusicPanel />}
+        {ready && (
+          <MusicPanel
+            key={`${drawer}-${view}`}
+            initialPlaylistOpen={drawer === 'open'}
+            initialView={view}
+          />
+        )}
       </div>
     </div>
   )

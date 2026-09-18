@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { FocusScope } from '../focus/FocusScope'
 import { useQuery } from '../data/kernel'
 import {
@@ -12,18 +12,29 @@ import {
 import { useT } from '../i18n'
 import type { PetStageHandle } from '../pets/PetStage'
 import { LyricsPane } from './music/LyricsPane'
-import { ProgrammeSheet } from './music/ProgrammeSheet'
+import { PlaylistDrawer } from './music/PlaylistDrawer'
 import { StationStrip } from './music/StationStrip'
-import { Transport } from './music/Transport'
+import { PlaylistButton, Transport } from './music/Transport'
 import { TurntableScene } from './music/TurntableScene'
+import { useMusicPanelForm } from './music/panel-width'
 import { splitTitle } from './music/turntable'
 import { usePlaybackPosition } from './music/usePlaybackPosition'
 import s from './MusicPanel.module.css'
 
 /**
- * **音乐面 · 唱机形**(唱机音乐面 M1,2026-09-17;前身是「音乐收尾 · 壳半边」
- * 09-10 的三块竖摞)。方案页 artifact「唱机音乐面」,拍板记在记忆
- * `music-turntable-2026-09`。
+ * **音乐面 · 整面布局 v7**(2026-09-18,正本 `apps/desktop-react/docs/music-panel-2026-09.md`;
+ * 唱机形 M1 是 09-17,宠物 P1 起唱机那一块是一整幕场景)。
+ *
+ * ── v7 改的是**整面**,不是唱机那一块 ────────────────────────────────────
+ * M1 把节目单直铺在唱机下面。用户原话:「你这个歌词我以为是歌曲列表呢。谁家歌曲列表
+ * 直接往下铺一排啊。」音乐软件的做法是:歌单藏在一颗钮后面,主界面留给正在放的这一首。
+ * 于是:
+ *  · **播放列表** 任何宽度下都不铺在页面上 —— 歌条上一颗钮开抽屉(`PlaylistDrawer`);
+ *  · **窄 / 中(< 900)** 一栏:唱机场景 → 歌名 → 歌条;歌词不在主界面上,
+ *    点「歌词」把唱机场景整块换成歌词页,页头一颗小碟点回来;
+ *  · **宽(≥ 900)** 两栏:左唱机 + 歌名 + 歌条,右常驻歌词,**没有歌词钮**。
+ * 形由**面板自己的宽**说(`music/panel-width.ts`),不是窗口宽:这块面落在架子 /
+ * 浮窗 / 舞台三种宿主里,同一扇窗里它可以只有 320 也可以有 1200。
  *
  * ── 一句话:这块面上每一颗按钮走的都是 `resources.do` ────────────────────
  * 与模型调 `music:player` / `music:radio` 的那只工具是**同一条**路。所有分档(电台开着时
@@ -31,7 +42,7 @@ import s from './MusicPanel.module.css'
  * `do`,绕开它去调 RPC 域就是把那些分档静默丢掉。
  *
  * ── 操作不许有两个意思(用户 09-17「容易使用,避免操作有二义性」)──────────
- *  · 暂停只有控制条上一颗钮;电台条上的「关台」是另一件事;唱臂没有「抬起」。
+ *  · 暂停只有歌条上一颗钮;电台条上的「关台」是另一件事;唱臂没有「抬起」。
  *  · 唱臂只表示「跳到这里」,与进度条发同一条 `seek`;唱片只是显示,不接手势。
  *  · 换台在浮层里按「换台」才生效,预设只填框(换台会重排节目单)。
  *  · `close` 与 `radioStop` 合成一颗「关台」;⏮ ⏭ 的名字随电台变,说出后端真做的事。
@@ -43,44 +54,60 @@ import s from './MusicPanel.module.css'
  *
  * ── DJ 语音**不在这块面上播**(M3 用户 09-17 拍板:改在主进程播)──────────
  * React 壳的 `voice: null`,`MUSIC_DJ_SPEAK` 在这台壳上是哑的;主进程自己出声(电台是后台
- * 常驻的,面板没开也该开口)—— 宠物 P3 起宿主表 `speechOutput` 那一格在主进程里起 mpv / afplay
- * 放口播(`electron/speech-output.ts`),所以这里不订语音、不放音频。
- * 主持人从宠物 P1 起是唱机上的黑豆(`music/TurntableScene.tsx`,正本
- * `docs/design/pet-system-2026-09.md` §8):换歌时的那句口播是它的一个气泡,
- * 挑歌 / 关台 / 出错由它的姿势演,面上不再有「主持人一行」那句说明。
+ * 常驻的,面板没开也该开口)。主持人是唱机上的黑豆(`music/TurntableScene.tsx`,正本
+ * `docs/design/pet-system-2026-09.md` §8)。
  *
  * ══════════════════════════════════════════════════════════════════════════
- * 状态先行:三张状态表(施工纪律第一条)
+ * 状态先行:三张状态表(施工纪律第一条;正本 §3 那三张的落地)
  * ══════════════════════════════════════════════════════════════════════════
  *
  * ── ① 生命周期 ──────────────────────────────────────────────────────────
  *  · 挂载    —— `useMusicLive()`:订 `resource:event`(前缀 `music:`)+ 五条读数
- *                各 `ensure()` 一次。先订后拉;
+ *                各 `ensure()` 一次(先订后拉);按当前宽定一栏 / 两栏;
+ *                抽屉关着;歌词页不在;
  *  · 事件到达 —— 按 `music-source` 那张表标脏 → 后台补拉,**旧读数留在屏上**;
  *  · 播放钟  —— 读数之上按墙钟推位置(`usePlaybackPosition`,只在播放中每 250ms 一拍),
  *                唱臂、进度条、歌词高亮吃同一个数;
- *  · 换宿主  —— 拖成浮窗 / 抬上舞台 / 进全屏不重挂;形随**面板自己的宽**变
- *                (`@container music` 三档,见样式表文件头)。唱臂拖到一半换宿主,
+ *  · 宽度跨 900 —— 两栏 ↔ 一栏。变一栏时歌词**不**自动进歌词页(回到唱机);
+ *                变两栏时若正停在歌词页则退回唱机,歌词改在右栏显示;
+ *  · 开 / 关抽屉 —— 主界面不动、照常播;关掉时焦点**结构性地**回到那颗钮
+ *                (归还在 `PlaylistDrawer` 的文件头);
+ *  · 换歌    —— 抽屉开着不关;歌词页开着不退;
+ *  · 电台关台 / 没歌 —— 歌词页退回唱机;抽屉留着(里面是空态);
+ *  · 换宿主  —— 拖成浮窗 / 抬上舞台 / 进全屏不重挂;唱臂拖到一半换宿主,
  *                `PointerTrack` 的结束路径作废这一下;
- *  · 卸载    —— `closeMusicSource()` 退订,读数留在格子里。
+ *  · 卸载    —— `closeMusicSource()` 退订;**抽屉与歌词页状态不落盘**
+ *                (下次开面板从唱机开始)。
  *
  * ── ② UI 生命状态 ───────────────────────────────────────────────────────
  *  · 后端没配好 → 顶上一句 `music.backendNotReady`;后端报错 → 一句原话;
- *  · 播放器没在跑 → 唱片收在素面封套里、唱臂归位 + `music.playerIdle`;
- *  · 电台关着 → 电台条换成开台卡,串联单不画;唱机屋里的灯暗一半,黑豆睡着;
- *  · 首载 → 各块身子不画(不画骨架:内容只有几行字,骨架比内容还吵);
+ *  · 首载 → 唱机场景照画(素面唱片),歌名与歌条不画;
+ *  · 没歌 → 唱机空态,歌名位置一句「播放器没在跑」,歌条不画;
+ *  · 电台关着 → 电台条换成开台卡;唱机屋里的灯暗一半,黑豆睡着;
+ *  · 歌词读不到 → 歌词区一句「这首没有歌词」(≥900 右栏 / 歌词页同一句);
  *  · error → 旧内容留着,错误就地一行,零 Toast;
- *  · 超量 → 串联单封顶 `PROGRAMME_LIMIT` 行 + 文字读数,两张长表各自有最大高度。
+ *  · 超量 → 歌名过长单行截断;节目单封顶 `PROGRAMME_LIMIT` 行,抽屉内滚动。
  *
  * ── ③ UI 交互状态 ───────────────────────────────────────────────────────
  *  · rest / hover / focus 随库件(IconButton / Button / Slider / ButtonBase / Menu);
  *  · pending **逐格**:一只做法一只 mutation(律③);
- *  · disabled:没有总长 → 进度条与唱臂停用(换歌那一串跑着时唱臂也停用);没有音量读数 →
- *    音量条停用;已收藏 → ♥ 停用;
- *  · active:拖进度条 / 拖唱臂(`data-sliding` / `data-dragging`)。
+ *  · disabled:没有总长 → 进度条与唱臂停用;没有音量读数 → 音量条停用;已收藏 → ♥ 停用;
+ *  · active:拖进度条 / 拖唱臂(`data-sliding` / `data-dragging`);
+ *    「播放列表」钮带 `aria-expanded`、「歌词」钮带 `aria-pressed`。
  *  唱机场景自己的三张表在 `music/TurntableScene.tsx` 文件头。
  */
-export function MusicPanel() {
+export function MusicPanel({
+  initialPlaylistOpen = false,
+  initialView = 'turntable',
+}: {
+  /**
+   * **只给实验台用的两格初始态**(`dev/MusicLab`:六档宽 ×「抽屉开 / 歌词页」要一开
+   * 就能量)。产品里两处落点都不传 —— 缺省就是正本 §3.1 那一行「挂载:抽屉关着;
+   * 歌词页不在」。它们是 `initial*` 不是受控属性:开合的主人自始至终是这块面。
+   */
+  initialPlaylistOpen?: boolean
+  initialView?: 'turntable' | 'lyrics'
+} = {}) {
   const t = useT()
   useMusicLive()
   const runtime = useQuery(musicRuntimeQuery)
@@ -88,9 +115,13 @@ export function MusicPanel() {
   const brief = useQuery(musicBriefQuery)
   const programme = useQuery(musicProgrammeQuery)
   const playRef = useRef<HTMLButtonElement | null>(null)
+  const playlistRef = useRef<HTMLButtonElement | null>(null)
   const petRef = useRef<PetStageHandle | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const position = usePlaybackPosition(now.data)
+  const form = useMusicPanelForm(panelRef)
+  const [playlistOpen, setPlaylistOpen] = useState(initialPlaylistOpen)
+  const [view, setView] = useState<'turntable' | 'lyrics'>(initialView)
 
   const state = runtime.data
   const notReady = state !== undefined && state.setupStage !== 'ready'
@@ -100,8 +131,21 @@ export function MusicPanel() {
   const hasSong = Boolean(title) || playing
   const { name, artist } = splitTitle(title)
 
+  /*
+   * 歌词页只在「一栏 + 有歌」两件同时成立时在场。两条退出规矩(§3.1)因此是**同一句
+   * 判据的推论**,不是两条各自的 effect:变两栏 / 没歌了 → 它不在场 → 回唱机。
+   * 状态里那格 `view` 仍然留着 'lyrics',是为了「两栏 → 一栏」时**不**自动进歌词页 ——
+   * 所以退出那一下要真的写回 'turntable'。
+   */
+  const lyricsPage = view === 'lyrics' && !form.wide && hasSong
+  useEffect(() => {
+    if (view === 'lyrics' && (form.wide || !hasSong)) setView('turntable')
+  }, [form.wide, hasSong, view])
+
   const seek = useCallback((seconds: number) => void musicOps.seek.run({ position: seconds }), [])
   const onLiked = useCallback(() => petRef.current?.love(), [])
+  const backToTurntable = useCallback(() => setView('turntable'), [])
+  const closePlaylist = useCallback(() => setPlaylistOpen(false), [])
 
   return (
     <FocusScope
@@ -109,73 +153,117 @@ export function MusicPanel() {
       rootRef={panelRef}
       /*
        * 落点 = 播放 / 暂停那颗钮。进这块面第一件想做的事就是让它响或者让它停。
-       * Esc **不声明** —— 判词在 `focus/scopes.ts` 那一行上。
+       * Esc(§3.3 最后一行):**有抽屉先关抽屉** —— 那一格是这一格的孩子,比它深,
+       * 由树的深度先问到,所以这里只管第二级「在歌词页就回唱机」;都没有就答 false,
+       * 这一下继续往外传(不拦,输入法组字等后面的消费者照旧)。
        */
       restingTarget={() => playRef.current}
+      onEscape={() => {
+        if (!lyricsPage) return false
+        setView('turntable')
+        return true
+      }}
     >
       {({ scopeProps }) => (
         <div {...scopeProps} className={s.panel} data-testid="music-panel">
-          <div className={s.layout}>
-            <div className={s.notices}>
-              {notReady && (
-                <p className={s.notice} data-testid="music-not-ready">
-                  {t('music.backendNotReady')}
-                </p>
-              )}
-              {state?.lastError && (
-                <p className={s.notice} data-testid="music-backend-error">
-                  {t('music.backendError', { message: state.lastError })}
-                </p>
-              )}
-            </div>
-
-            <StationStrip />
-
-            {/*
-              * 唱机区:场景铺满这一块的宽(画布按它缩放),歌名与控制条摆在场景下面。
-              * 舞台两栏时它是左栏,比面板窄得多 —— 场景自己量自己的宽。
-              */}
-            <section className={s.deck} data-testid="music-player">
-              <TurntableScene
-                runtime={state}
-                brief={brief.data}
-                nowPlaying={now.data}
-                nowError={now.error}
-                programme={programme.data}
-                position={position}
-                onSeek={seek}
-                petRef={petRef}
-              />
-              <div className={s.deckBody}>
-                {now.phase === 'ready' && !hasSong ? (
-                  <p className={s.none}>{t('music.playerIdle')}</p>
-                ) : (
-                  hasSong && (
-                    <div className={s.nowText}>
-                      <p className={s.nowTitle} data-testid="music-now-title">
-                        {name || t('music.untitled')}
-                      </p>
-                      {artist && <p className={s.nowArtist}>{artist}</p>}
-                    </div>
-                  )
+          <div className={s.scroller}>
+            <div className={s.layout} data-wide={form.wide ? 'true' : undefined}>
+              <div className={s.notices}>
+                {notReady && (
+                  <p className={s.notice} data-testid="music-not-ready">
+                    {t('music.backendNotReady')}
+                  </p>
                 )}
-                {now.error && <p className={s.bad}>{now.error}</p>}
-                {hasSong && (
-                  <Transport
-                    title={title}
-                    playing={playing}
-                    position={position}
-                    duration={duration}
-                    playRef={playRef}
-                    onLiked={onLiked}
-                  />
+                {state?.lastError && (
+                  <p className={s.notice} data-testid="music-backend-error">
+                    {t('music.backendError', { message: state.lastError })}
+                  </p>
                 )}
               </div>
-            </section>
 
-            <ProgrammeSheet />
-            <LyricsPane position={position} hasSong={hasSong} />
+              <StationStrip />
+
+              {/*
+                * 唱机区:上半块是场景(或歌词页),下半块是歌名与歌条。
+                * 场景铺满这一块的宽(画布按它缩放);两栏时它是左栏,比面板窄得多 ——
+                * 场景自己量自己的宽。
+                */}
+              <section className={s.deck} data-testid="music-player">
+                {lyricsPage ? (
+                  <LyricsPane
+                    mode="page"
+                    position={position}
+                    duration={duration}
+                    title={title}
+                    playing={playing}
+                    onBack={backToTurntable}
+                  />
+                ) : (
+                  <TurntableScene
+                    runtime={state}
+                    brief={brief.data}
+                    nowPlaying={now.data}
+                    nowError={now.error}
+                    programme={programme.data}
+                    position={position}
+                    onSeek={seek}
+                    petRef={petRef}
+                  />
+                )}
+                <div className={s.deckBody}>
+                  {now.phase === 'ready' && !hasSong ? (
+                    <p className={s.none}>{t('music.playerIdle')}</p>
+                  ) : (
+                    hasSong && (
+                      <div className={s.nowText}>
+                        <p className={s.nowTitle} data-testid="music-now-title">
+                          {name || t('music.untitled')}
+                        </p>
+                        {artist && <p className={s.nowArtist}>{artist}</p>}
+                      </div>
+                    )
+                  )}
+                  {now.error && <p className={s.bad}>{now.error}</p>}
+                  {!hasSong && (
+                    <div className={s.idleKeys}>
+                      <PlaylistButton
+                        open={playlistOpen}
+                        onToggle={() => setPlaylistOpen((open) => !open)}
+                        buttonRef={playlistRef}
+                      />
+                    </div>
+                  )}
+                  {hasSong && (
+                    <Transport
+                      title={title}
+                      playing={playing}
+                      position={position}
+                      duration={duration}
+                      playRef={playRef}
+                      onLiked={onLiked}
+                      lyricsOpen={lyricsPage}
+                      onToggleLyrics={form.wide ? undefined : () => setView(lyricsPage ? 'turntable' : 'lyrics')}
+                      playlistOpen={playlistOpen}
+                      onTogglePlaylist={() => setPlaylistOpen((open) => !open)}
+                      playlistRef={playlistRef}
+                    />
+                  )}
+                </div>
+              </section>
+
+              {form.wide && hasSong && (
+                <LyricsPane
+                  mode="column"
+                  position={position}
+                  duration={duration}
+                  title={title}
+                  playing={playing}
+                />
+              )}
+            </div>
           </div>
+
+          {playlistOpen && <PlaylistDrawer form={form.drawer} onClose={closePlaylist} />}
         </div>
       )}
     </FocusScope>

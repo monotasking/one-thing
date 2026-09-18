@@ -148,6 +148,9 @@
   /* 唱机场景(content/music/TurntableScene,宠物 P1):窗外的雨、翻唱片堆时封套一张张翘起来 */
   --kf-music-rain: musicRain;
   --kf-music-fan-flick: musicFanFlick;
+  /* 音乐面 v7:播放列表抽屉的两种出场 —— < 560 从底下升起,≥ 560 从右边滑进来。 */
+  --kf-music-drawer-up: musicDrawerUp;
+  --kf-music-drawer-in: musicDrawerIn;
 }
 
 /* ── 淡入:全系统最常见的一次出场 ─────────────────────────────────────── */
@@ -662,6 +665,21 @@
   }
   35% {
     translate: -4px -16px;
+  }
+}
+
+/* ── 音乐面 v7 的播放列表抽屉(content/MusicPanel)────────────────────────────
+ * 两段各只说一件事:从底下升起 / 从右边滑进来。**只写 from** —— 落点是元素自己的
+ * 静止位置,写一遍 to 就等于把布局抄进动画里。 */
+@keyframes musicDrawerUp {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes musicDrawerIn {
+  from {
+    transform: translateX(100%);
   }
 }
 

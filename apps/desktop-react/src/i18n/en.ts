@@ -1624,6 +1624,8 @@ export const en: Record<MessageKey, string> = {
   'music.player': 'Now playing',
   'music.radio': 'Radio',
   'music.lyrics': 'Lyrics',
+  'music.playlist': 'Playlist',
+  'music.backToTurntable': 'Back to the turntable',
   'music.prev': 'Previous',
   'music.replay': 'Replay this song',
   'music.pause': 'Pause',

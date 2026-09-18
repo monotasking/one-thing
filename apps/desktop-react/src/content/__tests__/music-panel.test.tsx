@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { MusicPanel } from '../MusicPanel'
+import { FocusDispatchHarness } from '../../test/focus-harness'
 import { configureMusicPort } from '../../data/music-port'
 import type { MusicPort, MusicResourceEvent } from '../../data/music-port'
 import { resetMusicSource } from '../../data/music-source'
@@ -19,6 +20,11 @@ import type { ResourceOutcomeView, ResourceReadView } from '@shared/ipc/resource
  *  ⑥ 空态两句(播放器没在跑 / 电台没开);
  *  ⑦ HMR dispose 走的那一口(`resetMusicSource`)真的退订;
  *  ⑧ 唱臂(唱机场景上)只发一条 seek;♥ 成功才让黑豆冒爱心。
+ *
+ * v7(整面布局)又加了一组,判的是**形与那两格开合**(正本 §5):抽屉开关与焦点归还、
+ * Esc 两级、≥900 两栏时没有歌词钮、跨 900 的两条规矩、歌词页进出。
+ * 节目单从 v7 起住在抽屉里,所以凡是要碰它的用例先 `openPlaylist()` ——
+ * 这不是夹具绕路,那正是今天人要走的路。
  */
 
 /** 一次读的答案表:`<ref>#<name>` → 值。 */
@@ -119,10 +125,59 @@ function fullTable(): ReadTable {
 
 let fake: FakeMusic
 
+/**
+ * **jsdom 里没有布局,也没有 `ResizeObserver`** —— 而这块面的形完全由它自己的宽决定
+ * (`music/panel-width.ts`)。两件夹具补上这两样:`clientWidth` 只给面板那一格答数
+ * (别的元素照旧 0,唱机场景的视口算法本来就吃 0),`ResizeObserver` 记下回调,
+ * `resizePanel()` 改宽之后亲手敲一下 —— 真机上那一下是浏览器敲的。
+ */
+let panelWidth = 620
+const resizeCallbacks: Array<() => void> = []
+
+class FakeResizeObserver {
+  constructor(callback: () => void) {
+    resizeCallbacks.push(callback)
+  }
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+
+/** 改面板的宽并敲一下观察器。`FrameCoalescer` 排的是下一帧,所以要等一小会儿。 */
+async function resizePanel(width: number) {
+  panelWidth = width
+  await act(async () => {
+    for (const callback of [...resizeCallbacks]) callback()
+    await new Promise((resolve) => setTimeout(resolve, 40))
+  })
+}
+
+/**
+ * 开抽屉:节目单从 v7 起住在这后面。
+ *
+ * **先 `focus()` 再 click**:真机上按一颗钮这两件一起发生,而 jsdom 的 `fireEvent.click`
+ * 只派事件、不搬焦点 —— 不补这一下,焦点树记下的「上一任」就还是这块面的落点(播放钮),
+ * 抽屉关掉时焦点归还的那条断言会对着错的人。夹具驱动焦点是允许的(执法三条不管测试文件)。
+ */
+async function openPlaylist() {
+  const button = await screen.findByTestId('music-playlist-toggle')
+  await act(async () => {
+    button.focus()
+    fireEvent.click(button)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
+}
+
 async function mount(table: ReadTable = fullTable()) {
   fake = makeFake(table)
   configureMusicPort(fake.port)
-  const view = render(<MusicPanel />)
+  const view = render(
+    <>
+      {/* 响应链上那唯一的派发器 —— Esc 现在是一句声明,没有它谁都不会响。 */}
+      <FocusDispatchHarness />
+      <MusicPanel />
+    </>,
+  )
   // 首载是异步的(等 ready → 订 → 五发并行),让它整个跑完再断言 ——
   // 一个宏任务把微任务队列排干,五发的落地与随之而来的重渲都在 act 里面。
   await act(async () => {
@@ -134,6 +189,15 @@ async function mount(table: ReadTable = fullTable()) {
 beforeEach(() => {
   useStageStore.setState({ locale: 'zh' })
   resetMusicSource()
+  panelWidth = 620
+  resizeCallbacks.length = 0
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+    configurable: true,
+    get(this: HTMLElement) {
+      return this.dataset.testid === 'music-panel' ? panelWidth : 0
+    },
+  })
+  ;(globalThis as { ResizeObserver?: unknown }).ResizeObserver = FakeResizeObserver
 })
 
 afterEach(() => {
@@ -143,6 +207,9 @@ afterEach(() => {
   cleanup()
   resetMusicSource()
   configureMusicPort(undefined)
+  // 把原型上那一格还回去(jsdom 自己的 clientWidth 长在 Element.prototype 上)。
+  delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth
+  delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver
 })
 
 describe('首载:五条读数,五个地址', () => {
@@ -162,6 +229,9 @@ describe('首载:五条读数,五个地址', () => {
     await mount()
     // 展示串「歌名 - 歌手」只为显示拆两半,不当键用。
     await waitFor(() => expect(screen.getByTestId('music-now-title').textContent).toBe('可惜没如果'))
+    // v7:节目单不铺在页面上,它在抽屉里(§1)。
+    expect(screen.queryByTestId('music-programme')).toBeNull()
+    await openPlaylist()
     expect(screen.getByText('第一首')).toBeTruthy()
     expect(screen.getByTestId('music-programme')).toBeTruthy()
   })
@@ -207,6 +277,7 @@ describe('每颗钮发出去的是那一条 do', () => {
 
   it('点歌带着歌名', async () => {
     await mount()
+    await openPlaylist()
     const input = await screen.findByTestId('music-song')
     fireEvent.change(input, { target: { value: '晴天 周杰伦' } })
     await act(async () => {
@@ -357,6 +428,7 @@ describe('唱机面:操作不许有两个意思', () => {
 
   it('串联单「⋯」开的菜单:拿掉 → programmeAction remove,行当场消失', async () => {
     await mount()
+    await openPlaylist()
     fireEvent.click(await screen.findByTestId('music-entry-more:a'))
     fake.hold = { release: () => undefined }
     await act(async () => {
@@ -376,6 +448,7 @@ describe('唱机面:操作不许有两个意思', () => {
 
   it('右键一行开的是同一张菜单;第一行「提到下一首」停用', async () => {
     await mount()
+    await openPlaylist()
     const row = (await screen.findByText('第一首')).closest('li')
     expect(row).toBeTruthy()
     fireEvent.contextMenu(row as HTMLElement)
@@ -437,5 +510,185 @@ describe('唱臂:只表示「跳到这里」(宠物 P1 起在唱机场景上)', 
       await new Promise((resolve) => setTimeout(resolve, 50))
     })
     expect(screen.getByTestId('pet-rig').dataset.oneShot).toBeUndefined()
+  })
+})
+
+describe('v7 整面布局:抽屉 · 两栏 · 歌词页(正本 §5)', () => {
+  const esc = () => fireEvent.keyDown(window, { key: 'Escape' })
+
+  it('抽屉:那颗钮开 / 关,关掉时焦点结构性地回到它身上', async () => {
+    await mount()
+    const button = await screen.findByTestId('music-playlist-toggle')
+    expect(button.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByTestId('music-playlist')).toBeNull()
+
+    await openPlaylist()
+    expect(screen.getByTestId('music-playlist')).toBeTruthy()
+    expect(screen.getByTestId('music-playlist-toggle').getAttribute('aria-expanded')).toBe('true')
+    // 开出来焦点落在抽屉里第一个可聚焦元素(✕)。
+    expect(document.activeElement).toBe(screen.getByTestId('music-playlist-close'))
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('music-playlist-close'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(screen.queryByTestId('music-playlist')).toBeNull()
+    expect(document.activeElement).toBe(screen.getByTestId('music-playlist-toggle'))
+  })
+
+  it('抽屉:点遮罩也关', async () => {
+    await mount()
+    await openPlaylist()
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByTestId('music-playlist-scrim'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(screen.queryByTestId('music-playlist')).toBeNull()
+  })
+
+  it('抽屉两档:< 560 从底下升起,≥ 560 从右边滑出', async () => {
+    panelWidth = 360
+    await mount()
+    await openPlaylist()
+    expect(screen.getByTestId('music-playlist').getAttribute('data-form')).toBe('sheet')
+
+    await resizePanel(620)
+    expect(screen.getByTestId('music-playlist').getAttribute('data-form')).toBe('side')
+    // 换档不关抽屉。
+    expect(screen.getByTestId('music-playlist-toggle').getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('Esc 两级:有抽屉先关抽屉,再一下才从歌词页回唱机;都没有不拦', async () => {
+    await mount()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('music-lyrics-toggle'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    await openPlaylist()
+    expect(screen.getByTestId('music-playlist')).toBeTruthy()
+
+    // 第一下:抽屉。歌词页还在。
+    await act(async () => {
+      esc()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(screen.queryByTestId('music-playlist')).toBeNull()
+    expect(screen.getByTestId('music-lyrics-back')).toBeTruthy()
+
+    // 第二下:歌词页。
+    await act(async () => {
+      esc()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(screen.queryByTestId('music-lyrics-back')).toBeNull()
+
+    // 第三下:都没有 —— 不拦(没人 preventDefault)。
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    await act(async () => {
+      window.dispatchEvent(event)
+    })
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it('歌词页:进去唱机场景整块换成歌词,页头小碟点回唱机', async () => {
+    await mount()
+    expect(screen.getByTestId('music-turntable')).toBeTruthy()
+
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('music-lyrics-toggle'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(screen.queryByTestId('music-turntable')).toBeNull()
+    expect(screen.getByTestId('music-lyrics').getAttribute('data-mode')).toBe('page')
+    expect(screen.getByTestId('music-lyrics-toggle').getAttribute('aria-pressed')).toBe('true')
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('music-lyrics-back'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(screen.getByTestId('music-turntable')).toBeTruthy()
+    // 一栏下歌词**整件不在场** —— 它不是收起来了,是这块面上没有它(§1)。
+    expect(screen.queryByTestId('music-lyrics')).toBeNull()
+  })
+
+  it('≥ 900 两栏:歌词常驻右栏,歌条上没有「歌词」钮', async () => {
+    panelWidth = 1040
+    await mount()
+    await waitFor(() => expect(screen.getByTestId('music-lyrics')).toBeTruthy())
+    expect(screen.getByTestId('music-lyrics').getAttribute('data-mode')).toBe('column')
+    expect(screen.queryByTestId('music-lyrics-toggle')).toBeNull()
+  })
+
+  it('跨 900 两条规矩:两栏 → 一栏不自动进歌词页;一栏(停在歌词页)→ 两栏退回唱机', async () => {
+    panelWidth = 1040
+    await mount()
+    await waitFor(() => expect(screen.queryByTestId('music-lyrics-toggle')).toBeNull())
+
+    // 规矩一:变一栏,回到唱机(不是歌词页),歌词钮长出来。
+    await resizePanel(620)
+    expect(screen.getByTestId('music-turntable')).toBeTruthy()
+    expect(screen.getByTestId('music-lyrics-toggle').getAttribute('aria-pressed')).toBe('false')
+
+    // 规矩二:停在歌词页时变两栏 → 退回唱机,歌词改在右栏。
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('music-lyrics-toggle'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(screen.queryByTestId('music-turntable')).toBeNull()
+
+    await resizePanel(1040)
+    expect(screen.getByTestId('music-turntable')).toBeTruthy()
+    expect(screen.getByTestId('music-lyrics').getAttribute('data-mode')).toBe('column')
+
+    // 再变回一栏:仍然是唱机 —— 「变一栏不自动进歌词页」对这条路也成立。
+    await resizePanel(620)
+    expect(screen.getByTestId('music-turntable')).toBeTruthy()
+    expect(screen.getByTestId('music-lyrics-toggle').getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('没歌:歌词页退回唱机,抽屉留着', async () => {
+    await mount()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('music-lyrics-toggle'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    await openPlaylist()
+
+    fake.table['music:player#nowPlaying'] = {
+      playing: false,
+      status: 'stopped',
+      position: 0,
+      queueLength: 0,
+      currentIndex: 0,
+    }
+    await act(async () => {
+      for (const listener of [...fake.listeners]) {
+        listener({ ref: 'music:player', event: 'nowPlayingChanged', payload: {} })
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    await waitFor(() => expect(screen.getByTestId('music-turntable')).toBeTruthy())
+    expect(screen.getByTestId('music-playlist')).toBeTruthy()
+  })
+
+  it('没歌:歌条不画,但「播放列表」钮还在(歌单要够得着)', async () => {
+    const table = fullTable()
+    table['music:player#nowPlaying'] = {
+      playing: false,
+      status: 'stopped',
+      position: 0,
+      queueLength: 0,
+      currentIndex: 0,
+    }
+    await mount(table)
+
+    await waitFor(() => expect(screen.queryByTestId('music-play')).toBeNull())
+    const toggle = await screen.findByTestId('music-playlist-toggle')
+    await act(async () => {
+      fireEvent.click(toggle)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(screen.getByTestId('music-playlist')).toBeTruthy()
   })
 })

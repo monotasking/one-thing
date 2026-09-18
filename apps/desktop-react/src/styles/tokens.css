@@ -1734,6 +1734,39 @@
   /* 主持人的话用衬线:与歌词区分「谁在说」。壳没带这副字,落到系统宋体。 */
   --music-font-say: 'Noto Serif SC', 'Songti SC', 'STSong', serif;
 
+  /* ── 音乐面 · 整面布局 v7(2026-09-18;正本 apps/desktop-react/docs/music-panel-2026-09.md)──
+   * 两个阈值,**都不在这里**:900(一栏 / 两栏)与 560(底部弹层 / 右侧抽屉)是
+   * `content/music/panel-width.ts` 里的两个数 —— 面自己量自己的宽,CSS 读的是
+   * `data-wide` / `data-side` 两格属性。把它们再抄一份成 token 只会多一个说谎的产地
+   * (从前 `@container music (min-width: 960px)` 与这段注释就对不上过)。 */
+  /* 抽屉:≥560 从右边滑出这么宽,< 560 从底下升起这么高。 */
+  --music-drawer-w: 380px;
+  --music-drawer-h: 82%;
+  --music-drawer-r: 18px;
+  /* 出场:280ms 是「一层东西滑进来」读得出过程又不拖沓的分量(与 Toast 的位移入场同族,
+   * 比 --dur-enter 那种淡入长一倍多 —— 位移要看得见走了多远)。 */
+  --music-drawer-dur: 280ms;
+  --ease-music-drawer: cubic-bezier(0.3, 0.7, 0.2, 1);
+  /* 歌词页:唱机场景那一块换成歌词时,这一块的身量。 */
+  --music-lyrics-page-h: 340px;
+  /* 逐字填色那一行的字号与行距 —— 歌词是这块面上**最大的字**,它是主角。 */
+  --music-lyric-fs: 19px;
+  --music-lyric-lh: 1.45;
+  /* 当前句里「还没唱到」的那一半有多淡(逐字填色的后半段颜色)。 */
+  --music-lyric-ahead: 38%;
+  /* 离当前句两行以外的淡出。 */
+  --music-lyric-far: 0.55;
+  /* 歌词跟唱:当前句停在窗口这个高度上(0.4 = 四成,留出下半屏看「接下来唱什么」)。 */
+  --music-lyric-anchor: 40%;
+  /* 间奏那三点。 */
+  --music-lyric-dot: 8px;
+  /* 歌词页页头那颗小碟(点它回唱机)。一张黑胶的最简形:中心一圈标签 + 一圈盘面。
+   * 与场景里那张真唱片(--music-scene-disc,四层渐变)刻意**不共用** —— 那一张要
+   * 看得出纹路与反光,这一颗只有 24px,四层渐变在这个身量上糊成一团灰。 */
+  --music-mini-disc: radial-gradient(circle, var(--accent) 0 30%, #17171a 31%);
+  /* 转一圈多久。比场景里的慢一档:它是个记号,不是主角。 */
+  --dur-music-mini-disc: 1800ms;
+
   /* ── 唱机场景(content/music/TurntableScene,宠物 P1,2026-09-17;正本
    * docs/design/pet-system-2026-09.md §8)────────────────────────────────────
    * 逐格搬自样例「黑豆电台」。场景是一间**夜里的屋子**:墙、灯、窗外的雨、木底座、

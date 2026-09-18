@@ -7,7 +7,7 @@ import { Menu, MenuItem, MenuSection } from '../../ui/Menu'
 import { Tooltip } from '../../ui/Tooltip'
 import { useMutation, useQuery } from '../../data/kernel'
 import type { MusicProgrammeEntryDTO } from '@shared/ipc/music'
-import { musicBriefQuery, musicOps, musicProgrammeQuery } from '../../data/music-source'
+import { musicOps, musicProgrammeQuery } from '../../data/music-source'
 import { copyText } from '../../services/clipboard'
 import { useT } from '../../i18n'
 import { PROGRAMME_LIMIT, firstError, splitTitle } from './turntable'
@@ -21,7 +21,8 @@ interface RowMenu {
 }
 
 /**
- * **串联单**(唱机音乐面 M1):接下来要放的歌、主持人每首前要说的话、点歌。
+ * **串联单**(唱机音乐面 M1;v7 起它住在播放列表抽屉里,内容一个字没改):
+ * 接下来要放的歌、主持人每首前要说的话、点歌。
  *
  * ── 动作单产地 = 右键菜单 ───────────────────────────────────────────────
  * 一行的全部动作(提到下一首 / 上移 / 下移 / 拿掉 / 复制歌名)收进同一张 `ui/Menu`。
@@ -34,7 +35,8 @@ interface RowMenu {
  * ── 三张状态表 ──────────────────────────────────────────────────────────
  * ① 生命周期:本地两格 —— 点歌草稿、一张半开的菜单;菜单跟着行身份(encryptedId)走,
  *    那一行被别处拿掉时菜单里的动作答「找不到」由乐观补丁原样交回(无副作用)。
- * ② UI 生命状态:电台关着 → 整块不画;首载 → 不画身子;空 → 一句「节目单空着」;
+ * ② UI 生命状态:首载 → 不画身子;空(含电台关着 —— v7 起这块面住在抽屉里,而人是
+ *    **亲手**把它拉开的,交一块空白比交一句「节目单空着」更像坏了)→ 一句「节目单空着」;
  *    超量 → 封顶 `PROGRAMME_LIMIT` 行 + 一句文字读数,列表自带最大高度可滚;
  *    读 / 做失败 → 旧行留着,错误另起一行(`music-programme-error`)。
  * ③ UI 交互状态:行 hover 底色(CSS);「⋯」随 IconButton;编辑是乐观的 —— 行当场挪 /
@@ -42,14 +44,12 @@ interface RowMenu {
  */
 export function ProgrammeSheet() {
   const t = useT()
-  const brief = useQuery(musicBriefQuery)
   const programme = useQuery(musicProgrammeQuery)
   const request = useMutation(musicOps.request)
   const edit = useMutation(musicOps.programmeAction)
   const [song, setSong] = useState('')
   const [menu, setMenu] = useState<RowMenu | null>(null)
 
-  if (!brief.data?.active) return null
   const entries = programme.data?.entries ?? []
   const shown = entries.slice(0, PROGRAMME_LIMIT)
   const hidden = entries.length - shown.length

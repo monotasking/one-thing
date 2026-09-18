@@ -1,29 +1,53 @@
 /*
- * 音乐面 · 唱机形(唱机音乐面 M1,2026-09-17)。
+ * 音乐面 · 整面布局 v7(2026-09-18;正本 apps/desktop-react/docs/music-panel-2026-09.md)。
  *
  * 三种落点(架子 / 浮窗 / 舞台)共用这一份,**不写任何与宿主有关的尺寸**。
- *   面板(`@container music`,容器在 `.panel`):≥ 960 分两栏,歌词单列右边。
- *   唱机区:场景铺满这一块的宽(`music/TurntableScene` 自己量宽、自己缩放,
- *   < 520 自己裁),歌名与控制条摞在场景下面 —— 这里不再按唱机区的宽分档。
- * 阈值在查询条件里只能写字面量(`@container` 里写不了 var()),账在 tokens.css
- * 「唱机面」那一节,两处一起改。
+ *
+ * ── 形由属性说,不由容器查询说(v7 换法)────────────────────────────────
+ * 两个阈值 —— 900(一栏 / 两栏)与 560(底部弹层 / 右侧抽屉)—— 住在
+ * `content/music/panel-width.ts`。面自己量自己的宽,往 `.layout` 上写一格
+ * `data-wide`、往抽屉上写一格 `data-form`,这里只读那两格。
+ * 为什么不留 `@container`:形不只决定画什么,还决定一条**状态**规矩(「变两栏时
+ * 若正停在歌词页则退回唱机」),那句话要一个 JS 认得出的布尔。两处各写一遍阈值
+ * 就会漂 —— M1 的注释写着 960、查询条件也写着 960,而设计早就说 900。
+ *
+ * ── 三层盒:panel / scroller / layout ───────────────────────────────────
+ * 抽屉与遮罩是**绝对定位在面板上**的,所以滚动不能长在 `.panel` 身上(长在那儿
+ * 抽屉会跟着页面一起滚走)。`.panel` 只负责「这块地有多大、里面的东西不许探出去」,
+ * 滚动归 `.scroller`,排版归 `.layout`。
  */
 .panel {
   container: music / inline-size;
+  position: relative;
   height: 100%;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  overflow: hidden;
   background: var(--surface-2);
 }
 
-/* 容器查询管不到容器自己,所以排版住在里面这一层。 */
+.scroller {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: 'notice' 'station' 'deck' 'sheet' 'lyrics';
+  grid-template-areas: 'notice' 'station' 'deck';
   align-content: start;
   gap: var(--sp-3);
   padding: var(--sp-3);
+}
+
+/* 两栏:左唱机 + 歌名 + 歌条,右常驻歌词。歌词那一栏与唱机区同高起步。 */
+.layout[data-wide='true'] {
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  grid-template-areas:
+    'notice notice'
+    'station station'
+    'deck lyrics';
+  align-items: start;
+  column-gap: var(--sp-5);
 }
 
 .notices {
@@ -79,6 +103,12 @@
   font-size: var(--fs-meta);
   line-height: var(--pr-lh);
   color: var(--text-3);
+}
+
+/* 没歌时那一行:只剩「播放列表」一颗钮 —— 歌条不画,歌单仍要够得着。 */
+.idleKeys {
+  display: flex;
+  align-items: center;
 }
 
 /* 一句坏消息。**只换字色不换底**(状态色永不换底)。 */
@@ -187,7 +217,7 @@
 
 /* ── 唱机 ─────────────────────────────────────────────────────────────── */
 
-/* 场景画布铺满这一块;圆角裁在外框上,场景的屋子跟着圆。 */
+/* 场景画布铺满这一块;圆角裁在外框上,场景的屋子跟着圆。歌词页换进来的是同一块地。 */
 .deck {
   grid-area: deck;
   min-width: 0;
@@ -227,11 +257,19 @@
   color: var(--text-3);
 }
 
-/* ── 控制条 ───────────────────────────────────────────────────────────── */
+/* ── 歌条 ─────────────────────────────────────────────────────────────── */
 
 .transport {
   display: flex;
   flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+/* 钮在上、进度条在下(正本 §2)。音量是这一行里最后让的那一件,靠右。 */
+.controls {
+  display: flex;
+  align-items: center;
   gap: var(--sp-1);
   min-width: 0;
 }
@@ -243,13 +281,6 @@
   gap: var(--sp-2);
 }
 
-.controls {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-1);
-  min-width: 0;
-}
-
 .volume {
   flex: 1;
   min-width: 0;
@@ -257,24 +288,92 @@
   margin-left: auto;
 }
 
-/* ── 串联单 ───────────────────────────────────────────────────────────── */
+/* ── 播放列表抽屉 ─────────────────────────────────────────────────────── */
+
+/*
+ * 遮罩铺满**这块面**(不是整扇窗)—— 抽屉是这块面自己的一层,盖住别人的面板会是
+ * 一件它无权做的事。层级用 --z-float:它在内容之上,在全屏遮罩(--z-overlay)之下。
+ */
+.drawerScrim {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-float);
+  background: var(--scrim);
+  animation: var(--kf-scrim-in) var(--dur-enter) var(--ease-out);
+}
+
+.drawer {
+  position: absolute;
+  z-index: var(--z-float);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-2);
+  box-shadow: var(--sh-3);
+}
+
+/* < 560:从底下升起。 */
+.drawer[data-form='sheet'] {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: var(--music-drawer-h);
+  border-radius: var(--music-drawer-r) var(--music-drawer-r) 0 0;
+  animation: var(--kf-music-drawer-up) var(--music-drawer-dur) var(--ease-music-drawer);
+}
+
+/* ≥ 560:从右边滑出,通高。`88%` 是窄到极限时的让步:遮罩总要露出一条边给手点。 */
+.drawer[data-form='side'] {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(var(--music-drawer-w), 88%);
+  border-radius: var(--music-drawer-r) 0 0 var(--music-drawer-r);
+  animation: var(--kf-music-drawer-in) var(--music-drawer-dur) var(--ease-music-drawer);
+}
+
+.drawerHead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-2) 0 var(--sp-3);
+}
+
+.drawerTitle {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+/* 身子自己滚:一张一百条的单子在抽屉里滚,不把抽屉撑破。 */
+.drawerBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-3);
+}
+
+/* ── 串联单(住在抽屉里)──────────────────────────────────────────────── */
 
 .sheet {
-  grid-area: sheet;
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
   min-width: 0;
 }
 
-/* 自带最大高度:一张一百条的单子不该把歌词那一块挤出屏幕。 */
 .list {
   margin: 0;
   padding: 0;
   list-style: none;
-  max-height: var(--music-list-max-h);
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 
 .entry {
@@ -346,76 +445,211 @@
 
 /* ── 歌词 ─────────────────────────────────────────────────────────────── */
 
+/*
+ * 两形共用这一份,差别全在 `data-mode`:
+ *  · column —— 右栏常驻,身量是 --music-lyrics-h-lg,没有页头;
+ *  · page   —— 换掉唱机场景那一块,身量是 --music-lyrics-page-h,顶上一颗小碟。
+ */
 .lyricsBlock {
-  grid-area: lyrics;
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
   min-width: 0;
 }
 
-.lyricsWindow {
-  position: relative;
-  height: var(--music-lyrics-h);
+.lyricsBlock[data-mode='column'] {
+  grid-area: lyrics;
+}
+
+.lyricsBlock[data-mode='page'] {
+  height: var(--music-lyrics-page-h);
+}
+
+.lyricsHead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+  padding: var(--sp-3) var(--sp-3) 0;
+}
+
+/* 一张小唱片:回唱机的那条路。放着的时候它转。 */
+.miniDisc {
+  flex: none;
+  width: var(--sp-5);
+  height: var(--sp-5);
+  border-radius: var(--r-full);
+  cursor: pointer;
+  background: var(--music-mini-disc);
+  box-shadow: var(--sh-1);
+}
+
+.miniDisc[data-spinning='true'] {
+  animation: var(--kf-spin) var(--dur-music-mini-disc) linear infinite;
+}
+
+.lyricsHeadName {
+  min-width: 0;
   overflow: hidden;
-  mask-image: linear-gradient(transparent, black 25%, black 75%, transparent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-label);
+  color: var(--text-2);
+}
+
+/* 一句「这首没有歌词」。两形共用,居中 —— 它替的是一整屏歌词的位置。 */
+.lyricsNone {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  min-height: var(--music-lyrics-h);
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+/* 定位条要贴着滚动区画,所以中间隔一层定位上下文。 */
+.lyricsStage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.lyricsScroll {
+  position: relative;
+  height: 100%;
+  min-height: var(--music-lyrics-h);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  padding: 0 var(--sp-3);
+  mask-image: linear-gradient(transparent, black 14%, black 80%, transparent);
+}
+
+.lyricsScroll::-webkit-scrollbar {
+  display: none;
+}
+
+.lyricsBlock[data-mode='column'] .lyricsScroll {
+  height: var(--music-lyrics-h-lg);
+}
+
+/* 上下各留出四成:第一句与最后一句也能停到跟唱那条线上。 */
+.lyricsPad {
+  height: 38%;
 }
 
 .lyrics {
   margin: 0;
   padding: 0;
   list-style: none;
-  transform: translateY(var(--lyrics-shift, 0));
-  transition: transform var(--dur-settle) var(--ease);
 }
 
 .lyricLine {
-  line-height: var(--pr-lh);
+  line-height: var(--music-lyric-lh);
+  transition: opacity var(--dur-hover-fade) var(--ease);
+}
+
+.lyricLine[data-far='true'] {
+  opacity: var(--music-lyric-far);
 }
 
 .lyricButton {
   display: block;
   width: 100%;
-  padding: var(--sp-1) 0;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-2);
   text-align: left;
-  font-size: var(--fs-label);
+  font-size: var(--music-lyric-fs);
+  font-weight: 600;
+  line-height: var(--music-lyric-lh);
   color: var(--text-4);
   cursor: pointer;
+  transition: color var(--dur-hover-fade) var(--ease);
 }
 
-.lyricButton:hover {
-  color: var(--text-2);
-}
-
-.lyricLine[data-current='true'] .lyricButton {
-  color: var(--text-1);
-  font-weight: 600;
+.lyricLine:not([data-current='true']) .lyricButton:hover {
+  background: var(--st-hover);
+  color: var(--text-3);
 }
 
 /*
- * 折叠标题里那块可点的字。它是 `ui/Fold` 的 FoldTrigger,清 UA 与键盘语义都由那件带,
- * 这里只说「它看起来可点」。
+ * 逐字填色:一条硬边渐变卡在 --music-lyric-p 上,字本身透明,底色透过字形露出来。
+ * 左半是唱过的(--text-1),右半是还没唱到的(同色淡一档)—— **一种颜色两个浓度**,
+ * 不是两种颜色:填色说的是「走到哪儿了」,换色会被读成「这两半不是一句话」。
  */
-.foldHead {
-  cursor: pointer;
+.lyricLine[data-current='true'] .lyricButton {
+  color: transparent;
+  background-image: linear-gradient(
+    90deg,
+    var(--text-1) var(--music-lyric-p, 0%),
+    color-mix(in srgb, var(--text-1) var(--music-lyric-ahead), transparent) var(--music-lyric-p, 0%)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
 }
 
-/* ── 档位 ─────────────────────────────────────────────────────────────── */
+/* 间奏:三个点。当前那一段里它们一下一下地起伏(与打字指示器同一段关键帧)。 */
+.interlude {
+  display: flex;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+}
 
-/* 面板够宽才分两栏:左边唱机 + 串联单,右边歌词。 */
-@container music (min-width: 960px) {
-  .layout {
-    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-    grid-template-areas:
-      'notice notice'
-      'station station'
-      'deck lyrics'
-      'sheet lyrics';
-    align-items: start;
-    column-gap: var(--sp-5);
-  }
+.interlude i {
+  width: var(--music-lyric-dot);
+  height: var(--music-lyric-dot);
+  border-radius: var(--r-full);
+  background: var(--text-4);
+}
 
-  .lyricsWindow {
-    height: var(--music-lyrics-h-lg);
-  }
+.lyricLine[data-current='true'] .interlude i {
+  background: var(--text-2);
+  animation: var(--kf-dots) var(--dur-dots) var(--ease-soft) infinite;
+}
+
+.lyricLine[data-current='true'] .interlude i:nth-child(2) {
+  animation-delay: calc(var(--dur-dots) / 6);
+}
+
+.lyricLine[data-current='true'] .interlude i:nth-child(3) {
+  animation-delay: calc(var(--dur-dots) / 3);
+}
+
+/*
+ * 手动滚动时那条定位条:时间 + 一条线 + 一颗播放钮。线与时间不接事件(它们是读数),
+ * 只有那颗钮接 —— 所以整条 pointer-events: none,钮自己再打开。
+ */
+.guide {
+  position: absolute;
+  left: var(--sp-3);
+  right: var(--sp-3);
+  top: var(--music-lyric-anchor);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-2);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.guide > * {
+  pointer-events: auto;
+}
+
+.guideTime {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-1);
+  background: var(--surface-1);
+}
+
+.guideLine {
+  height: 1px;
+  background: var(--line-2);
+  pointer-events: none;
 }

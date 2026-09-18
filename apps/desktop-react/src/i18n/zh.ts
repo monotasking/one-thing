@@ -1906,6 +1906,9 @@ export const zh = {
   'music.player': '正在放',
   'music.radio': '电台',
   'music.lyrics': '歌词',
+  /* 音乐面 v7:歌条上那两颗「打开一块东西」的钮,以及歌词页页头那颗小碟。 */
+  'music.playlist': '播放列表',
+  'music.backToTurntable': '回到唱机',
   'music.prev': '上一首',
   'music.replay': '重播这首',
   'music.pause': '暂停',
