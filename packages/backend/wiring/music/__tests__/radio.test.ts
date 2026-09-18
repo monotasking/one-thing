@@ -422,13 +422,9 @@ describe('main radio playback (legacy starter)', () => {
     expect(store.readProgramme().entries.map(item => item.title)).toEqual(['song 2'])
   })
 
-  it('the master switch really is one: radio open refuses while music is disabled', async () => {
+  it('there is no master switch: radio opens on settings that never mention a switch', async () => {
     const radio = await loadRadio()
-    await expect(radio.radioToolOpen('雨天民谣', { clearProgramme: false })).rejects.toThrow(
-      '音乐电台的总开关没打开',
-    )
-
-    mocks.settings = { music: { enabled: true } }
+    mocks.settings = { music: {} }
     const status = await radio.radioToolOpen('雨天民谣', { clearProgramme: false })
     expect(status.active).toBe(true)
     expect(status.intent).toBe('雨天民谣')

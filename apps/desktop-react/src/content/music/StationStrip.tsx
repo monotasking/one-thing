@@ -9,7 +9,6 @@ import { Menu } from '../../ui/Menu'
 import { Popover } from '../../ui/Popover'
 import { Spinner } from '../../ui/Spinner'
 import { useMutation, useQuery } from '../../data/kernel'
-import { runWithMusicEnabled } from '../../data/music-enabled'
 import { musicBriefQuery, musicOps } from '../../data/music-source'
 import { useT } from '../../i18n'
 import type { TFn } from '../../i18n'
@@ -243,10 +242,7 @@ function OffAir({
         className={s.formRow}
         onSubmit={(e) => {
           e.preventDefault()
-          void runWithMusicEnabled(
-            () => musicOps.open.run({ intent: draft.trim() }),
-            () => Boolean(musicOps.open.get().error),
-          )
+          void musicOps.open.run({ intent: draft.trim() })
         }}
       >
         <Input
@@ -276,12 +272,7 @@ function OffAir({
             pendingLabel={t('common.working')}
             size="sm"
             data-testid="music-radio-resume"
-            onClick={() =>
-              void runWithMusicEnabled(
-                () => musicOps.radioResume.run({}),
-                () => Boolean(musicOps.radioResume.get().error),
-              )
-            }
+            onClick={() => void musicOps.radioResume.run({})}
           >
             {t('music.radioResume')}
           </AsyncButton>
@@ -327,10 +318,7 @@ function Moods({ t, pending }: { t: TFn; pending: boolean }) {
           disabled={pending}
           onClick={() => {
             setFiring(mood.id)
-            void runWithMusicEnabled(
-              () => musicOps.open.run({ intent: t(mood.intent) }),
-              () => Boolean(musicOps.open.get().error),
-            ).finally(() => setFiring(null))
+            void musicOps.open.run({ intent: t(mood.intent) }).finally(() => setFiring(null))
           }}
         >
           <span className={s.moodInk}>{t(mood.label)}</span>

@@ -35,16 +35,16 @@
  * ## 三处「一件事两个出口两句话」,以及它们为什么前置在这里
  *
  * `search` / `requestSong` / `programmeAction` / `setProvider` 那四条参数前置判据
- * (`query is required` / `action is required` / `providerId is required`)与
- * `openRadio` 的总开关判据**留在域里**,不是漏搬:
+ * (`query is required` / `action is required` / `providerId is required`)**留在域里**,
+ * 不是漏搬:
  *
  *   · 资源面对同一件事有**自己的**措辞,而且那句措辞是写给模型的行为指引(「用一句
  *     话概括听众想要的氛围」「用户点名想听的歌,尽量带歌手」);这一侧的
  *     `query is required` 是写给一个调用方看的。同一次拒绝,两个出口两句话,
  *     两句都对(判据一模一样 —— 两条路都在同一个地方说不,谁都到不了端口)。
- *   · 总开关那一条更直白:`radioToolOpen` 自己也判 `settings.music.enabled`,判据
- *     **逐字相同**,只是那句话多四个字(「完成配置并打开总开关」)。域这一句先说,
- *     所以退成投影之后文案一个字没变;两道判据同时在,是双保险不是双口径。
+ *   · 从前这里还有一道「音乐总开关」(`settings.music.enabled`),09-18 随用户一句话
+ *     整道退役:「音乐不要开关了,默认开,控制交给 apps 上面的开关」。开不开是「应用」
+ *     面上那颗开关的事(它在不在 Dock 上),后端不再替人把门。
  *
  * ## 四条推送留在原地
  *
@@ -85,7 +85,6 @@ import {
   MUSIC_RESOURCE_SCHEME,
 } from '@onething/runtime/music/resource-spec'
 import { assertMusicOperator } from '../../wiring/music/access.js'
-import { getSettings } from '../../stores/settings.js'
 import { resolveDjSpeakDone } from '../../wiring/music/dj-voice.js'
 import { getMusicNowPlaying } from '../../wiring/music/service.js'
 import { BackendNotAssembledError, getCurrentBackendInstance } from '../../current.js'
@@ -246,12 +245,6 @@ export const musicRpcHandlers: RpcRouteHandlers<MusicRoutes> = {
 
   async openRadio(request, context = DESKTOP_RPC_CONTEXT) {
     assertMusicOperator(context)
-    // 总开关这一句先说,所以文案一个字没变(端口那一侧判的是同一个设置项,只是
-    // 那句话多四个字)。判据相同 = 双保险,不是双口径。
-    const settings = getSettings()
-    if (settings.music?.enabled !== true) {
-      return { success: false, error: '音乐电台的总开关没打开' }
-    }
     // 「新电台」= 换台(旧节目单作废),否则就是开台 —— 这一格从前是端口的一个
     // 布尔参数,在资源面上它是两条做法(它们在权限卡与命令面板上要各说各的话)。
     const op = request?.clearProgramme === true ? 'retune' : 'open'

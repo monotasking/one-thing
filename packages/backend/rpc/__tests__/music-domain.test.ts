@@ -261,15 +261,8 @@ describe('music RPC domain', () => {
     })
   })
 
-  it('keeps the radio master switch in front of openRadio', async () => {
+  it('opens the radio with no master switch in the way (retired 09-18)', async () => {
     settings.getSettings.mockReturnValue({ music: { enabled: false, provider: 'ncm-cli' } })
-    expect(unwrap(await call('openRadio', { intent: ' 深夜 ', clearProgramme: true }))).toEqual({
-      success: false,
-      error: '音乐电台的总开关没打开',
-    })
-    expect(radio.openRadioStation).not.toHaveBeenCalled()
-
-    settings.getSettings.mockReturnValue({ music: { enabled: true, provider: 'ncm-cli' } })
     expect(unwrap(await call('openRadio', { intent: ' 深夜 ', clearProgramme: true }))).toEqual({
       success: true,
     })

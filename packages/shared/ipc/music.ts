@@ -342,8 +342,12 @@ export interface MusicProbeCache {
 }
 
 export interface MusicSettings {
-	/** Radio feature switch; everything stays dormant while false. */
-	enabled: boolean
+	/**
+	 * **已退役(2026-09-18)**,留着只为读得懂旧设置文件。用户原话:「音乐不要开关了,
+	 * 默认开,控制交给 apps 上面的开关」—— 开不开是壳里「应用」面那颗开关的事,
+	 * 后端一处都不再读它。不许再加读者。
+	 */
+	enabled?: boolean
 	/**
 	 * Which music CLI provider drives everything (binary, parsers, setup
 	 * wizard, bash policy). Unknown/absent ids resolve to 'ncm-cli' — the

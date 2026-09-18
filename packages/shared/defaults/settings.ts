@@ -477,7 +477,6 @@ export const DEFAULT_PLUGIN_PREFERENCES: PluginPreferences = {
 }
 
 export const DEFAULT_MUSIC_SETTINGS: MusicSettings = {
-  enabled: false,
   provider: 'ncm-cli',
   source: 'fm',
   configured: false,
@@ -921,10 +920,11 @@ function migrateLegacyDefaultACPAgent(agent: ACPSettings['agents'][number]): ACP
 
 export function normalizeMusicSettings(settings?: MusicSettings): MusicSettings {
   const source: MusicRadioSource = settings?.source === 'daily' ? 'daily' : DEFAULT_MUSIC_SETTINGS.source
+  // 音乐总开关 09-18 退役:旧设置文件里残留的 `enabled` 在这里摘掉,不再带出去。
+  const { enabled: _retired, ...rest } = settings ?? {}
   return {
     ...DEFAULT_MUSIC_SETTINGS,
-    ...settings,
-    enabled: settings?.enabled === true,
+    ...rest,
     // Unknown ids are kept as-is; the runtime registry falls back to ncm at
     // resolution time, so a downgraded app never rewrites the user's choice.
     provider:

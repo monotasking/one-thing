@@ -421,7 +421,6 @@ async function emitDjMessage(sessionId: string, content: string, bus: EventBus):
 async function wakeRadioDj(): Promise<void> {
   owner.assertActive()
   return owner.track((async () => {
-  if (!isMusicEnabled()) return
   const store = getRadioStore()
   // Before rendering the DJ prompt, age out a stale intent so a resumed or
   // conductor-woken station (no fresh open) doesn't quote an old direction.
@@ -1144,13 +1143,6 @@ async function radioToolOpen(
 ): Promise<ReturnType<typeof radioToolStatus>> {
   owner.assertActive()
   return owner.track((async () => {
-  if (!isMusicEnabled()) {
-    // Honest failure beats a receipt that promises a DJ who will never wake.
-    // 这句话是说给**模型与 CLI** 听的:壳上人按「开台」时,那一下本身就是答案,
-    // 壳会先把总开关打开再发(`data/music-enabled.ts`)。所以这里不再指路 ——
-    // 从前那句「请在 设置 → 音乐 …」指向的是 Vue 壳时代的一页,今天的壳没有它。
-    throw new Error('音乐电台的总开关没打开')
-  }
   openRadioStation(intent, options)
   return radioToolStatus()
 
@@ -1194,7 +1186,6 @@ async function requestSong(
 ): Promise<{ success: boolean; title?: string; error?: string }> {
   owner.assertActive()
   return owner.track((async () => {
-  if (!isMusicEnabled()) return { success: false, error: '音乐电台的总开关没打开' }
   const store = getRadioStore()
   if (!store.readBrief().active) {
     return { success: false, error: '电台未开——先开台再点歌' }
@@ -1485,10 +1476,6 @@ async function observeUnknownSong(sample: OnethingMusicNowPlaying | null): Promi
  * every sample begins with a brief read that says "inactive".
  */
 /** The master switch, live-readable so a settings toggle needs no restart. */
-function isMusicEnabled(): boolean {
-  return getSettings().music?.enabled === true
-}
-
 /**
  * Evidence log for the premature-stop investigation (2026-07-19: 「与光」
  * audibly died ~40s into a 3m40s song after a pause→seek 0→resume hold; the
@@ -1550,10 +1537,6 @@ function startRadioConductor(): void {
   conductor = createOnethingRadioConductor(radioConductorOptions)
   setMusicSampleListener(sample => {
     if (owner.signal.aborted) return
-    // The master switch, enforced where everything converges: with music
-    // disabled the conductor never ticks (no advance, no DJ wakes, no merges)
-    // and the radio stays genuinely dormant — the switch used to be cosmetic.
-    if (!isMusicEnabled()) return
     logSampleTransition(sample)
     conductor?.onSample(sample)
     // 间奏检测吃的是同一拍采样 + 此刻推着的歌词(对不上这首歌就不发,判据在 moments.ts)。
