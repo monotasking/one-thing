@@ -26,6 +26,19 @@ Obsidian;而内置领域按「驱动注册表」留好接缝,将来插件宿主�
 | `file file=<名>` | 按 wikilink 规则解析 basename | 替代全 vault basename 索引 |
 | `eval code=` | `app.vault.getConfig(...)`、daily-notes 插件 `options`、`app.fileManager.getAvailablePathForAttachment(name, src)`(四种附件模式都对)、`generateMarkdownLink(file, src)` | 不再猜语义的全部来源;Developer 组命令,稳定性拍板 R8 |
 | `create path= content= template=` / `append` / `open path=` / `daily:append` | 建笔记带模板、追加、在 Obsidian 里打开 | 前台动作可用 |
+| **CLI 的传输是一条 unix socket `~/.obsidian-cli.sock`**(09-18 `lsof -U -c Obsidian` 实测;launcher 是 Mach-O,连的就是它) | socket 存在且能连 = app 在跑且 CLI 已注册;连不上 = 一条命令都别发(发了就是拉起) | **探活 = 试连 socket**,不用 `pgrep`;Windows 对应物 P1 查(named pipe) |
+| **`obsidian.json` 每个 vault 带 `open: true/false`** | 本机 6 个 vault 里 3 个 open | 缺省只对 `open` 的 vault 发命令;对没开的 vault 发 `vault=` 视同拉起(只许前台动作) —— 原 P0 ②「会不会弹窗」不用测了 |
+| **daily-notes 核心插件实例有 `getDailyNote()`**(`eval` 列出 instance 方法:`getDailyNote / getFolder / getFormat / getDailyNoteTemplateBeforeAppLoads / iterateDailyNotes …`) | 「新建今日」= `eval` 调 `getDailyNote()`:走 Obsidian 自己的模板与文件夹逻辑,不开窗 | 原 P0 ① 答案;比 `daily:append content=""` 干净。P1 的 `gate:notes` 只对**今日已存在**的 vault 调它(幂等),不在用户 vault 上造文件 |
+
+### 1.5 检索骨架核对(2026-09-18,用户提醒「现在的搜索逻辑和之前不一样」)
+
+方案 §4.1 / §4.3 按**重建后**的检索骨架写,与今天 HEAD 逐条对得上:一类 = 一个文件(`capabilities/daily.ts` =
+manifest + `retrievers: [createSqliteLexicalRetriever(...)]` + `invoke` + `preview`),feed 由 `workerData.notesDirs`
+在 `index/worker.ts:125` 一目录一 `DailyNotesFeed`,`manifest.retrievers[id] = { when }` 是数据(`RetrieverWhen =
+'relaxed' | 'explicit' | 'always'`,`explicit` 还能按 `surfaces` 列谁算明说),`SearchPage.actions` 承载页级动作,
+`wiring/search/index.ts` 的 `applySemantic` → `IndexWorkerHost.restart()` 是「设置改了换 Worker、间隙请求排队」的
+现成先例 —— `settings.notes` 改了 vault 表就走这一条。09-08 之后检索域的提交只动语义召回(开关热生效、模型下载
+拆开、占用空间),骨架未变。**旧扫描路已死**:方案里没有任何一格走 `executeOnethingSearch` / 六扫描器那一族。
 
 ## 2. 插件 vs 内置开关
 
@@ -68,8 +81,8 @@ class NoteSystemRegistry { register(driver); vaults(): NoteVault[]; vaultFor(abs
 ```
 
 - **`ObsidianDriver`**(`notes/obsidian/`):`registry.ts` 读 `obsidian.json` 得 `{id, path}[]`(**不再向上找
-  `.obsidian`**);`cli.ts` 唯一碰 `child_process`(读完 stdout、首行判错、10s 超时、`mayLaunch` 门、进程探活
-  `pgrep -x Obsidian` / `tasklist`);`scripts.ts` 集中全部 `eval` 片段(每段一个名字、返回类型、依赖的 API);
+  `.obsidian`**);`cli.ts` 唯一碰 `child_process`(读完 stdout、首行判错、10s 超时、`mayLaunch` 门、探活 =
+  试连 `~/.obsidian-cli.sock`,Windows 对应物待查);`scripts.ts` 集中全部 `eval` 片段(每段一个名字、返回类型、依赖的 API);
   `snapshot.ts` 每 vault 一份 `{dailyFolder, dailyFormat, dailyTemplate, attachmentFolderPath, useMarkdownLinks,
   newLinkFormat, capturedAt}` 落 `<store>/notes/obsidian/<id>.json`,活着就刷新,没跑就用;`vault.ts` 实现 `NoteVault`。
 - **`FolderDriver`**(`notes/folder/`):`settings.notes.folders[]` 里每个目录一个 `FolderVault`:日记
@@ -86,13 +99,19 @@ class NoteSystemRegistry { register(driver); vaults(): NoteVault[]; vaultFor(abs
 
 ```ts
 settings.notes = {
-  obsidian: { enabled: boolean },                 // 总开关;缺省 = obsidian.json 存在
-  vaults: Record<vaultId, { enabled: boolean; skills: boolean }>,   // 缺席 = { enabled: true, skills: false }
+  systems: Record<driverId, { enabled?: boolean }>,   // 每种笔记系统一行总开关,键 = 驱动 id;缺席 = 开
+  vaults: Record<vaultId, { enabled?: boolean; skills?: boolean }>,   // 缺席 = { enabled: true, skills: false }
   primaryVaultId?: string,                        // 「今天的日记」「新建笔记」缺省落点
   folders: string[],                              // 非 Obsidian 笔记目录(FolderDriver)
   dailyFormat: string,                            // 只管 FolderVault
+  attachmentDirectory?: string,                   // FolderVault 附件目录;P3 把 editor.markdownNoteAttachmentDirectory 并进来
+  migratedAt?: number,                            // P1 播种标记
 }
 ```
+
+(09-18 P1 陌生能力演练打回的三处:原 `obsidian: { enabled }` 是契约层点驱动名,改成 `systems` 表;错误码
+`'obsidian-not-running'` 改 `'system-not-running'`;basename 索引的跳过表不再点名 `.obsidian`。加一种系统 =
+`notes/<id>/{vault,driver}.ts` + `wiring/notes/index.ts` 一行注册,契约层 / core / defaults / 迁移零改动。)
 
 `general.dailyNotes` 五格删、`editor.markdownNoteAttachmentDirectory` 留(FolderVault 用)。
 
@@ -108,7 +127,7 @@ settings.notes = {
 | `wiring/plugins/builtin/note-skills.ts:34`(技能根) | `registry.vaults().filter(v => config.skills)` 进 `listCustomSkillRoots`;note-skills 内置插件**退役**(今天本来没在跑) |
 | `wiring/variables/gateways.ts:258-275`(AI 用 `variable` 工具「重指目录」+ 审批) | 删。改笔记库走设置 |
 | `backend/server/runtime.ts:4036-4056` | 删 |
-| prompt 变量板 | 新只读派生变量 `notes`:启用的 vault(name / root / system)+ 主库今日日记路径。AI 从这里知道笔记在哪 |
+| prompt 变量板 | 新只读派生变量 `note_vaults`(文件 `variables/providers/note-vaults.ts`;`providers/notes.ts` 是老两变量的产地,P3 随变量一起删):启用的 vault(name / root / system)+ 主库今日日记路径。AI 从这里知道笔记在哪 |
 
 一次性迁移(挂 `initializeSettings` 后,幂等带标记):`settings.notes` 缺席 → 从 `obsidian.json` 建 vault 表
 (全部 `enabled:true, skills:false`);老 `user_note_dir` / `work_note_dir` 的值若是某个 vault 的根 → 该 vault
@@ -163,8 +182,8 @@ React 壳今天设置页只有 provider 一块是真的(`providers/components/Pr
 
 | 期 | 内容 | 门 |
 | --- | --- | --- |
-| **P0 探针**(半天,只读,只对开着的 vault) | 「新建今日」走 `daily:append` 还是 `create template=`;对没开的 vault 发 `vault=` 会不会弹窗;三平台 `obsidian.json` 路径与 win 可执行名;`eval` 在 1.12 / 1.13 返回格式;探活方式 | 读数回写 §1 |
-| **P1 领域 + 设置 + 迁移** | `notes/` 全套 + `wiring/notes` + `settings.notes` + 迁移 + `notes` 派生变量 | 假 CLI runner 单测(录真实 stdout 当夹具,含 `Error:` 与挂死用例);迁移单测钉 `ONETHING_STORE_PATH`(C1 事故);`gate:notes` 本机 Obsidian 在跑才跑只读命令,否则打印原因跳过 |
+| **P0 探针** — **已结(09-18)** | ① 新建今日 = `eval getDailyNote()`;② 不测,按 `obsidian.json.open` 判;③ mac 路径实证,win / linux 按官方文档(`%APPDATA%\obsidian` / `~/.config/obsidian`)P1 写进代码并留单测;④ 本机只有 1.13.7,`=> <json>` 一种格式,P1 解析器容错「无 `=> ` 前缀」;⑤ 探活 = 连 `~/.obsidian-cli.sock` | 读数已回写 §1 |
+| **P1 领域 + 设置 + 迁移(播种)** | `notes/` 全套 + `wiring/notes` + `settings.notes` + 迁移**只播种不删**(从 `obsidian.json` + 老两变量的值种出 vault 表;两个变量的定义与读者 P3 一起删)+ `notes` 派生变量 | 假 CLI runner 单测(录真实 stdout 当夹具,含 `Error:` 与挂死用例);迁移单测钉 `ONETHING_STORE_PATH`(C1 事故);`gate:notes` 本机 socket 能连才跑只读命令,否则打印原因跳过 |
 | **P2 检索** | `notes` 能力 + `VaultFeed` + facets + 今天 / 新建动作 + 前缀统一 + 删 `daily` 能力与 `dailyNotes` 设置 | `gate:search-index` 绿;golden snapshot 只允许 daily → notes 的改名差异;`gate:search-scan` 不动 |
 | **P3 附件 / 技能 / 沙箱 / 变量** | §4.2 §4.4 §4.5 §3.4 表全部;note-skills 插件退役;边界规则改名 | 两半 asset-service 测试改夹具;`markdown-sandbox` 绿;`boundary:gate` 绿;`sandbox` 测试改根来源 |
 | **P4 壳设置区** | §4.6 | 面板单测 + `gate:a11y` 加一屏 |
@@ -173,13 +192,13 @@ React 壳今天设置页只有 provider 一块是真的(`providers/components/Pr
 
 P1 之后 P2 / P3 / P4 互不依赖可并行。每单 Fable 拆分审查、opus 执行、haiku 提交。
 
-## 6. 待拍板(可感知的行为变化;默认 = 推荐)
+## 6. 拍板(2026-09-18 用户拍 R1–R3;R4–R9 未反对,按推荐执行)
 
-| # | 变化 | 推荐 |
+| # | 变化 | 结论 |
 | --- | --- | --- |
-| R1 | 插件还是内置开关 | **内置开关**(§2);骨架按驱动注册表留接缝 |
-| R2 | `user_note_dir` / `work_note_dir` 两个变量删,换 `settings.notes` + 只读派生变量 `notes`;AI 用 `variable` 工具「重指笔记目录」的审批流随之消失 | 推荐删 |
-| R3 | 搜笔记缺省走索引;Obsidian 原生搜索只在带操作符 / 点 chip 时跑 | 推荐;另一选择是有 Obsidian 在跑就一律用它(没 vector、每键 0.2s+) |
+| R1 | 插件还是内置开关 | **拍定:内置开关**;骨架按驱动注册表留接缝 |
+| R2 | `user_note_dir` / `work_note_dir` 两个变量删,换 `settings.notes` + 只读派生变量 `notes`;AI 用 `variable` 工具「重指笔记目录」的审批流随之消失 | **拍定:删** |
+| R3 | 搜笔记缺省走索引;Obsidian 原生搜索只在带操作符 / 点 chip 时跑 | **拍定:走索引**。用户附注「现在的搜索和之前逻辑不一样,注意」→ §1.5 已按重建后骨架逐条核对 |
 | R4 | Obsidian 没在跑:后台不拉起;用户主动动作(新建、在 Obsidian 打开)允许拉起 | 推荐 |
 | R5 | 日记从「`user_note_dir` 单目录」变成「每个启用 vault 的日记都可搜,主库那本是『今天』」;接入目录不再算笔记根;`dailyNotes` 五格删零迁移 | 推荐 |
 | R6 | `settings.notes` 全局,不按 space 分 | 推荐全局(笔记库是机器的,不是空间的);要 per-space 是另一单 |
