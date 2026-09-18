@@ -371,11 +371,14 @@ Notes:
   `SqliteIndex`, and the **strict-tier hit set** of the 20 golden queries + 20 golden
   paraphrases frozen as JSON. What survives of the old path lives where it belongs:
   each capability owns its own matcher (`capabilities/{actions,prompts,files}.ts`), the
-  daily-note config + "today" shortcut is `capabilities/daily-notes.ts`, and
+  notes capability (`capabilities/notes.ts`, 笔记 P2 2026-09-18 — it replaced `daily.ts` +
+  `daily-notes.ts`: one `VaultFeed` per enabled note vault, facets `vault` / `path` / `time` /
+  `daily`, the "today" shortcut and the `create-daily` / `create-note` page actions, all read
+  off the notes domain below) and
   `capabilities/scan-adapter.ts` (was `legacy.ts`) is just the base that wraps a
   `(query, limit, filters) => SearchResult[]` matcher. `runtime/src/search/providers.ts`
-  is now only the adapter interface plus the process slot behind
-  `resolveDailyNoteSearchDirs()` / `createDailyNote()`. The boundary rule
+  is now only the adapter interface (`getNoteVaults?` / `getPrimaryNoteVault?` are how the
+  notes domain reaches it). The boundary rule
   `search has exactly one query path` is the coroner's table: those shapes and names may
   not grow back.
 - **Semantic recall is a second retriever on the same index, and it is OFF by default**
@@ -503,6 +506,30 @@ Notes:
   domain must not add a hand-written channel), and the trajectory panel's run grouping.
   Response text is materialized on demand from the `assistant/chunks` fold, never carried
   on the tree. It reads the same ledger the product reads.
+- **Notes are a domain, and Obsidian is one driver of it** (`docs/design/notes-obsidian-cli-2026-09.md`,
+  P1–P4 landed 2026-09-18). `packages/onething-runtime/src/notes/` owns `NoteVault` (daily note /
+  create / attachment path / link text / resolve-by-name / list / live search / open-in-app) and a
+  `NoteSystemRegistry` of self-describing `NoteSystemDriver`s (first claim wins, `vaultFor` = longest
+  prefix); `obsidian/` talks to the **official Obsidian CLI** (`ObsidianCli`: `vault=<id>` is argv[0],
+  exit code is always 0 so errors are the first stdout line, stdout is always read to the end, 10s
+  budget, and **liveness = connecting `~/.obsidian-cli.sock`** — no socket, no command, because a
+  command sent while the app is closed launches it; `eval` scripts live in one file, `scripts.ts`;
+  a per-vault snapshot under `<store>/notes/obsidian/` reproduces the three rules when the app is
+  not running); `folder/` covers plain directories. Assembly: `backend.notes` is a subsystem
+  (`wiring/notes/index.ts`: `registry` / `refresh` / `inventory` / `systemState` / `onRefreshed`;
+  trust is judged per `refresh`, so `server:start` calls it after declaring loopback trust) and
+  `noteRootsNow()` there is the **only** definition of "note roots" — sandbox roots, search scan
+  and authorization roots, `@` file mentions, markdown attachments and skill roots all read it;
+  connected directories are a permission surface, not note roots. Settings: `settings.notes =
+  { systems: Record<driverId,{enabled?}>, vaults: Record<id,{enabled?,skills?}>, primaryVaultId?,
+  folders, dailyFormat, attachmentDirectory?, migratedAt? }` (global, not per-space), seeded once
+  from `obsidian.json` and the old `user_note_dir` / `work_note_dir` values by
+  `wiring/notes/migration.ts`; those two variables, `general.dailyNotes`,
+  `editor.markdownNoteAttachmentDirectory` and the `note-skills` plugin are **gone**; the AI reads
+  the read-only `note_vaults` variable instead. The shell's settings page has a 「笔记」 section
+  over the `notes` RPC domain (`list` / `refresh` / `openInApp` — the only call that may launch
+  the app). Gate: `bun run gate:notes` (read-only, only open vaults, skipped when the socket is
+  not there).
 - There is no memory subsystem. The soul-memory plugin (SOUL/MEMORY.md + daily notes,
   panel, settings tab, `/api/memory/*`) was retired 2026-08-06 — see
   `docs/audit/soul-memory-retirement-2026-08-06.md`. Nothing reads or writes those files;
@@ -515,8 +542,9 @@ Notes:
   the `Core*` registries for lifecycle / input-intercept / tool-call-intercept /
   tool-result-intercept / status / sessions / storage, the policy + breaker tables,
   `ui-anchor.ts`, `file-pick.ts`, `canonical-order.ts` — zero deps);
-  `packages/onething-runtime/src/plugins/` = the **product half** (19 files: the two
-  built-in plugins `log-monitor` / `note-skills`, the config store + schema projection,
+  `packages/onething-runtime/src/plugins/` = the **product half** (the one
+  built-in plugin `log-monitor` — `note-skills` was retired by 笔记 P3 on 2026-09-18, note
+  vaults reach the skill loader through `wiring/notes/skill-roots.ts` instead — the config store + schema projection,
   npm-tarball reading, runtime health, the IPC-shape projections, and the
   process-singleton bindings of the core kernels — `status-bound.ts`,
   `input-intercept-bound.ts`, `tool-call-intercept-bound.ts`,

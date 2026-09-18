@@ -183,10 +183,10 @@ React 壳今天设置页只有 provider 一块是真的(`providers/components/Pr
 | 期 | 内容 | 门 |
 | --- | --- | --- |
 | **P0 探针** — **已结(09-18)** | ① 新建今日 = `eval getDailyNote()`;② 不测,按 `obsidian.json.open` 判;③ mac 路径实证,win / linux 按官方文档(`%APPDATA%\obsidian` / `~/.config/obsidian`)P1 写进代码并留单测;④ 本机只有 1.13.7,`=> <json>` 一种格式,P1 解析器容错「无 `=> ` 前缀」;⑤ 探活 = 连 `~/.obsidian-cli.sock` | 读数已回写 §1 |
-| **P1 领域 + 设置 + 迁移(播种)** | `notes/` 全套 + `wiring/notes` + `settings.notes` + 迁移**只播种不删**(从 `obsidian.json` + 老两变量的值种出 vault 表;两个变量的定义与读者 P3 一起删)+ `notes` 派生变量 | 假 CLI runner 单测(录真实 stdout 当夹具,含 `Error:` 与挂死用例);迁移单测钉 `ONETHING_STORE_PATH`(C1 事故);`gate:notes` 本机 socket 能连才跑只读命令,否则打印原因跳过 |
-| **P2 检索** | `notes` 能力 + `VaultFeed` + facets + 今天 / 新建动作 + 前缀统一 + 删 `daily` 能力与 `dailyNotes` 设置 | `gate:search-index` 绿;golden snapshot 只允许 daily → notes 的改名差异;`gate:search-scan` 不动 |
-| **P3 附件 / 技能 / 沙箱 / 变量** | §4.2 §4.4 §4.5 §3.4 表全部;note-skills 插件退役;边界规则改名 | 两半 asset-service 测试改夹具;`markdown-sandbox` 绿;`boundary:gate` 绿;`sandbox` 测试改根来源 |
-| **P4 壳设置区** | §4.6 | 面板单测 + `gate:a11y` 加一屏 |
+| **P1 领域 + 设置 + 迁移(播种)** — **已入库 a1c7372bb(09-18)** | `notes/` 全套 + `wiring/notes` + `settings.notes` + 迁移**只播种不删**(从 `obsidian.json` + 老两变量的值种出 vault 表;两个变量的定义与读者 P3 一起删)+ `notes` 派生变量 | 假 CLI runner 单测(录真实 stdout 当夹具,含 `Error:` 与挂死用例);迁移单测钉 `ONETHING_STORE_PATH`(C1 事故);`gate:notes` 本机 socket 能连才跑只读命令,否则打印原因跳过 |
+| **P2 检索** — **已入库 167b9f7c6(09-18)** | `notes` 能力 + `VaultFeed` + facets + 今天 / 新建动作 + 前缀统一 + 删 `daily` 能力与 `dailyNotes` 设置;热生效订 `NotesSubsystem.onRefreshed`;两条动作把目标路径编进 id 供授权夹 | `gate:search-index` 绿;golden snapshot 只允许 daily → notes 的改名差异;`gate:search-scan` 不动 |
+| **P3 附件 / 技能 / 沙箱 / 变量** — **已入库 9faf5fc02(09-18)** | §4.2 §4.4 §4.5 §3.4 表全部;note-skills 插件退役;边界规则改名;`noteRootsNow()` 是笔记根唯一定义;两个变量、`general.dailyNotes`、`editor.markdownNoteAttachmentDirectory` 已删;`BasenameIndex` 改收所有文件且无扩展名先找笔记 | 两半 asset-service 测试改夹具;`markdown-sandbox` 绿;`boundary:gate` 绿;`sandbox` 测试改根来源 |
+| **P4 壳设置区** — **已入库 5ae122634(09-18)** | §4.6;`notes` RPC 域 `list/refresh/openInApp`;状态四态由驱动自述 `NoteSystemDriver.state?()` | 面板单测 + `gate:a11y` 加一屏 |
 | **P5 Obsidian 活检索器 + 在 Obsidian 打开** | §4.3 + 行动作 | 检索器单测(假 CLI);`gate:notes` 加一步 |
 | **P6 `note` 工具**(可选) | AI 侧 `note` 工具:create / daily_append / open,场景面按 `settings.notes` 启用与否进出 | 工具单测 |
 
