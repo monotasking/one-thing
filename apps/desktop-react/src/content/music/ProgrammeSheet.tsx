@@ -1,16 +1,21 @@
-import { useState } from 'react'
-import { Ellipsis, GripVertical } from '../../components/icons'
+import { useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
+import { Ellipsis, GripVertical, MicVocal, Play } from '../../components/icons'
 import { AsyncButton } from '../../ui/AsyncButton'
+import { ButtonBase } from '../../ui/ButtonBase'
 import { IconButton } from '../../ui/IconButton'
 import { Input } from '../../ui/Input'
 import { useListReorder } from '../../ui/list-reorder'
 import { Menu, MenuItem, MenuSection } from '../../ui/Menu'
+import { Spinner } from '../../ui/Spinner'
 import { Tooltip } from '../../ui/Tooltip'
 import { useMutation, useQuery } from '../../data/kernel'
 import type { MusicProgrammeEntryDTO } from '@shared/ipc/music'
+import type { MusicNowPlayingView } from '../../data/music-source'
 import { musicOps, musicProgrammeQuery } from '../../data/music-source'
 import { copyText } from '../../services/clipboard'
 import { useT } from '../../i18n'
+import { sleeveColorsFor } from './scene-geometry'
 import { PROGRAMME_LIMIT, firstError, splitTitle } from './turntable'
 import s from '../MusicPanel.module.css'
 
@@ -19,6 +24,25 @@ interface RowMenu {
   index: number
   x: number
   y: number
+}
+
+/** 那一行「立即播放」发出中 / 失败了。一次只有一格 —— 两条同时在飞会打乱同一张节目单。 */
+interface PlayNow {
+  encryptedId: string
+  error?: string
+}
+
+/**
+ * **碟形色块**(§8.2):一张唱片的最简形 —— 中心一个孔、一圈标签、外面是盘面。
+ * 标签色由歌名散列(`sleeveColorsFor`,与唱机场景那张封套同一只函数,所以同一首歌
+ * 在列表里、在唱机上是同一个颜色)。
+ *
+ * **它不是封面占位图**:封面这件事后端没有(判词在 `MusicPanel.tsx` 文件头),
+ * 一块灰方块会被读成「还没加载出来」,而它永远不会来。
+ */
+function discStyle(title: string | undefined): CSSProperties {
+  const colors = sleeveColorsFor(title ?? '')
+  return { '--sleeve-light': colors.light, '--sleeve-dark': colors.dark } as CSSProperties
 }
 
 /**
@@ -52,22 +76,80 @@ interface RowMenu {
  *    读 / 做失败 → 旧行留着,错误另起一行(`music-programme-error`)。
  * ③ UI 交互状态:行 hover 底色(CSS);「⋯」随 IconButton;编辑是乐观的 —— 行当场挪 /
  *    消失,失败回滚;点歌 AsyncButton 逐格 pending,草稿为空时停用。
+ *
+ * ── 样例剩下的三条(2026-09-18,正本 §8.1 / §8.2 / §8.3)────────────────────
+ *  · **头上一段「正在播放」**:`nowPlaying` 有歌时画一行 —— 碟形色块 + 歌名歌手 +
+ *    均衡器条 + 贴着行底边一条进度。那一行**不可点、没有把手、没有 ⋯**:它已经在放了,
+ *    「提到下一首」「拿掉」对它都不是一句有意义的话。读数由**父级递进来**而不是这里
+ *    再订一次(与 `StationStrip` 的 `state` 同一条:`usePlaybackPosition` 起的是一只
+ *    250ms 的钟,订两遍就是两只钟,迟早差一帧)。
+ *  · **悬停即放**:每行左边那枚色块上浮一颗三角,点它 = `promote` + `next` ——
+ *    与右键菜单里「提到下一首」走**同一条** `programmeAction`,不新开做法。
+ *    逐格 pending(律③):发出中的那一行三角转圈,其余行照常可点。
+ *  · **小话筒**:`entry.say` 有值的行,歌名后一枚记号,提示里是整句。
  */
-export function ProgrammeSheet() {
+export function ProgrammeSheet({
+  nowPlaying,
+  position,
+}: {
+  /** 正在放的那一首。缺席(或没歌名)= 顶上那一段整段不画,不留空段头。 */
+  nowPlaying?: MusicNowPlayingView
+  /** 播放钟推出来的位置。与唱臂、进度条、歌词高亮吃同一个数。 */
+  position?: number
+} = {}) {
   const t = useT()
   const programme = useQuery(musicProgrammeQuery)
   const request = useMutation(musicOps.request)
   const edit = useMutation(musicOps.programmeAction)
   const [song, setSong] = useState('')
   const [menu, setMenu] = useState<RowMenu | null>(null)
+  const [playNow, setPlayNow] = useState<PlayNow | null>(null)
+  /*
+   * 「这一下已经在飞了」是**同一拍之内**就要答得出的事实,所以它是一格 ref 而不是
+   * 上面那格 state:两下点击落在同一拍里时,第二只回调手上的 `playNow` 还是旧的 null,
+   * 那颗钮的 `disabled` 也要到下一次提交才生效 —— 光靠 state 拦不住连点。
+   */
+  const firing = useRef(false)
 
   const entries = programme.data?.entries ?? []
   const shown = entries.slice(0, PROGRAMME_LIMIT)
   const hidden = entries.length - shown.length
   const error = firstError(request, edit)
+  const nowTitle = nowPlaying?.title
+  const now = nowTitle ? splitTitle(nowTitle) : undefined
+  const duration = nowPlaying?.duration
+  const played =
+    duration !== undefined && duration > 0 && position !== undefined
+      ? Math.max(0, Math.min(1, position / duration))
+      : 0
 
   const act = (entry: MusicProgrammeEntryDTO, action: Record<string, unknown>) =>
     void musicOps.programmeAction.run({ action: { encryptedId: entry.encryptedId, ...action } })
+
+  /*
+   * 「立即播放」= 提到第一位,再换歌。两条做法都是现成的,这里**只管顺序与那一格 pending**:
+   * 第一条没成就停在这儿(硬推 `next` 会放到别的歌上去,那比不动更坏),错话留在那一行下面。
+   * 在飞的时候再点一次直接返回 —— 一张节目单上两条 promote 同时在飞,谁在前谁在后没有答案。
+   */
+  const runPlayNow = async (entry: MusicProgrammeEntryDTO) => {
+    if (firing.current) return
+    firing.current = true
+    const encryptedId = entry.encryptedId
+    setPlayNow({ encryptedId })
+    try {
+      await musicOps.programmeAction.run({ action: { kind: 'promote', encryptedId } })
+      const promoted = musicOps.programmeAction.get().error
+      if (promoted) {
+        setPlayNow({ encryptedId, error: promoted })
+        return
+      }
+      await musicOps.next.run({})
+      const advanced = musicOps.next.get().error
+      setPlayNow(advanced ? { encryptedId, error: advanced } : null)
+    } finally {
+      firing.current = false
+    }
+  }
 
   /*
    * 换序那一件。`ids` 喂的是**画在屏上的那几行**(`shown`)而不是 `entries`:
@@ -87,6 +169,36 @@ export function ProgrammeSheet() {
 
   return (
     <section className={s.sheet} data-testid="music-programme-sheet">
+      {/* ── §8.1 正在播放 ──────────────────────────────────────────────────
+        * 没歌就整段不画(段头也不画):一个「正在播放」底下空着,说的是「坏了」。 */}
+      {now && (
+        <>
+          <h2 className={s.head}>{t('music.nowSection')}</h2>
+          <ol className={s.list}>
+            <li className={s.entry} data-now="true" data-testid="music-now-row">
+              <span className={s.disc} style={discStyle(nowTitle)} aria-hidden="true" />
+              <div className={s.entryText}>
+                <span className={s.entryTitle}>
+                  <span className={s.entryName}>{now.name || t('music.untitled')}</span>
+                  {now.artist && <span className={s.entryArtist}>{now.artist}</span>}
+                </span>
+              </div>
+              {/* 均衡器条:只在真的在放时起伏(暂停时三根静止 —— 停了就不该有声浪)。
+                * 动效档「无」与系统偏好下同样停住,形在 MusicPanel.module.css。 */}
+              <span className={s.eq} data-playing={nowPlaying?.playing ? 'true' : undefined} aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+              {/* 贴着行底边那条进度。它是**读数**不是控件:不接指针,拖进度在歌条上。 */}
+              <span className={s.nowBar} aria-hidden="true">
+                <i data-testid="music-now-progress" style={{ width: `${(played * 100).toFixed(2)}%` }} />
+              </span>
+            </li>
+          </ol>
+        </>
+      )}
+
       <h2 className={s.head}>
         {entries.length > 0 ? t('music.programmeCount', { count: entries.length }) : t('music.programme')}
       </h2>
@@ -97,6 +209,8 @@ export function ProgrammeSheet() {
         <ol className={s.list} data-testid="music-programme" {...reorder.listProps}>
           {shown.map((entry, index) => {
             const { name, artist } = splitTitle(entry.title)
+            const busy = playNow?.encryptedId === entry.encryptedId && playNow.error === undefined
+            const failed = playNow?.encryptedId === entry.encryptedId ? playNow.error : undefined
             return (
               <li
                 key={entry.encryptedId}
@@ -116,9 +230,46 @@ export function ProgrammeSheet() {
                   testId={`music-entry-drag:${entry.encryptedId}`}
                   {...reorder.handleProps(entry.encryptedId, index)}
                 />
+                {/* §8.2 碟形色块 + 悬停即放。三角是**真按钮**(Tab 到得了、有名字),
+                    浮出来只是它的可见性 —— 键盘用户与鼠标用户各有各的路。 */}
+                <span className={s.disc} style={discStyle(entry.title)}>
+                  <ButtonBase
+                    className={s.discPlay}
+                    aria-label={t('music.rowPlayNow', { name })}
+                    data-testid={`music-entry-play:${entry.encryptedId}`}
+                    disabled={busy}
+                    onClick={() => void runPlayNow(entry)}
+                  >
+                    {/* ui-consume-allow: spinner-placement — 这枚圈就在这颗钮的 loading 位上
+                      * (`ButtonBase` 是钮,只是视觉本该定制所以不是 `ui/Button`);规则认的是
+                      * 字面上的 `<button>` 标签,看不见这一层。 */}
+                    {busy ? <Spinner /> : <Play className={s.discPlayIcon} aria-hidden="true" />}
+                  </ButtonBase>
+                </span>
                 <div className={s.entryText}>
                   <span className={s.entryTitle}>
                     <span className={s.entryName}>{name}</span>
+                    {/* §8.3 主持人要先说话的那一首。它不是钮,是一句「他会先开口」的记号。 */}
+                    {entry.say && (
+                      <Tooltip content={entry.say}>
+                        {/* eslint-disable jsx-a11y/no-noninteractive-tabindex --
+                          * 这枚记号**要够得着**:提示只在悬停 / 聚焦时出现,不进 Tab 序
+                          * 就等于键盘用户永远读不到那句话。它不是控件(按下去什么都不发生),
+                          * 所以也不许报成 button —— 报成钮才是真的说谎。role="img" + 一个
+                          * 名字是「一个有名字的记号」该有的报法,这条规则看的是 role 交不交互,
+                          * 看不见「这里挂着一只提示」。 */}
+                        <span
+                          className={s.sayMark}
+                          role="img"
+                          tabIndex={0}
+                          aria-label={t('music.rowSayMark', { say: entry.say })}
+                          data-testid={`music-entry-say:${entry.encryptedId}`}
+                        >
+                          <MicVocal aria-hidden="true" />
+                        </span>
+                        {/* eslint-enable jsx-a11y/no-noninteractive-tabindex */}
+                      </Tooltip>
+                    )}
                     {artist && <span className={s.entryArtist}>{artist}</span>}
                     {entry.note && <span className={s.entryNote}>{entry.note}</span>}
                   </span>
@@ -126,6 +277,12 @@ export function ProgrammeSheet() {
                     <Tooltip content={entry.say}>
                       <span className={s.entrySay}>{entry.say}</span>
                     </Tooltip>
+                  )}
+                  {/* 失败就地一行:哪一行按坏了,话就留在哪一行下面。 */}
+                  {failed && (
+                    <span className={s.entryBad} data-testid="music-entry-error">
+                      {failed}
+                    </span>
                   )}
                 </div>
                 <IconButton
@@ -175,7 +332,9 @@ export function ProgrammeSheet() {
       </form>
 
       {programme.error && <p className={s.bad}>{programme.error}</p>}
-      {error && (
+      {/* 「立即播放」失败时那句话已经留在它自己那一行下面了 —— 底下这一行是同一只
+        * mutation 的同一句错话,两处画出来是同一件事说两遍。 */}
+      {error && error !== playNow?.error && (
         <p className={s.bad} data-testid="music-programme-error">
           {error}
         </p>

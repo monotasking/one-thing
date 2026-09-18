@@ -358,7 +358,7 @@ describe('错误就地一行', () => {
 })
 
 describe('空态两句', () => {
-  it('播放器没在跑 / 电台没开,各说各的', async () => {
+  it('播放器没在跑说一句;电台没开只给心情色块与开台,不写旁白', async () => {
     await mount({
       'music:radio#brief': BRIEF_OFF,
       'music:radio#programme': { entries: [] },
@@ -379,9 +379,11 @@ describe('空态两句', () => {
       },
     })
     expect(await screen.findByText('播放器没在跑。')).toBeTruthy()
-    expect(
-      screen.getByText('电台关着。说一句现在想听什么,主持人会排一张节目单,每首歌前说几句。'),
-    ).toBeTruthy()
+    // 「电台关着」那句旁白已删(用户 09-17 的那条:界面不是用来跟用户解释设计的)——
+    // 关着这件事由开台卡自己说:意图输入 + 开台 + 四枚心情色块。
+    expect(screen.queryByText(/电台关着/)).toBeNull()
+    expect(screen.getByTestId('music-open')).toBeTruthy()
+    expect(screen.getAllByTestId(/^music-mood:/).length).toBe(4)
   })
 })
 

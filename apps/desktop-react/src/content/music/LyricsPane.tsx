@@ -8,6 +8,7 @@ import { musicLyricsQuery, musicOps } from '../../data/music-source'
 import { useT } from '../../i18n'
 import { clockOf, splitTitle } from './turntable'
 import { currentRowAt, fillOf, hasWords, lyricRowsOf, nearestRowTo } from './lyrics-rows'
+import { useHostSay } from './useHostSay'
 import s from '../MusicPanel.module.css'
 
 /**
@@ -35,6 +36,18 @@ import s from '../MusicPanel.module.css'
  *    一句「这首没有歌词」;读失败 → 另起一行;没有歌 → 整件由外面那块面不画。
  * ③ UI 交互状态:每一句是一颗 `ui/ButtonBase`(结构性交互件),hover / focus 随全局配方;
  *    当前句填色;离当前句两行以外淡下去;定位条只在没跟随时在场。
+ *
+ * ── 他开口时歌词让位(2026-09-18,正本 §8.4)────────────────────────────────
+ * 黑豆开口(`useHostSay`,读的是 `usePetOnAir` 那同一格)时:整块歌词压暗一档、
+ * **跟唱暂停**(当前句不再自动滚 —— 人此刻在听他说话,字还在那儿跳会抢注意力),
+ * 他的话浮在歌词上方居中一块(与唱机那边的气泡同一套皮,不带尾巴:那块话没有主人
+ * 站在它底下,画一条指向空处的尾巴是假的)。说完了亮回来、跟唱**接上当前句**:
+ * 这几十秒里歌已经往前走了好几句,补一段滚动动画等于把人的眼睛拖着走一遍。
+ *
+ * ── 还在读歌词时画骨架(§8.5)──────────────────────────────────────────────
+ * 从前这里交的是一块空白,而空白与「这首没有歌词」在屏上长得一模一样。三行灰条说的是
+ * 「在等」。判据是 `phase === 'initial'`(从来没有过内容)—— 换歌之后重读那一发**不**画
+ * 骨架,旧歌词留在屏上直到新的到(律②)。
  */
 
 /** 手一滚,多久之后回到跟随。 */
@@ -68,6 +81,13 @@ export function LyricsPane({
   const rows = useMemo(() => lyricRowsOf(lines, duration), [lines, duration])
   const current = currentRowAt(rows, position)
   const words = hasWords(rows)
+  const say = useHostSay()
+  const hushed = say !== null
+  /*
+   * 还在读:这首有歌名(外面那块面只在有歌时才画这一件),而这一格从来没有过内容。
+   * 读失败另算 —— 那有一句真的话可说,不该画成「还在等」。
+   */
+  const loading = lyrics.phase === 'initial' && lyrics.error === undefined && Boolean(title)
 
   /** 换一首歌 = 重新落位(第一次不平滑),并且回到跟随。 */
   useEffect(() => {
@@ -104,9 +124,20 @@ export function LyricsPane({
   const rowAt = (index: number): HTMLElement | null =>
     scrollRef.current?.querySelector<HTMLElement>(`[data-lyric-index='${index}']`) ?? null
 
-  /** 跟随中:当前句换了就滚到窗口四成高的位置。 */
+  /*
+   * 他说完了:下一次落位**不平滑**(§8.4 末行「不补滚动动画」)。这几十秒里当前句
+   * 已经换了好几句,一段从旧位置滑到新位置的动画只会把人的眼睛拖着走一遍。
+   * 借的是「第一次落位」那一格 —— 它说的就是「这一下直接落,不要滑」。
+   */
+  const wasHushed = useRef(false)
+  useEffect(() => {
+    if (wasHushed.current && !hushed) landedRef.current = false
+    wasHushed.current = hushed
+  }, [hushed])
+
+  /** 跟随中:当前句换了就滚到窗口四成高的位置。**他在说话时不跟唱**(§8.4)。 */
   useLayoutEffect(() => {
-    if (!following || current < 0) return
+    if (!following || hushed || current < 0) return
     const box = scrollRef.current
     const row = rowAt(current)
     if (!box || !row || typeof box.scrollTo !== 'function') return
@@ -114,7 +145,7 @@ export function LyricsPane({
     box.scrollTo({ top: Math.max(0, top), behavior: landedRef.current ? 'smooth' : 'auto' })
     landedRef.current = true
     // rows 进依赖表:换歌时行集换了,同一个下标指的是另一句。
-  }, [current, following, rows])
+  }, [current, following, hushed, rows])
 
   /** 没跟随的时候,定位条指着视野正中最近的一句。 */
   const refreshGuide = useCallback(() => {
@@ -145,12 +176,20 @@ export function LyricsPane({
   return (
     <section className={s.lyricsBlock} data-mode={mode} data-testid="music-lyrics">
       {head}
-      {lyrics.phase === 'ready' && !words ? (
+      {loading ? (
+        /* §8.5 三行灰条。`role="status"` + 一个名字:读屏软件也该知道这里在等东西,
+         * 而三条没有名字的空 div 对它是不存在的。 */
+        <div className={s.lyricsSkel} role="status" aria-label={t('music.lyricsLoading')} data-testid="music-lyrics-skeleton">
+          <i />
+          <i />
+          <i />
+        </div>
+      ) : lyrics.phase === 'ready' && !words ? (
         <p className={s.lyricsNone} data-testid="music-lyrics-empty">
           {t('music.lyricsEmpty')}
         </p>
       ) : (
-        <div className={s.lyricsStage}>
+        <div className={s.lyricsStage} data-hushed={hushed ? 'true' : undefined}>
           {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex --
             * **一块可滚动的地是键盘要够得着的**(WCAG 2.1.1:只能用鼠标滚的内容等于键盘
             * 用户看不全),所以 tabIndex=0 + 一个名字;挂在它身上的几只手也不是「给静态
@@ -224,6 +263,14 @@ export function LyricsPane({
             <div className={s.lyricsPad} aria-hidden="true" />
           </div>
           {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
+          {/* §8.4 他的话。浮在歌词上方居中,不接点击(它不是控件,是一句话)。
+            * `aria-live` 不给:这句话后端已经在读出来了(主进程出声),读屏再念一遍
+            * 是同一句话说两遍。 */}
+          {say && (
+            <div className={s.hostSay} data-testid="music-host-say">
+              {say.typed}
+            </div>
+          )}
           {!following && guide !== null && rows[guide] && (
             <div className={s.guide} data-testid="music-lyrics-guide">
               <span className={s.guideTime}>{clockOf(rows[guide].at)}</span>

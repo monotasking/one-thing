@@ -3,6 +3,7 @@ import { X } from '../../components/icons'
 import { FocusScope } from '../../focus/FocusScope'
 import { IconButton } from '../../ui/IconButton'
 import { useT } from '../../i18n'
+import type { MusicNowPlayingView } from '../../data/music-source'
 import { ProgrammeSheet } from './ProgrammeSheet'
 import s from '../MusicPanel.module.css'
 
@@ -33,7 +34,22 @@ import s from '../MusicPanel.module.css'
  * ③ UI 交互状态:遮罩 hover 无态(它不是控件);✕ 随 `ui/IconButton`;
  *    抽屉内滚动由身子那一层管。
  */
-export function PlaylistDrawer({ form, onClose }: { form: 'side' | 'sheet'; onClose: () => void }) {
+export function PlaylistDrawer({
+  form,
+  onClose,
+  nowPlaying,
+  position,
+}: {
+  form: 'side' | 'sheet'
+  onClose: () => void
+  /*
+   * 「正在播放」那一段要的两格(正本 §8.1)。**父级递进来**而不是这里再订一次:
+   * `usePlaybackPosition` 起的是一只 250ms 的钟,同一份真相订两遍就是两只钟,
+   * 迟早在某一帧不一致(与 `StationStrip` 的 `state` 同一条判据)。
+   */
+  nowPlaying?: MusicNowPlayingView
+  position?: number
+}) {
   const t = useT()
   const closeRef = useRef<HTMLButtonElement | null>(null)
 
@@ -79,7 +95,7 @@ export function PlaylistDrawer({ form, onClose }: { form: 'side' | 'sheet'; onCl
               />
             </div>
             <div className={s.drawerBody}>
-              <ProgrammeSheet />
+              <ProgrammeSheet nowPlaying={nowPlaying} position={position} />
             </div>
           </aside>
         )}

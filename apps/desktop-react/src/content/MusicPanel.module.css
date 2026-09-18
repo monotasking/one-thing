@@ -203,6 +203,52 @@
   gap: var(--sp-1);
 }
 
+/* ── §8.6 四枚心情色块 ────────────────────────────────────────────────────
+ * 一行铺开,窄下来自己折。每一枚的色由 `--music-mood`(那个心情自己的一对颜色
+ * 画成的斜向渐变)从落点传进来 —— 色是内容,不进主题。 */
+.moods {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--music-mood-min), 1fr));
+  gap: var(--sp-2);
+}
+
+.mood {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: var(--music-mood-h);
+  border-radius: var(--music-mood-r);
+  background: var(--music-mood);
+  box-shadow: var(--sh-1);
+  transition: transform var(--dur) var(--ease), filter var(--dur) var(--ease);
+}
+
+.mood:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.mood:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.mood:disabled {
+  opacity: var(--btn-disabled-o);
+}
+
+/* 块上印的那两个字。渐变底上永远是浅字 —— 四块底都是暗的,这是内容色的一部分。 */
+.moodInk {
+  font-size: var(--fs-title);
+  font-weight: 600;
+  letter-spacing: var(--ls-section);
+  color: var(--music-mood-ink);
+}
+
+.moodSpin {
+  position: absolute;
+  right: var(--sp-2);
+  bottom: var(--sp-2);
+}
+
 /* ── 跟主持人说话(2026-09-18,正本 §7.2)──────────────────────────────────
  * 整面最底下一行。它**不吸底也不粘住** —— 这块面自己就是一整块可滚区,
  * 粘住的话窄宽两形各要一套 z 与让位,而它的内容只有一行高。 */
@@ -424,13 +470,18 @@
 }
 
 /*
- * 三列:把手 / 字 / 「⋯」。把手那一列 09-18 随 `ui/list-reorder` 加进来 ——
+ * 四列:把手 / 碟 / 字 / 「⋯」。把手那一列 09-18 随 `ui/list-reorder` 加进来 ——
  * 左内距同时从 `--sp-2` 收成 `--sp-1`,让把手的**图标**仍旧落在从前那行字的
- * 起笔线附近(加一列不等于把整行往右推一格)。
+ * 起笔线附近(加一列不等于把整行往右推一格);碟形色块是 09-18 §8.2 那一列。
+ *
+ * 「正在播放」那一行(`data-now`)是**三列**:碟 / 字 / 均衡器 —— 它没有把手也没有
+ * 「⋯」(已经在放的歌,「提到下一首」「拿掉」都不是一句有意义的话),而且不接 hover 底色:
+ * 一块亮起来的底在说「可以点」,这一行点不了。
  */
 .entry {
+  position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--sp-2);
   min-height: var(--list-row-h);
@@ -438,8 +489,13 @@
   border-radius: var(--r-1);
 }
 
-.entry:hover {
+.entry:hover:not([data-now]) {
   background: var(--st-hover);
+}
+
+.entry[data-now] {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding-bottom: var(--sp-3);
 }
 
 .entryText {
@@ -493,6 +549,162 @@
   font-family: var(--music-font-say);
   font-size: var(--fs-meta);
   color: var(--text-3);
+}
+
+/* 那一行按坏了的话,就留在那一行下面(§8.7「立即播放失败」)。 */
+.entryBad {
+  font-size: var(--fs-micro);
+  color: var(--danger);
+}
+
+/* ── §8.2 碟形色块 + 悬停即放 ──────────────────────────────────────────────
+ * 三层同心:中心一个孔(纸色,看得出这是张唱片而不是一枚圆点)、一圈标签色
+ * (歌名散列出来的那一对里的亮色)、外面盘面。判词在 ProgrammeSheet.tsx 的
+ * `discStyle` 上:**它不是封面占位图**。 */
+.disc {
+  position: relative;
+  flex: none;
+  width: var(--music-disc-size);
+  height: var(--music-disc-size);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    var(--surface-2) 0 var(--music-disc-hole),
+    var(--sleeve-light) calc(var(--music-disc-hole) + 1%) var(--music-disc-label),
+    var(--music-disc-face) calc(var(--music-disc-label) + 1%) 100%
+  );
+  box-shadow: var(--sh-1);
+}
+
+.entry[data-now] .disc {
+  width: var(--music-disc-now);
+  height: var(--music-disc-now);
+}
+
+/* 三角平时藏着,行被指到 / 行里有东西被聚焦 / 它自己被聚焦时浮出来。
+ * **藏的是可见性,不是存在** —— 它一直在 Tab 序里(§8.2「键盘」那一行)。 */
+.discPlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--music-disc-veil);
+  color: var(--music-disc-veil-ink);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.entry:hover .discPlay,
+.entry:focus-within .discPlay {
+  opacity: 1;
+}
+
+.discPlayIcon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+/* ── §8.3 小话筒 ──────────────────────────────────────────────────────── */
+.sayMark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-3);
+}
+
+.sayMark svg {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+}
+
+/* ── §8.1 均衡器条 + 行底那条进度 ─────────────────────────────────────────
+ * 三根条,靠负延迟错开相位。**不在放的时候不动** —— 停了就不该有声浪。 */
+.eq {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--music-eq-gap);
+  height: var(--music-eq-max);
+}
+
+.eq i {
+  width: var(--music-eq-w);
+  border-radius: var(--r-1);
+  background: var(--text-2);
+}
+
+.eq i:nth-child(1) {
+  height: var(--music-eq-still-a);
+}
+
+.eq i:nth-child(2) {
+  height: var(--music-eq-still-b);
+}
+
+.eq i:nth-child(3) {
+  height: var(--music-eq-still-c);
+}
+
+.eq[data-playing] i {
+  height: var(--music-eq-min);
+  animation: var(--kf-music-eq) var(--dur-music-eq) var(--ease) infinite;
+}
+
+.eq[data-playing] i:nth-child(2) {
+  animation-delay: var(--music-eq-delay-b);
+}
+
+.eq[data-playing] i:nth-child(3) {
+  animation-delay: var(--music-eq-delay-c);
+}
+
+/* 动效档「无」/ 系统偏好:停成三根**不等高**的静止条。等高会读成三个点,
+ * 而它要说的是「这儿有声音」。两条规则内容一模一样(两个来源一个结论)。 */
+@media (prefers-reduced-motion: reduce) {
+  .eq[data-playing] i {
+    animation: none;
+    height: var(--music-eq-still-a);
+  }
+
+  .eq[data-playing] i:nth-child(2) {
+    height: var(--music-eq-still-b);
+  }
+
+  .eq[data-playing] i:nth-child(3) {
+    height: var(--music-eq-still-c);
+  }
+}
+
+:root[data-motion-tier='none'] .eq[data-playing] i {
+  animation: none;
+  height: var(--music-eq-still-a);
+}
+
+:root[data-motion-tier='none'] .eq[data-playing] i:nth-child(2) {
+  height: var(--music-eq-still-b);
+}
+
+:root[data-motion-tier='none'] .eq[data-playing] i:nth-child(3) {
+  height: var(--music-eq-still-c);
+}
+
+/* 贴着行底边那一条。跨整行(grid 之外),所以是绝对定位。 */
+.nowBar {
+  position: absolute;
+  left: var(--music-now-bar-inset);
+  right: var(--music-now-bar-inset);
+  bottom: var(--sp-1);
+  height: var(--music-now-bar-h);
+  border-radius: var(--music-now-bar-h);
+  background: var(--line-1);
+  overflow: hidden;
+}
+
+.nowBar i {
+  display: block;
+  height: 100%;
+  background: var(--text-2);
 }
 
 /* ── 歌词 ─────────────────────────────────────────────────────────────── */
@@ -561,6 +773,51 @@
   color: var(--text-3);
 }
 
+/* ── §8.5 歌词骨架 ────────────────────────────────────────────────────────
+ * 三行灰条,宽度 70 / 55 / 62(逐格搬自样例),轻微呼吸。**只动 opacity**:
+ * 样例那道扫光在一块只有三行的区域里读起来像有东西在飞过。 */
+.lyricsSkel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--sp-3);
+  min-height: var(--music-lyrics-h);
+  padding: 0 var(--sp-3);
+}
+
+.lyricsSkel i {
+  height: var(--music-skel-h);
+  border-radius: var(--music-skel-r);
+  background: var(--line-1);
+  animation: var(--kf-music-skel) var(--dur-music-skel) var(--ease-soft) infinite;
+}
+
+.lyricsSkel i:nth-child(1) {
+  width: var(--music-skel-w-a);
+}
+
+.lyricsSkel i:nth-child(2) {
+  width: var(--music-skel-w-b);
+}
+
+.lyricsSkel i:nth-child(3) {
+  width: var(--music-skel-w-c);
+}
+
+/* 动效档「无」/ 系统偏好:三条不呼吸的灰条(停在看得清的那一档,不是最淡那一帧)。 */
+@media (prefers-reduced-motion: reduce) {
+  .lyricsSkel i {
+    animation: none;
+    opacity: var(--music-skel-hi);
+  }
+}
+
+:root[data-motion-tier='none'] .lyricsSkel i {
+  animation: none;
+  opacity: var(--music-skel-hi);
+}
+
 /* 定位条要贴着滚动区画,所以中间隔一层定位上下文。 */
 .lyricsStage {
   position: relative;
@@ -577,10 +834,40 @@
   scrollbar-width: none;
   padding: 0 var(--sp-3);
   mask-image: linear-gradient(transparent, black 14%, black 80%, transparent);
+  transition: opacity var(--dur-music-hush) var(--ease);
 }
 
 .lyricsScroll::-webkit-scrollbar {
   display: none;
+}
+
+/* ── §8.4 他开口时歌词让位 ────────────────────────────────────────────────
+ * 整块压暗一档;跟唱那一半停在 JS 里(LyricsPane 的 `hushed`)—— 压暗是**样子**,
+ * 不跟唱是**行为**,两件事各在各的产地。压暗期间那一块地仍然可滚、每一句仍然可点:
+ * 让位不是禁用(人想自己翻歌词,凭什么不让)。 */
+.lyricsStage[data-hushed] .lyricsScroll {
+  opacity: var(--music-hush-dim);
+}
+
+/* 他的话:浮在歌词上方居中,与唱机那边的气泡同一套皮 —— 但**不带尾巴**
+ * (那块话底下没有人站着,画一条指向空处的尖是假的)。不接指针:它是一句话。 */
+.hostSay {
+  position: absolute;
+  left: 50%;
+  top: var(--sp-4);
+  transform: translateX(-50%);
+  z-index: var(--z-sticky);
+  max-width: min(var(--pet-bubble-max-w), calc(100% - var(--sp-5)));
+  padding: var(--pet-bubble-pad);
+  border-radius: var(--pet-bubble-r);
+  background: var(--pet-bubble-bg);
+  color: var(--pet-bubble-ink);
+  box-shadow: var(--pet-bubble-shadow);
+  font-family: var(--pet-font);
+  font-size: var(--pet-bubble-fs);
+  line-height: var(--pet-bubble-lh);
+  overflow-wrap: anywhere;
+  pointer-events: none;
 }
 
 .lyricsBlock[data-mode='column'] .lyricsScroll {

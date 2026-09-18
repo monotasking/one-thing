@@ -302,7 +302,14 @@ export function MusicPanel({
             </div>
           </div>
 
-          {!wizard && playlistOpen && <PlaylistDrawer form={form.drawer} onClose={closePlaylist} />}
+          {!wizard && playlistOpen && (
+            <PlaylistDrawer
+              form={form.drawer}
+              onClose={closePlaylist}
+              nowPlaying={now.data}
+              position={position}
+            />
+          )}
         </div>
       )}
     </FocusScope>

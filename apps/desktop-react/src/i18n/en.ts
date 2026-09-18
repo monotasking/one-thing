@@ -1656,7 +1656,6 @@ export const en: Record<MessageKey, string> = {
   'music.volumeLabel': 'Volume',
   'music.untitled': 'Untitled',
   'music.playerIdle': 'Nothing is playing.',
-  'music.radioOff': 'The station is off. Say what you feel like hearing — the host lines up a programme and says a few words before each song.',
   'music.intentPlaceholder': 'What are you in the mood for?',
   'music.intentNow': '“{intent}”',
   'music.open': 'Start station',
@@ -1689,8 +1688,19 @@ export const en: Record<MessageKey, string> = {
   'music.rowDown': 'Move down',
   'music.rowRemove': 'Remove (fewer like this)',
   'music.rowCopy': 'Copy title',
+  /* The six left from the sample (2026-09-18, spec §8). "Now playing" here is the
+   * playlist's section head — not the same sentence as the transport's own label. */
+  'music.nowSection': 'Now playing',
+  'music.rowPlayNow': 'Play {name} now',
+  'music.rowSayMark': 'The host says first: {say}',
   'music.lyricSeek': 'Play from this line: {line}',
   'music.lyricsEmpty': 'No lyrics for this song.',
+  'music.lyricsLoading': 'Loading lyrics',
+  /* Four mood blocks. The block shows the short word; pressing it sends the whole intent. */
+  'music.mood.rain': 'Rain',
+  'music.mood.focus': 'Focus',
+  'music.mood.friday': 'Friday',
+  'music.mood.drive': 'Drive',
   'music.backendNotReady': 'The music backend is not set up yet — install the CLI and log in before anything can play.',
 
   /* Talking to the host (2026-09-18). {name} is the current pet — it IS the host. */

@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MusicPanel } from '../content/MusicPanel'
 import { configureMusicPort } from '../data/music-port'
 import { resetMusicSource } from '../data/music-source'
 import type { MusicPort, MusicResourceEvent } from '../data/music-port'
+import { configurePetPort, resetPetSource } from '../data/pet-source'
+import type { ResourceEventFact, ResourcePort } from '../data/resource-port'
 import type { ResourceOutcomeView, ResourceReadView } from '@shared/ipc/resources'
 import { Segmented } from '../ui/Segmented'
 import { useStageStore } from '../stage/store'
@@ -68,6 +70,13 @@ interface LabState {
     | 'login-wait'
     | 'login-failed'
     | 'login-quota'
+  /**
+   * 歌词那一格(§8.5)。`loading` = 那一发**挂着不回**:骨架的判据是
+   * 「从来没有过内容」(`phase === 'initial'`),一发答「读不到」只会得到错话那一档。
+   */
+  lyrics: 'ready' | 'loading'
+  /** 主持人开没开口(§8.4)。`speaking` = 推一条 `utterance`,歌词让位。 */
+  host: 'quiet' | 'speaking'
   programme: 'five' | 'many' | 'empty'
   /** 节目单的当下顺序(按 encryptedId)。`undefined` = 还没动过,按生成序。 */
   order?: readonly string[]
@@ -81,6 +90,8 @@ const INITIAL: LabState = {
   starting: 'none',
   fault: 'none',
   setup: 'ready',
+  lyrics: 'ready',
+  host: 'quiet',
   programme: 'five',
   position: 31,
 }
@@ -206,17 +217,24 @@ function setupState(state: LabState): Record<string, unknown> {
 class LivePort implements MusicPort {
   private data: Record<string, ResourceReadView> = {}
   private listeners = new Set<(event: MusicResourceEvent) => void>()
+  /** 这几条读数**挂着不回**(lab 里演「还在读」那一档)。 */
+  private held = new Set<string>()
   onOp: (op: string, params: Record<string, unknown> | undefined) => void = () => undefined
 
   update(state: LabState): void {
     this.data = table(state)
+    this.held = state.lyrics === 'loading' ? new Set(['music:player#lyrics']) : new Set()
     for (const listener of this.listeners) listener({ ref: 'music:provider', event: 'providerChanged', payload: {} })
   }
 
   ready = async (): Promise<void> => undefined
 
-  read = async (ref: string, name: string): Promise<ResourceReadView> =>
-    this.data[`${ref}#${name}`] ?? { kind: 'denied', reason: `no ${ref}#${name}` }
+  read = async (ref: string, name: string): Promise<ResourceReadView> => {
+    const key = `${ref}#${name}`
+    // 挂着不回 = 这一格永远停在「从来没有过内容」,骨架的判据就是它。
+    if (this.held.has(key)) return new Promise<ResourceReadView>(() => undefined)
+    return this.data[key] ?? { kind: 'denied', reason: `no ${key}` }
+  }
 
   /** 一条资源事实(lab 里只用来演安装输出)。 */
   push(event: MusicResourceEvent): void {
@@ -261,6 +279,65 @@ class LivePort implements MusicPort {
 
 /** 他回的那一句。内容样本,原样写,不进字典(与 SONGS 同一条判据)。 */
 const HOST_REPLY = '好,往下收一收,慢一点。下一首换成林间录音的《慢车》。'
+
+/** 他开口时说的那一句(§8.4 要演的就是这块话浮起来、歌词让位)。内容样本。 */
+const HOST_ON_AIR = '这首是旧电扇的《雨棚下》。前奏那点雨声是真的录进去的 —— 别急着跳。'
+
+/**
+ * **一只假宠物端口**(lab 专用)。音乐面的歌词页要知道「主持人开没开口」,而那件事实住在
+ * `pet:` 那条线上(`data/pet-source`),不在音乐端口里。产品里它由主进程的宠物宿主发;
+ * 这里由一格开关推 `utterance` / `hushed` 两条事实 —— 形与真的逐字相同,所以壳那一侧
+ * 一个字都不必知道自己面对的是假端口。
+ */
+class LabPetPort implements ResourcePort {
+  private listeners = new Set<(event: ResourceEventFact) => void>()
+  private seq = 0
+  private saidId: string | null = null
+
+  ready = async (): Promise<void> => undefined
+
+  read = async (_ref: string, name: string) => {
+    if (name === 'current') {
+      return {
+        kind: 'ok' as const,
+        value: { pet: { id: 'heidou', name: '黑豆', rig: 'heidou-svg' }, speaking: false, utterances: [] },
+      }
+    }
+    if (name === 'roster') return { kind: 'ok' as const, value: { pets: [] } }
+    return { kind: 'denied' as const, reason: `no pet:current#${name}` }
+  }
+
+  do = async () => ({ kind: 'ok' as const, text: 'done' })
+
+  onResourceEvent = (_prefix: string, callback: (event: ResourceEventFact) => void): (() => void) => {
+    this.listeners.add(callback)
+    return () => this.listeners.delete(callback)
+  }
+
+  /** 开口。 */
+  speak(text: string): void {
+    this.saidId = `lab-say-${++this.seq}`
+    this.push('utterance', {
+      id: this.saidId,
+      petId: 'heidou',
+      mode: 'speak',
+      text,
+      at: Date.now(),
+      duck: false,
+    })
+  }
+
+  /** 说完了。没开过口就什么都不发(一条对不上 id 的 `hushed` 在产品里也是被丢掉的)。 */
+  hush(): void {
+    if (!this.saidId) return
+    this.push('hushed', { utteranceId: this.saidId })
+    this.saidId = null
+  }
+
+  private push(event: string, payload: unknown): void {
+    for (const listener of this.listeners) listener({ ref: 'pet:current', event, payload })
+  }
+}
 
 /** 装工具时那条命令吐出来的字。内容样本,原样写,不进字典(与 SONGS 同一条判据)。 */
 const INSTALL_LINES: Readonly<Record<string, readonly string[]>> = {
@@ -379,6 +456,22 @@ const CHOICES: readonly Choice<keyof LabState>[] = [
     ],
   },
   {
+    key: 'lyrics',
+    label: 'lyrics',
+    options: [
+      { value: 'ready', label: 'ready' },
+      { value: 'loading', label: '读中(骨架)' },
+    ],
+  },
+  {
+    key: 'host',
+    label: 'host',
+    options: [
+      { value: 'quiet', label: '—' },
+      { value: 'speaking', label: '他在说' },
+    ],
+  },
+  {
     key: 'programme',
     label: 'programme',
     options: [
@@ -424,24 +517,58 @@ export function MusicLab() {
   const [drawer, setDrawer] = useState<'closed' | 'open'>('closed')
   const [view, setView] = useState<'turntable' | 'lyrics'>('turntable')
   const [port] = useState(() => new LivePort())
+  const [petPort] = useState(() => new LabPetPort())
   const [ready, setReady] = useState(false)
+  /** 上一次的歌词档 —— 换档要把这条线**回出厂再重挂**(理由在下面那段)。 */
+  const lyricsLane = useRef(INITIAL.lyrics)
   const locale = useStageStore((st) => st.locale)
 
   useEffect(() => {
     port.onOp = (op, params) => setState((prev) => applyOp(prev, op, params))
     port.update(INITIAL)
     resetMusicSource()
+    resetPetSource()
     configureMusicPort(port)
+    configurePetPort(petPort)
     setReady(true)
     return () => {
       setReady(false)
       configureMusicPort(undefined)
+      configurePetPort(undefined)
     }
-  }, [port])
+  }, [petPort, port])
 
   useEffect(() => {
     port.update(state)
   }, [port, state])
+
+  /*
+   * 「读中(骨架)」那一格(§8.5)。骨架的判据是**从来没有过内容**
+   * (`phase === 'initial'`),而读数一旦到过手,把下一发挂住也回不到那一档 ——
+   * 那正是律②:重拉期间旧内容留在屏上。所以换这一档要把整条线回出厂、面板重挂一次。
+   * 产品里没有这条路(歌词读数只会往前走),它是 lab 专有的「倒带」。
+   */
+  useEffect(() => {
+    if (lyricsLane.current === state.lyrics) return
+    lyricsLane.current = state.lyrics
+    setReady(false)
+    resetMusicSource()
+  }, [state.lyrics])
+
+  useEffect(() => {
+    // 面板卸掉之后的下一拍再挂回来 —— 挂回来的那一下才是「首载」。
+    if (!ready) setReady(true)
+  }, [ready])
+
+  /*
+   * 「他在说」那一格(§8.4)。拨过去推一条 `utterance`、拨回来推一条 `hushed` ——
+   * 与真机上主持人开口 / 说完那两条事实同形,所以歌词的压暗、跟唱暂停、亮回来
+   * 三件在这里演的就是产品里那一条路。
+   */
+  useEffect(() => {
+    if (state.host === 'speaking') petPort.speak(HOST_ON_AIR)
+    else petPort.hush()
+  }, [petPort, state.host])
 
   return (
     <div className={s.page} data-testid="music-lab">

@@ -1937,7 +1937,6 @@ export const zh = {
   'music.volumeLabel': '音量',
   'music.untitled': '未知曲目',
   'music.playerIdle': '播放器没在跑。',
-  'music.radioOff': '电台关着。说一句现在想听什么,主持人会排一张节目单,每首歌前说几句。',
   'music.intentPlaceholder': '想听点什么(例:下雨天,安静的中文民谣)',
   'music.intentNow': '「{intent}」',
   'music.open': '开台',
@@ -1970,8 +1969,21 @@ export const zh = {
   'music.rowDown': '下移',
   'music.rowRemove': '拿掉(以后少排这类)',
   'music.rowCopy': '复制歌名',
+  /* ── 样例剩下的六条(2026-09-18,正本 §8)────────────────────────────────
+   * 「正在播放」是播放列表里的**段头**,与歌条上那句「正在放」不是一句话:
+   * 一个说的是列表里这一段是什么,一个说的是播放器此刻在干什么。 */
+  'music.nowSection': '正在播放',
+  'music.rowPlayNow': '立即播放{name}',
+  /* 小话筒的名字:它不是钮,是一句「他会先说话」的记号,所以说得出口的是那件事本身。 */
+  'music.rowSayMark': '主持人会先说:{say}',
   'music.lyricSeek': '从这句开始放:{line}',
   'music.lyricsEmpty': '这首没有歌词。',
+  'music.lyricsLoading': '正在取歌词',
+  /* 四枚心情色块。块上印的是那两个字,按下去发出去的是整句意图(`music.preset.*`)。 */
+  'music.mood.rain': '下雨',
+  'music.mood.focus': '专注',
+  'music.mood.friday': '周五',
+  'music.mood.drive': '开车',
   'music.backendNotReady': '音乐后端还没配好 —— 装好那只 CLI 并登录之后才放得出声。',
 
   /* ── 跟主持人说话(2026-09-18,正本 §7.2)。说给人听的话:屏上不出现「会话」

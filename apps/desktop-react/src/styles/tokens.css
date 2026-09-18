@@ -1772,6 +1772,64 @@
   /* 转一圈多久。比场景里的慢一档:它是个记号,不是主角。 */
   --dur-music-mini-disc: 1800ms;
 
+  /* ── 样例剩下的六条(2026-09-18,正本 §8)────────────────────────────────
+   * 行上那枚**碟形色块**:一张唱片的最简形 —— 中心一个孔、一圈标签(颜色由歌名
+   * 散列出来,`scene-geometry.ts` 的 `sleeveColorsFor`,同一首歌在哪儿都是同一色)、
+   * 外面是盘面。**它不是封面占位图** —— 封面这件事后端没有,画一块灰方块会被读成
+   * 「还没加载出来」,而它永远不会来(与场景里那张封套同一条判词)。
+   * 盘面色与 --music-vinyl 同族:画面里的物件色,不从主题色里混。 */
+  --music-disc-size: 34px;
+  --music-disc-now: 42px;
+  --music-disc-face: #1d1d1c;
+  --music-disc-hole: 7%;
+  --music-disc-label: 34%;
+  /* 悬停浮出来那颗三角的底:压在唱片上,所以是墨色半透而不是主题面色。 */
+  --music-disc-veil: rgba(20, 19, 17, 0.55);
+  --music-disc-veil-ink: #ffffff;
+
+  /* 「正在播放」那一行右端的均衡器条(三根)。静止高度三根各不同 —— 动效档「无」
+   * 下停成一排等高的短条会读成三个点,而它要说的是「这儿有声音」。 */
+  --music-eq-w: 3px;
+  --music-eq-gap: 2px;
+  --music-eq-min: 4px;
+  --music-eq-max: 14px;
+  --music-eq-still-a: 6px;
+  --music-eq-still-b: 13px;
+  --music-eq-still-c: 9px;
+  --dur-music-eq: 900ms;
+  /* 三根的相位差(负延迟 = 起手就错开)。 */
+  --music-eq-delay-b: -300ms;
+  --music-eq-delay-c: -600ms;
+  /* 贴着行底边那条进度。细到只是一条线:它是读数,不是可拖的控件。 */
+  --music-now-bar-h: 2px;
+  --music-now-bar-inset: 12px;
+
+  /* 歌词骨架:三行灰条,宽度按样例 70 / 55 / 62,轻微呼吸。 */
+  --music-skel-h: 18px;
+  --music-skel-r: 6px;
+  --music-skel-w-a: 70%;
+  --music-skel-w-b: 55%;
+  --music-skel-w-c: 62%;
+  --music-skel-lo: 0.45;
+  --music-skel-hi: 0.9;
+  --dur-music-skel: 1600ms;
+
+  /* 他开口时歌词让位:整块压到这个不透明度,230ms 走完。 */
+  --music-hush-dim: 0.26;
+  --dur-music-hush: 230ms;
+
+  /* 四枚心情色块。**色是内容**(每个心情自己的一对颜色画成斜向渐变),
+   * 与 --music-scene-* / --pet-* 同一条例外:画面里的物件色,不从主题色里混。 */
+  --music-mood-h: 56px;
+  --music-mood-r: 12px;
+  /* 一枚最窄多宽 —— 窄面板上四枚自己折成两行两列,不硬挤成四条竖缝。 */
+  --music-mood-min: 64px;
+  --music-mood-ink: #ffffff;
+  --music-mood-rain: linear-gradient(135deg, #4a6b8a, #26364a);
+  --music-mood-focus: linear-gradient(135deg, #3f6b5e, #1e3a33);
+  --music-mood-friday: linear-gradient(135deg, #b5643f, #6d3324);
+  --music-mood-drive: linear-gradient(135deg, #4b4470, #211d3a);
+
   /* ── 接入向导(content/music/SetupWizard,2026-09-18;正本
    * apps/desktop-react/docs/music-panel-2026-09.md §6)──────────────────────── */
   /* 三步卡那一栏的最大宽:一格表单读起来最舒服的行长,再宽就该分两列了。 */
