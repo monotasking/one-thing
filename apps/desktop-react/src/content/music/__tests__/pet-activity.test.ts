@@ -14,6 +14,7 @@ const READY: MusicRuntimeState = {
   loggedIn: true,
   playerBackend: 'mpv',
   source: 'daily',
+  login: { status: 'ok' },
 }
 const RADIO_ON: MusicRadioState = { active: true, intent: '下雨天', programmeLength: 2, canResume: true }
 const RADIO_OFF: MusicRadioState = { active: false, intent: '', programmeLength: 0, canResume: false }

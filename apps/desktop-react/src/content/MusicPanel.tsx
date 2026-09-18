@@ -13,6 +13,7 @@ import { useT } from '../i18n'
 import type { PetStageHandle } from '../pets/PetStage'
 import { LyricsPane } from './music/LyricsPane'
 import { PlaylistDrawer } from './music/PlaylistDrawer'
+import { SetupWizard, useSetupWizardVisible } from './music/SetupWizard'
 import { StationStrip } from './music/StationStrip'
 import { PlaylistButton, Transport } from './music/Transport'
 import { TurntableScene } from './music/TurntableScene'
@@ -80,7 +81,10 @@ import s from './MusicPanel.module.css'
  *                (下次开面板从唱机开始)。
  *
  * ── ② UI 生命状态 ───────────────────────────────────────────────────────
- *  · 后端没配好 → 顶上一句 `music.backendNotReady`;后端报错 → 一句原话;
+ *  · 后端没配好 → **接入向导**占唱机那一块(`music/SetupWizard`,正本 §6;电台条、
+ *    歌词栏、节目单抽屉这几步里都不画);后端整个读不到 → 顶上一句
+ *    `music.backendNotReady`(向导不画:后端都不在,装什么都没用);
+ *  · 后端报错 → 一句原话;
  *  · 首载 → 唱机场景照画(素面唱片),歌名与歌条不画;
  *  · 没歌 → 唱机空态,歌名位置一句「播放器没在跑」,歌条不画;
  *  · 电台关着 → 电台条换成开台卡;唱机屋里的灯暗一半,黑豆睡着;
@@ -124,7 +128,20 @@ export function MusicPanel({
   const [view, setView] = useState<'turntable' | 'lyrics'>(initialView)
 
   const state = runtime.data
-  const notReady = state !== undefined && state.setupStage !== 'ready'
+  /*
+   * **后端没配好 = 画向导,不是画一句话**(2026-09-18,正本 §6)。从前这里只有
+   * 顶上一句「音乐后端还没配好」,而人得自己去命令行把事办了 —— 那句话等于把人
+   * 挡在门外。
+   *
+   * 两档分得清楚:
+   *  · `state` 读得到但没配好 → 向导占唱机那一块的位置,电台条与节目单**不画**
+   *    (§6.3:这几步里它们没有任何可说的);
+   *  · `state` 读不到(后端整个不在)→ 向导不画,顶上仍是今天那句话(§6.5 首行:
+   *    后端都不在,装什么都没用)。首载那一瞬间两样都不画 —— 「还没问到」不是
+   *    「问不到」。
+   */
+  const wizard = useSetupWizardVisible(state?.setupStage)
+  const unreachable = state === undefined && (runtime.error !== undefined || runtime.phase === 'ready')
   const playing = now.data?.playing ?? false
   const title = now.data?.title
   const duration = now.data?.duration
@@ -169,7 +186,7 @@ export function MusicPanel({
           <div className={s.scroller}>
             <div className={s.layout} data-wide={form.wide ? 'true' : undefined}>
               <div className={s.notices}>
-                {notReady && (
+                {unreachable && (
                   <p className={s.notice} data-testid="music-not-ready">
                     {t('music.backendNotReady')}
                   </p>
@@ -181,7 +198,7 @@ export function MusicPanel({
                 )}
               </div>
 
-              <StationStrip />
+              {!wizard && <StationStrip state={state} />}
 
               {/*
                 * 唱机区:上半块是场景(或歌词页),下半块是歌名与歌条。
@@ -189,7 +206,9 @@ export function MusicPanel({
                 * 场景自己量自己的宽。
                 */}
               <section className={s.deck} data-testid="music-player">
-                {lyricsPage ? (
+                {wizard && state ? (
+                  <SetupWizard state={state} />
+                ) : lyricsPage ? (
                   <LyricsPane
                     mode="page"
                     position={position}
@@ -210,48 +229,55 @@ export function MusicPanel({
                     petRef={petRef}
                   />
                 )}
-                <div className={s.deckBody}>
-                  {now.phase === 'ready' && !hasSong ? (
-                    <p className={s.none}>{t('music.playerIdle')}</p>
-                  ) : (
-                    hasSong && (
-                      <div className={s.nowText}>
-                        <p className={s.nowTitle} data-testid="music-now-title">
-                          {name || t('music.untitled')}
-                        </p>
-                        {artist && <p className={s.nowArtist}>{artist}</p>}
+                {/*
+                  * 向导在场时下半块整块**不画**(不是藏起来):歌名、歌条、播放列表钮
+                  * 在这几步里都没有内容,而藏起来的话这块面的落点(播放钮)会落进一个
+                  * 看不见的元素里 —— 焦点不许落在「没有东西」上(响应链不变量 I1)。
+                  */}
+                {!wizard && (
+                  <div className={s.deckBody}>
+                    {now.phase === 'ready' && !hasSong ? (
+                      <p className={s.none}>{t('music.playerIdle')}</p>
+                    ) : (
+                      hasSong && (
+                        <div className={s.nowText}>
+                          <p className={s.nowTitle} data-testid="music-now-title">
+                            {name || t('music.untitled')}
+                          </p>
+                          {artist && <p className={s.nowArtist}>{artist}</p>}
+                        </div>
+                      )
+                    )}
+                    {now.error && <p className={s.bad}>{now.error}</p>}
+                    {!hasSong && (
+                      <div className={s.idleKeys}>
+                        <PlaylistButton
+                          open={playlistOpen}
+                          onToggle={() => setPlaylistOpen((open) => !open)}
+                          buttonRef={playlistRef}
+                        />
                       </div>
-                    )
-                  )}
-                  {now.error && <p className={s.bad}>{now.error}</p>}
-                  {!hasSong && (
-                    <div className={s.idleKeys}>
-                      <PlaylistButton
-                        open={playlistOpen}
-                        onToggle={() => setPlaylistOpen((open) => !open)}
-                        buttonRef={playlistRef}
+                    )}
+                    {hasSong && (
+                      <Transport
+                        title={title}
+                        playing={playing}
+                        position={position}
+                        duration={duration}
+                        playRef={playRef}
+                        onLiked={onLiked}
+                        lyricsOpen={lyricsPage}
+                        onToggleLyrics={form.wide ? undefined : () => setView(lyricsPage ? 'turntable' : 'lyrics')}
+                        playlistOpen={playlistOpen}
+                        onTogglePlaylist={() => setPlaylistOpen((open) => !open)}
+                        playlistRef={playlistRef}
                       />
-                    </div>
-                  )}
-                  {hasSong && (
-                    <Transport
-                      title={title}
-                      playing={playing}
-                      position={position}
-                      duration={duration}
-                      playRef={playRef}
-                      onLiked={onLiked}
-                      lyricsOpen={lyricsPage}
-                      onToggleLyrics={form.wide ? undefined : () => setView(lyricsPage ? 'turntable' : 'lyrics')}
-                      playlistOpen={playlistOpen}
-                      onTogglePlaylist={() => setPlaylistOpen((open) => !open)}
-                      playlistRef={playlistRef}
-                    />
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
               </section>
 
-              {form.wide && hasSong && (
+              {!wizard && form.wide && hasSong && (
                 <LyricsPane
                   mode="column"
                   position={position}
@@ -263,7 +289,7 @@ export function MusicPanel({
             </div>
           </div>
 
-          {playlistOpen && <PlaylistDrawer form={form.drawer} onClose={closePlaylist} />}
+          {!wizard && playlistOpen && <PlaylistDrawer form={form.drawer} onClose={closePlaylist} />}
         </div>
       )}
     </FocusScope>

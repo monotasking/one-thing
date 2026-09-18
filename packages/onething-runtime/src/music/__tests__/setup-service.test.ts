@@ -188,10 +188,158 @@ describe('MusicSetupService', () => {
 
   it('emits login output so the settings tab can draw the QR code', async () => {
     const harness = createHarness()
+    // 驱动把 ncm-cli 的信封重新序列化过一次再交出来(它文件头上写着理由)。
+    const envelope = JSON.stringify({ success: true, qrCodeUrl: 'https://music.163.com/login?code=abc' })
     harness.backend.startLogin.mockImplementationOnce(async onOutput => {
-      onOutput('https://music.163.com/login?code=abc')
+      onOutput(envelope)
     })
     await harness.service.startLogin()
-    expect(harness.events).toContainEqual({ type: 'login-output', chunk: 'https://music.163.com/login?code=abc' })
+    expect(harness.events).toContainEqual({ type: 'login-output', chunk: envelope })
+  })
+})
+
+/**
+ * ── 登录那一格的状态机(2026-09-18;正本 `music-panel-2026-09.md` §6.1)────────
+ *
+ * 判的就是那张表上的六格,以及它们之间**只有**这几条边:
+ * start → waiting → ok,以及 start → failed / quota,与任何时候的 cancel → idle。
+ * 「已扫码待确认」一格都没有 —— 那是刻意的空,不是漏了(`login --check` 只答成没成)。
+ */
+describe('MusicSetupService:登录那一格', () => {
+  const envelope = (payload: Record<string, unknown>) => JSON.stringify(payload)
+
+  it('出厂是 idle', () => {
+    expect(createHarness().service.getState().login).toEqual({ status: 'idle' })
+  })
+
+  it('start → waiting,地址从信封里读出来,而且优先 qrCodeUrl', async () => {
+    const harness = createHarness()
+    const seen: string[] = []
+    harness.backend.startLogin.mockImplementationOnce(async onOutput => {
+      // 这一发之前必须已经是 starting —— 屏幕上那颗钮靠它转圈。
+      seen.push(harness.service.getState().login.status)
+      onOutput(envelope({
+        success: true,
+        qrCodeUrl: 'https://music.163.com/login?codekey=abc',
+        clickableUrl: 'https://music.163.com/login?codekey=abc&from=cli',
+      }))
+    })
+    await harness.service.startLogin()
+    expect(seen).toEqual(['starting'])
+    expect(harness.service.getState().login).toEqual({
+      status: 'waiting',
+      url: 'https://music.163.com/login?codekey=abc',
+    })
+  })
+
+  it('没有 qrCodeUrl 时退用 clickableUrl', async () => {
+    const harness = createHarness()
+    harness.backend.startLogin.mockImplementationOnce(async onOutput => {
+      onOutput(envelope({ success: true, clickableUrl: 'https://music.163.com/login?codekey=zzz' }))
+    })
+    await harness.service.startLogin()
+    expect(harness.service.getState().login.url).toBe('https://music.163.com/login?codekey=zzz')
+  })
+
+  it('跑成了却没有地址 = failed,不是一直转圈', async () => {
+    const harness = createHarness()
+    harness.backend.startLogin.mockImplementationOnce(async onOutput => {
+      onOutput('一块读不懂的输出')
+    })
+    await harness.service.startLogin()
+    expect(harness.service.getState().login.status).toBe('failed')
+  })
+
+  it('启动失败 = failed + 后端原话;额度用完 = 单独一格 quota', async () => {
+    const failing = createHarness()
+    failing.backend.startLogin.mockRejectedValueOnce(new Error('ncm-cli 退出码 1'))
+    await expect(failing.service.startLogin()).rejects.toThrow('ncm-cli 退出码 1')
+    expect(failing.service.getState().login).toEqual({ status: 'failed', message: 'ncm-cli 退出码 1' })
+
+    const spent = createHarness()
+    spent.backend.startLogin.mockRejectedValueOnce(new OnethingMusicQuotaError('请求总量超限'))
+    await expect(spent.service.startLogin()).rejects.toThrow('请求总量超限')
+    expect(spent.service.getState().login).toEqual({ status: 'quota', message: '请求总量超限' })
+  })
+
+  it('轮询期间的「还没登上」不动地址 —— 那几声正是等待本身', async () => {
+    const harness = createHarness()
+    harness.backend.startLogin.mockImplementationOnce(async onOutput => {
+      onOutput(envelope({ success: true, qrCodeUrl: 'https://music.163.com/login?codekey=abc' }))
+    })
+    await harness.service.startLogin()
+
+    harness.backend.checkLogin.mockResolvedValueOnce(false)
+    await harness.service.checkLogin()
+    expect(harness.service.getState().login).toEqual({
+      status: 'waiting',
+      url: 'https://music.163.com/login?codekey=abc',
+    })
+
+    await harness.service.checkLogin()
+    expect(harness.service.getState().login).toEqual({ status: 'ok' })
+  })
+
+  it('一次真的登上之后,向导自己走到 ready', async () => {
+    const harness = createHarness()
+    harness.backend.checkLogin.mockResolvedValueOnce(false)
+    await harness.service.refreshEnv()
+    expect(harness.service.getState().setupStage).toBe('login')
+
+    harness.backend.startLogin.mockImplementationOnce(async onOutput => {
+      onOutput(JSON.stringify({ success: true, qrCodeUrl: 'https://music.163.com/login?codekey=abc' }))
+    })
+    await harness.service.startLogin()
+    await harness.service.checkLogin()
+    expect(harness.service.getState().setupStage).toBe('ready')
+    expect(harness.service.getState().login).toEqual({ status: 'ok' })
+  })
+
+  it('取消 → idle;退出登录 → idle', async () => {
+    const harness = createHarness()
+    harness.backend.startLogin.mockImplementationOnce(async onOutput => {
+      onOutput(envelope({ success: true, qrCodeUrl: 'https://music.163.com/login?codekey=abc' }))
+    })
+    await harness.service.startLogin()
+    harness.service.cancelLogin()
+    expect(harness.backend.cancelLogin).toHaveBeenCalled()
+    expect(harness.service.getState().login).toEqual({ status: 'idle' })
+
+    await harness.service.checkLogin()
+    expect(harness.service.getState().login).toEqual({ status: 'ok' })
+    await harness.service.logout()
+    expect(harness.service.getState().login).toEqual({ status: 'idle' })
+  })
+
+  it('没在登录的时候问一句「登上了没」,不会凭空冒出一个 waiting', async () => {
+    const harness = createHarness()
+    harness.backend.checkLogin.mockResolvedValueOnce(false)
+    await harness.service.checkLogin()
+    expect(harness.service.getState().login).toEqual({ status: 'idle' })
+  })
+
+  it('checkLogin 撞上额度 → quota,而且原样抛给调用方', async () => {
+    const harness = createHarness()
+    harness.backend.checkLogin.mockRejectedValueOnce(new OnethingMusicQuotaError('请求总量超限'))
+    await expect(harness.service.checkLogin()).rejects.toThrow('请求总量超限')
+    expect(harness.service.getState().login).toEqual({ status: 'quota', message: '请求总量超限' })
+  })
+
+  it('登录地址一个字都不进日志', async () => {
+    const warn = vi.fn()
+    const backendHarness = createHarness()
+    const service = new MusicSetupService({
+      backend: {
+        ...backendHarness.backend,
+        startLogin: async onOutput => {
+          onOutput(JSON.stringify({ success: true, qrCodeUrl: 'https://music.163.com/login?codekey=secret' }))
+        },
+      },
+      emit: () => {},
+      getSource: () => 'daily',
+      logger: { warn },
+    })
+    await service.startLogin()
+    expect(warn).not.toHaveBeenCalled()
   })
 })

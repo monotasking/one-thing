@@ -1676,6 +1676,43 @@ export const en: Record<MessageKey, string> = {
   'music.backendNotReady': 'The music backend is not set up yet — install the CLI and log in before anything can play.',
   'music.backendError': 'The music backend said: {message}',
 
+  /* Setup wizard (2026-09-18). */
+  'music.setup.title': 'Connect NetEase Cloud Music',
+  'music.setup.envHint': 'Two things go on this machine first: the NetEase command line, and a player to make the sound.',
+  'music.setup.probing': 'Looking at what is on this machine…',
+  'music.setup.install': 'Install',
+  'music.setup.installing': 'Installing…',
+  'music.setup.retry': 'Try again',
+  'music.setup.installed': '{version} installed',
+  'music.setup.installedPlain': 'Installed',
+  'music.setup.output': 'Install output for {tool}',
+  'music.setup.credentialsHint':
+    'These two fields are what connect you to NetEase. Apply on the NetEase Cloud Music open platform for an App ID and a private key.',
+  'music.setup.appId': 'App ID',
+  'music.setup.privateKey': 'Private key',
+  'music.setup.revealKey': 'Show the private key',
+  'music.setup.hideKey': 'Hide the private key',
+  'music.setup.save': 'Save',
+  'music.setup.loginHint': 'Last step: sign in once with your own NetEase account.',
+  'music.setup.loginStart': 'Start sign-in',
+  'music.setup.loginStarting': 'Getting the sign-in address…',
+  'music.setup.loginRetry': 'Try again',
+  'music.setup.loginFailed': 'Sign-in could not start.',
+  'music.setup.qrLabel': 'Sign-in QR code',
+  'music.setup.scanHint':
+    'Scan this code with the NetEase Cloud Music app, or open the address below in a browser. This screen notices on its own once you are in.',
+  'music.setup.openInBrowser': 'Open in browser',
+  'music.setup.copyLink': 'Copy link',
+  'music.setup.done': 'You are in.',
+
+  /* Account menu. */
+  'music.account.menu': 'Account',
+  'music.account.playHere': 'Play on this computer',
+  'music.account.playInApp': 'Hand off to the NetEase app',
+  'music.account.logout': 'Sign out',
+  'music.account.logoutConfirmTitle': 'Sign out of NetEase Cloud Music?',
+  'music.account.logoutConfirmBody': 'The station stops, and next time you will scan the code again.',
+
   /* Terminal (T1). The tile name reuses `item.terminal`. */
   'terminal.attaching': 'Attaching…',
   'terminal.detached': 'Disconnected.',

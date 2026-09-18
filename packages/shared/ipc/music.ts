@@ -15,6 +15,21 @@ export type MusicPlayerBackend = 'mpv' | 'orpheus'
 
 export type MusicSetupStage = 'env' | 'credentials' | 'login' | 'ready'
 
+/**
+ * Mirrors OnethingMusicLoginStatus. Deliberately no "scanned, waiting for the
+ * phone to confirm": `login --check` only answers yes or no, so that middle
+ * step is not a fact this machine can observe.
+ */
+export type MusicLoginStatus = 'idle' | 'starting' | 'waiting' | 'ok' | 'failed' | 'quota'
+
+export interface MusicLoginState {
+	status: MusicLoginStatus
+	/** The login address (`qrCodeUrl`, else `clickableUrl`). Present while `waiting`. */
+	url?: string
+	/** The backend's own words on failure / quota. */
+	message?: string
+}
+
 export interface MusicToolStatus {
 	installed: boolean
 	version?: string
@@ -153,6 +168,8 @@ export interface MusicRuntimeState {
 	loggedIn: boolean
 	playerBackend: MusicPlayerBackend
 	source: MusicRadioSource
+	/** Where the login step stands, login address included (2026-09-18). */
+	login: MusicLoginState
 	lastError?: string
 }
 

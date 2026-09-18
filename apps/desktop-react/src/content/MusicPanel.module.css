@@ -658,3 +658,210 @@
   background: var(--line-2);
   pointer-events: none;
 }
+
+/* ── 接入向导(2026-09-18;正本 apps/desktop-react/docs/music-panel-2026-09.md §6)──
+ *
+ * 它占的是唱机那一块的位置(`.deck` 里),所以这里不定位、不设高 —— 身量归那一格。
+ * 一栏排版,最大宽 --music-wizard-w:表单的行长过宽反而读不动。
+ */
+.wizard {
+  display: grid;
+  gap: var(--sp-4);
+  align-content: start;
+  justify-self: center;
+  width: 100%;
+  max-width: var(--music-wizard-w);
+  padding: var(--sp-4) 0;
+}
+
+.wizardHead {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.wizardTitle {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+/* 三格进度记号。不是控件(aria-hidden),所以没有交互态。 */
+.wizardSteps {
+  display: flex;
+  gap: var(--sp-1);
+}
+
+.wizardStep {
+  width: 22px;
+  height: 3px;
+  border-radius: var(--r-1);
+  background: var(--line-2);
+}
+
+.wizardStep[data-state='on'] {
+  background: var(--text-1);
+}
+
+.wizardStep[data-state='done'] {
+  background: var(--ok);
+}
+
+/* 一步的说明。比 .meta 深一档 —— 这几句是**要读的**,不是背景事实。 */
+.wizardHint {
+  margin: 0;
+  font-size: var(--fs-meta);
+  line-height: var(--pr-lh);
+  color: var(--text-2);
+}
+
+/* 装着这一步的内容的那一块。 */
+.wizardBox {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--r-3);
+  background: var(--surface-1);
+  box-shadow: inset 0 0 0 var(--bw-1) var(--line-1);
+}
+
+.wizardForm {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.wizardFoot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+
+/* 「进电台了」那一句。留屏 1.5 秒,不是提示条 —— 它报的是一件好事。 */
+.wizardDone {
+  margin: 0;
+  font-size: var(--fs-body);
+  color: var(--text-1);
+}
+
+/* 一行工具:名字 | 状态或钮,输出块与错话折到第二行占满宽。 */
+.toolLine {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-3);
+}
+
+.toolName {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 装好了。**状态色只上字不上底**。 */
+.toolOk {
+  font-size: var(--fs-meta);
+  color: var(--ok);
+  white-space: nowrap;
+}
+
+/* 安装输出。等宽、封顶 --music-log-lines 行、里面自己滚(跟到底由 JS 管)。 */
+.installLog {
+  grid-column: 1 / -1;
+  margin: 0;
+  max-height: calc(var(--music-log-lines) * 1.55em);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-2);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  line-height: 1.55;
+  color: var(--text-3);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.toolLine .bad {
+  grid-column: 1 / -1;
+}
+
+/* 登录那一步:码在左,话与钮在右;窄了就上下叠(码在上)。 */
+.loginWait {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  align-items: flex-start;
+}
+
+.loginSide {
+  display: grid;
+  gap: var(--sp-2);
+  flex: 1 1 200px;
+  min-width: 0;
+  align-content: start;
+}
+
+/* 码本身。白底是它**自己的**底(见 QrCode.tsx:反色的码扫不出来),
+ * 所以这一圈内边距也画成白的 —— 那是静区的物理落点。 */
+.qr {
+  flex: none;
+  width: var(--qr-size);
+  height: var(--qr-size);
+  border-radius: var(--r-2);
+  background: var(--qr-paper);
+  box-shadow: var(--sh-1);
+}
+
+/* 地址的文字形态:可选、可复制,长了就断,**不截断** —— 截一半的地址是废的。 */
+.loginUrl {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  line-height: 1.5;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.loginKeys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+/* ── 账号那颗钮(§6.4)──────────────────────────────────────────────────
+ * 一枚圆点,**不是头像占位图** —— 这台机器上没有头像这件事实(判词在 AccountMenu)。
+ */
+.account {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-full);
+}
+
+.account:hover .accountMark {
+  background: var(--text-2);
+}
+
+.accountMark {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r-full);
+  background: var(--text-3);
+  transition: background var(--dur) var(--ease);
+}
+
+/* 电台关着时那一行:一句话靠左,账号钮靠右。 */
+.offAirHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}

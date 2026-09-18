@@ -64,6 +64,7 @@ const RUNTIME_STATE = {
   loggedIn: true,
   playerBackend: 'mpv' as const,
   source: 'fm' as const,
+  login: { status: 'ok' as const },
 }
 
 function radioAdapters(overrides: Partial<RadioToolAdapters> = {}): RadioToolAdapters {
@@ -104,6 +105,7 @@ function backendAdapters(overrides: Partial<MusicBackendAdapters> = {}): MusicBa
     providers: () => ({ providers: [], activeId: 'ncm-cli' }),
     search: async () => ({ success: true, records: [{ title: '晴天', artist: '周杰伦', playFlag: true }] }),
     setProvider: async () => ({ success: true }),
+    watchSetup: () => () => {},
     ...overrides,
   }
 }
@@ -550,6 +552,85 @@ describe('music resource provider —— 补齐的做法', () => {
     })
     const failed = await run(refused, { op: 'setProvider', providerId: 'spotify' })
     expect(failureOf(failed.outcome)).toBe('未知的音乐 CLI:spotify')
+  })
+
+  /**
+   * ── 接入向导那两条事实(2026-09-18,正本 `music-panel-2026-09.md` §6.1)────────
+   *
+   * 壳订的就是它们:一步做完了重拉 `state`,装工具那一段把输出铺在屏上。
+   */
+  it('setup:每一步结束发一次 setupChanged,地址是 music:provider,负载只有 setupStage', async () => {
+    const provider = makeProvider()
+    const hub = new ResourceEventHub()
+    const seen: ResourceEvent[] = []
+    hub.watch('music:', event => seen.push(event))
+    provider.attach(hub)
+
+    expect((await run(provider, { op: 'setup', action: 'check-env' })).outcome.kind).toBe('ok')
+    expect(seen).toEqual([
+      { ref: 'music:provider', event: 'setupChanged', payload: { setupStage: 'ready' } },
+    ])
+
+    // 凭据一个字都不进这条事实(账本长期留着;判词在 provider 的 `plan` 上)。
+    seen.length = 0
+    await run(provider, { op: 'setup', action: 'set-credentials', appId: '123', privateKey: 'sk-secret' })
+    expect(JSON.stringify(seen)).not.toContain('sk-secret')
+    expect(seen).toHaveLength(1)
+  })
+
+  it('setup:这一步失败了就不发 —— 它是事实不是命令', async () => {
+    const provider = makeProvider(undefined, undefined, {
+      backend: backendAdapters({ setup: async () => ({ success: false, error: 'npm 不在这台机器上' }) }),
+    })
+    const hub = new ResourceEventHub()
+    const seen: ResourceEvent[] = []
+    hub.watch('music:', event => seen.push(event))
+    provider.attach(hub)
+
+    const failed = await run(provider, { op: 'setup', action: 'install-tool', tool: 'ncm-cli' })
+    expect(failureOf(failed.outcome)).toBe('npm 不在这台机器上')
+    expect(seen).toEqual([])
+  })
+
+  it('安装输出折成 setupOutput;别的向导事件一律不转,dispose 退订', async () => {
+    let push: ((event: { type: string; tool?: string; chunk?: string }) => void) | undefined
+    let unsubscribed = 0
+    const provider = makeProvider(undefined, undefined, {
+      backend: backendAdapters({
+        watchSetup: listener => {
+          push = listener
+          return () => {
+            unsubscribed += 1
+            push = undefined
+          }
+        },
+      }),
+    })
+    const hub = new ResourceEventHub()
+    const seen: ResourceEvent[] = []
+    hub.watch('music:', event => seen.push(event))
+    provider.attach(hub)
+
+    push?.({ type: 'install-output', tool: 'ncm-cli', chunk: 'added 87 packages\n' })
+    // `state` 是服务内部的每一次 patch,`login-output` 里装的是登录凭据 —— 两种都不转。
+    push?.({ type: 'state' })
+    push?.({ type: 'login-output', chunk: 'https://music.163.com/login?codekey=secret' })
+    expect(seen).toEqual([
+      {
+        ref: 'music:provider',
+        event: 'setupOutput',
+        payload: { tool: 'ncm-cli', chunk: 'added 87 packages\n' },
+      },
+    ])
+
+    // 退订的是**登记方**(`mountBuiltinResources` 把它排在 unmount 之后,见 provider
+    // 文件头),所以这里判的是「dispose 真的还了那张订阅」,而不是「还了之后还发不发」
+    // —— 后者归端口:退订之后它压根不会再叫这只回调。
+    provider.dispose()
+    expect(unsubscribed).toBe(1)
+    expect(push).toBeUndefined()
+    provider.dispose()
+    expect(unsubscribed).toBe(1)
   })
 
   /**

@@ -1959,6 +1959,44 @@ export const zh = {
   'music.backendNotReady': '音乐后端还没配好 —— 装好那只 CLI 并登录之后才放得出声。',
   'music.backendError': '音乐后端报了一句:{message}',
 
+  /* ── 接入向导(2026-09-18,正本 §6)───────────────────────────────────────
+   * 这几句是**说给人听的**,不是实现的名字:屏上不出现「provider」「setupStage」
+   * 「资源」这类词。工具的名字(ncm-cli / mpv)是事实不是文案,由后端自述带过来,
+   * 不进字典;安装输出、后端的错话同理。 */
+  'music.setup.title': '接上网易云音乐',
+  'music.setup.envHint': '先装两样东西:一个是网易云的命令行,一个是放声音的播放器。',
+  'music.setup.probing': '正在看这台电脑上有什么…',
+  'music.setup.install': '安装',
+  'music.setup.installing': '安装中…',
+  'music.setup.retry': '重试',
+  'music.setup.installed': '已装 {version}',
+  'music.setup.installedPlain': '已装',
+  'music.setup.output': '{tool} 的安装输出',
+  'music.setup.credentialsHint': '填完这两格才连得上网易云。去网易云音乐开放平台申请,拿到 App ID 与一份私钥。',
+  'music.setup.appId': 'App ID',
+  'music.setup.privateKey': '私钥',
+  'music.setup.revealKey': '看一眼私钥',
+  'music.setup.hideKey': '藏起私钥',
+  'music.setup.save': '保存',
+  'music.setup.loginHint': '最后一步:用你自己的网易云账号登录一次。',
+  'music.setup.loginStart': '开始登录',
+  'music.setup.loginStarting': '正在取登录地址…',
+  'music.setup.loginRetry': '再试一次',
+  'music.setup.loginFailed': '登录没能开始。',
+  'music.setup.qrLabel': '登录二维码',
+  'music.setup.scanHint': '用网易云音乐 App 扫这个码;也可以在浏览器里打开下面这条地址登录。登上了这边会自己发现。',
+  'music.setup.openInBrowser': '在浏览器里打开',
+  'music.setup.copyLink': '复制链接',
+  'music.setup.done': '进电台了。',
+
+  /* 账号菜单(§6.4)。「出声方式」那两句照样例的原话。 */
+  'music.account.menu': '账号',
+  'music.account.playHere': '在这台电脑上出声',
+  'music.account.playInApp': '交给网易云音乐 App',
+  'music.account.logout': '退出登录',
+  'music.account.logoutConfirmTitle': '退出网易云音乐?',
+  'music.account.logoutConfirmBody': '电台会停下,下次要重新扫码登录。',
+
   /* 终端(T1,方案 `apps/desktop-react/docs/terminal-browser-2026-09.md` §2.1)。
    * 瓦名复用 `item.terminal`(i18n 纪律:同一句话只有一个键)。 */
   'terminal.attaching': '正在接上…',

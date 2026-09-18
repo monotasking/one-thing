@@ -17,10 +17,12 @@
  */
 
 import type { MusicProviderToolSpec } from './providers/types.js'
+import { OnethingMusicQuotaError } from './types.js'
 import type {
   OnethingMusicBackend,
   OnethingMusicEnvStatus,
   OnethingMusicEvent,
+  OnethingMusicLoginState,
   OnethingMusicPlayerBackend,
   OnethingMusicRadioSource,
   OnethingMusicRuntimeState,
@@ -52,7 +54,33 @@ function createInitialState(source: OnethingMusicRadioSource): OnethingMusicRunt
     loggedIn: false,
     playerBackend: 'mpv',
     source,
+    login: { status: 'idle' },
   }
+}
+
+/**
+ * 从 `startLogin` 交出来的那一块 stdout 里读出登录地址。
+ *
+ * 驱动把 ncm-cli 的信封**重新序列化**过一次再交出来(它自己文件头上写着理由:
+ * 原始 stdout 里夹着非 JSON 的杂行),所以这里认的是一行 JSON。认不出来就答
+ * `undefined` —— 一块读不懂的输出不是一个地址,不许猜。
+ *
+ * 取 `qrCodeUrl` 优先:那是给「编码成一张码」用的那一份,结构上必须是一条能被
+ * 扫的地址;`clickableUrl` 是同一条地址在终端里的可点印法,只在前者缺席时退用。
+ */
+export function parseMusicLoginUrl(chunk: string): string | undefined {
+  let payload: unknown
+  try {
+    payload = JSON.parse(chunk)
+  } catch {
+    return undefined
+  }
+  if (!payload || typeof payload !== 'object') return undefined
+  const record = payload as { qrCodeUrl?: unknown; clickableUrl?: unknown }
+  for (const value of [record.qrCodeUrl, record.clickableUrl]) {
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return undefined
 }
 
 export class MusicSetupService {
@@ -150,6 +178,25 @@ export class MusicSetupService {
     })
   }
 
+  /**
+   * 一次 `login --check` 之后,登录那一格该是什么。
+   *
+   * 成了就是 `ok`。**没成不等于失败**:壳在 `waiting` 期间每 2.5s 问一次,那几声
+   * 「还没」正是等待本身 —— 把它记成 `idle` 会让地址与二维码在人扫码的当口消失。
+   * 所以只有本来就不在登录中的时候才回落到 `idle`。
+   */
+  private loginAfterCheck(loggedIn: boolean): OnethingMusicLoginState {
+    if (loggedIn) return { status: 'ok' }
+    const current = this.state.login
+    return current.status === 'starting' || current.status === 'waiting' ? current : { status: 'idle' }
+  }
+
+  /** 失败 / 超额各自那一格。额度是网易云的事,不是这台机器的,所以分开一格。 */
+  private loginFailure(error: unknown, fallback: string): OnethingMusicLoginState {
+    const message = error instanceof Error && error.message ? error.message : fallback
+    return { status: error instanceof OnethingMusicQuotaError ? 'quota' : 'failed', message }
+  }
+
   private handleError(error: unknown, fallback: string): Error {
     const message = error instanceof Error && error.message ? error.message : fallback
     this.patch({ lastError: message })
@@ -198,6 +245,7 @@ export class MusicSetupService {
       loggedIn,
       playerBackend,
       lastError: undefined,
+      login: this.loginAfterCheck(loggedIn),
       setupStage: this.resolveSetupStage(env, configured, loggedIn, playerBackend),
     })
     return env
@@ -258,15 +306,35 @@ export class MusicSetupService {
     })())
   }
 
+  /**
+   * 开一次登录。
+   *
+   * 地址在**这一发之内**就到:`login --background` 打印一个信封就退出,把等人扫码
+   * 那一段留给它自己 detach 出去的轮询器。所以 `startLogin` 返回时,`login` 那一格
+   * 已经是 `waiting` + `url` —— 调用方不必再问一次。
+   *
+   * 地址一个字都不进日志:它是一次登录会话的凭据,谁拿到谁就能把这个账号登上。
+   */
   async startLogin(): Promise<void> {
     this.assertActive()
     return this.track((async () => {
+    this.patch({ login: { status: 'starting' } })
     try {
       await this.options.backend.startLogin(chunk => {
-        if (!this.closed) this.options.emit({ type: 'login-output', chunk })
+        if (this.closed) return
+        // 旧推送原样留着(它是这条路的原始输出口),新的那一格是从同一块输出里读的。
+        this.options.emit({ type: 'login-output', chunk })
+        const url = parseMusicLoginUrl(chunk)
+        if (url) this.patch({ login: { status: 'waiting', url } })
       })
     } catch (error) {
+      this.patch({ login: this.loginFailure(error, '登录启动失败') })
       throw this.handleError(error, '登录启动失败')
+    }
+    // 跑成了却没有地址 = 启动了一场没人扫得了的登录。**说出来**,别停在转圈上
+    // (那正是这一格补上之前登录那一步的样子:一块永远空着的地)。
+    if (this.state.login.status === 'starting') {
+      this.patch({ login: { status: 'failed', message: '没有拿到登录地址' } })
     }
 
     })())
@@ -274,13 +342,22 @@ export class MusicSetupService {
 
   cancelLogin(): void {
     this.options.backend.cancelLogin()
+    this.patch({ login: { status: 'idle' } })
   }
 
   async checkLogin(): Promise<boolean> {
     this.assertActive()
     return this.track((async () => {
-    const loggedIn = await this.options.backend.checkLogin()
-    this.patch({ loggedIn })
+    let loggedIn: boolean
+    try {
+      loggedIn = await this.options.backend.checkLogin()
+    } catch (error) {
+      // 驱动只把额度这一种错抛上来(别的都折成「没登上」)。它不是「没登上」,
+      // 所以照后端原文记一格,再原样抛给调用方。
+      this.patch({ login: this.loginFailure(error, '登录检查失败') })
+      throw this.handleError(error, '登录检查失败')
+    }
+    this.patch({ loggedIn, login: this.loginAfterCheck(loggedIn) })
     this.refreshSetupStage()
     return loggedIn
 
@@ -295,7 +372,7 @@ export class MusicSetupService {
     } catch (error) {
       throw this.handleError(error, '退出登录失败')
     }
-    this.patch({ loggedIn: false })
+    this.patch({ loggedIn: false, login: { status: 'idle' } })
     this.refreshSetupStage()
 
     })())

@@ -48,6 +48,15 @@ export function createMusicServiceScope(options: {
    * 全丢了。所以表归子系统(它的寿命是 backend 的寿命),这里只负责把事实递上去。
    */
   onNowPlaying?: (nowPlaying: OnethingMusicNowPlaying | null) => void
+  /**
+   * 接入向导那条扇出口(2026-09-18)。与 `onNowPlaying` 逐字同一个形状、同一个
+   * 理由:这只作用域随音乐 provider 切换整代重建,所以监听表归子系统,这里只把
+   * 事实递上去。
+   *
+   * 递的是**整只** `OnethingMusicEvent`,不在这里分拣:谁要哪一种由读表的人说
+   * (资源 provider 今天只把 `install-output` 折成一条资源事实)。
+   */
+  onSetupEvent?: (event: OnethingMusicEvent) => void
 }) {
   const owner = new MusicWorkOwner(options.assertOwned)
   const runner = createElectronMusicProcessRunner({ env: { ONETHING_STORE_PATH: options.storePath }, signal: owner.signal })
@@ -114,6 +123,13 @@ function emitMusicEvent(event: OnethingMusicEvent): void {
     channel: IPC_CHANNELS.MUSIC_EVENT,
     payload: event,
   })
+
+  // 一个坏掉的观察者不该把这条事实撤销掉(与 `onNowPlaying` 那一处同一句话)。
+  try {
+    options.onSetupEvent?.(event)
+  } catch (error) {
+    log.warn('music setup observer failed', { type: event.type }, error)
+  }
 
   // Mirror the durable bits into settings so a restart lands on the right
   // wizard step instead of re-asking for credentials.

@@ -167,6 +167,16 @@ export interface MusicBackendAdapters {
   ): Promise<{ success: boolean; error?: string; records?: Array<{ title: string; artist?: string; playFlag?: boolean }> }>
   /** 换一只音乐 CLI。「未知的 CLI」「本来就是它」两条早退在端口里,不在这里。 */
   setProvider(providerId: string, executionContext?: unknown): Promise<{ success: boolean; error?: string }>
+  /**
+   * 接入向导那条线的订阅(2026-09-18)。返回退订。
+   *
+   * 今天它只为一件事而存在:装工具时那条命令吐出来的字。那是一段要跑几十秒的活,
+   * 屏幕上那块输出是这一段唯一的「它还活着」的证据,而它到不了这台壳 —— 旧的
+   * `install-output` 推送骑在宿主 voice 广播口上,React 壳的 `voice` 端口是 `null`。
+   * 折成一条资源事实之后,它骑的是 `resource:event` 那条**已经在**的全局事件,
+   * 与「不许新开推送通道」那条法一个字不冲突。
+   */
+  watchSetup(listener: (event: { type: string; tool?: string; chunk?: string }) => void): () => void
 }
 
 /** 这只 provider 要的四族端口。一个对象而不是四个位置参数,理由在文件头。 */
@@ -445,6 +455,7 @@ export class MusicResourceProvider implements ResourceProvider<MusicOpPayload> {
   private hub: ResourceEventHub | undefined
   private unwatch: (() => void) | undefined
   private unwatchFacts: (() => void) | undefined
+  private unwatchSetup: (() => void) | undefined
 
   constructor(adapters: MusicResourceAdapters) {
     this.radio = adapters.radio
@@ -467,6 +478,19 @@ export class MusicResourceProvider implements ResourceProvider<MusicOpPayload> {
     this.unwatchFacts = this.player.watchFacts((event, payload) => {
       hub.emit({ scheme: this.spec.scheme, path: MUSIC_PLAYER_PATH }, event, payload)
     })
+    this.unwatchSetup?.()
+    this.unwatchSetup = this.backend.watchSetup(event => {
+      // **只转发安装输出**。`state` 那一种不转:向导那一步做完之后发一次
+      // `setupChanged` 是 `apply` 的事(一步一发,读得出次数);把每一次内部 patch
+      // 都发出去会让一次 `check-env` 变成两三发,而订阅方分不出哪一发是「做完了」。
+      // `login-output` 那一种也不转:登录地址今天记在 `state.login` 那一格上,
+      // 把它再当事实广播一遍就是同一条凭据两个产地。
+      if (event.type !== 'install-output') return
+      hub.emit({ scheme: this.spec.scheme, path: MUSIC_PROVIDER_PATH }, 'setupOutput', {
+        tool: event.tool ?? '',
+        chunk: event.chunk ?? '',
+      })
+    })
   }
 
   /**
@@ -477,6 +501,8 @@ export class MusicResourceProvider implements ResourceProvider<MusicOpPayload> {
     this.unwatch = undefined
     this.unwatchFacts?.()
     this.unwatchFacts = undefined
+    this.unwatchSetup?.()
+    this.unwatchSetup = undefined
     this.hub = undefined
   }
 
@@ -694,6 +720,17 @@ export class MusicResourceProvider implements ResourceProvider<MusicOpPayload> {
         if (!(answered.state.setupStage === 'ready' && answered.state.playerBackend === 'mpv')) {
           this.backend.stopKeepalive(operator)
         }
+        /*
+         * **一步一发**(2026-09-18,正本 §6.1「setup 的每一步结束后发一次;壳订它
+         * 重拉 `state`」)。它是**事实不是命令**,与 `providerChanged` 同一句话:
+         * 发出去的时候这一步已经做完了。
+         *
+         * 发在这里而不是在服务那一侧的每次 patch 上,是因为「一步」这个单位只有
+         * 这里说得出来 —— 一次 `check-env` 在服务里会 patch 两三回,订阅方分不出
+         * 哪一回是做完了。凭据一个字不带:`setupStage` 就是全部负载,其余去读
+         * `state`(与这条做法的预览标题同一条纪律)。
+         */
+        this.emit(MUSIC_PROVIDER_PATH, 'setupChanged', { setupStage: answered.state.setupStage })
         return this.done(
           ctx,
           '配置已更新',
@@ -880,6 +917,9 @@ export function musicBackendAdapters(): MusicBackendAdapters {
       assertMusicOperator(fixedExecutionContext(executionContext))
       return setMusicProvider(providerId)
     },
+    // 订阅**不**过信任门,与 `watchNowPlaying` / `watchFacts` 逐字同一档:那道门判的
+    // 是「谁在操作这台机器」,而订一条扇出口不是一次操作 —— 它连一个子进程都不起。
+    watchSetup: listener => music().onSetupEvent(listener),
   }
 }
 

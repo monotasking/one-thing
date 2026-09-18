@@ -46,7 +46,28 @@ interface LabState {
   /** 换歌中:简报带 starting,节目单里那一首带一句 say。 */
   starting: 'none' | 'say'
   fault: 'none' | 'player' | 'backend'
-  setup: 'ready' | 'login'
+  /**
+   * 向导停在哪一格,以及那一格的几种样子(正本 §6.3 / §6.5)。
+   *
+   *  · `ready`              配好了 —— 向导不在场,唱机出现;
+   *  · `env` / `env-half`   两件工具都没装 / 装好一件(第 ① 步的两种样子);
+   *  · `env-probing`        `env` 还没查过:两行占位,钮停用;
+   *  · `cred`               第 ② 步;
+   *  · `login-idle`         第 ③ 步,还没开始;
+   *  · `login-wait`         拿到地址了 —— **二维码那一态**,演的主场;
+   *  · `login-failed`       一行原话 + 「再试一次」;
+   *  · `login-quota`        额度用完(照后端原文,不劝人重试)。
+   */
+  setup:
+    | 'ready'
+    | 'env'
+    | 'env-half'
+    | 'env-probing'
+    | 'cred'
+    | 'login-idle'
+    | 'login-wait'
+    | 'login-failed'
+    | 'login-quota'
   programme: 'five' | 'many' | 'empty'
   /** 节目单的当下顺序(按 encryptedId)。`undefined` = 还没动过,按生成序。 */
   order?: readonly string[]
@@ -125,14 +146,59 @@ function table(state: LabState): Record<string, ResourceReadView> {
         [62, '♪'],
       ].map(([at, text]) => ({ at, text })),
     }),
-    'music:provider#state': ok({
-      setupStage: state.setup,
-      configured: true,
-      loggedIn: state.setup === 'ready',
-      playerBackend: 'mpv',
-      source: 'daily',
-      ...(state.fault === 'backend' ? { lastError: 'ncm-cli 退出码 1' } : {}),
-    }),
+    'music:provider#state': ok(setupState(state)),
+  }
+}
+
+/** 第 ① 步那两件工具此刻装没装。`env-probing` = 还没查过,整格缺席。 */
+function envOf(setup: LabState['setup']): Record<string, unknown> | undefined {
+  if (setup === 'env-probing') return undefined
+  // `env-half` = ncm-cli 装上了、mpv 还没(点一下「安装」之后的样子)。
+  const cli = setup !== 'env'
+  const mpv = setup !== 'env' && setup !== 'env-half'
+  return {
+    tools: {
+      'ncm-cli': cli ? { installed: true, version: '0.1.6' } : { installed: false },
+      mpv: mpv ? { installed: true, version: '0.40.0' } : { installed: false },
+    },
+    npmAvailable: true,
+    brewAvailable: true,
+  }
+}
+
+const SETUP_STAGE: Readonly<Record<LabState['setup'], 'env' | 'credentials' | 'login' | 'ready'>> = {
+  ready: 'ready',
+  env: 'env',
+  'env-half': 'env',
+  'env-probing': 'env',
+  cred: 'credentials',
+  'login-idle': 'login',
+  'login-wait': 'login',
+  'login-failed': 'login',
+  'login-quota': 'login',
+}
+
+/** 第 ③ 步那一格。地址是**一条真的网易云登录地址的形状** —— 码要编得出来才看得见。 */
+const LOGIN: Readonly<Record<string, { status: string; url?: string; message?: string }>> = {
+  'login-idle': { status: 'idle' },
+  'login-wait': { status: 'waiting', url: 'https://music.163.com/login?codekey=8f3c1d5e-7a20-4b6f-9c11-2de4a8b07f63' },
+  'login-failed': { status: 'failed', message: 'ncm-cli login 启动失败(退出码 1)' },
+  'login-quota': { status: 'quota', message: '请求总量超限' },
+  ready: { status: 'ok' },
+}
+
+function setupState(state: LabState): Record<string, unknown> {
+  const env = envOf(state.setup)
+  return {
+    setupStage: SETUP_STAGE[state.setup],
+    // 凭据这一步之前 = 还没写;之后 = 写过了(向导就是靠这两格自己走的)。
+    configured: state.setup !== 'env' && state.setup !== 'env-half' && state.setup !== 'env-probing' && state.setup !== 'cred',
+    loggedIn: state.setup === 'ready',
+    playerBackend: 'mpv',
+    source: 'daily',
+    login: LOGIN[state.setup] ?? { status: 'idle' },
+    ...(env ? { env } : {}),
+    ...(state.fault === 'backend' ? { lastError: 'ncm-cli 退出码 1' } : {}),
   }
 }
 
@@ -152,7 +218,21 @@ class LivePort implements MusicPort {
   read = async (ref: string, name: string): Promise<ResourceReadView> =>
     this.data[`${ref}#${name}`] ?? { kind: 'denied', reason: `no ${ref}#${name}` }
 
+  /** 一条资源事实(lab 里只用来演安装输出)。 */
+  push(event: MusicResourceEvent): void {
+    for (const listener of this.listeners) listener(event)
+  }
+
   do = async (_ref: string, op: string, params?: Record<string, unknown>): Promise<ResourceOutcomeView> => {
+    // 装工具那一下在 lab 里也要**花时间并且一行一行吐**:第 ① 步要看的正是
+    // 「钮转着圈、输出块跟着往下走」,一次瞬间成功什么都演不出来。
+    if (op === 'setup' && params?.action === 'install-tool') {
+      const tool = String(params.tool ?? '')
+      for (const line of INSTALL_LINES[tool] ?? ['working…']) {
+        await new Promise((resolve) => setTimeout(resolve, 700))
+        this.push({ ref: 'music:provider', event: 'setupOutput', payload: { tool, chunk: `${line}\n` } })
+      }
+    }
     this.onOp(op, params)
     return { kind: 'ok', text: 'done' }
   }
@@ -163,8 +243,46 @@ class LivePort implements MusicPort {
   }
 }
 
+/** 装工具时那条命令吐出来的字。内容样本,原样写,不进字典(与 SONGS 同一条判据)。 */
+const INSTALL_LINES: Readonly<Record<string, readonly string[]>> = {
+  'ncm-cli': [
+    'npm warn deprecated inflight@1.0.6: This module is not supported',
+    'added 87 packages in 6s',
+    '',
+    '17 packages are looking for funding',
+    'ncm-cli 0.1.6',
+  ],
+  mpv: [
+    '==> Fetching mpv',
+    '==> Downloading https://ghcr.io/v2/homebrew/core/mpv/blobs/sha256:9c1f',
+    '==> Pouring mpv--0.40.0.arm64_sonoma.bottle.tar.gz',
+    '🍺  /opt/homebrew/Cellar/mpv/0.40.0: 89 files, 62.1MB',
+  ],
+}
+
+/** 向导那一步做完了,样本往哪一格走。**表,不是 switch** —— 与后端那张一一对得上。 */
+function applySetup(state: LabState, params: Record<string, unknown> | undefined): LabState {
+  const action = String(params?.action ?? '')
+  if (action === 'check-env') return state.setup === 'env-probing' ? { ...state, setup: 'env' } : state
+  if (action === 'install-tool') {
+    const tool = String(params?.tool ?? '')
+    if (state.setup !== 'env' && state.setup !== 'env-half') return state
+    // ncm-cli 装完还剩 mpv(half);两件齐了才走到第 ② 步 —— 从 `env` 先装 mpv
+    // 的话 ncm-cli 仍然缺着,这一格原地不动(与后端 `resolveSetupStage` 同一条判据)。
+    if (tool === 'ncm-cli') return { ...state, setup: state.setup === 'env' ? 'env-half' : state.setup }
+    return { ...state, setup: state.setup === 'env-half' ? 'cred' : state.setup }
+  }
+  if (action === 'set-credentials') return { ...state, setup: 'login-idle' }
+  if (action === 'login-start') return { ...state, setup: 'login-wait' }
+  if (action === 'login-cancel') return { ...state, setup: 'login-idle' }
+  // `login-check` 在 lab 里恒答「还没」—— 要看成功那一下,把档位拨到 ready。
+  if (action === 'logout') return { ...state, setup: 'login-idle' }
+  return state
+}
+
 /** 面板上的钮改样本:与后端端口的分档无关,只求 lab 里点得动。 */
 function applyOp(state: LabState, op: string, params: Record<string, unknown> | undefined): LabState {
+  if (op === 'setup') return applySetup(state, params)
   switch (op) {
     case 'pause':
       return { ...state, player: 'paused' }
@@ -264,7 +382,14 @@ const CHOICES: readonly Choice<keyof LabState>[] = [
     label: 'setup',
     options: [
       { value: 'ready', label: 'ready' },
-      { value: 'login', label: 'login' },
+      { value: 'env-probing', label: '① 探测中' },
+      { value: 'env', label: '① 都没装' },
+      { value: 'env-half', label: '① 装一半' },
+      { value: 'cred', label: '② 凭据' },
+      { value: 'login-idle', label: '③ 登录' },
+      { value: 'login-wait', label: '③ 二维码' },
+      { value: 'login-failed', label: '③ 失败' },
+      { value: 'login-quota', label: '③ 超额' },
     ],
   },
 ]

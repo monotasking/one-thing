@@ -1,12 +1,15 @@
 import { useRef, useState } from 'react'
+import type { MusicRuntimeState } from '@shared/ipc/music'
 import { AsyncButton } from '../../ui/AsyncButton'
 import { Button } from '../../ui/Button'
 import { Input } from '../../ui/Input'
+import { Menu } from '../../ui/Menu'
 import { Popover } from '../../ui/Popover'
 import { useMutation, useQuery } from '../../data/kernel'
 import { musicBriefQuery, musicOps } from '../../data/music-source'
 import { useT } from '../../i18n'
 import type { TFn } from '../../i18n'
+import { AccountMenu, AccountMenuItems } from './AccountMenu'
 import { firstError } from './turntable'
 import s from '../MusicPanel.module.css'
 
@@ -29,8 +32,14 @@ const PRESET_KEYS = ['music.preset.rain', 'music.preset.focus', 'music.preset.fr
  *    做法失败 → 条下一行原话(`music-radio-error`),零 Toast。
  * ③ UI 交互状态:每颗钮各自 pending(AsyncButton);开台 / 换台在意图为空时仍可按
  *    (留空 = 让主持人看着办,后端原有语义),换台钮只在浮层里;浮层 Esc / 点外关。
+ *
+ * ── 账号那颗钮(2026-09-18,§6.4)────────────────────────────────────────
+ * 条的右端。它要的那份 `state` 由**父级递进来**而不是这里再订一次 —— 音乐面已经
+ * 有那一格读数了,同一份真相订两遍迟早会在某一帧不一致。`state` 缺席(向导那几步,
+ * 或者后端整个读不到)= 不画:还没登上的时候「退出登录」是一句没有意义的话。
+ * 右键整条 = 同一张表(动作单产地),不是第二份菜单。
  */
-export function StationStrip() {
+export function StationStrip({ state }: { state?: MusicRuntimeState }) {
   const t = useT()
   const brief = useQuery(musicBriefQuery)
   const open = useMutation(musicOps.open)
@@ -38,16 +47,39 @@ export function StationStrip() {
   const radioResume = useMutation(musicOps.radioResume)
   const radioStop = useMutation(musicOps.radioStop)
   const error = firstError(open, retune, radioResume, radioStop)
+  const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null)
 
   if (!brief.data) return null
   const { active, intent, canResume, programmeLength, starting } = brief.data
 
   return (
-    <section className={s.station} data-testid="music-radio" data-active={active ? 'true' : undefined}>
+    <section
+      className={s.station}
+      data-testid="music-radio"
+      data-active={active ? 'true' : undefined}
+      onContextMenu={
+        state
+          ? (event) => {
+              event.preventDefault()
+              setMenuAt({ x: event.clientX, y: event.clientY })
+            }
+          : undefined
+      }
+    >
       {active ? (
-        <OnAir t={t} intent={intent} speaking={Boolean(starting)} />
+        <OnAir t={t} intent={intent} speaking={Boolean(starting)} account={state} />
       ) : (
-        <OffAir t={t} intent={intent} canResume={canResume} left={programmeLength} />
+        <OffAir t={t} intent={intent} canResume={canResume} left={programmeLength} account={state} />
+      )}
+      {state && menuAt && (
+        <Menu
+          x={menuAt.x}
+          y={menuAt.y}
+          label={t('music.account.menu')}
+          onClose={() => setMenuAt(null)}
+        >
+          <AccountMenuItems state={state} onDone={() => setMenuAt(null)} />
+        </Menu>
       )}
       {brief.error && <p className={s.bad}>{brief.error}</p>}
       {error && (
@@ -59,7 +91,17 @@ export function StationStrip() {
   )
 }
 
-function OnAir({ t, intent, speaking }: { t: TFn; intent: string; speaking: boolean }) {
+function OnAir({
+  t,
+  intent,
+  speaking,
+  account,
+}: {
+  t: TFn
+  intent: string
+  speaking: boolean
+  account?: MusicRuntimeState
+}) {
   const [tuning, setTuning] = useState(false)
   const [draft, setDraft] = useState('')
   const anchor = useRef<HTMLButtonElement | null>(null)
@@ -90,6 +132,7 @@ function OnAir({ t, intent, speaking }: { t: TFn; intent: string; speaking: bool
       >
         {t('music.radioStop')}
       </AsyncButton>
+      {account && <AccountMenu state={account} />}
       {tuning && (
         <Popover
           x={0}
@@ -146,11 +189,26 @@ function OnAir({ t, intent, speaking }: { t: TFn; intent: string; speaking: bool
   )
 }
 
-function OffAir({ t, intent, canResume, left }: { t: TFn; intent: string; canResume: boolean; left: number }) {
+function OffAir({
+  t,
+  intent,
+  canResume,
+  left,
+  account,
+}: {
+  t: TFn
+  intent: string
+  canResume: boolean
+  left: number
+  account?: MusicRuntimeState
+}) {
   const [draft, setDraft] = useState('')
   return (
     <div className={s.offAir}>
-      <p className={s.none}>{t('music.radioOff')}</p>
+      <div className={s.offAirHead}>
+        <p className={s.none}>{t('music.radioOff')}</p>
+        {account && <AccountMenu state={account} />}
+      </div>
       <form
         className={s.formRow}
         onSubmit={(e) => {

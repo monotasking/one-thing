@@ -284,3 +284,31 @@ export const MUSIC_ARM_SETTLE_MS = 300 // --dur-music-arm-settle:落下,或被�
 export const MUSIC_STOW_MS = 680 // --dur-music-stow:唱片收进封套 / 从封套滑出
 export const MUSIC_SWAP_MS = 600 // --dur-music-swap:封套换成下一张(抽出一半 + 放回一半)
 export const MUSIC_FADE_MS = 150 // --dur-music-fade:减弱动态效果时换歌只淡出淡入
+
+/* ── 接入向导(2026-09-18,正本 `apps/desktop-react/docs/music-panel-2026-09.md` §6)──
+ *
+ * 两个数都**不是动画**,所以两个都没有 CSS token、动效档「无」也不清零它们
+ * —— 与 `ESC_STOP_WINDOW_MS` / `MIN_BUSY_MS` 同处一族。
+ */
+
+/**
+ * 等人扫码那一段,壳每隔这么久问一次「登上了没」(正本 §6.1 末行:「轮询由壳做」)。
+ *
+ * 为什么是壳而不是后端:`login --check` 是一次**要花钱**的调用(网易云的日配额),
+ * 而只有屏幕知道还有没有人在看那张码 —— 面板一关就该停。后端自己定时问,等于
+ * 没人看的时候也在花那份额度。
+ *
+ * 2.5s 是两头夹出来的:短过它,一次扫码(人拿手机、开 App、对准)会问上十几遍;
+ * 长过它,人在手机上按完确认还要盯着屏幕等,那几秒里屏幕上什么都不会变。
+ */
+export const MUSIC_LOGIN_POLL_MS = 2_500
+
+/**
+ * 登录成了之后,「进电台了」那句话在屏上留多久(正本 §6.5 末行)。
+ *
+ * 它存在是因为**后端那一步走得比眼睛快**:`login --check` 答成的同一发里
+ * `setupStage` 就变成了 `ready`,向导会当场消失 —— 人只看见界面闪了一下,读不到
+ * 「成了」。所以这一格是**读认窗口**:把已经完成的事实在屏上按住 1.5 秒。
+ * 与 `COPY_FEEDBACK_MS` 同一个数不是巧合,它们问的是同一句话:一句话读得完要多久。
+ */
+export const MUSIC_SETUP_DONE_MS = 1_500

@@ -221,6 +221,23 @@ const RUNTIME_STATE_SCHEMA: JsonSchema = {
     loggedIn: { type: 'boolean' },
     playerBackend: { type: 'string', description: "Which player plays the sound (the CLI's own, or a desktop app)." },
     source: { type: 'string', description: 'Which catalogue feed the station draws from.' },
+    /**
+     * 登录那一步的现状。**没有「已扫码待确认」**——判词写在 types.ts 的
+     * `OnethingMusicLoginStatus` 上:`login --check` 只答成没成。
+     */
+    login: {
+      type: 'object',
+      description: 'Where the login step stands. There is no "scanned, awaiting confirmation" — the CLI cannot observe it.',
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['idle', 'starting', 'waiting', 'ok', 'failed', 'quota'],
+        },
+        url: { type: 'string', description: 'The login address to scan or open. Present while waiting.' },
+        message: { type: 'string', description: "The backend's own words on failure / quota." },
+      },
+      required: ['status'],
+    },
     lastError: { type: 'string' },
     env: {
       type: 'object',
@@ -232,7 +249,7 @@ const RUNTIME_STATE_SCHEMA: JsonSchema = {
       },
     },
   },
-  required: ['setupStage', 'configured', 'loggedIn', 'playerBackend', 'source'],
+  required: ['setupStage', 'configured', 'loggedIn', 'playerBackend', 'source', 'login'],
 }
 
 /** 这台机器上有哪几只音乐 CLI 可选,现在用的是哪一只。 */
@@ -687,6 +704,52 @@ export const musicResourceSpec: ResourceSpec = {
         type: 'object',
         properties: { providerId: { type: 'string' } },
         required: ['providerId'],
+      },
+    },
+    /**
+     * ── 接入向导那两条(2026-09-18;正本 `music-panel-2026-09.md` §6.1)────────
+     *
+     * **两条都没有 `moment`**:装一个 npm 包、扫一次码,不是「听歌这件事的事实」,
+     * 没有谁该对着它开口。它们存在只为一件事 —— 让向导那块面知道该重新问一遍。
+     *
+     * `setupChanged` 是**事实不是命令**(与 `providerChanged` 同一句话):发的时候
+     * 那一步已经做完了,读到它的人该做的是重拉自己那份 `state`,而不是去做点什么。
+     * 负载带一格 `setupStage` 是顺手的诚实(provider 手上就有),不是让人拿它当
+     * 真相用 —— 真相在 `state` 那条读法上。
+     */
+    setupChanged: {
+      title: 'One step of the setup wizard finished; the backend state changed',
+      payload: {
+        type: 'object',
+        properties: {
+          setupStage: {
+            type: 'string',
+            enum: ['env', 'credentials', 'login', 'ready'],
+            description: 'Which step the wizard stands on now. Re-read `state` for the rest.',
+          },
+        },
+        required: ['setupStage'],
+      },
+    },
+    /**
+     * 安装一件工具时,那条 npm / brew 命令正在往外吐的字。
+     *
+     * 它为什么是一条资源事实而不是一条推送:装工具要跑几十秒,屏幕上那块输出是
+     * 这一段唯一的「它还活着」的证据,而这台壳(React)**收不到 `MUSIC_EVENT`**
+     * ——那条旧推送骑在宿主的 voice 广播口上,而这台壳的 `voice` 端口是 `null`。
+     * 走资源事实 = 骑 `resource:event` 那条已经在的全局事件出去,**不新开通道**。
+     *
+     * 一块输出是给人看的进度,不是账本:没人在看的时候它就消失了,这是对的。
+     */
+    setupOutput: {
+      title: 'A line of output from an in-flight tool install',
+      payload: {
+        type: 'object',
+        properties: {
+          tool: { type: 'string', description: "The provider's own tool id (ncm: 'ncm-cli' / 'mpv')." },
+          chunk: { type: 'string', description: 'Raw stdout/stderr text, newlines included.' },
+        },
+        required: ['tool', 'chunk'],
       },
     },
     /**

@@ -1,4 +1,4 @@
-import { listMusicProviderDescriptors, type OnethingMusicNowPlaying } from '@onething/runtime/music'
+import { listMusicProviderDescriptors, type OnethingMusicEvent, type OnethingMusicNowPlaying } from '@onething/runtime/music'
 import { DEFAULT_MUSIC_SETTINGS } from '@shared/defaults/settings.js'
 import { getSettings, saveSettings } from '../../stores/settings.js'
 import { createMusicServiceScope } from './service.js'
@@ -49,6 +49,12 @@ export class MusicSubsystem {
    */
   private readonly factListeners = new Set<(event: MusicMomentEvent, payload: Record<string, unknown>) => void>()
   /**
+   * 谁在看接入向导那条线(2026-09-18:`music:provider` 的 `setupOutput`)。
+   * 与上面两张表同理住在子系统上 —— 换一只音乐 CLI 不该让订阅者悄悄失聪,而
+   * 服务作用域正是换代重建的那一格。
+   */
+  private readonly setupListeners = new Set<(event: OnethingMusicEvent) => void>()
+  /**
    * 连跳计数、暂停计时、间奏检测(§11.1「音乐自己的状态,放在已有的 music 实例上」)。一只,
    * 寿命 = backend:换音乐 CLI 不该让「90 秒内第三次跳过」从零数起。
    */
@@ -78,6 +84,14 @@ export class MusicSubsystem {
     this.factListeners.add(listener)
     return () => {
       this.factListeners.delete(listener)
+    }
+  }
+
+  /** 订阅接入向导那条线(安装输出 / 状态变化)。返回退订(幂等)。 */
+  onSetupEvent(listener: (event: OnethingMusicEvent) => void): () => void {
+    this.setupListeners.add(listener)
+    return () => {
+      this.setupListeners.delete(listener)
     }
   }
 
@@ -168,6 +182,17 @@ export class MusicSubsystem {
         // 暂停计时排在订阅者之前:一个抛了的订阅者不该让「暂停了多久」少记一次状态变化。
         this.moments.observeNowPlaying(nowPlaying)
         for (const listener of [...this.nowPlayingListeners]) listener(nowPlaying)
+      },
+      onSetupEvent: event => {
+        // 拷一份再遍历(与上面同理:在回调里退订是正常操作)。一个抛了的订阅者
+        // 不该拦住后面的 —— 服务那一侧已经把这一发包在 try 里了。
+        for (const listener of [...this.setupListeners]) {
+          try {
+            listener(event)
+          } catch (error) {
+            log.warn('music setup observer failed', { type: event.type }, error)
+          }
+        }
       },
     })
     const djVoice = createDjVoiceScope(this.options.assertOwned)

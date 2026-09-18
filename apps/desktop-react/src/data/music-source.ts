@@ -9,6 +9,7 @@ import type {
 import type { ResourceOutcomeView, ResourceReadView } from '@shared/ipc/resources'
 import { createMutation, createQuery } from './kernel'
 import type { Mutation, Query, Rollback } from './kernel'
+import { appendInstallOutput, clearInstallOutput, resetInstallLog } from './music-setup-log'
 import { musicPort } from './music-port'
 import type { MusicResourceEvent } from './music-port'
 
@@ -309,12 +310,16 @@ const OPS: Readonly<Record<MusicOpName, MusicOpSpec>> = {
   },
 }
 
-/** 发一条命令。**十四条共用这一句** —— 非 ok 一律抛,理由在文件头。 */
-async function runMusicOp(op: MusicOpName, params: MusicOpParams): Promise<void> {
+/** 发一条做法。**全表共用这一句** —— 非 ok 一律抛,理由在文件头。 */
+async function sendMusicOp(ref: string, op: string, params: MusicOpParams): Promise<void> {
   const port = await musicPort()
-  const outcome = await port.do(OPS[op].ref, op, params)
+  const outcome = await port.do(ref, op, params)
   if (outcome.kind === 'ok') return
   throw new Error(outcomeFailureText(outcome))
+}
+
+function runMusicOp(op: MusicOpName, params: MusicOpParams): Promise<void> {
+  return sendMusicOp(OPS[op].ref, op, params)
 }
 
 function createMusicOp(op: MusicOpName): Mutation<MusicOpParams, void> {
@@ -339,6 +344,58 @@ export const musicOps = Object.fromEntries(
   OP_NAMES.map((op) => [op, createMusicOp(op)]),
 ) as Readonly<Record<MusicOpName, Mutation<MusicOpParams, void>>>
 
+/* ── 接入向导那八步(2026-09-18,正本 §6.3)──────────────────────────────── */
+
+/**
+ * 向导那一条做法叫 `setup`,而**它的每一格该有自己的忙态与自己的错话**:
+ * 第 ① 步屏上有两行工具,装 `ncm-cli` 的时候 `mpv` 那一行的钮不该跟着转圈,
+ * `ncm-cli` 失败那句话更不该抄到 `mpv` 那一行上(律③逐格 pending,病型 B)。
+ *
+ * kernel 的 `pendingKey` 只把**忙态**分了格,`error` 仍是一只 mutation 一份。
+ * 所以这里按格各建一只 —— `createMutation` 就是一只闭包,建十只与建一只同价,
+ * 而换来的是「一格的失败只说在那一格上」。
+ */
+export type MusicSetupAction =
+  | 'check-env'
+  | 'install-tool'
+  | 'set-credentials'
+  | 'set-player'
+  | 'login-start'
+  | 'login-cancel'
+  | 'login-check'
+  | 'logout'
+
+/** 一格 = 一个动作,外加 `install-tool` 的那一格工具 id。 */
+function setupCell(action: MusicSetupAction, tool?: string): string {
+  return tool ? `${action}:${tool}` : action
+}
+
+const setupMutations = new Map<string, Mutation<MusicOpParams, void>>()
+
+/**
+ * 那一格的 mutation。同一格永远是同一只(界面按 `pending` / `error` 读它,
+ * 每次渲染换一只新的等于每次渲染都把忙态与错话清了)。
+ */
+export function musicSetupOp(action: MusicSetupAction, tool?: string): Mutation<MusicOpParams, void> {
+  const cell = setupCell(action, tool)
+  const existing = setupMutations.get(cell)
+  if (existing) return existing
+  const created = createMutation<MusicOpParams, void>(`music.setup.${cell}`, {
+    run: (params) =>
+      // 地址是 `music:provider` —— 与后端那张 `MEMBER_TARGET` 同一份分工。
+      sendMusicOp(MUSIC_PROVIDER_REF, 'setup', { action, ...(tool ? { tool } : {}), ...params }),
+    // 重装一次就把上一次的输出(尤其失败那一段)清掉 —— 新的一次不该顶着旧错话跑。
+    optimistic: () => {
+      if (action === 'install-tool' && tool) clearInstallOutput(tool)
+    },
+    // 每一步之后重问那一份状态。后端也会发一条 `setupChanged`,两边标的是同一格 ——
+    // query 自己会把同一拍的两次标脏并成一发,所以这里照旧写全,不靠事件兜底。
+    settle: () => musicRuntimeQuery.invalidate(),
+  })
+  setupMutations.set(cell, created)
+  return created
+}
+
 /* ── 事实到了,重问哪几条 ─────────────────────────────────────────────── */
 
 /**
@@ -357,9 +414,23 @@ const EVENT_INVALIDATES: Readonly<Record<string, readonly { invalidate(): void }
     musicNowPlayingQuery,
     musicLyricsQuery,
   ],
+  /*
+   * 向导走完一步(§6.1「壳订它重拉 `state`」)。发起那一步的人自己也会标脏同一格
+   * —— 两处都写不是啰嗦:一次 `setup` 可能是**别处**发起的(模型、另一扇窗),
+   * 那时只有这条事实能把屏幕拉回同一份真相。
+   */
+  setupChanged: [musicRuntimeQuery],
 }
 
 function onMusicFact(fact: MusicResourceEvent): void {
+  // 安装输出不进读数 —— 它是推来的进度,不是可重读的答案(判词在 `music-setup-log`)。
+  if (fact.event === 'setupOutput') {
+    const payload = fact.payload as { tool?: unknown; chunk?: unknown } | undefined
+    if (typeof payload?.tool === 'string' && typeof payload.chunk === 'string') {
+      appendInstallOutput(payload.tool, payload.chunk)
+    }
+    return
+  }
   for (const query of EVENT_INVALIDATES[fact.event] ?? []) query.invalidate()
 }
 
@@ -389,13 +460,17 @@ export function closeMusicSource(): void {
   unsubscribe = undefined
 }
 
-/** 回到出厂:退订 + 五格读数归零 + 十四只 mutation 归零。测试与 HMR 用。 */
+/** 回到出厂:退订 + 五格读数归零 + 做法(含向导那几格)归零 + 安装输出清空。测试与 HMR 用。 */
 export function resetMusicSource(): void {
   openCount = 0
   unsubscribe?.()
   unsubscribe = undefined
   for (const query of ALL_QUERIES) query.reset()
   for (const op of OP_NAMES) musicOps[op].reset()
+  // 向导那几格是**按需建**的,所以清的是整张表而不是一张固定名单 —— 建过的那几只
+  // 界面还拿着引用(`musicSetupOp` 认 cell 不认次数),归零而不是丢掉。
+  for (const mutation of setupMutations.values()) mutation.reset()
+  resetInstallLog()
 }
 
 /**

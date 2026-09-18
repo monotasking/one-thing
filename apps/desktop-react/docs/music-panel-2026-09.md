@@ -74,3 +74,72 @@ M1 把节目单直铺在唱机下面。用户原话：「你这个歌词我以�
 - 壳 vitest：抽屉开关与焦点归还、Esc 两级、≥900 两栏时没有歌词钮、跨 900 的两条规矩、歌词页进出。
 - `npm run typecheck`、eslint、`ui:consume`、`motion-gate`、`squeeze-gate`。
 - music-lab 截图：300 / 360 / 620 / 900 / 1040 / 1280 六档 × （有歌 / 没歌 / 抽屉开 / 歌词页）。
+
+## 6. 接入向导（装 CLI、填凭据、登录）
+
+样例里有、壳上一直没有的那一块。今天壳只在顶上写一句「音乐后端还没配好」，然后什么也做不了 —— 用户得自己去命令行装 ncm-cli、自己登录，这句话等于把人挡在门外。
+
+### 6.1 后端缺口（先补）
+
+| 缺口 | 补法 |
+| --- | --- |
+| 登录二维码的地址到不了壳 | `ncm-cli login --background --output json` 交出的 `{ qrCodeUrl, clickableUrl }` 今天只作为 `login-output` 那条旧推送的原始输出发出去，资源事件上没有。把它记进 `OnethingMusicRuntimeState` 的新一格 `login`：`{ status: 'idle' \| 'starting' \| 'waiting' \| 'ok' \| 'failed' \| 'quota'; url?: string; message?: string }`，`state` 读法照原样交出去 |
+| 壳不知道该重新问 | `music:provider` 加一条事件 `setupChanged`（无 `moment`），setup 的每一步结束后发一次；壳订它重拉 `state` |
+| 「已扫码待确认」这一态后端没有 | **不编**。`login --check` 只答成没成，所以界面只有「等你扫」与「成了」两态，中间那一格样例里画过，这一单删掉 |
+| 安装输出到不了壳（09-18 施工时发现的第三个缺口） | 与第一个缺口**同一个病根**：`install-output` 今天骑在 `MUSIC_EVENT` 这条宿主广播上，而 React 壳的 `voice` 端口是 `null`，它一个字都收不到——§6.3 第 ① 步那块滚动输出因此根本没有产地。补法与 `setupChanged` 同一种：`music:provider` 再加一条事件 `setupOutput { tool, chunk }`（无 `moment`），骑 `resource:event` 那条**已经在**的全局事件出去，**不新开推送通道**。产地是 `MusicSubsystem.onSetupEvent`（与 `onNowPlayingChanged` / `onPlayerFact` 逐字同形：表住子系统，换一只 CLI 不让订阅者失聪），provider 只转 `install-output` 这一种——`state` 归 `setupChanged`（一步一发才数得清），`login-output` 里装的是登录凭据，不广播 |
+
+轮询由壳做：`waiting` 期间每 2.5s 发一次 `setup { action: 'login-check' }`，成了就停。
+
+### 6.2 二维码要画（09-18 用户拍板，推翻本节原文）
+
+~~`qrCodeUrl` 是一条登录地址，不是一张图；画成二维码要引一个 QR 编码库（壳今天没有，纯 JS 但仍是一笔新依赖）。这一版先给**地址**。~~ 原文的理由只有「要引一笔新依赖」，用户当天拍板**引**：`qrcode-generator@2.0.4`（零依赖纯 JS），已装进 `apps/desktop-react/package.json` 与两份锁文件。
+
+画法钉死三条，理由逐条写在 `content/music/QrCode.tsx` 与 `content/music/qr.ts` 的文件头上：
+
+- **自己拼内联 SVG**（一条 path），不用 canvas、不用库自带的 `createImgTag`——那是 `<img src=gif>`：位图，主题换了不跟着换、放大糊、读屏软件念不出。纠错级别 `M`，`typeNumber` 传 0 让它自适应；静区 **≥4 个模块**，由 `qr.ts` 算进 `size` 里（它是码的一部分，不是留白样式）。
+- **深色主题下不反色**：两格颜色 `--qr-ink` / `--qr-paper` 在 `tokens.css` 里只声明一次、深色块里**刻意不重定义**——取景框认的是「深块 + 浅底」这个方向，反色的码有相当一部分读码器不认。
+- **地址不能只剩图**：码是 `role="img"` + 一句 `aria-label`，而那条地址仍然以**文字形态**留在旁边（可选、可复制）——读屏用户扫不了码，他要的就是那条地址本身。
+
+布局：码在左，右边一句「用网易云音乐 App 扫这个码」+「在浏览器里打开」+「复制链接」+「取消」。地址那两颗钮**保留**，不删。「在浏览器里打开」走壳既有的那条路（`content/browser-launcher` 的 `openBrowser`，也就是内置浏览器），不是 `window.open`。
+
+### 6.3 三步
+
+向导替掉今天那句提示，占唱机那一块的位置（电台条与节目单在这一步不画）。
+
+| 步 | 屏上 | 动作 |
+| --- | --- | --- |
+| ① 装工具 | 两行：`ncm-cli`、`mpv`，各自「已装 / 没装」；没装的那行一颗「安装」；装的过程中就地展开一块滚动的安装输出（等宽字、最多 12 行、自动跟到底） | `setup check-env` / `setup install-tool { tool }` |
+| ② 填凭据 | 两格输入：App ID、私钥（私钥用 `ui/SecretInput`）；一句「填完才连得上网易云」；一颗「保存」 | `setup set-credentials { appId, privateKey }` |
+| ③ 登录 | 一颗「开始登录」→ 拿到地址后：**二维码在左**（§6.2），右边一句「用网易云音乐 App 扫这个码……登上了这边会自己发现」+ 地址一行（可选可复制）+「在浏览器里打开」+「复制链接」+「取消」 | `setup login-start` / `login-cancel`，`waiting` 期间壳轮询 `login-check` |
+
+三步之间按 `setupStage` 自己走，不做「下一步」钮：后端说停在哪一格就画哪一格。装好并登录后 `setupStage` 变 `ready`，向导整块消失，唱机出现。
+
+### 6.4 账号菜单
+
+电台条右端一颗头像钮（没有头像就是一枚圆点），右键菜单同一张表：
+
+| 项 | 做什么 |
+| --- | --- |
+| 出声方式 · mpv / 网易云 App | `setup set-player { player }`，当前那个打勾 |
+| 退出登录 | 先确认（`ui/Dialog`），确认后 `setup logout`，向导回到第 ③ 步 |
+
+### 6.5 状态表
+
+| 状态 | 屏上 |
+| --- | --- |
+| 读不到 `state` | 向导不画，顶上仍是今天那句话（后端整个不在，装什么都没用） |
+| `env` 还没查 | 两行工具各画一条占位，「安装」钮停用 |
+| 安装中 | 那一行转圈 + 输出块；其余钮停用；失败 → 输出块留着 + 一行错话，钮回到「重试」 |
+| 写凭据中 | 「保存」转圈；失败 → 就地一行错话，输入不清空 |
+| `login.status = starting` | 「开始登录」转圈 |
+| `waiting` | 二维码 + 地址 + 两颗钮 + 「取消」；轮询每 2.5s |
+| `failed` / `quota` | 一行原话 + 「再试一次」；`quota` 那句话照后端原文（额度用完是网易云的事，不是这台机器的） |
+| `ok` | 向导整块换成一句「进电台了」，1.5s 后 `setupStage` 转 `ready` 自然消失 |
+
+### 6.6 门
+
+- 壳 vitest：三步各自的成功 / 失败、安装输出跟到底、登录轮询起停（假计时器）、`ok` 之后向导消失、账号菜单两项各发一次、退出登录的确认。落点 `src/content/__tests__/music-setup.test.tsx`（23 条）。
+- 二维码（§6.2）：一条固定地址 → 矩阵尺寸与黑块数快照稳定、静区算在 `size` 里、`waiting` 才画其余态不画。落点 `src/content/music/__tests__/qr.test.ts` + 上面那只文件里的三条。
+- 后端：`login` 那一格的状态机（start → waiting → ok / failed / quota / cancel）、`setupChanged` 一步发一次且不带凭据、`setupOutput` 只转安装输出。落点 `packages/onething-runtime/src/music/__tests__/setup-service.test.ts` 与 `packages/backend/wiring/resource/__tests__/music-provider.test.ts`。
+- 根门 typecheck / boundary / assembly / transport / log；壳门 typecheck / eslint / ui:consume / motion / squeeze。
+- `?music-lab` 补三步与账号菜单的样本（假端口演完整条路）。
