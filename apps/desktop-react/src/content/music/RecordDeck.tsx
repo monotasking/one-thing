@@ -150,6 +150,11 @@ export interface RecordDeckProps {
   /** 开台那一发在路上:四枚块一起停用(律③:进行中有反馈)。 */
   opening?: boolean
   petRef?: Ref<PetStageHandle>
+  /**
+   * 画的是「上次放到哪」,不是此刻在放的(09-19):播放器说不出在放什么,面板拿简报记的那一首摆出来。
+   * 唱臂不接拖(没有播放器可 seek)、歌词没到也不说「正在取」(没人在取)。
+   */
+  restored?: boolean
   /** 你在打字 / 发出去了还没等到他回话(父级给,同一份真相不订两遍)。 */
   listening?: boolean
   awaitingHost?: boolean
@@ -169,6 +174,7 @@ export function RecordDeck({
   onPlayEntry,
   onOpen,
   opening = false,
+  restored = false,
   petRef,
   listening = false,
   awaitingHost = false,
@@ -257,7 +263,7 @@ export function RecordDeck({
   }, [spin, visible, docHidden])
 
   // ── 唱臂:拖 = 跳到这里 ─────────────────────────────────────────────────
-  const seekable = present && side !== null && duration !== undefined && duration > 0 && position !== undefined
+  const seekable = present && !restored && side !== null && duration !== undefined && duration > 0 && position !== undefined
   const armRef = useRef<HTMLDivElement | null>(null)
   const tipRef = useRef<HTMLSpanElement | null>(null)
   const trackRef = useRef<PointerTrack | null>(null)
@@ -336,7 +342,8 @@ export function RecordDeck({
   const lyrics = useQuery(musicLyricsQuery)
   // 这份歌词是不是**这一首**的:换歌那一刻手上的还是上一首的,那一段叫「正在取」,不叫「没有」。
   const lyricsFor = lyricStateOf(present ? title : undefined, lyrics.data)
-  const lyricState = lyricsFor === 'loading' && lyrics.error !== undefined ? 'failed' : lyricsFor
+  const lyricState =
+    lyricsFor === 'loading' && restored ? 'none' : lyricsFor === 'loading' && lyrics.error !== undefined ? 'failed' : lyricsFor
   const lines = useMemo(() => (lyricState === 'ready' ? (lyrics.data?.lines ?? []) : []), [lyricState, lyrics.data])
   const rows = useMemo(() => lyricRowsOf(lines, duration), [lines, duration])
   const current = currentRowAt(rows, position)

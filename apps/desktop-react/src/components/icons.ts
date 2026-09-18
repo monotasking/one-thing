@@ -80,6 +80,7 @@ import {
   Heart,
   // 音乐面 v7:歌条上的两颗新钮 —— 播放列表(一张带音符的单子)与歌词(一支人声麦)。
   ListMusic,
+  Volume2,
   MicVocal,
   // 09-14 引用 chip 皮 B:技能那一枚的真图标(从前是一个 ◇ 字符记号)。
   Sparkles,
@@ -194,6 +195,8 @@ const REGISTRY: Record<string, LucideIcon> = {
   SkipForward,
   Heart,
   ListMusic,
+  // 音量(09-19:音乐面控制栏的音量杆前面那一枚)。
+  Volume2,
   MicVocal,
   // 我的清单(待办 T3)那块瓦。
   ListChecks,
@@ -264,6 +267,7 @@ export {
   SkipForward,
   Heart,
   ListMusic,
+  Volume2,
   MicVocal,
   Trash2,
   GripVertical,

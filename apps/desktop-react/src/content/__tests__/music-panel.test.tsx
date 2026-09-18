@@ -452,23 +452,52 @@ describe('关着 / 没歌:唱片与那一行照样在,只换里面的字', () =>
     },
   })
 
-  it('关着:标签「黑豆电台 · 关着」、歌词位置一句问话 + 四枚心情块、⏯ 就是开台 → do(music:radio, open)', async () => {
+  it('从没放过(09-19):标签「黑豆电台 · 关着」、问话 + 四枚心情块;时间 0:00;除了音量与播放列表都按不了', async () => {
     await mount(offTable())
     expect(screen.getByTestId('music-label').textContent).toContain('黑豆电台')
     expect(screen.getByTestId('music-label').textContent).toContain('关着')
     expect(screen.getByTestId('music-invite').textContent).toContain('今晚想听点什么？')
     expect(screen.getAllByRole('button').filter((b) => b.dataset.testid?.startsWith('music-mood-'))).toHaveLength(4)
-    const play = screen.getByTestId('music-play')
-    expect(play.getAttribute('aria-label')).toBe('开台')
-    // 那一行的每一件都还在,只是不能按(布局不跟着状态变)。
+    const clocks = screen.getByTestId('music-row').textContent ?? ''
+    expect(clocks.match(/0:00/g)?.length).toBe(2)
+    expect((screen.getByTestId('music-play') as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByTestId('music-next') as HTMLButtonElement).disabled).toBe(true)
-    expect(screen.getByTestId('music-talk')).toBeTruthy()
-    expect(screen.getByTestId('music-playlist-toggle')).toBeTruthy()
+    expect((screen.getByTestId('music-like') as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByTestId('music-playlist-toggle')).not.toHaveProperty('disabled', true)
+    expect(screen.getByTestId('music-volume').getAttribute('aria-disabled')).not.toBe('true')
+  })
+
+  it('上次放到一半(09-19「播放状态找上次播放的状态」):画那一首、停在那一秒;⏯ = 接着放(radioResume),⏭ ♥ 按不了', async () => {
+    await mount({
+      ...offTable(),
+      'music:radio#brief': { ...BRIEF_OFF, canResume: true, lastPlayed: { title: '柔软 - 房东的猫', position: 102, durationS: 195 } },
+    })
+    expect(screen.getByTestId('music-now-title').textContent).toBe('柔软')
+    const row = screen.getByTestId('music-row').textContent ?? ''
+    expect(row).toContain('1:42')
+    expect(row).toContain('3:15')
+    const play = screen.getByTestId('music-play') as HTMLButtonElement
+    expect(play.disabled).toBe(false)
+    expect(play.getAttribute('aria-label')).toBe('接着放')
+    expect((screen.getByTestId('music-next') as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByTestId('music-like') as HTMLButtonElement).disabled).toBe(true)
+    // 没人在取歌词:不说「正在取歌词」。
+    expect(screen.queryByTestId('music-lyrics-loading')).toBeNull()
     await act(async () => {
       fireEvent.click(play)
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
-    expect(fake.dos).toEqual([{ ref: 'music:radio', op: 'open', params: { intent: '' } }])
+    expect(fake.dos).toEqual([{ ref: 'music:radio', op: 'radioResume', params: {} }])
+  })
+
+  it('音量杆:松手 → do(music:player, volume, {level})', async () => {
+    await mount()
+    const slider = screen.getByTestId('music-volume')
+    await act(async () => {
+      fireEvent.keyDown(slider, { key: 'ArrowRight' })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(fake.dos.some((d) => d.op === 'volume')).toBe(true)
   })
 
   it('关着:按一枚心情块 = 以那一整句意图开台(块上只印两个字)', async () => {

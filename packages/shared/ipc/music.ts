@@ -154,6 +154,13 @@ export interface MusicRadioState {
 	 * something is playing the head of this list is that song.
 	 */
 	recent?: MusicRadioSpinDTO[]
+	/**
+	 * Where playback last was (09-19): the song and the second it stopped at,
+	 * remembered across a player-daemon exit. The panel shows it when nothing
+	 * is playing; ⏯ (`radioResume`) continues from there when it was the
+	 * radio's last song and it had not finished.
+	 */
+	lastPlayed?: { title: string; position: number; durationS?: number }
 }
 
 /** How many recent spins the brief carries. */

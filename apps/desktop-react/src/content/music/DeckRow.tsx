@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Heart, ListMusic, MessageSquare, Pause, Play, SkipForward } from '../../components/icons'
+import { Heart, ListMusic, MessageSquare, Pause, Play, SkipForward, Volume2 } from '../../components/icons'
 import { useMutation, useQuery } from '../../data/kernel'
 import { musicBriefQuery, musicOps } from '../../data/music-source'
 import { useT } from '../../i18n'
@@ -37,6 +37,9 @@ import s from './DeckRow.module.css'
 export function DeckRow({
   title,
   playing,
+  restored = false,
+  everPlayed = true,
+  volume,
   position,
   duration,
   talk,
@@ -54,6 +57,12 @@ export function DeckRow({
 }: {
   title: string | undefined
   playing: boolean
+  /** 这一行画的是「上次放到哪」(播放器此刻说不出在放什么):⏯ = 从那儿接着放,其余只看不按。 */
+  restored?: boolean
+  /** 放过没有。从没放过 = 除了音量与播放列表,这一行什么都按不了(09-19)。 */
+  everPlayed?: boolean
+  /** 播放器记着的音量(0–100);读不到 = 杆子空着但照样能拖。 */
+  volume?: number
   position: number | undefined
   duration: number | undefined
   talk: HostTalk
@@ -92,7 +101,9 @@ export function DeckRow({
   useEffect(() => onError(error), [error, onError])
 
   // 有歌就只听播放器的(放 / 停);没歌才轮到电台:开着 = 从节目单续上,关着 = 开台。
-  const play = present
+  const play = restored
+    ? { label: t('music.deckContinue'), run: () => void musicOps.radioResume.run({}), busy: radioResume.pending }
+    : present
     ? playing
       ? { label: t('music.pause'), run: () => void musicOps.pause.run({}), busy: pause.pending }
       : { label: t('music.resume'), run: () => void musicOps.resume.run({}), busy: resume.pending }
@@ -114,9 +125,10 @@ export function DeckRow({
   return (
     <div className={s.row} data-talking={talking ? 'true' : undefined} data-testid="music-row">
       <div className={s.seek}>
-        <span className={s.clock}>{present && position !== undefined ? clockOf(position) : t('music.deckNoClock')}</span>
+        <span className={s.clock}>{clockOf(present && position !== undefined ? position : 0)}</span>
         <Slider
-          value={present && duration !== undefined && position !== undefined ? Math.min(position, duration) : undefined}
+          value={present && duration !== undefined && position !== undefined ? Math.min(position, duration) : 0}
+          disabled={!present || restored}
           min={0}
           max={duration ?? 0}
           label={t('music.seekLabel')}
@@ -124,7 +136,7 @@ export function DeckRow({
           testId="music-seek"
           onCommit={(value) => void musicOps.seek.run({ position: Math.round(value) })}
         />
-        <span className={s.clock}>{present && duration !== undefined ? clockOf(duration) : t('music.deckNoClock')}</span>
+        <span className={s.clock}>{clockOf(present && duration !== undefined ? duration : 0)}</span>
       </div>
 
       {talking ? (
@@ -155,7 +167,7 @@ export function DeckRow({
               label={t(isLiked ? 'music.liked' : 'music.like')}
               testId="music-like"
               pressed={isLiked}
-              disabled={like.pending || isLiked || !present}
+              disabled={like.pending || isLiked || !present || restored}
               aria-busy={like.pending || undefined}
               onClick={() => {
                 if (!title) return
@@ -175,7 +187,7 @@ export function DeckRow({
               size="lg"
               solid
               testId="music-play"
-              disabled={play.busy}
+              disabled={play.busy || !everPlayed}
               aria-busy={play.busy || undefined}
               onClick={play.run}
             />
@@ -183,7 +195,7 @@ export function DeckRow({
               icon={SkipForward}
               label={t(radio ? 'music.skip' : 'music.next')}
               testId="music-next"
-              disabled={next.pending || !present}
+              disabled={next.pending || !present || restored}
               aria-busy={next.pending || undefined}
               onClick={() => {
                 // 照样发出去:后端把这一下记成「不想听这首」(口味信号),回执是「还没排好」,不是错。
@@ -193,6 +205,17 @@ export function DeckRow({
             />
           </span>
           <span className={s.end}>
+            <span className={s.volume}>
+              <Volume2 className={s.volumeIcon} aria-hidden="true" />
+              <Slider
+                value={volume ?? 0}
+                min={0}
+                max={100}
+                label={t('music.volumeLabel')}
+                testId="music-volume"
+                onCommit={(level) => void musicOps.volume.run({ level: Math.round(level) })}
+              />
+            </span>
             <IconButton icon={MessageSquare} label={t('music.deckTalk')} testId="music-talk" onClick={() => onTalking(true)} />
             <IconButton
               ref={playlistRef}

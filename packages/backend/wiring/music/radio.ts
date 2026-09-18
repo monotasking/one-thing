@@ -62,6 +62,7 @@ const consoleLog = consolePort(log)
 
 
 import { MusicWorkOwner } from './lifetime.js'
+import { LastPlaybackRecorder } from './last-playback.js'
 import { getCurrentBackend } from '../../current.js'
 
 /** Transcript-weight thresholds for rotating the DJ session. */
@@ -145,6 +146,8 @@ export function createRadioScope(options: {
     }
   }
 let radioStore: OnethingRadioStore | null = null
+/** 上次放到哪了(09-19):守护进程还活着时抄进简报,续播从那一秒接着放。 */
+const lastPlayback = new LastPlaybackRecorder(() => getRadioStore())
 let conductor: OnethingRadioConductor | null = null
 /** Sessions this process already pre-granted music-dir writes to. */
 const grantedSessions = new Set<string>()
@@ -556,6 +559,7 @@ async function tellRadioHost(text: string): Promise<{ reply: Promise<string | un
 function onSongStarted(entry: OnethingRadioProgrammeEntry, playerTitle: string): void {
   const store = getRadioStore()
   store.recordPlayed(playerTitle, entry.encryptedId, entry.durationS ?? getMusicNowPlaying()?.duration)
+  lastPlayback.songStarted(playerTitle, entry.encryptedId, entry.durationS ?? getMusicNowPlaying()?.duration)
   // 节目单条目没有单独的歌手一格(播放器的标题本来就是「歌名 - 歌手」),`artist` 就不填 —— 不从
   // 标题里拆一个出来冒充。
   reportMoment(moments => moments.trackStarted({ title: playerTitle, encryptedId: entry.encryptedId }))
@@ -1017,14 +1021,23 @@ async function resumeRadioPlayback(): Promise<boolean> {
   // A bar gesture is re-engagement: owe the DJ a wake (and reset any breaker)
   // even if this very resume has nothing left to play.
   store.noteUserEngagement()
-  // Prefer fresh curation; with the programme drained, replay the last song
+  // The song that was cut off mid-way comes first (09-19: 「播放状态找上次播放的状态」):
+  // ⏯ on a stopped player means "continue", and continue means that song, from that second.
+  // Otherwise prefer fresh curation; with the programme drained, replay the last song
   // known to have played (played songs die with the player's memory).
-  const popped = takeNextPlayableEntry(store)
-  const entry = popped ?? store.readBrief().onDeck
+  const onDeck = store.readBrief().onDeck
+  const resumeAt = onDeck ? lastPlayback.resumePoint(onDeck.encryptedId) : undefined
+  const popped = resumeAt === undefined ? takeNextPlayableEntry(store) : undefined
+  const entry = popped ?? onDeck
   if (!entry) return false
   try {
     await playProgrammeEntry(entry)
     store.recordError(undefined)
+    if (resumeAt !== undefined) {
+      await getReliableRunner()
+        .run('transport', getActiveMusicProvider().cli.build.seek(resumeAt))
+        .catch(error => log.warn('seek to the resume point failed; playing from the top', { resumeAt }, error))
+    }
     return true
   } catch (error) {
     if (popped && isEntryReusableFailure(error)) returnEntryToProgramme(store, popped)
@@ -1562,6 +1575,7 @@ function startRadioConductor(): void {
     if (owner.signal.aborted) return
     logSampleTransition(sample)
     conductor?.onSample(sample)
+    lastPlayback.observe(sample)
     // 间奏检测吃的是同一拍采样 + 此刻推着的歌词(对不上这首歌就不发,判据在 moments.ts)。
     reportMoment(moments => moments.observeSample(sample, currentLyrics))
     void observeUnknownSong(sample)

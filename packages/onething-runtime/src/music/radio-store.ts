@@ -58,6 +58,26 @@ export interface OnethingRadioBrief {
    * only playable thing left to resume the radio from.
    */
   onDeck?: OnethingRadioProgrammeEntry
+  /**
+   * Where playback last was, sampled while the player daemon was alive
+   * (`LastPlaybackRecorder`). The daemon forgets everything when it exits;
+   * this is what lets the panel show "that song, stopped at 1:42" and ⏯ pick
+   * up from there.
+   */
+  lastPlayback?: OnethingRadioLastPlayback
+}
+
+export interface OnethingRadioLastPlayback {
+  /** The player's own title string. */
+  title: string
+  /** Only when the radio started this song — the id resume needs. */
+  encryptedId?: string
+  /** Seconds. */
+  position: number
+  /** Seconds, when known. */
+  duration?: number
+  /** ISO time of the sample. */
+  at: string
 }
 
 export interface OnethingRadioSpin {
@@ -200,6 +220,21 @@ function normalizeBrief(raw: unknown, ids: MusicIdSchema): OnethingRadioBrief {
         ? record.intentSetAt
         : undefined,
     onDeck: normalizeEntry(record.onDeck, ids) ?? undefined,
+    lastPlayback: normalizeLastPlayback(record.lastPlayback),
+  }
+}
+
+function normalizeLastPlayback(raw: unknown): OnethingRadioLastPlayback | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  if (typeof r.title !== 'string' || !r.title) return undefined
+  if (typeof r.position !== 'number' || !Number.isFinite(r.position) || r.position < 0) return undefined
+  return {
+    title: r.title,
+    ...(typeof r.encryptedId === 'string' && r.encryptedId ? { encryptedId: r.encryptedId } : {}),
+    position: r.position,
+    ...(typeof r.duration === 'number' && Number.isFinite(r.duration) && r.duration > 0 ? { duration: r.duration } : {}),
+    at: typeof r.at === 'string' ? r.at : '',
   }
 }
 

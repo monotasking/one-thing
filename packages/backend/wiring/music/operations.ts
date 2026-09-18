@@ -60,6 +60,15 @@ function readRadioBrief(): MusicRadioState {
     volume: readPlayerVolume(),
     startedAt: brief.active ? brief.startedAt : undefined,
     recent: recentSpins(brief),
+    ...(brief.lastPlayback
+      ? {
+          lastPlayed: {
+            title: brief.lastPlayback.title,
+            position: brief.lastPlayback.position,
+            ...(brief.lastPlayback.duration ? { durationS: brief.lastPlayback.duration } : {}),
+          },
+        }
+      : {}),
   }
 }
 

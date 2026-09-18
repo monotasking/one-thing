@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { activateScopeAfterCommit } from '../focus/after-commit'
 import { FocusScope } from '../focus/FocusScope'
 import { useMutation, useQuery } from '../data/kernel'
@@ -10,6 +10,8 @@ import {
   musicRuntimeQuery,
   useMusicLive,
 } from '../data/music-source'
+import type { MusicRadioState } from '@shared/ipc/music'
+import type { MusicNowPlayingView } from '../data/music-source'
 import { useT } from '../i18n'
 import type { PetStageHandle } from '../pets/PetStage'
 import { DeckRow } from './music/DeckRow'
@@ -90,7 +92,12 @@ export function MusicPanel({
   const playlistRef = useRef<HTMLButtonElement | null>(null)
   const petRef = useRef<PetStageHandle | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
-  const position = usePlaybackPosition(now.data)
+  // 此刻没歌在放、但记得上次放到哪 → 画上次那首、停在那一秒(09-19「播放状态找上次播放的状态」)。
+  // 身份跟着读数走(useMemo),否则每次重渲一个新对象,播放钟会当成新采样重起。
+  const lastPlayed = brief.data?.lastPlayed
+  const restored = useMemo(() => restoredNowPlaying(now.data, lastPlayed), [now.data, lastPlayed])
+  const shown = restored ?? now.data
+  const position = usePlaybackPosition(shown)
   const form = useMusicPanelForm(panelRef)
   const talk = useHostTalk()
   const [playlistOpen, setPlaylistOpen] = useState(initialPlaylistOpen)
@@ -100,7 +107,7 @@ export function MusicPanel({
   const state = runtime.data
   const wizard = useSetupWizardVisible(state?.setupStage)
   const unreachable = state === undefined && (runtime.error !== undefined || runtime.phase === 'ready')
-  const title = now.data?.title
+  const title = shown?.title
   const radioOn = brief.data?.active === true
 
   // 说话框开合:焦点由这一格的落点交过去(开 → 框,合 → 播放钮),排在提交之后。
@@ -141,7 +148,7 @@ export function MusicPanel({
   // 抽屉里「翻面以后」那条线画在第几首之后:这一面还能再排几首。
   const side = recordSideOf({
     nowTitle: title,
-    nowDuration: now.data?.duration,
+    nowDuration: shown?.duration,
     recent: brief.data?.recent,
     entries: programme.data?.entries,
   })
@@ -177,7 +184,8 @@ export function MusicPanel({
                     <RecordDeck
                       runtime={state}
                       brief={brief.data}
-                      nowPlaying={now.data}
+                      nowPlaying={shown}
+                      restored={restored !== undefined}
                       nowError={now.error}
                       programme={programme.data}
                       position={position}
@@ -192,9 +200,12 @@ export function MusicPanel({
                     />
                     <DeckRow
                       title={title}
-                      playing={now.data?.playing ?? false}
+                      playing={shown?.playing ?? false}
+                      restored={restored !== undefined}
+                      everPlayed={shown?.title !== undefined || (radioOn && brief.data?.canResume === true)}
+                      volume={brief.data?.volume}
                       position={position}
-                      duration={now.data?.duration}
+                      duration={shown?.duration}
                       talk={talk}
                       talking={talking}
                       onTalking={setTalking}
@@ -229,4 +240,25 @@ export function MusicPanel({
       )}
     </FocusScope>
   )
+}
+
+/**
+ * 播放器此刻说不出在放什么(守护进程退了 / 从没起过),而简报记得上次放到哪 → 拼一份「停在那一秒」的
+ * 读数给唱片与那一行画。状态记成 `paused`:它确实是停在半路,不是没放过。播放器自己有歌名时一律听
+ * 播放器的 —— 那才是此刻的真相。
+ */
+function restoredNowPlaying(
+  now: MusicNowPlayingView | undefined,
+  last: MusicRadioState['lastPlayed'],
+): MusicNowPlayingView | undefined {
+  if (now?.title || !last) return undefined
+  return {
+    playing: false,
+    status: 'paused',
+    title: last.title,
+    position: last.position,
+    ...(last.durationS !== undefined ? { duration: last.durationS } : {}),
+    queueLength: 0,
+    currentIndex: 0,
+  }
 }

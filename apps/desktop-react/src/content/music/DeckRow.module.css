@@ -55,3 +55,19 @@
   align-items: center;
   height: var(--music-deck-keys-h);
 }
+
+/* 音量:一枚喇叭 + 一条短杆,住在右边那一组最前面(09-19:「音量控制当然也可以放在控制栏」)。 */
+.volume {
+  display: flex;
+  gap: var(--sp-1);
+  align-items: center;
+  width: var(--music-deck-volume-w);
+  margin-right: var(--sp-2);
+}
+
+.volumeIcon {
+  flex: none;
+  width: var(--icon-btn-glyph);
+  height: var(--icon-btn-glyph);
+  color: var(--text-3);
+}
