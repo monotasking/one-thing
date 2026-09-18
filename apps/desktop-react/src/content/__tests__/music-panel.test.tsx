@@ -803,6 +803,27 @@ describe('v7 整面布局:抽屉 · 两栏 · 歌词页(正本 §5)', () => {
     expect(screen.getByTestId('music-playlist')).toBeTruthy()
   })
 
+  it('电台开着但播放器没在跑:有一颗播放钮,按下去走 radio-resume', async () => {
+    // 用户 09-18:「我现在没办法控制播放,好像没有播放按钮」。没歌有两种,
+    // 电台开着那一种必须留一条让它响的路。
+    const table = fullTable()
+    table['music:player#nowPlaying'] = {
+      playing: false,
+      status: 'stopped',
+      position: 0,
+      queueLength: 0,
+      currentIndex: 0,
+    }
+    await mount(table)
+
+    const play = await screen.findByTestId('music-idle-play')
+    await act(async () => {
+      fireEvent.click(play)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(fake.dos.filter((call) => call.op === 'radioResume')).toHaveLength(1)
+  })
+
   it('没歌:歌条不画,但「播放列表」钮还在(歌单要够得着)', async () => {
     const table = fullTable()
     table['music:player#nowPlaying'] = {

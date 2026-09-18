@@ -15,7 +15,7 @@ import { LyricsPane } from './music/LyricsPane'
 import { PlaylistDrawer } from './music/PlaylistDrawer'
 import { SetupWizard, useSetupWizardVisible } from './music/SetupWizard'
 import { StationStrip } from './music/StationStrip'
-import { PlaylistButton, Transport } from './music/Transport'
+import { IdlePlayButton, PlaylistButton, Transport } from './music/Transport'
 import { TurntableScene } from './music/TurntableScene'
 import { useMusicPanelForm } from './music/panel-width'
 import { splitTitle } from './music/turntable'
@@ -251,6 +251,7 @@ export function MusicPanel({
                     {now.error && <p className={s.bad}>{now.error}</p>}
                     {!hasSong && (
                       <div className={s.idleKeys}>
+                        <IdlePlayButton />
                         <PlaylistButton
                           open={playlistOpen}
                           onToggle={() => setPlaylistOpen((open) => !open)}

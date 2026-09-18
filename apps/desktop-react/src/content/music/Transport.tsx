@@ -61,6 +61,40 @@ export function PlaylistButton({
   )
 }
 
+/**
+ * **没歌时那一行的播放钮**(2026-09-18,用户报障:「我现在没办法控制播放,好像没有播放按钮」)。
+ *
+ * 病根是 v7 那一单的一条判词写窄了:「没歌 → 歌条整条不画」。可「没歌」有两种,
+ * 而它们要的东西正相反 ——
+ *   · 电台**关着**:开台卡上本来就有「开台」与「继续这一台」,不缺入口;
+ *   · 电台**开着、播放器没在跑**(守护进程掉了 / 刚开台还没起播):屏上一颗能让它
+ *     响的钮都没有。人只能看着一台开着的电台发呆。
+ *
+ * 所以这一颗只在后一种情况下出现,发的是 `radio-resume` 而不是 `resume`:
+ * `resume` 是对**活着的播放器**说「接着放」,而这里播放器根本没起 —— 契约文件
+ * (`@shared/ipc/music.ts`)上那句话原文:`radio-resume` 才是「从节目单冷启动」
+ * 唯一实测可用的那条路。
+ *
+ * `canResume` 为假 = 节目单空着、也没有上一首可续,那就真没什么可放的:不画这颗钮
+ * (画一颗按下去必然失败的钮,比没有钮更糟),人走电台条上的「换台」让 DJ 去排歌。
+ */
+export function IdlePlayButton() {
+  const t = useT()
+  const brief = useQuery(musicBriefQuery)
+  const resume = useMutation(musicOps.radioResume)
+  if (!brief.data?.active || !brief.data.canResume) return null
+  return (
+    <IconButton
+      icon={Play}
+      label={t('music.resume')}
+      testId="music-idle-play"
+      disabled={resume.pending}
+      aria-busy={resume.pending || undefined}
+      onClick={() => void musicOps.radioResume.run({})}
+    />
+  )
+}
+
 export function Transport({
   title,
   playing,
