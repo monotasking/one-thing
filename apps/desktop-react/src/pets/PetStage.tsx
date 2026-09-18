@@ -4,6 +4,8 @@ import { FocusScope } from '../focus/FocusScope'
 import type { ActivateReason } from '../focus/types'
 import { useT } from '../i18n'
 import { Button } from '../ui/Button'
+import { Input } from '../ui/Input'
+import { Popover } from '../ui/Popover'
 import { ButtonBase } from '../ui/ButtonBase'
 import { PointerTrack } from '../ui/drag'
 import { FrameCoalescer } from '../ui/frame-coalescer'
@@ -12,7 +14,7 @@ import type { PetManifest, ReactionGroup } from './manifest'
 import { beatSecondsOf, resolvePose } from './pose'
 import { PetRigView } from './rigs/PetRigView'
 import { PetStageController } from './stage-controller'
-import type { PerchSize, PetActivity, PetGesture, PetRigSource, PetUtterance } from './types'
+import type { PerchSize, PetActivity, PetGesture, PetMenu, PetRigSource, PetUtterance } from './types'
 import s from './PetStage.module.css'
 
 /**
@@ -82,6 +84,11 @@ export interface PetStageProps {
   onSpeakingChange?: (speaking: boolean) => void
   onChoice?: (value: string | null) => void
   onGesture?: (gesture: PetGesture) => void
+  /**
+   * 点它开出来的那一格(输入框 + 动作,09-19)。给了它,点一下 = 开这一格(照样缩一下、照样报 `poke`,
+   * 但不嘀咕 —— 浮层开着还在头顶冒一句是两个人抢着说);不给 = 老样子,点一下只是戳。
+   */
+  menu?: PetMenu
   ref?: Ref<PetStageHandle>
 }
 
@@ -96,18 +103,37 @@ export function PetStage({
   onSpeakingChange,
   onChoice,
   onGesture,
+  menu,
   ref,
 }: PetStageProps) {
   const t = useT()
   const [controller] = useState(() => new PetStageController({ activity }))
   const snap = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
 
+  // ── 点它开出来的那一格 ────────────────────────────────────────────────
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef(menu)
+  menuRef.current = menu
+  /** 这一下点是去开浮层的:紧跟着的那句戳一下的嘀咕不说。 */
+  const quietPoke = useRef(false)
+  const talkInputRef = useRef<HTMLInputElement | null>(null)
+
   // 回调与台词每渲染同步一次(身份不稳定的就地闭包不进任何依赖表)。
   controller.hooks = {
     onSpeakingChange,
     onChoice,
-    onGesture,
+    onGesture: (gesture) => {
+      if (gesture.kind === 'poke' && menuRef.current) {
+        quietPoke.current = true
+        setMenuOpen(true)
+      }
+      onGesture?.(gesture)
+    },
     line: (group) => {
+      if (quietPoke.current) {
+        quietPoke.current = false
+        return undefined
+      }
       const lines = manifest.mutters[group]
       if (!lines?.length) return undefined
       const pick = lines[Math.floor(Math.random() * lines.length)] ?? lines[0]
@@ -357,9 +383,68 @@ export function PetStage({
                 onPointerDown={onPointerDown}
                 onClick={onClick}
                 data-pose={pose}
+                aria-haspopup={menu ? 'dialog' : undefined}
+                aria-expanded={menu ? menuOpen : undefined}
                 data-testid="pet-button"
               />
             </div>
+            {menu && menuOpen && (
+              <Popover
+                x={0}
+                y={0}
+                anchor={() => petButtonRef.current?.getBoundingClientRect() ?? null}
+                label={menu.label}
+                onClose={() => setMenuOpen(false)}
+                restingTarget={() => talkInputRef.current}
+                testId="pet-menu"
+              >
+                <div className={s.menu}>
+                  {menu.talk && (
+                    <form
+                      className={s.menuTalk}
+                      onSubmit={(e) => {
+                        e.preventDefault()
+                        if (!menu.talk?.value.trim() || menu.talk.sendDisabled) return
+                        menu.talk.onSend()
+                        setMenuOpen(false)
+                      }}
+                    >
+                      <Input
+                        ref={talkInputRef}
+                        value={menu.talk.value}
+                        onValueChange={menu.talk.onChange}
+                        placeholder={menu.talk.placeholder}
+                        aria-label={menu.talk.placeholder}
+                        data-testid="pet-menu-input"
+                      />
+                      <Button
+                        type="submit"
+                        variant="primary"
+                        disabled={menu.talk.sendDisabled || !menu.talk.value.trim()}
+                        data-testid="pet-menu-send"
+                      >
+                        {menu.talk.sendLabel}
+                      </Button>
+                    </form>
+                  )}
+                  {menu.actions?.map((action) => (
+                    <Button
+                      key={action.id}
+                      variant="ghost"
+                      className={s.menuAction}
+                      disabled={action.disabled}
+                      data-testid={`pet-menu-${action.id}`}
+                      onClick={() => {
+                        setMenuOpen(false)
+                        action.onSelect()
+                      }}
+                    >
+                      {action.label}
+                    </Button>
+                  ))}
+                </div>
+              </Popover>
+            )}
           </div>
         )
       }}

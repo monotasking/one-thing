@@ -57,6 +57,11 @@ interface PopoverProps {
    * 浮层整个探到那块面外面(判例:密钥池的行菜单,09-02 批 12)。
    */
   anchorPlace?: 'below-start' | 'below-end'
+  /**
+   * 开出来之后焦点落在哪一件上(响应链的落点)。缺省 = 浮层根。浮层里第一件就是输入框时给它
+   * (宠物那一格「跟黑豆说」,09-19)—— 开了还得再点一下才能打字,是一步白做的手势。
+   */
+  restingTarget?: () => HTMLElement | null
 }
 
 export function Popover({
@@ -68,6 +73,7 @@ export function Popover({
   testId,
   anchor,
   anchorPlace = 'below-start',
+  restingTarget,
 }: PopoverProps) {
   const ref = useRef<HTMLDivElement>(null)
 
@@ -81,7 +87,13 @@ export function Popover({
   useFloatDismiss(ref, onClose)
 
   return createPortal(
-    <FocusScope scope="popover" rootRef={ref} activateOnMount onEscape={() => (onClose(), true)}>
+    <FocusScope
+      scope="popover"
+      rootRef={ref}
+      activateOnMount
+      restingTarget={restingTarget}
+      onEscape={() => (onClose(), true)}
+    >
       {({ scopeProps }) => (
         <div
           {...scopeProps}

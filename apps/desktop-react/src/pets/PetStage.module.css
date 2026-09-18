@@ -189,3 +189,23 @@
 :root[data-motion-tier='none'] .wave i {
   animation: none;
 }
+
+/* ── 点它开出来的那一格(09-19):上面一句话的输入框,下面几颗动作 ── */
+.menu {
+  display: grid;
+  gap: var(--sp-1);
+  width: var(--pet-menu-w);
+  padding: var(--sp-2);
+}
+
+.menuTalk {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-2);
+  align-items: center;
+  padding-bottom: var(--sp-1);
+}
+
+.menuAction {
+  justify-content: flex-start;
+}

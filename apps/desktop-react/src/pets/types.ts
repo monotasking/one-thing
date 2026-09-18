@@ -98,6 +98,33 @@ export interface PetUtterance {
   holdMs?: number
 }
 
+/**
+ * **点它开出来的那一格**(09-19 用户:「跟黑豆的聊天应该不是下面的输入框说,而是点击它,弹出来一个聊天的
+ * 输入框,在这和他说;如果我想看他的执行 session,我可以点击它查看(给宠物增加 actions)」)。
+ *
+ * 宿主给什么就画什么:舞台不认识电台、不认识会话,只认一句话的输入框和几颗动作。缺席 = 点一下只是戳。
+ */
+export interface PetMenu {
+  /** 浮层的读屏名。 */
+  label: string
+  /** 跟它说一句。受控:字与发出去都归宿主(宿主那边还要据此摆 listening / busy)。 */
+  talk?: {
+    value: string
+    onChange: (value: string) => void
+    /** 发出去。返回之后浮层自己收起。 */
+    onSend: () => void
+    placeholder: string
+    sendLabel: string
+    /**
+     * 发送键此刻停用(上一句还在路上)。舞台只管停不停,忙不忙是宿主那只 mutation 的事 ——
+     * 所以这一格叫它做什么,不叫它是什么。输入框照常能打。
+     */
+    sendDisabled?: boolean
+  }
+  /** 其余的动作(看它在干嘛、换个方向……)。按一颗 = 浮层收起 + `onSelect`。 */
+  actions?: readonly (PetAction & { id: string; disabled?: boolean })[]
+}
+
 /** 手势通知(§7.3 表尾:P2 起宿主转成 `pet:` 的做法)。 */
 export interface PetGesture {
   kind: 'poke' | 'stroke'

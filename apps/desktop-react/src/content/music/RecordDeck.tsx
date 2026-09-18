@@ -16,7 +16,7 @@ import { useT } from '../../i18n'
 import { findBuiltinPet } from '../../pets/builtin'
 import { PetStage } from '../../pets/PetStage'
 import type { PetStageHandle } from '../../pets/PetStage'
-import type { PetGesture } from '../../pets/types'
+import type { PetGesture, PetMenu } from '../../pets/types'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { PointerTrack } from '../../ui/drag'
 import { FrameCoalescer } from '../../ui/frame-coalescer'
@@ -155,6 +155,8 @@ export interface RecordDeckProps {
    * 唱臂不接拖(没有播放器可 seek)、歌词没到也不说「正在取」(没人在取)。
    */
   restored?: boolean
+  /** 点黑豆开出来的那一格(输入框 + 动作)。父级给,这里原样递给舞台。 */
+  petMenu?: PetMenu
   /** 你在打字 / 发出去了还没等到他回话(父级给,同一份真相不订两遍)。 */
   listening?: boolean
   awaitingHost?: boolean
@@ -175,6 +177,7 @@ export function RecordDeck({
   onOpen,
   opening = false,
   restored = false,
+  petMenu,
   petRef,
   listening = false,
   awaitingHost = false,
@@ -563,6 +566,7 @@ export function RecordDeck({
             hushed={hushed}
             size="stage"
             onGesture={reportGesture}
+            menu={petMenu}
           />
         )}
       </div>

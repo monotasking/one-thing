@@ -161,6 +161,12 @@ export interface MusicRadioState {
 	 * radio's last song and it had not finished.
 	 */
 	lastPlayed?: { title: string; position: number; durationS?: number }
+	/**
+	 * The host's own working session (the DJ agent's chat): where his curation
+	 * turns, tool calls and replies live. The panel's "see what he's doing"
+	 * opens it. Absent until the station has run once.
+	 */
+	hostSessionId?: string
 }
 
 /** How many recent spins the brief carries. */

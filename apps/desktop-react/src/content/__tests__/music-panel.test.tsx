@@ -906,20 +906,19 @@ describe('v8 整面:一块唱片 + 一行按钮', () => {
     expect(screen.getByTestId('music-playlist-toggle').getAttribute('aria-expanded')).toBe('true')
   })
 
-  it('Esc:说话时退出说话(焦点回到那一行);抽屉开着先关抽屉;都没有不拦', async () => {
+  it('Esc:点黑豆开出的那一格,焦点落在输入框、Esc 收起;抽屉开着先关抽屉;都没有不拦', async () => {
     await mount()
     await act(async () => {
-      fireEvent.click(await screen.findByTestId('music-talk'))
+      fireEvent.click(await screen.findByTestId('pet-button'))
       await new Promise((resolve) => setTimeout(resolve, 20))
     })
-    // 说话那一刻,焦点由这块面的落点交给输入框(响应链,不是一句手写 focus)。
-    expect(document.activeElement).toBe(screen.getByTestId('music-talk-input'))
+    // 开出来那一刻,焦点由浮层的落点交给输入框(响应链,不是一句手写 focus)。
+    expect(document.activeElement).toBe(screen.getByTestId('pet-menu-input'))
     await act(async () => {
       esc()
       await new Promise((resolve) => setTimeout(resolve, 20))
     })
-    expect(screen.queryByTestId('music-talk-input')).toBeNull()
-    expect(document.activeElement).toBe(screen.getByTestId('music-play'))
+    expect(screen.queryByTestId('pet-menu')).toBeNull()
 
     await openPlaylist()
     await act(async () => {

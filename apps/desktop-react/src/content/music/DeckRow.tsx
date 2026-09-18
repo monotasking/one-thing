@@ -1,38 +1,33 @@
 import { useEffect, useState } from 'react'
-import { Heart, ListMusic, MessageSquare, Pause, Play, SkipForward, Volume2 } from '../../components/icons'
+import { Heart, ListMusic, Pause, Play, SkipForward, Volume2 } from '../../components/icons'
 import { useMutation, useQuery } from '../../data/kernel'
 import { musicBriefQuery, musicOps } from '../../data/music-source'
 import { useT } from '../../i18n'
-import { Button } from '../../ui/Button'
 import { IconButton } from '../../ui/IconButton'
-import { Input } from '../../ui/Input'
 import { Slider } from '../../ui/Slider'
-import type { HostTalk } from './useHostTalk'
 import { clockOf, firstError, progressOf } from './turntable'
 import s from './DeckRow.module.css'
 
 /**
- * **唱片下面那一行**(音乐面 v8,样例「黑豆电台」v7)。
+ * **唱片下面那一行**(音乐面 v8,样例「黑豆电台」v7;09-19 改版)。
  *
- * 进度条一条,下面三组:左边 ♥,中间 ⏯ ⏭,右边「说话」与播放列表。按「说话」,这一行
- * **就地**换成输入框(同一高度),回车发出去就回到按钮,Esc / 取消也回来 —— 所以
- * 「说话」这件事不在屏上多占一行,开没开它面板都不变形。
+ * 进度条一条,下面三组:左边 ♥,中间 ⏯ ⏭,右边音量与播放列表。**跟黑豆说话不在这一行** ——
+ * 09-19 用户:「跟黑豆的聊天应该不是下面的输入框说,而是点击它,弹出来一个聊天的输入框」,
+ * 所以那颗「说话」钮与就地换出来的输入框都搬到黑豆身上去了(`PetStage` 的 `menu`)。
  *
  * ── 每颗钮一个意思 ─────────────────────────────────────────────────────
- *  · ⏯:有歌就只听播放器的 —— 在放 = 暂停、停着 = 继续;没歌才轮到电台:开着 = 从节目单续上
- *    (`radio-resume`,冷启动唯一实测可用的那条路),关着 = **开台**。名字跟着说。
- *  · ⏭:电台开着 = 跳过并记成不想听(后端分档,名字说实话);关着停用。节目单空了(DJ 在补)
- *    也照样发:后端记下这一下、答「还没排好」,黑豆接一句「别催,在翻」—— 不出错话。
+ *  · ⏯:有歌就只听播放器的 —— 在放 = 暂停、停着 = 继续;播放器说不出在放什么、但记得上次放到哪
+ *    (`restored`)= 「接着放」;没歌才轮到电台:开着 = 从节目单续上,关着 = 开台;从没放过 = 停用。
+ *  · ⏭:电台开着 = 跳过并记成不想听(后端分档,名字说实话);关着 / 没歌 / 画的是上次 = 停用。节目单空了
+ *    (DJ 在补)也照样发:后端记下这一下、答「还没排好」,黑豆接一句「别催,在翻」—— 不出错话。
  *  · ♥:一次性,按歌名分格记在这里;成功后黑豆冒爱心(`onLiked`)。
- *  · 说话:关着时说的是「今晚想听点什么」→ 以这句话开台;开着时递给主持人(`tell`)。
+ *  · 音量:任何时候都能拖(从没放过也能先调好)。
  *
  * ── 三张状态表 ──────────────────────────────────────────────────────────
- * ① 生命周期:本地两格 —— 「这几首已收藏」、此刻是不是在说话;都跟组件实例走,不落盘。
- *    说话中换歌 / 关台:框留着(话还没说完);关台后回车 = 开台。
- * ② UI 生命状态:没歌 → 进度条停用、两头 `--:--`;关着 → ♥ ⏭ 播放列表照常可点
- *    (播放列表里能看放过的);错误 → 父级那一行(这一行高度不变)。
- * ③ UI 交互状态:全随库件;每颗钮各自 pending(律③);说话框的发送是 form submit,
- *    这块面一个 keydown 都不写。
+ * ① 生命周期:本地一格 —— 「这几首已收藏」;跟组件实例走,不落盘。
+ * ② UI 生命状态:从没放过 → 两头 0:00,⏯ ⏭ ♥ 进度条停用,音量与播放列表照常;上次放到一半 → 那一秒、
+ *    ⏯ 可按其余停用;错误 → 父级那一行(这一行高度不变)。
+ * ③ UI 交互状态:全随库件;每颗钮各自 pending(律③);这块面一个 keydown 都不写。
  */
 export function DeckRow({
   title,
@@ -42,11 +37,7 @@ export function DeckRow({
   volume,
   position,
   duration,
-  talk,
-  talking,
-  onTalking,
   playRef,
-  talkRef,
   playlistRef,
   playlistOpen,
   onTogglePlaylist,
@@ -65,13 +56,7 @@ export function DeckRow({
   volume?: number
   position: number | undefined
   duration: number | undefined
-  talk: HostTalk
-  /** 这一行此刻是输入框。开合的主人是面板(Esc 由面板那一格认领)。 */
-  talking: boolean
-  onTalking: (next: boolean) => void
   playRef: { current: HTMLButtonElement | null }
-  /** 说话框。焦点由面板那一格的落点交进来(响应链:这里一句 `focus()` 都不写)。 */
-  talkRef: { current: HTMLInputElement | null }
   playlistRef: { current: HTMLButtonElement | null }
   playlistOpen: boolean
   onTogglePlaylist: () => void
@@ -97,7 +82,7 @@ export function DeckRow({
   const present = Boolean(title)
   const isLiked = title !== undefined && liked.has(title)
   // 说话发送失败的那句话也在这里:发出去那一下这一行已经回到按钮了,错话不能跟着框一起消失。
-  const error = firstError(open, radioResume, pause, resume, next, like, seek) ?? talk.error
+  const error = firstError(open, radioResume, pause, resume, next, like, seek)
   useEffect(() => onError(error), [error, onError])
 
   // 有歌就只听播放器的(放 / 停);没歌才轮到电台:开着 = 从节目单续上,关着 = 开台。
@@ -111,19 +96,8 @@ export function DeckRow({
       ? { label: t('music.resume'), run: () => void musicOps.radioResume.run({}), busy: radioResume.pending }
       : { label: t('music.deckOpen'), run: () => void musicOps.open.run({ intent: '' }), busy: open.pending }
 
-  const sendTalk = () => {
-    const words = talk.text.trim()
-    if (!words) return
-    if (radio) talk.send()
-    else {
-      talk.setText('')
-      void musicOps.open.run({ intent: words })
-    }
-    onTalking(false)
-  }
-
   return (
-    <div className={s.row} data-talking={talking ? 'true' : undefined} data-testid="music-row">
+    <div className={s.row} data-testid="music-row">
       <div className={s.seek}>
         <span className={s.clock}>{clockOf(present && position !== undefined ? position : 0)}</span>
         <Slider
@@ -139,96 +113,73 @@ export function DeckRow({
         <span className={s.clock}>{clockOf(present && duration !== undefined ? duration : 0)}</span>
       </div>
 
-      {talking ? (
-        <form
-          className={s.talk}
-          onSubmit={(e) => {
-            e.preventDefault()
-            sendTalk()
-          }}
-        >
-          <Input
-            ref={talkRef}
-            value={talk.text}
-            onValueChange={talk.setText}
-            placeholder={t(radio ? 'music.deckTalkOn' : 'music.deckTalkOff')}
-            aria-label={t('music.deckTalk')}
-            data-testid="music-talk-input"
+      <div className={s.keys}>
+        <span className={s.start}>
+          <IconButton
+            icon={Heart}
+            label={t(isLiked ? 'music.liked' : 'music.like')}
+            testId="music-like"
+            pressed={isLiked}
+            disabled={like.pending || isLiked || !present || restored}
+            aria-busy={like.pending || undefined}
+            onClick={() => {
+              if (!title) return
+              void musicOps.like.run({}).then(() => {
+                if (musicOps.like.get().error) return
+                setLiked((prev) => new Set(prev).add(title))
+                onLiked?.()
+              })
+            }}
           />
-          <Button type="button" onClick={() => onTalking(false)} data-testid="music-talk-cancel">
-            {t('common.cancel')}
-          </Button>
-        </form>
-      ) : (
-        <div className={s.keys}>
-          <span className={s.start}>
-            <IconButton
-              icon={Heart}
-              label={t(isLiked ? 'music.liked' : 'music.like')}
-              testId="music-like"
-              pressed={isLiked}
-              disabled={like.pending || isLiked || !present || restored}
-              aria-busy={like.pending || undefined}
-              onClick={() => {
-                if (!title) return
-                void musicOps.like.run({}).then(() => {
-                  if (musicOps.like.get().error) return
-                  setLiked((prev) => new Set(prev).add(title))
-                  onLiked?.()
-                })
-              }}
+        </span>
+        <span className={s.middle}>
+          <IconButton
+            ref={playRef}
+            icon={present && playing ? Pause : Play}
+            label={play.label}
+            size="lg"
+            solid
+            testId="music-play"
+            disabled={play.busy || !everPlayed}
+            aria-busy={play.busy || undefined}
+            onClick={play.run}
+          />
+          <IconButton
+            icon={SkipForward}
+            label={t(radio ? 'music.skip' : 'music.next')}
+            testId="music-next"
+            disabled={next.pending || !present || restored}
+            aria-busy={next.pending || undefined}
+            onClick={() => {
+              // 照样发出去:后端把这一下记成「不想听这首」(口味信号),回执是「还没排好」,不是错。
+              if (refilling) onWaitForDj?.()
+              void musicOps.next.run({})
+            }}
+          />
+        </span>
+        <span className={s.end}>
+          <span className={s.volume}>
+            <Volume2 className={s.volumeIcon} aria-hidden="true" />
+            <Slider
+              value={volume ?? 0}
+              min={0}
+              max={100}
+              label={t('music.volumeLabel')}
+              testId="music-volume"
+              onCommit={(level) => void musicOps.volume.run({ level: Math.round(level) })}
             />
           </span>
-          <span className={s.middle}>
-            <IconButton
-              ref={playRef}
-              icon={present && playing ? Pause : Play}
-              label={play.label}
-              size="lg"
-              solid
-              testId="music-play"
-              disabled={play.busy || !everPlayed}
-              aria-busy={play.busy || undefined}
-              onClick={play.run}
-            />
-            <IconButton
-              icon={SkipForward}
-              label={t(radio ? 'music.skip' : 'music.next')}
-              testId="music-next"
-              disabled={next.pending || !present || restored}
-              aria-busy={next.pending || undefined}
-              onClick={() => {
-                // 照样发出去:后端把这一下记成「不想听这首」(口味信号),回执是「还没排好」,不是错。
-                if (refilling) onWaitForDj?.()
-                void musicOps.next.run({})
-              }}
-            />
-          </span>
-          <span className={s.end}>
-            <span className={s.volume}>
-              <Volume2 className={s.volumeIcon} aria-hidden="true" />
-              <Slider
-                value={volume ?? 0}
-                min={0}
-                max={100}
-                label={t('music.volumeLabel')}
-                testId="music-volume"
-                onCommit={(level) => void musicOps.volume.run({ level: Math.round(level) })}
-              />
-            </span>
-            <IconButton icon={MessageSquare} label={t('music.deckTalk')} testId="music-talk" onClick={() => onTalking(true)} />
-            <IconButton
-              ref={playlistRef}
-              icon={ListMusic}
-              label={t('music.playlist')}
-              testId="music-playlist-toggle"
-              aria-haspopup="dialog"
-              aria-expanded={playlistOpen}
-              onClick={onTogglePlaylist}
-            />
-          </span>
-        </div>
-      )}
+          <IconButton
+            ref={playlistRef}
+            icon={ListMusic}
+            label={t('music.playlist')}
+            testId="music-playlist-toggle"
+            aria-haspopup="dialog"
+            aria-expanded={playlistOpen}
+            onClick={onTogglePlaylist}
+          />
+        </span>
+      </div>
     </div>
   )
 }

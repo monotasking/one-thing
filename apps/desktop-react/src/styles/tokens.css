@@ -1846,6 +1846,8 @@
   --music-deck-row-h: 88px;
   --music-deck-keys-h: 44px;
   --music-deck-volume-w: 120px;
+  /* 宠物那一格(点它开出来的输入框 + 动作)的宽。 */
+  --pet-menu-w: 300px;
   --music-deck-bg: linear-gradient(#231f1c, #1a1715);
   --music-deck-ink: #e9dcc8;
   --music-deck-light: radial-gradient(52% 78% at 24% 50%, rgba(255, 196, 128, 0.16), transparent 70%);

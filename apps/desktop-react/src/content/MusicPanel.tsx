@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { activateScopeAfterCommit } from '../focus/after-commit'
 import { FocusScope } from '../focus/FocusScope'
 import { useMutation, useQuery } from '../data/kernel'
 import {
@@ -14,6 +13,8 @@ import type { MusicRadioState } from '@shared/ipc/music'
 import type { MusicNowPlayingView } from '../data/music-source'
 import { useT } from '../i18n'
 import type { PetStageHandle } from '../pets/PetStage'
+import type { PetMenu } from '../pets/types'
+import { enterSessionInWorkbench } from './session-open'
 import { DeckRow } from './music/DeckRow'
 import { PlaylistDrawer } from './music/PlaylistDrawer'
 import { RecordDeck } from './music/RecordDeck'
@@ -88,7 +89,6 @@ export function MusicPanel({
   const brief = useQuery(musicBriefQuery)
   const programme = useQuery(musicProgrammeQuery)
   const playRef = useRef<HTMLButtonElement | null>(null)
-  const talkRef = useRef<HTMLInputElement | null>(null)
   const playlistRef = useRef<HTMLButtonElement | null>(null)
   const petRef = useRef<PetStageHandle | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
@@ -101,7 +101,6 @@ export function MusicPanel({
   const form = useMusicPanelForm(panelRef)
   const talk = useHostTalk()
   const [playlistOpen, setPlaylistOpen] = useState(initialPlaylistOpen)
-  const [talking, setTalking] = useState(false)
   const [rowError, setRowError] = useState<string | undefined>(undefined)
 
   const state = runtime.data
@@ -110,15 +109,41 @@ export function MusicPanel({
   const title = shown?.title
   const radioOn = brief.data?.active === true
 
-  // 说话框开合:焦点由这一格的落点交过去(开 → 框,合 → 播放钮),排在提交之后。
-  const firstTalk = useRef(true)
-  useEffect(() => {
-    if (firstTalk.current) {
-      firstTalk.current = false
-      return
-    }
-    activateScopeAfterCommit('music')
-  }, [talking])
+  // 点黑豆开出来的那一格(09-19):上面跟他说一句,下面「看他的会话」。关着时说的那句就是开台的意图,
+  // 开着时递给他(`tell`)—— 与从前那一行里的说话框同一条路,只是换了个地方住。
+  const hostSessionId = brief.data?.hostSessionId
+  const petMenu = useMemo<PetMenu>(
+    () => ({
+      label: t('music.petMenu'),
+      talk: {
+        value: talk.text,
+        onChange: talk.setText,
+        placeholder: t(radioOn ? 'music.deckTalkOn' : 'music.deckTalkOff'),
+        sendLabel: t('music.petSend'),
+        sendDisabled: talk.sending,
+        onSend: () => {
+          const words = talk.text.trim()
+          if (!words) return
+          if (radioOn) talk.send()
+          else {
+            talk.setText('')
+            void musicOps.open.run({ intent: words })
+          }
+        },
+      },
+      actions: [
+        {
+          id: 'session',
+          label: t('music.petSession'),
+          disabled: !hostSessionId,
+          onSelect: () => {
+            if (hostSessionId) enterSessionInWorkbench(hostSessionId)
+          },
+        },
+      ],
+    }),
+    [t, talk, radioOn, hostSessionId],
+  )
 
   const seek = useCallback((seconds: number) => void musicOps.seek.run({ position: seconds }), [])
   const playEntry = useCallback((encryptedId: string) => {
@@ -154,18 +179,13 @@ export function MusicPanel({
   })
   const sideRoom = side ? SIDE_CAP - side.current - 1 : undefined
 
-  const notice = unreachable ? t('music.backendNotReady') : state?.lastError ? t('music.backendError', { message: state.lastError }) : (now.error ?? rowError)
+  const notice = unreachable ? t('music.backendNotReady') : state?.lastError ? t('music.backendError', { message: state.lastError }) : (now.error ?? rowError ?? talk.error)
 
   return (
     <FocusScope
       scope="music"
       rootRef={panelRef}
-      restingTarget={() => (talking ? talkRef.current : playRef.current)}
-      onEscape={() => {
-        if (!talking) return false
-        setTalking(false)
-        return true
-      }}
+      restingTarget={() => playRef.current}
     >
       {({ scopeProps }) => (
         <div {...scopeProps} className={s.panel} data-testid="music-panel">
@@ -197,6 +217,7 @@ export function MusicPanel({
                       petRef={petRef}
                       listening={radioOn && talk.typing}
                       awaitingHost={radioOn && talk.waiting}
+                      petMenu={petMenu}
                     />
                     <DeckRow
                       title={title}
@@ -206,11 +227,7 @@ export function MusicPanel({
                       volume={brief.data?.volume}
                       position={position}
                       duration={shown?.duration}
-                      talk={talk}
-                      talking={talking}
-                      onTalking={setTalking}
                       playRef={playRef}
-                      talkRef={talkRef}
                       playlistRef={playlistRef}
                       playlistOpen={playlistOpen}
                       onTogglePlaylist={() => setPlaylistOpen((open) => !open)}

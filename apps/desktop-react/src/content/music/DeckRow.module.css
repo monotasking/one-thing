@@ -48,13 +48,6 @@
   gap: var(--sp-1);
 }
 
-.talk {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--sp-2);
-  align-items: center;
-  height: var(--music-deck-keys-h);
-}
 
 /* 音量:一枚喇叭 + 一条短杆,住在右边那一组最前面(09-19:「音量控制当然也可以放在控制栏」)。 */
 .volume {
