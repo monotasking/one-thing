@@ -3,6 +3,7 @@ import { Heart, ListMusic, MicVocal, Pause, Play, SkipBack, SkipForward } from '
 import { IconButton } from '../../ui/IconButton'
 import { Slider } from '../../ui/Slider'
 import { useMutation, useQuery } from '../../data/kernel'
+import { runWithMusicEnabled } from '../../data/music-enabled'
 import { musicBriefQuery, musicOps } from '../../data/music-source'
 import { useT } from '../../i18n'
 import { firstError, progressOf } from './turntable'
@@ -90,7 +91,12 @@ export function IdlePlayButton() {
       testId="music-idle-play"
       disabled={resume.pending}
       aria-busy={resume.pending || undefined}
-      onClick={() => void musicOps.radioResume.run({})}
+      onClick={() =>
+        void runWithMusicEnabled(
+          () => musicOps.radioResume.run({}),
+          () => Boolean(musicOps.radioResume.get().error),
+        )
+      }
     />
   )
 }

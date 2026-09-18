@@ -250,7 +250,7 @@ export const musicRpcHandlers: RpcRouteHandlers<MusicRoutes> = {
     // 那句话多四个字)。判据相同 = 双保险,不是双口径。
     const settings = getSettings()
     if (settings.music?.enabled !== true) {
-      return { success: false, error: '音乐电台未启用:请在 设置 → 音乐 打开总开关' }
+      return { success: false, error: '音乐电台的总开关没打开' }
     }
     // 「新电台」= 换台(旧节目单作废),否则就是开台 —— 这一格从前是端口的一个
     // 布尔参数,在资源面上它是两条做法(它们在权限卡与命令面板上要各说各的话)。

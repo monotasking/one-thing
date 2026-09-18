@@ -398,7 +398,7 @@ describe('main radio playback (legacy starter)', () => {
     await vi.advanceTimersByTimeAsync(13_000)
     await expect(resume).resolves.toBe(false)
     expect(store.readBrief().lastError).toBe(
-      '网易云登录已过期,请到 设置 → 音乐 重新登录;登录恢复后电台会自动续播',
+      '网易云登录过期了,在音乐面里重新登录;登录恢复后电台会自动续播',
     )
   })
 
@@ -425,7 +425,7 @@ describe('main radio playback (legacy starter)', () => {
   it('the master switch really is one: radio open refuses while music is disabled', async () => {
     const radio = await loadRadio()
     await expect(radio.radioToolOpen('雨天民谣', { clearProgramme: false })).rejects.toThrow(
-      '音乐电台未启用',
+      '音乐电台的总开关没打开',
     )
 
     mocks.settings = { music: { enabled: true } }

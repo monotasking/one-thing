@@ -601,7 +601,7 @@ const PLAY_VERIFY_DEADLINE_MS = 12_000
 const LYRIC_DECISION_TIMEOUT_MS = 3_000
 
 const NCM_LOGIN_EXPIRED_MESSAGE =
-  '网易云登录已过期,请到 设置 → 音乐 重新登录;登录恢复后电台会自动续播'
+  '网易云登录过期了,在音乐面里重新登录;登录恢复后电台会自动续播'
 
 /**
  * The conductor's systemic-failure probe (see its option doc): an expired
@@ -1146,7 +1146,10 @@ async function radioToolOpen(
   return owner.track((async () => {
   if (!isMusicEnabled()) {
     // Honest failure beats a receipt that promises a DJ who will never wake.
-    throw new Error('音乐电台未启用:请在 设置 → 音乐 完成配置并打开总开关')
+    // 这句话是说给**模型与 CLI** 听的:壳上人按「开台」时,那一下本身就是答案,
+    // 壳会先把总开关打开再发(`data/music-enabled.ts`)。所以这里不再指路 ——
+    // 从前那句「请在 设置 → 音乐 …」指向的是 Vue 壳时代的一页,今天的壳没有它。
+    throw new Error('音乐电台的总开关没打开')
   }
   openRadioStation(intent, options)
   return radioToolStatus()
@@ -1191,7 +1194,7 @@ async function requestSong(
 ): Promise<{ success: boolean; title?: string; error?: string }> {
   owner.assertActive()
   return owner.track((async () => {
-  if (!isMusicEnabled()) return { success: false, error: '音乐电台未启用' }
+  if (!isMusicEnabled()) return { success: false, error: '音乐电台的总开关没打开' }
   const store = getRadioStore()
   if (!store.readBrief().active) {
     return { success: false, error: '电台未开——先开台再点歌' }

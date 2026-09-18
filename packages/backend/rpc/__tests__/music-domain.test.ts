@@ -265,7 +265,7 @@ describe('music RPC domain', () => {
     settings.getSettings.mockReturnValue({ music: { enabled: false, provider: 'ncm-cli' } })
     expect(unwrap(await call('openRadio', { intent: ' 深夜 ', clearProgramme: true }))).toEqual({
       success: false,
-      error: '音乐电台未启用:请在 设置 → 音乐 打开总开关',
+      error: '音乐电台的总开关没打开',
     })
     expect(radio.openRadioStation).not.toHaveBeenCalled()
 
