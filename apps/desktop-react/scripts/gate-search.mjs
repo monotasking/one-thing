@@ -32,6 +32,13 @@
  *         底部那条读数行也在同一条竖线上。
  *     外加一个**离谱长名**当反面对照:它该被封顶 + 省略,而不是撑破边框。
  *
+ *  ③ **↵ 一条文件命中,那份文件真的开在工作台里**(09-18 报障原话:「在搜索里面
+ *     搜到笔记后回车,有提示框显示已打开,但实际上没打开」)。S4 起壳这一侧的
+ *     `openFile` 是个占位:只弹一句「已打开 {file}」,从没接过打开动作。第 6 步
+ *     一正一反地钉它 —— 工作台里出现了 `data-viewer-path` 指着那个文件的查看器,
+ *     而屏幕上**没有**那句「已打开 …」。这一半也只有真机答得出:jsdom 量得到
+ *     落点那格 store,量不到「屏幕上真的出现了一块查看器」。
+ *
  * ── 为什么这一半必须真机 ─────────────────────────────────────────────────
  * 这一批的样式是 CSS Modules,在 vitest 里 `import s from './x.module.css'` 拿回来的
  * 只是一张类名映射,那份 CSS 从来没有进过 jsdom 的样式表 —— jsdom 也不排版,
@@ -334,13 +341,13 @@ async function main() {
   try {
     await mkdir(shotDir, { recursive: true })
 
-    console.log('\n[1/5] 在磁盘上种出徽的被试文件')
+    console.log('\n[1/6] 在磁盘上种出徽的被试文件')
     await mkdir(cwd, { recursive: true })
     for (const file of [...BADGE_FILES, LONG_FILE]) {
       await writeFile(path.join(cwd, file.name), 'gate\n')
     }
 
-    console.log(`\n[2/5] 起一台 core,建 ${SEED_SESSIONS} 条会话(> 一页 ${FIRST_PAGE},翻页才演得出来)`)
+    console.log(`\n[2/6] 起一台 core,建 ${SEED_SESSIONS} 条会话(> 一页 ${FIRST_PAGE},翻页才演得出来)`)
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: {
@@ -380,7 +387,7 @@ async function main() {
       `core 侧确认有 ${SEED_SESSIONS} 条会话`,
     )
 
-    console.log('\n[3/5] 拉起应用,打开检索面板(空词)')
+    console.log('\n[3/6] 拉起应用,打开检索面板(空词)')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry],
@@ -422,7 +429,7 @@ async function main() {
       page.evaluate(() => Boolean(document.querySelector('[data-testid="search-panel"] input'))),
     )
 
-    console.log('\n[4/5] 空词 = 浏览态(默认那一档上):全部条数看得见、翻得了页')
+    console.log('\n[4/6] 空词 = 浏览态(默认那一档上):全部条数看得见、翻得了页')
     /*
      * ── 一档都不切 ──────────────────────────────────────────────────────
      * 面板刚开出来就在「所有」上。**这里刻意不 selectTab** —— 报障那一形就是
@@ -546,7 +553,7 @@ async function main() {
     assert(Boolean(tailReadout), `换成一条读数,报的仍然是全部条数:「${tailReadout}」`)
     await page.screenshot({ path: path.join(shotDir, 'search-browse-all-shown.png') })
 
-    console.log('\n[5/5] 用检索面自己进那条会话(文件侧按活跃会话的工作目录取根),再量行首徽')
+    console.log('\n[5/6] 用检索面自己进那条会话(文件侧按活跃会话的工作目录取根),再量行首徽')
     // 一直都在「所有」这一档上(第 4 步没切过档),直接打字。
     await typeQuery(page, FIRST_SESSION_NAME)
     /*
@@ -721,12 +728,54 @@ async function main() {
         + `${BADGE_FILES.map(f => f.name).join(' / ')} 全都在`,
     )
 
+    /*
+     * ── [6/6] 09-18 报障:「搜到笔记后回车,有提示框显示已打开,但实际上没打开」──
+     *
+     * 这一步是那条报障的**字面**判据,而且只有真机答得出:jsdom 里量得到落点那格
+     * store,量不到「屏幕上真的出现了一块查看器」。两条断言一正一反 ——
+     *  · 正:工作台里出现了一块 `data-viewer-path` 指着这个文件的查看器;
+     *  · 反:屏幕上**没有**那句「已打开 …」(它就是报障里那个提示框)。
+     * 反证:把 `SearchPanel` 的 `targetContext.openFile` 改回只 `notify` → 正的那条超时红。
+     */
+    console.log('\n[6/6] 点一条文件命中 = 那份文件**真的开在工作台里**(不是弹一句「已打开」)')
+    const OPEN_FILE = 'note.ts'
+    const openTarget = path.join(cwd, OPEN_FILE)
+    const openRowAt = await waitFor(`文件档里那一行 ${OPEN_FILE}`, () => page.evaluate((name) => {
+      const rows = [...document.querySelectorAll('[data-testid="search-panel"] [role="option"]')]
+        .filter(el => /^\d+$/.test(el.getAttribute('data-row') ?? ''))
+      const found = rows.find(el => (el.textContent ?? '').includes(name))
+      return found ? found.getAttribute('data-row') : undefined
+    }, OPEN_FILE))
+    await clickSelector(page, `[data-testid="search-panel"] [role="option"][data-row="${openRowAt}"]`)
+    await waitFor('面板收回 Dock 了(选中 = 这块面的活干完了)', () =>
+      page.evaluate(() => !document.querySelector('[data-testid="search-panel"]')),
+    )
+    const openedPaths = await waitFor('那份文件的查看器出现在工作台里', () =>
+      page.evaluate((want) => {
+        const seen = [...document.querySelectorAll('[data-testid="file-viewer"]')]
+          .map(el => el.getAttribute('data-viewer-path'))
+        return seen.includes(want) ? seen : undefined
+      }, openTarget),
+    )
+    assert(
+      openedPaths.includes(openTarget),
+      `↵ 一条文件命中真的开出了那份文件(查看器 data-viewer-path = ${openTarget})`,
+    )
+    assert(
+      !(await page.evaluate(() =>
+        /已打开|Opened /.test(document.body.textContent ?? ''),
+      )),
+      '屏幕上没有那句「已打开 …」—— 文件开了,查看器自己就是反馈',
+    )
+    await page.screenshot({ path: path.join(shotDir, 'search-open-file.png') })
+
     await app.close()
     app = undefined
     console.log(
       `\n[search-gate] ok —— 默认档空词浏览态(全量 / 读数 / 翻页,一档没切)`
         + ` + 文件档跟着会话工作目录走(壳递 filters.dir,门里没有补偿)`
-        + ` + 行首徽零溢出(截图:${path.relative(appRoot, shotDir)}/)`,
+        + ` + 行首徽零溢出 + ↵ 真的开出那份文件`
+        + `(截图:${path.relative(appRoot, shotDir)}/)`,
     )
   } finally {
     // 收尸:自己起的每一个进程都在这里逐个杀掉,临时目录一并删干净。

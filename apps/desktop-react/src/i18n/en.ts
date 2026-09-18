@@ -482,7 +482,6 @@ export const en: Record<MessageKey, string> = {
   'search.badgeOtherSpace': 'Other space',
   'search.badgeSemantic': 'Semantic',
   'search.untitledSession': 'Untitled chat',
-  'search.openedFile': 'Opened {file}',
   /* D5: the file side now speaks to a real producer. Both lines state a fact
    * about that producer, not a temporary gap — there is no "recently opened
    * files" record, and a failed search is not an empty one. */

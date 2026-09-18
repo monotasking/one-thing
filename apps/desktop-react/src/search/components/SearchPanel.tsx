@@ -7,7 +7,7 @@ import type { SegmentedOption } from '../../ui/Segmented'
 import { notify } from '../../services/notify'
 import { useT } from '../../i18n'
 import type { MessageKey } from '../../i18n'
-import { itemRefOf, resultRows, targetText } from '../transitions'
+import { itemRefOf, resultRows } from '../transitions'
 import type { SearchRow, SearchScope } from '../types'
 import {
   ALL_TAB,
@@ -46,6 +46,7 @@ import {
   searchLoadMore,
 } from '../../data/search-listing-source'
 import { useLocateMessage } from '../../content/locate-message'
+import { openFileInCurrentTarget } from '../../content/viewer/open-target'
 import { useSessionCwd } from '../../data/files-source'
 import { currentSpaceId } from '../../workspace/current'
 import { DEFAULT_SPACE_ID } from '../../workspace/types'
@@ -167,14 +168,22 @@ export function SearchPanel() {
       enterSession(sessionId)
       if (messageId) locateMessage(sessionId, messageId)
     },
+    /*
+     * **真的打开它**(09-18 报障:「在搜索里面搜到笔记后回车,有提示框显示已打开,
+     * 但实际上没打开」)。S4 起这一格是个占位:只弹一句「已打开 {file}」,从没接过
+     * 打开动作 —— 而 `targets/file.tsx` 与 `targets/note.tsx` 的落点都走它,于是
+     * 文件与笔记两类结果按下去得到的都是同一句假话。
+     *
+     * 落点走 `openFileInCurrentTarget` —— 全壳「打开一个文件」的唯一编排点(文件面板、
+     * 消息里的文件引用、改动面、待办共八个调用方走的都是它),所以「打开方式」那七档
+     * 在检索面这一路上自动成立,这里一个字都不必知道它开去哪儿。
+     *
+     * **不再弹通知**:文件真的开了,那块查看器自己就是反馈;读不到时查看器画的是
+     * 自己那句人话(`viewer.denied` / `missing` / `failed`),所以这里也不补一句 ——
+     * 一件事两处各说一遍,迟早说的不是同一句。
+     */
     openFile(path, line) {
-      notify({
-        level: 'info',
-        source: 'search.open',
-        title: t('search.openedFile', {
-          file: targetText({ kind: 'file', payload: { filePath: path, line } }),
-        }),
-      })
+      openFileInCurrentTarget(path, line)
     },
     runAction(actionId) {
       notify({

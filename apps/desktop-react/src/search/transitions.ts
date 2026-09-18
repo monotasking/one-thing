@@ -1,6 +1,6 @@
 import type { SearchItemRef, SearchResult } from '@shared/ipc/search'
 import { splitHighlight } from '../expose/transitions'
-import type { SearchOrigin, SearchRow, SearchTarget } from './types'
+import type { SearchOrigin, SearchRow } from './types'
 
 /**
  * 检索面的**造行**那几只纯函数。不认识 React —— 组件只负责画。
@@ -86,19 +86,13 @@ export function originText(origin: SearchOrigin): string {
   }
 }
 
-/**
- * 通知里那句「已打开 …」的落点。
- *
- * 带行号时与 fileLine 出处同一个拼法;不带(今天的常态 —— 真实产地给不出行号)
- * 就是整条路径 —— **不补一个 `:1` 去凑格式**,那会让人以为后端说了它在第一行。
+/*
+ * 这里从前还有一只 `targetText` —— 通知里那句「已打开 {file}」的拼法。
+ * 那句通知是个**占位**:它只说自己打开了,从没接过打开动作(09-18 报障
+ * 「搜到笔记后回车,有提示框显示已打开,但实际上没打开」)。今天那一路真的走
+ * `openFileInCurrentTarget`,打开的那块查看器自己就是反馈,通知与这只拼法一起
+ * 退役 —— 留一只零读者的拼法,留下的是一份「这里会弹一句话」的假话。
  */
-export function targetText(target: SearchTarget): string {
-  const payload = (target.payload ?? {}) as { filePath?: string; line?: number; sessionId?: string }
-  if (typeof payload.filePath !== 'string') return payload.sessionId ?? ''
-  return payload.line === undefined
-    ? payload.filePath
-    : originText({ kind: 'fileLine', file: fileName(payload.filePath), line: payload.line })
-}
 
 /* ── 造行 ──────────────────────────────────────────────────────────────── */
 

@@ -49,8 +49,9 @@ export interface SearchTarget {
  *
  * S4b 之后**产地只剩一个**:后端候选的 `subtitle` / `detail`,于是造出来的永远是
  * `path` 那一支。另外四支**留着**,理由不是「将来也许有用」:`originText` 是这一
- * 族的**唯一拼法产地**,而 `targetText`(通知里那句「已打开 …」)今天就在用
- * `fileLine`。真到一条能力开始自己说「我的出处是项目 · 时间」时,它落的也是这张表。
+ * 族的**唯一拼法产地**,真到一条能力开始自己说「我的出处是项目 · 时间」时,
+ * 它落的也是这张表。(从前这里还有一句「`targetText` 今天就在用 `fileLine`」——
+ * 那只拼法随 09-18「已打开」那句假通知一起退役了,见 `transitions.ts` 的墓碑。)
  */
 export type SearchOrigin =
   /** 消息 / 章节命中 → 所属会话名 */

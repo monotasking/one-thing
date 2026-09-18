@@ -6,7 +6,6 @@ import {
   itemRefOf,
   originText,
   resultRows,
-  targetText,
 } from './transitions'
 
 /**
@@ -14,7 +13,7 @@ import {
  *
  * 这一批用例守的两件事,每一件都对着 §4.0 那张枚举点清账表的一格:
  *  · 造行只认后端的回执(`resultRows`);
- *  · 出处的拼法只有一处产地(`originText` / `targetText`)。
+ *  · 出处的拼法只有一处产地(`originText`)。
  *
  * ── 分页与分节那五组用例与它们的函数本体都没有了(第 ⑤ 步搬用例,第 ⑨ 步删本体)─
  * `sectionsOf` / `sectionsWindow` / `flatRows` / `remoteSide` / `pageWindow` /
@@ -95,9 +94,5 @@ describe('路径与出处', () => {
     expect(originText({ kind: 'path', path: '/x/y' })).toBe('/x/y')
   })
 
-  it('targetText:不带行号时**不补一个 :1** 去凑格式', () => {
-    expect(targetText({ kind: 'file', payload: { filePath: '/a/b.ts' } })).toBe('/a/b.ts')
-    expect(targetText({ kind: 'file', payload: { filePath: '/a/b.ts', line: 3 } })).toBe('b.ts:3')
-  })
 })
 

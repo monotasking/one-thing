@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { act } from '@testing-library/react'
 import { openFileInCurrentTarget, setFileOpenMode } from '../viewer/open-target'
 import { FILE_OPEN_MODES, regionOfFileOpenMode, useFileOpenMode } from '../../data/file-open-mode'
@@ -7,6 +7,10 @@ import { useStageStore } from '../../stage/store'
 import { initialStageState } from '../../stage/transitions'
 import { registerContentKind, resetContentKinds, refId } from '../../workbench/kinds'
 import { leavesOf } from '../../workbench/tree'
+import { configureFilesPort } from '../../data/files-port'
+import { useViewerSource } from '../../data/viewer-source'
+import type { FilesReadContentResponse } from '@shared/ipc/files'
+import type { FilesPort } from '../../data/files-port'
 import type { FileOpenMode } from '../../data/file-open-mode'
 
 /**
@@ -160,6 +164,90 @@ describe('换档即生效:手上那一份当场搬过去', () => {
     expect(regionOfRefIn(wb().regions, REF_ID)?.startsWith('float:')).toBe(true)
   })
 })
+
+/**
+ * **落到第几行**(09-18;检索面那条报障的另一半)。
+ *
+ * 判据只有一条,而且它是个**时序**判据:那一句 `setView({ currentLine })` 必须排在
+ * 「内容已经上屏」之后。理由在 `open-target.ts` 那段注上 —— `useViewerScroll` 的跳行
+ * effect 依赖 `[bodyRef, currentLine, path]`,在内容之前写就是在没有 `[data-line]` 的
+ * 那一帧跑一次、落空,而随后内容到位时依赖一格没变,effect 再也不跑。
+ *
+ * 所以这一组用一发**手动收口**的读:飞行途中量一次(必须还是 0),落地之后再量一次。
+ * 反证:把 `open-target.ts` 里那句 `.then(...)` 摊平成与落点同一拍 → 第一条断言当场红。
+ */
+describe('落到第几行:写在读回来之后', () => {
+  /** 这一组自己换端口,跑完还给 `test/setup.ts` 装的那一份(读一律答失败)。 */
+  const BASELINE: FilesPort = {
+    ready: async () => undefined,
+    listDirectory: async () => ({ success: false, error: 'no files port in tests' }),
+    stat: async () => ({ success: false, error: 'no files port in tests' }),
+    readContent: async () => ({ success: false, error: 'no files port in tests' }),
+    saveContent: async () => ({ success: true }),
+    reveal: async () => ({ success: false, error: 'no files port in tests' }),
+    list: async () => ({ success: true, files: [], entries: [] }),
+  }
+
+  /*
+   * 查看器的实例表**跨用例活着**(它是模块级 store,而这个文件上面那几组早就
+   * 用同一条 PATH 开过文件了)。不归零的话 `openFile` 那句「已经有实例而且没有在飞的读
+   * = 什么都不做」当场命中,这一组量的就不是一发真读 —— 第一遍写出来时正是这么红的。
+   */
+  beforeEach(() => useViewerSource.getState().reset())
+
+  afterEach(() => {
+    configureFilesPort(BASELINE)
+    useViewerSource.getState().reset()
+  })
+
+  it('读还在飞的那一段 currentLine 一格不动;内容落定之后才落到那一行', async () => {
+    let settle: ((response: FilesReadContentResponse) => void) | undefined
+    configureFilesPort({
+      ...BASELINE,
+      readContent: () => new Promise<FilesReadContentResponse>((resolve) => { settle = resolve }),
+    })
+    act(() => useFileOpenMode.setState({ mode: 'stage' }))
+
+    act(() => openFileInCurrentTarget(PATH, 7))
+    // 落点当场就位(四律:先摆再等内容),而行号还没落 —— 屏上此刻没有 `[data-line]`。
+    expect(regionOfRefIn(wb().regions, REF_ID)).toBe('center')
+    expect(useViewerSource.getState().instances[PATH]?.view.currentLine).toBe(0)
+
+    // 端口是**惰性** await 出来的,所以那一发读要过一拍才真的出门。
+    await act(async () => { await flush() })
+    expect(typeof settle).toBe('function')
+    // 读在飞的这一段:内容还没上屏,行号也还是 0(这一条就是时序判据本身)。
+    expect(useViewerSource.getState().instances[PATH]?.file).toBeNull()
+    expect(useViewerSource.getState().instances[PATH]?.view.currentLine).toBe(0)
+
+    await act(async () => {
+      settle?.({ success: true, content: 'a\nb\nc\nd\ne\nf\ng\nh\n', size: 16 })
+      await flush()
+    })
+    expect(useViewerSource.getState().instances[PATH]?.file?.kind).toBe('code')
+    expect(useViewerSource.getState().instances[PATH]?.view.currentLine).toBe(7)
+  })
+
+  it('不给行号就一格都不写 —— 「打开」与「打开并跳到第 n 行」是两句话', async () => {
+    act(() => useFileOpenMode.setState({ mode: 'stage' }))
+    await act(async () => { openFileInCurrentTarget(PATH); await flush() })
+    expect(useViewerSource.getState().instances[PATH]?.view.currentLine).toBe(0)
+  })
+
+  it('读失败也照落 —— 查看器画的是它自己那句人话,跳行在没有行的面上是恒等操作', async () => {
+    act(() => useFileOpenMode.setState({ mode: 'stage' }))
+    await act(async () => { openFileInCurrentTarget(PATH, 7); await flush() })
+    expect(useViewerSource.getState().instances[PATH]?.file?.kind).toBe('error')
+    expect(useViewerSource.getState().instances[PATH]?.view.currentLine).toBe(7)
+  })
+})
+
+/**
+ * 把手上排着的微任务全排干。**不是 `await Promise.resolve()` 数拍** —— 那条读路上
+ * 有几个 await 是实现细节(端口惰性 import、readContent、定型),数拍等于把实现
+ * 抄一份到用例里,改一行实现就红一条与它无关的断言。
+ */
+const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
 
 function sideOf(mode: 'edge-top' | 'edge-bottom' | 'edge-left' | 'edge-right') {
   return mode.slice('edge-'.length) as 'top' | 'bottom' | 'left' | 'right'

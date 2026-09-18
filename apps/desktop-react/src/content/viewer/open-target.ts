@@ -1,4 +1,4 @@
-import { useViewerSource } from '../../data/viewer-source'
+import { hasViewerInstance, useViewerSource } from '../../data/viewer-source'
 import { NEW_FLOAT_REGION, regionOfFileOpenMode, useFileOpenMode } from '../../data/file-open-mode'
 import { useWorkbenchStore, regionOfRefIn } from '../../workbench/store'
 import { floatRegion } from '../../workbench/regions'
@@ -99,8 +99,21 @@ export function openRefByFileMode(ref: ContentRef): RegionId | 'panel' {
  *
  * 落点**先摆**再等内容:读是异步的,先插好那一格,屏幕上当场就有一个
  * 「正在读取…」的查看器,而不是等一秒钟之后凭空跳出一块面(四律之一)。
+ *
+ * ── `line`:落到第几行(09-18,检索面那条报障的另一半)───────────────────
+ * 「打开一个文件并停在第 n 行」仍然是**打开一个文件**,所以它长在这一处而不是
+ * 调用方那里 —— 两处各写一遍的下场是「哪一条路会跳行」变成第二份真相。
+ * 落点仍然是查看器自己那格 `currentLine`(`FileViewer` 的 ⌘L 跳转条写的是同一格,
+ * `useViewerScroll` 读的也是同一格):**同一只写口,不新造一条跳行的路**。
+ *
+ * **那一句必须排在读回来之后**,不能与落点一起写:`useViewerScroll` 的
+ * 跳行 effect 依赖 `[bodyRef, currentLine, path]`,先写就是在内容还没上屏的
+ * 那一帧跑一次、`querySelector('[data-line="n"]')` 落空,而随后内容到位时
+ * 依赖一格没变 —— effect 再也不跑,屏幕上的表现是「开了,但没跳」。
+ * `openFile` 三支(已有实例 / 在飞 / 全新)都在内容落定之后才 resolve,
+ * 所以 `.then` 那一拍是唯一一个「内容在屏上」为真的时刻。
  */
-export function openFileInCurrentTarget(path: string): void {
+export function openFileInCurrentTarget(path: string, line?: number): void {
   if (!path) return
   // 落点那两行归上面那只泛化口(批⑤:改动面走的是同一档)。这里只剩「文件」
   // 自己那两件:面板内那一档的落点,与那一发读。
@@ -110,7 +123,20 @@ export function openFileInCurrentTarget(path: string): void {
     // 两档互斥:开进树里就把分栏收起来(一份内容只该有一个落点)。
     useWorkbenchStore.getState().closePanel()
   }
-  void useViewerSource.getState().openFile(path)
+  const read = useViewerSource.getState().openFile(path)
+  if (line === undefined) {
+    void read
+    return
+  }
+  /*
+   * 读失败那一支也照落:`openFile` 不抛(读不到会定型成 `error` 那一型,由查看器
+   * 自己画一句人话),所以这里没有第二条错误路 —— 跳行落在一块没有 `[data-line]`
+   * 的面上是恒等操作,不是异常。
+   */
+  void read.then(() => {
+    if (!hasViewerInstance(path)) return
+    useViewerSource.getState().setView(path, { currentLine: line })
+  })
 }
 
 /**

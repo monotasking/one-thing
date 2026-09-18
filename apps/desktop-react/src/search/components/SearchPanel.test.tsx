@@ -8,6 +8,9 @@ import { initialStageState } from '../../stage/transitions'
 import { useToastHub } from '../../ui/Toast'
 import { useNotifyStore } from '../../services/notify-store'
 import { useLocateMessage } from '../../content/locate-message'
+import { useWorkbenchStore, regionOfRefIn } from '../../workbench/store'
+import { useViewerSource } from '../../data/viewer-source'
+import { useFileOpenMode, FACTORY_FILE_OPEN_MODE } from '../../data/file-open-mode'
 import { translate } from '../../i18n'
 import { ensureSearchCatalog, resetSearchCatalog } from '../../data/search-catalog-source'
 import { refetchSearchListing, resetSearchListing } from '../../data/search-listing-source'
@@ -96,6 +99,11 @@ beforeEach(async () => {
   resetSearchListing()
   useSearchStore.getState().reset()
   useLocateMessage.getState().reset()
+  /* 落点那三格是模块级 store,跨用例活着 —— 不归零的话「已经开着就什么都不做」
+   * 那一支会让后一条用例量到上一条留下的实例。 */
+  useWorkbenchStore.getState().reset()
+  useViewerSource.getState().reset()
+  useFileOpenMode.setState({ mode: FACTORY_FILE_OPEN_MODE })
   useStageStore.setState({ ...initialStageState, locale: 'zh' })
   useExposeStore.setState({ view: { mode: 'overview' }, query: '' })
   useToastHub.setState({ toasts: [], folded: 0 })
@@ -802,6 +810,82 @@ describe('落点与读数', () => {
     await waitFor(() => expect(rows()).toHaveLength(1))
     fireEvent.click(rows()[0])
     expect(useLocateMessage.getState().request).toMatchObject({ sessionId: 's1', messageId: 'm1' })
+  })
+
+  /*
+   * ── 09-18 报障:「在搜索里面搜到笔记后回车,有提示框显示已打开,但实际上没打开」──
+   * S4 起 `targetContext.openFile` 是个**占位**:只弹一句「已打开 {file}」。
+   * `targets/file.tsx` 与 `targets/note.tsx` 的落点都走它,所以文件与笔记两类结果
+   * 按下去得到的是同一句假话。这三条钉的是「真的开出来」那条链的三段。
+   *
+   * 反证(交卷 C):把 `openFile` 改回只 `notify` → 这三条全红。
+   */
+  it('↵ 一条文件命中 = **真的把它开出来**(而不是弹一句「已打开」)', async () => {
+    const path = '/repo/a/model-registry.ts'
+    serveRows({ results: [hit({
+      id: 'f1',
+      type: 'file',
+      title: 'model-registry.ts',
+      target: { kind: 'file', payload: { filePath: path } },
+    })] })
+    render(<SearchPanel />)
+    type('词')
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    /*
+     * 面板此刻**不在 Dock 里** —— `closeToDock` 对一块本来就在 Dock 里的面是空动作
+     * (它头一句就早退),那样 ④ 什么都证不出来。舞台那一档是形态机自己那格瞬态
+     * (`stageId`,不进 `regions`),所以这里写的是它;`placements` 是它的投影,
+     * 一并摆好,免得这一拍还没人跑过投影。
+     */
+    useStageStore.setState({ stageId: 'search', placements: { search: { kind: 'stage' } } })
+
+    fireEvent.keyDown(input(), { key: 'Enter' })
+
+    // ① 落点:按当下那一档(出厂 = 中央区新标签)真的插了一格。
+    await waitFor(() => expect(
+      regionOfRefIn(useWorkbenchStore.getState().regions, `file:${path}`),
+    ).toBe('center'))
+    // ② 那一发读也真的出门了 —— 查看器手上有了这一份实例。
+    await waitFor(() => expect(useViewerSource.getState().instances[path]).toBeTruthy())
+    // ③ **零通知**:文件开了,那块查看器自己就是反馈。
+    expect(useNotifyStore.getState().items).toHaveLength(0)
+    // ④ 面板的活干完了,收回 Dock(舞台那格瞬态空了,投影也回到「缺席 = dock」)。
+    expect(useStageStore.getState().stageId).toBeNull()
+    expect(useStageStore.getState().placements.search).toBeUndefined()
+  })
+
+  it('带行号的文件命中 → 查看器落到那一行(同一只写口 `currentLine`)', async () => {
+    const path = '/repo/a/x.ts'
+    serveRows({ results: [hit({
+      id: 'f1',
+      type: 'file',
+      title: 'x.ts',
+      target: { kind: 'file', payload: { filePath: path, line: 12 } },
+    })] })
+    render(<SearchPanel />)
+    type('词')
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    fireEvent.click(rows()[0])
+    await waitFor(() => expect(
+      useViewerSource.getState().instances[path]?.view.currentLine,
+    ).toBe(12))
+  })
+
+  it('笔记命中走**同一只门**(报障原话里的那一类)', async () => {
+    const path = '/vault/日记/2026-09-18.md'
+    serveRows({ results: [hit({
+      id: 'n1',
+      type: 'note',
+      title: '2026-09-18.md',
+      target: { kind: 'note', payload: { filePath: path } },
+    })] })
+    render(<SearchPanel />)
+    type('词')
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    fireEvent.click(rows()[0])
+    await waitFor(() => expect(useViewerSource.getState().instances[path]).toBeTruthy())
+    expect(regionOfRefIn(useWorkbenchStore.getState().regions, `file:${path}`)).toBe('center')
+    expect(useNotifyStore.getState().items).toHaveLength(0)
   })
 
   it('缺渲染器的行按下去**如实说一句**,不静默吞掉', async () => {
