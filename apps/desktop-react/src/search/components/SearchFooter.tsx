@@ -40,6 +40,20 @@ export interface SearchFooterFailure {
   label: string
 }
 
+/**
+ * **这一发的一句提示**(P5)。后端只交 `labelKey + params`,句子在这里查字典
+ * (R12)。
+ *
+ * 它与 `failed` 是两件事:那一格说「这一类没搜成」(可以重试),这一格说
+ * 「这一次少用了一条路,原因如下」—— 结果是真的,只是不全。所以它没有重试钮:
+ * 要它参与,用户该做的是去把那台 app 打开。
+ */
+export interface SearchFooterNotice {
+  id: string
+  labelKey: string
+  params?: Record<string, string | number>
+}
+
 export interface SearchFooterProps {
   /** 这一发还在路上(首发 / 换词 / 重拉)。 */
   searching: boolean
@@ -49,6 +63,8 @@ export interface SearchFooterProps {
   indexReadout: SearchIndexReadout | undefined
   /** 头页塌了的那几块。 */
   failed: readonly SearchFooterFailure[]
+  /** 能力自报的那几句提示(`sequence.ts` 的 `noticesOf` 择出来的)。 */
+  notices: readonly SearchFooterNotice[]
   onRetryBlock(capability: string): void
   t: TFn
 }
@@ -58,6 +74,7 @@ export function SearchFooter({
   relaxed,
   indexReadout,
   failed,
+  notices,
   onRetryBlock,
   t,
 }: SearchFooterProps) {
@@ -127,6 +144,18 @@ export function SearchFooter({
     parts.push(
       <span key="index-reader" className={s.readout} data-readout="index-reader">
         {t('search.indexReader', { host: indexReadout.readerHost })}
+      </span>,
+    )
+  }
+  /*
+   * 能力自报的提示排在块级失败**之前**:「这次少用了一条路」是关于这一页的处境,
+   * 而「某一类没搜成」是一条带动作(重试)的行 —— 带动作的排最后,与页脚从左到右
+   * 「越往后越要人动手」的次序一致。
+   */
+  for (const notice of notices) {
+    parts.push(
+      <span key={`notice:${notice.id}`} className={s.readout} data-readout="notice">
+        {t(notice.labelKey as MessageKey, notice.params)}
       </span>,
     )
   }

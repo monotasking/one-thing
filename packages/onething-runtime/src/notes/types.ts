@@ -24,6 +24,15 @@ export interface NoteProcessRunOptions {
   args: string[]
   timeoutMs?: number
   env?: Record<string, string | undefined>
+  /**
+   * **换词即 kill**(P5)。已经 abort 的信号进来 = 一次 `spawn` 都不发生;
+   * 跑到一半 abort = 与 `NoteProcessHandle.kill()` 同一条路(SIGTERM → 1s →
+   * SIGKILL),`done` 以 `NoteProcessAborted` 落定。
+   *
+   * 它与 `timeoutMs` 是两件事:预算说的是「这条命令最多值多少时间」,信号说的是
+   * 「问这句话的人已经不想知道答案了」。两者都到时先到的那一个说了算。
+   */
+  signal?: AbortSignal
 }
 
 export interface NoteProcessHandle {
@@ -153,9 +162,12 @@ export interface NoteLiveSearchOptions {
   folder?: string
   limit?: number
   /**
-   * **P5 接;今天不生效。** 这一格已经在契约上,但没有实现:`NoteProcessRunner`
-   * 今天没有 abort 入口(`run` 只有 `timeoutMs`),所以中途取消一次 `search:context`
-   * 做不到。留着它是为了调用方现在就能写对,而不是等 P5 再改签名。
+   * **换词即 kill**(P5 接上了)。这一格一路透传到 `NoteProcessRunner.run` ——
+   * abort 那一下真的把子进程杀掉,而不是让它跑完再把答案丢掉。
+   *
+   * 检索那一侧递进来的是「这一发的信号」与「这一库的预算」合成的一个
+   * (`AbortSignal.any([ctx.signal, AbortSignal.timeout(budget)])`),所以
+   * 「用户换了词」与「这个库太慢了」走的是同一条取消路,而不是两套。
    */
   signal?: AbortSignal
 }

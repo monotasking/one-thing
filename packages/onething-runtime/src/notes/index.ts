@@ -21,6 +21,7 @@ export {
 export {
   createNodeProcessRunner,
   createSocketLivenessProbe,
+  NoteProcessAborted,
   NoteProcessTimeout,
 } from './process-runner.js'
 

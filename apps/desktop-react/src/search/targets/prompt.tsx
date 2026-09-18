@@ -29,6 +29,6 @@ export const promptTargetRenderer = {
   activate(row, context) {
     const payload = payloadOf(row.target.payload)
     if (payload === undefined) return
-    context.runAction(payload.actionId ?? payload.promptId)
+    context.runAction(payload.actionId ?? payload.promptId, row.capability)
   },
 } as const satisfies Parameters<typeof registerTargetRenderer>[0]

@@ -365,9 +365,13 @@ describe('search authorization before retrieval, preview and actions', () => {
       expect((await rpc.preview({ items: [{ capability: 'notes', id: `note:${escaped}`, target: { kind: 'note', payload: { filePath: escaped } } }] }, { transport: 'ipc' })).success).toBe(false)
       expect(read.mock.calls.some(call => String(call[0]).endsWith('secret.md'))).toBe(false)
       expect(notesPreview).not.toHaveBeenCalled()
-      // 库外路径:`create-daily:` 与 `create-note:` 两条动作夹的是同一张库根表。
+      // 库外路径:`create-daily:` / `create-note:` / `open-in-app:` 三条动作夹的是
+      // 同一张库根表。第三条(P5)更要夹:它是唯一会把一台 app 拉起来的动作,
+      // 一条编着库外路径的动作号 = 用一次点击打开机器上的任意文件。
       expect((await rpc.invoke({ capability: 'notes', actionId: `create-daily:${encodeURIComponent(path.join(outside, 'new.md'))}`, items: [] }, { transport: 'ipc' })).success).toBe(false)
       expect((await rpc.invoke({ capability: 'notes', actionId: `create-note:${encodeURIComponent(path.join(outside, 'new.md'))}`, items: [] }, { transport: 'ipc' })).success).toBe(false)
+      expect((await rpc.invoke({ capability: 'notes', actionId: `open-in-app:${encodeURIComponent(path.join(outside, 'secret.md'))}`, items: [] }, { transport: 'ipc' })).success).toBe(false)
+      expect((await rpc.invoke({ capability: 'notes', actionId: `open-in-app:${encodeURIComponent(escaped)}`, items: [] }, { transport: 'ipc' })).success).toBe(false)
       expect(write).not.toHaveBeenCalled()
       expect(notesInvoke).not.toHaveBeenCalled()
       expect(fs.existsSync(path.join(outside, 'new.md'))).toBe(false)

@@ -89,6 +89,18 @@ function toKey(relative: string): string {
   return relative.split(path.sep).join('/')
 }
 
+/**
+ * 一个库里的绝对路径 → 这把 feed 会给它的 **key**(库相对 posix 路径)。
+ *
+ * 导出是因为**活检索那一路也要同一把尺子**(P5):Obsidian 自己答的命中是一条
+ * 库相对路径,它在屏幕上那一行的出处必须与索引答出来的那一行逐字相同,否则同一
+ * 篇笔记在两条召回路下看起来是两篇。规则住在这里(feed 是 key 的产地),别处
+ * 一律来问,不自己 `split(path.sep)` 第二遍。
+ */
+export function vaultRelativeKey(root: string, absolute: string): string {
+  return toKey(path.relative(root, absolute))
+}
+
 export class VaultFeed implements DocumentFeed<string> {
   readonly id: string
   readonly capabilities: string[]

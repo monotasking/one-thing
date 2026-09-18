@@ -87,9 +87,12 @@ export function createAppSearchAuthorization(adapters: OnethingSearchProvidersAd
         await checkTarget(capability, item.target, ctx)
       }
       if (actionId !== undefined) {
-        // 两条建文件的动作都把**目标路径**编在 id 里(`capabilities/notes.ts` 的
-        // `actionWithPath`),于是夹的就是那一格 —— 授权不重算「建哪个文件」。
-        const prefix = ['create-daily:', 'create-note:'].find(value => actionId.startsWith(value))
+        // 三条动作都把**目标路径**编在 id 里(`capabilities/notes.ts` 的
+        // `actionWithPath` / `openInAppActionIdOf`),于是夹的就是那一格 ——
+        // 授权不重算「建哪个文件」「打开哪个文件」。`open-in-app:`(P5)是其中
+        // 唯一会把 app 拉起来的一条,所以它更该被夹:一条编着库外路径的动作号
+        // 等于让人用一次点击打开机器上的任意文件。
+        const prefix = ['create-daily:', 'create-note:', 'open-in-app:'].find(value => actionId.startsWith(value))
         if (capability === 'notes' && prefix !== undefined) {
           assertOperator(ctx)
           assertPath(decodeURIComponent(actionId.slice(prefix.length)), noteRoots())

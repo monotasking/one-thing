@@ -60,6 +60,12 @@ export interface ObsidianCliRunOptions {
    * 路径拿缺省值就是安全的。
    */
   mayLaunch?: boolean
+  /**
+   * **换词即 kill**(P5)。原样递给 `NoteProcessRunner.run` —— 这一层不解释它,
+   * 也不在探活之后自己再看一眼:已经 abort 的信号由 runner 在 `spawn` 之前挡下,
+   * 那是同一句话唯一的产地。
+   */
+  signal?: AbortSignal
 }
 
 /** `Vault not found.` 是整段,不带 `Error:` 前缀 —— 所以要单独认。 */
@@ -109,6 +115,7 @@ export class ObsidianCli {
       command: this.executable,
       args,
       timeoutMs: options.budgetMs ?? this.budgetMs,
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
     })
 
     const stdout = result.stdout.replace(/\s+$/, '')

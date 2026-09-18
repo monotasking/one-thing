@@ -174,24 +174,31 @@ describe('前台动作只有一条', () => {
     expect(opened).toEqual([{ vaultId: 'a', path: 'x.md', mayLaunch: true }])
   })
 
-  it('path 缺席 = 把库本身唤到前台', async () => {
+  /**
+   * **P5 改判**(2026-09-18 真机读数):P4 这一条钉的是「path 缺席 = 把库本身唤到
+   * 前台」,做法是把库根递下去 —— 真机上那条命令是 `open path=`,Obsidian CLI 答
+   * `Missing required parameter: file or path`,而它整张动词表里没有第二个候选。
+   * 所以缺席这一档现在**当场答 `unsupported`,一条命令都不发**。
+   */
+  it('path 缺席 = 这件事做不到,答 unsupported 且一次都不发', async () => {
     state.vaultById.set('a', openable('a'))
-    await notesRpcHandlers.openInApp({ vaultId: 'a' })
-    expect(opened[0]!.path).toBe('/vaults/a')
+    expect(await notesRpcHandlers.openInApp({ vaultId: 'a' }))
+      .toEqual({ ok: false, reason: 'unsupported' })
+    expect(opened).toEqual([])
   })
 
   it('不在册的库 / 没有这件事的系统 / 领域拒绝,三种回执各不相同', async () => {
-    expect(await notesRpcHandlers.openInApp({ vaultId: 'nope' })).toEqual({ ok: false, reason: 'not-found' })
+    expect(await notesRpcHandlers.openInApp({ vaultId: 'nope', path: 'x.md' })).toEqual({ ok: false, reason: 'not-found' })
 
     state.vaultById.set('folder', fakeVault({ id: 'folder', system: 'folder' }))
-    expect(await notesRpcHandlers.openInApp({ vaultId: 'folder' }))
+    expect(await notesRpcHandlers.openInApp({ vaultId: 'folder', path: 'x.md' }))
       .toEqual({ ok: false, reason: 'unsupported' })
 
     state.vaultById.set('shut', fakeVault({
       id: 'shut',
       openInApp: async () => { throw new NoteVaultUnavailable('vault-not-open', 'shut') },
     }))
-    expect(await notesRpcHandlers.openInApp({ vaultId: 'shut' }))
+    expect(await notesRpcHandlers.openInApp({ vaultId: 'shut', path: 'x.md' }))
       .toEqual({ ok: false, reason: 'vault-not-open' })
   })
 })

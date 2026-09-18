@@ -3,6 +3,7 @@ import type { TFn } from '../../i18n'
 import { continuationEnabled } from '../continuations'
 import type { SearchContinuation } from '../continuations'
 import { resolveTargetRenderer } from '../targets'
+import type { SearchRowAction } from '../targets'
 import type { SearchRow } from '../types'
 
 /**
@@ -16,6 +17,11 @@ import type { SearchRow } from '../types'
  * 「这一行有哪几条续搜」由**目标渲染器**自报,「按不按得动」由**自述**答
  * (`continuationEnabled(continuation, available)`),所以这只文件里没有一个
  * 能力 id。
+ *
+ * **P5 多一段:后端动作**(`rowActions`)。同一条判据的第三次应用 —— 这一行能让
+ * 后端做哪几件事也由目标渲染器自报,菜单只负责画出来并把动作号原样回传。
+ * 它排在续搜后面:续搜是「接着搜」(留在这块面里),后端动作是「离开这块面去做
+ * 一件事」,后者更远。
  */
 
 /** 行的右键菜单开在哪儿(点锚)。 */
@@ -42,10 +48,15 @@ export interface SearchRowMenuProps {
    * (09-01 判例:动作单产地 = 右键上下文菜单)。
    */
   onScopeOnly(capability: string): void
+  /** 跑一条这一行自报的后端动作(P5)。 */
+  onRowAction(row: SearchRow, action: SearchRowAction): void
 }
 
 const continuationsOf = (row: SearchRow): SearchContinuation[] =>
   resolveTargetRenderer(row.target.kind)?.continuations?.(row) ?? []
+
+const rowActionsOf = (row: SearchRow): SearchRowAction[] =>
+  resolveTargetRenderer(row.target.kind)?.rowActions?.(row) ?? []
 
 export function SearchRowMenu({
   state,
@@ -55,6 +66,7 @@ export function SearchRowMenu({
   onOpen,
   onContinuation,
   onScopeOnly,
+  onRowAction,
 }: SearchRowMenuProps) {
   if (state === null) return null
   return (
@@ -77,6 +89,14 @@ export function SearchRowMenu({
           onClick={() => { onClose(); onContinuation(continuation) }}
         >
           {t(continuation.labelKey)}
+        </MenuItem>
+      ))}
+      {rowActionsOf(state.row).map(action => (
+        <MenuItem
+          key={action.actionId}
+          onClick={() => { onClose(); onRowAction(state.row, action) }}
+        >
+          {t(action.labelKey)}
         </MenuItem>
       ))}
     </Menu>

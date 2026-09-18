@@ -72,6 +72,14 @@ export interface ObsidianVaultOptions {
   now?: () => number
 }
 
+/**
+ * 零命中时 `search:context` 的原话(2026-09-18 本机 1.13.7 实测)。
+ *
+ * 整段就这一句,不带 `Error:` 前缀 —— 与 `Vault not found.` 同一种说话方式,
+ * 所以也要单独认一次。
+ */
+const NO_MATCHES = 'No matches found.'
+
 /** `search:context format=json` 的返回形状。 */
 interface ObsidianSearchHit {
   file?: unknown
@@ -271,11 +279,37 @@ export class ObsidianVault implements NoteVault {
   }
 
   /** 这个系统自己的检索。app 没跑就没有这条路(不拉起)。 */
+  /**
+   * 这个库自己的搜索(`search:context format=json`)。
+   *
+   * **两道闸,都在这一句里**(P5):
+   *
+   *  ① `canQueryLive()` —— 库开着 ∧ app 活着。不成立就抛 `NoteVaultUnavailable`
+   *     并把**理由**交出去,而不是答一个空数组:对调用方来说「这个库里没有这个
+   *     词」与「这个库这次没问成」是两句完全不同的话,后者要上屏说明。
+   *     `cli.run` 那一侧只拦得住「app 没跑」(它探活),拦不住「库没开着」——
+   *     而对一个没开的库发命令等于把那个库的窗口弹出来。
+   *  ② `signal` 原样往下走 —— 换词那一下真把子进程杀掉。
+   *
+   * 一条命令都不会把 app 拉起来:`mayLaunch` 这里从来不给。
+   */
   async liveSearch(query: string, options: NoteLiveSearchOptions = {}): Promise<NoteHit[]> {
+    if (!(await this.canQueryLive())) {
+      throw new NoteVaultUnavailable(await this.degradeReason(), this.id)
+    }
     const params = [`query=${query}`, 'format=json']
     if (options.folder) params.push(`path=${options.folder}`)
     if (options.limit) params.push(`limit=${options.limit}`)
-    const { stdout } = await this.options.cli.run(this.id, 'search:context', params)
+    const { stdout } = await this.options.cli.run(this.id, 'search:context', params, {
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+    })
+    // **零命中时它不答 JSON,它答一句人话**(2026-09-18 真机读数,`gate:notes` ⑧
+    // 第一次跑就撞上了:`No matches found.`)。它不以 `Error:` 开头,所以
+    // `cli.run` 那道判错闸放它过来 —— 这是对的,零命中本来就不是错。认掉它是
+    // 为了别让「这个库里没有这个词」走进下面那条 `JSON.parse` 的 catch:两者今天
+    // 答案相同(空表),但一个是事实、一个是「我看不懂它说什么」,混在一起下次
+    // 格式真变了就没人发现。
+    if (stdout.trim() === NO_MATCHES) return []
     let parsed: unknown
     try {
       parsed = JSON.parse(stdout)

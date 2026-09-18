@@ -145,8 +145,29 @@ settings.notes = {
 - 「今天」快捷:主库 `dailyNote()`;不存在 → 页级动作 `create-daily`(前缀统一,`create-daily-note:` 老路删)。
 - 页级动作 `create-note`:词非空且没有精确命中 → 「在 <主库> 新建 “<词>”」;facet 选了 vault 就落那个 vault;
   走 `vault.createNote`(Obsidian 在跑 = CLI `create`,吃它的模板;没跑 = fs 写空文件),建完按现有 `open-file` 目标开进壳。
-- 行动作(可选,P5)`open-in-app`:`vault.openInApp`,`mayLaunch:true`。
+- 行动作(P5,已落地)`open-in-app`:`vault.openInApp`,`mayLaunch:true`。动作号是
+  `open-in-app:<encodeURIComponent(绝对路径)>`,与两条 create 同一条规矩(路径编在 id 里,
+  授权夹的就是那一格)。
+  **这条落地时补了一格机制,因为检索面没有「行动作」这回事**(2026-09-18 盘点):
+  契约的 `SearchResult` 上没有 `actions`(`SearchActionDescriptor` 只挂在页 / 块 / 预览上),
+  core 的 `Candidate` 上也没有,壳的行右键菜单只画「打开」+「只看这一类」+ 目标渲染器自报的
+  **续搜**。`continuations.ts` 文件头把这笔账记过了。P5 没有发明第二套动作协议,而是:
+  ① 后端把一格**能力位**编在 `NoteTarget.payload.openInAppActionId` 上(在场 = 这篇笔记
+  所在的库答得出 `openInApp`),② 壳的 `SearchTargetRenderer` 多一个可选槽
+  `rowActions?(row)`,与既有的 `continuations?(row)` 同一个落点、同一张右键菜单,
+  ③ 按下去走既有的 `search.invoke`(壳这一侧那条端口 P5 才开 —— 在这之前没有一个能力
+  声明过动作)。**到位的形仍然是「后端在候选上自报一张 `actions` 表」**,那要动契约 +
+  服务层 + core 的 `Candidate` 三处,自成一批(§7 留账)。
+- **「把库本身唤到前台」这件事做不到**(2026-09-18 真机量的,P4 留账 2 由此结清):
+  Obsidian CLI 整张动词表里没有它 —— `open` 硬性要 `file` 或 `path`(`open path=` 答
+  `Missing required parameter: file or path`),`vault` 只读信息。所以 `notes.openInApp`
+  的无 `path` 档如实答 `unsupported`(不发那条必然失败的命令),**设置页那一行上没有
+  「打开」钮**,「在 app 里打开」唯一真做得到的落点是检索结果那一行(它手上有路径)。
+  真要一颗「把这个库调出来」,得走 `obsidian://open?vault=<name>` 那条 URI = `shell.openExternal`,
+  而 React 壳今天的 `shell` 端口是 `null` —— 自成一批(§7 留账)。
 - 授权:目标路径夹在 `registry.vaults().map(root)`(替今天 `resolveDailyNoteSearchDirs`)。
+  `open-in-app:` 与两条 `create-*:` 同夹一张表 —— 它更要夹:它是唯一会把一台 app 拉起来的
+  动作,一条编着库外路径的动作号 = 用一次点击打开机器上的任意文件。
 
 ### 4.2 附件(markdown 域)
 
@@ -157,10 +178,53 @@ settings.notes = {
 
 ### 4.3 Obsidian 原生搜索(R3)
 
-索引是缺省(离线、vector、与会话同一条流水线)。Obsidian 自己的搜索作为**第三个检索器** `obsidian-live`
-(`manifest.retrievers['obsidian-live'] = { when: 'explicit' }`):查询带 Obsidian 操作符(`tag:` / `path:` /
-`file:` / `[prop]`)或用户点了「用 Obsidian 搜」chip 时才跑,`search:context format=json` → 文件路径映射回 docId 并入
-RRF;app 没跑 → chip 灰、理由「Obsidian 未运行」。core 里检索器仍是数据,不出现名字。
+索引是缺省(离线、vector、与会话同一条流水线)。各个库自己的搜索作为**第三个检索器**
+`notes-live`(P5 已落地;**id 不叫 `obsidian-live`** —— 能力自述里不点任何一个笔记系统的名字,
+谁答得上由每个库的 `liveSearch` 在不在决定):查询带那台 app 的搜索操作符(`tag:` / `path:` /
+`file:` / `line:` / `section:` / `block:` / `task:` / `[prop]`,判词 `looksLikeLiveQuery`)或用户
+打开了那颗片时才跑,`search:context format=json` → 每条命中按 `note:<绝对路径>` 造候选(与索引
+那一路**同一个产地** `noteResultId`,出处走 feed 的 `vaultRelativeKey`)并入 RRF。
+
+**三件落地时改判的事**:
+
+1. **跑不跑由能力自己判,不由 core 的 `retrieverRuns` 判**。core 认的两种「明说」是
+   `query.filters.semantic === true` 与 `ctx.surface` 在 `policy.surfaces` 里 —— 这一路两个都不是
+   (「用户点了那颗片」「这个词长得像 Obsidian 的语法」在 core 的词汇表里没有名字),而
+   `semantic` 那一格**借不得**:词法那一侧(`sqlite-index.ts` 的 `facetClause`)把 `filters` 里
+   的每个键都翻成一条 facet `EXISTS` 子句,借它等于让每一次活检索的词法路零命中。所以
+   manifest 里那行 `{ when: 'explicit' }` 是**自述**(给读表的人看的),而「这一次跑不跑」由
+   `wantsLiveSearch` 答,融合仍然用 core 的 `rrfFusion`(算法只有一处产地)。让 core 也驱动得了
+   它,要给 `RetrieverWhen` 加一格「按召回器 id 的显式开关」—— core 的改动,§7 留账。
+2. **那颗片是一个 facet,不是新协议**。`notesManifestOf` 在「有一个在册的库答得出
+   `liveSearch`」时多摆一格 `{ key: 'live', type: 'boolean' }`,壳画片的既有判据(`facetKeysOf`)
+   照着就画出来了 —— 壳一个笔记系统的名字都不需要认识。它是**控制位不是文档 facet**,所以
+   进索引之前由 `withoutControlFilters` 摘掉。片名是名词(「Obsidian 搜索」),值才是「用 /
+   不用」——与 09-05 那条「按下去代表反义」的判例同一形。
+3. **app 没跑时那颗片不灰,而是页上一句话**。「Obsidian 此刻活着吗」是一次 socket 连接
+   (异步),而 manifest 是同步的自述 —— 拿一份过期的答案把片画灰,比让用户按下去之后看见
+   一句诚实的解释更坏。所以:片照画、按得动(按它不会把 app 拉起来),答不上的库把
+   `NoteVaultUnavailable.reason` 交出来,能力把它变成页上一条 `kind:'notice'` 的项,壳把
+   `notice` 从动作行里择出去画进页脚(与「已放宽」「索引不可用」同一行读数)。
+   **`SearchPage` 上今天没有「提示」这一格**,而 `actions` 是唯一一处「不属于任何一条结果、
+   属于这一页」的开放槽,所以它走那一格 —— 该有一格 `notices` 是 core 的改动,§7 留账。
+
+预算:单库 3s(CLI 自己的 10s 是给前台动作的),做法是
+`AbortSignal.any([ctx.signal, AbortSignal.timeout(3000)])` 一路递到
+`NoteProcessRunner.run` —— **P5 把 `NoteLiveSearchOptions.signal` 真接上了**(P1 留的那格注
+写着「今天不生效」):已经 abort 的信号进来 = 一次 `spawn` 都不发生,跑到一半 abort = SIGTERM
+→ 1s → SIGKILL,`done` 以 `NoteProcessAborted` 落定。「用户换了词」与「这个库太慢了」因此是
+同一条取消路的两个源头,领域那一侧只认识 `signal` 一格。
+
+`liveSearch` 自己带两道闸(库开着 ∧ app 活着 = `canQueryLive`),不成立就抛并把理由交出来 ——
+`cli.run` 那一侧只拦得住「app 没跑」(它探活),拦不住「库没开着」,而对一个没开的库发命令
+等于把那个库的窗口弹出来。
+
+**零命中时 CLI 答的是一句人话,不是 `[]`**(2026-09-18 `gate:notes` ⑧ 第一次跑就撞上的真读数):
+整段就是 `No matches found.`,不带 `Error:` 前缀,所以判错那一闸放它过来(零命中本来就不是错)。
+领域与门认同一句常量,别让它走进 `JSON.parse` 的 catch —— 两者今天答案相同(空表),但一个是
+事实、一个是「我看不懂它说什么」,混在一起下次格式真变了就没人发现。
+
+core 里检索器仍是数据,不出现名字。
 
 ### 4.4 技能根
 
@@ -187,7 +251,7 @@ React 壳今天设置页只有 provider 一块是真的(`providers/components/Pr
 | **P2 检索** — **已入库 167b9f7c6(09-18)** | `notes` 能力 + `VaultFeed` + facets + 今天 / 新建动作 + 前缀统一 + 删 `daily` 能力与 `dailyNotes` 设置;热生效订 `NotesSubsystem.onRefreshed`;两条动作把目标路径编进 id 供授权夹 | `gate:search-index` 绿;golden snapshot 只允许 daily → notes 的改名差异;`gate:search-scan` 不动 |
 | **P3 附件 / 技能 / 沙箱 / 变量** — **已入库 9faf5fc02(09-18)** | §4.2 §4.4 §4.5 §3.4 表全部;note-skills 插件退役;边界规则改名;`noteRootsNow()` 是笔记根唯一定义;两个变量、`general.dailyNotes`、`editor.markdownNoteAttachmentDirectory` 已删;`BasenameIndex` 改收所有文件且无扩展名先找笔记 | 两半 asset-service 测试改夹具;`markdown-sandbox` 绿;`boundary:gate` 绿;`sandbox` 测试改根来源 |
 | **P4 壳设置区** — **已入库 5ae122634(09-18)** | §4.6;`notes` RPC 域 `list/refresh/openInApp`;状态四态由驱动自述 `NoteSystemDriver.state?()` | 面板单测 + `gate:a11y` 加一屏 |
-| **P5 Obsidian 活检索器 + 在 Obsidian 打开** | §4.3 + 行动作 | 检索器单测(假 CLI);`gate:notes` 加一步 |
+| **P5 活检索器 + 在 app 里打开** — **已实施(09-18)** | §4.3 的 `notes-live` + §4.1 行动作;`NoteLiveSearchOptions.signal` 真接上;`search.invoke` 壳侧端口开;页脚提示 | 检索器单测(假库)+ 真 runner 的 abort 用例;`gate:notes` 加 ⑧ / ⑧b 两步(活检索真跑一发 + 已 abort 的信号零 spawn) |
 | **P6 `note` 工具**(可选) | AI 侧 `note` 工具:create / daily_append / open,场景面按 `settings.notes` 启用与否进出 | 工具单测 |
 
 P1 之后 P2 / P3 / P4 互不依赖可并行。每单 Fable 拆分审查、opus 执行、haiku 提交。
@@ -208,6 +272,20 @@ P1 之后 P2 / P3 / P4 互不依赖可并行。每单 Fable 拆分审查、opus 
 
 ## 7. 留账
 
+- **core 的 `RetrieverWhen` 表达不了「按召回器 id 的显式开关」**(P5 量出来的)。今天
+  `retrieverRuns` 的 `explicit` 只认一格全局 `query.filters.semantic`(而且全仓**零生产者**)与
+  `ctx.surface`,于是 `notes-live` 的「跑不跑」只能由能力自己判。补法是给 `RetrieverPolicy` 一格
+  「这一路的显式开关叫什么」或给 `SearchQuery` 一格 `retrievers?: string[]` —— core 的改动,
+  自成一批。**顺带一个今天摸不到的雷**:`SEMANTIC_FILTER_KEY` 真被谁填上的那一天,
+  `createSqliteLexicalRetriever` 会把它当成一条 facet 条件,那一路当场零命中。
+- **`SearchPage` 该有一格 `notices`**。「这一次少用了一条召回路,原因如下」今天借
+  `actions` + `kind:'notice'` 走,壳在两处把它择出去(序列、页脚)。它与 `partial` 是两件事
+  (那一格说「只扫到一半」)。
+- **契约上没有「行动作」**:`SearchResult` / core 的 `Candidate` 都没有 `actions`。P5 的行动作
+  靠「payload 上一格能力位 + 目标渲染器自报」落地(§4.1),到位的形要动契约 + 服务层 + core。
+- **「把某个库调到前台」需要 `shell.openExternal('obsidian://open?vault=…')`,而 React 壳的
+  `shell` 端口是 `null`**(`apps/desktop-react/electron/host-ports.ts:155`)。填它 + 让驱动答这件事
+  = 一批。在那之前设置页那一行上没有「打开」钮。
 - 插件宿主在 React 壳的复活是独立议题;复活后本领域抬成插件的路径 = §2 末段。
 - `VaultFeed` 递归会让大 vault 首次索引变慢(workbook 1032 文件 351MB 含附件;只索引 md 文本)。P2 量一次冷建时间。
 - 接入目录的设置 UI(盘点 A1)不在本单;它与「笔记」是两个设置区。

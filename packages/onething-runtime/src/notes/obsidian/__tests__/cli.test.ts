@@ -45,6 +45,31 @@ describe('ObsidianCli:真实 stdout 的判错', () => {
   })
 })
 
+describe('ObsidianCli:取消(P5)', () => {
+  it('signal 原样递给 runner —— 这一层不解释它', async () => {
+    const { runner, instance } = cli({ outputs: [CLI_FIXTURES.searchContext] })
+    const controller = new AbortController()
+    await instance.run('v1', 'search:context', ['query=x', 'format=json'], { signal: controller.signal })
+    expect(runner.calls[0].signal).toBe(controller.signal)
+  })
+
+  it('已经取消了 → **一次 spawn 都不发生**,答的是那句取消', async () => {
+    const { runner, instance } = cli({ outputs: [CLI_FIXTURES.searchContext] })
+    const controller = new AbortController()
+    controller.abort()
+    await expect(instance.run('v1', 'search:context', [], { signal: controller.signal }))
+      .rejects.toThrowError(/aborted by the caller/)
+    // 探活过了、命令递下去了,但子进程没起来 —— 这正是「换词即 kill」在最省的那一档。
+    expect(runner.kills).toBe(1)
+  })
+
+  it('不给 signal 的调用一格都不多发(缺省路逐字不变)', async () => {
+    const { runner, instance } = cli({ outputs: [CLI_FIXTURES.dailyPath] })
+    await instance.run('v1', 'daily:path')
+    expect(runner.calls[0].signal).toBeUndefined()
+  })
+})
+
 describe('ObsidianCli:argv 与超时', () => {
   it('vault=<id> 永远是 argv[0]', async () => {
     const { runner, instance } = cli({ outputs: [CLI_FIXTURES.dailyPath] })

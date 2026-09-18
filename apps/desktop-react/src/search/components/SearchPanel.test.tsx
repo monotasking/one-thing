@@ -385,8 +385,14 @@ describe('动作行(R3):分隔线下、不计数、序列末项', () => {
     expect(screen.getByText('没有和「jira」匹配的结果')).toBeTruthy()
   })
 
-  it('↓ 走得到它(序列末项),⏎ 落在它身上', async () => {
-    serveRows(withAction)
+  it('↓ 走得到它(序列末项),⏎ **真的发一发 `search.invoke`**(P5 接上了落点)', async () => {
+    const invoked: Array<{ capability: string; actionId: string; items?: readonly unknown[] }> = []
+    serveRows(withAction, {
+      invoke: async (capability, actionId, items) => {
+        invoked.push({ capability, actionId, ...(items === undefined ? {} : { items }) })
+        return { success: true }
+      },
+    })
     render(<SearchPanel />)
     type('词')
     await waitFor(() => expect(actionRows()).toHaveLength(1))
@@ -394,8 +400,30 @@ describe('动作行(R3):分隔线下、不计数、序列末项', () => {
     fireEvent.keyDown(input(), { key: 'ArrowDown' })
     await waitFor(() => expect(actionRows()[0].getAttribute('aria-selected')).toBe('true'))
     fireEvent.keyDown(input(), { key: 'Enter' })
-    // 壳今天没有落点:如实说一句,不静默吞掉。
+    /*
+     * **动作自报它属于哪一类**(契约 `SearchActionDescriptor.capability`),壳原样转发
+     * —— 这一条同时钉住「壳不自己填一个能力 id」。页级动作不带 `items`:后端夹的是
+     * 动作号里编着的那条路径,不是某一行。
+     */
+    await waitFor(() => expect(invoked).toEqual([
+      { capability: 'prompts', actionId: 'create-prompt:jira' },
+    ]))
+    // 做成了就什么都不说 —— 屏幕上该发生的事已经发生了。
+    expect(useNotifyStore.getState().items).toHaveLength(0)
+  })
+
+  it('动作没自报归属 → 如实说一句,不猜一个能力 id', async () => {
+    const invoked: string[] = []
+    serveRows(
+      { results: [hit()], actions: [{ id: 'orphan', labelKey: 'search.action.createNote', params: { title: 'x' } }] },
+      { invoke: async (_capability, actionId) => { invoked.push(actionId); return { success: true } } },
+    )
+    render(<SearchPanel />)
+    type('词')
+    await waitFor(() => expect(actionRows()).toHaveLength(1))
+    fireEvent.click(actionRows()[0])
     await waitFor(() => expect(useNotifyStore.getState().items).toHaveLength(1))
+    expect(invoked).toEqual([])
   })
 })
 
@@ -1240,5 +1268,92 @@ describe('deferred 块(不挑那一档不等扫盘型)', () => {
     const readout = document.querySelector('[data-readout="partial"]')
     expect(readout?.textContent).toBe(translate('zh', 'search.partialScan', { shown: 1 }))
     expect(document.querySelector('[data-readout="end"]')).toBeNull()
+  })
+})
+
+/* ── 行动作与页脚提示(P5)─────────────────────────────────────────────── */
+
+/**
+ * 「在 Obsidian 中打开」与「这次没用它搜」。
+ *
+ * 两条判据都不认识任何一个笔记系统的名字:**行动作按 payload 上那一格能力位画**
+ * (后端答 `typeof vault.openInApp === 'function'`),**提示按 `kind: 'notice'` 择进
+ * 页脚**。所以这一组用例改成 Logseq 也只要换夹具里的那个动作号。
+ */
+describe('行动作(P5):能力位在场才画,按下去原样回传动作号', () => {
+  const noteRow = (payload: Record<string, unknown>): SearchResult => ({
+    id: 'n1',
+    type: 'note',
+    title: '2026-09-18',
+    subtitle: 'Journal/2026-09-18.md',
+    target: { kind: 'note', payload },
+  })
+
+  it('payload 带 `openInAppActionId` → 右键菜单里多一条,按下去发那个动作号', async () => {
+    const invoked: Array<{ capability: string; actionId: string; items?: readonly unknown[] }> = []
+    serveRows(
+      { results: [noteRow({ filePath: '/v/Journal/2026-09-18.md', openInAppActionId: 'open-in-app:%2Fv%2FJournal%2F2026-09-18.md' })] },
+      {
+        invoke: async (capability, actionId, items) => {
+          invoked.push({ capability, actionId, ...(items === undefined ? {} : { items }) })
+          return { success: true }
+        },
+      },
+    )
+    render(<SearchPanel />)
+    type('词')
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    fireEvent.contextMenu(rows()[0])
+    fireEvent.click(await screen.findByText('在 Obsidian 中打开'))
+    // **行动作带这一行**(后端按它夹授权);动作号原样回传,壳一个字都不拼。
+    await waitFor(() => expect(invoked).toHaveLength(1))
+    expect(invoked[0].capability).toBe('all')
+    expect(invoked[0].actionId).toBe('open-in-app:%2Fv%2FJournal%2F2026-09-18.md')
+    expect(invoked[0].items).toHaveLength(1)
+  })
+
+  it('那一格缺席(目录库) → 菜单里没有这一条', async () => {
+    serveRows({ results: [noteRow({ filePath: '/v/a.md' })] })
+    render(<SearchPanel />)
+    type('词')
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    fireEvent.contextMenu(rows()[0])
+    await screen.findByText('只看这一类')
+    expect(screen.queryByText('在 Obsidian 中打开')).toBeNull()
+  })
+
+  it('「还没建出来」的那一条也没有 —— 打开一个不存在的文件说不通', async () => {
+    serveRows({
+      results: [noteRow({ filePath: '/v/new.md', actionId: 'create-note:x', openInAppActionId: 'open-in-app:x' })],
+    })
+    render(<SearchPanel />)
+    type('词')
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    fireEvent.contextMenu(rows()[0])
+    await screen.findByText('只看这一类')
+    expect(screen.queryByText('在 Obsidian 中打开')).toBeNull()
+  })
+})
+
+describe('页脚提示(P5):`kind: notice` 的那一条不进清单,进页脚', () => {
+  it('画成一行读数,不是一条按得下去的动作', async () => {
+    serveRows({
+      results: [hit()],
+      actions: [{
+        id: 'notes-live:system-not-running:v1',
+        kind: 'notice',
+        capability: 'notes',
+        labelKey: 'search.notice.liveNotRunning',
+        params: { system: 'Obsidian' },
+      }],
+    })
+    render(<SearchPanel />)
+    type('词')
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    // 页脚那一行在;动作行一条都没有(它不是一件能做的事)。
+    await waitFor(() =>
+      expect(document.querySelector('[data-readout="notice"]')?.textContent)
+        .toBe('Obsidian 未运行,这次没用它搜'))
+    expect(actionRows()).toHaveLength(0)
   })
 })

@@ -85,7 +85,7 @@ export function SearchFilterBar({
             label: t(option.labelKey),
           }))}
           /*
-           * 五颗片今天都是「键 · 值」那一形(09-05 起归档 / 推理也是两格选项,
+           * 六颗片今天都是「键 · 值」那一形(09-05 起归档 / 推理也是两格选项,
            * 不再是「按下去代表反义」的两态片)。落点逐颗按 `chip.id` 分 ——
            * 片是什么由 `filterChipsOf` 说,这里只负责把选中的那一格写回去。
            */
@@ -98,7 +98,9 @@ export function SearchFilterBar({
                   ? { ...current, time: value as SearchFilterState['time'] }
                   : chip.id === 'archived'
                     ? { ...current, archived: value === 'yes' }
-                    : { ...current, reasoning: value === 'yes' }
+                    : chip.id === 'reasoning'
+                      ? { ...current, reasoning: value === 'yes' }
+                      : { ...current, live: value === 'yes' }
           ))}
         />
       ))}

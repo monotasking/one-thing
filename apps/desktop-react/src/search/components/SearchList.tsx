@@ -5,7 +5,7 @@ import type { TFn } from '../../i18n'
 import type { SearchIndexReadout } from '../capabilities'
 import type { SearchItemView } from '../items'
 import type { SearchListingView } from '../hooks/useSearchListing'
-import { SEARCH_ITEM_KINDS } from '../sequence'
+import { SEARCH_ITEM_KINDS, noticesOf } from '../sequence'
 import type { SearchItem } from '../sequence'
 import { searchScrollOf, useSearchStore } from '../store'
 import { SearchActionRows, SearchBlockRows } from './SearchBlockRows'
@@ -106,6 +106,18 @@ export function SearchList({
   }, [sequence])
 
   const failed = blocks.filter(block => block.error !== undefined)
+  /*
+   * 能力自报的提示(P5)。它们**随答案走**而不是随行走 —— 换一次词就换一批,
+   * 所以产地是这一份清单,不是任何一格状态。
+   */
+  const notices = useMemo(
+    () => noticesOf(held.data).map(action => ({
+      id: action.id,
+      labelKey: action.labelKey,
+      ...(action.params === undefined ? {} : { params: action.params }),
+    })),
+    [held.data],
+  )
   const rowCount = blocks.reduce((sum, block) => sum + block.rows.length, 0)
   /*
    * 三态,判据全是可读字段(§3):
@@ -199,6 +211,7 @@ export function SearchList({
           capability: block.capability,
           label: labelOf(block.capability),
         }))}
+        notices={notices}
         onRetryBlock={onRetryBlock}
         t={t}
       />

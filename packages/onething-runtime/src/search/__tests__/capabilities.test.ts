@@ -264,7 +264,9 @@ describe('索引型能力(S3b:chats / messages / notes)', () => {
     })
     // 向量路什么时候跑(§15.4):数据,不是 if。
     expect(messagesSearchManifest.retrievers).toEqual({ vector: { when: 'relaxed' } })
-    expect(notesSearchManifest.retrievers).toEqual({ vector: { when: 'relaxed' } })
+    // P5:第二条召回路的自述(`explicit` = 除非明说,否则不跑)。
+    expect(notesSearchManifest.retrievers)
+      .toEqual({ vector: { when: 'relaxed' }, 'notes-live': { when: 'explicit' } })
     expect(chatsSearchManifest.retrievers)
       .toEqual({ vector: { when: 'explicit', surfaces: ['agent-tool'] } })
     // §6.5:半衰 / 按 facet 值加权 —— 全是**数据**,`role` 这个词只出现在这份自述

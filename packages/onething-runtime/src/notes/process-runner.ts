@@ -41,6 +41,16 @@ export function createNodeProcessRunner(options: { env?: NodeJS.ProcessEnv } = {
   const environment = { ...process.env, ...options.env }
 
   function spawnProcess(runOptions: NoteProcessRunOptions): NoteProcessHandle {
+    const signalOption = runOptions.signal
+    // **已经取消了就一次 `spawn` 都不发生**。这一句不是优化:对 Obsidian CLI
+    // 来说一次 spawn 就有可能把 app 拉起来,而「已经没人要这个答案」的时候把
+    // app 拉起来是这个领域的第一条纪律禁止的事。
+    if (signalOption?.aborted === true) {
+      const rejected = Promise.reject(new NoteProcessAborted(runOptions.command))
+      // 调用方只 `await handle.done` 时不该多一条 unhandled rejection。
+      rejected.catch(() => {})
+      return { done: rejected, kill: () => {} }
+    }
     const processGroup = process.platform !== 'win32'
     const child = spawn(runOptions.command, runOptions.args, {
       env: { ...environment, ...runOptions.env, PATH: resolvePath(environment) },
@@ -54,6 +64,7 @@ export function createNodeProcessRunner(options: { env?: NodeJS.ProcessEnv } = {
     let timer: ReturnType<typeof setTimeout> | null = null
     let killTimer: ReturnType<typeof setTimeout> | undefined
     let timedOut = false
+    let aborted = false
     let spawnError: Error | undefined
     let settled = false
 
@@ -90,11 +101,25 @@ export function createNodeProcessRunner(options: { env?: NodeJS.ProcessEnv } = {
           kill()
         }, runOptions.timeoutMs)
       }
+      // **换词即 kill**(P5)。与超时走同一条 `kill()`,只是落定时的话不一样:
+      // 超时说的是「这条命令太慢」,abort 说的是「没人要这个答案了」。
+      let onAbort: (() => void) | undefined
+      if (signalOption !== undefined) {
+        onAbort = () => {
+          aborted = true
+          kill()
+        }
+        signalOption.addEventListener('abort', onAbort, { once: true })
+      }
       child.on('error', error => { spawnError = error })
       child.on('close', code => {
         settled = true
         if (timer) clearTimeout(timer)
         if (killTimer) clearTimeout(killTimer)
+        if (onAbort !== undefined) signalOption?.removeEventListener('abort', onAbort)
+        // abort 排在 spawnError 之前:被 SIGKILL 掉的子进程也可能顺手报一个
+        // 错,而调用方问的是「我取消的那一下成了吗」。
+        if (aborted) { reject(new NoteProcessAborted(runOptions.command)); return }
         if (spawnError) { reject(spawnError); return }
         if (timedOut) {
           reject(new NoteProcessTimeout(runOptions.command, runOptions.timeoutMs ?? 0))
@@ -116,6 +141,14 @@ export function createNodeProcessRunner(options: { env?: NodeJS.ProcessEnv } = {
   return {
     run: runOptions => spawnProcess(runOptions).done,
     spawn: spawnProcess,
+  }
+}
+
+/** 调用方在这条命令跑完之前取消了(`NoteProcessRunOptions.signal`)。 */
+export class NoteProcessAborted extends Error {
+  constructor(readonly command: string) {
+    super(`[notes] "${command}" was aborted by the caller`)
+    this.name = 'NoteProcessAborted'
   }
 }
 

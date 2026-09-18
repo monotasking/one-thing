@@ -25,10 +25,11 @@ import {
  * 这一格结构地说,由后端按 facet 筛。于是那条窄口与通用口问的是同一件事,
  * 两条并存就是同一个问题两个产地。
  *
- * `preview` 这一批才开,判据与当年 `query` 那条逐字同源:**有没有一个壳里能落地
- * 的消费者**。今天有了 —— 预览渲染注册表(`search/preview/`),一种载荷 kind 一个
- * 渲染器。`invoke` 仍然不开:没有一个能力声明动作,开一条恒答 `no such action`
- * 的口只会让人以为壳这边漏接了什么。
+ * `preview` 在 S4b 开,判据与当年 `query` 那条逐字同源:**有没有一个壳里能落地
+ * 的消费者**。`invoke` **P5 才开**,同一条判据 —— 在这之前一个内置能力都没有声明
+ * 动作,开一条恒答 `no such action` 的口只会让人以为壳这边漏接了什么;今天 `notes`
+ * 那一类声明了三条(新建今天的日记 / 新建笔记 / 在 app 里打开),壳这边的落点也
+ * 真的有了(从前 `runAction` 只弹一句「这条动作还没接上」)。
  *
  * ── 签名口径:位置参数进来,信封出去 ─────────────────────────────────────
  * 与 files-port 逐字同一体例:router 收对象,端口这一层收位置参数(它是给判据层
@@ -85,6 +86,21 @@ export interface SearchPort {
    * `success:false` 时 `error` 是**后端的原话**(§4.5 ⑤「error(原话),列表不受
    * 影响」),端口原样交出去,不换成一句通用的「预览失败」。
    */
+  /**
+   * **按下一条动作**(§8 `invoke`;P5 才开,判词在文件头)。
+   *
+   * `items` 是这条动作作用在哪几行上:**页级动作是空表**(「新建笔记 …」不属于
+   * 任何一行),行动作带那一行。后端那一侧照它夹授权 —— 所以这里原样递,不替它
+   * 挑该带谁。
+   *
+   * `success:false` 不翻译成异常:失败与「这台上没有这条动作」在屏幕上是同一句
+   * 「没做成」,原话只进日志。
+   */
+  invoke(
+    capability: string,
+    actionId: string,
+    items?: readonly SearchItemRef[],
+  ): Promise<{ success: boolean; error?: string }>
   preview(
     items: readonly SearchItemRef[],
     mode: 'single' | 'compare' | 'batch',
@@ -133,6 +149,11 @@ async function realPort(): Promise<SearchPort> {
       )
       return { ...response, results: response.results ?? [] }
     },
+    invoke: (capability, actionId, items) => searchApi.invoke({
+      capability,
+      actionId,
+      items: [...(items ?? [])],
+    }),
     preview: (items, mode, query) => searchApi.preview({
       items: [...items],
       mode,

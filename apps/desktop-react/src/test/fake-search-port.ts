@@ -142,6 +142,8 @@ export function fakeSearchPort(overrides: Partial<SearchPort> = {}): SearchPort 
     status: async () => ({ mode: 'owner', pending: 0, vector: 'off' }),
     /** 预览默认**没有** —— 「这一类还没有预览」是一台真 core 上的常态。 */
     preview: async () => ({ success: true }),
+    /** 动作默认**做成了** —— 要验失败态的用例自己覆盖这一格。 */
+    invoke: async () => ({ success: true }),
     ...overrides,
   }
 }

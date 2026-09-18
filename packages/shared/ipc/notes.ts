@@ -78,7 +78,15 @@ export interface NotesOpenInAppRequest {
 	vaultId: string;
 	/**
 	 * 库内的一份笔记(绝对路径或库相对路径)。
-	 * 缺席 = 把这个库本身唤到前台。
+	 *
+	 * **P5 起它是必需的**(2026-09-18 真机读数,`gate:notes` 那台机器上量的):
+	 * P4 这里写的是「缺席 = 把这个库本身唤到前台」,而 Obsidian CLI **没有任何一个
+	 * 动词做得到这件事** —— `open` 硬性要 `file` 或 `path`(`open path=` 答
+	 * `Missing required parameter: file or path`),`vault` 只是读信息,整张动词表
+	 * 里没有第二个候选。所以缺席这一档现在如实答 `unsupported`,而不是发一条必然
+	 * 失败的命令。真要一颗「把这个库调出来」的按钮,得走 `obsidian://open?vault=`
+	 * 那条 URI —— 那是 `shell.openExternal`,而 React 壳今天的 `shell` 端口是
+	 * `null`,自成一批。
 	 */
 	path?: string;
 }
@@ -88,7 +96,7 @@ export interface NotesOpenInAppRequest {
  * 后端只说发生了什么,人话由壳的字典画。
  *
  * 今天的码:`not-found`(不在名册里 / 被关掉了)、`unsupported`(这个系统没有
- * 「在 app 里打开」这件事)、`system-not-running` / `vault-not-open` /
+ * 「在 app 里打开」这件事,**或者没给 path 而它做不到「只把库调到前台」**)、`system-not-running` / `vault-not-open` /
  * `cli-not-registered` / `no-snapshot`(领域自己那四个)、`failed`(别的)。
  */
 export interface NotesOpenInAppResponse {

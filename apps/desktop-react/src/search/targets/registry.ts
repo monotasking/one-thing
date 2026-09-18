@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react'
 import { getLogger } from '../../services/log'
+import type { MessageKey } from '../../i18n'
 import type { SearchContinuation } from '../continuations'
 import type { SearchRow } from '../types'
 
@@ -28,14 +29,47 @@ import type { SearchRow } from '../types'
  * kind 下都在同一个位置、同一种画法,新 kind 的作者根本没有做错的机会。
  */
 
+/**
+ * **这一行自报的一条后端动作**(P5)。
+ *
+ * 与续搜(`SearchContinuation`)是两件事:续搜是「换一次查询」,全程在壳里;
+ * 这一条是「让后端做一件事」——「在 Obsidian 里打开这一篇」就是它。
+ *
+ * ── 为什么动作号由 payload 带,而不是壳拼 ────────────────────────────────
+ * 动作 id 是**后端的词汇**(`open-in-app:<路径>`,授权夹的就是里面那一格)。壳
+ * 拼得出它就等于壳在替后端决定「按下去作用在哪个文件上」。所以渲染器读的是
+ * 自己那一类 payload 上的一格能力位:**在场就画,不在场就没有这一条** ——
+ * 于是壳不需要认识任何一个笔记系统的名字。
+ *
+ * ── 为什么不是后端在候选上带一张 `actions` 表 ────────────────────────────
+ * 那才是到位的形,`continuations.ts` 文件头把这笔账记过了:契约的
+ * `SearchResult` 今天**没有**行级 `actions` 这一格(`SearchActionDescriptor` 只
+ * 挂在页 / 块 / 预览上)。补那一格是契约 + 服务层 + core 的 `Candidate` 三处一起
+ * 动,自成一批;在那之前,行动作由**目标渲染器**自报 —— 与续搜同一个落点,也是
+ * 今天做得到的最靠近能力的一处。
+ */
+export interface SearchRowAction {
+  /** 按钮上那句话的键。 */
+  labelKey: MessageKey
+  /** 按下去 `search.invoke` 哪一条(后端的词汇,壳原样回传)。 */
+  actionId: string
+}
+
 /** 一行渲染器手上的窄回调。**宿主给能力,渲染器只说去哪儿。** */
 export interface SearchTargetContext {
   /** 进一间会话;`messageId` 在场时另留一格「落到那条消息」的待办。 */
   enterSession(sessionId: string, messageId?: string): void
   /** 打开一个文件(壳今天还没有「打开器」,宿主如实报出落点)。 */
   openFile(path: string, line?: number): void
-  /** 跑一条动作(命令面板那一档;宿主没有落点时如实说)。 */
-  runAction(actionId: string): void
+  /**
+   * 跑一条后端动作。
+   *
+   * **`capability` 是第二个参数而不是宿主自己猜的**(P5):`search.invoke` 要问
+   * 「找哪一类」,而那个答案只有产这条结果的那一类知道 —— 渲染器手上就有
+   * (`row.capability`)。宿主自己填一个字面量的话,壳的骨架里就多了一个能力 id
+   * (`__tests__/no-capability-literals.test.ts` 当场红)。
+   */
+  runAction(actionId: string, capability: string): void
 }
 
 /** 一行渲染器画什么。**只有 body 那三段的正文那一段** —— 徽与出处归壳。 */
@@ -77,6 +111,14 @@ export interface SearchTargetRenderer {
    * 类」只有产这条结果的那一类知道 —— 理由与整条链写在 `../continuations.ts` 头上。
    */
   continuations?(row: SearchRow): SearchContinuation[]
+  /**
+   * **这一行还能让后端做哪几件事**(P5)。缺席 = 一件都没有(今天除了 `note`
+   * 之外的五类都是这一档)。
+   *
+   * 落点与续搜同一处 —— 行的右键菜单(09-01 判例:**动作单产地 = 右键上下文
+   * 菜单**,不在行尾挂钮)。
+   */
+  rowActions?(row: SearchRow): SearchRowAction[]
 }
 
 const renderers = new Map<string, SearchTargetRenderer>()

@@ -15,13 +15,22 @@ export type { ChatTarget } from './sessions.js'
 export {
   CREATE_DAILY_ACTION,
   CREATE_NOTE_ACTION,
+  LIVE_FILTER_KEY,
+  LIVE_RETRIEVER_ID,
+  LIVE_SEARCH_BUDGET_MS,
+  NOTICE_ACTION_KIND,
+  OPEN_IN_APP_ACTION,
+  createLiveNotesRetriever,
   createNotesSearchCapability,
+  looksLikeLiveQuery,
   notesManifestOf,
   notesSearchManifest,
+  openInAppActionIdOf,
   sanitizeNoteFileName,
   todayMatchesQuery,
+  wantsLiveSearch,
 } from './notes.js'
-export type { NoteTarget } from './notes.js'
+export type { LiveSearchOutcome, LiveSearchSkip, NoteTarget } from './notes.js'
 export { createFilesSearchCapability, filesSearchManifest } from './files.js'
 export type { FileTarget } from './files.js'
 export { createMessagesSearchCapability, messagesSearchManifest } from './messages.js'

@@ -96,6 +96,39 @@ describe('活着:走 CLI 并写快照', () => {
     expect(hits).toEqual([{ path: path.join(root, 'notes/a.md'), matches: [{ line: 3, text: 'hello there' }] }])
     expect(runner.calls[0].args).toEqual(['vault=v1', 'search:context', 'query=hello', 'format=json', 'limit=5'])
   })
+
+  it('零命中:CLI 答一句 `No matches found.`,不是 `[]` —— 认掉它,答空表', async () => {
+    const { vault } = makeVault({ outputs: [CLI_FIXTURES.searchNoMatches] })
+    await expect(vault.liveSearch('__no_such_note__')).resolves.toEqual([])
+  })
+
+  it('liveSearch 把 signal 递下去(换词即 kill 的那条线)', async () => {
+    const { vault, runner } = makeVault({ outputs: [CLI_FIXTURES.searchContext] })
+    const controller = new AbortController()
+    await vault.liveSearch('hello', { signal: controller.signal })
+    expect(runner.calls[0].signal).toBe(controller.signal)
+  })
+})
+
+describe('liveSearch:两道闸(P5)', () => {
+  it('库没在 app 里打开 → 抛 vault-not-open,**一次 spawn 都不发生**', async () => {
+    const { vault, runner } = makeVault({ open: false, snapshot: snapshot() })
+    await expect(vault.liveSearch('hello')).rejects.toThrowError(NoteVaultUnavailable)
+    await expect(vault.liveSearch('hello')).rejects.toMatchObject({ reason: 'vault-not-open' })
+    expect(runner.calls).toHaveLength(0)
+  })
+
+  it('app 没在跑 → 抛 system-not-running,同样一次都不发', async () => {
+    const { vault, runner } = makeVault({ alive: false, snapshot: snapshot() })
+    await expect(vault.liveSearch('hello')).rejects.toMatchObject({ reason: 'system-not-running' })
+    expect(runner.calls).toHaveLength(0)
+  })
+
+  it('这个平台探不出活 → 抛 cli-not-registered(不确定时后台不发)', async () => {
+    const { vault, runner } = makeVault({ alive: null, snapshot: snapshot() })
+    await expect(vault.liveSearch('hello')).rejects.toMatchObject({ reason: 'cli-not-registered' })
+    expect(runner.calls).toHaveLength(0)
+  })
 })
 
 describe('不活:走快照复现三条语义', () => {

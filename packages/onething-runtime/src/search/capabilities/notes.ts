@@ -33,19 +33,24 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
   indexedCapability,
+  rrfFusion,
   type ActionDescriptor,
   type Candidate,
   type CapabilityManifest,
   type FacetDeclaration,
+  type FacetFilter,
   type PageRequest,
   type PreviewPayload,
+  type Retriever,
+  type RetrievedPage,
   type SearchCapability,
   type SearchContext,
   type SearchPage,
   type SearchQuery,
 } from '@onething/core/search'
-import type { NoteVault } from '../../notes/types.js'
+import { NoteVaultUnavailable, type NoteVault, type NoteVaultUnavailableReason } from '../../notes/types.js'
 import { createSqliteLexicalRetriever } from '../index/service.js'
+import { vaultRelativeKey } from '../index/vault-feed.js'
 import type { OnethingSearchProvidersAdapters } from '../providers.js'
 import {
   queryRangesOf,
@@ -67,7 +72,71 @@ import {
 /** 这一类的目标形:一篇笔记文件;`actionId` 在「还没建出来」那条上才有。 */
 export interface NoteTarget {
   kind: 'note'
-  payload: { filePath: string; actionId?: string }
+  payload: {
+    filePath: string
+    /** 「还没建出来」那条的动作号。 */
+    actionId?: string
+    /**
+     * **「这一行能在它自己的 app 里打开」那一格能力位**(P5,§4.1 行动作)。
+     *
+     * 在场 = 这篇笔记所在的库答得出 `openInApp`,壳照它画一条行动作;缺席 =
+     * 这个系统没有「在 app 里打开」这回事(目录库就是这一档)。
+     *
+     * 为什么是**动作号**而不是一个布尔:动作 id 是后端的词汇,壳拼不得
+     * (与两条 create 动作同一条判例 —— 路径编在 id 里,授权夹的就是那一格)。
+     * 壳因此也不需要认识任何一个笔记系统的名字:它只问「这一格在不在」。
+     */
+    openInAppActionId?: string
+  }
+}
+
+/**
+ * **第二条召回路的 id**(P5,§4.3)。
+ *
+ * 叫 `notes-live` 而不是 `obsidian-live`:能力的自述里不点任何一个笔记系统的
+ * 名字 —— 这条路问的是「**这个库自己**的搜索」,谁答得上由每个库的 `liveSearch`
+ * 在不在决定,不由一张系统名单决定。
+ */
+export const LIVE_RETRIEVER_ID = 'notes-live'
+
+/**
+ * 「这一次明说要活检索」那一格。
+ *
+ * 它是**这一类自己的控制位**,不是一条文档 facet —— 没有哪一篇笔记带着 `live`
+ * 这个 facet。所以它在进索引之前必须被摘掉(`withoutControlFilters`),理由写在
+ * 那只函数上。
+ */
+export const LIVE_FILTER_KEY = 'live'
+
+/**
+ * 一个库的活检索最多等多久。
+ *
+ * CLI 自己的预算是 10s(`OBSIDIAN_CLI_BUDGET_MS`)—— 那是给「建一篇日记」这种
+ * 前台动作的。检索面是另一种时间感:这颗片是用户按下去的显式动作,不在逐键那条
+ * 300ms 的路上,但它也不该让一张清单停三秒以上。
+ */
+export const LIVE_SEARCH_BUDGET_MS = 3_000
+
+/**
+ * 这次查询像不像在用**笔记 app 自己的搜索语法**。
+ *
+ * 判据是一张表,不是一串 `||`:Obsidian 的搜索操作符(`tag:` / `path:` / `file:` /
+ * `line:` / `section:` / `block:` / `task:`)与属性查询(`[prop]`)。这几个词是
+ * **查询语法**,索引那一侧根本解释不了它们 —— 用户打出 `tag:今天` 的那一刻,他
+ * 要的就是那台 app 的答案,所以这一条与那颗片是同一件事的两种说法。
+ *
+ * 判词住在能力自己这儿(而不是 core):core 的 `RetrieverWhen` 只认「调用方明说了
+ * 没有」,它没有、也不该有「一个查询串长得像谁的语法」这种知识。
+ */
+const LIVE_QUERY_OPERATORS: readonly string[] = ['tag:', 'path:', 'file:', 'line:', 'section:', 'block:', 'task:']
+
+/** `[prop]` / `[prop:value]` —— 属性查询。方括号里非空、且不含空白。 */
+const LIVE_PROPERTY_PATTERN = /\[[^\s[\]]+\]/
+
+export function looksLikeLiveQuery(raw: string): boolean {
+  const q = raw.toLowerCase()
+  if (LIVE_QUERY_OPERATORS.some(operator => q.includes(operator))) return true
+  return LIVE_PROPERTY_PATTERN.test(raw)
 }
 
 /**
@@ -98,7 +167,10 @@ export const notesSearchManifest: CapabilityManifest = {
   orderWhenIntent: { actions: 4 },
   ranking: { pinFieldHit: 'title' },
   // 与 messages 同一条判据:词法严格档零命中、放宽到 ② 及以后才加向量路(§15.4)。
-  retrievers: { vector: { when: 'relaxed' } },
+  // `notes-live` 是**第二条召回路的自述**(P5,§4.3):`explicit` = 除非明说,
+  // 否则不跑。「明说」在这一类里有两种形(带操作符的词 / 那颗片),判词见
+  // `wantsLiveSearch`。
+  retrievers: { vector: { when: 'relaxed' }, [LIVE_RETRIEVER_ID]: { when: 'explicit' } },
   visibility: () => ({}),
   // **lazy**:要读一次文件。随候选带就是一次 `all` 档读六个文件。
   preview: { mode: 'lazy' },
@@ -112,10 +184,51 @@ export const notesSearchManifest: CapabilityManifest = {
  * 件事不需要 core 改一个字。
  */
 export function notesManifestOf(adapters: OnethingSearchProvidersAdapters): CapabilityManifest {
-  const values = noteVaultsOf(adapters).map(vault => vault.id)
+  const vaults = noteVaultsOf(adapters)
+  const values = vaults.map(vault => vault.id)
   const facets: FacetDeclaration[] = (notesSearchManifest.facets ?? []).map(facet =>
     facet.key === 'vault' ? { ...facet, values } : facet)
+  // **「有没有一条活检索路可走」也是自述的一格**(P5):有一个在册的库答得出
+  // `liveSearch`,这一格就摆得出来,壳照它画那颗片;一个都没有(只有目录库、
+  // 或者压根没有库)就整格不出现,壳于是连画的机会都没有。
+  //
+  // 为什么是 facet 而不是别的:壳画片的唯一判据就是「这一档摆得出哪些 facet 键」
+  // (`filters.ts` 的 `facetKeysOf`),走这条既有的路,壳一个笔记系统的名字都不
+  // 需要认识,也不用为这颗片新开一条协议。
+  if (vaults.some(vault => typeof vault.liveSearch === 'function')) {
+    facets.push({ key: LIVE_FILTER_KEY, type: 'boolean' })
+  }
   return { ...notesSearchManifest, facets }
+}
+
+/**
+ * 这一次要不要问各个库自己的搜索(§4.3 的 `explicit` 判词)。
+ *
+ * 两种「明说」:那颗片(`filters.live === true`),或者查询串本身就是那台 app 的
+ * 搜索语法(`looksLikeLiveQuery`)。**缺省是不问** —— 索引是缺省路(R3)。
+ */
+export function wantsLiveSearch(query: SearchQuery): boolean {
+  if (query.filters[LIVE_FILTER_KEY] === true) return true
+  return looksLikeLiveQuery(query.raw)
+}
+
+/**
+ * 把**控制位**从过滤片里摘掉,再交给索引。
+ *
+ * 这一句不是洁癖,是一条 bug 的防线:词法那一侧(`sqlite-index.ts` 的
+ * `facetClause`)把 `filters` 里的**每一个**键都翻成一条
+ * `EXISTS(doc_facets … key = ?)` 子句,而没有哪一篇笔记带着 `live` 这个 facet ——
+ * 不摘掉它,这颗片一打开,索引那一路就是**零命中**。
+ *
+ * 顺带一个好处:游标的形状哈希(`hashQueryShape`)读的也是这一份摘过的
+ * `filters`,所以开 / 关那颗片不会把在飞的分页游标作废 —— 索引那一侧答的本来
+ * 就是同一页。
+ */
+function withoutControlFilters(query: SearchQuery): SearchQuery {
+  if (query.filters[LIVE_FILTER_KEY] === undefined) return query
+  const filters: Record<string, FacetFilter> = { ...query.filters }
+  delete filters[LIVE_FILTER_KEY]
+  return { ...query, filters }
 }
 
 function noteVaultsOf(adapters: OnethingSearchProvidersAdapters): NoteVault[] {
@@ -179,9 +292,22 @@ async function noteExcerptPreview(
   return { kind: 'note-excerpt', payload: excerpt, title: candidate.title }
 }
 
-/** 这一类自报的两个动作 id(壳按 `kind` 画,按 `id` 回调 `search.invoke`)。 */
+/** 这一类自报的三个动作 id(壳按 `kind` 画,按 `id` 回调 `search.invoke`)。 */
 export const CREATE_DAILY_ACTION = 'create-daily'
 export const CREATE_NOTE_ACTION = 'create-note'
+/** 「在它自己的 app 里打开」——**行**动作(P5,§4.1),不是页级动作。 */
+export const OPEN_IN_APP_ACTION = 'open-in-app'
+
+/**
+ * 「这一次没用上某个库」那一条提示,以及它为什么不是一条动作。
+ *
+ * `SearchPage` 上今天没有「提示」这一格(core 冻着,P5 一个字不改),而页级
+ * `actions` 是**唯一**一处「不属于任何一条结果、属于这一页」的开放槽。所以提示
+ * 走同一格,靠 `kind: 'notice'` 与真动作分开:壳那一侧把 `notice` 从动作行里择
+ * 出来画进页脚(与「已放宽」「索引不可用」同一行读数),它按不下去、也不进 ↑↓
+ * 序列。留账里记着「`SearchPage` 该有一格 `notices`」这笔账。
+ */
+export const NOTICE_ACTION_KIND = 'notice'
 
 /**
  * **两个动作的 id 里都编着目标路径**,而不是标题。
@@ -206,6 +332,30 @@ function pathOfAction(actionId: string, prefix: string): string {
   const filePath = decodeURIComponent(actionId.slice(`${prefix}:`.length))
   if (filePath.length === 0) throw new Error(`${prefix} action carries no path`)
   return filePath
+}
+
+/** 「在 app 里打开这一篇」的动作号。**与两条 create 同一条规矩**:路径编在 id 里。 */
+export function openInAppActionIdOf(filePath: string): string {
+  return `${OPEN_IN_APP_ACTION}:${encodeURIComponent(filePath)}`
+}
+
+/**
+ * 一条笔记命中的 `target` —— **两条召回路共用的唯一产地**。
+ *
+ * 「这一行能不能在 app 里打开」由**库自己**答(`typeof vault.openInApp ===
+ * 'function'`),不由任何一张系统名单答:加一种笔记系统只要它实现了那个方法,
+ * 这一格自己就出现了,这个文件与壳都不改一个字。
+ */
+function noteTargetOf(adapters: OnethingSearchProvidersAdapters, filePath: string): NoteTarget {
+  const vault = vaultContaining(adapters, filePath)
+  const openable = vault !== null && typeof vault.openInApp === 'function'
+  return {
+    kind: 'note',
+    payload: {
+      filePath,
+      ...(openable ? { openInAppActionId: openInAppActionIdOf(filePath) } : {}),
+    },
+  }
 }
 
 /** 今天那一天的 ISO 形。**不经时区转换** —— 「今天」说的是本机日历上的今天。 */
@@ -264,7 +414,12 @@ async function resolveTodayShortcut(
 }
 
 /** 「今天那一条」已经存在时 → 一枚候选,排最前。 */
-function shortcutCandidate(shortcut: TodayShortcut, timestamp: number, score: number): ResultBackedCandidate {
+function shortcutCandidate(
+  adapters: OnethingSearchProvidersAdapters,
+  shortcut: TodayShortcut,
+  timestamp: number,
+  score: number,
+): ResultBackedCandidate {
   const result: SearchServiceResult = {
     id: noteResultId(shortcut.filePath),
     type: 'note',
@@ -280,7 +435,7 @@ function shortcutCandidate(shortcut: TodayShortcut, timestamp: number, score: nu
     subtitle: result.subtitle,
     score,
     time: timestamp,
-    target: { kind: 'note', payload: { filePath: shortcut.filePath } } satisfies NoteTarget,
+    target: noteTargetOf(adapters, shortcut.filePath),
     result,
   }
 }
@@ -340,12 +495,157 @@ export function sanitizeNoteFileName(title: string): string {
   return title.replace(/[/\\:*?"<>|]/g, '-').replace(/^\.+/, '').trim() || 'Untitled'
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * 第二条召回路:各个库自己的搜索(P5,§4.3)
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/** 一个库这一次为什么没答上。`vault` / `system` 只给壳拼那句话用。 */
+export interface LiveSearchSkip {
+  vaultId: string
+  vault: string
+  system: string
+  reason: NoteVaultUnavailableReason | 'failed'
+}
+
+/** 活检索这一趟的结果:命中,加上「哪些库没答上、为什么」。 */
+export interface LiveSearchOutcome {
+  items: Candidate[]
+  skipped: LiveSearchSkip[]
+}
+
+/** 驱动 id → 屏幕上那个名字。`system` 本来就是「只给人看的」那一格(领域契约)。 */
+function systemLabelOf(system: string): string {
+  return system.length === 0 ? system : system[0]!.toUpperCase() + system.slice(1)
+}
+
+/**
+ * 这一路召回器。
+ *
+ * ── 它为什么**不**交给 `indexedCapability` 去跑 ──────────────────────────
+ * core 的 `retrieverRuns` 认两种「明说」:`query.filters.semantic === true`,或者
+ * `ctx.surface` 在能力声明的 `surfaces` 里。这一路的判据两个都不是 ——「用户点了
+ * 那颗片」与「这个词长得像 Obsidian 的搜索语法」在 core 的词汇表里没有名字。
+ * 而 `semantic` 那一格也**借不得**:词法那一侧会把 `filters` 里的每个键翻成一条
+ * facet 子句,借它等于让每一次活检索的词法路零命中(同 `withoutControlFilters`)。
+ *
+ * 所以「这一次跑不跑」由能力自己判(`wantsLiveSearch`),融合用的仍然是 core 的
+ * `rrfFusion` —— 算法只有一处产地。manifest 里那一行 `{ when: 'explicit' }` 是
+ * **自述**:它告诉读表的人(壳、AI、下一个施工的人)这条路是要明说才跑的。
+ * 让 core 也能驱动它,要给 `RetrieverWhen` 加一格「按召回器 id 的显式开关」,
+ * 那是 core 的改动,记在留账里。
+ *
+ * ── 一条命令都不会把 app 拉起来 ──────────────────────────────────────────
+ * `liveSearch` 自己有两道闸(库开着 ∧ app 活着),不成立就抛
+ * `NoteVaultUnavailable` 并把**理由**交出来。这一路把理由收进 `skipped`,由
+ * 能力画成页上那一句 —— 「没搜到」与「这次没问成」是两句话。
+ */
+export function createLiveNotesRetriever(
+  adapters: OnethingSearchProvidersAdapters,
+  budgetMs: number = LIVE_SEARCH_BUDGET_MS,
+): Retriever & { collect(query: SearchQuery, ctx: SearchContext, limit: number): Promise<LiveSearchOutcome> } {
+  async function askOne(
+    vault: NoteVault,
+    query: SearchQuery,
+    ctx: SearchContext,
+    limit: number,
+  ): Promise<{ items: Candidate[]; skip?: LiveSearchSkip }> {
+    const skipOf = (reason: LiveSearchSkip['reason']): LiveSearchSkip =>
+      ({ vaultId: vault.id, vault: vault.name, system: systemLabelOf(vault.system), reason })
+    try {
+      // 「用户换了词」与「这个库太慢了」是同一条取消路的两个源头,合成一个信号
+      // 递下去 —— 领域那一侧于是只需要认识 `signal` 一格,不必再长一个 timeout 参数。
+      const signal = AbortSignal.any([ctx.signal, AbortSignal.timeout(budgetMs)])
+      const hits = await vault.liveSearch!(query.raw, { limit, signal })
+      return {
+        items: hits.slice(0, limit).map((hit, rank) => {
+          const matched = hit.matches[0]?.text
+          const result: SearchServiceResult = {
+            id: noteResultId(hit.path),
+            type: 'note',
+            title: path.basename(hit.path, path.extname(hit.path)),
+            // 出处那一段与索引那一路**同一把尺子**:库相对 posix 路径
+            // (`vaultRelativeKey` 住在 feed 那边,key 的产地就在那里)。
+            subtitle: matched ?? vaultRelativeKey(vault.root, hit.path),
+            filePath: hit.path,
+          }
+          const candidate: ResultBackedCandidate = {
+            capability: notesSearchManifest.id,
+            id: result.id,
+            title: result.title,
+            subtitle: result.subtitle,
+            // 分数只在**组内**有意义,而融合读的是**名次**(RRF)—— 所以这里给的是
+            // 「app 自己排的第几」的倒序,不去发明第二套相关度。
+            score: hits.length - rank,
+            target: noteTargetOf(adapters, hit.path),
+            facets: { path: hit.path, vault: vault.id },
+            result,
+          }
+          return candidate
+        }),
+      }
+    } catch (error) {
+      // 这一发整个被撤了(换词):没有人还在等这张页,不必解释什么。
+      if (ctx.signal.aborted) return { items: [] }
+      if (error instanceof NoteVaultUnavailable) return { items: [], skip: skipOf(error.reason) }
+      // 超时 / CLI 说了句错话 / 解析不出来 —— 都是「这次没问成」,如实说一句,
+      // 而不是让它看起来像「这个库里没有」。
+      return { items: [], skip: skipOf('failed') }
+    }
+  }
+
+  async function collect(query: SearchQuery, ctx: SearchContext, limit: number): Promise<LiveSearchOutcome> {
+    // 答得出 `liveSearch` 的库才问 —— 目录库没有这个方法,它就不在这条路上。
+    const vaults = noteVaultsOf(adapters).filter(vault => typeof vault.liveSearch === 'function')
+    if (vaults.length === 0) return { items: [], skipped: [] }
+    const answers = await Promise.all(vaults.map(vault => askOne(vault, query, ctx, limit)))
+    return {
+      items: answers.flatMap(answer => answer.items),
+      skipped: answers.flatMap(answer => (answer.skip === undefined ? [] : [answer.skip])),
+    }
+  }
+
+  return {
+    id: LIVE_RETRIEVER_ID,
+    collect,
+    async retrieve(query: SearchQuery, ctx: SearchContext, page): Promise<RetrievedPage> {
+      // `total` 不给:一台 app 的搜索答的是「这些」,不是「一共多少条」(§7.3)。
+      return { items: (await collect(query, ctx, page.limit)).items }
+    },
+  }
+}
+
+/**
+ * 「这一次没用上这个库」→ 页上那一条提示。
+ *
+ * **后端只交码与料**(R12):哪一句人话由壳的字典按 `labelKey` 查出,库名与系统名
+ * 走 `params`。三句话对三种处境,因为它们真的不一样:app 没跑 / 这个库没在它里面
+ * 打开 / 问了但没问成。
+ */
+const LIVE_NOTICE_KEYS: Record<LiveSearchSkip['reason'], string> = {
+  'system-not-running': 'search.notice.liveNotRunning',
+  'cli-not-registered': 'search.notice.liveNotRunning',
+  'no-snapshot': 'search.notice.liveNotRunning',
+  'vault-not-open': 'search.notice.liveVaultNotOpen',
+  failed: 'search.notice.liveFailed',
+}
+
+function noticeOf(skip: LiveSearchSkip): ActionDescriptor {
+  return {
+    id: `${LIVE_RETRIEVER_ID}:${skip.reason}:${skip.vaultId}`,
+    kind: NOTICE_ACTION_KIND,
+    capability: notesSearchManifest.id,
+    labelKey: LIVE_NOTICE_KEYS[skip.reason],
+    params: { system: skip.system, vault: skip.vault },
+  }
+}
+
 export function createNotesSearchCapability(
   adapters: OnethingSearchProvidersAdapters,
   index: SearchIndexQueryFace,
   now: () => Date = () => new Date(),
 ): SearchCapability {
   const tracked = trackIndexGeneration(index)
+  const liveRetriever = createLiveNotesRetriever(adapters)
 
   const indexed = indexedCapability({
     manifest: notesSearchManifest,
@@ -383,7 +683,7 @@ export function createNotesSearchCapability(
           ranges: titleSnippet.ranges,
           score,
           time: doc.time,
-          target: { kind: 'note', payload: { filePath } } satisfies NoteTarget,
+          target: noteTargetOf(adapters, filePath),
           facets: doc.facets,
           result,
         }
@@ -397,16 +697,24 @@ export function createNotesSearchCapability(
     page: PageRequest,
     ctx: SearchContext,
   ): Promise<SearchPage> {
-    const indexedPage = await indexed.search(query, page, ctx)
-    // 翻页时不再补动作与快捷项 —— 它们是首页的事。
+    // 控制位不进索引(判词在 `withoutControlFilters` 上)。
+    const inner = withoutControlFilters(query)
+    const indexedPage = await indexed.search(inner, page, ctx)
+    // 翻页时不再补动作与快捷项 —— 它们是首页的事。活检索同理:它是按下那一颗片
+    // 的**那一下**,不是一条翻得动的流。
     if (page.cursor !== undefined) return indexedPage
+
+    const live = wantsLiveSearch(query)
+      ? await liveRetriever.collect(inner, ctx, page.limit)
+      : { items: [], skipped: [] }
+    const fused = mergeLive(indexedPage, live.items)
 
     const today = now()
     const shortcut = await resolveTodayShortcut(adapters, query.raw, today).catch(() => undefined)
 
     const withShortcut = shortcut === undefined || !shortcut.exists
-      ? indexedPage
-      : mergeTodayShortcut(indexedPage, shortcut, today.getTime(), page.limit)
+      ? fused
+      : mergeTodayShortcut(fused, shortcut, today.getTime(), page.limit)
 
     const actions: ActionDescriptor[] = []
     if (shortcut !== undefined && !shortcut.exists) {
@@ -419,8 +727,37 @@ export function createNotesSearchCapability(
     }
     const createNote = createNoteAction(adapters, query, withShortcut)
     if (createNote !== undefined) actions.push(createNote)
+    // 「这一次没用上哪个库」排在动作后面 —— 它不是一件能做的事。
+    for (const skip of live.skipped) actions.push(noticeOf(skip))
 
     return actions.length === 0 ? withShortcut : { ...withShortcut, actions }
+  }
+
+  /**
+   * 索引那一页 + 活检索那一把 → 一页。**融合用 core 的 RRF**(k=60),算法只有
+   * 一处产地。
+   *
+   * 两件事写在这里免得下一个人再推一遍:
+   *
+   *  ① **活检索一条都没答出来时是恒等变换** —— 连融合都不跑。RRF 会把分数重写成
+   *     `1/(k+rank)`,而这一类的「今天那一条」要拿 `max(score)+1` 排头;不设这道
+   *     门,「没点那颗片」与「点了但 app 没跑」两种情形下的分数就不一样了,而它们
+   *     在屏幕上本来应该逐字相同。
+   *  ② **不切到 `limit`,也不动游标**。索引那一路的游标数的是它自己那条流的
+   *     offset;把活检索的命中挤进同一个配额里,被挤掉的那几条词法命中就再也翻不
+   *     到了(它们的 offset 已经被算过)。所以这一页可以比 `limit` 长 —— 多出来的
+   *     正是用户按那颗片要来的东西,而 RRF 已经把最该看的排在了前面。
+   */
+  function mergeLive(page: SearchPage, live: readonly Candidate[]): SearchPage {
+    if (live.length === 0) return page
+    const items = rrfFusion()([
+      { id: 'lexical', items: page.items },
+      { id: LIVE_RETRIEVER_ID, items: live },
+    ])
+    // 两路都出了候选时 `total` 说不出口(§7.3「不知道就别给」):词法那个数说的是
+    // 倒排里有多少条,它数不到 app 自己答的那些。
+    const { total: _total, ...rest } = page
+    return page.items.length === 0 ? { ...page, items } : { ...rest, items }
   }
 
   /** 今天那一份索引也答得出 —— 按 `filePath` 去重,再把快捷项排最前。 */
@@ -433,7 +770,7 @@ export function createNotesSearchCapability(
     const rest = page.items.filter(item => item.id !== noteResultId(shortcut.filePath))
     const deduped = rest.length !== page.items.length
     // 分数只在**组内**排序时有意义(§6.5);排头就给一个比谁都大的。
-    const candidate = shortcutCandidate(shortcut, timestamp, Math.max(0, ...rest.map(item => item.score)) + 1)
+    const candidate = shortcutCandidate(adapters, shortcut, timestamp, Math.max(0, ...rest.map(item => item.score)) + 1)
     return {
       ...page,
       items: [candidate, ...rest].slice(0, limit),
@@ -464,6 +801,16 @@ export function createNotesSearchCapability(
       const vault = vaultContaining(adapters, filePath)
       if (vault === null) throw new Error(`no note vault contains ${filePath}`)
       await vault.createNote(path.relative(vault.root, filePath), {}, { mayLaunch: true })
+      return
+    }
+    if (actionId.startsWith(`${OPEN_IN_APP_ACTION}:`)) {
+      const filePath = pathOfAction(actionId, OPEN_IN_APP_ACTION)
+      const vault = vaultContaining(adapters, filePath)
+      if (vault === null) throw new Error(`no note vault contains ${filePath}`)
+      // 「这个系统没有『在 app 里打开』这回事」与「打不开」是两句话。行上那条
+      // 动作本来就只在库答得出这个方法时才画,所以走到这里说明有人绕过了屏幕。
+      if (typeof vault.openInApp !== 'function') throw new Error(`vault ${vault.id} cannot open notes in an app`)
+      await vault.openInApp(filePath, { mayLaunch: true })
       return
     }
     throw new Error(`no such action: ${actionId}`)

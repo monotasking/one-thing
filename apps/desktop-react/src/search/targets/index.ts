@@ -30,7 +30,7 @@ for (const renderer of [
 }
 
 export { registerTargetRenderer, resolveTargetRenderer, resetTargetRenderers, targetRendererKinds } from './registry'
-export type { SearchTargetContext, SearchTargetRenderer, SearchTargetRowProps } from './registry'
+export type { SearchRowAction, SearchTargetContext, SearchTargetRenderer, SearchTargetRowProps } from './registry'
 export type { ActionTargetPayload } from './action'
 export type { ChatTargetPayload } from './chat'
 export type { FileTargetPayload } from './file'

@@ -24,12 +24,20 @@ export const CLI_FIXTURES = {
   markdownLink: '=> [[00.00 JDex]]\n',
   dailyPath: '2026-09-08.md\n',
   searchContext: '[{"file":"notes/a.md","matches":[{"line":3,"text":"hello there"}]}]\n',
+  /**
+   * **零命中时它答的是一句人话,不是 `[]`**(2026-09-18 `gate:notes` ⑧ 第一次跑
+   * 就撞上的真读数)。不带 `Error:` 前缀,所以判错那一闸放它过来 —— 零命中本来
+   * 就不是错。
+   */
+  searchNoMatches: 'No matches found.\n',
 } as const
 
 export interface FakeRunnerCall {
   command: string
   args: string[]
   timeoutMs?: number
+  /** 调用方递下来的取消信号(P5)。**「递没递到」全靠数它。** */
+  signal?: AbortSignal
 }
 
 export interface FakeRunner extends NoteProcessRunner {
@@ -52,8 +60,20 @@ export function createFakeRunner(options: FakeRunnerOptions = {}): FakeRunner {
 
   const spawn = (runOptions: NoteProcessRunOptions): NoteProcessHandle => {
     const index = calls.length
-    calls.push({ command: runOptions.command, args: [...runOptions.args], timeoutMs: runOptions.timeoutMs })
+    calls.push({
+      command: runOptions.command,
+      args: [...runOptions.args],
+      timeoutMs: runOptions.timeoutMs,
+      ...(runOptions.signal === undefined ? {} : { signal: runOptions.signal }),
+    })
     const kill = (): void => { kills += 1 }
+    // **已经取消了就一次都不跑**(与真 runner 同一条判据,P5)。
+    if (runOptions.signal?.aborted === true) {
+      kill()
+      const rejected = Promise.reject(new Error(`[notes] "${runOptions.command}" was aborted by the caller`))
+      rejected.catch(() => {})
+      return { done: rejected, kill }
+    }
     if (options.timeoutOnCall === index) {
       kill()
       return {

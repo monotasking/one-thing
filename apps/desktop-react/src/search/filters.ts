@@ -71,6 +71,8 @@ export interface SearchFilterState {
   archived: boolean
   /** 含推理。`true` = 含(缺省)。 */
   reasoning: boolean
+  /** 用笔记 app 自己的搜索。`false` = 不用(缺省:索引是缺省路,R3)。 */
+  live: boolean
   /** 范围片(续搜);缺席 = 没有限定范围。 */
   scope?: SearchScopeChip
 }
@@ -81,6 +83,7 @@ export const INITIAL_FILTERS: SearchFilterState = {
   time: 'any',
   archived: true,
   reasoning: true,
+  live: false,
 }
 
 /** 这一份是不是「什么都没挑」(除了范围片之外)。底下那颗「清空」按不按得动读它。 */
@@ -90,6 +93,7 @@ export function filtersAreDefault(state: SearchFilterState): boolean {
     && state.time === INITIAL_FILTERS.time
     && state.archived === INITIAL_FILTERS.archived
     && state.reasoning === INITIAL_FILTERS.reasoning
+    && state.live === INITIAL_FILTERS.live
     && state.scope === undefined
 }
 
@@ -101,6 +105,16 @@ export const ROLE_FACET = 'role'
 export const TIME_FACET = 'time'
 export const ARCHIVED_FACET = 'archived'
 export const REASONING_FACET = 'includeReasoning'
+/**
+ * **活检索那一颗片**(P5,`docs/design/notes-obsidian-cli-2026-09.md` §4.3)。
+ *
+ * 与别的五颗同一条判据:**摆得出这个 facet 键才画**。而那一格由笔记那一类的
+ * 自述现算 —— 有一个在册的库答得出「自己的搜索」它才出现,一个都没有(只有目录
+ * 库、或者根本没有库)就整颗不画。壳因此不认识任何一个笔记系统的名字,也没有
+ * 「Obsidian 在不在跑」这种判断:app 没跑时这颗片仍然按得动(按它不会把 app
+ * 拉起来),那一次的答案里会带一句「这次没用上它」,画在页脚。
+ */
+export const LIVE_FACET = 'live'
 /**
  * **扫描根**(S4b 修)。它不是一颗画得出来的片 —— 屏幕上它有两种样子:
  * 缺省时**隐身**(当前会话的工作目录,与从前 `useSessionCwd()` 那条根逐字相同),
@@ -228,6 +242,11 @@ export function filtersOf(state: SearchFilterState, ctx: FilterContext): SearchF
   if (!state.reasoning && has(REASONING_FACET)) {
     filters[REASONING_FACET] = false
   }
+  // 「用笔记 app 搜」缺省是**不用**,所以只有打开它才发一格。发的是 `true` ——
+  // `false` 与缺席同义,而缺席更诚实(那一类那时候一条 app 命令都不会发)。
+  if (state.live && has(LIVE_FACET)) {
+    filters[LIVE_FACET] = true
+  }
   if (state.scope !== undefined && has(state.scope.key)) {
     filters[state.scope.key] = state.scope.value
   }
@@ -271,7 +290,7 @@ function timeRangeOf(
 /** 一颗片的**画法描述**(纯数据;组件按它画,不自己判)。 */
 export interface FilterChipSpec {
   /** 这颗片是谁(`data-filter` 的值,门与用例按它认)。 */
-  id: 'space' | 'role' | 'time' | 'archived' | 'reasoning'
+  id: 'space' | 'role' | 'time' | 'archived' | 'reasoning' | 'live'
   /** 它认哪个 facet 键。 */
   facet: string
   /** 片上那句话的键。 */
@@ -322,6 +341,18 @@ const TIME_OPTIONS: FilterChipSpec['options'] = [
 const WITH_OPTIONS: FilterChipSpec['options'] = [
   { value: 'yes', labelKey: 'search.filterWith' },
   { value: 'no', labelKey: 'search.filterWithout' },
+]
+
+/**
+ * 「用 / 不用」那两格。
+ *
+ * 片名是**名词**(「Obsidian 搜索」),值才是「用 / 不用」—— 与 09-05 那条判例
+ * 同一形(那一次的报障是「含归档」按下去代表反义)。写成「用 Obsidian 搜」再配
+ * 一格「不用」,屏幕上读出来就是自相矛盾的一行。
+ */
+const USE_OPTIONS: FilterChipSpec['options'] = [
+  { value: 'yes', labelKey: 'search.filterLiveOn' },
+  { value: 'no', labelKey: 'search.filterLiveOff' },
 ]
 
 /**
@@ -384,6 +415,16 @@ export function filterChipsOf(
       on: state.reasoning !== INITIAL_FILTERS.reasoning,
       options: WITH_OPTIONS,
       value: state.reasoning ? 'yes' : 'no',
+    })
+  }
+  if (available.has(LIVE_FACET)) {
+    chips.push({
+      id: 'live',
+      facet: LIVE_FACET,
+      labelKey: 'search.filterLive',
+      on: state.live !== INITIAL_FILTERS.live,
+      options: USE_OPTIONS,
+      value: state.live ? 'yes' : 'no',
     })
   }
   return chips

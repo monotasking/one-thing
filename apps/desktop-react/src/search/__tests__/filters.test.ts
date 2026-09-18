@@ -3,6 +3,7 @@ import {
   ARCHIVED_FACET,
   DIR_FACET,
   INITIAL_FILTERS,
+  LIVE_FACET,
   REASONING_FACET,
   ROLE_FACET,
   SPACE_FACET,
@@ -224,5 +225,53 @@ describe('filtersAreDefault', () => {
       ...INITIAL_FILTERS,
       scope: { key: 'sessionId', value: 's', label: 'x' },
     })).toBe(false)
+  })
+})
+
+
+/**
+ * **活检索那一颗片**(P5,`docs/design/notes-obsidian-cli-2026-09.md` §4.3)。
+ *
+ * 三态,判据全在别人手上:**不画**(没有能力摆得出 `live` —— 这台上一个笔记库
+ * 都答不出「自己的搜索」)/ **不用**(缺省)/ **用**(发一格 `live: true`)。
+ * 「Obsidian 在不在跑」在这里一个字都没有:那是后端的事实,壳不猜,答案回来之后
+ * 页脚会有一句话。
+ */
+describe('live 片(P5):自述摆得出才画,打开才发一格', () => {
+  it('没有能力声明 `live` → 整颗不画(与另外五颗同一条判据)', () => {
+    expect(filterChipsOf(INITIAL_FILTERS, new Set([SPACE_FACET])).map(chip => chip.id))
+      .toEqual(['space'])
+  })
+
+  it('有能力声明了 → 画一颗「名词 · 用/不用」的片,缺省是「不用」', () => {
+    const chips = filterChipsOf(INITIAL_FILTERS, new Set([LIVE_FACET]))
+    expect(chips).toEqual([{
+      id: 'live',
+      facet: LIVE_FACET,
+      labelKey: 'search.filterLive',
+      on: false,
+      options: [
+        { value: 'yes', labelKey: 'search.filterLiveOn' },
+        { value: 'no', labelKey: 'search.filterLiveOff' },
+      ],
+      value: 'no',
+    }])
+  })
+
+  it('打开它 → 片是「挑过了」,而且落成一格结构', () => {
+    const state: SearchFilterState = { ...INITIAL_FILTERS, live: true }
+    expect(filterChipsOf(state, new Set([LIVE_FACET]))[0]?.on).toBe(true)
+    expect(filtersOf(state, ctx([LIVE_FACET]))).toEqual({ [LIVE_FACET]: true })
+  })
+
+  it('缺省不发(缺省 = 索引那条路,R3);摆不出这个键时打开了也不发', () => {
+    expect(filtersOf(INITIAL_FILTERS, ctx([LIVE_FACET]))).toEqual({})
+    expect(filtersOf({ ...INITIAL_FILTERS, live: true }, ctx([SPACE_FACET])))
+      .not.toHaveProperty(LIVE_FACET)
+  })
+
+  it('打开它之后「清空」按得动(它算一格挑过的片)', () => {
+    expect(filtersAreDefault(INITIAL_FILTERS)).toBe(true)
+    expect(filtersAreDefault({ ...INITIAL_FILTERS, live: true })).toBe(false)
   })
 })

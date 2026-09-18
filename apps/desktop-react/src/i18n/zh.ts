@@ -613,7 +613,18 @@ export const zh = {
   'search.action.createPrompt': '新建提示词 “{title}”',
   'search.action.createDailyNote': '新建今天的日记',
   'search.action.createNote': '新建笔记“{title}”',
+  /* 行动作(P5)。这一条画不画由**那篇笔记所在的库**答(它给不给得出
+   * `openInApp`),所以它永远不会出现在一台按下去什么都不会发生的屏幕上。 */
+  'search.action.openInApp': '在 Obsidian 中打开',
   'search.actionUnavailable': '这条动作在这里还打不开:{action}',
+  /* 一条后端动作没做成。**后端的原话只进日志**(R6),屏幕上只有这一句。 */
+  'search.actionFailed': '这一下没做成',
+  /* ── 页脚提示(P5)────────────────────────────────────────────────────
+   * 搜是搜到了,只是少用了一条路。三句对三种处境,因为读的人接下来该做的事
+   * 不一样:去把 app 打开 / 去把那个库打开 / 什么都不必做(再试一次就行)。 */
+  'search.notice.liveNotRunning': '{system} 未运行,这次没用它搜',
+  'search.notice.liveVaultNotOpen': '{vault} 没在 {system} 里打开,这次没用它搜',
+  'search.notice.liveFailed': '{system} 这次没搜完,没用上它的结果',
   'search.targetUnavailable': '这一类结果还打不开:{kind}',
 
   /* ── 过滤片(S4b,§9 第五条)────────────────────────────────────────────
@@ -640,6 +651,11 @@ export const zh = {
   'search.filterReasoning': '推理',
   'search.filterWith': '含',
   'search.filterWithout': '不含',
+  /* 笔记 app 自己的搜索(P5)。片名同样是名词(「Obsidian 搜索」),值才是
+   * 「用 / 不用」—— 写成「用 Obsidian 搜 · 不用」屏幕上读出来是自相矛盾的。 */
+  'search.filterLive': 'Obsidian 搜索',
+  'search.filterLiveOn': '用',
+  'search.filterLiveOff': '不用',
   /* ── 续搜(S4b,§4.6)──────────────────────────────────────────────────
    * 范围片是「加一格过滤,词留着」;枢轴是「换一次查询」。两句话说清这个区别,
    * 所以不合并成一句「在这里搜」。 */

@@ -8,6 +8,7 @@ import {
   EMPTY_SEQUENCE,
   indexOfItem,
   moreItemId,
+  noticesOf,
   rowItemId,
   rowOfItem,
   sequenceOf,
@@ -160,5 +161,41 @@ describe('scanning 块的块尾项', () => {
     const one = listing([block('files', ['f1'], { cursor: undefined, partial: true })])
     expect(sequenceOf(one, b => moreStateOf(b, false, false)).map(item => item.id))
       .toEqual([rowItemId('files', 'f1')])
+  })
+})
+
+/* ── 提示不是动作(P5)────────────────────────────────────────────────── */
+
+/**
+ * 「这一次没用上某个笔记库」那句话走的是页级 `actions` 那一格(契约上没有第二处
+ * 放得下它),靠 `kind: 'notice'` 与真动作分开。两边各证一半:序列里**没有**它,
+ * `noticesOf` 里**只有**它。
+ */
+describe('noticesOf / sequenceOf:提示择出去,动作留下', () => {
+  const notice = (id: string) => ({ id, labelKey: 'search.notice.liveNotRunning', kind: 'notice' })
+  const create = { id: 'create-note:x', labelKey: 'search.action.createNote', capability: 'notes' }
+
+  it('提示不进序列:按不下去的东西不占 ↑↓ 的一格', () => {
+    const seq = sequenceOf(listing(
+      [block('notes', ['a'], { cursor: undefined, actions: [notice('n1'), create] })],
+      { actions: [notice('n2')] },
+    ))
+    expect(ids(seq)).toEqual([
+      rowItemId('notes', 'a'),
+      actionItemId('notes', 'create-note:x'),
+    ])
+  })
+
+  it('`noticesOf` 收下的正是序列择掉的那些(块级在前)', () => {
+    const one = listing(
+      [block('notes', ['a'], { cursor: undefined, actions: [notice('n1'), create] })],
+      { actions: [notice('n2')] },
+    )
+    expect(noticesOf(one).map(action => action.id)).toEqual(['n1', 'n2'])
+  })
+
+  it('一条提示都没有 = 空表(不是 undefined —— 页脚照着 map)', () => {
+    expect(noticesOf(listing([block('notes', ['a'])]))).toEqual([])
+    expect(noticesOf(undefined)).toEqual([])
   })
 })

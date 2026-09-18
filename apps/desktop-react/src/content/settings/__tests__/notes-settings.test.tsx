@@ -46,6 +46,9 @@ interface Fake extends NotesPort {
   saves: AppSettings[]
   /** `files.stat` 认得出的目录。不在表里 = 不存在。 */
   dirs: Set<string>
+  /** 「打开」按下去的实参(P5)。**「一条都没发」全靠数它。** */
+  opened: Array<{ vaultId: string; path?: string }>
+  openResult: { ok: boolean; reason?: string }
 }
 
 function fakePort(list: NotesListResponse, settings: AppSettings = BASE_SETTINGS): Fake {
@@ -54,10 +57,15 @@ function fakePort(list: NotesListResponse, settings: AppSettings = BASE_SETTINGS
     list_: list,
     saves: [],
     dirs: new Set(),
+    opened: [],
+    openResult: { ok: true },
     ready: async () => undefined,
     list: async () => fake.list_,
     refresh: async () => fake.list_,
-    openInApp: async () => ({ ok: true }),
+    openInApp: async (vaultId, path) => {
+      fake.opened.push({ vaultId, ...(path === undefined ? {} : { path }) })
+      return fake.openResult
+    },
     readSettings: async () => ({ success: true, settings: fake.settings }),
     saveSettings: async (next) => {
       fake.saves.push(next)
@@ -296,5 +304,27 @@ describe('isKnownVault', () => {
     expect(isKnownVault(vaults, '/v/a/')).toBe(true)
     expect(isKnownVault(vaults, '/v/a')).toBe(true)
     expect(isKnownVault(vaults, '/v/ab')).toBe(false)
+  })
+})
+
+
+// ── ⑦ 「打开」那颗钮(P5:量出来它做不到,所以它不存在)──────
+
+/**
+ * P4 留账 2 的结清:Obsidian CLI 整张动词表里**没有**「只把某个库调到前台」这件事
+ * (`open path=` 真机答 `Missing required parameter: file or path`),所以这一页上
+ * 没有那颗钮 —— 一颗按下去只会失败的钮比没有更坏。
+ */
+describe('行内没有「打开」钮', () => {
+  it('库表画得出来,但一行上没有那颗钮', async () => {
+    const port = fakePort(emptyList({
+      systems: { obsidian: { state: 'running', enabled: true } },
+      vaults: [vault({ id: 'v1', name: 'workbook' })],
+    }))
+    await mount(port)
+    expect(screen.getByTestId('notes-vault-v1')).toBeTruthy()
+    expect(screen.queryByText('打开')).toBeNull()
+    // 这一页一次 `openInApp` 都不发。
+    expect(port.opened).toEqual([])
   })
 })

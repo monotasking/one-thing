@@ -535,7 +535,19 @@ export const en: Record<MessageKey, string> = {
   'search.action.createPrompt': 'Create prompt “{title}”',
   'search.action.createDailyNote': "Create today's note",
   'search.action.createNote': 'Create note “{title}”',
+  /* Row action (P5): the note's own vault says whether it can be opened in an
+   * app, so this line never reaches a screen where pressing it does nothing. */
+  'search.action.openInApp': 'Open in Obsidian',
   'search.actionUnavailable': "This action can't be run here: {action}",
+  /* A backend action that did not go through. The backend's own words stay in
+   * the log (R6) — the screen gets one sentence. */
+  'search.actionFailed': "That didn't work",
+  /* Footer notices (P5): the search did answer, it just used one route fewer.
+   * Three sentences because they are three different situations, and each of
+   * them tells the reader a different thing to do (or not do) about it. */
+  'search.notice.liveNotRunning': "{system} isn't running; it wasn't used for this search",
+  'search.notice.liveVaultNotOpen': "{vault} isn't open in {system}; it wasn't used for this search",
+  'search.notice.liveFailed': "{system} search didn't finish; it wasn't used for this search",
   'search.targetUnavailable': "This kind of result can't be opened yet: {kind}",
 
   /* Filter chips (S4b, design §9). A chip only shows up when some capability
@@ -558,6 +570,12 @@ export const en: Record<MessageKey, string> = {
   'search.filterReasoning': 'Reasoning',
   'search.filterWith': 'With',
   'search.filterWithout': 'Without',
+  /* The note app's own search (P5). The chip's name is a noun and the value is
+   * the verb — same shape as the five above, and the reason is the 09-05 ruling
+   * (a chip whose pressed state means the opposite of its label). */
+  'search.filterLive': 'Obsidian search',
+  'search.filterLiveOn': 'Use',
+  'search.filterLiveOff': "Don't use",
   /* Continue-search (S4b, design §4.6): a scope chip adds one filter and keeps
    * the query; a pivot replaces the whole query state. Two sentences, because
    * they are two different moves. */

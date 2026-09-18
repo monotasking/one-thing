@@ -91,6 +91,7 @@ function stubStatus(status: Partial<SearchStatusResponse>): void {
     ready: async () => undefined,
     query: async () => ({ success: true, results: [] }) as never,
     capabilities: async () => [],
+    invoke: async () => ({ success: true }),
     status: async () => ({
       mode: 'owner',
       pending: 0,

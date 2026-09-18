@@ -24,6 +24,6 @@ export const actionTargetRenderer = {
   activate(row, context) {
     const payload = payloadOf(row.target.payload)
     if (payload === undefined) return
-    context.runAction(payload.actionId)
+    context.runAction(payload.actionId, row.capability)
   },
 } as const satisfies Parameters<typeof registerTargetRenderer>[0]

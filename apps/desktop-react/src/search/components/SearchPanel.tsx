@@ -4,6 +4,7 @@ import { useStageStore } from '../../stage/store'
 import { useExposeStore } from '../../expose/store'
 import { FocusScope } from '../../focus/FocusScope'
 import type { SegmentedOption } from '../../ui/Segmented'
+import { getLogger } from '../../services/log'
 import { notify } from '../../services/notify'
 import { useT } from '../../i18n'
 import type { MessageKey } from '../../i18n'
@@ -42,6 +43,7 @@ import {
 import type { SearchPreviewMode } from '../../data/search-catalog-source'
 import {
   refetchSearchListing,
+  searchInvoke,
   searchListingKey,
   searchLoadMore,
 } from '../../data/search-listing-source'
@@ -185,13 +187,38 @@ export function SearchPanel() {
     openFile(path, line) {
       openFileInCurrentTarget(path, line)
     },
-    runAction(actionId) {
-      notify({
-        level: 'info',
-        source: 'search.open',
-        title: t('search.actionUnavailable', { action: actionId }),
-      })
+    runAction(actionId, capability) {
+      // 「这一行本身就是一条动作」那一形(还没建出来的那篇笔记)。`items` 不发:
+      // 后端那一侧夹的是动作号里编着的那条路径,不是这一行。
+      void invokeAction(capability, actionId)
     },
+  }
+
+  /**
+   * **按下一条后端动作**(P5)。
+   *
+   * 成功那一下屏幕上什么都不说:按下「在 Obsidian 中打开」的结果是那台 app 跳到
+   * 前台 —— 再弹一句「已打开」就是在解释一件用户正看着的事。失败才说话,而且说
+   * 的是字典里那一句,**原话只进日志**(R6 / R12)。
+   */
+  const invokeAction = async (capability: string, actionId: string, row?: SearchRow): Promise<void> => {
+    try {
+      await searchInvoke.run({
+        capability,
+        actionId,
+        ...(row === undefined
+          ? {}
+          : { items: [{ capability: row.capability, id: row.id, target: row.target }] }),
+      })
+      closeToDock('search')
+    } catch (error) {
+      getLogger('search.invoke').warn('a search action failed', { capability, actionId }, error)
+      notify({
+        level: 'error',
+        source: 'search.open',
+        title: t('search.actionFailed'),
+      })
+    }
   }
 
   const openRow = (row: SearchRow): void => {
@@ -227,11 +254,17 @@ export function SearchPanel() {
       void searchLoadMore.run({ key: listing.key, capability, cursor })
     },
     runAction(action) {
-      notify({
-        level: 'info',
-        source: 'search.open',
-        title: t('search.actionUnavailable', { action: action.id }),
-      })
+      // 动作自报它属于哪一类(契约 `SearchActionDescriptor.capability`);缺席的
+      // 那一档问不出该找谁,如实说一句而不是猜一个能力 id。
+      if (action.capability === undefined) {
+        notify({
+          level: 'info',
+          source: 'search.open',
+          title: t('search.actionUnavailable', { action: action.id }),
+        })
+        return
+      }
+      void invokeAction(action.capability, action.id)
     },
     canLoadMore: listing.canLoadMore,
   }
@@ -424,7 +457,7 @@ export function SearchPanel() {
             />
           </div>
 
-          {/* 行的动作表(右键):「打开」+ 这一类自报的续搜 + 「只看这一类」。 */}
+          {/* 行的动作表(右键):「打开」+「只看这一类」+ 这一类自报的续搜与后端动作。 */}
           <SearchRowMenu
             state={rowMenu}
             available={available}
@@ -437,6 +470,7 @@ export function SearchPanel() {
               pushCommit()
               setScope(capability)
             }}
+            onRowAction={(row, action) => { void invokeAction(row.capability, action.actionId, row) }}
           />
         </div>
       )}

@@ -1,6 +1,7 @@
 import type {
   SearchActionDescriptor,
   SearchFilters,
+  SearchItemRef,
   SearchResponse,
   SearchResult,
 } from '@shared/ipc/search'
@@ -621,6 +622,31 @@ export const searchScanBlock = createMutation<{ key: string; capability: string 
     },
   },
 )
+
+/**
+ * **按下一条动作**(P5,§8 `invoke`)。
+ *
+ * 三条真动作今天都在 `notes` 那一类上:新建今天的日记 / 新建一篇笔记 / 在它自己的
+ * app 里打开。壳这一侧**一个都不认识** —— 它拿到的是一个能力 id、一个动作号和
+ * (行动作才有的)那一行的指纹,原样转发。
+ *
+ * **不落格、不改清单**:动作做完这张清单不变(建出来的那篇笔记要等下一次查询才
+ * 进索引,那是索引 feed 的事,不是壳能替它宣布的)。所以这只 mutation 没有
+ * `optimistic`、没有 `settle` 补丁 —— 成功与失败的差别只在屏幕上那一句话,由
+ * 调用方(面板)用 `notify` 说。
+ */
+export const searchInvoke = createMutation<
+  { capability: string; actionId: string; items?: readonly SearchItemRef[] },
+  void
+>('search.invoke', {
+  key: ({ capability, actionId }) => `${capability}:${actionId}`,
+  run: async ({ capability, actionId, items }) => {
+    const port = await searchPort()
+    await port.ready()
+    const response = await port.invoke(capability, actionId, items)
+    if (!response.success) throw new Error(response.error ?? 'search action failed')
+  },
+})
 
 /* ── 五口 ──────────────────────────────────────────────────────────────── */
 

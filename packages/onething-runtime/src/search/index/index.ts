@@ -52,6 +52,7 @@ export {
   VAULT_FEED_ID_PREFIX,
   VaultFeed,
   vaultFeedIdOf,
+  vaultRelativeKey,
 } from './vault-feed.js'
 export type { VaultFeedOptions, VaultFeedSpec } from './vault-feed.js'
 

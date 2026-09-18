@@ -129,9 +129,18 @@ export const notesRpcHandlers: RpcRouteHandlers<NotesRoutes> = {
     if (vault === null) return { ok: false, reason: 'not-found' }
     // 「这个系统没有『在 app 里打开』这件事」与「打不开」是两句话。
     if (typeof vault.openInApp !== 'function') return { ok: false, reason: 'unsupported' }
+    /*
+     * **没给 path = 做不到**(P5,2026-09-18 真机读数)。P4 这一行写的是
+     * 「缺席 = 把库本身唤到前台」,做法是把库根递下去;真机上那条命令是
+     * `open path=`,而 Obsidian CLI 答 `Missing required parameter: file or path`
+     * —— 它整张动词表里没有「只把某个库调到前台」这件事。
+     *
+     * 所以这里当场答 `unsupported`,而不是发一条必然失败的命令:失败与
+     * 「这件事做不到」是两句话,而后者调用方(设置页)得先知道才画得对按钮。
+     */
+    if (request.path === undefined) return { ok: false, reason: 'unsupported' }
     try {
-      // 缺席 = 把库本身唤到前台(库根经实现那一侧折成库相对路径 = 空)。
-      await vault.openInApp(request.path ?? vault.root, { mayLaunch: true })
+      await vault.openInApp(request.path, { mayLaunch: true })
       return { ok: true }
     } catch (error) {
       if (error instanceof NoteVaultUnavailable) return { ok: false, reason: error.reason }

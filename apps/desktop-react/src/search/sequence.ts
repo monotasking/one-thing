@@ -1,3 +1,4 @@
+import type { SearchActionDescriptor } from '@shared/ipc/search'
 import type { SearchBlock, SearchListing } from '../data/search-listing-source'
 import { moreStateOf, type MoreState } from './paging'
 
@@ -133,6 +134,7 @@ export function sequenceOf(
 
   for (const block of listing.blocks) {
     for (const action of block.actions ?? []) {
+      if (isNotice(action)) continue
       items.push({
         id: actionItemId(block.capability, action.id),
         kind: SEARCH_ITEM_KINDS.action,
@@ -142,6 +144,7 @@ export function sequenceOf(
     }
   }
   for (const action of listing.actions ?? []) {
+    if (isNotice(action)) continue
     items.push({
       id: actionItemId(action.capability ?? PAGE_LEVEL, action.id),
       kind: SEARCH_ITEM_KINDS.action,
@@ -151,6 +154,39 @@ export function sequenceOf(
   }
 
   return items.length === 0 ? EMPTY_SEQUENCE : items
+}
+
+/**
+ * **提示不是动作**(P5)。
+ *
+ * 契约上「不属于任何一行、属于这一页」的开放槽只有 `actions` 一格,所以能力把
+ * 「这一次没用上某个笔记库」那句话也放在那儿,靠 `kind: 'notice'` 与真动作分开
+ * (判词在 `runtime/src/search/capabilities/notes.ts` 的 `NOTICE_ACTION_KIND` 上)。
+ *
+ * 序列是**键盘走得到的那些项**,而一句提示按不下去 —— 所以它在这里被择出去:
+ * 不进 ↑↓、不占末项、不进「有没有搜到」。它的落点是页脚那一行读数
+ * (`noticesOf` → `SearchFooter`),与「已放宽」「索引不可用」同一处。
+ *
+ * `kind` 是**开放**词汇(契约层不枚举),所以这里认的是一个字面量而不是一张表:
+ * 再来一种「不是动作的动作」时它自己会需要一句自己的判词。
+ */
+export const NOTICE_ACTION_KIND = 'notice'
+
+function isNotice(action: SearchActionDescriptor): boolean {
+  return action.kind === NOTICE_ACTION_KIND
+}
+
+/**
+ * 这一份清单上的那几句提示(块级的与页级的合起来,块级在前)。
+ *
+ * 它与 `searchSequence` 是同一句判据的两半:序列择掉的正是这里收下的。
+ */
+export function noticesOf(listing: SearchListing | undefined): SearchActionDescriptor[] {
+  if (listing === undefined) return []
+  return [
+    ...listing.blocks.flatMap(block => (block.actions ?? []).filter(isNotice)),
+    ...(listing.actions ?? []).filter(isNotice),
+  ]
 }
 
 /* ── 反查(项 → 它指的那件东西)────────────────────────────────────────── */
