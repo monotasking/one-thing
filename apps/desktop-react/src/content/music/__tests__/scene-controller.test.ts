@@ -38,7 +38,8 @@ describe('DeckController', () => {
     expect(paused.getSnapshot()).toMatchObject({ disc: 'on', arm: 'track', lifted: true, spinning: false })
     const empty = new DeckController()
     empty.sync(NONE)
-    expect(empty.getSnapshot()).toMatchObject({ title: '', disc: 'stowed', arm: 'rest', spinning: false })
+    // 没歌:素面唱片留在盘上(空转盘会被读成「坏了」),唱臂归位、不转。
+    expect(empty.getSnapshot()).toMatchObject({ title: '', disc: 'on', arm: 'rest', spinning: false })
   })
 
   it('暂停:唱臂原地抬起、转盘停,不起计时器;再放:先转,450ms 后落针', () => {
@@ -97,14 +98,15 @@ describe('DeckController', () => {
     expect(deck.getSnapshot()).toMatchObject({ busy: false, title: '潮汐表 - 北岸电台', disc: 'on' })
   })
 
-  it('有歌 → 无歌:收片、封套变素面;无歌 → 有歌:放片', () => {
+  it('有歌 → 无歌:换成素面唱片、封套变素面;无歌 → 有歌:换片放上', () => {
     const deck = new DeckController()
     deck.sync(A)
     deck.sync(NONE)
     vi.advanceTimersByTime(10_000)
-    expect(deck.getSnapshot()).toMatchObject({ title: '', disc: 'stowed', arm: 'rest', busy: false, spinning: false })
+    expect(deck.getSnapshot()).toMatchObject({ title: '', disc: 'on', arm: 'rest', busy: false, spinning: false })
     deck.sync({ ...B, playing: false })
-    expect(deck.getSnapshot()).toMatchObject({ busy: true, sleeve: 'out' })
+    // 素面唱片也要先收回封套再换上新的一首:同一串,没有捷径。
+    expect(deck.getSnapshot()).toMatchObject({ busy: true, disc: 'stowed' })
     vi.advanceTimersByTime(10_000)
     expect(deck.getSnapshot()).toMatchObject({ title: B.title, disc: 'on', arm: 'track', lifted: true, busy: false })
   })

@@ -150,13 +150,16 @@ export class DeckController {
     const want = this.desired
     if (!want) return
     const shown = this.snap
-    const shownPresent = shown.disc === 'on'
-    if (shownPresent && want.present && shown.title !== want.title) return this.sequence('change')
-    if (shownPresent && !want.present) return this.sequence('stow')
-    if (!shownPresent && want.present) return this.sequence('unstow')
-    if (!shownPresent) return
-    // 同一首:只差在转不转。上一次起转还没落针就被暂停,那几只计时器作废。
+    const wantTitle = want.present ? want.title : ''
+    // 唱片永远在转盘上(素面 = 没歌),所以只有「印的是哪一首」会引出换片那一串。
+    if (shown.title !== wantTitle) return this.sequence()
     this.clearTimers()
+    if (!want.present) {
+      // 没歌:唱臂归位、转盘停,素面唱片留在盘上(空转盘会被读成「坏了」)。
+      this.patch({ spinning: false, arm: 'rest', lifted: false, armMotion: 'settle' })
+      return
+    }
+    // 同一首:只差在转不转。上一次起转还没落针就被暂停,那几只计时器作废。
     if (want.playing) this.startPlaying()
     else this.pause()
   }
@@ -168,7 +171,7 @@ export class DeckController {
     this.clearTimers()
     this.patch({
       title: want.present ? want.title : '',
-      disc: want.present ? 'on' : 'stowed',
+      disc: 'on',
       sleeve: 'in',
       arm: want.present ? 'track' : 'rest',
       lifted: want.present && !want.playing,
@@ -206,13 +209,12 @@ export class DeckController {
   }
 
   /**
-   * 换歌 / 收片 / 放片那一串。三种只是从哪一步开始、在哪一步结束:
-   *   change:归位 → 收片 → 换封套 → 放片
-   *   stow:  归位 → 收片 → 封套变素面
-   *   unstow:            换封套 → 放片
+   * 换片那一串:唱臂归位 → 唱片收进封套 → 封套换成新的一首 → 唱片滑出落回转盘。
+   * 换到「没歌」也走同一串,只是回来的是一张**素面唱片**(没有标签)——空转盘看着像坏了,
+   * 而唱机上留着一张唱片才是「现在没放」的样子。
    * 跑完 `busy` 落下,再比一次(此刻若在放,就是起转 + 落针到**此刻的**播放位置)。
    */
-  private sequence(kind: 'change' | 'stow' | 'unstow'): void {
+  private sequence(): void {
     this.clearTimers()
     if (this.reducedMotion()) {
       this.patch({ busy: true, fading: true })
@@ -224,34 +226,32 @@ export class DeckController {
       return
     }
 
-    const steps: Array<() => number> = []
-    if (kind !== 'unstow') {
-      steps.push(() => {
+    const steps: Array<() => number> = [
+      () => {
         const settled = this.snap.arm === 'rest' && !this.snap.lifted
         this.patch({ busy: true, arm: 'rest', lifted: !settled, armMotion: 'move', spinning: false })
         return settled ? 0 : MUSIC_ARM_MOVE_MS
-      })
-      steps.push(() => {
+      },
+      () => {
         this.patch({ lifted: false, disc: 'stowed' })
         return MUSIC_STOW_MS
-      })
-    }
-    steps.push(() => {
-      this.patch({ busy: true, sleeve: 'out' })
-      return MUSIC_SWAP_MS / 2
-    })
-    steps.push(() => {
-      // 读**这一刻**想要的歌名:一串跑着时又换了一首,封套直接换成最新那一首。
-      const want = this.desired
-      this.patch({ title: kind === 'stow' || !want?.present ? '' : want.title, sleeve: 'in' })
-      return MUSIC_SWAP_MS / 2
-    })
-    if (kind !== 'stow') {
-      steps.push(() => {
+      },
+      () => {
+        this.patch({ busy: true, sleeve: 'out' })
+        return MUSIC_SWAP_MS / 2
+      },
+      () => {
+        // 读**这一刻**想要的歌名:一串跑着时又换了一首,封套直接换成最新那一首。
+        // 没歌就换成空串 —— 回到盘上的是一张素面唱片。
+        const want = this.desired
+        this.patch({ title: want?.present ? want.title : '', sleeve: 'in' })
+        return MUSIC_SWAP_MS / 2
+      },
+      () => {
         this.patch({ disc: 'on' })
         return MUSIC_STOW_MS
-      })
-    }
+      },
+    ]
 
     const run = (i: number) => {
       if (i >= steps.length) {
