@@ -50,6 +50,7 @@ export {
   type ObsidianVaultSnapshot,
   type SnapshotStore,
 } from './obsidian/snapshot.js'
+export { judgeObsidianState, resolveObsidianState } from './obsidian/state.js'
 export { ObsidianVault, OBSIDIAN_SYSTEM_ID, type ObsidianVaultOptions } from './obsidian/vault.js'
 export { FolderDriver } from './folder/driver.js'
 export { FolderVault, FOLDER_SYSTEM_ID, type FolderVaultOptions } from './folder/vault.js'

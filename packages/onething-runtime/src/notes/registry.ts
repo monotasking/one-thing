@@ -34,6 +34,22 @@ export class NoteSystemRegistry {
   }
 
   /**
+   * 在册的驱动本身(只读快照)。
+   *
+   * 给「问每个驱动它自己那句自述」的读者用 —— 今天只有一个:设置页要的
+   * 「这个系统此刻什么状态」。**这只方法不认识任何一个驱动的名字**,所以加一种
+   * 笔记系统仍然是一个目录 + 一行注册。
+   */
+  registeredDrivers(): readonly NoteSystemDriver[] {
+    return [...this.drivers]
+  }
+
+  /** 按 id 取一个驱动。不在册 = `null`。 */
+  driver(id: string): NoteSystemDriver | null {
+    return this.drivers.find(driver => driver.id === id) ?? null
+  }
+
+  /**
    * 按配置重问一遍所有驱动。
    *
    * **先认领先得**:同一个根被两个驱动都认下来时,注册在前的那个赢 —— 判据是
@@ -41,6 +57,24 @@ export class NoteSystemRegistry {
    */
   async refresh(config: NotesConfig): Promise<NoteVault[]> {
     this.config = config
+    this.discovered = await this.discoverAll(config)
+    return this.vaults()
+  }
+
+  /**
+   * 按一份配置问一遍所有驱动,**不改这张表的状态**。
+   *
+   * 它是 `refresh` 的身子;单独露出来是因为有一个读者要的是**另一份配置下**的
+   * 答案:设置页要画「名册里的全部库」,包括被用户关掉的那些 —— 关掉的库必须
+   * 画得出来才关得回来。那一发传的是「把偏好全清空」的同一份配置
+   * (`{...config, systems: {}, vaults: {}}`),于是每个驱动自己那两道开关闸
+   * 全部放行。
+   *
+   * **这里没有为那个读者开一格新端口**:驱动的两道闸读的本来就是配置,
+   * 「不筛」就是「传一份没有偏好的配置」。加一种笔记系统仍然是一个目录 + 一行
+   * 注册 —— 这只方法一个驱动的名字都不认识。
+   */
+  async discoverAll(config: NotesConfig): Promise<NoteVault[]> {
     const claimed = new Map<string, NoteVault>()
     for (const driver of this.drivers) {
       let vaults: NoteVault[]
@@ -56,8 +90,7 @@ export class NoteSystemRegistry {
         claimed.set(key, vault)
       }
     }
-    this.discovered = [...claimed.values()]
-    return this.vaults()
+    return [...claimed.values()]
   }
 
   /**

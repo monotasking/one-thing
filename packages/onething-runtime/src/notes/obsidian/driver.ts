@@ -14,9 +14,16 @@
  * 抹掉等于「用户关掉 Obsidian 窗口,笔记库就消失了」。
  */
 
-import { isNoteSystemEnabled, type NotesConfig, type NoteSystemDriver, type NoteVault } from '../types.js'
+import {
+  isNoteSystemEnabled,
+  type NotesConfig,
+  type NoteSystemDriver,
+  type NoteSystemState,
+  type NoteVault,
+} from '../types.js'
 import type { ObsidianCli } from './cli.js'
 import { ObsidianRegistry, vaultNameFromPath } from './registry.js'
+import { resolveObsidianState } from './state.js'
 import type { SnapshotStore } from './snapshot.js'
 import { ObsidianVault, OBSIDIAN_SYSTEM_ID, type ObsidianVaultLogger } from './vault.js'
 
@@ -31,6 +38,18 @@ export class ObsidianDriver implements NoteSystemDriver {
   readonly id = OBSIDIAN_SYSTEM_ID
 
   constructor(private readonly options: ObsidianDriverOptions) {}
+
+  /**
+   * 「Obsidian 此刻什么状态」—— **这个问题的答案住在这里**,不住装配层。
+   *
+   * 名册与 CLI 是它构造时就拿到的两件,所以装配层不必为了问这一句再把它们
+   * 单独提出来;判法本身在 `./state.ts`(一只纯函数 + 一层取读数的包装)。
+   *
+   * **只读**:读一次名册 + 试连一次 socket,一条命令都不发。
+   */
+  state(): Promise<NoteSystemState> {
+    return resolveObsidianState(this.options.registry, this.options.cli)
+  }
 
   async discover(config: NotesConfig): Promise<NoteVault[]> {
     if (!isNoteSystemEnabled(config, this.id)) return []

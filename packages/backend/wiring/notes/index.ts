@@ -40,6 +40,9 @@ import {
   FileSnapshotStore,
   createNodeProcessRunner,
   createSocketLivenessProbe,
+  type NoteSystemDriver,
+  type NoteSystemState,
+  type NoteVault,
   type NotesConfig,
 } from '@onething/runtime/notes'
 import type { AppSettings } from '@shared/ipc.js'
@@ -120,7 +123,39 @@ export interface NotesSubsystem {
    * 因此不用为了喊一声而多 import 一个 store。
    */
   refresh(settings?: AppSettings): Promise<void>
+  /**
+   * **名册的全貌** —— 设置页要的那一份(P4)。
+   *
+   * 与 `registry.vaults()` 的差别只有一句:那一份是**在册的**(用户关掉的库不在
+   * 里面,消费方本来就不该看见它们);这一份是**名册里的全部**,因为一个关掉的
+   * 库必须画得出来才关得回来。做法是拿一份「偏好全清空」的配置再问一遍驱动
+   * (判词在 `NoteSystemRegistry.discoverAll` 上),**不为它开新端口**。
+   *
+   * `systems` 只收**答得出那句自述的**驱动(`NoteSystemDriver.state?`);目录驱动
+   * 不实现它,所以它不在里面 —— 一个文件夹没有「在不在跑」这回事。**这里没有
+   * 一张按驱动 id 列的名单**:加一种笔记系统仍然只是一个目录 + 一行注册。
+   *
+   * 不可信宿主答**两个空格**,与 `refresh` 那一档同一条理由(见文件头)。
+   * **一条 CLI 命令都不发**:读一次名册 + 试连一次 socket,两样都不会把 app
+   * 拉起来。
+   */
+  inventory(settings?: AppSettings): Promise<NotesInventory>
+  /**
+   * 单问一个系统此刻的状态。答 `undefined` = 不在册,或这个驱动没有 app 可问。
+   *
+   * 问的是**驱动自己**(它构造时就拿着自己的名册与命令行口),所以调用方不必、
+   * 也不许再 new 一台探针出来 —— 那就是第二份判据。
+   */
+  systemState(driverId: string): Promise<NoteSystemState | undefined>
   dispose(): void
+}
+
+/** `inventory()` 的答案。 */
+export interface NotesInventory {
+  /** 名册里的**全部**库(含被关掉的)。顺序 = 注册顺序 × 驱动自己的顺序。 */
+  vaults: NoteVault[]
+  /** 有 app 的那些系统此刻的状态,键 = 驱动 id。 */
+  systems: Record<string, NoteSystemState>
 }
 
 /**
@@ -161,13 +196,49 @@ export function createNotesSubsystem(options: BootstrapNotesOptions = {}): Notes
     log.debug('note vaults refreshed', { count: vaults.length })
   }
 
+  /**
+   * 问一个驱动它自己那句自述。**这里没有任何一个驱动的名字** —— 有没有状态
+   * 可说是驱动自己声明的(`NoteSystemDriver.state?`),不是装配层的一张名单。
+   */
+  const askDriverState = async (driver: NoteSystemDriver): Promise<NoteSystemState | undefined> => {
+    if (driver.state === undefined) return undefined
+    try {
+      return await driver.state()
+    } catch (error) {
+      // 问不出状态不该让整块设置面塌掉:答「没装」是这一档最保守的话
+      // (屏上那一句只说「没有找到」,不会把人支去做任何事)。
+      log.warn('resolving a note-system state failed', { system: driver.id }, error)
+      return 'not-installed'
+    }
+  }
+
+  const systemState = async (driverId: string): Promise<NoteSystemState | undefined> => {
+    if (!trusted()) return undefined
+    const driver = registry.driver(driverId)
+    return driver === null ? undefined : await askDriverState(driver)
+  }
+
+  const inventory = async (settings?: AppSettings): Promise<NotesInventory> => {
+    if (!trusted()) return { vaults: [], systems: {} }
+    const config = toNotesConfig(settings ?? getSettings())
+    // 「偏好全清空」= 不筛。判词在 `discoverAll` 上。
+    const vaults = await registry.discoverAll({ ...config, systems: {}, vaults: {} })
+    const systems: Record<string, NoteSystemState> = {}
+    // 遍历**在册的驱动**,答得出的才进表 —— 不遍历任何一张写死的名单。
+    for (const driver of registry.registeredDrivers()) {
+      const state = await askDriverState(driver)
+      if (state !== undefined) systems[driver.id] = state
+    }
+    return { vaults, systems }
+  }
+
   const unwatchSettings = watchSettingsChanged(event => {
     void refresh(event.settings).catch((error: unknown) => {
       log.warn('refreshing note vaults after a settings change failed', {}, error)
     })
   })
 
-  return { registry, refresh, dispose: unwatchSettings }
+  return { registry, refresh, inventory, systemState, dispose: unwatchSettings }
 }
 
 /**
@@ -202,6 +273,17 @@ export function bootstrapNotes(
  */
 export function getNoteSystemRegistry(): NoteSystemRegistry {
   return getCurrentBackend('notes').notes.registry
+}
+
+/**
+ * 整只子系统(P4:`notes` RPC 域要的是 `inventory` 与 `registry` 两样)。
+ *
+ * 与上面那只同族、同一条时序(读当前实例,未装配抛)。域拿整只而不是拿
+ * `registry`,是因为「名册的全貌」与「系统状态」这两句话的产地在子系统上,
+ * 不在注册表上 —— 注册表只认识**在册的**那一份。
+ */
+export function getNotesSubsystem(): NotesSubsystem {
+  return getCurrentBackend('notes').notes
 }
 
 /**

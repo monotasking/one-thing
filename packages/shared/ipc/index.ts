@@ -872,6 +872,18 @@ export type {
 } from "./search.js";
 export { searchRouter, searchWindowRouter } from "./search.js";
 
+// notes 域(P4,`docs/design/notes-obsidian-cli-2026-09.md` §4.6)
+export type {
+	NoteSystemState,
+	NoteSystemStatusDto,
+	NoteVaultDto,
+	NotesListResponse,
+	NotesOpenInAppRequest,
+	NotesOpenInAppResponse,
+	NotesRoutes,
+} from "./notes.js";
+export { notesRouter } from "./notes.js";
+
 // User prompt snippet types
 export type {
 	UserPrompt,

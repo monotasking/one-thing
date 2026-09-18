@@ -6,6 +6,7 @@ import { BrowserSettings } from './BrowserSettings'
 import { NetworkSettings } from './NetworkSettings'
 import { SearchSettings } from './SearchSettings'
 import { SearchStorage } from './SearchStorage'
+import { NotesSettings } from './NotesSettings'
 import { PermissionGrants } from './PermissionGrants'
 import { PetSettings } from './PetSettings'
 import { Section } from './Section'
@@ -43,6 +44,7 @@ export type SettingsPageId =
   | 'dock'
   | 'open'
   | 'search'
+  | 'notes'
   | 'browser'
   | 'network'
   | 'permissions'
@@ -110,6 +112,15 @@ export const SETTINGS_PAGES: readonly SettingsPageSpec[] = [
       </>
     ),
   },
+  /*
+   * 笔记(P4,`docs/design/notes-obsidian-cli-2026-09.md` §4.6)。**排在「搜索」
+   * 之后**:笔记库是检索与附件的来源,两页说的是相邻的一件事;而它与浏览器一样
+   * 是「配一次就不再看」的一页,所以仍在那五页天天要改的东西之后。
+   *
+   * 它自己画两节(Obsidian / 其他笔记目录),所以这里**不包 `Section`** ——
+   * 一页两节时节标与页标题不是同一句话(同 `pet` 那一行)。
+   */
+  { id: 'notes', titleKey: 'settings.pageNotes', layout: 'form', render: () => <NotesSettings /> },
   {
     id: 'browser',
     titleKey: 'settings.sectionBrowser',

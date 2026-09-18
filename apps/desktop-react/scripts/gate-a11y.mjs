@@ -946,6 +946,11 @@ async function main() {
       'dock',
       'open',
       'search',
+      // 笔记(P4)。这一屏在 server 宿主上扫到的是**没装那一档**:`notes.list` 在
+      // 不可信宿主上答空表,壳落到「没有找到 Obsidian」—— 总开关 + 两节的说明句 +
+      // 两句空态都在场,库表不画。库表那一档的名字由单测守
+      // (`content/settings/__tests__/notes-settings.test.tsx`,按 `启用 · {库名}` 取的)。
+      'notes',
       'browser',
       'network',
       'permissions',

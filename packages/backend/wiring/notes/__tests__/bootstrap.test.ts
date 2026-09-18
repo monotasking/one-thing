@@ -17,6 +17,7 @@ import {
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
 } from '../../settings/events.js'
+import type { NoteSystemDriver, NoteSystemState } from '@onething/runtime/notes'
 import { createNotesSubsystem, obsidianSocketPath, toNotesConfig } from '../index.js'
 
 let tmpDir: string
@@ -152,6 +153,75 @@ describe('settings:changed 串联', () => {
     configureSettingsEventBroadcaster(later)
     subsystem.dispose()
     expect(getSettingsEventBroadcaster()).toBe(later)
+  })
+})
+
+/**
+ * **「有没有状态可说」由驱动自述**(P4 review 打回的那一条)。
+ *
+ * 装配层从前拿一张 `Map<驱动 id, 取状态的闭包>` 枚举,于是加一种笔记系统除了
+ * 「一行 register」还得往那张表上补一行,而且两个 Obsidian 的名字因此进了
+ * wiring 文件。改成驱动自述之后,判据变成「这个驱动实不实现 `state()`」——
+ * 下面两只假驱动就是这条判据的两端。
+ */
+describe('系统状态由驱动自述', () => {
+  /** 一只最小的假驱动。`state` 给了就答得出,不给就是「这个问题对我不成立」。 */
+  function fakeDriver(id: string, state?: () => Promise<NoteSystemState>): NoteSystemDriver {
+    return state === undefined
+      ? { id, discover: async () => [] }
+      : { id, discover: async () => [], state }
+  }
+
+  it('inventory().systems 只收答得出的那些 —— 不答的那只一格都没有', async () => {
+    const subsystem = createNotesSubsystem({ storePath: tmpDir, isLocallyTrusted: () => true })
+    subsystem.registry.register(fakeDriver('has-app', async () => 'not-running'))
+    subsystem.registry.register(fakeDriver('no-app'))
+    try {
+      const { systems } = await subsystem.inventory(createDefaultSettings())
+      expect(systems['has-app']).toBe('not-running')
+      expect('no-app' in systems).toBe(false)
+    } finally {
+      subsystem.dispose()
+    }
+  })
+
+  it('systemState(id) 走的是同一条:不在册 / 不答 都是 undefined', async () => {
+    const subsystem = createNotesSubsystem({ storePath: tmpDir, isLocallyTrusted: () => true })
+    subsystem.registry.register(fakeDriver('has-app', async () => 'running'))
+    subsystem.registry.register(fakeDriver('no-app'))
+    try {
+      expect(await subsystem.systemState('has-app')).toBe('running')
+      expect(await subsystem.systemState('no-app')).toBeUndefined()
+      expect(await subsystem.systemState('never-registered')).toBeUndefined()
+    } finally {
+      subsystem.dispose()
+    }
+  })
+
+  it('驱动的 state() 抛了不拖累别人:那一格退成「没装」,别的驱动照答', async () => {
+    const subsystem = createNotesSubsystem({ storePath: tmpDir, isLocallyTrusted: () => true })
+    subsystem.registry.register(fakeDriver('angry', async () => { throw new Error('boom') }))
+    subsystem.registry.register(fakeDriver('calm', async () => 'running'))
+    try {
+      const { systems } = await subsystem.inventory(createDefaultSettings())
+      expect(systems['angry']).toBe('not-installed')
+      expect(systems['calm']).toBe('running')
+    } finally {
+      subsystem.dispose()
+    }
+  })
+
+  it('夹紧的宿主上一个驱动都不问', async () => {
+    const subsystem = createNotesSubsystem({ storePath: tmpDir, isLocallyTrusted: () => false })
+    let asked = 0
+    subsystem.registry.register(fakeDriver('has-app', async () => { asked += 1; return 'running' }))
+    try {
+      expect(await subsystem.inventory(createDefaultSettings())).toEqual({ vaults: [], systems: {} })
+      expect(await subsystem.systemState('has-app')).toBeUndefined()
+      expect(asked).toBe(0)
+    } finally {
+      subsystem.dispose()
+    }
   })
 })
 

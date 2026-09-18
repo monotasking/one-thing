@@ -52,6 +52,7 @@ import { oauthRouter } from '@shared/ipc/oauth.js'
 import { modelsRouter, providersRouter } from '@shared/ipc/providers.js'
 import { schedulerRouter } from '@shared/ipc/scheduler.js'
 import { searchRouter } from '@shared/ipc/search.js'
+import { notesRouter } from '@shared/ipc/notes.js'
 import { scratchpadRouter } from '@shared/ipc/scratchpad.js'
 import { sessionCommandRouter } from '@shared/ipc/session-command.js'
 import { sessionsRouter } from '@shared/ipc/sessions.js'
@@ -97,6 +98,7 @@ import { resourcesRpcHandlers } from './domains/resources.js'
 import { providersRpcHandlers } from './domains/providers.js'
 import { schedulerRpcHandlers } from './domains/scheduler.js'
 import { searchRpcHandlers } from './domains/search.js'
+import { notesRpcHandlers } from './domains/notes.js'
 import { scratchpadRpcHandlers } from './domains/scratchpad.js'
 import { sessionCommandRpcHandlers } from './domains/session-command.js'
 import { sessionsRpcHandlers } from './domains/sessions.js'
@@ -363,6 +365,16 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // 装的就是从前 `POST /api/search/query` 背后的同一个闭包)。`executeAction` 与
   // `SEARCH_ACTION` 不在这里(前者是窗口活,在 searchWindowRouter 上;后者是推送)。
   { id: 'rpc:search', mount: ctx => { ctx.registerRpcDomain(searchRouter, searchRpcHandlers) } },
+  /*
+   * notes(P4,`docs/design/notes-obsidian-cli-2026-09.md` §4.6)。三条只读面 +
+   * 一个前台动作,投影 `backend.notes` 这只子系统。
+   *
+   * **位置:紧跟 search 之后**。硬约束只有一条 —— 它要 `backend.notes` 在场,
+   * 而笔记子系统是在 `bootstrapProjectDirs` 之后起的,远在 RPC 表之前;挂在这
+   * 一行是因为它与 search 是同一类东西(读一份派生出来的名册),挨着好找。
+   * 写面不在这里:改开关走 `settings.saveSettings`。
+   */
+  { id: 'rpc:notes', mount: ctx => { ctx.registerRpcDomain(notesRouter, notesRpcHandlers) } },
   /*
    * 原子 K2a(`docs/design/atom-2026-09.md` §4「所有出口都是投影」的「RPC 域」那一行)。
    *

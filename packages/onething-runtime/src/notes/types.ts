@@ -92,6 +92,17 @@ export interface NoteVault {
    * 「这是上次看到的配置」,而不是假装什么都正常。
    */
   readonly degraded?: NoteVaultUnavailableReason
+  /**
+   * 这个库此刻在它自己的 app 里**开着**吗。
+   *
+   * **缺席 = 这个系统没有「打开 / 没打开」这个概念**(目录库就是这一档:一个
+   * 文件夹永远在那儿),不是 `false`。今天唯一的读者是设置页 —— 它要把
+   * 「未在 app 里打开」如实写在那一行上,而不是把那一行从表里抹掉。
+   *
+   * 消费方不许拿它当「能不能发命令」的判据:那一句是每个库自己的
+   * `canQueryLive`(库开着 ∧ app 活着),两个条件,住在实现里。
+   */
+  readonly isOpen?: boolean
 
   dailyNote(date?: Date, options?: NoteReadOptions): Promise<DailyNoteRef>
   createDailyNote(date?: Date, options?: NoteForegroundOptions): Promise<string>
@@ -153,6 +164,17 @@ export interface NoteSystemDriver {
   readonly id: string
   /** 按配置产出这个系统今天在册的库。失败不抛,返回空表并自己记日志。 */
   discover(config: NotesConfig): Promise<NoteVault[]>
+  /**
+   * **这个系统此刻什么状态** —— 驱动自述,没有这回事的就不给这个方法。
+   *
+   * 它必须是**只读**的:允许读自己的名册、探一次活,**不许发任何命令**
+   * (发命令 = 把那台 app 拉起来,纪律 4)。
+   *
+   * 缺席不是「不知道」,是「这个问题对我不成立」:目录驱动没有 app,一个文件夹
+   * 没有「装没装 / 跑没跑」可言,所以 `FolderDriver` 不实现它,它也就不会出现在
+   * `notes.list` 的 `systems` 表里。
+   */
+  state?(): Promise<NoteSystemState>
 }
 
 // ============================================================================
@@ -199,6 +221,22 @@ export function isNoteSystemEnabled(config: NotesConfig, driverId: string): bool
 // ============================================================================
 // 错误
 // ============================================================================
+
+/**
+ * 一个**有 app 的**笔记系统此刻的状态(P4:设置页那一句状态话的判据)。
+ *
+ * 没有 app 的系统(目录库)压根不答这个问题 —— 「状态」是关于那台 app 的,
+ * 一个文件夹没有状态可言。所以答这句话的是**驱动自己**,不是这张表。
+ */
+export type NoteSystemState =
+  /** app 活着,命令发得出去。 */
+  | 'running'
+  /** app 没跑。后台只读快照,前台动作会把它拉起来。 */
+  | 'not-running'
+  /** 那条命令行通道没开(或这个平台上探不出来)。 */
+  | 'cli-not-registered'
+  /** 这台机器上压根没有这个系统。 */
+  | 'not-installed'
 
 export type NoteVaultUnavailableReason =
   /** 那个系统的 app 没在跑,而这条路不许把它拉起来。 */

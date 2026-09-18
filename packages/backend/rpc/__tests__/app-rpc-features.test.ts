@@ -115,6 +115,9 @@ const EXPECTED_DOMAIN_FEATURES = [
   // 一行 electron 都不碰),本批兑现 —— 按 `context.transport` 分叉:ipc 走桌面
   // 那份整机搜索,http 走 `server/search-providers.ts` 那个单槽端口。
   ['rpc:search', 'search'],
+  // P4:笔记库(三条只读面 + 一个前台动作)。紧跟 search —— 同一类东西(读一份
+  // 派生出来的名册),而它的硬约束只有「`backend.notes` 已在场」。
+  ['rpc:notes', 'notes'],
   // 原子 K2a:一个**通用**资源域(list / describe / read / do),零个 scheme 名。
   // 它排在最后一个域上,理由与装配顺序同一条:它要资源内核(缝 4.1)。
   ['rpc:resources', 'resources'],

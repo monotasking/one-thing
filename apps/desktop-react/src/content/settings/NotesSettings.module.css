@@ -1,0 +1,131 @@
+/* ── 设置页「笔记」那一页(P4)─────────────────────────────────────────────
+ * 行形全部消费 `Settings.module.css` 那一族(`.section` / `.settingRow*` /
+ * `.sectionNote`)。这只文件只画**那一族没有的两种行**:
+ *  · 库行 —— 左边是身份(名 + 路径),右边是三件控件;
+ *  · 目录行 —— 左边一条路径,右边一颗钮。
+ *
+ * 零字面色值 / px / ms:每一个数都取自 `styles/tokens.css`。焦点环一个字都不写
+ * (配方与载体分家,全在 `tokens.css` + `global.css`),这里也没有一处
+ * `outline: none`。
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/* 「读不到」那一行:一句话 + 一颗「重试」,横排。 */
+.errorRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+/*
+ * 库表。它**不是**一块独立滚区 —— 零 `max-height`、零 `overflow`:这一节是页里
+ * 的一段,滚动归 `.page` 那一层的那一根条(嵌套滚动那条禁令,判词在
+ * `settings/pages.tsx` 的 `layout` 那一格上)。20 个库只是把页拉长。
+ */
+.vaults {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.vaultRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  min-width: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+
+/*
+ * 关掉的库**降一档、不隐藏**:看不见的东西开不回来。
+ * 用 opacity 而不是换一格颜色,是因为这一行里有四种前景色(名 / 路径 / 小字 /
+ * 控件),逐个换等于把配方抄四遍。
+ */
+.vaultRowOff {
+  opacity: var(--btn-disabled-o);
+}
+
+.vaultIdentity {
+  /* 收缩下界解开(挤压律一):它 `flex: 1` 却不解开的话,右边三件会被挤出行外。 */
+  flex: 1;
+  min-width: 0;
+}
+
+/* 结构行:**只截断不换行**(挤压纪律)。 */
+.vaultName {
+  font-size: var(--fs-label);
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * 路径那一行。`ui/PathText` 自己在每个 `/` 后面插 `<wbr>`,所以这里允许换行 ——
+ * 一条长路径在窄档里折两行,好过截成一个认不出是哪儿的头。
+ */
+.vaultPath {
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+/* 「未在 Obsidian 中打开」:跟在路径后面的小字,不是徽标、不换底色。 */
+.vaultNotOpen {
+  margin-left: var(--sp-2);
+  color: var(--text-3);
+}
+
+.vaultActions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+/*
+ * Tooltip 包在一层 `<span>` 上而不是直接包那件控件 —— 与 `SearchSettings` 的
+ * `.blockedAction` 逐字同一条理由:**禁着的控件收不到指针事件**,包在它身上的
+ * 提示永远不出现(那种提示比没有更糟,人会以为坏了)。
+ */
+.vaultAction {
+  display: inline-flex;
+  align-items: center;
+}
+
+.folders {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.folderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.folderPath {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+/* 拒收的理由:就地一行,与填错的输入框同一格颜色。 */
+.folderError {
+  font-size: var(--fs-meta);
+  color: var(--danger);
+}
+
+/*
+ * 日记格式那一格:给一个上界,不然它会把右半边整个吃掉。
+ * 下界交给 `ui/Input` 自己(它已经声明过最小宽)。
+ */
+.dailyFormatInput {
+  flex: none;
+  width: var(--key-slot-w);
+}
