@@ -100,7 +100,8 @@ export function TodoHeader({ placement }: StripHeaderProps & { placement: 'strip
       {({ scopeProps }) => (
         <div {...scopeProps} className={s.wrap} data-placement={placement} data-testid="todo-header">
           <div ref={headRef} className={s.head}>
-            <ListChecks className={s.appIcon} strokeWidth={1.75} aria-hidden="true" />
+            {/* 图标 + 清单名 = 这扇窗的**抓手**:按住拖 = 抓这一格标签(判词在 `workbench/LeafStrip.tsx`)。 */}
+            <ListChecks className={s.appIcon} data-strip-grab="" strokeWidth={1.75} aria-hidden="true" />
             {renaming ? (
               <RenameField
                 value={renaming.title}
@@ -114,6 +115,7 @@ export function TodoHeader({ placement }: StripHeaderProps & { placement: 'strip
                 <Tooltip content={title}>
                   <ButtonBase
                     className={s.name}
+                    data-strip-grab=""
                     data-todo-name=""
                     data-testid="todo-switcher-trigger"
                     aria-haspopup="dialog"

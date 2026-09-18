@@ -209,7 +209,27 @@ export function LeafStrip({
           连带正文上也开不出「并排」(那一档要先从条上查出活动标签是谁)。所以这一格自述
           「我是哪一格」:id 与 tab 同源(`activeId`),装了几份照旧由 `slots` 说。
         */
-        <div className={s.header} data-strip-header="" data-tab-id={headerTab?.id} data-tab-slots={headerTab?.slots && headerTab.slots > 1 ? String(headerTab.slots) : undefined}>{header}</div>
+        /*
+          **抓手**(U1-fix 第二半,同一条报障的另一头):没有标签就没有东西可抓,于是这扇窗
+          **拖不进别人的标签条**,按住头只会挪窗子(真机:窗子从 321,171 挪到 205,45,全程没有拖影)。
+          头自己说哪一块是抓手(`[data-strip-grab]`,内容那一侧标),按在上面 = 按在那一格标签上,
+          与别处抓标签逐字同一条路(`onTabPointerDown` → `useTabDrag`)。`stopPropagation` 挡住檐那一层的
+          拖窗手势 —— 不挡的话一次按下会同时挪窗又撕格。头上其余空白照旧拖窗。
+        */
+        <div
+          className={s.header}
+          data-strip-header=""
+          data-tab-id={headerTab?.id}
+          data-tab-slots={headerTab?.slots && headerTab.slots > 1 ? String(headerTab.slots) : undefined}
+          onPointerDown={(event) => {
+            if (!headerTab || !(event.target instanceof Element)) return
+            if (!event.target.closest('[data-strip-grab]')) return
+            event.stopPropagation()
+            onTabPointerDown?.(headerTab.id, event)
+          }}
+        >
+          {header}
+        </div>
       ) : (
       <div className={s.tabs}>
         {/*

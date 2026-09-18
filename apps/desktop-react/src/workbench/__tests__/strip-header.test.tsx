@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { vi } from 'vitest'
+import { LeafStrip } from '../LeafStrip'
 import { PaneTree } from '../PaneTree'
 import { registerContentKind, resetContentKinds } from '../kinds'
 import type { ContentRef, StripHeaderProps } from '../kinds'
@@ -92,5 +94,45 @@ describe('内容自带的头', () => {
     expect(screen.queryByTestId('own-header')).toBeNull()
     expect(document.querySelector('[data-strip-header]')).toBeNull()
     expect(screen.getAllByRole('tab')).toHaveLength(1)
+  })
+})
+
+/**
+ * **抓手**(U1-fix 第二半,2026-09-18 用户报「没有了 tab,导致不能拖入到 tab header 中」):
+ * 头把标签条换掉之后,这扇窗没有一格标签可抓,按住头只会挪窗子。头里标了 `[data-strip-grab]`
+ * 的那一块 = 那一格标签;按在别处照旧是檐的空白(拖窗)。
+ */
+describe('自带头的抓手', () => {
+  const mountStrip = () => {
+    const onTabPointerDown = vi.fn()
+    const onChromePointerDown = vi.fn()
+    render(
+      <LeafStrip
+        header={<div><span data-testid="grab" data-strip-grab="">把手</span><span data-testid="blank">空白</span></div>}
+        tabs={[{ id: 'note:a', label: 'a' }]}
+        activeId="note:a"
+        label="tabs"
+        onSelect={() => {}}
+        onClose={() => {}}
+        onTabPointerDown={onTabPointerDown}
+        onChromePointerDown={onChromePointerDown}
+      />,
+    )
+    return { onTabPointerDown, onChromePointerDown }
+  }
+
+  it('按在抓手上 = 按在那一格标签上,而且不拖窗', () => {
+    const { onTabPointerDown, onChromePointerDown } = mountStrip()
+    fireEvent.pointerDown(screen.getByTestId('grab'))
+    expect(onTabPointerDown).toHaveBeenCalledTimes(1)
+    expect(onTabPointerDown.mock.calls[0][0]).toBe('note:a')
+    expect(onChromePointerDown).not.toHaveBeenCalled()
+  })
+
+  it('按在头的别处 = 檐的空白,照旧拖窗', () => {
+    const { onTabPointerDown, onChromePointerDown } = mountStrip()
+    fireEvent.pointerDown(screen.getByTestId('blank'))
+    expect(onTabPointerDown).not.toHaveBeenCalled()
+    expect(onChromePointerDown).toHaveBeenCalledTimes(1)
   })
 })

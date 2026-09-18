@@ -27,6 +27,8 @@
 }
 
 .appIcon {
+  /* 它是这扇窗的抓手(按住拖 = 抓这一格标签),所以指针是「可抓」。 */
+  cursor: grab;
   flex: none;
   width: var(--icon-sm);
   height: var(--icon-sm);
