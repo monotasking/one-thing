@@ -53,6 +53,16 @@ describe('parseNowPlaying', () => {
     expect(parseNowPlaying(STOPPED)?.status).toBe('stopped')
   })
 
+  it('reads through the upgrade banner ncm-cli prints on stdout (2026-09-18)', () => {
+    // Byte-for-byte what `ncm-cli state 2>/dev/null` printed once 0.1.7 was
+    // published: a blank line, the banner, a blank line, then the envelope.
+    // Whole-stream JSON.parse read this as null — every start "failed" while
+    // the songs played, and the panel said nothing was playing.
+    const banner = '\n│ 有新版本: 0.1.6 → 0.1.7  运行 ncm-cli upgrade 升级\n\n'
+    expect(parseNowPlaying(banner + JSON.stringify(JSON.parse(PLAYING), null, 2))?.status).toBe('playing')
+    expect(parseNowPlaying(banner + PLAYING)?.title).toBe('可惜没如果 - 林俊杰')
+  })
+
   it('returns null for output it cannot read, rather than a fake stop', () => {
     expect(parseNowPlaying('')).toBeNull()
     expect(parseNowPlaying('daemon 无响应（3s 超时）')).toBeNull()

@@ -12,6 +12,7 @@
  *  - the bash security policy (which subcommands run free vs. ask)
  */
 
+import { extractFirstJsonObject } from '../../cli-json.js'
 import { NcmCliDriver, extractNcmCliJson } from '../../ncm-cli-driver.js'
 import { parseLrcLyric, type OnethingMusicLyricLine } from '../../lyrics.js'
 import { parseNowPlaying } from '../../now-playing.js'
@@ -49,13 +50,8 @@ function trackSeconds(ms: unknown): number | undefined {
 }
 
 function parseSearchRecords(stdout: string): MusicSearchRecord[] {
-  let raw: NcmSearchRecordRaw[]
-  try {
-    const parsed = JSON.parse(stdout) as { data?: { records?: NcmSearchRecordRaw[] } }
-    raw = parsed.data?.records ?? []
-  } catch {
-    return []
-  }
+  const parsed = extractFirstJsonObject<{ data?: { records?: NcmSearchRecordRaw[] } }>(stdout)
+  const raw = Array.isArray(parsed?.data?.records) ? parsed.data.records : []
 
   const records: MusicSearchRecord[] = []
   for (const record of raw) {
@@ -84,12 +80,7 @@ function parseSearchRecords(stdout: string): MusicSearchRecord[] {
 }
 
 function parseLyricReply(stdout: string): OnethingMusicLyricLine[] {
-  let data: { lyric?: string; noLyric?: boolean } | undefined
-  try {
-    data = (JSON.parse(stdout) as { data?: { lyric?: string; noLyric?: boolean } }).data
-  } catch {
-    return []
-  }
+  const data = extractFirstJsonObject<{ data?: { lyric?: string; noLyric?: boolean } }>(stdout)?.data
   if (data?.noLyric || !data?.lyric) return []
   return parseLrcLyric(data.lyric)
 }

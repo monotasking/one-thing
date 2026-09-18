@@ -173,8 +173,14 @@ export function createOnethingMusicReliableRunner(
     throw lastError
   }
 
-  const readState = async (): Promise<OnethingMusicNowPlaying | null> =>
-    cli.parse.nowPlaying(await run('read', ['state']))
+  const readState = async (): Promise<OnethingMusicNowPlaying | null> => {
+    const stdout = await run('read', ['state'])
+    const state = cli.parse.nowPlaying(stdout)
+    // An unreadable reply used to vanish into "not playing": the 2026-09-18
+    // upgrade banner made every read null for hours and nothing said so.
+    if (state === null) log.warn('state reply not understood', { binary: cli.binary, head: stdout.slice(0, 160) })
+    return state
+  }
 
   return {
     run,

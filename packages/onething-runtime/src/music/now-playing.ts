@@ -18,6 +18,7 @@
  *     position frozen. See {@link parseNowPlaying}.
  */
 
+import { extractFirstJsonObject } from './cli-json.js'
 import type { OnethingMusicProcessRunner } from './types.js'
 
 export interface OnethingMusicNowPlaying {
@@ -53,12 +54,7 @@ interface RawState {
  * hit pause.
  */
 export function parseNowPlaying(stdout: string): OnethingMusicNowPlaying | null {
-  let raw: RawState | undefined
-  try {
-    raw = (JSON.parse(stdout) as { state?: RawState }).state
-  } catch {
-    return null
-  }
+  const raw = extractFirstJsonObject<{ state?: RawState }>(stdout)?.state
   if (!raw || typeof raw.status !== 'string') return null
 
   const position = typeof raw.position === 'number' ? raw.position : 0

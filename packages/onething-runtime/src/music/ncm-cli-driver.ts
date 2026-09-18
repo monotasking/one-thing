@@ -31,6 +31,7 @@ import {
   type OnethingMusicProcessRunner,
   type OnethingMusicToolStatus,
 } from './types.js'
+import { extractFirstJsonObject } from './cli-json.js'
 
 const NCM_CLI_BIN = 'ncm-cli'
 const NCM_CLI_PACKAGE = '@music163/ncm-cli'
@@ -56,40 +57,9 @@ interface NcmCliEnvelope {
   [key: string]: unknown
 }
 
-/**
- * ncm-cli prints stray non-JSON lines (e.g. `[orpheus] orpheus://...`) before
- * its JSON envelope, so scan for the first balanced top-level object rather
- * than JSON.parse-ing the whole stream.
- */
+/** See {@link extractFirstJsonObject}: the envelope sits after stray lines. */
 export function extractNcmCliJson(stdout: string): NcmCliEnvelope | null {
-  const start = stdout.indexOf('{')
-  if (start === -1) return null
-
-  let depth = 0
-  let inString = false
-  let escaped = false
-  for (let index = start; index < stdout.length; index += 1) {
-    const char = stdout[index]
-    if (inString) {
-      if (escaped) escaped = false
-      else if (char === '\\') escaped = true
-      else if (char === '"') inString = false
-      continue
-    }
-    if (char === '"') inString = true
-    else if (char === '{') depth += 1
-    else if (char === '}') {
-      depth -= 1
-      if (depth === 0) {
-        try {
-          return JSON.parse(stdout.slice(start, index + 1)) as NcmCliEnvelope
-        } catch {
-          return null
-        }
-      }
-    }
-  }
-  return null
+  return extractFirstJsonObject<NcmCliEnvelope>(stdout)
 }
 
 function parseVersion(stdout: string): string | undefined {

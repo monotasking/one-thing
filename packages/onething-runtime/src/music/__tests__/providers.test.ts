@@ -59,6 +59,13 @@ describe('track length travels from search to the programme (2026-09-18, record 
     const records = ncmMusicProvider.cli.parse.searchRecords(stdout)
     expect(records.map((r) => r.durationS)).toEqual([194, undefined, undefined])
   })
+  it('search and lyric replies read through the upgrade banner (2026-09-18)', () => {
+    const banner = '\n│ 有新版本: 0.1.6 → 0.1.7  运行 ncm-cli upgrade 升级\n\n'
+    const search = JSON.stringify({ data: { records: [{ id, originalId: 546724668, name: '柔软', duration: 194036 }] } })
+    expect(ncmMusicProvider.cli.parse.searchRecords(banner + search).map((r) => r.title)).toEqual(['柔软'])
+    const lyric = JSON.stringify({ data: { lyric: '[00:01.00]愿你的善良\n[00:05.00]能被温柔以待' } })
+    expect(ncmMusicProvider.cli.parse.lyric(banner + lyric).length).toBe(2)
+  })
   it('normalizeEntry: the DJ copies ms verbatim; code-built entries may carry durationS', () => {
     const fromDj = ncmMusicProvider.ids.normalizeEntry({ encryptedId: id, originalId: 546724668, title: 't', duration: 194036 })
     const fromCode = ncmMusicProvider.ids.normalizeEntry({ encryptedId: id, originalId: '1', title: 't', durationS: 201 })
