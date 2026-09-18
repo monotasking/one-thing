@@ -67,6 +67,8 @@ export interface OnethingRadioSpin {
   at: string
   /** The real key, when known (radio-started spins always know it). */
   encryptedId?: string
+  /** Track length in seconds, when the programme entry or the player knew it. */
+  durationS?: number
 }
 
 export interface OnethingRadioProgrammeEntry {
@@ -92,6 +94,12 @@ export interface OnethingRadioProgrammeEntry {
    * songs that never came). Absent = unknown, play normally.
    */
   playFlag?: boolean
+  /**
+   * Track length in seconds, copied from the search record at curation time
+   * (the DJ copies ncm's `duration` in ms; `normalizeEntry` converts). The
+   * panel sizes each song's groove on the record by it. Absent = unknown.
+   */
+  durationS?: number
 }
 
 export interface OnethingRadioProgramme {
@@ -130,7 +138,7 @@ export interface OnethingRadioStore {
    * intent with no intentSetAt counts as expired. Returns true when it cleared.
    */
   expireStaleIntent(ttlMs: number): boolean
-  recordPlayed(title: string, encryptedId?: string): void
+  recordPlayed(title: string, encryptedId?: string, durationS?: number): void
   recordSkipped(title: string, encryptedId?: string): void
   recordLoved(title: string, encryptedId?: string): void
   recordError(message: string | undefined): void
@@ -299,9 +307,9 @@ export function createOnethingRadioStore(
       writeJsonFile(inboxPath, { entries: [] })
       return fresh.length
     },
-    recordPlayed(title, encryptedId) {
+    recordPlayed(title, encryptedId, durationS) {
       const brief = readBrief()
-      brief.played = [...brief.played, { title, at: new Date().toISOString(), encryptedId }].slice(
+      brief.played = [...brief.played, { title, at: new Date().toISOString(), encryptedId, durationS }].slice(
         -SPIN_HISTORY_LIMIT,
       )
       writeBrief(brief)

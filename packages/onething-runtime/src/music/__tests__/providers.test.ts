@@ -43,3 +43,27 @@ describe('music provider registry', () => {
     expect(started.args[0]).toBe('play')
   })
 })
+
+describe('track length travels from search to the programme (2026-09-18, record grooves)', () => {
+  const id = 'F6428008EECD076CD1A6081923841B34'
+  it('ncm search: `duration` in ms becomes durationS; nonsense is dropped', () => {
+    const stdout = JSON.stringify({
+      data: {
+        records: [
+          { id, originalId: 546724668, name: '柔软', artists: [{ name: '房东的猫' }], playFlag: true, duration: 194036 },
+          { id, originalId: 1, name: 'x', duration: 'long' },
+          { id, originalId: 2, name: 'y', duration: 999_999_999 },
+        ],
+      },
+    })
+    const records = ncmMusicProvider.cli.parse.searchRecords(stdout)
+    expect(records.map((r) => r.durationS)).toEqual([194, undefined, undefined])
+  })
+  it('normalizeEntry: the DJ copies ms verbatim; code-built entries may carry durationS', () => {
+    const fromDj = ncmMusicProvider.ids.normalizeEntry({ encryptedId: id, originalId: 546724668, title: 't', duration: 194036 })
+    const fromCode = ncmMusicProvider.ids.normalizeEntry({ encryptedId: id, originalId: '1', title: 't', durationS: 201 })
+    const none = ncmMusicProvider.ids.normalizeEntry({ encryptedId: id, originalId: '1', title: 't' })
+    const junk = ncmMusicProvider.ids.normalizeEntry({ encryptedId: id, originalId: '1', title: 't', duration: 3 })
+    expect([fromDj?.durationS, fromCode?.durationS, none?.durationS, junk?.durationS]).toEqual([194, 201, undefined, undefined])
+  })
+})

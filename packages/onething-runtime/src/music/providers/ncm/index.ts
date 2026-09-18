@@ -37,6 +37,15 @@ interface NcmSearchRecordRaw {
   artistName?: unknown
   artists?: Array<{ name?: unknown }>
   playFlag?: unknown
+  /** Milliseconds. */
+  duration?: unknown
+}
+
+/** ncm reports `duration` in milliseconds. Anything outside 5s–2h is not a song length we trust. */
+function trackSeconds(ms: unknown): number | undefined {
+  if (typeof ms !== 'number' || !Number.isFinite(ms)) return undefined
+  const s = Math.round(ms / 1000)
+  return s >= 5 && s <= 7200 ? s : undefined
 }
 
 function parseSearchRecords(stdout: string): MusicSearchRecord[] {
@@ -68,6 +77,7 @@ function parseSearchRecords(stdout: string): MusicSearchRecord[] {
       title: typeof record.name === 'string' ? record.name : '',
       artist,
       playFlag: typeof record.playFlag === 'boolean' ? record.playFlag : undefined,
+      durationS: trackSeconds(record.duration),
     })
   }
   return records

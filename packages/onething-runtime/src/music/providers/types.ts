@@ -77,6 +77,8 @@ export interface MusicSearchRecord {
   title: string
   artist?: string
   playFlag?: boolean
+  /** Track length in seconds, when the catalogue says (ncm: `duration`, in ms). */
+  durationS?: number
 }
 
 export interface MusicCliEnvelope {

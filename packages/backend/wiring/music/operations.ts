@@ -19,6 +19,7 @@ import type {
   MusicCommandResponse,
   MusicRadioState,
 } from '@shared/ipc/music.js'
+import { recentSpins } from './recent-spins.js'
 import type { MusicServiceScope } from './service.js'
 import type { RadioScope } from './radio.js'
 
@@ -57,8 +58,11 @@ function readRadioBrief(): MusicRadioState {
     canResume: programme.entries.length > 0 || brief.onDeck !== undefined,
     upNext: programme.entries[0]?.title,
     volume: readPlayerVolume(),
+    startedAt: brief.active ? brief.startedAt : undefined,
+    recent: recentSpins(brief),
   }
 }
+
 
 /**
  * Deliberately no `stop`. It tears down the play session, after which the next

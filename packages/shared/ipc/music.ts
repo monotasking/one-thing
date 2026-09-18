@@ -140,6 +140,29 @@ export interface MusicRadioState {
 	upNext?: string
 	/** ncm-cli's persisted volume (user-prefs.json); `state` reports null. */
 	volume?: number
+	/** When this station run started (ISO). The panel counts record sides from here. */
+	startedAt?: string
+	/**
+	 * Songs the station started this run, **newest first**, at most
+	 * `RADIO_RECENT_LIMIT`. A song is recorded when it starts, so while
+	 * something is playing the head of this list is that song.
+	 */
+	recent?: MusicRadioSpinDTO[]
+}
+
+/** How many recent spins the brief carries. */
+export const RADIO_RECENT_LIMIT = 12
+
+/** One song the station played. */
+export interface MusicRadioSpinDTO {
+	title: string
+	/** ISO time it started. */
+	at: string
+	encryptedId?: string
+	/** Seconds, when known. */
+	durationS?: number
+	/** What the listener did while it played: hearted it, or skipped it. */
+	verdict?: 'love' | 'skip'
 }
 
 /** The DJ's patter to play in the gap before a song (main -> renderer). */
@@ -225,6 +248,8 @@ export interface MusicProgrammeEntryDTO {
 	note?: string
 	/** false = rights-restricted; the conductor will skip it. */
 	playFlag?: boolean
+	/** Track length in seconds, when the catalogue said. */
+	durationS?: number
 }
 
 export interface MusicGetProgrammeResponse extends MusicBaseResponse {

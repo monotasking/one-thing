@@ -156,6 +156,22 @@ const RADIO_BRIEF_SCHEMA: JsonSchema = {
     canResume: { type: 'boolean', description: 'Whether radioResume has anything to play.' },
     upNext: { type: 'string', description: 'What plays next, when that is knowable at all.' },
     volume: { type: 'number', description: "The player's persisted volume, 0-100, when the CLI keeps one." },
+    startedAt: { type: 'string', description: 'When this station run started (ISO).' },
+    recent: {
+      type: 'array',
+      description: 'Songs started this run, newest first; while playing, the head is the song on now.',
+      items: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          at: { type: 'string' },
+          encryptedId: { type: 'string' },
+          durationS: { type: 'number' },
+          verdict: { type: 'string', enum: ['love', 'skip'] },
+        },
+        required: ['title', 'at'],
+      },
+    },
   },
   required: ['active', 'intent', 'programmeLength', 'canResume'],
 }
@@ -194,6 +210,7 @@ const PROGRAMME_SCHEMA: JsonSchema = {
           say: { type: 'string', description: "The DJ's patter for this entry." },
           note: { type: 'string', description: 'e.g. 点歌 for a song the listener asked for.' },
           playFlag: { type: 'boolean', description: 'false = rights-restricted; the conductor skips it.' },
+          durationS: { type: 'number', description: 'Track length in seconds, when known.' },
         },
         required: ['encryptedId', 'title'],
       },

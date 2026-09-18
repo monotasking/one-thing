@@ -553,7 +553,7 @@ async function tellRadioHost(text: string): Promise<{ reply: Promise<string | un
  */
 function onSongStarted(entry: OnethingRadioProgrammeEntry, playerTitle: string): void {
   const store = getRadioStore()
-  store.recordPlayed(playerTitle, entry.encryptedId)
+  store.recordPlayed(playerTitle, entry.encryptedId, entry.durationS ?? getMusicNowPlaying()?.duration)
   // 节目单条目没有单独的歌手一格(播放器的标题本来就是「歌名 - 歌手」),`artist` 就不填 —— 不从
   // 标题里拆一个出来冒充。
   reportMoment(moments => moments.trackStarted({ title: playerTitle, encryptedId: entry.encryptedId }))
@@ -1211,6 +1211,7 @@ async function requestSong(
     title: playable.artist ? `${playable.title} - ${playable.artist}` : playable.title,
     note: '点歌',
     playFlag: playable.playFlag,
+    durationS: playable.durationS,
   })
   if (!entry) return { success: false, error: '搜索结果的 id 不可用' }
 
@@ -1249,6 +1250,7 @@ function getProgrammeSnapshot(): {
     say?: string
     note?: string
     playFlag?: boolean
+    durationS?: number
   }>
   onDeck?: string
 } {
@@ -1261,6 +1263,7 @@ function getProgrammeSnapshot(): {
       say: entry.say,
       note: entry.note,
       playFlag: entry.playFlag,
+      durationS: entry.durationS,
     })),
     onDeck: store.readBrief().onDeck?.title,
   }
