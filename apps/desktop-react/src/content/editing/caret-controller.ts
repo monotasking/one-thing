@@ -14,6 +14,9 @@ import {
   linesFromEdit,
   parseUnits,
   prefixOf,
+  renumberOrdered,
+  startsBlock,
+  type ListUnit,
   type Unit,
 } from './units'
 
@@ -74,6 +77,10 @@ interface ActiveState {
   compositionRange?: [number, number]
   pointer: boolean
   dragFrom: number
+  /** 这一格是落脚空行时,当初为它垫的分隔空行(离开时没写字,连它们一起收掉)。 */
+  pad?: { above: boolean; below: boolean }
+  /** 结构编辑 / 撤销 / 外部改动之后,这份状态里的行号已经不再指向原来那一行:离开时不再按它收落脚空行。 */
+  stale?: boolean
 }
 
 type Bias = 'low' | 'high'
@@ -160,6 +167,11 @@ function offsetAtPoint(element: HTMLElement, x: number, y: number): number {
   return viewOffsetOf(element, node, offset)
 }
 
+/** 与 `unit` 同一种、同一层的空项(任务不带勾,有序用它自己的序号 —— 它自己往下挪一格)。 */
+function blankItemLike(unit: ListUnit): string {
+  return unit.type === 'ordered' ? prefixOf(unit) : continuedPrefix(unit)
+}
+
 export class CaretController {
   private active: ActiveState | null = null
   private readonly history = new DocHistory()
@@ -182,6 +194,21 @@ export class CaretController {
 
   get activeStart(): number | null {
     return this.active?.start ?? null
+  }
+
+  /**
+   * 光标正停着的**落脚空行**(回车退出列表 / 引用 / 段落之后停的那一个空行,见 `enter`):它此刻
+   * 算一个空段落,有一行可画、可输入(`parseUnits` 的 `draft`)。状态是算出来的 —— 光标在一个段落上、
+   * 那一行是空的,就是它。
+   */
+  get draftLine(): number | undefined {
+    const a = this.active
+    return a && a.unit.type === 'para' && (this.doc.lines[a.start] ?? 'x').trim() === '' ? a.start : undefined
+  }
+
+  /** 此刻的全部单元(落脚空行算一个)。控制器里切单元一律问它。 */
+  private units(): Unit[] {
+    return parseUnits(this.doc.lines, this.draftLine)
   }
 
   /** 此刻的光标(只读快照)。给实验台 / 真机门自检用:屏幕选区换算回原文要等于 `focus`。 */
@@ -208,7 +235,10 @@ export class CaretController {
   /* ── 进出一项 ─────────────────────────────────────────────────────────── */
 
   open(start: number, anchor: number | 'end', focus?: number | 'end'): void {
-    const unit = parseUnits(this.doc.lines).find(u => u.start === start)
+    const leaving = this.active
+    if (leaving && leaving.start !== start) start = this.dropDraft(leaving, start)
+    // 要打开的是一个空行 = 落脚空行(只有 `landDraft` 与撤销会这样要)。
+    const unit = parseUnits(this.doc.lines, start).find(u => u.start === start)
     if (!unit) { this.close(); return }
     const value = editValueOf(unit, this.doc.lines)
     const clamp = (x: number | 'end') => Math.max(0, Math.min(value.length, x === 'end' ? value.length : x))
@@ -233,6 +263,7 @@ export class CaretController {
 
   close(): void {
     if (!this.active) return
+    this.dropDraft(this.active)
     this.active = null
     this.options.onActiveChange?.(null)
     this.dom.commit()
@@ -332,7 +363,7 @@ export class CaretController {
     this.doc.setLines(lines)
     // 这一行改完之后不再是原来那一种单元了(比如标题删掉了空格变成段落):按新形重新打开,
     // 否则编辑区还按旧形画,文字会整行消失、光标丢掉(09-17 真机)。
-    const reparsed = parseUnits(this.doc.lines).find(u => u.start === a.start)
+    const reparsed = parseUnits(this.doc.lines, a.start).find(u => u.start === a.start)
     if (!reparsed || reparsed.type !== a.unit.type) {
       const keep = { anchor: a.anchor, focus: a.focus }
       this.dom.commit()
@@ -389,6 +420,7 @@ export class CaretController {
 
   private withLines(mutate: (lines: string[]) => void): void {
     this.record('struct')
+    if (this.active) this.active.stale = true
     const lines = this.doc.lines.slice()
     mutate(lines)
     this.doc.setLines(lines)
@@ -401,7 +433,7 @@ export class CaretController {
   /** 看得见的单元(光标能停的那些)。 */
   private visibleUnits(): Unit[] {
     const hidden = this.hiddenSet()
-    const units = parseUnits(this.doc.lines)
+    const units = this.units()
     return hidden.size ? units.filter(u => !hidden.has(u.start)) : units
   }
 
@@ -410,7 +442,7 @@ export class CaretController {
     const a = this.active
     if (!a) return undefined
     const hidden = this.hiddenSet()
-    const units = parseUnits(this.doc.lines)
+    const units = this.units()
     const index = units.findIndex(u => u.start === a.start)
     for (let i = index + delta; i >= 0 && i < units.length; i += delta) if (!hidden.has(units[i].start)) return units[i]
     return undefined
@@ -423,7 +455,7 @@ export class CaretController {
   private adjacent(delta: -1 | 1): { unit: Unit; hidden: boolean } | undefined {
     const a = this.active
     if (!a) return undefined
-    const units = parseUnits(this.doc.lines)
+    const units = this.units()
     const unit = units[units.findIndex(u => u.start === a.start) + delta]
     return unit ? { unit, hidden: this.hiddenSet().has(unit.start) } : undefined
   }
@@ -445,31 +477,165 @@ export class CaretController {
 
   /* ── 结构编辑(每一条都交回一个光标)───────────────────────────────────── */
 
+  /**
+   * 回车。一条规则管所有块:**有字 = 接着写同一种;空的 = 退出一层**,退到底是原地一个落脚空行
+   * (光标不动,接着打字就是一段普通文字,打 `- [ ] ` / `## ` 又变回列表项 / 标题)。退出从不删掉
+   * 你所在的那一行、也不把光标送回上一行(09-18 用户报:空任务项再按回车,整行被删、光标跳回上一项)。
+   *
+   *  · 列表项 有字:在光标处拆成两项,后一项同一种(任务 → 未勾,有序 → 序号 +1,后面的兄弟顺延);
+   *    光标在字的最前面 → 上面插一个空的同类项,光标跟着字走(勾选状态留在原项上)。
+   *  · 列表项 空:缩进的先退一层;顶层的去掉记号,原地变成落脚空行。
+   *  · 标题 有字:光标后面的字另起一个任务项(待办文档的约定);光标在字的最前面 → 在标题上面开一行:
+   *    上面紧挨着的是列表就接一项,否则一个落脚空行。标题 空:去掉 `#`,原地变成落脚空行。
+   *  · 引用:当前行有字 → 另起一行 `> `;当前是空的 `>` 行 → 收掉这一行,在引用下面落脚。
+   *  · 段落:段内换行;光标在末尾、当前行已经是空行(第二下回车)→ 收掉它,在下面另起一段落脚。
+   *    落脚空行本身再按回车什么都不做。
+   *  · 代码块:永远是换行,不退出(出代码块用 ↓ 或 ⌘↵)。
+   *
+   * 有选区时先删掉选中的字再按上面的规则走。Shift+↵ 是软换行(`softBreak`)。
+   */
   private enter(): void {
     const a = this.active
     if (!a) return
     const unit = a.unit
+    const lo = Math.min(a.anchor, a.focus)
+    const hi = Math.max(a.anchor, a.focus)
+    if (isMultiline(unit)) { this.enterMultiline(lo, hi); return }
+    // 单行的块:先删掉选中的字(一步),再按光标处的规则走。
+    if (lo !== hi) { this.replaceRange(lo, hi, '', 'struct'); if (this.active) this.enter(); return }
+    const { value, analysis } = a
     if (isList(unit)) {
-      if (!a.value.trim()) {
+      if (!value.trim()) {
         if (unit.indent > 0) { this.indent(-1); return }
-        this.removeEmptyUnit(unit)
+        this.landDraft(unit.start, 1, [])
         return
       }
-      const { left, right } = splitValueAt(a.analysis, a.value, a.focus)
+      const { left, right } = splitValueAt(analysis, value, lo)
+      if (!left.trim()) {
+        this.withLines(lines => {
+          lines.splice(unit.start, 1, blankItemLike(unit), (unit.type === 'ordered' ? continuedPrefix(unit) : prefixOf(unit)) + value.replace(/^\s+/, ''))
+          if (unit.type === 'ordered') renumberOrdered(lines, unit.start + 1)
+        })
+        this.open(unit.start + 1, 0)
+        return
+      }
       this.withLines(lines => {
         lines.splice(unit.start, 1, prefixOf(unit) + left.replace(/\s+$/, ''), continuedPrefix(unit) + right.replace(/^\s+/, ''))
+        if (unit.type === 'ordered') renumberOrdered(lines, unit.start + 1)
       })
       this.open(unit.start + 1, 0)
       return
     }
     if (unit.type === 'heading') {
-      const head = a.value.match(/^#{1,6}\s+/)?.[0] ?? ''
-      const { left, right } = splitValueAt(a.analysis, a.value, Math.max(a.focus, head.length))
+      const head = value.match(/^#{1,6}\s+/)?.[0] ?? ''
+      if (!value.slice(head.length).trim()) { this.landDraft(unit.start, 1, []); return }
+      const { left, right } = splitValueAt(analysis, value, Math.max(lo, head.length))
+      if (!left.slice(head.length).trim()) {
+        // 上面那一项看不见(收在「已完成」里、或上一节折着)就不接 —— 接进去的新项当场也看不见。
+        const before = this.adjacent(-1)
+        const above = before && !before.hidden ? before.unit : undefined
+        if (above && isList(above)) {
+          this.withLines(lines => {
+            lines.splice(above.end + 1, 0, continuedPrefix(above))
+            if (above.type === 'ordered') renumberOrdered(lines, above.end + 1)
+          })
+          this.open(above.end + 1, 'end')
+          return
+        }
+        this.landDraft(unit.start, 0, [])
+        return
+      }
       this.withLines(lines => { lines.splice(unit.start, 1, left.replace(/\s+$/, ''), `- [ ] ${right.replace(/^\s+/, '')}`) })
       this.open(unit.start + 1, 0)
+    }
+  }
+
+  /** 回车落在段落 / 引用 / 代码块里(规则见 `enter`)。 */
+  private enterMultiline(lo: number, hi: number): void {
+    const a = this.active
+    if (!a) return
+    const unit = a.unit
+    if (unit.type === 'code') { this.replaceRange(lo, hi, '\n', 'struct'); return }
+    const value = a.value.slice(0, lo) + a.value.slice(hi)
+    if (unit.type === 'para' && !value.trim()) return
+    const lineStart = value.lastIndexOf('\n', lo - 1) + 1
+    const newline = value.indexOf('\n', lo)
+    const lineEnd = newline === -1 ? value.length : newline
+    const current = value.slice(lineStart, lineEnd)
+    const onLastLine = lineEnd === value.length
+    if (unit.type === 'quote') {
+      if (onLastLine && /^>\s?$/.test(current)) {
+        const kept = value.slice(0, Math.max(0, lineStart - 1))
+        this.landDraft(unit.start, a.span, kept.trim() ? linesFromEdit(unit, kept) : [])
+        return
+      }
+      // 光标在这一行的 `> ` 记号里:拆在记号后面(上面留一个空的引用行,光标跟着字走)。
+      if (lo !== hi) { this.replaceRange(lo, hi, '\n> ', 'struct'); return }
+      const at = Math.max(lo, lineStart + (current.match(/^>\s?/)?.[0].length ?? 0))
+      this.replaceRange(at, at, '\n> ', 'struct')
       return
     }
-    this.replaceRange(Math.min(a.anchor, a.focus), Math.max(a.anchor, a.focus), '\n', 'struct')
+    if (onLastLine && lineStart > 0 && current.trim() === '' && lo === hi) {
+      this.landDraft(unit.start, a.span, linesFromEdit(unit, value.slice(0, lineStart - 1)))
+      return
+    }
+    this.replaceRange(lo, hi, '\n', 'struct')
+  }
+
+  /** Shift+↵:软换行。段落 / 代码块插一个换行,引用接一行 `> `;列表项装不下换行,不动;标题照回车。 */
+  private softBreak(): void {
+    const a = this.active
+    if (!a) return
+    const lo = Math.min(a.anchor, a.focus)
+    const hi = Math.max(a.anchor, a.focus)
+    if (a.unit.type === 'para' || a.unit.type === 'code') this.replaceRange(lo, hi, '\n', 'struct')
+    else if (a.unit.type === 'quote') this.replaceRange(lo, hi, '\n> ', 'struct')
+    else if (a.unit.type === 'heading') this.enter()
+  }
+
+  /**
+   * 把 `from` 起的 `count` 行换成 `keep` 加一个**落脚空行**,光标放进去。上一行有字就先垫一个分隔空行
+   * —— 不垫的话写下的字在 markdown 里会被读成上一项 / 上一段的续行;下一行是普通文字同理。
+   * 垫的行记在光标状态上,落脚空行一个字没写就离开时一起收掉(`dropDraft`)。
+   */
+  private landDraft(from: number, count: number, keep: readonly string[]): void {
+    let at = from
+    let pad = { above: false, below: false }
+    this.withLines(lines => {
+      lines.splice(from, count, ...keep)
+      const base = from + keep.length
+      const previous = lines[base - 1]
+      const next = lines[base]
+      const above = base > 0 && !!previous?.trim()
+      const below = next !== undefined && !!next.trim() && !startsBlock(next)
+      lines.splice(base, 0, ...(above ? [''] : []), '', ...(below ? [''] : []))
+      at = base + (above ? 1 : 0)
+      pad = { above, below }
+    })
+    this.open(at, 0)
+    if (this.active?.start === at) this.active.pad = pad
+  }
+
+  /**
+   * 离开落脚空行时它还是空的:收掉它和当初垫的分隔空行 —— 它一个字没写过,不留痕迹(所以「空项回车、
+   * 再点别处」的结果与从前一样是那一项没了,只是光标不再被送走)。两边剩下连着的空行时再收一行。
+   * 不记撤销:撤销直接回到按回车之前。返回 `line` 收掉之后的新行号。
+   */
+  private dropDraft(a: ActiveState, line = -1): number {
+    if (a.stale || a.unit.type !== 'para' || a.value.trim() || (this.doc.lines[a.start] ?? 'x').trim() !== '') return line
+    const lines = this.doc.lines.slice()
+    let from = a.start
+    let to = a.start
+    if (a.pad?.above && from > 0 && !lines[from - 1].trim()) from--
+    if (a.pad?.below && to + 1 < lines.length && !lines[to + 1].trim()) to++
+    lines.splice(from, to - from + 1)
+    let removed = to - from + 1
+    if (from > 0 && !lines[from - 1].trim() && (from === lines.length || !lines[from].trim())) {
+      lines.splice(from - 1, 1)
+      removed++
+    }
+    this.doc.setLines(lines)
+    return line > to ? line - removed : line
   }
 
   private indent(delta: -1 | 1): void {
@@ -623,6 +789,7 @@ export class CaretController {
 
   /** 「+ 添加一项」:在最后一个任务后面插一行,记号照文档里已有任务项的写法。 */
   insertAfterLastTask(): void {
+    if (this.active) this.dropDraft(this.active)
     const units = parseUnits(this.doc.lines)
     const lastTask = [...units].reverse().find(u => u.type === 'task')
     const at = lastTask ? lastTask.end + 1 : this.doc.lines.length
@@ -706,9 +873,10 @@ export class CaretController {
     const current: HistoryEntry = { lines: this.doc.lines.slice(), caret: this.caretMemo() }
     const entry = redo ? this.history.redo(current) : this.history.undo(current)
     if (!entry) return
+    if (this.active) this.active.stale = true
     this.doc.setLines(entry.lines)
     const caret = entry.caret
-    if (caret && parseUnits(this.doc.lines).some(u => u.start === caret.start)) this.open(caret.start, caret.anchor, caret.focus)
+    if (caret && parseUnits(this.doc.lines, caret.start).some(u => u.start === caret.start)) this.open(caret.start, caret.anchor, caret.focus)
     else this.close()
   }
 
@@ -870,7 +1038,8 @@ export class CaretController {
       case 'Enter':
         return run(() => {
           if (mod) this.close()
-          else if (!(event.shiftKey && isList(a.unit))) this.enter()
+          else if (event.shiftKey) this.softBreak()
+          else this.enter()
         })
       case 'Tab':
         if (!isList(a.unit)) return false
@@ -915,6 +1084,8 @@ export class CaretController {
         if (!this.pasteLines(text)) this.replaceRange(lo, hi, text, 'struct')
         return
       case 'insertLineBreak':
+        this.softBreak()
+        return
       case 'insertParagraph':
         this.enter()
         return
@@ -1069,6 +1240,7 @@ export class CaretController {
     this.history.clear()
     const a = this.active
     if (!a) return
+    a.stale = true
     const lostEdits = this.doc.takeLostEdits()
     const mine = previous.slice(a.start, a.start + a.span)
     const found = locate(this.doc.lines, { start: a.start, expect: mine, lines: mine })

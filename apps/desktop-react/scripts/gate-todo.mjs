@@ -22,10 +22,10 @@
  *  ⑦ 勾选框:勾上的那一项先留着(< LINE_CHANGED_MS),到点收进「已完成」;
  *  ⑧ 删除:非空项行首退格 = 去掉勾选记号,文件里那一行变成段落;
  *  ⑨ 写坏文件那一类:编辑中外部改文件 → 两边的改动都在、没有重复行;
- *  ⑩ 把别的内容拖到这条**自带的头**上 = 插进这片叶(头把标签条换掉了,它得自己是一条能收东西的条);
- *  ⑪ 反过来:按住头上的**抓手**(图标 / 清单名)把待办窗拖进顶栏标签条 = 它变成那里的一格;
+ *  ⑪ 把别的内容拖到这条**自带的头**上 = 插进这片叶(头把标签条换掉了,它得自己是一条能收东西的条);
+ *  ⑫ 反过来:按住头上的**抓手**(图标 / 清单名)把待办窗拖进顶栏标签条 = 它变成那里的一格;
  *     按住头上空白处照旧是挪窗(没有标签可抓时,这扇窗曾经只挪得动、进不了别人的条);
- *  ⑫ 编辑器一致性自测 `?todo-lab`:30 / 30。
+ *  ⑬ 编辑器一致性自测 `?todo-lab`:30 / 30。
  *
  * `--prod` 跑构建产物;缺省是 dev 档(起一台 vite,端口 `ONETHING_GATE_VITE_PORT`,缺省 5195,
  * **不是用户的 5175**,也避开 chat-layout 的 5197 与 terminal 的 5198)。
@@ -184,7 +184,7 @@ async function main() {
   try {
     let rendererUrl = ''
     if (!PROD) {
-      console.log(`\n[0/12] dev 档:起一台 vite(端口 ${DEV_PORT},不是用户的 5175)`)
+      console.log(`\n[0/13] dev 档:起一台 vite(端口 ${DEV_PORT},不是用户的 5175)`)
       const { createServer } = await import('vite')
       vite = await createServer({
         configFile: path.join(appRoot, 'vite.config.ts'),
@@ -214,7 +214,7 @@ async function main() {
     await waitFor('渲染层完成一次 RPC 往返', () => page.evaluate(() => window.__d0?.rpcOk === true), 60_000)
     await waitFor('Dock 就位', () => page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-todo"]'))), 60_000)
 
-    console.log('\n[1/12] Dock 瓦开出待办窗:头画在叶的标签条上')
+    console.log('\n[1/13] Dock 瓦开出待办窗:头画在叶的标签条上')
     await page.click('[data-testid="dock-tile-todo"]')
     const head = await waitFor('头出现', () => page.evaluate(() => {
       const header = document.querySelector('[data-testid="todo-header"]')
@@ -227,7 +227,7 @@ async function main() {
     assert(head.tabsInChrome === 0, '① 那条檐上没有标签(一片叶只有一条头)')
     await waitFor('正文有内容', async () => (await panelRows(page)) > 0)
 
-    console.log('\n[2/12] ⌘F → 搜索「发票」→ ↵ 打开项,那一行在视野里')
+    console.log('\n[2/13] ⌘F → 搜索「发票」→ ↵ 打开项,那一行在视野里')
     await page.evaluate(() => document.querySelector('[data-testid="todo-panel"] [role="group"]')?.focus())
     await press(cdp, { key: 'f', code: 'KeyF', keyCode: 70, primary: true })
     await waitFor('弹层开、焦点在输入框', () =>
@@ -262,7 +262,7 @@ async function main() {
     }).catch((error) => { throw new Error(`${error.message}\n页面读数:${JSON.stringify(lastSeen)}`) })
     assert(revealed.inView, `② ↵ 打开「${revealed.name}」,命中那一行在视野里`)
 
-    console.log('\n[3/12] 切进 500 项清单:毫秒数与已完成收起')
+    console.log('\n[3/13] 切进 500 项清单:毫秒数与已完成收起')
     await openList(page, cdp, '大清单')
     const opened = await page.evaluate(async () => {
       const raf = () => new Promise((r) => requestAnimationFrame(() => r()))
@@ -291,7 +291,7 @@ async function main() {
     assert(opened.firstFrameMs <= budgetOf('openFirstFrameMs'), `③ 点开之后第一帧 ${opened.firstFrameMs}ms ≤ ${budgetOf('openFirstFrameMs')}`)
     assert(opened.openMs <= budgetOf('openMs'), `③ 整篇上屏 ${opened.openMs}ms ≤ ${budgetOf('openMs')}(${LANE} 档)`)
 
-    console.log('\n[4/12] 折一节、再展开')
+    console.log('\n[4/13] 折一节、再展开')
     const hitTest = await page.evaluate(() => {
       const button = document.querySelector('[data-testid="todo-panel"] [data-fold^="heading:"]')
       const r = button.getBoundingClientRect()
@@ -312,7 +312,7 @@ async function main() {
     await waitFor('第 1 节展开', async () => (await panelRows(page)) === 311)
     assert(true, '④ 再点一次展开,311 项回来')
 
-    console.log('\n[5/12] 长清单中段回车 ×5:零长帧、每次只重建一项')
+    console.log('\n[5/13] 长清单中段回车 ×5:零长帧、每次只重建一项')
     await openRow(page, '第 5 节第 30 项')
     const rowsBeforeEnter = await panelRows(page)
     await page.evaluate(() => {
@@ -344,7 +344,7 @@ async function main() {
     assert(typed.longFrames.filter((d) => d >= budgetOf('enterLongFrameMs')).length === 0, `⑤ 回车 + 打字 ×5 零 ≥${budgetOf('enterLongFrameMs')}ms 长帧(读数 ${JSON.stringify(typed.longFrames)})`)
     assert(typed.remounts.every((n) => n <= budgetOf('enterRemounts')), `⑤ 一次回车重建的项 ≤${budgetOf('enterRemounts')}(读数 ${JSON.stringify(typed.remounts)})`)
 
-    console.log('\n[6/12] 滚动:清单底部连按回车,光标那一行一直在视野里')
+    console.log('\n[6/13] 滚动:清单底部连按回车,光标那一行一直在视野里')
     await openRow(page, '第 10 节第 50 项')
     let outOfView = 0
     for (let i = 0; i < 12; i++) {
@@ -369,7 +369,7 @@ async function main() {
     }))
     assert(afterEscape.panel, '⑥ 编辑中按 Esc 只离开这一项,待办窗还开着(main 上曾经整扇收掉)')
 
-    console.log('\n[7/12] 勾选框:勾上的那一项先留着,到点收进「已完成」')
+    console.log('\n[7/13] 勾选框:勾上的那一项先留着,到点收进「已完成」')
     const target = '第 2 节第 25 项'
     const lingered = await page.evaluate(async ({ needle, ms }) => {
       const find = () => [...document.querySelectorAll('[data-testid="todo-panel"] [data-unit]')].find((el) => el.textContent.includes(needle))
@@ -385,15 +385,17 @@ async function main() {
     }, { needle: target, ms: LINE_CHANGED_MS })
     assert(lingered.during && !lingered.after, `⑦ 勾上后 ${LINE_CHANGED_MS / 2}ms 还在、${LINE_CHANGED_MS * 1.5}ms 已收起(读数 ${JSON.stringify(lingered)})`)
 
-    console.log('\n[8/12] 删除:非空项行首退格 = 去掉勾选记号')
+    console.log('\n[8/13] 删除:非空项行首退格 = 去掉勾选记号')
     await openList(page, cdp, '收件箱')
     await press(cdp, ENTER)
     await waitFor('收件箱', async () => (await listName(page)) === '收件箱')
-    const point = await page.evaluate(() => {
+    // 清单名先换过来、正文后画上:等那一行真的在屏幕上再量(不等的话三趟里红过两趟)。
+    const point = await waitFor('「订周五」那一行画出来', () => page.evaluate(() => {
       const row = [...document.querySelectorAll('[data-testid="todo-panel"] [data-unit]')].find((el) => el.textContent.includes('订周五'))
+      if (!row?.firstElementChild) return undefined
       const box = row.firstElementChild.getBoundingClientRect()
       return { x: box.left + 1, y: box.top + box.height / 2 }
-    })
+    }))
     await page.mouse.click(point.x, point.y)
     await waitFor('进了编辑', () => page.evaluate(() => Boolean(document.querySelector('[data-testid="todo-panel"] [contenteditable="true"]'))))
     await press(cdp, { key: 'Home', code: 'Home', keyCode: 36 })
@@ -406,7 +408,7 @@ async function main() {
     }, 5_000)
     assert(!stripped.includes('- [ ] 订周五的会议室'), '⑧ 行首退格去掉了勾选记号,那一行落盘成段落')
 
-    console.log('\n[9/12] 编辑中外部改文件:两边的改动都在、没有重复行')
+    console.log('\n[9/13] 编辑中外部改文件:两边的改动都在、没有重复行')
     await openRow(page, '回邮件')
     await cdp.send('Input.insertText', { text: '(本地)' })
     await delay(1_000)
@@ -423,12 +425,49 @@ async function main() {
     assert(new Set(nonEmpty).size === nonEmpty.length, `⑨ 没有重复行(${nonEmpty.length} 行)`)
 
     /*
+     * 空项上再按一下回车 = 退出列表,**原地**落脚(09-18 用户报:第二下回车把那一行整个删了、光标跳回
+     * 上一项)。落脚的那一行是个空行:它得真的画出来、真的拿着焦点,打的字落在原处成一段普通文字。
+     */
+    console.log('\n[10/13] 空项再按回车:退出列表,原地落脚')
+    await openRow(page, '看一眼 CI')
+    await press(cdp, { key: 'End', code: 'End', keyCode: 35 })
+    await press(cdp, ENTER)
+    await press(cdp, ENTER)
+    const landing = await page.evaluate(() => {
+      const editable = document.querySelector('[data-testid="todo-panel"] [contenteditable="true"]')
+      const rows = [...document.querySelectorAll('[data-testid="todo-panel"] [data-unit]')]
+      const ci = rows.find((el) => el.textContent.includes('看一眼 CI'))
+      const row = editable?.closest('[data-unit]')
+      const box = editable?.getBoundingClientRect()
+      return {
+        focused: Boolean(editable) && document.activeElement === editable,
+        empty: editable?.textContent.replace(/\u200b/g, '') === '',
+        height: box ? Math.round(box.height) : 0,
+        below: Boolean(ci && box && box.top >= ci.getBoundingClientRect().bottom - 1),
+        isList: Boolean(row?.closest('ul, ol')),
+      }
+    })
+    assert(landing.focused && landing.empty && landing.height > 0 && landing.below && !landing.isList,
+      `⑩ 光标停在「看一眼 CI」下面一个画出来的空行上,不在列表里(${JSON.stringify(landing)})`)
+    await cdp.send('Input.insertText', { text: '随手记一笔' })
+    await press(cdp, { key: 'Escape', code: 'Escape', keyCode: 27 })
+    const landed = await waitFor('落盘', () => {
+      const text = readFileSync(inboxFile, 'utf-8')
+      return text.includes('随手记一笔') ? text : undefined
+    }, 5_000)
+    const landedLines = landed.split('\n')
+    const ciAt = landedLines.findIndex((line) => line.includes('看一眼 CI'))
+    assert(landedLines[ciAt] === '- [ ] 看一眼 CI 为什么红' && landedLines[ciAt + 1] === '' && landedLines[ciAt + 2] === '随手记一笔'
+      && !landedLines.some((line) => /^- \[ \]\s*$/.test(line)),
+      `⑩ 落盘:那一项原样在、下面空一行是那段字、没有空任务项残留(${JSON.stringify(landedLines.slice(ciAt, ciAt + 3))})`)
+
+    /*
      * 拖拽的落点地图按 `[role="tablist"]` 找条、按 `[data-tab-id]` 认格(`workbench/drop-geometry.ts`)。
      * 内容自带头的那一档条上没有 tablist —— U1 之后那片叶**整条檐在地图上不存在**,拖到头上没有任何
      * 落点(2026-09-18 用户报「没有了 tab,导致不能拖入到 tab header 中」)。这一步量的是修好之后的
      * 两件事:悬停时头上真有一层预示(标签那一档的预示是条腾出来的空位,头上没有格可腾),松手真的并进去。
      */
-    console.log('\n[10/12] 拖到自带的头上 = 插进这片叶')
+    console.log('\n[11/13] 拖到自带的头上 = 插进这片叶')
     await page.click('[data-testid="dock-tile-music"]')
     const spots = await waitFor('音乐那一格与待办的头都在屏上', () => page.evaluate(() => {
       const music = document.querySelector('[data-tab-id="panel:music"]')
@@ -450,22 +489,22 @@ async function main() {
       const rect = overlay.getBoundingClientRect()
       return { shape: overlay.dataset.shape, tone: overlay.dataset.tone, overHeader: Math.abs(rect.top - header.top) < 4 && rect.width > header.width / 2 }
     })
-    assert(Boolean(band), '⑩ 悬停在头上时屏幕上有预示(从前这里一点动静都没有)')
-    assert(band.shape === 'film' && band.tone === 'accept' && band.overHeader, `⑩ 那层预示是盖住这条头的薄膜(${JSON.stringify(band)})`)
+    assert(Boolean(band), '⑪ 悬停在头上时屏幕上有预示(从前这里一点动静都没有)')
+    assert(band.shape === 'film' && band.tone === 'accept' && band.overHeader, `⑪ 那层预示是盖住这条头的薄膜(${JSON.stringify(band)})`)
     await page.mouse.up()
     const bothTabs = await waitFor('音乐并进待办那片叶', () => page.evaluate(() => {
       const chrome = [...document.querySelectorAll('[data-pane-chrome]')].find((el) => el.querySelector('[data-tab-id="panel:todo"]'))
       const ids = chrome ? [...chrome.querySelectorAll('[data-tab-id]')].map((el) => el.getAttribute('data-tab-id')) : []
       return ids.includes('panel:music') ? ids : undefined
     }))
-    assert(bothTabs.includes('panel:todo') && bothTabs.includes('panel:music'), `⑩ 松手之后那片叶两格都在(${bothTabs.join(' / ')})`)
+    assert(bothTabs.includes('panel:todo') && bothTabs.includes('panel:music'), `⑪ 松手之后那片叶两格都在(${bothTabs.join(' / ')})`)
 
     /*
      * 反方向(同一条报障的另一头):头把标签条换掉之后这扇窗**没有一格标签可抓**,按住头只会挪窗子,
      * 拖不进别人的标签条。头上的抓手(`[data-strip-grab]`)= 那一格标签;空白处照旧拖窗。
      * 上一步音乐已经并进来了,这片叶现在是两格标签 —— 所以先关掉音乐那一格,回到「一格 + 自带头」的形。
      */
-    console.log('\n[11/12] 按住头上的抓手,把待办窗拖进顶栏的标签条')
+    console.log('\n[12/13] 按住头上的抓手,把待办窗拖进顶栏的标签条')
     await page.evaluate(() => {
       const chrome = [...document.querySelectorAll('[data-pane-chrome]')].find((el) => el.querySelector('[data-tab-id="panel:todo"]'))
       const music = chrome?.querySelector('[data-tab-id="panel:music"]')
@@ -482,7 +521,7 @@ async function main() {
       const f = float?.getBoundingClientRect()
       return { grab: { x: g.left + g.width / 2, y: g.top + g.height / 2 }, bar: { x: b.left + b.width * 0.6, y: b.top + b.height / 2 }, float: f ? [Math.round(f.left), Math.round(f.top)] : null }
     })
-    assert(Boolean(grabAt), '⑪ 头上有抓手,顶栏有标签条')
+    assert(Boolean(grabAt), '⑫ 头上有抓手,顶栏有标签条')
     await page.mouse.move(grabAt.grab.x, grabAt.grab.y)
     await page.mouse.down()
     await page.mouse.move(grabAt.grab.x + 20, grabAt.grab.y - 40, { steps: 4 })
@@ -492,16 +531,16 @@ async function main() {
       const float = document.querySelector('[data-testid="todo-header"]')?.closest('[data-float-body]')?.getBoundingClientRect()
       return { ghost: Boolean(document.querySelector('[class*="ghost"]')), float: float ? [Math.round(float.left), Math.round(float.top)] : null }
     })
-    assert(dragging.ghost, '⑪ 按住抓手拖起来的是那一格标签(有拖影),不是在挪窗')
-    assert(JSON.stringify(dragging.float) === JSON.stringify(grabAt.float), `⑪ 拖的途中窗子一动没动(${JSON.stringify(grabAt.float)} → ${JSON.stringify(dragging.float)})`)
+    assert(dragging.ghost, '⑫ 按住抓手拖起来的是那一格标签(有拖影),不是在挪窗')
+    assert(JSON.stringify(dragging.float) === JSON.stringify(grabAt.float), `⑫ 拖的途中窗子一动没动(${JSON.stringify(grabAt.float)} → ${JSON.stringify(dragging.float)})`)
     await page.mouse.up()
     const topbar = await waitFor('待办进了顶栏那一组', () => page.evaluate(() => {
       const ids = [...document.querySelectorAll('[data-testid="topbar-tabs"] [data-tab-id]')].map((el) => el.getAttribute('data-tab-id'))
       return ids.includes('panel:todo') ? ids : undefined
     }))
-    assert(topbar.includes('panel:todo'), `⑪ 松手之后待办是顶栏的一格(${topbar.join(' / ')})`)
+    assert(topbar.includes('panel:todo'), `⑫ 松手之后待办是顶栏的一格(${topbar.join(' / ')})`)
 
-    console.log('\n[12/12] 编辑器一致性自测 ?todo-lab')
+    console.log('\n[13/13] 编辑器一致性自测 ?todo-lab')
     // 换页那一下会把这次 evaluate 的执行上下文一起拆掉 —— 那是换页本身,不是失败。
     await page.evaluate(() => { location.search = '?todo-lab' }).catch(() => {})
     await page.waitForLoadState('domcontentloaded').catch(() => {})
@@ -514,11 +553,11 @@ async function main() {
       return { pass: results.filter((r) => r.ok).length, total: results.length, fails: results.filter((r) => !r.ok).map((r) => `${r.name} — ${r.detail}`) }
     })
     report.lab = { pass: lab.pass, total: lab.total }
-    assert(lab.total >= 30 && lab.pass === lab.total, `⑫ 自测 ${lab.pass} / ${lab.total}${lab.fails.length ? `(红:${lab.fails.join(';')})` : ''}`)
+    assert(lab.total >= 30 && lab.pass === lab.total, `⑬ 自测 ${lab.pass} / ${lab.total}${lab.fails.length ? `(红:${lab.fails.join(';')})` : ''}`)
 
     await app.close()
     app = undefined
-    console.log(`\n[todo-gate] ok(${LANE} 档)—— 十二步全过`)
+    console.log(`\n[todo-gate] ok(${LANE} 档)—— 十三步全过`)
     console.log(`[todo-gate] 读数:${JSON.stringify(report)}`)
   } finally {
     if (app) await app.close().catch(() => {})

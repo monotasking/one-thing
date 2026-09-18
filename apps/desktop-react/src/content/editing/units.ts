@@ -51,7 +51,7 @@ const ORDERED = /^(\s*)(\d+)([.)])\s+(.*)$/
 const QUOTE = /^>\s?(.*)$/
 const FENCE = /^(`{3,}|~{3,})(.*)$/
 
-function startsBlock(line: string): boolean {
+export function startsBlock(line: string): boolean {
   return HEADING.test(line) || BULLET.test(line) || ORDERED.test(line) || QUOTE.test(line) || FENCE.test(line)
 }
 
@@ -59,13 +59,22 @@ export function isList(unit: Unit): unit is ListUnit {
   return unit.type === 'task' || unit.type === 'bullet' || unit.type === 'ordered'
 }
 
-export function parseUnits(lines: readonly string[]): Unit[] {
+/**
+ * 按行切成单元。空行不是单元(它是分隔),**唯一的例外是 `draft`**:光标正停在上面的那一个空行
+ * (回车退出列表 / 段落之后落脚的「空段落」,见 `CaretController.enter`)算一个空段落,好让它有一行
+ * 可画、可输入。光标一离开,那一行要么已经有字、要么被收掉,不会留下一个空段落单元。
+ */
+export function parseUnits(lines: readonly string[], draft?: number): Unit[] {
   const units: Unit[] = []
   let i = 0
   while (i < lines.length) {
     const line = lines[i]
     let m: RegExpMatchArray | null
-    if (!line.trim()) { i++; continue }
+    if (!line.trim()) {
+      if (i === draft) units.push({ type: 'para', start: i, end: i })
+      i++
+      continue
+    }
     if ((m = line.match(FENCE))) {
       const fence = m[1]
       let j = i + 1
@@ -125,6 +134,30 @@ export function continuedPrefix(unit: ListUnit): string {
   const indent = ' '.repeat(unit.indent)
   if (unit.type === 'ordered') return `${indent}${unit.num + 1}${unit.marker} `
   return `${indent}${unit.marker} ${unit.type === 'task' ? '[ ] ' : ''}`
+}
+
+/**
+ * 有序列表拆出 / 插进一项之后,把 `from` 那一项**后面**同一层的兄弟项顺着往下编号
+ * (更深的子项跳过,遇到更浅的一层、空行、别的块就停)。只动序号,别的一个字不动。
+ */
+export function renumberOrdered(lines: string[], from: number): void {
+  const head = lines[from]?.match(ORDERED)
+  if (!head) return
+  const indent = head[1].length
+  let num = Number(head[2])
+  for (let i = from + 1; i < lines.length; i++) {
+    const line = lines[i]
+    if (!line.trim()) return
+    const list = line.match(ORDERED) ?? line.match(BULLET)
+    if (!list) return
+    const depth = list[1].length
+    if (depth > indent) continue
+    if (depth < indent) return
+    const m = line.match(ORDERED)
+    if (!m || m[3] !== head[3]) return
+    num += 1
+    if (Number(m[2]) !== num) lines[i] = line.replace(/^(\s*)\d+/, `$1${num}`)
+  }
 }
 
 /** 编辑时这一单元「放进编辑区的原文」。列表项不含前缀(前缀在外面画成勾选框 / 圆点)。 */

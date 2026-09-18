@@ -338,7 +338,9 @@ export function EditableDoc({ document, mode, label, addLabel, checkLabel, densi
     }
   }, [controller])
 
-  const units = useMemo(() => parseUnits(lines), [lines])
+  // 光标正停着的落脚空行也算一格(`CaretController.draftLine`),否则它没有一行可画。
+  const draft = controller.draftLine
+  const units = useMemo(() => parseUnits(lines, draft), [lines, draft])
   /*
    * **输入没变的项交回上一次的元素对象**:同一个元素对象 React 连 memo 比较都不做。输入逐项比过
    * (比法与 `UnitRow` 的 memo 同一张表),缓存每次渲染换新表,不在场的项自然出局。
