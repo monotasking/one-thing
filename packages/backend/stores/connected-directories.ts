@@ -77,11 +77,12 @@ export function getConnectedDirectoriesForSession(
 /**
  * 接入目录投影成技能自定义根。
  *
- * 复用 `listCustomSkillRoots` 那条既有链路,而不是 note-skills 的插件链路:
- * 后者的技能 id 里嵌的是**绝对路径的 sha1**(`plugin:<id>:<hash>:<rel>`),
- * 用户挪一次目录,settings 里所有针对这些技能的启用/绑定覆盖就全成孤儿;
- * 而且它会给每个技能强塞 note 语义的 `<note_skill_context>`。
- * 自定义根这条链的 id 是 `custom:<dirId>:<rel>`,dirId 与路径无关,挪目录 id 不变。
+ * 复用 `listCustomSkillRoots` 那条既有链路,而不是从前 note-skills 插件那条
+ * (2026-09-18 随笔记领域 P3 退役):插件链路的技能 id 里嵌的是**绝对路径的 sha1**
+ * (`plugin:<id>:<hash>:<rel>`),用户挪一次目录,settings 里所有针对这些技能的
+ * 启用/绑定覆盖就全成孤儿。自定义根这条链的 id 是 `custom:<dirId>:<rel>`,
+ * dirId 与路径无关,挪目录 id 不变 —— 笔记库那一类(`note-vault:<vaultId>`)
+ * 今天走的也是这条链。
  *
  * dirId 用 `connected:` 前缀 + 路径,和用户在技能页手工加的目录(`dir-<ts>-<rand>`)
  * 天然不撞;而技能设置页读的是 `settings.skills.customDirectories` **原始值**,

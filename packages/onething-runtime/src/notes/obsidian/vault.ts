@@ -26,7 +26,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { BasenameIndex } from '../basename-index.js'
 import { formatDailyDate } from '../daily-format.js'
-import { buildLinkText, resolveAttachmentFolder, toLinkPathStyle, uniqueAttachmentName } from '../link-format.js'
+import { buildLinkText, isMarkdownNote, resolveAttachmentFolder, toLinkPathStyle, uniqueAttachmentName } from '../link-format.js'
 import { normalizeVaultRoot } from '../paths.js'
 import {
   DEFAULT_NOTES_DAILY_FORMAT,
@@ -264,7 +264,8 @@ export class ObsidianVault implements NoteVault {
         this.options.logger?.warn('listing files through obsidian failed; walking the folder', { vaultId: this.id }, error)
       }
     }
-    const absolutes = await this.index.all()
+    // 索引收的是库里的所有文件(附件也要按名解析得出来),「只要笔记」在这里筛。
+    const absolutes = (await this.index.all()).filter(isMarkdownNote)
     const relatives = absolutes.map(absolute => path.relative(this.root, absolute))
     return folder ? relatives.filter(relative => relative.startsWith(`${folder.replace(/\/+$/, '')}/`)) : relatives
   }

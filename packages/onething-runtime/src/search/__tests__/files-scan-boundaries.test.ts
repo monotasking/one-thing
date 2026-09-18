@@ -18,6 +18,7 @@ import { ALL_CAPABILITIES } from '@onething/core/search'
 import type { OnethingSearchProvidersAdapters, OnethingSearchListFilesOptions } from '../providers.js'
 import { createFilesSearchCapability, filesSearchManifest } from '../capabilities/index.js'
 import { searchFiles } from '../capabilities/files.js'
+import { FolderVault } from '../../notes/folder/vault.js'
 import { OnethingSearchService } from '../service.js'
 
 /** 一台**真库规模**的宿主:492 条会话,每条都有自己的工作目录。 */
@@ -48,10 +49,12 @@ function makeAdapters(options: {
     // 「当前会话」是 s7 —— 它的工作目录才是这一档该扫的那个根。
     getSession: id => sessions.find(one => one.id === id),
     getCurrentSessionId: () => 's7',
-    getVariablesStore: () => ({
-      getUserNoteDir: () => '/notes/user',
-      getWorkNoteDir: () => '/notes/work',
-    }),
+    // 笔记根 = 在册的笔记库的根(P3;从前是 `user_note_dir` / `work_note_dir`)。
+    getNoteVaults: () => [
+      new FolderVault({ root: '/notes/user', id: 'v-user' }),
+      new FolderVault({ root: '/notes/work', id: 'v-work' }),
+    ],
+    getPrimaryNoteVault: () => null,
     getConnectedDirectories: () => ['/connected/alpha'],
     listFiles: (listOptions) => {
       calls.push(listOptions)
@@ -85,7 +88,7 @@ describe('① 扫盘根 = 当前语境那几个,不是授权全集', () => {
     await searchFiles('alpha', 50, adapters)
     const roots = calls.map(call => call.cwd)
     /*
-     * 四个根:当前会话的工作目录 + 用户笔记 + 工作笔记 + 接入目录。
+     * 四个根:当前会话的工作目录 + 两个笔记库的根 + 接入目录。
      * 反证:把 `backend/wiring/search/index.ts` 那一行
      * `adapters.getSearchDirectories = access.fileRoots` 加回来(它接的是授权全集),
      * 这里就会变成 494 个根 —— 那正是真机上 31 条 `rg` 的成因。

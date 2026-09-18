@@ -13,6 +13,7 @@
 import * as fs from 'node:fs/promises'
 import type { Dirent } from 'node:fs'
 import * as path from 'node:path'
+import { isMarkdownNote } from './link-format.js'
 
 /**
  * 显式跳过的目录。
@@ -26,7 +27,15 @@ const SKIP_DIRECTORIES = new Set(['node_modules'])
 export interface BasenameIndexOptions {
   ttlMs?: number
   maxEntries?: number
-  /** 只收这些扩展名(带点,小写)。缺省只收 markdown。 */
+  /**
+   * 只收这些扩展名(带点,小写)。**缺省收所有文件。**
+   *
+   * 缺省从「只收 `.md`」改成「全收」是 P3 的修(2026-09-18):这份索引的问题是
+   * 「这个名字是库里的哪个文件」,而 wikilink 指得最多的恰恰是**附件**
+   * (`![[shot.png]]`)——只收 `.md` 的话 `resolveByName('shot.png')` 恒答
+   * `null`,而那正是 markdown 附件服务按名兜底那一路唯一的依靠。
+   * 「只要笔记」是**读者**的问题(`listNotes` 自己筛 `.md`),不是索引的。
+   */
   extensions?: readonly string[]
 }
 
@@ -37,12 +46,13 @@ export class BasenameIndex {
 
   private readonly ttlMs: number
   private readonly maxEntries: number
-  private readonly extensions: readonly string[]
+  /** `null` = 不筛。 */
+  private readonly extensions: readonly string[] | null
 
   constructor(private readonly root: string, options: BasenameIndexOptions = {}) {
     this.ttlMs = options.ttlMs ?? 30_000
     this.maxEntries = options.maxEntries ?? 20_000
-    this.extensions = options.extensions ?? ['.md']
+    this.extensions = options.extensions ?? null
   }
 
   /**
@@ -54,15 +64,25 @@ export class BasenameIndex {
    */
   async resolve(name: string, sourceDoc?: string): Promise<string | null> {
     const index = await this.ensure()
-    const candidates = index.get(normalizeKey(name))
-    if (!candidates || candidates.length === 0) return null
+    const found = index.get(normalizeKey(name))
+    if (!found || found.length === 0) return null
+    /*
+     * **不带扩展名的名字先找笔记**(P3,索引从「只收 `.md`」放开到收所有文件之后
+     * 必须补的一条):`[[Note]]` 在同时有 `Note.md` 与 `Note.jpg` 时指的是那篇
+     * 笔记 —— Obsidian 就是这么解的,而「离得近」那条规则分不出这两者(同一层
+     * 目录时胜负落到 `localeCompare`,也就是文件名的字母序)。带了扩展名
+     * (`![[shot.png]]`)就按写的那个来,这里不插手。
+     */
+    const notes = found.filter(isMarkdownNote)
+    const candidates = path.extname(name) === '' && notes.length > 0 ? notes : found
     if (candidates.length === 1) return candidates[0]
     const from = sourceDoc ? path.dirname(path.resolve(this.root, sourceDoc)) : this.root
     return [...candidates].sort((a, b) => distance(from, a) - distance(from, b) || a.localeCompare(b))[0]
   }
 
   /**
-   * 全部条目(绝对路径)。`listNotes` 的降级实现用它。
+   * 全部条目(绝对路径)。`listNotes` 的降级实现用它 —— **它自己筛 `.md`**,
+   * 因为索引收的是库里的所有文件(见 `extensions`)。
    *
    * **必须去重**:一个文件在索引里挂着最多四把钥匙(`note` / `note.md` /
    * `folder/note` / `folder/note.md`),摊平之后同一个路径会出现好几次。
@@ -105,7 +125,8 @@ export class BasenameIndex {
           continue
         }
         if (!dirent.isFile()) continue
-        if (!this.extensions.includes(path.extname(dirent.name).toLowerCase())) continue
+        if (this.extensions !== null
+          && !this.extensions.includes(path.extname(dirent.name).toLowerCase())) continue
         count += 1
         // 三把钥匙都指向同一个文件:`note`、`note.md`、`folder/note`。
         const relative = path.relative(this.root, full)

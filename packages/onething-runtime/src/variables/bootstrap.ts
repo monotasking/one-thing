@@ -7,7 +7,6 @@ import { GlobalStoreProvider, type GlobalStoreGateway } from './providers/global
 import { GoalProvider, type GoalVariableGateway } from './providers/goal.js'
 import { KeyedStoreProvider, type KeyedStoreGateway } from './providers/keyed-store.js'
 import { MusicRadioProvider, type MusicRadioGateway } from './providers/music-radio.js'
-import { NotesProvider, type NotesGateway } from './providers/notes.js'
 import { NoteVaultsProvider, type NoteVaultsGateway } from './providers/note-vaults.js'
 import {
   ResourceStateProvider,
@@ -18,7 +17,6 @@ import type { VariableRegistry } from './registry.js'
 
 export interface StandardVariableProviderGateways {
   workdir: WorkdirGateway
-  notes: NotesGateway
   globalStore: GlobalStoreGateway
   sessionStore: SessionStoreGateway
   /** Extra host adapters for the core (workdir) provider, e.g. permission enforcement. */
@@ -73,7 +71,6 @@ export function registerStandardVariableProviders(
   if (gateways.resourceState) {
     registry.register(new ResourceStateProvider(gateways.resourceState))
   }
-  registry.register(new NotesProvider(gateways.notes))
   if (gateways.noteVaults) {
     registry.register(new NoteVaultsProvider(gateways.noteVaults))
   }

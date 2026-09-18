@@ -20,7 +20,7 @@ import { annotationsOf, modelTextOf, partialsOf, runNewTool } from '../support.j
 const SEED: RuntimeContextVariable[] = [
   { name: 'workdir', value: '/repo', scope: 'session', readonly: true, description: 'Work directory' },
   { name: 'topic', value: 'toolkit', scope: 'session', type: 'string', state: true },
-  { name: 'user_note_dir', value: '/notes', scope: 'global' },
+  { name: 'shared_note', value: '/notes', scope: 'global' },
 ]
 
 function memoryRegistry(): RuntimeVariableRegistry {
@@ -92,13 +92,19 @@ describe('golden: variable', () => {
     expect(run.intent.effects).toEqual([])
   })
 
-  it('permission input: repointing a capability variable reports capability_change', async () => {
-    const run = await runVariable({ action: 'set', name: 'user_note_dir', value: '/elsewhere' })
-    expect(run.intent.effects).toMatchSnapshot('capability effects')
-    expect(run.intent.preview).toMatchSnapshot('capability preview')
-    expect(run.intent.effects[0]?.kind).toBe('capability_change')
-    // 读操作不报效果 —— 一次 get 不该弹出"重指目录"的审批框。
-    const read = await runVariable({ action: 'get', name: 'user_note_dir' })
+  /**
+   * **能力变量表今天是空的**(P3,2026-09-18):它唯一的两个成员
+   * `user_note_dir` / `work_note_dir` 随笔记领域退役了,「笔记在哪」改成设置里的
+   * 一张库表。于是写任何一个变量都不再报 `capability_change`。
+   *
+   * 机制本身留着(`CAPABILITY_VARIABLE_NAMES` + `VariableTool.plan` 那道门)——
+   * 下一个「值即能力」的变量加进来时,改的是那张表里的一行。真加了之后,这条
+   * 用例要改回「报效果」的那一版(git 历史里有原样)。
+   */
+  it('permission input: 能力变量表为空,写变量不报效果', async () => {
+    const run = await runVariable({ action: 'set', name: 'shared_note', value: '/elsewhere' })
+    expect(run.intent.effects).toEqual([])
+    const read = await runVariable({ action: 'get', name: 'shared_note' })
     expect(read.intent.effects).toEqual([])
   })
 

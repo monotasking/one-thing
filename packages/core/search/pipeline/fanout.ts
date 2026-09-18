@@ -176,7 +176,7 @@ function withLadder(query: SearchQuery, step: LadderStep): SearchQuery {
  * `SearchQuery.filters` 是**全场一份**的:壳按各能力自述的并集画过滤片(§9 第五条
  * 「`all` 档画各组声明的并集」),`extract` 还会往里塞抽到的时间窗(§6.1b)。
  * 而 `matchesFacetFilter` 对一格**文档上根本没有的 facet** 判的是「不通过」——
- * 于是一格 `spaceId` 会把不声明 `spaceId` 的那一路(daily)整组清零:
+ * 于是一格 `spaceId` 会把不声明 `spaceId` 的那一路(notes)整组清零:
  * 屏幕上那一组凭空消失,而没有任何一处说得出为什么。
  *
  * 判据只能是 manifest:**自述里没说认这个键 = 这个键与它无关**,不是「它不通过」。

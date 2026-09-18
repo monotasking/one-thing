@@ -12,11 +12,6 @@ function makeRegistry(): VariableRegistry {
       writeRoots: () => undefined,
       expandPath: (input) => input,
     },
-    notes: {
-      read: () => '',
-      write: () => undefined,
-      expandPath: (input) => input,
-    },
     globalStore: {
       read: () => [],
       write: () => undefined,
@@ -39,7 +34,9 @@ describe('registerStandardVariableProviders', () => {
     // their own tests — here the point is that every host gets the same set.
     expect(names).toContain('workdir')
     expect(names).toContain('datetime')
-    expect(names).toContain('user_note_dir')
+    // P3:两个笔记目录变量退役,笔记库改由只读派生变量 `note_vaults` 表达
+    // (它按 gateway 在不在装,与 goal / musicRadio 同款,所以不在这一条里)。
+    expect(names).not.toContain('user_note_dir')
   })
 
   it('wires the agent self-state provider only when the host supplies its gateway', async () => {
@@ -56,7 +53,6 @@ describe('registerStandardVariableProviders', () => {
         writeRoots: () => undefined,
         expandPath: (input) => input,
       },
-      notes: { read: () => '', write: () => undefined, expandPath: (input) => input },
       globalStore: { read: () => [], write: () => undefined },
       sessionStore: { read: () => [], write: () => undefined },
       backgroundJobs: { listJobs: () => [] },
@@ -78,8 +74,7 @@ describe('registerStandardVariableProviders', () => {
           writeRoots: () => undefined,
           expandPath: (input) => input,
         },
-        notes: { read: () => '', write: () => undefined, expandPath: (input) => input },
-        globalStore: { read: () => [], write: () => undefined },
+          globalStore: { read: () => [], write: () => undefined },
         sessionStore: { read: () => [], write: () => undefined },
       }),
     ).toThrow(/already registered/)

@@ -59,6 +59,7 @@ import { getSettings } from '../../stores/settings.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import { getCurrentBackend, getCurrentBackendSafe } from '../../current.js'
 import { getLogger } from '../logging/index.js'
+import { NoteSkillRoots, type NoteSkillRoot } from './skill-roots.js'
 
 const log = getLogger('notes')
 
@@ -92,11 +93,9 @@ export function toNotesConfig(settings: AppSettings): NotesConfig {
     primaryVaultId: notes?.primaryVaultId,
     folders: notes?.folders ?? [],
     dailyFormat: notes?.dailyFormat || 'YYYY-MM-DD',
-    attachmentDirectory:
-      notes?.attachmentDirectory
-      // P3 之前两格并存:笔记自己那格缺席时回落到编辑器那格(老用户设过的值)。
-      || settings.general?.editor?.markdownNoteAttachmentDirectory
-      || undefined,
+    // P3 起只有这一格:老的 `general.editor.markdownNoteAttachmentDirectory`
+    // 已删,它的值在 `mergeWithDefaults` 里被搬进了 `notes.attachmentDirectory`。
+    attachmentDirectory: notes?.attachmentDirectory || undefined,
   }
 }
 
@@ -163,6 +162,22 @@ export interface NotesSubsystem {
    * 没变就不换 Worker),这里不替它判。
    */
   onRefreshed(listener: (vaults: NoteVault[]) => void): () => void
+  /**
+   * 「某个技能根的附件落点刚算出来」。返回退订(P3)。
+   *
+   * 它与 `onRefreshed` 是两件事,所以是两条口:那一条说的是**库表**重算过了,
+   * 这一条说的是**同一张库表下**多知道了一格 —— 技能加载器是同步的,而库答
+   * 附件落点是异步的,所以第一次加载必然省掉那一格,这一声就是「可以再扫一遍
+   * 了」。判词写在 `skill-roots.ts` 文件头。
+   */
+  onSkillContextResolved(listener: () => void): () => void
+  /**
+   * 勾了「技能来源」的库,投影成技能自定义根(§4.4)。
+   *
+   * **只有启用且勾了 `skills` 的库**:关掉一个库就是把它从 AI 能读的范围里拿
+   * 掉,技能是那个范围的一部分。
+   */
+  skillVaultRoots(): NoteSkillRoot[]
   dispose(): void
 }
 
@@ -211,7 +226,28 @@ export function createNotesSubsystem(options: BootstrapNotesOptions = {}): Notes
     }
   }
 
+  const skillContextListeners = new Set<() => void>()
+  const skillRoots = new NoteSkillRoots({
+    // 现取:勾了「技能来源」的库。`registry.vaults()` 已经只剩启用的那些。
+    listVaults: () => {
+      const preferences = toNotesConfig(getSettings()).vaults
+      return registry.vaults().filter(vault => preferences[vault.id]?.skills === true)
+    },
+    onResolved: () => {
+      for (const listener of skillContextListeners) {
+        try {
+          listener()
+        } catch (error) {
+          log.warn('a note-skill-context listener failed', {}, error)
+        }
+      }
+    },
+    logger: log,
+  })
+
   const refresh = async (settings?: AppSettings): Promise<void> => {
+    // 库表要重算了:记住的附件落点全作废(库可能挪了、配置可能改了)。
+    skillRoots.reset()
     if (!trusted()) {
       // 夹紧的宿主:表清空。**不是「不注册驱动」** —— 信任会变(server 在
       // listen 时才声明),所以这一档必须是可逆的。
@@ -276,9 +312,16 @@ export function createNotesSubsystem(options: BootstrapNotesOptions = {}): Notes
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
+    onSkillContextResolved(listener) {
+      skillContextListeners.add(listener)
+      return () => skillContextListeners.delete(listener)
+    },
+    skillVaultRoots: () => skillRoots.list(),
     dispose() {
       unwatchSettings()
       listeners.clear()
+      skillContextListeners.clear()
+      skillRoots.reset()
     },
   }
 }
@@ -359,6 +402,28 @@ export function primaryNoteVaultNow(): NoteVault | null {
 }
 
 /**
+ * **笔记根的唯一定义**(P3 §1)。
+ *
+ * 全仓「哪些目录算笔记」只有这一句话:在册的库的根。它已经含了用户在设置里加的
+ * 「其他笔记目录」(那些由 `FolderDriver` 认领,同样是库),所以消费方不需要再
+ * 并第二张表;它也**只含启用的库**(驱动按 `enabled` 筛过),因为关掉一个库的
+ * 真实含义就是把它从 AI 能读的范围里拿掉(正本 §4.5)。
+ *
+ * 「接入目录」不在这里:那是另一件事(用户临时开给某间会话看的目录),它有自己
+ * 的产地 `getConnectedDirectories*`,P3 起两者不再混在一句话里。
+ *
+ * 晚绑定地现取:库表跟着设置变、跟着宿主的信任状态变,任何一份快照都会过期。
+ */
+export function noteRootsNow(): string[] {
+  return noteVaultsNow().map(vault => vault.root)
+}
+
+/** 勾了「技能来源」的库,投影成技能自定义根。没有子系统 = 空表。 */
+export function skillVaultRootsNow(): NoteSkillRoot[] {
+  return getNotesSubsystemSafe()?.skillVaultRoots() ?? []
+}
+
+/**
  * 订「设置刚保存过」。做法与 `wiring/search/index.ts` 的同名函数逐字同源
  * (串联不占槽 + 身份守卫的还原),理由写在那边。
  */
@@ -381,3 +446,4 @@ function watchSettingsChanged(listener: (event: SettingsEvent) => void): () => v
 
 export { NoteSystemRegistry } from '@onething/runtime/notes'
 export type { NoteVault, NotesConfig } from '@onething/runtime/notes'
+export { NoteSkillRoots, type NoteSkillRoot } from './skill-roots.js'

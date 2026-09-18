@@ -1,29 +1,41 @@
 import * as fs from 'node:fs/promises'
-import type { Dirent, PathLike } from 'node:fs'
 import * as os from 'os'
 import * as path from 'path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
+  noteAttachmentRootStaysInside,
   resolveMarkdownAsset as resolveMarkdownAssetRuntime,
   saveMarkdownAttachments as saveMarkdownAttachmentsRuntime,
   type MarkdownResolveAssetRequest,
-  type MarkdownAssetResolution,
   type MarkdownSaveAttachmentsRequest,
   type OnethingMarkdownEditorSettings,
 } from '../asset-service.js'
-
-vi.mock('node:fs/promises', async importOriginal => {
-  const actual = await importOriginal<typeof import('node:fs/promises')>()
-  return { ...actual, readdir: vi.fn(actual.readdir) }
-})
+import { FolderVault } from '../../notes/folder/vault.js'
+import type { NoteLinkKind, NoteVault } from '../../notes/types.js'
 
 const tempRoots: string[] = []
 let editorSettings: OnethingMarkdownEditorSettings = {}
 let noteRootsForTests: string[] = []
+let vaultsForTests: NoteVault[] = []
 
+/**
+ * P3:「这份文档归哪个库」是一格适配器。从前这些用例在盘上造 `.obsidian/app.json`,
+ * 因为服务自己会往上找它;今天附件落哪 / 链接怎么写 / 按名找哪个文件三件事都问
+ * **库自己**,所以这里假的是「有哪几个库」。
+ */
 const runtimeAdapters = {
   getEditorSettings: () => editorSettings,
   getNoteRoots: () => noteRootsForTests,
+  vaultFor: (absolutePath: string) =>
+    vaultsForTests.find(vault => absolutePath.startsWith(`${vault.root}${path.sep}`)) ?? null,
+}
+
+/** 一台「wikilink 风格」的库:别的都照目录库,链接写 `[[...]]`。 */
+class WikilinkVault extends FolderVault {
+  override async linkTextFor(target: string, _sourceDoc: string, kind: NoteLinkKind): Promise<string> {
+    const relative = path.relative(this.root, path.resolve(target)).split(path.sep).join('/')
+    return `${kind === 'embed' ? '!' : ''}[[${relative}]]`
+  }
 }
 
 async function makeTempRoot(): Promise<string> {
@@ -47,11 +59,13 @@ function fileInput(fileName: string, mimeType = 'image/png') {
 beforeEach(() => {
   configureEditor()
   noteRootsForTests = []
+  vaultsForTests = []
 })
 
 afterEach(async () => {
   configureEditor()
   noteRootsForTests = []
+  vaultsForTests = []
   await Promise.all(tempRoots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })))
 })
 
@@ -81,19 +95,15 @@ describe('Markdown asset service', () => {
     expect(asset).toMatchObject({ kind: 'image', absolutePath: imagePath })
   })
 
-  it('resolves Obsidian attachment images from the configured attachment folder', async () => {
+  it("resolves attachment images through the vault's own by-name lookup", async () => {
     const vault = await makeTempRoot()
     const notePath = path.join(vault, 'notes', 'today.md')
     const imagePath = path.join(vault, 'attachments', 'image.png')
     await fs.mkdir(path.dirname(notePath), { recursive: true })
-    await fs.mkdir(path.join(vault, '.obsidian'), { recursive: true })
     await fs.mkdir(path.dirname(imagePath), { recursive: true })
-    await fs.writeFile(path.join(vault, '.obsidian', 'app.json'), JSON.stringify({
-      attachmentFolderPath: 'attachments',
-      useMarkdownLinks: false,
-    }))
     await fs.writeFile(notePath, '# Today')
     await fs.writeFile(imagePath, Buffer.from('image'))
+    vaultsForTests = [new WikilinkVault({ root: vault, id: 'v1', attachmentDirectory: 'attachments' })]
 
     const asset = await resolveMarkdownAsset({
       documentPath: notePath,
@@ -110,46 +120,30 @@ describe('Markdown asset service', () => {
     expect(asset.dataUrl).toMatch(/^data:image\/png;base64,/)
   })
 
-  it('resolves Obsidian basename file links through the vault index in large vaults', async () => {
+  /**
+   * 按 basename 找一个埋在深处的附件。
+   *
+   * P3 之前这条用例钉的是「服务自己那份 vault 索引」的 5000 条截断。那份索引删了
+   * —— 按名解析今天是库自己的 `resolveByName`(它有自己的单测,含 TTL 与条目上限)。
+   * 这里留下的是这条链路仍然通:一个既不在文档同目录、也不在库根的文件,只给
+   * basename 也找得到。
+   */
+  it('resolves a deep attachment by basename through the vault', async () => {
     const vault = await makeTempRoot()
     const notePath = path.join(vault, 'notes', 'today.md')
     const attachmentPath = path.join(vault, 'resources', 'sheets', 'IN_Think-Idea_8068857301_VQ_List.xlsx')
     await fs.mkdir(path.dirname(notePath), { recursive: true })
     await fs.mkdir(path.dirname(attachmentPath), { recursive: true })
-    await fs.mkdir(path.join(vault, '.obsidian'), { recursive: true })
-    await fs.writeFile(path.join(vault, '.obsidian', 'app.json'), JSON.stringify({}))
     await fs.writeFile(notePath, '# Today')
     await fs.writeFile(attachmentPath, 'sheet')
+    vaultsForTests = [new WikilinkVault({ root: vault, id: 'v1' })]
 
-    // Exercise the old 5000-entry cutoff without thousands of unrelated writes
-    // competing with the full suite. The vault, config and target remain real.
-    const [fileEntry] = await fs.readdir(path.dirname(notePath), { withFileTypes: true })
-    const fillerEntries = Array.from({ length: 5005 }, (_, index) => new Proxy(fileEntry, {
-      get: (entry, property, receiver) => property === 'name'
-        ? `filler-${index}.txt`
-        : Reflect.get(entry, property, receiver),
-    }))
-    const { readdir: readDirectory } = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
-    let indexedEntryCount = 0
-    const directoryRead = vi.spyOn(fs, 'readdir').mockImplementation((async (directory: PathLike, ...options: unknown[]) => {
-      const entries = await Reflect.apply(readDirectory, fs, [directory, ...options])
-      if (directory !== vault || !(options[0] as { withFileTypes?: boolean })?.withFileTypes) return entries
-      const wideDirectory: Dirent[] = [...fillerEntries, ...entries]
-      indexedEntryCount = wideDirectory.length
-      return wideDirectory
-    }) as typeof fs.readdir)
-    let asset: MarkdownAssetResolution
-    try {
-      asset = await resolveMarkdownAsset({
-        documentPath: notePath,
-        workspaceRoot: vault,
-        rawTarget: 'IN_Think-Idea_8068857301_VQ_List.xlsx',
-      })
-    } finally {
-      directoryRead.mockRestore()
-    }
+    const asset = await resolveMarkdownAsset({
+      documentPath: notePath,
+      workspaceRoot: vault,
+      rawTarget: 'IN_Think-Idea_8068857301_VQ_List.xlsx',
+    })
 
-    expect(indexedEntryCount).toBeGreaterThan(5000)
     expect(asset).toMatchObject({
       kind: 'file',
       absolutePath: attachmentPath,
@@ -158,17 +152,18 @@ describe('Markdown asset service', () => {
     })
   })
 
-  it('saves Obsidian pasted attachments with wikilinks and unique names', async () => {
+  /**
+   * 落点与链接文本**都由库答**(P3)。同名让路那一步也归了库,所以让出来的名字
+   * 是库的规则(`clip 1.png`),不再是本服务从前那套 `clip-2.png` —— 两套让名
+   * 规则会让同一张图在两条路下落成两个文件。
+   */
+  it("saves pasted attachments where the vault says, with the vault's link text", async () => {
     const vault = await makeTempRoot()
     const notePath = path.join(vault, 'notes', 'today.md')
     await fs.mkdir(path.dirname(notePath), { recursive: true })
-    await fs.mkdir(path.join(vault, '.obsidian'), { recursive: true })
     await fs.mkdir(path.join(vault, 'attachments'), { recursive: true })
-    await fs.writeFile(path.join(vault, '.obsidian', 'app.json'), JSON.stringify({
-      attachmentFolderPath: 'attachments',
-      useMarkdownLinks: false,
-    }))
     await fs.writeFile(path.join(vault, 'attachments', 'clip.png'), 'existing')
+    vaultsForTests = [new WikilinkVault({ root: vault, id: 'v1', attachmentDirectory: 'attachments' })]
 
     const result = await saveMarkdownAttachments({
       documentPath: notePath,
@@ -177,16 +172,52 @@ describe('Markdown asset service', () => {
     })
 
     expect(result.success).toBe(true)
-    expect(result.insertText).toBe('![[attachments/clip-2.png]]')
+    expect(result.insertText).toBe('![[attachments/clip 1.png]]')
     expect(result.attachments?.[0]).toMatchObject({
-      fileName: 'clip-2.png',
-      absolutePath: path.join(vault, 'attachments', 'clip-2.png'),
-      linkText: '![[attachments/clip-2.png]]',
+      fileName: 'clip 1.png',
+      absolutePath: path.join(vault, 'attachments', 'clip 1.png'),
+      linkText: '![[attachments/clip 1.png]]',
     })
-    await expect(fs.stat(path.join(vault, 'attachments', 'clip-2.png'))).resolves.toBeTruthy()
+    await expect(fs.stat(path.join(vault, 'attachments', 'clip 1.png'))).resolves.toBeTruthy()
   })
 
-  it('requires a configured attachment folder for non-Obsidian note roots', async () => {
+  /**
+   * 沙箱守卫的**判法**(装配层的调用点在 `wiring/markdown/asset-service.ts`)。
+   *
+   * 它问的是「库会把附件放哪」,与真正写入用的是同一个答案 —— 从前那是两份实现
+   * (守卫自己读一遍 `app.json`),两份实现就会各说各话。
+   */
+  describe('noteAttachmentRootStaysInside', () => {
+    it('库把附件指到界外 = 拒;指在界内 = 放行;没有库 = 恒放行', async () => {
+      const boundary = await makeTempRoot()
+      const outside = await makeTempRoot()
+      const vaultRoot = path.join(boundary, 'vault')
+      const notePath = path.join(vaultRoot, 'today.md')
+      await fs.mkdir(vaultRoot, { recursive: true })
+
+      const escaping = {
+        ...runtimeAdapters,
+        vaultFor: () => new FolderVault({
+          root: vaultRoot,
+          id: 'v-out',
+          // 附件目录是**库相对**的,指到界外要写成 `../..` 这样的相对路径。
+          attachmentDirectory: path.relative(vaultRoot, outside),
+        }),
+      }
+      await expect(noteAttachmentRootStaysInside(notePath, boundary, escaping)).resolves.toBe(false)
+
+      const inside = {
+        ...runtimeAdapters,
+        vaultFor: () => new FolderVault({ root: vaultRoot, id: 'v-in', attachmentDirectory: 'attachments' }),
+      }
+      await expect(noteAttachmentRootStaysInside(notePath, boundary, inside)).resolves.toBe(true)
+
+      // 一个库都不认领 = 没有库的配置可逃。夹紧的宿主正是这一档。
+      await expect(noteAttachmentRootStaysInside(notePath, boundary, runtimeAdapters)).resolves.toBe(true)
+    })
+  })
+
+  it('requires a configured attachment folder for a note root no vault claims', async () => {
     const noteRoot = await makeTempRoot()
     const notePath = path.join(noteRoot, 'personal.md')
     await fs.writeFile(notePath, '# Personal')
@@ -204,7 +235,7 @@ describe('Markdown asset service', () => {
     })
   })
 
-  it('saves non-Obsidian note attachments to the configured note folder', async () => {
+  it('saves unclaimed note-root attachments to the configured note folder', async () => {
     const noteRoot = await makeTempRoot()
     const notePath = path.join(noteRoot, 'personal', 'today.md')
     await fs.mkdir(path.dirname(notePath), { recursive: true })

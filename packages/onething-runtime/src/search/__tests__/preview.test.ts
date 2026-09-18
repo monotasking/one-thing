@@ -48,7 +48,6 @@ function makeAdapters(overrides: Partial<OnethingSearchProvidersAdapters> = {}):
     iterateSessionMessages: sessionId => (sessionId === 's1' ? MESSAGES : []),
     getSession: () => undefined,
     getCurrentSessionId: () => undefined,
-    getVariablesStore: () => ({ getUserNoteDir: () => undefined, getWorkNoteDir: () => undefined }),
     listFiles: () => ({ async *[Symbol.asyncIterator]() {} }),
     listPrompts: () => [],
     ...overrides,

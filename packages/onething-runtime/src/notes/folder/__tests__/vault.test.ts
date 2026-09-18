@@ -113,6 +113,39 @@ describe('FolderVault:basename 索引', () => {
   })
 })
 
+describe('BasenameIndex:收什么、按名怎么挑', () => {
+  /**
+   * 索引收**库里的所有文件**(P3):wikilink 指得最多的恰恰是附件
+   * (`![[shot.png]]`),只收 `.md` 的话按名兜底那一路恒答 null。
+   */
+  it('附件也在索引里,按名找得到', async () => {
+    write('attachments/shot.png')
+    const index = new BasenameIndex(root)
+    await expect(index.resolve('shot.png')).resolves.toBe(path.join(root, 'attachments', 'shot.png'))
+  })
+
+  /**
+   * 但**不带扩展名的名字先找笔记** —— `[[Note]]` 在同时有 `Note.md` 与
+   * `Note.png` 时指的是那篇笔记。反证:把那道筛挖掉,这一条会指到 png 上
+   * (两者同深度,`localeCompare` 说了算)。
+   */
+  it('`[[Note]]` 在同名附件旁边仍然指笔记;写了扩展名就按写的来', async () => {
+    write('Note.md')
+    // 扩展名故意选 `.jpg`:同一层目录时兜底规则是 `localeCompare`,
+    // `j` < `m` —— 挖掉「先找笔记」那一筛,这一条当场指到图上。
+    write('Note.jpg')
+    const index = new BasenameIndex(root)
+    await expect(index.resolve('Note')).resolves.toBe(path.join(root, 'Note.md'))
+    await expect(index.resolve('Note.jpg')).resolves.toBe(path.join(root, 'Note.jpg'))
+  })
+
+  it('`listNotes` 只交笔记 —— 「只要 md」是读者的事,不是索引的', async () => {
+    write('real.md')
+    write('attachments/shot.png')
+    expect(await new FolderVault({ root }).listNotes()).toEqual(['real.md'])
+  })
+})
+
 describe('BasenameIndex:TTL 与上限', () => {
   it('TTL 之内不重扫,过期后重扫', async () => {
     write('a.md')

@@ -81,9 +81,9 @@ function getSearchDirs(adapters: OnethingSearchProvidersAdapters): string[] {
   const sid = adapters.getCurrentSessionId()
   if (sid) add(adapters.getSession(sid)?.workingDirectory)
 
-  const store = adapters.getVariablesStore()
-  add(store.getUserNoteDir())
-  add(store.getWorkNoteDir())
+  // 笔记根 = 在册的笔记库的根(P3;从前是 `user_note_dir` / `work_note_dir` 两个
+  // 变量)。端口缺席 = 这台宿主没有笔记领域,与「有库但一个都没启用」同样是空表。
+  for (const vault of adapters.getNoteVaults?.() ?? []) add(vault.root)
 
   for (const dir of adapters.getConnectedDirectories?.() ?? []) add(dir)
 

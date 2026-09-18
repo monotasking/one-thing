@@ -22,8 +22,8 @@ export function createAppSearchAuthorization(adapters: OnethingSearchProvidersAd
     const roots = access.filter(owner(ctx), adapters.getSessionsList())
       .flatMap(meta => typeof meta.workingDirectory === 'string' ? [meta.workingDirectory] : [])
     if (operator(ctx)) {
-      const variables = adapters.getVariablesStore()
-      roots.push(...[variables.getUserNoteDir(), variables.getWorkNoteDir()].filter((value): value is string => !!value))
+      // 笔记根:与 `noteRoots()` 同一句话(P3;从前是那两个变量)。
+      roots.push(...noteRoots())
       const current = ctx.principal.sessionId ?? adapters.getCurrentSessionId()
       const allowedCurrent = current && access.filterIds(owner(ctx), [current]).length > 0
       roots.push(...(allowedCurrent ? getConnectedDirectoriesForSession(current) : getConnectedDirectories()))

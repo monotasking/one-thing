@@ -162,7 +162,6 @@ import { noteVaultsNow, primaryNoteVaultNow } from "../wiring/notes/index.js";
 import type { MediaLibraryService, OnethingMediaLibraryPaths } from "@onething/runtime/media";
 import {
 	ONETHING_LOG_MONITOR_MANIFEST,
-	ONETHING_NOTE_SKILLS_MANIFEST,
 	executeOnethingPluginCommandForIpc,
 	disableOnethingPluginForIpc,
 	enableOnethingPluginForIpc,
@@ -254,7 +253,6 @@ import {
 	parseVariablesFile,
 	setOnethingVariableForIpc,
 	type ContextVariable,
-	type NoteVarName,
 	type VariablesDeleteRequest,
 	type VariablesFile,
 	type VariablesListRequest,
@@ -771,12 +769,6 @@ class ServerPluginCatalogManager {
 					manifest: ONETHING_LOG_MONITOR_MANIFEST,
 					entry: noopEntry,
 					enabled: this.getEnabled("log-monitor", true),
-				},
-				{
-					id: "note-skills",
-					manifest: ONETHING_NOTE_SKILLS_MANIFEST,
-					entry: noopEntry,
-					enabled: this.getEnabled("note-skills", true),
 				},
 			]);
 
@@ -1669,19 +1661,15 @@ async function createServerRuntimeOverServerBackend(
 					variablesPath,
 					undefined,
 				);
-				return sanitizeServerVariablesFile(
-					raw === undefined
-						? createServerDefaultVariablesFile(workspaceRoot, context)
-						: parseVariablesFile(raw).data,
-					workspaceRoot,
-					context,
-				);
+				// P3 之后这份文件里**没有一格路径**了(两个笔记目录随笔记领域退役),
+				// 所以从前那道 `sanitizeServerVariablesFile`(把越界的笔记目录夹回
+				// 空串)随之删掉 —— 它今天会是一只恒等函数,留着只会让下一个人以为
+				// 这里还有一道夹。
+				return raw === undefined
+					? createDefaultVariablesFile()
+					: parseVariablesFile(raw).data;
 			},
-			saveToDisk: (state) =>
-				writeServerRuntimeJsonFile(
-					variablesPath,
-					sanitizeServerVariablesFile(state, workspaceRoot, context),
-				),
+			saveToDisk: (state) => writeServerRuntimeJsonFile(variablesPath, state),
 		};
 		const store = new VariablesStore(variablesStorePersistence);
 		store.initialize();
@@ -1740,12 +1728,6 @@ async function createServerRuntimeOverServerBackend(
 					persistSession(session);
 				},
 				expandPath: expandWorkspaceVariablePath,
-			},
-			notes: {
-				read: (which) => readServerNoteVariable(store, which),
-				write: (which, value) => writeServerNoteVariable(store, which, value),
-				expandPath: expandWorkspaceVariablePath,
-				onChange: (callback) => store.subscribe(callback),
 			},
 			globalStore: {
 				read: () => store.getGlobalVariables(),
@@ -1878,7 +1860,6 @@ async function createServerRuntimeOverServerBackend(
 					: [],
 			getSession: (sessionId) => getSessionForContext(sessionId, context),
 			getCurrentSessionId: () => getServerCurrentSessionId(context),
-			getVariablesStore: () => getVariableRuntimeForContext(context).store,
 			// 笔记库是**这台机器上的**(不按 owner 分),晚绑定地现取 —— 夹紧的
 			// 宿主上它是空表,`notes` 那一类于是整组不出现(P2)。
 			getNoteVaults: noteVaultsNow,
@@ -4048,64 +4029,6 @@ function serverDateString(date: Date): string {
 	const month = String(date.getMonth() + 1).padStart(2, "0");
 	const day = String(date.getDate()).padStart(2, "0");
 	return `${year}-${month}-${day}`;
-}
-
-function createServerDefaultVariablesFile(
-	workspaceRoot: string,
-	context = defaultRequestContext(),
-): VariablesFile {
-	return sanitizeServerVariablesFile(
-		createDefaultVariablesFile(),
-		workspaceRoot,
-		context,
-	);
-}
-
-function sanitizeServerVariablesFile(
-	variablesFile: VariablesFile,
-	workspaceRoot: string,
-	context = defaultRequestContext(),
-): VariablesFile {
-	const safeNotePath = (value: string, fallback: string): string => {
-		if (
-			!value ||
-			value === "~/.onething/memory" ||
-			value === "~/.onething/notes"
-		)
-			return fallback;
-		const resolved = resolveServerWorkspaceFilePath(
-			workspaceRoot,
-			context,
-			value,
-		);
-		return resolved ?? fallback;
-	};
-
-	return {
-		...variablesFile,
-		user_note_dir: safeNotePath(variablesFile.user_note_dir, ""),
-		work_note_dir: safeNotePath(variablesFile.work_note_dir, ""),
-	};
-}
-
-function readServerNoteVariable(
-	store: VariablesStore,
-	which: NoteVarName,
-): string {
-	if (which === "user_note_dir") return store.getUserNoteDir();
-	return store.getWorkNoteDir();
-}
-
-function writeServerNoteVariable(
-	store: VariablesStore,
-	which: NoteVarName,
-	value: string,
-): void {
-	if (which === "user_note_dir") {
-		store.setUserNoteDir(value);
-		return;
-	}
-	store.setWorkNoteDir(value);
 }
 
 function applyVariablesSnapshotToSession(

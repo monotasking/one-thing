@@ -8,7 +8,6 @@
  */
 
 import type { z } from 'zod'
-import type { OnethingNoteSkillsPluginApi } from '@onething/runtime/plugins/note-skills'
 import type { IMConnector } from '@shared/ipc.js'
 import type {
   CorePluginPanelRegistration,
@@ -119,8 +118,6 @@ export interface PluginSchedulerAPI
 
 export interface PluginAPI
   extends
-    // S2(I4-缝收口):内置插件 note-skills 的注入口就是这个对象,写出这条边。
-    OnethingNoteSkillsPluginApi<PluginSkillRootProvider>,
     CorePluginAPI<
     PluginToolDefinition,
     PluginEventHandler,

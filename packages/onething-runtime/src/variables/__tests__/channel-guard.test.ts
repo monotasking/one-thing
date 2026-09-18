@@ -17,14 +17,15 @@ describe('channel session guard', () => {
   })
 
   it('hides custom global variables from external sessions, keeps reserved ones', () => {
+    // 保留名那一条用 `home`(P3:两个笔记目录变量退役,`RESERVED_NAMES` 里不再有它们)。
     const variables = [
       v({ name: 'workdir', scope: 'session' }),
-      v({ name: 'user_note_dir', scope: 'global' }),
+      v({ name: 'home', scope: 'global' }),
       v({ name: 'owner_secret_target', scope: 'global' }),
       v({ name: 'task_state', scope: 'session' }),
     ]
     expect(guard.filterVariablesForSession('ext-telegram', variables).map(x => x.name))
-      .toEqual(['workdir', 'user_note_dir', 'task_state'])
+      .toEqual(['workdir', 'home', 'task_state'])
     expect(guard.filterVariablesForSession('desktop-session', variables)).toHaveLength(4)
   })
 
@@ -35,12 +36,20 @@ describe('channel session guard', () => {
       .not.toThrow()
   })
 
-  it('blocks note-dir writes even without an explicit global scope', () => {
-    // NotesProvider claims these names regardless of the declared scope, so
-    // the guard must key off the effective target, not the scope parameter.
-    expect(() => guard.assertExternalWriteAllowed('ext-telegram', 'work_note_dir', undefined))
+  /**
+   * P3(2026-09-18):「声明的 scope 不是 global、写的却是全局状态」这一档没有了
+   * —— 那张 `GLOBAL_EFFECT_NAMES` 里只有两个笔记目录变量,它们随笔记领域退役。
+   * 今天的判据回到一句话:**看 scope**。再出现这样一个名字时,把它加回
+   * `channel-guard.ts`,而不是加在调用方。
+   */
+  it('按 scope 判,不再按名字:session 档的写一律放行', () => {
+    expect(() => guard.assertExternalWriteAllowed('ext-telegram', 'anything', 'session'))
+      .not.toThrow()
+    expect(() => guard.assertExternalWriteAllowed('ext-telegram', 'anything', undefined))
+      .not.toThrow()
+    expect(() => guard.assertExternalWriteAllowed('ext-telegram', 'anything', 'agent'))
       .toThrow(/cannot be modified/)
-    expect(() => guard.assertExternalWriteAllowed('ext-telegram', 'user_note_dir', 'session'))
+    expect(() => guard.assertExternalWriteAllowed('ext-telegram', 'anything', 'project'))
       .toThrow(/cannot be modified/)
   })
 

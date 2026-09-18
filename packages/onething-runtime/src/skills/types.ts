@@ -47,6 +47,17 @@ export interface SkillDirectoryConfig {
   enabled: boolean
 }
 
+/**
+ * 加载器眼里的一个自定义根 = 契约上的那份配置,**加**一格运行期语境。
+ *
+ * 那一格不在契约层的 `SkillDirectoryConfig` 上,因为它是一个**函数**:
+ * 它落不进 `settings.json`,只在这台进程里由宿主现造(今天的唯一造者是笔记域 ——
+ * 一个笔记库里的技能要知道它的附件该往哪放)。
+ */
+export interface CustomSkillRoot extends SkillDirectoryConfig {
+  instructionContext?: PluginSkillInstructionContextProvider
+}
+
 export interface SkillSettings {
   enableSkills: boolean
   creationNudgeInterval?: number

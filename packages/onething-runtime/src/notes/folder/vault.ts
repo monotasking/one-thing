@@ -14,7 +14,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { BasenameIndex } from '../basename-index.js'
 import { formatDailyDate } from '../daily-format.js'
-import { buildLinkText, resolveAttachmentFolder, uniqueAttachmentName } from '../link-format.js'
+import { buildLinkText, isMarkdownNote, resolveAttachmentFolder, uniqueAttachmentName } from '../link-format.js'
 import { normalizeVaultRoot } from '../paths.js'
 import {
   DEFAULT_NOTES_DAILY_FORMAT,
@@ -115,7 +115,10 @@ export class FolderVault implements NoteVault {
   }
 
   async listNotes(folder?: string): Promise<string[]> {
-    const relatives = (await this.index.all()).map(absolute => path.relative(this.root, absolute))
+    // 索引收的是库里的所有文件(附件也要按名解析得出来),「只要笔记」在这里筛。
+    const relatives = (await this.index.all())
+      .filter(isMarkdownNote)
+      .map(absolute => path.relative(this.root, absolute))
     if (!folder) return relatives
     const prefix = `${folder.replace(/\/+$/, '')}${path.sep}`
     return relatives.filter(relative => relative.startsWith(prefix))

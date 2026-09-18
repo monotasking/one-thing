@@ -45,10 +45,6 @@ function makeAdapters(): OnethingSearchProvidersAdapters {
     ],
     getSession: () => undefined,
     getCurrentSessionId: () => undefined,
-    getVariablesStore: () => ({
-      getUserNoteDir: () => undefined,
-      getWorkNoteDir: () => undefined,
-    }),
     listFiles: () => ({ async *[Symbol.asyncIterator]() {} }),
     listPrompts: () => [
       { id: 'p1', title: 'Alpha prompt', description: 'about alpha', body: 'body', updatedAt: 5 },

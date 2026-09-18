@@ -53,10 +53,6 @@ function makeAdapters(): OnethingSearchProvidersAdapters {
       : [],
     getSession: () => undefined,
     getCurrentSessionId: () => undefined,
-    getVariablesStore: () => ({
-      getUserNoteDir: () => undefined,
-      getWorkNoteDir: () => undefined,
-    }),
     listFiles: () => ({ async *[Symbol.asyncIterator]() {} }),
     listPrompts: () => [
       { id: 'p1', title: 'Alpha prompt', description: 'about alpha', body: 'body', updatedAt: 5 },
@@ -691,10 +687,8 @@ describe('files 的扫描根 `dir`(S4b)', () => {
   function twoDirAdapters(): OnethingSearchProvidersAdapters {
     return {
       ...makeAdapters(),
-      getVariablesStore: () => ({
-        getUserNoteDir: () => '/roots/notes',
-        getWorkNoteDir: () => undefined,
-      }),
+      // 扫盘根里的「笔记根」= 在册的笔记库的根(P3;从前是 `user_note_dir` 变量)。
+      getNoteVaults: () => [new FolderVault({ root: '/roots/notes', id: 'v-notes' })],
       listFiles: ({ cwd }) => ({
         async *[Symbol.asyncIterator]() {
           if (cwd === '/roots/notes') yield 'alpha-note.md'

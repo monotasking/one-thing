@@ -11,15 +11,14 @@ import { readFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  obsidianAttachmentRootStaysInside,
+  noteAttachmentRootStaysInside,
   type MarkdownAssetResolution,
   type MarkdownSaveAttachmentsResponse,
   type OnethingMarkdownAssetServiceAdapters,
 } from '@onething/runtime/markdown'
 import { isPathInside, resolveInsideSandbox, type RpcSandbox } from '../../rpc/sandbox.js'
 import { getSettings } from '../../stores/settings.js'
-import { getConnectedDirectories } from '../../stores/connected-directories.js'
-import { getVariablesStore } from '@onething/runtime/variables/store-bound'
+import { getNotesSubsystemSafe, noteRootsNow } from '../notes/index.js'
 
 /**
  * **停留在全局层**(批 B2)。markdown 附件根服务的是笔记编辑器:它的请求坐标是
@@ -27,40 +26,46 @@ import { getVariablesStore } from '@onething/runtime/variables/store-bound'
  * 可以在没有任何会话打开时使用。猜「当前空间」会让同一份文档在不同时刻解析出
  * 不同的附件根,比只认全局层更糟。等编辑器本身带上会话/空间语境时再接。
  *
- * 沙箱化（主线 T 批 3）：夹紧时两个根都要重算 —— 附件目录夹进沙箱，笔记根
- * **清空**。清空不是偷懒：笔记根来自变量系统与接入目录，是**宿主机器上的用户
- * 数据**，在联网宿主上没有一条落在该 owner 沙箱里，逐条夹的结果必然是空集。
- * 这与迁移前 server 的 `createServerMarkdownAdapters`（`getNoteRoots: () => []`）
- * 逐字同义。
+ * 沙箱化（主线 T 批 3）：夹紧时三样都要重算 —— 附件目录夹进沙箱，笔记根与笔记库
+ * **清空**。清空不是偷懒：笔记库是**宿主机器上用户自己的文件**，在联网宿主上
+ * 没有一条落在该 owner 沙箱里，逐条夹的结果必然是空集。这与迁移前 server 的
+ * `createServerMarkdownAdapters`（`getNoteRoots: () => []`）逐字同义。
+ *
+ * P3 起「笔记附件目录」只有一格 —— `settings.notes.attachmentDirectory`
+ * （`general.editor.markdownNoteAttachmentDirectory` 已删）。它服务的是
+ * **没有库认领**的那一态；有库认领时落点由库自己答（`vaultFor`）。
  */
 function markdownRuntimeAdapters(sandbox: RpcSandbox): OnethingMarkdownAssetServiceAdapters {
+  const settings = getSettings()
   if (sandbox.confined) {
     const root = sandbox.root
-    const editor = getSettings().general.editor
     return {
       getEditorSettings: () => ({
         markdownNoteAttachmentDirectory: clampAttachmentDirectory(
-          editor?.markdownNoteAttachmentDirectory,
+          settings.notes?.attachmentDirectory,
           root,
         ),
         markdownProjectAttachmentDirectory: clampAttachmentDirectory(
-          editor?.markdownProjectAttachmentDirectory,
+          settings.general.editor?.markdownProjectAttachmentDirectory,
           root,
         ),
       }),
+      vaultFor: () => null,
       getNoteRoots: () => [],
     }
   }
   return {
-    getEditorSettings: () => getSettings().general.editor || {},
-    getNoteRoots: () => {
-      const store = getVariablesStore()
-      return [
-        store.getUserNoteDir(),
-        store.getWorkNoteDir(),
-        ...getConnectedDirectories(),
-      ]
-    },
+    getEditorSettings: () => ({
+      markdownNoteAttachmentDirectory: getSettings().notes?.attachmentDirectory,
+      markdownProjectAttachmentDirectory: getSettings().general.editor?.markdownProjectAttachmentDirectory,
+    }),
+    // 晚绑定地问注册表:库表跟着设置变、跟着宿主的信任状态变。没有笔记子系统
+    // (还没装配完、或这台宿主没有笔记领域)= 谁都不认领,退回下面那张根列表。
+    vaultFor: absolutePath => getNotesSubsystemSafe()?.registry.vaultFor(absolutePath) ?? null,
+    // 「在笔记根里但没有库认领」那一态的根。P1 之后接入目录退出了笔记根
+    // (它是权限面,不是笔记),库表本身就是这张表,所以这一格与 `vaultFor`
+    // 同源、实际恒为空集 —— 留着是因为两者可以不同源(夹紧宿主就不同源)。
+    getNoteRoots: noteRootsNow,
   }
 }
 
@@ -124,10 +129,10 @@ function isTargetInsideSandbox(documentPath: string, sandboxRoot: string, rawTar
   return isPathInside(resolve(dirname(documentPath), target), sandboxRoot)
 }
 
-// Obsidian vault 配置的逃逸面判定是**产品逻辑**,住 runtime 的
-// markdown/asset-service(那里本来就有 ObsidianConfig/readObsidianConfig 全套
-// 原语);本层只当适配器,把沙箱根喂给它。T 批 3 曾在这里重新发明过一份,
-// boundary 的 "owns Markdown asset service" 规则抓的就是那次越界。
+// 笔记库配置的逃逸面判定是**产品逻辑**,住 runtime 的 markdown/asset-service
+// (它在那里能问到库自己的 `attachmentPathFor`);本层只当适配器,把沙箱根与
+// 适配器喂给它。T 批 3 曾在这里重新发明过一份,boundary 的
+// "owns Markdown asset service" 规则抓的就是那次越界。
 
 export interface PreparedMarkdownRequest {
   documentPath: string
@@ -170,7 +175,7 @@ export async function prepareMarkdownRequest(
     ) {
       return { error: 'Markdown asset target must stay inside the workspace sandbox root.' }
     }
-    if (!(await obsidianAttachmentRootStaysInside(documentPath, sandbox.root))) {
+    if (!(await noteAttachmentRootStaysInside(documentPath, sandbox.root, markdownRuntimeAdapters(sandbox)))) {
       return { error: 'Markdown attachment configuration must stay inside the workspace sandbox root.' }
     }
   }

@@ -34,7 +34,6 @@ import type {
 } from '@onething/runtime/variables/providers/resource-state'
 import type { SessionStoreGateway } from '@onething/runtime/variables/providers/session-store'
 import type { WorkdirGateway } from '@onething/runtime/variables/providers/core'
-import type { NoteVarName, NotesGateway } from '@onething/runtime/variables/providers/notes'
 import type {
   NoteVaultsGateway,
   NoteVaultSummary,
@@ -258,43 +257,6 @@ export function notifySessionVariablesChanged(sessionId: string): void {
       log.error('session-store listener failed', { sessionId }, err)
     }
   }
-}
-
-// ── Notes gateway (read from store) ─────────────────
-
-export const notesGateway: NotesGateway = {
-  read(which) {
-    const raw = readNoteFromStore(which)
-    return raw ? expandPath(raw) : ''
-  },
-  write(which, path) {
-    if (which === 'user_note_dir') {
-      getVariablesStore().setUserNoteDir(path)
-    } else {
-      getVariablesStore().setWorkNoteDir(path)
-    }
-    // Store fires its own change event via subscribe(); no redundant
-    // notifyNotesDirChanged here.
-  },
-  expandPath,
-  onChange(callback) {
-    return getVariablesStore().subscribe(callback)
-  },
-}
-
-function readNoteFromStore(which: NoteVarName): string {
-  const s = getVariablesStore()
-  if (which === 'user_note_dir') return s.getUserNoteDir()
-  return s.getWorkNoteDir()
-}
-
-/**
- * Retained as a typed shim for any external caller that still
- * imports it; the store now broadcasts internally and this is a
- * no-op forward.
- */
-export function notifyNotesDirChanged(): void {
-  // intentionally empty
 }
 
 // ── Goal gateway ────────────────────────────────────

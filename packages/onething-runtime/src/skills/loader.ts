@@ -18,10 +18,10 @@ import crypto from 'crypto'
 import { parse as parseYaml } from 'yaml'
 import { getLogger } from '../logging/index.js'
 import type {
+  CustomSkillRoot,
   PluginSkillRoot,
   SkillConditions,
   SkillDefinition,
-  SkillDirectoryConfig,
   SkillFile,
   SkillSource,
 } from './types.js'
@@ -50,8 +50,12 @@ const ONETHING_SKILLS_CONFIG_FILENAME = 'skills.yaml'
 export interface OnethingSkillsLoaderAdapters {
   getStorePath(): string
   listPluginSkillRoots?(): PluginSkillRoot[]
-  /** User-managed skill roots (settings.skills.customDirectories) */
-  listCustomSkillRoots?(): SkillDirectoryConfig[]
+  /**
+   * User-managed skill roots (settings.skills.customDirectories) plus every
+   * root a host projects onto the same `custom:` lane — connected directories
+   * and note vaults marked as skill sources.
+   */
+  listCustomSkillRoots?(): CustomSkillRoot[]
   isPackaged?(): boolean
   getResourcesPath?(): string | undefined
   getCwd?(): string
@@ -772,6 +776,9 @@ function loadCustomRootSkills(): SkillDefinition[] {
     const rootSkills = loadSkillsFromPath(root.path, 'custom', {
       recursive: true,
       ownerId: root.id,
+      // 这个根自己声明的运行期语境(笔记库的 `<note_skill_context>`)。
+      // 手工加的目录不声明它,于是与从前逐字相同。
+      instructionContext: root.instructionContext,
     })
     for (const skill of rootSkills) {
       skills.push(root.agentId ? { ...skill, agentId: root.agentId } : skill)

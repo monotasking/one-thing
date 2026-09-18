@@ -65,7 +65,7 @@ compatibility.
 | Provider           | Priority | Notes                                  |
 |--------------------|---------:|----------------------------------------|
 | `core`             | 10       | `workdir`                              |
-| `notes`            | 30       | `user_note_dir`, `work_note_dir`       |
+| `note-vaults`      | 35       | `note_vaults`(只读;改库走设置 → 笔记) |
 | `session-store`    | 1000     | catch-all for custom names             |
 
 External providers typically pick a value between 50 and 999 — well
@@ -78,11 +78,14 @@ providers `claims()` the same name — then the lower priority wins.
 
 ## Reserved names
 
-`workdir`, `cwd`, `home`, `user_note_dir`, `work_note_dir` are reserved.
+`workdir`, `cwd`, `home` are reserved.
 
 (`ai_note_dir` was retired 2026-08-12 — long-term memory belongs to the
-memory-wiki plugin's `memory_write` / `memory_document`. The name is no
-longer registered, reserved, or persisted.)
+memory-wiki plugin's `memory_write` / `memory_document`. `user_note_dir` /
+`work_note_dir` were retired 2026-09-18 with the notes domain — where notes
+live is now the vault table in Settings → Notes, projected read-only into the
+prompt as `note_vaults`. None of the three is registered, reserved, or
+persisted any more.)
 
 Project directories are managed by their own subsystem (see
 `docs/project-dirs.md`); the `project_dirs` name is no longer

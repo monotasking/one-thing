@@ -12,8 +12,13 @@
  *    `capabilities/<id>.ts` —— **一类 = 一个文件**;
  *  - 笔记那一路的配置来自**笔记领域**(`getNoteVaults`),不再是这一层的事。
  *
- * 于是这里只剩下**接口**:能力问宿主要会话表 / 会话消息 / 设置 / 变量仓 /
- * 文件列举 / 提示词表,宿主(桌面装配、server 按 owner、单测的假件)各给一份。
+ * 于是这里只剩下**接口**:能力问宿主要会话表 / 会话消息 / 笔记库 / 文件列举 /
+ * 提示词表,宿主(桌面装配、server 按 owner、单测的假件)各给一份。
+ *
+ * P3(2026-09-18)删掉了最后一格 `getVariablesStore` —— 它只答两件事
+ * (`user_note_dir` / `work_note_dir`),而那两个变量本身随笔记领域一起退役了:
+ * 「哪些目录算笔记」今天只有 `getNoteVaults()` 一个产地(`files` 那一类的扫盘
+ * 根与授权面的笔记全集读的都是它),所以这里**没有第二格 `getNoteRoots`**。
  *
  * ## 那个进程单槽
  *
@@ -83,11 +88,6 @@ export interface OnethingSearchPrompt {
   updatedAt: number
 }
 
-export interface OnethingSearchVariablesStore {
-  getUserNoteDir(): string | undefined
-  getWorkNoteDir(): string | undefined
-}
-
 export interface OnethingSearchListFilesOptions {
   cwd: string
   glob?: string[]
@@ -124,7 +124,6 @@ export interface OnethingSearchProvidersAdapters {
   iterateSessionMessages(sessionId: string): Iterable<OnethingSearchMessage>
   getSession(sessionId: string): OnethingSearchSession | undefined
   getCurrentSessionId(): string | undefined
-  getVariablesStore(): OnethingSearchVariablesStore
   /**
    * 这台机器上在册的笔记库(P2)。
    *
@@ -139,6 +138,7 @@ export interface OnethingSearchProvidersAdapters {
    * 明确安全的那几只 —— 后台读一律 `{ offline: true }`,一条 CLI 命令都不发。
    */
   getNoteVaults?(): NoteVault[]
+  /* 注:`files` 那一类的扫盘根也读这一格(取 `.root`),所以它不是 `notes` 专属。 */
   /** 主库(「今天」那一条问的就是它)。缺席 / `null` = 这台机器上没有笔记库。 */
   getPrimaryNoteVault?(): NoteVault | null
   /** 用户配置的「接入目录」;缺席/空数组 = 搜索根与没有这个功能时一致。 */

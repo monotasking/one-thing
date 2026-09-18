@@ -14,19 +14,12 @@ export {
  * 只用注入 api 上的四样东西。同 id、同家目录,用户数据零迁移。
  *
  * 这里不留转发桩:一个没有实现的导出面只会让下一个人以为宿主还认识它。
+ *
+ * `note-skills` 于 2026-09-18 走了同一条路的另一头 —— 它不是搬去市场,是**退役**:
+ * 「笔记库里的技能」今天由技能加载器直接吃(`listCustomSkillRoots` 那条 `custom:`
+ * 链路),不再需要一个插件来当中间人(正本 `docs/design/notes-obsidian-cli-2026-09.md`
+ * §4.4)。同样不留转发桩。
  */
-export {
-  ONETHING_NOTE_SKILLS_MANIFEST,
-  buildNoteSkillInstructionContext,
-  buildNoteSkillRootDescriptors,
-  expandNoteSkillHome,
-  findObsidianVaultRoot,
-  normalizeNoteSkillDir,
-  readObsidianAppConfig,
-  registerOnethingNoteSkillsPlugin,
-  resolveConfiguredNoteAttachmentDirectory,
-  resolveNoteSkillRootDirs,
-} from './note-skills.js'
 export * from './plugin-command-execution.js'
 export * from './ipc-operations.js'
 export * from './plugin-list.js'
@@ -40,12 +33,3 @@ export type {
   OnethingLogMonitorSearchToolParameters,
   RegisterOnethingLogMonitorPluginOptions,
 } from './log-monitor.js'
-export type {
-  OnethingNoteSkillsPluginApi,
-  OnethingNoteSkillInstructionContextInput,
-  OnethingNoteSkillRootDescriptor,
-  OnethingNoteSkillRootDescriptorOptions,
-  OnethingNoteSkillRootDirOptions,
-  OnethingObsidianAppConfig,
-  RegisterOnethingNoteSkillsPluginOptions,
-} from './note-skills.js'

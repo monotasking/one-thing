@@ -36,14 +36,15 @@ export interface NoteVaultsGateway {
 const DESCRIPTION = [
   '用户的笔记库。新建或追加笔记请落在这些根下;',
   'today 是主库今天那本日记的路径(没有这一格就说明现在算不出来,别猜)。',
+  '这一格只读:要改笔记库,去设置 → 笔记。',
 ].join('')
 
 /**
  * 只读派生变量 `note_vaults`(P1,§3.4 表末行)。
  *
- * **只读、无写面**:改笔记库走设置页。老的 `user_note_dir` / `work_note_dir`
- * 是可写的,AI 用 `variable` 工具「重指目录」还要走一次审批 —— 那条路 P3 一起
- * 删,本单不碰它们(`providers/notes.ts` 原样保留)。
+ * **只读、无写面**:改笔记库走设置页(description 里那一句就是说给模型听的)。
+ * 老的 `user_note_dir` / `work_note_dir` 是可写的,AI 用 `variable` 工具「重指
+ * 目录」还要走一次审批 —— 那条路已随 P3 一起删(`providers/notes.ts` 没了)。
  *
  * `state: true` 的判据是「要不要一直在眼前」(§R.3),不是「变得快不快」:库表
  * 几个月不动一次,但模型每次写笔记都要用它,不在眼前就得先花一次工具调用去问

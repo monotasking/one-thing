@@ -85,6 +85,7 @@ import { bootstrapGoalStreamBreakers } from './wiring/goals/runtime-hooks.js'
 import { flushGoalRuntimeUsage, disposeGoalRuntimeState } from './wiring/goals/index.js'
 import { bootstrapProjectDirs } from './wiring/project-dirs/index.js'
 import { bootstrapNotes } from './wiring/notes/index.js'
+import { bootstrapNoteVaultSkillRoots } from './wiring/skills/note-vault-roots.js'
 import { migrateNotesSettings } from './wiring/notes/migration.js'
 import type { NotesSubsystem } from './wiring/notes/index.js'
 import { createAppSearchService } from './wiring/search/index.js'
@@ -859,6 +860,9 @@ export class OnethingBackend implements BackendHandle {
      * 等着用库表。
      */
     this.own(bootstrapNotes(subsystem => { this.parts.notes = subsystem }), 'notes')
+    // 库表一变,技能缓存就该作废 —— 勾了「技能来源」的库是技能根的一部分(P3)。
+    // 紧跟着 notes 注册,因为它订的就是那只子系统。
+    this.own(bootstrapNoteVaultSkillRoots(), 'noteVaultSkillRoots')
 
     // 缝 4 —— 三档目录。R4b 之后它是**唯一**一本工具册子(旧注册表已删)。
     //

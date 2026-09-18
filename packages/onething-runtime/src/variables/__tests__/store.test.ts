@@ -21,17 +21,6 @@ beforeEach(() => {
 });
 
 describe("VariablesStore", () => {
-	it("reads and writes built-in note directories", () => {
-		expect(store.getUserNoteDir()).toBe("");
-		expect(store.getWorkNoteDir()).toBe("");
-
-		store.setUserNoteDir("/user");
-		store.setWorkNoteDir("/work");
-
-		expect(store.getUserNoteDir()).toBe("/user");
-		expect(store.getWorkNoteDir()).toBe("/work");
-	});
-
 	it("persists global variables and marks them as global on read", () => {
 		store.setGlobalVariables([
 			{ name: "topic", value: "headless", updatedAt: 1 },
@@ -54,7 +43,9 @@ describe("VariablesStore", () => {
 		const originalError = console.error;
 		console.error = () => undefined;
 		try {
-			store.setUserNoteDir("/x");
+			store.setGlobalVariables([
+				{ name: "x", value: "1", scope: "global" },
+			]);
 		} finally {
 			console.error = originalError;
 		}

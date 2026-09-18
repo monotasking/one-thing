@@ -72,7 +72,6 @@ export type {
 } from "./skills/index.js";
 export * from "./media/index.js";
 export {
-	findOnethingObsidianVaultRoot,
 	resolveOnethingMarkdownAssetForIpc,
 	resolveOnethingMarkdownAsset,
 	saveOnethingMarkdownAttachmentsForIpc,

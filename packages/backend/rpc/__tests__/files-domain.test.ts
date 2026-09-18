@@ -31,6 +31,14 @@ const connected = vi.hoisted(() => ({
 }))
 
 vi.mock('../../utils/ripgrep.js', () => ({ listFiles: ripgrep.listFiles }))
+
+/**
+ * 笔记根来自**笔记领域**(P3;从前是 `user_note_dir` / `work_note_dir` 两个变量)。
+ * 反证:把 `domains/files.ts` 的 `getNoteRoots` 改回读变量仓,下面那条 @ 候选用例
+ * 当场红。
+ */
+const notes = vi.hoisted(() => ({ roots: [] as string[] }))
+vi.mock('../../wiring/notes/index.js', () => ({ noteRootsNow: () => notes.roots }))
 vi.mock('@onething/runtime/shell/host-ports', async () => {
   const actual = await vi.importActual<typeof import('@onething/runtime/shell/host-ports')>(
     '@onething/runtime/shell/host-ports',
@@ -73,11 +81,8 @@ describe('files RPC domain', () => {
     registry.resetRpcRegistryForTests()
     dispose = registry.registerRouterHandlers(filesRouter, domain.filesRpcHandlers)
 
-    resetVariablesStoreForTests().hydrateForTests({
-      ...createDefaultVariablesFile(),
-      user_note_dir: '',
-      work_note_dir: '',
-    })
+    resetVariablesStoreForTests().hydrateForTests(createDefaultVariablesFile())
+    notes.roots = []
     ripgrep.listFiles.mockReset().mockReturnValue(emit([]))
     shell.revealPath.mockReset().mockResolvedValue({ success: true })
     connected.getConnectedDirectoriesForSession.mockReset().mockReturnValue([])
@@ -306,21 +311,16 @@ describe('files RPC domain', () => {
   it('offers notes and Downloads as directory roots for a bare @ on the desktop', async () => {
     declareDesktopHost()
     const { getDownloadsDirectory } = await import('../../wiring/tools/core/sandbox.js')
-    const { resetVariablesStoreForTests } = await import('@onething/runtime/variables/store-bound')
-    const { createDefaultVariablesFile } = await import('@onething/runtime/variables/schema')
     const noteRoot = '/notes/personal'
-    resetVariablesStoreForTests().hydrateForTests({
-      ...createDefaultVariablesFile(),
-      user_note_dir: noteRoot,
-      work_note_dir: '',
-    })
+    notes.roots = [noteRoot]
     ripgrep.listFiles.mockReturnValue(emit([]))
 
     const result = unwrap(await call('list', { cwd: '', query: '', limit: 50 }, IPC))
 
     expect(result).toMatchObject({ success: true })
     expect(result.entries).toEqual(expect.arrayContaining([
-      { path: noteRoot, type: 'directory', source: 'note', label: 'Personal notes' },
+      // 标签是库的目录名(P3;从前是写死的「Personal notes」/「Work notes」两句)。
+      { path: noteRoot, type: 'directory', source: 'note', label: 'personal' },
       { path: getDownloadsDirectory(), type: 'directory', source: 'downloads', label: 'Downloads' },
     ]))
   })

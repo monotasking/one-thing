@@ -1,8 +1,8 @@
 /**
- * Tests for VariablesStore (scalar store: built-in note dirs).
+ * Tests for the process-bound VariablesStore.
  *
- * Project directories now live in their own module — see
- * `src/main/project-dirs/__tests__/store.test.ts`.
+ * P3(2026-09-18)删掉了那两个内置笔记目录,这份文件于是只剩「存自定义变量 +
+ * 通知订阅者」两件事 —— 变更通知因此改用 `setGlobalVariables` 触发。
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,8 +16,6 @@ const persistence = vi.hoisted(() => ({
 vi.mock("../store-persistence.js", () => ({
 	loadFromDisk: () =>
 		persistence.saved ?? {
-			user_note_dir: "",
-			work_note_dir: "",
 			global_variables: [],
 		},
 	saveToDisk: vi.fn((state: unknown) => {
@@ -33,36 +31,18 @@ beforeEach(() => {
 	store.hydrateForTests(createDefaultVariablesFile());
 });
 
-describe("note directories", () => {
-	it("default user_note_dir is empty", () => {
-		expect(store.getUserNoteDir()).toBe("");
-	});
-
-	it("default work_note_dir is empty", () => {
-		expect(store.getWorkNoteDir()).toBe("");
-	});
-
-	it("writes and reads back user_note_dir", () => {
-		store.setUserNoteDir("/notes");
-		expect(store.getUserNoteDir()).toBe("/notes");
-	});
-
-	it("writes and reads back work_note_dir", () => {
-		store.setWorkNoteDir("/work-notes");
-		expect(store.getWorkNoteDir()).toBe("/work-notes");
-	});
-});
-
 describe("subscribe", () => {
 	it("fires after every mutation", () => {
 		let count = 0;
 		const off = store.subscribe(() => count++);
-		store.setUserNoteDir("/x");
-		store.setUserNoteDir("/y");
-		store.setWorkNoteDir("/w");
+		const set = (value: string): void =>
+			store.setGlobalVariables([{ name: "x", value, scope: "global" }]);
+		set("/x");
+		set("/y");
+		set("/w");
 		expect(count).toBe(3);
 		off();
-		store.setUserNoteDir("/z");
+		set("/z");
 		expect(count).toBe(3); // unsubscribed
 	});
 
@@ -75,7 +55,7 @@ describe("subscribe", () => {
 		const origErr = console.error;
 		console.error = () => undefined;
 		try {
-			store.setUserNoteDir("/x");
+			store.setGlobalVariables([{ name: "x", value: "1", scope: "global" }]);
 		} finally {
 			console.error = origErr;
 		}

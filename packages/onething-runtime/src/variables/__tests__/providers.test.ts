@@ -4,7 +4,6 @@ import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CoreProvider, type WorkdirGateway } from '../providers/core.js'
 import { GlobalStoreProvider, type GlobalStoreGateway } from '../providers/global-store.js'
-import { NotesProvider, type NotesGateway, type NoteVarName } from '../providers/notes.js'
 import { SessionStoreProvider, type SessionStoreGateway } from '../providers/session-store.js'
 import { VariableError, type ContextVariable, type VariableContext } from '../types.js'
 
@@ -137,39 +136,6 @@ describe('runtime CoreProvider', () => {
     expect(isPreauthorizedDirectory).toHaveBeenCalledWith(project, { sessionId: 'sess-a' })
 
     await fs.rm(project, { recursive: true, force: true })
-  })
-})
-
-function notesGateway(initial: Partial<Record<NoteVarName, string>> = {}): NotesGateway & {
-  state: Map<NoteVarName, string>
-} {
-  const state = new Map<NoteVarName, string>([
-    ['user_note_dir', initial.user_note_dir ?? ''],
-    ['work_note_dir', initial.work_note_dir ?? ''],
-  ])
-  return {
-    state,
-    read: which => state.get(which) ?? '',
-    write: (which, value) => {
-      state.set(which, value)
-    },
-    expandPath: input => input.startsWith('~') ? input.replace('~', os.homedir()) : input,
-  }
-}
-
-describe('runtime NotesProvider', () => {
-  it('owns note directory variables and validates directories', async () => {
-    const gateway = notesGateway()
-    const provider = new NotesProvider(gateway)
-
-    await provider.set(ctx, { name: 'user_note_dir', value: tempDir })
-    expect(gateway.state.get('user_note_dir')).toBe(tempDir)
-    expect(provider.list(ctx).map(variable => variable.name)).toEqual([
-      'user_note_dir',
-      'work_note_dir',
-    ])
-    await expect(provider.set(ctx, { name: 'work_note_dir', value: path.join(tempDir, 'missing') }))
-      .rejects.toMatchObject({ code: 'WORKDIR_NOT_FOUND' })
   })
 })
 

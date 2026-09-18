@@ -51,7 +51,6 @@ export const DEFAULT_EDITOR_SETTINGS: Required<EditorSettings> = {
   syntaxHighlighting: true,
   completionEnabled: true,
   composerMaxHeight: 200,
-  markdownNoteAttachmentDirectory: '',
   markdownProjectAttachmentDirectory: '',
 }
 
@@ -572,7 +571,17 @@ export const DEFAULT_NOTES_SETTINGS: NotesSettings = {
  * 每个库那一行也逐格归一:`enabled` / `skills` 只收布尔,不认识的键丢掉 ——
  * 它们会被原样写回 `settings.json`,一个手写的脏键会永远留在那里。
  */
-export function normalizeNotesSettings(input?: NotesSettings): NotesSettings {
+/**
+ * `legacyAttachmentDirectory` = 老 `general.editor.markdownNoteAttachmentDirectory`
+ * 的值(P3 那一格已删)。**只读一次当缺省**:新格缺席就用它,旧格随白名单式
+ * 重建在下一次写回时消失 —— 所以这里不需要第二个迁移标记(P1 的 `migratedAt`
+ * 管的是「播种库表」,重播一次种会把用户删掉的库种回来;搬一格字符串重播多少
+ * 次都是同一个结果)。
+ */
+export function normalizeNotesSettings(
+  input?: NotesSettings,
+  legacyAttachmentDirectory?: string,
+): NotesSettings {
   const systems: Record<string, NoteSystemPreference> = {}
   const rawSystems = input?.systems
   if (rawSystems && typeof rawSystems === 'object' && !Array.isArray(rawSystems)) {
@@ -605,8 +614,12 @@ export function normalizeNotesSettings(input?: NotesSettings): NotesSettings {
   if (typeof input?.primaryVaultId === 'string' && input.primaryVaultId.trim() !== '') {
     normalized.primaryVaultId = input.primaryVaultId
   }
-  if (typeof input?.attachmentDirectory === 'string' && input.attachmentDirectory.trim() !== '') {
-    normalized.attachmentDirectory = input.attachmentDirectory
+  const attachmentDirectory =
+    typeof input?.attachmentDirectory === 'string' && input.attachmentDirectory.trim() !== ''
+      ? input.attachmentDirectory
+      : legacyAttachmentDirectory
+  if (typeof attachmentDirectory === 'string' && attachmentDirectory.trim() !== '') {
+    normalized.attachmentDirectory = attachmentDirectory
   }
   // 迁移标记必须活过 merge:被吞掉的后果是**每次启动重播一次种**,把用户后来
   // 删掉的库又种回来(C1 的 `storage.providerConfigMigratedAt` 同一条判例)。
@@ -787,7 +800,13 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
     // 用户选的「安静」下次启动会变回「适中」。不认识的档一律缺省档。
     pets: { chattiness: normalizePetChattinessSetting(settings.pets?.chattiness) },
     // 同上。这一格被吞掉的后果最重:迁移标记随之消失 = 每次启动重播一次种。
-    notes: normalizeNotesSettings(settings.notes),
+    // 第二个参数 = 老 `general.editor.markdownNoteAttachmentDirectory`。那一格的
+    // 类型已经删了,所以这里按「盘上可能还有」现读一次(读完即弃)。
+    notes: normalizeNotesSettings(
+      settings.notes,
+      (settings.general?.editor as { markdownNoteAttachmentDirectory?: string } | undefined)
+        ?.markdownNoteAttachmentDirectory,
+    ),
   }
 
   // 历史脏键 `localAddress`(剥在这里 + 剥在 `providers.json` 的写入归一里,
@@ -1024,7 +1043,6 @@ export function normalizeEditorSettings(settings?: EditorSettings): Required<Edi
       640,
       DEFAULT_EDITOR_SETTINGS.composerMaxHeight,
     ),
-    markdownNoteAttachmentDirectory: settings?.markdownNoteAttachmentDirectory ?? DEFAULT_EDITOR_SETTINGS.markdownNoteAttachmentDirectory,
     markdownProjectAttachmentDirectory: settings?.markdownProjectAttachmentDirectory ?? DEFAULT_EDITOR_SETTINGS.markdownProjectAttachmentDirectory,
   }
 }

@@ -1,8 +1,9 @@
 import type { Stats } from 'node:fs'
 import * as fs from 'node:fs/promises'
-import * as os from 'node:os'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { expandHome } from '../notes/paths.js'
+import type { NoteVault } from '../notes/types.js'
 
 export type MarkdownAssetKind = 'external' | 'missing' | 'file' | 'image'
 
@@ -51,53 +52,47 @@ export interface MarkdownSaveAttachmentsResponse {
 }
 
 export interface OnethingMarkdownEditorSettings {
+  /** 笔记库外的笔记根用的附件目录(`settings.notes.attachmentDirectory`)。 */
   markdownNoteAttachmentDirectory?: string
   markdownProjectAttachmentDirectory?: string
 }
 
 export interface OnethingMarkdownAssetServiceAdapters {
   getEditorSettings?: () => OnethingMarkdownEditorSettings | undefined
+  /**
+   * 这份文档落在哪个笔记库里(P3,正本 §4.2)。
+   *
+   * 这一格顶掉了从前那套「自己往上找 `.obsidian`、自己读 `app.json`」——
+   * 附件落哪、链接怎么写、按名字找哪个文件,三件事今天都问**库自己**
+   * (Obsidian 活着的时候它会去问 Obsidian,没跑就按快照复现同一套语义)。
+   * 这个文件因此一个笔记系统的名字都不认识。
+   *
+   * 缺席 / 答 `null` = 这份文档不在任何笔记库里,走下面两态。
+   */
+  vaultFor?: (absolutePath: string) => NoteVault | null
+  /**
+   * 笔记根:**库表之外**还算笔记的目录。P1 之后用户加的「其他笔记目录」本身
+   * 就是库(`FolderDriver` 认领),所以这一格在桌面上实际是空的 —— 它留着是
+   * 因为「在笔记根里但没有库认领」在结构上仍然可能(夹紧的宿主把库表清空、
+   * 而根列表另有来源),那一档的行为与从前逐字相同。
+   */
   getNoteRoots?: () => Array<string | null | undefined>
 }
 
 const IMAGE_EXTENSIONS = new Set(['.avif', '.bmp', '.gif', '.jpeg', '.jpg', '.png', '.svg', '.webp'])
-const SKIP_SEARCH_DIRS = new Set(['.git', '.obsidian', 'node_modules'])
-const MAX_VAULT_SEARCH_ENTRIES = 200000
-const VAULT_ASSET_INDEX_TTL_MS = 30000
-
-interface ObsidianConfig {
-  attachmentFolderPath?: string
-  useMarkdownLinks?: boolean
-}
 
 interface MarkdownContext {
-  type: 'obsidian' | 'note' | 'project'
+  /** `vault` = 有库认领;`note` = 在笔记根里但没有库;`project` = 其余。 */
+  type: 'vault' | 'note' | 'project'
   root: string
   documentPath: string
   documentDir: string
   workspaceRoot?: string
-  obsidian?: {
-    vaultRoot: string
-    config: ObsidianConfig
-  }
+  vault?: NoteVault
 }
-
-interface VaultAssetIndex {
-  createdAt: number
-  filesByName: Map<string, string[]>
-}
-
-const vaultAssetIndexCache = new Map<string, Promise<VaultAssetIndex> | VaultAssetIndex>()
 
 function normalizePath(filePath: string): string {
   return path.resolve(expandHome(filePath))
-}
-
-function expandHome(input: string): string {
-  if (input === '~') return os.homedir()
-  if (input.startsWith('~/')) return path.join(os.homedir(), input.slice(2))
-  if (input.startsWith('$HOME/')) return path.join(os.homedir(), input.slice(6))
-  return input
 }
 
 function isPathInside(root: string, target: string): boolean {
@@ -123,59 +118,39 @@ async function fileStat(filePath: string): Promise<Stats | null> {
   }
 }
 
-export async function findObsidianVaultRoot(startPath: string): Promise<string | null> {
-  let current = path.resolve(startPath)
-  const stat = await fileStat(current)
-  if (stat?.isFile()) current = path.dirname(current)
-
-  while (true) {
-    if (await pathExists(path.join(current, '.obsidian'))) return current
-    const parent = path.dirname(current)
-    if (parent === current) return null
-    current = parent
-  }
-}
-
-async function readObsidianConfig(vaultRoot: string): Promise<ObsidianConfig> {
-  try {
-    const raw = await fs.readFile(path.join(vaultRoot, '.obsidian', 'app.json'), 'utf-8')
-    const parsed = JSON.parse(raw) as ObsidianConfig
-    return parsed && typeof parsed === 'object' ? parsed : {}
-  } catch {
-    return {}
-  }
-}
-
 /**
- * Obsidian 的 `.obsidian/app.json` 能把附件目录指到任意路径 —— 那是**磁盘上的
- * 配置文件**,不是请求输入,所以它是一条独立的逃逸面:请求里的路径全都夹住了,
- * 附件仍可能按 vault 配置写到界外。
+ * 笔记库自己的配置能把附件目录指到任意路径 —— 那是**磁盘上的配置**(Obsidian 的
+ * `app.json`、目录库的 `settings.notes.attachmentDirectory`),不是请求输入,所以
+ * 它是一条独立的逃逸面:请求里的路径全都夹住了,附件仍可能按库的配置写到界外。
  *
- * 从 `documentPath` 往上、以 `boundaryRoot` 为界找到第一个 `.obsidian`,判它的
- * `attachmentFolderPath` 是否留在界内:空配置 = 编辑器默认目录(界内)放行;
- * `~` / `$HOME` 前缀直接拒;相对路径以 vault 根解析。找不到配置或读不动,
- * 一律当默认目录放行。界内没有 vault 时恒 true。
+ * P3 之前这只函数自己往上找 `.obsidian`、自己读 `app.json`。今天它问的是**库自己**
+ * 会把附件放哪(`attachmentPathFor` 答的那条路径的所在目录),于是「附件落哪」在
+ * 全仓只有一个产地,守卫夹的与真正写入用的是同一个答案 —— 从前那是两份实现,
+ * 两份实现就会各说各话。
+ *
+ * 这份文档不在任何库里 = 没有库的配置可逃,恒 true(非库两态的附件目录由
+ * `clampAttachmentDirectory` 在装配层先夹过一道)。库答不出来(app 没跑且没有
+ * 快照)也是 true:守卫不该因为读不到配置就把一次粘贴判死,真正的出口守卫是
+ * `clampSavedAttachments`。
  */
-export async function obsidianAttachmentRootStaysInside(
+export async function noteAttachmentRootStaysInside(
   documentPath: string,
   boundaryRoot: string,
+  adapters?: OnethingMarkdownAssetServiceAdapters,
 ): Promise<boolean> {
-  let current = path.dirname(documentPath)
-  while (isPathInside(boundaryRoot, current)) {
-    if (await pathExists(path.join(current, '.obsidian'))) {
-      const folder = (await readObsidianConfig(current)).attachmentFolderPath
-      const trimmed = typeof folder === 'string' ? folder.trim() : ''
-      if (!trimmed) return true
-      if (trimmed === '~' || trimmed.startsWith('~/') || trimmed.startsWith('$HOME/')) return false
-      const attachmentRoot = path.resolve(path.isAbsolute(trimmed) ? trimmed : path.join(current, trimmed))
-      return isPathInside(boundaryRoot, attachmentRoot)
-    }
-    const parent = path.dirname(current)
-    if (parent === current) return true
-    current = parent
+  const resolvedDocumentPath = normalizePath(documentPath)
+  const vault = adapters?.vaultFor?.(resolvedDocumentPath) ?? null
+  if (!vault) return true
+  try {
+    const target = await vault.attachmentPathFor(ATTACHMENT_PROBE_NAME, resolvedDocumentPath)
+    return isPathInside(boundaryRoot, path.dirname(target))
+  } catch {
+    return true
   }
-  return true
 }
+
+/** 探附件目录用的假文件名。只取它的所在目录,这个文件从不被创建。 */
+const ATTACHMENT_PROBE_NAME = 'onething-attachment-probe.bin'
 
 function getEditorSettings(adapters?: OnethingMarkdownAssetServiceAdapters): OnethingMarkdownEditorSettings {
   return adapters?.getEditorSettings?.() || {}
@@ -195,18 +170,15 @@ async function markdownContext(
 ): Promise<MarkdownContext> {
   const resolvedDocumentPath = normalizePath(documentPath)
   const documentDir = path.dirname(resolvedDocumentPath)
-  const vaultRoot = await findObsidianVaultRoot(resolvedDocumentPath)
-  if (vaultRoot) {
+  const vault = adapters?.vaultFor?.(resolvedDocumentPath) ?? null
+  if (vault) {
     return {
-      type: 'obsidian',
-      root: vaultRoot,
+      type: 'vault',
+      root: normalizePath(vault.root),
       documentPath: resolvedDocumentPath,
       documentDir,
       workspaceRoot: workspaceRoot ? normalizePath(workspaceRoot) : undefined,
-      obsidian: {
-        vaultRoot,
-        config: await readObsidianConfig(vaultRoot),
-      },
+      vault,
     }
   }
 
@@ -288,13 +260,6 @@ async function imageDataUrl(filePath: string): Promise<{ dataUrl: string; mimeTy
   }
 }
 
-function obsidianAttachmentDirectory(context: MarkdownContext): string {
-  const folder = context.obsidian?.config.attachmentFolderPath?.trim()
-  if (!folder) return context.documentDir
-  if (path.isAbsolute(folder)) return folder
-  return path.resolve(context.obsidian?.vaultRoot || context.root, folder)
-}
-
 function configuredAttachmentDirectory(root: string, configured?: string): string {
   const value = configured?.trim()
   if (!value) return root
@@ -302,30 +267,44 @@ function configuredAttachmentDirectory(root: string, configured?: string): strin
   return path.isAbsolute(expanded) ? expanded : path.resolve(root, expanded)
 }
 
-function attachmentDirectoryForContext(
+/**
+ * 「这个文件该落在哪」—— 三态各自的答法,统一成一只 `place(fileName)`。
+ *
+ * **vault 态把整件事交给库**:`attachmentPathFor` 答的是**文件**的绝对路径,
+ * 已经含了同名让路(Obsidian 活着时那一步就是 Obsidian 自己算的)。所以这一态
+ * 不再走本文件的 `uniqueFilePath` —— 两套让名规则会让同一张图在两条路下落成
+ * 两个文件。
+ */
+type AttachmentPlacement =
+  | { ok: true; place(fileName: string): Promise<string> }
+  | { ok: false; error: string; code?: string }
+
+function attachmentPlacementForContext(
   context: MarkdownContext,
   adapters?: OnethingMarkdownAssetServiceAdapters,
-): { directory?: string; error?: string; code?: string } {
+): AttachmentPlacement {
   const editorSettings = getEditorSettings(adapters)
-  if (context.type === 'obsidian') {
-    return { directory: obsidianAttachmentDirectory(context) }
+  if (context.type === 'vault' && context.vault) {
+    const vault = context.vault
+    return { ok: true, place: fileName => vault.attachmentPathFor(fileName, context.documentPath) }
   }
   if (context.type === 'note') {
     const configured = editorSettings.markdownNoteAttachmentDirectory?.trim()
     if (!configured) {
       return {
-        error: 'Configure a note attachment folder before pasting files into a non-Obsidian note root.',
+        ok: false,
+        error: 'Configure a note attachment folder before pasting files into a note root that no note vault claims.',
         code: 'MISSING_NOTE_ATTACHMENT_DIR',
       }
     }
-    return { directory: configuredAttachmentDirectory(context.root, configured) }
+    const directory = configuredAttachmentDirectory(context.root, configured)
+    return { ok: true, place: fileName => uniqueFilePath(directory, fileName) }
   }
-  return {
-    directory: configuredAttachmentDirectory(
-      context.workspaceRoot || context.root,
-      editorSettings.markdownProjectAttachmentDirectory,
-    ),
-  }
+  const directory = configuredAttachmentDirectory(
+    context.workspaceRoot || context.root,
+    editorSettings.markdownProjectAttachmentDirectory,
+  )
+  return { ok: true, place: fileName => uniqueFilePath(directory, fileName) }
 }
 
 function candidatePaths(
@@ -347,9 +326,10 @@ function candidatePaths(
     path.resolve(context.documentDir, target),
     path.resolve(context.root, target),
   ]
-  if (context.type === 'obsidian') {
-    candidates.push(path.resolve(obsidianAttachmentDirectory(context), target))
-  } else if (context.type === 'note') {
+  // vault 态**没有第三个候选**:「库把附件放哪」要问库,而那是一次异步(可能还
+  // 是一次 CLI 调用),预览里每个资源都问一遍太贵。那一档由下面的
+  // `vault.resolveByName` 兜底 —— 它本来就是库自己的按名解析。
+  if (context.type === 'note') {
     const configured = getEditorSettings(adapters).markdownNoteAttachmentDirectory?.trim()
     if (configured) candidates.push(path.resolve(configuredAttachmentDirectory(context.root, configured), target))
   } else if (context.workspaceRoot) {
@@ -358,73 +338,6 @@ function candidatePaths(
   }
 
   return [...new Set(candidates)]
-}
-
-async function buildVaultAssetIndex(root: string): Promise<VaultAssetIndex> {
-  const filesByName = new Map<string, string[]>()
-  let visited = 0
-
-  async function walk(dir: string): Promise<void> {
-    if (visited > MAX_VAULT_SEARCH_ENTRIES) return
-    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
-    for (const entry of entries) {
-      visited += 1
-      if (visited > MAX_VAULT_SEARCH_ENTRIES) return
-      if (!entry.isFile()) continue
-      const absolutePath = path.join(dir, entry.name)
-      const matches = filesByName.get(entry.name) || []
-      matches.push(absolutePath)
-      filesByName.set(entry.name, matches)
-    }
-    for (const entry of entries) {
-      if (!entry.isDirectory() || SKIP_SEARCH_DIRS.has(entry.name)) continue
-      await walk(path.join(dir, entry.name))
-      if (visited > MAX_VAULT_SEARCH_ENTRIES) return
-    }
-  }
-
-  await walk(root)
-  return { createdAt: Date.now(), filesByName }
-}
-
-async function getVaultAssetIndex(root: string): Promise<VaultAssetIndex> {
-  const cached = vaultAssetIndexCache.get(root)
-  if (cached) {
-    if (cached instanceof Promise) return cached
-    if (Date.now() - cached.createdAt < VAULT_ASSET_INDEX_TTL_MS) return cached
-  }
-
-  const pending = buildVaultAssetIndex(root)
-  vaultAssetIndexCache.set(root, pending)
-  try {
-    const index = await pending
-    vaultAssetIndexCache.set(root, index)
-    return index
-  } catch (error) {
-    vaultAssetIndexCache.delete(root)
-    throw error
-  }
-}
-
-async function findObsidianAssetByBasename(context: MarkdownContext, fileName: string): Promise<string | null> {
-  const index = await getVaultAssetIndex(context.root)
-  const matches = index.filesByName.get(fileName)
-  if (!matches?.length) return null
-
-  const attachmentRoot = obsidianAttachmentDirectory(context)
-  return [...matches].sort((a, b) => {
-    const aInAttachment = isPathInside(attachmentRoot, a)
-    const bInAttachment = isPathInside(attachmentRoot, b)
-    if (aInAttachment !== bInAttachment) return aInAttachment ? -1 : 1
-
-    const aInDocumentDir = isPathInside(context.documentDir, a)
-    const bInDocumentDir = isPathInside(context.documentDir, b)
-    if (aInDocumentDir !== bInDocumentDir) return aInDocumentDir ? -1 : 1
-
-    const aRelative = path.relative(context.root, a)
-    const bRelative = path.relative(context.root, b)
-    return aRelative.localeCompare(bRelative)
-  })[0] || null
 }
 
 export async function resolveMarkdownAsset(
@@ -462,8 +375,10 @@ export async function resolveMarkdownAsset(
     }
   }
 
-  if (context.type === 'obsidian' && !target.includes('/') && !target.includes('\\')) {
-    const found = await findObsidianAssetByBasename(context, target)
+  if (context.type === 'vault' && context.vault && !target.includes('/') && !target.includes('\\')) {
+    // 按名找:这是**库自己**的规则(wikilink 的解析顺序、附件目录优先),不是这里
+    // 重新扫一遍盘再排个序。从前那份索引(整库 walk + 30s TTL 缓存)随之删掉。
+    const found = await context.vault.resolveByName(target, context.documentPath).catch(() => null)
     if (found) {
       if (isImagePath(found)) {
         const image = await imageDataUrl(found)
@@ -536,11 +451,15 @@ function labelForFile(fileName: string): string {
   return path.basename(fileName, path.extname(fileName)) || fileName
 }
 
-function linkTextForAttachment(context: MarkdownContext, saved: SavedMarkdownAttachment): string {
+async function linkTextForAttachment(
+  context: MarkdownContext,
+  saved: SavedMarkdownAttachment,
+): Promise<string> {
   const image = isImageMime(saved.mimeType) || isImagePath(saved.absolutePath)
-  if (context.type === 'obsidian' && context.obsidian?.config.useMarkdownLinks !== true) {
-    const relativeToVault = toPosixPath(path.relative(context.root, saved.absolutePath))
-    return image ? `![[${relativeToVault}]]` : `[[${relativeToVault}]]`
+  if (context.type === 'vault' && context.vault) {
+    // 链接文本也问库:wikilink 还是 markdown 链接、省不省扩展名、路径取哪一段,
+    // 三档全是库的配置。这里自拼一条 `[[...]]` 就是第二份规则。
+    return context.vault.linkTextFor(saved.absolutePath, context.documentPath, image ? 'embed' : 'link')
   }
 
   const relativeToDocument = encodeMarkdownTarget(path.relative(context.documentDir, saved.absolutePath))
@@ -555,17 +474,18 @@ export async function saveMarkdownAttachments(
   adapters?: OnethingMarkdownAssetServiceAdapters,
 ): Promise<MarkdownSaveAttachmentsResponse> {
   const context = await markdownContext(request.documentPath, request.workspaceRoot, adapters)
-  const target = attachmentDirectoryForContext(context, adapters)
-  if (!target.directory) {
-    return { success: false, error: target.error || 'Attachment directory is not configured', code: target.code }
+  const placement = attachmentPlacementForContext(context, adapters)
+  if (!placement.ok) {
+    return { success: false, error: placement.error, code: placement.code }
   }
 
-  await fs.mkdir(target.directory, { recursive: true })
   const attachments: SavedMarkdownAttachment[] = []
 
   for (const file of request.files) {
     const fileName = sanitizeFileName(file.fileName, file.mimeType)
-    const absolutePath = await uniqueFilePath(target.directory, fileName)
+    const absolutePath = await placement.place(fileName)
+    // 落点目录由这里建:库答的是一条路径,建不建目录不是它的事。
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true })
     await fs.writeFile(absolutePath, Buffer.from(file.base64Data, 'base64'))
     const saved: SavedMarkdownAttachment = {
       fileName: path.basename(absolutePath),
@@ -573,12 +493,8 @@ export async function saveMarkdownAttachments(
       mimeType: file.mimeType || mimeTypeFromPath(absolutePath),
       linkText: '',
     }
-    saved.linkText = linkTextForAttachment(context, saved)
+    saved.linkText = await linkTextForAttachment(context, saved)
     attachments.push(saved)
-  }
-
-  if (context.type === 'obsidian') {
-    vaultAssetIndexCache.delete(context.root)
   }
 
   return {
@@ -589,7 +505,6 @@ export async function saveMarkdownAttachments(
 }
 
 export {
-  findObsidianVaultRoot as findOnethingObsidianVaultRoot,
   resolveMarkdownAsset as resolveOnethingMarkdownAsset,
   saveMarkdownAttachments as saveOnethingMarkdownAttachments,
 }

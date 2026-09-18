@@ -7,17 +7,15 @@ import {
 
 describe('file search runtime operations', () => {
   it('resolves work, note, and downloads roots with labels and dedupe', () => {
+    // 笔记根是一张表(P3:在册的笔记库),标签取目录名;同一个目录给两遍只出现一次。
     expect(resolveOnethingFileSearchRoots({
       cwd: '~/repo',
       homeDir: '/Users/test',
       downloadsDir: '/Users/test/Downloads',
-      noteRoots: {
-        userNoteDir: '/Users/test/notes/user',
-        workNoteDir: '/Users/test/notes/user',
-      },
+      noteRoots: ['/Users/test/notes/user', '/Users/test/notes/user'],
     })).toEqual([
       { path: '/Users/test/repo', source: 'workdir', label: 'Workspace' },
-      { path: '/Users/test/notes/user', source: 'note', label: 'Personal notes' },
+      { path: '/Users/test/notes/user', source: 'note', label: 'user' },
       { path: '/Users/test/Downloads', source: 'downloads', label: 'Downloads' },
     ])
   })
@@ -35,20 +33,20 @@ describe('file search runtime operations', () => {
         cwd: '/repo',
         homeDir: '/Users/test',
         downloadsDir: '/Users/test/Downloads',
-        noteRoots: { userNoteDir: '/Users/test/notes/user' },
+        noteRoots: ['/Users/test/notes/user'],
       })
 
       expect(resolveOnethingFileSearchRoots({
         cwd: '/repo',
         homeDir: '/Users/test',
         downloadsDir: '/Users/test/Downloads',
-        noteRoots: { userNoteDir: '/Users/test/notes/user' },
+        noteRoots: ['/Users/test/notes/user'],
         connectedDirs: [],
       })).toEqual(withoutOption)
 
       expect(withoutOption).toEqual([
         { path: '/repo', source: 'workdir', label: 'Workspace' },
-        { path: '/Users/test/notes/user', source: 'note', label: 'Personal notes' },
+        { path: '/Users/test/notes/user', source: 'note', label: 'user' },
         { path: '/Users/test/Downloads', source: 'downloads', label: 'Downloads' },
       ])
     })
@@ -69,11 +67,11 @@ describe('file search runtime operations', () => {
       expect(resolveOnethingFileSearchRoots({
         cwd: '/repo',
         homeDir: '/Users/test',
-        noteRoots: { userNoteDir: '/Users/test/notes/user' },
+        noteRoots: ['/Users/test/notes/user'],
         connectedDirs: ['/Users/test/notes/user', '/repo'],
       })).toEqual([
         { path: '/repo', source: 'workdir', label: 'Workspace' },
-        { path: '/Users/test/notes/user', source: 'note', label: 'Personal notes' },
+        { path: '/Users/test/notes/user', source: 'note', label: 'user' },
       ])
     })
 
@@ -111,9 +109,7 @@ describe('file search runtime operations', () => {
       cwd: '/repo',
       homeDir: '/Users/test',
       downloadsDir: '/Users/test/Downloads',
-      noteRoots: {
-        userNoteDir: '/missing',
-      },
+      noteRoots: ['/missing'],
       query: 'read',
       limit: 5,
       listFiles,
@@ -182,7 +178,7 @@ describe('file search runtime operations', () => {
         cwd: '/elsewhere',
         homeDir: '/Users/test',
         downloadsDir: '/Users/test/Downloads',
-        noteRoots: { userNoteDir: '/Users/test/notes' },
+        noteRoots: ['/Users/test/notes'],
         connectedDirs: ['/Users/test/vault'],
         roots: ['/work', '~/docs', '/work/'],
       })).toEqual([

@@ -52,7 +52,6 @@ function indexOnlyAdapters(root: string): OnethingSearchProvidersAdapters {
     iterateSessionMessages: () => [],
     getSession: () => undefined,
     getCurrentSessionId: () => undefined,
-    getVariablesStore: () => ({ getUserNoteDir: () => undefined, getWorkNoteDir: () => undefined }),
     listFiles: () => ({ async *[Symbol.asyncIterator]() {} }),
     listPrompts: () => [],
     getNoteVaults: () => [new FolderVault({ root, id: 'v1' })],

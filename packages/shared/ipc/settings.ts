@@ -92,7 +92,12 @@ export interface EditorSettings {
 	syntaxHighlighting?: boolean;
 	completionEnabled?: boolean;
 	composerMaxHeight?: number;
-	markdownNoteAttachmentDirectory?: string;
+	/**
+	 * P3(2026-09-18)删了同族的 `markdownNoteAttachmentDirectory`:
+	 * 「笔记的附件放哪」今天只有 `settings.notes.attachmentDirectory` 一格,
+	 * 老值由 `mergeWithDefaults` 搬过去一次(白名单式重建让旧格自然消失)。
+	 * 项目附件目录与笔记无关,原样留在编辑器设置里。
+	 */
 	markdownProjectAttachmentDirectory?: string;
 }
 
@@ -122,18 +127,9 @@ export interface GeneralSettings {
 	dmNotifications?: boolean;
 	maxTabs?: number; // Maximum open tabs per panel, 3-30, default 15
 	maxFilePreviewKB?: number; // Maximum file preview size in KB, 64-1024, default 256
-	/**
-	 * @deprecated Migrated to `variables.json` (variables subsystem). The
-	 * field is retained so that older installs can be migrated on first
-	 * boot post-upgrade. New code should NOT read this; consult the
-	 * variables store via `getVariablesStore().getUserNoteDir()` instead.
-	 *
-	 * (The sibling `aiNoteDir` was dropped with the `ai_note_dir` variable's
-	 * retirement, 2026-08-12 — long-term memory lives in the memory-wiki
-	 * plugin now. Old settings.json files may still carry the key; nothing
-	 * reads it.)
-	 */
-	userNoteDir?: string;
+	// `userNoteDir` 随 `user_note_dir` 变量一起删(P3):它是 2026 年初迁进
+	// `variables.json` 的那一格的兼容壳,而那两个变量今天由 `settings.notes`
+	// 的库表取代,零读者。老盘上的键随白名单式重建自然消失。
 }
 
 // Lightweight user profile for system prompt injection (low token, high value)

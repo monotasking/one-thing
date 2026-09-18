@@ -15,12 +15,13 @@ export interface VariablesFileGlobalVariable {
 
 export interface VariablesFile {
 	/**
-	 * `ai_note_dir` 曾是第三个笔记目录(soul-memory 时代的助手草稿目录),
-	 * 2026-08-12 退役 —— 长期记忆归 memory-wiki 插件。老盘上的该键不再被读取
-	 * 也不再被写回,是一个无读者的孤儿值;~/.onething/memory 目录不动。
+	 * P3(2026-09-18)删掉了 `user_note_dir` / `work_note_dir` 两格(`ai_note_dir`
+	 * 早在 2026-08-12 就退役了)。「笔记在哪」今天是 `settings.notes` 里的库表。
+	 *
+	 * **没有删除迁移**:`parseVariablesFile` 是**白名单式重建** —— 它只把自己
+	 * 认识的键抄进新对象,不认识的顶层键连读都不读。所以老盘上那两个键在下一次
+	 * 写回 `variables.json` 时自然消失,不需要谁去剥它。
 	 */
-	user_note_dir: string;
-	work_note_dir: string;
 	global_variables: VariablesFileGlobalVariable[];
 	/** Custom variables shared by every session of an agent, keyed by agent id. */
 	agent_variables: Record<string, VariablesFileGlobalVariable[]>;
@@ -30,8 +31,6 @@ export interface VariablesFile {
 
 export function createDefaultVariablesFile(): VariablesFile {
 	return {
-		user_note_dir: "",
-		work_note_dir: "",
 		global_variables: [],
 		agent_variables: {},
 		project_variables: {},
@@ -71,7 +70,7 @@ function parseGlobalVariable(
  * Parse a keyed record of variable lists (agent_variables /
  * project_variables). Lenient: malformed keys or entries are dropped
  * instead of failing the whole file — these maps grow organically and a
- * single bad entry must not reset every note dir to defaults.
+ * single bad entry must not reset every stored variable to defaults.
  */
 function parseKeyedVariables(
 	value: unknown,
@@ -106,32 +105,10 @@ export function parseVariablesFile(raw: unknown): {
 	}
 
 	const data: VariablesFile = {
-		user_note_dir:
-			typeof raw.user_note_dir === "string" ? raw.user_note_dir : "",
-		work_note_dir:
-			typeof raw.work_note_dir === "string" ? raw.work_note_dir : "",
 		global_variables: globalVariables as VariablesFileGlobalVariable[],
 		agent_variables: parseKeyedVariables(raw.agent_variables),
 		project_variables: parseKeyedVariables(raw.project_variables),
 	};
 
-	return {
-		data: migrateReservedGlobals(raw, data),
-		recovered: false,
-	};
-}
-
-function migrateReservedGlobals(
-	raw: unknown,
-	data: VariablesFile,
-): VariablesFile {
-	if (data.work_note_dir) return data;
-	if (!isRecord(raw)) return data;
-	const globals = raw.global_variables;
-	if (!Array.isArray(globals)) return data;
-	const legacy = globals.find(
-		(v) =>
-			isRecord(v) && v.name === "work_note_dir" && typeof v.value === "string",
-	) as { value: string } | undefined;
-	return legacy ? { ...data, work_note_dir: legacy.value } : data;
+	return { data, recovered: false };
 }

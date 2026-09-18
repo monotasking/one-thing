@@ -161,7 +161,6 @@ describe('editor settings defaults', () => {
       syntaxHighlighting: true,
       completionEnabled: true,
       composerMaxHeight: 200,
-      markdownNoteAttachmentDirectory: '',
       markdownProjectAttachmentDirectory: '',
     })
   })
@@ -174,7 +173,6 @@ describe('editor settings defaults', () => {
           lineWrapping: false,
           softWrapColumn: 999,
           composerMaxHeight: 10,
-          markdownNoteAttachmentDirectory: 'attachments',
           markdownProjectAttachmentDirectory: 'assets',
         },
       },
@@ -185,8 +183,31 @@ describe('editor settings defaults', () => {
     expect(settings.general.editor?.softWrapColumn).toBe(200)
     expect(settings.general.editor?.syntaxHighlighting).toBe(true)
     expect(settings.general.editor?.composerMaxHeight).toBe(80)
-    expect(settings.general.editor?.markdownNoteAttachmentDirectory).toBe('attachments')
     expect(settings.general.editor?.markdownProjectAttachmentDirectory).toBe('assets')
+  })
+
+  /**
+   * P3:「笔记的附件放哪」两格合一。老盘上的值搬进 `notes.attachmentDirectory`
+   * **一次**,旧格随白名单式重建消失 —— 没有第二个迁移标记(搬一格字符串重播
+   * 多少次都是同一个结果)。
+   */
+  it('搬走老的笔记附件目录:旧格的值落进 notes.attachmentDirectory', () => {
+    const migrated = mergeSettings({
+      general: { editor: { markdownNoteAttachmentDirectory: 'attachments' } },
+    } as unknown as Parameters<typeof mergeSettings>[0])
+
+    expect(migrated.notes?.attachmentDirectory).toBe('attachments')
+    expect((migrated.general.editor as Record<string, unknown>).markdownNoteAttachmentDirectory)
+      .toBeUndefined()
+  })
+
+  it('新格在就用新格,不被旧格盖回去', () => {
+    const merged = mergeSettings({
+      general: { editor: { markdownNoteAttachmentDirectory: 'old' } },
+      notes: { attachmentDirectory: 'new' },
+    } as unknown as Parameters<typeof mergeSettings>[0])
+
+    expect(merged.notes?.attachmentDirectory).toBe('new')
   })
 })
 

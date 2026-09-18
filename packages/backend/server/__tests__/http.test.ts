@@ -404,36 +404,36 @@ describe('createOnethingHttpServer', () => {
       }
       expect(alicePlugins.success).toBe(true)
       expect(alicePlugins.plugins.map(plugin => plugin.id)).toEqual(
-        expect.arrayContaining(['log-monitor', 'note-skills']),
+        expect.arrayContaining(['log-monitor']),
       )
-      expect(alicePlugins.plugins.find(plugin => plugin.id === 'note-skills')).toEqual(
+      expect(alicePlugins.plugins.find(plugin => plugin.id === 'log-monitor')).toEqual(
         expect.objectContaining({ enabled: true, loaded: false, commands: [] }),
       )
 
-      await expect(rpcData(baseUrlValue, aliceHeaders, 'disable', { pluginId: 'note-skills' }))
+      await expect(rpcData(baseUrlValue, aliceHeaders, 'disable', { pluginId: 'log-monitor' }))
         .resolves.toEqual({ success: true })
 
       const aliceAfterDisable = await rpcData(baseUrlValue, aliceHeaders, 'list', {}) as {
         plugins: Array<{ id: string }>
       }
-      expect(aliceAfterDisable.plugins.find(plugin => plugin.id === 'note-skills')).toEqual(
+      expect(aliceAfterDisable.plugins.find(plugin => plugin.id === 'log-monitor')).toEqual(
         expect.objectContaining({ enabled: false }),
       )
 
       const bobPlugins = await rpcData(baseUrlValue, bobHeaders, 'list', {}) as {
         plugins: Array<{ id: string }>
       }
-      expect(bobPlugins.plugins.find(plugin => plugin.id === 'note-skills')).toEqual(
+      expect(bobPlugins.plugins.find(plugin => plugin.id === 'log-monitor')).toEqual(
         expect.objectContaining({ enabled: true }),
       )
 
-      await expect(rpcData(baseUrlValue, aliceHeaders, 'enable', { pluginId: 'note-skills' }))
+      await expect(rpcData(baseUrlValue, aliceHeaders, 'enable', { pluginId: 'log-monitor' }))
         .resolves.toEqual({ success: true })
 
       const aliceAfterEnable = await rpcData(baseUrlValue, aliceHeaders, 'list', {}) as {
         plugins: Array<{ id: string }>
       }
-      expect(aliceAfterEnable.plugins.find(plugin => plugin.id === 'note-skills')).toEqual(
+      expect(aliceAfterEnable.plugins.find(plugin => plugin.id === 'log-monitor')).toEqual(
         expect.objectContaining({ enabled: true }),
       )
 
@@ -471,7 +471,7 @@ describe('createOnethingHttpServer', () => {
     const dispose = registerRouterHandlers(pluginsRouter, pluginsRpcHandlers)
     try {
       const requested = await rpcData(baseUrlValue, headers, 'request', {
-        pluginId: 'note-skills',
+        pluginId: 'log-monitor',
         action: 'search',
         payload: { q: 'hello' },
         requestId: 'req-1',
@@ -486,14 +486,14 @@ describe('createOnethingHttpServer', () => {
           success: false,
           error: 'Plugins are installed on the desktop host only.',
         })
-      await expect(rpcData(baseUrlValue, headers, 'pickFile', { pluginId: 'note-skills' }))
+      await expect(rpcData(baseUrlValue, headers, 'pickFile', { pluginId: 'log-monitor' }))
         .resolves.toEqual({
           error: 'Importing files into a plugin works on the desktop app only.',
         })
 
       // 只读配置照旧读得到,并且明说不可编辑。
       const config = await rpcData(baseUrlValue, headers, 'configGet', {
-        pluginId: 'note-skills',
+        pluginId: 'log-monitor',
       }) as { success: boolean; editable?: boolean; readOnlyReason?: string }
       expect(config.success).toBe(true)
       expect(config.editable).toBe(false)
@@ -505,7 +505,7 @@ describe('createOnethingHttpServer', () => {
         })
 
       // 开关面照旧是真的写盘。
-      await expect(rpcData(baseUrlValue, headers, 'enable', { pluginId: 'note-skills' }))
+      await expect(rpcData(baseUrlValue, headers, 'enable', { pluginId: 'log-monitor' }))
         .resolves.toEqual({ success: true })
       await expect(rpcData(baseUrlValue, headers, 'refresh', {}))
         .resolves.toEqual({ success: true })

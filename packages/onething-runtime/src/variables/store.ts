@@ -38,26 +38,6 @@ export class VariablesStore {
     this.state = this.persistence.loadFromDisk()
   }
 
-  getUserNoteDir(): string {
-    this.initialize()
-    return this.state.user_note_dir
-  }
-
-  setUserNoteDir(value: string): void {
-    this.state = { ...this.state, user_note_dir: value }
-    this.persistAndNotify()
-  }
-
-  getWorkNoteDir(): string {
-    this.initialize()
-    return this.state.work_note_dir
-  }
-
-  setWorkNoteDir(value: string): void {
-    this.state = { ...this.state, work_note_dir: value }
-    this.persistAndNotify()
-  }
-
   getGlobalVariables(): ContextVariable[] {
     this.initialize()
     return this.state.global_variables.map(v => ({
@@ -100,8 +80,9 @@ export class VariablesStore {
   /**
    * 订阅数 —— 拆除测试的快照项之一。
    *
-   * note-skills 经 onVariableChange 在这里挂了一条真订阅;它是"注册表之外的
-   * 残留"的活样本,不进快照的话,删掉实现里的 onDispose(unsubscribe) 测试照样绿。
+   * 插件经 `api` 上的变量订阅在这里挂的是**真订阅**,它是"注册表之外的残留"的
+   * 活样本,不进快照的话,删掉实现里的 onDispose(unsubscribe) 测试照样绿。
+   * (从前的活样本是 note-skills 内置插件,2026-09-18 随笔记领域 P3 退役。)
    */
   listenerCount(): number {
     return this.listeners.size

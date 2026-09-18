@@ -3,8 +3,8 @@
 exports[`golden: variable > boundary: get on a missing name returns the self-rescue line > missing get output 1`] = `"No variable named "nothing_here". Use action="keys" to see what exists."`;
 
 exports[`golden: variable > boundary: keys projects names only, in the same order > keys output 1`] = `
-"topic [session] [state]
-user_note_dir [global]
+"shared_note [global]
+topic [session] [state]
 workdir [session] [readonly] - Work directory"
 `;
 
@@ -48,7 +48,7 @@ exports[`golden: variable > normal: list renders and carries no effect > list me
     },
     {
       "description": undefined,
-      "name": "user_note_dir",
+      "name": "shared_note",
       "readonly": undefined,
       "scope": "global",
       "state": undefined,
@@ -64,40 +64,13 @@ exports[`golden: variable > normal: list renders and carries no effect > list me
 exports[`golden: variable > normal: list renders and carries no effect > list output 1`] = `
 "workdir = /repo [session] [readonly] - Work directory
 topic = toolkit [session] [state]
-user_note_dir = /notes [global]"
+shared_note = /notes [global]"
 `;
 
 exports[`golden: variable > normal: set writes and renders > set output 1`] = `
 "workdir = /repo [session] [readonly] - Work directory
 topic = r1
-user_note_dir = /notes [global]"
-`;
-
-exports[`golden: variable > permission input: repointing a capability variable reports capability_change > capability effects 1`] = `
-[
-  {
-    "barrier": true,
-    "kind": "capability_change",
-    "metadata": {
-      "action": "set",
-      "value": "/elsewhere",
-      "variable": "user_note_dir",
-    },
-    "resources": [
-      "/elsewhere",
-    ],
-  },
-]
-`;
-
-exports[`golden: variable > permission input: repointing a capability variable reports capability_change > capability preview 1`] = `
-{
-  "metadata": {
-    "value": "/elsewhere",
-    "variable": "user_note_dir",
-  },
-  "title": "Repoint user_note_dir to: /elsewhere",
-}
+shared_note = /notes [global]"
 `;
 
 exports[`golden: variable > spec 钉住 > description 1`] = `

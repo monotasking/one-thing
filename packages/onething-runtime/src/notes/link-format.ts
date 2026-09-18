@@ -72,8 +72,14 @@ export function buildLinkText(
   return `${prefix}[${display}](${encodeMarkdownPath(scoped)})`
 }
 
-/** 目标是一篇笔记吗(`.md` / `.markdown`),还是一个附件。 */
-function isMarkdownNote(value: string): boolean {
+/**
+ * 目标是一篇笔记吗(`.md` / `.markdown`),还是一个附件。
+ *
+ * **一份规则,三个读者**:链接文本要它(附件不省扩展名)、`BasenameIndex` 要它
+ * (不带扩展名的 wikilink 先找笔记)、`listNotes` 要它(索引收所有文件,「只要
+ * 笔记」是读者的事)。三处各写一遍就会各说各话。
+ */
+export function isMarkdownNote(value: string): boolean {
   const extension = path.posix.extname(value).toLowerCase()
   return extension === '.md' || extension === '.markdown'
 }

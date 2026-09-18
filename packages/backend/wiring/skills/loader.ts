@@ -17,6 +17,7 @@ import {
 import {
   listConnectedSkillRoots,
 } from '../../stores/connected-directories.js'
+import { skillVaultRootsNow } from '../notes/index.js'
 
 /** Every provider's CLI skill dir; only the active provider's is exposed. */
 const musicSkillDirs = new Set(
@@ -57,12 +58,18 @@ export function configureAppSkillsLoader(): void {
   configureOnethingSkillsLoaderRuntime({
     getStorePath: getOnethingStorePath,
     listPluginSkillRoots,
-    // 技能页手工加的自定义目录 + 接入目录(后者投影成同款根,复用同一条
-    // 扫描/去重/id 链路,不另起一套)。技能设置页读的是 settings 原始值,
-    // 不经过这个适配器,所以接入目录不会漏进那个可编辑列表里。
+    // 技能页手工加的自定义目录 + 接入目录 + 勾了「技能来源」的笔记库
+    // (后两者投影成同款根,复用同一条扫描/去重/id 链路,不另起一套)。
+    // 技能设置页读的是 settings 原始值,不经过这个适配器,所以这两类合成根
+    // 不会漏进那个可编辑列表里。
+    //
+    // 笔记库这一条顶掉了 note-skills 内置插件(P3 退役):那条插件链路的技能 id
+    // 里嵌的是**绝对路径的 sha1**,用户挪一次库,settings 里所有针对这些技能的
+    // 启用/绑定覆盖就全成孤儿(判词逐字见 `stores/connected-directories.ts`)。
     listCustomSkillRoots: () => [
       ...(getSettings().skills?.customDirectories ?? []),
       ...listConnectedSkillRoots(),
+      ...skillVaultRootsNow(),
     ],
     isPackaged: () => envPorts.isPackaged?.() ?? false,
     getResourcesPath: () => envPorts.getResourcesPath?.(),

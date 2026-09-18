@@ -86,10 +86,6 @@ const stubAdapters: OnethingSearchProvidersAdapters = {
   iterateSessionMessages: () => [],
   getSession: () => undefined,
   getCurrentSessionId: () => undefined,
-  getVariablesStore: () => ({
-    getUserNoteDir: () => undefined,
-    getWorkNoteDir: () => undefined,
-  }),
   listFiles: () => ({ async *[Symbol.asyncIterator]() {} }),
   listPrompts: () => [],
 }

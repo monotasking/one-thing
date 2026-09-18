@@ -49,10 +49,6 @@ function adaptersOf(sessions: OnethingSearchSessionMeta[]): OnethingSearchProvid
     iterateSessionMessages: () => [],
     getSession: () => undefined,
     getCurrentSessionId: () => undefined,
-    getVariablesStore: () => ({
-      getUserNoteDir: () => undefined,
-      getWorkNoteDir: () => undefined,
-    }),
     listFiles: () => ({ async *[Symbol.asyncIterator]() {} }),
     listPrompts: () => [],
   }

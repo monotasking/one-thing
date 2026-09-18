@@ -33,10 +33,6 @@ vi.mock('@onething/runtime/variables/store-bound', () => ({
       mocks.variableBuckets.get(`${kind}:${key}`) ?? [],
     setScopedVariables: (kind: string, key: string, vars: unknown[]) =>
       void mocks.variableBuckets.set(`${kind}:${key}`, vars),
-    getUserNoteDir: () => '',
-    getWorkNoteDir: () => '',
-    setUserNoteDir: () => undefined,
-    setWorkNoteDir: () => undefined,
     subscribe: () => () => undefined,
   }),
 }))

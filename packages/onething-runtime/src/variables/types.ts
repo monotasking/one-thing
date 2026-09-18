@@ -114,22 +114,19 @@ export const VARIABLE_LIMITS = {
 } as const
 
 /**
- * Variables whose value is not just text: the system reads it and acts on it.
- * The note directories decide where notes are written and — because the
- * note-skills plugin scans them recursively for SKILL.md — which skills load.
+ * 「能力变量」:值不只是文字,系统会照着它动手。重指一个这样的变量等于改变助手
+ * 够得着的范围,所以 `variable` 工具对它们**提一次审批**,而不是像写普通状态那样
+ * 悄悄写掉。
  *
- * Repointing one changes what the assistant can reach, so the `variable` tool
- * raises a permission effect for these instead of writing them silently the way
- * it writes ordinary state. The assistant may still propose the change; the
- * user approves it.
+ * **这张表今天是空的**(P3,2026-09-18):唯一的两个成员 `user_note_dir` /
+ * `work_note_dir` 随笔记领域退役了 —— 「笔记在哪」今天是设置里的一张库表,改它
+ * 走设置页,不再是模型能提议的一次变量写入。
  *
- * This list is the seed of a real capability registry — see
- * docs/design/capability-registry.md.
+ * 表空了而机制留着,是因为**机制本身是对的**:下一个「值即能力」的变量(某个
+ * 沙箱根、某个凭证指向)加进来时,判据和审批路径已经在这里了,加的是一行名字。
+ * 这也是真正的能力注册表的种子 —— 见 docs/design/capability-registry.md。
  */
-export const CAPABILITY_VARIABLE_NAMES = Object.freeze([
-  'user_note_dir',
-  'work_note_dir',
-] as const)
+export const CAPABILITY_VARIABLE_NAMES = Object.freeze([] as readonly string[])
 
 export function isCapabilityVariable(name: string): boolean {
   return (CAPABILITY_VARIABLE_NAMES as readonly string[]).includes(name.trim())
@@ -154,8 +151,6 @@ export const RESERVED_NAMES = Object.freeze([
   'workdir',
   'cwd',
   'home',
-  'user_note_dir',
-  'work_note_dir',
   'datetime',
   'git_branch',
   'background_jobs',

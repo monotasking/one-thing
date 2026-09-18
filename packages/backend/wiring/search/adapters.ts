@@ -11,7 +11,6 @@
  */
 import type { OnethingSearchProvidersAdapters } from '@onething/runtime/search'
 import { createPrompt, listPrompts } from '@onething/runtime/prompts/store-bound'
-import { getVariablesStore } from '@onething/runtime/variables/store-bound'
 import { getCurrentSessionId } from '../../stores/app-state.js'
 import { getConnectedDirectoriesForSession } from '../../stores/connected-directories.js'
 import { getSession, getSessionsList } from '../../stores/sessions.js'
@@ -26,7 +25,6 @@ export function createAppSearchProvidersAdapters(): OnethingSearchProvidersAdapt
     iterateSessionMessages: (sessionId: string) => sessionReads.iterateMessagesRaw(sessionId),
     getSession,
     getCurrentSessionId,
-    getVariablesStore,
     // 笔记库**每次现取**(晚绑定):库表会跟着设置变、跟着宿主的信任状态变,
     // 装配那一刻的快照过一分钟就是假的。没有笔记子系统 = 空表(见
     // `noteVaultsNow`),于是 `notes` 那一类整组不出现。

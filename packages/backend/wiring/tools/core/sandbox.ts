@@ -18,7 +18,7 @@ import { getConnectedDirectories } from '../../../stores/connected-directories.j
 import {
   getOnethingToolOutputsDir,
 } from '@onething/runtime/storage'
-import { getVariablesStore } from '@onething/runtime/variables/store-bound'
+import { noteRootsNow } from '../../notes/index.js'
 
 export interface SandboxHost {
   getPath?: (name: string) => string
@@ -36,10 +36,9 @@ export function configureAppToolSandbox(): void {
   configureOnethingToolSandboxRuntime({
   getDefaultWorkingDirectory: () => getSettings().tools?.bash?.defaultWorkingDirectory,
   getHostPath: name => sandboxHost.getPath?.(name),
-  getNoteDirectories: () => {
-    const store = getVariablesStore()
-    return [store.getUserNoteDir(), store.getWorkNoteDir()]
-  },
+  // 笔记根 = 在册的笔记库的根(P3),唯一定义在 `wiring/notes` 的 `noteRootsNow()`;
+  // 晚绑定地现取,因为库表跟着设置与宿主的信任状态变。
+  getNoteDirectories: noteRootsNow,
   /**
    * **全局层**接入目录。这份适配器服务的是拿不到会话的调用面(`checkFileAccess`、
    * `findReadSandboxRootForPath` 等 —— 它们的签名里没有 sessionId,也没有一条

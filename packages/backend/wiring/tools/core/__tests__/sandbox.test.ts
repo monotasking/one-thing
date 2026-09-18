@@ -7,6 +7,17 @@ vi.mock('../../../../stores/settings.js', () => ({
   getSettings: vi.fn(() => ({})),
 }))
 
+/**
+ * 笔记根来自**笔记领域**(P3;从前是 `user_note_dir` / `work_note_dir` 两个变量)。
+ *
+ * 这里假的是 `noteRootsNow()` —— 也就是「在册的笔记库的根」那一句话。反证:把
+ * `sandbox.ts` 的 `getNoteDirectories` 改回读变量仓,下面两条读根用例当场红。
+ */
+const noteRoots = vi.hoisted(() => ({ current: [] as string[] }))
+vi.mock('../../../notes/index.js', () => ({
+  noteRootsNow: () => noteRoots.current,
+}))
+
 import {
   expandPath,
   isPathContained,
@@ -34,11 +45,8 @@ import { createDefaultVariablesFile } from '@onething/runtime/variables/schema'
 describe('sandbox', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    resetVariablesStoreForTests().hydrateForTests({
-      ...createDefaultVariablesFile(),
-      user_note_dir: '',
-      work_note_dir: '',
-    })
+    noteRoots.current = []
+    resetVariablesStoreForTests().hydrateForTests(createDefaultVariablesFile())
   })
 
   // ─── expandPath ──────────────────────────────────────────────────
@@ -189,12 +197,8 @@ describe('sandbox', () => {
       expect(findSandboxRootForPath('/skills/iva/SKILL.md', '/workspace', ['/skills/iva'])).toBe('/skills/iva')
     })
 
-    it('adds note directories and downloads to read sandbox roots', () => {
-      resetVariablesStoreForTests().hydrateForTests({
-        ...createDefaultVariablesFile(),
-        user_note_dir: '/notes/personal',
-        work_note_dir: '/notes/work',
-      })
+    it('adds note vault roots and downloads to read sandbox roots', () => {
+      noteRoots.current = ['/notes/personal', '/notes/work']
 
       expect(getReadSandboxRoots('/workspace', ['/shared'])).toEqual([
         '/workspace',
@@ -209,11 +213,7 @@ describe('sandbox', () => {
     })
 
     it('finds read sandbox roots for note and downloads paths', () => {
-      resetVariablesStoreForTests().hydrateForTests({
-        ...createDefaultVariablesFile(),
-        user_note_dir: '/notes/personal',
-        work_note_dir: '',
-      })
+      noteRoots.current = ['/notes/personal']
 
       expect(findReadSandboxRootForPath('/notes/personal/today.md', '/workspace')).toBe('/notes/personal')
       expect(findReadSandboxRootForPath(path.join(getDownloadsDirectory(), 'receipt.pdf'), '/workspace'))

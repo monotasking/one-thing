@@ -1807,20 +1807,26 @@ const MAIN_MEDIA_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
   /Electron\.IpcMainInvokeEvent/,
 ]
 
+// 装配层不许**复造**笔记/附件的解析规则:那些都是产品逻辑,住 runtime 的
+// markdown/asset-service(它在那里问的是 `NoteVault` 自己)。P3 把三个 Obsidian
+// 专名加进这张表 —— 一个笔记系统的名字出现在 backend 层,就是这条规则要抓的事。
 const MAIN_MARKDOWN_ASSET_SERVICE_FORBIDDEN_PATTERNS: RegExp[] = [
   /IMAGE_EXTENSIONS/,
   /SKIP_SEARCH_DIRS/,
   /VAULT_ASSET_INDEX_TTL_MS/,
-  /interface\s+ObsidianConfig/,
   /interface\s+MarkdownContext/,
   /function\s+markdownContext/,
   /function\s+cleanRawTarget/,
   /function\s+mimeTypeFromPath/,
-  /function\s+obsidianAttachmentDirectory/,
-  /function\s+attachmentDirectoryForContext/,
+  // 「附件落哪」只有一个产地:库自己的 `attachmentPathFor`。
+  /attachmentPathFor\s*\(/,
+  /function\s+attachmentPlacementForContext/,
   /function\s+candidatePaths/,
   /function\s+buildVaultAssetIndex/,
   /function\s+findObsidianAssetByBasename/,
+  /\bObsidianCli\b/,
+  /\breadObsidianConfig\b/,
+  /\bfindObsidianVaultRoot\b/,
   /attachmentFolderPath/,
   /useMarkdownLinks/,
   /Buffer\.from\(file\.base64Data/,
@@ -2177,7 +2183,6 @@ const MAIN_VARIABLES_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
   /class\s+VariablesStore/,
   /function\s+createDefaultVariablesFile/,
   /function\s+parseVariablesFile/,
-  /function\s+migrateReservedGlobals/,
   /function\s+formatStateVariablesForPrompt/,
   /function\s+assertValidName/,
   /function\s+assertValidValue/,
@@ -2187,14 +2192,12 @@ const MAIN_VARIABLES_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
   /class\s+VariableError/,
   /class\s+VariableRegistry/,
   /class\s+CoreProvider/,
-  /class\s+NotesProvider/,
   /class\s+SessionStoreProvider/,
   /class\s+GlobalStoreProvider/,
   /writeChains/,
   /function\s+uniqueRoots/,
   /resolveExistingDirectory/,
   /interface\s+WorkdirGateway/,
-  /interface\s+NotesGateway/,
   /interface\s+SessionStoreGateway/,
   /interface\s+GlobalStoreGateway/,
   /private\s+findClaimant/,
@@ -2892,11 +2895,14 @@ function checkMarkdownDomainRidesTheRpcChannel(): void {
   ]
   // 沙箱护栏必须留在 app 层的**调用路径**上：这几条是从 apps/server 搬过来的,
   // 搬丢了就等于迁移把安全护栏一起迁没了 —— 批 1 退回这个域正是为了避免这件事。
-  // 注:Obsidian vault 判定的**实现**已按 "owns Markdown asset service" 规则归位
-  // runtime(卫生批 7739c230),app 层留的是对它的调用 —— 守卫因此盯调用符号。
+  // 注:笔记库判定的**实现**已按 "owns Markdown asset service" 规则归位 runtime
+  // (卫生批 7739c230;P3 起它问的是 `NoteVault` 而不是磁盘上的 `.obsidian`),
+  // app 层留的是对它的调用 —— 守卫因此盯调用符号。
   const requiredGuardSymbols = [
     'isTargetInsideSandbox',
-    'obsidianAttachmentRootStaysInside',
+    // P3 改名:判据从「往上找 .obsidian」换成「问库自己附件放哪」,守卫的名字
+    // 因此不再点任何一个笔记系统。
+    'noteAttachmentRootStaysInside',
     'clampAttachmentDirectory',
   ]
   const lines = [
@@ -6019,7 +6025,6 @@ function checkRuntimeOwnsVariablesStoreAndHelpers(): void {
     path.join(root, 'packages/onething-runtime/src/variables/ipc-operations.ts'),
     path.join(root, 'packages/onething-runtime/src/variables/registry.ts'),
     path.join(root, 'packages/onething-runtime/src/variables/providers/core.ts'),
-    path.join(root, 'packages/onething-runtime/src/variables/providers/notes.ts'),
     path.join(root, 'packages/onething-runtime/src/variables/providers/session-store.ts'),
     path.join(root, 'packages/onething-runtime/src/variables/providers/global-store.ts'),
     path.join(root, 'packages/onething-runtime/src/variables/providers/index.ts'),
@@ -6055,7 +6060,6 @@ function checkRuntimeOwnsVariablesStoreAndHelpers(): void {
     'VariableRegistry',
     'getVariableRegistry',
     'CoreProvider',
-    'NotesProvider',
     'SessionStoreProvider',
     'GlobalStoreProvider',
   ]

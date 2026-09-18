@@ -7,12 +7,15 @@
  * 越界路径在夹紧那侧全部被拦，在桌面那侧全部照旧放行。
  *
  * 覆盖的越界形状：`../` 相对穿越、绝对路径出沙箱、`~` 展开、`file:` URL、
- * wiki 链接里裹着的穿越、Obsidian vault 配置指向沙箱外、解析结果走出沙箱。
+ * wiki 链接里裹着的穿越、**笔记库的附件目录指向沙箱外**、解析结果走出沙箱。
+ *
+ * P3(2026-09-18):库的判定从「往上找 `.obsidian`」换成问笔记领域的注册表,
+ * 所以这里假的是那只注册表 —— 测试因此不再在盘上造 `.obsidian` 目录。
  */
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import { createDefaultVariablesFile } from '@onething/runtime/variables/schema'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
@@ -20,6 +23,25 @@ import { resetVariablesStoreForTests } from '@onething/runtime/variables/store-b
 import { updateSettingsInMemory } from '../../stores/settings.js'
 import { markdownRpcHandlers } from '../domains/markdown.js'
 import { configureHostLocalTrust } from '../../server/host-trust.js'
+import { FolderVault } from '@onething/runtime/notes'
+import type { NoteVault } from '@onething/runtime/notes'
+
+/**
+ * 笔记领域的假件:一张「这条路径归哪个库」的表。
+ *
+ * 反证:把 `markdownRuntimeAdapters` 夹紧那一支的 `vaultFor: () => null` 挖掉
+ * (改成照样问注册表),「附件目录指向沙箱外」那条在夹紧侧就会放行。
+ */
+const notes = vi.hoisted(() => ({ vaults: [] as NoteVault[] }))
+vi.mock('../../wiring/notes/index.js', () => ({
+  getNotesSubsystemSafe: () => ({
+    registry: {
+      vaultFor: (absolutePath: string) =>
+        notes.vaults.find(vault => absolutePath.startsWith(`${vault.root}/`)) ?? null,
+    },
+  }),
+  noteRootsNow: () => notes.vaults.map(vault => vault.root),
+}))
 
 const tempRoots: string[] = []
 
@@ -61,15 +83,11 @@ async function onDesktopHost<T>(run: () => Promise<T>): Promise<T> {
 const OUTSIDE_DOC = 'Markdown document path must stay inside the workspace sandbox root.'
 const OUTSIDE_TARGET = 'Markdown asset target must stay inside the workspace sandbox root.'
 const OUTSIDE_ROOT = 'Markdown workspace root must stay inside the workspace sandbox root.'
-const OUTSIDE_CONFIG = 'Markdown attachment configuration must stay inside the workspace sandbox root.'
 
 beforeEach(() => {
+  notes.vaults = []
   updateSettingsInMemory(createDefaultSettings())
-  resetVariablesStoreForTests().hydrateForTests({
-    ...createDefaultVariablesFile(),
-    user_note_dir: '',
-    work_note_dir: '',
-  })
+  resetVariablesStoreForTests().hydrateForTests(createDefaultVariablesFile())
 })
 
 afterEach(async () => {
@@ -169,30 +187,51 @@ describe('markdown RPC domain · dispatch context decides the sandbox', () => {
     expect(external.success).toBe(true)
   })
 
-  it('rejects an Obsidian vault whose attachment folder points outside the sandbox', async () => {
+  /**
+   * 「库的配置把附件指到沙箱外」那条逃逸面,在夹紧侧是**结构上不存在**的。
+   *
+   * P3 之前它存在,因为服务自己会往上扫盘找 `.obsidian` —— 夹不夹紧它都找得到,
+   * 所以必须有一道守卫(`noteAttachmentRootStaysInside`)去判那份配置。今天
+   * 「这份文档归哪个库」是一格适配器,而夹紧的宿主**一个库都不交**(`vaultFor`
+   * 恒 `null`,与 `getNoteRoots: () => []` 同一条理由:笔记库是宿主机器上用户
+   * 自己的文件)。于是那道守卫在这一侧问的是同一份适配器,答案恒真 —— 它留着
+   * 是为了「哪天有宿主在夹紧态下真的交出库表」那一刻;它本身的判法由
+   * `runtime/markdown/__tests__/asset-service.test.ts` 直接钉住。
+   *
+   * 这条用例证的因此是**更强的那句话**:夹紧侧根本不走库语义,附件落在沙箱里;
+   * 桌面侧同一个库的配置照旧生效。
+   */
+  it('a confined host claims no note vault, so a vault attachment folder cannot reach out', async () => {
     const sandboxRoot = await makeTempRoot('md-sandbox-')
     const outside = await makeTempRoot('md-outside-')
     const notePath = path.join(sandboxRoot, 'vault', 'today.md')
-    await fs.mkdir(path.join(sandboxRoot, 'vault', '.obsidian'), { recursive: true })
+    await fs.mkdir(path.join(sandboxRoot, 'vault'), { recursive: true })
     await fs.writeFile(notePath, '# Today')
-    await fs.writeFile(
-      path.join(sandboxRoot, 'vault', '.obsidian', 'app.json'),
-      JSON.stringify({ attachmentFolderPath: outside }),
-    )
+    // 库自己的配置把附件指到沙箱外 —— 那是磁盘上的配置,不是请求输入。
+    // (附件目录是**库相对**的,所以指到界外要写成 `../..` 这样的相对路径。)
+    const vaultRoot = path.join(sandboxRoot, 'vault')
+    notes.vaults = [new FolderVault({
+      root: vaultRoot,
+      id: 'v-outside',
+      attachmentDirectory: path.relative(vaultRoot, outside),
+    })]
 
-    await expect(markdownRpcHandlers.saveAttachments(
+    const confined = await markdownRpcHandlers.saveAttachments(
       {
         documentPath: notePath,
         files: [{ fileName: 'a.png', mimeType: 'image/png', base64Data: 'AA==' }],
       },
       httpContext(sandboxRoot),
-    )).resolves.toEqual({ success: false, error: OUTSIDE_CONFIG, code: 'WORKSPACE_PATH' })
+    )
+    expect(confined.success).toBe(true)
+    expect(confined.attachments?.[0]?.absolutePath.startsWith(sandboxRoot)).toBe(true)
+    expect(confined.attachments?.[0]?.absolutePath.startsWith(outside)).toBe(false)
 
-    // 桌面 context 下同一个 vault 配置照旧生效 —— 那是用户自己的机器。
+    // 桌面 context 下同一个库的配置照旧生效 —— 那是用户自己的机器。
     const desktop = await onDesktopHost(() => markdownRpcHandlers.saveAttachments(
       {
         documentPath: notePath,
-        workspaceRoot: path.join(sandboxRoot, 'vault'),
+        workspaceRoot: vaultRoot,
         files: [{ fileName: 'a.png', mimeType: 'image/png', base64Data: 'AA==' }],
       },
       DESKTOP_RPC_CONTEXT,
@@ -210,16 +249,9 @@ describe('markdown RPC domain · dispatch context decides the sandbox', () => {
 
     // 笔记根指向沙箱外,附件目录也指向沙箱外 —— 两者都必须失效。
     const settings = createDefaultSettings()
-    settings.general.editor = {
-      ...settings.general.editor,
-      markdownNoteAttachmentDirectory: outside,
-    }
+    settings.notes = { ...settings.notes!, attachmentDirectory: outside }
     updateSettingsInMemory(settings)
-    resetVariablesStoreForTests().hydrateForTests({
-      ...createDefaultVariablesFile(),
-      user_note_dir: sandboxRoot,
-      work_note_dir: '',
-    })
+    notes.vaults = []
 
     const result = await markdownRpcHandlers.saveAttachments(
       {

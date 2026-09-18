@@ -45,7 +45,6 @@ import { getPluginAppVersion } from '@onething/runtime/plugins/app-version'
 import { clearPluginRuntimeHealth } from '@onething/runtime/plugins/health'
 import type { PluginDefinition, PluginEntry, PluginSettings } from './types.js'
 import logMonitorPlugin, { logMonitorManifest } from './builtin/log-monitor.js'
-import noteSkillsPlugin, { noteSkillsManifest } from './builtin/note-skills.js'
 import { consolePort, getLogger } from '../logging/index.js'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { LegacyDuckLogger } from '@onething/core/logging'
@@ -282,12 +281,6 @@ function getBuiltinPlugins(): PluginDefinition[] {
       manifest: logMonitorManifest,
       entry: logMonitorPlugin,
       enabled: getPluginEnabled('log-monitor'),
-    },
-    {
-      id: 'note-skills',
-      manifest: noteSkillsManifest,
-      entry: noteSkillsPlugin,
-      enabled: getPluginEnabled('note-skills'),
     },
   ]) as PluginDefinition[]
 }

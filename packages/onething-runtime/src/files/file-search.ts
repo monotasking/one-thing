@@ -42,16 +42,18 @@ export interface OnethingFileSearchRoot {
   label: string
 }
 
-export interface OnethingFileSearchNoteRoots {
-  userNoteDir?: string | null
-  workNoteDir?: string | null
-}
-
 export interface ResolveOnethingFileSearchRootsOptions {
   cwd?: string
   homeDir: string
   downloadsDir?: string | null
-  noteRoots?: OnethingFileSearchNoteRoots
+  /**
+   * 笔记库的根(P3;从前是 `userNoteDir` / `workNoteDir` 两格)。
+   *
+   * 产地只有一个 —— 装配层的 `noteRootsNow()`,也就是**在册的笔记库**。这里收的
+   * 是一张表而不是两个具名格,因为「有几个笔记库」是用户的事:两个格子的形只容得
+   * 下「个人 / 工作」这一种活法,而真实的库表有六个。
+   */
+  noteRoots?: readonly string[]
   /** 用户在设置里加的「接入目录」;缺席/空数组 = 与没有这个功能时完全一致。 */
   connectedDirs?: readonly string[]
   /**
@@ -77,7 +79,7 @@ export interface OnethingFilesIpcLogger {
 
 export interface ListOnethingFileSearchEntriesForIpcOptions
   extends Omit<ListOnethingFileSearchEntriesOptions, 'noteRoots' | 'connectedDirs'> {
-  getNoteRoots?(): MaybePromise<OnethingFileSearchNoteRoots>
+  getNoteRoots?(): MaybePromise<readonly string[]>
   getConnectedDirs?(): MaybePromise<readonly string[]>
   logger?: OnethingFilesIpcLogger
 }
@@ -86,11 +88,6 @@ function expandOnethingPath(input: string, homeDir: string): string {
   if (input === '~') return homeDir
   if (input.startsWith('~/')) return path.join(homeDir, input.slice(2))
   return input
-}
-
-function getNoteRootLabel(name: keyof OnethingFileSearchNoteRoots): string {
-  if (name === 'workNoteDir') return 'Work notes'
-  return 'Personal notes'
 }
 
 function entryMatchesQuery(entry: OnethingFileSearchEntry, lowerQuery: string): boolean {
@@ -130,13 +127,10 @@ export function resolveOnethingFileSearchRoots(
 
   add(options.cwd, 'workdir', 'Workspace')
 
-  const noteRoots = options.noteRoots || {}
-  const noteEntries = [
-    ['userNoteDir', noteRoots.userNoteDir],
-    ['workNoteDir', noteRoots.workNoteDir],
-  ] as const
-  for (const [name, value] of noteEntries) {
-    add(value, 'note', getNoteRootLabel(name))
+  // 笔记根的标签就是它的目录名:库的名字是用户自己起的,比「个人笔记 / 工作笔记」
+  // 这种由两个格子的形状硬安上去的分类诚实。
+  for (const value of options.noteRoots ?? []) {
+    add(value, 'note', path.basename(path.resolve(expandOnethingPath(value, options.homeDir))) || value)
   }
 
   // 接入目录排在笔记根之后、Downloads 之前。`add` 自带去重,所以一个既是

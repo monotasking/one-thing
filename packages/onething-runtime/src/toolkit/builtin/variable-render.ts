@@ -13,7 +13,7 @@ export type VariableAction = 'list' | 'get' | 'keys' | 'set' | 'append' | 'remov
 
 /**
  * 读操作 —— 不写任何东西,因此也不该触发能力变量的审批效果。
- * (`plan` 里少了这道门,一次 `get user_note_dir` 就会弹出"重指目录"的审批框。)
+ * (`plan` 里少了这道门,一次对能力变量的 `get` 就会弹出"重指目录"的审批框。)
  */
 export const VARIABLE_READ_ACTIONS = new Set<VariableAction>(['list', 'get', 'keys'])
 

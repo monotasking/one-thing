@@ -70,7 +70,7 @@ src/main, src/renderer, src/preload, src/shared → Electron 应用本体（正�
 | `music/` | 完整的电台/音乐子系统：`radio-conductor.ts`（队列/播放调度）、`radio-store.ts`、`now-playing.ts`、`ncm-cli-driver.ts`（驱动 ncm-cli 播放器）、歌词识别；`providers/ncm/` 是网易云音乐 provider。 |
 | `perf/` | 极小的启动耗时打点 `startup-trace.ts`。 |
 | `permissions/` | 对 `@onething/core/permission` 的 runtime 封装：授权存储、会话/工作目录级授权展示、面向 IPC 的批准/拒绝/列表 API。 |
-| `plugins/` | 插件系统：日志监控插件、"note-skills"（Obsidian vault 技能发现）、插件命令执行/列举。（原有的 `soul-memory.ts` 已于 2026-08-06 整树退役，见 `docs/audit/soul-memory-retirement-2026-08-06.md`。） |
+| `plugins/` | 插件系统：日志监控插件、插件命令执行/列举。（`soul-memory.ts` 已于 2026-08-06 整树退役，见 `docs/audit/soul-memory-retirement-2026-08-06.md`；`note-skills.ts` 于 2026-09-18 随笔记领域 P3 退役 —— 笔记库的技能根今天走 `listCustomSkillRoots` 那条 `custom:` 链路，见 `docs/design/notes-obsidian-cli-2026-09.md` §4.4。） |
 | `practice/` | 间隔重复练习/打卡引擎（engine/ledger/summary.ts）。 |
 | `project-dirs/` | "已知项目"目录注册表：id/持久化/prompt 注入/存储。 |
 | `prompts/` | **`builder.ts`（16k）就是 CLAUDE.md 中提到的"目录在上、正文在下"系统提示词构建器**：拼装基础系统提示词+工具指南+操作系统特定内容+记忆/待办规则片段（从 `content/` 下的原始 `.md` 文件导入）。`resolver.ts`/`store.ts` 管理用户自定义提示词模板；`tasks/` 导出记忆捕获/回顾任务专用的系统提示词。 |

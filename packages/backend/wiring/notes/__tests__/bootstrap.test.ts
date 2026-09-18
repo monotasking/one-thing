@@ -19,6 +19,7 @@ import {
 } from '../../settings/events.js'
 import type { NoteSystemDriver, NoteSystemState } from '@onething/runtime/notes'
 import { createNotesSubsystem, obsidianSocketPath, toNotesConfig } from '../index.js'
+import { updateSettingsInMemory } from '../../../stores/settings.js'
 
 let tmpDir: string
 let previousStorePath: string | undefined
@@ -55,6 +56,33 @@ describe('可信宿主', () => {
     // 根按 `path.resolve` 归一,**不解符号链接** —— 用户写什么就是什么。
     expect(subsystem.registry.vaults().map(v => v.root)).toEqual([path.resolve(tmpDir)])
     subsystem.dispose()
+  })
+
+  /**
+   * 技能根(P3 §4.4):**勾了「技能来源」的库才进**。
+   *
+   * 反证:把 `skillVaultRoots` 里那道 `preferences[vault.id]?.skills === true`
+   * 挖掉,第一段就会多出没勾的那个库 —— 也就是把一个用户没同意当技能来源的
+   * 目录递给了技能加载器。
+   */
+  it('skillVaultRoots 只收勾了 skills 的库', async () => {
+    const other = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-notes-skills-'))
+    try {
+      const subsystem = createNotesSubsystem({ storePath: tmpDir, isLocallyTrusted: () => true })
+      const settings = settingsWith([tmpDir, other])
+      const folderId = (root: string): string => `folder:${path.resolve(root)}`
+      settings.notes = {
+        ...settings.notes!,
+        vaults: { [folderId(tmpDir)]: { skills: true }, [folderId(other)]: { skills: false } },
+      }
+      updateSettingsInMemory(settings)
+      await subsystem.refresh(settings)
+
+      expect(subsystem.skillVaultRoots().map(root => root.path)).toEqual([path.resolve(tmpDir)])
+      subsystem.dispose()
+    } finally {
+      fs.rmSync(other, { recursive: true, force: true })
+    }
   })
 })
 
@@ -226,10 +254,11 @@ describe('系统状态由驱动自述', () => {
 })
 
 describe('配置投影与 socket 路径', () => {
-  it('toNotesConfig 只做形状转换;附件目录回落到编辑器那一格(P3 之前两格并存)', () => {
+  it('toNotesConfig 只做形状转换;附件目录只认 notes 自己那一格(P3 起唯一一格)', () => {
     const settings = createDefaultSettings()
-    settings.general.editor = { ...settings.general.editor!, markdownNoteAttachmentDirectory: 'assets' }
-    expect(toNotesConfig(settings).attachmentDirectory).toBe('assets')
+    // 老的 `general.editor.markdownNoteAttachmentDirectory` 已删,它的值由
+    // `mergeWithDefaults` 一次性搬进 `notes.attachmentDirectory`(见 settings.test)。
+    expect(toNotesConfig(settings).attachmentDirectory).toBeUndefined()
 
     settings.notes = { ...settings.notes!, attachmentDirectory: 'own' }
     expect(toNotesConfig(settings).attachmentDirectory).toBe('own')

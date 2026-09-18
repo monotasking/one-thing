@@ -94,7 +94,7 @@ import {
 } from '@onething/runtime/files'
 import { getShellHost, SHELL_HOST_UNAVAILABLE } from '@onething/runtime/shell/host-ports'
 import { applyFileMutationUndo } from '@onething/runtime/tools'
-import { getVariablesStore } from '@onething/runtime/variables/store-bound'
+import { noteRootsNow } from '../../wiring/notes/index.js'
 import type { FilesRoutes } from '@shared/ipc/files.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { getConnectedDirectoriesForSession } from '../../stores/connected-directories.js'
@@ -210,15 +210,9 @@ export const filesRpcHandlers: RpcRouteHandlersWithPorts<FilesRoutes> = {
       limit: request?.limit,
       homeDir,
       downloadsDir: sandbox.confined ? null : getDownloadsDirectory(),
-      getNoteRoots: sandbox.confined
-        ? () => ({})
-        : () => {
-            const variablesStore = getVariablesStore()
-            return {
-              userNoteDir: variablesStore.getUserNoteDir(),
-              workNoteDir: variablesStore.getWorkNoteDir(),
-            }
-          },
+      // 笔记根 = 在册的笔记库的根(P3;从前是那两个变量)。夹紧的宿主仍是空表:
+      // 笔记库是**这台机器上**用户自己的文件,逐条夹的结果必然是空集。
+      getNoteRoots: sandbox.confined ? () => [] : noteRootsNow,
       // per-space:按请求携带的**会话归属**取(批 B2 / 设计盲点 1)。
       // 联网宿主没有这一层(旧 server adapter 也没有)。
       ...(sandbox.confined
