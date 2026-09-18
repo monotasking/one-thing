@@ -1,3 +1,4 @@
+import type { PresentedResource } from '@shared/events/session-commands'
 import type {
   ListRawSessionEventsResponse,
   ReadSessionBlobResponse,
@@ -113,7 +114,14 @@ export interface ChatPort {
    * 「乐观上屏的那句话与账本上的那句话必须是同一串字节」旁边:今天认领不再
    * 比字节了,比的是这一格 id。
    */
-  sendMessage(sessionId: string, content: string, messageId?: string, files?: readonly File[]): Promise<SessionCommandEmitResult>
+  sendMessage(
+    sessionId: string,
+    content: string,
+    messageId?: string,
+    files?: readonly File[],
+    /** 这一轮摆在助手面前的资源。**事实不是授权** —— 后端今天只校验(给鉴权留的入口)。 */
+    presented?: readonly PresentedResource[],
+  ): Promise<SessionCommandEmitResult>
   /*
    * `/compact` **不在这条端口上**(D4 波二)。它骑的确实是同一条命令总线
    * (`command:compact-context`),但它不是「聊天这块屏幕的一个动作」——
@@ -239,7 +247,7 @@ async function realPort(): Promise<ChatPort> {
     },
     // 命令**整条透传**,一个字段都不多给:`channel` 缺席时引擎按会话自己的
     // 频道走(默认 'ipc'),渲染层替它拍这个板就是在两处定义同一件事。
-    sendMessage: async (sessionId, content, messageId, files) => {
+    sendMessage: async (sessionId, content, messageId, files, presented) => {
       /*
        * 正文**原样过去**,只物化页面引用(见接口上的注)。文件 token 那道展开在
        * 输入面的草稿出口就做完了,这里不再扫第二遍 —— 也正因为这一口不展,
@@ -265,6 +273,8 @@ async function realPort(): Promise<ChatPort> {
           // 没有文件或页面引用时**这一格根本不出现** —— 一个空数组与「没有附件」在
           // 账本上不是同一件事(契约上它是可选的)。
           ...(attachments.length > 0 ? { attachments } : {}),
+          // 同理:没有呈现就**这一格根本不出现**。
+          ...(presented?.length ? { presented: [...presented] } : {}),
         },
       })
     },

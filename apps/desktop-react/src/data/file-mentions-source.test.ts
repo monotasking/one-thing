@@ -230,3 +230,59 @@ describe('取数', () => {
     expect(state().mentions).toEqual([{ path: '/repo/fast.ts', label: 'fast.ts', type: 'file' }])
   })
 })
+
+/*
+ * 点名根(09-18,正本 `docs/composer-open-dir-mentions-2026-09.md` §2.2 / §2.4):
+ * 工作目录 + 此刻开着的目录。后端只在这些根里找、每条带回它的根,于是这一层不再筛。
+ */
+describe('点名根', () => {
+  const roots = [
+    { path: '/repo', primary: true },
+    { path: '/far/docs', primary: false },
+  ]
+
+  it('请求带上根表(工作目录在第一格),cwd 照旧带着', async () => {
+    await state().search('a', '/repo', 's1', roots)
+    expect(asked).toEqual([
+      { cwd: '/repo', query: 'a', limit: FILE_MENTION_LIMIT, sessionId: 's1', roots: ['/repo', '/far/docs'] },
+    ])
+  })
+
+  it('空根表 = 老口径逐字节不变(请求不带这一格)', async () => {
+    await state().search('a', '/repo', 's1', [])
+    expect(asked).toEqual([{ cwd: '/repo', query: 'a', limit: FILE_MENTION_LIMIT, sessionId: 's1' }])
+  })
+
+  it('标签按条目自己的根念;只有不是工作目录的那几条记出处;不再按工作目录筛', () => {
+    const response: FilesListResponse = {
+      success: true,
+      files: [],
+      entries: [
+        { path: '/repo/src/a.ts', type: 'file', source: 'picked', root: '/repo' },
+        { path: '/far/docs', type: 'directory', source: 'picked', root: '/far/docs' },
+        { path: '/far/docs/guide/a.md', type: 'file', source: 'picked', root: '/far/docs' },
+      ],
+    }
+    expect(toFileMentions(response, '/repo', roots)).toEqual([
+      { path: '/repo/src/a.ts', label: 'src/a.ts', type: 'file' },
+      { path: '/far/docs', label: '/far/docs', type: 'directory', root: '/far/docs' },
+      { path: '/far/docs/guide/a.md', label: 'guide/a.md', type: 'file', root: '/far/docs' },
+    ])
+  })
+
+  it('老宿主不报根:按路径认领,哪个点名根都不落的丢掉(笔记根 / 下载目录不许漏进来)', () => {
+    const response: FilesListResponse = {
+      success: true,
+      files: [],
+      entries: [
+        { path: '/repo/a.ts', type: 'file', source: 'workdir' },
+        { path: '/Users/me/Downloads/x.pdf', type: 'file', source: 'downloads' },
+        { path: '/far/docs/b.md', type: 'file' },
+      ],
+    }
+    expect(toFileMentions(response, '/repo', roots)).toEqual([
+      { path: '/repo/a.ts', label: 'a.ts', type: 'file' },
+      { path: '/far/docs/b.md', label: 'b.md', type: 'file', root: '/far/docs' },
+    ])
+  })
+})

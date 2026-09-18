@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import type { RefObject } from 'react'
 import { useSessionCwd } from '../data/files-source'
+import { usePickRoots } from '../references/roots'
 import { useListSelection } from '../ui/a11y/list-selection'
 /* 引用种类的注册 barrel。**谁要查表,谁负责保证表是装好的**(与 `workbench/
  * CenterRegion` 对内容种类那一条逐字同判例)。生产那条路由 `main.tsx` 先 import
@@ -103,6 +104,11 @@ export function usePickDrawer({
    * 而不是在渲染层拼一个 `~` —— 判词整段在 `data/file-mentions-source.ts` 文件头。
    */
   const cwd = useSessionCwd()
+  /*
+   * `@` 从哪些目录里找(09-18,`references/roots.ts` 是唯一产地):工作目录第一,其后是此刻
+   * 开着、自述了 `referenceRoot` 的内容。答案按值稳定,切标签不会让候选重取。
+   */
+  const roots = usePickRoots(cwd)
 
   /*
    * 这个触发字符下的每一种,按登记序各查各的。
@@ -118,6 +124,7 @@ export function usePickDrawer({
       trigger,
       query: pickQuery,
       cwd,
+      roots,
       sessionId,
       active: trigger !== null && kind.source!.trigger === trigger,
     }),

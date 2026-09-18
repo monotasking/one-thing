@@ -1,3 +1,4 @@
+import type { PresentedResource } from '@shared/events/session-commands'
 import type { materializeChatMessages } from '@onething/core/session/projection/chat-messages'
 /* 「部件里哪几格是显示文字」的唯一判据 —— 画气泡那一半读的也是它(见
  * `reconcileOverlay` 的注)。这一行只吃 `segment.ts` 里的那只纯函数,
@@ -790,6 +791,11 @@ export interface PendingSend {
   attachments: number
   /** 未落账前保留原始字节,读取或发送失败时重试仍携带同一批文件。 */
   files?: readonly File[]
+  /**
+   * 按下发送那一拍摆在助手面前的资源(09-18,`references/presented.ts`)。与 `files` 同理跟着
+   * entry 走:重试递的是**那一刻**的事实,不是重试这一刻工作台上开着什么。
+   */
+  presented?: readonly PresentedResource[]
   status: 'sending' | 'failed'
   /** 失败时那句人话(照抄后端说的,不改写)。 */
   error?: string

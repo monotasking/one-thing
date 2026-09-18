@@ -61,7 +61,7 @@
  * (对照用 `git worktree`,**不用 `git stash`**:旁边还有别的批在改同一棵树)。
  */
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -104,6 +104,8 @@ const SESSION_NAME = '抽屉门 · composer'
 const SEED_FILES = 80
 /** 候选前缀 —— 够特别,不会与这台机器上任何真文件撞。 */
 const PREFIX = 'zzcand'
+/** (g) 工作目录以外那个目录里的文件前缀。 */
+const FAR_PREFIX = 'zzfar'
 /** 一个**一定**命中不到的词:(b) 的第三种情况「候选 0 条」。 */
 const NO_HIT = 'zzzz'
 /**
@@ -542,6 +544,10 @@ async function main() {
   const store = await mkdtemp(path.join(tmpdir(), 'drawer-store-'))
   const userDataDir = await mkdtemp(path.join(tmpdir(), 'drawer-udd-'))
   const workdir = await mkdtemp(path.join(tmpdir(), 'drawer-cwd-'))
+  /* (g) 那一步的夹具:工作目录**以外**的一个目录(09-18,正本
+   * `docs/composer-open-dir-mentions-2026-09.md` §5)。取真路径 —— macOS 的 tmpdir 是一条符号链接,
+   * 打进对话框的与后端报回来的必须是同一个字符串。 */
+  const outside = realpathSync(await mkdtemp(path.join(tmpdir(), 'drawer-outside-')))
   let server
   let app
 
@@ -570,11 +576,15 @@ async function main() {
   }
 
   try {
-    console.log(`\n[1/6] 种 ${SEED_FILES} 个候选文件 + 一台 core`)
+    console.log(`\n[1/7] 种 ${SEED_FILES} 个候选文件 + 一台 core`)
     mkdirSync(workdir, { recursive: true })
     for (let i = 0; i < SEED_FILES; i += 1) {
       writeFileSync(path.join(workdir, `${PREFIX}-${String(i).padStart(2, '0')}.txt`), 'x')
     }
+    writeFileSync(path.join(outside, `${FAR_PREFIX}-guide.md`), 'far')
+    // 同名文件两边各一份:两个根下的相对路径都是 `README.md`,抽屉要画成两行而不是撞键。
+    writeFileSync(path.join(outside, 'README.md'), 'far readme')
+    writeFileSync(path.join(workdir, 'README.md'), 'near readme')
     writeFileSync(
       path.join(store, 'settings.json'),
       JSON.stringify({ diagnostics: { enabled: false } }, null, 2),
@@ -596,7 +606,7 @@ async function main() {
      * `SessionEventWriteError`;停一次再起 = 冷读一遍,那道闸压根不碰
      * (与 gate-chat-follow 逐字同一手)。
      */
-    console.log('[2/6] 停 core,直写一片滚得动的聊天流,再起')
+    console.log('[2/7] 停 core,直写一片滚得动的聊天流,再起')
     await stopCore(server)
     const seeded = seedLargeLedger(store, sessionId, SEED_FIXTURE)
     core = await startCore()
@@ -605,7 +615,7 @@ async function main() {
       `      起底:${(seeded.bytes / 1024).toFixed(0)}KB / ${seeded.messages} 条 / ${seeded.toolCalls} 张卡`,
     )
 
-    console.log('[3/6] 拉起应用(离屏 · 独立 --user-data-dir),进那条会话')
+    console.log('[3/7] 拉起应用(离屏 · 独立 --user-data-dir),进那条会话')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -648,7 +658,7 @@ async function main() {
     )
     await delay(800)
 
-    console.log('\n[4/6] (a)(b)(c)(d) 两档宽各跑一遍')
+    console.log('\n[4/7] (a)(b)(c)(d) 两档宽各跑一遍')
     const report = []
     for (const size of WIDTHS) {
       await cdp.send('Emulation.setDeviceMetricsOverride', {
@@ -927,7 +937,7 @@ async function main() {
      * 模型搜索框时环画在整块面板上(不是搜索框那一行)。`@` / `/` 两位共用同一条
      * `.drawer` 规则,焦点又本来就在输入区(面板那格载体),这里量模型一位就够。
      */
-    console.log('\n[5/6] (f) 模型抽屉:不吃固定框、不推正文、与面板是一块')
+    console.log('\n[5/7] (f) 模型抽屉:不吃固定框、不推正文、与面板是一块')
     await cdp.send('Emulation.setDeviceMetricsOverride', {
       width: 900,
       height: 900,
@@ -1039,7 +1049,7 @@ async function main() {
     })
     await delay(300)
 
-    console.log('\n[6/6] (e) 补全一条命令之后,那个空格真的占了宽度')
+    console.log('\n[6/7] (e) 补全一条命令之后,那个空格真的占了宽度')
     await cdp.send('Emulation.setDeviceMetricsOverride', {
       width: 900,
       height: 900,
@@ -1085,12 +1095,129 @@ async function main() {
       gap.ok === true && gap.width > 0,
       `(e) 命令徽之后那个空格真的占了宽度(${gap.width ?? '—'}px > 0;white-space=${gap.whiteSpace ?? '—'})`,
     )
+
+    /*
+     * ── (g) 打开的目录也能 @(09-18,正本 `docs/composer-open-dir-mentions-2026-09.md` §5)──────
+     * 走用户真走的那条路:右键「目录」瓦 → 打开目录… → 打一条工作目录**以外**的路径。然后:
+     *  ① `@` 出那个目录里的文件,行上带那个目录的名字(副文);
+     *  ② 两个根下同名的 `README.md` 画成两行,不撞键;
+     *  ③ 选中 → 发送:请求体里是那条绝对路径,且带着 `presented`(给鉴权留的入口,事实不是授权)。
+     */
+    console.log('\n[7/7] (g) 打开的目录(不是工作目录)也能 @')
+    await clearInput(page)
+    await page.evaluate(() => {
+      const tile = document.querySelector('[data-testid="dock-tile-files"]')
+      if (tile instanceof HTMLElement) {
+        tile.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 40 }))
+      }
+    })
+    await waitFor('「打开目录…」那一行', () =>
+      page.evaluate(() =>
+        Array.from(document.querySelectorAll('[role="menuitem"]')).some((el) =>
+          /^(打开目录…|Open a directory…)$/.test((el.textContent ?? '').trim()),
+        ),
+      ),
+    )
+    await page.evaluate(() => {
+      const item = Array.from(document.querySelectorAll('[role="menuitem"]')).find((el) =>
+        /^(打开目录…|Open a directory…)$/.test((el.textContent ?? '').trim()),
+      )
+      if (item instanceof HTMLElement) item.click()
+    })
+    await waitFor('路径输入框', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="open-dir-input"]'))),
+    )
+    await page.evaluate(() => {
+      const input = document.querySelector('[data-testid="open-dir-input"]')
+      if (input instanceof HTMLElement) input.focus()
+    })
+    await cdp.send('Input.insertText', { text: outside })
+    for (const type of ['rawKeyDown', 'keyUp']) {
+      await cdp.send('Input.dispatchKeyEvent', { type, windowsVirtualKeyCode: 13, key: 'Enter', code: 'Enter' })
+    }
+    await waitFor('外面那个目录的面板上屏', () =>
+      page.evaluate(
+        (root) => Boolean(document.querySelector(`[data-testid="files-root"][data-root="${root}"]`)),
+        outside,
+      ),
+    )
+    const farName = path.basename(outside)
+
+    /** 抽屉里此刻所有候选行的字(主文 + 副文拼在一起,textContent 原样)。 */
+    const drawerRows = () =>
+      page.evaluate(() => {
+        const box = document.querySelector('[data-testid="composer-input"]')
+        const panel = box?.closest('[data-focus-scope]') ?? document
+        return Array.from(panel.querySelectorAll('button'))
+          .map((el) => (el.textContent ?? '').trim())
+          .filter(Boolean)
+      })
+
+    await focusInput(page)
+    await cdp.send('Input.insertText', { text: `@${FAR_PREFIX}` })
+    const farRows = await waitFor('外面那个目录里的候选', async () => {
+      const rows = await drawerRows()
+      return rows.some((text) => text.includes(`${FAR_PREFIX}-guide.md`)) ? rows : null
+    })
+    await shot(page, cdp, 'g-open-dir-rows')
+    const farRow = farRows.find((text) => text.includes(`${FAR_PREFIX}-guide.md`)) ?? ''
+    assert(
+      farRow.includes(farName),
+      `(g)① 外面那个目录里的文件出现在 @ 里,行上带着目录名(「${farRow}」含「${farName}」)`,
+    )
+
+    await clearInput(page)
+    await focusInput(page)
+    await cdp.send('Input.insertText', { text: '@README' })
+    const readmeRows = await waitFor('两个 README', async () => {
+      const rows = (await drawerRows()).filter((text) => text.startsWith('README.md'))
+      return rows.length >= 2 ? rows : null
+    }).catch(() => [])
+    await shot(page, cdp, 'g-same-name')
+    assert(
+      readmeRows.length === 2 && readmeRows.filter((text) => text.includes(farName)).length === 1,
+      `(g)② 两个根下同名的 README.md 画成两行,只有外面那一行带目录名(${JSON.stringify(readmeRows)})`,
+    )
+
+    const bodies = []
+    const onRequest = (request) => {
+      if (request.url().includes('/api/rpc')) bodies.push(request.postData() ?? '')
+    }
+    page.on('request', onRequest)
+    await clearInput(page)
+    await focusInput(page)
+    await cdp.send('Input.insertText', { text: `@${FAR_PREFIX}-guide` })
+    await waitFor('候选到位', async () => (await drawerRows()).some((text) => text.includes(`${FAR_PREFIX}-guide.md`)))
+    await delay(300)
+    for (let press = 0; press < 2; press += 1) {
+      // 第一下 ↵ 落 chip,第二下 ↵ 发送。
+      for (const type of ['rawKeyDown', 'keyUp']) {
+        await cdp.send('Input.dispatchKeyEvent', { type, windowsVirtualKeyCode: 13, key: 'Enter', code: 'Enter' })
+      }
+      await delay(500)
+    }
+    const sent = await waitFor('发送那一发 RPC', () => {
+      const hit = bodies.find((body) => body.includes('command:send-message'))
+      return hit ? JSON.parse(hit) : null
+    }).catch(() => null)
+    page.off('request', onRequest)
+    const command = sent?.payload?.command ?? {}
+    assert(
+      typeof command.content === 'string' && command.content.includes(path.join(outside, `${FAR_PREFIX}-guide.md`)),
+      `(g)③ 发出去的正文里是那条绝对路径(${JSON.stringify(command.content ?? null)})`,
+    )
+    assert(
+      Array.isArray(command.presented)
+        && command.presented.some((item) => item.uri === `dir:${outside}` && item.via === 'open'),
+      `(g)③ 命令带着 presented:外面那个目录「开着」(${JSON.stringify(command.presented ?? null)})`,
+    )
   } finally {
     if (app) await app.close().catch(() => undefined)
     await stopCore(server)
     await rm(store, { recursive: true, force: true }).catch(() => undefined)
     await rm(userDataDir, { recursive: true, force: true }).catch(() => undefined)
     await rm(workdir, { recursive: true, force: true }).catch(() => undefined)
+    await rm(outside, { recursive: true, force: true }).catch(() => undefined)
   }
 
   if (failures.length) {

@@ -40,6 +40,20 @@ const _commandTableIsExhaustive: SessionCommandType extends SessionCommand['type
   : never = true
 void _commandTableIsExhaustive
 
+/**
+ * 「用户这一轮把某个资源摆在了助手面前」这件**事实**(09-18,正本
+ * `apps/desktop-react/docs/composer-open-dir-mentions-2026-09.md` §2.5)。
+ *
+ * `uri` 是资源地址(`dir:/abs`、将来的 `browser:tab/<id>`…),`via` 说它是怎么被摆出来的:
+ * 这条消息里引用了它,还是它此刻在工作台里开着。
+ *
+ * **这是事实,不是授权**:它解锁什么(如果解锁的话)由后端按资源自述裁决,发送方说了不算。
+ */
+export interface PresentedResource {
+  uri: string
+  via: 'open' | 'reference'
+}
+
 export interface SendMessageCommand {
   type: typeof SESSION_COMMAND_TYPES.SEND_MESSAGE
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
@@ -124,6 +138,12 @@ export interface SendMessageCommand {
    * deliberately chosen name.
    */
   suppressTitleGeneration?: boolean
+  /**
+   * 这一轮呈现的资源(见 `PresentedResource`)。**只在 RPC 入口被读**:
+   * `backend/session/presentation.ts` 校验后交给登记的处理者,然后从命令上摘掉 ——
+   * 它不进总线、不落账。没有处理者登记时它只经过校验就被丢弃(鉴权暂缓期的形)。
+   */
+  presented?: PresentedResource[]
 }
 
 export interface EditAndResendCommand {

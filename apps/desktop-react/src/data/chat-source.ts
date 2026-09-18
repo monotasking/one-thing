@@ -1,3 +1,4 @@
+import type { PresentedResource } from '@shared/events/session-commands'
 import { useEffect, useSyncExternalStore } from 'react'
 import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'
@@ -302,6 +303,8 @@ export interface ChatSourceState {
      */
     segments?: readonly ResolvedSegment[],
     files?: readonly File[],
+    /** 这一轮摆在助手面前的资源(`references/presented.ts` 现读的那一份)。 */
+    presented?: readonly PresentedResource[],
   ) => boolean
   /** 中止正在跑的那一轮。没有在跑的轮次时是**恒等**(不发命令、不报错)。 */
   abort: () => void
@@ -1807,12 +1810,21 @@ export function createChatSource(sessionId: string): ChatSource {
      * 原样递给端口。重试递的仍然是**同一个** —— 上一次既然没能到账本,这个
      * 位置就还空着;换一个新的等于让重试后的认领又失去身份。
      */
-    async function dispatch(entryId: string, target: string, text: string, messageId?: string, files?: readonly File[]): Promise<void> {
+    async function dispatch(
+      entryId: string,
+      target: string,
+      text: string,
+      messageId?: string,
+      files?: readonly File[],
+      presented?: readonly PresentedResource[],
+    ): Promise<void> {
       try {
         const port = await chatPort()
-        const result = files?.length
-          ? await port.sendMessage(target, text, messageId, files)
-          : await port.sendMessage(target, text, messageId)
+        const result = presented?.length
+          ? await port.sendMessage(target, text, messageId, files, presented)
+          : files?.length
+            ? await port.sendMessage(target, text, messageId, files)
+            : await port.sendMessage(target, text, messageId)
         if (result?.success) return
         failEntry(entryId, result?.error || 'session-command.emit 未成功')
       } catch (error) {
@@ -1897,7 +1909,7 @@ export function createChatSource(sessionId: string): ChatSource {
       // 「换当前会话」是注册表的活,不是这台机器的(见类型上的注)。
       open: (next: string) => chatSources.openCurrent(next),
 
-      send: (text, attachments = 0, segments, files) => {
+      send: (text, attachments = 0, segments, files, presented) => {
         const body = text.trim()
         if (!body && !files?.length) return false
         const target = get().sessionId
@@ -1924,6 +1936,7 @@ export function createChatSource(sessionId: string): ChatSource {
           ...(segments && segments.length > 0 ? { segments } : {}),
           attachments,
           ...(files?.length ? { files: [...files] } : {}),
+          ...(presented?.length ? { presented: [...presented] } : {}),
           status: 'sending' as const,
           seenUserIds: userMessageIds(get().messages),
         }
@@ -1933,7 +1946,7 @@ export function createChatSource(sessionId: string): ChatSource {
          * 只有真交出去的那一下才 +1 —— 空话与「还没有当前会话」上面已经 return 掉了。
          */
         set((prev) => ({ overlay: [...prev.overlay, entry], sentTick: prev.sentTick + 1 }))
-        void dispatch(entry.id, target, body, entry.messageId, entry.files)
+        void dispatch(entry.id, target, body, entry.messageId, entry.files, entry.presented)
         return true
       },
 
@@ -2008,7 +2021,7 @@ export function createChatSource(sessionId: string): ChatSource {
         // 同一个 `messageId`(见 `dispatch` 的注)。上一版建的那几格没有这一格,
         // 那就**不给** —— 现铸一个的话,引擎会用一个这台屏幕上没人记得的 id,
         // 而那一格 overlay 只能再回去比正文,等于白铸。
-        void dispatch(entryId, target, entry.text, entry.messageId, entry.files)
+        void dispatch(entryId, target, entry.text, entry.messageId, entry.files, entry.presented)
       },
 
       /**
@@ -2657,8 +2670,9 @@ export function sendChatMessage(
   sessionId?: string,
   segments?: readonly ResolvedSegment[],
   files?: readonly File[],
+  presented?: readonly PresentedResource[],
 ): boolean {
-  return sourceFor(sessionId)?.getState().send(text, attachments, segments, files) ?? false
+  return sourceFor(sessionId)?.getState().send(text, attachments, segments, files, presented) ?? false
 }
 
 export function pushChatNotice(kind: 'ask-rejected', sessionId?: string): void {

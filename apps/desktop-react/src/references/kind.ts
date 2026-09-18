@@ -50,9 +50,25 @@ export interface PickContext {
   query: string
   /** 这条会话的工作目录;拿不到 = null(判据的唯一产地在 `data/files-source`)。 */
   cwd: string | null
+  /**
+   * **`@` 从哪些目录里找**(09-18,正本 `docs/composer-open-dir-mentions-2026-09.md` §2.2)。
+   * 工作目录在第一格(`primary`),其后是此刻开着、自述了 `referenceRoot` 的内容。唯一产地是
+   * `references/roots.ts`;空 = 一个根都没有(退回宿主自己的搜索根)。
+   *
+   * 它与 `cwd` 并存而不是替掉它:技能按**工作目录**发现(`kinds/skill.ts`),那是另一个问题。
+   */
+  roots: readonly PickRoot[]
   sessionId: string
   /** **这一种此刻在不在场** = 抽屉开着、而且开的正是它那个触发字符。 */
   active: boolean
+}
+
+/** 一个 `@` 根。形状的判词在 `references/roots.ts`。 */
+export interface PickRoot {
+  /** 绝对路径,无尾斜杠。 */
+  path: string
+  /** 会话工作目录那一格。它的候选念相对路径、排在最前、不带根名。 */
+  primary: boolean
 }
 
 /**
@@ -270,5 +286,11 @@ export interface ReferenceKind<Hit = any, Ref = any> {
    * 缺席 = 只是个记号,不可点(`render` 那边的 `clickable` 要跟着说 false)。
    */
   open?(ref: Ref): boolean | Promise<boolean>
+  /**
+   * **这一枚引用把哪个资源摆在了助手面前**(09-18,正本
+   * `docs/composer-open-dir-mentions-2026-09.md` §2.5.0)。答资源地址;缺席 / `null` = 不算。
+   * 读者只有 `references/presented.ts`;发送时随命令走,后端今天只校验不授权(给鉴权留的入口)。
+   */
+  presents?(ref: Ref): string | null
 }
  

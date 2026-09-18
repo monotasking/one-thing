@@ -86,7 +86,9 @@ export function DrawerPickList({ view, index, rowRef, onPick }: Props) {
             const i = group.offset + at
             return (
               <ButtonBase
-                key={`${group.kindId}:${row.primary}`}
+                // 副文也进键(09-18):`@` 从几个根里找之后,两个根下同名的相对路径
+                // (都叫 `README.md`)靠副文那格根名才分得开。
+                key={`${group.kindId}:${row.primary}:${row.secondary ?? ''}`}
                 ref={rowRef(i)}
                 className={i === index ? `${s.pickRow} ${s.pickSel}` : s.pickRow}
                 onMouseDown={hold(i)}

@@ -360,6 +360,95 @@ describe('session-command RPC domain', () => {
     expect(bus.emit).toHaveBeenCalledTimes(3)
   })
 
+  /*
+   * 呈现事实(09-18,`session/presentation.ts`,正本
+   * `apps/desktop-react/docs/composer-open-dir-mentions-2026-09.md` §2.5.0):入口摘下、交给处理者,
+   * **不进总线**。鉴权暂缓期一个处理者都没有 —— 那时它只经过校验就被丢弃。
+   */
+  describe('presented (the entry left for authorization)', () => {
+    const presented = [
+      { uri: 'dir:/outside/docs', via: 'open' },
+      { uri: 'dir:/outside/docs', via: 'open' },
+      { uri: 'dir:/outside/docs/a', via: 'reference' },
+      { uri: '', via: 'open' },
+      { uri: 'dir:/x', via: 'hover' },
+    ]
+
+    it.each([['ipc', IPC], ['http', HTTP]] as const)('%s: stripped before the bus even with no handler', async (_transport, context) => {
+      const { dispatchRpc } = await loadDomain()
+      const { presentationHandlerCount } = await import('../../session/presentation.js')
+      expect(presentationHandlerCount()).toBe(0)
+
+      await dispatchRpc({
+        domain: 'session-command',
+        method: 'emit',
+        payload: { sessionId: 's1', command: { type: 'command:send-message', content: 'hi', presented } },
+      }, context)
+
+      const [, command] = bus.emit.mock.calls[0] as [string, Record<string, unknown>]
+      expect(command.content).toBe('hi')
+      expect('presented' in command).toBe(false)
+    })
+
+    it('a registered handler sees the normalized facts before the bus, with host-minted context', async () => {
+      const { dispatchRpc } = await loadDomain()
+      const { registerPresentationHandler } = await import('../../session/presentation.js')
+      const order: string[] = []
+      bus.emit.mockImplementation(async () => {
+        order.push('bus')
+        return 'emitted'
+      })
+      const onPresented = vi.fn(async () => {
+        order.push('handler')
+      })
+      const unregister = registerPresentationHandler({ id: 'test', onPresented })
+      try {
+        await dispatchRpc({
+          domain: 'session-command',
+          method: 'emit',
+          payload: { sessionId: 's1', command: { type: 'command:send-message', content: 'hi', messageId: 'msg-00000001', presented } },
+        }, HTTP)
+      } finally {
+        unregister()
+      }
+
+      expect(order).toEqual(['handler', 'bus'])
+      expect(onPresented).toHaveBeenCalledWith(
+        [
+          { uri: 'dir:/outside/docs', via: 'open' },
+          { uri: 'dir:/outside/docs/a', via: 'reference' },
+        ],
+        expect.objectContaining({ sessionId: 's1', messageId: 'msg-00000001', locallyTrusted: expect.any(Boolean) }),
+      )
+    })
+
+    it('a failing handler never blocks the send; non-send commands never reach handlers', async () => {
+      const { dispatchRpc } = await loadDomain()
+      const { registerPresentationHandler } = await import('../../session/presentation.js')
+      const onPresented = vi.fn(async () => {
+        throw new Error('boom')
+      })
+      const unregister = registerPresentationHandler({ id: 'broken', onPresented })
+      try {
+        const response = await dispatchRpc({
+          domain: 'session-command',
+          method: 'emit',
+          payload: { sessionId: 's1', command: { type: 'command:send-message', content: 'hi', presented } },
+        }, IPC)
+        expect(response).toMatchObject({ ok: true, data: { success: true } })
+        await dispatchRpc({
+          domain: 'session-command',
+          method: 'emit',
+          payload: { sessionId: 's1', command: { type: 'command:inject-steering', content: 'x', presented } },
+        }, IPC)
+      } finally {
+        unregister()
+      }
+      expect(onPresented).toHaveBeenCalledTimes(1)
+      expect(bus.emit).toHaveBeenCalledTimes(2)
+    })
+  })
+
   it('a bus failure comes back as a structured result, not a thrown RPC', async () => {
     const { dispatchRpc } = await loadDomain()
     bus.emit.mockRejectedValueOnce(new Error('engine is down'))

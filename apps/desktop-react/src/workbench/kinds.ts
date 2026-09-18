@@ -375,6 +375,24 @@ export interface ContentKind {
    * 是函数而不是一个组件,因为 `panel` 那一种是所有瓦共用的,要按 key 问。
    */
   stripHeader?(ref: ContentRef): ComponentType<StripHeaderProps> | undefined
+  /**
+   * **这一格开着时,提供一个可以被 `@` 的目录根**(09-18,正本
+   * `docs/composer-open-dir-mentions-2026-09.md` §2.1)。答绝对路径;缺席 / 答 `null` = 不提供。
+   *
+   * 读者只有一个:`references/roots.ts`(经 `referenceRootOfContent`)。它遍历此刻树上开着的
+   * 每一格问这一句 —— 所以核心层与引用那一侧都不认识「目录面板」,终端哪天也想让它的 cwd
+   * 能被 `@`,就是它自己那一种多答这一格。
+   */
+  referenceRoot?(ref: ContentRef): string | null
+  /**
+   * **这一格开着,等于把哪个资源摆在了助手面前**(09-18,同一正本 §2.5.0)。答资源地址
+   * (`dir:/abs`…);缺席 / `null` = 不算。
+   *
+   * 它与 `referenceRoot` 答的是两个问题,所以是两格:一个说「能不能从这里找东西 `@`」,
+   * 一个说「这是不是一件摆在眼前的事实」。发送时随命令走(`presented`),后端今天只校验、
+   * 不据此授权 —— 这一格是给将来的鉴权留的入口。
+   */
+  presents?(ref: ContentRef): string | null
 }
 
 /** 自带的头拿到的东西:它是哪一格。其余(清单、搜索)由内容自己的数据层给。 */
@@ -565,6 +583,16 @@ export function residencyLevelOf(ref: ContentRef): ResidencyLevel {
   const declared = REGISTRY.get(ref.kind)?.level
   if (declared === undefined) return 'space'
   return typeof declared === 'function' ? declared(ref) : declared
+}
+
+/** 这一格提供的 `@` 根(没自述 = `null`)。判词在 `ContentKind.referenceRoot` 上。 */
+export function referenceRootOfContent(ref: ContentRef): string | null {
+  return REGISTRY.get(ref.kind)?.referenceRoot?.(ref) ?? null
+}
+
+/** 这一格开着所呈现的资源地址(没自述 = `null`)。判词在 `ContentKind.presents` 上。 */
+export function presentedByContent(ref: ContentRef): string | null {
+  return REGISTRY.get(ref.kind)?.presents?.(ref) ?? null
 }
 
 /* ── 标签族那三只读法(K2)。核心层只经这三只说话,一个种类名都不出现。 ──── */

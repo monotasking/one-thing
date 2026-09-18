@@ -233,6 +233,7 @@ describe('③ 陌生能力演练:@ 一条会话', () => {
           trigger: '@',
           query: '',
           cwd: null,
+          roots: [],
           sessionId: '',
           active: true,
         }),

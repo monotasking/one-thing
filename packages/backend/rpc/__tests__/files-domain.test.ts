@@ -338,6 +338,26 @@ describe('files RPC domain', () => {
     })
   })
 
+  it('http: picked roots are clamped one by one — an outside root drops, the inside one still answers', async () => {
+    await mkdir(join(sandboxRoot, 'src'), { recursive: true })
+    await writeFile(join(sandboxRoot, 'src', 'picked.txt'), 'x', 'utf-8')
+
+    const result = unwrap(await call('list', {
+      query: 'picked',
+      limit: 50,
+      roots: [join(tmpdir(), 'definitely-outside-the-sandbox'), sandboxRoot],
+    }, http(sandboxRoot)))
+    expect(result).toMatchObject({ success: true, files: [join(sandboxRoot, 'src', 'picked.txt')] })
+    expect((result as { entries?: unknown[] }).entries?.[0]).toMatchObject({ source: 'picked', root: sandboxRoot })
+
+    expect(unwrap(await call('list', {
+      roots: [join(tmpdir(), 'definitely-outside-the-sandbox')],
+    }, http(sandboxRoot)))).toMatchObject({
+      success: false,
+      error: 'File search must stay inside the workspace sandbox root.',
+    })
+  })
+
   // ── 写面:落到磁盘 ──────────────────────────────────────────────
 
   it('creates, saves and renames inside the http sandbox', async () => {

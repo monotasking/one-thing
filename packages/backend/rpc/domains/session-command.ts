@@ -64,6 +64,8 @@ import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import { Permission } from '../../wiring/permission/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import { requestSessionOwner, sessionAccess, SessionAccessError } from '../../session/access.js'
+import { deliverPresentation, takePresented } from '../../session/presentation.js'
+import { isHostLocallyTrusted } from '../../server/host-trust.js'
 
 const log = getLogger('rpc.session-command')
 /** 旧线传的是裸 `console`;结构化 logger 的鸭子端口替身(area ① 统一后删)。 */
@@ -190,8 +192,13 @@ function emitToBus(sessionId: string, command: unknown, context: RpcDispatchCont
 export const sessionCommandRpcHandlers: RpcRouteHandlers<SessionCommandRoutes> = {
   async emit(request, context: RpcDispatchContext = DESKTOP_RPC_CONTEXT) {
     const sessionId = request?.sessionId
-    const command = request?.command as unknown
     sessionAccess.resolve(context, sessionId, 'write')
+    /*
+     * 呈现事实(09-18,`session/presentation.ts`):在分传输之前摘下来 —— React 壳走的是
+     * http 面,只摘 ipc 那一支就等于没摘。它不进总线;交给处理者要等到下面的校验都过了。
+     */
+    const taken = takePresented(request?.command as unknown)
+    const command = taken.command
     if (command && typeof command === 'object' && 'sessionId' in command
       && command.sessionId !== undefined && command.sessionId !== sessionId) {
       throw new SessionAccessError()
@@ -212,6 +219,14 @@ export const sessionCommandRpcHandlers: RpcRouteHandlers<SessionCommandRoutes> =
         success: false,
         error: 'A response is still running — messages with files wait until it finishes.',
       }
+    }
+
+    if (record.type === SESSION_COMMAND_TYPES.SEND_MESSAGE && taken.presented.length > 0) {
+      await deliverPresentation(taken.presented, {
+        sessionId,
+        ...(typeof record.messageId === 'string' ? { messageId: record.messageId } : {}),
+        locallyTrusted: isHostLocallyTrusted(),
+      })
     }
 
     if (context.transport === 'http') {

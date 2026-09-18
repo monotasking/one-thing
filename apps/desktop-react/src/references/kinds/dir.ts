@@ -78,6 +78,13 @@ export const dirReferenceKind: ReferenceKind<FileMention, { kind: 'dirRef'; path
     openDirectoryPanel(ref.path)
     return true
   },
+
+  /*
+   * 引用一个目录 = 把它摆在助手面前(09-18,正本 `docs/composer-open-dir-mentions-2026-09.md`
+   * §2.5.0)。资源地址不带尾斜杠 —— 尾斜杠是**句子里**「这是目录」的判据,地址的 scheme
+   * 已经说过这件事了。文件引用**不答**这一格:它的内容会被引擎内联,没有要解锁的读。
+   */
+  presents: (ref) => `dir:${ref.path.replace(/\/+$/, '') || '/'}`,
 }
 
 registerReferenceKind(dirReferenceKind, import.meta.hot)

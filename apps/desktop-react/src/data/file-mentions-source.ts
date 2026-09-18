@@ -64,9 +64,14 @@ export const FILE_MENTION_DEBOUNCE_MS = 120
 export interface FileMention {
   /** 绝对路径。**token 里写的就是它** —— 引用要经得起换目录。 */
   path: string
-  /** 那一行 / 那枚 chip 上的几个字:在 cwd 之下就是相对路径,否则是整条路径。 */
+  /** 那一行 / 那枚 chip 上的几个字:在它所在的根之下就是相对路径,否则是整条路径。 */
   label: string
   type: FileEntryType
+  /**
+   * 它是从哪个**非工作目录**的根里找到的(09-18,正本 `docs/composer-open-dir-mentions-2026-09.md`
+   * §2.2 / §3)。工作目录里的条目没有这一格 —— 那是「这条会话的项目」,不需要说出处。
+   */
+  root?: string
 }
 
 /* ── 纯判据 ────────────────────────────────────────────────────────────── */
@@ -129,15 +134,51 @@ export function relativeLabel(path: string, cwd: string | null): string {
  * 枚举),改它是一次跨面的行为变化,得单独拍。**留账**:哪天后端开出「只搜这个根」
  * 的开口,这一筛就该退役,判据回到唯一那处。
  */
-export function toFileMentions(response: FilesListResponse, cwd: string | null): FileMention[] {
+export function toFileMentions(
+  response: FilesListResponse,
+  cwd: string | null,
+  roots?: readonly PickRootLike[],
+): FileMention[] {
   const entries: FileSearchEntry[] =
     response.entries ?? (response.files ?? []).map((path) => ({ path, type: 'file' as const }))
+  /*
+   * **点名根那一档**(09-18):后端只在我们点的根里找,每条带回它的根(`entry.root`),
+   * 所以这里**不再筛** —— 上面那段「有工作目录时筛到该根名下」的留账就是在等这个开口,
+   * 它在这一档里退役。标签按条目**自己的根**算相对路径;不是工作目录的根记在 `root` 上,
+   * 行上据此念出处。
+   */
+  if (roots && roots.length > 0) {
+    const secondary = new Set(roots.filter((root) => !root.primary).map((root) => root.path))
+    const out: FileMention[] = []
+    for (const entry of entries) {
+      /*
+       * 条目没报根(一个还不认 `roots` 的老宿主 —— 比如没重启过的桌面 core,它会照老口径
+       * 把笔记根 / 下载目录一起发下来)就按路径认领:落在哪个点名根下归哪个,哪个都不落
+       * 的**丢掉**。同一条判据(`ownedByCwd`)对每个根各问一次,不另写第二句前缀比较。
+       */
+      const root = entry.root ?? roots.find((candidate) => ownedByCwd(entry.path, candidate.path))?.path
+      if (!root) continue
+      out.push({
+        path: entry.path,
+        label: relativeLabel(entry.path, root),
+        type: entry.type,
+        ...(secondary.has(root) ? { root } : {}),
+      })
+    }
+    return out
+  }
   const inScope = cwd ? entries.filter((entry) => ownedByCwd(entry.path, cwd)) : entries
   return inScope.map((entry) => ({
     path: entry.path,
     label: relativeLabel(entry.path, cwd),
     type: entry.type,
   }))
+}
+
+/** 根表里这一层只要这两格(形与 `references/kind.PickRoot` 同,不反向依赖引用那一层)。 */
+export interface PickRootLike {
+  path: string
+  primary: boolean
 }
 
 /* ── store ────────────────────────────────────────────────────────────── */
@@ -155,7 +196,7 @@ export interface FileMentionsSourceState {
   error?: string
 
   /** 找一批候选。空词也发 —— 刚敲下 `@` 就该出一批,那不是「清空」。 */
-  search(query: string, cwd: string | null, sessionId: string): Promise<void>
+  search(query: string, cwd: string | null, sessionId: string, roots?: readonly PickRootLike[]): Promise<void>
   /** 抽屉收了:候选跟着散(它是「此刻在匹配什么」,不是缓存)。 */
   clear(): void
   reset(): void
@@ -174,7 +215,7 @@ export const useFileMentionsSource = create<FileMentionsSourceState>()((set) => 
   return {
     ...EMPTY,
 
-    search: async (query, cwd, sessionId) => {
+    search: async (query, cwd, sessionId, roots) => {
       const q = query.trim()
       const mine = ++token
       set({ status: 'loading' })
@@ -188,6 +229,8 @@ export const useFileMentionsSource = create<FileMentionsSourceState>()((set) => 
           // 接入目录是 per-space 的,而「哪个 space」由会话归属决定
           // (`FilesListRequest.sessionId` 的契约注释)。没有会话就不带。
           ...(sessionId ? { sessionId } : {}),
+          // 点名的根(09-18):工作目录在第一格,其后是开着的目录。缺席 = 老口径。
+          ...(roots && roots.length > 0 ? { roots: roots.map((root) => root.path) } : {}),
         })
       } catch (error) {
         // 抛出来的那一发与「后端说不成」是同一件事:都得落进 `error`,
@@ -205,7 +248,7 @@ export const useFileMentionsSource = create<FileMentionsSourceState>()((set) => 
         set({ status: 'error', error: response.error })
         return
       }
-      set({ status: 'ready', mentions: toFileMentions(response, cwd), query: q, error: undefined })
+      set({ status: 'ready', mentions: toFileMentions(response, cwd, roots), query: q, error: undefined })
     },
 
     // 已经是空的就**什么都不做**:抽屉每关一次都 set 一份新的空数组,会让每一个

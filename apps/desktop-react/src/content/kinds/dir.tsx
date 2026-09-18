@@ -51,6 +51,10 @@ registerContentKind(
     // 拼错了 `resolveIcon` 会静默退回 FolderTree —— 所以照表写。
     icon: () => 'FolderTree',
     render: (ref) => <FilesPanel root={ref.key} />,
+    // 开着的目录面板就是一个可以 `@` 的根,也是一件摆在助手面前的事实
+    // (09-18,正本 `docs/composer-open-dir-mentions-2026-09.md` §2.1 / §2.5.0)。
+    referenceRoot: (ref: ContentRef) => ref.key,
+    presents: (ref: ContentRef) => `dir:${ref.key}`,
     /*
      * **激活这一格 = 焦点进这棵树**(W7-c 裁定 6,与会话那一种同一条自述)。
      *

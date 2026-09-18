@@ -191,8 +191,21 @@ export const filesRpcHandlers: RpcRouteHandlersWithPorts<FilesRoutes> = {
       cwd = clamped
     }
 
+    // 点名的根(09-18,`FilesListRequest.roots`):桌面原样递;http 逐根夹,越界的那一根**丢掉**
+    // 而不是整次拒绝 —— 一个开着的外部目录不该让工作目录里的候选也跟着没了。全部越界才回越界文案。
+    let roots = request?.roots?.filter((root): root is string => typeof root === 'string' && root.length > 0)
+    if (roots && roots.length > 0 && sandbox.confined) {
+      roots = roots
+        .map(root => resolveInsideSandbox(sandbox, root))
+        .filter((root): root is string => Boolean(root))
+      if (roots.length === 0) {
+        return emptyFileList('File search must stay inside the workspace sandbox root.')
+      }
+    }
+
     const listOnethingFileSearchEntriesForIpcOptions: ListOnethingFileSearchEntriesForIpcOptions = {
       cwd,
+      ...(roots && roots.length > 0 ? { roots } : {}),
       query: request?.query,
       limit: request?.limit,
       homeDir,

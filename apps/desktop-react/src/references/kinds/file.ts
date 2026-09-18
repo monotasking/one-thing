@@ -8,6 +8,7 @@ import {
 import type { FileMention } from '../../data/file-mentions-source'
 import { matchFiles } from '../../composer/transitions'
 import { basename } from '../../content/tools/result'
+import { disambiguatedDirName } from '../../content/files/dir-names'
 import { openFileInCurrentTarget } from '../../content/viewer/open-target'
 import { registerReferenceKind } from '../registry'
 import { isDirectoryPath, PATH_REF_PATTERN, pathRefOf } from './path-ref'
@@ -41,7 +42,7 @@ const FileIcon = resolveIcon('FileText')
  * 一个字都不清 —— 所以「开抽屉」本身从不制造一次空列表。
  */
 function useFileMentions(ctx: PickContext): PickResult<FileMention> {
-  const { active, query, cwd, sessionId } = ctx
+  const { active, query, cwd, roots, sessionId } = ctx
   const mentions = useFileMentionsSource((st) => st.mentions)
   const status = useFileMentionsSource((st) => st.status)
   const search = useFileMentionsSource((st) => st.search)
@@ -57,12 +58,12 @@ function useFileMentions(ctx: PickContext): PickResult<FileMention> {
     }
     if (!justOpened.current) {
       justOpened.current = true
-      void search(query, cwd, sessionId)
+      void search(query, cwd, sessionId, roots)
       return
     }
-    const timer = setTimeout(() => void search(query, cwd, sessionId), FILE_MENTION_DEBOUNCE_MS)
+    const timer = setTimeout(() => void search(query, cwd, sessionId, roots), FILE_MENTION_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [active, query, cwd, sessionId, search, clear])
+  }, [active, query, cwd, roots, sessionId, search, clear])
 
   /*
    * 候选到手之后还得在**已到手的那批**里再收一次:去抖窗口里人又多打了两个字,
@@ -97,7 +98,15 @@ export const fileReferenceKind: ReferenceKind<FileMention, { kind: 'fileRef'; pa
     useQuery: useFileMentions,
     // 抽屉那一行念的是 label(cwd 之下的相对路径),目录**不带尾斜杠**
     // (呈现层的既有拍点,a00e1728 留账未动)。
-    row: (hit) => ({ primary: hit.label }),
+    /*
+     * 不是工作目录里的那几条,副文念出处 —— 那个目录面板**标签上的名字**
+     * (同名带父目录,`docs · a`),同一个名字只有一个产地(09-18,正本
+     * `docs/composer-open-dir-mentions-2026-09.md` §3)。工作目录里的一行与今天逐字相同。
+     */
+    row: (hit) => ({
+      primary: hit.label,
+      ...(hit.root ? { secondary: disambiguatedDirName(hit.root) } : {}),
+    }),
     kindOf: pathKindOf,
   },
 

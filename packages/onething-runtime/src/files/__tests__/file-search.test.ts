@@ -165,4 +165,70 @@ describe('file search runtime operations', () => {
 
     expect(logger.error).toHaveBeenCalled()
   })
+
+  /*
+   * 点名根(09-18,正本 `apps/desktop-react/docs/composer-open-dir-mentions-2026-09.md` §2.4)。
+   */
+  describe('picked roots', () => {
+    const tree: Record<string, string[]> = {
+      '/work': Array.from({ length: 80 }, (_, i) => `src/f${i}.ts`),
+      '/outside/docs': ['a.md', 'b.md', 'deep/c.md'],
+      '/outside/empty': [],
+    }
+    const listFiles = vi.fn((root: { path: string }) => tree[root.path] ?? [])
+
+    it('只搜点名的根:不并笔记 / 下载 / 接入目录,cwd 被忽略', () => {
+      expect(resolveOnethingFileSearchRoots({
+        cwd: '/elsewhere',
+        homeDir: '/Users/test',
+        downloadsDir: '/Users/test/Downloads',
+        noteRoots: { userNoteDir: '/Users/test/notes' },
+        connectedDirs: ['/Users/test/vault'],
+        roots: ['/work', '~/docs', '/work/'],
+      })).toEqual([
+        { path: '/work', source: 'picked', label: 'work' },
+        { path: '/Users/test/docs', source: 'picked', label: 'docs' },
+      ])
+    })
+
+    it('大根吃不光别人的份:每根保底,余额按根序补,条目带 root', async () => {
+      const response = await listOnethingFileSearchEntries({
+        homeDir: '/Users/test',
+        roots: ['/work', '/outside/docs', '/outside/empty'],
+        limit: 12,
+        listFiles,
+      })
+      const entries = response.entries ?? []
+      expect(entries).toHaveLength(12)
+      const byRoot = (root: string) => entries.filter(entry => entry.root === root)
+      // 保底 floor(12/3)=4:docs 只有 1 个根条目 + 3 个文件,全部拿到;空根交出它自己那一条。
+      expect(byRoot('/outside/docs').map(entry => entry.path)).toEqual([
+        '/outside/docs', '/outside/docs/a.md', '/outside/docs/b.md', '/outside/docs/deep/c.md',
+      ])
+      expect(byRoot('/outside/empty').map(entry => entry.type)).toEqual(['directory'])
+      // 余额按根序补给第一个根。
+      expect(byRoot('/work')).toHaveLength(7)
+      expect(entries.every(entry => entry.source === 'picked')).toBe(true)
+      expect(response.files).not.toContain('/outside/docs')
+    })
+
+    it('按词筛,路径在多个根下只出现一次(先到的根认领)', async () => {
+      const response = await listOnethingFileSearchEntries({
+        homeDir: '/Users/test',
+        roots: ['/outside', '/outside/docs'],
+        query: 'b.md',
+        limit: 50,
+        listFiles: (root) => (root.path === '/outside' ? ['docs/b.md'] : ['b.md']),
+      })
+      expect(response.entries).toEqual([
+        { path: '/outside/docs/b.md', type: 'file', source: 'picked', root: '/outside' },
+      ])
+    })
+
+    it('空数组 = 老口径逐字节不变', async () => {
+      const options = { cwd: '/work', homeDir: '/Users/test', limit: 5, listFiles }
+      expect(await listOnethingFileSearchEntries({ ...options, roots: [] }))
+        .toEqual(await listOnethingFileSearchEntries(options))
+    })
+  })
 })

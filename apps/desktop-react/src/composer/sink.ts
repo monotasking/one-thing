@@ -7,6 +7,7 @@ import {
 } from '../data/chat-source'
 import { useExposeStore } from '../expose/store'
 import type { ResolvedSegment } from '../references/segment'
+import { presentedNow } from '../references/presented'
 
 /**
  * 输入框与聊天之间的**接缝**(D3)。
@@ -86,8 +87,12 @@ export interface ComposerSink {
  * 不认识 `expose`(只剩 `startSession` 那一口还要它,而那一口本来就没有会话)。
  */
 const realSink: ComposerSink = {
+  /*
+   * 呈现事实在**按下发送这一拍**现读(09-18,`references/presented.ts`):这句话里引用了什么、
+   * 此刻工作台上开着什么。它跟着那一格乐观 entry 走,所以重试递的仍是发送那一刻的事实。
+   */
   send: (text, attachments, sessionId, segments, files) =>
-    sendChatMessage(text, attachments, sessionId, segments, files),
+    sendChatMessage(text, attachments, sessionId, segments, files, presentedNow(segments)),
   notice: (kind, sessionId) => pushChatNotice(kind, sessionId),
   abort: (sessionId) => abortChatRun(sessionId),
   // 惰性建会话时没有「当前会话」,所以当前项目必然是 null —— 与 ⌘N 首开同义。

@@ -20,13 +20,19 @@
  */
 
 export type FileEntryType = 'file' | 'directory'
-export type FileSearchEntrySource = 'workdir' | 'downloads' | 'note' | 'connected'
+/**
+ * `picked` = 调用方在 `FilesListRequest.roots` 里点名的根(09-18,
+ * `apps/desktop-react/docs/composer-open-dir-mentions-2026-09.md` §2.4)。
+ */
+export type FileSearchEntrySource = 'workdir' | 'downloads' | 'note' | 'connected' | 'picked'
 
 export interface FileSearchEntry {
   path: string
   type: FileEntryType
   source?: FileSearchEntrySource
   label?: string
+  /** 这一条是从哪个搜索根里找到的(绝对路径)。缺席 = 老宿主没报这一格。 */
+  root?: string
 }
 
 export interface FilesListRequest {
@@ -38,6 +44,14 @@ export interface FilesListRequest {
    * **会话归属**决定。缺席 = 只给全局层。
    */
   sessionId?: string
+  /**
+   * **只搜这几个根**(09-18,正本 `apps/desktop-react/docs/composer-open-dir-mentions-2026-09.md` §2.4)。
+   *
+   * 给了(非空)= 搜索根就是它们,按给的顺序,**不再并**笔记根 / 下载目录 / 接入目录,`cwd` 被忽略;
+   * 名额按根保底分(每根先 `floor(limit / n)` 条,余额按根序补),一个大根吃不光别人的份。
+   * 缺席 / 空数组 = 老口径(`cwd` + 宿主自己的搜索根,按根顺序填满),逐字节不变。
+   */
+  roots?: string[]
 }
 
 export interface FilesListResponse {
