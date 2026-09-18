@@ -118,6 +118,12 @@ export interface StripBox {
   tabs: readonly TabBox[]
   /** 哪一格是活动的(`aria-selected`)。-1 = 一格都没有。 */
   activeAt: number
+  /**
+   * 这条条画的是**内容自带的头**(`ContentKind.stripHeader`),那唯一一格就是头自己。
+   * 判据不看它 —— 落点、插到第几格照旧;看它的只有「怎么画预示」:标签那一档的预示是
+   * 条腾出来的一格空位,而头上没有格可腾,所以那一档改画一层薄膜(`useContentDrag`)。
+   */
+  header?: boolean
 }
 
 export interface DropGeometry {

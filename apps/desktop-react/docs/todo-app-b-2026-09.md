@@ -184,3 +184,12 @@ stripHeader?: ComponentType<{ contentRef: ContentRef; placement: 'strip' | 'inli
   3. **编辑中按 Esc 把整扇待办窗收掉**(**main 上就有**):`todo` 作用域不答 Esc,派发器往外问到浮窗;改成编辑中答 Esc = 关这一项、消费掉,没在编辑时照旧不答。
 - 读数(prod 三趟连续全绿):第一帧 5ms、500 项上屏 109–122ms、回车零长帧、重建 0 项;dev 一趟全绿:第一帧 6–7ms、上屏 224–234ms(过渡阈值 300,退场判据写在门里)、回车零长帧。**prod 档五趟里第一趟 ⑤ 红过一次**(那一趟断言还没带读数,长帧多长不知道),之后补了读数连跑三趟全绿 —— 记在这里,再红就按读数查。
 - 门:壳 tsc 0 / vitest 377 文件 6067 例 / 改过的文件 eslint 0(`eslint src` 全量有 6 条存量红,分在 `data/languages.ts`、`dev/PerfHud.tsx`、`references/kind.ts`、`services/log.ts`,本分支没碰)/ ui:consume / squeeze / motion 基线内。
+
+### U1-fix(2026-09-18,用户报「没有了 tab,导致不能拖入到 tab header 中」)
+
+- **病根**:拖拽的落点地图(`workbench/drop-geometry.ts`)按 `[role="tablist"]` 找条、找不到就跳过这片叶。内容自带头的那一档条上没有 tablist,于是**待办那片叶整条檐在地图上不存在** —— 拖到头上没有任何落点;连带 `leafTargetAt` 从条上查不出「活动标签是谁」,拖到它正文上也只剩「并成一格」,开不出左右并排。真机三态实测(音乐浮窗的标签当拖源):头 = 无落点、正文 = 整片 accept、别的窗的条 = 正常。
+- **修法**:那条头**自述它就是这片叶唯一那一格** —— `LeafStrip` 在头上写 `data-tab-id`(与标签同源的 `activeId`)与 `data-tab-slots`,量法把它当**一格的条**收下(`activeAt: 0`、`header: true`)。判据、插到第几格、并排、放回全都一个字没改。
+- **预示**:标签那一档的预示是条腾出来的一格空位,头上没有格可腾 —— 所以 `header` 那一档改画一层薄膜盖住整条头(与边带同一种板),浮影下那行字照旧说「放到第 n 位」。
+- **门**:`gate:todo` 新增 ⑩(悬停有薄膜预示 + 松手两格都在),两档全过;`workbench/__tests__/drop-geometry.test.ts` 四条(标签档 / 头档 / slots / 头不自述身份就不当条)。反证:把量法那一句 `?? [data-strip-header][data-tab-id]` 拆掉 → 单测 2 红、`gate:todo` ⑩ 红(「悬停在头上时屏幕上有预示」)。
+- 读数:prod 十一步全过(第一帧 3ms、500 项上屏 81ms);dev 十一步全过(第一帧 5ms、上屏 175ms)。壳 tsc 0 / eslint 0 / vitest 385 文件 6174 例 / 三条静态门基线内。
+- **留账**:`gate:todo` ② 在改这一笔期间的 prod 档跑了约八趟、超时红过两趟(「项组两条」等不到),当时断言没带读数;已给那一步补上「弹层此刻是什么」的诊断,再红按读数查。

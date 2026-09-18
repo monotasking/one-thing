@@ -186,6 +186,8 @@ export function LeafStrip({
     },
     [onTabPointerDown, select],
   )
+  /** 头那一档里「这片叶唯一那一格」是谁(拖拽按它认格,见下面 `data-tab-id` 那一段)。 */
+  const headerTab = header ? (tabs.find((tab) => tab.id === activeId) ?? tabs[0]) : undefined
   return (
     <div
       className={s.chrome}
@@ -200,7 +202,14 @@ export function LeafStrip({
           **内容自带的头占掉标签那一块**(待办 B 形 U1)。叶里只有这一格时才会走到这里
           (判据在 `PaneLeaf`),所以不画标签不会藏掉任何一格;宿主的钮与叶的动作组照旧在右端。
         */
-        <div className={s.header} data-strip-header="">{header}</div>
+        /*
+          **这条头就是这片叶那唯一一格**(U1-fix,2026-09-18 用户报「没有 tab 了,拖不进 tab header」)。
+          拖拽的量法按 `[data-tab-id]` 认格、按条的矩形认落区(`workbench/drop-geometry.ts`);
+          头把标签条换掉之后,这片叶在那张地图上整条檐都没了 —— 拖到头上没有任何落点,
+          连带正文上也开不出「并排」(那一档要先从条上查出活动标签是谁)。所以这一格自述
+          「我是哪一格」:id 与 tab 同源(`activeId`),装了几份照旧由 `slots` 说。
+        */
+        <div className={s.header} data-strip-header="" data-tab-id={headerTab?.id} data-tab-slots={headerTab?.slots && headerTab.slots > 1 ? String(headerTab.slots) : undefined}>{header}</div>
       ) : (
       <div className={s.tabs}>
         {/*

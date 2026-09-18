@@ -630,6 +630,16 @@ function feedbackOf(
     return { rect: null, tone: 'accept' as const, hint: t('drag.hint.back') }
   }
   if (target.kind === 'strip') {
+    /*
+     * 标签那一档不画高亮 —— 预示是条自己腾出来的那一格空位。**内容自带头的那一档没有格可腾**
+     * (U1-fix,2026-09-18):条上画的是那条头,悬停时屏幕上于是一点动静都没有,要松手之后
+     * 才知道落不落得进。所以这一档改画一层薄膜盖住那条头 —— 与边带同一种板,说的是同一句
+     * 「松手落在这条带上」。
+     */
+    const strip = geometry.strips?.find((box) => box.leafId === target.leafId)
+    if (strip?.header) {
+      return { rect: strip.rect, tone: 'accept' as const, shape: 'film' as const, hint: t('drag.hint.strip', { at: target.at + 1 }) }
+    }
     return { rect: null, tone: 'accept' as const, hint: t('drag.hint.strip', { at: target.at + 1 }) }
   }
   if (target.kind === 'float') {

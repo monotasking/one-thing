@@ -22,7 +22,8 @@
  *  ⑦ 勾选框:勾上的那一项先留着(< LINE_CHANGED_MS),到点收进「已完成」;
  *  ⑧ 删除:非空项行首退格 = 去掉勾选记号,文件里那一行变成段落;
  *  ⑨ 写坏文件那一类:编辑中外部改文件 → 两边的改动都在、没有重复行;
- *  ⑩ 编辑器一致性自测 `?todo-lab`:30 / 30。
+ *  ⑩ 把别的内容拖到这条**自带的头**上 = 插进这片叶(头把标签条换掉了,它得自己是一条能收东西的条);
+ *  ⑪ 编辑器一致性自测 `?todo-lab`:30 / 30。
  *
  * `--prod` 跑构建产物;缺省是 dev 档(起一台 vite,端口 `ONETHING_GATE_VITE_PORT`,缺省 5195,
  * **不是用户的 5175**,也避开 chat-layout 的 5197 与 terminal 的 5198)。
@@ -181,7 +182,7 @@ async function main() {
   try {
     let rendererUrl = ''
     if (!PROD) {
-      console.log(`\n[0/10] dev 档:起一台 vite(端口 ${DEV_PORT},不是用户的 5175)`)
+      console.log(`\n[0/11] dev 档:起一台 vite(端口 ${DEV_PORT},不是用户的 5175)`)
       const { createServer } = await import('vite')
       vite = await createServer({
         configFile: path.join(appRoot, 'vite.config.ts'),
@@ -211,7 +212,7 @@ async function main() {
     await waitFor('渲染层完成一次 RPC 往返', () => page.evaluate(() => window.__d0?.rpcOk === true), 60_000)
     await waitFor('Dock 就位', () => page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-todo"]'))), 60_000)
 
-    console.log('\n[1/10] Dock 瓦开出待办窗:头画在叶的标签条上')
+    console.log('\n[1/11] Dock 瓦开出待办窗:头画在叶的标签条上')
     await page.click('[data-testid="dock-tile-todo"]')
     const head = await waitFor('头出现', () => page.evaluate(() => {
       const header = document.querySelector('[data-testid="todo-header"]')
@@ -224,17 +225,23 @@ async function main() {
     assert(head.tabsInChrome === 0, '① 那条檐上没有标签(一片叶只有一条头)')
     await waitFor('正文有内容', async () => (await panelRows(page)) > 0)
 
-    console.log('\n[2/10] ⌘F → 搜索「发票」→ ↵ 打开项,那一行在视野里')
+    console.log('\n[2/11] ⌘F → 搜索「发票」→ ↵ 打开项,那一行在视野里')
     await page.evaluate(() => document.querySelector('[data-testid="todo-panel"] [role="group"]')?.focus())
     await press(cdp, { key: 'f', code: 'KeyF', keyCode: 70, primary: true })
     await waitFor('弹层开、焦点在输入框', () =>
       page.evaluate(() => document.activeElement?.getAttribute('data-testid') === 'todo-switcher-input'))
     assert(true, '② ⌘F 从正文开出切换 / 搜索弹层,焦点在输入框')
     await cdp.send('Input.insertText', { text: '发票' })
-    const hits = await waitFor('项组两条', () => page.evaluate(() => {
-      const rows = [...document.querySelectorAll('[data-testid^="todo-switcher-row-item-"]')]
-      return rows.length === 2 ? rows.map((row) => row.dataset.testid) : undefined
-    }))
+    let seenRows
+    const hits = await waitFor('项组两条', async () => {
+      seenRows = await page.evaluate(() => ({
+        input: document.querySelector('[data-testid="todo-switcher-input"]')?.value ?? null,
+        rows: [...document.querySelectorAll('[data-testid^="todo-switcher-row-"]')].map((row) => row.dataset.testid),
+        note: [...document.querySelectorAll('[data-testid="todo-switcher"] p')].map((p) => p.textContent),
+      }))
+      const items = seenRows.rows.filter((id) => id.startsWith('todo-switcher-row-item-'))
+      return items.length === 2 ? items : undefined
+    }).catch((error) => { throw new Error(`${error.message}\n弹层此刻:${JSON.stringify(seenRows)}`) })
     assert(hits.length === 2, `② 跨清单搜到两条项(${hits.join(' / ')})`)
     await press(cdp, ENTER)
     await waitFor('弹层关上', () => page.evaluate(() => !document.querySelector('[data-testid="todo-switcher"]')))
@@ -253,7 +260,7 @@ async function main() {
     }).catch((error) => { throw new Error(`${error.message}\n页面读数:${JSON.stringify(lastSeen)}`) })
     assert(revealed.inView, `② ↵ 打开「${revealed.name}」,命中那一行在视野里`)
 
-    console.log('\n[3/10] 切进 500 项清单:毫秒数与已完成收起')
+    console.log('\n[3/11] 切进 500 项清单:毫秒数与已完成收起')
     await openList(page, cdp, '大清单')
     const opened = await page.evaluate(async () => {
       const raf = () => new Promise((r) => requestAnimationFrame(() => r()))
@@ -282,7 +289,7 @@ async function main() {
     assert(opened.firstFrameMs <= budgetOf('openFirstFrameMs'), `③ 点开之后第一帧 ${opened.firstFrameMs}ms ≤ ${budgetOf('openFirstFrameMs')}`)
     assert(opened.openMs <= budgetOf('openMs'), `③ 整篇上屏 ${opened.openMs}ms ≤ ${budgetOf('openMs')}(${LANE} 档)`)
 
-    console.log('\n[4/10] 折一节、再展开')
+    console.log('\n[4/11] 折一节、再展开')
     const hitTest = await page.evaluate(() => {
       const button = document.querySelector('[data-testid="todo-panel"] [data-fold^="heading:"]')
       const r = button.getBoundingClientRect()
@@ -303,7 +310,7 @@ async function main() {
     await waitFor('第 1 节展开', async () => (await panelRows(page)) === 311)
     assert(true, '④ 再点一次展开,311 项回来')
 
-    console.log('\n[5/10] 长清单中段回车 ×5:零长帧、每次只重建一项')
+    console.log('\n[5/11] 长清单中段回车 ×5:零长帧、每次只重建一项')
     await openRow(page, '第 5 节第 30 项')
     const rowsBeforeEnter = await panelRows(page)
     await page.evaluate(() => {
@@ -335,7 +342,7 @@ async function main() {
     assert(typed.longFrames.filter((d) => d >= budgetOf('enterLongFrameMs')).length === 0, `⑤ 回车 + 打字 ×5 零 ≥${budgetOf('enterLongFrameMs')}ms 长帧(读数 ${JSON.stringify(typed.longFrames)})`)
     assert(typed.remounts.every((n) => n <= budgetOf('enterRemounts')), `⑤ 一次回车重建的项 ≤${budgetOf('enterRemounts')}(读数 ${JSON.stringify(typed.remounts)})`)
 
-    console.log('\n[6/10] 滚动:清单底部连按回车,光标那一行一直在视野里')
+    console.log('\n[6/11] 滚动:清单底部连按回车,光标那一行一直在视野里')
     await openRow(page, '第 10 节第 50 项')
     let outOfView = 0
     for (let i = 0; i < 12; i++) {
@@ -360,7 +367,7 @@ async function main() {
     }))
     assert(afterEscape.panel, '⑥ 编辑中按 Esc 只离开这一项,待办窗还开着(main 上曾经整扇收掉)')
 
-    console.log('\n[7/10] 勾选框:勾上的那一项先留着,到点收进「已完成」')
+    console.log('\n[7/11] 勾选框:勾上的那一项先留着,到点收进「已完成」')
     const target = '第 2 节第 25 项'
     const lingered = await page.evaluate(async ({ needle, ms }) => {
       const find = () => [...document.querySelectorAll('[data-testid="todo-panel"] [data-unit]')].find((el) => el.textContent.includes(needle))
@@ -376,7 +383,7 @@ async function main() {
     }, { needle: target, ms: LINE_CHANGED_MS })
     assert(lingered.during && !lingered.after, `⑦ 勾上后 ${LINE_CHANGED_MS / 2}ms 还在、${LINE_CHANGED_MS * 1.5}ms 已收起(读数 ${JSON.stringify(lingered)})`)
 
-    console.log('\n[8/10] 删除:非空项行首退格 = 去掉勾选记号')
+    console.log('\n[8/11] 删除:非空项行首退格 = 去掉勾选记号')
     await openList(page, cdp, '收件箱')
     await press(cdp, ENTER)
     await waitFor('收件箱', async () => (await listName(page)) === '收件箱')
@@ -397,7 +404,7 @@ async function main() {
     }, 5_000)
     assert(!stripped.includes('- [ ] 订周五的会议室'), '⑧ 行首退格去掉了勾选记号,那一行落盘成段落')
 
-    console.log('\n[9/10] 编辑中外部改文件:两边的改动都在、没有重复行')
+    console.log('\n[9/11] 编辑中外部改文件:两边的改动都在、没有重复行')
     await openRow(page, '回邮件')
     await cdp.send('Input.insertText', { text: '(本地)' })
     await delay(1_000)
@@ -413,7 +420,45 @@ async function main() {
     const nonEmpty = merged.split('\n').filter((line) => line.trim())
     assert(new Set(nonEmpty).size === nonEmpty.length, `⑨ 没有重复行(${nonEmpty.length} 行)`)
 
-    console.log('\n[10/10] 编辑器一致性自测 ?todo-lab')
+    /*
+     * 拖拽的落点地图按 `[role="tablist"]` 找条、按 `[data-tab-id]` 认格(`workbench/drop-geometry.ts`)。
+     * 内容自带头的那一档条上没有 tablist —— U1 之后那片叶**整条檐在地图上不存在**,拖到头上没有任何
+     * 落点(2026-09-18 用户报「没有了 tab,导致不能拖入到 tab header 中」)。这一步量的是修好之后的
+     * 两件事:悬停时头上真有一层预示(标签那一档的预示是条腾出来的空位,头上没有格可腾),松手真的并进去。
+     */
+    console.log('\n[10/11] 拖到自带的头上 = 插进这片叶')
+    await page.click('[data-testid="dock-tile-music"]')
+    const spots = await waitFor('音乐那一格与待办的头都在屏上', () => page.evaluate(() => {
+      const music = document.querySelector('[data-tab-id="panel:music"]')
+      const header = document.querySelector('[data-testid="todo-header"]')
+      if (!music || !header) return undefined
+      const m = music.getBoundingClientRect()
+      const h = header.getBoundingClientRect()
+      return { tab: { x: m.left + m.width / 2, y: m.top + m.height / 2 }, header: { x: h.left + h.width * 0.75, y: h.top + h.height / 2 } }
+    }))
+    await page.mouse.move(spots.tab.x, spots.tab.y)
+    await page.mouse.down()
+    await page.mouse.move(spots.tab.x + 20, spots.tab.y + 40, { steps: 4 })
+    await page.mouse.move(spots.header.x, spots.header.y, { steps: 8 })
+    await delay(300)
+    const band = await page.evaluate(() => {
+      const overlay = document.querySelector('[data-testid="drop-overlay"]')
+      const header = document.querySelector('[data-testid="todo-header"]')?.getBoundingClientRect()
+      if (!overlay || !header) return null
+      const rect = overlay.getBoundingClientRect()
+      return { shape: overlay.dataset.shape, tone: overlay.dataset.tone, overHeader: Math.abs(rect.top - header.top) < 4 && rect.width > header.width / 2 }
+    })
+    assert(Boolean(band), '⑩ 悬停在头上时屏幕上有预示(从前这里一点动静都没有)')
+    assert(band.shape === 'film' && band.tone === 'accept' && band.overHeader, `⑩ 那层预示是盖住这条头的薄膜(${JSON.stringify(band)})`)
+    await page.mouse.up()
+    const bothTabs = await waitFor('音乐并进待办那片叶', () => page.evaluate(() => {
+      const chrome = [...document.querySelectorAll('[data-pane-chrome]')].find((el) => el.querySelector('[data-tab-id="panel:todo"]'))
+      const ids = chrome ? [...chrome.querySelectorAll('[data-tab-id]')].map((el) => el.getAttribute('data-tab-id')) : []
+      return ids.includes('panel:music') ? ids : undefined
+    }))
+    assert(bothTabs.includes('panel:todo') && bothTabs.includes('panel:music'), `⑩ 松手之后那片叶两格都在(${bothTabs.join(' / ')})`)
+
+    console.log('\n[11/11] 编辑器一致性自测 ?todo-lab')
     // 换页那一下会把这次 evaluate 的执行上下文一起拆掉 —— 那是换页本身,不是失败。
     await page.evaluate(() => { location.search = '?todo-lab' }).catch(() => {})
     await page.waitForLoadState('domcontentloaded').catch(() => {})
@@ -426,11 +471,11 @@ async function main() {
       return { pass: results.filter((r) => r.ok).length, total: results.length, fails: results.filter((r) => !r.ok).map((r) => `${r.name} — ${r.detail}`) }
     })
     report.lab = { pass: lab.pass, total: lab.total }
-    assert(lab.total >= 30 && lab.pass === lab.total, `⑩ 自测 ${lab.pass} / ${lab.total}${lab.fails.length ? `(红:${lab.fails.join(';')})` : ''}`)
+    assert(lab.total >= 30 && lab.pass === lab.total, `⑪ 自测 ${lab.pass} / ${lab.total}${lab.fails.length ? `(红:${lab.fails.join(';')})` : ''}`)
 
     await app.close()
     app = undefined
-    console.log(`\n[todo-gate] ok(${LANE} 档)—— 十步全过`)
+    console.log(`\n[todo-gate] ok(${LANE} 档)—— 十一步全过`)
     console.log(`[todo-gate] 读数:${JSON.stringify(report)}`)
   } finally {
     if (app) await app.close().catch(() => {})

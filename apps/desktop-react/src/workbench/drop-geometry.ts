@@ -66,12 +66,20 @@ export function measureDropGeometry(): DropGeometry {
       /*
        * 量的是 **tablist 那一格**,不是整条檐:檐右端还挂着型工具条与动作组,
        * 把它们算进条里等于「拖到某颗钮上 = 插一格 tab」。
+       *
+       * ── 内容自带头的那一档也是一条条(U1-fix)────────────────────────────
+       * 一片叶只有一格、而那一种内容自述了 `stripHeader` 时,条上画的是那条头,没有
+       * tablist(判词在 `workbench/LeafStrip.tsx`)。从前这里 `continue`,于是那片叶
+       * **整条檐在这张地图上不存在**:拖到头上没有落点,连正文上的「并排」也开不出来
+       * (那一档要先从条上查出活动标签是谁)。头自己带着 `[data-tab-id]`,所以它就是
+       * 这条条里**唯一那一格** —— 别的判据一个字都不用改。
        */
-      const list = chrome.querySelector('[role="tablist"]')
+      const list = chrome.querySelector('[role="tablist"]') ?? chrome.querySelector('[data-strip-header][data-tab-id]')
       if (!list) continue
       const rect = stripRectOf(chrome, list)
       if (rect.width <= 0 || rect.height <= 0) continue
-      const cells = Array.from(list.querySelectorAll('[data-tab-id]'))
+      const sole = list.matches('[data-tab-id]')
+      const cells = sole ? [list] : Array.from(list.querySelectorAll('[data-tab-id]'))
       strips.push({
         /*
          * 条的**区域**从它往上最近的那格 `[data-pane-region]` 读。中央区那几组
@@ -85,7 +93,9 @@ export function measureDropGeometry(): DropGeometry {
         leafId,
         rect,
         tabs: cells.map(tabBoxOf),
-        activeAt: cells.findIndex((el) => el.getAttribute('aria-selected') === 'true'),
+        // 头那一档只有一格,而且它就是活动的那一格(它画的正是这片叶此刻装着的那份内容)。
+        activeAt: sole ? 0 : cells.findIndex((el) => el.getAttribute('aria-selected') === 'true'),
+        ...(sole ? { header: true } : {}),
       })
     }
     for (const el of Array.from(document.querySelectorAll('[data-nodrop]'))) {
