@@ -31,9 +31,12 @@
 }
 
 .layout {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
+  /* 弹性:铺满面板的高,唱片那一块吃掉余下的高(09-18)。再矮就由 .scroller 滚。 */
+  min-height: 100%;
   padding: var(--sp-3);
 }
 
@@ -99,10 +102,26 @@
 
 /* 场景画布铺满这一块;圆角裁在外框上,场景的屋子跟着圆。歌词页换进来的是同一块地。 */
 .deck {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
   min-width: 0;
   overflow: hidden;
   border-radius: var(--r-3);
   background: var(--surface-1);
+}
+
+/*
+ * 错话那一行**浮在唱片那一块的顶上**,不占一行 —— 占一行就是「出了个错,唱片缩了一圈」,
+ * 而布局从不随状态变(09-18)。
+ */
+.deckNotice {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  left: var(--sp-2);
+  z-index: var(--z-sticky);
 }
 
 /* ── 播放列表抽屉 ─────────────────────────────────────────────────────── */

@@ -118,7 +118,12 @@ export interface MusicPlayerAdapters {
   command(
     request: { command: MusicCommand; value?: number },
     executionContext?: unknown,
-  ): Promise<{ success: boolean; error?: string; nowPlaying?: OnethingMusicNowPlaying | null }>
+  ): Promise<{
+    success: boolean
+    error?: string
+    nowPlaying?: OnethingMusicNowPlaying | null
+    deferred?: 'refilling'
+  }>
   /** 现在放什么。没有播放器在跑 = `null`(不是一次失败)。 */
   nowPlaying(executionContext?: unknown): OnethingMusicNowPlaying | null
   /** 当前这首歌的定时歌词。没有 = `null`(氛围少一样,不是错)。 */
@@ -346,6 +351,11 @@ const PLAYER_TITLES: Readonly<Record<string, string>> = {
   volume: '已调音量',
   radioResume: '已续播',
   radioStop: '电台已停',
+}
+
+/** 收下了、但此刻做不了的那几种回执抬头(`MusicCommandResponse.deferred`)。 */
+const PLAYER_DEFERRED: Readonly<Record<'refilling', string>> = {
+  refilling: '下一首还没排好:DJ 正在补节目单,这首先放着',
 }
 
 /** 带数值参数的那两条:做法名 → 参数名。措辞的那一半在 `MusicCommandValueError`。 */
@@ -809,6 +819,12 @@ export class MusicResourceProvider implements ResourceProvider<MusicOpPayload> {
         const nowPlaying = answered.nowPlaying !== undefined
           ? answered.nowPlaying
           : this.player.nowPlaying(operator)
+        if (answered.deferred === 'refilling') {
+          return this.done(ctx, PLAYER_DEFERRED.refilling, PLAYER_DEFERRED.refilling, payload.op, {
+            nowPlaying: nowPlaying ?? null,
+            deferred: 'refilling',
+          })
+        }
         return this.done(
           ctx,
           PLAYER_TITLES[payload.op],

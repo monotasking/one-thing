@@ -21,7 +21,8 @@ import s from './DeckRow.module.css'
  * ── 每颗钮一个意思 ─────────────────────────────────────────────────────
  *  · ⏯:有歌就只听播放器的 —— 在放 = 暂停、停着 = 继续;没歌才轮到电台:开着 = 从节目单续上
  *    (`radio-resume`,冷启动唯一实测可用的那条路),关着 = **开台**。名字跟着说。
- *  · ⏭:电台开着 = 跳过并记成不想听(后端分档,名字说实话);关着停用。
+ *  · ⏭:电台开着 = 跳过并记成不想听(后端分档,名字说实话);关着停用。节目单空了(DJ 在补)
+ *    也照样发:后端记下这一下、答「还没排好」,黑豆接一句「别催,在翻」—— 不出错话。
  *  · ♥:一次性,按歌名分格记在这里;成功后黑豆冒爱心(`onLiked`)。
  *  · 说话:关着时说的是「今晚想听点什么」→ 以这句话开台;开着时递给主持人(`tell`)。
  *
@@ -47,6 +48,8 @@ export function DeckRow({
   playlistOpen,
   onTogglePlaylist,
   onLiked,
+  refilling = false,
+  onWaitForDj,
   onError,
 }: {
   title: string | undefined
@@ -64,6 +67,9 @@ export function DeckRow({
   playlistOpen: boolean
   onTogglePlaylist: () => void
   onLiked?: () => void
+  /** 电台开着、节目单空了:DJ 在补。此刻按 ⏭ 是「催他」,由黑豆接话(`onWaitForDj`)。 */
+  refilling?: boolean
+  onWaitForDj?: () => void
   /** 这一行各颗钮的错话,交给面板画在唱片上方那一行。 */
   onError: (message: string | undefined) => void
 }) {
@@ -179,7 +185,11 @@ export function DeckRow({
               testId="music-next"
               disabled={next.pending || !present}
               aria-busy={next.pending || undefined}
-              onClick={() => void musicOps.next.run({})}
+              onClick={() => {
+                // 照样发出去:后端把这一下记成「不想听这首」(口味信号),回执是「还没排好」,不是错。
+                if (refilling) onWaitForDj?.()
+                void musicOps.next.run({})
+              }}
             />
           </span>
           <span className={s.end}>

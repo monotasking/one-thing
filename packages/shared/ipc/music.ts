@@ -111,6 +111,12 @@ export interface MusicLyrics {
 	/** Matches MusicNowPlaying.title — the renderer checks before showing. */
 	title: string
 	lines: MusicLyricLine[]
+	/**
+	 * The lookup itself failed (network, or the song could not be identified) —
+	 * as opposed to `lines: []` with no flag, which means the song has no lyrics.
+	 * The panel says two different sentences for the two.
+	 */
+	failed?: boolean
 }
 
 /** Radio brief snapshot for the bar: is the station on, and is it healthy. */
@@ -178,6 +184,12 @@ export interface MusicDjSpeak {
 
 export interface MusicCommandResponse extends MusicBaseResponse {
 	nowPlaying?: MusicNowPlaying | null
+	/**
+	 * The command was accepted but cannot happen yet — today only ⏭ with the
+	 * station on and nothing queued: the DJ is refilling the programme, the
+	 * current song keeps playing. Success, not failure: nothing went wrong.
+	 */
+	deferred?: 'refilling'
 }
 
 /** Structural mirror of the runtime's OnethingMusicRuntimeState — setup only.

@@ -21,7 +21,7 @@ import { ButtonBase } from '../../ui/ButtonBase'
 import { PointerTrack } from '../../ui/drag'
 import { FrameCoalescer } from '../../ui/frame-coalescer'
 import { usePanelVisibility } from '../visibility'
-import { currentRowAt, lyricRowsOf } from './lyrics-rows'
+import { currentRowAt, lyricRowsOf, lyricStateOf } from './lyrics-rows'
 import { musicPetActivity } from './pet-activity'
 import {
   angleAtPoint,
@@ -51,6 +51,17 @@ function reportGesture(gesture: PetGesture): void {
 const KEY_SEEK_S = 10
 
 /**
+ * 关着时那四枚心情块(样例 v7 的开台邀请)。块上印两个字,按下去发出去的是整句意图 ——
+ * 与「跟黑豆说」开台是同一条路,只是替人把第一句话说了。
+ */
+const MOODS = [
+  { id: 'rain', label: 'music.mood.rain', intent: 'music.preset.rain' },
+  { id: 'focus', label: 'music.mood.focus', intent: 'music.preset.focus' },
+  { id: 'friday', label: 'music.mood.friday', intent: 'music.preset.friday' },
+  { id: 'drive', label: 'music.mood.drive', intent: 'music.preset.drive' },
+] as const
+
+/**
  * **唱片面**(音乐面 v8 · 唱针读歌词,2026-09-18;样例「黑豆电台」v7,用户 09-18「就按照这个去实现,100%」)。
  *
  * 用户否掉了前一版的两件事:「布局很奇怪,歌词和唱机竟然是分开的」「复杂」。所以这块面
@@ -75,7 +86,13 @@ const KEY_SEEK_S = 10
  *
  * ── 布局从不跟着状态变(用户 09-18「开关、打开歌词等操作,会让 ui 布局变化」)──────
  * 开台、关台、暂停、黑豆挑歌,这块面的高度与每一件的位置都不动,变的只是里面的东西:
- * 关着 → 标签写「黑豆电台 · 关着」、歌词那里换成一句提示;没有歌词 → 同一个位置一句话。
+ * 关着 → 标签写「黑豆电台 · 关着」、歌词那里换成一句问话 + 四枚心情块;歌词没到 / 没有 /
+ * 没取到 → 同一个位置一句话。
+ *
+ * ── 弹性(09-18 用户:「他能是一个弹性布局吗?」)─────────────────────────────
+ * 画面的高跟着**面板**走(flex 吃满余下的高,下限是从前那个定高),唱片随量到的宽高长大,
+ * 到宽的 47%(宽面板 36%)或 520px 为止,多出来的高度上下平分;黑豆坐在唱片的下沿,不是画面
+ * 的底边。高度只随面板变,从不随状态变。
  *
  * ══════════════════════════════════════════════════════════════════════════
  * 状态先行:三张状态表
@@ -97,11 +114,13 @@ const KEY_SEEK_S = 10
  * ── ② UI 生命状态 ───────────────────────────────────────────────────────
  * | 状态 | 画面 |
  * | 首载(还没读数) | 唱片空标签、唱臂归位,不画黑豆 |
- * | 电台开着、播放器没歌 | 标签「黑豆电台」;唱臂归位;歌词位置空 |
+ * | 关着 | 标签「黑豆电台 · 关着」;歌词位置一句「今晚想听点什么?」+ 四枚心情块(按一枚 = 以那句意图开台);黑豆睡 |
+ * | 电台开着、播放器没歌 | 标签「黑豆电台」;唱臂归位;正在起播就一句「马上放:歌名」,否则空着交给黑豆 |
  * | 在放 / 暂停 | 见 ① |
- * | 挑歌(busy) | 封套翘起,黑豆扭头去翻;歌照放 |
- * | 出错 | 黑豆蚊香眼;唱片照读数摆(错话在面板上就地一行) |
- * | 没有歌词 / 读不到 | 歌词位置一句「这首没有歌词」 |
+ * | 挑歌 / 在补节目单(busy) | 封套翘起,黑豆扭头去翻;歌照放。节目单空了也算(09-18:「这个状态交给 pet」),面板上不出字 |
+ * | 出错 | 黑豆蚊香眼;唱片照读数摆(错话浮在这块画面顶上,不占一行) |
+ * | 歌词:手上那份不是这首的 | 「正在取歌词」(淡一档)—— 换歌那一刻一定先经过这一格,不能说成「没有」 |
+ * | 歌词:这首的、没行 / 没取到 | 「这首没有歌词。」/「歌词没取到。」 |
  * | 不知道总长 | 纹带按默认时长;唱头不接拖也不接键盘 |
  * | 超量:歌名很长 | 标签两行截断;歌手一行省略号 |
  * | 减弱动态效果 | 翻面与标签淡入变为瞬时(动效档归零);唱片照转(转不转是信息) |
@@ -126,6 +145,10 @@ export interface RecordDeckProps {
   onSeek: (seconds: number) => void
   /** 放节目单里的这一首(拖唱臂到后面那一圈)。 */
   onPlayEntry: (encryptedId: string) => void
+  /** 以这句意图开台(关着时那四枚心情块)。 */
+  onOpen: (intent: string) => void
+  /** 开台那一发在路上:四枚块一起停用(律③:进行中有反馈)。 */
+  opening?: boolean
   petRef?: Ref<PetStageHandle>
   /** 你在打字 / 发出去了还没等到他回话(父级给,同一份真相不订两遍)。 */
   listening?: boolean
@@ -144,6 +167,8 @@ export function RecordDeck({
   wide,
   onSeek,
   onPlayEntry,
+  onOpen,
+  opening = false,
   petRef,
   listening = false,
   awaitingHost = false,
@@ -309,8 +334,11 @@ export function RecordDeck({
 
   // ── 歌词:正在唱的那句对着唱针的高度 ─────────────────────────────────────
   const lyrics = useQuery(musicLyricsQuery)
-  const lines = useMemo(() => lyrics.data?.lines ?? [], [lyrics.data])
-  const rows = useMemo(() => (present ? lyricRowsOf(lines, duration) : []), [present, lines, duration])
+  // 这份歌词是不是**这一首**的:换歌那一刻手上的还是上一首的,那一段叫「正在取」,不叫「没有」。
+  const lyricsFor = lyricStateOf(present ? title : undefined, lyrics.data)
+  const lyricState = lyricsFor === 'loading' && lyrics.error !== undefined ? 'failed' : lyricsFor
+  const lines = useMemo(() => (lyricState === 'ready' ? (lyrics.data?.lines ?? []) : []), [lyricState, lyrics.data])
+  const rows = useMemo(() => lyricRowsOf(lines, duration), [lines, duration])
   const current = currentRowAt(rows, position)
   const lyricsRef = useRef<HTMLOListElement | null>(null)
   const landedFor = useRef<string | null>(null)
@@ -325,7 +353,16 @@ export function RecordDeck({
     setJump(first)
     list.style.setProperty('--lyrics-y', `${geo.anchorY - (row.offsetTop + row.offsetHeight / 2)}px`)
   }, [current, rows, geo, title])
-  const noLyrics = present && lyrics.phase === 'ready' && rows.length === 0
+  // 歌词那一格此刻说的那一句(唱片与歌词的位置都不动,只换这一句)。
+  const lyricNote: { key: 'music.lyricsLoading' | 'music.lyricsEmpty' | 'music.lyricsFailed'; faint: boolean } | null =
+    lyricState === 'loading'
+      ? { key: 'music.lyricsLoading', faint: true }
+      : lyricState === 'empty' || (lyricState === 'ready' && rows.length === 0)
+        ? { key: 'music.lyricsEmpty', faint: false }
+        : lyricState === 'failed'
+          ? { key: 'music.lyricsFailed', faint: false }
+          : null
+  const startingName = !present && brief?.active === true && brief.starting ? splitTitle(brief.starting).name || brief.starting : undefined
 
   // ── 黑豆 ────────────────────────────────────────────────────────────────
   usePetLive()
@@ -354,7 +391,7 @@ export function RecordDeck({
           '--deck-lr': `${geo.lyricsRight}px`,
           '--deck-ay': `${geo.anchorY}px`,
           '--pet-anchor-x': `${geo.petX}px`,
-          '--pet-anchor-bottom': '0px',
+          '--pet-anchor-bottom': `${geo.petBottom}px`,
           '--pet-scale': String(geo.petScale),
           '--fan-x': `${geo.petX + 30 * geo.petScale}px`,
           '--fan-scale': String(geo.petScale),
@@ -443,7 +480,7 @@ export function RecordDeck({
         />
       </div>
 
-      <div className={s.lyricsWin} aria-label={t('music.lyrics')} data-testid="music-lyrics">
+      <div className={s.lyricsWin} role="group" aria-label={t('music.lyrics')} data-testid="music-lyrics">
         <ol ref={lyricsRef} className={s.lyrics} data-jump={jump ? 'true' : undefined}>
           {rows.map((row, index) => {
             const label = row.interlude
@@ -468,13 +505,36 @@ export function RecordDeck({
         </ol>
       </div>
       {off && (
-        <p className={s.note} data-testid="music-lyrics-off">
-          {t('music.deckLyricsOff')}
+        <div className={s.invite} data-testid="music-invite">
+          <p className={s.inviteAsk}>{t('music.deckInvite')}</p>
+          <div className={s.moods}>
+            {MOODS.map((mood) => (
+              <ButtonBase
+                key={mood.id}
+                className={s.mood}
+                disabled={opening}
+                aria-busy={opening || undefined}
+                data-testid={`music-mood-${mood.id}`}
+                onClick={() => onOpen(t(mood.intent))}
+              >
+                {t(mood.label)}
+              </ButtonBase>
+            ))}
+          </div>
+        </div>
+      )}
+      {!off && startingName && (
+        <p className={s.note} data-testid="music-starting">
+          {t('music.deckStarting', { name: startingName })}
         </p>
       )}
-      {noLyrics && !off && (
-        <p className={s.note} data-testid="music-lyrics-empty">
-          {t('music.lyricsEmpty')}
+      {!off && lyricNote && (
+        <p
+          className={s.note}
+          data-faint={lyricNote.faint ? 'true' : undefined}
+          data-testid={lyricNote.key === 'music.lyricsLoading' ? 'music-lyrics-loading' : lyricNote.key === 'music.lyricsFailed' ? 'music-lyrics-failed' : 'music-lyrics-empty'}
+        >
+          {t(lyricNote.key)}
         </p>
       )}
 

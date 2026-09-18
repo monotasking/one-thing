@@ -1703,7 +1703,6 @@ export const en: Record<MessageKey, string> = {
   'music.deckIntro': '♪ Intro',
   'music.deckInterlude': '♪ Interlude',
   'music.deckOutro': '♪ Outro',
-  'music.deckLyricsOff': 'Turn the station on and the lyrics follow here',
   'music.deckOpen': 'Turn on',
   'music.deckClose': 'Turn off',
   'music.deckNoClock': '--:--',
@@ -1715,6 +1714,9 @@ export const en: Record<MessageKey, string> = {
   'music.deckLoved': '♥ Loved',
   'music.deckSkipped': 'Skipped',
   'music.lyricsLoading': 'Loading lyrics',
+  'music.lyricsFailed': "Couldn't get the lyrics.",
+  'music.deckInvite': 'What do you feel like tonight?',
+  'music.deckStarting': 'Up now: {name}',
   /* Four mood blocks. The block shows the short word; pressing it sends the whole intent. */
   'music.mood.rain': 'Rain',
   'music.mood.focus': 'Focus',

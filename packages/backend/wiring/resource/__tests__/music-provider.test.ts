@@ -303,6 +303,17 @@ describe('music resource provider —— 播放器四条', () => {
     expect(done.text).toContain('晴天 - 周杰伦')
   })
 
+  it('09-18 ⏭ 时节目单空了 = ok 不是 failed:DJ 在补节目单是一种状态,不是一次失败', async () => {
+    const provider = makeProvider(
+      radioAdapters(),
+      playerAdapters({ command: async () => ({ success: true, deferred: 'refilling' as const }) }),
+    )
+    const done = await run(provider, { op: 'next' })
+
+    expect(done.outcome.kind).toBe('ok')
+    expect(done.titles.at(-1)).toBe('下一首还没排好:DJ 正在补节目单,这首先放着')
+  })
+
   it('播放命令说不 = failed,带回执自己那句话(与点歌那一条刻意不同)', async () => {
     const provider = makeProvider(
       radioAdapters(),

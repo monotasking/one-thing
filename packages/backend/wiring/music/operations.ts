@@ -140,6 +140,13 @@ async function runMusicCommand(
     recordRadioSkip()
     if (isRadioActive()) {
       markRadioGesture('⏭ 下一首')
+      // Nothing queued: the DJ is refilling (the conductor wakes him on an empty
+      // shelf). That is a state, not an error — the song keeps playing and the
+      // skip above still counts as a taste signal (09-18 user: 「没有下一首了,
+      // dj 正在补歌单,这个状态交给 pet」).
+      if (getRadioStore().readProgramme().entries.length === 0) {
+        return { success: true, nowPlaying: getMusicNowPlaying(), deferred: 'refilling' }
+      }
       const skipped = await skipToNextRadioSong()
       await refreshMusicNowPlaying()
       return skipped

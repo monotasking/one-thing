@@ -26,6 +26,13 @@ import s from './Gallery.module.css'
  * 正本 §5 那六档:300 / 360(底部弹层)· 620(右侧抽屉,仍是一栏)· 900(两栏的门槛)·
  * 1040 / 1280(两栏)。截图就照这六档 × 四态(有歌 / 没歌 / 抽屉开 / 歌词页)。
  */
+const HEIGHTS = [
+  { value: '420', label: 'h420' },
+  { value: '560', label: 'h560' },
+  { value: '760', label: 'h760' },
+  { value: '1000', label: 'h1000' },
+] as const
+
 const WIDTHS = [
   { value: '300', label: '300' },
   { value: '360', label: '360' },
@@ -74,7 +81,7 @@ interface LabState {
    * 歌词那一格(§8.5)。`loading` = 那一发**挂着不回**:骨架的判据是
    * 「从来没有过内容」(`phase === 'initial'`),一发答「读不到」只会得到错话那一档。
    */
-  lyrics: 'ready' | 'loading'
+  lyrics: 'ready' | 'loading' | 'stale' | 'empty' | 'failed'
   /** 主持人开没开口(§8.4)。`speaking` = 推一条 `utterance`,歌词让位。 */
   host: 'quiet' | 'speaking'
   programme: 'five' | 'many' | 'empty'
@@ -155,8 +162,9 @@ function table(state: LabState): Record<string, ResourceReadView> {
                 },
           ),
     'music:player#lyrics': ok({
-      title: title ?? '',
-      lines: [
+      title: state.lyrics === 'stale' ? '上一首 - 谁' : (title ?? ''),
+      ...(state.lyrics === 'failed' ? { failed: true } : {}),
+      lines: state.lyrics === 'stale' || state.lyrics === 'empty' || state.lyrics === 'failed' ? [] : [
         [0, '♪'],
         [22, '雨落在铁皮雨棚上 像有人在数零钱'],
         [31, '我们挤在同一块屋檐 谁也没带伞'],
@@ -469,6 +477,9 @@ const CHOICES: readonly Choice<keyof LabState>[] = [
     options: [
       { value: 'ready', label: 'ready' },
       { value: 'loading', label: '读中(骨架)' },
+      { value: 'stale', label: '上一首的' },
+      { value: 'empty', label: '没有' },
+      { value: 'failed', label: '没取到' },
     ],
   },
   {
@@ -516,6 +527,7 @@ const CHOICES: readonly Choice<keyof LabState>[] = [
 
 export function MusicLab() {
   const [width, setWidth] = useState<string>('620')
+  const [height, setHeight] = useState<string>('760')
   const [state, setState] = useState<LabState>(INITIAL)
   /*
    * 两个开关 = 面板的**初始**态。它们换的时候整块面重挂(`key`)—— 抽屉开合的主人
@@ -581,6 +593,7 @@ export function MusicLab() {
     <div className={s.page} data-testid="music-lab">
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <Segmented label="width" options={[...WIDTHS]} value={width} onChange={setWidth} />
+        <Segmented label="height" options={[...HEIGHTS]} value={height} onChange={setHeight} />
         {CHOICES.map((choice) => (
           <Segmented
             key={choice.key}
@@ -622,7 +635,7 @@ export function MusicLab() {
         style={{
           boxSizing: 'content-box',
           width: Number(width),
-          height: 760,
+          height: Number(height),
           border: '1px solid var(--line-1)',
           borderRadius: 12,
           overflow: 'hidden',

@@ -8,6 +8,7 @@ import { createMusicOperationsScope } from './operations.js'
 import { MusicWorkOwner } from './lifetime.js'
 import { createHostVoiceKit, type HostVoice, type HostVoiceFactory, type HostVoiceKit, type SpeechActivityAnnouncer } from './host-voice.js'
 import { MusicMoments, type MusicMomentEvent } from './moments.js'
+import type { MusicLyrics } from '@shared/ipc/music.js'
 import { readProviderVolume, setProviderVolume, SpeechActivityDuck } from './player-volume.js'
 import type { EventBus } from '../../events/event-bus.js'
 import { getLogger } from '../logging/index.js'
@@ -20,6 +21,12 @@ type MusicGeneration = {
   radio: ReturnType<typeof createRadioScope>
   operations: ReturnType<typeof createMusicOperationsScope>
 }
+
+/**
+ * `music:player` 上的事实:听歌的那几条时刻(`MusicMomentEvent`,各带一格 `moment`)
+ * 加上歌词就绪(`lyricsChanged`,不是时刻 —— 没人该对着它开口,它只告诉读者「可以重读了」)。
+ */
+export type MusicPlayerFact = MusicMomentEvent | 'lyricsChanged'
 
 /** One Backend owns every provider generation until its real work has ended. */
 export class MusicSubsystem {
@@ -47,7 +54,7 @@ export class MusicSubsystem {
    * 谁在看「听歌这件事的事实」(宠物 P4,§11.1:`music:player` 的 `trackStarted` / `skipped` / …)。
    * 与 `nowPlayingListeners` 同理住在子系统上。
    */
-  private readonly factListeners = new Set<(event: MusicMomentEvent, payload: Record<string, unknown>) => void>()
+  private readonly factListeners = new Set<(event: MusicPlayerFact, payload: Record<string, unknown>) => void>()
   /**
    * 谁在看接入向导那条线(2026-09-18:`music:provider` 的 `setupOutput`)。
    * 与上面两张表同理住在子系统上 —— 换一只音乐 CLI 不该让订阅者悄悄失聪,而
@@ -65,22 +72,38 @@ export class MusicSubsystem {
   constructor(private readonly options: { storePath: string; assertOwned: () => void; clock?: { now(): number } }) {
     this.owner = new MusicWorkOwner(options.assertOwned)
     this.moments = new MusicMoments({
-      emit: (event, payload) => {
-        for (const listener of [...this.factListeners]) {
-          try {
-            listener(event, payload)
-          } catch (error) {
-            log.warn('music fact observer failed', { event }, error)
-          }
-        }
-      },
+      emit: (event, payload) => this.emitPlayerFact(event, payload),
       ...(options.clock ? { clock: options.clock } : {}),
     })
     this.generation = this.createGeneration()
   }
 
+  /** 扇出一条播放器事实。**不抛**:一个坏掉的订阅者不该让报事实的那条正事失败。 */
+  private emitPlayerFact(event: MusicPlayerFact, payload: Record<string, unknown>): void {
+    for (const listener of [...this.factListeners]) {
+      try {
+        listener(event, payload)
+      } catch (error) {
+        log.warn('music fact observer failed', { event }, error)
+      }
+    }
+  }
+
+  /**
+   * 电台手上那份歌词换了(取到了 / 确认没有 / 没取到)。歌词是换歌**之后**异步取的,
+   * 所以「现在放什么变了」那一刻读歌词,读到的一定还是上一首的(09-18 报障:「歌曲开始
+   * 播放了,然后显示没歌词,歌词过了一会出来了」)—— 这一条就是「现在可以读了」。
+   */
+  private announceLyrics = (lyrics: MusicLyrics): void => {
+    this.emitPlayerFact('lyricsChanged', {
+      title: lyrics.title,
+      lineCount: lyrics.lines.length,
+      ...(lyrics.failed ? { failed: true } : {}),
+    })
+  }
+
   /** 订阅「听歌这件事的事实」。返回退订(幂等)。 */
-  onPlayerFact(listener: (event: MusicMomentEvent, payload: Record<string, unknown>) => void): () => void {
+  onPlayerFact(listener: (event: MusicPlayerFact, payload: Record<string, unknown>) => void): () => void {
     this.factListeners.add(listener)
     return () => {
       this.factListeners.delete(listener)
@@ -196,7 +219,7 @@ export class MusicSubsystem {
       },
     })
     const djVoice = createDjVoiceScope(this.options.assertOwned)
-    const radio = createRadioScope({ ...this.options, service, hostVoice: () => this.hostVoiceFor(djVoice), moments: this.moments })
+    const radio = createRadioScope({ ...this.options, service, hostVoice: () => this.hostVoiceFor(djVoice), moments: this.moments, announceLyrics: this.announceLyrics })
     const operations = createMusicOperationsScope({ ...this.options, service, radio })
     const generation = { service, djVoice, radio, operations }
     this.generations.add(generation)
@@ -260,7 +283,7 @@ export class MusicSubsystem {
       this.owner.assertActive()
       this.generations.delete(previous)
       const djVoice = createDjVoiceScope(this.options.assertOwned)
-      const radio = createRadioScope({ ...this.options, service: previous.service, hostVoice: () => this.hostVoiceFor(djVoice), moments: this.moments })
+      const radio = createRadioScope({ ...this.options, service: previous.service, hostVoice: () => this.hostVoiceFor(djVoice), moments: this.moments, announceLyrics: this.announceLyrics })
       const operations = createMusicOperationsScope({ ...this.options, service: previous.service, radio })
       this.generation = { service: previous.service, djVoice, radio, operations }
       this.generations.add(this.generation)

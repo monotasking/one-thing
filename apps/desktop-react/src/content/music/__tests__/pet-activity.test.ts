@@ -74,8 +74,12 @@ describe('§8.1 活动表', () => {
     expect(musicPetActivity({ runtime: READY, brief: RADIO_ON, nowPlaying: STOPPED })).toBe('idle')
   })
 
-  it('4 · 节目单空但在放 → 不是 busy', () => {
-    expect(musicPetActivity({ runtime: READY, brief: RADIO_ON, nowPlaying: PLAYING, programme: EMPTY_PROGRAMME })).toEqual({
+  it('4 · 节目单空但在放 → 也是 busy(09-18 改判:「没有下一首了,dj 正在补歌单,这个状态交给 pet」)', () => {
+    expect(musicPetActivity({ runtime: READY, brief: RADIO_ON, nowPlaying: PLAYING, programme: EMPTY_PROGRAMME })).toBe('busy')
+  })
+
+  it('4 · 电台关着、节目单空 → 不是在补(没人在补)', () => {
+    expect(musicPetActivity({ runtime: READY, brief: RADIO_OFF, nowPlaying: PLAYING, programme: EMPTY_PROGRAMME })).toEqual({
       kind: 'rhythm',
       bpm: MUSIC_DEFAULT_BPM,
     })

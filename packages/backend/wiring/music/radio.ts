@@ -102,6 +102,8 @@ export function createRadioScope(options: {
    * 那几处真发生的地方报一声;缺席 = 不报(测试)。
    */
   moments?: MusicMoments
+  /** 手上那份歌词换了(子系统把它发成 `lyricsChanged`)。缺席 = 不报(测试)。 */
+  announceLyrics?: (lyrics: MusicLyrics) => void
 }) {
   const owner = new MusicWorkOwner(options.assertOwned)
   const { getActiveMusicProvider, getMusicNowPlaying, getMusicService, nudgeMusicClients,
@@ -1357,6 +1359,17 @@ const lyricCache = new Map<string, MusicLyricLine[]>()
 const lyricInflight = new Map<string, Promise<MusicLyricLine[]>>()
 let currentLyrics: MusicLyrics | null = null
 
+/** 换手上那份歌词并告诉读者(推送一条给旧宿主,再报一条事实给资源订阅方)。 */
+function setCurrentLyrics(next: MusicLyrics): void {
+  currentLyrics = next
+  broadcastVoiceHostMessage({ channel: IPC_CHANNELS.MUSIC_LYRICS, payload: next })
+  try {
+    options.announceLyrics?.(next)
+  } catch (error) {
+    log.warn('announce lyrics failed', {}, error)
+  }
+}
+
 function getMusicLyrics(): MusicLyrics | null {
   owner.assertActive()
   return currentLyrics
@@ -1410,10 +1423,11 @@ async function pushLyricsFor(entry: OnethingRadioProgrammeEntry, playerTitle: st
     // The PLAYER's title, not the DJ's: the renderer guards lyrics against the
     // bar's now-playing title, and only the player agrees with itself.
     if (owner.signal.aborted) return
-    currentLyrics = { title: playerTitle, lines }
-    broadcastVoiceHostMessage({ channel: IPC_CHANNELS.MUSIC_LYRICS, payload: currentLyrics })
+    setCurrentLyrics({ title: playerTitle, lines })
   } catch (error) {
     log.warn('fetch lyrics failed', { title: entry.title }, error)
+    // 说出来:没取到。不说的话面板会一直等下去(「正在取歌词」永远不结束)。
+    if (!owner.signal.aborted) setCurrentLyrics({ title: playerTitle, lines: [], failed: true })
   }
 
   })())
@@ -1445,7 +1459,10 @@ async function observeUnknownSong(sample: OnethingMusicNowPlaying | null): Promi
   // Radio-started songs already had their ceremonies at start (the lyrics
   // push carries the player's title, so this same-source compare is safe).
   if (currentLyrics?.title === sample.title) return
-  if (identifyMisses.has(sample.title)) return
+  if (identifyMisses.has(sample.title)) {
+    setCurrentLyrics({ title: sample.title, lines: [], failed: true })
+    return
+  }
   try {
     const provider = getActiveMusicProvider()
     const stdout = await getReliableRunner().run('server', provider.cli.build.search(sample.title, 10))
@@ -1458,6 +1475,8 @@ async function observeUnknownSong(sample: OnethingMusicNowPlaying | null): Promi
         if (oldest !== undefined) identifyMisses.delete(oldest)
       }
       identifyMisses.add(sample.title)
+      // 认不出这首是谁 = 歌词没处取。说一句,别让面板一直等。
+      setCurrentLyrics({ title: sample.title, lines: [], failed: true })
       return
     }
     if (owner.signal.aborted) return
@@ -1468,6 +1487,7 @@ async function observeUnknownSong(sample: OnethingMusicNowPlaying | null): Promi
     )
   } catch (error) {
     log.warn('identify current track failed', { title: sample.title }, error)
+    if (!owner.signal.aborted) setCurrentLyrics({ title: sample.title, lines: [], failed: true })
   }
 
   })())

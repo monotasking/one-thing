@@ -426,6 +426,11 @@ export function musicSetupOp(action: MusicSetupAction, tool?: string): Mutation<
  */
 const EVENT_INVALIDATES: Readonly<Record<string, readonly { invalidate(): void }[]>> = {
   nowPlayingChanged: [musicNowPlayingQuery, musicLyricsQuery, musicBriefQuery],
+  /*
+   * 这首的歌词取到了(或确认取不到)。歌词是换歌**之后**才取的,`nowPlayingChanged` 那一刻重读
+   * 拿到的还是上一首的 —— 没有这一行,歌词要等下一次随便什么事实路过才上屏(09-18 报障)。
+   */
+  lyricsChanged: [musicLyricsQuery],
   radioOpened: [musicBriefQuery, musicProgrammeQuery, musicNowPlayingQuery],
   radioClosed: [musicBriefQuery, musicProgrammeQuery, musicNowPlayingQuery],
   providerChanged: [

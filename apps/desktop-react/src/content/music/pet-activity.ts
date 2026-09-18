@@ -34,6 +34,15 @@ export interface MusicPetInputs {
   awaitingHost?: boolean
 }
 
+/**
+ * **电台开着、节目单空了 = 主持人在补歌单**(09-18 用户:「没有下一首了,dj 正在补歌单,这个状态
+ * 交给 pet 啊」)。不管此刻有没有歌在放:放着的是最后一首,他同样在翻 —— 后端的指挥在空架子上
+ * 就会叫醒他(`radio-conductor` 的 starving 那一支)。节目单还没读到(`undefined`)不算空。
+ */
+export function stationRefilling(brief: MusicRadioState | undefined, programme: MusicProgrammeView | undefined): boolean {
+  return brief?.active === true && programme !== undefined && programme.entries.length === 0
+}
+
 export function musicPetActivity({
   runtime,
   brief,
@@ -47,8 +56,7 @@ export function musicPetActivity({
   /* 2 */ if (awaitingHost) return 'busy'
   /* 3 */ if (runtime !== undefined && runtime.setupStage !== 'ready') return 'off'
   /* 4 */ if (brief !== undefined && !brief.active && !playing) return 'off'
-  /* 5 */ if (brief?.starting || (brief?.active && programme !== undefined && programme.entries.length === 0 && !playing))
-    return 'busy'
+  /* 5 */ if (brief?.starting || stationRefilling(brief, programme)) return 'busy'
   /* 6 */ if (playing) return { kind: 'rhythm', bpm: MUSIC_DEFAULT_BPM }
   /* 7 */ if (nowPlaying?.status === 'paused') return 'still'
   /* 8 */ return 'idle'

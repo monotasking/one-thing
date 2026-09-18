@@ -916,6 +916,24 @@ export const musicResourceSpec: ResourceSpec = {
       },
       moment: { weight: 'normal', gist: '这首歌到了一段没有人声的间奏' },
     },
+    /**
+     * 这首歌的歌词此刻读得到了(或者确认读不到了)。歌词是换歌**之后**异步取的,所以
+     * `nowPlayingChanged` 那一刻去读 `lyrics`,拿到的还是上一首的那份;这一条说的是
+     * 「现在重读 `lyrics` 就是这一首的」。**没有 `moment`**:它不是听歌的时刻,没人该
+     * 对着它开口。
+     */
+    lyricsChanged: {
+      title: 'The lyrics for the current song are ready to read (or known to be unavailable)',
+      payload: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: "The player's own title string the lyrics belong to." },
+          lineCount: { type: 'number' },
+          failed: { type: 'boolean', description: 'The lookup failed, as opposed to the song having no lyrics.' },
+        },
+        required: ['title', 'lineCount'],
+      },
+    },
   },
   /**
    * `live` —— 一直在变,所以**不主动喂**提示词,只在工具结果里出现(§3 那张表的

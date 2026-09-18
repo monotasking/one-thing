@@ -12,14 +12,20 @@
 
 .surface {
   position: relative;
-  height: var(--music-deck-h);
+  /*
+   * 弹性(09-18 用户:「他能是一个弹性布局吗?」):面板多高,这块画面就多高,唱片跟着量
+   * (`deckGeometry` 吃量到的宽高)。高度只随**面板**变,从不随状态变 —— 开台 / 关台 / 说话
+   * 照旧一个像素不挪。下限是从前那个定高:再矮唱臂与歌词就挤不下了。
+   */
+  flex: 1 1 auto;
+  min-height: var(--music-deck-h);
   overflow: hidden;
   background: var(--music-deck-bg);
   color: var(--music-deck-ink);
 }
 
 .surface[data-wide='true'] {
-  height: var(--music-deck-h-wide);
+  min-height: var(--music-deck-h-wide);
 }
 
 .roomLight {
@@ -457,6 +463,64 @@
   pointer-events: none;
 }
 
+/* 「正在取歌词」:在等,不是结论 —— 比结论那几句淡一档。 */
+.note[data-faint='true'] {
+  color: var(--music-deck-line-past);
+}
+
+/* ── 关着时的开台邀请:一句问话 + 四枚心情块(样例 v7)── */
+.invite {
+  position: absolute;
+  left: var(--deck-lx);
+  right: calc(var(--deck-lr) + var(--sp-4));
+  top: var(--deck-ay);
+  display: grid;
+  gap: var(--sp-3);
+  transform: translateY(-50%);
+}
+
+.inviteAsk {
+  margin: 0;
+  color: var(--music-deck-ink);
+  font-family: var(--music-font-say);
+  font-size: var(--music-deck-line-fs);
+  line-height: var(--lh-body);
+}
+
+.moods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+/* 心情块是唱机上的物件(画面里的颜色都是物件色),不是主题里的按钮。 */
+.mood {
+  padding: var(--music-deck-mood-pad);
+  border: var(--bw-1) solid var(--music-deck-mood-line);
+  border-radius: var(--r-full);
+  color: var(--music-deck-line-hover);
+  font-size: var(--fs-meta);
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.mood:hover:not(:disabled) {
+  border-color: var(--music-deck-mood-line-hover);
+  background: var(--music-deck-mood-hover);
+  color: var(--music-deck-ink);
+}
+
+.mood:active:not(:disabled) {
+  background: var(--music-deck-mood-active);
+}
+
+.mood:disabled {
+  opacity: var(--btn-disabled-o);
+  cursor: default;
+}
+
 /* ── 黑豆与他翻的那几张唱片 ── */
 .perch {
   position: absolute;
@@ -467,7 +531,7 @@
 .fan {
   position: absolute;
   left: var(--fan-x);
-  bottom: var(--music-deck-fan-bottom);
+  bottom: calc(var(--pet-anchor-bottom, 0px) + var(--music-deck-fan-bottom));
   width: var(--music-deck-fan-w);
   height: var(--music-deck-fan-h);
   transform: scale(var(--fan-scale, 1));

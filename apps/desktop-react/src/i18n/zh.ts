@@ -1986,7 +1986,6 @@ export const zh = {
   'music.deckIntro': '♪ 前奏',
   'music.deckInterlude': '♪ 间奏',
   'music.deckOutro': '♪ 尾奏',
-  'music.deckLyricsOff': '开台以后，歌词在这里跟着走',
   'music.deckOpen': '开台',
   'music.deckClose': '关台',
   'music.deckNoClock': '--:--',
@@ -1998,6 +1997,9 @@ export const zh = {
   'music.deckLoved': '♥ 喜欢',
   'music.deckSkipped': '跳过',
   'music.lyricsLoading': '正在取歌词',
+  'music.lyricsFailed': '歌词没取到。',
+  'music.deckInvite': '今晚想听点什么？',
+  'music.deckStarting': '马上放：{name}',
   /* 四枚心情色块。块上印的是那两个字,按下去发出去的是整句意图(`music.preset.*`)。 */
   'music.mood.rain': '下雨',
   'music.mood.focus': '专注',

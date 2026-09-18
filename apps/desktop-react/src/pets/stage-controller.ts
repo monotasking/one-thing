@@ -281,6 +281,14 @@ export class PetStageController {
     if (this.canMutterOver()) this.mutterGroup('liked')
   }
 
+  /**
+   * 宿主替一件事找一句嘀咕(哪一组由宿主说,台词由宠物自己的 manifest 说)。与戳一下
+   * 同一条礼让:正在开口、挂着选项或常驻气泡时不插嘴。
+   */
+  mutter(group: ReactionGroup): void {
+    if (this.canMutterOver()) this.mutterGroup(group)
+  }
+
   // ── 收尾 ────────────────────────────────────────────────────────────────
 
   /** 清全部计时器与按压状态。之后控制器仍可用(StrictMode 的模拟卸载会再挂回来)。 */

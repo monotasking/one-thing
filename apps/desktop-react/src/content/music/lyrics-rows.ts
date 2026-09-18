@@ -103,3 +103,27 @@ export function nearestRowTo(
   }
   return best
 }
+
+/**
+ * **这首歌此刻的歌词处在哪一格**(09-18 报障:「歌曲开始播放了,然后显示没歌词,歌词过了一会出来了」)。
+ *
+ * 歌词是换歌之后才去取的,所以「现在放的歌」换了的那一刻,读到的歌词一定还是上一首的(或者还没有)。
+ * 从前拿「行数为 0」当「没有歌词」,那一段空档就被说成了一句假话。判据改成看**这份歌词属于哪一首**:
+ *
+ *  · `none`    —— 此刻没有歌(没什么可取);
+ *  · `loading` —— 有歌,但手上那份歌词不是这一首的(还没取到,后端取到了会发 `lyricsChanged`);
+ *  · `ready`   —— 这一首的,有词;
+ *  · `empty`   —— 这一首的,确认没有词;
+ *  · `failed`  —— 这一首的,那一发没取到(或者认不出这首是谁)。
+ */
+export type LyricState = 'none' | 'loading' | 'ready' | 'empty' | 'failed'
+
+export function lyricStateOf(
+  nowTitle: string | undefined,
+  lyrics: { title: string; lines: readonly unknown[]; failed?: boolean } | null | undefined,
+): LyricState {
+  if (!nowTitle) return 'none'
+  if (!lyrics || lyrics.title !== nowTitle) return 'loading'
+  if (lyrics.lines.length > 0) return 'ready'
+  return lyrics.failed ? 'failed' : 'empty'
+}

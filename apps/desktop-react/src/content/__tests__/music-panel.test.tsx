@@ -336,6 +336,83 @@ describe('事件到了要重拉', () => {
   })
 })
 
+describe('歌词三态(09-18 报障:「歌曲开始播放了,然后显示没歌词,歌词过了一会出来了」)', () => {
+  const lines = [{ at: 12, text: '第一句' }, { at: 40, text: '第二句' }]
+
+  it('手上那份歌词是上一首的 → 「正在取歌词」,不说「没有」;lyricsChanged 一到 → 这一首的行上屏', async () => {
+    const table = fullTable()
+    table['music:player#lyrics'] = { title: '上一首 - 谁', lines: [] }
+    await mount(table)
+    expect(screen.getByTestId('music-lyrics-loading').textContent).toBe('正在取歌词')
+    expect(screen.queryByTestId('music-lyrics-empty')).toBeNull()
+
+    fake.table['music:player#lyrics'] = { title: NOW_PLAYING.title, lines }
+    await act(async () => {
+      for (const listener of [...fake.listeners]) {
+        listener({ ref: 'music:player', event: 'lyricsChanged', payload: { title: NOW_PLAYING.title, lineCount: 2 } })
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    await screen.findByText('第二句')
+    expect(screen.queryByTestId('music-lyrics-loading')).toBeNull()
+  })
+
+  it('这一首的、没有行 → 「这首没有歌词。」;这一首的、failed → 「歌词没取到。」', async () => {
+    const empty = fullTable()
+    empty['music:player#lyrics'] = { title: NOW_PLAYING.title, lines: [] }
+    await mount(empty)
+    expect(screen.getByTestId('music-lyrics-empty').textContent).toBe('这首没有歌词。')
+    cleanup()
+    resetMusicSource()
+
+    const failed = fullTable()
+    failed['music:player#lyrics'] = { title: NOW_PLAYING.title, lines: [], failed: true }
+    await mount(failed)
+    expect(screen.getByTestId('music-lyrics-failed').textContent).toBe('歌词没取到。')
+  })
+})
+
+describe('没有下一首、DJ 在补歌单:交给黑豆(09-18 用户:「这个状态交给 pet 啊」)', () => {
+  const refillingTable = (): ReadTable => ({
+    ...fullTable(),
+    'music:radio#programme': { entries: [], onDeck: NOW_PLAYING.title },
+  })
+
+  it('在放着最后一首、节目单空 → 黑豆在翻(busy),面板上没有一行字', async () => {
+    await mount(refillingTable())
+    await waitFor(() => expect(screen.getByTestId('pet-rig').dataset.pose).toBe('busy'))
+    expect(screen.queryByTestId('music-backend-error')).toBeNull()
+    // 首载落地不算「刚进这一态」:打开面板时他不插嘴。
+    expect(screen.queryByTestId('pet-bubble-text')).toBeNull()
+  })
+
+  it('从有歌排着变成空了 → 他嘀咕一句(刚进这一态)', async () => {
+    await mount()
+    expect(screen.queryByTestId('pet-bubble-text')).toBeNull()
+    fake.table['music:radio#programme'] = { entries: [], onDeck: NOW_PLAYING.title }
+    await act(async () => {
+      for (const listener of [...fake.listeners]) {
+        listener({ ref: 'music:radio', event: 'radioOpened', payload: { intent: 'x' } })
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    await waitFor(() => expect(screen.getByTestId('pet-bubble-text').textContent).not.toBe(''))
+  })
+
+  it('这时按 ⏭:照样发出去(记口味),回执 ok,不出错话;黑豆嘀咕一句', async () => {
+    await mount(refillingTable())
+    fake.outcome = { kind: 'ok', text: '下一首还没排好:DJ 正在补节目单,这首先放着' }
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('music-next'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(fake.dos).toEqual([{ ref: 'music:player', op: 'next', params: {} }])
+    expect(screen.queryByTestId('music-backend-error')).toBeNull()
+    // 首载没嘀咕(上一例钉着),所以这一句只能是 ⏭ 那一下要来的。
+    await waitFor(() => expect(screen.getByTestId('pet-bubble-text').textContent).not.toBe(''))
+  })
+})
+
 describe('错误就地一行', () => {
   it('do 回 failed,唱片上方多一行原话,零 Toast', async () => {
     await mount()
@@ -375,11 +452,12 @@ describe('关着 / 没歌:唱片与那一行照样在,只换里面的字', () =>
     },
   })
 
-  it('关着:标签「黑豆电台 · 关着」、歌词位置一句提示、⏯ 就是开台 → do(music:radio, open)', async () => {
+  it('关着:标签「黑豆电台 · 关着」、歌词位置一句问话 + 四枚心情块、⏯ 就是开台 → do(music:radio, open)', async () => {
     await mount(offTable())
     expect(screen.getByTestId('music-label').textContent).toContain('黑豆电台')
     expect(screen.getByTestId('music-label').textContent).toContain('关着')
-    expect(screen.getByTestId('music-lyrics-off').textContent).toBe('开台以后，歌词在这里跟着走')
+    expect(screen.getByTestId('music-invite').textContent).toContain('今晚想听点什么？')
+    expect(screen.getAllByRole('button').filter((b) => b.dataset.testid?.startsWith('music-mood-'))).toHaveLength(4)
     const play = screen.getByTestId('music-play')
     expect(play.getAttribute('aria-label')).toBe('开台')
     // 那一行的每一件都还在,只是不能按(布局不跟着状态变)。
@@ -391,6 +469,15 @@ describe('关着 / 没歌:唱片与那一行照样在,只换里面的字', () =>
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
     expect(fake.dos).toEqual([{ ref: 'music:radio', op: 'open', params: { intent: '' } }])
+  })
+
+  it('关着:按一枚心情块 = 以那一整句意图开台(块上只印两个字)', async () => {
+    await mount(offTable())
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('music-mood-rain'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(fake.dos).toEqual([{ ref: 'music:radio', op: 'open', params: { intent: '下雨天,安静点的' } }])
   })
 
   it('电台开着但播放器没在跑:⏯ 走 radio-resume', async () => {

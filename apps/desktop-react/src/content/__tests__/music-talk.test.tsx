@@ -83,7 +83,14 @@ function makeFake(table: ReadTable): FakeMusic {
 function tableWith(brief: unknown): ReadTable {
   return {
     'music:radio#brief': brief,
-    'music:radio#programme': { entries: [], onDeck: '可惜没如果 - 林俊杰' },
+    // 两首排着(与 BRIEF_ON 的 programmeLength 同数)。空节目单 + 电台开着 = DJ 在补,黑豆会一直 busy(09-18)。
+    'music:radio#programme': {
+      entries: [
+        { encryptedId: 'A1', title: '雨棚下 - 旧电扇' },
+        { encryptedId: 'A2', title: '慢车 - 林间录音' },
+      ],
+      onDeck: '可惜没如果 - 林俊杰',
+    },
     'music:player#nowPlaying': NOW_PLAYING,
     'music:player#lyrics': null,
     'music:provider#state': {

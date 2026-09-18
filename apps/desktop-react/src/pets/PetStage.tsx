@@ -8,7 +8,7 @@ import { ButtonBase } from '../ui/ButtonBase'
 import { PointerTrack } from '../ui/drag'
 import { FrameCoalescer } from '../ui/frame-coalescer'
 import { placeBubble } from './bubble'
-import type { PetManifest } from './manifest'
+import type { PetManifest, ReactionGroup } from './manifest'
 import { beatSecondsOf, resolvePose } from './pose'
 import { PetRigView } from './rigs/PetRigView'
 import { PetStageController } from './stage-controller'
@@ -56,6 +56,8 @@ import s from './PetStage.module.css'
 export interface PetStageHandle {
   /** 宿主说「用户喜欢了这个」:冒爱心 + 嘀咕 `liked`。 */
   love(): void
+  /** 宿主替一件事要一句嘀咕(`busy` = 「别催,在翻」这一类)。开口 / 挂着选项时不插嘴。 */
+  mutter(group: ReactionGroup): void
 }
 
 export interface PetStageProps {
@@ -113,7 +115,7 @@ export function PetStage({
     },
   }
 
-  useImperativeHandle(ref, () => ({ love: () => controller.love() }), [controller])
+  useImperativeHandle(ref, () => ({ love: () => controller.love(), mutter: (group) => controller.mutter(group) }), [controller])
 
   const trackRef = useRef<PointerTrack | null>(null)
   useEffect(() => {

@@ -35,6 +35,17 @@ describe('deckGeometry', () => {
     const blockW = w.lyricsLeft - w.rx + 460
     expect(Math.abs(w.rx - (1040 - (w.rx + blockW)))).toBeLessThan(2)
   })
+  it('elastic (09-18): a taller surface grows the record up to the width limit and MAX_D, then centres it; the pet sits by the record, not at the floor', () => {
+    const short = deckGeometry(620, 300, false)
+    const tall = deckGeometry(620, 700, false)
+    expect(tall.D).toBeGreaterThan(short.D)
+    expect(tall.D).toBe(Math.round(620 * 0.47))
+    const huge = deckGeometry(1400, 1400, false)
+    expect(huge.D).toBe(520)
+    expect(Math.abs(huge.ry - (1400 - huge.ry - huge.D))).toBeLessThanOrEqual(1)
+    expect(short.petBottom).toBe(0)
+    expect(tall.petBottom).toBe(700 - (tall.ry + tall.D) - 16)
+  })
   it('rest angle puts the needle off the record; the groove range is monotone and reachable', () => {
     const g = deckGeometry(420, 300, false)
     expect(needleRadius(g, 0)).toBeGreaterThan(1)

@@ -1934,6 +1934,12 @@
   --music-deck-lyrics-mask: linear-gradient(transparent, #000 24%, #000 80%, transparent);
   --music-deck-line: #80766b;
   --music-deck-line-past: #5d564e;
+  /* 关着时那四枚心情块:唱机上的物件,描一圈暖灰,悬停浅浅亮一点。 */
+  --music-deck-mood-pad: 5px 14px;
+  --music-deck-mood-line: rgba(233, 220, 200, 0.22);
+  --music-deck-mood-line-hover: rgba(233, 220, 200, 0.45);
+  --music-deck-mood-hover: rgba(233, 220, 200, 0.08);
+  --music-deck-mood-active: rgba(233, 220, 200, 0.14);
   --music-deck-line-current: #fbefdc;
   --music-deck-line-hover: #d9cbb6;
   --music-deck-line-gap: #5f574e;

@@ -45,17 +45,23 @@ export interface DeckGeometry {
   lyricsRight: number
   /** 正在唱的那一句的竖直中心。 */
   anchorY: number
-  /** 黑豆脚底正中、形象缩放。 */
+  /** 黑豆脚底正中、脚底离画面底边多远、形象缩放。 */
   petX: number
+  petBottom: number
   petScale: number
 }
 
 const PAD = 16
+/**
+ * 唱片最大直径。画面是弹性的(09-18 用户:「他能是一个弹性布局吗?」)—— 面板多高唱片就多大,
+ * 但一张占满一整块高屏的唱片不再是唱机,是一张海报;到这个数就停,多出来的高度上下平分。
+ */
+const MAX_D = 520
 /** 宽的时候歌词栏的宽,唱片 + 歌词当一整块居中。 */
 const WIDE_LYRICS_W = 460
 
 export function deckGeometry(width: number, height: number, wide: boolean): DeckGeometry {
-  const D = Math.max(0, Math.round(Math.min(height - 2 * PAD, width * (wide ? 0.36 : 0.47))))
+  const D = Math.max(0, Math.round(Math.min(height - 2 * PAD, width * (wide ? 0.36 : 0.47), MAX_D)))
   const R = D / 2
   const ry = Math.round((height - D) / 2)
   const rx = wide ? Math.max(PAD, Math.round((width - (2.34 * R + WIDE_LYRICS_W)) / 2)) : PAD + Math.round(R * 0.05)
@@ -79,6 +85,8 @@ export function deckGeometry(width: number, height: number, wide: boolean): Deck
     lyricsRight: wide ? Math.max(0, width - lyricsLeft - WIDE_LYRICS_W) : 0,
     anchorY: Math.round(oy + 0.27 * R),
     petX: Math.max(4, rx - 36 * petScale) + 60 * petScale,
+    // 他坐在唱片左下角,不是画面底边:画面变高之后唱片居中,脚底跟着唱片的下沿走。
+    petBottom: Math.max(0, height - (ry + D) - PAD),
     petScale,
   }
 }

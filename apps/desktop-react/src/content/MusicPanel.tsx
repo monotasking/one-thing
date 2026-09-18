@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { activateScopeAfterCommit } from '../focus/after-commit'
 import { FocusScope } from '../focus/FocusScope'
-import { useQuery } from '../data/kernel'
+import { useMutation, useQuery } from '../data/kernel'
 import {
   musicBriefQuery,
   musicNowPlayingQuery,
@@ -15,6 +15,7 @@ import type { PetStageHandle } from '../pets/PetStage'
 import { DeckRow } from './music/DeckRow'
 import { PlaylistDrawer } from './music/PlaylistDrawer'
 import { RecordDeck } from './music/RecordDeck'
+import { stationRefilling } from './music/pet-activity'
 import { recordSideOf, SIDE_CAP } from './music/record-geometry'
 import { SetupWizard, useSetupWizardVisible } from './music/SetupWizard'
 import { useMusicPanelForm } from './music/panel-width'
@@ -34,8 +35,9 @@ import s from './MusicPanel.module.css'
  *  · 电台条、歌词页 / 歌词栏、歌名那一行、「接下来」那一行、说话条、音量条、⏮ 全部并掉;
  *  · 开台 = ⏯(关着时它就是「开台」)或者「说话」说一句想听什么;换台 = 开着时「说话」;
  *    关台与账号在播放列表抽屉的檐上;
- *  · **布局从不跟着状态变**:唱片那一块与按钮那一行的高度由 token 定死,开台 / 关台 / 暂停 /
- *    说话 / 黑豆挑歌,变的只是格子里的东西。
+ *  · **布局从不跟着状态变**:按钮那一行的高度由 token 定死,唱片那一块吃满面板余下的高(弹性,
+ *    09-18「他能是一个弹性布局吗?」—— 跟着面板变,不跟着状态变);开台 / 关台 / 暂停 / 说话 /
+ *    黑豆挑歌 / 出错,变的只是格子里的东西(错话浮在唱片顶上,不占一行)。
  *
  * ── 一句话:这块面上每一颗按钮走的都是 `resources.do` ────────────────────
  * 与模型调 `music:player` / `music:radio` 的那只工具是同一条路;电台开着时 `next` 走跳过、
@@ -64,7 +66,8 @@ import s from './MusicPanel.module.css'
  * ── ② UI 生命状态 ───────────────────────────────────────────────────────
  *  · 后端没配好 → 接入向导占唱片那一块(按钮那一行不画:这几步里它没有可说的);
  *    后端整个读不到 → 顶上一句 `music.backendNotReady`;
- *  · 错误(后端 / 按钮)→ 唱片上方一行原话,零 Toast;
+ *  · 错误(后端 / 按钮)→ 浮在唱片那一块顶上的一行原话,零 Toast;「没有下一首、DJ 在补」不是错,
+ *    交给黑豆(他在翻唱片,刚进这一态和按 ⏭ 撞上它时各嘀咕一句);
  *  · 其余全部在唱片那一块里演(关着 / 没歌 / 挑歌 / 没歌词),高度不变。
  *
  * ── ③ UI 交互状态 ───────────────────────────────────────────────────────
@@ -117,6 +120,22 @@ export function MusicPanel({
     })
   }, [])
   const onLiked = useCallback(() => petRef.current?.love(), [])
+  const openStation = useCallback((intent: string) => void musicOps.open.run({ intent }), [])
+  const opening = useMutation(musicOps.open).pending
+
+  // 「没有下一首了,DJ 正在补歌单」是黑豆的事(09-18 用户:「这个状态交给 pet 啊」):他在翻唱片
+  // (`musicPetActivity` 那一格 busy),刚进这一态时嘀咕一句;按 ⏭ 撞上它,他再嘀咕一句。
+  // 不是错话,面板上不出任何一行字。
+  const refilling = stationRefilling(brief.data, programme.data)
+  // 「刚进」要从一个**读到过的**「不在补」进来:打开面板时读数落地那一下不算(那不是变化,是首载)。
+  const known = brief.data !== undefined && programme.data !== undefined
+  const wasRefilling = useRef<boolean | null>(null)
+  useEffect(() => {
+    if (!known) return
+    if (refilling && wasRefilling.current === false) petRef.current?.mutter('busy')
+    wasRefilling.current = refilling
+  }, [known, refilling])
+  const onWaitForDj = useCallback(() => petRef.current?.mutter('busy'), [])
   const closePlaylist = useCallback(() => setPlaylistOpen(false), [])
 
   // 抽屉里「翻面以后」那条线画在第几首之后:这一面还能再排几首。
@@ -145,12 +164,12 @@ export function MusicPanel({
         <div {...scopeProps} className={s.panel} data-testid="music-panel">
           <div className={s.scroller}>
             <div className={s.layout}>
-              {notice && (
-                <p className={s.notice} data-testid={unreachable ? 'music-not-ready' : 'music-backend-error'}>
-                  {notice}
-                </p>
-              )}
               <section className={s.deck} data-testid="music-player">
+                {notice && (
+                  <p className={`${s.notice} ${s.deckNotice}`} data-testid={unreachable ? 'music-not-ready' : 'music-backend-error'}>
+                    {notice}
+                  </p>
+                )}
                 {wizard && state ? (
                   <SetupWizard state={state} />
                 ) : (
@@ -165,6 +184,8 @@ export function MusicPanel({
                       wide={form.wide}
                       onSeek={seek}
                       onPlayEntry={playEntry}
+                      onOpen={openStation}
+                      opening={opening}
                       petRef={petRef}
                       listening={radioOn && talk.typing}
                       awaitingHost={radioOn && talk.waiting}
@@ -183,6 +204,8 @@ export function MusicPanel({
                       playlistOpen={playlistOpen}
                       onTogglePlaylist={() => setPlaylistOpen((open) => !open)}
                       onLiked={onLiked}
+                      refilling={refilling}
+                      onWaitForDj={onWaitForDj}
                       onError={setRowError}
                     />
                   </>
