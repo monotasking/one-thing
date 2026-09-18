@@ -1730,6 +1730,11 @@
   --music-popover-w: 320px;
   /* 开台 / 点歌输入框的最小宽:再窄就让钮折到下一行,不把提示字挤成半句。 */
   --music-input-min: 180px;
+  /* 跟主持人说话(§7.2):你自己那枚回执气泡最宽占这条的多少,以及它的圆角
+   * —— 右下角收成小圆(说话的是右边那个人),与宠物气泡的方向相反。 */
+  --music-echo-max: 80%;
+  --music-echo-r: 14px;
+  --music-echo-r-tail: 4px;
   --music-lamp: var(--danger);
   /* 主持人的话用衬线:与歌词区分「谁在说」。壳没带这副字,落到系统宋体。 */
   --music-font-say: 'Noto Serif SC', 'Songti SC', 'STSong', serif;

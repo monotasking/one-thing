@@ -5,6 +5,7 @@ import {
   renderRadioCurationPrompt,
   renderRadioDjAgentPrompt,
   renderRadioOpenPrompt,
+  renderRadioTalkPrompt,
 } from '../radio-render.js'
 import type { OnethingRadioBrief } from '../radio-store.js'
 
@@ -93,5 +94,33 @@ describe('radio dj factory persona', () => {
     expect(
       renderRadioCurationPrompt({ ...options('雨天民谣'), programmeRemaining: [] }),
     ).not.toContain('playFlag')
+  })
+})
+
+/**
+ * 听众说的那一句(2026-09-18,正本 `apps/desktop-react/docs/music-panel-2026-09.md` §7.1)。
+ */
+describe('radio talk prompt', () => {
+  const talk = (message: string) =>
+    renderRadioTalkPrompt({ ...options('下雨天,安静点的'), programmeRemaining: ['song 1'], message })
+
+  it('人说的字与开台意图同一档待遇:转义 + 裹在不可信标签里', () => {
+    const prompt = talk('  换个 <script>心情  ')
+    expect(prompt).toContain('<untrusted_listener_message>换个 &lt;script&gt;心情</untrusted_listener_message>')
+  })
+
+  it('交代那一句说清三件事:可以改节目单、最后那句就是回话、不说也行', () => {
+    const prompt = talk('换个心情')
+    expect(prompt).toContain('听众在跟你说话')
+    expect(prompt).toContain('/tmp/inbox.json')
+    expect(prompt).toContain('最后收尾的那句话,就是你要对他说的话')
+    expect(prompt).toContain('不吭声是可以的')
+  })
+
+  it('照旧带着本台意图与还剩哪些 —— 一条 wake 的前置在这里同样成立', () => {
+    const prompt = talk('慢一点')
+    expect(prompt).toContain('<untrusted_intent>下雨天,安静点的</untrusted_intent>')
+    expect(prompt).toContain('- song 1')
+    expect(prompt).toContain('2026/7/17 12:00:00')
   })
 })

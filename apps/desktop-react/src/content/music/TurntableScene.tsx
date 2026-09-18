@@ -147,6 +147,15 @@ export interface TurntableSceneProps {
   onSeek: (seconds: number) => void
   /** 宿主拿它调 `love()`(♥ 成功)。 */
   petRef?: Ref<PetStageHandle>
+  /**
+   * 跟主持人说话那两格(§7.2 / §7.3):你在打字 → `listening`(歪头、耳朵抖);
+   * 发出去还没等到他回话 → `busy`(他在翻唱片 / 在想)。
+   *
+   * 两格都由**父级**(音乐面)给,而不是这里自己去订 —— 说话那一条输入在这块场景
+   * 外面,同一份真相订两遍迟早会在某一帧不一致。
+   */
+  listening?: boolean
+  awaitingHost?: boolean
   /** 帧源。缺省用浏览器的 rAF;测试可以喂一台手摇的或 `null`(只摆不转)。 */
   frames?: FrameSource | null
 }
@@ -162,6 +171,8 @@ export function TurntableScene({
   position,
   onSeek,
   petRef,
+  listening = false,
+  awaitingHost = false,
   frames,
 }: TurntableSceneProps) {
   const t = useT()
@@ -173,7 +184,7 @@ export function TurntableScene({
   const present = Boolean(title) || playing
   const duration = nowPlaying?.duration
   const ready = nowPlaying !== undefined || nowError !== undefined
-  const activity = musicPetActivity({ runtime, brief, nowPlaying, nowError, programme })
+  const activity = musicPetActivity({ runtime, brief, nowPlaying, nowError, programme, awaitingHost })
 
   // ── 唱片、封套、唱臂 ─────────────────────────────────────────────────────
   const [deck] = useState(() => new DeckController({ reducedMotion }))
@@ -470,6 +481,7 @@ export function TurntableScene({
             manifest={pet}
             rig={rosterRig}
             activity={activity}
+            listening={listening}
             utterance={utterance}
             hushed={hushed}
             size="stage"

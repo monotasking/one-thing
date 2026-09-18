@@ -224,6 +224,22 @@ class LivePort implements MusicPort {
   }
 
   do = async (_ref: string, op: string, params?: Record<string, unknown>): Promise<ResourceOutcomeView> => {
+    /*
+     * 跟主持人说话(§7.2):lab 里要看的是**那一整条**——你的气泡冒出来、黑豆转
+     * busy、过一会儿他回了一句于是黑豆回到该在的姿势。所以这一发也要花时间:
+     * 真机上他要跑几条 bash 才开口,一次瞬间回话什么都演不出来。
+     */
+    if (op === 'tell') {
+      this.onOp(op, params)
+      setTimeout(() => {
+        this.push({
+          ref: 'music:radio',
+          event: 'hostReplied',
+          payload: { text: HOST_REPLY, say: HOST_REPLY },
+        })
+      }, 1_800)
+      return { kind: 'ok', text: 'told' }
+    }
     // 装工具那一下在 lab 里也要**花时间并且一行一行吐**:第 ① 步要看的正是
     // 「钮转着圈、输出块跟着往下走」,一次瞬间成功什么都演不出来。
     if (op === 'setup' && params?.action === 'install-tool') {
@@ -242,6 +258,9 @@ class LivePort implements MusicPort {
     return () => this.listeners.delete(callback)
   }
 }
+
+/** 他回的那一句。内容样本,原样写,不进字典(与 SONGS 同一条判据)。 */
+const HOST_REPLY = '好,往下收一收,慢一点。下一首换成林间录音的《慢车》。'
 
 /** 装工具时那条命令吐出来的字。内容样本,原样写,不进字典(与 SONGS 同一条判据)。 */
 const INSTALL_LINES: Readonly<Record<string, readonly string[]>> = {

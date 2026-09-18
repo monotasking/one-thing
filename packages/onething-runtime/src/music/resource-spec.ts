@@ -276,6 +276,24 @@ const PROVIDERS_SCHEMA: JsonSchema = {
 }
 
 /** 搜一首歌。**读**:它不改这台机器上任何一格,而且同一个词搜两遍答案一样。 */
+/**
+ * 跟主持人说的一句话(正本 `apps/desktop-react/docs/music-panel-2026-09.md` §7.1)。
+ *
+ * 描述里说清两件事,因为它们是这条做法与 `request` / `retune` 的全部差别:进的是
+ * 他那条真会话(所以他会回话、会自己去改节目单),而这一条**自己**什么都不改。
+ */
+const TELL_PARAMS: JsonSchema = {
+  type: 'object',
+  properties: {
+    text: {
+      type: 'string',
+      description:
+        'What the listener wants to say to the host, in their own words. It lands as a user message in the DJ\'s own session: he may answer, and he may re-curate the programme himself.',
+    },
+  },
+  required: ['text'],
+}
+
 const SEARCH_QUERY: JsonSchema = {
   type: 'object',
   properties: {
@@ -520,6 +538,27 @@ export const musicResourceSpec: ResourceSpec = {
       describe: params => `request ${String((params as { song?: unknown }).song ?? '')}`,
     },
     /**
+     * 跟主持人说一句话(2026-09-18,正本 §7.1)。
+     *
+     * ── 它为什么也是 `effects: []` ──────────────────────────────────────
+     * 与上面四条同一条裁定,但值得写明它的理由:这条做法**只是把话递进去** ——
+     * 不出声、不动播放、不改节目单。真正会发生的改动是 DJ 自己用他自己的工具做的,
+     * 那些各自过各自的闸(他那条会话里的 bash 一条都没少过权限)。把这一条也标上
+     * 效果,等于对着「说句话」弹一张卡,而它背后那些真动作的卡一张都不会少。
+     *
+     * 它与 `request` / `retune` 的分工:那两条是**结构化的命令**(点名一首歌、
+     * 换一句简报),这一条是**一句人话** —— 说什么、要不要照做,由主持人自己判断。
+     */
+    tell: {
+      title:
+        'Say something to the radio host in plain words — it lands in the DJ\'s own session as a user message. He answers in a line or two and may re-curate the programme himself. Use this for anything conversational ("这首是谁唱的", "换个心情"); use `request` when the user names one specific song and `retune` when they hand the station a new brief.',
+      params: TELL_PARAMS,
+      effects: [],
+      home: 'core',
+      entity: 'station',
+      describe: params => `tell the radio host: ${String((params as { text?: unknown }).text ?? '')}`,
+    },
+    /**
      * 播放器四条,与共享契约里的 `MusicCommand` 词表一一对应
      * (`pause` / `resume` / `next` / `like`)。`stop` 故意没有 —— 理由在文件头,
      * 与那份词表上的注释同一句话。
@@ -751,6 +790,36 @@ export const musicResourceSpec: ResourceSpec = {
         },
         required: ['tool', 'chunk'],
       },
+    },
+    /**
+     * ── 主持人回了那句话(2026-09-18,正本 §7.1)────────────────────────────
+     *
+     * 产地是装配层订着的那条 DJ 会话的流结束事件:这一轮说完了,取最后一条 assistant
+     * 文本。**空文本不发**(他用工具干完活不吭声是合法的),60s 没说完也不发。
+     *
+     * 负载上同一句话出现两次,而这不是重复:
+     *  · `text` 是**事实**本身 —— 他说了什么,谁要读都读这一格;
+     *  · `say` 是**给「谁来开口」那条路的现成台词** —— P2 的直通作曲器认的就是这个
+     *    键(`runtime/src/pets/composer.ts`)。音乐这一侧仍然不认识宠物:它只是按
+     *    那条通用约定,把一句已经写好的话摆在它该在的那一格上。
+     *
+     * `moment` 是 `high`:这是用户刚刚用行动问出来的一句话,比「开始放一首歌」值得
+     * 插队说 —— 他张嘴了,而人正等着。
+     */
+    hostReplied: {
+      title: 'The radio host answered something the user said to him',
+      payload: {
+        type: 'object',
+        properties: {
+          text: { type: 'string', description: 'What the host said, in his own words.' },
+          say: {
+            type: 'string',
+            description: 'The same words, as a ready-made line for whoever speaks moments out loud.',
+          },
+        },
+        required: ['text', 'say'],
+      },
+      moment: { weight: 'high', gist: '用户跟主持人说了话,他回了一句' },
     },
     /**
      * ── 听歌这件事本身的事实(宠物 P4,`docs/design/pet-system-2026-09.md` §11.1)──────

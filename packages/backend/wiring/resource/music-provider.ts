@@ -53,7 +53,8 @@
  * 于是端口表从两张变四张。**判据没变**:每一族都是「今天那只端口」原样递进来。
  *   · `radio`   —— `RadioToolAdapters`(开 / 关 / 状态 / 点歌),K3-b 那张,未动;
  *   · `player`  —— 传输命令 + now-playing + 「变了」的订阅,新增一条 `lyrics`;
- *   · `station` —— 音乐条那份简报、节目单、节目单编辑(`wiring/music/{operations,radio}`);
+ *   · `station` —— 音乐条那份简报、节目单、节目单编辑,外加 2026-09-18 的
+ *                  「跟主持人说话」(`wiring/music/{operations,radio}`);
  *   · `backend` —— 音乐后端自己:装到哪一步、跑一步向导、有哪几只 CLI、搜歌、换 CLI
  *                  (`wiring/music/{service,operations}` + `@onething/runtime/music`)。
  *
@@ -142,6 +143,15 @@ export interface MusicStationAdapters {
     action: MusicProgrammeAction,
     executionContext?: unknown,
   ): { success: boolean; error?: string }
+  /**
+   * 跟主持人说一句话(2026-09-18,正本 §7.1)。
+   *
+   * **两段承诺,所以是两层 promise**:外面那一层在「话已经递进他会话里」时就 resolve
+   * (做法到此为止,`apply` 不该挂在那儿等他想);里面那只 `reply` 在他这一轮说完时
+   * resolve —— 有话是那句话,空话 / 没回 / 超时是 `undefined`。判据与超时都在端口那一侧
+   * (`wiring/music/radio.ts`),这里只把答案折成一条事实。
+   */
+  tell(text: string, executionContext?: unknown): Promise<{ reply: Promise<string | undefined> }>
 }
 
 /** 音乐后端(那只 CLI)自己:装到哪一步、跑一步向导、有哪几只、搜歌、换一只。 */
@@ -200,6 +210,14 @@ export class MusicSongRequiredError extends Error {
   constructor() {
     super('request 需要 song:用户点名想听的歌,尽量带歌手,如「晴天 周杰伦」。')
     this.name = 'MusicSongRequiredError'
+  }
+}
+
+/** 跟主持人说话却没说话。措辞与上面两条同一种语气:说清楚这一格该放什么。 */
+export class MusicTellTextRequiredError extends Error {
+  constructor() {
+    super('tell 需要 text:用户想对主持人说的那句话,原样转述,不要替他改写。')
+    this.name = 'MusicTellTextRequiredError'
   }
 }
 
@@ -278,6 +296,7 @@ const MEMBER_TARGET: Readonly<Record<string, string>> = {
   radioResume: MUSIC_RADIO_PATH,
   radioStop: MUSIC_RADIO_PATH,
   programmeAction: MUSIC_RADIO_PATH,
+  tell: MUSIC_RADIO_PATH,
   radio: MUSIC_RADIO_PATH,
   brief: MUSIC_RADIO_PATH,
   programme: MUSIC_RADIO_PATH,
@@ -341,6 +360,7 @@ export type MusicOpPayload =
   | { readonly op: 'close' }
   | { readonly op: 'request'; readonly song: string }
   | { readonly op: 'programmeAction'; readonly action: MusicProgrammeAction }
+  | { readonly op: 'tell'; readonly text: string }
   | { readonly op: 'setup'; readonly request: OnethingMusicSetupRequest }
   | { readonly op: 'setProvider'; readonly providerId: string }
   | {
@@ -587,6 +607,12 @@ export class MusicResourceProvider implements ResourceProvider<MusicOpPayload> {
       return plan({ op, song }, `Request ${song}`)
     }
 
+    if (op === 'tell') {
+      const text = stringParam(params, 'text')
+      if (!text) throw new MusicTellTextRequiredError()
+      return plan({ op, text }, `Tell the radio host: ${text}`)
+    }
+
     if (op === 'programmeAction') {
       const action = programmeActionParam(params)
       return plan({ op, action }, `Programme ${action.kind} ${action.encryptedId}`)
@@ -697,6 +723,21 @@ export class MusicResourceProvider implements ResourceProvider<MusicOpPayload> {
           payload.op,
           { request: requested },
         )
+      }
+      case 'tell': {
+        const { reply } = await this.station.tell(payload.text, operator)
+        /*
+         * **不等他想完**(§7.1):做法到「话递进去了」为止,他的回话是后来的一条事实。
+         * 等在这里会把一次「说句话」变成最长 60 秒的调用 —— 模型那一侧是白等,界面那一侧
+         * 是一颗转 60 秒的钮。
+         *
+         * 空文本不发事件:他用工具干完活不吭声是合法的(判据在端口那一侧,这里只是不发)。
+         * 同一句话摆两格的理由写在自述 `hostReplied` 上 —— 音乐仍然不认识宠物。
+         */
+        void reply.then(said => {
+          if (said) this.emit(MUSIC_RADIO_PATH, 'hostReplied', { text: said, say: said })
+        })
+        return this.done(ctx, '已转达', `told the radio host: ${payload.text}`, payload.op)
       }
       case 'programmeAction': {
         const applied = this.station.programmeAction(payload.action, operator)
@@ -873,6 +914,10 @@ export function musicStationAdapters(): MusicStationAdapters {
     programmeAction: (action, executionContext) => {
       assertMusicOperator(fixedExecutionContext(executionContext))
       return music().radio.applyProgrammeAction(action)
+    },
+    tell: (text, executionContext) => {
+      assertMusicOperator(fixedExecutionContext(executionContext))
+      return music().radio.tellRadioHost(text)
     },
   }
 }

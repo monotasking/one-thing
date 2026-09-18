@@ -33,7 +33,7 @@
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: 'notice' 'station' 'deck';
+  grid-template-areas: 'notice' 'station' 'deck' 'talk';
   align-content: start;
   gap: var(--sp-3);
   padding: var(--sp-3);
@@ -45,7 +45,8 @@
   grid-template-areas:
     'notice notice'
     'station station'
-    'deck lyrics';
+    'deck lyrics'
+    'talk talk';
   align-items: start;
   column-gap: var(--sp-5);
 }
@@ -200,6 +201,52 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-1);
+}
+
+/* ── 跟主持人说话(2026-09-18,正本 §7.2)──────────────────────────────────
+ * 整面最底下一行。它**不吸底也不粘住** —— 这块面自己就是一整块可滚区,
+ * 粘住的话窄宽两形各要一套 z 与让位,而它的内容只有一行高。 */
+.talkbar {
+  grid-area: talk;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* 输入框吸宽、发送键恒定 —— 与 `.formRow` 同一条判据,只是这一行永不折行
+ * (折了之后发送键会落到下一行的左边,读起来像另一颗钮)。 */
+.talkForm {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.talkForm > :first-child {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* 你自己说的那一句:右对齐、深底浅字 —— 与黑豆那边的浅底气泡分得开「谁在说」。 */
+.youSaid {
+  margin: 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.youSaid > span {
+  max-width: var(--music-echo-max);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--music-echo-r) var(--music-echo-r) var(--music-echo-r-tail) var(--music-echo-r);
+  background: var(--text-1);
+  color: var(--surface-2);
+  font-size: var(--fs-meta);
+  line-height: var(--pr-lh);
+  /* 它是回执不是记录:长到三行就截断(判词在 TalkBar 的状态表 ②)。 */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .tuner {

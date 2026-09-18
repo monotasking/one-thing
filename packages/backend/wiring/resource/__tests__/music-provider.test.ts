@@ -93,6 +93,8 @@ function stationAdapters(overrides: Partial<MusicStationAdapters> = {}): MusicSt
     brief: () => BRIEF,
     programme: () => PROGRAMME,
     programmeAction: () => ({ success: true }),
+    // 缺省:话递进去了,他没回(空回话 = 不发事件,见下面那一族用例)。
+    tell: async () => ({ reply: Promise.resolve(undefined) }),
     ...overrides,
   }
 }
@@ -648,5 +650,107 @@ describe('music resource provider —— 补齐的做法', () => {
     expect(await planWith({ kind: 'user', userId: 'local' })).toEqual([])
     expect(await planWith({ kind: 'agent', agentId: 'dj' })).toEqual(['capability_change'])
     expect(await planWith({ kind: 'system', component: 'plugin:radio-skin' })).toEqual(['capability_change'])
+  })
+})
+
+/**
+ * 跟主持人说话(2026-09-18,正本 `apps/desktop-react/docs/music-panel-2026-09.md` §7.1)。
+ *
+ * 这一族问的全是**边界**:话有没有原样递进去、这条做法自己动没动别的东西、他的回话
+ * 折成了哪一条事实、空回话与没回话是不是真的什么都不发。他回话那一段的判据(取哪条
+ * 消息、超时多久)在端口那一侧,由 `wiring/music/__tests__/radio-talk.test.ts` 钉。
+ */
+describe('music resource provider —— tell(跟主持人说话)', () => {
+  it('把话原样递给端口,不碰播放也不碰节目单', async () => {
+    const tell = vi.fn(async () => ({ reply: Promise.resolve(undefined) }))
+    const command = vi.fn(async () => ({ success: true }))
+    const programmeAction = vi.fn(() => ({ success: true }))
+    const provider = makeProvider(radioAdapters(), playerAdapters({ command }), {
+      station: stationAdapters({ tell, programmeAction }),
+    })
+
+    const done = await run(provider, { op: 'tell', text: '换个心情' })
+
+    expect(done.outcome.kind).toBe('ok')
+    expect(tell).toHaveBeenCalledWith('换个心情', undefined)
+    expect(command).not.toHaveBeenCalled()
+    expect(programmeAction).not.toHaveBeenCalled()
+    expect(done.titles.at(-1)).toBe('已转达')
+  })
+
+  it('零效果:说句话不该弹卡 —— 真正的改动由主持人自己的工具各自过闸', async () => {
+    const provider = makeProvider()
+    const effectsFor = async (principal: Principal) =>
+      (await provider.plan('tell', null, { text: '现在放的是什么' }, { principal } as never)).effects
+
+    expect(await effectsFor({ kind: 'user', userId: 'local' })).toEqual([])
+    expect(await effectsFor({ kind: 'agent', agentId: 'dj' })).toEqual([])
+  })
+
+  it('空话不是一次转达', async () => {
+    const tell = vi.fn(async () => ({ reply: Promise.resolve(undefined) }))
+    const provider = makeProvider(radioAdapters(), playerAdapters(), { station: stationAdapters({ tell }) })
+
+    const done = await run(provider, { op: 'tell', text: '   ' })
+
+    expect(done.outcome.kind).toBe('failed')
+    expect(failureOf(done.outcome)).toContain('tell 需要 text')
+    expect(tell).not.toHaveBeenCalled()
+  })
+
+  it('他回了一句:发 hostReplied,同一句话在 text 与 say 两格上', async () => {
+    const provider = makeProvider(radioAdapters(), playerAdapters(), {
+      station: stationAdapters({ tell: async () => ({ reply: Promise.resolve('好,往下收一收。') }) }),
+    })
+    const hub = new ResourceEventHub()
+    const seen: ResourceEvent[] = []
+    hub.watch('music:', event => seen.push(event))
+    provider.attach(hub)
+
+    const done = await run(provider, { op: 'tell', text: '慢一点' })
+    // 回话是**后来**的一条事实:做法早就交卷了,这里等的是那一发。
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(done.outcome.kind).toBe('ok')
+    const replied = seen.filter(event => event.event === 'hostReplied')
+    expect(replied).toHaveLength(1)
+    expect(replied[0]?.ref).toBe('music:radio')
+    expect(replied[0]?.payload).toEqual({ text: '好,往下收一收。', say: '好,往下收一收。' })
+  })
+
+  it('他干完活没说话(空文本 / 超时):一条事实都不发', async () => {
+    const provider = makeProvider(radioAdapters(), playerAdapters(), {
+      station: stationAdapters({ tell: async () => ({ reply: Promise.resolve(undefined) }) }),
+    })
+    const hub = new ResourceEventHub()
+    const seen: ResourceEvent[] = []
+    hub.watch('music:', event => seen.push(event))
+    provider.attach(hub)
+
+    await run(provider, { op: 'tell', text: '随便放点什么' })
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(seen.filter(event => event.event === 'hostReplied')).toHaveLength(0)
+  })
+
+  it('不等他想完:回话再久,这条做法也当场交卷', async () => {
+    let release: (() => void) | undefined
+    const slow = new Promise<string | undefined>(resolve => { release = () => resolve('等了很久才说的一句') })
+    const provider = makeProvider(radioAdapters(), playerAdapters(), {
+      station: stationAdapters({ tell: async () => ({ reply: slow }) }),
+    })
+
+    const done = await run(provider, { op: 'tell', text: '在吗' })
+    expect(done.outcome.kind).toBe('ok')
+
+    release?.()
+    await slow
+  })
+
+  it('地址说错了当场说不:tell 在电台上,不在播放器上', async () => {
+    const provider = makeProvider()
+    const done = await run(provider, { op: 'tell', ref: 'music:player', text: '换个心情' })
+    expect(done.outcome.kind).toBe('failed')
+    expect(failureOf(done.outcome)).toContain('music:radio')
   })
 })

@@ -10,6 +10,7 @@ import type { ResourceOutcomeView, ResourceReadView } from '@shared/ipc/resource
 import { createMutation, createQuery } from './kernel'
 import type { Mutation, Query, Rollback } from './kernel'
 import { appendInstallOutput, clearInstallOutput, resetInstallLog } from './music-setup-log'
+import { noteHostReplied, resetHostReply } from './music-talk'
 import { musicPort } from './music-port'
 import type { MusicResourceEvent } from './music-port'
 
@@ -344,6 +345,26 @@ export const musicOps = Object.fromEntries(
   OP_NAMES.map((op) => [op, createMusicOp(op)]),
 ) as Readonly<Record<MusicOpName, Mutation<MusicOpParams, void>>>
 
+/* ── 跟主持人说话(2026-09-18,正本 §7.2)────────────────────────────────── */
+
+/**
+ * `tell` 也是一条做法,**却不在上面那张表里**,理由只有一个:那张表的第三格是
+ * 「跑完之后要重问哪几条读数」,而这一条一条都不重问 —— 它什么读数都不改。
+ * 真正会变的东西(节目单、正在放的歌)是主持人自己接下来去改的,那些改动各自会
+ * 发自己的事实,上面那张 `EVENT_INVALIDATES` 照旧接着。
+ *
+ * 它另有一处与那十四条不同:**要分得清成没成**。`createMusicOp` 交的是 `void`,
+ * 于是成功与失败都 resolve 成 `undefined`,而这一条的失败有一件非做不可的事 ——
+ * 把人打的字还回输入框(§7.3)。所以这里交 `true`:`undefined` = 这一下没算数,
+ * 那句话在 `musicTellOp.get().error` 上。
+ */
+export const musicTellOp = createMutation<{ text: string }, true>('music.tell', {
+  run: async ({ text }) => {
+    await sendMusicOp(MUSIC_RADIO_REF, 'tell', { text })
+    return true
+  },
+})
+
 /* ── 接入向导那八步(2026-09-18,正本 §6.3)──────────────────────────────── */
 
 /**
@@ -420,9 +441,21 @@ const EVENT_INVALIDATES: Readonly<Record<string, readonly { invalidate(): void }
    * 那时只有这条事实能把屏幕拉回同一份真相。
    */
   setupChanged: [musicRuntimeQuery],
+  /*
+   * 主持人回了一句(§7.1)。**一条读数都不标脏**:他说的话不在任何一份读数里,
+   * 而他顺手改掉的东西(节目单、换的歌)各自会发自己的事实。它在这张表上留着一行
+   * 空的,是为了说清「看见了,而且确实不必重问」—— 不写的话下一个人会以为漏了。
+   */
+  hostReplied: [],
 }
 
 function onMusicFact(fact: MusicResourceEvent): void {
+  // 他回话了。屏幕这边要的是那一下(撤气泡、黑豆回姿势),不是那句话本身 ——
+  // 那句话走宠物那条路,判词在 `music-talk.ts`。
+  if (fact.event === 'hostReplied') {
+    noteHostReplied()
+    return
+  }
   // 安装输出不进读数 —— 它是推来的进度,不是可重读的答案(判词在 `music-setup-log`)。
   if (fact.event === 'setupOutput') {
     const payload = fact.payload as { tool?: unknown; chunk?: unknown } | undefined
@@ -470,7 +503,9 @@ export function resetMusicSource(): void {
   // 向导那几格是**按需建**的,所以清的是整张表而不是一张固定名单 —— 建过的那几只
   // 界面还拿着引用(`musicSetupOp` 认 cell 不认次数),归零而不是丢掉。
   for (const mutation of setupMutations.values()) mutation.reset()
+  musicTellOp.reset()
   resetInstallLog()
+  resetHostReply()
 }
 
 /**

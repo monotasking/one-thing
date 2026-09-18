@@ -7,6 +7,7 @@
 import radioDjAgentRaw from './content/radio-dj-agent.md?raw'
 import radioOpenRaw from './content/radio-open.md?raw'
 import radioCurateRaw from './content/radio-curate.md?raw'
+import radioTalkRaw from './content/radio-talk.md?raw'
 import type { OnethingRadioBrief, OnethingRadioSpin } from './radio-store.js'
 
 export const RADIO_DJ_AGENT_ID = 'radio-dj'
@@ -115,6 +116,31 @@ export function renderRadioOpenPrompt(options: RenderRadioPromptOptions): string
     local_time: options.localTime ?? defaultLocalTime(),
     life_context: options.lifeContext?.trim() || '(无)',
     inbox_path: options.inboxPath,
+  })
+}
+
+/**
+ * 听众说的一句话(正本 `apps/desktop-react/docs/music-panel-2026-09.md` §7.1)。
+ *
+ * 与那两条自动化的唤醒提示是**同一族**,写在同一处:一条 wake 的所有前置(意图行的
+ * 碎屑降级、时间、还剩哪些)在这里照旧成立,多的只有听众那句话本身 —— 它与开台意图
+ * 逐字同一档待遇:转义 + `<untrusted_*>` 包起来,因为它是人打进来的字。
+ *
+ * 收尾那条指令(「最后那句话就是你要对他说的」)不是礼貌,是**契约**:装配层取的正是
+ * 这一轮最后一条 assistant 文本当作他的回话(§7.1「回话怎么拿到」那一格),所以这句话
+ * 与那段代码必须说同一件事。
+ */
+export function renderRadioTalkPrompt(
+  options: RenderRadioPromptOptions & { message: string },
+): string {
+  const remaining = options.programmeRemaining ?? []
+  return fill(radioTalkRaw, {
+    message: escapeXmlText(options.message.trim()),
+    intent_line: intentLine(options.brief.intent),
+    local_time: options.localTime ?? defaultLocalTime(),
+    inbox_path: options.inboxPath,
+    programme_remaining:
+      remaining.length === 0 ? '(空)' : remaining.map(title => `- ${title}`).join('\n'),
   })
 }
 

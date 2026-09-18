@@ -1675,6 +1675,14 @@ export const en: Record<MessageKey, string> = {
   'music.lyricSeek': 'Play from this line: {line}',
   'music.lyricsEmpty': 'No lyrics for this song.',
   'music.backendNotReady': 'The music backend is not set up yet — install the CLI and log in before anything can play.',
+
+  /* Talking to the host (2026-09-18). {name} is the current pet — it IS the host. */
+  'music.talk.placeholder': 'Say something to {name}',
+  'music.talk.send': 'Say it to {name}',
+  'music.talk.host': 'the host',
+  'music.talk.mood': 'Change the mood',
+  'music.talk.request': 'Request a song',
+  'music.talk.what': "What's playing?",
   'music.backendError': 'The music backend said: {message}',
 
   /* Setup wizard (2026-09-18). */

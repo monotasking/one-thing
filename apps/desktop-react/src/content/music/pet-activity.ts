@@ -24,16 +24,32 @@ export interface MusicPetInputs {
   nowError?: string
   /** 节目单;`undefined` = 还没读到(与「读到了、是空的」不是一回事)。 */
   programme?: MusicProgrammeView
+  /**
+   * 人刚跟主持人说了话,还没等到他回话(§7.3「发送中」那一行)。
+   *
+   * 它排在**第 2 行**:比「电台关着 = off」「没歌 = idle」都靠前 —— 人正等着他开口,
+   * 这一刻他在忙是事实,与此刻有没有歌在放无关。只有第 1 行的 `fault` 赢过它:
+   * 后端都报错了,装作在翻唱片是撒谎。
+   */
+  awaitingHost?: boolean
 }
 
-export function musicPetActivity({ runtime, brief, nowPlaying, nowError, programme }: MusicPetInputs): PetActivity {
+export function musicPetActivity({
+  runtime,
+  brief,
+  nowPlaying,
+  nowError,
+  programme,
+  awaitingHost,
+}: MusicPetInputs): PetActivity {
   const playing = nowPlaying?.playing === true
   /* 1 */ if (nowError || runtime?.lastError) return 'fault'
-  /* 2 */ if (runtime !== undefined && runtime.setupStage !== 'ready') return 'off'
-  /* 3 */ if (brief !== undefined && !brief.active && !playing) return 'off'
-  /* 4 */ if (brief?.starting || (brief?.active && programme !== undefined && programme.entries.length === 0 && !playing))
+  /* 2 */ if (awaitingHost) return 'busy'
+  /* 3 */ if (runtime !== undefined && runtime.setupStage !== 'ready') return 'off'
+  /* 4 */ if (brief !== undefined && !brief.active && !playing) return 'off'
+  /* 5 */ if (brief?.starting || (brief?.active && programme !== undefined && programme.entries.length === 0 && !playing))
     return 'busy'
-  /* 5 */ if (playing) return { kind: 'rhythm', bpm: MUSIC_DEFAULT_BPM }
-  /* 6 */ if (nowPlaying?.status === 'paused') return 'still'
-  /* 7 */ return 'idle'
+  /* 6 */ if (playing) return { kind: 'rhythm', bpm: MUSIC_DEFAULT_BPM }
+  /* 7 */ if (nowPlaying?.status === 'paused') return 'still'
+  /* 8 */ return 'idle'
 }

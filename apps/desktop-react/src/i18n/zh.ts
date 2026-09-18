@@ -1958,6 +1958,15 @@ export const zh = {
   'music.lyricSeek': '从这句开始放:{line}',
   'music.lyricsEmpty': '这首没有歌词。',
   'music.backendNotReady': '音乐后端还没配好 —— 装好那只 CLI 并登录之后才放得出声。',
+
+  /* ── 跟主持人说话(2026-09-18,正本 §7.2)。说给人听的话:屏上不出现「会话」
+   * 「资源」这类实现的名字。{name} 是当前那只宠物的名字 —— 主持人就是它。 */
+  'music.talk.placeholder': '跟{name}说点什么',
+  'music.talk.send': '说给{name}听',
+  'music.talk.host': '主持人',
+  'music.talk.mood': '换个心情',
+  'music.talk.request': '点一首歌',
+  'music.talk.what': '现在放的是什么',
   'music.backendError': '音乐后端报了一句:{message}',
 
   /* ── 接入向导(2026-09-18,正本 §6)───────────────────────────────────────

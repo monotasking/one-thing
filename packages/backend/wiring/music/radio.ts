@@ -27,6 +27,7 @@ import {
   renderRadioCurationPrompt,
   renderRadioDjAgentPrompt,
   renderRadioOpenPrompt,
+  renderRadioTalkPrompt,
   type OnethingMusicIdentifiedSong,
   type OnethingMusicNowPlaying,
   type OnethingRadioConductor,
@@ -47,8 +48,11 @@ import { DEFAULT_SESSION_OWNER, sessionAccess, SessionAccessError } from '../../
 import type { MusicServiceScope } from './service.js'
 import type { HostVoice } from './host-voice.js'
 import type { MusicMoments } from './moments.js'
+// 类型口 —— 编译期擦除,不给这只模块添一条到事件系统的**运行时**边(见 `wakeRadioDj`
+// 里那段动态 import 的理由)。
+import type { EventBus } from '../../events/event-bus.js'
 
-import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
+import { SESSION_COMMAND_TYPES, SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { consolePort, getLogger } from '../logging/index.js'
 import type { OnethingRadioConductorOptions } from '@onething/runtime/music/radio-conductor'
 
@@ -365,6 +369,55 @@ async function buildRadioLifeContext(sessionId: string): Promise<string> {
  */
 const RADIO_INTENT_TTL_MS = 6 * 60 * 60 * 1_000
 
+/**
+ * The DJ session, ready to be driven: it exists, it may write the music dir, and
+ * nobody is watching it. Shared by the automated wakes and by 「跟主持人说话」 —
+ * both land in the SAME session, so their preconditions are one piece of code.
+ */
+function ensureDjSessionReady(store: OnethingRadioStore): string {
+  const sessionId = ensureRadioSession(store)
+  grantMusicDirAccess(sessionId, path.dirname(store.programmePath))
+  // Nobody watches DJ turns; a permission dialog there is a silent hang.
+  // Marked unattended, asks become immediate explained denials instead.
+  markSessionUnattended(sessionId)
+  return sessionId
+}
+
+/**
+ * One message into the DJ session. The model override (设置 → 音乐 → 电台编排) and
+ * `suppressTitleGeneration` ride here, so 「人说的话」 and the automated wakes reach
+ * the engine through **one** `SEND_MESSAGE` — different words, identical delivery.
+ */
+async function emitDjMessage(sessionId: string, content: string, bus: EventBus): Promise<void> {
+  // The DJ's own model, same idea as toolCallModel: curation is background work
+  // in a session nobody watches, so it should not inherit whatever model the
+  // radio session last used. Empty providerId = follow the session default.
+  // Think mode rides the override so it stays independent of the global
+  // per-model toggle.
+  const djModel = getSettings().music?.radioDj
+  const modelOverride = djModel?.providerId
+    ? {
+        providerId: djModel.providerId,
+        ...(djModel.model ? { model: djModel.model } : {}),
+        ...(typeof djModel.thinking === 'boolean'
+          ? { thinking: djModel.thinking, thinkingEffort: djModel.thinkingEffort }
+          : {}),
+      }
+    : {}
+
+  owner.assertActive()
+  sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'write')
+  await bus.emit(sessionId, {
+    type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
+    content,
+    source: 'radio',
+    origin: { transport: 'api', source: 'radio', receivedAt: Date.now() },
+    // The session is deliberately named 电台; the drive prompt is not a title.
+    suppressTitleGeneration: true,
+    ...modelOverride,
+  }, { executionContext: DEFAULT_SESSION_OWNER })
+}
+
 async function wakeRadioDj(): Promise<void> {
   owner.assertActive()
   return owner.track((async () => {
@@ -376,11 +429,7 @@ async function wakeRadioDj(): Promise<void> {
   if (brief.sessionId) sessionAccess.resolveOptional(DEFAULT_SESSION_OWNER, brief.sessionId, 'write')
   store.expireStaleIntent(RADIO_INTENT_TTL_MS)
   const opening = !brief.sessionId || !sessions.getSession(brief.sessionId)
-  const sessionId = ensureRadioSession(store)
-  grantMusicDirAccess(sessionId, path.dirname(store.programmePath))
-  // Nobody watches DJ turns; a permission dialog there is a silent hang.
-  // Marked unattended, asks become immediate explained denials instead.
-  markSessionUnattended(sessionId)
+  const sessionId = ensureDjSessionReady(store)
 
   // Dynamic imports: this module is reachable from the variable gateways, and
   // a static engine import would drag the whole provider stack into every
@@ -407,34 +456,89 @@ async function wakeRadioDj(): Promise<void> {
       })
     : renderRadioCurationPrompt(renderOptions)
 
-  // The DJ's own model (设置 → 音乐 → 电台编排), same idea as toolCallModel:
-  // curation is background work in a session nobody watches, so it should not
-  // inherit whatever model the radio session last used. Empty providerId =
-  // follow the session default. Think mode rides the override so it stays
-  // independent of the global per-model toggle.
-  const djModel = getSettings().music?.radioDj
-  const modelOverride = djModel?.providerId
-    ? {
-        providerId: djModel.providerId,
-        ...(djModel.model ? { model: djModel.model } : {}),
-        ...(typeof djModel.thinking === 'boolean'
-          ? { thinking: djModel.thinking, thinkingEffort: djModel.thinkingEffort }
-          : {}),
-      }
-    : {}
+  await emitDjMessage(sessionId, content, getEventBus())
 
+  })())
+}
+
+/**
+ * ── 跟主持人说话(2026-09-18,正本 `apps/desktop-react/docs/music-panel-2026-09.md` §7.1)──
+ *
+ * 人打的一句话,当作一条用户消息发进 DJ 那条真会话。**这一条自己什么都不改** ——
+ * 不出声、不动播放、不碰节目单;真正的改动是主持人自己用他的工具做的,各自过各自的闸。
+ *
+ * 回话怎么拿到:发之前就订上这条会话的流结束事件,说完了取这一轮**最后一条 assistant
+ * 文本**。三条收手的规矩,每一条都有理由:
+ *  · **空文本不算回话** —— 他用工具干完活不吭声是合法的,硬编一句「好的」是替他说话;
+ *  · **消息 id 没换也不算** —— 这一轮一条 assistant 消息都没落下时,上一轮那句话还在
+ *    那儿摆着,把它当成「他刚回的」就是把旧话冒充新话(发之前先记下那个 id);
+ *  · **60s 没说完就放手** —— 不发事件、不报错。他可能正在跑一长串 bash,而人早已不在等了。
+ * 关台 / 换 CLI(`owner.signal`)同样是放手:一代作用域收尾时没人再该收到他的回话。
+ *
+ * 等待**不进 `owner.track`**:drain 要等的是真活儿,不是一只最长 60 秒的闹钟。
+ */
+const HOST_REPLY_TIMEOUT_MS = 60_000
+
+/** 这一轮他说的那句话。拿不到 / 是空的 = `undefined`(判据写在 `tellRadioHost` 上)。 */
+function readDjReply(sessionId: string, sinceMessageId: string | undefined): string | undefined {
+  sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'read')
+  const message = sessionReads.lastMessageOfRole(sessionId, 'assistant')
+  if (!message || message.id === sinceMessageId) return undefined
+  const text = typeof message.content === 'string' ? message.content.trim() : ''
+  return text || undefined
+}
+
+async function tellRadioHost(text: string): Promise<{ reply: Promise<string | undefined> }> {
   owner.assertActive()
-  sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'write')
-  await getEventBus().emit(sessionId, {
-    type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
-    content,
-    source: 'radio',
-    origin: { transport: 'api', source: 'radio', receivedAt: Date.now() },
-    // The session is deliberately named 电台; the drive prompt is not a title.
-    suppressTitleGeneration: true,
-    ...modelOverride,
-  }, { executionContext: DEFAULT_SESSION_OWNER })
+  return owner.track((async () => {
+    const store = getRadioStore()
+    const sessionId = ensureDjSessionReady(store)
+    const { getEventBus } = await import('../../events/index.js')
 
+    sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'read')
+    const lastBefore = sessionReads.lastMessageOfRole(sessionId, 'assistant')?.id
+
+    // 先订后发:一条回得极快的消息不该因为我们还在 await 自己那一发而漏掉。
+    let settle: ((value: string | undefined) => void) | undefined
+    const reply = new Promise<string | undefined>(resolve => { settle = resolve })
+    let done = false
+    const cleanups: Array<() => void> = []
+    const finish = (value: string | undefined): void => {
+      if (done) return
+      done = true
+      for (const stop of cleanups.splice(0)) {
+        try { stop() } catch { /* 退订失败不该拦住别的退订 */ }
+      }
+      settle?.(value)
+    }
+
+    const bus = getEventBus()
+    cleanups.push(
+      bus.on(sessionId, SESSION_EVENT_TYPES.STREAM_COMPLETE, () => finish(readDjReply(sessionId, lastBefore)), 'radio tell'),
+      // 炸了 = 没有回话。那条错话是会话自己的事,音乐这一侧不转述。
+      bus.on(sessionId, SESSION_EVENT_TYPES.STREAM_ERROR, () => finish(undefined), 'radio tell'),
+    )
+    const timer = setTimeout(() => finish(undefined), HOST_REPLY_TIMEOUT_MS)
+    // Node 的 timer 会吊住进程;这一只只是闹钟,不该让谁多活 60 秒。
+    timer.unref?.()
+    cleanups.push(() => clearTimeout(timer))
+    const giveUp = (): void => finish(undefined)
+    owner.signal.addEventListener('abort', giveUp, { once: true })
+    cleanups.push(() => owner.signal.removeEventListener('abort', giveUp))
+
+    try {
+      await emitDjMessage(sessionId, renderRadioTalkPrompt({
+        message: text,
+        brief: store.readBrief(),
+        inboxPath: store.inboxPath,
+        programmeRemaining: store.readProgramme().entries.map(entry => entry.title),
+      }), bus)
+    } catch (error) {
+      // 没发出去就没有人会回话 —— 当场退订,别留一只挂 60 秒的订阅。
+      finish(undefined)
+      throw error
+    }
+    return { reply }
   })())
 }
 
@@ -1484,6 +1588,7 @@ async function drain(): Promise<void> {
     radioToolOpen,
     radioToolClose,
     requestSong,
+    tellRadioHost,
     getProgrammeSnapshot,
     applyProgrammeAction,
     likeCurrentSong,
@@ -1507,6 +1612,7 @@ export const openRadioStation: RadioScope['openRadioStation'] = (...args) => get
 export const radioToolOpen: RadioScope['radioToolOpen'] = (...args) => getCurrentBackend('music').music.radio.radioToolOpen(...args)
 export const radioToolClose: RadioScope['radioToolClose'] = (...args) => getCurrentBackend('music').music.radio.radioToolClose(...args)
 export const requestSong: RadioScope['requestSong'] = (...args) => getCurrentBackend('music').music.radio.requestSong(...args)
+export const tellRadioHost: RadioScope['tellRadioHost'] = (...args) => getCurrentBackend('music').music.radio.tellRadioHost(...args)
 export const getProgrammeSnapshot: RadioScope['getProgrammeSnapshot'] = (...args) => getCurrentBackend('music').music.radio.getProgrammeSnapshot(...args)
 export const applyProgrammeAction: RadioScope['applyProgrammeAction'] = (...args) => getCurrentBackend('music').music.radio.applyProgrammeAction(...args)
 export const likeCurrentSong: RadioScope['likeCurrentSong'] = (...args) => getCurrentBackend('music').music.radio.likeCurrentSong(...args)

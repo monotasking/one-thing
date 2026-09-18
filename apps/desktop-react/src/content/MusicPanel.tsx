@@ -15,9 +15,11 @@ import { LyricsPane } from './music/LyricsPane'
 import { PlaylistDrawer } from './music/PlaylistDrawer'
 import { SetupWizard, useSetupWizardVisible } from './music/SetupWizard'
 import { StationStrip } from './music/StationStrip'
+import { TalkBar } from './music/TalkBar'
 import { IdlePlayButton, PlaylistButton, Transport } from './music/Transport'
 import { TurntableScene } from './music/TurntableScene'
 import { useMusicPanelForm } from './music/panel-width'
+import { useHostTalk } from './music/useHostTalk'
 import { splitTitle } from './music/turntable'
 import { usePlaybackPosition } from './music/usePlaybackPosition'
 import s from './MusicPanel.module.css'
@@ -124,6 +126,7 @@ export function MusicPanel({
   const panelRef = useRef<HTMLDivElement | null>(null)
   const position = usePlaybackPosition(now.data)
   const form = useMusicPanelForm(panelRef)
+  const talk = useHostTalk()
   const [playlistOpen, setPlaylistOpen] = useState(initialPlaylistOpen)
   const [view, setView] = useState<'turntable' | 'lyrics'>(initialView)
 
@@ -147,6 +150,11 @@ export function MusicPanel({
   const duration = now.data?.duration
   const hasSong = Boolean(title) || playing
   const { name, artist } = splitTitle(title)
+  /*
+   * 跟主持人说话那一条(§7.2):**电台开着才画** —— 台关着就没有主持人可说话。
+   * 向导那几步同样不画(那时后端还不在),判据与电台条那一行共用 `wizard`。
+   */
+  const canTalk = !wizard && brief.data?.active === true
 
   /*
    * 歌词页只在「一栏 + 有歌」两件同时成立时在场。两条退出规矩(§3.1)因此是**同一句
@@ -227,6 +235,8 @@ export function MusicPanel({
                     position={position}
                     onSeek={seek}
                     petRef={petRef}
+                    listening={canTalk && talk.typing}
+                    awaitingHost={canTalk && talk.waiting}
                   />
                 )}
                 {/*
@@ -287,6 +297,8 @@ export function MusicPanel({
                   playing={playing}
                 />
               )}
+
+              {canTalk && <TalkBar talk={talk} />}
             </div>
           </div>
 
