@@ -51,6 +51,8 @@
     "./wiring/music/dj-voice.js": "./wiring/music/dj-voice.ts",
     "./wiring/music/radio.js": "./wiring/music/radio.ts",
     "./wiring/music/service.js": "./wiring/music/service.ts",
+    "./wiring/notes/index.js": "./wiring/notes/index.ts",
+    "./wiring/notes/migration.js": "./wiring/notes/migration.ts",
     "./wiring/permission/index.js": "./wiring/permission/index.ts",
     "./wiring/plugins/background.js": "./wiring/plugins/background.ts",
     "./wiring/plugins/file-import.js": "./wiring/plugins/file-import.ts",

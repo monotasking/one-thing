@@ -131,6 +131,19 @@ configureHostLocalTrust(isLoopback ? { origin: 'loopback-server', host } : null)
 // 先拿到 Backend,再造服务器(工单 4 C11):`runRequest` 那条闭包引用它,而它
 // 从前是在下面几行才声明的 —— 只要有一个请求赶在那之前进来就是 TDZ 崩。
 const ownedBackend = serverRuntime.backend ?? (() => { throw new Error('Standalone server requires an owned Backend') })()
+/*
+ * 笔记库要在**声明可信之后**重问一遍(P1,2026-09-18 review ③)。
+ *
+ * 时序:装配时这台宿主的 `OnethingHostPorts.localTrust` 是 `null`(回环与否要到
+ * 上面那一行才知道),所以装配里那次 `refresh` 看到的是「不可信」→ 空表。这一句
+ * 是那之后唯一能说「现在可信了」的地方 —— 少了它,`server:start` 上笔记库**永远**
+ * 是空的,而且是静默的。
+ *
+ * 不 await:读 `obsidian.json` 是一次文件读,没人等着它才能开始服务;失败只记一行。
+ */
+void ownedBackend.notes.refresh().catch((error: unknown) => {
+  log.warn('refreshing note vaults after declaring local trust failed', {}, error)
+})
 const server = createOnethingHttpServer({
   runRequest: run => ownedBackend.runTask('http request', run),
   runtime: serverRuntime.runtime,

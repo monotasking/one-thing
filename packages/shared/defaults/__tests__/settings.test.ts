@@ -593,3 +593,72 @@ describe('pets.chattiness(宠物 P5 §12.4)', () => {
     expect(mergeWithDefaults({}).pets).toEqual({ chattiness: 'balanced' })
   })
 })
+
+describe('settings.notes(笔记库 P1,§3.3)', () => {
+  it('出厂:Obsidian 开、库表空、缺省日记格式', () => {
+    expect(createDefaultSettings().notes).toEqual({
+      // **空表 = 全开**,而且出厂值里不出现任何一个笔记系统的名字。
+      systems: {},
+      vaults: {},
+      folders: [],
+      dailyFormat: 'YYYY-MM-DD',
+    })
+  })
+
+  /**
+   * `merged` 是白名单式重建。这一格被吞掉的后果最重:**迁移标记随之消失**,
+   * 于是每次启动重播一次种,把用户后来删掉的库种回来。
+   */
+  it('用户配过的每一格都活过 merge(含迁移标记)', () => {
+    const merged = mergeWithDefaults({
+      notes: {
+        systems: { obsidian: { enabled: false }, logseq: {} },
+        vaults: { aaa: { enabled: true, skills: true }, bbb: { enabled: false } },
+        primaryVaultId: 'aaa',
+        folders: ['/Users/me/notes'],
+        dailyFormat: 'YYYY/MM/DD',
+        attachmentDirectory: 'assets',
+        migratedAt: 1700000000000,
+      },
+    } as Partial<AppSettings>)
+
+    expect(merged.notes).toEqual({
+      systems: { obsidian: { enabled: false }, logseq: {} },
+      vaults: { aaa: { enabled: true, skills: true }, bbb: { enabled: false } },
+      primaryVaultId: 'aaa',
+      folders: ['/Users/me/notes'],
+      dailyFormat: 'YYYY/MM/DD',
+      attachmentDirectory: 'assets',
+      migratedAt: 1700000000000,
+    })
+    // 往返一次仍然一字不差。
+    expect(mergeWithDefaults(merged).notes).toEqual(merged.notes)
+  })
+
+  it('folders 只收绝对路径(与 connectedDirectories 同一个归一器)', () => {
+    const merged = mergeSettings({
+      notes: { folders: ['/Users/me/a', 'relative/b', '   ', '/Users/me/a'] },
+    })
+    expect(merged.notes?.folders).toEqual(['/Users/me/a'])
+  })
+
+  it('每个库那一行逐格归一:非布尔丢掉、脏键不留在盘上', () => {
+    const merged = mergeSettings({
+      notes: { vaults: { aaa: { enabled: 'yes', skills: true, junk: 1 }, '': { enabled: true } } },
+    })
+    expect(merged.notes?.vaults).toEqual({ aaa: { skills: true } })
+  })
+
+  it('脏值全部回缺省;空的 primaryVaultId / attachmentDirectory 不落盘', () => {
+    const merged = mergeSettings({
+      notes: { dailyFormat: '   ', primaryVaultId: '  ', attachmentDirectory: '' },
+    })
+    expect(merged.notes?.dailyFormat).toBe('YYYY-MM-DD')
+    expect('primaryVaultId' in merged.notes!).toBe(false)
+    expect('attachmentDirectory' in merged.notes!).toBe(false)
+  })
+
+  it('整格缺席时也补出出厂值', () => {
+    expect(mergeWithDefaults({}).notes).toEqual(createDefaultSettings().notes)
+  })
+})

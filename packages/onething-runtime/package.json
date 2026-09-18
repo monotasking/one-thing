@@ -49,6 +49,8 @@
 		"./media/*": "./src/media/*.ts",
 		"./music": "./src/music/index.ts",
 		"./music/*": "./src/music/*.ts",
+		"./notes": "./src/notes/index.ts",
+		"./notes/*": "./src/notes/*.ts",
 		"./markdown": "./src/markdown/index.ts",
 		"./markdown/*": "./src/markdown/*.ts",
 		"./themes": "./src/themes/index.ts",

@@ -84,6 +84,9 @@ import { bootstrapVariableSystem } from './wiring/variables/index.js'
 import { bootstrapGoalStreamBreakers } from './wiring/goals/runtime-hooks.js'
 import { flushGoalRuntimeUsage, disposeGoalRuntimeState } from './wiring/goals/index.js'
 import { bootstrapProjectDirs } from './wiring/project-dirs/index.js'
+import { bootstrapNotes } from './wiring/notes/index.js'
+import { migrateNotesSettings } from './wiring/notes/migration.js'
+import type { NotesSubsystem } from './wiring/notes/index.js'
 import { createAppSearchService } from './wiring/search/index.js'
 import { configureToolkitMCPCapabilitiesChangedHandler } from '@onething/runtime/mcp/capabilities-changed'
 import { buildToolkitCatalog, refreshToolkitMcpTools } from './wiring/toolkit/wiring.js'
@@ -344,6 +347,7 @@ export class OnethingBackend implements BackendHandle {
   get practice(): PracticeService { return requireBackendField(this.parts, 'practice') }
   get music(): MusicSubsystem { return requireBackendField(this.parts, 'music') }
   get collabDigests(): CollabDigestRunner { return requireBackendField(this.parts, 'collabDigests') }
+  get notes(): NotesSubsystem { return requireBackendField(this.parts, 'notes') }
 
   assertActive(): void { this.lifecycle.assertActive() }
 
@@ -640,6 +644,16 @@ export class OnethingBackend implements BackendHandle {
     } catch (error) {
       log.error('provider config migration failed, will retry next boot', {}, error)
     }
+    /*
+     * 笔记库的**播种**(P1,§3.4)。同一处、同一条纪律:刚读完 settings、
+     * 任何人问「有哪些笔记库」之前;幂等靠 `settings.notes.migratedAt`;
+     * 失败不写标记、下次启动重跑,所以这里只记不抛(`migrateNotesSettings`
+     * 自己把异常吃掉并答 `'failed'`)。
+     *
+     * 它**只播种,不删**:两个老变量与 `general.dailyNotes` 一个字不动
+     * (P3 / P2 才删),所以这一步是可回退的。
+     */
+    await migrateNotesSettings()
     // 盘上遗留的**明文**凭证池升级成密文(2026-08-31)。排在迁移之后:这一次真的
     // 迁了的话写出去的本来就是密文,这一步看一眼就过。它救的是雷已经炸过的机器
     // ——「没有加密能力的进程抢先当了 core」留下的 `encryption: 'none'`,以及
@@ -835,6 +849,15 @@ export class OnethingBackend implements BackendHandle {
     // session layer before that layer is disposed and its stores are flushed.
     this.own(() => { flushGoalRuntimeUsage(); disposeGoalRuntimeState() }, 'goalUsage', 'resources')
     this.own(bootstrapProjectDirs(), 'projectDirs')
+    /*
+     * 笔记库(P1,`docs/design/notes-obsidian-cli-2026-09.md` §3)。落点紧挨
+     * 目录名册之后:两者都是「用户盘上的根」,都排在工具目录之前 —— 工具面的
+     * 沙箱根与检索根将来(P2/P3)要问它。
+     *
+     * 第一次发现是异步的,装配不等它:它要读 `obsidian.json`,而装配链上没人
+     * 等着用库表。
+     */
+    this.own(bootstrapNotes(subsystem => { this.parts.notes = subsystem }), 'notes')
 
     // 缝 4 —— 三档目录。R4b 之后它是**唯一**一本工具册子(旧注册表已删)。
     //

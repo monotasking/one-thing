@@ -93,6 +93,10 @@ const OWNED_LABELS = [
   'goalRetryDrain',
   'goalUsage',
   'projectDirs',
+  // 笔记库(P1,`docs/design/notes-obsidian-cli-2026-09.md`):紧挨目录名册 ——
+  // 两者都是「用户盘上的根」,都排在工具目录之前(P2/P3 的沙箱根与检索根要问它)。
+  // 这一件只订了 `settings:changed`,disposer 就是退订。
+  'notes',
   // K1(`docs/design/atom-2026-09.md`):资源内核两格,排在工具目录之后 ——
   // 关机链上反着跑(先注销内置资源,再清内核那一格)。资源工具进不进工具目录归 K3。
   'resourceKernel',

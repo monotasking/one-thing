@@ -301,6 +301,53 @@ export interface PetSettings {
 }
 
 /**
+ * 笔记库的设置(`docs/design/notes-obsidian-cli-2026-09.md` §3.3,R6)。
+ *
+ * **全局,不 per-space**:笔记库是这台机器的东西,不是某个空间的。要 per-space
+ * 是另一单。
+ *
+ * 每个库一行开关,`enabled` 管的是**全部**(检索、附件、技能根、AI 可读范围 ——
+ * R9 拍定一个开关管全部,不拆四个);`skills` 单独一格,因为「把这个库当技能根
+ * 加载」是一件比「AI 能读它」重得多的事。
+ */
+export interface NotesSettings {
+	/**
+	 * 每种笔记系统一行总开关,键 = 驱动 id(`obsidian` / `folder` / …)。
+	 *
+	 * **这里是一张表,不是一格 `obsidian`**(2026-09-18 陌生能力演练打回的那一处):
+	 * 写成 `obsidian: { enabled }` 的话,加一种笔记系统就要改这个契约文件 ——
+	 * 那正是「按能力枚举」。表的键由驱动自述,契约层一个笔记系统的名字都不认识。
+	 *
+	 * 缺席 = 开着。关掉某一行 = 那个系统整个退场,一条命令都不发。
+	 */
+	systems: Record<string, NoteSystemPreference>;
+	/** 键 = 库 id(Obsidian 是 `obsidian.json` 的键)。缺席 = `{enabled:true, skills:false}`。 */
+	vaults: Record<string, NoteVaultPreference>;
+	/** 「今天的日记」「新建笔记」的缺省落点。指着一个已经不在册的库时按第一个算。 */
+	primaryVaultId?: string;
+	/** 非 Obsidian 的笔记目录(绝对路径)。归一同 `normalizeConnectedDirectories`。 */
+	folders: string[];
+	/** 只管 `folders` 里那些库;Obsidian 的日记格式由它自己的 daily-notes 插件说了算。 */
+	dailyFormat: string;
+	/**
+	 * `folders` 里那些库的附件目录。P3 把 `editor.markdownNoteAttachmentDirectory`
+	 * 并进来;本单两格并存。
+	 */
+	attachmentDirectory?: string;
+	/** 一次性播种迁移的标记(P1)。有值 = 已播种,不再重跑。 */
+	migratedAt?: number;
+}
+
+export interface NoteSystemPreference {
+	enabled?: boolean;
+}
+
+export interface NoteVaultPreference {
+	enabled?: boolean;
+	skills?: boolean;
+}
+
+/**
  * 检索的设置(S7,`docs/design/search-index-2026-09.md` §15;拍点壬 a)。
  *
  * **只有一格开关和一个模型 id** —— 「设置极简」那条:暴露必填项,技术参数走默认值。
@@ -436,6 +483,7 @@ export interface AppSettings {
 	search?: SearchSettings;
 	browser?: BrowserSettings;
 	pets?: PetSettings;
+	notes?: NotesSettings;
 }
 
 /**

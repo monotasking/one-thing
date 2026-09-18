@@ -8,6 +8,7 @@ import { GoalProvider, type GoalVariableGateway } from './providers/goal.js'
 import { KeyedStoreProvider, type KeyedStoreGateway } from './providers/keyed-store.js'
 import { MusicRadioProvider, type MusicRadioGateway } from './providers/music-radio.js'
 import { NotesProvider, type NotesGateway } from './providers/notes.js'
+import { NoteVaultsProvider, type NoteVaultsGateway } from './providers/note-vaults.js'
 import {
   ResourceStateProvider,
   type ResourceStateVariableGateway,
@@ -35,6 +36,11 @@ export interface StandardVariableProviderGateways {
    * 与 goal / musicRadio 同一条「gateway 在才装」。
    */
   resourceState?: ResourceStateVariableGateway
+  /**
+   * 笔记库的只读投影(P1)。宿主没有笔记领域就不给,`note_vaults` 随之消失 ——
+   * 与 goal / musicRadio 同一条「gateway 在才装」。
+   */
+  noteVaults?: NoteVaultsGateway
   /** Agent-scoped custom variables (keyed by the session's agent id). */
   agentStore?: KeyedStoreGateway
   /** Project-scoped custom variables (keyed by the active workdir's project id). */
@@ -68,6 +74,9 @@ export function registerStandardVariableProviders(
     registry.register(new ResourceStateProvider(gateways.resourceState))
   }
   registry.register(new NotesProvider(gateways.notes))
+  if (gateways.noteVaults) {
+    registry.register(new NoteVaultsProvider(gateways.noteVaults))
+  }
   registry.register(new GlobalStoreProvider(gateways.globalStore))
   if (gateways.agentStore) {
     registry.register(new KeyedStoreProvider(gateways.agentStore, {

@@ -37,6 +37,7 @@ import type { ToolExecutionRegistry } from './wiring/toolkit/executions.js'
 import type { PracticeService } from '@onething/runtime/practice/service.wiring'
 import type { MusicSubsystem } from './wiring/music/subsystem.js'
 import type { CollabDigestRunner } from './wiring/collab/digest-runner.js'
+import type { NotesSubsystem } from './wiring/notes/index.js'
 import type { StreamEngine } from './wiring/engine/stream-engine-bound.js'
 import type { MainOnethingRuntime } from './wiring/engine/index.js'
 import type { OnethingBackend } from './backend.js'
@@ -98,6 +99,12 @@ export interface BackendHandle {
   readonly practice: PracticeService
   readonly music: MusicSubsystem
   readonly collabDigests: CollabDigestRunner
+  /**
+   * 笔记子系统(P1)。**是子系统不是注册表** —— 宿主要能在「我刚刚才声明
+   * 可信」之后喊一句 `refresh()`(`apps/server/src/main.ts`),那是形状照
+   * `backend.mcp` / `backend.acp` 的理由。夹紧宿主上它的库表是空的,不是缺席。
+   */
+  readonly notes: NotesSubsystem
   readonly engine: StreamEngine
   readonly runtime: MainOnethingRuntime
 }
@@ -157,6 +164,9 @@ export function createBackendHandle(parts: BackendHandleParts): BackendHandle {
     },
     get collabDigests() {
       return requireBackendField(parts, 'collabDigests')
+    },
+    get notes() {
+      return requireBackendField(parts, 'notes')
     },
     get journalStore() {
       return requireBackendField(parts, 'journalStore')

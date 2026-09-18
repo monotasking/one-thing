@@ -35,9 +35,14 @@ import type {
 import type { SessionStoreGateway } from '@onething/runtime/variables/providers/session-store'
 import type { WorkdirGateway } from '@onething/runtime/variables/providers/core'
 import type { NoteVarName, NotesGateway } from '@onething/runtime/variables/providers/notes'
+import type {
+  NoteVaultsGateway,
+  NoteVaultSummary,
+} from '@onething/runtime/variables/providers/note-vaults'
 import { getGoal, goalLimits } from '../goals/index.js'
 import { getMusicNowPlaying } from '../music/service.js'
 import { getRadioStore } from '../music/radio.js'
+import { getNoteSystemRegistry } from '../notes/index.js'
 import { computeAgentPresence } from '@onething/runtime/agents'
 import { isAgentPairDmRoom } from '@onething/runtime/collab'
 import type {
@@ -477,4 +482,45 @@ export const musicRadioGateway: MusicRadioGateway = {
     return { active: brief.active, intent: brief.intent, lastError: brief.lastError }
   },
   getProgrammeLength: () => getRadioStore().readProgramme().entries.length,
+}
+
+/**
+ * 只读派生变量 `note_vaults` 的产地(P1)。
+ *
+ * **它一条 CLI 命令都不发。** 库表是 `NoteSystemRegistry` 内存里的东西(装配时
+ * 与每次设置变更时各问一次驱动),今日日记那一格走领域的 **offline 读** ——
+ * `dailyNote(undefined, { offline: true })` 只用快照 / 本地计算,答不出来就把那
+ * 一格省掉。变量板每回合都渲染一次,在那条路上起子进程 = 给每一轮对话加一次
+ * 进程启动。
+ *
+ * registry 是**晚绑定**的:这个网关造出来时笔记子系统还没装(`bootstrapVariableSystem`
+ * 排在 `bootstrapNotes` 之前),所以句柄在每次 `list()` 里现取 —— 与
+ * `resourceStateVariableGateway` 同一条判例。
+ */
+export const noteVaultsGateway: NoteVaultsGateway = {
+  async list(): Promise<NoteVaultSummary[]> {
+    let registry: ReturnType<typeof getNoteSystemRegistry>
+    try {
+      registry = getNoteSystemRegistry()
+    } catch {
+      // 还没装配 / 这台宿主没有笔记领域:变量随之消失,不是错误。
+      return []
+    }
+    const vaults = registry.vaults()
+    if (vaults.length === 0) return []
+    const primary = registry.primaryVault()
+    const today = primary
+      ? await primary.dailyNote(undefined, { offline: true }).then(
+          ref => ref.path,
+          () => undefined,
+        )
+      : undefined
+    return vaults.map(vault => ({
+      name: vault.name,
+      root: vault.root,
+      system: vault.system,
+      primary: primary?.id === vault.id,
+      ...(today !== undefined && primary?.id === vault.id ? { today } : {}),
+    }))
+  },
 }

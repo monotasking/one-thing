@@ -13,6 +13,9 @@ import type {
   ChatSettings,
   EditorSettings,
   NetworkSettings,
+  NotesSettings,
+  NoteSystemPreference,
+  NoteVaultPreference,
   PetChattinessSetting,
   PluginPreferences,
 } from '../ipc/settings.js'
@@ -540,6 +543,84 @@ function normalizeAISection(
   }
 }
 
+// ============================================================================
+// Notes Settings
+// ============================================================================
+
+export const DEFAULT_NOTES_DAILY_FORMAT = 'YYYY-MM-DD'
+
+/**
+ * 笔记库的出厂值(§3.3)。
+ *
+ * **`systems` 出厂是空表,而空表的意思是「全开」** —— 缺席即启用。这台机器上有
+ * 没有 Obsidian 由名册回答(`obsidian.json` 不存在 = 零个库),不该让用户先去开
+ * 一个开关才发现自己本来就有六个库。名册与开关是两件事。出厂值里也就不该出现
+ * 任何一个笔记系统的名字。
+ *
+ * `vaults` / `folders` 出厂是空的 —— 播种是一次性迁移干的活(P1 的
+ * `wiring/notes/migration.ts`),不是 defaults 干的:defaults 跑在每一次读设置
+ * 上,而读 `obsidian.json` 是一次 IO。
+ */
+export const DEFAULT_NOTES_SETTINGS: NotesSettings = {
+  systems: {},
+  vaults: {},
+  folders: [],
+  dailyFormat: DEFAULT_NOTES_DAILY_FORMAT,
+}
+
+/**
+ * `settings.notes` 的归一。
+ *
+ * 与 `connectedDirectories` 同一条理由(那边的注释写得最全):`folders` 会变成
+ * 笔记领域的库根,脏值的代价不是界面难看 —— 一条相对路径进了根表,
+ * 「这个文件属于哪个库」就会按用户当初怎么打字而变。所以这里只收绝对路径,
+ * 复用同一个归一器。
+ *
+ * 每个库那一行也逐格归一:`enabled` / `skills` 只收布尔,不认识的键丢掉 ——
+ * 它们会被原样写回 `settings.json`,一个手写的脏键会永远留在那里。
+ */
+export function normalizeNotesSettings(input?: NotesSettings): NotesSettings {
+  const systems: Record<string, NoteSystemPreference> = {}
+  const rawSystems = input?.systems
+  if (rawSystems && typeof rawSystems === 'object' && !Array.isArray(rawSystems)) {
+    for (const [id, preference] of Object.entries(rawSystems)) {
+      if (typeof id !== 'string' || id.trim() === '') continue
+      if (typeof preference?.enabled === 'boolean') systems[id] = { enabled: preference.enabled }
+      else systems[id] = {}
+    }
+  }
+  const vaults: Record<string, NoteVaultPreference> = {}
+  const rawVaults = input?.vaults
+  if (rawVaults && typeof rawVaults === 'object' && !Array.isArray(rawVaults)) {
+    for (const [id, preference] of Object.entries(rawVaults)) {
+      if (typeof id !== 'string' || id.trim() === '') continue
+      const entry: NoteVaultPreference = {}
+      if (typeof preference?.enabled === 'boolean') entry.enabled = preference.enabled
+      if (typeof preference?.skills === 'boolean') entry.skills = preference.skills
+      vaults[id] = entry
+    }
+  }
+  const normalized: NotesSettings = {
+    systems,
+    vaults,
+    folders: normalizeConnectedDirectories(input?.folders),
+    dailyFormat:
+      typeof input?.dailyFormat === 'string' && input.dailyFormat.trim() !== ''
+        ? input.dailyFormat
+        : DEFAULT_NOTES_DAILY_FORMAT,
+  }
+  if (typeof input?.primaryVaultId === 'string' && input.primaryVaultId.trim() !== '') {
+    normalized.primaryVaultId = input.primaryVaultId
+  }
+  if (typeof input?.attachmentDirectory === 'string' && input.attachmentDirectory.trim() !== '') {
+    normalized.attachmentDirectory = input.attachmentDirectory
+  }
+  // 迁移标记必须活过 merge:被吞掉的后果是**每次启动重播一次种**,把用户后来
+  // 删掉的库又种回来(C1 的 `storage.providerConfigMigratedAt` 同一条判例)。
+  if (typeof input?.migratedAt === 'number') normalized.migratedAt = input.migratedAt
+  return normalized
+}
+
 export function createDefaultSettings(): AppSettings {
   return {
     ai: JSON.parse(JSON.stringify(DEFAULT_AI_SETTINGS)),
@@ -567,6 +648,8 @@ export function createDefaultSettings(): AppSettings {
     },
     // 宠物开口频率:缺省「适中」(§12.4)。
     pets: { chattiness: DEFAULT_PET_CHATTINESS },
+    // 笔记库:出厂 Obsidian 开、库表空(播种是迁移的活,见 DEFAULT_NOTES_SETTINGS)。
+    notes: JSON.parse(JSON.stringify(DEFAULT_NOTES_SETTINGS)),
   }
 }
 
@@ -714,6 +797,8 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
     // 与 diagnostics / search 同一条理由(白名单式重建漏掉的键会被静默丢弃):
     // 用户选的「安静」下次启动会变回「适中」。不认识的档一律缺省档。
     pets: { chattiness: normalizePetChattinessSetting(settings.pets?.chattiness) },
+    // 同上。这一格被吞掉的后果最重:迁移标记随之消失 = 每次启动重播一次种。
+    notes: normalizeNotesSettings(settings.notes),
   }
 
   // 历史脏键 `localAddress`(剥在这里 + 剥在 `providers.json` 的写入归一里,

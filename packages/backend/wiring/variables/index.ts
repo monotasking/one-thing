@@ -30,6 +30,7 @@ import type { SetInput, VariableProvider } from "@onething/runtime/variables";
 import { createChannelSessionGuard } from "@onething/runtime/variables/channel-guard";
 import {
 	notesGateway,
+	noteVaultsGateway,
 	globalStoreGateway,
 	sessionStoreGateway,
 	workdirGateway,
@@ -103,6 +104,9 @@ export function bootstrapVariableSystem(): () => Promise<void> {
 	registerStandardVariableProviders(registry, {
 		workdir: workdirGateway,
 		notes: notesGateway,
+		// 只读派生变量 `note_vaults`(P1)。晚绑定:它在每次 list() 里现取 registry,
+		// 因为这一行跑在 `bootstrapNotes` 之前(backend.ts :830 vs :838)。
+		noteVaults: noteVaultsGateway,
 		globalStore: globalStoreGateway,
 		sessionStore: sessionStoreGateway,
 		goal: goalVariableGateway,
