@@ -1,9 +1,9 @@
 import { registerTargetRenderer } from './registry'
 import { actionTargetRenderer } from './action'
 import { chatTargetRenderer } from './chat'
-import { dailyTargetRenderer } from './daily'
 import { fileTargetRenderer } from './file'
 import { messageTargetRenderer } from './message'
+import { noteTargetRenderer } from './note'
 import { promptTargetRenderer } from './prompt'
 
 /**
@@ -21,9 +21,9 @@ import { promptTargetRenderer } from './prompt'
 for (const renderer of [
   actionTargetRenderer,
   chatTargetRenderer,
-  dailyTargetRenderer,
   fileTargetRenderer,
   messageTargetRenderer,
+  noteTargetRenderer,
   promptTargetRenderer,
 ]) {
   registerTargetRenderer(renderer)
@@ -33,7 +33,7 @@ export { registerTargetRenderer, resolveTargetRenderer, resetTargetRenderers, ta
 export type { SearchTargetContext, SearchTargetRenderer, SearchTargetRowProps } from './registry'
 export type { ActionTargetPayload } from './action'
 export type { ChatTargetPayload } from './chat'
-export type { DailyTargetPayload } from './daily'
 export type { FileTargetPayload } from './file'
 export type { MessageTargetPayload } from './message'
+export type { NoteTargetPayload } from './note'
 export type { PromptTargetPayload } from './prompt'

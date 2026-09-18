@@ -660,7 +660,7 @@ export class OnethingSearchService {
  * 装上六个内置能力的服务。桌面装一份(进程单例,见 `service-bound.ts`),
  * server 按请求上下文各装一份(它的会话 / 文件 / 提示词表是 per-owner 的)。
  *
- * **索引面是必填的**(S3b):messages / chats / daily 三路已经是索引型,没有索引
+ * **索引面是必填的**(S3b):messages / chats / notes 三路已经是索引型,没有索引
  * 就没有这三类结果 —— 而不是「悄悄退回旧扫描」(§13 留账那一条:旧扫描 S5 会删,
  * 这里不许再长出第二条路)。索引是 **store 级**的:桌面与回环 server 各装一份服务却传
  * 同一份索引。**按 owner 沙箱化的那一支例外** —— 索引文档上没有 owner 这一格,共用即串

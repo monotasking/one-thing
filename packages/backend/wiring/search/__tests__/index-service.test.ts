@@ -24,8 +24,10 @@ import { MessageChannel } from 'node:worker_threads'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-search-wiring-'))
 const notesDir = path.join(storeRoot, 'notes')
+const secondVaultDir = path.join(storeRoot, 'second-vault')
 const sessionsDir = path.join(storeRoot, 'sessions')
 fs.mkdirSync(notesDir, { recursive: true })
+fs.mkdirSync(secondVaultDir, { recursive: true })
 fs.mkdirSync(sessionsDir, { recursive: true })
 const previousStorePath = process.env.ONETHING_STORE_PATH
 process.env.ONETHING_STORE_PATH = storeRoot
@@ -35,11 +37,13 @@ import { EventBus } from '../../../events/event-bus.js'
 import { SESSION_EVENT_TYPES } from '@onething/core/events'
 import { encodeSessionLogEventLine } from '@onething/core/session'
 import type { SessionLogEventRecord } from '@onething/core/session'
-import { DailyNotesFeed, DAILY_FEED_ID, LedgerFeed, LEDGER_FEED_ID, IndexProjector, IndexWorkerCore, SqliteIndex, defaultDocumentFilters } from '@onething/runtime/search/index'
+import { VaultFeed, vaultFeedIdOf, LedgerFeed, LEDGER_FEED_ID, IndexProjector, IndexWorkerCore, SqliteIndex, defaultDocumentFilters } from '@onething/runtime/search/index'
 import type { IndexEndpoint } from '@onething/runtime/search/index'
 import type { IndexWorkerData } from '@onething/runtime/search/index/worker-data'
 import type { IndexWorkerHandle } from '@onething/runtime/search/index/worker-host'
 import type { OnethingSearchProvidersAdapters } from '@onething/runtime/search'
+import { FolderVault } from '@onething/runtime/notes'
+import type { NoteVault } from '@onething/runtime/notes'
 import {
   broadcastSettingsChanged,
   configureSettingsEventBroadcaster,
@@ -69,29 +73,41 @@ vi.mock('../../../session/event-log.js', () => ({
 }))
 
 /**
- * 取材面:装配层真正那一份要读设置 / 会话仓 / ripgrep,而这里要验的是装配的算术,
- * 所以给一份最小的。**每日笔记那一格是真的**:`resolveDailyNoteSearchDirs` 读它,
- * 而「笔记目录算对了没有」正是①要证的事之一。
+ * 取材面:装配层真正那一份要读会话仓 / ripgrep / 笔记子系统,而这里要验的是装配
+ * 的算术,所以给一份最小的。**笔记库那一格是真的**(两个库,一个有日记文件夹一个
+ * 没有):装配读的就是它,而「库表 / 日记文件夹算对了没有」正是①要证的事之一。
+ *
+ * P2 之前这里是 `getSettings()` 里 `general.dailyNotes` 那五格 —— 那条路
+ * (`resolveDailyNoteSearchDirs` 自己去读设置 + `.obsidian/daily-notes.json`)
+ * 随 `daily` 能力一起删了。
  */
+const primaryVault = new FolderVault({ root: notesDir, id: 'v1', name: 'notes' })
+/** 第二个库:**没有快照** —— `dailyNote` 抛,于是它的 `dailyFolder` 那一格该缺席。 */
+const noSnapshotVault: NoteVault = {
+  id: 'v2',
+  name: 'no-snapshot',
+  root: secondVaultDir,
+  system: 'obsidian',
+  dailyNote: () => Promise.reject(new Error('no snapshot')),
+  createDailyNote: () => Promise.reject(new Error('no snapshot')),
+  appendToDaily: () => Promise.reject(new Error('no snapshot')),
+  createNote: () => Promise.reject(new Error('no snapshot')),
+  attachmentPathFor: () => Promise.reject(new Error('no snapshot')),
+  linkTextFor: () => Promise.reject(new Error('no snapshot')),
+  resolveByName: async () => null,
+  listNotes: async () => [],
+}
 const stubAdapters: OnethingSearchProvidersAdapters = {
   getSessionsList: () => fs.readdirSync(sessionsDir).filter(id => fs.existsSync(path.join(sessionsDir, id, 'meta.json')))
     .map(id => ({ id, updatedAt: 200, ...JSON.parse(fs.readFileSync(path.join(sessionsDir, id, 'meta.json'), 'utf8')) })),
   iterateSessionMessages: () => [],
   getSession: () => undefined,
   getCurrentSessionId: () => undefined,
-  getSettings: () => ({
-    general: {
-      dailyNotes: {
-        enabled: true,
-        directoryMode: 'custom',
-        customDirectory: notesDir,
-        useObsidianConfig: false,
-      },
-    },
-  }),
   getVariablesStore: () => ({ getUserNoteDir: () => undefined, getWorkNoteDir: () => undefined }),
   listFiles: () => ({ async *[Symbol.asyncIterator]() {} }),
   listPrompts: () => [],
+  getNoteVaults: () => [primaryVault, noSnapshotVault],
+  getPrimaryNoteVault: () => primaryVault,
 }
 vi.mock('../adapters.js', () => ({ createAppSearchProvidersAdapters: () => stubAdapters }))
 
@@ -119,10 +135,7 @@ function sameThreadWorker(data: IndexWorkerData): SameThread {
         sessionsDir: data.sessionsDir,
         projector: new IndexProjector({ includeReasoning: data.includeReasoning ?? false }),
       }),
-      ...(data.notesDirs ?? []).map((dir, at) => new DailyNotesFeed({
-        notesDir: dir,
-        ...(at === 0 ? {} : { id: `${DAILY_FEED_ID}#${at}` }),
-      })),
+      ...(data.vaults ?? []).map(vault => new VaultFeed(vault)),
     ],
     filters: defaultDocumentFilters(),
     ...(data.schemas !== undefined ? { schemas: data.schemas } : {}),
@@ -336,7 +349,7 @@ describe('search authorization before retrieval, preview and actions', () => {
     } finally { restore() }
   })
 
-  it('rejects arbitrary file roots and symlinked daily paths before enumeration, reads or writes', async () => {
+  it('rejects arbitrary file roots and symlinked note paths before enumeration, reads or writes', async () => {
     const { rpc, restore } = await seedOwners()
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'search-private-'))
     fs.writeFileSync(path.join(outside, 'secret.md'), 'private')
@@ -344,23 +357,25 @@ describe('search authorization before retrieval, preview and actions', () => {
     const listFiles = vi.spyOn(stubAdapters, 'listFiles')
     const read = vi.spyOn(fs.promises, 'readFile')
     const write = vi.spyOn(fs.promises, 'writeFile')
-    const dailyPreview = vi.spyOn(handle!.service.registry.get('daily')!, 'preview')
-    const dailyInvoke = vi.spyOn(handle!.service.registry.get('daily')!, 'invoke')
+    const notesPreview = vi.spyOn(handle!.service.registry.get('notes')!, 'preview')
+    const notesInvoke = vi.spyOn(handle!.service.registry.get('notes')!, 'invoke')
     try {
       expect((await rpc.query({ query: 'secret', category: 'files', filters: { dir: outside } }, alice)).success).toBe(false)
       expect(listFiles).not.toHaveBeenCalled()
       const escaped = path.join(notesDir, 'escape', 'secret.md')
-      expect((await rpc.preview({ items: [{ capability: 'daily', id: `daily:${escaped}`, target: { kind: 'daily', payload: { filePath: escaped } } }] }, { transport: 'ipc' })).success).toBe(false)
+      expect((await rpc.preview({ items: [{ capability: 'notes', id: `note:${escaped}`, target: { kind: 'note', payload: { filePath: escaped } } }] }, { transport: 'ipc' })).success).toBe(false)
       expect(read.mock.calls.some(call => String(call[0]).endsWith('secret.md'))).toBe(false)
-      expect(dailyPreview).not.toHaveBeenCalled()
-      expect((await rpc.invoke({ capability: 'daily', actionId: `create-daily:${encodeURIComponent(path.join(outside, 'new.md'))}`, items: [] }, { transport: 'ipc' })).success).toBe(false)
+      expect(notesPreview).not.toHaveBeenCalled()
+      // 库外路径:`create-daily:` 与 `create-note:` 两条动作夹的是同一张库根表。
+      expect((await rpc.invoke({ capability: 'notes', actionId: `create-daily:${encodeURIComponent(path.join(outside, 'new.md'))}`, items: [] }, { transport: 'ipc' })).success).toBe(false)
+      expect((await rpc.invoke({ capability: 'notes', actionId: `create-note:${encodeURIComponent(path.join(outside, 'new.md'))}`, items: [] }, { transport: 'ipc' })).success).toBe(false)
       expect(write).not.toHaveBeenCalled()
-      expect(dailyInvoke).not.toHaveBeenCalled()
+      expect(notesInvoke).not.toHaveBeenCalled()
       expect(fs.existsSync(path.join(outside, 'new.md'))).toBe(false)
       const allowed = path.join(notesDir, 'allowed.md')
-      expect((await rpc.invoke({ capability: 'daily', actionId: `create-daily:${encodeURIComponent(allowed)}`, items: [] }, { transport: 'ipc' })).success).toBe(true)
+      expect((await rpc.invoke({ capability: 'notes', actionId: `create-note:${encodeURIComponent(allowed)}`, items: [] }, { transport: 'ipc' })).success).toBe(true)
       expect(fs.existsSync(allowed)).toBe(true)
-      expect((await rpc.preview({ items: [{ capability: 'daily', id: `daily:${allowed}`, target: { kind: 'daily', payload: { filePath: allowed } } }] }, { transport: 'ipc' })).success).toBe(true)
+      expect((await rpc.preview({ items: [{ capability: 'notes', id: `note:${allowed}`, target: { kind: 'note', payload: { filePath: allowed } } }] }, { transport: 'ipc' })).success).toBe(true)
     } finally { restore(); fs.rmSync(outside, { recursive: true, force: true }) }
   })
 })
@@ -375,10 +390,14 @@ describe('createAppSearchService:起停', () => {
     const data = started!.data
     expect(data.databasePath).toBe(path.join(storeRoot, 'index', 'search.v1.sqlite'))
     expect(data.sessionsDir).toBe(sessionsDir)
-    // 笔记目录来自设置(同一个产地:`resolveDailyNoteSearchDirs`),不是硬编码。
-    expect(data.notesDirs).toEqual([notesDir])
+    // 笔记库来自笔记领域(同一个产地:`adapters.getNoteVaults()`),不是硬编码。
+    // 第二个库答不出日记落点(没有快照),于是它那一格**缺席**,不猜一个。
+    expect(data.vaults).toEqual([
+      { id: 'v1', root: notesDir, dailyFolder: '' },
+      { id: 'v2', root: secondVaultDir },
+    ])
     // 字段表来自三份 manifest 的 schema —— 装配不认识任何一格字段名。
-    expect(Object.keys(data.schemas ?? {}).sort()).toEqual(['chats', 'daily', 'messages'])
+    expect(Object.keys(data.schemas ?? {}).sort()).toEqual(['chats', 'messages', 'notes'])
     // `embed` 那一格也要搬过来 —— 少了它嵌入队列会永远空着(施工时踩过,
     // `vec_docs` 零行而 `vectorPending` 一直是 0)。
     expect(data.schemas?.messages?.content).toEqual({ analyzer: 'composite', weight: 1, embed: true })
@@ -537,10 +556,10 @@ describe('createAppSearchService:流式期间不白折(§5.2 + projector 的 IND
   })
 })
 
-// ---- ③ daily 懒建 ------------------------------------------------------
+// ---- ③ notes 懒建 ------------------------------------------------------
 
-describe('createAppSearchService:daily 是懒的(§5.2b「文件树 lazy(首次查询才建)」)', () => {
-  it('查过 daily 档之前 feeds 里没有笔记那一路,查过之后有', async () => {
+describe('createAppSearchService:notes 是懒的(§5.2b「文件树 lazy(首次查询才建)」)', () => {
+  it('查过 notes 档之前 feeds 里没有笔记那一路,查过之后有', async () => {
     writeSession('s1', '身份牌已经私发四人了', '开局')
     fs.writeFileSync(path.join(notesDir, '2026-09-05.md'), '# 2026-09-05\n\n身份牌那件事今天办完了\n')
     await mount()
@@ -549,14 +568,14 @@ describe('createAppSearchService:daily 是懒的(§5.2b「文件树 lazy(首次�
     const before = await handle!.index!.status()
     expect(before.feeds).toEqual([LEDGER_FEED_ID])
 
-    // 第一次查 daily:纳入 + 排队建,这一发本身可能还查不到(懒建的诚实代价)。
-    await search('身份牌', 'daily')
+    // 第一次查 notes:纳入 + 排队建,这一发本身可能还查不到(懒建的诚实代价)。
+    await search('身份牌', 'notes')
     const after = await handle!.index!.status()
-    expect(after.feeds).toContain(DAILY_FEED_ID)
+    expect(after.feeds).toContain(vaultFeedIdOf('v1'))
 
     // 建完之后才有结果。
     await handle!.index!.drain()
-    expect((await search('身份牌', 'daily')).map(result => result.filePath))
+    expect((await search('身份牌', 'notes')).map(result => result.filePath))
       .toEqual([path.join(notesDir, '2026-09-05.md')])
   })
 
@@ -709,6 +728,60 @@ describe('createAppSearchService:语义召回开关保存即生效', () => {
     broadcastSettingsChanged(settingsWith(false))
     await new Promise(resolve => setTimeout(resolve, 50))
     expect(hostBroadcasts.length).toBe(2)
+    expect(spawned.length).toBe(2)
+  })
+})
+
+// ---- ⑥ 笔记库表变了:换一条 Worker -------------------------------------
+
+/**
+ * **库表变了就换 Worker**(P2)。
+ *
+ * 判的与 ⑤ 是同一层的事(装配的算术),只是换的那一格从语义配置变成了笔记库表:
+ *
+ *  ① 表不变 = 一个字都不做(`applyNotes` 答 `false`);
+ *  ② 表变了 = 换一条 Worker,新那条拿到的 `workerData.vaults` 是新表;
+ *  ③ 库全没了(宿主变得不可信、用户把最后一个库关掉)= 同样换一条,`vaults` 缺席。
+ *
+ * 入口是 `AppSearchServiceHandle.applyNotes` —— 生产上它由
+ * `NotesSubsystem.onRefreshed` 喊(订的是笔记域的**产物**,不是设置;理由写在
+ * `NotesSubsystem.onRefreshed` 的注释里)。这里直接问那一手,因为这批用例连一台
+ * backend 都没装,`getNotesSubsystemSafe()` 恒 `null`。
+ */
+describe('createAppSearchService:笔记库表变了就换 Worker', () => {
+  it('① 同表不换:逐项相同 = 一个字都不做', async () => {
+    writeSession('s1', '身份牌已经私发四人了', '开局')
+    await mount()
+    expect(spawned.length).toBe(1)
+
+    await expect(handle!.applyNotes([primaryVault, noSnapshotVault])).resolves.toBe(false)
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(spawned.length).toBe(1)
+  })
+
+  it('② 少一个库:换一条 Worker,新那条的 vaults 是新表;词法索引一个字没丢', async () => {
+    writeSession('s1', '身份牌已经私发四人了', '开局')
+    await mount()
+
+    await expect(handle!.applyNotes([primaryVault])).resolves.toBe(true)
+    expect(spawned.length).toBe(2)
+    expect(spawned[1]!.data.vaults).toEqual([{ id: 'v1', root: notesDir, dailyFolder: '' }])
+    // 换的只是 Worker:库路径与字段表逐格照旧。
+    expect(spawned[1]!.data.databasePath).toBe(spawned[0]!.data.databasePath)
+    expect(spawned[1]!.data.schemas).toEqual(spawned[0]!.data.schemas)
+
+    await handle!.index!.drain()
+    expect((await search('身份牌', 'messages')).map(result => result.sessionId)).toEqual(['s1'])
+  })
+
+  it('③ 一个库都不剩:换一条,`vaults` 缺席(不是一张空表)', async () => {
+    writeSession('s1', '身份牌已经私发四人了', '开局')
+    await mount()
+
+    await expect(handle!.applyNotes([])).resolves.toBe(true)
+    expect(spawned[1]!.data.vaults).toBeUndefined()
+    // 再喊一次空表 = 同表,不换。
+    await expect(handle!.applyNotes([])).resolves.toBe(false)
     expect(spawned.length).toBe(2)
   })
 })

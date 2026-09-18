@@ -12,15 +12,16 @@ export { createActionsSearchCapability, actionsSearchManifest } from './actions.
 export type { ActionTarget } from './actions.js'
 export { createChatsSearchCapability, chatsSearchManifest, sessionTitleOf } from './sessions.js'
 export type { ChatTarget } from './sessions.js'
-export { CREATE_DAILY_ACTION, createDailySearchCapability, dailySearchManifest } from './daily.js'
-export type { DailyTarget } from './daily.js'
 export {
-  createDailyNote,
-  formatDailyDate,
-  resolveDailyNoteSearchDirs,
-  resolveDailyTodayShortcut,
-} from './daily-notes.js'
-export type { DailySearchResult } from './daily-notes.js'
+  CREATE_DAILY_ACTION,
+  CREATE_NOTE_ACTION,
+  createNotesSearchCapability,
+  notesManifestOf,
+  notesSearchManifest,
+  sanitizeNoteFileName,
+  todayMatchesQuery,
+} from './notes.js'
+export type { NoteTarget } from './notes.js'
 export { createFilesSearchCapability, filesSearchManifest } from './files.js'
 export type { FileTarget } from './files.js'
 export { createMessagesSearchCapability, messagesSearchManifest } from './messages.js'
@@ -80,7 +81,7 @@ import type { SearchCapability } from '@onething/core/search'
 import type { OnethingSearchProvidersAdapters } from '../providers.js'
 import { createActionsSearchCapability } from './actions.js'
 import { createChatsSearchCapability } from './sessions.js'
-import { createDailySearchCapability } from './daily.js'
+import { createNotesSearchCapability } from './notes.js'
 import { createFilesSearchCapability } from './files.js'
 import type { SearchIndexQueryFace } from './indexed.js'
 import { createMessagesSearchCapability } from './messages.js'
@@ -91,8 +92,8 @@ import { createPromptsSearchCapability } from './prompts.js'
  * 文件自己去取的单例,于是 server 每个 owner 装一份服务时仍然共用同一份索引
  * (索引是 store 级的,不按 owner 分)。
  *
- * 六件都收 `adapters`:索引答不出的那两件事(chats 的「最近几间会话」、daily 的
- * 「今天那一条」)要从取材面拿,S3b 起 daily 也收它。
+ * 六件都收 `adapters`:索引答不出的那两件事(chats 的「最近几间会话」、notes 的
+ * 「今天那一条」)要从取材面拿。
  */
 export function createBuiltinSearchCapabilities(
   adapters: OnethingSearchProvidersAdapters,
@@ -101,7 +102,7 @@ export function createBuiltinSearchCapabilities(
   return [
     createChatsSearchCapability(adapters, index),
     createPromptsSearchCapability(adapters),
-    createDailySearchCapability(adapters, index),
+    createNotesSearchCapability(adapters, index),
     createFilesSearchCapability(adapters),
     createMessagesSearchCapability(adapters, index),
     createActionsSearchCapability(adapters),

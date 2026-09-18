@@ -7,23 +7,25 @@
  * `searchMessages` / `searchActions` / `searchPrompts` / `searchFiles` /
  * `searchDailyNotes`)与它们的入口 `executeSearch`。旧路退役之后:
  *
- *  - `chats` / `messages` / `daily` 三条已经是索引型,匹配这件事根本不在这一层;
+ *  - `chats` / `messages` / `notes` 三条已经是索引型,匹配这件事根本不在这一层;
  *  - `actions` / `prompts` / `files` 三条的匹配器搬进了各自的
  *    `capabilities/<id>.ts` —— **一类 = 一个文件**;
- *  - 每日笔记的配置、「今天那一条」与建文件搬进了 `capabilities/daily-notes.ts`。
+ *  - 笔记那一路的配置来自**笔记领域**(`getNoteVaults`),不再是这一层的事。
  *
  * 于是这里只剩下**接口**:能力问宿主要会话表 / 会话消息 / 设置 / 变量仓 /
  * 文件列举 / 提示词表,宿主(桌面装配、server 按 owner、单测的假件)各给一份。
  *
  * ## 那个进程单槽
  *
- * `configureOnethingSearchProviders` 装的是**这台进程的**取材面,只服务于两个
- * 不带参数被调到的口:`resolveDailyNoteSearchDirs()` 与 `createDailyNote()`
- * (搜索结果上「新建今天的日记」按下去那一下)。真正的查询路一律**把 adapters
- * 当参数递**(`createBuiltinSearchCapabilities(adapters, index)`),因为 server
- * 那一侧的取材面是 per-owner 的,组不出进程单例。
+ * `configureOnethingSearchProviders` 装的是**这台进程的**取材面。P2 之前它还服务
+ * 两个不带参数被调到的口(`resolveDailyNoteSearchDirs()` / `createDailyNote()`)——
+ * 那两只随 `daily` 那一类一起没了(建笔记这件事今天走 `NoteVault` 自己)。查询路
+ * 一律**把 adapters 当参数递**(`createBuiltinSearchCapabilities(adapters, index)`),
+ * 因为 server 那一侧的取材面是 per-owner 的,组不出进程单例。
  */
 
+
+import type { NoteVault } from '../notes/types.js'
 
 export interface OnethingSearchSessionMeta {
   ownerUserId?: string
@@ -86,20 +88,6 @@ export interface OnethingSearchVariablesStore {
   getWorkNoteDir(): string | undefined
 }
 
-export interface OnethingDailyNoteSettings {
-  enabled?: boolean
-  directoryMode?: 'personal' | 'custom' | string
-  customDirectory?: string
-  useObsidianConfig?: boolean
-  format?: string
-}
-
-export interface OnethingSearchSettings {
-  general: {
-    dailyNotes?: OnethingDailyNoteSettings
-  }
-}
-
 export interface OnethingSearchListFilesOptions {
   cwd: string
   glob?: string[]
@@ -136,8 +124,23 @@ export interface OnethingSearchProvidersAdapters {
   iterateSessionMessages(sessionId: string): Iterable<OnethingSearchMessage>
   getSession(sessionId: string): OnethingSearchSession | undefined
   getCurrentSessionId(): string | undefined
-  getSettings(): OnethingSearchSettings
   getVariablesStore(): OnethingSearchVariablesStore
+  /**
+   * 这台机器上在册的笔记库(P2)。
+   *
+   * **可选是判据不是省事**:缺席 = 这台宿主没有笔记领域(单测的假件、还没装配
+   * 完的进程),于是 `notes` 那一类的 `supports` 答 false、整组不出现 —— 与
+   * 「有库但零命中」是两件事。夹紧的宿主上它答的是**空表**(笔记库是这台机器上
+   * 用户自己的文件,交给另一个人是越权),同样是「整组不出现」。
+   *
+   * 交出来的是**领域对象**而不是路径表:`notes` 那一类要问它「今天那本日记在
+   * 哪」「把这一篇建出来」,而那两件事的答案住在库自己身上(日记文件夹 / 格式 /
+   * 模板都是库的配置)。检索这一路只调它的 **offline / 前台** 两族方法里
+   * 明确安全的那几只 —— 后台读一律 `{ offline: true }`,一条 CLI 命令都不发。
+   */
+  getNoteVaults?(): NoteVault[]
+  /** 主库(「今天」那一条问的就是它)。缺席 / `null` = 这台机器上没有笔记库。 */
+  getPrimaryNoteVault?(): NoteVault | null
   /** 用户配置的「接入目录」;缺席/空数组 = 搜索根与没有这个功能时一致。 */
   getConnectedDirectories?(): string[]
   listFiles(options: OnethingSearchListFilesOptions): AsyncIterable<string>

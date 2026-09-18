@@ -46,12 +46,14 @@ export {
 export type { LedgerFeedOptions, SubscribeAdapter } from './ledger-feed.js'
 
 export {
-  DAILY_FEED_ID,
-  DEFAULT_DAILY_CAPABILITY,
-  DEFAULT_DAILY_EXTENSIONS,
-  DailyNotesFeed,
-} from './daily-feed.js'
-export type { DailyNotesFeedOptions } from './daily-feed.js'
+  DEFAULT_NOTE_EXTENSIONS,
+  DEFAULT_NOTES_CAPABILITY,
+  SKIPPED_VAULT_DIRECTORIES,
+  VAULT_FEED_ID_PREFIX,
+  VaultFeed,
+  vaultFeedIdOf,
+} from './vault-feed.js'
+export type { VaultFeedOptions, VaultFeedSpec } from './vault-feed.js'
 
 export { defaultDocumentFilters, exclusionFilter, redactionFilter } from './filters.js'
 export type { ExclusionPredicate } from './filters.js'

@@ -86,7 +86,6 @@ const stubAdapters: OnethingSearchProvidersAdapters = {
   iterateSessionMessages: () => [],
   getSession: () => undefined,
   getCurrentSessionId: () => undefined,
-  getSettings: () => ({ general: { dailyNotes: { enabled: false } } }),
   getVariablesStore: () => ({
     getUserNoteDir: () => undefined,
     getWorkNoteDir: () => undefined,
@@ -192,7 +191,7 @@ describe('search RPC domain', () => {
       { domain: 'search', method: 'capabilities', payload: {} }, IPC))
     const manifests = response.capabilities as Array<Record<string, unknown>>
     expect(manifests.map(manifest => manifest.id))
-      .toEqual(['chats', 'prompts', 'daily', 'files', 'messages', 'actions'])
+      .toEqual(['chats', 'prompts', 'notes', 'files', 'messages', 'actions'])
     // 意图前缀由能力自报(§6.1);core 与契约里都没有 `/` `>` 这两个字面量。
     expect(manifests.find(manifest => manifest.id === 'actions')?.intentPrefixes).toEqual(['/', '>'])
   })

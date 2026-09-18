@@ -155,7 +155,7 @@ describe('tab 条 = 自述表(§9 第一条)', () => {
     await waitFor(() => expect(screen.getByText('笔记').getAttribute('aria-checked')).toBe('true'))
     resetSearchCatalog()
     serve(() => ({ success: true, results: [] }), {
-      capabilities: async () => FAKE_CAPABILITY_MANIFESTS.filter(m => m.id !== 'daily'),
+      capabilities: async () => FAKE_CAPABILITY_MANIFESTS.filter(m => m.id !== 'notes'),
     })
     await ensureSearchCatalog()
     await waitFor(() => expect(screen.queryByText('笔记')).toBeNull())
@@ -818,7 +818,7 @@ describe('落点与读数', () => {
 
   it('后端给了真 total → 取尽那一刻块尾读数报的是它(不知道 ≠ 0)', async () => {
     serveRows({
-      results: [hit({ target: { kind: 'daily', payload: { filePath: '/a.md' } } })],
+      results: [hit({ target: { kind: 'note', payload: { filePath: '/a.md' } } })],
       total: 42,
     })
     render(<SearchPanel />)

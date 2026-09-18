@@ -17,7 +17,7 @@ import { registerBuiltinEmbedders, resolveEmbedder } from '../embedding/index.js
 
 import { ModelDownloader } from './model-download.js'
 
-import { DAILY_FEED_ID, DailyNotesFeed } from './daily-feed.js'
+import { VaultFeed } from './vault-feed.js'
 import { defaultDocumentFilters } from './filters.js'
 import { LedgerFeed } from './ledger-feed.js'
 import { IndexProjector } from './projector.js'
@@ -121,11 +121,9 @@ const feeds = [
     sessionsDir: data.sessionsDir,
     projector: new IndexProjector({ includeReasoning: data.includeReasoning ?? false }),
   }),
-  // 一个笔记目录一把 feed。第二把起要另给 id —— 索引服务按 id 找 feed。
-  ...(data.notesDirs ?? []).map((notesDir, at) => new DailyNotesFeed({
-    notesDir,
-    ...(at === 0 ? {} : { id: `${DAILY_FEED_ID}#${at}` }),
-  })),
+  // 一个笔记库一把 feed。id = `vault:<vaultId>`,库 id 本来就是唯一的 ——
+  // 索引服务按 id 找 feed,所以不需要第二套编号。
+  ...(data.vaults ?? []).map(vault => new VaultFeed(vault)),
 ]
 const core = new IndexWorkerCore({
   endpoint: port as unknown as IndexEndpoint,

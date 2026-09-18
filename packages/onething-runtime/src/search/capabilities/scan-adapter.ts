@@ -13,7 +13,7 @@
  * 结果的**键序**、以及「哪些键在、哪些键因为值是 undefined 而不在」,是各能力自己
  * 一行行写出来的;在这里重新投影一份等价的既证不出来、又会变成第二个「一条结果长
  * 什么样」的产地。所以候选驮着那条记录走,投影就是「原样 + `target`」——
- * `ResultBackedCandidate.result`。三条索引型能力(chats / messages / daily)也用
+ * `ResultBackedCandidate.result`。三条索引型能力(chats / messages / notes)也用
  * 同一格:它们从索引答的文档里造出那条记录,再挂到候选上。
  *
  * ## 为什么基座是**每次调用现造**的
@@ -54,7 +54,7 @@ import {
  */
 export interface SearchServiceResult {
   id: string
-  type: 'chat' | 'message' | 'action' | 'file' | 'daily' | 'prompt' | 'plugin'
+  type: 'chat' | 'message' | 'action' | 'file' | 'note' | 'prompt' | 'plugin'
   title: string
   subtitle?: string
   detail?: string

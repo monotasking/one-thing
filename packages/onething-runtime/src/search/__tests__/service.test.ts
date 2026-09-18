@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import type { IndexedDoc } from '@onething/core/search'
 import type { OnethingSearchProvidersAdapters } from '../providers.js'
+import { FolderVault } from '../../notes/folder/vault.js'
 import { OnethingSearchService, createOnethingSearchService } from '../service.js'
 import { actionsSearchManifest, createBuiltinSearchCapabilities } from '../capabilities/index.js'
 import { fakeIndexFace } from './fake-index.js'
@@ -15,7 +16,7 @@ import { fakeIndexFace } from './fake-index.js'
 const ACTION_COUNT = 6
 
 /**
- * S3b:chats / messages / daily 三路改问索引,所以这份文件也得给一份索引替身。
+ * S3b:chats / messages / notes 三路改问索引,所以这份文件也得给一份索引替身。
  * 它按能力 id 把手上的文档原样交回去 —— 这里证的是**门面**(分组 / 次序 / 配额 /
  * 注册表),不是命中语义。
  */
@@ -44,7 +45,6 @@ function makeAdapters(): OnethingSearchProvidersAdapters {
     ],
     getSession: () => undefined,
     getCurrentSessionId: () => undefined,
-    getSettings: () => ({ general: { dailyNotes: { enabled: false } } }),
     getVariablesStore: () => ({
       getUserNoteDir: () => undefined,
       getWorkNoteDir: () => undefined,
@@ -53,6 +53,10 @@ function makeAdapters(): OnethingSearchProvidersAdapters {
     listPrompts: () => [
       { id: 'p1', title: 'Alpha prompt', description: 'about alpha', body: 'body', updatedAt: 5 },
     ],
+    // 一个库在册 —— `notes` 的 `supports` 问的就是它(一个库都没有 = 整组不出现)。
+    // 没有主库,所以「今天那一条」与「新建笔记」都不掺进这份分组用例里。
+    getNoteVaults: () => [new FolderVault({ root: '/notes', id: 'v1' })],
+    getPrimaryNoteVault: () => null,
   }
 }
 
@@ -60,7 +64,7 @@ describe('SearchService(S2 门面)', () => {
   it('capabilities():注册序 = 缺省展示序,六类都在', () => {
     const service = makeService()
     expect(service.capabilities().map(manifest => manifest.id))
-      .toEqual(['chats', 'prompts', 'daily', 'files', 'messages', 'actions'])
+      .toEqual(['chats', 'prompts', 'notes', 'files', 'messages', 'actions'])
   })
 
   it('全部档:分组按 order,results 就是各组按那个次序拼起来的', async () => {
@@ -68,9 +72,9 @@ describe('SearchService(S2 门面)', () => {
     const response = await service.query({ query: 'alpha', category: 'all' })
 
     const groups = response.groups ?? []
-    // 缺省次序(旧路 `[...chats, ...prompts, ...daily, ...files, ...messages, ...actions]`)。
+    // 缺省次序(旧路 `[...chats, ...prompts, ...notes, ...files, ...messages, ...actions]`)。
     expect(groups.map(group => group.capability))
-      .toEqual(['chats', 'prompts', 'daily', 'files', 'messages', 'actions'])
+      .toEqual(['chats', 'prompts', 'notes', 'files', 'messages', 'actions'])
     expect(response.results).toEqual(groups.flatMap(group => group.results))
     // 每组带自己的 label(壳的 tab 从这里来),不是 core 里的一张表。
     expect(groups[0]?.label).toBe('search.capability.chats')
@@ -80,7 +84,7 @@ describe('SearchService(S2 门面)', () => {
     const service = makeService()
     const response = await service.query({ query: '/chat', category: 'all' })
     expect((response.groups ?? []).map(group => group.capability))
-      .toEqual(['actions', 'prompts', 'chats', 'daily', 'files', 'messages'])
+      .toEqual(['actions', 'prompts', 'chats', 'notes', 'files', 'messages'])
   })
 
   it('命令意图 actions 8 条 —— 预算读的是 manifest.budget.whenIntent(§7.1 反证点)', async () => {

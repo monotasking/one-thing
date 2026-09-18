@@ -168,18 +168,28 @@ describe('幂等、备份、失败不写标记', () => {
     expect(mocks.saved).toHaveLength(0)
   })
 
-  it('general.dailyNotes.format 有值就搬进 dailyFormat', async () => {
+  /**
+   * P2 删掉了 `general.dailyNotes` 五格,于是日记格式只有一个产地:
+   * `settings.notes.dailyFormat`。有值照搬、缺席落缺省 —— 老机器上那一格已经是
+   * P1 搬过去的值,新机器上老键随那五格一起没了(零迁移:`mergeWithDefaults` 是
+   * 白名单式重建)。
+   */
+  it('dailyFormat:自己那一格有值就用它,缺席落缺省', async () => {
     mocks.settings = {
       ...mocks.settings,
-      general: {
-        ...mocks.settings.general,
-        dailyNotes: { ...mocks.settings.general.dailyNotes!, format: 'YYYY/MM/DD' },
-      },
+      notes: { ...mocks.settings.notes!, dailyFormat: 'YYYY/MM/DD' },
     }
     await migrateNotesSettings(ports())
     expect(mocks.settings.notes!.dailyFormat).toBe('YYYY/MM/DD')
-    // **不删** general.dailyNotes(P2 才删)。
-    expect(mocks.settings.general.dailyNotes?.format).toBe('YYYY/MM/DD')
+  })
+
+  it('dailyFormat 缺席 → YYYY-MM-DD', async () => {
+    mocks.settings = {
+      ...mocks.settings,
+      notes: { ...mocks.settings.notes!, dailyFormat: '' },
+    }
+    await migrateNotesSettings(ports())
+    expect(mocks.settings.notes!.dailyFormat).toBe('YYYY-MM-DD')
   })
 
   it('相对路径的老变量不进 folders(与 folders 的归一同口径)', async () => {

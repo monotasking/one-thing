@@ -2,7 +2,7 @@
  * 消息检索能力 —— **索引型**(S3b)。
  *
  * 设计:docs/design/search-index-2026-09.md §4.2(索引基座)/ §5.1(文档模型)/
- * §6.5(打分是能力的事)/ §10 S3 行(「messages / sessions / daily 换成
+ * §6.5(打分是能力的事)/ §10 S3 行(「messages / sessions / notes 换成
  * `indexedCapability`」)。
  *
  * S2 里它是 `scan` 基座裹着那只全库扫的 `searchMessages`(真店实测 1.6s、无预算、

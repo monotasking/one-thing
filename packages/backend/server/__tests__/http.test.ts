@@ -569,7 +569,7 @@ describe('createOnethingHttpServer', () => {
    * 从前 `POST /api/search/query` 背后的同一个闭包(真 server runtime 装配时注入)。
    * `POST /api/search/actions` 留在 REST 上,因为它是**窗口活**在 server 侧的对应物。
    */
-  it('searches owner-scoped server runtime data over the generic RPC route, and resolves web search actions', async () => {
+  it('searches owner-scoped server runtime data over the generic RPC route, and echoes web search actions', async () => {
     const workspaceRoot = await createTempDir('onething-server-search-')
     const serverRuntime = await createTestServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
@@ -597,7 +597,7 @@ describe('createOnethingHttpServer', () => {
       /*
        * 检索重建 S3b:**这条路上 chats 是空的,alice 和 bob 都一样。**
        *
-       * chats / messages / daily 三路换成了索引型,而这个端口(不可信 = 非回环部署的
+       * chats / messages / notes 三路换成了索引型,而这个端口(不可信 = 非回环部署的
        * server,按 owner 沙箱化)拿到的是一份**故意不可用**的索引面:进程里那份索引是
        * store 级的、折的是 `<store>/sessions`,文档上没有 owner 这一格。共用它就等于
        * 让 bob 读到宿主机器上 alice 的会话 —— 那正是这条用例原本要挡的事。少一类结果
@@ -623,18 +623,25 @@ describe('createOnethingHttpServer', () => {
       // 会话确实建出来了(不是「没建成所以搜不到」)——这一格钉的是上面那段的前提。
       expect(sessionId).toBeTruthy()
 
+      /*
+       * **`/api/search/actions` 今天只是原样回声**(P2)。
+       *
+       * 从前这里有一个分支:`create-daily-note:<path>` → 建文件 → 回
+       * `open-file:<path>`。那是 A1-a 之前 Vue 壳 `searchWindowRouter.executeAction`
+       * 的落点(那个壳 2026-09-04 退役,仓里已无调用方),更要紧的是它是**第二个
+       * 「建今天那篇日记」的产地**:真正那一条走 `search.invoke` → `notes` 能力 →
+       * `NoteVault.createDailyNote`(吃用户的日记文件夹 / 格式 / 模板)。
+       *
+       * 路由留着,于是任何动作号都得到一个诚实的回声,而 server 不再替谁建文件。
+       */
       const notePath = join(workspaceRoot, 'alice', 'search-dev-workspace', 'notes', 'today.md')
+      const actionId = `create-daily:${encodeURIComponent(notePath)}`
       await expect(fetchJson(`${baseUrlValue}/api/search/actions`, {
         method: 'POST',
         headers: { ...aliceHeaders, 'content-type': 'application/json' },
-        body: JSON.stringify({
-          actionId: `create-daily-note:${encodeURIComponent(notePath)}`,
-        }),
-      })).resolves.toEqual({
-        success: true,
-        actionId: `open-file:${notePath}`,
-      })
-      await expect(readFile(notePath, 'utf8')).resolves.toContain('# ')
+        body: JSON.stringify({ actionId }),
+      })).resolves.toEqual({ success: true, actionId })
+      await expect(readFile(notePath, 'utf8')).rejects.toThrow()
     } finally {
       disposeDomain()
     }

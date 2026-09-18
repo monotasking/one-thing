@@ -49,7 +49,6 @@ function adaptersOf(sessions: OnethingSearchSessionMeta[]): OnethingSearchProvid
     iterateSessionMessages: () => [],
     getSession: () => undefined,
     getCurrentSessionId: () => undefined,
-    getSettings: () => ({ general: { dailyNotes: { enabled: false } } }),
     getVariablesStore: () => ({
       getUserNoteDir: () => undefined,
       getWorkNoteDir: () => undefined,

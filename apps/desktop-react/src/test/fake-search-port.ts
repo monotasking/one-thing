@@ -46,8 +46,8 @@ export const FAKE_CAPABILITY_MANIFESTS: SearchCapabilityManifestDto[] = [
     order: 2,
   },
   {
-    id: 'daily',
-    labelKey: 'search.capability.daily',
+    id: 'notes',
+    labelKey: 'search.capability.notes',
     icon: 'FileText',
     kind: 'indexed',
     budget: { default: 6, timeoutMs: 300 },

@@ -7,7 +7,7 @@
  *  - **静态 / 扫描那三类**(prompts / actions / files)问的是「自述完整」+「匹配器
  *    答什么」。S5 之前这里拿旧扫描路跑第二遍来对账;旧路删了之后参照物换成
  *    **期望值本身**——匹配器就是这三个文件里的那份代码,没有第二份可比。
- *  - **索引型那三类**(chats / messages / daily)问的是「自述说对了没有」+
+ *  - **索引型那三类**(chats / messages / notes)问的是「自述说对了没有」+
  *    「索引答了一批文档,能力把它们投影成什么」。
  */
 import fs from 'node:fs'
@@ -17,16 +17,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ALL_CAPABILITIES, createCapabilityRegistry } from '@onething/core/search'
 import type { IndexedDoc, SearchCapability, SearchQuery } from '@onething/core/search'
 import type { OnethingSearchProvidersAdapters } from '../providers.js'
+import { FolderVault } from '../../notes/folder/vault.js'
 import {
   chatsSearchManifest,
   createBuiltinSearchCapabilities,
   createActionsSearchCapability,
   createChatsSearchCapability,
-  createDailySearchCapability,
+  createNotesSearchCapability,
   createFilesSearchCapability,
   createMessagesSearchCapability,
   createPromptsSearchCapability,
-  dailySearchManifest,
+  notesManifestOf,
+  notesSearchManifest,
+  sanitizeNoteFileName,
+  todayMatchesQuery,
   filesSearchManifest,
   messagesSearchManifest,
   scanBackedCapability,
@@ -49,7 +53,6 @@ function makeAdapters(): OnethingSearchProvidersAdapters {
       : [],
     getSession: () => undefined,
     getCurrentSessionId: () => undefined,
-    getSettings: () => ({ general: { dailyNotes: { enabled: false } } }),
     getVariablesStore: () => ({
       getUserNoteDir: () => undefined,
       getWorkNoteDir: () => undefined,
@@ -58,6 +61,10 @@ function makeAdapters(): OnethingSearchProvidersAdapters {
     listPrompts: () => [
       { id: 'p1', title: 'Alpha prompt', description: 'about alpha', body: 'body', updatedAt: 5 },
     ],
+    // 一个库在册(`notes` 的 `supports` 问的就是它),但**没有主库** —— 于是
+    // 「今天那一条」与「新建笔记」都不出现,这一批用例量的只有索引那一半。
+    getNoteVaults: () => [new FolderVault({ root: '/notes', id: 'v1' })],
+    getPrimaryNoteVault: () => null,
   }
 }
 
@@ -82,10 +89,10 @@ function makeDocs(): IndexedDoc[] {
     },
     {
       docId: 3,
-      capability: 'daily',
+      capability: 'notes',
       key: '2026-09-05.md',
       time: 300,
-      facets: { path: '/notes/2026-09-05.md', time: 300 },
+      facets: { path: '/notes/2026-09-05.md', time: 300, vault: 'v1', daily: true },
       fields: { title: '2026-09-05', content: 'alpha showed up today' },
     },
   ]
@@ -212,7 +219,7 @@ describe('内置检索能力(静态 / 扫描那三类)', () => {
   })
 })
 
-describe('索引型能力(S3b:chats / messages / daily)', () => {
+describe('索引型能力(S3b:chats / messages / notes)', () => {
   const blank: SearchQuery = {
     raw: '   ',
     ast: { type: 'and', children: [] },
@@ -226,7 +233,7 @@ describe('索引型能力(S3b:chats / messages / daily)', () => {
   }
 
   it('三份自述都说了「我是索引型」:kind / schema / facets / 真预算', () => {
-    for (const manifest of [chatsSearchManifest, messagesSearchManifest, dailySearchManifest]) {
+    for (const manifest of [chatsSearchManifest, messagesSearchManifest, notesSearchManifest]) {
       expect(manifest.kind).toBe('indexed')
       // 字段表在自述里 —— 装配层把它递给索引,索引不认识任何能力。
       expect(Object.keys(manifest.schema ?? {}).length).toBeGreaterThan(0)
@@ -255,13 +262,13 @@ describe('索引型能力(S3b:chats / messages / daily)', () => {
       attachments: { analyzer: 'composite', weight: 1 },
       reasoning: { analyzer: 'composite', weight: 0.6 },
     })
-    expect(dailySearchManifest.schema).toEqual({
+    expect(notesSearchManifest.schema).toEqual({
       title: { analyzer: 'composite', weight: 2 },
       content: { analyzer: 'composite', weight: 1, embed: true },
     })
     // 向量路什么时候跑(§15.4):数据,不是 if。
     expect(messagesSearchManifest.retrievers).toEqual({ vector: { when: 'relaxed' } })
-    expect(dailySearchManifest.retrievers).toEqual({ vector: { when: 'relaxed' } })
+    expect(notesSearchManifest.retrievers).toEqual({ vector: { when: 'relaxed' } })
     expect(chatsSearchManifest.retrievers)
       .toEqual({ vector: { when: 'explicit', surfaces: ['agent-tool'] } })
     // §6.5:半衰 / 按 facet 值加权 —— 全是**数据**,`role` 这个词只出现在这份自述
@@ -270,9 +277,9 @@ describe('索引型能力(S3b:chats / messages / daily)', () => {
     expect(messagesSearchManifest.ranking)
       .toEqual({ halfLifeDays: 30, boosts: { role: { user: 1.1 } } })
     expect(messagesSearchManifest.ranking?.pinFieldHit).toBeUndefined()
-    // chats / daily 的照留 —— 它们真有 `title` 字段(见上面那张 schema 表)。
-    expect(dailySearchManifest.ranking).toEqual({ pinFieldHit: 'title' })
-    for (const manifest of [chatsSearchManifest, dailySearchManifest, messagesSearchManifest]) {
+    // chats / notes 的照留 —— 它们真有 `title` 字段(见上面那张 schema 表)。
+    expect(notesSearchManifest.ranking).toEqual({ pinFieldHit: 'title' })
+    for (const manifest of [chatsSearchManifest, notesSearchManifest, messagesSearchManifest]) {
       const pinned = manifest.ranking?.pinFieldHit
       if (pinned !== undefined) expect(Object.keys(manifest.schema ?? {})).toContain(pinned)
     }
@@ -284,13 +291,39 @@ describe('索引型能力(S3b:chats / messages / daily)', () => {
     expect(keysOf(chatsSearchManifest)).toEqual(['sessionId', 'spaceId', 'archived', 'time'])
     expect(keysOf(messagesSearchManifest))
       .toEqual(['sessionId', 'spaceId', 'role', 'archived', 'time'])
-    expect(keysOf(dailySearchManifest)).toEqual(['path', 'time'])
+    // P2:`vault`(哪个库)与 `daily`(日记文件夹里的那一篇)是新的两格。
+    expect(keysOf(notesSearchManifest)).toEqual(['vault', 'path', 'time', 'daily'])
+    // `vault` 那一格的 enum 值**现算**:库表变了自述跟着变(core 的
+    // `FacetDeclaration.values?` 本来就是可选数组,一个字没改)。
+    expect(notesSearchManifest.facets?.find(facet => facet.key === 'vault')?.values)
+      .toBeUndefined()
+    expect(notesManifestOf(makeAdapters()).facets)
+      .toEqual([
+        { key: 'vault', type: 'enum', values: ['v1'] },
+        { key: 'path', type: 'enum' },
+        { key: 'time', type: 'range' },
+        { key: 'daily', type: 'boolean' },
+      ])
+
+    // **能力交出去的那份自述也是现算的**,不是装配那一刻的快照:壳画过滤片读的
+    // 就是它,而库表会跟着设置与宿主信任状态变。把 `get manifest()` 改回一个
+    // 常量,这一行当场红。
+    let vaults = [new FolderVault({ root: '/notes', id: 'v1' })]
+    const live = createNotesSearchCapability(
+      { ...makeAdapters(), getNoteVaults: () => vaults, getPrimaryNoteVault: () => null },
+      fakeIndexFace([]),
+    )
+    const vaultValues = (): unknown =>
+      live.manifest.facets?.find(facet => facet.key === 'vault')?.values
+    expect(vaultValues()).toEqual(['v1'])
+    vaults = [...vaults, new FolderVault({ root: '/other', id: 'v2' })]
+    expect(vaultValues()).toEqual(['v1', 'v2'])
 
     // 「逐字同名」不是靠眼睛比的:文档里出现的每一个 facet 键都要在自述里。
     const declared = new Map([
       ['chats', new Set(keysOf(chatsSearchManifest))],
       ['messages', new Set(keysOf(messagesSearchManifest))],
-      ['daily', new Set(keysOf(dailySearchManifest))],
+      ['notes', new Set(keysOf(notesSearchManifest))],
     ])
     for (const doc of makeDocs()) {
       for (const key of Object.keys(doc.facets)) {
@@ -299,7 +332,7 @@ describe('索引型能力(S3b:chats / messages / daily)', () => {
     }
   })
 
-  it('空词:messages 不答(索引零命中),chats 答(最近几间会话),daily 整组不出现', () => {
+  it('空词:messages 不答(索引零命中),chats 答(最近几间会话),notes 整组不出现', () => {
     const index = fakeIndexFace(makeDocs())
     const adapters = makeAdapters()
 
@@ -315,11 +348,19 @@ describe('索引型能力(S3b:chats / messages / daily)', () => {
     expect(chats.supports({ ...blank, raw: '/' })).toBe(true)
     expect(chats.supports({ ...blank, raw: 'alpha' })).toBe(true)
 
-    // daily 照旧路 `all` 档的 `includeDaily`:空词(含裸 `/`)整组不出现。
-    const daily = createDailySearchCapability(adapters, index)
-    expect(daily.supports(blank)).toBe(false)
-    expect(daily.supports({ ...blank, raw: '>' })).toBe(false)
-    expect(daily.supports({ ...blank, raw: 'alpha' })).toBe(true)
+    // notes 照旧路 `all` 档的 `includeDaily`:空词(含裸 `/`)整组不出现。
+    const notes = createNotesSearchCapability(adapters, index)
+    expect(notes.supports(blank)).toBe(false)
+    expect(notes.supports({ ...blank, raw: '>' })).toBe(false)
+    expect(notes.supports({ ...blank, raw: 'alpha' })).toBe(true)
+
+    // **一个库都没有 = 整组不出现**(不是「零条」)。这一格是能力自述的边界:
+    // 没有笔记领域的宿主上,`notes` 那一组在屏幕上根本不该有位置。
+    const noVaults = createNotesSearchCapability(
+      { ...adapters, getNoteVaults: () => [], getPrimaryNoteVault: () => null },
+      index,
+    )
+    expect(noVaults.supports({ ...blank, raw: 'alpha' })).toBe(false)
   })
 
   it('messages:候选带旧字段 + target(壳按 target.kind 取渲染器)', async () => {
@@ -363,23 +404,22 @@ describe('索引型能力(S3b:chats / messages / daily)', () => {
     expect(result?.target).toEqual({ kind: 'chat', payload: { sessionId: 's1' } })
   })
 
-  it('daily:filePath 取 facets.path(绝对路径),正文命中时副标题是正文摘要', async () => {
+  it('notes:filePath 取 facets.path(绝对路径),正文命中时副标题是正文摘要', async () => {
     const index = fakeIndexFace(makeDocs(), { matched: ['alpha'] })
-    // `makeAdapters()` 的设置里 `dailyNotes.enabled === false` → 没有笔记根目录 →
-    // 「今天那一条」不出现,这一条量的只有索引那一半。
-    const capability = createDailySearchCapability(makeAdapters(), index)
-    const page = await capability.search(query('alpha', 'daily'), { limit: 5 }, createSearchContext())
+    // `makeAdapters()` 没有主库 → 「今天那一条」不出现,这一条量的只有索引那一半。
+    const capability = createNotesSearchCapability(makeAdapters(), index)
+    const page = await capability.search(query('alpha', 'notes'), { limit: 5 }, createSearchContext())
     const [result] = page.items.map(searchResultOf)
 
     expect(result).toMatchObject({
-      id: 'daily:/notes/2026-09-05.md',
-      type: 'daily',
+      id: 'note:/notes/2026-09-05.md',
+      type: 'note',
       title: '2026-09-05',
       subtitle: 'alpha showed up today',
       filePath: '/notes/2026-09-05.md',
       timestamp: 300,
     })
-    expect(result?.target).toEqual({ kind: 'daily', payload: { filePath: '/notes/2026-09-05.md' } })
+    expect(result?.target).toEqual({ kind: 'note', payload: { filePath: '/notes/2026-09-05.md' } })
   })
 
   it('索引不可用时不回退到旧扫描:零结果,不是「另一条路答的结果」(§13)', async () => {
@@ -394,7 +434,7 @@ describe('索引型能力(S3b:chats / messages / daily)', () => {
  * 两件「索引在结构上答不出」的事(设计 §10 S3b 落地记录的留账 1 / 2)。
  *
  *  - chats 的空词浏览态 —— 「按 `updatedAt` 取前 N 间」不是一次检索;
- *  - daily 的「今天那一条」—— 不存在的文件没有文档。
+ *  - notes 的「今天那一条」—— 不存在的文件没有文档。
  *
  * 「与旧路逐字同」这条判据在 S5 之后由 `chats-browse.test.ts` 拿**录下来的旧输出**
  * 守(旧函数已删,参照物只能是快照);这里守的是能力这一层的形状与位置。
@@ -441,26 +481,27 @@ describe('索引答不出的那两件(S3b:空词最近会话 / 今天那一条)'
     const response = await service.query({ query: '', category: 'all', limit: 20 })
     const chats = response.groups?.find(group => group.capability === 'chats')
     expect(chats?.results.map(result => result.id)).toEqual(['chat:s1', 'chat:s2'])
-    // daily 那一组照旧路的 `includeDaily`:空词时整组不出现(不是「有一组 0 条」)。
-    expect(response.groups?.some(group => group.capability === 'daily')).toBe(false)
+    // notes 那一组照旧路的 `includeDaily`:空词时整组不出现(不是「有一组 0 条」)。
+    expect(response.groups?.some(group => group.capability === 'notes')).toBe(false)
   })
 
-  describe('daily 的「今天那一条」', () => {
+  describe('notes 的「今天那一条」与两条建文件的动作', () => {
     const dirs: string[] = []
     afterEach(() => {
       for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true })
     })
 
+    /** 一个真目录 = 一个真库。主库在场,于是「今天那一条」与两条动作都活。 */
     function notesAdapters(): { adapters: OnethingSearchProvidersAdapters; notesDir: string } {
-      const notesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-daily-cap-'))
+      const notesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-notes-cap-'))
       dirs.push(notesDir)
-      const base = makeAdapters()
+      const vault = new FolderVault({ root: notesDir, id: 'v1', name: 'notes' })
       return {
         notesDir,
         adapters: {
-          ...base,
-          getSettings: () => ({ general: { dailyNotes: { enabled: true, useObsidianConfig: false } } }),
-          getVariablesStore: () => ({ getUserNoteDir: () => notesDir, getWorkNoteDir: () => undefined }),
+          ...makeAdapters(),
+          getNoteVaults: () => [vault],
+          getPrimaryNoteVault: () => vault,
         },
       }
     }
@@ -477,20 +518,17 @@ describe('索引答不出的那两件(S3b:空词最近会话 / 今天那一条)'
      */
     it('今天的笔记不存在:它是一条**动作**,不进 results、不计 total', async () => {
       const { adapters } = notesAdapters()
-      const capability = createDailySearchCapability(adapters, fakeIndexFace(makeDocs(), { matched: ['alpha'] }))
-      // 查询要「像今天」才有这一条 —— 判据是旧路的 `todayMatchesQuery`(空词恒真,
-      // 有词时按今天的 ISO 日期或 today/daily/日记 那几个词根)。
-      const page = await capability.search(query('today', 'daily'), { limit: 5 }, createSearchContext())
+      const capability = createNotesSearchCapability(adapters, fakeIndexFace(makeDocs(), { matched: ['alpha'] }))
+      // 查询要「像今天」才有这一条 —— 判据是 `todayMatchesQuery`。
+      const page = await capability.search(query('today', 'notes'), { limit: 5 }, createSearchContext())
       const results = page.items.map(searchResultOf)
 
       // 一条都不在结果里(旧路它在 results 的末尾)。
-      expect(results.some(result => result.id.startsWith('daily-create:'))).toBe(false)
-      expect(results[0]?.id).toBe('daily:/notes/2026-09-05.md')
+      expect(results[0]?.id).toBe('note:/notes/2026-09-05.md')
 
-      const action = page.actions?.[0]
-      expect(page.actions).toHaveLength(1)
+      const action = page.actions?.find(item => item.id.startsWith('create-daily:'))
       expect(action?.kind).toBe('create')
-      expect(action?.capability).toBe('daily')
+      expect(action?.capability).toBe('notes')
       // **句子不在后端**(R12):只交键与料,`Create today's daily note: …` 这种
       // 成品英文句从此由壳按 `labelKey + params` 拼。
       expect(action?.labelKey).toBe('search.action.createDailyNote')
@@ -500,15 +538,15 @@ describe('索引答不出的那两件(S3b:空词最近会话 / 今天那一条)'
       expect(action?.id).toBe(`create-daily:${encodeURIComponent(filePath)}`)
     })
 
-    it('那条动作按下去真的把文件建出来(`invoke`,与旧 executeAction 同一个函数)', async () => {
+    it('那条动作按下去真的把文件建出来(`invoke` → 库自己的 `createDailyNote`)', async () => {
       const { adapters } = notesAdapters()
-      const capability = createDailySearchCapability(adapters, fakeIndexFace(makeDocs(), { matched: ['alpha'] }))
-      const page = await capability.search(query('today', 'daily'), { limit: 5 }, createSearchContext())
-      const action = page.actions?.[0]
-      const filePath = (action?.payload as { filePath: string }).filePath
+      const capability = createNotesSearchCapability(adapters, fakeIndexFace(makeDocs(), { matched: ['alpha'] }))
+      const page = await capability.search(query('today', 'notes'), { limit: 5 }, createSearchContext())
+      const action = page.actions!.find(item => item.id.startsWith('create-daily:'))!
+      const filePath = (action.payload as { filePath: string }).filePath
       expect(fs.existsSync(filePath)).toBe(false)
 
-      await capability.invoke?.(action!.id, [], createSearchContext())
+      await capability.invoke?.(action.id, [], createSearchContext())
       expect(fs.existsSync(filePath)).toBe(true)
 
       // 不认识的动作 id **结构化拒绝**,不悄悄成功。
@@ -524,26 +562,118 @@ describe('索引答不出的那两件(S3b:空词最近会话 / 今天那一条)'
       // 索引里也有今天这一份(真索引会有)——两条同 filePath,只许出一条。
       const docs = [...makeDocs(), {
         docId: 9,
-        capability: 'daily',
+        capability: 'notes',
         key: `${iso}.md`,
         time: 400,
-        facets: { path: todayPath, time: 400 },
+        facets: { path: todayPath, time: 400, vault: 'v1', daily: true },
         fields: { title: iso, content: 'alpha' },
       }]
-      const capability = createDailySearchCapability(adapters, fakeIndexFace(docs, { matched: ['alpha'] }))
-      const page = await capability.search(query('today', 'daily'), { limit: 5 }, createSearchContext())
+      const capability = createNotesSearchCapability(adapters, fakeIndexFace(docs, { matched: ['alpha'] }))
+      const page = await capability.search(query('today', 'notes'), { limit: 5 }, createSearchContext())
       const results = page.items.map(searchResultOf)
 
-      expect(results[0]?.title).toBe(`Today: ${iso}`)
       expect(results[0]?.filePath).toBe(todayPath)
       expect(results.filter(result => result.filePath === todayPath).length).toBe(1)
+      // 文件在 = 没有「新建今天」那条动作。
+      expect(page.actions?.some(item => item.id.startsWith('create-daily:'))).not.toBe(true)
     })
 
     it('查询与今天对不上时一条都不多给(`todayMatchesQuery` 是唯一判据)', async () => {
       const { adapters } = notesAdapters()
-      const capability = createDailySearchCapability(adapters, fakeIndexFace(makeDocs(), { matched: ['alpha'] }))
-      const page = await capability.search(query('zzz-nothing', 'daily'), { limit: 5 }, createSearchContext())
-      expect(page.items.map(searchResultOf).some(result => result.id.startsWith('daily-create:'))).toBe(false)
+      const capability = createNotesSearchCapability(adapters, fakeIndexFace(makeDocs(), { matched: ['alpha'] }))
+      const page = await capability.search(query('zzz-nothing', 'notes'), { limit: 5 }, createSearchContext())
+      expect(page.actions?.some(item => item.id.startsWith('create-daily:'))).not.toBe(true)
+    })
+
+    /**
+     * 「像今天」的判据**收紧过**(壳正本 84 号)。从前是 `todayIso.includes(q)` 加上
+     * 那几个词根的**互含**,于是单个字母 `n`(note 的头一个字)、ISO 里的任意一位
+     * 数字都能把「今天」顶到第一行 —— 一次正常的检索被一条与词无关的快捷项挤掉。
+     */
+    it('todayMatchesQuery:两字起、整词前缀或 ISO 前缀', () => {
+      const iso = todayIso()
+      expect(todayMatchesQuery('', iso)).toBe(false)
+      expect(todayMatchesQuery('t', iso)).toBe(false)
+      expect(todayMatchesQuery('n', iso)).toBe(false)
+      expect(todayMatchesQuery('to', iso)).toBe(true)
+      expect(todayMatchesQuery('日记', iso)).toBe(true)
+      expect(todayMatchesQuery(iso.slice(0, 7), iso)).toBe(true)
+      expect(todayMatchesQuery(iso, iso)).toBe(true)
+      // 「某个月的某天」不是「今天」:ISO 的**前缀**才算,子串不算。
+      expect(todayMatchesQuery(iso.slice(5), iso)).toBe(false)
+      // 词根是**前缀**关系,不是互含:`journalism` 不是在问今天的日记。
+      expect(todayMatchesQuery('journalism', iso)).toBe(false)
+    })
+
+    it('`vault` facet:选了哪个库,「新建笔记」就落哪个库', async () => {
+      const { adapters, notesDir } = notesAdapters()
+      const other = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-notes-cap2-'))
+      dirs.push(other)
+      const second = new FolderVault({ root: other, id: 'v2', name: 'second' })
+      const two: OnethingSearchProvidersAdapters = {
+        ...adapters,
+        getNoteVaults: () => [...adapters.getNoteVaults!(), second],
+      }
+      const capability = createNotesSearchCapability(two, fakeIndexFace([]))
+
+      const plain = await capability.search(
+        { ...query('zeta', 'notes') },
+        { limit: 5 },
+        createSearchContext(),
+      )
+      const plainAction = plain.actions!.find(item => item.id.startsWith('create-note:'))!
+      // 没选库 = 主库。
+      expect(decodeURIComponent(plainAction.id.slice('create-note:'.length)))
+        .toBe(path.join(notesDir, 'zeta.md'))
+
+      const scoped = await capability.search(
+        { ...query('zeta', 'notes'), filters: { vault: 'v2' } },
+        { limit: 5 },
+        createSearchContext(),
+      )
+      const scopedAction = scoped.actions!.find(item => item.id.startsWith('create-note:'))!
+      expect(decodeURIComponent(scopedAction.id.slice('create-note:'.length)))
+        .toBe(path.join(other, 'zeta.md'))
+      expect(scopedAction.labelKey).toBe('search.action.createNote')
+      expect(scopedAction.params?.title).toBe('zeta')
+
+      // **大小写照用户打的那一串**:屏幕上那句话与真落盘的文件名是同一串字。
+      // `normalizeSearchQuery` 会小写,那一份只配当判据(把 title 换回它,这里红)。
+      const cased = await capability.search(
+        { ...query('OnethingNotes', 'notes') },
+        { limit: 5 },
+        createSearchContext(),
+      )
+      const casedAction = cased.actions!.find(item => item.id.startsWith('create-note:'))!
+      expect(casedAction.params?.title).toBe('OnethingNotes')
+      expect(decodeURIComponent(casedAction.id.slice('create-note:'.length)))
+        .toBe(path.join(notesDir, 'OnethingNotes.md'))
+
+      // 按下去真的建出来,而且建在选中的那个库里。
+      await capability.invoke?.(scopedAction.id, [], createSearchContext())
+      expect(fs.existsSync(path.join(other, 'zeta.md'))).toBe(true)
+      expect(fs.existsSync(path.join(notesDir, 'zeta.md'))).toBe(false)
+    })
+
+    it('标题精确命中时不给「新建笔记」—— 按下去不是建,是撞名', async () => {
+      const { adapters } = notesAdapters()
+      const docs = [{
+        docId: 11,
+        capability: 'notes',
+        key: 'zeta.md',
+        time: 500,
+        facets: { path: '/notes/zeta.md', time: 500, vault: 'v1', daily: false },
+        fields: { title: 'zeta', content: 'zeta 正文' },
+      }]
+      const capability = createNotesSearchCapability(adapters, fakeIndexFace(docs, { matched: ['zeta'] }))
+      const page = await capability.search(query('zeta', 'notes'), { limit: 5 }, createSearchContext())
+      expect(page.items).toHaveLength(1)
+      expect(page.actions?.some(item => item.id.startsWith('create-note:'))).not.toBe(true)
+    })
+
+    it('文件名里的非法字符换成 `-`,不是让 `createNote` 去撞一个建不出来的路径', () => {
+      expect(sanitizeNoteFileName('a/b:c*d?e"f<g>h|i')).toBe('a-b-c-d-e-f-g-h-i')
+      expect(sanitizeNoteFileName('   ')).toBe('Untitled')
     })
   })
 })

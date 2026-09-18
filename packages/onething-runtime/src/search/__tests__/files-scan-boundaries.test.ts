@@ -48,7 +48,6 @@ function makeAdapters(options: {
     // 「当前会话」是 s7 —— 它的工作目录才是这一档该扫的那个根。
     getSession: id => sessions.find(one => one.id === id),
     getCurrentSessionId: () => 's7',
-    getSettings: () => ({ general: { dailyNotes: { enabled: false } } }),
     getVariablesStore: () => ({
       getUserNoteDir: () => '/notes/user',
       getWorkNoteDir: () => '/notes/work',

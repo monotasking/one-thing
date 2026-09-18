@@ -37,7 +37,7 @@ function spyContext(): SearchTargetContext & { calls: string[] } {
 describe('注册表', () => {
   it('barrel 一 import 就有六种 —— 「这台上有哪些目标形」一眼看全', () => {
     expect(targetRendererKinds().sort()).toEqual(
-      ['action', 'chat', 'daily', 'file', 'message', 'prompt'],
+      ['action', 'chat', 'file', 'message', 'note', 'prompt'],
     )
   })
 
@@ -107,10 +107,10 @@ describe('六种渲染器:徽与落点', () => {
   })
 
   it('daily:两形一个 kind —— 有 actionId 走动作口,没有就当文件打开', () => {
-    const renderer = resolveTargetRenderer('daily')!
+    const renderer = resolveTargetRenderer('note')!
     const ctx = spyContext()
-    renderer.activate(row('daily', { filePath: '/n/2026-09-05.md' }), ctx)
-    renderer.activate(row('daily', { filePath: '', actionId: 'create-daily' }), ctx)
+    renderer.activate(row('note', { filePath: '/n/2026-09-05.md' }), ctx)
+    renderer.activate(row('note', { filePath: '', actionId: 'create-daily' }), ctx)
     expect(ctx.calls).toEqual(['open:/n/2026-09-05.md:', 'run:create-daily'])
   })
 
@@ -185,7 +185,7 @@ describe('续搜:范围片与枢轴由渲染器自报', () => {
   })
 
   it('prompt / action / daily 不提供续搜 —— 缺席就是「这一类没有下一步」', () => {
-    for (const kind of ['prompt', 'action', 'daily']) {
+    for (const kind of ['prompt', 'action', 'note']) {
       expect(resolveTargetRenderer(kind)!.continuations).toBeUndefined()
     }
   })

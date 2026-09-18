@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { applyVisibility, type SearchContext } from '@onething/core/search'
 import { canonicalizeStorePath } from '@onething/runtime/storage'
-import { resolveDailyNoteSearchDirs, type OnethingSearchProvidersAdapters, type SearchServiceOptions } from '@onething/runtime/search'
+import type { OnethingSearchProvidersAdapters, SearchServiceOptions } from '@onething/runtime/search'
 import { DEFAULT_SESSION_OWNER, SessionAccessError, ownerMatchesContext, createSessionAccess } from '../../session/access.js'
 import { fixedExecutionContext } from '../engine/execution-context.js'
 import { getConnectedDirectories, getConnectedDirectoriesForSession } from '../../stores/connected-directories.js'
@@ -30,6 +30,15 @@ export function createAppSearchAuthorization(adapters: OnethingSearchProvidersAd
     }
     return [...new Set(roots)]
   }
+  /**
+   * 笔记库根(P2)。从前这里是 `resolveDailyNoteSearchDirs(adapters)` —— 它自己
+   * 去读设置与 `.obsidian/daily-notes.json` 推一遍目录;今天问的是**笔记领域的
+   * 库表**,与索引 feed / 能力自述读的是同一份,所以「能搜到的」与「准打开的」
+   * 不会各说各话。一个库都没有 = 空表 = 任何路径都不准 —— 那正是对的。
+   */
+  function noteRoots(): string[] {
+    return (adapters.getNoteVaults?.() ?? []).map(vault => vault.root)
+  }
   function assertPath(requested: string, roots: readonly string[]): void {
     const target = canonicalizeStorePath(requested)
     const allowed = roots.some(root => {
@@ -46,15 +55,15 @@ export function createAppSearchAuthorization(adapters: OnethingSearchProvidersAd
       access.resolve(owner(ctx), payload.sessionId, 'read')
       return
     }
-    if (capability === 'files' || capability === 'daily') {
-      if (target.kind !== (capability === 'files' ? 'file' : 'daily') || typeof payload.filePath !== 'string') throw new SessionAccessError()
-      if (capability === 'daily') assertOperator(ctx)
-      assertPath(payload.filePath, capability === 'files' ? fileRoots(ctx) : await resolveDailyNoteSearchDirs(adapters))
+    if (capability === 'files' || capability === 'notes') {
+      if (target.kind !== (capability === 'files' ? 'file' : 'note') || typeof payload.filePath !== 'string') throw new SessionAccessError()
+      if (capability === 'notes') assertOperator(ctx)
+      assertPath(payload.filePath, capability === 'files' ? fileRoots(ctx) : noteRoots())
       return
     }
     assertOperator(ctx)
     // A capability cannot smuggle a session/path action through another kind.
-    if (['chat', 'message', 'file', 'daily'].includes(target.kind)) throw new SessionAccessError()
+    if (['chat', 'message', 'file', 'note'].includes(target.kind)) throw new SessionAccessError()
   }
   const authorization: NonNullable<SearchServiceOptions['authorization']> = {
     async query(capability, query, ctx) {
@@ -78,9 +87,12 @@ export function createAppSearchAuthorization(adapters: OnethingSearchProvidersAd
         await checkTarget(capability, item.target, ctx)
       }
       if (actionId !== undefined) {
-        if (capability === 'daily' && actionId.startsWith('create-daily:')) {
+        // 两条建文件的动作都把**目标路径**编在 id 里(`capabilities/notes.ts` 的
+        // `actionWithPath`),于是夹的就是那一格 —— 授权不重算「建哪个文件」。
+        const prefix = ['create-daily:', 'create-note:'].find(value => actionId.startsWith(value))
+        if (capability === 'notes' && prefix !== undefined) {
           assertOperator(ctx)
-          assertPath(decodeURIComponent(actionId.slice('create-daily:'.length)), await resolveDailyNoteSearchDirs(adapters))
+          assertPath(decodeURIComponent(actionId.slice(prefix.length)), noteRoots())
         } else if (capability !== 'chats' && capability !== 'messages' && capability !== 'files') assertOperator(ctx)
       }
     },

@@ -6,13 +6,13 @@
  * `rpc/domains/search.ts` → 进程单槽里那份 `SearchService` → 注册表 → 能力。
  * 于是这里只剩装配:把宿主的取材面装进 runtime 的进程单槽。
  *
- * 那个单槽只服务于两个**不带参数**被调到的口(`resolveDailyNoteSearchDirs()` 与
- * 下面这只 `createDailyNote`);查询路一律把取材面当参数递
- * (`createAppSearchService` 现造一份给六个能力),因为 server 那侧的取材面是
- * per-owner 的,组不出进程单例。
+ * **P2 之后那个单槽一个读者都没有了**:它从前只服务两个不带参数被调到的口
+ * (`resolveDailyNoteSearchDirs()` / `createDailyNote()`),而「建一篇笔记」这件事
+ * 今天走 `NoteVault` 自己。查询路一律把取材面当参数递(`createAppSearchService`
+ * 现造一份给六个能力),因为 server 那侧的取材面是 per-owner 的,组不出进程单例。
+ * 退役这个单槽要动 `configureAppRuntimeAdapters` 那张表,不在本单 —— 见报告留账。
  */
 import { configureOnethingSearchProviders } from '@onething/runtime/search'
-import { createDailyNote as createRuntimeDailyNote } from '@onething/runtime/search/capabilities'
 import { createAppSearchProvidersAdapters } from './adapters.js'
 
 let searchProvidersConfigured = false
@@ -22,10 +22,4 @@ export function configureAppSearchProviders(): void {
   if (searchProvidersConfigured) return
   searchProvidersConfigured = true
   configureOnethingSearchProviders(createAppSearchProvidersAdapters())
-}
-
-/** 「新建今天的日记」按下去那一下。取材面来自上面那个单槽。 */
-export function createDailyNote(filePath: string): Promise<string> {
-  configureAppSearchProviders()
-  return createRuntimeDailyNote(filePath)
 }

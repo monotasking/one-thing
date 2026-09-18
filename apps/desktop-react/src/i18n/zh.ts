@@ -519,7 +519,7 @@ export const zh = {
   'search.capability.chats': '会话',
   'search.capability.messages': '消息',
   'search.capability.files': '文件',
-  'search.capability.daily': '笔记',
+  'search.capability.notes': '笔记',
   'search.capability.prompts': '提示词',
   'search.capability.actions': '命令',
   'search.resultsLabel': '结果',
@@ -533,7 +533,7 @@ export const zh = {
    * 一种 `target.kind` 一句;文件那一种的徽是**数据**(扩展名),不在这张表里。 */
   'search.badgeSession': '会话',
   'search.badgeMessage': '消息',
-  'search.badgeDaily': '笔记',
+  'search.badgeNote': '笔记',
   'search.badgePrompt': '提示',
   'search.badgeAction': '命令',
   /* 两颗事实徽(§9「徽」那一条)。归档会话**搜得到**(S3b 治好的那条病),
@@ -613,6 +613,7 @@ export const zh = {
    * 里那个引号中间的字是**料**,不是句子的一部分。 */
   'search.action.createPrompt': '新建提示词 “{title}”',
   'search.action.createDailyNote': '新建今天的日记',
+  'search.action.createNote': '新建笔记“{title}”',
   'search.actionUnavailable': '这条动作在这里还打不开:{action}',
   'search.targetUnavailable': '这一类结果还打不开:{kind}',
 

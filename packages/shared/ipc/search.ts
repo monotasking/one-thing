@@ -45,7 +45,7 @@ export interface SearchResult {
    * 分组渲染,点击只回到插件自己的 action(actionId 带 `plugin-search:` 前缀)——
    * 插件结果拿不到 sessionId / messageId / filePath,不能伪装成内置结果。
    */
-  type: 'chat' | 'message' | 'action' | 'file' | 'daily' | 'prompt' | 'plugin'
+  type: 'chat' | 'message' | 'action' | 'file' | 'note' | 'prompt' | 'plugin'
   title: string
   subtitle?: string
   detail?: string
@@ -231,7 +231,7 @@ export interface SearchExecuteActionRequest {
 
 export interface SearchExecuteActionResponse {
   success: boolean
-  /** server 侧会把 `create-daily-note:` 解析成 `open-file:` 后回传。 */
+  /** 原样回传的动作号。P2 删掉了 server 侧 `create-daily-note:` → `open-file:` 那条老路。 */
   actionId?: string
   error?: string
 }

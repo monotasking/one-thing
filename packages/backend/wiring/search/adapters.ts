@@ -16,8 +16,8 @@ import { getCurrentSessionId } from '../../stores/app-state.js'
 import { getConnectedDirectoriesForSession } from '../../stores/connected-directories.js'
 import { getSession, getSessionsList } from '../../stores/sessions.js'
 import { sessionReads } from '../../session/reads.js'
-import { getSettings } from '../../stores/settings.js'
 import { listFiles } from '../../utils/ripgrep.js'
+import { noteVaultsNow, primaryNoteVaultNow } from '../notes/index.js'
 
 export function createAppSearchProvidersAdapters(): OnethingSearchProvidersAdapters {
   return {
@@ -26,8 +26,12 @@ export function createAppSearchProvidersAdapters(): OnethingSearchProvidersAdapt
     iterateSessionMessages: (sessionId: string) => sessionReads.iterateMessagesRaw(sessionId),
     getSession,
     getCurrentSessionId,
-    getSettings,
     getVariablesStore,
+    // 笔记库**每次现取**(晚绑定):库表会跟着设置变、跟着宿主的信任状态变,
+    // 装配那一刻的快照过一分钟就是假的。没有笔记子系统 = 空表(见
+    // `noteVaultsNow`),于是 `notes` 那一类整组不出现。
+    getNoteVaults: noteVaultsNow,
+    getPrimaryNoteVault: primaryNoteVaultNow,
     // 搜索窗没有请求级会话号:当前会话是这里能拿到的最诚实的空间语境(批 B2)。
     getConnectedDirectories: () => getConnectedDirectoriesForSession(getCurrentSessionId()),
     listFiles,

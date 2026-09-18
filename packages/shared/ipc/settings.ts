@@ -85,14 +85,6 @@ export interface QuickCommandConfig {
 	enabled: boolean; // Whether to show this button
 }
 
-export interface DailyNoteSettings {
-	enabled?: boolean;
-	directoryMode?: "personal" | "custom";
-	customDirectory?: string;
-	useObsidianConfig?: boolean;
-	format?: string;
-}
-
 export interface EditorSettings {
 	tabSize?: number;
 	lineWrapping?: boolean;
@@ -118,7 +110,6 @@ export interface GeneralSettings {
 	messageListDensity?: MessageListDensity; // Message list display density, default 'comfortable'
 	messageLineHeight?: number; // Message line height, 1.2-2.2, default 1.6
 	quickCommands?: QuickCommandConfig[]; // Quick command buttons shown above InputBox
-	dailyNotes?: DailyNoteSettings;
 	todoPlan?: TodoPlanSettings;
 	editor?: EditorSettings;
 	// User profile for lightweight context injection

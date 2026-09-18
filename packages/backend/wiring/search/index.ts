@@ -28,9 +28,9 @@
  *
  * ## 为什么它是 async
  *
- * 笔记目录要问 `resolveDailyNoteSearchDirs`(要读 Obsidian 的 `daily-notes.json`),
- * 而目录是 `workerData` 的一部分 —— 起线程那一刻就定死了。所以装配在这里等一次
- * 文件读(毫秒级),而不是起完 Worker 再想办法把目录塞进去。
+ * 笔记库表要问笔记领域(每个库的日记文件夹是一次 **offline** 读 —— 后台路一条
+ * CLI 命令都不发),而库表是 `workerData` 的一部分 —— 起线程那一刻就定死了。
+ * 所以装配在这里等一次本地读(毫秒级),而不是起完 Worker 再想办法塞进去。
  *
  * ## dispose 的次序:先解订阅,再停 Worker
  *
@@ -44,14 +44,13 @@ import { SESSION_EVENT_TYPES } from '@onething/core/events'
 import type { CapabilityManifest } from '@onething/core/search'
 import {
   createOnethingSearchService,
-  resolveDailyNoteSearchDirs,
   type OnethingSearchProvidersAdapters,
   type OnethingSearchService,
 } from '@onething/runtime/search'
 import {
   chatsSearchManifest,
-  dailySearchManifest,
   messagesSearchManifest,
+  notesSearchManifest,
   type SearchIndexQueryFace,
 } from '@onething/runtime/search/capabilities'
 import { LEDGER_FEED_ID, SearchIndexService, affectsIndexedDocuments } from '@onething/runtime/search/index'
@@ -75,6 +74,8 @@ import {
   type SettingsEventBroadcaster,
 } from '../settings/events.js'
 import { getLogger } from '../logging/index.js'
+import { getNotesSubsystemSafe } from '../notes/index.js'
+import type { NoteVault } from '@onething/runtime/notes'
 import { createAppSearchProvidersAdapters } from './adapters.js'
 import { syncPluginSearchCapabilities } from './plugin-search-registry.js'
 import { createAppSearchToolAdapters } from './tool-adapters.js'
@@ -84,7 +85,7 @@ import { createSearchWorkerFactory, resolveSearchWorkerPath } from './worker.js'
 
 export { AGENT_TOOL_SURFACE, createAppSearchToolAdapters } from './tool-adapters.js'
 export { createAppSearchVisibilityPort, visibleSessionIdsFor, VISIBLE_SESSIONS_CAP } from './visibility.js'
-export { configureAppSearchProviders, createDailyNote } from './providers.js'
+export { configureAppSearchProviders } from './providers.js'
 export { invokePluginSearchAction, PLUGIN_SEARCH_ACTION_PREFIX } from './plugin-search-registry.js'
 export { createSearchWorkerFactory, resolveSearchWorkerPath } from './worker.js'
 
@@ -159,6 +160,48 @@ function proxyWorkerConfig(settings: AppSettings): Pick<NonNullable<IndexWorkerD
   }
 }
 
+/**
+ * 笔记库 → `workerData.vaults`(P2)。
+ *
+ * **两条硬规矩写在这一只函数里**:
+ *
+ *  ① 日记文件夹是 `dailyNote(date, { offline: true })` 推出来的 —— `offline` 让
+ *     那一读绝不出进程。检索是后台路,而 Obsidian CLI 的第一条命令会把 app
+ *     拉起来(`docs/design/notes-obsidian-cli-2026-09.md` §1);
+ *  ② 答不出来就**省掉那一格**,不猜一个 —— 没有快照的库(装了 Obsidian 但从没
+ *     开过)于是 `daily` facet 恒 false,而不是把整个库当成日记本。
+ *
+ * 库自己抛(`NoteVaultUnavailable`)只影响它自己那一行:一个库读不出日记落点,
+ * 别的库照旧进表。
+ */
+export async function notesWorkerConfig(vaults: readonly NoteVault[]): Promise<NonNullable<IndexWorkerData['vaults']>> {
+  const today = new Date()
+  return await Promise.all(vaults.map(async vault => {
+    const dailyFolder = await vault.dailyNote(today, { offline: true })
+      .then(ref => path.relative(vault.root, path.dirname(ref.path)))
+      .catch(() => undefined)
+    return {
+      id: vault.id,
+      root: vault.root,
+      ...(dailyFolder === undefined || dailyFolder.startsWith('..') ? {} : { dailyFolder }),
+    }
+  }))
+}
+
+/** 两份库表是不是同一件事(逐项比 id / root / dailyFolder,顺序算数)。 */
+function sameVaults(
+  a: IndexWorkerData['vaults'],
+  b: IndexWorkerData['vaults'],
+): boolean {
+  const left = a ?? []
+  const right = b ?? []
+  if (left.length !== right.length) return false
+  return left.every((vault, at) =>
+    vault.id === right[at]?.id
+    && vault.root === right[at]?.root
+    && vault.dailyFolder === right[at]?.dailyFolder)
+}
+
 export interface AppSearchServiceHandle {
   service: OnethingSearchService
   /** 索引服务;这台宿主起不来 Worker 时是 `undefined`。 */
@@ -171,6 +214,14 @@ export interface AppSearchServiceHandle {
    * `backend.own(() => searchService.dispose())` 收着了,状态跟着它生灭。
    */
   applySemantic(settings: AppSettings): Promise<boolean>
+  /**
+   * 笔记库表变了就把这一份递进来(P2)。**与当前生效的那一份逐项相同 = 一个字
+   * 都不做**;不同就换一条 Worker(答 `true`)。没有索引的宿主上恒 `false`。
+   *
+   * 与 `applySemantic` 同一条路(`IndexWorkerHost.restart()`:先停旧的再起新的、
+   * 空窗里的查询排队不拒)—— 两条 Worker 同开一个库就是两个写者。
+   */
+  applyNotes(vaults: readonly NoteVault[]): Promise<boolean>
   dispose(): Promise<void>
 }
 
@@ -180,7 +231,7 @@ export interface AppSearchServiceHandle {
  */
 const INDEXED_MANIFESTS: readonly CapabilityManifest[] = [
   chatsSearchManifest,
-  dailySearchManifest,
+  notesSearchManifest,
   messagesSearchManifest,
 ]
 
@@ -289,12 +340,36 @@ export async function createAppSearchService(
     })
   })
 
+  const applyNotes = async (vaults: readonly NoteVault[]): Promise<boolean> => {
+    if (started === undefined) return false
+    return await started.applyNotes(await notesWorkerConfig(vaults))
+  }
+  /*
+   * **订的是笔记域的产物,不是设置**(P2)。
+   *
+   * 库表是 `wiring/notes` 算出来的东西,而它自己也订着 `settings:changed`。两边
+   * 都去订设置的话,谁先跑完取决于 `configureSettingsEventBroadcaster` 的串联
+   * 顺序(notes 在装配第 860 行注册、search 在 1009 行,串联是「先跑上一位」),
+   * 而 notes 那一手是 `void refresh(...)` —— 异步。于是 search 会在库表**重算
+   * 发起之后、落定之前**醒来,读到上一份表。订产物就没有这个缝,理由写在
+   * `NotesSubsystem.onRefreshed` 上。
+   *
+   * 拿不到笔记子系统(轻量单测里一台 backend 都没装)= 不订,库表恒空。
+   */
+  const unwatchNotes = getNotesSubsystemSafe()?.onRefreshed(vaults => {
+    void applyNotes(vaults).catch((error: unknown) => {
+      log.error('applying the note-vault table failed', { err: error })
+    })
+  })
+
   return {
     service,
     index: indexService,
     applySemantic,
+    applyNotes,
     async dispose() {
-      // 还原次序与装配次序相反(设置订阅 → 工具面 → 授权面 → 服务槽)。
+      // 还原次序与装配次序相反(笔记订阅 → 设置订阅 → 工具面 → 授权面 → 服务槽)。
+      unwatchNotes?.()
       unwatchSettings()
       restoreToolAdapters()
       restoreVisibility()
@@ -323,6 +398,8 @@ interface StartedSearchIndex {
   service: SearchIndexService
   /** 与当前生效的那一份逐格相同 = 恒等(答 `false`);不同就换一条 Worker。 */
   applySemantic(next: IndexWorkerData['semantic']): Promise<boolean>
+  /** 同上,换的是笔记库表(P2)。 */
+  applyNotes(next: IndexWorkerData['vaults']): Promise<boolean>
 }
 
 /**
@@ -363,19 +440,18 @@ async function startSearchIndexService(
     return undefined
   }
 
-  // 笔记目录问不出来不是错(没配笔记目录是常态);问的过程炸了才是,那时装账本
-  // 那一路照旧,笔记那一路缺席。
-  let notesDirs: string[] = []
+  // 笔记库问不出来不是错(没装 Obsidian、没配目录都是常态);问的过程炸了才是,
+  // 那时装账本那一路照旧,笔记那一路缺席。
+  let vaults: NonNullable<IndexWorkerData['vaults']> = []
   try {
-    notesDirs = await resolveDailyNoteSearchDirs(adapters)
+    vaults = await notesWorkerConfig(adapters.getNoteVaults?.() ?? [])
   } catch (error) {
-    log.warn('cannot resolve daily-note directories; the daily feed is not installed', { err: error })
+    log.warn('cannot resolve note vaults; the notes feeds are not installed', { err: error })
   }
 
   const base = {
     databasePath,
     sessionsDir: getOnethingSessionsDir(),
-    ...(notesDirs.length > 0 ? { notesDirs } : {}),
     schemas: schemasOf(INDEXED_MANIFESTS),
     // 分析器换了实现就换这个串 —— 库头对不上就丢库重建(§5.4)。
     analyzerId: 'composite' as const,
@@ -386,7 +462,17 @@ async function startSearchIndexService(
    * 它,所以「崩溃重起」与「换配置重起」走的是同一份值。
    */
   let semantic = semanticWorkerConfig(getSettings())
-  const workerDataNow = (): IndexWorkerData => ({ ...base, semantic })
+  /*
+   * 第二格同样住在函数作用域里(P2)。库表与语义配置**各自成格**:改一个不该
+   * 把另一个的值带回旧的 —— 工厂每次造 Worker 现读这两格,两次替换因此可以
+   * 交叉发生。
+   */
+  let vaultConfig: IndexWorkerData['vaults'] = vaults
+  const workerDataNow = (): IndexWorkerData => ({
+    ...base,
+    semantic,
+    ...(vaultConfig === undefined || vaultConfig.length === 0 ? {} : { vaults: vaultConfig }),
+  })
 
   const override = overrides.createWorker
   const service = new SearchIndexService({
@@ -418,7 +504,7 @@ async function startSearchIndexService(
   })
   service.start()
   log.info('search index worker started', {
-    fields: { workerPath, databasePath, notesDirs: notesDirs.length, semantic: semantic?.enabled === true },
+    fields: { workerPath, databasePath, vaults: vaults.length, semantic: semantic?.enabled === true },
   })
 
   return {
@@ -444,6 +530,16 @@ async function startSearchIndexService(
           // 代理也会换 Worker(见 `sameSemantic`)—— 只记「有没有」,不记 URL。
           proxy: next?.proxy?.enabled === true,
         },
+      })
+      await service.restart()
+      return true
+    },
+    async applyNotes(next) {
+      // 同表不换:一次「只改了主题」的保存不该把索引 Worker 掀掉重起。
+      if (sameVaults(vaultConfig, next)) return false
+      vaultConfig = next
+      log.info('the note-vault table changed; replacing the index worker', {
+        fields: { vaults: next?.length ?? 0 },
       })
       await service.restart()
       return true

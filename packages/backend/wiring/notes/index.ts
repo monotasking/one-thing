@@ -57,7 +57,7 @@ import {
 } from '../settings/events.js'
 import { getSettings } from '../../stores/settings.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
-import { getCurrentBackend } from '../../current.js'
+import { getCurrentBackend, getCurrentBackendSafe } from '../../current.js'
 import { getLogger } from '../logging/index.js'
 
 const log = getLogger('notes')
@@ -147,6 +147,22 @@ export interface NotesSubsystem {
    * 也不许再 new 一台探针出来 —— 那就是第二份判据。
    */
   systemState(driverId: string): Promise<NoteSystemState | undefined>
+  /**
+   * 「库表刚重算过」。返回退订(P2)。
+   *
+   * **为什么消费方订这一条,而不是各自订 `settings:changed`**:库表是这个域的
+   * **产物**,不是设置的一个投影 —— 谁算得出它只有这一个地方。检索那一侧要是
+   * 自己去订设置、再自己读 `vaults()`,两条链就都在「设置刚变」这一刻醒来,
+   * 而谁先跑完是 `configureSettingsEventBroadcaster` 串联顺序的副产品:notes 先
+   * 注册(装配第 860 行)、search 后注册(第 1009 行),串联是「先跑上一位」,
+   * 于是 search 的监听跑在 notes 的 `refresh` **发起之后、落定之前**(那是个
+   * `void` 的异步),读到的是上一份库表。订产物就没有这个缝。
+   *
+   * 每次 `refresh` 落定都喊一声(包括「不可信 → 清空」那一档),**哪怕表没变**:
+   * 「变没变」是消费方自己的判据(检索那一侧按 id+root+dailyFolder 逐项比,
+   * 没变就不换 Worker),这里不替它判。
+   */
+  onRefreshed(listener: (vaults: NoteVault[]) => void): () => void
   dispose(): void
 }
 
@@ -184,16 +200,29 @@ export function createNotesSubsystem(options: BootstrapNotesOptions = {}): Notes
   // 目录驱动排在后面:同一个根两边都认时 Obsidian 赢(先认领先得)。
   registry.register(new FolderDriver())
 
+  const listeners = new Set<(vaults: NoteVault[]) => void>()
+  const announce = (vaults: NoteVault[]): void => {
+    for (const listener of listeners) {
+      try {
+        listener(vaults)
+      } catch (error) {
+        log.warn('a note-vault listener failed', {}, error)
+      }
+    }
+  }
+
   const refresh = async (settings?: AppSettings): Promise<void> => {
     if (!trusted()) {
       // 夹紧的宿主:表清空。**不是「不注册驱动」** —— 信任会变(server 在
       // listen 时才声明),所以这一档必须是可逆的。
       registry.clear()
       log.debug('notes: host is not locally trusted; the vault table stays empty')
+      announce([])
       return
     }
     const vaults = await registry.refresh(toNotesConfig(settings ?? getSettings()))
     log.debug('note vaults refreshed', { count: vaults.length })
+    announce(vaults)
   }
 
   /**
@@ -238,7 +267,20 @@ export function createNotesSubsystem(options: BootstrapNotesOptions = {}): Notes
     })
   })
 
-  return { registry, refresh, inventory, systemState, dispose: unwatchSettings }
+  return {
+    registry,
+    refresh,
+    inventory,
+    systemState,
+    onRefreshed(listener) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    dispose() {
+      unwatchSettings()
+      listeners.clear()
+    },
+  }
 }
 
 /**
@@ -284,6 +326,36 @@ export function getNoteSystemRegistry(): NoteSystemRegistry {
  */
 export function getNotesSubsystem(): NotesSubsystem {
   return getCurrentBackend('notes').notes
+}
+
+/**
+ * 笔记子系统,**没有就 `null`**(与 `getCurrentBackendSafe()` 同一族)。
+ *
+ * 谁需要这一只:检索的装配要订「库表刚重算过」,而它也跑在**没有真 backend** 的
+ * 那些单测里(装配用例自己造 `workerData`,一台 backend 都不装)。`notes` 那一格
+ * 是句柄上的 getter,没填就抛 —— 「有就用,没有就算了」的问法只能包一层。
+ */
+export function getNotesSubsystemSafe(): NotesSubsystem | null {
+  const handle = getCurrentBackendSafe()
+  if (handle === null) return null
+  try {
+    return handle.notes
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 在册的笔记库,**没有子系统就是空表**。检索的取材面(`wiring/search/adapters.ts`)
+ * 与授权面都从这里晚绑定地现取 —— 库表会变,任何一份快照都会过期。
+ */
+export function noteVaultsNow(): NoteVault[] {
+  return getNotesSubsystemSafe()?.registry.vaults() ?? []
+}
+
+/** 主库,没有就 `null`(「今天那一条」问的就是它)。 */
+export function primaryNoteVaultNow(): NoteVault | null {
+  return getNotesSubsystemSafe()?.registry.primaryVault() ?? null
 }
 
 /**

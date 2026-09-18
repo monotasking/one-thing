@@ -11,7 +11,7 @@
  * 读者:
  *  - `actions.ts` / `prompts.ts`(静态型)与 `files.ts`(扫描型)—— 匹配与打分
  *    就是这三件;
- *  - `sessions.ts` / `daily.ts`(索引型)只借 `normalizeSearchQuery` 判「这是不是
+ *  - `sessions.ts` / `notes.ts`(索引型)只借 `normalizeSearchQuery` 判「这是不是
  *    空词」——裸 `/` 与 `>` 归一化之后也是空串,而那两条路对空词各有各的答法。
  *
  * 索引路的分词 / 打分**不在这里**:那是 core 的分析器与 `SqliteIndex` 的事

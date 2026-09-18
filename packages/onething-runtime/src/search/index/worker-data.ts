@@ -13,13 +13,15 @@ export interface IndexWorkerData {
   /** `<store>/sessions`。 */
   sessionsDir: string
   /**
-   * 每日笔记根目录,**可以有几个**(空 / 缺席 = 不装那一路 feed)。
+   * 笔记库,**一个库一把 feed**(空 / 缺席 = 不装那一路 feed)。
    *
-   * 复数不是备用格:今天 `getDailyNoteProfiles` 对同一个配置根就可能答两个搜索
-   * 目录(Obsidian vault 的 daily 子目录 + vault 根)。一个目录一把 feed,
-   * 索引服务对它们一视同仁(§5.2b)。
+   * P2 之前这一格是 `notesDirs: string[]` —— 「每日笔记那几个目录」。今天说的是
+   * 「这台机器上在册的笔记库」,所以它带 id(`vault` facet 写的就是它)与日记
+   * 文件夹(`daily` facet 的判据)。**形状是纯数据**:`workerData` 要过结构化
+   * 克隆,而笔记领域的 `NoteVault` 是个带方法的对象,过不去也不该过去 ——
+   * Worker 那条线程是后台路,一条 CLI 命令都不许发。
    */
-  notesDirs?: string[]
+  vaults?: Array<{ id: string; root: string; dailyFolder?: string }>
   /** 推理段进不进索引(拍点乙:缺省不含)。 */
   includeReasoning?: boolean
   /** 各能力的字段表(manifest.schema);`embed` 那一格决定字段进不进向量索引。 */

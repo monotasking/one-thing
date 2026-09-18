@@ -2069,10 +2069,12 @@ const RETIRED_SCAN_PATH_MODULES = [
 const SEARCH_CAPABILITY_MODULES = [
   'packages/onething-runtime/src/search/capabilities/index.ts',
   'packages/onething-runtime/src/search/capabilities/actions.ts',
-  'packages/onething-runtime/src/search/capabilities/daily.ts',
-  'packages/onething-runtime/src/search/capabilities/daily-notes.ts',
   'packages/onething-runtime/src/search/capabilities/files.ts',
   'packages/onething-runtime/src/search/capabilities/messages.ts',
+  // P2(2026-09-18):`daily.ts` + `daily-notes.ts` 两件并成 `notes.ts` 一件 ——
+  // 「每日笔记那个目录」变成「笔记库」之后,配置那半边搬去了笔记领域
+  // (`runtime/src/notes/`),这一类就真的只剩一个文件了。
+  'packages/onething-runtime/src/search/capabilities/notes.ts',
   'packages/onething-runtime/src/search/capabilities/prompts.ts',
   'packages/onething-runtime/src/search/capabilities/scan-adapter.ts',
   'packages/onething-runtime/src/search/capabilities/sessions.ts',

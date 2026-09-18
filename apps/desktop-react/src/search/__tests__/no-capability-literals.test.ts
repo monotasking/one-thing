@@ -50,7 +50,7 @@ const searchDir = path.resolve(here, '..')
  * 漏判的后果是「新能力的 id 混进了骨架而没被抓到」,而**已有的六个仍然被钉着**,
  * 骨架不会因为加了一类就整个失守。要根治得让闸去问真注册表,而那要起一台 core。
  */
-const CAPABILITY_IDS = ['chats', 'messages', 'files', 'daily', 'prompts', 'actions']
+const CAPABILITY_IDS = ['chats', 'messages', 'files', 'notes', 'prompts', 'actions']
 
 /** 豁免的相对路径前缀(见文件头两条理由)。 */
 const ALLOWED = ['targets/', '__tests__/']

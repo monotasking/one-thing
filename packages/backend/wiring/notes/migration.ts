@@ -3,7 +3,7 @@
  *
  * ## 只播种,不删
  *
- * `user_note_dir` / `work_note_dir` 两个变量、`general.dailyNotes` 五格,这一单
+ * `user_note_dir` / `work_note_dir` 两个变量,这一单
  * **一个都不动**(P3 / P2 才删)。理由是可回退:播种完之后老读者照旧工作,新
  * 领域并行跑一段时间;真出事 `git revert` 就够,不需要把用户的数据倒回去。
  *
@@ -13,7 +13,8 @@
  *  - 老两个变量的值:**是某个库的根或在它下面** → 那个库 `skills: true`;
  *    `user_note_dir` 那个再当 `primaryVaultId`;
  *  - **不是任何库** → 进 `folders`(它就是一个裸目录,FolderDriver 接着);
- *  - `general.dailyNotes.format` 有值就搬进 `dailyFormat`。
+ *  - `settings.notes.dailyFormat` 缺席就落缺省(P2 之前这一格是从
+ *    `general.dailyNotes.format` 搬来的;那五格已随 P2 删掉)。
  *
  * ## 幂等与安全
  *
@@ -106,7 +107,10 @@ export async function migrateNotesSettings(ports: NotesMigrationPorts = {}): Pro
       systems: settings.notes?.systems ?? {},
       vaults: seeded,
       folders,
-      dailyFormat: settings.general?.dailyNotes?.format || settings.notes?.dailyFormat || 'YYYY-MM-DD',
+      // P2 删了 `general.dailyNotes` 五格,于是这里只剩自己那一格(迁移跑过的
+      // 机器上它已经是老值;没跑过的机器上老值随那五格一起没了 —— 零迁移,
+      // `mergeWithDefaults` 白名单式重建自然丢掉旧键)。
+      dailyFormat: settings.notes?.dailyFormat || 'YYYY-MM-DD',
       ...(primaryVaultId ? { primaryVaultId } : {}),
       ...(settings.notes?.attachmentDirectory ? { attachmentDirectory: settings.notes.attachmentDirectory } : {}),
       migratedAt: now(),

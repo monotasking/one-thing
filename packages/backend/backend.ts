@@ -650,8 +650,9 @@ export class OnethingBackend implements BackendHandle {
      * 失败不写标记、下次启动重跑,所以这里只记不抛(`migrateNotesSettings`
      * 自己把异常吃掉并答 `'failed'`)。
      *
-     * 它**只播种,不删**:两个老变量与 `general.dailyNotes` 一个字不动
-     * (P3 / P2 才删),所以这一步是可回退的。
+     * 它**只播种,不删**:两个老变量一个字不动(P3 才删),所以这一步是可
+     * 回退的。(`general.dailyNotes` 那五格已随 P2 的 `notes` 检索能力一起删了 ——
+     * 零迁移:`mergeWithDefaults` 是白名单式重建,旧键自然落地。)
      */
     await migrateNotesSettings()
     // 盘上遗留的**明文**凭证池升级成密文(2026-08-31)。排在迁移之后:这一次真的

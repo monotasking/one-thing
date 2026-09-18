@@ -29,7 +29,7 @@ import type { IndexWorkerHandle } from '../worker-host.js'
 
 export const MESSAGE_CAPABILITY = 'messages'
 export const SESSION_CAPABILITY = 'chats'
-export const DAILY_CAPABILITY = 'daily'
+export const NOTES_CAPABILITY = 'notes'
 
 /** 与 `runtime/search/capabilities/*` 将来那份 manifest.schema 同形。 */
 export const INDEX_SCHEMAS: Record<string, Record<string, { analyzer: string; weight: number }>> = {
@@ -41,8 +41,8 @@ export const INDEX_SCHEMAS: Record<string, Record<string, { analyzer: string; we
   [SESSION_CAPABILITY]: {
     title: { analyzer: 'composite', weight: 2 },
   },
-  // 与 `capabilities/daily.ts` 那份 `manifest.schema` 逐字同(title 是文件名主干)。
-  [DAILY_CAPABILITY]: {
+  // 与 `capabilities/notes.ts` 那份 `manifest.schema` 逐字同(title 是文件名主干)。
+  [NOTES_CAPABILITY]: {
     title: { analyzer: 'composite', weight: 2 },
     content: { analyzer: 'composite', weight: 1 },
   },

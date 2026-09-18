@@ -79,12 +79,12 @@ describe('sequenceOf(一次 flatten)', () => {
   it('R3:动作项是**末项**,排在所有块之后', () => {
     const seq = sequenceOf(listing(
       [block('prompts', ['p1'], { cursor: undefined, actions: [{ id: 'create', labelKey: 'k' }] })],
-      { actions: [{ id: 'create-daily', labelKey: 'k2', capability: 'daily' }] },
+      { actions: [{ id: 'create-daily', labelKey: 'k2', capability: 'notes' }] },
     ))
     expect(ids(seq)).toEqual([
       rowItemId('prompts', 'p1'),
       actionItemId('prompts', 'create'),
-      actionItemId('daily', 'create-daily'),
+      actionItemId('notes', 'create-daily'),
     ])
     expect(seq[seq.length - 1].kind).toBe('action')
   })

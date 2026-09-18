@@ -158,7 +158,7 @@ import {
 	type SearchServiceRequest,
 } from "@onething/runtime/search";
 import { unavailableIndexFace } from "../wiring/search/index.js";
-import { createDailyNote as createDailyNoteWith } from "@onething/runtime/search/capabilities";
+import { noteVaultsNow, primaryNoteVaultNow } from "../wiring/notes/index.js";
 import type { MediaLibraryService, OnethingMediaLibraryPaths } from "@onething/runtime/media";
 import {
 	ONETHING_LOG_MONITOR_MANIFEST,
@@ -1878,8 +1878,11 @@ async function createServerRuntimeOverServerBackend(
 					: [],
 			getSession: (sessionId) => getSessionForContext(sessionId, context),
 			getCurrentSessionId: () => getServerCurrentSessionId(context),
-			getSettings: () => settings,
 			getVariablesStore: () => getVariableRuntimeForContext(context).store,
+			// 笔记库是**这台机器上的**(不按 owner 分),晚绑定地现取 —— 夹紧的
+			// 宿主上它是空表,`notes` 那一类于是整组不出现(P2)。
+			getNoteVaults: noteVaultsNow,
+			getPrimaryNoteVault: primaryNoteVaultNow,
 			listFiles: (options) => {
 				const rootPath = resolveServerWorkspaceFilePath(
 					workspaceRoot,
@@ -1898,45 +1901,24 @@ async function createServerRuntimeOverServerBackend(
 		};
 	};
 
+	/**
+	 * `POST /api/search/actions` 背后那一只 —— **今天只是原样回传**。
+	 *
+	 * P2 删掉了这里唯一的分支:`create-daily-note:<path>` → 建文件 → 回
+	 * `open-file:<path>`。那条路是 A1-a 之前 Vue 壳 `searchWindowRouter.executeAction`
+	 * 的落点,而那个壳 2026-09-04 已经退役,仓里一个调用方都没有了(React 壳的
+	 * `runAction` 今天还是一句「这个动作还接不上」的提示)。更要紧的是它是
+	 * **第二个「建今天那篇日记」的产地**:真正那一条走 `search.invoke` → `notes`
+	 * 能力 → `NoteVault.createDailyNote`(吃用户的日记文件夹 / 格式 / 模板),
+	 * 留着这一条就是让 server 按自己那套语义再建一遍。
+	 *
+	 * 路由本身留着(契约没动),于是一个不认识的动作号仍然得到一个诚实的回声。
+	 */
 	const resolveSearchActionForContext = async (
 		actionId: string,
-		context = defaultRequestContext(),
+		_context = defaultRequestContext(),
 	): Promise<{ success: boolean; actionId?: string; error?: string }> => {
-		const createDailyNotePrefix = "create-daily-note:";
-		if (!actionId.startsWith(createDailyNotePrefix)) {
-			return { success: true, actionId };
-		}
-
-		const encodedPath = actionId.slice(createDailyNotePrefix.length);
-		const requestedPath = decodeURIComponent(encodedPath);
-		const filePath = resolveServerWorkspaceFilePath(
-			workspaceRoot,
-			context,
-			requestedPath,
-		);
-		if (!filePath) {
-			return {
-				success: false,
-				error:
-					"Search action path must stay inside the workspace sandbox root.",
-			};
-		}
-
-		try {
-			// 取材面按请求上下文现装一份(设置 / 变量仓都是 per-owner 的),交给
-			// 每日笔记那一类自己的 `createDailyNote` —— S5 之前这里绕的那个
-			// 从前这里绕的那个 providers 门面是旧扫描路的入口,S5 随它一起删了。
-			await createDailyNoteWith(
-				filePath,
-				await createSearchAdaptersForContext(context),
-			);
-			return { success: true, actionId: `open-file:${filePath}` };
-		} catch (error: any) {
-			return {
-				success: false,
-				error: error.message || "Failed to execute search action.",
-			};
-		}
+		return { success: true, actionId };
 	};
 
 	const respondToPermission = async (

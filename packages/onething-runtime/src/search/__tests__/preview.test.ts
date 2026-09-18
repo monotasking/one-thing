@@ -21,7 +21,7 @@ import type { Candidate } from '@onething/core/search'
 import type { OnethingSearchProvidersAdapters, OnethingSearchMessage } from '../providers.js'
 import {
   createChatsSearchCapability,
-  createDailySearchCapability,
+  createNotesSearchCapability,
   createFilesSearchCapability,
   createMessagesSearchCapability,
   createPromptsSearchCapability,
@@ -48,7 +48,6 @@ function makeAdapters(overrides: Partial<OnethingSearchProvidersAdapters> = {}):
     iterateSessionMessages: sessionId => (sessionId === 's1' ? MESSAGES : []),
     getSession: () => undefined,
     getCurrentSessionId: () => undefined,
-    getSettings: () => ({ general: { dailyNotes: { enabled: false } } }),
     getVariablesStore: () => ({ getUserNoteDir: () => undefined, getWorkNoteDir: () => undefined }),
     listFiles: () => ({ async *[Symbol.asyncIterator]() {} }),
     listPrompts: () => [],
@@ -133,7 +132,7 @@ describe('S4a 预览:媒介', () => {
     expect(payload).toMatchObject({ kind: 'file-excerpt', payload: { path: '/tmp/不存在的文件.txt' } })
   })
 
-  describe('daily → note-excerpt', () => {
+  describe('notes → note-excerpt', () => {
     const dirs: string[] = []
     afterEach(() => {
       for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true })
@@ -149,9 +148,9 @@ describe('S4a 预览:媒介', () => {
 
     it('命中行 ±3 行;命中行由候选那句 subtitle 认,不重跑一遍匹配器', async () => {
       const file = writeNote(['l0', 'l1', 'l2', 'l3', '这里命中了', 'l5', 'l6', 'l7', 'l8'])
-      const capability = createDailySearchCapability(makeAdapters(), fakeIndexFace([]))
+      const capability = createNotesSearchCapability(makeAdapters(), fakeIndexFace([]))
       const payload = await capability.preview!(
-        [candidateOf('daily', 'daily', { filePath: file }, { subtitle: '…这里命中了…' })],
+        [candidateOf('notes', 'note', { filePath: file }, { subtitle: '…这里命中了…' })],
         ctx,
       )
 
@@ -163,9 +162,9 @@ describe('S4a 预览:媒介', () => {
 
     it('判不出命中行(标题命中那种)就给开头七行,不伪造一个位置', async () => {
       const file = writeNote(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'])
-      const capability = createDailySearchCapability(makeAdapters(), fakeIndexFace([]))
+      const capability = createNotesSearchCapability(makeAdapters(), fakeIndexFace([]))
       const payload = await capability.preview!(
-        [candidateOf('daily', 'daily', { filePath: file })],
+        [candidateOf('notes', 'note', { filePath: file })],
         ctx,
       )
       expect((payload.payload as NoteExcerptPreview).excerpt.split('\n')).toEqual(
@@ -173,11 +172,11 @@ describe('S4a 预览:媒介', () => {
       )
     })
 
-    it('「新建今天的日记」那条抛原话 —— 看一眼不许顺手把文件建出来', async () => {
-      const capability = createDailySearchCapability(makeAdapters(), fakeIndexFace([]))
+    it('「还没建出来」那条抛原话 —— 看一眼不许顺手把文件建出来', async () => {
+      const capability = createNotesSearchCapability(makeAdapters(), fakeIndexFace([]))
       await expect(
         capability.preview!(
-          [candidateOf('daily', 'daily', { filePath: '/x/y.md', actionId: 'create-daily' })],
+          [candidateOf('notes', 'note', { filePath: '/x/y.md', actionId: 'create-daily' })],
           ctx,
         ),
       ).rejects.toThrow('还没有文件可看')

@@ -38,8 +38,7 @@ import { encodeSessionLogEventLine } from '@onething/core/session'
 import type { SessionLogEventRecord } from '@onething/core/session'
 import type { SessionMeta } from '@shared/ipc.js'
 import {
-  DailyNotesFeed,
-  DAILY_FEED_ID,
+  VaultFeed,
   IndexProjector,
   IndexWorkerCore,
   LedgerFeed,
@@ -144,7 +143,6 @@ const stubAdapters: OnethingSearchProvidersAdapters = {
   },
   getSession: () => undefined,
   getCurrentSessionId: () => undefined,
-  getSettings: () => ({ general: {} }),
   getVariablesStore: () => ({ getUserNoteDir: () => undefined, getWorkNoteDir: () => undefined }),
   listFiles: () => ({ async *[Symbol.asyncIterator]() {} }),
   listPrompts: () => [],
@@ -174,10 +172,7 @@ function sameThreadWorker(data: IndexWorkerData): SameThread {
         sessionsDir: data.sessionsDir,
         projector: new IndexProjector({ includeReasoning: data.includeReasoning ?? false }),
       }),
-      ...(data.notesDirs ?? []).map((dir, at) => new DailyNotesFeed({
-        notesDir: dir,
-        ...(at === 0 ? {} : { id: `${DAILY_FEED_ID}#${at}` }),
-      })),
+      ...(data.vaults ?? []).map(vault => new VaultFeed(vault)),
     ],
     filters: defaultDocumentFilters(),
     ...(data.schemas !== undefined ? { schemas: data.schemas } : {}),

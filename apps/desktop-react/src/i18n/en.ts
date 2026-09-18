@@ -460,7 +460,7 @@ export const en: Record<MessageKey, string> = {
   'search.capability.chats': 'Sessions',
   'search.capability.messages': 'Messages',
   'search.capability.files': 'Files',
-  'search.capability.daily': 'Notes',
+  'search.capability.notes': 'Notes',
   'search.capability.prompts': 'Prompts',
   'search.capability.actions': 'Commands',
   'search.resultsLabel': 'Results',
@@ -472,7 +472,7 @@ export const en: Record<MessageKey, string> = {
    * so English uses code-style caps that fit the chip; zh uses 会话/消息. */
   'search.badgeSession': 'CHAT',
   'search.badgeMessage': 'MSG',
-  'search.badgeDaily': 'NOTE',
+  'search.badgeNote': 'NOTE',
   'search.badgePrompt': 'PROMPT',
   'search.badgeAction': 'CMD',
   /* Two factual tags (§9). Archived sessions ARE searchable (the bug S3b fixed),
@@ -535,6 +535,7 @@ export const en: Record<MessageKey, string> = {
   'search.vectorEmbedding': 'Semantic recall: embedding ({pending} left)',
   'search.action.createPrompt': 'Create prompt “{title}”',
   'search.action.createDailyNote': "Create today's note",
+  'search.action.createNote': 'Create note “{title}”',
   'search.actionUnavailable': "This action can't be run here: {action}",
   'search.targetUnavailable': "This kind of result can't be opened yet: {kind}",
 

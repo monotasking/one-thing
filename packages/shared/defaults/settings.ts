@@ -219,13 +219,6 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
     { commandId: 'git', enabled: true },
     { commandId: 'files', enabled: true },
   ],
-  dailyNotes: {
-    enabled: true,
-    directoryMode: 'personal',
-    customDirectory: '',
-    useObsidianConfig: true,
-    format: 'YYYY-MM-DD',
-  },
   todoPlan: {
     enabled: true,
     directory: '',
@@ -694,10 +687,6 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
       // 匹配不上的 data 属性 —— 界面无声地停在缺省档而没人知道为什么。
       composerWidth: normalizeComposerWidth(settings.general?.composerWidth),
       quickCommands: settings.general?.quickCommands ?? defaults.general.quickCommands,
-      dailyNotes: {
-        ...defaults.general.dailyNotes,
-        ...settings.general?.dailyNotes,
-      },
       todoPlan: {
         ...defaults.general.todoPlan,
         ...settings.general?.todoPlan,
