@@ -8,6 +8,17 @@ import { createAppFetch } from '../../provider-binding/bound-fetch.js'
  * 每 30 分钟一发,只在「晴 / 多云 / 雨 / 雪 / 雾 / 雷」这一类变了时报。
  */
 export function defaultAmbientSources(): AmbientSource[] {
+  /*
+   * 09-19 暂时关掉(用户:「他现在自己到点就 trigger 了,然后开始说话,这好烦啊…别这样,先关掉,
+   * 等我有空想想怎么做」)。来源类与资源面都留着,等他想好怎么触发再把这一行放回来:
+   *   return [new ClockSource(), new WeatherSource(wttrWeather())]
+   * 表是空的 = 不起计时器、不问天气、宠物收不到任何外界时刻。
+   */
+  return []
+}
+
+/** 两只来源的造法留着(测试与将来重开用),只是出厂表里暂时不放。 */
+export function builtinAmbientSources(): AmbientSource[] {
   return [new ClockSource(), new WeatherSource(wttrWeather())]
 }
 
