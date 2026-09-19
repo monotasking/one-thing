@@ -48,6 +48,8 @@ bun run boundary:gate      # zero-baseline hard gate: any `[boundary] failed:` l
 bun run log:gate           # console.* ratchet (baseline docs/audit/log-gate-baseline-2026-08-20.txt)
 bun run log:check          # the full console.* call-site list behind that gate
 bun run gate:native        # every native .node loads under BOTH Node and Electron (N-API law)
+bun run gate:embed-runtime # the embedder finishes 40 variable-length batches under BOTH runtimes
+                           # (Electron peak RSS ≤ 800MB); skipped when the model is not downloaded
 bun run gate:search-index  # real-machine gate (12 steps + 1 opt-in): boots dist/server on temp stores
                            # behind a fake provider — index worker is owner, a just-sent message is
                            # searchable, rename/archive/delete land through the feed, main-thread loop
@@ -253,6 +255,22 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
   `sqlite3_api` struct, so it imports no `napi_*` at all (`vec0.dylib` reads: 21 undefined symbols, all
   libc). `--json` prints the machine-readable table.
   Adding a native dependency means passing this gate — the ABI claim never lives in a comment again.
+- `bun run gate:embed-runtime` — `scripts/gate-embed-runtime.mjs`, the same law one step further in:
+  `gate:native` proves a `.node` **loads** under both runtimes, this one proves the embedder still
+  **finishes a real workload** under both. 起因 2026-09-18:桌面一天崩四次,根因是 ORT 的 CPU 内存池
+  (`BFCArena`)扩容翻倍且从不归还,变长批次几批之内就要 `posix_memalign(2GiB)` — 系统 Node 的
+  malloc 照给,Electron 的 PartitionAlloc 在那一档直接 SIGTRAP 掐进程(exit 133,原生 trap,JS 的
+  crash hook 一行都写不出)。修法是 `transformers-onnx.ts` 的 `PIPELINE_OPTIONS.session_options`
+  里那一格 `enableCpuMemArena: false`,而这道门就是它的活口。它用产品主进程同一份 esbuild 配方
+  (`shellEsbuildOptions`,原生相关 external)把 `scripts/gate-embed-runtime/entry.ts` 打成一份临时
+  单文件产物 —— **入口只 import 产品自己的 `createTransformersOnnxEmbedder`,不抄一份 pipeline 选项**,
+  抄一份就守不住那一格 —— 然后在系统 Node 与 `ELECTRON_RUN_AS_NODE=1` 的 Electron 下各跑 40 批
+  ×32 条变长中文文本(定种 LCG,两个运行时逐字同输入)。两条判据:任一运行时非零退出即红(SIGTRAP /
+  133 被点名),**且 Electron 下峰值 RSS 超过 800MB 即红** —— 后者是提前量,没修那一版在翻到 2GiB
+  之前就已经一路涨过 1.2GB,而修好之后实测 ≈300MB。模型只读 `<store>/models/embeddings/
+  multilingual-e5-small`(`ONETHING_GATE_EMBED_MODEL_DIR` 可覆盖),不下载、不联网、不写盘;目录
+  不在或 `node_modules/electron` 不可用就 **skipped + exit 0**,口径同 `gate:native` 跳过静态半边
+  与 `gate:search-index` ⑫ 的 opt-in,跳过那一行打得很显眼。
 - `packages/core/__tests__/architecture-boundaries.test.ts`: core has no electron/host imports and sits at the bottom (no `@onething/runtime`/`@onething/gateway`); runtime is Electron/host/gateway-free; **the runtime product layer must not import `@onething/backend`** (dependency points one way: product ← assembly); **I1 — `packages/backend`'s root directory names must not shadow a `packages/onething-runtime/src` domain name** (`wiring/` excluded; the thick-twin allowlist is **empty** since P3'c, and the assertion stays as a ratchet against a new root directory growing back); **I2 — inside a shared domain name, `packages/core/<d>/x.ts` and `packages/onething-runtime/src/<d>/x.ts` must not both exist** (`index.ts` / `types.ts` / `__tests__/**` and a built-in plugin's `plugins/<id>.ts` — whose name is pinned to the plugin id — are structurally exempt; 4 shrink-only allowlist entries: `mcp/manager.ts`, `storage/{file-storage,paths}.ts`, `tools/diff-hunks.ts`); gateway depends on core only; apps/server is Electron-free (the Vue renderer / apps/web rules died with them on 2026-09-04).
 
 Notes:
@@ -443,7 +461,13 @@ Notes:
   route (c)), so it still answers `vector: 'off'` and degrades cleanly — semantic recall really runs
   on dev / server / CLI. `gate:search-index` ⑫ is the gate for it, opt-in because it downloads 130MB:
   cold 191.5s to `ready`, warm 1.0s, and two zero-word-overlap paraphrases each rank their own message
-  first over HTTP. **Backend answers a reason code, never a sentence** (R12): `status.vectorErrorKind`
+  first over HTTP. **That same session also decides how the embedder allocates, and that half has its
+  own gate** (2026-09-18): `session_options.enableCpuMemArena = false` sits next to
+  `intraOpNumThreads` because ORT's CPU arena doubles and never gives back — under Electron's
+  PartitionAlloc its first `posix_memalign(2GiB)` is a SIGTRAP that takes the desktop with it (four
+  crashes in one day). `bun run gate:embed-runtime` is what keeps that line honest: it runs **the
+  product's own embedder** through 40 variable-length batches under both Node and Electron. See the
+  Guardrails entry above. **Backend answers a reason code, never a sentence** (R12): `status.vectorErrorKind`
   (`network` / `runtime` / `model` / `unknown`) plus `status.vectorError` (the raw words, 200 chars);
   the shell looks the code up in its own dictionary and puts the raw words in brackets after it.
   Two rules carry over unchanged and are gate-enforced: **the lexical path is untouched**

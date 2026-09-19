@@ -179,8 +179,14 @@ function findNodeAddon(pkgDir) {
 	return undefined
 }
 
-/** Electron 二进制的路径:`require('electron')` 导出的就是它。 */
-function electronBinaryPath() {
+/**
+ * Electron 二进制的路径:`require('electron')` 导出的就是它。
+ *
+ * **导出给别的门复用**(2026-09-18,`gate:embed-runtime`):「在系统 Node 与
+ * `ELECTRON_RUN_AS_NODE=1` 的 Electron 下各跑一遍」是这条法条的通用动作,找二进制的
+ * 判据只该有一份。
+ */
+export function electronBinaryPath() {
 	const pathFile = join(repoRoot, 'node_modules', 'electron', 'path.txt')
 	const distDir = join(repoRoot, 'node_modules', 'electron', 'dist')
 	if (!existsSync(pathFile) || !existsSync(distDir)) return undefined
@@ -389,4 +395,6 @@ function main() {
 	process.exit(red === 0 ? 0 : 1)
 }
 
-main()
+// 只有被直接跑起来时才判 —— 别的门 import 这个文件是为了 `electronBinaryPath()`,
+// 不该顺带跑一遍整道门。
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main()

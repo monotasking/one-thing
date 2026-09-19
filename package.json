@@ -53,6 +53,7 @@
 		"boundary:gate": "node scripts/boundary-gate.mjs",
 		"transport:gate": "node scripts/transport-gate.mjs",
 		"gate:native": "node scripts/gate-native-abi.mjs",
+		"gate:embed-runtime": "node scripts/gate-embed-runtime.mjs",
 		"gate:notes": "bun scripts/gate-notes.mjs",
 		"gate:client": "node scripts/gate-client-runtimes.mjs",
 		"gate:packaged": "node scripts/gate-packaged.mjs",

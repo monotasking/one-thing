@@ -135,7 +135,7 @@ interface TransformersModule {
       dtype?: string
       device?: string
       /** 原样递给 `InferenceSession.create`(3.8.1 的 7787 行 `{ ...options.session_options }`)。 */
-      session_options?: { intraOpNumThreads?: number }
+      session_options?: { intraOpNumThreads?: number; enableCpuMemArena?: boolean }
       progress_callback?: (info: unknown) => void
     },
   ): Promise<TransformersPipeline>
@@ -153,8 +153,17 @@ const PIPELINE_OPTIONS = {
    * 而 onnxruntime-node 的线程数是**每个会话**的 `intraOpNumThreads`,只能经
    * `session_options` 递 —— transformers 3.8.1 的 7787 行把它原样并进
    * `InferenceSession.create` 的参数。不设 = ORT 按物理核数开满。
+   *
+   * **不用 ORT 的 CPU 内存池**(2026-09-18,桌面一天崩四次的那一刀):那个池每次扩容按
+   * 2 的幂翻倍、且从不归还,而每一批的 padding 长度都不同 —— 变长的 32 条一批,几批
+   * 之内它就开口要 `posix_memalign(0x80000000)`。系统 Node 的 malloc 照给;Electron 的
+   * malloc 是 PartitionAlloc,单次申请到 2GiB 这一档**不返回空指针、直接 SIGTRAP 掐掉
+   * 整个进程**(四份 .ips 同栈:`BFCArena::Extend` → `posix_memalign` → `EXC_BREAKPOINT`;
+   * 原生 trap,JS 的 crash hook 一行都写不出)。关掉之后张量用完就还,实测 Electron 下
+   * 60 批变长全过,常驻 1.2GB → 239MB。`enableMemPattern: false` **不算修**:它只是涨得
+   * 慢,没翻到那一档而已。这件事由 `gate:embed-runtime` 在两个运行时下真跑出来,不靠这段话。
    */
-  session_options: { intraOpNumThreads: 1 },
+  session_options: { intraOpNumThreads: 1, enableCpuMemArena: false },
 } as const
 
 /** 那个库的进度回声(`{status, file, loaded, total, progress}`)。 */
