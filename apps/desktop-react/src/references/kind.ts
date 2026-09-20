@@ -20,7 +20,7 @@ import type { AskSpec } from '../composer/types'
  * ── 五格 ──────────────────────────────────────────────────────────────────
  *   拾取 `source`  —— 哪个触发字符下出现、候选怎么查、一行画什么、组头念什么
  *   落稿 `draft`   —— 选中的候选变成哪一枚引用、它在句子里占哪几个字、怎么展开
- *   认出 `parse`   —— 从出站句子 / 从 `contentParts` 部件里怎么认出它
+ *   认出 `parse`   —— 从出站句子 / 从 `contentParts` 部件 / 从一格行内码里怎么认出它
  *   标签 `tag`     —— 这一枚在**线上那条 `<ref/>`** 里长什么样、怎么认回来(B2)
  *   呈现 `render`  —— 图标、标签、提示、可不可点(**数据,不是 JSX**);
  *                     09-14 起这一格是**三个宿主唯一那一份形**(草稿 / 在飞 / 落账)
@@ -265,6 +265,31 @@ export interface ReferenceDraft<Hit, Ref> {
   onPick?(hit: Hit, actions: PickActions): boolean
 }
 
+/**
+ * 从**一格行内码**里认出来的那一半(09-20)。
+ *
+ * ── 它为什么存在 ──────────────────────────────────────────────────────────
+ * 线上写法仍旧只有 `<ref/>` 那一条。这一格是**只读的识别器**,与 `@/abs` 那条
+ * 旧正则同性质:模型不照提示词写、把路径包进反引号的时候(09-20 真机:一条
+ * deepseek 会话重启后 6900 字正文里 `<ref` 零个、反引号绝对路径三个),壳照样
+ * 认得出它指着什么。**没有人会写出**一格 `parse.code` 形的引用 —— 出站永远走
+ * `tag` / `token`,所以它不是第二种写法,是「宿主接不住的路修宿主」的那一句。
+ *
+ * ── 判词 ──────────────────────────────────────────────────────────────────
+ *  · 问的是**一格行内码的全文**,不是「在这格码里找一段子串」。一格码是一个
+ *    不可分的整体(`` `npm run dev -- /a/b.ts` `` 里那条路径是命令的一部分,
+ *    不是一枚引用),在里面挖字就会把一句命令劈成两半。
+ *  · 答 `null` = 这一格不是我的,注册表接着问下一家。
+ *  · **多家都认时按注册序第一个非 null 赢**。今天文件与目录判据互斥(尾斜杠),
+ *    所以这条规则不决定任何现有行为,写下来是为了让第三家进来时有个答案。
+ *  · 早退是**各家自己的事**:「首字符不是 `/` 也不是 `~` 就不是我」是路径那两种
+ *    的知识,注册表不许知道 —— 所以那一句写在 `toRef` 的第一行(`path-ref.ts`)。
+ */
+export interface ReferenceCodeParse<Ref> {
+  /** 一格行内码的全文 → 这一枚引用。答 null = 不是我。 */
+  toRef(text: string): Ref | null
+}
+
 /** 从**出站句子**里认出来的那一半。 */
 export interface ReferenceTextParse<Ref> {
   pattern: RegExp
@@ -352,7 +377,12 @@ export interface ReferenceKind<Hit = any, Ref = any> {
   draft?: ReferenceDraft<Hit, Ref>
   /** 线上 `<ref/>` 那一半(B2)。有它就必须有 `render`(结构闸在 registry)。 */
   tag?: ReferenceTagCodec<Ref>
-  parse?: { text?: ReferenceTextParse<Ref>; part?: ReferencePartParse<Ref> }
+  parse?: {
+    text?: ReferenceTextParse<Ref>
+    part?: ReferencePartParse<Ref>
+    /** 一格行内码整格是不是这一枚(09-20,只读识别器;判词在 `ReferenceCodeParse`)。 */
+    code?: ReferenceCodeParse<Ref>
+  }
   render?(ref: Ref): ChipSpec
   /**
    * 点了做什么。**同步开完就同步答**(`boolean`),要等一发才交一个 promise ——

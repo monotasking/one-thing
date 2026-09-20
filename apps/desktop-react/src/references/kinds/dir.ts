@@ -4,7 +4,13 @@ import type { FileMention } from '../../data/file-mentions-source'
 import { basename } from '../../content/tools/result'
 import { openDirectoryPanel } from '../../content/dir-open'
 import { registerReferenceKind } from '../registry'
-import { isDirectoryPath, PATH_REF_PATTERN, pathRefOf } from './path-ref'
+import {
+  isDirectoryPath,
+  looksLikeDirPath,
+  parseCodePathRef,
+  PATH_REF_PATTERN,
+  pathRefOf,
+} from './path-ref'
 import s from '../ReferenceChip.module.css'
 import type { ReferenceKind } from '../kind'
 
@@ -68,6 +74,18 @@ export const dirReferenceKind: ReferenceKind<FileMention, DirRef> = {
         const hit = pathRefOf(m)
         if (!isDirectoryPath(hit.path)) return null
         return { ref: { kind: 'dirRef' as const, path: hit.path }, start: hit.start, end: hit.end }
+      },
+    },
+    /*
+     * **一格行内码整格是一条目录路径**(09-20)。判词整段在 `path-ref.ts`;
+     * 这一种比文件那一种严一格 —— 目录没有扩展名可判,只能靠「从哪个根起笔」
+     * 把 `/api/users/` 这类路由形挡住(`LOCAL_DIR_ROOTS` 那张表上写着理由)。
+     */
+    code: {
+      toRef: (text) => {
+        const hit = parseCodePathRef(text)
+        if (!hit || !looksLikeDirPath(hit)) return null
+        return { kind: 'dirRef' as const, path: hit.path }
       },
     },
   },

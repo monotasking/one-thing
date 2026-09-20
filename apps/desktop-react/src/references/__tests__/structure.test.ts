@@ -89,6 +89,8 @@ describe('① 旧枚举点:核心层不出现任何一种引用的名字', () =>
     ['content/blocks/inline/InlineRun.tsx', '`ref` 那一支只把标签递给注册表'],
     ['references/segment.ts', '标签扫描者与各家正则平级,谁都不点名'],
     ['references/ReferenceTagChip.tsx', '认得出交给那一种画,认不出画中性 chip'],
+    /* 09-20 新进来的一处:一格行内码整格是不是一枚引用,也只问注册表。 */
+    ['references/ReferenceCodeChip.tsx', '整格问注册表,认不出原样画成一格码'],
   ])('%s 里没有种类 id 字面量(%s)', (relative) => {
     const hits = codeOf(relative).match(KIND_LITERAL) ?? []
     expect(hits).toEqual([])
@@ -411,6 +413,79 @@ describe('④ 陌生能力演练(线上标签):<ref type="drill-session"/>', () 
     expect(segmentReferenceText('看 <ref type="drill-session" id="s9"/>')).toEqual([
       { kindId: null, value: { kind: 'text', text: '看 <ref type="drill-session" id="s9"/>' } },
     ])
+  })
+})
+
+/**
+ * ── ⑤ 陌生能力演练(行内码那一半,09-20;正本 §3)───────────────────────────
+ *
+ * 又一条链:这一次现造的那一种认的是**一格行内码的全文**(`#123` 这种 issue 号)
+ * —— 设计「行内码整格是一枚引用」那一单时想的只有路径,这一段问的就是「换一种
+ * 完全不是路径的东西,骨架接不接得住」。
+ *
+ * 全程一个生产文件都不改:注册表只管挨家问,`InlineRun` / `ReferenceCodeChip`
+ * 里一个种类名都没有,「像不像路径」那句判据住在路径那两家自己的 `toRef` 第一行。
+ */
+describe('⑤ 陌生能力演练(行内码):`#123` 是一枚 issue 引用', () => {
+  const opened: string[] = []
+
+  interface IssueRef {
+    kind: 'issueRef'
+    id: string
+  }
+
+  const issueKind: ReferenceKind<never, IssueRef> = {
+    id: 'drill-issue',
+    parse: {
+      code: {
+        toRef: (text) => {
+          const m = /^#(\d+)$/.exec(text)
+          return m ? { kind: 'issueRef', id: m[1] } : null
+        },
+      },
+    },
+    render: (ref) => ({
+      className: 'issue-chip',
+      dataKind: 'issueRef',
+      label: `#${ref.id}`,
+      clickable: true,
+    }),
+    open: (ref) => {
+      opened.push(ref.id)
+      return true
+    },
+  }
+
+  let off: (() => void) | undefined
+  afterEach(() => {
+    off?.()
+    off = undefined
+    opened.length = 0
+  })
+
+  it('一行登记之后:助手那句话里那一格码画成它的 chip,点得了', () => {
+    off = registerReferenceKind(issueKind)
+
+    const blocks = parseMarkdown('见 `#123` 那条')
+    const block = blocks[0].block as { kind: string; inline: InlineNode[] }
+    // 行内树保持**纯 markdown 词汇**:那一格照旧是 `code`,解析发生在画的那一拍。
+    expect(block.inline.map((n) => n.type)).toEqual(['text', 'code', 'text'])
+
+    const view = render(createElement(InlineRun, { nodes: block.inline }))
+    const chip = view.container.querySelector('.issue-chip') as HTMLElement
+    expect(chip).toBeTruthy()
+    expect(chip.textContent).toBe('#123')
+    fireEvent.click(chip)
+    expect(opened).toEqual(['123'])
+  })
+
+  it('反证:把那一行登记去掉,同一格码原样是一格 `<code>`', () => {
+    const blocks = parseMarkdown('见 `#123` 那条')
+    const block = blocks[0].block as { kind: string; inline: InlineNode[] }
+    const view = render(createElement(InlineRun, { nodes: block.inline }))
+    expect(view.container.querySelector('.issue-chip')).toBeNull()
+    expect((view.container.querySelector('code') as HTMLElement).textContent).toBe('#123')
+    expect(view.container.querySelector('button')).toBeNull()
   })
 })
 

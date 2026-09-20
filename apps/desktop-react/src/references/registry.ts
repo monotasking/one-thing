@@ -37,6 +37,14 @@ let derived: {
   pick: ReferenceKind[]
   text: ReferenceKind[]
   part: ReferenceKind[]
+  /**
+   * 有**行内码识别器**的那几家,按登记序(09-20)。
+   *
+   * 派生成一张表而不是每次现 filter:一条长回复里几百格行内码,每一格都要问一遍
+   * 这张表 —— 现 filter 就是 O(格数 × 全表)。没有一家登记 `code` 时它是空数组,
+   * 于是 `resolveReferenceCode` 连一次字符比较都不做。
+   */
+  code: ReferenceKind[]
   tokenTail: RegExp
   /**
    * 线上 type → 那一种。**Map 而不是 find**:一条 500 枚 `<ref/>` 的助手消息
@@ -173,6 +181,7 @@ function build(): NonNullable<typeof derived> {
     pick,
     text: kinds.filter((k) => k.parse?.text),
     part: kinds.filter((k) => k.parse?.part),
+    code: kinds.filter((k) => k.parse?.code),
     tokenTail,
     byTagType,
   }
@@ -202,6 +211,30 @@ export function referenceTextKinds(): readonly ReferenceKind[] {
 /** 有部件认出半边的那几种,按登记序。 */
 export function referencePartKinds(): readonly ReferenceKind[] {
   return table().part
+}
+
+/** 有行内码认出半边的那几种,按登记序(演练与守卫按它遍历)。 */
+export function referenceCodeKinds(): readonly ReferenceKind[] {
+  return table().code
+}
+
+/**
+ * **一格行内码整格是谁的**(09-20)。答 `null` = 这就是一格普通的行内码。
+ *
+ * 遍历是「按登记序第一个非 null 赢」—— 与 `parse.text` 那条扫描线同一条口径
+ * (那边是「最早命中者赢」,这边没有位置可比,只剩登记序)。这只文件照旧**一个
+ * 种类名都没有**:「像不像一条路径」是路径那两种自己的知识,写在它们的 `toRef`
+ * 第一行;注册表只管挨家问。
+ *
+ * 一家都没登记时这张表是空的,整只函数退化成一次空循环 —— 所以在「这台上没有
+ * 这种能力」时它不花钱。
+ */
+export function resolveReferenceCode(text: string): { kindId: string; value: unknown } | null {
+  for (const kind of table().code) {
+    const value = kind.parse!.code!.toRef(text)
+    if (value !== null && value !== undefined) return { kindId: kind.id, value }
+  }
+  return null
 }
 
 export function referenceTriggers(): readonly TriggerSpec[] {

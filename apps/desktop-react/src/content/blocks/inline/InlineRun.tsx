@@ -1,4 +1,5 @@
 import { Tooltip } from '../../../ui/Tooltip'
+import { ReferenceCodeChip } from '../../../references/ReferenceCodeChip'
 import { ReferenceTagChip } from '../../../references/ReferenceTagChip'
 import type { InlineNode } from '../../model/inline'
 import { InlineImage } from './InlineImage'
@@ -30,11 +31,13 @@ function renderInline(node: InlineNode, index: number) {
       // 在边界上出现意外(相邻元素间的换行),而这一段的排版是逐像素定过的。
       return node.text
     case 'code':
-      return (
-        <code key={index} className={s.code}>
-          {node.text}
-        </code>
-      )
+      /*
+       * 一格行内码。**整格恰是一枚引用**时画成 chip,否则原样是一格码 ——
+       * 两形都由 `ReferenceCodeChip` 出,这一支因此照旧**没有任何一种引用的
+       * 名字**(判词与「整格不挖字」的理由在它文件头 / `references/kinds/path-ref.ts`)。
+       * 围栏里的路径不走这条路:那是块级 code,是代码不是提及。
+       */
+      return <ReferenceCodeChip key={index} text={node.text} className={s.code} />
     case 'emphasis':
       return node.strong ? (
         <strong key={index}>

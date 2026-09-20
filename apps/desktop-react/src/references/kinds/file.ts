@@ -11,7 +11,13 @@ import { basename } from '../../content/tools/result'
 import { disambiguatedDirName } from '../../content/files/dir-names'
 import { openFileAt } from '../../content/viewer/open-target'
 import { registerReferenceKind } from '../registry'
-import { isDirectoryPath, PATH_REF_PATTERN, pathRefOf } from './path-ref'
+import {
+  isDirectoryPath,
+  looksLikeFilePath,
+  parseCodePathRef,
+  PATH_REF_PATTERN,
+  pathRefOf,
+} from './path-ref'
 import s from '../ReferenceChip.module.css'
 import type { RefTag } from '@onething/core/references'
 import type { PickContext, PickResult, ReferenceKind } from '../kind'
@@ -216,6 +222,25 @@ export const fileReferenceKind: ReferenceKind<FileMention, FileRef> = {
         const hit = pathRefOf(m)
         if (isDirectoryPath(hit.path)) return null
         return { ref: { kind: 'fileRef' as const, path: hit.path }, start: hit.start, end: hit.end }
+      },
+    },
+    /*
+     * **一格行内码整格是一条文件路径**(09-20)。判词整段在 `path-ref.ts` 的
+     * 「行内码整格是一条路径」一节 —— 这里只是把两句判据接起来,再把位置三格
+     * 原样交进 `FileRef`(与 `tag.toRef` 出来的**同形**,只是没有 `label`:
+     * 一格行内码里没有地方写称呼)。
+     */
+    code: {
+      toRef: (text) => {
+        const hit = parseCodePathRef(text)
+        if (!hit || !looksLikeFilePath(hit)) return null
+        return {
+          kind: 'fileRef' as const,
+          path: hit.path,
+          ...(hit.line === undefined ? {} : { line: hit.line }),
+          ...(hit.endLine === undefined ? {} : { endLine: hit.endLine }),
+          ...(hit.col === undefined ? {} : { col: hit.col }),
+        }
       },
     },
   },

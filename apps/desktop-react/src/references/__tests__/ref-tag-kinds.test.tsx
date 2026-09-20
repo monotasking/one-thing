@@ -490,6 +490,80 @@ describe('超量:500 枚标签的一条消息', () => {
   })
 })
 
+/**
+ * ── 行内码整格是一枚引用(09-20)─────────────────────────────────────────────
+ *
+ * 线上写法仍旧只有 `<ref/>`;这一族是**只读的识别器**,与 `@/abs` 那条旧正则
+ * 同性质 —— 模型不照提示词写、把路径包进反引号时,壳照样认得出它指着什么。
+ * 判据本身在 `path-ref-code.test.ts`,这里量的是**画出来那一半**。
+ */
+describe('行内码:整格是一枚引用就画成 chip', () => {
+  it('助手正文里的 `路径:行` 画成文件 chip,点它落到那一行', () => {
+    const view = renderTags('看 `/Users/me/a.ts:12` 这里')
+    const chip = view.container.querySelector('[data-ref-kind="fileRef"]') as HTMLElement
+    expect(chip).toBeTruthy()
+    expect(chip.textContent).toBe('a.ts:12')
+    // 这一格不再是行内码了 —— 它是一枚引用。
+    expect(view.container.querySelector('code')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button'))
+    expect(openFile).toHaveBeenCalledWith('/Users/me/a.ts', { line: 12 })
+  })
+
+  it('目录那一格画成目录 chip,点它开目录面', () => {
+    renderTags('看 `/Users/me/proj/src/` 这里')
+    fireEvent.click(screen.getByRole('button'))
+    expect(openDir).toHaveBeenCalledWith('/Users/me/proj/src/')
+  })
+
+  it('普通的一格码照旧是一格码 —— 一个字不动、不可点', () => {
+    const view = renderTags('跑 `npm run dev` 就行')
+    const code = view.container.querySelector('code') as HTMLElement
+    expect(code.textContent).toBe('npm run dev')
+    expect(view.container.querySelector('button')).toBeNull()
+  })
+
+  it('围栏里的路径仍是代码 —— 那是代码,不是提及', () => {
+    const blocks = parseMarkdown('```sh\n/Users/me/a.ts:12\n```')
+    expect(blocks.map((entry) => entry.block.kind)).toEqual(['code'])
+    // 块级 code 压根不经过行内那一层,所以这条路上没有第二个判据要写。
+    const source = (blocks[0].block as Extract<BlockModel, { kind: 'code' }>).source
+    expect(source).toContain('/Users/me/a.ts:12')
+  })
+
+  /**
+   * memo 反证:父重渲一轮,行内码那几格**一个 DOM 节点都不换**(与上面 `<ref/>`
+   * 那一条同一条量法 —— 节点身份是这条性能纪律在屏幕上的直接后果)。
+   */
+  it('memo 反证:父重渲一轮,50 格行内码的 DOM 节点一个都不换', () => {
+    const nodes: InlineNode[] = Array.from({ length: 50 }, (_, i) =>
+      i % 2 === 0
+        ? ({ type: 'code' as const, text: `/Users/me/f-${i}.ts:${i + 1}` })
+        : ({ type: 'code' as const, text: `npm run t-${i}` }),
+    )
+
+    let parentRenders = 0
+    function Probe({ tick }: { tick: number }) {
+      parentRenders += 1
+      return (
+        <div data-tick={tick}>
+          <InlineRun nodes={nodes} />
+        </div>
+      )
+    }
+
+    const view = render(<Probe tick={0} />)
+    const before = Array.from(view.container.querySelectorAll('[data-ref-kind="fileRef"], code'))
+    expect(before).toHaveLength(50)
+
+    view.rerender(<Probe tick={1} />)
+    expect(parentRenders).toBeGreaterThan(1)
+
+    const after = Array.from(view.container.querySelectorAll('[data-ref-kind="fileRef"], code'))
+    for (let i = 0; i < 50; i += 1) expect(after[i]).toBe(before[i])
+  })
+})
+
 afterEach(() => {
   resetComposerReferenceSink()
 })
