@@ -30,6 +30,8 @@
     "./plugins/sessions": "./plugins/sessions.ts",
     "./providers": "./providers/index.ts",
     "./permission": "./permission/index.ts",
+    "./references": "./references/index.ts",
+    "./references/*": "./references/*.ts",
     "./resource": "./resource/index.ts",
     "./resource/ref": "./resource/ref.ts",
     "./runtime-facade": "./runtime-facade.ts",

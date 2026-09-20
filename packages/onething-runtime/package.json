@@ -43,6 +43,8 @@
 		"./project-dirs/*": "./src/project-dirs/*.ts",
 		"./providers": "./src/providers/index.ts",
 		"./providers/*": "./src/providers/*.ts",
+		"./references": "./src/references/index.ts",
+		"./references/*": "./src/references/*.ts",
 		"./skills": "./src/skills/index.ts",
 		"./skills/*": "./src/skills/*.ts",
 		"./media": "./src/media/index.ts",

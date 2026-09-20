@@ -861,6 +861,93 @@ describe('GatewayBridge', () => {
     })])
     expect(channel.sent).toEqual([{ conversationId: 'user-1', userId: 'user-1', text: 'Echo: hello', raw }])
   })
+
+  /**
+   * 设计正本 `docs/design/reference-tag-2026-09.md` §2.8:IM 里露 XML 是事故。
+   * 逐字推流是最坏的情况 —— 标签会被切在任意一格上,而半截标签投影成它自己。
+   */
+  it('never lets a reference tag reach the channel, even split token by token', async () => {
+    const reply = 'see <ref type="file" path="/a/b.ts" line="12"/> and <ref type="x">这一处</ref> done'
+    const runtime = new MockRuntime((rt, options) => {
+      for (const char of reply) rt.pushText(options.sessionId, char)
+    })
+    const channel = new MockChannel()
+    const bridge = new GatewayBridge({
+      allowlist: new Allowlist({ mode: 'open' }),
+      rateLimiter: new RateLimiter({ maxPerMinute: 10 }),
+      registry: new GatewaySessionRegistry(runtime),
+      runtime,
+    })
+    bridge.register(channel)
+
+    await bridge.handle({
+      channelId: 'mock',
+      userId: 'user-1',
+      conversationId: 'user-1',
+      text: 'hello',
+      raw: {},
+    })
+
+    for (const msg of channel.sent) {
+      expect(msg.text).not.toContain('<ref')
+      expect(msg.text).not.toContain('</ref>')
+    }
+    expect(channel.sent.map(msg => msg.text).join('')).toBe('see /a/b.ts:12 and 这一处 done')
+  })
+
+  it('projects a tag on the non-streaming path too', async () => {
+    const runtime = new MockRuntime()
+    const channel = new MockChannel()
+    const commandProvider: GatewayCommandProvider = {
+      listCommands: vi.fn(async () => [{ id: 'memory', name: '/memory' }]),
+      executeCommand: vi.fn(async () => ({
+        success: true,
+        message: 'open <ref type="file" path="/a/b.ts"/>',
+      })),
+    }
+    const bridge = new GatewayBridge({
+      allowlist: new Allowlist({ mode: 'open' }),
+      rateLimiter: new RateLimiter({ maxPerMinute: 10 }),
+      registry: new GatewaySessionRegistry(runtime),
+      runtime,
+      commandProvider,
+    })
+    bridge.register(channel)
+
+    await bridge.handle({
+      channelId: 'mock',
+      userId: 'user-1',
+      conversationId: 'user-1',
+      text: '/memory',
+      raw: {},
+    })
+
+    expect(channel.sent.map(msg => msg.text)).toEqual(['open /a/b.ts'])
+  })
+
+  it('releases an unfinished tag verbatim when the turn ends', async () => {
+    const runtime = new MockRuntime((rt, options) => {
+      rt.pushText(options.sessionId, 'tail <ref type="file" path="/a')
+    })
+    const channel = new MockChannel()
+    const bridge = new GatewayBridge({
+      allowlist: new Allowlist({ mode: 'open' }),
+      rateLimiter: new RateLimiter({ maxPerMinute: 10 }),
+      registry: new GatewaySessionRegistry(runtime),
+      runtime,
+    })
+    bridge.register(channel)
+
+    await bridge.handle({
+      channelId: 'mock',
+      userId: 'user-1',
+      conversationId: 'user-1',
+      text: 'hello',
+      raw: {},
+    })
+
+    expect(channel.sent.map(msg => msg.text).join('')).toBe('tail <ref type="file" path="/a')
+  })
 })
 
 function hasBalancedFenceMarkers(text: string): boolean {

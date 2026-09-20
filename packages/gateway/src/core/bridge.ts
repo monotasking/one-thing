@@ -2,8 +2,10 @@ import {
   CHANGE_DIRECTORY_SLASH_COMMAND,
   COMPACT_CONTEXT_SLASH_COMMAND,
   NEW_SESSION_SLASH_COMMAND,
+  RefTagPlainTextStream,
   isCoreTextStreamChunk,
   parseSharedSlashCommand,
+  projectRefTagsToPlainText,
   type CoreConversationRuntime,
 } from '@onething/core/gateway-runtime'
 import type { GatewayPermissionConfig } from '../config.js'
@@ -163,6 +165,10 @@ export class GatewayBridge {
     })
 
     const buffer = new MarkdownSafeOutboundBuffer()
+    // 引用标签在 IM 里没有可点的东西,露出 XML 是事故(设计正本 §2.8)。投影要
+    // 在**进分段缓冲之前**做:缓冲会在空白处切,一个完整标签照样能被劈成两段,
+    // 那时再投影就只剩半截。`send()` 里那一道是兜底,负责非流式的那些文本。
+    const outboundText = new RefTagPlainTextStream()
     let lastFlushAt = Date.now()
     let sendChain = Promise.resolve()
     let aborted = false
@@ -232,7 +238,8 @@ export class GatewayBridge {
     // editMessageText、"正在输入"指示器),而不是把 ContentPart 逐条翻译过去。
     const unsubscribe = this.options.runtime.streamChannel.subscribe(session.coreSessionId, (chunk) => {
       if (!isCoreTextStreamChunk(chunk)) return
-      buffer.append(chunk.text)
+      const ready = outboundText.push(chunk.text)
+      if (ready) buffer.append(ready)
       enqueueSegments(buffer.takeReadySegments())
     })
     const unwatchPermission = this.permissionCoordinator?.watch({
@@ -256,6 +263,9 @@ export class GatewayBridge {
         source: 'gateway',
         origin: buildGatewayMessageOrigin(msg),
       })
+      // 回合结束:还扣着的那半截标签从来就不是标签,原样放行。
+      const held = outboundText.flush()
+      if (held) buffer.append(held)
       enqueueSegments(buffer.flushFinal())
       await sendChain
       logAbortSummary()
@@ -285,7 +295,10 @@ export class GatewayBridge {
   }
 
   private async send(channel: Channel, msg: OutboundMessage): Promise<void> {
-    await channel.send(msg)
+    // 网关的唯一出站口。投影是幂等的(投过之后就没有标签了),所以流式那一路
+    // 先投影一次再分段、这里再投一次,不会互相干扰 —— 而这一道管的是所有
+    // 不经过流式缓冲的文本:命令回复、报错、权限协调器发的那几句。
+    await channel.send({ ...msg, text: projectRefTagsToPlainText(msg.text) })
   }
 
   private async typing(channel: Channel, msg: TypingMessage): Promise<void> {

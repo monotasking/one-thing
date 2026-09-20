@@ -129,6 +129,84 @@ describe("expandFileMentions", () => {
 	});
 });
 
+describe("expandFileMentions over <ref/> tags", () => {
+	it("keeps the tag and puts the block right after it", () => {
+		const tag = `<ref type="file" path="${paths.small}" line="2" symbol="b"/>`;
+		const result = expandFileMentions(`explain ${tag} please`);
+
+		expect(result.inlinedPaths).toEqual([paths.small]);
+		expect(result.content).toBe(
+			`explain ${tag}\n` +
+				`<file path="${paths.small}" lines="3">\n` +
+				"export const a = 1\nexport const b = 2\n\n" +
+				"</file> please",
+		);
+	});
+
+	it("does not let the `@` pattern read a path out of a tag a second time", () => {
+		// The tag's own bytes contain `path="/abs…"` — no `@` in front of it, so
+		// the old pattern cannot match it; a `label` that does spell one must not
+		// be read either, because that span is already claimed.
+		const tag = `<ref type="file" path="${paths.small}" label="@${paths.small}"/>`;
+		const result = expandFileMentions(tag);
+
+		expect(result.inlinedPaths).toEqual([paths.small]);
+		// Byte-exact on purpose: a claimed span read twice does not just inline
+		// twice, it makes the splice cursor walk backwards and duplicate the
+		// tail of the tag. A `<file ` count would not see that.
+		expect(result.content).toBe(
+			`${tag}\n` +
+				`<file path="${paths.small}" lines="3">\n` +
+				"export const a = 1\nexport const b = 2\n\n" +
+				"</file>",
+		);
+	});
+
+	it("shares one budget with the `@` path — a repeat is inlined once", () => {
+		const tag = `<ref type="file" path="${paths.small}"/>`;
+		const result = expandFileMentions(`${tag} and again @${paths.small}`);
+
+		expect(result.inlinedPaths).toEqual([paths.small]);
+		expect(result.content.match(/<file /g)).toHaveLength(1);
+		expect(result.content).toContain(`again @${paths.small}`);
+	});
+
+	it("inlines both notations in the order they appear", () => {
+		const tag = `<ref type="file" path="${paths.gbk}"/>`;
+		const result = expandFileMentions(`@${paths.small} then ${tag}`);
+		expect(result.inlinedPaths).toEqual([paths.small, paths.gbk]);
+	});
+
+	it("leaves a tag alone when it names nothing readable", () => {
+		for (const source of [
+			`<ref type="file" path="${join(root, "nope.ts")}"/>`,
+			`<ref type="file" path="${paths.binary}"/>`,
+			// `~/` is not expanded here, today as before.
+			'<ref type="file" path="~/whatever.ts"/>',
+			// A kind this module does not inline.
+			`<ref type="dir" path="${root}"/>`,
+			// No `path` at all.
+			'<ref type="file" symbol="x"/>',
+		]) {
+			const result = expandFileMentions(`look at ${source}`);
+			expect(result.content, source).toBe(`look at ${source}`);
+			expect(result.inlinedPaths, source).toEqual([]);
+		}
+	});
+
+	it("leaves an unfinished tag as the literal text it is", () => {
+		const half = `<ref type="file" path="${paths.small}"`;
+		expect(expandFileMentions(half).content).toBe(half);
+	});
+
+	it("is byte-stable across calls", () => {
+		const tag = `<ref type="file" path="${paths.small}"/>`;
+		expect(expandFileMentions(tag).content).toBe(
+			expandFileMentions(tag).content,
+		);
+	});
+});
+
 describe("isFileMentionTrustedChannel", () => {
 	it("trusts local senders", () => {
 		for (const channel of ["ipc", "voice", "cli", "goal", "mock", undefined]) {

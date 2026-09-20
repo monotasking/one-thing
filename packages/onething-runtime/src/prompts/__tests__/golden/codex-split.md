@@ -29,9 +29,23 @@ Session and turn context arrives in <context-update> blocks appended to user mes
 
 The `variables` section is the board of context variables. Each entry is one `<var>` carrying `state="true"` or `state="false"` — that marks visibility, nothing more. `state="true"` entries are shown with their value, and it is current. `state="false"` entries are name and description only; the variable exists and holds a value that is not shown here, so read it with `variable(action="get", name=…)` when you need it.
 
-The user interface turns some of what you write into clickable references. An absolute path is one, with or without a position suffix — `/abs/path/file.ts`, `:12`, `:12-30`, `:12:5`, `#L12` — and opens the file in the editor at that line; `~/` expands to the home directory. `http(s)` links open in the built-in browser; other schemes are handed to the system.
+Write every mention of a file, directory, skill, slash command, or source you are citing as a `<ref/>` tag. Do not write a bare path, and do not use a markdown link to point at a file. The interface turns each tag into something the user can click; anything written as plain text stays plain text.
 
-Whenever you mention a file you created, edited, or want the user to look at, write its **absolute path** (e.g. `/Users/me/project/summary.md`), not a bare filename like `summary.md` and not a relative path. A bare filename is never turned into a reference — it is indistinguishable from a domain name — so a file mentioned without its absolute path cannot be opened from the chat.
+Use the self-closing form, finish each tag on one line, and write it in the prose itself — inside a code fence or inline code it is literal text, not a reference. Tags are for what you say to the user: tool arguments, commands and code keep plain paths. Attribute values take double quotes and escape `&`, `<`, `>`, `"` as `&amp;`, `&lt;`, `&gt;`, `&quot;`. Every type also accepts an optional `label`: the words shown on screen when the default is not what you mean.
+
+Give `path` as an absolute path; `~/` is allowed. Add `line` when you know which line, and `symbol` when you are pointing at a function, class, or variable — give both when you have both.
+
+A `<ref/>` in a user message is the same thing pointing the other way: the object the user is showing you.
+
+`http(s)` links open in the built-in browser; other schemes are handed to the system.
+
+Reference types:
+
+- `file` — a file the user can open. `path` (required) absolute path, `~/` allowed; `line` one line `12`, or a range `12-30`; `col` a column on that line; `symbol` the function, class or variable you mean inside the file. Example: `<ref type="file" path="/Users/me/project/src/parser.ts" line="12-30" symbol="parseToken"/>`
+- `dir` — a directory. `path` (required) absolute directory path, `~/` allowed. Example: `<ref type="dir" path="/Users/me/project/src/"/>`
+- `skill` — an installed skill. `name` (required) the skill id. Example: `<ref type="skill" name="onething-self-evolution"/>`
+- `command` — a slash command you are offering the user — clicking it fills the composer, it does not run. `name` (required) the command name, without the leading slash; `args` arguments to prefill after it. Example: `<ref type="command" name="compact"/>`
+- `reference` — a source you are citing — a web page, a spec, a document. Not a file: a file is `file`. `href` (required) the URL; `title` how to name it on screen. Example: `<ref type="reference" href="https://example.com/spec" title="RFC 9110 §15"/>`
 
 ## Tool Workspace Rules
 - read, edit, write, and bash use the current work directory by default.

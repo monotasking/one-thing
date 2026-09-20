@@ -24,6 +24,13 @@ export type {
 } from './slash-commands.js'
 export { ConsoleSink, LoggerRoot } from './logging/index.js'
 export type { LogLevel, LogRecord, Logger } from './logging/index.js'
+// 引用标签的编解码器:IM 渠道上没有可点的东西,`<ref/>` 必须在出站前投影成
+// 文字(`docs/design/reference-tag-2026-09.md` §2.8)。
+export {
+  RefTagPlainTextStream,
+  projectRefTagsToPlainText,
+} from './references/index.js'
+export type { RefTag } from './references/index.js'
 
 export interface CoreTextStreamChunk extends StreamChunkBase {
   type: 'text-delta'

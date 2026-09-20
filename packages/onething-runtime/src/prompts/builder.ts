@@ -17,6 +17,7 @@ import {
 	type ComposedPrompt,
 	type PromptSource,
 } from "./composer.js";
+import { renderReferenceGuide } from "../references/index.js";
 import { promptFragments } from "./fragments.js";
 import { PluginPromptContextSource } from "./plugin-context.js";
 import {
@@ -206,15 +207,18 @@ export const BUILTIN_PROMPT_FRAGMENTS: readonly CorePromptFragment[] = [
 		order: 400,
 		content: CONTEXT_UPDATE_CONVENTION,
 	},
-	// Constant bytes (cache-safe): what the renderer turns into a clickable
-	// reference. Facts only — the model is told what resolves, not what to do.
-	// docs/design/message-references-2026-08.md §6.
+	// Constant bytes (cache-safe): how to point at something, which is exactly
+	// one way — a `<ref/>` tag.
+	// docs/design/reference-tag-2026-09.md §2.2: the hand-written preamble is
+	// the general rule; the type table under it is rendered from the
+	// reference-type registry, so neither this table nor the composer names a
+	// reference type.
 	{
 		id: "references",
 		slot: "section",
 		source: "builtin",
 		order: 450,
-		content: REFERENCES,
+		content: () => renderReferenceGuide(REFERENCES),
 	},
 	// There is no `# Work Directory` section any more: the path is a session
 	// fact and the `workdir` variable already carries it (with its extra roots)

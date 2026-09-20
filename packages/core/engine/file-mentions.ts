@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { scanRefTags } from "../references/index.js";
 import { decodeTextBytes, escapeXmlAttribute } from "./message-content.js";
 
 /**
@@ -150,55 +151,160 @@ function renderFileBlock(
 }
 
 /**
- * Replace `@/absolute/path` mentions with the file's contents inlined as a
- * `<file>` block.
+ * One place in the text that names a file to inline, in whichever of the two
+ * notations it was written.
+ */
+interface FileMentionCandidate {
+	/** Half-open span of the original text this candidate occupies. */
+	start: number;
+	end: number;
+	/** The path as written, before trailing punctuation is tried off it. */
+	rawPath: string;
+	/** Put the rendered block back into the text this candidate replaced. */
+	wrap(rendered: string, resolvedPath: string): string;
+}
+
+/**
+ * `<ref type="file" path="…"/>` written by the model or by the composer.
+ *
+ * Naming `file` here is not the enumeration the architecture rule bans: this
+ * module IS the file-inlining capability, so it is allowed to know its own
+ * name. The codec it calls knows none.
+ */
+const REF_TAG_FILE_TYPE = "file";
+
+function collectRefTagCandidates(content: string): FileMentionCandidate[] {
+	if (!content.includes("<ref")) return [];
+
+	const candidates: FileMentionCandidate[] = [];
+	for (const hit of scanRefTags(content)) {
+		if (hit.tag.type !== REF_TAG_FILE_TYPE) continue;
+		const path = hit.tag.attrs.path;
+		if (!path) continue;
+		const tagText = content.slice(hit.start, hit.end);
+		candidates.push({
+			start: hit.start,
+			end: hit.end,
+			rawPath: path,
+			// The tag survives the inlining: it carries `line` / `symbol`, which is
+			// how the model knows which part of the file the user meant, and it is
+			// what the renderer draws in the user's own bubble.
+			wrap: (rendered) => `${tagText}\n${rendered}`,
+		});
+	}
+	return candidates;
+}
+
+function collectAtMentionCandidates(
+	content: string,
+	taken: readonly FileMentionCandidate[],
+): FileMentionCandidate[] {
+	if (!content.includes("@/")) return [];
+
+	const candidates: FileMentionCandidate[] = [];
+	FILE_MENTION_PATTERN.lastIndex = 0;
+	let match: RegExpExecArray | null;
+	while ((match = FILE_MENTION_PATTERN.exec(content)) !== null) {
+		const start = match.index;
+		const end = start + match[0].length;
+		// A path spelled inside a tag's attributes is already claimed; the old
+		// pattern must not read it a second time out of the tag's own bytes.
+		if (taken.some((claimed) => start < claimed.end && end > claimed.start)) {
+			continue;
+		}
+		const boundary = match[1];
+		const rawPath = match[2];
+		candidates.push({
+			start,
+			end,
+			rawPath,
+			wrap: (rendered, resolvedPath) =>
+				`${boundary}${rendered}${rawPath.slice(resolvedPath.length)}`,
+		});
+	}
+	return candidates;
+}
+
+/**
+ * Resolve a written path to a readable file, trimming trailing punctuation by
+ * asking the filesystem which candidate is real — so `看看 @/a/b.ts。` and
+ * `(@/a/b.ts)` resolve without guessing where the sentence ends.
+ */
+function resolveMentionedFile(
+	rawPath: string,
+): { path: string; file: LoadedFile } | null {
+	let candidate = rawPath;
+	while (candidate.length > 1) {
+		const file = loadTextFile(candidate);
+		if (file) return { path: candidate, file };
+		if (!TRAILING_PUNCTUATION.test(candidate)) break;
+		candidate = candidate.slice(0, -1);
+	}
+	return null;
+}
+
+/**
+ * Replace file mentions with the file's contents inlined as a `<file>` block.
+ *
+ * Two notations reach this function and share one budget:
+ * `<ref type="file" path="…"/>` (what the shell and the model write today) and
+ * `@/absolute/path` (what gateways, the CLI and every old ledger entry still
+ * write — kept, not migrated). A path written both ways in one message is still
+ * inlined once.
  *
  * Only the model-facing copy should go through this: the display copy keeps the
- * bare `@path` so the user's own bubble stays readable and editing the message
- * gives back what they typed.
+ * mention as written, so the user's own bubble stays readable and editing the
+ * message gives back what they typed.
  *
  * A mention is left untouched — not flagged, not errored — whenever the path
  * does not resolve to a readable text file under the size ceiling. That covers
  * directories (the composer's `@` picker offers them), binaries, missing paths,
- * and permission failures. In every one of those cases the literal `@path` is
- * still useful to the model, which can reach for its own tools.
+ * `~/` (which is not expanded here), and permission failures. In every one of
+ * those cases the literal mention is still useful to the model, which can reach
+ * for its own tools.
  */
 export function expandFileMentions(content: string): ExpandFileMentionsResult {
-	if (!content.includes("@/")) return { content, inlinedPaths: [] };
+	if (!content.includes("@/") && !content.includes("<ref")) {
+		return { content, inlinedPaths: [] };
+	}
+
+	const refCandidates = collectRefTagCandidates(content);
+	const candidates = [
+		...refCandidates,
+		...collectAtMentionCandidates(content, refCandidates),
+	].sort((left, right) => left.start - right.start);
+	if (candidates.length === 0) return { content, inlinedPaths: [] };
 
 	const inlinedPaths: string[] = [];
 	const seen = new Set<string>();
 	let remainingBudget = INLINE_FILE_MENTION_TOTAL_CHARS;
 
-	const expanded = content.replace(
-		FILE_MENTION_PATTERN,
-		(match, boundary: string, rawPath: string) => {
-			// Trim trailing punctuation by asking the filesystem which candidate is
-			// real, so `看看 @/a/b.ts。` and `(@/a/b.ts)` resolve without guessing.
-			let candidate = rawPath;
-			let file: LoadedFile | null = null;
-			while (candidate.length > 1) {
-				file = loadTextFile(candidate);
-				if (file) break;
-				if (!TRAILING_PUNCTUATION.test(candidate)) break;
-				candidate = candidate.slice(0, -1);
-			}
-			if (!file) return match;
+	let expanded = "";
+	let cursor = 0;
+	for (const candidate of candidates) {
+		expanded += content.slice(cursor, candidate.start);
+		const original = content.slice(candidate.start, candidate.end);
+		cursor = candidate.end;
 
-			// A path mentioned twice is already in context once; repeating the body
-			// would just buy duplicate tokens.
-			if (seen.has(candidate)) return match;
+		const resolved = resolveMentionedFile(candidate.rawPath);
+		// A path mentioned twice is already in context once; repeating the body
+		// would just buy duplicate tokens.
+		if (!resolved || seen.has(resolved.path)) {
+			expanded += original;
+			continue;
+		}
 
-			const block = renderFileBlock(candidate, file, remainingBudget);
-			if (!block) return match;
+		const block = renderFileBlock(resolved.path, resolved.file, remainingBudget);
+		if (!block) {
+			expanded += original;
+			continue;
+		}
 
-			seen.add(candidate);
-			inlinedPaths.push(candidate);
-			remainingBudget -= block.consumedChars;
-			const trailing = rawPath.slice(candidate.length);
-			return `${boundary}${block.rendered}${trailing}`;
-		},
-	);
+		seen.add(resolved.path);
+		inlinedPaths.push(resolved.path);
+		remainingBudget -= block.consumedChars;
+		expanded += candidate.wrap(block.rendered, resolved.path);
+	}
 
-	return { content: expanded, inlinedPaths };
+	return { content: expanded + content.slice(cursor), inlinedPaths };
 }

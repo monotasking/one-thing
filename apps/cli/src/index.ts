@@ -8,7 +8,7 @@ import type { Interface as ReadlineInterface } from 'node:readline/promises'
 import type { AskOutputEvent, DaemonStreamEvent } from '@shared/cli/protocol.js'
 import { ensureDaemon, tryConnect, spawnDaemon } from './daemon-client.js'
 import { assertSupportedPlatform, ensureRuntimeDirs, getCliRuntimePaths } from './paths.js'
-import { stdout, stderr } from './stdout.js'
+import { AssistantTextOut, stdout, stderr } from './stdout.js'
 // 静态 import,与 `trace-command` / `plugin-command` 的纪律同一条(见那两个文件的
 // 头注):cli 与 Electron 主进程在同一张 rollup 图里,动态 import 会把整个主进程包
 // 拽进这个纯 node 进程。`resource-command.ts` 只吃 `@shared/ipc/resources`(纯类型)
@@ -302,11 +302,15 @@ async function askCommand(promptArgs: string[], parsed: ParsedArgs): Promise<voi
   const yes = Boolean(parsed.flags.yes || parsed.flags.y)
   const sessionId = stringFlag(parsed, 'session') || stringFlag(parsed, 's')
   const pendingPermissions = new Set<string>()
+  const text = new AssistantTextOut()
 
   await client.request('chat.ask', { prompt, sessionId, yes }, async streamEvent => {
-    await handleAskEvent(client, streamEvent, { json, yes, pendingPermissions })
+    await handleAskEvent(client, streamEvent, { json, yes, pendingPermissions, text })
   })
-  if (!json) process.stdout.write('\n')
+  if (!json) {
+    text.end()
+    process.stdout.write('\n')
+  }
   client.close()
 }
 
@@ -350,17 +354,20 @@ async function chatCommand(parsed: ParsedArgs): Promise<void> {
     } else {
       active = true
       sawSigint = false
+      const text = new AssistantTextOut()
       await client.request('chat.ask', { prompt: trimmed, sessionId: session.id }, async event => {
         await handleAskEvent(client, event, {
           json: false,
           yes: false,
           pendingPermissions: new Set(),
+          text,
           promptPermission: permission => promptPermission(permission, rl),
         })
       }).catch(error => {
         if (!sawSigint) stderr(error.message)
       }).finally(() => {
         active = false
+        text.end()
         process.stdout.write('\n')
       })
     }
@@ -488,6 +495,8 @@ async function handleAskEvent(
     json: boolean
     yes: boolean
     pendingPermissions: Set<string>
+    /** 一个回合一只:助手正文要逐片投影,扣尾这件事有状态。 */
+    text: AssistantTextOut
     promptPermission?: (event: Extract<AskOutputEvent, { type: 'permission' }>) => Promise<'once' | 'session' | 'workdir' | 'reject'>
   },
 ): Promise<void> {
@@ -495,7 +504,7 @@ async function handleAskEvent(
   if (options.json) {
     process.stdout.write(`${JSON.stringify({ streamId, event })}\n`)
   } else {
-    writeHumanAskEvent(event)
+    writeHumanAskEvent(event, options.text)
   }
 
   if (event.type === 'permission' && streamEvent.sessionId && !options.pendingPermissions.has(event.id)) {
@@ -509,10 +518,10 @@ async function handleAskEvent(
   }
 }
 
-function writeHumanAskEvent(event: AskOutputEvent): void {
+function writeHumanAskEvent(event: AskOutputEvent, text: AssistantTextOut): void {
   switch (event.type) {
     case 'text_delta':
-      process.stdout.write(event.text)
+      text.write(event.text)
       break
     case 'reasoning_delta':
       break
@@ -582,17 +591,21 @@ async function handleChatSlash(
       if (current) await client.request('active.abort', { streamId: current.streamId })
       return true
     }
-    case 'retry':
+    case 'retry': {
+      const text = new AssistantTextOut()
       await client.request('chat.retryLast', { sessionId: getSession().id }, async (event: DaemonStreamEvent) => {
         await handleAskEvent(client, event, {
           json: false,
           yes: false,
           pendingPermissions: new Set(),
+          text,
           promptPermission: promptPermissionForChat,
         })
       })
+      text.end()
       process.stdout.write('\n')
       return true
+    }
     default:
       stderr(`Unknown slash command: /${command}`)
       return true
