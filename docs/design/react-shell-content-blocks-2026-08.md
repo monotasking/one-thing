@@ -61,6 +61,32 @@ export type BlockModel =
 - InlineNode 里有 `citation` 节点(检索引用角标),让"正文引用"不是后处理
   而是行内词汇的一员。
 
+**数学公式(2026-09-20 补)。**词汇里多两格,块与行内各一:
+
+```ts
+// BlockModel 多一员 —— 纸上居中的一行
+  | { kind: 'math'; source: string; closed: boolean }
+// InlineNode 多一员 —— 夹在字里的一个词
+  | { type: 'math'; tex: string }
+```
+
+- **两格装的是同一种内容**:定界符**之内**的那段 TeX(不含 `$` / `$$` / `\(` / `\[`),
+  与 image 的「块 / 行内两个位置」逐字同构。定界符是 markdown 的语法,不是这段数学
+  的内容,所以它不进词汇。
+- **它不是 figure 的一种图种**(§3.3 当初把 katex 列在候选里,这一批推翻)。三条
+  差别:图是 `object`(白卡 + 檐 + 放大 + 导出 PNG),公式是纸上的一行字,套卡等于
+  把一句话装进相框;图种表交出来的是一段 SVG,katex 交出来的是一段 HTML;图在流式
+  期由 `code(closed:false)` 代画,而公式从第一个 `$$` 起就已经是 math 块。
+- `closed` 与 code 的那一格是**同一条流式判据**:只从源文本看得出来(AST 对没收尾的
+  `$$` 一样产出 math 节点,它在 EOF 处闭合)。
+- **呈现三态,两条降级落同一处**:还没收尾 / 库还没到 → 那段 TeX 源码(`SourceView`,
+  与兜底块同一个画法);排不出来 → 源码 + 一行灰说明(KaTeX 的原话,不改写);
+  排好了 → KaTeX 产出。行内那一档没有地方画说明行,原话挂在 `ui/Tooltip` 上。
+- 流式五问:`midway: 'grow'` / `settled: 'same'` / `failure: 'source'` /
+  `identity: 'origin'` / `geometry: 'flow'`。前两问与图**相反**,判词在
+  `blocks/kinds/math/index.ts`:公式不经过「由别的型代画」那一段,kind 从头到尾是
+  `math`,所以既不是 `hold` 也不是 `swap`。
+
 ## 2. 装配管线:ProjectedMessage → SegmentModel[]
 
 折叠器的输出(`ProjectedMessage`:`content` / `reasoning` / `contentParts`
@@ -140,6 +166,27 @@ export function resolveBlock(kind: string): BlockDef // 查不到 = source-fallb
 - 围栏语言即路由:` ```mermaid `→ `figure(figKind:'mermaid-flowchart')`、
   ` ```diff `→ `diff`、其余 → `code`。路由表与块注册表分开(它是 markdown 产地的
   私事,工具产地不经过它)。
+
+**数学那一支的四条(2026-09-20 补,落点全在 `markdown/` 里)。**
+
+1. **扩展只在 parse.ts 组装**:`extensions` 加 `math()`、`mdastExtensions` 加
+   `mathFromMarkdown()`。单 `$` 行内保持开着(扩展缺省)。
+2. **定界符先等长归一**(`markdown/math-delimiters.ts`):`\(` `\)` `\[` `\]` 各换成
+   `$$`,**两个字符换两个字符,输出长度恒等于输入长度**。理由是源偏移 ——
+   块的身份号由它派生、增量切点按它验证、降级与「查看源码」按它回读原文。于是
+   **解析器吃归一文本,翻译表吃原文**:屏幕上落回源码的地方仍然是作者写的字节。
+   四处不换:围栏代码里、数学围栏里、同一行的行内码里、`\\(`(反斜杠已被转义)。
+   行内要同一行成对才换;独占一行的 `\[` **无条件**换(等配对会让前缀的译法被后面
+   到的字符改掉,屏幕上就是一次回跳)。已知代价:成对的 `\[…\]` **转义**写法会被
+   当成公式,记在那个文件的头注里。
+3. **围栏判据一张表**(`markdown/fences.ts`):代码围栏与数学围栏各一行,归一器与
+   稳定切点(`stable-cut.ts`)读**同一张表**。于是「`$$` 块里的空行不是块边界」不用
+   在两处各写一遍正则。加一种围栏只动这张表。
+4. **提升与那道闸,判据各只有一处**:独占一段、且定界符是 `$$` / `\[` 的行内公式
+   提升成块(与「独占一段的 image 提升」写在同一处、同一种判法 —— 按**源节点**判,
+   不按翻译结果判);单个 `$` 过 pandoc 四条(内容非空、首尾非空白、闭合后一位不是
+   数字),不过的原文照抄成文字(「花了 $5 和 $10」因此保持原文)。词法认得宽、
+   翻译表判得严,两层分工。
 
 ### 3.3 figure 二级注册表
 

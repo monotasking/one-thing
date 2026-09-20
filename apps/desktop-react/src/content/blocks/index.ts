@@ -16,6 +16,10 @@
  *
  * 2026-09-13 多一行 `image`:独占一段的图(正本 `docs/markdown-image-2026-09.md`)。
  * 它排在 figure 之后 —— 两张图卡是邻居,读表的人一眼看见它们是一族。
+ *
+ * 2026-09-20 多一行 `math`:块公式(`$$…$$` / `\[…\]`)。它挨着两张图卡,因为它们
+ * 都是「重库懒加载 + 库没到时源码可见」的一族;但它自己是 **flow** 不是 object ——
+ * 一条公式是纸上的一句话,不是一件被引用的东西(判词在 kinds/math/index.ts)。
  */
 import './kinds/paragraph'
 import './kinds/heading'
@@ -26,5 +30,6 @@ import './kinds/code'
 import './kinds/table'
 import './kinds/figure'
 import './kinds/image'
+import './kinds/math'
 import './kinds/diff'
 import './kinds/source-fallback'

@@ -1,3 +1,5 @@
+import { closeFence, openFence, type OpenFence } from './fences'
+
 /**
  * **稳定前缀的切点**(§6:「稳定前缀 + 活动尾」)。
  *
@@ -26,16 +28,16 @@
 /** 会跨空行续上的起手式:列表 / 引用 / 表格 / HTML / 定义(链接引用、脚注)。 */
 const CONTINUABLE_OPENER = /^(?:[-*+](?:[ \t]|$)|\d{1,9}[.)](?:[ \t]|$)|>|\||<|\[)/
 
-/** 围栏行:0–3 空格缩进 + 三个以上的 ` 或 ~。 */
-const FENCE_LINE = /^ {0,3}(`{3,}|~{3,})/
-/** 收尾围栏:同上,而且后面只许空白(带 info string 的那行只能开,不能关)。 */
-const CLOSING_FENCE_LINE = /^ {0,3}(`{3,}|~{3,})[ \t]*$/
+/*
+ * 围栏判据**不在这个文件里** —— 它和定界符归一(math-delimiters.ts)是同一句话的
+ * 两个读者,住在 fences.ts 那张表上。数学围栏(`$$…$$` 与 `\[…\]`)从此与代码围栏
+ * 同等对待:里面的空行不是块边界,切点不许落进去。加一种围栏只动那张表。
+ */
 
 export function stableCut(text: string): number {
   let cut = 0
   let sawContinuableAnywhere = false
-  let inFence = false
-  let fenceMarker = ''
+  let fence: OpenFence | undefined
   let pendingBlank = false
   let pos = 0
 
@@ -46,17 +48,13 @@ export function stableCut(text: string): number {
     if (atEof) lineEnd = text.length
     const line = text.slice(pos, lineEnd)
 
-    const fence = FENCE_LINE.exec(line)
+    const opened = fence ? undefined : openFence(line)
     if (fence) {
-      if (!inFence) {
-        inFence = true
-        fenceMarker = fence[1]
-      } else if (CLOSING_FENCE_LINE.test(line) && line.trimStart()[0] === fenceMarker[0]) {
-        inFence = false
-      }
-      pendingBlank = false
-    } else if (inFence) {
       // 围栏里的一切都不是块边界,连空行都不是。
+      if (closeFence(line, fence)) fence = undefined
+      pendingBlank = false
+    } else if (opened) {
+      fence = opened
       pendingBlank = false
     } else if (line.trim() === '') {
       pendingBlank = true

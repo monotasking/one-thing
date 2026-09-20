@@ -62,6 +62,22 @@ export type BlockModel =
   | { kind: 'table'; caption?: string; head: InlineNode[][]; rows: InlineNode[][][] }
   | { kind: 'figure'; figKind: string; source: string; title?: string }
   /**
+   * 纸上居中的一行公式(`$$…$$` / `\[…\]`)。
+   *
+   * `source` 是**定界符之内**的那段 TeX,不含 `$$` / `\[` —— 与行内那一档
+   * (`InlineNode` 的 `math`)是同一件东西的两个位置,所以两边装的是同一种内容。
+   *
+   * 它**不是 figure 的一种图种**,虽然 §3.3 当初把 katex 列在图种表的候选里。
+   * 三条差别把它挡在那张表外面:图是 `object`(白卡 + 檐 + 放大 + 导出 PNG),公式是
+   * 纸上的一行字,套卡等于把一句话装进相框;图种表交出来的是一段 SVG,katex 交出来
+   * 的是一段 HTML;图在流式期由 `code(closed:false)` 代画,而公式从第一个 `$$` 起
+   * 就是 math 块(micromark 的 math flow 不等收尾就开块)。
+   *
+   * `closed` 与 code 的那一格是**同一条流式判据**:只从源文本看得出来(AST 对一个
+   * 没收尾的 `$$` 一样产出 math 节点,它在 EOF 处闭合),判据只有 to-blocks.ts 一处。
+   */
+  | { kind: 'math'; source: string; closed: boolean }
+  /**
    * 独占一段的图 —— **一件物件**(正本 §1)。
    *
    * mdast 里 image 永远是行内节点,所以「块」这一档是翻译表提升出来的:一段里只装

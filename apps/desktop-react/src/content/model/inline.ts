@@ -59,6 +59,18 @@ export type InlineNode =
    * 段落是 `pre-wrap` 的一段字,行内塞一件会长高的物件会把行律破掉。
    */
   | { type: 'image'; ref: ImageRef; alt: string; title?: string }
+  /**
+   * 夹在字里的公式(`$…$` / `\(…\)`)。
+   *
+   * `tex` 是**定界符之内**的那段 TeX,不含 `$` / `\(` —— 定界符是 markdown 的语法,
+   * 不是这段数学的内容。它与块那一档 `{ kind: 'math' }` 是**同一件东西的两个位置**
+   * (与 image 的两档逐字同构):独占一段的是纸上居中的一行,夹在句子里的是一个词。
+   *
+   * 为什么不复用 `code`:行内码说的是「这几个字按原样读」,公式说的是「这几个字
+   * 是一段要排版的数学」。同一段 `a^2` 在两者下的正确画法相反(一个原样,一个排版),
+   * 合成一格就没地方放这条差别。
+   */
+  | { type: 'math'; tex: string }
   /** 检索来源角标:`sourceId` 指向 research 段那份来源清单里的一条。 */
   | { type: 'citation'; sourceId: string; index: number }
 
@@ -80,6 +92,12 @@ export function inlineText(nodes: readonly InlineNode[]): string {
         // 与 GitHub 同:复制一段带图的正文,得到的是图的替代文字 —— 那正是 alt
         // 这一格存在的意义(「图没了的时候这里本该是什么」)。
         out += node.alt
+        break
+      case 'math':
+        // 复制一段带公式的正文,得到的是那段 TeX 本身 —— 它就是作者写下的字
+        // (与 alt 那一支同一条判据:「这件东西没了的时候这里本该是什么」)。
+        // 定界符不跟着走:它是 markdown 的语法,不是这段数学的内容。
+        out += node.tex
         break
       case 'citation':
         // 角标是**呈现**,不是正文的字:复制正文时它不该跟着走。

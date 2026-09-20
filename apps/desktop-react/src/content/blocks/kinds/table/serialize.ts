@@ -123,6 +123,13 @@ function nodeToMarkdown(node: InlineNode): string {
       return node.title === undefined
         ? `![${node.alt}](${node.ref.url})`
         : `![${node.alt}](${node.ref.url} "${node.title}")`
+    case 'math':
+      /*
+       * 还原成一段能贴回 markdown 的行内公式(与 image 那一支同一条「复制回去还是
+       * 它」)。定界符按内容选:TeX 里有 `$`、或者首尾是空白、或者整段是空的时候,
+       * 单 `$` 那一形会被 pandoc 判据(to-inline.ts)原路读回成文字,所以写两个。
+       */
+      return node.tex === '' || /\$|^\s|\s$/.test(node.tex) ? `$$${node.tex}$$` : `$${node.tex}$`
     case 'citation':
       // 角标是呈现不是正文(inlineText 也不收它)—— 导出时同样不跟着走。
       return ''

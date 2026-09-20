@@ -190,6 +190,14 @@ function spliceTail(parsed: ParsedBlock[], oldText: string, text: string): Parse
   const delta = text.slice(oldText.length)
   if (delta === '') return parsed
   if (delta.includes('\n\n') || delta.includes('```') || delta.includes('~~~')) return undefined
+  /*
+   * `$` 与 `\` 同理,只是它们改的是**行内**结构:末块是 `…$a^2` 的一段文字时,
+   * 追加一个 `$` 就把那三个字符变成一个公式;追加一个 `\` 可能是 `\(` 的头半截
+   * (归一之后它是 `$$`)。两者都会让「贴出来的那一块」与重解析的结果不一样,
+   * 而这个函数的全部前提就是那两者相同。判据与上面那三条同形:**看追加的字符,
+   * 不看末块是什么** —— 机制层不认识任何一型。
+   */
+  if (delta.includes('$') || delta.includes('\\')) return undefined
 
   const last = parsed[parsed.length - 1]
   if (!last || last.end !== oldText.length) return undefined

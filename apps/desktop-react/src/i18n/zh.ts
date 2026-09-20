@@ -879,6 +879,10 @@ export const zh = {
   'block.image.badScheme': '不支持的地址',
   /* 行内图芯片的读屏名:芯片上只有名字,「图片」两个字靠这一句补。 */
   'block.image.inline': '图片 {alt}',
+  /* 公式排不出来的两句。块那一档有地方画一行说明(原话另起一格,与图块同形);
+   * 行内那一档在一句话中间,只有一只 Tooltip 的位置,所以人话与原话合成一句。 */
+  'block.math.failed': '这条公式没排出来',
+  'block.math.renderFailed': '这条公式没排出来:{message}',
 
   /* ── Quick Look ───────────────────────────────────────────────────── */
   'quicklook.enter': '进入 ↵',

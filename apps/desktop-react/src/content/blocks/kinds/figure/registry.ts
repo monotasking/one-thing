@@ -1,3 +1,5 @@
+import { fnv1a } from '../../hash'
+
 /**
  * 图种注册表 —— **第二张表**(§3.3),与主表同构。
  *
@@ -167,16 +169,6 @@ export async function renderFigure(def: FigureKindDef, source: string): Promise<
 function messageOf(thrown: unknown): string {
   if (thrown instanceof Error && thrown.message) return thrown.message
   return String(thrown)
-}
-
-/** 32 位 FNV-1a。够用:这里要的是「同一段源码给同一个键」,不是密码学。 */
-function fnv1a(text: string): string {
-  let hash = 0x811c9dc5
-  for (let i = 0; i < text.length; i += 1) {
-    hash ^= text.charCodeAt(i)
-    hash = Math.imul(hash, 0x01000193) >>> 0
-  }
-  return hash.toString(36)
 }
 
 /** 只给测试用:缓存是模块级的,用例之间要能各渲各的。 */

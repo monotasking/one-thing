@@ -735,6 +735,8 @@ export const en: Record<MessageKey, string> = {
   'block.image.noBase': 'Relative path, no document location here',
   'block.image.badScheme': 'Unsupported address',
   'block.image.inline': 'Image {alt}',
+  'block.math.failed': "This formula couldn't be typeset",
+  'block.math.renderFailed': "This formula couldn't be typeset: {message}",
 
   /* ── quick look ───────────────────────────────────────────────────── */
   'quicklook.enter': 'Open ↵',

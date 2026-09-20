@@ -1,0 +1,79 @@
+/*
+ * 块公式 —— 纸上居中的一行。零字面色值;字号那一格是**相对量**(em),它说的是
+ * 「比这句话大一点点」,不是一个像素数,所以三档阅读字号下它都跟着走。
+ */
+
+.block {
+  /*
+   * 横滚归自己:`flow` 块不进块壳,壳那一层的 `overflow-x` 不在这条路上。一条排出来
+   * 比消息列宽的公式必须在这一格里横滚,**绝不许把消息列撑宽** —— 那一下会让整条
+   * 聊天流出现横滚条(挤压纪律)。
+   */
+  overflow-x: auto;
+  /* 横向滚到头不许把滚动传给整条聊天流(与块壳的 .body 同一条,手感上是「一划就飞走」)。 */
+  overscroll-behavior-x: contain;
+  /*
+   * 竖向钉死(09-20 真机量到的):`overflow-x: auto` 会把 `overflow-y` 的计算值也带成
+   * auto,而 KaTeX 的支柱(strut)比行盒高出 2–5px(四条样例 scrollHeight − clientHeight
+   * = 4 / 3 / 5 / 2)—— 于是**每一条**块公式右边都多出一截竖向滚动条。支柱是看不见的
+   * 排版盒不是墨,剪掉它不丢内容;上下各让一格 `--sp-1` 是给真墨(积分上下限、根号顶)
+   * 留的余量。
+   */
+  overflow-y: hidden;
+  padding-block: var(--sp-1);
+}
+
+/*
+ * KaTeX 的 display 产出。三条:
+ *  ① 自带的 `margin: 1em 0` 清掉 —— 上下留白归节奏表(ChatStream.module.css),
+ *     块自己 margin 清零是那张表的前提,而这一层是**嵌套**的,清零轮不到那张表;
+ *  ② 字号从 1.21em 压到 1.1em,理由与行内那一格逐字相同(InlineRun.module.css);
+ *  ③ 颜色不写 —— KaTeX 的产物自己不着色,继承 currentColor 就对了,深色主题不特判。
+ */
+.rendered :global(.katex-display) {
+  margin: 0;
+}
+
+/* 字号压在 `.katex` 上而不是 `.katex-display` 上:前者自带相对字号 1.21em,
+ * 写在外层会与它相乘(见 InlineRun.module.css 同一条注)。 */
+.rendered :global(.katex) {
+  font-size: 1.1em;
+}
+
+/* 居中是 KaTeX 自己做的(`.katex-display > .katex { text-align: center }`),
+ * 这里只保证它有一整行可用的宽度。 */
+.rendered {
+  min-width: 0;
+}
+
+/* ── 降级两档:还没排好 / 排不出来 ───────────────────────────────────────── */
+
+/*
+ * 源码那一份左对齐,不居中 —— 一段 TeX 源码是**字**,居中的字每行起笔位置都不一样,
+ * 读起来比左对齐费劲。换装那一刻它从左对齐的源码变成居中的公式,这是两种东西的
+ * 两种正确排法,不是一次漂移。
+ */
+.source {
+  text-align: start;
+}
+
+.failed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* text-3 而不是 danger:一条公式没排出来是内容的小意外,不是系统故障(同图块)。 */
+.failureLine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+.failureReason {
+  font-family: var(--font-mono);
+  color: var(--text-4);
+  overflow-wrap: anywhere;
+}

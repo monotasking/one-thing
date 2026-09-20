@@ -1,6 +1,7 @@
 import { Tooltip } from '../../../ui/Tooltip'
 import type { InlineNode } from '../../model/inline'
 import { InlineImage } from './InlineImage'
+import { InlineMath } from './InlineMath'
 import s from './InlineRun.module.css'
 
 /**
@@ -66,6 +67,9 @@ function renderInline(node: InlineNode, index: number) {
     case 'image':
       // 夹在字里的图画成一颗芯片 —— 判词整段在 InlineImage.tsx。
       return <InlineImage key={index} node={node} />
+    case 'math':
+      // 三态(排好了 / 库没到 / 排不出来)整段在 InlineMath.tsx。
+      return <InlineMath key={index} node={node} />
     case 'citation':
       // 角标的呈现(预览卡、来源清单联动)是 P4 的事;在那之前只画一个数字,
       // 而不是把它悄悄丢掉 —— 正文里确实有这一处引用,这是事实。

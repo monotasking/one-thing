@@ -1,4 +1,11 @@
 import type { BlockContent, Code, List, ListItem, Paragraph, PhrasingContent, RootContent, Table } from 'mdast'
+/*
+ * 从扩展包取节点型(而不是从 'mdast' 里 Extract):这两个型是 `mdast-util-math` 用
+ * 模块增强**补进** mdast 的,显式引一次既说清了这条依赖,也保证增强在本文件的类型
+ * 图里一定在场 —— 不引的话它是否可见取决于程序里别处有没有引,那是运气不是契约。
+ * `Math` 与全局的 `Math` 重名,所以换个名字。
+ */
+import type { Math as MathFlow } from 'mdast-util-math'
 import type { BlockModel, ListItemModel } from '../model/blocks'
 import { routeFence } from './fence'
 import { toInline } from './to-inline'
@@ -56,6 +63,9 @@ function translate(node: RootContent, source: string): BlockModel {
     case 'code':
       return translateCode(node, source)
 
+    case 'math':
+      return translateMath(node, source)
+
     case 'list':
       return translateList(node, source)
 
@@ -76,7 +86,7 @@ function translate(node: RootContent, source: string): BlockModel {
 }
 
 /**
- * 段落 —— 外加**「独占一段的图提升成物件」**这一处判据(正本 §1、§3)。
+ * 段落 —— 外加**两处提升**:「独占一段的图」与「独占一段的块公式」(正本 §1、§3)。
  *
  * mdast 里 image 永远是行内节点(phrasing),所以「一张图是一件东西」这句话在翻译
  * 表里只有一个落点:**这一段除了一张图之外只剩空白**。判据落在这一处,别处一个字
@@ -88,6 +98,13 @@ function translate(node: RootContent, source: string): BlockModel {
  * 三种不提升,各有各的理由:两张图一段(它们是并排的两件东西,提升成一个块只能
  * 丢掉一张)、图夹着字(那一句话的一部分)、`imageReference`(它根本没被翻译成
  * image 节点,仍是原文文字)。这三种都留在段落里,由行内芯片说清「这里有一张图」。
+ *
+ * ── 公式那一处,判的是**定界符**而不是节点型 ──────────────────────────────
+ * `$$x$$` 与 `\[x\]` 写在一行里时,micromark 把它们认成**行内**公式(math flow 要求
+ * 收尾在另一行),可作者写下两个 `$` 的意思就是「这是独占一行的公式」。所以判据是
+ * 「这一段只剩一个行内公式,**而且它的定界符是块那一档**」—— 单 `$` 与 `\(` 不提升,
+ * 它们说的是「夹在字里」。定界符从**原文**读(归一等长,下标一一对应),与「按源
+ * 节点判而不是按翻译结果判」是同一条纪律。
  */
 function translateParagraph(node: Paragraph, source: string): BlockModel {
   const meat = node.children.filter((child) => !isBlankText(child))
@@ -100,7 +117,18 @@ function translateParagraph(node: Paragraph, source: string): BlockModel {
       title: only.title ?? undefined,
     }
   }
+  if (only?.type === 'inlineMath' && isDisplayDelimiter(source, only.position?.start.offset)) {
+    // 写成一行的块公式在源文本里已经首尾俱全 —— 它没有「还在流」的中间态可言。
+    return { kind: 'math', source: only.value, closed: true }
+  }
   return { kind: 'paragraph', inline: toInline(node.children, source) }
+}
+
+/** 这个行内公式的定界符是块那一档(`$$` / `\[`)吗。 */
+function isDisplayDelimiter(source: string, start: number | undefined): boolean {
+  if (start === undefined) return false
+  const head = source.slice(start, start + 2)
+  return head === '$$' || head === '\\['
 }
 
 /** 只有空白的文字节点 —— 图前图后的换行与空格,它们不算「这一段还有别的东西」。 */
@@ -127,6 +155,28 @@ function translateCode(node: Code, source: string): BlockModel {
 
 /** 最后一行是不是收尾围栏(允许 0-3 空格缩进,后面只许空白)。 */
 const CLOSING_FENCE = /\n\s{0,3}(`{3,}|~{3,})[ \t]*$/
+
+/**
+ * 块公式。`closed` 的判据与 `translateCode` 逐字同一条:**只从源文本看**。
+ *
+ * micromark 对一个没收尾的 `$$` 一样产出 math 节点(它在 EOF 处闭合),AST 上分不出
+ * 「作者写完了」和「还在流」。所以这里读回源码的最后一行:是不是一行光秃秃的 `$$`
+ * 或 `\]`。两形都认,是因为翻译表吃的是**原文**(归一只喂给了解析器),而原文里
+ * 那一行可能仍然是 `\]`。
+ *
+ * 行首允许 `>` 与空白:公式块常长在引用与列表项里,而 `> ` 是容器的记号、不是公式的
+ * 内容。(代码块那一条今天还没放宽,所以引用里的围栏代码仍会被读成未闭合 —— 那是
+ * 存量行为,这一批只搬自己这一格,不顺手改它。)
+ */
+function translateMath(node: MathFlow, source: string): BlockModel {
+  const start = node.position?.start.offset ?? 0
+  const end = node.position?.end.offset ?? source.length
+  const raw = source.slice(start, end)
+  return { kind: 'math', source: node.value, closed: CLOSING_MATH.test(raw) }
+}
+
+/** 最后一行是不是收尾的 `$$` / `\]`(前面允许容器记号与空白,后面只许空白)。 */
+const CLOSING_MATH = /\n[ \t>]*(\$\$+|\\\])[ \t]*$/
 
 /**
  * 列表。

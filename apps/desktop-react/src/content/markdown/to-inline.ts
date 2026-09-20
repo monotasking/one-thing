@@ -1,4 +1,6 @@
 import type { PhrasingContent } from 'mdast'
+/* 显式引一次扩展包的节点型 —— 理由与 to-blocks.ts 顶上那一段逐字相同。 */
+import type { InlineMath } from 'mdast-util-math'
 import type { InlineNode } from '../model/inline'
 
 /**
@@ -62,6 +64,21 @@ export function toInline(nodes: readonly PhrasingContent[], source: string): Inl
         })
         break
 
+      case 'inlineMath':
+        /*
+         * 行内公式。词法认得宽(单 `$` 是扩展的缺省),所以**判据在这里**。
+         *
+         * 过不了判据的原文照抄成文字 —— 走的就是下面 default 那条路,一个字不多写:
+         * 「解析器认出了一个东西,而我们认为作者不是那个意思」与「解析器认出了一个
+         * 我们没画法的东西」在屏幕上是同一件事,失败语义只该有一个样子。
+         */
+        if (isTextMath(node, source)) {
+          out.push({ type: 'math', tex: node.value })
+        } else {
+          push(out, { type: 'text', text: rawText(node, source) })
+        }
+        break
+
       case 'break':
         // 硬换行(行尾两个空格 / 反斜杠)。段落是 `white-space: pre-wrap` 画的,
         // 所以一个 `\n` 就是它 —— 不需要为它造一个 `<br>` 节点变体。
@@ -90,6 +107,44 @@ function push(out: InlineNode[], node: InlineNode & { type: 'text' }): void {
     return
   }
   out.push(node)
+}
+
+/**
+ * 这一处 `$…$` 真的是公式吗 —— **pandoc 的四条**。
+ *
+ * 起因是钱:「花了 $5 和 $10」在词法层是一段合法的行内公式(`$` … `$`,中间是
+ * `5 和 `),而作者说的是两个价钱。pandoc 给过一组判据,这里逐条照搬:
+ *
+ *  ① 内容非空(`$$` 不是公式,是两个美元符号);
+ *  ② 内容首字符不是空白(`$ x$` 里那个 `$` 是货币符号,后面跟着一个词);
+ *  ③ 内容末字符不是空白(上面那句「$5 和 $」正是折在这一条上);
+ *  ④ 闭合的 `$` 后面一位不是数字(`$5 和 $10` 折在这一条上,两条各挡一半)。
+ *
+ * **只对单个 `$` 设这道闸**。`$$…$$` 与归一来的 `\(…\)`(下标上仍是 `\(`)写出两个
+ * 字符的人已经表明了意图,再判一次只会把真公式挡在外面。
+ *
+ * 判据读的是**原文**(归一等长,下标一一对应),而不是 `node.value` —— 后者被扩展
+ * 剥过一层空白 padding(`$ x $` 的值是 `x`),拿它判 ②③ 等于判在一份已经被改过的
+ * 东西上。
+ */
+function isTextMath(node: InlineMath, source: string): boolean {
+  const start = node.position?.start.offset
+  const end = node.position?.end.offset
+  // 没有位置就没有判据可言(极少见):按解析器说的算。
+  if (start === undefined || end === undefined) return true
+
+  const head = source.slice(start, start + 2)
+  if (head === '\\(' || head === '\\[') return true
+
+  let run = 0
+  while (source[start + run] === '$') run += 1
+  if (run !== 1) return true
+
+  const inner = source.slice(start + 1, end - 1)
+  if (inner === '') return false
+  if (/\s/.test(inner[0]) || /\s/.test(inner[inner.length - 1])) return false
+  const after = source[end]
+  return after === undefined || !/[0-9]/.test(after)
 }
 
 /** 一个节点在源文本里的原话。位置信息缺席时(极少见)退回它自己的 `value`。 */
