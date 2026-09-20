@@ -1,3 +1,4 @@
+import type { RefTag } from '@onething/core/references'
 import type { ReferenceKind, ReferenceTrigger, ReferenceWhere } from './kind'
 
 /**
@@ -37,6 +38,12 @@ let derived: {
   text: ReferenceKind[]
   part: ReferenceKind[]
   tokenTail: RegExp
+  /**
+   * 线上 type → 那一种。**Map 而不是 find**:一条 500 枚 `<ref/>` 的助手消息
+   * 每一枚都要查一次,线性扫表就是 O(枚数 × 种类数)(正本 §5 超量格明写
+   * 「注册表查询 O(1)」)。
+   */
+  byTagType: Map<string, ReferenceKind>
 } | null = null
 
 /** 一个触发字符在 `parseToken` 那边的全部事实。**由表算出来,不是写死的。** */
@@ -56,12 +63,24 @@ function invalidate(): void {
  *
  * **有 `parse` 就必须有 `render`**:认得出却画不出来,是一格会在屏幕上开天窗的
  * 自述。在登记这一刻抛,而不是等它真的出现在某条消息里才静默什么都不画。
+ * **有 `tag` 同理**(B2):线上那条 `<ref/>` 也是一条「认得出」的路。
+ *
+ * **`tag.type` 全表唯一**:两种引用抢同一个线上 type,认出来的是谁就成了登记序的
+ * 副产品 —— 那是真冲突,所以在登记这一刻抛,与重名 id 同一条理由。
  */
 export function registerReferenceKind(kind: ReferenceKind, hot?: ImportMetaHot): () => void {
   const now = REGISTRY.get(kind.id)
   if (now && now !== kind) throw new Error(`reference kind 重复注册:${kind.id}`)
-  if (kind.parse && !kind.render) {
+  if ((kind.parse || kind.tag) && !kind.render) {
     throw new Error(`reference kind 认得出却画不出来:${kind.id}`)
+  }
+  if (kind.tag) {
+    const holder = [...REGISTRY.values()].find(
+      (other) => other !== kind && other.tag?.type === kind.tag!.type,
+    )
+    if (holder) {
+      throw new Error(`reference tag type 重复注册:${kind.tag.type}(已归 ${holder.id})`)
+    }
   }
   REGISTRY.set(kind.id, kind)
   invalidate()
@@ -143,12 +162,19 @@ function build(): NonNullable<typeof derived> {
   const allTriggers = [...byTrigger.keys()].map(escapeLiteral).join('|')
   const tokenTail = new RegExp(`(${allTriggers})[\\w${allChars}]*$`)
 
+  const byTagType = new Map<string, ReferenceKind>()
+  for (const kind of kinds) {
+    // 重复的 type 在登记那一刻就抛了,所以这里没有「谁赢」可言。
+    if (kind.tag) byTagType.set(kind.tag.type, kind)
+  }
+
   return {
     triggers,
     pick,
     text: kinds.filter((k) => k.parse?.text),
     part: kinds.filter((k) => k.parse?.part),
     tokenTail,
+    byTagType,
   }
 }
 
@@ -201,6 +227,49 @@ export function expandReferenceToken(kindId: string | undefined, token: string):
  */
 export function referenceTokenOf(kindId: string | undefined, ref: unknown): string | undefined {
   return referenceKindOf(kindId)?.draft?.token(ref)
+}
+
+/* ── 线上 `<ref/>`(B2)────────────────────────────────────────────────── */
+
+/**
+ * **一条标签是谁的**。答 `null` 有两种意思,而它们在屏幕上是同一件事
+ * (一枚中性不可点 chip,原话照摆):
+ *  · 这台上没有登记这个 `type`(新版本写的、或者干脆是别人的标签);
+ *  · 登记了,但这一枚的属性不成立(`toRef` 答 null,比如 `<ref type="file"/>`
+ *    少了 `path`)。
+ *
+ * 两者不必分开:壳能做的事一样多 —— 认不出就照实说「这里有个我没画法的东西」。
+ */
+export function resolveReferenceTag(tag: RefTag): { kindId: string; value: unknown } | null {
+  const kind = table().byTagType.get(tag.type)
+  if (!kind?.tag) return null
+  const value = kind.tag.toRef(tag)
+  return value === null || value === undefined ? null : { kindId: kind.id, value }
+}
+
+/**
+ * **这一枚引用写成哪一条标签**。查不到那一种、或者它没有线上标签 = `undefined`
+ * —— 与 `referenceTokenOf` 同一条口径:「这台上没有这种能力」不是「它不占字」。
+ */
+export function referenceTagOf(kindId: string | undefined, ref: unknown): RefTag | undefined {
+  return referenceKindOf(kindId)?.tag?.toTag(ref)
+}
+
+/**
+ * **这一枚出站时写成哪一形**(正本 §2.4)。
+ *
+ * 判据是两格自述的合取:有 `tag`、而且这一种没说 `wire: 'token'`。写成一句
+ * 函数而不是散在调用点,是因为出站有两个读者(段 → 文本的投影,与将来任何一条
+ * 想问同一句话的路),而「哪一形」只该有一个产地。
+ */
+export function referenceWritesTag(kindId: string | undefined): boolean {
+  const kind = referenceKindOf(kindId)
+  return Boolean(kind?.tag) && kind?.draft?.wire !== 'token'
+}
+
+/** 有线上标签的那几种,按登记序(演练与守卫按它遍历)。 */
+export function referenceTagKinds(): readonly ReferenceKind[] {
+  return [...table().byTagType.values()]
 }
 
 /* ── 触发检测 ──────────────────────────────────────────────────────────── */

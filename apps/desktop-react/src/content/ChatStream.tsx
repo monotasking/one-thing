@@ -20,6 +20,7 @@ import {
 import { CHAT_WINDOW_STEP, growChatWindow, useChatWindowStart } from './chat-window'
 import { sessionRefIdOf } from './session-ref'
 import type { ProjectedMessage } from '../data/chat-fold'
+import { ReferenceHost } from '../references/host-context'
 import type { ResolvedSegment } from '../references/segment'
 import { useT, type TFn } from '../i18n'
 import { resolveIcon } from '../components/icons'
@@ -501,12 +502,19 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
    */
   return (
     /*
+     * **这一片消息流是哪条会话的**(B2)。一枚长在助手正文里的引用 chip 点开时
+     * 要知道收件人是谁(命令那一种要把 `/name` 填进**这条**会话的输入框),而它
+     * 长在 markdown 行内树的最里面 —— 中间每一层都不认识引用。判词整段在
+     * `references/host-context.tsx`。
+     */
+    <ReferenceHost sessionId={sessionId}>
+    {/*
      * **`chat` 是一族带 owner 的作用域**(W5-b 裁定 6,照 `scopes.ts` 的 `leaf`
      * 样板):会话多开之后同一个 scope id 会有好几份实例,而
      * `activateScope('chat', { owner })` 要精确取到**这一条会话**那一份 ——
      * 壳启动那条三级回落(`AppShell`:composer → chat(焦点叶的)→ root)问的
      * 正是它。owner 是这一格的 refId,翻译只有 `sessionRefIdOf` 一处。
-     */
+     */}
     <FocusScope scope="chat" owner={sessionRefIdOf(sessionId)} rootRef={scrollRef}>
       {({ scopeProps }) => (
         /*
@@ -722,6 +730,7 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
         </ExpandIntentContext.Provider>
       )}
     </FocusScope>
+    </ReferenceHost>
   )
 }
 

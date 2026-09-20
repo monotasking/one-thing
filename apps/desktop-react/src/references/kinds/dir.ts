@@ -36,7 +36,20 @@ function ensureTrailingSlash(path: string): string {
   return path.endsWith('/') ? path : `${path}/`
 }
 
-export const dirReferenceKind: ReferenceKind<FileMention, { kind: 'dirRef'; path: string }> = {
+/**
+ * **一枚目录引用**。
+ *
+ * `label` 与文件那一种同一条(判词在 `references/kind.ts` 的 `ReferenceTagCodec`):
+ * 屏幕上那几个字由写的人说,缺席才由这一种自己算(目录名带回尾巴上那个斜杠)。
+ * 给了 `label` 就**不再补斜杠** —— 他写的是一个称呼,不是一条路径。
+ */
+export interface DirRef {
+  kind: 'dirRef'
+  path: string
+  label?: string
+}
+
+export const dirReferenceKind: ReferenceKind<FileMention, DirRef> = {
   id: 'dir',
 
   draft: {
@@ -59,13 +72,43 @@ export const dirReferenceKind: ReferenceKind<FileMention, { kind: 'dirRef'; path
     },
   },
 
+  /*
+   * **线上那条 `<ref type="dir" …/>`**(B2)。
+   *
+   * 尾斜杠仍旧是判据(文件头那一段判词一个字没改):写出去的路径带着它,读回来
+   * 也补回它 —— 于是「这是个目录」这件事在标签里是**自明**的,不靠 `type` 与
+   * `path` 两处各说一遍。少了斜杠的 `<ref type="dir" path="/a"/>` 照样认:type
+   * 已经说了它是目录,补上尾巴是把那句话落实到路径上,不是纠正模型。
+   */
+  tag: {
+    type: 'dir',
+    toRef: (tag) => {
+      const path = tag.attrs.path?.trim()
+      if (!path) return null
+      // 通用属性 `label`:trim 后是空串就当没给(一枚画不出字的 chip 是一片空白)。
+      const label = tag.attrs.label?.trim() || undefined
+      return {
+        kind: 'dirRef' as const,
+        path: ensureTrailingSlash(path),
+        ...(label ? { label } : {}),
+      }
+    },
+    toTag: (ref) => {
+      const attrs: Record<string, string> = { path: ref.path }
+      // `label` 恒在最后(与文件那一种同一条:宽容形折进来的也在最后)。
+      if (ref.label) attrs.label = ref.label
+      return { type: 'dir', attrs }
+    },
+  },
+
   render: (ref) => ({
     className: s.ref,
     dataKind: 'dirRef',
     icon: DirIcon,
     iconClassName: s.refIcon,
-    // 目录名带回尾巴上那个斜杠 —— 屏幕上「b/」与「b」是两件东西。
-    label: `${basename(ref.path)}/`,
+    // 缺省:目录名带回尾巴上那个斜杠 —— 屏幕上「b/」与「b」是两件东西。
+    // 写的人给了称呼就用他的,而且**不补斜杠**:他写的不是一条路径。
+    label: ref.label ?? `${basename(ref.path)}/`,
     labelClassName: s.refName,
     tooltipKey: 'chat.ref.openDir',
     tooltipArgs: { path: ref.path },

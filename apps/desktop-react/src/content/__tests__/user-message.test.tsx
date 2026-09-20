@@ -19,9 +19,12 @@ const notified = vi.hoisted(() => vi.fn())
 
 // 打开那三条路各自拖着一整片 store(viewer-source / workbench / stage / 技能表),
 // 这里量的是「叫对了谁」,不是那三条路自己 —— 它们有自己的用例。
-vi.mock('../viewer/open-target', () => ({ openFileInCurrentTarget: openFile }))
+/* B2:文件那一种改叫 `openFileAt(path, loc?)` —— 定位长出了行 / 区间 / 列 / 符号
+ * 四格,`openFileInCurrentTarget` 今天是它的薄转发。量的仍是「叫对了谁、递对了
+ * 什么」,只是那个「什么」多了一格。 */
+vi.mock('../viewer/open-target', () => ({ openFileAt: openFile }))
 vi.mock('../dir-open', () => ({ openDirectoryPanel: openDir }))
-vi.mock('../skill-open', () => ({ openSkillDirectory: openSkill }))
+vi.mock('../skill-open', () => ({ openSkillDirectory: openSkill, openSkillNamed: openSkill }))
 vi.mock('../../services/notify', () => ({ notify: notified }))
 
 beforeEach(() => {
@@ -223,10 +226,12 @@ describe('画', () => {
     expect(chip.textContent).toBe('src/')
   })
 
-  it('点文件 chip = openFileInCurrentTarget', () => {
+  it('点文件 chip = openFileAt(路径, 没有定位)', () => {
     render(<UserMessageBody text="@/Users/me/a.ts" />)
     fireEvent.click(screen.getByRole('button'))
-    expect(openFile).toHaveBeenCalledWith('/Users/me/a.ts')
+    // `@/abs` 那条旧写法里没有行号 / 符号,所以定位那一格是空的 —— 与 B2 之前
+    // `openFileInCurrentTarget(path)` 的行为逐字相同(只打开,不跳行)。
+    expect(openFile).toHaveBeenCalledWith('/Users/me/a.ts', {})
     expect(openDir).not.toHaveBeenCalled()
   })
 

@@ -1,3 +1,4 @@
+import type { RefTag } from '@onething/core/references'
 import type { LucideIcon } from '../components/icons'
 import type { MessageKey, MessageVars } from '../i18n'
 import type { AskSpec } from '../composer/types'
@@ -20,13 +21,15 @@ import type { AskSpec } from '../composer/types'
  *   拾取 `source`  —— 哪个触发字符下出现、候选怎么查、一行画什么、组头念什么
  *   落稿 `draft`   —— 选中的候选变成哪一枚引用、它在句子里占哪几个字、怎么展开
  *   认出 `parse`   —— 从出站句子 / 从 `contentParts` 部件里怎么认出它
+ *   标签 `tag`     —— 这一枚在**线上那条 `<ref/>`** 里长什么样、怎么认回来(B2)
  *   呈现 `render`  —— 图标、标签、提示、可不可点(**数据,不是 JSX**);
  *                     09-14 起这一格是**三个宿主唯一那一份形**(草稿 / 在飞 / 落账)
  *   打开 `open`    —— 点了做什么
  *
- * 五格**没有一格是必填的**,而缺席各有各的意思(每一格自己那段注写着)。
- * 唯一的结构闸在 `registry.registerReferenceKind`:**有 `parse` 就必须有 `render`**
- * —— 认得出却画不出来,那是一格会在屏幕上开天窗的自述。
+ * 六格**没有一格是必填的**,而缺席各有各的意思(每一格自己那段注写着)。
+ * 结构闸在 `registry.registerReferenceKind`:**有 `parse` 就必须有 `render`**、
+ * **有 `tag` 也必须有 `render`** —— 认得出却画不出来,那是一格会在屏幕上开天窗的
+ * 自述(两条是同一条理由的两个入口)。
  */
 
 /** 触发字符。它是**触发的词汇表**,不是种类名 —— 多种引用共用一个字符是常态。 */
@@ -112,6 +115,15 @@ export interface ChipSpec {
   label: string
   /** 标签外面那一层(截断 + 省略号那一格);缺席 = 标签直接当文字放。 */
   labelClassName?: string
+  /**
+   * 标签后面那一截**不许截断**的字(B2:文件那一枚的 `:12 · parseToken`)。
+   *
+   * 它与 `label` 分家的理由是挤压纪律律一「**一行恰有一个弯腰件**」:会缩的只有
+   * `label`,而这一截是**语法** —— 把 `:12` 截掉之后这枚 chip 就在说谎(它指的
+   * 是那一行,不是那份文件)。缺席 = 这一种没有要跟在名字后面的东西。
+   */
+  suffix?: string
+  suffixClassName?: string
   /** 图标那一族。 */
   icon?: LucideIcon
   iconClassName?: string
@@ -149,6 +161,18 @@ export interface ChipSpec {
   failKey?: MessageKey
   /** 那条通知的来源标(它进通知面板的分组,所以由种类自己说)。 */
   failSource?: string
+}
+
+/**
+ * **点这一枚的时候,它长在谁身上**(B2)。
+ *
+ * 由宿主递进来(`references/host-context`),不是这一枚自己知道的事 —— 同一枚
+ * `<ref type="command"/>` 出现在两条会话里,点开要填的是各自那块输入框。
+ * 每一格都可缺席:缺席 = 这一层宿主答不出这件事,由那一种自己决定降级成什么。
+ */
+export interface ReferenceOpenContext {
+  /** 这一枚长在哪条会话里。缺席 = 不在任何一条会话里(独立渲染的一段 markdown)。 */
+  sessionId?: string
 }
 
 /** 抽屉宿主交给候选的那几口动作(选中这一条不落 chip 的那一族要用)。 */
@@ -220,6 +244,18 @@ export interface ReferenceDraft<Hit, Ref> {
    * 一句必须与账本上的逐字相同,所以它不许再发生在端口里。
    */
   expand?(token: string): string
+  /**
+   * **这一枚在线上写成哪一形**(B2,正本 `docs/design/reference-tag-2026-09.md` §2.4)。
+   *
+   *  · 缺席 —— 有 `tag` 就写 `<ref/>`,没有才走 `token → expand` 那条老路;
+   *  · `'token'` —— **压过 `tag`**,线上仍旧是那截记号。
+   *
+   * 今天说 `'token'` 的只有命令与技能,理由是同一句话:`/compact`、`/skill:x`
+   * 是**一句话的主语**,引擎照它执行 —— 它们不是「指着一个东西」,改成标签就
+   * 等于把一条要执行的命令改成一枚要渲染的引用。它们的 `tag` 因此只服务**认出**
+   * (助手写的 `<ref type="command" …/>`),不服务出站。
+   */
+  wire?: 'tag' | 'token'
   /** 选完之后还要人填的那一截(灰色幽灵占位)。 */
   argHint?(hit: Hit): string | undefined
   /**
@@ -272,20 +308,62 @@ export interface ReferencePartParse<Ref> {
   typed?(part: ReferencePart): string | null
 }
 
- 
+/**
+ * **这一种在线上那条 `<ref/>` 里的两半**(B2,正本 §2.4)。
+ *
+ * ── 为什么它是一格自述,而不是编解码器里的一张表 ──────────────────────────
+ * `packages/core/references/ref-tag.ts` 把 `type` 与每一格属性都当**不透明的
+ * 字符串**读:它不知道 `file` 要 `path`、`reference` 要 `href`。知道这件事的只有
+ * 这一格 —— 于是「加一种 `<ref type="session"/>`」是写一只 `kinds/session.ts`
+ * 加一行登记,编解码器、`to-inline` / `to-blocks` / `InlineRun`、`segment.ts`
+ * 一个字都不改(演练全文在正本 §3,守卫在 `__tests__/structure.test.ts`)。
+ *
+ * ── `toRef` 答 null 是**一等答案** ────────────────────────────────────────
+ * `<ref type="file"/>` 少了 `path`:type 认得,这一枚不成立。那时按「认不出」
+ * 处理 —— 画一枚中性不可点 chip,把原话摆在屏上。**永远不吞字**。
+ *
+ * ── `label` 是**通用属性**,但收不收由那一种自己说 ──────────────────────────
+ * 编解码器把 `label` 与别的属性一视同仁地收进 `attrs`,宽容形
+ * `<ref …>那几个字</ref>` 的标签文字也折在这一格里(`withLabel`)。提示词因此
+ * 向模型承诺「想写什么字就写在 label 里」—— 而**兑现那句承诺的是各家的 `toRef`
+ * / `render`**,不是编解码器:它连 `label` 是「屏幕上那几个字」都不知道,它只
+ * 知道这是一格属性。
+ *
+ * 谁收:指着一个东西的那几种(文件 / 目录 / 技能 / 出处)—— 模型比壳更知道这一处
+ * 在这句话里该念作什么。谁不收:**命令**(`kinds/command.ts` 写着判词)——
+ * 它的字面就是要填进输入框的那一行,换几个字就是骗人。
+ */
+export interface ReferenceTagCodec<Ref> {
+  /** 线上 type(`[a-z][a-z0-9-]*`)。**全表唯一**,重复登记直接抛。 */
+  type: string
+  /** 标签 → 这一种的 Ref。答 null = 属性不合法,按「认不出」画。 */
+  toRef(tag: RefTag): Ref | null
+  /**
+   * Ref → 标签。**属性的插入序就是写出来的顺序**(编解码器按插入序渲染),
+   * 所以这一格要按一个固定的次序建对象 —— 账本上的字节因此是决定性的。
+   */
+  toTag(ref: Ref): RefTag
+}
+
 export interface ReferenceKind<Hit = any, Ref = any> {
   /** 这一种的名字。全表唯一(重复登记直接抛,见 registry)。 */
   id: string
   source?: ReferenceSource<Hit>
   draft?: ReferenceDraft<Hit, Ref>
+  /** 线上 `<ref/>` 那一半(B2)。有它就必须有 `render`(结构闸在 registry)。 */
+  tag?: ReferenceTagCodec<Ref>
   parse?: { text?: ReferenceTextParse<Ref>; part?: ReferencePartParse<Ref> }
   render?(ref: Ref): ChipSpec
   /**
    * 点了做什么。**同步开完就同步答**(`boolean`),要等一发才交一个 promise ——
    * 抽 pending 那一格的判据就是这个:交 promise 的才画「在飞」。
    * 缺席 = 只是个记号,不可点(`render` 那边的 `clickable` 要跟着说 false)。
+   *
+   * `ctx` 是**宿主的事实**(这一枚长在哪条会话里),由 `ReferenceChip` 从
+   * `references/host-context` 读出来递进来。绝大多数种类用不到它 —— 那就别收
+   * 第二个参数,TypeScript 允许少收。
    */
-  open?(ref: Ref): boolean | Promise<boolean>
+  open?(ref: Ref, ctx: ReferenceOpenContext): boolean | Promise<boolean>
   /**
    * **这一枚引用把哪个资源摆在了助手面前**(09-18,正本
    * `docs/composer-open-dir-mentions-2026-09.md` §2.5.0)。答资源地址;缺席 / `null` = 不算。

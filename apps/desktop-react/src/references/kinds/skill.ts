@@ -4,7 +4,7 @@ import { withoutBuiltinCollisions } from '../../data/commands-source'
 import type { CommandEntry } from '../../data/commands-source'
 import { useSkillsSource } from '../../data/skills-source'
 import { matchCommands } from '../../composer/transitions'
-import { openSkillDirectory } from '../../content/skill-open'
+import { openSkillDirectory, openSkillNamed } from '../../content/skill-open'
 import { registerReferenceKind } from '../registry'
 import { commandDraft, commandRow } from './command'
 import s from '../ReferenceChip.module.css'
@@ -38,8 +38,19 @@ const SkillIcon = resolveIcon('Sparkles')
 /** `/skill:<name>` 的前缀。技能与普通命令的分界只有这一处。 */
 const SKILL_HEAD = /^\/skill:([A-Za-z0-9_-]+)(?=\s|$)/
 
+/**
+ * ── 第三条来处:助手写的 `<ref type="skill" name="…"/>`(B2)────────────────
+ * 它落在**正文形**上而不是第三个 `kind`:两形的差别一直是「有没有那一格能力」,
+ * 而这一枚有 —— 名字查得到 id(`openSkillNamed`)。所以正文形多一格 `openable`,
+ * 与命令那一种的 `offer` 同一个形:**缺席 = 旧行为**,于是用户自己打的
+ * `/skill:x` 照旧不可点,一个字都没变(「行为裁定须先问」)。
+ *
+ * 同一条路上还多一格 `label`(通用属性,判词在 `references/kind.ts`):屏幕上那
+ * 几个字由写的人说,缺席才用技能名。它也只长在正文形上 —— 部件形是引擎折出来
+ * 的,那一头没有人可以写称呼。
+ */
 type SkillRef =
-  | { kind: 'skill'; token: string; name: string }
+  | { kind: 'skill'; token: string; name: string; openable?: true; label?: string }
   | { kind: 'skillRef'; skillId: string; name: string }
 
 /**
@@ -94,6 +105,11 @@ export const skillReferenceKind: ReferenceKind<CommandEntry, SkillRef> = {
     // 两形共用一格:部件形没有 `token`(它从引擎那边来,壳里落不了稿),
     // 照它自己的名字拼回用户打的那一句,与 `parse.part.typed` 逐字同源。
     token: (ref) => (ref.kind === 'skill' ? ref.token : `/skill:${ref.name}`),
+    /*
+     * **线上形不变**(正本 §2.4):`/skill:x` 与命令同一条理由 —— 它是一句话的
+     * 主语,引擎按它把整份 SKILL.md 展给模型。下面那格 `tag` 只服务认出。
+     */
+    wire: 'token' as const,
     argHint: commandDraft.argHint,
   },
 
@@ -126,6 +142,35 @@ export const skillReferenceKind: ReferenceKind<CommandEntry, SkillRef> = {
   },
 
   /*
+   * **助手写的那一枚**(B2)。认回来的是正文形 + `openable` —— 点了按名字查 id
+   * 再走那三条既有的打开路(判词在 `content/skill-open.openSkillNamed`)。
+   * `toTag` 两形都答得出(往返性单测要),写出去的永远只有名字那一格。
+   */
+  tag: {
+    type: 'skill',
+    toRef: (tag) => {
+      const name = tag.attrs.name?.trim()
+      if (!name || /[\s/]/.test(name)) return null
+      // 通用属性 `label`:trim 后是空串就当没给。
+      const label = tag.attrs.label?.trim() || undefined
+      return {
+        kind: 'skill' as const,
+        token: `/skill:${name}`,
+        name,
+        openable: true as const,
+        ...(label ? { label } : {}),
+      }
+    },
+    toTag: (ref) => {
+      const attrs: Record<string, string> = { name: ref.name }
+      // 部件形没有 `label`(它从引擎那边来),所以这一句只在正文形上成立;
+      // `label` 恒在最后,与另外两种同一条。
+      if (ref.kind === 'skill' && ref.label) attrs.label = ref.label
+      return { type: 'skill', attrs }
+    },
+  },
+
+  /*
    * 两形同皮同字,差的只有那一格能力(正文形没有 id,打不开任何东西,所以不可点)。
    * 皮 B 之后连类名都是同一个 —— 可不可点由 `clickable` 说,不由色说。
    */
@@ -138,9 +183,20 @@ export const skillReferenceKind: ReferenceKind<CommandEntry, SkillRef> = {
           dataKind: 'skill',
           icon: SkillIcon,
           iconClassName: s.skillIcon,
-          label: ref.name,
+          // 写的人给了称呼就用他的,缺席才用技能名。
+          label: ref.label ?? ref.name,
           labelClassName: s.refName,
-          clickable: false,
+          // 正文形本来打不开任何东西(它手里只有一个名字)。助手写的那一枚带着
+          // `openable` —— 名字查得到 id,于是它与部件形一样可点。
+          ...(ref.openable
+            ? {
+                clickable: true as const,
+                tooltipKey: 'chat.ref.openSkill' as const,
+                tooltipArgs: { name: ref.name },
+                failKey: 'chat.ref.openSkillFailed' as const,
+                failSource: 'chat.skillRef',
+              }
+            : { clickable: false as const }),
         }
       : {
           className: s.skill,
@@ -160,7 +216,11 @@ export const skillReferenceKind: ReferenceKind<CommandEntry, SkillRef> = {
    * 要等一发(表里没有这条时先补拉一次),所以交的是 promise —— pending 那一格
    * 的判据就是这个。三条路与它们的次序在 `content/skill-open.ts` 自己那儿。
    */
-  open: (ref) => (ref.kind === 'skillRef' ? openSkillDirectory(ref.skillId) : false),
+  open: (ref) => {
+    if (ref.kind === 'skillRef') return openSkillDirectory(ref.skillId)
+    // 正文形只有名字:助手写的那一枚先把名字换成 id,再走同一条路。
+    return ref.openable ? openSkillNamed(ref.name) : false
+  },
 }
 
 registerReferenceKind(skillReferenceKind, import.meta.hot)

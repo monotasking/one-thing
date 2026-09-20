@@ -25,6 +25,12 @@ export interface RefTypeSpec {
   /** 提示词里的那个例子;由 `formatRefTag` 渲染,所以它永远是合法的正形。 */
   example: RefTag
   /**
+   * 这一种收不收通用的 `label`(屏幕上那几个字)。缺席 = 收。
+   * 答 false 的那一种,字面就是它的全部意思 —— 换一个字就是在骗读者
+   * (命令:点了填进输入框的就是那一行)。提示词的类型表照这一格说话。
+   */
+  acceptsLabel?: boolean
+  /**
    * 纯文本投影(IM / CLI)。缺席 = 编解码器的缺省投影
    * (`label` ▷ `path[:line]` ▷ `href` ▷ `name`)。
    */

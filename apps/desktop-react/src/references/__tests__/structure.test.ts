@@ -2,10 +2,13 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { createElement } from 'react'
-import { render } from '@testing-library/react'
+import { fireEvent, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import '..'
 import { SegmentsView } from '../../content/user-message'
+import { InlineRun } from '../../content/blocks/inline/InlineRun'
+import { parseMarkdown } from '../../content/markdown/parse'
+import type { InlineNode } from '../../content/model/inline'
 import {
   parseToken,
   referenceKindList,
@@ -46,7 +49,7 @@ function codeOf(relative: string): string {
     .join('\n')
 }
 
-/** 今天表上的七种,外加两个已经退役的旧枚举名。 */
+/** 今天表上的九种,外加两个已经退役的旧枚举名。 */
 const KIND_WORDS = [
   'file',
   'dir',
@@ -55,12 +58,15 @@ const KIND_WORDS = [
   'plugin',
   'prompt',
   'page',
+  'reference',
+  'attachment',
   'files',
   'commands',
   'fileRef',
   'dirRef',
   'skillRef',
   'promptRef',
+  'linkRef',
 ]
 
 /** 引号里的那几个字 —— 一个种类 id 字面量。 */
@@ -77,6 +83,12 @@ describe('① 旧枚举点:核心层不出现任何一种引用的名字', () =>
     ['data/chat-source.ts', '段原样进那格乐观 entry,一个种类名都不看'],
     ['data/chat-fold.ts', '`PendingSend.segments` 只是一串段,形归各家自述'],
     ['content/ChatStream.tsx', '在飞与落账同一只 `UserBubble`,画法归 `render(ref)`'],
+    /* B2 新进来的五处:这条链从「用户那句话」长到了「助手那句话」。 */
+    ['content/markdown/to-inline.ts', 'html 节点只认「这是不是一条 ref 标签」'],
+    ['content/markdown/to-blocks.ts', '整段只有标签的 html 块翻成一段话,不问是哪一种'],
+    ['content/blocks/inline/InlineRun.tsx', '`ref` 那一支只把标签递给注册表'],
+    ['references/segment.ts', '标签扫描者与各家正则平级,谁都不点名'],
+    ['references/ReferenceTagChip.tsx', '认得出交给那一种画,认不出画中性 chip'],
   ])('%s 里没有种类 id 字面量(%s)', (relative) => {
     const hits = codeOf(relative).match(KIND_LITERAL) ?? []
     expect(hits).toEqual([])
@@ -123,6 +135,8 @@ describe('② 注册表', () => {
       'prompt',
       'page',
       'attachment',
+      // B2:出处。只从助手那边来(`<ref type="reference" href="…"/>`)。
+      'reference',
     ])
   })
 
@@ -258,7 +272,7 @@ describe('③ 陌生能力演练:@ 一条会话', () => {
     const spec = sessionKind.render!(segs[1].value as { kind: 'sessionRef'; id: string })
     expect(spec.clickable).toBe(true)
     expect(spec.label).toBe('s1')
-    expect(referenceKindOf('session')!.open!(segs[1].value as never)).toBe(true)
+    expect(referenceKindOf('session')!.open!(segs[1].value as never, {})).toBe(true)
     expect(opened).toEqual(['s1'])
   })
 
@@ -307,6 +321,96 @@ describe('③ 陌生能力演练:@ 一条会话', () => {
     const segs = segmentReferenceText('看看 @session:s1 那条')
     expect(segs.map((s) => s.kindId)).toEqual([null])
     expect(segs[0].value).toEqual({ kind: 'text', text: '看看 @session:s1 那条' })
+  })
+})
+
+/**
+ * ── ④ 陌生能力演练(线上标签那一半,B2;正本 §3)───────────────────────────
+ *
+ * 同一条法,换一条链:这一次现造的那一种走的是 `<ref type="drill-session" …/>`,
+ * 而它要在**助手那句话**里画得出来(markdown → 行内树 → `InlineRun`)、在
+ * **用户那句话**里认得出来(`segmentReferenceText`),点得了它自己的 `open`。
+ *
+ * 全程一个生产文件都不改 —— 这只文件里除了 `readFileSync` 与下面那份假自述,
+ * 没有任何生产路径的改动。答不出这一段 = 骨架没抽到位。
+ */
+describe('④ 陌生能力演练(线上标签):<ref type="drill-session"/>', () => {
+  const opened: string[] = []
+
+  interface DrillRef {
+    kind: 'drillRef'
+    id: string
+  }
+
+  const drillKind: ReferenceKind<never, DrillRef> = {
+    id: 'drill-session',
+    tag: {
+      type: 'drill-session',
+      toRef: (tag) => (tag.attrs.id ? { kind: 'drillRef', id: tag.attrs.id } : null),
+      toTag: (ref) => ({ type: 'drill-session', attrs: { id: ref.id } }),
+    },
+    render: (ref) => ({
+      className: 'drill-chip',
+      dataKind: 'drillRef',
+      label: `会话 ${ref.id}`,
+      clickable: true,
+    }),
+    open: (ref) => {
+      opened.push(ref.id)
+      return true
+    },
+  }
+
+  let off: (() => void) | undefined
+  afterEach(() => {
+    off?.()
+    off = undefined
+    opened.length = 0
+  })
+
+  it('①助手那句话里画得出、点得了', () => {
+    off = registerReferenceKind(drillKind)
+
+    const blocks = parseMarkdown('看 <ref type="drill-session" id="s9"/> 这条')
+    expect(blocks).toHaveLength(1)
+    const block = blocks[0].block as { kind: string; inline: InlineNode[] }
+    expect(block.kind).toBe('paragraph')
+    expect(block.inline.map((n) => n.type)).toEqual(['text', 'ref', 'text'])
+
+    const view = render(createElement(InlineRun, { nodes: block.inline }))
+    const chip = view.container.querySelector('.drill-chip') as HTMLElement
+    expect(chip).toBeTruthy()
+    expect(chip.textContent).toBe('会话 s9')
+    fireEvent.click(chip)
+    expect(opened).toEqual(['s9'])
+  })
+
+  it('②用户那句话里也认得出 —— 标签是与各家正则平级的一名扫描者', () => {
+    off = registerReferenceKind(drillKind)
+
+    const segs = segmentReferenceText('先看 <ref type="drill-session" id="s9"/>,再说')
+    expect(segs.map((seg) => seg.kindId)).toEqual([null, 'drill-session', null])
+    expect(segs[1].value).toEqual({ kind: 'drillRef', id: 's9' })
+
+    // 段 → 句子 → 段:往返逐字不变(「两者互为投影」那条不变量扩到 tag 形)。
+    const wire = projectSegmentsToText(segs)
+    expect(wire).toBe('先看 <ref type="drill-session" id="s9"/>,再说')
+    expect(segmentReferenceText(wire)).toEqual(segs)
+  })
+
+  it('③反证:没有那一行登记,同一条标签画成一枚中性不可点 chip,一个字都不吞', () => {
+    const blocks = parseMarkdown('看 <ref type="drill-session" id="s9"/> 这条')
+    const block = blocks[0].block as { kind: string; inline: InlineNode[] }
+    const view = render(createElement(InlineRun, { nodes: block.inline }))
+    expect(view.container.querySelector('.drill-chip')).toBeNull()
+    // 缺省投影:没有 label 就念最像地址的那一格属性 —— 这里只有 `id`。
+    expect(view.container.textContent).toBe('看 s9 这条')
+    expect(view.container.querySelector('button')).toBeNull()
+
+    // 用户那句话里更直白:认不出的标签**原样留字**。
+    expect(segmentReferenceText('看 <ref type="drill-session" id="s9"/>')).toEqual([
+      { kindId: null, value: { kind: 'text', text: '看 <ref type="drill-session" id="s9"/>' } },
+    ])
   })
 })
 

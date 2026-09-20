@@ -218,21 +218,29 @@ export async function createBrowserTab(
  *
  * `near` = 「从这一格开出来的」(叶檐上那颗 +、⋯ 表里「以另一个身份打开此页」):
  * 新那一格落在它旁边,而不是去要一扇新窗。缺席 = 老路(记忆 > 天生 > 中央区)。
+ *
+ * ── 答**开成了没有**(B2)────────────────────────────────────────────────
+ * 从前它答 void,因为三个调用方(瓦、叶檐、⋯ 菜单)都在浏览器自己那块面里,
+ * 「开不出来」只可能是这台宿主根本没有浏览器,而那几处入口那时压根不该在屏上。
+ * 出处引用那一枚不是这样:它长在**助手的一句话里**,而那句话在浏览器壳上也画得
+ * 出来 —— 所以它要据此决定要不要退到下一条路(判词在 `references/kinds/link.ts`
+ * 的 `open`)。既有三处调用方一个字不改:它们照旧忽略返回值。
  */
 export async function openBrowser(
   url?: string,
   init: { profile?: string; near?: string } = {},
-): Promise<void> {
+): Promise<boolean> {
   const tabId = await createBrowserTab({
     ...(url ? { url } : {}),
     ...(init.profile ? { profile: init.profile } : {}),
   })
-  if (!tabId) return
+  if (!tabId) return false
   if (init.near) {
     placeBrowserTabNear(init.near, tabId)
-    return
+    return true
   }
   placeBrowserTab(tabId)
+  return true
 }
 
 /** 点那块瓦:先召唤,召唤不着才开新的(判词在文件头)。 */

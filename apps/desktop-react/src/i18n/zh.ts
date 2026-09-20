@@ -713,6 +713,13 @@ export const zh = {
   'chat.ref.openSkillFailed': '打不开技能目录 {name}',
   /* 提示词引用那枚药丸没有标题时的兜底(它不可点,只是把这一格说出来)。 */
   'chat.ref.promptUntitled': '未命名提示词',
+  /* 助手提议的那条命令(B2):点它只是把命令填进输入框 —— **发不发是人的事**,
+   * 所以这句话说的是「填进去」,不是「运行」。命令本身是数据,按 {command} 插入。 */
+  'chat.ref.fillCommand': '填入 {command}',
+  'chat.ref.fillCommandFailed': '这条会话现在没有输入框',
+  /* 出处引用(B2):点了在内置浏览器里开一格。地址是数据不进字典,所以失败那句
+   * 话里也不带地址 —— 它就在 chip 的提示上。 */
+  'chat.ref.openLinkFailed': '打不开这个链接',
   'chat.thought': '思考',
   'chat.streaming': '正在生成',
   /* ── 上下文更新 chip(U3)──────────────────────────────────────────────

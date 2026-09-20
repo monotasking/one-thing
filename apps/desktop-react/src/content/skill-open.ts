@@ -63,3 +63,32 @@ export async function openSkillDirectory(skillId: string): Promise<boolean> {
     return false
   }
 }
+
+/**
+ * **按名字打开一条技能**(B2:助手写的 `<ref type="skill" name="…"/>`)。
+ *
+ * 助手手里只有名字 —— 提示词里那张类型表给的就是 `name`(正本 §1),而 id 是这台
+ * 机器上的内部事实,没有理由让模型知道。所以这里补一步「名字 → id」,补完之后
+ * **原样走上面那三条路**:多一条打开路就是多一份会分叉的判据,而这一步只是查表。
+ *
+ * 表里没有就先 `ensureSkills` 拉一次(与上面 ② 逐字同一条理由);拉完还是没有 =
+ * 这台机器上没有这条技能,答 `false`,由 chip 说一句人话。名字**大小写不敏感**,
+ * 与 `/skill:<name>` 那条命令的匹配口径同源(`data/skills-source` 文件头)。
+ */
+export async function openSkillNamed(name: string): Promise<boolean> {
+  if (!name) return false
+  const wanted = name.toLowerCase()
+  const lookup = (): string | undefined => {
+    for (const [id, entry] of useSkillsSource.getState().byId) {
+      if (entry.name.toLowerCase() === wanted) return id
+    }
+    return undefined
+  }
+
+  let id = lookup()
+  if (!id) {
+    await useSkillsSource.getState().ensureSkills(sessionDirOf())
+    id = lookup()
+  }
+  return id ? openSkillDirectory(id) : false
+}

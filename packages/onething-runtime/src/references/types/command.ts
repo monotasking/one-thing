@@ -13,6 +13,7 @@ export const commandRefType: RefTypeSpec = {
     { name: 'args', description: 'arguments to prefill after it' },
   ],
   example: { type: 'command', attrs: { name: 'compact' } },
+  acceptsLabel: false,
   // 缺省投影会交出裸 `compact`,而这一种在纯文本里的读法就是人手敲的那一行。
   plainText: (tag) => {
     const name = tag.attrs.name

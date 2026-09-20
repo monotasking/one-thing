@@ -1,3 +1,4 @@
+import { scanRefTags } from '@onething/core/references'
 import type { BlockContent, Code, List, ListItem, Paragraph, PhrasingContent, RootContent, Table } from 'mdast'
 /*
  * 从扩展包取节点型(而不是从 'mdast' 里 Extract):这两个型是 `mdast-util-math` 用
@@ -7,6 +8,7 @@ import type { BlockContent, Code, List, ListItem, Paragraph, PhrasingContent, Ro
  */
 import type { Math as MathFlow } from 'mdast-util-math'
 import type { BlockModel, ListItemModel } from '../model/blocks'
+import type { InlineNode } from '../model/inline'
 import { routeFence } from './fence'
 import { toInline } from './to-inline'
 
@@ -80,9 +82,52 @@ function translate(node: RootContent, source: string): BlockModel {
       // 被画成带「复制源码」檐的代码块)。零参数块,画法在 kinds/divider。
       return { kind: 'divider' }
 
+    case 'html':
+      // 整段只由 `<ref/>` 与空白组成的那一种,翻成一段话(判词在下面);
+      // 别的 html 块照旧落 source-fallback(总纪律一个字没动)。
+      return translateRefTagBlock(node.value) ?? fallback(node, source, `md:${node.type}`)
+
     default:
       return fallback(node, source, `md:${node.type}`)
   }
+}
+
+/**
+ * **一行里只有一条 `<ref/>` 时,它是 html 块**(B2,正本 §2.5)。
+ *
+ * CommonMark 的 HTML 块第 7 型:一行上只有一个完整标签就开一个 html 块 ——
+ * 于是助手写「这里」再换行写一条标签,那条标签落的是 `source-fallback`
+ * (带「复制源码」檐的一段源码),而人要的是一枚 chip。
+ *
+ * 判据是**整段只由标签与空白组成**:一段真的 HTML(`<div>…`)里恰好夹着一条
+ * `<ref/>` 时,它仍旧是一段 HTML,照旧原文可见 —— 那是总纪律,不是这里的例外。
+ * 认不出就答 `undefined`,调用方落 fallback。
+ *
+ * **块身份键取 `paragraph`**(`${源偏移}:${kind}`):流式途中它不该先是别的型再
+ * 变成这个型 —— 有了扣尾(`content/assemble/markdown.ts`),半截标签根本不进
+ * 解析器,所以「先 fallback 后 paragraph」那一次翻转结构上不会发生
+ * (单测钉在 `__tests__/ref-tag.test.ts`)。
+ *
+ * 标签之间的空白**原样留着**(它们是两条标签之间那个换行):段落是
+ * `white-space: pre-wrap` 画的,留着就是作者写的那个样子。
+ */
+function translateRefTagBlock(value: string): BlockModel | undefined {
+  const hits = scanRefTags(value)
+  if (hits.length === 0) return undefined
+
+  const inline: InlineNode[] = []
+  let cursor = 0
+  for (const hit of hits) {
+    const between = value.slice(cursor, hit.start)
+    // 标签之外只许有空白 —— 有别的字就说明这是一段真的 HTML,不是一排引用。
+    if (between.trim() !== '') return undefined
+    if (between && inline.length > 0) inline.push({ type: 'text', text: between })
+    inline.push({ type: 'ref', tag: hit.tag })
+    cursor = hit.end
+  }
+  if (value.slice(cursor).trim() !== '') return undefined
+
+  return { kind: 'paragraph', inline }
 }
 
 /**

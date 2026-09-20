@@ -3,6 +3,8 @@
  * 唯一要动的地方)—— 两个文件因此互相 `import type`,而 `import type` 在编译后整句
  * 消失,运行时没有环。
  */
+import { defaultRefTagText } from '@onething/core/references'
+import type { RefTag } from '@onething/core/references'
 import type { ImageRef } from './blocks'
 
 /**
@@ -73,6 +75,20 @@ export type InlineNode =
   | { type: 'math'; tex: string }
   /** 检索来源角标:`sourceId` 指向 research 段那份来源清单里的一条。 */
   | { type: 'citation'; sourceId: string; index: number }
+  /**
+   * **一枚引用标签**(`<ref type="file" path="…" line="12"/>`,B2;正本
+   * `docs/design/reference-tag-2026-09.md` §2.5)。
+   *
+   * ── 它装的是**标签本身**,不是解析结果 ──────────────────────────────────
+   * 行内树要参与深比(块模型不可变 + memo 浅比,单测靠 `toEqual`),而「这条标签
+   * 是哪一种引用、它的 Ref 长什么样」是**注册表此刻的答案** —— 热更换一份自述、
+   * 演练里现登记一种,同一段文本就会解析出不同的树。所以解析发生在**画的那一拍**
+   * (`ReferenceTagChip` 问一次注册表),这里只放那条标签的字面事实。
+   *
+   * 于是这一层与 `InlineRun` 一样,**一个种类名都不认得**:词汇里只有「有这么一条
+   * 标签」,谁认得它、画成什么,全在 `src/references/` 那张表里。
+   */
+  | { type: 'ref'; tag: RefTag }
 
 /** 只取文字 —— 复制、成果词摘要、可读性断言都用它,不各写一遍递归。 */
 export function inlineText(nodes: readonly InlineNode[]): string {
@@ -101,6 +117,15 @@ export function inlineText(nodes: readonly InlineNode[]): string {
         break
       case 'citation':
         // 角标是**呈现**,不是正文的字:复制正文时它不该跟着走。
+        break
+      case 'ref':
+        /*
+         * 复制一段带引用的正文,得到的是**那一枚指的是什么**那几个字(缺省投影:
+         * label ▷ path[:line] ▷ href ▷ name)—— 与 IM / CLI 那条纯文本投影
+         * 同一只函数(`defaultRefTagText`),所以「这枚 chip 念作什么」全仓一个答案。
+         * 不复制原始 XML:人复制的是他读到的那句话,不是它的线上写法。
+         */
+        out += defaultRefTagText(node.tag)
         break
     }
   }

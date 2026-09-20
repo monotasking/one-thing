@@ -2171,6 +2171,9 @@
   --refchip-token-weight: 600;
   /* 异步动作在飞时压淡一档(spinner 只许在按钮内或状态栏,行内的词不转圈)。 */
   --refchip-pending-opacity: 0.55;
+  /* 名字后面那一截定位(`:12 · parseToken`,B2)比名字淡一档:人先读的是文件名,
+   * 行号与符号名是补充。比 pending 那一档(0.55)高 —— 它不是「在忙」,要读得清。 */
+  --refchip-suffix-dim: 0.7;
   --umsg-skill-fg: var(--accent-deep);
 
   /* ── 内容块里的图(content/blocks/kinds/image,2026-09-13)────────────────

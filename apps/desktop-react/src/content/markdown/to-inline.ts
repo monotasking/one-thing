@@ -1,3 +1,4 @@
+import { isRefCloseTag, parseRefOpenTag, parseRefTag } from '@onething/core/references'
 import type { PhrasingContent } from 'mdast'
 /* 显式引一次扩展包的节点型 —— 理由与 to-blocks.ts 顶上那一段逐字相同。 */
 import type { InlineMath } from 'mdast-util-math'
@@ -17,10 +18,29 @@ import type { InlineNode } from '../model/inline'
  *
  * `image` 从 2026-09-13 起**有词汇了**(正本 §1):它不再原文照抄,而是翻译成行内
  * image 节点 —— 画法(一颗芯片)在 `blocks/inline/InlineImage.tsx`。
+ *
+ * `html` 从 2026-09-20 起**有一格词汇**(B2,正本
+ * `docs/design/reference-tag-2026-09.md` §2.5):`<ref …/>` 翻成一格 `ref` 节点。
+ * **别的 html 一个字不变**,照旧原文可见 —— 这一支只多认了一种标签名,而认不出
+ * 的那几条走的仍是本文件头那条总纪律。
  */
 export function toInline(nodes: readonly PhrasingContent[], source: string): InlineNode[] {
   const out: InlineNode[] = []
-  for (const node of nodes) {
+  /*
+   * 手写游标而不是 `for…of`:宽容形 `<ref …>文字</ref>` 在 mdast 里是**三个兄弟
+   * 节点**(开标签的 html、文字、闭标签的 html),认下它要往后**吃掉**几个节点。
+   */
+  for (let index = 0; index < nodes.length; index += 1) {
+    const node = nodes[index]
+
+    if (node.type === 'html') {
+      const eaten = takeRefTag(nodes, index, source, out)
+      if (eaten > 0) {
+        index += eaten - 1
+        continue
+      }
+    }
+
     switch (node.type) {
       case 'text':
         push(out, { type: 'text', text: node.value })
@@ -91,6 +111,49 @@ export function toInline(nodes: readonly PhrasingContent[], source: string): Inl
     }
   }
   return out
+}
+
+/**
+ * **从 `at` 这个 html 节点起,认一枚 `<ref/>`**;认出来就 push 一格 `ref` 并答
+ * 「吃掉了几个节点」,认不出答 0(调用方照旧走总纪律,原文可见)。
+ *
+ * 两形:
+ *  · **自闭合** —— 一个 html 节点就是全部,吃 1 个;
+ *  · **宽容形** `<ref …>文字</ref>` —— 往后找**同级**的那一个闭标签 html 节点,
+ *    把**源文本里那一整段**切出来交给 `parseRefTag`。切源文而不是把中间节点的
+ *    文字拼起来,是因为实体解码只该有一个产地:`&amp;` 怎么读由编解码器说了算,
+ *    拼节点文字等于在这里再写一份解码(而 mdast 的 text 节点已经解过一轮实体,
+ *    再交给编解码器解第二轮就会把 `&amp;lt;` 读成 `<`)。
+ *
+ * 找不到闭标签 = **原文照抄**(本文件头那条总纪律),所以答 0。
+ */
+function takeRefTag(
+  nodes: readonly PhrasingContent[],
+  at: number,
+  source: string,
+  out: InlineNode[],
+): number {
+  const open = parseRefOpenTag((nodes[at] as { value: string }).value)
+  if (!open) return 0
+
+  if (open.selfClosing) {
+    out.push({ type: 'ref', tag: open.tag })
+    return 1
+  }
+
+  for (let i = at + 1; i < nodes.length; i += 1) {
+    const node = nodes[i]
+    if (node.type !== 'html') continue
+    if (!isRefCloseTag(node.value)) break
+    const from = nodes[at].position?.start.offset
+    const to = node.position?.end.offset
+    if (typeof from !== 'number' || typeof to !== 'number') break
+    const tag = parseRefTag(source.slice(from, to))
+    if (!tag) break
+    out.push({ type: 'ref', tag })
+    return i - at + 1
+  }
+  return 0
 }
 
 /**

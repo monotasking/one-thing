@@ -58,6 +58,13 @@ interface Entry {
 export const PARSE_INTERVAL_MS = 16
 
 /**
+ * 引用标签的起手式(B2)。**写成一个常量而不是 import 编解码器**:这里要的只是
+ * 「追加里有没有这四个字」这一句最保守的判据,不是一次解析 —— 判错的代价是多解析
+ * 一次(免费),而漏判的代价是屏上闪一下原始 XML。
+ */
+const REF_TAG_OPEN = '<ref'
+
+/**
  * 「这中间没画过」的门槛(审查条 8)。
  *
  * 正常直播两次真解析之间是 16ms 量级;隔了 2 秒还没画过,只可能是窗口不可见 /
@@ -185,6 +192,14 @@ export class MarkdownStream {
  * 只贴两种落点:未闭合围栏(逐行 append,正是它的常态)、末尾段落的末尾文字节点。
  * 追加里一旦含空行(会开新块)或围栏起手式(会换块型),就不贴 —— 返回 undefined,
  * 上面当场退回真解析。**宁可多解析一次,不可显示一份和最终结果不同的东西。**
+ *
+ * ── 第三种不贴:追加里有一条 `<ref/>`(B2)────────────────────────────────
+ * 流式扣尾(`content/assemble/markdown.ts`)保证送进来的文本里**没有半截标签**,
+ * 所以一条标签是「上一帧还没有、这一帧整条到齐」——它整条落在 delta 里。
+ * 而贴尾巴是把 delta 当**纯文字**接在末尾那个文字节点后面:贴了就等于把
+ * `<ref type="file" …/>` 这十几个字原样画在屏上,下一次真解析再换成 chip ——
+ * 正是扣尾要消掉的那一次闪,只不过改由节流窗制造。它与围栏起手式同一条理由
+ * (**会换块型**),所以写在同一处。
  */
 function spliceTail(parsed: ParsedBlock[], oldText: string, text: string): ParsedBlock[] | undefined {
   const delta = text.slice(oldText.length)
@@ -198,6 +213,7 @@ function spliceTail(parsed: ParsedBlock[], oldText: string, text: string): Parse
    * 不看末块是什么** —— 机制层不认识任何一型。
    */
   if (delta.includes('$') || delta.includes('\\')) return undefined
+  if (delta.includes(REF_TAG_OPEN)) return undefined
 
   const last = parsed[parsed.length - 1]
   if (!last || last.end !== oldText.length) return undefined

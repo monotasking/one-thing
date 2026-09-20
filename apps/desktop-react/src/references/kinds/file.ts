@@ -9,10 +9,11 @@ import type { FileMention } from '../../data/file-mentions-source'
 import { matchFiles } from '../../composer/transitions'
 import { basename } from '../../content/tools/result'
 import { disambiguatedDirName } from '../../content/files/dir-names'
-import { openFileInCurrentTarget } from '../../content/viewer/open-target'
+import { openFileAt } from '../../content/viewer/open-target'
 import { registerReferenceKind } from '../registry'
 import { isDirectoryPath, PATH_REF_PATTERN, pathRefOf } from './path-ref'
 import s from '../ReferenceChip.module.css'
+import type { RefTag } from '@onething/core/references'
 import type { PickContext, PickResult, ReferenceKind } from '../kind'
 
 /**
@@ -81,7 +82,89 @@ export function pathKindOf(hit: FileMention): string {
   return hit.type === 'directory' ? 'dir' : 'file'
 }
 
-export const fileReferenceKind: ReferenceKind<FileMention, { kind: 'fileRef'; path: string }> = {
+/**
+ * **一枚文件引用**(B2 起它指得到一处,不只是一份文件)。
+ *
+ * 四格定位全是**可选**,而且缺席各有各的意思 —— 「没给行号」与「行号是 0」是两
+ * 件事,所以它们不给缺省值,由打开那一路逐级退(symbol ▷ line ▷ 只打开)。
+ * `endLine` 只在写标签那一刻与 `line` 合成 `"12-30"`,屏幕上那句读数也照它画。
+ */
+export interface FileRef {
+  kind: 'fileRef'
+  path: string
+  line?: number
+  endLine?: number
+  col?: number
+  symbol?: string
+  /**
+   * **屏幕上那几个字由写的人说**(通用属性 `label`,判词在 `references/kind.ts`
+   * 的 `ReferenceTagCodec` 上)。缺席 = 由这一种自己算(basename)。
+   *
+   * 它只换**名字那一格**:`:12 · parseToken` 那一截语法照旧跟在后面,提示里的
+   * 两层路径形也不动 —— 模型换的是称呼,不是它指着的那个东西。composer 落稿
+   * 出来的引用没有这一格,所以出站的字节一个都不变。
+   */
+  label?: string
+}
+
+/** `12` / `12-30` → 两格。认不出的整格当没给(不猜、不报错)。 */
+function parseLineSpan(raw: string | undefined): { line?: number; endLine?: number } {
+  if (!raw) return {}
+  const m = /^(\d+)(?:-(\d+))?$/.exec(raw.trim())
+  if (!m) return {}
+  const line = Number(m[1])
+  if (!Number.isFinite(line) || line <= 0) return {}
+  const end = m[2] === undefined ? undefined : Number(m[2])
+  // 区间反着写 / 写成 0 都当只给了起点 —— 落行只认 `line`,所以损失是零。
+  return end !== undefined && Number.isFinite(end) && end >= line
+    ? { line, endLine: end }
+    : { line }
+}
+
+/** 一个正整数属性。`col` 与 `line` 同判据,写成一句共用的。 */
+function positiveOf(raw: string | undefined): number | undefined {
+  if (!raw) return undefined
+  const n = Number(raw.trim())
+  return Number.isInteger(n) && n > 0 ? n : undefined
+}
+
+/** `12` / `12-30`;两格都没有就不写这一格属性。 */
+function lineSpanText(ref: FileRef): string | undefined {
+  if (ref.line === undefined) return undefined
+  return ref.endLine === undefined ? `${ref.line}` : `${ref.line}-${ref.endLine}`
+}
+
+/**
+ * **屏幕上那几个字**:`label ▷ basename`,后面跟 [`:12`|`:12-30`][` · symbol`]。
+ *
+ * 一行恰有一个弯腰件(挤压纪律律一):会缩的只有名字那一格
+ * (`.refName` 的 `max-width` + 省略号),行号与符号名是**语法**,一个字都不截
+ * —— 截掉 `:12` 之后这枚 chip 就在说谎(它指的是那一行,不是那份文件)。
+ *
+ * 写的人给了 `label` 就用他的话:一句「看 <ref …>解析器</ref> 这一处」里,
+ * 「解析器」比 `parser.ts` 更是这句话要说的东西。**语法那一截照旧跟在后面** ——
+ * 换称呼不等于换定位。
+ */
+function fileChipLabel(ref: FileRef): { name: string; suffix: string } {
+  const span = lineSpanText(ref)
+  return {
+    name: ref.label ?? basename(ref.path),
+    suffix: `${span ? `:${span}` : ''}${ref.symbol ? ` · ${ref.symbol}` : ''}`,
+  }
+}
+
+/**
+ * 通用属性 `label` 读出来的那几个字。**trim 后是空串就当没给** —— 一枚写着
+ * `label=" "` 的引用画出来会是一片看不见的空白,而屏幕上不该有看不见的东西。
+ *
+ * 三家(文件 / 目录 / 技能)各读各的,不抽成一处共用:每一种自述读它自己那几格
+ * 属性,是这张表的形状(`link.ts` 读 `title`/`label` 也是自己读的)。
+ */
+function labelOf(tag: RefTag): string | undefined {
+  return tag.attrs.label?.trim() || undefined
+}
+
+export const fileReferenceKind: ReferenceKind<FileMention, FileRef> = {
   id: 'file',
 
   source: {
@@ -137,21 +220,68 @@ export const fileReferenceKind: ReferenceKind<FileMention, { kind: 'fileRef'; pa
     },
   },
 
-  render: (ref) => ({
-    className: s.ref,
-    dataKind: 'fileRef',
-    icon: FileIcon,
-    iconClassName: s.refIcon,
-    label: basename(ref.path),
-    labelClassName: s.refName,
-    tooltipKey: 'chat.ref.openFile',
-    tooltipArgs: { path: ref.path },
-    // 悬停看到的是这条路径的两层形(09-13);「打开 …」那句动词退到
-    // `aria-label` 上 —— `chat.ref.openFile` 这个键因此**不删**,它现在只服务
-    // 无障碍名。
-    tooltipPath: { path: ref.path },
-    clickable: true,
-  }),
+  /*
+   * **线上那条 `<ref type="file" …/>`**(B2)。
+   *
+   * 属性的次序是**写死的**(`path, line, col, symbol, label`),因为编解码器按
+   * 插入序渲染:同一枚引用在任何一次重建里都要产出逐字相同的字节,不然账本上
+   * 那条消息每重放一次就变一次。缺席的属性**一格都不写** —— `line=""` 与
+   * 「没给行号」是两件事,而写一个空值等于把前者伪装成后者。
+   *
+   * `~/` 一个字不展:渲染层没有 homedir 这个事实(判词在 `data/files-source.ts`
+   * 文件头),展不展得开由打开那条路自己答。
+   */
+  tag: {
+    type: 'file',
+    toRef: (tag: RefTag) => {
+      const path = tag.attrs.path?.trim()
+      // 没有路径就不是一枚文件引用 —— 认不出,照实画中性 chip、原话留屏。
+      if (!path || isDirectoryPath(path)) return null
+      const span = parseLineSpan(tag.attrs.line)
+      const col = positiveOf(tag.attrs.col)
+      const symbol = tag.attrs.symbol?.trim()
+      const label = labelOf(tag)
+      return {
+        kind: 'fileRef' as const,
+        path,
+        ...span,
+        ...(col === undefined ? {} : { col }),
+        ...(symbol ? { symbol } : {}),
+        ...(label ? { label } : {}),
+      }
+    },
+    toTag: (ref) => {
+      const attrs: Record<string, string> = { path: ref.path }
+      const span = lineSpanText(ref)
+      if (span) attrs.line = span
+      if (ref.col !== undefined) attrs.col = `${ref.col}`
+      if (ref.symbol) attrs.symbol = ref.symbol
+      // `label` **恒在最后**:编解码器按插入序渲染,而宽容形折进来的那一格也在
+      // 最后 —— 两条来路写出同一串字节,往返才是逐字相同的。
+      if (ref.label) attrs.label = ref.label
+      return { type: 'file', attrs }
+    },
+  },
+
+  render: (ref) => {
+    const { name, suffix } = fileChipLabel(ref)
+    return {
+      className: s.ref,
+      dataKind: 'fileRef',
+      icon: FileIcon,
+      iconClassName: s.refIcon,
+      label: name,
+      labelClassName: s.refName,
+      ...(suffix ? { suffix, suffixClassName: s.refSuffix } : {}),
+      tooltipKey: 'chat.ref.openFile',
+      tooltipArgs: { path: ref.path },
+      // 悬停看到的是这条路径的两层形(09-13);「打开 …」那句动词退到
+      // `aria-label` 上 —— `chat.ref.openFile` 这个键因此**不删**,它现在只服务
+      // 无障碍名。
+      tooltipPath: { path: ref.path },
+      clickable: true,
+    }
+  },
 
   /*
    * 同步开完 —— 一句 `placeRef`,没有可等的东西,所以答 boolean 而不是 promise
@@ -162,7 +292,14 @@ export const fileReferenceKind: ReferenceKind<FileMention, { kind: 'fileRef'; pa
    * 拼一个第二套展开。
    */
   open: (ref) => {
-    openFileInCurrentTarget(ref.path)
+    // 定位那三格原样递下去,「落到哪儿」的判据整段在 `openFileAt` 里 ——
+    // 这一种只说它指着哪儿,不说怎么找。
+    openFileAt(ref.path, {
+      ...(ref.line === undefined ? {} : { line: ref.line }),
+      ...(ref.endLine === undefined ? {} : { endLine: ref.endLine }),
+      ...(ref.col === undefined ? {} : { col: ref.col }),
+      ...(ref.symbol ? { symbol: ref.symbol } : {}),
+    })
     return true
   },
 }

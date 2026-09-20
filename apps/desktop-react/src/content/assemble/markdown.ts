@@ -1,3 +1,4 @@
+import { splitIncompleteRefTail } from '@onething/core/references'
 import { BLOCK_STREAM } from '../blocks/stream/flag'
 import { MarkdownBlockStream, parseBlockFrame } from '../markdown/block-stream'
 import { markdownStream, parseFrame, type MarkdownFrame } from '../markdown/incremental'
@@ -27,20 +28,41 @@ import { markdownStream, parseFrame, type MarkdownFrame } from '../markdown/incr
 /** 生产侧那一台。测试各起各的(节拍要能拨,车道不许互相污染)。 */
 const blockStream = new MarkdownBlockStream()
 
+/**
+ * **还在流的那一段:半截 `<ref` 扣住不画**(B2,正本
+ * `docs/design/reference-tag-2026-09.md` §2.6)。
+ *
+ * 病:标签逐 token 到达,`<ref type="file" pa` 这半截会被 markdown 当文字画出来,
+ * 闭合那一拍再整段换成 chip —— 一次肉眼可见的闪,而且一行只有标签时它还会先落成
+ * 一块 `source-fallback`(带「复制源码」檐的源码块)再翻成段落。
+ *
+ * 修法落在**这一处**,而不是解析器里面:`live` 是**装配的事实**(哪条消息在流),
+ * 解析器不知道也不该知道 —— 那正是这只文件文件头那句「两条路的分岔在这里」。
+ * 于是新旧两条路(块流 / 旧路)与两条全量路自动共用同一个判据,四处不必各写一遍。
+ *
+ * 扣的是 `splitIncompleteRefTail` 说的那一截:一个还没闭合、其间没有换行、不超过
+ * 512 字符的 `<ref…` 尾巴。流结束(`live === false`)那一拍**不扣** —— 没闭合的
+ * 就是字面量,照实画出来。
+ *
+ * 预算:一次从尾部往回最多 512 字符的扫描,每帧一次。切点(`stableCut`)永远落在
+ * **行首**,而一条标签不跨行,所以它不可能切进一条未闭合的标签里(论证写在交卷)。
+ */
 export function markdownToFrame(messageId: string, text: string, live: boolean): MarkdownFrame {
+  const body = live ? splitIncompleteRefTail(text).head : text
+
   if (!BLOCK_STREAM) {
     if (!live) {
       markdownStream.forget(messageId)
-      return parseFrame(text)
+      return parseFrame(body)
     }
-    return markdownStream.parse(messageId, text, true)
+    return markdownStream.parse(messageId, body, true)
   }
 
   if (!live) {
     blockStream.forget(messageId)
-    return parseBlockFrame(text)
+    return parseBlockFrame(body)
   }
-  return blockStream.frame(messageId, text, true)
+  return blockStream.frame(messageId, body, true)
 }
 
 export type { MarkdownFrame }

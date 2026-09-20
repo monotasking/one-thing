@@ -1,8 +1,12 @@
+import { formatRefTag, scanRefTags } from '@onething/core/references'
 import {
   expandReferenceToken,
   referencePartKinds,
+  referenceTagOf,
   referenceTextKinds,
   referenceTokenOf,
+  referenceWritesTag,
+  resolveReferenceTag,
 } from './registry'
 import type { ReferencePart } from './kind'
 
@@ -58,6 +62,13 @@ function pushText(out: ResolvedSegment[], text: string): void {
  * 让路),所以不能「谁先注册谁吃掉整段」。判据是位置:各家从当前位置各自往后找
  * 自己的第一处**真命中**(`toRef` 非 null),最早的那一处赢;同一位置上
  * `specificity` 大的先试(`/skill:x` 比 `/x` 具体)。
+ *
+ * ── `<ref/>` 是**一名与各家正则平级的扫描者**(B2,正本 §2.4)──────────────
+ * 它不是「先把标签抽掉再按老规矩切」:那样等于给它开一条优先通道,而
+ * `@/a/b.ts` 与 `<ref type="file" …/>` 在一句话里可以并排出现,谁在前面谁先被
+ * 认走才是对的。所以它也只是一个「从 pos 往后找自己的第一处真命中」的家伙,
+ * 参加同一场「最早命中者赢」。**认不出 type 的标签一个字都不吞** —— 它压根不
+ * 进候选,于是原样留在正文里(用户气泡里那句话本来长什么样就长什么样)。
  */
 function appendText(out: ResolvedSegment[], text: string, atStart: boolean): void {
   if (!text) return
@@ -97,8 +108,23 @@ function appendText(out: ResolvedSegment[], text: string, atStart: boolean): voi
       done: false,
     }))
 
+  /*
+   * 标签那一名扫描者。全文**只扫一遍**(编解码器的 `scanRefTags` 是一次线性
+   * 走),认得出的按位置排好;循环里只是往前挪一格游标 —— 一条 500 枚标签的
+   * 消息因此是 O(正文长度 + 枚数),不是 O(枚数 × 种类数)。
+   */
+  const tagHits: { kindId: string; ref: unknown; start: number; end: number }[] = []
+  for (const hit of scanRefTags(text)) {
+    const resolved = resolveReferenceTag(hit.tag)
+    if (!resolved) continue
+    tagHits.push({ kindId: resolved.kindId, ref: resolved.value, start: hit.start, end: hit.end })
+  }
+  let tagAt = 0
+
   while (pos <= text.length) {
     let best: { kindId: string; ref: unknown; start: number; end: number } | null = null
+    while (tagAt < tagHits.length && tagHits[tagAt].start < pos) tagAt += 1
+    if (tagAt < tagHits.length) best = tagHits[tagAt]
     for (const scanner of scanners) {
       if (scanner.found && scanner.found.start < pos) scanner.found = null
       if (!scanner.found && !scanner.done) {
@@ -148,12 +174,24 @@ function ensureGlobal(flags: string): string {
  *
  * 落不了稿的那一种(没有 `draft`)在句子里**不占字**:那是「它进不了草稿」的
  * 直接推论,不是一格漏判。
+ *
+ * ── 两条出站路,判据由那一种自述(B2,正本 §2.4)──────────────────────────
+ *  · 有线上标签、而且没说 `wire: 'token'` → `<ref type="…" …/>`;
+ *  · 否则 → 旧的 `token → expand`(命令 / 技能:它们是一句话的主语,引擎照它
+ *    执行,改成标签就变了语义;网页那一枚的记号要在发送那一刻才物化)。
+ *
+ * 判据只有 `referenceWritesTag` 一句,这只文件照旧一个种类名都不认得。
  */
 export function projectSegmentsToText(segments: readonly ResolvedSegment[]): string {
   let out = ''
   for (const seg of segments) {
     if (seg.kindId === null) {
       out += (seg.value as TextSegmentValue).text
+      continue
+    }
+    if (referenceWritesTag(seg.kindId)) {
+      const tag = referenceTagOf(seg.kindId, seg.value)
+      if (tag) out += formatRefTag(tag)
       continue
     }
     const token = referenceTokenOf(seg.kindId, seg.value)

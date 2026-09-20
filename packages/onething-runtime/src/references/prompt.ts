@@ -28,6 +28,7 @@ function renderType(spec: RefTypeSpec): string {
   if (spec.attrs.length > 0) {
     parts.push(`${spec.attrs.map(renderAttr).join('; ')}.`)
   }
+  if (spec.acceptsLabel === false) parts.push('Takes no `label`.')
   parts.push(`Example: \`${formatRefTag(spec.example)}\``)
   return parts.join(' ')
 }

@@ -83,12 +83,27 @@ export function configureComposerReferenceSink(
 }
 
 /**
- * 往输入框里落一枚引用。**落在焦点那片会话叶的那一块面板上**(判词见文件头)。
- * 答 `false` = 此刻没有输入面(那条会话没有挂着的面板 / 壳里一片会话叶都没有),
- * 调用方据此说一句人话。
+ * 往输入框里落一枚引用。
+ *
+ * ── 收件人:**点名的那一条 ▷ 焦点那一条**(B2)────────────────────────────
+ * 缺省仍是「焦点那片会话叶的那一块面板」—— 从浏览器右键菜单「把这一页交给对话」
+ * 按下去时,人心里的收件人就是他正看着的那块面板(判词整段在文件头)。
+ *
+ * 而从**一条消息里的一枚 chip** 点进来时不是这样:人点的是那条消息里的东西,
+ * 收件人就是**那条消息所在的会话**,哪怕焦点此刻在别处(同屏两片会话叶是 W5-c
+ * 之后的常态)。所以 `sessionId` 是一格可选的点名 —— 给了就照它投,不给才问
+ * 焦点。**不做「点名的不在就退回焦点」那一档**:那会让一枚指着 A 会话的 chip
+ * 把字填进 B 会话的输入框,比什么都不做坏得多。
+ *
+ * 答 `false` = 收件人此刻没有输入面(那条会话没有挂着的面板 / 壳里一片会话叶都
+ * 没有),调用方据此说一句人话。
  */
-export function insertComposerReference(reference: ComposerReference): boolean {
-  const sink = sinks.get(useExposeStore.getState().currentSessionId)
+export function insertComposerReference(
+  reference: ComposerReference,
+  sessionId?: string,
+): boolean {
+  const target = sessionId ?? useExposeStore.getState().currentSessionId
+  const sink = sinks.get(target)
   if (!sink) return false
   sink(reference)
   return true

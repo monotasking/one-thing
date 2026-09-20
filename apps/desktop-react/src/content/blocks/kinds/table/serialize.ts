@@ -1,3 +1,4 @@
+import { formatRefTag } from '@onething/core/references'
 import type { BlockModel } from '../../../model/blocks'
 import { inlineText, type InlineNode } from '../../../model/inline'
 
@@ -133,5 +134,16 @@ function nodeToMarkdown(node: InlineNode): string {
     case 'citation':
       // 角标是呈现不是正文(inlineText 也不收它)—— 导出时同样不跟着走。
       return ''
+    case 'ref':
+      /*
+       * 一枚引用(B2)。**原样重组成那条标签** —— 与 image 那一支同一条重组纪律:
+       * 复制一张带引用的表得到的应该还是一张能贴回去的表。`formatRefTag` 是决定性
+       * 的(属性按插入序),所以贴回去解析出来的还是同一枚。
+       *
+       * 与 `inlineText` 的差别是有意的:那一只答的是「这几个字念作什么」(给复制
+       * 正文、给朗读、给可读性断言),这一只答的是「这一格的 markdown 原文是什么」。
+       * 竖线照样要转义 —— 一个 markdown 表格行不能跨列(`label` 里真的会有竖线)。
+       */
+      return formatRefTag(node.tag).replace(/\|/g, '\\|')
   }
 }

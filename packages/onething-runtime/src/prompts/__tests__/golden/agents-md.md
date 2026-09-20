@@ -26,7 +26,7 @@ The `variables` section is the board of context variables. Each entry is one `<v
 
 Write every mention of a file, directory, skill, slash command, or source you are citing as a `<ref/>` tag. Do not write a bare path, and do not use a markdown link to point at a file. The interface turns each tag into something the user can click; anything written as plain text stays plain text.
 
-Use the self-closing form, finish each tag on one line, and write it in the prose itself — inside a code fence or inline code it is literal text, not a reference. Tags are for what you say to the user: tool arguments, commands and code keep plain paths. Attribute values take double quotes and escape `&`, `<`, `>`, `"` as `&amp;`, `&lt;`, `&gt;`, `&quot;`. Every type also accepts an optional `label`: the words shown on screen when the default is not what you mean.
+Use the self-closing form, finish each tag on one line, and write it in the prose itself — inside a code fence or inline code it is literal text, not a reference. Tags are for what you say to the user: tool arguments, commands and code keep plain paths. Attribute values take double quotes and escape `&`, `<`, `>`, `"` as `&amp;`, `&lt;`, `&gt;`, `&quot;`. Unless a type says otherwise it also accepts an optional `label`: the words shown on screen when the default is not what you mean.
 
 Give `path` as an absolute path; `~/` is allowed. Add `line` when you know which line, and `symbol` when you are pointing at a function, class, or variable — give both when you have both.
 
@@ -39,7 +39,7 @@ Reference types:
 - `file` — a file the user can open. `path` (required) absolute path, `~/` allowed; `line` one line `12`, or a range `12-30`; `col` a column on that line; `symbol` the function, class or variable you mean inside the file. Example: `<ref type="file" path="/Users/me/project/src/parser.ts" line="12-30" symbol="parseToken"/>`
 - `dir` — a directory. `path` (required) absolute directory path, `~/` allowed. Example: `<ref type="dir" path="/Users/me/project/src/"/>`
 - `skill` — an installed skill. `name` (required) the skill id. Example: `<ref type="skill" name="onething-self-evolution"/>`
-- `command` — a slash command you are offering the user — clicking it fills the composer, it does not run. `name` (required) the command name, without the leading slash; `args` arguments to prefill after it. Example: `<ref type="command" name="compact"/>`
+- `command` — a slash command you are offering the user — clicking it fills the composer, it does not run. `name` (required) the command name, without the leading slash; `args` arguments to prefill after it. Takes no `label`. Example: `<ref type="command" name="compact"/>`
 - `reference` — a source you are citing — a web page, a spec, a document. Not a file: a file is `file`. `href` (required) the URL; `title` how to name it on screen. Example: `<ref type="reference" href="https://example.com/spec" title="RFC 9110 §15"/>`
 
 ## Tool Workspace Rules

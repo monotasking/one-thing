@@ -6,6 +6,8 @@ import { refId } from '../../workbench/kinds'
 import { leavesOf } from '../../workbench/tree'
 import { useStageStore } from '../../stage/store'
 import { nextFloatId } from '../../stage/placement'
+import { textSymbolLocator } from './symbol-locator'
+import type { SymbolLocator } from './symbol-locator'
 import type { FileOpenMode } from '../../data/file-open-mode'
 import type { ContentRef } from '../../workbench/kinds'
 import type { RegionId } from '../../workbench/regions'
@@ -89,7 +91,10 @@ export function openRefByFileMode(ref: ContentRef): RegionId | 'panel' {
 }
 
 /**
- * 打开一份文件 —— 读它,并按当下这一档摆好。
+ * 打开一份文件 —— 读它,并按当下这一档摆好。**今天它是 `openFileAt` 的薄转发**
+ * (B2):「落到第几行」长出了三格(区间 / 列 / 符号),而这一口的十来个既有
+ * 调用方一个字都不必改。
+ *
  *
  * ── 单击与 ↵ 是**同一条路**(W6-a,设计 `workbench-tabs-2026-09.md` §3)────
  * W1 这里收一格 `preview`:树行单击开的是**预览 tab**(下一次单击就地顶替它),
@@ -114,6 +119,51 @@ export function openRefByFileMode(ref: ContentRef): RegionId | 'panel' {
  * 所以 `.then` 那一拍是唯一一个「内容在屏上」为真的时刻。
  */
 export function openFileInCurrentTarget(path: string, line?: number): void {
+  openFileAt(path, line === undefined ? undefined : { line })
+}
+
+/**
+ * **这一枚引用指着那份文件里的哪一处**(B2,正本 §2.7)。
+ *
+ * 四格全是**可选**,而且缺席各有各的意思 —— 「没给行号」不是「第 0 行」。
+ * `endLine` 今天只进 chip 上那句读数(`12-30`),查看器这一侧还没有区间高亮
+ * 那格能力,所以它在这里**不参与落点**:落的是 `line`。造一个假的区间高亮比
+ * 不画更坏,留账在交卷里。
+ */
+export interface FileLocation {
+  /** 1 基行号。 */
+  line?: number
+  /** 区间的另一头(`12-30` 的 30)。今天只进读数,不进落点 —— 判词见上。 */
+  endLine?: number
+  /**
+   * 1 基列号。查看器今天按**行**落点(`currentLine` 是它唯一那格跳转口),
+   * 所以这一格今天是**收下但不用**:收它是因为标签里写得出它,而把它丢在解析
+   * 那一层等于让「模型给了列号」这件事在壳里消失。留账在交卷里。
+   */
+  col?: number
+  /** 函数 / 类 / 变量的名字。给了就在文件里找它(判词在下面)。 */
+  symbol?: string
+}
+
+/**
+ * 打开一份文件,并落到它说的那一处。
+ *
+ * ── 落点三级退,**一句错都不报**(正本 §2.7)────────────────────────────────
+ *  ① `symbol` 命中 → 落到那一行(给了 `line` 就取离它最近的那一处);
+ *  ② 没命中 / 没给 → 退到 `line`;
+ *  ③ 两样都没有 → 只打开。
+ *
+ * 退级是**静默**的:模型给的 symbol 可能已经被改名了,那不是用户的错,而一条
+ * 「找不到 parseToken」的提示对他毫无用处 —— 他要的是那份文件,而那份文件已经
+ * 在屏上了。
+ *
+ * ── 那一句为什么必须排在读回来之后 ────────────────────────────────────────
+ * 与旧签名那一段逐字同一条理由(`useViewerScroll` 的跳行 effect 依赖
+ * `[bodyRef, currentLine, path]`,先写就是在内容还没上屏的那一帧跑一次、
+ * `querySelector` 落空,而随后内容到位时依赖一格没变 —— effect 再也不跑)。
+ * 找符号也得等它:**文件的正文要读回来了才找得到**。
+ */
+export function openFileAt(path: string, loc?: FileLocation): void {
   if (!path) return
   // 落点那两行归上面那只泛化口(批⑤:改动面走的是同一档)。这里只剩「文件」
   // 自己那两件:面板内那一档的落点,与那一发读。
@@ -124,7 +174,7 @@ export function openFileInCurrentTarget(path: string, line?: number): void {
     useWorkbenchStore.getState().closePanel()
   }
   const read = useViewerSource.getState().openFile(path)
-  if (line === undefined) {
+  if (loc?.line === undefined && !loc?.symbol) {
     void read
     return
   }
@@ -135,9 +185,31 @@ export function openFileInCurrentTarget(path: string, line?: number): void {
    */
   void read.then(() => {
     if (!hasViewerInstance(path)) return
+    const line = resolveLine(path, loc)
+    if (line === undefined) return
     useViewerSource.getState().setView(path, { currentLine: line })
   })
 }
+
+/**
+ * 落到第几行。**符号查得到就听符号的**,否则听行号的。
+ *
+ * 读正文走的是手上这份实例(`openFile` 刚把它读回来);那一份不是文本的
+ * (图 / 媒体 / 二进制)没有 `content` 那一格 —— 那时符号无从找起,自然退到行号。
+ */
+function resolveLine(path: string, loc: FileLocation | undefined): number | undefined {
+  if (!loc?.symbol) return loc?.line
+  const file = useViewerSource.getState().instances[path]?.file
+  const text = file && 'content' in file ? file.content : undefined
+  const found = text ? symbolLocator.locate(text, loc.symbol, loc.line) : null
+  return found ?? loc.line
+}
+
+/**
+ * 今天在岗的那一只(正本 §2.7:「将来有符号索引 / LSP,换实现,调用方不动」)。
+ * 模块级常量,不是可变槽 —— 换实现是改这一行,不是运行时注入。
+ */
+const symbolLocator: SymbolLocator = textSymbolLocator
 
 /**
  * 换一档打开方式。**当场生效** —— 09-01 报障「open 位置,调整后也没有生效」的

@@ -201,7 +201,13 @@ describe('文件 chip 的展开就在草稿出口', () => {
    * **反证**:把 `readDraft` 里那句 `expandFileTokens` 拆掉 → 这一条当场读到
    * `{{file:…}}`,也就是用户报的那条裸文本。
    */
-  it('`text()` 交出的是 `@<绝对路径>`,一个 `{{file:` 都不许漏出去', () => {
+  /*
+   * ── B2:线上那一形从 `@<绝对路径>` 换成了 `<ref type="file" …/>` ────────────
+   * 判据换的是**出站**那一格(`kinds/file.ts` 的 `tag`),这只文件一个字都不认识
+   * 它 —— 它量的仍旧是「交出去的是线上形、`{{file:` 一个都不漏」。旧那条 `@/abs`
+   * 的**认出**半边照旧留着(旧账本要照画),所以这不是一次换语法,是出站换了写法。
+   */
+  it('`text()` 交出的是线上那条 `<ref/>`,一个 `{{file:` 都不许漏出去', () => {
     const { api, insert, box } = setup()
     put(box, '看看 @a')
     insert('file', fileRef('/repo/src/a.ts'))
@@ -213,7 +219,7 @@ describe('文件 chip 的展开就在草稿出口', () => {
      */
     expect(box.textContent).toContain('a.ts')
     expect(box.textContent).not.toContain('@src/a.ts')
-    expect(api().text()).toBe('看看 @/repo/src/a.ts ')
+    expect(api().text()).toBe('看看 <ref type="file" path="/repo/src/a.ts"/> ')
     expect(api().text()).not.toContain('{{file:')
   })
 
@@ -249,7 +255,7 @@ describe('回车与发送键读同一口草稿', () => {
     // 屏幕上写的是 basename(呈现),交出去的是那条绝对路径(位置)。
     expect(box.textContent).toContain('a.ts')
     fireEvent.keyDown(box, { key: 'Enter' })
-    expect(sent).toEqual(['看看 @/repo/src/a.ts '])
+    expect(sent).toEqual(['看看 <ref type="file" path="/repo/src/a.ts"/> '])
   })
 
   it('幽灵占位也不走回车那条路出去', () => {
@@ -308,7 +314,7 @@ describe('段是真相,文本是投影', () => {
 
     act(() => api().restore(saved))
     expect(api().segments()).toEqual(before)
-    expect(api().text()).toBe('看看 @/repo/src/a.ts ')
+    expect(api().text()).toBe('看看 <ref type="file" path="/repo/src/a.ts"/> ')
     // 铺回来那一枚照样是宿主节点 + portal —— 屏幕上仍是 basename,不是几个字。
     expect(box.querySelectorAll('[data-ref]')).toHaveLength(1)
     expect(box.textContent).toContain('a.ts')
@@ -348,7 +354,7 @@ describe('段是真相,文本是投影', () => {
     put(box, '看看 @a')
     insert('file', fileRef('/repo/src/a.ts'))
     fireEvent.keyDown(box, { key: 'Enter' })
-    expect(sent).toEqual(['看看 @/repo/src/a.ts '])
+    expect(sent).toEqual(['看看 <ref type="file" path="/repo/src/a.ts"/> '])
     expect(sentSegments[0].map((seg) => seg.kindId)).toEqual([null, 'file', null])
     expect(projectSegmentsToText(sentSegments[0])).toBe(sent[0])
   })

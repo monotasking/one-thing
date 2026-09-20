@@ -211,7 +211,10 @@ function ImageTile({ sessionId, attachment, shape, onZoom }: {
         <ButtonBase
           className={[...cls, s.honest].join(' ')}
           aria-label={t('chat.ref.openFile', { path: attachment.fileName })}
-          onClick={() => attachmentReferenceKind.open?.({ kind: 'attachmentRef', name: attachment.fileName, path })}
+          /* 第二个参数是**宿主的事实**(这一枚长在哪条会话里,B2)。附件那一种
+             用不到它(它开的是一份文件,与会话无关),但契约上它是必填的 ——
+             「谁调 `open` 谁交代宿主」这条不该有例外,不然第一个例外就是第二份真相。 */
+          onClick={() => attachmentReferenceKind.open?.({ kind: 'attachmentRef', name: attachment.fileName, path }, {})}
         >
           {body}
         </ButtonBase>

@@ -541,13 +541,19 @@ describe('@ 引用:候选是真的,插进去的是 token', () => {
     // 发送那一条得**先把焦点挪开**才量得出东西(壳一挂起来它本来就在 box 上)。
     act(() => screen.getByTestId('composer-send').focus())
     fireEvent.click(screen.getByTestId('composer-send'))
-    // 交出去的是**草稿**:chip 那一格换成它代表的那条路径(位置)。token 在
-    // 草稿的出口就展成了 `@<绝对路径>` —— 与账本上最终落下的那句逐字相同
-    // (09-12:展开从 `chat-port` 挪到这里,判词在 `ComposerInput.readDraft`)。
+    /*
+     * 交出去的是**草稿**:chip 那一格换成它在线上的写法(位置)。投影在草稿的
+     * 出口发生 —— 与账本上最终落下的那句逐字相同(09-12:展开从 `chat-port`
+     * 挪到这里,判词在 `ComposerInput.readDraft`)。
+     *
+     * **B2:线上那一形是 `<ref type="file" …/>`**,不再是 `@<绝对路径>`
+     * (判据在 `kinds/file.ts` 的 `tag`;`@/abs` 的**认出**半边照旧留着,
+     * 旧账本里的消息要照画)。
+     */
     expect(handed.at(-1)).toEqual({
       kind: 'text',
       attachments: 0,
-      text: '看看 @/repo/src/model-capability.ts',
+      text: '看看 <ref type="file" path="/repo/src/model-capability.ts"/>',
     })
     /*
      * 发完话光标回输入框。R2 之前这是 `inputRef.current?.focus()`(一次跨作用域的
@@ -599,7 +605,8 @@ describe('@ 引用:候选是真的,插进去的是 token', () => {
 
     act(() => screen.getByTestId('composer-send').focus())
     fireEvent.click(screen.getByTestId('composer-send'))
-    expect(handed.at(-1)).toMatchObject({ text: '看看 @/repo/src/lib/' })
+    // 尾斜杠照旧是判据,只是它今天写在标签的 `path` 里(B2)。
+    expect(handed.at(-1)).toMatchObject({ text: '看看 <ref type="dir" path="/repo/src/lib/"/>' })
   })
 
   it('选中的是文件:尾巴上一个斜杠都不许多', async () => {

@@ -5,6 +5,7 @@ import { ButtonBase } from '../ui/ButtonBase'
 import { PathText } from '../ui/PathText'
 import { Tooltip } from '../ui/Tooltip'
 import { useHomeDir } from '../data/home-dir'
+import { useReferenceHost } from './host-context'
 import { referenceKindOf } from './registry'
 
 /**
@@ -41,6 +42,8 @@ export function ReferenceChip({ kindId, value }: { kindId: string; value: unknow
   const t = useT()
   // 家目录:一格宿主事实,拿到之前是 null = 路径不缩(判词在 `data/home-dir`)。
   const home = useHomeDir()
+  // 这一枚长在谁身上(哪条会话)。判词整段在 `host-context.tsx`。
+  const host = useReferenceHost()
   const [pending, setPending] = useState(false)
   const busy = useRef(false)
   const kind = referenceKindOf(kindId)
@@ -57,7 +60,7 @@ export function ReferenceChip({ kindId, value }: { kindId: string; value: unknow
         title: t(spec.failKey, spec.tooltipArgs),
       })
     }
-    const outcome = kind.open(value)
+    const outcome = kind.open(value, host)
     if (typeof outcome === 'boolean') {
       if (!outcome) failed()
       return
@@ -72,7 +75,7 @@ export function ReferenceChip({ kindId, value }: { kindId: string; value: unknow
         busy.current = false
         setPending(false)
       })
-  }, [kind, spec, value, t])
+  }, [kind, spec, value, host, t])
 
   // 认得出却画不出来在登记那一刻就抛了(registry),所以这一句只会在
   // 「这台上没登记过这一种」时成立 —— 那时什么都不画,而不是画半个空壳。
@@ -85,6 +88,9 @@ export function ReferenceChip({ kindId, value }: { kindId: string; value: unknow
       )}
       {spec.mark && <span aria-hidden="true">{spec.mark}</span>}
       {spec.labelClassName ? <span className={spec.labelClassName}>{spec.label}</span> : spec.label}
+      {/* 名字后面那一截语法(行号 / 符号名)。它**不进弯腰件**:一行恰有一个
+          会缩的东西,而截掉 `:12` 之后这枚 chip 说的就不是同一件事了。 */}
+      {spec.suffix && <span className={spec.suffixClassName}>{spec.suffix}</span>}
     </>
   )
 

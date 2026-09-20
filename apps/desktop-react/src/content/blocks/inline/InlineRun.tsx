@@ -1,4 +1,5 @@
 import { Tooltip } from '../../../ui/Tooltip'
+import { ReferenceTagChip } from '../../../references/ReferenceTagChip'
 import type { InlineNode } from '../../model/inline'
 import { InlineImage } from './InlineImage'
 import { InlineMath } from './InlineMath'
@@ -78,5 +79,12 @@ function renderInline(node: InlineNode, index: number) {
           {node.index}
         </sup>
       )
+    case 'ref':
+      /*
+       * 一枚引用标签(B2)。**这一支里没有任何一种引用的名字** —— 认得它的是
+       * `src/references/` 那张表,这里只把标签递过去。认不出的那一条由
+       * `ReferenceTagChip` 画成一枚中性不可点 chip(永不吞字),判词在它文件头。
+       */
+      return <ReferenceTagChip key={index} tag={node.tag} />
   }
 }
