@@ -19,7 +19,7 @@ import { useEffect, useState } from 'react'
  * 它读 `Date.now()` 而不是 `performance.now()`:要与之相减的那些时刻(账本的
  * `startTime`、活尾巴写的 `liveAt`)全是**纪元毫秒**,两个时钟相减是 bug 的产地。
  *
- * 节拍不是动画时长,动效档一格都不动它(与 `StreamReadout` 的 `READOUT_TICK_MS`
+ * 节拍不是动画时长,动效档一格都不动它(与 `message/TailSlot` 的 `READOUT_TICK_MS`
  * 同一条判);留账:那一份与这一份是两处 `useNow`,归并要等 C1 的消息尾读数落地。
  */
 export function useLiveClock(tickMs: number, active: boolean): number {

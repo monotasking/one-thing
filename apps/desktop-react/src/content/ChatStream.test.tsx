@@ -312,19 +312,28 @@ describe('消息树:画的就是折叠器的输出', () => {
     expect(card?.textContent).toBe('read0.0s')
   })
 
-  it('run 还开着 + 已经有字 = 流中态指示在场;收了就没有', async () => {
+  /**
+   * **2026-09-20 G 线 P1 改判**:那枚光标从前是**条件渲染**在消息行里的一个 span,
+   * 收尾那一帧卸掉它就带走一个行盒(§0 的病 ③,真机整屏下移 23.8px)。今天它住在
+   * 列尾那一格尾槽里、与等待那道线**同格同高只换 opacity**,所以「在不在场」这个
+   * 判据换成了**「它那张脸亮没亮」**(`data-on`)—— 旧断言的意思一个字没变:
+   * 屏上此刻有没有那枚光标在跳。收场之后整格翻成 `idle`,两张脸都不挂载。
+   */
+  it('run 还开着 + 已经有字 = 流中态指示亮着;收了就没有', async () => {
     await mount([
       created(1),
       userMessage(2, 'm1', '你好'),
       runStart(3, 'r1', 'a1'),
       chunks(4, 'r1', 'a1', ['好的']),
     ])
-    expect(screen.getByTestId('chat-streaming')).toBeTruthy()
+    expect(screen.getByTestId('chat-streaming').closest('[data-on]')).toBeTruthy()
+    expect(screen.getByTestId('chat-tail-slot').getAttribute('data-face')).toBe('stream')
 
     await act(async () => {
       sessionSource().setState({ activeMessageId: undefined })
     })
     expect(screen.queryByTestId('chat-streaming')).toBeNull()
+    expect(screen.getByTestId('chat-tail-slot').getAttribute('data-face')).toBe('idle')
   })
 
   /**
@@ -332,32 +341,39 @@ describe('消息树:画的就是折叠器的输出', () => {
    * 从前那段是一片空白 —— 与用户报的「不知道它是不是卡住了」同源;
    * 09-15 之前它是三颗点(`ui/Dots`),正本 `docs/send-flow-2026-09.md` §2 ③ 换成折痕。
    * 判据一个字没改:「这条消息此刻画得出什么」(段序列空不空),不是拿 content 猜。
+   *
+   * **2026-09-20 G 线 P1 改的是它画在哪**:等待那道折痕与那枚光标搬进列尾的尾槽,
+   * 同格同高只换 opacity。所以「光标不在」这一半改问**它那张脸暗着**——
+   * 两张脸此刻都在 DOM 里(那正是「同格同高」的意思),亮着的只有等待那一张。
    */
-  it('槽位开了、第一个字还没到 = 等待折痕在场(在扫),光标不在', async () => {
+  it('槽位开了、第一个字还没到 = 等待折痕亮着(在扫),光标那张脸暗着', async () => {
     await mount([created(1), userMessage(2, 'm1', '你好'), runStart(3, 'r1', 'a1')])
     const seam = screen.getByTestId('waiting-seam')
     expect(seam.getAttribute('data-state')).toBe('running')
+    expect(seam.closest('[data-on]')).toBeTruthy()
+    expect(screen.getByTestId('chat-tail-slot').getAttribute('data-face')).toBe('wait')
     // 无障碍名照旧由它担(退役的三颗点那一格 label 原样搬过来)。
-    expect(screen.getByLabelText('正在生成')).toBe(seam)
-    // 两件都在场就是两个「还在跑」—— 第一个 delta 到达才换成正文与尾部光标。
-    expect(screen.queryByTestId('chat-streaming')).toBeNull()
+    expect(screen.getAllByLabelText('正在生成')).toContain(seam)
+    // 光标那张脸在同一格里,但这一刻是暗的(`data-on` 不在)。
+    expect(screen.getByTestId('chat-streaming').closest('[data-on]')).toBeNull()
   })
 
   /**
-   * **首字到达 = 同一次提交里的换手**(正本 §2 ③)。折痕的卸载与第一块内容的挂载
-   * 由**同一份 `segments`** 推出来,所以中间没有一帧「两样都不在」。
-   * 这一层能证的是结局(换完之后折痕没了、正文在了);中间有没有空帧由真机门
-   * `gate:send-flow` ② 量(等待→首字,自己那条气泡的 top 位移 0px)。
+   * **首字到达 = 同一次提交里的换手**(正本 §2 ③)。两张脸此刻都在同一格里,
+   * 换的只有 `data-on` 与 `opacity` —— 所以这一下**几何上什么都不发生**
+   * (正本 `docs/stream-geometry-2026-09.md` §1 的 G4)。
+   * 中间那一帧几何动没动由真机门 `gate:stream-geometry` 量(首字帧尾槽位移 ≤1px)。
    */
-  it('第一个字到了 = 折痕没了、正文与光标在了(同一份 segments 推出来的两端)', async () => {
+  it('第一个字到了 = 折痕暗了、光标亮了(同一格里换手)', async () => {
     await mount([
       created(1),
       userMessage(2, 'm1', '你好'),
       runStart(3, 'r1', 'a1'),
       chunks(4, 'r1', 'a1', ['好的']),
     ])
-    expect(screen.queryByTestId('waiting-seam')).toBeNull()
-    expect(screen.getByTestId('chat-streaming')).toBeTruthy()
+    expect(screen.getByTestId('waiting-seam').closest('[data-on]')).toBeNull()
+    expect(screen.getByTestId('chat-streaming').closest('[data-on]')).toBeTruthy()
+    expect(screen.getByTestId('chat-tail-slot').getAttribute('data-face')).toBe('stream')
   })
 })
 

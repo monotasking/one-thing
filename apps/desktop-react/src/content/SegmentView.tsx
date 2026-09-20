@@ -43,6 +43,7 @@ export const SegmentView = memo(function SegmentView({
           tail={segment.tail}
           live={segment.live}
           preview={segment.preview}
+          latest={segment.latest}
         />
       )
 

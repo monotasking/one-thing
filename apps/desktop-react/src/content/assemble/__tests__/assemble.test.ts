@@ -69,12 +69,15 @@ describe('段序列:一条消息算成哪几段', () => {
     expect(segments.map((s) => s.kind)).toEqual(['thinking', 'rich-text'])
     // 09-14 起思考段是**一串块 + 活动尾**(正本 `docs/thinking-stream-2026-09.md` §3)。
     // 不流的那一份全冻:尾是空的,原文整份在块里,预览是开头那 240 字。
+    // 09-20 G 线 P1 多一格 `latest`(末尾那 240 字):流式期间收起态那一行显示的是它。
+    // 这一段整份短于 240 字,所以首尾两截恰好重合 —— 那正是「短于一行」那一档。
     expect(segments[0]).toEqual({
       kind: 'thinking',
       blocks: [{ id: 'a1#0#0', text: '想一下' }],
       tail: '',
       live: false,
       preview: '想一下',
+      latest: '想一下',
     })
   })
 

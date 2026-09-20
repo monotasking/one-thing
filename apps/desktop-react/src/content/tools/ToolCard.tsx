@@ -281,7 +281,7 @@ export const ToolCard = memo(function ToolCard({
  *
  * 100ms 是「读数」该有的节拍:比它慢,秒的小数位会一顿一顿;比它快,除了多烧几次
  * 渲染什么都不多。它**不是动效时长** —— 动效档一格都不动它,所以它没有 CSS token
- * (与 `StreamReadout.READOUT_TICK_MS` 同一条判;两处归并等 C1 的消息尾读数落地)。
+ * (与 `TailSlot.READOUT_TICK_MS` 同一条判;两处归并等 C1 的消息尾读数落地)。
  */
 const READOUT_TICK_MS = 100
 

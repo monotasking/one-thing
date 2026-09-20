@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { ThinkingSegment } from '../ThinkingSegment'
-import { textPreview, textToFrame } from '../assemble/text'
+import { textLatest, textPreview, textToFrame } from '../assemble/text'
 import { useStageStore } from '../../stage/store'
 
 /**
@@ -37,14 +37,26 @@ const paragraphs = () => Array.from(thought().querySelectorAll('p'))
 let lane = 0
 function props(text: string, live: boolean) {
   const { blocks, tail } = textToFrame(`case${(lane += 1)}`, text, live)
-  return { blocks, tail, live, preview: textPreview(blocks, tail) }
+  return {
+    blocks,
+    tail,
+    live,
+    preview: textPreview(blocks, tail),
+    latest: textLatest(blocks, tail),
+  }
 }
 
 /** 一条流:连着喂同一个 id,拿到的就是真的增量帧。 */
 function flow(id: string) {
   return (text: string, live = true) => {
     const { blocks, tail } = textToFrame(id, text, live)
-    return { blocks, tail, live, preview: textPreview(blocks, tail) }
+    return {
+      blocks,
+      tail,
+      live,
+      preview: textPreview(blocks, tail),
+      latest: textLatest(blocks, tail),
+    }
   }
 }
 
@@ -71,16 +83,49 @@ describe('思考段:同一段字的两个读法', () => {
     expect(thought().getAttribute('aria-expanded')).toBe('false')
   })
 
-  it('流式中自动展开,收尾自动折 —— 跟着事实走,不替用户记偏好', () => {
+  /**
+   * ── 这一条 2026-09-20 被 G 线 P1 整条推翻(正本 `docs/stream-geometry-2026-09.md`
+   *    §2 拍点 1 与 §5.1)────────────────────────────────────────────────────
+   * 它从前断言的是「流式中自动展开,收尾自动折 —— 跟着事实走,不替用户记偏好」。
+   * 那条行为量出来是两处病:收尾自动折那一帧**一帧内视口被拉走**最多 15,054px,
+   * 以及人正读到思考段中部时那段字**被从 DOM 上摘掉**(锚点为 null、上方下移 2094px)。
+   * 用户 09-20:「思考段想完自动收起,正在读的人被打断」。
+   *
+   * 所以旧断言**迁到了它的反面**:`live` 无论怎么翻,`expanded` 一格都不动。
+   * 「正在想什么」改由收起态那一行自己说(下一条钉它)。
+   */
+  it('`live` 翻来翻去都不改开合 —— 自动折叠没有产地了(G 线 P1)', () => {
     const view = render(<ThinkingSegment {...props('正在想', true)} />)
-    expect(thought().getAttribute('aria-expanded')).toBe('true')
+    expect(thought().getAttribute('aria-expanded')).toBe('false')
     view.rerender(<ThinkingSegment {...props('想完了', false)} />)
     expect(thought().getAttribute('aria-expanded')).toBe('false')
   })
 
-  it('原文照实摆着(收起态靠排版钳一行,不靠截字符串)', () => {
+  it('用户在流式期间点开:落定之后它**还开着**(不被自动收回)', () => {
+    const view = render(<ThinkingSegment {...props('正在想', true)} />)
+    fireEvent.click(thought())
+    expect(thought().getAttribute('aria-expanded')).toBe('true')
+    view.rerender(<ThinkingSegment {...props('想完了', false)} />)
+    expect(thought().getAttribute('aria-expanded')).toBe('true')
+  })
+
+  /**
+   * ── 这一条 2026-09-20(G 线 P1 审查打回第 1 条)改了断言 ─────────────────────
+   *
+   * 它从前断言 `textContent === '第一行\n第二行'`(原文照实摆着)。那在
+   * `line-clamp: 1` 的年代是对的:换行符留在 DOM 里,**钳一行**这件事由排版做。
+   * P1 把收起态换成「一行 flex + `block-size` 钉死 + `overflow: hidden`」之后,
+   * 留着的换行符会真的断行 —— 屏幕上露出来的变成这 240 字里的**第一行**,
+   * 流式那一档因此根本不在显示「最新一截」。
+   *
+   * 所以「钳成一行」这件事从排版层**搬到了装配层**(`assemble/text.ts` 的 `oneLine`:
+   * 连续空白折成一个空格),收起态那一行的字**本来就没有换行符**。
+   * 旧断言因此迁成它的新形:原文里的换行在这一行上读作一个空格。
+   * **展开态那一侧一个字没动** —— 「blocks + tail 逐字等于原文」由下面那一族钉着。
+   */
+  it('收起态那一行折成一行:原文的换行在这里读作一个空格', () => {
     render(<ThinkingSegment {...props('第一行\n第二行', false)} />)
-    expect(thought().textContent).toBe('第一行\n第二行')
+    expect(thought().textContent).toBe('第一行 第二行')
   })
 
   it('键盘也能开合(整块是它自己的开关,没有另设小三角)', () => {
@@ -100,6 +145,13 @@ describe('思考段:同一段字的两个读法', () => {
   })
 })
 
+/**
+ * G 线 P1 起**流式中也是收起的**,所以这一族里凡是要看展开态的,都先点一下。
+ * 那一下正是今天唯一的开合产地(用户自己点),与这些用例要证的「展开之后块怎么
+ * 复用」正交 —— 它不是为了绕过什么,是把「谁把它打开的」这件事说准。
+ */
+const openIt = () => fireEvent.click(thought())
+
 describe('分块流式(§4)', () => {
   it('分块渲染与「把所有块和尾拼起来」逐字相等(含换行)', () => {
     const frame = flow('join')
@@ -111,6 +163,7 @@ describe('分块流式(§4)', () => {
     expect(last.blocks.length).toBeGreaterThan(1)
 
     render(<ThinkingSegment {...last} />)
+    openIt()
     // 展开态:块 + 尾。
     expect(thought().textContent).toBe(text)
     expect(paragraphs().map((p) => p.textContent).join('')).toBe(text)
@@ -131,6 +184,7 @@ describe('分块流式(§4)', () => {
     frame('甲行\n')
     const before = frame('甲行\n乙行\n活动尾巴')
     const view = render(<ThinkingSegment {...before} />)
+    openIt()
     expect(thought().getAttribute('aria-expanded')).toBe('true')
     const nodesBefore = paragraphs()
     expect(nodesBefore).toHaveLength(3) // 两块(甲行 / 乙行)+ 一条尾
@@ -160,6 +214,7 @@ describe('分块流式(§4)', () => {
     frame('一\n')
     const before = frame('一\n二\n尾')
     const view = render(<ThinkingSegment {...before} />)
+    openIt()
     const firstBefore = paragraphs()[0]!
 
     // 这一帧里出现了新的换行 → 多冻一块。
@@ -168,5 +223,130 @@ describe('分块流式(§4)', () => {
     view.rerender(<ThinkingSegment {...after} />)
     expect(paragraphs()[0]).toBe(firstBefore)
     expect(thought().textContent).toBe('一\n二\n尾巴\n新的尾')
+  })
+})
+
+/**
+ * ── 收起态那一行:两个读法(G 线 P1,正本 `docs/stream-geometry-2026-09.md` §5.1)──
+ *
+ * 「高度逐像素相同」是排版,jsdom 量不出来(它不排版)——那一半由真机门
+ * `gate:stream-geometry` 量(思考段 live 期间高度变化 0、落定帧高度变化 0)。
+ * 这一层钉的是**挂的是哪一段字**、**报不报 `data-live`**、以及那句让整件事成立的话:
+ * 不论哪一态,DOM 里都只有 ≤240 字。
+ */
+describe('收起态那一行:流式看末尾,落定看开头', () => {
+  /** 一段带换行的长思考:冻得出块,而且首尾两截**不一样**(不然这组用例证不了东西)。 */
+  const LONG = `${'开头'.repeat(200)}\n${'中段'.repeat(200)}\n${'结尾'.repeat(200)}`
+  /** 与装配层那一手同形:连续空白折成一个空格,两端修掉(`assemble/text.ts` 的 `oneLine`)。 */
+  const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim()
+
+  it('还在流:那一行挂的是**末尾**那一截,并报 data-live', () => {
+    const p = props(LONG, true)
+    render(<ThinkingSegment {...p} />)
+    const line = thought().querySelector('p')!
+    expect(line.getAttribute('data-live')).toBe('')
+    expect(line.textContent).toBe(p.latest)
+    // 末尾那一截:折成一行之后,它仍然以原文的结尾收口。
+    expect(oneLine(LONG).endsWith(line.textContent!)).toBe(true)
+    // 而且**不是开头** —— 这一条才是审查打回那个 bug 的反面。
+    expect(oneLine(LONG).startsWith(line.textContent!)).toBe(false)
+  })
+
+  it('落定:换回**开头**那一截,`data-live` 不在了', () => {
+    const p = props(LONG, false)
+    render(<ThinkingSegment {...p} />)
+    const line = thought().querySelector('p')!
+    expect(line.hasAttribute('data-live')).toBe(false)
+    expect(line.textContent).toBe(p.preview)
+    expect(oneLine(LONG).startsWith(line.textContent!)).toBe(true)
+  })
+
+  /**
+   * **一行就是一行**:两态挂出去的字里一个换行符都不许有。
+   * 这一条是审查打回那个 bug 的**直接**守卫 —— 留着换行符,CSS 那边不论写 `pre`
+   * 还是 `nowrap` 都救不回来(`pre` 断行、`nowrap` 把换行读成空格但**装配层的
+   * 240 字额度已经被换行吃掉了**),所以判据落在字上,不落在样式上。
+   */
+  it('两态的字里都没有换行符(钳一行在装配层做,不在排版层做)', () => {
+    for (const live of [true, false]) {
+      const p = props(LONG, live)
+      expect(p.latest).not.toMatch(/\s\s|\n/)
+      expect(p.preview).not.toMatch(/\s\s|\n/)
+    }
+  })
+
+  it('两态都只挂 ≤240 字 —— 6 万字的思考在 DOM 里仍然是一行', () => {
+    const huge = `开头这一行\n${'思'.repeat(60_000)}`
+    const view = render(<ThinkingSegment {...props(huge, true)} />)
+    expect(thought().textContent!.length).toBeLessThanOrEqual(240)
+    view.rerender(<ThinkingSegment {...props(huge, false)} />)
+    expect(thought().textContent!.length).toBeLessThanOrEqual(240)
+  })
+
+  /**
+   * 「短于一行」那一档:两态挂的是**同一段字**(整段都不到 240 字,首尾两截重合)。
+   * 屏幕上它俩也该长得一模一样 —— 左起、不裁 —— 那一半归 CSS
+   * (`.thoughtLine` 的 `min-inline-size: 100%`),这里钉的是字相同。
+   */
+  it('整段短于 240 字:两态是同一段字(没有「换了内容」这回事)', () => {
+    const short = '想了一下下'
+    const live = props(short, true)
+    const settled = props(short, false)
+    expect(live.latest).toBe(short)
+    expect(settled.preview).toBe(short)
+  })
+})
+
+/**
+ * `textLatest` 自己那张表(纯函数,零 DOM)。它的合同有两句:**取末尾 240 字**,
+ * 而且**每帧代价与历史长度无关** —— 后者的写法判据是「只碰活动尾与最后一块」,
+ * 由下面第三条钉:给它一百万字的历史块,答案里一个历史块的字都不许出现。
+ */
+describe('textLatest:末尾那一截', () => {
+  const block = (id: string, text: string) => ({ id, text })
+
+  it('活动尾自己就够长:整截都从尾里切', () => {
+    const tail = '尾'.repeat(500)
+    expect(textLatest([block('b0', '历史')], tail)).toBe('尾'.repeat(240))
+  })
+
+  it('尾不够长:从**最后一块**往回借,拼起来正好 240', () => {
+    const out = textLatest([block('b0', '甲'.repeat(100)), block('b1', '乙'.repeat(500))], '丙'.repeat(40))
+    expect(out).toHaveLength(240)
+    expect(out.endsWith('丙'.repeat(40))).toBe(true)
+    // 借的是 b1(最后一块),b0 一个字都不许进来。
+    expect(out).not.toContain('甲')
+  })
+
+  it('整段比 240 还短:原样交出去(短于一行时照常从左起的那一档)', () => {
+    expect(textLatest([block('b0', '一二三')], '四五')).toBe('一二三四五')
+  })
+
+  /**
+   * ── 审查打回第 1 条的守卫(2026-09-20)──────────────────────────────────
+   * 真实思考正文满是 `\n`。不折的话这 240 字在一行高的盒子里排成好几行,
+   * 屏幕上露出来的是**第一行** —— 流式那一档因此根本不在显示「最新一截」。
+   * 判据落在**字**上(装配层),不落在样式上:CSS 那边救不回来,因为 240 字的
+   * 额度已经被换行吃掉了。
+   */
+  it('换行折成一个空格,两端修掉 —— 交出去的就是一行', () => {
+    const out = textLatest([block('b0', '甲\n\n乙')], '\n丙  丁\n')
+    expect(out).toBe('甲 乙 丙 丁')
+    expect(out).not.toMatch(/[\n\r\t]/)
+  })
+
+  it('末尾那一截折完仍然以原文的结尾收口(不是开头)', () => {
+    const text = Array.from({ length: 40 }, (_, i) => `第 ${i} 行的字`).join('\n')
+    const out = textLatest([block('b0', text)], '')
+    const flat = text.replace(/\s+/g, ' ').trim()
+    expect(flat.endsWith(out)).toBe(true)
+    expect(flat.startsWith(out)).toBe(false)
+  })
+
+  it('**不吃历史**:一百万字的历史块在场,答案里一个字都没有它', () => {
+    const history = Array.from({ length: 50 }, (_, i) => block(`b${i}`, '史'.repeat(20_000)))
+    const out = textLatest([...history, block('last', '近'.repeat(300))], '新')
+    expect(out).toHaveLength(240)
+    expect(out).not.toContain('史')
   })
 })

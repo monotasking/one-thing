@@ -37,14 +37,13 @@ import { assembleMessage, segmentKey } from './assemble'
 import { ContextDeltaSeam, hasContextDelta } from './ContextDeltaSeam'
 import { seatHeight, type SeatGeometry } from './seat'
 import { devicePixelSize, resolveTailSnap } from './tail-snap'
-import { WaitingSeam } from './seam/WaitingSeam'
 import { ExpandIntentContext } from './expand-intent'
 import { FoldIntentContext, useNoteFold } from './fold-intent'
 import type { SegmentModel } from './model/segments'
 import { MessageActions } from './message/MessageActions'
 import { MessageChrome } from './message/MessageChrome'
 import { StopNotice } from './message/StopNotice'
-import { StreamReadout } from './message/StreamReadout'
+import { TailSlot, type TailFace } from './message/TailSlot'
 import { MessageSourceFoot } from './research/SourceFoot'
 import { SegmentView } from './SegmentView'
 import { UserMessageBody } from './user-message'
@@ -89,15 +88,25 @@ const ANCHOR_RESETTLE_ROUNDS = 6
 const SEAT_ATTR = 'data-seat'
 
 /**
+ * **尾槽**那一格的属性名(G 线 P1,正本 `docs/stream-geometry-2026-09.md` §3.1)。
+ *
+ * 与 `SEAT_ATTR` 同一条判词:它**不带 `data-message-id`**(TOC / `locate-message`
+ * 的取件口只认消息),量几何的那几处按这个名字把它剔出去 —— 它是整列末尾常驻的
+ * 一格,不是「这一轮长了多高」的一部分,也不是「人正在读的那一块」。
+ */
+const TAIL_ATTR = 'data-tail-slot'
+
+/**
  * 量座位时**从列尾往回数几格**。
  *
  * 它是一个**格数**不是一段长度,所以既不进 tokens 也不进 `components/motion.ts`
  * (与 `ANCHOR_RESETTLE_ROUNDS` / `CHAT_NEAR_TOP_SCREENS` 同一族)。
- * 这一轮在列尾最多占四格:自己那条气泡、上下文更新那一行、偶尔一张压缩折痕、
- * 助手那一行,再加列尾那块座位垫块 —— 六格留一格富余。数不到就是「这一刻没有
- * 座位可算」,答 `undefined`,不退回去扫全表(扫全表就是每帧按整份账本计价)。
+ * 这一轮在列尾最多占五格:自己那条气泡、上下文更新那一行、偶尔一张压缩折痕、
+ * 助手那一行,再加列尾那块座位垫块与它后面那一格尾槽(G 线 P1 多出来的那一格,
+ * 这个数因此从 6 升到 7)—— 留一格富余。数不到就是「这一刻没有座位可算」,
+ * 答 `undefined`,不退回去扫全表(扫全表就是每帧按整份账本计价)。
  */
-const SEAT_SCAN = 6
+const SEAT_SCAN = 7
 
 /**
  * 折叠那一段的**余量**(单 B ④):报出来的时长之外再多钉这么久。
@@ -133,11 +142,22 @@ function measureSeat(el: HTMLElement): SeatGeometry | undefined {
    */
   const kids = column.children
   let user: HTMLElement | undefined
-  /** 这一轮最后一件内容 —— 座位垫块自己不算(它正是要算的那个数)。 */
+  /** 这一轮最后一件内容 —— 座位垫块与尾槽都不算(前者正是要算的那个数,后者是常驻的地)。 */
   let last: Element | undefined
+  /** 座位垫块此刻**真的有多高**(不是算出来的那个数)—— 下面那一句要用它抵掉自己。 */
+  let seat: Element | undefined
+  /** 列尾那一格尾槽(G 线 P1)。 */
+  let tail: Element | undefined
   for (let i = kids.length - 1; i >= 0 && i >= kids.length - SEAT_SCAN; i -= 1) {
     const node = kids[i]
-    if (node.hasAttribute(SEAT_ATTR)) continue
+    if (node.hasAttribute(TAIL_ATTR)) {
+      tail = node
+      continue
+    }
+    if (node.hasAttribute(SEAT_ATTR)) {
+      seat = node
+      continue
+    }
     if (!last) last = node
     if (node.getAttribute('data-role') === 'user' && node instanceof HTMLElement) {
       user = node
@@ -148,13 +168,35 @@ function measureSeat(el: HTMLElement): SeatGeometry | undefined {
   const style = getComputedStyle(el)
   const px = (value: string) => Number.parseFloat(value)
   const userRect = user.getBoundingClientRect()
+  const lastBottom = last.getBoundingClientRect().bottom
+  /*
+   * ── 尾槽也是「底下已经被别人占掉的那一截」(G 线 P1)────────────────────────
+   * 座位那条式子(`content/seat.ts`)是一句加法:
+   *   `tailHeight + seat + reserveBelow = viewportHeight − sendLine`
+   * 尾槽排在座位**之后**,所以它连同它与座位之间那一格间距一起,都是 `reserveBelow`
+   * 的一部分 —— 那一格的自述正是「底下已经被别人占掉的那一截」,不必给 `seatHeight`
+   * 多开一个入参(多一个入参就是多一处要与 CSS 对账的地方)。
+   *
+   * **量法是自校正的**:`尾槽下缘 − 最后一件内容的下缘 − 座位此刻的真高` 抵掉了
+   * 座位自己(我们正要算的那个数),剩下的恰好是「座位下面那一截常量」——
+   * 间距改了、槽高改了,这一句都不用跟着改。夹在 0:量不到(停靠中 / jsdom,
+   * 几何全是 0)时答 0,行为退回 G 线 P1 之前。
+   */
+  const belowSeat = tail
+    ? Math.max(
+        0,
+        tail.getBoundingClientRect().bottom
+          - lastBottom
+          - (seat ? seat.getBoundingClientRect().height : 0),
+      )
+    : 0
   return {
     viewportHeight: el.clientHeight,
     sendLine: px(style.getPropertyValue('--send-line')),
-    reserveBelow: px(style.paddingBlockEnd),
+    reserveBelow: px(style.paddingBlockEnd) + belowSeat,
     lineHeight: px(style.getPropertyValue('--pr-fs')) * px(style.getPropertyValue('--pr-lh')),
     userHeight: userRect.height,
-    tailHeight: last.getBoundingClientRect().bottom - userRect.top,
+    tailHeight: lastBottom - userRect.top,
   }
 }
 
@@ -192,8 +234,8 @@ function sendLineTarget(el: HTMLElement): number | undefined {
  * 逐个扫在 400 条的账本上是每帧几百次 `getBoundingClientRect`,而这只函数跑在
  * **折叠的每一帧**里 —— 二分把它压成 ~9 次。
  *
- * 座位垫块答 `undefined`:它是让出去的地,不是「在读的东西」;扫到它就说明这一层
- * 里视口上缘之下已经没有内容了。
+ * 座位垫块与尾槽都答 `undefined`:它们是让出去的地 / 常驻的槽位,不是「在读的东西」;
+ * 扫到它们就说明这一层里视口上缘之下已经没有内容了。
  */
 function firstVisibleChild(node: Element, top: number): HTMLElement | undefined {
   const kids = node.children
@@ -209,7 +251,7 @@ function firstVisibleChild(node: Element, top: number): HTMLElement | undefined 
       hi = mid - 1
     } else lo = mid + 1
   }
-  if (!found || found.hasAttribute(SEAT_ATTR)) return undefined
+  if (!found || found.hasAttribute(SEAT_ATTR) || found.hasAttribute(TAIL_ATTR)) return undefined
   return found
 }
 
@@ -434,61 +476,35 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
   )
 
   /*
-   * ── 这一轮此刻在等第一个字吗(规矩 ③)────────────────────────────────────
+   * ── 这一轮此刻在等第一个字吗(正本 `docs/stream-geometry-2026-09.md` §5.2)──────
    * 判据是**既有那一句**:「这条活消息此刻画得出什么」= 装配管线的段序列空不空。
-   * 它从前只在 `MessageRow` 里问(三颗点的判据),09-15 之后这一层也要问一次 ——
-   * 等待折痕与上下文更新折痕**合成一行**,而「有没有上下文更新行」是这一层的事
-   * (那一行由 `flatMap` 摆在用户消息后面)。
+   * 它今天只在这一层问一次 —— G 线 P1 之后等待那道折痕与那枚光标都住进了列尾
+   * 的尾槽,`MessageRow` 对「在等第一个字」这件事已经没有话要说。
    *
    * **取的是列尾那一条,不是 `find`**:活消息按定义是账本最后一条(这一轮的回复),
    * 流式期间这一句每帧都要跑,`find` 就是每帧扫一遍整篇抄本。`assembleMessage` 是
-   * 纯函数 + 按消息引用 memo,所以这一句与 `MessageRow` 里那一句里**只有一次**真算,
+   * 纯函数 + 按消息引用 memo,所以它在这里与在 `MessageRow` 里**只有一次**真算,
    * 另一次是 WeakMap 命中。
    */
   const tailMessage = messages[messages.length - 1]
+  /** 这一轮那条活消息(= 账本最后一条,且它就是在跑的那一条)。 */
+  const activeMessage = tailMessage !== undefined && tailMessage.id === activeMessageId
+    ? tailMessage
+    : undefined
   const awaitingFirstToken =
-    (tailMessage !== undefined
-      && tailMessage.id === activeMessageId
-      && assembleMessage(tailMessage).length === 0)
+    (activeMessage !== undefined && assembleMessage(activeMessage).length === 0)
     || retryingId !== undefined
   /**
-   * 等着的这一轮**有没有**上下文更新行 —— 有就由它扫(`sweeping`),
-   * `WaitingSeam` 不再单画一道空的。
-   *
-   * 那一行挂在**发起这一轮的那条用户消息**上,所以要从列尾**往回找最近的一条用户
-   * 消息** —— 不是「倒数第二条」:两条之间夹得下别的东西(压缩折痕那条 `system`
-   * 消息在 50MB 的会话上每轮都来一条,还有系统消息),倒数第二条一撞上它就答
-   * `undefined`,于是 `WaitingSeam` 也画一道 —— 屏幕上并排两道折痕,而规矩 ③ 说的
-   * 是**一轮只扫一道**。
-   *
-   * 往回数而不是扫全表,纪律与 `measureSeat` 同一条(上限同 `SEAT_SCAN`):
-   * 这一句在流式期间每帧都跑,`findLast` 整份抄本就是每帧按整份账本计价。
-   * 数不到就答 `undefined` —— 那时 `WaitingSeam` 画一道空的,是对的降级。
+   * ── 尾槽此刻是哪张脸(G 线 P1)────────────────────────────────────────────
+   * 「在跑」= 有一条活消息,**或者**重试那一发还在飞(那段真空里账本上一个字都还
+   * 没变,判词在 `retryingId` 上)。在跑且一个字都画不出来 = 等待,否则 = 流式。
+   * 判据全在这一层算 —— 尾槽自己不问数据,它只按这一格画(`TailSlot` 的自述)。
    */
-  const sweepingContextOf = (() => {
-    if (!awaitingFirstToken) return undefined
-    /*
-     * 起点:重试那一路从**被重试的那一条**往回找(它下面可能还挂着别的),
-     * 其余从列尾倒数第二条起(列尾是那条活消息自己)。
-     */
-    const from = retryingId !== undefined
-      ? messages.findIndex((m) => m.id === retryingId) - 1
-      : messages.length - 2
-    for (let i = from; i >= 0 && i >= from - SEAT_SCAN; i -= 1) {
-      const owner = messages[i]
-      if (owner?.role !== 'user') continue
-      return hasContextDelta(owner.turnContext) ? owner.id : undefined
-    }
-    return undefined
-  })()
-  /**
-   * 重试那一路上,那道空折痕排在**被重试的那一条后面**、自己一行(判词在
-   * `retrySeamRow`:画在正在上折的那一行**里面**会跟着一起折没)。有上下文更新行时
-   * 归那一行扫,这里就答 `undefined` —— 一轮只扫一道,与 ③ 同一条。
-   */
-  const retrySeamOn = retryingId !== undefined && sweepingContextOf === undefined
-    ? retryingId
-    : undefined
+  const tailFace: TailFace = activeMessageId === undefined && retryingId === undefined
+    ? 'idle'
+    : awaitingFirstToken
+      ? 'wait'
+      : 'stream'
 
   /*
    * ── 消息流是响应链上的一格 `region`(09-03 R2)──────────────────────────────
@@ -605,7 +621,7 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
                   />
                 )
                 return hasContextDelta(message.turnContext)
-                  ? [row, contextSeamRow(message, message.id === sweepingContextOf)]
+                  ? [row, contextSeamRow(message)]
                   : [row]
               }
               const row = (
@@ -616,18 +632,6 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
                   message={message}
                   streaming={message.id === activeMessageId}
                   flash={message.id === flashMessageId}
-                  /*
-                   * 活性读数只交给**正在跑的那一条**。其余每一行拿到的都是 `undefined`
-                   * —— 一个恒定的值,所以 `memo` 的浅比照旧短路(流式期间除活消息外
-                   * 全篇不重渲那条纪律一格没动)。
-                   */
-                  lastActivityAt={message.id === activeMessageId ? lastActivityAt : undefined}
-                  /*
-                   * **这一行要不要自己画那道等待折痕**(规矩 ③)。活消息之外的每一行
-                   * 拿到的都是 `false` —— 一个恒定的值,所以 `memo` 的浅比照旧短路。
-                   * 上下文更新那一行接过这件事时它也是 `false`:一轮只扫一道折痕。
-                   */
-                  waitingSeam={message.id === activeMessageId && sweepingContextOf === undefined}
                   /*
                    * 重试那一路:这一条正在上折(单 B ⑥)。传的是**被重试的那一条**
                    * 的身份,所以其余每一行拿到的都是 `false` —— memo 的浅比照旧短路。
@@ -651,7 +655,7 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
                * 键空间,而这一行的整篇 memo 短路(60 万 token 会话 3–4fps 那笔账)
                * 全靠它的 key 与位置一格不动。
                */
-              return message.id === retrySeamOn ? [row, retrySeamRow(message.id, t)] : [row]
+              return [row]
               }),
               /*
                * 在飞那几格**紧跟在账本末尾**(顺序按 entry 先后)。它们与上面那几行
@@ -709,6 +713,32 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
                       className={s.seat}
                       data-seat=""
                       aria-hidden="true"
+                    />,
+                  ]
+                : []),
+              /*
+               * ── 尾槽:整列末尾常驻的一格(G 线 P1,正本 §3.1)──────────────────
+               * 排在卷尾垫块**之后**,所以它是这条列真正的最后一格。它常驻 ——
+               * 不在跑时两张脸都不挂载,但那一格的高照占(token `--tail-slot-h`)。
+               *
+               * **只在真的有会话、而且账本读出来了的时候画**:空会话 / loading /
+               * error 那三态各自有一句话要说(上面那三行),再压一格空槽只是多一段
+               * 空白。`key` 恒定,所以它跨轮、跨发送都是同一个 DOM 节点 —— 与座位
+               * 垫块「上一轮的座位由这一轮原位接管」同一条纪律。
+               */
+              ...(sessionId && status === 'ready'
+                ? [
+                    <TailSlot
+                      key="tail"
+                      sessionId={sessionId}
+                      face={tailFace}
+                      /*
+                       * 起点 = 这条助手消息的 `timestamp`(账本上 `run/start` 自己带的
+                       * 时刻)。重试那段真空里没有活消息 → `undefined` → 那一格只画
+                       * 在扫的线,不画一个编出来的读数(判词在 `TailSlot` 的 prop 上)。
+                       */
+                      startedAt={activeMessage?.timestamp}
+                      lastActivityAt={lastActivityAt}
                     />,
                   ]
                 : []),
@@ -988,8 +1018,15 @@ function useFollowBottom(
    * 的设备像素),所以治在画这一侧。三条安全判据(不改布局 / 推行不推列 / 只往上推)
    * 逐条写在 `tail-snap.ts` 的文件头。
    *
-   * **两次取件都是 O(1)**:列是滚动容器的独子,尾巴是列的最后一件(座位垫块不算,
-   * 它在读数行**下面** —— 推它对读数行一点用都没有,判词见 `tail-snap.ts` ②)。
+   * **两次取件都是 O(1)**:列是滚动容器的独子,尾巴是列的最后一件。
+   *
+   * ── G 线 P1 之后「尾巴」是谁(2026-09-20)──────────────────────────────────
+   * 从前是那条助手行(读数行住在它里面),所以这里要越过座位垫块往回取一格。
+   * 今天列尾那一格是**尾槽**(`data-tail-slot`),而读数行与那枚光标正住在它里面
+   * —— 也就是说这一句取到的**仍然是「该站着不动的那一件」**,判据一个字没改:
+   * 「列的最后一件」。座位那一支留着当兜底:尾槽只在 `status === 'ready'` 时画,
+   * 空会话 / 冷载那几帧列尾仍可能是座位垫块。
+   *
    * 不扫全表(扫全表就是每帧按整份账本计价,09-10 那笔 834ms 的账)。矩形是白拿的:
    * RO 回调跑在排版之后,另两个调用点上一行的 `scrollHeight` 已经逼过一次排版,
    * 而写 `scrollTop` 不弄脏布局,所以这一读不会再逼出第二次。
@@ -1623,12 +1660,25 @@ function useFollowBottom(
    */
   const landFrameRef = useRef(0)
   const landWroteRef = useRef<number | undefined>(undefined)
+  /**
+   * **这一刻正在滑**(G 线 P1 加的一格)。
+   *
+   * 它的唯一读者是下面那只「座位同帧跟上」的 layout effect:滑动那一段里
+   * `scrollTop` 每帧由我们自己写,此刻再去改 `scrollHeight` 会让浏览器钳一下,
+   * 而那一钳正好长得像「有第二只手在滚」—— 插值当场收手,落点作废
+   * (09-15 实测过的那 −189px 就是这个形)。
+   *
+   * 不复用 `landFrameRef`:那一格在 `step()` 的第一行就被清成 0(rAF 已经烧掉了),
+   * 拿它当「在不在滑」会在每一帧的开头答错。
+   */
+  const slidingRef = useRef(false)
   const cancelLanding = useCallback(() => {
     if (landFrameRef.current && typeof cancelAnimationFrame === 'function') {
       cancelAnimationFrame(landFrameRef.current)
     }
     landFrameRef.current = 0
     landWroteRef.current = undefined
+    slidingRef.current = false
   }, [])
 
   /**
@@ -1657,6 +1707,7 @@ function useFollowBottom(
       // 第二只手:我们上一帧写下去的那个数不在了,就是人自己滚了 —— 收手。
       if (landWroteRef.current !== undefined && Math.abs(el.scrollTop - landWroteRef.current) > 1) {
         landWroteRef.current = undefined
+        slidingRef.current = false
         return
       }
       const k = Math.min(1, (performance.now() - started) / ms)
@@ -1668,6 +1719,7 @@ function useFollowBottom(
       if (k < 1) landFrameRef.current = requestAnimationFrame(step)
       else {
         landWroteRef.current = undefined
+        slidingRef.current = false
         settle()
       }
     }
@@ -1677,6 +1729,7 @@ function useFollowBottom(
       settle()
       return
     }
+    slidingRef.current = true
     landFrameRef.current = requestAnimationFrame(step)
   }, [])
 
@@ -1863,6 +1916,47 @@ function useFollowBottom(
     if (next > before) writeSeat()
   }, [activeMessageId, scrollRef, readSeat, writeSeat])
 
+  /*
+   * ── 座位**同帧**跟上内容(G 线 P1,2026-09-20;正本
+   *    `docs/stream-geometry-2026-09.md` §1 的 G1 与 §5.3 的 ①⑤)────────────────
+   *
+   * 病历(这道门第一趟真机实测挖出来的,不是推的):座位从前是「量在这一帧、写在
+   * 下一帧」。于是每来一段 delta:
+   *   第 n 帧   内容 +Δ、座位没动 → `scrollHeight` +Δ
+   *   第 n+1 帧 座位 −Δ          → `scrollHeight` −Δ
+   * 屏幕上从前看不出来 —— 读数行那时住在正文**里面**,跟着内容一起往下走,
+   * 那一格差被它自己的位移盖住了(§0 的病 ④ 说的就是它)。G 线 P1 把读数与光标搬到
+   * **座位之后**的尾槽里,这一格差当场显形:首字那一帧尾槽被推下 **29–92px**
+   * (= 第一块内容的高),整轮 `scrollHeight` 回缩 **3–12 次**。
+   *
+   * ── 为什么非得同帧不可 ────────────────────────────────────────────────────
+   * 那一帧里只有两条路:要么不动视口(于是**座位下面**的东西跳一帧),要么贴底
+   * (于是**座位上面**的东西跳一帧,自己那条气泡当场违反规矩 ②)。一帧之内
+   * 两头不能兼得 —— 唯一的出路是**让那一格差根本不存在**:内容长多少,座位在
+   * **同一次排版**里缩多少。这正是 §1 的 G2「收缩先申请、后执行」在 P1 能做到的
+   * 那一半(完整的申请 / 执行两段式归 P2 的锚定器)。
+   *
+   * ── 为什么这一次允许同步读几何 ────────────────────────────────────────────
+   * 「观察器回调只读不写」那条法禁的是**在 RO 的派发循环里改布局**;这里是 React
+   * 提交之后、绘制之前的正常写点(与 `landOnSendLine` / 上面那只收场同步同一处相位)。
+   * 09-10 拆掉的那只「每次提交都 `stick()`」之所以贵,是因为它**无条件**跑、而且跑在
+   * 每一条会话的每一次提交上;这一只有三道闸:
+   *   ① 座位不在场 / 没落位 → 立刻返回(绝大多数会话的绝大多数帧);
+   *   ② 座位已经吃光(写进 style 的是 0)→ 立刻返回,此后退回普通跟底,再不读几何;
+   *   ③ 正在滑(发送 / 重试的插值)→ 立刻返回(判词在 `slidingRef` 上)。
+   * 也就是说它只在「刚发出去这一轮、座位还没被吃光」那一段里付钱,而那一段本来
+   * 就是屏幕上唯一在动的一段。真机读数进这道门的 ⑦(流式期间零 ≥50ms 长帧)。
+   */
+  useLayoutEffect(() => {
+    if (!seatActive || !seatLandedRef.current) return
+    if ((seatWrittenRef.current ?? 0) <= 0) return
+    if (slidingRef.current) return
+    const el = scrollRef?.current
+    if (!el || el.clientHeight === 0) return
+    readSeat(el)
+    writeSeat()
+  })
+
   /** 点丸 / 明确要求回底:先落、再翻状态(两句的次序无所谓,状态机不看几何)。 */
   const jumpToBottom = useCallback(() => {
     stick()
@@ -1992,25 +2086,13 @@ interface RowProps {
    */
   sessionId: string
   message: ProjectedMessage
+  /**
+   * 这一条还在跑吗。G 线 P1 之后它**只剩一个读者**:外缘那一行的动作格该不该暗着
+   * (`MessageChrome`)。读数行、等待折痕、那枚光标三件都搬去了列尾的尾槽 ——
+   * 判词在 `message/TailSlot.tsx` 与正本 §1 的 G4。
+   */
   streaming: boolean
   flash: boolean
-  /**
-   * 这一轮上一次**有东西到达**的时刻;只有活消息拿得到(其余恒 undefined)。
-   *
-   * 2026-09-09 从 `lastDeltaAt` 换成这一格:读数行问的是「还活着吗」,而工具跑着
-   * 的那几秒里没有一条裸 delta。跟随状态机要的那一格不经这条 prop —— 它在
-   * `ChatStream` 顶层直接读 store 喂给 `useFollowBottom`,所以这里不留一格死 prop。
-   */
-  lastActivityAt?: number
-  /**
-   * **这一行要不要自己画那道等待折痕**(09-15,正本 §2 规矩 ③)。
-   *
-   * 「在等第一个字」是这条消息自己的事(判据 `segments.length === 0` 就在这一层),
-   * 但「这一轮有没有上下文更新行」不是 —— 那一行由 `ChatStream` 摆在上一条用户消息
-   * 后面,所以由它说了算。有的话这一格是 `false`:一轮只扫一道折痕。
-   * 活消息之外的每一行恒 `false`,`memo` 的浅比照旧短路。
-   */
-  waitingSeam?: boolean
   /**
    * **这一条正在被重试,已经开始上折**(单 B ⑥)。`retryPending` 一在场就为真,
    * 不等账本把它删掉 —— 「按下即开槽」说的就是这段真空里屏幕也要有回音。
@@ -2054,8 +2136,6 @@ const MessageRow = memo(function MessageRow({
   message,
   streaming,
   flash,
-  lastActivityAt,
-  waitingSeam = false,
   retiring = false,
 }: RowProps) {
   const role = message.role
@@ -2109,23 +2189,15 @@ const MessageRow = memo(function MessageRow({
       {prose && (
         <>
           {/*
-            * ── 第一个字之前那段空档(§5.3 拍点 ⑫;09-15 换成一道折痕)──────────
-            * 回复的槽位已经开出来(`run/start` 到了、活消息立着),但**此刻一个字
-            * 都画不出来**:模型在思考、请求还在路上。
-            *
-            * 判据一个字没改,仍是 `segments.length === 0` —— 装配管线对这条消息
-            * **此刻画得出什么**的完整答案。它不是拿 `content` 猜:一条只有工具活儿、
-            * 正文还是空的消息段序列非空,那时候槽位里有东西可看,不该再画。
-            * 第一个 delta 到达 → 段序列非空 → 折痕当场换成正文与尾部那枚光标,
-            * **同一次提交**(两边由同一份 `segments` 推出来,中间没有一帧两样都不在)。
-            *
-            * 换的是**形**:三颗点(`ui/Dots` + 退役的 `.firstToken`)变成一道在扫的
-            * 折痕(正本 §2 规矩 ③)—— 它与上下文更新那一行说的是同一件事,所以两者
-            * 合成一行,由 `waitingSeam` 那一格决定这一轮归谁扫。丸上那三个点不动。
+            * ── 第一个字之前那段空档:**这一行里不画了**(G 线 P1,2026-09-20)──────
+            * 从前这里是一道在扫的等待折痕(09-15 单 A ③;再往前是三颗点)。它与那枚
+            * 流式光标一起搬去了整列末尾的尾槽,判词在正本
+            * `docs/stream-geometry-2026-09.md` §0 的 ③④ 与 §1 的 G4:**只在流式期
+            * 存在的东西不许住在流里** —— 它一卸载就带走一个行盒(收尾那一帧整屏下移
+            * 23.8px),而排在它下面的读数行被每一段正文推一次(整轮 303 次)。
+            * 「这一轮在等第一个字」今天由 `ChatStream` 顶层判一次、交给尾槽画一次,
+            * 这一行因此对它没有话要说。
             */}
-          {streaming && segments.length === 0 && waitingSeam && (
-            <WaitingSeam label={t('chat.streaming')} />
-          )}
           {segments.map((segment, index) => {
             const key = segmentKey(message.id, index, segment)
             return <SegmentView key={key} segment={segment} segmentKey={key} ctx={ctx} />
@@ -2137,20 +2209,16 @@ const MessageRow = memo(function MessageRow({
           */}
           <MessageSourceFoot segments={segments} messageId={message.id} />
           {/*
-            光标是**数据源的事实**(activeMessageId),不是这条消息自己的事实,
-            而装配管线只拿得到消息 —— 所以它留在这一层画,没有进段序列。
+            光标从前画在这里(`streaming && segments.length > 0`),而它**独占一行**:
+            收尾那一帧条件渲染把它卸掉,带走一个行盒,贴着底的页面被浏览器钳一下
+            —— §0 的病 ③,真机 23.8px。G 线 P1 起它住在列尾那一格尾槽里,换的只有
+            `opacity`。这里不留第二份。
           */}
-          {streaming && segments.length > 0 && (
-            <span className={s.cursor} data-testid="chat-streaming" aria-label={t('chat.streaming')} />
-          )}
           {/*
-            消息外缘的那一行(台一「安静编辑器」定稿):**同一个位置,永远只有一个在**。
-             · 流式中 = 读数行(还活着 / 跑了多久 / 停止)。起点取这条消息的
-               `timestamp`,那是账本上 `run/start` 自己带的时刻(见 StreamReadout 的注);
-             · 完成后 = 幽灵动作行(复制 / 重试),**悬停或焦点进来才浮现**。
-            动作行常驻在 DOM 里(只动 opacity)—— 条件渲染会让它浮现时把下文推下去。
-            只有 assistant 有动作:system(压缩卡)不是"一条回答",没有重跑一说;
-            user 的动作是编辑重发,那是另一件事(留账)。
+            消息外缘的那一行:**一格常驻的动作格**(复制 / 重试),悬停或焦点进来
+            才浮现。动作行常驻在 DOM 里(只动 opacity)—— 条件渲染会让它浮现时把
+            下文推下去。只有 assistant 有动作:system(压缩卡)不是"一条回答",
+            没有重跑一说;user 的动作是编辑重发,那是另一件事(留账)。
           */}
           {/*
             收场通知(2026-09-09):这一轮**为什么提前结束**。它与动作行同时在场 ——
@@ -2168,23 +2236,15 @@ const MessageRow = memo(function MessageRow({
             </div>
           )}
           {/*
-            * ── 外缘那一行:三张脸同格同高(单 B ⑤)────────────────────────────
+            * ── 外缘那一行:一格常驻、高度不随内容变(单 B ⑤ 立,G 线 P1 只剩一张脸)──
             * 从前这里是两句条件渲染,收尾那一帧卸掉读数行、挂上动作行 —— 两者高度
             * 不同,内容因此缩一截,贴着底的页面被浏览器钳一下 `scrollTop`(单 A 的门
-            * 量到 12px)。现在一格 grid 里两张脸叠着,高恒为最高那一张,只换 opacity。
-            * 判词整段在 `MessageChrome.tsx`。
+            * 量到 12px)。单 B ⑤ 把它们收进一格 grid;G 线 P1 又把读数那张整个搬去
+            * 列尾的尾槽,所以今天这一格只剩动作行 —— 而「它常驻、只动 opacity」
+            * 那条 08-31 的纪律一个字没动。判词整段在 `MessageChrome.tsx`。
             */}
           <MessageChrome
             streaming={streaming}
-            readout={
-              streaming ? (
-                <StreamReadout
-                  sessionId={sessionId}
-                  startedAt={message.timestamp}
-                  lastActivityAt={lastActivityAt}
-                />
-              ) : undefined
-            }
             actions={
               role === 'assistant' ? (
                 <MessageActions
@@ -2358,41 +2418,33 @@ function NoticeRow({ t }: { t: TFn }) {
  * 消息一起来的,它在回合开张之后才补上,所以高度 / 行距 / 不透明度三量一起软着陆。
  */
 /**
- * ── 重试那一路的空折痕:**它自己一行**(单 B ⑥,2026-09-15)─────────────────
+ * ── 重试那一路的空折痕:**G 线 P1 删了**(2026-09-20)────────────────────────
  *
- * 第一版把这道折痕画在**被重试的那一条里**,判词写的是「它正在上折,折痕接着它扫」
- * —— 那句话在 DOM 上说不通:那一行此刻挂着 `.rowRetiring`(`height: 0` +
- * `overflow: clip` + `opacity: 0`),画在它里面的东西跟着一起折没了,屏幕上
- * **一道折痕都看不见**;而 jsdom 不算样式、门只问「折痕在不在树上」,两边都放它过去。
- * 所以它跟上下文更新那道一样是**独立一行**,排在正在上折的那条**后面** ——
- * 新一轮的回答就从那儿起。
+ * 09-15 单 B ⑥ 给重试那一路单开了一行 `article[data-retry-of]`,里面画一道在扫的
+ * `WaitingSeam`,理由是「按下即开槽:那段真空里屏幕上要有回音」。**回音这件事没有
+ * 变,变的是它画在哪** —— 今天「这一轮在等第一个字」由列尾那一格尾槽统一画一次
+ * (`retryingId` 在场就算在等,见上面 `tailFace`),所以这一行连同它那条
+ * `data-retry-of` 一起退役:同一句话不许在屏幕上说两遍,而且这一行是**事后插进
+ * 列里的一行**,插与拔各推一次下文,正是 §1 的 G4 要拆掉的那一种。
  *
- * 与 `contextSeamRow` 同一族、同一套判词:不带 `data-message-id`(TOC 的取件口
- * 只认消息),报 `data-retry-of`;`.rowLate` 软着陆 —— 它正是「事后出现的那一行」。
+ * 旧回答的上折(`.rowRetiring`)一个字没动 —— 那是「按下即开槽」在**几何上**的
+ * 那一半,与折痕画在哪无关。
  */
-function retrySeamRow(messageId: string, t: TFn) {
-  return (
-    <article
-      key={`${messageId}#retry`}
-      className={`${s.row} ${s.rowLate}`}
-      data-retry-of={messageId}
-    >
-      <WaitingSeam label={t('chat.streaming')} />
-    </article>
-  )
-}
 
-function contextSeamRow(message: ProjectedMessage, sweeping: boolean) {
+function contextSeamRow(message: ProjectedMessage) {
   return (
     <article
       key={`${message.id}#context`}
       className={`${s.row} ${s.rowLate}`}
       data-context-of={message.id}
     >
-      {/* `sweeping` = 这一轮还在等第一个字:等待折痕与这一行**合成一行**,由它扫
-          (判词在 `ContextDeltaSeam` 那格 prop 上)。首字一到它翻回 false:光停、
-          线实,标签常驻 —— 它说的那件事已经发生完了。 */}
-      <ContextDeltaSeam turnContext={message.turnContext} sweeping={sweeping} />
+      {/*
+        * **这一行不扫了**(G 线 P1,正本 §2 拍点 2:「等待指示只留一处:尾部」)。
+        * 09-15 那版让它在等第一个字时翻成 `running` 替 `WaitingSeam` 扫一道,
+        * 于是屏上有两处在等 —— 用户 09-20 报的第一件就是「发送后屏上有两处在等的
+        * 动画」。上下文更新本身是**已经发生完**的事,它恒 `settled`。
+        */}
+      <ContextDeltaSeam turnContext={message.turnContext} />
     </article>
   )
 }

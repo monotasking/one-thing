@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { memo, useLayoutEffect, useRef, useState } from 'react'
 import { CARD_FLIP_MS, currentMotionTier } from '../components/motion'
 import { useT } from '../i18n'
 import { Fold, FoldTrigger } from '../ui/Fold'
@@ -20,10 +20,22 @@ import type { TextBlock } from './text/text-stream'
  * 左竖线还额外撞上全域禁令(引线全仓禁用),所以它连作为装饰都不成立。
  *
  * ── 三条行为,各有各的理由 ────────────────────────────────────────────
- * ① **流式中自动展开,收尾自动折**:正在想的时候,那段字是此刻唯一在动的东西,
- *    人要看;想完了,它就退回成一行索引。这两下都是**跟着事实走**(live 是折叠器
- *    给的),不是替用户记偏好。**这一条是本文件自己的业务**,不进 `ui/Fold`:
- *    「开合跟着哪个事实走」永远是消费方的事,所以这里用 Fold 的**受控档**。
+ * ① **一直收着,除非人自己点开**(2026-09-20 G 线 P1 改判,正本
+ *    `docs/stream-geometry-2026-09.md` §2 拍点 1 与 §5.1)。
+ *    **这一条推翻了 09-14 写在这里的那句「流式中自动展开,收尾自动折」** ——
+ *    那句话当时的理由是「正在想的时候那段字是此刻唯一在动的东西,人要看」,
+ *    而它带来的是两处真机量到的病(§0):收尾自动折那一帧**一帧内视口被拉走**
+ *    849 / 1674 / 2094 / **15054px**(思考 3 千字 → 6 万字,之后 170ms 才回到底);
+ *    以及人上拨半屏正读到思考段中部时,折叠那一帧他正读的那段字**被从 DOM 上摘掉**
+ *    (上方下移 2094px,锚点为 null)。用户 09-20 的原话是「思考段想完自动收起,
+ *    正在读的人被打断」,三处拍点「都按照推荐的走」。
+ *    所以今天:`expanded` 初值恒 `false`,`live` 翻转**一格都不动它**;
+ *    **自动折叠不存在**,于是 ① 那条病在这一件身上没有产地
+ *    (手动收起在贴底时仍会踩到同一个钳位,那是 P2 的账)。
+ *    「正在想什么」由**收起态那一行自己说**:流式期间它显示**最新一截**
+ *    (`latest`,尾部 ≤240 字,右端对齐裁左边)并带扫光,落定后换回开头那一截
+ *    (`preview`)。两态同为一行、**高度逐像素相同**(`.thoughtPreview` 的
+ *    `block-size` 钉死),所以「落定那一帧几何上什么都不发生」逐字成立。
  * ② **圈选不收**:展开之后正文可圈选,而「选中一段字」的收尾动作恰好是一次
  *    mouseup/click —— 不判一下选区,用户每次复制到一半这段就自己关了。
  *    这条判据(`getSelection().isCollapsed`)09-09 随 U1 搬进了 `ui/Fold`,
@@ -37,8 +49,8 @@ import type { TextBlock } from './text/text-stream'
  * 20 万字的思考是两场事故:流式中每帧把整段重排一次(正本 §0 真机量到 71–136ms),
  * 而收起之后那 20 万字仍然整份留在 DOM 里(停靠池里 175 段共 104 万字)。
  * 所以现在:
- *  · **收起 = 只挂 `preview`**(≤ 240 字,line-clamp 仍然负责钳成一行 —— 钳在
- *    **排版**上做这件事没变,240 只是给 DOM 封个顶,不是拿它当「一行」的判据);
+ *  · **收起 = 只挂 `preview` / `latest` 之一**(各 ≤ 240 字;钳成一行仍然在**排版**上
+ *    做 —— 240 只是给 DOM 封个顶,不是拿它当「一行」的判据);
  *  · **展开 = 冻住的块各一个 memo 的 `<p>` + 活动尾一个 `<p>`**。块的 props 不变
  *    就不重渲,所以流式期间浏览器只重排活动尾那 ≤ 4,000 字(≤ 1.5ms)。
  * 两态的字拼起来仍然逐字等于原文(`blocks` 与 `tail` 首尾相接、一个字符不丢),
@@ -63,28 +75,34 @@ export function ThinkingSegment({
   tail,
   live,
   preview,
+  latest,
 }: {
   blocks: readonly TextBlock[]
   tail: string
   live: boolean
   preview: string
+  /** 末尾那 ≤240 字 —— 流式期间收起态那一行显示的就是它(G 线 P1)。 */
+  latest: string
 }) {
   const t = useT()
   const note = useNoteUserExpand()
   const noteFold = useNoteFold()
-  const [expanded, setExpanded] = useState(live)
-
-  // 跟着 live 走:开始想就展开,想完就折回去。用户在**非流式**时手动展开的那一份
-  // 不会被这里推翻(live 没变,effect 不跑)。
-  useEffect(() => {
-    setExpanded(live)
-  }, [live])
+  /*
+   * **初值恒 `false`,`live` 一格都不动它**(G 线 P1;判词整段在文件头 ①)。
+   * 从前这里是 `useState(live)` 外加一只 `useEffect(() => setExpanded(live), [live])`
+   * —— 那只 effect 就是「收尾自动折」的产地,而它量出来是一帧内 15,054px 的视口跳变。
+   * 今天开合只有**一个**产地:下面那只 `onOpenChange`(用户自己点的)。
+   */
+  const [expanded, setExpanded] = useState(false)
 
   /**
-   * ── 收尾那一下**折起来,不是跳回去**(单 B ④,正本 §2 规矩 ④)────────────
+   * ── **手动**开合那一下折起来,不是跳回去(单 B ④,正本 §2 规矩 ④)──────────
    *
    * 病历:一轮跑完那一帧,20 万字的思考从 6 万像素**一帧**缩成一行 783px,整屏
    * 跳变(`probe-stream-end.mjs` 量到上一条用户消息的 top 从 −60,879 跳到 −286)。
+   * **那条自动折的路 G 线 P1 已经没有了**(判词在文件头 ①),所以这只原语今天
+   * 只服务用户自己点的那两下;它仍然留着,因为手动收起在贴底时踩的是同一个钳位
+   * (正本 §6 留账第一条,归 P2)。
    *
    * 机制整只复用 `ui/flip-height`(基础件先行:第二个消费者不许再抄一份):
    *  · 「改前」由这一族自己的账本(`thought-heights.ts`)**报**过来,不现问 ——
@@ -108,10 +126,9 @@ export function ThinkingSegment({
    * 开始折的那一帧报一句「钉住视口」(`content/fold-intent.ts`)。
    *
    * **只在折起那一侧报**,展开那一侧归 `expand-intent`(两条通道,两件事:一件说
-   * 「别贴底」,一件说「别让内容往上抽」)。**手动收起也报** —— 几何上它与自动折
-   * 逐字相同,人正读着的那一行同样不该往上蹿;`Fold` 的 `onOpenChange` 与 `live`
-   * 那只 effect 都会落到这里,所以判据挂在**结果**(展开态翻成了 false)上,
-   * 不挂在「谁翻的」上。
+   * 「别贴底」,一件说「别让内容往上抽」)。今天翻这一格的**只有用户自己那一下**
+   * (G 线 P1 之后 `live` 不再驱动开合),判据仍然挂在**结果**(展开态翻成了 false)上
+   * 而不是「谁翻的」上 —— 那句话少了一个产地,一个字都不必改。
    *
    * 排在 `useFlipHeight` **之后**声明,所以它的 layout effect 也排在后面跑:
    * 那只原语已经把起点钉住(内联 height = 改前)、把终点写下去了,此刻报出去的
@@ -130,8 +147,8 @@ export function ThinkingSegment({
   return (
     <Fold
       open={expanded}
-      /* 用户点开的,报给流:别贴底(`content/expand-intent.ts`)。`live` 驱动的
-         自动开合走上面那只 effect,不经过这里 —— 天然不算用户意图,正确。 */
+      /* 用户点开的,报给流:别贴底(`content/expand-intent.ts`)。G 线 P1 之后
+         这里是开合的**唯一**产地 —— 所以经过这里的每一下都是用户意图。 */
       onOpenChange={(open) => {
         if (open) note()
         setExpanded(open)
@@ -164,7 +181,26 @@ export function ThinkingSegment({
             {tail !== '' && <p className={s.thoughtBlock}>{tail}</p>}
           </>
         ) : (
-          <p className={s.thoughtPreview}>{preview}</p>
+          /*
+           * ── 收起态那一行:两个读法,一个盒子(G 线 P1)──────────────────────
+           * 还在流 = **最新一截**(末尾 ≤240 字,右端对齐、左边裁掉)+ 扫光,报
+           * `data-live`;落定 = 开头那一截(今天的 `preview`,左起、右端省略号)。
+           * **高度由 `.thoughtPreview` 的 `block-size` 钉死**,两态逐像素相同 ——
+           * 落定那一帧只换字与那格属性,几何上什么都不发生(正本 §1 的 G4)。
+           *
+           * 内层那个 `<span>` 是右端对齐那一手的一半(另一半在 CSS,判词写在那儿):
+           * `min-inline-size: 100%` 让短文本照常从左起;长文本靠外面那一格的
+           * `justify-content: flex-end` + 这一格的 `flex: none` 把溢出翻到**左边**
+           * 去被裁掉 —— **不是** `margin-inline-start: auto`(自动外边距只吃**剩余**
+           * 空间,而这里剩余是负的,它当场解析成 0)。也不用 `direction: rtl`:
+           * 那会把标点与中英混排的顺序一起翻掉。
+           *
+           * 这一行里**不会再有换行符** —— 装配层的 `oneLine` 已经把连续空白折成
+           * 一个空格了(`assemble/text.ts`),所以 CSS 那边只要一句「不折行」。
+           */
+          <p className={s.thoughtPreview} data-live={live ? '' : undefined}>
+            <span className={s.thoughtLine}>{live ? latest : preview}</span>
+          </p>
         )}
       </FoldTrigger>
     </Fold>

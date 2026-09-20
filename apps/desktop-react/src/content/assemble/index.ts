@@ -7,7 +7,7 @@ import { anchorMessage } from './anchor'
 import { groupNodes } from './group'
 import { markdownToFrame } from './markdown'
 import { presentToolCard } from './present'
-import { textPreview, textToFrame } from './text'
+import { textLatest, textPreview, textToFrame } from './text'
 import { presentResearchEpisode } from '../research/episode'
 
 /**
@@ -130,6 +130,12 @@ function runPipeline(message: ProjectedMessage): SegmentModel[] {
           tail,
           live,
           preview: textPreview(blocks, tail),
+          /*
+           * 收起且还在流时那一行显示的**最新一截**(G 线 P1)。它与 `preview` 并排
+           * 而不是二选一:两格说的是两个时刻的事实,而渲染层不许拿 6 万字的串现切
+           * (代价与历史长度无关这件事由 `textLatest` 自己保证)。
+           */
+          latest: textLatest(blocks, tail),
         })
         break
       }

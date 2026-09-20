@@ -423,37 +423,17 @@
  * 丸上那三个点不动(`FollowPill`)。
  */
 
-/* ── 流中态:一枚呼吸的光标 ───────────────────────────────────────────── */
-
-.cursor {
-  align-self: flex-start;
-  width: 0.5em;
-  height: var(--pr-fs);
-  border-radius: 1px;
-  background: var(--text-2);
-  /* 关键帧 chatCursor 住在 styles/motion.css(全仓唯一的 @keyframes 产地)。
-   * 时长从借用的 --dur-toc-hover 换成它自己的名字 --dur-cursor-blink(同为 150ms,
-   * 一个数没变)—— 那个是**悬停延迟**,借来当动画时长会让动效档的分类无从下手。 */
-  animation: var(--kf-chat-cursor) var(--dur-cursor-blink) var(--ease-out) infinite alternate;
-}
-
-/*
- * 不动的那两种情形,给的是同一份降级:一枚半透明的静止方块。
- * 系统偏好(prefers-reduced-motion)与用户显式选的「动效:无」是两个来源、
- * 一个结论,所以规则写两条、内容一模一样 —— CSS 没法把媒体查询和属性选择器
- * 并进同一个条件里。
+/* ── 流中态:那枚呼吸光标**已经搬走了**(2026-09-20 G 线 P1)────────────────
+ *
+ * 它从前是这一族的 `.cursor`:`align-self: flex-start` 的一枚小方块,**独占消息列
+ * 里的一行**、条件渲染。收尾那一帧它被卸掉,带走一个行盒,贴着底的页面被浏览器
+ * 钳一下 `scrollTop` —— 正本 `docs/stream-geometry-2026-09.md` §0 的病 ③,
+ * 真机量到整屏正文下移 **23.8px**(座位吃光之后每轮必现)。
+ *
+ * 今天它住在整列末尾那一格尾槽里(`message/TailSlot.module.css` 的 `.cursor`,
+ * 逐字搬过去、一个值都没改):那一格常驻、高度由 token 钉死,换的只有 `opacity`。
+ * 这个文件里因此**没有**它的样式,也不该再有 —— 两处各一份就是两个产地。
  */
-@media (prefers-reduced-motion: reduce) {
-  .cursor {
-    animation: none;
-    opacity: 0.6;
-  }
-}
-
-:root[data-motion-tier='none'] .cursor {
-  animation: none;
-  opacity: 0.6;
-}
 
 /* ── 错误消息卡 ───────────────────────────────────────────────────────── */
 

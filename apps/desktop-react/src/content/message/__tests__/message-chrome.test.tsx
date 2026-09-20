@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { ChatStream } from '../../ChatStream'
-import { elapsedMs, readoutTone } from '../StreamReadout'
+import { elapsedMs, readoutTone } from '../TailSlot'
 import { STALL_HARD_MS, STALL_SOFT_MS } from '../../../components/motion'
 import { configureChatPort, type ChatPort } from '../../../data/chat-port'
 import { useChatSource } from '../../../data/chat-source'
@@ -145,11 +145,21 @@ describe('① / ② 同一个位置,永远只有一个在', () => {
    * 流式中只是 `opacity: 0` + `inert`。所以判据从「在不在 DOM 里」换成
    * **「哪张脸亮着」**(`data-face`)与**「暗的那张点不动也念不到」**(`inert`)。
    */
-  it('流式中:读数行亮着,动作行在同一格里暗着(inert)', async () => {
+  /**
+   * **2026-09-20 G 线 P1 又改了一次**:读数行(与那枚光标)整个搬去了整列末尾的
+   * 尾槽 —— 判词在 `message/TailSlot.tsx` 与正本 `docs/stream-geometry-2026-09.md`
+   * §0 的 ③④。所以「读数行在场」这一半的**位置**变了(它不再长在这条消息里),
+   * 而「它在场」这件事一个字没变:下面仍然按 `chat-readout` / `chat-stop` 取它,
+   * 只是多问一句「它长在尾槽那一格里」。`data-face` 从 `readout` 改成 `none`。
+   */
+  it('流式中:读数行亮着(在尾槽里),动作行在自己那一格里暗着(inert)', async () => {
     await mount(streamingLedger())
     expect(screen.getByTestId('chat-readout')).toBeTruthy()
     expect(screen.getByTestId('chat-stop')).toBeTruthy()
-    expect(screen.getByTestId('chat-chrome').getAttribute('data-face')).toBe('readout')
+    // 它住在列尾那一格,**不在**这条消息里 —— 那正是 G 线 P1 治的那件事。
+    expect(screen.getByTestId('chat-readout').closest('[data-tail-slot]')).toBeTruthy()
+    expect(screen.getByTestId('chat-readout').closest('[data-message-id]')).toBeNull()
+    expect(screen.getByTestId('chat-chrome').getAttribute('data-face')).toBe('none')
     // 动作行在 DOM 里(这一格的高由它说了算),但这一刻不许被 Tab 走到、不许被念到。
     const actions = screen.getByTestId('chat-actions')
     expect(actions.closest('[inert]')).toBeTruthy()
@@ -165,8 +175,10 @@ describe('① / ② 同一个位置,永远只有一个在', () => {
   it('完成后:读数行退场,动作行接位(复制 / 重试)', async () => {
     await mount(settledLedger())
     // 读数行**真的卸载**(它身上挂着一只 100ms 的表,常驻就是按会话长度计价)——
-    // 高度稳定靠的是动作行那一张常驻,判词在 `MessageChrome.tsx`。
+    // G 线 P1 之后卸的是尾槽里那一份,而那一格的**高照占**(token `--tail-slot-h`),
+    // 所以它的进出一格几何都不改。判词在 `message/TailSlot.tsx`。
     expect(screen.queryByTestId('chat-readout')).toBeNull()
+    expect(screen.getByTestId('chat-tail-slot').getAttribute('data-face')).toBe('idle')
     expect(screen.getByTestId('chat-chrome').getAttribute('data-face')).toBe('actions')
     const actions = screen.getByTestId('chat-actions')
     expect(actions.closest('[inert]')).toBeNull()

@@ -115,8 +115,15 @@ describe('座位的寿命', () => {
     // 不带 data-message-id:挂上去 TOC 的钢琴键就会落到一块空白上。
     expect(seat!.hasAttribute('data-message-id')).toBe(false)
     expect(seat!.getAttribute('aria-hidden')).toBe('true')
-    // 它是列尾那一格 —— 内容长进的是它上面。
-    expect(seat!.nextElementSibling).toBeNull()
+    /*
+     * 它排在所有内容**之后** —— 内容长进的是它上面。
+     * **2026-09-20 G 线 P1 起它不再是列的最后一格**:尾槽(`data-tail-slot`,
+     * 整列末尾常驻的那一格读数 / 光标 / 等待线)排在它后面,判词在正本
+     * `docs/stream-geometry-2026-09.md` §3.1。所以这一条从「后面没有了」
+     * 改成「后面恰好只有尾槽」—— 说的仍然是同一件事:座位是内容的**末位**。
+     */
+    expect(seat!.nextElementSibling?.hasAttribute('data-tail-slot')).toBe(true)
+    expect(seat!.nextElementSibling?.nextElementSibling).toBeNull()
     // jsdom 不排版(clientHeight 恒 0)→ 座位算出来是 0:那正是「量不到就不留座位」。
     expect((seat as HTMLElement).style.height === '' || (seat as HTMLElement).style.height === '0px').toBe(true)
   })

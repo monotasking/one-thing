@@ -212,8 +212,16 @@ describe('节奏换轨:只许间距变,不许次序变', () => {
      *    对这张表来说变的只有**那一格叫什么**:它仍然是消息框的直接子项、仍然
      *    什么都不报、仍然吃节奏表的默认档,前面八项一个字没动。
      *    治的是收尾那一帧「两张脸高度不同 → 内容缩一截 → 视口被钳一下」那 12px。
+     * ③ **2026-09-20 G 线 P1**:`span[data-testid=chat-streaming]`(那枚流式光标)
+     *    从这张表里**没了** —— 它连同读数行一起搬去了整列末尾的尾槽
+     *    (`content/message/TailSlot.tsx`)。病历在正本
+     *    `docs/stream-geometry-2026-09.md` §0 的 ③:它**独占一行**且条件渲染,
+     *    收尾那一帧卸载带走一个行盒,贴着底的页面整屏下移 **23.8px**。
+     *    对这张表来说变的只有**少了一项**:节奏表其余每一格一个字没动,而且从此
+     *    这条消息的直接子项里**没有一件只在流式期存在**——那正是 §1 的 G4。
      * 这**正是**上一段说的「该被看见的时刻」—— 它是一次有意的排布变化,不是回归。
-     * 两张脸各自在场不在场那一半由 message/__tests__/message-chrome.test.tsx 钉。
+     * 两张脸各自在场不在场那一半由 message/__tests__/message-chrome.test.tsx 与
+     * message/__tests__/tail-slot.test.tsx 钉。
      */
     expect(children).toEqual([
       'div[data-testid=chat-thought]',
@@ -223,7 +231,6 @@ describe('节奏换轨:只许间距变,不许次序变', () => {
       'section[data-block-kind=code]',
       'p',
       'div[data-tool-card=true]',
-      'span[data-testid=chat-streaming]',
       'div[data-testid=chat-chrome]',
     ])
   })
@@ -237,7 +244,6 @@ describe('节奏换轨:只许间距变,不许次序变', () => {
       // 从前单发那张卡自己带着 data-tool-status —— 色调现在长在**行**上,
       // 卡上不留(一张卡里可以同时有 busy / ok / bad 三行,挂在卡上会一起染色)。
       'div[data-tool-card=true]',
-      'span[data-testid=chat-streaming]',
       // 见上一条的「基线动过一次」:这条素材同样停在 run 里,所以读数行在场。
       'div[data-testid=chat-chrome]',
     ])
@@ -249,7 +255,6 @@ describe('节奏换轨:只许间距变,不许次序变', () => {
     expect(Array.from(row.children).map(identify)).toEqual([
       'p',
       'ul',
-      'span[data-testid=chat-streaming]',
       'div[data-testid=chat-chrome]',
     ])
     const nested = row.querySelector('li [data-block-kind="code"]')

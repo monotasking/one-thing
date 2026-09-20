@@ -51,31 +51,140 @@
  * 两态本来就是「同一段字的两个读法」,字面分两处写迟早分叉。
  */
 .thoughtPreview,
+.thoughtLine,
 .thoughtBlock {
+  /*
+   * 这一族的行高。**它是一格局部自定义属性,不是一个写两遍的数**(G 线 P1 审查
+   * 打回第 3 条):下面 `.thoughtPreview` 的 `block-size` 要按「字号 × 行高」算死
+   * 一行,从前那两处各写一个 `1.6`、靠注释提醒「必须一起改」—— 靠人记的约束迟早分叉。
+   *
+   * 它声明在**这条并列选择器**上,而 `.thoughtPreview` 是其中一员,所以那句 `calc`
+   * 与这格声明**落在同一个元素**上 —— 仓根 CLAUDE.md Dock ⑤ 那条判例说的正是这件事:
+   * 自定义属性里的 `var()` 在**声明那条 calc 的元素**上代入,不在读它的元素上;
+   * 隔着元素声明,代入的就是上一层那个值。
+   *
+   * 它是一个**倍数**不是长度,所以不进 tokens(与 `seat.ts` 的 `SEAT_MIN_LINES`
+   * 同一族):改它是在改「思考这一族的行距」,不是在改全局的字号梯。
+   */
+  --thought-lh: 1.6;
   /* UA 的 `margin-block: 1em`。清在这里,理由见 `.thought` 上面那段。
      块与块之间因此**零外边距** —— 它们是被流切开的同一段字,不是一串段落。 */
   margin-block: 0;
   font-size: var(--fs-meta);
   font-style: italic;
   /* 块自己带着自己的换行(pre-wrap 照排),所以拼起来与单段逐像素同形。 */
-  line-height: 1.6;
+  line-height: var(--thought-lh);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
+/*
+ * ── 收起态那一行:**高度钉死**,两个读法共用一个盒子(G 线 P1,2026-09-20)──────
+ *
+ * 正本 `docs/stream-geometry-2026-09.md` §1 的 G4:「落定那一帧几何上什么都不发生」。
+ * 流式期间这一行显示**最新一截**、落定之后换回**开头那一截** —— 两者字数不同、
+ * 对齐方式不同,所以「一行有多高」这件事**不许由内容说了算**:`block-size` 按
+ * 「字号 × 行高」算死一行,两态逐像素相同,换的只有字与那一格 `data-live`。
+ *
+ * 行高读上面那格 `--thought-lh`(同一个元素上声明的,判词写在那儿)——
+ * 从此没有「两处同一个数」这回事。
+ * `position: relative` 是给扫光那层 `::after` 的定位参考系。
+ */
 .thoughtPreview {
-  /*
-   * 收起 = 钳一行。用 line-clamp 而不是截字符串:钳在**排版**上做,换字号、
-   * 换窗宽都自动对;截字符串是在渲染前替浏览器猜一遍宽度,永远猜不准。
-   * 一行的省略号由 line-clamp 自己给。
-   * (装配层那一刀 240 字不是拿来当「一行」的 —— 它是给 DOM 封的顶,见 §4。)
-   */
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 1;
+  position: relative;
+  display: flex;
+  block-size: calc(var(--fs-meta) * var(--thought-lh));
   overflow: hidden;
   /* 收起态不可选中:它此刻是一行索引,不是一段可读的正文。 */
   user-select: none;
+}
+
+/*
+ * 那一行字自己。**`min-inline-size: 100%`** 是「短文本照常从左起」的全部实现:
+ * 文本短于一行时这个 span 被撑到整格宽,字从左边开始,两态长得一模一样。
+ *
+ * `white-space: nowrap`(盖掉继承来的 `pre-wrap`):这一格是**一行**,不许折行。
+ *
+ * ── 这里从前写的是 `pre`,那是一句**假话**(G 线 P1 审查打回第 1 条)───────────
+ * 注释当时写着「换行符照排但不许折行」—— `pre` 做不到后半句里暗示的那件事:
+ * 它只是**不自动**折行,`\n` 照样断行。而思考正文满是 `\n`,于是这 240 字在 span
+ * 里排成好几行,外面那一格钉死一行高 + `overflow: hidden`,屏幕上露出来的是
+ * **第一行**(流式那一档因此根本没在显示「最新一截」)。
+ * 治法在**装配层**:`assemble/text.ts` 的 `oneLine` 把连续空白折成一个空格。
+ * 折过之后这一行里再也没有换行符,所以这里只要说一句「不折行」就够,
+ * `nowrap` 比 `pre` 诚实 —— 它不再假装自己在「照排换行」。
+ *
+ * 落定态它**可收缩**(flex 的缺省):内容再长也被压回整格宽,于是它自己那一格
+ * `overflow: hidden` + `text-overflow: ellipsis` 给得出右端的省略号 ——
+ * 那正是换掉 `line-clamp: 1` 之后丢掉、折成一行之后还回来的那句「后面还有」。
+ * **不用 `-webkit-line-clamp`** —— 那一手要 `-webkit-box` 的私有盒模型,而这一行
+ * 现在是 flex(右端对齐那一档需要它)。
+ */
+.thoughtLine {
+  min-inline-size: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * ── 还在流:右端对齐、裁掉左边(G 线 P1)────────────────────────────────────
+ *
+ * 两句话一起才成立:
+ *  · `flex: none` —— **不许收缩**。收缩回整格宽就没有「溢出」可言,左边自然也就
+ *    没东西可裁(这是第一版写 `margin-inline-start: auto` 时栽的那一格:自动外边距
+ *    只吃**剩余**空间,而这里的剩余空间是负的,它当场解析成 0)。
+ *  · `justify-content: flex-end` —— 对齐是**不安全的**(CSS Box Alignment 的缺省
+ *    就是 unsafe):一项比容器宽时,溢出翻到 **start 边**去,正好被容器的
+ *    `overflow: hidden` 裁掉,而文本的**末尾**恰好贴着右边 —— 人读到的永远是它
+ *    此刻刚写出来的那几个字。
+ *
+ * **不用 `direction: rtl`**:那会把标点与中英混排段里的字符顺序一起翻掉(经典坑),
+ * 而这里要翻的只有「哪一头溢出」。
+ */
+.thoughtPreview[data-live] {
+  justify-content: flex-end;
+}
+
+.thoughtPreview[data-live] .thoughtLine {
+  flex: none;
+}
+
+/*
+ * 扫光:**与等待折痕是同一束光**(`--kf-seam-sweep` / `--dur-seam-sweep`)。
+ * 复用而不是新造一段关键帧 —— 它们说的是同一件事「这件事正在发生」,而
+ * `@keyframes` 的唯一产地是 `styles/motion.css`(动效执法第二条)。
+ * 束宽 38% 与那段关键帧的终点 265% 是**一对数**,判词在 `seam/Seam.module.css`。
+ */
+.thoughtPreview[data-live]::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: 38%;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.16;
+  pointer-events: none;
+  animation: var(--kf-seam-sweep) var(--dur-seam-sweep) var(--ease-soft) infinite alternate;
+}
+
+/*
+ * 不动的那两种情形,同一份降级:光束停下、摊平成一条均匀的淡光(不是消失 ——
+ * 「它还在想」这件事仍然要说得出来)。两条规则内容一模一样,因为 CSS 没法把媒体
+ * 查询与属性选择器并进同一个条件里(与 `.cursor` / 折痕基座同一手)。
+ */
+@media (prefers-reduced-motion: reduce) {
+  .thoughtPreview[data-live]::after {
+    animation: none;
+    inline-size: 100%;
+    opacity: 0.1;
+  }
+}
+
+:root[data-motion-tier='none'] .thoughtPreview[data-live]::after {
+  animation: none;
+  inline-size: 100%;
+  opacity: 0.1;
 }
 
 /* 展开态的正文可圈选(从前是 `.thoughtOpen .thoughtBody` 那条覆写;块只在展开态

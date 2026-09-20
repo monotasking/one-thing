@@ -42,14 +42,63 @@ export function textToFrame(id: string, text: string, live: boolean): TextFrame 
 }
 
 /**
+ * **折成一行**(G 线 P1 审查打回第 1 条,2026-09-20)。
+ *
+ * 收起态那一行是**一行**,而思考正文满是 `\n`。第一版把切片原样交出去、让 CSS 的
+ * `white-space: pre` 去排 —— 那一句**只管不自动折行,换行符照样断行**:240 字在
+ * span 里排成好几行,而外面那一格 `block-size` 钉死一行高 + `overflow: hidden`,
+ * 于是屏幕上露出来的是这 240 字里的**第一行**(流式那一档因此显示的根本不是
+ * 「最新一截」),横向右对齐对齐的也是最宽那一行。
+ *
+ * 所以「一行」这件事在**装配层**就要兑现:连续空白(含换行)折成一个空格,两端修掉。
+ * **只在 ≤240 的切片上做**,代价与历史长度无关(与 `textLatest` 同一条纪律)。
+ *
+ * 它顺带把另一件东西还了回来:落定那一档从前靠 `line-clamp: 1` 钳,有第二行时
+ * 自带省略号;换成单行之后 `text-overflow: ellipsis` 要求「这一行真的太长」才给,
+ * 折成一行正好让它重新说得出「后面还有」。
+ *
+ * **拼接不变量不受影响**:`blocks + tail` 逐字等于原文那一条只约束**展开态**
+ * (那一头一个字都没动),这里折的是收起态那一行**索引用**的字。
+ */
+function oneLine(text: string): string {
+  return text.replace(/\s+/g, ' ').trim()
+}
+
+/**
  * 预览取**第一块**的前 240 字;一块都还没冻出来(第一帧还没见过换行)时取活动尾 ——
  * 两者都是「这段文本最开头那 240 字」,只是它此刻存在哪儿。
  *
- * 不取「最新一行」:那是正本 §6 记着的那个拍点(流式中手动收起时显示开头还是最新),
- * 本单按缺省走开头。
+ * 它是**落定之后**那一行的字(2026-09-20 G 线 P1 起):流式期间收起态改显示
+ * `textLatest` 那一截,判词在它自己身上。**折成一行**的理由见 `oneLine`。
  */
 export function textPreview(blocks: readonly TextBlock[], tail: string): string {
-  return (blocks[0]?.text ?? tail).slice(0, PREVIEW_CHARS)
+  return oneLine((blocks[0]?.text ?? tail).slice(0, PREVIEW_CHARS))
+}
+
+/**
+ * **最新一截** —— 这段文本**末尾**那 ≤240 字(G 线 P1,正本
+ * `docs/stream-geometry-2026-09.md` §5.1)。
+ *
+ * 流式期间收起态那一行显示的就是它:人不展开也看得出「它此刻在说什么」,
+ * 而 DOM 里仍然只有 240 字(§5.1 表 ② 的「超量」那一格:6 万字思考,收起态
+ * DOM 仍只挂 ≤240 字)。
+ *
+ * ── 每帧代价与历史长度无关 ──────────────────────────────────────────────
+ * 这一句流式期间每帧都跑一遍,所以它**不许**把 `blocks` 拼起来再切尾 ——
+ * 那就是每帧按整段思考计价(正本 §0 量到的 71–136ms 同款账)。
+ * 活动尾自己封顶 `TAIL_LIMIT`(4,000 字),够 240 就在它里面切完;不够时
+ * 只往回看**最后一块**(`blocks[blocks.length - 1]`,一次下标),再不够就到此为止 ——
+ * 少几个字的代价是这一行左端少一截,而那一截本来就被裁掉了(见
+ * `SegmentView.module.css` 的 `.thoughtPreview[data-live]`:右端对齐、裁左边)。
+ *
+ * **折成一行**(判词在 `oneLine` 上):思考正文满是 `\n`,不折的话这一行在屏幕上
+ * 露出来的是这 240 字里的**第一行**,而不是末尾 —— 那正是审查打回的那个 bug。
+ * 折在切片之后做,所以代价仍然是 O(240)。
+ */
+export function textLatest(blocks: readonly TextBlock[], tail: string): string {
+  if (tail.length >= PREVIEW_CHARS) return oneLine(tail.slice(-PREVIEW_CHARS))
+  const last = blocks[blocks.length - 1]?.text ?? ''
+  return oneLine(`${last.slice(-(PREVIEW_CHARS - tail.length))}${tail}`)
 }
 
 /*

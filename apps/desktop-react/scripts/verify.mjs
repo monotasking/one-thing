@@ -390,6 +390,32 @@ run('gate:chat-layout(prod)', 'npm', ['run', '--silent', 'gate:chat-layout', '--
 run('gate:send-flow(dev)', 'npm', ['run', '--silent', 'gate:send-flow'])
 run('gate:send-flow(prod)', 'npm', ['run', '--silent', 'gate:send-flow', '--', '--prod'])
 /*
+ * ── 流式几何(G 线 P1,2026-09-20)──────────────────────────────────────────
+ * 正本 `apps/desktop-react/docs/stream-geometry-2026-09.md`(§1 五条不变式 /
+ * §5.3 预算表 / §7 施工账)。
+ *
+ * **它凭什么进得来**:七格判据里六格是**像素位置与结构** ——
+ *  · ① 首字那一帧列尾那一格的**位移**(≤1px);
+ *  · ② 整轮贴底期间同一格的**位移**与**方向反转次数**(≤1px / 0);
+ *  · ③ 收尾那 300ms 里视口内第一块在读的东西的**位移**(≤1px);
+ *  · ④ 思考段 live 期间与落定那一帧的**高度变化**(0);
+ *  · ⑤ 非用户动作造成的 `scrollHeight` **回缩次数**(0);
+ *  · ⑥ 上拨之后用户锚点的**位移**与「它还在不在 DOM 里」。
+ * 同一份代码跑一百遍是同一个答案,与 `gate:send-flow` / `gate:chat-follow` 同族。
+ * **唯一一格毫秒读数是长帧**(⑦,判 0),口径与 `gate:send-flow` ⑤ 逐字相同。
+ *
+ * **两档场景都不能摘**:正本 §0 末尾那句「`gate:send-flow` 为什么一直绿」说的就是
+ * 这件事 —— 那道门的超量夹具上面压着 400 条消息,`scrollTop` 钳不到,①(收尾自动折
+ * 把视口拉走)量不出来;**短会话里才全额暴露**。反过来超量那一档是长帧与回缩唯一
+ * 量得出差别的一档。
+ *
+ * **两档渲染层都跑**(第 5 轴那句话:用户跑的是 `electron:dev`)。它自己起窗、自己
+ * 收尸(结尾还有一段 `ps` 自查),走屏外档、不连 5175、不碰 `~/.onething`;
+ * 超量那一档的夹具是 50MB / 400 条,每一趟自己建一份临时 store。
+ */
+run('gate:stream-geometry(dev)', 'npm', ['run', '--silent', 'gate:stream-geometry'])
+run('gate:stream-geometry(prod)', 'npm', ['run', '--silent', 'gate:stream-geometry', '--', '--prod'])
+/*
  * gate:credentials 不在这里,理由与 gate:perf 不同:它**读的是这台机器上真实的
  * 生产 store**(要一份真的 safeStorage 密文才有得比),而 verify 必须在任何一台
  * checkout 上都能跑。它自己跑:`npm run gate:credentials`。

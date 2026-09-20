@@ -514,7 +514,7 @@ async function startSampler(page) {
       const stream = leaf.querySelector('[data-testid="chat-stream"]')
       const column = stream?.firstElementChild
       const kids = column?.children ?? []
-      for (let i = kids.length - 1; i >= 0 && i >= kids.length - 6; i -= 1) {
+      for (let i = kids.length - 1; i >= 0 && i >= kids.length - 7; i -= 1) {
         const el = kids[i]
         if (!el.hasAttribute('data-message-id')) continue
         if (el.getAttribute('data-role') === 'user') return null
@@ -550,9 +550,17 @@ async function startSampler(page) {
     const rect = (el) => {
       if (!el) return null
       const r = el.getBoundingClientRect()
-      return { top: r.top, bottom: r.bottom, height: r.height }
+      return { top: r.top, bottom: r.bottom, height: r.height, left: r.left, right: r.right }
     }
     const overlap = (a, b) => (a && b ? Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)) : 0)
+    /*
+     * **横向相交**(G 线 P1 加的第二把尺)。③ 那句「它们不是叠起来的两层」一个字
+     * 没变,变的是**它们排在哪个方向上**:等待那道线与读数行今天在**同一行**里
+     * 左右并排(尾槽那一格,判词在 `content/message/TailSlot.tsx`),所以纵向相交
+     * 对它们是**设计**不是病;真要守的是「别叠在一起」——那是横向的事。
+     * 折痕与思考段仍然在消息行里、与读数行上下排,那一对照旧量纵向。
+     */
+    const overlapX = (a, b) => (a && b ? Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) : 0)
     /*
      * **每帧的活儿必须是 O(1)**(09-10 判例「探针自伤」:量长帧的探针自己制造长帧)。
      * 400 条消息的树上,一次 `scroll.querySelector('[data-testid="chat-readout"]')`
@@ -587,7 +595,10 @@ async function startSampler(page) {
           hi = mid - 1
         } else lo = mid + 1
       }
-      return found && !found.hasAttribute('data-seat') ? found : null
+      /* 座位垫块与**尾槽**(G 线 P1 起列尾常驻的那一格)都是让出去的地,不是
+         「在读的东西」—— 扫到它们就说明这一层里视口上缘之下已经没有内容了。 */
+      if (!found || found.hasAttribute('data-seat') || found.hasAttribute('data-tail-slot')) return null
+      return found
     }
     /*
      * **往里钻到「块」,不停在「行」上**(09-15 真机纠正的第二处量法,与产品那一侧
@@ -623,9 +634,8 @@ async function startSampler(page) {
         let live = null // 这一轮的助手那一行(列尾,座位垫块之后往回数)
         let user = null // 这一轮自己那条气泡
         let ctxRow = null // 这一轮那道上下文更新折痕所在的行
-        let retryRow = null // 重试那一路:旧回答后面那道空折痕自己的一行
         let retiringRow = null // 正在上折的那条旧回答(`.rowRetiring`)
-        for (let i = kids.length - 1; i >= 0 && i >= kids.length - 6; i -= 1) {
+        for (let i = kids.length - 1; i >= 0 && i >= kids.length - 7; i -= 1) {
           const el = kids[i]
           if (el.hasAttribute('data-seat')) continue
           /*
@@ -638,18 +648,29 @@ async function startSampler(page) {
             retiringRow = el
           }
           if (!ctxRow && el.hasAttribute('data-context-of')) ctxRow = el
-          if (!retryRow && el.hasAttribute('data-retry-of')) retryRow = el
           if (!user && el.getAttribute('data-role') === 'user') user = el
           if (!live && el.hasAttribute('data-message-id') && el.getAttribute('data-role') !== 'user') live = el
         }
-        const readout = rect(live?.querySelector('[data-testid="chat-readout"]') ?? null)
         /*
-         * 折痕有两个住处,都要看:常态住在那条活消息里;**重试那一路自己一行**
-         * (`data-retry-of`)—— 它不许画在正在上折的那一行里(那一行 `height: 0` +
-         * `overflow: clip`,画进去屏幕上就看不见了),所以探针也不能只在那一行里找。
+         * **读数行住在列尾那一格尾槽里**(G 线 P1,2026-09-20)。它从前长在活消息行
+         * 的末尾、跟着正文下缘走 —— 正本 `docs/stream-geometry-2026-09.md` §0 的病 ④:
+         * 首字那一帧被推下 52–158px,长思考那一轮全程动 303 次、单帧最大 335px。
+         * 今天它与那枚呼吸光标同格同高、只换 opacity,所以这一句从「在那条助手行里找」
+         * 改成「在列尾那一格里找」。③ 那条「读数行与折痕 / 思考段从不相交」因此变成
+         * 一条**结构上**恒真的话(它们连父节点都不同了)—— 留着它当回归闸。
          */
-        const waiting = (live?.querySelector('[data-testid="waiting-seam"]')
-          ?? retryRow?.querySelector('[data-testid="waiting-seam"]')) ?? null
+        const tailSlot = column.querySelector(':scope > [data-tail-slot]')
+        const readout = rect(tailSlot?.querySelector('[data-testid="chat-readout"]') ?? null)
+        /*
+         * **等待那道折痕也住在尾槽里**(同上)。它从前有两个住处(活消息行的头部、
+         * 重试那一路自己那一行 `data-retry-of`),两处都随 G 线 P1 退役 ——
+         * `retrySeamRow` 连同那条属性一起删了,因为「这一轮在等第一个字」今天只画一处。
+         * 判据也跟着换:两张脸**都挂载着**(那正是「同格同高」的意思),所以问的是
+         * **它那张脸亮没亮**(`data-face="wait"`),不是「它在不在树上」——
+         * 拿挂载当形态读,今天会说谎。
+         */
+        const waitingOn = tailSlot?.getAttribute('data-face') === 'wait'
+        const waiting = waitingOn ? tailSlot.querySelector('[data-testid="waiting-seam"]') : null
         /*
          * 上下文更新折痕住在**用户那一行与助手那一行之间**的独立一行上 —— 要的是
          * **这一轮那一道**,所以同样从列尾往回找(上面那个循环顺手收下 `ctxRow`)。
@@ -660,7 +681,16 @@ async function startSampler(page) {
         const seam = ctxRow?.querySelector('[data-testid="context-delta-seam"]') ?? null
         const seamRunning = seam?.getAttribute('data-state') === 'running'
         const thought = rect(live?.querySelector('[data-testid="chat-thought"]') ?? null)
-        const seat = kids[kids.length - 1]?.hasAttribute('data-seat') ? kids[kids.length - 1] : null
+        /*
+         * 座位垫块。**G 线 P1 起它不再是列的最后一格** —— 尾槽(`data-tail-slot`,
+         * 整列末尾常驻的那一格读数 / 光标 / 等待线)排在它后面,判词在正本
+         * `docs/stream-geometry-2026-09.md` §3.1。所以这里从列尾**往回找**它,
+         * 而不是认死「最后一格」(认死那一句今天会把尾槽当成座位,量出来恒是 null)。
+         */
+        let seat = null
+        for (let i = kids.length - 1; i >= 0 && i >= kids.length - 3; i -= 1) {
+          if (kids[i].hasAttribute('data-seat')) { seat = kids[i]; break }
+        }
         const anchor = rect(anchorOf(scroll, kids))
         let created = 0
         let removed = 0
@@ -697,13 +727,25 @@ async function startSampler(page) {
            */
           waiting: Boolean(waiting) || Boolean(seamRunning),
           // ③ 读数行与折痕 / 思考段相交了多少(它们是前后排的两行,该恒为 0)
+          /*
+           * ③ 两把尺(判词在 `overlapX` 上):
+           *  · 等待那道线与读数行同一行左右并排 → **横向**不许相交;
+           *  · 折痕 / 思考段与读数行上下排(前者在消息行里,后者在列尾那一格)
+           *    → **纵向**不许相交,这一句与 09-15 立它时逐字相同。
+           */
           overlap: Math.max(
-            overlap(readout, rect(waiting)),
+            overlapX(readout, rect(waiting)),
             overlap(readout, rect(seam)),
             overlap(readout, thought),
           ),
           seat: seat ? seat.getBoundingClientRect().height : null,
-          streaming: Boolean(live?.querySelector('[data-testid="chat-stop"]')),
+          /*
+           * **「这一轮在跑」问的是尾槽那一格,不是那条助手行**(G 线 P1)。
+           * 停止钮随读数行一起搬进了列尾那一格;还在那条助手行里问的话,
+           * 这一格恒为 false —— 整门的收尾窗当场变成 0 帧,而那一族断言里
+           * 「收尾那一帧采到了」正是为这种情形立的(§9.2 最后一条)。
+           */
+          streaming: Boolean(tailSlot?.querySelector('[data-testid="chat-stop"]')),
         }
         window.__seatFrames.push(frame)
         if (captureSettled) {
@@ -711,7 +753,7 @@ async function startSampler(page) {
           setTimeout(() => {
             frame.afterTask = {
               t: performance.now(), st: scroll.scrollTop, sh: scroll.scrollHeight,
-              readout: rect(live?.querySelector('[data-testid="chat-readout"]') ?? null),
+              readout: rect(column.querySelector(':scope > [data-tail-slot] [data-testid="chat-readout"]') ?? null),
               translate: live?.style.translate,
             }
           }, 0)

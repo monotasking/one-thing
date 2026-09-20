@@ -257,6 +257,11 @@ export type SegmentModel =
    * `preview` 是收起时唯一挂载的那点字(前 240)。它进模型而不是渲染层现切,是因为
    * 「收起时挂什么」是这一段的事实:正本 §0 量到停靠池里 175 段旧思考共 104 万字,
    * 收起态若挂全文,那 104 万字就一直在 DOM 里。
+   *
+   * `latest` 是**同一条理由的第二格**(G 线 P1,2026-09-20):流式期间收起态那一行
+   * 显示的是**末尾**那 240 字(`textLatest`),落定之后换回 `preview`。两格都在模型里,
+   * 因为「收起时挂什么」在这两种时刻是两个不同的事实,而渲染层不许拿 6 万字的串现切
+   * (判词在 `assemble/text.ts` 的 `textLatest` 上)。
    */
   | {
       kind: 'thinking'
@@ -264,6 +269,7 @@ export type SegmentModel =
       tail: string
       live: boolean
       preview: string
+      latest: string
     }
   /**
    * markdown 解析的产物。

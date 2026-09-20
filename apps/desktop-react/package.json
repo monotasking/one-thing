@@ -19,6 +19,7 @@
     "gate:chat": "node scripts/gate-chat.mjs",
     "gate:chat-follow": "node scripts/gate-chat-follow.mjs",
     "gate:send-flow": "node scripts/gate-send-flow.mjs",
+    "gate:stream-geometry": "node scripts/gate-stream-geometry.mjs",
     "gate:composer-drawer": "node scripts/gate-composer-drawer.mjs",
     "gate:composer-send": "node scripts/gate-composer-send.mjs",
     "gate:composer-leaf": "node scripts/gate-composer-leaf.mjs",

@@ -54,7 +54,7 @@ export interface ComposerSink {
    * 只知道有个地方能收下**一个动作**,不知道那边有个折叠器。没在跑时是恒等 ——
    * 判「在不在跑」的是下面那只 hook,不是这个组件。
    *
-   * 停哪一条也由调用方说:消息流里那颗停止键(`content/message/StreamReadout`)
+   * 停哪一条也由调用方说:消息流里那颗停止键(`content/message/TailSlot` 里那一行读数)
    * 停的是**它自己那条会话**,与它所在那片叶的输入框按的是同一条。
    */
   abort(sessionId: string): void

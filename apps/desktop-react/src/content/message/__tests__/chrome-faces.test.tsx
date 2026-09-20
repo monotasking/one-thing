@@ -6,12 +6,19 @@ import { render, screen } from '@testing-library/react'
 import { MessageChrome } from '../MessageChrome'
 
 /**
- * **三张脸同格同高**(单 B ⑤,正本 `docs/send-flow-2026-09.md` §2 规矩 ⑤)。
+ * **脸同格同高**(单 B ⑤ 立,正本 `docs/send-flow-2026-09.md` §2 规矩 ⑤;
+ * 2026-09-20 G 线 P1 把读数那张脸搬去了尾槽,这一格只剩动作行一张)。
  *
- * 值得进 jsdom 的只有**结构**:两张脸在不在同一格、暗的那张点不动念不到、
+ * 值得进 jsdom 的只有**结构**:脸在不在同一格、暗的那张点不动念不到、
  * 样式表里那一格是不是 grid。**高度相等是排版**,jsdom 不排版 —— 那一半由真机门
  * 量(`gate:send-flow` 的 ②b:换手之后气泡全程不动,最远 ≤ 1px;单 B ⑤ 之前
  * 那里是 12.0px 一帧)。
+ *
+ * ── 旧断言去哪了 ──────────────────────────────────────────────────────────
+ * 「流式中读数在前、动作那张 inert」那一条里的**读数那一半**迁去了
+ * `message/__tests__/tail-slot.test.tsx`(它今天住在尾槽里);**动作那一半**原样
+ * 留在下面第一条。`data-face` 的词也跟着改:流式中不再是 `readout`(那张脸不在
+ * 这一格里了),是 `none`。
  */
 
 const css = readFileSync(
@@ -19,17 +26,14 @@ const css = readFileSync(
   'utf-8',
 ).replace(/\/\*[\s\S]*?\*\//g, '')
 
-describe('两张脸,一格', () => {
-  it('流式中:读数在前,动作那张在场但 inert', () => {
-    render(
-      <MessageChrome streaming readout={<div data-testid="r" />} actions={<div data-testid="a" />} />,
-    )
-    expect(screen.getByTestId('chat-chrome').getAttribute('data-face')).toBe('readout')
-    expect(screen.getByTestId('r').closest('[inert]')).toBeNull()
+describe('脸,一格', () => {
+  it('流式中:动作那张在场但 inert(这一刻「重试」还不是它的动作)', () => {
+    render(<MessageChrome streaming actions={<div data-testid="a" />} />)
+    expect(screen.getByTestId('chat-chrome').getAttribute('data-face')).toBe('none')
     expect(screen.getByTestId('a').closest('[inert]')).toBeTruthy()
   })
 
-  it('收尾后:动作在前,读数那张由调用方卸掉(它带着一只 100ms 的表)', () => {
+  it('收尾后:动作在前', () => {
     render(<MessageChrome streaming={false} actions={<div data-testid="a" />} />)
     expect(screen.getByTestId('chat-chrome').getAttribute('data-face')).toBe('actions')
     expect(screen.getByTestId('a').closest('[inert]')).toBeNull()
