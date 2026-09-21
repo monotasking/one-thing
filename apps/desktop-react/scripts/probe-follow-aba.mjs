@@ -313,6 +313,27 @@ async function runLane(name, enabled) {
 }
 
 async function main() {
+  /*
+   * ── 已退役(G 线 P2-a,2026-09-21;判词在正本
+   *    `docs/stream-geometry-2026-09.md` §13.1.4 ⑤)────────────────────────────
+   * 这只探针的 B 档拆的是 **`snapTail`**(`runLane` 里那条 vite transform 要求
+   * `ChatStream.tsx` 里恰好有一句 `    snapTail(el)`),而 `snapTail` 与
+   * `src/content/tail-snap.ts` 在 **G 线 P1h 整件删除**(正本 §12.6)。
+   * 于是 B 档没有可跳过的东西,A1/B/A2 三档跑出来是同一件事 —— 那句
+   * `Expected exactly one snapTail call` 会当场抛。
+   *
+   * 留着它是因为 `installSampler` / `summarize` 仍是 P1 那批读数的产地
+   * (`probe-follow-recorded.mjs` 就 import 它们),而且它们被 export 出去了,
+   * 这道闸只挡 `main()`,不挡 import。真要拿它量新东西:先把 A/B 的拆点换成
+   * 今天还在的那一句,并把这段注一起改掉。
+   */
+  console.error(
+    '[probe-follow-aba] 已退役:B 档拆的 `snapTail` 与 `src/content/tail-snap.ts`\n'
+    + '  在 G 线 P1h 整件删除(正本 docs/stream-geometry-2026-09.md §12.6),B 档无物可拆。\n'
+    + '  取样体仍可 import;要量新东西先换 A/B 的拆点再改这段判词。',
+  )
+  process.exit(2)
+  /* eslint-disable no-unreachable */
   for (const p of ['dist/server/main.js', 'apps/desktop-react/dist-electron/main.cjs']) {
     if (!existsSync(path.join(repoRoot,p))) throw new Error(`Missing ${p}`)
   }

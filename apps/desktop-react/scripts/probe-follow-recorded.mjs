@@ -2,6 +2,19 @@
  * Replay recorded UI events with historical messages in an isolated renderer.
  * No recorded command or tool is executed. Original store is read-only.
  * node scripts/probe-follow-recorded.mjs --label=recorded-A [--no-snap]
+ *
+ * ── 已退役(G 线 P2-a,2026-09-21;判词在正本 `docs/stream-geometry-2026-09.md`
+ *    §13.1.4 ⑤)────────────────────────────────────────────────────────────
+ * 这只探针的 A/B 拆的是 **`snapTail`**(B 档把那一句跳过去),而 `snapTail` 与
+ * `src/content/tail-snap.ts` 在 **G 线 P1h 整件删除**(正本 §12.6)。于是:
+ *  · 第 85 行那句 `readFileSync('src/content/tail-snap.ts')` 会当场 ENOENT 崩;
+ *  · 就算把它删掉,`--before-fix` 那条 transform 与
+ *    `code.split('    snapTail(el)')` 也再找不到要替换的那一句。
+ * **B 档没有可跳过的东西了,这只探针在结构上就跑不起来。** 留着它是因为它的
+ * 取样体(`installSampler` / `summarize`)仍是 P1 那批读数的产地,正本 §9–§12
+ * 引的每一个数都从这里来 —— 删掉等于把病历一起烧了。
+ * 所以它**明说自己退役并当场停手**,而不是拿一个崩掉的 ENOENT 假装还活着。
+ * 真要拿它量新东西:先把 A/B 的拆点换成今天还在的那一句,并在这段注上改判词。
  */
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -76,13 +89,20 @@ function makeReplay(events, start) {
 }
 
 async function main() {
+  // 退役闸(见文件头):A/B 的拆点 `snapTail` 已经不在,再往下跑只会 ENOENT 崩。
+  console.error(
+    '[probe-follow-recorded] 已退役:A/B 拆的是 `snapTail`,而它与 `src/content/tail-snap.ts`\n'
+    + '  在 G 线 P1h 整件删除(正本 docs/stream-geometry-2026-09.md §12.6)。\n'
+    + '  取样体(installSampler / summarize)仍在,要量新东西先换 A/B 的拆点再改文件头判词。',
+  )
+  process.exit(2)
+  /* eslint-disable no-unreachable */
   mkdirSync(outDir, { recursive: true })
   const raw = readFileSync(path.join(original,'events.jsonl'),'utf8')
   const hash = createHash('sha256').update(raw).digest('hex')
   const rendererHash = createHash('sha256')
     .update(readFileSync(sourcePath))
     .update(readFileSync(path.join(appRoot, 'src/content/ChatStream.module.css')))
-    .update(readFileSync(path.join(appRoot, 'src/content/tail-snap.ts')))
     .digest('hex')
   const events = raw.trim().split('\n').map(x => JSON.parse(x))
   const start = events.find(e => e.type === 'run/start' && e.data.assistantMessageId === messageId)
