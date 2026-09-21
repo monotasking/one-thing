@@ -543,7 +543,19 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
           */}
         <FoldIntentContext.Provider value={noteFold}>
         <>
-        <div {...scopeProps} className={s.scroll} onScroll={onScrollWithFollow} data-testid="chat-stream">
+        {/*
+          * `data-follow` 是**跟随状态机的一格自述**(P1c,2026-09-21):列尾那一格
+          * 只在 `pinned` 时由合成器钉在滚动口底边(判词在 `TailSlot.module.css`
+          * 的 `.slot` 上)。人往上翻历史时它必须回到普通流里 —— 否则它会浮在屏底
+          * 盖住正文,那是另一个产品决定,这一单不做。
+          */}
+        <div
+          {...scopeProps}
+          className={s.scroll}
+          onScroll={onScrollWithFollow}
+          data-testid="chat-stream"
+          data-follow={follow.mode}
+        >
           <div className={s.column}>
             {/* 三种空态各说各话,一种都不回退到假数据(与 D1 同一条纪律)。 */}
             {!sessionId && <p className={s.empty}>{t('chat.noSession')}</p>}
