@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { EXPAND_HOLD_MS, currentMotionTier, sendLandMs } from '../../components/motion'
 import { FOLLOW_PINNED, type FollowState } from '../follow'
+import type { UserToggle } from '../geometry-report'
 import { usePanelVisibility } from '../visibility'
 import { ViewportAnchor } from './anchor'
 import type { ScrollPort } from './scroll-port'
@@ -39,6 +40,7 @@ export function useViewportAnchor(options: {
   onScrollWithFollow: () => void
   noteUserExpand: () => void
   noteFold: (ms: number) => void
+  reportUserToggle: (change: UserToggle) => boolean
   seatActive: boolean
 } {
   const { scrollRef, port, sessionId, messageCount, sentTick, lastDeltaAt, activeMessageId, retryingId, onScroll } =
@@ -233,6 +235,33 @@ export function useViewportAnchor(options: {
   const jumpToBottom = useCallback(() => anchor.jumpToBottom(), [anchor])
   const noteUserExpand = useCallback(() => anchor.noteUserExpand(), [anchor])
   const noteFold = useCallback((ms: number) => anchor.noteFold(ms), [anchor])
+  /*
+   * ── 人亲手开合了一块东西(G 线 P2-b,`content/geometry-report.ts`)─────────
+   *
+   * **量在这儿,不在裁决层**:那一层零 DOM(`FakeScrollPort` 就能把整张裁决表
+   * 逐格测到),而薄 hook 本来就是 React 与 DOM 这一侧。
+   *
+   * **一次点击只逼一次排版**:三格(收缩上界 / 钉住的位置 / 接下来再问它)全从
+   * 同一次 `getBoundingClientRect()` 来。这一读跑在**什么都还没变**的干净排版上,
+   * 所以它不会触发那次钳位 —— 会钳的是垫块到位**之前**的收缩,而那是下一拍的事。
+   *
+   * 身份恒定(依赖只有 `anchor`):它一路传到折痕 / 思考段 / 工具卡上,身份一变
+   * 那几层的 memo 就白短路了(与 `noteUserExpand` 同一条判词)。
+   */
+  const reportUserToggle = useCallback((change: UserToggle) => {
+    const el = change.el
+    let block
+    if (el) {
+      const rect = el.getBoundingClientRect()
+      block = {
+        height: rect.height,
+        top: rect.top,
+        anchor: { alive: () => el.isConnected, top: () => el.getBoundingClientRect().top },
+      }
+    }
+    anchor.reportUserToggle({ open: change.open, durationMs: change.durationMs, block })
+    return change.open
+  }, [anchor])
   const onScrollWithFollow = useCallback(() => {
     // 容器不在手时**只重排那一发去抖**,判档那一段跳过 —— 与今天那句
     // `const el = scrollRef?.current; if (el) { … }` 之后照旧调
@@ -256,5 +285,13 @@ export function useViewportAnchor(options: {
     if (came) anchor.noteUnpark()
   }, [visible, anchor])
 
-  return { follow, jumpToBottom, onScrollWithFollow, noteUserExpand, noteFold, seatActive }
+  return {
+    follow,
+    jumpToBottom,
+    onScrollWithFollow,
+    noteUserExpand,
+    noteFold,
+    reportUserToggle,
+    seatActive,
+  }
 }

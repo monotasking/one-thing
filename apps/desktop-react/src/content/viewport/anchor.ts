@@ -17,7 +17,7 @@ import { EntryRestore } from './entry-restore'
 import { IntentWindow } from './intent-window'
 import { Slide } from './slide'
 import { TailPad } from './tail-pad'
-import type { ResizeBatch, ScrollPort } from './scroll-port'
+import type { AnchoredElement, ResizeBatch, ScrollPort } from './scroll-port'
 
 /**
  * **视口锚定器**(G 线 P2-a,正本 `docs/stream-geometry-2026-09.md` §13.2.3)——
@@ -253,6 +253,42 @@ export class ViewportAnchor {
   }
 
   /**
+   * ── **人亲手开合了一块东西**(G 线 P2-b;`content/geometry-report.ts` 那条通道)──
+   *
+   * 这是 §13.2.2 裁决表里 `user-toggle` 那一行,今天只接这一格 cause:
+   *  · `open === false`(收起,`deltaH < 0`)—— **先 `absorb` 再 `pin('reported')`**:
+   *    同步把垫块加长到「缩完之后 `scrollTop` 仍然合法」的高度(页面总高不变,G1),
+   *    再把**被点的那一块**钉成接下来这一段的锚(它的顶边不许动,§1 推论二)。
+   *  · `open === true`(展开)—— **今天的行为一格不改**:`expand-intent` 的按兵不动。
+   *    不走折叠那一支的理由写在正本 §15.2:那一支整段早退、不派 `scrolled`,
+   *    而展开那一支要靠 `scrolled` 把跟随档按「此刻离底多远」重判;换过去的话
+   *    窗口一过 `stick()` 就把人拽到底。
+   *
+   * **它是同步的,而且跑在 React 提交之前**(调用点是事件处理函数)——「收缩先申请、
+   * 后执行」因此不靠注释:`ui/flip-height` 那一读(`el.offsetHeight`,逼一次排版)
+   * 排在提交里的 layout effect 上,一定晚于这里。
+   *
+   * **零 DOM**:`block` 已经被薄 hook 收成纯数字 + 两个问句(`AnchoredElement`)。
+   */
+  reportUserToggle(change: UserToggleReport): void {
+    const now = this.#now()
+    if (change.open) {
+      // 收到一半又展开:**后到的那一句说了算**(判词在 `IntentWindow.clearFold`)。
+      this.#intents.clearFold()
+      this.#intents.noteExpand(now, this.#expandHoldMs)
+      return
+    }
+    const block = change.block
+    // `block.height` 是上界(那一块此刻多高),过让的那一截由 `relax` 自己收回去。
+    if (block) this.#pad.requestAbsorb(block.height)
+    this.#intents.noteFold(
+      now,
+      change.durationMs + this.#foldSlackMs,
+      block ? { anchor: block.anchor, top: block.top } : undefined,
+    )
+  }
+
+  /**
    * **宿主说这一份刚被拿回来**。它**一格几何都不读**,只立一格待办 —— 真正的对位
    * 由 `onResize` 顺手做掉(RO 的回调跑在排版之后,那里读几何不逼第二次排版;
    * 第一版在这一拍当场读,真机上是一次 400 行 / 115,207px 的强制排版)。
@@ -280,6 +316,12 @@ export class ViewportAnchor {
       // gap 会变的三条路之一(另两条是进场落定与 RO)—— 基准跟着走,
       // 否则「往上翻两屏」会被下一次 RO 读成一次「下面长出了东西」。
       this.#lastGap = gap
+      /*
+       * **人往上滚,垫块跟着缩**(G 线 P2-b,§15.1 那张表的第二行)。缩的永远是
+       * 视口下方看不见的那一截:人往上滚多少,需要的就少多少,于是屏上零位移。
+       * 只记账、排下一帧写 —— 这里是滚动回调,当场改布局会与惯性滚动打架。
+       */
+      this.#pad.relax(gap)
       const { previousTop, top } = this.#port.noteScrolled()
       /*
        * 第一次(这次挂载里还没量过)按老办法交给状态机 —— 没有「上一次」可比,
@@ -412,6 +454,13 @@ export class ViewportAnchor {
      * **丸**;贴底那一半一个字没动(pinned 时任何长高都跟)。
      */
     const gap = port.gapNow()
+    /*
+     * **内容又长出来,先吃垫块**(G 线 P2-b,§15.1 那张表的第三行)。长高让 gap
+     * 变大 → 需要垫的变少 → 垫块缩掉同样多 → `scrollHeight` 一格不变,视口一像素
+     * 不动。所以下面那条「座位没吃光就不贴底」的判据对吸收那一半照样成立
+     * (`pad.written > 0`),而垫块吃光之后跟底自己接回去。
+     */
+    this.#pad.relax(gap)
     const grewBelow = gap - this.#lastGap > AT_BOTTOM_EPS
     /*
      * ── 人自己点开的东西还在长:位置一动不动(2026-09-12 报障二的「位」)──────
@@ -470,6 +519,12 @@ export class ViewportAnchor {
   landOnSendLine(): void {
     // 这一轮先当作「没落过」——下面每一条早退都让座位留在 0 上(判词在 `TailPad.landed`)。
     this.#pad.landed = false
+    /*
+     * **下一次发送把吸收的那一半归零**(§2 拍点 3 的后半句:空白留到用户滚动或
+     * 下一次发送再释放)。排在所有早退**之前** —— 人在上面翻着的时候发送同样算
+     * 一次发送,那一格空白没有理由跨轮活着。
+     */
+    this.#pad.releaseAbsorbed()
     // 停靠中 / jsdom:没有排版,量出来的一切都是 0(与贴底同一把尺子)。
     if (!this.#port.hasLayout()) return
     /*
@@ -561,6 +616,29 @@ export class ViewportAnchor {
     this.#pad.measure()
     this.#pad.flushNow()
   }
+}
+
+/**
+ * **被点的那一块,收成裁决层认得的样子**(零 DOM:纯数字 + 两个问句)。
+ *
+ * 三格各有各的读者:`height` 是收缩申请的上界,`top` 是这一段钉住的那个位置
+ * (报的那一刻读的),`anchor` 是接下来每一帧再问一次「你现在在哪 / 你还在吗」。
+ * 三格全从**同一次** `getBoundingClientRect()` 来 —— 一次点击只逼一次排版。
+ */
+export interface ReportedBlock {
+  readonly height: number
+  readonly top: number
+  readonly anchor: AnchoredElement
+}
+
+/** 人亲手开合了一块东西(`ViewportAnchor.reportUserToggle` 的入参)。 */
+export interface UserToggleReport {
+  /** 这一下之后它是开着还是合着。 */
+  readonly open: boolean
+  /** 接下来那段过渡有多长(ms);0 = 当拍到位(折痕、动效档「无」)。 */
+  readonly durationMs: number
+  /** 被点的那一块。拿不到(样例页 / 单测 / 没有元素)就只当一句「人动了手」。 */
+  readonly block?: ReportedBlock
 }
 
 export interface ViewportAnchorOptions {

@@ -45,9 +45,16 @@ export class IntentWindow {
     this.#expandUntil = now + ms
   }
 
-  /** 「我这一块开始往回折了,接下来这么久请钉住视口」。`ms` 已含余量。 */
-  noteFold(now: number, ms: number): void {
-    this.#fold = { until: now + ms }
+  /**
+   * 「我这一块开始往回折了,接下来这么久请钉住视口」。`ms` 已含余量。
+   *
+   * **`pinned` 在场 = 锚在报的那一刻就选定**(G 线 P2-b,§13.6 第 2 条):报的人
+   * 点得出「被点的是哪一块」,它的顶边就是接下来每一帧要按回去的那个位置。
+   * 缺席 = 退回今天那条路(第一帧在 RO 回调里 `pickFoldAnchor()` 现选,晚一拍)
+   * —— 重试那一路(`ChatStream` 的 `MessageRow`)仍然走它,它没有「被点的那一块」。
+   */
+  noteFold(now: number, ms: number, pinned?: { anchor: AnchoredElement; top: number }): void {
+    this.#fold = { until: now + ms, anchor: pinned?.anchor, top: pinned?.top }
   }
 
   /**
@@ -59,6 +66,17 @@ export class IntentWindow {
    */
   clearExpand(): void {
     this.#expandUntil = 0
+  }
+
+  /**
+   * 撤掉折叠那一格(G 线 P2-b)。
+   *
+   * 唯一的调用点是「收到一半又展开」:折叠那一支排在展开那一支**前面**且整段早退
+   * (不派 `scrolled`),不撤的话这一下展开会被当成还在折 —— 窗口一过 `stick()`
+   * 就把人拽到底。**后到的那一句说了算**。
+   */
+  clearFold(): void {
+    this.#fold = undefined
   }
 
   /** 此刻还在展开窗里吗(今天那句 `performance.now() < holdUntilRef.current`)。 */

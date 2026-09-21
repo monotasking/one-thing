@@ -22,11 +22,27 @@ import type { ScrollPort } from './scroll-port'
  *    (= 这次进场之后自己发过话)。垫块本身照旧挂着:它是一个高度为 0 的空 div,
  *    而**留着它**意味着下一次发送由同一个节点原位接管,上面那些旧内容一像素不动。
  *
- * ── `#absorbed` 是 P2-b 的空位,这一期**不接线** ──────────────────────────
- * §13.2.4 把垫块的高定义成 `max(座位所需, 此刻还需要垫多高)`,后一半是「用户手动
- * 收起一块东西时把缩掉的高吸收掉,页面总高不变(G1)」。P2-a 的自述是抽件不改
- * 行为,所以这里只留一格 0 与一条 `height` 的式子 —— 今天 `Math.max(x, 0) === x`,
- * 与搬迁之前逐字相同。
+ * ── `#absorbed`:**此刻还需要垫多高**(G 线 P2-b 接线,§13.6 第 1 条)────────
+ * 垫块的高是 `max(座位所需, 已吸收的回缩)`,后一半治的是「贴底时手动收起一块东西,
+ * 屏上其余内容往下掉一截」:页面总高一缩,浏览器当场钳 `scrollTop`(§0 ①,849–15054px)。
+ *
+ * **它不是一个累加器,是一个算出来的量**(§13.6 第 1 条推翻了 §13.2.4 的全额累加):
+ *   `needed = 视口下缘 − 内容下缘 = 已写的高 − gap`
+ * (`gap = scrollHeight − clientHeight − scrollTop`,而 `scrollHeight` 里含着垫块
+ * 自己,两式一减就把垫块抵掉了)—— 即「为了让**当前** `scrollTop` 仍然合法,列尾
+ * 最少还要垫多高」。申请那一刻内容还没缩,所以把要缩的那个数加进去做投影:
+ *   `required = max(0, 已写的高 − gap + shrinkPx)`
+ * 之后**只减不增**(`relax`):人往上滚 / 内容又长出来,需要的都变少,跟着缩 ——
+ * 缩的永远是视口下方那一截,所以不会钳位。下一次发送归零。
+ *
+ * **夹在 `clientHeight`**:垫块撑出来的空白**等于** `needed`(它就是「视口下缘减
+ * 内容下缘」),所以一屏是它的天花板;要垫得比一屏还多,说的是「被收起的那一块比
+ * 整个视口还高」,那时按住它的顶边等于让整屏变空,物理上没有更好的答案。
+ *
+ * ── 写口仍然只有一个(§13.1.5 乙)────────────────────────────────────────
+ * 两个量各只改自己那一格然后排一帧,**`flushNow()` 是唯一算高、唯一写 style 的地方**。
+ * 所以「两个产地算出两个数」那条隐患不成立:数只有一个,在写口那一句现算,
+ * 那格同值短路照旧成立。
  *
  * **零 DOM**:量与写都经 `ScrollPort`,所以 vitest 里喂一只 `FakeScrollPort`
  * 就能把三道闸与那格同值短路逐格测到。
@@ -39,7 +55,7 @@ export class TailPad {
   #written: number | undefined = undefined
   #landed = false
   #active = false
-  /** P2-b 的空位:本轮已吸收的回缩。今天恒 0,没有生产者。 */
+  /** 此刻还需要为「已吸收的回缩」垫多高(判词在文件头)。只减不增,发送归零。 */
   #absorbed = 0
 
   constructor(port: ScrollPort) {
@@ -70,9 +86,63 @@ export class TailPad {
     return this.#written
   }
 
-  /** 此刻该多高。P2-b 之后它是两个量的大的那个,今天就是座位那一半。 */
+  /** 此刻该多高 —— 两个量里大的那个。**这一句是唯一算高的地方**(见文件头)。 */
   get height(): number {
     return Math.max(this.#wanted, this.#absorbed)
+  }
+
+  /** 此刻为「已吸收的回缩」垫着多高。单测与门的读面。 */
+  get absorbed(): number {
+    return this.#absorbed
+  }
+
+  /**
+   * **申请吸收 `shrinkPx` 的回缩**(G2 的前半段;`shrinkPx` 正数,是**上界** ——
+   * 报的人给的是「这一块此刻多高」,收起之后它还剩一行)。
+   *
+   * 同步把垫块加长**并当场写到位**,返回之后调用方才可以让那一块真的缩。
+   * 返回真的多垫了多少:够高了(或停靠中量不到几何)答 0。
+   *
+   * **过让是自愈的**:多垫的那一截让 gap 变大,下一批尺寸变化里 `relax` 自己把它
+   * 减掉 —— 不是一段留在屏上的空白。
+   */
+  requestAbsorb(shrinkPx: number): number {
+    if (!(shrinkPx > 0)) return 0
+    const m = this.#port.measure()
+    // 停靠中(`clientHeight === 0`)一切读写恒等 —— 与三道闸同一把尺子。
+    if (!m) return 0
+    const required = Math.max(0, (this.#written ?? 0) - m.gap + shrinkPx)
+    const next = Math.min(required, m.clientHeight)
+    if (next <= this.#absorbed) return 0
+    const gained = next - this.#absorbed
+    this.#absorbed = next
+    this.flushNow()
+    return gained
+  }
+
+  /**
+   * **只减不增**:按「此刻还需要多少」往下收(`needed = 已写的高 − gap`)。
+   *
+   * 两条路都到这儿:人往上滚(gap 变大)、内容又长出来(`tail-growth`,同样让
+   * gap 变大 —— 于是「新内容先吃垫块」,视口一像素不动)。缩的永远是**视口下方
+   * 看不见的那一截**,所以不会钳位。
+   *
+   * **只记账、只排一帧,不当场写 style**:它的调用点在观察器回调与滚动回调里,
+   * 「观察器回调只读不写」那条法禁的就是在那里改布局。
+   */
+  relax(gap: number): void {
+    if (this.#absorbed <= 0) return
+    const needed = Math.max(0, (this.#written ?? 0) - gap)
+    if (needed >= this.#absorbed) return
+    this.#absorbed = needed
+    this.#coalescer.schedule()
+  }
+
+  /** 下一次发送:吸收的那一半归零(§2 拍点 3 的后半句)。座位那一半由落位自己重算。 */
+  releaseAbsorbed(): void {
+    if (this.#absorbed === 0) return
+    this.#absorbed = 0
+    this.#coalescer.schedule()
   }
 
   /**

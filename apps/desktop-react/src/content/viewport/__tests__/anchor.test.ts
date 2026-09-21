@@ -384,3 +384,123 @@ describe('进场落锚点之后再对', () => {
     expect(follows.length).toBe(before)
   })
 })
+
+/**
+ * ── 裁决表 `user-toggle` 那一行(G 线 P2-b,§13.2.2 / §13.6 第 2 条)────────────
+ *
+ * `deltaH < 0` → 先 `absorb` 再 `pin('reported')`;`deltaH > 0` → 今天的
+ * 「按兵不动」(展开那一支为什么不改,判词在 `ViewportAnchor.reportUserToggle`)。
+ */
+describe('人亲手开合了一块东西', () => {
+  /**
+   * 一块「此刻多高、报的那一刻顶边在哪、接下来每一帧顶边在哪」的假块。
+   * 后两格分开给:`top` 是报的那一刻记下的位置,`tops` 是之后每一帧再问一次的答案。
+   */
+  function block(height: number, top: number, tops: number[]) {
+    return { height, top, anchor: fakeAnchorEl(tops) }
+  }
+
+  it('贴底收起:垫块同步补上缩掉的高,而且**在报返回之前**就写好了', () => {
+    const { port, anchor } = setup({ geometry: { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 } })
+    anchor.reportUserToggle({ open: false, durationMs: 180, block: block(120, 40, [40]) })
+    expect(port.padHeights).toEqual([120])
+  })
+
+  it('收起之后那一段:每一帧把**被点的那一块**的顶边按回去', () => {
+    const { port, anchor } = setup({ geometry: { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 } })
+    // 锚在报的那一刻就选定 —— 不再是下一帧在 RO 回调里现选(晚一拍)。
+    anchor.reportUserToggle({ open: false, durationMs: 180, block: block(120, 40, [10]) })
+    port.writes.length = 0
+    port.geometry.columnHeight = 880
+    anchor.onResize(grew(880), 's1')
+    // 锚往上跑了 30(40 → 10),`scrollTop` 就往回收 30。
+    expect(port.writes).toEqual([{ top: 670, cause: 'user-toggle' }])
+  })
+
+  it('**它不问 `pickFoldAnchor`** —— 报的人点过名了', () => {
+    const { port, anchor } = setup({ geometry: { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 } })
+    let asked = 0
+    port.pickFoldAnchor = () => { asked += 1; return undefined }
+    anchor.reportUserToggle({ open: false, durationMs: 180, block: block(120, 40, [40]) })
+    anchor.onResize(grew(880), 's1')
+    expect(asked).toBe(0)
+  })
+
+  it('没点名(重试那一路 / 样例页):退回下一帧现选,垫块一格不动', () => {
+    const { port, anchor } = setup({ geometry: { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 } })
+    let asked = 0
+    port.pickFoldAnchor = () => { asked += 1; return fakeAnchorEl([50, 50]) }
+    anchor.reportUserToggle({ open: false, durationMs: 180 })
+    expect(port.padHeights).toEqual([])
+    anchor.onResize(grew(880), 's1')
+    expect(asked).toBe(1)
+  })
+
+  it('展开:不垫、不钉,走今天那条「按兵不动」(窗口内不贴底、按离底多远重判档)', () => {
+    const { port, anchor, follows } = setup({ geometry: { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 } })
+    anchor.reportUserToggle({ open: true, durationMs: 180, block: block(120, 40, [40]) })
+    expect(port.padHeights).toEqual([])
+    port.geometry.scrollHeight = 1400
+    anchor.onResize(grew(1400), 's1')
+    // 一像素都没写(没贴底),而且按此刻离底多远翻了档。
+    expect(port.writes).toEqual([])
+    expect(follows.at(-1)?.mode).toBe('browsing')
+  })
+
+  it('动效档「无」(`durationMs: 0`)照报:窗口是那 40ms 余量,补偿照做', () => {
+    const { port, anchor } = setup({ geometry: { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 } })
+    anchor.reportUserToggle({ open: false, durationMs: 0, block: block(120, 40, [10]) })
+    port.writes.length = 0
+    anchor.onResize(grew(880), 's1')
+    expect(port.writes).toEqual([{ top: 670, cause: 'user-toggle' }])
+  })
+})
+
+/** 过渡中途的四种打断(正本 §15.3 那张表的后四行)。 */
+describe('收起到一半被打断', () => {
+  function block(height: number, top: number, tops: number[]) {
+    return { height, top, anchor: fakeAnchorEl(tops) }
+  }
+
+  it('中途再点一次(又展开):后到的那一句说了算,折叠窗被展开窗接替', () => {
+    const { port, anchor, state } = setup({ geometry: { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 } })
+    anchor.reportUserToggle({ open: false, durationMs: 180, block: block(120, 40, [10]) })
+    state.now += 50
+    anchor.reportUserToggle({ open: true, durationMs: 180, block: block(20, 40, [40]) })
+    port.writes.length = 0
+    port.geometry.scrollHeight = 1400
+    anchor.onResize(grew(1400), 's1')
+    // 走的是展开那一支:一像素不写。
+    expect(port.writes).toEqual([])
+  })
+
+  it('中途来了 `tail-growth`:折叠窗在场时整段早退,不贴底、不判丸', () => {
+    const { port, anchor, follows } = setup({ geometry: { scrollHeight: 1000, clientHeight: 300, scrollTop: 0 } })
+    anchor.dispatch({ type: 'scrolled', gap: 700 })
+    follows.length = 0
+    anchor.reportUserToggle({ open: false, durationMs: 180, block: block(120, 40, [40]) })
+    port.writes.length = 0
+    port.geometry.scrollHeight = 1600
+    anchor.onResize(grew(1600), 's1')
+    expect(port.writes).toEqual([])
+    expect(follows).toEqual([])
+  })
+
+  it('中途发送:吸收的那一半当场归零(排一帧写)', () => {
+    const { port, anchor } = setup({ geometry: { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 } })
+    anchor.reportUserToggle({ open: false, durationMs: 180, block: block(120, 40, [40]) })
+    expect(port.padHeights).toEqual([120])
+    anchor.landOnSendLine()
+    expect(anchor.pad.absorbed).toBe(0)
+  })
+
+  it('中途人滚动:垫块按「此刻还需要多少」往下收', () => {
+    const { port, anchor } = setup({ geometry: { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 } })
+    anchor.reportUserToggle({ open: false, durationMs: 180, block: block(120, 40, [40]) })
+    expect(anchor.pad.absorbed).toBe(120)
+    // 人往上滚 50(gap 从 0 变 50)。
+    port.scrollTo(650)
+    anchor.onScroll('s1', true)
+    expect(anchor.pad.absorbed).toBe(70)
+  })
+})
