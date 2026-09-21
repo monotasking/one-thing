@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ClipboardEvent, DragEvent } from 'react'
 import { useT } from '../../i18n'
 import { ChevronDown, resolveIcon } from '../../components/icons'
@@ -133,7 +133,30 @@ export interface ComposerProps {
   owner: string
 }
 
-export function Composer({ sessionId, owner }: ComposerProps) {
+/**
+ * **这块面板按自己那两格 prop 记账,不跟着父组件重渲**(2026-09-21,闪烁探针
+ * `scripts/probe-composer-flicker.mjs` 量出来的)。
+ *
+ * 病历:`content/kinds/session.tsx` 的 `SessionLeaf` 同时摆着消息流、目录 rail
+ * 与这一格落位带,而**目录的当前键是它自己的 state**(`useChatToc` 里那个
+ * `useState(0)`,滚动时由 `syncFromScroll` 写)。于是**人一滚,当前键一换,
+ * 整片叶重渲,这块面板跟着重渲一遍** —— 探针在真机上数到的账:超量夹具上
+ * 快滚 4.3s 提交 94 次、一路滚到顶 160 次、一分钟杂滚 428 次、6 万字思考流式
+ * 期间 314 次(判据是 React 给面板里那只隐藏 `<input type=file>` 写 `type` 的
+ * 次数 —— 节点身份自始至终没变,所以那是**重渲**不是重挂)。同一份夹具上短会话
+ * 只有 3 次:那条会话只有两行,当前键换不动。
+ *
+ * 两格 prop 都是字符串(`sessionId` / `owner`),所以 `memo` 的默认浅比较**正好
+ * 就是对的判据** —— 这块面板读到的其余一切都走它自己的订阅
+ * (`useComposerStoreOf` / `composerSink` / 引用汇),父组件重渲本来就不带新消息
+ * 给它。**它不改任何观感**:同样的输入,同样的输出,只是不再为别人的 state 重算一遍。
+ *
+ * 留账:这**不是**「滚动时输入框闪烁」那条报障的已证病根 —— 那条报障探针跑了
+ * 17 个场景、DOM 层 15376 帧 + 像素层 6088 帧,一次都没复现出来(见探针文件头)。
+ * 这一格治的是量出来的**多余重渲**,顺带把玻璃底下每滚一次就重写一遍属性这件事
+ * 拿掉;它与那条报障的因果关系**没有证据**,别写成「已修复」。
+ */
+function ComposerBody({ sessionId, owner }: ComposerProps) {
   const t = useT()
   useEffect(() => {
     if (!sessionId) return
@@ -712,3 +735,10 @@ export function Composer({ sessionId, owner }: ComposerProps) {
     </ComposerSessionContext.Provider>
   )
 }
+
+/**
+ * 出口。判词整段写在 `ComposerBody` 头上;`displayName` 写出来是为了 React
+ * DevTools 与测试里的名字仍旧是「Composer」—— memo 包一层不该让它改名。
+ */
+export const Composer = memo(ComposerBody)
+Composer.displayName = 'Composer'
