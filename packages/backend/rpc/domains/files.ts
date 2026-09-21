@@ -104,6 +104,7 @@ import { getDownloadsDirectory } from '../../wiring/tools/core/sandbox.js'
 import { walkWorkspaceFiles } from '../../wiring/files/workspace-walk.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import {
+  expandHomePath,
   resolveInsideSandbox,
   resolveRpcSandbox,
   type RpcSandbox,
@@ -480,16 +481,30 @@ export const filesRpcHandlers: RpcRouteHandlersWithPorts<FilesRoutes> = {
 /**
  * 单路径夹紧的两个写法 —— 一个从 context 起,一个复用已解析的 sandbox。
  *
- * **未夹紧时原样返回**(连空串也原样),因为桌面语义就是「渲染层说哪就是哪」:
+ * **未夹紧时不夹、也不 resolve**,因为桌面语义就是「渲染层说哪就是哪」:
  * 迁移前 `@main/ipc/files.ts` 把 `request.path` 直接递给投影,空串由投影自己
  * 答 "File path is required"。这里若改走 `resolveInsideSandbox`,空串会变成
- * null、答案会变成沙箱文案 —— 那是桌面上一次没人要的行为变化。
+ * null、答案会变成沙箱文案,相对路径还会被解到主进程 cwd 上 —— 那是桌面上
+ * 一次没人要的行为变化。
+ *
+ * ── 只有 `~` 是例外(09-21)────────────────────────────────────────────────
+ * 真机报障:笔记正文里一格行内码 `` `~/Documents/data/work/lenovo/0907/` ``
+ * 被认成目录 chip(`references/kinds/path-ref.ts` 的 `LOCAL_DIR_ROOTS` 收 `~/`),
+ * 点开落到 `listDirectory`,回一句
+ * `ENOENT: no such file or directory, scandir '~/Documents/...'` —— 目录明明在。
+ * 病根就在这一行:十四条文件动作里**只有 `stat` 认得 `~`**(它的投影自己展开),
+ * 于是 `files-source` 的根目录那条路靠 `stat` 绕过去了,而 chip 直接打过来的
+ * 那些条一条都不认。
+ *
+ * 展开而不是整条 resolve:`~` 是**一句写法**(用户与模型都这么写),不认它是
+ * 宿主接不住;相对路径要不要解到 cwd 上是另一个问题,这里不顺手改。`~` 之外
+ * 一个字不动,所以空串那条文案原样保住。判词的唯一产地是 `rpc/sandbox.ts`。
  */
 function clamp(context: RpcDispatchContext, path: string | undefined): string | null {
   return clampWith(resolveFilesSandbox(context), path)
 }
 
 function clampWith(sandbox: RpcSandbox, path: string | undefined): string | null {
-  if (!sandbox.confined) return path ?? ''
+  if (!sandbox.confined) return path ? expandHomePath(path) : (path ?? '')
   return resolveInsideSandbox(sandbox, path ?? '')
 }

@@ -112,7 +112,19 @@ export function resolveInsideSandbox(
  * 未夹紧分支的 `~` 展开。桌面 handler 迁移前拿到的是渲染层给的绝对路径，
  * 这里不额外造语义：只有真的以 `~` 开头才碰 `process.env.HOME`，拿不到就原样
  * 留着（让下游的 fs 调用去报它自己的错，而不是我们编一个路径出来）。
+ *
+ * **导出的理由**（09-21）：`~` 是什么意思，这个进程里只许有一句话。`files` 域
+ * 的 `clampWith` 在未夹紧那一支上原样交还路径（它要保住空串那条文案，见那边的
+ * 注释），于是十四条文件动作没有一条认得 `~` —— 正文里一格行内码
+ * `` `~/Documents/.../0907/` `` 画成 chip，点开就是一句
+ * `ENOENT ... scandir '~/Documents/...'`。那边要的不是整条
+ * `resolveInsideSandbox`（会连带把相对路径解到主进程 cwd 上，是另一回事），
+ * 只是这一句。
  */
+export function expandHomePath(value: string): string {
+  return expandHome(value)
+}
+
 function expandHome(value: string): string {
   if (value !== '~' && !value.startsWith('~/')) return value
   const home = process.env.HOME || process.env.USERPROFILE

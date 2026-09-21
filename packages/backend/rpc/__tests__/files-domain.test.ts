@@ -374,6 +374,60 @@ describe('files RPC domain', () => {
     await expect(readFile(join(sandboxRoot, 'c.txt'), 'utf-8')).resolves.toBe('two')
   })
 
+  /* ── `~` 展开(09-21 真机报障)────────────────────────────────────────────
+   *
+   * 笔记正文里一格行内码 `` `~/Documents/.../0907/` `` 被认成目录 chip,点开落到
+   * `listDirectory`,回一句 `ENOENT ... scandir '~/Documents/...'` —— 目录明明在。
+   * 十四条里从前只有 `stat` 认得 `~`(它的投影自己展开),于是文件树的根靠 `stat`
+   * 绕过去了,而 chip 直接打过来的那些条一条都不认。
+   */
+  describe("`~` is a way people write paths, so the desktop path understands it", () => {
+    let home: string | undefined
+
+    beforeEach(() => {
+      home = process.env.HOME
+      process.env.HOME = sandboxRoot
+    })
+
+    afterEach(() => {
+      if (home === undefined) delete process.env.HOME
+      else process.env.HOME = home
+    })
+
+    it('expands ~ for listDirectory / readContent / stat on a desktop host', async () => {
+      await mkdir(join(sandboxRoot, 'deploy'), { recursive: true })
+      await writeFile(join(sandboxRoot, 'deploy', 'iva.lua'), 'return {}', 'utf-8')
+      declareDesktopHost()
+
+      // 尾随 `/` 是目录 chip 自己的记号,照样要认。
+      const listed = unwrap(await call('listDirectory', { path: '~/deploy/' }, IPC))
+      expect(listed).toMatchObject({ success: true })
+      expect(listed.entries).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: 'iva.lua' })]),
+      )
+
+      expect(unwrap(await call('readContent', { path: '~/deploy/iva.lua' }, IPC)))
+        .toMatchObject({ success: true, content: 'return {}' })
+
+      expect(unwrap(await call('stat', { path: '~/deploy' }, IPC)))
+        .toMatchObject({ success: true, type: 'directory', path: join(sandboxRoot, 'deploy') })
+    })
+
+    it('leaves the empty-path answer alone (it is the projection that speaks)', async () => {
+      declareDesktopHost()
+      expect(unwrap(await call('readContent', { path: '' }, IPC)))
+        .toEqual({ success: false, error: 'File path is required' })
+    })
+
+    it('never resolves ~ against the real home on a clamped http host', async () => {
+      // 夹紧那一支里 `~` 展开到**沙箱根**,不是 `$HOME` —— 这一条不许被上面那格改掉。
+      await mkdir(join(sandboxRoot, 'deploy'), { recursive: true })
+      process.env.HOME = '/etc'
+      const listed = unwrap(await call('listDirectory', { path: '~/deploy' }, http(sandboxRoot)))
+      expect(listed).toMatchObject({ success: true })
+    })
+  })
+
   it('rejects a method that is not on the router allowlist', async () => {
     const response = await call('chmod', { path: '/tmp' }, IPC)
     expect(response.ok).toBe(false)
