@@ -1,19 +1,22 @@
 /*
- * **尾槽**的皮肤(G 线 P1,2026-09-20;判词整段在 `TailSlot.tsx`)。
+ * **尾槽**的皮肤(G 线 P1 立,P1b 收成一张脸;判词整段在 `TailSlot.tsx`)。
  *
  * 一句话:**一格常驻的、高度钉死的地**。正本 `docs/stream-geometry-2026-09.md` §1
  * 的 G4 说「只在流式期存在的东西必须住进槽位:从头到尾都占着的固定格子,内容只换
  * `opacity`」—— 这个文件就是那句话的全部实现,所以它里面**没有一条规则的值跟着
  * 内容走**。
+ *
+ * P1b(2026-09-21 裁定 B/C)之后这里少了一整节:「两张脸叠在一格里」的那套
+ * `grid-area: 1 / 1` + `data-on` 没有了,因为**在跑的脸只剩一张**。剩下的过渡只有
+ * 一处 —— 收场那一下的淡出。
  */
 
 /*
  * 那一格。
  *
- *  ① **`block-size` 钉死**(token `--tail-slot-h`):三张脸里哪一张亮着、读数说的是
- *     0.3s 还是 3m 05s,这一格都是同一个高。「落定那一帧几何上什么都不发生」靠的
- *     就是这一行 —— 不是靠两张脸恰好一样高。
- *  ② **`flex: none`**:列是 flex,不钉死的话这块「高度写死、脸可能为空」的孩子会在
+ *  ① **`block-size` 钉死**(token `--tail-slot-h`):在跑、收场淡出中、还是空着,
+ *     这一格都是同一个高。「落定那一帧几何上什么都不发生」靠的就是这一行。
+ *  ② **`flex: none`**:列是 flex,不钉死的话这块「高度写死、里面可能为空」的孩子会在
  *     收缩时被压掉一截(与座位垫块 `.seat` 同一条判词、同一个理由)。
  *  ③ **抵消 `.column` 的一格 gap,再按段距还回来**:`--sp-6` 是「一次发言与下一次
  *     发言」的距离,而这一格是**这一轮的尾巴**,不是下一次发言;它离上面那一件应当
@@ -22,56 +25,55 @@
  */
 .slot {
   flex: none;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
   block-size: var(--tail-slot-h);
   margin-block-start: calc(var(--pr-gap) - var(--sp-6));
 }
 
 /*
- * 指示格:两张脸叠在同一格里。
+ * 槽里那一份内容(光标 + 读数 + 停止),**整块一起淡出**。
  *
- * `flex: 1` 是**读数横向不动**的全部实现:等待那张脸是一道贯穿的线、流式那张是一枚
- * 半个字宽的光标,两者宽度天差地别,而读数排在这一格右边 —— 这一格自己把宽度吃满,
- * 换脸时读数的左缘一像素不动。
+ * 它铺满整格(`block-size: 100%`)而不是让 `.slot` 自己当 flex 容器:淡出要的是
+ * 「一个能改 opacity 的盒」,而 `.slot` 那一格的职责是**占住高度**,两件事分开写
+ * 才不会有人哪天顺手给 `.slot` 加个 `opacity` 把整格的地也一起淡没了。
+ */
+.body {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  block-size: 100%;
+}
+
+/*
+ * 收场:原地淡出,播完由 JS 卸载(`exitMs()`,两边同一张表)。
+ *
+ * **过渡只声明在这一态上**,不写在 `.body` 上 —— 这是「淡出播到一半又开了新一轮
+ * 就直接回到在跑那张脸」的全部实现:属性一摘,过渡随之不存在,opacity 瞬时归 1,
+ * 而不是反着再播一段。
+ */
+.body[data-leaving] {
+  opacity: 0;
+  transition: opacity var(--dur-exit) var(--ease);
+}
+
+/*
+ * 指示格。
+ *
+ * `flex: 1` 是**读数横向不动**的全部实现:这一格自己把宽度吃满,读数因此永远贴在
+ * 这一格的右边,与光标画多宽无关。
  * `min-width: 0` 是挤压律一的那一半(flex 项的 `min-width` 缺省是 `auto` = 不许
- * 缩到内容以下):不写的话里面那道贯穿线与光标的 min-content 会把这一格顶宽,
- * 窄窗子上读数被挤出去。截断策略是另一半,它在下面 `.face` 上(`min-width: 0` +
- * 里面那两件自己不换行)——这一格自己不装文字,没有可截的东西。
+ * 缩到内容以下):不写的话里面那枚光标的 min-content 会把这一格顶宽,窄窗子上
+ * 读数被挤出去。这一格自己不装文字,没有可截的东西。
  */
 .indicator {
-  position: relative;
   flex: 1;
   min-width: 0;
   align-self: stretch;
-  display: grid;
-  align-items: center;
-}
-
-/*
- * 一张脸。写法逐字照抄 `MessageChrome.module.css` 的「三张脸同格同高」那一节:
- * 全部落在 `1 / 1`,所以这一格的几何与此刻显示哪一张**无关**;换脸只换 `opacity`
- * (`--dur-flash`,与 §2 规矩 ⑤ 的「交叉淡入」同一格)。
- *
- * 暗的那张 `opacity: 0` 而**不是** `display: none` —— 后者把它从这一格里摘掉,
- * 换脸就又成了一次挂载 / 卸载,那正是要治的病。不可交互那一半由 JSX 那一行的
- * `inert` 给(它同时挡 Tab 与读屏),这里只说样子。
- */
-.face {
-  grid-area: 1 / 1;
   display: flex;
   align-items: center;
-  min-width: 0;
-  transition: opacity var(--dur-flash) var(--ease);
-}
-
-.face:not([data-on]) {
-  opacity: 0;
 }
 
 /*
- * ── 流中态:一枚呼吸的光标 ────────────────────────────────────────────────
+ * ── 在跑:一枚呼吸的光标 ──────────────────────────────────────────────────
  * 整段原样承自 `content/ChatStream.module.css` 的 `.cursor`(那里它独占消息列里的
  * 一行,G 线 P1 把它搬进这一格),**一个值都没改**:关键帧 chatCursor 住在
  * `styles/motion.css`(全仓唯一的 `@keyframes` 产地),时长是它自己的名字
@@ -87,10 +89,14 @@
 }
 
 /*
- * 不动的那两种情形,给的是同一份降级:一枚半透明的静止方块。
+ * 不动的那两种情形,给的是同一份降级:一枚半透明的静止方块,收场当场消失。
  * 系统偏好(prefers-reduced-motion)与用户显式选的「动效:无」是两个来源、
  * 一个结论,所以规则写两条、内容一模一样 —— CSS 没法把媒体查询和属性选择器
  * 并进同一个条件里。
+ *
+ * 淡出那一段 JS 侧也已经是 0(`exitMs()` 在 `none` 档下答 0,而 reading/apply.ts
+ * 把系统偏好折进了同一个 `data-motion-tier`),这两条是**同一个结论的两侧**:
+ * 万一档位属性还没贴上来,这里也不会播一段过渡。
  */
 @media (prefers-reduced-motion: reduce) {
   .cursor {
@@ -98,7 +104,7 @@
     opacity: 0.6;
   }
 
-  .face {
+  .body[data-leaving] {
     transition: none;
   }
 }
@@ -106,4 +112,8 @@
 :root[data-motion-tier='none'] .cursor {
   animation: none;
   opacity: 0.6;
+}
+
+:root[data-motion-tier='none'] .body[data-leaving] {
+  transition: none;
 }

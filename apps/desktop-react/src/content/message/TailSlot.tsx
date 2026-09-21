@@ -1,16 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { composerSink } from '../../composer/sink'
-import { STALL_HARD_MS, STALL_SOFT_MS } from '../../components/motion'
+import { exitMs, STALL_HARD_MS, STALL_SOFT_MS } from '../../components/motion'
 import { formatDuration } from '../../format/quantity'
 import { useT } from '../../i18n'
 import { ButtonBase } from '../../ui/ButtonBase'
-import { WaitingSeam } from '../seam/WaitingSeam'
 import c from './MessageChrome.module.css'
 import s from './TailSlot.module.css'
 
 /**
- * **尾槽** —— 整列末尾那一格常驻的槽位(G 线 P1,正本
- * `apps/desktop-react/docs/stream-geometry-2026-09.md` §3.1 与 §5.2)。
+ * **尾槽** —— 整列末尾那一格常驻的槽位(G 线 P1 立,P1b 收成一张脸;正本
+ * `apps/desktop-react/docs/stream-geometry-2026-09.md` §3.1 / §5.2 / §8)。
  *
  * ── 它治的是哪两件事 ──────────────────────────────────────────────────────
  * §0 的真机量测里有两条病,病根是同一句话:**只在流式期间存在的东西,住在流里**。
@@ -25,36 +24,43 @@ import s from './TailSlot.module.css'
  * ── 它在哪儿 ──────────────────────────────────────────────────────────────
  * **整列的末尾,排在卷尾垫块之后**(`ChatStream` 摆它)。所以它不属于任何一条消息 ——
  * 一轮回复长多长、思考段折不折、工具卡开不开,都改不了它的位置:它永远是列尾
- * 那一格。高度由 token `--tail-slot-h` 钉死,与此刻是哪张脸无关。
+ * 那一格。高度由 token `--tail-slot-h` 钉死,与此刻在跑没在跑无关。
  *
- * ── 三张脸,同格同高,只换 opacity ────────────────────────────────────────
- * 写法逐字照抄 `MessageChrome.module.css` 的「同格同高」那一节(一格 grid,脸全部
- * 落在 `1 / 1`,暗的那张 `opacity: 0` + `inert`)。三张脸:
- *  · **等待** —— 这一轮在跑、一个字还没到(含重试那一路):一道在扫的线
- *    (`WaitingSeam`,折痕基座的 `running` 态)+ 读数 + 停止;
- *  · **流式** —— 在跑且已经有内容:呼吸光标 + 读数 + 停止;
- *  · **空** —— 不在跑:两张脸都不挂载,整格 `inert` + `aria-hidden`,**高度照占**。
+ * ── 一张在跑的脸(P1b 裁定 B,2026-09-21)────────────────────────────────
+ * P1 那版有**两张**在跑的脸:等待期一道在扫的线,出字之后换成呼吸光标,两张交叉
+ * 淡入。用户原话:「保留的尾部的 generate 不需要是一个横线,和之前的样式一致即可,
+ * 且在流式过程中,生成中的这块样式布局应保持不变」。于是**等待那张脸退役**:
+ * 从 run 开张到收场,这一格的样子与布局**逐字不变** —— 呼吸光标 + 读数 + 停止。
+ * 「在等第一个字」不再是这一格的一种形态,它与「已经在出字」在这里是同一件事:
+ * 这一轮在跑。推论是 `awaitingFirstToken` 不再喂这一格,`WaitingSeam` 随之零消费者
+ * 被删(它最后那一个住处就是这里)。
  *
- * **读数只有一份**(不是每张脸各挂一个):它挂着一只 100ms 的表,两份就是两只表,
- * 而且 `getByTestId('chat-readout')` 会当场撞上两个。所以它排在指示格**旁边**,
- * 由 `running` 一格判在不在;指示格 `flex: 1`,所以读数在两张脸之间**横向也不动**。
+ * ── 收场:淡出再卸载(P1b 裁定 C)────────────────────────────────────────
+ * 用户原话:「在结束后,做一个丝滑的消失」。run 收场那一刻**不当场卸载**:
+ * 内容先原地淡出(`--dur-exit` / JS 侧镜像 `exitMs()`),播完才卸载。这一段里
+ *  · **读数冻在收场那一刻**(表停了,不是继续跳到一个没人看的数);
+ *  · 整格 `inert` —— 它已经不是活的了,Tab 与读屏都不该再碰到那颗停止钮;
+ *  · **那一格的高一个像素不动**(`--tail-slot-h` 钉死,与淡不淡出无关),所以
+ *    「丝滑」说的只有透明度,几何上什么都没发生(G4 的同一条判词)。
+ * 动效档「无」与系统 `prefers-reduced-motion` 下 `exitMs()` 是 0 → 当场卸载,
+ * 一帧都不多留(判词在 `components/motion.ts` 的 `EXIT_MS_BY_TIER` 上)。
+ * 淡出播到一半又开了新一轮:**直接回到在跑那张脸,不是淡回去** —— 过渡只声明在
+ * 淡出那一态上(判词在 `TailSlot.module.css` 的 `.body[data-leaving]`),属性一摘
+ * 过渡就不存在了,于是是一次瞬时的归位,而不是一段反向动画。
  *
- * ── 空着时为什么不挂载那两张脸 ────────────────────────────────────────────
- * 「同格同高」要的是**几何**不变,而这一格的几何由 token 钉死,与挂不挂载无关。
- * 空着时挂着的代价是真的:那道扫光与那枚光标是两段 `infinite` 动画,一片会话叶一份,
- * 而一台上可以并排开好几片。所以:**在跑时两张脸都在(交叉淡入),不在跑时一张都不挂**。
- *
- * ── 三张状态表(施工纪律「状态先行」)────────────────────────────────────
+ * ── 三张状态表(施工纪律「状态先行」;正本 §8 有完整三表)──────────────
  * ① **生命周期**:随会话叶挂载、常驻、随叶卸载;`ChatStream` 在
- *    `sessionId && status === 'ready'` 时始终渲染它。读数那只 100ms 的表只在
- *    「在跑」时起(`useNow` 的 effect 自带清理)。**按 `sessionId` 分家** ——
- *    停止那一口打给的是 prop 上这一条会话,分屏下各叶各一格(W5-c-2 的同一条判词)。
- *    零模块级副作用 → **不需要 HMR dispose**。
- * ② **UI 生命状态**:空 / 等待 / 流式 / 静默(stalled)/ 疑似卡住(stuck);
- *    空会话与 loading、error 时**整件不画**(那三态由 `ChatStream` 自己的空态说话)。
- *    **超量不成立** —— 它不吃数据,脸的数量与内容长度都是常数。
+ *    `sessionId && status === 'ready'` 时始终渲染它。两只计时器都在这件里,都在
+ *    effect 的清理里退役:读数那只 100ms 的表(只在跑时起),与收场那一只
+ *    `exitMs()` 的一次性表(卸载时清掉,所以叶被拆掉时不会留下一发空响)。
+ *    **按 `sessionId` 分家** —— 停止那一口打给的是 prop 上这一条会话,分屏下各叶
+ *    各一格(W5-c-2 的同一条判词)。零模块级副作用 → **不需要 HMR dispose**。
+ * ② **UI 生命状态**:空 / 在跑 / 收场中(淡出)三种,在跑里再按静默分
+ *    live / stalled(静默)/ stuck(疑似卡住)—— 后两者**只改墨色与那半句话**,
+ *    不改这一格的形。空会话与 loading、error 时**整件不画**(那三态由 `ChatStream`
+ *    自己的空态说话)。**超量不成立** —— 它不吃数据,内容长度是常数。
  * ③ **UI 交互状态**:停止钮 rest / hover / focus / disabled 照旧(`ButtonBase` +
- *    `.ghost`,皮肤与动作行同源);空脸整格 `inert`,Tab 进不去、读屏念不到。
+ *    `.ghost`,皮肤与动作行同源);空脸与淡出中整格 `inert`,Tab 进不去、读屏念不到。
  */
 
 /**
@@ -110,12 +116,23 @@ export function readoutTone(silentMs: number): ReadoutTone {
   return 'live'
 }
 
-function useNow(tickMs: number): number {
+/**
+ * 此刻是几点 —— `live` 为假时**表停掉,并把指针钉在停表那一刻**。
+ *
+ * 钉在停表那一刻(effect 里那一句 `setNow(Date.now())`)而不是「保留上一次 tick
+ * 的值」:后者最多会比真值早 100ms,于是收场那一下人眼能看见读数往回跳一点。
+ * 这是 P1b 裁定 C 的「读数冻在收场那一刻」那半句的全部实现。
+ */
+function useNow(tickMs: number, live: boolean): number {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
+    if (!live) {
+      setNow(Date.now())
+      return
+    }
     const timer = setInterval(() => setNow(Date.now()), tickMs)
     return () => clearInterval(timer)
-  }, [tickMs])
+  }, [tickMs, live])
   return now
 }
 
@@ -148,9 +165,16 @@ export function StreamReadout({
   sessionId,
   startedAt,
   lastActivityAt,
-}: { sessionId: string; startedAt: number; lastActivityAt?: number }) {
+  live = true,
+}: {
+  sessionId: string
+  startedAt: number
+  lastActivityAt?: number
+  /** 表还走不走。收场那一段是假 —— 读数冻在收场那一刻(裁定 C)。 */
+  live?: boolean
+}) {
   const t = useT()
-  const now = useNow(READOUT_TICK_MS)
+  const now = useNow(READOUT_TICK_MS, live)
 
   const elapsed = formatDuration(elapsedMs(startedAt, now))
   const silentMs = elapsedMs(lastActivityAt ?? startedAt, now)
@@ -189,74 +213,118 @@ export function StreamReadout({
   )
 }
 
-/** 这一格此刻是哪张脸。`idle` = 不在跑(两张脸都不挂载,高度照占)。 */
-export type TailFace = 'idle' | 'wait' | 'stream'
+/** 这一格此刻处在哪一段。`idle` = 空着(内容不挂载,高度照占)。 */
+export type TailPhase = 'idle' | 'run' | 'leaving'
+
+/**
+ * 收场那一段的闸:`running` 由真变假时开 `exitMs()` 那么长的一扇窗,播完关上。
+ *
+ * ── 为什么这一步在**渲染期**做,不在 effect 里做 ──────────────────────────
+ * 放在 effect 里的那一版真跑出了病(单测钉着):`running` 变假的**那一次渲染**里
+ * `leaving` 还是假,于是那一帧整块内容先卸载一次,effect 跑完才又挂回来 ——
+ * 一次卸载 + 一次挂载,屏幕上就是要治的那一下闪。所以这里用的是 React 文档那条
+ * 「props 变了就地调整 state」的写法:同一次渲染里就切到淡出,一帧都不空。
+ * 它是幂等的(同样的 `running` 进来答同样的 state),StrictMode 的双渲染无碍。
+ *
+ * 三条判词:
+ *  · **只有从「跑过」落下来才算收场** —— 挂载时 `running` 本来就是假的那一次
+ *    `prev` 与它相等,窗根本不开,于是每片叶开屏不会先播一段没人要的淡出;
+ *  · **动效档在落下来那一刻读一次**(`exitMs() > 0`):`none` 档与系统
+ *    `prefers-reduced-motion` 下窗压根不开 = 当场卸载,一帧都不多留;
+ *  · **清理里清表**:叶在淡出中被拆掉、或者中途又开了新一轮时,那一发定时器要跟着
+ *    走,否则它会晚一步把刚开张的这一轮掐回空态。
+ */
+function useTailPhase(running: boolean): TailPhase {
+  const [prevRunning, setPrevRunning] = useState(running)
+  const [leaving, setLeaving] = useState(false)
+  if (prevRunning !== running) {
+    setPrevRunning(running)
+    setLeaving(!running && exitMs() > 0)
+  }
+  useEffect(() => {
+    if (!leaving) return
+    const timer = setTimeout(() => setLeaving(false), exitMs())
+    return () => clearTimeout(timer)
+  }, [leaving])
+  return running ? 'run' : leaving ? 'leaving' : 'idle'
+}
 
 export function TailSlot({
   sessionId,
-  face,
+  running,
   startedAt,
   lastActivityAt,
 }: {
   /** 这一格属于哪条会话 —— 停止那一口的收件人(分屏下各叶各一格)。 */
   sessionId: string
-  /** 等待 / 流式 / 空。判据全在 `ChatStream` 顶层(它已经算好了那几格事实)。 */
-  face: TailFace
+  /**
+   * 这一轮在跑吗。判据在 `ChatStream` 顶层(它已经算好了那一格事实)。
+   *
+   * **「在等第一个字」不是这里的一种形态**(P1b 裁定 B):从开张到收场,这一格的
+   * 样子与布局逐字不变。
+   */
+  running: boolean
   /**
    * 这一轮什么时候开的张(活消息的 `timestamp`)。
    *
    * **重试那一路的真空里它是 `undefined`**:core 要先删掉旧回复、截断其后消息、
    * 再开新 run,那段真空里账本上还没有这一轮的助手消息,「跑了多久」因此**无从说起**。
-   * 那时这一格照旧画等待那张脸(线在扫),只是不画读数与停止 —— 一个编出来的
-   * 起点比没有读数更糟(与 StopNotice 那条「缺席的键就是账本上真的没有那格账」同判)。
+   * 那时这一格照旧画那枚光标,只是不画读数与停止 —— 一个编出来的起点比没有读数
+   * 更糟(与 StopNotice 那条「缺席的键就是账本上真的没有那格账」同判)。
    */
   startedAt?: number
   lastActivityAt?: number
 }) {
   const t = useT()
-  const running = face !== 'idle'
+  const phase = useTailPhase(running)
+  /*
+   * 收场那一段 `ChatStream` 已经把这两格收走了(活消息没了,`startedAt` 当场变
+   * `undefined`),而淡出中的读数要接着显示收场那一刻的数 —— 所以在跑时留一份。
+   * 存在 ref 里而不是 state:它只在渲染时被读,写它不该引起一次渲染。
+   */
+  const lastRunRef = useRef<{ startedAt?: number; lastActivityAt?: number }>({})
+  if (running) lastRunRef.current = { startedAt, lastActivityAt }
+  const shown = phase === 'run' ? { startedAt, lastActivityAt } : lastRunRef.current
+  const alive = phase !== 'idle'
   return (
     <div
       className={s.slot}
       /* 量几何的那几处按这个名字把它剔出去:尾槽是常驻的一格,不是「这一轮长了多高」
          的一部分(与座位垫块的 `data-seat` 同一条判词,见 `ChatStream` 的 `measureSeat`)。 */
       data-tail-slot=""
-      data-face={face}
+      data-face={phase}
       data-testid="chat-tail-slot"
-      inert={!running}
-      aria-hidden={running ? undefined : true}
+      /* 在跑之外一律不可达:空着时没东西可碰,淡出中那颗停止钮已经不作数了。 */
+      inert={phase !== 'run'}
+      aria-hidden={phase === 'run' ? undefined : true}
     >
-      {/*
-        * 指示格。`flex: 1` —— 两张脸的宽度差因此不会把读数横向推一下
-        * (等待那张是一道贯穿的线,流式那张是一枚 0.5em 的光标)。
-        */}
-      <span className={s.indicator}>
-        {running && (
-          <>
-            <span className={s.face} data-on={face === 'wait' || undefined} inert={face !== 'wait'}>
-              <WaitingSeam label={t('chat.streaming')} />
-            </span>
-            <span className={s.face} data-on={face === 'stream' || undefined} inert={face !== 'stream'}>
-              {/*
-                * 呼吸光标。它从前独占消息列里的一行(`ChatStream.module.css` 的
-                * `.cursor`),收尾那一帧卸载带走一个行盒 —— §0 的病 ③,23.8px。
-                * 现在它住在这一格里:换的只有 `opacity`,行盒从头到尾都在。
-                */}
-              <span
-                className={s.cursor}
-                data-testid="chat-streaming"
-                aria-label={t('chat.streaming')}
-              />
-            </span>
-          </>
-        )}
-      </span>
-      {running && startedAt !== undefined && (
-        <StreamReadout
-          sessionId={sessionId}
-          startedAt={startedAt}
-          lastActivityAt={lastActivityAt}
-        />
+      {alive && (
+        <div className={s.body} data-leaving={phase === 'leaving' || undefined}>
+          {/*
+            * 指示格。`flex: 1` —— 读数因此贴着这一格的右边,而且从开张到收场
+            * 横向一像素不动(这一格自己把宽度吃满)。
+            */}
+          <span className={s.indicator}>
+            {/*
+              * 呼吸光标。它从前独占消息列里的一行(`ChatStream.module.css` 的
+              * `.cursor`),收尾那一帧卸载带走一个行盒 —— §0 的病 ③,23.8px。
+              * 现在它住在这一格里,而这一格的高由 token 钉死。
+              */}
+            <span
+              className={s.cursor}
+              data-testid="chat-streaming"
+              aria-label={t('chat.streaming')}
+            />
+          </span>
+          {shown.startedAt !== undefined && (
+            <StreamReadout
+              sessionId={sessionId}
+              startedAt={shown.startedAt}
+              lastActivityAt={shown.lastActivityAt}
+              live={phase === 'run'}
+            />
+          )}
+        </div>
       )}
     </div>
   )

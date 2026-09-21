@@ -32,10 +32,17 @@ import type { TextBlock } from './text/text-stream'
  *    所以今天:`expanded` 初值恒 `false`,`live` 翻转**一格都不动它**;
  *    **自动折叠不存在**,于是 ① 那条病在这一件身上没有产地
  *    (手动收起在贴底时仍会踩到同一个钳位,那是 P2 的账)。
- *    「正在想什么」由**收起态那一行自己说**:流式期间它显示**最新一截**
- *    (`latest`,尾部 ≤240 字,右端对齐裁左边)并带扫光,落定后换回开头那一截
- *    (`preview`)。两态同为一行、**高度逐像素相同**(`.thoughtPreview` 的
+ *    「正在想什么」由**收起态那一行自己说**:**这一块思考还在进行时**它显示
+ *    **最新一截**(`latest`,尾部 ≤240 字,右端对齐裁左边)并带扫光,之后换回开头
+ *    那一截(`preview`)。两态同为一行、**高度逐像素相同**(`.thoughtPreview` 的
  *    `block-size` 钉死),所以「落定那一帧几何上什么都不发生」逐字成立。
+ * ①b **扫光跟的是「这一块思考」,不是「这条消息」**(2026-09-21 P1b 裁定 D)。
+ *    用户原话:「think 区域的流式动画效果在这块思考结束后应该停止」。从前这三件
+ *    (`data-live` / 扫光 / 显示 `latest` 还是 `preview`)读的是 `live` =「这条消息
+ *    还在流」,于是模型早已经转去写正文、工具也跑完了,上面那块思考仍然在扫。
+ *    今天它们读的是段模型那一格 `thinking` = `live` ∧ 它是序列上的最后一件
+ *    (为什么是这个判据,写在 `assemble/index.ts` 的循环上面)。**`live` 这一格
+ *    一个字没动** —— 它是 R 线块冻结的判据,这里连读都不读了。
  * ② **圈选不收**:展开之后正文可圈选,而「选中一段字」的收尾动作恰好是一次
  *    mouseup/click —— 不判一下选区,用户每次复制到一半这段就自己关了。
  *    这条判据(`getSelection().isCollapsed`)09-09 随 U1 搬进了 `ui/Fold`,
@@ -73,22 +80,29 @@ const ThoughtBlock = memo(function ThoughtBlock({ text }: { text: string }) {
 export function ThinkingSegment({
   blocks,
   tail,
-  live,
+  thinking,
   preview,
   latest,
 }: {
   blocks: readonly TextBlock[]
   tail: string
-  live: boolean
+  /**
+   * **这一块思考**此刻还在进行吗(P1b 裁定 D)。
+   *
+   * 不是 `live`(那格说的是「这条消息还在流」,归 R 线的块冻结用,这一件不读它):
+   * 收起态那一行显示 `latest` 还是 `preview`、报不报 `data-live`、扫不扫光,
+   * 三件都只读这一格。
+   */
+  thinking: boolean
   preview: string
-  /** 末尾那 ≤240 字 —— 流式期间收起态那一行显示的就是它(G 线 P1)。 */
+  /** 末尾那 ≤240 字 —— 这块思考还在进行时收起态那一行显示的就是它(G 线 P1)。 */
   latest: string
 }) {
   const t = useT()
   const note = useNoteUserExpand()
   const noteFold = useNoteFold()
   /*
-   * **初值恒 `false`,`live` 一格都不动它**(G 线 P1;判词整段在文件头 ①)。
+   * **初值恒 `false`,流式与否一格都不动它**(G 线 P1;判词整段在文件头 ①)。
    * 从前这里是 `useState(live)` 外加一只 `useEffect(() => setExpanded(live), [live])`
    * —— 那只 effect 就是「收尾自动折」的产地,而它量出来是一帧内 15,054px 的视口跳变。
    * 今天开合只有**一个**产地:下面那只 `onOpenChange`(用户自己点的)。
@@ -183,8 +197,10 @@ export function ThinkingSegment({
         ) : (
           /*
            * ── 收起态那一行:两个读法,一个盒子(G 线 P1)──────────────────────
-           * 还在流 = **最新一截**(末尾 ≤240 字,右端对齐、左边裁掉)+ 扫光,报
-           * `data-live`;落定 = 开头那一截(今天的 `preview`,左起、右端省略号)。
+           * **这块思考还在进行** = 最新一截(末尾 ≤240 字,右端对齐、左边裁掉)+
+           * 扫光,报 `data-live`;**它已经想完** = 开头那一截(今天的 `preview`,
+           * 左起、右端省略号)—— 判据是段模型那一格 `thinking`,不是这条消息还在不在流
+           * (P1b 裁定 D)。
            * **高度由 `.thoughtPreview` 的 `block-size` 钉死**,两态逐像素相同 ——
            * 落定那一帧只换字与那格属性,几何上什么都不发生(正本 §1 的 G4)。
            *
@@ -198,8 +214,8 @@ export function ThinkingSegment({
            * 这一行里**不会再有换行符** —— 装配层的 `oneLine` 已经把连续空白折成
            * 一个空格了(`assemble/text.ts`),所以 CSS 那边只要一句「不折行」。
            */
-          <p className={s.thoughtPreview} data-live={live ? '' : undefined}>
-            <span className={s.thoughtLine}>{live ? latest : preview}</span>
+          <p className={s.thoughtPreview} data-live={thinking ? '' : undefined}>
+            <span className={s.thoughtLine}>{thinking ? latest : preview}</span>
           </p>
         )}
       </FoldTrigger>

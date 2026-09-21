@@ -289,21 +289,24 @@ describe('落点:回合的事,不是用户说的话', () => {
 
 /**
  * ── 等待指示**只留一处:尾部**(2026-09-20 G 线 P1,正本
- *    `docs/stream-geometry-2026-09.md` §2 拍点 2)──────────────────────────────
+ *    `docs/stream-geometry-2026-09.md` §2 拍点 2)────────────────────────────
+ *    ── 而那一处 2026-09-21 起**不扫了**(P1b 裁定 B,§8)──────────────────
  *
  * 这一族 09-15 立案时钉的是「等待与上下文更新合成一行:有上下文更新行时由它扫
  * (`sweeping`),没有时才由 `WaitingSeam` 画一道空的」。**那条规矩整条被推翻了**
  * —— 用户 09-20 报的第一件事就是「发送之后屏上有两处在等的动画」,裁定是等待指示
- * 只留尾部那一处(整列末尾的尾槽)。
+ * 只留尾部那一处(整列末尾的尾槽)。09-21 再推一次:用户「保留的尾部的 generate
+ * 不需要是一个横线,和之前的样式一致即可」,于是那道横线(`WaitingSeam`)整件删掉,
+ * 尾槽从开张到收场只有一张脸 —— 呼吸光标 + 读数 + 停止。
  *
  * 所以旧断言这样迁:
  *  · 「sweeping 翻的是折痕自己那格状态」→ 那格 prop 已经删掉,改钉**它恒 settled**;
- *  · 「有上下文更新行时它在扫、不另画空折痕」/「没有时才轮到 WaitingSeam」
- *    → 两条合成一条:**不论有没有上下文更新行,在扫的那一道永远只有一处,
- *      而且它在尾槽里**;
- *  · 「首字到了折痕落定」→ 留着,只是它从来就没离开过 `settled`。
+ *  · 「有上下文更新行时它在扫 / 没有时才轮到 WaitingSeam」→ **不论有没有上下文
+ *    更新行,屏上都没有第二处在等的动画,而在跑这件事由尾槽那一格说**;
+ *  · 「首字到了折痕落定」→ 留着,只是它从来就没离开过 `settled`,而尾槽那一格
+ *    在首字前后**逐字不变**(那正是裁定 B 要的)。
  */
-describe('等待期间:在扫的只有尾槽那一处', () => {
+describe('等待期间:说「在跑」的只有尾槽那一格', () => {
   /** 与 `LEDGER` 同形,只是回复还没开口(没有 `assistant/chunks`)。 */
   const WAITING: Ledger[] = LEDGER.slice(0, 4)
   /** 同上,但这一轮**没有**上下文更新 —— 那一行于是不存在。 */
@@ -321,38 +324,39 @@ describe('等待期间:在扫的只有尾槽那一处', () => {
     expect(label()).toBeTruthy()
   })
 
-  it('这一轮有上下文更新行:它不扫,在扫的是尾槽那一道', async () => {
+  it('这一轮有上下文更新行:它不扫,在跑这件事由尾槽说', async () => {
     await mountStream(WAITING)
     expect(screen.getByTestId('context-delta-seam').getAttribute('data-state')).toBe('settled')
-    const seam = screen.getByTestId('waiting-seam')
-    expect(seam.getAttribute('data-state')).toBe('running')
-    expect(seam.closest('[data-tail-slot]')).toBeTruthy()
+    expect(screen.getByTestId('chat-tail-slot').getAttribute('data-face')).toBe('run')
+    expect(screen.getByTestId('chat-streaming').closest('[data-tail-slot]')).toBeTruthy()
   })
 
-  it('这一轮没有上下文更新行:在扫的还是同一道(位置不随内容变)', async () => {
+  it('这一轮没有上下文更新行:说话的还是同一格(位置不随内容变)', async () => {
     await mountStream(WAITING_NO_DELTA)
     expect(screen.queryByTestId('context-delta-seam')).toBeNull()
-    const seam = screen.getByTestId('waiting-seam')
-    expect(seam.getAttribute('data-state')).toBe('running')
-    expect(seam.closest('[data-tail-slot]')).toBeTruthy()
-  })
-
-  /** 屏上在扫的**只有一道** —— 用户 09-20 报的「两处在等的动画」就是这一条的反面。 */
-  it('在扫的那一道全屏只有一处', async () => {
-    await mountStream(WAITING)
-    expect(document.querySelectorAll('[data-state="running"]')).toHaveLength(1)
+    expect(screen.getByTestId('chat-tail-slot').getAttribute('data-face')).toBe('run')
+    expect(screen.getByTestId('chat-streaming').closest('[data-tail-slot]')).toBeTruthy()
   })
 
   /**
-   * 首字到达是**同一格里的换手**:等待那张脸暗下去、光标那张亮起来,两张都留在
-   * DOM 里(那正是「同格同高」的意思)。所以判据是 `data-on` / `data-face`,
-   * 不是「在不在树上」—— 换成后者就是拿挂载当形态读,而这一格的形态与挂载
-   * 从 G 线 P1 起是两件事。
+   * 屏上在扫的**一道都没有** —— 用户 09-20 报的「两处在等的动画」是这一条的前身,
+   * 09-21 那道线本身也退役了,所以今天的判据比那时更硬:一处都不许有。
    */
-  it('首字到了:尾槽换成流式那张脸,等待那一道暗下去', async () => {
+  it('屏上没有任何一道在扫的线', async () => {
+    await mountStream(WAITING)
+    expect(document.querySelectorAll('[data-state="running"]')).toHaveLength(0)
+    expect(screen.queryByTestId('waiting-seam')).toBeNull()
+  })
+
+  /**
+   * 首字到达在尾槽那一格里**什么都不发生**(裁定 B):它只知道「在跑」。
+   * 这一条是从前那条「同格换手」的继任者 —— 判据从「哪张脸亮着」变成
+   * 「压根没有第二张脸可换」。
+   */
+  it('首字到了:尾槽那一格逐字不变,折痕照旧 settled', async () => {
     await mountStream(LEDGER)
     expect(screen.getByTestId('context-delta-seam').getAttribute('data-state')).toBe('settled')
-    expect(screen.getByTestId('waiting-seam').closest('[data-on]')).toBeNull()
-    expect(screen.getByTestId('chat-tail-slot').getAttribute('data-face')).toBe('stream')
+    expect(screen.getByTestId('chat-tail-slot').getAttribute('data-face')).toBe('run')
+    expect(screen.queryByTestId('waiting-seam')).toBeNull()
   })
 })

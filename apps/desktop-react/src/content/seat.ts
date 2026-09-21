@@ -44,6 +44,30 @@
  */
 export const SEAT_MIN_LINES = 3
 
+/**
+ * 座位的**起手高**:六行正文(2026-09-21 用户裁定,正本
+ * `docs/stream-geometry-2026-09.md` §8 裁定 A)。
+ *
+ * 用户原话:「发送回车后,**留出合适的空间就可以,不需要一个很大的空间**」。
+ * 09-15 立座位时起手是「气泡让开之后视口**剩下的全部**」—— 那是把整块屏幕都让给
+ * 这一轮,发送完屏幕上就是一大片空白,人要往下看很久才看得到自己刚说的话下面
+ * 还有什么。今天改成**固定的几行**:够一眼看出「回复要从这儿起」,不多留。
+ *
+ * 六行:比下限三行多一倍(三行是「一眼看得出下面是空的」的最小量,起手就取最小量
+ * 会让第一块内容一上来就把座位吃光、当场退回普通跟底),又远小于一屏 ——
+ * 1280×800 上阅读轴常规档一行 ≈ 22px,六行 ≈ 132px,约一屏的六分之一。
+ *
+ * 它是一个**行数**不是一段长度,与 `SEAT_MIN_LINES` 同一族,所以既不进
+ * `styles/tokens.css` 也不进 `components/motion.ts`。
+ *
+ * **后果**(想清楚了才改的,三表在正本 §8):自己那条气泡**到不了置顶线**了 ——
+ * 总高不够,`sendLineTarget` 那个目标会被 `maxScroll` 钳住,落点自然变成
+ * 「贴底,气泡下面留六行 + 尾槽」。「发送只滚一次」不受影响:目标**在算的时候**
+ * 就已经夹进 `[0, maxScroll]`,插值的每一帧都 ≤ 目标,单调、无反向
+ * (判词在 `ChatStream` 的 `sendLineTarget` 与 `slideScrollTo` 上)。
+ */
+export const SEAT_LINES = 6
+
 export interface SeatGeometry {
   /** 滚动容器的可视高(`clientHeight`)。 */
   viewportHeight: number
@@ -67,17 +91,20 @@ function finite(value: number): number {
 /**
  * 这一刻座位该多高。**0 = 没有座位**,调用方照旧跟底。
  *
- * 四支,每一支都在 `__tests__/seat.test.ts` 里有一条:
+ * 五支,每一支都在 `__tests__/seat.test.ts` 里有一条:
  *
- *  ① **常态** —— `座位 = 能用的地 − 这一轮已经长了多高`。回复长一截它缩一截,
+ *  ① **常态** —— `座位 = 起手那一格 − 这一轮已经长了多高`。回复长一截它缩一截,
  *     长满就是 0,之后退役为普通的 pinned 跟底(正本 §5 表 1)。
- *  ② **三行下限** —— 起手那一格至少三行:气泡高得快把地占满时,仍要看得见
- *     「回复要从这儿起」。注意下限管的是**起手**,不是终身:回复照样把它吃掉,
+ *  ② **起手六行封顶**(2026-09-21 用户裁定,判词在 `SEAT_LINES` 上)—— 起手不再是
+ *     「能用的地减掉气泡」那一整块,而是**至多六行**。屏幕矮、或者气泡高得把地
+ *     占得差不多时,`room − userHeight` 比六行还小,那就按它(取两者的小的)。
+ *  ③ **三行下限** —— 上面那个小的再小也不许小过三行:气泡高得快把地占满时,
+ *     仍要看得见「回复要从这儿起」。下限管的是**起手**,不是终身:回复照样把它吃掉,
  *     所以座位最终仍会归 0,不会留一块永远跟不了底的死白。
- *  ③ **视口太矮** —— 能用的地连三行都不到(窄窗子 / 输入框打了十行字),
+ *  ④ **视口太矮** —— 能用的地连三行都不到(窄窗子 / 输入框打了十行字),
  *     留座位只会把自己那条顶出屏外,所以**退化为今天的落底 + 跟随**:答 0。
- *  ④ **自己那条比视口还高** —— 上缘落置顶线,座位取下限(② 的同一条式子:
- *     `room − userHeight` 这时是负的,`Math.max` 兜到下限)。
+ *  ⑤ **自己那条比视口还高** —— 座位取下限(③ 的同一条式子:`room − userHeight`
+ *     这时是负的,`Math.max` 兜到下限)。
  */
 export function seatHeight(geometry: SeatGeometry): number {
   const viewportHeight = finite(geometry.viewportHeight)
@@ -89,11 +116,18 @@ export function seatHeight(geometry: SeatGeometry): number {
 
   /** 置顶线与输入框之间,这一轮真正能用的那块地。 */
   const room = viewportHeight - sendLine - reserveBelow
-  // ③ 视口太矮(或者根本没量到几何:停靠中 / jsdom,那时 viewportHeight 是 0)。
+  // ④ 视口太矮(或者根本没量到几何:停靠中 / jsdom,那时 viewportHeight 是 0)。
   if (!(minSeat > 0) || room < minSeat) return 0
 
-  // 起手那一格:气泡让开之后剩下的地,至少三行(② 与 ④ 是这一句的两端)。
-  const initial = Math.max(minSeat, room - userHeight)
+  /*
+   * 起手那一格(②③⑤ 三支合在这两行里):**六行封顶**,气泡让开之后剩下的地要是
+   * 更小就按它,再小也不许小过三行。09-21 之前这里只有后半句 —— 那时起手是
+   * 「剩下的全部」,发送完屏幕上是一大片空白,用户原话「不需要一个很大的空间」。
+   */
+  const initial = Math.min(
+    finite(geometry.lineHeight) * SEAT_LINES,
+    Math.max(minSeat, room - userHeight),
+  )
   // 气泡之后已经长出来的那些(折痕 / 思考 / 正文 / 工具卡 / 外缘那一行)。
   const grown = Math.max(0, tailHeight - userHeight)
   // ① 长一截缩一截,吃完为止。

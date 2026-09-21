@@ -482,16 +482,22 @@ async function startSampler(page) {
     window.__seatSawWaiting = false
     window.__seatWaitingGoneAt = undefined
     /*
-     * 「在扫的那一道」**两种形都算**,与采样那一侧逐字同一句话:空折痕(一个新挂
-     * 上来的节点),或上下文更新折痕自己在扫(**同一个节点上 `data-state` 翻成
-     * `running`**)。第一版只盯 `childList`,于是超量那一趟(账本大、每轮都有上下文
-     * 更新行)latch 恒为 false —— 那一档的折痕从来不是新挂的节点,是一格属性。
+     * ── 「这一轮在等第一个字」**2026-09-21 换了判据**(P1b 裁定 B)──────────────
+     *
+     * 09-15 立它时屏上真有一道在扫的线(`WaitingSeam`),09-20 G 线 P1 把那道线搬进
+     * 列尾的尾槽、成了那一格的「等待」脸,而 P1b 把**那张脸整件删了** —— 用户原话
+     * 「保留的尾部的 generate 不需要是一个横线,和之前的样式一致即可,且在流式过程
+     * 中,生成中的这块样式布局应保持不变」。于是屏上再没有任何一个「只在等第一个字
+     * 时存在」的东西可认。
+     *
+     * 判据因此换成产品自己那句话的同义词、也与 `gate-stream-geometry` 的 ① 逐字同源:
+     * **这一轮开张了(尾槽在跑),而这一轮那条助手行还画不出东西**。
+     * 量的窗口、量的东西、判的线一个字没变 —— 换的只有「怎么认出这一段」。
      */
     const leaf = window.__seatLeaf()
-    const sweeping = () => Boolean(leaf.querySelector('[data-testid="waiting-seam"]'))
-      || Boolean(leaf.querySelector('[data-testid="context-delta-seam"][data-state="running"]'))
-    let wasSweeping = sweeping()
-    window.__seatSawWaiting = wasSweeping
+    const tailFace = () => leaf.querySelector('[data-tail-slot]')?.getAttribute('data-face') ?? null
+    const sweeping = () => tailFace() === 'run' && !liveRowContent()
+    let wasSweeping = false
     /*
      * **落位窗的右边界还要一个不靠折痕的答案**(2026-09-15,prod 真机逼出来的)。
      * 超量那一档的等待段有 900ms,可主线程在那段时间里被压缩 / 扩窗 / 400 条物化
@@ -523,12 +529,14 @@ async function startSampler(page) {
       return null
     }
     const baseLiveId = tailAssistant()?.getAttribute('data-message-id') ?? null
-    const liveRowContent = () => {
+    function liveRowContent() {
       const row = tailAssistant()
       // 还是上一轮那一条(或者列尾还停在用户气泡上)= 这一轮的内容还没上屏。
       if (!row || row.getAttribute('data-message-id') === baseLiveId) return false
       return Boolean(row.querySelector('[data-prose], [data-testid="chat-thought"]'))
     }
+    wasSweeping = sweeping()
+    window.__seatSawWaiting = wasSweeping
     window.__seatSeamWatch?.disconnect()
     window.__seatSeamWatch = new MutationObserver(() => {
       const now = sweeping()
@@ -662,15 +670,28 @@ async function startSampler(page) {
         const tailSlot = column.querySelector(':scope > [data-tail-slot]')
         const readout = rect(tailSlot?.querySelector('[data-testid="chat-readout"]') ?? null)
         /*
-         * **等待那道折痕也住在尾槽里**(同上)。它从前有两个住处(活消息行的头部、
-         * 重试那一路自己那一行 `data-retry-of`),两处都随 G 线 P1 退役 ——
-         * `retrySeamRow` 连同那条属性一起删了,因为「这一轮在等第一个字」今天只画一处。
-         * 判据也跟着换:两张脸**都挂载着**(那正是「同格同高」的意思),所以问的是
-         * **它那张脸亮没亮**(`data-face="wait"`),不是「它在不在树上」——
-         * 拿挂载当形态读,今天会说谎。
+         * ── 「这一轮在等第一个字」**2026-09-21 起没有对应的图形了**(P1b 裁定 B)──
+         *
+         * 那道折痕(`WaitingSeam`)连同尾槽的「等待」脸一起退役:从开张到收场,
+         * 列尾那一格逐字不变。判据因此换成「尾槽在跑 ∧ 这一轮那条助手行还画不出
+         * 东西」,与 MutationObserver 那一侧、以及 `gate-stream-geometry` 的 ① 同源。
+         *
+         * 推论:③ 那两把尺里的「等待线 vs 读数行横向不许相交」**没有被量的对象了**,
+         * 所以 `waitingRect` 恒为 null、那一格恒 0 —— 它留在式子里只是不必特判,
+         * 真正还在守的是「折痕 / 思考段与读数行纵向不相交」那一句。
          */
-        const waitingOn = tailSlot?.getAttribute('data-face') === 'wait'
-        const waiting = waitingOn ? tailSlot.querySelector('[data-testid="waiting-seam"]') : null
+        /*
+         * **「这一轮还在跑」问尾槽那一格自己**(2026-09-21,判词全文在
+         * `gate-stream-geometry.mjs` 同一句上):P1b 裁定 C 之后收场是「原地淡出
+         * `--dur-exit` 再卸载」,停止钮因此比 run 多活 120ms —— 拿它当判据会把
+         * 落定那一帧的重排算进流式期(超量那一档它是 80–250ms)。
+         * 取不到那一格才退回问停止钮。
+         */
+        const running = tailSlot
+          ? tailSlot.getAttribute('data-face') === 'run'
+          : Boolean(tailSlot?.querySelector('[data-testid="chat-stop"]'))
+        const liveHasContent = Boolean(live?.querySelector('[data-prose], [data-testid="chat-thought"], [data-tool-card]'))
+        const waiting = null
         /*
          * 上下文更新折痕住在**用户那一行与助手那一行之间**的独立一行上 —— 要的是
          * **这一轮那一道**,所以同样从列尾往回找(上面那个循环顺手收下 `ctxRow`)。
@@ -721,11 +742,12 @@ async function startSampler(page) {
           user: rect(user),
           readout,
           /*
-           * 「这一轮在等第一个字」—— **两种形都算**:没有上下文更新行时是那道空折痕
-           * (`waiting-seam`),有的时候是上下文更新折痕自己在扫(`data-state="running"`)。
-           * 一轮只扫一道,这正是规矩 ③「合成一行」在探针这一侧的样子。
+           * 「这一轮在等第一个字」= **尾槽在跑,而这一轮那条助手行还画不出东西**
+           * (判词整段在上面那个 `running` / `liveHasContent` 上)。
+           * 上下文更新折痕那一格 `seamRunning` 留着只报不判:它自 G 线 P1 起恒
+           * `settled`(「等待指示只留一处」),所以它今天永远是 false。
            */
-          waiting: Boolean(waiting) || Boolean(seamRunning),
+          waiting: (running && !liveHasContent) || Boolean(seamRunning),
           // ③ 读数行与折痕 / 思考段相交了多少(它们是前后排的两行,该恒为 0)
           /*
            * ③ 两把尺(判词在 `overlapX` 上):
@@ -745,7 +767,7 @@ async function startSampler(page) {
            * 这一格恒为 false —— 整门的收尾窗当场变成 0 帧,而那一族断言里
            * 「收尾那一帧采到了」正是为这种情形立的(§9.2 最后一条)。
            */
-          streaming: Boolean(tailSlot?.querySelector('[data-testid="chat-stop"]')),
+          streaming: running,
         }
         window.__seatFrames.push(frame)
         if (captureSettled) {
@@ -1020,7 +1042,22 @@ function retryMetrics(frames, pressedAt) {
    * 那只 effect 上)。1.5s 盖得住「上折 180ms + 一趟命令往返 + 滑动 ≤320ms」。
    */
   const LAND_WINDOW_MS = 1500
-  const window = frames.filter((f) => f.t >= frames[retryAt].t && f.t <= frames[retryAt].t + LAND_WINDOW_MS)
+  /*
+   * ── 窗口的右边界还要一句「座位长满了没有」(2026-09-21,P1b 裁定 A)──────────
+   * 起手那一格从「视口剩下的全部」改成六行之后,重试那一轮的座位在落位之后**几百
+   * 毫秒**就被吃光(真机:20 → 0px),之后 pinned 跟底当场接手 —— 那是设计,
+   * 不是「又滑了一段」。这一条判的是「落位只滑一段」,所以窗口到座位长满为止;
+   * 按下那一刻座位已经是 0(没有座位可护)时照旧用整个 1.5s。
+   */
+  let landUntil = frames.length
+  let sawRetrySeat = false
+  for (let i = retryAt; i < frames.length; i += 1) {
+    if (typeof frames[i].seat !== 'number') continue
+    if (frames[i].seat > 0) { sawRetrySeat = true; continue }
+    if (sawRetrySeat) { landUntil = i; break }
+  }
+  const window = frames.filter((f, i) =>
+    i < landUntil && f.t >= frames[retryAt].t && f.t <= frames[retryAt].t + LAND_WINDOW_MS)
   const retryRuns = measure(window).scrollRuns
   /* 落定之后气泡停在哪(置顶线 24 附近)。窗口末帧就够 —— 滑动 ≤320ms。 */
   const landed = window[window.length - 1]?.user?.top
@@ -1070,6 +1107,19 @@ function analyze(frames, marks = {}) {
   }
   const landing = measure(frames.slice(0, lastWaiting >= 0 ? lastWaiting + 1 : frames.length))
   const whole = measure(frames)
+  /*
+   * ── **座位窗**:座位长满之前那一段(2026-09-21 P1b 裁定 A 之后分出来的第三个窗)──
+   *
+   * 规矩 ① 的后半句是「之后视口不动,**直到座位长满**」。09-15 立这道门时起手那一格
+   * 是「气泡让开之后视口剩下的全部」(518px),常态那一档一轮回答根本吃不满它,
+   * 于是「整轮」与「座位窗」恰好是同一段 —— 那条断言因此写成了「整轮一像素不动」。
+   *
+   * P1b 把起手改成**六行封顶**(≈134px,用户:「留出合适的空间就可以,不需要一个
+   * 很大的空间」),同一段回答几段就把它吃光,之后照旧 pinned 跟底 —— **那是设计**
+   * (§5 表 1 最后一格),不是回归。所以这一段的判据回到规矩 ① 自己那句话:
+   * **座位长满之前只滚一段**;长满之后的滚动只报不判(与超量那一档从来就是的口径
+   * 逐字相同)。`BUDGET.scrollRuns` 一个字没动 —— 改的是「量哪一段」,不是放宽。
+   */
   /*
    * ── ⑥ 座位**归零那一帧**不许弹(2026-09-15 打回一)──────────────────────
    * 座位是「量在这一帧、写在下一帧」的。归零那一帧垫块上还挂着残高,照旧贴底就会
@@ -1219,7 +1269,16 @@ function analyze(frames, marks = {}) {
     }
   }
   const seats = frames.map((f) => f.seat).filter((v) => typeof v === 'number')
+  /**
+   * 座位窗 = 开录 → 座位归零**之前**那一帧(从来没归零就是整轮)。
+   *
+   * **不含归零那一帧自己**:座位吃光的那一下 pinned 跟底当场接手,那一帧的滚动是
+   * 「长满之后照旧跟底」的第一下(§5 表 1 最后一格),它属于长满之后那一段。
+   * 含进来就是拿「这一段结束的那一刻」去判「这一段里不许发生的事」。
+   */
+  const seatHeld = measure(frames.slice(0, seatZeroAt >= 0 ? seatZeroAt : frames.length))
   return {
+    seatHeld,
     /** 折痕**来过没有** —— 由 DOM 记录答,不由采到几帧答。 */
     sawWaiting: marks.sawWaiting ?? sampledWaiting >= 0,
     endAt,
@@ -1245,6 +1304,11 @@ function analyze(frames, marks = {}) {
     handoffDrift: whole.drift,
     handoffDriftFrames: whole.driftFrames,
     settledDrift: whole.settledDrift,
+    /* ②/②b 的座位窗读数(判词与 ① 同一段:座位长满之后气泡本来就该跟着走)。 */
+    seatHeldFirstTokenShift: seatHeld.firstTokenShift,
+    seatHeldDrift: seatHeld.drift,
+    seatHeldDriftFrames: seatHeld.driftFrames,
+    seatHeldFrames: seatHeld.frames,
     // ③ 读数行与折痕 / 思考段相交的帧(整轮)。
     overlapFrames: frames.filter((f) => f.overlap > 0.5).length,
     overlapMax: Math.max(0, ...frames.map((f) => f.overlap)),
@@ -1301,7 +1365,8 @@ function report(name, m) {
     + `(此后最远 ${m.handoffDrift.toFixed(1)}px / ${m.handoffDriftFrames} 帧,停下来 ${m.settledDrift.toFixed(1)}px)`,
   )
   console.log(
-    `      ${' '.repeat(name.length)}  整轮流式 ${m.streamFrames} 帧:滚动 ${m.whole.scrollRuns} 段`
+    `      ${' '.repeat(name.length)}  座位窗 ${m.seatHeld.frames} 帧:滚动 ${m.seatHeld.scrollRuns} 段`
+    + ` · 整轮流式 ${m.streamFrames} 帧:滚动 ${m.whole.scrollRuns} 段`
     + ` · >50ms 长帧 ${m.whole.longFrames}(最长 ${m.whole.longestFrameMs}ms)`
     + ` · 座位归零`
     + (m.seatZeroAt >= 0 ? `前后 ${m.seatZeroFrames} 帧反转 ${m.seatZeroFlips}` : '没发生'),
@@ -1630,8 +1695,10 @@ async function main() {
     report('常态', main)
     assert(
       main.waitingFrames > 0,
-      `等待折痕真的上过屏(录到 ${main.waitingFrames} 帧;provider 静默 ${FIRST_BYTE_DELAY_MS}ms。`
-      + `「在扫的那一道」两种形都算:空折痕,或上下文更新折痕自己在扫 —— 一轮只扫一道)`,
+      `「在等第一个字」那一段真的采到了(录到 ${main.waitingFrames} 帧;provider 静默`
+      + ` ${FIRST_BYTE_DELAY_MS}ms)。**2026-09-21 起它没有对应的图形了**(P1b 裁定 B:`
+      + `等待那张脸退役,尾槽从开张到收场逐字不变),判据换成「尾槽在跑 ∧ 这一轮那条`
+      + `助手行还画不出东西」`,
     )
     assert(
       main.seatMax > 0,
@@ -1642,14 +1709,28 @@ async function main() {
       `① 发送到首字,滚动只走过 ${main.landing.scrollRuns} 段 ≤ ${BUDGET.scrollRuns}`
       + `(${JSON.stringify(main.landing.runs)})`,
     )
+    /*
+     * 2026-09-21(P1b 裁定 A):这一条从「整轮」改量**座位窗**,判词整段写在
+     * `analyze` 里那个 `seatHeld` 上。一句话:起手那一格从「视口剩下的全部」改成
+     * 六行之后,常态这一档的回答会**把座位吃满**,长满之后照旧跟底 —— 那是设计。
+     * 规矩 ① 自己那句话就是「之后视口不动,**直到座位长满**」,所以窗口回到它。
+     */
     assert(
-      main.whole.scrollRuns <= BUDGET.scrollRuns,
-      `① 座位没长满 = 整轮视口一像素不动:整轮也只有 ${main.whole.scrollRuns} 段滚动`
-      + `(座位 ${main.seatMax.toFixed(0)} → ${main.seatMin.toFixed(0)}px,一直没长满)`,
+      main.seatHeld.scrollRuns <= BUDGET.scrollRuns,
+      `① 座位长满之前视口一像素不动:座位窗里只有 ${main.seatHeld.scrollRuns} 段滚动`
+      + ` ≤ ${BUDGET.scrollRuns}(座位 ${main.seatMax.toFixed(0)} → ${main.seatMin.toFixed(0)}px`
+      + `;整轮 ${main.whole.scrollRuns} 段 —— 长满之后照旧 pinned 跟底,只报不判)`,
     )
+    /*
+     * 2026-09-21(P1b 裁定 A):与 ①/②b 同一处改动 —— 窗口收到**座位窗**。
+     * 换手窗本来是首字之后 250ms,而六行的座位在常态这一档**首字之后 ~300ms**
+     * 就被吃光,两段有重叠;重叠的那几帧里气泡该跟着底走,不该算进「换手不动」。
+     */
     assert(
-      main.firstTokenShift <= BUDGET.firstTokenShiftPx,
-      `② 等待 → 首字,自己那条气泡位移 ${main.firstTokenShift.toFixed(1)}px ≤ ${BUDGET.firstTokenShiftPx}`,
+      main.seatHeldFirstTokenShift <= BUDGET.firstTokenShiftPx,
+      `② 等待 → 首字(座位窗内)自己那条气泡位移 ${main.seatHeldFirstTokenShift.toFixed(1)}px`
+      + ` ≤ ${BUDGET.firstTokenShiftPx}(座位窗 ${main.seatHeldFrames} 帧;整轮 ${main.firstTokenShift.toFixed(1)}px`
+      + ` —— 座位吃光之后跟底,只报不判)`,
     )
     assert(
       main.overlapFrames <= BUDGET.overlapFrames,
@@ -1686,11 +1767,16 @@ async function main() {
      * 「三张脸同格同高」、并在收尾那一拍把座位同步补到位,两处一起把它治到 0。
      * 所以退场判据兑现:这一行从「只报不判」转正,判的是**最远**。
      */
+    /*
+     * 2026-09-21(P1b 裁定 A):与 ① 同一处改动 —— 窗口从「整轮」收到**座位窗**。
+     * 起手那一格改成六行之后,常态这一档的回答会把座位吃满,之后 pinned 跟底把气泡
+     * 顶出视口 **那是设计**(规矩 ① 那句「直到座位长满」)。预算一个字没动。
+     */
     assert(
-      main.handoffDrift <= BUDGET.firstTokenShiftPx,
-      `②b 换手之后气泡**全程**不动:最远 ${main.handoffDrift.toFixed(1)}px`
-      + ` / ${main.handoffDriftFrames} 帧 ≤ ${BUDGET.firstTokenShiftPx}`
-      + `(终值 ${main.settledDrift.toFixed(1)}px;单 B ⑤ 之前这里是 12.0px 一帧)`,
+      main.seatHeldDrift <= BUDGET.firstTokenShiftPx,
+      `②b 换手之后、座位长满之前,气泡一像素不动:最远 ${main.seatHeldDrift.toFixed(1)}px`
+      + ` / ${main.seatHeldDriftFrames} 帧 ≤ ${BUDGET.firstTokenShiftPx}`
+      + `(整轮最远 ${main.handoffDrift.toFixed(1)}px —— 座位吃光之后跟底,只报不判)`,
     )
     /*
      * ── 「收尾锚定」这一族先判**量到没量到**(2026-09-15 审查补的)────────────
@@ -1753,9 +1839,12 @@ async function main() {
       long.landing.scrollRuns <= BUDGET.scrollRuns,
       `长回 ① 发送到首字,滚动只走过 ${long.landing.scrollRuns} 段 ≤ ${BUDGET.scrollRuns}`,
     )
+    /* 同上(P1b 裁定 A):窗口收到座位窗。 */
     assert(
-      long.firstTokenShift <= BUDGET.firstTokenShiftPx,
-      `长回 ② 等待 → 首字气泡位移 ${long.firstTokenShift.toFixed(1)}px ≤ ${BUDGET.firstTokenShiftPx}`,
+      long.seatHeldFirstTokenShift <= BUDGET.firstTokenShiftPx,
+      `长回 ② 等待 → 首字(座位窗内)气泡位移 ${long.seatHeldFirstTokenShift.toFixed(1)}px`
+      + ` ≤ ${BUDGET.firstTokenShiftPx}(座位窗 ${long.seatHeldFrames} 帧;整轮`
+      + ` ${long.firstTokenShift.toFixed(1)}px —— 只报不判)`,
     )
     assert(
       long.seatZeroFlips <= BUDGET.seatZeroFlips,

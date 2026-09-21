@@ -170,6 +170,9 @@ export function contextDeltaSummary(t: TFn, rows: readonly ContextDeltaEntry[]):
  *
  * 所以这道折痕恒 `settled`:上下文更新本身是**已经发生完**的事(回合开张时一次性
  * 落的账,壳看见它的时候早已经完成了),它从来就不该说「正在做」。
+ *
+ * (`WaitingSeam` 本身 2026-09-21 随 P1b 裁定 B 一起删了 —— 等待不再是屏幕上的
+ * 一种形态,尾槽从开张到收场只有一张脸。这里留着它的名字是为了说清这段病史。)
  */
 export function ContextDeltaSeam({ turnContext }: {
   turnContext?: TurnContextDelta

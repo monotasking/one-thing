@@ -41,7 +41,9 @@ export const SegmentView = memo(function SegmentView({
         <ThinkingSegment
           blocks={segment.blocks}
           tail={segment.tail}
-          live={segment.live}
+          /* **传的是 `thinking` 不是 `live`**(P1b 裁定 D):这一件问的是
+             「这一块思考还在不在进行」,而 `live` 说的是「这条消息还在流」。 */
+          thinking={segment.thinking}
           preview={segment.preview}
           latest={segment.latest}
         />

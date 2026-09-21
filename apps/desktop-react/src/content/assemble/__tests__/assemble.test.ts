@@ -76,14 +76,60 @@ describe('段序列:一条消息算成哪几段', () => {
       blocks: [{ id: 'a1#0#0', text: '想一下' }],
       tail: '',
       live: false,
+      thinking: false,
       preview: '想一下',
       latest: '想一下',
     })
   })
 
-  it('isStreaming 是思考段 live 的产地(今天没有渲染器读它,但事实得对)', () => {
+  it('isStreaming 是思考段 live 的产地(块冻结读它)', () => {
     const [segment] = assembleMessage(message({ reasoning: '想一下', isStreaming: true }))
     expect(segment).toMatchObject({ kind: 'thinking', live: true })
+  })
+
+  /**
+   * ── `thinking`:**这一块**思考还在不在进行(P1b 裁定 D,2026-09-21)──────────
+   *
+   * 用户原话:「think 区域的流式动画效果在这块思考结束后应该停止」。判据是
+   * 「它是不是序列上的最后一件」—— 为什么不是账本上的 `part.ended`,判词写在
+   * `assemble/index.ts` 那段循环上面(投影的 `materializeContentParts` 把 `ended`
+   * 丢掉了,而顶部推理压根没有 part 身份)。
+   */
+  it('思考是这条消息的最后一件、而且消息还在流 → thinking', () => {
+    const [segment] = assembleMessage(message({ reasoning: '正在想', isStreaming: true }))
+    expect(segment).toMatchObject({ kind: 'thinking', live: true, thinking: true })
+  })
+
+  it('思考 → 正文(消息**仍然在流**):那块思考已经不在进行', () => {
+    const segments = assembleMessage(
+      message({ reasoning: '想完了', content: '开始写', isStreaming: true }),
+    )
+    expect(segments.map((s) => s.kind)).toEqual(['thinking', 'rich-text'])
+    // `live` 照旧为真(这条消息还在流,块冻结要它);`thinking` 已经是假。
+    expect(segments[0]).toMatchObject({ kind: 'thinking', live: true, thinking: false })
+  })
+
+  it('思考 → 工具 → 思考:只有最后那一段在进行', () => {
+    const segments = assembleMessage(
+      message({
+        reasoning: '先想一下',
+        contentParts: [
+          { type: 'tool-call', toolCalls: [toolCall()], turnIndex: 0 },
+          { type: 'reasoning', content: '再想一下', turnIndex: 0 },
+        ] as never,
+        toolCalls: [toolCall()] as never,
+        isStreaming: true,
+      }),
+    )
+    const thinkings = segments.filter((s) => s.kind === 'thinking')
+    expect(thinkings).toHaveLength(2)
+    expect(thinkings[0]).toMatchObject({ thinking: false })
+    expect(thinkings[1]).toMatchObject({ thinking: true })
+  })
+
+  it('消息收尾之后一块都不在进行(哪怕思考是最后一件)', () => {
+    const [segment] = assembleMessage(message({ reasoning: '想完了' }))
+    expect(segment).toMatchObject({ kind: 'thinking', live: false, thinking: false })
   })
 
   it('单发工具 = 一组一次(画出来是一张卡,卡里带着那次调用,抽屉惰性算详情)', () => {

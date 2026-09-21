@@ -111,7 +111,25 @@ function runPipeline(message: ProjectedMessage): SegmentModel[] {
 
   const segments: SegmentModel[] = []
 
-  for (const node of groupNodes(anchorMessage(message))) {
+  /*
+   * ── 为什么这里要一个下标(P1b 裁定 D,2026-09-21)────────────────────────
+   * 思考段要答一句 P1 答不出来的话:**这一块思考本身还在不在进行**。用户原话
+   * 「think 区域的流式动画效果在这块思考结束后应该停止」—— 从前那格 `live` 说的是
+   * 「**这条消息**还在流」,于是模型早已经转去写正文、工具也跑完了,上面那块思考
+   * 仍然在扫光。
+   *
+   * 判据是**「它是不是序列上的最后一件」**,不是账本上的 `part.ended`。后者今天
+   * 到不了这一层:`packages/core/session/projection/reducer.ts` 的 `assistant/part-end`
+   * 确实在 part 上写了 `ended`,但 `materializeContentParts` 交出去的那一份把这一格
+   * 丢掉了;而顶部推理(`message.reasoning`)在投影里压根就是一整串合并好的字,
+   * **没有 part 身份**可言。所以判据取「序列上还有没有别的东西排在它后面」——
+   * 后面一旦长出任何东西(正文的第一个块、一张工具卡、下一段推理),这一块思考
+   * 就再也不会有新字了。要让它精确到 part,得先把 `ended` 一路带到壳,那是另一批。
+   */
+  const nodes = groupNodes(anchorMessage(message))
+  for (let index = 0; index < nodes.length; index += 1) {
+    const node = nodes[index]
+    const isLastNode = index === nodes.length - 1
     switch (node.node) {
       case 'reasoning': {
         // 顶部推理与行内推理都是思考段 —— 它们的差别是**落点**(placement),
@@ -128,12 +146,21 @@ function runPipeline(message: ProjectedMessage): SegmentModel[] {
           kind: 'thinking',
           blocks,
           tail,
+          /*
+           * `live` = **这条消息**还在流。它是 R 线「块冻结」的判据(`textToFrame`
+           * 拿它决定哪一截已经定了、可以停止重画),所以这一格**一个字都不许改**。
+           */
           live,
+          /*
+           * `thinking` = **这一块思考**此刻还在进行(裁定 D,判据在上面那段注释里)。
+           * 扫光、`data-live`、收起时显示最新一截还是 `preview`,三件都读它。
+           */
+          thinking: live && isLastNode,
           preview: textPreview(blocks, tail),
           /*
-           * 收起且还在流时那一行显示的**最新一截**(G 线 P1)。它与 `preview` 并排
-           * 而不是二选一:两格说的是两个时刻的事实,而渲染层不许拿 6 万字的串现切
-           * (代价与历史长度无关这件事由 `textLatest` 自己保证)。
+           * 收起且这块思考还在进行时那一行显示的**最新一截**(G 线 P1)。它与
+           * `preview` 并排而不是二选一:两格说的是两个时刻的事实,而渲染层不许拿
+           * 6 万字的串现切(代价与历史长度无关这件事由 `textLatest` 自己保证)。
            */
           latest: textLatest(blocks, tail),
         })

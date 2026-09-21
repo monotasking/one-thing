@@ -431,6 +431,14 @@ async function startSampler(page) {
           ctx: ctxRow ? { ...rect(ctxRow), state: ctxRow.querySelector('[data-testid="context-delta-seam"]')?.getAttribute('data-state') ?? null } : null,
           retry: rect(retryRow),
           seat: seat ? { ...rect(seat) } : null,
+          /*
+           * **这一格从 2026-09-21 起恒为 null**(G 线 P1b 裁定 B):那道在扫的线
+           * (`WaitingSeam`)整件退役了 —— 尾槽从 run 开张到收场只有一张脸。
+           * 这只探针是诊断工具、不是门,所以留着这一格只报不判;要认「这一轮在等
+           * 第一个字」,判据换成「尾槽在跑 ∧ 这一轮那条助手行还画不出东西」
+           * (`gate-stream-geometry.mjs` 的 ① 与 `gate-send-flow.mjs` 的 `waiting`
+           * 都是那句话)。
+           */
           waiting: rect(live?.querySelector('[data-testid="waiting-seam"]') ?? retryRow?.querySelector('[data-testid="waiting-seam"]') ?? null),
           readout: rect(live?.querySelector('[data-testid="chat-readout"]') ?? null),
           chrome: rect(live?.querySelector('[data-testid="chat-chrome"]') ?? null),

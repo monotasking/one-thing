@@ -258,16 +258,26 @@ export type SegmentModel =
    * 「收起时挂什么」是这一段的事实:正本 §0 量到停靠池里 175 段旧思考共 104 万字,
    * 收起态若挂全文,那 104 万字就一直在 DOM 里。
    *
-   * `latest` 是**同一条理由的第二格**(G 线 P1,2026-09-20):流式期间收起态那一行
-   * 显示的是**末尾**那 240 字(`textLatest`),落定之后换回 `preview`。两格都在模型里,
-   * 因为「收起时挂什么」在这两种时刻是两个不同的事实,而渲染层不许拿 6 万字的串现切
-   * (判词在 `assemble/text.ts` 的 `textLatest` 上)。
+   * `latest` 是**同一条理由的第二格**(G 线 P1,2026-09-20):这块思考还在进行时
+   * 收起态那一行显示的是**末尾**那 240 字(`textLatest`),之后换回 `preview`。两格
+   * 都在模型里,因为「收起时挂什么」在这两种时刻是两个不同的事实,而渲染层不许拿
+   * 6 万字的串现切(判词在 `assemble/text.ts` 的 `textLatest` 上)。
+   *
+   * **`live` 与 `thinking` 是两句话,不许合并**(P1b 裁定 D,2026-09-21):
+   *  · `live` = **这条消息**还在流 —— R 线块冻结的判据,`textToFrame` 拿它决定
+   *    哪一截已经定了;
+   *  · `thinking` = **这一块思考**此刻还在进行 = `live` ∧ 它是序列上的最后一件。
+   *    模型转去写正文之后,前面那块思考的 `live` 仍为真而 `thinking` 已经是假 ——
+   *    用户 09-21 报的正是这个差:「think 区域的流式动画效果在这块思考结束后应该
+   *    停止」。为什么判据是「最后一件」而不是账本上的 `part.ended`,写在
+   *    `assemble/index.ts` 那段循环上面。
    */
   | {
       kind: 'thinking'
       blocks: readonly TextBlock[]
       tail: string
       live: boolean
+      thinking: boolean
       preview: string
       latest: string
     }

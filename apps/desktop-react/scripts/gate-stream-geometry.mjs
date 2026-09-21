@@ -6,10 +6,12 @@
  * 由探针 `scripts/probe-layout-shift.mjs` 改 —— 那一支只量不判,这一支判红。
  * 支架、假 provider、离屏档、收尸纪律全部照抄它与 `gate-send-flow.mjs`。
  *
- * ── 它判的那七格(`BUDGET`)─────────────────────────────────────────────────
- * 全部是**像素位置与结构**,外加一格毫秒读数(长帧),与 `gate:send-flow` 同族:
- *  ① **首字帧尾槽位移** ≤1px —— 等待那张脸换成流式那张时,列尾那一格不许动。
- *     它是 G4「落定那一帧几何上什么都不发生」的第一个落点。
+ * ── 它判的那十二格(`BUDGET`)───────────────────────────────────────────────
+ * 全部是**像素位置与结构**,外加一格毫秒读数(长帧),与 `gate:send-flow` 同族。
+ * ①–⑦ 是 P1 立的,⑧–⑫ 是 P1b(2026-09-21 用户两条裁定)补的。
+ *  ① **首字帧尾槽位移** ≤1px —— 第一个字到达时,列尾那一格不许动。
+ *     它是 G4「落定那一帧几何上什么都不发生」的第一个落点。P1b 之后「首字之前」
+ *     的判据从「等待那张脸亮着」换成「在跑但还画不出东西」(那张脸已经退役)。
  *  ② **整轮贴底期间尾槽位移** ≤1px、**方向反转 0** —— §0 的病 ④:读数行从前排在
  *     正文之后,长思考那一轮全程动 303 次、单帧最大 335px、反转 3 次。
  *  ③ **收尾帧改动点以上位移** ≤1px —— §0 的病 ③(整屏下移 23.8px)与 ①(思考段
@@ -23,6 +25,17 @@
  *     **注意**:P1 之后收起态思考段里没有可读的长文,所以上拨去读的是**上一轮的
  *     正文**,断言新一轮全程它不动。
  *  ⑦ **流式期间零 ≥50ms 长帧**(壳 CLAUDE.md 第 5 轴那一格换个主语)。
+ *  ⑧ **发送落位之后气泡下方的空白 ≤ 六行 + 1px**(裁定 A:「留出合适的空间就可以,
+ *     不需要一个很大的空间」)。一行有多高由产品自己的式子现算,不写死一个数。
+ *  ⑨ **等待期与出字期,尾槽里那一份内容逐像素相同**(裁定 B:「在流式过程中,
+ *     生成中的这块样式布局应保持不变」)。读数的**宽**不比 —— 那行字本来就随秒数
+ *     进位变,它是寿命读数。
+ *  ⑩ **收场那一下是单调淡出,期间那一格的高一个像素不动**(裁定 C:「在结束后,
+ *     做一个丝滑的消失」)。上方那一块在读的东西动没动归 ③,不重复判。
+ *  ⑪ **一段思考后面一旦长出别的东西,它就不许再扫**(裁定 D:「think 区域的流式
+ *     动画效果在这块思考结束后应该停止」)。
+ *  ⑫ 同一条裁定在「思考→工具→思考」那一档的落点:屏上两段以上思考时,
+ *     **只有最后那一段在扫**。
  *
  * ── 场景与两档 ────────────────────────────────────────────────────────────
  * **短会话**(空 store 新建的会话,第 1、2 轮起)与**超量夹具**
@@ -107,6 +120,20 @@ const BUDGET = {
   /** ⑦ 流式期间 ≥ 这么长的帧,一个都不许有。 */
   longFrameMs: 50,
   longFrames: 0,
+  /*
+   * ── P1b(2026-09-21 用户两条裁定)补的五格 ────────────────────────────
+   */
+  /** ⑧ 发送落位之后气泡下面那块白,最多几行正文(`content/seat.ts` 的 `SEAT_LINES`)。 */
+  seatLines: 6,
+  /** ⑧ 上一格之外再给的余量(px)—— 亚像素与边框,不是给行数放水。 */
+  seatSlackPx: 1,
+  /** ⑨ 等待期与出字期,尾槽里那一份内容的形状差(px)。 */
+  slotShapeDiffPx: 0.5,
+  /** ⑩ 收场淡出:不透明度往回涨的次数、以及那一段里那一格自己的高变了多少(px)。 */
+  fadeRises: 0,
+  fadeHeightPx: 0.5,
+  /** ⑪⑫ 思考段的扫光跟错了对象的帧数(正文已出还在扫 / 旧的那一段还在扫)。 */
+  staleThoughtFrames: 0,
 }
 
 /**
@@ -534,6 +561,15 @@ async function startSampler(page) {
      */
     const run = (window.__gRun = (window.__gRun ?? 0) + 1)
     let seq = 0
+    /*
+     * ── **每帧的活儿必须是 O(1),而且一次 `getComputedStyle` 都嫌多**(09-10 判例
+     *    「探针自伤」:量长帧的探针自己制造长帧)────────────────────────────────
+     * 一行正文有多高在一趟里是个常数(阅读轴中途不会变),所以量一次就存着。
+     * 第一版每帧 `getComputedStyle(scroll).getPropertyValue('--pr-fs')` 量它 ——
+     * 超量那一档(400 行 / 十一万像素 / content-visibility)上,那一句在**六个**场景里
+     * 各造出一个 >50ms 的长帧,而同一份产品把这一句挪出每帧之后全部归零。
+     */
+    let lineH = 0
     const idOf = (el) => {
       if (el.__gRun !== run) {
         el.__gRun = run
@@ -604,6 +640,32 @@ async function startSampler(page) {
          * 不必再把它们排除 —— 它们本来就不在这棵子树上。
          */
         const hasContent = Boolean(live?.querySelector('[data-prose], [data-testid="chat-thought"], [data-tool-card]'))
+        /**
+         * **正文已经在出了吗**(P1b 裁定 D 的判据之一):思考段自己也报
+         * `data-prose="thought"`,所以这一句要把它排除 —— 剩下的 `[data-prose]`
+         * 与块级内容才是「模型已经转去写正文 / 已经摆出工具卡」。
+         */
+        const hasText = Boolean(live?.querySelector(
+          '[data-prose]:not([data-testid="chat-thought"]), [data-block-kind], [data-tool-card]'))
+        /**
+         * **这一段思考后面还有别的东西吗** —— P1b 裁定 D 的判据本身
+         * (段模型那一格 `thinking` = 消息在流 ∧ 它是序列上的最后一件)。
+         * 排除自己的后代:一段思考展开之后里面全是 `<p>`,不排掉的话它永远「后面
+         * 还有东西」。
+         */
+        let blocks = null
+        const hasAfter = (el) => {
+          /* **懒算**:没有思考段的那几档一帧都不必扫(同一条「探针自伤」判词)。 */
+          if (blocks === null) {
+            blocks = live
+              ? Array.prototype.slice.call(
+                  live.querySelectorAll('[data-prose], [data-block-kind], [data-tool-card]'))
+              : []
+          }
+          return blocks.some((b) =>
+            b !== el && !el.contains(b)
+            && (el.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0)
+        }
         /** 活消息行里每一段思考,各记一格高(自动折叠没有了,它该恒定)。 */
         const thoughts = []
         /**
@@ -618,9 +680,20 @@ async function startSampler(page) {
         let liveLine = null
         if (live) {
           for (const el of live.querySelectorAll('[data-testid="chat-thought"]')) {
-            thoughts.push({ ...rect(el), open: el.getAttribute('aria-expanded') })
-            if (liveLine) continue
             const box = el.querySelector('p[data-live]')
+            /*
+             * **这一块思考此刻还在不在进行**(P1b 裁定 D)。判据是它收起态那一行报不报
+             * `data-live` —— 那一格今天读的是段模型的 `thinking`(「这一块」),
+             * 不再是 `live`(「这条消息」)。⑪ 与 ⑫ 判的就是这一格。
+             */
+            thoughts.push({
+              ...rect(el),
+              open: el.getAttribute('aria-expanded'),
+              live: Boolean(box),
+              /* 它是不是这条消息序列上的最后一件 —— 产品那一格 `thinking` 的判据本身。 */
+              last: !hasAfter(el),
+            })
+            if (liveLine) continue
             const span = box?.firstElementChild
             if (!box || !span) continue
             const br = box.getBoundingClientRect()
@@ -634,6 +707,62 @@ async function startSampler(page) {
             }
           }
         }
+        /*
+         * ── 尾槽里那一份内容(P1b 裁定 B/C 补的两格)────────────────────────
+         *  · `slotShape` —— 光标与读数在这一格里的位置与大小(相对这一格自己),
+         *    ⑨ 拿它判「等待期与出字期逐像素相同」;
+         *  · `slotOpacity` —— 那一份内容此刻的不透明度,⑩ 拿它判收场那一下是不是
+         *    单调淡出。读的是 computed 值,所以过渡中的中间值也录得到。
+         * 两格都只在那一份内容挂着时有 —— 空着时它整个不在 DOM 里。
+         */
+        let slotShape = null
+        let slotOpacity = null
+        if (slot) {
+          const body = slot.firstElementChild
+          if (body) {
+            /*
+             * **只在收场那一段读不透明度**(同一条「探针自伤」判词):`getComputedStyle`
+             * 是每帧一次的额外开销,而 ⑩ 的窗口只有收场之后那 300ms。在跑那一段
+             * 报 null,`analyze` 那边把 null 读作「已经播完 = 0」,所以 ⑩ 的窗口
+             * (endAt 起)里第一帧一定是 `leaving`,拿得到真值。
+             */
+            if (slot.getAttribute('data-face') === 'leaving') {
+              slotOpacity = Number(getComputedStyle(body).opacity)
+            }
+            const sr = slot.getBoundingClientRect()
+            const box = (el) => {
+              if (!el) return null
+              const r = el.getBoundingClientRect()
+              return {
+                dx: Number((r.left - sr.left).toFixed(2)),
+                dy: Number((r.top - sr.top).toFixed(2)),
+                w: Number(r.width.toFixed(2)),
+                h: Number(r.height.toFixed(2)),
+              }
+            }
+            slotShape = {
+              cursor: box(slot.querySelector('[data-testid="chat-streaming"]')),
+              /* 读数只取 dy/h:那行字的**宽**本来就随秒数进位变(它是寿命读数)。 */
+              readout: box(slot.querySelector('[data-testid="chat-readout"]')),
+              stopH: box(slot.querySelector('[data-testid="chat-stop"]'))?.h ?? null,
+            }
+          }
+        }
+        /*
+         * ── 座位(⑧,P1b 裁定 A)──────────────────────────────────────────
+         * 发送落位之后气泡下面留了多少白。一行有多高按**正文那一档**算
+         * (`--pr-fs × --pr-lh`,与产品的 `measureSeat` 同一个式子、同一个产地)。
+         */
+        const seatEl = column.querySelector(':scope > [data-seat]')
+        let seat = null
+        if (seatEl) {
+          if (lineH === 0) {
+            const cs = getComputedStyle(scroll)
+            const px = (v) => Number.parseFloat(v) || 0
+            lineH = px(cs.getPropertyValue('--pr-fs')) * px(cs.getPropertyValue('--pr-lh'))
+          }
+          seat = { h: Number(seatEl.getBoundingClientRect().height.toFixed(2)), lineH }
+        }
         window.__gFrames.push({
           t,
           st: scroll.scrollTop,
@@ -646,9 +775,30 @@ async function startSampler(page) {
           liveId: live ? idOf(live) : null,
           /* 滚动容器换过人 = 重挂,那一帧的 `scrollTop` 归零不是钳位。 */
           scrollId: idOf(scroll),
-          streaming: Boolean(pane.querySelector('[data-testid="chat-stop"]')),
+          /*
+           * ── **「这一轮还在跑」问尾槽那一格自己,不问停止钮在不在**(2026-09-21)──
+           *
+           * P1b 裁定 C 之后收场不是当场卸载:那一份内容(含停止钮)要**原地淡出**
+           * `--dur-exit` 才卸掉。拿「停止钮在不在树上」当判据的话,run 早就收了、
+           * 屏上却还报着「在跑」120ms —— 后果是**收场那一下的重排被算进了流式期**:
+           * 超量那一档(400 行 / 十一万像素)落定那一帧本来就是 80–250ms,它从前
+           * 恰好落在「`streaming` 翻假」的那一帧上、被 ⑦ 的 `if (!streaming) continue`
+           * 挡在外面,P1b 之后它落在淡出中的某一帧上,于是六个场景一起假红。
+           * (反证跑过:同一道门、同一份夹具,产品源码反装回 `main` 那一版 ⑦ 全 0;
+           *  把座位改回 60 行仍然红 —— 所以它不是裁定 A,是这一句判据自己。)
+           *
+           * 今天判据取**产品自己的自述**:尾槽那一格的 `data-face`。`run` = 在跑,
+           * `leaving` = 已经收了正在淡出,`idle` = 空着。取不到那一格(会话还没起完底)
+           * 才退回问停止钮。
+           */
+          streaming: slot ? slot.getAttribute('data-face') === 'run'
+            : Boolean(pane.querySelector('[data-testid="chat-stop"]')),
           face: slot?.getAttribute('data-face') ?? null,
           slot: rect(slot),
+          slotShape,
+          slotOpacity,
+          seat,
+          hasText,
           readAnchor: rect(readAnchorOf(scroll)),
           hasContent,
           thoughts,
@@ -748,16 +898,97 @@ function analyze(frames, userActs, thoughtFlat) {
   const baseLive = frames[0].liveId
   const firstContent = frames.findIndex((f) => f.liveId !== baseLive && f.hasContent)
 
-  /* ① 首字换手:等待那张脸的最后一帧起,盯 HANDOFF_MS。 */
-  const lastWait = frames.map((f) => f.face === 'wait').lastIndexOf(true)
+  /*
+   * ① 首字换手:**最后一帧「在跑但还画不出东西」起**,盯 HANDOFF_MS。
+   *
+   * P1b 裁定 B 之前这里认的是 `face === 'wait'` —— 尾槽那时有两张脸,等待那一张
+   * 亮着就是「还没出字」。今天那张脸没有了(从开张到收场只有一张),所以判据换成
+   * 产品自己那一句的同义词:**这一轮开张了(`streaming`)而活消息行里还画不出东西
+   * (`hasContent` 为假)**。量的窗口、量的东西、判的线一个字没变。
+   */
+  const lastWait = frames
+    .map((f) => f.streaming && f.liveId !== baseLive && !f.hasContent)
+    .lastIndexOf(true)
   let handoff = { frames: 0, maxPx: 0 }
   if (lastWait >= 0 && frames[lastWait].slot) {
     const until = frames[lastWait].t + HANDOFF_MS
     const tops = []
     for (let i = lastWait; i < frames.length && frames[i].t <= until; i += 1) {
+      /*
+       * **用户自己动手之后那一小段不算**(2026-09-21 补的,与 ② / ⑤ 那两句逐字
+       * 同一条判词、同一个窗口长度 `USER_ACT_MS`)。
+       *
+       * 起因是超量那一档的「中途上拨半屏」:`scrollUpAndPin` 的前置条件是
+       * 「这一轮真的开始长了」= `scrollHeight > clientHeight × 2`,而 50MB 那条会话
+       * **一开张就满足**(`scrollHeight` 十一万像素),于是那一下上拨落在开张后
+       * 800ms —— 正好压在首字(≈940ms)那一段窗口里。量到的 9.09px 是**人自己滚的
+       * 那一下**,不是产品动的。P1 那版这里没踩到只是因为窗口的左边界认的是另一件
+       * 东西(等待那张脸的最后一帧),两个判据的时刻差了几十毫秒。
+       */
+      if (userActs.some((at) => frames[i].t >= at && frames[i].t <= at + USER_ACT_MS)) continue
       if (frames[i].slot) tops.push(frames[i].slot.top)
     }
     handoff = { frames: tops.length, ...drift(tops) }
+  }
+
+  /*
+   * ⑨ **等待期与出字期,尾槽里那一份内容逐像素相同**(P1b 裁定 B)。
+   *
+   * 用户原话:「在流式过程中,生成中的这块样式布局应保持不变」。P1 那版靠两张脸
+   * 交叉淡入来兑现「几何不变」,P1b 把等待那张脸整件删了 —— 于是这件事从「两张脸
+   * 恰好一样高」变成「**压根只有一张脸**」,而这一格就是它的证词:拿首字**之前**
+   * 最后一帧的那份形状,跟首字**之后**每一帧比。
+   *
+   * 比什么:光标的位置与大小(相对这一格自己)、读数的**上缘与高**、停止钮的高。
+   * **不比读数的宽**:那行字的宽随秒数进位变(0.9s → 10.1s 多一个字符),那是
+   * 「寿命读数」本来就该有的事(判词在 `StreamReadout` 的「动效档」那一节),
+   * 与「布局保持不变」是两件事。
+   */
+  let shapeFrames = 0
+  let shapeDiff = 0
+  let shapeWhat = ''
+  /**
+   * **这一格里的东西来了又走(或走了又来)的帧数**。
+   *
+   * 位置一样还不够:「等第一个字时不画读数、出字了再画上去」这一类改法会让位置
+   * 逐字相同而屏上多出一件东西 —— 那正是用户说的「生成中的这块样式布局」变了。
+   * 所以在场与否单记一格,与位置差同判(反证:把 `startedAt` 改成「有内容了才给」,
+   * 这一格当场从 0 变成几百)。
+   */
+  let shapeMissing = 0
+  if (lastWait >= 0 && frames[lastWait].slotShape) {
+    const base = frames[lastWait].slotShape
+    const cmp = (a, b, label) => {
+      if (!a || !b) return
+      for (const k of Object.keys(a)) {
+        const d = Math.abs(a[k] - b[k])
+        if (d > shapeDiff) { shapeDiff = d; shapeWhat = `${label}.${k}` }
+      }
+    }
+    const there = (v) => v !== null && v !== undefined
+    for (let i = lastWait + 1; i < frames.length; i += 1) {
+      const f = frames[i]
+      if (!f.streaming || !f.slotShape) continue
+      shapeFrames += 1
+      if (there(base.cursor) !== there(f.slotShape.cursor)) shapeMissing += 1
+      else if (there(base.readout) !== there(f.slotShape.readout)) shapeMissing += 1
+      else if (there(base.stopH) !== there(f.slotShape.stopH)) shapeMissing += 1
+      cmp(base.cursor, f.slotShape.cursor, 'cursor')
+      if (base.readout && f.slotShape.readout) {
+        cmp({ dy: base.readout.dy, h: base.readout.h },
+          { dy: f.slotShape.readout.dy, h: f.slotShape.readout.h }, 'readout')
+      }
+      if (base.stopH !== null && f.slotShape.stopH !== null) {
+        const d = Math.abs(base.stopH - f.slotShape.stopH)
+        if (d > shapeDiff) { shapeDiff = d; shapeWhat = 'stop.h' }
+      }
+    }
+  }
+  const slotShape = {
+    frames: shapeFrames,
+    maxDiffPx: Number(shapeDiff.toFixed(2)),
+    what: shapeWhat,
+    missing: shapeMissing,
   }
 
   /*
@@ -823,8 +1054,37 @@ function analyze(frames, userActs, thoughtFlat) {
   let liveDelta = 0
   let settleDelta = 0
   let thoughtFrames = 0
+  /*
+   * ⑪/⑫ **扫光跟的是「这一块思考」,不是「这条消息」**(P1b 裁定 D)。
+   * 用户原话:「think 区域的流式动画效果在这块思考结束后应该停止」。两格读数:
+   *  · `afterText` —— 正文已经在出、这一轮还没收场,却还有思考段报着 `data-live`
+   *    的帧数。它就是那条报障的正面:**必须是 0**;
+   *  · `stale` —— 屏上有两段以上思考时,**不是最后一段**的那些里还报着 `data-live`
+   *    的帧数(思考→工具→思考那一档)。同样必须是 0。
+   * 另记 `multi` 与 `textFrames`:「量到没量到」那一句要它们(窗口空着时两个数都是
+   * 0,而 0 ≤ 0 恒真 —— 一条恒绿的断言不是守卫)。
+   */
+  let staleLiveFrames = 0
+  let doneThoughtFrames = 0
+  let staleLiveMulti = 0
+  let multiThoughtFrames = 0
+  let textWithThoughtFrames = 0
   for (let i = 0; i < frames.length; i += 1) {
     const f = frames[i]
+    if (f.streaming && f.thoughts.length > 0) {
+      /** 这一帧有没有「已经想完的那一段」(后面已经长出别的东西了)。 */
+      const done = f.thoughts.filter((th) => !th.last)
+      const stale = done.some((th) => th.live)
+      if (done.length > 0) {
+        doneThoughtFrames += 1
+        if (stale) staleLiveFrames += 1
+      }
+      if (f.thoughts.length > 1) {
+        multiThoughtFrames += 1
+        if (stale) staleLiveMulti += 1
+      }
+      if (f.hasText) textWithThoughtFrames += 1
+    }
     for (const th of f.thoughts) {
       if (!th || th.id === null) continue
       // 人点开过的那一段不在这一条的管辖里(P1 只保证「没人点它时它不动」)。
@@ -941,6 +1201,70 @@ function analyze(frames, userActs, thoughtFlat) {
     else shrinks.push(row)
   }
 
+  /*
+   * ⑧ **发送落位之后气泡下面留了多少白**(P1b 裁定 A)。
+   *
+   * 用户原话:「发送回车后,留出合适的空间就可以,不需要一个很大的空间」。
+   * 起手那一格今天是**六行封顶**(`content/seat.ts` 的 `SEAT_LINES`),所以这一格
+   * 量的是座位垫块这一轮出现过的**最高**的那一下 —— 它就是起手那一格。
+   * 一行有多高由产品自己的式子现算(`--pr-fs × --pr-lh`),不写死一个数。
+   */
+  let seatMax = 0
+  let seatLineH = 0
+  let seatFrames = 0
+  for (const f of frames) {
+    if (!f.seat) continue
+    seatFrames += 1
+    seatMax = Math.max(seatMax, f.seat.h)
+    seatLineH = Math.max(seatLineH, f.seat.lineH)
+  }
+  const seat = {
+    frames: seatFrames,
+    maxPx: Number(seatMax.toFixed(2)),
+    lineHPx: Number(seatLineH.toFixed(2)),
+    lines: seatLineH > 0 ? Number((seatMax / seatLineH).toFixed(2)) : null,
+  }
+
+  /*
+   * ⑩ **收场那一下是一段丝滑的淡出**(P1b 裁定 C)。
+   *
+   * 用户原话:「在结束后,做一个丝滑的消失」。三格读数,窗口是收场那一帧起 END_MS:
+   *  · `drop` —— 不透明度**单调往下**走的证据:从收场那一刻的值到最后一次读到的值,
+   *    中间有没有往回涨过(`rises`);
+   *  · `heightPx` —— 这一段里那一格自己的高变了多少。裁定 C 的硬判据是
+   *    **几何上什么都不发生**,淡的只有透明度;
+   *  · 上方那一块在读的东西动了多少归 ③(同一个窗口、同一条线),这里不重复判。
+   */
+  let fade = { frames: 0, from: null, to: null, rises: 0, heightPx: 0 }
+  if (endAt > 0) {
+    const until = frames[endAt].t + END_MS
+    const baseH = frames[endAt].slot?.h
+    let prev = null
+    let rises = 0
+    let first = null
+    let last = null
+    let n = 0
+    let hMax = 0
+    for (let i = endAt; i < frames.length && frames[i].t <= until; i += 1) {
+      const f = frames[i]
+      if (f.slot && baseH !== undefined) hMax = Math.max(hMax, Math.abs(f.slot.h - baseH))
+      /* 那一份内容卸载之后 `slotOpacity` 是 null —— 那正是「播完了」,不是缺数据。 */
+      const o = f.slotOpacity === null ? 0 : f.slotOpacity
+      n += 1
+      if (first === null) first = o
+      if (prev !== null && o > prev + 0.01) rises += 1
+      prev = o
+      last = o
+    }
+    fade = {
+      frames: n,
+      from: first === null ? null : Number(first.toFixed(3)),
+      to: last === null ? null : Number(last.toFixed(3)),
+      rises,
+      heightPx: Number(hMax.toFixed(2)),
+    }
+  }
+
   /* ⑥ 上拨那一档钉下来的那一块字。 */
   const anchorTops = []
   let anchorDead = 0
@@ -980,9 +1304,15 @@ function analyze(frames, userActs, thoughtFlat) {
     spanMs: Math.round(frames[frames.length - 1].t - t0),
     fps: Math.round((frames.length / Math.max(1, frames[frames.length - 1].t - t0)) * 1000),
     streamFrames: frames.filter((f) => f.streaming).length,
-    waitFrames: frames.filter((f) => f.face === 'wait').length,
+    /* 「在跑但还画不出东西」那一段 —— P1b 之后它不再是一张脸,只是一段时间。 */
+    waitFrames: frames.filter((f) => f.streaming && f.liveId !== baseLive && !f.hasContent).length,
+    /* 收场淡出那一段在屏上活了几帧(face='leaving')。 */
+    leavingFrames: frames.filter((f) => f.face === 'leaving').length,
     firstContentAt: firstContent >= 0 ? Math.round(frames[firstContent].t - t0) : -1,
     handoff,
+    slotShape,
+    seat,
+    fade,
     pinned,
     end,
     thought: {
@@ -990,6 +1320,13 @@ function analyze(frames, userActs, thoughtFlat) {
       elements: heights.size,
       liveDeltaPx: Number(liveDelta.toFixed(2)),
       settleDeltaPx: Number(settleDelta.toFixed(2)),
+      /* ⑪ 已经想完的那一段还在扫的帧 / 屏上有「已经想完的那一段」的帧。 */
+      stale: staleLiveFrames,
+      done: doneThoughtFrames,
+      /* ⑫ 同一件事在「屏上两段以上思考」那一档的读数。 */
+      staleMulti: staleLiveMulti,
+      multi: multiThoughtFrames,
+      textFrames: textWithThoughtFrames,
     },
     shrinks,
     anchor,
@@ -1063,6 +1400,17 @@ function report(name, m) {
     + ` 落定 ${m.thought.settleDeltaPx}px · 回缩 ${m.shrinks.length}(列在忙时另有 ${m.listShrinks.length})`
     + ` · 锚点 ${m.anchor.frames} 帧 ${m.anchor.maxPx}px(摘掉 ${m.anchor.dead})`
     + ` · >50ms 长帧 ${m.longFrames}(列在忙时另有 ${m.listLongFrames};最长 ${m.longestFrameMs}ms)`,
+  )
+  console.log(
+    `      ${' '.repeat(name.length)} ⑧ 座位 ${m.seat.maxPx}px = ${m.seat.lines} 行`
+    + `(一行 ${m.seat.lineHPx}px / ${m.seat.frames} 帧)`
+    + ` · ⑨ 尾槽内形 ${m.slotShape.frames} 帧,最大差 ${m.slotShape.maxDiffPx}px`
+    + `${m.slotShape.what ? `(${m.slotShape.what})` : ''},多没少 ${m.slotShape.missing}`
+    + ` · ⑩ 收场淡出 ${m.fade.frames} 帧:${m.fade.from} → ${m.fade.to}`
+    + `,回涨 ${m.fade.rises},格高变化 ${m.fade.heightPx}px(在屏 ${m.leavingFrames} 帧)`
+    + ` · ⑪ 想完了还在扫 ${m.thought.stale}/${m.thought.done} 帧`
+    + `(正文已出 ${m.thought.textFrames} 帧)`
+    + ` · ⑫ 两段以上时旧的还在扫 ${m.thought.staleMulti}/${m.thought.multi} 帧`,
   )
   if (m.liveLine.frames > 0) {
     console.log(
@@ -1319,9 +1667,34 @@ async function main() {
      * `<p>` 钉下来,断言新一轮全程它不动、而且始终在 DOM 里。
      */
     const scrollUpAndPin = async ({ page: p }) => {
+      /*
+       * ── 等的是「**这一轮**真的开始长了」,不是「这条会话够高了」(2026-09-21 改)──
+       *
+       * 第一版的判据是 `scrollHeight > clientHeight × 2`。那句话在**空会话的第一轮**
+       * 上说得通,可这道门每一档要连跑八个场景 —— 轮到这一档时上面已经压着好几轮
+       * 回答,超量那一档更是十一万像素:判据**一开张就成立**,于是这一下上拨落在
+       * 开张后 800ms,正好压在首字(≈940ms)那 250ms 的换手窗里。① 把用户自己动手
+       * 那一段剔掉之后,那个窗口就一帧不剩了(`短会话/上拨 ① 采到 0 帧`)。
+       *
+       * 今天等的是**这一轮那条助手行里真的画出了东西** —— 与 ① 的左边界
+       * (`streaming ∧ 这一轮那条行还画不出东西`)是同一件事的两面,所以这一下
+       * 必然落在换手窗之后,而这一档要测的「中途上拨」也才名副其实。
+       */
       await waitFor('这一轮真的开始长了', async () => p.evaluate(() => {
-        const scroll = window.__gLeaf().querySelector('[data-testid="chat-stream"]')
-        return scroll ? scroll.scrollHeight > scroll.clientHeight * 2 : false
+        const leaf = window.__gLeaf()
+        const scroll = leaf.querySelector('[data-testid="chat-stream"]')
+        const kids = scroll?.firstElementChild?.children ?? []
+        let live = null
+        for (let i = kids.length - 1; i >= 0 && i >= kids.length - 7; i -= 1) {
+          const el = kids[i]
+          if (!el.hasAttribute('data-message-id')) continue
+          if (el.getAttribute('data-role') === 'user') break
+          live = el
+          break
+        }
+        const grown = Boolean(live?.querySelector(
+          '[data-prose], [data-testid="chat-thought"], [data-tool-card]'))
+        return Boolean(scroll) && grown && scroll.scrollHeight > scroll.clientHeight * 2
       }), 90_000)
       await delay(800)
       const picked = await p.evaluate(() => {
@@ -1513,6 +1886,91 @@ async function main() {
         + ')',
       )
 
+      /*
+       * ⑧ **发送落位之后气泡下面那块白 ≤ 六行 + 1px**(P1b 裁定 A)。
+       *
+       * 用户原话:「发送回车后,留出合适的空间就可以,不需要一个很大的空间」。
+       * 量的是座位垫块这一轮出现过的最高的那一下 = 起手那一格。上拨那一档不判 ——
+       * 人把视口挪走之后座位按新几何重算,那不是「发送落位」那一刻的事。
+       */
+      if (!key.endsWith(':scrollUp')) {
+        assert(m.seat.frames > 5, `${key} ⑧ 座位采到 ${m.seat.frames} 帧(> 5)`)
+        assert(m.seat.lineHPx > 0, `${key} ⑧ 量到了一行有多高(${m.seat.lineHPx}px)`)
+        const seatCap = BUDGET.seatLines * m.seat.lineHPx + BUDGET.seatSlackPx
+        assert(
+          m.seat.maxPx <= seatCap,
+          `${key} ⑧ 落位后气泡下方空白 ${m.seat.maxPx}px(${m.seat.lines} 行)`
+          + ` ≤ ${BUDGET.seatLines} 行 + ${BUDGET.seatSlackPx}px = ${seatCap.toFixed(2)}px`,
+        )
+      }
+
+      /*
+       * ⑨ **等待期与出字期,尾槽里那一份内容逐像素相同**(P1b 裁定 B)。
+       * 判词与「不比读数的宽」那条例外写在 `analyze` 的 ⑨ 那一段上。
+       */
+      assert(
+        m.slotShape.frames > 10,
+        `${key} ⑨ 首字之后尾槽内形采到 ${m.slotShape.frames} 帧(> 10)`,
+      )
+      assert(
+        m.slotShape.maxDiffPx <= BUDGET.slotShapeDiffPx,
+        `${key} ⑨ 等待期 vs 出字期尾槽内形最大差 ${m.slotShape.maxDiffPx}px`
+        + `${m.slotShape.what ? `(${m.slotShape.what})` : ''} ≤ ${BUDGET.slotShapeDiffPx}`,
+      )
+      assert(
+        m.slotShape.missing === 0,
+        `${key} ⑨ 这一格里的东西**一件都没多没少**(光标 / 读数 / 停止在场与否与等待期`
+        + `不同的帧 ${m.slotShape.missing} = 0)`,
+      )
+
+      /*
+       * ⑩ **收场丝滑消失**(P1b 裁定 C):单调淡到 0,那一格的高一个像素不动。
+       * 上方那一块在读的东西动没动归 ③(同一个窗口),这里不重复判。
+       */
+      assert(m.fade.frames > 1, `${key} ⑩ 收场窗采到 ${m.fade.frames} 帧(> 1)`)
+      assert(
+        m.leavingFrames > 0,
+        `${key} ⑩ 收场那一下**播过**淡出(face='leaving' 在屏 ${m.leavingFrames} 帧 > 0)`,
+      )
+      assert(
+        m.fade.rises <= BUDGET.fadeRises,
+        `${key} ⑩ 不透明度单调往下(${m.fade.from} → ${m.fade.to},回涨 ${m.fade.rises} 次`
+        + ` ≤ ${BUDGET.fadeRises})`,
+      )
+      assert(
+        m.fade.to !== null && m.fade.to <= 0.05,
+        `${key} ⑩ 淡到 0(收场窗末尾 ${m.fade.to})`,
+      )
+      assert(
+        m.fade.heightPx <= BUDGET.fadeHeightPx,
+        `${key} ⑩ 淡出期间那一格自己的高变化 ${m.fade.heightPx}px ≤ ${BUDGET.fadeHeightPx}`,
+      )
+
+      /*
+       * ⑪ **正文已经在出了,思考段就该停**(P1b 裁定 D)。
+       * 只在真有思考段、而且正文也出来了的那几档判(不判恒绿的断言)。
+       */
+      if (m.thought.done > 0) {
+        assert(
+          m.thought.stale <= BUDGET.staleThoughtFrames,
+          `${key} ⑪ 已经想完(后面长出了正文 / 工具卡)却还在扫的帧 ${m.thought.stale}`
+          + `/${m.thought.done} ≤ ${BUDGET.staleThoughtFrames}`
+          + `(这一轮正文已出 ${m.thought.textFrames} 帧)`,
+        )
+      }
+
+      /*
+       * ⑫ **思考→工具→思考:只有最后那一段在扫**(同一条裁定的第二个落点)。
+       * 只在屏上真有两段以上思考的那一档判。
+       */
+      if (m.thought.multi > 0) {
+        assert(
+          m.thought.staleMulti <= BUDGET.staleThoughtFrames,
+          `${key} ⑫ 屏上两段以上思考时,前面那几段还在扫的帧 ${m.thought.staleMulti}`
+          + `/${m.thought.multi} ≤ ${BUDGET.staleThoughtFrames}`,
+        )
+      }
+
       /* ⑥ 只在上拨那一档判。 */
       if (key.endsWith(':scrollUp')) {
         assert(m.anchor.frames > 20, `${key} ⑥ 锚点采到 ${m.anchor.frames} 帧(> 20)`)
@@ -1564,7 +2022,7 @@ async function main() {
     console.error(`\n[stream-geometry] FAILED(${LANE})—— ${failures.length} 条:\n  ${failures.join('\n  ')}`)
     process.exit(1)
   }
-  console.log(`\n[stream-geometry] ok(${LANE})—— 流式几何七条在真机上成立`)
+  console.log(`\n[stream-geometry] ok(${LANE})—— 流式几何十二条在真机上成立`)
 }
 
 main().catch((error) => {

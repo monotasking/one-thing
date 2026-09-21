@@ -43,7 +43,7 @@ import type { SegmentModel } from './model/segments'
 import { MessageActions } from './message/MessageActions'
 import { MessageChrome } from './message/MessageChrome'
 import { StopNotice } from './message/StopNotice'
-import { TailSlot, type TailFace } from './message/TailSlot'
+import { TailSlot } from './message/TailSlot'
 import { MessageSourceFoot } from './research/SourceFoot'
 import { SegmentView } from './SegmentView'
 import { UserMessageBody } from './user-message'
@@ -203,9 +203,12 @@ function measureSeat(el: HTMLElement): SeatGeometry | undefined {
 /**
  * 自己那条气泡该停在哪 —— **滑到置顶线**那一下的目标 `scrollTop`(规矩 ①)。
  *
- * 换算成内容坐标再减去置顶线,最后夹进 `[0, 最大可滚]`:座位写对了的时候这个夹子
- * 是一次恒等(座位的定义就是「让这个位置恰好滚得到」),写不对时它保证不会去
- * 要一个不存在的位置。
+ * 换算成内容坐标再减去置顶线,最后夹进 `[0, 最大可滚]`。
+ *
+ * **这个夹子从 09-21 起是常态,不是兜底**(裁定 A,判词在 `seat.ts` 的 `SEAT_LINES`):
+ * 座位起手只留六行,总高多半不够把气泡送到置顶线,于是落点就是「贴底」——
+ * 气泡下面是六行空白加尾槽。这不影响「发送只滚一次」:目标**在这里**就已经夹好,
+ * 下面 `slideScrollTo` 的每一帧都是朝它插值,单调、无反向。
  */
 function sendLineTarget(el: HTMLElement): number | undefined {
   const column = el.firstElementChild
@@ -476,35 +479,25 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
   )
 
   /*
-   * ── 这一轮此刻在等第一个字吗(正本 `docs/stream-geometry-2026-09.md` §5.2)──────
-   * 判据是**既有那一句**:「这条活消息此刻画得出什么」= 装配管线的段序列空不空。
-   * 它今天只在这一层问一次 —— G 线 P1 之后等待那道折痕与那枚光标都住进了列尾
-   * 的尾槽,`MessageRow` 对「在等第一个字」这件事已经没有话要说。
-   *
    * **取的是列尾那一条,不是 `find`**:活消息按定义是账本最后一条(这一轮的回复),
-   * 流式期间这一句每帧都要跑,`find` 就是每帧扫一遍整篇抄本。`assembleMessage` 是
-   * 纯函数 + 按消息引用 memo,所以它在这里与在 `MessageRow` 里**只有一次**真算,
-   * 另一次是 WeakMap 命中。
+   * 流式期间这一句每帧都要跑,`find` 就是每帧扫一遍整篇抄本。
    */
   const tailMessage = messages[messages.length - 1]
   /** 这一轮那条活消息(= 账本最后一条,且它就是在跑的那一条)。 */
   const activeMessage = tailMessage !== undefined && tailMessage.id === activeMessageId
     ? tailMessage
     : undefined
-  const awaitingFirstToken =
-    (activeMessage !== undefined && assembleMessage(activeMessage).length === 0)
-    || retryingId !== undefined
   /**
-   * ── 尾槽此刻是哪张脸(G 线 P1)────────────────────────────────────────────
+   * ── 尾槽此刻在跑没在跑(G 线 P1 立,P1b 裁定 B 收成一格布尔)──────────────
    * 「在跑」= 有一条活消息,**或者**重试那一发还在飞(那段真空里账本上一个字都还
-   * 没变,判词在 `retryingId` 上)。在跑且一个字都画不出来 = 等待,否则 = 流式。
-   * 判据全在这一层算 —— 尾槽自己不问数据,它只按这一格画(`TailSlot` 的自述)。
+   * 没变,判词在 `retryingId` 上)。
+   *
+   * **「在等第一个字」不再是一格事实**:P1 那版还按它把尾槽分成两张脸(扫光 / 光标),
+   * P1b 用户裁定「生成中的这块样式布局应保持不变」,于是等待那张脸退役,这一层
+   * 连带不必再问「这条活消息此刻画得出什么」—— 那一句(`assembleMessage(...).length`)
+   * 从这里删掉了,流式期间每帧少一次装配查表。
    */
-  const tailFace: TailFace = activeMessageId === undefined && retryingId === undefined
-    ? 'idle'
-    : awaitingFirstToken
-      ? 'wait'
-      : 'stream'
+  const tailRunning = activeMessageId !== undefined || retryingId !== undefined
 
   /*
    * ── 消息流是响应链上的一格 `region`(09-03 R2)──────────────────────────────
@@ -719,7 +712,7 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
               /*
                * ── 尾槽:整列末尾常驻的一格(G 线 P1,正本 §3.1)──────────────────
                * 排在卷尾垫块**之后**,所以它是这条列真正的最后一格。它常驻 ——
-               * 不在跑时两张脸都不挂载,但那一格的高照占(token `--tail-slot-h`)。
+               * 不在跑时里面什么都不挂载,但那一格的高照占(token `--tail-slot-h`)。
                *
                * **只在真的有会话、而且账本读出来了的时候画**:空会话 / loading /
                * error 那三态各自有一句话要说(上面那三行),再压一格空槽只是多一段
@@ -731,11 +724,11 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
                     <TailSlot
                       key="tail"
                       sessionId={sessionId}
-                      face={tailFace}
+                      running={tailRunning}
                       /*
                        * 起点 = 这条助手消息的 `timestamp`(账本上 `run/start` 自己带的
                        * 时刻)。重试那段真空里没有活消息 → `undefined` → 那一格只画
-                       * 在扫的线,不画一个编出来的读数(判词在 `TailSlot` 的 prop 上)。
+                       * 那枚光标,不画一个编出来的读数(判词在 `TailSlot` 的 prop 上)。
                        */
                       startedAt={activeMessage?.timestamp}
                       lastActivityAt={lastActivityAt}
@@ -2421,9 +2414,9 @@ function NoticeRow({ t }: { t: TFn }) {
  * ── 重试那一路的空折痕:**G 线 P1 删了**(2026-09-20)────────────────────────
  *
  * 09-15 单 B ⑥ 给重试那一路单开了一行 `article[data-retry-of]`,里面画一道在扫的
- * `WaitingSeam`,理由是「按下即开槽:那段真空里屏幕上要有回音」。**回音这件事没有
- * 变,变的是它画在哪** —— 今天「这一轮在等第一个字」由列尾那一格尾槽统一画一次
- * (`retryingId` 在场就算在等,见上面 `tailFace`),所以这一行连同它那条
+ * `WaitingSeam`(那一件已随 P1b 裁定 B 删除)。理由是「按下即开槽:那段真空里屏幕上
+ * 要有回音」。**回音这件事没有变,变的是它画在哪** —— 今天「这一轮在跑」由列尾那一格尾槽统一画一次
+ * (`retryingId` 在场就算在跑,见上面 `tailRunning`),所以这一行连同它那条
  * `data-retry-of` 一起退役:同一句话不许在屏幕上说两遍,而且这一行是**事后插进
  * 列里的一行**,插与拔各推一次下文,正是 §1 的 G4 要拆掉的那一种。
  *
@@ -2439,7 +2432,8 @@ function contextSeamRow(message: ProjectedMessage) {
       data-context-of={message.id}
     >
       {/*
-        * **这一行不扫了**(G 线 P1,正本 §2 拍点 2:「等待指示只留一处:尾部」)。
+        * **这一行不扫了**(G 线 P1,正本 §2 拍点 2:「等待指示只留一处:尾部」;
+        * P1b 之后连尾部那一处也不扫了 —— 扫光那张脸整件退役,见 §8 裁定 B)。
         * 09-15 那版让它在等第一个字时翻成 `running` 替 `WaitingSeam` 扫一道,
         * 于是屏上有两处在等 —— 用户 09-20 报的第一件就是「发送后屏上有两处在等的
         * 动画」。上下文更新本身是**已经发生完**的事,它恒 `settled`。

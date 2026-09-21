@@ -33,14 +33,20 @@ const paragraphs = () => Array.from(thought().querySelectorAll('p'))
 /**
  * 按真产地造 props。`id` 每次不同 —— 一条用例一条流,车道不许互相污染
  * (流式那一族要连着两帧喂同一个 id,用 `flow()`)。
+ *
+ * 第二个参数是 **`thinking`**(P1b 裁定 D):「**这一块**思考还在进行」。它与
+ * `textToFrame` 吃的那格 `live`(「这条消息还在流」,块冻结的判据)在这些用例里
+ * 恰好同值 —— 它们造的都是「消息在流、而这块思考就是最后一件」那一档。两者不同值
+ * 的那一档(模型转去写正文了、那块思考不动了)由
+ * `assemble/__tests__/assemble.test.ts` 钉:那是**装配**算出来的事实,不是这一件的行为。
  */
 let lane = 0
-function props(text: string, live: boolean) {
-  const { blocks, tail } = textToFrame(`case${(lane += 1)}`, text, live)
+function props(text: string, thinking: boolean) {
+  const { blocks, tail } = textToFrame(`case${(lane += 1)}`, text, thinking)
   return {
     blocks,
     tail,
-    live,
+    thinking,
     preview: textPreview(blocks, tail),
     latest: textLatest(blocks, tail),
   }
@@ -48,12 +54,12 @@ function props(text: string, live: boolean) {
 
 /** 一条流:连着喂同一个 id,拿到的就是真的增量帧。 */
 function flow(id: string) {
-  return (text: string, live = true) => {
-    const { blocks, tail } = textToFrame(id, text, live)
+  return (text: string, thinking = true) => {
+    const { blocks, tail } = textToFrame(id, text, thinking)
     return {
       blocks,
       tail,
-      live,
+      thinking,
       preview: textPreview(blocks, tail),
       latest: textLatest(blocks, tail),
     }
@@ -91,10 +97,10 @@ describe('思考段:同一段字的两个读法', () => {
    * 以及人正读到思考段中部时那段字**被从 DOM 上摘掉**(锚点为 null、上方下移 2094px)。
    * 用户 09-20:「思考段想完自动收起,正在读的人被打断」。
    *
-   * 所以旧断言**迁到了它的反面**:`live` 无论怎么翻,`expanded` 一格都不动。
+   * 所以旧断言**迁到了它的反面**:流式与否无论怎么翻,`expanded` 一格都不动。
    * 「正在想什么」改由收起态那一行自己说(下一条钉它)。
    */
-  it('`live` 翻来翻去都不改开合 —— 自动折叠没有产地了(G 线 P1)', () => {
+  it('流式与否翻来翻去都不改开合 —— 自动折叠没有产地了(G 线 P1)', () => {
     const view = render(<ThinkingSegment {...props('正在想', true)} />)
     expect(thought().getAttribute('aria-expanded')).toBe('false')
     view.rerender(<ThinkingSegment {...props('想完了', false)} />)
@@ -234,13 +240,13 @@ describe('分块流式(§4)', () => {
  * 这一层钉的是**挂的是哪一段字**、**报不报 `data-live`**、以及那句让整件事成立的话:
  * 不论哪一态,DOM 里都只有 ≤240 字。
  */
-describe('收起态那一行:流式看末尾,落定看开头', () => {
+describe('收起态那一行:这块思考还在进行时看末尾,想完了看开头', () => {
   /** 一段带换行的长思考:冻得出块,而且首尾两截**不一样**(不然这组用例证不了东西)。 */
   const LONG = `${'开头'.repeat(200)}\n${'中段'.repeat(200)}\n${'结尾'.repeat(200)}`
   /** 与装配层那一手同形:连续空白折成一个空格,两端修掉(`assemble/text.ts` 的 `oneLine`)。 */
   const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim()
 
-  it('还在流:那一行挂的是**末尾**那一截,并报 data-live', () => {
+  it('这块思考还在进行:那一行挂的是**末尾**那一截,并报 data-live', () => {
     const p = props(LONG, true)
     render(<ThinkingSegment {...p} />)
     const line = thought().querySelector('p')!
@@ -252,7 +258,7 @@ describe('收起态那一行:流式看末尾,落定看开头', () => {
     expect(oneLine(LONG).startsWith(line.textContent!)).toBe(false)
   })
 
-  it('落定:换回**开头**那一截,`data-live` 不在了', () => {
+  it('这块思考想完了:换回**开头**那一截,`data-live` 不在了', () => {
     const p = props(LONG, false)
     render(<ThinkingSegment {...p} />)
     const line = thought().querySelector('p')!
@@ -268,8 +274,8 @@ describe('收起态那一行:流式看末尾,落定看开头', () => {
    * 240 字额度已经被换行吃掉了**),所以判据落在字上,不落在样式上。
    */
   it('两态的字里都没有换行符(钳一行在装配层做,不在排版层做)', () => {
-    for (const live of [true, false]) {
-      const p = props(LONG, live)
+    for (const thinking of [true, false]) {
+      const p = props(LONG, thinking)
       expect(p.latest).not.toMatch(/\s\s|\n/)
       expect(p.preview).not.toMatch(/\s\s|\n/)
     }

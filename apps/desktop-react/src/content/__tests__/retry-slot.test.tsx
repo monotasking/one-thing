@@ -92,22 +92,27 @@ afterEach(async () => {
 })
 
 describe('按下即开槽', () => {
-  it('按下之前:没有折痕在扫,旧回答也没在折', async () => {
+  it('按下之前:尾槽空着,旧回答也没在折', async () => {
     const { container } = await mount()
-    expect(screen.queryByTestId('waiting-seam')).toBeNull()
     expect(screen.getByTestId('chat-tail-slot').getAttribute('data-face')).toBe('idle')
+    expect(screen.queryByTestId('chat-streaming')).toBeNull()
     expect(container.querySelector('[data-message-id="a1"]')?.className).not.toMatch(/Retiring/)
   })
 
-  it('`retryPending` 一在场:折痕当场在扫,旧回答当场开始上折', async () => {
+  /**
+   * 「回音」这件事 2026-09-21 换了形(P1b 裁定 B):从前是一道在扫的线
+   * (`WaitingSeam`,那一件已删),今天是尾槽**整格翻成在跑的样子** —— 呼吸光标
+   * 在那儿。等待期与出字期一模一样,正是用户要的「流式过程中这块样式布局保持不变」。
+   */
+  it('`retryPending` 一在场:尾槽当场翻成在跑,旧回答当场开始上折', async () => {
     const { container } = await mount()
     await act(async () => {
       source().getState().regenerate('a1')
     })
     // 账本一个字都还没变 —— 这正是那段真空。
     expect(source().getState().retryPending?.messageId).toBe('a1')
-    const seam = screen.getByTestId('waiting-seam')
-    expect(seam.getAttribute('data-state')).toBe('running')
+    expect(screen.getByTestId('chat-tail-slot').getAttribute('data-face')).toBe('run')
+    expect(screen.getByTestId('chat-streaming')).toBeTruthy()
     const row = container.querySelector('[data-message-id="a1"]')
     expect(row?.className).toMatch(/Retiring/)
   })
@@ -127,31 +132,36 @@ describe('按下即开槽', () => {
    *
    * 旧断言因此这样迁:「不在正在上折的那一行里」原样留着(今天更强:它也不在别的
    * 任何一条消息里),「排在它后面的那一行里有」换成「在尾槽里」。
+   * 2026-09-21 再迁一次:那道折痕本身删了,取件口从 `waiting-seam` 换成那枚光标
+   * (`chat-streaming`)—— **住哪儿**这件事一个字没变。
    */
-  it('折痕住在列尾那一格尾槽里,不在任何一条消息行里', async () => {
+  it('回音住在列尾那一格尾槽里,不在任何一条消息行里', async () => {
     const { container } = await mount()
     await act(async () => {
       source().getState().regenerate('a1')
     })
     const retiring = container.querySelector('[data-message-id="a1"]')
-    expect(retiring?.querySelector('[data-testid="waiting-seam"]')).toBeNull()
-    const seam = screen.getByTestId('waiting-seam')
-    expect(seam.closest('[data-message-id]')).toBeNull()
-    expect(seam.closest('[data-tail-slot]')).toBeTruthy()
+    expect(retiring?.querySelector('[data-testid="chat-streaming"]')).toBeNull()
+    const cursor = screen.getByTestId('chat-streaming')
+    expect(cursor.closest('[data-message-id]')).toBeNull()
+    expect(cursor.closest('[data-tail-slot]')).toBeTruthy()
     // 那一行 `data-retry-of` 退役了:同一句话不许在屏幕上说两遍。
     expect(container.querySelector('[data-retry-of]')).toBeNull()
+    // `WaitingSeam` 整件退役(P1b 裁定 B):全仓零消费者。
+    expect(screen.queryByTestId('waiting-seam')).toBeNull()
   })
 
   /**
    * 重试那段真空里**账本上没有这一轮的助手消息**,所以「跑了多久」无从说起 ——
-   * 那时只画在扫的线,不画一个编出来的读数(判词在 `TailSlot` 的 `startedAt` 上)。
+   * 那时只画那枚光标,不画一个编出来的读数(判词在 `TailSlot` 的 `startedAt` 上)。
    */
   it('真空里不画读数:没有起点就不编一个', async () => {
     await mount()
     await act(async () => {
       source().getState().regenerate('a1')
     })
-    expect(screen.getByTestId('chat-tail-slot').getAttribute('data-face')).toBe('wait')
+    expect(screen.getByTestId('chat-tail-slot').getAttribute('data-face')).toBe('run')
+    expect(screen.getByTestId('chat-streaming')).toBeTruthy()
     expect(screen.queryByTestId('chat-readout')).toBeNull()
   })
 })
