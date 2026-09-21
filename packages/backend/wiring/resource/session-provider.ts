@@ -88,6 +88,7 @@
  */
 
 import fs from 'node:fs/promises'
+import { resolve } from 'node:path'
 import type {
   ResourceProvider,
   ResourceReadContext,
@@ -121,6 +122,7 @@ import {
   updateOnethingSessionPinForIpc,
 } from '@onething/runtime/sessions'
 import { updateOnethingSessionWorkingDirectory } from '@onething/runtime/sessions/working-directory'
+import { expandOnethingToolSandboxPath } from '@onething/runtime/tools/sandbox-runtime'
 import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
 import type { ChatMessage, GetSessionMessagesPageRequest } from '@shared/ipc.js'
 import * as store from '../../store.js'
@@ -570,18 +572,28 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
         return textResult(`Renamed session to ${payload.title}`)
       }
       case 'setWorkingDirectory': {
-        settle(
-          await updateOnethingSessionWorkingDirectory({
-            sessionId: payload.sessionId,
-            workingDirectory: payload.path,
-            isDirectory: async path => (await fs.stat(path)).isDirectory(),
-            writeWorkingDirectory: (id, next) => workdirGateway.write(id, next),
-          }),
-          'Failed to update the working directory',
-        )
-        this.emit(payload.sessionId, 'workingDirectoryChanged', { path: payload.path })
+        /*
+         * `resolvePath` 就是变量域 `workdir` 那一条的同一口配方
+         * (`variables/providers/core.ts`:`resolve(expandPath(...))`)—— 这条路
+         * 从前没有它,于是人手敲进来的 `~/x` 被原样 `fs.stat`,回一句
+         * 「Directory does not exist: ~/x」。壳侧那一行「绑定…」与 `/cd` 收的
+         * 都是一条**人打的**路径,`~` 是它最常见的写法。
+         *
+         * 落盘用的是**归一之后**那条(规则书回的 `path`),`emit` 与回执也跟着它:
+         * 工作目录这条串同时是项目分组的键,说一条、存另一条会分裂出两个项目。
+         */
+        const outcome = await updateOnethingSessionWorkingDirectory({
+          sessionId: payload.sessionId,
+          workingDirectory: payload.path,
+          resolvePath: path => resolve(expandOnethingToolSandboxPath(path)),
+          isDirectory: async path => (await fs.stat(path)).isDirectory(),
+          writeWorkingDirectory: (id, next) => workdirGateway.write(id, next),
+        })
+        settle(outcome, 'Failed to update the working directory')
+        const landed = outcome.path ?? ''
+        this.emit(payload.sessionId, 'workingDirectoryChanged', { path: landed })
         return textResult(
-          payload.path ? `Session now works in ${payload.path}` : 'Cleared the session working directory',
+          landed ? `Session now works in ${landed}` : 'Cleared the session working directory',
         )
       }
       case 'setPinned': {
