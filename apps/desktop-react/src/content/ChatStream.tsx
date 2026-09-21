@@ -36,6 +36,7 @@ import { ContextDeltaSeam, hasContextDelta } from './ContextDeltaSeam'
 import { seatHeight } from './seat'
 import { DomScrollPort, type AnchoredElement, type ScrollPort } from './viewport/scroll-port'
 import { AnchorRecorder } from './viewport/anchor-recorder'
+import { EntryRestore } from './viewport/entry-restore'
 import { Slide } from './viewport/slide'
 import { ExpandIntentContext } from './expand-intent'
 import { FoldIntentContext, useNoteFold } from './fold-intent'
@@ -67,16 +68,6 @@ import s from './ChatStream.module.css'
 
 const ClipIcon = resolveIcon('Paperclip')
 const RetryIcon = resolveIcon('RotateCcw')
-
-/**
- * 进场落回锚点之后**最多再对几轮**(2026-09-10)。
- *
- * 它不是一段时长(所以不进 `components/motion.ts` 那张时长镜像表),是一个
- * **轮数上限**:一轮 = 一次尺寸变化回调,也就是「又有一批跳渲的行渲出了真高」。
- * 六轮是「有界」这件事的落点 —— 停不下来就说明有别的东西在改排版,那时候老实
- * 停手比跟着跑一辈子好。判词全文在下面那只 ResizeObserver 的落位分支里。
- */
-const ANCHOR_RESETTLE_ROUNDS = 6
 
 /**
  * 折叠那一段的**余量**(单 B ④):报出来的时长之外再多钉这么久。
@@ -1044,7 +1035,9 @@ function useFollowBottom(
    * 跳渲的行渲出了真高,不是下面长出了东西」;`left` 是还能再对几轮(有界)。
    * 立它的是进场那只 layout effect,消它的是下面那只观察者(或者换会话)。
    */
-  const restoreRef = useRef<{ anchor: ScrollAnchor; left: number } | undefined>(undefined)
+  const restoreRef = useRef<EntryRestore | undefined>(undefined)
+  if (!restoreRef.current) restoreRef.current = new EntryRestore()
+  const restore = restoreRef.current
 
   /*
    * 「看到哪儿」的写点 —— **尾随去抖**(C1 · §5.2;判词在下面那只进场 effect 里)。
@@ -1136,7 +1129,7 @@ function useFollowBottom(
        * 里它还可能压根不来),而「排一帧再看看」与「变了就再对一次」相比,前者
        * 既可能来早(还没渲完)也可能来晚。
        */
-      restoreRef.current = { anchor, left: ANCHOR_RESETTLE_ROUNDS }
+      restore.arm(anchor)
     } else if (el && messageCountRef.current > 0 && followShouldStick(followRef.current)) {
       /*
        * ── 进场落底(2026-09-10 从「每一次提交都贴底」那条 effect 手里接过来)──
@@ -1162,10 +1155,10 @@ function useFollowBottom(
       // 而此刻容器里已经是下一条会话的几何了。
       recorder.cancel()
       // 还没落稳的那一格同理:它闭包着上一条会话的锚点。
-      restoreRef.current = undefined
+      restore.clear()
       if (el) recorder.saveNow(sessionId)
     }
-  }, [sessionId, dispatch, scrollRef, port, recorder, stick, readGap])
+  }, [sessionId, dispatch, scrollRef, port, recorder, restore, stick, readGap])
 
   /*
    * ── 贴底的产地只有两处(2026-09-10 换轨)──────────────────────────────────
@@ -1340,16 +1333,11 @@ function useFollowBottom(
        * **位置不再动就当场收手**:再对一次没有把 `scrollTop` 挪动超过一个
        * `AT_BOTTOM_EPS`,说明这张排版已经稳了。
        */
-      const restoring = restoreRef.current
-      if (restoring) {
-        restoring.left -= 1
+      const restoring = restore.anchor
+      if (restoring !== undefined) {
         const before = port.top
-        const landed =
-          !port.applyAnchor(restoring.anchor) ||
-          Math.abs(port.top - before) <= AT_BOTTOM_EPS ||
-          restoring.left <= 0
-        if (landed) {
-          restoreRef.current = undefined
+        const applied = port.applyAnchor(restoring)
+        if (restore.consume(applied, port.top - before, AT_BOTTOM_EPS)) {
           recorder.saveNow(sessionId)
         }
         lastGapRef.current = port.gapNow()
@@ -1430,7 +1418,7 @@ function useFollowBottom(
     observer.observe(column)
     observer.observe(el)
     return () => observer.disconnect()
-  }, [scrollRef, port, recorder, sessionId, dispatch, stick, readSeat])
+  }, [scrollRef, port, recorder, restore, sessionId, dispatch, stick, readSeat])
 
   /*
    * 「发送了一条」那一拍。号从 `chat-source` 来(产地在 `send()`),这里只比对它变没变。

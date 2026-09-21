@@ -5,7 +5,10 @@ import type { ScrollAnchor } from '../../../data/session-view-state'
 /** `AnchorRecorder` 的去抖与两条守卫(G 线 P2-a)。零 DOM:量与守卫都由假函数答。 */
 
 function setup(options?: { hasLayout?: boolean; anchor?: ScrollAnchor | undefined }) {
-  const state = { hasLayout: options?.hasLayout ?? true, anchor: options?.anchor ?? ('bottom' as ScrollAnchor) }
+  const state: { hasLayout: boolean; anchor: ScrollAnchor | undefined } = {
+    hasLayout: options?.hasLayout ?? true,
+    anchor: options?.anchor ?? 'bottom',
+  }
   const saved: { sessionId: string; anchor: ScrollAnchor | undefined }[] = []
   let measures = 0
   const timers = new FakeTimers()
