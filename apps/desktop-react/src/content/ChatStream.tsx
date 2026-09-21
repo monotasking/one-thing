@@ -35,6 +35,7 @@ import { assembleMessage, segmentKey } from './assemble'
 import { ContextDeltaSeam, hasContextDelta } from './ContextDeltaSeam'
 import { seatHeight } from './seat'
 import { DomScrollPort, type AnchoredElement, type ScrollPort } from './viewport/scroll-port'
+import { AnchorRecorder } from './viewport/anchor-recorder'
 import { Slide } from './viewport/slide'
 import { ExpandIntentContext } from './expand-intent'
 import { FoldIntentContext, useNoteFold } from './fold-intent'
@@ -1062,16 +1063,17 @@ function useFollowBottom(
    * 扫 `[data-message-id]` 到第一条露脸的 —— 388 条的会话最坏扫满全表,但布局
    * 干净时 `getBoundingClientRect` 是微秒级,而去抖之后每次停手只量这一次。
    */
-  const anchorTimer = useRef<number | undefined>(undefined)
-  const scheduleAnchorSave = useCallback(() => {
-    if (anchorTimer.current !== undefined) window.clearTimeout(anchorTimer.current)
-    anchorTimer.current = window.setTimeout(() => {
-      anchorTimer.current = undefined
-      // 去抖那一发可能落在**已经被停靠**之后:那时容器没有排版,量出来的
-      // 「离底 0」是假的(判词在 `measureScrollAnchor` 的 0 高度那一句上)。
-      if (port.hasLayout()) saveSessionScrollAnchor(sessionId, port.measureAnchor())
-    }, SCROLL_ANCHOR_SETTLE_MS)
-  }, [port, sessionId])
+  const recorderRef = useRef<AnchorRecorder | undefined>(undefined)
+  if (!recorderRef.current) {
+    recorderRef.current = new AnchorRecorder({
+      hasLayout: () => port.hasLayout(),
+      measure: () => port.measureAnchor(),
+      save: saveSessionScrollAnchor,
+      settleMs: SCROLL_ANCHOR_SETTLE_MS,
+    })
+  }
+  const recorder = recorderRef.current
+  const scheduleAnchorSave = useCallback(() => recorder.schedule(sessionId), [recorder, sessionId])
 
   /*
    * 换会话 = 一次新的进场。写在 layout 阶段,好让同一次提交里下面那些 effect 看到它。
@@ -1115,7 +1117,7 @@ function useFollowBottom(
       dispatch({ type: 'scrolled', gap })
       lastGapRef.current = gap
       // 落成了 —— 此刻量到的就是真的,当场记一笔,不等这条会话被人再滚一次。
-      saveSessionScrollAnchor(sessionId, port.measureAnchor())
+      recorder.saveNow(sessionId)
     }
     const anchor = readSessionScrollAnchor(sessionId)
     if (el && anchor && anchor !== 'bottom' && port.applyAnchor(anchor)) {
@@ -1158,15 +1160,12 @@ function useFollowBottom(
     return () => {
       // 还没到点的那一发不能跨会话开火 —— 它闭包着**上一条**会话的 id,
       // 而此刻容器里已经是下一条会话的几何了。
-      if (anchorTimer.current !== undefined) {
-        window.clearTimeout(anchorTimer.current)
-        anchorTimer.current = undefined
-      }
+      recorder.cancel()
       // 还没落稳的那一格同理:它闭包着上一条会话的锚点。
       restoreRef.current = undefined
-      if (el) saveSessionScrollAnchor(sessionId, port.measureAnchor())
+      if (el) recorder.saveNow(sessionId)
     }
-  }, [sessionId, dispatch, scrollRef, port, stick, readGap])
+  }, [sessionId, dispatch, scrollRef, port, recorder, stick, readGap])
 
   /*
    * ── 贴底的产地只有两处(2026-09-10 换轨)──────────────────────────────────
@@ -1351,7 +1350,7 @@ function useFollowBottom(
           restoring.left <= 0
         if (landed) {
           restoreRef.current = undefined
-          saveSessionScrollAnchor(sessionId, port.measureAnchor())
+          recorder.saveNow(sessionId)
         }
         lastGapRef.current = port.gapNow()
         return
@@ -1431,7 +1430,7 @@ function useFollowBottom(
     observer.observe(column)
     observer.observe(el)
     return () => observer.disconnect()
-  }, [scrollRef, port, sessionId, dispatch, stick, readSeat])
+  }, [scrollRef, port, recorder, sessionId, dispatch, stick, readSeat])
 
   /*
    * 「发送了一条」那一拍。号从 `chat-source` 来(产地在 `send()`),这里只比对它变没变。
