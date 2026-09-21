@@ -35,21 +35,14 @@ import type { ScrollPort } from './scroll-port'
  * 之后**只减不增**(`relax`):人往上滚 / 内容又长出来,需要的都变少,跟着缩 ——
  * 缩的永远是视口下方那一截,所以不会钳位。下一次发送归零。
  *
- * **只在垫得满的时候垫**(`required > clientHeight` 就一格都不垫)。这一条是
- * §13.6 第 1 条那句「夹进 `clientHeight`」的**修正**,而且是量出来的,不是推的
- * (读数在正本 §16):垫块撑出来的空白**等于** `needed`(它就是「视口下缘减内容
- * 下缘」),所以
- *  · `needed ≤ 一屏` —— 垫满,视口一像素不动,屏底那块白正是被收起的那一块留下的洞;
- *  · `needed > 一屏` —— 说的是「被收起的那一块比整个视口还高」。此时**按住它的顶边
- *    等于让整屏变空**(它下面的内容加起来还不够一屏),而**夹到一屏也一样是整屏变空**
- *    (内容下缘恰好落在视口上缘),却还多出一次钳位 —— 半截垫块什么都没买到,
- *    只买到一屏空白。所以这一档**一格不垫**:让浏览器钳,被收起的那一块跟着回到
- *    视野里,人看见的是「它折好了,后面接着」。
- *
- * 真机读数(dev,视口 670):3 千字思考段展开 3,768px = 5.6 屏,夹到一屏之后屏上
- * 仍然位移 3,098px **而且整屏是空的**;不垫则位移 3,768px、屏上是内容。
- * 两条「都被授权过」的话(「被点那块顶边不动」与「垫块空白 ≤ 一屏」)在这一档互相
- * 矛盾,这是取其轻的那一支 —— **它是一条待拍的裁定,记在正本 §16 留账第 1 条**。
+ * **夹进 `clientHeight`,不再有「全有或全无」那条特判**(审查裁定 1,2026-09-22)。
+ * 那条特判(`required > clientHeight` 就一格不垫)是 09-21 的权宜:当时「顶边不动」
+ * 被理解成「连一条已经跑到屏外的顶边也要钉住」,于是收起一块比视口还高的东西就要
+ * 垫十几屏。裁定把落点改成
+ *   **收起之后被点那一块的顶边 y = max(它收起前的顶边 y, 视口上缘 + 上内衬)**
+ * ——顶边在屏外时它落在视口上缘,而那时「视口下缘 − 内容下缘」**必然 ≤ 一屏**,
+ * 夹法自己就成立了。`requestAbsorb` 因此多收一格「收缩之后 `scrollTop` 要落在哪」,
+ * 算的是**那个落点**的 `needed`,不是当下位置的。
  *
  * ── 写口仍然只有一个(§13.1.5 乙)────────────────────────────────────────
  * 两个量各只改自己那一格然后排一帧,**`flushNow()` 是唯一算高、唯一写 style 的地方**。
@@ -118,14 +111,26 @@ export class TailPad {
    * **过让是自愈的**:多垫的那一截让 gap 变大,下一批尺寸变化里 `relax` 自己把它
    * 减掉 —— 不是一段留在屏上的空白。
    */
-  requestAbsorb(shrinkPx: number): number {
+  requestAbsorb(shrinkPx: number, landingTop?: number): number {
     if (!(shrinkPx > 0)) return 0
     const m = this.#port.measure()
     // 停靠中(`clientHeight === 0`)一切读写恒等 —— 与三道闸同一把尺子。
     if (!m) return 0
-    const required = Math.max(0, (this.#written ?? 0) - m.gap + shrinkPx)
-    // 垫不满就一格不垫 —— 半截垫块只买到一屏空白(判词在文件头)。
-    if (required > m.clientHeight) return 0
+    /*
+     * `landingTop` = 收缩之后 `scrollTop` 要落在哪(审查裁定 1;不给就是「留在原地」,
+     * 那一支与 09-21 那条式子 `已写的高 − gap + shrinkPx` 逐字等价 —— 展开代入即得)。
+     * 「收缩之后的内容高」用 `shrinkPx` 这个**上界**算,所以 `needed` 是上界:
+     * 多垫的那一截由 `relax` 在下一批尺寸变化里收回去。
+     */
+    const top = landingTop ?? m.scrollTop
+    const contentAfter = m.scrollHeight - (this.#written ?? 0) - shrinkPx
+    const needed = Math.max(0, top + m.clientHeight - contentAfter)
+    /*
+     * 夹进一屏:落点定在「顶边最高只到视口上缘」之后,**真值必然 ≤ 一屏**
+     * (那一行连同它后面的内容至多填不满一屏),所以夹一下只会削掉上界那一截富余,
+     * 不会削到真需要的那一截。
+     */
+    const required = Math.min(needed, m.clientHeight)
     if (required <= this.#absorbed) return 0
     const gained = required - this.#absorbed
     this.#absorbed = required

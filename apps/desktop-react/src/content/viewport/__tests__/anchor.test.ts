@@ -261,8 +261,16 @@ describe('两格意图窗口', () => {
     state.now += 221
     port.geometry.scrollHeight = 1200
     anchor.onResize(grew(1200), 's1')
+    // 过期那一次先补一发「此刻离底这么远」(审查裁定 2),这一档 gap 还是 0 → 照旧贴底。
     expect(port.writes).toEqual([{ top: 900, cause: 'tail-growth' }])
   })
+
+  /**
+   * **窗口一过要按此刻离底多远重判档**(审查裁定 2,2026-09-22)。
+   * 病历:展开那一下把内容撑高一大截,窗口整段早退(不判跟底),过期那一次要是
+   * 什么都不做,`stick()` 就按「这一轮还 pinned」把人拽到底 —— 用户报的
+   * 「第二次展开视口被拽走 166–435px」正是这条。
+   */
 
   it('换会话不带上一条会话的展开意图', () => {
     const { port, anchor } = setup()
@@ -436,15 +444,57 @@ describe('人亲手开合了一块东西', () => {
     expect(asked).toBe(1)
   })
 
-  it('展开:不垫、不钉,走今天那条「按兵不动」(窗口内不贴底、按离底多远重判档)', () => {
-    const { port, anchor, follows } = setup({ geometry: { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 } })
-    anchor.reportUserToggle({ open: true, durationMs: 180, block: block(120, 40, [40]) })
+  /**
+   * **展开也钉住被点那一块的顶边**(审查裁定 2,2026-09-22;从前只说一句「别贴底」)。
+   * 不垫 —— 展开是长高,没有要吸收的回缩;窗口一过按离底多远重判档。
+   */
+  it('展开:不垫,但钉住顶边;窗口一过按离底多远重判档', () => {
+    const { port, anchor, follows, state } = setup({ geometry: { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 } })
+    anchor.reportUserToggle({ open: true, durationMs: 180, block: block(120, 40, [10]) })
     expect(port.padHeights).toEqual([])
+    // 窗口里:锚往上跑了 30 → `scrollTop` 往回收 30(钉住那条顶边)。
     port.geometry.scrollHeight = 1400
     anchor.onResize(grew(1400), 's1')
-    // 一像素都没写(没贴底),而且按此刻离底多远翻了档。
-    expect(port.writes).toEqual([])
+    expect(port.writes).toEqual([{ top: 670, cause: 'user-toggle' }])
+    // 窗口过期那一次:离底远了 → browsing,不贴底。
+    port.writes.length = 0
+    state.now += 221
+    anchor.onResize(grew(1400), 's1')
     expect(follows.at(-1)?.mode).toBe('browsing')
+    expect(port.writes).toEqual([])
+  })
+
+  /**
+   * ── **落点**(审查裁定 1):顶边在视口上方时,收起之后那一行落在视口上缘 ────────
+   */
+  it('顶边在视口里 → 它一像素不动,位置一格不写(与 09-21 那一档逐字相同)', () => {
+    const { port, anchor } = setup({ geometry: { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 } })
+    anchor.reportUserToggle({ open: false, durationMs: 180, block: block(120, 40, [40]) })
+    expect(port.writes).toEqual([])
+    expect(port.padHeights).toEqual([120])
+  })
+
+  it('顶边在视口上方 → `scrollTop` 同帧往回收到「那一行落在视口上缘」', () => {
+    const { port, anchor } = setup({ geometry: { scrollHeight: 4000, clientHeight: 300, scrollTop: 3700 } })
+    // 那一块高 2000,顶边在视口上缘之上 1500px(视口上缘 = 0)。
+    anchor.reportUserToggle({ open: false, durationMs: 180, block: block(2000, -1500, [0]) })
+    // 先垫后写:垫块按**落点**算,位置往回收 1500。
+    expect(port.writes).toEqual([{ top: 2200, cause: 'user-toggle' }])
+    expect(port.padHeights?.length).toBe(1)
+  })
+
+  it('上内衬不为 0 时落点跟着往下挪(哪天上面多一条带子)', () => {
+    const { port, anchor } = setup({ geometry: { scrollHeight: 4000, clientHeight: 300, scrollTop: 3700 } })
+    port.inset = 24
+    anchor.reportUserToggle({ open: false, durationMs: 180, block: block(2000, -1500, [0]) })
+    expect(port.writes).toEqual([{ top: 2176, cause: 'user-toggle' }])
+  })
+
+  it('垫块按落点算,而且夹进一屏(真值必然 ≤ 一屏,夹的只是上界那截富余)', () => {
+    const { port, anchor } = setup({ geometry: { scrollHeight: 4000, clientHeight: 300, scrollTop: 3700 } })
+    anchor.reportUserToggle({ open: false, durationMs: 180, block: block(2000, -1500, [0]) })
+    expect(anchor.pad.absorbed).toBeLessThanOrEqual(300)
+    expect(anchor.pad.absorbed).toBeGreaterThan(0)
   })
 
   it('动效档「无」(`durationMs: 0`)照报:窗口是那 40ms 余量,补偿照做', () => {
@@ -453,6 +503,51 @@ describe('人亲手开合了一块东西', () => {
     port.writes.length = 0
     anchor.onResize(grew(880), 's1')
     expect(port.writes).toEqual([{ top: 670, cause: 'user-toggle' }])
+  })
+})
+
+/** 窗口过期那一次(审查裁定 2)。 */
+describe('窗口过期', () => {
+  function block(height: number, top: number, tops: number[]) {
+    return { height, top, anchor: fakeAnchorEl(tops) }
+  }
+
+  it('窗口过期那一次:离底远了就翻成 browsing,不许再贴底', () => {
+    const { port, anchor, state, follows } = setup()
+    anchor.beginObserving()
+    // **报出来的那一下**才带重判(重试那一路不带,判词在 `FoldHold.rejudge`)。
+    anchor.reportUserToggle({ open: true, durationMs: 180, block: block(120, 40, [40]) })
+    port.geometry.scrollHeight = 1900
+    state.now += 221
+    anchor.onResize(grew(1900), 's1')
+    expect(follows.at(-1)?.mode).toBe('browsing')
+    expect(port.writes).toEqual([])
+  })
+
+  it('重试那一路(`noteFold(ms)`,没有被点的那一块)**不重判** —— 座位正握着这一轮', () => {
+    const { port, anchor, state, follows } = setup()
+    anchor.beginObserving()
+    port.foldAnchor = fakeAnchorEl([100, 100])
+    anchor.noteFold(180)
+    port.geometry.scrollHeight = 1900
+    state.now += 221
+    anchor.onResize(grew(1900), 's1')
+    expect(follows).toEqual([])
+    expect(port.writes).toEqual([{ top: 1600, cause: 'tail-growth' }])
+  })
+
+  it('过期只交出一次 —— 不然每一批尺寸变化都重判一遍', () => {
+    const { port, anchor, state, follows } = setup()
+    anchor.beginObserving()
+    anchor.reportUserToggle({ open: true, durationMs: 180, block: block(120, 40, [40]) })
+    port.geometry.scrollHeight = 1900
+    state.now += 221
+    anchor.onResize(grew(1900), 's1')
+    follows.length = 0
+    port.geometry.scrollHeight = 1901
+    anchor.onResize(grew(1901), 's1')
+    // 第二批已经是普通那条路(browsing + 下面长出来了 → 只点丸,不重判)。
+    expect(follows).toEqual([])
   })
 })
 
@@ -494,12 +589,21 @@ describe('收起到一半被打断', () => {
     expect(anchor.pad.absorbed).toBe(0)
   })
 
-  it('中途人滚动:垫块按「此刻还需要多少」往下收', () => {
-    const { port, anchor } = setup({ geometry: { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 } })
+  /**
+   * **折叠窗里一格不收**(审查裁定 1 落地那一趟真机抓出来的,判词在 `onScroll` 上):
+   * 窗口里那几帧的 gap 说的不是「还需要多少」,是「这一段还没走完」—— 落点那一句
+   * `setTop` 自己就会发一发滚动事件,而那一刻那一块还没缩。
+   */
+  it('中途人滚动:折叠窗里一格不收,窗口过了才按「此刻还需要多少」往下收', () => {
+    const { port, anchor, state } = setup({ geometry: { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 } })
     anchor.reportUserToggle({ open: false, durationMs: 180, block: block(120, 40, [40]) })
     expect(anchor.pad.absorbed).toBe(120)
-    // 人往上滚 50(gap 从 0 变 50)。
+    // 窗口里:人往上滚 50,垫块一格不动。
     port.scrollTo(650)
+    anchor.onScroll('s1', true)
+    expect(anchor.pad.absorbed).toBe(120)
+    // 窗口过了再滚:按「此刻还需要多少」往下收。
+    state.now += 221
     anchor.onScroll('s1', true)
     expect(anchor.pad.absorbed).toBe(70)
   })

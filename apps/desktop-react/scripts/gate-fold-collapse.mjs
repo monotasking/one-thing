@@ -20,33 +20,28 @@
  * 里 `postMessage` 出去的那个宏任务里读**。
  *
  * ══ 判的那几格(`BUDGET`)════════════════════════════════════════════════
- *  ① **被点那一块的顶边位移** ≤1px(过渡全程,含第一帧)。
+ *  ① **落点**(审查裁定 1,2026-09-22):收起之后被点那一块的顶边
+ *     y = `max(收起前的顶边 y, 视口上缘 + 滚动口的上内衬)`,±1px。
+ *     顶边本来就在视口里 → 它一像素不动;在视口上方 → 收起后的那一行落在视口上缘。
  *  ② **它上方任一可见元素的位移** ≤1px —— 拿「视口内第一块在读的东西」当代表,
  *     判词与产品的 `pickFoldAnchor` / `gate-stream-geometry` 的 `readAnchorOf` 同源。
  *  ③ **列的总高全程不跌破收起之前那个数**(G1 的字面:一轮之内页面总高在任何一次
  *     排版里都不许变小)。过渡期间垫块先长、内容再逐帧缩回去,所以判的是**最低点**。
- *  ④ **垫块要么垫满、要么一格不垫**,而且任何时刻 ≤ `clientHeight`
- *     (§13.6 第 1 条 + P2-b 的修正,判词在 `allowanceOf` 上)。
- *  ⑤ **手动展开**:顶边与期间的 `scrollTop` 位移 —— **今天只报不判**,见下。
+ *  ④ **垫块任何时刻 ≤ `clientHeight`**
+ *     (§13.6 第 1 条;落点定在「顶边最高只到视口上缘」之后,真值必然 ≤ 一屏)。
+ *  ⑤ **手动展开**:被点那一块的顶边位移 ≤1px,期间 `scrollTop` 位移 ≤1px(点开不贴底)。
+ *  ⑦ **过渡全程单调靠近落点,不反弹**;**它后面第一块内容紧跟其下**;
+ *     **屏上不出现「整屏空白」**(视口内可见内容高 > 0)。
  *  ⑥ **垫块释放**:收起后人往上滚 → 垫块跟着缩且屏上零位移;往下滚到底 → 停在
  *     内容底(空白不超过一屏);再发一轮 → 垫块归零。
  *  ⑦ **过渡中途再点一次 / 中途来内容**:上方位移 ≤1px。
  *
- * ══ ⑤ 为什么只报不判:那是**展开**那一侧的存量红,A/B 证过 ═══════════════════
- * 读数:同一条会话里**第二次**展开(这一族的高度账本上已经有数、于是
- * `ui/flip-height` 真的跑一段 180ms 的过渡)时,视口在展开窗口过期之后被拽到底,
- * 位移 166–435px;动效档「无」下整段一次到位,位移就是那一块的整高
- * (3,109 / 62,519px)。**第一次**展开(账上没数、直切)恒 0px。
- *
- * 病根在**展开那一支**,与这一单改的收起那一半无关:`onResize` 的 `expanding()`
- * 分支靠「此刻离底多远」把跟随档翻成 browsing,而那一判要么落在过渡刚起步那一批
- * (gap 仍是 0,状态没翻),要么压根没赶上 —— `EXPAND_HOLD_MS`(220ms)一过,
- * `stick()` 就把人拽到底了。
- *
- * **A/B**(同一台机器、同一趟夹具,备份文件法把「申请吸收」拆掉重跑):拆掉之后
- * 这一格照旧红 192 / 174px —— 所以它在 `main` 上就是这个样子,不是这一单的账。
- * 它要的是**展开那一侧接上 §13.2.2 裁决表的 `pin('reported')`**(P2-c 的活),
- * 或者把展开窗口改成「跟着那段过渡走」而不是一个定长。那一天这一格转成断言。
+ * ══ 展开那一侧(审查裁定 2,2026-09-22)═══════════════════════════════════
+ * 从前 ⑤ 是「只报不判」的存量红:同一条会话第二次展开时视口被拽到底 166–435px
+ * (动效档「无」下是整块的高)。病根在 `expanding()` 那一判落在过渡刚起步那一批
+ * (gap 仍是 0,跟随档没翻),窗口一过 `stick()` 就把人拽走。
+ * 裁定:**展开也由 `report()` 在点的那一刻开窗、钉住被点那一块的顶边**,窗口结束时
+ * **按此刻离底多远重判跟随档**。于是这一格转成断言。
  *
  * ══ 场景与两档 ════════════════════════════════════════════════════════════
  * 四族可折叠的东西:3 千字思考段 / 6 万字思考段 / 多步工具卡 / 上下文更新折痕,
@@ -109,58 +104,8 @@ const BUDGET = {
   shrinks: 0,
   /** ⑥ 发送之后垫块该归零(px)。 */
   padAfterSendPx: 0.5,
-}
-
-/**
- * **过渡值**:今天达不到、但有明确退场判据的格子。填了就要在这一行上写清楚
- * 「什么时候删掉它」;`BUDGET` 里那个数一格不改。
- */
-const TRANSITIONAL = {
-  /**
-   * ⑤ **展开那一下的 `scrollTop` 位移** —— **存量红,A/B 证过不是这一单的账**。
-   *
-   * 读数:同一条会话里**第二次**展开(这一族的高度账本上已经有数、于是
-   * `ui/flip-height` 真的跑一段 180ms 的过渡)时,视口在展开窗口过期之后被拽到底,
-   * 位移 174–435px。**第一次**展开(账上没数、直切)恒 0px。
-   *
-   * 病根在**展开那一支**,与这一单改的收起那一半无关:`onResize` 的
-   * `expanding()` 分支靠「此刻离底多远」把跟随档翻成 browsing,而过渡的**第一批**
-   * 尺寸变化到达时那段高度才刚开始长,gap 仍是 0 —— 状态没翻;`EXPAND_HOLD_MS`
-   * (220ms)一过,`stick()` 就把人拽到底了。
-   *
-   * **A/B**(同一台机器、同一趟夹具,备份文件法把「申请吸收」拆掉重跑):
-   * 拆掉之后这一格照旧红 192 / 174px —— 所以它在 `main` 上就是这个样子。
-   *
-   * **退场判据**:展开那一侧接上 §13.2.2 裁决表的 `pin('reported')`(P2-c 的活),
-   * 或者展开窗口改成「跟着那段过渡走」而不是一个定长 —— 那一天这一行删掉。
-   */
-}
-
-/**
- * ── **垫得满 / 垫不满:这道门的两套判据**(G 线 P2-b,2026-09-21 量出来的)────────
- *
- * 「屏上一像素不动」不是无条件成立的,它有一条**物理边界**:
- *   `required = 收缩量 − 此刻离底多远`(= 为了让当前 `scrollTop` 仍然合法要垫多高),
- *   而垫块撑出来的空白**恰好等于** `required` —— 所以
- *   · `required ≤ 一屏` → 垫得满,视口一像素不动,屏底那块白正是被收起的那一块留下的洞;
- *   · `required > 一屏` → **按住它的顶边等于让整屏变空**(它下面的内容加起来还不够
- *     一屏)。产品这一档**一格不垫**(判词在 `TailPad.requestAbsorb` 上),让浏览器钳、
- *     被收起的那一块回到视野里。
- *
- * 真机读数:3 千字思考段展开 **3,768px = 5.6 屏**,夹到一屏之后屏上仍然位移 3,098px
- * **而且整屏是空的**;不垫则位移 3,768px、屏上是内容。所以这一档门判的是
- * **「不比什么都不做更糟」**(`≤ required + 1`),而不是假装它能 ≤1px ——
- * 那两条都被授权过的话(「被点那块顶边不动」与「垫块空白 ≤ 一屏」)在这一档互相矛盾,
- * **这是一条待拍的裁定**(正本 §16 留账第 1 条)。哪天它有了别的裁定,这一段一起改。
- */
-function allowanceOf(m) {
-  return m.holdable ? BUDGET.shiftPx : m.required + BUDGET.shiftPx
-}
-
-function limitOf(key, scenarioKey) {
-
-  const scoped = TRANSITIONAL[`${scenarioKey}:${key}`]
-  return scoped === undefined ? BUDGET[key] : scoped
+  /** ⑦ 「它后面第一块内容紧跟其下」的缝(px)—— 列的 `gap` 由节奏表说,这里只判不许多出来。 */
+  followGapPx: 40,
 }
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -313,6 +258,9 @@ async function startPaintSampler(page) {
           target: target ? target.getBoundingClientRect().top : null,
           /* 它此刻多高 —— 事后算「这一下到底缩了多少」用它,不必在驱动里再读一次。 */
           targetH: target ? target.getBoundingClientRect().height : null,
+          /** 它后面那一块的顶边 —— ⑦ 判「紧跟其下」。 */
+          nextTop: target && target.nextElementSibling instanceof HTMLElement
+            ? target.nextElementSibling.getBoundingClientRect().top : null,
           targetAlive: Boolean(target),
           /** 它上方那一块(视口内第一块在读的东西)。 */
           above: above ? above.getBoundingClientRect().top : null,
@@ -685,11 +633,16 @@ async function main() {
           const el = window.__fLeaf().querySelector('[data-testid="chat-stream"]')
           const target = window.__fTarget
           if (!el || !(target instanceof HTMLElement)) return null
+          const view = el.getBoundingClientRect()
+          const rect = target.getBoundingClientRect()
           return {
             sh: el.scrollHeight,
             ch: el.clientHeight,
             gap: el.scrollHeight - el.clientHeight - el.scrollTop,
-            targetH: target.getBoundingClientRect().height,
+            targetH: rect.height,
+            targetTop: rect.top,
+            viewTop: view.top,
+            inset: Number.parseFloat(getComputedStyle(el).paddingBlockStart) || 0,
           }
         })
         await startPaintSampler(page)
@@ -726,7 +679,54 @@ async function main() {
               ? Number((before.targetH - last.targetH).toFixed(2)) : null
             const required = before && shrinkPx !== null
               ? Math.max(0, Number((shrinkPx - before.gap).toFixed(2))) : null
+            const lastFrame = collapseFrames[collapseFrames.length - 1]
+            const landing = before ? Math.max(before.targetTop, before.viewTop + before.inset) : null
+            const tops = collapseFrames.map((f) => f.target).filter((v) => v !== null)
+            const finalTop = tops.length ? tops[tops.length - 1] : null
+            /*
+             * **单调靠近不反弹**:每一帧与落点的距离只许变小。这一格抓的是「先跳过去
+             * 再被钳回来」那种两段式 —— 产品是同一帧一次写到位,真值该是第一帧就在落点上。
+             */
+            /*
+             * **单调不反弹**:顶边这一路只许往一个方向走。抓的是「先跳过去再被钳
+             * 回来」那种两段式 —— 产品是同一帧一次写到位,真值该是第一帧就到位、
+             * 之后一格不动。方向由这一段的净位移定(被夹住时净位移可能不为 0)。
+             */
+            let worstBounce = 0
+            if (tops.length > 1) {
+              const net = tops[tops.length - 1] - tops[0]
+              const dir = Math.abs(net) < 1 ? 0 : Math.sign(net)
+              for (let i = 1; i < tops.length; i += 1) {
+                const step = tops[i] - tops[i - 1]
+                worstBounce = Math.max(worstBounce, dir === 0 ? Math.abs(step) : -dir * step)
+              }
+            }
+            /** 屏上还看得见多少内容(垫块不算内容)。 */
+            const visibleContentPx = lastFrame
+              ? Math.max(0, Math.min(lastFrame.sh - lastFrame.padH, lastFrame.st + lastFrame.ch) - lastFrame.st)
+              : null
+            /** 它后面那一块紧跟其下吗(下一块的顶边 − 被点那一块的下缘)。 */
+            const followGapPx = lastFrame && lastFrame.nextTop !== null && lastFrame.target !== null
+              && lastFrame.targetH !== null
+              ? Number((lastFrame.nextTop - (lastFrame.target + lastFrame.targetH)).toFixed(2))
+              : null
             return {
+              landing: landing === null ? null : Number(landing.toFixed(2)),
+              finalSt: lastFrame ? Number(lastFrame.st.toFixed(2)) : null,
+              expectedSt: before && landing !== null
+                ? Number(Math.max(0, (before.sh - before.ch - before.gap) - (landing - before.targetTop)).toFixed(2))
+                : null,
+              landedStOffPx: before && landing !== null && lastFrame
+                ? Number(Math.abs(lastFrame.st
+                    - Math.max(0, (before.sh - before.ch - before.gap) - (landing - before.targetTop))).toFixed(2))
+                : null,
+              finalTop: finalTop === null ? null : Number(finalTop.toFixed(2)),
+              landedOffPx: landing === null || finalTop === null
+                ? null : Number(Math.abs(finalTop - landing).toFixed(2)),
+              movedToTop: landing !== null && before !== null && landing > before.targetTop + 0.5,
+              worstBouncePx: Number(worstBounce.toFixed(2)),
+              visibleContentPx: visibleContentPx === null ? null : Number(visibleContentPx.toFixed(2)),
+              followGapPx,
               target: spanOf(collapseFrames, 'target'),
               above: spanOf(collapseFrames, 'above'),
               /* G1:这一段里列的总高不许跌破**收起之前**那个数。 */
@@ -736,7 +736,6 @@ async function main() {
               gapBefore: before?.gap ?? null,
               shrinkPx,
               required,
-              holdable: required !== null && before !== null && required <= before.ch,
               padMaxPx: padMax(collapseFrames),
               clientHeight: before?.ch ?? collapseFrames[0]?.ch ?? 0,
               n: collapseFrames.length,
@@ -745,10 +744,11 @@ async function main() {
         }
         const c = readings[tg.id][where].collapse
         console.log(`     收起:缩 ${c.shrinkPx}px · 离底 ${c.gapBefore}px · 要垫 ${c.required}px`
-          + ` / 一屏 ${c.clientHeight}px → ${c.holdable ? '垫得满' : '垫不满'}`)
-        console.log(`           被点那一块位移 ${c.target.maxPx}px · 上方 ${c.above.maxPx}px`
-          + ` · 垫块峰值 ${c.padMaxPx}px · 总高最低 ${c.lowestSh} (起点 ${c.shBefore})`
-          + ` · ${c.n} 帧`)
+          + ` / 一屏 ${c.clientHeight}px`)
+        console.log(`           落点 ${c.landing}px(${c.movedToTop ? '挪到视口上缘' : '原地'})`
+          + ` · 停在 ${c.finalTop}px 差 ${c.landedOffPx}px · 回弹 ${c.worstBouncePx}px`
+          + ` · 上方 ${c.above.maxPx}px · 垫块峰值 ${c.padMaxPx}px`
+          + ` · 可见内容 ${c.visibleContentPx}px · 后接缝 ${c.followGapPx}px · ${c.n} 帧`)
         console.log(`     展开:被点那一块位移 ${readings[tg.id][where].expand.target.maxPx}px`
           + ` · 上方 ${readings[tg.id][where].expand.above.maxPx}px`
           + ` · scrollTop 位移 ${readings[tg.id][where].expand.stSpanPx}px`)
@@ -770,7 +770,7 @@ async function main() {
        * 到 120s 以上(整段历史进请求)—— 那是账本规模的账,不是垫块的。垫块的释放
        * 与账本多大无关,短会话档证过就够(09-22 实测,理由写在这儿而不是拉长超时)。
        */
-      if (!BIG && !readings.release && readings[tg.id].bottom.collapse.holdable) {
+      if (!BIG && !readings.release && readings[tg.id].bottom.collapse.required > 0) {
         console.log('  ── 垫块释放 ──')
         await scrollToBottom(page)
         await delay(300)
@@ -834,9 +834,14 @@ async function main() {
            * 表现是那一块**往回弹**一帧 —— 那才是这一格要抓的东西。
            */
           upBounce: (() => {
-            const seq = releaseFrames.filter((f) => f.phase === 'release-up' && f.above !== null)
+            /*
+             * 量**被点那一块自己**,不量「它上方那一块」:后者在「视口里它上面什么都
+             * 没有」时恒是 null(折痕那一档就是),整段采不到样本 —— 那是门自己的
+             * 跑道红,不是产品。人往上滚时这一块只许一路往下走,不许往回弹。
+             */
+            const seq = releaseFrames.filter((f) => f.phase === 'release-up' && f.target !== null)
             let worst = 0
-            for (let i = 1; i < seq.length; i += 1) worst = Math.min(worst, seq[i].above - seq[i - 1].above)
+            for (let i = 1; i < seq.length; i += 1) worst = Math.min(worst, seq[i].target - seq[i - 1].target)
             return { n: seq.length, worstPx: Number(Math.abs(worst).toFixed(2)) }
           })(),
         }
@@ -854,42 +859,58 @@ async function main() {
       for (const where of ['bottom', 'scrolledUp']) {
         const key = `${tg.id}:${where}`
         const m = readings[tg.id][where]
-        const cap = allowanceOf(m.collapse)
-        const note = m.collapse.holdable ? '' : `(垫不满:要 ${m.collapse.required}px > 一屏 ${m.collapse.clientHeight}px,按物理边界判)`
-        assert(m.collapse.n >= 5, `${key} 取到样本 ${m.collapse.n} 帧 ≥ 5`)
-        assert(m.collapse.shrinkPx !== null && m.collapse.shrinkPx > 0,
-          `${key} 这一下真的缩了(${m.collapse.shrinkPx}px,此刻离底 ${m.collapse.gapBefore}px)`)
-        assert(m.collapse.target.maxPx !== null && m.collapse.target.maxPx <= cap,
-          `${key} ① 收起:被点那一块顶边位移 ${m.collapse.target.maxPx}px ≤ ${cap}${note}`)
-        if (m.collapse.above.maxPx === null) {
+        const c2 = m.collapse
+        assert(c2.n >= 5, `${key} 取到样本 ${c2.n} 帧 ≥ 5`)
+        assert(c2.shrinkPx !== null && c2.shrinkPx > 0,
+          `${key} 这一下真的缩了(${c2.shrinkPx}px,此刻离底 ${c2.gapBefore}px)`)
+        /*
+         * ① **落点判在 `scrollTop` 上,不判在顶边上** —— 顶边那一格会被滚动范围夹住:
+         * 短会话里那一块上面拢共才两三百像素,`scrollTop` 收到 0 就到头了,那一行
+         * 只能停在它的自然位置(实测 295px),再往上没有东西可滚。所以判据是
+         * 「视口去到落点说的那个位置,**能去多远去多远**」:
+         *   `期望 scrollTop = max(0, 收起前的 scrollTop − (落点 − 收起前的顶边))`
+         * 顶边那一格照旧打出来,只是它是**后果**不是判据。
+         */
+        assert(c2.landedStOffPx !== null && c2.landedStOffPx <= BUDGET.shiftPx,
+          `${key} ① 落点:scrollTop 停在 ${c2.finalSt}px,该去 ${c2.expectedSt}px,`
+          + `差 ${c2.landedStOffPx}px ≤ ${BUDGET.shiftPx}`
+          + `(顶边 ${c2.finalTop}px / 落点 ${c2.landing}px`
+          + `${c2.expectedSt === 0 ? ',已滚到顶、再上去没有东西可滚' : ''};`
+          + `${c2.movedToTop ? '顶边原在视口上方 → 往视口上缘挪' : '顶边原在视口里 → 一像素不动'})`)
+        if (c2.movedToTop) {
+          console.log(`  – ${key} ② 收起:落点把它挪回视口上缘,「它上方」整段出了屏,这一格跳过`)
+        } else if (c2.above.maxPx === null) {
           console.log(`  – ${key} ② 收起:视口里它上面什么都没有,这一格跳过`)
         } else {
-          assert(m.collapse.above.maxPx <= cap,
-            `${key} ② 收起:它上方那一块位移 ${m.collapse.above.maxPx}px ≤ ${cap}${note}`)
+          assert(c2.above.maxPx <= BUDGET.shiftPx,
+            `${key} ② 收起:它上方那一块位移 ${c2.above.maxPx}px ≤ ${BUDGET.shiftPx}`)
         }
-        if (m.collapse.holdable) {
-          /*
-           * ③ G1 的**精确形**:页面总高只许缩进「此刻离底那一截」(`gapBefore`)里,
-           * 不许缩过它 —— 缩过去那一截才是会钳 `scrollTop` 的那一截。人在上面翻着
-           * 时下面本来就有余量,那一段缩下去屏上一像素不动(① ② 同时判着)。
-           */
-          const floor = m.collapse.shBefore - m.collapse.gapBefore - 1
-          assert(m.collapse.lowestSh !== null && m.collapse.lowestSh >= floor,
-            `${key} ③ 列的总高只缩进离底那一截里(最低 ${m.collapse.lowestSh}px`
-            + ` ≥ ${m.collapse.shBefore} − 离底 ${m.collapse.gapBefore} − 1 = ${floor.toFixed(2)})`)
-          assert(m.collapse.padMaxPx >= m.collapse.required - 1,
-            `${key} ④ 垫块真的垫满了(${m.collapse.padMaxPx}px ≥ 要的 ${m.collapse.required}px − 1)`)
-        } else {
-          assert(m.collapse.padMaxPx <= 0.5,
-            `${key} ④ 垫不满就一格不垫(${m.collapse.padMaxPx}px)`)
-        }
-        assert(m.collapse.padMaxPx <= m.collapse.clientHeight + 0.5,
-          `${key} ④ 垫块峰值 ${m.collapse.padMaxPx}px ≤ 一屏 ${m.collapse.clientHeight}px`)
         /*
-         * ⑤ **展开那一下今天只报不判** —— 判词与证据在 `EXPAND_IS_REPORT_ONLY` 上。
+         * ③ G1 在**有了落点之后**的精确形:页面总高全程不许矮到「托不住落点那个
+         * `scrollTop`」—— `scrollHeight ≥ scrollTop + clientHeight` 就是「不会被钳」
+         * 本身。从前那条「只缩进离底那一截里」是没有落点时的写法,落点会把
+         * `scrollTop` 往回收,页面本来就该跟着缩同样多。
          */
-        console.log(`  – ${key} ⑤ 展开:被点那一块顶边位移 ${m.expand.target.maxPx}px`
-          + ` · 期间 scrollTop 位移 ${m.expand.stSpanPx}px(只报不判,判词见文件头)`)
+        assert(c2.lowestSh !== null && c2.finalSt !== null
+          && c2.lowestSh >= c2.finalSt + c2.clientHeight - 1,
+          `${key} ③ 列的总高全程托得住落点(最低 ${c2.lowestSh}px`
+          + ` ≥ 落位 ${c2.finalSt} + 一屏 ${c2.clientHeight} − 1)`)
+        assert(c2.padMaxPx <= c2.clientHeight + 0.5,
+          `${key} ④ 垫块峰值 ${c2.padMaxPx}px ≤ 一屏 ${c2.clientHeight}px`)
+        assert(c2.worstBouncePx <= BUDGET.shiftPx,
+          `${key} ⑦ 过渡全程单调靠近落点,最大回弹 ${c2.worstBouncePx}px ≤ ${BUDGET.shiftPx}`)
+        if (c2.followGapPx === null) {
+          console.log(`  – ${key} ⑦ 它后面在这一层里没有兄弟(它就是那一行的末件),这一格跳过`)
+        } else {
+          assert(Math.abs(c2.followGapPx) <= BUDGET.followGapPx,
+            `${key} ⑦ 它后面第一块内容紧跟其下(缝 ${c2.followGapPx}px ≤ ${BUDGET.followGapPx})`)
+        }
+        assert(c2.visibleContentPx !== null && c2.visibleContentPx > 0,
+          `${key} ⑦ 屏上没有变成整屏空白(视口内可见内容 ${c2.visibleContentPx}px > 0)`)
+        assert(m.expand.target.maxPx !== null && m.expand.target.maxPx <= BUDGET.shiftPx,
+          `${key} ⑤ 展开:被点那一块顶边位移 ${m.expand.target.maxPx}px ≤ ${BUDGET.shiftPx}`)
+        assert(m.expand.stSpanPx !== null && m.expand.stSpanPx <= BUDGET.shiftPx,
+          `${key} ⑤ 展开:期间 scrollTop 位移 ${m.expand.stSpanPx}px ≤ ${BUDGET.shiftPx}(点开不贴底)`)
       }
     }
     if (readings.release) {

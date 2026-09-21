@@ -40,6 +40,9 @@ export class IntentWindow {
    */
   #fold: FoldHold | undefined = undefined
 
+  /** 刚过期、还没被重判过的那一个窗口(判词在 `takeExpired`)。 */
+  #justExpired: FoldHold | undefined = undefined
+
   /** 「我这一下是用户点开的,别贴底」。`ms` 由调用方给(`EXPAND_HOLD_MS`)。 */
   noteExpand(now: number, ms: number): void {
     this.#expandUntil = now + ms
@@ -53,8 +56,17 @@ export class IntentWindow {
    * 缺席 = 退回今天那条路(第一帧在 RO 回调里 `pickFoldAnchor()` 现选,晚一拍)
    * —— 重试那一路(`ChatStream` 的 `MessageRow`)仍然走它,它没有「被点的那一块」。
    */
-  noteFold(now: number, ms: number, pinned?: { anchor: AnchoredElement; top: number }): void {
-    this.#fold = { until: now + ms, anchor: pinned?.anchor, top: pinned?.top }
+  noteFold(
+    now: number,
+    ms: number,
+    pinned?: { anchor: AnchoredElement; top: number; rejudge?: boolean },
+  ): void {
+    this.#fold = {
+      until: now + ms,
+      anchor: pinned?.anchor,
+      top: pinned?.top,
+      rejudge: pinned?.rejudge ?? false,
+    }
   }
 
   /**
@@ -94,9 +106,27 @@ export class IntentWindow {
     if (!hold) return undefined
     if (now > hold.until) {
       this.#fold = undefined
+      // 交给下面那一格:窗口刚过期的那一次要**重判跟随档**(审查裁定 2)。
+      this.#justExpired = hold
       return undefined
     }
     return hold
+  }
+
+  /**
+   * **刚过期的那一个窗口,只交出一次**(G 线 P2-b 审查裁定 2)。
+   *
+   * 起因:展开那一下从此也走这条窗口(钉住被点那一块的顶边),而窗口整段是
+   * **早退**的 —— 不判跟底、不判丸。窗口一过要是什么都不做,`stick()` 就会按
+   * 「这一轮还 pinned」把人拽到底(用户报的「第二次展开视口被拽走 166–435px」
+   * 正是这条)。所以过期那一次要补一发「此刻离底这么远」,让状态机自己翻档。
+   *
+   * 一次性:同一个窗口只交出一次,不然每一批尺寸变化都会重判一遍。
+   */
+  takeExpired(): FoldHold | undefined {
+    const done = this.#justExpired
+    this.#justExpired = undefined
+    return done
   }
 
   /** 单测读面。 */
@@ -115,4 +145,10 @@ export interface FoldHold {
   readonly until: number
   anchor?: AnchoredElement
   top?: number
+  /**
+   * 窗口过期那一次要不要**按此刻离底多远重判跟随档**(审查裁定 2)。
+   * 只有「人亲手开合了一块东西」那条路给 true —— 重试那一路刚由 `landOnRetry` 滑到
+   * 置顶线、座位正握着这一轮,重判会把它翻成 browsing,新回答当场不跟底。
+   */
+  readonly rejudge?: boolean
 }

@@ -68,6 +68,13 @@ export interface ScrollPort {
   pickFoldAnchor(): AnchoredElement | undefined
   /** 卷尾垫块那一格的 style 写口。没有那个元素答 false(今天 `writeSeat` 的第一句)。 */
   writePadHeight(px: number): boolean
+  /**
+   * **滚动口的上内衬**(G 线 P2-b 审查裁定 1)——「收起之后那一行落在哪」的那条线:
+   * 视口上缘再往下这么多。今天 `.scroll` 上没有 `padding-block-start`(它只给底边
+   * 让位给悬浮输入框),所以这个数是 0、落点就是视口上缘;开在这儿是因为**哪天
+   * 上面多一条带子,落点要跟着走**,不该由裁决层去猜。
+   */
+  topInset(): number
   /** 「此刻量得出来吗」——`clientHeight > 0`,锚点去抖那一发用它。 */
   hasLayout(): boolean
   /** 「看到哪儿」——`measureScrollAnchor`,**不带停靠守卫**(它自己只看 isConnected)。 */
@@ -465,6 +472,12 @@ export class DomScrollPort implements ScrollPort {
     return true
   }
 
+  topInset(): number {
+    const el = this.#scroll()
+    if (!el) return 0
+    return Number.parseFloat(getComputedStyle(el).paddingBlockStart) || 0
+  }
+
   hasLayout(): boolean {
     const el = this.#scroll()
     return !!el && el.clientHeight > 0
@@ -513,6 +526,8 @@ export class FakeScrollPort implements ScrollPort {
   applyTo: number | undefined = undefined
   applyAnswer = true
   userRect: { top: number; bottom: number } | undefined = undefined
+  /** 滚动口的上内衬(用例可改)。 */
+  inset = 0
   #lastTop: number | undefined = undefined
 
   constructor(geometry?: Partial<FakeGeometry>) {
@@ -611,6 +626,10 @@ export class FakeScrollPort implements ScrollPort {
     if (!this.padHeights) return false
     this.padHeights.push(px)
     return true
+  }
+
+  topInset(): number {
+    return this.inset
   }
 
   hasLayout(): boolean {

@@ -131,17 +131,35 @@ describe('吸收回缩:两个量,一个写口', () => {
     return { port, pad: new TailPad(port) }
   }
 
-  it('垫不满就一格不垫:要 400、一屏只有 300 → 0(判词在文件头)', () => {
+  it('夹进一屏:要 400、一屏只有 300 → 300(审查裁定 1 删掉了「全有或全无」那条特判)', () => {
     const { port, pad } = atBottom()
-    expect(pad.requestAbsorb(400)).toBe(0)
-    expect(pad.absorbed).toBe(0)
-    expect(port.padHeights).toEqual([])
+    expect(pad.requestAbsorb(400)).toBe(300)
+    expect(pad.absorbed).toBe(300)
+    expect(port.padHeights).toEqual([300])
   })
 
-  it('恰好一屏:垫满(边界在 `>` 那一侧)', () => {
+  it('恰好一屏:垫满', () => {
     const { port, pad } = atBottom()
     expect(pad.requestAbsorb(300)).toBe(300)
     expect(port.padHeights).toEqual([300])
+  })
+
+  /**
+   * **`landingTop` = 收缩之后 `scrollTop` 要落在哪**(审查裁定 1)。
+   * 不给 = 留在原地,那一支与 09-21 那条式子逐字等价;给了就按那个落点算 ——
+   * 顶边落到视口上缘之后,「视口下缘 − 内容下缘」必然 ≤ 一屏。
+   */
+  it('按落点算:位置往回收多少,要垫的就少多少', () => {
+    const port = new FakeScrollPort({ scrollHeight: 4000, clientHeight: 300, scrollTop: 3700 })
+    const pad = new TailPad(port)
+    // 留在原地:要垫 2000(收缩量)→ 夹到一屏 300。
+    expect(pad.requestAbsorb(2000)).toBe(300)
+    pad.retire()
+    // 落点往回收 1500:内容下缘 2000,视口下缘 2200+300=2500 → 要垫 500 → 夹到 300。
+    expect(pad.requestAbsorb(2000, 2200)).toBe(300)
+    pad.retire()
+    // 落点再往回收一点,真值就落进一屏里了。
+    expect(pad.requestAbsorb(2000, 1800)).toBe(100)
   })
 
   it('一屏放得下时一格不夹:收起 120px → 垫 120px', () => {

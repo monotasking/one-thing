@@ -272,19 +272,67 @@ export class ViewportAnchor {
    */
   reportUserToggle(change: UserToggleReport): void {
     const now = this.#now()
-    if (change.open) {
-      // 收到一半又展开:**后到的那一句说了算**(判词在 `IntentWindow.clearFold`)。
-      this.#intents.clearFold()
-      this.#intents.noteExpand(now, this.#expandHoldMs)
+    const block = change.block
+    // 后到的那一句说了算(判词在 `IntentWindow.clearFold`)。
+    this.#intents.clearFold()
+    if (!block) {
+      /*
+       * 没点名(样例页 / 单测 / 节点还没挂上):退回今天那条路 —— 收起由下一帧在
+       * RO 回调里现选锚,展开只说一句「别贴底」。
+       */
+      if (change.open) this.#intents.noteExpand(now, this.#expandHoldMs)
+      else this.#intents.noteFold(now, change.durationMs + this.#foldSlackMs)
       return
     }
-    const block = change.block
-    // `block.height` 是上界(那一块此刻多高),过让的那一截由 `relax` 自己收回去。
-    if (block) this.#pad.requestAbsorb(block.height)
+    /*
+     * ── **落点**(审查裁定 1,2026-09-22)──────────────────────────────────
+     *   收起之后被点那一块的顶边 y = `max(收起前的顶边 y, 视口上缘 + 上内衬)`
+     *
+     * · 顶边本来就在视口里 → 它一像素不动(与 09-21 那一档逐字相同);
+     * · 顶边在视口**上方**(思考段几乎总是这一档)→ 收起后的那一行落在视口上缘,
+     *   后面的内容紧跟着往下排。这与 `ui/Fold` 底把手从前那一发
+     *   `scrollIntoView`(收起后把头把手送回视野)是同一个意图,只是现在由这里
+     *   **同一帧一次写到位**,不再是三只手各写一次(正本 §13.1.5 甲)。
+     *
+     * **展开那一侧不套这条落点**:它要的就是字面的「顶边不动」,而展开不会让
+     * 顶边跑到屏外去。
+     */
+    const view = this.#port.viewportRect()
+    const landing = change.open
+      ? block.top
+      : Math.max(block.top, view.top + this.#port.topInset())
+    /*
+     * 屏上那一块要往下挪 `drop` 像素 = `scrollTop` 往回收同样多。顶边在视口里时
+     * `drop` 是 0,这一整段于是退化成 09-21 的行为。
+     */
+    const drop = landing - block.top
+    const targetTop = drop > 0.5 ? this.#port.top - drop : undefined
+    if (!change.open) {
+      /*
+       * ── 次序即正确性 ────────────────────────────────────────────────────
+       * ① 先按**落点**把垫块垫到位(长高,从不钳);② 再写位置(`scrollTop` 只减
+       * 不增,同样从不钳);③ 最后才轮到调用方让那一块真的缩 —— 那一下的排版在
+       * 垫块与位置都到位之后,所以浏览器没有可钳的东西。
+       * `block.height` 是上界,多垫的那一截由 `relax` 在下一批尺寸变化里收回去。
+       */
+      this.#pad.requestAbsorb(block.height, targetTop ?? this.#port.top)
+    }
+    if (targetTop !== undefined) this.#port.setTop(targetTop, 'user-toggle')
+    /*
+     * 接下来这一段每一帧把它按回 `landing`(过渡逐帧改高,一次性闩活不过第一帧)。
+     * 展开那一侧用的是展开窗那个时长 —— 那一格的判词与 `EXPAND_HOLD_MS` 同源。
+     */
     this.#intents.noteFold(
       now,
-      change.durationMs + this.#foldSlackMs,
-      block ? { anchor: block.anchor, top: block.top } : undefined,
+      change.open ? this.#expandHoldMs : change.durationMs + this.#foldSlackMs,
+      /*
+       * `rejudge` **只给这条路开的窗**(审查裁定 2)。重试那一路(`noteFold(ms)`,
+       * `ChatStream` 的 `MessageRow`)不带它:那一路刚刚由 `landOnRetry` 滑到置顶线、
+       * 座位正握着这一轮,窗口一过重判会把它翻成 browsing,新回答当场不跟底了。
+       * 收起那一侧同样要 `rejudge`:顶边落到视口上缘之后人离底老远,不翻档的话
+       * 下一批尺寸变化里 `stick()` 就把刚刚定好的落点抹掉了。
+       */
+      { anchor: block.anchor, top: landing, rejudge: true },
     )
   }
 
@@ -320,8 +368,14 @@ export class ViewportAnchor {
        * **人往上滚,垫块跟着缩**(G 线 P2-b,§15.1 那张表的第二行)。缩的永远是
        * 视口下方看不见的那一截:人往上滚多少,需要的就少多少,于是屏上零位移。
        * 只记账、排下一帧写 —— 这里是滚动回调,当场改布局会与惯性滚动打架。
+       *
+       * **折叠窗在场时一格不收**(审查裁定 1 落地那一趟真机抓出来的):落点那一句
+       * `setTop` 自己会发一发滚动事件,而那一刻**那一块还没缩**(过渡要跑 180ms),
+       * 于是 gap 正大着 —— 照这条式子算出来「一格都不用垫」,刚垫上的那一截当场
+       * 被收掉,接着内容缩下去就钳。窗口里那几帧的 gap 说的不是「还需要多少」,
+       * 是「这一段还没走完」。读数:think3k 落点 44px 被钳回 295px(差 251)。
        */
-      this.#pad.relax(gap)
+      if (!this.#intents.folding(this.#now())) this.#pad.relax(gap)
       const { previousTop, top } = this.#port.noteScrolled()
       /*
        * 第一次(这次挂载里还没量过)按老办法交给状态机 —— 没有「上一次」可比,
@@ -415,6 +469,17 @@ export class ViewportAnchor {
       this.#lastGap = port.gapNow()
       return
     }
+    /*
+     * ── 窗口刚过期的那一次:**按此刻离底多远重判跟随档**(审查裁定 2)────────
+     *
+     * 窗口整段是早退的 —— 不判跟底、不判丸。过期那一次要是什么都不做,下面那句
+     * `stick()` 就会按「这一轮还 pinned」把人拽到底:用户报的「第二次展开视口被
+     * 拽走 166–435px」正是这条(动效档「无」下拽的是整块的高)。
+     *
+     * 这一句与「滚动停下来了」逐字相同,不另开一个事件(判词同 `enter` 里那一段)。
+     */
+    const expired = this.#intents.takeExpired()
+    if (expired?.rejudge) this.dispatch({ type: 'scrolled', gap: port.gapNow() })
     let contentGrew = false
     let contentChanged = false
     const containerChanged = batch.containerChanged
