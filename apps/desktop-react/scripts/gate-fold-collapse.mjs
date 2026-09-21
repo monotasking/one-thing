@@ -62,7 +62,7 @@
  * dpr 钉 2;临时 store + 临时 `--user-data-dir`,**绝不连 `~/.onething`**;
  * 输入只走 `page.evaluate` / CDP;`finally` 里逐个收尸并自查残留。
  *
- * 跑法:`npm run gate:fold-collapse`([`--big`] [`--only <场景>`] [`--motion-none`])
+ * 跑法:`npm run gate:fold-collapse`([`--prod`] [`--big`] [`--only <场景>`] [`--motion-none`])
  * (仓根先 `bun run server:build`;先 `npm run electron:build`。)
  */
 import { spawn } from 'node:child_process'
@@ -84,8 +84,14 @@ const serverEntry = path.join(repoRoot, 'dist/server/main.js')
 const mainEntry = path.join(appRoot, 'dist-electron/main.cjs')
 
 const BIG = process.argv.includes('--big')
+/**
+ * **prod 档**:不起 vite,让主进程加载 `dist/` 里的产物。
+ * 用户跑的是 `electron:dev`,所以 dev 是主场;prod 这一档证的是「产物上同样成立」
+ * (壳 CLAUDE.md 第 5 轴那条「两种渲染层都要出数」)。先 `npm run app:build`。
+ */
+const PROD = process.argv.includes('--prod')
 const MOTION_NONE = process.argv.includes('--motion-none')
-const LANE = BIG ? 'big' : 'short'
+const LANE = `${BIG ? 'big' : 'short'}${PROD ? '-prod' : ''}`
 const ONLY = (() => {
   const at = process.argv.indexOf('--only')
   return at >= 0 ? process.argv[at + 1] : undefined
@@ -525,14 +531,18 @@ async function main() {
     }
 
     let rendererUrl
-    const { createServer } = await import('vite')
-    vite = await createServer({
-      configFile: path.join(appRoot, 'vite.config.ts'),
-      server: { port: DEV_PORT, strictPort: true },
-      logLevel: 'warn',
-    })
-    await vite.listen()
-    rendererUrl = vite.resolvedUrls?.local?.[0] ?? `http://127.0.0.1:${DEV_PORT}/`
+    if (!PROD) {
+      const { createServer } = await import('vite')
+      vite = await createServer({
+        configFile: path.join(appRoot, 'vite.config.ts'),
+        server: { port: DEV_PORT, strictPort: true },
+        logLevel: 'warn',
+      })
+      await vite.listen()
+      rendererUrl = vite.resolvedUrls?.local?.[0] ?? `http://127.0.0.1:${DEV_PORT}/`
+    } else if (!existsSync(path.join(appRoot, 'dist', 'index.html'))) {
+      throw new Error('prod 档找不到 dist/index.html —— 先跑 `npm run app:build`')
+    }
 
     app = await electron.launch({
       executablePath: electronBinary,
@@ -540,7 +550,7 @@ async function main() {
       env: {
         ...process.env,
         ONETHING_STORE_PATH: store,
-        ONETHING_REACT_DEV_SERVER_URL: rendererUrl,
+        ...(rendererUrl ? { ONETHING_REACT_DEV_SERVER_URL: rendererUrl } : {}),
         ONETHING_GATE_OFFSCREEN: '1',
       },
     })

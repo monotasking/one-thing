@@ -444,6 +444,18 @@ run('gate:tail-jitter(dev·short)', 'npm', ['run', '--silent', 'gate:tail-jitter
 run('gate:tail-jitter(prod)', 'npm', ['run', '--silent', 'gate:tail-jitter', '--', '--prod'])
 run('gate:tail-jitter(prod·short)', 'npm', ['run', '--silent', 'gate:tail-jitter', '--', '--prod', '--short'])
 /*
+ * **手动收起 / 展开一块东西**(G 线 P2-b,正本 `docs/stream-geometry-2026-09.md` §15/§16)。
+ * 落点 = `max(收起前的顶边, 视口上缘 + 上内衬)`、垫块吸收回缩、展开钉住顶边且不贴底。
+ *
+ * 进来的是 **dev 与 prod 的短会话档**:正本 §0 末尾那句话在这道门上同样成立 ——
+ * 短会话里 `scrollTop` 钳得到,病才全额暴露;真店档是对照组。
+ * **真店档(`--big`)不在这儿**:它那一格 `think60k` 的展开今天还红(留账 §16.5 第 2 条),
+ * 而且它要 50–62MB 夹具 × 四条会话,单跑一趟就是十几分钟。
+ * 动效档「无」(`--motion-none`)同理:它是一条按需跑的档,判的与标准档逐格相同。
+ */
+run('gate:fold-collapse(dev)', 'npm', ['run', '--silent', 'gate:fold-collapse'])
+run('gate:fold-collapse(prod)', 'npm', ['run', '--silent', 'gate:fold-collapse', '--', '--prod'])
+/*
  * gate:credentials 不在这里,理由与 gate:perf 不同:它**读的是这台机器上真实的
  * 生产 store**(要一份真的 safeStorage 密文才有得比),而 verify 必须在任何一台
  * checkout 上都能跑。它自己跑:`npm run gate:credentials`。
@@ -452,7 +464,7 @@ run('gate:tail-jitter(prod·short)', 'npm', ['run', '--silent', 'gate:tail-jitte
 process.stdout.write(
   '\n[verify] ok —— typecheck / lint(含 jsx-a11y)/ squeeze-gate / motion-gate / test / build'
     + ' / offline-fonts / buttonbase-css'
-    + ' / 真机门(connect·data·theme·chat·files·search·monotone·squeeze·motion·a11y·focus·layout'
+    + ' / 真机门(connect·data·theme·chat·files·search·monotone·squeeze·motion·a11y·focus·layout·fold-collapse'
     + '·chat-follow·continuity·terminal[dev+prod]·browser[dev+prod]·chat-layout[dev+prod]'
     + '·send-flow[dev+prod]·stream-geometry[dev+prod]·tail-jitter[dev+prod × 短/真店])全绿\n',
 )
