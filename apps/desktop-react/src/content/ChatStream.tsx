@@ -25,6 +25,7 @@ import { DomScrollPort, type ScrollPort } from './viewport/scroll-port'
 import { useViewportAnchor } from './viewport/use-viewport-anchor'
 import { ExpandIntentContext } from './expand-intent'
 import { FoldIntentContext, useNoteFold } from './fold-intent'
+import { GeometryReportContext } from './geometry-report'
 import type { SegmentModel } from './model/segments'
 import { MessageActions } from './message/MessageActions'
 import { MessageChrome } from './message/MessageChrome'
@@ -258,7 +259,15 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
    */
   const retryingId = useChatSourceOf(sessionId, (st) => st.retryPending?.messageId)
 
-  const { follow, jumpToBottom, onScrollWithFollow, noteUserExpand, noteFold, seatActive } = useViewportAnchor({
+  const {
+    follow,
+    jumpToBottom,
+    onScrollWithFollow,
+    noteUserExpand,
+    noteFold,
+    reportUserToggle,
+    seatActive,
+  } = useViewportAnchor({
     scrollRef,
     port,
     sessionId: foldedSessionId,
@@ -334,6 +343,15 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
           * 值同样是 `useCallback` 出来的、身份恒定,所以下游那些 memo 一格没动。
           */}
         <FoldIntentContext.Provider value={noteFold}>
+        {/*
+          * ── 人亲手开合了一块东西:**开与合走同一个口**(G 线 P2-b)────────────
+          * 上面那两条各说一半的老通道这一期留着(重试那一路还在用折起那一条,
+          * 它没有「被点的那一块」),但流里四族可折叠的东西 —— 思考段、工具卡、
+          * 压缩折痕、上下文更新折痕 —— 从此都报到这一条上。收起那一侧因此第一次
+          * 有人接:先把卷尾垫块加长(页面总高不变),再把被点的那一块钉住。
+          * 值同样是 `useCallback` 出来的、身份恒定,下游那些 memo 一格没动。
+          */}
+        <GeometryReportContext.Provider value={reportUserToggle}>
         <>
         {/*
           * `data-follow` 是**跟随状态机的一格自述**(P1c,2026-09-21):列尾那一格
@@ -567,6 +585,7 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
           onJump={jumpToBottom}
         />
         </>
+        </GeometryReportContext.Provider>
         </FoldIntentContext.Provider>
         </ExpandIntentContext.Provider>
       )}

@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react'
-import { CARD_FLIP_MS } from '../../components/motion'
+import { CARD_FLIP_MS, currentMotionTier } from '../../components/motion'
 import { useLiveClock } from '../../components/useLiveClock'
 import { resolveIcon } from '../../components/icons'
 import { formatDuration } from '../../format/quantity'
@@ -8,7 +8,7 @@ import { ButtonBase } from '../../ui/ButtonBase'
 import { useFlipHeight } from '../../ui/flip-height'
 import { Tooltip } from '../../ui/Tooltip'
 import type { BlockCtx } from '../blocks/registry'
-import { useNoteUserExpand } from '../expand-intent'
+import { useGeometryReport } from '../geometry-report'
 import type {
   ToolCardEntry,
   ToolCardHead,
@@ -111,38 +111,56 @@ export const ToolCard = memo(function ToolCard({
   ctx: BlockCtx
 }) {
   const t = useT()
-  const note = useNoteUserExpand()
+  /*
+   * **开与合走同一个口**(G 线 P2-b,`content/geometry-report.ts`)。从前这里只有
+   * `useNoteUserExpand()` —— 整卡开合 / 聚合行开合 / 抽屉三条路**只报展开、不报收起**
+   * (勘察记在正本 §13.1.4 ①),于是贴底时收起一张多步卡,屏上其余内容整体往下掉。
+   */
+  const report = useGeometryReport()
   const [open, setOpen] = useState(false)
   const [openKeys, setOpenKeys] = useState<ReadonlySet<string>>(EMPTY_KEYS)
   const cardRef = useRef<HTMLDivElement | null>(null)
 
   /*
    * ── 两格镜像,只为「这一下是开还是合」(2026-09-12)────────────────────────
-   * 展开时要报一句「用户点开的,别贴底」(`content/expand-intent.ts`),而这两只
-   * 回调的身份必须**恒定** —— 它们一路传到头行与每一行上,身份一变那几层的 memo
-   * 就白短路了(FLIP 那 916 次强排版的同款账)。把当前值读进 ref,于是判据拿得到
-   * 「此刻开着没有」而依赖表仍是空的。副作用**不放进 setState 的 updater**:
-   * updater 在 StrictMode 下会跑两遍。
+   * 开合都要报一句给几何那一侧(`content/geometry-report.ts`),而这两只回调的身份
+   * 必须**恒定** —— 它们一路传到头行与每一行上,身份一变那几层的 memo 就白短路了
+   * (FLIP 那 916 次强排版的同款账)。把当前值读进 ref,于是判据拿得到「此刻开着
+   * 没有」而依赖表仍是空的。副作用**不放进 setState 的 updater**:updater 在
+   * StrictMode 下会跑两遍。
    */
   const openRef = useRef(open)
   openRef.current = open
   const openKeysRef = useRef(openKeys)
   openKeysRef.current = openKeys
 
+  /*
+   * ── **三条路一个锚:这张卡自己**(G 线 P2-b)──────────────────────────────
+   * 整卡开合、聚合行开合、抽屉开合 —— 缩掉的高都在这张卡里,而**按住卡的顶边就
+   * 按住了缩点以上的一切**(卡顶到那一行之间的内容一个字没变)。所以不必让每一行
+   * 各报各的,`cardRef` 是这三条路共同的「被点的那一块」。
+   *
+   * 动效档「无」照报,`durationMs` 给 0 —— 那一档没有过渡,但钳位照样发生。
+   */
+  const toggleDurMs = () => (currentMotionTier() === 'none' ? 0 : CARD_FLIP_MS)
   const toggleOpen = useCallback(() => {
-    if (!openRef.current) note()
-    setOpen((value) => !value)
-  }, [note])
+    setOpen(report({ el: cardRef.current, open: !openRef.current, durationMs: toggleDurMs() }))
+  }, [report])
   const toggleKey = useCallback(
     (key: string) => {
-      if (!openKeysRef.current.has(key)) note()
+      const next = report({
+        el: cardRef.current,
+        open: !openKeysRef.current.has(key),
+        durationMs: toggleDurMs(),
+      })
       setOpenKeys((current) => {
-        const next = new Set(current)
-        if (!next.delete(key)) next.add(key)
-        return next
+        const keys = new Set(current)
+        if (next) keys.add(key)
+        else keys.delete(key)
+        return keys
       })
     },
-    [note],
+    [report],
   )
 
   // 有活步才需要一只钟:一条会话里九成的工具卡是收场了的,它们不该有定时器。

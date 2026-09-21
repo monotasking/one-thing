@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactNode } from 'react'
+import type { HTMLAttributes, ReactNode, Ref } from 'react'
 import { ChevronDown } from '../../components/icons'
 import { FoldBody, FoldFoot, FoldTrigger } from '../../ui/Fold'
 import s from './Seam.module.css'
@@ -55,6 +55,16 @@ export type SeamState = 'running' | 'settled' | 'danger'
 
 export interface SeamProps extends HTMLAttributes<HTMLDivElement> {
   'data-state': SeamState
+  /**
+   * **消费方也要这个节点**(G 线 P2-b 加的一格,与 `ui/Fold` 的 `FoldTrigger.ref`
+   * 同判、同理由)。
+   *
+   * 折痕收起那一下要向几何那一侧报「我要缩这么多、接下来按住我的顶边」
+   * (`content/geometry-report.ts`),而「这么多」与「顶边」量的正是**整道折痕**:
+   * 正文盒子 `display: none` 掉、底把手卸载、两格外边距一起没了 —— 只量正文那一格
+   * 会短掉外边距与底把手,按不住那 8–30px。根是这一层,所以 ref 开在这一层。
+   */
+  ref?: Ref<HTMLDivElement>
   children?: ReactNode
 }
 
@@ -68,9 +78,14 @@ export interface SeamProps extends HTMLAttributes<HTMLDivElement> {
  * `style` 原样透传,`--seam-fill`(k/N 的比值)就从那里进来:自定义属性的值是
  * 算出来的比值,不是字面量(Token 纪律管的是写死的量)。
  */
-export function Seam({ className, children, ...rest }: SeamProps) {
+export function Seam({ className, children, ref, ...rest }: SeamProps) {
   return (
-    <div className={className ? `${s.seam} ${className}` : s.seam} data-prose="object" {...rest}>
+    <div
+      ref={ref}
+      className={className ? `${s.seam} ${className}` : s.seam}
+      data-prose="object"
+      {...rest}
+    >
       {children}
     </div>
   )

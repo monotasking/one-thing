@@ -1,10 +1,9 @@
-import { memo, useLayoutEffect, useRef, useState } from 'react'
+import { memo, useRef, useState } from 'react'
 import { CARD_FLIP_MS, currentMotionTier } from '../components/motion'
 import { useT } from '../i18n'
 import { Fold, FoldTrigger } from '../ui/Fold'
 import { useFlipHeight } from '../ui/flip-height'
-import { useNoteUserExpand } from './expand-intent'
-import { useNoteFold } from './fold-intent'
+import { useGeometryReport } from './geometry-report'
 import { thoughtHeights } from './thought-heights'
 import s from './SegmentView.module.css'
 import type { TextBlock } from './text/text-stream'
@@ -99,8 +98,12 @@ export function ThinkingSegment({
   latest: string
 }) {
   const t = useT()
-  const note = useNoteUserExpand()
-  const noteFold = useNoteFold()
+  /*
+   * **开与合走同一个口**(G 线 P2-b,`content/geometry-report.ts`)。从前这里是两只:
+   * `useNoteUserExpand()` 只报展开,`useNoteFold()` 在一只 layout effect 里报收起 ——
+   * 而那只 effect 跑在**已经折起来的 DOM 上**,垫块与锚都晚了一拍(正本 §0 ①)。
+   */
+  const report = useGeometryReport()
   /*
    * **初值恒 `false`,流式与否一格都不动它**(G 线 P1;判词整段在文件头 ①)。
    * 从前这里是 `useState(live)` 外加一只 `useEffect(() => setExpanded(live), [live])`
@@ -115,8 +118,9 @@ export function ThinkingSegment({
    * 病历:一轮跑完那一帧,20 万字的思考从 6 万像素**一帧**缩成一行 783px,整屏
    * 跳变(`probe-stream-end.mjs` 量到上一条用户消息的 top 从 −60,879 跳到 −286)。
    * **那条自动折的路 G 线 P1 已经没有了**(判词在文件头 ①),所以这只原语今天
-   * 只服务用户自己点的那两下;它仍然留着,因为手动收起在贴底时踩的是同一个钳位
-   * (正本 §6 留账第一条,归 P2)。
+   * 只服务用户自己点的那两下。**那个钳位 G 线 P2-b 治了**:下面那只 `onOpenChange`
+   * 在改状态之前先报一句,卷尾垫块同步补上要缩掉的高 —— 所以这只原语里那一读
+   * (`el.offsetHeight`)落在垫块到位**之后**,页面总高不再变小。
    *
    * 机制整只复用 `ui/flip-height`(基础件先行:第二个消费者不许再抄一份):
    *  · 「改前」由这一族自己的账本(`thought-heights.ts`)**报**过来,不现问 ——
@@ -136,37 +140,25 @@ export function ThinkingSegment({
     durMs: CARD_FLIP_MS,
   })
 
-  /**
-   * 开始折的那一帧报一句「钉住视口」(`content/fold-intent.ts`)。
-   *
-   * **只在折起那一侧报**,展开那一侧归 `expand-intent`(两条通道,两件事:一件说
-   * 「别贴底」,一件说「别让内容往上抽」)。今天翻这一格的**只有用户自己那一下**
-   * (G 线 P1 之后 `live` 不再驱动开合),判据仍然挂在**结果**(展开态翻成了 false)上
-   * 而不是「谁翻的」上 —— 那句话少了一个产地,一个字都不必改。
-   *
-   * 排在 `useFlipHeight` **之后**声明,所以它的 layout effect 也排在后面跑:
-   * 那只原语已经把起点钉住(内联 height = 改前)、把终点写下去了,此刻报出去的
-   * 那一段时长说的正是接下来要走的那一段。动效档 `none` 下不报 —— 那一档没有
-   * 「一段过渡」,高度当场到位,聊天流按它自己的几何判据走就对了。
-   */
-  const wasExpanded = useRef(expanded)
-  useLayoutEffect(() => {
-    const folding = wasExpanded.current && !expanded
-    wasExpanded.current = expanded
-    if (!folding) return
-    if (currentMotionTier() === 'none') return
-    noteFold(CARD_FLIP_MS)
-  }, [expanded, noteFold])
-
   return (
     <Fold
       open={expanded}
-      /* 用户点开的,报给流:别贴底(`content/expand-intent.ts`)。G 线 P1 之后
-         这里是开合的**唯一**产地 —— 所以经过这里的每一下都是用户意图。 */
-      onOpenChange={(open) => {
-        if (open) note()
-        setExpanded(open)
-      }}
+      /*
+       * ── 开合的**唯一**产地,所以经过这里的每一下都是用户意图 ──────────────
+       * `setExpanded` 吃的是 `report()` 的返回值:拿不到它就写不了状态,而拿到它
+       * 意味着垫块已经同步到位、被点的这一块已经钉住(判词在 `geometry-report.ts`)。
+       * 它跑在事件处理函数里 —— 比 `useFlipHeight` 那一读(提交里的 layout effect,
+       * `el.offsetHeight` 逼一次排版)早一拍,G2「收缩先申请后执行」因此是结构保证。
+       *
+       * **动效档「无」照报,只是 `durationMs` 是 0**:那一档没有过渡,但页面总高
+       * 照样一缩、浏览器照样钳 —— 从前那句 `if (none) return` 让这一档成了唯一还会
+       * 跳的一档。
+       */
+      onOpenChange={(open) => setExpanded(report({
+        el: boxRef.current,
+        open,
+        durationMs: currentMotionTier() === 'none' ? 0 : CARD_FLIP_MS,
+      }))}
     >
       <FoldTrigger
         ref={boxRef}

@@ -129,10 +129,23 @@ describe('思考段:收尾那一下是高度过渡,不是跳回去', () => {
     expect(src).toMatch(/durVar: '--dur-card-flip'/)
   })
 
-  it('开始折的那一帧报一句,动效档「无」下不报(那一档没有「一段过渡」)', () => {
-    expect(src).toMatch(/const folding = wasExpanded\.current && !expanded/)
-    expect(src).toMatch(/if \(currentMotionTier\(\) === 'none'\) return/)
-    expect(src).toMatch(/noteFold\(CARD_FLIP_MS\)/)
+  /**
+   * **G 线 P2-b 换了通道**:从前这里是一只 layout effect 里的 `noteFold(CARD_FLIP_MS)`
+   * —— 它跑在**已经折起来的 DOM** 上,垫块与锚都晚了一拍,而且动效档「无」下整段
+   * 不报(那一档没有过渡,可钳位照样发生)。今天开与合都在**事件处理函数里**报,
+   * 而且 `setExpanded` 吃的就是 `report()` 的返回值:拿不到它就写不了状态。
+   */
+  it('开合在改状态之前同步报一句,`setExpanded` 吃的是它的返回值', () => {
+    expect(src).toMatch(/const report = useGeometryReport\(\)/)
+    expect(src).toMatch(/onOpenChange=\{\(open\) => setExpanded\(report\(\{/)
+    expect(src).toMatch(/el: boxRef\.current/)
+  })
+
+  it('动效档「无」照报,只是那一段过渡长度是 0', () => {
+    expect(src).toMatch(/durationMs: currentMotionTier\(\) === 'none' \? 0 : CARD_FLIP_MS/)
+    // 旧通道那两句不许长回来(它们是「晚一拍」与「这一档不报」的产地)。
+    expect(src).not.toMatch(/useNoteFold/)
+    expect(src).not.toMatch(/useNoteUserExpand/)
   })
 
   it('`data-prose` / `data-testid` 仍与 role=button 在同一个元素上(取件口没搬家)', () => {

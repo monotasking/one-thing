@@ -77,6 +77,21 @@ export interface FoldProps {
   defaultOpen?: boolean
   /** 每次开合都叫一次(受控档下这是唯一的写路)。 */
   onOpenChange?: (open: boolean) => void
+  /**
+   * **外面有人钉着视口了,底把手别自己滚**(G 线 P2-b,正本
+   * `docs/stream-geometry-2026-09.md` §14.4 的裁定)。
+   *
+   * `collapseFromFoot` 收起之后有一发 `scrollIntoView({block:'nearest'})`:正文塌掉,
+   * 头把手很可能已经在视野上方。那一手在**聊天流里**与锚定器打架 —— 同一次收起在
+   * 两帧里被两只手各写一次滚动位,而两只手都不知道对方存在(勘察记在正本
+   * §13.1.5 甲)。聊天流那一侧收起时会**把被点的那一块的顶边钉住**,而头把手就是
+   * 那一块的顶边 —— 它本来就不会跑到视野上方,那一发因此是多余且有害的。
+   *
+   * 缺省 `false` = **今天的行为一个字不改**:`ui/` 不认识 `content/`,没人报就照旧
+   * 自己滚(样例页 `dev/Gallery.tsx` 与单测都走这一档)。焦点那一半**两档都做** ——
+   * 底把手随即卸载,不接过去焦点会掉到 body 上(I1)。
+   */
+  anchored?: boolean
   children: ReactNode
 }
 
@@ -84,7 +99,7 @@ export interface FoldProps {
  * 不渲染任何 DOM —— 它只是一格 context。布局(触发器和正文谁在谁上面、
  * 中间隔多远)整份归消费方,多包一层 `<div>` 会当场污染消费方的 flex/grid。
  */
-export function Fold({ open, defaultOpen = false, onOpenChange, children }: FoldProps) {
+export function Fold({ open, defaultOpen = false, onOpenChange, anchored = false, children }: FoldProps) {
   const [selfOpen, setSelfOpen] = useState(defaultOpen)
   const [hasBody, setHasBody] = useState(false)
   const bodyId = useId()
@@ -105,8 +120,6 @@ export function Fold({ open, defaultOpen = false, onOpenChange, children }: Fold
     if (!isOpen) return
     if (!controlled) setSelfOpen(false)
     onOpenChange?.(false)
-    // 合上之后正文塌掉,头把手很可能已经在视野上方(读到底才按的底把手)。
-    // 等这一帧排完再滚:`nearest` 在它本来就可见时是恒等操作,不会乱跳。
     // 焦点先交过去(preventScroll,滚动只由下一句说了算)—— 底把手马上卸载,
     // 不交的话焦点掉到 body 上,键盘用户下一下 Tab 从头开始。
     const head = headRef.current
@@ -115,6 +128,10 @@ export function Fold({ open, defaultOpen = false, onOpenChange, children }: Fold
     // 不跨作用域(与 I3 放行 roving / list-selection / inline-edit 的同一条理由);底把手随即卸载,
     // 不接过去焦点会掉到 body,而结构性归还(规则 5)只回到作用域一级,回不到这枚标签。
     head.focus({ preventScroll: true })
+    // 外面有人钉着视口(`anchored`)就到此为止 —— 判词整段在 `FoldProps.anchored` 上。
+    if (anchored) return
+    // 合上之后正文塌掉,头把手很可能已经在视野上方(读到底才按的底把手)。
+    // 等这一帧排完再滚:`nearest` 在它本来就可见时是恒等操作,不会乱跳。
     requestAnimationFrame(() => {
       head.scrollIntoView({ block: 'nearest' })
     })

@@ -4,7 +4,7 @@ import { useT, type MessageKey, type TFn } from '../i18n'
 import { ButtonBase } from '../ui/ButtonBase'
 import { Fold } from '../ui/Fold'
 import { clampMeasurer } from './blocks/shell/clamp-measurer'
-import { useNoteUserExpand } from './expand-intent'
+import { useGeometryReport } from './geometry-report'
 import { Seam, SeamBody, SeamFoot, SeamLabel, SeamLine } from './seam/Seam'
 import c from './ContextDeltaSeam.module.css'
 
@@ -178,25 +178,38 @@ export function ContextDeltaSeam({ turnContext }: {
   turnContext?: TurnContextDelta
 }) {
   const t = useT()
-  const note = useNoteUserExpand()
+  /*
+   * **开与合走同一个口**(G 线 P2-b,`content/geometry-report.ts`)。从前这里只有
+   * `useNoteUserExpand()`:只报展开、不报收起 —— 贴底时把这道折痕收起来,屏上其余
+   * 内容整体往下掉一截(勘察记在正本 §13.1.4 ①)。改成**受控**档的理由与压缩折痕
+   * 逐字相同:自持档下 `Fold` 自己 `setSelfOpen`,那条写路绕得开报。
+   */
+  const report = useGeometryReport()
+  const [open, setOpen] = useState(false)
+  /* 整道折痕的根 —— 收起那一下量的与按住的都是它(判词在 `seam/Seam.tsx` 的 `ref` 上)。 */
+  const rootRef = useRef<HTMLDivElement>(null)
   const rows = contextDeltaEntries(turnContext)
   // 没有 delta 就没有这件东西 —— 不占位、不画空壳。摆它的那一层同样问一遍
   // (`hasContextDelta`),那一句省的是外面那个 `<article>`;这一句是本件自己的底。
   if (rows.length === 0) return null
 
   return (
-    /* 用户点开的,报给流:别贴底(`content/expand-intent.ts`)。收起不报 —— 变矮
-       不会把人推走。 */
+    /*
+     * 开与合都报给几何那一侧:开 = 别贴底,合 = 先把卷尾垫块补上要缩掉的高,
+     * 再按住这道折痕的顶边。`durationMs: 0` —— 折痕的收起是 `display: none`,
+     * 当拍到位(判词在 `seam/Seam.module.css` 的 `.seamBody` 上)。
+     * `anchored` 让底把手那一发 `scrollIntoView` 让位给这一次钉住。
+     */
     <Fold
-      onOpenChange={(open) => {
-        if (open) note()
-      }}
+      anchored
+      open={open}
+      onOpenChange={(next) => setOpen(report({ el: rootRef.current, open: next, durationMs: 0 }))}
     >
       {/*
         * 恒 `settled`:上下文更新本身是**已经发生完**的事(判词在上面那段
         * 「`sweeping` 那格 prop G 线 P1 删了」里)。
         */}
-      <Seam data-state="settled" data-testid="context-delta-seam">
+      <Seam ref={rootRef} data-state="settled" data-testid="context-delta-seam">
         <SeamLine />
         <SeamLabel fold data-testid="context-delta-label">
           {contextDeltaSummary(t, rows)}
@@ -222,7 +235,7 @@ export function ContextDeltaSeam({ turnContext }: {
  * `overflows` 只决定遮罩与展开钮 —— 所以永远不会「先铺满再被钳住」那一闪。
  */
 function DeltaRow({ t, row }: { t: TFn; row: ContextDeltaEntry }) {
-  const note = useNoteUserExpand()
+  const report = useGeometryReport()
   const outer = useRef<HTMLDivElement>(null)
   const inner = useRef<HTMLDivElement>(null)
   const [overflows, setOverflows] = useState(false)
@@ -267,10 +280,12 @@ function DeltaRow({ t, row }: { t: TFn; row: ContextDeltaEntry }) {
           <ButtonBase
             className={c.expand}
             onClick={() => {
-              // 用户点开的,报给流:别贴底(收起不报)。判据用当前 state,不放进
-              // setState 的 updater —— updater 在 StrictMode 下会跑两遍。
-              if (!expanded) note()
-              setExpanded((open) => !open)
+              /*
+               * 开与合都报(G 线 P2-b):这一格钳高的正文自己就是「被点的那一块」,
+               * 收起时它缩掉的那几行同样会让页面总高变小。判据用当前 state,不放进
+               * setState 的 updater —— updater 在 StrictMode 下会跑两遍。
+               */
+              setExpanded(report({ el: outer.current, open: !expanded, durationMs: 0 }))
             }}
           >
             {t(expanded ? 'block.collapse' : 'block.expand')}

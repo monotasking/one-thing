@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties } from 'react'
+import { useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { selectEngineBusy, useChatSourceOf } from '../data/chat-source'
 import { commandsPort } from '../data/commands-port'
 import { formatQuantity } from '../format/quantity'
@@ -11,7 +11,7 @@ import { markdownToFrame } from './assemble/markdown'
 import { BlockView } from './blocks/BlockView'
 import type { BlockCtx } from './blocks/registry'
 import type { CompactMarker } from './compact/marker'
-import { useNoteUserExpand } from './expand-intent'
+import { useGeometryReport } from './geometry-report'
 import { Seam, SeamBody, SeamCount, SeamFoot, SeamLabel, SeamLine, SeamSentence, type SeamState } from './seam/Seam'
 import s from './SegmentView.module.css'
 
@@ -69,9 +69,16 @@ export function CompactSeam({ marker, ctx }: { marker: CompactMarker; ctx: Block
   const fill = marker.progress
     ? Math.min(1, marker.progress.chunk / marker.progress.totalChunks)
     : undefined
+  /*
+   * 整道折痕的根 —— 收起那一下向几何那一侧报的「我要缩这么多、按住我的顶边」量的
+   * 就是它(判词在 `seam/Seam.tsx` 的 `SeamProps.ref` 上)。三态里只有 completed
+   * 折得起来,但 ref 挂在根上与状态无关,所以留在这一层。
+   */
+  const rootRef = useRef<HTMLDivElement>(null)
 
   return (
     <Seam
+      ref={rootRef}
       /* 三态的**唯一**开关:线怎么画、标签什么色,全挂在这一格上(基座那边一条
          `[data-state=…]` 一句话),组件里不拼 className 字符串。
          `data-prose="object"` 由基座自带 —— 折痕按物件档留白是这种形态的属性。 */
@@ -80,7 +87,7 @@ export function CompactSeam({ marker, ctx }: { marker: CompactMarker; ctx: Block
       style={fill === undefined ? undefined : ({ '--seam-fill': String(fill) } as CSSProperties)}
     >
       {marker.status === 'completed' ? (
-        <CompletedSeam marker={marker} ctx={ctx} t={t} />
+        <CompletedSeam marker={marker} ctx={ctx} t={t} rootRef={rootRef} />
       ) : marker.status === 'failed' ? (
         <FailedSeam marker={marker} sessionId={ctx.sessionId} t={t} />
       ) : (
@@ -138,8 +145,20 @@ function RunningSeam({ marker, t }: { marker: CompactMarker; t: TFn }) {
  * **摘要为空时它不是折叠件**:没有正文的折叠头按下去什么都不会发生,那颗 chevron
  * 是在撒谎。所以这一支退成一枚普通标签 —— 状态表沉默的那一格,按组件规格补齐。
  */
-function CompletedSeam({ marker, ctx, t }: { marker: CompactMarker; ctx: BlockCtx; t: TFn }) {
-  const note = useNoteUserExpand()
+function CompletedSeam({ marker, ctx, t, rootRef }: {
+  marker: CompactMarker
+  ctx: BlockCtx
+  t: TFn
+  rootRef: RefObject<HTMLDivElement | null>
+}) {
+  const report = useGeometryReport()
+  /*
+   * ── 改成**受控**档(G 线 P2-b)──────────────────────────────────────────
+   * 开合从此要经 `report()`:它的返回值就是要写进 state 的那一格,拿不到就写不了
+   * ——「先申请后执行」由这条链保证,不靠注释(判词在 `content/geometry-report.ts`)。
+   * 自持档下 `Fold` 自己 `setSelfOpen`,那条写路绕得开报,所以这里改成受控。
+   */
+  const [open, setOpen] = useState(false)
   const label = completedLabel(t, marker)
   if (!marker.summary) {
     return (
@@ -151,11 +170,17 @@ function CompletedSeam({ marker, ctx, t }: { marker: CompactMarker; ctx: BlockCt
     )
   }
   return (
-    /* 用户点开的,报给流:别贴底(`content/expand-intent.ts`)。收起不报。 */
+    /*
+     * 开与合都报给几何那一侧(`content/geometry-report.ts`):开 = 别贴底,
+     * 合 = 先把卷尾垫块补上要缩掉的高,再按住这道折痕的顶边。
+     * `durationMs: 0` —— 折痕的收起是 `display: none`,**当拍到位**,没有过渡可等
+     * (判词写在 `seam/Seam.module.css` 的 `.seamBody` 上:「收起仍旧是瞬间的,
+     * 这是有意的」)。`anchored` 让底把手那一发 `scrollIntoView` 让位给这一次钉住。
+     */
     <Fold
-      onOpenChange={(open) => {
-        if (open) note()
-      }}
+      anchored
+      open={open}
+      onOpenChange={(next) => setOpen(report({ el: rootRef.current, open: next, durationMs: 0 }))}
     >
       <SeamLine />
       <SeamLabel fold data-testid="compact-seam-label">
