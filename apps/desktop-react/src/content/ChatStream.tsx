@@ -525,17 +525,22 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
                * 换一个高度),上面那些旧内容因此一像素不动 —— 与在飞那一格落账时
                * 按 key 认出「还是它」是同一条纪律。
                */
-              ...(seatActive
-                ? [
-                    <div
-                      key="seat"
-                      ref={seatRef}
-                      className={s.seat}
-                      data-seat=""
-                      aria-hidden="true"
-                    />,
-                  ]
-                : []),
+              /*
+               * ── **它常驻,不随座位生灭**(G 线 P2-b,2026-09-21)────────────────
+               * 从前这一格只在 `seatActive`(这次进场之后自己发过话)时挂上来。
+               * P2-b 之后垫块还要接**第二个量** —— 手动收起一块东西时吸收掉缩掉的高
+               * (正本 §13.6 第 1 条),而那一下要在**事件处理函数里同步写进去**
+               * (G2「收缩先申请后执行」)。节点不在树上就写不了:`writePadHeight`
+               * 答 false,垫块一格都长不出来,收起照旧钳。
+               *
+               * **它是视觉上的恒等**:高 0,而 `.seat` 的 `margin-block-start` 正是
+               * `calc(-1 * var(--sp-6))` = 抵掉这条列自己那一格 `gap` —— 一个高 0、
+               * 前边距为负一格 gap 的孩子,排出来与它不在逐像素相同
+               * (`send-seat.test.tsx` 把这一条钉成断言)。
+               * `key` 恒为 `'seat'` 那条判词照旧成立,而且从此更强:同一个 DOM 节点
+               * 从会话进场活到离场,上一轮的座位由下一轮原位接管。
+               */
+              <div key="seat" ref={seatRef} className={s.seat} data-seat="" aria-hidden="true" />,
               /*
                * ── 尾槽在列里剩下的那一半:一格**空位**(G 线 P1h,正本 §12)──────
                * 排在卷尾垫块**之后**,所以它是这条列真正的最后一格。它常驻、高度恒为

@@ -131,11 +131,16 @@ describe('吸收回缩:两个量,一个写口', () => {
     return { port, pad: new TailPad(port) }
   }
 
-  it('贴底收起 400px:垫块正好补上 400,页面总高因此不变', () => {
+  it('垫不满就一格不垫:要 400、一屏只有 300 → 0(判词在文件头)', () => {
     const { port, pad } = atBottom()
-    expect(pad.requestAbsorb(400)).toBe(300)
-    // 夹在一屏:要的是 400,给得出的只有 300(判词在文件头)。
-    expect(pad.absorbed).toBe(300)
+    expect(pad.requestAbsorb(400)).toBe(0)
+    expect(pad.absorbed).toBe(0)
+    expect(port.padHeights).toEqual([])
+  })
+
+  it('恰好一屏:垫满(边界在 `>` 那一侧)', () => {
+    const { port, pad } = atBottom()
+    expect(pad.requestAbsorb(300)).toBe(300)
     expect(port.padHeights).toEqual([300])
   })
 

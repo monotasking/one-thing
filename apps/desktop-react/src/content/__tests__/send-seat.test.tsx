@@ -100,9 +100,26 @@ afterEach(async () => {
 })
 
 describe('座位的寿命', () => {
-  it('进场没有座位 —— 它是「刚发送的这一轮」的产物,不落盘', async () => {
+  /**
+   * **G 线 P2-b 起那一格常驻,判据从「在不在」改成「高是不是 0」。**
+   *
+   * 理由在 `ChatStream.tsx` 那一段判词上:垫块还要接第二个量(手动收起时吸收缩掉
+   * 的高),而那一下要在**事件处理函数里同步写进去** —— 节点不在树上就写不了。
+   * 它是视觉上的恒等:高 0,而 `.seat` 的负前边距正是抵掉这条列自己那一格 `gap`。
+   */
+  it('进场没有座位 —— 那一格在,但高是 0(它是「刚发送的这一轮」的产物,不落盘)', async () => {
     const { view } = await mount()
-    expect(seatOf(view.container)).toBeNull()
+    const seat = seatOf(view.container) as HTMLElement | null
+    expect(seat).toBeTruthy()
+    expect(seat!.style.height === '' || seat!.style.height === '0px').toBe(true)
+  })
+
+  it('那一格常驻:它的负前边距抵掉列的那一格 `gap`(所以高 0 时视觉上恒等)', async () => {
+    const { view } = await mount()
+    const seat = seatOf(view.container) as HTMLElement
+    // 皮肤在 CSS Module 里(jsdom 不算样式),这里钉的是「它带着那件皮肤」。
+    expect(seat.className).toMatch(/seat/)
+    expect(seat.getAttribute('aria-hidden')).toBe('true')
   })
 
   it('发送那一拍建出来,而且它**不是一条消息**', async () => {
@@ -152,7 +169,12 @@ describe('座位的寿命', () => {
     await act(async () => {
       view.rerender(<ChatStream sessionId="seat-2" scrollRef={{ current: null }} />)
     })
-    await waitFor(() => expect(seatOf(view.container)).toBeNull())
+    // 那一格照旧在(它常驻),但这条会话没有座位 —— 判据是**高归 0**。
+    await waitFor(() => {
+      const seat = seatOf(view.container) as HTMLElement | null
+      expect(seat).toBeTruthy()
+      expect(seat!.style.height === '' || seat!.style.height === '0px').toBe(true)
+    })
     await act(async () => {
       source('seat-2').getState().reset()
     })

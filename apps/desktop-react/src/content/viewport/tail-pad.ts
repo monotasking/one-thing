@@ -35,9 +35,21 @@ import type { ScrollPort } from './scroll-port'
  * 之后**只减不增**(`relax`):人往上滚 / 内容又长出来,需要的都变少,跟着缩 ——
  * 缩的永远是视口下方那一截,所以不会钳位。下一次发送归零。
  *
- * **夹在 `clientHeight`**:垫块撑出来的空白**等于** `needed`(它就是「视口下缘减
- * 内容下缘」),所以一屏是它的天花板;要垫得比一屏还多,说的是「被收起的那一块比
- * 整个视口还高」,那时按住它的顶边等于让整屏变空,物理上没有更好的答案。
+ * **只在垫得满的时候垫**(`required > clientHeight` 就一格都不垫)。这一条是
+ * §13.6 第 1 条那句「夹进 `clientHeight`」的**修正**,而且是量出来的,不是推的
+ * (读数在正本 §16):垫块撑出来的空白**等于** `needed`(它就是「视口下缘减内容
+ * 下缘」),所以
+ *  · `needed ≤ 一屏` —— 垫满,视口一像素不动,屏底那块白正是被收起的那一块留下的洞;
+ *  · `needed > 一屏` —— 说的是「被收起的那一块比整个视口还高」。此时**按住它的顶边
+ *    等于让整屏变空**(它下面的内容加起来还不够一屏),而**夹到一屏也一样是整屏变空**
+ *    (内容下缘恰好落在视口上缘),却还多出一次钳位 —— 半截垫块什么都没买到,
+ *    只买到一屏空白。所以这一档**一格不垫**:让浏览器钳,被收起的那一块跟着回到
+ *    视野里,人看见的是「它折好了,后面接着」。
+ *
+ * 真机读数(dev,视口 670):3 千字思考段展开 3,768px = 5.6 屏,夹到一屏之后屏上
+ * 仍然位移 3,098px **而且整屏是空的**;不垫则位移 3,768px、屏上是内容。
+ * 两条「都被授权过」的话(「被点那块顶边不动」与「垫块空白 ≤ 一屏」)在这一档互相
+ * 矛盾,这是取其轻的那一支 —— **它是一条待拍的裁定,记在正本 §16 留账第 1 条**。
  *
  * ── 写口仍然只有一个(§13.1.5 乙)────────────────────────────────────────
  * 两个量各只改自己那一格然后排一帧,**`flushNow()` 是唯一算高、唯一写 style 的地方**。
@@ -112,10 +124,11 @@ export class TailPad {
     // 停靠中(`clientHeight === 0`)一切读写恒等 —— 与三道闸同一把尺子。
     if (!m) return 0
     const required = Math.max(0, (this.#written ?? 0) - m.gap + shrinkPx)
-    const next = Math.min(required, m.clientHeight)
-    if (next <= this.#absorbed) return 0
-    const gained = next - this.#absorbed
-    this.#absorbed = next
+    // 垫不满就一格不垫 —— 半截垫块只买到一屏空白(判词在文件头)。
+    if (required > m.clientHeight) return 0
+    if (required <= this.#absorbed) return 0
+    const gained = required - this.#absorbed
+    this.#absorbed = required
     this.flushNow()
     return gained
   }

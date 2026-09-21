@@ -66,7 +66,8 @@
     "gate:terminal": "node scripts/gate-terminal.mjs",
     "gate:browser": "node scripts/gate-browser.mjs",
     "gate:todo": "node scripts/gate-todo.mjs",
-    "gate:changes": "node scripts/gate-changes.mjs"
+    "gate:changes": "node scripts/gate-changes.mjs",
+    "gate:fold-collapse": "node scripts/gate-fold-collapse.mjs"
   },
   "dependencies": {
     "@xterm/addon-fit": "0.11.0",
