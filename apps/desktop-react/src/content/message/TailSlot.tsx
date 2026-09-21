@@ -301,8 +301,10 @@ export function TailSlot({
       {alive && (
         <div className={s.body} data-leaving={phase === 'leaving' || undefined}>
           {/*
-            * 指示格。`flex: 1` —— 读数因此贴着这一格的右边,而且从开张到收场
-            * 横向一像素不动(这一格自己把宽度吃满)。
+            * 指示格(只装那枚光标)。**`flex: 1` 09-21 P1g 删了** —— 它是那道
+            * 已退役的扫光横线留下的化石,后果是整行被推成右对齐、左缘随秒数位数
+            * 左右跳 7px(判词与录屏读数整段在 `TailSlot.module.css` 的 `.indicator`)。
+            * 今天这一行左对齐贴正文列左缘,秒数长一位只往右长。
             */}
           <span className={s.indicator}>
             {/*

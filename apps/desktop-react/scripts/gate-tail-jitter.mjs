@@ -74,6 +74,7 @@ import { _electron as electron } from 'playwright'
 import electronBinary from 'electron'
 import { fakeProviderAiSettings, FAKE_PROVIDER_ENV } from '../../../scripts/lib/gate-fake-provider.mjs'
 import { seedLargeLedger } from './lib/seed-large-ledger.mjs'
+import { decodePng, inkCentroid } from './lib/png-ink.mjs'
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(appRoot, '../..')
@@ -104,6 +105,14 @@ const BUDGET = {
    * (一个设备像素),不是放水,是换一把量同一件事的尺。
    */
   pinnedPeakDevicePx: 1,
+  /**
+   * ⑤ 整轮里读数那一行左缘的位移(CSS px)。
+   *
+   * **1 不是「差不多别动」,是「只许有一个位置」**:秒数进位不该改这一行的起点,
+   * 而亚像素落位最多给半个 CSS 像素。main 上实测 6.984px(两个取值),判词与病根
+   * 写在断言那一段旁。
+   */
+  readLeftShiftPx: 1,
   /**
    * 贴底跟随那一段至少要采到这么多样,否则「与自己比恒为 0」是一句绿的谎话。
    *
@@ -530,6 +539,7 @@ async function startPaintSampler(page) {
     let seat = null
     let ctx = null
     let stop = null
+    let readout = null
     const alive = (el) => el && el.isConnected
     const resolve = () => {
       if (!alive(scroll)) scroll = window.__jLeaf().querySelector('[data-testid="chat-stream"]')
@@ -558,6 +568,9 @@ async function startPaintSampler(page) {
       if (!alive(stop) || !slot || !slot.contains(stop)) {
         stop = slot ? slot.querySelector('[data-testid="chat-stop"]') : null
       }
+      if (!alive(readout) || !slot || !slot.contains(readout)) {
+        readout = slot ? slot.querySelector('[data-testid="chat-readout"]') : null
+      }
       return Boolean(slot)
     }
     /** 这一帧画完之后跑的那一句 —— 取样就在这儿,不在 rAF 里。 */
@@ -570,6 +583,12 @@ async function startPaintSampler(page) {
           t: performance.now(),
           top: slot.getBoundingClientRect().top,
           stopTop: stop && stop.isConnected ? stop.getBoundingClientRect().top : null,
+          /*
+           * **读数那一行的左缘**(P1g)。用户报的第二件是横向的:那一行是右对齐的,
+           * 秒数从一位进到两位(9.9s → 10.0s)时整行的左缘往左跳 7 CSS px。
+           * 它与纵向那一件是两回事,所以单独一格。
+           */
+          readLeft: readout && readout.isConnected ? readout.getBoundingClientRect().left : null,
           /* 正文那一块也取一份:用户第二问「上面正在生成的内容也有抖动吗」要的是它。 */
           anchor,
           st: scroll.scrollTop,
@@ -612,6 +631,166 @@ async function stopPaintSampler(page) {
     window.__jPaint = []
     return out
   })
+}
+
+/* ══ ④ 像素层取样口(P1g)═══════════════════════════════════════════════════
+ *
+ * **为什么盒的读数不够** —— 用户 09-21 给的真机录屏(450×282、60fps、抽 1554 帧)
+ * 逐帧量出来:「停止」两个字的墨迹质心**纵向只有两个取值,恰好差 1 个设备像素,
+ * 25 秒里跳 16 次**;而这道门的 ①(`getBoundingClientRect().top`)在同一段里
+ * 恒为**一个**取值。盒不动、字在动,那就只能去量真的画出去的像素。
+ *
+ * 量法三条,每一条都写清为什么:
+ *  ① **裁框一次取定,之后每帧复用**。裁框要是每帧跟着元素的矩形走,元素动一个
+ *     设备像素、框也跟着动一个,框内的质心恒定 —— 那是一只永远绿的门。
+ *  ② **量的是「停止」那颗钮,不是整行读数**。读数那一行的字每 100ms 就换
+ *     (秒数在跳),墨的分布跟着变,质心当然会动;停止钮的字形是常量,它动就是
+ *     真的动。这与录屏那一趟挑的带(x372–420)是同一个对象。
+ *  ③ **`captureBeyondViewport: false` + `clip.scale: 1`**,图的分辨率由
+ *     `deviceScaleFactor` 决定,所以返回图的宽 ÷ 裁框的 CSS 宽就是「一个 CSS 像素
+ *     几个图像像素」,读数一律换算成**设备像素**再报。
+ *
+ * **校准**(取样口凭什么算看得见):量完之后给**停止钮自己**加一格
+ * `translate: 0 0.5px`(dpr 2 上 = 1 个设备像素)再拍一张,质心必须跟着挪约 1 个
+ * 设备像素。挑停止钮而不是尾槽,是因为 `snapTail` 每一拍都会重写尾槽那一格
+ * `translate` —— 往那儿写校准量会被产品当场抹掉,而停止钮这个元素产品从不碰。
+ */
+const PIXEL_SEGMENT_MS = 14_000
+/** 「换了一个值」的判据,以设备像素计。小于半个设备像素的差不算跳。 */
+const PIXEL_FLIP_DEVICE_PX = 0.25
+
+async function samplePixels(page, cdp, devicePx) {
+  /* 裁框:停止钮的矩形,四周各放 4 CSS px,取整 —— 一次取定。 */
+  const box = await page.evaluate(() => {
+    const leaf = window.__jLeaf()
+    const stop = leaf.querySelector('[data-testid="chat-stop"]')
+    if (!stop) return null
+    const r = stop.getBoundingClientRect()
+    return { x: Math.floor(r.left) - 4, y: Math.floor(r.top) - 4,
+      width: Math.ceil(r.width) + 8, height: Math.ceil(r.height) + 8 }
+  })
+  if (!box || box.width <= 0 || box.height <= 0) {
+    return { ok: false, reason: '停止钮不在屏上,像素段没跑' }
+  }
+  const shoot = async () => {
+    const { data } = await cdp.send('Page.captureScreenshot', {
+      format: 'png', clip: { ...box, scale: 1 }, captureBeyondViewport: false,
+    })
+    return decodePng(Buffer.from(data, 'base64'))
+  }
+  /*
+   * **校准排在取样之前**(P1g 第一趟真机踩的):第一版把它放在最后,而这一段的
+   * 长度(14s)盖过了这一轮剩下的寿命 —— 轮到校准时 run 已经收场、尾槽淡出,
+   * 裁框里一笔墨都没有,`inkCentroid` 答 `null`,校准报 `null / null`。
+   * 顺带:取样循环也改成「墨没了就收」,不再空转到定时。
+   */
+  const calibrate = async (value) => page.evaluate((v) => {
+    const stop = window.__jLeaf().querySelector('[data-testid="chat-stop"]')
+    if (stop instanceof HTMLElement) stop.style.translate = v
+  }, value)
+  const before = inkCentroid(await shoot())
+  await calibrate('0 0.5px')
+  const after = inkCentroid(await shoot())
+  await calibrate('')
+  const restored = inkCentroid(await shoot())
+
+  const samples = []
+  const started = Date.now()
+  let scale = 0
+  let failures = 0
+  let blanks = 0
+  while (Date.now() - started < PIXEL_SEGMENT_MS) {
+    let img
+    try { img = await shoot() } catch { failures += 1; if (failures > 5) break; continue }
+    if (!scale) scale = img.width / box.width
+    const ink = inkCentroid(img)
+    if (!ink) { blanks += 1; if (blanks > 3) break; continue }
+    blanks = 0
+    /*
+     * **每张图配一份几何**(P1g 定因用):要回答的是「这一下翻,是跟着谁翻的」——
+     * 嫌疑是滚动位的**奇偶**(字形在图层里正好落在半个设备像素的平局上,
+     * 平局往哪边倒随图层偏移的奇偶变)。所以记 `scrollTop`、尾槽的盒位、
+     * 以及停止钮相对尾槽的**行内偏移**(它是常量还是也在动)。
+     */
+    const geo = await page.evaluate(() => {
+      const leaf = window.__jLeaf()
+      const scroll = leaf.querySelector('[data-testid="chat-stream"]')
+      const col = scroll?.firstElementChild
+      const slot = col?.querySelector(':scope > [data-tail-slot]')
+      const stop = slot?.querySelector('[data-testid="chat-stop"]')
+      if (!scroll || !slot || !stop) return null
+      const sr = slot.getBoundingClientRect()
+      const br = stop.getBoundingClientRect()
+      return {
+        st: scroll.scrollTop, sh: scroll.scrollHeight,
+        slotTop: sr.top, stopTop: br.top, inSlot: br.top - sr.top,
+        slotH: sr.height, stopH: br.height,
+        roH: (() => { const ro = slot.querySelector('[data-testid="chat-readout"]'); return ro ? ro.getBoundingClientRect().height : null })(),
+        roTop: (() => { const ro = slot.querySelector('[data-testid="chat-readout"]'); return ro ? ro.getBoundingClientRect().top - sr.top : null })(),
+        tr: slot instanceof HTMLElement ? (slot.style.translate || '') : '',
+      }
+    })
+    samples.push({ t: Date.now() - started, y: ink.y, x: ink.x, w: ink.weight, geo })
+  }
+  if (samples.length < 20) {
+    return { ok: false, reason: `只采到 ${samples.length} 张(< 20)`, samples: samples.length }
+  }
+
+  const ys = samples.map((s) => s.y)
+  const xs = samples.map((s) => s.x)
+  const peak = Math.max(...ys) - Math.min(...ys)
+  let flips = 0
+  for (let i = 1; i < ys.length; i += 1) {
+    if (Math.abs(ys[i] - ys[i - 1]) > PIXEL_FLIP_DEVICE_PX) flips += 1
+  }
+  /* 取值集合:按 0.05 设备像素分桶(抗抗锯齿的末位噪声,又远小于半个设备像素)。 */
+  const bucket = new Map()
+  for (const y of ys) {
+    const k = (Math.round(y * 20) / 20).toFixed(2)
+    bucket.set(k, (bucket.get(k) ?? 0) + 1)
+  }
+  const top = [...bucket.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6)
+  const spanSec = (samples[samples.length - 1].t - samples[0].t) / 1000
+  return {
+    ok: true,
+    samples: samples.length,
+    spanSec: r3(spanSec),
+    fps: r3(samples.length / Math.max(spanSec, 0.001)),
+    /** 一个 CSS 像素几个图像像素(dpr 2 上应为 2)。 */
+    scale,
+    /** 纵向:峰峰与跳变次数,单位是**图像像素 = 设备像素**。 */
+    peakDevicePx: r3(peak),
+    flips,
+    flipsPerSec: r3(flips / Math.max(spanSec, 0.001)),
+    values: bucket.size,
+    top: top.map(([v, n]) => `${v}×${n}`),
+    /** 横向那一把尺:停止钮的墨横向动没动(它应当是恒定的)。 */
+    peakXDevicePx: r3(Math.max(...xs) - Math.min(...xs)),
+    /* 定因表:按「墨的取值」分组,看每一组里滚动位的**奇偶**与行内偏移各是什么。 */
+    byValue: (() => {
+      const g = new Map()
+      for (const s2 of samples) {
+        if (!s2.geo) continue
+        const k = (Math.round(s2.y * 20) / 20).toFixed(2)
+        const row = g.get(k) ?? { n: 0, oddDevice: 0, inSlot: new Set(), tr: new Set(), stTail: new Set(), heights: new Set() }
+        row.n += 1
+        const devices = Math.round(s2.geo.st / devicePx)
+        if (devices % 2 === 1) row.oddDevice += 1
+        row.inSlot.add(r3(s2.geo.inSlot))
+        row.heights.add(`${r3(s2.geo.slotH)}/${r3(s2.geo.roH ?? -1)}/${r3(s2.geo.roTop ?? -1)}`)
+        row.tr.add(s2.geo.tr)
+        row.stTail.add(r3(s2.geo.st - Math.floor(s2.geo.st)))
+        g.set(k, row)
+      }
+      return [...g.entries()].map(([k, v]) => ({
+        y: k, n: v.n, oddDevice: v.oddDevice,
+        inSlot: [...v.inSlot].slice(0, 4), heights: [...v.heights].slice(0, 3), stFrac: [...v.stTail].slice(0, 4),
+      }))
+    })(),
+    calibration: before && after && restored
+      ? { movedDevicePx: r3(after.y - before.y), backDevicePx: r3(restored.y - before.y) }
+      : { movedDevicePx: null, backDevicePx: null },
+  }
 }
 
 async function startSampler(page, diag) {
@@ -1032,8 +1211,26 @@ function judge(paint, devicePx, jumpRead) {
       ? { ok: false, reason: why ?? '没读到', a: before ?? null, b: after ?? null }
       : { ok: true, a: r3(before), b: r3(after), devicePx: r3(Math.abs(after - before) / devicePx) }
   }
+  /*
+   * **读数那一行的左缘**(P1g ⑤)。窗口是「这一轮在跑的全部帧」,不按贴底切 ——
+   * 它量的是**横向**,与滚不滚、贴不贴底无关;而它要跨过 9.9s → 10.0s 那一下,
+   * 所以窗口越长越好。`maxSeconds` = 这一段的时间跨度,用来证明「真的跨过了 10s」
+   * (读数的起点就是这一轮开张,而取样从发送之前就开着)。
+   */
+  const running = paint.filter((r) => r.running && r.readLeft !== null)
+  const readLeftValues = running.map((r) => r.readLeft)
+  const readLeft = readLeftValues.length
+    ? {
+        samples: readLeftValues.length,
+        peakPx: r3(Math.max(...readLeftValues) - Math.min(...readLeftValues)),
+        distinct: new Set(readLeftValues).size,
+        maxSeconds: r3((running[running.length - 1].t - running[0].t) / 1000),
+      }
+    : { samples: 0, peakPx: 0, distinct: 0, maxSeconds: 0 }
+
   return {
     samples: paint.length,
+    readLeft,
     pinned: (() => {
       const slot = rowsOf(pinned, (r) => r.top)
       const stop = rowsOf(pinned, (r) => r.stopTop)
@@ -1497,12 +1694,23 @@ async function main() {
           await delay(150)
         }
       }
+      /*
+       * ── ④ 像素层那一段(P1g)。**单独一段跑,并且打自己的记号** ──────────────
+       * 它一帧要 `Page.captureScreenshot` 一次(十几毫秒),混进 ①②③ 的窗口里
+       * 就是门自己在造长帧、自己污染自己的读数(09-12 判例「门的读数不许把门自己
+       * 的时间算进产品」)。所以:自己一段、`phase='pixels'`,上面那三条判据的
+       * 窗口全部把它排除在外。
+       */
+      await mark('pixels')
+      const pixels = await samplePixels(page, cdp, devicePx)
+      await mark('')
       await waitFor('收场', async () => !(await stopShown(page)), 300_000)
       await delay(600)
       const frames = DIAG ? await stopSampler(page) : []
       const paint = await stopPaintSampler(page)
       const m = DIAG ? analyze(frames, devicePx) : { frames: 0, empty: true }
       const g = judge(paint, devicePx, jumpRead)
+      g.pixels = pixels
       readings[`${lanes[0]}:${id}`] = g
       console.log(`\n══ ${lanes[0]} / ${id} ══ 画出来的取样 ${g.samples} 次`)
       console.log(`  贴底跟随 ${g.pinned.samples} 次:尾槽占 ${g.pinned.rows} 个设备像素行`
@@ -1516,6 +1724,19 @@ async function main() {
       for (const [k, v] of Object.entries(g.switches)) {
         console.log(`  切换 ${k}:${v.ok ? `${v.a} → ${v.b},差 ${v.devicePx} 设备像素` : v.reason}`)
       }
+      console.log(`  像素层(「停止」那两个字的墨迹质心):`
+        + (g.pixels.ok
+          ? `${g.pixels.samples} 张 / ${g.pixels.spanSec}s @${g.pixels.fps}fps`
+            + `(一 CSS 像素 = ${g.pixels.scale} 图像像素)\n`
+            + `    纵向峰峰 ${g.pixels.peakDevicePx} 设备像素 · 跳 ${g.pixels.flips} 次`
+            + `(${g.pixels.flipsPerSec}/s)· 取值 ${g.pixels.values} 个:${g.pixels.top.join('  ')}\n`
+            + `    定因表:${JSON.stringify(g.pixels.byValue)}\n`
+            + `    横向峰峰 ${g.pixels.peakXDevicePx} 设备像素`
+            + ` · 校准(给停止钮加 0.5px):挪 ${g.pixels.calibration.movedDevicePx} 设备像素`
+            + `,还原后 ${g.pixels.calibration.backDevicePx}`
+          : g.pixels.reason))
+      console.log(`  读数行左缘:峰峰 ${g.readLeft.peakPx}px / ${g.readLeft.distinct} 个取值`
+        + `(采到 ${g.readLeft.samples} 帧;这一轮最长跑到 ${g.readLeft.maxSeconds}s)`)
       if (DIAG && paint.length > 5) {
         /*
          * **与 rAF 那一份比同一段**:rAF 侧(`analyze`)算的是「贴底跟随」那一段,
@@ -1628,6 +1849,29 @@ async function main() {
             + `(座位还满着的 ${g.rowLate.seatAlive} 帧)—— 理由见判据旁的注`)
         }
       }
+
+      /*
+       * ── ⑤ 读数那一行的**左缘**(P1g,用户 09-21 报的第二件)────────────────
+       *
+       * 真机录屏逐帧量出来:那一行是右对齐的,右缘恒在 x=416,而**左缘在秒数从
+       * 一位进到两位(9.9s → 10.0s)时从 x=201 跳到 187** —— 14 个视频像素
+       * ≈ 7 CSS px。病根是 `TailSlot.module.css` 里 `.indicator` 那格 `flex: 1`:
+       * 它是 P1 那道已退役的扫光横线留下的化石,横线没了之后它把读数与停止一起
+       * 推到最右边,于是「这一行有多宽」变成了「这一行从哪儿开始」。
+       *
+       * 判据:**整轮里这一行的左缘只许有一个位置**(留 1px 给亚像素)。窗口是
+       * 「这一轮在跑的全部帧」,而且必须**跨过 10 秒**(`maxSeconds`)—— 不跨过
+       * 那一下进位,这条断言是白送的,所以样本前提和位移一起判。
+       * main 上的读数:峰峰 **6.984px / 2 个取值**(跨到 17.97s)→ 红。
+       */
+      assert(g.readLeft.maxSeconds >= 10,
+        `${key} ⑤ 这一轮跨过了 10 秒(实测 ${g.readLeft.maxSeconds}s ≥ 10)`
+        + ` —— 不跨过 9.9s → 10.0s 那一下进位,下面那条断言是白送的`)
+      assert(g.readLeft.samples >= BUDGET.minPinnedSamples,
+        `${key} ⑤ 读数行左缘采到 ${g.readLeft.samples} 帧(≥ ${BUDGET.minPinnedSamples})`)
+      assert(g.readLeft.peakPx <= BUDGET.readLeftShiftPx,
+        `${key} ⑤ 整轮读数行左缘位移 ${g.readLeft.peakPx}px`
+        + `(${g.readLeft.distinct} 个取值)≤ ${BUDGET.readLeftShiftPx}`)
 
       for (const [name, v] of Object.entries(g.switches)) {
         assert(v.ok, `${key} ③ 切换 ${name} 两侧都采到了`)
