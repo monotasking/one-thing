@@ -204,6 +204,7 @@ describe('源文本:上折是高度过渡,落位排在「那一发回来了」�
 
   it('发送与重试落到置顶线走的是**同一段插值**(一个产地)', () => {
     expect([...src.matchAll(/const slideScrollTo = useCallback/g)]).toHaveLength(1)
-    expect([...src.matchAll(/slideScrollTo\(el, target\)/g)]).toHaveLength(2)
+    // G 线 P2-a:滑动的那一口不再收元素(它经 `ScrollPort` 写),只收落点。
+    expect([...src.matchAll(/slideScrollTo\(target\)/g)]).toHaveLength(2)
   })
 })

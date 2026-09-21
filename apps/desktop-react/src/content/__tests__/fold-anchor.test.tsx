@@ -60,10 +60,18 @@ describe('两条通道分家', () => {
 })
 
 describe('聊天流那一头:折叠分支只写 scrollTop,不改布局', () => {
+  /*
+   * ── 取件口从 `ChatStream.tsx` 搬到了 `content/viewport/scroll-port.ts`
+   *    (G 线 P2-a)──────────────────────────────────────────────────────────
+   * `firstVisibleChild` / `pickFoldAnchor` 是**量 DOM** 的两句,按 §13.2.1
+   * 的切法它们住在适配层;折叠那一支的裁决仍在 `ChatStream.tsx`(P2-a 只搬件,
+   * 不改裁决)。所以这一组的断言分成两半,各扫各的文件 —— 断言一个字没松。
+   */
   const src = shellSrc('../ChatStream.tsx')
+  const portSrc = shellSrc('../viewport/scroll-port.ts')
 
   it('锚是「视口内第一块在读的东西」,座位垫块不算', () => {
-    const one = /function firstVisibleChild\(([\s\S]*?)\n\}/.exec(src)?.[1] ?? ''
+    const one = /function firstVisibleChild\(([\s\S]*?)\n\}/.exec(portSrc)?.[1] ?? ''
     expect(one).not.toBe('')
     expect(one).toMatch(/hasAttribute\(SEAT_ATTR\)/)
     expect(one).toMatch(/getBoundingClientRect\(\)\.bottom > top/)
@@ -77,7 +85,7 @@ describe('聊天流那一头:折叠分支只写 scrollTop,不改布局', () => {
    * 锚点位移 1517px。
    */
   it('一层不够就往里钻,直到某一件**整个**落在视口上缘之下', () => {
-    const fn = /function pickFoldAnchor\(([\s\S]*?)\n\}/.exec(src)?.[1] ?? ''
+    const fn = /pickFoldAnchor\(\): AnchoredElement \| undefined \{([\s\S]*?)\n {2}\}/.exec(portSrc)?.[1] ?? ''
     expect(fn).not.toBe('')
     expect(fn).toMatch(/depth < FOLD_ANCHOR_DEPTH/)
     expect(fn).toMatch(/firstVisibleChild\(cursor, top\)/)
@@ -90,26 +98,26 @@ describe('聊天流那一头:折叠分支只写 scrollTop,不改布局', () => {
    * 逐个扫就是每帧几百次 `getBoundingClientRect`。
    */
   it('一层里的查找是二分(同层 `bottom` 单调),不是逐个扫', () => {
-    const one = /function firstVisibleChild\(([\s\S]*?)\n\}/.exec(src)?.[1] ?? ''
+    const one = /function firstVisibleChild\(([\s\S]*?)\n\}/.exec(portSrc)?.[1] ?? ''
     expect(one).toMatch(/const mid = \(lo \+ hi\) >> 1/)
     expect(one).not.toMatch(/for \(const /)
   })
 
   /**
-   * 反证口:把那一句 `el.scrollTop = …` 换成改布局的写法(给垫块写高之类),
+   * 反证口:把那一句 `port.setTop(…)` 换成改布局的写法(给垫块写高之类),
    * 这一条当场红 —— 「观察器回调只读不写」禁的是**改布局**,`scrollTop` 不改布局。
    */
   it('折叠分支里除了 scrollTop 与两格记账,不碰别的', () => {
     const branch = /const hold = foldHoldRef\.current([\s\S]*?)\n {6}let contentGrew/.exec(src)?.[1] ?? ''
     expect(branch).not.toBe('')
-    expect(branch).toMatch(/el\.scrollTop = Math\.max\(0, el\.scrollTop \+ drift\)/)
+    expect(branch).toMatch(/port\.setTop\(Math\.max\(0, port\.top \+ drift\), 'user-toggle'\)/)
     // 不许在这一支里写样式 / 写垫块 —— 那是改布局,会把自己变成下一轮派发的起点。
     expect(branch).not.toMatch(/\.style\./)
     expect(branch).not.toMatch(/writeSeat\(\)/)
   })
 
   it('补不动了就让内容动:`scrollTop` 夹在 0', () => {
-    expect(src).toMatch(/Math\.max\(0, el\.scrollTop \+ drift\)/)
+    expect(src).toMatch(/Math\.max\(0, port\.top \+ drift\)/)
   })
 })
 

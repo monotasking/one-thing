@@ -190,8 +190,19 @@ describe('座位的写点经 FrameCoalescer,不在观察器回调里', () => {
     'utf-8',
   ).replace(/\/\*[\s\S]*?\*\//g, '')
 
+  /*
+   * G 线 P2-a:碰垫块 style 的那一句搬进了 `ScrollPort.writePadHeight`
+   * (适配层,§13.2.1)——「只有一处」这句判据一个字没松,只是换了扫描对象;
+   * 顺带钉住 `ChatStream.tsx` 里**一处都不剩**(不然就成了两个产地)。
+   */
+  const portSource = readFileSync(
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../viewport/scroll-port.ts'),
+    'utf-8',
+  ).replace(/\/\*[\s\S]*?\*\//g, '')
+
   it('只有一处碰垫块的 style', () => {
-    expect([...source.matchAll(/\.style\.height\s*=/g)]).toHaveLength(1)
+    expect([...portSource.matchAll(/\.style\.height\s*=/g)]).toHaveLength(1)
+    expect([...source.matchAll(/\.style\.height\s*=/g)]).toHaveLength(0)
   })
 
   it('量座位那只函数排的是下一帧,不是当场写', () => {

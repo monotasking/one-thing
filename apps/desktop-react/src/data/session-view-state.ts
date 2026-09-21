@@ -181,9 +181,22 @@ export function measureScrollAnchor(container: HTMLElement): ScrollAnchor | unde
  * 调用都是真的;要落准就再调一次。调用方(`content/ChatStream.tsx` 的进场
  * layout effect)因此落完之后逐帧再对,直到位置不再动为止。
  */
-export function applyScrollAnchor(container: HTMLElement, anchor: ScrollAnchor): boolean {
+export function applyScrollAnchor(
+  container: HTMLElement,
+  anchor: ScrollAnchor,
+  /**
+   * **谁来写那一格**(G 线 P2-a 收口)。缺省仍是 `container.scrollTop = top` ——
+   * 这只函数的形一个字没变,答 true / false 的语义也没变。
+   *
+   * 聊天流把它换成 `ScrollPort.setTop(top, 'restore')`:P2-a 之后**写滚动位只有
+   * 一个口**,停靠守卫与 `lastTop` 同步都在那口里做一次(判词在
+   * `content/viewport/scroll-port.ts`)。这里收一个函数而不是反过来 import 那只口,
+   * 是因为方向只许 `content → data`,`data/` 不认识 `content/viewport`。
+   */
+  write: (top: number) => void = (top) => void (container.scrollTop = top),
+): boolean {
   if (anchor === 'bottom') {
-    container.scrollTop = container.scrollHeight
+    write(container.scrollHeight)
     return true
   }
   const node = anchorNodeOf(container, anchor.messageId)
@@ -191,7 +204,7 @@ export function applyScrollAnchor(container: HTMLElement, anchor: ScrollAnchor):
   // 内容坐标原点 = 容器上缘在视口里的位置减去已经滚掉的那一段。
   const origin = container.getBoundingClientRect().top - container.scrollTop
   const top = node.getBoundingClientRect().top - origin
-  container.scrollTop = top - anchor.offset
+  write(top - anchor.offset)
   return true
 }
 
