@@ -91,6 +91,22 @@ export class IntentWindow {
     this.#fold = undefined
   }
 
+  /**
+   * **这一段还在长,把截止时刻往后推**(审查裁定 2 落地那一趟真机抓出来的)。
+   *
+   * 定长窗口在**超量档**上不够用:400 条 / 十一万像素那条会话上,一帧本身就可能
+   * 跑 1158ms —— 窗口在第一批尺寸变化到达之前就过期了,于是「点开不贴底」那句话
+   * 当场失效(实测 6 万字思考段展开后视口被拽走 20,478px)。所以窗口**跟着那段
+   * 过渡走**:只要这一批还在长,就把截止时刻推到「此刻 + 余量」。
+   * 它有界 —— 内容不长了就不再推,余量一过自然收。
+   */
+  extendFold(now: number, ms: number): void {
+    const hold = this.#fold
+    if (!hold) return
+    const until = now + ms
+    if (until > hold.until) this.#fold = { ...hold, until }
+  }
+
   /** 此刻还在展开窗里吗(今天那句 `performance.now() < holdUntilRef.current`)。 */
   expanding(now: number): boolean {
     return now < this.#expandUntil

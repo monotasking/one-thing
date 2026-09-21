@@ -444,7 +444,8 @@ export class ViewportAnchor {
      * `scrollTop` 夹在 0:上面没有东西可让的时候,钉不住就是钉不住 —— 那时候老实让
      * 内容上来,比把视口锁在一个不存在的位置好。
      */
-    const hold = this.#intents.folding(this.#now())
+    const now = this.#now()
+    const hold = this.#intents.folding(now)
     if (hold) {
       if (!hold.anchor || !hold.anchor.alive()) {
         const picked = port.pickFoldAnchor()
@@ -465,7 +466,35 @@ export class ViewportAnchor {
           port.setTop(Math.max(0, port.top + drift), 'user-toggle')
         }
       }
-      this.#lastColumnHeight = port.columnHeight()
+      /*
+       * ── **窗口里每一批都按此刻离底多远重判档**(审查裁定 2 的最终形)──────────
+       *
+       * 这一句是**今天 `expanding()` 那一支原本就在做的事**(`if (followShouldStick)
+       * dispatch scrolled`),只是从前它排在展开那一支、而折叠那一支整段早退。
+       * 把重判放在**窗口末尾**不够用:超量档上一段 6 万字的思考要好几秒、好几批
+       * 才长完,而一个定长(或按 220ms 续命的)窗口撑不到那时候 —— 窗口一断
+       * `stick()` 就接手,实测视口被拽走 11,454–27,018px。
+       *
+       * 放在每一批里就没有这个缝:内容一长出来 gap 当场变大,状态机自己翻成
+       * browsing,从此不再贴底 —— 「人点开了一样东西就是他要读这儿」这句话因此是
+       * **一次不可逆的翻档**,不是一段限时的按兵不动。窗口仍然管「钉住顶边」那一半。
+       * 只给**报出来的那一下**开的窗(`rejudge`);重试那一路不带它。
+       */
+      if (hold.rejudge && followShouldStick(this.#follow)) {
+        this.dispatch({ type: 'scrolled', gap: port.gapNow() })
+      }
+      /*
+       * **这一段还在长就把窗口往后推**(判词在 `IntentWindow.extendFold`):定长窗口
+       * 在超量档上短于一帧,过期之后 `stick()` 会把人拽走(实测 20,478px)。
+       */
+      const grown = port.columnHeight()
+      /*
+       * 余量取**展开窗那一格**(220ms)而不是折叠那 40ms:超量档上一段 6 万字的
+       * 思考要好几批尺寸变化才长完,两批之间隔得比 40ms 远是常事,窗口一断
+       * `stick()` 就接手了。220ms 是「人动手之后这段时间归他」的同一个数。
+       */
+      if (grown > this.#lastColumnHeight + 0.5) this.#intents.extendFold(now, this.#expandHoldMs)
+      this.#lastColumnHeight = grown
       this.#lastGap = port.gapNow()
       return
     }

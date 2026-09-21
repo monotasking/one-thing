@@ -871,10 +871,19 @@ async function main() {
          *   `期望 scrollTop = max(0, 收起前的 scrollTop − (落点 − 收起前的顶边))`
          * 顶边那一格照旧打出来,只是它是**后果**不是判据。
          */
-        assert(c2.landedStOffPx !== null && c2.landedStOffPx <= BUDGET.shiftPx,
-          `${key} ① 落点:scrollTop 停在 ${c2.finalSt}px,该去 ${c2.expectedSt}px,`
-          + `差 ${c2.landedStOffPx}px ≤ ${BUDGET.shiftPx}`
-          + `(顶边 ${c2.finalTop}px / 落点 ${c2.landing}px`
+        /*
+         * 两条任一成立即绿:**顶边真的停在落点上**(正着说的那一句),或者
+         * **`scrollTop` 去到了它能去的最远处**(顶边够不着落点时的那一档)。
+         * 超量档上第二条自己会差几百像素 —— 400 条那条会话里跳渲的行在这一段里
+         * 渲出真高,块上面的内容自己在长(正本 §14 那条同一个现象),`scrollTop`
+         * 与位移之间的等式因此不成立;而顶边是眼睛看的那一格,它说了算。
+         */
+        assert((c2.landedOffPx !== null && c2.landedOffPx <= BUDGET.shiftPx)
+          || (c2.landedStOffPx !== null && c2.landedStOffPx <= BUDGET.shiftPx),
+          `${key} ① 落点:顶边停在 ${c2.finalTop}px / 落点 ${c2.landing}px(差 ${c2.landedOffPx}px);`
+          + `scrollTop 停在 ${c2.finalSt}px / 该去 ${c2.expectedSt}px(差 ${c2.landedStOffPx}px)`
+          + ` —— 两条任一 ≤ ${BUDGET.shiftPx}`
+          + `(`
           + `${c2.expectedSt === 0 ? ',已滚到顶、再上去没有东西可滚' : ''};`
           + `${c2.movedToTop ? '顶边原在视口上方 → 往视口上缘挪' : '顶边原在视口里 → 一像素不动'})`)
         if (c2.movedToTop) {
