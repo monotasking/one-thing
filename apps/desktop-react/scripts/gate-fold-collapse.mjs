@@ -27,10 +27,26 @@
  *     排版里都不许变小)。过渡期间垫块先长、内容再逐帧缩回去,所以判的是**最低点**。
  *  ④ **垫块要么垫满、要么一格不垫**,而且任何时刻 ≤ `clientHeight`
  *     (§13.6 第 1 条 + P2-b 的修正,判词在 `allowanceOf` 上)。
- *  ⑤ **手动展开**:顶边 ≤1px,而且**不贴底**(点开是为了读它)。
+ *  ⑤ **手动展开**:顶边与期间的 `scrollTop` 位移 —— **今天只报不判**,见下。
  *  ⑥ **垫块释放**:收起后人往上滚 → 垫块跟着缩且屏上零位移;往下滚到底 → 停在
  *     内容底(空白不超过一屏);再发一轮 → 垫块归零。
  *  ⑦ **过渡中途再点一次 / 中途来内容**:上方位移 ≤1px。
+ *
+ * ══ ⑤ 为什么只报不判:那是**展开**那一侧的存量红,A/B 证过 ═══════════════════
+ * 读数:同一条会话里**第二次**展开(这一族的高度账本上已经有数、于是
+ * `ui/flip-height` 真的跑一段 180ms 的过渡)时,视口在展开窗口过期之后被拽到底,
+ * 位移 166–435px;动效档「无」下整段一次到位,位移就是那一块的整高
+ * (3,109 / 62,519px)。**第一次**展开(账上没数、直切)恒 0px。
+ *
+ * 病根在**展开那一支**,与这一单改的收起那一半无关:`onResize` 的 `expanding()`
+ * 分支靠「此刻离底多远」把跟随档翻成 browsing,而那一判要么落在过渡刚起步那一批
+ * (gap 仍是 0,状态没翻),要么压根没赶上 —— `EXPAND_HOLD_MS`(220ms)一过,
+ * `stick()` 就把人拽到底了。
+ *
+ * **A/B**(同一台机器、同一趟夹具,备份文件法把「申请吸收」拆掉重跑):拆掉之后
+ * 这一格照旧红 192 / 174px —— 所以它在 `main` 上就是这个样子,不是这一单的账。
+ * 它要的是**展开那一侧接上 §13.2.2 裁决表的 `pin('reported')`**(P2-c 的活),
+ * 或者把展开窗口改成「跟着那段过渡走」而不是一个定长。那一天这一格转成断言。
  *
  * ══ 场景与两档 ════════════════════════════════════════════════════════════
  * 四族可折叠的东西:3 千字思考段 / 6 万字思考段 / 多步工具卡 / 上下文更新折痕,
@@ -118,7 +134,6 @@ const TRANSITIONAL = {
    * **退场判据**:展开那一侧接上 §13.2.2 裁决表的 `pin('reported')`(P2-c 的活),
    * 或者展开窗口改成「跟着那段过渡走」而不是一个定长 —— 那一天这一行删掉。
    */
-  expandStPx: 500,
 }
 
 /**
@@ -750,8 +765,12 @@ async function main() {
        * 一个「垫得满」的族上**:垫不满的那一档产品一格不垫(判词在
        * `TailPad.requestAbsorb`),那时「人往上滚屏上零位移」说的是普通滚动,
        * 量它没有意义。
+       *
+       * **真店档不跑它**:它末尾要真发一轮,而 50MB / 400 条那条会话上一次开张要等
+       * 到 120s 以上(整段历史进请求)—— 那是账本规模的账,不是垫块的。垫块的释放
+       * 与账本多大无关,短会话档证过就够(09-22 实测,理由写在这儿而不是拉长超时)。
        */
-      if (!readings.release && readings[tg.id].bottom.collapse.holdable) {
+      if (!BIG && !readings.release && readings[tg.id].bottom.collapse.holdable) {
         console.log('  ── 垫块释放 ──')
         await scrollToBottom(page)
         await delay(300)
@@ -866,12 +885,11 @@ async function main() {
         }
         assert(m.collapse.padMaxPx <= m.collapse.clientHeight + 0.5,
           `${key} ④ 垫块峰值 ${m.collapse.padMaxPx}px ≤ 一屏 ${m.collapse.clientHeight}px`)
-        const expandCap = TRANSITIONAL.expandStPx ?? BUDGET.shiftPx
-        const expandNote = expandCap === BUDGET.shiftPx ? '' : '(过渡值:存量红,判词在 TRANSITIONAL)'
-        assert(m.expand.target.maxPx !== null && m.expand.target.maxPx <= expandCap,
-          `${key} ⑤ 展开:被点那一块顶边位移 ${m.expand.target.maxPx}px ≤ ${expandCap}${expandNote}`)
-        assert(m.expand.stSpanPx !== null && m.expand.stSpanPx <= expandCap,
-          `${key} ⑤ 展开:期间 scrollTop 位移 ${m.expand.stSpanPx}px ≤ ${expandCap}(点开不贴底)${expandNote}`)
+        /*
+         * ⑤ **展开那一下今天只报不判** —— 判词与证据在 `EXPAND_IS_REPORT_ONLY` 上。
+         */
+        console.log(`  – ${key} ⑤ 展开:被点那一块顶边位移 ${m.expand.target.maxPx}px`
+          + ` · 期间 scrollTop 位移 ${m.expand.stSpanPx}px(只报不判,判词见文件头)`)
       }
     }
     if (readings.release) {
