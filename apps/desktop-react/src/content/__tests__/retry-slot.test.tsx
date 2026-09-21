@@ -167,8 +167,18 @@ describe('按下即开槽', () => {
 })
 
 describe('源文本:上折是高度过渡,落位排在「那一发回来了」那一拍', () => {
-  const src = readFileSync(
-    path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../ChatStream.tsx'),
+  /*
+   * ── 三条扫的东西随 G 线 P2-a 搬了家 ──────────────────────────────────────
+   * 「按哪一拍落位」那条是 **React 那一侧的边沿检测**,住在薄 hook
+   * (`viewport/use-viewport-anchor.ts`);「气泡在不在视口里」与「同一段插值」
+   * 是**裁决**,住在 `viewport/anchor.ts`。判据一个字没松。
+   */
+  const hookSrc = readFileSync(
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../viewport/use-viewport-anchor.ts'),
+    'utf-8',
+  ).replace(/\/\*[\s\S]*?\*\//g, '')
+  const anchorSrc = readFileSync(
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../viewport/anchor.ts'),
     'utf-8',
   ).replace(/\/\*[\s\S]*?\*\//g, '')
   const css = readFileSync(
@@ -189,22 +199,22 @@ describe('源文本:上折是高度过渡,落位排在「那一发回来了」�
    * 算出来的置顶线是按旧高度算的,而接下来 180ms 它一路缩到 0(实测停在 471 而不是 24)。
    */
   it('落位排在 `retryPending` **清闩**那一拍,不是按下那一拍', () => {
-    const effect = /const seenRetryRef = useRef\(retryingId\)([\s\S]*?)\}, \[retryingId, landOnRetry\]\)/
-      .exec(src)?.[1] ?? ''
+    const effect = /const seenRetryRef = useRef\(retryingId\)([\s\S]*?)\}, \[retryingId, anchor\]\)/
+      .exec(hookSrc)?.[1] ?? ''
     expect(effect).not.toBe('')
     expect(effect).toMatch(/if \(was === undefined \|\| retryingId !== undefined\) return/)
-    expect(effect).toMatch(/landOnRetry\(\)/)
+    expect(effect).toMatch(/anchor\.landOnRetry\(\)/)
   })
 
   it('气泡已经在视口里就不滑(规矩 ⑥ 的字面)', () => {
-    const fn = /const landOnRetry = useCallback\(([\s\S]*?)\n {2}\}, \[/.exec(src)?.[1] ?? ''
+    const fn = /landOnRetry\(\): void \{([\s\S]*?)\n {2}\}/.exec(anchorSrc)?.[1] ?? ''
     expect(fn).not.toBe('')
     expect(fn).toMatch(/if \(rect\.top >= view\.top && rect\.bottom <= view\.bottom\) return/)
   })
 
   it('发送与重试落到置顶线走的是**同一段插值**(一个产地)', () => {
-    expect([...src.matchAll(/const slideScrollTo = useCallback/g)]).toHaveLength(1)
-    // G 线 P2-a:滑动的那一口不再收元素(它经 `ScrollPort` 写),只收落点。
-    expect([...src.matchAll(/slideScrollTo\(target\)/g)]).toHaveLength(2)
+    // G 线 P2-a:那一段插值整件搬进 `viewport/slide.ts`,两条落位路共用同一只实例。
+    expect([...anchorSrc.matchAll(/new Slide\(/g)]).toHaveLength(1)
+    expect([...anchorSrc.matchAll(/this\.#slide\.to\(target\)/g)]).toHaveLength(2)
   })
 })

@@ -61,13 +61,12 @@ describe('两条通道分家', () => {
 
 describe('聊天流那一头:折叠分支只写 scrollTop,不改布局', () => {
   /*
-   * ── 取件口从 `ChatStream.tsx` 搬到了 `content/viewport/scroll-port.ts`
-   *    (G 线 P2-a)──────────────────────────────────────────────────────────
-   * `firstVisibleChild` / `pickFoldAnchor` 是**量 DOM** 的两句,按 §13.2.1
-   * 的切法它们住在适配层;折叠那一支的裁决仍在 `ChatStream.tsx`(P2-a 只搬件,
-   * 不改裁决)。所以这一组的断言分成两半,各扫各的文件 —— 断言一个字没松。
+   * ── 这一组扫两个文件(G 线 P2-a)──────────────────────────────────────────
+   * `firstVisibleChild` / `pickFoldAnchor` 是**量 DOM** 的两句,按 §13.2.1 的切法
+   * 它们住在适配层(`viewport/scroll-port.ts`);折叠那一支的**裁决**住在
+   * `viewport/anchor.ts`。断言一个字没松,只是各扫各的。
    */
-  const src = shellSrc('../ChatStream.tsx')
+  const src = shellSrc('../viewport/anchor.ts')
   const portSrc = shellSrc('../viewport/scroll-port.ts')
 
   it('锚是「视口内第一块在读的东西」,座位垫块不算', () => {
@@ -108,7 +107,7 @@ describe('聊天流那一头:折叠分支只写 scrollTop,不改布局', () => {
    * 这一条当场红 —— 「观察器回调只读不写」禁的是**改布局**,`scrollTop` 不改布局。
    */
   it('折叠分支里除了 scrollTop 与两格记账,不碰别的', () => {
-    const branch = /const hold = intents\.folding\(([\s\S]*?)\n {6}let contentGrew/.exec(src)?.[1] ?? ''
+    const branch = /const hold = this\.#intents\.folding\(([\s\S]*?)\n {4}let contentGrew/.exec(src)?.[1] ?? ''
     expect(branch).not.toBe('')
     expect(branch).toMatch(/port\.setTop\(Math\.max\(0, port\.top \+ drift\), 'user-toggle'\)/)
     // 不许在这一支里写样式 / 写垫块 —— 那是改布局,会把自己变成下一轮派发的起点。
