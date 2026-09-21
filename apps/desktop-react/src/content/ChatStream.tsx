@@ -376,6 +376,22 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
   }
   const windowStart = useChatWindowStart(sessionId, messages, entryRef.current.anchor)
   /**
+   * **顶端那一格此刻说什么**(空串 = 不说话,那一格照旧在场)。
+   *
+   * 三档的判据都是**确知**:`loadingOlder` 是一件正在发生的事;「还有更早的」要么
+   * 本地窗口还没摆完(`windowStart > 0`),要么 core 那一页明说了上面还有
+   * (`hasMoreBefore`)。**「到头了」与「还不知道」合成同一档 = 空** —— 这两件事在
+   * 数据层本来就分不开:`hasMoreBefore` 是一格布尔,起底那一刻写的就是 `false`
+   * (`chat-source.ts` 的 `load`,注为「底稿还没到手 —— 『上面还有更早的』此刻是一句
+   * 说不出口的话」),页回来之后才可能翻成真。所以**空会话起手不会先闪一句
+   * 「还有更早的」**,这一条是查过数据层才这么写的,不是猜的。
+   */
+  const olderMarkText = loadingOlder
+    ? t('chat.olderLoading')
+    : windowStart > 0 || hasMoreBefore
+      ? t('chat.olderMore')
+      : ''
+  /**
    * **这一帧真的摆出去的那几条**(= 消息数组的一个后缀)。
    *
    * 全量到齐(`windowStart === 0`)之后与从前逐字相同 —— 连数组对象都是原来那个,
@@ -571,20 +587,25 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
             )}
 
             {/*
-              * ── 顶端那一行读数(2026-09-10 工单 5 ⑥)────────────────────────────
-              * 三档一句话:本地窗口还没摆完 **或** core 说上面还有 → 「还有更早的」;
-              * 正在取 → 「正在取更早的…」;两样都没有 → 「已到开头」。
+              * ── 顶端那一行读数(2026-09-10 工单 5 ⑥;09-21 P1e 改一档)───────────
+              * 三档一句话:正在取 → 「正在取更早的…」;本地窗口还没摆完 **或**
+              * core 说上面还有 → 「还有更早的」;**其余(到头了 / 还不知道)= 空**。
               *
-              * 只在**有内容**时画:空态那三行自己会说话,再叠一句「已到开头」是废话。
+              * 「已到开头」那句话 09-21 被用户点名去掉(原话:「还有一个事情,
+              * 『已到开头』,不需要」)。**去掉的是那句话,不是那一格地** —— 这一格
+              * 从有内容那一刻起就永远在场、高度恒为一行(`.olderMark` 的
+              * `min-block-size: 1lh`),空着的时候只是不说话(`aria-hidden`)。
+              * 判例写在这儿,别再改回「条件不成立就不渲染」:P1e 那一版把整行摘掉,
+              * `gate:stream-geometry` 当场判红 —— `short:text` 的首字帧尾槽位移
+              * 0.1 → 12.2px、整轮 0.1 → 57.2px(单帧 22.5px ≈ 一整行),因为那一行
+              * 的在场与否会在**一轮正在跑的时候**翻,而 G 线 G4 正是冲着这种东西立的。
+              *
+              * 只在**有内容**时画:空态那三行自己会说话(那三行与这一行永不同屏)。
               * 禁 spinner(规范禁令第一条:列表/卡的加载态用文字)。
               */}
             {sessionId && status === 'ready' && messages.length > 0 && (
-              <p className={s.olderMark}>
-                {loadingOlder
-                  ? t('chat.olderLoading')
-                  : windowStart > 0 || hasMoreBefore
-                    ? t('chat.olderMore')
-                    : t('chat.olderNone')}
+              <p className={s.olderMark} aria-hidden={!olderMarkText || undefined}>
+                {olderMarkText}
               </p>
             )}
 

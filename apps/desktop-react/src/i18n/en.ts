@@ -606,10 +606,10 @@ export const en: Record<MessageKey, string> = {
   /* ── chat stream (D3: body text / tool names / error text are DATA) ─── */
   'chat.noSession': 'No session selected yet',
   'chat.loading': 'Loading this session…',
-  // 列表顶端那一行读数(工单 5 ⑥)。三档都是**文字**——列表/卡的加载态禁 spinner。
+  // 列表顶端那一行读数(工单 5 ⑥)。两句都是**文字**——列表/卡的加载态禁 spinner。
+  // 第三档(到头了 / 还不知道)09-21 起**不说话**,那一格照旧占一行,所以没有第三句。
   'chat.olderMore': 'Older messages above',
   'chat.olderLoading': 'Loading older messages…',
-  'chat.olderNone': 'Start of the conversation',
   // 工具结果太大、还没取正文时,卡上那几句(工单 5 ②)。
   'chat.tool.resultDeferred': 'Result is {size} — expand to load it',
   'chat.tool.resultLoading': 'Loading the result…',

@@ -690,10 +690,10 @@ export const zh = {
   /* ── 聊天区(D3:正文/工具名/错误原文都是**数据**,不在这儿) ────────── */
   'chat.noSession': '还没有选中会话',
   'chat.loading': '正在读这条会话…',
-  // 列表顶端那一行读数(工单 5 ⑥)。三档都是**文字**——列表/卡的加载态禁 spinner。
+  // 列表顶端那一行读数(工单 5 ⑥)。两句都是**文字**——列表/卡的加载态禁 spinner。
+  // 第三档(到头了 / 还不知道)09-21 起**不说话**,那一格照旧占一行,所以没有第三句。
   'chat.olderMore': '还有更早的',
   'chat.olderLoading': '正在取更早的…',
-  'chat.olderNone': '已到开头',
   // 工具结果太大、还没取正文时,卡上那几句(工单 5 ②)。
   'chat.tool.resultDeferred': '结果 {size},展开时取',
   'chat.tool.resultLoading': '正在取结果…',
