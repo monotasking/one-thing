@@ -30,13 +30,12 @@ import {
   sendLandMs,
 } from '../components/motion'
 import { ButtonBase } from '../ui/ButtonBase'
-import { FrameCoalescer } from '../ui/frame-coalescer'
 import { assembleMessage, segmentKey } from './assemble'
 import { ContextDeltaSeam, hasContextDelta } from './ContextDeltaSeam'
-import { seatHeight } from './seat'
 import { DomScrollPort, type AnchoredElement, type ScrollPort } from './viewport/scroll-port'
 import { AnchorRecorder } from './viewport/anchor-recorder'
 import { EntryRestore } from './viewport/entry-restore'
+import { TailPad } from './viewport/tail-pad'
 import { Slide } from './viewport/slide'
 import { ExpandIntentContext } from './expand-intent'
 import { FoldIntentContext, useNoteFold } from './fold-intent'
@@ -949,9 +948,8 @@ function useFollowBottom(
    *    自己就变了,从前那只 effect 会因此派一次根本没发生过的 `sent`(pinned 下
    *    `reduceFollow` 恰好什么都不改,所以没人看见)—— 现在它还会顺手滑一次屏,
    *    那就看得见了,所以基准必须跟着会话走。
-   *  · `seatHeightRef` —— 此刻算出来该多高。**算在观察器回调里(只读),写在下一帧**
-   *    (`content/../ui/frame-coalescer.ts`:观察器回调只读不写)。
-   *  · `seatWrittenRef` —— 已经写进 style 的那个数,省掉每帧一次同值写。
+   * 另外三格(该多高 / 已写的数 / 落没落位)随 G 线 P2-a 搬进了 `TailPad`,
+   * 判词在那只文件里(含「算在观察器回调里、写在下一帧」那条纪律)。
    */
   const sentBaseRef = useRef<{ sid: string; tick: number } | undefined>(undefined)
   if (!sentBaseRef.current || sentBaseRef.current.sid !== sessionId) {
@@ -959,68 +957,33 @@ function useFollowBottom(
   }
   const seatActive = sentTick !== sentBaseRef.current.tick
 
-  const seatHeightRef = useRef(0)
-  const seatWrittenRef = useRef<number | undefined>(undefined)
   /**
-   * **这一轮真的落到置顶线上了吗**。
+   * **卷尾垫块**(G 线 P2-a:`seatHeightRef` / `seatWrittenRef` / `seatLandedRef` /
+   * `seatCoalescerRef` 四格 ref 整件搬进 `content/viewport/tail-pad.ts`,判词跟着走
+   * —— 包括「算在观察器回调里、写在下一帧」与那格同值短路)。
    *
-   * 座位与那一下滑动是**一件事**:座位的定义是「自己那条停在置顶线上之后,
-   * 底下留给回复的那块地」。没滑过就没有那块地 —— 人在上面翻着的时候发送
-   * (规矩 ⑦:那时视口不归这一轮)、或者那一拍量不到几何(停靠中 / jsdom),
-   * 座位一律是 0,行为与 09-15 之前逐字相同。
-   *
-   * 垫块本身照旧挂着(`seatActive`):它是一个高度为 0 的空 div,而**留着它**
-   * 意味着下一次发送由同一个节点原位接管 —— 上面那些旧内容一像素不动。
+   * 「这条会话此刻有没有座位」是**渲染期事实**,所以在渲染期推给它 —— 与
+   * `sentBaseRef` / `messageCountRef` 那两格同一手(不进依赖表:进了就等于让
+   * 「消息变了」重跑一次 effect)。
    */
-  const seatLandedRef = useRef(false)
+  const padRef = useRef<TailPad | undefined>(undefined)
+  if (!padRef.current) padRef.current = new TailPad(port)
+  const pad = padRef.current
+  pad.active = seatActive
 
   /** 把算好的那个数写到垫块上。**只有这一处**碰它的 style(经 `port.writePadHeight`)。 */
-  const writeSeat = useCallback(() => {
-    const next = seatHeightRef.current
-    if (seatWrittenRef.current === next) return
-    // 没有垫块这个元素时**不记账**:下一次它挂上来那一写不该被短路掉(今天
-    // `if (!seatRef.current) return` 排在记账之前,逐字同义)。
-    if (!port.writePadHeight(next)) return
-    seatWrittenRef.current = next
-  }, [port])
-  /**
-   * 下一帧交出去那一格读数。**观察器回调只读不写** —— 座位的第一个读者是这条列
-   * 自己的排版,在派发循环里改它正是 Chrome 判「同深度还有没派送的通知」的那一形
-   * (09-14 `--composer-h` 那条判例的同族)。
-   */
-  const seatCoalescerRef = useRef<FrameCoalescer | undefined>(undefined)
-  if (!seatCoalescerRef.current) seatCoalescerRef.current = new FrameCoalescer(() => writeSeat())
-
-  /**
-   * **量一次座位**(只读),把结果存进 `seatHeightRef` 并排下一帧写。返回算出来的高。
-   *
-   * 座位不存在(没发过话 / 量不到几何)时恒 0 —— 那正是「退化为今天的落底 + 跟随」。
-   */
-  const readSeat = useCallback((): number => {
-    const geometry = seatActive && seatLandedRef.current ? port.measureSeat() : undefined
-    const next = geometry ? seatHeight(geometry) : 0
-    seatHeightRef.current = next
-    /*
-     * **只在数真的变了时才排那一帧**。流式期间这一句每秒跑几十遍,而绝大多数
-     * 没有座位的会话上它算出来恒是 0 —— 照排的话就是白排一帧 rAF、白跑一次
-     * `writeSeat`(与「观察器不许自伤」同一条账)。
-     */
-    if (next !== seatWrittenRef.current) seatCoalescerRef.current?.schedule()
-    return next
-  }, [seatActive, port])
+  const writeSeat = useCallback(() => pad.flushNow(), [pad])
+  /** **量一次座位**(只读),存下来并排下一帧写。返回算出来的高。 */
+  const readSeat = useCallback((): number => pad.measure(), [pad])
 
   /* 垫块随会话卸载 / 座位退役时,那格「已写的数」也要归零 —— 不然下一条会话
    * 的第一次写会被一个属于上一棵树的数短路掉。 */
   useEffect(() => {
     if (seatActive) return
-    seatWrittenRef.current = undefined
-    seatHeightRef.current = 0
-    seatLandedRef.current = false
-  }, [seatActive, sessionId])
-  useEffect(() => {
-    const coalescer = seatCoalescerRef.current
-    return () => coalescer?.cancel()
-  }, [])
+    pad.retire()
+  }, [seatActive, sessionId, pad])
+  /** 排着的那一帧属于已经不在的那棵树 —— 卸载时撤掉。 */
+  useEffect(() => () => pad.dispose(), [pad])
 
   /**
    * **取回那一拍要对的位**(在场 = 「刚被拿回来,还没对过」)。立它的是
@@ -1400,11 +1363,11 @@ function useFollowBottom(
          * 先下后上,一帧可见的抖,量级正是最后一次长高的 Δ(一行到一个块那么多)。
          *
          * 所以两格都要归零才贴。**这不会把跟底卡死**:写到 0 那一帧垫块自己缩了高,
-         * 那是一次尺寸变化,RO 会再来一次 —— 那一次 `seat` 与 `seatWrittenRef`
-         * 都是 0,照旧 `stick()`。座位不存在时 `seatWrittenRef` 是 `undefined`,
+         * 那是一次尺寸变化,RO 会再来一次 —— 那一次 `seat` 与 `pad.written`
+         * 都是 0,照旧 `stick()`。座位不存在时 `pad.written` 是 `undefined`,
          * `?? 0` 让它读作「没有残高」,所以没有座位的会话一格行为都没变。
          */
-        if (seat > 0 || (seatWrittenRef.current ?? 0) > 0) {
+        if (seat > 0 || (pad.written ?? 0) > 0) {
           lastGapRef.current = gap
           return
         }
@@ -1418,7 +1381,7 @@ function useFollowBottom(
     observer.observe(column)
     observer.observe(el)
     return () => observer.disconnect()
-  }, [scrollRef, port, recorder, restore, sessionId, dispatch, stick, readSeat])
+  }, [scrollRef, port, pad, recorder, restore, sessionId, dispatch, stick, readSeat])
 
   /*
    * 「发送了一条」那一拍。号从 `chat-source` 来(产地在 `send()`),这里只比对它变没变。
@@ -1454,8 +1417,8 @@ function useFollowBottom(
   const slideScrollTo = useCallback((target: number) => slide.to(target), [slide])
 
   const landOnSendLine = useCallback(() => {
-    // 这一轮先当作「没落过」——下面每一条早退都让座位留在 0 上(判词在 `seatLandedRef`)。
-    seatLandedRef.current = false
+    // 这一轮先当作「没落过」——下面每一条早退都让座位留在 0 上(判词在 `TailPad.landed`)。
+    pad.landed = false
     // 停靠中 / jsdom:没有排版,量出来的一切都是 0(与 `stick` 同一把尺子)。
     if (!port.hasLayout()) return
     /*
@@ -1464,7 +1427,7 @@ function useFollowBottom(
      * 这也正是 `gate:chat-follow` ⑥ 量的那一条:上翻时发送不滚。
      */
     if (!followShouldStick(followRef.current)) return
-    seatLandedRef.current = true
+    pad.landed = true
     cancelLanding()
     // 先把座位写到位(同步,绘制之前):没有它,下面那个目标就是一个滚不到的位置。
     readSeat()
@@ -1472,7 +1435,7 @@ function useFollowBottom(
     const target = port.sendLineTarget()
     if (target === undefined) return
     slideScrollTo(target)
-  }, [port, cancelLanding, readSeat, writeSeat, slideScrollTo])
+  }, [port, pad, cancelLanding, readSeat, writeSeat, slideScrollTo])
 
   /**
    * **重试:那一轮就是最后一轮,座位按同一条路重算**(单 B ⑥,正本 §2 规矩 ⑥)。
@@ -1496,14 +1459,14 @@ function useFollowBottom(
     const view = port.viewportRect()
     // 气泡整条都在视口里:什么都不做(规矩 ⑥ 的字面「不滑动」)。
     if (rect.top >= view.top && rect.bottom <= view.bottom) return
-    seatLandedRef.current = true
+    pad.landed = true
     cancelLanding()
     readSeat()
     writeSeat()
     const target = port.sendLineTarget()
     if (target === undefined) return
     slideScrollTo(target)
-  }, [port, cancelLanding, readSeat, writeSeat, slideScrollTo])
+  }, [port, pad, cancelLanding, readSeat, writeSeat, slideScrollTo])
 
   /**
    * 「按下重试」那一拍。基准与 `sentTick` 同一手(ref 记上一次,不是每次渲染都派),
@@ -1612,7 +1575,7 @@ function useFollowBottom(
      */
     if (!ended) return
     if (!port.hasLayout()) return
-    const before = seatWrittenRef.current ?? 0
+    const before = pad.written ?? 0
     const next = readSeat()
     /*
      * **只同步「补回来」那一半**:座位变大 = 内容刚缩了一截,页面正贴着底,不当场
@@ -1620,7 +1583,7 @@ function useFollowBottom(
      * 已经把位置占住了,晚一帧让位没人看得见。
      */
     if (next > before) writeSeat()
-  }, [activeMessageId, port, readSeat, writeSeat])
+  }, [activeMessageId, port, pad, readSeat, writeSeat])
 
   /*
    * ── 座位**同帧**跟上内容(G 线 P1,2026-09-20;正本
@@ -1654,8 +1617,8 @@ function useFollowBottom(
    * 就是屏幕上唯一在动的一段。真机读数进这道门的 ⑦(流式期间零 ≥50ms 长帧)。
    */
   useLayoutEffect(() => {
-    if (!seatActive || !seatLandedRef.current) return
-    if ((seatWrittenRef.current ?? 0) <= 0) return
+    if (!seatActive || !pad.landed) return
+    if ((pad.written ?? 0) <= 0) return
     if (slide.running) return
     if (!port.hasLayout()) return
     readSeat()

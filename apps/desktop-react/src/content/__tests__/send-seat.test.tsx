@@ -199,6 +199,11 @@ describe('座位的写点经 FrameCoalescer,不在观察器回调里', () => {
     path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../viewport/scroll-port.ts'),
     'utf-8',
   ).replace(/\/\*[\s\S]*?\*\//g, '')
+  /* 量那一句与那格 coalescer 搬进了 `TailPad`(P2-a 第六笔)。 */
+  const padSource = readFileSync(
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../viewport/tail-pad.ts'),
+    'utf-8',
+  ).replace(/\/\*[\s\S]*?\*\//g, '')
 
   it('只有一处碰垫块的 style', () => {
     expect([...portSource.matchAll(/\.style\.height\s*=/g)]).toHaveLength(1)
@@ -206,10 +211,11 @@ describe('座位的写点经 FrameCoalescer,不在观察器回调里', () => {
   })
 
   it('量座位那只函数排的是下一帧,不是当场写', () => {
-    expect(source).toMatch(/seatCoalescerRef\.current\?\.schedule\(\)/)
-    // `readSeat` 里不许出现 `writeSeat()` —— 那一支是发送那一拍**同步**用的。
-    const readSeat = /const readSeat = useCallback\(([\s\S]*?)\n {2}\}, \[/.exec(source)?.[1] ?? ''
-    expect(readSeat).not.toBe('')
-    expect(readSeat).not.toMatch(/writeSeat\(\)/)
+    expect(padSource).toMatch(/this\.#coalescer\.schedule\(\)/)
+    // 量那一支里不许出现写 —— 写是发送那一拍**同步**用的那个口(`flushNow`)。
+    const measure = /measure\(\): number \{([\s\S]*?)\n {2}\}/.exec(padSource)?.[1] ?? ''
+    expect(measure).not.toBe('')
+    expect(measure).not.toMatch(/flushNow\(\)/)
+    expect(measure).not.toMatch(/writePadHeight/)
   })
 })
