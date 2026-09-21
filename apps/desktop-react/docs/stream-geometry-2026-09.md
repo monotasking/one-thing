@@ -2417,3 +2417,148 @@ P2-a ──▶ P2-b ──▶ P2-c        P2-d(可砍,且须先拍板)
    `probe-follow-recorded.mjs` / `probe-follow-aba.mjs` 里 `readFileSync` 已删文件的那两处,随 P2-a 第一笔一起修(门与探针,
    不是产品)。无门守的三处平滑滚动(`toc/useChatToc.ts`、`ui/Fold.tsx:119`、`research/ResearchSegment.tsx:59`)在 P2-a
    只收编写口(经 `ScrollPort.setTop` / `jump`),不改行为;补门放 P2-c。
+
+## 14. P2-a 施工账(2026-09-21)
+
+**抽件不改行为**,九笔提交,逐笔可二分。`useFollowBottom` 整件退役:
+`ChatStream.tsx` **2445 → 1126 行**,那只 1039 行、49 次 hook 调用、22 格 ref 的函数
+连同 `useParkedScroll` 搬进 `content/viewport/`(净删 980 行)。
+
+### 14.1 九笔
+
+| # | 提交 | 搬的是哪一件 |
+| --- | --- | --- |
+| 1 | `21d0d0dd0` | **写入序列快照先行**(`__tests__/scroll-writes.test.tsx`,11 条)+ 结清 §13.1.4 ⑤ 那三处指着已删 `tail-snap.ts` 的假话 |
+| 2 | `f928241fd` | `types.ts`(只定义,不接线)+ `ScrollPort` / `DomScrollPort` / `FakeScrollPort`;九个写点收口 |
+| 3 | `53c182be3` | `Slide`(`landFrameRef` / `landWroteRef` / `slidingRef`) |
+| 4 | `2a5f64f11` | `AnchorRecorder`(`anchorTimer` + 三处 `saveSessionScrollAnchor`) |
+| 5 | `470d57ea0` | `EntryRestore`(`restoreRef` + `ANCHOR_RESETTLE_ROUNDS`) |
+| 6 | `e47270c33` | `TailPad`(座位四格 ref;`#absorbed` 留空位不接线) |
+| 7 | `87dfa30b4` | `IntentWindow`(两格时限窗口,**只搬不合一**)+ 补回第六笔丢掉的一条依赖沿 |
+| 8 | `290f9523d` | `ViewportAnchor` + 薄 hook;`useFollowBottom` 整件删除 |
+| 9 | `439dce9d7` | 贴底那一句改走 `stickToBottom`,**不比今天多读一次几何** |
+
+文件与单测:`types.ts` 73 / `scroll-port.ts` 628 / `slide.ts` 187 /
+`anchor-recorder.ts` 123 / `entry-restore.ts` 77 / `tail-pad.ts` 126 /
+`intent-window.ts` 100 / `anchor.ts` 582 / `use-viewport-anchor.ts` 260;
+协作者单测 **84 条**(scroll-port 16 / anchor 29 / tail-pad 9 / slide 8 /
+entry-restore 8 / intent-window 8 / anchor-recorder 6)。
+**`anchor.test.ts` 整只文件一次 `render()` 都没有,也没有一个 `document`** ——
+§13.2.1 末那句「喂一只 `FakeScrollPort` 就能把裁决逐格测到」的兑现。
+
+### 14.2 等价性:五道门逐格对照
+
+搬迁前(`main` = `f3e970eb3`)先跑一趟存基线,搬完再跑同一套命令,用同一只比对器
+逐格对(`gate:stream-geometry` dev / `gate:send-flow` dev+prod / `gate:tail-jitter`
+dev+prod / `gate:chat-follow` / `gate:chat-layout` dev)。
+
+**1385 格逐格相同**(数值差 ≤0.05px 计同)。十六个场景的判据格并排,**一格不差**:
+
+| 格 | 十六档读数(前→后) |
+| --- | --- |
+| ① 首字帧尾槽位移 | `0 → 0`(16/16) |
+| ② 整轮尾槽位移 | `0 → 0`(16/16) |
+| ③ 收尾窗上方位移 | `0 → 0`(16/16) |
+| ④ 思考段 live / 落定高度变化 | `0/0 → 0/0`(16/16) |
+| ⑤ `scrollHeight` 回缩次数 | `0 → 0`(16/16) |
+| ⑥ 上拨档用户锚点位移 | `0 / 0.02 → 0 / 0.02` |
+| ⑧ 座位 | `134.4px = 6 行 → 134.4px = 6 行`(16/16) |
+| ⑨⑩⑪⑫ 尾槽内形 / 收场淡出 / 扫光 | 全部 `0 → 0` |
+
+`gate:send-flow` 两档:`landing.scrollRuns` 恒 1、`microRuns` / `firstTokenShift` /
+`drift` / `seatZeroFlips` / `readoutFlips` / `paintedOverlapFrames` 全部逐格相同;
+`seatMax` 常态 134.3984375、重试 19.8984375,两趟一致。
+`gate:tail-jitter` 两档:`peakDevicePx` / `jumps` / `tailSnap` 一族逐格相同。
+`gate:chat-follow` 两趟全绿、逐条相同。
+
+**对不上的格,逐条**:
+
+1. **`*.runs` 那几个字符串差 1px**(`9371→9582` vs `9371→9583` 之类)。它是门自己
+   从采样帧里拼出来的「这一段滚了从哪到哪」,`big` 档的内容高在两趟之间本来就会差
+   一个亚像素。**被判的那一格是 `scrollRuns`(恒 1),它逐格相同**。
+2. **`thought.done` / `liveLine.advances` / `pixels.byValue` / `rowLate.ctxGaps`** ——
+   这些是**采样落在哪几帧**的直方图,不是判据;两趟帧数本来就不同(基线 407 帧、
+   终局 421 帧)。
+3. **`big:text` / `big:think60k` 的 `listShrinks` 从 `[]` 多出一条**(ms 1500–1642、
+   4.5–5px)。它是「**列在忙**」那一族,`gate:stream-geometry` ⑤ 判的是把这一族剔掉
+   之后的 `shrinks`,而 `shrinks` 两趟都是 `[]`。那一条落在 400 行物化那一段里。
+4. **`send-flow-prod.long.overlapMax: 0 → 2.18`** —— rAF 口的「只报不判」读数
+   (§9.7 ② 三次踩过的那只口)。**被判的 `paintedOverlapFrames` / `paintedOverlapMax`
+   两趟都是 0 / 0.00px**,门里那一行写着「同趟 rAF 口 0 帧 / 0.00px,只报」。
+5. **`gate:chat-layout` ④ 从红转绿**:基线 52ms(> 50ms 预算)→ 终局 47ms。
+   这是**基线那一趟就红的存量**,与这一线无关 —— 它量的是「来回切 A→B→A 最慢一跳」,
+   那一趟机器 5 分钟负载还挂在 15 上。**不是这一单治好的,只是那一趟量到了绿。**
+
+### 14.3 唯一一条没对上的判据:⑦ 长帧,**`main` 自己也红**
+
+`gate:stream-geometry` ⑦(超量档流式期间零 ≥50ms 长帧)在搬迁后的三趟里各红了
+1–3 条,而且**每趟红的场景都不一样**(think60k/scrollUp → long → text/scrollUp)。
+按施工纪律「闪烁类不许纸上诊断」,**跑了一趟 A/B**:同一台机器、同一段时间、
+`main` 与 `g-line-p2-a` 交替各两趟,只跑这一道门。
+
+| 趟 | 分支 | 超量档 ⑦ 判定长帧 |
+| --- | --- | --- |
+| 基线 A0 | `main` | **0** |
+| A1 | `main` | **0** |
+| B1 | 分支 | **0** |
+| A2 | `main` | **`big:code` × 1 / 50ms** |
+| B2 | 分支 | `think3k` ×1/72ms · `think60k` ×1/68ms · `abort` ×1/84ms |
+
+**A2 那一趟 `main` 自己红了** —— 所以这不是 P2-a 引进的回归,是这道门在这台机器
+**今晚**这个负载档上的抖(基线那一趟机器 1 分钟负载 4.6、5 分钟 4.9;后面几趟
+5 分钟负载一路在 6–16 之间)。`short:code` 那两个长帧四趟全同(2 个,过渡值也是 2),
+说明**短会话档一点没抖**,抖的只有 400 条那一档里「列在忙」的那几帧。
+
+**没有改门的预算**(抬 `BUDGET` 是改法);这一条留在 §14.5 账上。
+
+### 14.4 唯一的行为收口,与它带来的三处「新得了守卫」
+
+九个写点全部改走 `ScrollPort.setTop(top, cause)`(扩窗补位 / 贴底 / 取回对位 /
+折叠补偿 / 落位三支 / `applyScrollAnchor` 两支),口内做两件今天散在各处的事:
+`clientHeight === 0` 守卫与 `lastTop` 同步(记的是**读回来的**那个数,浏览器会钳)。
+
+今天那句守卫只在四处:`stick` / RO 回调第一行 / 锚点去抖 / `landOnSendLine`。
+收口之后**另外三处一起有了**,逐条记下来:
+
+| 写点 | 今天 | 收口之后 | 到得了吗 |
+| --- | --- | --- | --- |
+| 插值那几帧(W6) | 无守卫 | 有 | **到不了**:`landOnSendLine` / `landOnRetry` 先判过;真要停靠在一段 200ms 的插值中间才撞得上 |
+| 进场落锚点(W8/W9) | 无守卫 | 有 | **到得了**:这一份进场时正被停靠,今天会写进一个按 0 几何算出来的位置,收口之后不写 |
+| `applyScrollAnchor` 的 `bottom` 支 | 无守卫 | 有 | 同上 |
+
+第三格是**收口顺手治掉的一处说谎**,不是新行为:一棵没有排版的树上
+`scrollHeight` 报 0,写进去就是把这条会话的位置抹成 0。它与 `stick` 那句守卫
+是同一条判词,只是从前没铺到这儿。
+
+**没收编的三处平滑滚动**(§13.1.1 的 W10/W11/W12),逐条写明为什么:
+
+| 写点 | 为什么这一期不收 |
+| --- | --- |
+| `toc/useChatToc.ts:130` `el.scrollTo({behavior:'smooth'})` | 它是**平滑**滚动,`setTop` 是一次到位的写;收进去就是把它变成瞬移 —— 那是行为改动。而且 `useChatToc` 是另一只 hook,今天拿不到锚定器的实例,要接就得先开那条「意图通道」,那是 P2-c |
+| `ui/Fold.tsx:119` `head.scrollIntoView` | `ui/` **不许反向依赖 `content/`**,只能经回调注入;而它写的不是我们这只容器的 `scrollTop`(`scrollIntoView` 走的是最近那几层可滚祖先),`setTop` 表达不了它。P2-b 的裁定是**删掉它**(`pin` 之后头把手就是被点那一块的顶边),所以这一期不给它接一条马上要拆的线 |
+| `research/ResearchSegment.tsx:59` `scrollIntoView({block:'center'})` | 同上:形状是 `scrollIntoView`,不是 `scrollTop =`。它要的是「把这一段送到视口正中」,`jump` 那一格裁决(§13.2.2)才表达得了 |
+
+收编情况:**12 个写点,收了 9 个,留了 3 个**;留的三个今天仍然没有门量它们的
+位移(§13.1.4 ③),补门照 §13.6 第 4 条放 P2-c。
+
+### 14.5 留账
+
+1. **⑦ 长帧在这台机器上会抖,`main` 与分支都抖**(§14.3)。要治得先答「那一帧是谁
+   花的」—— 读数里它 `rows: 0`(那一帧列里的行数没变),所以不是物化。**没改预算。**
+2. **`measureSeat` 每一批 RO 一次 `getComputedStyle`** 原样搬进
+   `DomScrollPort.measureSeat`(§13.1.5 己)。P2-a 的纪律是不顺手优化,判词跟着搬了。
+3. **实例寿命:一次挂载一只,换会话不换实例。** §13.2.3 的终态是「换会话换一个
+   实例」,这一期**故意没做**:今天 `lastGap` / `lastColumnHeight` / `lastTop` /
+   `follow` 这几格跨会话是留着的,换实例等于把它们一起清零 —— 那是行为改动。
+4. **`ViewportAnchor.onResize(batch)` 收的是归一后的纯数字,不是 `ResizeObserverEntry[]`**
+   (§13.2.3 写的是后者)。改这一格是为了让裁决层连 DOM **类型**都不必认识,
+   代价是「停靠中早退」那一句住在 `ScrollPort.summarizeResize` 里 —— 它仍然是
+   RO 回调的第一句,次序一个字没变。
+5. **`ScrollPort.zoneOf` 今天没有调用方**:它是 §13.2.2 裁决表的入参,P2-b 接。
+   有单测咬着,不是死码。
+6. **`TailPad.#absorbed` 是空位**:`height = max(座位所需, 已吸收)`,今天后一半恒 0。
+7. **薄 hook 是 260 行,不是 §13.2.7 说的「约 80 行」。** 差的那一百多行是 effect
+   接线与四格 `seen*` 边沿检测 —— 它们本来就归 React(§13.1.2 的表这么写的),
+   里面**一句裁决都没有**。
+8. `gate:chat-layout` ④ 在基线那一趟是红的(52ms),终局绿(47ms);两趟机器负载
+   不同,**这一格不能算这一单的功劳**。
