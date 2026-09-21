@@ -35,6 +35,7 @@ import { assembleMessage, segmentKey } from './assemble'
 import { ContextDeltaSeam, hasContextDelta } from './ContextDeltaSeam'
 import { seatHeight } from './seat'
 import { DomScrollPort, type AnchoredElement, type ScrollPort } from './viewport/scroll-port'
+import { Slide } from './viewport/slide'
 import { ExpandIntentContext } from './expand-intent'
 import { FoldIntentContext, useNoteFold } from './fold-intent'
 import type { SegmentModel } from './model/segments'
@@ -1441,99 +1442,29 @@ function useFollowBottom(
    * (理由写在 follow.ts 的 `grew` 分支)。
    */
   /**
-   * **滑到置顶线**(正本 §2 规矩 ①)—— 这个文件的**第四处**写 `scrollTop`。
+   * **滑到置顶线**(正本 §2 规矩 ①)。
    *
-   * 另外三处各答一个问题:`stick` 贴底、`applyScrollAnchor` 落回进场锚点、扩窗补位。
    * 这一处答的是**「刚发出去的那句话停在多高」**:自己那条的上缘落在视口上缘下
-   * `--send-line`,底下整个视口(= 座位)留给回复。四处谁都不兼职。
+   * `--send-line`,底下整个视口(= 座位)留给回复。
    *
-   * ── 为什么是 JS 插值,不是 `scrollTo({behavior:'smooth'})` ────────────────
-   * 与那三处同一条:**定位不是动效**。`behavior: 'smooth'` 在动效档「无」下照样
-   * 平滑(它听的是系统的 `prefers-reduced-motion`,不是壳自己那格档位),而这一下
-   * 在那一档必须一步到位;它也交不出「此刻滑到哪了」这个读数,而下面那句
-   * `lastTopRef` 的同步必须逐帧做。
-   *
-   * ── 滑动期间不许被读成「人往上翻」────────────────────────────────────────
-   * `onScrollWithFollow` 判的是 `scrollTop` 比上一次小没小(2026-09-12 那条判例)。
-   * 我们自己每帧写的那个数要**当场**记进 `lastTopRef` —— 与 `stick` 里那一句
-   * 逐字同源(滚动事件比写点晚一帧,不在这里写就会拿滑动之前的位置当参照)。
-   *
-   * ── 人在滑动中间自己滚了 ──────────────────────────────────────────────────
-   * 当场收手:下一帧读到的 `scrollTop` 不是我们上一帧写下去的那个数,就说明这台
-   * 机器上有第二只手。判据仍然只有位置,没有标志位。
+   * G 线 P2-a 把那一段插值连同它的三格 ref(`landFrameRef` / `landWroteRef` /
+   * `slidingRef`)整件搬进 `content/viewport/slide.ts` —— 判词(为什么是 JS 插值
+   * 不是 `behavior: 'smooth'`、滑动期间不许被读成「人往上翻」、人在中间自己滚了
+   * 就当场收手)全文跟着搬过去了,这里只剩「拿什么参数造它」:
+   *  · 这一段滑多久 —— 动效档「无」下答 0(一步到位),其余按距离
+   *    (`components/motion.ts` 的 `sendLandMs`,时长的产地只有那一处);
+   *  · 落定之后把 gap 基准对齐(今天那只 `settle`)。
    */
-  const landFrameRef = useRef(0)
-  const landWroteRef = useRef<number | undefined>(undefined)
-  /**
-   * **这一刻正在滑**(G 线 P1 加的一格)。
-   *
-   * 它的唯一读者是下面那只「座位同帧跟上」的 layout effect:滑动那一段里
-   * `scrollTop` 每帧由我们自己写,此刻再去改 `scrollHeight` 会让浏览器钳一下,
-   * 而那一钳正好长得像「有第二只手在滚」—— 插值当场收手,落点作废
-   * (09-15 实测过的那 −189px 就是这个形)。
-   *
-   * 不复用 `landFrameRef`:那一格在 `step()` 的第一行就被清成 0(rAF 已经烧掉了),
-   * 拿它当「在不在滑」会在每一帧的开头答错。
-   */
-  const slidingRef = useRef(false)
-  const cancelLanding = useCallback(() => {
-    if (landFrameRef.current && typeof cancelAnimationFrame === 'function') {
-      cancelAnimationFrame(landFrameRef.current)
-    }
-    landFrameRef.current = 0
-    landWroteRef.current = undefined
-    slidingRef.current = false
-  }, [])
-
-  /**
-   * **滑到那个位置**(单 B ⑥ 抽出来的那一半)。
-   *
-   * 发送与重试落到置顶线走的是**同一段插值**,所以它只有一个产地:两处各写一遍
-   * 就是两条缓动曲线、两套「第二只手」的判据,而它们说的是同一件事。
-   * 调用方负责「要不要滑、滑到哪」,这只函数只负责「怎么滑过去」。
-   */
-  const slideScrollTo = useCallback((target: number) => {
-    const from = port.top
-    const distance = Math.abs(target - from)
-    const ms = currentMotionTier() === 'none' ? 0 : sendLandMs(distance)
-    const settle = () => {
-      lastGapRef.current = port.gapNow()
-    }
-    if (ms === 0 || distance < 1) {
-      port.setTop(target, 'send-landing')
-      settle()
-      return
-    }
-    const started = performance.now()
-    const step = () => {
-      landFrameRef.current = 0
-      // 第二只手:我们上一帧写下去的那个数不在了,就是人自己滚了 —— 收手。
-      if (landWroteRef.current !== undefined && Math.abs(port.top - landWroteRef.current) > 1) {
-        landWroteRef.current = undefined
-        slidingRef.current = false
-        return
-      }
-      const k = Math.min(1, (performance.now() - started) / ms)
-      // 缓出(三次):起步快、落点轻,与 `--ease-out` 的形同族。
-      const eased = 1 - (1 - k) ** 3
-      port.setTop(from + (target - from) * eased, 'send-landing')
-      // 记的是**读回来的**那个数(浏览器会钳)—— 与 `lastTop` 同一条判词。
-      landWroteRef.current = port.top
-      if (k < 1) landFrameRef.current = requestAnimationFrame(step)
-      else {
-        landWroteRef.current = undefined
-        slidingRef.current = false
-        settle()
-      }
-    }
-    if (typeof requestAnimationFrame !== 'function') {
-      port.setTop(target, 'send-landing')
-      settle()
-      return
-    }
-    slidingRef.current = true
-    landFrameRef.current = requestAnimationFrame(step)
-  }, [port])
+  const slideRef = useRef<Slide | undefined>(undefined)
+  if (!slideRef.current) {
+    slideRef.current = new Slide(port, {
+      durationOf: (distance) => (currentMotionTier() === 'none' ? 0 : sendLandMs(distance)),
+      onSettle: () => void (lastGapRef.current = port.gapNow()),
+    })
+  }
+  const slide = slideRef.current
+  const cancelLanding = useCallback(() => slide.cancel(), [slide])
+  const slideScrollTo = useCallback((target: number) => slide.to(target), [slide])
 
   const landOnSendLine = useCallback(() => {
     // 这一轮先当作「没落过」——下面每一条早退都让座位留在 0 上(判词在 `seatLandedRef`)。
@@ -1738,7 +1669,7 @@ function useFollowBottom(
   useLayoutEffect(() => {
     if (!seatActive || !seatLandedRef.current) return
     if ((seatWrittenRef.current ?? 0) <= 0) return
-    if (slidingRef.current) return
+    if (slide.running) return
     if (!port.hasLayout()) return
     readSeat()
     writeSeat()
