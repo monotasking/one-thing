@@ -87,6 +87,17 @@ const ONLY = (() => {
  * 那是**只有在几百行的账本上才发生**的事。
  */
 const BIG = process.argv.includes('--big')
+/**
+ * **`--diag`:查斜坡产地那一档**(P1d 任务 2)。
+ *
+ * 它多做三件**只在诊断时才划算**的事:把 `Element.prototype.scrollTop` 的 setter
+ * 与 `ResizeObserver` 各包一层(数「谁写了滚动位」「RO 回调跑了几次」,并留下调用栈),
+ * 逐帧多读一格**计算后**的 `translate`(`getComputedStyle`,平时禁),以及把活消息行
+ * 在**内容坐标**里的位置记下来 —— 那一格直接答「列上方的东西有没有变高变矮」。
+ *
+ * 平时(门那一档)一格都不开:它们每帧都要钱,而 09-10「探针自伤」的判例说得很清楚。
+ */
+const DIAG = process.argv.includes('--diag')
 const OPEN_TIMEOUT_MS = 120_000
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -276,6 +287,39 @@ async function rpc(record, domain, method, payload = {}) {
   return body.data
 }
 
+/**
+ * 诊断那一档的页面侧补丁(只在 `--diag` 下注入)。
+ *
+ *  · `scrollTop` 的 setter 包一层 —— 「贴底那一句到底一帧写几次、从哪儿写的」
+ *    只有这一层答得出(产品那一侧 `stick()` 是模块内的闭包,外面够不着);
+ *  · `ResizeObserver` 包一层 —— 数回调次数,用来分辨「RO 只在首尾报」的那一支。
+ * 两层都只**计数与留栈**,不改行为(照旧调原实现)。
+ */
+const DIAG_PROBE = `
+;(function () {
+  window.__jWrites = 0
+  window.__jRo = 0
+  window.__jStacks = []
+  var d = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop')
+  Object.defineProperty(Element.prototype, 'scrollTop', {
+    configurable: true,
+    get: d.get,
+    set: function (v) {
+      window.__jWrites += 1
+      if (window.__jStacks.length < 400) {
+        window.__jStacks.push({ n: window.__jWrites, s: String(new Error().stack).split('\\n').slice(1, 5).join(' | ') })
+      }
+      d.set.call(this, v)
+    },
+  })
+  var RO = window.ResizeObserver
+  window.ResizeObserver = function (cb) {
+    return new RO(function () { window.__jRo += 1; return cb.apply(this, arguments) })
+  }
+  window.ResizeObserver.prototype = RO.prototype
+})()
+`
+
 const LEAF_PROBE = `
 window.__jLeaf = function () {
   var panes = Array.prototype.slice.call(document.querySelectorAll('[data-pane-on]'))
@@ -292,8 +336,53 @@ window.__jLeaf = function () {
 
 /* ══ 逐帧采样 ═════════════════════════════════════════════════════════════ */
 
-async function startSampler(page) {
+/**
+ * **同一帧的第二次取样:排在产品那只 ResizeObserver **之后**(P1d)。
+ *
+ * rAF 跑在「动画推进之后、布局与 RO 之前」,所以它读到的是**这一帧还没被
+ * `stick()` 纠正**的中间态 —— 拿它当「屏幕上是什么样」会把一次纯粹的取样相位
+ * 读成一次真的抖。RO 回调按注册顺序跑,这只是在产品那只之后注册的,于是它读到的
+ * 就是**这一帧最后会被画出来的那个** `scrollTop` 与矩形。
+ *
+ * 两份读数并排,才说得出「那条斜坡是画出来的,还是只是量到的」。
+ */
+async function startPaintSampler(page) {
   await page.evaluate(() => {
+    window.__jPaint = []
+    const pane = window.__jLeaf()
+    const scroll = pane.querySelector('[data-testid="chat-stream"]')
+    const column = scroll?.firstElementChild
+    if (!scroll || !column) return
+    const ro = new ResizeObserver(() => {
+      const slot = column.querySelector(':scope > [data-tail-slot]')
+      if (!slot) return
+      const anchor = window.__jAnchor && window.__jAnchor.isConnected
+        ? window.__jAnchor.getBoundingClientRect().top : null
+      window.__jPaint.push({
+        t: performance.now(),
+        top: slot.getBoundingClientRect().top,
+        /* 正文那一块也取一份:用户第二问「上面正在生成的内容也有抖动吗」要的是它。 */
+        anchor,
+        st: scroll.scrollTop,
+        sh: scroll.scrollHeight,
+      })
+    })
+    ro.observe(column)
+    window.__jPaintStop = () => ro.disconnect()
+  })
+}
+
+async function stopPaintSampler(page) {
+  return page.evaluate(() => {
+    window.__jPaintStop?.()
+    const out = window.__jPaint ?? []
+    window.__jPaint = []
+    return out
+  })
+}
+
+async function startSampler(page, diag) {
+  await page.evaluate((withDiag) => {
     window.__jFrames = []
     window.__jStop = false
     window.__jAnchor = undefined
@@ -322,6 +411,45 @@ async function startSampler(page) {
          * `getComputedStyle` 会逼一次全量样式重算,在 400 行的列上自己造长帧。
          */
         const inlineTranslate = slot instanceof HTMLElement ? (slot.style.translate || '') : ''
+        /*
+         * 诊断那一档多读三格(判词在 `DIAG` 上):计算后的 translate(粘性的偏移
+         * 也落在这里,内联那一格看不见)、活消息行在**内容坐标**里的位置
+         * (它一变就说明**列上方**的东西变高变矮了 —— 候选 ① 的判据)、
+         * 以及两只计数器的当前值。
+         */
+        let trComputed = null
+        let liveTopContent = null
+        /**
+         * **谁在动** —— `document.getAnimations()` 把 CSS 过渡也算进去,所以这一句
+         * 直接点名「此刻正在跑的那条高度过渡长在哪个元素上」。斜坡那十几帧里它答什么,
+         * 就是产地。只在诊断档开:它遍历整篇文档的动画表,不是每帧该干的活。
+         */
+        let anims = null
+        if (withDiag) {
+          anims = []
+          for (const a of document.getAnimations()) {
+            if (a.playState !== 'running') continue
+            const el = a.effect && a.effect.target
+            if (!el) continue
+            const prop = (a.transitionProperty || (a.effect.getKeyframes?.()[0]
+              ? Object.keys(a.effect.getKeyframes()[0]).filter((k) => k !== 'offset' && k !== 'computedOffset' && k !== 'easing').join('+')
+              : '?'))
+            anims.push(`${el.tagName.toLowerCase()}.${(el.className || '').toString().slice(0, 28)}[${prop}]`)
+          }
+          anims = anims.slice(0, 4)
+        }
+        if (withDiag && slot) {
+          trComputed = getComputedStyle(slot).translate || ''
+          const kids = column.children
+          for (let i = kids.length - 1; i >= 0 && i >= kids.length - 7; i -= 1) {
+            const el = kids[i]
+            if (!el.hasAttribute('data-message-id')) continue
+            if (el.getAttribute('data-role') === 'user') break
+            liveTopContent = el.getBoundingClientRect().top
+              - scroll.getBoundingClientRect().top + scroll.scrollTop
+            break
+          }
+        }
         /* 人正在读的那一块正文(开录之后第一帧钉下来,之后逐帧跟) */
         const anchor = window.__jAnchor && window.__jAnchor.isConnected
           ? window.__jAnchor.getBoundingClientRect()
@@ -351,12 +479,17 @@ async function startSampler(page) {
           anchorTop: anchor ? anchor.top : null,
           rows: column.children.length,
           running: slot ? slot.getAttribute('data-face') === 'run' : false,
+          trComputed,
+          liveTopContent,
+          anims,
+          writes: window.__jWrites ?? null,
+          ro: window.__jRo ?? null,
         })
       }
       requestAnimationFrame(tick)
     }
     requestAnimationFrame(tick)
-  })
+  }, diag)
 }
 
 async function stopSampler(page) {
@@ -502,9 +635,52 @@ function analyze(frames, devicePx) {
   }
   const mismatched = anchorSteps.filter((s) => Math.abs(s.up - s.grew) > devicePx)
 
+  /*
+   * ── 斜坡:**连着往同一个方向走、每帧都不到一个设备像素、总共走过 ≥1 个设备像素**
+   *    的那一段(P1d 任务 2 要查的就是它)。找最长的那一条,把它逐帧摊开。
+   */
+  let ramp = null
+  {
+    const rows = pinned.filter((f) => f.slotTop !== null)
+    let i = 1
+    while (i < rows.length) {
+      let j = i
+      const dir = Math.sign(rows[i].slotTop - rows[i - 1].slotTop)
+      if (dir === 0) { i += 1; continue }
+      while (j + 1 < rows.length) {
+        const d = rows[j + 1].slotTop - rows[j].slotTop
+        if (Math.sign(d) !== dir || Math.abs(d) < 1e-6 || Math.abs(d) >= devicePx) break
+        j += 1
+      }
+      const span = Math.abs(rows[j].slotTop - rows[i - 1].slotTop)
+      if (j > i && span >= devicePx && (!ramp || span > ramp.spanPx)) {
+        ramp = {
+          spanPx: r3(span),
+          spanDevicePx: r3(span / devicePx),
+          frames: j - i + 2,
+          atMs: Math.round(rows[i - 1].t - t0),
+          rows: rows.slice(i - 1, j + 2).map((f) => ({
+            ms: Math.round(f.t - t0),
+            top: r3(f.slotTop),
+            st: r3(f.st),
+            sh: f.sh,
+            colH: r3(f.colH),
+            liveTop: f.liveTopContent === null ? null : r3(f.liveTopContent),
+            tr: f.trComputed ?? f.tr,
+            w: f.writes,
+            ro: f.ro,
+            anims: f.anims ?? null,
+          })),
+        }
+      }
+      i = j + 1
+    }
+  }
+
   return {
     frames: frames.length,
     spanMs: Math.round(frames[frames.length - 1].t - t0),
+    ramp,
     fps: Math.round((frames.length / Math.max(1, frames[frames.length - 1].t - t0)) * 1000),
     pinnedFrames: pinned.length,
     pinnedMs: pinned.length > 1 ? Math.round(pinned[pinned.length - 1].t - pinned[0].t) : 0,
@@ -623,6 +799,32 @@ function report(name, m) {
     ? `:${m.lagged.first.map((l) => `${l.ms}ms/${l.gap}px`).join('  ')}` : ''))
   console.log(`\n  ── translate(产品每改一次一条,共 ${m.translateChanges} 次)──`)
   for (const row of m.translateSeq) console.log(`    ${row.ms}ms  ${row.tr}${row.running ? '' : '(未在跑)'}`)
+  if (m.paint) {
+    console.log(`\n  ── 画出来的那一份(RO 尾注册,排在产品 stick() 之后)──────────`)
+    console.log(`  ${m.paint.samples} 次取样:峰峰 ${m.paint.peakPx}px = ${m.paint.peakDevicePx} 设备像素`
+      + ` · 反转 ${m.paint.flips} · 挪过整个设备像素的次数 ${m.paint.bigSteps}`)
+    console.log(`  取值 ${m.paint.values.distinct} 个:`
+      + m.paint.values.top.map(([v, n]) => `${v}×${n}`).join('  '))
+  }
+  if (m.paintAnchor) {
+    console.log(`  正文那一块(同一份取样)${m.paintAnchor.samples} 次:落在设备像素格上的`
+      + `**相位** ${m.paintAnchor.phases.distinct} 种:`
+      + m.paintAnchor.phases.top.map(([v, n]) => `${v}×${n}`).join('  '))
+  }
+  if (m.ramp) {
+    console.log(`\n  ── 斜坡(最长的一条:${m.ramp.spanPx}px = ${m.ramp.spanDevicePx} 设备像素 /`
+      + ` ${m.ramp.frames} 帧 @${m.ramp.atMs}ms)──────────`)
+    console.log('    ms      slotTop    scrollTop  scrollHeight  列分数高   活行内容坐标  translate            写  RO')
+    for (const r of m.ramp.rows) {
+      console.log(`    ${String(r.ms).padStart(6)}  ${String(r.top).padStart(9)}`
+        + `  ${String(r.st).padStart(9)}  ${String(r.sh).padStart(12)}`
+        + `  ${String(r.colH).padStart(9)}  ${String(r.liveTop ?? '—').padStart(12)}`
+        + `  ${String(r.tr ?? '—').padEnd(20)} ${String(r.w ?? '—').padStart(4)} ${String(r.ro ?? '—').padStart(4)}`
+        + `  ${(r.anims && r.anims.length ? r.anims.join(' , ') : '(无动画)')}`)
+    }
+  } else {
+    console.log('\n  ── 斜坡:这一趟没找到(连着同向、每帧亚像素、总计 ≥1 设备像素 的一段)')
+  }
   console.log(`\n  ── 上面的正文(用户第二问)───────────────────────────────`)
   console.log(`  锚点 ${m.anchor.frames} 帧 / ${m.anchor.steps} 次移动`
     + ` · **往回走** ${m.anchor.wentBack} 次 · 步长与内容增量对不上 ${m.anchor.mismatched} 次`)
@@ -717,6 +919,7 @@ async function main() {
     await cdp.send('Emulation.setDeviceMetricsOverride', {
       width: VIEWPORT.width, height: VIEWPORT.height, deviceScaleFactor: DPR, mobile: false,
     })
+    if (DIAG) { await page.addInitScript(DIAG_PROBE); await page.evaluate(DIAG_PROBE) }
     await page.addInitScript(LEAF_PROBE)
     await page.evaluate(LEAF_PROBE)
     await waitFor('渲染层完成一次 RPC 往返', async () => {
@@ -780,7 +983,8 @@ async function main() {
         if (scroll) scroll.scrollTop = scroll.scrollHeight
       })
       await delay(400)
-      await startSampler(page)
+      await startSampler(page, DIAG)
+      if (DIAG) await startPaintSampler(page)
       await sendViaComposer(page, `抖动探针 ${MARK_OF[id]}`)
       await waitFor('开张', () => stopShown(page), OPEN_TIMEOUT_MS)
       /* 等这一轮真的长出正文,再钉一块当锚(用户第二问要它) */
@@ -800,7 +1004,32 @@ async function main() {
       await waitFor('收场', async () => !(await stopShown(page)), 300_000)
       await delay(600)
       const frames = await stopSampler(page)
+      const paint = DIAG ? await stopPaintSampler(page) : []
       const m = analyze(frames, devicePx)
+      if (DIAG && paint.length > 5) {
+        /* 只看贴底跟随那一段:头尾各去掉一成,避开落位与收场。 */
+        const cut = Math.floor(paint.length * 0.1)
+        const seg = paint.slice(cut, paint.length - cut)
+        m.paint = {
+          samples: seg.length,
+          ...jitterOf(seg.map((r) => r.top), seg.map((r) => r.t), devicePx),
+          values: valueHistogram(seg.map((r) => r.top), 8),
+        }
+        /*
+         * 正文那一块的**画出来的**位置。它与尾槽不一样:尾槽有 `tail-snap`(以及
+         * P1c 的 sticky)把它钉在设备像素格上,正文没有 —— 滚动位只落得到格子上,
+         * 而列的分数高每长一截换一个余数,于是正文每一次都落在一个**不同的亚像素
+         * 相位**上,文字跟着重新栅格化。这一格量的就是那件事。
+         */
+        const anchors = seg.map((r) => r.anchor).filter((v) => v !== null)
+        if (anchors.length > 5) {
+          const phase = anchors.map((v) => v - Math.floor(v / devicePx) * devicePx)
+          m.paintAnchor = {
+            samples: anchors.length,
+            phases: valueHistogram(phase, 8),
+          }
+        }
+      }
       readings[id] = m
       report(id, m)
     }
