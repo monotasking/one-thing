@@ -416,6 +416,34 @@ run('gate:send-flow(prod)', 'npm', ['run', '--silent', 'gate:send-flow', '--', '
 run('gate:stream-geometry(dev)', 'npm', ['run', '--silent', 'gate:stream-geometry'])
 run('gate:stream-geometry(prod)', 'npm', ['run', '--silent', 'gate:stream-geometry', '--', '--prod'])
 /*
+ * ── 「正在生成」那一格不许抖(G 线 P1e,2026-09-21)────────────────────────
+ * 正本同上,§10.2。它与上面那道门量的是同一件东西的**同一句话**,但**取样口不同**,
+ * 所以是两道门不是一道:`gate:stream-geometry` 整只读 `requestAnimationFrame`,而
+ * rAF 跑在「动画推进之后、布局与 ResizeObserver 之前」—— 产品的 `stick()` /
+ * `snapTail()` 都住在 RO 的回调里,所以 rAF 读到的是**这一帧的半成品**(P1d 证过:
+ * 据此读出的 2.5px「慢摆」从来没被画出去过)。这一道只认**画出来的那一份** ——
+ * `requestAnimationFrame` 里 `postMessage` 出去的宏任务,跑在这一帧绘制之后。
+ *
+ * **它凭什么进得来**:三格判据全是**像素位置**,零毫秒读数 ——
+ *  · ① 贴底跟随期间尾槽与停止钮画出来的 top 只占 **1 个设备像素行**(两把尺:
+ *    按格取整的行数 + 峰峰设备像素,理由写在门的 BUDGET 上);
+ *  · ③ 两处切换(座位期→跟随期、上翻再点丸回底)前后的位移 ≤ 1 设备像素;
+ *  · ②(`.rowLate` 那一段)今天**只报不判**,原因量在门里、写在判据旁。
+ * 反证真跑过:拆掉 `content/tail-snap.ts` 的 `snapTail`(备份文件法),同一档从
+ * 「1 个原始取值 / 0 设备像素」变成「19 个取值 / 0.484 设备像素」,停止钮翻成
+ * 2 个设备像素行 → 红。
+ *
+ * **两档 × 两种渲染层都跑**:短会话与 50.9MB / 400 条的真店夹具(P1c 的病史就是
+ * 「小会话上量不出来」),dev 与 prod(第 5 轴那句话:用户跑的是 `electron:dev`)。
+ * 场景是 `burst`(定种 LCG 的不规则节拍,20–250ms / 1–6 行 / 夹一段思考与一张工具卡
+ * / 8% 概率停 1 秒)—— 匀速假 provider 复现不了真 provider 的分片边界。
+ * 自己起窗、自己收尸(结尾 `ps` 自查),屏外档、不连 5175、不碰 `~/.onething`。
+ */
+run('gate:tail-jitter(dev)', 'npm', ['run', '--silent', 'gate:tail-jitter'])
+run('gate:tail-jitter(dev·short)', 'npm', ['run', '--silent', 'gate:tail-jitter', '--', '--short'])
+run('gate:tail-jitter(prod)', 'npm', ['run', '--silent', 'gate:tail-jitter', '--', '--prod'])
+run('gate:tail-jitter(prod·short)', 'npm', ['run', '--silent', 'gate:tail-jitter', '--', '--prod', '--short'])
+/*
  * gate:credentials 不在这里,理由与 gate:perf 不同:它**读的是这台机器上真实的
  * 生产 store**(要一份真的 safeStorage 密文才有得比),而 verify 必须在任何一台
  * checkout 上都能跑。它自己跑:`npm run gate:credentials`。
@@ -426,5 +454,5 @@ process.stdout.write(
     + ' / offline-fonts / buttonbase-css'
     + ' / 真机门(connect·data·theme·chat·files·search·monotone·squeeze·motion·a11y·focus·layout'
     + '·chat-follow·continuity·terminal[dev+prod]·browser[dev+prod]·chat-layout[dev+prod]'
-    + '·send-flow[dev+prod])全绿\n',
+    + '·send-flow[dev+prod]·stream-geometry[dev+prod]·tail-jitter[dev+prod × 短/真店])全绿\n',
 )

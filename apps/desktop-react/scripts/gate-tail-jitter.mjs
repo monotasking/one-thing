@@ -1,31 +1,65 @@
 #!/usr/bin/env node
 /**
- * **「正在生成」那一格在抖** —— 逐帧量法(G 线 P1c,2026-09-21)。
+ * **「正在生成」那一格不许抖** —— 真机门(G 线 P1e,2026-09-21;由 P1c 的探针原地升成)。
  *
- * 用户原话:「感觉 generating 在抖动,不知道是不是上面正在生成的内容也有抖动,因为他
- * 在滚动所以看不出来。另外就是这个滚动是上下滚动,幅度很小,鼠标放上去的时候能够看出来
- * 这个元素的位置确实有些变化」。
+ * 起因(P1c)是用户报的一句话:「感觉 generating 在抖动,不知道是不是上面正在生成的
+ * 内容也有抖动,因为他在滚动所以看不出来。另外就是这个滚动是上下滚动,幅度很小,
+ * 鼠标放上去的时候能够看出来这个元素的位置确实有些变化」。
  *
- * ── 这只探针只量,不判 ────────────────────────────────────────────────────
- * 它要回答四个问题,每个都得有数:
- *  ① **抖的是哪一种**:亚像素来回 / `tail-snap` 重认跳 1.5px / 一帧滞后整行回弹 /
- *     读数那 100ms 一跳带来的别的位移;
- *  ② **多大**:尾槽 `top` 的取值集合、帧间 Δ 直方图、峰峰值(px 与设备像素)、方向反转;
- *  ③ **多快**:每秒变几次;
- *  ④ **上面的正文抖不抖**:贴底跟随时正文每一帧上移的步长,与内容增量对不对得上,
- *     有没有「先多走再退回」的帧。
+ * ══ 取样口:**画出来的那一份**,不是 rAF ══════════════════════════════════
  *
- * ── 量法的三条纪律 ────────────────────────────────────────────────────────
- *  · **dpr 必须钉 2**(CDP `Emulation.setDeviceMetricsOverride`),否则量的是 dpr1 的
- *    机器,而 `tail-snap` 的整个判据按设备像素走 —— dpr 不对,结论就不对;
- *  · **每帧的活儿是 O(1),且一次 `getComputedStyle` 都不许有**(09-10「探针自伤」判例,
- *    P1b 又踩过一次):`translate` 读的是产品自己写的**内联**样式(`el.style.translate`),
- *    不是 computed;
- *  · 屏外档 `ONETHING_GATE_OFFSCREEN=1`(老那一档 headless 会把整扇窗节流到 1Hz,
- *    量的是节流器不是产品),临时 store + 临时 user-data-dir,**绝不连 `~/.onething`**,
- *    收尾逐个收尸并自查。
+ * 这道门存在的第一条理由就是取样口。P1c 用 `requestAnimationFrame` 量,量出尾槽有
+ * 一条 2.5px 的「慢摆」,据此加了一条 sticky;P1d 才发现**那是取样相位的假象**:
+ * rAF 跑在「动画推进之后、**布局与 ResizeObserver 之前**」,而产品把 `stick()`
+ * (`scrollTop = scrollHeight`)放在它自己那只 RO 的回调里 —— 于是 rAF 读到的永远是
+ * **这一帧的半成品**:过渡已经把列推高了,纠正滚动位的那一句还没跑。正本 §9.7。
  *
- * 跑法:`node scripts/probe-tail-jitter.mjs`(dev,默认)/ `... --prod`
+ * 所以这道门只认**一个**取样口:**在 `requestAnimationFrame` 里 `postMessage` 出去的
+ * 那个宏任务里读**。那个宏任务跑在这一帧的「更新渲染」(样式 → 布局 → 绘制 → 提交)
+ * 全部走完之后、下一帧的任何东西之前,所以它读到的矩形与 `scrollTop` 就是**刚画出去
+ * 的那一份**。判词与实现都在 `startPaintSampler` 上。
+ *
+ * **它每帧采一次,不挑帧** —— 这一条是 P1e 第一版(挂第二只 `ResizeObserver`)栽在
+ * 的地方:RO 只在**被观察的盒子的尺寸变了**时才响,真店档整轮 rAF 侧看得见 1262 帧,
+ * RO 侧只采到 45 次、贴底跟随那一段 0 次,于是判据永远卡在「采到 N 次 < 门槛」,门
+ * 一次都没绿过。病历与三条已排掉的假因留在正本 §10.2。
+ * 一个例外照旧单独量:**人自己滚动**那一下(上翻再点丸回底)两侧各现读一次(③)。
+ *
+ * ══ 判的那几格(`BUDGET`)════════════════════════════════════════════════
+ *  ① **贴底跟随**:尾槽画出来的 top 只占 **1 个设备像素行**(按设备像素取整后的取值
+ *     个数 = 1)。停止钮同判 —— 人 hover 的是它,命中框跳一格就是跳一格。
+ *  ② **上下文更新行(`.rowLate`)的高度过渡在跑的那十来帧** —— P1d 查出来的那条
+ *     斜坡的产地(§9.7 ①)。**今天只报不判**:实测那道折痕是跟着用户消息落账一起
+ *     挂上来的,座位还满着(短会话档 21 帧过渡,落在贴底跟随态的 0 帧),而落位期
+ *     尾槽本来就该动 —— 那一段的几何归 `gate:stream-geometry` 的 ①⑧。判词、两个
+ *     读数(`inPinned` / `seatAlive`)与「它什么时候会变成判据」全写在判据那一段旁。
+ *  ③ **两处切换各 ≤ 1 设备像素**:座位期 → 跟随期的交接、人上翻再点丸回底。
+ *  ④ 两档都跑:**短会话**与**真店夹具**(50.9MB / 400 条)。小会话上量不出来的东西
+ *     不等于用户那儿没有 —— P1c 整条病史就是这么来的。
+ *
+ * **sticky 那一支不立断言**:P1d 量过,把 `TailSlot.module.css` 那两行
+ * `position: sticky; bottom: 0` 拆掉,这道门的读数**一格不变**。它留在产品里是结构性
+ * 免疫(尾槽的位置不再取决于 `stick()` 有没有赢下这一帧的竞速),不是这道门的守卫
+ * 对象。**真正被守着的是 09-15 的 `content/tail-snap.ts`** —— 拆掉它,读数当场变成
+ * 几十个取值(反证在正本 §10.1)。
+ *
+ * ══ 为什么不并进 `gate-stream-geometry.mjs` ══════════════════════════════
+ * 那道门的 ② 量的是同一件东西,但它整只走 rAF 取样,而且 `long` 档跑得太短
+ * (26 段 / 3.6 秒)—— P1c 试过拉长到 96 段,main 上仍只读到 0.3px(正本 §9.4)。
+ * 两只门的取样口不一样,合并就是把这一条也拉回 rAF。
+ *
+ * ══ 纪律 ══════════════════════════════════════════════════════════════════
+ * **dpr 钉 2**(起来第一句就核对 `window.devicePixelRatio`);**每帧 O(1)、诊断之外
+ * 一次 `getComputedStyle` 都没有**(09-10「探针自伤」判例);屏外档
+ * `ONETHING_GATE_OFFSCREEN=1`;临时 store + 临时 user-data-dir,**绝不连 `~/.onething`**;
+ * 收尾逐个收尸并自查。
+ *
+ * ── `--diag`:P1d 留下的诊断档(不判,只摊开)──────────────────────────────
+ * `scrollTop` setter 与 `ResizeObserver` 各包一层计数并留栈、`document.getAnimations()`
+ * 点名此刻在跑的过渡、活消息行的内容坐标、rAF 那一份取样与斜坡自动查找 ——
+ * P1d 查产地用的家伙,留着给下一次「读数说不通」时用。
+ *
+ * 跑法:`npm run gate:tail-jitter` / `... -- --prod` / `... -- --diag`
  * (仓根先 `bun run server:build`;两档都要 `npm run electron:build`,`--prod` 再 `app:build`)
  */
 import { spawn, execFileSync } from 'node:child_process'
@@ -49,15 +83,70 @@ const mainEntry = path.join(appRoot, 'dist-electron/main.cjs')
 const PROD = process.argv.includes('--prod')
 const LANE = PROD ? 'prod' : 'dev'
 /** 端口另挑:5175 是用户自己的,5207/5217 是几何门的。 */
-const DEV_PORT = Number(process.env.ONETHING_PROBE_VITE_PORT ?? 5227)
+const DEV_PORT = Number(process.env.ONETHING_TAIL_VITE_PORT ?? 5237)
 const VIEWPORT = { width: 1280, height: 800 }
 /** **钉死 dpr**:`tail-snap` 的判据以设备像素计,dpr 不对整份读数不成立。 */
-const DPR = Number(process.env.ONETHING_PROBE_DPR ?? 2)
+const DPR = Number(process.env.ONETHING_TAIL_DPR ?? 2)
+
+/* ── 预算(判词在文件头)。它们是**上限**不是目标;抬 BUDGET 是改法。────────── */
+const BUDGET = {
+  /** ① / ② 画出来的 top 只许占几个设备像素行。 */
+  paintedRows: 1,
+  /** ③ 两处切换前后,画出来的 top 差几个设备像素。 */
+  switchDevicePx: 1,
+  /**
+   * ① 的**细尺**:同一段贴底跟随里,画出来的 top 峰峰值最多几个设备像素。
+   *
+   * 与 `paintedRows` 说的是同一句话(「它只占一行」),但 `paintedRows` 按格取整,
+   * 两个相差 0.9 个设备像素的读数可能落在同一格上。P1e 的反证第一趟就是这么险过的:
+   * 拆掉 `snapTail` 之后尾槽的 `rows` 仍然是 1、只有停止钮翻成 2 —— 一条只靠取整的
+   * 判据会把一次真的亚像素抖四舍五入掉。这一格补的就是那半句,**数还是 1**
+   * (一个设备像素),不是放水,是换一把量同一件事的尺。
+   */
+  pinnedPeakDevicePx: 1,
+  /**
+   * 贴底跟随那一段至少要采到这么多样,否则「与自己比恒为 0」是一句绿的谎话。
+   *
+   * **每帧一样**(见 `startPaintSampler`),屏外档实测 94–120fps,所以 200 样
+   * ≈ 1.7–2.1 秒的连续跟随 —— 正好盖得住 P1c 量到的那条「约两秒一个来回」的嫌疑。
+   * 第一版写的是 20(那时取样口是 RO,一秒只响几次),按帧算只有六分之一秒,
+   * 「恒为 0」那句话在那么短的窗口里是白送的。
+   */
+  minPinnedSamples: 200,
+  /** `.rowLate` 那一段至少要采到这么多帧,采不到就说采不到,不假装判过。 */
+  minRowLateSamples: 5,
+}
+
+/** ① 的窗口攒够这么多贴底样本就收(每帧一样,所以这是一个数得出来的量)。 */
+const PINNED_WINDOW_SAMPLES = 400
+/** 攒不够也不能无限等 —— 流总会收场,收场就按收场算(判据照旧会红)。 */
+const PINNED_WINDOW_CAP_MS = 12_000
+
+const failures = []
+function assert(condition, message) {
+  if (condition) console.log(`  ✓ ${message}`)
+  else { console.log(`  ✗ ${message}`); failures.push(message) }
+}
+
+/** 按设备像素取整之后有几个不同的值 —— 「它占了几行」。 */
+function deviceRows(values, devicePx) {
+  const set = new Set(values.map((v) => Math.round(v / devicePx)))
+  return set.size
+}
 
 /** 第一个字之前静默多久(ms)—— 等待那一段要活得比观察它的节拍长。 */
 const FIRST_BYTE_DELAY_MS = 900
-/** 长正文:每行都长,行高 22.4px(`--pr-fs` 14 × `--pr-lh` 1.6,分数)。 */
-const REPLY_LINES = 96
+/**
+ * 长正文:每行都长,行高 22.4px(`--pr-fs` 14 × `--pr-lh` 1.6,分数)。
+ *
+ * **260 行不是随手写的**(P1e 真店档逼出来的):这一轮要够长,长到「座位吃光 →
+ * ③ 上翻 / 点丸回底 → ① 的跟随窗攒够几百样」三段**都还在流里**。96 行那一版在
+ * 真店档上整轮只活 8–10 秒,而那一档光是回合开张就吃掉三四秒(折痕挂上来那前后
+ * 的帧距实测 700–1100ms),轮到上翻时流已经收场 —— 没有 delta 就没有未读,
+ * 「回到最新」那颗丸压根不亮,③ 报「丸没亮」、① 一个贴底样都采不到。
+ * 两个读数都不是产品的错,是这道门给自己留的跑道太短。
+ */
+const REPLY_LINES = 260
 const REPLY_CHUNKS = 64
 const REPLY_GAP_MS = 110
 /*
@@ -73,8 +162,24 @@ const MARK_WARM = '@@tail-warm@@'
  *  · `think`  —— 先一段长思考(收起态那一行每帧换字、带扫光),再正文;
  *  · `tools`  —— 思考 → 工具卡 → 思考 → 正文,与用户真会话同形。
  */
-const SCENARIOS = ['text', 'think', 'tools']
-const MARK_OF = { text: '@@tail-text@@', think: '@@tail-think@@', tools: '@@tail-tools@@' }
+const SCENARIOS = ['text', 'think', 'tools', 'burst']
+const MARK_OF = {
+  text: '@@tail-text@@',
+  think: '@@tail-think@@',
+  tools: '@@tail-tools@@',
+  burst: '@@tail-burst@@',
+}
+/**
+ * 门跑哪几个场景:`burst` 一个。
+ *
+ * `burst` 是**保真度**那一档(P1e):真 provider 不是每 110ms 吐一块整整齐齐的字,
+ * 它是**不规则突发** —— 所以这一档按 20–250ms 的随机间隔、每次 1–6 行、中间夹一段
+ * 思考与一张工具卡、偶尔停 1 秒。用户跑的是 dev + 真 provider,而 P1c/P1d 那三个
+ * 匀速场景一次都没复现出他说的抖;要么这一档复现,要么就如实说「未复现」并把
+ * harness 与他机器之间还剩的差别列出来(正本 §10.2)。
+ * 其余三个匀速场景留给 `--diag`(诊断时对照用),门不跑。
+ */
+const GATE_SCENARIOS = ['burst']
 const ONLY = (() => {
   const at = process.argv.indexOf('--scenario')
   const v = at >= 0 ? process.argv[at + 1] : undefined
@@ -86,7 +191,20 @@ const ONLY = (() => {
  * 跳渲的行(`content-visibility: auto`,估高 240px)第一次渲出真高时列会矮一截,
  * 那是**只有在几百行的账本上才发生**的事。
  */
-const BIG = process.argv.includes('--big')
+/**
+ * **缺省跑真店夹具**(50.9MB / 400 条),`--short` 换成空会话。
+ *
+ * 两档判的**不是同一批格子**,理由是几何本身:
+ *  · **真店档判 ①②③ 全部** —— 它同时满足两个互相打架的前提:②(`.rowLate` 的高度
+ *    过渡)只在**一条会话的第一轮**出现(`TurnContextLedger` 按块去重,第二轮起那一行
+ *    根本不画),而 ③(座位期 → 跟随期的交接)要求**开量时列就已经填满视口**,
+ *    否则量到的是「列长到填满视口」这件合法的事(空会话上第一趟真机量到 554 设备
+ *    像素,就是它)。seeded 的 400 条 + 这条会话的第一轮用户消息,两个前提同时成立。
+ *  · **短会话档只判 ①** —— 它得先在**同一条会话**里热身一轮才填得满视口,而那一轮
+ *    正好把 turn context 那一块吃掉。所以它换来的是「小会话上也不许抖」这一条,
+ *    ②③ 由真店档负责。
+ */
+const BIG = !process.argv.includes('--short')
 /**
  * **`--diag`:查斜坡产地那一档**(P1d 任务 2)。
  *
@@ -186,8 +304,8 @@ function startProvider(state) {
       let mark = lastUser.includes(MARK_WARM) ? 'warm' : null
       for (const id of SCENARIOS) if (lastUser.includes(MARK_OF[id])) mark = id
       if (!mark) { bye(); return }
-      /* `tools` 一轮要跑三发 HTTP,按 `toolTurns` 分轮,不计配额。 */
-      if (mark !== 'tools') {
+      /* `tools` / `burst` 一轮要跑不止一发 HTTP,按 `toolTurns` 分轮,不计配额。 */
+      if (mark !== 'tools' && mark !== 'burst') {
         state[mark] = (state[mark] ?? 0) + 1
         if (state[mark] > 2) { bye(); return }
       }
@@ -235,6 +353,37 @@ function startProvider(state) {
         await streamThought(THOUGHT.slice(0, 4_000), 70, 16)
         await delay(80)
         await streamText(REPLY, REPLY_CHUNKS, REPLY_GAP_MS)
+        bye()
+        return
+      }
+      if (mark === 'burst') {
+        /*
+         * **不规则突发**(P1e 保真度档):定种 LCG,所以每趟逐字相同、读数可比。
+         * 20–250ms 的间隔、每次 1–6 行、开头一段思考、中间一张工具卡、偶发 1s 停顿。
+         */
+        let x = 20260921 >>> 0
+        const rnd = () => { x = (x * 1664525 + 1013904223) >>> 0; return x / 4294967296 }
+        /* 第一发:思考 + 前面那一截 + 一张工具卡;第二发:接着把剩下的吐完。 */
+        if (toolTurns === 0) {
+          await streamThought(THOUGHT.slice(0, 2_600), 70, 24)
+          await delay(120)
+        }
+        const lines = REPLY.split('\n\n')
+        let at = toolTurns === 0 ? 0 : 30
+        let sinceTool = 0
+        while (at < lines.length) {
+          if (res.destroyed) return
+          const take = 1 + Math.floor(rnd() * 6)
+          send(frame({ content: `${lines.slice(at, at + take).join('\n\n')}\n\n` }))
+          at += take
+          sinceTool += take
+          /* 偶发的长停顿:真 provider 在工具往返 / 服务端排队时就是这样。 */
+          await delay(rnd() < 0.08 ? 1000 : 20 + Math.floor(rnd() * 230))
+          if (sinceTool > 28 && toolTurns === 0) {
+            await toolCall('call_burst', 'echo burst')
+            return
+          }
+        }
         bye()
         return
       }
@@ -337,38 +486,122 @@ window.__jLeaf = function () {
 /* ══ 逐帧采样 ═════════════════════════════════════════════════════════════ */
 
 /**
- * **同一帧的第二次取样:排在产品那只 ResizeObserver **之后**(P1d)。
+ * **取样口:「这一帧画出去的那一份」= rAF 里排一个宏任务,在那个宏任务里读。**
  *
- * rAF 跑在「动画推进之后、布局与 RO 之前」,所以它读到的是**这一帧还没被
- * `stick()` 纠正**的中间态 —— 拿它当「屏幕上是什么样」会把一次纯粹的取样相位
- * 读成一次真的抖。RO 回调按注册顺序跑,这只是在产品那只之后注册的,于是它读到的
- * 就是**这一帧最后会被画出来的那个** `scrollTop` 与矩形。
+ * 为什么不能读 rAF 本身(P1d,正本 §9.7 ②):rAF 跑在「动画推进之后、**布局与
+ * ResizeObserver 之前**」,而产品把 `stick()`(`scrollTop = scrollHeight`)与
+ * `snapTail()`(那一格 `translate`)放在它自己那只 RO 的回调里 —— 于是 rAF 读到的
+ * 永远是**这一帧的半成品**:过渡已经把列推高了,纠正的那两句还没跑。
  *
- * 两份读数并排,才说得出「那条斜坡是画出来的,还是只是量到的」。
+ * **这一版为什么不是「再挂一只 RO」**(P1e 第一版那条路,已弃;它的病历留在
+ * 正本 §10.2):RO 只在**被观察的那个盒子的尺寸变了**的时候响,于是
+ *  · 它一帧也不多、一帧也不少地跟着「列长高了」走,而**位置**还会被别的事改变;
+ *  · 观察的是**节点**,React 一换列就哑;
+ *  · 真店档实测:整轮 rAF 侧看得见 1262 帧,RO 侧只采到 **45 次**,贴底跟随那一段
+ *    **0 次** —— 判据于是永远卡在「采到 N 次 < 门槛」,门一次都没绿过。
+ *
+ * 今天这一只的判词只有一句:**`requestAnimationFrame` 里 `postMessage` 出去的那个
+ * 宏任务,跑在这一帧的「更新渲染」步骤(样式 → 布局 → 绘制 → 提交)全部走完之后、
+ * 下一帧的任何东西之前**。所以在那个宏任务里读 `getBoundingClientRect()` /
+ * `scrollTop`,读到的就是**刚画出去的那一份**。它每帧采一次,不挑帧,也不认节点
+ * (缓存的那几格一脱离文档就现找),两个病一起没了。
+ *
+ * 逼排版吗?逼,但**此刻布局是干净的** —— 「更新渲染」刚走完,自那之后没有任何
+ * JS 动过 DOM,所以这一次 `getBoundingClientRect()` 命中的是缓存,不触发重排
+ * (09-10「探针自伤」判例要防的是**在热路径上逼重算**,不是禁止读矩形)。
+ * 同一条理由:这里一次 `getComputedStyle` 都没有。
+ *
+ * 校准(这只口凭什么算立住了,三条都在正本 §10.2 有读数):
+ *  ① 拆掉 `content/tail-snap.ts` 的 `snapTail`(备份文件法),它必须读得出亚像素抖;
+ *  ② 装回去,它必须读回一个取值;
+ *  ③ `.rowLate` 过渡那十几帧,rAF 口读得出斜坡而这只口读不出。
  */
 async function startPaintSampler(page) {
   await page.evaluate(() => {
     window.__jPaint = []
-    const pane = window.__jLeaf()
-    const scroll = pane.querySelector('[data-testid="chat-stream"]')
-    const column = scroll?.firstElementChild
-    if (!scroll || !column) return
-    const ro = new ResizeObserver(() => {
-      const slot = column.querySelector(':scope > [data-tail-slot]')
-      if (!slot) return
-      const anchor = window.__jAnchor && window.__jAnchor.isConnected
-        ? window.__jAnchor.getBoundingClientRect().top : null
-      window.__jPaint.push({
-        t: performance.now(),
-        top: slot.getBoundingClientRect().top,
-        /* 正文那一块也取一份:用户第二问「上面正在生成的内容也有抖动吗」要的是它。 */
-        anchor,
-        st: scroll.scrollTop,
-        sh: scroll.scrollHeight,
-      })
-    })
-    ro.observe(column)
-    window.__jPaintStop = () => ro.disconnect()
+    let stopped = false
+    /*
+     * 缓存那几格,每帧只在「它掉了」的时候现找一次 —— 400 行的列上每帧三次
+     * `querySelector(':scope > …)` 是白扫 1200 个孩子,而这只回调是每帧都跑的。
+     */
+    let scroll = null
+    let column = null
+    let slot = null
+    let seat = null
+    let ctx = null
+    let stop = null
+    const alive = (el) => el && el.isConnected
+    const resolve = () => {
+      if (!alive(scroll)) scroll = window.__jLeaf().querySelector('[data-testid="chat-stream"]')
+      if (!scroll) return false
+      const nextColumn = scroll.firstElementChild
+      if (nextColumn !== column) { column = nextColumn; slot = null; seat = null; ctx = null }
+      if (!column) return false
+      if (!alive(slot) || slot.parentElement !== column) {
+        slot = column.querySelector(':scope > [data-tail-slot]')
+      }
+      if (!alive(seat) || seat.parentElement !== column) {
+        seat = column.querySelector(':scope > [data-seat]')
+      }
+      /*
+       * **上下文更新折痕要取「最后那一道」,不是第一道**(P1e 真店档实测:②
+       * 整轮采到 0 次)。`querySelector(':scope > [data-context-of]')` 给的是
+       * **第一道** —— 真店夹具里那是几百条历史里某一轮的折痕,早就静止了,于是
+       * 「它在变的那几帧」永远是空集,而短会话档因为只有一轮恰好蒙对。
+       * 所以每帧往回扫最后十二格取最后一道(折痕永远紧挨着它说的那条消息,
+       * 而这一轮的消息就在列尾);十二次 `hasAttribute` 是 O(1) 量级,不是热路径。
+       */
+      ctx = null
+      for (let i = column.children.length - 1, n = 0; i >= 0 && n < 12; i -= 1, n += 1) {
+        if (column.children[i].hasAttribute('data-context-of')) { ctx = column.children[i]; break }
+      }
+      if (!alive(stop) || !slot || !slot.contains(stop)) {
+        stop = slot ? slot.querySelector('[data-testid="chat-stop"]') : null
+      }
+      return Boolean(slot)
+    }
+    /** 这一帧画完之后跑的那一句 —— 取样就在这儿,不在 rAF 里。 */
+    const sampleAfterPaint = () => {
+      if (stopped) return
+      if (resolve()) {
+        const anchor = window.__jAnchor && window.__jAnchor.isConnected
+          ? window.__jAnchor.getBoundingClientRect().top : null
+        window.__jPaint.push({
+          t: performance.now(),
+          top: slot.getBoundingClientRect().top,
+          stopTop: stop && stop.isConnected ? stop.getBoundingClientRect().top : null,
+          /* 正文那一块也取一份:用户第二问「上面正在生成的内容也有抖动吗」要的是它。 */
+          anchor,
+          st: scroll.scrollTop,
+          sh: scroll.scrollHeight,
+          seatH: seat && seat.isConnected ? seat.getBoundingClientRect().height : null,
+          /*
+           * 上下文更新那一行(`.rowLate`)此刻多高 —— 它**在变**的那几帧就是
+           * 「回合开张那一段」(② 单独判的那一格)。用高度变没变来认,不用
+           * `getAnimations()`:后者要遍历整篇文档的动画表,在每帧的路上太贵。
+           */
+          ctxH: ctx && ctx.isConnected ? ctx.getBoundingClientRect().height : null,
+          /** 那道折痕说的是哪条消息 —— 换了一道就不是同一条曲线,别拿两道去做差。 */
+          ctxOf: ctx ? ctx.getAttribute('data-context-of') : null,
+          /*
+           * **那三条过渡此刻在不在跑** —— ② 的窗口由它划,不由「高度差」划。
+           * 高度差要两帧才说得出一句话,而这一段一共才十来帧、在真店档上还可能整段
+           * 落进一个长帧里;`Element.getAnimations()` 只问这一个元素(不是
+           * `document.getAnimations()` 那一趟全文档遍历),一帧一次是 O(1) 量级。
+           */
+          ctxAnim: ctx && ctx.isConnected ? ctx.getAnimations().length : 0,
+          running: slot.getAttribute('data-face') === 'run',
+          /** 驱动那一侧在切换前后打的记号(③ 靠它切窗口)。 */
+          phase: window.__jPhase ?? '',
+        })
+      }
+      requestAnimationFrame(tick)
+    }
+    const channel = new MessageChannel()
+    channel.port1.onmessage = sampleAfterPaint
+    const tick = () => { if (!stopped) channel.port2.postMessage(0) }
+    requestAnimationFrame(tick)
+    window.__jPaintStop = () => { stopped = true; channel.port1.onmessage = null }
   })
 }
 
@@ -731,6 +964,101 @@ function analyze(frames, devicePx) {
   }
 }
 
+/* ══ 门的那一遍算:全部基于「画出来的那一份」 ═══════════════════════════════ */
+
+/**
+ * 把一串画出来的取样折成门要的那几格读数。
+ *
+ * 三段各自成格,判词在文件头:
+ *  · `pinned` —— 这一轮在跑、座位已经吃光、而且真的贴着底;
+ *  · `rowLate` —— 上下文更新那一行的高度**在变**的那几次(回合开张那一段);
+ *  · `switches` —— 驱动打了记号的那两处切换,取记号前后各自**稳定下来**的值相减。
+ */
+function judge(paint, devicePx, jumpRead) {
+  const bottom = (r) => r.st + 2 >= r.sh - 700 // 粗筛:贴底(容器高 670 上下)
+  const isPinned = (r) => r.running && (r.seatH === null || r.seatH <= 0.5)
+    && r.phase === '' && bottom(r)
+  const pinned = paint.filter(isPinned)
+  const rowLate = []
+  /* 采不到时要说得出「是没有那道折痕,还是有而没在变」—— 两种病治法完全不同。 */
+  const ctxSeen = paint.filter((r) => r.ctxH !== null).length
+  const ctxIds = new Set(paint.map((r) => r.ctxOf).filter(Boolean))
+  const ctxFirst = paint.findIndex((r) => r.ctxH !== null)
+  /** 折痕**刚挂上来**那前后各十几帧的帧距(ms)—— ② 采不到时要看的就是它。 */
+  const ctxGaps = ctxFirst <= 0 ? [] : paint.slice(ctxFirst - 1, ctxFirst + 16)
+    .map((r, i, all) => (i === 0 ? 0 : Math.round(r.t - all[i - 1].t)))
+  for (let i = 0; i < paint.length; i += 1) {
+    /* ② 的窗口 = 那三条过渡在跑的帧(判词写在取样那一头的 `ctxAnim` 上)。 */
+    if (paint[i].ctxAnim > 0) rowLate.push(paint[i])
+  }
+  /*
+   * `rows`(按设备像素格取整后有几个值)是**粗尺**:两个相差 0.9 个设备像素的读数
+   * 可能落在同一格上,于是一次真的亚像素抖会被它四舍五入掉 —— P1e 的反证第一趟
+   * 就撞上了(拆掉 `snapTail`,尾槽 `rows` 仍然是 1,只有停止钮翻成 2)。
+   * 所以同一段再出一把**细尺**:峰峰值(px 与设备像素)与**原始取值个数**。
+   * 判据两把一起用,理由写在 BUDGET 的 `pinnedPeakDevicePx` 上。
+   */
+  const rowsOf = (list, pick) => {
+    const vals = list.map(pick).filter((v) => v !== null && v !== undefined)
+    if (!vals.length) return { samples: 0, rows: 0, peakDevicePx: 0, distinct: 0 }
+    const min = Math.min(...vals)
+    const max = Math.max(...vals)
+    return {
+      samples: vals.length,
+      rows: deviceRows(vals, devicePx),
+      peakDevicePx: r3((max - min) / devicePx),
+      distinct: new Set(vals).size,
+    }
+  }
+  /** 一段取样里最后那几次的中位数 —— 「稳定下来之后它在哪」。 */
+  const settled = (list) => {
+    const vals = list.map((r) => r.top).filter((v) => v !== null)
+    if (!vals.length) return null
+    const tail = vals.slice(-5).sort((a, b) => a - b)
+    return tail[Math.floor(tail.length / 2)]
+  }
+  const switches = {}
+  {
+    /* 座位期 → 跟随期:两段取样各取「稳定下来之后在哪」。 */
+    const a = settled(paint.filter((r) => r.phase === 'seat'))
+    const b = settled(paint.filter((r) => r.phase === 'follow'))
+    switches.seatHandoff = a === null || b === null
+      ? { ok: false, reason: '没采到', a, b }
+      : { ok: true, a: r3(a), b: r3(b), devicePx: r3(Math.abs(b - a) / devicePx) }
+    /* 上翻再点丸回底:驱动那一侧现读的两个数(判词在驱动那一段)。 */
+    const { before, after, why } = jumpRead ?? {}
+    switches.jumpBack = before === null || before === undefined
+      || after === null || after === undefined
+      ? { ok: false, reason: why ?? '没读到', a: before ?? null, b: after ?? null }
+      : { ok: true, a: r3(before), b: r3(after), devicePx: r3(Math.abs(after - before) / devicePx) }
+  }
+  return {
+    samples: paint.length,
+    pinned: (() => {
+      const slot = rowsOf(pinned, (r) => r.top)
+      const stop = rowsOf(pinned, (r) => r.stopTop)
+      return {
+        ...slot,
+        stop: stop.rows,
+        stopPeakDevicePx: stop.peakDevicePx,
+        stopDistinct: stop.distinct,
+      }
+    })(),
+    rowLate: {
+      ...rowsOf(rowLate, (r) => r.top),
+      stop: rowsOf(rowLate, (r) => r.stopTop).rows,
+      ctxSeen,
+      ctxIds: ctxIds.size,
+      ctxGaps,
+      /* 这一段里有几帧同时也在「贴底跟随」态 —— P1d 那条斜坡问的正是这个交集。 */
+      inPinned: rowLate.filter(isPinned).length,
+      /* 还有几帧座位还在(= 这一段其实落在**落位期**,尾槽本来就该动)。 */
+      seatAlive: rowLate.filter((r) => r.seatH !== null && r.seatH > 0.5).length,
+    },
+    switches,
+  }
+}
+
 /* ══ 驱动 ═════════════════════════════════════════════════════════════════ */
 
 async function clickTestId(page, id) {
@@ -800,7 +1128,7 @@ function report(name, m) {
   console.log(`\n  ── translate(产品每改一次一条,共 ${m.translateChanges} 次)──`)
   for (const row of m.translateSeq) console.log(`    ${row.ms}ms  ${row.tr}${row.running ? '' : '(未在跑)'}`)
   if (m.paint) {
-    console.log(`\n  ── 画出来的那一份(RO 尾注册,排在产品 stick() 之后)──────────`)
+    console.log(`\n  ── 画出来的那一份(rAF 里排的宏任务,跑在这一帧绘制之后)· 同一段贴底跟随 ──`)
     console.log(`  ${m.paint.samples} 次取样:峰峰 ${m.paint.peakPx}px = ${m.paint.peakDevicePx} 设备像素`
       + ` · 反转 ${m.paint.flips} · 挪过整个设备像素的次数 ${m.paint.bigSteps}`)
     console.log(`  取值 ${m.paint.values.distinct} 个:`
@@ -810,6 +1138,16 @@ function report(name, m) {
     console.log(`  正文那一块(同一份取样)${m.paintAnchor.samples} 次:落在设备像素格上的`
       + `**相位** ${m.paintAnchor.phases.distinct} 种:`
       + m.paintAnchor.phases.top.map(([v, n]) => `${v}×${n}`).join('  '))
+  }
+  if (m.lateCompare) {
+    const c = m.lateCompare
+    console.log(`\n  ── 两口并排:\`.rowLate\` 过渡那一段(${c.ms}ms)──────────────`)
+    console.log(`  画出来的 ${c.painted.n} 帧:峰峰 ${c.painted.peakPx}px`
+      + ` = ${c.painted.peakDevicePx} 设备像素 · 取值 ${c.painted.values.distinct} 个`)
+    console.log(`  rAF     ${c.raf.n} 帧:`
+      + (c.raf.peakPx === undefined ? '不够两帧,比不了'
+        : `峰峰 ${c.raf.peakPx}px = ${c.raf.peakDevicePx} 设备像素`
+          + ` · 取值 ${c.raf.values.distinct} 个`))
   }
   if (m.ramp) {
     console.log(`\n  ── 斜坡(最长的一条:${m.ramp.spanPx}px = ${m.ramp.spanDevicePx} 设备像素 /`
@@ -851,8 +1189,23 @@ async function main() {
     console.log(`\n[tail-jitter] 档位:${LANE} · dpr 钉 ${DPR}`)
     provider = await startProvider(providerState)
     writeFileSync(path.join(store, 'settings.json'), JSON.stringify({
-      ai: fakeProviderAiSettings(provider.address().port),
-      tools: { enableToolCalls: false },
+      ai: (() => {
+        const ai = fakeProviderAiSettings(provider.address().port)
+        const caps = ai.providers.deepseek.modelCapabilitiesByModel['deepseek-chat']
+        caps.reasoning = true
+        caps.tools = true
+        return ai
+      })(),
+      /*
+       * **工具要真的能跑**(P1e 第四趟真机):`burst` 那一档夹着一张工具卡,而
+       * `enableToolCalls: false` 会让那一发 `tool_calls` 当场收场 —— 整轮在第 28 行
+       * 就死了,贴底跟随一格都采不到。设置逐字照抄几何门那一份。
+       */
+      tools: {
+        enableToolCalls: true,
+        permissionMode: 'dangerously-allow-all',
+        bash: { enableSandbox: false, confirmDangerousCommands: false },
+      },
       diagnostics: { enabled: false },
     }, null, 2))
 
@@ -870,8 +1223,18 @@ async function main() {
     }).catch((e) => { throw new Error(`${e.message}\nserver stderr:\n${err.join('').slice(-2000)}`) })
     if (!(await portConnects(record.host, record.port))) throw new Error('core 端口连不上')
 
-    const sessionId = (await rpc(record, 'sessions', 'create', { name: '抖动探针' }))?.session?.id
-    if (!sessionId) throw new Error('会话没建出来')
+    /*
+     * **两条会话,热身与被量的那一轮分家**(P1e 第一趟真机逼出来的)。
+     *
+     * ② 要量的是上下文更新行(`.rowLate`)的高度过渡,而那一块 turn context 由
+     * `TurnContextLedger` **按块去重**:一条会话的第一轮拿到整块,之后几轮只拿增量
+     * (多半是空的,于是那一行根本不出现)。热身与被量的那一轮共用一条会话时,
+     * 热身把它吃掉了 —— 第一趟 ② 采到 0 次就是这么来的。
+     * 所以热身跑在 `warmId` 上,被量的那一轮跑在**没人动过**的 `mainId` 上。
+     */
+    const warmId = (await rpc(record, 'sessions', 'create', { name: '抖动门 · 热身' }))?.session?.id
+    const sessionId = (await rpc(record, 'sessions', 'create', { name: '抖动门' }))?.session?.id
+    if (!warmId || !sessionId) throw new Error('会话没建出来')
     let seeded
     if (BIG) {
       /* 直写账本要停 core(它是这条会话的唯一写者),写完再起回来。 */
@@ -932,17 +1295,38 @@ async function main() {
     if (realDpr !== DPR) throw new Error(`dpr 钉不住(要 ${DPR},实得 ${realDpr})—— 读数不成立`)
     const devicePx = 1 / realDpr
 
-    /* 打开那条会话 */
-    const rowShown = () => page.evaluate((id) =>
-      Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)), sessionId)
-    for (let n = 0; n < 3 && !(await rowShown()); n += 1) {
+    /* 打开一条会话(总览 → 那一行 → 等聊天区就位)。 */
+    const openSession = async (id) => {
+      const rowShown = () => page.evaluate((x) =>
+        Boolean(document.querySelector(`[data-testid="session-row-${x}"]`)), id)
+      for (let n = 0; n < 3 && !(await rowShown()); n += 1) {
+        await clickTestId(page, 'dock-tile-sessions').catch(() => undefined)
+        await delay(600)
+      }
+      await waitFor('总览画出那一行', rowShown)
+      await clickTestId(page, `session-row-${id}`)
+      await waitFor('聊天区就位', () => page.evaluate(() =>
+        Boolean(window.__jLeaf().querySelector('[data-testid="chat-stream"]'))))
       await clickTestId(page, 'dock-tile-sessions').catch(() => undefined)
-      await delay(600)
+      await delay(800)
     }
-    await waitFor('总览画出那一行', rowShown)
-    await clickTestId(page, `session-row-${sessionId}`)
-    await waitFor('聊天区就位', () => page.evaluate(() =>
-      Boolean(window.__jLeaf().querySelector('[data-testid="chat-stream"]'))))
+    /*
+     * **两档的热身都跑在另一条会话上**(P1e:短会话档原本跑在被量的那条自己身上)。
+     * 理由是 ②:上下文更新那一行只在**一条会话的第一轮**出现(`TurnContextLedger`
+     * 按块去重),热身跑在同一条会话上就把它吃掉了。短会话档想要的「列已经填满
+     * 视口」由被量的那一轮自己长出来(96 行 × 22.4px ≈ 3 屏),不必靠热身垫。
+     */
+    await openSession(warmId)
+    await clickTestId(page, 'dock-tile-sessions').catch(() => undefined)
+    await delay(800)
+
+    /* 热身一轮(吃掉冷开张),跑在热身那条会话上,不量 */
+    console.log('[tail-jitter] 热身一轮(不量,另一条会话)')
+    await sendViaComposer(page, `热身 ${MARK_WARM}`)
+    await waitFor('热身开张', () => stopShown(page), OPEN_TIMEOUT_MS)
+    await waitFor('热身收场', async () => !(await stopShown(page)), 300_000)
+    await delay(1200)
+    await openSession(sessionId)
     if (BIG) {
       await waitFor('账本起完底', async () => {
         const n = await page.evaluate(() => window.__jLeaf()
@@ -965,26 +1349,24 @@ async function main() {
       }
       console.log(`      补历史补完:${last} 格(等了 ${Date.now() - started}ms)`)
     }
-    await clickTestId(page, 'dock-tile-sessions').catch(() => undefined)
-    await delay(800)
 
-    /* 热身一轮(吃掉自动起名那一发与冷开张),不量 */
-    console.log('[tail-jitter] 热身一轮(不量)')
-    await sendViaComposer(page, `热身 ${MARK_WARM}`)
-    await waitFor('热身开张', () => stopShown(page), OPEN_TIMEOUT_MS)
-    await waitFor('热身收场', async () => !(await stopShown(page)), 300_000)
-    await delay(1200)
+    /** 驱动往取样里打记号(③ 靠它切窗口)。 */
+    const mark = (phase) => page.evaluate((v) => { window.__jPhase = v }, phase)
 
     const readings = {}
-    for (const id of SCENARIOS.filter((x) => !ONLY || x === ONLY)) {
+    const lane = BIG ? 'big' : 'short'
+    const lanes = [lane]
+    for (const id of (ONLY ? [ONLY] : GATE_SCENARIOS)) {
       console.log(`\n[tail-jitter] 场景 ${id}`)
       await page.evaluate(() => {
         const scroll = window.__jLeaf().querySelector('[data-testid="chat-stream"]')
         if (scroll) scroll.scrollTop = scroll.scrollHeight
       })
       await delay(400)
-      await startSampler(page, DIAG)
-      if (DIAG) await startPaintSampler(page)
+      if (DIAG) await startSampler(page, DIAG)
+      await startPaintSampler(page)
+      await mark('seat')
+      let jumpRead = { before: null, after: null }
       await sendViaComposer(page, `抖动探针 ${MARK_OF[id]}`)
       await waitFor('开张', () => stopShown(page), OPEN_TIMEOUT_MS)
       /* 等这一轮真的长出正文,再钉一块当锚(用户第二问要它) */
@@ -1001,15 +1383,148 @@ async function main() {
         }
         return false
       }), 120_000)
+      /*
+       * ── ③ 两处切换 ──────────────────────────────────────────────────────
+       * 座位期 → 跟随期:记号从 `seat` 翻成 `''`(判词:座位被吃光那一刻)。
+       * 之后等这一轮长一段,人上翻半屏(`preScroll`),再点丸回底(`postJump`)。
+       */
+      await waitFor('座位吃光', () => page.evaluate(() => {
+        const col = window.__jLeaf().querySelector('[data-testid="chat-stream"]')?.firstElementChild
+        const seat = col?.querySelector(':scope > [data-seat]')
+        return !seat || seat.getBoundingClientRect().height <= 0.5
+      }), 90_000)
+      await mark('follow')
+      await delay(500)
+      await mark('')
+      /*
+       * ── 顺序:**先做 ③ 的上翻 / 回底,再留 ① 的跟随窗** ──────────────────
+       * 反过来(P1e 第一版的顺序)在真店档上必红,而且红得像产品的错:那一档
+       * 「座位吃光」本身就要两三秒,再睡 5 秒 ① 的窗,轮到上翻时这一轮**已经收场**
+       * —— 没有 `grew` 就没有未读,`followPillVisible` 为假,丸根本不在屏上,
+       * 于是第一版那句 `if (pill instanceof HTMLElement)` 静静地什么都没点,
+       * 读数变成「画出来的位移 670 设备像素」(= 上翻的那半屏原地没回来)。
+       * 今天把 ③ 挪到换手之后立刻做,它全程落在流里;① 的窗接在它后面,
+       * 而且**按样本数收**(见下),不睡定数。
+       */
+      const readSlotTop = () => page.evaluate(() => {
+        const col = window.__jLeaf().querySelector('[data-testid="chat-stream"]')?.firstElementChild
+        const slot = col?.querySelector(':scope > [data-tail-slot]')
+        return slot ? slot.getBoundingClientRect().top : null
+      })
+      /*
+       * **这一格不走每帧那条取样**:人滚动那一下前后的样本混在一起没法分,所以
+       * 两侧各**现读一次**(此刻布局干净,读到的就是会被画出去的那份),中间夹着
+       * 上翻与点丸;整段打上 `jump` 记号,好让 ① 的窗把它整段排除。
+       */
+      await mark('jump')
+      await delay(400)
+      const beforeJump = await readSlotTop()
+      const left = await page.evaluate(() => {
+        const el = window.__jLeaf().querySelector('[data-testid="chat-stream"]')
+        if (!el) return null
+        el.scrollTop = Math.max(0, el.scrollTop - Math.round(el.clientHeight / 2))
+        el.dispatchEvent(new Event('scroll', { bubbles: false }))
+        return el.scrollHeight - el.clientHeight - el.scrollTop
+      })
+      /* 真的离底了吗 —— 离不开就没有「回底」可量,说没采到,不给一个假的 0。 */
+      const reallyLeft = typeof left === 'number' && left > 6
+      let jumpOk = false
+      if (reallyLeft) {
+        /* 丸要等:它的判据是「浏览中 ∧ 下面长出了没看见的东西」,后半句要一拍 delta。 */
+        const pillHit = await waitFor('「回到最新」那颗丸亮起来', () => page.evaluate(() => {
+          const pill = window.__jLeaf().querySelector('[data-testid="chat-follow-pill"]')
+          if (!(pill instanceof HTMLElement)) return false
+          pill.click()
+          return true
+        }), 6_000).catch(() => false)
+        if (pillHit) {
+          /*
+           * **等它真的回到底,再读** —— 不睡一个定数(09-12 判例「门的读数不许把门
+           * 自己的时间算进产品」的另一半:定数睡短了读到的是**半路**)。判据用跟随
+           * 状态机同一条贴底判词(`st + ch >= sh − 6`)。
+           */
+          await waitFor('点丸之后真的回到底', () => page.evaluate(() => {
+            const el = window.__jLeaf().querySelector('[data-testid="chat-stream"]')
+            if (!el) return false
+            return el.scrollTop + el.clientHeight >= el.scrollHeight - 6
+          }), 20_000)
+          /* 落定之后再留两拍:回底那一下是平滑滚动,到底与停稳不是同一帧。 */
+          await delay(500)
+          jumpOk = true
+        }
+      }
+      const afterJump = jumpOk ? await readSlotTop() : null
+      jumpRead = jumpOk
+        ? { before: beforeJump, after: afterJump }
+        : { before: null, after: null, why: reallyLeft ? '丸没亮' : '上翻没离底' }
+      /*
+       * **不管 ③ 成没成,都先回到底再开 ① 的窗**。第一版没这一句:真店档上丸没亮
+       * → 没点 → 人还停在上翻的那半屏,而 ① 的贴底判据当场全假,2196 帧里只采到
+       * 1 个贴底样。① 与 ③ 是两条判据,一条没做成不该把另一条的前提也拖走。
+       */
+      await page.evaluate(() => {
+        const el = window.__jLeaf().querySelector('[data-testid="chat-stream"]')
+        if (el) el.scrollTop = el.scrollHeight
+      })
+      await waitFor('回到底(① 的窗要在贴底态里开)', () => page.evaluate(() => {
+        const el = window.__jLeaf().querySelector('[data-testid="chat-stream"]')
+        return Boolean(el) && el.scrollTop + el.clientHeight >= el.scrollHeight - 6
+      }), 20_000)
+      await delay(300)
+      await mark('')
+      /*
+       * ① 的窗口:**按样本数收,不睡定数**。每帧采一次,所以「够不够」是一个
+       * 数得出来的事;流先收场就按收场算(判据仍然是「采到 N 次 < 门槛就红」,
+       * 不假装判过)。
+       */
+      {
+        const until = Date.now() + PINNED_WINDOW_CAP_MS
+        for (;;) {
+          const enough = await page.evaluate((need) => {
+            const rows = window.__jPaint ?? []
+            let n = 0
+            for (let i = rows.length - 1; i >= 0; i -= 1) {
+              const r = rows[i]
+              if (r.phase !== '') break
+              if (r.running && (r.seatH === null || r.seatH <= 0.5)
+                && r.st + 2 >= r.sh - 700) n += 1
+            }
+            return n >= need
+          }, PINNED_WINDOW_SAMPLES)
+          if (enough) break
+          if (Date.now() > until) break
+          if (!(await stopShown(page))) break
+          await delay(150)
+        }
+      }
       await waitFor('收场', async () => !(await stopShown(page)), 300_000)
       await delay(600)
-      const frames = await stopSampler(page)
-      const paint = DIAG ? await stopPaintSampler(page) : []
-      const m = analyze(frames, devicePx)
+      const frames = DIAG ? await stopSampler(page) : []
+      const paint = await stopPaintSampler(page)
+      const m = DIAG ? analyze(frames, devicePx) : { frames: 0, empty: true }
+      const g = judge(paint, devicePx, jumpRead)
+      readings[`${lanes[0]}:${id}`] = g
+      console.log(`\n══ ${lanes[0]} / ${id} ══ 画出来的取样 ${g.samples} 次`)
+      console.log(`  贴底跟随 ${g.pinned.samples} 次:尾槽占 ${g.pinned.rows} 个设备像素行`
+        + `(峰峰 ${g.pinned.peakDevicePx} 设备像素 / ${g.pinned.distinct} 个原始取值)`
+        + ` · 停止钮 ${g.pinned.stop} 个`
+        + `(峰峰 ${g.pinned.stopPeakDevicePx} / ${g.pinned.stopDistinct} 个)`)
+      console.log(`  回合开张(.rowLate 过渡在跑)${g.rowLate.samples} 次:尾槽占 ${g.rowLate.rows} 个`
+        + ` / 停止钮 ${g.rowLate.stop} 个`
+        + `(这一趟里折痕在场 ${g.rowLate.ctxSeen} 帧 / ${g.rowLate.ctxIds} 道`
+        + `;它挂上来那前后的帧距 ${g.rowLate.ctxGaps.join('/')}ms)`)
+      for (const [k, v] of Object.entries(g.switches)) {
+        console.log(`  切换 ${k}:${v.ok ? `${v.a} → ${v.b},差 ${v.devicePx} 设备像素` : v.reason}`)
+      }
       if (DIAG && paint.length > 5) {
-        /* 只看贴底跟随那一段:头尾各去掉一成,避开落位与收场。 */
-        const cut = Math.floor(paint.length * 0.1)
-        const seg = paint.slice(cut, paint.length - cut)
+        /*
+         * **与 rAF 那一份比同一段**:rAF 侧(`analyze`)算的是「贴底跟随」那一段,
+         * 所以这一侧也取贴底跟随那一段 —— 不能拿整轮(里面还夹着门自己那次上翻
+         * 半屏,峰峰会报出几百 px,那是门的动作不是产品的)。判据与 `judge` 里
+         * 那只 `isPinned` 逐字同源。
+         */
+        const seg = paint.filter((r) => r.running && (r.seatH === null || r.seatH <= 0.5)
+          && r.phase === '' && r.st + 2 >= r.sh - 700)
         m.paint = {
           samples: seg.length,
           ...jitterOf(seg.map((r) => r.top), seg.map((r) => r.t), devicePx),
@@ -1029,11 +1544,101 @@ async function main() {
             phases: valueHistogram(phase, 8),
           }
         }
+        /*
+         * **两口并排量同一段 `.rowLate` 过渡**(P1e 取样口校准第 ③ 条,也是 §10.3
+         * 审计表的一行):P1d 的结论是「rAF 那一口读得出斜坡、画出来的那一口读不出」。
+         * 两份取样在同一条 `performance.now()` 时钟上,所以按时间窗对齐就够。
+         */
+        const lateSeg = paint.filter((r) => r.ctxAnim > 0)
+        if (lateSeg.length > 1 && frames.length > 1) {
+          const t0 = lateSeg[0].t
+          const t1 = lateSeg[lateSeg.length - 1].t
+          const rafSeg = frames.filter((f) => f.t >= t0 && f.t <= t1 && f.slotTop !== null)
+          m.lateCompare = {
+            ms: Math.round(t1 - t0),
+            painted: {
+              n: lateSeg.length,
+              ...jitterOf(lateSeg.map((r) => r.top), lateSeg.map((r) => r.t), devicePx),
+              values: valueHistogram(lateSeg.map((r) => r.top), 6),
+            },
+            raf: rafSeg.length > 1
+              ? {
+                  n: rafSeg.length,
+                  ...jitterOf(rafSeg.map((f) => f.slotTop), rafSeg.map((f) => f.t), devicePx),
+                  values: valueHistogram(rafSeg.map((f) => f.slotTop), 6),
+                }
+              : { n: rafSeg.length },
+          }
+        }
       }
-      readings[id] = m
-      report(id, m)
+      if (DIAG) report(id, m)
     }
-    console.log(`\n[tail-jitter] JSON(${LANE} · dpr${DPR}):${JSON.stringify(readings)}`)
+
+    /* ══ 判 ═══════════════════════════════════════════════════════════════ */
+    console.log('\n[判据]')
+    for (const [key, g] of Object.entries(readings)) {
+      assert(g.pinned.samples >= BUDGET.minPinnedSamples,
+        `${key} ① 贴底跟随采到 ${g.pinned.samples} 次(≥ ${BUDGET.minPinnedSamples})`)
+      assert(g.pinned.rows <= BUDGET.paintedRows && g.pinned.rows > 0,
+        `${key} ① 贴底跟随:尾槽画出来的 top 只占 ${g.pinned.rows} 个设备像素行`
+        + ` ≤ ${BUDGET.paintedRows}`)
+      assert(g.pinned.stop <= BUDGET.paintedRows && g.pinned.stop > 0,
+        `${key} ① 贴底跟随:停止钮 ${g.pinned.stop} 个设备像素行 ≤ ${BUDGET.paintedRows}`)
+      /* 同一句话的细尺(判词在 BUDGET 的 `pinnedPeakDevicePx` 上)。 */
+      assert(g.pinned.peakDevicePx <= BUDGET.pinnedPeakDevicePx,
+        `${key} ① 贴底跟随:尾槽峰峰 ${g.pinned.peakDevicePx} 设备像素`
+        + `(${g.pinned.distinct} 个原始取值)≤ ${BUDGET.pinnedPeakDevicePx}`)
+      assert(g.pinned.stopPeakDevicePx <= BUDGET.pinnedPeakDevicePx,
+        `${key} ① 贴底跟随:停止钮峰峰 ${g.pinned.stopPeakDevicePx} 设备像素`
+        + `(${g.pinned.stopDistinct} 个原始取值)≤ ${BUDGET.pinnedPeakDevicePx}`)
+
+      /*
+       * ── ② 今天**只报不判**,理由是量出来的,不是懒 ────────────────────────
+       *
+       * P1d(§9.7 ①)把那条斜坡的产地定在 `.rowLate` 的高度过渡上,于是这道门原本
+       * 想问:「那十几帧里尾槽画出来的位置动没动」。真机一量,这个问题在**今天的
+       * 产品形态下问不出来**:
+       *
+       *  · 那道折痕是**跟着用户那条消息落账**一起挂上来的,而那一刻**座位还满着**
+       *    —— 短会话档实测 21 帧过渡,`inPinned = 0`、`seatAlive = 21`,一帧都没有
+       *    落在「贴底跟随」态里。落位期尾槽**本来就该动**(座位在缩、气泡在落),
+       *    这一段的位移(实测尾槽 10 个设备像素行)是落位,不是抖;那一段的几何
+       *    归 `gate:stream-geometry` 的 ①⑧ 判,不该在这儿再判一遍、还判成「不许动」。
+       *  · 真店档更进一步:折痕挂上来那前后的帧距实测 `1360/389/11/29/906/879` ms
+       *    —— 整段 125ms 的过渡落进一个长帧里,一趟只采到 2 帧。这不是取样口的
+       *    毛病,正是 P1d §9.7 ④ 那条发现的后果(高度过渡长在 400 行、118,000px 的
+       *    列靠近底部,每帧改一次高度就逼整条列重排一次)。
+       *
+       * 所以这里把两个数都**打出来**(`inPinned` = 落在贴底跟随态里的帧数,
+       * 那才是 P1d 问的那个交集),并且**只在那个交集够大时才判**。今天它恒为 0,
+       * 于是这一格恒为「只报不判」——**写出来的空账,不是一句绿的谎话**。
+       * 它什么时候变成判据:P2 的锚定器让这道折痕在**已经贴底跟随之后**才软着陆
+       * (或者干脆只过渡 `opacity`),那时交集不再是空的,下面这个 `if` 自己就活了。
+       */
+      if (g.rowLate.samples > 0) {
+        if (g.rowLate.inPinned >= BUDGET.minRowLateSamples) {
+          assert(g.rowLate.rows <= BUDGET.paintedRows,
+            `${key} ② .rowLate 过渡 ∩ 贴底跟随 的那几帧:尾槽 ${g.rowLate.rows} 个设备像素行`
+            + ` ≤ ${BUDGET.paintedRows}`)
+          assert(g.rowLate.stop <= BUDGET.paintedRows,
+            `${key} ② 同一段:停止钮 ${g.rowLate.stop} 个设备像素行 ≤ ${BUDGET.paintedRows}`)
+        } else {
+          console.log(`  · ${key} ② 只报不判:过渡在跑 ${g.rowLate.samples} 帧,`
+            + `其中落在贴底跟随态的 ${g.rowLate.inPinned} 帧`
+            + `(座位还满着的 ${g.rowLate.seatAlive} 帧)—— 理由见判据旁的注`)
+        }
+      }
+
+      for (const [name, v] of Object.entries(g.switches)) {
+        assert(v.ok, `${key} ③ 切换 ${name} 两侧都采到了`)
+        if (v.ok) {
+          assert(v.devicePx <= BUDGET.switchDevicePx,
+            `${key} ③ 切换 ${name}:画出来的位移 ${v.devicePx} 设备像素`
+            + ` ≤ ${BUDGET.switchDevicePx}`)
+        }
+      }
+    }
+    console.log(`\n[tail-jitter] 读数(${LANE} · dpr${DPR}):${JSON.stringify(readings)}`)
   } finally {
     if (app) await app.close().catch(() => undefined)
     if (vite) await vite.close().catch(() => undefined)
@@ -1059,6 +1664,12 @@ async function main() {
   } catch {
     console.log('\n[tail-jitter] 残留自查:ps 跑不起来,跳过')
   }
+
+  if (failures.length) {
+    console.error(`\n[tail-jitter] FAILED(${LANE})—— ${failures.length} 条:\n  ${failures.join('\n  ')}`)
+    process.exit(1)
+  }
+  console.log(`\n[tail-jitter] ok(${LANE})—— 「正在生成」那一格画出来的位置只占一个设备像素行`)
 }
 
 main().catch((error) => {
