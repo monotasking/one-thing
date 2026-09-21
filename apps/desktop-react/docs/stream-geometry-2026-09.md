@@ -179,6 +179,15 @@ interface SegmentDef<M> {
 - ⑤ 座位交接帧 46px 台阶 → P2。
 - ⑥ 公式先占形 → P5。
 - `StopNotice` 为什么中途停止后不出现 —— 未查实,P5 补量时一并查。
+- **正文行高是 22.4px,不是整数个物理像素**(2026-09-21 用户令「先记住」,**没改、没量**)。
+  阅读轴常规档一行 = `--pr-fs` 14 × `--pr-lh` 1.6 = **22.4px**,dpr 2 上是 44.8 个物理
+  像素 —— 每一行的零头都不一样,所以流式跟随时相邻几行的取整边界对不齐。
+  **这是机制推断,不是读数**:今天没有任何一份像素层取样是按「正文行」取的
+  (`gate:tail-jitter` ④ 量的是「停止」那两个字,`gate:stream-geometry` 量的是盒的矩形),
+  所以「人看得见与否」这一问**没有证据**。用户裁定:**改之前先录屏 + 走 P1g 那口像素
+  取样(`scripts/lib/png-ink.mjs`)实测**;而且把行高改成整数个物理像素**是一次排版变化**
+  (字距、段距、`--tail-slot-h`、座位那六行 134.40px 全跟着变),属于用户可感知的改动,
+  **须先问,不许顺手改**(仓根「行为裁定须先问」)。
 
 ## 7. P1 施工账(2026-09-20)
 
@@ -1465,3 +1474,946 @@ P1h 交卷后审查打回**两条**,都不是「做少了」,是**把一条本�
 再跑一趟——仍绿。**四趟对照之后没有再复现**,而那两趟失败时那一行的矩形
 (387×32 @ 887,118)在后来每一趟诊断里都是好的。判定:**门自己的一次时序飘**,
 与这一单的改动无关;没有为它改门,也没有把它算成红。
+
+## 13. P2 勘察与设计(2026-09-21)
+
+**这一节不改一行产品代码**,交的是三件:一张把今天所有几何行为摊开的特征表、一份
+面向对象的类设计、以及一个每期都能单独合入的分期。P1a–P1h 八单把「画在哪」这件事
+一格一格地治到了今天这个样子,但**治法仍然是五个互不认识的补丁**(§0 开头那句话一个字
+没过时,只是补丁从五个变成了四个:`tail-snap` 在 P1h 退役了)。P2 要立的是那个负责方。
+
+**勘察方法**:通读正本 §0–§12、`docs/send-flow-2026-09.md` 全文、`apps/desktop-react/CLAUDE.md`,
+然后逐行读 `content/ChatStream.tsx`(2445 行)、`content/{follow,seat,fold-intent,expand-intent,
+chat-window}.ts`、`content/message/TailSlot.tsx`、`ui/flip-height.ts`、`data/session-view-state.ts`、
+`toc/useChatToc.ts`、`content/{ThinkingSegment,visibility,session-park}.tsx|ts`、
+`content/tools/ToolCard.tsx`、`ui/Fold.tsx`,以及五道门(`gate-stream-geometry` /
+`gate-send-flow` / `gate-tail-jitter` / `gate-chat-follow` / `gate-chat-layout`)的
+`BUDGET` 与断言体。**没有跑任何一道门,没有起任何进程** —— 下面每一个数要么带
+`file:line` 出处,要么是从 §0–§12 已有读数里引的,并且标明是引的哪一节。
+
+**三句话的结论**,后面三节是它的展开:
+
+1. **改得动这条滚动容器位置的地方不是七处,是十二处、分在五个文件里。** 派工单列的
+   七处是 `ChatStream.tsx` 里直接写 `el.scrollTop = …` 的那七行;另外五处是
+   `applyScrollAnchor` 的两条分支、TOC / 检索落点那一发平滑滚动、`ui/Fold` 底把手收起
+   之后那一发 `scrollIntoView`、以及来源条点开某一段检索那一发 `scrollIntoView`。
+   **后三处今天没有任何一道门量过它们的位移**,而且它们全都绕开了跟随状态机。
+2. **「用户收起一块东西」这件事,六个可收起的东西里只有两个报了出来。** 折叠意图通道
+   `content/fold-intent.ts` 今天只有两个生产者:思考段(`ThinkingSegment.tsx:153`)与
+   重试时正在上折的那条旧回答(`ChatStream.tsx:2146`)。**工具卡、压缩折痕、上下文更新
+   折痕、以及 `ui/Fold` 的底把手这四条路一个字都不报** —— 它们只报展开
+   (`useNoteUserExpand`),而展开与收起要的补偿方向正好相反(判词在
+   `content/fold-intent.ts:10-13`)。这正是用户今天感觉到的那个病:**贴底时手动收起
+   工具卡 / 折痕,屏上其余内容往下掉一截**。
+3. **`useFollowBottom` 是一只 1039 行、49 次 hook 调用、22 格 ref 的函数**
+   (`ChatStream.tsx:987-2025`;22 格 ref 上共 43 次读、62 次写,合计 105 个
+   `.current` 触点)。它不是「写得乱」——每一格都有判词、每一格都有事故背书——
+   它是**一个类被写成了一只 hook**:22 格 ref 就是 22 个私有字段,14 个 `useCallback`
+   就是 14 个方法,6 只 `useLayoutEffect` + 4 只 `useEffect` 就是生命周期与外部事件的
+   接线。P2 要做的是把它**还原成那个类**,而不是重写它。
+
+### 13.1 行为清单(特征表)
+
+#### 13.1.1 谁动得了这条滚动容器的位置 —— 十二个写点、五个文件
+
+「写点」的定义:**任何一句会改变 `.scroll` 这个元素滚动偏移的语句**,包括
+`scrollIntoView` 与 `scrollTo`(浏览器实现它们的方式就是写最近那几层可滚祖先的偏移)。
+`cause` 那一列是它在 §3.2 的 `GeometryChange.cause` 里该落到哪一格 —— 今天没有这个
+枚举,这一列是 P2 的映射结果,不是现状。
+
+| # | 写点 | 谁触发 | 相位 | 今天的判词出处 | P2 的 `cause` |
+| --- | --- | --- | --- | --- | --- |
+| W1 | `ChatStream.tsx:894` `el.scrollTop = captured.top + delta` | 扩窗 / 取上一页(prepend)提交之后 | layout effect(绘制前) | 同文件 `:877-903`:绝对赋值而不是 `+=`,所以浏览器自己的滚动锚定补没补过都幂等 | `late-insert`(方向:上方插入) |
+| W2 | `ChatStream.tsx:1068` `el.scrollTop = el.scrollHeight` (`stick()`) | 进场落底 / RO 判定长高 / 点丸 | layout effect 与 RO 回调 | `:1055-1063`:唯一一处贴底,三个调用点都经它;停靠中(`clientHeight === 0`)不写 | `tail-growth` |
+| W3 | `ChatStream.tsx:1435` `el.scrollTop = wantTop` | 会话叶从 `content-visibility: hidden` 里被拿回来的那一批尺寸变化 | RO 回调 | `:1425-1430` + `useParkedScroll` `:2039-2051`:真机上浏览器已经把位置留住了,这两句今天恒是一次恒等,留着当兜底 | `restore`(P2 新增一格) |
+| W4 | `ChatStream.tsx:1504` `el.scrollTop = Math.max(0, el.scrollTop + drift)` | 折叠窗口内每一帧(`foldHoldRef` 在场) | RO 回调 | `:1453-1482`:补的是**锚**不是 Δ,自校正;夹在 0 = 上面没东西可让时让内容动 | `user-toggle` |
+| W5 | `ChatStream.tsx:1693` `el.scrollTop = target` | 发送 / 重试落位,动效档「无」或距离 < 1px | layout effect | `:1640-1645`:定位不是动效,所以不用 `scrollTo({behavior:'smooth'})` | `send-landing` |
+| W6 | `ChatStream.tsx:1710` `el.scrollTop = from + (target - from) * eased` | 同上,插值的每一帧 | rAF | `:1646-1653`:每帧写完当场同步 `lastTopRef`,否则下一帧的滚动事件把自己读成「人往上翻」 | `send-landing` |
+| W7 | `ChatStream.tsx:1721` `el.scrollTop = target` | 同上,宿主没有 `requestAnimationFrame`(jsdom) | 同步 | 同 W5 | `send-landing` |
+| W8 | `data/session-view-state.ts:186` `container.scrollTop = container.scrollHeight` | `applyScrollAnchor(el, 'bottom')`,由 `ChatStream.tsx:1309` / `:1538` 调 | layout effect 与 RO 回调 | `:168-182`:答 true/false 而不是尽力而为 | `restore` |
+| W9 | `data/session-view-state.ts:194` `container.scrollTop = top - anchor.offset` | 同上,锚点那一支 | 同上 | 同上 + `:176-182`:一次可能落不准,调用方负责再对 | `restore` |
+| W10 | `toc/useChatToc.ts:130` `el.scrollTo({ top, behavior: 'smooth' })` | 点钢琴键 / 点检索命中的一条正文 | passive effect 与点击回调 | `:98-111`:两个入口共用一手 | `jump`(P2 新增一格) |
+| W11 | `ui/Fold.tsx:119` `head.scrollIntoView({ block: 'nearest' })` | **从底把手收起**一道折痕(`FoldFoot`,`content/seam/Seam.tsx:170`;消费者 = `CompactSeam` / `ContextDeltaSeam`) | **rAF**(收起那一帧的**下一帧**) | `:105-108`:合上之后正文塌掉,头把手很可能已经在视野上方 | `user-toggle` |
+| W12 | `content/research/ResearchSegment.tsx:59` `ref.current?.scrollIntoView({ block: 'center', behavior: scrollBehavior() })` | 点消息尾那条来源条(`research/SourceFoot.tsx:48` → `revealResearch`) | 订阅回调 | `research/reveal.ts:3-18`:一次点击是一个事件不是一个值 | `jump` |
+
+**W10 / W11 / W12 这三处是这一趟勘察挖出来的新东西**,派工单里没有它们,而且:
+
+- 三处都**不经过跟随状态机** —— 它们写完之后要么触发一次 `scroll` 事件被
+  `onScrollWithFollow`(`ChatStream.tsx:1987`)当成「人干的」来判,要么(平滑滚动那两处)
+  在接下来几百毫秒里连发几十次。W10 / W12 是 `behavior: 'smooth'`,而
+  `onScrollWithFollow:2010` 的判据是「`scrollTop` 比上一次小没小」—— **往上跳一条消息
+  时它一定判成「人往上翻」**,这在语义上恰好是对的(人确实要去看上面);**往下跳时
+  它判成「没往回走」,于是不翻档** —— 落到一条离底还有半屏的消息上之后,状态机仍然是
+  `pinned`,下一段 delta 到达时 RO 会把人**一把拽回底**。这一条我**没有真机验证过**,
+  是从两处代码的判据推出来的;它在 13.5 里列为必须实测的第一条。
+- W11 尤其值得单列:它跑在**收起那一帧的下一帧**(rAF),而收起本身会让页面总高变小、
+  浏览器当场钳 `scrollTop`(§0 ① 的同一机制)。于是同一次收起在两帧里被两只手各写一次,
+  而**两只手都不知道对方存在**。今天没有任何一道门量过它。
+
+#### 13.1.2 `useFollowBottom` 的二十二格 ref:谁写、谁读、寿命
+
+`ChatStream.tsx:987-2025`。「寿命」那一列回答的是 P2 里它该落在哪个对象上。
+
+| ref | 行 | 写点 | 读点 | 寿命 | P2 归属 |
+| --- | --- | --- | --- | --- | --- |
+| `followRef` | 1015 | `dispatch:1029` | 8 处(RO / 滚动 / 落位 / 取回) | 这次挂载 | `ViewportAnchor.#follow` |
+| `messageCountRef` | 1022 | 渲染期 `:1023` | 进场 effect `:1326` | 这次挂载 | 留在 React 侧(它是渲染期事实) |
+| `lastTopRef` | 1040 | `stick:1076`、折叠补偿 `:1505`、插值 `:1694/1711/1722`、滚动 `:2005` | 滚动 `:2004`、`useParkedScroll:2066` | 这次挂载 | `ScrollPort.#lastTop`(写点跟着写 `scrollTop` 那一口走) |
+| `lastGapRef` | 1092 | **12 处** | 1 处(`grewBelow:1566`) | 这次挂载 | `ViewportAnchor.#lastGap`;十二个写点在 P2 收成「每次写完位置由 `ScrollPort` 自己记」 |
+| `holdUntilRef` | 1101 | `noteUserExpand:1116`、换会话 `:1298` | RO `:1585` | 这次挂载 | `IntentWindow`(与下面那格合一) |
+| `foldHoldRef` | 1131 | `noteFold:1135`、RO 过期 `:1485` | RO `:1483` | 一段过渡 | `IntentWindow` |
+| `sentBaseRef` | 1151 | 渲染期 `:1153` | `seatActive:1155` | 这条会话 | 留在 React 侧 |
+| `seatHeightRef` | 1157 | `readSeat:1200`、退役 `:1212` | `writeSeat:1175` | 一轮 | `TailPad.#wanted` |
+| `seatWrittenRef` | 1158 | `writeSeat:1178`、退役 `:1211` | 4 处(贴底判据 `:1609`、同帧 effect `:1946`、收场同步 `:1903`) | 一轮 | `TailPad.#written` |
+| `seatLandedRef` | 1170 | `landOnSendLine:1731/1742`、`landOnRetry:1786`、退役 `:1213` | `readSeat:1195`、同帧 effect `:1945` | 一轮 | `TailPad.#landed` |
+| `seatCoalescerRef` | 1186 | 渲染期 `:1187` | `readSeat:1203`、卸载 `:1217` | 这次挂载 | `TailPad.#coalescer` |
+| `unparkTopRef` | 1224 | `useParkedScroll:2066`、RO 消费 `:1432` | RO `:1431` | 一拍 | `ViewportAnchor.#pendingRestore` |
+| `restoreRef` | 1233 | 进场 `:1325`、RO 落定 `:1542`、cleanup `:1354` | RO `:1533` | 进场那几帧 | `EntryRestore`(见 13.2.3) |
+| `anchorTimer` | 1252 | `scheduleAnchorSave:1255/1256`、cleanup `:1350` | 同处 | 这次挂载 | `AnchorRecorder` |
+| `lastHeightRef` | 1404 | RO `:1411/1508/1524` | RO `:1522/1523` | 这次挂载 | `ViewportAnchor.#lastColumnHeight` |
+| `landFrameRef` | 1655 | `cancelLanding:1673`、`slideScrollTo:1700/1713/1727` | `cancelLanding:1670` | 一段插值 | `Slide` |
+| `landWroteRef` | 1656 | 4 处 | `step:1702` | 一段插值 | `Slide` |
+| `slidingRef` | 1668 | 4 处 | 同帧 effect `:1947` | 一段插值 | `Slide.isRunning()` |
+| `seenRetryRef` | 1799 | `:1803` | `:1801` | 这次挂载 | 留在 React 侧(边沿检测) |
+| `seenTick` | 1834 | `:1838/1842` | `:1841` | 这次挂载 | 同上 |
+| `seenDeltaAt` | 1863 | `:1866` | `:1865` | 这次挂载 | 同上 |
+| `seenActiveRef` | 1886 | `:1889` | `:1888` | 这次挂载 | 同上 |
+
+**一句话读法**:22 格里有 **10 格**(`seatHeightRef` / `seatWrittenRef` / `seatLandedRef` /
+`seatCoalescerRef` / `landFrameRef` / `landWroteRef` / `slidingRef` / `foldHoldRef` /
+`holdUntilRef` / `unparkTopRef`)是**某一个子系统的私有状态**,它们今天平铺在同一只
+hook 的作用域里,所以任何一处都读得到任何一处 —— 这正是 13.1.5 那几条打架成立的土壤。
+另外 **4 格**(`seen*`)是纯粹的「上一次我看到的是什么」边沿检测,它们该留在 React 侧;
+剩下 8 格是锚定器自己的。
+
+#### 13.1.3 行为表
+
+「门」那一列写的是**今天真的有一条断言咬着它**的那道门与那一条;**`⚠︎ 无门`** =
+我在五道门与相关单测里都没找到咬它的断言。
+
+| # | 行为 | 触发 | 读什么几何 | 写什么 | 为什么(判词出处) | 门 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 进场落回锚点 | 换会话 / 挂载(layout) | `readSessionScrollAnchor` + `applyScrollAnchor` 里一次 `getBoundingClientRect` | W8/W9、`restoreRef` | `ChatStream.tsx:1264-1294` | `gate:chat-layout` ⑨;`ChatStream.test.tsx:1133` |
+| 2 | 进场落底 | 同上,没有锚点且 pinned | `scrollHeight`(逼一次排版,躲不掉) | W2、`lastGapRef` | `:1327-1334` | `gate:chat-layout` ⑧;`gate:chat-follow` 进场在底 |
+| 3 | 落位未稳再对(≤6 轮) | RO,`restoreRef` 在场 | `applyScrollAnchor` + `scrollTop` 前后差 | W8/W9、`restoreRef.left` | `:1311-1324`(跳渲的行渲出真高会让落点漂;真机 188px) | `gate:chat-layout` ⑨ |
+| 4 | 停靠守卫 | RO,`clientHeight === 0` | `clientHeight` | 无(整批丢弃) | `:1415-1422` | `ChatStream.test.tsx:1620` 那一组 |
+| 5 | 取回对位 | RO,`unparkTopRef` 在场 | `scrollTop` / `scrollHeight` / `clientHeight` | W3、`lastGapRef` | `:1425-1439` + `:2039-2054` | `ChatStream.test.tsx:1797`;`gate:chat-layout` ⑨ |
+| 6 | 量座位 | RO 每一批 | `measureSeat`(`:134-204`,一次 `getComputedStyle` + 4 次 rect) | `seatHeightRef`,排下一帧 | `:1441-1450` | `gate:send-flow` ①⑥;`gate:stream-geometry` ⑧ |
+| 7 | 写座位 | `FrameCoalescer` 下一帧 | 无 | `seat.style.height`、`seatWrittenRef` | `:1181-1187`(观察器回调只读不写) | `send-seat.test.tsx:187` |
+| 8 | 座位**同帧**跟上内容 | **每一次 React 提交**(无依赖 layout effect) | `readSeat` 同步逼一次排版 | 同 6+7 | `:1913-1943`(三道闸);`§10.3 ③` 证明它守的是 G1 | `gate:stream-geometry` ⑤②(§10.3 ③ 的反证) |
+| 9 | 收场那一拍座位同步补 | `activeMessageId` 由有变无(layout) | `readSeat` | 只在「变大」时 `writeSeat` | `:1871-1911`;`send-flow §9.1 ④` 反证 24.0px | `gate:send-flow` ②b |
+| 10 | 折叠锚点补偿 | RO,`foldHoldRef` 在场 | `pickFoldAnchor`(`:287-300`,二分 + 最多 4 层)+ 每帧一次 rect | W4、`lastHeight/lastGap` | `:1453-1482`;`send-flow §9.1 ①`(锚是块不是行) | `gate:send-flow` [收尾锚定](超量档);`fold-anchor.test.tsx` |
+| 11 | 展开按兵不动(220ms) | RO,`performance.now() < holdUntilRef` | `gap` | 只派 `scrolled`,不贴底 | `:1567-1584`;`expand-intent.ts:3-28` | `gate:chat-follow` 展开那一条;`expand-hold.test.tsx` |
+| 12 | 座位没吃光不贴底 | RO,pinned | `seat` + `seatWrittenRef` | 无 | `:1591-1608`(两格都要归零才贴) | `gate:send-flow` ①;`gate:stream-geometry` ① |
+| 13 | 贴底跟随 | RO,pinned 且座位归零 | `scrollHeight`/`clientHeight`/`scrollTop` | W2 | `:1590-1615` | `gate:chat-follow` 贴底那一条;`gate:tail-jitter` ① |
+| 14 | 丸点亮 | RO,browsing 且 `contentGrew && grewBelow` | `gap` 对比 `lastGapRef` | `dispatch('grew')` | `:1552-1564`(长在视口上面的会被滚动锚定顶回去) | `gate:chat-follow` 丸那几条;`follow.test.ts` |
+| 15 | 「是谁离的底」 | `scroll` 事件 | `scrollTop` 对比 `lastTopRef` | `dispatch('scrolled')` | `:1967-1985`(真机探针:一帧里 scroll 先于 RO) | `expand-hold.test.tsx:308` |
+| 16 | 锚点去抖保存(120ms) | 每一次 `scroll` | `measureScrollAnchor`(不在底时从上往下扫 `[data-message-id]`) | 模块级表 | `:1236-1251` | `ChatStream.test.tsx:1782` |
+| 17 | 发送落位 | `sentTick` 变(layout) | `readSeat` + `sendLineTarget`(`:216-233`) | 7+W5/W6/W7 | `:1821-1845`、`:1730-1750` | `gate:send-flow` ①② |
+| 18 | 上翻时发送不滚 | 同上,`!followShouldStick` | 无 | 无(`seatLandedRef=false`) | `:1736-1741`(规矩 ⑦) | `gate:chat-follow` ⑥ |
+| 19 | 重试落位 | `retryingId` **清闩**那一拍 | 气泡 rect 与视口 rect | 同 17 | `:1795-1819`、`:1752-1766`(按下那一拍算出来的是旧高度) | `gate:send-flow` ⑥;`retry-slot.test.tsx:191` |
+| 20 | 插值收手(第二只手) | rAF 每帧 | `scrollTop` 对比 `landWroteRef` | 停止 rAF | `:1651-1653` | `gate:send-flow` ①(滚动段数) |
+| 21 | 扩窗保位 | `windowStart` / `olderTick` 变(layout) | `scrollHeight` 对比捕获值 | W1 | `:839-848` | **⚠︎ 无门**(`gate:chat-layout` 只量切回来那一行;见 13.1.4) |
+| 22 | 空闲扩窗 | `requestIdleCallback` + `startTransition` | 捕获 `scrollTop`/`scrollHeight` | `chat-window` 表 | `:905-927`、`chat-window.ts:18-47` | `ChatStream.test.tsx:1360` 那一组 |
+| 23 | 翻到窗口顶附近取页 | `scroll` 事件 | `scrollTop` / `clientHeight` | 同上 | `:929-949` | 同上 |
+| 24 | 尾槽相位机 | `running` 翻转(渲染期) | 无 | `leaving` state + 一发定时器 | `TailSlot.tsx:219-250`(放 effect 里会多一次卸载重挂) | `gate:stream-geometry` ⑩;`tail-slot.test.tsx:94` |
+| 25 | 读数冻在收场那一刻 | `live` 翻假 | 无 | `setNow(Date.now())` | `TailSlot.tsx:119-137` | `tail-slot.test.tsx:95` |
+| 26 | 思考段手动折起报意图 | `expanded` 由真变假(layout) | 无 | `noteFold(CARD_FLIP_MS)` | `ThinkingSegment.tsx:139-159` | `fold-anchor.test.tsx:125` |
+| 27 | 思考段 FLIP | `expanded` 变(layout) | `book.heightOf`(RO 报的)+ **一次 `el.offsetHeight`** + **一次强制排版** | 内联 `height` / `transition` | `ui/flip-height.ts:141-204` | `gate:stream-geometry` ④(高度变化 = 0,但那是**收起态**的高) |
+| 28 | 工具卡 FLIP | `structure` 变(layout) | 同上 | 同上 | `ToolCard.tsx:180-190` | `gate:tool-stream`(我没读它,列为未知);几何侧 **⚠︎ 无门** |
+| 29 | 工具卡 / 折痕**收起** | 用户点 | — | **什么都不报** | 见 13.1.4 ① | **⚠︎ 无门** |
+| 30 | 底把手收起后送回头把手 | `FoldFoot` 点击 → rAF | `scrollIntoView` 自己量 | W11 | `ui/Fold.tsx:104-121` | **⚠︎ 无门** |
+| 31 | TOC / 检索落点 | 点键 / 点命中 | 一次 rect | W10 | `useChatToc.ts:98-146` | `gate:search-messages:741-743` 只判「在树上 + 点亮了」,**不判位移** |
+| 32 | 来源条点开检索段 | 点来源条 | — | W12 + `setOpen(true)` | `research/reveal.ts:3-18` | **⚠︎ 无门** |
+| 33 | 顶端那一格常驻 | 渲染期 | 无 | 只换文字 | `ChatStream.tsx:592-613`(P1e 第一版把整行摘掉,当场红 12.2px) | `gate:stream-geometry` ①② |
+| 34 | 事后行软着陆 | `.rowLate` 挂上 | 浏览器的 `interpolate-size` | 高 / 行距 / 不透明度三量过渡 | `ChatStream.module.css:184-197` | `gate:tail-jitter` ②(**只报不判**,§10.2 ④) |
+| 35 | 旧回答上折 | `retiring` 翻真 | — | `.rowRetiring` 高度过渡 + `noteFold` | `ChatStream.module.css:364-376`、`ChatStream.tsx:2139-2152` | `gate:send-flow` ⑥ |
+
+#### 13.1.4 今天没有门守着的(这几条标红)
+
+① **工具卡 / 压缩折痕 / 上下文更新折痕收起时,一句意图都不报。**
+`ToolCard.tsx:114` 只取了 `useNoteUserExpand`,`toggleOpen:132-135` 里
+`if (!openRef.current) note()` —— **只有展开那一侧报**;`CompactSeam.tsx:142` 与
+`ContextDeltaSeam.tsx:181/225` 同形。而 `content/fold-intent.ts:10-13` 自己写着这两件事
+「要的结果正好相反」。后果:贴底时收起一张多步工具卡 → `useFlipHeight` 在已经折起的
+DOM 上 `el.offsetHeight`(`flip-height.ts:185`)逼出一次排版 → 页面总高瞬间变小 →
+浏览器钳 `scrollTop` → **改动点以上的内容整体下移**。这就是 §0 ① 的同一机制,而 §6
+第一条留的账只写了「思考段 / 工具卡」,实际上**折痕那两族也在里面**。
+
+② **`ui/Fold.tsx:119` 的 `scrollIntoView`。** 它在收起那一帧的**下一帧**跑,与 ① 的钳位
+是同一次收起的两个后果,而且它会覆盖掉钳位之后的位置。没有门,没有单测(我在
+`src/ui/__tests__/` 与 `content/__tests__/compact-seam.test.tsx` 里都没找到咬它的断言)。
+
+③ **`toc/useChatToc.ts:130` 与 `research/ResearchSegment.tsx:59` 这两发平滑滚动。**
+`gate:search-messages:741-743` 判的是「那条消息真的在树上 / 拿到了落点高亮」,一个位移
+读数都没有;来源条那一发连这个都没有。两发都在几百毫秒里连续写滚动位,而跟随状态机
+只按「比上一次小没小」判(`ChatStream.tsx:2010`)。
+
+④ **扩窗保位那一手(W1)。** `ChatStream.tsx:885-903` 那只 layout effect 的触发沿是
+`[windowStart, olderTick, scrollRef]`。P1e §10.1 末尾写过「那一行的在场与否从此不翻,
+所以这条触发沿不含 `hasMoreBefore` 不再是缺口」—— 那句话对**顶端那一格**成立,但
+**对整条扩窗保位不成立**:取页回来那一拍 prepend 的是几十条消息,而这一格从来没有一道
+真机门量过「扩窗前后视口里那一行动没动」。`ChatStream.test.tsx:1360` 那一组是 jsdom,
+按 CLAUDE.md「交互时序类改动必须真机对照,jsdom 的绿不算数」,它不算。
+
+⑤ **`gate-stream-geometry.mjs:150-165` 那格过渡值 `tailSlotShiftPx: 1.5` 的退场判据
+已经是一句假话。** 它写着「退场判据:`content/tail-snap.ts` 的
+`TAIL_SNAP_REACQUIRE_DEVICE_PX = 3` 收窄,或者 P2 的锚定器接管亚像素落点」,而
+`content/tail-snap.ts` **在 P1h 已经整件删除**(`§12.6`;`ls` 确认不存在)。这不是产品红,
+是**门里一条引用了不存在的文件的判词**——仓根第二条立法说的就是这种「靠注释证明」的账。
+顺带两只探针也还在读那个文件:`scripts/probe-follow-recorded.mjs:85` 与
+`scripts/probe-follow-aba.mjs:242` 都会 `readFileSync` 一个不存在的路径而当场崩。
+**P2-a 顺手结清这三处**(改判词 / 删过渡值 / 给探针写退役补注),不属于任何一期的功能面。
+
+#### 13.1.5 今天互相打架、或者靠时序侥幸成立的组合
+
+**甲 · 一次收起,两只手各写一次滚动位,互不知情。** 收起一道折痕的底把手:
+第 n 帧 React 提交 → `useFlipHeight:185` 的 `el.offsetHeight` 逼排版 → 总高变小 → 浏览器钳
+`scrollTop`;第 n 帧的 RO 回调里 `foldHoldRef` **不在场**(没人报)→ 走到
+`ChatStream.tsx:1590` 的贴底分支 → `stick()` 又写一次;第 n+1 帧 `ui/Fold.tsx:119` 的
+`scrollIntoView` 第三次写。**三次写,零协调**。
+
+**乙 · 同帧座位 layout effect 与 `FrameCoalescer` 排的那一帧,写的是同一格 style。**
+`ChatStream.tsx:1944-1952`(同步)与 `:1187` 的 coalescer(下一帧)都调 `writeSeat`。
+今天不打架,靠的是 `writeSeat:1177` 那句 `if (seatWrittenRef.current === next) return` ——
+**同值短路**。这是一条真判据,但它把「两个产地」的问题降级成了「两个产地恰好算出
+同一个数」;`readSeat` 里那句 `if (next !== seatWrittenRef.current) schedule()`(`:1203`)
+让这件事今天成立。一旦 P2-b 让垫块的高同时受「座位所需」与「已吸收的回缩」两个量支配,
+这条同值短路就不再够 —— 两个产地会算出两个数。
+
+**丙 · RO 回调里的 `stick()` 与滚动事件的先后,是一条已经被真机证过的竞态。**
+`ChatStream.tsx:1967-1978` 整段就是那次事故的病历:浏览器一帧里先跑 scroll、后跑 RO,
+于是 RO 贴的底要到下一帧的 scroll 事件才被读到,而那一帧内容又长了几像素 → 判成「人往上
+翻」。今天的修法是「人往上翻 = `scrollTop` 变小」(`:2010`),**它对 W10/W12 这两发平滑
+滚动是否成立没有人验证过**(13.1.1 末尾那一条)。
+
+**丁 · 三个靠时限按兵不动的窗口。** `EXPAND_HOLD_MS = 220`(`components/motion.ts:232`)、
+`CARD_FLIP_MS + FOLD_HOLD_SLACK_MS = 180 + 40`(`ChatStream.tsx:122`)、`exitMs() = 120`
+(`motion.ts:12/155`)。三个都是「定时器与合成器不是同一个时钟」的余量,三个都写明了
+「为什么是时长不是布尔闩」。它们**本身没错**,错的是它们今天是**互斥的三条早退路径**:
+RO 回调里 `foldHoldRef` 那一支 `return`(`:1510`)会把这一帧的座位判据、丸判据、
+`grewBelow` 判据全部跳过,而 `holdUntilRef` 那一支(`:1585`)只跳过后两个。哪一格被跳过、
+哪一格没被跳过,今天是**写在两段 `if` 的缩进里的**,没有一处把它写成一张表。
+
+**戊 · `.rowLate` 的高度过渡长在一条十一万像素的列的底部。** §9.7 ④ 已经量过:
+那 125ms 的过渡每一帧都逼整条列重排一次。§10.2 ④ 又量到它**从来不与贴底跟随同屏**
+(短会话档 21 帧过渡里 `inPinned = 0` / `seatAlive = 21`),所以 `gate:tail-jitter` ② 至今
+只报不判。**这两条读数合起来说的是:今天这道过渡跑在座位窗里,而座位窗里尾槽本来就
+该动** —— P2 之后如果锚定器让它在贴底跟随之后才软着陆,那道门里的 `if` 自己就活了
+(退场判据已经写在 `gate-tail-jitter.mjs` 里)。
+
+**己 · `measureSeat` 每一批 RO 都跑一次 `getComputedStyle`。** `ChatStream.tsx:171`。
+流式期间约每秒 60 次。P1b §8.4 已经因为「探针每帧一次 `getComputedStyle`」在超量档造出
+长帧而把门改掉了(那是门自伤),**产品这一侧的同一句没有被审视过** —— 它读的四格
+(`--send-line` / `padding-block-end` / `--pr-fs` / `--pr-lh`)在一轮里全是常量。
+
+### 13.2 类设计(OO)
+
+#### 13.2.1 职责切分:三层,DOM 只在最外那一层
+
+今天的病不是「hook 太长」,是**裁决逻辑与 DOM 操作搅在一起**,于是裁决没法单测 ——
+`fold-anchor.test.tsx` / `expand-hold.test.tsx` 今天是靠在 jsdom 里搭一棵假树、篡改
+`clientHeight` 的 property descriptor 来测的(`ChatStream.test.tsx:1740-1748` 就是那一手)。
+P2 按「纯状态机 + DOM 适配器」切三层:
+
+```
+┌─ React 侧(薄) ───────────────────────────────────────────────────┐
+│  useViewportAnchor(scrollRef, sessionId, …) → { follow, seatActive,│
+│    jumpToBottom, onScroll }                                        │
+│  + ViewportAnchorContext(把 report() 交给流里每一件东西)           │
+└───────────────┬────────────────────────────────────────────────────┘
+                │ 持有
+┌───────────────┴─ 装配层 ───────────────────────────────────────────┐
+│  ViewportAnchor —— 唯一的裁决者与唯一的 scrollTop 写者             │
+│    协作者:ScrollPort(DOM)/ TailPad / IntentWindow / Slide /       │
+│            EntryRestore / AnchorRecorder                           │
+└───────────────┬────────────────────────────────────────────────────┘
+                │ 只经这一个接口碰 DOM
+┌───────────────┴─ 适配层 ───────────────────────────────────────────┐
+│  ScrollPort —— 量(只读)与写(唯一口),可被 FakeScrollPort 替换  │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+**裁决逻辑一行 DOM 都不碰**,所以 vitest 里喂一只 `FakeScrollPort`(纯数字)就能把
+§3.2 那张裁决表逐格测到,不必靠 jsdom 几何。今天 `content/follow.ts` 已经是这么写的
+(它的文件头第一句就是「纯函数,零 DOM、零 React」),P2 是把那条纪律从状态机扩到
+**整个裁决面**。
+
+#### 13.2.2 `GeometryChange`:完整类型与每个 cause 的裁决规则
+
+§3.2 那份草稿只有三格(`blockId` / `deltaH` / `cause`),勘察之后它缺三样:**谁报的
+(报的人未必是块)**、**这一件在文档里的位置**(裁决要按「视口上方 / 视口内 / 下方」分档,
+而 `deltaH` 说不出位置)、以及**这一段变化要持续多久**(折叠是一段过渡,一次性事件
+表达不了——那正是 `fold-intent.ts:21-25` 立「记时长不记布尔」那条判词的原因)。
+
+```ts
+/** 这一次几何变化是谁引起的 —— 裁决表按它分档,`core` 里不出现任何一件东西的名字。 */
+export type GeometryCause =
+  /** 内容自己长出来(流式 delta、异步高亮、图片解码完)。只增。 */
+  | 'tail-growth'
+  /** 用户亲手开合了一块东西。可增可减,减的那一半是 P2-b 要治的。 */
+  | 'user-toggle'
+  /** 事后插进列里的一行(上下文更新折痕、收场通知、扩窗 prepend)。 */
+  | 'late-insert'
+  /** 一轮收场:内容形态换了但不许改高。报它是为了让 dev 断言查得出违例。 */
+  | 'settle'
+  /** 发送 / 重试要把视口挪到一个新落点。唯一允许「主动移动视口」的 cause。 */
+  | 'send-landing'
+  /** 恢复一个已知位置:进场落锚点、停靠取回、扩窗保位。 */
+  | 'restore'
+  /** 明确的跳转:点钢琴键、点检索命中、点来源条。人说了要去哪。 */
+  | 'jump'
+
+/** 一件东西在这一刻相对视口的位置 —— 裁决只认这三档,不认像素。 */
+export type GeometryZone = 'above' | 'inside' | 'below'
+
+export interface GeometryChange {
+  /**
+   * 报的人。**不是 `blockId`** —— 报这件事的未必是块:座位垫块、尾槽那格空位、
+   * 扩窗那一批 prepend 都要报,而它们都不是块。`string` 而不是枚举,因为
+   * `core` 里不许出现任何一件能力的名字(仓根「加功能不许改骨架」)。
+   */
+  readonly sourceId: string
+  readonly cause: GeometryCause
+  /**
+   * 这一件**接下来**会变多高(正 = 长高,负 = 缩)。
+   *
+   * **它是「申请」不是「事后通报」**:G2 说的收缩先申请后执行,靠的就是这一格在
+   * 块真的缩之前先到。报的人算得出它(`ui/flip-height` 手里那格 `before` 就是,
+   * 见 13.2.5);算不出就报 `undefined`,锚定器退回「事后按锚点自校正」那条路
+   * (= 今天 `foldHoldRef` 那一支的行为,不是新写一条)。
+   */
+  readonly deltaH?: number
+  /**
+   * 这一段变化要持续多久(毫秒)。0 / 缺席 = 一次性。
+   *
+   * 过渡会**逐帧**报好几次尺寸变化,一次性闩被第一帧消费掉之后后面那几帧就裸奔了
+   * —— 判词原文在 `content/fold-intent.ts:21-25`,那是 09-15 真机踩出来的。
+   */
+  readonly durationMs?: number
+  /** 这一件此刻的矩形,由报的人给(它手上已经有了)或由锚定器现量。 */
+  readonly rect?: { readonly top: number; readonly bottom: number }
+}
+
+/** 裁决结果 —— **锚定器答「做什么」,由它自己执行;报的人拿不到这个值。** */
+export type GeometryVerdict =
+  | { readonly kind: 'ignore'; readonly why: string }
+  /** 跟随:把视口贴到底。 */
+  | { readonly kind: 'follow' }
+  /** 钉住:锁住某一件东西的顶边,接下来 `holdMs` 毫秒里每帧把它按回去。 */
+  | { readonly kind: 'pin'; readonly anchor: 'reported' | 'first-visible'; readonly holdMs: number }
+  /** 补偿:视口上方长了 / 缩了,按同样的量改 scrollTop,屏上一像素不动。 */
+  | { readonly kind: 'compensate'; readonly deltaH: number }
+  /** 吸收:把缩掉的高记进卷尾垫块,页面总高不变(G1)。 */
+  | { readonly kind: 'absorb'; readonly deltaH: number }
+  /** 违例:dev 下报错,prod 下退回 `ignore`。 */
+  | { readonly kind: 'violation'; readonly why: string }
+```
+
+**裁决表**(纯函数 `decide(change, zone, follow, pad): GeometryVerdict`;
+`zone` 由 `ScrollPort` 按 `rect` 与视口算,是这张表唯一要的几何输入):
+
+| `cause` | `zone` | `follow` | 裁决 | 出处 / 理由 |
+| --- | --- | --- | --- | --- |
+| `tail-growth` | `below` | `pinned` | 座位还没吃光 → `absorb`;吃光了 → `follow` | 今天 `ChatStream.tsx:1591-1615` 那两格判据,逐字搬 |
+| `tail-growth` | `below` | `browsing` | `ignore`(只把丸的未读翻一格) | `follow.ts:90-106` |
+| `tail-growth` | `above` | 任意 | `compensate` | 浏览器的滚动锚定今天代劳;显式化之后跳渲的行不再骗它(`:1552-1564` 那段病历) |
+| `tail-growth` | `inside` | 任意 | `violation`(dev) | G3:活动块不许在屏上长在半中间。今天量不出来,P2-c 的 dev 断言才有 |
+| `user-toggle` | 任意 | 任意 | `deltaH < 0` → **先 `absorb` 再 `pin('reported')`**;`deltaH > 0` → `pin('reported')` | §1 的 G2 + 推论二「被点的那一块顶边不动」 |
+| `late-insert` | `above` | 任意 | `compensate` | 扩窗保位那一手(`:885-903`)的一般化 |
+| `late-insert` | `below` | `pinned` | `absorb` 然后 `follow` | 事后行只许出现在尾部(§1 推论三) |
+| `late-insert` | `inside` | 任意 | `pin('first-visible')` | 今天没有这一支 —— 顶端那一格 P1e 的 12.2px 就是它缺席的后果 |
+| `settle` | 任意 | 任意 | `deltaH === 0` → `ignore`;否则 `violation` | G4:落定那一帧几何上什么都不发生 |
+| `send-landing` | — | — | 交给 `Slide`,**期间一切别的 cause 只许 `absorb`,不许写 scrollTop** | 今天靠 `slidingRef`(`:1947`)一格闸挡住同帧 effect;P2 把它升成一条相位规则 |
+| `restore` | — | — | `ScrollPort.setTop(目标)`,并把 `lastGap` / `lastTop` 一起对齐 | W1 / W3 / W8 / W9 四处的共同形 |
+| `jump` | — | — | 落位之后**显式**重判一次档(问 `zone`,不等下一发 scroll 事件) | 13.1.1 末那条推测的修法:不靠「`scrollTop` 变小没有」去猜 |
+
+**`absorb` 与 `compensate` 的区别要写清楚,它们今天被混为一谈过**:`compensate` 改的是
+**视口位置**(`scrollTop`),页面总高不变;`absorb` 改的是**页面总高**(垫块长一截),
+视口位置不变。G1 说的「一轮之内页面总高不许变小」只有 `absorb` 做得到 —— 而今天
+`ChatStream.tsx:1453-1482` 那一支**两件事都没做**,它做的是第三件:每帧读锚点、把差值
+写回 `scrollTop`(自校正)。那一手在**有座位**时是对的(判词在 `:1459-1464`),在座位已经
+吃光时是**事后补救**,钳位已经发生过了。P2-b 要换的正是这一格。
+
+#### 13.2.3 `ViewportAnchor` 与它的协作者
+
+```ts
+/** 唯一的裁决者,也是**唯一**写滚动位的人。零 DOM —— 它只认 `ScrollPort`。 */
+export class ViewportAnchor {
+  readonly #port: ScrollPort
+  readonly #pad: TailPad
+  readonly #intents: IntentWindow
+  readonly #slide: Slide
+  readonly #onFollowChange: (next: FollowState) => void
+
+  #follow: FollowState = FOLLOW_PINNED
+  #lastGap = 0
+  #lastColumnHeight = 0
+  #pendingRestore: number | undefined
+  /** dev 断言用:上过屏的活动块,id → 最后一次量到的高。P2-c 才填。 */
+  readonly #seen = new Map<string, number>()
+
+  constructor(port: ScrollPort, options: ViewportAnchorOptions) { /* … */ }
+
+  /* ── 外面报进来的三类事实 ─────────────────────────────────────────── */
+
+  /** **唯一的几何意图入口**(收编 fold-intent + expand-intent)。 */
+  report(change: GeometryChange): void
+
+  /** 跟随状态机的六种事件,原样透传给 `reduceFollow`(`content/follow.ts` 一个字不改)。 */
+  dispatch(event: FollowEvent): void
+
+  /** 浏览器报来的尺寸变化(RO 回调)与滚动事件 —— 相位由调用方保证。 */
+  onResize(entries: readonly ResizeObserverEntry[]): void
+  onScroll(): void
+
+  /* ── 宿主生命周期(13.2.7 那只 hook 调这几口)───────────────────── */
+
+  enter(anchor: ScrollAnchor | undefined): void
+  /** 宿主说这一份看不见了 / 又看得见了(`content/visibility.ts` 的那两格)。 */
+  setVisible(visible: boolean): void
+  dispose(): void
+
+  /* ── 读面(给 React 渲染用,一律 readonly)──────────────────────── */
+
+  get follow(): FollowState { return this.#follow }
+  get seatActive(): boolean { return this.#pad.active }
+}
+```
+
+**协作者五件,每一件的存在理由都是「今天那几格 ref 本来就属于它」**:
+
+```ts
+/**
+ * DOM 适配器 —— **这个设计里唯一 import DOM 的文件**。
+ *
+ * 它有两条纪律,都是从今天的判词里搬的:
+ *  ① **停靠中(`clientHeight === 0`)一切读写都是恒等** —— 判据用几何而不是
+ *    「宿主说我看不见」,对任何一种藏法都成立(`ChatStream.tsx:1057-1062`);
+ *  ② **写完位置当场记下 `lastTop`** —— 不等下一帧那个滚动事件
+ *    (`ChatStream.tsx:1069-1075`,2026-09-12 那条判例)。
+ */
+export interface ScrollPort {
+  /** 一次读完,不逼排版(RO 回调里调是白拿的)。停靠中答 `undefined`。 */
+  measure(): ViewportMetrics | undefined
+  /** 这一件此刻落在视口的哪一档。 */
+  zoneOf(rect: { top: number; bottom: number }): GeometryZone
+  /** **唯一**写滚动位的口。`cause` 只用于埋点与 dev 断言,不改行为。 */
+  setTop(top: number, cause: GeometryCause): void
+  /** 「人上一次停在第几像素」——`setTop` 自己维护,外面只读。 */
+  readonly lastTop: number | undefined
+  /** 一层里第一件下缘还在视口内的东西(二分,今天 `firstVisibleChild:246`)。 */
+  pickAnchor(): AnchoredElement | undefined
+  /** 卷尾垫块那一格的 style 写口(TailPad 用)。 */
+  writePadHeight(px: number): void
+}
+
+export interface ViewportMetrics {
+  readonly scrollTop: number
+  readonly scrollHeight: number
+  readonly clientHeight: number
+  readonly columnHeight: number
+  /** `gap = scrollHeight − clientHeight − scrollTop`,与 `follow.ts` 同一个式子。 */
+  readonly gap: number
+}
+```
+
+```ts
+/**
+ * **两条意图通道合一**(fold-intent + expand-intent 整件退役)。
+ *
+ * 它们今天是两条 context、两格 ref、两支 `if`,而它们说的是同一句话的两个方向
+ * ——「人动了手,接下来这么久归他」。合一之后**方向由 `GeometryChange.deltaH`
+ * 的正负说**,不再由「你调了哪一个函数」说:那正是 §3.2 要的「块只报几何变化」。
+ */
+export class IntentWindow {
+  /** 此刻在不在窗内,以及这一段窗归谁。 */
+  current(now: number): ActiveIntent | undefined
+  open(change: GeometryChange, now: number): void
+  /** 窗内那一件的锚(第一帧选定,之后每帧按回去)。 */
+  pinAnchor(el: AnchoredElement, top: number): void
+}
+```
+
+```ts
+/** 发送 / 重试的那一段插值。今天的 `landFrameRef` / `landWroteRef` / `slidingRef` 三格。 */
+export class Slide {
+  get running(): boolean
+  /** 目标在**算的时候**就夹进 `[0, maxScroll]`,所以每一帧单调无反向(`seat.ts:60-68`)。 */
+  to(target: number, ms: number): void
+  cancel(): void
+}
+```
+
+```ts
+/** 进场落锚点那几帧的「还没落稳」(今天 `restoreRef`,有界 6 轮)。 */
+export class EntryRestore { /* anchor, left */ }
+/** 「看到哪儿」的尾随去抖(今天 `anchorTimer` + `scheduleAnchorSave`)。 */
+export class AnchorRecorder { /* schedule / flush / cancel */ }
+```
+
+**生命周期**,逐条对着施工纪律「状态先行」的第 ① 张表:
+
+| 事件 | `ViewportAnchor` 做什么 |
+| --- | --- |
+| **随会话叶挂载** | `new ViewportAnchor(new DomScrollPort(el), …)`;`enter(anchor)` 决定落底还是落锚点 |
+| **换会话** | 今天是同一只 hook 重跑那条 `[sessionId]` 的 effect。P2 一律**换一个实例**:今天那句「换会话不带上一条会话的意图」(`ChatStream.tsx:1298`)、「基准跟着会话走」(`:1151-1154`)、「还没落稳那一格作废」(`:1354`)是三处**各自记得要清**的地方,换实例之后一处都不必写 |
+| **停靠**(`content-visibility: hidden`) | `setVisible(false)`;`ScrollPort` 的 `measure()` 从此答 `undefined`,**一切读写自然成为恒等** —— 今天散在 `stick:1067` / RO `:1423` / 去抖 `:1260` / `landOnSendLine:1735` 四处的 `clientHeight === 0` 守卫收成一处 |
+| **取回** | `setVisible(true)` 立一格 `#pendingRestore`(零几何读,判词照搬 `:2039-2051`),由下一批 `onResize` 消费 |
+| **换宿主**(浮窗 / 分屏 / 架子) | 与停靠同形:宿主换了 = 这一份的 `visible` 翻一次。滚动容器那个 DOM 节点不变(`session-park.ts` 的整个立论),所以 `ScrollPort` 不必重建 |
+| **卸载** | `dispose()`:取消 coalescer、rAF、去抖定时器,并 `flush()` 最后一笔锚点 |
+| **HMR** | `ViewportAnchor` 是**实例不是模块级单例**,寿命 = 这次挂载,所以**不需要 `import.meta.hot.dispose`**(09-01 那条立法的判据是「这东西的寿命是不是这个模块实例」)。要配 dispose 的是 13.2.6 讲的那三本 `HeightBook` —— 它们今天已经配了 |
+
+#### 13.2.4 卷尾垫块:状态与「先申请后执行」的时序
+
+```ts
+/**
+ * **卷尾垫块** —— 今天的座位垫块升一格。
+ *
+ * `height = max(座位所需, 本轮已吸收的回缩)`(§3.3)。两个量分开记,因为它们的
+ * **释放时机不同**:座位那一半长满就归 0(`seat.ts:109-135` 一个字不改),吸收
+ * 那一半留到用户滚动或下一次发送(§2 拍点 3,用户 09-20 拍的)。
+ */
+export class TailPad {
+  #seatWanted = 0        // 今天的 seatHeightRef
+  #absorbed = 0          // **新的**:本轮已吸收的回缩
+  #written: number | undefined  // 今天的 seatWrittenRef
+  #landed = false        // 今天的 seatLandedRef
+  readonly #coalescer: FrameCoalescer
+
+  get height(): number { return Math.max(this.#seatWanted, this.#absorbed) }
+  get active(): boolean { return this.#landed || this.#absorbed > 0 }
+
+  /** 量座位(只读),排下一帧写。今天的 `readSeat`。 */
+  measureSeat(m: ViewportMetrics): void
+  /** **同帧**写到位 —— 发送落位与收缩申请这两条路要它(今天 `writeSeat` 的两个同步调用点)。 */
+  flushNow(): void
+
+  /**
+   * **申请吸收 `px` 的回缩**(G2 的前半段)。
+   *
+   * 同步把垫块加长,**并立刻 `flushNow()`** —— 返回之后调用方才可以让那一块真的缩。
+   * 返回「真的吸收了多少」:垫块已经因为座位而够高时返回 0(不必重复让地)。
+   */
+  requestAbsorb(px: number): number
+
+  /** 释放:用户滚动了,或者下一次发送。 */
+  release(reason: 'user-scroll' | 'send'): void
+}
+```
+
+**「先申请后执行」的时序**(§1 的 G2;今天这一段是反过来的 —— 块先缩、引擎事后补救,
+而钳位恰好发生在中间那一次排版里):
+
+```
+            块(思考段 / 工具卡 / 折痕)          ViewportAnchor        TailPad      浏览器
+点击收起 ──┐
+           │ ① 我此刻多高?  ← 账上现成的(HeightBook 里 RO 报过的数,不逼排版)
+           │ ② report({cause:'user-toggle', deltaH: -before, durationMs: CARD_FLIP_MS})
+           ├──────────────────────────────────▶ decide → {kind:'absorb'} + {kind:'pin'}
+           │                                        │
+           │                                        ├─ requestAbsorb(before) ──▶ #absorbed += before
+           │                                        │                            flushNow() ──▶ 排版①:总高不变
+           │                                        └─ pinAnchor(被点那一块, 它此刻的 top)
+           │ ③ report() 返回了 —— 现在才允许量「改后多高」并写内联 height
+           │    (`el.offsetHeight` 那一次逼排版②,此刻垫块已经到位,总高不会变小)
+           └──────────────────────────────────────────────────────────────────▶ 排版②:不钳
+                                                    ⋯ 接下来 durationMs 里每帧
+                                                    把被点那一块的 top 按回去(今天的自校正)
+```
+
+**关键的一句**:`report()` 是**同步返回**的,而「量改后多高」那一次逼排版的读取
+(`ui/flip-height.ts:185` 的 `el.offsetHeight`)必须排在它**之后**。这是这条设计里唯一
+一处「顺序即正确性」的地方,所以它要由**类型**保证,不能靠注释 —— 见下一节。
+
+#### 13.2.5 `ui/flip-height` 怎么接进来,而不让 `ui/` 反向依赖 `content/`
+
+`ui/` 是基础件层,`content/` 是业务层,方向只许 `content → ui`。所以**不能**让
+`flip-height.ts` 去 `useContext(ViewportAnchorContext)`。做法是**回调注入**:给
+`FlipHeightOptions` 加一格可选的申请口,类型只说「一个函数」,不提锚定器。
+
+```ts
+// ui/flip-height.ts —— 新增的两行类型,零 content/ 依赖
+export interface FlipHeightOptions {
+  durVar: string
+  durMs: number
+  easeVar?: string
+  book?: HeightBook
+  /**
+   * **要缩之前先申请**(G2)。
+   *
+   * 传进来的 `shrinkPx` 是正数(「我要矮这么多」)。这只函数**必须同步返回** ——
+   * 它返回之后这只 hook 才会去读 `el.offsetHeight`(那一读会逼一次排版,而在
+   * 垫块到位之前逼排版正是 §0 ① 那个 849–15054px 的病根)。
+   *
+   * 缺省是 noop:`ui/` 不知道谁在听,流之外的消费者(Gallery、单测)一个字
+   * 都不必知道有这回事 —— 与 `expand-intent.ts:26-28` 那条「缺省 noop」同判。
+   */
+  requestShrink?: (shrinkPx: number, durationMs: number) => void
+}
+```
+
+业务侧只多一行:
+
+```ts
+// content/ThinkingSegment.tsx / content/tools/ToolCard.tsx / content/seam/Seam.tsx
+const geometry = useGeometryReport()          // 一条 context,13.2.7
+useFlipHeight(ref, structure, {
+  book: thoughtHeights,
+  durVar: '--dur-card-flip',
+  durMs: CARD_FLIP_MS,
+  requestShrink: geometry.shrink,             // ← 新增的这一行
+})
+```
+
+**`useFlipHeight` 内部的改动只有三行**(`flip-height.ts:174-193` 那只 effect):
+
+```ts
+const before = book.heightOf(el)
+if (!before) return
+// ★ 新增:先申请。`after` 还没量,所以只报「最坏要缩这么多」;
+//   真值由下一句量出来之后不必回补 —— 垫块只会多让地,不会少让。
+options.requestShrink?.(before, durMs)
+const after = el.offsetHeight            // ← 这一读从此排在垫块到位之后
+```
+
+**它为什么够**:`before` 是 RO 报过来的旧高,`after` 是折起之后的新高,
+`before - after` 就是缩掉的量;在量 `after` 之前只知道 `before`,所以申请的是
+`before`(上界)。垫块多让一点地的后果是「这一轮底下多一小段空白」,而那正是
+§2 拍点 3 已经拍过的形态(「卷尾垫块吸收回缩后留下的空白,留到用户滚动或下一次发送
+再释放」)—— **不是新增的可见行为**。
+
+**四个今天不报收起的消费者**(13.1.4 ①)因此一行业务代码都不必改判据:它们本来就在调
+`useFlipHeight`,加一格 `requestShrink` 就进来了。`ui/Fold.tsx:119` 那一发
+`scrollIntoView` 是另一件事,P2-b 里把它改成 `geometry.report({cause:'jump'})`
+或者干脆删掉(它要解决的「头把手在视野上方」在 `pin` 之后不再成立 —— 被点那一块的顶边
+不动,头把手就是那一块的顶边)。
+
+#### 13.2.6 HeightBook 三合一:P2 **不做**,理由
+
+§3.5 把「三份 `HeightBook` 合成一份」排在 P4。勘察之后我的判断是**这个排期是对的,
+P2 不要动它**,三条理由:
+
+1. **P2 需要的只是「问得到某一件此刻多高」,而三本账各自都答得出**
+   (`ui/flip-height.ts:72` 的 `heightOf`)。`requestShrink` 拿到的 `before` 正是从那本账
+   里读的,合不合本不影响。
+2. **它们分家是有判词的,而且那判词今天仍然成立**:`flip-height.ts:110-113` 写着
+   「工具卡另有一本,不是疏忽:那一族是 916 只一起进场的盒子,把它们与零星几只浮层挤进
+   同一只观察者,下一个人读 `size` 时就说不清那个数在说谁」。合本要先给 `size` 换一个
+   分组的读法,那是一次独立的基础件改动。
+3. **P4 要的那三格(高度 / 首次上屏时刻 / 是否冻结)P2 一格都不需要。** P2 的 dev 断言
+   (「上过屏的活动块高度不许变小,除非 cause 是用户」)可以只用 `ViewportAnchor.#seen`
+   那张 `Map<string, number>` —— 它只记高,不记时刻也不记冻结,而且**只在 dev 下建**。
+
+#### 13.2.7 React 那一侧:一只薄 hook + 一条 context
+
+```ts
+/** 这只 hook 只做四件事:建实例、接 DOM 事件、把状态推给渲染、卸载时 dispose。 */
+function useViewportAnchor(
+  scrollRef: RefObject<HTMLDivElement | null>,
+  padRef: RefObject<HTMLDivElement | null>,
+  sessionId: string,
+): {
+  follow: FollowState
+  seatActive: boolean
+  jumpToBottom: () => void
+  onScroll: () => void
+  /** 交给 context 的那一口(身份恒定,所以下游 memo 一格不动)。 */
+  geometry: GeometryReport
+}
+```
+
+```ts
+/**
+ * **流里每一件东西报几何变化的唯一通道**(收编 `expand-intent` + `fold-intent`)。
+ *
+ * 缺省是 noop —— 流之外照样有消费者(Gallery 样例页、单测里直接渲染思考段),
+ * 报给没人听的地方等于没报(判词原文在 `expand-intent.ts:26-28`,逐字继承)。
+ */
+export interface GeometryReport {
+  /** 要缩之前先申请(同步返回之后才许缩)。`useFlipHeight` 的 `requestShrink` 接的就是它。 */
+  shrink(px: number, durationMs: number): void
+  /** 要长高,而且是人自己点的(今天的 `noteUserExpand`)。 */
+  expand(px: number | undefined, durationMs: number): void
+  /** 其余形状的报告,给将来那些不走 `useFlipHeight` 的块(13.3 演练甲)。 */
+  report(change: GeometryChange): void
+}
+
+export const GeometryReportContext = createContext<GeometryReport>(NOOP_GEOMETRY_REPORT)
+export function useGeometryReport(): GeometryReport { return useContext(GeometryReportContext) }
+```
+
+`ChatStream` 那一层因此从「一只 1039 行的 hook + 两条 context」变成
+「一只约 80 行的 hook + 一条 context」;`content/follow.ts` **一个字不改**(它已经是纯函数,
+`ViewportAnchor` 内部继续调 `reduceFollow` / `followShouldStick`);`content/seat.ts`
+**一个字不改**(`TailPad.measureSeat` 继续调 `seatHeight`)。
+
+#### 13.2.8 整件退役的清单
+
+| 退役的 | 今天在哪 | 被谁接管 |
+| --- | --- | --- |
+| `content/fold-intent.ts` | 41 行,一条 context | `GeometryReport.shrink` |
+| `content/expand-intent.ts` | 40 行,一条 context | `GeometryReport.expand` |
+| `ui/Fold.tsx:104-121` 的 `scrollIntoView` | 收起后送回头把手 | `pin` 裁决(被点那一块顶边不动,头把手就在那儿) |
+| `ChatStream.tsx:1944-1952` 那只无依赖 layout effect | 座位同帧跟上内容 | **不退役,但改形**:它今天是 G2 的一半(§7.1 第 1 条),P2 之后 `tail-growth` 走 `absorb`,同帧这件事由 `TailPad.flushNow()` 在同一条路径里完成,不再需要一只「每次提交都跑」的 effect。**拆它之前必须先证明 `gate:stream-geometry` ⑤ 仍然是 0**(§10.3 ③ 的反证读数) |
+| 三个时限窗口里的**两个** | `EXPAND_HOLD_MS` / `FOLD_HOLD_SLACK_MS` | 合成 `IntentWindow` 一格(`durationMs` 由报的人给,余量仍是 40ms 那一格,理由不变) |
+| `holdUntilRef` / `foldHoldRef` / `slidingRef` 三支早退 `if` | RO 回调里三处缩进 | 裁决表一张 |
+| `gate-stream-geometry.mjs:150-165` 的 `tailSlotShiftPx: 1.5` | 过渡值,退场判据已失效 | P2-a 顺手结清(13.1.4 ⑤) |
+
+**不退役的**:`content/follow.ts`(纯函数,判据一个字不改)、`content/seat.ts`(同)、
+`content/chat-window.ts`(它是渲染预算不是几何)、`data/session-view-state.ts`
+(它是跨挂载的视图状态;`applyScrollAnchor` 改成经 `ScrollPort.setTop` 写,函数形不变)。
+
+### 13.3 陌生能力演练(仓根 09-02 法)
+
+#### 演练甲:「AI 生成的 HTML 预览块」(先占形、内容后到、用户可折叠)
+
+要改的文件:
+
+1. **`content/blocks/kinds/html-preview/`** —— 它自己的模块:`produce` / `View` /
+   五问流式契约 + `geometry: { liveForm: 'reserve', settle: 'same-height', shrink: 'user-only' }`。
+2. **一行注册** —— `registerBlock({ kind: 'html-preview', … }, import.meta.hot)`
+   (`blocks/registry.ts:275`)。
+3. 折叠那一下:**消费 `useFlipHeight` 并传一格 `requestShrink`**(与思考段 / 工具卡逐字
+   相同的三行),或者它不用 FLIP 的话调一次 `geometry.report({ cause: 'user-toggle',
+   deltaH: -h, durationMs })`。
+
+跟随、垫块、落定不跳、贴底时收起不钳位,**它一个字都不必操心**。
+`ViewportAnchor` / `TailPad` / 裁决表里不出现 `html-preview` 这个字符串。
+**前提**:§3.4 那两个 `switch`(`SegmentView.tsx:38` 与 `assemble/index.ts:133`)仍然
+在场,所以这条演练今天在**块**那一层过得了(`blocks/registry.ts` 已经是注册表),在
+**段**那一层过不了 —— 那正是 P3 的账,不是 P2 的。这一条我照实写,不假装 P2 解决了它。
+
+#### 演练乙:「消息内嵌的可展开 diff 面板」(用户点开后高度大变、流式中还在长)
+
+它比甲难的一格是:**流式中它还在长,而用户可以在流式中把它点开**——
+`tail-growth` 与 `user-toggle` 同时在场。
+
+要改的文件:
+
+1. **它自己的模块**(`geometry: { liveForm: 'grow', settle: 'same-height', shrink: 'user-only' }`)。
+2. **一行注册。**
+3. **两次调用**:长的时候什么都不报(`liveForm: 'grow'` 已经声明了,尺寸变化由那只共享
+   RO 报给锚定器);点开 / 收起调 `geometry.expand` / `geometry.shrink`。
+
+裁决表已经答得出这两件叠在一起时该怎么办:`user-toggle` 的窗开着的时候,
+`tail-growth` 在 `zone === 'below'` 上仍然走 `absorb`(总高不变),只是不 `follow`
+—— 也就是「人正在读他刚点开的那一段,模型接着写,屏幕不动」。这一条今天**做不到**:
+`ChatStream.tsx:1585-1589` 那一支在窗内是**整支早退**,座位那一格
+(`readSeat:1451`)在它之前跑所以还在算,但 `absorb` 这件事今天根本不存在。
+
+**结论**:两条演练的答案都是「能力自己的模块 + 一行注册 + 一次意图上报」,
+所以 13.2 那份类设计在几何这一层是抽到位的;**段那一层的两个 `switch` 仍然是骨架债,
+归 P3**。
+
+### 13.4 分期
+
+四期,**每一期都行为等价可验证、可单独合入**。派工单那份初稿我改了三处,逐条写明。
+
+#### P2-a · 抽件不改行为
+
+**改动面**:新建 `content/viewport/`(`anchor.ts` / `scroll-port.ts` / `tail-pad.ts` /
+`intent-window.ts` / `slide.ts` / `entry-restore.ts` / `anchor-recorder.ts` / `verdict.ts` /
+`types.ts` / `use-viewport-anchor.ts`);`ChatStream.tsx` 删掉 `useFollowBottom` 那 1039 行,
+换成 80 行的 hook 调用。**裁决逻辑一行不改** —— 今天那几支 `if` 原样搬进
+`ViewportAnchor` 的方法里,`GeometryChange` / 裁决表**这一期只定义类型,不接线**。
+`fold-intent` / `expand-intent` 两条 context **原样留着**(P2-c 才退役)。
+唯一的行为收口是:**七处 `scrollTop = ` 全部改走 `ScrollPort.setTop(top, cause)`**,
+那一口内部做今天散在四处的 `clientHeight === 0` 守卫与 `lastTop` 同步。
+
+**顺手结清**(不属于功能面,理由在 13.1.4 ⑤):`gate-stream-geometry.mjs:150-165` 那格
+过渡值的判词、两只读 `src/content/tail-snap.ts` 的探针。
+
+**风险**:1039 行搬迁是这一线最大的一次等价改动。缓解见 13.5 末。
+**回滚点**:一个 commit,`git revert` 即回。
+**验收门**:`gate:stream-geometry`(dev,短会话八场景 + 超量八场景)、`gate:send-flow`
+(dev + prod)、`gate:tail-jitter`(dev + prod × 短 / 真店)、`gate:chat-follow`、
+`gate:chat-layout` —— **五道门的每一格读数逐格与搬迁前相同**(不是「都绿」,是「逐格
+相同」:搬迁前先跑一趟存基线)。加 `vitest src/content src/ui`。
+**超量**:`scripts/lib/seed-large-ledger.mjs` 缺省档(≥50MB / 400 条 / 900 张卡)。
+目标数照抄今天:首字帧尾槽位移 **0px**、座位 **134.40px = 6.00 行**、贴底跟随
+**1 个设备像素行 / 峰峰 0**、`scrollHeight` 回缩 **0 次**、切回来 **≤50ms**。
+
+#### P2-b · 卷尾垫块吸收回缩 + 收缩先申请后执行
+
+**改动面**:`TailPad` 加 `#absorbed` / `requestAbsorb` / `release`;
+`ui/flip-height.ts` 加 `requestShrink`(三行);四个今天不报收起的消费者各加一行
+(`ToolCard.tsx` / `CompactSeam.tsx` / `ContextDeltaSeam.tsx` / 经 `seam/Seam.tsx` 的
+`FoldFoot` 那一路);`ui/Fold.tsx:104-121` 的 `scrollIntoView` 删掉。
+裁决表这一期只接 `user-toggle` 一格。
+
+**它治的就是用户今天能感到的那个病。**
+
+**风险**:①「垫块多让地」在**短会话**上会留下一段肉眼可见的空白 —— 那是 §2 拍点 3
+已经拍过的形态,但**释放时机**(用户滚动 / 下一次发送)要真机走查一遍;
+② `ui/Fold` 那一发 `scrollIntoView` 删掉之后,**键盘用户从底把手收起时头把手会不会跑到
+视野上方** —— `pin` 保证被点那一块的顶边不动,而头把手就是那一块的顶边,所以理论上不会,
+但焦点已经交给头把手了(`Fold.tsx:115`),**要在 `gate:a11y` 或 `gate:focus` 上补一条**。
+**回滚点**:`requestShrink` 缺省是 `undefined`,把四个消费者那四行删掉即回到 P2-a 的行为。
+**验收门**:**新门**,加在 `gate:stream-geometry` 上(它已经有短会话与超量两档):
+
+> ⑬ **贴底时手动收起,改动点以上一像素不动。** 四种东西各一档:3 千字思考段、
+> 6 万字思考段、多步工具卡(`tools` 那一档现成的)、压缩折痕。判据三格:
+> 收起那一帧起 300ms 内**改动点以上**那一块的位移 ≤ **1px**、这一段里
+> `scrollHeight` 回缩 **0** 次、收起前后垫块的高**只增不减**。
+> **反证**:把那四行 `requestShrink` 拆掉重跑(备份文件法,禁 `git checkout`)——
+> 按 §0 ① 的读数应当红在 849 / 15054px 那个量级。
+
+**超量**:同 P2-a 的夹具,**而且这一格必须两档都跑** —— §0 那句「`gate:send-flow`
+为什么一直绿:它的超量夹具上面压着 400 条消息,`scrollTop` 钳不到,所以 ① 量不出来。
+**短会话里才全额暴露**」说的正是这条新断言的陷阱:**短会话是它的主场,超量是它的
+对照组**,两档都要,而且短会话那一档不许省。
+
+#### P2-c · 意图通道合一 + 交接台阶 + dev 断言
+
+**改动面**:`fold-intent.ts` / `expand-intent.ts` 整件删除,两条 context 换成
+`GeometryReportContext`;裁决表接满七个 cause;`late-insert`(`inside` 档 → `pin`)
+把 §0 ⑤ 的座位交接台阶抹平;dev 运行时断言「上过屏的活动块高度不许变小,除非
+`cause === 'user-toggle'`」(`ViewportAnchor.#seen`,只在 `import.meta.env.DEV` 下建表)。
+
+**我对派工单初稿的一处修正**:初稿把「被点那一块顶边不动」放在 P2-c。
+**它必须提前到 P2-b** —— 因为 `absorb` 单独落地只保证「屏上其余内容不往下掉」,
+不保证「被点那一块自己不动」;两件事是同一次收起的两半,分两期落地的话 P2-b 交卷时
+真机上会看见「其余不动了,但被点那一块自己跳了一下」,那不是可验收的中间态。
+所以 P2-b 同时落 `absorb` + `pin`,P2-c 只做**通道合一**与**其余五个 cause**。
+
+**风险**:dev 断言会在**存量**上报出一批今天没人知道的违例(`.rowLate` 那条过渡几乎
+肯定中招)。所以它**只 `console.warn` 不抛**,并且第一批报出来的要逐条归类进留账,
+不许顺手改产品(仓根「行为裁定须先问」)。
+**回滚点**:两条 context 的删除与裁决表接线分两个 commit。
+**验收门**:`gate:stream-geometry` **⑤ 座位交接帧** —— 今天这道门量不到它
+(§7.5 末:「它量的是尾槽,而交接那一帧尾槽跟着视口走」),P2-c 要**新加一条**按
+「座位归零前后各 300ms,视口内第一块正文的位移 ≤1px」判,反证 = 把 `late-insert`
+那一支拆掉。`gate:send-flow` ⑥(`seatZeroFlips`)照旧。
+**超量**:同上两档。
+
+#### P2-d · 整体重排锚点(拖窗口 / 开关侧栏)
+
+**改动面**:`ScrollPort` 订阅容器自身的尺寸变化那一支(今天
+`ChatStream.tsx:1621` 的 `observer.observe(el)`)改成:容器变矮时以**视口里第一块**为锚
+恢复位置,而不是今天的「什么都不做,等下一次 scroll 事件」。
+
+**这一期可以砍。** 它是 §1 推论四,今天的行为是「容器变矮 → 当场离底 → 不发滚动事件 →
+谁都不知道」(`ChatStream.tsx:1390-1396` 已经写明了这个病,并且说「补的不是一条新机制,
+是把它原本靠别人代劳的那一半接过来」)。它与用户今天报的病无关,而且它要改的是
+**跟随判据**(容器变矮到底算不算离底),那是一个**行为裁定**,按仓根法要先问用户。
+**建议**:P2-a/b/c 合入之后单独拿出来问,不要打包进 P2。
+
+#### 硬依赖
+
+```
+P2-a ──▶ P2-b ──▶ P2-c        P2-d(可砍,且须先拍板)
+```
+
+- **P2-b 硬依赖 P2-a**:`requestAbsorb` 要同步写到垫块上,而今天 `writeSeat`
+  (`ChatStream.tsx:1173`)的可达性绑在那只 hook 的闭包里;不先抽件的话这一格要
+  穿过 `useFlipHeight` → context → hook 三层闭包,写出来比抽件还乱。
+- **P2-c 硬依赖 P2-b**:通道合一的前提是 `shrink` 那一侧真的有人用(今天只有两个
+  生产者,合一等于把一条没人走的路换一个名字)。
+- **P2-a 不依赖任何一期**,而且它**单独合入就有价值**:七个写点收成一口、22 格 ref
+  收成六个对象、裁决逻辑可以在 vitest 里不靠 jsdom 几何测到。
+
+### 13.5 风险与未知
+
+#### 必须真机量了才知道的(每条给量法)
+
+1. **W10 / W12 两发平滑滚动跳到一条**比当前位置**靠下**的消息时,跟随状态机会不会
+   仍然停在 `pinned`,于是下一段 delta 把人一把拽回底?
+   **量法**:`gate:search-messages` 已经有「点检索命中 → 落到那条助手消息」那一整套
+   (`:741-743`);在它后面加一段:落位之后读 `[data-testid="chat-stream"]` 的
+   `data-follow` 属性(产品自己的自述,P1c 加的那一格),再喂一段 delta,量视口位移。
+   **判据**:落到一条离底 > 一屏的消息上之后 `data-follow` 必须是 `browsing`。
+2. **`ui/Fold.tsx:119` 那一发 `scrollIntoView` 今天到底移动了多少?**
+   **量法**:`gate:tail-jitter` 的「画出来的那一份」取样口(rAF 里 `postMessage`
+   出去的宏任务,`§10.2 ①`)现成;在短会话档里展开一道压缩折痕、从**底把手**收起,
+   量收起那一帧起 300ms 内容器 `scrollTop` 的轨迹。**先量再改**——如果它今天实际是
+   一次恒等(`block: 'nearest'` 在头把手本来可见时是恒等),那么 P2-b 删掉它是零风险;
+   如果不是,删它就是一次可感知的行为变化,要先问。
+3. **垫块吸收 6 万字思考段折起时那 15054px,会不会把 `scrollHeight` 撑到一个荒唐的数?**
+   §0 ① 量到的是「一帧内视口被拉走 15054px」,也就是那一块缩掉了约 15000px。
+   垫块吸收它意味着列尾凭空多出 15000px 的空白直到用户滚动。**这可能是一个产品问题,
+   不是技术问题。**
+   **量法**:P2-b 的新门 ⑬ 里把「收起后垫块的高」打进报告(只报不判),四档各一个数。
+   **如果 6 万字那一档真的是一万多像素,这是一个拍点**:要么给 `absorb` 一个上界
+   (比如一屏),超出的部分退回今天的自校正;要么改释放时机。**我没有替用户拍这个板。**
+4. **`measureSeat` 每帧一次 `getComputedStyle`(`ChatStream.tsx:171`)在超量档上值多少?**
+   **量法**:P2-a 搬迁时把它改成「一轮里量一次、存着」是一次纯粹的等价优化,但按
+   「抽件不改行为」的纪律 P2-a 不该顺手做。改成 A/B:`gate:stream-geometry` ⑦
+   (长帧)在超量档上跑两趟对照(备份文件法)。
+5. **dpr 1 × 真店规模。** §9.6 留账最后一条:「探针默认 dpr 2;dpr 1 也跑过(小会话),
+   读数同形。**真店规模 × dpr1 没跑**」。P2-b 的新门 ⑬ 判的是 CSS 像素位移(≤1px),
+   dpr 影响的是取整边界,所以理论上不敏感 —— 但这是推断,`ONETHING_TAIL_DPR=1`
+   跑一趟就知道。
+
+#### 现有门的盲区
+
+- **「只在短会话才出现」那一族**,§0 末尾已经吃过一次:`gate:send-flow` 的超量夹具
+  上面压着 400 条消息,`scrollTop` 钳不到,① 量不出来。**P2-b 的新门必须以短会话为主场**
+  (上面那一节已经写进验收)。
+- **「只在真店规模才出现」那一族**,§9.1 吃过一次:P1/P1b 那十二条门一路全绿却没接住
+  用户,而真店规模上探针当场量到。两族**方向相反**,所以每一条新断言都要两档都跑 ——
+  这一条今天在 `gate:stream-geometry` / `gate:tail-jitter` 上已经是体例,P2 不许省。
+- **rAF 取样口会在别的时刻说谎**(§9.7 ②、§10.3 ②、§12.9 ②,三次踩)。P2 的新断言
+  **一律用「画出来的那一份」取样口**(rAF 里 `postMessage` 出去的宏任务),不许再开
+  一只 rAF 采样体。`gate-stream-geometry` 整只要不要换口今天仍是一个开着的拍点
+  (§10.4 第二条),P2 不顺手改它 —— 但**新加的断言不许用旧口**。
+- **jsdom 的绿不算数**(CLAUDE.md 施工纪律)。`ChatStream.test.tsx` 里那几组停靠 / 按屏进
+  用例是靠篡改 `clientHeight` 的 property descriptor 撑起来的(`:1740-1748`),
+  它们守的是**代码路径**不是**几何后果**。P2-a 之后这批用例会变得好写很多
+  (`FakeScrollPort` 喂数字),但它们仍然不能替代真机门。
+- **`gate:tail-jitter` ② 今天恒为「只报不判」**(§10.2 ④),退场判据写在门里,
+  正是「P2 的锚定器让那道折痕在已经贴底跟随之后才软着陆」。**P2-c 落地之后要回来看一眼
+  那个 `if` 活没活**;如果活了,那一格就从「写出来的空账」变成真判据。
+
+#### P2-a 这种 1000 行级搬迁怎么保证等价
+
+三层,缺一不可:
+
+1. **搬迁前先把五道门各跑一趟存成基线**(dev + prod,短会话 + 真店,逐格读数写进这一节)。
+   验收判据是**逐格相同**,不是「都绿」—— 「都绿」会放过一次把某一格从 0.0 变成 0.9 的漂移。
+2. **特征测试先行**:在搬之前,给今天那只 hook 补一组**行为快照**用例 ——
+   喂一串事件(`enter` → `grew`×N → `scrolled` → `sent` → …),把**每一次 `scrollTop`
+   写入的时刻与值**记成一条序列。今天 `ChatStream.test.tsx` 已经有一只数写入次数的
+   `writes` 探针(`:1808` 那句 `expect(writes.count()).toBe(before + 1)` 用的就是它),
+   把它升成「记序列」即可。搬迁后同一组用例必须吐出**逐字相同的序列**。
+   这组用例是 P2-a 的**第一个 commit**,在任何搬迁之前合入。
+3. **逐 commit 可二分**:七个协作者各一个 commit,每个 commit 之后五道门全绿且单测全绿。
+   顺序按依赖从叶到根:`ScrollPort` → `Slide` → `AnchorRecorder` → `EntryRestore` →
+   `TailPad` → `IntentWindow` → `ViewportAnchor` → 删旧 hook。
+   **不许一个 commit 搬完** —— 一旦门红,二分的粒度就是「这七件里的哪一件」。
+
+#### 我读完仍然没读懂的
+
+- **`ChatStream.tsx:1548-1550` 那三行的确切意图**:
+  「贴底也要处理缩短:很小的高度回退就可能让浏览器钳回半个设备像素。/ browsing 的
+  『有新内容』仍只由下方 `contentGrew` 判定;折叠/恢复优先分支照旧。/
+  `if (!contentChanged && !containerChanged) return`」。前两行注释说的是「要处理缩短」,
+  而那一句 `if` 做的是「什么都没变就早退」—— 我看不出注释与代码的对应关系,也没找到
+  它的病历。**P2-a 搬它的时候要原样搬,并在特征测试里钉住它的行为,不要照注释重写。**
+- **`gate-chat-follow.mjs` 里到底哪一条对应 §7.5 说的「⑥ 是七条里最弱的一条」** ——
+  那一节说的是 `gate-stream-geometry` 的 ⑥,而 `gate-chat-follow` 里我没找到同号的断言。
+  这只影响 13.1.3 表里的「门」一列在那一行的写法,不影响设计。
+- **`gate:tool-stream` 咬不咬工具卡折叠的几何** —— 我没有读那只门(它在
+  `scripts/gate-tool-stream.mjs`,2000 行量级),所以 13.1.3 第 28 行的「门」那一格写的是
+  「未知」而不是「无门」。P2-b 开工第一件事是读它,免得新加的 ⑬ 与它重复。
+
+### 13.6 审查裁定(Fable,2026-09-21)
+
+§13.1–§13.5 审过,整体采纳;下面四条以本节为准。
+
+1. **卷尾垫块「已吸收」那一半不是累加器,是「此刻还需要多少」。** §13.5 风险 ② 说得对:6 万字思考段手动折起要吸收约
+   15000px,列尾凭空多出十几屏空白。用户 09-20 拍的是「空白留到用户滚动或下一次发送」,它要保住的是**屏上正在看的东西不动**,
+   不是那段空白本身。所以 `TailPad` 的第二个量改成算出来的:`needed = max(0, 视口下缘 − 内容下缘)` —— 即「为了让当前
+   `scrollTop` 仍然合法,列尾最少还要垫多高」。收缩申请那一刻按它取值(而不是按 `before` 全额累加);之后**只减不增**:
+   人往上滚(需要的变少)就跟着缩,缩的永远是视口下方看不见的那一截,所以不会钳位;内容又长出来(`tail-growth`)先吃垫块;
+   下一次发送归零。推论:空白**任何时刻不超过一屏**,15000px 那个产品问题不存在。`requestAbsorb(px)` 的签名不变,
+   内部按上式夹。P2-b 的门里把「垫块高 ≤ clientHeight」写成断言。
+2. **分期采纳代理的三处修正**:「被点那一块顶边不动」提前进 P2-b;P2-b 的新断言以短会话为主场、真店同跑;P2-d(整体重排锚点)
+   从 P2 里拿出去,它要改「容器变矮算不算离底」这条行为,得用户单独拍。
+3. **P2-a 允许施工代理在自己的分支上逐步提交**(每个协作者一笔,可二分),不走「haiku 统一提交」那条 —— 那条法防的是提交代理
+   改文件,而这里提交的人就是改文件的人。提交信息末尾照旧带 `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`。
+   合入仍由我审完整条分支后 ff。
+4. **顺手清掉 §13.1.4 查出的假话**:`gate-stream-geometry.mjs` 那格指着已删除的 `tail-snap.ts` 的过渡值判词、
+   `probe-follow-recorded.mjs` / `probe-follow-aba.mjs` 里 `readFileSync` 已删文件的那两处,随 P2-a 第一笔一起修(门与探针,
+   不是产品)。无门守的三处平滑滚动(`toc/useChatToc.ts`、`ui/Fold.tsx:119`、`research/ResearchSegment.tsx:59`)在 P2-a
+   只收编写口(经 `ScrollPort.setTop` / `jump`),不改行为;补门放 P2-c。
