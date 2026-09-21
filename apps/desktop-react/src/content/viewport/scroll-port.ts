@@ -36,6 +36,15 @@ export interface ScrollPort {
   readonly lastTop: number | undefined
   /** 一次读完,不逼排版(RO 回调里调是白拿的)。停靠中答 `undefined`。 */
   measure(): ViewportMetrics | undefined
+  /**
+   * **贴到底** —— 与今天那只 `stick()` **逐字同量**:一次 `clientHeight`(守卫)、
+   * 一次 `scrollHeight`(目标)、写完读回一次。
+   *
+   * 它不是第二个写口:内部与 `setTop` 走同一句 `el.scrollTop = …`。单开一格是为了
+   * **不多读一次几何** —— 「贴底」本来就不需要先 `measure()` 出一整张读数,而
+   * 流式期间它每一帧都跑(正本 §13.1.5 己 那条留账说的就是这一族的账)。
+   */
+  stickToBottom(cause: GeometryCause): void
   /** 「下面还有多少没露脸」。**不带守卫** —— 与 `follow.ts` 的 `scrolled` 同一个式子。 */
   gapNow(): number
   /** 内容列此刻多高(`getBoundingClientRect().height`)。 */
@@ -71,7 +80,6 @@ export interface ViewportMetrics {
   readonly scrollTop: number
   readonly scrollHeight: number
   readonly clientHeight: number
-  readonly columnHeight: number
   /** `gap = scrollHeight − clientHeight − scrollTop`,与 `follow.ts` 同一个式子。 */
   readonly gap: number
 }
@@ -236,13 +244,7 @@ export class DomScrollPort implements ScrollPort {
     if (clientHeight === 0) return undefined
     const scrollHeight = el.scrollHeight
     const scrollTop = el.scrollTop
-    return {
-      scrollTop,
-      scrollHeight,
-      clientHeight,
-      columnHeight: this.#column()?.getBoundingClientRect().height ?? 0,
-      gap: scrollHeight - clientHeight - scrollTop,
-    }
+    return { scrollTop, scrollHeight, clientHeight, gap: scrollHeight - clientHeight - scrollTop }
   }
 
   gapNow(): number {
@@ -267,6 +269,18 @@ export class DomScrollPort implements ScrollPort {
     if (!el) return
     // ① 停靠中不写(判词在文件头)。
     if (el.clientHeight === 0) return
+    this.#write(el, top)
+  }
+
+  stickToBottom(_cause: GeometryCause): void {
+    const el = this.#scroll()
+    if (!el) return
+    if (el.clientHeight === 0) return
+    this.#write(el, el.scrollHeight)
+  }
+
+  /** **全仓唯一**那一句 `el.scrollTop = …`。 */
+  #write(el: HTMLElement, top: number): void {
     el.scrollTop = top
     // ② 写完当场记下读回来的那个数 —— 浏览器会钳,`top` 不一定是落点。
     this.#lastTop = el.scrollTop
@@ -520,7 +534,6 @@ export class FakeScrollPort implements ScrollPort {
       scrollTop: g.scrollTop,
       scrollHeight: g.scrollHeight,
       clientHeight: g.clientHeight,
-      columnHeight: g.columnHeight,
       gap: g.scrollHeight - g.clientHeight - g.scrollTop,
     }
   }
@@ -546,6 +559,10 @@ export class FakeScrollPort implements ScrollPort {
     this.geometry.scrollTop = Math.max(0, Math.min(top, this.geometry.scrollHeight - this.geometry.clientHeight))
     this.writes.push({ top: this.geometry.scrollTop, cause })
     this.#lastTop = this.geometry.scrollTop
+  }
+
+  stickToBottom(cause: GeometryCause): void {
+    this.setTop(this.geometry.scrollHeight, cause)
   }
 
   /** 用例自己「滚」一下 —— 与人滚同形:改位置,但不记 `lastTop`(那是滚动回调的事)。 */

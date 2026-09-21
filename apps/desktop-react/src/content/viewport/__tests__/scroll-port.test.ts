@@ -77,6 +77,38 @@ describe('DomScrollPort · 纪律① 停靠中一切读写都是恒等', () => {
   })
 })
 
+describe('DomScrollPort · 贴底那一句只读两格', () => {
+  it('`stickToBottom` 读 `clientHeight` 与 `scrollHeight` 各一次,一个矩形都不读', () => {
+    const { port, el, column, geo } = stub()
+    let rects = 0
+    column.getBoundingClientRect = () => {
+      rects += 1
+      return { height: 0 } as DOMRect
+    }
+    let heights = 0
+    const original = Object.getOwnPropertyDescriptor(el, 'scrollHeight')!
+    Object.defineProperty(el, 'scrollHeight', {
+      configurable: true,
+      get: () => {
+        heights += 1
+        return geo.scrollHeight
+      },
+    })
+    port.stickToBottom('tail-growth')
+    Object.defineProperty(el, 'scrollHeight', original)
+    expect(geo.scrollTop).toBe(700)
+    expect(port.lastTop).toBe(700)
+    expect(heights).toBe(1)
+    expect(rects).toBe(0)
+  })
+
+  it('停靠中贴底也是一次恒等', () => {
+    const { port, geo } = stub({ clientHeight: 0, scrollTop: 42 })
+    port.stickToBottom('tail-growth')
+    expect(geo.scrollTop).toBe(42)
+  })
+})
+
 describe('DomScrollPort · 纪律② 写完当场记 `lastTop`,记的是读回来的那个数', () => {
   it('浏览器钳过之后 `lastTop` 是落点,不是我们要写的那个数', () => {
     const { port, geo } = stub()

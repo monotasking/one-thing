@@ -146,12 +146,12 @@ export class ViewportAnchor {
 
   /**
    * 贴底。三个调用点(进场 / 长高 / 点丸)都经它。
-   * 停靠中不写那一句由 `setTop` 统一做(`measure()` 在停靠中答 `undefined`)。
+   * 停靠守卫与 `lastTop` 同步都在那个写口里做一次;走 `stickToBottom` 而不是
+   * `measure()` + `setTop`,是因为**这一句每帧都跑**,不该为它多读一张读数
+   * (正本 §13.1.5 己 那条留账说的就是这一族的账)。
    */
   #stick(): void {
-    const m = this.#port.measure()
-    if (!m) return
-    this.#port.setTop(m.scrollHeight, 'tail-growth')
+    this.#port.stickToBottom('tail-growth')
   }
 
   /** 点丸 / 明确要求回底:先落、再翻状态(两句的次序无所谓,状态机不看几何)。 */
