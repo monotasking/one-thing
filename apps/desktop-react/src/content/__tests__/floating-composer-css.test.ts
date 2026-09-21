@@ -93,14 +93,26 @@ describe('② 气口:正文与玻璃上缘之间那 40px', () => {
 
   it('滚动容器的底部内衬 = 输入框实高 + 气口,scroll-padding 同值', () => {
     const scroll = block(chat, '.scroll')
-    const expected = /calc\(var\(--composer-h\)\s*\+\s*var\(--composer-gap\)\)/
-    expect(scroll).toMatch(new RegExp(`padding-block-end:\\s*${expected.source}`))
+    /*
+     * **那一段让位 09-21(G 线 P1h)起有了名字**:`--chat-bottom-inset`,声明在
+     * `.chatArea` 上(`ChatLeaf.module.css`,与写 `--composer-h` 的那只 RO 同元素
+     * —— Dock ⑤ 那条判例)。第三个消费者(列尾那一层 overlay 的 `bottom`)进来时
+     * 抄第三份数就是「让位只写一次」的反面,所以这里判的是**它读的是那一格**,
+     * 而那一格等于什么由下面一条单独判。
+     */
+    expect(scroll).toMatch(/padding-block-end:\s*var\(--chat-bottom-inset\)/)
     // scroll-padding 不继承,必须写在滚动容器自己身上,否则 TOC 跳转会停在玻璃底下。
-    expect(scroll).toMatch(new RegExp(`scroll-padding-block-end:\\s*${expected.source}`))
+    expect(scroll).toMatch(/scroll-padding-block-end:\s*var\(--chat-bottom-inset\)/)
+    const leaf = read('src/content/kinds/ChatLeaf.module.css')
+    expect(block(leaf, '.chatArea')).toMatch(
+      /--chat-bottom-inset:\s*calc\(var\(--composer-h\)\s*\+\s*var\(--composer-gap\)\)/,
+    )
   })
 
   it('内容列的底部内边距归 0 —— 气口只许加一次', () => {
-    expect(block(chat, '.column')).toMatch(/padding:\s*var\(--sp-6\)\s+var\(--sp-4\)\s+0/)
+    /* P1h:横向那四格搬进 `.columnGeometry`(列与列尾那一层共用一份),
+     * 纵向留在 `.column` 自己身上 —— 底那一格照旧归 0,气口只许加一次。 */
+    expect(block(chat, '.column')).toMatch(/padding-block:\s*var\(--sp-6\)\s+0/)
   })
 
   it('输入框实高不是魔法数:token 里只有一个兜底 0,真值由 ResizeObserver 写', () => {

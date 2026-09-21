@@ -40,8 +40,10 @@
  * **sticky 那一支不立断言**:P1d 量过,把 `TailSlot.module.css` 那两行
  * `position: sticky; bottom: 0` 拆掉,这道门的读数**一格不变**。它留在产品里是结构性
  * 免疫(尾槽的位置不再取决于 `stick()` 有没有赢下这一帧的竞速),不是这道门的守卫
- * 对象。**真正被守着的是 09-15 的 `content/tail-snap.ts`** —— 拆掉它,读数当场变成
- * 几十个取值(反证在正本 §10.1)。
+ * 对象。**P1g 时真正被守着的是 09-15 的 `content/tail-snap.ts`;P1h 之后连它也退役了**
+ * —— 尾槽的内容搬出滚动内容层,列尾剩下的是一格什么都不画的空位,`translate` 推它
+ * 一个像素的墨都不动(两趟并排读数在正本 §12)。今天 ①③ 守的是那一层自己的位置,
+ * ④ 守的是**画出来的字**,⑥ 守的是「那一层盖在空位上」。
  *
  * ══ 为什么不并进 `gate-stream-geometry.mjs` ══════════════════════════════
  * 那道门的 ② 量的是同一件东西,但它整只走 rAF 取样,而且 `long` 档跑得太短
@@ -86,7 +88,7 @@ const LANE = PROD ? 'prod' : 'dev'
 /** 端口另挑:5175 是用户自己的,5207/5217 是几何门的。 */
 const DEV_PORT = Number(process.env.ONETHING_TAIL_VITE_PORT ?? 5237)
 const VIEWPORT = { width: 1280, height: 800 }
-/** **钉死 dpr**:`tail-snap` 的判据以设备像素计,dpr 不对整份读数不成立。 */
+/** **钉死 dpr**:整份读数以设备像素计,dpr 不对结论就不对。 */
 const DPR = Number(process.env.ONETHING_TAIL_DPR ?? 2)
 
 /* ── 预算(判词在文件头)。它们是**上限**不是目标;抬 BUDGET 是改法。────────── */
@@ -113,6 +115,30 @@ const BUDGET = {
    * 写在断言那一段旁。
    */
   readLeftShiftPx: 1,
+  /**
+   * ④ 像素层(P1h 起**判**):贴底跟随期间「停止」那两个字的墨迹质心,
+   * 按 0.05 设备像素分桶之后只许有 **1 个**取值、峰峰 < 0.5 设备像素、跳变 **0** 次。
+   *
+   * P1g 时它只报不判 —— 那时候还没有修法,把一个治不了的读数钉成判据等于给所有人
+   * 一条恒红的线。P1h 把尾槽的内容搬出滚动内容层(正本 §12)之后它才有资格成为判据。
+   * main(P1g)上的读数:**2 个取值 / 峰峰 1.002 设备像素 / 18 跳** → 先红。
+   */
+  pixelValues: 1,
+  pixelPeakDevicePx: 0.5,
+  pixelFlips: 0,
+  /** ④ 至少要采到这么多张图,采不到就说采不到,不假装判过。 */
+  minPixelSamples: 100,
+  /**
+   * ⑥ 那一层与列里那格空位的**重合**(px)。
+   *
+   * 它是 P1h 这条改法的命根子:overlay 浮在滚动口上,而列里那格空位仍然占着地 ——
+   * 两者必须**重叠**,否则人看见的那一行与列让出来的那一格是两回事,座位几何、
+   * 收场落位、`gate:stream-geometry` 的 ①⑧ 就全都在量一件不存在的东西。
+   * **1px 只给亚像素**,不给「差不多」,更不给滚动条槽 —— 09-21 审查打回一:
+   * 那一条槽(本机 10px)要由产品自己补掉(`.overlay` 的 `scrollbar-gutter`),
+   * 不许写进判据里当加数。五种姿势的左缘一律吃这一个数。
+   */
+  overlapPx: 1,
   /**
    * 贴底跟随那一段至少要采到这么多样,否则「与自己比恒为 0」是一句绿的谎话。
    *
@@ -525,6 +551,24 @@ window.__jLeaf = function () {
  *  ② 装回去,它必须读回一个取值;
  *  ③ `.rowLate` 过渡那十几帧,rAF 口读得出斜坡而这只口读不出。
  */
+/**
+ * 等某一段记号攒够这么多**画出来的**样本(攒不够就等到封顶为止,不抛)。
+ *
+ * 判词与 ① 的窗同源:取样是**每帧一样**的,所以「够不够」是一个数得出来的量,
+ * 不该用睡多少毫秒去猜 —— 真店档上一帧可以长达 1.3 秒,睡 500ms 换来的可能是
+ * 零个样本(09-21 审查这一轮的病历,见调用处)。
+ */
+async function waitForPaintSamples(page, phase, want, capMs) {
+  const until = Date.now() + capMs
+  for (;;) {
+    const n = await page.evaluate(
+      (v) => (window.__jPaint ?? []).filter((r) => r.phase === v).length, phase,
+    )
+    if (n >= want || Date.now() >= until) return n
+    await delay(60)
+  }
+}
+
 async function startPaintSampler(page) {
   await page.evaluate(() => {
     window.__jPaint = []
@@ -545,10 +589,15 @@ async function startPaintSampler(page) {
       if (!alive(scroll)) scroll = window.__jLeaf().querySelector('[data-testid="chat-stream"]')
       if (!scroll) return false
       const nextColumn = scroll.firstElementChild
-      if (nextColumn !== column) { column = nextColumn; slot = null; seat = null; ctx = null }
+      if (nextColumn !== column) { column = nextColumn; seat = null; ctx = null }
       if (!column) return false
-      if (!alive(slot) || slot.parentElement !== column) {
-        slot = column.querySelector(':scope > [data-tail-slot]')
+      /*
+       * **尾槽那一格 P1h 起不在列里**(正本 §12):画出来的那一行搬到了滚动容器的
+       * 兄弟层上,所以这里从叶级去找,不再是 `column` 的孩子。列里剩下的那格空位
+       * 叫 `data-tail-spacer`,它什么都不画 —— 门量「人看见的那一行」问的是这一层。
+       */
+      if (!alive(slot)) {
+        slot = window.__jLeaf().querySelector('[data-tail-slot]')
       }
       if (!alive(seat) || seat.parentElement !== column) {
         seat = column.querySelector(':scope > [data-seat]')
@@ -652,9 +701,102 @@ async function stopPaintSampler(page) {
  *
  * **校准**(取样口凭什么算看得见):量完之后给**停止钮自己**加一格
  * `translate: 0 0.5px`(dpr 2 上 = 1 个设备像素)再拍一张,质心必须跟着挪约 1 个
- * 设备像素。挑停止钮而不是尾槽,是因为 `snapTail` 每一拍都会重写尾槽那一格
- * `translate` —— 往那儿写校准量会被产品当场抹掉,而停止钮这个元素产品从不碰。
+ * 设备像素。挑停止钮而不是尾槽:P1g 时是因为 `snapTail` 每一拍都会重写尾槽那一格
+ * `translate`(往那儿写校准量会被产品当场抹掉);P1h 把它删了之后这条理由变成
+ * 「停止钮就是被量的那件东西本身」—— 校准要证的是「这口看得见它动一个设备像素」。
  */
+/**
+ * **⑥ 那一层与列里那格空位重合**(P1h;09-21 审查打回一之后**五种姿势全判左缘**)。
+ *
+ * 判据是两件矩形的 `left` 与 `top` 各差多少。五种姿势各量一次,后几样是这条改法
+ * 最容易漏的前提:横向几何来自 `.columnGeometry`(跟着窗子宽变),纵向来自
+ * `--chat-bottom-inset`(跟着 composer 高变)。抄两份数 / 让位写两遍,红的就是这一格。
+ *
+ * **窄的那两档是这一格的命根子**:`.scroll` 留着两条滚动条槽而这一层是它的兄弟,
+ * 叶宽小于 `--pr-col` 时两者的可用宽就差两条槽 —— 第一版因此把判据改成「中心重合 +
+ * 左缘差正好一条槽」,09-21 审查**撤回**:用户盯的就是这一行与正文的左对齐,
+ * 一条槽是 10px。今天 `.overlay` 自己也留同一条槽(`overflow: hidden` +
+ * `scrollbar-gutter`),所以**任何叶宽下左缘差都 ≤1px**;拆掉那两行,`narrow`(叶
+ * ≈780)与 `narrower`(叶 ≈520)两档当场读回 10px。槽宽照旧量出来打进报告 ——
+ * 它是这一格的定因,不再是判据里的加数。
+ *
+ * 窗子那一下走 CDP `Emulation.setDeviceMetricsOverride`(只进这扇窗,不动真光标,
+ * 与这道门钉 dpr 用的是同一口);composer 那一下往输入框里灌几行字,量完删掉。
+ */
+async function measureOverlap(page, cdp) {
+  const read = () => page.evaluate(() => {
+    const leaf = window.__jLeaf()
+    const slot = leaf.querySelector('[data-tail-slot]')
+    const row = slot?.firstElementChild
+    const spacer = leaf.querySelector('[data-tail-spacer]')
+    const scroll = leaf.querySelector('[data-testid="chat-stream"]')
+    if (!row || !spacer || !scroll) return null
+    /*
+     * **比的是内容盒,不是边框盒**:那一层的行与列**各自**带着同一份
+     * `padding-inline`(`.columnGeometry`),而空位是**列的孩子** —— 它的矩形已经在
+     * 列的内距里面了。拿两个边框盒去比,差的恒是那一格内距(真机第一趟量到 16px,
+     * 正好是 `--sp-4`),那不是错位,是拿两把不同的尺子量。
+     */
+    const padOf = (el) => Number.parseFloat(getComputedStyle(el).paddingLeft) || 0
+    const a = row.getBoundingClientRect()
+    const b = spacer.getBoundingClientRect()
+    const rowLeft = a.left + padOf(row)
+    const rowWidth = a.width - padOf(row) * 2
+    /*
+     * 滚动条槽位:`.scroll` 写着 `scrollbar-gutter: stable both-edges`,于是它的内容盒
+     * 比聊天区窄**两条槽**。这一层是滚动容器的兄弟,所以它**自己也写了**同一句
+     * (`TailSlot.module.css` 的 `.overlay` ④)—— 两边可用宽逐字相同,任何叶宽下
+     * 左缘都该重合。这一格把槽与聊天区宽都量出来:它们是定因,不是判据里的加数。
+     */
+    const gutter = (scroll.offsetWidth - scroll.clientWidth) / 2
+    const slotGutter = (slot.offsetWidth - slot.clientWidth) / 2
+    return {
+      left: Math.abs(rowLeft - b.left), top: Math.abs(a.top - b.top),
+      width: Math.abs(rowWidth - b.width), height: Math.abs(a.height - b.height),
+      center: Math.abs((rowLeft + rowWidth / 2) - (b.left + b.width / 2)),
+      gutter, slotGutter,
+      areaWidth: scroll.offsetWidth, colWidth: b.width,
+      rowLeft, spacerLeft: b.left, rowTop: a.top, spacerTop: b.top,
+    }
+  })
+  const setViewport = (width) => cdp.send('Emulation.setDeviceMetricsOverride', {
+    width, height: VIEWPORT.height, deviceScaleFactor: DPR, mobile: false,
+  })
+  const out = {}
+  out.rest = await read()
+  /*
+   * 窄 → 更窄 → 宽,各量一次:窄的那两档是「聊天区比 `--pr-col` 还窄」的那一侧,
+   * 也就是第一版差出一条槽的那一档。`narrower`(窗 640 ≈ 叶 520)是 09-21 审查
+   * 打回一要求补的更窄一档 —— 分屏 / 开着架子时这台上的常态宽度。
+   */
+  await setViewport(900)
+  await delay(500)
+  out.narrow = await read()
+  await setViewport(640)
+  await delay(500)
+  out.narrower = await read()
+  await setViewport(VIEWPORT.width)
+  await delay(500)
+  out.wide = await read()
+  /* composer 长一行:往输入框里打一段够长的字,量完清掉。 */
+  await page.evaluate(() => {
+    const box = window.__jLeaf().querySelector('[data-testid="composer-input"]')
+    if (!box) return
+    box.textContent = '这是一段够长的草稿'.repeat(12)
+    box.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await delay(600)
+  out.tallComposer = await read()
+  await page.evaluate(() => {
+    const box = window.__jLeaf().querySelector('[data-testid="composer-input"]')
+    if (!box) return
+    box.textContent = ''
+    box.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await delay(500)
+  return out
+}
+
 const PIXEL_SEGMENT_MS = 14_000
 /** 「换了一个值」的判据,以设备像素计。小于半个设备像素的差不算跳。 */
 const PIXEL_FLIP_DEVICE_PX = 0.25
@@ -715,8 +857,7 @@ async function samplePixels(page, cdp, devicePx) {
     const geo = await page.evaluate(() => {
       const leaf = window.__jLeaf()
       const scroll = leaf.querySelector('[data-testid="chat-stream"]')
-      const col = scroll?.firstElementChild
-      const slot = col?.querySelector(':scope > [data-tail-slot]')
+      const slot = leaf.querySelector('[data-tail-slot]')
       const stop = slot?.querySelector('[data-testid="chat-stop"]')
       if (!scroll || !slot || !stop) return null
       const sr = slot.getBoundingClientRect()
@@ -743,10 +884,17 @@ async function samplePixels(page, cdp, devicePx) {
   for (let i = 1; i < ys.length; i += 1) {
     if (Math.abs(ys[i] - ys[i - 1]) > PIXEL_FLIP_DEVICE_PX) flips += 1
   }
-  /* 取值集合:按 0.05 设备像素分桶(抗抗锯齿的末位噪声,又远小于半个设备像素)。 */
+  /*
+   * **取值集合按「它落在哪一行设备像素」分桶**(`Math.round`),不按 0.05。
+   *
+   * 这一格问的是「字画在哪一行像素上」,而那正是整数格;按 0.05 分桶会把抗锯齿的
+   * 末位噪声算成两个取值 —— P1h 第一趟真机就撞上了:峰峰只有 0.089 设备像素,
+   * 却因为 27.60 / 27.70 跨了一个 0.05 的桶边而报「2 个取值」。同一份口径下
+   * main(P1g)那两个态是 27.60 / 26.60,取整后仍是**两行**,该红照样红。
+   */
   const bucket = new Map()
   for (const y of ys) {
-    const k = (Math.round(y * 20) / 20).toFixed(2)
+    const k = String(Math.round(y))
     bucket.set(k, (bucket.get(k) ?? 0) + 1)
   }
   const top = [...bucket.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6)
@@ -804,7 +952,7 @@ async function startSampler(page, diag) {
       const scroll = pane.querySelector('[data-testid="chat-stream"]')
       const column = scroll?.firstElementChild
       if (scroll && column) {
-        const slot = column.querySelector(':scope > [data-tail-slot]')
+        const slot = pane.querySelector('[data-tail-slot]')
         const seat = column.querySelector(':scope > [data-seat]')
         const stop = slot?.querySelector('[data-testid="chat-stop"]')
         const readout = slot?.querySelector('[data-testid="chat-readout"]')
@@ -1217,7 +1365,16 @@ function judge(paint, devicePx, jumpRead) {
    * 所以窗口越长越好。`maxSeconds` = 这一段的时间跨度,用来证明「真的跨过了 10s」
    * (读数的起点就是这一轮开张,而取样从发送之前就开着)。
    */
-  const running = paint.filter((r) => r.running && r.readLeft !== null)
+  /*
+   * **只把 `overlap` 那一段摘出去**,其余整轮都算。
+   *
+   * ⑥ 那一段门自己改了窗宽、往输入框里灌了草稿,左缘当然会跟着动 —— 那是门的
+   * 动作,不是产品的(09-12 判例「门的读数不许把门自己的时间算进产品」的同一条,
+   * 换成了空间)。**但也只摘它一段**:这条断言的前提是「这一轮跨过 9.9s → 10.0s
+   * 那一下进位」,只留 `phase === ''` 的话窗口缩到三秒多,前提当场不成立 ——
+   * P1h 第一趟就是这么红的。`jump` 只动纵向、`pixels` 只是拍照,两段都不碰左缘。
+   */
+  const running = paint.filter((r) => r.running && r.readLeft !== null && r.phase !== 'overlap')
   const readLeftValues = running.map((r) => r.readLeft)
   const readLeft = readLeftValues.length
     ? {
@@ -1591,7 +1748,15 @@ async function main() {
         return !seat || seat.getBoundingClientRect().height <= 0.5
       }), 90_000)
       await mark('follow')
-      await delay(500)
+      /*
+       * **这一段按样本数收,不睡定数**(09-21 审查这一轮补的;与 ① 的窗那条
+       * 「每帧一样,够不够是数得出来的」逐字同源)。
+       * 病历:真店档「座位吃光」那前后本来就有 1318 / 880ms 的长帧(② 打出来的
+       * `ctxGaps` 里看得见),原来那句 `delay(500)` 整段落进一帧里就是**0 个样本**,
+       * 于是 ③ 报「seatHandoff 没采到」—— 红的是门自己的跑道,不是产品。
+       * 封顶 6s:攒不够也不无限等,那时它照旧报「没采到」并判红(不假装判过)。
+       */
+      await waitForPaintSamples(page, 'follow', 20, 6_000)
       await mark('')
       /*
        * ── 顺序:**先做 ③ 的上翻 / 回底,再留 ① 的跟随窗** ──────────────────
@@ -1604,8 +1769,7 @@ async function main() {
        * 而且**按样本数收**(见下),不睡定数。
        */
       const readSlotTop = () => page.evaluate(() => {
-        const col = window.__jLeaf().querySelector('[data-testid="chat-stream"]')?.firstElementChild
-        const slot = col?.querySelector(':scope > [data-tail-slot]')
+        const slot = window.__jLeaf().querySelector('[data-tail-slot]')
         return slot ? slot.getBoundingClientRect().top : null
       })
       /*
@@ -1706,11 +1870,28 @@ async function main() {
       await mark('')
       await waitFor('收场', async () => !(await stopShown(page)), 300_000)
       await delay(600)
+      /*
+       * ── ⑥ 那一层与列里那格空位重合(P1h)────────────────────────────────
+       * **五种**姿势各量一次:**原样**、**窗子变窄(900)**、**更窄(640,叶 ≈520)**、
+       * **变宽(1280)**、**composer 长一行**。后几样是这条改法最容易漏的前提 ——
+       * 横向几何来自 `.columnGeometry`(宽随窗子变),纵向来自 `--chat-bottom-inset`
+       * (随 composer 高变);窄的那两档还是滚动条槽那条差的唯一显形处。
+       *
+       * **排在收场之后**(P1h 第二趟真机改的):它量的是**静态几何** —— 那一层的行
+       * 与列里那格空位,两件在 `status === 'ready'` 之后一直都在,与这一轮跑没跑无关。
+       * 夹在流里只会白占掉这一轮剩下的跑道:真店档实测 ④ 的像素段因此只采到 95–99 张
+       * (门槛 100),而那不是产品的事,是门自己把时间花掉了(09-12 那条「报一个数
+       * 之前先问这段时间里有多少是门自己花的」的同一条)。
+       */
+      await mark('overlap')
+      const overlap = await measureOverlap(page, cdp)
+      await mark('')
       const frames = DIAG ? await stopSampler(page) : []
       const paint = await stopPaintSampler(page)
       const m = DIAG ? analyze(frames, devicePx) : { frames: 0, empty: true }
       const g = judge(paint, devicePx, jumpRead)
       g.pixels = pixels
+      g.overlap = overlap
       readings[`${lanes[0]}:${id}`] = g
       console.log(`\n══ ${lanes[0]} / ${id} ══ 画出来的取样 ${g.samples} 次`)
       console.log(`  贴底跟随 ${g.pinned.samples} 次:尾槽占 ${g.pinned.rows} 个设备像素行`
@@ -1737,6 +1918,9 @@ async function main() {
           : g.pixels.reason))
       console.log(`  读数行左缘:峰峰 ${g.readLeft.peakPx}px / ${g.readLeft.distinct} 个取值`
         + `(采到 ${g.readLeft.samples} 帧;这一轮最长跑到 ${g.readLeft.maxSeconds}s)`)
+      console.log(`  那一层 vs 列里那格空位(左 / 上,px):`
+        + Object.entries(g.overlap)
+          .map(([k, v]) => `${k} ${v ? `${r3(v.left)}/${r3(v.top)}` : '没采到'}`).join('  '))
       if (DIAG && paint.length > 5) {
         /*
          * **与 rAF 那一份比同一段**:rAF 侧(`analyze`)算的是「贴底跟随」那一段,
@@ -1872,6 +2056,62 @@ async function main() {
       assert(g.readLeft.peakPx <= BUDGET.readLeftShiftPx,
         `${key} ⑤ 整轮读数行左缘位移 ${g.readLeft.peakPx}px`
         + `(${g.readLeft.distinct} 个取值)≤ ${BUDGET.readLeftShiftPx}`)
+
+      /*
+       * ── ④ 像素层(P1h 起判)────────────────────────────────────────────
+       * 判词与 main 上的读数写在 `BUDGET.pixelValues` 那一段。一句话:
+       * 尾槽的内容搬出滚动内容层之后,「停止」那两个字画出去的位置只许有一个。
+       */
+      assert(g.pixels.ok, `${key} ④ 像素层采到了(${g.pixels.ok ? `${g.pixels.samples} 张` : g.pixels.reason})`)
+      if (g.pixels.ok) {
+        assert(g.pixels.samples >= BUDGET.minPixelSamples,
+          `${key} ④ 像素层采到 ${g.pixels.samples} 张(≥ ${BUDGET.minPixelSamples})`)
+        assert(g.pixels.values <= BUDGET.pixelValues,
+          `${key} ④ 「停止」字形质心 ${g.pixels.values} 个取值 ≤ ${BUDGET.pixelValues}`
+          + `(${g.pixels.top.join(' ')})`)
+        assert(g.pixels.peakDevicePx < BUDGET.pixelPeakDevicePx,
+          `${key} ④ 纵向峰峰 ${g.pixels.peakDevicePx} 设备像素 < ${BUDGET.pixelPeakDevicePx}`)
+        assert(g.pixels.flips <= BUDGET.pixelFlips,
+          `${key} ④ 跳变 ${g.pixels.flips} 次 ≤ ${BUDGET.pixelFlips}`)
+        /* 校准:取样口自己得看得见 1 个设备像素,不然上面三条全是白绿。 */
+        const moved = g.pixels.calibration.movedDevicePx
+        assert(moved !== null && Math.abs(moved - 1) <= 0.2,
+          `${key} ④ 校准:给停止钮加 0.5px,像素口读出 ${moved} 设备像素(应 ≈1)`)
+      }
+
+      /*
+       * ── ⑥ 那一层盖在列里那格空位上(P1h)──────────────────────────────
+       * **五种姿势各判一次,左缘一律 ≤1px**(09-21 审查打回一:第一版那条
+       * 「窗宽吃紧时判差正好一条槽」已撤回,判词在 `measureOverlap` 上)。
+       */
+      for (const [pose, v] of Object.entries(g.overlap)) {
+        assert(Boolean(v), `${key} ⑥ ${pose}:两件都采到了`)
+        if (!v) continue
+        /*
+         * **中心永远判**:两边同一份 `max-width` + 居中,这一条是那份共享几何的
+         * 直接推论,任何窗宽下都必须成立。
+         */
+        assert(v.center <= BUDGET.overlapPx,
+          `${key} ⑥ ${pose}:中心差 ${r3(v.center)}px ≤ ${BUDGET.overlapPx}`)
+        /*
+         * **左缘**:任何叶宽下都逐像素相同。窄档从前差一条滚动条槽(`.scroll` 留着
+         * `scrollbar-gutter: stable both-edges` 而这一层是它的兄弟),今天这一层
+         * 自己也留同一条槽,所以那一条差没有了。槽宽与聊天区宽只打进报告。
+         */
+        assert(v.left <= BUDGET.overlapPx,
+          `${key} ⑥ ${pose}:左缘差 ${r3(v.left)}px ≤ ${BUDGET.overlapPx}`
+          + `(那一层 ${r3(v.rowLeft)} / 空位 ${r3(v.spacerLeft)}`
+          + ` · 聊天区 ${r3(v.areaWidth)} · 槽 列 ${r3(v.gutter)} / 这一层 ${r3(v.slotGutter)})`)
+        assert(v.width <= BUDGET.overlapPx,
+          `${key} ⑥ ${pose}:宽差 ${r3(v.width)}px ≤ ${BUDGET.overlapPx}`
+          + `(两边留的槽一样宽,可用宽就该一样)`)
+        assert(v.top <= BUDGET.overlapPx,
+          `${key} ⑥ ${pose}:上缘差 ${r3(v.top)}px ≤ ${BUDGET.overlapPx}`
+          + `(那一层 ${r3(v.rowTop)} / 空位 ${r3(v.spacerTop)})`)
+        assert(v.height <= BUDGET.overlapPx,
+          `${key} ⑥ ${pose}:高差 ${r3(v.height)}px ≤ ${BUDGET.overlapPx}`
+          + `(两件的高取自同一个 token)`)
+      }
 
       for (const [name, v] of Object.entries(g.switches)) {
         assert(v.ok, `${key} ③ 切换 ${name} 两侧都采到了`)

@@ -322,7 +322,10 @@ describe('节奏表契约', () => {
   })
 
   it('聊天列的宽度由阅读轴说了算(--pr-col),不再是写死的 --chat-col', () => {
-    expect(code).toMatch(/\.column\s*\{[^}]*max-width:\s*var\(--pr-col\)/)
+    /* P1h:横向那四格搬进 `.columnGeometry`,`.column` 用 `composes` 取 ——
+     * 列尾那一层 overlay 读的是同一格,抄两份迟早分叉(判词在那个文件里)。 */
+    expect(code).toMatch(/\.columnGeometry\s*\{[^}]*max-width:\s*var\(--pr-col\)/)
+    expect(code).toMatch(/\.column\s*\{[^}]*composes:\s*columnGeometry/)
   })
 
   /*
@@ -361,12 +364,12 @@ describe('正文列与 Composer 列同源', () => {
 
   it('Composer 的 .wrap 与聊天列读同一个 --pr-col', () => {
     expect(composer).toMatch(/\.wrap\s*\{[^}]*max-width:\s*var\(--pr-col\)/)
-    expect(chat).toMatch(/\.column\s*\{[^}]*max-width:\s*var\(--pr-col\)/)
+    expect(chat).toMatch(/\.columnGeometry\s*\{[^}]*max-width:\s*var\(--pr-col\)/)
   })
 
   it('两条列的左右内缩同为 --sp-4', () => {
     expect(composer).toMatch(/\.wrap\s*\{[^}]*padding:\s*0 var\(--sp-4\)/)
-    expect(chat).toMatch(/\.column\s*\{[^}]*padding:\s*var\(--sp-6\) var\(--sp-4\)/)
+    expect(chat).toMatch(/\.columnGeometry\s*\{[^}]*padding-inline:\s*var\(--sp-4\)/)
   })
 
   it('--chat-col 已经退役 —— 全仓零消费者', () => {

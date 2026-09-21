@@ -596,7 +596,7 @@ async function startSampler(page) {
       }
       if (!found) return null
       // 座位垫块与尾槽都是「让出去的地」,不是「在读的东西」(与产品那一句同判)。
-      if (found.hasAttribute('data-seat') || found.hasAttribute('data-tail-slot')) return null
+      if (found.hasAttribute('data-seat') || found.hasAttribute('data-tail-spacer')) return null
       return found
     }
     /**
@@ -633,7 +633,7 @@ async function startSampler(page) {
           live = el
           break
         }
-        const slot = column.querySelector(':scope > [data-tail-slot]')
+        const slot = pane.querySelector('[data-tail-slot]')
         /*
          * 「这一轮画得出内容了」(探针坑 ② 的新形):**只在活消息行里找**。
          * 等待那道折痕与那枚光标 G 线 P1 起住在尾槽里、不在消息行里,所以这一句
@@ -1717,7 +1717,7 @@ async function main() {
           const top = r.top
           const rows = scroll.firstElementChild?.children ?? []
           for (const row of rows) {
-            if (row.hasAttribute('data-seat') || row.hasAttribute('data-tail-slot')) continue
+            if (row.hasAttribute('data-seat') || row.hasAttribute('data-tail-spacer')) continue
             const rr = row.getBoundingClientRect()
             if (rr.top >= top - 1 && rr.height > 0) { el = row; break }
           }

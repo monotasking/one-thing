@@ -15,6 +15,24 @@
   flex: 1;
   min-height: 0;
   display: flex;
+
+  /*
+   * ── 给悬浮输入框让的那一格,**全聊天区一个产地**(G 线 P1h,09-21)──────────
+   *
+   * 它从前只在 `ChatStream.module.css` 的 `.scroll` 上算一次(`padding-block-end`
+   * 与 `scroll-padding-block-end` 同值)。P1h 之后**第三个消费者**进来了 ——
+   * 列尾那一层 overlay 的 `bottom` 要的是同一段距离,而它是滚动容器的兄弟、
+   * 读不到写在 `.scroll` 上的自定义属性。抄第三份数就是壳 CLAUDE.md 那条
+   * 「让位只写一次」的反面,所以这一格上移到这里。
+   *
+   * **为什么声明在 `.chatArea` 上,不在 `:root`**(Dock ⑤ 那条判例,09-13):
+   * `--composer-h` 是**这片叶自己**的量(`useComposerGeometry` 那只 RO 用
+   * `area.style.setProperty` 写在这个元素上),而**自定义属性里的 `var()` 在声明
+   * 那条 calc 的元素上代入、不在读它的元素上** —— 写在 `:root` 会把
+   * `--composer-h` 代成 tokens.css 里那个 `0px` 的缺省,式子当场作废。
+   * 顺带:分屏下两片叶各有各的 `.chatArea`,于是各算各的,天然不串位。
+   */
+  --chat-bottom-inset: calc(var(--composer-h) + var(--composer-gap));
 }
 
 /*

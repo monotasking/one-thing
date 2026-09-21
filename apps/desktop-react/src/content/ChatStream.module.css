@@ -23,8 +23,34 @@
    * 收边,不然它们会把目标停在玻璃底下 —— 那是「跳过去了却看不见」。
    * 它必须写在**滚动容器自己**身上(scroll-padding 不继承),所以这一格不能挪去 `.center`。
    */
-  padding-block-end: calc(var(--composer-h) + var(--composer-gap));
-  scroll-padding-block-end: calc(var(--composer-h) + var(--composer-gap));
+  padding-block-end: var(--chat-bottom-inset);
+  scroll-padding-block-end: var(--chat-bottom-inset);
+}
+
+/*
+ * ── 正文列的**横向**几何,一处产地(G 线 P1h,09-21)────────────────────────
+ *
+ * 两个消费者:列自己(`.column`)与列尾那一层 overlay(`TailSlot.module.css` 的
+ * `.overlayRow`)。overlay 是滚动容器的**兄弟**(判词在 `TailSlot.tsx`),所以它
+ * 拿不到列的盒 —— 而它必须与列**逐字同宽同位**,否则「它盖在列里那格空位上」
+ * 这句话就不成立(门 ⑥ 量的就是这一条)。**抄两份数迟早分叉**,所以抽成这一格。
+ *
+ * 它只说横向:宽、上限、居中、左右内距。纵向(段距、gap、flex)各自说各自的。
+ *
+ * **滚动条槽位这一条要记着**:`.scroll` 写着 `scrollbar-gutter: stable both-edges`,
+ * 于是列可用的宽比聊天区窄**两条槽**(本机实测一条 10px —— 09-21 订正:这里原先写
+ * 「macOS 的覆盖式滚动条那一条槽是 0,所以本机量不出来」,**是假话**,门 ⑥ 当场量到)。
+ * 这一格只说横向的宽 / 上限 / 居中 / 内距,它**不负责**把那两条槽补出来:overlay
+ * 那一层自己写 `overflow: hidden` + 同一句 `scrollbar-gutter`(判词在
+ * `TailSlot.module.css` 的 `.overlay` ④),于是两边的可用宽逐字相同,**任何叶宽下
+ * 左缘都重合**。曾经试过「叶宽小于 `--pr-col` 时差一条槽是必然、判它差得正好」——
+ * 09-21 审查打回:用户盯的就是这一行与正文的左对齐,一条槽是 10px,不是余量。
+ */
+.columnGeometry {
+  width: 100%;
+  max-width: var(--pr-col);
+  margin-inline: auto;
+  padding-inline: var(--sp-4);
 }
 
 /*
@@ -35,12 +61,12 @@
  * 不是纸面上的行文节奏。
  */
 .column {
-  width: 100%;
-  max-width: var(--pr-col);
-  margin: 0 auto;
+  /* 横向那四格(宽 / 上限 / 居中 / 左右内距)在 `.columnGeometry` 里,见上面那段
+   * 判词 —— 列尾那一层 overlay 读的是同一格,抄两份迟早分叉。 */
+  composes: columnGeometry;
   /* 底那一格从 --sp-5 归 0:让位改由滚动容器的 `padding-block-end` 一处给
    * (§5.6)。两处都给等于气口被加了两次,最后一条消息会离玻璃 60px 远。 */
-  padding: var(--sp-6) var(--sp-4) 0;
+  padding-block: var(--sp-6) 0;
   display: flex;
   flex-direction: column;
   gap: var(--sp-6);

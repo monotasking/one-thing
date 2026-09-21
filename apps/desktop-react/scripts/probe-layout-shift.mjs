@@ -804,7 +804,7 @@ async function sendViaComposer(page, text) {
 }
 
 const stopShown = (page) => page.evaluate(() =>
-  Boolean(window.__lsLeaf().querySelector('[data-testid="chat-stream"] [data-testid="chat-stop"]')))
+  Boolean(window.__lsLeaf().querySelector('[data-testid="chat-stop"]')))
 
 async function main() {
   if (!existsSync(serverEntry)) {

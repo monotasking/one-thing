@@ -34,7 +34,7 @@ beforeEach(() => {
 
 describe('② UI 生命状态:空 / 在跑 / 收场中', () => {
   it('空:里面什么都不挂载,整格 inert + aria-hidden,**但它在**(高度照占)', () => {
-    render(<TailSlot sessionId="s" running={false} />)
+    render(<TailSlot pinned sessionId="s" running={false} />)
     expect(slot().getAttribute('data-face')).toBe('idle')
     expect(slot().hasAttribute('inert')).toBe(true)
     expect(slot().getAttribute('aria-hidden')).toBe('true')
@@ -48,7 +48,7 @@ describe('② UI 生命状态:空 / 在跑 / 收场中', () => {
    * 没有第二张脸、没有扫光那道线(`WaitingSeam` 随这一条删掉,全仓零消费者)。
    */
   it('在跑:光标 + 读数 + 停止,**没有第二张脸**', () => {
-    render(<TailSlot sessionId="s" running startedAt={Date.now()} />)
+    render(<TailSlot pinned sessionId="s" running startedAt={Date.now()} />)
     expect(slot().getAttribute('data-face')).toBe('run')
     expect(slot().hasAttribute('inert')).toBe(false)
     expect(screen.getByTestId('chat-streaming')).toBeTruthy()
@@ -68,12 +68,12 @@ describe('② UI 生命状态:空 / 在跑 / 收场中', () => {
    */
   it('等待期与出字期**是同一棵树** —— 这一格不认识「还没出字」这件事', () => {
     const start = Date.now()
-    const view = render(<TailSlot sessionId="s" running startedAt={start} />)
+    const view = render(<TailSlot pinned sessionId="s" running startedAt={start} />)
     const indicatorBefore = slot().firstElementChild!.firstElementChild!.outerHTML
     const cursorBefore = screen.getByTestId('chat-streaming')
     const stopBefore = screen.getByTestId('chat-stop')
     // 出字了:在这一格眼里什么都没发生(它只知道「在跑」)。
-    view.rerender(<TailSlot sessionId="s" running startedAt={start} lastActivityAt={start + 500} />)
+    view.rerender(<TailSlot pinned sessionId="s" running startedAt={start} lastActivityAt={start + 500} />)
     expect(slot().getAttribute('data-face')).toBe('run')
     expect(slot().firstElementChild!.firstElementChild!.outerHTML).toBe(indicatorBefore)
     expect(screen.getByTestId('chat-streaming')).toBe(cursorBefore)
@@ -85,7 +85,7 @@ describe('② UI 生命状态:空 / 在跑 / 收场中', () => {
    * 那时只画那枚光标,不画一个编出来的读数。
    */
   it('没有起点:画光标不画读数(不编一个出来)', () => {
-    render(<TailSlot sessionId="s" running />)
+    render(<TailSlot pinned sessionId="s" running />)
     expect(screen.getByTestId('chat-streaming')).toBeTruthy()
     expect(screen.queryByTestId('chat-readout')).toBeNull()
   })
@@ -97,14 +97,14 @@ describe('② 收场:先淡出,播完才卸载(裁定 C)', () => {
     try {
       const start = Date.now()
       const view = render(
-        <TailSlot sessionId="s" running startedAt={start} lastActivityAt={start} />,
+        <TailSlot pinned sessionId="s" running startedAt={start} lastActivityAt={start} />,
       )
       act(() => {
         vi.advanceTimersByTime(3_000)
       })
       const frozen = screen.getByTestId('chat-readout').textContent
       // run 收场:`ChatStream` 那一侧 startedAt 当场变 undefined,这一件自己留着上一份。
-      view.rerender(<TailSlot sessionId="s" running={false} />)
+      view.rerender(<TailSlot pinned sessionId="s" running={false} />)
       expect(slot().getAttribute('data-face')).toBe('leaving')
       expect(screen.getByTestId('chat-streaming')).toBeTruthy()
       // 还在屏上,但已经不作数了:Tab 与读屏都碰不到那颗停止钮。
@@ -128,8 +128,8 @@ describe('② 收场:先淡出,播完才卸载(裁定 C)', () => {
   it('播完就卸载 —— 那一格回到空,但格子还在', () => {
     vi.useFakeTimers()
     try {
-      const view = render(<TailSlot sessionId="s" running startedAt={Date.now()} />)
-      view.rerender(<TailSlot sessionId="s" running={false} />)
+      const view = render(<TailSlot pinned sessionId="s" running startedAt={Date.now()} />)
+      view.rerender(<TailSlot pinned sessionId="s" running={false} />)
       act(() => {
         vi.advanceTimersByTime(EXIT_MS + 10)
       })
@@ -145,14 +145,14 @@ describe('② 收场:先淡出,播完才卸载(裁定 C)', () => {
   it('淡出播到一半又开了新一轮:**直接回到在跑那张脸**,不经过空态', () => {
     vi.useFakeTimers()
     try {
-      const view = render(<TailSlot sessionId="s" running startedAt={1_000} />)
+      const view = render(<TailSlot pinned sessionId="s" running startedAt={1_000} />)
       const cursorBefore = screen.getByTestId('chat-streaming')
-      view.rerender(<TailSlot sessionId="s" running={false} />)
+      view.rerender(<TailSlot pinned sessionId="s" running={false} />)
       act(() => {
         vi.advanceTimersByTime(Math.floor(EXIT_MS / 2))
       })
       expect(slot().getAttribute('data-face')).toBe('leaving')
-      view.rerender(<TailSlot sessionId="s" running startedAt={2_000} />)
+      view.rerender(<TailSlot pinned sessionId="s" running startedAt={2_000} />)
       expect(slot().getAttribute('data-face')).toBe('run')
       expect(slot().hasAttribute('inert')).toBe(false)
       // 没有重挂:同一个 DOM 节点,所以不会闪一下。
@@ -171,8 +171,8 @@ describe('② 收场:先淡出,播完才卸载(裁定 C)', () => {
     vi.useFakeTimers()
     try {
       document.documentElement.setAttribute('data-motion-tier', 'none')
-      const view = render(<TailSlot sessionId="s" running startedAt={Date.now()} />)
-      view.rerender(<TailSlot sessionId="s" running={false} />)
+      const view = render(<TailSlot pinned sessionId="s" running startedAt={Date.now()} />)
+      view.rerender(<TailSlot pinned sessionId="s" running={false} />)
       expect(slot().getAttribute('data-face')).toBe('idle')
       expect(screen.queryByTestId('chat-streaming')).toBeNull()
     } finally {
@@ -181,7 +181,7 @@ describe('② 收场:先淡出,播完才卸载(裁定 C)', () => {
   })
 
   it('挂载时就不在跑的那一次**不播**淡出(否则每片叶开屏先播一段没人要的)', () => {
-    render(<TailSlot sessionId="s" running={false} />)
+    render(<TailSlot pinned sessionId="s" running={false} />)
     expect(slot().getAttribute('data-face')).toBe('idle')
   })
 })
@@ -197,7 +197,7 @@ describe('③ 交互状态:停止打给的是这一格自己那条会话', () =>
       },
       startSession: async () => undefined,
     })
-    render(<TailSlot sessionId="leaf-b" running startedAt={Date.now()} />)
+    render(<TailSlot pinned sessionId="leaf-b" running startedAt={Date.now()} />)
     fireEvent.click(screen.getByTestId('chat-stop'))
     expect(stopped).toEqual(['leaf-b'])
   })
@@ -211,8 +211,40 @@ describe('③ 交互状态:停止打给的是这一格自己那条会话', () =>
  */
 describe('样式表:那一格的高与里面此刻有没有东西无关', () => {
   it('高度取自 token,不是排出来的', () => {
-    expect(css).toMatch(/\.slot\s*\{[^}]*block-size:\s*var\(--tail-slot-h\)/)
-    expect(css).not.toMatch(/\.slot\s*\{[^}]*min-block-size/)
+    /* P1h:那一格裂成两件,**两件的高必须是同一个 token** —— 列里那格空位
+     * (`.spacer`)与浮在滚动口上那一行(`.overlayRow`),差一格就意味着
+     * 「overlay 盖在空位上」这句话不成立(真机门 ⑥ 量的就是它)。 */
+    expect(css).toMatch(/\.spacer\s*\{[^}]*block-size:\s*var\(--tail-slot-h\)/)
+    expect(css).not.toMatch(/\.spacer\s*\{[^}]*min-block-size/)
+    expect(css).toMatch(/\.overlayRow\s*\{[^}]*block-size:\s*var\(--tail-slot-h\)/)
+  })
+
+  /*
+   * P1h:那一层的让位**读 `--chat-bottom-inset`,不自己算一遍** —— 滚动容器的
+   * `padding-block-end` 读的是同一格(`floating-composer-css.test.ts` 判那一半),
+   * 于是这一层的上缘恰好落在列里那格空位上。「让位只写一次」。
+   */
+  it('那一层贴的是滚动容器同一格让位,不是抄来的第二份数', () => {
+    expect(css).toMatch(/\.overlay\s*\{[^}]*bottom:\s*var\(--chat-bottom-inset\)/)
+    expect(css).not.toMatch(/--composer-gap/)
+  })
+
+  /* 它已经不在滚动内容层里了 —— P1c 那条 sticky 的对象没了,规则跟着退役。 */
+  it('sticky 那条规则已退役(P1c 的对象不在了)', () => {
+    expect(css).not.toMatch(/position:\s*sticky/)
+  })
+
+  /*
+   * **那一层自己也留同一条滚动条槽**(09-21 审查打回一)。
+   * 它是滚动容器的兄弟,而 `.scroll` 写着 `scrollbar-gutter: stable both-edges` ——
+   * 不留的话叶宽小于 `--pr-col` 时这一行的左缘比正文列靠左一条槽(本机 10px)。
+   * `overflow: hidden` 是前提:**只有滚动容器才认 `scrollbar-gutter`**,`clip` 不是,
+   * 单写一轴也不是。真机那一半由 `gate:tail-jitter` ⑥ 五种姿势量(拆掉即读回 10px)。
+   */
+  it('那一层留着与滚动容器同一条槽(左缘对得上正文列的全部理由)', () => {
+    const rule = /\.overlay\s*\{([^}]*)\}/.exec(css)?.[1] ?? ''
+    expect(rule).toMatch(/overflow:\s*hidden/)
+    expect(rule).toMatch(/scrollbar-gutter:\s*stable both-edges/)
   })
 
   it('淡出只改 opacity,**不**从布局里摘掉、也不碰那一格的高', () => {

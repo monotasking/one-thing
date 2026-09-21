@@ -117,12 +117,15 @@ describe('座位的寿命', () => {
     expect(seat!.getAttribute('aria-hidden')).toBe('true')
     /*
      * 它排在所有内容**之后** —— 内容长进的是它上面。
-     * **2026-09-20 G 线 P1 起它不再是列的最后一格**:尾槽(`data-tail-slot`,
-     * 整列末尾常驻的那一格读数 / 光标 / 等待线)排在它后面,判词在正本
-     * `docs/stream-geometry-2026-09.md` §3.1。所以这一条从「后面没有了」
-     * 改成「后面恰好只有尾槽」—— 说的仍然是同一件事:座位是内容的**末位**。
+     * **2026-09-20 G 线 P1 起它不再是列的最后一格**:尾槽那一格排在它后面,
+     * 判词在正本 `docs/stream-geometry-2026-09.md` §3.1。所以这一条从
+     * 「后面没有了」改成「后面恰好只有那一格」—— 说的仍然是同一件事:
+     * 座位是内容的**末位**。
+     * **P1h 改了那一格的名字**(§12):画出来的那一份搬去了滚动口上那一层,
+     * 列里剩下的是一格什么都不画的空位 `data-tail-spacer`。这一条判的是
+     * **列的次序**,所以它问的是空位那个名字。
      */
-    expect(seat!.nextElementSibling?.hasAttribute('data-tail-slot')).toBe(true)
+    expect(seat!.nextElementSibling?.hasAttribute('data-tail-spacer')).toBe(true)
     expect(seat!.nextElementSibling?.nextElementSibling).toBeNull()
     // jsdom 不排版(clientHeight 恒 0)→ 座位算出来是 0:那正是「量不到就不留座位」。
     expect((seat as HTMLElement).style.height === '' || (seat as HTMLElement).style.height === '0px').toBe(true)

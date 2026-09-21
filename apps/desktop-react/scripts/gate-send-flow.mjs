@@ -69,6 +69,23 @@ const BUDGET = {
   firstTokenShiftPx: 1,
   /** ③ 读数行与折痕 / 思考段相交的帧。 */
   overlapFrames: 0,
+  /**
+   * ③ 「算相交」的下限(px)。
+   *
+   * **0.5**,与 09-15 立它时逐字相同。
+   *
+   * P1h 第一版曾把它放到 1.25,理由是「读数行与内容从此是两层,内容长出来到
+   * `stick()` 追上去之间有一帧会擦边,prod `长回` 897 帧里恰好 1 帧 / 1.02px」。
+   * **09-21 审查打回二:那一帧是取样假象,预算撤回。** 这道门的采样体跑在
+   * `requestAnimationFrame` 里,而 rAF 排在**布局与 ResizeObserver 之前**、`stick()`
+   * 住在产品那只 RO 的回调里 —— rAF 读到的是「内容已长、`scrollTop` 未跟」的半成品帧。
+   * 从前尾槽在流里、被内容推着走,半成品帧里也不会相交;P1h 之后它不随内容动,
+   * 半成品帧里就擦边了。换成**画出来的那一份**(判词在 `afterPaint` 上)之后那一帧
+   * 不存在,四档实测相交帧全 0。
+   *
+   * 所以这一格今天判的是 `paintedOverlapFrames`;rAF 那一份照旧打进报告,只报不判。
+   */
+  overlapPx: 0.5,
   /** ④ 读数行 400ms 内的方向反转。 */
   readoutFlips: 0,
   /** ⑤ 流式期间 ≥ 这么长的帧,一个都不许有。 */
@@ -570,6 +587,39 @@ async function startSampler(page) {
      */
     const overlapX = (a, b) => (a && b ? Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) : 0)
     /*
+     * ── ③ 的第二口:**画出来的那一帧**(2026-09-21 审查打回二)────────────────
+     *
+     * `requestAnimationFrame` 跑在「动画推进之后、**布局与 ResizeObserver 之前**」,
+     * 而产品的 `stick()` 住在它自己那只 RO 的回调里 —— 所以 rAF 读到的永远是这一帧的
+     * **半成品**:内容已经长了,纠正滚动位的那一句还没跑(判例全文在正本 §9.7 ②,
+     * `gate-tail-jitter` 整只门就是为这条立的)。
+     *
+     * P1h 之前尾槽住在流里、被内容推着走,半成品帧里它与内容的相对位置照样对;
+     * P1h 之后它是滚动容器的**兄弟**、不随内容动,于是半成品帧里就会「擦边」——
+     * 而那一下**从来没有被画出去过**。所以 ③ 换口:在 `requestAnimationFrame` 里
+     * `postMessage` 出去的那个宏任务里再读一次同样那几件的矩形,那个宏任务跑在这一帧
+     * 的「更新渲染」(样式 → 布局 → 绘制 → 提交)全部走完之后、下一帧任何东西之前。
+     *
+     * **只换 ③ 这一条用到的读数**,其余判据一格不动(它们的窗口、判词、反证都建立在
+     * rAF 那一份上;换口是另一批的账,留在正本 §10.4)。两份都留着并排打进报告 ——
+     * 「是不是取样假象」这句话只有两口的读数摆在一起才说得清。
+     *
+     * 每帧的活儿仍是 O(1):元素引用从 rAF 那一拍原样带过来,宏任务里只做 3 次
+     * `getBoundingClientRect`,而此刻布局是干净的(更新渲染刚走完、自那以后没有任何
+     * JS 动过 DOM),这几次读命中缓存、不触发重排(09-10「探针自伤」判例要防的是在
+     * 热路径上逼重算,不是禁止读矩形 —— `gate-tail-jitter` 的取样口逐字同源)。
+     */
+    const paintChannel = new MessageChannel()
+    const paintQueue = []
+    paintChannel.port1.onmessage = () => {
+      const fn = paintQueue.shift()
+      if (fn) fn()
+    }
+    const afterPaint = (fn) => {
+      paintQueue.push(fn)
+      paintChannel.port2.postMessage(0)
+    }
+    /*
      * **每帧的活儿必须是 O(1)**(09-10 判例「探针自伤」:量长帧的探针自己制造长帧)。
      * 400 条消息的树上,一次 `scroll.querySelector('[data-testid="chat-readout"]')`
      * 是一次整树前序遍历 —— 一帧几次就够把这道门自己量的那格数字毁掉。
@@ -605,7 +655,7 @@ async function startSampler(page) {
       }
       /* 座位垫块与**尾槽**(G 线 P1 起列尾常驻的那一格)都是让出去的地,不是
          「在读的东西」—— 扫到它们就说明这一层里视口上缘之下已经没有内容了。 */
-      if (!found || found.hasAttribute('data-seat') || found.hasAttribute('data-tail-slot')) return null
+      if (!found || found.hasAttribute('data-seat') || found.hasAttribute('data-tail-spacer')) return null
       return found
     }
     /*
@@ -667,8 +717,9 @@ async function startSampler(page) {
          * 改成「在列尾那一格里找」。③ 那条「读数行与折痕 / 思考段从不相交」因此变成
          * 一条**结构上**恒真的话(它们连父节点都不同了)—— 留着它当回归闸。
          */
-        const tailSlot = column.querySelector(':scope > [data-tail-slot]')
-        const readout = rect(tailSlot?.querySelector('[data-testid="chat-readout"]') ?? null)
+        const tailSlot = window.__seatLeaf().querySelector('[data-tail-slot]')
+        const readoutEl = tailSlot?.querySelector('[data-testid="chat-readout"]') ?? null
+        const readout = rect(readoutEl)
         /*
          * ── 「这一轮在等第一个字」**2026-09-21 起没有对应的图形了**(P1b 裁定 B)──
          *
@@ -701,7 +752,8 @@ async function startSampler(page) {
          */
         const seam = ctxRow?.querySelector('[data-testid="context-delta-seam"]') ?? null
         const seamRunning = seam?.getAttribute('data-state') === 'running'
-        const thought = rect(live?.querySelector('[data-testid="chat-thought"]') ?? null)
+        const thoughtEl = live?.querySelector('[data-testid="chat-thought"]') ?? null
+        const thought = rect(thoughtEl)
         /*
          * 座位垫块。**G 线 P1 起它不再是列的最后一格** —— 尾槽(`data-tail-slot`,
          * 整列末尾常驻的那一格读数 / 光标 / 等待线)排在它后面,判词在正本
@@ -760,6 +812,9 @@ async function startSampler(page) {
             overlap(readout, rect(seam)),
             overlap(readout, thought),
           ),
+          /* ③ 的第二口,在下面那个宏任务里填(判词在 `afterPaint` 上)。
+             填不上(这一帧之后取样就停了)的那几帧记 null,事后一遍里剔掉。 */
+          paintedOverlap: null,
           seat: seat ? seat.getBoundingClientRect().height : null,
           /*
            * **「这一轮在跑」问的是尾槽那一格,不是那条助手行**(G 线 P1)。
@@ -770,12 +825,20 @@ async function startSampler(page) {
           streaming: running,
         }
         window.__seatFrames.push(frame)
+        /* ③:同样那三件,读「刚画出去的那一份」。元素引用原样带过来,只量矩形。 */
+        afterPaint(() => {
+          frame.paintedOverlap = Math.max(
+            overlapX(rect(readoutEl), rect(waiting)),
+            overlap(rect(readoutEl), rect(seam)),
+            overlap(rect(readoutEl), rect(thoughtEl)),
+          )
+        })
         if (captureSettled) {
           frame.translate = live?.style.translate
           setTimeout(() => {
             frame.afterTask = {
               t: performance.now(), st: scroll.scrollTop, sh: scroll.scrollHeight,
-              readout: rect(column.querySelector(':scope > [data-tail-slot] [data-testid="chat-readout"]') ?? null),
+              readout: rect(window.__seatLeaf().querySelector('[data-tail-slot] [data-testid="chat-readout"]') ?? null),
               translate: live?.style.translate,
             }
           }, 0)
@@ -1309,9 +1372,17 @@ function analyze(frames, marks = {}) {
     seatHeldDrift: seatHeld.drift,
     seatHeldDriftFrames: seatHeld.driftFrames,
     seatHeldFrames: seatHeld.frames,
-    // ③ 读数行与折痕 / 思考段相交的帧(整轮)。
-    overlapFrames: frames.filter((f) => f.overlap > 0.5).length,
+    /*
+     * ③ 读数行与折痕 / 思考段相交的帧(整轮)。**两口并排**:
+     *  · `overlapFrames` / `overlapMax` = rAF 那一份(半成品帧),**只报不判**;
+     *  · `paintedOverlapFrames` / `paintedOverlapMax` = 画出来的那一份,**判这一格**。
+     * 判词整段在 `afterPaint` 上(2026-09-21 审查打回二)。
+     */
+    overlapFrames: frames.filter((f) => f.overlap > BUDGET.overlapPx).length,
     overlapMax: Math.max(0, ...frames.map((f) => f.overlap)),
+    paintedOverlapSamples: frames.filter((f) => f.paintedOverlap !== null).length,
+    paintedOverlapFrames: frames.filter((f) => f.paintedOverlap !== null && f.paintedOverlap > BUDGET.overlapPx).length,
+    paintedOverlapMax: Math.max(0, ...frames.filter((f) => f.paintedOverlap !== null).map((f) => f.paintedOverlap)),
     readoutFlips: flips,
     /** ④ 的窗口里有几帧 —— 「量到没量到」那一支的读数(§9.2 最后一条)。 */
     readoutFlipFrames: flipFrames,
@@ -1355,7 +1426,9 @@ async function sendViaComposer(page, text) {
 function report(name, m) {
   console.log(
     `      ${name}:整轮 ${m.frames} 帧 @${m.fps}fps · 座位 ${m.seatMax.toFixed(0)}→${m.seatMin.toFixed(0)}px`
-    + ` · 等待帧 ${m.waitingFrames} · 相交帧 ${m.overlapFrames}(最大 ${m.overlapMax.toFixed(1)}px)`
+    + ` · 等待帧 ${m.waitingFrames}`
+    + ` · 相交帧 画 ${m.paintedOverlapFrames}(最大 ${m.paintedOverlapMax.toFixed(2)}px / ${m.paintedOverlapSamples} 样)`
+    + ` · rAF ${m.overlapFrames}(最大 ${m.overlapMax.toFixed(2)}px,只报)`
     + ` · 读数行反转 ${m.readoutFlips}`,
   )
   console.log(
@@ -1580,7 +1653,7 @@ async function main() {
       const stopShown = () =>
         page.evaluate(() =>
           Boolean(window.__seatLeaf()
-            .querySelector('[data-testid="chat-stream"] [data-testid="chat-stop"]')))
+            .querySelector('[data-testid="chat-stop"]')))
       await waitFor('重试这一轮开张(停止钮上屏)', stopShown, OPEN_TIMEOUT_MS)
       await waitFor('重试这一轮收场(停止钮下屏)', async () => !(await stopShown()), 120_000)
       await delay(600)
@@ -1622,10 +1695,17 @@ async function main() {
       await startSampler(page)
       await sendViaComposer(page, text)
       // 同一条判据:问的是**屏上那一片**在不在跑(停靠池里那几片不算)。
+      /*
+       * **不再限定「在滚动容器里」**(G 线 P1h,2026-09-21):尾槽那一格的内容
+       * 搬到了滚动容器的**兄弟**层上(正本 §12),`[data-testid="chat-stream"]
+       * [data-testid="chat-stop"]` 这条复合选择器从此永远选不中 —— P1h 第一趟
+       * 真机就是这么挂的(等「停止钮上屏」等满 120s)。问的那句话一个字没变:
+       * **屏上这一片在不在跑**,而「这一片」由 `__seatLeaf()` 圈出来,本来就够。
+       */
       const stopShown = () =>
         page.evaluate(() =>
           Boolean(window.__seatLeaf()
-            .querySelector('[data-testid="chat-stream"] [data-testid="chat-stop"]')))
+            .querySelector('[data-testid="chat-stop"]')))
       await waitFor('这一轮开张(停止钮上屏)', stopShown, OPEN_TIMEOUT_MS)
       const openMs = waitFor.lastMs
       await waitFor('这一轮收场(停止钮下屏)', async () => !(await stopShown()), timeoutMs)
@@ -1733,8 +1813,11 @@ async function main() {
       + ` —— 座位吃光之后跟底,只报不判)`,
     )
     assert(
-      main.overlapFrames <= BUDGET.overlapFrames,
-      `③ 读数行与折痕 / 思考段相交 ${main.overlapFrames} 帧 ≤ ${BUDGET.overlapFrames}(整轮)`,
+      main.paintedOverlapFrames <= BUDGET.overlapFrames,
+      `③ 读数行与折痕 / 思考段相交(画出来的)${main.paintedOverlapFrames} 帧`
+      + ` ≤ ${BUDGET.overlapFrames}(整轮 · 最大 ${main.paintedOverlapMax.toFixed(2)}px`
+      + ` · ${main.paintedOverlapSamples} 样;同趟 rAF 口 ${main.overlapFrames} 帧 /`
+      + ` ${main.overlapMax.toFixed(2)}px,只报)`,
     )
     assert(
       main.readoutFlipFrames > 30,
@@ -1853,8 +1936,11 @@ async function main() {
       + ` —— 归零那一帧垫块上还挂着残高,照旧贴底就会多滚一截、下一帧又被钳回来`,
     )
     assert(
-      long.overlapFrames <= BUDGET.overlapFrames,
-      `长回 ③ 读数行与折痕 / 思考段相交 ${long.overlapFrames} 帧 ≤ ${BUDGET.overlapFrames}`,
+      long.paintedOverlapFrames <= BUDGET.overlapFrames,
+      `长回 ③ 读数行与折痕 / 思考段相交(画出来的)${long.paintedOverlapFrames} 帧`
+      + ` ≤ ${BUDGET.overlapFrames}(最大 ${long.paintedOverlapMax.toFixed(2)}px`
+      + ` · ${long.paintedOverlapSamples} 样;同趟 rAF 口 ${long.overlapFrames} 帧 /`
+      + ` ${long.overlapMax.toFixed(2)}px,只报)`,
     )
     /*
      * ── ④ 长回这一档也要判(2026-09-15,用户报「尾部的正在生成在有内容时还是有
@@ -2011,8 +2097,11 @@ async function main() {
       + `(${JSON.stringify(big.landing.runs)})`,
     )
     assert(
-      big.overlapFrames <= BUDGET.overlapFrames,
-      `超量 ③ 读数行与折痕 / 思考段相交 ${big.overlapFrames} 帧 ≤ ${BUDGET.overlapFrames}(整轮)`,
+      big.paintedOverlapFrames <= BUDGET.overlapFrames,
+      `超量 ③ 读数行与折痕 / 思考段相交(画出来的)${big.paintedOverlapFrames} 帧`
+      + ` ≤ ${BUDGET.overlapFrames}(整轮 · 最大 ${big.paintedOverlapMax.toFixed(2)}px`
+      + ` · ${big.paintedOverlapSamples} 样;同趟 rAF 口 ${big.overlapFrames} 帧 /`
+      + ` ${big.overlapMax.toFixed(2)}px,只报)`,
     )
     /*
      * ── ④ 在这一档上同样只报不判 ──────────────────────────────────────────

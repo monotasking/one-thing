@@ -36,14 +36,13 @@ import { FrameCoalescer } from '../ui/frame-coalescer'
 import { assembleMessage, segmentKey } from './assemble'
 import { ContextDeltaSeam, hasContextDelta } from './ContextDeltaSeam'
 import { seatHeight, type SeatGeometry } from './seat'
-import { devicePixelSize, resolveTailSnap } from './tail-snap'
 import { ExpandIntentContext } from './expand-intent'
 import { FoldIntentContext, useNoteFold } from './fold-intent'
 import type { SegmentModel } from './model/segments'
 import { MessageActions } from './message/MessageActions'
 import { MessageChrome } from './message/MessageChrome'
 import { StopNotice } from './message/StopNotice'
-import { TailSlot } from './message/TailSlot'
+import { TailSlot, TailSpacer } from './message/TailSlot'
 import { MessageSourceFoot } from './research/SourceFoot'
 import { SegmentView } from './SegmentView'
 import { UserMessageBody } from './user-message'
@@ -88,13 +87,17 @@ const ANCHOR_RESETTLE_ROUNDS = 6
 const SEAT_ATTR = 'data-seat'
 
 /**
- * **尾槽**那一格的属性名(G 线 P1,正本 `docs/stream-geometry-2026-09.md` §3.1)。
+ * **列尾那格空位**的属性名(G 线 P1h,正本 `docs/stream-geometry-2026-09.md` §12)。
  *
  * 与 `SEAT_ATTR` 同一条判词:它**不带 `data-message-id`**(TOC / `locate-message`
  * 的取件口只认消息),量几何的那几处按这个名字把它剔出去 —— 它是整列末尾常驻的
  * 一格,不是「这一轮长了多高」的一部分,也不是「人正在读的那一块」。
+ *
+ * **P1h 改了名**:从前是 `data-tail-slot`,那时这一格既占高又画东西。今天画的那一份
+ * 搬去了滚动口上那一层,`data-tail-slot` 跟着它走了 —— 门量「人看见的那一行」问的是
+ * 那一层,量「列里让了多少地」问的是这一格,两个名字从此各指一件事。
  */
-const TAIL_ATTR = 'data-tail-slot'
+const TAIL_ATTR = 'data-tail-spacer'
 
 /**
  * 量座位时**从列尾往回数几格**。
@@ -743,34 +746,43 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
                   ]
                 : []),
               /*
-               * ── 尾槽:整列末尾常驻的一格(G 线 P1,正本 §3.1)──────────────────
-               * 排在卷尾垫块**之后**,所以它是这条列真正的最后一格。它常驻 ——
-               * 不在跑时里面什么都不挂载,但那一格的高照占(token `--tail-slot-h`)。
+               * ── 尾槽在列里剩下的那一半:一格**空位**(G 线 P1h,正本 §12)──────
+               * 排在卷尾垫块**之后**,所以它是这条列真正的最后一格。它常驻、高度恒为
+               * `--tail-slot-h`、**一个像素都不画** —— 画的那一份搬去了滚动口上那一层
+               * (下面 `<TailSlot>`,判词在 `TailSlot.module.css` 的 `.overlay`)。
                *
                * **只在真的有会话、而且账本读出来了的时候画**:空会话 / loading /
                * error 那三态各自有一句话要说(上面那三行),再压一格空槽只是多一段
                * 空白。`key` 恒定,所以它跨轮、跨发送都是同一个 DOM 节点 —— 与座位
                * 垫块「上一轮的座位由这一轮原位接管」同一条纪律。
                */
-              ...(sessionId && status === 'ready'
-                ? [
-                    <TailSlot
-                      key="tail"
-                      sessionId={sessionId}
-                      running={tailRunning}
-                      /*
-                       * 起点 = 这条助手消息的 `timestamp`(账本上 `run/start` 自己带的
-                       * 时刻)。重试那段真空里没有活消息 → `undefined` → 那一格只画
-                       * 那枚光标,不画一个编出来的读数(判词在 `TailSlot` 的 prop 上)。
-                       */
-                      startedAt={activeMessage?.timestamp}
-                      lastActivityAt={lastActivityAt}
-                    />,
-                  ]
-                : []),
+              ...(sessionId && status === 'ready' ? [<TailSpacer key="tail" />] : []),
             ]}
           </div>
         </div>
+        {/*
+          * ── 尾槽那一层:**滚动容器的兄弟**(G 线 P1h)────────────────────────
+          * 与下面那颗丸同一个位置、同一个参考系(`.chatArea`)。搬出来的理由整段
+          * 写在 `TailSlot.module.css` 的 `.overlay` 上,一句话:那一行的字从前在
+          * 滚动内容层里按层内坐标栅格化,而层内坐标跟着列的分数高一直走。
+          *
+          * DOM 顺序 **消息流 → 这一层 → 丸**,于是 Tab 顺序是 消息列 → 停止 →
+          * composer;`browsing` 时这一层 `inert`、丸在场,两者永不同时可达。
+          */}
+        {sessionId && status === 'ready' && (
+          <TailSlot
+            sessionId={sessionId}
+            running={tailRunning}
+            /*
+             * 起点 = 这条助手消息的 `timestamp`(账本上 `run/start` 自己带的时刻)。
+             * 重试那段真空里没有活消息 → `undefined` → 那一层只画那枚光标,
+             * 不画一个编出来的读数(判词在 `TailSlot` 的 prop 上)。
+             */
+            startedAt={activeMessage?.timestamp}
+            lastActivityAt={lastActivityAt}
+            pinned={follow.mode === 'pinned'}
+          />
+        )}
         {/*
           * 丸是**滚动容器的兄弟**,不是它的孩子 —— 装在滚动容器里的绝对定位件会
           * 跟着内容一起滚走。它落在 `.chatArea` 里(那是 AppShell 给的定位参考系),
@@ -1027,60 +1039,18 @@ function useFollowBottom(
    */
   const lastTopRef = useRef<number | undefined>(undefined)
 
-  /**
-   * **上一次把尾巴推去哪了**(2026-09-15,判词全文在 `content/tail-snap.ts`)。
-   * 一件事三格账:推的是哪个 DOM 节点、认下的落点、此刻推了多少。
-   * 换了一件(新一条消息接手列尾)就把上一件那格 `translate` 撤干净再重认。
+  /*
+   * ── `snapTail` 退役了(G 线 P1h,2026-09-21;判词与读数在正本 §12)──────────
+   *
+   * 09-15 那一件治的是「尾巴每帧落在不同的亚像素上、文字跟着重新栅格化」。P1h 把
+   * 尾槽的**内容**搬出滚动内容层之后,它就没有要稳住的对象了:列尾剩下的是一格
+   * **什么都不画**的空位(`data-tail-spacer`),给它写 `translate` 一个像素的墨都
+   * 不动 —— 真机像素口两趟并排:装着它与拆掉它,「停止」那两个字的质心都是
+   * **1 个取值 / 0 跳变**(峰峰 0.022 与 0.024 设备像素),而拆掉之后那一层与空位的
+   * 上缘差反而从 1px 收到 0.02–0.16px(它推的正是那格空位)。所以不是「今天用不上」,
+   * 是**它今天推的是一个看不见的盒,而且推歪了一格判据**。
+   * `content/tail-snap.ts` 与它的单测一并删除。
    */
-  const tailSnapRef = useRef<{ el: HTMLElement; held: number; nudge: number } | undefined>(undefined)
-
-  /**
-   * **把尾巴推回设备像素格上**——贴底那一句写完 `scrollTop` 之后,同一帧里做的第二件事。
-   *
-   * 为什么贴完底还要推:`scrollTop` 只取得到整数个设备像素,而最大滚动位是分数,
-   * 于是内容底与视口底之间每一帧剩下一个不同的亚像素残值,尾巴(唯一该站着不动的
-   * 那一段)跟着每帧换一个亚像素位置 —— 那就是「正在生成」那一行的抖。**改落点治
-   * 不了**(实测:亚像素修正写进 `scrollTop` 一次都落不住,Chromium 本来就钳到最近
-   * 的设备像素),所以治在画这一侧。三条安全判据(不改布局 / 推行不推列 / 只往上推)
-   * 逐条写在 `tail-snap.ts` 的文件头。
-   *
-   * **两次取件都是 O(1)**:列是滚动容器的独子,尾巴是列的最后一件。
-   *
-   * ── G 线 P1 之后「尾巴」是谁(2026-09-20)──────────────────────────────────
-   * 从前是那条助手行(读数行住在它里面),所以这里要越过座位垫块往回取一格。
-   * 今天列尾那一格是**尾槽**(`data-tail-slot`),而读数行与那枚光标正住在它里面
-   * —— 也就是说这一句取到的**仍然是「该站着不动的那一件」**,判据一个字没改:
-   * 「列的最后一件」。座位那一支留着当兜底:尾槽只在 `status === 'ready'` 时画,
-   * 空会话 / 冷载那几帧列尾仍可能是座位垫块。
-   *
-   * 不扫全表(扫全表就是每帧按整份账本计价,09-10 那笔 834ms 的账)。矩形是白拿的:
-   * RO 回调跑在排版之后,另两个调用点上一行的 `scrollHeight` 已经逼过一次排版,
-   * 而写 `scrollTop` 不弄脏布局,所以这一读不会再逼出第二次。
-   */
-  const snapTail = useCallback((el: HTMLDivElement) => {
-    const column = el.firstElementChild
-    if (!(column instanceof HTMLElement)) return
-    const last = column.lastElementChild
-    const tail =
-      last instanceof HTMLElement && last.hasAttribute(SEAT_ATTR)
-        ? last.previousElementSibling
-        : last
-    const previous = tailSnapRef.current
-    if (previous && previous.el !== tail) {
-      previous.el.style.removeProperty('translate')
-      tailSnapRef.current = undefined
-    }
-    if (!(tail instanceof HTMLElement)) return
-    const applied = tailSnapRef.current?.nudge ?? 0
-    const { held, nudge } = resolveTailSnap({
-      bottom: tail.getBoundingClientRect().bottom,
-      applied,
-      held: tailSnapRef.current?.held,
-      devicePx: devicePixelSize(window.devicePixelRatio),
-    })
-    if (nudge !== applied) tail.style.translate = `0 ${nudge}px`
-    tailSnapRef.current = { el: tail, held, nudge }
-  }, [])
 
   /**
    * 贴底。**唯一**一处写 `scrollTop`,三个调用点(进场 / 长高 / 点丸)都经它。
@@ -1104,9 +1074,7 @@ function useFollowBottom(
      * 要等再翻一下才逃得出去。在这里写掉,参照永远是真的底,一下就认出来。
      */
     lastTopRef.current = el.scrollTop
-    // 落点只落得到格子上,剩下的半个设备像素由尾巴自己让回来(2026-09-15)。
-    snapTail(el)
-  }, [scrollRef, snapTail])
+  }, [scrollRef])
 
   /** 「下面还有多少没露脸」。判据与 `follow.ts` 的 `scrolled` 用的是同一个式子。 */
   const readGap = useCallback(() => {

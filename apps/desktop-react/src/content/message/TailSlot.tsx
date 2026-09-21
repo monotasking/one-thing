@@ -254,6 +254,7 @@ export function TailSlot({
   running,
   startedAt,
   lastActivityAt,
+  pinned,
 }: {
   /** 这一格属于哪条会话 —— 停止那一口的收件人(分屏下各叶各一格)。 */
   sessionId: string
@@ -274,6 +275,15 @@ export function TailSlot({
    */
   startedAt?: number
   lastActivityAt?: number
+  /**
+   * **此刻是不是贴底跟随**(G 线 P1h)。
+   *
+   * 这一层浮在滚动口上,没有底色;人往上翻历史时它必须让开 —— 否则就是字叠字,
+   * 而凭空给它加一层 background 是更糟的修法(Dock 那条「多一格颜色就是多一层」)。
+   * `browsing` 时「还在跑」由 `FollowPill` 说(丸上那三个点),停止由 composer
+   * 忙态那颗键给:两件事都已经在屏上,不必让这一层去挤。
+   */
+  pinned: boolean
 }) {
   const t = useT()
   const phase = useTailPhase(running)
@@ -286,18 +296,26 @@ export function TailSlot({
   if (running) lastRunRef.current = { startedAt, lastActivityAt }
   const shown = phase === 'run' ? { startedAt, lastActivityAt } : lastRunRef.current
   const alive = phase !== 'idle'
+  /*
+   * **在跑 ∧ 贴底跟随**才可达。两件事各有各的理由,所以是两格而不是一格:
+   * 非 `run` 时没东西可碰(空着 / 淡出中那颗停止钮已经不作数了);
+   * `browsing` 时这一层整层淡出、不在屏上,Tab 与读屏都不该碰到它。
+   */
+  const reachable = phase === 'run' && pinned
   return (
     <div
-      className={s.slot}
-      /* 量几何的那几处按这个名字把它剔出去:尾槽是常驻的一格,不是「这一轮长了多高」
-         的一部分(与座位垫块的 `data-seat` 同一条判词,见 `ChatStream` 的 `measureSeat`)。 */
+      className={s.overlay}
+      data-pinned={pinned ? '' : undefined}
+      /* 这一层没有身份问题:它就是那一格尾槽,只是从列里搬到了滚动口上。
+         门的取件口(`data-tail-slot` / `data-face` / testid)跟着内容走,
+         列里那格空位另起 `data-tail-spacer`(判词在 `TailSpacer` 上)。 */
       data-tail-slot=""
       data-face={phase}
       data-testid="chat-tail-slot"
-      /* 在跑之外一律不可达:空着时没东西可碰,淡出中那颗停止钮已经不作数了。 */
-      inert={phase !== 'run'}
-      aria-hidden={phase === 'run' ? undefined : true}
+      inert={!reachable}
+      aria-hidden={reachable ? undefined : true}
     >
+      <div className={s.overlayRow}>
       {alive && (
         <div className={s.body} data-leaving={phase === 'leaving' || undefined}>
           {/*
@@ -328,6 +346,26 @@ export function TailSlot({
           )}
         </div>
       )}
+      </div>
     </div>
   )
+}
+
+/**
+ * **列里那格空位**(G 线 P1h,2026-09-21)。
+ *
+ * 它是 `TailSlot` 在**列**里留下的那一半:高度恒为 `--tail-slot-h`、一个像素都不画。
+ * 画的那一份搬去了滚动口上那一层(判词整段在 `TailSlot.module.css` 的 `.overlay`)。
+ *
+ * **为什么还要留这一格**:列的几何不能变。座位量法(`ChatStream` 的 `measureSeat`
+ * 的 `belowSeat`)、`gate:stream-geometry` 的 ①⑧、「发送只滚一次」那几条都按
+ * 「列尾有这么高一格」算的;把它一起搬走等于顺手改了那几条判据。所以这一格是
+ * **列的事实**,那一层是**屏幕的事实**,两件事各留各的。
+ *
+ * 属性只有一个 `data-tail-spacer` —— 量几何的那几处按这个名字把它剔出去
+ * (与座位垫块的 `data-seat` 同一条判词)。它**不带** `data-tail-slot`:
+ * 那个名字跟着画出来的那一行走了,门量「人看见的那一行」问的是那一层。
+ */
+export function TailSpacer() {
+  return <div className={s.spacer} data-tail-spacer="" aria-hidden="true" />
 }

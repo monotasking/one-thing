@@ -798,6 +798,34 @@ async function main() {
     )
     console.log(`      现场:${JSON.stringify(streamsDump)}`)
     assert(after.rows > quiet.rows, `隔壁那片叶真的收到了流(${quiet.rows} → ${after.rows} 行)`)
+
+    /*
+     * ── ⑨ **各叶各一层尾槽,互不串位**(G 线 P1h,2026-09-21)──────────────────
+     *
+     * P1h 把尾槽的内容搬出了滚动内容层,落到**这片叶自己的 `.chatArea`** 上
+     * (正本 §12)。那一层是绝对定位的,所以「它属于哪一片叶」这件事从此**不再由
+     * DOM 嵌套顺带保证** —— 定位参照写错一格,两片叶就会共用一层、或者一层飘到
+     * 隔壁去。这一条把它钉住:**几条会话就几层,每一层都住在自己那一格 tab 里**。
+     */
+    const slots = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('[data-tail-slot]')).map((el) => ({
+        tab: el.closest('[data-pane-tab]')?.getAttribute('data-pane-tab')
+          ?? el.closest('[data-pane-kept]')?.getAttribute('data-pane-kept') ?? '?',
+        /* 它的定位参照必须是**这片叶自己的** `.chatArea`(offsetParent 就是它)。 */
+        sameLeafAsItsStream: (() => {
+          const area = el.offsetParent
+          const stream = area?.querySelector?.('[data-testid="chat-stream"]') ?? null
+          return Boolean(stream && el.parentElement === stream.parentElement)
+        })(),
+      })),
+    )
+    console.log(`      尾槽层:${JSON.stringify(slots)}`)
+    assert(slots.length === twoSessions,
+      `几条会话就几层尾槽(会话 ${twoSessions} / 尾槽层 ${slots.length})`)
+    assert(new Set(slots.map((x) => x.tab)).size === slots.length,
+      `每一层各住各的 tab,没有两层挤在一格里(${slots.map((x) => x.tab).join(' / ')})`)
+    assert(slots.every((x) => x.sameLeafAsItsStream),
+      '每一层的定位参照都是**它自己那片叶**的 .chatArea(与同一片叶的滚动容器同父)')
     assert(
       Math.abs((after.scrollTop ?? 0) - (quiet.scrollTop ?? 0)) < 1,
       `隔壁在流时这一片**一像素不动**(${quiet.scrollTop} → ${after.scrollTop})`,
