@@ -176,8 +176,13 @@ export class ViewportAnchor {
    */
   enter(sessionId: string, facts: { hasElement: boolean; hasMessages: boolean }): void {
     this.dispatch({ type: 'enter' })
-    // 换会话不带上一条会话的意图:那格截止时刻说的是「**那边**有人点开了一样东西」。
+    /*
+     * 换会话不带上一条会话的意图:那格截止时刻说的是「**那边**有人点开了一样东西」。
+     * **两格都清**(审查裁定 2 之后):折叠那一格从此也由「人亲手开合」开着,
+     * 不清的话那边点开的那一下会把这边的第一批尺寸变化整段早退掉。
+     */
     this.#intents.clearExpand()
+    this.#intents.clearFold()
     /** 落定一次:把「此刻离底多远」交给状态机、记进 gap 基准、把锚点记一笔。 */
     const settle = () => {
       const gap = this.#port.gapNow()

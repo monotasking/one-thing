@@ -261,17 +261,34 @@ describe('人自己点开的东西:位置一动不动', () => {
     expect(pill()).not.toBeNull()
   })
 
-  it('点开的那一段没把人挤离底(gap 仍 ≤ EPS)—— 窗口过后照旧跟底,跟底没丢', async () => {
+  /**
+   * **G 线 P2-b 审查裁定 2 改了这一条**(2026-09-22)。
+   *
+   * 从前这里断言「窗口过后照旧跟底,跟底没丢」—— 那是把「人点开了一样东西」读成
+   * **一段限时的按兵不动**。裁定把它改成**一次不可逆的翻档**:展开窗里**每一批**
+   * 尺寸变化都按「此刻离底多远」重判,内容一长出来 gap 变大,状态机当场翻成
+   * browsing,之后再长也不贴底(丸会亮起来说「回到最新」)。
+   *
+   * 理由是超量档上量出来的:定长窗口在 400 条 / 十一万像素那条会话上短于一帧,
+   * 窗口一断 `stick()` 就把人拽走(实测 11,454–27,018px)。判词整段在
+   * `ViewportAnchor.onResize` 的折叠分支上。
+   *
+   * **「展开没让内容溢出」那一档不变**:gap 仍 ≤ EPS 时重判的结果就是 pinned,
+   * 所以位置一像素不动 —— 下面第一段断言原样保留。
+   */
+  it('点开的那一段没把人挤离底(gap 仍 ≤ EPS);再长出来的那一截不再把人拽到底', async () => {
     const { el, geo } = await mount()
     fireEvent.click(label())
-    // 展开没让内容溢出:gap 还是 0,状态机照旧 pinned。
+    // 展开没让内容溢出:gap 还是 0,重判的结果照旧 pinned,位置一像素不动。
     grow(el, 100)
     expect(geo.scrollTop).toBe(500)
 
     now += EXPAND_HOLD_MS + 1
     geo.scrollHeight = 1300
     grow(el, 200)
-    expect(geo.scrollTop).toBe(bottomOf(geo))
+    // 这一截长在他没看见的下面 —— 翻档已经发生,不贴底,丸亮起来。
+    expect(geo.scrollTop).toBe(500)
+    expect(pill()).not.toBeNull()
   })
 
   it('换会话把意图清零 —— 那一格说的是「那边有人点开了一样东西」', async () => {
