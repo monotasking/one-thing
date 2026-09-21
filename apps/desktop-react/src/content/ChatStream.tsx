@@ -32,9 +32,10 @@ import {
 import { ButtonBase } from '../ui/ButtonBase'
 import { assembleMessage, segmentKey } from './assemble'
 import { ContextDeltaSeam, hasContextDelta } from './ContextDeltaSeam'
-import { DomScrollPort, type AnchoredElement, type ScrollPort } from './viewport/scroll-port'
+import { DomScrollPort, type ScrollPort } from './viewport/scroll-port'
 import { AnchorRecorder } from './viewport/anchor-recorder'
 import { EntryRestore } from './viewport/entry-restore'
+import { IntentWindow } from './viewport/intent-window'
 import { TailPad } from './viewport/tail-pad'
 import { Slide } from './viewport/slide'
 import { ExpandIntentContext } from './expand-intent'
@@ -902,7 +903,9 @@ function useFollowBottom(
    * `content/expand-intent.ts` 那条 context 交到每一件可展开的东西手里),
    * 读点也只有一处(RO 回调里那一格判据)。
    */
-  const holdUntilRef = useRef(0)
+  const intentsRef = useRef<IntentWindow | undefined>(undefined)
+  if (!intentsRef.current) intentsRef.current = new IntentWindow()
+  const intents = intentsRef.current
 
   /**
    * 「这一下是用户点开的」。
@@ -917,8 +920,8 @@ function useFollowBottom(
    * 要一一接线;截止时刻是一个数,谁报都一样。
    */
   const noteUserExpand = useCallback(() => {
-    holdUntilRef.current = performance.now() + EXPAND_HOLD_MS
-  }, [])
+    intents.noteExpand(performance.now(), EXPAND_HOLD_MS)
+  }, [intents])
 
   /**
    * **流里有一块正在折起来,这段时间钉住视口**(单 B ④;通道 `content/fold-intent.ts`)。
@@ -932,12 +935,9 @@ function useFollowBottom(
    * (判词在下面那只 RO 的折叠分支)。选锚要在排版之后(RO 回调里),所以这里
    * 只记截止时刻,不碰几何。
    */
-  const foldHoldRef = useRef<
-    { until: number; anchor?: AnchoredElement; top?: number } | undefined
-  >(undefined)
   const noteFold = useCallback((ms: number) => {
-    foldHoldRef.current = { until: performance.now() + ms + FOLD_HOLD_SLACK_MS }
-  }, [])
+    intents.noteFold(performance.now(), ms + FOLD_HOLD_SLACK_MS)
+  }, [intents])
 
   /* ── 座位(正本 `docs/send-flow-2026-09.md` §3;算法在 `content/seat.ts`)─────
    *
@@ -1065,7 +1065,7 @@ function useFollowBottom(
   useLayoutEffect(() => {
     dispatch({ type: 'enter' })
     // 换会话不带上一条会话的意图:那格截止时刻说的是「**那边**有人点开了一样东西」。
-    holdUntilRef.current = 0
+    intents.clearExpand()
     const el = scrollRef?.current
     /** 落定一次:把「此刻离底多远」交给状态机、记进 gap 基准、把锚点记一笔。 */
     const settle = () => {
@@ -1121,7 +1121,7 @@ function useFollowBottom(
       restore.clear()
       if (el) recorder.saveNow(sessionId)
     }
-  }, [sessionId, dispatch, scrollRef, port, recorder, restore, stick, readGap])
+  }, [sessionId, dispatch, scrollRef, port, recorder, restore, intents, stick, readGap])
 
   /*
    * ── 贴底的产地只有两处(2026-09-10 换轨)──────────────────────────────────
@@ -1252,10 +1252,8 @@ function useFollowBottom(
        * 老实让内容上来,比把视口锁在一个不存在的位置好(正本那句「scrollTop 到 0
        * 补不动了才允许内容动」)。
        */
-      const hold = foldHoldRef.current
+      const hold = intents.folding(performance.now())
       if (hold) {
-        if (performance.now() > hold.until) foldHoldRef.current = undefined
-        else {
           if (!hold.anchor || !hold.anchor.alive()) {
             const picked = port.pickFoldAnchor()
             if (picked) {
@@ -1279,7 +1277,6 @@ function useFollowBottom(
           lastHeightRef.current = port.columnHeight()
           lastGapRef.current = port.gapNow()
           return
-        }
       }
       let contentGrew = false
       let contentChanged = false
@@ -1343,7 +1340,7 @@ function useFollowBottom(
        * 窗口内一律不派 `grew`;代价是窗口内(220ms)恰好到达的流式 delta 晚几帧才
        * 点亮丸 —— 下一拍长高照旧会点。
        */
-      if (performance.now() < holdUntilRef.current) {
+      if (intents.expanding(performance.now())) {
         if (followShouldStick(followRef.current)) dispatch({ type: 'scrolled', gap })
         lastGapRef.current = gap
         return
@@ -1381,7 +1378,13 @@ function useFollowBottom(
     observer.observe(column)
     observer.observe(el)
     return () => observer.disconnect()
-  }, [scrollRef, port, pad, recorder, restore, sessionId, dispatch, stick, readSeat])
+    /*
+     * **`seatActive` 进依赖表**是有意的(G 线 P2-a 第七笔补回):搬迁之前
+     * `readSeat` 的身份跟着它变,而它在这条依赖表里 —— 于是**座位一出现 /
+     * 一退役,这只观察者就重挂一次**,连带把 `lastHeightRef` / `lastGapRef` 两格
+     * 基准重新量一遍。抽件之后那几只回调的身份恒定了,这条触发沿要显式写出来才不丢。
+     */
+  }, [scrollRef, port, pad, seatActive, recorder, restore, intents, sessionId, dispatch, stick, readSeat])
 
   /*
    * 「发送了一条」那一拍。号从 `chat-source` 来(产地在 `send()`),这里只比对它变没变。

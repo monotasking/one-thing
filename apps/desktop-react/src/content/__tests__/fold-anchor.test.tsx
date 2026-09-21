@@ -108,7 +108,7 @@ describe('聊天流那一头:折叠分支只写 scrollTop,不改布局', () => {
    * 这一条当场红 —— 「观察器回调只读不写」禁的是**改布局**,`scrollTop` 不改布局。
    */
   it('折叠分支里除了 scrollTop 与两格记账,不碰别的', () => {
-    const branch = /const hold = foldHoldRef\.current([\s\S]*?)\n {6}let contentGrew/.exec(src)?.[1] ?? ''
+    const branch = /const hold = intents\.folding\(([\s\S]*?)\n {6}let contentGrew/.exec(src)?.[1] ?? ''
     expect(branch).not.toBe('')
     expect(branch).toMatch(/port\.setTop\(Math\.max\(0, port\.top \+ drift\), 'user-toggle'\)/)
     // 不许在这一支里写样式 / 写垫块 —— 那是改布局,会把自己变成下一轮派发的起点。
