@@ -262,28 +262,40 @@ async function main() {
     )
 
     console.log('\n[3/7] 拉起应用,进那条会话,打开文件面板')
-    app = await electron.launch({
-      executablePath: electronBinary,
-      args: [mainEntry, `--user-data-dir=${userDataDir}`],
-      env: {
-        ...process.env,
-        ONETHING_STORE_PATH: store,
-        ONETHING_REACT_DEV_SERVER_URL: '',
-        /*
-         * **离屏起窗**(09-04 S4 立的纪律「真机门不许抢用户的机器」)。窗子不 show()、
-         * 不进 Dock;页面照样渲染、照样跑布局与 rAF,焦点由 CDP
-         * `Emulation.setFocusEmulationEnabled` 补上(只进这个窗口,不动真光标)。
-         */
-        ONETHING_GATE_HEADLESS: '1',
-      },
-    })
-    const page = await app.firstWindow()
-    const cdp = await app.context().newCDPSession(page)
-    await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
-    await waitFor('渲染层完成一次 RPC 往返', async () => {
-      const value = await page.evaluate(() => window.__d0 ?? null)
-      return value && value.rpcOk ? value : undefined
-    })
+    /*
+     * **起窗抽成一只**(09-22):最后那一节要「关窗再起」证重启恢复,而重启这件事
+     * 只有在**同一个 store + 同一个 user-data-dir** 上才说得通(拼贴树落在
+     * localStorage 里)。抽出来不是重构,是让第二次起窗与第一次逐字同一条路 ——
+     * 两处各写一遍的下场是「重启那一次少给了一格 env」而门自己看不出来。
+     */
+    const launchApp = async () => {
+      const handle = await electron.launch({
+        executablePath: electronBinary,
+        args: [mainEntry, `--user-data-dir=${userDataDir}`],
+        env: {
+          ...process.env,
+          ONETHING_STORE_PATH: store,
+          ONETHING_REACT_DEV_SERVER_URL: '',
+          /*
+           * **离屏起窗**(09-04 S4 立的纪律「真机门不许抢用户的机器」)。窗子不 show()、
+           * 不进 Dock;页面照样渲染、照样跑布局与 rAF,焦点由 CDP
+           * `Emulation.setFocusEmulationEnabled` 补上(只进这个窗口,不动真光标)。
+           */
+          ONETHING_GATE_HEADLESS: '1',
+        },
+      })
+      const win = await handle.firstWindow()
+      const session = await handle.context().newCDPSession(win)
+      await session.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+      await waitFor('渲染层完成一次 RPC 往返', async () => {
+        const value = await win.evaluate(() => window.__d0 ?? null)
+        return value && value.rpcOk ? value : undefined
+      })
+      return { handle, win }
+    }
+    let launched = await launchApp()
+    app = launched.handle
+    let page = launched.win
     // 「当前会话」是 expose store 的事实(根目录判据的第一半),所以这里**点进去**,
     // 不去改 store —— 门要走用户真正走的那条路。
     await waitFor('Dock 上的「会话总览」瓦就位', () =>
@@ -738,9 +750,20 @@ async function main() {
       * 没开时它只记档不搬(那是 `setFileOpenMode` 的既定语义,不是这一步要验的)。
       */
      await clickSelector(page, `[data-file-path="${enginePath}"]`)
-     await waitFor('文件重新开出来了', () =>
-       page.evaluate(() => Boolean(document.querySelector('[data-testid="file-viewer"]'))),
-     )
+     /*
+      * **等到正文真的上屏再取那句基准**(09-22 修掉一颗时序色子)。
+      * 从前这里只等「查看器在场」,而查看器在场的**第一帧**画的是「正在读取…」——
+      * 取到的基准于是有时是那三个字,下面每一档换落点都会与它不相等,红的是
+      * 一件根本没被验的事。判据加两条:骨架不在 ∧ 正文非空。
+      */
+     await waitFor('文件重新开出来、而且正文到位了', async () => {
+       const now = await page.evaluate(() => ({
+         up: Boolean(document.querySelector('[data-testid="file-viewer"]')),
+         loading: Boolean(document.querySelector('[data-testid="viewer-first-load"]')),
+         text: document.querySelector('[data-testid="viewer-body"]')?.textContent ?? '',
+       }))
+       return now.up && !now.loading && now.text.length > 0
+     })
      const sameText = (await whereViewer()).text
      for (const [label, pattern, expect] of [
        ['右侧钉', /右侧钉|Pinned right/, 'edge:right'],
@@ -761,7 +784,10 @@ async function main() {
        })
        const at = await whereViewer()
        assert(at.host === expect, `「${label}」真的把它摆到了 ${expect}(实测 ${at.host})`)
-       assert(at.text === sameText, `「${label}」换落点之后内容逐字相同(状态住 store)`)
+       assert(
+         at.text === sameText,
+         `「${label}」换落点之后内容逐字相同(状态住 store);前 ${JSON.stringify(sameText)} 后 ${JSON.stringify(at.text)}`,
+       )
        // 一格一檐的另一半:**架子 / 浮窗那片叶自己头上**那条檐说得出文件名
        //(中央区那一形上一步已经在顶栏那条带子上量过了)。
        assert(
@@ -1208,9 +1234,188 @@ async function main() {
       await page.screenshot({ path: path.join(shotDir, 'w6a-unpair.png') })
     }
 
+    /*
+     * ══ [9/9] 09-22 报障三修:**摆位置的那些路自己把内容读回来** ══════════════
+     *
+     * 用户原话:「拖拽文件到 tab,会提示还没有打开文件;重启,如果文件 tab 在,
+     * 也是会有该提示」。两句报障是同一个病:从前只有 `open-target.openFileAt`
+     * (树上点一行)那**一条**路把「摆位置」与「读字节」接起来,而拖进标签条走的是
+     * `workbench/drop-commit`、重启恢复走的是落盘的树 —— 两条都只摆位置。
+     * 修法是**内容自述**:查看器一挂上来就 `ensureFile`(判词在 `FileViewer` 上)。
+     *
+     * 所以这一节的三步逐条对着那三条要求:
+     *  ① 拖一行到标签条上 → 内容自己上屏(**先把那一格关掉**,关闭会 dispose 实例,
+     *    所以这一步开头手上一定没有它的内容 —— 否则这一条证不了任何事);
+     *  ② 关窗再起 → 那一格文件标签恢复,而且内容自己回来;
+     *  ③ 盘上改一笔 → 按脚上那颗「刷新」→ 屏幕上换成新的。
+     */
+    console.log('\n[9/9] 09-22:拖进标签条 / 重启恢复 / 刷新,三条各自把内容读回来')
+
+    const notePath = `${cwd}/docs/note.md`
+    /**
+     * **那一份文件的查看器**,按路径点名取 —— 中央区此刻摞着好几格标签,
+     * 藏起来的那几格照旧在 DOM 里(隐藏不卸载),按「第一个 file-viewer」取到的
+     * 是文档序里的第一格,不是屏幕上活动的那一格。
+     */
+    const viewerOf = (filePath) =>
+      page.evaluate((p) => {
+        const viewer = document.querySelector(`[data-testid="file-viewer"][data-viewer-path="${p}"]`)
+        return {
+          up: Boolean(viewer),
+          text: viewer?.querySelector('[data-testid="viewer-body"]')?.textContent ?? '',
+          empty: Boolean(viewer?.querySelector('[data-testid="viewer-empty"]')),
+          region: viewer?.closest('[data-pane-region]')?.getAttribute('data-pane-region') ?? null,
+        }
+      }, filePath)
+    /** 中央那条标签条上此刻哪一格是活动的。 */
+    const activeCenterTab = () =>
+      page.evaluate(() =>
+        (
+          document.querySelector('[data-testid="topbar"] [role="tab"][aria-selected="true"]')
+            ?.textContent ?? ''
+        ).trim(),
+      )
+
+    /* ① 先把 note.md 那一格关掉 —— 关闭 = dispose 实例(设计 §2.3),手上因此干净。 */
+    await page.evaluate(() => {
+      const tab = Array.from(
+        document.querySelectorAll('[data-testid="topbar"] [role="tab"]'),
+      ).find((el) => (el.textContent ?? '').includes('note.md'))
+      const close = tab?.querySelector('[class*="close"]')
+      if (close instanceof HTMLElement) close.click()
+    })
+    await waitFor('note.md 那一格关掉了', async () =>
+      (await centerTabs()).every((text) => !text.includes('note.md')),
+    )
+
+    /*
+     * 真的拖一次 —— **走用户走的那条手势**(不是调 store):按下落在那一行上、
+     * 中间几发 pointermove 走过起拖阈值(`DRAG_START_PX`)、最后在标签条的中心
+     * 松手。三样正是 `ui/drag/DragSession` 听的那三样。
+     *
+     * **派合成事件而不是 `page.mouse`**,与这道门里 `clickSelector` 同一条理由:
+     * 真光标那条路要过命中测试,而这一屏上那棵树住在左架子里、行的中心点被别的层
+     * 接走(实测 `elementFromPoint` 交回的是面板那层 `_body_`),于是按下根本落不到
+     * 行上。合成事件绕开的只是「谁在最上面」这一问,**派出去的仍是真事件**:
+     * DragSession 的判据(阈值、落点、松手)一条都没被绕过。
+     */
+    const dragRowToStrip = async (filePath) =>
+      page.evaluate(async (p) => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+        /*
+         * **取那一行要取「屏幕上那一份」**:左架子上此刻摞着好几格目录面板,
+         * 藏起来的那几格照旧在 DOM 里(隐藏不卸载),`querySelector` 交回的第一个
+         * 很可能正是其中一格 —— 拖它等于拖一行没人看得见的东西。判据是命中测试:
+         * 那一点上最上面的元素在不在这一行里。
+         */
+        const rows = Array.from(document.querySelectorAll(`[data-file-path="${p}"]`))
+        const visible = rows.find((el) => {
+          const box = el.getBoundingClientRect()
+          if (box.width <= 0 || box.height <= 0) return false
+          const top = document.elementFromPoint(
+            Math.round(box.left + box.width / 2),
+            Math.round(box.top + box.height / 2),
+          )
+          return Boolean(top && el.contains(top))
+        })
+        const row = visible ?? rows[0]
+        const list = document.querySelector('[data-testid="topbar-tabs"] [role="tablist"]')
+        if (!(row instanceof HTMLElement) || !(list instanceof HTMLElement)) {
+          return { ok: false, rows: rows.length, list: Boolean(list) }
+        }
+        const a = row.getBoundingClientRect()
+        const b = list.getBoundingClientRect()
+        const from = { x: Math.round(a.left + a.width / 2), y: Math.round(a.top + a.height / 2) }
+        const to = { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) }
+        const at = (x, y, type, target) =>
+          target.dispatchEvent(
+            new PointerEvent(type, {
+              bubbles: true,
+              cancelable: true,
+              composed: true,
+              clientX: x,
+              clientY: y,
+              button: 0,
+              buttons: type === 'pointerup' ? 0 : 1,
+              pointerId: 1,
+              pointerType: 'mouse',
+              isPrimary: true,
+            }),
+          )
+        at(from.x, from.y, 'pointerdown', row)
+        let started = false
+        for (let i = 1; i <= 12; i += 1) {
+          at(from.x + ((to.x - from.x) * i) / 12, from.y + ((to.y - from.y) * i) / 12, 'pointermove', window)
+          await sleep(25)
+          // 根上那格属性 = 「这一场真的起拖了」(判词在 ui/drag/DragSession)。
+          started ||= document.documentElement.hasAttribute('data-drag-active')
+        }
+        at(to.x, to.y, 'pointerup', window)
+        return { ok: true, from, to, started, rows: rows.length, visible: Boolean(visible) }
+      }, filePath)
+    const dragged = await dragRowToStrip(notePath)
+    await delay(500)
+    assert(dragged.ok, `量得到起点与落点(行 ${JSON.stringify(dragged.from)} → 条 ${JSON.stringify(dragged.to)})`)
+    assert(
+      dragged.started,
+      `这一下真的起拖了(屏幕上那一行:${dragged.visible};同路径的行共 ${dragged.rows} 个)`,
+    )
+    const afterDrag = await waitFor('拖进来的那一格把内容读回来了', async () => {
+      const now = await viewerOf(notePath)
+      return now.up && now.text.includes('note') ? now : undefined
+    })
+    assert(
+      afterDrag.region === 'center',
+      `拖到标签条上的那一格真的落进了中央区那棵树(实测 ${afterDrag.region})`,
+    )
+    assert(
+      !afterDrag.empty,
+      `它**不是**空查看器,正文就是磁盘上那份:${JSON.stringify(afterDrag.text).slice(0, 60)}`,
+    )
+    assert(
+      (await activeCenterTab()).includes('note.md'),
+      `落定之后它成了活动格:${await activeCenterTab()}`,
+    )
+
+    /* ② 关窗再起:同一个 store + 同一个 user-data-dir,标签由落盘的树恢复。 */
     await app.close()
     app = undefined
-    console.log(`\n[d5-gate] ok —— 文件树、预览、检索三处画的都是磁盘上的真文件(截图:${path.relative(appRoot, shotDir)}/)`)
+    await delay(600)
+    launched = await launchApp()
+    app = launched.handle
+    page = launched.win
+    const restored = await waitFor('重启之后那一格文件标签把内容读回来了', async () => {
+      const now = await viewerOf(notePath)
+      return now.up && now.text.trim().length > 0 ? now : undefined
+    })
+    assert(
+      !restored.empty && restored.text.includes('note'),
+      `重启恢复出来的那一格不是「还没有打开的文件」:${JSON.stringify(restored.text).slice(0, 60)}`,
+    )
+    await page.screenshot({ path: path.join(shotDir, 'restart-viewer.png') })
+
+    /* ③ 刷新:盘上改一笔(绕开应用 —— 这一笔是「别人写的」),按脚上那颗钮。 */
+    const LATER = 'note · 09-22 刷新之后才有的这一行\n'
+    await writeFile(notePath, LATER)
+    const reloadSelector = `[data-viewer-path="${notePath}"] [data-testid="viewer-reload"]`
+    assert(
+      await page.evaluate((css) => Boolean(document.querySelector(css)), reloadSelector),
+      '查看器脚上那颗「刷新」在场',
+    )
+    await clickSelector(page, reloadSelector)
+    const refreshed = await waitFor('刷新之后屏幕上换成了盘上那一份', async () => {
+      const now = await viewerOf(notePath)
+      return now.text.includes('09-22 刷新之后才有的这一行') ? now : undefined
+    })
+    assert(
+      refreshed.text.includes('09-22 刷新之后才有的这一行'),
+      `刷新真的把盘上最新那一份拿了回来:${JSON.stringify(refreshed.text).slice(0, 80)}`,
+    )
+    await page.screenshot({ path: path.join(shotDir, 'viewer-refresh.png') })
+
+    await app.close()
+    app = undefined
+    console.log(`\n[d5-gate] ok —— 文件树、预览、检索三处画的都是磁盘上的真文件;拖进标签条 / 重启恢复 / 刷新三条各自把内容读回来(截图:${path.relative(appRoot, shotDir)}/)`)
   } finally {
     if (app) await app.close().catch(() => {})
     if (server && pidAlive(server.pid)) server.kill('SIGTERM')

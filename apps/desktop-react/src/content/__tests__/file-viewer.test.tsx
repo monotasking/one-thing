@@ -599,15 +599,63 @@ describe('四律:切文件不闪 / 骨架只首载 / 异步钮有 pending', () =
   })
 
   /*
-   * F2 起查看器是一块**普通的瓦**,所以它可以在「一个文件都没打开」的情况下
-   * 被点开(Dock 上点那块瓦)。那一帧既不是首载(没有东西在读)也不是错误,
-   * 所以它有自己的一格空态 —— 不转圈,说实话。
+   * **一台查看器自己把文件读回来**(09-22 报障:「拖拽文件到 tab,提示还没有
+   * 打开文件;重启之后文件 tab 还在,也是这个提示」)。
+   *
+   * 这两句报障是同一个病:从前只有 `open-target.openFileAt`(树上点一行)那**一条**
+   * 路把「摆位置」与「读字节」接起来,而从树里拖一行到别人的标签条上、以及按落盘
+   * 的树把标签恢复回来,走的都是只摆位置的那条 —— 屏幕上是一格空查看器。
+   *
+   * 所以这一格用例的形就是那两条路的形:**先不 `openFile`,直接渲染一台带 path
+   * 的查看器**(拖进来的那一格 / 重启恢复出来的那一格,手上都没有实例),
+   * 判据是它自己读了回来。那一格「空态」不再是任何一条路的终点 ——
+   * 它只剩下「读还没发出去」那一瞬,而布局 effect 让那一瞬连一帧都画不出来。
    */
-  it('空态:一个文件都没打开时说实话,不转圈', () => {
-    installPort()
+  it('挂上来就自己把文件读回来(拖进来的 tab / 重启恢复的 tab)', async () => {
+    const port = installPort()
+    opened = '/repo/a.ts'
+    // 没有 open():这一格就是「只摆了位置、没人读过」的那一种。
+    expect(inst()).toBeUndefined()
     renderViewer(<Viewer />)
-    expect(screen.getByTestId('viewer-empty')).toBeTruthy()
-    expect(screen.queryByTestId('viewer-first-load')).toBeNull()
+    await waitFor(() => expect(screen.getByTestId('viewer-code')).toBeTruthy())
+    expect(port.readContent).toHaveBeenCalledWith('/repo/a.ts', expect.any(Number))
+    expect(screen.queryByTestId('viewer-empty')).toBeNull()
+  })
+
+  it('已经读过的那一份重挂(隐藏/请回、换宿主)不再多读一发', async () => {
+    const port = installPort()
+    await open('/repo/a.ts')
+    const before = (port.readContent as ReturnType<typeof vi.fn>).mock.calls.length
+    const view = renderViewer(<Viewer />)
+    await waitFor(() => expect(screen.getByTestId('viewer-code')).toBeTruthy())
+    view.unmount()
+    renderViewer(<Viewer />)
+    await waitFor(() => expect(screen.getByTestId('viewer-code')).toBeTruthy())
+    expect((port.readContent as ReturnType<typeof vi.fn>).mock.calls.length).toBe(before)
+  })
+
+  /*
+   * **刷新**(09-22 报障的第三件):把盘上此刻那一份重新拿过来。
+   * 它走 `viewer-source.reload` 那唯一一只重读口 —— 这里验的是那颗钮真的接上了它,
+   * 而且新内容换到了屏上。
+   */
+  it('刷新:那颗钮把盘上最新的一份拿回来', async () => {
+    const port = installPort()
+    await open('/repo/a.ts')
+    renderViewer(<Viewer />)
+    await waitFor(() => expect(screen.getByTestId('viewer-code')).toBeTruthy())
+
+    const LATER = "export const gate = 'refreshed'\n"
+    ;(port.readContent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      content: LATER,
+      size: LATER.length,
+    })
+    fireEvent.click(screen.getByTestId('viewer-reload'))
+    await waitFor(() => {
+      const live = inst('/repo/a.ts').file
+      expect(live && 'content' in live ? live.content : '').toBe(LATER)
+    })
   })
 
   it('③ 存盘在飞时那颗钮禁用并换字', async () => {

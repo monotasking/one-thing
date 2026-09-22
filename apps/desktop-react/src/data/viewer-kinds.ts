@@ -163,6 +163,15 @@ export interface ViewerReadFacts {
   /** 这一次问后端要了多少字节。 */
   want: number
   mtimeMs?: number
+  /**
+   * **第几次把这条路径读回来**(0 = 头一次;刷新时 +1)。
+   *
+   * 只有 `direct` 那两型用得着:它们的字节归浏览器自己去取,而浏览器会按 URL
+   * 缓存 —— 同一条 `file://` 再挂一次,屏幕上还是盘上改动之前那一张。换一条
+   * URL 才是「再取一次」,所以这一格进 `fileUrlOf`。读文本那几型与它无关
+   * (它们的字节每一次都真的重读了一遍)。
+   */
+  rev?: number
   /** 读失败时的两格(只有 error 那一行用得着)。 */
   failure?: FileFailure
   error?: string
@@ -206,11 +215,11 @@ export const VIEWER_KINDS: readonly ViewerKindSpec[] = [
      * direct 那条路(位图)收到的是空串,于是 svgSource 缺席 —— 判据一处,
      * 不在两个地方各写一次「svg 特殊」。
      */
-    build: ({ path, name, content }) => ({
+    build: ({ path, name, content, rev }) => ({
       kind: 'image',
       path,
       name,
-      src: fileUrlOf(path),
+      src: fileUrlOf(path, rev),
       svgSource: isSvgPath(path) && content ? content : undefined,
     }),
   },
@@ -218,11 +227,11 @@ export const VIEWER_KINDS: readonly ViewerKindSpec[] = [
     kind: 'media',
     exts: ['mp4', 'mov', 'webm', 'm4v', 'mkv', 'avi', 'mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac'],
     direct: true,
-    build: ({ path, name }) => ({
+    build: ({ path, name, rev }) => ({
       kind: 'media',
       path,
       name,
-      src: fileUrlOf(path),
+      src: fileUrlOf(path, rev),
       audio: AUDIO_EXTS.has(extensionOf(baseNameOf(path))),
     }),
   },
@@ -447,6 +456,13 @@ export function viewerLangOf(path: string): string | null {
  * 那不是缺陷,是宿主的事实,所以取不到时查看器落**诚实态**并说出这句话,
  * 而不是留一片空白(图与播放条两型各有一格 —— F2 起播放条也有了)。
  */
-export function fileUrlOf(path: string): string {
-  return `file://${path.split('/').map(encodeURIComponent).join('/')}`
+export function fileUrlOf(path: string, rev?: number): string {
+  const url = `file://${path.split('/').map(encodeURIComponent).join('/')}`
+  /*
+   * **`?v=n` 只在刷新之后才挂**(09-22):头一次打开时挂一格没用的查询串,只会
+   * 让每一条 src 都比它本来的样子长一截,也让所有钉着 src 的用例跟着改写。
+   * 挂上去之后 Chromium 把整条 URL(含查询)当缓存键,而取文件时只认路径 ——
+   * 这正是「让浏览器重取同一个文件」唯一那条不必碰缓存 API 的路。
+   */
+  return rev ? `${url}?v=${rev}` : url
 }

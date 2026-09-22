@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { configureFilesPort } from './files-port'
 import type { FilesPort } from './files-port'
 import { dirsQuery, useFilesSource } from './files-source'
-import { useViewerSource } from './viewer-source'
+import { EMPTY_VIEWER_INSTANCE, useViewerSource } from './viewer-source'
 import { VIEWER_CHUNK_BYTES, VIEWER_OVERSIZE_BYTES } from './viewer-kinds'
 
 /**
@@ -22,6 +22,15 @@ const inst = (path: string) => useViewerSource.getState().instances[path]
 function latest() {
   const list = Object.values(useViewerSource.getState().instances)
   return list[list.length - 1] ?? { file: null, pending: null }
+}
+
+/** 一发**手动放行**的读。两处用例要在「还在飞」那一拍上做文章。 */
+function deferredRead() {
+  let release!: (content: string) => void
+  const promise = new Promise<{ success: true; content: string; size: number }>((resolve) => {
+    release = (content) => resolve({ success: true, content, size: content.length })
+  })
+  return { promise, release }
 }
 
 function fakePort(overrides: Partial<FilesPort> = {}) {
@@ -278,6 +287,80 @@ describe('多实例:一个路径一份,两份互不串(W1)', () => {
     // 真要重来走 reload —— 那是另一件事(盘上可能变了)。
     await useViewerSource.getState().reload('/repo/a.ts')
     expect(port.readContent).toHaveBeenCalledWith('/repo/a.ts', VIEWER_CHUNK_BYTES)
+  })
+
+  /*
+   * ── `ensureFile`:摆位置的那些路的唯一一句(09-22)──────────────────────
+   * 「把一份文件摆到某处」与「把它的字节读回来」本来是两件事;从前只有树上点一行
+   * 那一条路把两件接起来,于是拖进标签条、重启恢复标签这两条只摆位置的路摆出来
+   * 的都是空查看器。这一格钉的是那句话的数据侧。
+   */
+  it('ensureFile:手上什么都没有就读一发,已经有内容就什么都不做', async () => {
+    const port = fakePort()
+    await useViewerSource.getState().ensureFile('/repo/a.ts')
+    expect(inst('/repo/a.ts').file).toMatchObject({ content: 'hello\n' })
+    ;(port.readContent as ReturnType<typeof vi.fn>).mockClear()
+    await useViewerSource.getState().ensureFile('/repo/a.ts')
+    expect(port.readContent).not.toHaveBeenCalled()
+  })
+
+  it('ensureFile:已经有一发在飞就不再补一发(读只跑一次)', async () => {
+    const slow = deferredRead()
+    fakePort({ readContent: vi.fn(() => slow.promise) })
+    const opening = useViewerSource.getState().openFile('/repo/a.ts')
+    await useViewerSource.getState().ensureFile('/repo/a.ts')
+    slow.release('later')
+    await opening
+    expect(inst('/repo/a.ts').file).toMatchObject({ content: 'later' })
+  })
+
+  it('openFile:一份**有实例、没内容**的空壳不算「已经开好了」', async () => {
+    const port = fakePort()
+    // 这一份的形正是「读发出去之前」那一瞬(实例在、内容没有、也没有在飞的读)。
+    useViewerSource.setState((st) => ({
+      instances: {
+        ...st.instances,
+        '/repo/a.ts': { ...EMPTY_VIEWER_INSTANCE },
+      },
+    }))
+    await useViewerSource.getState().openFile('/repo/a.ts')
+    expect(port.readContent).toHaveBeenCalled()
+    expect(inst('/repo/a.ts').file).toMatchObject({ content: 'hello\n' })
+  })
+
+  /* ── 刷新 ────────────────────────────────────────────────────────────── */
+
+  it('刷新不吃掉草稿、也不把屏幕弹回顶上', async () => {
+    const port = fakePort()
+    await useViewerSource.getState().openFile('/repo/a.ts')
+    useViewerSource.getState().setEditing('/repo/a.ts', true)
+    useViewerSource.getState().setDraft('/repo/a.ts', 'my draft')
+    useViewerSource.getState().setScrollTop('/repo/a.ts', 420)
+    ;(port.readContent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      content: 'from disk\n',
+      size: 10,
+    })
+    await useViewerSource.getState().reload('/repo/a.ts')
+    expect(inst('/repo/a.ts').file).toMatchObject({ content: 'from disk\n' })
+    expect(inst('/repo/a.ts').edit.draft).toBe('my draft')
+    expect(useViewerSource.getState().scrolls['/repo/a.ts']).toBe(420)
+  })
+
+  it('刷新一张图 = 换一条 src(同一条 URL 浏览器只会交回缓存里那一张)', async () => {
+    fakePort()
+    await useViewerSource.getState().openFile('/repo/logo.png')
+    const first = inst('/repo/logo.png').file
+    expect(first).toMatchObject({ kind: 'image' })
+    const src0 = first && 'src' in first ? first.src : ''
+    expect(src0).not.toContain('?')
+    await useViewerSource.getState().reload('/repo/logo.png')
+    const next = inst('/repo/logo.png').file
+    const src1 = next && 'src' in next ? next.src : ''
+    expect(src1).toBe(`${src0}?v=1`)
+    await useViewerSource.getState().reload('/repo/logo.png')
+    const third = inst('/repo/logo.png').file
+    expect(third && 'src' in third ? third.src : '').toBe(`${src0}?v=2`)
   })
 
   it('**隐藏不丢实例,关闭才丢**(设计 §2.3 那张表的数据侧)', async () => {

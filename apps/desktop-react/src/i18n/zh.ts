@@ -1446,6 +1446,9 @@ export const zh = {
   'viewer.truncated': '文件有 {size},已经载入前 {shown}',
   'viewer.loadedPercent': '已载入 {percent}% · 共 {size}',
   'viewer.loadMore': '继续加载',
+  /* 刷新:把盘上此刻那一份重新拿过来。与「继续加载」是两件事 —— 那个说的是
+     同一次阅读继续往下,这个说的是这份东西在盘上变了。 */
+  'viewer.refresh': '刷新',
   /* 各形自己那一格动作(工具条与状态栏)。 */
   'viewer.wrap': '折行',
   'viewer.mdView': '渲染方式',

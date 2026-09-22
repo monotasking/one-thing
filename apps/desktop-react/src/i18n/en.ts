@@ -1222,6 +1222,7 @@ export const en: Record<MessageKey, string> = {
   'viewer.truncated': 'The file is {size}; the first {shown} is loaded',
   'viewer.loadedPercent': '{percent}% loaded · {size} total',
   'viewer.loadMore': 'Load more',
+  'viewer.refresh': 'Refresh',
   'viewer.wrap': 'Wrap',
   'viewer.mdView': 'View as',
   'viewer.mdRendered': 'Rendered',

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useT } from '../../i18n'
 import { baseNameOf, useFileDetail, useFilesSource } from '../../data/files-source'
@@ -117,6 +117,8 @@ export function FileViewer({
 }) {
   const t = useT()
   const { file, pending, view, edit } = useViewerInstance(path)
+  const ensureFile = useViewerSource((st) => st.ensureFile)
+  const reload = useViewerSource((st) => st.reload)
   const loadMore = useViewerSource((st) => st.loadMore)
   const setView = useViewerSource((st) => st.setView)
   const setEditing = useViewerSource((st) => st.setEditing)
@@ -150,6 +152,31 @@ export function FileViewer({
     return () => setLiveTitle(id, null)
   }, [path, liveName, liveDirty, setLiveTitle])
 
+  /*
+   * ── **一台查看器自己把文件读回来**(09-22 报障:「拖拽文件到 tab,提示还没有
+   * 打开文件;重启之后文件 tab 还在,也是这个提示」)──────────────────────────
+   *
+   * 病根不在拖拽,也不在重启:从前**只有一条**路把「摆位置」与「读字节」接起来
+   * (`open-target.openFileAt`,树上点一行走的那条)。于是每一条只摆位置的路
+   * —— 从树里拖一行到别人的标签条上(`workbench/drop-commit`)、按落盘的树把标签
+   * 恢复回来(`workbench/store` 的播种)—— 摆出来的都是一格没有内容的查看器。
+   * 那句「还没有打开的文件」说的是实话,只是那件事本来就不该发生。
+   *
+   * 修法**不是**去那两条路上各补一句读:那是「按入口枚举」,第三条路照样会漏
+   * (CLAUDE.md 09-02 立的那条法)。改成**内容自述**:查看器一挂上来就问
+   * `ensureFile`,摆位置的那些路从此一个字都不必知道「读」这回事。
+   *
+   * 为什么是 `useLayoutEffect`:`useEffect` 排在浏览器绘制之后,于是「空态」那一格
+   * 会真的闪出来一帧;布局 effect 在同一帧里就把 `pending` 立起来,屏幕上第一眼
+   * 看到的直接是「正在读取…」(四律②:骨架只首载)。
+   *
+   * 它对已经有内容的那一份是**空动作**(判据在 store 的 `ensureFile` 上),所以
+   * 隐藏 / 请回、换宿主、换叶这些重挂一概不会多读一发。
+   */
+  useLayoutEffect(() => {
+    void ensureFile(path)
+  }, [ensureFile, path])
+
   const rootRef = useRef<HTMLElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   /**
@@ -178,6 +205,17 @@ export function FileViewer({
   const lineCount =
     handler?.lineCount && bodyProps ? handler.lineCount(bodyProps) : undefined
   const { onScroll } = useViewerScroll(bodyRef, { currentLine: view.currentLine, path })
+
+  /*
+   * **刷新** —— 「把盘上此刻那一份拿过来」(09-22 报障的第三件)。
+   *
+   * 它走的是 `viewer-source.reload` 那唯一一只重读口(从前它只有测试在用),
+   * 不在这里自己拼第二条读:草稿保不保、滚动位动不动、图怎么绕过浏览器缓存,
+   * 三件都是**数据层的判据**,写在这儿就等于让同一件事有两个产地。
+   */
+  const runReload = useCallback(() => {
+    void reload(path)
+  }, [reload, path])
 
   /* ── ③ 存盘:异步钮的 pending 态 ────────────────────────────────────── */
   const runSave = useCallback(async () => {
@@ -305,6 +343,7 @@ export function FileViewer({
             onFind={() => setJumpQuery(SEARCH_SIGIL)}
             onKeymap={(id) => setView(path, { keymap: id })}
             onLoadMore={() => void loadMore(path)}
+            onReload={runReload}
           />
 
           {/*

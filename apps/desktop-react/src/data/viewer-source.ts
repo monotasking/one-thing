@@ -151,7 +151,27 @@ export interface ViewerSourceState {
    * (再点一下同一行不该让屏幕闪一次)。要强制重读走 `reload`。
    */
   openFile(path: string): Promise<void>
-  /** 重读这一份(内容可能在盘上变了)。没有实例就什么都不做。 */
+  /**
+   * **确保这一份有内容**(09-22)。手上已经有内容、或者已经有一发在飞 = 什么都不做。
+   *
+   * ── 它治的是什么 ──────────────────────────────────────────────────────
+   * 「把一份文件摆到某处」与「把它的字节读回来」本来是两件事,而从前只有**一条**
+   * 路把两件接起来(`content/viewer/open-target.openFileAt`:树上点一行)。于是
+   * 每一条只摆位置的路 —— 从文件树拖一行到别人的标签条上、重启之后按落盘的树把
+   * 标签恢复回来 —— 摆出来的都是一格**空查看器**,屏幕上写着「还没有打开的文件」。
+   *
+   * 修法不是去那几条路上各补一句读(那是「按入口枚举」,下一条路照样会漏),
+   * 而是让**内容自己把自己读回来**:查看器一挂上来就问这一口。摆位置的那些路
+   * 从此一个字都不必知道「读」这回事。
+   */
+  ensureFile(path: string): Promise<void>
+  /**
+   * 重读这一份(内容可能在盘上变了)——「刷新」那颗钮唯一的写口。没有实例就什么都不做。
+   *
+   * **它不碰草稿、不碰滚动位**:刷新说的是「把盘上最新的拿过来」,而用户正编着的
+   * 那份草稿是他自己的东西,屏幕停在哪儿也是。草稿与新内容不一样时它照旧算「脏」
+   * —— 那正是实话(你手上这份与盘上那份不同了)。
+   */
   reload(path: string): Promise<void>
   /** 再要一段(只有截断了的 code / markdown 有意义)。 */
   loadMore(path: string): Promise<void>
@@ -344,6 +364,14 @@ export const useViewerSource = create<ViewerSourceState>()((set, get) => {
     return next
   }
 
+  /**
+   * **这条路径重读过几次**。它只为 direct 那两型(图 / 播放条)存在:那两型的
+   * 字节归浏览器自己取,同一条 `file://` 再挂一次拿回来的是缓存里那一张 ——
+   * 换一条 URL(`?v=n`)才是真的重取(判词在 `viewer-kinds.fileUrlOf`)。
+   * 跟着 `tokens` 一起住在闭包里,`dispose` 一并清掉。
+   */
+  const revs = new Map<string, number>()
+
   /** 就地改一份实例。实例不在 = 什么都不做(不凭空造回一份被关掉的)。 */
   function patch(path: string, fn: (live: ViewerInstance) => ViewerInstance): void {
     set((st) => {
@@ -387,6 +415,7 @@ export const useViewerSource = create<ViewerSourceState>()((set, get) => {
       content,
       size,
       want,
+      rev: revs.get(path),
       mtimeMs: response.mtimeMs,
     })
   }
@@ -417,7 +446,17 @@ export const useViewerSource = create<ViewerSourceState>()((set, get) => {
       if (!path) return
       const { instances, prefs } = get()
       const live = instances[path]
-      if (live && live.pending === null) return
+      /*
+       * **手上真有内容、而且没有在飞的读** = 什么都不做(再点一下同一行不该让屏幕
+       * 闪一次)。09-22 收窄:从前这句只问「没有在飞的读」,于是一份**有实例、却
+       * 一个字节都没读回来**的空壳会被当成「已经开好了」直接返回 —— 而那正是
+       * `ensureFile` 要救的那一种。「有没有开」的判据是有没有内容,不是有没有在读。
+       *
+       * 在飞时**照旧往下走**再读一发:`openFileAt` 要靠这一口的 promise 落在
+       * 「内容已经上屏」那一拍上跳行(判词在 `open-target.openFileAt`),
+       * 提前 resolve 会变成「开了,但没跳」。要省掉那一发的是 `ensureFile`。
+       */
+      if (live && live.file !== null && live.pending === null) return
       if (!live) {
         set((st) => ({
           instances: { ...st.instances, [path]: freshInstance(st.prefs) },
@@ -429,7 +468,7 @@ export const useViewerSource = create<ViewerSourceState>()((set, get) => {
        * utf-8 解码搬进渲染进程,得到的是一串必然乱码的字符,一点用都没有。
        * 于是这条路**同步就位**:没有 pending 那一帧,屏幕上直接换成它。
        */
-      const direct = directFileOf(path)
+      const direct = directFileOf(path, revs.get(path))
       if (direct) {
         // 令牌照样往前走一格:上一次还在飞的那次读回来时必须被判过期。
         bump(path)
@@ -445,16 +484,35 @@ export const useViewerSource = create<ViewerSourceState>()((set, get) => {
       await run(path, VIEWER_CHUNK_BYTES, false)
     },
 
+    ensureFile: async (path) => {
+      if (!path) return
+      const live = get().instances[path]
+      // 有内容、或者已经有一发在飞 —— 两种都不必再读。
+      if (live && (live.file !== null || live.pending !== null)) return
+      await get().openFile(path)
+    },
+
     reload: async (path) => {
       const live = get().instances[path]
       if (!live?.file) return
-      if (directFileOf(path)) {
-        // 图 / 播放条没有「读了多少」这回事;重取由浏览器自己管(留账:
-        // 真要强制重取得给 src 挂一个查询串,那是缓存的把戏,F1 不做)。
+      /*
+       * 图 / 播放条:一个字节都不读,所以「重读」对它们是**换一条 src**
+       * (`?v=n`)—— 同一条 URL 再挂一次,浏览器交回来的是缓存里那一张。
+       * 那句「那是缓存的把戏,F1 不做」的留账到此结清:刷新这颗钮要是对图不成立,
+       * 它就是一颗骗人的钮。
+       */
+      const nextRev = (revs.get(path) ?? 0) + 1
+      const direct = directFileOf(path, nextRev)
+      if (direct) {
+        revs.set(path, nextRev)
+        bump(path)
+        patch(path, (now) => ({ ...now, file: direct, pending: null }))
         return
       }
+      revs.set(path, nextRev)
       const want = 'loaded' in live.file ? live.file.loaded : VIEWER_CHUNK_BYTES
-      await run(path, want, false)
+      // `keepEdit` = 刷新不吃掉草稿、也不把屏幕弹回顶上(判词在接口那一格上)。
+      await run(path, want, true)
     },
 
     loadMore: async (path) => {
@@ -467,6 +525,7 @@ export const useViewerSource = create<ViewerSourceState>()((set, get) => {
     dispose: (path) => {
       bump(path)
       tokens.delete(path)
+      revs.delete(path)
       set((st) => {
         if (!(path in st.instances) && !(path in st.scrolls)) return st
         const instances = { ...st.instances }
@@ -531,6 +590,7 @@ export const useViewerSource = create<ViewerSourceState>()((set, get) => {
 
     reset: () => {
       tokens.clear()
+      revs.clear()
       set({
         instances: {},
         scrolls: {},
@@ -560,9 +620,9 @@ export function hasViewerInstance(path: string): boolean {
  * **判据不在这里** —— 它就是表上那一格 `direct`。svg 是个例外中的例外:它带
  * `direct` 标(位图那一行),但它同时要一份源码,所以它走真读那条路。
  */
-function directFileOf(path: string): ViewerFile | null {
+function directFileOf(path: string, rev?: number): ViewerFile | null {
   const spec = specOfPath(path)
   if (!spec.direct) return null
   if (spec.kind === 'image' && isSvgPath(path)) return null
-  return spec.build({ path, name: baseNameOf(path), content: '', size: 0, want: 0 })
+  return spec.build({ path, name: baseNameOf(path), content: '', size: 0, want: 0, rev })
 }

@@ -18,7 +18,7 @@ import s from './FileViewer.module.css'
  * **脚:26 的状态栏**(09-02 批 9b 从 `FileViewer` 拆出,一行未改)。
  *
  * 三层 + 一条里的那「一条」:左 Vim 模式标 · 语言/编码/换行符;中 载入进度 /
- * 存盘读数;右 存盘 · 完成编辑 · Vim 开关 · 这一型自己的开关 · 检索 · 行号。
+ * 存盘读数;右 存盘 · 完成编辑 · Vim 开关 · 这一型自己的开关 · 刷新 · 检索 · 行号。
  *
  * ── 它为什么能整块搬出来 ────────────────────────────────────────────────
  * 它**只吃 props**(19 格 + 6 个回调),一个 store 都不订、一次 effect 都不起。
@@ -39,6 +39,8 @@ import s from './FileViewer.module.css'
  *       pending,不是一颗共享布尔)/ disabled(= pending,这一颗没有别的禁用源);
  *     · **完成编辑 / 读更多 / 检索 / 行号** rest / hover / focus —— 它们是同步动作,
  *       没有 pending 也没有 disabled 档;
+ *     · **刷新**(09-22)rest / hover / focus / **pending**(读在飞时禁用 +
+ *       `aria-busy`;忙态读的是同一格 `reading`,与中段那句「正在读取…」同源);
  *     · **Vim 开关与这一型自己的开关** 另加一格 `aria-pressed`(按下去了没有),
  *       视觉上是 `.statusLinkOn`;
  *     · 整条带子没有 hover 底、没有 active 位 —— 它是读数带,不是列表。
@@ -70,6 +72,14 @@ export interface ViewerStatusBarProps {
   onFind: () => void
   onKeymap: (id: string) => void
   onLoadMore: () => void
+  /**
+   * **刷新** —— 把盘上此刻那一份重新拿过来(09-22)。
+   *
+   * 它与旁边那颗「读更多」是两件事:读更多说的是**同一次阅读继续往下**(截断了的
+   * 那一型才有),刷新说的是**这份东西在盘上变了**(每一型都成立 —— 图与播放条
+   * 也算,它们由数据层换一条 src 来重取)。
+   */
+  onReload: () => void
 }
 
 export function ViewerStatusBar({
@@ -92,6 +102,7 @@ export function ViewerStatusBar({
   onFind,
   onKeymap,
   onLoadMore,
+  onReload,
 }: ViewerStatusBarProps) {
   const vim = view.keymap === 'vim'
   const keymaps = listKeymaps()
@@ -203,6 +214,26 @@ export function ViewerStatusBar({
           {t(item.labelKey)}
         </ButtonBase>
       ))}
+
+      {/*
+       * **刷新**。手上有一份内容才画得出来 —— 没有内容时「重读」无从谈起
+       * (那一帧屏幕上本来就正在读它)。
+       *
+       * ③ 逐格交互状态:rest / hover / focus,外加**一格 pending** —— 读在飞时
+       * 禁用并 `aria-busy`(律③)。它不换字:这一行中段此刻正写着「正在读取…」,
+       * 同一句话在一行里说两遍是噪音。
+       */}
+      {file && (
+        <ButtonBase
+          className={s.statusLink}
+          disabled={reading}
+          aria-busy={reading || undefined}
+          data-testid="viewer-reload"
+          onClick={onReload}
+        >
+          {t('viewer.refresh')}
+        </ButtonBase>
+      )}
 
       {/*
        * 检索(⌘F)。它是**键盘那条路的鼠标口** —— 组件消费义务的同款道理:
