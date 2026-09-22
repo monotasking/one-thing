@@ -677,7 +677,22 @@ export class ViewportAnchor {
          */
         if (this.#pad.height === 0) {
           const m = port.measure()
-          if (m) port.setTop(Math.max(0, m.scrollHeight - written - m.clientHeight), 'tail-growth')
+          if (m) {
+            const target = Math.max(0, m.scrollHeight - written - m.clientHeight)
+            /*
+             * ── **这一支只吃垫块自己那一截**(超量档真机抓出来的)────────────────
+             * 判据多一条:落点与此刻的距离不许超过垫块自己的高。理由是这一支的
+             * 全部职权就是「把**垫块**马上要缩掉的那一截提前吃掉」——挪得比它还多,
+             * 说明视口本来就不在底上,那是**别人**的账:真店档上列还在补历史
+             * (尾窗 10k → 全列 112k),送出去的那一下是一次 102,277px 的跳,
+             * 而它从前由浏览器的滚动锚定与扩窗补位分几帧走完。
+             * 读数:`gate:send-flow` 超量 ① 从 1 段变 2 段(`9583→111860`),
+             * 收窄之后回到 1 段。
+             */
+            if (Math.abs(target - port.top) <= written + AT_BOTTOM_EPS) {
+              port.setTop(target, 'tail-growth')
+            }
+          }
         }
         this.#lastGap = port.gapNow()
         return

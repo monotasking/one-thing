@@ -139,6 +139,8 @@ describe('跟底:座位那两格判据', () => {
     // 座位吃光了:量出来 0,但写进 style 的还是上一次那个数。
     port.seat = { ...SEAT, tailHeight: 10_000 }
     anchor.beginObserving()
+    // 人此刻在底上(这一支的前提:挪的只是垫块自己那一截)。
+    port.scrollTo(700)
     port.geometry.scrollHeight = 1200
     anchor.onResize(grew(1200), 's1')
     // 1200 − written − 300:内容下缘正好落在视口下缘,那一截垫块留在视口外。
@@ -151,6 +153,27 @@ describe('跟底:座位那两格判据', () => {
     port.geometry.scrollHeight = 1200 - written
     anchor.onResize(grew(1200 - written), 's1')
     expect(port.writes.at(-1)).toEqual({ top: 1200 - written - 300, cause: 'tail-growth' })
+  })
+
+  /**
+   * **这一支只吃垫块自己那一截**(超量档真机抓出来的):落点离此刻比垫块还远,
+   * 说明视口本来就不在底上 —— 那是别人的账(真店档上列还在补历史,送出去那一下
+   * 是一次 102,277px 的跳)。
+   */
+  it('落点离此刻比垫块还远 → 不写(那不是交接,是别人的账)', () => {
+    const { port, anchor } = setup()
+    anchor.seatActive = true
+    anchor.pad.landed = true
+    port.seat = SEAT
+    anchor.pad.measure()
+    anchor.pad.flushNow()
+    port.seat = { ...SEAT, tailHeight: 10_000 }
+    anchor.beginObserving()
+    // 人离底几万像素(列还在补历史),这一帧不归这一支。
+    port.scrollTo(0)
+    port.geometry.scrollHeight = 100_000
+    anchor.onResize(grew(100_000), 's1')
+    expect(port.writes).toEqual([])
   })
 
   it('垫块是**有意**垫着的(吸收了回缩,还没归零)→ 不进交接那一支', () => {

@@ -2940,3 +2940,173 @@ style 的那个数还没归零**(量在这一帧、写在下一帧,观察器只�
   只在 `import.meta.env.DEV` 建表(prod 零开销),**只 `getLogger().warn` 一次,不抛**
   (仓根禁 `console.*`);第一批报出来的逐条归类进留账,**不许顺手改产品**
   (§13.4 P2-c 的风险那一段)。
+
+## 19. P2-c 施工账(2026-09-22)
+
+**五笔提交**,逐笔可二分(第三笔是两件合在一起的,理由写在它自己的提交信息上)。
+
+### 19.1 五笔
+
+| # | 提交 | 做的是哪一件 |
+| --- | --- | --- |
+| 1 | `c0000e680` | 正本 §18 三张状态表(施工之前) |
+| 2 | `15dd9535d` | ①意图通道合一:`fold-intent` / `expand-intent` 整件删除,`IntentWindow` 两格收成一格 |
+| 3 | `5a7e988b5` | ②三处跳转写点收编成 `jump` + ③座位交接帧;门 ⑬⑭ 与 `gate:search-messages` 的两条 |
+| 4 | `876dd4a58` | ⑤dev 运行时断言(`geometry-ledger.ts`)+ ④那条留账的量点(`aboveH`) |
+| 5 | `81674fdd7` | ⑬ 的判据收窄一格(只判「总高没长」那几帧)+ 反证读数 |
+
+### 19.2 ① 通道合一:今天谁还在调,怎么迁的
+
+**勘察结果**(全仓 grep,含单测):`expand-intent` **零生产者**;`fold-intent` 只剩
+**一个** —— 重试那一路的 `MessageRow`(`ChatStream.tsx`,旧回答上折)。两条 context
+的 Provider 摆在 `ChatStream` 里,消费口在 `useNoteFold` / `useNoteUserExpand`。
+
+迁法:重试那一路改报 `report.toggle({ el: null, open: false, durationMs: CARD_FLIP_MS })`
+—— **`el: null` 是有意的**,人按的是重试键,「被点的那一块」在那儿没有主语,锚照旧
+由下一帧 `pickFoldAnchor()` 现选。那一档的窗长与 `rejudge` 与 `noteFold(ms)` 逐字相同
+(`open(now, ms + slack)`,不带 `rejudge`),所以行为是恒等的。
+`ViewportAnchor.noteUserExpand` / `noteFold` 两只入口随之删除。
+
+**`IntentWindow` 收成一格**:`#expandUntil` / `noteExpand` / `expanding` /
+`clearExpand` 整组删掉,`#fold` 改名 `#hold`,方法成 `open` / `current` / `clear` /
+`extend` / `takeExpired`;`onResize` 里那一支 `expanding()` 随之删掉 —— 它做的两件事
+(不贴底、按此刻离底多远重判档)上面那一格窗**每一批**都在做,而且多了「钉住被点
+那一块的顶边」。
+
+**一处与 §18.1 不一样**:表里写的是「点不出那一块的展开落进同一格窗、多得了钉锚」,
+施工时给它留了 `rejudge: change.open` —— 即**点不出那一块时,展开照旧重判、收起照旧
+不重判**。这样两条老通道各自的行为逐字保住,而那一支在产品里本来就零生产者
+(四族消费者都点得出),差别只有单测看得见。
+
+### 19.3 ② 三处跳转:收了两处,第三处证明「已经零调用」
+
+| 写点 | 这一单怎么收的 |
+| --- | --- |
+| `toc/useChatToc.ts` 的 `el.scrollTo({behavior:'smooth'})` | 落点仍由它自己算(那一句一个字没改),滚那一下交给 `geometryPortOf(sessionId).jump({ top, behavior: 'smooth' })` |
+| `research/ResearchSegment.tsx` 的 `scrollIntoView({block:'center'})` | `report.jump({ el, block: 'center', behavior })`;**缺省实现退回浏览器那一发 `scrollIntoView`**,所以流之外(样例页 / 单测)行为恒等 |
+| `ui/Fold.tsx` 底把手那一发 | **聊天流里已经零调用** —— 两族折痕都传了 `anchored`(P2-b 第三笔),而 `ui/` 不许反向依赖 `content/`,所以不给它接一条没人走的线;`geometry-report.test.tsx` 把「零调用」钉成断言 |
+
+**一件 §13 没写的东西:`content/viewport/geometry-port.ts`。** `GeometryReportContext.Provider`
+摆在 `ChatStream` 里,而 `toc/useChatToc` 住在**会话叶**上 —— 它是 `ChatStream` 的
+邻居,结构上够不着那条 context。三条路里选了「**按 `sessionId` 登记同一只对象**」:
+把 Provider 提上去要把 `useViewportAnchor` 整只搬出 `ChatStream`(那是 P2-d 的改动面),
+给 TOC 自己再写一发滚动正是这一单要收编掉的病。**它不是第二条通道** —— 登记进去的
+就是 context 里那一只,变的只是够不够得着。
+
+**平滑不许变瞬移**:`ScrollPort.setTop(top, cause, { behavior })` 多一格,
+`DomScrollPort` 在 `'smooth'` 那一档走 `el.scrollTo`。`#lastTop` 仍记**读回来的**
+那个数 —— 平滑那一路读回来的是动画**起点**,而这正是接下来那几十发滚动事件判
+「人往上翻 = `scrollTop` 变小」要的参照;记成目标值的话,一次往下的平滑跳转会让
+第一发事件读成「人往上翻」,当场把刚定好的档翻掉。
+
+**落位之后显式重判**:`ViewportAnchor.reportJump` 问的是**落点**的 gap 而不是此刻的
+(平滑那一段还没走),落在底 → `pinned`,落在中间 → `browsing`。
+
+### 19.4 ② 的门:⑭ 在这道门的夹具上点不出钢琴键,真正的门在别处
+
+`gate:stream-geometry` 加了 ⑭(落位 ≤1px 或顶在物理边界 / 落位之后跟随档按落点的
+gap 判 / 落位之后一整轮新内容视口不动),**但它在这道门的两档夹具上都自述跳过**:
+
+    – short ⑭ 跳转:键只有 0 枚,点不出「往上两条」,这一格跳过
+    – big   ⑭ 跳转:键只有 0 枚,点不出「往上两条」,这一格跳过
+
+真因:`TocPanel` 在 `chapters.length === 0` 时整块 rail 不在场,而**章**是后端
+TOC 那条链产的,假 provider 造不出来 —— 钢琴键在这道门的夹具上**结构上不可达**。
+断言留着(哪天夹具长出章它自己就活了),跳过那一行打得很显眼。
+
+**同一条路真正跑得起来的地方是 `gate:search-messages` 第 [6/6] 步**:它本来就点一条
+正文命中、落到那条消息上,而从前**一个位移读数都没有**(§13.1.4 ③ 点名的正是它)。
+两条断言加在那儿,真机已验:
+
+    · 落位读数: {"top":7.5,"gap":-0.5,"maxTop":7,"deltaPx":478.49,"pill":false}
+    ✓ 落位:…差 478.49px ≤ 1;或已经顶在物理边界(7.5 / max 7)
+    ✓ 落位之后跟随档:gap -0.5px → pinned(丸不在场),实得丸不在场
+
+**「或已经顶在物理边界」这一格是量出来补的**(体例照抄 `gate:fold-collapse` ①):
+那条会话总高不到两屏,「把它送到上缘」要的 `scrollTop` 超过 `maxScroll`,落点被夹住
+是对的,不是没落准。第一版没有这一格,当场假红 478.49px。
+
+### 19.5 ③ 座位交接帧:治法、判据、反证
+
+**治法**:交接帧(`seat === 0` ∧ `pad.height === 0` ∧ `written > 0`)按「垫块已经归零
+之后」的总高**一次写到位**(`scrollHeight − written − clientHeight`)。下一帧
+coalescer 写 0、`scrollHeight` 缩掉那一截,而 `scrollTop` 恰好等于新的 `maxScroll`
+—— 没有可钳的东西。它只写 `scrollTop`(不改布局),垫块照旧由 coalescer 下一帧写。
+
+**判据(⑬)改过一版**,这一条值得记:第一版判「交接帧前后各 3 帧的全部单帧位移」,
+真机一跑读数是 4.5 / 7.5 / 9 / 9.5 / 12.5 / 32.5px 一片 —— 那些不是台阶,是**贴底
+跟随本身**(内容长了 Δ 屏上就该上移 Δ,G5 说的唯一一种允许的运动)。收窄成
+**只判总高没长的那几帧**:那时候屏上任何东西动了都是没有出处的,而 §0 ⑤ 那一下
+正好落在这一族里(垫块归零让 `scrollHeight` **变小**)。
+
+**反证**(备份文件法,**没有 `git checkout`**):把交接帧那一次合成的写拆掉重跑
+同一道门 ——
+
+| | ⑬ 读数 |
+| --- | --- |
+| 拆掉 | `big:text` **红**:`[{"ms":1483,"px":4.5,"dSh":-14,"at":"座位归零"}]`;其余 13 档 0px |
+| 装回 | 14 档**全绿**(0px) |
+
+**读数比 §0 ⑤ 的 46px 小一个量级**,原因是那 46 来自 09-20 的
+`probe-layout-shift.mjs`、另一份夹具;这道门的夹具上残量是 4.5px。数不一样,
+机制是同一个(`dSh: -14` 那一格就是垫块归零那一下)。
+
+### 19.6 ④ 量出来产地**不是**「上方的行在长」——按派工单停下,没有硬改
+
+`gate:fold-collapse` 的取样口多一格 `aboveH` = 被点那一块在**文档里**的位置
+(= 它上方那一整段的高),连同「`scrollTop` 跟着补了多少」「差多少」一起**只报**。
+真店档 `--big --only think60k` 实测:
+
+| 场景 | 被点那一块位移 | `scrollTop` 位移 | 上方那一整段 |
+| --- | --- | --- | --- |
+| `think60k:bottom` | 11,454px | 11,454px | `from 8386.89 → to 8386.89`,**grewPx 0**,uncompensatedPx 0(105 帧) |
+| `think60k:scrolledUp` | 27,018px | 27,018px | `from 9191.11 → to 9191.11`,**grewPx 0**,uncompensatedPx 0(101 帧) |
+
+**105 / 101 帧里上方那一整段一个像素都没长**,而视口整整走了 11,454 / 27,018px。
+所以 §17.4 第 1 条那句归因 —— 「上面 `content-visibility: auto` 的行在这一段里陆续
+渲出真高,而钉顶边那一手按帧追、追不上」——**是错的**:**没有东西在上面长**。
+`tail-growth above → compensate` 那一格因此治不了它:补一个恒为 0 的量等于不补。
+
+**这 11,454px 是有人主动把视口滚走的**,而且它与被点那一块的位移**逐像素相等**
+(两个数一个字不差),所以滚的那一手把整条列一起带走了 —— 下一单要先答的是
+「窗口在场的那几批里,谁还在写 `scrollTop`」,而不是「上面长了多少」。
+按派工单「量出来产地不是这个,停下报,不硬改」,这一单到此为止。
+
+### 19.7 ⑤ dev 运行时断言
+
+`content/viewport/geometry-ledger.ts`,三条纪律都写在文件头:
+
+- **只 `warn` 不抛** —— 它会在**存量**上报出一批今天没人知道的违例,第一批要逐条
+  归类进留账,不许顺手改产品(仓根「行为裁定须先问」);
+- **每件只报一次** —— 一段过渡逐帧都会报,不去重就刷屏;记的是「**这一件**报过了」
+  而不是一个全局闩,所以两件东西各自违例仍然看得见两条;
+- **prod 零开销** —— 只在 `import.meta.env.DEV` 下 `new`(薄 hook 那一句),裁决层
+  每个报点都是一句 `?.` 的空跳,那张 `Map` / `Set` 根本不存在。单测把这一条钉成
+  「`anchor.ts` 里不出现 `import.meta.env`,裸用法恰好三处」。
+
+去处是壳自己的 `getLogger('chat.geometry')`(仓法:不许 `console.*`)。
+三个报点:人点的那一下(唯一允许变矮的 cause)、`onResize` 的两条路(窗口里那几帧
+算人点的、主路算 `tail-growth`)、落定那一拍(`noteSettle()`,G4)。
+单测 15 条,一次 `render()` 都没有。
+
+**这一单没有收集那第一批违例的真机读数** —— 它只在 dev 下写日志,而这一线的真机门
+跑的是隔离 store、不读 `app.jsonl`。第一批归类留给下一次真机浸泡,记在留账。
+
+### 19.8 留账
+
+1. **真店档 `think60k` 展开那 11,454px 的产地仍未结**,但 §17.4 第 1 条的归因已被
+   证伪(§19.6)。下一单先答「窗口在场的那几批里,谁还在写 `scrollTop`」。
+   `gate:fold-collapse --big` 因此**仍然没进 `verify`**。
+2. **⑭ 在 `gate:stream-geometry` 的夹具上不可达**(钢琴键要后端章)。断言留着并
+   自述跳过;同一条路的真机证据在 `gate:search-messages`。要让 ⑭ 活起来,得先让
+   那道门的夹具产出章 —— 那是另一件事。
+3. **dev 断言的第一批违例还没归类**(§19.7 末)。
+4. **`gate:stream-geometry` ⑦ 长帧在这台机器上照旧抖**:基线那一趟 1 条红
+   (`big:long` 58ms),终局那一趟 3 条(`short:think60k` 58ms / `big:think3k` 79ms /
+   `big:scrollUp` 79ms),而反证那一趟又是另外 4 条 —— 每趟红的场景都不一样。
+   §14.3 已经用 A/B 证过 `main` 自己也抖,**这一单没有改预算**。
+5. **`gate:search-messages` 第 [7/7] 步有一条存量红**(「其余逐格 = 自述的 labelKey
+   按 order 翻出来的字」,capability 标签的中英对照)。它与这一线零交集
+   —— 这一单没有碰 i18n 与检索能力表 —— 但**没有拿 `main` 对照过**,记在这儿。
+6. **`ChatStream.tsx` 的 `seatActive` 在 `main` 上就是一格没人读的解构**
+   (eslint `no-unused-vars`),这一单没有顺手删。
