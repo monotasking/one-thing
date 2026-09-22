@@ -3,7 +3,9 @@ import { EXPAND_HOLD_MS, currentMotionTier, sendLandMs } from '../../components/
 import { FOLLOW_PINNED, type FollowState } from '../follow'
 import type { GeometryJump, GeometryReport, UserToggle } from '../geometry-report'
 import { usePanelVisibility } from '../visibility'
+import { getLogger } from '../../services/log'
 import { ViewportAnchor } from './anchor'
+import { GeometryLedger } from './geometry-ledger'
 import { registerGeometryPort } from './geometry-port'
 import type { ScrollPort } from './scroll-port'
 
@@ -16,6 +18,9 @@ import type { ScrollPort } from './scroll-port'
  * 「JS 侧有一个计时器跟着走」的时长)。
  */
 export const FOLD_HOLD_SLACK_MS = 40
+
+/** dev 断言那一条线的去处(仓法:不许 `console.*`)。 */
+const geometryLog = getLogger('chat.geometry')
 
 /**
  * **把锚定器接到 React 上的那只薄 hook**(G 线 P2-a,正本 §13.2.7)。
@@ -55,6 +60,17 @@ export function useViewportAnchor(options: {
       expandHoldMs: EXPAND_HOLD_MS,
       foldSlackMs: FOLD_HOLD_SLACK_MS,
       slideDurationOf: (distance) => (currentMotionTier() === 'none' ? 0 : sendLandMs(distance)),
+      /*
+       * ── **dev 运行时断言**(G 线 P2-c;正本 §1 推论五)────────────────────
+       * 「上过屏的活动块高度不许变小,除非原因是用户」。**只在 dev 建**:
+       * prod 下这一格是 `undefined`,裁决层每个报点都是一句 `?.` 的空跳,
+       * 那张表也根本不存在。报错走 `getLogger` 一次性 `warn`、**不抛** ——
+       * 它会在存量上报出一批今天没人知道的违例,第一批要逐条归类进留账,
+       * 不许顺手改产品(判词整段在 `geometry-ledger.ts`)。
+       */
+      ledger: import.meta.env.DEV
+        ? new GeometryLedger((msg, fields) => geometryLog.warn(msg, fields))
+        : undefined,
     })
   }
   const anchor = anchorRef.current
@@ -216,6 +232,8 @@ export function useViewportAnchor(options: {
     const ended = seenActiveRef.current !== undefined && activeMessageId === undefined
     seenActiveRef.current = activeMessageId
     if (!ended) return
+    // G4「落定那一帧几何上什么都不发生」—— dev 下记一笔,prod 下是空跳。
+    anchor.noteSettle()
     anchor.syncSeatOnSettle()
   }, [activeMessageId, anchor])
 

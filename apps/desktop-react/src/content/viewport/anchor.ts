@@ -14,6 +14,7 @@ import {
 } from '../follow'
 import { AnchorRecorder } from './anchor-recorder'
 import { EntryRestore } from './entry-restore'
+import type { GeometryLedger } from './geometry-ledger'
 import { IntentWindow } from './intent-window'
 import { Slide } from './slide'
 import { TailPad } from './tail-pad'
@@ -85,6 +86,15 @@ export class ViewportAnchor {
    */
   #pendingRestore: number | undefined = undefined
 
+  /**
+   * **dev 运行时断言那本账**(G 线 P2-c;判词整段在 `geometry-ledger.ts`)。
+   *
+   * `undefined` = prod / 没人要 —— 下面每个报点都是一句 `?.` 的空跳,**零开销**。
+   * 它是**注进来的**而不是这里 new 的:裁决层不认识 `import.meta.env`,而单测要
+   * 喂一只自己的(那正是「每条违例路径都有用例钉着」的做法)。
+   */
+  readonly #ledger: GeometryLedger | undefined
+
   constructor(port: ScrollPort, options: ViewportAnchorOptions) {
     this.#port = port
     this.#onFollowChange = options.onFollowChange
@@ -107,6 +117,7 @@ export class ViewportAnchor {
       timers: options.timers,
     })
     this.#readAnchor = options.readAnchor ?? readSessionScrollAnchor
+    this.#ledger = options.ledger
   }
 
   readonly #readAnchor: (sessionId: string) => ScrollAnchor | undefined
@@ -182,6 +193,8 @@ export class ViewportAnchor {
      * 展开那一格与折叠那一格各清一次,而它们说的是同一件事的两个方向。
      */
     this.#intents.clear()
+    // 那张账说的是**那边**那棵树上的东西(G 线 P2-c;dev 下才在)。
+    this.#ledger?.reset()
     /** 落定一次:把「此刻离底多远」交给状态机、记进 gap 基准、把锚点记一笔。 */
     const settle = () => {
       const gap = this.#port.gapNow()
@@ -305,6 +318,8 @@ export class ViewportAnchor {
      * **展开那一侧不套这条落点**:它要的就是字面的「顶边不动」,而展开不会让
      * 顶边跑到屏外去。
      */
+    // 人点的那一下:**唯一**允许变矮的 cause(G3;dev 下才记)。
+    this.#ledger?.note(change.sourceId ?? 'toggled-block', 'user-toggle', block.height)
     const view = this.#port.viewportRect()
     const landing = change.open
       ? block.top
@@ -536,6 +551,8 @@ export class ViewportAnchor {
        * `stick()` 就接手了。220ms 是「人动手之后这段时间归他」的同一个数。
        */
       if (grown > this.#lastColumnHeight + 0.5) this.#intents.extend(now, this.#expandHoldMs)
+      // 窗口里那几帧是人自己那一下带出来的 —— 允许变矮(G3 的那一格例外)。
+      this.#ledger?.note(COLUMN_SOURCE, 'user-toggle', grown)
       this.#lastColumnHeight = grown
       this.#lastGap = port.gapNow()
       return
@@ -557,6 +574,11 @@ export class ViewportAnchor {
     for (const height of batch.columnHeights) {
       if (height !== this.#lastColumnHeight) contentChanged = true
       if (height > this.#lastColumnHeight) contentGrew = true
+      /*
+       * **没有人动手的那几帧,内容列只许长不许缩**(G3;dev 下才记)。
+       * 缩了就是 §0 ① 那一族的病:页面总高一小,浏览器当场钳 `scrollTop`。
+       */
+      this.#ledger?.note(COLUMN_SOURCE, 'tail-growth', height)
       this.#lastColumnHeight = height
     }
     /*
@@ -745,6 +767,17 @@ export class ViewportAnchor {
    * 在那儿多读一次几何就是在那一帧里再逼一次全树排版(真机两趟对照:开张也写 →
    * 落位窗多出一段 −189px,①判红;只在收场写 → 落位窗恒 1 段)。
    */
+  /**
+   * **落定那一帧**(G4,dev 断言;由薄 hook 与 `syncSeatOnSettle` 同一拍调)。
+   *
+   * 「收尾只许换透明度、颜色、停动画,不许换高度」——所以这里判的是内容列在这一拍
+   * 与上一批尺寸变化之间**动没动**。它只记账、不改行为。
+   */
+  noteSettle(): void {
+    if (!this.#ledger) return
+    this.#ledger.settle(COLUMN_SOURCE, this.#port.columnHeight() - this.#lastColumnHeight)
+  }
+
   syncSeatOnSettle(): void {
     if (!this.#port.hasLayout()) return
     const before = this.#pad.written ?? 0
@@ -783,6 +816,12 @@ export class ViewportAnchor {
  * (报的那一刻读的),`anchor` 是接下来每一帧再问一次「你现在在哪 / 你还在吗」。
  * 三格全从**同一次** `getBoundingClientRect()` 来 —— 一次点击只逼一次排版。
  */
+/**
+ * 内容列在那本 dev 账里的名字。**它不是一件能力的名字** —— 裁决层里不许出现
+ * 任何一族的名字(仓根「加功能不许改骨架」),而「这一列」是这一层自己的东西。
+ */
+const COLUMN_SOURCE = 'content-column'
+
 export interface ReportedBlock {
   readonly height: number
   readonly top: number
@@ -791,6 +830,8 @@ export interface ReportedBlock {
 
 /** 人亲手开合了一块东西(`ViewportAnchor.reportUserToggle` 的入参)。 */
 export interface UserToggleReport {
+  /** 报的人的名字(dev 断言按它分家)。缺席 = 都算同一件。 */
+  readonly sourceId?: string
   /** 这一下之后它是开着还是合着。 */
   readonly open: boolean
   /** 接下来那段过渡有多长(ms);0 = 当拍到位(折痕、动效档「无」)。 */
@@ -815,4 +856,6 @@ export interface ViewportAnchorOptions {
   readAnchor?: (sessionId: string) => ScrollAnchor | undefined
   saveAnchor?: (sessionId: string, anchor: ScrollAnchor | undefined) => void
   settleMs?: number
+  /** dev 运行时断言那本账(判词在 `geometry-ledger.ts`)。prod 不给。 */
+  ledger?: GeometryLedger
 }

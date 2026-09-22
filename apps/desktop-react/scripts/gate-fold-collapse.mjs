@@ -270,6 +270,18 @@ async function startPaintSampler(page) {
           targetAlive: Boolean(target),
           /** 它上方那一块(视口内第一块在读的东西)。 */
           above: above ? above.getBoundingClientRect().top : null,
+          /**
+           * **它上方那一整段有多高**(G 线 P2-c 第 4 件的量点;正本 §17.4 第 1 条)。
+           *
+           * = 被点那一块在**文档里**的位置 = 它前面所有行的高度之和(连同缝)。
+           * 真店档上 `content-visibility: auto` 的行会在这一段里陆续渲出真高,
+           * 于是这个数**自己在长** —— 「钉住顶边」那一手是按帧追的,追不追得上,
+           * 要拿它与 `st` 的补偿逐帧对着看才说得清。一帧一次矩形,与 `target` 那一读
+           * 共用同一次排版,不额外逼排版。
+           */
+          aboveH: target && column
+            ? Number((target.getBoundingClientRect().top - column.getBoundingClientRect().top).toFixed(2))
+            : null,
           st: scroll.scrollTop,
           sh: scroll.scrollHeight,
           ch: scroll.clientHeight,
@@ -672,6 +684,30 @@ async function main() {
             target: spanOf(expandFrames, 'target'),
             above: spanOf(expandFrames, 'above'),
             /*
+             * **「上方那一整段」在这一段里自己长了多少,以及 `scrollTop` 跟着补了多少**
+             * (G 线 P2-c 第 4 件的量点;正本 §17.4 第 1 条)。**只报不判**:它回答的是
+             * 「真店档那 11,454px 的产地是不是『上面的行陆续渲出真高』」——
+             * 两个数一起看才说得清:上方长了 N 而 `scrollTop` 只补了 M,
+             * 差的那一截 `N − M` 就是屏上被拽走的量。
+             */
+            aboveH: (() => {
+              const seen = expandFrames.filter((f) => f.aboveH !== null)
+              if (seen.length === 0) return null
+              const from = seen[0].aboveH
+              const to = seen[seen.length - 1].aboveH
+              const stFrom = seen[0].st
+              const stTo = seen[seen.length - 1].st
+              return {
+                from: Number(from.toFixed(2)),
+                to: Number(to.toFixed(2)),
+                grewPx: Number((to - from).toFixed(2)),
+                stGrewPx: Number((stTo - stFrom).toFixed(2)),
+                /** 上方长了多少没被补上 —— 它就是屏上被拽走的那一截。 */
+                uncompensatedPx: Number(((to - from) - (stTo - stFrom)).toFixed(2)),
+                n: seen.length,
+              }
+            })(),
+            /*
              * ⑤ **展开期间视口一格不许动**(「点开不贴底」的可量形)。
              * 从前这一格判的是「结束时贴没贴底」—— 那在**总高不足一屏**的会话里恒真
              * (永远贴着底),是一条会说谎的判据。
@@ -762,6 +798,8 @@ async function main() {
         console.log(`     展开:被点那一块位移 ${readings[tg.id][where].expand.target.maxPx}px`
           + ` · 上方 ${readings[tg.id][where].expand.above.maxPx}px`
           + ` · scrollTop 位移 ${readings[tg.id][where].expand.stSpanPx}px`)
+        console.log(`     展开(只报)上方那一整段:`
+          + JSON.stringify(readings[tg.id][where].expand.aboveH))
 
         /* 把它收回原样,下一档从同一个姿势起。 */
         if (where === 'bottom') {
