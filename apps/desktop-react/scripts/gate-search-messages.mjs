@@ -741,6 +741,67 @@ async function main() {
     assert(landed.onTree, `那条消息(${replyB.id})真的在聊天区的树上`)
     assert(landed.role === 'assistant', '而且它就是那条**助手**回复(不是首条用户消息)')
     assert(landed.flashed, '它拿到了落点高亮 —— 「滚过去 + 点亮」这一手真的跑了')
+    /*
+     * ── **落位与跟随档**(G 线 P2-c;正本 `docs/stream-geometry-2026-09.md` §18.2)──
+     *
+     * 从前这三条只判「在树上 + 点亮了」,**一个位移读数都没有**(勘察记在正本
+     * §13.1.4 ③)。而这一发滚动从前**不经过跟随状态机**:`useChatToc` 直接
+     * `el.scrollTo({behavior:'smooth'})`,而状态机那一支的判据是「`scrollTop` 比上一次
+     * 小没小」—— 往下跳时读成「没往回走」于是**不翻档**,落到一条离底还有半屏的消息
+     * 上之后状态机仍是 `pinned`,下一段 delta 一到 RO 就把人拽回底。
+     *
+     * 收编之后那一发经 `ScrollPort.setTop(top, 'jump', {behavior})`,落位之后由
+     * `ViewportAnchor.reportJump` **当场重判一次档**。这里量的就是那两件:
+     *  · **落位** —— 那条消息的顶边贴着滚动口上缘(`useChatToc` 算的就是这个落点);
+     *  · **档** —— 落在底就 pinned(丸不在场),落在中间就 browsing(丸在场)。
+     *
+     * 读数取「**画出来的**」那一口(rAF 里再排一发宏任务,正本 §9.7 / §10 / §11),
+     * 而且先等平滑滚动停稳 —— 它是一段几百毫秒的动画,停稳之前读到的是半路。
+     */
+    const paintedLanding = () => page.evaluate(id => new Promise(resolve => {
+      requestAnimationFrame(() => {
+        const ch = new MessageChannel()
+        ch.port1.onmessage = () => {
+          const node = document.querySelector(`[data-message-id="${id}"]`)
+          const scroll = node?.closest('[data-testid="chat-stream"]')
+          if (!node || !scroll) { resolve(null); return }
+          resolve({
+            top: scroll.scrollTop,
+            gap: scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop,
+            maxTop: Math.max(0, scroll.scrollHeight - scroll.clientHeight),
+            deltaPx: Number(
+              (node.getBoundingClientRect().top - scroll.getBoundingClientRect().top).toFixed(2)),
+            pill: Boolean(document.querySelector('[data-testid="chat-follow-pill"]')),
+          })
+        }
+        ch.port2.postMessage(0)
+      })
+    }), replyB.id)
+    let settled = null
+    for (let i = 0, stable = 0; i < 60 && stable < 5; i += 1) {
+      const now = await paintedLanding()
+      stable = now && settled && Math.abs(now.top - settled.top) < 0.02 ? stable + 1 : 0
+      settled = now
+      if (stable < 5) await delay(40)
+    }
+    assert(settled !== null, '停稳之后量得到那条消息与滚动口的几何')
+    console.log('  · 落位读数:', JSON.stringify(settled))
+    /*
+     * **两条任一**(与 `gate:fold-collapse` ① 同一个体例):顶边贴上缘,**或者**
+     * 位置已经顶在物理边界上 —— 这条会话总高不到两屏时,「把它送到上缘」要的
+     * `scrollTop` 超过 `maxScroll`,落点被夹住是对的,不是没落准。
+     */
+    const clamped = settled.top >= settled.maxTop - 1 || settled.top <= 1
+    assert(
+      Math.abs(settled.deltaPx) <= 1 || clamped,
+      `落位:那条消息的顶边与滚动口上缘差 ${settled.deltaPx}px ≤ 1(以「画出来的」口量)`
+      + `${clamped ? `;或已经顶在物理边界(${settled.top} / max ${settled.maxTop})` : ''}`,
+    )
+    assert(
+      settled.gap <= 2 ? !settled.pill : settled.pill,
+      `落位之后跟随档:gap ${settled.gap}px → ${settled.gap <= 2 ? 'pinned(丸不在场)' : 'browsing(丸在场)'}`
+      + `,实得丸${settled.pill ? '在场' : '不在场'}`,
+    )
     // 面板收回 Dock:与点会话行同一个手感。
     await waitFor('面板收回 Dock 了', () =>
       page.evaluate(() => !document.querySelector('[data-testid="search-panel"]')),

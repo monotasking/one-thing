@@ -345,6 +345,40 @@ export class ViewportAnchor {
   }
 
   /**
+   * ── **人说了要去哪**(G 线 P2-c;`content/geometry-report.ts` 的 `jump`)──────
+   *
+   * 三个生产者:点钢琴键、点检索命中的一条正文、点消息尾那条来源条。收编之前它们
+   * 各自写滚动位(`el.scrollTo({behavior:'smooth'})` / `scrollIntoView`),
+   * **一处都不经过跟随状态机** —— 而那一支的判据是「`scrollTop` 比上一次小没小」:
+   * 往下跳时它读成「没往回走」于是**不翻档**,落到一条离底还有半屏的消息上之后
+   * 状态机仍是 `pinned`,下一段 delta 到达时 RO 把人一把拽回底(正本 §13.1.1 末)。
+   *
+   * 所以这一格裁决的判词只有一句:**落位之后显式重判一次跟随档,不等下一发滚动
+   * 事件**。问的是**落点**的 gap 而不是此刻的 —— 平滑那一段要走几十帧,此刻读到的
+   * 还是起点。落在底就是 `pinned`(接下来照旧跟底),落在中间就是 `browsing`
+   * (新内容不再把人拽走)。
+   *
+   * **停靠中一格不做**:`measure()` 答 `undefined` 时不写、不判 —— 与 `setTop` 那条
+   * 守卫同一把尺子(一棵没有排版的树上 `scrollHeight` 报 0,落点算出来是 0)。
+   *
+   * **零 DOM**:`top` 已经被薄 hook 收成一个数(它那一侧才认识 `el` 与 `block`)。
+   */
+  reportJump(jump: { top: number; behavior?: ScrollBehavior }): void {
+    const m = this.#port.measure()
+    if (!m) return
+    const landing = Math.max(0, Math.min(jump.top, Math.max(0, m.scrollHeight - m.clientHeight)))
+    this.#port.setTop(landing, 'jump', { behavior: jump.behavior })
+    const gap = m.scrollHeight - m.clientHeight - landing
+    this.#lastGap = gap
+    /*
+     * 这一句与「滚动停下来了」逐字相同,不另开一个事件(判词同 `enter` 里那一段:
+     * 事件多一个,`follow.ts` 那张转移表就要多一行,而这一下与人自己滚过去在语义上
+     * 逐字相同)。
+     */
+    this.dispatch({ type: 'scrolled', gap })
+  }
+
+  /**
    * **宿主说这一份刚被拿回来**。它**一格几何都不读**,只立一格待办 —— 真正的对位
    * 由 `onResize` 顺手做掉(RO 的回调跑在排版之后,那里读几何不逼第二次排版;
    * 第一版在这一拍当场读,真机上是一次 400 行 / 115,207px 的强制排版)。
@@ -593,8 +627,37 @@ export class ViewportAnchor {
        * 那是一次尺寸变化,RO 会再来一次 —— 那一次两格都是 0,照旧贴底。座位不存在
        * 时 `pad.written` 是 `undefined`,`?? 0` 让它读作「没有残高」。
        */
-      if (seat > 0 || (this.#pad.written ?? 0) > 0) {
+      const written = this.#pad.written ?? 0
+      if (seat > 0) {
         this.#lastGap = gap
+        return
+      }
+      if (written > 0) {
+        /*
+         * ── **交接帧:两件合成一次 `setTop`**(G 线 P2-c;正本 §0 ⑤ / §18.3)────
+         *
+         * 病历:座位吃光、切到普通跟底的那一帧,屏上一次性上推 **46px**,前后每帧 0。
+         * 病根是**一次收缩被两只手在两帧里各处理一半** —— 这一帧量出来座位是 0 而
+         * style 上还挂着 `written`,于是什么都不做;下一帧 coalescer 把它写成 0,
+         * `scrollHeight` 少掉 `written`,浏览器当场钳 `scrollTop`;钳完那次 RO 里两格
+         * 都归零才 `stick()`,而那时已经晚了一帧。
+         *
+         * 治法是把「垫块要缩掉的那一截」与「贴底」**算进同一次写**:按**垫块已经
+         * 归零之后**的总高贴底 —— 屏上内容的下缘正好落在视口下缘,那一截垫块留在
+         * 视口外。下一帧 coalescer 写 0、`scrollHeight` 缩 `written`,而 `scrollTop`
+         * 恰好等于新的 `maxScroll` —— **没有可钳的东西**,屏上一像素不动。
+         *
+         * **只在垫块正要归零时走这一支**(`pad.height === 0`):`#absorbed > 0` 那一档
+         * 的垫块是人收起东西时**有意**垫上的,它不归零,也就没有交接这回事。
+         *
+         * 它**不是「在观察器回调里改布局」**:这一支只写 `scrollTop`(不改布局),
+         * 垫块那一格照旧由 coalescer 在下一帧写。
+         */
+        if (this.#pad.height === 0) {
+          const m = port.measure()
+          if (m) port.setTop(Math.max(0, m.scrollHeight - written - m.clientHeight), 'tail-growth')
+        }
+        this.#lastGap = port.gapNow()
         return
       }
       this.#stick()

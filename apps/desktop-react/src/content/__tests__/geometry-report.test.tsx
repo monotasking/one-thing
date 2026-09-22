@@ -3,7 +3,14 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { render } from '@testing-library/react'
-import { GeometryReportContext, useGeometryReport, type UserToggle } from '../geometry-report'
+import {
+  GeometryReportContext,
+  NOOP_GEOMETRY_REPORT,
+  useGeometryReport,
+  type GeometryJump,
+  type GeometryReport,
+  type UserToggle,
+} from '../geometry-report'
 
 /**
  * **「人亲手开合了一块东西」那一条通道**(G 线 P2-b,正本
@@ -20,7 +27,7 @@ const shellSrc = (rel: string) =>
 
 function Reporter({ change }: { change: UserToggle }) {
   const report = useGeometryReport()
-  Reporter.answer = report(change)
+  Reporter.answer = report.toggle(change)
   return null
 }
 Reporter.answer = undefined as boolean | undefined
@@ -38,7 +45,9 @@ describe('geometry-report:开与合走同一个口', () => {
   it('装了通道就报到那一头,带的是「哪一块 / 开还是合 / 过渡多长」', () => {
     const heard: UserToggle[] = []
     render(
-      <GeometryReportContext.Provider value={(change) => { heard.push(change); return change.open }}>
+      <GeometryReportContext.Provider
+        value={{ toggle: (change) => { heard.push(change); return change.open }, jump: () => {} }}
+      >
         <Reporter change={CHANGE} />
       </GeometryReportContext.Provider>,
     )
@@ -54,13 +63,13 @@ describe('geometry-report:开与合走同一个口', () => {
     const card = shellSrc('../tools/ToolCard.tsx')
     const compact = shellSrc('../CompactSeam.tsx')
     const ctxDelta = shellSrc('../ContextDeltaSeam.tsx')
-    expect(thought).toMatch(/setExpanded\(report\(\{/)
-    expect(card).toMatch(/setOpen\(report\(\{/)
+    expect(thought).toMatch(/setExpanded\(report\.toggle\(\{/)
+    expect(card).toMatch(/setOpen\(report\.toggle\(\{/)
     // 工具卡的聚合行 / 抽屉那一路是一个 Set,先拿答案再改集合。
-    expect(card).toMatch(/const next = report\(\{/)
-    expect(compact).toMatch(/setOpen\(report\(\{/)
-    expect(ctxDelta).toMatch(/setOpen\(report\(\{/)
-    expect(ctxDelta).toMatch(/setExpanded\(report\(\{/)
+    expect(card).toMatch(/const next = report\.toggle\(\{/)
+    expect(compact).toMatch(/setOpen\(report\.toggle\(\{/)
+    expect(ctxDelta).toMatch(/setOpen\(report\.toggle\(\{/)
+    expect(ctxDelta).toMatch(/setExpanded\(report\.toggle\(\{/)
     for (const src of [thought, card, compact, ctxDelta]) {
       // 老那两条各说一半的通道在这四族里不许再有(重试那一路仍然用折起那一条)。
       expect(src).not.toMatch(/useNoteUserExpand/)
@@ -89,7 +98,7 @@ describe('geometry-report:开与合走同一个口', () => {
      * 不是「这个文件里不出现它们」。)
      */
     const stream = shellSrc('../ChatStream.tsx')
-    expect(stream).toMatch(/<GeometryReportContext\.Provider value=\{reportUserToggle\}>/)
+    expect(stream).toMatch(/<GeometryReportContext\.Provider value=\{geometryReport\}>/)
     expect(stream.match(/GeometryReportContext/g)?.length).toBe(3)
   })
 
@@ -105,5 +114,71 @@ describe('geometry-report:开与合走同一个口', () => {
     // 两族折痕都让位(它们收起时由锚定器钉住被点的那一块)。
     expect(shellSrc('../CompactSeam.tsx')).toMatch(/<Fold\s+anchored/)
     expect(shellSrc('../ContextDeltaSeam.tsx')).toMatch(/<Fold\s+anchored/)
+  })
+})
+
+/**
+ * **第二个动词:`jump`**(G 线 P2-c;正本 §18.2)。
+ *
+ * 值得进 jsdom 的仍然只有判据那一半:三处从前各写各的滚动位的地方是不是都改走了
+ * 这一个口、缺省是不是恒等(退回浏览器那一发 `scrollIntoView`)。「落位差多少 /
+ * 落位之后跟随档翻没翻」是几何,由真机门 `gate:stream-geometry` ⑭ 量。
+ */
+describe('geometry-report:人说了要去哪', () => {
+  it('缺省退回浏览器自己那一发 `scrollIntoView`(流之外行为恒等)', () => {
+    const calls: unknown[] = []
+    const el = { scrollIntoView: (o: unknown) => calls.push(o) } as unknown as HTMLElement
+    NOOP_GEOMETRY_REPORT.jump({ el, block: 'center', behavior: 'smooth' })
+    expect(calls).toEqual([{ block: 'center', behavior: 'smooth' }])
+    // 没点名就什么都不做(不许凭空滚一下)。
+    expect(() => NOOP_GEOMETRY_REPORT.jump({ el: null })).not.toThrow()
+  })
+
+  it('装了通道就报到那一头', () => {
+    const heard: GeometryJump[] = []
+    const report: GeometryReport = { toggle: (c) => c.open, jump: (c) => heard.push(c) }
+    function Jumper() {
+      const r = useGeometryReport()
+      r.jump({ top: 42, behavior: 'smooth' })
+      return null
+    }
+    render(
+      <GeometryReportContext.Provider value={report}>
+        <Jumper />
+      </GeometryReportContext.Provider>,
+    )
+    expect(heard).toEqual([{ top: 42, behavior: 'smooth' }])
+  })
+
+  it('三处从前各写各的滚动位都改走这一个口了', () => {
+    const toc = shellSrc('../../toc/useChatToc.ts')
+    // 钢琴键 / 检索命中:落点还是自己算的,滚那一下交出去。
+    expect(toc).toMatch(/geometryPortOf\(sessionId\)\.jump\(\{ top, behavior: 'smooth' \}\)/)
+    expect(toc).not.toMatch(/el\.scrollTo\(/)
+    // 来源条点开某一段检索。
+    const research = shellSrc('../research/ResearchSegment.tsx')
+    expect(research).toMatch(/report\.jump\(\{ el: ref\.current, block: 'center'/)
+    expect(research).not.toMatch(/ref\.current\?\.scrollIntoView/)
+    /*
+     * `ui/Fold` 的底把手那一发是第三处 —— 它在**聊天流里已经零调用**(两族折痕都传了
+     * `anchored`,P2-b 第三笔),所以这一单不给它接线:`ui/` 不许反向依赖 `content/`,
+     * 而 `ui/` 之外的消费者(样例页 / 单测)行为一个字不改。下面这条钉住「零调用」。
+     */
+    for (const rel of ['../CompactSeam.tsx', '../ContextDeltaSeam.tsx']) {
+      expect(shellSrc(rel)).toMatch(/<Fold\s+anchored/)
+    }
+    // 聊天流里只有这两族用 `SeamFoot`(= `FoldFoot` 的皮肤),别处长出第三族要在这儿露头。
+    const seam = shellSrc('../seam/Seam.tsx')
+    expect(seam).toMatch(/export function SeamFoot/)
+  })
+
+  it('平滑不许变瞬移:`behavior` 一路传到写口', () => {
+    const port = shellSrc('../viewport/scroll-port.ts')
+    expect(port).toMatch(/setTop\(top: number, cause: GeometryCause, options\?: SetTopOptions\)/)
+    expect(port).toMatch(/behavior === 'smooth' && typeof el\.scrollTo === 'function'/)
+    const anchor = shellSrc('../viewport/anchor.ts')
+    expect(anchor).toMatch(/this\.#port\.setTop\(landing, 'jump', \{ behavior: jump\.behavior \}\)/)
+    // 落位之后**显式**重判一次档(不等下一发滚动事件)。
+    expect(anchor).toMatch(/this\.dispatch\(\{ type: 'scrolled', gap \}\)/)
   })
 })

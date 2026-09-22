@@ -203,7 +203,7 @@ export function ContextDeltaSeam({ turnContext }: {
     <Fold
       anchored
       open={open}
-      onOpenChange={(next) => setOpen(report({ el: rootRef.current, open: next, durationMs: 0 }))}
+      onOpenChange={(next) => setOpen(report.toggle({ el: rootRef.current, open: next, durationMs: 0 }))}
     >
       {/*
         * 恒 `settled`:上下文更新本身是**已经发生完**的事(判词在上面那段
@@ -285,7 +285,7 @@ function DeltaRow({ t, row }: { t: TFn; row: ContextDeltaEntry }) {
                * 收起时它缩掉的那几行同样会让页面总高变小。判据用当前 state,不放进
                * setState 的 updater —— updater 在 StrictMode 下会跑两遍。
                */
-              setExpanded(report({ el: outer.current, open: !expanded, durationMs: 0 }))
+              setExpanded(report.toggle({ el: outer.current, open: !expanded, durationMs: 0 }))
             }}
           >
             {t(expanded ? 'block.collapse' : 'block.expand')}

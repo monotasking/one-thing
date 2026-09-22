@@ -261,7 +261,7 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
     follow,
     jumpToBottom,
     onScrollWithFollow,
-    reportUserToggle,
+    report: geometryReport,
     seatActive,
   } = useViewportAnchor({
     scrollRef,
@@ -339,7 +339,7 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
          * 值是 `useCallback` 出来的,**身份恒定** —— 所以 `MessageRow` / `ToolCard`
          * 那几层的 memo 短路一格没动(context 的值不变,消费者不会被推着重渲)。
          */
-        <GeometryReportContext.Provider value={reportUserToggle}>
+        <GeometryReportContext.Provider value={geometryReport}>
         <>
         {/*
           * `data-follow` 是**跟随状态机的一格自述**(P1c,2026-09-21):列尾那一格
@@ -843,7 +843,7 @@ const MessageRow = memo(function MessageRow({
     wasRetiring.current = retiring
     if (!started) return
     if (currentMotionTier() === 'none') return
-    report({ el: null, open: false, durationMs: CARD_FLIP_MS })
+    report.toggle({ el: null, open: false, durationMs: CARD_FLIP_MS })
   }, [retiring, report])
 
   // 只有模型说的话要装配。用户消息是一个气泡、错误消息是一张卡,它们没有段 ——

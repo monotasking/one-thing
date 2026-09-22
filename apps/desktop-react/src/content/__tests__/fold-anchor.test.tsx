@@ -130,7 +130,7 @@ describe('思考段:收尾那一下是高度过渡,不是跳回去', () => {
    */
   it('开合在改状态之前同步报一句,`setExpanded` 吃的是它的返回值', () => {
     expect(src).toMatch(/const report = useGeometryReport\(\)/)
-    expect(src).toMatch(/onOpenChange=\{\(open\) => setExpanded\(report\(\{/)
+    expect(src).toMatch(/onOpenChange=\{\(open\) => setExpanded\(report\.toggle\(\{/)
     expect(src).toMatch(/el: boxRef\.current/)
   })
 

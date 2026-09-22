@@ -51,8 +51,14 @@ export interface ScrollPort {
   columnHeight(): number
   /** 这一件此刻落在视口的哪一档。**P2-a 没有调用方**,它是 §13.2.2 裁决表的入参。 */
   zoneOf(rect: { top: number; bottom: number }): GeometryZone
-  /** **唯一**写滚动位的口。`cause` 只用于埋点与将来的 dev 断言,不改行为。 */
-  setTop(top: number, cause: GeometryCause): void
+  /**
+   * **唯一**写滚动位的口。`cause` 只用于埋点与 dev 断言,不改行为。
+   *
+   * `options.behavior === 'smooth'` 走浏览器自己那一段平滑滚动(G 线 P2-c 收编
+   * 跳转那三处时开的口)——**平滑不许变瞬移**:那是用户看得见的行为,而这一单的
+   * 自述是收编写口、不改形。缺省(缺席 / `'auto'`)与从前逐字相同。
+   */
+  setTop(top: number, cause: GeometryCause, options?: SetTopOptions): void
   /** 滚动事件那一头记一笔「人此刻在第几像素」,并交出**上一次**那个数。 */
   noteScrolled(): { previousTop: number | undefined; top: number }
   /** RO 那一批变化归一成纯数字。**停靠中答 `undefined` 且一个矩形都不读。** */
@@ -81,6 +87,11 @@ export interface ScrollPort {
   measureAnchor(): ScrollAnchor | undefined
   /** 把锚点用回去。写经 `setTop`;答 true / false 的语义与 `applyScrollAnchor` 逐字相同。 */
   applyAnchor(anchor: ScrollAnchor): boolean
+}
+
+/** `setTop` 的那一格可选参数(判词在 `ScrollPort.setTop` 上)。 */
+export interface SetTopOptions {
+  readonly behavior?: ScrollBehavior
 }
 
 export interface ViewportMetrics {
@@ -271,12 +282,12 @@ export class DomScrollPort implements ScrollPort {
     return 'inside'
   }
 
-  setTop(top: number, _cause: GeometryCause): void {
+  setTop(top: number, _cause: GeometryCause, options?: SetTopOptions): void {
     const el = this.#scroll()
     if (!el) return
     // ① 停靠中不写(判词在文件头)。
     if (el.clientHeight === 0) return
-    this.#write(el, top)
+    this.#write(el, top, options?.behavior)
   }
 
   stickToBottom(_cause: GeometryCause): void {
@@ -287,9 +298,21 @@ export class DomScrollPort implements ScrollPort {
   }
 
   /** **全仓唯一**那一句 `el.scrollTop = …`。 */
-  #write(el: HTMLElement, top: number): void {
-    el.scrollTop = top
-    // ② 写完当场记下读回来的那个数 —— 浏览器会钳,`top` 不一定是落点。
+  #write(el: HTMLElement, top: number, behavior?: ScrollBehavior): void {
+    /*
+     * 平滑那一档交给浏览器(jsdom 里没有 `scrollTo`,守一手 —— 与 `useChatToc`
+     * 从前那句 `if (typeof el.scrollTo === 'function')` 同判)。
+     */
+    if (behavior === 'smooth' && typeof el.scrollTo === 'function') el.scrollTo({ top, behavior })
+    else el.scrollTop = top
+    /*
+     * ② 写完当场记下**读回来的**那个数 —— 浏览器会钳,`top` 不一定是落点。
+     *
+     * 平滑那一档读回来的是**动画起点**(那一段还没开始走),这正是要的:接下来
+     * 那几十发滚动事件里「人往上翻 = `scrollTop` 变小」才判得对 —— 记成目标值的话,
+     * 一次往下的平滑跳转会让第一发事件读成「人往上翻」,当场把刚定好的档翻掉。
+     * 「落位之后那一档算什么」由 `ViewportAnchor.reportJump` 显式判一次,不靠这里。
+     */
     this.#lastTop = el.scrollTop
   }
 
@@ -515,7 +538,7 @@ export interface FakeGeometry {
 export class FakeScrollPort implements ScrollPort {
   geometry: FakeGeometry
   /** 每一次 `setTop` 都记一笔,给「写入序列」那一族断言用。 */
-  readonly writes: { top: number; cause: GeometryCause }[] = []
+  readonly writes: { top: number; cause: GeometryCause; behavior?: ScrollBehavior }[] = []
   /** 垫块上写过的高;`undefined` = 没有垫块这个元素。 */
   padHeights: number[] | undefined = []
   seat: SeatGeometry | undefined = undefined
@@ -569,11 +592,17 @@ export class FakeScrollPort implements ScrollPort {
     return 'inside'
   }
 
-  setTop(top: number, cause: GeometryCause): void {
+  setTop(top: number, cause: GeometryCause, options?: SetTopOptions): void {
     if (this.geometry.clientHeight === 0) return
-    this.geometry.scrollTop = Math.max(0, Math.min(top, this.geometry.scrollHeight - this.geometry.clientHeight))
-    this.writes.push({ top: this.geometry.scrollTop, cause })
-    this.#lastTop = this.geometry.scrollTop
+    const landed = Math.max(0, Math.min(top, this.geometry.scrollHeight - this.geometry.clientHeight))
+    /*
+     * 平滑那一档在真机上是**分几十帧走完**的,所以「写完读回来」读到的是起点。
+     * 假口照这一条模拟:位置立刻到位(裁决层不看它),但 `lastTop` 留在起点。
+     */
+    const from = this.geometry.scrollTop
+    this.geometry.scrollTop = landed
+    this.writes.push({ top: landed, cause, ...(options?.behavior ? { behavior: options.behavior } : {}) })
+    this.#lastTop = options?.behavior === 'smooth' ? from : landed
   }
 
   stickToBottom(cause: GeometryCause): void {

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { EXPAND_HOLD_MS, currentMotionTier, sendLandMs } from '../../components/motion'
 import { FOLLOW_PINNED, type FollowState } from '../follow'
-import type { UserToggle } from '../geometry-report'
+import type { GeometryJump, GeometryReport, UserToggle } from '../geometry-report'
 import { usePanelVisibility } from '../visibility'
 import { ViewportAnchor } from './anchor'
+import { registerGeometryPort } from './geometry-port'
 import type { ScrollPort } from './scroll-port'
 
 /**
@@ -38,7 +39,8 @@ export function useViewportAnchor(options: {
   follow: FollowState
   jumpToBottom: () => void
   onScrollWithFollow: () => void
-  reportUserToggle: (change: UserToggle) => boolean
+  /** 流里报几何意图的那唯一一只对象(身份恒定;判词在 `content/geometry-report.ts`)。 */
+  report: GeometryReport
   seatActive: boolean
 } {
   const { scrollRef, port, sessionId, messageCount, sentTick, lastDeltaAt, activeMessageId, retryingId, onScroll } =
@@ -244,7 +246,7 @@ export function useViewportAnchor(options: {
    * 身份恒定(依赖只有 `anchor`):它一路传到折痕 / 思考段 / 工具卡上,身份一变
    * 那几层的 memo 就白短路了(与 `noteUserExpand` 同一条判词)。
    */
-  const reportUserToggle = useCallback((change: UserToggle) => {
+  const toggle = useCallback((change: UserToggle) => {
     const el = change.el
     let block
     if (el) {
@@ -258,6 +260,50 @@ export function useViewportAnchor(options: {
     anchor.reportUserToggle({ open: change.open, durationMs: change.durationMs, block })
     return change.open
   }, [anchor])
+  /*
+   * ── 人说了要去哪(`jump`)──────────────────────────────────────────────
+   *
+   * **量在这儿**:裁决那一层零 DOM,所以「这一件该落到哪个 `scrollTop`」由这只 hook
+   * 算完再递进去。两种点名法(判词在 `GeometryJump` 上):调用方给得出 `top` 就用它
+   * (钢琴键 / 检索命中已经量过),给 `el` 就按它此刻的矩形算 —— 换算是「元素在文档
+   * 里的位置 = 它的视口 top − 容器的视口 top + 容器此刻的 scrollTop」,与从前
+   * `useChatToc` 里那一句逐字同一条式子。
+   *
+   * `block` 三档:`start` 落在视口上缘、`center` 落在正中、`nearest` 本来就在视口里
+   * 时是恒等(那是 `scrollIntoView({block:'nearest'})` 的语义,照搬)。
+   */
+  const jump = useCallback((change: GeometryJump) => {
+    const el = scrollRef?.current
+    if (!el) return
+    let top = change.top
+    if (top === undefined) {
+      const target = change.el
+      if (!target) return
+      const box = el.getBoundingClientRect()
+      const rect = target.getBoundingClientRect()
+      const docTop = rect.top - box.top + el.scrollTop
+      const block = change.block ?? 'nearest'
+      if (block === 'start') top = docTop
+      else if (block === 'center') top = docTop - (el.clientHeight - rect.height) / 2
+      else {
+        // `nearest`:上缘在视口上面就贴上缘,下缘在视口下面就贴下缘,否则不动。
+        if (rect.top < box.top) top = docTop
+        else if (rect.bottom > box.bottom) top = docTop + rect.height - el.clientHeight
+        else return
+      }
+    }
+    anchor.reportJump({ top, behavior: change.behavior })
+  }, [anchor, scrollRef])
+  /*
+   * 一只对象、身份恒定 —— 它一路传到折痕 / 思考段 / 工具卡上,身份一变那几层的
+   * memo 就白短路了(与两只回调各自的判词同源)。
+   */
+  const report = useMemo<GeometryReport>(() => ({ toggle, jump }), [toggle, jump])
+  /*
+   * **同一只对象也登记到按会话的口上**(`geometry-port.ts`,判词在那儿):
+   * `toc/useChatToc` 住在会话叶上、够不着这条 context,而它要报的正是 `jump`。
+   */
+  useEffect(() => registerGeometryPort(sessionId, report), [sessionId, report])
   const onScrollWithFollow = useCallback(() => {
     // 容器不在手时**只重排那一发去抖**,判档那一段跳过 —— 与今天那句
     // `const el = scrollRef?.current; if (el) { … }` 之后照旧调
@@ -285,7 +331,7 @@ export function useViewportAnchor(options: {
     follow,
     jumpToBottom,
     onScrollWithFollow,
-    reportUserToggle,
+    report,
     seatActive,
   }
 }

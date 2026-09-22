@@ -180,7 +180,7 @@ function CompletedSeam({ marker, ctx, t, rootRef }: {
     <Fold
       anchored
       open={open}
-      onOpenChange={(next) => setOpen(report({ el: rootRef.current, open: next, durationMs: 0 }))}
+      onOpenChange={(next) => setOpen(report.toggle({ el: rootRef.current, open: next, durationMs: 0 }))}
     >
       <SeamLine />
       <SeamLabel fold data-testid="compact-seam-label">

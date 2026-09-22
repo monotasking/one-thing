@@ -15,6 +15,7 @@ import { EXPANDABLE_STATUSES, formatDuration } from '../tools/status'
 import { sourceStep, stackDomains } from './episode'
 import { Favicon, FaviconStack } from './Favicon'
 import { useResearchReveal } from './reveal'
+import { useGeometryReport } from '../geometry-report'
 import s from './Research.module.css'
 
 const CaretIcon = resolveIcon('ChevronRight')
@@ -54,9 +55,18 @@ export function ResearchSegment({
   const toggle = useCallback(() => setOpen((value) => !value), [])
   const ref = useRef<HTMLDivElement>(null)
 
+  /*
+   * ── 「送这一段进视口」经那唯一的口(G 线 P2-c)────────────────────────────
+   * 从前这里是一发 `ref.current?.scrollIntoView({ block: 'center' })`:它**不经过
+   * 跟随状态机** —— 往下跳时那一支读成「没往回走」、不翻档,于是落定之后状态机仍是
+   * `pinned`,下一段 delta 一到 RO 就把人拽回底(正本 §13.1.1 末、§18.2)。
+   * 收编之后由锚定器落位并**当场重判一次档**;`block: 'center'` 与平滑那一档一个字
+   * 没变(缺省实现退回的就是浏览器那一发 `scrollIntoView`,流之外行为恒等)。
+   */
+  const report = useGeometryReport()
   useResearchReveal(id, () => {
     setOpen(true)
-    ref.current?.scrollIntoView({ block: 'center', behavior: scrollBehavior() })
+    report.jump({ el: ref.current, block: 'center', behavior: scrollBehavior() })
   })
 
   // 还在跑:画流中态行。**没有收起行可画** —— 这一刻「N 个来源」还在变,

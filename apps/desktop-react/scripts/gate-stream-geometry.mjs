@@ -134,6 +134,15 @@ const BUDGET = {
   fadeHeightPx: 0.5,
   /** ⑪⑫ 思考段的扫光跟错了对象的帧数(正文已出还在扫 / 旧的那一段还在扫)。 */
   staleThoughtFrames: 0,
+  /*
+   * ── G 线 P2-c 补的两格 ──────────────────────────────────────────────────
+   */
+  /** ⑬ 座位由正变零那一帧(前后各 3 帧)里,上方那块参照物的单帧位移(px)。 */
+  seatHandoverStepPx: 1,
+  /** ⑭ 跳转落位:被点那条消息的顶边与滚动口上缘之差(px)。 */
+  jumpLandingPx: 1,
+  /** ⑭ 落位之后一整轮新内容期间,视口位置的位移(px)—— 新内容不许把人拽走。 */
+  jumpHoldPx: 1,
 }
 
 /**
@@ -1218,6 +1227,36 @@ function analyze(frames, userActs, thoughtFlat) {
     seatMax = Math.max(seatMax, f.seat.h)
     seatLineH = Math.max(seatLineH, f.seat.lineH)
   }
+  /*
+   * ── ⑬ **座位交接帧**(G 线 P2-c;正本 §0 ⑤ / §18.3)────────────────────────
+   * 座位由正变零那一帧,前后各 3 帧里,上方那块参照物(`readAnchor`,与 ③ 同一个
+   * 取件口)的**单帧**位移。§0 ⑤ 量到的是「一次性上推 46px,前后每帧 0」——
+   * 所以判的是**单帧的台阶**,不是这一段的累计:贴底跟随本来就在整体上移。
+   */
+  let seatHandover = { at: null, frames: 0, stepPx: 0, steps: [] }
+  const zeroAt = frames.findIndex((f, i) =>
+    i > 0 && frames[i - 1].seat && frames[i - 1].seat.h > 0.5 && f.seat && f.seat.h <= 0.5)
+  if (zeroAt > 0) {
+    const lo = Math.max(1, zeroAt - 3)
+    const hi = Math.min(frames.length - 1, zeroAt + 3)
+    const steps = []
+    let n = 0
+    for (let i = lo; i <= hi; i += 1) {
+      const a = frames[i - 1].readAnchor
+      const b = frames[i].readAnchor
+      if (!a || !b || a.id !== b.id) continue
+      n += 1
+      const d = Number(Math.abs(b.top - a.top).toFixed(2))
+      if (d > 0.05) steps.push({ ms: Math.round(frames[i].t - t0), px: d, at: i === zeroAt ? '座位归零' : '' })
+    }
+    seatHandover = {
+      at: Math.round(frames[zeroAt].t - t0),
+      frames: n,
+      stepPx: steps.reduce((m, x) => Math.max(m, x.px), 0),
+      steps: steps.slice(0, 6),
+    }
+  }
+
   const seat = {
     frames: seatFrames,
     maxPx: Number(seatMax.toFixed(2)),
@@ -1312,6 +1351,7 @@ function analyze(frames, userActs, thoughtFlat) {
     handoff,
     slotShape,
     seat,
+    seatHandover,
     fade,
     pinned,
     end,
@@ -1402,7 +1442,9 @@ function report(name, m) {
     + ` · >50ms 长帧 ${m.longFrames}(列在忙时另有 ${m.listLongFrames};最长 ${m.longestFrameMs}ms)`,
   )
   console.log(
-    `      ${' '.repeat(name.length)} ⑧ 座位 ${m.seat.maxPx}px = ${m.seat.lines} 行`
+    `      ${' '.repeat(name.length)} ⑬ 交接帧 ${m.seatHandover.at === null ? '没采到'
+      : `${m.seatHandover.at}ms · 单帧 ${m.seatHandover.stepPx}px / ${m.seatHandover.frames} 帧`}`
+    + ` · ⑧ 座位 ${m.seat.maxPx}px = ${m.seat.lines} 行`
     + `(一行 ${m.seat.lineHPx}px / ${m.seat.frames} 帧)`
     + ` · ⑨ 尾槽内形 ${m.slotShape.frames} 帧,最大差 ${m.slotShape.maxDiffPx}px`
     + `${m.slotShape.what ? `(${m.slotShape.what})` : ''},多没少 ${m.slotShape.missing}`
@@ -1452,7 +1494,7 @@ async function main() {
   const userDataDir = await mkdtemp(path.join(tmpdir(), 'geo-udd-'))
   const providerState = {}
   let provider; let server; let app; let vite
-  const readings = { lane: LANE, viewport: VIEWPORT, scenarios: {} }
+  const readings = { lane: LANE, viewport: VIEWPORT, scenarios: {}, jump: {} }
 
   const startCore = async () => {
     const child = spawn(process.execPath, [serverEntry], {
@@ -1634,6 +1676,125 @@ async function main() {
     }
 
     /**
+     * ── 「画出来的」那一口(正本 §9.7 / §10 / §11)────────────────────────────
+     * `requestAnimationFrame` 里再排一发**宏任务**(MessageChannel),读到的才是
+     * 这一帧真的画完之后的值;直接在 rAF 回调里读拿到的是半成品帧。
+     */
+    const paintedRead = () => page.evaluate(() => new Promise((resolve) => {
+      requestAnimationFrame(() => {
+        const ch = new MessageChannel()
+        ch.port1.onmessage = () => {
+          const pane = window.__gLeaf()
+          const scroll = pane.querySelector('[data-testid="chat-stream"]')
+          if (!scroll) { resolve(null); return }
+          const box = scroll.getBoundingClientRect()
+          /* 每一条用户气泡此刻的顶边(落位判据:被点那一条的顶边贴滚动口上缘)。 */
+          const users = Array.prototype.slice
+            .call(scroll.querySelectorAll('[data-message-id][data-role="user"]'))
+            .map((el) => Number((el.getBoundingClientRect().top - box.top).toFixed(2)))
+          resolve({
+            top: scroll.scrollTop,
+            gap: scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop,
+            maxTop: Math.max(0, scroll.scrollHeight - scroll.clientHeight),
+            /* 丸在场 = 跟随档是 browsing(它只在离底时画,判词在 `follow.ts`)。 */
+            pill: Boolean(pane.querySelector('[data-testid="chat-follow-pill"]')),
+            users,
+          })
+        }
+        ch.port2.postMessage(0)
+      })
+    }))
+
+    /** 平滑滚动停稳了吗 —— 连着 5 次「画出来的」读数不再动(2s 封顶)。 */
+    const settleScroll = async () => {
+      let last = null
+      let stable = 0
+      const started = Date.now()
+      while (Date.now() - started < 2000 && stable < 5) {
+        const now = await paintedRead()
+        stable = now && last && Math.abs(now.top - last.top) < 0.02 ? stable + 1 : 0
+        last = now
+        if (stable < 5) await delay(40)
+      }
+      return last
+    }
+
+    /**
+     * ── ⑭ **人说了要去哪**(G 线 P2-c;正本 §18.2)────────────────────────────
+     *
+     * 点钢琴键 / 点检索命中 / 点来源条这三处从前各写各的滚动位,**一处都不经过跟随
+     * 状态机** —— 往下跳时那一支的判据(「`scrollTop` 比上一次小没小」)读成「没往回
+     * 走」于是不翻档,落到一条离底还有半屏的消息上之后状态机仍是 `pinned`,下一段
+     * delta 一到 RO 就把人一把拽回底(勘察 §13.1.1 末)。收编之后由锚定器落位并
+     * **当场重判一次档**。
+     *
+     * 这一段量三件,都以「画出来的」那一口读:
+     *  · **落位** —— 被点那条消息的顶边贴着滚动口上缘(`useChatToc` 算的就是这个落点);
+     *  · **档** —— 落在底就 `pinned`(丸不在场),落在中间就 `browsing`(丸在场);
+     *  · **新内容不再把人拽走** —— 落在中间之后真跑一轮流,视口一像素不动。
+     *
+     * 点的是**最后一条用户消息往上数第二条**那一枚键:短会话里它一定在树上,超量档
+     * 里它落在尾窗里(尾窗是数据的后缀),两档都点得中。
+     */
+    const probeJump = async (laneId) => {
+      await scrollToBottom()
+      await delay(300)
+      const keys = await page.evaluate(() => Array.prototype.slice
+        .call(window.__gLeaf().querySelectorAll('[data-testid^="toc-key-"]'))
+        .map((el) => el.getAttribute('data-testid')))
+      if (keys.length < 3) return { skipped: `键只有 ${keys.length} 枚,点不出「往上两条」` }
+      const key = keys[keys.length - 3]
+      const before = await paintedRead()
+      await page.evaluate((x) => {
+        const el = window.__gLeaf().querySelector(`[data-testid="${x}"]`)
+        if (el instanceof HTMLElement) el.click()
+      }, key)
+      const landed = await settleScroll()
+      if (!before || !landed) return { skipped: '读不到几何' }
+      /*
+       * 落位差 = **所有用户气泡里离滚动口上缘最近的那一条**的距离。不按 id 对
+       * (超量档上键的下标与树上的下标不同源,尾窗只渲染后缀),而落点的定义本身
+       * 就是「被点那一条贴上缘」—— 贴没贴上,离得最近的那一条说了算。
+       */
+      const landingPx = landed.users.length > 0
+        ? Math.min(...landed.users.map((t) => Math.abs(t)))
+        : null
+      /* 落位之后真跑一轮:新内容不许把人拽走。 */
+      const held = { movedPx: null, frames: 0 }
+      if (landed.gap > 2) {
+        await sendViaComposer(page, `几何门 跳转之后新内容 ${markFor(MARKS.text, laneId)}`)
+        await waitFor('跳转后那一轮开张', () => stopShown(page), OPEN_TIMEOUT_MS)
+        let max = 0
+        let n = 0
+        const until = Date.now() + 6000
+        while (Date.now() < until) {
+          const now = await paintedRead()
+          if (!now) break
+          n += 1
+          max = Math.max(max, Math.abs(now.top - landed.top))
+          if (!(await stopShown(page))) break
+          await delay(80)
+        }
+        held.movedPx = Number(max.toFixed(2))
+        held.frames = n
+        await waitFor('跳转后那一轮收场', async () => !(await stopShown(page)), OPEN_TIMEOUT_MS)
+      }
+      return {
+        key,
+        fromTop: Number(before.top.toFixed(2)),
+        landedTop: Number(landed.top.toFixed(2)),
+        movedPx: Number(Math.abs(landed.top - before.top).toFixed(2)),
+        landingPx: landingPx === null ? null : Number(landingPx.toFixed(2)),
+        /** 位置顶在物理边界上了吗 —— 那时落点被夹住是对的(同 `gate:fold-collapse` ①)。 */
+        clamped: landed.top >= landed.maxTop - 1 || landed.top <= 1,
+        gap: Number(landed.gap.toFixed(2)),
+        atBottom: landed.gap <= 2,
+        pill: landed.pill,
+        held,
+      }
+    }
+
+    /**
      * 跑一轮:回底 → 开录 → 发 → 等开张 →(可选的中途动作)→ 等收场 → 收录 → 算。
      * `during` 收到 `{ page, mark }`,由它自己决定什么时候动手,并把**用户动手的
      * 时刻**回给这里 —— 那几段时间里的几何变化不算产品自己动的(`USER_ACT_MS`)。
@@ -1781,10 +1942,50 @@ async function main() {
           { during: sc.during, thoughtFlat: sc.thoughtFlat },
         )
       }
+      /* ⑭ 跳转那一段排在场景之后 —— 那时这条会话已经有足够多的键可点。 */
+      console.log(`  · ${lane.name} / 跳转落位(⑭)`)
+      readings.jump[lane.id] = await probeJump(lane.id)
+      console.log(`      ${JSON.stringify(readings.jump[lane.id])}`)
     }
 
     /* ══ 判 ══════════════════════════════════════════════════════════════ */
     console.log('\n[判据]')
+    /*
+     * ── ⑭ 跳转落位(G 线 P2-c;正本 §18.2)──────────────────────────────────
+     * 三格判据,逐条写在 `probeJump` 的判词上。跳不成(键不够)就**如实跳过**,
+     * 不假装绿 —— 与这道门里其余「量到没量到先判一句」的体例同源。
+     */
+    for (const [laneId, j] of Object.entries(readings.jump)) {
+      if (!j || j.skipped) {
+        console.log(`  – ${laneId} ⑭ 跳转:${j?.skipped ?? '没跑'},这一格跳过`)
+        continue
+      }
+      assert(j.movedPx > 50, `${laneId} ⑭ 这一下真的跳了(${j.movedPx}px > 50)`)
+      assert(
+        j.landingPx !== null && (j.landingPx <= BUDGET.jumpLandingPx || j.clamped),
+        `${laneId} ⑭ 落位:离滚动口上缘最近的那条用户气泡差 ${j.landingPx}px`
+        + ` ≤ ${BUDGET.jumpLandingPx}`
+        + (j.clamped ? ';或已经顶在物理边界' : ''),
+      )
+      /*
+       * 落在底就 `pinned`(丸不在场),落在中间就 `browsing`(丸在场)——
+       * 裁决表 `jump` 那一格的两支,由**落点的 gap** 分,不由「`scrollTop` 变小没有」分。
+       */
+      assert(
+        j.atBottom ? !j.pill : j.pill,
+        `${laneId} ⑭ 落位之后跟随档:gap ${j.gap}px → ${j.atBottom ? 'pinned(丸不在场)' : 'browsing(丸在场)'}`
+        + `,实得丸${j.pill ? '在场' : '不在场'}`,
+      )
+      if (j.held.movedPx === null) {
+        console.log(`  – ${laneId} ⑭ 落在底上,「新内容不再把人拽走」这一格跳过`)
+        continue
+      }
+      assert(j.held.frames > 5, `${laneId} ⑭ 跳转后那一轮采到 ${j.held.frames} 次读数(> 5)`)
+      assert(
+        j.held.movedPx <= BUDGET.jumpHoldPx,
+        `${laneId} ⑭ 落位之后一整轮新内容,视口位移 ${j.held.movedPx}px ≤ ${BUDGET.jumpHoldPx}`,
+      )
+    }
     for (const [key, m] of Object.entries(readings.scenarios)) {
       /** 过渡值按「这一档 + 这一场景」找,由窄到宽(判词在 `limitOf` 上)。 */
       const cap = (k, budgetKey) => limitOf(k, key, budgetKey)
@@ -1894,6 +2095,22 @@ async function main() {
        * 人把视口挪走之后座位按新几何重算,那不是「发送落位」那一刻的事。
        */
       if (!key.endsWith(':scrollUp')) {
+        /*
+         * ── ⑬ **座位交接帧**(G 线 P2-c;正本 §0 ⑤ / §18.3)────────────────────
+         * 座位由正变零那一帧,前后各 3 帧,上方那块参照物的**单帧**位移。
+         * §0 ⑤:「一次性上推 46px,前后每帧 0」—— 这一格量的就是那个 46。
+         * 采不到(这一档没有座位 / 那几帧换了参照物)就如实跳过,不假装绿。
+         */
+        if (m.seatHandover.at === null || m.seatHandover.frames < 3) {
+          console.log(`  – ${key} ⑬ 座位交接帧:采到 ${m.seatHandover.frames} 帧,这一格跳过`)
+        } else {
+          assert(
+            m.seatHandover.stepPx <= cap('seatHandoverStepPx'),
+            `${key} ⑬ 座位交接帧(${m.seatHandover.at}ms 前后各 3 帧)上方单帧位移`
+            + ` ${m.seatHandover.stepPx}px ≤ ${cap('seatHandoverStepPx')}`
+            + (m.seatHandover.steps.length > 0 ? ` —— ${JSON.stringify(m.seatHandover.steps)}` : ''),
+          )
+        }
         assert(m.seat.frames > 5, `${key} ⑧ 座位采到 ${m.seat.frames} 帧(> 5)`)
         assert(m.seat.lineHPx > 0, `${key} ⑧ 量到了一行有多高(${m.seat.lineHPx}px)`)
         const seatCap = BUDGET.seatLines * m.seat.lineHPx + BUDGET.seatSlackPx

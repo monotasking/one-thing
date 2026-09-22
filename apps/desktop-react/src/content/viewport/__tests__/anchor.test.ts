@@ -120,24 +120,52 @@ describe('跟底:座位那两格判据', () => {
     expect(port.writes).toEqual([])
   })
 
-  it('量出来是 0 但 style 上还挂着残高 → 也不贴(归零那一帧的缝)', () => {
+  /**
+   * ── **交接帧**(G 线 P2-c;正本 §0 ⑤ / §18.3)────────────────────────────
+   * 座位吃光、切到普通跟底的那一帧,屏上从前一次性上推 **46px**。病根是一次收缩被
+   * 两只手在两帧里各处理一半:这一帧量出来是 0 而 style 上还挂着残高 → 什么都不做;
+   * 下一帧 coalescer 写 0、`scrollHeight` 缩掉那一截 → 浏览器钳 → 再下一次 RO 才
+   * `stick()`。治法是把两件算进**同一次写**。
+   */
+  it('交接帧:按「垫块已经归零」的总高贴底,两件合成一次 `setTop`', () => {
     const { port, anchor } = setup()
     anchor.seatActive = true
     anchor.pad.landed = true
     port.seat = SEAT
     anchor.pad.measure()
     anchor.pad.flushNow()
+    const written = anchor.pad.written ?? 0
+    expect(written).toBeGreaterThan(0)
     // 座位吃光了:量出来 0,但写进 style 的还是上一次那个数。
     port.seat = { ...SEAT, tailHeight: 10_000 }
     anchor.beginObserving()
     port.geometry.scrollHeight = 1200
     anchor.onResize(grew(1200), 's1')
-    expect(port.writes).toEqual([])
-    // 下一帧垫块缩到 0,RO 再来一次 —— 那一次两格都是 0,照旧贴底。
+    // 1200 − written − 300:内容下缘正好落在视口下缘,那一截垫块留在视口外。
+    expect(port.writes).toEqual([{ top: 1200 - written - 300, cause: 'tail-growth' }])
+    /*
+     * 下一帧垫块缩到 0,`scrollHeight` 少掉 `written` —— 位置**已经**等于新的
+     * `maxScroll`,没有可钳的东西。再一次 RO 照旧贴底,算出同一个数。
+     */
     anchor.pad.flushNow()
-    port.geometry.scrollHeight = 1300
-    anchor.onResize(grew(1300), 's1')
-    expect(port.writes).toEqual([{ top: 1000, cause: 'tail-growth' }])
+    port.geometry.scrollHeight = 1200 - written
+    anchor.onResize(grew(1200 - written), 's1')
+    expect(port.writes.at(-1)).toEqual({ top: 1200 - written - 300, cause: 'tail-growth' })
+  })
+
+  it('垫块是**有意**垫着的(吸收了回缩,还没归零)→ 不进交接那一支', () => {
+    const { port, anchor } = setup({ geometry: { scrollHeight: 4000, clientHeight: 300, scrollTop: 3700 } })
+    expect(anchor.pad.requestAbsorb(200)).toBeGreaterThan(0)
+    expect(anchor.pad.written).toBe(200)
+    port.writes.length = 0
+    anchor.beginObserving()
+    /*
+     * 内容变了,但 gap 仍是 0 —— 那 200px 还**需要**垫着(`relax` 收不掉它)。
+     * 垫块不在归零(`height > 0`),所以这一帧仍旧是「不贴底」那条老路。
+     */
+    anchor.onResize(grew(4100), 's1')
+    expect(anchor.pad.absorbed).toBe(200)
+    expect(port.writes).toEqual([])
   })
 
   it('什么都没变 → 早退(不判丸、不贴底)', () => {
@@ -606,5 +634,57 @@ describe('收起到一半被打断', () => {
     state.now += 221
     anchor.onScroll('s1', true)
     expect(anchor.pad.absorbed).toBe(70)
+  })
+})
+
+/**
+ * **人说了要去哪**(G 线 P2-c;正本 §18.2 那张三态表)。
+ *
+ * 三处生产者(钢琴键 / 检索命中 / 来源条)从前各写各的滚动位、一处都不经过跟随
+ * 状态机 —— 往下跳时那一支读成「没往回走」于是不翻档。这一组钉的就是收编之后
+ * 那一句:**落位之后显式重判一次档,问的是落点的 gap,不是此刻的。**
+ */
+describe('跳转(`jump`)', () => {
+  it('落在中间 → browsing(新内容从此不再把人拽走)', () => {
+    const { port, anchor, follows } = setup()
+    anchor.reportJump({ top: 200 })
+    expect(port.writes).toEqual([{ top: 200, cause: 'jump' }])
+    expect(follows.at(-1)).toEqual({ mode: 'browsing', unseen: 'none' })
+  })
+
+  it('落在底 → pinned', () => {
+    const { port, anchor, follows } = setup({ geometry: { scrollTop: 200 } })
+    anchor.dispatch({ type: 'scrolled', gap: 500 })
+    expect(follows.at(-1)?.mode).toBe('browsing')
+    anchor.reportJump({ top: 700 })
+    expect(port.writes).toEqual([{ top: 700, cause: 'jump' }])
+    expect(follows.at(-1)).toEqual({ mode: 'pinned', unseen: 'none' })
+  })
+
+  it('落点**夹进** [0, maxScroll] —— 越界的跳转落在底,不是落在一个不存在的位置', () => {
+    const { port, anchor, follows } = setup()
+    anchor.reportJump({ top: 99_999 })
+    expect(port.writes).toEqual([{ top: 700, cause: 'jump' }])
+    expect(follows.at(-1)).toBeUndefined()
+    anchor.reportJump({ top: -50 })
+    expect(port.writes.at(-1)).toEqual({ top: 0, cause: 'jump' })
+  })
+
+  it('平滑那一档照旧平滑(不许变瞬移),而 `lastTop` 留在动画起点', () => {
+    const { port, anchor } = setup()
+    anchor.reportJump({ top: 400, behavior: 'smooth' })
+    expect(port.writes).toEqual([{ top: 400, cause: 'jump', behavior: 'smooth' }])
+    /*
+     * 记的是**读回来的**那个数 —— 平滑那一段还没开始走,读回来的是起点。
+     * 记成目标值的话,接下来那几十发滚动事件里第一发会被读成「人往上翻」。
+     */
+    expect(port.lastTop).toBe(0)
+  })
+
+  it('停靠中(`clientHeight === 0`)一格不做:不写、不判', () => {
+    const { port, anchor, follows } = setup({ geometry: { clientHeight: 0 } })
+    anchor.reportJump({ top: 200 })
+    expect(port.writes).toEqual([])
+    expect(follows).toEqual([])
   })
 })

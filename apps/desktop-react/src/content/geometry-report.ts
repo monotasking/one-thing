@@ -36,9 +36,29 @@ import { createContext, useContext } from 'react'
  * 它们的收起是 `display: none`,当拍到位。)
  *
  * ── 缺省是恒等 ────────────────────────────────────────────────────────────
- * 与 `expand-intent` / `fold-intent` 同判:流之外照样有消费者(Gallery 样例页、
- * 单测里直接渲染折痕与思考段),缺省把 `open` 原样交回去,它们一个字都不必知道
+ * 流之外照样有消费者(Gallery 样例页、单测里直接渲染折痕与思考段),缺省把 `open`
+ * 原样交回去、`jump` 退回浏览器自己那一发 `scrollIntoView`,它们一个字都不必知道
  * 有这回事。
+ *
+ * ── 两个动词,一个口(G 线 P2-c)────────────────────────────────────────────
+ * `toggle` 是「人亲手开合了一块东西」,`jump` 是「人说了要去哪」——点钢琴键、点检索
+ * 命中的一条正文、点消息尾那条来源条。这三处从前各自写滚动位
+ * (`toc/useChatToc.ts` 的 `el.scrollTo({behavior:'smooth'})`、
+ * `research/ResearchSegment.tsx` 的 `scrollIntoView({block:'center'})`),
+ * **一处都不经过跟随状态机**:往下跳时那一支的判据(「`scrollTop` 比上一次小没小」)
+ * 读成「没往回走」,于是不翻档 —— 落到一条离底还有半屏的消息上之后状态机仍是
+ * `pinned`,下一段 delta 到达时 RO 把人一把拽回底(勘察记在正本 §13.1.1 末)。
+ * 收编之后由裁决者**落位之后显式重判一次跟随档**(问落点的 `gap`,不等下一发
+ * 滚动事件),判词在 `ViewportAnchor.reportJump` 上。
+ *
+ * **平滑不许变瞬移**:`behavior` 一路传到 `ScrollPort.setTop`,`DomScrollPort` 在
+ * `'smooth'` 那一档走 `el.scrollTo({ top, behavior })`。
+ *
+ * ── 一个口,两条到达的路 ──────────────────────────────────────────────────
+ * 流里那几族经 context 拿它(身份恒定,下游 memo 一格不动);**站在 Provider 上面**
+ * 的消费者(`toc/useChatToc` 住在会话叶上,而 Provider 在 `ChatStream` 里)经
+ * `content/viewport/geometry-port.ts` 按 `sessionId` 拿**同一只对象** —— 两条路交出
+ * 的是同一个实例,所以它仍然是一个口,不是两条线。
  */
 
 export interface UserToggle {
@@ -58,11 +78,52 @@ export interface UserToggle {
   readonly durationMs: number
 }
 
-/** 报一句,拿回要写进 state 的那一格开合态(判词在文件头)。 */
-export type ReportUserToggle = (change: UserToggle) => boolean
+/**
+ * **人说了要去哪**(G 线 P2-c 的第七个 cause)。
+ *
+ * 两种点名法,给哪一种由调用方手上有什么决定:
+ *  · `top` —— 调用方自己算得出落点(钢琴键 / 检索命中已经量过那条消息的位置);
+ *  · `el` + `block` —— 交给锚定器按那一件的矩形算(来源条要把那一段送到视口正中)。
+ */
+export interface GeometryJump {
+  /** 要送进视口的那一件。给了它就由锚定器按 `block` 算落点。 */
+  readonly el?: HTMLElement | null
+  /** 直接给落点(`scrollTop`)。与 `el` 二选一,两个都给时 `top` 说了算。 */
+  readonly top?: number
+  /** 落在视口的哪一档(只在给了 `el` 时有意义)。缺省 `nearest`。 */
+  readonly block?: 'start' | 'center' | 'nearest'
+  /** 平滑还是瞬移。缺省 `auto`;**不许把平滑改成瞬移**(动效档由调用方说)。 */
+  readonly behavior?: ScrollBehavior
+}
 
-export const GeometryReportContext = createContext<ReportUserToggle>((change) => change.open)
+/**
+ * 流里报几何意图的**唯一通道**。两个动词的判词都在文件头。
+ *
+ * 它是一只**身份恒定**的对象(`useViewportAnchor` 里一次 `useMemo`)——
+ * 身份一变,`MessageRow` / `ToolCard` 那几层的 memo 短路就白短路了。
+ */
+export interface GeometryReport {
+  /** 人亲手开合了一块东西 —— 返回要写进 state 的那一格开合态。 */
+  toggle(change: UserToggle): boolean
+  /** 人说了要去哪 —— 落位,并在落位之后显式重判一次跟随档。 */
+  jump(change: GeometryJump): void
+}
 
-export function useGeometryReport(): ReportUserToggle {
+/**
+ * 缺省:`toggle` 恒等,`jump` 退回浏览器自己那一发 `scrollIntoView`(= 收编之前
+ * `research/ResearchSegment` 那一句逐字相同的行为)。**模块级常量**,所以流之外的
+ * 消费者拿到的也是一个身份恒定的值。
+ */
+export const NOOP_GEOMETRY_REPORT: GeometryReport = {
+  toggle: (change) => change.open,
+  jump: (change) => {
+    if (!change.el) return
+    change.el.scrollIntoView({ block: change.block ?? 'nearest', behavior: change.behavior })
+  },
+}
+
+export const GeometryReportContext = createContext<GeometryReport>(NOOP_GEOMETRY_REPORT)
+
+export function useGeometryReport(): GeometryReport {
   return useContext(GeometryReportContext)
 }

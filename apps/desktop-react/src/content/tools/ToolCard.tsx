@@ -147,11 +147,11 @@ export const ToolCard = memo(function ToolCard({
    */
   const toggleDurMs = () => (currentMotionTier() === 'none' ? 0 : CARD_FLIP_MS)
   const toggleOpen = useCallback(() => {
-    setOpen(report({ el: cardRef.current, open: !openRef.current, durationMs: toggleDurMs() }))
+    setOpen(report.toggle({ el: cardRef.current, open: !openRef.current, durationMs: toggleDurMs() }))
   }, [report])
   const toggleKey = useCallback(
     (key: string) => {
-      const next = report({
+      const next = report.toggle({
         el: cardRef.current,
         open: !openKeysRef.current.has(key),
         durationMs: toggleDurMs(),

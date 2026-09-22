@@ -4,6 +4,7 @@ import { TOC_FLASH_MS } from '../components/motion'
 import { useChatSourceOf } from '../data/chat-source'
 import { useSessionMarkers } from '../data/sessions-source'
 import { reachChatWindow, useChatWindowVersion } from '../content/chat-window'
+import { geometryPortOf } from '../content/viewport/geometry-port'
 import { useLocateMessage } from '../content/locate-message'
 import { useT } from '../i18n'
 import { notify } from '../services/notify'
@@ -124,11 +125,19 @@ function useScrollToMessage(
       const el = scrollRef.current
       const node = el ? anchorNodes(el).get(messageId) : undefined
       if (!el || !node) return false
-      // jsdom 里没有 scrollTo;守一手,免得测试环境把渲染层拖红。
-      if (typeof el.scrollTo === 'function') {
-        const top = node.getBoundingClientRect().top - (el.getBoundingClientRect().top - el.scrollTop)
-        el.scrollTo({ top, behavior: 'smooth' })
-      }
+      /*
+       * ── 滚过去那一发经**那唯一的口**(G 线 P2-c)──────────────────────────
+       * 从前这里直接 `el.scrollTo({ behavior: 'smooth' })`:它**不经过跟随状态机**,
+       * 而那一支的判据是「`scrollTop` 比上一次小没小」—— 往下跳到一条离底还有半屏的
+       * 消息上时它读成「没往回走」于是不翻档,状态机仍是 `pinned`,下一段 delta 到达
+       * 时 RO 把人一把拽回底(正本 §13.1.1 末、§18.2)。收编之后由锚定器落位并
+       * **当场重判一次档**;`behavior: 'smooth'` 一个字没变(平滑不许变瞬移)。
+       *
+       * 落点仍然由这里算 —— 这一句是「元素在文档里的位置」,与从前逐字相同;
+       * 口够不着的地方(样例页 / 单测)缺省退回浏览器自己那一发,行为恒等。
+       */
+      const top = node.getBoundingClientRect().top - (el.getBoundingClientRect().top - el.scrollTop)
+      geometryPortOf(sessionId).jump({ top, behavior: 'smooth' })
       // 先清再点,连点同一条时 CSS 动画才会重放(同一个类名不换是不会重来的)。
       setFlashMessageId(null)
       if (flashTimer.current) clearTimeout(flashTimer.current)
@@ -142,7 +151,7 @@ function useScrollToMessage(
       })
       return true
     },
-    [scrollRef, setFlashMessageId, flashTimer],
+    [scrollRef, setFlashMessageId, flashTimer, sessionId],
   )
 
   /** 还没落成的那一条(至多一格 —— 后一次点击顶掉前一次,与人的意思一致)。 */

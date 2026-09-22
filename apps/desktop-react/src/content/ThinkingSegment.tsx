@@ -154,7 +154,7 @@ export function ThinkingSegment({
        * 照样一缩、浏览器照样钳 —— 从前那句 `if (none) return` 让这一档成了唯一还会
        * 跳的一档。
        */
-      onOpenChange={(open) => setExpanded(report({
+      onOpenChange={(open) => setExpanded(report.toggle({
         el: boxRef.current,
         open,
         durationMs: currentMotionTier() === 'none' ? 0 : CARD_FLIP_MS,
