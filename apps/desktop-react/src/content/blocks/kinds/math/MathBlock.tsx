@@ -34,13 +34,32 @@ export function MathBlock({ model }: { model: MathModel }) {
   // 库照拉不误:它早一点到,闭合那一刻才能同步换装。
   const rendered = useRenderedMath(model.source, true, model.closed)
 
+  /*
+   * ── 三态**同一个外壳**,因为契约上写着 `settled: 'same'`(R 线 F1,2026-09-22)──
+   *
+   * 病历(真机读数在正本 §8):从前「还没排好」那一支返回的是
+   * `<MathSource …/>` —— 一个**组件元素**,而排好那一支返回的是 `<div>` —— 一个
+   * **宿主元素**。React 比的是这个位置上的元素**型**,两者不同型,于是闭合那一拍
+   * 整块卸载重挂:`DIV(life 65) → DIV(life 66)`,`padding 0 → 4px 0`,高 45 → 26.98,
+   * 下文整体上跳 18.02px。注册那一行自述的 `settled: 'same'`(「同一个组件、同一个
+   * 身份号、不重挂」)因此是一句**假话** —— 身份号确实没变(`${偏移}:math` 两拍逐字
+   * 相同),被换掉的是它下面那个 DOM 节点。
+   *
+   * 所以三支的根**都是 `div`、都带 `.block`**:型一样 React 就只打补丁,类名与孩子
+   * 随便换。`.block` 那一格 `padding-block` 因此三态恒定 —— 18.02px 里的 8px 是它
+   * 贡献的,而那是**两个外壳**造成的差,不是排版的事实。
+   */
   if (rendered.status === 'pending') {
-    return <MathSource source={model.source} />
+    return (
+      <div className={`${s.block} ${s.source}`} data-prose="text">
+        <SourceView source={model.source} />
+      </div>
+    )
   }
 
   if (rendered.status === 'error') {
     return (
-      <div className={s.failed} data-prose="text">
+      <div className={`${s.block} ${s.failed}`} data-prose="text">
         <FailureLine t={t} message={rendered.message} />
         <SourceView source={model.source} />
       </div>
@@ -55,15 +74,6 @@ export function MathBlock({ model }: { model: MathModel }) {
   return (
     <div className={s.block} data-prose="text">
       <MathHtml html={rendered.html} display className={s.rendered} />
-    </div>
-  )
-}
-
-/** 源码那一份。`data-prose` 是节奏钩子 —— flow 块不带包裹层,身份只能自己报。 */
-function MathSource({ source }: { source: string }) {
-  return (
-    <div className={s.source} data-prose="text">
-      <SourceView source={source} />
     </div>
   )
 }
