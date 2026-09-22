@@ -1,6 +1,8 @@
 import { fromMarkdown } from 'mdast-util-from-markdown'
 import { gfmFromMarkdown } from 'mdast-util-gfm'
 import { mathFromMarkdown } from 'mdast-util-math'
+import { cjkFriendlyExtension } from 'micromark-extension-cjk-friendly'
+import { gfmStrikethroughCjkFriendly } from 'micromark-extension-cjk-friendly-gfm-strikethrough'
 import { gfm } from 'micromark-extension-gfm'
 import { math } from 'micromark-extension-math'
 import { normalizeMathDelimiters } from './math-delimiters'
@@ -30,7 +32,26 @@ import { mdastToBlocks, type ParsedBlock } from './to-blocks'
  * 偏移回读源码的地方(降级、「查看源码」、行内兜底)吐出来的还是那几个字节。
  */
 
-const EXTENSIONS = [gfm(), math()]
+/**
+ * ── 行内记号按中文的规矩认,不按 CommonMark 的 ─────────────────────────────
+ * `cjkFriendlyExtension()` / `gfmStrikethroughCjkFriendly()` 这两格是**一条明知
+ * 故犯的判词**:同一段文字在这里粗、复制到 GitHub 上不粗。
+ *
+ * 病在 CommonMark 判「这个 `**` 能不能收尾」的那条 right-flanking 规矩:左边是标点
+ * 时,右边必须是空白或标点。中文里 `**…吗？**为什么` 的收尾 `**` 左边是全角问号
+ * (Unicode Po)、右边是汉字 —— 两头都不满足,于是整段塌回字面量,用户看见的是一行
+ * 带星号的原文。这不是这个壳独有的,GitHub / VS Code 预览同样塌;但这个壳里的字
+ * **是模型现写的**,没有人在中间校对,所以规范的这一条在这里守不住任何东西。
+ * 判据:`，。？！：；、）》」` 这类中文标点收尾、后面紧跟一个汉字。
+ *
+ * 两格各管一种记号(`**` / `*` 与 `~~`),都只改「一个记号算不算贴边」的分类,
+ * 建出来的还是 mdast 自己那几种 `strong` / `emphasis` / `delete` 节点 —— 所以
+ * `MDAST_EXTENSIONS` 不必跟着加,下游一个字不用知道。
+ *
+ * **顺序有约束**:`gfmStrikethroughCjkFriendly()` 必须排在 `gfm()` 之后,否则它盖不住
+ * gfm 自己那份删除线构造,静默失效(上游 README 的 IMPORTANT)。
+ */
+const EXTENSIONS = [gfm(), math(), cjkFriendlyExtension(), gfmStrikethroughCjkFriendly()]
 const MDAST_EXTENSIONS = [gfmFromMarkdown(), mathFromMarkdown()]
 
 /**
