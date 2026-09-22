@@ -2840,3 +2840,103 @@ report({ el, open, durationMs }) → open      // 返回值就是要写进 state
 4. `fold-intent` / `expand-intent` 两条 context 还在(P2-c 退役);今天 `fold-intent`
    只剩重试那一路一个生产者,`expand-intent` 一个都没有。
 5. `src/stage/__tests__/summon-entries.test.ts` 的 A9 在 `main` 上就是红的,与这一线无关。
+
+## 18. P2-c 状态表(2026-09-22,施工前)
+
+**这一单五件**(§13.4 P2-c + §13.6):①两条老意图通道整件退役、通道合一;
+②三处无门守的滚动写点收编成 `jump` 并补门;③座位交接帧那 46px 台阶(§0 ⑤);
+④`tail-growth above → compensate` 与 §17.4 第 1 条那笔留账(**先量后改**);
+⑤dev 运行时断言(§1 推论五)。
+
+照壳 `CLAUDE.md` 的「状态先行」:下面三张表**写在施工之前**,施工时对着走;
+与它不一样的地方在 §19 逐条记(那一节是施工账)。
+
+### 18.1 ① 通道合一之后 `IntentWindow` 的生命周期
+
+合一之前是**两格**:`#expandUntil`(一个时刻,`noteExpand` / `expanding` /
+`clearExpand`)与 `#fold`(一个 `FoldHold`,带锚、带 `rejudge`)。P2-b 之后
+**报出来的那一下开与合都走 `#fold`**(`reportUserToggle` 两侧都调 `noteFold`),
+`noteExpand` 只剩「报的人点不出被点的那一块」那一支,而
+`expand-intent` 的生产者在 P2-b 之后**一个都没有** —— 于是 `#expandUntil` 是
+「只搬不合一」留下的那一半。这一单把它收成一份:**一个窗口,一套方法**
+(`open` / `current` / `clear` / `extend` / `takeExpired`)。
+
+| 事件 | 窗口 | 锚 | `rejudge` | 到期做什么 |
+| --- | --- | --- | --- | --- |
+| 人亲手开合、**点得出那一块**(四族:思考段 / 工具卡 / 压缩折痕 / 上下文更新折痕) | `open(now, 收起 = durationMs + 40;展开 = EXPAND_HOLD_MS)` | 被点的那一块 + **落点**(收起时 `max(顶边, 视口上缘 + 上内衬)`) | `true` | 窗口**里每一批**都按此刻离底多远重判(审查裁定 2),到期再补一次 |
+| 人亲手开合、**点不出那一块**(样例页 / 单测 / ref 还没挂上) | 同上 | 无 —— 第一批 RO 里 `pickFoldAnchor()` 现选 | `false` | 什么都不做(与 P2-b 前 `noteFold(ms)` 逐字相同) |
+| 重试那一路旧回答上折(`MessageRow`) | `open(now, CARD_FLIP_MS + 40)`,`open: false`、`el: null` | 同上一行 | `false` —— **刚由 `landOnRetry` 滑到置顶线,重判会把它翻成 browsing** | 同上 |
+| 这一段还在长(`columnHeight` 比上一批大) | `extend(now, EXPAND_HOLD_MS)` —— 有界,不长了就不再推 | 不变 | 不变 | — |
+| 收到一半又点一次 | `clear()` 之后 `open(...)`:**后到的说了算** | 换成新的那一块 | 按新的那一下 | — |
+| 换会话 / 离场 | `clear()`(合一之前只清展开那一格;合一之后一句话清掉整个窗口 —— 折叠那一格从前靠「自己过期 + 锚 `alive()` 变假」收,清掉它是**同义的提前收**) | — | — | — |
+| 窗口过期 | `current(now)` 答 `undefined` 并把它交给 `takeExpired()`(一次性) | — | — | `rejudge` 为真才补一发 `scrolled` |
+
+**合一删掉的是哪三样**:`#expandUntil` 这一格、`noteExpand` / `expanding` /
+`clearExpand` 三只方法、以及 `ViewportAnchor.onResize` 里 `expanding()` 那一支。
+**那一支今天是不可达的**:唯一还能开它的是「报的人点不出那一块 **且** 是展开」,
+而四族消费者点得出、重试那一路是收起 —— 产品里零生产者(单测里有,随通道一起改)。
+合一之后那一支落进 `current()` 的窗口里:**它同样不贴底**,而且多得了「钉住视口内
+第一块在读的东西」。这是这一单里唯一一处「行为可能有别」的地方,产品里到不了。
+
+### 18.2 ② 跳转落位的三态
+
+`jump` 是第七个 cause,三个生产者:钢琴键 / 检索命中(`toc/useChatToc.ts`)、
+来源条点开某一段检索(`research/ResearchSegment.tsx`)。第三处
+(`ui/Fold.tsx` 底把手那一发 `scrollIntoView`)**在聊天流里已经零调用** ——
+两族折痕都传了 `anchored`(P2-b 第三笔),`ui/` 之外的消费者(样例页 / 单测)
+行为一个字不改。
+
+**平滑不许变瞬移**:`ScrollPort.setTop(top, cause, { behavior })` 多一格,
+`DomScrollPort` 在 `behavior === 'smooth'` 时走 `el.scrollTo({ top, behavior })`。
+`#lastTop` 仍然记**读回来的那个数** —— 平滑那一路读回来的是动画**起点**,
+这正是要的:接下来那几十发滚动事件里「人往上翻 = `scrollTop` 变小」才判得对。
+
+| 落点 | 落位之后那一次显式重判(问的是落点的 `gap`,不等下一发 scroll) | 跟随档 | 接下来 |
+| --- | --- | --- | --- |
+| 落在**底**(`gap ≤ AT_BOTTOM_EPS`) | `dispatch({type:'scrolled', gap})` | `pinned` | 平滑那一段的每一发滚动事件:`top` 递增 → 不是「往上翻」→ 不派事件 → **留在 pinned**,新内容照旧跟底 |
+| 落在**中间**(往下跳) | 同上,`gap` 大 | `browsing` | 每一发滚动事件都 `!followShouldStick` → 照派 `scrolled`,收敛到落点那个 gap;**新内容不再把人拽走** |
+| 落在**中间**(往上跳) | 同上 | `browsing` | `top` 递减 → 本来就判「人往上翻」,与今天一致 |
+| 停靠中(`clientHeight === 0`) | `measure()` 答 `undefined` → **一格不做**(不写、不判) | 不变 | 与 `setTop` 那条守卫同一把尺子 |
+
+**为什么非要显式重判**:今天这两发平滑滚动写完之后只能等下一发 `scroll` 事件,
+而那一支的判据是「`scrollTop` 比上一次小没小」——**往下跳时它判成「没往回走」,
+于是不翻档**,落到一条离底还有半屏的消息上之后状态机仍是 `pinned`,下一段 delta
+到达时 RO 把人一把拽回底(§13.1.1 末那条推测,这一单把它治掉)。
+
+### 18.3 ③ 座位交接帧
+
+§0 ⑤ 的读数:座位吃光、切到普通跟底的那一帧**一次性上推 46px**,前后每帧 0。
+
+今天那一帧发生的事,逐句:座位量出来是 0(内容把它吃光了),但**已经写进
+style 的那个数还没归零**(量在这一帧、写在下一帧,观察器只读不写)——
+于是 `onResize` 走 `if (seat > 0 || written > 0) return`,**这一帧不贴底**;
+下一帧 coalescer 把垫块写成 0,`scrollHeight` 少掉 `written`,浏览器钳
+`scrollTop`;钳完那次 RO 里两格都是 0 → `stick()`。**一次收缩被两只手在两帧里
+各处理一半**,台阶就是那两半的差。
+
+| 帧 | 垫块 | 今天 | 这一单 |
+| --- | --- | --- | --- |
+| N(交接帧:`seat === 0` ∧ `pad.height === 0` ∧ `written > 0`) | style 上还挂着 `written` | `return`,不写 | **合成一次 `setTop`**:按「垫块已经归零」的总高贴底 —— `top = scrollHeight − written − clientHeight`(夹 0)。屏上的内容下缘正好落在视口下缘,垫块那一截留在视口外 |
+| N+1(coalescer 写 0) | 0 | `scrollHeight` 缩 `written` → 浏览器钳 → 下一次 RO `stick()`,**台阶** | `scrollTop` 已经等于新的 `maxScroll` → **没有可钳的东西**,屏上一像素不动 |
+| N+1 的那次 RO | 0 | `stick()` | `stick()` 算出同一个数 → `setTop` 同值,零位移 |
+| `pad.absorbed > 0`(人收起过东西,垫块是**有意**留着的) | > 0 | 不进这一支(`pad.height > 0`) | **同上,不进** —— 交接只认「垫块正要归零」这一件事 |
+
+**它不是「在观察器回调里写布局」**:这一支只写 `scrollTop`(不改布局),垫块那一格
+照旧由 coalescer 在下一帧写。「两件合成一次 `setTop`」说的是**结果**合成:一次写
+就把「垫块要缩掉的那一截」与「贴底」一起算进去了。
+
+**门**:`gate:stream-geometry` 新加一条 —— 座位由正变零那一帧的**前后各 3 帧**里,
+视口内那一块参照物的位移 ≤ 1px(以「画出来的」那一口量)。反证 = 把这一支拆掉重跑
+(备份文件法,禁 `git checkout`),按 §0 ⑤ 应当红在 46px 那个量级。
+
+### 18.4 ④ 与 ⑤ 这一单的口径
+
+- **④ 先量后改**:`tail-growth above → compensate` 今天靠浏览器的滚动锚定代劳,
+  而 `content-visibility: auto` 的行第一次渲出真高会骗它(§17.4 第 1 条:真店档展开
+  6 万字思考,视口位移 11,454px)。**先在真店夹具上逐帧记「被点那一块上方各行高度
+  之和」的变化与 `scrollTop` 的补偿量**,证明是它再动手;**量出来不是它就停下报,
+  不硬改**。
+- **⑤ dev 断言**:「上过屏的活动块高度不许变小,除非 `cause === 'user-toggle'`」。
+  只在 `import.meta.env.DEV` 建表(prod 零开销),**只 `getLogger().warn` 一次,不抛**
+  (仓根禁 `console.*`);第一批报出来的逐条归类进留账,**不许顺手改产品**
+  (§13.4 P2-c 的风险那一段)。
