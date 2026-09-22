@@ -211,11 +211,11 @@ describe('「是谁离的底」', () => {
   })
 })
 
-describe('两格意图窗口', () => {
-  it('展开窗内:一像素不动,而且不点亮丸', () => {
+describe('一格意图窗口(G 线 P2-c 合一)', () => {
+  it('展开那一下:一像素不动,而且不点亮丸', () => {
     const { port, anchor, follows, state } = setup()
     anchor.beginObserving()
-    anchor.noteUserExpand()
+    anchor.reportUserToggle({ open: true, durationMs: 0 })
     port.geometry.scrollHeight = 1400
     anchor.onResize(grew(1400), 's1')
     expect(port.writes).toEqual([])
@@ -228,12 +228,12 @@ describe('两格意图窗口', () => {
     expect(port.writes).toHaveLength(0)
   })
 
-  it('折叠窗内:按锚的漂移把 `scrollTop` 收回去', () => {
+  it('窗内:按锚的漂移把 `scrollTop` 收回去', () => {
     const { port, anchor } = setup()
     anchor.beginObserving()
     port.scrollTo(500)
     port.foldAnchor = fakeAnchorEl([100, 100, 40])
-    anchor.noteFold(180)
+    anchor.reportUserToggle({ open: false, durationMs: 180 })
     // 第一帧选锚(top=100),这一帧漂移 0。
     anchor.onResize(grew(900), 's1')
     expect(port.writes).toEqual([])
@@ -242,22 +242,22 @@ describe('两格意图窗口', () => {
     expect(port.writes).toEqual([{ top: 440, cause: 'user-toggle' }])
   })
 
-  it('折叠窗内:上面没东西可让了就夹在 0(让内容动)', () => {
+  it('窗内:上面没东西可让了就夹在 0(让内容动)', () => {
     const { port, anchor } = setup()
     anchor.beginObserving()
     port.scrollTo(10)
     port.foldAnchor = fakeAnchorEl([100, 100, -400])
-    anchor.noteFold(180)
+    anchor.reportUserToggle({ open: false, durationMs: 180 })
     anchor.onResize(grew(900), 's1')
     anchor.onResize(grew(880), 's1')
     expect(port.writes).toEqual([{ top: 0, cause: 'user-toggle' }])
   })
 
-  it('折叠窗过期 → 当场清掉,这一帧走普通那条路', () => {
+  it('窗口过期 → 当场清掉,这一帧走普通那条路', () => {
     const { port, anchor, state } = setup()
     anchor.beginObserving()
     port.foldAnchor = fakeAnchorEl([100, 40])
-    anchor.noteFold(180)
+    anchor.reportUserToggle({ open: false, durationMs: 180 })
     state.now += 221
     port.geometry.scrollHeight = 1200
     anchor.onResize(grew(1200), 's1')
@@ -272,9 +272,9 @@ describe('两格意图窗口', () => {
    * 「第二次展开视口被拽走 166–435px」正是这条。
    */
 
-  it('换会话不带上一条会话的展开意图', () => {
+  it('换会话不带上一条会话的意图(合一之后一句 `clear()` 清掉整格窗)', () => {
     const { port, anchor } = setup()
-    anchor.noteUserExpand()
+    anchor.reportUserToggle({ open: true, durationMs: 0 })
     anchor.enter('s2', { hasElement: true, hasMessages: false })
     anchor.beginObserving()
     port.geometry.scrollHeight = 1200
@@ -524,11 +524,11 @@ describe('窗口过期', () => {
     expect(port.writes).toEqual([])
   })
 
-  it('重试那一路(`noteFold(ms)`,没有被点的那一块)**不重判** —— 座位正握着这一轮', () => {
+  it('重试那一路(收起、点不出被点的那一块)**不重判** —— 座位正握着这一轮', () => {
     const { port, anchor, state, follows } = setup()
     anchor.beginObserving()
     port.foldAnchor = fakeAnchorEl([100, 100])
-    anchor.noteFold(180)
+    anchor.reportUserToggle({ open: false, durationMs: 180 })
     port.geometry.scrollHeight = 1900
     state.now += 221
     anchor.onResize(grew(1900), 's1')

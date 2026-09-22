@@ -38,8 +38,6 @@ export function useViewportAnchor(options: {
   follow: FollowState
   jumpToBottom: () => void
   onScrollWithFollow: () => void
-  noteUserExpand: () => void
-  noteFold: (ms: number) => void
   reportUserToggle: (change: UserToggle) => boolean
   seatActive: boolean
 } {
@@ -233,8 +231,6 @@ export function useViewportAnchor(options: {
   })
 
   const jumpToBottom = useCallback(() => anchor.jumpToBottom(), [anchor])
-  const noteUserExpand = useCallback(() => anchor.noteUserExpand(), [anchor])
-  const noteFold = useCallback((ms: number) => anchor.noteFold(ms), [anchor])
   /*
    * ── 人亲手开合了一块东西(G 线 P2-b,`content/geometry-report.ts`)─────────
    *
@@ -289,8 +285,6 @@ export function useViewportAnchor(options: {
     follow,
     jumpToBottom,
     onScrollWithFollow,
-    noteUserExpand,
-    noteFold,
     reportUserToggle,
     seatActive,
   }

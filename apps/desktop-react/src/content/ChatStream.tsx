@@ -23,9 +23,7 @@ import { assembleMessage, segmentKey } from './assemble'
 import { ContextDeltaSeam, hasContextDelta } from './ContextDeltaSeam'
 import { DomScrollPort, type ScrollPort } from './viewport/scroll-port'
 import { useViewportAnchor } from './viewport/use-viewport-anchor'
-import { ExpandIntentContext } from './expand-intent'
-import { FoldIntentContext, useNoteFold } from './fold-intent'
-import { GeometryReportContext } from './geometry-report'
+import { GeometryReportContext, useGeometryReport } from './geometry-report'
 import type { SegmentModel } from './model/segments'
 import { MessageActions } from './message/MessageActions'
 import { MessageChrome } from './message/MessageChrome'
@@ -263,8 +261,6 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
     follow,
     jumpToBottom,
     onScrollWithFollow,
-    noteUserExpand,
-    noteFold,
     reportUserToggle,
     seatActive,
   } = useViewportAnchor({
@@ -328,29 +324,21 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
     <FocusScope scope="chat" owner={sessionRefIdOf(sessionId)} rootRef={scrollRef}>
       {({ scopeProps }) => (
         /*
-         * ── 「是我点开的」那一条通道(2026-09-12 报障二)────────────────────────
-         * 流里任何一件可展开的东西(折痕 / 思考段 / 工具卡)点开时报一句,跟随那只
-         * 观察者据此在 `EXPAND_HOLD_MS` 内按兵不动 —— 几何分不出「模型又吐了一段」
-         * 与「人点开了一段」,所以必须由动手的那一方自述(判词在 `expand-intent.ts`)。
+         * ── 流里「人动了手」的**唯一**通道(G 线 P2-c 合一)────────────────────
+         * 几何分不出「模型又吐了一段」与「人点开了一段」:两者都让 gap 变大、
+         * `scrollTop` 不动,量多少遍都一样,而它俩要的结果正好相反。所以这件事
+         * 只能由**动手的那一方自述**。开与合走同一个口,方向由 `open` 说 ——
+         * 收起那一侧先把卷尾垫块加长(页面总高不变)、再把被点的那一块钉住;
+         * 展开那一侧钉住顶边并按此刻离底多远重判跟随档。
+         *
+         * 合一之前这儿是**三条** context 并排:`expand-intent`(只报展开,P2-b 之后
+         * 零生产者)、`fold-intent`(只报收起,只剩重试那一路)与这一条。两条老的
+         * 随 P2-c 整件退役,重试那一路改报到这儿(`el: null` = 点不出被点的那一块,
+         * 锚由第一帧现选)。
          *
          * 值是 `useCallback` 出来的,**身份恒定** —— 所以 `MessageRow` / `ToolCard`
          * 那几层的 memo 短路一格没动(context 的值不变,消费者不会被推着重渲)。
          */
-        <ExpandIntentContext.Provider value={noteUserExpand}>
-        {/*
-          * 折起来那一件的通道(单 B ④)。与展开那一条并排、**两条不合并**:
-          * 一件说「别贴底」,一件说「把人正在读的那一行钉住」,做的事正好相反。
-          * 值同样是 `useCallback` 出来的、身份恒定,所以下游那些 memo 一格没动。
-          */}
-        <FoldIntentContext.Provider value={noteFold}>
-        {/*
-          * ── 人亲手开合了一块东西:**开与合走同一个口**(G 线 P2-b)────────────
-          * 上面那两条各说一半的老通道这一期留着(重试那一路还在用折起那一条,
-          * 它没有「被点的那一块」),但流里四族可折叠的东西 —— 思考段、工具卡、
-          * 压缩折痕、上下文更新折痕 —— 从此都报到这一条上。收起那一侧因此第一次
-          * 有人接:先把卷尾垫块加长(页面总高不变),再把被点的那一块钉住。
-          * 值同样是 `useCallback` 出来的、身份恒定,下游那些 memo 一格没动。
-          */}
         <GeometryReportContext.Provider value={reportUserToggle}>
         <>
         {/*
@@ -591,8 +579,6 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
         />
         </>
         </GeometryReportContext.Provider>
-        </FoldIntentContext.Provider>
-        </ExpandIntentContext.Provider>
       )}
     </FocusScope>
     </ReferenceHost>
@@ -842,19 +828,23 @@ const MessageRow = memo(function MessageRow({
     .filter(Boolean)
     .join(' ')
   /*
-   * 开始折的那一帧报一句「钉住视口」(与思考段那一处同一条通道、同一个理由)。
-   * 锚由聊天流自己选 —— 旧回答整块在折,它上面第一件还看得见的东西正是自己那条
-   * 气泡,所以这里不必点名(判词在 `pickFoldAnchor`)。
+   * 开始折的那一帧报一句「钉住视口」(与四族可折叠的东西同一条通道、同一个理由;
+   * G 线 P2-c 之前它走的是已退役的 `content/fold-intent.ts`)。
+   *
+   * **`el: null` 是有意的**:旧回答整块在折,「被点的那一块」这句话在这儿没有主语
+   * —— 人按的是重试键,不是这条气泡。锚因此由聊天流自己在下一帧现选:它上面第一件
+   * 还看得见的东西正是自己那条气泡(判词在 `pickFoldAnchor`)。返回值也不要:
+   * 这一路的开合态由 `retiring` 那格 prop 说,不由这里写。
    */
-  const noteFold = useNoteFold()
+  const report = useGeometryReport()
   const wasRetiring = useRef(retiring)
   useLayoutEffect(() => {
     const started = retiring && !wasRetiring.current
     wasRetiring.current = retiring
     if (!started) return
     if (currentMotionTier() === 'none') return
-    noteFold(CARD_FLIP_MS)
-  }, [retiring, noteFold])
+    report({ el: null, open: false, durationMs: CARD_FLIP_MS })
+  }, [retiring, report])
 
   // 只有模型说的话要装配。用户消息是一个气泡、错误消息是一张卡,它们没有段 ——
   // 给它们也跑一遍管线不只是白跑,还会往 memo 里塞一份永远没人读的段序列。

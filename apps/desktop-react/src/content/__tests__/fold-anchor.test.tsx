@@ -1,9 +1,7 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { render } from '@testing-library/react'
-import { FoldIntentContext, useNoteFold } from '../fold-intent'
 
 /**
  * **折起来那条通道**(单 B ④,正本 `docs/send-flow-2026-09.md` §2 规矩 ④)。
@@ -11,51 +9,46 @@ import { FoldIntentContext, useNoteFold } from '../fold-intent'
  * 值得进 jsdom 的只有**判据**那一半:通道通不通、缺省是不是 noop、谁在什么时候报。
  * 「钉住了没有」是几何,由真机门量(`gate:send-flow` ④:收尾那一帧起 300ms,
  * 视口内第一块在读的东西位移 ≤ 1px;超量档还要证明折叠中 `scrollTop` 有余量)。
+ *
+ * **通道本身 G 线 P2-c 已经合一**:`content/fold-intent.ts` /
+ * `content/expand-intent.ts` 两条各说一半的老 context 整件退役,开与合都走
+ * `content/geometry-report.ts`(那一条的用例在 `geometry-report.test.tsx`)。
+ * 这只文件留下的是**几何那一半的判据**:折叠分支写什么、锚怎么选。
  */
 
 const shellSrc = (rel: string) =>
   readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), rel), 'utf-8')
     .replace(/\/\*[\s\S]*?\*\//g, '')
 
-function Reporter({ ms }: { ms: number }) {
-  const note = useNoteFold()
-  note(ms)
-  return null
-}
-
-describe('fold-intent:报一句「我开始折了」', () => {
-  it('缺省是 noop —— 流之外的消费者(样例页 / 单测)一个字都不必知道有这回事', () => {
-    expect(() => render(<Reporter ms={180} />)).not.toThrow()
-  })
-
-  it('装了通道就报到那一头,带的是**那段过渡有多长**', () => {
-    const heard: number[] = []
-    render(
-      <FoldIntentContext.Provider value={(ms) => heard.push(ms)}>
-        <Reporter ms={180} />
-      </FoldIntentContext.Provider>,
-    )
-    expect(heard).toEqual([180])
-  })
-})
+const shellPath = (rel: string) =>
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), rel)
 
 /**
- * 两条通道**不许合并**:展开说的是「别贴底」,折起说的是「把人正在读的那一行钉住」,
- * 做的事正好相反。合回一格就等于把两条相反的补偿挤进一个判据。
+ * 两条老通道**整件退役**(G 线 P2-c)。它们从前分家是对的 —— 展开说「别贴底」、
+ * 折起说「把人正在读的那一行钉住」,做的事正好相反;合一之后方向由**报的人给的
+ * `open`** 说,不由「你调了哪一个函数」说,两条相反的补偿因此仍然是两支,只是
+ * 分叉点从「哪条 context」搬到了裁决者里(`ViewportAnchor.reportUserToggle`)。
  */
-describe('两条通道分家', () => {
-  const expandSrc = shellSrc('../expand-intent.ts')
-  const foldSrc = shellSrc('../fold-intent.ts')
-
-  it('各有各的 context,谁都不导入谁', () => {
-    expect(expandSrc).toMatch(/ExpandIntentContext\s*=\s*createContext/)
-    expect(foldSrc).toMatch(/FoldIntentContext\s*=\s*createContext/)
-    expect(expandSrc).not.toMatch(/fold-intent/)
-    expect(foldSrc).not.toMatch(/expand-intent/)
+describe('两条老通道退役', () => {
+  it('文件没了', () => {
+    expect(existsSync(shellPath('../fold-intent.ts'))).toBe(false)
+    expect(existsSync(shellPath('../expand-intent.ts'))).toBe(false)
   })
 
-  it('折起那一条记的是**时长**(过渡逐帧来好几次,一次性闩活不过第一帧)', () => {
-    expect(foldSrc).toMatch(/useNoteFold\(\):\s*\(ms: number\) => void/)
+  it('全流里没有一处还在引它们', () => {
+    for (const rel of ['../ChatStream.tsx', '../ThinkingSegment.tsx', '../tools/ToolCard.tsx',
+      '../CompactSeam.tsx', '../ContextDeltaSeam.tsx', '../viewport/use-viewport-anchor.ts']) {
+      const src = shellSrc(rel)
+      expect(src).not.toMatch(/fold-intent|expand-intent/)
+      expect(src).not.toMatch(/useNoteFold|useNoteUserExpand/)
+    }
+  })
+
+  it('引擎那一侧的窗口收成一格(`IntentWindow` 里没有第二格展开窗)', () => {
+    const src = shellSrc('../viewport/intent-window.ts')
+    expect(src).toMatch(/#hold: Hold \| undefined/)
+    expect(src).not.toMatch(/#expandUntil/)
+    expect(src).not.toMatch(/noteExpand|clearExpand|expanding\(/)
   })
 })
 
@@ -107,7 +100,7 @@ describe('聊天流那一头:折叠分支只写 scrollTop,不改布局', () => {
    * 这一条当场红 —— 「观察器回调只读不写」禁的是**改布局**,`scrollTop` 不改布局。
    */
   it('折叠分支里除了 scrollTop 与两格记账,不碰别的', () => {
-    const branch = /const hold = this\.#intents\.folding\(([\s\S]*?)\n {4}let contentGrew/.exec(src)?.[1] ?? ''
+    const branch = /const hold = this\.#intents\.current\(([\s\S]*?)\n {4}let contentGrew/.exec(src)?.[1] ?? ''
     expect(branch).not.toBe('')
     expect(branch).toMatch(/port\.setTop\(Math\.max\(0, port\.top \+ drift\), 'user-toggle'\)/)
     // 不许在这一支里写样式 / 写垫块 —— 那是改布局,会把自己变成下一轮派发的起点。

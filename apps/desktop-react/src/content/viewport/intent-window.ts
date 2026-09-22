@@ -1,23 +1,24 @@
 import type { AnchoredElement } from './scroll-port'
 
 /**
- * **两格「人动了手,接下来这么久归他」的时限窗口**(G 线 P2-a 抽件;今天
- * `ChatStream.tsx` 的 `holdUntilRef` 与 `foldHoldRef`)。
+ * **「人动了手,接下来这么久归他」那一格时限窗口**(G 线 P2-c 合一;正本
+ * `docs/stream-geometry-2026-09.md` §18.1)。
  *
- * ── 这一期**只是搬,没有合一** ────────────────────────────────────────────
- * §13.2.2 的终态是「方向由 `GeometryChange.deltaH` 的正负说」,两条通道合成一条。
- * 那是 P2-c;P2-a 的自述是抽件不改行为,所以这里**仍是两格**,判据逐字照搬 ——
- * `content/expand-intent.ts` / `content/fold-intent.ts` 两条 context 原样留着。
+ * ── 一格,不是两格 ────────────────────────────────────────────────────────
+ * P2-a 抽件时这里是**两格**:`#expandUntil`(一个时刻,配 `noteExpand` /
+ * `expanding` / `clearExpand`)与 `#fold`(一个 `Hold`,带锚、带 `rejudge`)——
+ * 那是两条老通道(`content/expand-intent.ts` / `content/fold-intent.ts`)在引擎
+ * 这一侧的影子,P2-a 的自述是「只搬不合一」。
  *
- * ── 为什么是两格,不是一格 ────────────────────────────────────────────────
- *  · 展开那一格说的是「**别贴底**」—— 内容长高,跟底那一半按兵不动就够了;
- *  · 折起那一格说的是「**把人正在读的那一行钉住**」—— 内容变矮,不动手屏幕会往上抽。
- * 一格布尔分不出这两件事该做什么,合并回去就是把两条相反的补偿挤进一个判据。
+ * P2-b 之后**报出来的那一下开与合都走这一格**(`ViewportAnchor.reportUserToggle`
+ * 两侧都开窗、都钉锚),`expand-intent` 的生产者归零,于是 `#expandUntil` 成了
+ * 一格没人开的空位。P2-c 把它收掉:**方向由报的人给的 `open` 说,不由「你调了
+ * 哪一个函数」说** —— 那正是 §13.2.2 要的「块只报几何变化,裁决归裁决者」。
  *
  * ── 为什么记的是「到什么时候为止」,不是一个布尔闩 ────────────────────────
  * 展开 / 折叠都是一段**过渡 / FLIP**,尺寸变化会**逐帧**来好几次,一次性闩被第一帧
- * 消费掉之后,后面那几帧照旧跟底(报障二仍在);而且短会话里第一帧往往还没溢出,
- * gap 仍是 0,状态压根不会翻成 browsing。
+ * 消费掉之后,后面那几帧照旧跟底(2026-09-12 报障二仍在);而且短会话里第一帧往往
+ * 还没溢出,gap 仍是 0,状态压根不会翻成 browsing。
  *
  * **为什么不是 `transitionend`**:动效档「无」下它根本不发、被打断时也不发,而且
  * 四个消费者(折痕 / 压缩折痕 / 思考段 / 工具卡)各自的过渡挂在各自的元素上,要
@@ -27,41 +28,33 @@ import type { AnchoredElement } from './scroll-port'
  */
 export class IntentWindow {
   /**
-   * **人自己点开的那样东西还在长,到这一刻为止**(2026-09-12 报障二的「位」)。
-   * 0 = 没有这回事。
-   */
-  #expandUntil = 0
-
-  /**
-   * **流里有一块正在折起来,这段时间钉住视口**(单 B ④)。
+   * **人亲手开合了一块东西,这段时间钉住视口**。
    *
-   * `anchor` 在**这一段的第一帧**选定并记下它当时的位置,之后每一帧把它按回去。
-   * 选锚要在排版之后(RO 回调里),所以报的那一头只记截止时刻,不碰几何。
+   * `anchor` 在报的那一刻就选定(报的人点得出「被点的是哪一块」);点不出来时
+   * 留空,由**这一段的第一帧**在 RO 回调里 `pickFoldAnchor()` 现选并记下位置,
+   * 之后每一帧把它按回去 —— 选锚要在排版之后,所以报的那一头只记截止时刻。
    */
-  #fold: FoldHold | undefined = undefined
+  #hold: Hold | undefined = undefined
 
   /** 刚过期、还没被重判过的那一个窗口(判词在 `takeExpired`)。 */
-  #justExpired: FoldHold | undefined = undefined
-
-  /** 「我这一下是用户点开的,别贴底」。`ms` 由调用方给(`EXPAND_HOLD_MS`)。 */
-  noteExpand(now: number, ms: number): void {
-    this.#expandUntil = now + ms
-  }
+  #justExpired: Hold | undefined = undefined
 
   /**
-   * 「我这一块开始往回折了,接下来这么久请钉住视口」。`ms` 已含余量。
+   * **开一格窗**。`ms` 已含余量;`anchor` 缺席 = 退回「第一帧现选锚」那条路
+   * (点不出被点的那一块时走它 —— 重试那一路的 `MessageRow`、样例页、单测)。
+   * `rejudge` 与锚**分家**:点不出那一块照样可能要重判(展开那一侧),
+   * 也可能不许重判(重试那一路,判词在 `Hold.rejudge`)。
    *
-   * **`pinned` 在场 = 锚在报的那一刻就选定**(G 线 P2-b,§13.6 第 2 条):报的人
-   * 点得出「被点的是哪一块」,它的顶边就是接下来每一帧要按回去的那个位置。
-   * 缺席 = 退回今天那条路(第一帧在 RO 回调里 `pickFoldAnchor()` 现选,晚一拍)
-   * —— 重试那一路(`ChatStream` 的 `MessageRow`)仍然走它,它没有「被点的那一块」。
+   * **后到的那一句说了算**:同一格窗被重开时旧的整格丢掉 —— 「收到一半又展开」
+   * 不撤的话那一下展开会被当成还在折(这一支整段早退、不派 `scrolled`),
+   * 窗口一过 `stick()` 就把人拽到底。
    */
-  noteFold(
+  open(
     now: number,
     ms: number,
-    pinned?: { anchor: AnchoredElement; top: number; rejudge?: boolean },
+    pinned?: { anchor?: AnchoredElement; top?: number; rejudge?: boolean },
   ): void {
-    this.#fold = {
+    this.#hold = {
       until: now + ms,
       anchor: pinned?.anchor,
       top: pinned?.top,
@@ -70,29 +63,17 @@ export class IntentWindow {
   }
 
   /**
-   * 换会话不带上一条会话的意图 —— 那格截止时刻说的是「**那边**有人点开了一样东西」。
+   * 撤掉这一格窗。
    *
-   * 只清展开那一格,与今天进场那只 layout effect 里的 `holdUntilRef.current = 0`
-   * 逐字相同(折叠那一格今天不在换会话时清:它自己过期,而且它的锚会因为
-   * `alive()` 变假而重选)。
+   * 调用点只有换会话 / 离场:那格截止时刻说的是「**那边**有人动了手」,
+   * 不清的话那边点开的那一下会把这边的第一批尺寸变化整段早退掉。
    */
-  clearExpand(): void {
-    this.#expandUntil = 0
+  clear(): void {
+    this.#hold = undefined
   }
 
   /**
-   * 撤掉折叠那一格(G 线 P2-b)。
-   *
-   * 唯一的调用点是「收到一半又展开」:折叠那一支排在展开那一支**前面**且整段早退
-   * (不派 `scrolled`),不撤的话这一下展开会被当成还在折 —— 窗口一过 `stick()`
-   * 就把人拽到底。**后到的那一句说了算**。
-   */
-  clearFold(): void {
-    this.#fold = undefined
-  }
-
-  /**
-   * **这一段还在长,把截止时刻往后推**(审查裁定 2 落地那一趟真机抓出来的)。
+   * **这一段还在长,把截止时刻往后推**(P2-b 审查裁定 2 落地那一趟真机抓出来的)。
    *
    * 定长窗口在**超量档**上不够用:400 条 / 十一万像素那条会话上,一帧本身就可能
    * 跑 1158ms —— 窗口在第一批尺寸变化到达之前就过期了,于是「点开不贴底」那句话
@@ -100,29 +81,23 @@ export class IntentWindow {
    * 过渡走**:只要这一批还在长,就把截止时刻推到「此刻 + 余量」。
    * 它有界 —— 内容不长了就不再推,余量一过自然收。
    */
-  extendFold(now: number, ms: number): void {
-    const hold = this.#fold
+  extend(now: number, ms: number): void {
+    const hold = this.#hold
     if (!hold) return
     const until = now + ms
-    if (until > hold.until) this.#fold = { ...hold, until }
-  }
-
-  /** 此刻还在展开窗里吗(今天那句 `performance.now() < holdUntilRef.current`)。 */
-  expanding(now: number): boolean {
-    return now < this.#expandUntil
+    if (until > hold.until) this.#hold = { ...hold, until }
   }
 
   /**
-   * 此刻的折叠窗。**过期就当场清掉并答 `undefined`** —— 与今天那两句
-   * `if (performance.now() > hold.until) foldHoldRef.current = undefined; else …`
-   * 逐字同义(注意是 `>` 不是 `>=`)。
+   * 此刻的窗。**过期就当场清掉并答 `undefined`**(注意是 `>` 不是 `>=`,
+   * 与合一之前那两句 `if (now > hold.until) … else …` 逐字同义)。
    */
-  folding(now: number): FoldHold | undefined {
-    const hold = this.#fold
+  current(now: number): Hold | undefined {
+    const hold = this.#hold
     if (!hold) return undefined
     if (now > hold.until) {
-      this.#fold = undefined
-      // 交给下面那一格:窗口刚过期的那一次要**重判跟随档**(审查裁定 2)。
+      this.#hold = undefined
+      // 交给下面那一格:窗口刚过期的那一次要**重判跟随档**(P2-b 审查裁定 2)。
       this.#justExpired = hold
       return undefined
     }
@@ -130,41 +105,46 @@ export class IntentWindow {
   }
 
   /**
-   * **刚过期的那一个窗口,只交出一次**(G 线 P2-b 审查裁定 2)。
+   * **刚过期的那一个窗口,只交出一次**(P2-b 审查裁定 2)。
    *
-   * 起因:展开那一下从此也走这条窗口(钉住被点那一块的顶边),而窗口整段是
-   * **早退**的 —— 不判跟底、不判丸。窗口一过要是什么都不做,`stick()` 就会按
-   * 「这一轮还 pinned」把人拽到底(用户报的「第二次展开视口被拽走 166–435px」
-   * 正是这条)。所以过期那一次要补一发「此刻离底这么远」,让状态机自己翻档。
+   * 起因:窗口整段是**早退**的 —— 不判跟底、不判丸。窗口一过要是什么都不做,
+   * `stick()` 就会按「这一轮还 pinned」把人拽到底(用户报的「第二次展开视口被
+   * 拽走 166–435px」正是这条)。所以过期那一次要补一发「此刻离底这么远」,
+   * 让状态机自己翻档。
    *
    * 一次性:同一个窗口只交出一次,不然每一批尺寸变化都会重判一遍。
    */
-  takeExpired(): FoldHold | undefined {
+  takeExpired(): Hold | undefined {
     const done = this.#justExpired
     this.#justExpired = undefined
     return done
   }
 
   /** 单测读面。 */
-  get expandUntil(): number {
-    return this.#expandUntil
+  get holdUntil(): number {
+    return this.#hold?.until ?? 0
   }
 }
 
 /**
- * 折叠那一段钉住的是谁、钉在哪。
+ * 这一段钉住的是谁、钉在哪。
  *
- * 两格都是**可选**的:这一段的第一帧才选锚(选锚要在排版之后),而在选到之前
- * 每一帧都会再试一次 —— 今天那一句 `if (!hold.anchor || !hold.anchor.isConnected)`。
+ * 两格都是**可选**的:报的人点不出那一块时,这一段的第一帧才选锚(选锚要在排版
+ * 之后),而在选到之前每一帧都会再试一次 —— 那一句 `if (!hold.anchor ||
+ * !hold.anchor.alive())`。
  */
-export interface FoldHold {
+export interface Hold {
   readonly until: number
   anchor?: AnchoredElement
   top?: number
   /**
-   * 窗口过期那一次要不要**按此刻离底多远重判跟随档**(审查裁定 2)。
-   * 只有「人亲手开合了一块东西」那条路给 true —— 重试那一路刚由 `landOnRetry` 滑到
-   * 置顶线、座位正握着这一轮,重判会把它翻成 browsing,新回答当场不跟底。
+   * 窗口里每一批(以及过期那一次)要不要**按此刻离底多远重判跟随档**
+   * (P2-b 审查裁定 2)。
+   *
+   * 「人亲手开合了一块东西」那条路给 true(点不点得出被点的那一块都给 ——
+   * 展开那一侧合一之前走的另一格窗原本就在重判);**重试那一路不给**:它刚由
+   * `landOnRetry` 滑到置顶线、座位正握着这一轮,重判会把它翻成 browsing,
+   * 新回答当场不跟底。
    */
   readonly rejudge?: boolean
 }

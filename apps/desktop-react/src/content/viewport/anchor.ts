@@ -177,12 +177,11 @@ export class ViewportAnchor {
   enter(sessionId: string, facts: { hasElement: boolean; hasMessages: boolean }): void {
     this.dispatch({ type: 'enter' })
     /*
-     * 换会话不带上一条会话的意图:那格截止时刻说的是「**那边**有人点开了一样东西」。
-     * **两格都清**(审查裁定 2 之后):折叠那一格从此也由「人亲手开合」开着,
-     * 不清的话那边点开的那一下会把这边的第一批尺寸变化整段早退掉。
+     * 换会话不带上一条会话的意图:那格截止时刻说的是「**那边**有人动了手」。
+     * 合一之后**一句话清掉整格窗**(G 线 P2-c):从前这里是两句 ——
+     * 展开那一格与折叠那一格各清一次,而它们说的是同一件事的两个方向。
      */
-    this.#intents.clearExpand()
-    this.#intents.clearFold()
+    this.#intents.clear()
     /** 落定一次:把「此刻离底多远」交给状态机、记进 gap 基准、把锚点记一笔。 */
     const settle = () => {
       const gap = this.#port.gapNow()
@@ -247,16 +246,6 @@ export class ViewportAnchor {
 
   /* ── 外面报进来的事实 ────────────────────────────────────────────────── */
 
-  /** 「我这一下是用户点开的,别贴底」(`content/expand-intent.ts` 那条 context)。 */
-  noteUserExpand(): void {
-    this.#intents.noteExpand(this.#now(), this.#expandHoldMs)
-  }
-
-  /** 「我这一块开始往回折了,接下来 `ms` 毫秒请钉住视口」(`content/fold-intent.ts`)。 */
-  noteFold(ms: number): void {
-    this.#intents.noteFold(this.#now(), ms + this.#foldSlackMs)
-  }
-
   /**
    * ── **人亲手开合了一块东西**(G 线 P2-b;`content/geometry-report.ts` 那条通道)──
    *
@@ -278,15 +267,29 @@ export class ViewportAnchor {
   reportUserToggle(change: UserToggleReport): void {
     const now = this.#now()
     const block = change.block
-    // 后到的那一句说了算(判词在 `IntentWindow.clearFold`)。
-    this.#intents.clearFold()
+    // 后到的那一句说了算(判词在 `IntentWindow.open`)。
+    this.#intents.clear()
     if (!block) {
       /*
-       * 没点名(样例页 / 单测 / 节点还没挂上):退回今天那条路 —— 收起由下一帧在
-       * RO 回调里现选锚,展开只说一句「别贴底」。
+       * 没点名(样例页 / 单测 / 节点还没挂上 / 重试那一路的旧回答):退回**第一帧
+       * 现选锚**那条路 —— 由 RO 回调里 `pickFoldAnchor()` 挑「视口内第一块在读的
+       * 东西」。**不带 `rejudge`**:重试那一路刚由 `landOnRetry` 滑到置顶线,重判
+       * 会把它翻成 browsing,新回答当场不跟底(判词在 `Hold.rejudge`)。
+       *
+       * 合一之前展开那一侧走的是另一格窗(`noteExpand`,只说一句「别贴底」)——
+       * P2-b 之后那一支在产品里零生产者(四族消费者都点得出被点的那一块),
+       * P2-c 把它收进这一格:同样不贴底,而且多得了「钉住在读的那一块」。
        */
-      if (change.open) this.#intents.noteExpand(now, this.#expandHoldMs)
-      else this.#intents.noteFold(now, change.durationMs + this.#foldSlackMs)
+      this.#intents.open(
+        now,
+        change.open ? this.#expandHoldMs : change.durationMs + this.#foldSlackMs,
+        /*
+         * 展开那一侧**照旧重判**:合一之前它走的是另一格窗(`expanding()`),
+         * 那一支原本就是「一动不动 + 按此刻离底多远重判档」。收起那一侧不重判
+         * —— 重试那一路刚滑到置顶线,重判会把它翻成 browsing。
+         */
+        change.open ? { rejudge: true } : undefined,
+      )
       return
     }
     /*
@@ -327,12 +330,12 @@ export class ViewportAnchor {
      * 接下来这一段每一帧把它按回 `landing`(过渡逐帧改高,一次性闩活不过第一帧)。
      * 展开那一侧用的是展开窗那个时长 —— 那一格的判词与 `EXPAND_HOLD_MS` 同源。
      */
-    this.#intents.noteFold(
+    this.#intents.open(
       now,
       change.open ? this.#expandHoldMs : change.durationMs + this.#foldSlackMs,
       /*
-       * `rejudge` **只给这条路开的窗**(审查裁定 2)。重试那一路(`noteFold(ms)`,
-       * `ChatStream` 的 `MessageRow`)不带它:那一路刚刚由 `landOnRetry` 滑到置顶线、
+       * `rejudge` **只给这条路开的窗**(审查裁定 2)。点不出那一块的那一支
+       * (重试那一路的 `MessageRow`)不带它:那一路刚刚由 `landOnRetry` 滑到置顶线、
        * 座位正握着这一轮,窗口一过重判会把它翻成 browsing,新回答当场不跟底了。
        * 收起那一侧同样要 `rejudge`:顶边落到视口上缘之后人离底老远,不翻档的话
        * 下一批尺寸变化里 `stick()` 就把刚刚定好的落点抹掉了。
@@ -380,7 +383,7 @@ export class ViewportAnchor {
        * 被收掉,接着内容缩下去就钳。窗口里那几帧的 gap 说的不是「还需要多少」,
        * 是「这一段还没走完」。读数:think3k 落点 44px 被钳回 295px(差 251)。
        */
-      if (!this.#intents.folding(this.#now())) this.#pad.relax(gap)
+      if (!this.#intents.current(this.#now())) this.#pad.relax(gap)
       const { previousTop, top } = this.#port.noteScrolled()
       /*
        * 第一次(这次挂载里还没量过)按老办法交给状态机 —— 没有「上一次」可比,
@@ -450,7 +453,7 @@ export class ViewportAnchor {
      * 内容上来,比把视口锁在一个不存在的位置好。
      */
     const now = this.#now()
-    const hold = this.#intents.folding(now)
+    const hold = this.#intents.current(now)
     if (hold) {
       if (!hold.anchor || !hold.anchor.alive()) {
         const picked = port.pickFoldAnchor()
@@ -474,7 +477,7 @@ export class ViewportAnchor {
       /*
        * ── **窗口里每一批都按此刻离底多远重判档**(审查裁定 2 的最终形)──────────
        *
-       * 这一句是**今天 `expanding()` 那一支原本就在做的事**(`if (followShouldStick)
+       * 这一句是**合一之前 `expanding()` 那一支原本就在做的事**(`if (followShouldStick)
        * dispatch scrolled`),只是从前它排在展开那一支、而折叠那一支整段早退。
        * 把重判放在**窗口末尾**不够用:超量档上一段 6 万字的思考要好几秒、好几批
        * 才长完,而一个定长(或按 220ms 续命的)窗口撑不到那时候 —— 窗口一断
@@ -489,7 +492,7 @@ export class ViewportAnchor {
         this.dispatch({ type: 'scrolled', gap: port.gapNow() })
       }
       /*
-       * **这一段还在长就把窗口往后推**(判词在 `IntentWindow.extendFold`):定长窗口
+       * **这一段还在长就把窗口往后推**(判词在 `IntentWindow.extend`):定长窗口
        * 在超量档上短于一帧,过期之后 `stick()` 会把人拽走(实测 20,478px)。
        */
       const grown = port.columnHeight()
@@ -498,7 +501,7 @@ export class ViewportAnchor {
        * 思考要好几批尺寸变化才长完,两批之间隔得比 40ms 远是常事,窗口一断
        * `stick()` 就接手了。220ms 是「人动手之后这段时间归他」的同一个数。
        */
-      if (grown > this.#lastColumnHeight + 0.5) this.#intents.extendFold(now, this.#expandHoldMs)
+      if (grown > this.#lastColumnHeight + 0.5) this.#intents.extend(now, this.#expandHoldMs)
       this.#lastColumnHeight = grown
       this.#lastGap = port.gapNow()
       return
@@ -562,24 +565,17 @@ export class ViewportAnchor {
     this.#pad.relax(gap)
     const grewBelow = gap - this.#lastGap > AT_BOTTOM_EPS
     /*
-     * ── 人自己点开的东西还在长:位置一动不动(2026-09-12 报障二的「位」)──────
-     * 展开一段折痕正文 / 一段思考 / 一张工具卡,在几何上与「模型又吐了一段」逐字
-     * 相同(都让 gap 变大、`scrollTop` 不动),所以分不出来的那一半由动手的那一方
-     * 自述。pinned 下不报的话,展开的那一瞬间屏幕当场滑到最底 —— 人点开是为了读它,
-     * 结果它被推出了视野。
+     * ── 从前这儿还有一支「展开窗」(G 线 P2-c 合一时删掉)────────────────────
+     * 它读的是 `IntentWindow` 的第二格(`expanding()`),做的是「位置一动不动 +
+     * 按此刻离底多远重判档」。P2-b 之后开与合都由上面那一格窗接(报的人点得出被点
+     * 的那一块),而**那一格窗里每一批都重判**(`hold.rejudge`)—— 这一支要做的事
+     * 它一句不少地都做了,而且多了「钉住被点那一块的顶边」。
      *
-     * **一动不动之后按此刻离底多远重新判档**:这一句与「滚动停下来了」逐字相同,
-     * 不另开一个事件。
-     *
-     * **窗口内的长高也不算「下面长出了没看见的东西」**:第一拍把状态翻成 browsing
-     * 之后,展开的过渡还要再长几帧 —— 那几帧要是走下面 browsing 那一支的 `grew`,
-     * 丸会亮起来说「回到最新」,而下面长出来的正是他自己点开的那一段。
+     * 判词没丢,搬到上面那一支里去了:展开一段折痕正文 / 一段思考 / 一张工具卡,
+     * 在几何上与「模型又吐了一段」逐字相同(都让 gap 变大、`scrollTop` 不动),
+     * 分不出来的那一半由动手的那一方自述;窗口内的长高也不算「下面长出了没看见的
+     * 东西」,不然丸会亮起来说「回到最新」,而下面长出来的正是他自己点开的那一段。
      */
-    if (this.#intents.expanding(this.#now())) {
-      if (followShouldStick(this.#follow)) this.dispatch({ type: 'scrolled', gap })
-      this.#lastGap = gap
-      return
-    }
     if (followShouldStick(this.#follow)) {
       /*
        * ── 座位还没长满:视口一像素不动(正本 §2 规矩 ②)──────────────────
