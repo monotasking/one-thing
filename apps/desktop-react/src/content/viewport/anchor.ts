@@ -689,7 +689,7 @@ export class ViewportAnchor {
              * 读数:`gate:send-flow` 超量 ① 从 1 段变 2 段(`9583→111860`),
              * 收窄之后回到 1 段。
              */
-            if (Math.abs(target - port.top) <= written + AT_BOTTOM_EPS) {
+            if (m.gap <= written + AT_BOTTOM_EPS) {
               port.setTop(target, 'tail-growth')
             }
           }
