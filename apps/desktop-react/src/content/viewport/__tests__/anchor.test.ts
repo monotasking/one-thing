@@ -139,9 +139,13 @@ describe('跟底:座位那两格判据', () => {
     // 座位吃光了:量出来 0,但写进 style 的还是上一次那个数。
     port.seat = { ...SEAT, tailHeight: 10_000 }
     anchor.beginObserving()
-    // 人此刻在底上(这一支的前提:挪的只是垫块自己那一截)。
-    port.scrollTo(700)
     port.geometry.scrollHeight = 1200
+    /*
+     * **人此刻在底上**(含垫块的那个底)—— 这一支的前提:视口与列底之间只剩
+     * 垫块那一截(`gap <= written`)。垫块一归零 `maxScroll` 就少掉 `written`,
+     * 浏览器会把这一格钳回去,而这一支把那一下提前做掉。
+     */
+    port.scrollTo(1200 - 300)
     anchor.onResize(grew(1200), 's1')
     // 1200 − written − 300:内容下缘正好落在视口下缘,那一截垫块留在视口外。
     expect(port.writes).toEqual([{ top: 1200 - written - 300, cause: 'tail-growth' }])
