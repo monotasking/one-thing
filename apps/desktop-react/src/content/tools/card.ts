@@ -103,7 +103,7 @@ export function isBusyRevealed(step: ToolStepModel, now: number): boolean {
 }
 
 /**
- * 收起态那一行画谁(§6.5 第 6 条**活槽位常驻**)。
+ * 收起态那一行画谁(§6.5 第 6 条**活槽位常驻**)—— 返回**下标**。
  *
  * 「正在跑的那一步,没有正在跑的就是最近收场的那一步」—— 卡在步与步之间**不许**
  * 缩回只剩头行再长出来(样例首版每换一步卡高抖一次)。
@@ -111,17 +111,46 @@ export function isBusyRevealed(step: ToolStepModel, now: number): boolean {
  * 快步骤门在这里也要算进来:一步刚开始、还没够格露 busy 形时,槽位仍然留给
  * 上一步的收场形 —— 否则那 250ms 里卡上一行都没有,正是二版量出来的 40↔78 抖动。
  * 一步都没收场过(第一步就在门里)时只好画它 —— 空着比闪更糟。
+ *
+ * ── `floor`:活槽位**只进不退**(R 线 F1,2026-09-22)────────────────────────
+ * 病历:快工具多步,`A-fast-multi` 两档实测每换一步**行高 0 → 43 → 0 往返两回**
+ * (真机读数在正本 §8)。链路是这样的 —— 第 N 步参数流了 1.2 秒,早就够格露 busy 形,
+ * 槽位在它身上;参数收齐转**执行**那一拍 `stepStartedAt` 从 `timestamp` 换成了引擎记的
+ * `startTime`(一个**更晚**的时刻),于是 `isBusyRevealed` 从真翻回假,上面那个 `if`
+ * 落空,循环从尾巴往回找到**上一个收场了的步**,槽位**倒退**一格;八毫秒后这一步收场,
+ * 槽位又跳回来。屏幕上就是一行在一帧里消失又出现。
+ *
+ * 所以判据补一格**单调**:活槽位一旦指向第 N 步就不再往回指。「空着比闪更糟」这句话
+ * 在这里读成**留住上一步的位置** —— 门槛未到时那一行照旧挂着,只是不露 busy 形
+ * (那一半归 `data-reveal` 的进场闩,见 `ToolCard.tsx`)。
+ *
+ * 单调性**不由这个纯函数记账**:它没有上一帧: 调用方(一张卡)把上一次的答案当
+ * `floor` 递进来。`floor` 是**下标**而不是那一步本身,因为步只在尾巴上追加,下标
+ * 就是它的年龄。
  */
+export function pickSlotIndex(
+  steps: readonly ToolStepModel[],
+  now: number,
+  floor = 0,
+): number {
+  const bottom = Math.max(0, Math.min(floor, steps.length - 1))
+  const liveIndex = steps.findIndex(isLiveStep)
+  if (liveIndex >= 0 && isBusyRevealed(steps[liveIndex], now)) {
+    return Math.max(liveIndex, bottom)
+  }
+  for (let i = steps.length - 1; i >= 0; i -= 1) {
+    if (!isLiveStep(steps[i])) return Math.max(i, bottom)
+  }
+  return Math.max(liveIndex >= 0 ? liveIndex : steps.length - 1, bottom)
+}
+
+/** 同一条判据的取步形(下标越界 = 没有步)。 */
 export function pickSlotStep(
   steps: readonly ToolStepModel[],
   now: number,
+  floor = 0,
 ): ToolStepModel | undefined {
-  const live = steps.find(isLiveStep)
-  if (live && isBusyRevealed(live, now)) return live
-  for (let i = steps.length - 1; i >= 0; i -= 1) {
-    if (!isLiveStep(steps[i])) return steps[i]
-  }
-  return live ?? steps[steps.length - 1]
+  return steps[pickSlotIndex(steps, now, floor)]
 }
 
 /**

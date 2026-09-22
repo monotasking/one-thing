@@ -21,7 +21,7 @@ import {
   cardProgressRatio,
   isBusyRevealed,
   isLiveStep,
-  pickSlotStep,
+  pickSlotIndex,
   progressSummary,
   silentMsOf,
   stallLevel,
@@ -52,15 +52,18 @@ import { useHomeDir } from '../../data/home-dir'
  *  1. **行不重挂**:每一步的行 key = `callId`,而且**永远挂在树上** —— 收起态
  *     只画活槽位那一行,靠的是 `hidden` 属性,不是把别的行卸载。从第一个参数
  *     delta 到收场,那一行是同一个 DOM 节点;流中态的每一次变化只改文本与
- *     `data-*`。(唯一一次换元素在「参数收齐 → 开始执行」那一下:不能展开的行
- *     不画钮、能展开的画钮 —— 那是第 4 条明许的三处换挡之一。)
+ *     `data-*`。(**2026-09-22 起没有例外**:从前「参数收齐 → 开始执行」那一下会把
+ *     不能展开的 `div` 换成能展开的 `button`,那是一次真重挂,被 R 线 F1 判掉 ——
+ *     行永远是 `ButtonBase`,不能展开时挂 `aria-disabled` + `tabIndex={-1}`。)
  *  2. **几何锁定**:行高有地板、摘要单行截断、耗时定宽 tabular-nums 右对齐 ——
  *     全在 `ToolCard.module.css`,这里一个像素都不写。
  *  3. **节拍**:一张卡**一只**时钟(`useLiveClock`),10Hz,只在有活步时起;
  *     收场了的行拿到的 `now` 恒为 0,于是它们的 `memo` 一次都不再算。
- *  4. **换挡只有三处**改结构(参数收齐 / 开始执行 / 收场)。
- *  6. **活槽位常驻**:`pickSlotStep` —— 卡不在步与步之间缩回只剩头行。
- *  7. **快步骤不闪**:`isBusyRevealed` —— 250ms 内收场的步不露 busy 形。
+ *  4. **换挡只有三处**改结构(参数收齐 / 开始执行 / 收场),而且**一处都不换元素**。
+ *  6. **活槽位常驻且只进不退**:`pickSlotIndex` —— 卡不在步与步之间缩回只剩头行,
+ *     也不在换步那一拍把上一行放回来再藏掉(F1 的病 2)。
+ *  7. **快步骤不闪**:`isBusyRevealed` —— 250ms 内收场的步不露 busy 形。它管的是
+ *     **看不看得见**;「淡入」由行自己的进场闩 + `@starting-style` 管(F1 的病 1)。
  *  8. **结构变化走 FLIP**:`useFlipHeight`,180ms,动效档 none 直切。
  *  9. **读数定宽**:同第 2 条;头行那一叠图标只在**工具种类**集合变化时才换
  *     (`head.icons` 由种类推导,种类没变它逐字相同,React 不动那几个节点)。
@@ -167,7 +170,19 @@ export const ToolCard = memo(function ToolCard({
   const live = card.steps.some(isLiveStep)
   const now = useLiveClock(READOUT_TICK_MS, live)
 
-  const slot = live || card.steps.length > 1 ? pickSlotStep(card.steps, now) : card.steps[0]
+  /*
+   * ── 活槽位只进不退(R 线 F1)────────────────────────────────────────────────
+   * 判据整条在 `card.ts` 的 `pickSlotIndex` 上(连同它的病历)。这里只持有那一格
+   * 「上一次指到哪」—— 一张卡一格,**这是它的状态,不是那个纯函数的**。
+   * 写 ref 不进 effect:取 `max` 是幂等的,StrictMode 跑两遍是同一个答案
+   * (与上面 `openRef` 那两格同一条理由)。
+   */
+  const slotFloor = useRef(0)
+  const slotIndex = live || card.steps.length > 1
+    ? pickSlotIndex(card.steps, now, slotFloor.current)
+    : 0
+  slotFloor.current = slotIndex
+  const slot = card.steps[slotIndex]
   const multi = card.steps.length > 1
 
   /*
@@ -504,8 +519,28 @@ const ToolStepRow = memo(function ToolStepRow({
   const expandable = EXPANDABLE_STATUSES.has(row.status)
   const toggle = useCallback(() => onToggleDrawer(drawerKey(step)), [onToggleDrawer, step])
 
-  // 露出 busy 形的行淡入进场(§6.5 第 7 条);快步骤根本走不到这里。
-  const reveal = live && isBusyRevealed(step, now) ? 'busy' : undefined
+  /*
+   * ── 进场闩:一行只淡入一次,而且只在它**真的是进场**那一帧(R 线 F1)──────────
+   *
+   * 病历(真机读数在正本 §8):从前这里每帧现算
+   * `live && isBusyRevealed(step, now)`,于是同一行的 `data-reveal` 一趟里翻**四次**
+   * —— 参数流到 250ms 时 null→busy(淡入一次)、转执行那一拍 `stepStartedAt` 换成更晚
+   * 的 `startTime` 把它翻回 null、300ms 后再翻成 busy(**再淡入一次**)。而这一行那时
+   * **已经在屏上、不透明度是 1**:进场动画把一行画好的东西按回 0 再走一遍,人眼看见的
+   * 就是一次闪。
+   *
+   * 修法是把「淡入」还给它本来的意思:**淡入属于「这一行出现了」,不属于
+   * 「它跨过了 250ms 门槛」**。所以闩在这一行**第一次露面**那一帧记下「它是不是以
+   * busy 形进来的」,此后一个字不改。`isBusyRevealed` 的门槛保留它自己的本意 ——
+   * 它管的是**看不看得见**(`visible` 那一格),快步骤因此仍然一帧 busy 形都不露。
+   *
+   * 淡入那一下由**浏览器**判:`@starting-style`(`ToolCard.module.css`)只在这个元素
+   * 第一次被画出来时给一个 0,重挂 / 打补丁都不会再播 —— 这正是从前用 `animation`
+   * 时「属性一加就重播」的反面。
+   */
+  const enteredLive = useRef<boolean | null>(null)
+  if (!hidden && enteredLive.current === null) enteredLive.current = live
+  const reveal = enteredLive.current ? 'busy' : undefined
 
   // 执行中的过程读数(C2-b)。收场了的步没有 —— `stepProgress` 自己判。
   const progress = stepProgress(step)
@@ -528,37 +563,38 @@ const ToolStepRow = memo(function ToolStepRow({
 
   return (
     <>
-      {expandable ? (
-        /* 一行工具是**结构件**(图标 · 名 · 摘要 · 右端读数,视觉本该定制)——
-         * 三类判的第三类,皮肤留本地、清 UA 归 `ui/ButtonBase`。 */
-        <ButtonBase
-          className={s.row}
-          data-call-id={row.callId}
-          data-tool-status={row.status}
-          data-tool-tone={tone}
-          data-child={child || undefined}
-          data-reveal={reveal}
-          hidden={hidden}
-          aria-expanded={drawerOpen}
-          onClick={toggle}
-        >
-          {face}
-        </ButtonBase>
-      ) : (
-        // 不能展开时**不画按钮**:一个按得动却什么也不发生的钮是「假按钮」,
-        // 它比没有钮更费人 —— 焦点会停在它上面,读屏会念它可点。
-        <div
-          className={s.row}
-          data-call-id={row.callId}
-          data-tool-status={row.status}
-          data-tool-tone={tone}
-          data-child={child || undefined}
-          data-reveal={reveal}
-          hidden={hidden}
-        >
-          {face}
-        </div>
-      )}
+      {/*
+        * 一行工具是**结构件**(图标 · 名 · 摘要 · 右端读数,视觉本该定制)——
+        * 三类判的第三类,皮肤留本地、清 UA 归 `ui/ButtonBase`。
+        *
+        * ── 能不能展开**不换标签**(R 线 F1,纪律第 1 条的兑现)────────────────
+        * 从前这里是 `expandable ? ButtonBase : div`:参数收齐转执行那一拍
+        * `EXPANDABLE_STATUSES` 从假翻真,元素型跟着从 DIV 换成 BUTTON —— 而
+        * **换元素型就是换节点**,React 把整行卸载重挂(真机读数:八格场景里每一行
+        * `重挂 1 · 换元素 1 ["DIV","BUTTON"]`),新生的 BUTTON 又从头播一次进场动画。
+        * 第 4 条从前把它列成「明许的三处换挡之一」,那是拿注释给一次重挂开赦免;
+        * 这一行现在**永远是同一个 BUTTON**,等于给它补上了块契约里的 `settled: 'same'`。
+        *
+        * 不能展开时不用 `disabled` 而用 `aria-disabled`:`disabled` 会把它整个从
+        * 无障碍树上摘掉,读屏连「这里有一行工具」都念不出来。`tabIndex={-1}` 把它
+        * 移出 Tab 序 —— 从前那条「假按钮会停焦点」的顾虑由这一格接着守,而
+        * 「读屏会念它可点」由 `aria-disabled` 接着守。
+        */}
+      <ButtonBase
+        className={s.row}
+        data-call-id={row.callId}
+        data-tool-status={row.status}
+        data-tool-tone={tone}
+        data-child={child || undefined}
+        data-reveal={reveal}
+        hidden={hidden}
+        aria-expanded={expandable ? drawerOpen : undefined}
+        aria-disabled={expandable ? undefined : true}
+        tabIndex={expandable ? undefined : -1}
+        onClick={expandable ? toggle : undefined}
+      >
+        {face}
+      </ButtonBase>
       {drawerOpen && !hidden && (
         <ToolDrawer call={call} ctx={ctx} live={live} progress={progress} />
       )}

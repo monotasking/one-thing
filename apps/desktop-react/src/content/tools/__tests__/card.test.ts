@@ -9,6 +9,7 @@ import {
   isBusyRevealed,
   isLiveStep,
   lastLine,
+  pickSlotIndex,
   pickSlotStep,
   progressSummary,
   silentMsOf,
@@ -244,6 +245,48 @@ describe('pickSlotStep:收起态的活槽位常驻(§6.5 第 6 条)', () => {
 
   it('一步都没有就是 undefined', () => {
     expect(pickSlotStep([], T0)).toBeUndefined()
+  })
+})
+
+/*
+ * ── 活槽位只进不退(R 线 F1,病 2 的反证)────────────────────────────────────
+ *
+ * 真机上这条链是这样走的:第 N 步参数流了 1.2 秒,早就够格露 busy 形,槽位在它身上;
+ * 转**执行**那一拍 `stepStartedAt` 从 `timestamp` 换成引擎记的 `startTime`(更晚的一个
+ * 时刻),`isBusyRevealed` 从真翻回假,于是老判据回头去找上一个收场了的步 —— 槽位
+ * 倒退一格,屏幕上那一行在一帧里消失又出现(实测行高 0 → 43 → 0,每换一步两回)。
+ *
+ * 所以这两条用例传的**就是那一拍的数**:同一组步,只把「上一次指到哪」递进去,
+ * 答案必须不一样。拆掉 `floor` 那一格,第一条当场红。
+ */
+describe('pickSlotIndex:活槽位只进不退(F1 病 2)', () => {
+  /** 参数流完转执行那一拍:`startTime` 是**此刻**,所以它没跨过 250ms 的门。 */
+  const atHandover = () => [
+    step('a', 'read', { durationMs: 30 }),
+    step('b', 'bash', { status: 'executing', startTime: T0 + 1_200 }),
+  ]
+
+  it('转执行那一拍不回头指上一步 —— 上一次指到第 2 步,这一拍还是第 2 步', () => {
+    const steps = atHandover()
+    // 没有 floor 的老判据:门没跨过 → 退回最近收场的那一步(下标 0)。
+    expect(pickSlotIndex(steps, T0 + 1_200)).toBe(0)
+    // 递进上一次的答案(参数流那 1.2 秒里槽位就在第 2 步上):不许退。
+    expect(pickSlotIndex(steps, T0 + 1_200, 1)).toBe(1)
+  })
+
+  it('新的一步够格露 busy 形时照常往前走', () => {
+    const steps = [
+      step('a', 'read', { durationMs: 30 }),
+      step('b', 'bash', { durationMs: 8 }),
+      step('c', 'bash', { status: 'executing', startTime: T0 }),
+    ]
+    expect(pickSlotIndex(steps, T0 + MIN_BUSY_MS, 1)).toBe(2)
+  })
+
+  it('floor 越界不会指到不存在的步', () => {
+    const steps = [step('a', 'read', { durationMs: 30 })]
+    expect(pickSlotIndex(steps, T0, 9)).toBe(0)
+    expect(pickSlotStep(steps, T0, 9)?.row.callId).toBe('a')
   })
 })
 

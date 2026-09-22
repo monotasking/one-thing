@@ -61,11 +61,16 @@
   display: none;
 }
 
-button.row {
+/*
+ * 行永远是 `<button>`(F1,理由在 `ToolCard.tsx` 那一段),所以「能不能展开」从
+ * **标签**变成了 `aria-disabled` 这一格 —— 手形与悬停底色跟着它走,不跟标签走。
+ * 不画灰:这一行的字与读数都还在说事实,把它整条调淡等于说「这里没东西」。
+ */
+button.row:not([aria-disabled]) {
   cursor: pointer;
 }
 
-button.row:hover {
+button.row:not([aria-disabled]):hover {
   background: var(--st-hover);
 }
 
@@ -292,13 +297,34 @@ button.row:hover {
 }
 
 /*
- * 露出 busy 形的那一行 `--dur` 淡入进场(§6.5 第 7 条)—— 不突现。
+ * 以 busy 形**进场**的那一行 `--dur` 淡入(§6.5 第 7 条)—— 不突现。
  * 快步骤(MIN_BUSY_MS 内收场的)根本走不到这里:它直接以收场形出现,
- * 所以这段动画在 read 那种瞬时工具上一帧都不播。
+ * 所以这段过渡在 read 那种瞬时工具上一帧都不播。
  * 动效档 `none` 下 `--dur` 是 0ms —— 关掉动效就是当场出现,不留半截淡入。
+ *
+ * ── 为什么是 `@starting-style` 而不是 `animation`(R 线 F1,2026-09-22)────────
+ * 一段 `animation` 在**选择器开始命中的那一刻**重播:从前 `data-reveal` 每帧现算,
+ * 一趟里 null→busy→null→busy 翻四次,于是一行**已经画好、不透明度是 1**的行被按回
+ * 0 再走一遍 —— 真机量到每行 1–2 次 `1 → 0 → 1`、86–100ms。`@starting-style` 问的是
+ * 另一句话:「这个元素**第一次被画出来**时从哪儿起」。属性后加不会触发它(那时元素
+ * 早就在画了),React 打补丁也不会 —— 只有真的进场才播,这正是要的那一句。
+ * 与之配套的是 JSX 那一侧的进场闩(`ToolCard.tsx`):属性在**第一次露面**那一帧就
+ * 挂上,不再事后补。`.row[hidden]` 是 `display:none`,所以「藏着的行被放出来」对
+ * 浏览器也是一次「第一次画」——一行重新露面照样淡入,而那本来就是进场。
+ *
+ * `@starting-style` **写在顶层**而不是嵌套进规则里:CSS Modules 对顶层选择器的类名
+ * 改写是逐字可预期的,嵌套形在不同 postcss 版本上有过不一致(同 `.rowLate` 判例)。
  */
-.row[data-reveal] {
-  animation: var(--kf-tool-row-in) var(--dur) var(--ease-out);
+.row[data-reveal='busy'] {
+  transition:
+    opacity var(--dur) var(--ease-out),
+    background var(--dur) var(--ease);
+}
+
+@starting-style {
+  .row[data-reveal='busy'] {
+    opacity: 0;
+  }
 }
 
 /*
@@ -317,7 +343,8 @@ button.row:hover {
     opacity: 0.9;
   }
 
-  .row[data-reveal] {
-    animation: none;
+  /* 进场淡入同理:样子仍在(一行照样出现),只是不再走那 `--dur` 的过渡。 */
+  .row[data-reveal='busy'] {
+    transition: background var(--dur) var(--ease);
   }
 }

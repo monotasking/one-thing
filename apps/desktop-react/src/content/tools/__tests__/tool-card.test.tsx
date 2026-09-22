@@ -208,12 +208,28 @@ describe('C1 抽屉:行下原位下拉', () => {
     expect(screen.queryByText('这次调用没有留下结果')).toBeNull()
   })
 
-  it('参数生成中的行不画按钮 —— 那一刻连一份参数都摆不出来', async () => {
+  /*
+   * 参数生成中的行**按不动**,但它仍然是同一个 `<button>`(R 线 F1,2026-09-22)。
+   *
+   * 这条用例从前断言 `tagName === 'DIV'` —— 那是拿标签当「能不能展开」的取件口,
+   * 而代价是参数收齐那一拍整行换元素、换元素就是重挂(八格真机场景每行都量到
+   * `重挂 1 · 换元素 1 ["DIV","BUTTON"]`),新生的按钮又从头播一次进场动画。
+   * 今天「能不能展开」由 `aria-disabled` 说,而纪律第 1 条「从第一个参数 delta 到
+   * 收场是同一个 DOM 节点」因此没有例外。
+   */
+  it('参数生成中的行按不动 —— 那一刻连一份参数都摆不出来', async () => {
     const { container } = await draw([
       call('c1', 'bash', { status: 'input-streaming', arguments: {}, streamingArgs: '{"comm' }),
     ])
-    expect(rowOf(container, 'c1').tagName).toBe('DIV')
-    expect(container.querySelector('button')).toBeNull()
+    const row = rowOf(container, 'c1')
+    expect(row.tagName).toBe('BUTTON')
+    expect(row.getAttribute('aria-disabled')).toBe('true')
+    // 不进 Tab 序:一个按得动却什么也不发生的钮会把焦点停在半路上。
+    expect(row.getAttribute('tabindex')).toBe('-1')
+    // 也不自称展开态 —— 它压根没有可展开的东西。
+    expect(row.getAttribute('aria-expanded')).toBeNull()
+    await open(row)
+    expect(container.querySelector('[class*="drawer"]')).toBeNull()
   })
 })
 
