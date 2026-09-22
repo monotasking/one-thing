@@ -456,6 +456,27 @@ run('gate:tail-jitter(prod·short)', 'npm', ['run', '--silent', 'gate:tail-jitte
 run('gate:fold-collapse(dev)', 'npm', ['run', '--silent', 'gate:fold-collapse'])
 run('gate:fold-collapse(prod)', 'npm', ['run', '--silent', 'gate:fold-collapse', '--', '--prod'])
 /*
+ * **工具卡换挡 + markdown 落定不许闪**(R 线 F1,正本 `docs/stream-render-2026-09.md` §8)。
+ *
+ * **它凭什么进得来**:九格判据全是**结构与像素位置**,零毫秒读数 ——
+ *  · A①②「卡 / 行的 DOM 节点身份号一趟里只有一个」是两个整数;
+ *  · A③「在屏段中途被按回透明」数的是**次数**(不是「透明度对不对」);
+ *  · A④⑤「行高 / 卡高一帧内往返」同样是次数;
+ *  · B⑥⑨「换节点 / 就地改型」是零基线的两个计数;
+ *  · B⑦「一条公式一生用几个节点、几种 padding」是两个整数;
+ *  · B⑧「下文位移与公式自己的高度差相差几像素」是一个减法。
+ * 同一份代码同一个视口跑一百遍是同一个答案,与 `gate:stream-geometry` /
+ * `gate:send-flow` 同族,与本文件顶部「gate:perf 不进来」那条裁定**不冲突**
+ * (那条说的是薄余量的毫秒门)。长帧与像素层在这道门里**只报不判** —— dev 档首屏与
+ * shiki 会留下 100–200ms 的帧,把它判红等于把一条已知的旧病钉成恒红。
+ *
+ * **只进 dev 一档**(与 `gate:fold-collapse` 的短会话档同一条理由):三条病全是
+ * 渲染层的时序,而用户跑的是 `electron:dev`;它自己起窗、自己收尸(结尾 `ps` 自查),
+ * 屏外档、vite 5311、不连 5175、不碰 `~/.onething`。真店那一格(50.9MB / 400 条)
+ * 在它自己的 `--lane` 里跑,是这道门里最贵的一段。
+ */
+run('gate:tool-md-flicker(dev)', 'npm', ['run', '--silent', 'gate:tool-md-flicker'])
+/*
  * gate:credentials 不在这里,理由与 gate:perf 不同:它**读的是这台机器上真实的
  * 生产 store**(要一份真的 safeStorage 密文才有得比),而 verify 必须在任何一台
  * checkout 上都能跑。它自己跑:`npm run gate:credentials`。
@@ -466,5 +487,6 @@ process.stdout.write(
     + ' / offline-fonts / buttonbase-css'
     + ' / 真机门(connect·data·theme·chat·files·search·monotone·squeeze·motion·a11y·focus·layout·fold-collapse'
     + '·chat-follow·continuity·terminal[dev+prod]·browser[dev+prod]·chat-layout[dev+prod]'
-    + '·send-flow[dev+prod]·stream-geometry[dev+prod]·tail-jitter[dev+prod × 短/真店])全绿\n',
+    + '·send-flow[dev+prod]·stream-geometry[dev+prod]·tail-jitter[dev+prod × 短/真店]'
+    + '·tool-md-flicker[dev])全绿\n',
 )
