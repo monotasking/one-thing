@@ -1229,11 +1229,20 @@ function analyze(frames, userActs, thoughtFlat) {
   }
   /*
    * ── ⑬ **座位交接帧**(G 线 P2-c;正本 §0 ⑤ / §18.3)────────────────────────
-   * 座位由正变零那一帧,前后各 3 帧里,上方那块参照物(`readAnchor`,与 ③ 同一个
-   * 取件口)的**单帧**位移。§0 ⑤ 量到的是「一次性上推 46px,前后每帧 0」——
-   * 所以判的是**单帧的台阶**,不是这一段的累计:贴底跟随本来就在整体上移。
+   *
+   * 座位由正变零那一帧,前后各 3 帧,上方那块参照物(`readAnchor`,与 ③ 同一个
+   * 取件口)的**单帧**位移。§0 ⑤ 量到的是「一次性上推 46px,前后每帧 0」。
+   *
+   * ── 判的是哪几帧:**总高没长的那几帧** ────────────────────────────────────
+   * 贴底跟随本身就在整体上移 —— 内容长了 Δ,屏上就该上移 Δ,那是 G5 说的那**唯一
+   * 一种**允许的运动,不是台阶。所以窗口里**总高长了的那几帧一概不判**(它们的位移
+   * 有出处),判的是**总高没长**的那几帧:那时候屏上任何东西动了,都是没有出处的。
+   * §0 ⑤ 那一下正好落在这一族里 —— 垫块归零让 `scrollHeight` **变小**,浏览器当场钳。
+   *
+   * 两格读数都留着:`stepPx` 是判据(没长高那几帧的最大单帧位移),
+   * `grewStepPx` 只报(长高那几帧的最大单帧位移,= 这一段跟底跟了多快)。
    */
-  let seatHandover = { at: null, frames: 0, stepPx: 0, steps: [] }
+  let seatHandover = { at: null, frames: 0, stepPx: 0, grewStepPx: 0, steps: [] }
   const zeroAt = frames.findIndex((f, i) =>
     i > 0 && frames[i - 1].seat && frames[i - 1].seat.h > 0.5 && f.seat && f.seat.h <= 0.5)
   if (zeroAt > 0) {
@@ -1241,18 +1250,29 @@ function analyze(frames, userActs, thoughtFlat) {
     const hi = Math.min(frames.length - 1, zeroAt + 3)
     const steps = []
     let n = 0
+    let grewStep = 0
     for (let i = lo; i <= hi; i += 1) {
       const a = frames[i - 1].readAnchor
       const b = frames[i].readAnchor
       if (!a || !b || a.id !== b.id) continue
-      n += 1
       const d = Number(Math.abs(b.top - a.top).toFixed(2))
-      if (d > 0.05) steps.push({ ms: Math.round(frames[i].t - t0), px: d, at: i === zeroAt ? '座位归零' : '' })
+      const grew = frames[i].sh > frames[i - 1].sh + 0.05
+      if (grew) { grewStep = Math.max(grewStep, d); continue }
+      n += 1
+      if (d > 0.05) {
+        steps.push({
+          ms: Math.round(frames[i].t - t0),
+          px: d,
+          dSh: Number((frames[i].sh - frames[i - 1].sh).toFixed(2)),
+          at: i === zeroAt ? '座位归零' : '',
+        })
+      }
     }
     seatHandover = {
       at: Math.round(frames[zeroAt].t - t0),
       frames: n,
       stepPx: steps.reduce((m, x) => Math.max(m, x.px), 0),
+      grewStepPx: Number(grewStep.toFixed(2)),
       steps: steps.slice(0, 6),
     }
   }
@@ -1443,7 +1463,8 @@ function report(name, m) {
   )
   console.log(
     `      ${' '.repeat(name.length)} ⑬ 交接帧 ${m.seatHandover.at === null ? '没采到'
-      : `${m.seatHandover.at}ms · 单帧 ${m.seatHandover.stepPx}px / ${m.seatHandover.frames} 帧`}`
+      : `${m.seatHandover.at}ms · 没长高那几帧单帧 ${m.seatHandover.stepPx}px / ${m.seatHandover.frames} 帧`
+        + `(长高那几帧 ${m.seatHandover.grewStepPx}px,只报)`}`
     + ` · ⑧ 座位 ${m.seat.maxPx}px = ${m.seat.lines} 行`
     + `(一行 ${m.seat.lineHPx}px / ${m.seat.frames} 帧)`
     + ` · ⑨ 尾槽内形 ${m.slotShape.frames} 帧,最大差 ${m.slotShape.maxDiffPx}px`
@@ -2101,13 +2122,14 @@ async function main() {
          * §0 ⑤:「一次性上推 46px,前后每帧 0」—— 这一格量的就是那个 46。
          * 采不到(这一档没有座位 / 那几帧换了参照物)就如实跳过,不假装绿。
          */
-        if (m.seatHandover.at === null || m.seatHandover.frames < 3) {
+        if (m.seatHandover.at === null || m.seatHandover.frames < 2) {
           console.log(`  – ${key} ⑬ 座位交接帧:采到 ${m.seatHandover.frames} 帧,这一格跳过`)
         } else {
           assert(
             m.seatHandover.stepPx <= cap('seatHandoverStepPx'),
-            `${key} ⑬ 座位交接帧(${m.seatHandover.at}ms 前后各 3 帧)上方单帧位移`
-            + ` ${m.seatHandover.stepPx}px ≤ ${cap('seatHandoverStepPx')}`
+            `${key} ⑬ 座位交接帧(${m.seatHandover.at}ms 前后各 3 帧)**总高没长**那几帧`
+            + `(${m.seatHandover.frames} 帧)上方单帧位移 ${m.seatHandover.stepPx}px`
+            + ` ≤ ${cap('seatHandoverStepPx')}`
             + (m.seatHandover.steps.length > 0 ? ` —— ${JSON.stringify(m.seatHandover.steps)}` : ''),
           )
         }
