@@ -7,6 +7,7 @@ import { projectAppMenu } from '../../keymap/menu-projection'
 import { currentKeymapPlatform, useKeymapStore } from '../../keymap/store'
 import { KEYMAP_COMMANDS, effectiveCombos } from '../../keymap/transitions'
 import { useStageStore } from '../../stage/store'
+import { getLogger } from '../../services/log'
 import { nativeViewBridge } from '../../data/browser-port'
 import type { AppMenuSpec, NativeViewPush } from '../../data/browser-port'
 import type { CommandId, KeymapPlatform, KeymapState } from '../../keymap/types'
@@ -147,6 +148,48 @@ let unsubscribers: (() => void)[] = []
 let lastSent: string | undefined
 /** 上一次算出来的 locale —— stage store 上任何一次写都会叫醒订阅,只有它变了才重投影。 */
 let lastLocale: string | undefined
+/** 上一次**真发出去**的两半 —— 排障口要说「这一帧比上一帧变了哪几格」。 */
+let lastMenu: AppMenuSpec | undefined
+let lastChords: readonly string[] | undefined
+
+const log = getLogger('shell.menu')
+
+/**
+ * 是谁把 `push()` 叫醒的。排障口的 `trigger` 那一格 —— 「菜单栏一直闪」那一类报障
+ * 第一句要问的就是「是哪条订阅在逐帧叫」。
+ */
+export type KeymapPushTrigger = 'start' | 'release' | 'keymap' | 'focus' | 'locale'
+
+/**
+ * 这一帧比上一帧**变了哪几格**:菜单项按 id 比 `label` / `chord` / `enabled`,
+ * 节按标题比,保留键表那一半整体算一格 `chords`。第一帧(没有上一帧)答 `['*']`。
+ * 纯函数,单测直接吃它。
+ */
+export function menuFrameChangedKeys(
+  prev: { menu: AppMenuSpec; chords: readonly string[] } | undefined,
+  next: { menu: AppMenuSpec; chords: readonly string[] },
+): string[] {
+  if (!prev) return ['*']
+  const out: string[] = []
+  if (prev.chords.join('\u0000') !== next.chords.join('\u0000')) out.push('chords')
+  const before = new Map<string, AppMenuSpec['sections'][number]['items'][number]>()
+  for (const section of prev.menu.sections) for (const item of section.items) before.set(item.id, item)
+  const seen = new Set<string>()
+  for (const section of next.menu.sections) {
+    for (const item of section.items) {
+      seen.add(item.id)
+      const was = before.get(item.id)
+      if (!was || was.label !== item.label || was.chord !== item.chord || was.enabled !== item.enabled) {
+        out.push(item.id)
+      }
+    }
+  }
+  for (const id of before.keys()) if (!seen.has(id)) out.push(id)
+  const sectionsBefore = prev.menu.sections.map((section) => section.label).join('\u0000')
+  const sectionsAfter = next.menu.sections.map((section) => section.label).join('\u0000')
+  if (sectionsBefore !== sectionsAfter) out.push('sections')
+  return out
+}
 
 /** 一条命令此刻答不答得出。**与派发器同一条判据**(判词在 `routeCommand` 上)。 */
 function commandEnabled(id: CommandId): boolean {
@@ -161,7 +204,7 @@ function currentMenu(platform: KeymapPlatform): AppMenuSpec {
   })
 }
 
-function push(): void {
+function push(trigger: KeymapPushTrigger): void {
   const bridge = nativeViewBridge()
   if (!bridge) return
   const platform = currentKeymapPlatform()
@@ -187,6 +230,20 @@ function push(): void {
   const signature = `${chords.join('\u0000')}\u0001${JSON.stringify(menu)}`
   if (signature === lastSent) return
   lastSent = signature
+  /*
+   * **排障口**:真发出去的每一帧一条 `debug`(签名去重**之后**,所以正常一次交互
+   * ≤ 2 条)。它进的是壳的日志环(`window.__log.dump()`);主进程那一侧同一个 ns
+   * 数的是真 `setApplicationMenu` 与应用活动态 —— 两边对着读就知道闪是谁起的头。
+   */
+  log.debug('menu frame sent', {
+    trigger,
+    changedKeys: menuFrameChangedKeys(
+      lastMenu && lastChords ? { menu: lastMenu, chords: lastChords } : undefined,
+      { menu, chords },
+    ),
+  })
+  lastMenu = menu
+  lastChords = chords
   bridge.send({ verb: 'keymap', chords, menu })
 }
 
@@ -201,14 +258,14 @@ function subscribe(): void {
   if (unsubscribers.length > 0) return
   lastLocale = useStageStore.getState().locale
   unsubscribers = [
-    useKeymapStore.subscribe(push),
-    focusTree.subscribe(push),
+    useKeymapStore.subscribe(() => push('keymap')),
+    focusTree.subscribe(() => push('focus')),
     useStageStore.subscribe(() => {
       // stage store 存的东西多得很(浮窗次序、Dock 形状…),只有语言这一格与菜单有关。
       const locale = useStageStore.getState().locale
       if (locale === lastLocale) return
       lastLocale = locale
-      push()
+      push('locale')
     }),
     /*
      * 菜单栏上点一项 → 主进程推 `{ kind: 'command' }` 回来 → 交给壳里**唯一**那个
@@ -232,6 +289,8 @@ function unsubscribeAll(): void {
   unsubscribers = []
   lastSent = undefined
   lastLocale = undefined
+  lastMenu = undefined
+  lastChords = undefined
 }
 
 /** 还有人要这条链吗。 */
@@ -241,7 +300,7 @@ function linked(): boolean {
 
 function release(): void {
   if (linked()) {
-    push()
+    push('release')
     return
   }
   unsubscribeAll()
@@ -256,7 +315,7 @@ function release(): void {
 export function startKeymapDownlink(): () => void {
   appLinks += 1
   subscribe()
-  push()
+  push('start')
   let released = false
   return () => {
     if (released) return
@@ -274,7 +333,7 @@ export function startKeymapDownlink(): () => void {
 export function startNativeViewKeymapDownlink(scope: FocusScopeId): () => void {
   SCOPES.set(scope, (SCOPES.get(scope) ?? 0) + 1)
   subscribe()
-  push()
+  push('start')
   let released = false
   return () => {
     if (released) return

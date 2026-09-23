@@ -3,7 +3,9 @@ import { configureBrowserPort } from '../../../data/browser-port'
 import { focusTree } from '../../../focus/registry'
 import { useKeymapStore } from '../../../keymap/store'
 import { useStageStore } from '../../../stage/store'
+import { __resetLogForTests, dumpLog } from '../../../services/log'
 import {
+  menuFrameChangedKeys,
   resetNativeViewKeymapDownlink,
   startKeymapDownlink,
   startNativeViewKeymapDownlink,
@@ -182,5 +184,83 @@ describe('菜单表骑同一条帧下去', () => {
     const stop = startKeymapDownlink()
     expect(menuFrames().length).toBe(0)
     expect(() => { stop() }).not.toThrow()
+  })
+})
+
+/**
+ * **排障口**(「点了聊天里的目录 chip 之后菜单栏一直闪」那条报障立的)。
+ *
+ * 报障的形状是「chip 拿到焦点之后,每帧一次 `setApplicationMenu`」。这一组钉两件:
+ *  · chip 聚焦之后,树上再来多少次**不改任何事实**的 notify(同一格再聚焦、同一份
+ *    声明再交一遍),帧都只发 ≤ 1 次 —— 签名去重是这条链的第一道闸;
+ *  · 每一帧真发出去,日志环里都有一条 `shell.menu` 的 debug,说清是谁叫醒的
+ *    (`trigger`)、比上一帧变了哪几格(`changedKeys`)。
+ */
+describe('排障口:chip 聚焦后重复 notify 不重复推帧', () => {
+  it('chip 聚焦并停 60 帧:推帧 ≤ 1,日志 ≤ 1 条且带 trigger / changedKeys', () => {
+    __resetLogForTests()
+    const stop = startKeymapDownlink()
+    const root = document.createElement('div')
+    document.body.append(root)
+    const chat = document.createElement('div')
+    chat.tabIndex = -1
+    const chip = document.createElement('button')
+    chip.dataset.refKind = 'dirRef'
+    chat.append(chip)
+    root.append(chat)
+    const shell = focusTree.register('root', null)
+    shell.setRoot(root)
+    const leaf = focusTree.register('leaf', shell.instanceId, {
+      commands: { 'tab.close': () => {} },
+    })
+    leaf.setRoot(chat)
+
+    const before = menuFrames().length
+    const logsBefore = dumpLog().filter((r) => r.ns === 'shell.menu').length
+    chip.focus()
+    expect(document.activeElement).toBe(chip)
+    const afterFocus = menuFrames().length
+    // 聚焦本身是一次真换人(路径从空到 root>leaf):恰好一帧。
+    expect(afterFocus - before).toBe(1)
+
+    // 60 帧:同一格再聚焦、同一份声明再交一遍 —— 每一下都会叫醒 `focusTree.subscribe`。
+    for (let frame = 0; frame < 60; frame += 1) {
+      chip.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+      leaf.update({ owner: undefined })
+    }
+    expect(menuFrames().length).toBe(afterFocus)
+
+    const records = dumpLog().filter((r) => r.ns === 'shell.menu').slice(logsBefore)
+    expect(records.length).toBe(afterFocus - before)
+    for (const record of records) {
+      expect(record.level).toBe('debug')
+      expect(record.msg).toBe('menu frame sent')
+      const fields = JSON.parse(record.args[0]) as { trigger: string; changedKeys: string[] }
+      expect(fields.trigger).toBe('focus')
+      expect(fields.changedKeys.length).toBeGreaterThan(0)
+    }
+
+    leaf.unregister()
+    shell.unregister()
+    root.remove()
+    stop()
+  })
+
+  it('changedKeys:第一帧答 *,之后只列真变了的那几格', () => {
+    const menu = (enabled: boolean) => ({
+      sections: [{ label: '标签', items: [
+        { id: 'tab.new', label: '新标签', chord: 'cmd+t', enabled: true },
+        { id: 'tab.close', label: '关闭', chord: 'cmd+w', enabled },
+      ] }],
+    })
+    expect(menuFrameChangedKeys(undefined, { menu: menu(true), chords: ['cmd+t'] })).toEqual(['*'])
+    expect(menuFrameChangedKeys(
+      { menu: menu(true), chords: ['cmd+t'] },
+      { menu: menu(false), chords: ['cmd+t'] },
+    )).toEqual(['tab.close'])
+    expect(menuFrameChangedKeys(
+      { menu: menu(true), chords: ['cmd+t'] },
+      { menu: menu(true), chords: ['cmd+t', 'cmd+w'] },
+    )).toEqual(['chords'])
   })
 })
