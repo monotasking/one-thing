@@ -292,6 +292,52 @@ describe('K4 · 菜单从命令表画', () => {
   })
 
   /**
+   * **第二道闸:模板逐字相同不重建**(「菜单栏一直闪」那条报障立的保险)。
+   *
+   * 投影不同、落出来的模板却逐字相同的一档是真实存在的:一条键面串读不出来
+   * (`acceleratorOfChord` 答 null)与没有键面,画到菜单上是同一张表。第一道
+   * (投影签名)放行它,这一道必须挡住 —— 每一次 `setApplicationMenu` 都会让
+   * macOS 把整条菜单栏重画一遍。每一次真画、每一次跳过都要报给排障口。
+   */
+  it('⑪b 模板逐字相同不重建,真画与跳过都报读数', () => {
+    const drawn: MenuItemConstructorOptions[][] = []
+    const draws: { seq: number; itemCount: number; reason: string }[] = []
+    const skips: { reason: string; identical: string }[] = []
+    const renderer = new AppMenuRenderer({
+      render: template => { drawn.push(template) },
+      input: () => ({ dev: false, platform: 'darwin' }),
+      onCommand: () => {},
+      onDraw: info => { draws.push(info) },
+      onSkip: info => { skips.push(info) },
+    })
+    renderer.install()
+    // 同一台进程再装一次:模板逐字相同 → 不重建。
+    renderer.install()
+    expect(drawn.length).toBe(1)
+    expect(skips).toEqual([{ reason: 'install', identical: 'template' }])
+    expect(draws).toEqual([{ seq: 1, itemCount: expect.any(Number), reason: 'install' }])
+    expect(draws[0].itemCount).toBeGreaterThan(0)
+
+    expect(renderer.apply(spec)).toBe(true)
+    expect(draws.at(-1)).toMatchObject({ seq: 2, reason: 'spec' })
+    // 投影变了(一条读不出来的键面串),模板没变 —— 第一道放行,第二道挡住。
+    const unreadable: AppMenuSpec = {
+      sections: spec.sections.map((section) => ({
+        ...section,
+        items: section.items.map((item) => (item.chord === null ? { ...item, chord: 'hyper+f' } : item)),
+      })),
+    }
+    expect(JSON.stringify(unreadable)).not.toBe(JSON.stringify(spec))
+    expect(renderer.apply(unreadable)).toBe(false)
+    expect(drawn.length).toBe(2)
+    expect(skips.at(-1)).toEqual({ reason: 'spec', identical: 'template' })
+    // 投影逐字相同 → 第一道就挡住。
+    expect(renderer.apply(JSON.parse(JSON.stringify(unreadable)) as AppMenuSpec)).toBe(false)
+    expect(skips.at(-1)).toEqual({ reason: 'spec', identical: 'spec' })
+    expect(drawn.length).toBe(2)
+  })
+
+  /**
    * **投影出来的项画得出内容层那七个键,而那不违反 K1** —— 判据是「占没占着」,
    * 不是「画没画出来」:`registerAccelerator: false` 的项一个键都不向系统注册,
    * 而「菜单栏上看得见 ⌘T」恰恰是 K4 要做出来的东西(macOS 用户找快捷键的第一

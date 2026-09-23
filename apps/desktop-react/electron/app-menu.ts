@@ -388,6 +388,51 @@ export function menuSpecSignature(menu: AppMenuSpec | undefined): string {
   return menu ? JSON.stringify(menu) : ''
 }
 
+/** 一次真重建的读数(排障口:`ns='shell.menu'` 那条 debug 带的就是它)。 */
+export interface AppMenuDrawInfo {
+  /** 这台渲染器第几次真的调 `setApplicationMenu`(从 1 数)。 */
+  seq: number
+  /** 模板里一共几项(递归,角色项与分隔线都算)。 */
+  itemCount: number
+  /** 为什么画:`install` = K1 那一趟;`spec` = 收到一份新的投影。 */
+  reason: AppMenuDrawReason
+}
+
+export type AppMenuDrawReason = 'install' | 'spec'
+
+/**
+ * 没画的那一次为什么没画:`spec` = 投影逐字相同(第一道);`template` = 投影不同、
+ * 但落出来的模板逐字相同(第二道,见 `templateSignature`)。
+ */
+export interface AppMenuSkipInfo {
+  reason: AppMenuDrawReason
+  identical: 'spec' | 'template'
+}
+
+/** 模板里一共几项(递归)。 */
+export function countTemplateItems(template: readonly MenuItemConstructorOptions[]): number {
+  let count = 0
+  for (const item of template) {
+    count += 1
+    if (Array.isArray(item.submenu)) count += countTemplateItems(item.submenu)
+  }
+  return count
+}
+
+/**
+ * 一份模板的签名 —— **第二道**「同签名不重建」。
+ *
+ * 第一道(`menuSpecSignature`)判的是投影;这一道判的是**真正要交给 Electron 的
+ * 那张表**。两道不重复:投影里有、模板里不落地的格(将来某一格只影响渲染进程
+ * 那一侧)变了,第一道放行,这一道仍然挡得住 —— 一次 `setApplicationMenu` 会让
+ * macOS 把整条菜单栏重画一遍,所以「表一个字没变就不重建」要在离 Electron 最近
+ * 的地方再说一次。`click` 是闭包,`JSON.stringify` 本来就丢掉它:同一个 id 的项
+ * 点下去做的是同一件事(`onCommand(id)`),丢掉它正是对的。
+ */
+export function templateSignature(template: readonly MenuItemConstructorOptions[]): string {
+  return JSON.stringify(template)
+}
+
 /**
  * **菜单此刻长什么样**,以及「要不要重画」这一问 —— 有状态的那一小格。
  *
@@ -395,27 +440,40 @@ export function menuSpecSignature(menu: AppMenuSpec | undefined): string {
  * 判例),所以「同签名不重建」是一条跑得动的单测,不是一句注释:真正的
  * `Menu.setApplicationMenu` 由构造时注入的 `render` 代表,装它的那一半仍然只在
  * `app-menu-install.ts` 里碰 electron。
+ *
+ * **两道闸**:`apply` 先比投影(`menuSpecSignature`),`draw` 再比模板
+ * (`templateSignature`)。每一次真画与每一次跳过都交给注入的 `onDraw` / `onSkip`
+ * —— 排障口(「菜单栏一直闪」那一类报障)要的正是「这台进程到底调了几次
+ * `setApplicationMenu`」这一个读数,而它只有这里数得准。
  */
 export class AppMenuRenderer {
   private readonly render: (template: MenuItemConstructorOptions[]) => void
   private readonly input: () => { dev: boolean; platform: NodeJS.Platform }
   private readonly onCommand: (id: string) => void
+  private readonly onDraw?: (info: AppMenuDrawInfo) => void
+  private readonly onSkip?: (info: AppMenuSkipInfo) => void
   private spec: AppMenuSpec | undefined
   private signature: string | undefined
+  private drawnTemplate: string | undefined
+  private seq = 0
 
   constructor(options: {
     render: (template: MenuItemConstructorOptions[]) => void
     input: () => { dev: boolean; platform: NodeJS.Platform }
     onCommand: (id: string) => void
+    onDraw?: (info: AppMenuDrawInfo) => void
+    onSkip?: (info: AppMenuSkipInfo) => void
   }) {
     this.render = options.render
     this.input = options.input
     this.onCommand = options.onCommand
+    this.onDraw = options.onDraw
+    this.onSkip = options.onSkip
   }
 
   /** K1 那一趟:壳刚 `whenReady`,还没有任何投影 —— 画的就是只做减法的那张。 */
   install(): void {
-    this.draw()
+    this.draw('install')
   }
 
   /**
@@ -424,11 +482,13 @@ export class AppMenuRenderer {
    */
   apply(menu: AppMenuSpec | undefined): boolean {
     const next = menuSpecSignature(menu)
-    if (next === (this.signature ?? '')) return false
+    if (next === (this.signature ?? '')) {
+      this.onSkip?.({ reason: 'spec', identical: 'spec' })
+      return false
+    }
     this.signature = next
     this.spec = menu
-    this.draw()
-    return true
+    return this.draw('spec')
   }
 
   /** 此刻这张表里那一项是什么样(门的点击口按 id 取件)。 */
@@ -439,8 +499,18 @@ export class AppMenuRenderer {
     return undefined
   }
 
-  private draw(): void {
+  private draw(reason: AppMenuDrawReason): boolean {
     const { dev, platform } = this.input()
-    this.render(buildAppMenuTemplate({ dev, platform, menu: this.spec, onCommand: this.onCommand }))
+    const template = buildAppMenuTemplate({ dev, platform, menu: this.spec, onCommand: this.onCommand })
+    const signature = templateSignature(template)
+    if (signature === this.drawnTemplate) {
+      this.onSkip?.({ reason, identical: 'template' })
+      return false
+    }
+    this.drawnTemplate = signature
+    this.render(template)
+    this.seq += 1
+    this.onDraw?.({ seq: this.seq, itemCount: countTemplateItems(template), reason })
+    return true
   }
 }

@@ -1,6 +1,6 @@
 /**
  * 装应用菜单的那一半(K1;K4 起它还收命令表的投影)。**这只文件是整块里唯一
- * `import { Menu } from 'electron'` 的落点** —— 判例与 `electron/browser/index.ts`
+ * `import { BrowserWindow, Menu, app } from 'electron'` 的落点** —— 判例与 `electron/browser/index.ts`
  * 逐字相同:一个目录里只许一只文件碰 electron 的值,其余部分才进得了 vitest。
  *
  * 菜单**长什么样**不在这里,在隔壁 `app-menu.ts`(纯模板函数 + `AppMenuRenderer`,
@@ -14,7 +14,7 @@
  * 所以这里与 `app.whenReady()` 那一行同形:一个进程一份。
  */
 import { readFileSync, writeFileSync } from 'node:fs'
-import { Menu } from 'electron'
+import { BrowserWindow, Menu, app } from 'electron'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
 import {
   AppMenuRenderer,
@@ -44,6 +44,21 @@ let gateClickTimer: NodeJS.Timeout | undefined
 const renderer = new AppMenuRenderer({
   render: template => { Menu.setApplicationMenu(Menu.buildFromTemplate(template)) },
   input: () => ({ dev: isDevShell(environment), platform: process.platform }),
+  /*
+   * **排障口**(「点了聊天里的目录 chip 之后菜单栏一直闪」那条报障立的)。
+   * 菜单栏闪有两个互不相干的来源,读数必须分得开:
+   *  · 这台进程真的在反复 `setApplicationMenu` —— 每一次都是下面这条 `menu rebuilt`;
+   *  · 应用在反复失去 / 拿回活动状态(macOS 把失活应用的菜单标题画灰)——
+   *    那是 `watchActivation` 记的四种事件,与菜单一个字都不相干。
+   * 全是 `debug`:缺省级别(`info`)下一行都不写;要看就
+   * `ONETHING_LOG=info,shell.menu=debug`。
+   */
+  onDraw: ({ seq, itemCount, reason }) => {
+    log.debug('menu rebuilt', { seq, itemCount, reason })
+  },
+  onSkip: ({ reason, identical }) => {
+    log.debug('menu rebuild skipped identical', { reason, identical })
+  },
   onCommand: id => {
     if (!sendCommand) {
       log.debug('menu command dropped; no renderer attached', { id })
@@ -58,9 +73,32 @@ const renderer = new AppMenuRenderer({
  */
 export function installAppMenu(env: NodeJS.ProcessEnv = process.env): void {
   environment = env
+  watchActivation()
   renderer.install()
   writeDump()
   startGateClickWatcher()
+}
+
+/** 四种活动态事件只挂一次(进程级,与菜单同寿)。 */
+let activationWatched = false
+
+/**
+ * 应用 / 窗口的活动态变化,各记一条 `debug`(判词见上面 `onDraw` 那一段)。
+ * `did-become-active` / `did-resign-active` 是 macOS 专有事件,别的平台上它们
+ * 只是从来不发 —— 挂上去不需要平台分支。
+ */
+function watchActivation(): void {
+  if (activationWatched) return
+  activationWatched = true
+  const focusedId = (): number | null => BrowserWindow.getFocusedWindow()?.id ?? null
+  app.on('did-become-active', () => { log.debug('app did-become-active', { windowId: focusedId() }) })
+  app.on('did-resign-active', () => { log.debug('app did-resign-active', { windowId: focusedId() }) })
+  app.on('browser-window-focus', (_event, window) => {
+    log.debug('browser-window-focus', { windowId: window.id })
+  })
+  app.on('browser-window-blur', (_event, window) => {
+    log.debug('browser-window-blur', { windowId: window.id })
+  })
 }
 
 /**
