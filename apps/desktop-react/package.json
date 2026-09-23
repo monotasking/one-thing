@@ -57,6 +57,7 @@
     "gate:dock": "node scripts/gate-dock.mjs",
     "gate:dock-wake": "node scripts/gate-dock-wake.mjs",
     "gate:focus": "node scripts/gate-focus.mjs",
+    "gate:menubar": "node scripts/gate-menubar-loop.mjs",
     "gate:drag-region": "node scripts/gate-drag-region.mjs",
     "gate:drag": "node scripts/gate-drag.mjs",
     "gate:layout": "node scripts/gate-layout.mjs",
