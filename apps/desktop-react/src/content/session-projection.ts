@@ -10,7 +10,7 @@ import {
 import { parkedSessionIds, reconcileSessionParks, stopSessionParks } from './session-park'
 import {
   currentSessionOf,
-  leafHoldsSession,
+  leafShowsSession,
   openSessionIdsIn,
   sessionRefAlive,
 } from './session-ref'
@@ -97,10 +97,12 @@ export function syncSessionProjection(): void {
    */
   const open = openSessionIdsIn(workbench.regions, workbench.hidden)
   /*
-   * 「焦点叶自己装着**一条真会话**」才更新环境会话:一片还没绑会话的叶
-   * (⌘N 刚开出来的那一瞬)不该把文件树的根清空 —— 它还没有会话可言。
+   * 「焦点叶**亮着的那一格**是一条真会话」才更新环境会话:一片还没绑会话的叶
+   * (⌘N 刚开出来的那一瞬)不该把文件树的根清空 —— 它还没有会话可言;叶里亮着的是
+   * 目录 / 文件(哪怕同一片叶里还摆着会话)也不换 —— 判词与那只自激环的读数在
+   * `session-ref.leafShowsSession` 上。
    */
-  const focusBound = leafHoldsSession(workbench.regions, workbench.focusLeafId) && next !== ''
+  const focusBound = leafShowsSession(workbench.regions, workbench.focusLeafId) && next !== ''
   /*
    * 粘性:只要它指着的那条会话**还在名册上**就原样留着 —— 哪怕那片叶已经
    * 被换走 / 关掉了。「我上一次在哪条会话里干活」是一句关于过去的话,而

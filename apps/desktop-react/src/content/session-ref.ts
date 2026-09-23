@@ -68,8 +68,7 @@ export function leafSessionTabOf(leaf: PaneLeafNode): ContentRef | null {
    * `store.replaceRef` 换会话,而那一口自己会认出「它住在一格复合标签里」并
    * 重新拼一格出来(判词在 `workbench/store.composedReplacement` 上)。
    */
-  const active = leaf.tabs[leaf.active]
-  const inActive = active ? flattenContent(active).find((r) => sessionIdOfRef(r) !== null) : undefined
+  const inActive = activeSessionTabOf(leaf)
   if (inActive) return inActive
   for (const tab of leaf.tabs) {
     const found = flattenContent(tab).find((r) => sessionIdOfRef(r) !== null)
@@ -84,13 +83,33 @@ export function leafSessionOf(leaf: PaneLeafNode): string | null {
   return tab === null ? null : sessionIdOfRef(tab)
 }
 
-/** 这片叶装着会话吗(粘性判据:焦点落到**文件叶**时环境会话不换根)。 */
-export function leafHoldsSession(
+/** 这片叶的**活动格**里装着的那一格会话(两格标签看进去)。活动格不是会话 = null。 */
+function activeSessionTabOf(leaf: PaneLeafNode): ContentRef | null {
+  const active = leaf.tabs[leaf.active]
+  return active ? (flattenContent(active).find((r) => sessionIdOfRef(r) !== null) ?? null) : null
+}
+
+/**
+ * 这片叶此刻**亮着的那一格**是会话吗 —— 环境会话的粘性判据(`session-projection`)。
+ *
+ * ── 问的是活动格,不是「叶里有没有会话」(09-23)────────────────────────────
+ * 从前这一句是 `leafSessionOf(leaf) !== null`:叶里**随便哪一格**是会话就算。于是
+ * 「会话乙把它的目录(伴随面)开进自己那片叶」这一形成了一只自激的环 —— 目录成了
+ * 活动格,`leafSessionOf` 回落到叶里**第一格**会话(甲),环境会话 乙→甲,收放把乙的
+ * 目录收走,活动格回到乙,环境会话 甲→乙,目录又被放回来……一条无尽的微任务链:
+ * 真机上渲染进程卡死,菜单栏每 5ms 重建一次(两份 spec 只差 `tab.select:3` 与
+ * `tab.new`,即目录那一格来了又走)。
+ *
+ * 活动格不是会话时,焦点根本没有说「我在哪条会话里」—— 那与焦点落在一片文件叶上是
+ * **同一件事**,所以它走同一条粘性。收放因此只由「亮出一格会话」触发,而收放自己
+ * 永远不会亮出别的会话,环在结构上闭不上。
+ */
+export function leafShowsSession(
   regions: Readonly<Record<string, PaneNode>>,
   leafId: string | null,
 ): boolean {
   const leaf = leafOf(regions, leafId)
-  return leaf !== null && leafSessionOf(leaf) !== null
+  return leaf !== null && activeSessionTabOf(leaf) !== null
 }
 
 /**

@@ -8,6 +8,8 @@ import { CENTER_REGION } from '../../workbench/regions'
 import { useWorkbenchStore } from '../../workbench/store'
 import { leavesOf, refIdsOf } from '../../workbench/tree'
 import '../kinds'
+import { dirRef } from '../kinds/dir-ref'
+import { refId } from '../../workbench/kinds'
 import {
   startSessionProjection,
   stopSessionProjection,
@@ -239,3 +241,51 @@ describe('引用账:树里 ∪ 隐藏表里的那些机器活着', () => {
     expect(chatSources.ownedIds()).not.toContain(B)
   })
 })
+
+describe('伴随面收放是一个不动点(09-23 菜单栏逐帧重建的根因)', () => {
+  /*
+   * 真机读数(隔离 store,两条会话同一条中央标签条、目录记忆落舞台,点助手消息里的
+   * 目录 chip):点下去之后渲染进程卡死在一串微任务里,主进程 3s 收到 1281 帧菜单、
+   * 真重建 1280 次,帧与帧之间只差两组 enabled —— `tab.select:3`(三格:甲、乙、目录)
+   * 与 `tab.new` / `content.new`(活动格是会话)交替。链是:
+   *   目录作为乙的伴随面开进同一片叶并成为活动格
+   *   → `leafSessionOf` 看活动格不是会话,回落到叶里**第一格**会话 = 甲
+   *   → 环境会话 乙→甲 → 收起乙的伴随面(目录离场,活动格回到乙)
+   *   → 环境会话 甲→乙 → 放回乙的伴随面(目录又成活动格)→ …
+   * 收放改变了它自己的输入。判据:放一次目录之后,收放至多一次,环境会话留在乙。
+   */
+  it('会话乙把目录开进自己那片叶(叶里另有会话甲)→ 环境会话不跳、收放不自激', async () => {
+    // 甲**没绑工作目录**(真机那一形:新开的会话):乙的目录收起之后甲那一侧继承不出
+    // 任何东西,目录真的离场,活动格回到乙 —— 环才闭得上。
+    const first = leaves()[0].id
+    useWorkbenchStore.getState().replaceRef(first, sessionRefOf(''), sessionRefOf(NO_DIR))
+    useWorkbenchStore.getState().openRef(sessionRefOf(B))
+    startSessionProjection()
+    expect(useExposeStore.getState().envSessionId).toBe(B)
+
+    // 数收放的次数。封顶 40:旧代码是一条无尽的微任务链,不封顶的话用例本身就挂死。
+    const real = useWorkbenchStore.getState().swapCompanions
+    let swaps = 0
+    useWorkbenchStore.setState({
+      swapCompanions: (from, to, env) => {
+        swaps += 1
+        if (swaps > 40) return
+        real(from, to, env)
+      },
+    })
+
+    const leafId = leaves()[0].id
+    useWorkbenchStore.getState().openRef(dirRef(ONE_DIR), { region: CENTER_REGION, leafId })
+    for (let i = 0; i < 60; i += 1) await Promise.resolve()
+
+    expect(swaps).toBeLessThanOrEqual(1)
+    expect(useExposeStore.getState().envSessionId).toBe(B)
+    const leaf = leaves()[0]
+    expect(leaf.tabs[leaf.active]).toEqual(dirRef(ONE_DIR))
+    expect(refIdsOf(center())).toContain(refId(dirRef(ONE_DIR)))
+  })
+})
+
+const ONE_DIR = '/Users/dev/code/start-electron'
+/** 名册上一条没绑工作目录的会话(fixture `lo-notes`)。 */
+const NO_DIR = 'lo-notes'
