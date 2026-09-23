@@ -7,7 +7,7 @@ import { useStageStore } from '../stage/store'
 import { CENTER_REGION, edgeRegion, floatRegion } from '../workbench/regions'
 import { refId } from '../workbench/kinds'
 import { regionOfRefIn, useWorkbenchStore } from '../workbench/store'
-import { dirRef } from './kinds/dir-ref'
+import { dirRef, normalizeDirPath } from './kinds/dir-ref'
 import type { PlacementMemory } from '../stage/types'
 import type { ContentRef } from '../workbench/kinds'
 import type { RegionId } from '../workbench/regions'
@@ -81,8 +81,10 @@ function regionForLauncher(ref: ContentRef): RegionId {
  * `stage.placeRef`(它同时改树与形态机,而且经 `orchestrate` 那格缓冲 ——
  * 判词写在 `stage/store.placeRef` 上)。
  */
-export function openDirectoryPanel(path: string): void {
-  if (!path) return
+export function openDirectoryPanel(rawPath: string): void {
+  if (!rawPath) return
+  // 身份归一(尾斜杠不是身份的一部分,判词在 `normalizeDirPath` 上)。
+  const path = normalizeDirPath(rawPath)
   const ref = dirRef(path)
   useWorkbenchStore.getState().rememberRoot(path)
   useStageStore.getState().placeRef(ref, regionForLauncher(ref))

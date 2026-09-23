@@ -18,6 +18,20 @@ import type { ContentRef } from '../../workbench/kinds'
  */
 export const DIR_KIND = 'dir'
 
+/**
+ * **打开一个目录之前先把路径归一:去掉尾部的 `/`,根目录 `/` 除外。**
+ *
+ * 病历(09-23):聊天里那枚目录引用 chip 的路径**故意**带着尾斜杠 —— 那是句子里
+ * 「这是个目录」的判据(`references/kinds/dir.ts` 文件头)。它原样交给打开目录那条
+ * 路,于是同一个目录在拼贴台里有了两个身份:`dir:/a/Java/` 与 `dir:/a/Java`,
+ * 点 chip 开一格、从文件树 / 启动瓦再开一格。尾斜杠是**呈现**上的事实,不是身份
+ * 的一部分,所以在进拼贴台之前归一。幂等:归过的再归一次一个字不动。
+ */
+export function normalizeDirPath(path: string): string {
+  const trimmed = path.replace(/\/+$/, '')
+  return trimmed === '' && path.startsWith('/') ? '/' : trimmed
+}
+
 /** 一棵以某目录为根的文件树的内容引用。 */
 export const dirRef = (path: string): ContentRef => ({ kind: DIR_KIND, key: path })
 
