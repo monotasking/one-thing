@@ -12,7 +12,8 @@ import { useStageStore } from '../../stage/store'
  * **走的是哪一条**、**没走另外两条**、**落空时不抛只答 false**。
  */
 
-const openDir = vi.hoisted(() => vi.fn())
+// 09-24 起 `openDirectoryPanel` 答「开成了没有」(一个 promise),替身照这个形答。
+const openDir = vi.hoisted(() => vi.fn(async () => true))
 // 目录面板那条路拖着 stage / workbench 两片 store,这里量的是「叫对了谁」,
 // 不是那条路自己 —— 它有自己的用例。`sessionDirOf` 留真的(测试里没有环境会话,
 // 所以它答 null,而那正是「拿不到工作目录就不带那一格」要走的那一形)。

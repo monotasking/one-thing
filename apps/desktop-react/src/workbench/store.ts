@@ -437,6 +437,18 @@ export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
    */
   replaceRef(leafId: string, from: ContentRef, to: ContentRef): void
   /**
+   * **同一份内容换个写法,处处都换**(09-24,起因:引用打开的目录 key 是 `~/…`,
+   * 子层一层都展不开 —— 病历在 `content/files/HomeRootResolver.tsx`)。
+   *
+   * 与 `replaceRef` 的差别是两句:①**不认叶**:每一片装着 `from` 的叶各换各的
+   * (同一个目录可以在两片叶里各开一棵),复合标签里那一格、藏着的那一份、
+   * 真全屏那一格也一并改写;②**不摘别处**:`replaceRef` 先把 `to` 从别处摘干净,
+   * 因为它说的是「这一格换成另一份」;这里说的是「还是那几格,只是名字写法变了」,
+   * 摘别处就会把刚换好的那一格摘掉。钉住跟着走(判词在 `tree.rekeyRef`)。
+   * `from` 哪儿都没有 = 空动作,不惊动订阅者。
+   */
+  rekeyRef(from: ContentRef, to: ContentRef): void
+  /**
    * **把「背后那个东西已经没了」的格子扫掉**(W5-b 裁定 5)。
    *
    * `alive(ref)` 由发起那一拍注入(会话列表首达 / `onSessionsRemoved`)——
@@ -1798,6 +1810,38 @@ export const useWorkbenchStore = create<WorkbenchState>()(
             hidden: s.hidden.filter((entry) => refId(entry.ref) !== refId(to)),
             focusLeafId: leafId,
             ...fullPatch(s, regions),
+          })
+        },
+
+        rekeyRef: (from, to) => {
+          const fromId = refId(from)
+          if (fromId === refId(to)) return
+          const s = get()
+          const regions: Record<string, PaneNode> = {}
+          let changed = false
+          for (const [region, tree] of Object.entries(s.regions)) {
+            let next = T.rekeyRef(tree, from, to)
+            // 复合标签里那一格(两格并成一格时,树上没有一格 tab 叫这个名字)。
+            // 每换一次 `from` 就少一处,所以这圈必停。
+            for (const leaf of T.leavesOf(next)) {
+              for (
+                let made = composedReplacement(next, leaf.id, from, to);
+                made;
+                made = composedReplacement(next, leaf.id, from, to)
+              ) next = made
+            }
+            if (next !== tree) changed = true
+            regions[region] = next
+          }
+          const hiddenHit = s.hidden.some((entry) => refId(entry.ref) === fromId)
+          const fullHit = s.full !== null && refId(s.full.ref) === fromId
+          if (!changed && !hiddenHit && !fullHit) return
+          set({
+            ...(changed ? { regions, pairRatios: normalizePairRatios(regions, s.pairRatios) } : {}),
+            ...(hiddenHit
+              ? { hidden: s.hidden.map((entry) => (refId(entry.ref) === fromId ? { ...entry, ref: to } : entry)) }
+              : {}),
+            ...(fullHit && s.full ? { full: { ...s.full, ref: to } } : {}),
           })
         },
 

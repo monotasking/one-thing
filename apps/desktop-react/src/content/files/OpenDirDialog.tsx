@@ -3,7 +3,7 @@ import { Button } from '../../ui/Button'
 import { Dialog } from '../../ui/Dialog'
 import { Input } from '../../ui/Input'
 import { useT } from '../../i18n'
-import { openDirectoryPanel } from '../files-launcher'
+import { notifyDirOpenFailed, openDirectoryPanel } from '../dir-open'
 import { useOpenDirDialog } from './open-dir-hub'
 
 /**
@@ -40,9 +40,17 @@ export function OpenDirDialog() {
     const next = path.trim()
     if (!next) return
     // 先读再关:`setOpen(false)` 会把这一次的动作清掉(判词在 hub 上)。
-    const run = onPick ?? openDirectoryPanel
+    const pick = onPick
     setOpen(false)
-    run(next)
+    if (pick) {
+      pick(next)
+      return
+    }
+    // 缺省那条 = 开一份目录面板。手敲的 `~/notes` 在这一步展开;展不开就说一句
+    // (窗已经关了,这句话没有别的地方落)。
+    void openDirectoryPanel(next).then((ok) => {
+      if (!ok) notifyDirOpenFailed(next)
+    })
   }
 
   return (

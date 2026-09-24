@@ -298,8 +298,13 @@ describe('头:身份与去向(大小与时间不在这里)', () => {
     expect(within(menu).getByText('编辑')).toBeTruthy()
     expect(within(menu).getByText('复制路径')).toBeTruthy()
     expect(within(menu).getByText('在文件管理器中显示')).toBeTruthy()
-    // 六档打开方式在同一张表里(勾在当下那一档)。
-    expect(within(menu).getAllByRole('menuitemradio')).toHaveLength(6)
+    /*
+     * 六档打开方式在同一张表里 —— 09-24 起住在它的二级菜单「打开方式 ▸」里
+     * (报障:一级 452 高、盖住 17 行)。一级一枚单选都没有,点开那一行才出来。
+     */
+    expect(within(menu).queryAllByRole('menuitemradio')).toHaveLength(0)
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /^打开方式/ }))
+    await waitFor(() => expect(screen.getAllByRole('menuitemradio')).toHaveLength(6))
   })
 
   /**
@@ -313,12 +318,13 @@ describe('头:身份与去向(大小与时间不在这里)', () => {
     renderViewer(<Viewer />)
     fireEvent.contextMenu(screen.getByTestId('viewer-body'))
     await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy())
-    const menu = screen.getByRole('menu')
-    const options = within(menu).getAllByRole('menuitemradio')
+    fireEvent.click(screen.getByRole('menuitem', { name: /^打开方式/ }))
+    await waitFor(() => expect(screen.getAllByRole('menuitemradio')).toHaveLength(6))
+    const options = screen.getAllByRole('menuitemradio')
     expect(options).toHaveLength(6) // 顶架子那档 09-24 退役
     expect(options.filter((el) => el.hasAttribute('disabled'))).toHaveLength(0)
-    expect(within(menu).queryAllByText('架子与浮窗的标签下一批')).toHaveLength(0)
-    fireEvent.click(within(menu).getByText('右侧钉'))
+    expect(screen.queryAllByText('架子与浮窗的标签下一批')).toHaveLength(0)
+    fireEvent.click(screen.getByText('右侧钉'))
     await waitFor(() => expect(useFileOpenMode.getState().mode).toBe('edge-right'))
   })
 

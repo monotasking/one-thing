@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Kbd } from '../ui/Kbd'
-import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
+import { Menu, MenuItem, MenuSection, MenuSeparator, Submenu } from '../ui/Menu'
 import { announce } from '../ui/a11y/live-region'
 import { COPY_FEEDBACK_MS } from '../components/motion'
 import { formatCombo, platformOf } from '../keymap/transitions'
@@ -39,12 +39,11 @@ import s from './FilesPanel.module.css'
  * 于是这个文件是那张表的唯一产地:两个宿主(FilesPanel 的行、FileViewer 的身)
  * 各自决定「在哪儿弹」,弹出来的**内容与次序一个字不差**——不靠自觉,靠只有一份。
  *
- * ── 为什么「打开方式」是一组平铺项而不是二级子菜单 ────────────────────────
- * 裁定里写的是「七档子菜单」。`ui/Menu` 今天**没有**二级菜单能力(没有展开态、
- * 没有跨层的 roving 焦点、没有 APG 那套 `aria-haspopup`/悬停延迟)。在这一批里
- * 现造一套二级菜单,等于在一个交互修复批里顺手加一件浮层原语 —— 那是拍板件。
- * 所以这里照既有先例给一个**带小标题的分组**(MenuSection + 七行 + 一句注脚),
- * 与它从前在行菜单里长的样子逐字相同。**记档:二级菜单属 ui/Menu 的独立一批。**
+ * ── 「打开方式」是二级菜单(09-24 结账)────────────────────────────────────
+ * 09-01 裁定里写的就是「子菜单」,当时 `ui/Menu` 还没有二级菜单能力,这里先给了一个
+ * 带小标题的平铺分组,并记档「二级菜单属 ui/Menu 的独立一批」。那一批(W7-c 的
+ * `Submenu`)早已入库,09-24 的报障(菜单 452 高、盖住 17 行)把这笔账催到了期:
+ * 这一节折成一行 ▸,判词写在那一行上。
  *
  * ── 「复制路径」按下之后菜单不关 ─────────────────────────────────────────
  * 反馈要落在被按的那一条上(就地变「已复制」),关掉就没地方落了(复制反馈
@@ -294,31 +293,49 @@ export function FileActionsMenu({
         </>
       )}
 
+      {/*
+        * ── 「打开方式」折进二级菜单(09-24)──────────────────────────────────
+        * 报障「文件的菜单,打开之后把文件列表都挡住了」:真机 1200×800、面板 399 宽,
+        * 右键一行开出来的菜单 206×452,贴在行下方盖住整整 17 行 —— 其中一半是这一节
+        * (小节头 22 + 六枚单选 × 30)。它是一格**设置**(下一次点文件落在哪儿),
+        * 不是对这一行的动作,却与动作平铺在同一层。折进 `ui/Menu` 的 `Submenu`
+        * 之后一级只剩一行:标签是原来那句小节名,**行尾写当下那一档**(与第一行
+        * 「打开查看」右缘那格同一副 `menuLine / menuMain / menuTrail`),不点开也读得到
+        * 此刻是哪一档;六枚单选原样进子表,勾与点击行为逐字不变。
+        */}
       {file && (
         <>
           <MenuSeparator />
-          <MenuSection>{t('files.openWith')}</MenuSection>
-          {FILE_OPEN_MODES.map((option) => (
-            <MenuItem
-              key={option}
-              checked={option === mode}
-              /*
-               * **七档全通**(W4):架子与浮窗的身子换成拼贴树之后,插一个文件进
-               * 架子与插进中央区走的是同一句 `openRef(ref, { region })`。
-               * W1-a 那格 `disabled={!isWiredFileOpenMode(option)}` 与它旁边那句
-               * 「下一批」的注脚随之整段退役。
-               */
-              onClick={() => {
-                // **选档即生效**:手上那一份当场搬过去(编排在 open-target)。
-                setFileOpenMode(option)
-                onClose()
-              }}
-            >
+          <Submenu
+            label={
               <span className={s.menuLine}>
-                <span className={s.menuMain}>{t(FILE_OPEN_MODE_LABELS[option])}</span>
+                <span className={s.menuMain}>{t('files.openWith')}</span>
+                <span className={s.menuTrail}>{t(FILE_OPEN_MODE_LABELS[mode])}</span>
               </span>
-            </MenuItem>
-          ))}
+            }
+          >
+            {FILE_OPEN_MODES.map((option) => (
+              <MenuItem
+                key={option}
+                checked={option === mode}
+                /*
+                 * **七档全通**(W4):架子与浮窗的身子换成拼贴树之后,插一个文件进
+                 * 架子与插进中央区走的是同一句 `openRef(ref, { region })`。
+                 * W1-a 那格 `disabled={!isWiredFileOpenMode(option)}` 与它旁边那句
+                 * 「下一批」的注脚随之整段退役。
+                 */
+                onClick={() => {
+                  // **选档即生效**:手上那一份当场搬过去(编排在 open-target)。
+                  setFileOpenMode(option)
+                  onClose()
+                }}
+              >
+                <span className={s.menuLine}>
+                  <span className={s.menuMain}>{t(FILE_OPEN_MODE_LABELS[option])}</span>
+                </span>
+              </MenuItem>
+            ))}
+          </Submenu>
         </>
       )}
 

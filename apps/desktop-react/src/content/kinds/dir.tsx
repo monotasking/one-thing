@@ -1,7 +1,8 @@
 import { registerContentKind } from '../../workbench/kinds'
-import { baseNameOf } from '../../data/files-source'
+import { baseNameOf, isHomeRelativePath } from '../../data/files-source'
 import { FilesPanel } from '../FilesPanel'
 import { disambiguatedDirName } from '../files/dir-names'
+import { HomeRootResolver } from '../files/HomeRootResolver'
 import { DIR_KIND, dirRef } from './dir-ref'
 import type { ContentRef } from '../../workbench/kinds'
 
@@ -50,11 +51,18 @@ registerContentKind(
     // 目录就是目录那一枚。名字取的是 `components/icons` 的注册表键(大写开头),
     // 拼错了 `resolveIcon` 会静默退回 FolderTree —— 所以照表写。
     icon: () => 'FolderTree',
-    render: (ref) => <FilesPanel root={ref.key} />,
+    /*
+     * key 以 `~` 起笔的那一格(09-24 之前落了盘的存量)先展开再换成绝对 key;
+     * 判词与病历在 `HomeRootResolver` 上。`FilesPanel` 因此永远只收绝对根。
+     */
+    render: (ref) =>
+      isHomeRelativePath(ref.key) ? <HomeRootResolver root={ref.key} /> : <FilesPanel root={ref.key} />,
     // 开着的目录面板就是一个可以 `@` 的根,也是一件摆在助手面前的事实
     // (09-18,正本 `docs/composer-open-dir-mentions-2026-09.md` §2.1 / §2.5.0)。
-    referenceRoot: (ref: ContentRef) => ref.key,
-    presents: (ref: ContentRef) => `dir:${ref.key}`,
+    // `~` 那一格还在展开(`HomeRootResolver`)时两句都答「不算」:那串字不是一个
+    // 后端认得的资源地址,答回来之前说出去就是一句假话;展开之后 key 已是绝对路径。
+    referenceRoot: (ref: ContentRef) => (isHomeRelativePath(ref.key) ? null : ref.key),
+    presents: (ref: ContentRef) => (isHomeRelativePath(ref.key) ? null : `dir:${ref.key}`),
     /*
      * **激活这一格 = 焦点进这棵树**(W7-c 裁定 6,与会话那一种同一条自述)。
      *

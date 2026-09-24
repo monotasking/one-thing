@@ -49,8 +49,8 @@ export async function openSkillDirectory(skillId: string): Promise<boolean> {
     entry = lookup()
   }
   if (entry?.directoryPath) {
-    openDirectoryPanel(entry.directoryPath)
-    return true
+    // 「开成了没有」原样交上去(`~` 展不开 = false,由 chip 那格 failKey 说话)。
+    return openDirectoryPanel(entry.directoryPath)
   }
 
   // ③ 回落。

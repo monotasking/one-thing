@@ -181,6 +181,68 @@ export function isUnder(path: string, root: string): boolean {
   return path.startsWith(base)
 }
 
+/* ── `~`:只在入口展开一次,展开靠后端 ─────────────────────────────────── */
+
+/**
+ * 这条路径是不是**以家目录起笔**的写法(`~` / `~/…`)。
+ *
+ * 判据与后端 `expandOnethingHomePath` 逐字同一条(`~\\` 那一支是 Windows 的写法,
+ * 这台壳在 mac 上也认它 —— 认不认由后端说了算,这里只是不替它多判一种)。
+ * `~user/…` 不算:后端不展它,渲染层也就不该假装它是家目录。
+ */
+export function isHomeRelativePath(path: string): boolean {
+  return path === '~' || path.startsWith('~/') || path.startsWith('~\\')
+}
+
+/**
+ * 展不开 `~` 的那一种失败。**`backendError` 是后端原话**(可能缺席 —— 后端只答了
+ * 一句 `success:false`),消费方要把它原样画出来,所以它单独一格,不糊进 `message`。
+ */
+export class HomePathError extends Error {
+  readonly backendError: string | undefined
+  constructor(backendError: string | undefined) {
+    super(backendError ?? 'home path did not resolve')
+    this.name = 'HomePathError'
+    this.backendError = backendError
+  }
+}
+
+/**
+ * 一次展开失败交给屏幕的那句**后端原话**。网络层抛的(端口本身 reject)说的也是
+ * 一句真话,原样交;认不出的一律缺席 —— 缺席的意思是「没有原话可画」,不是「没出错」。
+ */
+export function homePathFailureText(error: unknown): string | undefined {
+  if (error instanceof HomePathError) return error.backendError
+  return error instanceof Error ? error.message : undefined
+}
+
+/**
+ * **把一条可能以 `~` 起笔的路径展成绝对路径 —— 全壳唯一的一只**(09-24)。
+ *
+ * ── 病历(这只函数存在的理由)────────────────────────────────────────────
+ * 模型写的 `<ref type="dir" path="~/Documents/…/"/>`(提示词允许 `~/`)原样进了
+ * 拼贴台,于是那一格的 key 是 `~/…`。根那一层列得出来(后端 `listDirectory` 会展开
+ * `~`),可后端回的**子项路径是绝对路径**,而根是 `~/…`:`FilesPanel` 的
+ * `dirPaths = [root, ...expanded.filter(isUnder(·, root))]` 把子层全部滤掉 —— 子目录
+ * 那一格永远不被订阅,点了只见骨架条;面包屑也画成 `/~/…`(`breadcrumbsOf` 把 `~`
+ * 当一段)。`refresh` / `collapseAll` 里那三处 `isUnder` 是同一个病。
+ *
+ * 裁定:**目录面板的根永远是绝对路径;`~` 只在入口处解析一次**。解析靠后端
+ * (`stat` 展开 `~/x` 并在 `path` 上回真路径)—— 渲染层没有 homedir 这个事实
+ * (文件头「根目录的判据」那段;`data/home-dir.ts` 那一格只用来**画**,不用来算)。
+ *
+ * 不以 `~` 起笔的原样交回,**不发请求**。失败抛 `HomePathError`(带后端原话)。
+ * 调用方要不要等它,看它自己能不能等:点一下要当拍见效的那几条路先问
+ * `isHomeRelativePath`,绝对路径就不必绕这一个微任务(判词在 `content/dir-open.ts`)。
+ */
+export async function resolveHomePath(path: string): Promise<string> {
+  if (!isHomeRelativePath(path)) return path
+  const port = await filesPort()
+  const stat = await port.stat(path)
+  if (!stat.success || !stat.path) throw new HomePathError(stat.error)
+  return stat.path
+}
+
 export function baseNameOf(path: string): string {
   const trimmed = path.endsWith('/') && path.length > 1 ? path.slice(0, -1) : path
   const at = trimmed.lastIndexOf('/')
@@ -811,15 +873,14 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
 
       let root = cwd
       if (!root) {
-        // `~` 只有后端展得开(渲染层没有 homedir 这个事实)。
-        const port = await filesPort()
-        const stat = await port.stat('~')
-        if (rootToken !== token) return
-        if (!stat.success || !stat.path) {
-          set({ rootStatus: 'error', rootError: stat.error })
+        // `~` 只有后端展得开(渲染层没有 homedir 这个事实)—— 全壳唯一那一只。
+        try {
+          root = await resolveHomePath('~')
+        } catch (error) {
+          if (rootToken !== token) return
+          set({ rootStatus: 'error', rootError: homePathFailureText(error) })
           return
         }
-        root = stat.path
       }
       if (rootToken !== token) return
       set({ root, rootStatus: 'ready' })

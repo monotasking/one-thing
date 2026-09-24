@@ -23,6 +23,9 @@ import {
   rowWindow,
   sessionCwdOf,
   useFilesSource,
+  HomePathError,
+  isHomeRelativePath,
+  resolveHomePath,
 } from './files-source'
 import type { DirState } from './files-source'
 import { useNotifyStore } from '../services/notify-store'
@@ -126,6 +129,45 @@ describe('根目录的判据(单一产地)', () => {
     await useFilesSource.getState().setRoot('/other')
     expect(useFilesSource.getState().expanded).toEqual({})
     expect(dirsQuery.keys()).toEqual(['/other'])
+  })
+})
+
+/**
+ * **`~` 只在入口展开一次,展开靠后端**(09-24)。病历在 `resolveHomePath` 上:
+ * 以 `~/…` 当根,后端回来的子项全是绝对路径,`isUnder` 把子层整层滤掉。
+ */
+describe('resolveHomePath:全壳唯一那一只', () => {
+  it('判据与后端 `expandOnethingHomePath` 同一条:`~` / `~/…` 算,`~user` 与绝对路径不算', () => {
+    expect(isHomeRelativePath('~')).toBe(true)
+    expect(isHomeRelativePath('~/Documents/x')).toBe(true)
+    expect(isHomeRelativePath('~user/x')).toBe(false)
+    expect(isHomeRelativePath('/Users/me/~/x')).toBe(false)
+    expect(isHomeRelativePath('')).toBe(false)
+  })
+
+  it('① 不以 `~` 起笔:原样交回,**不发请求**', async () => {
+    const port = fakePort()
+    await expect(resolveHomePath('/repo/a')).resolves.toBe('/repo/a')
+    expect(port.stat).not.toHaveBeenCalled()
+  })
+
+  it('② `~/…`:问后端 `stat`,交回它 stat 到的那条绝对路径', async () => {
+    const port = fakePort({
+      stat: vi.fn(async (at: string) => ({
+        success: true,
+        type: 'directory' as const,
+        path: at.replace(/^~/, '/home/me'),
+      })),
+    })
+    await expect(resolveHomePath('~/Documents/x')).resolves.toBe('/home/me/Documents/x')
+    expect(port.stat).toHaveBeenCalledWith('~/Documents/x')
+  })
+
+  it('③ 展不开:抛 `HomePathError`,后端原话原样带着', async () => {
+    fakePort({ stat: vi.fn(async () => ({ success: false, error: 'ENOENT: no such dir' })) })
+    const failure = await resolveHomePath('~/gone').catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(HomePathError)
+    expect((failure as HomePathError).backendError).toBe('ENOENT: no such dir')
   })
 })
 

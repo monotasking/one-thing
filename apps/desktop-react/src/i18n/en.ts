@@ -1107,6 +1107,7 @@ export const en: Record<MessageKey, string> = {
   'files.openDirTitle': 'Open a directory…',
   'files.openDirConfirm': 'Open',
   'files.openDirPlaceholder': 'Absolute path, e.g. /Users/me/notes',
+  'files.openDirFailed': "Couldn't open the folder {path}",
   'workbench.leafTabs': 'Tabs',
   'workbench.hiddenTabs': 'Hidden tabs',
   'workbench.hiddenNote': 'hidden',

@@ -51,6 +51,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { _electron as electron } from 'playwright'
 import electronBinary from 'electron'
+import { openFileOpenModeSubmenu } from './lib/file-open-mode-menu.mjs'
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(appRoot, '../..')
@@ -670,6 +671,8 @@ async function openTwoTabsInCenter(page) {
     row?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 60 }))
   }, rowCss)
   await delay(400)
+  // 09-24 起「打开方式」住在二级菜单里:先点开那一行 ▸(判词在 `lib/file-open-mode-menu.mjs`)。
+  await openFileOpenModeSubmenu(page)
   const picked = await page.evaluate(() => {
     const items = Array.from(document.querySelectorAll('[role="menuitemradio"]'))
     const center = items.find((el) => /主区域|Main stage/.test(el.textContent ?? ''))

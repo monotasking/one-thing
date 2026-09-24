@@ -54,6 +54,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { _electron as electron } from 'playwright'
 import electronBinary from 'electron'
+import { openFileOpenModeSubmenu } from './lib/file-open-mode-menu.mjs'
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(appRoot, '../..')
@@ -180,6 +181,8 @@ async function switchModeTo(page, filePath, pattern) {
   await waitFor('行菜单出来了', () =>
     page.evaluate(() => Boolean(document.querySelector('[role="menu"]'))),
   )
+  // 09-24 起「打开方式」住在二级菜单里:先点开那一行 ▸(判词在 `lib/file-open-mode-menu.mjs`)。
+  await openFileOpenModeSubmenu(page)
   await page.evaluate(source => {
     const re = new RegExp(source)
     const items = Array.from(document.querySelectorAll('[role="menuitemradio"]'))
@@ -694,6 +697,8 @@ async function main() {
      await waitFor('行菜单出来了', () =>
        page.evaluate(() => Boolean(document.querySelector('[role="menu"]'))),
      )
+     // 09-24 起「打开方式」住在二级菜单里:先点开那一行 ▸(判词在 `lib/file-open-mode-menu.mjs`)。
+     await openFileOpenModeSubmenu(page)
      const modeMenu = await page.evaluate(() => {
        const items = Array.from(document.querySelectorAll('[role="menuitemradio"]'))
        return {
@@ -704,9 +709,13 @@ async function main() {
          ).length,
        }
      })
+     // Esc 只退一层(子表是父表在响应链上的孩子):两下 = 先收子表、再收一级那张。
+     await page.keyboard.press('Escape')
+     await delay(150)
      await page.keyboard.press('Escape')
      await delay(250)
-     assert(modeMenu.count === 7, `「打开方式」七档全在(实测 ${modeMenu.count} 档)`)
+     // 六档:顶架子那一档 09-24 退役(与 `files-panel.test` 那条 `toHaveLength(6)` 同一个数)。
+     assert(modeMenu.count === 6, `「打开方式」六档全在(实测 ${modeMenu.count} 档)`)
      assert(modeMenu.disabled === 0, `一格禁灰都没有了(实测 ${modeMenu.disabled} 格)`)
      assert(modeMenu.nextBatch === 0, '那句「架子与浮窗的标签下一批」的注脚已经退役')
 

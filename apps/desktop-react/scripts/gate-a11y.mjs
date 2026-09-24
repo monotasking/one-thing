@@ -109,6 +109,7 @@ import { _electron as electron } from 'playwright'
 import electronBinary from 'electron'
 import { AxeBuilder } from '@axe-core/playwright'
 import { waitForScreenSettled } from './gate-a11y-settle.mjs'
+import { openFileOpenModeSubmenu } from './lib/file-open-mode-menu.mjs'
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(appRoot, '../..')
@@ -1163,6 +1164,8 @@ async function main() {
         row?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
       }, fileRow)
       await delay(400)
+      // 09-24 起「打开方式」住在二级菜单里:先点开那一行 ▸(判词在 `lib/file-open-mode-menu.mjs`)。
+      await openFileOpenModeSubmenu(page)
       await page.evaluate(() => {
         const items = Array.from(document.querySelectorAll('[role="menuitemradio"]'))
         const inPanel = items.find((el) => /面板内|This panel/.test(el.textContent ?? ''))
@@ -1237,6 +1240,8 @@ async function main() {
         row?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 60 }))
       }, fileRow)
       await delay(500)
+      // 09-24 起「打开方式」住在二级菜单里:先点开那一行 ▸(判词在 `lib/file-open-mode-menu.mjs`)。
+      await openFileOpenModeSubmenu(page)
       const picked = await page.evaluate(() => {
         const items = Array.from(document.querySelectorAll('[role="menuitemradio"]'))
         const center = items.find((el) => /主区域|Main stage/.test(el.textContent ?? ''))

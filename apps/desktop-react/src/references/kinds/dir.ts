@@ -3,6 +3,7 @@ import { resolveIcon } from '../../components/icons'
 import type { FileMention } from '../../data/file-mentions-source'
 import { basename } from '../../content/tools/result'
 import { openDirectoryPanel } from '../../content/dir-open'
+import { isHomeRelativePath } from '../../data/files-source'
 import { registerReferenceKind } from '../registry'
 import {
   isDirectoryPath,
@@ -133,11 +134,21 @@ export const dirReferenceKind: ReferenceKind<FileMention, DirRef> = {
     // 与文件那一种同一条,外加**自述它是个目录**:名字行带回尾随 `/`。
     tooltipPath: { path: ref.path, dir: true },
     clickable: true,
+    // `~` 展不开时(后端答不出家目录)说的那句话。`tooltipArgs` 里正好有 `{path}`。
+    failKey: 'files.openDirFailed',
+    failSource: 'chat.dirRef',
   }),
 
+  /*
+   * 模型写的路径可以以 `~/` 起笔(提示词允许),而目录面板的根只收绝对路径 ——
+   * 展开归 `openDirectoryPanel`(病历在 `data/files-source.resolveHomePath`)。
+   * **绝对路径同步答 `true`**:那条路当拍就摆好了,交一个 promise 只会让这枚 chip
+   * 白白压淡一帧(pending 的判据是「交回来的是不是 promise」,判词在 `ReferenceChip`);
+   * 只有 `~` 要等后端一跳,才把那个 promise 原样交出去画「在飞」。
+   */
   open: (ref) => {
-    openDirectoryPanel(ref.path)
-    return true
+    const opened = openDirectoryPanel(ref.path)
+    return isHomeRelativePath(ref.path) ? opened : true
   },
 
   /*

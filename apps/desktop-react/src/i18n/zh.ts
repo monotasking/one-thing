@@ -1314,6 +1314,7 @@ export const zh = {
   'files.openDirTitle': '打开目录…',
   'files.openDirConfirm': '打开',
   'files.openDirPlaceholder': '绝对路径,例如 /Users/me/notes',
+  'files.openDirFailed': '没能打开目录 {path}',
   'workbench.leafTabs': '标签',
   'workbench.hiddenTabs': '隐藏的标签',
   'workbench.hiddenNote': '已隐藏',

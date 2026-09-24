@@ -218,6 +218,16 @@ async function rowMenu(path: string): Promise<void> {
   await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy())
 }
 
+/**
+ * 点开「打开方式 ▸」那一行(09-24 起六档折进二级菜单,判词在 `FileActionsMenu`)。
+ * 这一行的无障碍名是「小节名 + 行尾当下那一档」,所以按前缀认。等的是子表里
+ * 「主区域」那一格出来 —— 数单选等不住:markdown 的「视图」两格一级里就有。
+ */
+async function openWithSubmenu(): Promise<void> {
+  fireEvent.click(screen.getByRole('menuitem', { name: new RegExp(`^${t('files.openWith')}`) }))
+  await waitFor(() => expect(screen.getByText('主区域')).toBeTruthy())
+}
+
 async function closeViaMenu(path: string): Promise<void> {
   fireEvent.contextMenu(row(path))
   await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy())
@@ -865,6 +875,9 @@ describe('行菜单:行尾 ⋯ 与右键是同一张表', () => {
     renderFiles()
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
     await openMenu(`${ROOT}/README.md`)
+    // 09-24 起六档住在二级菜单里:一级一枚都不在,点开「打开方式 ▸」才出来。
+    expect(openModeOptions()).toHaveLength(0)
+    await openWithSubmenu()
 
     /*
      * **前两格是「视图」那一节**(W7-c 裁定 2:markdown 的「渲染 / 源码」从叶檐的
@@ -900,6 +913,7 @@ describe('行菜单:行尾 ⋯ 与右键是同一张表', () => {
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
     await openMenu(`${ROOT}/README.md`)
 
+    await openWithSubmenu()
     const options = openModeOptions()
     expect(options).toHaveLength(6) // 顶架子那档 09-24 退役
     expect(options.filter((el) => el.hasAttribute('disabled'))).toHaveLength(0)
@@ -916,6 +930,7 @@ describe('行菜单:行尾 ⋯ 与右键是同一张表', () => {
     fireEvent.click(row(`${ROOT}/README.md`))
     await waitFor(() => expect(useViewerSource.getState().instances[`${ROOT}/README.md`]).toBeTruthy())
     await rowMenu(`${ROOT}/README.md`)
+    await openWithSubmenu()
     fireEvent.click(screen.getByText('主区域'))
     await waitFor(() => expect(useFileOpenMode.getState().mode).toBe('stage'))
     /*
@@ -1434,6 +1449,7 @@ describe('面板内分栏:单击文件 = 在此打开', () => {
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
     // 开进中央区(分栏那一档不进树,谈不上「隐藏」)。
     await rowMenu(`${ROOT}/README.md`)
+    await openWithSubmenu()
     fireEvent.click(screen.getByText('主区域'))
     await waitFor(() => expect(useFileOpenMode.getState().mode).toBe('stage'))
     fireEvent.click(row(`${ROOT}/README.md`))

@@ -3,7 +3,7 @@ import { t } from '../i18n'
 import { baseNameOf, useFilesSource } from '../data/files-source'
 import { registerStageLauncher } from '../stage/launchers'
 import { useWorkbenchStore } from '../workbench/store'
-import { FILES_ITEM_ID, openDirectoryPanel, sessionDirOf } from './dir-open'
+import { FILES_ITEM_ID, notifyDirOpenFailed, openDirectoryPanel, sessionDirOf } from './dir-open'
 import { DIR_KIND, dirRef } from './kinds/dir-ref'
 import { useOpenDirDialog } from './files/open-dir-hub'
 
@@ -53,7 +53,19 @@ export async function openSessionDirectory(): Promise<void> {
   const files = useFilesSource.getState()
   await files.setRoot(cwd)
   const root = useFilesSource.getState().root
-  if (root) openDirectoryPanel(root)
+  // `setRoot` 交回的根已经是绝对路径(`~` 在它那一步就展开了),所以这一下不会
+  // 答 false —— 但「失败要有人说话」是这条路的纪律,不是这一刻的概率。
+  if (root && !(await openDirectoryPanel(root))) notifyDirOpenFailed(root)
+}
+
+/**
+ * 最近目录那一行。**存量账本里可能躺着 `~/…`**(09-24 之前 `rememberRoot` 收的是原样
+ * 那一串);它走 `openDirectoryPanel` 那条展开,展不开就说一句。
+ */
+function openRecentDirectory(path: string): void {
+  void openDirectoryPanel(path).then((ok) => {
+    if (!ok) notifyDirOpenFailed(path)
+  })
 }
 
 /** 最近目录那几行 + 「打开目录…」。 */
@@ -69,7 +81,7 @@ function FilesLauncherMenuRows({ onDone }: { onDone: () => void }) {
             <MenuItem
               key={path}
               onClick={() => {
-                openDirectoryPanel(path)
+                openRecentDirectory(path)
                 onDone()
               }}
             >

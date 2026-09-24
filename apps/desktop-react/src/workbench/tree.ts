@@ -595,6 +595,39 @@ export function replaceRef(
   })
 }
 
+/**
+ * **同一份内容换个写法**:整棵树里每一格 `from` 原位换成 `to`,钉住跟着走(09-24)。
+ *
+ * ── 它与 `replaceRef` 差在哪一句 ─────────────────────────────────────────
+ * `replaceRef` 说的是「这一格**换了一份内容**」(列表里点另一条会话):换进来的
+ * 那一份没被谁钉过,所以钉住落掉。这一只说的是「**还是那一份**,只是名字的写法
+ * 变了」—— 今天唯一的调用方是 `dir:~/x` → `dir:/Users/me/x`(判词在
+ * `content/files/HomeRootResolver.tsx`):用户钉住的是那个目录,不是那串字,
+ * 所以钉住名单里那个 id 原位改写,不落掉。
+ *
+ * 范围是**每一片叶**(同一个目录可以在两片叶里各开一棵,各换各的);下标、活动格、
+ * 预览标记全由 `replaceRef` 那一句保证不动。`from` 哪儿都没有 = 引用恒等。
+ */
+export function rekeyRef(node: PaneNode, from: ContentRef, to: ContentRef): PaneNode {
+  if (sameRef(from, to)) return node
+  const fromId = refId(from)
+  const toId = refId(to)
+  let next = node
+  for (const leaf of leavesOf(node)) {
+    if (indexOfRef(leaf, from) < 0) continue
+    const pinned = Array.isArray(leaf.pinned) && leaf.pinned.includes(fromId)
+      ? [...new Set(leaf.pinned.map((id) => (id === fromId ? toId : id)))]
+      : null
+    next = replaceRef(next, leaf.id, from, to)
+    if (pinned) {
+      next = mapLeaf(next, leaf.id, (after) =>
+        withPinned(after, pinnedAfterTabs({ ...after, pinned }, after.tabs)),
+      )
+    }
+  }
+  return next
+}
+
 /** 换活动 tab。 */
 export function activate(node: PaneNode, leafId: string, index: number): PaneNode {
   return mapLeaf(node, leafId, (leaf) => {

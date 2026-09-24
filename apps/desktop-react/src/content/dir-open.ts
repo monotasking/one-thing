@@ -1,4 +1,4 @@
-import { sessionCwdOf } from '../data/files-source'
+import { isHomeRelativePath, resolveHomePath, sessionCwdOf } from '../data/files-source'
 import { useSessionsSource } from '../data/sessions-source'
 import { useExposeStore } from '../expose/store'
 import { findItem } from '../stage/items'
@@ -8,6 +8,8 @@ import { CENTER_REGION, edgeRegion, floatRegion } from '../workbench/regions'
 import { refId } from '../workbench/kinds'
 import { regionOfRefIn, useWorkbenchStore } from '../workbench/store'
 import { dirRef, normalizeDirPath } from './kinds/dir-ref'
+import { notify } from '../services/notify'
+import { t } from '../i18n'
 import type { PlacementMemory } from '../stage/types'
 import type { ContentRef } from '../workbench/kinds'
 import type { RegionId } from '../workbench/regions'
@@ -74,18 +76,64 @@ function regionForLauncher(ref: ContentRef): RegionId {
 }
 
 /**
- * **打开一份目录面板**(启动瓦、右键最近项、「打开目录…」、消息气泡里的目录 chip
- * 四处共用的唯一一只)。
+ * **打开一份目录面板**(启动瓦、右键最近项、「打开目录…」、消息气泡里的目录 chip、
+ * 技能目录五处共用的唯一一只)。
  *
- * 三件事,次序即语义:记一笔最近目录 → 算落点 → 摆过去。摆那一句走
+ * 四件事,次序即语义:**展开 `~`** → 归一 → 记一笔最近目录 → 摆过去。摆那一句走
  * `stage.placeRef`(它同时改树与形态机,而且经 `orchestrate` 那格缓冲 ——
  * 判词写在 `stage/store.placeRef` 上)。
+ *
+ * ── 第一件:入口就把 `~` 展开(09-24)──────────────────────────────────────
+ * 裁定「目录面板的根永远是绝对路径」,病历整段在 `data/files-source.resolveHomePath`
+ * 上:`~/…` 当 key 进了拼贴台,子层一层都展不开、面包屑画成 `/~/…`。这里是那句
+ * 裁定在**新打开**这一侧的落点;已经落了盘的 `~` 格由 `content/files/HomeRootResolver`
+ * 在渲染那一拍改写。`rememberRoot` 与 `placeRef` 收到的永远是绝对路径 ——
+ * `referenceRoot` / `presents` / `@` 搜索根读的都是 key,key 里留着 `~` 就是三处说谎。
+ *
+ * ── 为什么绝对路径不绕 `resolveHomePath` 那一个微任务 ──────────────────────
+ * 交互预算第①条:点击当帧必须有可见响应。绝对路径没有要问的,当拍摆好、当拍答
+ * `true`(`references/kinds/dir.ts` 据此不画 pending,一格都不闪);只有 `~` 要等
+ * 后端一跳。两条路问的是同一句 `isHomeRelativePath`,展开只有 `resolveHomePath`
+ * 那一只 —— 判据与动作各一个产地。
+ *
+ * ── 答的是「开成了没有」────────────────────────────────────────────────
+ * `~` 展不开 = `false`,**什么都不摆**(拿一格 `~` 去占位就是把病历重演一遍)。
+ * 失败由调用方说话(chip 走它那格 `failKey`,启动瓦 / 「打开目录…」走
+ * `notifyDirOpenFailed`),这里一个异常都不往外扔。
  */
-export function openDirectoryPanel(rawPath: string): void {
-  if (!rawPath) return
+export function openDirectoryPanel(rawPath: string): Promise<boolean> {
+  if (!rawPath) return Promise.resolve(false)
+  if (!isHomeRelativePath(rawPath)) {
+    placeDirectory(rawPath)
+    return Promise.resolve(true)
+  }
+  return resolveHomePath(rawPath).then(
+    (abs) => {
+      placeDirectory(abs)
+      return true
+    },
+    () => false,
+  )
+}
+
+/** 摆一份**已是绝对路径**的目录面板。只有 `openDirectoryPanel` 调它。 */
+function placeDirectory(abs: string): void {
   // 身份归一(尾斜杠不是身份的一部分,判词在 `normalizeDirPath` 上)。
-  const path = normalizeDirPath(rawPath)
+  const path = normalizeDirPath(abs)
   const ref = dirRef(path)
   useWorkbenchStore.getState().rememberRoot(path)
   useStageStore.getState().placeRef(ref, regionForLauncher(ref))
+}
+
+/**
+ * 「这个目录没开出来」说一句话 —— 启动瓦的最近目录与「打开目录…」两条路共用
+ * (它们自己没有现成的失败反馈;chip 与技能有,各走各的)。文案一处,两处不分叉。
+ */
+export function notifyDirOpenFailed(path: string): void {
+  notify({
+    level: 'warn',
+    title: t('files.openDirFailed', { path }),
+    source: 'files.open-dir',
+    dedupeMs: 3000,
+  })
 }
