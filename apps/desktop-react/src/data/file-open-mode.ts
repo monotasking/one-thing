@@ -32,7 +32,6 @@ import { DEFAULT_SPACE_ID } from '../workspace/types'
 export type FileOpenMode =
   | 'panel'
   | 'stage'
-  | 'edge-top'
   | 'edge-bottom'
   | 'edge-left'
   | 'edge-right'
@@ -42,7 +41,6 @@ export type FileOpenMode =
 export const FILE_OPEN_MODES: readonly FileOpenMode[] = [
   'panel',
   'stage',
-  'edge-top',
   'edge-bottom',
   'edge-left',
   'edge-right',
@@ -94,8 +92,6 @@ export function regionOfFileOpenMode(mode: FileOpenMode): RegionId | 'panel' {
        * **哨位**,由 `content/viewer/open-target.ts` 那一处翻成真的窗号。
        */
       return NEW_FLOAT_REGION
-    case 'edge-top':
-      return 'edge:top'
     case 'edge-bottom':
       return 'edge:bottom'
     case 'edge-left':
@@ -109,7 +105,6 @@ export function regionOfFileOpenMode(mode: FileOpenMode): RegionId | 'panel' {
 export const FILE_OPEN_MODE_LABELS: Record<FileOpenMode, MessageKey> = {
   panel: 'files.openIn.panel',
   stage: 'files.openIn.stage',
-  'edge-top': 'files.openIn.edgeTop',
   'edge-bottom': 'files.openIn.edgeBottom',
   'edge-left': 'files.openIn.edgeLeft',
   'edge-right': 'files.openIn.edgeRight',
@@ -147,6 +142,8 @@ export const OPEN_MODE_PER_SPACE: PerSpaceSpec<FileOpenModeStore, OpenModeFurnit
  * 早就不成立了,而落回一个**不进树**的档正是那条真机读数的第二个来源。)
  */
 function clampMode(value: unknown): FileOpenMode {
+  // 顶边架子 09-24 退役:那一档的人要的是「钉在一条横边上」,落到底边而不是出厂档。
+  if (value === 'edge-top') return 'edge-bottom'
   return typeof value === 'string' && (FILE_OPEN_MODES as readonly string[]).includes(value)
     ? (value as FileOpenMode)
     : FACTORY_FILE_OPEN_MODE

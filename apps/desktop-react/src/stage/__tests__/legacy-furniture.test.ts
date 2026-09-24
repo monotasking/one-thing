@@ -138,15 +138,15 @@ describe('v8 → v9:接那一头', () => {
 
   it('活动 tab 已经不在名单上 → 落在末位,不留悬空下标', () => {
     const regions = regionsFromLegacyFurniture(
-      { shelves: { top: { tabs: ['a', 'b'], activeId: 'gone' } } },
+      { shelves: { bottom: { tabs: ['a', 'b'], activeId: 'gone' } } },
       leafId(),
     )
-    const top = regions['edge:top']
-    expect(top.kind === 'leaf' && top.active).toBe(1)
+    const bottom = regions['edge:bottom']
+    expect(bottom.kind === 'leaf' && bottom.active).toBe(1)
   })
 
   it('一格 tab 都没有的边不折出树来(空树会让架子画出一条空带子)', () => {
-    expect(regionsFromLegacyFurniture({ shelves: { top: { tabs: [] } } }, leafId())).toEqual({})
+    expect(regionsFromLegacyFurniture({ shelves: { bottom: { tabs: [] } } }, leafId())).toEqual({})
     expect(regionsFromLegacyFurniture(undefined, leafId())).toEqual({})
   })
 })

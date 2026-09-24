@@ -364,10 +364,9 @@ function land(id: string, outcome: P.PlacementOutcome): void {
 }
 
 /** 四条边 → 播报里那个名词。与 `LeafActions` 那张表读同一族 key。 */
-const SIDE_NAME_KEY: Record<ShelfSide, 'drag.sideLeft' | 'drag.sideRight' | 'drag.sideTop' | 'drag.sideBottom'> = {
+const SIDE_NAME_KEY: Record<ShelfSide, 'drag.sideLeft' | 'drag.sideRight' | 'drag.sideBottom'> = {
   left: 'drag.sideLeft',
   right: 'drag.sideRight',
-  top: 'drag.sideTop',
   bottom: 'drag.sideBottom',
 }
 

@@ -860,7 +860,7 @@ describe('行菜单:行尾 ⋯ 与右键是同一张表', () => {
     return screen.getAllByRole('menuitemradio').filter((el) => labels.has(el.textContent ?? ''))
   }
 
-  it('「打开方式」七档全在,勾在当下那一档,选了就记住', async () => {
+  it('「打开方式」六档全在,勾在当下那一档,选了就记住', async () => {
     installPort()
     renderFiles()
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
@@ -869,11 +869,11 @@ describe('行菜单:行尾 ⋯ 与右键是同一张表', () => {
     /*
      * **前两格是「视图」那一节**(W7-c 裁定 2:markdown 的「渲染 / 源码」从叶檐的
      * 工具条搬进了这张表)。它们与「打开方式」同样是**一组值里选一个**,所以同样
-     * 报 `menuitemradio` —— 这一条问的是打开方式那七档,所以先把视图那两格切掉。
+     * 报 `menuitemradio` —— 这一条问的是打开方式那六档,所以先把视图那两格切掉。
      * `openModeOptions` 是这个切法的唯一产地,免得两条用例各数一次。
      */
     const options = openModeOptions()
-    expect(options).toHaveLength(7)
+    expect(options).toHaveLength(6) // 顶架子那档 09-24 退役
     expect(options.map((el) => el.getAttribute('aria-checked'))).toEqual([
       'true',
       'false',
@@ -881,28 +881,27 @@ describe('行菜单:行尾 ⋯ 与右键是同一张表', () => {
       'false',
       'false',
       'false',
-      'false',
     ])
 
-    // W4 起七档全通;这一条仍旧选「主区域」,它验的是「选档即生效」那条链。
+    // W4 起六档全通;这一条仍旧选「主区域」,它验的是「选档即生效」那条链。
     fireEvent.click(screen.getByText('主区域'))
     await waitFor(() => expect(useFileOpenMode.getState().mode).toBe('stage'))
   })
 
   /*
-   * ── W4:七档全接上了 ────────────────────────────────────────────────
+   * ── W4:六档全接上了 ────────────────────────────────────────────────
    * F1 的诚实降级(六档「记住但不假装」)在 F2 结清过一次;W1-a 因为架子与浮窗
    * 还没有树,又退回过两档(五档禁灰 + 一句「下一批」)。W4 把两处都换成了树,
-   * 于是这一条把**终态**钉死:七档全能选,一格禁灰、一句注脚都不该再有。
+   * 于是这一条把**终态**钉死:六档全能选,一格禁灰、一句注脚都不该再有。
    */
-  it('W4:七档全通,禁灰与「下一批」那句注脚一并退役', async () => {
+  it('W4:六档全通,禁灰与「下一批」那句注脚一并退役', async () => {
     installPort()
     renderFiles()
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
     await openMenu(`${ROOT}/README.md`)
 
     const options = openModeOptions()
-    expect(options).toHaveLength(7)
+    expect(options).toHaveLength(6) // 顶架子那档 09-24 退役
     expect(options.filter((el) => el.hasAttribute('disabled'))).toHaveLength(0)
     expect(screen.queryAllByText('架子与浮窗的标签下一批')).toHaveLength(0)
     // 旧那句注脚(F1 时代的诚实降级)同样不该出现 —— 它说的是另一件事。

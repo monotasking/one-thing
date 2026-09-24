@@ -39,7 +39,6 @@ function openOnEdge(id: string, side: ShelfSide) {
 const NAME: Record<ShelfSide, string> = {
   left: '左侧栏',
   right: '右侧栏',
-  top: '顶栏',
   bottom: '底栏',
 }
 

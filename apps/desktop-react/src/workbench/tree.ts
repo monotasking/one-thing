@@ -3,6 +3,9 @@ import { regionReadRank } from './regions'
 import type { ContentRef, ContentRefId, ResidencyLevel } from './kinds'
 import type { RegionId } from './regions'
 
+/** 分屏带朝哪一侧切(拖拽落点与落定共用这一个词)。 */
+export type SplitSide = 'left' | 'right' | 'top' | 'bottom'
+
 /**
  * **拼贴树**(设计 `apps/desktop-react/docs/workbench-2026-09.md` §1.2)—— 一个区域
  * 内部怎么摆。整只文件是**纯函数**:没有 React、没有 DOM、没有 store,

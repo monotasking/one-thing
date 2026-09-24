@@ -141,7 +141,11 @@ export const FLOAT_DEFAULT_H = 480
  */
 export const FALLBACK_VIEWPORT: Viewport = { w: 1280, h: 800 }
 
-export const SHELF_SIDES: ShelfSide[] = ['left', 'right', 'top', 'bottom']
+/**
+ * 三条边。**顶边没有架子**(09-24 用户令:「窗口不再支持 top 架子,从窗口的角度分为
+ * 三个加载,分别是左右下」)—— 顶栏那一带是中央区的标签条与红绿灯,架子不该长在那儿。
+ */
+export const SHELF_SIDES: ShelfSide[] = ['left', 'right', 'bottom']
 
 /**
  * 拖着一扇浮窗靠近视口边缘多少像素算「要钉上去」。
@@ -254,7 +258,7 @@ function emptyShelf(): ShelfState {
 }
 
 export function emptyShelves(): Record<ShelfSide, ShelfState> {
-  return { left: emptyShelf(), right: emptyShelf(), top: emptyShelf(), bottom: emptyShelf() }
+  return { left: emptyShelf(), right: emptyShelf(), bottom: emptyShelf() }
 }
 
 export const initialStageState: StageState = {
@@ -823,10 +827,9 @@ function fitFloatAxis(
 export function centerRectOf(state: Pick<StageState, 'shelves'>, viewport: Viewport): Rect {
   const left = shelfExtentOf(state.shelves.left)
   const right = shelfExtentOf(state.shelves.right)
-  const top = shelfExtentOf(state.shelves.top)
   const bottom = shelfExtentOf(state.shelves.bottom)
   // 竖轴的可用高度从**顶栏之下**起算 —— 与 `usableExtent` 是同一句话,判词写在那儿。
-  const topEdge = viewport.h - usableExtent('top', viewport) + top
+  const topEdge = viewport.h - usableExtent('bottom', viewport)
   return {
     left,
     top: topEdge,
@@ -1206,12 +1209,14 @@ export function shelfViewportExtent(side: ShelfSide, viewport: Viewport): number
   return side === 'left' || side === 'right' ? viewport.w : viewport.h
 }
 
-/** 对面那条边。四条边只在这一张表里配对,别处不许再写 `side === 'left' ? …`。 */
-export const OPPOSITE_SHELF: Record<ShelfSide, ShelfSide> = {
+/**
+ * 对面那条边。边只在这一张表里配对,别处不许再写 `side === 'left' ? …`。
+ * 底边对面没有架子(顶边 09-24 退役)= `null`。
+ */
+export const OPPOSITE_SHELF: Record<ShelfSide, ShelfSide | null> = {
   left: 'right',
   right: 'left',
-  top: 'bottom',
-  bottom: 'top',
+  bottom: null,
 }
 
 /** 这条轴上中央区至少要留多少(竖边吃宽,横边吃高)。与 `shelfViewportExtent` 同一把尺。 */
@@ -1259,7 +1264,8 @@ export function shelfThicknessBudget(
   side: ShelfSide,
   viewport: Viewport,
 ): number {
-  const opposite = state.shelves[OPPOSITE_SHELF[side]]
+  const oppositeSide = OPPOSITE_SHELF[side]
+  const opposite = oppositeSide ? state.shelves[oppositeSide] : undefined
   return (
     usableExtent(side, viewport) -
     centerMinOn(side) -
@@ -1316,7 +1322,6 @@ export function clampShelfThickness(
 export function thicknessFromPointer(side: ShelfSide, pointer: Point, outerEdge: number): number {
   if (side === 'left') return pointer.x - outerEdge
   if (side === 'right') return outerEdge - pointer.x
-  if (side === 'top') return pointer.y - outerEdge
   return outerEdge - pointer.y
 }
 
@@ -1438,7 +1443,6 @@ function nailRank(state: StageState, side: ShelfSide): number {
 const EDGE_DISTANCE: Record<ShelfSide, (p: Point, v: Viewport) => number> = {
   left: (p) => p.x,
   right: (p, v) => v.w - p.x,
-  top: (p) => p.y,
   bottom: (p, v) => v.h - p.y,
 }
 
@@ -1468,8 +1472,7 @@ export function snapSideAt(pointer: Point, viewport: Viewport, band: number = SN
 export function tearOffDistance(side: ShelfSide, pointer: Point, innerEdge: number): number {
   if (side === 'right') return innerEdge - pointer.x
   if (side === 'left') return pointer.x - innerEdge
-  if (side === 'bottom') return innerEdge - pointer.y
-  return pointer.y - innerEdge
+  return innerEdge - pointer.y
 }
 
 /** 拖过阈值才算「撕下来」——够不着阈值的一次按下松开仍然是一次普通点击。 */

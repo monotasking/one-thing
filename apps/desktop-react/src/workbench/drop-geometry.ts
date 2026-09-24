@@ -104,8 +104,8 @@ export function measureDropGeometry(): DropGeometry {
       nodrop.push(rect)
     }
     /*
-     * **哪几条边上已经有架子了**(U1)。判据拿它答一句话:那条边的 12px 窄带
-     * 还成不成立(判词在 `drop.NEW_SHELF_BAND` 与 `drop.DropGeometry.shelves`)。
+     * **哪几条边上已经有架子了**(U1)。判据拿它答一句话:那条边的新架子带
+     * 还成不成立(判词在 `drop.NEW_SHELF_ZONE` 与 `drop.DropGeometry.shelves`)。
      *
      * 量的是 `[data-shelf]` 这格**架子自己写的**属性,而不是去问形态机的
      * `shelves` 那张表 —— 后者里一条空架子也占一行(`EdgeShelf` 对空树直接

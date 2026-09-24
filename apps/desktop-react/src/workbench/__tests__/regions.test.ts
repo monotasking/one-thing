@@ -73,10 +73,10 @@ describe('moveRef:搬家不是关闭', () => {
   })
 
   it('`at` 是**叶内下标**:按记忆插回原位,而不是永远排末尾', () => {
-    store().openRef(panel('a'), { region: 'edge:top' })
-    store().openRef(panel('b'), { region: 'edge:top' })
-    store().moveRef(panel('c'), 'edge:top', { at: 1 })
-    expect(tabsOf('edge:top')).toEqual(['panel:a', 'panel:c', 'panel:b'])
+    store().openRef(panel('a'), { region: 'edge:bottom' })
+    store().openRef(panel('b'), { region: 'edge:bottom' })
+    store().moveRef(panel('c'), 'edge:bottom', { at: 1 })
+    expect(tabsOf('edge:bottom')).toEqual(['panel:a', 'panel:c', 'panel:b'])
   })
 
   it('藏着的那一份被搬出来 = 它不再是「藏着的」', () => {
@@ -157,11 +157,11 @@ describe('按区域读', () => {
   })
 
   it('`regionOfLeafIn` / `regionOfRefIn` 各说各的坐标', () => {
-    store().openRef(panel('files'), { region: 'edge:top' })
-    const leaf = leavesOf(store().regions['edge:top'])[0]
-    expect(regionOfLeafIn(store().regions, leaf.id)).toBe('edge:top')
+    store().openRef(panel('files'), { region: 'edge:bottom' })
+    const leaf = leavesOf(store().regions['edge:bottom'])[0]
+    expect(regionOfLeafIn(store().regions, leaf.id)).toBe('edge:bottom')
     expect(regionOfLeafIn(store().regions, 'leaf-nope')).toBeNull()
-    expect(regionOfRefIn(store().regions, 'panel:files')).toBe('edge:top')
+    expect(regionOfRefIn(store().regions, 'panel:files')).toBe('edge:bottom')
     expect(regionOfRefIn(store().regions, 'panel:nope')).toBeNull()
   })
 })

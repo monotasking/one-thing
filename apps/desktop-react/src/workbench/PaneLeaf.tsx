@@ -13,6 +13,7 @@ import {
 } from './content-slots'
 import { useFullSlot } from './full-slot'
 import { useKeptContents } from './kept-contents'
+import { centerStripOnTopBar } from './layout'
 import { flattenContent, partsOfContent, refId, stripHeaderOf } from './kinds'
 import { LeafActions } from './LeafActions'
 import { openLeafMenuAt } from './leaf-menu'
@@ -44,8 +45,9 @@ import s from './PaneLeaf.module.css'
  *
  * 两件事合起来只有一句话:**檐的位置由区域决定**。
  *
- *   `region === CENTER_REGION`   叶身上零檐(顶栏画,`TopBarTabs`)
- *   其余区域(edge:* / float:*)  檐画在叶顶(下面那一格 `PaneLeafStrip`)
+ *   `region === CENTER_REGION` 且中央区只有一片叶   叶身上零檐(顶栏画,`TopBarTabs`)
+ *   中央区分了屏 / 其余区域(edge:* / float:*)      檐画在叶顶(下面那一格 `PaneLeafStrip`)
+ *   (09-24 起中央区也能分屏;判据是 `layout.centerStripOnTopBar`,顶栏与叶读同一句)
  *
  * 判据落在**这一处**,取的是叶自己住在哪儿(`store.regionOfLeafIn`)——
  * 不是「宿主给没给 host」:host 缺席只意味着这一片不是根叶,不意味着它在中央区
@@ -192,7 +194,8 @@ export const PaneLeaf = memo(function PaneLeaf({
   const activeId = active ? refId(active) : null
 
   /** 檐在不在这片叶身上。**唯一判据**,见文件头那张区域表。 */
-  const stripInLeaf = region !== CENTER_REGION
+  const centerOnTopBar = useWorkbenchStore((st) => centerStripOnTopBar(st.regions[CENTER_REGION]))
+  const stripInLeaf = region !== CENTER_REGION || !centerOnTopBar
   /**
    * **标签条让给内容自带的头**(待办 B 形 U1):叶里只有一格、那一种自述了 `stripHeader`、
    * 而且这片叶有自己的条(中央区的标签在顶栏上,头只能画在正文顶上)。判据只有这一处 ——

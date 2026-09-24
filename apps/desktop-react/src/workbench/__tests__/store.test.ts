@@ -242,21 +242,19 @@ describe('常驻那一种的最后一格关不掉(T0 拍点 2)', () => {
 })
 
 /**
- * **单叶政策**(W6-a,设计 `workbench-tabs-2026-09.md` §2.1 / §10)。
- *
- * 中央区收成**一条标签条**:那里不再有第二片叶,而「两块东西并排看」由
- * `pairRefs` 说。架子与浮窗照旧(设计 §12 明写不删那条能力)。
- * 反证:把 `splitLeaf` 里那句 `SINGLE_LEAF_REGIONS.includes(region)` 拿掉,
- * 第一条当场红。
+ * **单叶政策撤了**(W6-a 立,09-24 用户令「主区域也能分屏」撤)。`SINGLE_LEAF_REGIONS`
+ * 今天是空表:中央区与架子、浮窗一样分得开,存量多叶树也不再被折。只有 persist v3 那一遍
+ * 历史迁移仍折中央区(`V3_FOLDED_REGIONS`,迁移只描述历史)。
  */
-describe('单叶政策:中央区一条标签条', () => {
-  it('中央区不受理分屏(引用恒等 —— 连订阅都不该推)', () => {
+describe('单叶政策撤了:中央区也分得开', () => {
+  it('中央区受理分屏:两片叶,活动那一格搬到新叶', () => {
     const store = useWorkbenchStore.getState()
     store.openRef(doc('a'))
-    const before = center()
-    useWorkbenchStore.getState().splitLeaf(onlyLeaf().id, 'row')
-    expect(center()).toBe(before)
-    expect(leavesOf(center())).toHaveLength(1)
+    store.openRef(doc('b'))
+    useWorkbenchStore.getState().splitLeaf(leavesOf(center())[0].id, 'row')
+    const leaves = leavesOf(center())
+    expect(leaves).toHaveLength(2)
+    expect(leaves[1].tabs.map(refId)).toEqual(['doc:b'])
   })
 
   it('架子照旧分得开(那两处的树不收)', () => {
@@ -272,7 +270,7 @@ describe('单叶政策:中央区一条标签条', () => {
     expect(leaves[1].tabs.map(refId)).toEqual(['doc:b'])
   })
 
-  it('存量档案里的多叶中央树,洗一遍就折成一条(按阅读序)', () => {
+  it('存量档案里的多叶中央树,洗一遍**原样留着**(不再折)', () => {
     const folded = normalizeRegions({
       [CENTER_REGION]: {
         kind: 'split',
@@ -283,11 +281,8 @@ describe('单叶政策:中央区一条标签条', () => {
         b: makeLeaf('L2', [doc('b'), doc('c')], 0),
       },
     })[CENTER_REGION]
-    expect(leavesOf(folded)).toHaveLength(1)
+    expect(leavesOf(folded).map((leaf) => leaf.id)).toEqual(['L1', 'L2'])
     expect(refIdsOf(folded)).toEqual(['home:main', 'doc:a', 'doc:b', 'doc:c'])
-    // 叶 id 取第一片的 —— 「留下来的那一片不重挂」照旧成立。
-    expect(leavesOf(folded)[0].id).toBe('L1')
-    expect(leavesOf(folded)[0].active).toBe(1)
   })
 
   it('折过一遍再洗一遍 = 同一个对象(幂等 + 引用恒等)', () => {

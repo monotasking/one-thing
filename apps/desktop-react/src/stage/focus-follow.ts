@@ -48,7 +48,7 @@ function samePlace(a: Placement | undefined, b: Placement | undefined): boolean 
   return a.kind === 'edge' && b.kind === 'edge' ? a.side === b.side : true
 }
 
-const SIDES: ShelfSide[] = ['left', 'right', 'top', 'bottom']
+const SIDES: ShelfSide[] = ['left', 'right', 'bottom']
 
 /** 一次落定要激活的那一格(答不出就是「这一次不必跟」)。 */
 export interface FocusFollowTarget {

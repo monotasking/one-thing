@@ -16,7 +16,7 @@ import type { FilesPort } from '../../data/files-port'
 import type { FileOpenMode } from '../../data/file-open-mode'
 
 /**
- * **「打开方式」七档全通**(W4;W1-a 那次「五档禁灰」的临时退化到此结清)。
+ * **「打开方式」六档全通**(顶架子那档已退役;W4;W1-a 那次「五档禁灰」的临时退化到此结清)。
  *
  * 判据是一句话:**每一档都真的把这个 ref 插进它说的那个区域**。
  * 五档解灰的机械前提就是 W4 那件事 —— 架子与浮窗的身子换成了拼贴树,于是
@@ -33,7 +33,6 @@ const REF_ID = `file:${PATH}`
 const EXPECT: Record<FileOpenMode, string> = {
   panel: 'panel',
   stage: 'center',
-  'edge-top': 'edge:top',
   'edge-bottom': 'edge:bottom',
   'edge-left': 'edge:left',
   'edge-right': 'edge:right',
@@ -57,7 +56,7 @@ beforeEach(() => {
 const wb = () => useWorkbenchStore.getState()
 
 describe('档 → 区域的翻译只有一份', () => {
-  it('七档逐格对得上;`float` 那一档交回的是哨位(窗号要到落点那一刻才铸得出来)', () => {
+  it('六档逐格对得上;`float` 那一档交回的是哨位(窗号要到落点那一刻才铸得出来)', () => {
     for (const mode of FILE_OPEN_MODES) {
       expect(regionOfFileOpenMode(mode)).toBe(EXPECT[mode])
     }
@@ -65,7 +64,7 @@ describe('档 → 区域的翻译只有一份', () => {
 })
 
 describe('五档解灰:每一档都真的落到那儿', () => {
-  it.each(['edge-top', 'edge-bottom', 'edge-left', 'edge-right'] as const)(
+  it.each(['edge-bottom', 'edge-left', 'edge-right'] as const)(
     '%s → 那条边那棵树,而且顺手把架子展开(动作意图是「让它看得见」)',
     (mode) => {
       act(() => useFileOpenMode.setState({ mode }))
@@ -312,8 +311,8 @@ describe('落到第几行:写在读回来之后', () => {
  */
 const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
 
-function sideOf(mode: 'edge-top' | 'edge-bottom' | 'edge-left' | 'edge-right') {
-  return mode.slice('edge-'.length) as 'top' | 'bottom' | 'left' | 'right'
+function sideOf(mode: 'edge-bottom' | 'edge-left' | 'edge-right') {
+  return mode.slice('edge-'.length) as 'bottom' | 'left' | 'right'
 }
 
 function tabsOf(region: string) {

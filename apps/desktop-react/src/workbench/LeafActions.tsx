@@ -584,7 +584,6 @@ const EDGE_CHOICES: readonly {
    * 播报里、在这张表里说的是同一个词,i18n 那条「同一句话不该有第二个键」。 */
   { side: 'left', shelfKey: 'shelf.labelLeft', sideKey: 'drag.sideLeft' },
   { side: 'right', shelfKey: 'shelf.labelRight', sideKey: 'drag.sideRight' },
-  { side: 'top', shelfKey: 'shelf.labelTop', sideKey: 'drag.sideTop' },
   { side: 'bottom', shelfKey: 'shelf.labelBottom', sideKey: 'drag.sideBottom' },
 ]
 

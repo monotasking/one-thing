@@ -53,6 +53,8 @@ import {
 import type { ContentRef, ContentRefId } from './kinds'
 import type { ClosedTab } from './closed-tabs'
 import type { RegionId } from './regions'
+import type { SplitSide } from './tree'
+export type { SplitSide } from './tree'
 import type { PaneLeafNode, PaneLocation, PaneNode } from './tree'
 
 /**
@@ -313,11 +315,16 @@ export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
   /**
    * 分屏:把这片叶切成两片。`ref` 缺席 = 把活动 tab 拉到新的那一片去。
    *
-   * **中央区不受理**(W6-a 的单叶政策):那里一格标签最多两格,而那件事由
-   * `pairRefs` 说 —— 一条 tab 条上再长出第二片叶正是这次要收掉的东西。
-   * 架子与浮窗照旧(设计 §12:那两处的「分屏 ▸」不删)。
+   * 受理与否由 `SINGLE_LEAF_REGIONS` 说(09-24 起那张表是空的:中央区也能分屏)。
    */
   splitLeaf(leafId: string, dir: 'row' | 'col', ref?: ContentRef, before?: boolean): void
+  /**
+   * **拖进某片叶的一条分屏带**(09-24):把 `ref` 从它此刻所在的每一处摘下来,在
+   * `leafId` 的 `side` 那一侧切出一片新叶装它。与 `splitLeaf(…, ref)` 的差别是
+   * 「搬」而不是「复制」—— 拖拽是搬一样东西,不是再开一份。一次 `set`,中间没有
+   * 「屏幕上少一格」的那一拍。摘完之后目标叶没了(拖的是它唯一那一格)= 空动作。
+   */
+  splitWithRef(leafId: string, side: SplitSide, ref: ContentRef): void
   setSplitRatio(splitId: string, ratio: number): void
   /**
    * **二合一**(W6-a,设计 §2.1 / §6):把 `ref` 并进 `leafId` 里第 `hostIndex`
@@ -613,12 +620,20 @@ function carriedPairRatios(
 /**
  * **单叶政策**(W6-a,设计 §2.1):这些区域里的树永远只有一片叶。
  *
- * 今天只有中央区。架子与浮窗**不在表上** —— 设计 §12 明写那两处仍可经右键
- * 「分屏 ▸」得到多叶(W4 的能力不删)。它是一张表而不是一句 `=== CENTER_REGION`,
- * 是因为「哪些区域收成一条标签条」是一件会变的**政策**,而它只该有一个产地:
- * 运行期那一遍(`normalizeRegions`)与存量档案那一遍(persist v3)读同一张表。
+ * **09-24 起表是空的**:用户令「主区域也能分屏」,中央区与架子、浮窗一样经拖拽的
+ * 四边分屏带或右键「分屏 ▸」得到多叶;分屏之后每片叶自带标签条(`layout.centerStripOnTopBar`)。
+ * 表留着是因为「哪些区域收成一条标签条」仍是一件会变的**政策**,只该有一个产地;
+ * 存量档案那一遍(persist v3)从此读它自己的 `V3_FOLDED_REGIONS`,迁移只描述历史。
  */
-export const SINGLE_LEAF_REGIONS: readonly string[] = [CENTER_REGION]
+export const SINGLE_LEAF_REGIONS: readonly string[] = []
+
+/**
+ * **v3 那一遍存量迁移当年折的是哪些区域**。它与上面那张政策表 09-24 起分了家:
+ * 政策表空了(用户令「主区域也能分屏」——拖到任意一格的四边 30% 就分屏,中央区不再
+ * 只有一片叶),但一份 v1/v2 的档案升上来时仍要经过**当年那一遍**,迁移只描述历史,
+ * 不跟着今天的政策变。
+ */
+const V3_FOLDED_REGIONS: readonly string[] = [CENTER_REGION]
 
 /** 两格标签那条分隔杆的量纲与钳制(与 `ui/Splitter` 的 value 同一个:百分比)。 */
 export const PAIR_RATIO_DEFAULT = 50
@@ -646,11 +661,48 @@ const SANITIZE_OPTIONS: T.SanitizeOptions = {
  */
 export function normalizeRegions(regions: Record<string, PaneNode>): Record<string, PaneNode> {
   const out: Record<string, PaneNode> = {}
-  for (const [region, tree] of Object.entries(regions ?? {})) {
+  for (const [region, tree] of Object.entries(foldRetiredShelfRegions(regions ?? {}))) {
     const clean = T.sanitize(tree, SANITIZE_OPTIONS)
     if (clean) out[region] = foldIfSingleLeafRegion(region, clean)
   }
   return seedResidents(out)
+}
+
+/**
+ * **退役的边那棵树并进它的去处**(09-24:顶边架子退役,三边只剩左右下)。
+ *
+ * 老档案 / 老会话里可能还躺着一棵 `edge:top` 的树。它不能原样留着(没有任何宿主
+ * 再画顶边 —— 留着就是一组看不见的标签),也不能丢(那是用户开着的东西)。去处是
+ * 底边:同一条横轴。底边已有树 → 顶边那几格按阅读序接到底边第一片叶末尾(不抢活动格);
+ * 底边空着 → 整棵树原样挪过去(叶 id、分屏比例都不变)。
+ *
+ * 它跑在两遍规范化**之前**,不升档案版本:结构级、幂等、不问种类,每次水合都跑一遍
+ * 与「写一段迁移」是同一个结果,而后者还要在 persist 与换装两条路上各接一次。
+ */
+const RETIRED_SHELF_REGIONS: Readonly<Record<string, RegionId>> = { 'edge:top': 'edge:bottom' }
+
+function foldRetiredShelfRegions(regions: Record<string, PaneNode>): Record<string, PaneNode> {
+  let out = regions
+  for (const [retired, target] of Object.entries(RETIRED_SHELF_REGIONS)) {
+    const tree = out[retired]
+    if (!tree) continue
+    const { [retired]: _gone, ...rest } = out
+    void _gone
+    const into = rest[target]
+    if (!into) {
+      out = { ...rest, [target]: tree }
+      continue
+    }
+    const home = T.leavesOf(into)[0]
+    let merged = into
+    if (home) {
+      for (const leaf of T.leavesOf(tree)) {
+        for (const ref of leaf.tabs) merged = T.insertTab(merged, home.id, ref, { activate: false })
+      }
+    }
+    out = { ...rest, [target]: merged }
+  }
+  return out
 }
 
 /**
@@ -682,7 +734,7 @@ export function normalizeRegionShapes(
   regions: Record<string, PaneNode>,
 ): Record<string, PaneNode> {
   const out: Record<string, PaneNode> = {}
-  for (const [region, tree] of Object.entries(regions ?? {})) {
+  for (const [region, tree] of Object.entries(foldRetiredShelfRegions(regions ?? {}))) {
     const pruned = T.prune(tree)
     if (pruned) out[region] = foldIfSingleLeafRegion(region, pruned)
   }
@@ -1011,7 +1063,7 @@ export function migrateWorkbenchPersisted(persisted: unknown, version: number): 
   if (!persisted || typeof persisted !== 'object') return persisted
   let out = persisted as Record<string, unknown>
   if (version < 2) out = rewriteRefsInPersisted(out, rewriteLegacyContentRef)
-  if (version < 3) out = foldRegionsInPersisted(out, SINGLE_LEAF_REGIONS)
+  if (version < 3) out = foldRegionsInPersisted(out, V3_FOLDED_REGIONS)
   if (version < 4) out = rewriteRefsInPersisted(out, rewriteLegacyContentRef)
   /*
    * v5(C3):**老档案没有伴随面这一格,给它一张空表**。
@@ -1426,6 +1478,34 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           )
           if (next === s.regions[region]) return
           set({ regions: { ...s.regions, [region]: next }, focusLeafId: fresh })
+        },
+
+        splitWithRef: (leafId, side, ref) => {
+          if (frozen()) return
+          const s = get()
+          const id = refId(ref)
+          const regions = withoutRef(s.regions, id)
+          const region = regionOfLeaf(regions, leafId)
+          if (!region || SINGLE_LEAF_REGIONS.includes(region)) return
+          const kind = contentKindOf(ref.kind)
+          if (kind?.regions && !kind.regions.includes(region)) return
+          const fresh = nextLeafId()
+          const next = T.splitLeaf(
+            regions[region],
+            leafId,
+            side === 'left' || side === 'right' ? 'row' : 'col',
+            fresh,
+            nextSplitId(),
+            ref,
+            { before: side === 'left' || side === 'top' },
+          )
+          if (next === regions[region]) return
+          set({
+            regions: { ...regions, [region]: next },
+            // 搬出来的那一份不再是「藏着的」(与 `moveRefIntoLeaf` 同一句)。
+            hidden: s.hidden.filter((entry) => refId(entry.ref) !== id),
+            focusLeafId: fresh,
+          })
         },
 
         setSplitRatio: (splitId, ratio) =>

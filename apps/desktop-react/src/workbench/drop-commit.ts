@@ -17,6 +17,7 @@ import { edgeRegion, floatRegion } from './regions'
 import { canDetachTab, regionOfLeafIn, regionOfRefIn, useWorkbenchStore } from './store'
 import * as T from './tree'
 import { findLeaf, leavesOf } from './tree'
+import { newShelfZoneOf } from './drop'
 import type { DropTarget } from './drop'
 import type { ContentRef } from './kinds'
 import type { PaneNode } from './tree'
@@ -101,7 +102,15 @@ export function dropRef(ref: ContentRef, target: DropTarget, opts: DropCommitOpt
    */
   if (target.kind === 'back') return
 
-  /** **与这片叶的活动标签并排**(§5 的内容区左右带)。 */
+  /** **分屏带**(09-24):在那片叶的那一侧切出一片新叶,把它搬进去。 */
+  if (target.kind === 'split') {
+    useWorkbenchStore.getState().splitWithRef(target.leafId, target.side, ref)
+    useStageStore.getState().revealRegion(target.region)
+    land(ref)
+    return
+  }
+
+  /** **与这片叶的活动标签并排**(菜单直接点名;拖拽不再产生这一档)。 */
   if (target.kind === 'pair') {
     pairIntoActive(ref, target.leafId, target.side)
     return
@@ -122,7 +131,21 @@ export function dropRef(ref: ContentRef, target: DropTarget, opts: DropCommitOpt
   }
 
   if (target.kind === 'edge') {
-    useStageStore.getState().placeRef(ref, edgeRegion(target.side))
+    /*
+     * **拖出来的新架子占窗口那条轴的 30%**(09-24 用户令「架子的空间占窗口的 30% 左右」)。
+     * 拖拽时那层膜画的就是这么厚(`drop.newShelfZoneOf`),所以落下来就得是这么厚 —— 预示
+     * 与结果同一个数。只在这条边**原本空着**时定厚度:往一条已有的架子上再放一格不改几何,
+     * 而用户拖过把手的厚度也不该被一次拖拽抹掉。其余建架子的路(菜单「移到架子」、打开
+     * 方式)照旧用那条边记着的厚度 —— 规则只管拖拽这一条手势,它说的就是这一条。
+     */
+    const stage = useStageStore.getState()
+    const fresh = (stage.shelves[target.side]?.tabs ?? []).length === 0
+    stage.placeRef(ref, edgeRegion(target.side))
+    if (fresh && (useStageStore.getState().shelves[target.side]?.tabs ?? []).length > 0) {
+      const v = viewport()
+      const win = { left: 0, top: 0, width: v.w, height: v.h }
+      useStageStore.getState().setShelfThickness(target.side, newShelfZoneOf(target.side, win))
+    }
     land(ref)
     return
   }

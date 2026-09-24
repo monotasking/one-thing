@@ -32,14 +32,12 @@ import s from './EdgeShelf.module.css'
 const LABEL_KEY: Record<ShelfSide, MessageKey> = {
   left: 'shelf.labelLeft',
   right: 'shelf.labelRight',
-  top: 'shelf.labelTop',
   bottom: 'shelf.labelBottom',
 }
 
 const SIDE_CLASS: Record<ShelfSide, string> = {
   left: s.sideLeft,
   right: s.sideRight,
-  top: s.sideTop,
   bottom: s.sideBottom,
 }
 
@@ -47,7 +45,6 @@ const SIDE_CLASS: Record<ShelfSide, string> = {
 const COLLAPSE_ICON: Record<ShelfSide, LucideIcon> = {
   left: ChevronsLeft,
   right: ChevronsRight,
-  top: ChevronsUp,
   bottom: ChevronsDown,
 }
 
@@ -55,7 +52,6 @@ const COLLAPSE_ICON: Record<ShelfSide, LucideIcon> = {
 const EXPAND_ICON: Record<ShelfSide, LucideIcon> = {
   left: ChevronsRight,
   right: ChevronsLeft,
-  top: ChevronsDown,
   bottom: ChevronsUp,
 }
 
@@ -74,7 +70,6 @@ function thicknessStyle(side: ShelfSide, px: string): { width?: string; height?:
 function outerEdgeOf(side: ShelfSide, rect: DOMRect): number {
   if (side === 'left') return rect.left
   if (side === 'right') return rect.right
-  if (side === 'top') return rect.top
   return rect.bottom
 }
 

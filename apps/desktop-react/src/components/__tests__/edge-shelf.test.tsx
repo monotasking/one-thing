@@ -45,7 +45,6 @@ const pointerAt = (type: string, x = 0, y = 0) =>
 const NAME: Record<ShelfSide, string> = {
   left: '左侧栏',
   right: '右侧栏',
-  top: '顶栏',
   bottom: '底栏',
 }
 
@@ -66,15 +65,14 @@ function setViewport(w: number, h: number) {
 describe('四边架子', () => {
   afterEach(() => setViewport(1024, 768))
 
-  it('四条边各挂一个:哪条边上有 tab 就画哪一条', () => {
+  it('三条边各挂一个:哪条边上有 tab 就画哪一条(顶架子已退役)', () => {
     // 摆得下的窗子里才问「画不画」—— 摆不下那一档是下面那一例的事。
     setViewport(1600, 1100)
     render(<AppShell />)
     openOnEdge('files', 'left')
     openOnEdge('diff', 'right')
-    openOnEdge('terminal', 'top')
     openOnEdge('browser', 'bottom')
-    for (const side of ['left', 'right', 'top', 'bottom'] as ShelfSide[]) {
+    for (const side of ['left', 'right', 'bottom'] as ShelfSide[]) {
       expect(screen.getByRole('complementary', { name: NAME[side] })).toBeTruthy()
     }
   })
@@ -100,9 +98,9 @@ describe('四边架子', () => {
   it('空架子不渲染 —— 也就不占一丝布局', () => {
     render(<AppShell />)
     expect(screen.queryByRole('complementary')).toBeNull()
-    openOnEdge('files', 'top')
+    openOnEdge('files', 'bottom')
     expect(screen.getAllByRole('complementary')).toHaveLength(1)
-    expect(screen.getByRole('complementary', { name: NAME.top })).toBeTruthy()
+    expect(screen.getByRole('complementary', { name: NAME.bottom })).toBeTruthy()
   })
 
   /**

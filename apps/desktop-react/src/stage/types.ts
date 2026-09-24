@@ -8,7 +8,7 @@ import type { Locale, MessageKey } from '../i18n'
  * 这四个是互斥的:placements 表是唯一事实源,一个 id 在表里只有一条记录,
  * 「它在钉栏还是在浮窗」不再靠两个数组各说各话。
  */
-export type ShelfSide = 'left' | 'right' | 'top' | 'bottom'
+export type ShelfSide = 'left' | 'right' | 'bottom'
 
 export type Placement =
   | { kind: 'dock' }
@@ -399,7 +399,6 @@ export const DOCK_AXIS: Record<DockEdge, 'x' | 'y'> = {
 export const SHELF_SIDE_CHOICES: Array<{ value: ShelfSide; labelKey: MessageKey }> = [
   { value: 'right', labelKey: 'dock.edgeRight' },
   { value: 'left', labelKey: 'dock.edgeLeft' },
-  { value: 'top', labelKey: 'dock.edgeTop' },
   { value: 'bottom', labelKey: 'dock.edgeBottom' },
 ]
 

@@ -13,8 +13,8 @@ import type { KeymapState } from '../types'
 import type { ShelfSide } from '../../stage/types'
 
 /**
- * 四条架子的快捷键(09-01 用户放权键位)。这一组钉三件:
- *  ① 四条都在表里,而且**方向即键位**(左=⌘⌥←,以此类推);
+ * 三条架子的快捷键(09-01 用户放权键位;顶架子已退役,⌘⌥↑ 随之撤掉)。这一组钉三件:
+ *  ① 三条都在表里,而且**方向即键位**(左=⌘⌥←,以此类推);
  *  ② **全表两两不同** —— 这是「加键之前先做全表冲突检查」那条派工令的机器化。
  *     它守的是「没有两条命令共用一个组合」,而不是某一对谁赢:后者会在下次
  *     加键时无声地失效(判例:08-31 那次 ⌘⇧O 撞车,次序当了裁决);
@@ -22,11 +22,11 @@ import type { ShelfSide } from '../../stage/types'
  *     它与 `shelfToggleCommandId` 必须是一对可逆的函数。
  */
 
-const SIDES: ShelfSide[] = ['left', 'right', 'bottom', 'top']
+const SIDES: ShelfSide[] = ['left', 'right', 'bottom']
 const EMPTY: KeymapState = { overrides: {} }
 
-describe('四条架子的命令行', () => {
-  it('四条都在表里,一条不漏', () => {
+describe('三条架子的命令行', () => {
+  it('三条都在表里,一条不漏', () => {
     for (const side of SIDES) {
       expect(findCommand(shelfToggleCommandId(side))).toBeTruthy()
     }
@@ -37,7 +37,6 @@ describe('四条架子的命令行', () => {
       left: 'arrowleft',
       right: 'arrowright',
       bottom: 'arrowdown',
-      top: 'arrowup',
     }
     for (const side of SIDES) {
       expect(findCommand(shelfToggleCommandId(side))?.defaultCombos).toEqual([
@@ -46,7 +45,7 @@ describe('四条架子的命令行', () => {
     }
   })
 
-  it('名字用架子自己那四个键 —— 不借 Dock 的「右/左/上/下」', () => {
+  it('名字用架子自己那三个键 —— 不借 Dock 的「右/左/上/下」', () => {
     // 命令表里读到的是「右侧栏」,不是「右」。设置页那一列全是命令名,
     // 只写一个「右」在那一列里说不清是什么的右。
     expect(findCommand(shelfToggleCommandId('right'))?.labelKey).toBe('shelf.labelRight')
@@ -77,9 +76,9 @@ describe('全表冲突检查(加键之前那一步的机器化)', () => {
     expect(clashes).toEqual([])
   })
 
-  it('四条架子键与**跟随焦点那九条**也不撞,而且没有一块面认领着它们', () => {
+  it('三条架子键与**跟随焦点那九条**也不撞,而且没有一块面认领着它们', () => {
     /*
-     * 共键本身不是错(局部先接、没接住放行应用层),但架子这四条是**应用级**的:
+     * 共键本身不是错(局部先接、没接住放行应用层),但架子这三条是**应用级**的:
      * 真撞上了,焦点在查看器里时那一侧架子就按不响 —— 而用户会以为键坏了。
      * 所以这一族要求的是干净:一条都不许撞,也不许被哪块面认领走。
      */
@@ -109,7 +108,7 @@ describe('全表冲突检查(加键之前那一步的机器化)', () => {
    * 明写在这儿的那两条」;第三条带 ⌥ 的命令一出现就红,而那时要问的第一句话
    * 仍旧是「它凭什么用这根轴」。
    *
-   * 换序那两条与架子那四条**同一根轴、只多一个 ⇧**,而 ⇧ 在跨应用里正是「带着
+   * 换序那两条与架子那三条**同一根轴、只多一个 ⇧**,而 ⇧ 在跨应用里正是「带着
    * 这个东西一起走」(判词写在 `DEFAULT_COMBOS` 上)。上面那条「全表两两不同」
    * 已经钉住它们没挤掉谁。
    */
@@ -135,7 +134,9 @@ describe('id 的拼法只有一个产地', () => {
   it('不是架子命令的 id 反解成 null —— 派发器据此放行,不去猜', () => {
     expect(shelfSideOfCommand('toc.toggle')).toBeNull()
     expect(shelfSideOfCommand('toggle:files')).toBeNull()
-    // 形状像但不是表里那四侧的,同样不认(不会拿一个不存在的 side 去调 store)。
+    // 形状像但不是表里那三侧的,同样不认(不会拿一个不存在的 side 去调 store)。
     expect(shelfSideOfCommand('shelf.middle.toggle' as never)).toBeNull()
+    // 退役的顶架子那条 id 同样反解成 null —— 旧的用户覆盖指着它也调不到 store。
+    expect(shelfSideOfCommand(shelfToggleCommandId('top' as ShelfSide))).toBeNull()
   })
 })

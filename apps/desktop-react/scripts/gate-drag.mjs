@@ -40,14 +40,17 @@
  *     (邻居仍让位、零 `data-pair-hot`、浮影提示行不出现);压在末格之后的空白上
  *     松手 = **挪到末位**(从前那一站断的是「空动作」—— 这是一条行为变化);
  *     两格的标签拖下去同样是换序,不是拒绝态
- *  ⑤ 从架子拖文件到聊天区中间 = 新标签,右带 = 二合一;浮窗不接住自己
+ *  ⑤ 从架子拖文件到聊天区:任意一片叶的中间 = 撕成浮窗(轮廓),中央叶上沿 30% = 分屏
+ *     (09-24 用户令;松手之后中央区两片叶、标签条进叶、顶栏那组让开,⌘W 合回一片
+ *     标签自动回顶栏);浮窗不接住自己
  *  ⑥ 零重挂:换序 / 二合一 / 拆开 / 换比例四步,内容根节点同一个 DOM
  *  ⑦ 拒绝态:光标 not-allowed + 一句理由;松手弹回,树一个字不变
  *  ⑧ **顶栏末格右边那片空白 = 插到末尾**(U1;从前它不在条的矩形里,于是那片
  *     空白上判据一路问到了别的落点 —— 用户报的「顶栏末格右边空白不能放」)
- *  ⑨ **边带只对没有架子的那一边成立,而且只有 12px**(U1;用户报的「莫名钉边」):
- *     右缘 20px = 叶的右带(板),6px = 边带(膜);松手长出右架子;再拖一行到
- *     同一点,这一次落的是架子自己;左边(已经有架子)6px 处压根没有边带
+ *  ⑨ **新架子带 = 没有架子的那一边、窗口那条轴的 30%**(09-24 用户令;U1 那条「只对
+ *     没有架子的那一边成立」照旧):带外一点是叶的分屏带(板),带内是一层 30% 宽的膜;
+ *     松手长出右架子,厚度就是那 30%;再拖到同一点落的是架子自己;左边(已经有架子)
+ *     贴边处压根没有新架子带
  *  ⑩ **自己的外扩带不许赢过别人的条**(U2):顶栏那条条的 24px 下沿外扩盖住左右
  *     架子标签条的上半截,而从前「自己的带」先判 —— 于是把顶栏一格标签拖到架子
  *     条的上半截被判回换序。站在架子条 top + 8(仍在顶栏条的外扩里)上量:架子
@@ -104,11 +107,13 @@ const TEAR_OFF_DISTANCE = 24
  */
 const BELOW_STRIP_OFFSET = 12
 /**
- * 「在这条边上生一条新架子」那条带有多宽(`workbench/drop.ts` 的 `NEW_SHELF_BAND`)。
- * 它**不是**形态机那个 `SNAP_BAND` 24 —— 两者是两件事,判词在产品源码那一格上;
- * 场景 ⑨ 站在 6(带内)与 20(带外)两点上量,3px 的舍入预算两边都够。
+ * 「在这条边上生一条新架子」那条带占窗口那条轴的多少(`workbench/drop.ts` 的
+ * `NEW_SHELF_ZONE`,09-24 用户令 30%)。场景 ⑨ 站在带内(离右缘 15%)与带外
+ * (离右缘 30% 再往里 20px)两点上量。
  */
-const NEW_SHELF_BAND = 12
+const NEW_SHELF_ZONE = 0.3
+/** 分屏带占一片叶那条轴的多少(`drop.SPLIT_BAND`)。场景 ⑤ 站在上沿 10% 处量。 */
+const SPLIT_BAND = 0.3
 /**
  * 「边越过中心」那一条断言两侧各让 3px。
  *
@@ -1640,90 +1645,82 @@ async function main() {
     }
 
     /* ══ 场景 ⑤:架子 → 聊天区中间 / 右带;浮窗不接住自己 ═════════════ */
-    scenario('从架子拖文件到聊天区:中间 = 新标签,右带 = 二合一;浮窗不接住自己')
+    scenario('从架子拖文件到聊天区:叶中间 = 浮窗,中央叶上沿 = 分屏;浮窗不接住自己')
     {
       /*
-       * **绕开那扇浮窗,而不是把它收起来**(门第三版的修法)。
+       * 09-24 用户令重写这一场:「中间没有涉及到的区域为浮窗区」「如果有铺满只能通过放在
+       * tab 上」「主区域也能分屏」。从前这里量的是「中间 = 新标签、右带 28% = 二合一」,
+       * 两档都随那次重写退役。
        *
-       * 总览是一扇 880×520 的居中浮窗,正盖住聊天区的中段;点 Dock 那块瓦是**开关**,
-       * 但它此刻是焦点面,连点两下只会「收起 → 再开」,读数是浮窗还在。
-       * 而这一条要量的是「落到**聊天区**的中间 / 右带会怎样」,不是「浮窗能不能收」
-       * —— 后者是 gate:focus 的地。所以这里改成:在中央叶里挑一个**不被任何浮窗
-       * 盖住**的点。判据本身一个字都不用绕:「叶重叠时取最上」照旧成立,只是探针
-       * 站到了没有第二片叶的地方。
+       * (a) **叶的中间 = 撕成浮窗**:站在窗口正中 —— 那里压着总览那扇浮窗,而从左架子
+       *     拖出来的文件不属于它,所以落的是**那扇窗那片叶的中间**。判据对任何一片叶都
+       *     一样,所以这一站不必躲开它。只看预示,Esc 取消,树不变。
+       * (b) **中央叶上沿 30% = 分屏到上方**:站在中央叶上沿 10% 处(总览浮窗的上沿在
+       *     它之下,顶栏那条条的 24px 外扩在它之上;左边有架子所以没有左架子带,横向
+       *     取叶的正中也不进右架子带)。松手之后中央区两片叶,顶栏那组标签让开、每片叶
+       *     自己顶上有条;⌘W 关掉新叶那一格,合回一片、标签回到顶栏。
        */
-      const pointIn = (fx) =>
-        page.evaluate((wantFx) => {
-          const slot = document.querySelector('[data-pane-region="center"] [data-pane-slot]')
-          if (!slot) return null
-          const r = slot.getBoundingClientRect()
-          const floats = Array.from(document.querySelectorAll('[data-float-body]')).map((el) => {
-            const win = el.closest('[role="dialog"]') ?? el
-            return win.getBoundingClientRect()
-          })
-          const x = r.left + r.width * wantFx
-          // 从叶的竖向中线往下找,直到落在所有浮窗之外(叶比浮窗高,总找得到)。
-          for (const t of [0.5, 0.72, 0.86, 0.94, 0.2, 0.08]) {
-            const y = r.top + r.height * t
-            if (!floats.some((f) => x >= f.left && x <= f.right && y >= f.top && y <= f.bottom)) {
-              return { x: Math.round(x), y: Math.round(y), leaf: {
-                left: Math.round(r.left), top: Math.round(r.top),
-                width: Math.round(r.width), height: Math.round(r.height),
-              } }
-            }
-          }
-          return null
-        }, fx)
-      const midPoint = await pointIn(0.5)
-      const rightPoint = await pointIn(1 - 0.28 / 2)
-      const leaf = midPoint ? { rect: midPoint.leaf, y: midPoint.y } : null
-      const row = await centerOf(page, `[data-file-path="${path.join(cwd, 'gamma.ts')}"]`)
-      assert(
-        Boolean(leaf && row && rightPoint),
-        '中央叶里找得到不被浮窗盖住的中点与右带点',
-        JSON.stringify({ mid: midPoint, right: rightPoint }),
-      )
-      if (leaf && row && midPoint && rightPoint) {
-        const gammaId = `file:${path.join(cwd, 'gamma.ts')}`
-        const before = (await stripOrder(page, (await topStrip(page)).leafId)).length
-        // 中间:一路走过去、不停顿,途中量氛围与提示。
-        const mid = { x: midPoint.x, y: midPoint.y }
-        const seen = await stroke(cdp, row, mid, { steps: 12, holdMs: 200, sample: () => feedbackNow(page) })
-        const last = seen[seen.length - 1]
-        assert(last.shape === 'slab', '中间那一档画的是一块铺满整片叶的板', JSON.stringify(last))
-        assert(last.ambient === 0, '**氛围层随 U1 退役**:屏幕上没有一块淡亮(用户报的「一拖整窗变色」)', String(last.ambient))
-        assert(last.hint !== '', '提示行说的是「开成新标签」这一档', last.hint)
-        await releaseAt(cdp, mid)
-        const strip2 = await topStrip(page)
-        assert(
-          strip2.tabs.some((t) => t.id === gammaId),
-          '松手之后它成了中央那条条上的一格新标签',
-          strip2.tabs.map((t) => t.id).join(' | '),
-        )
-        assert(strip2.tabs.length === before + 1, '条上多了一格,不是替换', `${before} → ${strip2.tabs.length}`)
-
-        // 右带 28%:二合一。
-        const row2 = await centerOf(page, `[data-file-path="${path.join(cwd, 'alpha.ts')}"]`)
-        const rightBand = { x: rightPoint.x, y: rightPoint.y }
-        if (row2) {
-          const seen2 = await stroke(cdp, row2, rightBand, { steps: 12, holdMs: 160, sample: () => feedbackNow(page) })
-          const r2 = seen2[seen2.length - 1]
-          assert(r2.shape === 'slab', '右带那一档画的是「落下后占的那一半」(与中间同一种板,差的只是矩形)', JSON.stringify(r2))
-          assert(
-            r2.bandRect && Math.abs(r2.bandRect.width - Math.round(leaf.rect.width / 2)) <= 2,
-            '而且那一半就是叶的一半宽',
-            JSON.stringify({ band: r2.bandRect?.width, half: Math.round(leaf.rect.width / 2) }),
-          )
-          assert(r2.hint !== '', '提示行说的是「与 X 二合一」', r2.hint)
-          const tabsBefore = (await topStrip(page)).tabs.length
-          await releaseAt(cdp, rightBand)
-          const strip3 = await topStrip(page)
-          const paired = await page.evaluate(() =>
-            Array.from(document.querySelectorAll('[data-tab-slots]')).map((el) => el.getAttribute('data-tab-id')),
-          )
-          assert(paired.length > 0, '松手之后条上有一格装着两份', JSON.stringify(paired))
-          assert(strip3.tabs.length <= tabsBefore + 1, '而且没有多长出一片叶(单叶政策)', `${tabsBefore} → ${strip3.tabs.length}`)
+      const width = await page.evaluate(() => window.innerWidth)
+      const height = await page.evaluate(() => window.innerHeight)
+      const center = { x: Math.round(width / 2), y: Math.round(height / 2) }
+      const topBandPoint = await page.evaluate((band) => {
+        const slot = document.querySelector('[data-pane-region="center"] [data-pane-slot]')
+        if (!slot) return null
+        const r = slot.getBoundingClientRect()
+        return {
+          x: Math.round(r.left + r.width / 2),
+          y: Math.round(r.top + r.height * band / 3),
+          leaf: { left: Math.round(r.left), width: Math.round(r.width) },
         }
+      }, SPLIT_BAND)
+      const row = await centerOf(page, `[data-file-path="${path.join(cwd, 'gamma.ts')}"]`)
+      assert(Boolean(row && topBandPoint), '文件行与中央叶上沿那一点都量得到', JSON.stringify(topBandPoint))
+      if (row && topBandPoint) {
+        // (a) 中间 = 浮窗轮廓。
+        const before = await treeShape(page)
+        const seen = await stroke(cdp, row, center, { steps: 12, holdMs: 200, sample: () => feedbackNow(page) })
+        const mid = seen[seen.length - 1]
+        assert(mid.shape === 'outline', '叶的中间画的是一扇新窗的轮廓(撕成浮窗),不是一块板', JSON.stringify(mid))
+        assert(mid.ambient === 0, '**氛围层随 U1 退役**:屏幕上没有一块淡亮(用户报的「一拖整窗变色」)', String(mid.ambient))
+        assert(mid.hint !== '', '提示行说的是「撕成浮窗」', mid.hint)
+        await page.keyboard.press('Escape')
+        await releaseAt(cdp, center)
+        assert((await treeShape(page)) === before, 'Esc 之后树逐字不变')
+
+        // (b) 上沿 = 分屏到上方。
+        const gammaId = `file:${path.join(cwd, 'gamma.ts')}`
+        const row2 = await centerOf(page, `[data-file-path="${path.join(cwd, 'gamma.ts')}"]`)
+        const up = { x: topBandPoint.x, y: topBandPoint.y }
+        const seen2 = await stroke(cdp, row2 ?? row, up, { steps: 12, holdMs: 160, sample: () => feedbackNow(page) })
+        const r2 = seen2[seen2.length - 1]
+        assert(r2.shape === 'slab', '上沿那一档画的是「分屏后新叶占的那一半」(一块板)', JSON.stringify(r2))
+        assert(
+          r2.bandRect && Math.abs(r2.bandRect.width - topBandPoint.leaf.width) <= 2,
+          '上下分屏的那一半横向铺满整片叶',
+          JSON.stringify({ band: r2.bandRect, leaf: topBandPoint.leaf }),
+        )
+        assert(/分屏|Split/.test(r2.hint), '提示行说的是「分屏到上方」', r2.hint)
+        await releaseAt(cdp, up)
+        await delay(300)
+        const split = await page.evaluate((want) => ({
+          leaves: document.querySelectorAll('[data-pane-region="center"] [data-pane-slot]').length,
+          topbarTabs: document.querySelectorAll('[data-testid="topbar-tabs"] [data-tab-id]').length,
+          inLeaf: Boolean(
+            document.querySelector(`[data-pane-region="center"] [data-tab-id="${want.replace(/["\\]/g, '\\$&')}"]`),
+          ),
+        }), gammaId)
+        assert(split.leaves === 2, '松手之后中央区是两片叶(主区也能分屏)', JSON.stringify(split))
+        assert(split.topbarTabs === 0, '顶栏那组标签让开了(分屏后每片叶自带标签条)', JSON.stringify(split))
+        assert(split.inLeaf, '拖过去的那一格在中央区某片叶自己的标签条上', JSON.stringify(split))
+        // ⌘W 关掉新叶那一格(焦点随落定进了新叶)→ 合回一片,标签回顶栏。
+        await page.keyboard.press('Meta+w')
+        await delay(300)
+        const merged = await page.evaluate(() => ({
+          leaves: document.querySelectorAll('[data-pane-region="center"] [data-pane-slot]').length,
+          topbarTabs: document.querySelectorAll('[data-testid="topbar-tabs"] [data-tab-id]').length,
+        }))
+        assert(merged.leaves === 1, '⌘W 之后合回一片叶', JSON.stringify(merged))
+        assert(merged.topbarTabs > 0, '标签回到了顶栏', JSON.stringify(merged))
       }
 
       /*
@@ -1744,10 +1741,21 @@ async function main() {
           return { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }
         })
         assert(Boolean(read), '停在那扇浮窗身上时有落区', JSON.stringify(read))
+        /*
+         * 09-24 起窗底下那片叶可能答分屏(半块板)也可能答浮窗(一扇新窗的轮廓),都不是
+         * 「比窗大得多」—— 判据换成**它不是那扇窗自己、也不是那扇窗的任何一半**。
+         */
+        const sameAs = (a, b) => Math.abs(a.left - b.left) <= 8 && Math.abs(a.width - b.width) <= 8
+        const fr = float.rect
+        const own = [
+          { left: fr.left, width: fr.width },
+          { left: fr.left, width: fr.width / 2 },
+          { left: fr.left + fr.width / 2, width: fr.width / 2 },
+        ]
         assert(
-          read && (read.width > float.rect.width + 8 || read.height > float.rect.height + 8),
-          '**落区不是那扇窗自己** —— 它比窗大得多(判的是窗底下那片叶)',
-          JSON.stringify({ band: read, float: float.rect }),
+          read && !own.some((o) => sameAs(read, o)),
+          '**落区不是那扇窗自己**(判的是窗底下那片叶)',
+          JSON.stringify({ band: read, float: fr }),
         )
         await page.keyboard.press('Escape')
         await releaseAt(cdp, { x: float.x, y: float.y })
@@ -1993,25 +2001,31 @@ async function main() {
     }
 
     /* ══ 场景 ⑨:边带 —— 12px,而且只对没有架子的那一边(U1)════════════ */
-    scenario('边带:12px 窄带、只在那边还没有架子时出现;松手长出新架子')
+    scenario('新架子带:没有架子的那一边、窗口的 30%;松手长出 30% 厚的新架子')
     {
       /*
-       * 病历(用户 09-08 真机):24px 的四条边带排在叶之前,于是**任何**一次贴边
-       * 经过都判「钉边」;而左边明明开着文件架子时,那条带说的「钉到左侧架子」
-       * 更是无处可去 —— 用户原话「莫名钉边」。两条修一起量:带收到 12,而且
-       * 只对**还没有架子**的那一边成立。
+       * 09-24 用户令:「架子的空间占窗口的 30% 左右(无架子时),中间没有涉及到的区域为
+       * 浮窗区」。U1 那条「只对**还没有架子**的那一边成立」(用户原话「莫名钉边」)照旧。
+       * 两点都站在中央叶上沿那一带(总览浮窗的上沿在它之下,底边那条 30% 带也够不着):
+       * 带外那一点落的是中央叶的上分屏带(一块板),带内是新架子带(一层膜)。
        */
       const before = await shelvesNow(page)
       assert(before.includes('left'), '夹具出厂:左架子(files)在', JSON.stringify(before))
       assert(!before.includes('right'), '夹具出厂:右架子还没有', JSON.stringify(before))
       const width = await page.evaluate(() => window.innerWidth)
-      const nearRight = await freePointAt(page, width - 20)
-      const onRightEdge = await freePointAt(page, width - 6)
+      const bandY = await page.evaluate(() => {
+        const slot = document.querySelector('[data-pane-region="center"] [data-pane-slot]')
+        if (!slot) return null
+        const r = slot.getBoundingClientRect()
+        return Math.round(r.top + r.height * 0.1)
+      })
+      const zone = Math.round(width * NEW_SHELF_ZONE)
+      const nearRight = bandY === null ? null : { x: width - zone - 20, y: bandY }
+      const onRightEdge = bandY === null ? null : { x: width - Math.round(zone / 2), y: bandY }
       /*
        * 拖的是**从没开过的那一份**(`delta.ts`)。拖一份此刻正当着中央叶活动标签
-       * 的文件过去,整片叶答的是 `back`(「松手放回」,设计 §5 最后一行)——
-       * 判据是对的,而这一条要量的是右带与边带,那就得挑一份不触发它的。
-       * 门第一版拖的是 `beta.ts`,而前面几场恰好把它留成了活动标签,当场红。
+       * 的文件过去,整片叶答的是 `back`(「松手放回」)—— 判据是对的,而这一条要量的是
+       * 叶的分屏带与新架子带,那就得挑一份不触发它的。
        */
       const row = await centerOf(page, `[data-file-path="${path.join(cwd, 'delta.ts')}"]`)
       assert(
@@ -2020,31 +2034,23 @@ async function main() {
         JSON.stringify({ nearRight, onRightEdge }),
       )
       if (nearRight && onRightEdge && row && !before.includes('right')) {
-        // (a) 离右缘 20px:**带外** —— 该是叶的右带那块板,不是膜。
+        // (a) 带外:中央叶的分屏带 —— 一块板,不是膜。
         await press(cdp, row)
         await strokeOn(cdp, row, nearRight, { steps: 12 })
         await moveTo(cdp, { x: nearRight.x + 1, y: nearRight.y })
         await delay(40)
         const outside = await feedbackNow(page)
-        assert(
-          outside.shape === 'slab',
-          `离右缘 20px(> ${NEW_SHELF_BAND})是叶的右带:一块板,不是边带那层膜`,
-          JSON.stringify(outside),
-        )
-        assert(
-          !/钉成|Pin as a new/.test(outside.hint),
-          '而且那行字说的不是「钉成架子」',
-          outside.hint,
-        )
-        // (b) 离右缘 6px:**带内** —— 一层 12 宽的膜 + 「钉成右侧架子」。
+        assert(outside.shape !== 'film', `离右缘 ${zone + 20}px(带外)不是新架子带`, JSON.stringify(outside))
+        assert(!/钉成|Pin as a new/.test(outside.hint), '而且那行字说的不是「钉成架子」', outside.hint)
+        // (b) 带内:一层窗口宽 30% 的膜 + 「钉成右侧架子」。
         await strokeOn(cdp, nearRight, onRightEdge, { steps: 6 })
         await moveTo(cdp, { x: onRightEdge.x, y: onRightEdge.y + 1 })
         await delay(40)
         const inside = await feedbackNow(page)
-        assert(inside.shape === 'film', '离右缘 6px 是边带:一层膜', JSON.stringify(inside))
+        assert(inside.shape === 'film', '右边 30% 以内是新架子带:一层膜', JSON.stringify(inside))
         assert(
-          inside.bandRect !== null && Math.abs(inside.bandRect.width - NEW_SHELF_BAND) <= 1,
-          `而且那条膜就是 ${NEW_SHELF_BAND} 宽(24 那一版在这里读 24)`,
+          inside.bandRect !== null && Math.abs(inside.bandRect.width - zone) <= 2,
+          `而且那层膜就是窗口宽的 30%(${zone}px)`,
           JSON.stringify(inside.bandRect),
         )
         assert(/钉成|Pin as a new/.test(inside.hint), '那行字说的是「钉成右侧架子」', inside.hint)
@@ -2060,16 +2066,32 @@ async function main() {
           `file:${path.join(cwd, 'delta.ts')}`,
         )
         assert(holds, '而且它装着刚拖过去的那一格', String(holds))
+        /*
+         * 厚度 = 那 30%,再经架子自己的钳:[240, min(视口 × 55%, 预算)],预算 = 窗宽 −
+         * 中央最小 480 − 左架子此刻的宽。门不抄一份钳的算术,只量「与 30% 相差不到 2px,
+         * 或者恰好顶在预算上」。
+         */
+        const shelf = await page.evaluate(() => {
+          const el = (s) => document.querySelector(`[data-shelf="${s}"]`)?.getBoundingClientRect().width ?? 0
+          return { right: Math.round(el('right')), left: Math.round(el('left')) }
+        })
+        const budget = width - 480 - shelf.left
+        const expected = Math.max(240, Math.min(zone, Math.round(width * 0.55), budget))
+        assert(
+          Math.abs(shelf.right - expected) <= 3,
+          `新架子的厚度就是那 30%(经架子自己的钳):期望 ${expected}`,
+          JSON.stringify({ shelf, zone, budget }),
+        )
       }
 
       // (c) 右架子在了 —— 同一点上边带**不再出现**,落的是架子自己。
       const after = await shelvesNow(page)
       const row2 = await centerOf(page, `[data-file-path="${path.join(cwd, 'alpha.ts')}"]`)
-      const againEdge = await freePointAt(page, width - 6)
+      const againEdge = bandY === null ? null : { x: width - Math.round(zone / 2), y: bandY }
       if (after.includes('right') && row2 && againEdge) {
         const seen = await stroke(cdp, row2, againEdge, { steps: 12, holdMs: 160, sample: () => feedbackNow(page) })
         const read = seen[seen.length - 1]
-        assert(read.shape !== 'film', '那条边已经有架子了 —— 同一点上不再是边带', JSON.stringify(read))
+        assert(read.shape !== 'film', '那条边已经有架子了 —— 同一点上不再是新架子带', JSON.stringify(read))
         assert(!/钉成|Pin as a new/.test(read.hint), '那行字也不再说「钉成架子」', read.hint)
         await page.keyboard.press('Escape')
         await releaseAt(cdp, againEdge)
@@ -2083,7 +2105,7 @@ async function main() {
       if (leftPoint && row3) {
         const seen = await stroke(cdp, row3, leftPoint, { steps: 12, holdMs: 160, sample: () => feedbackNow(page) })
         const read = seen[seen.length - 1]
-        assert(read.shape !== 'film', '左边那 6px 落在左架子身上,不是边带', JSON.stringify(read))
+        assert(read.shape !== 'film', '左边那 6px 落在左架子身上,不是新架子带', JSON.stringify(read))
         assert(!/钉成|Pin as a new/.test(read.hint), '那行字也不说「钉成左侧架子」', read.hint)
         await page.keyboard.press('Escape')
         await releaseAt(cdp, leftPoint)

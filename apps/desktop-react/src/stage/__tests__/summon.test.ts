@@ -226,8 +226,8 @@ describe('④ 看得见、焦点在它里面 —— 隐藏(09-04 用户改判,�
     })
   })
 
-  it('钉边那一形交出的 side 是**它自己那条边**(四条边各判各的)', () => {
-    for (const side of ['left', 'right', 'top', 'bottom'] as const) {
+  it('钉边那一形交出的 side 是**它自己那条边**(三条边各判各的)', () => {
+    for (const side of ['left', 'right', 'bottom'] as const) {
       const s = state({
         ...at('files', { kind: 'edge', side }),
         ...shelfWith(side, ['files'], 'files'),

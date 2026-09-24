@@ -51,17 +51,11 @@
   border-left-width: 1px;
 }
 
-/* 横边:厚度 = 高,主区在上下;线同样画在朝主区那一侧。 */
-.sideTop,
+/* 横边(只剩底边,顶边 09-24 退役):厚度 = 高;线同样画在朝主区那一侧。 */
 .sideBottom {
   width: 100%;
   min-height: var(--shelf-min);
   transition: height var(--dur-enter) var(--ease-out);
-}
-
-.sideTop {
-  grid-area: shelfTop;
-  border-bottom-width: 1px;
 }
 
 .sideBottom {
@@ -78,7 +72,7 @@
 /* 收起 ∧ 把手也藏了(全局偏好 shelfRail='hidden'):这条架子**一个像素都不占**。
  * 厚度那一格由 JSX 写 0,这里把四条边框一并归零 —— 只归零厚度会在屏幕上留下
  * 一条 1px 的线(`.sideLeft` 那族各画一侧),那正是「隐藏把手」要去掉的东西。
- * 必须排在 `.sideLeft/.sideRight/.sideTop/.sideBottom` 之后:同为一个类选择器,
+ * 必须排在 `.sideLeft/.sideRight/.sideBottom` 之后:同为一个类选择器,
  * 特异性打平,谁在后面谁说了算。 */
 .railHidden {
   border-width: 0;
@@ -146,7 +140,6 @@
   cursor: col-resize;
 }
 
-.sideTop .handle,
 .sideBottom .handle {
   left: 0;
   right: 0;
@@ -157,7 +150,6 @@
 .sideRight .handle { left: 0; }
 .sideLeft .handle { right: 0; }
 .sideBottom .handle { top: 0; }
-.sideTop .handle { bottom: 0; }
 
 /*
  * ── 檐上那颗收起钮**没有本地样式**(2026-09-14)──────────────────────────────
@@ -223,7 +215,6 @@
 @media (prefers-reduced-motion: reduce) {
   .sideLeft,
   .sideRight,
-  .sideTop,
   .sideBottom { transition: none; }
   .flashing { animation: none; }
 }

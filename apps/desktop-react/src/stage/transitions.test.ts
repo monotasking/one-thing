@@ -131,7 +131,7 @@ function snapshotOf(st: StageState) {
     flashPinned: st.flashPinned,
     flashSide: st.flashSide,
     shelves: Object.fromEntries(
-      (['left', 'right', 'top', 'bottom'] as ShelfSide[]).map((side) => [
+      (['left', 'right', 'bottom'] as ShelfSide[]).map((side) => [
         side,
         {
           tabs: st.shelves[side].tabs ?? [],
@@ -468,8 +468,8 @@ describe('stageToEdge / stageToFloat', () => {
   })
 
   it('钉到别的边去:落到那条边,右边那条一个都不多', () => {
-    const next = stageToEdge(openAs(base, 'files', STAGE), 'top')
-    expect(next.shelves.top.tabs).toEqual(['files'])
+    const next = stageToEdge(openAs(base, 'files', STAGE), 'bottom')
+    expect(next.shelves.bottom.tabs).toEqual(['files'])
     expect(next.shelves.right.tabs).toEqual([])
   })
 
@@ -1169,22 +1169,19 @@ describe('厚度钳制(W2:下界 240 绝对值,上界 55% 比例)', () => {
     const vp = { w: 1600, h: 900 }
     expect(shelfViewportExtent('left', vp)).toBe(1600)
     expect(shelfViewportExtent('right', vp)).toBe(1600)
-    expect(shelfViewportExtent('top', vp)).toBe(900)
     expect(shelfViewportExtent('bottom', vp)).toBe(900)
   })
 
-  it('从指针反推厚度:量的是外缘到指针那一段,四条边各一个方向', () => {
+  it('从指针反推厚度:量的是外缘到指针那一段,三条边各一个方向', () => {
     // 右架子外缘在 1600,指针在 1200 → 厚 400;左架子外缘在 0,指针在 400 → 也是 400。
     expect(thicknessFromPointer('right', { x: 1200, y: 0 }, 1600)).toBe(400)
     expect(thicknessFromPointer('left', { x: 400, y: 0 }, 0)).toBe(400)
     expect(thicknessFromPointer('bottom', { x: 0, y: 700 }, 900)).toBe(200)
-    // 顶架子的外缘不是 0(它在 TopBar 之下),所以外缘必须由宿主量出来递进来。
-    expect(thicknessFromPointer('top', { x: 0, y: 344 }, 44)).toBe(300)
   })
 })
 
 /**
- * **共同预算:四条边与中央区分同一块地**(W7-p 裁定 3,审计 A 的 A3/A4)。
+ * **共同预算:三条边与中央区分同一块地**(W7-p 裁定 3,审计 A 的 A3/A4)。
  *
  * 上面那一组问的是「一条边自己钳到哪」;这一组问的是**两条对边加起来还给中央
  * 留没留下地方** —— 那正是 A3 的病根:`clampShelfThickness` 逐边算 55%,上下两条
@@ -1217,35 +1214,35 @@ describe('架子共同预算(W7-p 裁定 3)', () => {
   }
 
   it('「这条边此刻占多厚」三档:空的 0、收着的一条细梁、展开的才是厚度', () => {
-    const sh = shelvesOf({ left: { thickness: 400 }, right: { collapsed: true, thickness: 400 }, top: { empty: true } })
+    const sh = shelvesOf({ left: { thickness: 400 }, right: { collapsed: true, thickness: 400 }, bottom: { empty: true } })
     expect(shelfExtentOf(sh.left)).toBe(400)
     expect(shelfExtentOf(sh.right)).toBe(SHELF_RAIL)
-    expect(shelfExtentOf(sh.top)).toBe(0)
+    expect(shelfExtentOf(sh.bottom)).toBe(0)
   })
 
   it('预算 = 该轴**可用长度** − 中央最小 − 对边此刻厚度(竖轴先扣顶栏)', () => {
-    const st = { shelves: shelvesOf({ left: { thickness: 400 }, top: { thickness: 300 } }) }
+    const st = { shelves: shelvesOf({ left: { thickness: 400 }, bottom: { thickness: 300 } }) }
     const vp = { w: 1600, h: 1000 }
     expect(shelfThicknessBudget(st, 'right', vp)).toBe(1600 - CENTER_MIN_W - 400)
     /*
      * **竖轴扣顶栏**(W7-p 修一轮裁定 6)。反证:把 `usableExtent` 换回
-     * `shelfViewportExtent`(即不扣 TOP_CHROME)→ 这条与下面那条一起红,而真机上的
-     * 样子是 860 高的窗里「上 300 + 下 240」被判为装得下、中央区实高只有 276。
+     * `shelfViewportExtent`(即不扣 TOP_CHROME)→ 这条与下面那条一起红。
+     * 顶架子退役后下架子没有对边,它自己的厚度也不算进自己的预算。
      */
-    expect(shelfThicknessBudget(st, 'bottom', vp)).toBe(1000 - TOP_CHROME - CENTER_MIN_H - 300)
+    expect(shelfThicknessBudget(st, 'bottom', vp)).toBe(1000 - TOP_CHROME - CENTER_MIN_H)
     // 对面空着 = 不占地:整条轴减中央最小就是全部预算。
     expect(shelfThicknessBudget({ shelves: emptyShelves() }, 'right', vp)).toBe(1600 - CENTER_MIN_W)
-    expect(shelfThicknessBudget({ shelves: emptyShelves() }, 'top', vp)).toBe(
+    expect(shelfThicknessBudget({ shelves: emptyShelves() }, 'bottom', vp)).toBe(
       1000 - TOP_CHROME - CENTER_MIN_H,
     )
-    // 预算与 `centerRectOf` 是**同一把尺**:上下都钉满预算时中央区正好等于最小高。
-    const filled = { shelves: shelvesOf({ top: { thickness: 300 }, bottom: { thickness: 1000 - TOP_CHROME - CENTER_MIN_H - 300 } }) }
+    // 预算与 `centerRectOf` 是**同一把尺**:下架子钉满预算时中央区正好等于最小高。
+    const filled = { shelves: shelvesOf({ bottom: { thickness: 1000 - TOP_CHROME - CENTER_MIN_H } }) }
     const center = centerRectOf(filled, vp)
     expect(center.bottom - center.top).toBe(CENTER_MIN_H)
   })
 
-  it('对边配对只在一张表里:left↔right、top↔bottom', () => {
-    expect(OPPOSITE_SHELF).toEqual({ left: 'right', right: 'left', top: 'bottom', bottom: 'top' })
+  it('对边配对只在一张表里:left↔right,bottom 没有对边(顶架子已退役)', () => {
+    expect(OPPOSITE_SHELF).toEqual({ left: 'right', right: 'left', bottom: null })
   })
 
   it('钉得上吗:预算够 240 才钉得上,不够就**拒绝**(不是压成 0)', () => {
@@ -1320,7 +1317,7 @@ describe('架子共同预算(W7-p 裁定 3)', () => {
   it('空着的边不参与;收着的按细梁占地,但它自己的厚度照样钳(展开即穿帮的唯一守处)', () => {
     const st: StageState = {
       ...initialStageState,
-      shelves: shelvesOf({ left: { collapsed: true, thickness: 400 }, right: { thickness: 900 }, top: { empty: true } }),
+      shelves: shelvesOf({ left: { collapsed: true, thickness: 400 }, right: { thickness: 900 }, bottom: { empty: true } }),
       shelfNailOrder: ['left', 'right'],
     }
     const next = reclampShelves(st, { w: 1600, h: 900 })
@@ -1329,7 +1326,7 @@ describe('架子共同预算(W7-p 裁定 3)', () => {
     // 左边收着,可它的厚度按「展开之后还站得住」钳:1600 − 480 − 880 = 240。
     expect(next.shelves.left.thickness).toBe(SHELF_MIN_THICKNESS)
     // 空着那条一个字没动 —— 它不在场,谈不上钳。
-    expect(next.shelves.top.thickness).toBe(SHELF_DEFAULT_THICKNESS)
+    expect(next.shelves.bottom.thickness).toBe(SHELF_DEFAULT_THICKNESS)
     // 这一条才是上面那句话的意思:此刻把左边展开,中央区仍旧 ≥ 480。
     expect(1600 - next.shelves.left.thickness - next.shelves.right.thickness).toBe(CENTER_MIN_W)
   })
@@ -1462,11 +1459,11 @@ describe('架子共同预算(W7-p 裁定 3)', () => {
 describe('snapSideAt(拖到边缘要不要吸)', () => {
   const VIEWPORT = { w: 1000, h: 800 }
 
-  it('四条边各自的热带里各吸各的', () => {
+  it('三条边各自的热带里各吸各的;顶边不再吸(顶架子已退役)', () => {
     expect(snapSideAt({ x: 5, y: 400 }, VIEWPORT)).toBe('left')
     expect(snapSideAt({ x: 995, y: 400 }, VIEWPORT)).toBe('right')
-    expect(snapSideAt({ x: 500, y: 3 }, VIEWPORT)).toBe('top')
     expect(snapSideAt({ x: 500, y: 797 }, VIEWPORT)).toBe('bottom')
+    expect(snapSideAt({ x: 500, y: 3 }, VIEWPORT)).toBeNull()
   })
 
   it('带外一律 null —— 不吸,松手照常落位', () => {
@@ -1477,9 +1474,9 @@ describe('snapSideAt(拖到边缘要不要吸)', () => {
   })
 
   it('角落归**最近**的那条边,不是归先写的那条', () => {
-    // 左 5、上 20 → 左近;左 20、上 5 → 上近。
-    expect(snapSideAt({ x: 5, y: 20 }, VIEWPORT)).toBe('left')
-    expect(snapSideAt({ x: 20, y: 5 }, VIEWPORT)).toBe('top')
+    // 左 5、下 20 → 左近;左 20、下 5 → 下近。
+    expect(snapSideAt({ x: 5, y: 780 }, VIEWPORT)).toBe('left')
+    expect(snapSideAt({ x: 20, y: 795 }, VIEWPORT)).toBe('bottom')
   })
 
   it('平手优先左右(竖架子是主力形态)', () => {
@@ -1494,12 +1491,11 @@ describe('snapSideAt(拖到边缘要不要吸)', () => {
 })
 
 describe('tab 从架子上撕下来的阈值', () => {
-  it('四条边各朝主区那个方向量距离', () => {
+  it('三条边各朝主区那个方向量距离', () => {
     // 右架子内缘在 1200,指针越往左走距离越大。
     expect(tearOffDistance('right', { x: 1160, y: 0 }, 1200)).toBe(40)
     expect(tearOffDistance('left', { x: 340, y: 0 }, 300)).toBe(40)
     expect(tearOffDistance('bottom', { x: 0, y: 560 }, 600)).toBe(40)
-    expect(tearOffDistance('top', { x: 0, y: 240 }, 200)).toBe(40)
   })
 
   it('还压在架子那一侧是负数 —— 不可能撕下来', () => {
@@ -1625,7 +1621,7 @@ describe('closeShelf(整栏关闭)', () => {
   })
 
   it('空栏是恒等变换', () => {
-    expect(closeShelf(initialStageState, 'top')).toBe(initialStageState)
+    expect(closeShelf(initialStageState, 'bottom')).toBe(initialStageState)
   })
 })
 
@@ -1717,9 +1713,9 @@ describe('位置记忆:关闭是归档,不是删除', () => {
 
 describe('位置记忆:落定即写', () => {
   it('菜单点名(= openAs)既执行也写记忆', () => {
-    const st = openAs(base, 'files', { kind: 'edge', side: 'top' }, VP)
+    const st = openAs(base, 'files', { kind: 'edge', side: 'right' }, VP)
     expect(formOf(st, 'files')).toBe('edge')
-    expect(st.memory.files).toEqual({ kind: 'edge', side: 'top', index: 0 })
+    expect(st.memory.files).toEqual({ kind: 'edge', side: 'right', index: 0 })
   })
 
   it('浮窗移动 / 缩放落定当场写进记忆', () => {
@@ -1757,8 +1753,8 @@ describe('位置记忆:落定即写', () => {
   })
 
   it('舞台转边 / 转浮窗也是落定', () => {
-    let st = stageToEdge(openAs(base, 'files', STAGE, VP), 'top')
-    expect(st.memory.files).toEqual({ kind: 'edge', side: 'top', index: 0 })
+    let st = stageToEdge(openAs(base, 'files', STAGE, VP), 'bottom')
+    expect(st.memory.files).toEqual({ kind: 'edge', side: 'bottom', index: 0 })
     st = stageToFloat(openAs(st, 'diff', STAGE, VP), VP)
     expect(st.memory.diff).toEqual({ kind: 'float', rect: st.floats.diff })
   })

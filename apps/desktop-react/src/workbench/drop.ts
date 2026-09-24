@@ -2,6 +2,7 @@ import { SHELF_SIDES, TEAR_OFF_DISTANCE } from '../stage/transitions'
 import type { ShelfSide } from '../stage/types'
 import type { MessageKey } from '../i18n'
 import type { RegionId } from './regions'
+import type { SplitSide } from './tree'
 
 /**
  * **落点判据**(W6-b 立;U1 / 2026-09-08 按用户拍板的拖拽 v4 改了三处,设计
@@ -27,30 +28,25 @@ import type { RegionId } from './regions'
  * 逐帧量 DOM(那是把强制排版请回来,而且读到的是正在过渡中的位置),是把那一格
  * 位移当成**一格入参**(`DropLive.gap`)算进去:活位置 = 基准矩形 + 空位位移。
  *
- * ── 次序即语义(先命中先赢)────────────────────────────────────────────
- *   ① **拒绝区**(红绿灯 / 顶栏尾格 / Dock)。它排第一,因为「这里不能放」是一句
- *      比任何落点都硬的话:红绿灯压在顶栏那条标签条的带里,先问条的话拖到关窗
- *      按钮上会变成「插到第 0 格」。
- *   ② **标签条** = 插到第 n 格。**外来来源落到标签上一律是「插到旁边」**
- *      (U1;「落到某一格正中 = 与它二合一」那一档整件退役,判词见下)。
- *      条只有 34px 高,谁也不会不小心把东西丢上去;反过来判(先问叶)会让条永远
- *      吸不到东西:条压在叶的上边带里。
- *   ③ **新架子那条窄边带**(`NEW_SHELF_BAND` 12),**而且只对那一边还没有架子时
- *      成立**。它优先于叶:一片叶贴着窗口右缘时,右缘那一条同时落在两者里,而
- *      用户把东西拖到屏幕最边上想的是「在那边生一条架子出来」。那一边已经有架子
- *      了就没有这句话可说 —— 那条边上此刻站着的是架子自己的条与身子,该落进去的
- *      是它们(用户报的「莫名钉边」就是这一格:左边明明开着文件架子,手一靠边
- *      却被判成「钉成左侧架子」)。
- *   ④ **内容区右带 28%** = 与活动标签并排(放右);
- *   ⑤ **左带 28%** = 并排(放左),**仅当活动标签还是一格**;
- *   ⑥ **内容区中间** = 末尾开成一格新标签;
- *   ⑦ **自己的内容区**(拖的就是这片叶的活动标签)= 放回,空动作;
- *   ⑧ 什么都没碰到 / 出了窗 = 撕成浮窗。
+ * ── 次序即语义(先命中先赢)——09-24 用户令重写 ────────────────────────────
+ * 用户原话:「窗口不再支持 top 架子,从窗口的角度分为三个加载,分别是左右下;架子的空间
+ * 占窗口的 30% 左右(无架子时),中间没有涉及到的区域为浮窗区;有架子时,允许上下左右分屏
+ * (30% 拖拽区域),如果有铺满只能通过放在 tab 上」,随后补「主区域也能分屏」。
+ *   ① **拒绝区**(红绿灯 / 顶栏尾格 / Dock)。
+ *   ② **标签条** = 插到第 n 格。**要「铺满」(并进一片叶)只有这一条路。**
+ *   ③ **浮窗里的叶**:浮窗盖在一切之上,它身上的分屏带先于身子底下那条边的架子带。
+ *   ④ **新架子带**:还没有架子的左 / 右 / 下三条边,各占窗口那条轴的 30%
+ *      (`NEW_SHELF_ZONE`)。它先于中央区的叶 —— 没有架子时中央区铺满整扇窗,它的
+ *      左右下 30% 与架子带完全重合,让叶先问就再也拖不出一条架子。
+ *   ⑤ **任意一片叶的四边 30%**(`SPLIT_BAND`,按叶自己的宽高算)= 在那一侧分屏。
+ *   ⑥ **自己那片叶**(拖的就是它唯一那格,或指针在它中间)= 放回,空动作。
+ *   ⑦ 其余一切(叶的中间、出了窗、什么都没碰到)= 撕成浮窗。
  *
- * ⑦ 在设计表上排在 ④⑤⑥ 后面(那张表的**阅读**顺序),但**判据里它必须先问**:
- * 「拖的是这片叶自己的活动标签」是对整片叶说的一句话,一旦成立,右带左带中间三格
- * 都是它 —— 排在后面就永远轮不到。出入记在交卷报里。
- *
+ * 「叶中间 = 追加成一格标签」与「左右 28% = 与活动标签并排」两档随这次重写退役:
+ * 前者被 ② 接走(用户说铺满只走 tab),后者被 ⑤ 的分屏取代。`pair` / `open` 两种
+ * 落点**类型**留着 —— 会话行右键菜单「在右侧打开」那几条是直接点名它们落定的,
+ * 只是拖拽判据不再产生它们。
+
  * ── 叶重叠时取最上 ──────────────────────────────────────────────────────
  * 浮窗会盖住中央区的叶。宿主按 DOM 序把矩形交进来(浮窗层排在主区之后),
  * 这里**从后往前**找第一个命中的 —— 屏幕上盖在最上面的那一片就是它。
@@ -158,9 +154,11 @@ export type DropTarget =
   /** 落到某条标签条上,插到第 `at` 格(同叶 = 换序,异叶 = 搬过去)。 */
   | { kind: 'strip'; leafId: string; at: number }
   | { kind: 'edge'; side: ShelfSide }
-  /** 与这片叶的活动标签并排,放在这一侧。 */
+  /** 在这片叶的 `side` 那一侧切出一片新叶装它(09-24,拖拽的四边分屏带)。 */
+  | { kind: 'split'; region: RegionId; leafId: string; side: SplitSide }
+  /** 与这片叶的活动标签并排,放在这一侧。**拖拽不再产生**,只给菜单直接点名。 */
   | { kind: 'pair'; region: RegionId; leafId: string; side: 'left' | 'right' }
-  /** 在这片叶的标签条**末尾**开成一格新标签。 */
+  /** 在这片叶的标签条**末尾**开成一格新标签。**拖拽不再产生**,只给菜单直接点名。 */
   | { kind: 'open'; region: RegionId; leafId: string }
   /** 拖的就是这片叶的活动标签,松手 = 放回,空动作。 */
   | { kind: 'back' }
@@ -168,36 +166,18 @@ export type DropTarget =
   | { kind: 'refuse'; reasonKey: MessageKey }
 
 /**
- * **内容区左右各多宽算「与它并排」**(设计 v3 §4.1 `PAIR_BAND` 28%)。
+ * **新架子带占窗口那条轴的多少**(09-24,30%)。左右两条按窗宽算,底边按窗高算。
  *
- * 它是**比例**不是像素:内容区的宽从一扇 320px 的浮窗到一整块 1600px 的中央区
- * 都有,固定像素在两头各错一次。
- *
- * **U1 起它是这套比例表唯一剩下的那一格**:从前它与标签上的 `TAB_MIDDLE` 44%
- * 凑成 28 + 44 + 28 = 100(「用户在两处学的是同一件事」),而标签上那一档随
- * `pairTab` 一起退役 —— 今天条上只有一种落点,没有第二条线要对齐。
+ * 它同时是**预示的大小**:落下之后那条新架子开出来就是这么厚(`stage/transitions`
+ * 的 `newShelfThickness` 读同一个数),所以拖拽时那块膜画的就是架子将来占的地方。
  */
-export const PAIR_BAND = 0.28
+export const NEW_SHELF_ZONE = 0.3
 
 /**
- * **「在这条边上生一条架子」那条带有多宽**(U1,12)。
- *
- * ── 它为什么是一个新常数,不是 `SNAP_BAND` ──────────────────────────────
- * `SNAP_BAND`(24,`stage/transitions.ts`)是**形态机**的数:拖着一扇**浮窗**
- * 靠视口边多近算「要钉上去」,进 24 出 24 一进一出对称。这一个是**落点判据**
- * 的数:从外面拖一样东西过来时,离窗口边多近算「我要的不是那片叶,是在这条边上
- * 生一条新架子」。两者今天都住在「离某条边多远」这句话里,但它们的用户反馈来自
- * 完全不同的场合 —— 合成一个常量以后调「吸边灵不灵」会连带改掉「手一靠边会不会
- * 误钉」,而后者正是 U1 要治的那条报障。
- *
- * ── 为什么从 24 收到 12 ─────────────────────────────────────────────────
- * 24px 的四条边带排在叶之前,于是**任何**一次贴边经过都会被判成「钉边」:用户
- * 把文件往聊天区右边缘拖的时候,最后那 24px 里屏幕上说的是「钉到右侧架子」而不是
- * 「与 X 并排」—— 而右带 28% 的目的地恰恰在那儿。12 是「明确贴到边上」那一档,
- * 它比一次拖拽的收尾抖动(3~6px)大得多,又不至于把整条右带的末梢吃掉。
- * 它同时**只对那一边还没有架子时成立**(文件头 ③),两条一起才治得住「莫名钉边」。
+ * **一片叶四边各多宽算「在这一侧分屏」**(09-24,30%)。按叶**自己**的宽高算 —— 叶
+ * 从一扇 320px 的浮窗到一整块中央区都有,固定像素在两头各错一次。
  */
-export const NEW_SHELF_BAND = 12
+export const SPLIT_BAND = 0.3
 
 /** 这次拖拽自己的规矩。全缺席 = 「什么都能落」。 */
 export interface DropRules {
@@ -239,8 +219,6 @@ export interface DropLive {
 
 /** 「这里不能放」——拒绝区那一句。 */
 const REFUSE_HERE: MessageKey = 'drag.refuseHere'
-/** 「两格的标签不能再并」(设计 §6「不允许」)。 */
-const REFUSE_PAIR_NEST: MessageKey = 'drag.refusePairNest'
 
 /** 指针在这儿,松手会发生什么(次序见文件头)。 */
 export function dropTargetAt(
@@ -268,30 +246,49 @@ function rawTargetAt(
   for (const rect of geometry.nodrop ?? []) {
     if (within(pointer, rect)) return { kind: 'refuse', reasonKey: REFUSE_HERE }
   }
-  // ② 标签条(插到第几格)。
+  // ② 标签条(插到第几格)—— 「铺满」唯一的路。
   const strip = stripAt(pointer, geometry.strips, live)
   if (strip) return strip
-  // ③ 新架子那条窄边带 —— 只对**还没有架子**的那一边成立。
+  // ③ 浮窗里的叶:盖在架子带之上。
+  const floating = leafAt(pointer, geometry, rules, (box) => isFloatRegion(box.region))
+  if (floating) return leafTargetAt(pointer, floating, geometry, rules)
+  // ④ 新架子带 —— 只对**还没有架子**的那一边成立。
   const side = newShelfSideIn(pointer, geometry)
   if (side) return { kind: 'edge', side }
-  // ④⑤⑥⑦ 内容区。从后往前 —— 宿主按 DOM 序交进来,靠后的盖在上面(见文件头)。
-  for (let i = geometry.leaves.length - 1; i >= 0; i -= 1) {
-    const box = geometry.leaves[i]
-    if (rules.excludeLeaves?.includes(box.leafId)) continue
-    if (!within(pointer, box.rect)) continue
-    return leafTargetAt(pointer, box, geometry, rules)
-  }
-  // ⑧ 什么都没碰到 / 出了窗。
+  // ⑤⑥⑦ 其余的叶(中央区、架子)。
+  const box = leafAt(pointer, geometry, rules, (b) => !isFloatRegion(b.region))
+  if (box) return leafTargetAt(pointer, box, geometry, rules)
+  // ⑦ 什么都没碰到 / 出了窗。
   return { kind: 'float' }
 }
 
+function isFloatRegion(region: RegionId): boolean {
+  return region.startsWith('float:')
+}
+
+/** 指针下最上面那片叶(宿主按 DOM 序交进来,靠后的盖在上面 —— 所以从后往前找)。 */
+function leafAt(
+  pointer: { x: number; y: number },
+  geometry: DropGeometry,
+  rules: DropRules,
+  accept: (box: LeafBox) => boolean,
+): LeafBox | null {
+  for (let i = geometry.leaves.length - 1; i >= 0; i -= 1) {
+    const box = geometry.leaves[i]
+    if (rules.excludeLeaves?.includes(box.leafId)) continue
+    if (!accept(box) || !within(pointer, box.rect)) continue
+    return box
+  }
+  return null
+}
+
 /**
- * 一片叶身上的四种落点(设计 v3 §5 的后四行)。
+ * 一片叶身上的落点:四边分屏带 / 放回 / 浮窗。
  *
- * 「这片叶的活动标签是谁」从**它那条条**上查(`activeAt`),不是从叶上 —— 中央区
- * 那条条住在窗口顶栏,DOM 上根本不在叶里(设计 v2 §2.2 的 D 稿),所以叶自己
- * 答不出这个问题。查不到条(比如一片还没画出檐的叶)= 只剩「开成新标签」那一档:
- * 没有 host 就没有「与谁并排」可言。
+ * 「拖的是不是这片叶自己的东西」从**它那条条**上查(`activeAt` 与格数):拖的是它
+ * **唯一**那一格 → 整片叶都是放回(从自己身上切一刀出来,切完原叶是空的,那一刀没有
+ * 意义);拖的是它的活动格、而它还有别的格 → 四边照样能分屏(把这一格拆到旁边去看),
+ * 只有中间是放回。
  */
 function leafTargetAt(
   pointer: { x: number; y: number },
@@ -301,25 +298,41 @@ function leafTargetAt(
 ): DropTarget {
   const strip = geometry.strips?.find((s) => s.leafId === box.leafId) ?? null
   const host = strip && strip.activeAt >= 0 ? (strip.tabs[strip.activeAt] ?? null) : null
-  const open: DropTarget = { kind: 'open', region: box.region, leafId: box.leafId }
-  if (!host) return open
-  // ⑦ 拖的就是这片叶的活动标签 —— 整片叶都是「放回」(判据里它必须先问,见文件头)。
-  if (rules.dragged && rules.dragged.id === host.id) return { kind: 'back' }
-  const fx = box.rect.width > 0 ? (pointer.x - box.rect.left) / box.rect.width : 0.5
-  const inBand = fx >= 1 - PAIR_BAND || (fx <= PAIR_BAND && host.slots === 1)
-  // 两格的标签不能再并:两条并排带对它是拒绝,**中间那一格照旧收**
-  // (把它整片叶都拒掉的话,一格两格标签就再也搬不进别的叶了)。
-  if (inBand && (rules.dragged?.slots ?? 1) > 1) {
-    return { kind: 'refuse', reasonKey: REFUSE_PAIR_NEST }
+  const own = !!rules.dragged && !!host && rules.dragged.id === host.id
+  // ⑥ 拖的是这片叶唯一那一格:整片叶都是放回。
+  if (own && (strip?.tabs.length ?? 0) <= 1) return { kind: 'back' }
+  // ⑤ 四边分屏带。
+  const side = splitSideAt(pointer, box.rect)
+  if (side) return { kind: 'split', region: box.region, leafId: box.leafId, side }
+  // ⑥ 自己那片叶的中间 = 放回;别人那片叶的中间 = 浮窗区。
+  return own ? { kind: 'back' } : { kind: 'float' }
+}
+
+/**
+ * 指针落在这块矩形哪一侧的分屏带里(没有 = null)。四条带在角上重叠时,取**离得最近**
+ * 的那一侧 —— 距离按那一侧自己那条轴归一(宽的叶上 30% 是一大段,扁的叶上是一小段,
+ * 按像素比会让扁叶永远只剩上下两条)。平手优先左右(竖切是主力形态,与架子那条同)。
+ */
+export function splitSideAt(pointer: { x: number; y: number }, rect: Rect): SplitSide | null {
+  if (rect.width <= 0 || rect.height <= 0) return null
+  const fx = (pointer.x - rect.left) / rect.width
+  const fy = (pointer.y - rect.top) / rect.height
+  const candidates: [SplitSide, number][] = [
+    ['left', fx],
+    ['right', 1 - fx],
+    ['top', fy],
+    ['bottom', 1 - fy],
+  ]
+  let best: SplitSide | null = null
+  let bestDistance = Number.POSITIVE_INFINITY
+  for (const [side, d] of candidates) {
+    if (d > SPLIT_BAND) continue
+    if (d < bestDistance) {
+      best = side
+      bestDistance = d
+    }
   }
-  // ④ 右带。
-  if (fx >= 1 - PAIR_BAND) return { kind: 'pair', region: box.region, leafId: box.leafId, side: 'right' }
-  // ⑤ 左带,**仅当活动标签还是一格**(两格的话它已经满了,左边没地方放)。
-  if (fx <= PAIR_BAND && host.slots === 1) {
-    return { kind: 'pair', region: box.region, leafId: box.leafId, side: 'left' }
-  }
-  // ⑥ 中间。
-  return open
+  return best
 }
 
 /**
@@ -423,9 +436,9 @@ export function stripIndexAt(
 /**
  * 「在这条边上生一条新架子」的那一边,没有就答 null。
  *
- * 两条判据缺一不可(见文件头 ③):**离边不到 `NEW_SHELF_BAND`**,而且**那条边上
- * 此刻还没有架子**。它按**视口**算,而门与用例里窗口矩形未必从 0 起,所以先把
- * 指针折回视口坐标系再问。
+ * 两条判据缺一不可(见文件头 ④):**离边不到那条轴的 `NEW_SHELF_ZONE`**,而且**那条边上
+ * 此刻还没有架子**。角上两条带重叠时取归一距离更近的那条(平手优先左右)。它按**视口**
+ * 算,而门与用例里窗口矩形未必从 0 起,所以先把指针折回视口坐标系再问。
  */
 function newShelfSideIn(pointer: { x: number; y: number }, geometry: DropGeometry): ShelfSide | null {
   const win = geometry.window
@@ -435,9 +448,10 @@ function newShelfSideIn(pointer: { x: number; y: number }, geometry: DropGeometr
   let bestDistance = Number.POSITIVE_INFINITY
   for (const side of SHELF_SIDES) {
     if (geometry.shelves.includes(side)) continue
-    const d = edgeDistance(side, local, win)
-    if (d > NEW_SHELF_BAND) continue
-    // 严格小于才换人 —— 平手优先左右,与 `snapSideAt` 逐字同一条(竖架子是主力形态)。
+    const zone = newShelfZoneOf(side, win)
+    if (zone <= 0) continue
+    const d = edgeDistance(side, local, win) / zone
+    if (d > 1) continue
     if (d < bestDistance) {
       best = side
       bestDistance = d
@@ -446,10 +460,14 @@ function newShelfSideIn(pointer: { x: number; y: number }, geometry: DropGeometr
   return best
 }
 
+/** 新架子带在这条边上有多厚(px)。 */
+export function newShelfZoneOf(side: ShelfSide, win: Rect): number {
+  return (side === 'bottom' ? win.height : win.width) * NEW_SHELF_ZONE
+}
+
 function edgeDistance(side: ShelfSide, p: { x: number; y: number }, win: Rect): number {
   if (side === 'left') return p.x
   if (side === 'right') return win.width - p.x
-  if (side === 'top') return p.y
   return win.height - p.y
 }
 
@@ -471,16 +489,28 @@ export function pairRectOf(rect: Rect, side: 'left' | 'right'): Rect {
 }
 
 /**
+ * **分屏落下后新叶占的那一半**(`split` 那一档的高亮)。切在正中 —— 新切出来的那一刀
+ * 落在缺省比例(`tree.DEFAULT_SPLIT_RATIO` 50%),所以「一半」就是它将来真占的地方。
+ */
+export function splitRectOf(rect: Rect, side: SplitSide): Rect {
+  const halfW = rect.width / 2
+  const halfH = rect.height / 2
+  if (side === 'left') return { ...rect, width: halfW }
+  if (side === 'right') return { ...rect, left: rect.left + halfW, width: halfW }
+  if (side === 'top') return { ...rect, height: halfH }
+  return { ...rect, top: rect.top + halfH, height: halfH }
+}
+
+/**
  * 一条边带在窗口上的矩形(架子会长在这条带子那一侧,所以带子就是它的预示)。
  *
- * `band` **没有缺省值**(U1):这只函数从前默认 `SNAP_BAND` 24,而判据那一头
- * 已经换成 `NEW_SHELF_BAND` 12 —— 一个没人传的缺省一旦与判据不是同一个数,
- * 屏幕上画的膜就比真正收东西的那条带宽一倍,而那种错只在真机上看得见。
+ * `band` **没有缺省值**(U1):一个没人传的缺省一旦与判据不是同一个数,屏幕上画的膜
+ * 就与真正收东西的那条带不一样宽,而那种错只在真机上看得见。今天它由
+ * `newShelfZoneOf` 给(判据与预示同一个数)。
  */
 export function edgeRectOf(win: Rect, side: ShelfSide, band: number): Rect {
   if (side === 'left') return { ...win, width: band }
   if (side === 'right') return { left: win.left + win.width - band, top: win.top, width: band, height: win.height }
-  if (side === 'top') return { ...win, height: band }
   return { left: win.left, top: win.top + win.height - band, width: win.width, height: band }
 }
 
@@ -493,7 +523,13 @@ export function edgeRectOf(win: Rect, side: ShelfSide, band: number): Rect {
  * 就是同一件事说两遍,而这一批治的正是「说三遍」。
  */
 export function targetRectOf(target: DropTarget, geometry: DropGeometry): Rect | null {
-  if (target.kind === 'edge') return edgeRectOf(geometry.window, target.side, NEW_SHELF_BAND)
+  if (target.kind === 'edge') {
+    return edgeRectOf(geometry.window, target.side, newShelfZoneOf(target.side, geometry.window))
+  }
+  if (target.kind === 'split') {
+    const rect = leafRectOf(target.leafId, target.region, geometry)
+    return rect ? splitRectOf(rect, target.side) : null
+  }
   if (target.kind === 'open') return leafRectOf(target.leafId, target.region, geometry)
   if (target.kind === 'pair') {
     const rect = leafRectOf(target.leafId, target.region, geometry)

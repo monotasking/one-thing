@@ -120,22 +120,23 @@ describe('一格一檐:叶檐就是 tab 条', () => {
   })
 
   /**
-   * **中央区永远一组标签条**(W6-a 单叶政策,设计 §2.1)。从前这里是
-   * 「分屏 → 一片叶一组标签,留下来那一组不重挂」;单叶之下那一形在中央区不存在了,
-   * 而这一条守它的反面 —— 开多少格、分屏喊多少次,顶栏都只有一组,
-   * 而且**那一组的 DOM 节点自始至终是同一个**(它不该因为标签增减而重挂)。
+   * **中央区分屏后每片叶自带标签条**(09-24 用户拍;判据 `layout.centerStripOnTopBar`)。
+   * 一片叶 = 顶栏一组;分屏 = 顶栏零组、两片叶各在自己顶上画一条;合回一片 = 回到顶栏。
    */
-  it('W6-a:中央区永远一组标签条,而且那一组不重挂', () => {
-    act(() => store().openRef(doc('a')))
-    renderCenter()
-    const before = document.querySelector('[data-topbar-leaf]')!
+  it('09-24:中央区分屏后顶栏让开,每片叶自带标签条;合回一片标签回顶栏', () => {
     act(() => {
+      store().openRef(doc('a'))
       store().openRef(doc('b'))
-      store().splitLeaf(centerLeaves()[0].id, 'row')
     })
-    const groups = Array.from(document.querySelectorAll('[data-topbar-leaf]'))
-    expect(groups).toHaveLength(1)
-    expect(groups[0]).toBe(before)
+    renderCenter()
+    expect(document.querySelectorAll('[data-topbar-leaf]')).toHaveLength(1)
+    act(() => store().splitLeaf(centerLeaves()[0].id, 'row'))
+    expect(document.querySelectorAll('[data-topbar-leaf]')).toHaveLength(0)
+    expect(document.querySelectorAll('[data-pane-leaf] [data-pane-chrome]')).toHaveLength(2)
+    const fresh = centerLeaves()[1]
+    act(() => store().closeTab(fresh.id, 0))
+    expect(document.querySelectorAll('[data-topbar-leaf]')).toHaveLength(1)
+    expect(document.querySelectorAll('[data-pane-leaf] [data-pane-chrome]')).toHaveLength(0)
   })
 
   it('W1-b:动作组只画焦点叶那一份(设计 §2.2「右端是焦点叶的动作组」)', () => {

@@ -170,7 +170,7 @@
   padding-inline-end: var(--dock-reserve-v);
 }
 
-/* 三明治网格。四条架子各占一格(格名由 EdgeShelf 自己声明 grid-area),
+/* 三明治网格。三条架子(左右下;顶边 09-24 退役)各占一格(格名由 EdgeShelf 自己声明 grid-area),
  * 中间那一格是主区。auto 轨道在没人占时塌成 0,所以「空架子不渲染」= 不占一丝布局;
  * 架子的厚度写在它自己的内联 width/height 上,轨道跟着它长。 */
 .main {
@@ -181,9 +181,8 @@
   transition: padding var(--dur) var(--ease);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
   grid-template-areas:
-    'shelfTop    shelfTop shelfTop'
     'shelfLeft   center   shelfRight'
     'shelfBottom shelfBottom shelfBottom';
 }

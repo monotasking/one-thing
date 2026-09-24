@@ -19,6 +19,8 @@ import type { DropGeometry, DropLive, DropRules, DropTarget } from './drop'
 import type { ContentRef } from './kinds'
 import type { RegionId } from './regions'
 import type { MessageKey } from '../i18n'
+import type { ShelfSide } from '../stage/types'
+import type { SplitSide } from './tree'
 
 /**
  * **把一样东西变成「能拖进拼贴台的东西」**(W3)——五种来源共用的这一只。
@@ -578,7 +580,7 @@ export function regionOfTarget(
   target: DropTarget,
   leafRegion: (leafId: string) => RegionId | null,
 ): RegionId | null {
-  if (target.kind === 'open' || target.kind === 'pair') {
+  if (target.kind === 'open' || target.kind === 'pair' || target.kind === 'split') {
     return target.region
   }
   if (target.kind === 'strip') {
@@ -601,11 +603,10 @@ function ghostOf(ref: ContentRef): DragGhostSpec {
  *
  * 七种落点,一张表:
  *   标签条 `strip`      **不画高亮**(预示是那条条腾出来的一格空位),字 = 「放到第 n 位」
- *   窗口边带 `edge`     `film`:一层 12px 的薄膜(架子会长在那儿,薄膜正是它的预示),
- *                       字 = 「钉成左侧架子」—— 它只在那条边**还没有架子**时出现
- *   内容区左右 `pair`   `slab`:落下后它会占的那一半
- *   内容区中间 `open`   `slab`:整片叶 —— 与上一档**同一种板**,差的只是矩形有多大
- *                       (U1 并档,判词在 `ui/drag` 的 `DropShape` 上)
+ *   窗口边带 `edge`     `film`:窗口那条轴 30% 的一层薄膜(新架子开出来就是这么厚,
+ *                       薄膜正是它的预示),字 = 「钉成左侧架子」—— 只在那条边**还没有架子**时出现
+ *   叶四边 `split`      `slab`:分屏之后新叶会占的那一半,字 = 「分屏到右侧」(09-24)
+ *   `pair` / `open`     拖拽不再产生(菜单直接点名落定),这里保留它们的画法只为类型完整
  *   自己那片叶 `back`   不画,字 = 「松手放回」
  *   撕成浮窗 `float`    `outline`:那扇窗将来的轮廓(`floatRectForGrab` —— 与从架子上
  *                       撕一块瓦、与落定时那一句**同一只函数**,所以预示的位置就是
@@ -666,6 +667,9 @@ function feedbackOf(
   if (target.kind === 'edge') {
     return { rect, tone: 'accept' as const, hint: t(EDGE_HINT[target.side]), shape: 'film' as const }
   }
+  if (target.kind === 'split') {
+    return { rect, tone: 'accept' as const, hint: t(SPLIT_HINT[target.side]), shape: 'slab' as const }
+  }
   if (target.kind === 'pair') {
     const strip = geometry.strips?.find((row) => row.leafId === target.leafId)
     const host = strip && strip.activeAt >= 0 ? (strip.tabs[strip.activeAt] ?? null) : null
@@ -702,10 +706,17 @@ function pairHint(
   return t(side === 'left' ? 'drag.hint.pairLeft' : 'drag.hint.pairRight', { name })
 }
 
-/** 四条边各一句话。**一张表**,不是四处 if。 */
-const EDGE_HINT: Readonly<Record<'left' | 'right' | 'top' | 'bottom', MessageKey>> = {
+/** 分屏带四侧各一句话。 */
+const SPLIT_HINT: Readonly<Record<SplitSide, MessageKey>> = {
+  left: 'drag.hint.splitLeft',
+  right: 'drag.hint.splitRight',
+  top: 'drag.hint.splitTop',
+  bottom: 'drag.hint.splitBottom',
+}
+
+/** 三条边各一句话。**一张表**,不是三处 if。 */
+const EDGE_HINT: Readonly<Record<ShelfSide, MessageKey>> = {
   left: 'drag.hint.edgeLeft',
   right: 'drag.hint.edgeRight',
-  top: 'drag.hint.edgeTop',
   bottom: 'drag.hint.edgeBottom',
 }

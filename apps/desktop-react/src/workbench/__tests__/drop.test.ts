@@ -2,34 +2,29 @@ import { describe, expect, it } from 'vitest'
 import {
   dropTargetAt,
   edgeRectOf,
+  newShelfZoneOf,
+  NEW_SHELF_ZONE,
   pairRectOf,
-  NEW_SHELF_BAND,
-  PAIR_BAND,
+  SPLIT_BAND,
+  splitRectOf,
+  splitSideAt,
   stripIndexAt,
   targetRectOf,
 } from '../drop'
-import type { DropGeometry, DropRules, DropTarget, StripBox } from '../drop'
+import type { DropGeometry, DropRules, DropTarget, LeafBox, StripBox } from '../drop'
 
 /**
- * **落点判据的表驱动守卫**(W3 交付 2;W6-b 按设计
- * `apps/desktop-react/docs/workbench-tabs-2026-09.md` §5 那张表重写;U1 2026-09-08
- * 按用户拍板的拖拽 v4 再改三处)。
+ * **落点判据的表驱动守卫**(W3 立;09-24 按用户令重写 —— 次序与判词见 `drop.ts` 文件头)。
  *
- * 这只文件里一个 DOM、一个 store、一个 React 都没有 —— 判据本来就该这样测:
- * 「指针在这儿、屏幕上有这几块矩形、拖的这一格装了几份,松手会发生什么」是一句
- * 纯粹的算术。
- *
- * U1 换掉的三格:
- *  · 「标签正中 44% = 与它二合一」(`pairTab` / `tabMiddleAt`)整段删掉 —— 外来
- *    来源落到条上只剩一种落点。换上来的是**空位位移下的下标自稳**那一组:同一趟
- *    扫描把上一帧的空位喂回去,下标只能单调走,同一个 x 上不许来回。
- *  · 窗口边带从 24 收到 12(`NEW_SHELF_BAND`),而且**只对还没有架子的那一边**
- *    成立 —— 用户报的「莫名钉边」。
- *  · 「氛围」那一组(`ambientRectsOf`)整段删掉 —— 用户报的「一拖整窗变色」。
+ * 纯算术:指针在哪、屏幕上有哪几块矩形、拖的这一格是谁,松手会发生什么。
+ * 09-24 换掉的几组:12px 窄边带 → 左 / 右 / 下三条 30% 新架子带;叶上的 28% 并排带与
+ * 「中间 = 开新标签」→ 任意叶四边 30% 分屏、中间 = 浮窗;`back` 改成按「自己那条条上
+ * 有几格」分两形。`pair` / `open` 两种类型留着,只是判据不再产生它们。
  */
 
-/** 一块 1000×800 的窗口,中间摆一片 900×700 的叶(四周各留 50 —— 出了边带)。 */
+/** 一块 1000×800 的窗口:新架子带左右各 300、底边 240。 */
 const WINDOW = { left: 0, top: 0, width: 1000, height: 800 }
+/** 中央叶四周各留 50。 */
 const LEAF = { left: 50, top: 50, width: 900, height: 700 }
 
 /** 一条标签条:贴在叶的顶上,三格各 120 宽,第 1 格是活动的。 */
@@ -45,18 +40,33 @@ const STRIP: StripBox = {
   activeAt: 1,
 }
 
+const CENTER_BOX: LeafBox = { region: 'center', leafId: 'leaf-a', rect: LEAF }
+
+/** 三条边都还没有架子 —— 三条新架子带全都成立。 */
 const geometry: DropGeometry = {
   window: WINDOW,
-  leaves: [{ region: 'center', leafId: 'leaf-a', rect: LEAF }],
+  leaves: [CENTER_BOX],
   strips: [STRIP],
-  // 这台夹具四条边都还没有架子 —— 于是四条 12px 的窄带全都成立。
   shelves: [],
 }
 
-/** 叶的中心那一点(条只有 34 高,中心离它远得很)。 */
-const center = { x: LEAF.left + LEAF.width / 2, y: LEAF.top + LEAF.height / 2 }
-/** 拖的是一格普通内容,不是这条条上的任何一格。 */
+/** 三条边都已有架子 —— 新架子带全不存在,只剩叶自己的分屏带(量分屏用它)。 */
+const SHELVED: DropGeometry = { ...geometry, shelves: ['left', 'right', 'bottom'] }
+
+/** 叶上按比例取一点(fx / fy ∈ [0,1])。 */
+const inLeaf = (fx: number, fy: number, rect = LEAF) => ({
+  x: rect.left + rect.width * fx,
+  y: rect.top + rect.height * fy,
+})
+const center = inLeaf(0.5, 0.5)
+/** 拖的是一格外来内容,不是这条条上的任何一格。 */
 const OUTSIDER: DropRules = { dragged: { id: 'x', slots: 1 } }
+const split = (side: string, leafId = 'leaf-a', region = 'center') => ({
+  kind: 'split',
+  region,
+  leafId,
+  side,
+})
 
 /** 一格 tab 的正中那一点(第 i 格)。 */
 const middleOf = (i: number) => ({
@@ -70,11 +80,9 @@ describe('①拒绝区 —— 先命中先赢,而且赢得最硬', () => {
     nodrop: [{ left: 0, top: 0, width: 80, height: 80 }],
   }
 
-  it('红绿灯那一块压在标签条的带里,判的仍是拒绝', () => {
-    // 这一点同时落在 nodrop 与条的带内 —— 次序决定它归谁。
+  it('红绿灯那一块压在标签条的带里、也压在左边新架子带里,判的仍是拒绝', () => {
     const target = dropTargetAt({ x: 60, y: 60 }, withNodrop, OUTSIDER)
-    expect(target.kind).toBe('refuse')
-    expect(target.kind === 'refuse' && target.reasonKey).toBe('drag.refuseHere')
+    expect(target).toEqual({ kind: 'refuse', reasonKey: 'drag.refuseHere' })
   })
 
   it('拒绝区之外照旧', () => {
@@ -83,33 +91,32 @@ describe('①拒绝区 —— 先命中先赢,而且赢得最硬', () => {
 })
 
 /**
- * **外来来源落到标签条上只有一种落点**(U1)。
- *
- * 反证:把 `pairTab` 那一档种回 `stripAt`(正中 44% 判成「与它二合一」),
- * 第一条当场红 —— 而它红的正是用户报的那件事:同一条条上两种落点按 28% 线交替,
- * 每交替一次宿主就删掉占位再插一格新的。
+ * **标签条 = 插到第几格,而且是「铺满」唯一的路**(U1 + 09-24)。条上只有一种落点。
  */
-describe('②标签条 = 插到第几格(条上不再有第二种落点)', () => {
+describe('②标签条 = 插到第几格', () => {
   it('落在某一格的正中,答的也是「插到它旁边」而不是「并进它」', () => {
-    const target = dropTargetAt(middleOf(2), geometry, OUTSIDER)
-    // 第 2 格正中(x=350)已经越过第 0/1 格的中线,还没越过它自己的 → 插到第 2 位。
-    expect(target).toEqual({ kind: 'strip', leafId: 'leaf-a', at: 2 })
+    expect(dropTargetAt(middleOf(2), geometry, OUTSIDER)).toEqual({
+      kind: 'strip',
+      leafId: 'leaf-a',
+      at: 2,
+    })
   })
 
-  it('落在两侧照旧是「插到它旁边」—— 两处答的是同一种落点,不再有那条 28% 线', () => {
-    // 第 2 格左缘 +10px:从前这里是「两侧 28%」那一档,今天与正中同一档。
-    const target = dropTargetAt({ x: 180, y: 60 }, geometry, OUTSIDER)
-    expect(target.kind).toBe('strip')
+  it('两格的标签落到条上照旧收', () => {
+    expect(dropTargetAt(middleOf(2), geometry, { dragged: { id: 'x', slots: 2 } }).kind).toBe('strip')
   })
 
-  it('两格的标签落到条上照旧收 —— 条上没有「并」,也就没有「不能再并」', () => {
-    const target = dropTargetAt(middleOf(2), geometry, { dragged: { id: 'x', slots: 2 } })
-    expect(target.kind).toBe('strip')
-  })
-
-  it('条优先于叶 —— 条压在叶身里,先问叶的话它永远吸不到东西', () => {
-    const target = dropTargetAt({ x: 600, y: 60 }, geometry, OUTSIDER)
-    expect(target).toEqual({ kind: 'strip', leafId: 'leaf-a', at: 3 })
+  it('条优先于新架子带与叶 —— 条的左端压在左边 30% 带里,仍归条', () => {
+    expect(dropTargetAt({ x: 100, y: 60 }, geometry, OUTSIDER)).toEqual({
+      kind: 'strip',
+      leafId: 'leaf-a',
+      at: 0,
+    })
+    expect(dropTargetAt({ x: 600, y: 60 }, SHELVED, OUTSIDER)).toEqual({
+      kind: 'strip',
+      leafId: 'leaf-a',
+      at: 3,
+    })
   })
 
   it('带上下各外扩 24(与条内换序同一个口径)', () => {
@@ -204,161 +211,187 @@ describe('空位位移下的下标自稳(U1)', () => {
 })
 
 /**
- * **窗口边带:12px,而且只对那一边还没有架子时成立**(U1)。
+ * **新架子带:左 / 右 / 下三条,各占窗口那条轴的 30%,只对还没有架子的那一边成立**(09-24)。
  *
- * 病历两条,一条修:24px 的四条带排在叶之前,于是任何一次贴边经过都判「钉边」;
- * 而左边明明开着文件架子时,那条带说的「钉成左侧架子」更是无处可去 —— 用户报的
- * 「莫名钉边」。
+ * 这一组在**带与叶重叠**的地方量 —— 叶铺满整扇窗(无架子时中央区就是这一形),
+ * 于是每一处都同时够得着「新架子带」与「叶的分屏带」,答案说的就是谁先问。
  */
-describe('③新架子那条窄边带(U1)', () => {
-  /**
-   * 这一组要在**边带与叶重叠**的地方量,所以叶铺满整扇窗(上面那台夹具的叶四周
-   * 各留 50 —— 边带外面是空地,量不出「谁赢了谁」)。
-   */
-  const FULL_LEAF = { left: 0, top: 0, width: 1000, height: 800 }
+describe('④新架子带(30%)', () => {
   const FULL: DropGeometry = {
     window: WINDOW,
-    leaves: [{ region: 'center', leafId: 'leaf-a', rect: FULL_LEAF }],
-    strips: [{ ...STRIP, rect: { left: 0, top: 0, width: 1000, height: 34 } }],
+    leaves: [{ region: 'center', leafId: 'leaf-a', rect: WINDOW }],
     shelves: [],
   }
 
-  it('离左缘 6px 且左边没有架子 = 在那条边上生一条架子', () => {
-    expect(dropTargetAt({ x: 6, y: 400 }, FULL, OUTSIDER)).toEqual({
-      kind: 'edge',
-      side: 'left',
-    })
+  it('左右按窗宽的 30%:299 还在带里,301 就轮到叶(叶中间 = 浮窗)', () => {
+    expect(dropTargetAt({ x: 100, y: 400 }, FULL, OUTSIDER)).toEqual({ kind: 'edge', side: 'left' })
+    expect(dropTargetAt({ x: 299, y: 400 }, FULL, OUTSIDER)).toEqual({ kind: 'edge', side: 'left' })
+    expect(dropTargetAt({ x: 301, y: 400 }, FULL, OUTSIDER)).toEqual({ kind: 'float' })
+    expect(dropTargetAt({ x: 900, y: 400 }, FULL, OUTSIDER)).toEqual({ kind: 'edge', side: 'right' })
   })
 
-  it('离边 12 以外就轮到叶了(24 那一版在这里还答 edge)', () => {
-    expect(dropTargetAt({ x: 20, y: 400 }, FULL, OUTSIDER).kind).toBe('pair')
+  it('底边按**窗高**的 30%(240,不是窗宽的 300)', () => {
+    expect(dropTargetAt({ x: 500, y: 570 }, FULL, OUTSIDER)).toEqual({ kind: 'edge', side: 'bottom' })
+    // 离底 250:按窗宽算还在带里,按窗高算已经出去了。
+    expect(dropTargetAt({ x: 500, y: 550 }, FULL, OUTSIDER)).toEqual({ kind: 'float' })
   })
 
-  it('**那条边上已经有架子 = 这条带不存在**,落的是底下那片叶', () => {
-    const withLeftShelf: DropGeometry = { ...FULL, shelves: ['left'] }
-    expect(dropTargetAt({ x: 6, y: 400 }, withLeftShelf, OUTSIDER).kind).toBe('pair')
-    // 别的边不受影响 —— 它是一张按边逐条的表,不是一个总开关。
-    expect(dropTargetAt({ x: 994, y: 400 }, withLeftShelf, OUTSIDER)).toEqual({
-      kind: 'edge',
-      side: 'right',
-    })
+  it('顶边永远不生架子 —— 那里是叶的上分屏带', () => {
+    expect(dropTargetAt({ x: 500, y: 5 }, FULL, OUTSIDER)).toEqual(split('top'))
   })
 
-  it('**边带排在条之后、叶之前**:条上那一点仍归条,叶上那一点归边带', () => {
-    /*
-     * 一条铺满窗口顶部的条,它的左端压在左边那 12px 里 —— 这一点两者都够得着,
-     * 而条先问。这条断言拆掉次序(把边带提到条前面)当场红。
-     */
-    const topStrip: StripBox = {
-      region: 'center',
-      leafId: 'leaf-a',
-      rect: { left: 0, top: 0, width: 1000, height: 34 },
-      tabs: [{ left: 0, top: 0, width: 120, height: 34, id: 'a', slots: 1 }],
-      activeAt: 0,
-    }
-    const geo: DropGeometry = { ...geometry, strips: [topStrip] }
-    expect(dropTargetAt({ x: 4, y: 17 }, geo, OUTSIDER).kind).toBe('strip')
-    // 同一条边,离开条之后就是边带(它排在叶之前)。
-    expect(dropTargetAt({ x: 4, y: 400 }, geo, OUTSIDER)).toEqual({ kind: 'edge', side: 'left' })
+  it('角上两条带重叠:取归一距离更近的那条,平手优先左右', () => {
+    // 左 60/300 = .2,底 100/240 ≈ .42 → 左。
+    expect(dropTargetAt({ x: 60, y: 700 }, FULL, OUTSIDER)).toEqual({ kind: 'edge', side: 'left' })
+    // 左 250/300 ≈ .83,底 20/240 ≈ .08 → 底。
+    expect(dropTargetAt({ x: 250, y: 780 }, FULL, OUTSIDER)).toEqual({ kind: 'edge', side: 'bottom' })
+    // 左 150/300 = 底 120/240 = .5 → 平手,左。
+    expect(dropTargetAt({ x: 150, y: 680 }, FULL, OUTSIDER)).toEqual({ kind: 'edge', side: 'left' })
+  })
+
+  it('**那条边上已经有架子 = 这条带不存在**,落的是底下那片叶;别的边不受影响', () => {
+    const withLeft: DropGeometry = { ...FULL, shelves: ['left'] }
+    expect(dropTargetAt({ x: 100, y: 400 }, withLeft, OUTSIDER)).toEqual(split('left'))
+    expect(dropTargetAt({ x: 900, y: 400 }, withLeft, OUTSIDER)).toEqual({ kind: 'edge', side: 'right' })
+  })
+
+  it('新架子带先于中央叶:叶的左分屏带里那一点,答的是新架子', () => {
+    expect(dropTargetAt(inLeaf(0.05, 0.5), geometry, OUTSIDER)).toEqual({ kind: 'edge', side: 'left' })
+    // 同一点,左边已有架子 → 才轮到叶。
+    expect(dropTargetAt(inLeaf(0.05, 0.5), SHELVED, OUTSIDER)).toEqual(split('left'))
   })
 })
 
-describe('④⑤⑥内容区三档', () => {
-  it('右带 28% = 与活动标签并排,放右', () => {
-    const x = LEAF.left + LEAF.width * (1 - PAIR_BAND / 2)
-    expect(dropTargetAt({ x, y: center.y }, geometry, OUTSIDER)).toEqual({
-      kind: 'pair',
-      region: 'center',
-      leafId: 'leaf-a',
-      side: 'right',
-    })
+describe('⑤任意一片叶的四边 30% = 分屏', () => {
+  it('中央叶四向', () => {
+    expect(dropTargetAt(inLeaf(0.1, 0.5), SHELVED, OUTSIDER)).toEqual(split('left'))
+    expect(dropTargetAt(inLeaf(0.9, 0.5), SHELVED, OUTSIDER)).toEqual(split('right'))
+    expect(dropTargetAt(inLeaf(0.5, 0.2), SHELVED, OUTSIDER)).toEqual(split('top'))
+    expect(dropTargetAt(inLeaf(0.5, 0.9), SHELVED, OUTSIDER)).toEqual(split('bottom'))
   })
 
-  it('左带 28% = 放左', () => {
-    const x = LEAF.left + LEAF.width * (PAIR_BAND / 2)
-    expect(dropTargetAt({ x, y: center.y }, geometry, OUTSIDER)).toEqual({
-      kind: 'pair',
-      region: 'center',
-      leafId: 'leaf-a',
-      side: 'left',
-    })
+  it('带宽按叶自己的宽高算 30%:29% 在带里,31% 就是中间', () => {
+    expect(dropTargetAt(inLeaf(0.29, 0.5), SHELVED, OUTSIDER)).toEqual(split('left'))
+    expect(dropTargetAt(inLeaf(0.31, 0.5), SHELVED, OUTSIDER)).toEqual({ kind: 'float' })
   })
 
-  it('**左带仅 host 单格**:活动那一格已经是两格时,左带退成「开新标签」', () => {
-    const paired: DropGeometry = {
-      ...geometry,
-      strips: [{ ...STRIP, tabs: [...STRIP.tabs.slice(0, 1), { ...STRIP.tabs[1], slots: 2 }, STRIP.tabs[2]] }],
+  it('角上按**归一**距离取最近,不按像素', () => {
+    // 离左 180px(.20)、离上 175px(.25):按像素上边更近,按归一左边更近 → 左。
+    expect(dropTargetAt(inLeaf(0.2, 0.25), SHELVED, OUTSIDER)).toEqual(split('left'))
+    expect(dropTargetAt(inLeaf(0.25, 0.2), SHELVED, OUTSIDER)).toEqual(split('top'))
+  })
+
+  it('splitSideAt:平手优先左右,中间与零尺寸答 null', () => {
+    const r = { left: 0, top: 0, width: 100, height: 100 }
+    expect(splitSideAt({ x: 10, y: 10 }, r)).toBe('left')
+    expect(splitSideAt({ x: 90, y: 10 }, r)).toBe('right')
+    expect(splitSideAt({ x: 90, y: 90 }, r)).toBe('right')
+    expect(splitSideAt({ x: 50, y: 50 }, r)).toBeNull()
+    expect(splitSideAt({ x: 0, y: 0 }, { ...r, width: 0 })).toBeNull()
+  })
+
+  it('架子上的叶也分屏,region 是它自己那一格', () => {
+    const geo: DropGeometry = {
+      window: WINDOW,
+      leaves: [
+        { region: 'center', leafId: 'leaf-a', rect: { left: 0, top: 0, width: 700, height: 800 } },
+        { region: 'edge:right', leafId: 'leaf-s', rect: { left: 700, top: 0, width: 300, height: 800 } },
+      ],
+      shelves: ['right'],
     }
-    const x = LEAF.left + LEAF.width * (PAIR_BAND / 2)
-    expect(dropTargetAt({ x, y: center.y }, paired, OUTSIDER)).toEqual({
-      kind: 'open',
-      region: 'center',
-      leafId: 'leaf-a',
-    })
-    // 右带照旧收(它是「替换右格」)。
-    const rx = LEAF.left + LEAF.width * (1 - PAIR_BAND / 2)
-    expect(dropTargetAt({ x: rx, y: center.y }, paired, OUTSIDER).kind).toBe('pair')
+    expect(dropTargetAt({ x: 950, y: 400 }, geo, OUTSIDER)).toEqual(split('right', 'leaf-s', 'edge:right'))
+    expect(dropTargetAt({ x: 720, y: 400 }, geo, OUTSIDER)).toEqual(split('left', 'leaf-s', 'edge:right'))
   })
 
-  it('中间 = 末尾开一格新标签', () => {
-    expect(dropTargetAt(center, geometry, OUTSIDER)).toEqual({
-      kind: 'open',
-      region: 'center',
-      leafId: 'leaf-a',
-    })
-  })
-
-  it('两格的标签落到左右带 = 拒绝,**落到中间照旧收**', () => {
+  it('两格的标签照样能分屏(不再有「不能再并」的拒绝)', () => {
     const pair: DropRules = { dragged: { id: 'x', slots: 2 } }
-    const x = LEAF.left + LEAF.width * (1 - PAIR_BAND / 2)
-    expect(dropTargetAt({ x, y: center.y }, geometry, pair)).toEqual({
-      kind: 'refuse',
-      reasonKey: 'drag.refusePairNest',
-    })
-    expect(dropTargetAt(center, geometry, pair).kind).toBe('open')
-  })
-
-  it('没有条 = 没有 host = 只剩「开成新标签」', () => {
-    const bare: DropGeometry = { window: WINDOW, leaves: geometry.leaves, shelves: [] }
-    const x = LEAF.left + LEAF.width * (1 - PAIR_BAND / 2)
-    expect(dropTargetAt({ x, y: center.y }, bare, OUTSIDER).kind).toBe('open')
+    expect(dropTargetAt(inLeaf(0.9, 0.5), SHELVED, pair)).toEqual(split('right'))
   })
 })
 
-describe('⑦自己的内容区 = 放回', () => {
-  it('拖的就是这片叶的活动标签 —— 整片叶都是 back,左右带也不例外', () => {
-    const self: DropRules = { dragged: { id: 'b', slots: 1 } }
-    expect(dropTargetAt(center, geometry, self)).toEqual({ kind: 'back' })
-    const x = LEAF.left + LEAF.width * (1 - PAIR_BAND / 2)
-    expect(dropTargetAt({ x, y: center.y }, geometry, self)).toEqual({ kind: 'back' })
-  })
-})
+describe('⑥⑦叶的中间:别人的 = 浮窗,自己的 = 放回', () => {
+  /** 这片叶只有一格 `b`。 */
+  const SOLE: DropGeometry = { ...SHELVED, strips: [{ ...STRIP, tabs: [STRIP.tabs[1]], activeAt: 0 }] }
+  const OWN: DropRules = { dragged: { id: 'b', slots: 1 } }
 
-describe('⑧窗外 / 什么都没碰到 = 撕成浮窗', () => {
-  it('出了窗', () => {
+  it('外来的东西落在叶中间 = 浮窗(不再「开成一格新标签」)', () => {
+    expect(dropTargetAt(center, SHELVED, OUTSIDER)).toEqual({ kind: 'float' })
+  })
+
+  it('拖的是这片叶**唯一**那一格:整片叶都是放回,分屏带也不例外', () => {
+    expect(dropTargetAt(center, SOLE, OWN)).toEqual({ kind: 'back' })
+    expect(dropTargetAt(inLeaf(0.1, 0.5), SOLE, OWN)).toEqual({ kind: 'back' })
+    expect(dropTargetAt(inLeaf(0.05, 0.95), SOLE, OWN)).toEqual({ kind: 'back' })
+  })
+
+  it('……但那只是叶身上的事:新架子带排在叶之前,照样能拖出一条架子', () => {
+    const noShelves: DropGeometry = { ...SOLE, shelves: [] }
+    expect(dropTargetAt(inLeaf(0.05, 0.5), noShelves, OWN)).toEqual({ kind: 'edge', side: 'left' })
+  })
+
+  it('拖的是活动格、叶里还有别的格:四边照样分屏,只有中间是放回', () => {
+    expect(dropTargetAt(inLeaf(0.1, 0.5), SHELVED, OWN)).toEqual(split('left'))
+    expect(dropTargetAt(center, SHELVED, OWN)).toEqual({ kind: 'back' })
+  })
+
+  it('拖的是自己叶里一格**非活动**标签:不算「自己」,中间 = 浮窗', () => {
+    expect(dropTargetAt(center, SHELVED, { dragged: { id: 'a', slots: 1 } })).toEqual({ kind: 'float' })
+  })
+
+  it('没有条 = 认不出「自己」:中间浮窗、四边分屏', () => {
+    const bare: DropGeometry = { ...SHELVED, strips: undefined }
+    expect(dropTargetAt(center, bare, OWN)).toEqual({ kind: 'float' })
+    expect(dropTargetAt(inLeaf(0.9, 0.5), bare, OWN)).toEqual(split('right'))
+  })
+
+  it('出了窗 = 浮窗', () => {
     expect(dropTargetAt({ x: 500, y: 900 }, geometry, OUTSIDER)).toEqual({ kind: 'float' })
   })
+
+  it('判据不再产生 pair / open(整窗扫一遍)', () => {
+    const seen = new Set<string>()
+    for (const geo of [geometry, SHELVED, SOLE]) {
+      for (const rules of [OUTSIDER, OWN, { dragged: { id: 'x', slots: 2 } }]) {
+        for (let x = -20; x <= 1020; x += 20) {
+          for (let y = -20; y <= 820; y += 20) seen.add(dropTargetAt({ x, y }, geo, rules).kind)
+        }
+      }
+    }
+    expect(seen.has('pair')).toBe(false)
+    expect(seen.has('open')).toBe(false)
+    expect([...seen].sort()).toEqual(['back', 'edge', 'float', 'split', 'strip'])
+  })
 })
 
-describe('边界:叶重叠取最上、浮窗不接住自己', () => {
-  const FLOAT = { left: 300, top: 300, width: 300, height: 200 }
+describe('③浮窗里的叶:盖在新架子带之上;叶重叠取最上', () => {
+  it('浮窗贴着左边:它的分屏带赢过身子底下那条新架子带', () => {
+    const FLOAT = { left: 20, top: 250, width: 300, height: 300 }
+    const geo: DropGeometry = {
+      ...geometry,
+      leaves: [CENTER_BOX, { region: 'float:w1', leafId: 'leaf-f', rect: FLOAT }],
+    }
+    expect(dropTargetAt({ x: 40, y: 400 }, geo, OUTSIDER)).toEqual(split('left', 'leaf-f', 'float:w1'))
+    // 从那扇浮窗里拖出来时它不接住自己 → 露出底下那条新架子带。
+    expect(dropTargetAt({ x: 40, y: 400 }, geo, { ...OUTSIDER, excludeLeaves: ['leaf-f'] })).toEqual({
+      kind: 'edge',
+      side: 'left',
+    })
+  })
+
+  const FLOAT = { left: 300, top: 500, width: 300, height: 200 }
   const stacked: DropGeometry = {
-    ...geometry,
-    leaves: [
-      { region: 'center', leafId: 'leaf-a', rect: LEAF },
-      { region: 'float:w1', leafId: 'leaf-f', rect: FLOAT },
-    ],
+    ...SHELVED,
+    leaves: [CENTER_BOX, { region: 'float:w1', leafId: 'leaf-f', rect: FLOAT }],
   }
-  const at = { x: 450, y: 400 }
+  /** 浮窗左带(.1)里;同一点在中央叶上落在下分屏带(fy ≈ .86)。 */
+  const at = { x: 330, y: 650 }
 
   it('浮窗盖在中央叶上,落进的是浮窗', () => {
-    const target = dropTargetAt(at, stacked, OUTSIDER)
-    expect(target.kind === 'open' && target.leafId).toBe('leaf-f')
+    expect(dropTargetAt(at, stacked, OUTSIDER)).toEqual(split('left', 'leaf-f', 'float:w1'))
   })
 
   it('**从那扇浮窗里拖出来时它不接住自己**,按窗底下那片叶判(设计 §8)', () => {
-    const target = dropTargetAt(at, stacked, { ...OUTSIDER, excludeLeaves: ['leaf-f'] })
-    expect(target.kind === 'open' && target.leafId).toBe('leaf-a')
+    expect(dropTargetAt(at, stacked, { ...OUTSIDER, excludeLeaves: ['leaf-f'] })).toEqual(split('bottom'))
   })
 
   it('挡住的只有叶,**它的条照旧收**(不然自己那扇窗上换序也没了)', () => {
@@ -370,16 +403,19 @@ describe('边界:叶重叠取最上、浮窗不接住自己', () => {
       ],
     }
     const onStrip = { x: 450, y: FLOAT.top + 10 }
-    const target = dropTargetAt(onStrip, withStrip, { ...OUTSIDER, excludeLeaves: ['leaf-f'] })
-    expect(target).toEqual({ kind: 'strip', leafId: 'leaf-f', at: 0 })
+    expect(dropTargetAt(onStrip, withStrip, { ...OUTSIDER, excludeLeaves: ['leaf-f'] })).toEqual({
+      kind: 'strip',
+      leafId: 'leaf-f',
+      at: 0,
+    })
   })
 })
 
 describe('rules.accepts —— 来源自述的复核,它说了算', () => {
   it('被拒的落点换成 refuse,理由是它给的那一句', () => {
-    const target = dropTargetAt(center, geometry, {
+    const target = dropTargetAt(inLeaf(0.9, 0.5), SHELVED, {
       ...OUTSIDER,
-      accepts: () => 'drag.regionRefused',
+      accepts: (t) => (t.kind === 'split' ? 'drag.regionRefused' : null),
     })
     expect(target).toEqual({ kind: 'refuse', reasonKey: 'drag.regionRefused' })
   })
@@ -398,34 +434,43 @@ describe('rules.accepts —— 来源自述的复核,它说了算', () => {
 })
 
 describe('高亮矩形:与判据同源', () => {
-  it('open = 整片叶(slab 铺满它)', () => {
-    const target: DropTarget = { kind: 'open', region: 'center', leafId: 'leaf-a' }
-    expect(targetRectOf(target, geometry)).toEqual(LEAF)
+  it('edge = 那条新架子将来占的地方(与判据读同一个 NEW_SHELF_ZONE)', () => {
+    expect(newShelfZoneOf('left', WINDOW)).toBe(WINDOW.width * NEW_SHELF_ZONE)
+    expect(newShelfZoneOf('bottom', WINDOW)).toBe(WINDOW.height * NEW_SHELF_ZONE)
+    expect(targetRectOf({ kind: 'edge', side: 'left' }, geometry)).toEqual({ left: 0, top: 0, width: 300, height: 800 })
+    expect(targetRectOf({ kind: 'edge', side: 'right' }, geometry)).toEqual({ left: 700, top: 0, width: 300, height: 800 })
+    expect(targetRectOf({ kind: 'edge', side: 'bottom' }, geometry)).toEqual({ left: 0, top: 560, width: 1000, height: 240 })
+    expect(targetRectOf({ kind: 'edge', side: 'bottom' }, geometry)).toEqual(
+      edgeRectOf(WINDOW, 'bottom', newShelfZoneOf('bottom', WINDOW)),
+    )
   })
 
-  it('pair = 落下后占的那一半(与 open 同一种板,差的只是矩形)', () => {
+  it('split = 新叶将来占的那一半', () => {
+    expect(splitRectOf(LEAF, 'left')).toEqual({ left: 50, top: 50, width: 450, height: 700 })
+    expect(splitRectOf(LEAF, 'right')).toEqual({ left: 500, top: 50, width: 450, height: 700 })
+    expect(splitRectOf(LEAF, 'top')).toEqual({ left: 50, top: 50, width: 900, height: 350 })
+    expect(splitRectOf(LEAF, 'bottom')).toEqual({ left: 50, top: 400, width: 900, height: 350 })
+    const target = dropTargetAt(inLeaf(0.9, 0.5), SHELVED, OUTSIDER) as DropTarget
+    expect(targetRectOf(target, SHELVED)).toEqual(splitRectOf(LEAF, 'right'))
+    // 认不出那片叶 = 没有可指的地方。
+    expect(targetRectOf({ kind: 'split', region: 'center', leafId: 'nope', side: 'left' }, SHELVED)).toBeNull()
+  })
+
+  it('open / pair 菜单直接点名时照旧有矩形', () => {
+    expect(targetRectOf({ kind: 'open', region: 'center', leafId: 'leaf-a' }, geometry)).toEqual(LEAF)
     const right: DropTarget = { kind: 'pair', region: 'center', leafId: 'leaf-a', side: 'right' }
     expect(targetRectOf(right, geometry)).toEqual(pairRectOf(LEAF, 'right'))
-    expect(pairRectOf(LEAF, 'right')).toEqual({ left: 500, top: 50, width: 450, height: 700 })
-    expect(pairRectOf(LEAF, 'left')).toEqual({ left: 50, top: 50, width: 450, height: 700 })
   })
 
-  it('条上那一档故意不答矩形(预示是条自己腾出来的空位)', () => {
+  it('条 / 放回 / 浮窗故意不答矩形', () => {
     expect(targetRectOf({ kind: 'strip', leafId: 'leaf-a', at: 1 }, geometry)).toBeNull()
     expect(targetRectOf({ kind: 'back' }, geometry)).toBeNull()
     expect(targetRectOf({ kind: 'float' }, geometry)).toBeNull()
   })
 
-  it('edge = 贴那条边的一条 12 宽的带(与判据读同一个 NEW_SHELF_BAND)', () => {
-    expect(targetRectOf({ kind: 'edge', side: 'left' }, geometry)).toEqual(
-      edgeRectOf(WINDOW, 'left', NEW_SHELF_BAND),
-    )
-    expect(edgeRectOf(WINDOW, 'right', NEW_SHELF_BAND)).toEqual({
-      left: 1000 - NEW_SHELF_BAND,
-      top: 0,
-      width: NEW_SHELF_BAND,
-      height: 800,
-    })
+  it('两个比例都小于一半 —— 窗与叶都留得出「中间」', () => {
+    expect(NEW_SHELF_ZONE).toBeLessThan(0.5)
+    expect(SPLIT_BAND).toBeLessThan(0.5)
   })
 })
 
@@ -464,7 +509,7 @@ describe('两条条挨着时:落在上面的赢过只是够得着的(W7-c)', () 
     leaves: [],
     strips: [topbar, shelf],
     nodrop: [],
-    // 屏幕上真有一条左架子(它那条条就在这儿)—— 左边那 12px 因此不是边带。
+    // 屏幕上真有一条左架子(它那条条就在这儿)—— 左边那条新架子带因此不存在。
     shelves: ['left'],
   }
 

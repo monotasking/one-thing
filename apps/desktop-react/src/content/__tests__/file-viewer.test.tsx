@@ -288,7 +288,7 @@ describe('头:身份与去向(大小与时间不在这里)', () => {
     })
   })
 
-  it('身上右键 = 那张动作菜单(与树行同一件);编辑 / 复制 / Finder / 七档都在里面', async () => {
+  it('身上右键 = 那张动作菜单(与树行同一件);编辑 / 复制 / Finder / 六档都在里面', async () => {
     installPort()
     await open('/repo/a.ts')
     renderViewer(<Viewer />)
@@ -298,16 +298,16 @@ describe('头:身份与去向(大小与时间不在这里)', () => {
     expect(within(menu).getByText('编辑')).toBeTruthy()
     expect(within(menu).getByText('复制路径')).toBeTruthy()
     expect(within(menu).getByText('在文件管理器中显示')).toBeTruthy()
-    // 七档打开方式在同一张表里(勾在当下那一档)。
-    expect(within(menu).getAllByRole('menuitemradio')).toHaveLength(7)
+    // 六档打开方式在同一张表里(勾在当下那一档)。
+    expect(within(menu).getAllByRole('menuitemradio')).toHaveLength(6)
   })
 
   /**
-   * **W4:七档全通**。W1-a 那次临时退化(架子与浮窗五档禁灰 + 一句「下一批」)
+   * **W4:六档全通**。W1-a 那次临时退化(架子与浮窗五档禁灰 + 一句「下一批」)
    * 到此结清 —— 两处的身子都换成了拼贴树,插一个文件进架子与插进中央区走的是
    * 同一句 `openRef(ref, { region })`。一格禁灰、一句注脚都不该再有。
    */
-  it('七档全能选,一格禁灰与那句「下一批」都不该再有', async () => {
+  it('六档全能选,一格禁灰与那句「下一批」都不该再有', async () => {
     installPort()
     await open('/repo/a.ts')
     renderViewer(<Viewer />)
@@ -315,7 +315,7 @@ describe('头:身份与去向(大小与时间不在这里)', () => {
     await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy())
     const menu = screen.getByRole('menu')
     const options = within(menu).getAllByRole('menuitemradio')
-    expect(options).toHaveLength(7)
+    expect(options).toHaveLength(6) // 顶架子那档 09-24 退役
     expect(options.filter((el) => el.hasAttribute('disabled'))).toHaveLength(0)
     expect(within(menu).queryAllByText('架子与浮窗的标签下一批')).toHaveLength(0)
     fireEvent.click(within(menu).getByText('右侧钉'))

@@ -168,6 +168,7 @@ describe('整表', () => {
    * 就永远轮不到,而「后退归浏览器叶」是这一单的裁定。
    *
    * 33 + 7 = 40。这一行算术就是这张表的审计。
+   * 09-24 顶架子退役,`cmd+alt+arrowup` 随之出表:40 − 1 = 39。
    */
   const K2_BROWSER_CHORDS_MAC = [
     'cmd+,',
@@ -183,7 +184,6 @@ describe('整表', () => {
     'cmd+alt+arrowdown',
     'cmd+alt+arrowleft',
     'cmd+alt+arrowright',
-    'cmd+alt+arrowup',
     'cmd+alt+shift+arrowleft',
     'cmd+alt+shift+arrowright',
     'cmd+e',
@@ -223,10 +223,10 @@ describe('整表', () => {
   const summonChordOn = (lane: KeymapPlatform) =>
     chordOfCombo(comboForPlatform(TERMINAL_SUMMON_COMBOS, platformOf(navigator.userAgent)), lane)
 
-  it('推下去的键集逐字就是这四十条(mac 档)', () => {
+  it('推下去的键集逐字就是这三十九条(mac 档)', () => {
     const expected = [...K2_BROWSER_CHORDS_MAC, summonChordOn('mac')].sort()
     expect(boundChordsFor(['browser', ...NATIVE_VIEW_HOST_SCOPES], { overrides: {} }, 'mac')).toEqual(expected)
-    expect(expected).toHaveLength(40)
+    expect(expected).toHaveLength(39)
   })
 
   /**
@@ -238,7 +238,7 @@ describe('整表', () => {
    */
   it('Win / Linux 档:主修饰那一族换写法,`offHand` 那三条反着走', () => {
     const other = boundChordsFor(['browser', ...NATIVE_VIEW_HOST_SCOPES], { overrides: {} }, 'other')
-    // 三十二条字面量 + 召唤那一格(判词在 `summonChordOn` 上)。
+    // 字面量那几条 + 召唤那一格(判词在 `summonChordOn` 上)。
     expect(other).toHaveLength(K2_BROWSER_CHORDS_MAC.length + 1)
     // 主修饰那一族:mac 的 `cmd+x` ↔ 别处的 `ctrl+x`。
     for (const chord of K2_BROWSER_CHORDS_MAC.filter((c) => c.startsWith('cmd+'))) {

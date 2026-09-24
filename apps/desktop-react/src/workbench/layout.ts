@@ -192,6 +192,22 @@ interface SpanGroup {
 }
 
 /** 顶栏上从左到右的那几组标签。**纯函数**,所以平分那条规则钉得住。 */
+/**
+ * **中央区的标签条画在顶栏上吗**(09-24,用户拍「分屏后每格自带标签条」)。
+ *
+ * 中央区只有一片叶 = 顶栏画(W1-b 那条用户原话「把标签放到红绿灯那一栏上」照旧成立);
+ * 中央区一旦分屏 = 每一片叶像架子上的叶一样,在自己顶上画一条,顶栏那一带只剩红绿灯与
+ * 尾格。从前「中央区的檐在顶栏」是写死的,靠单叶政策保证它只有一组;单叶政策 09-24 撤了
+ * (主区也能拖出分屏),而顶栏上排几组、每组对准哪片叶正是 W7-c 为了性能删掉的那条路 ——
+ * 所以多叶那一形不回顶栏。合回一片叶,标签自动回到顶栏。
+ *
+ * 判据**只有这一处**:`TopBarLeafTabs` / `TopBarLeafActions` 问它要不要画,`PaneLeaf`
+ * 问它要不要在叶身上画,两边读同一句话,不可能一边画了另一边也画。
+ */
+export function centerStripOnTopBar(tree: PaneNode | undefined): boolean {
+  return !tree || tree.kind === 'leaf'
+}
+
 export function topStrips(node: PaneNode): TopStripSlot[] {
   const out: TopStripSlot[] = []
   for (const group of spanGroups(node)) {

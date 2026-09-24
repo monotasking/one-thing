@@ -187,21 +187,20 @@ describe('标签从顶栏自己的开头排(W7-c 裁定 1)', () => {
 describe('中央区永远一组(单叶政策)', () => {
 
   /**
-   * **中央区永远一组**(W6-a 的核心断言之一)。从前这里演的是「上下切分之后两组
-   * 按序平分那一段宽度」;单叶政策之下那一形在中央区不可能出现,而这一条守的是
-   * 它的反面:开多少格标签,顶栏都只有**一条**标签条。
-   * 反证:把 `splitLeaf` 里那句单叶闸拿掉,这一条当场红。
+   * **一片叶一组,分了屏零组**(09-24:单叶政策撤了,分屏后每片叶自带标签条,
+   * 判据 `layout.centerStripOnTopBar`)。开多少格标签顶栏都只有一条;一分屏它就让开。
    */
-  it('开几格标签都只有一组(单叶政策)', () => {
+  it('一片叶时一组;分屏之后顶栏一组都不画', () => {
     act(() => {
       store().openRef(doc('a'))
       store().openRef(doc('b'))
     })
     renderBand()
+    const one = Array.from(document.querySelectorAll('[data-topbar-leaf]')) as HTMLElement[]
+    expect(one).toHaveLength(1)
+    expect(one[0].getAttribute('style')).toBeNull()
     act(() => store().splitLeaf(centerLeaves()[0].id, 'col'))
-    const groups = Array.from(document.querySelectorAll('[data-topbar-leaf]')) as HTMLElement[]
-    expect(groups).toHaveLength(1)
-    expect(groups[0].getAttribute('style')).toBeNull()
+    expect(document.querySelectorAll('[data-topbar-leaf]')).toHaveLength(0)
   })
 })
 

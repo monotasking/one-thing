@@ -47,10 +47,10 @@ describe('命令表', () => {
     expect(toggles).toContain(toggleCommandId(SESSIONS_ITEM_ID))
   })
 
-  it('出厂绑这四十一条,别的一律未绑定;次序即注册表次序', () => {
+  it('出厂绑这四十条,别的一律未绑定;次序即注册表次序', () => {
     const bound = KEYMAP_COMMANDS.filter((c) => c.defaultCombos.length > 0).map((c) => c.id)
     /*
-     * 检索 ⌘P、总览 ⌘E、四条架子 ⌘⌥←/→/↓/↑(09-01 用户放权后新绑)、
+     * 检索 ⌘P、总览 ⌘E、三条架子 ⌘⌥←/→/↓(09-01 用户放权后新绑;⌘⌥↑ 随顶架子 09-24 退役)、
      * 工作区面板 ⌘⇧W、工作区序号 ⌘1/2/3、目录 ⌘⇧O、agent 切换器 ⌘J、新建会话 ⌘N、
      * 真全屏 ⌘⇧↩(W2 / 拍点 ④)、标签换序 ⌘⌥⇧←/→(W7-c 裁定 3 —— 规格点名的
      * ⌘⌥←/→ 被架子那一族占着,判词写在 `DEFAULT_COMBOS` 上)、
@@ -70,7 +70,6 @@ describe('命令表', () => {
       'shelf.left.toggle',
       'shelf.right.toggle',
       'shelf.bottom.toggle',
-      'shelf.top.toggle',
       'workspace.palette',
       'toc.toggle',
       'agent.menu',

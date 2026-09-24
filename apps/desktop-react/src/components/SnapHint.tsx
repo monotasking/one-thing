@@ -5,7 +5,6 @@ import s from './SnapHint.module.css'
 const SIDE_CLASS: Record<ShelfSide, string> = {
   left: s.left,
   right: s.right,
-  top: s.top,
   bottom: s.bottom,
 }
 

@@ -141,12 +141,11 @@ function snapshot() {
  */
 const UNPAIRED = t('workbench.unpaired')
 
-/** 「移到架子 ▸」那四行。名字取自字典 —— 与檐上、与播报说的是同一个词。 */
-const SHELF_SIDES = ['left', 'right', 'top', 'bottom'] as const
+/** 「移到架子 ▸」那三行(顶架子已退役)。名字取自字典 —— 与檐上、与播报说的是同一个词。 */
+const SHELF_SIDES = ['left', 'right', 'bottom'] as const
 const SHELF_LABEL: Record<(typeof SHELF_SIDES)[number], RegExp> = {
   left: new RegExp(`^${t('shelf.labelLeft')}$`),
   right: new RegExp(`^${t('shelf.labelRight')}$`),
-  top: new RegExp(`^${t('shelf.labelTop')}$`),
   bottom: new RegExp(`^${t('shelf.labelBottom')}$`),
 }
 
@@ -531,13 +530,11 @@ describe('关闭:菜单那一项与 ✕ / ⌘W 是同一只', () => {
 })
 
 /**
- * **「分屏 ▸」四向:菜单与 `store.splitLeaf` 是同一只**,而且**只在多叶区域画**
- * (W6-a / W7-c)。中央区收成一条标签条之后那四项在那里没有落点 ——
- * 一颗永远做不成的动作比禁灰更糟(禁灰说的是「此刻不行」,而那里是「这个区域里
- * 不存在这件事」)。所以这一组两件都守:架子叶上四向全在且都真分得开,
- * 中央叶上整节不画。
+ * **「分屏 ▸」四向:菜单与 `store.splitLeaf` 是同一只**(W6-a / W7-c)。
+ * 09-24 起中央区也能分屏(`SINGLE_LEAF_REGIONS` 清空),所以这一节在架子叶与
+ * 中央叶上都画,而且都真分得开。
  */
-describe('分屏 ▸:只在多叶区域,四向各与 splitLeaf 平局', () => {
+describe('分屏 ▸:四向各与 splitLeaf 平局', () => {
   const SPLITS = [
     { label: /^(在右侧|To the right)$/, dir: 'row', before: false },
     { label: /^(在左侧|To the left)$/, dir: 'row', before: true },
@@ -580,12 +577,14 @@ describe('分屏 ▸:只在多叶区域,四向各与 splitLeaf 平局', () => {
     expect(shapeMenu, '真的切成了两片').toBe(2)
   })
 
-  it('中央叶上整节不画(单叶政策)', () => {
+  it('中央叶上也画,而且真分得开(09-24 中央区可分屏)', () => {
     const leaf = seedTwo()
     render(<LeafActions leaf={leaf} />)
     openLeafMenu(leaf.id)
     const texts = screen.getAllByRole('menuitem').map((el) => (el.textContent ?? '').trim())
-    expect(texts.filter((x) => /^(分屏|Split)$/.test(x))).toEqual([])
+    expect(texts.filter((x) => /^(分屏|Split)$/.test(x))).toHaveLength(1)
+    clickSubItem(/^(分屏|Split)$/, SPLITS[0].label)
+    expect(leafCount(useWorkbenchStore.getState().regions[CENTER_REGION])).toBe(2)
   })
 })
 

@@ -99,8 +99,8 @@ describe('非瓦的窗(窗号是 win-…)钉到边', () => {
     expect(useStageStore.getState().floatOrder).toEqual([])
   })
 
-  it('四条边各钉一次,每条边都接得住', () => {
-    for (const side of ['left', 'right', 'top', 'bottom'] as ShelfSide[]) {
+  it('三条边各钉一次,每条边都接得住', () => {
+    for (const side of ['left', 'right', 'bottom'] as ShelfSide[]) {
       const win = openFloatWith([fileRef(`/${side}.md`)])
       useStageStore.getState().floatWindowToEdge(win, side)
       expect(tabIdsOf(edgeRegion(side))).toEqual([`file:/${side}.md`])
@@ -206,7 +206,7 @@ describe('整条架子弹成一扇窗', () => {
 
   it('空着的边是空动作', () => {
     const before = useWorkbenchStore.getState().regions
-    useStageStore.getState().shelfToFloat('top')
+    useStageStore.getState().shelfToFloat('bottom')
     expect(useWorkbenchStore.getState().regions).toBe(before)
   })
 })

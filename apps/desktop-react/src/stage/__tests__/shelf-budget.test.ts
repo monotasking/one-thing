@@ -102,16 +102,15 @@ describe('拒绝要说话 —— 唯一产地是 store.land(裁定 3)', () => {
 
 describe('竖向预算与中央区读同一把尺(修一轮裁定 6)', () => {
   /**
-   * 病历:860 高的窗上「上架子 300 + 下架子 240」被判为装得下
-   * (860 − 320 − 300 = 240 ≥ 240),而屏幕上中央区实高只有
-   * 860 − 44(顶栏)− 300 − 240 = 276 < 320。
+   * 病历:预算从前直接减 `viewport.h`,而中央区从顶栏之下起算 —— 两把尺差一条 44px。
+   * 顶架子退役之后竖轴只剩下架子、没有对边,这把尺就只看「可用高 − 中央最小」:
+   * 590 高的窗,旧尺 590 − 320 = 270 ≥ 240 判为装得下,新尺 590 − 44 − 320 = 226 < 240。
    *
    * 反证:把 `shelfThicknessBudget` 里的 `usableExtent` 换回 `shelfViewportExtent`
    * → 这一条红(下架子会被钉上去)。
    */
-  it('860 高的窗:钉了 300 的上架子之后,下架子钉不上(预算 196 < 240)', () => {
-    setViewport(1280, 860)
-    seedStage({ shelves: shelvesWith({ top: 300 }) })
+  it('590 高的窗:下架子钉不上(扣掉顶栏后预算 226 < 240)', () => {
+    setViewport(1280, 590)
     useStageStore.getState().openAs('files', { kind: 'edge', side: 'bottom' })
     expect(useStageStore.getState().shelves.bottom.tabs).toEqual([])
     expect(liveText()).toBe(t('stage.shelfNoRoom', { side: t('drag.sideBottom') }))
@@ -129,25 +128,25 @@ describe('中央区最小身量优先:装不下就把架子收成细梁(修一�
   it('三边钉上再缩到 700×500:中央区仍旧 ≥ 480×320,而让位的那条被收成细梁', () => {
     const state = {
       ...initialStageState,
-      shelves: shelvesWith({ left: 400, right: 400, top: 400 }),
-      // 钉边序:左 → 右 → 上,所以**后钉的先让**,上架子第一个被收。
-      shelfNailOrder: ['left', 'right', 'top'] as ShelfSide[],
+      shelves: shelvesWith({ left: 400, right: 400, bottom: 400 }),
+      // 钉边序:左 → 右 → 下,所以**后钉的先让**,下架子第一个被收。
+      shelfNailOrder: ['left', 'right', 'bottom'] as ShelfSide[],
     } as StageState
     const next = reclampAll(state, VP_SMALL)
     const center = centerRectOf(next, VP_SMALL)
     expect(center.right - center.left).toBeGreaterThanOrEqual(CENTER_MIN_W)
     expect(center.bottom - center.top).toBeGreaterThanOrEqual(CENTER_MIN_H)
-    // 让位的那条是**最后钉的**(上),而且它是被收成细梁、不是被删掉。
-    expect(next.shelves.top.collapsed).toBe(true)
-    expect(shelfExtentOf(next.shelves.top)).toBe(SHELF_RAIL)
-    expect(next.shelves.top.tabs).toEqual(['top'])
+    // 让位的那条是**最后钉的**(下),而且它是被收成细梁、不是被删掉。
+    expect(next.shelves.bottom.collapsed).toBe(true)
+    expect(shelfExtentOf(next.shelves.bottom)).toBe(SHELF_RAIL)
+    expect(next.shelves.bottom.tabs).toEqual(['bottom'])
   })
 
   it('宽敞的窗里一条都不收 —— 恒等变换,连对象都不换', () => {
     const state = {
       ...initialStageState,
-      shelves: shelvesWith({ left: 300, top: 300 }),
-      shelfNailOrder: ['left', 'top'] as ShelfSide[],
+      shelves: shelvesWith({ left: 300, bottom: 300 }),
+      shelfNailOrder: ['left', 'bottom'] as ShelfSide[],
     } as StageState
     expect(reclampAll(state, { w: 1920, h: 1200 })).toBe(state)
   })

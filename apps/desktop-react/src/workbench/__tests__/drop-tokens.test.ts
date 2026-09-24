@@ -2,36 +2,15 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { NEW_SHELF_BAND, PAIR_BAND } from '../drop'
 import { GHOST_FLIP_PX } from '../../ui/drag/DragLayer'
-import { SNAP_BAND } from '../../stage/transitions'
 
 /**
- * **两处各一份同一个数,由这只文件钉成相等**(W3-b)。
+ * **两处各一份同一个数,由这只文件钉成相等**(W3-b),外加几条「退役的东西别种回来」。
  *
- * W3 那时的裁法是「不登记」:派工令列过一格 `--drop-inset: 25%`,施工时发现它
- * **没有读者**(高亮的矩形是纯函数算好之后整块递过去的),而一格没人读的 CSS
- * 变量迟早与判据分叉,所以那一格没有落地。
- *
- * W6-b 换了名单。**退役两条**:`--drop-edge` / `--drop-bar-w` 的判据镜像
- * (`DROP_EDGE_PX` / `DROP_BAR_PX`)随**边带分屏**一起没了 —— 单叶政策之后叶的
- * 四带不再切一刀,那两格 token 只剩设计册上的登记,判据这一头零读者。一个没人读
- * 的数不该有一条「两边必须相等」的断言:那条断言守的是一个不存在的分叉。
- *
- * **新进来一条**:`--drag-flip-edge` / `GHOST_FLIP_PX`(浮影靠视口右缘多近开始
- * 翻面)。它与从前那两条同一条理由 —— CSS 那一头要它当登记,JS 那一头非有不可
- * (翻面是一格属性,只有 JS 写得动)。
- *
- * **比例不进这张表**:`PAIR_BAND` 28% 在 CSS 里没有对应的 token,因为**没有一条
- * CSS 规则读得到它** —— 它是判据里的分界线,屏幕上画出来的是判完之后那块矩形。
- * 给它造一格 token 就是造一个没有读者的变量(W3 那条「不登记」判词说的正是
- * 这一形)。
- *
- * **U1 换掉一条**:「28 + 44 + 28 = 100」那条自洽随 `TAB_MIDDLE` 一起退役 ——
- * 标签上那条 44% 的线没有了(条上只剩一种落点),这张比例表只剩 `PAIR_BAND`
- * 一格,没有第二条线要对齐。换上来的是 `NEW_SHELF_BAND` 与 `SNAP_BAND`
- * **必须不相等**:两者是两件事(落点判据 / 形态机),判词在 `drop.NEW_SHELF_BAND`
- * 上,而它们一旦被谁并成一个数,「手一靠边就误钉」当场回来。
+ * 只登记 CSS 与 JS 两头**都有读者**的数(`--drag-flip-edge` / `GHOST_FLIP_PX`)。
+ * 落点判据里的比例(09-24 起是 `NEW_SHELF_ZONE` / `SPLIT_BAND`,各 30%)不进这张表:
+ * 没有一条 CSS 规则读得到它们,屏幕上画的是判完之后那块矩形,给它们造 token 就是造一个
+ * 没有读者的变量。
  */
 
 const tokens = readFileSync(
@@ -51,18 +30,11 @@ describe('落点几何:token 登记与判据镜像必须相等', () => {
     expect(pxOf('drag-flip-edge')).toBe(GHOST_FLIP_PX)
   })
 
-  /*
-   * **两条带,两个数,禁合并**(U1):`NEW_SHELF_BAND` 量的是「从外面拖东西过来
-   * 时,离窗口边多近算要在这条边上生一条新架子」;`SNAP_BAND` 量的是「拖着一扇
-   * 浮窗靠边多近算要钉上去」。合并之后调其中一头会连带改掉另一头,而后者正是
-   * U1 治的那条报障(「莫名钉边」)。
-   */
-  it('新架子那条带与形态机的吸边带是两个数', () => {
-    expect(NEW_SHELF_BAND).toBeGreaterThan(0)
-    expect(NEW_SHELF_BAND).not.toBe(SNAP_BAND)
-    // 内容区左右带那 28% 仍是判据里的一条线,CSS 里没有它的登记(见文件头)。
-    expect(PAIR_BAND).toBeGreaterThan(0)
-    expect(PAIR_BAND).toBeLessThan(0.5)
+  /** 09-24 退役的两格判据常量不许回来(12px 窄边带与 28% 并排带)。 */
+  it('NEW_SHELF_BAND / PAIR_BAND 已退役', async () => {
+    const drop = (await import('../drop')) as Record<string, unknown>
+    expect(drop.NEW_SHELF_BAND).toBeUndefined()
+    expect(drop.PAIR_BAND).toBeUndefined()
   })
 
   /**
@@ -118,8 +90,8 @@ describe('落点几何:token 登记与判据镜像必须相等', () => {
   })
 
   /**
-   * **边带分屏退役了,但登记留着**(W6-b)。留着的理由是设计册要答得出这两个数;
-   * 判据那一头**必须零读者** —— 这条断言守的正是「有人把边带分屏偷偷种回来」。
+   * **像素边带的登记留着,判据零读者**(W6-b)。09-24 回来的分屏带按叶宽高比例算
+   * (`SPLIT_BAND`),不读这两格像素 —— 这条断言守的是旧的像素判据别种回来。
    */
   it('--drop-edge / --drop-bar-w 只剩登记,判据里没有读者', async () => {
     expect(pxOf('drop-edge')).toBeGreaterThan(0)

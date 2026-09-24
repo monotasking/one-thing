@@ -8,7 +8,7 @@ import { LeafStrip } from './LeafStrip'
 import { useReportOverflow } from './leaf-overflow'
 import { useLeafCommands } from './leaf-commands'
 import { useCloseLeafTab, useLeafTabSpecs } from './leaf-tabs'
-import { topStrips } from './layout'
+import { centerStripOnTopBar, topStrips } from './layout'
 import { CENTER_REGION } from './regions'
 import { focusLeafOf, useWorkbenchStore } from './store'
 import { useTabDrag } from './useTabDrag'
@@ -75,7 +75,8 @@ export function TopBarLeafTabs() {
   const focusLeafId = useWorkbenchStore((st) => st.focusLeafId)
   const bandRef = useRef<HTMLDivElement>(null)
 
-  const slots = useMemo(() => (tree ? topStrips(tree) : []), [tree])
+  // 中央区分了屏就一组都不画 —— 那时每片叶自己顶上有条(判据在 `centerStripOnTopBar`)。
+  const slots = useMemo(() => (tree && centerStripOnTopBar(tree) ? topStrips(tree) : []), [tree])
 
   return (
     /*
@@ -245,6 +246,7 @@ const LeafTabGroup = memo(function LeafTabGroup({
 export function TopBarLeafActions() {
   const tree = useWorkbenchStore((st) => st.regions[CENTER_REGION])
   const focusLeafId = useWorkbenchStore((st) => st.focusLeafId)
-  if (!tree) return null
+  // 分了屏,每片叶的条上自带一组动作;顶栏再画一组就是同一组动作说两遍。
+  if (!tree || !centerStripOnTopBar(tree)) return null
   return <LeafActions leaf={focusLeafOf(tree, focusLeafId)} />
 }
