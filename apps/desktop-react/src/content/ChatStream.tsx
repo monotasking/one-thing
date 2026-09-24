@@ -25,6 +25,7 @@ import { DomScrollPort, type ScrollPort } from './viewport/scroll-port'
 import { useViewportAnchor } from './viewport/use-viewport-anchor'
 import { GeometryReportContext, useGeometryReport } from './geometry-report'
 import type { SegmentModel } from './model/segments'
+import { resolveSegment } from './segments/registry'
 import { MessageActions } from './message/MessageActions'
 import { MessageChrome } from './message/MessageChrome'
 import { StopNotice } from './message/StopNotice'
@@ -793,12 +794,12 @@ interface RowProps {
  * 「屏幕上有没有东西」。这里问得更窄一格 —— 有没有**正文**:一条只有工具活儿的
  * 消息段序列非空,但它确实一个字都没回。
  *
- * 图片算正文:它是这一轮真的产出的东西。思考段不算 —— 「想完了但没回话」正是
- * 收场通知要区分的那一种。
+ * 哪一型算正文由**那一型自述**(段表 def 的 `prose`,G 线 P3):图片算 —— 它是这一轮
+ * 真的产出的东西;思考段不算 —— 「想完了但没回话」正是收场通知要区分的那一种。
+ * 这里只读表,一个段种的名字都不出现;`prose` 缺席 = 不算。
  */
 function hasVisibleProse(segments: readonly SegmentModel[]): boolean {
-  return segments.some(segment =>
-    (segment.kind === 'rich-text' && segment.blocks.length > 0) || segment.kind === 'image')
+  return segments.some(segment => resolveSegment(segment.kind).prose?.(segment) ?? false)
 }
 
 /**

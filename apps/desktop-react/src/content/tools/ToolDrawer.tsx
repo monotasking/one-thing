@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useT } from '../../i18n'
 import { BlockView } from '../blocks/BlockView'
-import { blockKey } from '../assemble'
+// 从 `assemble/key` 直接拿,不走 `assemble/index`:后者 import 段表 barrel,而段表的
+// tool-group / research 两型经 ToolCard / ResearchSegment 又回到这里 —— 走 index 就是一个环。
+import { blockKey } from '../assemble/key'
 import type { BlockCtx } from '../blocks/registry'
 import { fetchChatToolResult, useChatSourceOf } from '../../data/chat-source'
 import { formatBytes } from '../../format/quantity'

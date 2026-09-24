@@ -2,24 +2,33 @@ import { perfSpan } from '../../services/perf'
 import type { ProjectedMessage } from '../../data/chat-fold'
 import { messageStamp } from '../../data/chat-materialize'
 import type { SegmentModel } from '../model/segments'
-import { parseCompactMarker } from '../compact/marker'
+// 段表装好(副作用 import):生产者住在各自的 kind 文件里,这一行之后表上才有它们。
+import '../segments'
+import { claimSegment, segmentDefForNode } from '../segments/registry'
 import { anchorMessage } from './anchor'
 import { groupNodes } from './group'
-import { markdownToFrame } from './markdown'
-import { presentToolCard } from './present'
-import { textLatest, textPreview, textToFrame } from './text'
-import { presentResearchEpisode } from '../research/episode'
 
 /**
  * 装配管线 —— **一条消息 → 一串段**(§2)。
  *
  * 五步纯函数,各住一个文件:① anchor(锚点归位)② group(归组)③ present
  * (工具呈现)④ markdown(文本→块)⑤ key(稳定 key,由渲染侧调用),前面另有
- * 一步 ⓪ 分类(`compact/marker.ts`:这条消息自己说它是什么)。
+ * 一步 ⓪ 认领(这条消息自己说它整条是什么)。
  * 这个文件只负责把它们串起来,自己不做任何判断 —— 加一步 / 换一步的代价因此
  * 是「改一个文件」。
  *
- * 全程零 React、零 DOM:vitest 直测,jsdom 都不用起。
+ * ── 谁生产哪一段:段表说了算(G 线 P3,正本 `docs/stream-geometry-2026-09.md` §20)──
+ * 从前这里有一个按节点种的 `switch`,每一种段怎么从节点算出来都写在这个文件里 ——
+ * 加一种段就要改装配。今天第 ⓪ 步是 `claimSegment(message)`(按注册序问,第一个
+ * 认领的赢),循环体是 `segmentDefForNode(node).produce(node, ctx)`,`null` 不推。
+ * ③ present / ④ markdown / 思考的 `textToFrame` 仍是那几个纯函数,只是**调用它们的
+ * 那一行**搬进了各自的 `content/segments/kinds/*.ts`。这个文件里不出现任何一种段的名字。
+ *
+ * ── 仍然零 render ─────────────────────────────────────────────────────
+ * 上面那行 `import '../segments'` 会把 kind 文件、连带它们的组件模块一起拉进来 ——
+ * 装配的**模块图**从此不再是零 React。但装配**本身一次 `render` 都不做**:`produce`
+ * 与 `claim` 只算数据,组件只在 `SegmentView` 渲染那一刻被读。vitest 照旧直测,
+ * jsdom 照旧不用起。
  *
  * ── 按消息引用 memo ──────────────────────────────────────────────────
  * 折叠器保证消息对象**不可变、变则换引用**(chat-fold 的 appendTail 走的是整份
@@ -95,19 +104,16 @@ if (import.meta.hot) {
 
 function runPipeline(message: ProjectedMessage): SegmentModel[] {
   /*
-   * ── 第 ⓪ 步:**按内容自述分类**(U2)────────────────────────────────────
+   * ── 第 ⓪ 步:**这条消息自述它整条是什么**(U2)──────────────────────────
    *
-   * 一次上下文压缩在账本上只是一条 system 消息,正文是后端写的一段 JSON。它不是
-   * 「一段要读的字」——把它交给 markdown 那一步,屏幕上就是 09-08 事故里那坨原始
-   * JSON。所以在跑节点循环**之前**先问一句「这条消息自己说它是什么」。
-   *
-   * 判据整件住在 `content/compact/marker.ts`(角色 + 正文里的 `type`),这里一个
-   * 字段名都不出现:哪天后端多写一格,改那一处。认不出来(不是压缩标记、或者正文
-   * 半途被截断解析不了)就返回 null,消息照常往下走 rich-text —— **降级是「照实
-   * 把正文摆出来」**,不是吞掉这条消息。
+   * 一次上下文压缩在账本上只是一条 system 消息,正文是后端写的一段 JSON —— 交给
+   * 节点循环就是 09-08 事故里那坨原始 JSON。所以在跑节点循环**之前**先问一句。
+   * 谁认、凭什么认,住在认领它的那个 kind 文件里(今天是 `segments/kinds/compact.ts`),
+   * 这里一个字段名都不出现;没人认领就回 null,消息照常往下走 —— **降级是「照实把
+   * 正文摆出来」**,不是吞掉这条消息。
    */
-  const compact = parseCompactMarker(message)
-  if (compact) return [{ kind: 'compact', marker: compact }]
+  const claimed = claimSegment(message)
+  if (claimed) return [claimed]
 
   const segments: SegmentModel[] = []
 
@@ -125,68 +131,26 @@ function runPipeline(message: ProjectedMessage): SegmentModel[] {
    * **没有 part 身份**可言。所以判据取「序列上还有没有别的东西排在它后面」——
    * 后面一旦长出任何东西(正文的第一个块、一张工具卡、下一段推理),这一块思考
    * 就再也不会有新字了。要让它精确到 part,得先把 `ended` 一路带到壳,那是另一批。
+   *
+   * 下标由这里算、经 `ProduceCtx.isLast` 递给每一个 `produce`:「序列上最后一件」是
+   * **序列**的事实,只有循环看得见整条序列;读不读它是那一型自己的事。
    */
   const nodes = groupNodes(anchorMessage(message))
+  // 这条消息还在不在流 —— 一条消息一个值,循环外算一次,逐节点递同一个。
+  const live = message.isStreaming === true
   for (let index = 0; index < nodes.length; index += 1) {
     const node = nodes[index]
-    const isLastNode = index === nodes.length - 1
-    switch (node.node) {
-      case 'reasoning': {
-        // 顶部推理与行内推理都是思考段 —— 它们的差别是**落点**(placement),
-        // 而落点已经由锚点步兑现成了序列上的位置。到这一层就没有第二个问题了。
-        //
-        // **与下面 `text` 那一格逐字同形**(正本 `docs/thinking-stream-2026-09.md` §3):
-        // 同样的身份(消息 id + 段序号)、同样把 `isStreaming` 传下去、同样由产地
-        // 决定「哪一截已经定了」。差别只有一个:正文的切点问 markdown 语法,思考的
-        // 切点只问换行。那条会话里 95.6% 的流式字符是思考(1,247,359 字),把它当
-        // 一个字符串整段重画,就是 PerfHud 上每帧 100–136ms 的产地。
-        const live = message.isStreaming === true
-        const { blocks, tail } = textToFrame(`${message.id}#${segments.length}`, node.text, live)
-        segments.push({
-          kind: 'thinking',
-          blocks,
-          tail,
-          /*
-           * `live` = **这条消息**还在流。它是 R 线「块冻结」的判据(`textToFrame`
-           * 拿它决定哪一截已经定了、可以停止重画),所以这一格**一个字都不许改**。
-           */
-          live,
-          /*
-           * `thinking` = **这一块思考**此刻还在进行(裁定 D,判据在上面那段注释里)。
-           * 扫光、`data-live`、收起时显示最新一截还是 `preview`,三件都读它。
-           */
-          thinking: live && isLastNode,
-          preview: textPreview(blocks, tail),
-          /*
-           * 收起且这块思考还在进行时那一行显示的**最新一截**(G 线 P1)。它与
-           * `preview` 并排而不是二选一:两格说的是两个时刻的事实,而渲染层不许拿
-           * 6 万字的串现切(代价与历史长度无关这件事由 `textLatest` 自己保证)。
-           */
-          latest: textLatest(blocks, tail),
-        })
-        break
-      }
-      case 'text': {
-        // 活跃与否要传下去:流式那条路(稳定前缀 / 未闭合原子块 / 节拍)全靠它。
-        // 缓存的身份带上段序号 —— 一条消息将来会有不止一段正文(锚点真算法进来之后)。
-        const { blocks, offsets, ids } = markdownToFrame(
-          `${message.id}#${segments.length}`,
-          node.text,
-          message.isStreaming === true,
-        )
-        if (blocks.length > 0) segments.push({ kind: 'rich-text', blocks, offsets, ids })
-        break
-      }
-      case 'image':
-        segments.push({ kind: 'image', blob: node.blob })
-        break
-      case 'tool-group':
-        segments.push({ kind: 'tool-group', card: presentToolCard(node.calls) })
-        break
-      case 'research':
-        segments.push({ kind: 'research', episode: presentResearchEpisode(node.calls) })
-        break
-    }
+    const segment = segmentDefForNode(node).produce(node, {
+      /*
+       * 缓存身份 = 消息 id + **已经出厂的段数**(不是节点下标):一个空正文节点不成段,
+       * 它后面那一段的身份因此不挪位 —— 与 P3 之前逐字相同,`textToFrame` /
+       * `markdownToFrame` 的缓存车道一条都不换。
+       */
+      id: `${message.id}#${segments.length}`,
+      live,
+      isLast: index === nodes.length - 1,
+    })
+    if (segment) segments.push(segment)
   }
 
   return segments

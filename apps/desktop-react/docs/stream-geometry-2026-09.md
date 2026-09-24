@@ -3138,3 +3138,179 @@ coalescer 写 0、`scrollHeight` 缩掉那一截,而 `scrollTop` 恰好等于新
    —— 这一单没有碰 i18n 与检索能力表 —— 但**没有拿 `main` 对照过**,记在这儿。
 7. **`ChatStream.tsx` 的 `seatActive` 在 `main` 上就是一格没人读的解构**
    (eslint `no-unused-vars`),这一单没有顺手删。
+
+## 20. P3 · 段注册表(2026-09-24,施工单)
+
+§3.4 的两个 `switch` 退役。**用户可感知行为零变化**:段模型逐字节相同、DOM 逐节点相同,
+这一单只搬「谁生产、谁画」的落点。
+
+### 20.1 与块表的三处不同,以及为什么
+
+`content/segments/registry.ts` 照 `blocks/registry.ts` 的样子立一张表(类 + 单例、重复注册
+即抛、`unregister` 比身份、`registerSegment(def, import.meta.hot)` 自动配退役)。三处**故意**
+不同:
+
+1. **未知 kind 不兜底,`resolve` 抛。** `model/segments.ts` 文件头那段「段没有注册表」的论证
+   有一半今天仍然成立:段由装配管线独家产出,而产地正是表里那几条 def 自己,所以「查不到」
+   只可能是装配错误(barrel 没被 import),与块表 `source-fallback` 缺席那一支是同一条路。
+   词汇在**类型层仍然封闭**(`SegmentModel` 联合不变、`SegmentKind` 不变);表改变的只是
+   「加一种段要改哪几个文件」,不是词汇的开放性。
+2. **契约不是块的五问。** 五问(midway / settled / failure / identity / geometry)答的是块流
+   机制里的政策,段这一层没有那台机制:段 key 由序号 + kind 派生(`assemble/key.ts`),失败由
+   错误边界兜,中间态由每一型自己的模型说(`thinking` / `running` / `live`)。照抄一份没人读的
+   答案就是假话。段契约 = **几何三问 + `prose` 一问**(下面 §20.2)。
+3. **生产也进表。** 块表只管画,段表两头都管:def 自述它消费哪一种归组节点(`node`),或者
+   认领整条消息(`claim`,今天只有压缩折痕)。`assemble/index.ts` 的循环从此只做一件事:
+   按节点种查 def、调它的 `produce`。
+
+### 20.2 契约
+
+```ts
+export interface SegmentGeometry {
+  /** 流式期间它的形:grow 随内容长 / fixed 高度钉死 / reserve 先立骨架再填。 */
+  liveForm: 'grow' | 'fixed' | 'reserve'
+  /** 只有这一个合法答案,写出来是为了必答(G4)。 */
+  settle: 'same-height'
+  /** 什么情况下允许变矮:never / user-only(人亲手收起)。没有「自动」这一档(G3)。 */
+  shrink: 'never' | 'user-only'
+}
+
+export interface ProduceCtx {
+  /** 缓存身份 `${messageId}#${段序号}` —— 与今天 `textToFrame` / `markdownToFrame` 收的第一个参数逐字相同。 */
+  id: string
+  /** 这条消息还在流(`message.isStreaming === true`)。 */
+  live: boolean
+  /** 这一节点是序列上最后一件(思考段 `thinking` 的判据,裁定 D)。 */
+  isLast: boolean
+}
+
+export interface SegmentDef<M extends SegmentModel, N extends GroupedNode = GroupedNode> {
+  kind: M['kind']
+  /** 消费哪一种归组节点。整条消息认领型(compact)缺席这一格。 */
+  node?: N['node']
+  /** 节点 → 段;`null` = 这一节点不成段(rich-text 一个块都没解出来时)。 */
+  produce?: (node: N, ctx: ProduceCtx) => M | null
+  /** 第 ⓪ 步:这条消息自述它整条是什么。按注册序问,第一个认领的赢。 */
+  claim?: (message: ProjectedMessage) => M | null
+  View: ComponentType<{ model: M; segmentKey: string; ctx: BlockCtx }>
+  geometry: SegmentGeometry
+  /** 这一段算不算「正文」(收场通知挑句子问的那一句,今天在 `ChatStream.hasVisibleProse`)。缺席 = 不算。 */
+  prose?: (model: M) => boolean
+}
+```
+
+`node` 与 `claim` **二选一必有其一**,两个都缺注册即抛(一条没有产地的段是死词汇)。
+`View` 的 props 统一成 `{ model, segmentKey, ctx }`;四个既有组件**一个字不改**,kind 文件里
+用一个不产 DOM 的适配函数把 props 翻过去(它是接线,不是新组件;「每种段只渲染一个元素、
+不加包裹层」的纪律因此原样保住)。
+
+各型的几何答案(单测把这张表钉死;答案变要改表、改测试、改这里,三处一起):
+
+| kind | liveForm | shrink | prose | 产地 |
+|---|---|---|---|---|
+| `thinking` | `fixed`(P1:收起态一行高度钉死) | `user-only` | 否 | `node: 'reasoning'` |
+| `rich-text` | `grow` | `never` | `blocks.length > 0` | `node: 'text'` |
+| `tool-group` | `grow` | `user-only` | 否 | `node: 'tool-group'` |
+| `research` | `grow` | `user-only` | 否 | `node: 'research'` |
+| `compact` | `fixed` | `user-only` | 否 | `claim`(`parseCompactMarker`) |
+| `image` | `reserve` | `never` | 是 | `node: 'image'`;`View` 今天仍返回 `null`,通电归 `markdown-image` 正本 P2 / 本线 P5 |
+
+**`stream-cursor` 从词汇里删除。** 它没有产地也没有消费者:光标 P1 起住在尾槽(`TailSlot`),
+而 G4 的推论「只在流式期存在的东西不许住在流里」是永久的 —— 这一格不是「等装配拿得到活跃态
+再收进来」,是**不会再收进来**。删它是把词汇改成真话,零运行时变化。
+
+**几何三问在 P3 里谁读:注册门 + 单测,没有运行时读者。** 这是有意的、写在这儿的:P4 的
+HeightBook 才是它的消费者(`liveForm` 决定活动块要不要逐帧量、`shrink` 决定一次非人为变矮对
+这一型算不算违例)。P3 让每一型在**注册这一刻**就回答,因为那是唯一能强迫回答的时刻;等 P4
+再补答案,补的人不是写那一型的人。
+
+### 20.3 文件
+
+新:
+- `src/content/segments/registry.ts` —— `SegmentRegistry` / `registerSegment` / `unregisterSegment` /
+  `resolveSegment(kind)`(抛) / `segmentDefForNode(node)`(抛) / `claimSegment(message)`。
+  **不 import 任何组件、不 import 任何 assemble 步骤文件。**
+- `src/content/segments/index.ts` —— 唯一注册 barrel,逐行 import 六个 kind。
+- `src/content/segments/kinds/{thinking,rich-text,tool-group,research,compact,image}.ts` —— 一文件一型,
+  只接线:import 既有组件 + 既有 presenter(`assemble/text.ts` / `assemble/markdown.ts` /
+  `assemble/present.ts` / `research/episode.ts` / `compact/marker.ts`),`registerSegment({...},
+  import.meta.hot)`。**kind 文件不许 import `assemble/index.ts`**(它 import barrel,反向就是环);
+  `rich-text` 要的 `blockKey` 从 `assemble/key.ts` 直接拿。
+- `src/content/segments/__tests__/registry.test.ts`、`hmr-dispose.test.ts`(静态门照抄块表那一组:
+  `kinds/*.ts` 每个文件的 `registerSegment(` 必须递 `import.meta.hot`)、`kinds.test.ts`
+  (上表逐格钉死;`satisfies Record<SegmentKind, …>` 钉「每一种词汇都有 def」)、
+  `segment-view.test.tsx`(六型各经 `SegmentView` 渲一次,根元素与直接渲组件逐节点相同)。
+
+改:
+- `assemble/index.ts`:第 ⓪ 步 → `claimSegment(message)`;循环体 → `segmentDefForNode(node).produce(node, ctx)`,
+  `null` 不推。文件头「装配零 React」那一段改写:barrel 把组件模块拉进来,但装配**仍然一次
+  `render` 都不做**,vitest 直测照旧。
+- `SegmentView.tsx`:整个 `switch` → `const def = resolveSegment(segment.kind); return <def.View …/>`。
+  文件头「为什么段没有注册表」整段改写成 §20.1 那三条。
+- `ChatStream.tsx` `hasVisibleProse` → `resolveSegment(segment.kind).prose?.(segment) ?? false`。
+- `model/segments.ts`:删 `stream-cursor` 一支;文件头「段是封闭词汇……所以它没有注册表」改写。
+- `docs/thinking-stream-2026-09.md:35` 那句演练(「`SegmentView` 里自己那一个 case」)改成
+  「自己的 kind 文件 + barrel 一行」;`docs/compact-seam-2026-09.md:20` 那棵树里的
+  `SegmentView case 'compact'` 改成 `segments/kinds/compact.ts`。
+- `research/SourceFoot.tsx:78` 的 `kind !== 'research'` **不动**:那是检索能力自己的模块在读
+  自己的段,不是骨架按能力枚举。
+
+### 20.4 陌生能力演练(仓根法)
+
+加一个「AI 生成的 HTML 预览」段。两种来路,答案不同,都写清:
+
+- **它来自一个既有节点种**(最常见:某个工具的结果要以预览呈现)—— 那是 `tool-group` 的
+  presenter 的事,段表不动;要新开一种段则 = `segments/kinds/html-preview.ts`(`node: 'tool-group'`
+  不行,一种节点只能有一个 def —— 所以它得先在归组步成为自己的节点种,见下一条)。
+- **它来自账本上一种新的 part**(新的内容类型)—— 改的是:`assemble/anchor.ts` 多一个节点种
+  (那是投影边界,把账本词汇翻成本壳节点词汇的唯一地方)+ `segments/kinds/html-preview.ts`
+  (`produce` + `View` + `geometry: { liveForm: 'reserve', … }`)+ barrel 一行。
+  `SegmentView` / `assemble/index.ts` / `ChatStream` / 锚定器 / 垫块一个字不动。
+  锚点步那一行是「多一种账本词汇」的代价,不是「按能力枚举」—— 它不认识 HTML 预览,只认识
+  part 的 `type`。
+
+比 §3.4 当初写的「它自己的模块 + 一行注册」多出锚点步那一行,如实记。
+
+### 20.5 验收
+
+- `assemble.test.ts` 与全部既有 `content/` 测试**一条断言不改**全绿(它们正是「模型零变化」
+  的证词);上面四组新测试绿。
+- `npm run typecheck`(app 级)、`npx eslint` 改动文件、`npm run ui:consume`、`motion-gate`、
+  `squeeze-gate` 绿。
+- 真机门 `gate:stream-geometry`、`gate:tail-jitter`、`gate:fold-collapse`(不带 `--big`)
+  在隔离 store 上跑一遍:读数与 §19 终局同量级(渲染路径没变,这是回归门不是量测门)。
+- 交卷附:`rg -n "switch \(segment\.kind\)|switch \(node\.node\)" src/content` 为零;
+  `rg -n "stream-cursor" src` 为零。
+
+### 20.6 施工账(2026-09-24)
+
+落地与 §20.1–20.4 一致,另有几处细节是施工时定的:
+
+- kind 文件是 `.ts` + `createElement`(不用 JSX),适配函数不产 DOM,rich-text 回 Fragment。
+- `ProduceCtx.id` 用**已出厂的段数**而不是节点下标:空正文节点不成段,用下标会让后面每段
+  的缓存身份挪位,`textToFrame` / `markdownToFrame` 的车道就换了。
+- `node` 与 `claim` 按**互斥**执法:两个都缺抛、两个都有抛、认了节点没 `produce` 抛、一种
+  节点被两个 def 认领抛(点名占着的是谁);几何三问由 `missingGeometryAnswer` 运行时校验,
+  词表外的值(`shrink: 'auto'`)同样抛。
+- `claim` 按注册序问;barrel 里 compact 排第一,第二个认领者排在哪一行是拍板件(写在 barrel 头)。
+- 静态门比 §20.3 多两条:`registry.ts` 的 import 全是 `import type`;`SegmentView.tsx` 与
+  `assemble/index.ts` 剥掉注释后不出现任何段种 / 节点种字面量、不出现 `switch`。
+- 两个导入环拆掉:`ToolDrawer.tsx` 与 `CompactSeam.tsx` 的 `blockKey` 改从 `assemble/key`
+  直接拿(它们经 kind 文件被 barrel 拉进来,再回头 import `assemble/index` 就是环)。
+  这是「四个既有组件一个字不改」之外唯一的例外,各一行 import,零行为变化。
+
+**读数**:vitest `src/content` 153 文件 / 2303 条全绿(原 149 / 2238,一条断言未改;新增
+registry 25、hmr-dispose 15、kinds 19、segment-view 6)。反证:思考段改递 `live`、rich-text
+包一层 div → segment-view 红 2;image 去掉 `import.meta.hot` / 改 liveForm → hmr、kinds 各红 1。
+额外对拍:HEAD 版 switch 装配复制成临时文件,14 种消息(纯文本 / 空正文 / 推理+正文 /
+推理→工具→推理 / 工具组 / web 检索 / 图片 part / 夹在中间的空正文 part / 压缩标记两态 /
+截断的压缩 JSON)两边各算一遍 `JSON.stringify` 逐字节相同 14/14;调换键序能抓出 5 条红。
+typecheck 绿;eslint 只剩 §19.8 第 7 条那格存量 `seatActive`;`ui:consume` 31/31、
+`motion-gate` 0/0、`squeeze-gate` 2/3 全在基线内;`gate:tail-jitter` ok;`gate:fold-collapse`
+85 ✓;`gate:stream-geometry` 三趟各有 1–8 条红,全部落在 §19.8 第 4 / 5 条那两格存量
+(⑦ 长帧、⑬ 座位归零 4.5px),同机 HEAD 对照一样红(`short:scrollUp ⑦ 67ms`);
+第 1 趟出现过一次 `big:scrollUp ⑥ 444px` 与 `big:tools ④b 14 帧`,重跑两次未复现,
+机器负载当时 6–32(主检出上跑着用户的 `electron:dev` 与另一台 vite),记在这儿不归因。
+
+**留账**:`squeeze-gate` 基线里 `diff/Diff.module.css .text` 那一条已不存在,可从基线删,
+这一单没删。§20.4 的演练结论(锚点步多一行)与 §3.4 原文的出入已在 §20.4 如实记。

@@ -32,7 +32,7 @@ class TextStream {
 3. 活动尾 > 4,000 字且其中没有 `\n`:在 2,000 字之后第一个空白处强切;没有空白(整段无空格的长 token)就在 4,000 字硬切。
 4. `live === false`:全部冻住,`tail = ''`。
 
-演练:下一个要流长纯文本的段(这条会话里 tool-input 就有 124,794 字)= 它自己的段模块 + `SegmentView` 里自己那一个 case,`TextStream` 一行不改;`ChatStream` / `assemble` 的骨架不出现「思考」两个字。
+演练:下一个要流长纯文本的段(这条会话里 tool-input 就有 124,794 字)= 它自己的 kind 文件(`content/segments/kinds/<kind>.ts`)+ barrel 一行(G 线 P3 起段表取代了 `SegmentView` 的 switch),`TextStream` 一行不改;`ChatStream` / `assemble` 的骨架不出现「思考」两个字。
 
 ## 3. 装配层(`assemble/index.ts` 的 `reasoning` case)
 

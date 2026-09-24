@@ -11,10 +11,17 @@ import type { TitleTip } from './title-tip'
  * 两层词汇的分工:**段**是「屏幕上从上到下依次是什么」,**块**是「一段富文本里的
  * 物件」。段里可以装块(`rich-text` 段就是 markdown 解析出来的块序列),反过来不行。
  *
- * 段是**封闭词汇**:它由装配管线(assemble/)独家产出,不接受插件或解析器扩展 ——
- * 所以它没有注册表,渲染侧是一个穷尽 switch(SegmentView)。块不同:块的产地有两个
- * (markdown 解析、工具 presenter),而且将来要接插件,所以块有注册表、有未知兜底。
- * 「谁有注册表」不是风格问题,是「这份词汇由谁定义」的事实。
+ * 段是**类型层封闭的词汇**:它由装配管线独家产出,不接受插件或解析器扩展,所以这个
+ * 联合就是全部 —— 加一种段先在这里加一支。但「谁生产、谁画」**不再枚举**(G 线 P3,
+ * 正本 `docs/stream-geometry-2026-09.md` §20):每一型在 `content/segments/kinds/` 下
+ * 自述它的产地(`node` / `claim`)、`View`、几何三问与 `prose`,装配与 `SegmentView`
+ * 只读那张表。与块表的差别是**查不到就抛、不兜底**:块的产地有两个且将来要接插件,
+ * 一个没见过的块是正常情况;段的产地正是表里那几条 def,一个查不到的段只能是装配错误。
+ * 「未知算不算错误」不是风格问题,是「这份词汇由谁定义」的事实。
+ *
+ * **光标不是段**(P3 从词汇里删掉了那一支):它从来没有产地也没有消费者 —— P1 起光标
+ * 住在尾槽(`message/TailSlot.tsx`),而 G4 的推论「只在流式期存在的东西不许住在流里」
+ * 是永久的。那一格不是「等装配拿得到活跃态再收进来」,是不会再收进来。
  */
 
 /** 大块二进制的引用(图片 / 附件),真正的字节在账本的 blob 里。 */
@@ -320,6 +327,5 @@ export type SegmentModel =
    */
   | { kind: 'compact'; marker: CompactMarker }
   | { kind: 'image'; blob: BlobRef }
-  | { kind: 'stream-cursor' }
 
 export type SegmentKind = SegmentModel['kind']

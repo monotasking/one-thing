@@ -6,7 +6,9 @@ import { useT, type TFn } from '../i18n'
 import { getLogger } from '../services/log'
 import { ButtonBase } from '../ui/ButtonBase'
 import { Fold } from '../ui/Fold'
-import { blockKey } from './assemble'
+// 从 `assemble/key` 直接拿,不走 `assemble/index`:后者 import 段表 barrel,而段表的 compact
+// 一型又 import 本文件 —— 走 index 就是一个环(G 线 P3,与 ToolDrawer 同一行改法)。
+import { blockKey } from './assemble/key'
 import { markdownToFrame } from './assemble/markdown'
 import { BlockView } from './blocks/BlockView'
 import type { BlockCtx } from './blocks/registry'

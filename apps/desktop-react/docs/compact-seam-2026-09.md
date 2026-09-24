@@ -17,7 +17,7 @@
 ChatStream
 └─ MessageRow(role=system)
    └─ assembleMessage → segment { kind:'compact', marker }     ← 装配管线按内容自述分类,MessageRow 不加分支
-      └─ SegmentView case 'compact'
+      └─ segments/kinds/compact.ts(段表 def:claim 认领 + View 适配;G 线 P3 取代 SegmentView 的 case)
          └─ CompactSeam                                          content/CompactSeam.tsx
             └─ Seam(data-state=running|settled|danger)          content/seam/Seam.tsx(09-09 抽的 content 级基座)
                ├─ SeamLine(progress fill via --seam-fill)       running:光扫 + 填色;settled:实线;danger:danger 线
