@@ -404,9 +404,16 @@ export function Submenu({
    * 的第一项与这一行**同高**,视线不必上下找。越界的那一档由 `useFloatPosition`
    * 的视口 clamp 接住(它是浮层族唯一一处算坐标的地方)。
    */
+  /*
+   * `active: open` —— 子表**开的那一刻**才量(09-24 报障「sessions 二级菜单跑到左上角」):
+   * 从前这里恒 active,行一挂上就量,可那时子表还没渲染(panelRef 为空,measure 早退),
+   * 开了之后 `[active, key, measure]` 一个都没变,于是子表带着初值 (0,0) 画出来,
+   * 要等一次 scroll/resize 才跳回原位。跟着 `open` 走,开的那一次提交里 panelRef 已挂上,
+   * layout effect 在绘制前把位置算对。
+   */
   const anchor = (): DOMRect | null => rowRef.current?.getBoundingClientRect() ?? null
   const pos = useFloatPosition(panelRef, { kind: 'rect', get: anchor, place: 'right-start' }, {
-    fallback: { left: 0, top: 0 },
+    active: open,
   })
 
   return (

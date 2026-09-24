@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { Menu, MenuItem, MenuSection, MenuSeparator } from '../Menu'
+import { Menu, MenuItem, MenuSection, MenuSeparator, Submenu } from '../Menu'
 import { FocusScope } from '../../focus/FocusScope'
 import { focusTree } from '../../focus/registry'
 import { FocusDispatchHarness } from '../../test/focus-harness'
@@ -400,6 +400,37 @@ describe('Menu 的封顶与头部槽(A6)', () => {
       </Menu>,
     )
     expect(seen).toEqual([screen.getByRole('menuitemradio', { name: '二' })])
+    spy.mockRestore()
+  })
+})
+
+describe('Submenu 的落位', () => {
+  it('打开的那一刻就贴在行的右缘 —— 不经任何 scroll/resize 也不在 (0,0)(09-24 报障)', () => {
+    const rect = { left: 100, top: 200, right: 300, bottom: 228, width: 200, height: 28, x: 100, y: 200 }
+    const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      const r = this.getAttribute('aria-haspopup') === 'menu' ? rect : { ...rect, left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }
+      return { ...r, toJSON: () => r } as DOMRect
+    })
+    render(
+      <FocusScope scope="root">
+        {({ scopeProps }) => (
+          <div {...scopeProps}>
+            <FocusDispatchHarness />
+            <Menu x={0} y={0} onClose={() => {}} label="m">
+              <Submenu label="打开方式">
+                <MenuItem onClick={() => {}}>替换</MenuItem>
+              </Submenu>
+            </Menu>
+          </div>
+        )}
+      </FocusScope>,
+    )
+    fireEvent.click(screen.getByRole('menuitem', { name: '打开方式' }))
+    const panel = screen.getByRole('menuitem', { name: '替换' }).closest('[data-menu-surface]') as HTMLElement
+    expect(panel.style.left).toBe('300px')
+    expect(panel.style.top).toBe('200px')
     spy.mockRestore()
   })
 })
