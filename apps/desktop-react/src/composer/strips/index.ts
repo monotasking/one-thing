@@ -1,4 +1,3 @@
-import { planStrip } from '../../content/todo/plan-strip'
 import type { ComposerStrip, StripBarModel } from '../strip'
 import { statusStrip } from './status'
 
@@ -6,7 +5,7 @@ import { statusStrip } from './status'
  * 输入框顶条的登记表。**顺序固定**:每条的 `useBar` 是 hook,Composer 每次渲染按这张表的
  * 顺序逐条调用 —— 表是模块级常量、运行时不增不减,hook 的调用次序因此恒定。
  */
-export const COMPOSER_STRIPS: readonly ComposerStrip[] = [statusStrip, planStrip]
+export const COMPOSER_STRIPS: readonly ComposerStrip[] = [statusStrip]
   .slice()
   .sort((a, b) => a.order - b.order)
 
