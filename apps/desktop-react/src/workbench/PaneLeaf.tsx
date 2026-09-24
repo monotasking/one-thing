@@ -1,9 +1,16 @@
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { FocusScope } from '../focus/FocusScope'
 import { useT } from '../i18n'
-import { claimContentSlot, registerContentHolder, unregisterContentHolder } from './content-slots'
+import {
+  ContentSlotScope,
+  claimContentSlot,
+  registerContentHolder,
+  releaseContentSlot,
+  slotKeyOf,
+  unregisterContentHolder,
+} from './content-slots'
 import { useFullSlot } from './full-slot'
 import { useKeptContents } from './kept-contents'
 import { flattenContent, partsOfContent, refId, stripHeaderOf } from './kinds'
@@ -325,7 +332,8 @@ export const PaneLeaf = memo(function PaneLeaf({
           */}
           <div className={s.body} data-pane-body={leaf.id} ref={mountBody} />
           {createPortal(
-            <>
+            /* 配对只在这一片叶里发生(判词在 `./content-slots.ts`「键是片叶 + 内容」)。 */
+            <ContentSlotScope.Provider value={leaf.id}>
               {/*
                 **画法那一半:一格 tab 一层**(key = 那一格 tab 的 refId)。
                 普通 tab 画的是一个空槽;两格标签画的是它那一种自述的身子
@@ -360,7 +368,7 @@ export const PaneLeaf = memo(function PaneLeaf({
                   headerInStrip={headerRef !== null && refId(headerRef) === refId(ref)}
                 />
               ))}
-            </>,
+            </ContentSlotScope.Provider>,
             holder,
           )}
         </div>
@@ -570,13 +578,14 @@ const PaneContentLayer = memo(function PaneContentLayer({
    * 下面那格锚点 `<div>` 排在 portal **前面**,于是它的 ref 回调先跑;holder 因此
    * 在内容挂载之前就已经进了文档。锚点自己 `display: contents`,零盒子。
    */
+  const slotKey = slotKeyOf(useContext(ContentSlotScope), id)
   const anchor = useCallback(
     (el: HTMLDivElement | null) => {
-      if (el) registerContentHolder(id, holder)
+      if (el) registerContentHolder(slotKey, holder)
     },
-    [id, holder],
+    [slotKey, holder],
   )
-  useLayoutEffect(() => () => void unregisterContentHolder(id, holder), [id, holder])
+  useLayoutEffect(() => () => void unregisterContentHolder(slotKey, holder), [slotKey, holder])
   return (
     <>
       {/* 锚点:零盒子(`display: contents`),只为让 holder 在内容挂载**之前**
@@ -697,9 +706,20 @@ const PaneTabFrame = memo(function PaneTabFrame({
  * 「槽长什么样」只有这一处产地,普通 tab 与两格标签里的一格逐像素相同。
  */
 export function ContentSlot({ id, className }: { id: string; className?: string }) {
+  const slotKey = slotKeyOf(useContext(ContentSlotScope), id)
+  // 记着自己交出去的是哪个节点:收到 `null` 时只摘自己那一份(判词在 `releaseContentSlot`)。
+  const mounted = useRef<HTMLDivElement | null>(null)
   const mount = useCallback(
-    (el: HTMLDivElement | null) => claimContentSlot(id, el),
-    [id],
+    (el: HTMLDivElement | null) => {
+      if (el) {
+        mounted.current = el
+        claimContentSlot(slotKey, el)
+      } else if (mounted.current) {
+        releaseContentSlot(slotKey, mounted.current)
+        mounted.current = null
+      }
+    },
+    [slotKey],
   )
   /*
    * **取件口叫 `data-content-slot`,不叫 `data-pane-slot`** —— 后者早就有主:

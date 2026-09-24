@@ -1,3 +1,5 @@
+import { createContext } from 'react'
+
 /**
  * **一格内容的身子挂在哪儿**(W6-a,设计 `workbench-tabs-2026-09.md` §11 拍点 8:
  * 「一格都不重挂:换序、二合一、拆开、换比例四步内容根节点同一 DOM」)。
@@ -30,15 +32,32 @@
  * 登记 —— 而 holder 随它一起被 React 拆掉。
  */
 
-/** 内容那一侧交出来的身子。键 = `refId`。 */
+/*
+ * ── 键是「片叶 + 内容」,不是只有内容(09-24 报障「文件打开后主区只剩标签」)──
+ * 从前两张表只按 `refId` 记。可文件不是单例 —— 同一份文件可以在两片叶里各开一格
+ * (W3「拖一份到旁边对照着看」),于是两片叶各交一个 holder、各交一个槽,却只剩
+ * 一格表位:后到的那片叶的槽认领了先到那片叶的 holder,`appendChild` 把主区那块
+ * 内容**搬**进了右架子,主区只剩标签、身子空了。配对只该发生在同一片叶里,所以
+ * 两侧都带上所在那片叶的 id(`ContentSlotScope`,由 `PaneLeaf` 提供,穿过 portal)。
+ */
+
+/** 这一格内容的身子与槽属于哪片叶。`PaneLeaf` 在它的 portal 外面提供。 */
+export const ContentSlotScope = createContext<string>('')
+
+/** 表键:片叶 + 内容。 */
+export function slotKeyOf(scope: string, id: string): string {
+  return `${scope}\u0000${id}`
+}
+
+/** 内容那一侧交出来的身子。键 = `slotKeyOf(片叶, refId)`。 */
 const holders = new Map<string, HTMLElement>()
-/** 画法那一侧交出来的槽。键 = `refId`。 */
+/** 画法那一侧交出来的槽。键 = `slotKeyOf(片叶, refId)`。 */
 const slots = new Map<string, HTMLElement>()
 
 /** 配一次对。两边都在、而且还没挂上去时才动 DOM。 */
-function attach(id: string): void {
-  const holder = holders.get(id)
-  const slot = slots.get(id)
+function attach(key: string): void {
+  const holder = holders.get(key)
+  const slot = slots.get(key)
   if (!holder || !slot) return
   if (holder.parentNode === slot) return
   slot.appendChild(holder)
@@ -51,31 +70,29 @@ function attach(id: string): void {
  * `PaneLeaf.PaneContentLayer` 的 `anchor` 上:内容自己的 layout effect 排在
  * 这只组件之前,在那里登记的话内容首挂那一帧量到的是一个游离节点。
  */
-export function registerContentHolder(id: string, holder: HTMLElement): void {
-  holders.set(id, holder)
-  attach(id)
+export function registerContentHolder(key: string, holder: HTMLElement): void {
+  holders.set(key, holder)
+  attach(key)
 }
 
 /** 卸载时摘掉。**只摘自己那一份** —— 别人已经换上去了就不动它。 */
-export function unregisterContentHolder(id: string, holder: HTMLElement): void {
-  if (holders.get(id) === holder) holders.delete(id)
+export function unregisterContentHolder(key: string, holder: HTMLElement): void {
+  if (holders.get(key) === holder) holders.delete(key)
+}
+
+/** 画法那一侧:这一格该画在这个槽里。登记完当场试一次配对。 */
+export function claimContentSlot(key: string, slot: HTMLElement): void {
+  slots.set(key, slot)
+  attach(key)
 }
 
 /**
- * 画法那一侧:这一格该画在这个槽里(`null` = 这个槽没了)。登记完当场试一次配对。
- *
- * 它给 **ref 回调**用,所以要收得下 `null`:React 换宿主时先用 `null` 调一次旧的、
- * 再用新节点调一次新的。
+ * 这个槽没了(ref 回调收到 `null`)。**只摘自己那一份** —— 换宿主那一拍新旧两次
+ * 调用的次序不由这只文件说了算,新槽可能已经先认领了(从前这里无条件删,正是
+ * 那条注释说的「别人已经认领了就不动」的反面)。holder 留在原地 —— 判词在文件头。
  */
-export function claimContentSlot(id: string, slot: HTMLElement | null): void {
-  if (slot === null) {
-    // 摘的是自己那一份就摘掉;别人已经认领了就不动(换宿主那一拍新旧两次调用
-    // 的次序不由这只文件说了算)。holder 留在原地 —— 判词在文件头。
-    slots.delete(id)
-    return
-  }
-  slots.set(id, slot)
-  attach(id)
+export function releaseContentSlot(key: string, slot: HTMLElement): void {
+  if (slots.get(key) === slot) slots.delete(key)
 }
 
 /** 只给测试与热更:归零。 */

@@ -3,7 +3,7 @@ import { NEW_FLOAT_REGION, regionOfFileOpenMode, useFileOpenMode } from '../../d
 import { useWorkbenchStore, regionOfRefIn } from '../../workbench/store'
 import { floatRegion } from '../../workbench/regions'
 import { refId } from '../../workbench/kinds'
-import { leavesOf } from '../../workbench/tree'
+import { leafHoldingKindIn, leavesOf, seatOfRefIn } from '../../workbench/tree'
 import { useStageStore } from '../../stage/store'
 import { nextFloatId } from '../../stage/placement'
 import { textSymbolLocator } from './symbol-locator'
@@ -75,9 +75,35 @@ function regionForMode(mode: FileOpenMode, ref: ContentRef): RegionId | 'panel' 
  * 「面板内」这四个字在两块面里指的本来就是两条不同的分栏。
  */
 export function openRefByFileMode(ref: ContentRef): RegionId | 'panel' {
-  const region = regionForMode(useFileOpenMode.getState().mode, ref)
+  const mode = useFileOpenMode.getState().mode
+  const workbench = useWorkbenchStore.getState()
+  /*
+   * ── 打开先问「它住在哪」,最后才问设置(09-24 用户令)────────────────────
+   * 原话:「如果某个 tab 已经移动到了一个位置,例如主区域,但是设置的是右边,那么
+   * 后续打开的应该在主区域打开」。从前这里只读设置那一档,于是:
+   *  · 同一份文件已经在主区开着,再点一次又在右架子插一格 —— 两片叶各一份;
+   *  · 用户把文件标签拖进主区,下一份文件照旧落回右架子。
+   * 三级,次序即语义(与 `session-open.enterSessionInWorkbench` 同一形):
+   *  ① 这一格已经开着 → 点亮它(不开第二份);
+   *  ② 这一种已经住在某片叶(焦点叶优先,否则阅读序第一片)→ 开在那片叶;
+   *  ③ 都没有 → 才按设置那一档。
+   * 「面板内」那一档不进树,②不替它改落点;①照样生效 —— 树里已经有它就去看它。
+   */
+  const seat = seatOfRefIn(workbench.regions, refId(ref))
+  if (seat) {
+    workbench.activateTab(seat.leafId, seat.index)
+    useStageStore.getState().revealRegion(seat.region)
+    return seat.region
+  }
+  const home = mode === 'panel' ? null : leafHoldingKindIn(workbench.regions, workbench.focusLeafId, ref.kind)
+  if (home) {
+    workbench.openRef(ref, { region: home.region, leafId: home.leafId })
+    useStageStore.getState().revealRegion(home.region)
+    return home.region
+  }
+  const region = regionForMode(mode, ref)
   if (region !== 'panel') {
-    useWorkbenchStore.getState().openRef(ref, { region })
+    workbench.openRef(ref, { region })
     /*
      * **落完让那个区域露脸**(2026-09-14 报障「点击文件打不开了,选择的是 Pinned
      * right」)。真机读数:右架子收着且把手藏着(宽 0px),树里已经躺着 8 个文件

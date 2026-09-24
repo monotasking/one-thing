@@ -399,6 +399,34 @@ export function firstRefOfKindIn(
   return null
 }
 
+/**
+ * **这一种内容此刻住在哪片叶**(09-24「打开跟着它住的地方走」):焦点叶里有这一种就是它,
+ * 否则按阅读序(中央 → 四条边 → 浮窗)第一片装着这一种的叶。一片都没有 = null。
+ *
+ * 与 `firstRefOfKindIn` 同一族查找,只是答的是**座位**不是 ref:用户把文件标签拖进了
+ * 主区,下一份文件就该开在主区那片叶,而不是设置里写的右架子。复合那一格照旧摊开再比。
+ */
+export function leafHoldingKindIn(
+  regions: Readonly<Record<string, PaneNode>>,
+  focusLeafId: string | null,
+  kind: string,
+): { region: RegionId; leafId: string } | null {
+  const holds = (leaf: PaneLeafNode) =>
+    leaf.tabs.some((tab) => flattenContent(tab).some((part) => part.kind === kind))
+  let first: { region: RegionId; leafId: string } | null = null
+  for (const region of regionsInReadOrder(regions)) {
+    const tree = regions[region]
+    if (!tree) continue
+    for (const leaf of leavesOf(tree)) {
+      if (!holds(leaf)) continue
+      const seat = { region: region as RegionId, leafId: leaf.id }
+      if (leaf.id === focusLeafId) return seat
+      first ??= seat
+    }
+  }
+  return first
+}
+
 /** 整棵树上所有 refId,按阅读序。 */
 export function refIdsOf(node: PaneNode): ContentRefId[] {
   return leavesOf(node).flatMap((leaf) => leaf.tabs.map(refId))

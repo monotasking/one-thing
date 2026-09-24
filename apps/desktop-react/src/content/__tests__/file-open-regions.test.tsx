@@ -7,6 +7,8 @@ import { useStageStore } from '../../stage/store'
 import { initialStageState } from '../../stage/transitions'
 import { registerContentKind, resetContentKinds, refId } from '../../workbench/kinds'
 import { leavesOf } from '../../workbench/tree'
+import { floatRegion } from '../../workbench/regions'
+import { nextFloatId } from '../../stage/placement'
 import { configureFilesPort } from '../../data/files-port'
 import { useViewerSource } from '../../data/viewer-source'
 import type { FilesReadContentResponse } from '@shared/ipc/files'
@@ -102,9 +104,14 @@ describe('五档解灰:每一档都真的落到那儿', () => {
     act(() => openFileInCurrentTarget(PATH))
     const region = regionOfRefIn(wb().regions, REF_ID)!
     const winId = region.slice('float:'.length)
-    // 再开一扇别的窗压在它上面。
-    act(() => useFileOpenMode.setState({ mode: 'float' }))
-    act(() => openFileInCurrentTarget('/repo/b.ts'))
+    // 再开一扇别的窗压在它上面。不能再「开第二个文件」来造它:09-24 起第二个文件
+    // 跟着第一个住进同一扇窗(判词在 `openRefByFileMode` 的三级上),所以这里直接铸一扇。
+    const other = nextFloatId()
+    act(() => {
+      useStageStore.getState().ensureFloatRect(other)
+      wb().openRef({ kind: 'file', key: '/repo/b.ts' }, { region: floatRegion(other) })
+      useStageStore.getState().revealRegion(floatRegion(other))
+    })
     expect(useStageStore.getState().floatOrder.at(-1)).not.toBe(winId)
 
     act(() => openFileInCurrentTarget(PATH))
@@ -130,6 +137,62 @@ describe('五档解灰:每一档都真的落到那儿', () => {
     act(() => openFileInCurrentTarget(PATH))
     expect(regionOfRefIn(wb().regions, REF_ID)).toBe(first)
     expect(Object.keys(wb().regions).filter((r) => r.startsWith('float:'))).toHaveLength(1)
+  })
+})
+
+describe('打开先问它住在哪,最后才问设置(09-24)', () => {
+  function moveToCenter(path: string) {
+    act(() => wb().moveRef({ kind: 'file', key: path }, 'center'))
+  }
+
+  it('① 同一份文件已经开着(被拖进了主区)→ 点亮那一格,右架子不再插第二份', () => {
+    act(() => useFileOpenMode.setState({ mode: 'edge-right' }))
+    act(() => openFileInCurrentTarget(PATH))
+    moveToCenter(PATH)
+    expect(regionOfRefIn(wb().regions, REF_ID)).toBe('center')
+
+    act(() => openFileInCurrentTarget(PATH))
+
+    expect(tabsOf('center').filter((id) => id === REF_ID)).toHaveLength(1)
+    // 右架子那棵树随最后一格搬走就没了;没有重新长出来 = 没插第二份。
+    expect(wb().regions['edge:right']).toBeUndefined()
+  })
+
+  it('② 文件这一种住在主区 → 下一份文件也开在主区,而不是设置说的右架子', () => {
+    act(() => useFileOpenMode.setState({ mode: 'edge-right' }))
+    act(() => openFileInCurrentTarget(PATH))
+    moveToCenter(PATH)
+
+    act(() => openFileInCurrentTarget('/repo/b.ts'))
+
+    expect(regionOfRefIn(wb().regions, 'file:/repo/b.ts')).toBe('center')
+  })
+
+  it('② 焦点叶优先:主区与右架子都住着文件,焦点在右架子 → 开在右架子', () => {
+    act(() => useFileOpenMode.setState({ mode: 'edge-right' }))
+    act(() => openFileInCurrentTarget(PATH))
+    act(() => openFileInCurrentTarget('/repo/b.ts'))
+    moveToCenter(PATH)
+    const right = leavesOf(wb().regions['edge:right']!)[0]!
+    act(() => wb().setFocusLeaf(right.id))
+
+    act(() => openFileInCurrentTarget('/repo/c.ts'))
+
+    expect(regionOfRefIn(wb().regions, 'file:/repo/c.ts')).toBe('edge:right')
+  })
+
+  it('③ 一个文件都没开着 → 才按设置那一档', () => {
+    act(() => useFileOpenMode.setState({ mode: 'edge-right' }))
+    act(() => openFileInCurrentTarget(PATH))
+    expect(regionOfRefIn(wb().regions, REF_ID)).toBe('edge:right')
+  })
+
+  it('浮窗那一档:第二份文件跟着第一份住进同一扇窗(一种内容一个落点)', () => {
+    act(() => useFileOpenMode.setState({ mode: 'float' }))
+    act(() => openFileInCurrentTarget(PATH))
+    const region = regionOfRefIn(wb().regions, REF_ID)
+    act(() => openFileInCurrentTarget('/repo/b.ts'))
+    expect(regionOfRefIn(wb().regions, 'file:/repo/b.ts')).toBe(region)
   })
 })
 
