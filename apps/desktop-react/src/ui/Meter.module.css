@@ -1,0 +1,73 @@
+/*
+ * 表(meter)。**它自己不留外边距** —— 离上下多远是那一行的事(与 `ui/Progress` 同一条)。
+ * 颜色三档由 `data-tone` 说,轨道 = 填充色兑进底色的 `--viz-track-mix` 那一成。
+ */
+.meter {
+  --meter-color: var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.meter[data-tone='warn'] {
+  --meter-color: var(--warn);
+}
+
+.meter[data-tone='danger'] {
+  --meter-color: var(--danger);
+}
+
+.track {
+  position: relative;
+  height: var(--viz-meter);
+  border-radius: var(--r-full);
+  background: color-mix(in srgb, var(--meter-color) var(--viz-track-mix), var(--surface-2));
+}
+
+.sm .track {
+  height: var(--sp-1);
+}
+
+/* 只改 `width`(与 Progress 同一条):同一个节点从 40% 走到 90% 不换元素、不推别人。 */
+.fill {
+  height: 100%;
+  border-radius: var(--r-full);
+  background: var(--meter-color);
+  transition: width var(--dur) var(--ease-out);
+}
+
+.tick {
+  position: absolute;
+  top: calc(var(--viz-tick-h) / -2);
+  bottom: calc(var(--viz-tick-h) / -2);
+  width: var(--viz-gap);
+  transform: translateX(-50%);
+  background: var(--text-2);
+  box-shadow: 0 0 0 1px var(--surface-2);
+}
+
+.scale {
+  position: relative;
+  height: var(--sp-4);
+}
+
+.tickLabel {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+/* 最后一个名字右对齐到刻线上,不越过条的右缘。 */
+.tickLabel:last-child {
+  transform: translateX(-100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fill {
+    transition: none;
+  }
+}

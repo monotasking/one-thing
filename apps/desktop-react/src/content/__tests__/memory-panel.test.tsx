@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryPanel } from '../memory/MemoryPanel'
-import { budgetRatio, holderDetailText, pressureTone, shareOfLargest, sortProcesses } from '../memory/memory-model'
+import { appendSample, groupByCategory, holderDetailParts, holderFill, meterScale, nearestIndex, pressureTone, sortProcesses, trendGeometry } from '../memory/memory-model'
 import { PanelVisibilityContext } from '../visibility'
 import { configureMemoryPort, memoryReportQuery } from '../../data/memory-source'
 import { useStageStore } from '../../stage/store'
@@ -35,23 +35,63 @@ function report(over: Partial<MemoryReportResponse> = {}): MemoryReportResponse 
 }
 
 describe('memory model', () => {
+  const budget = { softBytes: 100, hardBytes: 200 }
+
   it('reads the pressure against the two lines, and says idle when nothing was measured', () => {
-    const budget = { softBytes: 100, hardBytes: 200 }
     expect(pressureTone({ totalBytes: 50, budget })).toBe('ok')
     expect(pressureTone({ totalBytes: 150, budget })).toBe('warn')
     expect(pressureTone({ totalBytes: 250, budget })).toBe('bad')
     expect(pressureTone({ totalBytes: null, budget })).toBe('idle')
-    expect(budgetRatio({ totalBytes: 300, budget })).toBe(1)
-    expect(budgetRatio({ totalBytes: null, budget })).toBeUndefined()
+  })
+
+  it('keeps both budget ticks inside the meter, even far over the hard line', () => {
+    const under = meterScale({ totalBytes: 50, budget })
+    expect(under.max).toBe(240)
+    expect(under.hard).toBeLessThan(1)
+    const over = meterScale({ totalBytes: 1000, budget })
+    expect(over.fill).toBeLessThan(1)
+    expect(over.hard).toBeGreaterThan(0)
+    expect(meterScale({ totalBytes: null, budget }).fill).toBeUndefined()
+  })
+
+  it('folds seven process kinds into four fixed-order categories, dropping empty ones', () => {
+    const groups = groupByCategory(report().processes)
+    expect(groups.map(group => group.category)).toEqual(['core', 'ui', 'web', 'system'])
+    expect(groups[0].bytes).toBe(630 * MB)
+    expect(groups.reduce((sum, group) => sum + group.share, 0)).toBeCloseTo(1)
+    const noWeb = groupByCategory(report().processes.filter(row => row.kind !== 'browser'))
+    expect(noWeb.map(group => group.category)).toEqual(['core', 'ui', 'system'])
   })
 
   it('sorts biggest first with unmeasured rows last, without touching the cached array', () => {
     const rows = report().processes
     expect(sortProcesses(rows).map(row => row.pid)).toEqual([1, 2, 3, 4])
     expect(rows[0].pid).toBe(2)
-    expect(shareOfLargest(sortProcesses(rows)).get(1)).toBe(1)
-    expect(holderDetailText({ detail: { idle: 7, protected: 1 } })).toBe('idle=7 · protected=1')
-    expect(holderDetailText({})).toBeUndefined()
+  })
+
+  it('keeps a bounded, de-duplicated history and lays it out on time, with both budget lines in range', () => {
+    let history = appendSample([], { at: 0, bytes: 10 }, 3)
+    history = appendSample(history, { at: 0, bytes: 99 }, 3)
+    expect(history).toHaveLength(1)
+    for (const at of [1, 2, 3]) history = appendSample(history, { at: at * 1000, bytes: 10 }, 3)
+    expect(history.map(sample => sample.at)).toEqual([1000, 2000, 3000])
+    const geometry = trendGeometry(history, budget, 100, 50)!
+    expect(geometry.points.map(point => point.x)).toEqual([0, 50, 100])
+    // 两根参照线永远在图里(纵轴包住它们),数据在两线之外也一样。
+    expect(geometry.hardY).toBeGreaterThan(0)
+    expect(geometry.softY).toBeLessThan(50)
+    expect(geometry.yMin).toBeLessThanOrEqual(10)
+    expect(trendGeometry(history.slice(0, 1), budget, 100, 50)).toBeUndefined()
+    expect(nearestIndex([0, 50, 100], 70)).toBe(1)
+  })
+
+  it('names known detail keys, keeps unknown ones raw, and only meters holders with a count limit', () => {
+    expect(holderDetailParts({ detail: { idle: 7, novel: 1 } })).toEqual([
+      { key: 'memory.detailIdle', raw: 'idle', value: '7' },
+      { raw: 'novel', value: '1' },
+    ])
+    expect(holderFill({ entries: 4, limit: { entries: 8 } })).toBe(0.5)
+    expect(holderFill({ entries: 4 })).toBeUndefined()
   })
 })
 
@@ -76,13 +116,16 @@ describe('MemoryPanel', () => {
   it('shows processes biggest first and the cache rows', async () => {
     mount()
     const rows = await screen.findAllByTestId('memory-process-row')
-    expect(rows.map(row => within(row).getAllByRole('cell')[0].textContent)).toEqual(['core', 'onething', '哔哩哔哩', 'GPU'])
-    expect(within(rows[2]).getByText('网页')).toBeTruthy()
+    // 分组次序固定(核心 / 界面 / 网页 / 系统),core 的内部名念成人话。
+    expect(rows.map(row => within(row).getByTestId('memory-process-name').textContent)).toEqual(['主进程', 'onething', '哔哩哔哩', 'GPU'])
     expect(within(rows[3]).getByText('量不到')).toBeTruthy()
-    expect(screen.getByTestId('memory-total').textContent).toContain('超过 hard 线')
+    expect(screen.getByTestId('memory-total').textContent).toBe('1.7GB')
+    expect(screen.getByText('超过 hard 线')).toBeTruthy()
+    expect(screen.getByRole('meter', { name: '内存占用与预算' }).getAttribute('aria-valuetext')).toBe('1.7 GB')
+    expect(screen.getByRole('meter', { name: '会话活投影:已用 / 上限' }).getAttribute('data-tone')).toBe('accent')
     const holder = screen.getByTestId('memory-holder-row')
-    expect(holder.textContent).toContain('8 个会话')
-    expect(holder.textContent).toContain('idle=7')
+    expect(holder.textContent).toContain('8 / 8 个会话')
+    expect(holder.textContent).toContain('空闲 7')
   })
 
   it('does not ask while the panel is not visible', async () => {
