@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { dropRef, pairIntoIndex, reorderTab } from '../drop-commit'
+import { dropRef, edgeExtentAfterDrop, pairIntoIndex, placeOnEdge, reorderTab } from '../drop-commit'
 import { refIdsOf, leavesOf, makeLeaf } from '../tree'
 import { CENTER_REGION, edgeRegion } from '../regions'
 import { partsOfContent, refId } from '../kinds'
@@ -169,6 +169,30 @@ describe('落到边 / 撕成浮窗', () => {
     expect(refIdsOf(useWorkbenchStore.getState().regions[edgeRegion('right')])).toEqual([refId(A)])
     expect(useStageStore.getState().shelves.right.collapsed).toBe(false)
     expect(refIdsOf(centerTree())).toEqual([refId(B)])
+  })
+
+  /*
+   * **整扇浮窗拖到空边与拖一格标签过去同一条厚度规则**(09-25)。从前拖窗标题栏落进
+   * 空边,新架子用的是那条边记着的旧厚度;拖一格标签过去却是窗口的 30%。
+   */
+  it('整扇浮窗落进空边:新架子与拖一格标签过去一样厚;预示读的是同一个数', () => {
+    dropRef(A, { kind: 'float' })
+    const [win] = Object.keys(useWorkbenchStore.getState().regions).filter((r) => r.startsWith('float:'))
+    const winId = win.slice('float:'.length)
+    useStageStore.getState().setShelfThickness('right', 260)
+    const before = useStageStore.getState().shelves.right.thickness
+    const predicted = edgeExtentAfterDrop('right')
+
+    placeOnEdge('right', () => useStageStore.getState().floatWindowToEdge(winId, 'right'))
+
+    expect(refIdsOf(useWorkbenchStore.getState().regions[edgeRegion('right')])).toEqual([refId(A)])
+    const after = useStageStore.getState().shelves.right.thickness
+    expect(after).not.toBe(before)
+    // 预示 = 结果(架子自己的钳可能再收一点,所以比「钳过的 30%」—— 与 dropRef edge 同一只)。
+    useStageStore.getState().setShelfThickness('right', predicted)
+    expect(useStageStore.getState().shelves.right.thickness).toBe(after)
+    // 已经有东西的架子:预示就是它自己的厚度,再放一扇窗不改几何。
+    expect(edgeExtentAfterDrop('right')).toBe(after)
   })
 
   /*

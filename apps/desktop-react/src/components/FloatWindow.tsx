@@ -6,6 +6,8 @@ import { panelIdOf } from '../stage/panel-ref'
 import { setSnapSide } from './snap-hint'
 import { occludedByFull, useWorkbenchStore } from '../workbench/store'
 import { floatRegion } from '../workbench/regions'
+import { edgeBandOf } from '../workbench/drop'
+import { placeOnEdge } from '../workbench/drop-commit'
 import { PaneTree } from '../workbench/PaneTree'
 import { contentKindOf, refId } from '../workbench/kinds'
 import { leafCount } from '../workbench/layout'
@@ -141,6 +143,7 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
       const startX = e.clientX
       const startY = e.clientY
       const vp = { w: window.innerWidth, h: window.innerHeight }
+      const win = { left: 0, top: 0, width: vp.w, height: vp.h }
       // 只有「拖着整扇窗走」才谈吸附;拉把手改身量与落到哪条边无关。
       let landing: ShelfSide | null = null
 
@@ -162,7 +165,12 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
           liveRef.current = next
           setLive(next)
           if (dir) return
-          landing = snapSideAt({ x: ev.clientX, y: ev.clientY }, vp)
+          /*
+           * **吸边用拖拽落点同一条边带**(09-25,`drop.edgeBandOf`:min(64, 轴 × 6%))。
+           * 从前这里是固定 24px,而拖这扇窗里的一格标签用的是另一把尺 —— 同一扇窗,
+           * 抓标题栏与抓标签在同一点松手,一个吸一个不吸。
+           */
+          landing = snapSideAt({ x: ev.clientX, y: ev.clientY }, vp, (side) => edgeBandOf(side, win))
           setSnapSide(landing)
         },
         end: () => {
@@ -180,7 +188,9 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
            * 原位」):从前这里调 `floatToEdge(id, …)`,而那一只说的是瓦的话 ——
            * 窗号不是瓦 id 时它一格都不动。病历整段在 `placement.placeFloatIn` 上。
            */
-          if (landing) floatWindowToEdge(id, landing)
+          // 落进一条空边 = 长出 30% 厚的新架子,与拖一格标签过去同一条规则(`placeOnEdge`)。
+          const side = landing
+          if (side) placeOnEdge(side, () => floatWindowToEdge(id, side))
           else moveFloat(id, final.x, final.y)
         },
         /*
