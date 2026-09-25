@@ -17,9 +17,7 @@ import zhipu from '../assets/providers/zhipu.svg'
  *
  * 键 = 家族 id,也就是 `@shared/provider-families` 的 `PROVIDER_FAMILIES.id`
  * (grok / openai / claude / kimi 四家)或独立供应商自己的 provider id
- * (deepseek / zhipu / openrouter / gemini / github-copilot)。`claude-code-agent`
- * (本机 Claude Code Agent 那一坑)若在名册里自成一行,画的是 Claude 的图标 ——
- * 同一家厂商的另一条接入路,没有第二枚标志。
+ * (deepseek / zhipu / openrouter / gemini / github-copilot)。
  *
  * 素材:`src/assets/providers/`,`@lobehub/icons-static-svg` 的**单色档**
  * (MIT,见那个目录的 LICENSE.md):`fill="currentColor"`、`viewBox 0 0 24 24`。
@@ -28,7 +26,6 @@ import zhipu from '../assets/providers/zhipu.svg'
 export const PROVIDER_ICONS: Readonly<Record<string, string>> = {
   openai,
   claude,
-  'claude-code-agent': claude,
   grok,
   kimi,
   deepseek,

@@ -307,22 +307,6 @@ const BUILTIN_LITERALS: readonly ProviderManifest[] = [
     supportsCustomBaseUrl: false,
     defaultModel: 'claude-code',
   },
-  {
-    id: 'claude-code-agent',
-    origin: 'builtin',
-    name: 'Claude Code Agent',
-    description: 'providers.desc.claude-code-agent',
-    icon: 'claude-code',
-    dialect: EXTERNAL_AGENT_DIALECT_ID,
-    auth: { kind: 'none' },
-    // 本地 CLI 驱动的就是 Claude 家的型号,目录借 anthropic 那本。
-    models: { kind: 'models.dev', key: 'anthropic' },
-    billing: 'api',
-    modelRules: 'claude',
-    defaultBaseUrl: '',
-    supportsCustomBaseUrl: false,
-    defaultModel: 'claude-code-agent',
-  },
 ]
 
 /**

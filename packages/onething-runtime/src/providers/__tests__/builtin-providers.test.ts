@@ -56,6 +56,6 @@ describe("onething builtin provider metadata", () => {
 			onethingBaseBuiltinProviders
 				.slice(onethingPortableBuiltinProviders.length)
 				.map((provider) => provider.id),
-		).toEqual(["acp", "claude-code-agent"]);
+		).toEqual(["acp"]);
 	});
 });

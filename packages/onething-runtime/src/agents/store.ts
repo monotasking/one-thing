@@ -47,7 +47,7 @@ export type OnethingAgentStatus = 'active' | 'retired'
 
 /**
  * 心智面的驱动方(域模型 M7,前瞻)。缺省视为 `{ type: 'native' }`。
- * `external` 指外部执行体连接器(如 'claude-code-agent')。A0 只定义语义,
+ * `external` 指外部执行体连接器(如 'acp')。A0 只定义语义,
  * 不接线任何行为。
  */
 export type OnethingAgentExecutor =

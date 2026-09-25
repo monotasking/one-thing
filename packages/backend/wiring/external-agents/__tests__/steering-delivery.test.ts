@@ -1,7 +1,7 @@
 /**
  * **中途追话的接线验收(装配层)**,2026-08-12。
  *
- * 连接器那一侧的机械由 `external-agents/__tests__/claude-code-steering.test.ts` 管;
+ * 连接器那一侧的机械归连接器自己的测试(ACP:`acp/__tests__/`);
  * 这里管的是**接线**,而接线上只有一个真正会出人命的问题:
  *
  *   一条追话到底进了几条路?
@@ -21,7 +21,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExternalAgentSteerOutcome } from '@onething/runtime/external-agents'
 
 const mocks = vi.hoisted(() => ({
-  /** E0 能力表里 claude-code 的 `steer`。 */
+  /** E0 能力表里 acp 的 `steer`。 */
   descriptorSteer: true,
   /** 连接器自己声明的 `capabilities.steer`。 */
   connectorSteer: true,
@@ -34,8 +34,8 @@ vi.mock('@onething/runtime/external-agents', async importOriginal => {
   const actual = await importOriginal<Record<string, unknown>>()
   return {
     ...actual,
-    createClaudeCodeConnector: () => ({
-      id: 'claude-code-agent',
+    createAcpConnector: () => ({
+      id: 'acp',
       get capabilities() {
         return { steer: mocks.connectorSteer, interrupt: true }
       },
@@ -53,7 +53,7 @@ vi.mock('@onething/runtime/external-agents', async importOriginal => {
 
 vi.mock('@onething/runtime/agents', () => ({
   findAgentExecutorDescriptor: (id: string) =>
-    id === 'claude-code-agent'
+    id === 'acp'
       ? { id, kind: 'external', capabilities: { steer: mocks.descriptorSteer } }
       : undefined,
 }))
@@ -80,7 +80,8 @@ vi.mock('../../logging/index.js', () => ({
   getLogger: () => noopLogger(),
   consolePort: () => ({ log: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() }),
 }))
-vi.mock('../host-tools.js', () => ({ resolveClaudeCodeHostToolSurface: vi.fn() }))
+vi.mock('../host-tools.js', () => ({ resolveHostToolSurface: vi.fn() }))
+vi.mock('../../acp/host-mcp-port.js', () => ({ createAcpHostMcpPort: () => ({}) }))
 
 const { getExternalAgentConnectors, takeExternalAgentSteering } = await import('../index.js')
 

@@ -71,7 +71,6 @@ export const kimiCodeBuiltinProvider = definitionById("kimi-code");
 export const githubCopilotBuiltinProvider = definitionById("github-copilot");
 export const codexBuiltinProvider = definitionById("codex");
 export const acpBuiltinProvider = definitionById(ONETHING_ACP_PROVIDER_ID);
-export const claudeCodeAgentBuiltinProvider = definitionById("claude-code-agent");
 
 /**
  * 外部执行体(方言 `external-agent`)只在桌面有意义,不进「可移植」那张表。

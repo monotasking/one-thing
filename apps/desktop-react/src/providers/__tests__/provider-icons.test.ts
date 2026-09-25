@@ -57,12 +57,9 @@ describe('供应商图标表', () => {
     expect(new Set(Object.values(PROVIDER_ICONS)).size).toBe(files.length)
   })
 
-  /*
-   * 同一家厂商的另一条接入路画同一枚标志 —— `claude-code-agent`(本机 CLI 那一坑)
-   * 若在名册里自成一行,画的是 Claude,不是一个孤零零的 'C'。
-   */
-  it('claude-code-agent 与 claude 是同一枚', () => {
-    expect(providerIconOf('claude-code-agent')).toBe(providerIconOf('claude'))
+  /* A6-b:本机 CLI 那一坑 `claude-code-agent` 退役,它那一行图标随之删掉。 */
+  it('退役的 claude-code-agent 不再有标志', () => {
+    expect(providerIconOf('claude-code-agent')).toBeUndefined()
   })
 
   it('认不出的家答 undefined —— 消费方回落首字母', () => {

@@ -98,12 +98,12 @@ vi.mock('../../permission/permission-grants.js', () => ({
 
 // 宿主工具面认识注册表与 v3 登记簿 —— 与本文件无关,别把它拖进来。
 vi.mock('../host-tools.js', () => ({
-  resolveClaudeCodeHostToolSurface: vi.fn(),
+  resolveHostToolSurface: vi.fn(),
 }))
 
 vi.mock('@onething/runtime/agents', () => ({
   findAgentExecutorDescriptor: (id: string) =>
-    id === 'claude-code-agent'
+    id === 'acp'
       ? { id, kind: 'external', capabilities: { interrupt: mocks.interruptCapable } }
       : undefined,
 }))
@@ -166,7 +166,7 @@ describe('外部审批走策略门(G1 + G2)', () => {
   it('SDK 的 toolUseID 一路带到 core 的 callId —— 卡片靠它才画得出来', async () => {
     const { askExternalAgentPermission } = await import('../index.js')
     const decision = askExternalAgentPermission({
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
       localSessionId: 'chat-1',
       messageId: 'msg-9',
       cwd: '/tmp/p',
@@ -183,8 +183,8 @@ describe('外部审批走策略门(G1 + G2)', () => {
     expect(prompt.messageId).toBe('msg-9')
     // 认不出的工具名维持 E4 的形状:卡片类型、标题、渲染层一个字都不用改。
     expect(prompt.type).toBe('external-agent')
-    expect(prompt.title).toBe('Claude Code: Glob')
-    expect(prompt.metadata).toMatchObject({ connectorId: 'claude-code-agent', toolName: 'Glob' })
+    expect(prompt.title).toBe('Glob')
+    expect(prompt.metadata).toMatchObject({ connectorId: 'acp', toolName: 'Glob' })
 
     Permission.respond({ sessionId: 'chat-1', permissionId: prompt.id, response: 'once' })
     await expect(decision).resolves.toEqual({ behavior: 'allow' })
@@ -218,7 +218,7 @@ describe('外部审批走策略门(G1 + G2)', () => {
 
     const { askExternalAgentPermission } = await import('../index.js')
     const decision = askExternalAgentPermission({
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
       localSessionId: 'fresh-1',
       // factory.ts:497 不传 messageId —— 这里逐字复现那个缺省。
       cwd: '/tmp/p',
@@ -247,7 +247,7 @@ describe('外部审批走策略门(G1 + G2)', () => {
     vi.useFakeTimers()
     const { askExternalAgentPermission } = await import('../index.js')
     const decision = askExternalAgentPermission({
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
       localSessionId: 'chat-1',
       messageId: 'msg-9',
       toolName: 'Bash',
@@ -274,7 +274,7 @@ describe('外部审批走策略门(G1 + G2)', () => {
   it('用户拒绝时的理由同样原样回到 SDK', async () => {
     const { askExternalAgentPermission } = await import('../index.js')
     const decision = askExternalAgentPermission({
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
       localSessionId: 'chat-1',
       messageId: 'msg-9',
       toolName: 'Write',
@@ -307,7 +307,7 @@ describe('外部工具的审批粒度(P0-4)', () => {
   it('Bash 走命令级:卡片标题是命令原文,grant 记的是命令模式而不是工具名', async () => {
     const { askExternalAgentPermission } = await import('../index.js')
     const decision = askExternalAgentPermission({
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
       localSessionId: 'chat-1',
       messageId: 'msg-9',
       cwd: '/tmp/p',
@@ -327,7 +327,7 @@ describe('外部工具的审批粒度(P0-4)', () => {
       command: 'rm -rf ./build',
       effectKind: 'bash',
       // 出处仍然写在卡上 —— 卡长得和本地一样之后,这是唯一的标记。
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
       externalAgentTool: 'Bash',
     })
 
@@ -341,7 +341,7 @@ describe('外部工具的审批粒度(P0-4)', () => {
     mocks.grants = [{ type: 'bash', pattern: 'rm *' }]
 
     await expect(askExternalAgentPermission({
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
       localSessionId: 'chat-1',
       messageId: 'msg-9',
       cwd: '/tmp/p',
@@ -353,7 +353,7 @@ describe('外部工具的审批粒度(P0-4)', () => {
 
     // 「总是允许 Bash」不再存在:另一条命令是另一档,照问不误。
     void askExternalAgentPermission({
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
       localSessionId: 'chat-1',
       messageId: 'msg-9',
       cwd: '/tmp/p',
@@ -370,7 +370,7 @@ describe('外部工具的审批粒度(P0-4)', () => {
   it('白名单命令与本地一样直接放行,不再逼用户去点「总是允许 Bash」', async () => {
     const { askExternalAgentPermission } = await import('../index.js')
     await expect(askExternalAgentPermission({
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
       localSessionId: 'chat-1',
       messageId: 'msg-9',
       cwd: '/tmp/p',
@@ -384,7 +384,7 @@ describe('外部工具的审批粒度(P0-4)', () => {
   it('文件工具按路径,越界写把 external 位立起来', async () => {
     const { askExternalAgentPermission } = await import('../index.js')
     void askExternalAgentPermission({
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
       localSessionId: 'chat-1',
       messageId: 'msg-9',
       cwd: '/tmp/p',
@@ -405,7 +405,7 @@ describe('外部工具的审批粒度(P0-4)', () => {
   it('界内的写按目录记档,external 位不立', async () => {
     const { askExternalAgentPermission } = await import('../index.js')
     void askExternalAgentPermission({
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
       localSessionId: 'chat-1',
       messageId: 'msg-9',
       cwd: '/tmp/p',
@@ -427,7 +427,7 @@ describe('提问的落点(§4)', () => {
   it('pair 房没有人类 → 当场 declined,不发起一次空等', async () => {
     const { askExternalAgentInteraction } = await import('../index.js')
     const answer = await askExternalAgentInteraction({
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
       localSessionId: 'pair-exec',
       toolCallId: 'toolu_ask',
       questions: [{ id: 'q0', question: 'A 还是 B?', options: [{ label: 'A' }, { label: 'B' }] }],
@@ -441,7 +441,7 @@ describe('提问的落点(§4)', () => {
   it('有人在的房间照旧起一张真卡,并按 toolCallId 归位', async () => {
     const { askExternalAgentInteraction } = await import('../index.js')
     const answer = askExternalAgentInteraction({
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
       localSessionId: 'team-exec',
       toolCallId: 'toolu_ask',
       questions: [{ id: 'q0', question: 'A 还是 B?', options: [{ label: 'A' }, { label: 'B' }] }],
@@ -484,7 +484,7 @@ describe('提问的落点(§4)', () => {
 
     const { askExternalAgentInteraction } = await import('../index.js')
     const answer = askExternalAgentInteraction({
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
       localSessionId: 'team-exec',
       // 后台子代理的嵌套 tool_use id:消息上没有这张工具卡,第 1 档必然落空。
       toolCallId: 'toolu_nested_ask',
@@ -512,7 +512,7 @@ describe('提问的落点(§4)', () => {
 describe('停止链上的外部中断(G10)', () => {
   it('能力表说有 interrupt 才调它', async () => {
     const module = await import('../index.js')
-    const connector = module.getExternalAgentConnectors()['claude-code-agent']!
+    const connector = module.getExternalAgentConnectors()['acp']!
     const spy = vi.spyOn(connector, 'interrupt').mockResolvedValue(undefined)
 
     await module.interruptExternalAgentSessions('exec-1')

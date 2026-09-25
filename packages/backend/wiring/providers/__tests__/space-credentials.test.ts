@@ -121,9 +121,9 @@ describe('按「会话归属的 space」解析,不是「当前 space」', () => 
 
   it('从不问凭证的 provider(名录里 requiresApiKey === false)原样透传', () => {
     mocks.sessions.set('s-work', { workspaceId: 'work' })
-    mocks.credentialFreeProviders = new Set(['claude-code-agent'])
-    const config = { model: 'claude-code-agent' }
-    expect(applySessionSpaceCredentials('s-work', 'claude-code-agent', config)).toBe(config)
+    mocks.credentialFreeProviders = new Set(['acp'])
+    const config = { model: 'claude-code' }
+    expect(applySessionSpaceCredentials('s-work', 'acp', config)).toBe(config)
   })
 
   it('非 default 空间的会话:用本空间的 entry 覆盖,并写得出 credentialId', () => {

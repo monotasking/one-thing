@@ -363,7 +363,7 @@ export type CreateSessionOutcome =
        * 但它没有归进那个项目 —— 调用方要把这句说给用户听,不许无声。
        * 08-31 真机账单:壳走 http 面,沙箱夹持把落目录逐次拒掉,而这里以前
        * 只 catch 异常、不看 `success:false`,错误无声蒸发,会话落成空目录,
-       * claude-code-agent 因「未绑定工作目录」拒启。
+       * 外部 agent(当时的 claude-code-agent)因「未绑定工作目录」拒启。
        */
       workdirError?: string
     }

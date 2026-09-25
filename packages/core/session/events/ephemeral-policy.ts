@@ -88,8 +88,6 @@ const CODEC = 'packages/core/session/__tests__/session-chunk-codec.test.ts'
  * 还没有插件状态 UI,壳侧那一半证明暂缺,记在下面各条的 note 里。
  */
 const PLUGIN_STATUS = 'packages/backend/wiring/plugins/__tests__/status.test.ts'
-/** 结算态的产地(§17.8 前置批,留账 #10 结清)。 */
-const PLUGIN_STATUS_LANDING = 'packages/backend/wiring/external-agents/__tests__/background-status.test.ts'
 
 export const SESSION_EPHEMERAL_FACT_POLICY: readonly SessionEphemeralFactPolicy[] = [
   {
@@ -175,10 +173,7 @@ export const SESSION_EPHEMERAL_FACT_POLICY: readonly SessionEphemeralFactPolicy[
     proofKind: 'substitute-derivable',
     proofs: [
       { file: PLUGIN_STATUS, test: 'refuses a session with no running stream — status lives inside a bubble' },
-      { file: PLUGIN_STATUS_LANDING, test: 'settled 写一条 plugin/status;running 一条都不写' },
       { file: PLUGIN_STATUS, test: 'sweeps a whole session and reports every part that has to be taken down' },
-      // 取代者**转真**:结算那一刻真的写下了一条 `plugin/status`。
-      { file: PLUGIN_STATUS_LANDING, test: 'settled 写一条 plugin/status;running 一条都不写' },
     ],
     note: '**留账 #10 已结清(§17.8 前置批,2026-08-28)**:结算态从此有产地 —— '
       + '全仓唯一的结算态生产者(后台子代理指示器,`backend/wiring/external-agents/'
@@ -187,6 +182,9 @@ export const SESSION_EPHEMERAL_FACT_POLICY: readonly SessionEphemeralFactPolicy[
       + '(`materializeContentParts` 末尾)。**成对交付**:老账本没有这条事件 = 折叠侧'
       + '没有这一格 = 与从前"重开会话就没了"逐字相同,变化只发生在新写的会话上。'
       + '未结算的那一档仍然是短命的 —— 这条策略表条目说的正是它。'
+      + '**A6-b(2026-09-26)**:那位唯一的结算态生产者随 Claude SDK 连接器一起退役'
+      + '(`background-status.ts` 与它的测试删除;claude-agent-acp 自己折叠子代理,我们只看到顶层),'
+      + '于是今天没有生产者写 `plugin/status`;折叠侧那一格留着,老账本里的那条照旧物化。'
   },
   {
     id: 'codec.unflushed-delta',

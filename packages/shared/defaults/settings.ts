@@ -152,12 +152,6 @@ export const DEFAULT_PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
     selectedModels: ['claude-code', 'codex', 'gemini', 'copilot'],
     enabled: false,
   },
-  [AIProvider.ClaudeCodeAgent]: {
-    model: 'claude-code-agent',
-    // 'claude-code-agent' = whatever the local CLI is configured to use.
-    selectedModels: ['claude-code-agent', 'claude-fable-5', 'claude-opus-4-8', 'claude-sonnet-5'],
-    enabled: false,
-  },
   [AIProvider.Custom]: {
     apiKey: '',
     baseUrl: '',

@@ -2,7 +2,7 @@
  * **E3 的验收**:外部 agent 的发言权真的回到了房间。
  *
  * 这个文件回答的是整期方案的那个核心问句(§0.1 原则 2「发言权归房间,永不外包」):
- * 当 Claude Code 经注入的 MCP 调 `send_message` 时,那句话是**经持牌路径**落进
+ * 当外部 agent 经注入的 MCP 调 `send_message` 时,那句话是**经持牌路径**落进
  * 房间的 —— 与本地 agent 一字不差的同一条路 —— 而不是靠收养兜底把回合正文搬运
  * 进去(§0 诊断把那条路称作「降级冒充设计」)。
  *
@@ -12,16 +12,19 @@
  *  3. 房间里因此**有**这一轮的发言 ⇒ 收养兜底的触发条件(零 say)不成立。
  *
  * 外加装配面的那几道门:场子门现算、工具从注册表取、解绑真的解。
+ *
+ * A6-b(2026-09-26):Claude SDK 那条进程内出口(`resolveClaudeCodeHostToolSurface`)随连接器
+ * 退役;这里改用 `resolveHostToolSurface` + `bindHostToolContext` —— ACP 桥
+ * (`wiring/acp/host-mcp-bridge.ts`)做的就是这两步,只是按桥凭据而不是按回合绑。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { collectLogRecordsForTests } from '../../logging/index.js'
 import { bindSessionFacadeMock } from '../../../session/testing/facade-mock.js'
 import { COLLAB_SAY_SOURCE } from '@onething/runtime/collab'
-import { tmpdir } from 'node:os'
-import { planAgentLoopRuntimePreparation } from '@onething/core/engine'
-import { createAgentProviderFromRuntime, type AgentProviderRuntimeConfig } from '@onething/runtime/agent-loop/providers/factory'
 import {
+  bindHostToolContext,
   clearHostToolContexts,
+  hostMcpToolName,
   resolveHostToolContext,
   toHostMcpToolDefinition,
 } from '@onething/runtime/external-agents'
@@ -75,15 +78,6 @@ vi.mock('../../../session/access.js', async (importOriginal) => {
   }) }
 })
 
-// Keep the actual host tool wrapper and MCP handler, replacing only SDK registration.
-vi.mock('@onething/runtime/external-agents', async (importOriginal) => ({
-  ...await importOriginal<typeof import('@onething/runtime/external-agents')>(),
-  createHostMcpServer: async (input: { tools: typeof mocks.hostTools }) => {
-    mocks.hostTools = [...input.tools]
-    return { name: 'onething', config: {}, toolNames: input.tools.map(tool => `mcp__onething__${tool.id}`) }
-  },
-}))
-
 vi.mock('../../toolkit/wiring.js', () => ({
   runToolkitToolDirectly: async (_id: string, args: Record<string, unknown>, context: {
     sessionId: string; messageId: string; executionContext?: unknown
@@ -133,7 +127,32 @@ vi.mock('../../collab/budget.js', () => ({
   isRoomOverBudget: async () => false,
 }))
 
-const { resolveClaudeCodeHostToolSurface } = await import('../host-tools.js')
+const { resolveHostToolSurface } = await import('../host-tools.js')
+
+/**
+ * 解析工具面 + 绑语境 —— 桥在一条会话上做的那两步(按回合绑,测试里一轮就是一张凭据)。
+ * 取不到工具面 = 不绑、不注。
+ */
+async function bindHostSurface(request: {
+  localSessionId: string
+  executionContext?: unknown
+  messageId?: string
+  cwd?: string
+}): Promise<{ toolNames: string[]; release: () => void } | undefined> {
+  const surface = await resolveHostToolSurface(request)
+  if (!surface) return undefined
+  mocks.hostTools = [...surface.tools]
+  const release = bindHostToolContext({
+    agentId: surface.agentId,
+    executionContext: surface.executionContext,
+    roomSessionId: surface.roomSessionId,
+    execSessionId: surface.execSessionId,
+    ...(surface.leaseId ? { leaseId: surface.leaseId } : {}),
+    ...(request.messageId ? { messageId: request.messageId } : {}),
+    ...(request.cwd ? { workingDirectory: request.cwd } : {}),
+  })
+  return { toolNames: surface.tools.map(tool => hostMcpToolName(tool.id)), release }
+}
 const { clearCollabSayIdempotence, speakIntoCollabRoom }
   = await import('../../collab/say-tool.js')
 const { Catalog, Decision, ToolRunner } = await import('@onething/core/toolkit')
@@ -271,7 +290,7 @@ async function callSendMessage(args: Record<string, unknown>) {
 }
 
 describe('发言权真的收回来了', () => {
-  it('可信 owner 从 provider 经 connector/MCP 到工具，参数不能越权改写身份', async () => {
+  it('可信 owner 经 MCP 到工具,参数不能越权改写身份', async () => {
     const owner = { userId: 'alice', workspaceId: 'team-a' }
     for (const id of [ROOM, EXEC]) Object.assign(mocks.sessions.get(id)!, {
       ownerUserId: owner.userId, ownerWorkspaceId: owner.workspaceId,
@@ -282,33 +301,16 @@ describe('发言权真的收回来了', () => {
       room: { memberAgentIds: ['fe'] }, messages: [],
     } satisfies FakeSession)
     startTurn()
-    const { createClaudeCodeConnector } = await import('@onething/runtime/external-agents')
-    const results: Awaited<ReturnType<typeof callSendMessage>>[] = []
-    const connector = createClaudeCodeConnector({
-      hostToolSurface: resolveClaudeCodeHostToolSurface,
-      queryFn: () => (async function* () {
-        yield { type: 'system' as const, subtype: 'init' as const, session_id: 'sdk-owned' }
-        results.push(await callSendMessage({ content: '本人发言' }))
-        results.push(await callSendMessage({ content: '本人发言' }))
-        results.push(await callSendMessage({
-          content: '越权发言', room: 'foreign-room',
-          executionContext: { userId: 'bob', workspaceId: 'team-a' },
-        }))
-        yield { type: 'result' as const, subtype: 'success' as const }
-      })(),
-    })
-    const providerConfig: AgentProviderRuntimeConfig & { model: string } = { model: 'claude-code-agent' }
-    const preparation = planAgentLoopRuntimePreparation({
-      ctx: { sessionId: EXEC, executionContext: owner, providerConfig, settings: {} },
-      session: { workingDirectory: tmpdir() },
-    })
-    const provider = createAgentProviderFromRuntime('claude-code-agent', preparation.providerRuntimeConfig, {
-      ...preparation.providerHostContext,
-      externalAgentConnectors: { 'claude-code-agent': connector },
-    })!
-    for await (const _event of provider.streamTurn!({
-      model: 'claude-code-agent', messages: [{ role: 'user', content: '汇报进展' }], turn: 1,
-    })) { /* consume the real provider/connector bridge */ }
+    const bound = await bindHostSurface({ localSessionId: EXEC, executionContext: owner, cwd: '/tmp' })
+    const results = [
+      await callSendMessage({ content: '本人发言' }),
+      await callSendMessage({ content: '本人发言' }),
+      await callSendMessage({
+        content: '越权发言', room: 'foreign-room',
+        executionContext: { userId: 'bob', workspaceId: 'team-a' },
+      }),
+    ]
+    bound?.release()
     expect(results[0].isError).toBeUndefined()
     expect(results[1]).toEqual(results[0])
     expect(results[2].isError).toBe(true)
@@ -320,7 +322,7 @@ describe('发言权真的收回来了', () => {
 
   it('经 MCP 的 send_message 走持牌路径落库,不是 v2 落库分支', async () => {
     startTurn()
-    const injection = await resolveClaudeCodeHostToolSurface({
+    const injection = await bindHostSurface({
       localSessionId: EXEC,
       cwd: '/tmp',
     })
@@ -345,12 +347,12 @@ describe('发言权真的收回来了', () => {
     //    因为消息是房间自己写的(真机里由 RoomActor 播)。
     expect(mocks.emitted.some(entry => entry.event.type === 'message:user-created')).toBe(false)
 
-    injection?.release?.()
+    injection?.release()
   })
 
   it('收养兜底不该被触发 —— 房间里确实有这一轮的发言', async () => {
     startTurn()
-    await resolveClaudeCodeHostToolSurface({ localSessionId: EXEC, cwd: '/tmp' })
+    await bindHostSurface({ localSessionId: EXEC, cwd: '/tmp' })
     await callSendMessage({ content: '搞定了' })
 
     // 收养的触发条件是「本回合零 say」(`engine-mind-port` 的 harvested.length === 0,
@@ -361,7 +363,7 @@ describe('发言权真的收回来了', () => {
 
   it('幂等窗生效:同一句话两次 = 房间里一条消息', async () => {
     startTurn()
-    await resolveClaudeCodeHostToolSurface({ localSessionId: EXEC, cwd: '/tmp' })
+    await bindHostSurface({ localSessionId: EXEC, cwd: '/tmp' })
 
     const first = await callSendMessage({ content: '好的' })
     const second = await callSendMessage({ content: '好的' })
@@ -383,7 +385,7 @@ describe('发言权真的收回来了', () => {
       epoch: 1,
       startedAt: Date.now(),
     })
-    await resolveClaudeCodeHostToolSurface({ localSessionId: EXEC, cwd: '/tmp' })
+    await bindHostSurface({ localSessionId: EXEC, cwd: '/tmp' })
 
     const result = await callSendMessage({ content: '还在吗' })
     expect(result.content[0].text).toContain('这张牌不是你的')
@@ -392,7 +394,7 @@ describe('发言权真的收回来了', () => {
 
   it('没有 v3 回合在飞时回落 v2 落库路径 —— 工作台/旧形状的房内流照旧', async () => {
     // 不登记回合:`resolveCollabV3SpeakRoute` 不命中。
-    await resolveClaudeCodeHostToolSurface({ localSessionId: EXEC, cwd: '/tmp' })
+    await bindHostSurface({ localSessionId: EXEC, cwd: '/tmp' })
     await callSendMessage({ content: '汇报一下' })
 
     expect(speakPort).not.toHaveBeenCalled()
@@ -402,7 +404,7 @@ describe('发言权真的收回来了', () => {
 
   it('本地回合与外部回合共用同一个幂等窗 —— 它是「同一次调用重复到达」的窗', async () => {
     startTurn()
-    await resolveClaudeCodeHostToolSurface({ localSessionId: EXEC, cwd: '/tmp' })
+    await bindHostSurface({ localSessionId: EXEC, cwd: '/tmp' })
 
     await callSendMessage({ content: '同一句' })
     // 本地路径直接调执行器(引擎的工具循环走的就是这条)。
@@ -417,7 +419,7 @@ describe('发言权真的收回来了', () => {
 describe('装配面:场子门、注册表、语境绑定', () => {
   it('绑定的语境带上这一轮的 agent / 房 / 牌', async () => {
     startTurn()
-    const injection = await resolveClaudeCodeHostToolSurface({
+    const injection = await bindHostSurface({
       localSessionId: EXEC,
       messageId: 'assistant-1',
       cwd: '/work',
@@ -433,20 +435,19 @@ describe('装配面:场子门、注册表、语境绑定', () => {
       workingDirectory: '/work',
     })
 
-    injection?.release?.()
+    injection?.release()
     expect(resolveHostToolContext(EXEC)).toBeUndefined()
   })
 
-  it('注入的工具全名带前缀,SDK 侧看到的就是它们', async () => {
+  it('注入的工具全名带前缀,agent 侧看到的就是它们', async () => {
     startTurn()
-    const injection = await resolveClaudeCodeHostToolSurface({
+    const injection = await bindHostSurface({
       localSessionId: EXEC,
       cwd: '/tmp',
     })
     // 注册表里只放了 send_message,所以只有它 —— 其余三个取不到就不注(不假装)。
     expect(injection?.toolNames).toEqual(['mcp__onething__send_message'])
-    expect(Object.keys(injection!.mcpServers)).toEqual(['onething'])
-    injection?.release?.()
+    injection?.release()
   })
 
   it('普通对话:场子门关着,一个都不注 —— 这是门第一次对外部 agent 生效', async () => {
@@ -456,7 +457,7 @@ describe('装配面:场子门、注册表、语境绑定', () => {
       messages: [],
     } satisfies FakeSession)
 
-    const injection = await resolveClaudeCodeHostToolSurface({
+    const injection = await bindHostSurface({
       localSessionId: 'chat-1',
       cwd: '/tmp',
     })
@@ -467,7 +468,7 @@ describe('装配面:场子门、注册表、语境绑定', () => {
   it('agent 白名单里没有协作工具时不注(白名单那一道也真的在)', async () => {
     startTurn()
     mocks.profileTools = ['read', 'write']
-    const injection = await resolveClaudeCodeHostToolSurface({
+    const injection = await bindHostSurface({
       localSessionId: EXEC,
       cwd: '/tmp',
     })
@@ -478,7 +479,7 @@ describe('装配面:场子门、注册表、语境绑定', () => {
     startTurn()
     configureToolkitCatalog(new Catalog())
     const logs = collectLogRecordsForTests()
-    const injection = await resolveClaudeCodeHostToolSurface({
+    const injection = await bindHostSurface({
       localSessionId: EXEC,
       cwd: '/tmp',
     })
@@ -490,11 +491,11 @@ describe('装配面:场子门、注册表、语境绑定', () => {
   })
 
   it('查无此会话 / 没有同事身份时不注', async () => {
-    expect(await resolveClaudeCodeHostToolSurface({ localSessionId: 'nope', cwd: '/tmp' }))
+    expect(await bindHostSurface({ localSessionId: 'nope', cwd: '/tmp' }))
       .toBeUndefined()
 
     mocks.sessions.set('exec-2', { id: 'exec-2', kind: 'agent', messages: [] } satisfies FakeSession)
-    expect(await resolveClaudeCodeHostToolSurface({ localSessionId: 'exec-2', cwd: '/tmp' }))
+    expect(await bindHostSurface({ localSessionId: 'exec-2', cwd: '/tmp' }))
       .toBeUndefined()
   })
 })

@@ -3489,7 +3489,7 @@ describe('§16.9: 工具自报结局的产地(tool/annotate)', () => {
 
 describe('§13.9: 外部执行器的内轮分界 / 用量归属 / 协作回合标记', () => {
   /**
-   * 真机 `web-14d8bc3f`(provider `claude-code-agent`,一次工具调用)的最小复现。
+   * 真机 `web-14d8bc3f`(provider 当时是 A6-b 退役前的 `claude-code-agent`,一次工具调用)的最小复现。
    *
    * 账本上**一次请求**(`request/start` 只有一条),而引擎的回合号在中途 +1:
    * 连接器在工具结果之后发了一条 `finish(tool_calls)` 当轮分界。于是
@@ -3502,7 +3502,7 @@ describe('§13.9: 外部执行器的内轮分界 / 用量归属 / 协作回合�
     scenario.user({ id: 'u1', content: '17*23?' })
     scenario.turn({
       runId: 'r1', messageId: 'a1', kind: 'send',
-      provider: 'claude-code-agent', model: 'claude-sonnet-5',
+      provider: 'acp', model: 'claude-code',
       requests: [{
         tools: [{
           callId: 'c1', name: 'Bash', args: { command: 'echo 391' },
@@ -3515,7 +3515,7 @@ describe('§13.9: 外部执行器的内轮分界 / 用量归属 / 协作回合�
             resultText: 'body', outcome: 'ok', streamedArgs: true,
           }],
           text: '17 × 23 = 391',
-          providerData: { provider: 'claude-code-agent', type: 'cost', costUSD: 0.016 },
+          providerData: { provider: 'acp', type: 'cost', costUSD: 0.016 },
         },
         usage: { inputTokens: 4, outputTokens: 93 },
       }],
@@ -3530,7 +3530,7 @@ describe('§13.9: 外部执行器的内轮分界 / 用量归属 / 协作回合�
       { type: 'text', content: '17 × 23 = 391', turnIndex: 2 },
       {
         type: 'provider-data',
-        providerData: { provider: 'claude-code-agent', type: 'cost', costUSD: 0.016 },
+        providerData: { provider: 'acp', type: 'cost', costUSD: 0.016 },
         turnIndex: 2,
       },
     ])
@@ -3726,11 +3726,11 @@ describe('§13.10: 压缩标记只有一格 / agent 切换进账本', () => {
     const events: SessionLogEventRecord[] = [
       { seq: 1, time: 1, type: 'session/created', data: { sessionId: 's1', agentId: 'onething', model: 'm1', provider: 'p1' } },
       { seq: 2, time: 2, type: 'user/message', data: { message: { id: 'u1', role: 'user', content: 'hi', timestamp: 2 } }, surfaceOp: 'append' },
-      { seq: 3, time: 3, type: 'session/agent-changed', data: { from: 'onething', to: 'claude-code-agent' } },
+      { seq: 3, time: 3, type: 'session/agent-changed', data: { from: 'onething', to: 'external-coder' } },
     ] as unknown as SessionLogEventRecord[]
 
     const state = foldSessionProjection(events)
-    expect(state.sessionMeta).toEqual({ agentId: 'claude-code-agent', model: 'm1', provider: 'p1' })
+    expect(state.sessionMeta).toEqual({ agentId: 'external-coder', model: 'm1', provider: 'p1' })
     // 屏幕上只有那条用户消息。
     expect(projectChatMessages(events).messages.map(message => message.id)).toEqual(['u1'])
   })

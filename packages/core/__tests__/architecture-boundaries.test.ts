@@ -180,7 +180,7 @@ describe('architecture boundaries', () => {
    */
   it('keeps the provider-agnostic layers free of provider names', () => {
     const providerNames = [
-      'codex', 'claude-code-agent', 'deepseek', 'gemini',
+      'codex', 'acp', 'deepseek', 'gemini',
       'openai-compatible', 'qwen', 'zhipu', 'github-copilot', 'openrouter',
     ]
     const idComparison = new RegExp(

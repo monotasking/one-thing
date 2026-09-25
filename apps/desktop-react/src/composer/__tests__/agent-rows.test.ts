@@ -5,9 +5,9 @@ import { UNKNOWN_MODEL_READINGS } from '../../data/models-source'
 import { acpProviderIdOf, splitPickerSections } from '../agent-rows'
 
 /**
- * 选择器的「Agent」一组(2026-09-26 用户裁定:agent 不许被画成普通模型)。钉五件:
+ * 选择器的「Agent」一组(2026-09-26 用户裁定:agent 不许被画成普通模型)。钉四件
+ * (原来的 ② 本地 CLI `claude-code-agent` 整组搬进 Agent 随它 A6-b 退役删掉):
  *  ① ACP 那一家的行**不**从 `selectedModels` 来,从名册来(启用着的那些);
- *  ② 本地 CLI(claude-code-agent)那一家整组搬进 Agent;
  *  ③ 目录说是 agent 的行(`kind: 'agent'`)也搬,判据读 kind 不读 id;
  *  ④ 没装的照样列,状态字是 missing;还没探测过就不给状态字;
  *  ⑤ 当前选中那一台哪怕被关了也列(列表里找不到当前选中是更坏的谎)。
@@ -34,12 +34,11 @@ function agent(id: string, over: Partial<ACPAgentState> = {}, config: Partial<AC
 
 const GROUPS: ProviderGroup[] = [
   { id: 'claude', provider: 'Claude', models: [opt('claude-sonnet-5'), opt('odd-agent', { kind: 'agent' })] },
-  { id: 'claude-code-agent', provider: 'Claude Code', models: [opt('claude-code-agent'), opt('claude-opus-4-8')] },
   { id: 'acp', provider: 'ACP', models: [opt('stale-selected')] },
 ]
 
 describe('splitPickerSections', () => {
-  it('模型的组里没有任何 agent 行;Agent 一组按「本地 CLI → 名册」排', () => {
+  it('模型的组里没有任何 agent 行;Agent 一组按「目录标的 agent → 名册」排', () => {
     const { modelGroups, agentRows } = splitPickerSections({
       groups: GROUPS,
       acpProviderId: 'acp',
@@ -50,8 +49,6 @@ describe('splitPickerSections', () => {
     expect(modelGroups.map((g) => [g.id, g.models.map((m) => m.model)])).toEqual([['claude', ['claude-sonnet-5']]])
     expect(agentRows.map((r) => [r.providerId, r.model, r.label])).toEqual([
       ['claude', 'odd-agent', 'odd-agent'],
-      ['claude-code-agent', 'claude-code-agent', 'Claude Code'],
-      ['claude-code-agent', 'claude-opus-4-8', 'claude-opus-4-8'],
       // ACP:名册里启用着的那一台;`selectedModels` 里那条 stale-selected 不再说了算。
       ['acp', 'gemini', 'GEMINI'],
     ])

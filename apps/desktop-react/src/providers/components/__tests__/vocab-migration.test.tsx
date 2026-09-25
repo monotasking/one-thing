@@ -76,7 +76,7 @@ const EMPTY_POOL: PoolView = {
 function mode(over: Partial<ProviderMode> = {}): ProviderMode {
   return {
     providerId: 'demo',
-    kind: 'localCli',
+    kind: 'acp',
     name: 'demo',
     requiresApiKey: false,
     requiresOAuth: false,

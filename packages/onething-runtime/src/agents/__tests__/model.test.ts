@@ -42,7 +42,7 @@ function fullAgent(): OnethingAgentDefinition {
     maxTurns: 8,
     kind: 'colleague',
     status: 'active',
-    executor: { type: 'external', connectorId: 'claude-code-agent' },
+    executor: { type: 'external', connectorId: 'acp' },
   }
 }
 
@@ -175,7 +175,7 @@ describe('projections (M1)', () => {
     expect(agentMind(fullAgent())).toEqual({
       systemPrompt: 'you are 小李',
       model: { providerId: 'claude', modelId: 'sonnet' },
-      executor: { type: 'external', connectorId: 'claude-code-agent' },
+      executor: { type: 'external', connectorId: 'acp' },
     })
   })
 

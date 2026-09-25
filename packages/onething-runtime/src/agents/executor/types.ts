@@ -7,7 +7,7 @@
  *
  * 这里定义的是**执行器**:上层(AgentActor / MindPort / 引擎)只知道「有一个
  * 执行器能跑回合」,不知道思考在哪里发生。local = 本引擎 + 我们的工具循环;
- * external = 包住一个 connector(claude-code / acp / 未来的 codex)。
+ * external = 包住一个 connector(今天只有 acp;Claude Code / Codex 都是 ACP 名册里的一台)。
  *
  * E0 只落契约与骨架:`runTurn` 的真实驱动在 E4 接(connector 改吃这个契约),
  * `interrupt`/`dispose` 的调用者在 E5 接(停止三级)。本期先让能力查询有唯一
@@ -20,7 +20,7 @@ import type { AgentTurnRequest, AgentTurnStreamEvent } from '@onething/core/agen
  * 被认出来的,E0 保持这个映射不变以维持向后兼容;真正的选择权在 E4 之后
  * 交给 agent 配置里的 `executor` 字段。
  */
-export type AgentExecutorId = 'local' | 'claude-code-agent' | 'acp' | (string & {})
+export type AgentExecutorId = 'local' | 'acp' | (string & {})
 
 /** 思考在哪里发生。这是 local/external 唯一的本质差别。 */
 export type AgentExecutorKind = 'local' | 'external'

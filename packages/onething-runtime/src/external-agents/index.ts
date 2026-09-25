@@ -1,20 +1,5 @@
 export { ACP_CONNECTOR_ID, capabilitiesFromHandshake, createAcpConnector } from './acp-connector.js'
 export type { AcpConnectorDeps, AcpConnectorOptions, AcpHostMcpPort, AcpMcpCapabilitiesInput } from './acp-connector.js'
-export {
-  ASK_USER_QUESTION_TOOL,
-  askUserQuestionOutput,
-  askUserQuestionToInteraction,
-  CLAUDE_CODE_AGENT_CONNECTOR_ID,
-  createClaudeCodeConnector,
-  DEFAULT_USER_DIALOG_KINDS,
-  userDialogToInteraction,
-} from './claude-code-connector.js'
-export type {
-  ClaudeCodeConnectorOptions,
-  ClaudeCodeQueryFn,
-  ClaudeCodeQueryOptions,
-  ClaudeCodeSdkMessage,
-} from './claude-code-connector.js'
 export { describeAcpToolPermission, describeExternalToolPermission } from './permission-effects.js'
 export { buildTextDiffChange } from './diff-changes.js'
 export type { TextDiffChange } from './diff-changes.js'
@@ -28,7 +13,6 @@ export {
   activeHostToolContextCount,
   bindHostToolContext,
   clearHostToolContexts,
-  createHostMcpServer,
   filterHostToolSurface,
   HOST_MCP_SERVER_NAME,
   HOST_MCP_TOOL_CANDIDATES,
@@ -43,13 +27,8 @@ export {
   toHostMcpToolDefinition,
 } from './host-mcp/index.js'
 export type {
-  CreateHostMcpServerOptions,
-  CreateSdkMcpServerFn,
   HostMcpCallResult,
   HostMcpHostTool,
-  HostMcpInjection,
-  HostMcpServer,
-  HostMcpSurfaceResolver,
   HostMcpToolDefinition,
   HostToolSurfaceInput,
   HostToolTurnContext,

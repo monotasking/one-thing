@@ -147,10 +147,9 @@ describe('applySessionProviderGates', () => {
   })
 
   it('从不问凭证的那几只(ACP / 本地 agent)不过这道闸 —— 它们没有开关可拨', () => {
-    mocks.credentialFreeProviders.add('claude-code-agent')
-    mocks.providersBySpace.default = { acp: { enabled: false }, 'claude-code-agent': { enabled: false } }
+    mocks.credentialFreeProviders.add('acp')
+    mocks.providersBySpace.default = { acp: { enabled: false } }
     expect(marker(applySessionProviderGates('s1', 'acp', { model: 'a' }))).toBeUndefined()
-    expect(marker(applySessionProviderGates('s1', 'claude-code-agent', { model: 'c' }))).toBeUndefined()
   })
 })
 

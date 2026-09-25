@@ -1,8 +1,8 @@
 /**
  * ACP 宿主工具面的**桥与凭据**(A4-a,`docs/design/acp-integration-2026-09.md` §3.6 / §11.5)。
  *
- * 今天的宿主工具面是一台进程内 MCP 实例(`createSdkMcpServer`),只有 Claude SDK 吃得下。
- * ACP 的 `NewSessionRequest.mcpServers` 只认可序列化的四种形状,所以这里给它两条路:
+ * A4-a 之前宿主工具面是一台进程内 MCP 实例(Claude SDK 的 `createSdkMcpServer`,A6-b 随 SDK
+ * 连接器退役),只有 SDK 吃得下。ACP 的 `NewSessionRequest.mcpServers` 只认可序列化的四种形状,所以这里给它两条路:
  *
  *  - **stdio 桥**(通吃):`{ name: 'onething', command: <这台宿主的 node / Electron>,
  *    args: [acp-mcp-bridge.cjs], env: [URL, 凭据, ELECTRON_RUN_AS_NODE=1] }` —— agent 把桥
@@ -24,7 +24,7 @@
  *
  * ## 工具集
  *
- * 与 Claude 路同一张表(`resolveHostToolSurface`:场子门 + 白名单过滤后的协作四件),外加
+ * 工具面是 `wiring/external-agents/host-tools.ts` 那一张表(`resolveHostToolSurface`:场子门 + 白名单过滤后的协作四件),外加
  * `send_notification`(给人发一条通知,不进聊天正文)。表每次现问 —— 场子、白名单、手里
  * 那张牌都可能在两次调用之间变。
  *

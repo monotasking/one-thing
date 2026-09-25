@@ -18,11 +18,11 @@ import { getOnethingModelsDevProviderId } from '../models-dev-catalog.js'
 afterEach(() => resetProviderManifestRegistryForTests())
 
 describe('builtin provider manifests', () => {
-  it('declares the sixteen builtins, once each, in the historical order', () => {
+  it('declares the fifteen builtins, once each, in the historical order (claude-code-agent retired in A6-b)', () => {
     expect(BUILTIN_PROVIDER_MANIFESTS.map((manifest) => manifest.id)).toEqual([
       'openai', 'claude', 'deepseek', 'kimi', 'zhipu', 'qwen', 'openrouter', 'gemini',
       'claude-code', 'grok', 'grok-oauth', 'kimi-code', 'github-copilot', 'codex',
-      'acp', 'claude-code-agent',
+      'acp',
     ])
     expect(BUILTIN_PROVIDER_MANIFESTS.every((manifest) => manifest.origin === 'builtin')).toBe(true)
   })
@@ -79,7 +79,6 @@ describe('builtin provider manifests', () => {
     expect(getOnethingModelsDevProviderId('zhipu')).toBe('zhipuai')
     expect(getOnethingModelsDevProviderId('grok')).toBe('xai')
     expect(getOnethingModelsDevProviderId('grok-oauth')).toBe('xai')
-    expect(getOnethingModelsDevProviderId('claude-code-agent')).toBe('anthropic')
     expect(getOnethingModelsDevProviderId('kimi-code')).toBe('kimi-for-coding')
     expect(getOnethingModelsDevProviderId('github-copilot')).toBe('github-copilot')
     expect(getOnethingModelsDevProviderId('qwen')).toBe('alibaba-cn')

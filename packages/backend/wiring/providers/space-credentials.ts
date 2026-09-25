@@ -400,7 +400,7 @@ export function setSpaceProviderCredential(
  * 空白空间加**第一把** key 时,给这个 provider 预填首装默认模型表(方案 §2)。
  *
  * 为什么需要:C2 之后「选了哪些模型」只住在这个空间的 `providers.json` 里,而
- * qwen / acp / claude-code-agent 这几家的可用模型 models.dev 目录里根本没有
+ * qwen / acp 这几家的可用模型 models.dev 目录里根本没有
  * (或滞后),首装默认表是它们唯一的来源。不预填的话,用户在新空间配好 key,
  * 模型选择器里空空如也 —— 而他并没有「清空过」。
  *

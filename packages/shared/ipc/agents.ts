@@ -28,7 +28,7 @@ export type AgentStatus = 'active' | 'retired'
 
 /**
  * 心智面的驱动方(域模型 M7,前瞻)。缺省视为 `{ type: 'native' }`(本引擎驱动)。
- * `external` 指外部执行体连接器(如 ClaudeCodeConnector 'claude-code-agent')——
+ * `external` 指外部执行体连接器(如 ACP 连接器 'acp')——
  * 身份/能力面共用,只有心智面的驱动方式不同。A0 只定义语义,不接线任何行为。
  */
 export type AgentExecutor =

@@ -25,7 +25,7 @@ import s from './ModeCard.module.css'
  *
  *   api          密钥池(多钥 / 顺序 / 轮换)+ 计费档位 + Base URL
  *   subscription 登录卡(三种流)+ 订阅用量(只有后端真给数的那家才画)
- *   localCli/acp 本机进程,零凭证
+ *   acp          本机进程,零凭证
  *   custom       用户自建端点(改它走头上那颗「编辑」)
  *
  * 计费档位只有三家有(千问 / Kimi / 智谱),判据是 `providerDialsOf` 返回不返回

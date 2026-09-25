@@ -67,19 +67,19 @@ describe('§13.10 M7: 换 agent 进账本', () => {
     // 仓库改的就是手上这只对象,所以先把旧值抄下来再切。
     const createdAgentId = createSessionWithoutFocus(SESSION, 'switch me').agentId
     expect(createdAgentId).toBeTruthy()
-    expect(updateSessionAgent(SESSION, 'claude-code-agent')).toBe(true)
+    expect(updateSessionAgent(SESSION, 'external-coder')).toBe(true)
 
     const changed = (await events()).filter(event => event.type === 'session/agent-changed')
     expect(changed).toHaveLength(1)
-    expect(changed[0].data).toEqual({ from: createdAgentId, to: 'claude-code-agent' })
+    expect(changed[0].data).toEqual({ from: createdAgentId, to: 'external-coder' })
   })
 
   it('folds into session-level meta and adds nothing to the screen', async () => {
     createSessionWithoutFocus(SESSION, 'switch me')
-    updateSessionAgent(SESSION, 'claude-code-agent')
+    updateSessionAgent(SESSION, 'external-coder')
 
     const log = (await events()) as never
-    expect(foldSessionProjection(log).sessionMeta.agentId).toBe('claude-code-agent')
+    expect(foldSessionProjection(log).sessionMeta.agentId).toBe('external-coder')
     // 换 agent 不是一条消息。
     expect(projectChatMessages(log).messages).toEqual([])
   })

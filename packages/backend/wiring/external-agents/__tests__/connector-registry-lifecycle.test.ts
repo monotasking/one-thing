@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ClaudeCodeConnectorOptions } from '@onething/runtime/external-agents/claude-code-connector'
+import type { AcpConnectorOptions } from '@onething/runtime/external-agents'
 
 const mocks = vi.hoisted(() => ({
-  options: [] as ClaudeCodeConnectorOptions[],
+  options: [] as AcpConnectorOptions[],
   disposers: [] as ReturnType<typeof vi.fn>[],
   disposeWork: undefined as (() => Promise<void>) | undefined,
   interrupt: vi.fn(async () => {}),
@@ -11,13 +11,13 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@onething/runtime/external-agents', async importOriginal => ({
   ...await importOriginal<Record<string, unknown>>(),
-  createClaudeCodeConnector: (options: ClaudeCodeConnectorOptions) => {
+  createAcpConnector: (options: AcpConnectorOptions) => {
     mocks.options.push(options)
     const work = mocks.disposeWork
     const dispose = vi.fn(async () => { await work?.() })
     mocks.disposers.push(dispose)
     return {
-      id: 'claude-code-agent', capabilities: { steer: true, interrupt: true },
+      id: 'acp', capabilities: { steer: true, interrupt: true },
       async *streamTurn() {}, interrupt: mocks.interrupt, steer: mocks.steer, dispose,
     }
   },
@@ -34,7 +34,8 @@ vi.mock('../../logging/index.js', () => {
   }
   return { writeAppLog: vi.fn(), getLogger: () => logger, consolePort: () => logger }
 })
-vi.mock('../host-tools.js', () => ({ resolveClaudeCodeHostToolSurface: vi.fn() }))
+vi.mock('../host-tools.js', () => ({ resolveHostToolSurface: vi.fn() }))
+vi.mock('../../acp/host-mcp-port.js', () => ({ createAcpHostMcpPort: () => ({ port: 'host-mcp' }) }))
 
 function deferred() {
   let resolve!: () => void
@@ -56,13 +57,7 @@ describe('Backend external connector registry ownership', () => {
     const registry = await import('../index.js')
     const first = registry.getExternalAgentConnectors()
     expect(registry.getExternalAgentConnectors()).toBe(first)
-    expect(mocks.options[0]).toMatchObject({
-      permissionHandler: registry.askExternalAgentPermission,
-      interactionHandler: registry.askExternalAgentInteraction,
-      resolveSpawnEnv: registry.resolveExternalAgentSpawnEnv,
-      hostToolSurface: registry.resolveClaudeCodeHostToolSurface,
-      observer: expect.any(Object), logger: expect.any(Object),
-    })
+    expect(mocks.options[0]).toMatchObject({ hostMcp: { port: 'host-mcp' } })
     await registry.disposeExternalAgentConnectors()
     expect(mocks.disposers[0]).toHaveBeenCalledTimes(1)
     expect(registry.getExternalAgentConnectors()).not.toBe(first)

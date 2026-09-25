@@ -6,21 +6,22 @@
  *
  * ## 一轮外部回合在这里发生什么
  *
+ * A6-b(2026-09-26)起只有 ACP 一条出口:Claude SDK 那台进程内 MCP 服务器
+ * (`resolveClaudeCodeHostToolSurface` + `host-mcp/server.ts`)随 SDK 连接器退役。
+ *
  * ```
- * connector.streamTurn(localSessionId=执行会话)
- *   → resolveClaudeCodeHostToolSurface({ localSessionId, messageId, cwd })
+ * AcpConnector.streamTurn(localSessionId=执行会话)
+ *   → wiring/acp/host-mcp-bridge.ts → resolveHostToolSurface({ localSessionId })
  *       ① 会话 / agent / profile  → 这一轮能用哪些工具(venue 门,单点)
  *       ② 目录里取工具             → 本地回合调的**同一批**,不是副本
- *       ③ 绑定回合语境             → (agentId, roomSessionId, execSessionId, leaseId)
- *       ④ 起一台进程内 MCP 服务器   → { mcpServers, toolNames, release }
- *   → queryOptions.mcpServers = …   （SDK 侧看到 mcp__onething__send_message …）
+ *   → 桥按桥凭据绑语境,stdio / http 交给 agent(agent 侧看到 mcp__onething__send_message …)
  *   → 模型调 send_message
  *       → MCP handler → SayTool.execute(args, { sessionId: 执行会话 })
  *       → speakIntoCollabRoom → resolveCollabV3SpeakRoute 命中 → speakThroughCollabLease
  *   → finally: release()
  * ```
  *
- * 第 ④ 步之后那条链**一个字都没重写**:发言经的是租约、验的是同一张牌、幂等窗
+ * 工具调用之后那条链**一个字都没重写**:发言经的是租约、验的是同一张牌、幂等窗
  * 是同一个 Map、句柄出栈与引用快照是同一段代码。这就是「发言权归房间」在外部
  * 通路上的兑现——收养兜底从此退回它该在的位置(真·兜底)。
  *
@@ -30,13 +31,7 @@
  * 工具,目录里有一份、这里有一份,而两份名单漂了不会报错。按名字问目录,答案只有
  * 一处 —— 而且拿到的就是本地回合调的那只工具。
  */
-import {
-  bindHostToolContext,
-  createHostMcpServer,
-  filterHostToolSurface,
-  type HostMcpInjection,
-  type HostMcpSurfaceResolver,
-} from '@onething/runtime/external-agents'
+import { filterHostToolSurface } from '@onething/runtime/external-agents'
 import type { JsonObject } from '@shared/json.js'
 import type { HostMcpHostTool } from '@onething/runtime/external-agents'
 import { getSession } from '../../stores/sessions.js'
@@ -47,11 +42,9 @@ import { collabVenueOf } from '../collab/venue.js'
 import { findCollabV3Turn } from '@onething/runtime/collab/actors/turn-context.wiring'
 // 宿主工具面由目录 + runner 回答(设计文档 §10.2-④)。
 import { contractForSchema, getToolkitCatalog } from '@onething/runtime/toolkit'
-import { consolePort, getLogger } from '../logging/index.js'
+import { getLogger } from '../logging/index.js'
 
 const log = getLogger('external-agents')
-/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
 
 
 /**
@@ -96,8 +89,7 @@ function toolkitHostTool(toolId: string): HostMcpHostTool | undefined {
 
 /**
  * 一条会话此刻的**宿主工具面**:工具对象 + 它们该在哪条语境里跑。与传输无关 ——
- * 进程内 SDK 服务器(Claude 路)与跨进程的桥(ACP 路,`wiring/acp/host-mcp-bridge.ts`)
- * 吃的都是这一份。
+ * 跨进程的桥(ACP 路,`wiring/acp/host-mcp-bridge.ts`)吃的就是这一份。
  */
 export interface HostToolSurface {
   /** 会话上的 agent 身份(profile 用的那一个)。 */
@@ -121,8 +113,8 @@ export interface HostToolSurface {
  *  - 场子门全关(普通对话)—— 协作工具在那里一个都不成立;
  *  - 目录里一个都取不到 —— 内建工具还没装(装配顺序问题,日志会说)。
  *
- * 它**不绑语境、不起服务器**:绑在哪(按回合还是按桥凭据)、以什么形态交出去(进程内
- * 实例还是 stdio / http)是调用方的事。牌与房每次现问 —— 同一条会话下一轮的牌不是这一张。
+ * 它**不绑语境、不起服务器**:绑在哪(按桥凭据)、以什么形态交出去(stdio / http)
+ * 是调用方的事。牌与房每次现问 —— 同一条会话下一轮的牌不是这一张。
  */
 export async function resolveHostToolSurface(request: {
   localSessionId: string
@@ -176,40 +168,4 @@ export async function resolveHostToolSurface(request: {
     executionContext,
     tools,
   }
-}
-
-/**
- * Claude SDK 那条路的注入口:上面那一份工具面 + 按回合绑语境 + 一台进程内 MCP 服务器。
- *
- * 名字保留到 A6(Claude Code 迁 ACP 之后这条进程内出口整只退役)。它不是
- * `resolveHostToolSurface` 的纯别名:进程内实例只有 SDK 吃得下,跨进程的桥不能也不该
- * 起这台服务器,所以两者共用的是「工具面」那一半,不是整个函数。
- */
-export const resolveClaudeCodeHostToolSurface: HostMcpSurfaceResolver = async (request) => {
-  const surface = await resolveHostToolSurface(request)
-  if (!surface) return undefined
-  const { execSessionId, tools } = surface
-
-  const release = bindHostToolContext({
-    agentId: surface.agentId,
-    executionContext: surface.executionContext,
-    roomSessionId: surface.roomSessionId,
-    execSessionId,
-    ...(surface.leaseId ? { leaseId: surface.leaseId } : {}),
-    ...(request.messageId ? { messageId: request.messageId } : {}),
-    ...(request.cwd ? { workingDirectory: request.cwd } : {}),
-  })
-
-  const server = await createHostMcpServer({ execSessionId, tools, logger: consoleLog })
-  if (!server) {
-    release()
-    return undefined
-  }
-
-  const injection: HostMcpInjection = {
-    mcpServers: { [server.name]: server.config },
-    toolNames: server.toolNames,
-    release,
-  }
-  return injection
 }

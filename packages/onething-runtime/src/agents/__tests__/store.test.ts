@@ -285,13 +285,13 @@ describe('A0 domain fields (kind/status/executor)', () => {
       name: 'DJ',
       kind: 'service',
       status: 'active',
-      executor: { type: 'external', connectorId: 'claude-code-agent' },
+      executor: { type: 'external', connectorId: 'acp' },
     })
 
     const reloaded = createStore().requireAgent('radio-dj')
     expect(reloaded.kind).toBe('service')
     expect(reloaded.status).toBe('active')
-    expect(reloaded.executor).toEqual({ type: 'external', connectorId: 'claude-code-agent' })
+    expect(reloaded.executor).toEqual({ type: 'external', connectorId: 'acp' })
   })
 
   it('keeps the fields absent on legacy rows and drops junk values on normalize', async () => {

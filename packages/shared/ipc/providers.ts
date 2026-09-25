@@ -44,8 +44,6 @@ export enum AIProvider {
   GitHubCopilot = 'github-copilot',
   Codex = 'codex',
   ACP = 'acp',
-  /** Locally installed Claude Code CLI driven as an in-app agent. */
-  ClaudeCodeAgent = 'claude-code-agent',
   Custom = 'custom',
 }
 

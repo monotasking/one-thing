@@ -40,13 +40,13 @@ const ROSTER: ProviderInfo[] = [
   info('deepseek', { name: 'DeepSeek' }),
   info('github-copilot', { name: 'GitHub Copilot', ...OAUTH }),
   info('acp', { name: 'ACP Agents', ...LOCAL }),
-  info('claude-code-agent', { name: 'Claude Code Agent', ...LOCAL }),
 ]
 
 describe('modeKindOf', () => {
-  it('本地两只按名点,不靠 requires* 猜', () => {
+  it('本地那只按名点,不靠 requires* 猜', () => {
     expect(modeKindOf(info('acp', LOCAL))).toBe('acp')
-    expect(modeKindOf(info('claude-code-agent', LOCAL))).toBe('localCli')
+    // A6-b:本地 CLI `claude-code-agent` 退役,不再点名 —— 名册里若还残着一条,只是一条零凭证的 API 记录。
+    expect(modeKindOf(info('claude-code-agent', LOCAL))).toBe('api')
   })
 
   it('要 OAuth 的是订阅坑,要密钥的是 API 坑', () => {
@@ -73,14 +73,14 @@ describe('buildFamilies', () => {
     expect(copilot?.modes[0].kind).toBe('subscription')
   })
 
-  it('云 / 自定义各归各的,顺序是云→自定义;本地两只 agent 不进这张名册', () => {
+  it('云 / 自定义各归各的,顺序是云→自定义;本地 agent 不进这张名册', () => {
     const withCustom = buildFamilies(ROSTER, [
       { id: 'my-vllm', name: '我的 vLLM', apiType: 'openai', model: 'q', selectedModels: [] } as CustomProviderConfig,
     ])
-    // 2026-09-26 用户裁定:agent 不许被画成普通模型。acp / claude-code-agent 的家是设置页
-    // 「Agent」那一页,模型服务的名册里没有它们 —— 于是「本地」那一组空了,整组不画。
+    // 2026-09-26 用户裁定:agent 不许被画成普通模型。acp 的家是设置页
+    // 「Agent」那一页,模型服务的名册里没有它 —— 于是「本地」那一组空了,整组不画。
     expect(withCustom.map((f) => f.group)).toEqual(['cloud', 'cloud', 'cloud', 'custom'])
-    expect(withCustom.some((f) => f.modes.some((m) => m.kind === 'acp' || m.kind === 'localCli'))).toBe(false)
+    expect(withCustom.some((f) => f.modes.some((m) => m.kind === 'acp'))).toBe(false)
     const custom = findFamily(withCustom, 'my-vllm')
     expect(custom?.custom).toBe(true)
     expect(custom?.modes[0].kind).toBe('custom')

@@ -166,7 +166,7 @@ describe('agent IPC operations', () => {
       name: 'Renamed',
       status: 'retired',
       kind: 'service',
-      executor: { type: 'external', connectorId: 'claude-code-agent' },
+      executor: { type: 'external', connectorId: 'acp' },
       updateAgent,
     })
 

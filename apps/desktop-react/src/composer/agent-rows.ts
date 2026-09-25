@@ -13,7 +13,8 @@ import { isAgentProviderId, LOCAL_MODE_KINDS } from '../providers/families'
  * 所以这只纯函数把组表拆成两半:
  *  · **模型的组**:原样,减掉 agent 那几行;
  *  · **Agent 一组**:ACP 那一半来自名册(`acp.getAgents`,启用着的那些 —— 没装的也列,
- *    置灰);`claude-code-agent` 那种本地 CLI(A6 之前还在)按同一种画法并进来。
+ *    置灰);目录说是 agent 的行(`ModelOption.kind === 'agent'`)按同一种画法并进来。
+ *    (A6-b 起本地 CLI 那一家 `claude-code-agent` 退役,Claude Code 就是名册里的一台。)
  *
  * 判据只读**种类**,不读 provider id 字串:一行算不算 agent = 它的家是 agent 那一种
  * (`isAgentProviderId`,名字只在 `LOCAL_MODE_KINDS` 那一处点)或目录说它是
@@ -88,8 +89,7 @@ export function splitPickerSections(input: {
       agentRows.push({
         providerId: g.id,
         model: m.model,
-        // 一台 CLI 的「缺省那一型」就是它自己(`claude-code-agent` 的缺省模型 id 与家同名):
-        // 那一行说家的名字;其余行说模型 id。
+        // 缺省那一型的 id 与家同名时那一行说家的名字;其余行说模型 id。
         label: m.model === g.id ? g.provider : m.model,
         glyphKey: g.id,
         custom: false,

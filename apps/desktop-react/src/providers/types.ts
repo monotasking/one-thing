@@ -24,11 +24,10 @@ import type { MessageKey, MessageVars } from '../i18n'
  * 一种接入模式。它决定右面「模式内容区」画什么:
  *  - `api`          密钥区 + API 坑目录;
  *  - `subscription` 登录区 + 订阅坑目录(未登录时目录不可得,如实说);
- *  - `localCli`     本机 CLI(claude-code-agent),零凭证;
  *  - `acp`          本地 Agent 进程(acp);
  *  - `custom`       用户自建端点。
  */
-export type ProviderModeKind = 'api' | 'subscription' | 'localCli' | 'acp' | 'custom'
+export type ProviderModeKind = 'api' | 'subscription' | 'acp' | 'custom'
 
 /** 左栏的三组。判据是模式:云端凭证 → cloud,本机进程 → local,用户自建 → custom。 */
 export type RailGroup = 'cloud' | 'local' | 'custom'

@@ -31,8 +31,9 @@ export interface ACPSessionLink {
   updatedAt: number
   /**
    * 哪个外部 agent 连接器的链接(A0-3 起两条路同吃这一个文件)。缺省 = `'acp'`,此时
-   * `agentId` 是 ACP agent 的 id;非 ACP 连接器(今天只有 `claude-code-agent`,A6 删)
-   * 的记录里 `agentId` 就等于连接器 id,`acpSessionId` 存它自己的外部会话 id。
+   * `agentId` 是 ACP agent 的 id;非 ACP 连接器的记录里 `agentId` 就等于连接器 id,
+   * `acpSessionId` 存它自己的外部会话 id。A6-b 起没有非 ACP 连接器了(退役的
+   * `claude-code-agent` 记录在读表时并成 ACP `claude-code` 的链接,见 `foldRetiredClaudeLinks`)。
    */
   connectorId?: string
   /** 第一次落盘的时刻;覆盖写时沿用旧值。老记录没有这一格,读时按 `updatedAt` 兜底。 */
@@ -77,6 +78,14 @@ function linkKey(agentId: string, localSessionId: string): string {
 
 /** ACP 连接器的 id;外部 agent 契约里它就是 `connectorId`。 */
 export const ACP_CONNECTOR_ID = 'acp'
+
+/**
+ * A6-b(2026-09-26)退役的 Claude SDK 连接器 id,与它在 ACP 名册里的接班人。SDK 路记下的
+ * 外部会话 id 就是 `~/.claude/projects` 里的原生 id,claude-agent-acp 的 `session/resume`
+ * 认的也是它 —— 所以并过去只换键与 agent,`acpSessionId` 原样。
+ */
+const RETIRED_CLAUDE_CONNECTOR_ID = 'claude-code-agent'
+const CLAUDE_CODE_ACP_AGENT_ID = 'claude-code'
 
 function connectorOf(link: ACPSessionLink): string {
   return link.connectorId ?? ACP_CONNECTOR_ID
@@ -209,7 +218,9 @@ export class FileACPSessionLinkStore extends MemoryACPSessionLinkStore {
       this.data = loadLinkFile(path)
       this.loadedFrom = path
       const legacyPath = this.legacyExternalPathOf()
-      if (legacyPath && foldLegacyExternalLinks(this.data, legacyPath, path)) this.write(this.data)
+      const legacyFolded = legacyPath ? foldLegacyExternalLinks(this.data, legacyPath, path) : false
+      const retiredFolded = foldRetiredClaudeLinks(this.data, path)
+      if (legacyFolded || retiredFolded) this.write(this.data)
     }
     return this.data
   }
@@ -253,12 +264,18 @@ function foldLegacyExternalLinks(data: LinkFile, legacyPath: string, targetPath:
   let folded = 0
   for (const entry of Object.values(legacy ?? {})) {
     if (!entry?.connectorId || !entry.localSessionId || !entry.externalSessionId) continue
-    const key = linkKey(entry.connectorId, entry.localSessionId)
+    // 退役的 Claude SDK 链接直接落成 ACP `claude-code` 那一格 —— 旧文件不删,并成旧键的话
+    // 每次读表都会被 `foldRetiredClaudeLinks` 再搬一次、再写一次盘。
+    const retired = entry.connectorId === RETIRED_CLAUDE_CONNECTOR_ID
+    const key = retired
+      ? linkKey(CLAUDE_CODE_ACP_AGENT_ID, entry.localSessionId)
+      : linkKey(entry.connectorId, entry.localSessionId)
     if (data.links[key]) continue
     const updatedAt = entry.lastUsedAt ?? entry.createdAt ?? Date.now()
     data.links[key] = {
-      agentId: entry.connectorId,
-      connectorId: entry.connectorId,
+      ...(retired
+        ? { agentId: CLAUDE_CODE_ACP_AGENT_ID }
+        : { agentId: entry.connectorId, connectorId: entry.connectorId }),
       localSessionId: entry.localSessionId,
       acpSessionId: entry.externalSessionId,
       cwd: entry.cwd ?? '',
@@ -270,6 +287,34 @@ function foldLegacyExternalLinks(data: LinkFile, legacyPath: string, targetPath:
   }
   if (folded > 0) log.info('legacy external session links folded', { from: legacyPath, into: targetPath, count: folded })
   return folded > 0
+}
+
+/**
+ * A6-b:表里 `connectorId: 'claude-code-agent'` 的记录(A0-3 起 SDK 路也写这张表)并成 ACP
+ * `claude-code` 的链接:键 `claude-code:<本地会话>`、`agentId: 'claude-code'`、不带
+ * `connectorId`(= ACP),`acpSessionId` / `cwd` / 时间原样。那格已有 ACP 链接就留 ACP 的
+ * (更新的那条路写的)。旧键一律删,所以只搬一次。答「这次动了没有」。
+ */
+function foldRetiredClaudeLinks(data: LinkFile, targetPath: string): boolean {
+  let moved = 0
+  for (const [key, link] of Object.entries(data.links)) {
+    if (connectorOf(link) !== RETIRED_CLAUDE_CONNECTOR_ID) continue
+    delete data.links[key]
+    moved += 1
+    const target = linkKey(CLAUDE_CODE_ACP_AGENT_ID, link.localSessionId)
+    if (data.links[target]) continue
+    data.links[target] = {
+      agentId: CLAUDE_CODE_ACP_AGENT_ID,
+      localSessionId: link.localSessionId,
+      acpSessionId: link.acpSessionId,
+      cwd: link.cwd,
+      options: link.options ?? {},
+      createdAt: link.createdAt ?? link.updatedAt,
+      updatedAt: link.updatedAt,
+    }
+  }
+  if (moved > 0) log.info('retired claude-code-agent session links folded into acp', { path: targetPath, count: moved })
+  return moved > 0
 }
 
 function loadLinkFile(path: string): LinkFile {

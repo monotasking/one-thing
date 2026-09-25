@@ -481,22 +481,22 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
   it('binds each Backend connector generation before afterSettings', { timeout: 180_000 }, async () => {
     const runtime = await import('@onething/runtime/external-agents')
     const registry = await import('../wiring/external-agents/index.js')
-    const original = runtime.createClaudeCodeConnector
-    const created = vi.spyOn(runtime, 'createClaudeCodeConnector').mockImplementation(options => original(options))
+    const original = runtime.createAcpConnector
+    const created = vi.spyOn(runtime, 'createAcpConnector').mockImplementation(options => original(options))
     try {
       let earlyConnector: ReturnType<typeof original> | undefined
       const backend = await assemble({
         afterSettings: () => {
-          earlyConnector = registry.getExternalAgentConnectors()['claude-code-agent']
+          earlyConnector = registry.getExternalAgentConnectors()['acp']
         },
       })
       const dispose = vi.spyOn(earlyConnector!, 'dispose')
       try {
         expect(created).toHaveBeenCalledTimes(1)
-        expect(registry.getExternalAgentConnectors()['claude-code-agent']).toBe(earlyConnector)
+        expect(registry.getExternalAgentConnectors()['acp']).toBe(earlyConnector)
         // A rejected second assembly cannot overwrite the live instance's options.
         await expect(assemble()).rejects.toMatchObject({ name: 'BackendAlreadyAssembledError' })
-        expect(registry.getExternalAgentConnectors()['claude-code-agent']).toBe(earlyConnector)
+        expect(registry.getExternalAgentConnectors()['acp']).toBe(earlyConnector)
         const closing = backend.dispose()
         expect(() => registry.getExternalAgentConnectors()).toThrow('shutting down')
         await closing
@@ -524,7 +524,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
     let settled = false
     const failed = assemble({
       afterSettings: () => {
-        const connector = registry.getExternalAgentConnectors()['claude-code-agent']!
+        const connector = registry.getExternalAgentConnectors()['acp']!
         const original = connector.dispose.bind(connector)
         dispose = vi.spyOn(connector, 'dispose').mockImplementation(async () => {
           markDisposing()
@@ -547,7 +547,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
       expect(getCurrentBackendSafe()).toBeNull()
       const next = await assemble()
       try {
-        expect(registry.getExternalAgentConnectors()['claude-code-agent']).toBeTruthy()
+        expect(registry.getExternalAgentConnectors()['acp']).toBeTruthy()
       } finally {
         await next.dispose()
       }
@@ -560,8 +560,8 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
 
   it('cleans an unused early connector binding when afterSettings fails before any getter', { timeout: 180_000 }, async () => {
     const runtime = await import('@onething/runtime/external-agents')
-    const original = runtime.createClaudeCodeConnector
-    const created = vi.spyOn(runtime, 'createClaudeCodeConnector').mockImplementation(options => original(options))
+    const original = runtime.createAcpConnector
+    const created = vi.spyOn(runtime, 'createAcpConnector').mockImplementation(options => original(options))
     const registry = await import('../wiring/external-agents/index.js')
     const boom = new Error('afterSettings failed without creating a connector')
     try {

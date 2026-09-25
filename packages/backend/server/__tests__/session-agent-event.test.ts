@@ -56,14 +56,14 @@ describe('§13.10 M7: sessions.update writes the agent switch to the ledger', ()
     const runtime = await createRuntime()
     await runtime.sessions.create('Switch me', undefined, SESSION)
 
-    await runtime.sessions.update!(SESSION, { agentId: 'claude-code-agent' })
+    await runtime.sessions.update!(SESSION, { agentId: 'external-coder' })
     await runtime.sessions.update!(SESSION, { agentId: 'another-agent' })
 
     const changed = (await ledger()).filter(event => event.type === 'session/agent-changed')
-    expect(changed.map(event => event.data.to)).toEqual(['claude-code-agent', 'another-agent'])
-    // `from` 是**改之前**那一格 —— 快照取晚了的话这里会是 'claude-code-agent'
+    expect(changed.map(event => event.data.to)).toEqual(['external-coder', 'another-agent'])
+    // `from` 是**改之前**那一格 —— 快照取晚了的话这里会是 'external-coder'
     // 自己(而整条事件根本不会被写出来)。
-    expect(changed[1].data.from).toBe('claude-code-agent')
+    expect(changed[1].data.from).toBe('external-coder')
   })
 
   it('writes nothing for a patch that touches none of the three fields', async () => {

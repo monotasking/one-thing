@@ -14,20 +14,19 @@ import type { ProviderFamilyView, ProviderMode, ProviderModeKind, RailGroup } fr
  */
 
 /**
- * 两只**本地** provider。它们的 `requiresApiKey` / `requiresOAuth` 都是 false,
- * 所以光看名册那两格分不出「本地进程」与「配置漏了」—— 交接稿 §2 把它们点名
- * 列成「本地型(2)」,这里就照名点一次。
+ * **本地** provider(A6-b 起只剩 `acp` 一只;本地 CLI `claude-code-agent` 退役)。它的
+ * `requiresApiKey` / `requiresOAuth` 都是 false,所以光看名册那两格分不出「本地进程」与
+ * 「配置漏了」—— 这里就照名点一次。
  *
  * 名点在**这一处**,别处一律读 `mode.kind`:多一个本地 provider 时改这里一行。
  */
 export const LOCAL_MODE_KINDS: Readonly<Record<string, ProviderModeKind>> = {
   acp: 'acp',
-  'claude-code-agent': 'localCli',
 }
 
 /**
  * 一条名册记录是哪一种模式。顺序即优先级:
- * 点名的本地两只 → 要 OAuth 的是订阅 → 其余按 API 密钥。
+ * 点名的本地那只 → 要 OAuth 的是订阅 → 其余按 API 密钥。
  *
  * 最后那一档是**兜底而不是猜**:一条既不要 key 也不要 OAuth、又不在本地表里的
  * 记录,在今天的名册里不存在;真长出来时它是一条云端记录,按 API 坑画是它唯一
@@ -44,13 +43,13 @@ export function modeKindOf(info: ProviderInfo): ProviderModeKind {
  * **这一种模式是一台本机 agent,不是一个模型服务**(2026-09-26 用户裁定:「ACP agent
  * 不许被画成普通模型 —— 选择器里不许,模型设置页里也不许」)。
  *
- * 判据读的是**模式种类**,不是 provider id 字串:哪几个 id 是本地那两种,只在上面
+ * 判据读的是**模式种类**,不是 provider id 字串:哪几个 id 是本地那种,只在上面
  * `LOCAL_MODE_KINDS` 那一处点名。两个读者:
- *  · `buildFamilies` —— 这两种不进「模型服务」那张名册(它们的家是设置页「Agent」那一页);
- *  · 模型选择器 —— 这两种的行不排在模型的组里,另起一组「Agent」。
+ *  · `buildFamilies` —— 这一种不进「模型服务」那张名册(它们的家是设置页「Agent」那一页);
+ *  · 模型选择器 —— 这一种的行不排在模型的组里,另起一组「Agent」。
  */
 export function isAgentKind(kind: ProviderModeKind): boolean {
-  return kind === 'acp' || kind === 'localCli'
+  return kind === 'acp'
 }
 
 /**
@@ -64,7 +63,7 @@ export function isAgentProviderId(providerId: string): boolean {
 
 export function groupOfKind(kind: ProviderModeKind): RailGroup {
   if (kind === 'custom') return 'custom'
-  if (kind === 'acp' || kind === 'localCli') return 'local'
+  if (kind === 'acp') return 'local'
   return 'cloud'
 }
 
@@ -90,9 +89,8 @@ function toMode(info: ProviderInfo): ProviderMode {
 const MODE_ORDER: Record<ProviderModeKind, number> = {
   api: 0,
   subscription: 1,
-  localCli: 2,
-  acp: 3,
-  custom: 4,
+  acp: 2,
+  custom: 3,
 }
 
 /**

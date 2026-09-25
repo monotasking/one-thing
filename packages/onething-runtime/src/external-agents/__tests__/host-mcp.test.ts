@@ -19,9 +19,7 @@ import {
   activeHostToolContextCount,
   bindHostToolContext,
   clearHostToolContexts,
-  createHostMcpServer,
   filterHostToolSurface,
-  HOST_MCP_SERVER_NAME,
   HOST_MCP_TOOL_CANDIDATES,
   HOST_MCP_TURN_GONE,
   hostMcpToolName,
@@ -30,7 +28,6 @@ import {
   resolveHostToolSurface,
   stripHostMcpToolPrefix,
   toHostMcpToolDefinition,
-  type CreateSdkMcpServerFn,
 } from '../host-mcp/index.js'
 
 /**
@@ -129,64 +126,6 @@ describe('工具集由 venue 门决定', () => {
     expect(filterHostToolSurface({ allowlist: null, venue: 'room' }))
       .toEqual(['send_message', 'board', 'history'])
     expect(filterHostToolSurface({ allowlist: ['board'], venue: 'agent' })).toEqual(['board'])
-  })
-})
-
-describe('进程内 MCP 服务器:起、停、枚举', () => {
-  const fakeCreate = vi.fn((options: Parameters<CreateSdkMcpServerFn>[0]) => ({
-    type: 'sdk' as const,
-    name: options.name,
-    instance: { tools: options.tools?.map(tool => tool.name) ?? [] },
-  }))
-
-  // 花括号是必须的:`mockClear()` 返回 mock 本身,而 vitest 把 beforeEach 的
-  // 函数型返回值当**清理回调**调用 —— 简写形式会让每个测试结束时无参调一次这个
-  // 替身,报一句与被测代码毫无关系的 TypeError。
-  beforeEach(() => {
-    fakeCreate.mockClear()
-  })
-
-  it('起一台:名字、工具全名、alwaysLoad', async () => {
-    const server = await createHostMcpServer({
-      execSessionId: 'exec-1',
-      tools: [echoTool('send_message'), echoTool('board')],
-      createSdkMcpServer: fakeCreate,
-    })
-
-    expect(server?.name).toBe(HOST_MCP_SERVER_NAME)
-    expect(server?.config.type).toBe('sdk')
-    expect(server?.toolNames).toEqual([
-      'mcp__onething__send_message',
-      'mcp__onething__board',
-    ])
-    // 发言权不许被 tool search 藏起来。
-    expect(fakeCreate.mock.calls[0][0].alwaysLoad).toBe(true)
-    // 参数模式递的是 zod **raw shape**(SDK 的 `tool()` 收的就是这个形状)。
-    expect(Object.keys(fakeCreate.mock.calls[0][0].tools![0].inputSchema)).toEqual(['content'])
-  })
-
-  it('一个工具都没有就不起 —— 一台空服务器只是工具列表里的一行噪音', async () => {
-    const server = await createHostMcpServer({
-      execSessionId: 'exec-1',
-      tools: [],
-      createSdkMcpServer: fakeCreate,
-    })
-    expect(server).toBeUndefined()
-    expect(fakeCreate).not.toHaveBeenCalled()
-  })
-
-  it('SDK 取不到时降级而不是抛 —— 注入不上还有收养兜底,抛出去这一轮什么都没有', async () => {
-    const warn = vi.fn()
-    const server = await createHostMcpServer({
-      execSessionId: 'exec-1',
-      tools: [echoTool('send_message')],
-      createSdkMcpServer: (() => {
-        throw new Error('module not found')
-      }) as unknown as CreateSdkMcpServerFn,
-      logger: { warn },
-    })
-    expect(server).toBeUndefined()
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('host tools not injected'))
   })
 })
 

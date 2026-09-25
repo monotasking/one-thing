@@ -78,11 +78,11 @@ describe('external-turn', () => {
   it('起落两相各一行,落那一相带收场与墙钟;两行都指回牌号', () => {
     inFlightTurn()
     recordExternalAgentTurn({
-      localSessionId: 'exec-1', connectorId: 'claude-code-agent', phase: 'start', at: 1_000,
+      localSessionId: 'exec-1', connectorId: 'acp', phase: 'start', at: 1_000,
     })
     recordExternalAgentTurn({
       localSessionId: 'exec-1',
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
       phase: 'end',
       outcome: 'aborted',
       elapsedMs: 131_000,
@@ -93,7 +93,7 @@ describe('external-turn', () => {
       type: 'external-turn',
       at: 1_000,
       agentId: 'iris',
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
       phase: 'start',
       triggeredBy: 'L1',
     })
@@ -104,7 +104,7 @@ describe('external-turn', () => {
 
   it('会话不在任何一轮 v3 回合里 → 不记账,也不报错', () => {
     recordExternalAgentTurn({
-      localSessionId: 'lonely-chat', connectorId: 'claude-code-agent', phase: 'start',
+      localSessionId: 'lonely-chat', connectorId: 'acp', phase: 'start',
     })
     expect(rows).toEqual([])
   })
@@ -113,7 +113,7 @@ describe('external-turn', () => {
     inFlightTurn()
     configureCollabExternalLogSink(null)
     recordExternalAgentTurn({
-      localSessionId: 'exec-1', connectorId: 'claude-code-agent', phase: 'start',
+      localSessionId: 'exec-1', connectorId: 'acp', phase: 'start',
     })
     expect(rows).toEqual([])
   })
@@ -124,7 +124,7 @@ describe('external-turn', () => {
       append: () => { throw new Error('disk full') },
     })
     expect(() => recordExternalAgentTurn({
-      localSessionId: 'exec-1', connectorId: 'claude-code-agent', phase: 'start',
+      localSessionId: 'exec-1', connectorId: 'acp', phase: 'start',
     })).not.toThrow()
   })
 })
@@ -136,7 +136,7 @@ describe('external-tool', () => {
     inFlightTurn()
     recordExternalAgentTool({
       localSessionId: 'exec-1',
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
       toolName: 'send_message',
       decision: 'allow',
       hostTool: true,
@@ -145,7 +145,7 @@ describe('external-tool', () => {
     })
     recordExternalAgentTool({
       localSessionId: 'exec-1',
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
       toolName: 'Write',
       decision: 'deny',
       hostTool: false,
@@ -156,7 +156,7 @@ describe('external-tool', () => {
         type: 'external-tool',
         at: 2_000,
         agentId: 'iris',
-        connectorId: 'claude-code-agent',
+        connectorId: 'acp',
         toolName: 'send_message',
         decision: 'allow',
         hostTool: true,
@@ -167,7 +167,7 @@ describe('external-tool', () => {
         type: 'external-tool',
         at: 3_000,
         agentId: 'iris',
-        connectorId: 'claude-code-agent',
+        connectorId: 'acp',
         toolName: 'Write',
         decision: 'deny',
         hostTool: false,
@@ -180,7 +180,7 @@ describe('external-tool', () => {
     inFlightTurn()
     recordExternalAgentTool({
       localSessionId: 'exec-1',
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
       toolName: 'Bash',
       decision: 'allow',
       hostTool: false,

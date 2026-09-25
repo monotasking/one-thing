@@ -37,51 +37,11 @@ const LOCAL_DESCRIPTOR: AgentExecutorDescriptor = {
   },
 }
 
+/**
+ * A6-b(2026-09-26):`claude-code-agent`(Claude SDK 连接器)那一行随连接器退役;
+ * Claude Code 今天是 ACP 名册里的一台(`resources/acp-agents/claude-code.json`)。
+ */
 const EXTERNAL_DESCRIPTORS: AgentExecutorDescriptor[] = [
-  {
-    id: 'claude-code-agent',
-    kind: 'external',
-    capabilities: {
-      /**
-       * **E3 已真接**(2026-08-05):`external-agents/host-mcp/` 起一台进程内 MCP
-       * 服务器,协作工具经 SDK 的 `mcpServers` 选项注入
-       * (`McpSdkServerConfigWithInstance` = `{ type:'sdk', name, instance }`,
-       * SDK 0.3.214 原生支持,不需要 stdio 子进程)。
-       *
-       * 这一位现在**有读者**:`claude-code-connector` 的
-       * `executorAcceptsHostTools()` 每轮读它,翻成 false 就真的停掉注入(外部
-       * agent 退回只有 SDK 自带工具、发言靠收养兜底的 E3 之前形状)。声明与真实
-       * 能力从此不会分家 —— 原则 5 的具体兑现。
-       */
-      hostTools: true,
-      /**
-       * **已真接**(2026-08-12):`connector.steer` 往整轮开着的输入迭代器里塞一条
-       * `priority:'now'` 的用户消息,当前轮就地收场、新的一轮回答追话
-       * (实测见 `ClaudeCodeSdkUserMessage.priority`)。
-       *
-       * 读者是 `app/external-agents/index.ts` 的 `takeExternalAgentSteering`:翻成
-       * false 就真的不再把 steering 交给连接器,外部会话退回「进宿主队列、等这一轮
-       * 整段跑完再说」的 2026-08-12 之前形状。与 connector 的
-       * `CLAUDE_CODE_CAPABILITIES.steer` 是同一个事实的两处声明。
-       */
-      steer: true,
-      /**
-       * **E4 已有读者**(2026-08-05):`app/external-agents/index.ts` 的
-       * `interruptExternalAgentSessions` 每次喊停都读它,翻成 false 就真的不再对
-       * 这个执行器调 `connector.interrupt` —— 外部那一侧只剩 `engine.abort`
-       * (掐我们的流,不掐它的进程)。停止链的落点见 `stopCollabV3RoomFloor`。
-       */
-      interrupt: true,
-      // 会话在 SDK 侧,上下文是它的;我们压缩只会把两边的账搞乱。
-      contextWindow: 'theirs',
-      /**
-       * **E4 已兑现**:persona 经 `provider.ts` 收集 system 位 → connector 翻成
-       * SDK 的 `systemPrompt: { type:'preset', preset:'claude_code', append }`。
-       * G9(只送最后一条 user 文本、persona 整个丢掉)到此结束。
-       */
-      persona: 'system',
-    },
-  },
   {
     id: 'acp',
     kind: 'external',
@@ -101,7 +61,7 @@ const EXTERNAL_DESCRIPTORS: AgentExecutorDescriptor[] = [
       // A0-3 起连接器的 interrupt 直连 ACPManager.cancelSession(`session/cancel`),
       // 不再依赖可选回调,所以翻真。
       interrupt: true,
-      // ACP agent 自己维护会话上下文,与 claude-code 同理。
+      // ACP agent 自己维护会话上下文,我们压缩只会把两边的账搞乱。
       contextWindow: 'theirs',
       // 保守 prepend:ACP 的 prompt 协议里没有 system 位,persona 只能拼在
       // 用户消息前面。若后续 connector 暴露 system 通道再翻。
@@ -144,8 +104,8 @@ export function findAgentExecutorDescriptor(id: string): AgentExecutorDescriptor
 
 /**
  * 这个 id 是不是一个外部执行器。**这是 providerId 推导的唯一判据**——
- * 今天外部 agent 靠 providerId 被认出来(Iris 的 model.providerId =
- * 'claude-code-agent'),E0 保持这条映射以维持向后兼容。
+ * 今天外部 agent 靠 providerId 被认出来(model.providerId = 'acp'),
+ * E0 保持这条映射以维持向后兼容。
  */
 export function isExternalAgentExecutorId(id: string): boolean {
   return findAgentExecutorDescriptor(id)?.kind === 'external'

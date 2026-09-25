@@ -218,8 +218,8 @@ class ExternalAgentProvider extends BaseAgentProvider {
      * 打包之后主进程的 cwd 是 `/`,外部 agent 于是在一个空目录里困惑地摸索,
      * 而界面上一个字的提示都没有。兜底给的不是韧性,是一次静默的错误现场。
      *
-     * 拒绝的形状与失败 result 同一套(`claude-code-connector.ts` 的
-     * `claudeCodeFailureNotice`):一条可见正文 + `finish(error)`。不 throw ——
+     * 拒绝的形状与失败 result 同一套(当年 SDK 连接器的 `claudeCodeFailureNotice`,A6-b 已退役):
+     * 一条可见正文 + `finish(error)`。不 throw ——
      * 抛出去只会在别处变成一条堆栈,用户要的是「我该做什么」。
      */
     const cwd = options.workingDirectory?.trim()
@@ -272,7 +272,7 @@ class ExternalAgentProvider extends BaseAgentProvider {
     /**
      * persona 的第二档(A2-a,方案 §3.4):执行器表说 `persona: 'prepend'` 的(ACP),协议上没有
      * system 位,只收引擎单独交来的 persona 段(`request.persona`:agent 描述 / 群房 persona,
-     * 不含工具说明)。表里是 `'system'` 的(claude-code)照旧吃整份 system prompt。
+     * 不含工具说明)。表里是 `'system'` 的照旧吃整份 system prompt(A6-b 前是 claude-code SDK 路;今天没有这样的执行器)。
      */
     const personaMode = findAgentExecutorDescriptor(options.connector.id)?.capabilities.persona
     const persona = personaMode === 'prepend' ? request.persona?.trim() || undefined : undefined

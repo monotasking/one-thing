@@ -40,18 +40,9 @@ describe('执行器解析单点(§3)', () => {
     expect(resolveAgentExecutorId(undefined)).toBe('local')
   })
 
-  it('claude-code-agent 解析成 external,能力按 connector 现状声明', () => {
-    const executor = resolveAgentExecutor('claude-code-agent')
-    expect(executor.id).toBe('claude-code-agent')
-    expect(executor.kind).toBe('external')
-    expect(executor.capabilities).toEqual({
-      hostTools: true,
-      // e610b0dc:steering 接通(priority:'now' 就地截断),能力表随连接器现状。
-      steer: true,
-      interrupt: true,
-      contextWindow: 'theirs',
-      persona: 'system',
-    })
+  it('claude-code-agent 已退役(A6-b):不再登记,按 providerId 推导落回本地', () => {
+    // SDK 连接器那一行删了;Claude Code 是 ACP 名册里的一台,providerId 是 'acp'。
+    expect(resolveAgentExecutor('claude-code-agent').kind).toBe('local')
   })
 
   it('acp 解析成 external,不确定的能力填保守值', () => {
@@ -71,7 +62,6 @@ describe('执行器解析单点(§3)', () => {
   it('本地执行器自己管上下文,外部执行器不归我们管', () => {
     expect(createLocalAgentExecutor().capabilities.contextWindow).toBe('ours')
     expect(agentExecutorOwnsContextWindow('deepseek')).toBe(false)
-    expect(agentExecutorOwnsContextWindow('claude-code-agent')).toBe(true)
     expect(agentExecutorOwnsContextWindow('acp')).toBe(true)
   })
 
@@ -88,7 +78,7 @@ describe('执行器解析单点(§3)', () => {
   })
 
   it('E0 只给骨架:runTurn 尚未接驱动(E4),契约位先留空', () => {
-    expect(resolveAgentExecutor('claude-code-agent').runTurn).toBeUndefined()
+    expect(resolveAgentExecutor('acp').runTurn).toBeUndefined()
     expect(createLocalAgentExecutor().runTurn).toBeUndefined()
   })
 })
@@ -107,13 +97,13 @@ describe('executor 字段接线的向后兼容(域模型 M7)', () => {
 
   it('只配了 providerId 的老 agent:解析结果与改造前一致', () => {
     // Iris 的真实形状——executor 字段从未写过,靠 providerId 走外部通路。
-    const iris = agent({ model: { providerId: 'claude-code-agent', modelId: 'sonnet' } })
+    const iris = agent({ model: { providerId: 'acp', modelId: 'claude-code' } })
     expect(resolveAgentExecutorSelection(iris)).toEqual({
       type: 'external',
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
     })
     expect(resolveAgentExecutor(iris).kind).toBe('external')
-    expect(resolveAgentExecutor(iris).id).toBe('claude-code-agent')
+    expect(resolveAgentExecutor(iris).id).toBe('acp')
 
     // 普通同事同理不受影响。
     const local = agent({ model: { providerId: 'deepseek' } })
@@ -141,16 +131,16 @@ describe('executor 字段接线的向后兼容(域模型 M7)', () => {
 
   it('心智面投影给的是解析结果,不是「存了什么就是什么」', () => {
     // 接线前这里会对 Iris 撒谎说 native——字段无人消费时看不出来。
-    expect(agentMind(agent({ model: { providerId: 'claude-code-agent' } })).executor).toEqual({
+    expect(agentMind(agent({ model: { providerId: 'acp' } })).executor).toEqual({
       type: 'external',
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
     })
     expect(agentMind(agent({ model: { providerId: 'deepseek' } })).executor).toEqual({
       type: 'native',
     })
     // 投影结果再喂回解析器必须是不动点(否则就是个陷阱)。
-    const mind = agentMind(agent({ model: { providerId: 'claude-code-agent' } }))
-    expect(resolveAgentExecutorId(mind)).toBe('claude-code-agent')
+    const mind = agentMind(agent({ model: { providerId: 'acp' } }))
+    expect(resolveAgentExecutorId(mind)).toBe('acp')
   })
 })
 
@@ -159,7 +149,7 @@ describe('Set 判定 → 能力查询:行为等价', () => {
     // 改造前判据是 `isCoreExternalAgentProvider(providerId)`;这两条是同一批入参。
     // 2026-08-23:`getAgentLoopContextBlockReason`(hard-limit 阻断)随触发器一起删除,
     // 这道门只剩"压不压"一个观测点。
-    for (const providerId of ['acp', 'claude-code-agent']) {
+    for (const providerId of ['acp']) {
       expect(coreProviderOwnsItsContextWindow(providerId)).toBe(true)
       expect(shouldStartAgentLoopContextCompact({
         turn: 2,
@@ -202,7 +192,7 @@ describe('Set 判定 → 能力查询:行为等价', () => {
   })
 
   it('runtime 的执行器表已下沉到 core:两侧对同一 id 的事实一致', () => {
-    for (const providerId of ['acp', 'claude-code-agent']) {
+    for (const providerId of ['acp']) {
       const executor = resolveAgentExecutor(providerId)
       expect(getCoreProviderExecution(providerId)).toEqual({
         kind: executor.kind,
@@ -221,7 +211,7 @@ describe('Set 判定 → 能力查询:行为等价', () => {
       resolveOAuthAuth: async () => null,
     }
 
-    for (const providerId of ['acp', 'claude-code-agent']) {
+    for (const providerId of ['acp']) {
       expect(isExternalAgentExecutorProvider(providerId)).toBe(true)
       expect(await getProviderApiKeyWithAdapters({ ...adapters, providerId })).toBe('')
       expect(await resolveProviderAuthWithAdapters({ ...adapters, providerId })).toEqual({

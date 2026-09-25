@@ -580,7 +580,6 @@ function registerExternalAgentProviderRuntime(providerId: string): void {
 }
 
 registerExternalAgentProviderRuntime("acp");
-registerExternalAgentProviderRuntime("claude-code-agent");
 
 registerAgentProviderRuntime(
 	"codex",

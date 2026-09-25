@@ -22,7 +22,7 @@ const EXISTING_CWD = tmpdir()
 
 function captureConnector(captured: ExternalAgentTurnRequest[]): ExternalAgentConnector {
   return {
-    id: 'claude-code-agent',
+    id: 'acp',
     capabilities: {
       streamingText: true,
       thinking: true,
@@ -32,7 +32,7 @@ function captureConnector(captured: ExternalAgentTurnRequest[]): ExternalAgentCo
       fork: true,
       steer: false,
       imagesIn: false,
-      mcpInjection: 'in-process',
+      mcpInjection: 'config',
       concurrentSessions: 'per-process',
     },
     async *streamTurn(request) {
@@ -48,7 +48,7 @@ describe('createExternalAgentProvider', () => {
   it('maps the pseudo-model to CLI default and forwards real models with thinking/effort', async () => {
     const captured: ExternalAgentTurnRequest[] = []
     const provider = createExternalAgentProvider({
-      providerId: 'claude-code-agent',
+      providerId: 'acp',
       connector: captureConnector(captured),
       localSessionId: 'session-1',
       workingDirectory: EXISTING_CWD,
@@ -64,7 +64,7 @@ describe('createExternalAgentProvider', () => {
       })) { /* drain */ }
     }
 
-    await drain('claude-code-agent')
+    await drain('acp')
     expect(captured.at(-1)).toMatchObject({
       model: undefined,
       thinking: 'enabled',
@@ -84,13 +84,13 @@ describe('createExternalAgentProvider', () => {
   it('forwards the whole system prompt so the persona reaches the external agent', async () => {
     const captured: ExternalAgentTurnRequest[] = []
     const provider = createExternalAgentProvider({
-      providerId: 'claude-code-agent',
+      providerId: 'acp',
       connector: captureConnector(captured),
       localSessionId: 'session-1',
       workingDirectory: EXISTING_CWD,
     })
     for await (const _event of provider.streamTurn!({
-      model: 'claude-code-agent',
+      model: 'claude-code',
       messages: [
         { role: 'system', content: '你是 Iris,一个眼光毒、嘴更毒的设计师。' },
         { role: 'system', content: '<context-variables>now=2026-08-05</context-variables>' },
@@ -109,13 +109,13 @@ describe('createExternalAgentProvider', () => {
   it('omits systemPrompt entirely when the turn carries no system message', async () => {
     const captured: ExternalAgentTurnRequest[] = []
     const provider = createExternalAgentProvider({
-      providerId: 'claude-code-agent',
+      providerId: 'acp',
       connector: captureConnector(captured),
       localSessionId: 'session-1',
       workingDirectory: EXISTING_CWD,
     })
     for await (const _event of provider.streamTurn!({
-      model: 'claude-code-agent',
+      model: 'claude-code',
       messages: [{ role: 'user', content: 'hi' }],
       turn: 1,
     })) { /* drain */ }
@@ -132,14 +132,14 @@ describe('createExternalAgentProvider', () => {
     async workingDirectory => {
       const captured: ExternalAgentTurnRequest[] = []
       const provider = createExternalAgentProvider({
-        providerId: 'claude-code-agent',
+        providerId: 'acp',
         connector: captureConnector(captured),
         localSessionId: 'session-1',
         ...(workingDirectory === undefined ? {} : { workingDirectory }),
       })
       const events = []
       for await (const event of provider.streamTurn!({
-        model: 'claude-code-agent',
+        model: 'claude-code',
         messages: [{ role: 'user', content: 'hi' }],
         turn: 1,
       })) events.push(event)
@@ -171,14 +171,14 @@ describe('createExternalAgentProvider', () => {
   ])('refuses to start and names the real reason when the bound cwd is %s', async (_label, cwd) => {
     const captured: ExternalAgentTurnRequest[] = []
     const provider = createExternalAgentProvider({
-      providerId: 'claude-code-agent',
+      providerId: 'acp',
       connector: captureConnector(captured),
       localSessionId: 'session-1',
       workingDirectory: cwd,
     })
     const events = []
     for await (const event of provider.streamTurn!({
-      model: 'claude-code-agent',
+      model: 'claude-code',
       messages: [{ role: 'user', content: 'hi' }],
       turn: 1,
     })) events.push(event)

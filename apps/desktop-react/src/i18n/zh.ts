@@ -1678,7 +1678,6 @@ export const zh = {
   'providers.desc.grok': 'xAI 官方接口',
   'providers.desc.grok-oauth': '用 X Premium 订阅',
   'providers.desc.acp': '本机 Agent',
-  'providers.desc.claude-code-agent': '用本机的 Claude Code',
 
   /* 副行 / 分段器上的事实句。每一句都对应一条真读数,没有一句是凑数的。 */
   'providers.factRaw': '{text}',
@@ -1698,7 +1697,6 @@ export const zh = {
   /* 模式名。同一家的每种模式各带一份凭证与一份模型目录,不混用。 */
   'providers.modeApi': 'API 密钥',
   'providers.modeSub': '订阅',
-  'providers.modeLocalCli': '本地 CLI',
   'providers.modeAcp': 'ACP',
   'providers.modeCustom': '自定义端点',
   'providers.modeLabel': '接入模式',

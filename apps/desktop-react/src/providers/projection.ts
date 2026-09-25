@@ -81,7 +81,7 @@ export function credentialFactsOf(
  * 说一台本机进程「未配置」是没有意义的。
  */
 export function isModeConfigured(mode: ProviderMode, creds: CredentialFacts): boolean {
-  if (mode.kind === 'localCli' || mode.kind === 'acp' || mode.kind === 'custom') return true
+  if (mode.kind === 'acp' || mode.kind === 'custom') return true
   if (!creds.known) return false
   return mode.kind === 'subscription' ? creds.hasOAuth : creds.hasApiKey
 }
@@ -215,7 +215,6 @@ export function reorderPool(ids: readonly string[], id: string, delta: -1 | 1): 
 const MODE_LABEL: Record<ProviderModeKind, Fact['key']> = {
   api: 'providers.modeApi',
   subscription: 'providers.modeSub',
-  localCli: 'providers.modeLocalCli',
   acp: 'providers.modeAcp',
   custom: 'providers.modeCustom',
 }
@@ -229,7 +228,7 @@ export function modeLabelFact(mode: ProviderMode): Fact {
  * 顺序即优先级:不知道 → 冷却 → 已配 → 未配。
  */
 export function modeStateFact(mode: ProviderMode, creds: CredentialFacts): Fact {
-  if (mode.kind === 'localCli' || mode.kind === 'acp') return { key: 'providers.factLocal' }
+  if (mode.kind === 'acp') return { key: 'providers.factLocal' }
   if (mode.kind === 'custom') return { key: 'providers.factCustom' }
   if (!creds.known) return { key: 'providers.factUnknown' }
   if (creds.cooling) return { key: 'providers.factCooling' }

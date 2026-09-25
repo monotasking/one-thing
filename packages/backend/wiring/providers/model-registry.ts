@@ -8,7 +8,6 @@
 
 import type { OpenRouterModel } from "@shared/ipc.js";
 import {
-	catalogFactsOf,
 	fetchOnethingModelsDevData,
 	getProviderManifest,
 	getAllOnethingModels,
@@ -20,7 +19,6 @@ import {
 	getOnethingKnownModelMaxOutputTokens,
 	getOnethingModelNameAliases,
 	getOnethingModelsForProvider,
-	onethingCapabilityEntryToOpenRouterModel,
 	onethingModelServesImageOutputInLoop,
 	onethingModelSupportsImageGeneration,
 	onethingModelSupportsTemperature,
@@ -245,15 +243,6 @@ function getProviderConfigs(): OnethingProviderModelConfigs | undefined {
 		| undefined;
 }
 
-function claudeCodeAgentFallbackModelById(modelId: string): OpenRouterModel | undefined {
-	// 手填条目没有参数,不拿它盖掉下面那张兜底表(批 2)。
-	const entry = catalogFactsOf(getProviderConfigs()?.claude?.models?.[modelId]);
-	if (entry) {
-		return onethingCapabilityEntryToOpenRouterModel(entry) as OpenRouterModel;
-	}
-	return getClaudeCodeAgentFallbackModels().find((model) => model.id === modelId);
-}
-
 function copilotFallbackModel(modelId: string): OpenRouterModel {
 	const caps = detectModelCapabilities(modelId);
 	const inputModalities = ["text"];
@@ -304,10 +293,6 @@ const PROVIDER_FALLBACK_CATALOGS: Readonly<Record<string, ProviderFallbackCatalo
 		model: (modelId) => getCodexFallbackModel(modelId),
 		all: () => getCodexFallbackModels(),
 	},
-	"claude-code-agent": {
-		model: claudeCodeAgentFallbackModelById,
-		all: () => getClaudeCodeAgentFallbackModels(),
-	},
 	"github-copilot": {
 		model: copilotFallbackModel,
 		all: () => [],
@@ -322,68 +307,6 @@ function getProviderDirectFallbackModel(
 	providerId?: string,
 ): OpenRouterModel | undefined {
 	return providerId ? PROVIDER_FALLBACK_CATALOGS[providerId]?.model(modelId) : undefined;
-}
-
-function claudeCodeAgentFallbackModel(
-	id: string,
-	name: string,
-	contextLength: number,
-): OpenRouterModel {
-	return {
-		id,
-		name,
-		description: `${name} via local Claude Code CLI`,
-		context_length: contextLength,
-		architecture: {
-			modality: "text",
-			input_modalities: ["text"],
-			output_modalities: ["text"],
-			tokenizer: "unknown",
-		},
-		pricing: { prompt: "0", completion: "0", request: "0", image: "0" },
-		top_provider: {
-			context_length: contextLength,
-			max_completion_tokens: 64000,
-			is_moderated: false,
-		},
-		supported_parameters: ["reasoning"],
-	};
-}
-
-/**
- * The CLI drives the same Claude models the API providers already know:
- * reuse the claude provider's registry entries (real context windows and
- * capability flags from models.dev) and only hard-code when the registry
- * has never been populated.
- */
-function getClaudeCodeAgentFallbackModels(): OpenRouterModel[] {
-	const claudeModels = getProviderConfigs()?.claude?.models ?? {};
-	const resolve = (
-		id: string,
-		name: string,
-		contextLength: number,
-	): OpenRouterModel => {
-		const entry = claudeModels[id];
-		if (!entry) return claudeCodeAgentFallbackModel(id, name, contextLength);
-		const model = onethingCapabilityEntryToOpenRouterModel(
-			entry,
-		) as OpenRouterModel;
-		return {
-			...model,
-			description: `${model.name || name} via local Claude Code CLI`,
-		};
-	};
-	return [
-		claudeCodeAgentFallbackModel(
-			"claude-code-agent",
-			"Default (CLI configured)",
-			200000,
-		),
-		resolve("claude-fable-5", "Claude Fable 5", 1000000),
-		resolve("claude-opus-5", "Claude Opus 5", 500000),
-		resolve("claude-sonnet-5", "Claude Sonnet 5", 500000),
-		resolve("claude-haiku-4-5", "Claude Haiku 4.5", 200000),
-	];
 }
 
 function getProviderFallbackModels(providerId: string): OpenRouterModel[] {

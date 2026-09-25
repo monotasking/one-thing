@@ -1439,7 +1439,6 @@ export const en: Record<MessageKey, string> = {
   'providers.desc.grok': 'Official xAI API',
   'providers.desc.grok-oauth': 'Uses your X Premium subscription',
   'providers.desc.acp': 'Local agents',
-  'providers.desc.claude-code-agent': 'Uses Claude Code on this machine',
 
   'providers.factRaw': '{text}',
   'providers.factConfigured': 'Configured',
@@ -1456,7 +1455,6 @@ export const en: Record<MessageKey, string> = {
 
   'providers.modeApi': 'API key',
   'providers.modeSub': 'Subscription',
-  'providers.modeLocalCli': 'Local CLI',
   'providers.modeAcp': 'ACP',
   'providers.modeCustom': 'Custom endpoint',
   'providers.modeLabel': 'Access mode',

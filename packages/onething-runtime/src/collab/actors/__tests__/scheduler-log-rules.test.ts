@@ -70,7 +70,7 @@ const SAMPLES: CollabSchedulerLogRow[] = [
   collabSchedulerExternalTurn({
     at: 15,
     agentId: 'iris',
-    connectorId: 'claude-code-agent',
+    connectorId: 'acp',
     phase: 'end',
     outcome: 'aborted',
     elapsedMs: 131_000,
@@ -79,7 +79,7 @@ const SAMPLES: CollabSchedulerLogRow[] = [
   collabSchedulerExternalTool({
     at: 16,
     agentId: 'iris',
-    connectorId: 'claude-code-agent',
+    connectorId: 'acp',
     toolName: 'send_message',
     decision: 'allow',
     hostTool: true,
@@ -190,7 +190,7 @@ describe('正文永不入账(保密纪律 §7)', () => {
     const row = collabSchedulerExternalTool({
       at: 16,
       agentId: 'iris',
-      connectorId: 'claude-code-agent',
+      connectorId: 'acp',
       toolName: 'Write',
       decision: 'deny',
       hostTool: false,

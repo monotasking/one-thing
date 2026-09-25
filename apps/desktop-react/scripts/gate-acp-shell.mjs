@@ -12,7 +12,7 @@
  *  ① 设置页「Agent」那一页列出种子 agent 与探测结果:至少 `claude-code` / `gemini` / `codex`
  *     三行在场;这台机器上**探测到了**的那几台,名册行与详情都写出了 `acp.getAgents` 报的
  *     那个版本号(没装的那几台读作「未安装」,门不假设这台机器装了什么)。
- *     另:**模型服务**那一页的名册里没有 ACP / claude-code-agent 那两家(2026-09-26 用户裁定:
+ *     另:**模型服务**那一页的名册里没有 ACP 那一家(2026-09-26 用户裁定;本地 CLI `claude-code-agent` A6-b 已退役:
  *     agent 不许被画成普通模型)。
  *  ② 模型选择器:agent 行住在「Agent」那一组(`picker-agent-group`),不在任何模型的组里;
  *     每一行带来源字、**没有窗口那一格**;经 core 的 `/api/rpc` 种一台命令不存在的自定义
@@ -412,9 +412,9 @@ async function main() {
     const agentFamilies = await page.evaluate(() =>
       [...document.querySelectorAll('[data-testid^="provider-row-"]')]
         .map((el) => el.getAttribute('data-testid').slice('provider-row-'.length))
-        .filter((id) => id === 'acp' || id === 'claude-code-agent'),
+        .filter((id) => id === 'acp'),
     )
-    step(agentFamilies.length === 0, `① 模型服务名册里没有 agent 那两家(实测:${agentFamilies.join(',') || '无'})`)
+    step(agentFamilies.length === 0, `① 模型服务名册里没有 agent 那一家(实测:${agentFamilies.join(',') || '无'})`)
 
     await click(page, '[data-testid="dock-tile-settings"]')
     await waitFor('设置页已收回', () =>

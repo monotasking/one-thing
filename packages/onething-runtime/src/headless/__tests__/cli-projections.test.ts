@@ -96,7 +96,7 @@ describe('headless CLI projections', () => {
   })
 
   it('拒绝选一个没开的 provider —— 不翻默认、不往 providers.json 里种壳', () => {
-    // 空间只配了一个自定义 provider。`claude-code-agent` 只是「目录里认识」,
+    // 空间只配了一个自定义 provider。`claude-code-agent`(A6-b 已退役,这里当孤儿目录键用)只是「目录里认识」,
     // 合成给它补了一条全灭壳 —— 有名字,不代表这个空间配过它。
     const effectiveAi = composeEffectiveAISettings(
       {

@@ -55,6 +55,8 @@ import {
 import { getMessagesPageFromJsonFilePath } from '@onething/core/session/storage/json-message-page-file'
 import { AsyncSaveQueue, LRUCache, withFileLockSync, type AsyncSaveQueueOptions } from '@onething/core/storage'
 import { dehydrateSessionForStorage, rehydrateSessionFromStorage } from './session-dehydrate.js'
+import { rewriteRetiredSessionProvider, type RetiredProviderRewrite } from './retired-providers.js'
+import { getLogger } from '../logging/index.js'
 import { STRUCTURAL_WRITE_PLAN, type SessionStorageDriver, type SessionWritePlan } from './storage-driver.js'
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
@@ -165,6 +167,8 @@ export interface OnethingDeleteSessionResult {
   parentSessionId?: string
 }
 
+const retiredProviderLog = getLogger('sessions')
+
 export class OnethingSessionRepository<
   TSession extends CoreSession<TMessage> & {
     id: string
@@ -195,6 +199,8 @@ export class OnethingSessionRepository<
    * 增长(几百条 uuid 字符串的量级),删除会话时释放。
    */
   private readonly processOwnedSessions = new Set<string>()
+  /** A6-b:外壳读时改写过、还没落盘的退役 provider(见 `persistRetiredProviderRewrite`)。 */
+  private readonly retiredProviderRewrites = new Map<string, RetiredProviderRewrite>()
 
   constructor(private readonly options: OnethingSessionRepositoryOptions<TSession, TMessage, TMeta, TDetails, TMarker>) {
     this.sessionCache = new LRUCache<string, TSession>(options.cacheSize ?? 10)
@@ -333,7 +339,33 @@ export class OnethingSessionRepository<
       : this.options.readJsonFile<TSession | null>(this.options.getSessionPath(sessionId), null) ?? undefined
     if (!stored) return undefined
     if (this.options.isSessionDeleted?.(sessionId, (stored as TSession & { storageGeneration?: string }).storageGeneration)) return undefined
+    // A6-b:退役 provider 的外壳每一口读都就地改写(纯、幂等),落盘留给 `getSession` 的那一次。
+    const rewrite = rewriteRetiredSessionProvider(stored as TSession & { lastProvider?: string; lastModel?: string })
+    if (rewrite) this.retiredProviderRewrites.set(sessionId, rewrite)
     return stored
+  }
+
+  /**
+   * A6-b:外壳读时改写过的退役 provider(`retired-providers.ts`)在这里**落一次盘**——
+   * 只写 `meta.json`(`kind: 'meta'`),并把 sessions 索引里那一格一起改;账本不动。
+   * 落过盘的外壳再读就不再命中,所以每条会话一生只走这里一次,也只记一行 info。
+   */
+  private persistRetiredProviderRewrite(sessionId: string): void {
+    const rewrite = this.retiredProviderRewrites.get(sessionId)
+    if (!rewrite) return
+    this.retiredProviderRewrites.delete(sessionId)
+    retiredProviderLog.info('retired session provider rewritten', {
+      sessionId,
+      from: rewrite.from.provider,
+      ...(rewrite.from.model !== undefined ? { fromModel: rewrite.from.model } : {}),
+      to: rewrite.to.provider,
+      toModel: rewrite.to.model,
+    })
+    this.applyMetadataMutation(sessionId, {
+      // 缓存里那一份已经在外壳读时改好了;这里只负责落盘。
+      mutateSession: () => {},
+      mutateMeta: meta => { rewriteRetiredSessionProvider(meta as TMeta & { lastProvider?: string; lastModel?: string }) },
+    })
   }
 
   /**
@@ -713,7 +745,11 @@ export class OnethingSessionRepository<
   }
 
   getSessionsList(): TMeta[] {
-    return applyDefaultAgentIdToSessionMetas(this.loadSessionsIndex(), this.options.defaultAgentId) as TMeta[]
+    const metas = applyDefaultAgentIdToSessionMetas(this.loadSessionsIndex(), this.options.defaultAgentId) as TMeta[]
+    // A6-b:索引里若还记着退役 provider(老索引才有 lastProvider 这一格),列表里就地改写;
+    // 落盘跟着那条会话第一次 `getSession`。
+    for (const meta of metas) rewriteRetiredSessionProvider(meta as TMeta & { lastProvider?: string; lastModel?: string })
+    return metas
   }
 
   initializeSessionRepositoryIndex(): void {
@@ -803,6 +839,7 @@ export class OnethingSessionRepository<
       expandPath: this.options.expandPath,
     };
     const session = loadSessionWithAdapters<TSession>(loadSessionWithAdaptersOptions).session
+    if (session) this.persistRetiredProviderRewrite(sessionId)
     // F4-c c4-d(§16.27):交出去之前换装 —— 消息那一格的维护者是折叠产物。
     return session ? this.refreshMessagesFromProjection(sessionId, session) : session
   }

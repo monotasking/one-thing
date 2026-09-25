@@ -4,7 +4,7 @@
  * `agents/store.ts` 的 `executor` 字段自 A0 起只有语义没有行为
  * (agent-domain-model.md M7 原文「本期只定义语义不接线」)。本期兑现它,
  * 但**不能靠它改变今天的行为**:线上 agents.json 里一行 executor 都没有,
- * Iris 走外部通路全靠 `model.providerId === 'claude-code-agent'`。
+ * 外部 agent 走外部通路全靠 `model.providerId === 'acp'`(A6-b 前是 'claude-code-agent')。
  *
  * 所以选择规则是两级,顺序不可颠倒:
  *   1. 显式 `executor` 字段(将来 UI 里选执行器时写入)——优先;

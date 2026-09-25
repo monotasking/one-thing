@@ -80,31 +80,3 @@ export interface HostToolTurnContext {
    */
   abortSignal?: AbortSignal
 }
-
-/**
- * 注入给 connector 的那一份东西。
- *
- * `mcpServers` 直接进 SDK 的 `query()` 选项;`toolNames` 是已注入工具的**全名**
- * 清单,connector 用它做两件事:进 `allowedTools`(免得宿主工具被 SDK 的审批链
- * 二次拦一道)、以及在日志里说清这一轮到底给了它哪几个。
- */
-export interface HostMcpInjection {
-  mcpServers: Record<string, unknown>
-  toolNames: string[]
-  /** 回合收尾时解绑语境。connector 在 `finally` 里调,必须幂等。 */
-  release?: () => void
-}
-
-/**
- * connector 每轮问一次:「这一轮给不给宿主工具,给哪几个?」
- *
- * 装配层实现它(它认识 store / 工具注册表 / v3 回合登记簿);connector 只负责
- * 在 `capabilities.hostTools` 为真时问、把答案塞进 `queryOptions`、收尾时解绑。
- * 返回 `undefined` = 这一轮不注入(普通对话、装配层没装、能力表说不支持)。
- */
-export type HostMcpSurfaceResolver = (request: {
-  localSessionId: string
-  executionContext?: unknown
-  messageId?: string
-  cwd: string
-}) => Promise<HostMcpInjection | undefined> | HostMcpInjection | undefined

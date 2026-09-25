@@ -203,3 +203,24 @@ describe('落盘', () => {
     expect(fs.existsSync(spaceProviderSettingsPath('default'))).toBe(true)
   })
 })
+
+describe('A6-b:退役 provider 留下的孤儿键', () => {
+  it('providers.json 里的 claude-code-agent 条目:归一、合成、拆回都不抛,原样留着', async () => {
+    const { composeEffectiveAISettings, splitEffectiveAISettings } = await import('@shared/defaults/ai-settings')
+    const orphan = {
+      model: 'claude-code-agent',
+      selectedModels: ['claude-code-agent', 'claude-sonnet-5'],
+      enabled: true,
+    }
+    const normalized = normalizeSpaceProviderSettings({
+      provider: 'acp',
+      providers: { 'claude-code-agent': orphan, acp: { model: 'claude-code', selectedModels: ['claude-code'], enabled: true } },
+    })
+    expect(normalized.providers['claude-code-agent']).toMatchObject(orphan)
+    const effective = composeEffectiveAISettings({ temperature: 0.7 }, normalized as unknown as Parameters<typeof composeEffectiveAISettings>[1])
+    expect(effective.providers['claude-code-agent']).toMatchObject({ enabled: true })
+    const { space } = splitEffectiveAISettings(effective)
+    expect(space.providers['claude-code-agent']).toMatchObject(orphan)
+    expect(space.provider).toBe('acp')
+  })
+})

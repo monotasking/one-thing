@@ -31,7 +31,7 @@ packages/backend/wiring/collab/inspector.ts 1
 packages/backend/wiring/engine/triggers/index.ts 1
 packages/backend/wiring/evals/events.ts 1
 packages/backend/wiring/evals/host-ports.ts 1
-packages/backend/wiring/external-agents/index.ts 2
+packages/backend/wiring/external-agents/index.ts 1
 packages/backend/wiring/gateway/host-ports.ts 1
 packages/backend/wiring/goals/runtime-hooks.ts 1
 packages/backend/wiring/logging/diagnostics.ts 1

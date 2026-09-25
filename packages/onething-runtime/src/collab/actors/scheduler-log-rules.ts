@@ -213,7 +213,7 @@ export type CollabExternalTurnOutcome = 'complete' | 'error' | 'aborted'
 export interface CollabSchedulerExternalTurnRow extends CollabSchedulerLogBase {
   type: 'external-turn'
   agentId: string
-  /** 哪个执行器(`claude-code-agent` / `acp` / …)。 */
+  /** 哪个执行器(`acp` / …)。 */
   connectorId: string
   phase: 'start' | 'end'
   /** 仅 `end` 有。 */

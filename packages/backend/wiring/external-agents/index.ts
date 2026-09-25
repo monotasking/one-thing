@@ -1,14 +1,8 @@
-import { execFileSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import { ACPManager } from '@onething/runtime/acp'
 import {
   ACP_CONNECTOR_ID,
   createAcpConnector,
-  createClaudeCodeConnector,
   describeExternalToolPermission,
-  CLAUDE_CODE_AGENT_CONNECTOR_ID,
 } from '@onething/runtime/external-agents'
 import type {
   ExternalAgentConnector,
@@ -20,68 +14,29 @@ import type {
 import { findAgentExecutorDescriptor } from '@onething/runtime/agents'
 import { Interaction } from '@onething/core/interaction'
 import type { InteractionAnswer } from '@onething/core/interaction'
-import {
-  recordExternalAgentTool,
-  recordExternalAgentTurn,
-} from '../collab/external-observability.js'
 import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '../interaction/no-human.js'
 import { resolvePermissionMessageAnchor } from '../permission/message-anchor.js'
 import { AbortScope, Intent } from '@onething/core/toolkit'
 import type { Effect, Invocation } from '@onething/core/toolkit'
 import { createPermissionAuthorizer } from '../toolkit/authorizer.js'
-import { publishExternalAgentBackgroundStatus } from './background-status.js'
-import { resolveClaudeCodeHostToolSurface } from './host-tools.js'
 import { resolveExternalAgentSpawnEnv } from './spawn-env.js'
 import { createAcpHostMcpPort } from '../acp/host-mcp-port.js'
-import { consolePort, getLogger } from '../logging/index.js'
-import type { ExternalAgentObserver } from '@onething/runtime/external-agents/types'
-import type { ClaudeCodeConnectorOptions } from '@onething/runtime/external-agents/claude-code-connector'
+import { getLogger } from '../logging/index.js'
 
 const log = getLogger('external-agents')
-/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog = consolePort(log)
 
 
-export { resolveClaudeCodeHostToolSurface, resolveHostToolSurface, type HostToolSurface } from './host-tools.js'
-
-// ---------------------------------------------------------------------------
-// CLI detection
-// ---------------------------------------------------------------------------
-
-const CLAUDE_CANDIDATE_PATHS = [
-  join(homedir(), '.local/bin/claude'),
-  '/usr/local/bin/claude',
-  '/opt/homebrew/bin/claude',
-]
-
-let cachedClaudeExecutable: string | null | undefined
-
-/** Locate the locally installed Claude Code CLI; cached for the process lifetime. */
-export function findClaudeExecutable(): string | undefined {
-  if (cachedClaudeExecutable !== undefined) return cachedClaudeExecutable ?? undefined
-  for (const candidate of CLAUDE_CANDIDATE_PATHS) {
-    if (existsSync(candidate)) {
-      cachedClaudeExecutable = candidate
-      return candidate
-    }
-  }
-  try {
-    const resolved = execFileSync('/usr/bin/which', ['claude'], { encoding: 'utf8' }).trim()
-    cachedClaudeExecutable = resolved || null
-  } catch {
-    cachedClaudeExecutable = null
-  }
-  return cachedClaudeExecutable ?? undefined
-}
+export { resolveHostToolSurface, type HostToolSurface } from './host-tools.js'
 
 // ---------------------------------------------------------------------------
 // Session link persistence (survives app restarts)
 // ---------------------------------------------------------------------------
 
 /**
- * 会话链接只有一张表:`<store>/acp/session-links.json`(A0-3)。ACP 与 Claude 两条路
- * 读写的是 `ACPManager` 手上**同一只**表对象 —— 文件那只读一次进内存,各 new 一只就会
- * 互相覆盖。旧的 `<store>/external-agents/session-links.json` 在表第一次读时并进来,不删。
+ * 会话链接只有一张表:`<store>/acp/session-links.json`(A0-3)。读写的是 `ACPManager`
+ * 手上**同一只**表对象 —— 文件那只读一次进内存,各 new 一只就会互相覆盖。旧的
+ * `<store>/external-agents/session-links.json` 在表第一次读时并进来,不删;退役的
+ * `claude-code-agent` 记录在同一刻并成 ACP `claude-code` 的链接(A6-b,`acp/session-links.ts`)。
  */
 export function resolveExternalAgentSessionLink(
   connectorId: string,
@@ -100,6 +55,10 @@ export function persistExternalAgentSessionLink(link: ExternalAgentSessionLink):
 
 /**
  * 外部 agent 的审批桥(E4,G1+G2)。
+ *
+ * A6-b 注:这座桥(与下面的提问桥)是连接器无关的 `permissionHandler` / `interactionHandler`
+ * 实现;它们唯一的生产调用方 Claude SDK 连接器已退役,ACP 走 `wiring/acp/permission-bridge.ts`
+ * (同一个 `describeExternalToolPermission` 分析,经 `describeAcpToolPermission`)。
  *
  * ## 为什么改走策略门
  *
@@ -136,7 +95,7 @@ export function persistExternalAgentSessionLink(link: ExternalAgentSessionLink):
  *    的手搓 kind)—— 它同时是 `Permission.ask({ type })` 的类型,所以卡片类型与
  *    E4 之前逐字相同,渲染层一个字都不用改;
  *  - `resources: [toolName]` —— grant 的 pattern 是工具名;
- *  - `preview.title` 压过 `titleForEffect`,标题仍是 `Claude Code: <tool>`。
+ *  - `preview.title` 压过 `titleForEffect`,标题是工具名(A6-b 前是 `Claude Code: <tool>`)。
  *
  * 认出来那一支可能给出**空 effects**(白名单命令、界内的普通读),策略门于是直接
  * 放行(`core/permission/permission-policy.ts:171`)—— 这与本地 `ls` 不弹卡是同一
@@ -177,7 +136,7 @@ export async function askExternalAgentPermission(
     effects,
     preview: {
       ...(described?.preview ?? {}),
-      title: described?.preview?.title ?? `Claude Code: ${ask.toolName}`,
+      title: described?.preview?.title ?? ask.toolName,
       metadata: {
         // 谁在跑这一步:卡片长得和本地一样之后,这一条就是唯一的出处标记。
         connectorId: ask.connectorId,
@@ -349,33 +308,12 @@ export function getExternalAgentConnectors(): ConnectorMap {
 }
 
 function createExternalAgentConnectors(): ConnectorMap {
-  const observerPort: ExternalAgentObserver = {
-    turn: input => { recordExternalAgentTurn(input) },
-    toolDecision: input => { recordExternalAgentTool(input) },
-    // 后台子代理的电平 → 气泡里的一行状态(可见性,2026-08-11)。与上面两条
-    // 不同,它的落点不是调度时间轴而是**用户看得见的会话流** —— 因为这一条
-    // 回答的问题("它还在跑吗、跑了多久")是用户在问,不是回查时才问。
-    backgroundTasks: input => { publishExternalAgentBackgroundStatus(input) },
-  };
-  const claudeCodeConnectorOptions: ClaudeCodeConnectorOptions = {
-    executablePath: findClaudeExecutable(),
-    permissionHandler: askExternalAgentPermission,
-    // E4 提问落点:AskUserQuestion 与 onUserDialog 都汇到 InteractionRegistry。
-    interactionHandler: askExternalAgentInteraction,
-    resolveSpawnEnv: resolveExternalAgentSpawnEnv,
-    // E3 宿主工具面:协作工具经进程内 MCP 注入 SDK,发言权回到房间(§2)。
-    // 连接器仍会再问一次 E0 能力表(`hostTools`)—— 装上不等于开着。
-    hostToolSurface: resolveClaudeCodeHostToolSurface,
-    // E6 观测:外部回合的起落与每一次工具决定进调度时间轴(§6)。装配层认识
-    // 房间与时间轴,连接器不认识 —— 所以它是一个端口而不是一条 import。
-    observer: observerPort,
-    logger: consoleLog,
-  };
   return {
-    [CLAUDE_CODE_AGENT_CONNECTOR_ID]: createClaudeCodeConnector(claudeCodeConnectorOptions),
     // ACP 的连接与会话归 `backend.acp` 子系统(ACPManager);连接器只是一层薄转接,
     // 权限桥也已由 `registerACPPermissionBridge` 装在 ACPManager 上。
     // A4-b:宿主工具面经端口递进去(桥与凭据表在 `backend.acp`,调用时现取)。
+    // A6-b(2026-09-26):Claude SDK 连接器(`claude-code-agent`)退役,Claude Code 是
+    // ACP 名册里的一台。
     [ACP_CONNECTOR_ID]: createAcpConnector({ hostMcp: createAcpHostMcpPort() }),
   }
 }

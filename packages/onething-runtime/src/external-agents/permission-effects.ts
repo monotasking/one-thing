@@ -16,7 +16,8 @@
  * **认不出的工具名维持现状**:返回 `undefined`,调用方回落到工具名粒度的
  * `external-agent` effect。不认识不等于放行 —— 这里没有 fail-open 的分支。
  *
- * 工具名与 input 形状核自 `@anthropic-ai/claude-agent-sdk` 的 `sdk-tools.d.ts`:
+ * 工具名与 input 形状当年核自 Claude SDK 的 `sdk-tools.d.ts`(SDK 连接器 A6-b 退役;今天
+ * 的调用方是 `describeAcpToolPermission`,它把 ACP 的 `kind` 归一成这几个名字):
  * `BashInput.command`、`FileReadInput/FileWriteInput/FileEditInput.file_path`、
  * `NotebookEditInput.notebook_path`。`MultiEdit` 在当前这版 d.ts 里已经没有独立的
  * input 类型(`Edit` 用 `replace_all` 吸收了它),这里仍留一行:老版本 CLI 还会发
