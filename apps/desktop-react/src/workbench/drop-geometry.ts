@@ -47,6 +47,7 @@ export function measureDropGeometry(): DropGeometry {
   const strips: StripBox[] = []
   const nodrop: Rect[] = []
   const shelves: ShelfSide[] = []
+  const collapsed: { side: ShelfSide; thickness: number }[] = []
   if (typeof document !== 'undefined') {
     for (const host of Array.from(document.querySelectorAll('[data-pane-region]'))) {
       const region = host.getAttribute('data-pane-region')
@@ -117,9 +118,14 @@ export function measureDropGeometry(): DropGeometry {
       const side = el.getAttribute('data-shelf') as ShelfSide | null
       if (!side || !SHELF_SIDES.includes(side) || shelves.includes(side)) continue
       shelves.push(side)
+      // 收起的架子:边带对它仍成立(落进去 = 展开),预示按它展开后的厚度画(09-25)。
+      if (el.hasAttribute('data-shelf-collapsed')) {
+        const thickness = Number.parseFloat(el.getAttribute('data-shelf-thickness') ?? '')
+        if (Number.isFinite(thickness) && thickness > 0) collapsed.push({ side, thickness })
+      }
     }
   }
-  return { window: windowRect(), leaves, strips, nodrop, shelves }
+  return { window: windowRect(), leaves, strips, nodrop, shelves, collapsed }
 }
 
 /**

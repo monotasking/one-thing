@@ -7,7 +7,7 @@ import { useLiveTitleStore } from '../stage/live-title'
 import { panelIdOf } from '../stage/panel-ref'
 import { defaultFloatRect, floatRectForGrab, FALLBACK_VIEWPORT } from '../stage/transitions'
 import { dropRef } from './drop-commit'
-import { dropTargetAt, targetRectOf } from './drop'
+import { stickyDropTargetAt, targetRectOf } from './drop'
 import { measureDropGeometry } from './drop-geometry'
 import { tabStripChoreo } from '../ui/tab-reorder'
 import { contentKindOf, parseRefId, partsOfContent, refId } from './kinds'
@@ -151,6 +151,8 @@ interface DragHeld {
    */
   rules: DropRules
   target: DropTarget
+  /** `target` 是判据交出来的,还是起拖时填的占位(占位不参与迟滞)。 */
+  judged: boolean
   /**
    * 此刻是不是正走在「带内」那一形上。**存在这一格 payload 里而不是一个 ref**:
    * 它是这一场手势的一部分,与 `DragSession` 那条会话同生共死 —— 存在组件的 ref
@@ -211,6 +213,7 @@ export function useContentDrag(spec: ContentDragSpec): (e: ReactPointerEvent<Ele
         geometry,
         rules: rulesFor(ref, specRef.current.rules, geometry, source),
         target: { kind: 'float' },
+        judged: false,
         inBand: false,
         strip: null,
         cleanup: () => {},
@@ -293,7 +296,18 @@ export function useContentDrag(spec: ContentDragSpec): (e: ReactPointerEvent<Ele
        * 读到的是它自己这一帧刚造出来的位移,那才是真会自激的一环。
        * `stripIndexAt` 是个幂等的夹取算子,所以这条环在同一个 x 上收敛,不来回。
        */
-      const target = dropTargetAt(pointer, held.geometry, held.rules, liveOf(held))
+      /*
+       * **带迟滞**(09-25,`drop.stickyDropTargetAt`):分界线上的一像素抖动不再换预示。
+       * 第一帧(`judged === false`)没有「上一个」可留,照判据交。
+       */
+      const target = stickyDropTargetAt(
+        pointer,
+        held.judged ? held.target : null,
+        held.geometry,
+        held.rules,
+        liveOf(held),
+      )
+      held.judged = true
       held.target = target
       setDropFeedback(feedbackOf(target, held.geometry, pointer, held.ref, t))
       paintStrip(held, target)

@@ -107,11 +107,17 @@ const TEAR_OFF_DISTANCE = 24
  */
 const BELOW_STRIP_OFFSET = 12
 /**
- * 「在这条边上生一条新架子」那条带占窗口那条轴的多少(`workbench/drop.ts` 的
- * `NEW_SHELF_ZONE`,09-24 用户令 30%)。场景 ⑨ 站在带内(离右缘 15%)与带外
- * (离右缘 30% 再往里 20px)两点上量。
+ * 新架子**落下之后**占窗口那条轴的多少(`workbench/drop.ts` 的 `NEW_SHELF_ZONE`,
+ * 09-24 用户令 30%)。预示那层膜画的就是它。
  */
 const NEW_SHELF_ZONE = 0.3
+/**
+ * 边带的**判定**宽度 = `min(EDGE_BAND_MAX_PX, 那条轴 × EDGE_BAND_RATIO)`(`drop.edgeBandOf`,
+ * 09-25 外窄内宽)。场景 ⑨ 站在带内(离右缘半条带)与带外(离右缘一条带再往里 40px,
+ * 那里是中央叶的右分屏带)两点上量。
+ */
+const EDGE_BAND_RATIO = 0.06
+const EDGE_BAND_MAX_PX = 64
 /** 分屏带占一片叶那条轴的多少(`drop.SPLIT_BAND`)。场景 ⑤ 站在上沿 10% 处量。 */
 const SPLIT_BAND = 0.3
 /**
@@ -2000,28 +2006,37 @@ async function main() {
       }
     }
 
-    /* ══ 场景 ⑨:边带 —— 12px,而且只对没有架子的那一边(U1)════════════ */
-    scenario('新架子带:没有架子的那一边、窗口的 30%;松手长出 30% 厚的新架子')
+    /* ══ 场景 ⑨:边带 —— 贴边窄带(09-25 外窄内宽),而且只对没有架子的那一边(U1)══ */
+    scenario('边带:没有架子的那一边、贴边一条窄带;带外就是中央叶的右分屏;松手长出 30% 厚的新架子')
     {
       /*
-       * 09-24 用户令:「架子的空间占窗口的 30% 左右(无架子时),中间没有涉及到的区域为
-       * 浮窗区」。U1 那条「只对**还没有架子**的那一边成立」(用户原话「莫名钉边」)照旧。
-       * 两点都站在中央叶上沿那一带(总览浮窗的上沿在它之下,底边那条 30% 带也够不着):
-       * 带外那一点落的是中央叶的上分屏带(一块板),带内是新架子带(一层膜)。
+       * 09-24 用户令:「架子的空间占窗口的 30% 左右(无架子时)」—— 那是新架子**长出来**
+       * 多厚。09-25 用户报「只有右架子,chat 区没办法分屏到右侧」:判定区若也是 30%,
+       * 它排在叶之前,中央叶的右分屏带整块落在里面。于是判定区收成贴边一条窄带
+       * (`edgeBandOf`),带外那一点必须读到的是**分屏到右侧**(一块板)。
+       * U1 那条「只对**还没有架子**的那一边成立」(用户原话「莫名钉边」)照旧。
        */
       const before = await shelvesNow(page)
       assert(before.includes('left'), '夹具出厂:左架子(files)在', JSON.stringify(before))
       assert(!before.includes('right'), '夹具出厂:右架子还没有', JSON.stringify(before))
       const width = await page.evaluate(() => window.innerWidth)
-      const bandY = await page.evaluate(() => {
+      const zone = Math.round(width * NEW_SHELF_ZONE)
+      const band = Math.min(EDGE_BAND_MAX_PX, width * EDGE_BAND_RATIO)
+      /*
+       * 带外那一点站在右缘往里「一条带 + 10px」处(10 > 迟滞宽度 6,从叶里往外走时不会被
+       * 上一个落点留住)。它要读到的是**右**分屏,而 `splitSideAt` 按归一距离取最近 ——
+       * 所以那一行离叶上缘的比例要比它离右缘的比例大一截,否则赢的是「上」。纵向比例
+       * 因此由叶宽现算(下限 10%:总览浮窗的上沿在它之下),不是写死一个 10%。
+       */
+      const bandY = await page.evaluate((reach) => {
         const slot = document.querySelector('[data-pane-region="center"] [data-pane-slot]')
         if (!slot) return null
         const r = slot.getBoundingClientRect()
-        return Math.round(r.top + r.height * 0.1)
-      })
-      const zone = Math.round(width * NEW_SHELF_ZONE)
-      const nearRight = bandY === null ? null : { x: width - zone - 20, y: bandY }
-      const onRightEdge = bandY === null ? null : { x: width - Math.round(zone / 2), y: bandY }
+        const fy = Math.max(0.1, reach / r.width + 0.05)
+        return Math.round(r.top + r.height * fy)
+      }, band + 10)
+      const nearRight = bandY === null ? null : { x: Math.round(width - band - 10), y: bandY }
+      const onRightEdge = bandY === null ? null : { x: Math.round(width - band / 2), y: bandY }
       /*
        * 拖的是**从没开过的那一份**(`delta.ts`)。拖一份此刻正当着中央叶活动标签
        * 的文件过去,整片叶答的是 `back`(「松手放回」)—— 判据是对的,而这一条要量的是
@@ -2034,20 +2049,20 @@ async function main() {
         JSON.stringify({ nearRight, onRightEdge }),
       )
       if (nearRight && onRightEdge && row && !before.includes('right')) {
-        // (a) 带外:中央叶的分屏带 —— 一块板,不是膜。
+        // (a) 带外:中央叶的**右**分屏带 —— 一块板,说「分屏到右侧」(09-25 报障的那一点)。
         await press(cdp, row)
         await strokeOn(cdp, row, nearRight, { steps: 12 })
         await moveTo(cdp, { x: nearRight.x + 1, y: nearRight.y })
         await delay(40)
         const outside = await feedbackNow(page)
-        assert(outside.shape !== 'film', `离右缘 ${zone + 20}px(带外)不是新架子带`, JSON.stringify(outside))
-        assert(!/钉成|Pin as a new/.test(outside.hint), '而且那行字说的不是「钉成架子」', outside.hint)
+        assert(outside.shape === 'slab', `离右缘 ${Math.round(band + 10)}px(带外)是分屏:一块板`, JSON.stringify(outside))
+        assert(/分屏到右侧|Split to the right/.test(outside.hint), '那行字说的是「分屏到右侧」', outside.hint)
         // (b) 带内:一层窗口宽 30% 的膜 + 「钉成右侧架子」。
         await strokeOn(cdp, nearRight, onRightEdge, { steps: 6 })
         await moveTo(cdp, { x: onRightEdge.x, y: onRightEdge.y + 1 })
         await delay(40)
         const inside = await feedbackNow(page)
-        assert(inside.shape === 'film', '右边 30% 以内是新架子带:一层膜', JSON.stringify(inside))
+        assert(inside.shape === 'film', '贴右缘那条窄带是新架子带:一层膜', JSON.stringify(inside))
         assert(
           inside.bandRect !== null && Math.abs(inside.bandRect.width - zone) <= 2,
           `而且那层膜就是窗口宽的 30%(${zone}px)`,

@@ -71,3 +71,19 @@ describe('一条檐收不收东西', () => {
     expect(measureDropGeometry().strips ?? []).toHaveLength(0)
   })
 })
+
+describe('架子:哪几条边有、哪几条是收着的', () => {
+  it('收起的架子仍算「有架子」,另外报一格展开后的厚度(09-25:收起的那条边也要接得住东西)', () => {
+    document.body.innerHTML = `
+      <aside data-shelf="left"></aside>
+      <aside data-shelf="right" data-shelf-collapsed="true" data-shelf-thickness="360"></aside>`
+    const geo = measureDropGeometry()
+    expect(geo.shelves).toEqual(['left', 'right'])
+    expect(geo.collapsed).toEqual([{ side: 'right', thickness: 360 }])
+  })
+
+  it('收着却说不出厚度 → 不报(宁可那条边没有边带,也不画一块猜出来的预示)', () => {
+    document.body.innerHTML = '<aside data-shelf="bottom" data-shelf-collapsed="true"></aside>'
+    expect(measureDropGeometry().collapsed).toEqual([])
+  })
+})
