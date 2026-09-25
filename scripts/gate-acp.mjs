@@ -88,6 +88,9 @@
  *      那条),链接表里新会话的 agent 会话 id ≠ 源的;在分叉上发一条,agent 在 fork 出来的那条上答。
  *   反证:挖掉退避 → ⑲「第 4 次仍在重连」红;挖掉认领查重 → ⑳「再认领答同一条」红。
  *
+ * A6-a ㉒(opt-in `ONETHING_GATE_REAL_ACP=1`,否则一行 `skipped`):种子名册里的真 `claude-agent-acp`,
+ *   在另一间临时 store 上把 §5 A6 对等清单逐行跑一遍 —— 细则见文件末 `runRealClaudeParity` 的注释。
+ *
  * **必须用 node 起**(同 gate:search-index):server 的检索 Worker 要 `node:sqlite`,bun 没有。
  * 不构建:缺 `dist/server/main.js` 就叫你先 `bun run server:build`。
  * 绝不碰真 `~/.onething` —— 全程 `ONETHING_STORE_PATH` 指向 mkdtemp 出来的临时目录。
@@ -1039,8 +1042,324 @@ try {
   fs.rmSync(lonelyDir, { recursive: true, force: true })
 }
 
+// ── ㉒ 真 claude-agent-acp 对等门(A6-a,opt-in)─────────────────────────────────────────
+/**
+ * 方案 §5 A6 对等清单 / §11.7 A6-a:用本机的 `claude-agent-acp`(种子 `resources/acp-agents/claude-code.json`
+ * 那条起法 —— 门**不写**任何用户 agent 条目,它得从种子名册里来,这本身就是证据的一部分)真跑一遍。
+ * 花的是跑门的人自己的 Claude 订阅额度,于是 opt-in:`ONETHING_GATE_REAL_ACP=1`;没开 = 一行
+ * `skipped`、不影响退出码(口径同 `gate:search-index` ⑫ / `gate:embed-runtime`)。
+ *
+ * 纪律:绝不跑登录(`--cli auth login`),门自己不写 `~/.claude`、不碰真 `~/.onething`(server 起在
+ * 临时 store,会话目录是临时目录;agent 读它自己的 `~/.claude` 登录态,并照常把会话记录写进
+ * `~/.claude/projects/<临时目录>` —— 那是 agent 的行为,不是门的)。prompt 一共 ≤ 6 条、每条一句。
+ * 代理:server 继承门自己的环境(`HTTPS_PROXY` 等),`resolveExternalAgentSpawnEnv` 再照 App 口径递给 agent。
+ *
+ *   ㉒-1 名册:`claude-code` 来自 builtin、探测到已装;开过会话之后能力表 loadSession / fork / list / resume /
+ *        image / embeddedContext / http+sse MCP、authMethods ≥ 2 且有终端型,`auth.required === false`。
+ *   ㉒-2 persona:`session/new` 的 `_meta` 带 `systemPrompt.append`(从我们这边的 debug 日志读键名);
+ *        「只回复单词 pong」→ 正文含 pong。
+ *   ㉒-3 选项:`acp.sessionState` 的 configOptions 按 category 有 model / thought_level / mode;model_config(fast)
+ *        只在当前模型支持时 agent 才列,缺席打一行 note、不算红。
+ *   ㉒-4 权限 + diff:临时 cwd 放项目级 `.claude/settings.json`(defaultMode default + ask Edit/Write/Bash,压过
+ *        跑门人自己的 bypass / allow)→ 改 hello.txt → 上一张带 choices 的卡、至少 once / reject(ask 规则逼出的卡适配器不给 always,
+ *        always 由假 agent ⑫ 证)→ 答 once
+ *        → 盘上是 hi;agent 用 Edit / Write 就验 changes 有 -hello / +hi,用 Bash 就验卡的效果是命令执行、
+ *        diff 那行打 `skipped(bash)`。
+ *   ㉒-5 提问:AskUserQuestion → `interaction:requested` 恰一道 ≥ 2 选项的题(旁边允许适配器自带的一道「Other」
+ *        自由输入)→ 答第一项 → 这一轮以正文收场。
+ *   ㉒-6 宿主 MCP:`session/new` 的 mcpServers 有 http 形的 `onething`;让它调 send_notification 发 ping →
+ *        SSE 上这条会话的 `agent:notification` 含 ping。
+ *   ㉒-7 插话:握手顶层 `_meta.steering.supported === true`(插话一次被消化:没有插话的 RPC 路,留账)。
+ *   ㉒-8 恢复:关 server、同一 store 重起,同一会话「再回复一次 pong」→ 日志见 session/resume 或 load、
+ *        这一发没有 `_meta.systemPrompt`,正文又是 pong。
+ *   ㉒-9 用量:账本上 ≥ 1 行 `source: 'acp'`、`modelId: 'claude-code'`,输入 / 输出 token > 0。
+ */
+async function runRealClaudeParity() {
+  const REAL_AGENT_ID = 'claude-code'
+  const TURN_BUDGET_MS = 240_000
+  const startedAt = Date.now()
+  let prompts = 0
+  let reportedCost
+  let realChild
+  let realSse
+  const realStore = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-acp-real-'))
+  const realCwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onething-acp-real-work-')))
+  const realOut = []
+  const proxyVars = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy']
+    .filter(name => process.env[name])
+  console.log(`[gate:acp] ㉒ 真 claude-agent-acp(temp store ${realStore};代理 ${proxyVars.length > 0 ? proxyVars.join(' / ') : '无'})`)
+
+  const boot = async () => {
+    realChild = spawn(process.execPath, [serverEntry], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        ONETHING_STORE_PATH: realStore,
+        ONETHING_SERVER_DATA_ROOT: realStore,
+        ONETHING_SERVER_HOST: '127.0.0.1',
+        ONETHING_SERVER_PORT: '',
+        ONETHING_LOG: 'info,acp=debug',
+        // 桌面有终端宿主;server 缺省没有。没有它握手就不声明 `auth.terminal`,claude-agent-acp
+        // 于是把终端型登录方法整个藏掉(`supportsTerminalAuth`)—— ㉒-1 量的是桌面同款的握手。
+        ONETHING_SERVER_TERMINAL: '1',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    realChild.stdout.on('data', chunk => realOut.push(chunk.toString()))
+    realChild.stderr.on('data', chunk => realOut.push(chunk.toString()))
+    const discovery = await waitForDiscovery(realStore)
+    return { rpc: createRpc(discovery), sse: await openEventStream(discovery) }
+  }
+  const stop = async () => {
+    if (realSse) await realSse.close().catch(() => {})
+    realSse = undefined
+    if (realChild && realChild.exitCode === null && realChild.signalCode === null) {
+      realChild.kill('SIGTERM')
+      for (let i = 0; i < 100 && realChild.exitCode === null && realChild.signalCode === null; i += 1) await sleep(100)
+      if (realChild.exitCode === null && realChild.signalCode === null) realChild.kill('SIGKILL')
+    }
+  }
+  const logRecords = () => {
+    const dir = path.join(realStore, 'log')
+    if (!fs.existsSync(dir)) return []
+    return fs.readdirSync(dir).filter(name => name.endsWith('.jsonl'))
+      .flatMap(name => fs.readFileSync(path.join(dir, name), 'utf-8').split('\n').filter(Boolean))
+      .flatMap(line => { try { return [JSON.parse(line)] } catch { return [] } })
+  }
+  const openRequests = () => logRecords().filter(record => record.ns === 'acp' && record.msg === 'session open request'
+    && record.fields?.agentId === REAL_AGENT_ID)
+  const completes = (frames, sessionId) => frames.filter(frame => frame.event === 'session:event'
+    && frame.data?.sessionId === sessionId && frame.data?.event?.type === 'stream:complete').length
+  const turn = async (rpc, frames, sessionId, text) => {
+    const before = completes(frames, sessionId)
+    prompts += 1
+    await sendMessage(rpc, sessionId, text)
+    return waitFor(() => completes(frames, sessionId) > before, TURN_BUDGET_MS, 250)
+  }
+  const replyText = async (rpc, sessionId) => {
+    const message = await lastAssistant(rpc, sessionId)
+    return typeof message?.content === 'string' ? message.content : ''
+  }
+
+  try {
+    fs.writeFileSync(path.join(realStore, 'settings.json'), JSON.stringify({
+      ai: {
+        provider: 'acp',
+        providers: { acp: { model: REAL_AGENT_ID, selectedModels: [REAL_AGENT_ID], enabled: true } },
+        customProviders: [],
+        modelCatalog: {},
+      },
+      // 不写 agents:claude-code 只能从种子名册来。注册表不联网(确定性)。
+      acp: { enabled: true, registry: { enabled: false } },
+      tools: { enableToolCalls: false, permissionMode: 'normal', tools: {} },
+      diagnostics: { enabled: false },
+    }, null, 2))
+    fs.writeFileSync(path.join(realCwd, 'hello.txt'), 'hello\n')
+    /*
+     * ㉒-4 要一张真卡。跑门的人自己的 `~/.claude/settings.json` 可能是 `bypassPermissions` + allow 全开
+     * (本机就是),那样 Claude 一张卡都不问。门不碰 `~/.claude`,只在**临时 cwd** 里放一份项目级设置:
+     * Claude Code 的设置层级 project > user,规则上 ask 压过 allow —— 这一间目录里改文件 / 跑命令都得问。
+     */
+    fs.mkdirSync(path.join(realCwd, '.claude'), { recursive: true })
+    fs.writeFileSync(path.join(realCwd, '.claude', 'settings.json'), JSON.stringify({
+      permissions: { defaultMode: 'default', ask: ['Edit', 'Write', 'Bash'] },
+    }, null, 2))
+
+    let { rpc, sse: stream } = await boot()
+    realSse = stream
+    const row = async () => (await rpc('acp', 'getAgents', {}))?.agents?.find(agent => agent.config?.id === REAL_AGENT_ID)
+
+    // ── ㉒-1 前半:种子名册 ──
+    const seeded = await row()
+    check(seeded?.source === 'builtin' && seeded?.detect?.installed === true,
+      `㉒-1 名册里的 claude-code 来自 builtin、探测到已装(读到 source = ${seeded?.source}, detect = ${JSON.stringify(seeded?.detect ?? null)})`)
+    if (!seeded?.detect?.installed) throw new Error('claude-agent-acp 不在 PATH 上,㉒ 无从跑起')
+
+    // 一个带 persona 的 agent 绑到会话上:persona 才有东西可送(产品默认助理身份不是 persona)。
+    const persona = await rpc('agents', 'create', { name: 'Gate', systemPrompt: '你是 onething 的门测助手,回答尽量短。' })
+    const sessionId = (await rpc('sessions', 'create', { name: 'acp 门 · 真 Claude' }))?.session?.id
+    await rpc('sessions', 'updateWorkingDirectory', { sessionId, workingDirectory: realCwd })
+    if (persona?.agent?.id) await rpc('sessions', 'updateAgent', { sessionId, agentId: persona.agent.id })
+    await rpc('sessions', 'updateModel', { sessionId, provider: 'acp', model: REAL_AGENT_ID })
+
+    // ── ㉒-2 persona + pong ──
+    const pongDone = await turn(rpc, realSse.frames, sessionId, '只回复单词 pong')
+    const afterFirst = await row()
+    if (afterFirst?.auth?.required === true) {
+      check(false, `㉒-1 auth.required === false —— 读到 true:先在终端里 claude auth login(门不替你登录;行 ${JSON.stringify(afterFirst.auth)})`)
+      throw new Error('claude-agent-acp 要求登录,㉒ 就此停下')
+    }
+    const pongText = await replyText(rpc, sessionId)
+    const firstNew = openRequests().find(record => record.fields?.method === 'session/new')
+    check(Array.isArray(firstNew?.fields?.metaKeys) && firstNew.fields.metaKeys.includes('systemPrompt')
+      && sameJson(firstNew.fields.systemPromptKeys, ['append']),
+      `㉒-2 session/new 的 _meta 带 systemPrompt.append(日志读到 ${JSON.stringify(firstNew?.fields ?? null)})`)
+    check(Boolean(pongDone) && /pong/i.test(pongText), `㉒-2 「只回复单词 pong」→ 正文含 pong(读到 ${JSON.stringify(pongText.slice(0, 200))})`)
+
+    // ── ㉒-1 后半:握手能力 ──
+    const caps = afterFirst?.capabilities ?? {}
+    const sessionCaps = caps.sessionCapabilities ?? {}
+    check(caps.loadSession === true && Boolean(sessionCaps.fork) && Boolean(sessionCaps.list) && Boolean(sessionCaps.resume),
+      `㉒-1 loadSession + sessionCapabilities.{fork,list,resume}(读到 loadSession = ${caps.loadSession}, sessionCapabilities 键 ${JSON.stringify(Object.keys(sessionCaps))})`)
+    check(caps.promptCapabilities?.image === true && caps.promptCapabilities?.embeddedContext === true,
+      `㉒-1 promptCapabilities.{image,embeddedContext}(读到 ${JSON.stringify(caps.promptCapabilities ?? null)})`)
+    check(caps.mcpCapabilities?.http === true && caps.mcpCapabilities?.sse === true,
+      `㉒-1 mcpCapabilities.{http,sse}(读到 ${JSON.stringify(caps.mcpCapabilities ?? null)})`)
+    const methods = afterFirst?.auth?.methods ?? []
+    check(methods.length >= 2 && methods.some(method => method.type === 'terminal') && afterFirst?.auth?.required === false,
+      `㉒-1 authMethods ≥ 2 且有终端型,auth.required === false(读到 ${JSON.stringify(afterFirst?.auth ?? null)})`)
+
+    // ── ㉒-3 选项按 category ──
+    const state = await rpc('acp', 'sessionState', { sessionId })
+    const categories = new Set((state?.configOptions ?? []).map(option => option.category))
+    const optionList = JSON.stringify((state?.configOptions ?? []).map(option => `${option.id}:${option.category ?? '-'}=${option.currentValue}`))
+    check(['model', 'thought_level', 'mode'].every(category => categories.has(category)),
+      `㉒-3 configOptions 按 category 有 model / thought_level / mode(读到 ${optionList})`)
+    // fast(`model_config`)只在当前模型支持时才列(claude-agent-acp `buildConfigOptions` 看 `supportsFastMode`)。
+    if (categories.has('model_config')) check(true, '㉒-3 当前模型支持 fast,model_config 那一格在')
+    else console.log(`  note ㉒-3 没有 model_config(fast)一格 —— 当前模型不支持 fast,agent 就不列;不算红(${optionList})`)
+
+    // ── ㉒-6 前半:同一发 session/new 里的 onething ──
+    const hostEntry = (firstNew?.fields?.mcpServers ?? []).find(server => server.name === 'onething')
+    check(hostEntry?.type === 'http', `㉒-6 session/new 的 mcpServers 有 http 形的 onething(读到 ${JSON.stringify(firstNew?.fields?.mcpServers ?? null)})`)
+
+    // ── ㉒-7 插话自报 ──
+    check(afterFirst?.handshakeMeta?.steering?.supported === true,
+      `㉒-7 握手顶层 _meta.steering.supported === true(读到 ${JSON.stringify(afterFirst?.handshakeMeta?.steering ?? null)};插话投递无 RPC 路,留账)`)
+
+    // ── ㉒-4 权限 + diff ──
+    let answerer = startAnswerer(rpc, realSse.frames)
+    answerer.setDecider((event, sid) => (sid === sessionId ? 'once' : undefined))
+    const cardsBefore = permissionRequests(realSse.frames, sessionId).length
+    const editDone = await turn(rpc, realSse.frames, sessionId, '把 hello.txt 里的 hello 改成 hi,不要问我')
+    const editCards = permissionRequests(realSse.frames, sessionId).slice(cardsBefore)
+    const agentCard = editCards.find(card => (card.choices ?? []).length > 0)
+    const cardSummary = JSON.stringify(editCards.map(card => ({
+      permissionType: card.permissionType, toolKind: card.metadata?.toolKind ?? null, title: card.title,
+      choices: (card.choices ?? []).map(choice => `${choice.kind}:${choice.label}`),
+    })))
+    check(Boolean(agentCard), `㉒-4 上了一张带 choices 的权限卡(${editCards.length} 张:${cardSummary})`)
+    const kinds = new Set((agentCard?.choices ?? []).map(choice => choice.kind))
+    /*
+     * 这张卡是门自己放的项目级 ask 规则逼出来的;claude-agent-acp 对「用户 ask 规则逼出的卡」刻意不给
+     * 「始终允许」(`acp-agent.js:5587` `noPersistentRule = matchedAskRule !== undefined || …`)。
+     * 于是这里只要 once / reject;always 那条路由假 agent ⑫ 证。
+     */
+    check(['once', 'reject'].every(kind => kinds.has(kind)),
+      `㉒-4 choices 至少有 once / reject(卡由门的 ask 规则逼出;读到 ${JSON.stringify([...kinds])})`)
+    console.log('  note ㉒-4 always 由假 agent ⑫ 证;ask 规则逼出的卡适配器不给 always(acp-agent.js:5587)')
+    const editMessage = await lastAssistant(rpc, sessionId)
+    const editCalls = toolCallsOf(editMessage)
+    const callSummary = JSON.stringify(editCalls.map(call => ({ name: call.toolName ?? call.name, kind: call.result?.metadata?.kind ?? null, status: call.status, diff: String(call?.changes?.diff ?? '').slice(0, 120) })))
+    const usedEditOrWrite = editCalls.some(call => /^(edit|write|multiedit)/i.test(String(call.toolName ?? call.name ?? ''))
+      || call.result?.metadata?.kind === 'edit')
+    if (usedEditOrWrite) {
+      const changed = editCalls.find(call => /-hello/.test(String(call?.changes?.diff ?? '')) && /\+hi/.test(String(call?.changes?.diff ?? '')))
+      check(Boolean(editDone) && Boolean(changed), `㉒-4 答 once → 工具卡 changes 有 -hello / +hi(读到 ${callSummary})`)
+    } else {
+      const bashCard = editCards.find(card => card.metadata?.toolKind === 'execute' || /bash|shell|exec/i.test(String(card.permissionType ?? '')))
+      check(Boolean(editDone) && Boolean(bashCard),
+        `㉒-4 agent 用的是 Bash:那张卡的效果是命令执行(读到 ${cardSummary};工具 ${callSummary})`)
+      console.log('  skipped(bash) ㉒-4 diff 那一行 —— agent 没用 Edit / Write,命令改文件没有 diff 可验')
+    }
+    const onDisk = fs.readFileSync(path.join(realCwd, 'hello.txt'), 'utf-8')
+    check(onDisk.trim() === 'hi', `㉒-4 盘上 hello.txt 现在是 hi(读到 ${JSON.stringify(onDisk)};门答了 ${answerer.answers.length} 张卡)`)
+    answerer.setDecider(() => undefined)
+
+    // ── ㉒-5 提问 ──
+    const interactions = () => realSse.frames
+      .filter(frame => frame.event === 'session:event' && frame.data?.sessionId === sessionId
+        && frame.data?.event?.type === 'interaction:requested')
+      .map(frame => frame.data.event.request)
+    const asksBefore = interactions().length
+    const beforeElicit = completes(realSse.frames, sessionId)
+    prompts += 1
+    await sendMessage(rpc, sessionId, '先用一个单选问题问我要红色还是蓝色,我答了你再回答一个字')
+    const card = await waitFor(() => interactions()[asksBefore], TURN_BUDGET_MS, 100)
+    const choiceQuestions = (card?.questions ?? []).filter(item => (item.options ?? []).length > 0)
+    const freeTextQuestions = (card?.questions ?? []).filter(item => (item.options ?? []).length === 0)
+    const question = choiceQuestions[0]
+    // 适配器在单选题后自带一道「Other」自由输入(claude-agent-acp `elicitation.js` 的 `<id>_custom`),允许至多一道。
+    check(Boolean(card) && choiceQuestions.length === 1 && (question?.options ?? []).length >= 2
+      && freeTextQuestions.length <= 1 && freeTextQuestions.every(item => item.allowFreeText === true),
+      `㉒-5 AskUserQuestion → interaction:requested 恰一道 ≥ 2 选项的题(旁边至多一道无选项的自由输入;读到 ${JSON.stringify(card?.questions ?? null)})`)
+    if (card && question) {
+      await rpc('session-command', 'emit', {
+        sessionId,
+        command: {
+          type: 'command:interaction-respond',
+          interactionId: card.id,
+          ...(card.targetChannel ? { channel: card.targetChannel } : {}),
+          answers: { [question.id]: { selected: [question.options[0].label] } },
+        },
+      })
+    }
+    const elicitDone = await waitFor(() => completes(realSse.frames, sessionId) > beforeElicit, TURN_BUDGET_MS, 250)
+    const elicitText = await replyText(rpc, sessionId)
+    check(Boolean(elicitDone) && elicitText.trim().length > 0,
+      `㉒-5 答第一项之后这一轮以正文收场(读到 ${JSON.stringify(elicitText.slice(0, 200))})`)
+
+    // ── ㉒-6 后半:send_notification 落回会话 ──
+    answerer.setDecider((event, sid) => (sid === sessionId ? 'once' : undefined))
+    const notifyDone = await turn(rpc, realSse.frames, sessionId, '调用 onething 的 send_notification 工具发一条内容为 ping 的通知,然后回答 done')
+    const notified = realSse.frames.find(frame => frame.event === 'agent:notification' && frame.data?.sessionId === sessionId)
+    check(Boolean(notifyDone) && /ping/i.test(String(notified?.data?.message ?? '')),
+      `㉒-6 SSE 上这条会话的 agent:notification 含 ping(读到 ${JSON.stringify(notified?.data ?? null)};正文 ${JSON.stringify((await replyText(rpc, sessionId)).slice(0, 120))})`)
+    answerer.stop()
+
+    // ── ㉒-8 恢复:关 server、同一 store 重起 ──
+    await stop()
+    const requestsBeforeRestart = openRequests().length
+    ;({ rpc, sse: stream } = await boot())
+    realSse = stream
+    const resumeDone = await turn(rpc, realSse.frames, sessionId, '再回复一次 pong')
+    const resumedText = await replyText(rpc, sessionId)
+    const reopen = openRequests().slice(requestsBeforeRestart)
+    const restored = reopen.find(record => record.fields?.method === 'session/resume' || record.fields?.method === 'session/load')
+    check(Boolean(restored) && !reopen.some(record => record.fields?.method === 'session/new'),
+      `㉒-8 重起之后走 ${restored?.fields?.method ?? '缺席'} 回到原会话,没有新的 session/new(读到 ${JSON.stringify(reopen.map(record => record.fields?.method))})`)
+    check(reopen.length > 0 && reopen.every(record => !(record.fields?.metaKeys ?? []).includes('systemPrompt')),
+      `㉒-8 重连那一发没带 _meta.systemPrompt(persona 不重送;读到 ${JSON.stringify(reopen.map(record => record.fields?.metaKeys))})`)
+    check(Boolean(resumeDone) && /pong/i.test(resumedText), `㉒-8 「再回复一次 pong」→ 正文含 pong(读到 ${JSON.stringify(resumedText.slice(0, 200))})`)
+
+    // ── ㉒-9 用量 ──
+    const usageDir = path.join(realStore, 'usage')
+    const usageRows = () => (fs.existsSync(usageDir)
+      ? fs.readdirSync(usageDir).filter(name => /^usage-.*\.jsonl$/.test(name))
+        .flatMap(name => fs.readFileSync(path.join(usageDir, name), 'utf-8').split('\n').filter(Boolean).map(line => JSON.parse(line)))
+      : []).filter(entry => entry.source === 'acp' && entry.modelId === REAL_AGENT_ID)
+    await waitFor(() => usageRows().length > 0, 5_000)
+    const rows = usageRows()
+    reportedCost = rows.reduce((sum, entry) => sum + (typeof entry.providerCostUSD === 'number' ? entry.providerCostUSD : 0), 0)
+    check(rows.length >= 1 && rows.some(entry => (entry.usage?.input ?? 0) > 0 && (entry.usage?.output ?? 0) > 0),
+      `㉒-9 账本上有 source = acp、modelId = claude-code 的行且输入 / 输出 > 0(读到 ${rows.length} 行:${JSON.stringify(rows.map(entry => ({ ...entry.usage, providerCostUSD: entry.providerCostUSD })))})`)
+  } catch (error) {
+    failures.push(`㉒ ${String(error?.stack || error)}`)
+    console.error(`[gate:acp] ㉒ ${error?.stack || error}`)
+  } finally {
+    await stop()
+    const leftovers = spawnSync('pgrep', ['-f', 'bin/claude-agent-acp( |$)'], { encoding: 'utf-8' })
+    const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1)
+    console.log(`[gate:acp] ㉒ 收尾:用时 ${elapsed}s,prompt ${prompts} 条,agent 自报花费 ${reportedCost === undefined ? '未读到' : `$${reportedCost.toFixed(4)}`},代理 ${proxyVars.length > 0 ? proxyVars.join(' / ') : '无'}`
+      + `${leftovers.status === 0 && leftovers.stdout.trim() ? `(pgrep claude-agent-acp 仍见 ${leftovers.stdout.trim().split('\n').join(',')},可能是别处起的)` : ''}`)
+    if (failures.some(item => item.startsWith('㉒')) || failures.length > 0) {
+      console.error(`[gate:acp] ㉒ server 输出尾:\n${realOut.slice(-30).join('')}`)
+    }
+    fs.rmSync(realStore, { recursive: true, force: true })
+    fs.rmSync(realCwd, { recursive: true, force: true })
+  }
+}
+
+if (process.env.ONETHING_GATE_REAL_ACP !== '1') {
+  console.log('  skipped ㉒ 真 claude-agent-acp 对等门 —— opt-in:ONETHING_GATE_REAL_ACP=1(花本机 Claude 订阅的少量额度,≤ 6 条 prompt)')
+} else if (failures.length > 0) {
+  console.log('  skipped ㉒ 真 claude-agent-acp 对等门 —— 前面的假 agent 步骤已经红了,先修那些,不白花额度')
+} else {
+  await runRealClaudeParity()
+}
+
 if (failures.length > 0) {
   console.error(`[gate:acp] ${failures.length} check(s) failed`)
   process.exit(1)
 }
-console.log('[gate:acp] ok —— ① 握手 / ② 会话目录 / ③ 流与协议外请求 / ④ prompt 之外的状态 / ⑥ diff / ⑦ terminal / ⑧ 计划 / ⑨ 用量 / ⑩ 切模式 / ⑪ 四选项 / ⑫ 始终允许 / ⑬ fs / ⑭ terminal / ⑮ 提问 / ⑯ 无人应答 / ⑯b 登录 / ⑰ 桥 / ⑱ 归因 / ⑲ 崩溃退避 / ⑳ 认领 / ㉑ 分叉 全绿')
+console.log('[gate:acp] ok —— ① 握手 / ② 会话目录 / ③ 流与协议外请求 / ④ prompt 之外的状态 / ⑥ diff / ⑦ terminal / ⑧ 计划 / ⑨ 用量 / ⑩ 切模式 / ⑪ 四选项 / ⑫ 始终允许 / ⑬ fs / ⑭ terminal / ⑮ 提问 / ⑯ 无人应答 / ⑯b 登录 / ⑰ 桥 / ⑱ 归因 / ⑲ 崩溃退避 / ⑳ 认领 / ㉑ 分叉 全绿' + (process.env.ONETHING_GATE_REAL_ACP === '1' ? ' / ㉒ 真 Claude 对等' : ''))

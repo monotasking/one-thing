@@ -251,6 +251,12 @@ export interface ACPAgentState {
    * 未连过 = 缺席。
    */
   capabilities?: JsonObject
+  /**
+   * `InitializeResponse` 顶层的 `_meta`(`agentCapabilities` 的兄弟格)原样交出(A6-a)。扩展自报住在
+   * 这里而不在能力表里 —— 例如 claude-agent-acp / codex-acp 的 `steering.supported`(`_session/steering`)。
+   * agent 没带 = 缺席。
+   */
+  handshakeMeta?: JsonObject
   sessionCount: number
   activePromptCount: number
   /** 崩溃重连的退避(A5);没重连过也没锁 = 缺席。 */

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ACPClient, acpPersonaBlock } from '../client.js'
 import { FileACPSessionLinkStore, type ACPSessionLinkStore } from '../session-links.js'
+import { effectiveAgentConfig, parseAcpAgentManifest } from '../manifest.js'
 import type { ACPAgentConfig } from '../types.js'
 
 /**
@@ -109,5 +110,45 @@ describe('ACP persona', () => {
     }
     expect(calls().find(call => call.method === 'new')?.meta).toEqual({ systemPrompt: { append: PERSONA } })
     expect(promptBlocks()[0]).toEqual([{ type: 'text', text: 'hello' }])
+  })
+
+  /**
+   * `gate:acp` ㉒-2 的反证(A6-a,方案 §11.7):㉒-2 断「`session/new` 的 `_meta` 里有 systemPrompt」,
+   * 真 Claude 在 persona 变成首条 prompt 头块时照样答得出 pong,所以反证不花真 prompt —— 拿**真种子**
+   * `resources/acp-agents/claude-code.json` 的一份临时拷贝,起法换成假 agent:种子原样 → `_meta` 在;
+   * 拷贝里摘掉 `quirks.systemPromptMeta` → `_meta` 缺席、persona 退回头块(㉒-2 那条断言在这条路上会红)。
+   */
+  it('真种子 claude-code.json 的怪癖决定 _meta:原样带、摘掉就不带(㉒-2 反证)', async () => {
+    const seedFile = fileURLToPath(new URL('../../../../../resources/acp-agents/claude-code.json', import.meta.url))
+    const seed = JSON.parse(readFileSync(seedFile, 'utf8')) as Record<string, unknown>
+    const launchOnFake = (raw: Record<string, unknown>): ACPAgentConfig => {
+      const parsed = parseAcpAgentManifest(raw)
+      if (!parsed.ok) throw new Error(parsed.reason)
+      return effectiveAgentConfig(parsed.manifest, {
+        command: process.execPath,
+        args: [AGENT],
+        env: { FAKE_AGENT_DIR: agentDir, FAKE_AGENT_CAPS: 'load', FAKE_AGENT_RECORD_PROMPT: '1' },
+        connectTimeoutMs: 10_000,
+      }, { enabled: true })
+    }
+    const newMetas = () => calls().filter(call => call.method === 'new').map(call => call.meta)
+
+    const withQuirk = new ACPClient(launchOnFake(seed), { getSessionLinks: () => links })
+    try {
+      await say(withQuirk, 'seed-as-is', 'hello')
+    } finally {
+      await withQuirk.disconnect()
+    }
+    expect(newMetas()).toEqual([{ systemPrompt: { append: PERSONA } }])
+
+    const { quirks: _dropped, ...stripped } = seed
+    const withoutQuirk = new ACPClient(launchOnFake(stripped), { getSessionLinks: () => links })
+    try {
+      await say(withoutQuirk, 'seed-stripped', 'hello')
+    } finally {
+      await withoutQuirk.disconnect()
+    }
+    expect(newMetas()[1]).toBeUndefined()
+    expect(promptBlocks().at(-1)?.[0]).toEqual({ type: 'text', text: acpPersonaBlock(PERSONA) })
   })
 })

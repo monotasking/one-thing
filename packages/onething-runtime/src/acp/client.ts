@@ -507,6 +507,9 @@ export class ACPClient {
       capabilities: this.initResponse?.agentCapabilities
         ? this.initResponse.agentCapabilities as unknown as NonNullable<ACPAgentState['capabilities']>
         : undefined,
+      ...(this.initResponse?._meta
+        ? { handshakeMeta: this.initResponse._meta as unknown as NonNullable<ACPAgentState['handshakeMeta']> }
+        : {}),
       sessionCount: this.sessions.size,
       activePromptCount: this.activePromptCountValue,
       ...(this.backoffState ? { backoff: this.backoffState } : {}),
@@ -1273,11 +1276,13 @@ export class ACPClient {
       persona = viaMeta ? 'delivered' : 'owed'
       let response: NewSessionResponse
       try {
-        response = await this.connection.agent.request(acp.methods.agent.session.new, {
+        const params = {
           cwd,
           mcpServers,
           ...(viaMeta ? { _meta: { systemPrompt: { append: personaText } } } : {}),
-        })
+        }
+        this.logOpenRequest('session/new', params)
+        response = await this.connection.agent.request(acp.methods.agent.session.new, params)
       } catch (error) {
         throw this.noteAuthFailure(error, 'session/new')
       }
@@ -1327,6 +1332,7 @@ export class ACPClient {
       this.bindSessionState(localSessionId, acpSessionId)
       this.replaySinks.set(acpSessionId, replay)
       try {
+        this.logOpenRequest('session/load', { cwd, mcpServers })
         const response = await connection.agent.request(acp.methods.agent.session.load, {
           sessionId: acpSessionId,
           cwd,
@@ -1347,6 +1353,7 @@ export class ACPClient {
     }
     try {
       if (capabilities?.sessionCapabilities?.resume) {
+        this.logOpenRequest('session/resume', { cwd, mcpServers })
         const response = await connection.agent.request(acp.methods.agent.session.resume, {
           sessionId: acpSessionId,
           cwd,
@@ -1357,6 +1364,7 @@ export class ACPClient {
         return { acpSessionId, options: projectACPConfigOptions(response.configOptions) }
       }
       if (capabilities?.loadSession) {
+        this.logOpenRequest('session/load', { cwd, mcpServers })
         const response = await connection.agent.request(acp.methods.agent.session.load, {
           sessionId: acpSessionId,
           cwd,
@@ -1372,6 +1380,31 @@ export class ACPClient {
       log.warn('session restore failed; opening a new one', { agentId: this.id, acpSessionId }, error)
     }
     return undefined
+  }
+
+  /**
+   * 开 / 恢复会话那一发的形状(A6-a,`gate:acp` ㉒ 从日志上读它):只记**名字、类型与键**,
+   * 不记值 —— `_meta.systemPrompt.append` 是 persona 原文,`onething` 那条带桥凭据(headers /
+   * env 里),一个字都不进日志。
+   */
+  private logOpenRequest(
+    method: 'session/new' | 'session/load' | 'session/resume',
+    params: { cwd: string; mcpServers: acp.McpServer[]; _meta?: Record<string, unknown> },
+  ): void {
+    const meta = params._meta
+    const systemPrompt = meta?.systemPrompt
+    log.debug('session open request', {
+      agentId: this.id,
+      method,
+      metaKeys: meta ? Object.keys(meta) : [],
+      ...(systemPrompt && typeof systemPrompt === 'object'
+        ? { systemPromptKeys: Object.keys(systemPrompt as Record<string, unknown>) }
+        : {}),
+      mcpServers: params.mcpServers.map(server => ({
+        name: server.name,
+        type: 'type' in server && typeof server.type === 'string' ? server.type : 'stdio',
+      })),
+    })
   }
 
   /** 把想要的值调到 agent 身上:只调「这条会话里有这一格、值在可选里、且与当前不同」的。 */

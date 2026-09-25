@@ -65,6 +65,8 @@ bun run gate:search-index  # real-machine gate (12 steps + 1 opt-in): boots dist
 bun run gate:acp           # real-machine gate (A0 ①–④): dist/server on a temp store + a fake ACP agent (fixture
                            # fake-agent.mjs) — handshake caps, session/new cwd, unbound-dir refusal, text/reasoning/
                            # tool stream + a rogue method answered -32601, commands pushed outside a prompt. node only
+                           # ㉒ (opt-in ONETHING_GATE_REAL_ACP=1, else one `skipped` line): the REAL claude-agent-acp from the
+                           # seed roster, ≤ 6 one-line prompts on your own Claude login — the A6 parity list (A6-a)
 
 # Logs
 bun run log:tail           # pretty-print + follow <store>/log/app.jsonl ([--ns engine.*] [--level warn] [--session id])
