@@ -1,4 +1,5 @@
-import type { ContentBlock, InitializeResponse } from '@agentclientprotocol/sdk'
+import type { ContentBlock, InitializeResponse, McpServer } from '@agentclientprotocol/sdk'
+import { findAgentExecutorDescriptor } from '../agents/executor/capabilities.js'
 import { ACPManager } from '../acp/manager.js'
 import { ACP_CONNECTOR_ID } from '../acp/session-links.js'
 import { translateACPPromptStream, type ACPWireStreamEvent } from '../acp/translate.js'
@@ -30,9 +31,50 @@ export interface AcpConnectorDeps {
   handshake(agentId: string): InitializeResponse | undefined
   /** 连上并握手、不开会话(A2-a):让 `capabilitiesFor` 在第一条消息上就答真话。 */
   prepare(agentId: string): Promise<void>
+  /**
+   * 宿主工具面(A4-b,方案 §3.6 / §11.5)。产品层不认识装配层的桥与凭据表,所以它是一个端口:
+   * 缺席 = 这个进程没有宿主工具面,`session/new` 照旧递空表(旧行为)。
+   */
+  hostMcp?: AcpHostMcpPort
+}
+
+/** agent 握手自报的 MCP 传输能力(`agentCapabilities.mcpCapabilities` 的子集)。 */
+export interface AcpMcpCapabilitiesInput {
+  http?: boolean
+  sse?: boolean
+}
+
+/**
+ * 装配层递进来的宿主工具面(A4-b)。
+ *
+ * `serversFor` 在**握手之后、开会话之前**问:它要握手里的 `mcpCapabilities` 选形(HTTP 直连还是
+ * stdio 桥),而答案要进 `session/new` —— 会话开出来之后再给就进不去了。它顺带签(或沿用)这对
+ * (agent, 会话)的桥凭据,所以一条会话多轮拿到的是同一把钥匙。
+ *
+ * `beginTurn` 在这一轮的 prompt 发出去之前调,把这一轮的 `messageId` / 中止信号挂到那把钥匙背后
+ * (agent 经桥调宿主工具时,工具就知道自己在替哪条消息说话);返回的函数在这一轮收场时调。
+ */
+export interface AcpHostMcpPort {
+  serversFor(input: {
+    agentId: string
+    localSessionId: string
+    cwd: string
+    executionContext?: unknown
+    mcpCapabilities?: AcpMcpCapabilitiesInput
+  }): Promise<McpServer[]> | McpServer[]
+  beginTurn?(
+    agentId: string,
+    localSessionId: string,
+    turn: { messageId?: string; abortSignal?: AbortSignal },
+  ): () => void
 }
 
 export type AcpConnectorOptions = Partial<AcpConnectorDeps>
+
+/** 能力表(E0)说 ACP 执行器接得住宿主工具才递 —— 装上端口不等于开着(与 Claude 路同一道门)。 */
+function executorAcceptsHostTools(): boolean {
+  return findAgentExecutorDescriptor(ACP_CONNECTOR_ID)?.capabilities.hostTools === true
+}
 
 const managerDeps: AcpConnectorDeps = {
   openSession: (agentId, localSessionId, cwd, open) => ACPManager.openSession(agentId, localSessionId, cwd, open),
@@ -127,7 +169,34 @@ export function createAcpConnector(options: AcpConnectorOptions = {}): ExternalA
       if (!agentId) throw new Error('ACP agent id is missing (the turn model names the agent)')
 
       const persona = request.persona?.trim() || undefined
-      const opened = await deps.openSession(agentId, request.localSessionId, request.cwd, persona ? { persona } : {})
+      /*
+       * A4-b 顺序:握手 → 问名册 → 开会话。名册的形状取决于握手(agent 自报 `mcpCapabilities.http`
+       * 就给 HTTP 直连,否则 stdio 桥),而它只进得去 `session/new` / `load` / `resume`。包装器通常
+       * 已经 `prepare` 过;没有就在这里补一次(失败不抛:开会话会以正常的方式把同一个错交出去)。
+       */
+      let mcpServers: McpServer[] | undefined
+      if (deps.hostMcp && executorAcceptsHostTools()) {
+        if (!deps.handshake(agentId)) {
+          await deps.prepare(agentId).catch(error => log.warn('prepare before host tools failed', { agentId }, error))
+        }
+        const mcpCapabilities = deps.handshake(agentId)?.agentCapabilities?.mcpCapabilities ?? undefined
+        try {
+          mcpServers = await deps.hostMcp.serversFor({
+            agentId,
+            localSessionId: request.localSessionId,
+            cwd: request.cwd,
+            ...(request.executionContext === undefined ? {} : { executionContext: request.executionContext }),
+            ...(mcpCapabilities ? { mcpCapabilities } : {}),
+          })
+        } catch (error) {
+          // 组不出名册的代价是这一轮没有宿主工具,抛出去的代价是这一轮什么都没有(与 Claude 路同一取舍)。
+          log.warn('host MCP servers unavailable for this turn', { agentId, sessionId: request.localSessionId }, error)
+        }
+      }
+      const opened = await deps.openSession(agentId, request.localSessionId, request.cwd, {
+        ...(persona ? { persona } : {}),
+        ...(mcpServers ? { mcpServers } : {}),
+      })
       const now = Date.now()
       yield {
         type: 'session-established',
@@ -143,18 +212,29 @@ export function createAcpConnector(options: AcpConnectorOptions = {}): ExternalA
       }
 
       const extraContent = (request.images ?? []).map(imageToContentBlock)
-      yield* translateACPPromptStream(
-        deps.streamPrompt(agentId, {
-          localSessionId: request.localSessionId,
-          prompt: request.prompt,
-          cwd: request.cwd,
-          abortSignal: request.abortSignal,
-          ...(request.messageId ? { messageId: request.messageId } : {}),
-          ...(extraContent.length > 0 ? { extraContent } : {}),
-          ...(persona ? { persona } : {}),
-        }),
-        request.turn,
-      )
+      // 这一轮挂到桥凭据背后(宿主工具据此知道在替哪条消息说话);收场(含中止 / 抛错)时摘掉。
+      const endTurn = mcpServers
+        ? deps.hostMcp?.beginTurn?.(agentId, request.localSessionId, {
+            ...(request.messageId ? { messageId: request.messageId } : {}),
+            ...(request.abortSignal ? { abortSignal: request.abortSignal } : {}),
+          })
+        : undefined
+      try {
+        yield* translateACPPromptStream(
+          deps.streamPrompt(agentId, {
+            localSessionId: request.localSessionId,
+            prompt: request.prompt,
+            cwd: request.cwd,
+            abortSignal: request.abortSignal,
+            ...(request.messageId ? { messageId: request.messageId } : {}),
+            ...(extraContent.length > 0 ? { extraContent } : {}),
+            ...(persona ? { persona } : {}),
+          }),
+          request.turn,
+        )
+      } finally {
+        endTurn?.()
+      }
     },
 
     /** `session/cancel`:对这条本地会话在任一台 ACP agent 上的在飞回合。 */

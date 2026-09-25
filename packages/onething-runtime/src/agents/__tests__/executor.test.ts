@@ -59,7 +59,8 @@ describe('执行器解析单点(§3)', () => {
     expect(executor.id).toBe('acp')
     expect(executor.kind).toBe('external')
     expect(executor.capabilities).toEqual({
-      hostTools: false,
+      // A4-b:连接器在 session/new 前把宿主工具面(stdio 桥 / HTTP 直连)递给 agent。
+      hostTools: true,
       steer: false,
       interrupt: true,
       contextWindow: 'theirs',

@@ -53,14 +53,15 @@
  *      `acp.authenticate` 立刻答 terminalId,那一格终端(owner = 这台 agent)跑「起法 + `--login`」、
  *      退出码 0 → 行上 `auth.required === false` → 再发一条,这一轮走通。
  *
- * TODO(A4-b):⑰ 桥 / ⑱ 归因(方案 §7、§11.5)在这里还没有步骤 —— 它们要的是「假 agent 在
- * `session/new` 里**收到** `mcpServers`」,而把 `mintCredential` 的结果递进 `session/new` 是
- * A4-b 的 connector 接线。门外面没有、也不许有签凭据的 RPC,所以 A4-a 不在门里造一条假路;
- * 同一条链在单测级已经证了(真 backend + 真 `http.ts` + 真配方打出的 `acp-mcp-bridge.cjs` +
- * 真 MCP 客户端):`packages/backend/server/__tests__/host-mcp-face.test.ts`。A4-b 落地时
- * 在这里补:假 agent 拿到 stdio 那一条 → 起桥 → `tools/list` 有 `send_notification` →
- * `tools/call` 让 `agent:notification` 落在发起会话 → 关会话后同一把钥匙 401;
- * 反证:凭据换常量 → ⑱ 红。
+ * A4-b(方案 §3.6 / §7 ⑰⑱ / §11.5;宿主工具面接到运行时):`fake` 打开 `FAKE_AGENT_USE_HOST_MCP`,
+ * 一条新会话发 `@mcp`:
+ *   ⑰ 桥:这条会话的 `session/new` 里 `mcpServers` 有一条 stdio 的 `onething`(command = server 的 node,
+ *      args = 本机 `acp-mcp-bridge.cjs`,env 带 URL 与桥凭据);假 agent 照它起桥、用真 MCP 客户端
+ *      `tools/list` 见到 `send_notification`、`tools/call` 不报错。
+ *   ⑱ 归因:SSE 上见到 `agent:notification`,`sessionId` = 发起那条会话、`agentId` = fake(都不从参数收);
+ *      门拿假 agent 记下的那枚桥凭据直接打 `POST /api/rpc host-mcp.listTools` —— 会话在时 200、删掉之后 401
+ *      (删会话 → `session:` 资源 `deleted` → `AcpSubsystem` 作废那条会话名下的凭据)。
+ *   反证:`serversFor` 答空表 → ⑰ 红;删会话不作废 → ⑱ 的 401 红。
  *
  * **必须用 node 起**(同 gate:search-index):server 的检索 Worker 要 `node:sqlite`,bun 没有。
  * 不构建:缺 `dist/server/main.js` 就叫你先 `bun run server:build`。
@@ -319,6 +320,7 @@ try {
           FAKE_AGENT_PUSH_COMMANDS: '1',
           FAKE_AGENT_ROGUE_METHOD: '1',
           FAKE_AGENT_RICH_TOOLS: '1',
+          FAKE_AGENT_USE_HOST_MCP: '1',
         },
         // ①–④ 不验审批:显式打开无人应答放行(A3-b 起桥里前置放行,不上卡)。
         unattended: 'allow',
@@ -687,6 +689,47 @@ try {
   }, 20_000)
   check(Boolean(authReply), `⑯b 登录之后这一轮走通(读到 ${JSON.stringify((await lastAssistant(rpc, authId))?.content ?? null)})`)
 
+  // ── ⑰ 桥 / ⑱ 归因(A4-b)────────────────────────────────────────
+  const mcpId = await createAcpSession(rpc, 'acp 门 · 宿主工具', workDir)
+  const callsBeforeMcp = readCalls(agentDir).length
+  await sendMessage(rpc, mcpId, '@mcp 给用户发条通知')
+  await waitFor(() => finishSeen(sse.frames, mcpId), 30_000)
+  const mcpCalls = readCalls(agentDir).slice(callsBeforeMcp)
+  const mcpNew = mcpCalls.find(call => call.method === 'new')
+  const hostEntry = (mcpNew?.mcpServers ?? []).find(server => server.name === 'onething')
+  const hostEnv = Object.fromEntries((hostEntry?.env ?? []).map(pair => [pair.name, pair.value]))
+  check(Boolean(hostEntry) && !('type' in hostEntry) && typeof hostEntry.command === 'string'
+    && /acp-mcp-bridge\.cjs$/.test(hostEntry.args?.[0] ?? '') && fs.existsSync(hostEntry.args[0])
+    && typeof hostEnv.ONETHING_MCP_TOKEN === 'string' && hostEnv.ONETHING_MCP_URL === `http://127.0.0.1:${discovery.port}`,
+    `⑰ session/new 的 mcpServers 里有一条 stdio 的 onething(桥产物在盘上,env 带面地址与凭据;读到 ${JSON.stringify(
+      hostEntry ? { ...hostEntry, env: hostEntry.env?.map(pair => pair.name) } : mcpNew?.mcpServers ?? null)})`)
+  const hostMcpRun = mcpCalls.find(call => call.method === 'host-mcp')
+  check(hostMcpRun?.ok === true && hostMcpRun.tools?.includes('send_notification'),
+    `⑰ 假 agent 起了桥,tools/list 有 send_notification(读到 ${JSON.stringify(hostMcpRun?.tools ?? hostMcpRun ?? null)})`)
+  check(hostMcpRun?.ok === true && !hostMcpRun.callResult?.isError,
+    `⑰ tools/call send_notification 没报错(读到 ${JSON.stringify(hostMcpRun?.callResult ?? null)})`)
+  const notified = await waitFor(() => sse.frames.find(frame => frame.event === 'agent:notification'
+    && frame.data?.sessionId === mcpId), 5_000, 50)
+  check(notified?.data?.agentId === AGENT_ID && String(notified?.data?.message ?? '').startsWith('hello from fake agent'),
+    `⑱ SSE 上的 agent:notification 落在发起会话、归 fake(读到 ${JSON.stringify(notified?.data ?? null)})`)
+  const bridgeToken = hostMcpRun?.token
+  const bridgeListTools = async () => {
+    const response = await fetch(`http://127.0.0.1:${discovery.port}/api/rpc`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${bridgeToken}` },
+      body: JSON.stringify({ domain: 'host-mcp', method: 'listTools', payload: {} }),
+    })
+    return response.status
+  }
+  const liveStatus = bridgeToken ? await bridgeListTools() : 'no token'
+  check(liveStatus === 200, `⑱ 会话在时,同一枚桥凭据打 host-mcp.listTools → 200(读到 ${liveStatus})`)
+  await rpc('sessions', 'delete', { sessionId: mcpId })
+  const revokedStatus = bridgeToken ? await waitFor(async () => {
+    const status = await bridgeListTools()
+    return status === 401 ? status : undefined
+  }, 3_000) ?? await bridgeListTools() : 'no token'
+  check(revokedStatus === 401, `⑱ 删掉会话之后,同一枚桥凭据 → 401(读到 ${revokedStatus})`)
+
   // 名册刷新走一趟(RPC `acp.refreshRegistry` = 强制重拉 + 探测):开关关着就只重读种子与探测,
   // 不联网 —— 收尾那一步从日志上核「一次拉取都没有」。server 宿主不调 `acp.start()`,
   // 不走这一趟的话那条核对永远是空转。
@@ -734,4 +777,4 @@ if (failures.length > 0) {
   console.error(`[gate:acp] ${failures.length} check(s) failed`)
   process.exit(1)
 }
-console.log('[gate:acp] ok —— ① 握手 / ② 会话目录 / ③ 流与协议外请求 / ④ prompt 之外的状态 / ⑥ diff / ⑦ terminal / ⑪ 四选项 / ⑫ 始终允许 / ⑬ fs / ⑭ terminal / ⑮ 提问 / ⑯ 无人应答 / ⑯b 登录 全绿')
+console.log('[gate:acp] ok —— ① 握手 / ② 会话目录 / ③ 流与协议外请求 / ④ prompt 之外的状态 / ⑥ diff / ⑦ terminal / ⑪ 四选项 / ⑫ 始终允许 / ⑬ fs / ⑭ terminal / ⑮ 提问 / ⑯ 无人应答 / ⑯b 登录 / ⑰ 桥 / ⑱ 归因 全绿')

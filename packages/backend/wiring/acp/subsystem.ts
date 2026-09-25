@@ -65,6 +65,12 @@ export interface AcpSubsystemDeps {
   registry?: AcpSubsystemRegistryPort
   /** 宿主工具面的桥(A4-a)。缺席 = 用真依赖造一只;单测可以递一只假的。 */
   hostMcpBridge?: HostMcpBridge
+  /**
+   * 「这几条会话删了」的来源(A4-b):订上它,删会话就作废那条会话名下的桥凭据。答退订函数。
+   * 装配层接总线(`resource:event` 的 `session:<id>` / `deleted`,连同级联删掉的子会话);
+   * 缺席 = 不订(只在单测里)。
+   */
+  onSessionsDeleted?: (listener: (sessionIds: string[]) => void) => () => void
 }
 
 /**
@@ -97,6 +103,10 @@ export class AcpSubsystem {
 
   /** 名册变化的退订;构造时订,`dispose()` 退。 */
   private stopRegistryWatch: (() => void) | undefined
+  /** 桥凭据的两条作废监听(会话删了 / agent 进程没了,A4-b);构造时订,`dispose()` 退。 */
+  private stopCredentialWatch: Array<() => void> = []
+  /** 每台 agent 上一次见到的连接状态:只有「connected → 别的」才算进程没了。 */
+  private readonly lastAgentStatus = new Map<string, string>()
   /** 后台那趟联网刷新的中止器;`dispose()` 拉闸。 */
   private readonly backgroundAbort = new AbortController()
   /**
@@ -109,7 +119,17 @@ export class AcpSubsystem {
   constructor(deps: AcpSubsystemDeps) {
     this.deps = deps
     this.hostMcpBridge = deps.hostMcpBridge ?? new HostMcpBridge()
-    if (isStateSource(deps.manager)) this.stopStateBroadcast = installAcpStateBroadcaster(this.decoratedSource(deps.manager))
+    if (isStateSource(deps.manager)) {
+      this.stopStateBroadcast = installAcpStateBroadcaster(this.decoratedSource(deps.manager))
+      this.stopCredentialWatch.push(deps.manager.onAgentStateChanged(state => this.noteAgentState(state)))
+    }
+    const stopDeleted = deps.onSessionsDeleted?.(sessionIds => {
+      for (const sessionId of sessionIds) {
+        const revoked = this.hostMcpBridge.revokeSession(sessionId)
+        if (revoked > 0) log.info('bridge credentials revoked: session deleted', { sessionId, revoked })
+      }
+    })
+    if (stopDeleted) this.stopCredentialWatch.push(stopDeleted)
     // 名册变了(探测 / 注册表刷新 / 种子重读)就按当下设置重喂管家。dispose 之后的迟到通知不理。
     this.stopRegistryWatch = deps.registry?.onChanged(() => {
       if (this.disposing) return
@@ -193,6 +213,23 @@ export class AcpSubsystem {
     }
   }
 
+  /**
+   * agent 进程没了(连接从 `connected` 掉到别的状态:崩了、断了、闲置回收、刷新重连)→ 它名下的
+   * 桥凭据全部作废(A4-b)。它起的桥子进程随它一起死了,钥匙留着只会让一把没人用的钥匙活着;
+   * 下一轮开会话时重签一枚,经 `session/load` / `resume` 递给新进程。
+   *
+   * 判据是「从 connected 掉下来」而不是「现在不是 connected」:连接器签完凭据才开会话,那一路上
+   * 会经过 disconnected → connecting → connected,按「现在」判会把刚签的那枚当场作废。
+   */
+  private noteAgentState(state: ACPAgentState): void {
+    const agentId = state.config.id
+    const previous = this.lastAgentStatus.get(agentId)
+    this.lastAgentStatus.set(agentId, state.status)
+    if (previous !== 'connected' || state.status === 'connected') return
+    const revoked = this.hostMcpBridge.revokeAgent(agentId)
+    if (revoked > 0) log.info('bridge credentials revoked: agent connection ended', { agentId, status: state.status, revoked })
+  }
+
   /** 管家推出来的 agent 状态没有名册那一半;出网之前补上,壳收到的每一行形状一样。 */
   private decoratedSource(source: AcpStateSource): AcpStateSource {
     return {
@@ -266,6 +303,7 @@ export class AcpSubsystem {
       this.backgroundAbort.abort()
       // 钥匙先作废:关机途中还在跑的桥子进程再来调,一律 401 / 拒,而不是打进一台半拆的核。
       this.hostMcpBridge.revokeAll()
+      for (const stop of this.stopCredentialWatch.splice(0)) stop()
       this.stopRegistryWatch?.()
       this.stopRegistryWatch = undefined
       const startedAt = Date.now()

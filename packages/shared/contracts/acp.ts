@@ -33,7 +33,18 @@ export interface ACPAgentConfig {
   // A3-b 删了 `allowFileSystemAccess` / `allowTerminalAccess`(文件与终端改走 onething 的沙箱、
   // 许可与 TerminalService,能力固定声明)与 `maxTerminals` / `maxTerminalOutputBytes`(变成终端桥
   // 里的常量);老盘上的这四格由 `normalizeACPSettings` 摘掉。
-  mcpServers?: JsonObject[]
+  // A4-b 删了 `mcpServers`(一份原样透传给 `session/new` 的 JSON):agent 拿到的 MCP 名册改由
+  // 宿主现组 —— `onething` 那一条(宿主工具面)+ 按 `forwardMcpServers` 透传的用户名册。
+  /**
+   * 给不给这台 agent 宿主工具面(`mcpServers` 里的 `onething` 那一条,A4-b,方案 §3.6)。
+   * 缺省 = 给(`true`);`false` 只剩下透传的用户名册。
+   */
+  hostTools?: boolean
+  /**
+   * 把用户自己的 MCP 名册(`settings.mcp.servers` 里启用的)也递给这台 agent(A4-b)。
+   * 缺省 = 不递(`false`):用户名册里的凭据不该默认流进一台外部 agent。
+   */
+  forwardMcpServers?: boolean
   connectTimeoutMs?: number
   promptTimeoutMs?: number
   idleTimeoutMs?: number
@@ -58,14 +69,15 @@ export interface ACPAgentConfig {
 }
 
 /**
- * A3-b 退役的四格。老盘上 / 壳回显里还可能带着,读的一方(`normalizeACPSettings`、稀疏覆盖)
- * 见到就摘,不再写回。
+ * 退役的格:A3-b 四格,A4-b 的 `mcpServers`(改由宿主现组,见 `hostTools` / `forwardMcpServers`)。
+ * 老盘上 / 壳回显里还可能带着,读的一方(`normalizeACPSettings`、稀疏覆盖)见到就摘,不再写回。
  */
 export const RETIRED_ACP_AGENT_FIELDS = [
   'allowFileSystemAccess',
   'allowTerminalAccess',
   'maxTerminals',
   'maxTerminalOutputBytes',
+  'mcpServers',
 ] as const
 
 /**

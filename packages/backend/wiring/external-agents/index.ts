@@ -32,6 +32,7 @@ import { createPermissionAuthorizer } from '../toolkit/authorizer.js'
 import { publishExternalAgentBackgroundStatus } from './background-status.js'
 import { resolveClaudeCodeHostToolSurface } from './host-tools.js'
 import { resolveExternalAgentSpawnEnv } from './spawn-env.js'
+import { createAcpHostMcpPort } from '../acp/host-mcp-port.js'
 import { consolePort, getLogger } from '../logging/index.js'
 import type { ExternalAgentObserver } from '@onething/runtime/external-agents/types'
 import type { ClaudeCodeConnectorOptions } from '@onething/runtime/external-agents/claude-code-connector'
@@ -374,7 +375,8 @@ function createExternalAgentConnectors(): ConnectorMap {
     [CLAUDE_CODE_AGENT_CONNECTOR_ID]: createClaudeCodeConnector(claudeCodeConnectorOptions),
     // ACP 的连接与会话归 `backend.acp` 子系统(ACPManager);连接器只是一层薄转接,
     // 权限桥也已由 `registerACPPermissionBridge` 装在 ACPManager 上。
-    [ACP_CONNECTOR_ID]: createAcpConnector(),
+    // A4-b:宿主工具面经端口递进去(桥与凭据表在 `backend.acp`,调用时现取)。
+    [ACP_CONNECTOR_ID]: createAcpConnector({ hostMcp: createAcpHostMcpPort() }),
   }
 }
 

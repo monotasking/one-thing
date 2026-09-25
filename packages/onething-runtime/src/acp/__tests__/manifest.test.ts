@@ -154,6 +154,14 @@ describe('effectiveAgentConfig', () => {
     })
   })
 
+  it('A4-b 两格随覆盖进生效配置;退役的 mcpServers 不再透传', () => {
+    const effective = effectiveAgentConfig(SEED, {
+      id: 'claude-code', hostTools: false, forwardMcpServers: true, mcpServers: [{ name: 'legacy' }],
+    } as never)
+    expect(effective).toMatchObject({ hostTools: false, forwardMcpServers: true })
+    expect('mcpServers' in effective).toBe(false)
+  })
+
   it('没有 launch 也没有覆盖命令:command 是空串(上榜但喂不了管家)', () => {
     expect(effectiveAgentConfig({ id: 'bin-only', name: 'Bin only' }).command).toBe('')
   })

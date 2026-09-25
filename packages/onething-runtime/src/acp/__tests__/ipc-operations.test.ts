@@ -275,6 +275,13 @@ describe('ACP IPC operations', () => {
         .toEqual({ id: 'kimi', unattended: 'allow' })
     })
 
+    it('A4-b 两格:缺省(hostTools: true / forwardMcpServers: false)丢,改过的留;退役的 mcpServers 不存', () => {
+      expect(sparseOnethingACPRosterOverride({ id: 'kimi', hostTools: true, forwardMcpServers: false, mcpServers: [{ name: 'x' }] } as never, KIMI))
+        .toEqual({ id: 'kimi' })
+      expect(sparseOnethingACPRosterOverride({ id: 'kimi', hostTools: false, forwardMcpServers: true }, KIMI))
+        .toEqual({ id: 'kimi', hostTools: false, forwardMcpServers: true })
+    })
+
     it('addAgent 对还没有覆盖的那一台存稀疏覆盖;已有覆盖答重复', async () => {
       const adapters = rosterAdapters()
       await addOnethingACPAgentForIpc({ ...adapters, config: { ...ECHO, enabled: true } })

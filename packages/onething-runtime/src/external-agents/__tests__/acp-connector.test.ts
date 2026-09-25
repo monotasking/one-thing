@@ -297,3 +297,71 @@ describe('AcpConnector — persona 与首轮能力(A2-a)', () => {
     expect(prompts[0]!.options.extraContent).toEqual([{ type: 'image', mimeType: 'image/png', data: 'AAAA' }])
   })
 })
+
+describe('AcpConnector — 宿主工具面(A4-b)', () => {
+  const stdioEntry = { name: 'onething', command: '/usr/bin/node', args: ['/x/acp-mcp-bridge.cjs'], env: [{ name: 'ONETHING_MCP_TOKEN', value: 't' }] }
+
+  async function drain(connector: ReturnType<typeof createAcpConnector>, messageId = 'msg-1', abortSignal?: AbortSignal) {
+    const events: ExternalAgentEvent[] = []
+    for await (const event of connector.streamTurn({
+      model: 'pi',
+      localSessionId: 'host-tools',
+      cwd: workdir(),
+      prompt: 'hi',
+      messageId,
+      ...(abortSignal ? { abortSignal } : {}),
+      turn: 1,
+    } as never)) events.push(event)
+    return events
+  }
+
+  it('握手 → 问名册(带 mcpCapabilities)→ 开会话带 mcpServers;这一轮挂上又摘掉', async () => {
+    const order: string[] = []
+    let connected = false
+    const handshake = { protocolVersion: 1, agentCapabilities: { mcpCapabilities: { http: false, sse: false } } } as unknown as InitializeResponse
+    const endTurn = vi.fn(() => { order.push('endTurn') })
+    const hostMcp = {
+      serversFor: vi.fn(async () => { order.push('serversFor'); return [stdioEntry] }),
+      beginTurn: vi.fn(() => { order.push('beginTurn'); return endTurn }),
+    }
+    const { deps } = fakeDeps([{ type: 'finish', stopReason: 'end_turn' }], {
+      handshake: () => (connected ? handshake : undefined),
+      prepare: vi.fn(async () => { order.push('prepare'); connected = true }),
+      openSession: vi.fn(async (_a: string, _l: string, cwd: string) => { order.push('openSession'); return { acpSessionId: 'acp-1', cwd } }),
+      streamPrompt: () => { order.push('streamPrompt'); return replay([{ type: 'finish', stopReason: 'end_turn' }]) },
+      hostMcp,
+    })
+    const abort = new AbortController()
+    await drain(createAcpConnector(deps), 'msg-7', abort.signal)
+    expect(order).toEqual(['prepare', 'serversFor', 'openSession', 'beginTurn', 'streamPrompt', 'endTurn'])
+    expect(hostMcp.serversFor).toHaveBeenCalledWith(expect.objectContaining({
+      agentId: 'pi', localSessionId: 'host-tools', mcpCapabilities: { http: false, sse: false },
+    }))
+    expect(deps.openSession).toHaveBeenCalledWith('pi', 'host-tools', expect.any(String), { mcpServers: [stdioEntry] })
+    expect(hostMcp.beginTurn).toHaveBeenCalledWith('pi', 'host-tools', { messageId: 'msg-7', abortSignal: abort.signal })
+  })
+
+  it('这一轮抛错也摘掉;名册组不出来不炸回合(开会话不带 mcpServers)', async () => {
+    const endTurn = vi.fn()
+    const failing = fakeDeps([], {
+      streamPrompt: () => (async function* (): AsyncGenerator<ACPWireStreamEvent> { yield* replay([]); throw new Error('agent died') })(),
+      hostMcp: { serversFor: () => [stdioEntry], beginTurn: () => endTurn },
+    })
+    await expect(drain(createAcpConnector(failing.deps))).rejects.toThrow('agent died')
+    expect(endTurn).toHaveBeenCalledTimes(1)
+
+    const broken = fakeDeps([{ type: 'finish', stopReason: 'end_turn' }], {
+      hostMcp: { serversFor: () => { throw new Error('no bridge') }, beginTurn: vi.fn(() => () => undefined) },
+    })
+    await drain(createAcpConnector(broken.deps))
+    expect(broken.deps.openSession).toHaveBeenCalledWith('pi', 'host-tools', expect.any(String), {})
+    expect(broken.deps.hostMcp!.beginTurn).not.toHaveBeenCalled()
+  })
+
+  it('没装端口 = 旧行为:开会话不带 mcpServers,不 prepare', async () => {
+    const { deps } = fakeDeps([{ type: 'finish', stopReason: 'end_turn' }])
+    await drain(createAcpConnector(deps))
+    expect(deps.openSession).toHaveBeenCalledWith('pi', 'host-tools', expect.any(String), {})
+    expect(deps.prepare).not.toHaveBeenCalled()
+  })
+})

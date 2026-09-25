@@ -122,6 +122,7 @@ import { DEFAULT_MCP_SETTINGS } from '@onething/core/mcp'
 import { ACPManager } from '@onething/runtime/acp'
 import { McpSubsystem } from './wiring/mcp/subsystem.js'
 import { AcpSubsystem } from './wiring/acp/subsystem.js'
+import { onSessionsDeletedFromBus } from './wiring/acp/events.js'
 import { AcpAgentRegistry, type AcpRegistryFetch } from './wiring/acp/registry.js'
 import { getAppBuiltinResourcePath } from './wiring/skills/loader.js'
 import { createAppFetch } from './provider-binding/bound-fetch.js'
@@ -1116,6 +1117,8 @@ export class OnethingBackend implements BackendHandle {
         settings: acpSettings,
         fetch: () => createAppFetch() as unknown as AcpRegistryFetch,
       }),
+      // A4-b:删会话 → 作废那条会话名下的 ACP 桥凭据(总线在第 14 步之前就有了)。
+      onSessionsDeleted: onSessionsDeletedFromBus(eventBus),
     })
     this.acpSubsystem = acp
     /*

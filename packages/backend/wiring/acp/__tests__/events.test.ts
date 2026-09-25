@@ -80,7 +80,7 @@ describe('installAcpStateBroadcaster', () => {
     expect(bus.emitGlobal).not.toHaveBeenCalled()
   })
 
-  it('AcpSubsystem 构造时订上,dispose 时两条一起退订', async () => {
+  it('AcpSubsystem 构造时订上,dispose 时全部退订', async () => {
     const source = fakeSource()
     const settings: ACPSettings = { enabled: true, agents: [] }
     const subsystem = new AcpSubsystem({
@@ -88,7 +88,8 @@ describe('installAcpStateBroadcaster', () => {
       settings: () => settings,
     })
     expect(source.session.size).toBe(1)
-    expect(source.agent.size).toBe(1)
+    // agent 状态上两条:广播器 + 桥凭据作废(A4-b,agent 从 connected 掉下来就作废它名下的钥匙)。
+    expect(source.agent.size).toBe(2)
     await subsystem.dispose()
     expect(source.session.size).toBe(0)
     expect(source.agent.size).toBe(0)

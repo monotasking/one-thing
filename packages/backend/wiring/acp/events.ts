@@ -42,3 +42,32 @@ export function installAcpStateBroadcaster(source: AcpStateSource): () => void {
     offAgent()
   }
 }
+
+/** `onSessionsDeleted` 看得见的总线面:一条全局订阅口(`EventBus.onGlobal` 的子集)。 */
+export interface SessionDeletionBus {
+  onGlobal(
+    type: 'resource:event',
+    handler: (envelope: { event: { ref: string; event: string; payload: unknown } }) => void,
+  ): () => void
+}
+
+const SESSION_REF_PREFIX = 'session:'
+
+/**
+ * 「这几条会话删了」(A4-b:删会话 → 作废那条会话名下的 ACP 桥凭据)。
+ *
+ * 删除今天只有一个出口:`session:` 资源的 `delete` 操作,它在收完尾之后发 `deleted` 资源事件
+ * (`wiring/resource/session-provider.ts`),经 `forwardResourceEventsToBus` 成为全局
+ * `resource:event`。载荷里的 `cascadedSessionIds` 是连带删掉的整串(子会话在内),都算。
+ * 订总线而不是往删除路径里再塞一个端口:删除那一段不该认识 ACP。
+ */
+export function onSessionsDeletedFromBus(bus: SessionDeletionBus): (listener: (sessionIds: string[]) => void) => () => void {
+  return listener => bus.onGlobal('resource:event', ({ event }) => {
+    if (event.event !== 'deleted' || !event.ref.startsWith(SESSION_REF_PREFIX)) return
+    const ids = new Set<string>([event.ref.slice(SESSION_REF_PREFIX.length)])
+    const cascaded = (event.payload as { cascadedSessionIds?: unknown } | null)?.cascadedSessionIds
+    if (Array.isArray(cascaded)) for (const id of cascaded) if (typeof id === 'string') ids.add(id)
+    ids.delete('')
+    if (ids.size > 0) listener([...ids])
+  })
+}

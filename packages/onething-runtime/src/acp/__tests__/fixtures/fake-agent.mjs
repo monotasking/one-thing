@@ -36,6 +36,14 @@
 // FAKE_AGENT_RECORD_PROMPT=1:每轮把收到的 prompt 内容块(type + 文本前 400 字)记进 calls.log。
 // FAKE_AGENT_IMAGE=1:握手自报 `promptCapabilities.image`。
 // `session/new` 带了 `_meta` 就把它记进那一行的 `meta` 格(不带就没有这一格,别的用例逐条比对不受影响)。
+//
+// A4-b(gate:acp ⑰⑱ / 单测):`session/new` / `load` / `resume` 收到**非空**的 `mcpServers` 就把它记进
+// 那一行的 `mcpServers` 格(空表不记,理由同 `meta`)。
+// FAKE_AGENT_USE_HOST_MCP=1 + 正文 `@mcp`:从这条会话收到的 `mcpServers` 里找 stdio 那条 `onething`,
+//   照它的 command / args / env 起桥子进程,用 `@modelcontextprotocol/client` 在 stdio 上说 MCP:
+//   `tools/list` 记下工具名,`tools/call send_notification { message }` 记下结果,关掉桥,照常收尾。
+//   凭据(env 里的 `ONETHING_MCP_TOKEN`)与面地址也记进那一行 —— 门拿它在会话删掉前后各打一次
+//   `host-mcp.listTools`,看作废是不是真的。
 import { AgentSideConnection, PROTOCOL_VERSION, RequestError, ndJsonStream } from '@agentclientprotocol/sdk'
 import { Readable, Writable } from 'node:stream'
 import { closeSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -64,6 +72,43 @@ const file = id => join(dir, `${id}.json`)
 const readSession = id => (existsSync(file(id)) ? JSON.parse(readFileSync(file(id), 'utf8')) : undefined)
 const writeSession = s => writeFileSync(file(s.id), JSON.stringify(s))
 const logCall = entry => writeFileSync(join(dir, 'calls.log'), `${JSON.stringify(entry)}\n`, { flag: 'a' })
+/** 这条 agent 会话最近一次收到的 `mcpServers`(开 / load / resume 都会换)。只在内存:桥凭据也只活在宿主内存里。 */
+const receivedMcpServers = new Map()
+const noteMcpServers = (sessionId, servers) => {
+  const list = Array.isArray(servers) ? servers : []
+  receivedMcpServers.set(sessionId, list)
+  return list.length > 0 ? { mcpServers: list } : {}
+}
+
+async function hostMcpScript(s) {
+  const entry = (receivedMcpServers.get(s.id) ?? []).find(server => server.name === 'onething' && typeof server.command === 'string')
+  if (!entry) {
+    logCall({ method: 'host-mcp', ok: false, reason: 'no stdio onething entry in mcpServers' })
+    return
+  }
+  const env = Object.fromEntries((entry.env ?? []).map(pair => [pair.name, pair.value]))
+  const { Client } = await import('@modelcontextprotocol/client')
+  const { StdioClientTransport } = await import('@modelcontextprotocol/client/stdio')
+  const transport = new StdioClientTransport({ command: entry.command, args: entry.args ?? [], env: { ...process.env, ...env }, stderr: 'pipe' })
+  const client = new Client({ name: 'fake-agent', version: '0.0.1' })
+  try {
+    await client.connect(transport)
+    const listed = await client.listTools()
+    const called = await client.callTool({ name: 'send_notification', arguments: { message: `hello from fake agent (${s.id})`, title: 'Fake agent' } })
+    logCall({
+      method: 'host-mcp',
+      ok: true,
+      tools: listed.tools.map(tool => tool.name),
+      callResult: called,
+      token: env.ONETHING_MCP_TOKEN ?? null,
+      url: env.ONETHING_MCP_URL ?? null,
+    })
+  } catch (error) {
+    logCall({ method: 'host-mcp', ok: false, message: String(error?.stack ?? error?.message ?? error) })
+  } finally {
+    await client.close().catch(() => {})
+  }
+}
 
 const MODELS = [{ value: 'alpha', name: 'Alpha' }, { value: 'beta', name: 'Beta' }]
 const configOptions = s => [
@@ -236,7 +281,7 @@ new AgentSideConnection(conn => ({
     }
     const s = { id: randomUUID(), cwd: params.cwd, model: 'alpha', turns: 0 }
     writeSession(s)
-    logCall({ method: 'new', id: s.id, cwd: params.cwd, ...(params._meta ? { meta: params._meta } : {}) })
+    logCall({ method: 'new', id: s.id, cwd: params.cwd, ...(params._meta ? { meta: params._meta } : {}), ...noteMcpServers(s.id, params.mcpServers) })
     if (process.env.FAKE_AGENT_PUSH_COMMANDS === '1') {
       setImmediate(() => {
         conn.sessionUpdate({
@@ -257,7 +302,7 @@ new AgentSideConnection(conn => ({
   async loadSession(params) {
     const s = readSession(params.sessionId)
     if (!s) throw new Error(`Unknown sessionId: ${params.sessionId}`)
-    logCall({ method: 'load', id: s.id })
+    logCall({ method: 'load', id: s.id, ...noteMcpServers(s.id, params.mcpServers) })
     // 真 agent 会回放历史;onething 此刻没有队列接,应当丢掉。
     await conn.sessionUpdate({
       sessionId: s.id,
@@ -268,7 +313,7 @@ new AgentSideConnection(conn => ({
   async resumeSession(params) {
     const s = readSession(params.sessionId)
     if (!s) throw new Error(`Unknown sessionId: ${params.sessionId}`)
-    logCall({ method: 'resume', id: s.id })
+    logCall({ method: 'resume', id: s.id, ...noteMcpServers(s.id, params.mcpServers) })
     return { configOptions: configOptions({ ...s, model: 'alpha' }) }
   },
   async setSessionConfigOption(params) {
@@ -312,6 +357,7 @@ new AgentSideConnection(conn => ({
     if (process.env.FAKE_AGENT_TERMINAL === '1' && text.startsWith('@term')) await terminalScript(conn, s)
     if (process.env.FAKE_AGENT_ELICIT === '1' && text.startsWith('@elicit')) await elicitScript(conn, s)
     if (process.env.FAKE_AGENT_RICH_TOOLS === '1' && text.startsWith('@rich')) await richToolsScript(conn, s)
+    if (process.env.FAKE_AGENT_USE_HOST_MCP === '1' && text.startsWith('@mcp')) await hostMcpScript(s)
     const rogue = process.env.FAKE_AGENT_ROGUE_METHOD === '1' && s.turns === 1
     if (rogue) {
       // 协议外请求:客户端没挂这个方法,SDK 该以 -32601 回绝;回绝不该掐断连接。

@@ -269,7 +269,8 @@ function sameJson(a: unknown, b: unknown): boolean {
  *
  * 规则:`id` 永远留;`enabled` 只在调用方显式给了布尔值时留;`name` / `description` /
  * `command` / `args` / `env` / `unattended` 与 `effectiveAgentConfig(manifest)` 推出来的值
- * 相等(空串、空数组、空对象、`unattended: 'reject'` 分别等同于缺席 / 缺省)就丢;其余
+ * 相等(空串、空数组、空对象、`unattended: 'reject'` 分别等同于缺席 / 缺省)就丢;`hostTools: true` /
+ * `forwardMcpServers: false`(A4-b 两格的缺省)也丢;其余
  * 带着的格(`secretEnv` / 各种超时 / `cwd` …)原样留。老名 `permissionMode` 先搬成 `unattended`。
  */
 export function sparseOnethingACPRosterOverride<TConfig extends OnethingACPAgentConfigLike>(
@@ -284,6 +285,15 @@ export function sparseOnethingACPRosterOverride<TConfig extends OnethingACPAgent
     if ((RETIRED_ACP_AGENT_FIELDS as readonly string[]).includes(key)) continue
     if (key === 'enabled') {
       if (typeof raw === 'boolean') out.enabled = raw
+      continue
+    }
+    // A4-b 两格的缺省(给宿主工具 / 不透传名册)等同于缺席:壳回显整份时不把缺省值写成覆盖。
+    if (key === 'hostTools') {
+      if (raw === false) out.hostTools = false
+      continue
+    }
+    if (key === 'forwardMcpServers') {
+      if (raw === true) out.forwardMcpServers = true
       continue
     }
     if ((ROSTER_DERIVED_FIELDS as readonly string[]).includes(key)) {

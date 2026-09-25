@@ -28,10 +28,13 @@
  * `send_notification`(给人发一条通知,不进聊天正文)。表每次现问 —— 场子、白名单、手里
  * 那张牌都可能在两次调用之间变。
  *
- * ## 这一单不接什么(A4-b)
+ * ## 运行时接线(A4-b)
  *
- * connector 在 `session/new` 之前调 `mintCredential`、把 `mcpServers` 递给 `ACPManager`、
- * 回合切换时 `setTurn` —— 那是 A4-b。这里把桥造好、测好,不碰运行时。
+ * connector 在握手之后、`session/new` 之前经 `wiring/external-agents` 的 `hostMcp` 端口调
+ * `mintCredential`(同一对沿用同一枚),把 `mcpServers` 递给 `ACPManager.openSession`;每一轮
+ * 开头 `beginTurn` 把这一轮的 `messageId` / 中止信号挂到钥匙背后,收场时摘掉。作废三处:
+ * 会话删了(`revokeSession`)、agent 进程没了(`revokeAgent`,它起的桥子进程随它一起死)、
+ * 子系统 dispose(`revokeAll`)—— 都在 `AcpSubsystem` 里订。
  */
 import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
@@ -98,6 +101,11 @@ export interface MintCredentialOptions {
   cwd?: string
   /** 宿主可信的执行身份;缺席 = 本机默认用户(与 Claude 路同一个缺省)。 */
   executionContext?: unknown
+  /**
+   * agent 配置上的「给它宿主工具面」开关(A4-b)。缺席 / true = 给;false = 不给 `onething` 那一条
+   * (只剩透传的用户名册)—— 这时不该来签凭据,见 {@link HostMcpBridge.forwardedMcpServers}。
+   */
+  hostTools?: boolean
 }
 
 export interface MintedCredential {
@@ -294,6 +302,32 @@ export class HostMcpBridge {
     return true
   }
 
+  /**
+   * 连接器那一面(A4-b):按 (agentId, localSessionId) 把这一轮挂上去,答一个收场时调的函数。
+   * 这对还没有钥匙(`hostTools: false`、或者面不在)→ 什么都不做。收场只摘**自己挂上的那一轮**:
+   * 下一轮已经挂上来了(中止之后立刻重发)就不去动它。
+   */
+  beginTurn(agentId: string, localSessionId: string, turn: { messageId?: string; abortSignal?: AbortSignal }): () => void {
+    const token = this.byPair.get(`${agentId}\0${localSessionId}`)
+    if (!token || !this.setTurn(token, turn)) return () => undefined
+    const entry = this.entries.get(token)
+    return () => {
+      if (!entry || this.entries.get(token) !== entry) return
+      if (entry.messageId !== turn.messageId || entry.abortSignal !== turn.abortSignal) return
+      entry.messageId = undefined
+      entry.abortSignal = undefined
+    }
+  }
+
+  /** agent 进程没了:它名下的所有凭据一起作废(它起的桥子进程随它死了)。答作废了几枚。 */
+  revokeAgent(agentId: string): number {
+    let count = 0
+    for (const entry of [...this.entries.values()]) {
+      if (entry.agentId === agentId && this.revoke(entry.token)) count += 1
+    }
+    return count
+  }
+
   /** `tools/list` 的答案。钥匙不对抛 {@link HostMcpUnauthorizedError}。 */
   async listTools(token: string | undefined): Promise<HostMcpToolListing[]> {
     const entry = this.requireEntry(token)
@@ -352,8 +386,10 @@ export class HostMcpBridge {
     const capabilities = options.mcpCapabilities ?? {}
     const servers: AcpMcpServerEntry[] = []
 
-    const face = this.deps.faceUrl?.()
-    if (face) {
+    const face = options.hostTools === false ? undefined : this.deps.faceUrl?.()
+    if (options.hostTools === false) {
+      // 用户关了这台 agent 的宿主工具面:不给 `onething` 那一条,名册透传照旧按开关。
+    } else if (face) {
       const base = face.replace(/\/+$/, '')
       if (capabilities.http === true) {
         servers.push({
@@ -384,16 +420,26 @@ export class HostMcpBridge {
       log.warn('no live HTTP face in this process; the agent gets no host tools this session')
     }
 
-    if (options.forwardMcpServers === true) {
-      for (const server of this.deps.userMcpServers?.() ?? []) {
-        const forwarded = forwardUserMcpServer(server, capabilities)
-        if (!forwarded) continue
-        if (forwarded.name === HOST_MCP_BRIDGE_SERVER_NAME) {
-          log.warn('user MCP server shadows the host server name; not forwarded', { serverId: server.id })
-          continue
-        }
-        servers.push(forwarded)
+    servers.push(...this.forwardedMcpServers(options))
+    return servers
+  }
+
+  /**
+   * 只有透传的那一半(`forwardMcpServers === true` 时的用户名册)。`hostTools: false` 的 agent
+   * 走这里 —— 不签凭据,因为没有 `onething` 那一条要用它。
+   */
+  forwardedMcpServers(options: Pick<MintCredentialOptions, 'mcpCapabilities' | 'forwardMcpServers'> = {}): AcpMcpServerEntry[] {
+    if (options.forwardMcpServers !== true) return []
+    const capabilities = options.mcpCapabilities ?? {}
+    const servers: AcpMcpServerEntry[] = []
+    for (const server of this.deps.userMcpServers?.() ?? []) {
+      const forwarded = forwardUserMcpServer(server, capabilities)
+      if (!forwarded) continue
+      if (forwarded.name === HOST_MCP_BRIDGE_SERVER_NAME) {
+        log.warn('user MCP server shadows the host server name; not forwarded', { serverId: server.id })
+        continue
       }
+      servers.push(forwarded)
     }
     return servers
   }

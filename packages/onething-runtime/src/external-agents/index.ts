@@ -1,5 +1,5 @@
 export { ACP_CONNECTOR_ID, capabilitiesFromHandshake, createAcpConnector } from './acp-connector.js'
-export type { AcpConnectorDeps, AcpConnectorOptions } from './acp-connector.js'
+export type { AcpConnectorDeps, AcpConnectorOptions, AcpHostMcpPort, AcpMcpCapabilitiesInput } from './acp-connector.js'
 export {
   ASK_USER_QUESTION_TOOL,
   askUserQuestionOutput,

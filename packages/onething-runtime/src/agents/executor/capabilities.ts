@@ -87,18 +87,14 @@ const EXTERNAL_DESCRIPTORS: AgentExecutorDescriptor[] = [
     kind: 'external',
     capabilities: {
       /**
-       * 仍然 false —— E3 落地后**按实测保持**,不是忘了翻。
-       *
-       * ACP 的 MCP 注入是 config 形态(connector 声明 `mcpInjection: 'config'`):
-       * 它要的是一份可序列化的服务器配置(stdio 命令行 / http 地址),而 E3 的
-       * 宿主工具面是一个**活的进程内实例**——`speakThroughCollabLease` 依赖的
-       * store 与 v3 回合登记簿都在这个进程里,序列化不过去。真要接,得先给
-       * host-mcp 加一条 stdio/http 出口,那是独立的一件事。
-       *
-       * 保守的代价只是 ACP agent 暂时没有宿主工具;乐观的代价是我们以为它有
-       * 发言权,而它其实一句话都发不出去。
+       * A4-b 翻真。E3 的宿主工具面是一台**活的进程内实例**,ACP 的 `mcpServers` 只认可序列化的
+       * 配置 —— A4-a 给它加了两条出口(stdio 桥 `acp-mcp-bridge.cjs` / `/api/mcp` Streamable HTTP,
+       * 按 (agent, 会话) 签的桥凭据归因),A4-b 由连接器在 `session/new` 前把 `onething` 那一条
+       * 递进去(`wiring/acp/host-mcp-port.ts`)。连接器仍会再问一次这一格:装上端口不等于开着。
+       * 进程没有 HTTP 面(CLI daemon)时那一条组不出来,agent 照旧没有宿主工具 —— 那是宿主的
+       * 事实,不是能力表的谎话。
        */
-      hostTools: false,
+      hostTools: true,
       // 连接器还没有 steer();握手自述的 `_meta.steering` 只填进连接器能力表,
       // 真接上投递之前这里维持 false,宿主就不会把追话交给它。
       steer: false,

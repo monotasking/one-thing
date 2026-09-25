@@ -100,4 +100,18 @@ describe('ACP 设置归一', () => {
     }).agents as unknown as Array<Record<string, unknown>>
     expect(Object.keys(agent!).sort()).toEqual(['command', 'id'])
   })
+
+  it('A4-b:退役的 mcpServers 摘掉;hostTools / forwardMcpServers 带着才归一成布尔,缺席不合成', () => {
+    const agents = normalizeACPSettings({
+      enabled: true,
+      agents: [
+        { id: 'a', command: 'x', mcpServers: [{ name: 'legacy' }], hostTools: 0, forwardMcpServers: 'yes' },
+        { id: 'b', command: 'x', hostTools: false, forwardMcpServers: true },
+        { id: 'c', command: 'x' },
+      ] as never,
+    }).agents as unknown as Array<Record<string, unknown>>
+    expect(agents[0]).toEqual({ id: 'a', command: 'x', hostTools: true, forwardMcpServers: false })
+    expect(agents[1]).toEqual({ id: 'b', command: 'x', hostTools: false, forwardMcpServers: true })
+    expect(Object.keys(agents[2]!).sort()).toEqual(['command', 'id'])
+  })
 })

@@ -48,6 +48,14 @@ class ACPManagerClass {
     this.agentAliases = new Map(Object.entries(aliases))
   }
 
+  /**
+   * 旧 id 认回现 id(公开的那一面,A4-b):装配层按 agent 签桥凭据、按 agent 作废,两头要是同一个 id
+   * —— 作废时拿到的是连接状态里的现 id,签的时候就不能用会话里记着的旧 id。
+   */
+  canonicalAgentId(agentId: string): string {
+    return this.resolveAgentId(agentId)
+  }
+
   /** 旧 id 认回现 id;现在的名册里真有这个 id 时以它为准(用户可能新建了同名条目)。 */
   private resolveAgentId(agentId: string): string {
     if (this.settings.agents.some(agent => agent.id === agentId) || this.clients.has(agentId)) return agentId

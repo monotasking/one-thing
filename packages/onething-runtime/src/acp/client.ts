@@ -294,6 +294,11 @@ interface ACPSessionRecord {
    * `'delivered'`。记在会话上而不是回合上:选项面板可能先把会话开出来,第一条消息才到。
    */
   persona: 'owed' | 'delivered'
+  /**
+   * 开这条会话时有没有人递 `mcpServers`(A4-b)。选项面板先开出来的那种是 false —— agent 手里
+   * 一条 MCP 都没有;下一次带着名册来开(连接器每轮都带)就重开一次,经 load / resume 沿用它。
+   */
+  mcpServersGiven: boolean
 }
 
 /**
@@ -977,7 +982,9 @@ export class ACPClient {
   ): Promise<ACPSessionRecord> {
     const cwd = resolveACPSessionCwd(rawCwd)
     const existing = this.sessions.get(localSessionId)
-    if (existing && existing.cwd === cwd) {
+    // 名册只在开会话那一刻进得去:先前开的时候没人给、这次给了 → 当成要重开(同目录变了一样处理)。
+    const needsMcpServers = open.mcpServers !== undefined && existing?.mcpServersGiven === false
+    if (existing && existing.cwd === cwd && !needsMcpServers) {
       existing.prompts += 1
       existing.lastUsedAt = Date.now()
       return existing
@@ -1007,9 +1014,14 @@ export class ACPClient {
 
     const links = this.runtimeOptions.getSessionLinks?.()
     const link = links?.getLink(this.id, localSessionId)
-    let opened = link && link.cwd === cwd ? await this.restoreSession(localSessionId, link.acpSessionId, cwd) : undefined
-    // 恢复出来的会话 agent 自己有历史(persona 当初已经送过),不再欠。
-    let persona: ACPSessionRecord['persona'] = 'delivered'
+    // A4-b:名册由宿主现组(`onething` 宿主工具面 + 透传的用户名册),每次开 / 恢复都用这一份。
+    const mcpServers = open.mcpServers ?? []
+    let opened = link && link.cwd === cwd
+      ? await this.restoreSession(localSessionId, link.acpSessionId, cwd, mcpServers)
+      : undefined
+    // 恢复出来的会话 agent 自己有历史(persona 当初已经送过),不再欠 —— 除非是本进程里一轮都
+    // 没跑过、只为补名册而重开的那条(选项面板先开的),它欠的那一次还欠着。
+    let persona: ACPSessionRecord['persona'] = existing?.persona === 'owed' ? 'owed' : 'delivered'
     if (!opened) {
       /**
        * `claude-agent-acp` 的怪癖(manifest `quirks.systemPromptMeta`,实测 0.81
@@ -1024,7 +1036,7 @@ export class ACPClient {
       try {
         response = await this.connection.agent.request(acp.methods.agent.session.new, {
           cwd,
-          mcpServers: (this.config.mcpServers ?? []) as unknown as acp.McpServer[],
+          mcpServers,
           ...(viaMeta ? { _meta: { systemPrompt: { append: personaText } } } : {}),
         })
       } catch (error) {
@@ -1043,6 +1055,7 @@ export class ACPClient {
       lastUsedAt: Date.now(),
       options: opened.options,
       persona,
+      mcpServersGiven: open.mcpServers !== undefined,
     }
     this.sessions.set(localSessionId, session)
     this.trimSessionRecords(localSessionId)
@@ -1058,11 +1071,11 @@ export class ACPClient {
     localSessionId: string,
     acpSessionId: string,
     cwd: string,
+    mcpServers: acp.McpServer[],
   ): Promise<{ acpSessionId: string; options: ACPSessionOption[] } | undefined> {
     const connection = this.connection
     if (!connection) return undefined
     const capabilities = this.initResponse?.agentCapabilities
-    const mcpServers = (this.config.mcpServers ?? []) as unknown as acp.McpServer[]
     // 恢复前就记下对应关系:`load` 期间 agent 推来的命令表 / 模式要折得进来(回放的正文照旧不进回合)。
     if (capabilities?.sessionCapabilities?.resume || capabilities?.loadSession) {
       this.bindSessionState(localSessionId, acpSessionId)

@@ -847,6 +847,9 @@ export function normalizeACPSettings(settings?: ACPSettings): ACPSettings {
     if ('unattended' in agent || legacyMode !== undefined) {
       next.unattended = unattended === 'allow' ? 'allow' : 'reject'
     }
+    // A4-b 两格:带着才归一(布尔),缺席不合成 —— 缺省(给宿主工具 / 不透传名册)由读的一方定。
+    if ('hostTools' in agent) next.hostTools = agent.hostTools !== false
+    if ('forwardMcpServers' in agent) next.forwardMcpServers = agent.forwardMcpServers === true
     if ('secretEnv' in agent) {
       const secretEnv = Array.isArray(agent.secretEnv)
         ? agent.secretEnv.filter(key => typeof key === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(key))

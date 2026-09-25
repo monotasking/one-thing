@@ -2,6 +2,7 @@ import type {
   ContentBlock,
   CreateElicitationRequest,
   CreateElicitationResponse,
+  McpServer,
   SessionNotification,
   StopReason,
 } from '@agentclientprotocol/sdk'
@@ -65,9 +66,18 @@ export interface ACPPromptStreamOptions {
   persona?: string
 }
 
-/** 开会话时顺带递进去的东西(A2-a)。今天只有 persona:走 `_meta` 的那一档要在 `session/new` 时就给。 */
+/**
+ * 开会话时顺带递进去的东西。persona(A2-a):走 `_meta` 的那一档要在 `session/new` 时就给;
+ * mcpServers(A4-b):宿主现组的 MCP 名册(`onething` 宿主工具面 + 透传的用户名册)。
+ */
 export interface ACPOpenSessionOptions {
   persona?: string
+  /**
+   * 进 `session/new` / `load` / `resume` 的 `mcpServers`。缺席 = 这一次没人组(选项面板那类
+   * 只为读选项而开的会话)→ 递空表,且下一次带着名册来开时**重开一次**(经 load / resume
+   * 沿用 agent 会话),否则那条会话就永远没有宿主工具。给了(哪怕空表)= 这就是名册。
+   */
+  mcpServers?: McpServer[]
 }
 
 export interface ACPPermissionOptionInfo {
