@@ -113,7 +113,7 @@ const BELOW_STRIP_OFFSET = 12
 const NEW_SHELF_ZONE = 0.3
 /**
  * 边带的**判定**宽度 = `min(EDGE_BAND_MAX_PX, 那条轴 × EDGE_BAND_RATIO)`(`drop.edgeBandOf`,
- * 09-25 外窄内宽)。场景 ⑨ 站在带内(离右缘半条带)与带外(离右缘一条带再往里 40px,
+ * 09-25 外窄内宽)。场景 ⑨ 站在带内(离右缘半条带)与带外(离右缘一条带再往里 10px,
  * 那里是中央叶的右分屏带)两点上量。
  */
 const EDGE_BAND_RATIO = 0.06

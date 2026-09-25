@@ -341,11 +341,13 @@ export interface DragSourceSpec<T> {
   /** Esc / pointercancel / 窗口失焦。同样在拆干净之后叫。 */
   onCancel?(payload: T): void
   /**
-   * **松手 / 取消之后那张卡片飞去哪儿**(W6-b,§5「落定卡片飞入空位」/「弹回」)。
+   * **松手之后那张卡片飞去哪儿**(W6-b,§5「落定卡片飞入空位」/「弹回」)。
    *
-   * 每条结束路径各问一次,**在拆干净之前**(那时几何还没被落定动作改掉):
+   * 松手那一次问,**在拆干净之前**(那时几何还没被落定动作改掉):
    *  · 落定:答那格空位 / 那块落区的矩形 —— 卡片飞进去,用户看见「它去了这里」;
-   *  · 拒绝 / 取消:答**来源自己**的矩形 —— 卡片弹回来,「这一下没发生」。
+   *  · 松在拒绝 / 放回上:答**来源自己**的矩形 —— 卡片弹回来,「这一下没发生」。
+   * **取消(Esc / pointercancel / 失焦)不问它**(09-25):那三条路一律飞回来源,
+   * 由这一层自己量 —— 消费方答的是「落点」,取消时问它会让卡片飞进一块并没有落下的板。
    * 答 null = 不飞,浮影当场消失(条内换序走的正是这条:那一形压根没有卡片,
    * 收笔由 `ui/tab-reorder` 的 FLIP 滑入负责)。
    *
@@ -422,13 +424,28 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
     }
 
     /**
+     * 起拖那一刻来源的矩形(09-25)。取消时卡片要飞回**来源**,而来源此刻未必量得到:
+     * 一格被撕出条的标签折成了 0 宽(`data-torn`),量出来是 null。那时就飞回它起拖时
+     * 站的地方 —— 它马上就会在那儿展开回来。
+     */
+    let startRect: DragRect | null = null
+
+    /** 取消时卡片飞回哪:来源此刻的矩形,量不到就是起拖那一刻的。 */
+    const homeRect = (): DragRect | null => sourceRect() ?? startRect
+
+    /**
      * 拆干净。幂等 —— 每条结束路径都先走它。
      *
-     * `fly` = 这条路径要不要让卡片飞完最后一程(见 `landingRect` 的判词)。
-     * 它必须在**拆卸之前**问,而不是让调用方先问好再传进来:那样每条路径都要
-     * 记得问一次,而「Esc 那条忘了问」正是这类多出口拆卸的典型漏法。
+     * `end` = 这条路径让卡片怎么走完最后一程:`'land'` 飞向落点(`landingRect`),
+     * `'return'` 飞回来源(取消的三条路,09-25),缺省 = 当场消失。它必须在**拆卸之前**
+     * 问,而不是让调用方先问好再传进来:那样每条路径都要记得问一次,而「Esc 那条忘了问」
+     * 正是这类多出口拆卸的典型漏法。
+     *
+     * **取消从前也问 `landingRect`**(09-25 修):消费方答的是**落点**的矩形(分屏板、
+     * 新架子膜、浮窗轮廓),于是按 Esc 之后卡片飞进那块板再消失 —— 看起来像落进去了,
+     * 树却一个字没变。取消就是「没发生过」,卡片回家。
      */
-    const teardown = (fly = false): void => {
+    const teardown = (end: 'land' | 'return' | null = null): void => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       window.removeEventListener('pointercancel', abort)
@@ -437,9 +454,11 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
       offEscape?.()
       offEscape = null
       const landing =
-        fly && phase === 'dragging'
-          ? (specRef.current.landingRect?.(payload as T, sourceRect()) ?? null)
-          : null
+        phase !== 'dragging' || end === null
+          ? null
+          : end === 'land'
+            ? (specRef.current.landingRect?.(payload as T, sourceRect()) ?? null)
+            : homeRect()
       try {
         el.releasePointerCapture(e.pointerId)
       } catch {
@@ -487,6 +506,11 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
      * 拆了的话那一发 pointerup 带出来的 click 就没人吃(见 `swallowNextClick`)。
      * 这一格与 `abort` 的分工就是这一句话:那一条是「指针没了」(pointercancel /
      * 窗口失焦),不会再有 click,可以整个拆干净。
+     *
+     * **但罩子当场摘**(09-25):从前它要等到松手 —— Esc 之后到松手之间整扇窗的光标
+     * 还是抓手、hover 全灭,人看着像「还在拖」;要是那一发 pointerup 再也不来(来源
+     * 已被卸载、指针在窗外松开),罩子就一直挂着,整扇窗点不动。吃 click 那件事由
+     * pointerup 上的 `swallowNextClick` 做,与罩子无关。
      */
     const escapeCancel = (): void => {
       if (phase !== 'dragging') {
@@ -494,10 +518,12 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
         return
       }
       const held = payload as T
-      // 弹回:卡片飞回来源(§4.2「Esc……滑回原位」)。条内换序答 null —— 那一形
-      // 的滑回由 `ui/tab-reorder` 自己做(它动的是那格 tab,不是一张卡片)。
-      settleGhost(specRef.current.landingRect?.(held, sourceRect()) ?? null)
+      // 弹回:卡片飞回来源(§4.2「Esc……滑回原位」)。条内换序那一形没有卡片
+      // (`presentation: 'inline'`),`settleGhost` 当场清掉 —— 滑回由 `ui/tab-reorder` 做。
+      settleGhost(homeRect())
       phase = 'cancelled'
+      document.documentElement.removeAttribute(DRAG_ACTIVE_ATTR)
+      hideDragShield()
       toggleRefuseCursor(false)
       offEscape?.()
       offEscape = null
@@ -511,6 +537,7 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
         if (Math.abs(pointer.x - startX) < gate.x && Math.abs(pointer.y - startY) < gate.y) {
           return
         }
+        startRect = sourceRect()
         const opened = specRef.current.onStart(ev, el)
         if (!opened) {
           // 来源自己说「这一下不许拖」:整场作废,后面与普通点击逐字相同。
@@ -614,7 +641,7 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
       const refused = current?.drop?.tone === 'refuse' ? current.drop.hint : null
       // 次序即语义:先把这一格拖拽态拆干净,再落定 —— 落定会改树,
       // 那一刻不该还有一个活着的会话在别人的订阅里晃。
-      teardown(true)
+      teardown('land')
       swallowNextClick()
       if (was === 'dragging') specRef.current.onDrop?.(pointer, held)
       // 排在落定之后:落定那一头也可能播报(换序 / 二合一),
@@ -638,7 +665,7 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
         return
       }
       const held = payload as T
-      teardown(true)
+      teardown('return')
       specRef.current.onCancel?.(held)
     }
 
