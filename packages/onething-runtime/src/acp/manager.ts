@@ -7,6 +7,7 @@ import type {
   ACPSessionOption,
   ACPSessionOptionsSnapshot,
   ACPSettings,
+  AcpSessionState,
 } from './types.js'
 import type { InitializeResponse } from '@agentclientprotocol/sdk'
 import { ACPClient } from './client.js'
@@ -24,6 +25,51 @@ class ACPManagerClass {
   /** 会话对应关系落盘处(缺省 `<store>/acp/session-links.json`);测试换成内存那只。 */
   private sessionLinks: ACPSessionLinkStore = new FileACPSessionLinkStore()
   private spawnEnv: (() => Record<string, string | undefined>) | undefined
+  private sessionStateListeners = new Set<(state: AcpSessionState) => void>()
+  private agentStateListeners = new Set<(state: ACPAgentState) => void>()
+  /** 每只客户端上挂的那两条转发;客户端被摘时连同它们一起摘。 */
+  private clientUnsubscribers = new Map<string, () => void>()
+
+  /**
+   * 任一台 agent 上任一条会话的状态变了(§3.3)。装配层订这里再 `emitGlobal`;产品层不认识总线。
+   * 返回退订函数。
+   */
+  onSessionStateChanged(listener: (state: AcpSessionState) => void): () => void {
+    this.sessionStateListeners.add(listener)
+    return () => this.sessionStateListeners.delete(listener)
+  }
+
+  /** 任一台 agent 的连接状态(状态 / pid / 错误)变了。 */
+  onAgentStateChanged(listener: (state: ACPAgentState) => void): () => void {
+    this.agentStateListeners.add(listener)
+    return () => this.agentStateListeners.delete(listener)
+  }
+
+  /**
+   * 这条本地会话在 agent 那边的状态。指定了 agent 就只问那一台;没指定就找正开着它的那台,
+   * 都没开着就退回任一台留着的上一份(断开之后壳仍要看得到「断了」)。
+   */
+  getSessionState(localSessionId: string, agentId?: string): AcpSessionState | undefined {
+    if (agentId) return this.clients.get(agentId)?.getSessionState(localSessionId)
+    let fallback: AcpSessionState | undefined
+    for (const client of this.clients.values()) {
+      const state = client.getSessionState(localSessionId)
+      if (!state) continue
+      if (client.hasLiveSession(localSessionId)) return state
+      fallback ??= state
+    }
+    return fallback
+  }
+
+  private fanOut<T>(listeners: Set<(value: T) => void>, value: T): void {
+    for (const listener of listeners) {
+      try {
+        listener(value)
+      } catch (error) {
+        log.warn('acp state listener failed', {}, error)
+      }
+    }
+  }
 
   /**
    * Host registers its interactive permission surface here (Electron →
@@ -220,6 +266,8 @@ class ACPManagerClass {
       this.cleanupTimer = null
     }
     await Promise.allSettled(Array.from(this.clients.values()).map(client => client.disconnect()))
+    for (const unsubscribe of this.clientUnsubscribers.values()) unsubscribe()
+    this.clientUnsubscribers.clear()
     this.clients.clear()
   }
 
@@ -227,7 +275,12 @@ class ACPManagerClass {
     const ids = new Set(configs.map(config => config.id))
     for (const [id, client] of this.clients.entries()) {
       if (!ids.has(id)) {
-        client.disconnect().catch(error => log.warn('removed agent disconnect failed', { agentId: id }, error))
+        // 断开那一下的状态照常转发出去,之后再摘转发。
+        const unsubscribe = this.clientUnsubscribers.get(id)
+        this.clientUnsubscribers.delete(id)
+        client.disconnect()
+          .catch(error => log.warn('removed agent disconnect failed', { agentId: id }, error))
+          .finally(() => unsubscribe?.())
         this.clients.delete(id)
       }
     }
@@ -255,6 +308,12 @@ class ACPManagerClass {
       getPermissionBridge: () => this.permissionBridge,
       getSessionLinks: () => this.sessionLinks,
       getSpawnEnv: () => this.spawnEnv?.(),
+    })
+    const offSession = client.onSessionStateChanged(state => this.fanOut(this.sessionStateListeners, state))
+    const offAgent = client.onAgentStateChanged(state => this.fanOut(this.agentStateListeners, state))
+    this.clientUnsubscribers.set(agentId, () => {
+      offSession()
+      offAgent()
     })
     this.clients.set(agentId, client)
     return client

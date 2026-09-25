@@ -6,6 +6,7 @@
 
 import type { PluginNotifySound } from '@onething/core/plugins/notify-sound'
 import type { TerminalDataEvent, TerminalExitEvent } from '../ipc/terminal.js'
+import type { ACPAgentState, AcpSessionState } from '../contracts/acp.js'
 
 // ── App lifecycle ───────────────────────────────
 
@@ -240,6 +241,24 @@ export interface SpeechActivityEvent {
   at: number
 }
 
+// ── ACP(A0-2,方案 `docs/design/acp-integration-2026-09.md` §3.3)──────────
+
+/**
+ * 一条 ACP 会话的状态变了(可用命令 / 模式 / 选项 / 计划 / 用量 / 标题 / 通知 / 压缩 / 进程)。
+ * 载荷是**整张表的快照**,不是增量:订的一方直接替换,丢一帧也不会拼错;冷启动读
+ * `acp.sessionState`。
+ */
+export interface AcpSessionStateEvent {
+  type: 'acp:session-state'
+  state: AcpSessionState
+}
+
+/** 一台 ACP agent 的连接状态变了(状态 / pid / 错误)。载荷与 `acp.getAgents` 的行同形。 */
+export interface AcpAgentStateEvent {
+  type: 'acp:agent-state'
+  state: ACPAgentState
+}
+
 // ── Union ───────────────────────────────────────
 
 export type GlobalEvent =
@@ -260,6 +279,8 @@ export type GlobalEvent =
   | TerminalDataGlobalEvent
   | TerminalExitGlobalEvent
   | SpeechActivityEvent
+  | AcpSessionStateEvent
+  | AcpAgentStateEvent
 
 // ── 出网名单(原子 K2a')────────────────────────────
 
@@ -330,4 +351,14 @@ export const GLOBAL_EVENT_LEAVES_PROCESS: Readonly<Record<GlobalEvent['type'], b
    * 让路用,送出去只会让客户端多一种要忽略的帧。
    */
   'speech:activity': false,
+  /**
+   * **出网 —— 壳要画它**(A0-2)。载荷是 agent 自述的会话状态:命令名、模式、选项、计划、
+   * 用量、标题、通知与进程状态;同一道 Bearer 门后面 `acp.sessionState` 交出去的是同一张表。
+   */
+  'acp:session-state': true,
+  /**
+   * **出网 —— 同上**。载荷与 `acp.getAgents` 的行同形(含 agent 配置):那一条 RPC 今天就
+   * 原样交出同一份配置,这里不新增一类暴露;真要脱敏,该在两处一起做。
+   */
+  'acp:agent-state': true,
 })

@@ -15,6 +15,7 @@
  */
 import type { ACPSettings } from '@onething/runtime/acp'
 import { getLogger } from '../logging/index.js'
+import { installAcpStateBroadcaster, type AcpStateSource } from './events.js'
 
 const log = getLogger('app.acp.subsystem')
 
@@ -26,10 +27,14 @@ const log = getLogger('app.acp.subsystem')
  * manager 同步返回,`await undefined` 只多一个微任务)。照抄同步签名的话,那条分支
  * 在 ACP 这边永远观察不到,也就写不出反证。
  */
-export interface AcpSubsystemManagerPort {
+export interface AcpSubsystemManagerPort extends Partial<AcpStateSource> {
   initialize(settings: ACPSettings): void | Promise<void>
   updateSettings(settings: ACPSettings): void | Promise<void>
   shutdown(): Promise<void>
+}
+
+function isStateSource(manager: AcpSubsystemManagerPort): manager is AcpSubsystemManagerPort & AcpStateSource {
+  return typeof manager.onSessionStateChanged === 'function' && typeof manager.onAgentStateChanged === 'function'
 }
 
 export interface AcpSubsystemDeps {
@@ -62,9 +67,15 @@ export class AcpSubsystem {
   /** 见 `McpSubsystem.everStarted`:判据是"我起过没有",不是 manager 的内部状态。 */
   private everStarted = false
   private currentState: AcpSubsystemState = 'idle'
+  /**
+   * 状态广播器的退订(A0-2)。构造时就订:它不起任何东西,只挂两条监听,发送时才取总线;
+   * 登记在构造点,于是收尾不依赖 `start()` 跑没跑完。退订由 `dispose()` 做。
+   */
+  private stopStateBroadcast: (() => void) | undefined
 
   constructor(deps: AcpSubsystemDeps) {
     this.deps = deps
+    if (isStateSource(deps.manager)) this.stopStateBroadcast = installAcpStateBroadcaster(deps.manager)
   }
 
   get state(): AcpSubsystemState {
@@ -119,6 +130,9 @@ export class AcpSubsystem {
       }
       this.starting = null
       this.currentState = 'disposed'
+      // 放在 shutdown 之后:agent 断开那一下的状态还要发得出去。
+      this.stopStateBroadcast?.()
+      this.stopStateBroadcast = undefined
     })()
     return this.disposing
   }

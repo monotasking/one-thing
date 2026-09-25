@@ -5,30 +5,24 @@ import type {
 } from '@agentclientprotocol/sdk'
 import type {
   ACPAgentConfig,
+  ACPAgentState,
+  ACPConnectionStatus,
   ACPPermissionMode,
   ACPSessionOption,
   ACPSessionOptionChoice,
+  AcpSessionState,
 } from '@shared/contracts/acp.js'
 
-// agent 配置与会话选项的形状住在 `@shared/contracts/acp.ts`,契约层与产品层共用这一份。
-export type { ACPAgentConfig, ACPPermissionMode, ACPSessionOption, ACPSessionOptionChoice }
-
-export type ACPConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
-
-export interface ACPAgentState {
-  config: ACPAgentConfig
-  status: ACPConnectionStatus
-  error?: string
-  connectedAt?: number
-  lastUsedAt?: number
-  pid?: number
-  protocolVersion?: number
-  agentInfo?: {
-    name?: string
-    version?: string
-  }
-  sessionCount: number
-  activePromptCount: number
+// agent 配置、连接状态、会话选项与会话状态的形状住在 `@shared/contracts/acp.ts`,
+// 契约层、全局事件与产品层共用这一份。
+export type {
+  ACPAgentConfig,
+  ACPAgentState,
+  ACPConnectionStatus,
+  ACPPermissionMode,
+  ACPSessionOption,
+  ACPSessionOptionChoice,
+  AcpSessionState,
 }
 
 export interface ACPSettings {

@@ -4,6 +4,8 @@
 // FAKE_AGENT_CAPS = 'load' | 'resume' | 'none' 决定它声明哪种恢复能力。
 // FAKE_AGENT_CLOSE_ON_PROMPT=1:收到 prompt 就关掉自己的 stdout(连接断),进程却再活一阵 ——
 // 用来证明客户端不等进程退出、凭连接关闭就收尾。
+// FAKE_AGENT_PUSH_COMMANDS=1:`session/new` 一答完就推一条 `available_commands_update`(与
+// claude-agent-acp 同形),此刻没有任何 prompt 在飞 —— 用来证明会话状态不靠 prompt 队列。
 import { AgentSideConnection, PROTOCOL_VERSION, RequestError, ndJsonStream } from '@agentclientprotocol/sdk'
 import { Readable, Writable } from 'node:stream'
 import { closeSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -39,7 +41,22 @@ new AgentSideConnection(conn => ({
     const s = { id: randomUUID(), cwd: params.cwd, model: 'alpha', turns: 0 }
     writeSession(s)
     logCall({ method: 'new', id: s.id, cwd: params.cwd })
-    return { sessionId: s.id, configOptions: configOptions(s) }
+    if (process.env.FAKE_AGENT_PUSH_COMMANDS === '1') {
+      setImmediate(() => {
+        conn.sessionUpdate({
+          sessionId: s.id,
+          update: {
+            sessionUpdate: 'available_commands_update',
+            availableCommands: [{ name: 'review', description: 'Review the diff', input: { hint: 'path' } }],
+          },
+        }).then(() => logCall({ method: 'pushed-commands', id: s.id }))
+      })
+    }
+    return {
+      sessionId: s.id,
+      configOptions: configOptions(s),
+      modes: { currentModeId: 'ask', availableModes: [{ id: 'ask', name: 'Ask' }, { id: 'code', name: 'Code' }] },
+    }
   },
   async loadSession(params) {
     const s = readSession(params.sessionId)

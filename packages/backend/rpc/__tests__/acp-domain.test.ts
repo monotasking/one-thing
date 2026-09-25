@@ -29,6 +29,9 @@ const manager = vi.hoisted(() => ({
   disconnectAgent: vi.fn(async (_agentId: string) => {}),
   refreshAgent: vi.fn(async (_agentId: string) => ({}) as unknown),
   cancelSession: vi.fn(async (_sessionId: string, _agentId?: string) => {}),
+  getSessionOptions: vi.fn(async () => ({ options: [] as unknown[], live: false })),
+  setSessionOption: vi.fn(async () => ({ options: [] as unknown[], live: false })),
+  getSessionState: vi.fn((_sessionId: string, _agentId?: string) => undefined as unknown),
 }))
 
 const settings = vi.hoisted(() => ({
@@ -65,6 +68,9 @@ describe('acp RPC domain', () => {
     manager.refreshAgent.mockResolvedValue({ config: AGENT, status: 'connected' })
     manager.disconnectAgent.mockResolvedValue(undefined)
     manager.cancelSession.mockResolvedValue(undefined)
+    manager.getSessionOptions.mockResolvedValue({ options: [], live: false })
+    manager.setSessionOption.mockResolvedValue({ options: [], live: false })
+    manager.getSessionState.mockReturnValue(undefined)
     settings.getSettings.mockReset().mockReturnValue({
       acp: { enabled: true, agents: [AGENT] },
     })
@@ -77,7 +83,7 @@ describe('acp RPC domain', () => {
     vi.resetModules()
   })
 
-  it('exposes exactly the eight acp methods and refuses anything else', async () => {
+  it('exposes exactly the eleven acp methods and refuses anything else', async () => {
     const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
     dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
@@ -86,7 +92,7 @@ describe('acp RPC domain', () => {
     expect(unknown.ok).toBe(false)
     expect(unknown.ok === false && unknown.error?.code).toBe('UNKNOWN_METHOD')
 
-    for (const method of [
+    const expected = [
       'getAgents',
       'addAgent',
       'updateAgent',
@@ -95,7 +101,12 @@ describe('acp RPC domain', () => {
       'disconnectAgent',
       'refreshAgent',
       'cancelSession',
-    ]) {
+      'sessionOptions',
+      'setSessionOption',
+      'sessionState',
+    ]
+    expect([...acpRouter.methods].sort()).toEqual([...expected].sort())
+    for (const method of expected) {
       const response = await dispatchRpc({
         domain: 'acp',
         method,
@@ -103,6 +114,29 @@ describe('acp RPC domain', () => {
       })
       expect(response.ok, method).toBe(true)
     }
+  })
+
+  it('reads a session state snapshot off the manager, null when there is none', async () => {
+    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
+    resetRpcRegistryForTests()
+    dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
+
+    const empty = await dispatchRpc({ domain: 'acp', method: 'sessionState', payload: { sessionId: 's1' } })
+    expect(empty.ok && empty.data).toBe(null)
+
+    const state = {
+      localSessionId: 's1',
+      agentId: AGENT.id,
+      acpSessionId: 'acp-1',
+      configOptions: [],
+      commands: [{ name: 'plan', description: 'Plan it' }],
+      notices: [],
+      process: { status: 'connected' },
+    }
+    manager.getSessionState.mockReturnValue(state)
+    const found = await dispatchRpc({ domain: 'acp', method: 'sessionState', payload: { sessionId: 's1', agentId: AGENT.id } })
+    expect(found.ok && found.data).toEqual(state)
+    expect(manager.getSessionState).toHaveBeenLastCalledWith('s1', AGENT.id)
   })
 
   it('projects the agent list off the live manager', async () => {

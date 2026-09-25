@@ -18,7 +18,9 @@ import type {
   RequestPermissionRequest,
   RequestPermissionResponse,
   SessionConfigOption,
+  SessionModeState,
   SessionNotification,
+  SessionUpdate,
   TerminalOutputRequest,
   TerminalOutputResponse,
   WaitForTerminalExitRequest,
@@ -38,8 +40,15 @@ import type {
   ACPPromptStreamOptions,
   ACPSessionOption,
   ACPSessionOptionChoice,
+  AcpSessionState,
 } from './types.js'
 import type { ACPSessionLink, ACPSessionLinkStore } from './session-links.js'
+import {
+  applySessionUpdate,
+  createAcpSessionState,
+  seedAcpSessionState,
+  withAcpSessionProcess,
+} from './session-state.js'
 
 import { getLogger } from '../logging/index.js'
 
@@ -58,6 +67,13 @@ const MAX_FILE_READ_BYTES = 1024 * 1024
  * `exit` 事件早到,等一下就能把退出码写进那句报错;真是「连接断了、进程还活着」才由连接这头收尾。
  */
 const CONNECTION_CLOSED_EXIT_GRACE_MS = 250
+/**
+ * `session/new` 在飞时,agent 可能在我们记下它的会话 id 之前就推来通知(答复与紧随其后的
+ * `available_commands_update` 同一批到,处理顺序不由我们定)。这种通知先按会话 id 暂存,
+ * 记下 id 时补折;只在有会话正在开时暂存,上限防一台发疯的 agent 撑爆内存。
+ */
+const MAX_PARKED_UPDATES_PER_SESSION = 64
+const MAX_PARKED_SESSIONS = 8
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
@@ -324,6 +340,15 @@ export class ACPClient {
   private promptContexts = new Map<string, { localSessionId: string; messageId?: string; cwd: string }>()
   private terminals = new Map<string, TerminalRecord>()
   private activePromptCountValue = 0
+  /** 本地会话 id → 它在 agent 那边的会话状态(§3.3)。断开时不清:壳还要看得到「断了」。 */
+  private sessionStates = new Map<string, AcpSessionState>()
+  /** agent 会话 id → 本地会话 id;通知只带前者。 */
+  private stateIndex = new Map<string, string>()
+  private parkedUpdates = new Map<string, SessionUpdate[]>()
+  private sessionStateListeners = new Set<(state: AcpSessionState) => void>()
+  private agentStateListeners = new Set<(state: ACPAgentState) => void>()
+  /** 上一次广播出去的进程三格;只有它变了才发 `agent-state`。 */
+  private lastProcessKey = ''
   private stderrTail = ''
   private unexpectedExit = false
   private connectPromise: Promise<void> | null = null
@@ -387,6 +412,140 @@ export class ACPClient {
     this.config = config
   }
 
+  /** 这条本地会话在 agent 那边此刻的状态;没开过为 undefined。 */
+  getSessionState(localSessionId: string): AcpSessionState | undefined {
+    return this.sessionStates.get(localSessionId)
+  }
+
+  /** 这条本地会话此刻是否真开在这台 agent 上(不只是留着上一次的状态)。 */
+  hasLiveSession(localSessionId: string): boolean {
+    return this.sessions.has(localSessionId)
+  }
+
+  onSessionStateChanged(listener: (state: AcpSessionState) => void): () => void {
+    this.sessionStateListeners.add(listener)
+    return () => this.sessionStateListeners.delete(listener)
+  }
+
+  onAgentStateChanged(listener: (state: ACPAgentState) => void): () => void {
+    this.agentStateListeners.add(listener)
+    return () => this.agentStateListeners.delete(listener)
+  }
+
+  private get processState(): AcpSessionState['process'] {
+    return {
+      status: this.statusValue,
+      ...(this.errorValue ? { error: this.errorValue } : {}),
+      ...(this.child?.pid !== undefined ? { pid: this.child.pid } : {}),
+    }
+  }
+
+  /**
+   * 状态 / 错误 / pid 任一变了:发一条 agent 状态,再把新进程格折进每条会话状态。
+   * 所有改这三格的地方改完都调这一处,别处不自己发。
+   */
+  private syncProcess(): void {
+    const process = this.processState
+    const key = `${process.status}|${process.pid ?? ''}|${process.error ?? ''}`
+    if (key === this.lastProcessKey) return
+    this.lastProcessKey = key
+    const agentState = this.state
+    for (const listener of this.agentStateListeners) {
+      try {
+        listener(agentState)
+      } catch (error) {
+        log.warn('agent state listener failed', { agentId: this.id }, error)
+      }
+    }
+    for (const [localSessionId, state] of this.sessionStates) {
+      this.commitSessionState(localSessionId, state, withAcpSessionProcess(state, process))
+    }
+  }
+
+  /** 新旧是同一只对象就什么都不做 —— reducer 没变就原样返回,广播靠这一点跳过空帧。 */
+  private commitSessionState(localSessionId: string, previous: AcpSessionState | undefined, next: AcpSessionState): void {
+    if (previous === next) return
+    this.sessionStates.set(localSessionId, next)
+    for (const listener of this.sessionStateListeners) {
+      try {
+        listener(next)
+      } catch (error) {
+        log.warn('session state listener failed', { agentId: this.id, localSessionId }, error)
+      }
+    }
+  }
+
+  /**
+   * 记下「这条 agent 会话属于这条本地会话」。agent 会话 id 换了(新开 / 恢复失败改开)就给一张
+   * 新起点表:上一个 agent 会话留下的命令、计划不再作数。再把开会话期间暂存的通知补折进去。
+   */
+  private bindSessionState(localSessionId: string, acpSessionId: string): void {
+    const previous = this.sessionStates.get(localSessionId)
+    if (previous?.acpSessionId !== acpSessionId) {
+      if (previous?.acpSessionId) this.stateIndex.delete(previous.acpSessionId)
+      this.commitSessionState(localSessionId, previous, createAcpSessionState({
+        localSessionId,
+        agentId: this.id,
+        acpSessionId,
+        process: this.processState,
+      }))
+      this.trimSessionStates(localSessionId)
+    }
+    this.stateIndex.set(acpSessionId, localSessionId)
+    const parked = this.parkedUpdates.get(acpSessionId)
+    if (parked) {
+      this.parkedUpdates.delete(acpSessionId)
+      for (const update of parked) this.foldSessionUpdate(acpSessionId, update)
+    }
+  }
+
+  /** 会话答复里带的初值(模式、选项)折进去。 */
+  private seedSessionState(
+    localSessionId: string,
+    response: { modes?: SessionModeState | null; configOptions?: SessionConfigOption[] | null } | null | undefined,
+  ): void {
+    const state = this.sessionStates.get(localSessionId)
+    if (!state || !response) return
+    this.commitSessionState(localSessionId, state, seedAcpSessionState(state, response))
+  }
+
+  /** 任何时候收到的会话通知都先折进状态;prompt 在不在飞与此无关。 */
+  private foldSessionUpdate(acpSessionId: string, update: SessionUpdate): void {
+    const localSessionId = this.stateIndex.get(acpSessionId)
+    const state = localSessionId ? this.sessionStates.get(localSessionId) : undefined
+    if (!localSessionId || !state) {
+      if (this.sessionOpenings.size > 0 && this.parkUpdate(acpSessionId, update)) return
+      log.debug('session update for unknown session dropped', { agentId: this.id, acpSessionId, kind: update.sessionUpdate })
+      return
+    }
+    this.commitSessionState(localSessionId, state, applySessionUpdate(state, update))
+  }
+
+  private parkUpdate(acpSessionId: string, update: SessionUpdate): boolean {
+    let parked = this.parkedUpdates.get(acpSessionId)
+    if (!parked) {
+      if (this.parkedUpdates.size >= MAX_PARKED_SESSIONS) return false
+      parked = []
+      this.parkedUpdates.set(acpSessionId, parked)
+    }
+    if (parked.length >= MAX_PARKED_UPDATES_PER_SESSION) return false
+    parked.push(update)
+    return true
+  }
+
+  /** 状态表跟着会话记录的上限走:留着的都是还开着的,加上最近断掉的几条。 */
+  private trimSessionStates(currentLocalSessionId: string): void {
+    const maxRecords = Math.max(1, this.config.maxSessionRecords ?? DEFAULT_MAX_SESSION_RECORDS)
+    for (const [localSessionId, state] of this.sessionStates) {
+      if (this.sessionStates.size <= maxRecords) break
+      if (localSessionId === currentLocalSessionId || this.sessions.has(localSessionId)) continue
+      this.sessionStates.delete(localSessionId)
+      if (state.acpSessionId && this.stateIndex.get(state.acpSessionId) === localSessionId) {
+        this.stateIndex.delete(state.acpSessionId)
+      }
+    }
+  }
+
   async connect(): Promise<void> {
     if (this.statusValue === 'connected' && this.connection) return
     if (this.connectPromise) return this.connectPromise
@@ -403,6 +562,7 @@ export class ACPClient {
     await this.disconnect()
     this.statusValue = 'connecting'
     this.errorValue = undefined
+    this.syncProcess()
     this.stderrTail = ''
     this.unexpectedExit = true
     const generation = this.connectionGeneration = {}
@@ -416,6 +576,7 @@ export class ACPClient {
         stdio: ['pipe', 'pipe', 'pipe'],
       })
       this.child = child
+      this.syncProcess()
       let childSpawnErrorHandler: ((error: Error) => void) | undefined
       const childSpawnError = new Promise<never>((_, reject) => {
         childSpawnErrorHandler = (error: Error) => reject(error)
@@ -442,6 +603,7 @@ export class ACPClient {
         this.connectedAtValue = undefined
         this.failAllQueues(new Error(this.errorValue || 'ACP agent disconnected'))
         this.releaseAllTerminals()
+        this.syncProcess()
       }
       const stderrSuffix = () => (this.stderrTail ? ` stderr: ${this.stderrTail.slice(-1000)}` : '')
 
@@ -470,6 +632,7 @@ export class ACPClient {
           if (this.child === child) {
             this.child = null
             if (child.exitCode === null && child.signalCode === null) child.kill()
+            this.syncProcess()
           }
         }, CONNECTION_CLOSED_EXIT_GRACE_MS)
       }
@@ -504,11 +667,13 @@ export class ACPClient {
         this.statusValue = 'error'
         this.errorValue = `ACP agent process error: ${error.message}`
         this.failAllQueues(error)
+        this.syncProcess()
       })
 
       this.statusValue = 'connected'
       this.connectedAtValue = Date.now()
       this.lastUsedAtValue = Date.now()
+      this.syncProcess()
       log.info('agent connected', {
         agentId: this.id,
         pid: child.pid,
@@ -527,6 +692,7 @@ export class ACPClient {
       await this.disconnect()
       this.statusValue = 'error'
       this.errorValue = failure.message
+      this.syncProcess()
       throw failure
     }
   }
@@ -536,6 +702,9 @@ export class ACPClient {
     this.failAllQueues(new Error('ACP agent disconnected'))
     this.releaseAllTerminals()
     this.sessions.clear()
+    // 状态表留着(壳要看到「断了」),但 agent 会话 id 随连接作废:索引与暂存一起清。
+    this.stateIndex.clear()
+    this.parkedUpdates.clear()
     this.initResponse = null
     const connection = this.connection
     this.connection = null
@@ -559,6 +728,7 @@ export class ACPClient {
 
     this.statusValue = 'disconnected'
     this.connectedAtValue = undefined
+    this.syncProcess()
   }
 
   async refresh(): Promise<void> {
@@ -668,8 +838,8 @@ export class ACPClient {
    * onething 会话 → agent 会话。三档,依次试:
    *  ① 内存里就有、目录没变 → 直接用;
    *  ② 盘上记着(同一台 agent、同一个目录)→ `resume`(不回放历史)或 `load`
-   *     (回放的 `session/update` 此刻没有队列接,`sessionUpdate` 按设计丢掉 ——
-   *     onething 自己有历史,不需要第二份);恢复失败就退到 ③;
+   *     (回放的正文此刻没有队列接,不进任何一轮 —— onething 自己有历史,不需要第二份;
+   *     命令表 / 模式这类会话状态照常折进状态表);恢复失败就退到 ③;
    *  ③ `session/new`。
    * 开出来之后按「这台 agent 上次的选择 ⊕ 这条会话里的选择」调一遍选项,再落盘。
    * 同一条会话并发来两次(选项面板 + 发送)只开一次:在飞的那一发被复用。
@@ -706,13 +876,15 @@ export class ACPClient {
 
     const links = this.runtimeOptions.getSessionLinks?.()
     const link = links?.getLink(this.id, localSessionId)
-    let opened = link && link.cwd === cwd ? await this.restoreSession(link.acpSessionId, cwd) : undefined
+    let opened = link && link.cwd === cwd ? await this.restoreSession(localSessionId, link.acpSessionId, cwd) : undefined
     if (!opened) {
       const response = await this.connection.agent.request(acp.methods.agent.session.new, {
         cwd,
         mcpServers: (this.config.mcpServers ?? []) as unknown as acp.McpServer[],
       })
       opened = { acpSessionId: response.sessionId, options: projectACPConfigOptions(response.configOptions) }
+      this.bindSessionState(localSessionId, response.sessionId)
+      this.seedSessionState(localSessionId, response)
     }
 
     const session: ACPSessionRecord = {
@@ -734,6 +906,7 @@ export class ACPClient {
 
   /** 按 agent 声明的能力回到原会话;任何一步失败都返回 undefined,由调用方新开。 */
   private async restoreSession(
+    localSessionId: string,
     acpSessionId: string,
     cwd: string,
   ): Promise<{ acpSessionId: string; options: ACPSessionOption[] } | undefined> {
@@ -741,6 +914,10 @@ export class ACPClient {
     if (!connection) return undefined
     const capabilities = this.initResponse?.agentCapabilities
     const mcpServers = (this.config.mcpServers ?? []) as unknown as acp.McpServer[]
+    // 恢复前就记下对应关系:`load` 期间 agent 推来的命令表 / 模式要折得进来(回放的正文照旧不进回合)。
+    if (capabilities?.sessionCapabilities?.resume || capabilities?.loadSession) {
+      this.bindSessionState(localSessionId, acpSessionId)
+    }
     try {
       if (capabilities?.sessionCapabilities?.resume) {
         const response = await connection.agent.request(acp.methods.agent.session.resume, {
@@ -749,6 +926,7 @@ export class ACPClient {
           mcpServers,
         })
         log.info('session resumed', { agentId: this.id, acpSessionId })
+        this.seedSessionState(localSessionId, response)
         return { acpSessionId, options: projectACPConfigOptions(response.configOptions) }
       }
       if (capabilities?.loadSession) {
@@ -758,6 +936,7 @@ export class ACPClient {
           mcpServers,
         })
         log.info('session loaded', { agentId: this.id, acpSessionId })
+        this.seedSessionState(localSessionId, response)
         return { acpSessionId, options: projectACPConfigOptions(response.configOptions) }
       }
     } catch (error) {
@@ -789,6 +968,7 @@ export class ACPClient {
     })
     const projected = projectACPConfigOptions(response?.configOptions)
     session.options = projected.length > 0 ? projected : withCurrentValue(session.options, optionId, value)
+    if (response?.configOptions) this.seedSessionState(session.localSessionId, { configOptions: response.configOptions })
   }
 
   private persistLink(session: ACPSessionRecord, chosen: Record<string, string>): void {
@@ -970,7 +1150,12 @@ export class ACPClient {
     log.debug('agent extension notification ignored', { agentId: this.id, method })
   }
 
+  /**
+   * 先折状态,再看有没有在飞的 prompt 队列 —— 顺序不能反:不在 prompt 期间推来的通知
+   * (`session/new` 之后的命令表、空闲时的用量)从前在「没有队列」那一步就被扔掉了。
+   */
   private async sessionUpdate(params: SessionNotification): Promise<void> {
+    this.foldSessionUpdate(params.sessionId, params.update)
     const queue = this.updateQueues.get(params.sessionId)
     if (!queue) return
     queue.push({ type: 'update', notification: params })
@@ -1087,6 +1272,7 @@ export class ACPClient {
       if (!removable) break
       this.sessions.delete(removable.localSessionId)
     }
+    this.trimSessionStates(currentLocalSessionId)
   }
 
   private trimTerminalRecords(currentTerminalId: string): void {

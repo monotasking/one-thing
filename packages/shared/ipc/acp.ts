@@ -4,31 +4,24 @@
 
 import type {
   ACPAgentConfig,
+  ACPAgentState,
+  ACPConnectionStatus,
   ACPPermissionMode,
   ACPSessionOption,
   ACPSessionOptionChoice,
+  AcpSessionState,
 } from '../contracts/acp.js'
 import { defineRouter } from './router.js'
 
-// agent 配置与会话选项的形状只有一份,住 `@shared/contracts/acp.ts`(A0-3),产品层也读它。
-export type { ACPAgentConfig, ACPPermissionMode, ACPSessionOption, ACPSessionOptionChoice }
-
-export type ACPConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
-
-export interface ACPAgentState {
-  config: ACPAgentConfig
-  status: ACPConnectionStatus
-  error?: string
-  connectedAt?: number
-  lastUsedAt?: number
-  pid?: number
-  protocolVersion?: number
-  agentInfo?: {
-    name?: string
-    version?: string
-  }
-  sessionCount: number
-  activePromptCount: number
+// 这些形状只有一份,住 `@shared/contracts/acp.ts`(A0-3 / A0-2),产品层与全局事件也读它。
+export type {
+  ACPAgentConfig,
+  ACPAgentState,
+  ACPConnectionStatus,
+  ACPPermissionMode,
+  ACPSessionOption,
+  ACPSessionOptionChoice,
+  AcpSessionState,
 }
 
 export interface ACPSettings {
@@ -135,6 +128,18 @@ export interface ACPSetSessionOptionRequest {
 
 export type ACPSetSessionOptionResponse = ACPSessionOptionsResponse
 
+/**
+ * 这条会话在 agent 那边此刻的状态快照(A0-2)。没开过 ACP 会话 / 不是 ACP 会话 = `null`。
+ * 变化另走全局事件 `acp:session-state`,这一条是冷启动与补读用的。
+ */
+export interface ACPSessionStateRequest {
+  sessionId: string
+  /** 同一条本地会话换过 agent 时指定读哪一台;缺席 = 找正开着它的那台。 */
+  agentId?: string
+}
+
+export type ACPSessionStateResponse = AcpSessionState | null
+
 // ============================================================================
 // acp 域的 router —— 结构债 P4c 第六批
 // ============================================================================
@@ -170,6 +175,7 @@ export type AcpRoutes = {
   }
   sessionOptions: { input: ACPSessionOptionsRequest; output: ACPSessionOptionsResponse }
   setSessionOption: { input: ACPSetSessionOptionRequest; output: ACPSetSessionOptionResponse }
+  sessionState: { input: ACPSessionStateRequest; output: ACPSessionStateResponse }
 }
 
 export const acpRouter = defineRouter<AcpRoutes>('acp', [
@@ -183,4 +189,5 @@ export const acpRouter = defineRouter<AcpRoutes>('acp', [
   'cancelSession',
   'sessionOptions',
   'setSessionOption',
+  'sessionState',
 ])

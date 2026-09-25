@@ -180,6 +180,14 @@ export const acpRpcHandlers: RpcRouteHandlers<AcpRoutes> = {
       return optionsFailure(error)
     }
   },
+  /**
+   * 这条会话在 agent 那边此刻的状态(A0-2)。只读内存,不起进程、不开会话:没开过就是 `null`。
+   * 变化另走全局事件 `acp:session-state`,这一条给冷启动与补读用。
+   */
+  async sessionState(request, context = DESKTOP_RPC_CONTEXT) {
+    sessionAccess.resolveOptional(context, request.sessionId, 'read')
+    return ACPManager.getSessionState(request.sessionId, request.agentId) ?? null
+  },
   async cancelSession(request, context = DESKTOP_RPC_CONTEXT) {
     sessionAccess.resolve(context, request.sessionId, 'abort')
     return cancelOnethingACPSessionForIpc({
