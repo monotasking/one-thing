@@ -842,6 +842,8 @@ export interface CoreAgentLoopUsage {
 	cacheReadTokens?: number;
 	cacheWriteTokens?: number;
 	reasoningTokens?: number;
+	/** provider 自述的账本类目(见 `AgentUsage.usageSource`);只在单轮 usage 上有意义。 */
+	usageSource?: string;
 }
 
 /**

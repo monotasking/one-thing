@@ -6,6 +6,7 @@ import type {
   AgentToolResult,
   AgentToolResultContentPart,
   AgentTurnStreamEvent,
+  AgentUsage,
 } from '@onething/core/agent-loop'
 import { buildTextDiffChange, type TextDiffChange } from '../external-agents/diff-changes.js'
 
@@ -73,7 +74,7 @@ export interface ACPWireSessionUpdate {
 
 export type ACPWireStreamEvent =
   | { type: 'warning'; message: string }
-  | { type: 'finish'; stopReason: string; usage?: { inputTokens: number; outputTokens: number; totalTokens: number } }
+  | { type: 'finish'; stopReason: string; usage?: AgentUsage }
   | {
       type: 'update'
       notification: {

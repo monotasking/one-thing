@@ -123,6 +123,7 @@ const cases: Case[] = [
   ['goal', 'goalRpcHandlers', 'set', { goal: 'changed' }],
   ['goal', 'goalRpcHandlers', 'diffs', {}],
   ['acp', 'acpRpcHandlers', 'cancelSession', {}],
+  ['acp', 'acpRpcHandlers', 'setSessionMode', { modeId: 'code' }],
   ['session-events', 'sessionEventsRpcHandlers', 'list', {}],
   ['session-events', 'sessionEventsRpcHandlers', 'listRaw', {}],
   ['session-events', 'sessionEventsRpcHandlers', 'readBlob', { hash: 'a'.repeat(64) }],

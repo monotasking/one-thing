@@ -240,6 +240,28 @@ export async function cancelOnethingACPSessionForIpc(
 }
 
 /**
+ * 切会话模式(A2-b,`session/set_mode`)的信封:没给 `modeId` 答结构化失败,不去碰 agent;
+ * 成功答切完之后的状态表(没有就 `null`)。
+ */
+export async function setOnethingACPSessionModeForIpc<TState>(
+  options: {
+    sessionId: string
+    modeId: string
+    agentId?: string
+    setSessionMode(sessionId: string, modeId: string, agentId?: string): MaybePromise<TState | undefined>
+    logger?: OnethingACPIpcLogger
+  },
+): Promise<OnethingACPIpcResult<{ state: TState | null }>> {
+  if (!options.modeId) return { success: false, error: 'modeId is required' }
+  try {
+    const state = await options.setSessionMode(options.sessionId, options.modeId, options.agentId)
+    return { success: true, state: state ?? null }
+  } catch (error) {
+    return acpIpcError(options.logger, error)
+  }
+}
+
+/**
  * 名册类读动作(A1-a:`acp.detect` / `acp.refreshRegistry`)的投影:跑完答整张名册,
  * 抛错答 `{ success: false, error }`。探测 / 联网本身在装配层(名册住那里),这里只管信封。
  */

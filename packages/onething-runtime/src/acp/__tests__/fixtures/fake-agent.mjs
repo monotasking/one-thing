@@ -44,6 +44,14 @@
 //   `tools/list` 记下工具名,`tools/call send_notification { message }` 记下结果,关掉桥,照常收尾。
 //   凭据(env 里的 `ONETHING_MCP_TOKEN`)与面地址也记进那一行 —— 门拿它在会话删掉前后各打一次
 //   `host-mcp.listTools`,看作废是不是真的。
+//
+// A2-b(gate:acp ⑧⑨⑩ / 单测):
+// FAKE_AGENT_PLAN=1 + 正文 `@plan`:推两版 `plan_update`(planId `p1`,三条 → 第一条完成、第二条进行中),
+//   计划留在那里;正文 `@plan-clear`:推 `plan_removed { planId: 'p1' }`。
+// FAKE_AGENT_USAGE=1 + 正文 `@usage`:推 `usage_update`(used 1234 / size 200000 / 累计成本 USD,
+//   每一轮 +0.25),这一轮答复带 `usage`(input 100 / output 20 / total 150 / thought 30 / cachedRead 40)。
+// FAKE_AGENT_TITLE=1 + 正文 `@title <标题>`:推 `session_info_update { title }`。
+// `session/set_mode`(无条件):记一行 `set-mode`,再推 `current_mode_update`。
 import { AgentSideConnection, PROTOCOL_VERSION, RequestError, ndJsonStream } from '@agentclientprotocol/sdk'
 import { Readable, Writable } from 'node:stream'
 import { closeSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -256,6 +264,40 @@ async function richToolsScript(conn, s) {
   }
 }
 
+async function planScript(conn, s) {
+  const entries = (statuses) => [
+    { content: 'Read the code', priority: 'high', status: statuses[0] },
+    { content: 'Write the patch', priority: 'medium', status: statuses[1] },
+    { content: 'Run the tests', priority: 'low', status: statuses[2] },
+  ]
+  await conn.sessionUpdate({
+    sessionId: s.id,
+    update: { sessionUpdate: 'plan_update', plan: { type: 'items', planId: 'p1', entries: entries(['pending', 'pending', 'pending']) } },
+  })
+  await conn.sessionUpdate({
+    sessionId: s.id,
+    update: { sessionUpdate: 'plan_update', plan: { type: 'items', planId: 'p1', entries: entries(['completed', 'in_progress', 'pending']) } },
+  })
+  logCall({ method: 'plan-pushed', id: s.id })
+}
+
+async function planClearScript(conn, s) {
+  await conn.sessionUpdate({ sessionId: s.id, update: { sessionUpdate: 'plan_removed', planId: 'p1' } })
+  logCall({ method: 'plan-removed', id: s.id })
+}
+
+/** 累计成本随轮次涨(每一轮 +0.25 USD),会话存盘。答这一轮的 usage。 */
+async function usageScript(conn, s) {
+  s.cost = Number(((s.cost ?? 0) + 0.25).toFixed(4))
+  writeSession(s)
+  await conn.sessionUpdate({
+    sessionId: s.id,
+    update: { sessionUpdate: 'usage_update', used: 1234, size: 200000, cost: { amount: s.cost, currency: 'USD' } },
+  })
+  logCall({ method: 'usage-pushed', id: s.id, cost: s.cost })
+  return { inputTokens: 100, outputTokens: 20, totalTokens: 150, thoughtTokens: 30, cachedReadTokens: 40 }
+}
+
 const stream = ndJsonStream(Writable.toWeb(process.stdout), Readable.toWeb(process.stdin))
 new AgentSideConnection(conn => ({
   async initialize(params) {
@@ -316,6 +358,16 @@ new AgentSideConnection(conn => ({
     logCall({ method: 'resume', id: s.id, ...noteMcpServers(s.id, params.mcpServers) })
     return { configOptions: configOptions({ ...s, model: 'alpha' }) }
   },
+  async setSessionMode(params) {
+    logCall({ method: 'set-mode', id: params.sessionId, modeId: params.modeId })
+    setImmediate(() => {
+      conn.sessionUpdate({
+        sessionId: params.sessionId,
+        update: { sessionUpdate: 'current_mode_update', currentModeId: params.modeId },
+      }).then(() => logCall({ method: 'pushed-mode', id: params.sessionId, modeId: params.modeId }))
+    })
+    return {}
+  },
   async setSessionConfigOption(params) {
     const s = readSession(params.sessionId)
     s.model = params.value
@@ -358,6 +410,12 @@ new AgentSideConnection(conn => ({
     if (process.env.FAKE_AGENT_ELICIT === '1' && text.startsWith('@elicit')) await elicitScript(conn, s)
     if (process.env.FAKE_AGENT_RICH_TOOLS === '1' && text.startsWith('@rich')) await richToolsScript(conn, s)
     if (process.env.FAKE_AGENT_USE_HOST_MCP === '1' && text.startsWith('@mcp')) await hostMcpScript(s)
+    if (process.env.FAKE_AGENT_PLAN === '1' && text.startsWith('@plan-clear')) await planClearScript(conn, s)
+    else if (process.env.FAKE_AGENT_PLAN === '1' && text.startsWith('@plan')) await planScript(conn, s)
+    if (process.env.FAKE_AGENT_TITLE === '1' && text.startsWith('@title')) {
+      await conn.sessionUpdate({ sessionId: s.id, update: { sessionUpdate: 'session_info_update', title: text.slice('@title'.length).trim() } })
+    }
+    const usage = process.env.FAKE_AGENT_USAGE === '1' && text.startsWith('@usage') ? await usageScript(conn, s) : undefined
     const rogue = process.env.FAKE_AGENT_ROGUE_METHOD === '1' && s.turns === 1
     if (rogue) {
       // 协议外请求:客户端没挂这个方法,SDK 该以 -32601 回绝;回绝不该掐断连接。
@@ -404,7 +462,7 @@ new AgentSideConnection(conn => ({
       })
       logCall({ method: 'rogue-turn-done', id: s.id })
     }
-    return { stopReason: 'end_turn' }
+    return { stopReason: 'end_turn', ...(usage ? { usage } : {}) }
   },
   async cancel() {},
   async authenticate(params) {

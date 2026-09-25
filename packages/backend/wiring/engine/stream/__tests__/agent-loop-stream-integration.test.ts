@@ -702,7 +702,7 @@ describe("agent-loop stream entry integration", () => {
 			pausedForConfirmation: false,
 		});
 		// 第四格是开会话的附带项(A2-a:persona);这条用例的 buildPrompt 替身没有 persona。
-		expect(mocks.acpOpenSession).toHaveBeenCalledWith("codex-acp", "s1", "/tmp/project", {});
+		expect(mocks.acpOpenSession).toHaveBeenCalledWith("codex-acp", "s1", "/tmp/project", { mcpServers: [] });
 		expect(mocks.acpStreamPrompt).toHaveBeenCalledWith("codex-acp", {
 			localSessionId: "s1",
 			prompt: "hello",

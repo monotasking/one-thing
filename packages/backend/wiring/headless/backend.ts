@@ -435,7 +435,8 @@ export class HeadlessBackend {
   }
 
   renameSession(sessionId: string, name: string): void {
-    renameSession(sessionId, name)
+    // CLI 的 `rename` 是人显式改名(A2-b `titleSource`)。
+    renameSession(sessionId, name, 'user')
   }
 
   pinSession(sessionId: string, pinned: boolean): void {

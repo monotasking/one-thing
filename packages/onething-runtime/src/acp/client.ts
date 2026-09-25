@@ -59,6 +59,7 @@ import {
   seedAcpSessionState,
   withAcpSessionProcess,
 } from './session-state.js'
+import { acpAgentUsage, acpTurnCost } from './usage.js'
 
 import { getLogger } from '../logging/index.js'
 
@@ -299,6 +300,12 @@ interface ACPSessionRecord {
    * 一条 MCP 都没有;下一次带着名册来开(连接器每轮都带)就重开一次,经 load / resume 沿用它。
    */
   mcpServersGiven: boolean
+  /**
+   * 上一次见到的 `usage_update.cost`(USD 累计,A2-b)。一轮的报价 = 收场时的累计 − 它
+   * (`acp/usage.ts`)。新开的会话从 0 起;恢复出来的会话 agent 报的累计含着历史,不知道基线,
+   * 于是第一轮只记基线、不报价。
+   */
+  costBaseline: number | undefined
 }
 
 /**
@@ -926,16 +933,14 @@ export class ACPClient {
       .then((response) => {
         // 一轮走通 = agent 手里的凭据是好的。
         this.setAuthRequired(false, 'prompt succeeded')
+        // `usage_update` 是通知,先于这条答复到(同一条 ndjson 流,按序处理),所以此刻状态表里的
+        // 累计成本已是这一轮收场时的那一格。
+        const cost = acpTurnCost(session.costBaseline, this.sessionStates.get(options.localSessionId)?.usage?.cost)
+        session.costBaseline = cost.nextBaseline
         queue.push({
           type: 'finish',
           stopReason: response.stopReason,
-          usage: response.usage
-            ? {
-                inputTokens: response.usage.inputTokens,
-                outputTokens: response.usage.outputTokens,
-                totalTokens: response.usage.totalTokens,
-              }
-            : undefined,
+          usage: acpAgentUsage(response.usage, cost.providerCostUSD),
         })
         queue.end()
       })
@@ -1022,7 +1027,10 @@ export class ACPClient {
     // 恢复出来的会话 agent 自己有历史(persona 当初已经送过),不再欠 —— 除非是本进程里一轮都
     // 没跑过、只为补名册而重开的那条(选项面板先开的),它欠的那一次还欠着。
     let persona: ACPSessionRecord['persona'] = existing?.persona === 'owed' ? 'owed' : 'delivered'
+    // 恢复出来的会话:沿用本进程里记下的基线(补名册重开的那种),否则不知道。
+    let costBaseline = existing?.costBaseline
     if (!opened) {
+      costBaseline = 0
       /**
        * `claude-agent-acp` 的怪癖(manifest `quirks.systemPromptMeta`,实测 0.81
        * `dist/acp-agent.js:6240-6252`):`session/new` 的 `_meta.systemPrompt` 给**字符串**会整个
@@ -1056,6 +1064,7 @@ export class ACPClient {
       options: opened.options,
       persona,
       mcpServersGiven: open.mcpServers !== undefined,
+      costBaseline,
     }
     this.sessions.set(localSessionId, session)
     this.trimSessionRecords(localSessionId)
@@ -1192,6 +1201,23 @@ export class ACPClient {
       })
     }
     return session.options
+  }
+
+  /**
+   * 切这条会话的模式(A2-b,`session/set_mode`)。会连上 agent、开(或恢复)那条会话。
+   * 协议的答复是空的 —— 新模式由我们自己折进状态表(与 agent 随后推的 `current_mode_update`
+   * 是同一格,reducer 没变就不重发),于是壳不等 agent 推也看得见。答折完之后的整张表。
+   */
+  async setSessionMode(localSessionId: string, cwd: string | undefined, modeId: string): Promise<AcpSessionState | undefined> {
+    await this.connect()
+    if (!this.connection) throw new Error('ACP connection is not available')
+    const session = await this.ensureSession(localSessionId, cwd)
+    await this.connection.agent.request(acp.methods.agent.session.setMode, {
+      sessionId: session.acpSessionId,
+      modeId,
+    })
+    this.foldSessionUpdate(session.acpSessionId, { sessionUpdate: 'current_mode_update', currentModeId: modeId })
+    return this.sessionStates.get(localSessionId)
   }
 
   /**

@@ -28,7 +28,7 @@ vi.mock('@onething/runtime/storage', async () => {
   }
 })
 
-const { createSessionWithoutFocus, flushAllPendingSaves, getSession, renameSession } =
+const { createSessionWithoutFocus, flushAllPendingSaves, getSession, getSessionsList, renameSession } =
   await import('../sessions.js')
 
 const SESSION = '9a7b1c2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d'
@@ -61,5 +61,35 @@ describe('store.renameSession 交出「改到了没有」', () => {
   it('查无此会话回 false(而不是默默成功)', () => {
     expect(renameSession(MISSING, '新名字')).toBe(false)
     expect(getSession(MISSING)).toBeUndefined()
+  })
+})
+
+/**
+ * ACP A2-b:标题来源 `titleSource`。显式改名的入口递 `'user'`,自动起题的递 `'auto'`,
+ * 名字与来源同一趟落进会话体(meta.json 是「除 messages 之外的全部」),列表索引的名字也跟着换。
+ * 不递 = 旧行为,不动来源那一格。
+ */
+describe('store.renameSession 的标题来源(A2-b)', () => {
+  it('记下来源,名字照样进列表;不递来源不动那一格', async () => {
+    createSessionWithoutFocus(SESSION, '旧名字')
+    expect(getSession(SESSION)?.titleSource).toBeUndefined()
+
+    expect(renameSession(SESSION, '人起的', 'user')).toBe(true)
+    expect(getSession(SESSION)).toMatchObject({ name: '人起的', titleSource: 'user' })
+    expect(getSessionsList().find(meta => meta.id === SESSION)?.name).toBe('人起的')
+
+    expect(renameSession(SESSION, '引擎起的')).toBe(true)
+    expect(getSession(SESSION)).toMatchObject({ name: '引擎起的', titleSource: 'user' })
+
+    expect(renameSession(SESSION, 'agent 起的', 'auto')).toBe(true)
+    expect(getSession(SESSION)).toMatchObject({ name: 'agent 起的', titleSource: 'auto' })
+
+    await flushAllPendingSaves()
+    const meta = JSON.parse(fs.readFileSync(path.join(state.sessionsDir, SESSION, 'meta.json'), 'utf-8'))
+    expect(meta).toMatchObject({ name: 'agent 起的', titleSource: 'auto' })
+  })
+
+  it('查无此会话仍回 false', () => {
+    expect(renameSession(MISSING, 'x', 'user')).toBe(false)
   })
 })

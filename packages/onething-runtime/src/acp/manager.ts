@@ -249,6 +249,27 @@ class ACPManagerClass {
     return { options: this.draftOptions(agentId), live: false }
   }
 
+  /**
+   * 切一条会话的模式(A2-b)。`agentId` 缺席 = 正开着这条会话的那台,都没开着就找留着它状态的
+   * 那台;都没有 = 这条会话不在任何一台 agent 上,抛。答切完之后的状态表。
+   */
+  async setSessionMode(
+    localSessionId: string,
+    cwd: string | undefined,
+    modeId: string,
+    agentId?: string,
+  ): Promise<AcpSessionState | undefined> {
+    let client: ACPClient | undefined
+    if (agentId) client = this.getOrCreateClient(this.resolveAgentId(agentId))
+    else {
+      const clients = [...this.clients.values()]
+      client = clients.find(candidate => candidate.hasLiveSession(localSessionId))
+        ?? clients.find(candidate => candidate.getSessionState(localSessionId))
+    }
+    if (!client) throw new Error(`No ACP agent holds session "${localSessionId}"`)
+    return client.setSessionMode(localSessionId, cwd, modeId)
+  }
+
   private draftOptions(agentId: string): ACPSessionOption[] {
     const profile = this.sessionLinks.getProfile(agentId)
     const preferred = profile?.preferred ?? {}

@@ -48,6 +48,17 @@ export interface AcpSubsystemRegistryPort {
   onChanged(listener: () => void): () => void
 }
 
+/**
+ * 会话状态的一只**投影**(A2-b):订 `onSessionStateChanged`,把状态表的某一格写到别的域
+ * (计划 → 待办、标题 → 会话名)。子系统不认识任何一只投影的名字 —— 宿主递一张表,子系统
+ * 构造时逐只订上、`dispose()` 时逐只退订并 `dispose()`。`observe` 抛了只记一行,不连累别的投影。
+ */
+export interface AcpSessionStateProjection {
+  readonly label: string
+  observe(state: AcpSessionState): void
+  dispose?(): void
+}
+
 function isStateSource(manager: AcpSubsystemManagerPort): manager is AcpSubsystemManagerPort & AcpStateSource {
   return typeof manager.onSessionStateChanged === 'function' && typeof manager.onAgentStateChanged === 'function'
 }
@@ -71,6 +82,8 @@ export interface AcpSubsystemDeps {
    * 缺席 = 不订(只在单测里)。
    */
   onSessionsDeleted?: (listener: (sessionIds: string[]) => void) => () => void
+  /** 会话状态的投影表(A2-b:计划 → 待办、标题 → 会话名)。缺席 = 不投影(单测)。 */
+  projections?: readonly AcpSessionStateProjection[]
 }
 
 /**
@@ -105,6 +118,8 @@ export class AcpSubsystem {
   private stopRegistryWatch: (() => void) | undefined
   /** 桥凭据的两条作废监听(会话删了 / agent 进程没了,A4-b);构造时订,`dispose()` 退。 */
   private stopCredentialWatch: Array<() => void> = []
+  /** 投影的退订(A2-b);构造时订,`dispose()` 退。 */
+  private stopProjections: Array<() => void> = []
   /** 每台 agent 上一次见到的连接状态:只有「connected → 别的」才算进程没了。 */
   private readonly lastAgentStatus = new Map<string, string>()
   /** 后台那趟联网刷新的中止器;`dispose()` 拉闸。 */
@@ -122,6 +137,20 @@ export class AcpSubsystem {
     if (isStateSource(deps.manager)) {
       this.stopStateBroadcast = installAcpStateBroadcaster(this.decoratedSource(deps.manager))
       this.stopCredentialWatch.push(deps.manager.onAgentStateChanged(state => this.noteAgentState(state)))
+      const source = deps.manager
+      for (const projection of deps.projections ?? []) {
+        const off = source.onSessionStateChanged(state => {
+          try {
+            projection.observe(state)
+          } catch (error) {
+            log.warn('acp session state projection failed', { projection: projection.label, localSessionId: state.localSessionId }, error)
+          }
+        })
+        this.stopProjections.push(() => {
+          off()
+          projection.dispose?.()
+        })
+      }
     }
     const stopDeleted = deps.onSessionsDeleted?.(sessionIds => {
       for (const sessionId of sessionIds) {
@@ -304,6 +333,8 @@ export class AcpSubsystem {
       // 钥匙先作废:关机途中还在跑的桥子进程再来调,一律 401 / 拒,而不是打进一台半拆的核。
       this.hostMcpBridge.revokeAll()
       for (const stop of this.stopCredentialWatch.splice(0)) stop()
+      // 投影先退:收尾途中 agent 断开那一下只改进程格,不该再往待办 / 会话名上写。
+      for (const stop of this.stopProjections.splice(0)) stop()
       this.stopRegistryWatch?.()
       this.stopRegistryWatch = undefined
       const startedAt = Date.now()

@@ -6,6 +6,7 @@ import type {
   SessionNotification,
   StopReason,
 } from '@agentclientprotocol/sdk'
+import type { AgentUsage } from '@onething/core/agent-loop'
 import type {
   ACPAgentConfig,
   ACPAgentState,
@@ -130,11 +131,8 @@ export type ACPPromptStreamEvent =
   | {
       type: 'finish'
       stopReason: StopReason
-      usage?: {
-        inputTokens: number
-        outputTokens: number
-        totalTokens: number
-      }
+      /** 已折成引擎的形状(`acp/usage.ts`):思考 / 缓存两格、这一轮的报价与账本类目都在里面。 */
+      usage?: AgentUsage
     }
 
 // ── agent 向我们要文件与终端(A3-b,方案 §3.5 / §11.3)──────────────────────────────

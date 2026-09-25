@@ -163,6 +163,22 @@ export interface ACPSessionStateRequest {
 export type ACPSessionStateResponse = AcpSessionState | null
 
 /**
+ * 切这条会话的模式(A2-b,协议 `session/set_mode`)。`agentId` 缺席 = 正开着这条会话的那台。
+ * 模式表与当前值在 `acp.sessionState(...).modes`;切完之后 agent 推的 `current_mode_update`
+ * 也折进同一格,经 `acp:session-state` 到壳。
+ */
+export interface ACPSetSessionModeRequest {
+  sessionId: string
+  agentId?: string
+  modeId: string
+}
+
+/** 成功时带切完之后的状态表(`state`);失败时 `error` 是一句给排障看的原话。 */
+export type ACPSetSessionModeResponse =
+  | { success: true; state: AcpSessionState | null }
+  | { success: false; error: string }
+
+/**
  * 「去登录」(A3-c,方案 §3.5 / §3.9 ②):按 agent 自报的一种方法登录。
  *  - 终端型:onething 开一格终端跑那台 agent 自己的登录程序,**立刻**答 `terminalId`(壳开终端瓦
  *    让人在里面走完流程);程序退出码 0 = 登录成功,后端清掉 `auth.required` 并断开那台 agent,
@@ -219,6 +235,7 @@ export type AcpRoutes = {
   sessionOptions: { input: ACPSessionOptionsRequest; output: ACPSessionOptionsResponse }
   setSessionOption: { input: ACPSetSessionOptionRequest; output: ACPSetSessionOptionResponse }
   sessionState: { input: ACPSessionStateRequest; output: ACPSessionStateResponse }
+  setSessionMode: { input: ACPSetSessionModeRequest; output: ACPSetSessionModeResponse }
   detect: { input: ACPDetectRequest; output: ACPDetectResponse }
   refreshRegistry: { input: Record<string, never>; output: ACPRefreshRegistryResponse }
   authenticate: { input: ACPAuthenticateRequest; output: ACPAuthenticateResponse }
@@ -236,6 +253,7 @@ export const acpRouter = defineRouter<AcpRoutes>('acp', [
   'sessionOptions',
   'setSessionOption',
   'sessionState',
+  'setSessionMode',
   'detect',
   'refreshRegistry',
   'authenticate',

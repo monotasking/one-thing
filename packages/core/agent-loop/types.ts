@@ -305,6 +305,12 @@ export interface AgentUsage {
    * 一个字节都不变。
    */
   providerCostUSD?: number
+  /**
+   * 这一轮用量在账本里的**类目**,由 provider 自述(缺席 = 宿主自己的类目,通常是 `chat`)。
+   * 外部执行体(ACP agent)的回合不是一次模型调用,它们自报类目,引擎不必认识它们的名字。
+   * 宿主给回合贴过类目(协作房间 / 派工)时,宿主的那个优先。
+   */
+  usageSource?: string
 }
 
 export type AgentFinishReason =

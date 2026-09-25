@@ -546,7 +546,8 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
           await renameOnethingSessionForIpc({
             sessionId: payload.sessionId,
             newName: payload.title,
-            renameSession: (id, nextName) => store.renameSession(id, nextName),
+            // 显式改名(界面 / CLI / AI 经资源面)= 人定的标题,自动起题的一方从此不覆盖(A2-b)。
+            renameSession: (id, nextName) => store.renameSession(id, nextName, 'user'),
             logger: consoleLog,
           }),
           'Failed to rename session',

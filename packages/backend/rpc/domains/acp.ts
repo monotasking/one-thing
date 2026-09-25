@@ -37,6 +37,7 @@ import {
   refreshOnethingACPAgentForIpc,
   removeOnethingACPAgentForIpc,
   runOnethingACPRosterOperationForIpc,
+  setOnethingACPSessionModeForIpc,
   updateOnethingACPAgentForIpc,
 } from '@onething/runtime/acp'
 import type { ACPAgentConfig, ACPAgentState, ACPSettings } from '@shared/ipc/acp.js'
@@ -256,6 +257,25 @@ export const acpRpcHandlers: RpcRouteHandlers<AcpRoutes> = {
   async sessionState(request, context = DESKTOP_RPC_CONTEXT) {
     sessionAccess.resolveOptional(context, request.sessionId, 'read')
     return ACPManager.getSessionState(request.sessionId, request.agentId) ?? null
+  },
+  /**
+   * 切模式(A2-b,`session/set_mode`)。会话闸在前(写);切完把新模式折进状态表,经
+   * `acp:session-state` 推出去,这里再把那张表原样答回去,壳不必等推送。
+   */
+  async setSessionMode(request, context = DESKTOP_RPC_CONTEXT) {
+    sessionAccess.resolve(context, request.sessionId, 'write')
+    return setOnethingACPSessionModeForIpc({
+      sessionId: request.sessionId,
+      modeId: request.modeId,
+      agentId: request.agentId,
+      setSessionMode: (sessionId, modeId, agentId) => ACPManager.setSessionMode(
+        sessionId,
+        sessionReads.getSession(sessionId)?.workingDirectory,
+        modeId,
+        agentId,
+      ),
+      logger: consoleLog,
+    }) as Promise<AcpRoutes['setSessionMode']['output']>
   },
   /**
    * 「去登录」(A3-c):交给宿主挂上的登录桥。终端型立刻答 terminalId(壳开终端瓦),结局经

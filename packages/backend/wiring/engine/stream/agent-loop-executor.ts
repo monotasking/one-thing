@@ -829,7 +829,8 @@ export async function applyAgentLoopStreamChunk(
 					modelId: state.ctx.providerConfig.model,
 					// W13.3: the drive that started this stream may have labelled
 					// itself ('collab-room' / 'collab-work'); everything else is chat.
-					source: state.ctx.usageSource || "chat",
+					// 宿主贴的类目优先;其次 provider 自述的(ACP agent = 'acp');都没有才是 chat。
+					source: state.ctx.usageSource || usage.usageSource || "chat",
 					usage,
 				});
 			} catch (error) {

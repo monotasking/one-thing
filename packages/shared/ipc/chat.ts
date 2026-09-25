@@ -695,6 +695,9 @@ export interface SessionDetails extends SessionMeta {
 // Full Session Type (with messages)
 // ============================================================================
 
+/** 会话标题的来源(见 `ChatSession.titleSource`)。 */
+export type SessionTitleSource = 'user' | 'auto'
+
 export interface ChatSession {
   id: string
   name: string
@@ -718,6 +721,13 @@ export interface ChatSession {
    * "the last turn happened to run on that model".
    */
   modelPinned?: boolean
+  /**
+   * 标题是谁定的(ACP A2-b)。`'user'` = 人显式改过名(界面 / CLI / 资源面的 `rename`),自动
+   * 起题的一方(引擎的标题模型、ACP agent 的 `session_info_update`)从此不再覆盖它;`'auto'` =
+   * 自动写的。**缺席 = 当作 `'auto'`**:这一格之前没有任何一条路记过「人改过」,存量会话无从分辨,
+   * 而会被覆盖的只有 ACP 会话(A 系列本周才落地)里 agent 推了标题的那几条 —— 取零迁移。
+   */
+  titleSource?: SessionTitleSource
   permissionMode?: PermissionMode
   isPinned?: boolean
   isArchived?: boolean  // Archived (soft-deleted) session

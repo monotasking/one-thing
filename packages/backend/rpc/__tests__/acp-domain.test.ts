@@ -32,6 +32,7 @@ const manager = vi.hoisted(() => ({
   getSessionOptions: vi.fn(async () => ({ options: [] as unknown[], live: false })),
   setSessionOption: vi.fn(async () => ({ options: [] as unknown[], live: false })),
   getSessionState: vi.fn((_sessionId: string, _agentId?: string) => undefined as unknown),
+  setSessionMode: vi.fn(async (_sessionId: string, _cwd: string | undefined, _modeId: string, _agentId?: string) => undefined as unknown),
   getAuthBridge: vi.fn(() => undefined as unknown),
 }))
 
@@ -85,6 +86,7 @@ describe('acp RPC domain', () => {
     manager.getSessionOptions.mockResolvedValue({ options: [], live: false })
     manager.setSessionOption.mockResolvedValue({ options: [], live: false })
     manager.getSessionState.mockReturnValue(undefined)
+    manager.setSessionMode.mockResolvedValue(undefined)
     manager.getAuthBridge.mockReturnValue(undefined)
     settings.getSettings.mockReset().mockReturnValue({
       acp: { enabled: true, agents: [AGENT] },
@@ -99,7 +101,7 @@ describe('acp RPC domain', () => {
     vi.resetModules()
   })
 
-  it('exposes exactly the fourteen acp methods and refuses anything else', async () => {
+  it('exposes exactly the fifteen acp methods and refuses anything else', async () => {
     const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
     dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
@@ -120,17 +122,18 @@ describe('acp RPC domain', () => {
       'sessionOptions',
       'setSessionOption',
       'sessionState',
+      'setSessionMode',
       'detect',
       'refreshRegistry',
       'authenticate',
     ]
-    expect(expected).toHaveLength(14)
+    expect(expected).toHaveLength(15)
     expect([...acpRouter.methods].sort()).toEqual([...expected].sort())
     for (const method of expected) {
       const response = await dispatchRpc({
         domain: 'acp',
         method,
-        payload: { agentId: AGENT.id, sessionId: 's1', config: AGENT, methodId: 'm1' },
+        payload: { agentId: AGENT.id, sessionId: 's1', config: AGENT, methodId: 'm1', modeId: 'code' },
       })
       expect(response.ok, method).toBe(true)
     }
@@ -157,6 +160,33 @@ describe('acp RPC domain', () => {
     const found = await dispatchRpc({ domain: 'acp', method: 'sessionState', payload: { sessionId: 's1', agentId: AGENT.id } })
     expect(found.ok && found.data).toEqual(state)
     expect(manager.getSessionState).toHaveBeenLastCalledWith('s1', AGENT.id)
+  })
+
+  it('switches the session mode through the manager and answers the folded state (A2-b)', async () => {
+    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
+    resetRpcRegistryForTests()
+    dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
+    const state = {
+      localSessionId: 's1',
+      agentId: AGENT.id,
+      configOptions: [],
+      commands: [],
+      notices: [],
+      modes: { current: 'code', available: [{ id: 'ask', name: 'Ask' }, { id: 'code', name: 'Code' }] },
+      process: { status: 'connected' },
+    }
+    manager.setSessionMode.mockResolvedValue(state)
+    const switched = await dispatchRpc({ domain: 'acp', method: 'setSessionMode', payload: { sessionId: 's1', modeId: 'code' } })
+    expect(switched.ok && switched.data).toEqual({ success: true, state })
+    expect(manager.setSessionMode).toHaveBeenLastCalledWith('s1', '/work/s1', 'code', undefined)
+
+    manager.setSessionMode.mockRejectedValue(new Error('No ACP agent holds session "s1"'))
+    const failed = await dispatchRpc({ domain: 'acp', method: 'setSessionMode', payload: { sessionId: 's1', modeId: 'code', agentId: AGENT.id } })
+    expect(failed.ok && failed.data).toEqual({ success: false, error: 'No ACP agent holds session "s1"' })
+    expect(manager.setSessionMode).toHaveBeenLastCalledWith('s1', '/work/s1', 'code', AGENT.id)
+
+    const missing = await dispatchRpc({ domain: 'acp', method: 'setSessionMode', payload: { sessionId: 's1', modeId: '' } })
+    expect(missing.ok && missing.data).toEqual({ success: false, error: 'modeId is required' })
   })
 
   it('projects the agent list off the live manager', async () => {
@@ -402,4 +432,12 @@ describe('acp RPC domain', () => {
 vi.mock('../../session/access.js', async importOriginal => {
   const actual = await importOriginal<typeof import('../../session/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }
+})
+// `setSessionMode` 读会话的工作目录(开会话要 cwd);不装 backend 的单测给一张最小的会话表。
+vi.mock('../../session/reads.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/reads.js')>()
+  return {
+    ...actual,
+    sessionReads: { ...actual.sessionReads, getSession: (id: string) => (id === 's1' ? { id, workingDirectory: '/work/s1' } : undefined) },
+  }
 })

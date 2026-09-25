@@ -12,6 +12,7 @@ import type {
 	GetSessionMessagesPageResponse,
 	PromptContextState,
 	UserMessageMarker,
+	SessionTitleSource,
 } from "@shared/ipc.js";
 import { join } from "node:path";
 import { getCurrentBackend } from '../current.js'
@@ -653,8 +654,14 @@ export async function deleteSession(sessionId: string, expectedIds: readonly str
 //
 // 现存调用方没有一个读返回值(collab 三处建房/改房、engine 的 store 端口、
 // headless backend、CLI daemon 都是语句调用),所以这一改对它们零影响。
-export function renameSession(sessionId: string, newName: string): boolean {
-	return sessionRepository.renameSession(sessionId, newName);
+//
+// `titleSource`(ACP A2-b):显式改名的入口递 `'user'`,自动起题的递 `'auto'`,名字与来源同一趟
+// 落进 meta.json(一次元数据写,不是两次)。不递 = 旧行为,只改名、不动来源那一格。
+export function renameSession(sessionId: string, newName: string, titleSource?: SessionTitleSource): boolean {
+	if (!titleSource) return sessionRepository.renameSession(sessionId, newName);
+	return sessionRepository.patchSession(sessionId, { name: newName, titleSource }, meta => {
+		meta.name = newName;
+	});
 }
 
 // Update session pin status (does not affect sort order)

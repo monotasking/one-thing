@@ -29,6 +29,16 @@
  *   ⑦ terminal:假 agent 经终端桥真起一条终端,`terminal` 内容块里的 id = 工具卡结局 `metadata.terminalId`。
  *
  *
+ * A2-b(方案 §3.3 / §11.6;三只投影 + 切模式,同一台 `fake`):
+ *   ⑧ 计划:`@plan` → 假 agent 推两版 `plan_update` → 待办域 `session-ai-todo` 的行跟着第二版走
+ *      (`todo-plan.get` 读得到 `- [x]` / 进行中 / `- [ ]` 三行);`@plan-clear` → `plan_removed` → 那份清掉。
+ *   ⑨ 用量:`@usage` → `usage_update` 进 `acp.sessionState(...).usage`(SSE 上也有那一帧);这一轮收场 →
+ *      usage 账本(`<store>/usage/usage-YYYY-MM.jsonl`)上这条会话恰一行,`source: 'acp'`、思考 / 缓存
+ *      两格在、厂商报价 = 这一轮的累计成本增量、本地估价 `costUSD: null`。
+ *   ⑩ 切模式:`acp.setSessionMode` → 假 agent 收到 `session/set_mode`,推回 `current_mode_update`;
+ *      答复与 `acp.sessionState` 的 `modes.current` 都是新值,SSE 上有带新模式的 `acp:session-state`。
+ *   反证:挖掉计划投影的订阅 → ⑧ 红。
+ *
  * A3-b(方案 §7 ⑪–⑭ / ⑯;server 从这一单起也挂审批 / 文件 / 终端三只桥,门自己当应答者:订
  * SSE 上的 `permission:request`,按步发 `command:permission-respond`)。用第二台假 agent
  * `fake-a3`(不设 `unattended`,卡照常上),一轮一个剧本:
@@ -321,6 +331,8 @@ try {
           FAKE_AGENT_ROGUE_METHOD: '1',
           FAKE_AGENT_RICH_TOOLS: '1',
           FAKE_AGENT_USE_HOST_MCP: '1',
+          FAKE_AGENT_PLAN: '1',
+          FAKE_AGENT_USAGE: '1',
         },
         // ①–④ 不验审批:显式打开无人应答放行(A3-b 起桥里前置放行,不上卡)。
         unattended: 'allow',
@@ -504,6 +516,67 @@ try {
   const execCall = richCalls.find(call => call.id === 'rich-exec-2')
   check(Boolean(agentTerminal) && agentTerminal !== 'fake-term' && execCall?.result?.metadata?.terminalId === agentTerminal,
     `⑦ terminal 内容块 → 工具卡带 terminalId(agent 经终端桥起的 ${agentTerminal ?? '缺席'};卡上 ${JSON.stringify(execCall?.result?.metadata ?? null)})`)
+
+  // ── A2-b ⑧ 计划 → 待办 ──────────────────────────────────────────
+  const planId = await createAcpSession(rpc, 'acp 门 · 计划', workDir)
+  const aiTodo = async () => (await rpc('todo-plan', 'get', { sessionId: planId }))?.snapshot?.sessionAiTodo
+  await sendMessage(rpc, planId, '@plan 列个计划')
+  await waitFor(() => finishSeen(sse.frames, planId), 20_000)
+  const expectedRows = ['- [x] **Read the code**', '- [ ] Write the patch _(进行中)_', '- [ ] Run the tests']
+  const planDoc = await waitFor(async () => {
+    const doc = await aiTodo()
+    return expectedRows.every(row => String(doc?.content ?? '').includes(row)) ? doc : undefined
+  }, 5_000)
+  check(Boolean(planDoc) && planDoc.totalTasks === 3,
+    `⑧ plan_update 两版 → session-ai-todo 的三行跟着第二版走(读到 ${JSON.stringify((await aiTodo())?.content ?? null)})`)
+  const planStateFrame = sse.frames.find(item => item.event === 'acp:session-state'
+    && item.data?.state?.localSessionId === planId && item.data.state.plan?.kind === 'items')
+  check(Boolean(planStateFrame), '⑧ SSE 上见到带计划的 acp:session-state 帧')
+  await sendMessage(rpc, planId, '@plan-clear 计划做完了')
+  await waitFor(() => sse.frames.filter(item => item.event === 'session:event' && item.data?.sessionId === planId
+    && item.data?.event?.type === 'stream:complete').length >= 2, 20_000)
+  const planCleared = await waitFor(async () => ((await aiTodo()) ? undefined : true), 5_000)
+  check(Boolean(planCleared), `⑧ plan_removed → 那份 AI 待办清掉了(读到 ${JSON.stringify((await aiTodo())?.content ?? null)})`)
+
+  // ── A2-b ⑨ 用量 ──────────────────────────────────────────────────
+  const usageId = await createAcpSession(rpc, 'acp 门 · 用量', workDir)
+  await sendMessage(rpc, usageId, '@usage 算个账')
+  await waitFor(() => finishSeen(sse.frames, usageId), 20_000)
+  const usageState = await rpc('acp', 'sessionState', { sessionId: usageId })
+  check(sameJson(usageState?.usage, { used: 1234, size: 200000, cost: { amount: 0.25, currency: 'USD' } }),
+    `⑨ usage_update → acp.sessionState.usage(读到 ${JSON.stringify(usageState?.usage ?? null)})`)
+  check(sse.frames.some(item => item.event === 'acp:session-state' && item.data?.state?.localSessionId === usageId
+    && item.data.state.usage?.used === 1234), '⑨ SSE 上见到带用量的 acp:session-state 帧')
+  const usageDir = path.join(storePath, 'usage')
+  const usageRows = () => (fs.existsSync(usageDir)
+    ? fs.readdirSync(usageDir).filter(name => /^usage-.*\.jsonl$/.test(name))
+      .flatMap(name => fs.readFileSync(path.join(usageDir, name), 'utf-8').split('\n').filter(Boolean).map(line => JSON.parse(line)))
+    : []).filter(row => row.sessionId === usageId)
+  // 账本是排队追加的;见到第一行之后再等一拍,确认不会冒出第二行(同一轮两行账就是双写)。
+  await waitFor(() => usageRows().length > 0, 5_000)
+  await sleep(300)
+  const finalRows = usageRows()
+  const usageRow = finalRows[0]
+  check(finalRows.length === 1 && usageRow?.source === 'acp' && usageRow?.providerId === 'acp' && usageRow?.modelId === AGENT_ID,
+    `⑨ 这一轮收场 → 账本上恰一行,source = acp(读到 ${finalRows.length} 行:${JSON.stringify(finalRows.map(r => ({ source: r.source, providerId: r.providerId, modelId: r.modelId })))})`)
+  check(usageRow?.usage?.input === 100 && usageRow?.usage?.output === 20 && usageRow?.usage?.reasoning === 30 && usageRow?.usage?.cacheRead === 40,
+    `⑨ 思考 / 缓存两格进了账本(读到 ${JSON.stringify(usageRow?.usage ?? null)})`)
+  check(usageRow?.providerCostUSD === 0.25 && (usageRow?.costUSD ?? null) === null,
+    `⑨ 厂商报价 = 这一轮的累计成本增量,本地估价为 null(读到 providerCostUSD = ${usageRow?.providerCostUSD}, costUSD = ${usageRow?.costUSD})`)
+
+  // ── A2-b ⑩ 切模式 ────────────────────────────────────────────────
+  const modeReply = await rpc('acp', 'setSessionMode', { sessionId: planId, modeId: 'code' })
+  check(modeReply?.success === true && modeReply.state?.modes?.current === 'code',
+    `⑩ acp.setSessionMode 答切完之后的状态表(读到 ${JSON.stringify(modeReply ?? null)})`)
+  const setModeCall = await waitFor(() => readCalls(agentDir).find(call => call.method === 'set-mode' && call.modeId === 'code'), 3_000)
+  check(Boolean(setModeCall), `⑩ 假 agent 收到 session/set_mode(modeId = ${setModeCall?.modeId ?? '缺席'})`)
+  const pushedMode = await waitFor(() => readCalls(agentDir).some(call => call.method === 'pushed-mode' && call.modeId === 'code'), 3_000)
+  await sleep(200)
+  const modeState = await rpc('acp', 'sessionState', { sessionId: planId })
+  check(Boolean(pushedMode) && modeState?.modes?.current === 'code',
+    `⑩ agent 推回的 current_mode_update 折进同一格(acp.sessionState.modes.current = ${modeState?.modes?.current})`)
+  check(sse.frames.some(item => item.event === 'acp:session-state' && item.data?.state?.localSessionId === planId
+    && item.data.state.modes?.current === 'code'), '⑩ SSE 上见到带新模式的 acp:session-state 帧')
 
   // ── A3-b ⑪–⑭ / ⑯:门当应答者 ────────────────────────────────────
   const answerer = startAnswerer(rpc, sse.frames)
@@ -777,4 +850,4 @@ if (failures.length > 0) {
   console.error(`[gate:acp] ${failures.length} check(s) failed`)
   process.exit(1)
 }
-console.log('[gate:acp] ok —— ① 握手 / ② 会话目录 / ③ 流与协议外请求 / ④ prompt 之外的状态 / ⑥ diff / ⑦ terminal / ⑪ 四选项 / ⑫ 始终允许 / ⑬ fs / ⑭ terminal / ⑮ 提问 / ⑯ 无人应答 / ⑯b 登录 / ⑰ 桥 / ⑱ 归因 全绿')
+console.log('[gate:acp] ok —— ① 握手 / ② 会话目录 / ③ 流与协议外请求 / ④ prompt 之外的状态 / ⑥ diff / ⑦ terminal / ⑧ 计划 / ⑨ 用量 / ⑩ 切模式 / ⑪ 四选项 / ⑫ 始终允许 / ⑬ fs / ⑭ terminal / ⑮ 提问 / ⑯ 无人应答 / ⑯b 登录 / ⑰ 桥 / ⑱ 归因 全绿')

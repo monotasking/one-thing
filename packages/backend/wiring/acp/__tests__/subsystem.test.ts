@@ -8,7 +8,7 @@
  */
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import type { ACPSettings } from '@onething/runtime/acp'
+import type { ACPSettings, AcpSessionState } from '@onething/runtime/acp'
 import { getLogger } from '../../logging/index.js'
 import { AcpAgentRegistry } from '../registry.js'
 import { AcpSubsystem, type AcpSubsystemDeps } from '../subsystem.js'
@@ -194,5 +194,37 @@ describe('AcpSubsystem × 名册', () => {
     expect(gemini.detect?.installed).toBe(true)
     expect(gemini.status).toBe('disconnected')
     expect(gemini.config).toMatchObject({ command: 'gemini', args: ['--acp'], enabled: true })
+  })
+})
+
+describe('AcpSubsystem 会话状态投影(A2-b)', () => {
+  it('构造时逐只订上;一只抛了不连累别的;dispose 退订并 dispose 每一只', async () => {
+    const sessionListeners = new Set<(state: AcpSessionState) => void>()
+    const manager = {
+      initialize: vi.fn(),
+      updateSettings: vi.fn(),
+      shutdown: vi.fn(async () => {}),
+      onSessionStateChanged: (listener: (state: AcpSessionState) => void) => {
+        sessionListeners.add(listener)
+        return () => { sessionListeners.delete(listener) }
+      },
+      onAgentStateChanged: () => () => {},
+    }
+    const seen: string[] = []
+    const broken = { label: 'broken', observe: vi.fn(() => { throw new Error('boom') }), dispose: vi.fn() }
+    const good = { label: 'good', observe: vi.fn((state: AcpSessionState) => { seen.push(state.localSessionId) }), dispose: vi.fn() }
+    const subsystem = new AcpSubsystem({ manager, settings: () => SETTINGS, projections: [broken, good] })
+    // 广播器 + 两只投影。
+    expect(sessionListeners.size).toBe(3)
+
+    const state = { localSessionId: 's1', agentId: 'fake', configOptions: [], commands: [], notices: [], process: { status: 'connected' } } as AcpSessionState
+    for (const listener of sessionListeners) listener(state)
+    expect(broken.observe).toHaveBeenCalledTimes(1)
+    expect(seen).toEqual(['s1'])
+
+    await subsystem.dispose()
+    expect(sessionListeners.size).toBe(0)
+    expect(broken.dispose).toHaveBeenCalledTimes(1)
+    expect(good.dispose).toHaveBeenCalledTimes(1)
   })
 })

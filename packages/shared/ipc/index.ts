@@ -254,6 +254,7 @@ export type {
 	SessionMeta,
 	SessionDetails,
 	ChatSession,
+	SessionTitleSource,
 	SendMessageRequest,
 	SendMessageResponse,
 	EditAndResendRequest,
