@@ -153,6 +153,11 @@ export interface RecordDeckProps {
   awaitingHost?: boolean
   /** 帧源。缺省浏览器 rAF;测试喂一台手摇的或 `null`(只摆不转)。 */
   frames?: FrameSource | null
+  /**
+   * 这一格在不在屏上(音乐面 v9:切到别的分区时这一格 `hidden`)。藏着时量不到行高,歌词对位
+   * 会算成错的位置 —— 所以藏着不量;回来那一拍直接落到正在唱的那一句(不带滚动动画)。缺省 true。
+   */
+  active?: boolean
 }
 
 export function RecordDeck({
@@ -173,6 +178,7 @@ export function RecordDeck({
   listening = false,
   awaitingHost = false,
   frames,
+  active = true,
 }: RecordDeckProps) {
   const t = useT()
   const { visible } = usePanelVisibility()
@@ -193,9 +199,10 @@ export function RecordDeck({
     const next = deckGeometry(el.clientWidth, el.clientHeight, wide)
     setGeo((prev) => (prev && prev.width === next.width && prev.height === next.height && prev.R === next.R ? prev : next))
   }, [wide])
+  // 回到屏上那一拍也量一次:藏着的时候面板可能被拉宽拉窄过,而 ResizeObserver 在 display:none 下量到的是 0。
   useLayoutEffect(() => {
-    measure()
-  }, [measure])
+    if (active) measure()
+  }, [measure, active])
   useEffect(() => {
     const el = surfaceRef.current
     if (typeof ResizeObserver !== 'function' || !el) return
@@ -253,8 +260,8 @@ export function RecordDeck({
     return () => document.removeEventListener('visibilitychange', onChange)
   }, [])
   useLayoutEffect(() => {
-    spin.setSuspended(!visible || docHidden)
-  }, [spin, visible, docHidden])
+    spin.setSuspended(!visible || docHidden || !active)
+  }, [spin, visible, docHidden, active])
 
   // ── 唱臂:拖 = 跳到这里 ─────────────────────────────────────────────────
   const seekable = present && !restored && side !== null && duration !== undefined && duration > 0 && position !== undefined
@@ -346,14 +353,20 @@ export function RecordDeck({
   const [jump, setJump] = useState(true)
   useLayoutEffect(() => {
     const list = lyricsRef.current
+    // 藏着(切到别的分区)时一行都量不到(offsetHeight = 0),量出来的位置是错的 —— 不量,并记下
+    // 「回来时要重新落位」(09-25 报障:切 tab 回来歌词错位)。
+    if (!active) {
+      landedFor.current = null
+      return
+    }
     if (!list || !geo) return
     const row = list.querySelector<HTMLElement>(`[data-lyric-index='${Math.max(0, current)}']`)
-    if (!row) return
+    if (!row || row.offsetHeight === 0) return
     const first = landedFor.current !== title
     landedFor.current = title
     setJump(first)
     list.style.setProperty('--lyrics-y', `${geo.anchorY - (row.offsetTop + row.offsetHeight / 2)}px`)
-  }, [current, rows, geo, title])
+  }, [current, rows, geo, title, active])
   // 歌词那一格此刻说的那一句(唱片与歌词的位置都不动,只换这一句)。
   const lyricNote: { key: 'music.lyricsLoading' | 'music.lyricsEmpty' | 'music.lyricsFailed'; faint: boolean } | null =
     lyricState === 'loading'

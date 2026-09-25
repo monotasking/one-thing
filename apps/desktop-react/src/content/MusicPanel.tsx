@@ -261,6 +261,7 @@ export function MusicPanel({
     talk,
     navigate,
     deck,
+    active: true,
   }
 
   return (
@@ -294,7 +295,7 @@ export function MusicPanel({
                   {row.requiresLogin && needsSetup && state ? (
                     <LoginGate runtime={state} sectionLabel={t(row.labelKey)} onLogin={() => navigate(MUSIC_SETUP_SECTION)} />
                   ) : (
-                    row.render(ctx)
+                    row.render(row.id === section ? ctx : { ...ctx, active: false })
                   )}
                 </section>
               ))}

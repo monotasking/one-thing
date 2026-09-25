@@ -389,3 +389,72 @@ describe('搜索那一格', () => {
     expect(screen.getByTestId('music-search-empty').textContent).toBe('未找到「zzzz」相关的歌曲。')
   })
 })
+
+describe('衔接(09-25):切分区回来歌词不乱、暂停不倒退', () => {
+  const LINE_H = 30
+  const LYRICS = {
+    title: NOW_PLAYING.title,
+    lines: Array.from({ length: 12 }, (_, i) => ({ at: 60 + i * 0.3, text: `第${i + 1}句` })),
+  }
+
+  beforeEach(() => {
+    // jsdom 没有布局:给歌词行一个行高,**藏着(祖先带 hidden)时量出来是 0** —— 与真机 display:none 同形。
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      configurable: true,
+      get(this: HTMLElement) {
+        if (this.dataset.lyricIndex === undefined) return 0
+        return this.closest('[hidden]') ? 0 : LINE_H
+      },
+    })
+    Object.defineProperty(HTMLElement.prototype, 'offsetTop', {
+      configurable: true,
+      get(this: HTMLElement) {
+        if (this.dataset.lyricIndex === undefined || this.closest('[hidden]')) return 0
+        return Number(this.dataset.lyricIndex) * LINE_H
+      },
+    })
+  })
+  afterEach(() => {
+    delete (HTMLElement.prototype as { offsetHeight?: number }).offsetHeight
+    delete (HTMLElement.prototype as { offsetTop?: number }).offsetTop
+  })
+
+  /** 正在唱那一句的对位常数:y + 行顶 + 半行高 = 唱针高度,对哪一句都一样。 */
+  function anchorOf(): number {
+    const list = screen.getByTestId('music-lyrics').querySelector('ol') as HTMLElement
+    const y = parseFloat(list.style.getPropertyValue('--lyrics-y'))
+    const current = document.querySelector<HTMLElement>('[data-lyric-index][data-current="true"]')
+    const index = current ? Number(current.dataset.lyricIndex) : 0
+    return y + index * LINE_H + LINE_H / 2
+  }
+
+  it('切到电台再切回来:歌词直接落在正在唱的那一句,对位与切走前一致', async () => {
+    await mount(table({ 'music:player#lyrics': LYRICS }))
+    await settle()
+    const before = anchorOf()
+    await go('radio')
+    // 藏着的这段时间里唱过去好几句(播放钟 250ms 一拍)。
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 900))
+    })
+    await go('now')
+    expect(anchorOf()).toBeCloseTo(before)
+    const list = screen.getByTestId('music-lyrics').querySelector('ol') as HTMLElement
+    expect(list.dataset.jump).toBe('true') // 回来那一下不带滚动动画
+  })
+
+  it('在放一会儿再暂停:进度停在按下那一秒,不退回上一次读数的位置', async () => {
+    await mount()
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 700))
+    })
+    // 按下那一帧(同步提交,后端还没回话):位置冻在此刻推到的那一秒。
+    act(() => {
+      fireEvent.click(screen.getByTestId('music-play'))
+    })
+    expect(screen.getByTestId('music-play').getAttribute('aria-label')).toBe('播放')
+    const value = Number(screen.getByTestId('music-seek').getAttribute('aria-valuenow'))
+    expect(value).toBeGreaterThan(NOW_PLAYING.position + 0.5)
+    await settle()
+  })
+})

@@ -108,7 +108,7 @@ export function createRadioScope(options: {
 }) {
   const owner = new MusicWorkOwner(options.assertOwned)
   const { getActiveMusicProvider, getMusicNowPlaying, getMusicService, nudgeMusicClients,
-    refreshMusicNowPlaying, setMusicSampleListener } = options.service
+    refreshMusicNowPlaying, setMusicSampleListener, beginMusicCommand, assumeMusicNowPlaying } = options.service
   const prefetchDjPatter = (text: string, title: string): void => options.hostVoice().prefetch(text, title)
   /**
    * 报一件听歌的事实(§11.1)。**不抛**:一个坏掉的订阅者不该让起播 / 跳过 / 红心那条正事失败。
@@ -757,6 +757,9 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
   }
 
   const timer = createRadioStartTimer(entry.title)
+  // Start the lyric fetch with the load, not after it (cached / in flight = no
+  // second call): the lyrics should be in hand the moment the song is heard.
+  void getLyricLines(entry).catch(() => {})
   const start = (async () => {
     // Known-unplayable at curation time: refuse before ANY ceremony — a
     // spoken intro for a song that cannot come is the worst version of this
@@ -924,8 +927,15 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
     // instead: we KNOW which song this is — we just started it. The player's
     // own title (stable machine format) rides the pushes so the renderer's
     // display always agrees with the bar.
+    // Announce the song FIRST, from the read that just confirmed it (2026-09-25:
+    // the lyrics used to go out ~200ms before now-playing — a fresh `state`
+    // read away — so every client briefly held song B's lyrics against song A
+    // and dropped them; and that refresh could reuse a poll started before
+    // the song, leaving the old title up until the next 5–20s tick).
+    beginMusicCommand()
+    assumeMusicNowPlaying(() => confirmedState)
     onSongStarted(entry, confirmedState?.title ?? entry.title)
-    await refreshMusicNowPlaying()
+    void owner.track(refreshMusicNowPlaying()).catch(() => undefined)
   })()
 
   playStartingEntry = entry

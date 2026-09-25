@@ -110,6 +110,8 @@ export interface NowPlayingWatcherOptions {
   onSample?(nowPlaying: OnethingMusicNowPlaying | null): void
   /** While something is playing; the bar interpolates position between these. */
   playingIntervalMs?: number
+  /** Test seam for the clock. Default `Date.now`. */
+  now?: () => number
   /** While paused or stopped — nothing is moving, so ask far less often. */
   idleIntervalMs?: number
   logger?: { warn(message: string, ...args: unknown[]): void }
@@ -127,6 +129,7 @@ export interface NowPlayingWatcher {
    * world as it was before the command.
    */
   refresh(): Promise<void>
+  /** The latest snapshot, with `position` carried forward to now while playing. */
   current(): OnethingMusicNowPlaying | null
   /**
    * A state-changing command is about to be sent. Every `state` read already
@@ -146,12 +149,15 @@ export interface NowPlayingWatcher {
 }
 
 export function createNowPlayingWatcher(options: NowPlayingWatcherOptions): NowPlayingWatcher {
+  const now = options.now ?? Date.now
   const playingInterval = options.playingIntervalMs ?? 5_000
   const idleInterval = options.idleIntervalMs ?? 20_000
 
   let timer: ReturnType<typeof setTimeout> | null = null
   let running = false
   let latest: OnethingMusicNowPlaying | null = null
+  /** When `latest` was true (the read landed / the assumption was made). */
+  let latestAt = 0
   let polling: Promise<void> | null = null
   let closed = false
   let generation = 0
@@ -161,12 +167,34 @@ export function createNowPlayingWatcher(options: NowPlayingWatcherOptions): NowP
   let pollingCommandEpoch = 0
 
   const publish = (next: OnethingMusicNowPlaying | null) => {
+    const previousStatus = latest?.status
+    latestAt = now()
     if (sameNowPlaying(latest, next)) {
       latest = next // Keep the fresh position even when we do not announce it.
       return
     }
     latest = next
     options.emit(next)
+    // Paused → playing (or back): the next tick was scheduled at the OTHER
+    // cadence. Re-arm it now, or a resumed song is watched at the 20s idle
+    // pace and its end goes unnoticed for up to 20s (2026-09-25).
+    if (running && timer && previousStatus !== next?.status) {
+      clearTimeout(timer)
+      timer = null
+      schedule()
+    }
+  }
+
+  /**
+   * The snapshot as of now: while playing, `position` is carried forward from
+   * the moment it was read (a 5s-old read otherwise hands every client a
+   * position up to 5s behind — the lyric highlight lags and a pause visibly
+   * snaps the needle back).
+   */
+  const currentNow = (): OnethingMusicNowPlaying | null => {
+    if (!latest || latest.status !== 'playing') return latest
+    const moved = latest.position + Math.max(0, now() - latestAt) / 1000
+    return { ...latest, position: latest.duration !== undefined ? Math.min(latest.duration, moved) : moved }
   }
 
   const sample = (next: OnethingMusicNowPlaying | null) => {
@@ -243,13 +271,13 @@ export function createNowPlayingWatcher(options: NowPlayingWatcherOptions): NowP
     quiesce() { closed = true; stop() },
     async drain() { closed = true; stop(); await polling },
     refresh,
-    current: () => latest,
+    current: currentNow,
     beginCommand() {
       commandEpoch += 1
     },
     assume(next) {
       if (closed) return
-      publish(next(latest))
+      publish(next(currentNow()))
     },
   }
 }

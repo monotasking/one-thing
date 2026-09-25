@@ -51,6 +51,11 @@ export interface MusicSectionContext {
   talk: HostTalk
   /** 去另一格。 */
   navigate: (sectionId: string) => void
+  /**
+   * 这一格此刻是不是在屏上的那一格。去过的分区保挂载、切走只是 `hidden`(display: none),
+   * 藏着的时候量不到任何尺寸 —— 要按尺寸排版的格(唱机的歌词对位)据它停量、回来时重对。
+   */
+  active: boolean
   /** 唱机那一格的全部参数(面板已经算好:宠物、菜单、唱臂回调……)。 */
   deck: RecordDeckProps
 }
@@ -78,7 +83,7 @@ export const MUSIC_SECTIONS: readonly MusicSectionSpec[] = [
     layout: 'fill',
     nav: true,
     requiresLogin: true,
-    render: (ctx) => <RecordDeck {...ctx.deck} />,
+    render: (ctx) => <RecordDeck {...ctx.deck} active={ctx.active} />,
   },
   {
     id: MUSIC_RADIO_SECTION,

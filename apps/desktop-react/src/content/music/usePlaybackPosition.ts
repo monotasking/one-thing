@@ -17,7 +17,8 @@ export function usePlaybackPosition(now: MusicNowPlayingView | undefined): numbe
   const sample = useMemo(
     () =>
       now && now.position !== undefined
-        ? { position: now.position, duration: now.duration, playing: now.playing, sampledAt: Date.now() }
+        ? // 读数自己说是哪一刻的(取数口盖的章 / 换档时冻的那一刻);没说才退回「此刻」。
+          { position: now.position, duration: now.duration, playing: now.playing, sampledAt: now.sampledAt ?? Date.now() }
         : undefined,
     [now],
   )

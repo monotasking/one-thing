@@ -296,3 +296,59 @@ describe('createNowPlayingWatcher · commands', () => {
     expect(h.watcher.current()?.status).toBe('playing')
   })
 })
+
+/** 2026-09-25「暂停播放时的状态衔接」。 */
+describe('createNowPlayingWatcher · position and cadence', () => {
+  it('current() carries the position forward from the moment it was read, while playing', async () => {
+    let clock = 1_000_000
+    const run = vi.fn(async () => ({ code: 0, stdout: PLAYING, stderr: '' }))
+    const watcher = createNowPlayingWatcher({
+      runner: { run, spawn: vi.fn() },
+      isPlayerRunning: () => true,
+      emit: vi.fn(),
+      now: () => clock,
+    })
+    await watcher.refresh()
+    expect(watcher.current()?.position).toBeCloseTo(241.162071)
+    clock += 4_000
+    expect(watcher.current()?.position).toBeCloseTo(245.162071)
+    // 推到总长为止。
+    clock += 600_000
+    expect(watcher.current()?.position).toBeCloseTo(298.293333)
+  })
+
+  it('a pause assumed 4s after the read freezes at the carried-forward second, not the stale one', async () => {
+    let clock = 1_000_000
+    const run = vi.fn(async () => ({ code: 0, stdout: PLAYING, stderr: '' }))
+    const watcher = createNowPlayingWatcher({ runner: { run, spawn: vi.fn() }, isPlayerRunning: () => true, emit: vi.fn(), now: () => clock })
+    await watcher.refresh()
+    clock += 4_000
+    watcher.assume(previous => (previous ? { ...previous, status: 'paused' } : previous))
+    clock += 10_000
+    expect(watcher.current()?.status).toBe('paused')
+    expect(watcher.current()?.position).toBeCloseTo(245.162071)
+  })
+
+  it('paused → playing re-arms the poll at the playing cadence (a resumed song is not watched at the idle pace)', async () => {
+    vi.useFakeTimers()
+    try {
+      const run = vi.fn(async () => ({ code: 0, stdout: PAUSED, stderr: '' }))
+      const watcher = createNowPlayingWatcher({
+        runner: { run, spawn: vi.fn() },
+        isPlayerRunning: () => true,
+        emit: vi.fn(),
+        playingIntervalMs: 1_000,
+        idleIntervalMs: 60_000,
+      })
+      watcher.start()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(run).toHaveBeenCalledTimes(1) // paused: next tick 60s out
+      watcher.assume(previous => (previous ? { ...previous, status: 'playing' } : previous))
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(run).toHaveBeenCalledTimes(2) // re-armed at 1s, not 60s
+      watcher.stop()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

@@ -79,6 +79,12 @@ export const MUSIC_PROVIDER_REF = 'music:provider'
  */
 export interface MusicNowPlayingView extends MusicNowPlaying {
   playing: boolean
+  /**
+   * `position` 是哪一刻的(墙钟 ms)。读回来那一刻由取数口盖上,乐观补丁换状态时一起换
+   * (`music-playback.ts` `withPlaying`)。播放钟从这一刻往前推 —— 从前用的是「对象换了身份」
+   * 的那一刻,于是暂停补丁一落,唱臂退回到那份旧读数的位置(09-25「暂停播放时的状态衔接」)。
+   */
+  sampledAt?: number
 }
 
 /** `programme` 读法的形。 */
@@ -149,7 +155,7 @@ export const musicBriefQuery = createQuery<MusicRadioState>('music.brief', () =>
  */
 export const musicNowPlayingQuery = createQuery<MusicNowPlayingView>('music.nowPlaying', async () => {
   const ticket = ++playbackReadTicket
-  const fetched = await readResource<MusicNowPlayingView>(MUSIC_PLAYER_REF, 'nowPlaying')
+  const fetched = { ...(await readResource<MusicNowPlayingView>(MUSIC_PLAYER_REF, 'nowPlaying')), sampledAt: Date.now() }
   const settled = reconcilePlayback(fetched, ticket, playbackIntent)
   playbackIntent = settled.intent
   if (settled.disagreed) setPlaybackNotice('disagreed')
@@ -280,12 +286,12 @@ const OPS: Readonly<Record<MusicOpName, MusicOpSpec>> = {
   /* ── 播放器七条 ─────────────────────────────────────────────────────── */
   pause: {
     ref: MUSIC_PLAYER_REF,
-    optimistic: () => patchNowPlaying((prev) => ({ ...prev, playing: false, status: 'paused' })),
+    optimistic: () => patchNowPlaying((prev) => withPlaying(prev, false)),
     affects: [musicNowPlayingQuery],
   },
   resume: {
     ref: MUSIC_PLAYER_REF,
-    optimistic: () => patchNowPlaying((prev) => ({ ...prev, playing: true, status: 'playing' })),
+    optimistic: () => patchNowPlaying((prev) => withPlaying(prev, true)),
     affects: [musicNowPlayingQuery],
   },
   // 换歌会换掉歌词,也会让节目单少一首 —— 三条一起对账。
@@ -296,7 +302,7 @@ const OPS: Readonly<Record<MusicOpName, MusicOpSpec>> = {
     optimistic: (params) => {
       const position = numberParam(params, 'position')
       if (position === undefined) return undefined
-      return patchNowPlaying((prev) => ({ ...prev, position }))
+      return patchNowPlaying((prev) => ({ ...prev, position, sampledAt: Date.now() }))
     },
     affects: [musicNowPlayingQuery],
   },

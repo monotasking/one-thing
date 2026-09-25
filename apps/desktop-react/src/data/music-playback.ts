@@ -36,10 +36,24 @@ export interface PlaybackReconcile {
   disagreed: boolean
 }
 
-/** 把「在放 / 停着」换成 `playing` 那一档。`status` 与 `playing` 两格一起换:两处读的人都有。 */
-export function withPlaying(view: MusicNowPlayingView, playing: boolean): MusicNowPlayingView {
+/**
+ * 此刻(`at`,墙钟 ms)的位置:在放就从 `sampledAt` 往前推(推到总长为止),停着就停在读数上。
+ * 与 `content/music/turntable.ts` 的 `positionAt` 同一条算式(那边是给屏幕的播放钟用的)。
+ */
+export function positionOf(view: MusicNowPlayingView, at: number): number {
+  const base = Math.max(0, view.position)
+  if (!view.playing || view.sampledAt === undefined) return base
+  const moved = base + Math.max(0, at - view.sampledAt) / 1000
+  return view.duration !== undefined ? Math.min(view.duration, moved) : moved
+}
+
+/**
+ * 把「在放 / 停着」换成 `playing` 那一档。`status` 与 `playing` 两格一起换:两处读的人都有。
+ * **位置冻在换档这一刻**(`at`):暂停时停在此刻推到的那一秒,不退回那份旧读数的位置;继续时从这一秒起推。
+ */
+export function withPlaying(view: MusicNowPlayingView, playing: boolean, at: number = Date.now()): MusicNowPlayingView {
   if (view.playing === playing) return view
-  return { ...view, playing, status: playing ? 'playing' : 'paused' }
+  return { ...view, playing, status: playing ? 'playing' : 'paused', position: positionOf(view, at), sampledAt: at }
 }
 
 /**
