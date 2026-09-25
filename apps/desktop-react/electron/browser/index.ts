@@ -405,9 +405,8 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
   })
 
   /*
-   * 内存预算表的那一行(2026-09-25):后台放久了、不出声的 tab 释放掉进程,切回去
-   * 重新加载。判据在 `memory-holder.ts`;这里只接线 —— tab 表来自 service,
-   * 「看不见多久了」来自 layout。
+   * 注册内置浏览器的内存持有者:长时间在后台且未播放声音的标签页会被释放渲染进程,
+   * 切回时重新加载。释放条件见 `memory-holder.ts`。
    */
   const offMemory = options.backend.memory.registry.registerHolder(createBrowserMemoryHolder({
     tabs: () => service.list().flatMap(state => {

@@ -70,7 +70,7 @@ export interface NativeWebContents {
    */
   getZoomLevel(): number
   setZoomLevel(level: number): void
-  /** 这一页此刻在不在出声(后台释放不碰出声的那一格)。替身可以不实现。 */
+  /** 页面当前是否在播放声音。测试替身可以不实现。 */
   isCurrentlyAudible?(): boolean
   readonly navigationHistory: NativeNavigationHistory
 }
@@ -89,8 +89,8 @@ export interface BrowserTabObserver {
   /** 状态折过一次,而且**真的变了**(reducer 答的身份不等)。 */
   onState(tab: BrowserTab, patch: BrowserTabPatch): void
   /**
-   * 视图建起来了。`reopened: true` = 这一格**释放过又建回来**(内存预算表的后台释放):
-   * 窗口系统要重新登记视图,但「开了一格 tab」这条事实只在第一次说。
+   * 视图已创建。`reopened: true` 表示标签页被释放后重新创建:需要重新注册视图,
+   * 但不应再次发送「已打开」事件。
    */
   onOpened(tab: BrowserTab, info?: { reopened: boolean }): void
   /** 页面要开一扇新窗。service 把它折成一格新 tab(或者拒掉)。 */
@@ -156,9 +156,9 @@ export class BrowserTab {
    */
   private findText: string | undefined
   private disposed = false
-  /** 这一格的视图建过没有(释放后再建 = `reopened`)。 */
+  /** 视图是否创建过;释放后再次创建时据此标记 `reopened`。 */
   private openedOnce = false
-  /** 释放过几次(诊断用:内存表的 detail)。 */
+  /** 被释放的次数,用于内存报告。 */
   private hibernations = 0
 
   constructor(init: BrowserTabInit, deps: BrowserTabDeps) {
@@ -334,7 +334,7 @@ export class BrowserTab {
     this.releaseView()
   }
 
-  /** 这一页此刻在不在出声。没有视图 = 不出声。 */
+  /** 页面当前是否在播放声音;没有视图时为 `false`。 */
   get audible(): boolean {
     try { return this.alive()?.isCurrentlyAudible?.() === true } catch { return false }
   }
@@ -342,14 +342,11 @@ export class BrowserTab {
   get hibernationCount(): number { return this.hibernations }
 
   /**
-   * **后台释放**(2026-09-25,内存预算表):关掉这一格的渲染进程,**tab 本身留着**。
+   * 释放渲染进程,保留标签页。
    *
-   * 地址与标题在状态里,不动;下一次壳报可见 / 被激活时 `materialize` 照常建视图,
-   * 攒着的那一发(= 当前地址)重新加载。代价写明白:页面状态(滚动位置、表单里没
-   * 提交的字、前进后退历史)随进程一起没了 —— 所以只在后台放得够久、而且不出声
-   * 的那几格上做,判据在 `memory-holder.ts`。
-   *
-   * 答「真的释放了没有」:没视图 / 已关 = `false`。
+   * 地址和标题保留在状态中;下次可见或被激活时重新创建视图并加载当前地址。
+   * 页面状态(滚动位置、未提交的表单内容、前进 / 后退历史)会丢失。
+   * 没有视图或已关闭时返回 `false`。
    */
   hibernate(): boolean {
     if (this.disposed || !this.view) return false
@@ -357,7 +354,7 @@ export class BrowserTab {
     this.pendingUrl = url && isAllowedNavigation(url) ? url : undefined
     this.releaseView()
     this.hibernations++
-    // 进程没了,转圈与前进后退两格随它作废;重建之后由 webContents 重新报。
+    // 进程已关闭,加载状态与前进 / 后退状态清空,重新创建后由页面重新报告。
     this.patch({ loading: false, canGoBack: false, canGoForward: false })
     return true
   }
@@ -418,8 +415,7 @@ export class BrowserTab {
       return { action: 'deny' }
     })
 
-    // 只听**当前**这片视图的:释放之后旧 webContents 关闭途中还可能冒几发事件
-    // (did-stop-loading、render-process-gone),它们说的是一个已经不在的进程。
+    // 只处理当前视图的事件:释放后,旧 webContents 在关闭过程中仍可能发出事件。
     const on = (event: string, listener: (...args: never[]) => void) => {
       wc.on(event, ((...args: never[]) => {
         if (this.view?.webContents !== wc) return

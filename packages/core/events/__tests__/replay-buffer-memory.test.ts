@@ -21,7 +21,7 @@ describe('EventBus replay buffers on the memory table', () => {
     const released = bus.releaseIdleBuffers(30_000, later)
     expect(released).toEqual({ releasedSessions: 1, releasedEntries: 1 })
     expect(bus.bufferUsage().sessions).toBe(1)
-    // 序号不回绕:丢掉缓冲之后的下一条接着上一个号。
+    // 缓冲释放后序号不重置,下一条事件接着之前的序号。
     const next = await bus.emit('idle', { type: 'x' })
     expect(next.envelope?.sequence).toBe(2)
     off()

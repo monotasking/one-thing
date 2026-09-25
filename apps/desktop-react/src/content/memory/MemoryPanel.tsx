@@ -34,31 +34,27 @@ import { MemoryTrend } from './MemoryTrend'
 import s from './MemoryPanel.module.css'
 
 /**
- * **内存监视器**(2026-09-25,用户:「给一个 monitor 应用,来查看内存占用」→「把 ui 好好设计一版」)。
+ * 内存面板(Dock 上的「内存」)。数据来自 `memory.report` 接口,与 `bun run memory:report` 相同。
  *
- * 一块普通的 Dock 瓦(`panel:memory`,与音乐 / 待办同一条路),读 core 的 `memory.report` ——
- * 与 `bun run memory:report` 同一只接口。自上而下回答四个问题,一节一个:
+ * 四部分:
+ *  1. 概览:总占用、状态、带软 / 硬上限刻度的占用条,以及按类别的占用分布;
+ *  2. 占用趋势:最近 5 分钟的总占用曲线;
+ *  3. 进程:按类别分组的进程列表;
+ *  4. 缓存:各缓存的用量与上限。
  *
- *  ① **现在多少、危不危险** —— 领头大数字 + 压力点 + 一条带 soft / hard 两根刻线的预算表;
- *  ② **最近怎么走的** —— 最近 5 分钟的面积图,soft / hard 两根发丝线作参照;
- *  ③ **花在哪儿** —— 一根四段的比例条(core / 界面 / 网页 / 系统)+ 带数值的图例;
- *  ④ **具体是谁** —— 按四类分组的进程表,与内存预算表上每一只缓存(条数对上限的细表)。
+ * 颜色:四个类别用分类色 `--viz-1..4`,按类别固定,不随排名变化;状态只用
+ * `--accent` / `--warn` / `--danger`,两者不混用。文字始终使用文字色。
  *
- * 颜色的分工:四类用分类色 `--viz-1..4`(次序固定,跟类别走不跟排名走);压力只用状态色
- * (`--accent` / `--warn` / `--danger`),两套不混 —— 一格「超 hard」的红不会被读成「第五类」。
- * 文字永远是文字色,颜色只上标记(色块 / 条 / 线)。
+ * 状态:
+ *  - 首次加载:显示「正在读取…」;
+ *  - 趋势数据不足 2 个点:显示「正在采集数据」;
+ *  - 刷新期间保留旧数据;
+ *  - 读取失败:显示错误,同时保留旧数据,下次轮询自动重试;
+ *  - 没有进程的类别不显示;
+ *  - 面板不可见时停止轮询。
  *
- * 状态清单:
- *  · 首载:一行「正在读取…」(不画骨架:这块面首载只有一拍,实测 ≈200ms);
- *  · 趋势刚起步(<2 个点):那一格写「再等几秒就有曲线」,不画一根孤零零的点;
- *  · 重拉:旧数留屏,整块面不闪(律②,query 的性质);
- *  · 出错:错话与旧数并陈(律②),下一次轮询自己重试;
- *  · 空:某一类没有进程就不出现(条上画不出 0 字节的段,图例里是噪音);
- *  · 超量:开了 30 格网页 —— 进程表在自己的滚动身里,头与领头数字不动;
- *  · 看不见就不问:面板收起 / 被切走时停轮询(`usePanelVisibility`),趋势线那一段留白。
- *
- * 「释放缓存」= `memory.trim('hard')`:叫每一只持有者把能重建的都放掉(后台放久了的网页、
- * 空闲的会话缓存……)。只有本机可信的调用方能做,浏览器壳上会答一句拒绝。
+ * 「释放缓存」调用 `memory.trim('hard')`,释放所有可重建的缓存。只有本机可信的
+ * 调用方可以执行,浏览器版界面上会返回拒绝。
  */
 export function MemoryPanel() {
   const t = useT()
@@ -75,7 +71,7 @@ export function MemoryPanel() {
     return () => clearInterval(timer)
   }, [visible])
 
-  // 每一份新报表记一个点(`capturedAt` 去重:同一份报表重渲不重复记)。
+  // 每份新报表记录一个趋势点,按 `capturedAt` 去重。
   const capturedAt = data?.capturedAt
   const totalBytes = data?.totalBytes
   useEffect(() => {
@@ -140,7 +136,7 @@ export function MemoryPanel() {
   )
 }
 
-// ── ① 现在多少 ──────────────────────────────────────────────────────────────
+// ── 概览 ────────────────────────────────────────────────────────────────────
 
 function Overview({ t, data, lastTrim }: { t: TFn; data: MemoryReportResponse; lastTrim: MemoryTrimReport | undefined }) {
   const tone = pressureTone(data)
@@ -170,8 +166,8 @@ function Overview({ t, data, lastTrim }: { t: TFn; data: MemoryReportResponse; l
       </div>
 
       {/*
-        预算表。填充色说「危不危险」(强调 → 警告 → 危险,状态色),两根刻线就是调度器
-        用的那两条线;刻度顶留出超线那一截(`meterScale`),超了也画得出来。
+        占用条:填充色表示状态,两个刻度是软 / 硬上限。刻度最大值高于硬上限,
+        超过硬上限的部分也能显示(见 `meterScale`)。
       */}
       <Meter
         className={s.budgetMeter}
@@ -187,22 +183,24 @@ function Overview({ t, data, lastTrim }: { t: TFn; data: MemoryReportResponse; l
 
       {groups.length > 0 ? <Composition t={t} groups={groups} /> : null}
 
-      <p className={s.meta}>
-        {t('memory.heapLine', { heap: formatBytes(data.heap.usedBytes), total: formatBytes(data.heap.totalBytes) })}
-        {data.partial ? ` · ${t('memory.partial')}` : ''}
-        {lastTrim ? <span data-testid="memory-last-trim">{` · ${trimLine(t, lastTrim)}`}</span> : null}
-      </p>
+      {data.partial || lastTrim ? (
+        <p className={s.meta}>
+          {[data.partial ? t('memory.partial') : undefined, lastTrim ? trimLine(t, lastTrim) : undefined]
+            .filter(Boolean)
+            .join(' · ')}
+        </p>
+      ) : null}
     </Card>
   )
 }
 
-// ── ③ 花在哪儿(总览卡里的第二段)────────────────────────────────────────
+// ── 占用分布(概览卡片内)──────────────────────────────────────────────────
 
 function Composition({ t, groups }: { t: TFn; groups: CategoryGroup[] }) {
   return (
     <div className={s.composition}>
       <span className={s.heroLabel} id="memory-composition-title">{t('memory.composition')}</span>
-      {/* 比例条是图例的图形投影;数值全在下面那张图例里,条本身对读屏隐藏。 */}
+      {/* 比例条的数值都在下方图例中,因此对读屏软件隐藏。 */}
       <div className={s.stack} aria-hidden="true">
         {groups.map(group => (
           <Tooltip key={group.category} content={`${t(categoryLabelKey(group.category))} · ${formatBytes(group.bytes)} · ${formatShare(group.share)}`}>
@@ -229,7 +227,7 @@ function Composition({ t, groups }: { t: TFn; groups: CategoryGroup[] }) {
   )
 }
 
-// ── ④ 具体是谁 ──────────────────────────────────────────────────────────────
+// ── 进程与缓存 ──────────────────────────────────────────────────────────────
 
 function Processes({ t, groups }: { t: TFn; groups: CategoryGroup[] }) {
   const largest = groups.reduce((max, group) => Math.max(max, ...group.processes.map(row => row.bytes ?? 0)), 0)
@@ -257,7 +255,7 @@ function Processes({ t, groups }: { t: TFn; groups: CategoryGroup[] }) {
                     <Tooltip content={`${row.name} · pid ${row.pid}`}>
                       <span className={s.nameText} data-testid="memory-process-name">{displayName(t, row.name)}</span>
                     </Tooltip>
-                    {/* 定宽小条:这一行占最大那个进程的几成,排成整齐的一列。 */}
+                    {/* 固定宽度的小条,表示该进程相对最大进程的占比。 */}
                     <span className={s.mini} aria-hidden="true">
                       <span
                         className={s.miniFill}
@@ -285,7 +283,7 @@ function HolderRow({ t, holder }: { t: TFn; holder: MemoryHolderReport }) {
   const fill = holderFill(holder)
   const parts = holderDetailParts(holder)
   const detail = holder.error
-    ?? (parts.length > 0 ? parts.map(part => (part.key ? t(part.key, { count: part.value }) : `${part.raw} ${part.value}`)).join(' · ') : undefined)
+    ?? (parts.length > 0 ? parts.map(part => t(part.key, { count: part.value })).join(' · ') : undefined)
   return (
     <li className={s.holder} data-testid="memory-holder-row">
       <div className={s.holderText}>
@@ -304,8 +302,7 @@ function HolderRow({ t, holder }: { t: TFn; holder: MemoryHolderReport }) {
             value={holder.entries}
             max={holder.limit.entries}
             valueText={holderReadout(t, holder)}
-            // **顶到上限不换色**:缓存满了就按自己的规矩淘汰,那是它的正常工作状态,
-            // 染成警告色会让人以为出了事(真机看过一版黄条,读起来像故障)。
+            // 达到上限时不改颜色:缓存满后按自身规则淘汰,属于正常状态。
           />
         )}
       </div>
@@ -313,16 +310,16 @@ function HolderRow({ t, holder }: { t: TFn; holder: MemoryHolderReport }) {
   )
 }
 
-// ── 念法 ────────────────────────────────────────────────────────────────────
+// ── 格式化 ──────────────────────────────────────────────────────────────────
 
-/** 压力档 → 表的色档。量不到也画强调色(轨道还在,只是没有填充)。 */
+/** 状态对应的占用条颜色。无法测量时用强调色。 */
 function meterTone(tone: StatusDotTone): MeterTone {
   if (tone === 'bad') return 'danger'
   if (tone === 'warn') return 'warn'
   return 'accent'
 }
 
-/** 「1.7 GB」→ ["1.7", "GB"]:领头数字与单位分两种字号。 */
+/** 把「1.7 GB」拆成数值与单位,分别使用不同字号。 */
 function splitBytes(bytes: number | null): [string, string] {
   if (bytes === null) return ['', '']
   const text = formatBytes(bytes)
@@ -330,7 +327,7 @@ function splitBytes(bytes: number | null): [string, string] {
   return at < 0 ? [text, ''] : [text.slice(0, at), text.slice(at + 1)]
 }
 
-/** Chromium 服务的内部名换成人话;认不得的原样。 */
+/** 把 Chromium 服务进程的内部名称转换为可读名称;未知名称原样显示。 */
 function displayName(t: TFn, name: string): string {
   if (name === 'core') return t('memory.nameCore')
   if (name.startsWith('network.mojom')) return t('memory.nameNetwork')
@@ -344,7 +341,7 @@ function countText(t: TFn, count: number, unit: string): string {
   return key ? t(key, { count }) : `${count} ${unit}`
 }
 
-/** 「8 / 8 个会话 · 27 MB」:有条数上限就念成「现在 / 上限」,字节跟在后面。 */
+/** 缓存读数,如「8 / 8 个会话 · 27 MB」;没有上限时只显示当前数量。 */
 function holderReadout(t: TFn, holder: MemoryHolderReport): string {
   const limit = holder.limit?.entries
   const count = limit === undefined ? countText(t, holder.entries, holder.unit) : `${holder.entries} / ${countText(t, limit, holder.unit)}`

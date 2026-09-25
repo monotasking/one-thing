@@ -201,7 +201,7 @@ const REGISTRY: Record<string, LucideIcon> = {
   MicVocal,
   // 我的清单(待办 T3)那块瓦。
   ListChecks,
-  // 内存监视器那块瓦(2026-09-25):一块表盘 —— 面里是读数。
+  // 内存面板的 Dock 图标。
   Gauge,
   Sparkles,
   Trash2,

@@ -286,8 +286,8 @@ export function clearAllSessionCache(): void {
 }
 
 /**
- * 挤掉 LRU 里空闲、不受保护的会话(内存预算表的 `trim`)。交回挤掉的 id。
- * 判据见 `SessionRepository.releaseIdleCachedSessions`。
+ * 从 LRU 中移除空闲且未受保护的会话,返回被移除的 id。
+ * 规则见 `SessionRepository.releaseIdleCachedSessions`。
  */
 export function releaseIdleCachedSessions(options: {
 	idleMs: number;

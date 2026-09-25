@@ -1,7 +1,6 @@
 /**
- * 内存预算表的装配门(2026-09-25):一只真装配的 backend 上,`memory.report`
- * 看得到装配处登记的三只持有者与本进程探针;`memory.trim` 只给本机可信的调用方;
- * dispose 之后表跟着实例一起没了。
+ * 在真实装配的 backend 上验证 memory RPC:`memory.report` 包含装配时注册的三个缓存
+ * 与本进程;`memory.trim` 只允许本机可信的调用方;dispose 之后登记表随实例一起释放。
  */
 import { afterAll, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
@@ -75,7 +74,7 @@ describe('memory RPC domain on a real assembly', () => {
 
     const trusted = await assemble({ origin: 'desktop-embedded' })
     try {
-      // 档位真的经信封的 `payload` 送到了处理者(缺省是 hard,所以这里问 soft)。
+      // 确认力度经 `payload` 传到处理函数(默认是 hard,所以这里传 soft)。
       const trimmed = await dispatchRpc({ domain: 'memory', method: 'trim', payload: { pressure: 'soft' } })
       expect(trimmed.ok).toBe(true)
       const data = (trimmed as { ok: true; data: import('@shared/ipc/memory.js').MemoryTrimReport }).data

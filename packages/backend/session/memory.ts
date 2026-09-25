@@ -1,11 +1,8 @@
 /**
- * 会话层在内存预算表上的两行(2026-09-25):活投影缓存与会话 LRU。
+ * 会话层的两个内存登记:会话投影缓存与会话对象 LRU。
  *
- * 两者**要一起松**才真的省下内存:LRU 里那份会话对象的 `messages` 是从活投影
- * 物化出来的,只丢投影、LRU 还握着物化结果,那一份照样在堆上。
- *
- * 保护判据只有一个来源 —— 活投影自己的 `protectionOf`(在跑的 run、领先的 delta):
- * LRU 那一行问的也是它,不另抄一份「谁在跑」。
+ * 两者需要一起释放:LRU 中的会话对象持有从投影生成的消息数组,只释放投影不会减少内存。
+ * 是否可以释放统一由投影缓存的 `protectionOf` 判断(有正在运行的任务或未落盘的增量时不释放)。
  */
 import type { MemoryHolder } from '@onething/core/memory'
 import { getSessionCacheStats, releaseIdleCachedSessions } from '../stores/sessions.js'
@@ -16,14 +13,14 @@ const LRU_IDLE_MS = { soft: 10 * 60_000, hard: 0 } as const
 export function createSessionMemoryHolders(projections: SessionProjectionCache): MemoryHolder[] {
   const projectionHolder: MemoryHolder = {
     id: 'sessions.projections',
-    label: '会话消息缓存',
+    label: '会话内容缓存',
     usage() {
       const stats = projections.getMemoryStats()
       return {
         entries: stats.size,
         unit: 'sessions',
         bytes: stats.estimatedBytes,
-        // 上限只管**空闲**那几条;在跑的 run 受保护,不算进上限。
+        // 上限只约束空闲条目,正在使用的会话不计入。
         limit: { entries: stats.limits.maxIdleEntries, bytes: stats.limits.maxIdleBytes },
         detail: { idle: stats.idleCount, protected: stats.protectedCount },
       }
@@ -35,7 +32,7 @@ export function createSessionMemoryHolders(projections: SessionProjectionCache):
   }
   const cacheHolder: MemoryHolder = {
     id: 'sessions.cache',
-    label: '会话对象缓存',
+    label: '最近打开的会话',
     usage() {
       const stats = getSessionCacheStats()
       return { entries: stats.size, unit: 'sessions', limit: { entries: stats.maxSize } }

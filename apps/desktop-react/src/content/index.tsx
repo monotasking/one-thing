@@ -66,7 +66,7 @@ const RENDERERS: Record<string, () => ReactNode> = {
   music: MusicPanel,
   // 我的清单(待办 T3)。与音乐同理走 `panel` 这条路:refId 若自成一种内容会与 core 的 `todo:` 地址撞名。
   todo: TodoPanel,
-  // 内存监视器(2026-09-25):读 core 的 `memory.report`,按进程 + 按缓存拆开。
+  // 内存面板:按进程与缓存显示内存占用。
   memory: MemoryPanel,
   [NOTIFICATIONS_ITEM_ID]: NotificationsPanel,
   [SESSIONS_ITEM_ID]: ExposeView,

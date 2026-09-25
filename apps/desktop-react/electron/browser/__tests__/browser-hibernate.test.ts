@@ -1,9 +1,9 @@
 /**
- * 后台标签页释放(2026-09-25,内存预算表)。三件各一组:
- *  - service / tab:释放 = 进程没了、tab 还在;再可见 = 重建并按原地址重新加载,
- *    「开了一格」这条事实不再发第二次;
- *  - layout:「看不见多久了」只在壳说看不见时计,被遮不算;
- *  - holder:看不见够久 + 不出声 + 有视图,三条齐了才释放。
+ * 后台标签页释放。
+ *  - service / tab:释放后网页进程关闭,标签页保留;再次可见时按原地址重新加载,
+ *    不再发送「标签页已打开」事件;
+ *  - layout:只在标签页隐藏时计时,被浮层遮挡不算隐藏;
+ *  - holder:隐藏足够久、没有播放声音、网页已加载,三个条件都满足才释放。
  */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -73,12 +73,12 @@ describe('BrowserService.hibernate', () => {
     expect(service.list().map(row => row.id)).toEqual([tab.id])
     expect(service.get(tab.id)!.state.url).toBe('https://a.test')
     expect(service.get(tab.id)!.state.canGoBack).toBe(false)
-    // 第二次释放一格没有视图的 tab:什么都不做。
+    // 标签页已释放时再次释放:不做任何操作。
     expect(service.hibernate(tab.id)).toBe(false)
 
     service.materialize(tab.id)
     await vi.waitFor(() => expect(loads).toEqual(['https://a.test', 'https://a.test']))
-    // 窗口系统重新登记视图(onMaterialized 两次),「开了一格」只说过一次。
+    // 视图重新创建时会再次触发 onMaterialized,但「标签页已打开」只发送一次。
     expect(observer.onMaterialized).toHaveBeenCalledTimes(2)
     expect(observer.onOpened).toHaveBeenCalledTimes(1)
     expect(service.get(tab.id)!.hibernationCount).toBe(1)

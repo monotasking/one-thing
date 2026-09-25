@@ -402,12 +402,11 @@ export class OnethingSessionRepository<
   }
 
   /**
-   * 内存调度器松手的那一口(2026-09-25 内存预算表):挤掉 LRU 里**空闲**的会话。
+   * 从 LRU 中移除空闲超过 `idleMs` 的会话,供内存调度器调用。
    *
-   * 永远不挤:有挂起写的(`pendingSessionValues` 自己另握一份强引用,但留着它的
-   * 活对象才是「写的就是缓存里这一份」的最短路径)、调用方说受保护的(在跑的 run、
-   * 还在流式的)。挤掉的只是缓存 —— 下一次 `getSession` 从账本重新读回来;
-   * 「这个进程接手过谁」那张表**不动**,所以冷加载回来不会被当成崩溃残留再修一遍。
+   * 不会移除:有未写盘修改的会话、调用方标记为受保护的会话(如正在运行任务)。
+   * 移除后下次 `getSession` 会从磁盘重新加载;`processOwnedSessions` 保持不变,
+   * 重新加载时不会被当作崩溃残留再次修复。
    */
   releaseIdleCachedSessions(options: {
     idleMs: number

@@ -107,7 +107,7 @@ describe('onething session repository', () => {
     await f.repository.flushAllPendingSaves()
     const dirty = f.repository.getCachedSession('dirty')!
     f.repository.saveSessionToFile('dirty', { ...dirty, name: 'dirty 2' })
-    // 保鲜期没过:一条都不挤。
+    // 未超过空闲时间:不释放。
     expect(f.repository.releaseIdleCachedSessions({ idleMs: 60_000 })).toEqual([])
     const released = f.repository.releaseIdleCachedSessions({ idleMs: 0, isProtected: id => id === 'keep' })
     expect(released).toEqual(['idle'])
@@ -115,7 +115,7 @@ describe('onething session repository', () => {
     expect(f.repository.getCachedSession('keep')).toBeDefined()
     expect(f.repository.getCachedSession('dirty')).toBeDefined()
     await f.repository.flushAllPendingSaves()
-    // 挤掉的只是缓存:从盘上照样读得回来。
+    // 释放的只是缓存:仍能从磁盘读回。
     expect(f.repository.getSession('idle')?.id).toBe('idle')
   })
 

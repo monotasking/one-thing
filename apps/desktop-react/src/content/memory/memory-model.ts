@@ -3,19 +3,19 @@ import type { StatusDotTone } from '../../ui/StatusDot'
 import type { MessageKey } from '../../i18n'
 
 /**
- * 内存监视器的纯读法(2026-09-25)。屏幕上每一个「怎么念、怎么量」都在这里,
- * 面板组件只管摆 —— 于是读法能单测,面板不必。
+ * 内存面板的纯计算函数:状态判断、刻度、分组、趋势图几何与格式化。
+ * 与组件分开,便于单元测试。
  */
 
-/** 面板看得见时多久问一次。2s:够跟上一次打开网页的涨落,又不至于让监视器自己成了负担。 */
+/** 面板可见时的刷新间隔。 */
 export const MEMORY_POLL_MS = 2000
 
-/** 趋势线留多少个点:150 × 2s = 最近 5 分钟。 */
+/** 趋势图保留的点数:150 × 2 秒 = 5 分钟。 */
 export const MEMORY_HISTORY_POINTS = 150
 
-// ── 压力档 ─────────────────────────────────────────────────────────────────
+// ── 状态 ───────────────────────────────────────────────────────────────────
 
-/** 总量落在预算的哪一档。量不到(`totalBytes === null`)就是 `idle`,不猜。 */
+/** 根据总占用判断状态;无法测量时返回 `idle`。 */
 export function pressureTone(report: Pick<MemoryReportResponse, 'totalBytes' | 'budget'>): StatusDotTone {
   const total = report.totalBytes
   if (total === null) return 'idle'
@@ -32,9 +32,8 @@ export function pressureLabelKey(tone: StatusDotTone): MessageKey {
 }
 
 /**
- * 预算表(meter)的刻度。**上限不是 hard 线**:超过 hard 的那一截要画得出来 ——
- * 刻度顶 = max(hard × 1.2, 总量 × 1.05),于是 soft / hard 两根刻线永远在条里,
- * 而一个 1.7GB 的总量也不会把条撑爆成 100%。
+ * 占用条的刻度。最大值取 max(硬上限 × 1.2, 总占用 × 1.05),使两个上限刻度始终
+ * 落在条内,超过硬上限的部分也能显示。
  */
 export interface MeterScale {
   max: number
@@ -55,13 +54,13 @@ export function meterScale(report: Pick<MemoryReportResponse, 'totalBytes' | 'bu
   }
 }
 
-// ── 去向:四类 ───────────────────────────────────────────────────────────────
+// ── 类别 ─────────────────────────────────────────────────────────────────────
 
 /**
- * 进程归成四类,**次序固定**(颜色按这个次序取 `--viz-1..4`,不按大小换色):
- * core(主进程)/ 界面(壳自己的渲染进程)/ 网页(内置浏览器的每一格与它的子框架)/
- * 系统(GPU、网络、音频这类 Chromium 服务,以及认不出的)。
- * 七种 kind 折成四类而不是七色 —— 四格以上的分类色在色觉异常下分不开。
+ * 进程分为四类,顺序固定,颜色按此顺序取 `--viz-1..4`:
+ * 核心(主进程)、界面(应用窗口的渲染进程)、网页(内置浏览器标签页及其子框架)、
+ * 系统服务(GPU、网络、音频等 Chromium 服务及其他)。
+ * 超过四种分类色时,色觉异常的用户难以区分,因此不按七种进程类型分别着色。
  */
 export type MemoryCategory = 'core' | 'ui' | 'web' | 'system'
 
@@ -91,7 +90,7 @@ const CATEGORY_HINT_KEYS: Record<MemoryCategory, MessageKey> = {
 export function categoryLabelKey(category: MemoryCategory): MessageKey { return CATEGORY_KEYS[category] }
 export function categoryHintKey(category: MemoryCategory): MessageKey { return CATEGORY_HINT_KEYS[category] }
 
-/** 颜色跟类别走(第 n 类恒是第 n 格),**不跟排名走**。 */
+/** 类别对应的颜色,固定不随排名变化。 */
 export function categoryColorVar(category: MemoryCategory): string {
   return `var(--viz-${MEMORY_CATEGORIES.indexOf(category) + 1})`
 }
@@ -99,13 +98,13 @@ export function categoryColorVar(category: MemoryCategory): string {
 export interface CategoryGroup {
   category: MemoryCategory
   bytes: number
-  /** 占所有量得到的字节的比例(0–1)。 */
+  /** 占可测量总量的比例(0–1)。 */
   share: number
-  /** 这一类里的进程,从大到小,量不到的排最后。 */
+  /** 该类别的进程,从大到小排列,无法测量的排在最后。 */
   processes: MemoryProcessSample[]
 }
 
-/** 分组 + 求和。空的类别**不出现**(一格 0 字节的段在条上画不出来,在图例里是噪音)。 */
+/** 按类别分组并求和,不返回没有进程的类别。 */
 export function groupByCategory(rows: readonly MemoryProcessSample[]): CategoryGroup[] {
   const measured = rows.reduce((sum, row) => sum + (row.bytes ?? 0), 0)
   return MEMORY_CATEGORIES.flatMap(category => {
@@ -116,12 +115,12 @@ export function groupByCategory(rows: readonly MemoryProcessSample[]): CategoryG
   })
 }
 
-/** 从大到小;量不到的排最后。**不改原数组** —— 报表是 query 的缓存。 */
+/** 从大到小排序,无法测量的排在最后。返回新数组。 */
 export function sortProcesses(rows: readonly MemoryProcessSample[]): MemoryProcessSample[] {
   return [...rows].sort((a, b) => (b.bytes ?? -1) - (a.bytes ?? -1))
 }
 
-/** 百分比念法:不到 1% 念「<1%」,别的取整。 */
+/** 格式化百分比:小于 1% 显示「<1%」,其余取整。 */
 export function formatShare(share: number): string {
   if (share > 0 && share < 0.01) return '<1%'
   return `${Math.round(share * 100)}%`
@@ -131,7 +130,7 @@ export function formatShare(share: number): string {
 
 export interface MemorySample { at: number; bytes: number }
 
-/** 追加一个点并截到 `limit`。同一次采样(`at` 不变)不重复记。 */
+/** 追加一个趋势点并截断到 `limit` 个;相同时间戳的点不重复记录。 */
 export function appendSample(history: readonly MemorySample[], sample: MemorySample, limit = MEMORY_HISTORY_POINTS): MemorySample[] {
   if (history.length > 0 && history[history.length - 1].at === sample.at) return history as MemorySample[]
   const next = [...history, sample]
@@ -139,13 +138,10 @@ export function appendSample(history: readonly MemorySample[], sample: MemorySam
 }
 
 /**
- * 趋势图的几何:x 按**时间**铺(不是按下标 —— 面板藏起来那一段没有点,
- * 那一段就该是一段空白的时间,而不是被挤没)。
+ * 趋势图几何。横轴按时间排布,面板隐藏期间没有数据的时段保留为空白。
  *
- * **y 不从 0 起,所以这里只有线、没有面积**:面积图的面积就是量,基线必须是 0;
- * 而监视器要看的是起伏 —— 1.7 GB 上下 40 MB 从 0 起画就是一条平线。纵轴范围包住
- * 这段数据**与** soft / hard 两根参照线(两根线永远在图里,读者随时知道离线多远),
- * 上下各留一成空。
+ * 纵轴范围覆盖全部数据点与软 / 硬上限,上下各留 10% 余量,不从 0 开始,以便看清变化;
+ * 因此只画线,不画面积(面积图的基线必须是 0)。
  */
 export interface TrendGeometry {
   points: Array<{ x: number; y: number; sample: MemorySample }>
@@ -177,7 +173,7 @@ export function trendGeometry(
   return { points, line, softY: yOf(budget.softBytes), hardY: yOf(budget.hardBytes), yMin, yMax }
 }
 
-/** 离指针最近的那个点的下标(十字线吸附用)。 */
+/** 返回离指定横坐标最近的点的下标。 */
 export function nearestIndex(xs: readonly number[], x: number): number {
   let best = 0
   for (let i = 1; i < xs.length; i++) {
@@ -194,14 +190,14 @@ const UNIT_KEYS: Record<string, MessageKey> = {
   views: 'memory.unitViews',
 }
 
-/** 持有者自述的单位 → 字典键。认不得的单位原样念(新持有者不必先改这里才看得见)。 */
+/** 单位对应的文案键;未知单位返回 `undefined`,调用方原样显示。 */
 export function holderUnitKey(unit: string): MessageKey | undefined {
   return UNIT_KEYS[unit]
 }
 
+/** 缓存明细里要显示的项及其文案。不在表里的项不显示。 */
 const DETAIL_KEYS: Record<string, MessageKey> = {
   sessions: 'memory.detailSessions',
-  subscribed: 'memory.detailSubscribed',
   capacityPerSession: 'memory.detailCapacityPerSession',
   idle: 'memory.detailIdle',
   protected: 'memory.detailProtected',
@@ -211,19 +207,16 @@ const DETAIL_KEYS: Record<string, MessageKey> = {
   hibernated: 'memory.detailHibernated',
 }
 
-/**
- * detail 那几格的人话。认得的键查字典(「空闲 7」),认不得的原样(`key 7`)——
- * 持有者是自述的,新长一格不该先等这张表才看得见。
- */
-export function holderDetailParts(holder: Pick<MemoryHolderReport, 'detail'>): Array<{ key?: MessageKey; raw: string; value: string }> {
-  return Object.entries(holder.detail ?? {}).map(([raw, value]) => ({
-    ...(DETAIL_KEYS[raw] ? { key: DETAIL_KEYS[raw] } : {}),
-    raw,
-    value: String(value),
-  }))
+/** 缓存明细中要显示的项:只保留有文案的项,值为 0 的项不显示。 */
+export function holderDetailParts(holder: Pick<MemoryHolderReport, 'detail'>): Array<{ key: MessageKey; value: number | string }> {
+  return Object.entries(holder.detail ?? {}).flatMap(([raw, value]) => {
+    const key = DETAIL_KEYS[raw]
+    if (!key || value === 0 || value === false) return []
+    return [{ key, value: typeof value === 'boolean' ? String(value) : value }]
+  })
 }
 
-/** 条数占上限的比例(缓存行那条细表)。没有条数上限 = `undefined`,不画表。 */
+/** 条目数占上限的比例;没有条目上限时返回 `undefined`。 */
 export function holderFill(holder: Pick<MemoryHolderReport, 'entries' | 'limit'>): number | undefined {
   const limit = holder.limit?.entries
   if (limit === undefined || limit <= 0) return undefined

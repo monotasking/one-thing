@@ -2,10 +2,7 @@ import { memoryRouter, type MemoryPressure, type MemoryReportResponse, type Memo
 import { createMutation, createQuery } from './kernel'
 
 /**
- * 内存监视器的数据面(2026-09-25)。读的是 core 的 `memory` RPC 域 —— 与
- * `bun run memory:report` 同一只接口,所以面板上的数与终端里的数是同一份。
- *
- * 轮询**不在这里**:要不要问、多久问一次是「面板此刻看不看得见」的事,归面板。
+ * 内存面板的数据源,调用 `memory` RPC 域。轮询由面板根据自身是否可见控制。
  */
 export interface MemoryPort {
   report(): Promise<MemoryReportResponse>
@@ -13,7 +10,7 @@ export interface MemoryPort {
 }
 
 let override: MemoryPort | undefined
-/** 测试缝:换一只假的端口。 */
+/** 测试用:替换为假的端口实现。 */
 export function configureMemoryPort(port?: MemoryPort): void { override = port }
 
 async function memoryPort(): Promise<MemoryPort> {
@@ -31,7 +28,7 @@ export const memoryReportQuery = createQuery<MemoryReportResponse>(
   async () => (await memoryPort()).report(),
 )
 
-/** 手动释放一次。成功后后台补拉报表(不清屏)。 */
+/** 手动释放缓存。成功后在后台刷新报表。 */
 export const memoryTrimMutation = createMutation<MemoryPressure, MemoryTrimReport>('memory.trim', {
   run: async pressure => (await memoryPort()).trim(pressure),
   settle: () => { void memoryReportQuery.refetch() },

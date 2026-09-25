@@ -8,8 +8,8 @@ import { useStageStore } from '../../stage/store'
 import type { MemoryReportResponse } from '@shared/ipc/memory'
 
 /**
- * 内存监视器:读法(纯函数)各测各的;面板测三件 —— 按大小排的进程表、缓存行、
- * 看不见就不问、「释放缓存」走 trim 并把结果念出来。
+ * 内存面板:分别测试数据处理函数;面板本身测试进程按大小排序、缓存列表、
+ * 面板不可见时不请求数据、「释放缓存」调用 trim 并显示结果。
  */
 
 const MB = 1024 * 1024
@@ -26,7 +26,7 @@ function report(over: Partial<MemoryReportResponse> = {}): MemoryReportResponse 
       { pid: 4, kind: 'gpu', name: 'GPU', bytes: null },
     ],
     holders: [
-      { id: 'sessions.projections', label: '会话消息缓存', entries: 8, unit: 'sessions', bytes: 27 * MB, limit: { entries: 8, bytes: 64 * MB }, detail: { idle: 7 }, trimmable: true },
+      { id: 'sessions.projections', label: '会话内容缓存', entries: 8, unit: 'sessions', bytes: 27 * MB, limit: { entries: 8, bytes: 64 * MB }, detail: { idle: 7 }, trimmable: true },
     ],
     budget: { softBytes: 1024 * MB, hardBytes: 1536 * MB },
     heap: { usedBytes: 157 * MB, totalBytes: 160 * MB, externalBytes: 16 * MB, arrayBuffersBytes: 1 * MB },
@@ -77,7 +77,7 @@ describe('memory model', () => {
     expect(history.map(sample => sample.at)).toEqual([1000, 2000, 3000])
     const geometry = trendGeometry(history, budget, 100, 50)!
     expect(geometry.points.map(point => point.x)).toEqual([0, 50, 100])
-    // 两根参照线永远在图里(纵轴包住它们),数据在两线之外也一样。
+    // 纵轴范围始终包含两条上限线,即使数据在两线之外。
     expect(geometry.hardY).toBeGreaterThan(0)
     expect(geometry.softY).toBeLessThan(50)
     expect(geometry.yMin).toBeLessThanOrEqual(10)
@@ -85,10 +85,9 @@ describe('memory model', () => {
     expect(nearestIndex([0, 50, 100], 70)).toBe(1)
   })
 
-  it('names known detail keys, keeps unknown ones raw, and only meters holders with a count limit', () => {
-    expect(holderDetailParts({ detail: { idle: 7, novel: 1 } })).toEqual([
-      { key: 'memory.detailIdle', raw: 'idle', value: '7' },
-      { raw: 'novel', value: '1' },
+  it('shows only detail items that have wording, skips zero values, and only meters holders with a count limit', () => {
+    expect(holderDetailParts({ detail: { idle: 7, novel: 1, hibernated: 0 } })).toEqual([
+      { key: 'memory.detailIdle', value: 7 },
     ])
     expect(holderFill({ entries: 4, limit: { entries: 8 } })).toBe(0.5)
     expect(holderFill({ entries: 4 })).toBeUndefined()
@@ -116,16 +115,16 @@ describe('MemoryPanel', () => {
   it('shows processes biggest first and the cache rows', async () => {
     mount()
     const rows = await screen.findAllByTestId('memory-process-row')
-    // 分组次序固定(核心 / 界面 / 网页 / 系统),core 的内部名念成人话。
+    // 分组顺序固定(核心 / 界面 / 网页 / 系统),core 进程显示为可读名称。
     expect(rows.map(row => within(row).getByTestId('memory-process-name').textContent)).toEqual(['主进程', 'onething', '哔哩哔哩', 'GPU'])
     expect(within(rows[3]).getByText('无数据')).toBeTruthy()
     expect(screen.getByTestId('memory-total').textContent).toBe('1.7GB')
     expect(screen.getByText('超过硬上限')).toBeTruthy()
     expect(screen.getByRole('meter', { name: '内存占用' }).getAttribute('aria-valuetext')).toBe('1.7 GB')
-    expect(screen.getByRole('meter', { name: '会话消息缓存用量' }).getAttribute('data-tone')).toBe('accent')
+    expect(screen.getByRole('meter', { name: '会话内容缓存用量' }).getAttribute('data-tone')).toBe('accent')
     const holder = screen.getByTestId('memory-holder-row')
     expect(holder.textContent).toContain('8 / 8 个会话')
-    expect(holder.textContent).toContain('空闲 7')
+    expect(holder.textContent).toContain('7 个未在使用')
   })
 
   it('does not ask while the panel is not visible', async () => {

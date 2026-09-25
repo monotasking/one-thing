@@ -207,8 +207,8 @@ export class BrowserService {
   }
 
   /**
-   * 后台释放一格(内存预算表)。先让窗口系统摘掉视图(`onDematerialized`,与
-   * `close` 同一条路),再关进程;tab、地址、活动位、落盘一概不动。答释放了没有。
+   * 释放标签页的渲染进程:先从窗口移除视图,再关闭进程。标签页本身、地址、
+   * 活动状态与持久化记录保持不变。返回是否确实释放。
    */
   hibernate(tabId: string): boolean {
     const tab = this.tabs.get(tabId)
@@ -282,7 +282,7 @@ export class BrowserService {
         onState: (tab, patch) => { this.onTabState(tab, patch) },
         onOpened: (tab, info) => {
           this.options.observer.onMaterialized(tab)
-          // 释放过又建回来的那一格:窗口系统要重新登记视图,但「开了一格」只说一次。
+          // 释放后重建的标签页需要重新注册视图,但不再发送「已打开」事件。
           if (!info?.reopened) this.options.observer.onOpened(tab)
         },
         onWindowOpen: (tab, decision) => { this.onWindowOpen(tab, decision) },

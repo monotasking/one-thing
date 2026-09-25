@@ -1,18 +1,12 @@
 /**
- * 壳在内存预算表上的那只进程探针(2026-09-25)。
+ * Electron 进程探针:把 `app.getAppMetrics()` 转换为内存报告中的进程行。
  *
- * core 自己那只探针只量得到本进程(`process.memoryUsage().rss`);活动监视器里看到的
- * 「接近 2G」是整个 Electron 的和 —— 渲染进程、GPU、网络服务、内置浏览器的每一格
- * tab 各是一个进程。这只探针把 `app.getAppMetrics()` 折成表上的行。
- *
- * 纯函数 + 注入的 electron 面,所以它在 vitest 下能跑(只有 `main.ts` import electron)。
- * 这个文件取代了从前那份 `memory-protocol.ts`:它画了一条 `host:memory` 的 IPC 通道,
- * 但一行实现都没有 —— 而壳的 `ipcMain` 被 `transport:gate` 钉在 ≤ 2;读数改走通用
- * RPC 的 `memory` 域,不需要第三条通道。
+ * 主进程的探针只能测量自身;渲染进程、GPU、网络服务和内置浏览器的每个标签页
+ * 都是独立进程,由这里报告。Electron 接口通过参数注入,本文件不直接引用 electron。
  */
 import type { MemoryProcessKind, MemoryProcessProbe, MemoryProcessSample } from '@onething/core/memory'
 
-/** `Electron.ProcessMetric` 里用得到的那几格(字节以 KiB 给出)。 */
+/** `Electron.ProcessMetric` 中用到的字段(单位 KiB)。 */
 export interface ShellProcessMetric {
   pid: number
   type: string
@@ -21,19 +15,19 @@ export interface ShellProcessMetric {
   memory?: { workingSetSize?: number; privateBytes?: number }
 }
 
-/** 一只渲染进程是谁:壳自己的窗(`shell`)还是内置浏览器的一格(`browser`),带标题。 */
+/** 渲染进程的归属:应用窗口(`shell`)或内置浏览器标签页(`browser`),以及标题。 */
 export interface ShellWebContentsInfo {
   pid: number
   role: 'shell' | 'browser'
   title: string
-  /** 这一行来自页里的子框架(跨站 iframe 被站点隔离进了自己的进程)。 */
+  /** 该进程属于页面中的跨站子框架。 */
   subframe?: boolean
 }
 
 export interface ShellMemoryProbeDeps {
   getAppMetrics(): ShellProcessMetric[]
   listWebContents(): ShellWebContentsInfo[]
-  /** 本进程 pid —— core 那只探针已经报过,这里跳过,免得算两遍。 */
+  /** 主进程 pid,已由主进程探针报告,这里跳过。 */
   selfPid: number
 }
 
@@ -55,13 +49,13 @@ function nameOf(metric: ShellProcessMetric, contents: ShellWebContentsInfo | und
   return raw.length > TITLE_MAX ? `${raw.slice(0, TITLE_MAX)}…` : raw
 }
 
-/** `getAppMetrics()` → 表上的行。私有字节(Windows 才有)优先于工作集。 */
+/** 转换 `getAppMetrics()` 的结果。优先使用私有字节(仅 Windows 提供),否则用工作集。 */
 export function toMemoryProcessSamples(
   metrics: readonly ShellProcessMetric[],
   webContents: readonly ShellWebContentsInfo[],
   selfPid: number,
 ): MemoryProcessSample[] {
-  // 同一个 pid 可能既是某页的主进程又被别页的 iframe 复用:主框架那一行说了算。
+  // 同一 pid 同时出现在主框架和子框架中时,按主框架命名。
   const byPid = new Map<number, ShellWebContentsInfo>()
   for (const info of webContents) {
     const known = byPid.get(info.pid)

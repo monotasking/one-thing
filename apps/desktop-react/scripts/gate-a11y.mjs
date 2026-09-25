@@ -1071,10 +1071,9 @@ async function main() {
     )
 
     /*
-     * 内存监视器(2026-09-25)。读的是 core 的 `memory.report`,server 宿主上照样有 ——
-     * 所以它的 axe 住在这道门里。要扫的三样:进程表(`role="table"` 的行 / 列头 / 格)、
-     * 预算那条 `role="progressbar"`(要说得出「什么的占用」)、「释放缓存」那颗钮。
-     * 等的是**第一行进程**上屏,不是面板出现 —— 首载那一拍只有一句「正在读取…」。
+     * 内存面板。`memory.report` 在 server 宿主上同样可用,因此在这里扫描。
+     * 重点检查:进程列表、带名称的量表(`role="meter"`)、「释放缓存」按钮。
+     * 等待第一行进程出现后再扫描,首次加载时只有「正在读取…」一行。
      */
     console.log('\n[7c/14] 内存监视器:开一块面再扫一次')
     await clickSelector(page, '[data-testid="dock-tile-memory"]')

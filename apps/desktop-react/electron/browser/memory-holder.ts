@@ -1,18 +1,13 @@
 /**
- * 内置浏览器在内存预算表上的那一行(2026-09-25,用户真机报表:1715MB 里内置浏览器
- * 五个进程占了约 550MB)。
+ * 内置浏览器标签页的内存持有者。
  *
- * 每一格建了视图的 tab 就是一个渲染进程(外加它页里跨站 iframe 的进程)。这一行
- * 松手的办法是**后台释放**:关掉那一格的进程,tab 留着,切回去时重新加载
- * (`BrowserTab.hibernate` / `BrowserService.hibernate`)。
+ * 每个已创建视图的标签页占用一个渲染进程(页面中的跨站 iframe 另占进程)。释放方式是
+ * 关闭标签页的渲染进程并保留标签页,切回时重新加载(`BrowserService.hibernate`)。
  *
- * 三条判据,少一条都不释放:
- *  ① **壳说它看不见**,而且看不见得够久 —— soft 档 10 分钟、hard 档 1 分钟
- *     (被遮的那一格不算看不见:屏幕上画着它的快照,人还在看);
- *  ② **不在出声** —— 后台放着的视频 / 音乐,释放掉等于替人按了停;
- *  ③ 有视图(没视图的那一格本来就不占进程)。
- *
- * 零 electron import:service 与 layout 都是注入的,所以它在 vitest 下能跑。
+ * 同时满足以下条件才释放:
+ *  1. 标签页不可见的时间足够长:soft 10 分钟,hard 1 分钟(被遮挡时仍显示快照,算作可见);
+ *  2. 没有在播放声音;
+ *  3. 已创建视图。
  */
 import type { MemoryHolder, MemoryPressure } from '@onething/core/memory'
 
@@ -21,7 +16,7 @@ export const BROWSER_HIBERNATE_AFTER_MS: Readonly<Record<MemoryPressure, number>
   hard: 60_000,
 }
 
-/** 这一行读得到的 tab 那一片。 */
+/** 所需的标签页信息。 */
 export interface HibernatableTab {
   readonly id: string
   readonly materialized: boolean
@@ -31,7 +26,7 @@ export interface HibernatableTab {
 
 export interface BrowserMemoryDeps {
   tabs(): readonly HibernatableTab[]
-  /** 壳说「看不见」多久了;看得见 / 没登记 = `undefined`。 */
+  /** 不可见的时长;可见或未注册时为 `undefined`。 */
   hiddenForMs(tabId: string): number | undefined
   hibernate(tabId: string): boolean
 }
@@ -39,7 +34,7 @@ export interface BrowserMemoryDeps {
 export function createBrowserMemoryHolder(deps: BrowserMemoryDeps): MemoryHolder {
   return {
     id: 'browser.tabs',
-    label: '内置浏览器标签页',
+    label: '内置浏览器网页',
     usage() {
       const tabs = deps.tabs()
       const live = tabs.filter(tab => tab.materialized)

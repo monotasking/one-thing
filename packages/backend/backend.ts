@@ -288,8 +288,8 @@ export class OnethingBackend implements BackendHandle {
   private resourceKernel: ResourceKernel | undefined
   private shellResourceRegistry: ShellMountRegistry | undefined
   /**
-   * 内存预算表(2026-09-25,`wiring/memory/index.ts`)。攒东西的模块各自登记一行,
-   * 调度器超预算时叫它们一起松手;宿主(Electron 壳)再登记一只报其它进程的探针。
+   * 内存登记表与调度器(见 `wiring/memory/index.ts`)。各缓存模块在装配时注册,
+   * 内存超过预算时统一释放;Electron 宿主另外注册一个报告其他进程的探针。
    */
   private memorySubsystem: MemorySubsystem | undefined
 
@@ -699,8 +699,7 @@ export class OnethingBackend implements BackendHandle {
       streamChannel.shutdown()
       log.info('event system shut down')
     }, 'eventSystem')
-    // 内存预算表:排在第一只持有者(事件总线)之前造好。表本身不认识任何持有者,
-    // 下面每一行 `registerHolder` 都是「持有者自述 + 一行登记」。
+    // 内存登记表需在第一个持有者(事件总线)注册之前创建。
     const memory = createMemorySubsystem()
     this.memorySubsystem = memory
     this.own(() => { memory.dispose(); this.memorySubsystem = undefined }, 'memory')

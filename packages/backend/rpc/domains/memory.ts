@@ -1,9 +1,8 @@
 /**
- * `memory` 域 —— 内存预算表的读面与手动松手(2026-09-25)。
+ * `memory` RPC 域:读取内存报告、手动释放缓存。
  *
- * `report` 只交计数与字节,不交会话 id、不交进程命令行,所以谁都能读。
- * `trim` 会让缓存重建(下一次读变慢),是一次有副作用的动作:只给本机可信的调用方
- * (`isHostLocallyTrusted()`,与 `rpc/sandbox.ts` 同一个谓词)。
+ * `report` 只返回计数和字节数,不含会话 id 或进程命令行,所有调用方都可读取。
+ * `trim` 会导致缓存重建,只允许本机可信的调用方使用(`isHostLocallyTrusted()`)。
  */
 import type { MemoryRoutes } from '@shared/ipc/memory.js'
 import { getCurrentBackendInstance, BackendNotAssembledError } from '../../current.js'

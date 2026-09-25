@@ -6,19 +6,16 @@ import type { MemoryReportResponse } from '@shared/ipc/memory'
 import { nearestIndex, trendGeometry, type MemorySample } from './memory-model'
 import s from './MemoryPanel.module.css'
 
-/** 画布坐标系:宽 1000 × 高 100,`preserveAspectRatio="none"` 拉满格子;线宽靠 `non-scaling-stroke` 保 2px。 */
+/** SVG 坐标系为 1000 × 100,拉伸填满容器;线宽用 `non-scaling-stroke` 保持不变。 */
 const W = 1000
 const H = 100
 
 /**
- * 最近几分钟的总量。单一系列、**只有线**(纵轴不从 0 起,判词在 `trendGeometry`)。
+ * 最近几分钟的总占用曲线。纵轴不从 0 开始,因此只画线,不画面积(原因见 `trendGeometry`)。
  *
- * 版式:左边是绘图区,右边一条定宽的槽(`--viz-gutter`)专门放 soft / hard 两根参照线
- * 的名字与数值 —— 名字永远不压在线上,线也永远不压在名字上(v2 真机截图里右端
- * 最新的数据正好撞上「hard」两个字)。末端一个点标出「现在」(末端点,带底色圈)。
- *
- * 悬停:十字线吸附到最近的点,读数「值在前、时间在后」。读数不是唯一的出口 ——
- * 此刻的值就在总览卡的大数字里,整段的最低 / 最高在 `aria-label` 与图下那一行里。
+ * 右侧固定宽度的区域显示软 / 硬上限的名称和数值,不与曲线重叠。曲线末端的点表示当前值。
+ * 鼠标悬停时显示最近数据点的数值与时间;当前值同时显示在概览卡片中,
+ * 整段的最低 / 最高值写在图下方和 `aria-label` 中。
  */
 export function MemoryTrend({ history, budget }: { history: readonly MemorySample[]; budget: MemoryReportResponse['budget'] }) {
   const t = useT()
@@ -86,7 +83,7 @@ export function MemoryTrend({ history, budget }: { history: readonly MemorySampl
             </div>
           ) : null}
         </div>
-        {/* 参照线的名字住在右边那条槽里,与线同高;它们不是系列,所以不进图例。 */}
+        {/* 软 / 硬上限的标签,与对应参考线同高。 */}
         <div className={s.trendGutter} aria-hidden="true">
           <span className={s.trendRuleLabel} style={{ top: pct(geometry.hardY) }}>
             {t('memory.hardLine')} <b>{formatBytes(budget.hardBytes)}</b>

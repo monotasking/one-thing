@@ -1,13 +1,12 @@
 #!/usr/bin/env node
-// `bun run memory:report` —— 问正在服务这个 store 的 core 要一份内存预算表。
+// `bun run memory:report`:显示正在运行的 onething 的内存占用,按进程和缓存分别列出。
 //
-// 读 `<store>/run/http.json`(谁在服务这个 store 谁写它:桌面或 server:start),
-// 走通用 `POST /api/rpc` 的 `memory.report`。按进程、按持有者各打一张表。
+// 从 `<store>/run/http.json` 读取服务地址与令牌,调用 `memory.report` 接口。
 //
-//   bun run memory:report              # 打表
-//   bun run memory:report --json       # 原样 JSON
-//   bun run memory:report --trim       # 先叫一次 hard 松手,再打表(需本机可信的 core)
-//   bun run memory:report --trim soft
+//   bun run memory:report              # 输出表格
+//   bun run memory:report --json       # 输出原始 JSON
+//   bun run memory:report --trim       # 先释放缓存(硬上限档),再输出表格
+//   bun run memory:report --trim soft  # 按软上限档释放
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -24,7 +23,7 @@ let discovery
 try {
   discovery = JSON.parse(fs.readFileSync(discoveryFile, 'utf8'))
 } catch {
-  process.stderr.write(`没有正在服务 ${storePath} 的 core(读不到 ${discoveryFile})。先把桌面或 server:start 起来。\n`)
+  process.stderr.write(`未找到正在运行的 onething(无法读取 ${discoveryFile})。请先启动桌面应用或 server:start。\n`)
   process.exit(1)
 }
 
@@ -46,7 +45,7 @@ async function rpc(method, payload = {}) {
 
 const mb = bytes => (typeof bytes === 'number' ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : '—')
 const pad = (value, width) => String(value).padEnd(width)
-// 管道那头先关了(`| head`)就安静退出,不打一屏 EPIPE。
+// 输出被管道提前关闭时(如 `| head`)直接退出。
 process.stdout.on('error', error => { if (error.code === 'EPIPE') process.exit(0); throw error })
 const out = line => process.stdout.write(`${line}\n`)
 
@@ -58,19 +57,19 @@ try {
     process.exit(0)
   }
   if (trimmed) {
-    out(`松手(${trimmed.pressure}):释放 ${trimmed.releasedEntries} 条,约 ${mb(trimmed.releasedBytes)}`)
+    out(`已释放缓存(${trimmed.pressure === 'soft' ? '软上限档' : '硬上限档'}):${trimmed.releasedEntries} 项,约 ${mb(trimmed.releasedBytes)}`)
     for (const row of trimmed.holders) out(`  ${pad(row.id, 26)} ${row.releasedEntries}${row.error ? `  ✗ ${row.error}` : ''}`)
     out('')
   }
-  out(`总计 ${mb(report.totalBytes)}${report.partial ? '(有进程量不到,偏小)' : ''}  ·  预算 soft ${mb(report.budget.softBytes)} / hard ${mb(report.budget.hardBytes)}`)
-  out(`core 堆:已用 ${mb(report.heap.usedBytes)} / ${mb(report.heap.totalBytes)},external ${mb(report.heap.externalBytes)}`)
+  out(`总占用 ${mb(report.totalBytes)}${report.partial ? '(部分进程无法测量,总量偏低)' : ''}  ·  软上限 ${mb(report.budget.softBytes)}  ·  硬上限 ${mb(report.budget.hardBytes)}`)
+  out(`主进程 JS 堆:已用 ${mb(report.heap.usedBytes)} / ${mb(report.heap.totalBytes)},堆外 ${mb(report.heap.externalBytes)}`)
   out('')
   out('进程')
   for (const row of [...report.processes].sort((a, b) => (b.bytes ?? -1) - (a.bytes ?? -1))) {
     out(`  ${pad(row.pid, 8)} ${pad(row.kind, 9)} ${pad(mb(row.bytes), 11)} ${row.name}`)
   }
   out('')
-  out('持有者')
+  out('缓存')
   for (const row of report.holders) {
     const limit = row.limit ? ` / 上限 ${row.limit.entries ?? '—'}${row.limit.bytes ? `, ${mb(row.limit.bytes)}` : ''}` : ''
     const detail = row.detail ? `  ${Object.entries(row.detail).map(([k, v]) => `${k}=${v}`).join(' ')}` : ''

@@ -1,11 +1,10 @@
 /*
- * 表(meter)。**它自己不留外边距** —— 离上下多远是那一行的事(与 `ui/Progress` 同一条)。
- * 颜色三档由 `data-tone` 说,轨道 = 填充色兑进底色的 `--viz-track-mix` 那一成。
+ * 量表。组件本身不设外边距,由使用处决定间距。
+ * 颜色由 `data-tone` 决定,轨道为填充色按 `--viz-track-mix` 比例混入底色。
  */
 .meter {
   --meter-color: var(--accent);
-  /* 它压在什么底上:轨道的浅一档与刻线那圈缝都兑这一格。落在别的面上(卡里是
-   * --surface-1)时由落点改写,件里不猜。 */
+  /* 所在背景色,用于计算轨道颜色和刻度周围的间隙。放在其他背景上时由使用处覆盖。 */
   --meter-ground: var(--surface-2);
   display: flex;
   flex-direction: column;
@@ -32,7 +31,7 @@
   height: var(--sp-1);
 }
 
-/* 只改 `width`(与 Progress 同一条):同一个节点从 40% 走到 90% 不换元素、不推别人。 */
+/* 只改变宽度,不影响布局。 */
 .fill {
   height: 100%;
   border-radius: var(--r-full);
@@ -65,7 +64,7 @@
   white-space: nowrap;
 }
 
-/* 最后一个名字右对齐到刻线上,不越过条的右缘。 */
+/* 最后一个标签右对齐到刻度,不超出条的右边缘。 */
 .tickLabel:last-child {
   transform: translateX(-100%);
 }

@@ -264,9 +264,7 @@ export const STAGE_ITEMS: StageItemSpec[] = [
   // 我的清单(待办 T3,正本 `docs/todo-2026-09.md` §5.4):用户自己的 `todo:note/*`,一块普通的瓦。
   { id: 'todo', titleKey: 'item.todo', level: 'space', dockGroup: 'global', icon: 'ListChecks' },
   /*
-   * 内存监视器(2026-09-25,用户:「给一个 monitor 应用,来查看内存占用」)。与音乐 / 待办同一条路:
-   * 一行声明 + `content/index.tsx` 一行渲染。读的是 core 的 `memory.report`,整台机器一份,
-   * 不随会话换 —— `global`;`space` 档照 S1 的缺省。
+   * 内存面板。数据针对整个应用,不随会话变化,因此归入 `global` 组;层级使用默认的 `space`。
    */
   { id: 'memory', titleKey: 'item.memory', level: 'space', dockGroup: 'global', icon: 'Gauge' },
   { id: SETTINGS_ITEM_ID, titleKey: 'item.settings', level: 'app', dockGroup: 'global', icon: 'Settings' },

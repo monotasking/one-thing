@@ -398,12 +398,10 @@ function startPostWindowServices(): void {
       }
     }
     /*
-     * 内存预算表的壳探针(2026-09-25):把渲染 / GPU / 内置浏览器那些进程报上表,
-     * 调度器与 `memory.report` 从此看得到整个 Electron,而不只是 core 这一个进程。
-     * 壳自己的窗 = 某扇 `BrowserWindow` 的 `webContents`;其余(`WebContentsView` 的 tab)
-     * 算内置浏览器。(第一版按 `getType() === 'window'` 判,真机上 tab 也答 `window`,
-     * 于是 tab 全被报成了 renderer。)页里的跨站 iframe 是**另一个进程**(站点隔离),
-     * 所以每一帧的 `osProcessId` 都认回它所在的那一格 tab。
+     * 注册 Electron 进程探针,使内存报告包含渲染进程、GPU 与内置浏览器进程。
+     * 属于某个 `BrowserWindow` 的 webContents 是应用界面,其余是内置浏览器标签页
+     * (`getType()` 对两者都返回 'window',不能用来区分)。跨站 iframe 运行在独立进程中,
+     * 按每个 frame 的 `osProcessId` 归到所属标签页。
      */
     try {
       b.own(b.memory.registry.registerProbe(createShellMemoryProbe({

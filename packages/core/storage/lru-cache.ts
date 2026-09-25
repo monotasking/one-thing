@@ -48,8 +48,7 @@ export class LRUCache<K, V> {
   }
 
   /**
-   * 按条件挤掉若干条,交回挤掉的键。给内存调度器用:「空闲且不受保护的」
-   * 由调用方说,这里只负责遍历与删除(`accessedAt` 是这一条最后一次被 get/set 的时刻)。
+   * 移除满足条件的条目,返回被移除的键。`accessedAt` 为该条目最后一次 get / set 的时刻。
    */
   pruneWhere(predicate: (key: K, value: V, accessedAt: number) => boolean): K[] {
     const pruned: K[] = []

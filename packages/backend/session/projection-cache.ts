@@ -443,7 +443,7 @@ function peekSessionProjection(sessionId: string): SessionProjectionState | unde
   return {
     getMemoryStats,
     releaseIdle,
-    /** 这条会话的活投影此刻为什么不能丢(没有活投影 / 不受保护 = `undefined`)。 */
+    /** 该会话的投影当前不能释放的原因;没有投影或可以释放时返回 `undefined`。 */
     protectionOf(sessionId: string): SessionProjectionProtection | undefined {
       const live = projections.get(sessionId)
       return live ? protection(sessionId, live) : undefined
