@@ -49,7 +49,7 @@
  *     的 `profile === 'gate-b'`,而且**两格身份的 cookie 互相看不见** —— 门自起的
  *     本地页各种一枚同名 cookie 再各读一次,量的是 Chromium 的分区本身;
  *  ⑰ **把这一页交给对话**(B3-b):⋯ 那张表里点一行 → 输入框落一枚
- *     `{{page:<id>}}` chip(零字节)→ 发送 → 那一发 `session-command.emit` 的
+ *     `{{page:<id>}}` chip(零字节)→ 发送 → 那一发 `session-command.sendMessage` 的
  *     信封里页面正文是一件带 `sourceUrl` 的**附件**,`content` 里一个字都没有。
  *  ⑲ **页面自己开出来的那一格**(2026-09-12 真机报障:搜索结果页点一条
  *     `target=_blank` 的链接「没有任何反应」,而那一页其实在后台跑着甚至在放视频、
@@ -1627,7 +1627,7 @@ async function main() {
           const url = typeof input === 'string' ? input : input?.url ?? ''
           if (url.includes('/api/rpc') && init && typeof init.body === 'string') {
             const parsed = JSON.parse(init.body)
-            if (parsed?.domain === 'session-command' && parsed?.method === 'emit') {
+            if (parsed?.domain === 'session-command' && parsed?.method === 'sendMessage') {
               window.__b3bSends.push(parsed.payload)
             }
           }
@@ -1685,10 +1685,10 @@ async function main() {
     })
     await cdp.send('Input.insertText', { text: ' 总结一下' })
     await press(cdp, { key: 'Enter', code: 'Enter', keyCode: 13, text: '\r' })
-    const envelope = await waitFor('那一发 session-command.emit 交出去了', () =>
+    const envelope = await waitFor('那一发 session-command.sendMessage 交出去了', () =>
       page.evaluate(() => window.__b3bSends?.[0]),
     )
-    const command = envelope?.command ?? {}
+    const command = envelope ?? {}
     assert(
       !String(command.content ?? '').includes('{{page:'),
       `⑰ 正文里没有 token 残留(${String(command.content ?? '').slice(0, 80)})`,

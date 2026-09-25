@@ -872,10 +872,10 @@ domains share, is in scope and asks `isHostLocallyTrusted()` too; baseline `docs
 **Chat Message Flow (both transports, same engine):**
 
 ```
-renderer (React) → client.api(sessionCommandRouter).emit({ sessionId, command: { type: SESSION_COMMAND_TYPES.SEND_MESSAGE, … } })
+renderer (React) → client.api(sessionCommandRouter).sendMessage({ sessionId, content, … })   (stop = .abort({ sessionId }); other commands still .emit({ sessionId, command }))
 → generic RPC envelope `POST /api/rpc` (desktop over its embedded HTTP face, browser via the dev proxy / server; same domain,
   same handler — there is deliberately no hand-written session-command channel)
-→ packages/backend/rpc/domains/session-command.ts → emitCoreSessionCommandForIpc
+→ packages/backend/rpc/domains/session-command.ts `sendMessage` handler → emitCoreSessionCommandForIpc
   (ipc: sanitizeRendererCommand stamps origin + amends the evals turn record;
    http: command:abort is handled locally and a channel-less permission respond
    adopts the pending ask's targetChannel — nothing else is destructured away)

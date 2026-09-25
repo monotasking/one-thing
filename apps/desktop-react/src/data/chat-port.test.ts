@@ -25,6 +25,8 @@ const transport = createMemoryTransport({
     'sessionEvents.listRaw': () => ({ events: [] }),
     'sessionEvents.readBlob': () => ({}),
     'session-command.emit': () => ({ success: true }),
+    'session-command.sendMessage': () => ({ success: true }),
+    'session-command.abort': () => ({ success: true }),
   },
 })
 const connectionListeners = new Set<(state: 'open' | 'retrying') => void>()
@@ -97,6 +99,12 @@ function emittedEnvelopes(): unknown[] {
     .filter(call => call.domain === 'session-command' && call.method === 'emit')
     .map(call => call.payload)
 }
+/** 这一条用例里 `session-command.sendMessage` 收到的请求体(平铺,没有 `command` 那层)。 */
+function sentMessages(): unknown[] {
+  return callsSince()
+    .filter(call => call.domain === 'session-command' && call.method === 'sendMessage')
+    .map(call => call.payload)
+}
 
 beforeEach(() => {
   watermark = transport.calls.length
@@ -123,9 +131,9 @@ describe('sendMessage:正文逐字过去,端口不改一个字', () => {
   ])('空 MIME 的 %s 按扩展名保留模型输入类型', async (fileName, mimeType, mediaType) => {
     const port = await chatPort()
     await port.sendMessage('s1', '', undefined, [new File([new Uint8Array([0, 128, 255])], fileName)])
-    const envelope = emittedEnvelopes()[0] as { command: { content: string; attachments: MessageAttachment[] } }
-    expect(envelope.command.attachments[0]).toMatchObject({ fileName, mimeType, mediaType, base64Data: 'AID/' })
-    expect(buildMessageContent(envelope.command)).toEqual(expect.arrayContaining([
+    const envelope = sentMessages()[0] as { content: string; attachments: MessageAttachment[] }
+    expect(envelope.attachments[0]).toMatchObject({ fileName, mimeType, mediaType, base64Data: 'AID/' })
+    expect(buildMessageContent(envelope)).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: mediaType === 'image' ? 'image' : 'file' }),
     ]))
   })
@@ -133,8 +141,8 @@ describe('sendMessage:正文逐字过去,端口不改一个字', () => {
   it('文件自带 MIME 时尊重原值,不被扩展名覆盖', async () => {
     const port = await chatPort()
     await port.sendMessage('s1', '', undefined, [new File(['PDF bytes'], 'renamed.png', { type: 'application/pdf' })])
-    const envelope = emittedEnvelopes()[0] as { command: { attachments: MessageAttachment[] } }
-    expect(envelope.command.attachments[0]).toMatchObject({ mimeType: 'application/pdf', mediaType: 'document' })
+    const envelope = sentMessages()[0] as { attachments: MessageAttachment[] }
+    expect(envelope.attachments[0]).toMatchObject({ mimeType: 'application/pdf', mediaType: 'document' })
   })
 
   it('文件字节和图片按既有附件契约落进命令,允许只有附件', async () => {
@@ -142,22 +150,19 @@ describe('sendMessage:正文逐字过去,端口不改一个字', () => {
     const text = new File(['真实内容 {{file:/not-a-reference}}'], 'note.txt', { type: 'text/plain' })
     const image = new File([new Uint8Array([0, 128, 255])], 'shot.png', { type: 'image/png' })
     await port.sendMessage('s1', '', 'user-id', [text, image])
-    expect(emittedEnvelopes()).toEqual([{
+    expect(sentMessages()).toEqual([{
       sessionId: 's1',
-      command: {
-        type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
-        content: '',
-        messageId: 'user-id',
-        attachments: [
-          { id: expect.any(String), fileName: 'note.txt', mimeType: 'text/plain', size: text.size,
-            mediaType: 'file', base64Data: Buffer.from('真实内容 {{file:/not-a-reference}}').toString('base64') },
-          { id: expect.any(String), fileName: 'shot.png', mimeType: 'image/png', size: 3,
-            mediaType: 'image', base64Data: 'AID/' },
-        ],
-      },
+      content: '',
+      messageId: 'user-id',
+      attachments: [
+        { id: expect.any(String), fileName: 'note.txt', mimeType: 'text/plain', size: text.size,
+          mediaType: 'file', base64Data: Buffer.from('真实内容 {{file:/not-a-reference}}').toString('base64') },
+        { id: expect.any(String), fileName: 'shot.png', mimeType: 'image/png', size: 3,
+          mediaType: 'image', base64Data: 'AID/' },
+      ],
     }])
-    const envelope = emittedEnvelopes()[0] as { command: { content: string; attachments: MessageAttachment[] } }
-    const modelContent = buildMessageContent(envelope.command)
+    const envelope = sentMessages()[0] as { content: string; attachments: MessageAttachment[] }
+    const modelContent = buildMessageContent(envelope)
     expect(modelContent).toEqual(expect.arrayContaining([
       { type: 'text', text: expect.stringContaining('真实内容 {{file:/not-a-reference}}') },
       { type: 'image', image: 'data:image/png;base64,AID/' },
@@ -168,10 +173,10 @@ describe('sendMessage:正文逐字过去,端口不改一个字', () => {
     configureBrowserPort(browserPortSpy({ pageText: '页面内容' }))
     const port = await chatPort()
     await port.sendMessage('s1', '比较 {{page:t1}}', undefined, [new File(['file'], 'note.txt')])
-    const envelope = emittedEnvelopes()[0] as { command: { attachments: Array<Record<string, unknown>> } }
-    expect(envelope.command.attachments).toHaveLength(2)
-    expect(envelope.command.attachments[0]).toMatchObject({ fileName: 'note.txt', base64Data: 'ZmlsZQ==' })
-    expect(envelope.command.attachments[1]).toMatchObject({ sourceUrl: PAGE_TAB.url, excerpt: '页面内容' })
+    const envelope = sentMessages()[0] as { attachments: Array<Record<string, unknown>> }
+    expect(envelope.attachments).toHaveLength(2)
+    expect(envelope.attachments[0]).toMatchObject({ fileName: 'note.txt', base64Data: 'ZmlsZQ==' })
+    expect(envelope.attachments[1]).toMatchObject({ sourceUrl: PAGE_TAB.url, excerpt: '页面内容' })
   })
 
   it('读文件失败时整条消息不发送,错误交给发送失败/重试流程', async () => {
@@ -182,7 +187,7 @@ describe('sendMessage:正文逐字过去,端口不改一个字', () => {
       const port = await chatPort()
       await expect(port.sendMessage('s1', '看看附件', undefined, [new File(['x'], 'broken.txt')]))
         .rejects.toThrow('无法读取附件「broken.txt」')
-      expect(emittedEnvelopes()).toEqual([])
+      expect(sentMessages()).toEqual([])
     } finally {
       read.mockRestore()
     }
@@ -192,14 +197,8 @@ describe('sendMessage:正文逐字过去,端口不改一个字', () => {
     const port = await chatPort()
     await port.sendMessage('s1', '读一下 @/repo/src/a.ts 这个文件')
 
-    expect(emittedEnvelopes()).toEqual([
-      {
-        sessionId: 's1',
-        command: {
-          type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
-          content: '读一下 @/repo/src/a.ts 这个文件',
-        },
-      },
+    expect(sentMessages()).toEqual([
+      { sessionId: 's1', content: '读一下 @/repo/src/a.ts 这个文件' },
     ])
   })
 
@@ -214,7 +213,7 @@ describe('sendMessage:正文逐字过去,端口不改一个字', () => {
   it('万一有 `{{file:…}}` 走到这一口,端口**不**替它展开(全壳只有一处展开)', async () => {
     const port = await chatPort()
     await port.sendMessage('s1', `读一下 ${createFileToken('/repo/src/a.ts')}`)
-    expect((emittedEnvelopes()[0] as { command: { content: string } }).command.content).toBe(
+    expect((sentMessages()[0] as { content: string }).content).toBe(
       '读一下 {{file:/repo/src/a.ts}}',
     )
   })
@@ -229,28 +228,21 @@ describe('sendMessage:正文逐字过去,端口不改一个字', () => {
   it('`messageId` 原样落进信封', async () => {
     const port = await chatPort()
     await port.sendMessage('s1', '发一句', 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee')
-    expect(emittedEnvelopes()).toEqual([
-      {
-        sessionId: 's1',
-        command: {
-          type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
-          content: '发一句',
-          messageId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
-        },
-      },
+    expect(sentMessages()).toEqual([
+      { sessionId: 's1', content: '发一句', messageId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' },
     ])
   })
 
   it('没给 `messageId` 时**这一格根本不出现** —— 缺席 = 引擎自己铸', async () => {
     const port = await chatPort()
     await port.sendMessage('s1', '发一句')
-    expect('messageId' in (emittedEnvelopes()[0] as { command: object }).command).toBe(false)
+    expect('messageId' in (sentMessages()[0] as object)).toBe(false)
   })
 
   it('花括号原样留着 —— 这一口从来不是一次「清洗」', async () => {
     const port = await chatPort()
     await port.sendMessage('s1', '把 {{ 这种花括号 }} 原样留着')
-    expect((emittedEnvelopes()[0] as { command: { content: string } }).command.content).toBe(
+    expect((sentMessages()[0] as { content: string }).content).toBe(
       '把 {{ 这种花括号 }} 原样留着',
     )
   })
@@ -269,13 +261,11 @@ describe('sendMessage:正文逐字过去,端口不改一个字', () => {
     const port = await chatPort()
     await port.sendMessage('s1', '总结 {{page:t1}} 谢谢')
 
-    const envelope = emittedEnvelopes()[0] as {
-      command: { content: string; attachments?: Array<Record<string, unknown>> }
-    }
-    expect(envelope.command.content).toBe('总结 谢谢')
-    expect(envelope.command.attachments?.length).toBe(1)
-    expect(envelope.command.attachments?.[0]?.sourceUrl).toBe('https://example.test/a')
-    expect(envelope.command.attachments?.[0]?.excerpt).toBe('这一页的正文')
+    const envelope = sentMessages()[0] as { content: string; attachments?: Array<Record<string, unknown>> }
+    expect(envelope.content).toBe('总结 谢谢')
+    expect(envelope.attachments?.length).toBe(1)
+    expect(envelope.attachments?.[0]?.sourceUrl).toBe('https://example.test/a')
+    expect(envelope.attachments?.[0]?.excerpt).toBe('这一页的正文')
   })
 
   /**
@@ -294,12 +284,10 @@ describe('sendMessage:正文逐字过去,端口不改一个字', () => {
     const port = await chatPort()
     await port.sendMessage('s1', '读一下 {{page:t1}}')
 
-    const envelope = emittedEnvelopes()[0] as {
-      command: { content: string; attachments?: Array<Record<string, unknown>> }
-    }
-    expect(envelope.command.content).toBe('读一下')
+    const envelope = sentMessages()[0] as { content: string; attachments?: Array<Record<string, unknown>> }
+    expect(envelope.content).toBe('读一下')
     // 原样留在附件里,**没有**被展成 `@/Users/…`。
-    expect(envelope.command.attachments?.[0]?.excerpt).toBe('{{file:/Users/me/.ssh/id_rsa}}')
+    expect(envelope.attachments?.[0]?.excerpt).toBe('{{file:/Users/me/.ssh/id_rsa}}')
     expect(JSON.stringify(envelope)).not.toContain('@/Users/me/.ssh/id_rsa')
   })
 
@@ -307,11 +295,9 @@ describe('sendMessage:正文逐字过去,端口不改一个字', () => {
     configureBrowserPort(browserPortSpy({ pageText: 'x' }))
     const port = await chatPort()
     await port.sendMessage('s1', '看 @/repo/a.ts 和 {{page:t1}}')
-    const envelope = emittedEnvelopes()[0] as {
-      command: { content: string; attachments?: unknown[] }
-    }
-    expect(envelope.command.content).toBe('看 @/repo/a.ts 和')
-    expect(envelope.command.attachments?.length).toBe(1)
+    const envelope = sentMessages()[0] as { content: string; attachments?: unknown[] }
+    expect(envelope.content).toBe('看 @/repo/a.ts 和')
+    expect(envelope.attachments?.length).toBe(1)
   })
 
   it('retryMessage 不涉:那条消息早已落账,重跑的是账本上的原文', async () => {
@@ -346,12 +332,20 @@ describe('C1:域客户端由 router 泛型取用,信封上写的是契约里的�
     offEvent()
   })
 
-  it('sendMessage 打的是 `session-command.emit`,listRaw 打的是 `sessionEvents.listRaw`', async () => {
+  it('sendMessage / abort 打的是具名方法,retry 仍走 `emit`,listRaw 打的是 `sessionEvents.listRaw`', async () => {
     const port = await chatPort()
     await port.sendMessage('s1', 'hi')
+    await port.abort('s1')
+    await port.retryMessage('s1', 'm1')
     await port.listRaw('s1')
     const signatures = callsSince().map(call => `${call.domain}.${call.method}`)
-    expect(signatures).toEqual(['session-command.emit', 'sessionEvents.listRaw'])
+    expect(signatures).toEqual([
+      'session-command.sendMessage',
+      'session-command.abort',
+      'session-command.emit',
+      'sessionEvents.listRaw',
+    ])
+    expect(callsSince()[1]?.payload).toEqual({ sessionId: 's1' })
   })
 
   it('推送面上两条名字各分各的:session:event 与 session:stream 不串台', async () => {

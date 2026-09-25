@@ -93,7 +93,7 @@ describe('session-command RPC domain', () => {
     dispose = undefined
   })
 
-  it('binds exactly one method — 分派在总线那一侧,router 不再劈一次 type', async () => {
+  it('binds emit + the two named commands, and nothing else', async () => {
     const { dispatchRpc } = await loadDomain()
 
     const ok = await dispatchRpc({
@@ -103,11 +103,119 @@ describe('session-command RPC domain', () => {
     }, IPC)
     expect(ok.ok).toBe(true)
 
-    // 白名单是封闭的:没有 `abort` / `respond` 之类的第二个入口。
-    for (const method of ['abort', 'respond', 'send']) {
-      const unknown = await dispatchRpc({ domain: 'session-command', method, payload: {} }, IPC)
-      expect(unknown.ok, `${method} must not be a route`).toBe(false)
+    // 白名单是封闭的:发送与停止之外的命令仍然只走 `emit`。
+    for (const method of ['respond', 'send', 'retry']) {
+      const unknown = await dispatchRpc({ domain: 'session-command', method, payload: { sessionId: 's1' } }, IPC)
+      expect(unknown, `${method} must not be a route`).toMatchObject({ ok: false, error: { code: 'UNKNOWN_METHOD' } })
     }
+  })
+
+  describe('named methods (sendMessage / abort)', () => {
+    it('sendMessage: ipc reaches the bus as a send-message command with a host-stamped origin', async () => {
+      const { dispatchRpc } = await loadDomain()
+
+      const response = await dispatchRpc({
+        domain: 'session-command',
+        method: 'sendMessage',
+        payload: { sessionId: 's1', content: 'hello', messageId: 'msg_0123456789' },
+      }, IPC)
+
+      expect(response).toEqual({ ok: true, data: { success: true, result: 'emitted' } })
+      expect(bus.emit).toHaveBeenCalledTimes(1)
+      const [sessionId, command] = bus.emit.mock.calls[0] as [string, Record<string, any>]
+      expect(sessionId).toBe('s1')
+      expect(command).toMatchObject({ type: 'command:send-message', content: 'hello', messageId: 'msg_0123456789' })
+      expect(command.origin).toBeDefined()
+    })
+
+    it('sendMessage: http forwards the same command emit would, byte for byte', async () => {
+      const { dispatchRpc } = await loadDomain()
+
+      await dispatchRpc({
+        domain: 'session-command',
+        method: 'sendMessage',
+        payload: { sessionId: 's1', content: 'from the browser', messageId: 'msg_0123456789' },
+      }, HTTP)
+      await dispatchRpc({
+        domain: 'session-command',
+        method: 'emit',
+        payload: {
+          sessionId: 's1',
+          command: { type: 'command:send-message', content: 'from the browser', messageId: 'msg_0123456789' },
+        },
+      }, HTTP)
+
+      expect(bus.emit).toHaveBeenCalledTimes(2)
+      expect(bus.emit.mock.calls[0]).toEqual(bus.emit.mock.calls[1])
+    })
+
+    it('sendMessage: an absent optional field never appears on the command', async () => {
+      const { dispatchRpc } = await loadDomain()
+
+      await dispatchRpc({
+        domain: 'session-command',
+        method: 'sendMessage',
+        payload: { sessionId: 's1', content: 'plain', attachments: [], presented: [] },
+      }, HTTP)
+
+      const [, command] = bus.emit.mock.calls[0] as [string, Record<string, unknown>]
+      expect(command).toEqual({ type: 'command:send-message', content: 'plain' })
+    })
+
+    it('sendMessage: a busy session refuses files, same as emit', async () => {
+      const { dispatchRpc } = await loadDomain()
+      engine.getController.mockReturnValue(new AbortController())
+
+      const response = await dispatchRpc({
+        domain: 'session-command',
+        method: 'sendMessage',
+        payload: {
+          sessionId: 's1',
+          content: '',
+          attachments: [{ id: 'file', fileName: 'note.txt', mimeType: 'text/plain', size: 4, mediaType: 'file', base64Data: 'bm90ZQ==' }],
+        },
+      }, HTTP)
+
+      expect(response).toEqual({
+        ok: true,
+        data: { success: false, error: 'A response is still running — messages with files wait until it finishes.' },
+      })
+      expect(bus.emit).not.toHaveBeenCalled()
+    })
+
+    it('abort: http stops the engine and clears permissions, never the bus', async () => {
+      const { dispatchRpc } = await loadDomain()
+
+      const response = await dispatchRpc({
+        domain: 'session-command',
+        method: 'abort',
+        payload: { sessionId: 's1' },
+      }, HTTP)
+
+      expect(response).toEqual({ ok: true, data: { success: true } })
+      expect(engine.abort).toHaveBeenCalledWith('s1', 'HTTP abort')
+      expect(permission.clearSession).toHaveBeenCalledWith('s1')
+      expect(bus.emit).not.toHaveBeenCalled()
+    })
+
+    it('abort: ipc puts a plain abort command on the bus', async () => {
+      const { dispatchRpc } = await loadDomain()
+
+      await dispatchRpc({ domain: 'session-command', method: 'abort', payload: { sessionId: 's1' } }, IPC)
+
+      expect(bus.emit).toHaveBeenCalledWith('s1', { type: 'command:abort' }, expect.any(Object))
+      expect(engine.abort).not.toHaveBeenCalled()
+    })
+
+    it.each(['sendMessage', 'abort'])('%s: without a sessionId never reaches the engine or the bus', async (method) => {
+      const { dispatchRpc } = await loadDomain()
+
+      const response = await dispatchRpc({ domain: 'session-command', method, payload: { content: 'x' } }, HTTP)
+
+      expect(response.ok).toBe(false)
+      expect(bus.emit).not.toHaveBeenCalled()
+      expect(engine.abort).not.toHaveBeenCalled()
+    })
   })
 
   it('ipc: a send-message reaches the bus with a host-stamped origin', async () => {

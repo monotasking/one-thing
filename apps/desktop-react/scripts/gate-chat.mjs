@@ -27,8 +27,8 @@
  *
  * 所以这条门在两个**确定**的点上钉:
  *  a. **命令信封被 core 收下**:脚本按壳发出去的那一模一样的形状
- *     (`{ type: 'command:abort' }`,与 `data/chat-port.ts` 逐字相同)打一发
- *     `session-command.emit`,断言回执 success —— 证的是「壳发的这条命令,
+ *     (`{ sessionId }`,与 `data/chat-port.ts` 逐字相同)打一发
+ *     `session-command.abort`,断言回执 success —— 证的是「壳发的这条命令,
  *     core 认」,那正是接线对不对的全部内容;
  *  b. **停止那副面孔在产物里活着**:断言发送键带着 `data-mode`,闲时是 `send`。
  *     忙时翻成 `stop` 由单测钉(Composer.test.tsx 直接掀 activeMessageId 那一格)。
@@ -361,14 +361,11 @@ async function main() {
     )
 
     console.log('\n[7/7] ⑤ 中止 —— 这一条是**降级**的(理由见文件头)')
-    const abortAck = await rpc(record, 'session-command', 'emit', {
-      sessionId,
-      // 与 src/data/chat-port.ts 的 abort() 逐字相同的信封:一个字段都不多。
-      command: { type: 'command:abort' },
-    })
+    // 与 src/data/chat-port.ts 的 abort() 逐字相同的请求:具名方法 + 只有 sessionId。
+    const abortAck = await rpc(record, 'session-command', 'abort', { sessionId })
     assert(
       abortAck?.success === true,
-      '壳发出去的那条 command:abort 信封被 core 收下(接线成立)',
+      '壳发出去的那条 session-command.abort 请求被 core 收下(接线成立)',
     )
     const sendMode = await page.evaluate(() =>
       document.querySelector('[data-testid="composer-send"]')?.getAttribute('data-mode'),

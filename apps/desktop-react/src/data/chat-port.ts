@@ -263,26 +263,20 @@ async function realPort(): Promise<ChatPort> {
         files?.length ? materializeFileAttachments(files) : Promise.resolve([]),
       ])
       const attachments = [...fileAttachments, ...pageAttachments]
-      return sessionCommands.emit({
+      // 具名方法 → 后端 `packages/backend/rpc/domains/session-command.ts` 的同名处理者。
+      return sessionCommands.sendMessage({
         sessionId,
-        command: {
-          type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
-          content: text,
-          // 没铸就**这一格根本不出现**(契约上它是可选的,缺席 = 引擎自己铸)。
-          ...(messageId ? { messageId } : {}),
-          // 没有文件或页面引用时**这一格根本不出现** —— 一个空数组与「没有附件」在
-          // 账本上不是同一件事(契约上它是可选的)。
-          ...(attachments.length > 0 ? { attachments } : {}),
-          // 同理:没有呈现就**这一格根本不出现**。
-          ...(presented?.length ? { presented: [...presented] } : {}),
-        },
+        content: text,
+        // 没铸就**这一格根本不出现**(契约上它是可选的,缺席 = 引擎自己铸)。
+        ...(messageId ? { messageId } : {}),
+        // 没有文件或页面引用时**这一格根本不出现** —— 一个空数组与「没有附件」在
+        // 账本上不是同一件事(契约上它是可选的)。
+        ...(attachments.length > 0 ? { attachments } : {}),
+        // 同理:没有呈现就**这一格根本不出现**。
+        ...(presented?.length ? { presented: [...presented] } : {}),
       })
     },
-    abort: (sessionId) =>
-      sessionCommands.emit({
-        sessionId,
-        command: { type: SESSION_COMMAND_TYPES.ABORT },
-      }),
+    abort: (sessionId) => sessionCommands.abort({ sessionId }),
     retryMessage: (sessionId, messageId) =>
       sessionCommands.emit({
         sessionId,

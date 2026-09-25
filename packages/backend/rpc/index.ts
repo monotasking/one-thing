@@ -195,9 +195,8 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // `image-preview-registry-bound` 的进程内登记簿。
   { id: 'rpc:media', mount: ctx => { ctx.registerRpcDomain(mediaRouter, mediaRpcHandlers) } },
   // P4c 第四批唯一的域(session-command)—— **会话命令总线的入口**,全仓最后一条
-  // 主干「Proxy 属性 + 手写通道」。它只有一个方法(`emit`):分派在总线那一侧按
-  // `command.type` 走,router 再劈一遍等于把同一张表抄两份。搬完之后渲染层那一行
-  // `sessionCommands.emit(...)` 到 `handleSendMessage` 每一跳都是 TS 标识符。
+  // 主干「Proxy 属性 + 手写通道」。发送与停止各有具名方法(`sendMessage` / `abort`,
+  // 2026-09-25),其余命令走通用的 `emit`、在总线那一侧按 `command.type` 分派。
   // 位置在 media 之后、自进化之前:它要 `getStreamEngine()`(http 上的 abort 分支)
   // 与 `Permission`(权限应答认领 targetChannel),而 `backend.ts` 的顺序是
   // 引擎 → Permission → 工具注册 → registerAppRpcDomains,注册时两者都已就位。

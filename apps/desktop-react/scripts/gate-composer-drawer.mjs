@@ -1197,11 +1197,16 @@ async function main() {
       await delay(500)
     }
     const sent = await waitFor('发送那一发 RPC', () => {
-      const hit = bodies.find((body) => body.includes('command:send-message'))
-      return hit ? JSON.parse(hit) : null
+      for (const body of bodies) {
+        try {
+          const parsed = JSON.parse(body)
+          if (parsed?.domain === 'session-command' && parsed?.method === 'sendMessage') return parsed
+        } catch { /* 不是 JSON 的请求体不是我们要的那一发 */ }
+      }
+      return null
     }).catch(() => null)
     page.off('request', onRequest)
-    const command = sent?.payload?.command ?? {}
+    const command = sent?.payload ?? {}
     assert(
       typeof command.content === 'string' && command.content.includes(path.join(outside, `${FAR_PREFIX}-guide.md`)),
       `(g)③ 发出去的正文里是那条绝对路径(${JSON.stringify(command.content ?? null)})`,

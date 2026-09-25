@@ -14,6 +14,15 @@
  *     → `CoreStreamEngine.buildCommandHandlers()` 的常量键派发表
  *     → `handleSendMessage` / …
  *
+ * 2026-09-25:发送与停止有了具名方法。前端发一句话读起来是
+ *
+ *   `sessionCommands.sendMessage({ sessionId, content, … })`(apps/desktop-react/src/data/chat-port.ts)
+ *     → **本文件的 `sendMessage` 处理者** → 本地函数 `sendMessage` → `emitToBus`
+ *     → 引擎的 `SEND_MESSAGE` 处理者 → `handleSendMessage`
+ *
+ * 停止是 `sessionCommands.abort({ sessionId })` → `abort` 处理者 → 本地函数 `abort`。
+ * `emit` 里那两支也改成调用同样两个本地函数,所以新旧两个入口只有一份实现。
+ *
  * 替换掉的四处镜像:
  *  - `apps/electron/src/ipc/session-command.ts` 的手写 IPC 工厂(29 行)与
  *    `@main/ipc/handlers.ts` 里 `registerCommandHandler` 那段壳适配;
@@ -54,7 +63,7 @@
  */
 import { emitCoreSessionCommandForIpc } from '@onething/core/events'
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
-import type { SessionCommand } from '@shared/events/index.js'
+import type { PresentedResource, SendMessageCommand, SessionCommand } from '@shared/events/index.js'
 import type { SessionCommandEmitResult, SessionCommandRoutes } from '@shared/ipc/session-command.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { sanitizeRendererOrigin } from '../../channel/index.js'
@@ -64,7 +73,7 @@ import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import { Permission } from '../../wiring/permission/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import { requestSessionOwner, sessionAccess, SessionAccessError } from '../../session/access.js'
-import { deliverPresentation, takePresented } from '../../session/presentation.js'
+import { deliverPresentation, normalizePresented, takePresented } from '../../session/presentation.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 
 const log = getLogger('rpc.session-command')
@@ -189,7 +198,92 @@ function emitToBus(sessionId: string, command: unknown, context: RpcDispatchCont
   })
 }
 
+/**
+ * 这条命令是不是从 HTTP 面来的。**本文件唯一一处读 `context.transport`**
+ * (`transport:gate` 的基线是 1):发送与停止两件事都要问它,与 mcp / settings 的
+ * `payloadLeavesProcess(context)` 同一个体例 —— 一个本地函数就是一处读法。
+ */
+function arrivedOverHttp(context: RpcDispatchContext): boolean {
+  return context.transport === 'http'
+}
+
+/**
+ * **发一句话**。`sendMessage` 与 `emit` 里 `command:send-message` 那一支都走这里,
+ * 所以两条入口的行为逐字相同。呈现事实(`presented`)已经由调用方摘下来了 —— 它不进总线。
+ */
+async function sendMessage(
+  sessionId: string,
+  command: SendMessageCommand,
+  presented: readonly PresentedResource[],
+  context: RpcDispatchContext,
+): Promise<SessionCommandEmitResult> {
+  // Files cannot enter the text-only steering queue. Check after their bytes
+  // reach the server: a response may have started while the client read them.
+  // Bus delivery does not await the engine, so its stream:error alone cannot
+  // reject this RPC or give the composer a retryable send failure.
+  // `persistOnly` 是引擎内部的一格(不在线上契约里),从前这里按任意对象读它,照旧。
+  if (!(command as { persistOnly?: boolean }).persistOnly
+    && Array.isArray(command.attachments) && command.attachments.length > 0
+    && getStreamEngine().getController(sessionId)) {
+    return {
+      success: false,
+      error: 'A response is still running — messages with files wait until it finishes.',
+    }
+  }
+
+  if (presented.length > 0) {
+    await deliverPresentation(presented, {
+      sessionId,
+      ...(typeof command.messageId === 'string' ? { messageId: command.messageId } : {}),
+      locallyTrusted: isHostLocallyTrusted(),
+    })
+  }
+
+  // 投进命令总线 → 引擎的 `SEND_MESSAGE` 处理者 → `handleSendMessage`
+  // (`packages/core/engine/core-stream-engine.ts` 的 `buildCommandHandlers`)。
+  // `sanitize` 只在桌面渲染层那条 ipc 面上跑,理由见文件头。
+  return emitToBus(
+    sessionId,
+    arrivedOverHttp(context) ? command : sanitizeRendererCommand(command),
+    context,
+  )
+}
+
+/**
+ * **停止这条会话正在生成的回复**。HTTP 面(今天的 React 壳就是它)就地中止并清掉
+ * 这条会话的权限询问,不进总线;ipc 面投进总线,由引擎的 `ABORT` 处理者做同一件事。
+ */
+async function abort(
+  sessionId: string,
+  command: SessionCommand,
+  context: RpcDispatchContext,
+): Promise<SessionCommandEmitResult> {
+  if (arrivedOverHttp(context)) {
+    getStreamEngine().abort(sessionId, 'HTTP abort')
+    Permission.clearSession(sessionId)
+    return { success: true }
+  }
+  return emitToBus(sessionId, command, context)
+}
+
 export const sessionCommandRpcHandlers: RpcRouteHandlers<SessionCommandRoutes> = {
+  /** 发一句话。会话授权由契约声明、在 `dispatchRpc` 里执行(`sessionCommandRouter`)。 */
+  async sendMessage(request, context: RpcDispatchContext = DESKTOP_RPC_CONTEXT) {
+    const command: SendMessageCommand = {
+      type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
+      content: request.content,
+      ...(request.messageId ? { messageId: request.messageId } : {}),
+      ...(request.attachments?.length ? { attachments: request.attachments } : {}),
+    }
+    return sendMessage(request.sessionId, command, normalizePresented(request.presented), context)
+  },
+
+  /** 停止生成。会话授权同上。 */
+  async abort(request, context: RpcDispatchContext = DESKTOP_RPC_CONTEXT) {
+    return abort(request.sessionId, { type: SESSION_COMMAND_TYPES.ABORT }, context)
+  },
+
+  /** 其余命令的通用入口:按 `command.type` 分派。发送与停止也还认,行为与上面两条相同。 */
   async emit(request, context: RpcDispatchContext = DESKTOP_RPC_CONTEXT) {
     const sessionId = request?.sessionId
     sessionAccess.resolve(context, sessionId, 'write')
@@ -207,34 +301,14 @@ export const sessionCommandRpcHandlers: RpcRouteHandlers<SessionCommandRoutes> =
     const record = (command && typeof command === 'object'
       ? command
       : {}) as Record<string, unknown>
-    // Files cannot enter the text-only steering queue. Check after their bytes
-    // reach the server: a response may have started while the client read them.
-    // Bus delivery does not await the engine, so its stream:error alone cannot
-    // reject this RPC or give the composer a retryable send failure.
-    if (record.type === SESSION_COMMAND_TYPES.SEND_MESSAGE
-      && !record.persistOnly
-      && Array.isArray(record.attachments) && record.attachments.length > 0
-      && getStreamEngine().getController(sessionId)) {
-      return {
-        success: false,
-        error: 'A response is still running — messages with files wait until it finishes.',
-      }
+    if (record.type === SESSION_COMMAND_TYPES.SEND_MESSAGE) {
+      return sendMessage(sessionId, command as SendMessageCommand, taken.presented, context)
+    }
+    if (record.type === SESSION_COMMAND_TYPES.ABORT) {
+      return abort(sessionId, command as SessionCommand, context)
     }
 
-    if (record.type === SESSION_COMMAND_TYPES.SEND_MESSAGE && taken.presented.length > 0) {
-      await deliverPresentation(taken.presented, {
-        sessionId,
-        ...(typeof record.messageId === 'string' ? { messageId: record.messageId } : {}),
-        locallyTrusted: isHostLocallyTrusted(),
-      })
-    }
-
-    if (context.transport === 'http') {
-      if (record.type === SESSION_COMMAND_TYPES.ABORT) {
-        getStreamEngine().abort(sessionId, 'HTTP abort')
-        Permission.clearSession(sessionId)
-        return { success: true }
-      }
+    if (arrivedOverHttp(context)) {
       if (record.type === SESSION_COMMAND_TYPES.PERMISSION_RESPOND) {
         return emitToBus(sessionId, {
           ...record,
