@@ -16,8 +16,27 @@
  * ══ 取样口:**画出来的那一份**,不是 rAF ══════════════════════════════════
  * 与 `gate-tail-jitter` 同一条判词(正本 §9.7 ②):rAF 跑在「动画推进之后、布局与
  * ResizeObserver 之前」,读到的是**这一帧的半成品** —— 而这道门量的位移恰恰是由
- * 产品在 RO 回调里那一句补偿决定的。所以只认一个口:**在 `requestAnimationFrame`
- * 里 `postMessage` 出去的那个宏任务里读**。
+ * 产品在 RO 回调里那一句补偿决定的。
+ *
+ * **G 线 P4-a 起,口从「rAF 里 `postMessage` 出去的宏任务」挪到「这一帧的 RO 阶段」**
+ * (正本 §21.6)。前一只口(与 `gate-tail-jitter` 同一只,§10.2 ①)**假定**那一发宏任务
+ * 跑的时候布局是干净的 —— 「更新渲染刚走完、自那之后没人动过 DOM」。真店档 `think60k`
+ * 展开那一格把这个假定证伪了:那一帧画完之后**一次 DOM 变更都没有**(门侧
+ * `MutationObserver` 实测,最后一次结构变更早于那一帧的 rAF),取样那一读却读到
+ * `scrollTop` 凭空 +11,454px,紧接着下一帧产品 RO 回调把它写回原位。布局在「画完」
+ * 与「取样」之间又脏了一次;**谁弄脏的没有证明**(推测是 6 万字那一段第一次排出真高
+ * 之后 `content-visibility: auto` 的相关性判定落在绘制之后),证明了的只是:这个数
+ * 只活在取样器自己逼出来的那一次排版里,屏幕上两帧之间都没有它。
+ * 按时间戳排除「点击晚于这一帧起点」的格子也救不了它(09-25 试过,104/104 格照判,
+ * 红照旧):脏的来源不是输入,是绘制之后浏览器自己的一步。
+ *
+ * 今天的口:一只 1px 的探针块(`position: fixed`,摆在视口外,不碰聊天区的任何一格)
+ * 每帧在 rAF 里改一次宽,门自己的 `ResizeObserver` 于是**每帧都响**(`gate-tail-jitter`
+ * §10.2 ① 栽过的「RO 只在被观察的盒子变了尺寸时才响」,这里由探针自己每帧变一次治掉);
+ * 它响的那一刻是这一帧的 RO 阶段 —— 布局刚排完、产品的 RO 回调(建得比它早,所以先跑)
+ * 已经做完补偿、绘制还没开始:**读到的正是这一帧要画出去的那一份**,而且这一读不逼
+ * 排版(布局是干净的)。`--post-paint-sampler` 退回旧口,留着做 A/B(§21.3 那 11,454px
+ * 在旧口上照样读得出来)。
  *
  * ══ 判的那几格(`BUDGET`)════════════════════════════════════════════════
  *  ① **落点**(审查裁定 1,2026-09-22):收起之后被点那一块的顶边
@@ -63,7 +82,7 @@
  * 输入只走 `page.evaluate` / CDP;`finally` 里逐个收尸并自查残留。
  *
  * 跑法:`npm run gate:fold-collapse`([`--prod`] [`--big`] [`--only <场景>`] [`--motion-none`]
- *       [`--trace-writes`] [`--no-overflow-anchor`])
+ *       [`--trace-writes`] [`--no-overflow-anchor`] [`--post-paint-sampler`])
  * (仓根先 `bun run server:build`;先 `npm run electron:build`。)
  *
  * ══ G 线 P4-0 的两格取样口(正本 §21.1 Q2,**只报不判**)══════════════════
@@ -109,6 +128,8 @@ const MOTION_NONE = process.argv.includes('--motion-none')
 const TRACE_WRITES = process.argv.includes('--trace-writes')
 /** 正本 §21.1 Q2 ②:滚动容器关掉浏览器自己的滚动锚定,做 A/B。 */
 const NO_ANCHOR = process.argv.includes('--no-overflow-anchor')
+/** 正本 §21.6:退回 P4-a 之前那只取样口(rAF 里 `postMessage` 出去的宏任务),做 A/B。 */
+const POST_PAINT_SAMPLER = process.argv.includes('--post-paint-sampler')
 /**
  * 正本 §21.3 Q2 的反证那一格:**不装 rAF 环**(还原取样器本来的时序),改由一段 CDP
  * trace 判「这一格取样之前、上一次点击之后,主线程有没有过一次绘制」。rAF 环本身
@@ -117,7 +138,7 @@ const NO_ANCHOR = process.argv.includes('--no-overflow-anchor')
  */
 const TRACE_PAINT = process.argv.includes('--trace-paint')
 const LANE = `${BIG ? 'big' : 'short'}${PROD ? '-prod' : ''}${TRACE_WRITES ? '-writes' : ''}`
-  + `${TRACE_PAINT ? '-paint' : ''}${NO_ANCHOR ? '-noanchor' : ''}`
+  + `${TRACE_PAINT ? '-paint' : ''}${NO_ANCHOR ? '-noanchor' : ''}${POST_PAINT_SAMPLER ? '-postpaint' : ''}`
 const ONLY = (() => {
   const at = process.argv.indexOf('--only')
   return at >= 0 ? process.argv[at + 1] : undefined
@@ -700,9 +721,32 @@ async function startPaintSampler(page) {
       }
       requestAnimationFrame(tick)
     }
+    /*
+     * **取样那一发在哪儿跑**(判词在文件头「取样口」那一节)。缺省 = 这一帧的 RO 阶段:
+     * 探针块每帧在 rAF 里改一次宽,门自己那只 RO 就每帧响一次。探针块 `position: fixed`
+     * 摆在视口外、`pointer-events: none`,它自己的重排不碰聊天区任何一格。
+     * `--post-paint-sampler` 退回旧口(rAF 里 `postMessage`,宏任务里读)。
+     */
     const channel = new MessageChannel()
     channel.port1.onmessage = sampleAfterPaint
-    const tick = () => { if (!stopped) channel.port2.postMessage(0) }
+    let probe = null
+    let probeRo = null
+    if (!window.__fPostPaintSampler) {
+      probe = document.createElement('div')
+      probe.setAttribute('aria-hidden', 'true')
+      probe.style.cssText = 'position:fixed;left:-20px;top:-20px;width:1px;height:1px;pointer-events:none;'
+      document.body.appendChild(probe)
+      probeRo = new ResizeObserver(() => { if (!stopped) sampleAfterPaint() })
+      probeRo.observe(probe)
+    }
+    const tick = () => {
+      if (stopped) return
+      if (probe) {
+        probe.style.width = probe.style.width === '1px' ? '2px' : '1px'
+        return
+      }
+      channel.port2.postMessage(0)
+    }
     requestAnimationFrame(tick)
     const rafLoop = () => {
       if (stopped) return
@@ -719,6 +763,8 @@ async function startPaintSampler(page) {
     window.__fPaintStop = () => {
       stopped = true
       channel.port1.onmessage = null
+      probeRo?.disconnect()
+      probe?.remove()
       window.__fRafLogLast = window.__fRafLog
       window.__fRafLog = []
     }
@@ -1025,6 +1071,10 @@ async function main() {
       const patched = await page.evaluate(() => window.__fTracer.patchPort())
       console.log(`[fold-collapse] --trace-writes:DOM 层已装;ScrollPort 语义层`
         + `${patched ? `已接上 ${await page.evaluate(() => window.__fTracer.portUrl)}` : '没接上(只剩 DOM 层)'}`)
+    }
+    if (POST_PAINT_SAMPLER) {
+      await page.evaluate(() => { window.__fPostPaintSampler = true })
+      console.log('[fold-collapse] --post-paint-sampler:取样口退回 rAF 里 postMessage 出去的宏任务(P4-a 之前那只)')
     }
     if (TRACE_PAINT) {
       await page.evaluate(() => { window.__fNoRafLog = true; window.__fMarkSamples = true })

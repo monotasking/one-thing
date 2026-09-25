@@ -3,12 +3,13 @@ import type { RefObject } from 'react'
 import { TOC_FLASH_MS } from '../components/motion'
 import { useChatSourceOf } from '../data/chat-source'
 import { useSessionMarkers } from '../data/sessions-source'
-import { reachChatWindow, useChatWindowVersion } from '../content/chat-window'
+import { peekChatWindowStart, reachChatWindow, useChatWindowVersion } from '../content/chat-window'
 import { geometryPortOf } from '../content/viewport/geometry-port'
 import { useLocateMessage } from '../content/locate-message'
 import { useT } from '../i18n'
 import { notify } from '../services/notify'
 import { currentTurnIndex } from './transitions'
+import { AnchorNodeCache, scanAnchorNodes, type AnchorStructure } from './anchor-nodes'
 
 /**
  * TOC 与聊天区之间**唯一**的 DOM 接缝:量坐标、滚过去、点亮落点。
@@ -45,15 +46,10 @@ export interface ChatToc {
   pickTurn: (index: number) => void
 }
 
-/** 页面上此刻在场的锚点:id → 节点。一次查询建表,免得逐个 id 拼选择器转义。 */
-function anchorNodes(container: HTMLElement): Map<string, HTMLElement> {
-  const map = new Map<string, HTMLElement>()
-  for (const node of container.querySelectorAll<HTMLElement>('[data-message-id]')) {
-    const id = node.getAttribute('data-message-id')
-    if (id) map.set(id, node)
-  }
-  return map
-}
+/*
+ * 页面上此刻在场的锚点(id → 节点)住在 `./anchor-nodes`:一次查询建表,免得逐个 id
+ * 拼选择器转义;按结构版本缓存(G 线 P4-a ②),判词在那个文件头。
+ */
 
 /**
  * 每条**在场**的锚点相对滚动内容顶部的偏移,连同它在锚点列里的下标。
@@ -72,15 +68,31 @@ function anchorNodes(container: HTMLElement): Map<string, HTMLElement> {
 function measureAnchors(
   container: HTMLElement,
   anchorIds: readonly string[],
+  cache: AnchorNodeCache,
+  structure: AnchorStructure,
 ): { index: number; top: number }[] {
-  const nodes = anchorNodes(container)
   const base = container.getBoundingClientRect().top - container.scrollTop
-  const found: { index: number; top: number }[] = []
-  anchorIds.forEach((id, index) => {
-    const node = nodes.get(id)
-    if (node) found.push({ index, top: node.getBoundingClientRect().top - base })
-  })
-  return found
+  /*
+   * 表按结构缓存,坐标每次现量(判词在 `anchor-nodes.ts` 文件头)。**兜底**:用到的
+   * 节点若已离开文档,说明结构版本没认出一次换节点 —— 作废、重扫、从头量一遍。
+   * 最多重来一次:刚扫出来的表里不会有离开文档的节点。
+   */
+  for (let attempt = 0; ; attempt += 1) {
+    const nodes = cache.nodesFor(container, structure)
+    const found: { index: number; top: number }[] = []
+    let stale = false
+    for (let index = 0; index < anchorIds.length; index += 1) {
+      const node = nodes.get(anchorIds[index])
+      if (!node) continue
+      if (!node.isConnected) {
+        stale = true
+        break
+      }
+      found.push({ index, top: node.getBoundingClientRect().top - base })
+    }
+    if (!stale || attempt > 0) return found
+    cache.invalidate()
+  }
 }
 
 /**
@@ -123,7 +135,11 @@ function useScrollToMessage(
   const land = useCallback(
     (messageId: string) => {
       const el = scrollRef.current
-      const node = el ? anchorNodes(el).get(messageId) : undefined
+      /*
+       * 落点这一下**现扫**,不走缓存:它一次点击才跑一次(不在每帧的路上),而且
+       * 它要的可能是一条刚被窗口扩出来的行 —— 现扫是它最直白的正确答案。
+       */
+      const node = el ? scanAnchorNodes(el).get(messageId) : undefined
       if (!el || !node) return false
       /*
        * ── 滚过去那一发经**那唯一的口**(G 线 P2-c)──────────────────────────
@@ -243,6 +259,24 @@ export function useChatToc(
    * 屏幕上没有任何东西消费这个下标。空表时 `currentTurnIndex` 本来就返回 -1,
    * 所以这里直接给 -1 与从前逐字等价,只是不再白读一遍 DOM。
    */
+  /*
+   * **锚点节点表的结构缓存**(G 线 P4-a ②,判词在 `anchor-nodes.ts` 文件头)。
+   * 一只 hook 实例一本,寿命 = 这片目录接缝的挂载,不是模块级。
+   *
+   * 消息走 ref 而不进 `runSync` 的依赖表:流式期间 `foldMessages` 每帧是一只新数组,
+   * 进了依赖表 `runSync` 就每帧换身份,下面那条「锚点变了也对一次」的 effect 会跟着
+   * 每帧多排一次量 —— 那是改行为,不是省钱。ref 里放的是**最近一次渲染**的那一份,
+   * 与 `ChatStream` 摆出去的那几行同一次提交(两处订的是同一台 `chat-source`),
+   * 所以 rAF 里读到它时 DOM 已经是它的样子。
+   */
+  const anchorCacheRef = useRef<AnchorNodeCache | null>(null)
+  if (anchorCacheRef.current === null) anchorCacheRef.current = new AnchorNodeCache()
+  const foldMessagesRef = useRef(foldMessages)
+  foldMessagesRef.current = foldMessages
+  /* 会话 id 同理走 ref:`runSync` 的依赖表一格不加,量的时刻与从前逐字相同。 */
+  const sessionIdRef = useRef(sessionId)
+  sessionIdRef.current = sessionId
+
   const runSync = useCallback(() => {
     const el = scrollRef.current
     if (!el) return
@@ -250,7 +284,12 @@ export function useChatToc(
       setCurrentIndex(-1)
       return
     }
-    const found = measureAnchors(el, anchorIds)
+    const cache = anchorCacheRef.current
+    if (!cache) return
+    const found = measureAnchors(el, anchorIds, cache, {
+      messages: foldMessagesRef.current,
+      windowStart: peekChatWindowStart(sessionIdRef.current),
+    })
     // 判定只吃「量出来的坐标」;缺席的锚点先摘掉,再把结果映回锚点列的下标。
     const hit = currentTurnIndex(
       found.map((entry) => entry.top),

@@ -3123,6 +3123,10 @@ coalescer 写 0、`scrollHeight` 缩掉那一截,而 `scrollTop` 恰好等于新
 1. **真店档 `think60k` 展开那 11,454px 的产地仍未结**,但 §17.4 第 1 条的归因已被
    证伪(§19.6)。下一单先答「窗口在场的那几批里,谁还在写 `scrollTop`」。
    `gate:fold-collapse --big` 因此**仍然没进 `verify`**。
+   **结案(2026-09-25,P4-0 + P4-a,§21.3 / §21.6)**:产地是浏览器滚动锚定,同一帧被
+   `ViewportAnchor.onResize` 写回,屏上从没画出来过;红的是门那只取样口自己逼出来的一次
+   排版。取样口挪到这一帧的 RO 阶段之后 `--big` 三趟全绿、拆掉展开钉位当场读回红,
+   `gate:fold-collapse --big`(dev)已进 `verify`。产品一行未改。
 2. **⑭ 在 `gate:stream-geometry` 的夹具上不可达**(钢琴键要后端章)。断言留着并
    自述跳过;同一条路的真机证据在 `gate:search-messages`。要让 ⑭ 活起来,得先让
    那道门的夹具产出章 —— 那是另一件事。
@@ -3579,3 +3583,89 @@ React 元素**重新造一遍**;`MessageRow` 的 memo 只省了它的渲染,省�
 - 真机门:`gate:stream-geometry`(三趟,⑦ 不升)、`gate:tail-jitter`、`gate:fold-collapse`
   (短会话档 + `--big` 各 3 趟,全绿)、`gate:chat-follow`、`gate:send-flow`;
 - 屏幕零变化的证词:`gate:stream-geometry` 与 `gate:send-flow` 的几何读数与 §19 终局同量级。
+
+### 21.6 P4-a 施工账(2026-09-25,读数与结论)
+
+dev 档、屏外窗、临时 store;主检出上用户的桌面开着没动。读数时的负载写在每一格后面。
+
+#### 探针:先修了一格口径
+
+`probe-stream-cost` 的「其余 JS」格在 P4-0 里混进了**探针自己**:`page.evaluate` 送进页面的
+那几段(`window.__cLeaf` 每轮扫一遍 4 万个节点找「停止」钮)栈上一帧带 URL 的都没有,却被记成
+了页面的 JS。超量档一轮约 40ms(一趟 `--keep-trace` 逐栈核过:`querySelectorAll < __cLeaf` 21.8ms、
+`querySelector < __cLeaf` 16.4ms,TOC 的 `querySelectorAll` 只有 0.5ms)。改法:整条栈没有一帧
+带 URL 的样本归 `probe`、不进任何格(`classifier` 里那一段)。§21.3 那句「`querySelectorAll` /
+`querySelector` 38ms 是 TOC 的」因此**不对**,TOC 自己的是 `anchorNodes` 67ms + 那只 `forEach` 19ms。
+下面两组读数都报:**v1** = P4-0 原口径,**v2** = 修过之后;产品改动前后各跑同一口径。
+
+#### ① 行元素账 / ② TOC 锚点缓存 —— `probe-stream-cost`(ms,p95;每次调用内部 3 趟取中位)
+
+| | 口径 | 改前(1 次) | 改后(3 次中位;三次各自) | §21.5 判据 |
+|---|---|---|---|---|
+| React render 差(超量 − 短) | v1 | +8.84 | **+0.59**(0.68 / 0.50 / 0.59) | ≤ 2 ✓ |
+| React render 差 | v2 | +8.84 | **+0.45**(0.57 / 0.45 / 0.40) | ≤ 2 ✓ |
+| 其余 JS 差 | v1 | +1.37 | +0.81(0.82 / 0.63 / 0.81) | ≤ 0.3 ✗ |
+| 其余 JS 差 | v2 | +1.17 | **+0.53**(0.57 / 0.53 / 0.53) | ≤ 0.3 ✗ |
+
+两格原值(v2,改前 → 改后中位):React render 短 4.60 → 2.96 / 超量 13.44 → 3.40,整轮合计
+超量 985 → 569ms;其余 JS 短 0.13 → 0.14 / 超量 1.31 → 0.67。主线程忙 p95 超量 18.41 → 9.55,
+差 +11.29 → +3.90。负载:v1 改前 3.2,改后三次开跑 37.7 / 15.3 / 7.5(第一次是高负载,判据仍达);
+v2 改前 5.8,改后 6.0 / 6.4 / 7.3。
+
+产品函数榜(超量档第 3 趟,render 格):改前第一名 `(匿名) @ ChatStream.tsx`(`visible.flatMap`
+那只回调)480.8ms;改后**榜上没有它**,前八是 `createElement` 70 / `MessageActions` 29 / `SessionLeaf` 29 /
+`Composer children` 29 / `ChatStream children` 24 / `ButtonBase` 19–25 与两格原生。js 格:改前
+`anchorNodes` 68.5ms;改后**榜上没有它**,换名后的整列扫描 `scanAnchorNodes` 一轮 2.1–2.5ms(只在
+结构变了时跑),剩下的是 `measureAnchors` 22–25ms —— 那是每帧对每一枚锚点 `getBoundingClientRect`,
+§21.5 定了「测量照旧每次做」。
+
+**② 的 ≤ 0.3 没达到,原因写清**:缓存生效了(`anchorNodes` 出榜、整列扫描从每帧一次变成结构变了
+才一次),剩下的 +0.53 是每帧那一轮测量本身,不是扫描。要再往下得碰测量(只量视口附近那几枚),
+那超出了 §21.5 这一格的边界,不在这一单做。
+
+超量档 >50ms 帧:改前三趟 2 / 2 / 1,改后九趟 2/1/1、1/1/1、1/2/1 —— 没变,剩下那一两帧最长
+97–140ms,在 render 格的「最大」列(改后 72–91ms)。它不是每帧的活,是一轮里一两次的整块重渲,这一单没碰。
+
+#### ③ `gate:fold-collapse` ⑤ 的取样口
+
+**§21.5 那句「换成 `gate:tail-jitter` 那一只」前提不成立**:这道门用的**已经是**那一只
+(rAF 里 `postMessage` 出去的宏任务,`startPaintSampler`)。第一版照 §21.3 的推断做 ——
+「点击晚于排下这一格的那一帧起点」的格子不进判据 —— 真店档照红(104/104 格照判,11,454 /
+11,454.5px)。门侧挂一只 `MutationObserver` 逐格记最后一次结构变更,读出来:那一帧画完之后
+**一次 DOM 变更都没有**(最后一次变更 5538.0ms,那一帧 rAF 5538.3ms),点击也早于那一帧起点,
+取样那一格(5592.1ms)却读到 `scrollTop` 21,053(原位 9,599),下一格(1.5ms 后)已是 9,599。
+脏的来源不是输入、不是 DOM 写,是「画完」与「取样」之间布局又脏了一次,谁弄脏的**没有证明**。
+
+所以换的是**取样时刻**:一只 1px 的 `position: fixed` 探针块摆在视口外,每帧在 rAF 里改一次宽,
+门自己的 `ResizeObserver` 每帧响一次 —— 读在这一帧的 RO 阶段:布局刚排完、产品的 RO 回调已经
+补偿完、绘制还没开始,读到的就是这一帧要画出去的那一份,而且不逼排版。旧口留作
+`--post-paint-sampler`。三份证据:
+
+| | 读数 |
+|---|---|
+| 新口,`--big` 三趟(负载 5.4–7.5) | 三趟全绿(每趟 80 条 ✓);八格展开位移全是 0px |
+| 新口,短会话三趟(负载 6.0–8.9) | 三趟全绿(每趟 85 条 ✓);`tool:scrolledUp` 展开 0.5px,其余 0px |
+| 旧口 A/B(`--post-paint-sampler --big --only think60k`) | 照红:贴底 20,478.5px、上翻 11,454.5px —— 与 §21.3 同一个数 |
+| 反证:拆掉产品的展开钉位(`reportUserToggle` 开头 `if (change.open) return`,备份文件法) | 新口当场红:真店 `think60k` 37,297px ×2;短会话 `think3k` 3,110 / 2,859px |
+
+收起那一侧的判据同一只口判,①④⑦ 读数与 P2-c 终局同量级(真店落点差 0.12px、回弹 ≤ 0.01px)。
+`gate:fold-collapse --big` 已进 `verify`(dev 一档),§19.8 第 1 条结案。
+`gate:tail-jitter` 还用旧口 —— 它的判窗不跨点击、今天绿,这一单没动它;它有没有同一个隐患没量。
+
+#### 其余验收
+
+- `vitest run src/content src/toc`:161 个文件 / 2,368 条全过。新单测两份:`row-elements`(5 条,
+  拆掉「输入相同交回旧元素」那一句即 2 条红)与 `anchor-nodes`(5 条,含「新消息落账之后下一次
+  能找到它」;把结构比较改成恒真即 2 条红)。
+- `typecheck` 过;`ui:consume` 31 / 基线 31、`motion-gate` 0 / 0、`squeeze-gate` 2 / 3,全在基线内。
+- eslint 改动文件:2 条,都是存量 —— `ChatStream.tsx` 的 `seatActive`(§19.8 第 7 条)与
+  `gate-fold-collapse.mjs` 的 `body`(HEAD 上同一行就有)。
+- `gate:stream-geometry` 三趟(负载 5.4 / 5.9 / 4.8)全绿。⑦ 长帧:16 个场景里只有 `short:code`
+  2 个(241–242ms,在它的过渡值 ≤ 2 / ≤ 260 里),其余 15 个场景三趟都是 0。§19.8 第 5 条记的是
+  每趟 1–4 条红、每趟红的场景不同;这三趟 0 条红。**不升**,达到。
+- `gate:tail-jitter`(负载 10.5):绿;贴底跟随 413 样本 1 个取值 / 峰峰 0 设备像素,两处切换 0。
+- `gate:chat-follow`(负载 7.8):绿。
+- `gate:send-flow`(负载 7.1):绿;座位期首字位移 0 / 漂移 0,收尾锚点位移 0,超量档收尾锚点 0px。
+- 屏幕零变化的证词:`gate:stream-geometry` 三趟各场景 ①② 尾槽位移 0px;⑬ 除 `big:text` 外 0px,
+  `big:text` 三趟都是 4.5px(= §19.8 第 4 条挂着的那格过渡值,存量);`gate:send-flow` 座位期全 0
+  —— 与 §19 终局同一组数。

@@ -449,12 +449,19 @@ run('gate:tail-jitter(prod·short)', 'npm', ['run', '--silent', 'gate:tail-jitte
  *
  * 进来的是 **dev 与 prod 的短会话档**:正本 §0 末尾那句话在这道门上同样成立 ——
  * 短会话里 `scrollTop` 钳得到,病才全额暴露;真店档是对照组。
- * **真店档(`--big`)不在这儿**:它那一格 `think60k` 的展开今天还红(留账 §16.5 第 2 条),
- * 而且它要 50–62MB 夹具 × 四条会话,单跑一趟就是十几分钟。
- * 动效档「无」(`--motion-none`)同理:它是一条按需跑的档,判的与标准档逐格相同。
+ * **真店档(`--big`)从 G 线 P4-a 起进来了(dev 一档)**。它从前不在这儿,理由是
+ * `think60k` 那一格的展开恒红(留账 §16.5 第 2 条 → §19.8 第 1 条)。P4-0 量清了那
+ * 11,454px 的产地(正本 §21.3 Q2):浏览器滚动锚定推的、同一帧被 `ViewportAnchor.onResize`
+ * 写回、**从没画出来过** —— 红的是取样器自己逼出来的那一次排版,不是屏幕。P4-a 把
+ * 取样口从「rAF 里 `postMessage` 出去的宏任务」挪到「这一帧的 RO 阶段」(判词在
+ * `gate-fold-collapse.mjs` 文件头「取样口」一节)之后三趟全绿,拆掉产品的展开钉位
+ * 当场读回 37,297 / 3,110px 红(§21.6),于是它照「证得了自己的判据就进门」进来。
+ * 它贵(50–62MB 夹具 × 四条会话),所以只进 dev —— 用户跑的是 `electron:dev`。
+ * 动效档「无」(`--motion-none`)仍然不在:它是一条按需跑的档,判的与标准档逐格相同。
  */
 run('gate:fold-collapse(dev)', 'npm', ['run', '--silent', 'gate:fold-collapse'])
 run('gate:fold-collapse(prod)', 'npm', ['run', '--silent', 'gate:fold-collapse', '--', '--prod'])
+run('gate:fold-collapse(dev·真店)', 'npm', ['run', '--silent', 'gate:fold-collapse', '--', '--big'])
 /*
  * **工具卡换挡 + markdown 落定不许闪**(R 线 F1,正本 `docs/stream-render-2026-09.md` §8)。
  *
@@ -485,7 +492,7 @@ run('gate:tool-md-flicker(dev)', 'npm', ['run', '--silent', 'gate:tool-md-flicke
 process.stdout.write(
   '\n[verify] ok —— typecheck / lint(含 jsx-a11y)/ squeeze-gate / motion-gate / test / build'
     + ' / offline-fonts / buttonbase-css'
-    + ' / 真机门(connect·data·theme·chat·files·search·monotone·squeeze·motion·a11y·focus·layout·fold-collapse'
+    + ' / 真机门(connect·data·theme·chat·files·search·monotone·squeeze·motion·a11y·focus·layout·fold-collapse[短 dev+prod · 真店 dev]'
     + '·chat-follow·continuity·terminal[dev+prod]·browser[dev+prod]·chat-layout[dev+prod]'
     + '·send-flow[dev+prod]·stream-geometry[dev+prod]·tail-jitter[dev+prod × 短/真店]'
     + '·tool-md-flicker[dev])全绿\n',

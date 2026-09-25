@@ -6,6 +6,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  type ReactElement,
   type RefObject,
 } from 'react'
 import { chatSources, loadOlderChatMessages, useChatSourceOf } from '../data/chat-source'
@@ -20,6 +21,7 @@ import { resolveIcon } from '../components/icons'
 import { CARD_FLIP_MS, currentMotionTier } from '../components/motion'
 import { ButtonBase } from '../ui/ButtonBase'
 import { assembleMessage, segmentKey } from './assemble'
+import { RowElementBook } from './row-elements'
 import { ContextDeltaSeam, hasContextDelta } from './ContextDeltaSeam'
 import { DomScrollPort, type ScrollPort } from './viewport/scroll-port'
 import { useViewportAnchor } from './viewport/use-viewport-anchor'
@@ -298,6 +300,141 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
   const tailRunning = activeMessageId !== undefined || retryingId !== undefined
 
   /*
+   * ── 行元素账(G 线 P4-a ①,正本 §21.5;机理与寿命判词在 `row-elements.ts`)──────
+   * 下面那张有序表的元素从这两本账里取,**不再每帧现造**。流式期间 `messages` 每帧是
+   * 一只新数组,从前那句 `visible.flatMap(...)` 就把每一行的元素重造一遍(真店档一轮
+   * 490ms);现在一行的输入逐格 `===` 没变就交回**同一个元素对象**,React 见
+   * `oldProps === newProps` 整行跳过 —— 412 行里真造元素的只有活的那一两行。
+   *
+   * 两本而不是一本:账本行按消息 id 记、在飞那几格按 entry id 记 —— 两套号出自两个
+   * 铸币处(core 的消息 id / `chat-source` 的 entry 号),混进一本就得先证明它们永不
+   * 相撞;分两本,这件事不用证。
+   * 账挂在这一次挂载上、换会话换一本新的 —— 与上面 `entryRef` 同一个手法。
+   */
+  const rowBooksRef = useRef<{ sid: string; ledger: RowElementBook; overlay: RowElementBook } | undefined>(undefined)
+  if (!rowBooksRef.current || rowBooksRef.current.sid !== sessionId) {
+    rowBooksRef.current = { sid: sessionId, ledger: new RowElementBook(), overlay: new RowElementBook() }
+  }
+  const rowBooks = rowBooksRef.current
+
+  /*
+   * **key 与顺序与从前 `flatMap` 那一版逐字相同**:用户消息一行(有上下文更新时
+   * 后面跟一道折痕),其余每条一行 `MessageRow`。
+   */
+  const ledgerRowElements: ReactElement[] = []
+  rowBooks.ledger.begin()
+  for (const message of visible) {
+    const flash = message.id === flashMessageId
+    if (message.role === 'user') {
+      /*
+       * 输入清单 = 这一格元素读到的全部值:消息对象(正文 / 部件 / 附件 / 上下文更新
+       * 都从它身上取)、`flash`、有没有那道折痕、`t`、`sessionId`。折痕那一格是从消息
+       * 算出来的,列进来是把「这一格的形状」写成一目了然的一格,而不是靠读者去推。
+       */
+      const seam = hasContextDelta(message.turnContext)
+      const rows = rowBooks.ledger.take(message.id, [message, flash, seam, t, sessionId], () => {
+        const row = (
+          <UserBubble
+            key={message.id}
+            t={t}
+            sessionId={sessionId}
+            messageId={message.id}
+            text={message.content}
+            parts={message.contentParts}
+            status="landed"
+            attachments={messageAttachmentMetadata(message)}
+            flash={flash}
+          />
+        )
+        /*
+         * ── 上下文更新那一道折痕(U5,09-09 裁定)────────────────────────────────
+         * `turnContext` 是**宿主在这一回合开始时补给模型的上下文** —— 是回合的事,
+         * 不是用户说的话。数据照旧存在用户消息上(它是发给模型的那条消息的一部分,
+         * 账本一个字不动),**呈现**却不该挂在气泡下面:挂在那里读起来像
+         * 「用户还说了这些」。所以它是用户那一行**之后**、下一行**之前**的独立一行,
+         * 与压缩折痕同属「系统在两回合之间做的事」这一族。
+         *
+         * 它**不带 `data-message-id`** —— 那个属性是 TOC / `locate-message` 找消息的
+         * 唯一接缝,多一个不是消息的元素挂上去,钢琴键就会落到一行折痕上。
+         * 它报的是 `data-context-of`:这道折痕说的是**哪条消息**那一回合的事。
+         *
+         * 一条消息的几行**平铺**进这张表而不是包一层 `<Fragment key>`:后者会把
+         * MessageRow 挪进一层新的键空间,而这一行的整篇 memo 短路(60 万 token 会话
+         * 3–4fps 那笔账)全靠它的 key 与位置一格不动。
+         */
+        return seam ? [row, contextSeamRow(message)] : [row]
+      })
+      for (const row of rows) ledgerRowElements.push(row)
+      continue
+    }
+    const streaming = message.id === activeMessageId
+    /*
+     * 重试那一路:这一条正在上折(单 B ⑥)。比的是**被重试的那一条**的身份,
+     * 所以其余每一行拿到的都是 `false` —— 输入逐格不变,账照旧命中。
+     */
+    const retiring = message.id === retryingId
+    const rows = rowBooks.ledger.take(
+      message.id,
+      [message, streaming, flash, retiring, t, sessionId],
+      () => [
+        <MessageRow
+          key={message.id}
+          t={t}
+          sessionId={sessionId}
+          message={message}
+          streaming={streaming}
+          flash={flash}
+          retiring={retiring}
+        />,
+      ],
+    )
+    for (const row of rows) ledgerRowElements.push(row)
+  }
+  rowBooks.ledger.end()
+
+  const overlayRowElements: ReactElement[] = []
+  rowBooks.overlay.begin()
+  for (const entry of overlay) {
+    /*
+     * 在飞那一格的输入 = entry 对象本身(`chat-source` 每次改它都换一只新对象:
+     * 失败 / 重试 / 认领都是 `{ ...entry, … }`)+ `t` + `sessionId`。附件那一格
+     * 从 entry 算,从前每帧现算一只新数组(于是 `UserBubble` 的 memo 在在飞那一格
+     * 上从没短路过);现在它随元素一起记在账上,entry 不换它就不换。
+     */
+    const rows = rowBooks.overlay.take(entry.id, [entry, t, sessionId], () => [
+      entry.kind === 'notice'
+        ? <NoticeRow key={entry.id} t={t} />
+        : (
+            <UserBubble
+              /*
+               * key = 这条消息**将来在账本上的 id**(发送前就铸好了,
+               * `chat-source.send`)。账本那一行用的是同一个字符串,所以
+               * 落账那一拍 React 认出「还是它」,DOM 节点原样留着。
+               * 没有 `messageId` 的旧形 entry(steering 降级那条路自己铸 id)
+               * 退回 `entry.id` —— 那一条落账时仍会换节点,**留账**:
+               * 要根治得改 `steerMessage` 的签名(正本 §6.2 末)。
+               */
+              key={entry.messageId ?? entry.id}
+              t={t}
+              sessionId={sessionId}
+              text={entry.text}
+              segments={entry.segments}
+              status={entry.status === 'failed' ? 'failed' : 'pending'}
+              attachments={messageAttachmentMetadata({
+                id: entry.id,
+                attachments: entry.files?.map((file) => ({ file, fileName: file.name, mimeType: file.type, size: file.size })),
+              })}
+              attachmentCount={entry.attachments}
+              error={entry.error}
+              entryId={entry.id}
+            />
+          ),
+    ])
+    for (const row of rows) overlayRowElements.push(row)
+  }
+  rowBooks.overlay.end()
+
+  /*
    * ── 消息流是响应链上的一格 `region`(09-03 R2)──────────────────────────────
    * 它自己**一条键都不认**:没有局部键表、不声明 `onEscape`(所以根本不进 Esc
    * 候选表)。接树买到的是另外两件:①它成了「焦点此刻在哪块面」的一个合法答案 ——
@@ -410,95 +547,18 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
               * React 在同一个父数组里按 key 认出「还是它」,DOM 节点原样留着,落账
               * 那一拍只改 `data-pending` 与那一格不透明度。
               *
-              * `flatMap` 那一层保留:上下文更新那道折痕是**跟在某条消息后面的一行**,
-              * 它与消息同属这张表。
+              * 上下文更新那道折痕是**跟在某条消息后面的一行**,它与消息同属这张表:
+              * 一条消息在账上记的是**一组**元素(一行或两行),平铺进来。
+              * 元素从行元素账里取而不是现造(G 线 P4-a ①,见上面 `ledgerRowElements`)
+              * —— 顺序与 key 与那一版 `flatMap` 逐字相同。
               */}
             {[
-              ...visible.flatMap((message) => {
-              if (message.role === 'user') {
-                const row = (
-                  <UserBubble
-                    key={message.id}
-                    t={t}
-                    sessionId={sessionId}
-                    messageId={message.id}
-                    text={message.content}
-                    parts={message.contentParts}
-                    status="landed"
-                    attachments={messageAttachmentMetadata(message)}
-                    flash={message.id === flashMessageId}
-                  />
-                )
-                return hasContextDelta(message.turnContext)
-                  ? [row, contextSeamRow(message)]
-                  : [row]
-              }
-              const row = (
-                <MessageRow
-                  key={message.id}
-                  t={t}
-                  sessionId={sessionId}
-                  message={message}
-                  streaming={message.id === activeMessageId}
-                  flash={message.id === flashMessageId}
-                  /*
-                   * 重试那一路:这一条正在上折(单 B ⑥)。传的是**被重试的那一条**
-                   * 的身份,所以其余每一行拿到的都是 `false` —— memo 的浅比照旧短路。
-                   */
-                  retiring={message.id === retryingId}
-                />
-              )
-              /*
-               * ── 上下文更新那一道折痕(U5,09-09 裁定)────────────────────────
-               * `turnContext` 是**宿主在这一回合开始时补给模型的上下文** —— 是回合的事,
-               * 不是用户说的话。数据照旧存在用户消息上(它是发给模型的那条消息的一部分,
-               * 账本一个字不动),**呈现**却不该挂在气泡下面:挂在那里读起来像
-               * 「用户还说了这些」。所以它是用户那一行**之后**、下一行**之前**的独立一行,
-               * 与压缩折痕同属「系统在两回合之间做的事」这一族。
-               *
-               * 它**不带 `data-message-id`** —— 那个属性是 TOC / `locate-message` 找消息的
-               * 唯一接缝,多一个不是消息的元素挂上去,钢琴键就会落到一行折痕上。
-               * 它报的是 `data-context-of`:这道折痕说的是**哪条消息**那一回合的事。
-               *
-               * `flatMap` 而不是包一层 `<Fragment key>`:后者会把 MessageRow 挪进一层新的
-               * 键空间,而这一行的整篇 memo 短路(60 万 token 会话 3–4fps 那笔账)
-               * 全靠它的 key 与位置一格不动。
-               */
-              return [row]
-              }),
+              ...ledgerRowElements,
               /*
                * 在飞那几格**紧跟在账本末尾**(顺序按 entry 先后)。它们与上面那几行
                * 在同一张表里 —— 判词见这张表开头那一段。
                */
-              ...overlay.map((entry) => (
-                entry.kind === 'notice'
-                  ? <NoticeRow key={entry.id} t={t} />
-                  : (
-                      <UserBubble
-                        /*
-                         * key = 这条消息**将来在账本上的 id**(发送前就铸好了,
-                         * `chat-source.send`)。账本那一行用的是同一个字符串,所以
-                         * 落账那一拍 React 认出「还是它」,DOM 节点原样留着。
-                         * 没有 `messageId` 的旧形 entry(steering 降级那条路自己铸 id)
-                         * 退回 `entry.id` —— 那一条落账时仍会换节点,**留账**:
-                         * 要根治得改 `steerMessage` 的签名(正本 §6.2 末)。
-                         */
-                        key={entry.messageId ?? entry.id}
-                        t={t}
-                        sessionId={sessionId}
-                        text={entry.text}
-                        segments={entry.segments}
-                        status={entry.status === 'failed' ? 'failed' : 'pending'}
-                        attachments={messageAttachmentMetadata({
-                          id: entry.id,
-                          attachments: entry.files?.map((file) => ({ file, fileName: file.name, mimeType: file.type, size: file.size })),
-                        })}
-                        attachmentCount={entry.attachments}
-                        error={entry.error}
-                        entryId={entry.id}
-                      />
-                    )
-              )),
+              ...overlayRowElements,
               /*
                * ── 座位垫块(正本 §3;几何在 `content/seat.ts`)──────────────────
                * **列尾一块让位给内容的空白**:发送那一帧自己的话滑到置顶线,底下

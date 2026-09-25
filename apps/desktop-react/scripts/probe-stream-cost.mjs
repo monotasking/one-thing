@@ -355,7 +355,21 @@ function classifier(nodes) {
     else if (leafName === '(program)' || leafName === '(root)') answer = 'native'
     else {
       answer = 'js'
+      /*
+       * **探针自己经 CDP 注进页面的那几段脚本也算 `probe`**(G 线 P4-a 补,正本 §21.6):
+       * `page.evaluate` 送进来的函数没有 URL,`window.__cLeaf` 也是一段 `addInitScript`
+       * 注进来的无 URL 脚本。它们在超量档每一轮扫 4 万个节点找「停止」钮在不在
+       * (`querySelectorAll('[data-pane-on]')` + 几次 `querySelector`),一轮约 40ms ——
+       * P4-0 那一版把它记进了「其余 JS」,§21.3 读成了 TOC 锚点扫描的一部分。
+       * 判据:整条栈上**一帧带 URL 的都没有** = 它不是页面自己的代码(产品与依赖库的
+       * 每一帧都带 vite 的 http URL,原生函数只会挂在它们底下)。
+       */
+      let hasUrl = false
       for (let cur = leaf; cur; cur = nodes.get(cur.parent)) {
+        if (cur.callFrame?.url) { hasUrl = true; break }
+      }
+      if (!hasUrl) answer = 'probe'
+      for (let cur = hasUrl ? leaf : null; cur; cur = nodes.get(cur.parent)) {
         const fn = cur.callFrame?.functionName ?? ''
         const url = cur.callFrame?.url ?? ''
         if (fn === 'perfSpan' && url.includes('/services/perf')) {
