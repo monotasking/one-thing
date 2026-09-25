@@ -3314,3 +3314,61 @@ typecheck 绿;eslint 只剩 §19.8 第 7 条那格存量 `seatActive`;`ui:consum
 
 **留账**:`squeeze-gate` 基线里 `diff/Diff.module.css .text` 那一条已不存在,可从基线删,
 这一单没删。§20.4 的演练结论(锚点步多一行)与 §3.4 原文的出入已在 §20.4 如实记。
+
+## 21. P4 · 冻结线与几何账本 —— 先量,再改(2026-09-25)
+
+§3.5 把 P4 写成三件事(冻结线一等化 / 三本 `HeightBook` 合一 / dev 断言),用户可感是
+「长会话流式更稳」。开工前把这句话拆成两个**可量**的问题,量出来再定改什么;没量到的不改。
+
+### 21.1 两个问题
+
+**Q1 · 超量档流式时,每帧的活有多少与历史长度成正比?**
+P3 之后渲染路径是:`chat-source.compose`(每帧一次:`materializeChatMessagesCached` →
+`mergePageAndFold` → `reconcileOverlay` → `appendTail` / R2 水位)→ zustand `set` → `ChatStream`
+重渲(`MessageRow` 按消息引用 memo)→ 活消息 `assembleMessage` → 块级 memo → 浏览器 style /
+layout(`content-visibility: auto` 的行跳渲,尾行 `visible`)→ RO 回调(三本账 + 钳量尺 +
+锚定器)。§19.8 第 5 条 `gate:stream-geometry` ⑦ 在超量档一直有 51–225ms 的长帧,只数了不归因。
+**判据**:同一份 delta 流分别喂 `short` 与 `big` 两档,逐帧把主线程自调时间归到上面那几格;
+哪一格 big 比 short 大出的量与消息数 / 节点数同量级,哪一格就是 P4-a 的靶。哪一格都不是
+(长帧全落在 style/layout 且不随历史长)就写明,P4-a 不立。
+
+**Q2 · 真店档 `think60k` 展开那 11,454px 的 `scrollTop` 是谁写的?**
+§19.6 已证:上方一个像素都没长,视口位移与被点那一块的位移**逐像素相等**。JS 侧唯一的
+写手是 `ScrollPort.setTop`(P2-a 起),它带 `cause`;JS 之外只剩浏览器自己的滚动锚定
+(`overflow-anchor`,`.seat` 那段注释记着它在 `gate:send-flow` 里被证明无关 —— 但那是收尾
+换手的场景,不是展开)。**判据**:① 在那 105 帧里逐帧记 `ScrollPort.setTop` 的每一次调用
+(cause / 值 / 帧号),与 `scrollTop` 的实际轨迹对齐;② A/B:经 CDP 给滚动容器加
+`overflow-anchor: none` 再跑同一场景。四种结果各自的结论写死在下面,量到哪条走哪条:
+
+| ① JS 有写 | ② A/B 归零 | 结论 |
+|---|---|---|
+| 有 | — | 那条 cause 的裁决错了,P4-a 修裁决(改哪一格由 cause 说) |
+| 无 | 是 | 浏览器锚定挑了被点那一块**下面**的节点当锚;P4-a 拍点:展开期间给容器 `overflow-anchor: none` 或给被点那一块 `overflow-anchor: none`(**行为裁定,先问**) |
+| 无 | 否 | 既不是 JS 也不是锚定 —— 剩下的是 `scrollIntoView` / focus 引起的滚动;逐帧记 `document.activeElement` 与 focus 事件再报 |
+| 有且 A/B 也归零 | | 两个产地叠加,分开报两个数 |
+
+### 21.2 P4-0 · 量(只报不改)
+
+- 新探针 `scripts/probe-stream-cost.mjs`(Q1):复用 `gate-perf.mjs` 的 CDP Tracing 与
+  `gate-stream-geometry.mjs` 的两档夹具 + 假 provider;每帧一行,列 = `chat.compose` /
+  `assemble`(两处 `perfSpan` 现成)/ React commit / style+layout / RO 回调 / 其余 JS;
+  输出 `short` 与 `big` 两张表 + 一张差表(p50 / p95 / 最大),差表按格排序。
+- `gate:fold-collapse --big --only think60k` 多一格取样口(Q2 ①):`ScrollPort.setTop` 的
+  每次调用记 `{frame, cause, from, to}`(dev 下经 `getLogger('chat.geometry')` 或探针 hook,
+  产品代码不加第二个写点),与 `scrollTop` 轨迹并排打进报告;再加 `--no-overflow-anchor`
+  开关做 A/B(Q2 ②)。
+- 读数写进 §21.3;**这一单一行产品代码都不改**(取样口只许加在门脚本与 dev-only 日志上)。
+
+### 21.3 读数(P4-0 交卷后填)
+
+### 21.4 P4-a / P4-b(量完再写)
+
+P4-b 里今天就能站住的两件,先记着不派:
+1. **高度账按身份记,不按元素记**:停靠池淘汰之后重开一条会话,每一行的
+   `contain-intrinsic-block-size` 只有 240px 的估计,往上翻内容列一路长高;账本按消息 id
+   记住上一次的真高,行上以内联变量喂回去,翻回去就不长。它是 G5(上过屏的位置固定)在
+   「重开」这一场景上的兑现,量法是 `gate:chat-follow` 那套滚动位读数。
+2. **几何三问的第一个运行时读者**:`GeometryLedger.note` 今天只记整列;按段元素记时,
+   `shrink: 'never'` 的型任何变矮都是违例、`liveForm: 'fixed'` 的型流式期间任何变高都是
+   违例 —— 判据从段表读,不在账本里再写一遍型的名字。
+「首次上屏时刻」那一格(§3.5)P4-0 没有消费者,不立。
