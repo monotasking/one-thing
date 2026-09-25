@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { MusicPanel } from '../content/MusicPanel'
+import { MUSIC_SECTIONS } from '../content/music/sections'
 import { configureMusicPort } from '../data/music-port'
 import { resetMusicSource } from '../data/music-source'
 import type { MusicPort, MusicResourceEvent } from '../data/music-port'
@@ -174,6 +175,15 @@ function table(state: LabState): Record<string, ResourceReadView> {
       ].map(([at, text]) => ({ at, text })),
     }),
     'music:provider#state': ok(setupState(state)),
+    // 音乐面 v9 的搜索那一格:一份固定样本(一行没版权的,看灰掉那一档)。
+    'music:provider#search': ok({
+      records: [
+        { title: '雨棚下', artist: '陈绮贞', playFlag: true },
+        { title: '慢车', artist: '草东没有派对', playFlag: true },
+        { title: '一首名字特别特别特别长、长到一行放不下的歌', artist: '一位名字也很长的歌手', playFlag: true },
+        { title: '七里香', artist: '周杰伦', playFlag: false },
+      ],
+    }),
   }
 }
 
@@ -525,10 +535,27 @@ const CHOICES: readonly Choice<keyof LabState>[] = [
   },
 ]
 
+/**
+ * 地址栏上的初值(v9,截图用):`?music-lab&width=360&section=radio&setup=login-idle&radio=off&player=stopped&song=-1`。
+ * 只认样本表里已有的那几格;认不出的值当没给。
+ */
+function labParams(): { width?: string; section?: string; state: Partial<LabState> } {
+  const params = typeof window === 'undefined' ? new URLSearchParams() : new URLSearchParams(window.location.search)
+  const state: Partial<LabState> = {}
+  for (const choice of CHOICES) {
+    const raw = params.get(choice.key)
+    if (raw === null || !choice.options.some((o) => o.value === raw)) continue
+    Object.assign(state, { [choice.key]: choice.key === 'song' ? Number(raw) : raw })
+  }
+  return { width: params.get('width') ?? undefined, section: params.get('section') ?? undefined, state }
+}
+
 export function MusicLab() {
-  const [width, setWidth] = useState<string>('620')
+  const [initial] = useState(labParams)
+  const [width, setWidth] = useState<string>(initial.width ?? '620')
   const [height, setHeight] = useState<string>('760')
-  const [state, setState] = useState<LabState>(INITIAL)
+  const [state, setState] = useState<LabState>(() => ({ ...INITIAL, ...initial.state }))
+  const [section, setSection] = useState<string>(initial.section ?? 'auto')
   /*
    * 两个开关 = 面板的**初始**态。它们换的时候整块面重挂(`key`)—— 抽屉开合的主人
    * 自始至终是那块面自己(正本 §3.1「卸载:抽屉与歌词页状态不落盘」),这里不越权
@@ -544,7 +571,7 @@ export function MusicLab() {
 
   useEffect(() => {
     port.onOp = (op, params) => setState((prev) => applyOp(prev, op, params))
-    port.update(INITIAL)
+    port.update({ ...INITIAL, ...initial.state })
     resetMusicSource()
     resetPetSource()
     configureMusicPort(port)
@@ -555,7 +582,7 @@ export function MusicLab() {
       configureMusicPort(undefined)
       configurePetPort(undefined)
     }
-  }, [petPort, port])
+  }, [petPort, port, initial])
 
   useEffect(() => {
     port.update(state)
@@ -619,6 +646,12 @@ export function MusicLab() {
           onChange={(next) => setDrawer(next as 'closed' | 'open')}
         />
         <Segmented
+          label="section"
+          options={[{ value: 'auto', label: 'auto' }, ...MUSIC_SECTIONS.map((row) => ({ value: row.id, label: row.id }))]}
+          value={section}
+          onChange={setSection}
+        />
+        <Segmented
           label="locale"
           options={[
             { value: 'zh', label: '中' },
@@ -643,8 +676,9 @@ export function MusicLab() {
       >
         {ready && (
           <MusicPanel
-            key={drawer}
+            key={`${drawer}:${section}`}
             initialPlaylistOpen={drawer === 'open'}
+            initialSection={section === 'auto' ? undefined : section}
           />
         )}
       </div>

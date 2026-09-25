@@ -1,0 +1,458 @@
+/*
+ * 音乐面 v9 的外框与三格新分区(2026-09-25;正本 apps/desktop-react/docs/music-panel-2026-09.md §10)。
+ *
+ * 檐 / 状态条 / 登录引导卡 / 播放条第一行,加上「电台」「搜索」「账号」三格的身子。唱机那一格与
+ * 抽屉的皮仍在 MusicPanel.module.css 与 RecordDeck.module.css 里,这里一行都不重画。
+ * 一切量出自 tokens.css(v9 那一节是 --music-page-w / --music-mood-* / --music-gate-w)。
+ */
+
+/* ── 檐 ────────────────────────────────────────────────────────────────── */
+
+/* 导航在左、账号在右;窄到放不下时账号位先让(它的字收成图标),导航不截断。 */
+.header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.nav {
+  min-width: 0;
+}
+
+.headerEnd {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.buttonIcon {
+  flex: none;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+/* 窄面板:「登录」钮只剩图标 —— 字仍在 DOM 里(按钮的名字),藏的只是视觉(全局 .visually-hidden 同一套)。 */
+@container music (max-width: 360px) {
+  .loginLabel {
+    position: absolute;
+    width: var(--bw-1);
+    height: var(--bw-1);
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/* ── 状态条 ─────────────────────────────────────────────────────────────── */
+
+/*
+ * 一个图标 / 一句话 + 一句指引 / 一颗钮。**状态色只上图标,底色不换**(壳规):底恒为 surface-1,
+ * 左边那枚图标按色调着色。
+ */
+.banner {
+  flex: none;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0 var(--sp-3) var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-2);
+  background: var(--surface-1);
+  box-shadow: inset 0 0 0 var(--bw-1) var(--line-1);
+}
+
+.bannerIcon {
+  flex: none;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--info);
+}
+
+.banner[data-tone='bad'] .bannerIcon {
+  color: var(--danger);
+}
+
+.banner[data-tone='warn'] .bannerIcon {
+  color: var(--warn);
+}
+
+.bannerText {
+  display: grid;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.bannerMessage {
+  margin: 0;
+  font-size: var(--fs-meta);
+  line-height: var(--pr-lh);
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+}
+
+.bannerHint {
+  margin: 0;
+  font-size: var(--fs-micro);
+  line-height: var(--pr-lh);
+  color: var(--text-2);
+}
+
+/* ── 登录引导卡 ─────────────────────────────────────────────────────────── */
+
+.gate {
+  display: grid;
+  justify-items: center;
+  gap: var(--sp-3);
+  align-self: center;
+  width: 100%;
+  max-width: var(--music-gate-w);
+  margin: auto;
+  padding: var(--sp-6) var(--sp-4);
+  text-align: center;
+}
+
+.gateIcon {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+  color: var(--text-3);
+}
+
+.gateTitle {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.gateBody {
+  margin: 0;
+  font-size: var(--fs-meta);
+  line-height: var(--pr-lh);
+  color: var(--text-2);
+}
+
+/* ── 播放条的第一行 ───────────────────────────────────────────────────────── */
+
+/* 碟 / 字 / (指引钮)/ 状态丸。字那一格吸宽并先截断;状态丸不让(它是这一行要说的事)。 */
+.nowLine {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: 0 var(--sp-4);
+}
+
+.nowText {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.nowName,
+.nowIdle {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--fs-label);
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.nowIdle {
+  font-weight: 400;
+  color: var(--text-2);
+}
+
+/* 歌名 flex-shrink 比歌手小:两段一起截断时歌手先省略(与节目单那一行同一条)。 */
+.nowArtist {
+  flex: 0 10 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+/* 状态丸(类名 .state):点(或转圈)+ 一句话。文字读数,不是徽;底不换色。窄面板只留点。 */
+.state {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+@container music (max-width: 360px) {
+  .stateLabel {
+    position: absolute;
+    width: var(--bw-1);
+    height: var(--bw-1);
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/* ── 分区身子共用 ─────────────────────────────────────────────────────────── */
+
+.page {
+  display: grid;
+  gap: var(--sp-3);
+  align-content: start;
+  min-width: 0;
+}
+
+/* 一句灰色的指引 / 事实。 */
+.hint {
+  margin: 0;
+  font-size: var(--fs-meta);
+  line-height: var(--pr-lh);
+  color: var(--text-3);
+}
+
+/* 一句坏消息。**只换字色不换底**。 */
+.bad {
+  margin: 0;
+  font-size: var(--fs-meta);
+  line-height: var(--pr-lh);
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
+/* 输入框 + 钮:输入框吸宽;窄到放不下时钮折到下一行,不探出面板。 */
+.formRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.formRow > :first-child {
+  flex: 1 1 0;
+  min-width: min(var(--music-input-min), 100%);
+}
+
+.inputIcon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--text-3);
+}
+
+/* ── 电台那一格 ─────────────────────────────────────────────────────────── */
+
+.stationLine {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  font-size: var(--fs-label);
+  color: var(--text-1);
+}
+
+/* 意图原话:单行截断(超量),整句在它自己的节点里,读屏照念。 */
+.stationIntent {
+  margin: var(--sp-1) 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--music-font-say);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+
+/* 四枚心情块:窄面板自己折成两行两列。 */
+.moods {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--music-mood-min), 1fr));
+  gap: var(--sp-2);
+}
+
+.moodTile {
+  display: grid;
+  align-content: end;
+  gap: var(--sp-1);
+  min-width: 0;
+  min-height: var(--music-mood-h);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-2);
+  background: var(--mood-bg);
+  color: var(--music-mood-ink);
+  text-align: left;
+  transition:
+    transform var(--dur) var(--ease),
+    filter var(--dur) var(--ease);
+}
+
+.moodTile:hover:not(:disabled) {
+  filter: var(--music-mood-hover);
+}
+
+.moodTile:active:not(:disabled) {
+  transform: var(--music-mood-press);
+}
+
+.moodTile:disabled {
+  opacity: var(--btn-disabled-o);
+}
+
+.moodName {
+  font-size: var(--fs-label);
+  font-weight: 600;
+}
+
+.moodIntent {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-micro);
+  color: var(--music-mood-sub);
+}
+
+/* 说话那一块的三颗建议词。 */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  margin-bottom: var(--sp-2);
+}
+
+/* 你刚说的那句(回执,6s 自己散):右对齐的一枚灰气泡。 */
+.echo {
+  justify-self: end;
+  max-width: var(--music-echo-max);
+  margin: var(--sp-2) 0 0 auto;
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-3);
+  background: var(--surface-2);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+/* ── 搜索那一格 ─────────────────────────────────────────────────────────── */
+
+.results {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* 碟 / 字 / 钮。与节目单的行同高同皮。 */
+.result {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--list-row-h);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-1);
+}
+
+.result:hover {
+  background: var(--st-hover);
+}
+
+/*
+ * 没版权的那一行:**不整行调透明**(axe 真红过:字的对比度掉到 AA 以下)—— 只把碟淡下去、
+ * 歌名降一档灰,「没有版权」那句字照常可读。
+ */
+.result[data-blocked] > :first-child {
+  opacity: var(--btn-disabled-o);
+}
+
+.result[data-blocked] .resultTitle {
+  color: var(--text-2);
+}
+
+.resultText {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.resultTitle {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--fs-label);
+  color: var(--text-1);
+}
+
+.resultArtist {
+  flex: 0 10 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+.resultNote {
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+/* ── 账号那一格:三步清单 ─────────────────────────────────────────────────── */
+
+.steps {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* 点 / 名字 + 一句 / 状态字。当前那一步字深一档,做完的与待办的都灰。 */
+.step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.stepText {
+  display: grid;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.stepTitle {
+  font-size: var(--fs-label);
+  color: var(--text-2);
+}
+
+.step[data-state='current'] .stepTitle {
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.stepBody {
+  font-size: var(--fs-micro);
+  line-height: var(--pr-lh);
+  color: var(--text-3);
+}
+
+.stepState {
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+/* 「已完成」的绿只上那枚点(状态色只上图标/点),字保持可读的灰(axe:--ok 上小字不过 AA)。 */

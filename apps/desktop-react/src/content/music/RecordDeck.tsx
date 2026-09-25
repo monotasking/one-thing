@@ -22,6 +22,7 @@ import { PointerTrack } from '../../ui/drag'
 import { FrameCoalescer } from '../../ui/frame-coalescer'
 import { usePanelVisibility } from '../visibility'
 import { currentRowAt, lyricRowsOf, lyricStateOf } from './lyrics-rows'
+import { MUSIC_MOODS as MOODS } from './moods'
 import { musicPetActivity } from './pet-activity'
 import {
   angleAtPoint,
@@ -50,16 +51,6 @@ function reportGesture(gesture: PetGesture): void {
 /** 唱头 ←/→ 一下跳多少秒。 */
 const KEY_SEEK_S = 10
 
-/**
- * 关着时那四枚心情块(样例 v7 的开台邀请)。块上印两个字,按下去发出去的是整句意图 ——
- * 与「跟黑豆说」开台是同一条路,只是替人把第一句话说了。
- */
-const MOODS = [
-  { id: 'rain', label: 'music.mood.rain', intent: 'music.preset.rain' },
-  { id: 'focus', label: 'music.mood.focus', intent: 'music.preset.focus' },
-  { id: 'friday', label: 'music.mood.friday', intent: 'music.preset.friday' },
-  { id: 'drive', label: 'music.mood.drive', intent: 'music.preset.drive' },
-] as const
 
 /**
  * **唱片面**(音乐面 v8 · 唱针读歌词,2026-09-18;样例「黑豆电台」v7,用户 09-18「就按照这个去实现,100%」)。

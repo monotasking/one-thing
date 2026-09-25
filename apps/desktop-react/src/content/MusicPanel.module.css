@@ -16,16 +16,23 @@
  * 抽屉会跟着页面一起滚走)。`.panel` 只负责「这块地有多大、里面的东西不许探出去」,
  * 滚动归 `.scroller`,排版归 `.layout`。
  */
+/*
+ * v9(09-25):面板是一根竖的 flex —— 檐 / 状态条 / 滚动区 / 播放条,只有滚动区吃余下的高、自己滚。
+ * 檐与播放条不跟着分区滚走(成熟音乐 App 的通例:导航与播放器恒在)。
+ */
 .panel {
   container: music / inline-size;
   position: relative;
+  display: flex;
+  flex-direction: column;
   height: 100%;
   overflow: hidden;
   background: var(--surface-2);
 }
 
 .scroller {
-  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -75,16 +82,6 @@
   color: var(--danger);
 }
 
-/* 后端还没配好那一句:比错误弱一档 —— 它不是出错,是还没开始。 */
-.notice {
-  margin: 0;
-  padding: var(--sp-2);
-  border-radius: var(--r-2);
-  background: var(--surface-1);
-  font-size: var(--fs-meta);
-  color: var(--text-2);
-}
-
 /* 输入框 + 钮那一行(开台 / 点歌):输入框吸宽;窄到放不下时钮折到下一行,不探出面板。 */
 .formRow {
   display: flex;
@@ -100,28 +97,45 @@
 
 /* ── 唱机 ─────────────────────────────────────────────────────────────── */
 
-/* 场景画布铺满这一块;圆角裁在外框上,场景的屋子跟着圆。歌词页换进来的是同一块地。 */
-.deck {
-  position: relative;
+/*
+ * 分区身子(v9)。形由分区表那一格 `layout` 说:`fill` = 唱机那一块(下面 .deck 那一套,吃满余高);
+ * `page` = 一列卡片,行宽封顶、居中,由 .scroller 滚。
+ * **`hidden` 要自己写回 `display: none`**:这里给了 display,类选择器会盖过 UA 那条 `[hidden]`,
+ * 不写的话切走的分区照样画在屏上。
+ */
+.section {
   display: flex;
-  flex: 1 1 auto;
   flex-direction: column;
   min-width: 0;
+}
+
+.section[hidden] {
+  display: none;
+}
+
+.section[data-layout='fill'] {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
   border-radius: var(--r-3);
   background: var(--surface-1);
 }
 
-/*
- * 错话那一行**浮在唱片那一块的顶上**,不占一行 —— 占一行就是「出了个错,唱片缩了一圈」,
- * 而布局从不随状态变(09-18)。
- */
-.deckNotice {
-  position: absolute;
-  top: var(--sp-2);
-  right: var(--sp-2);
-  left: var(--sp-2);
-  z-index: var(--z-sticky);
+.section[data-layout='page'] {
+  align-self: center;
+  width: 100%;
+  max-width: var(--music-page-w);
+}
+
+/* 播放条:任何分区下都在。一道细线把它与身子分开,底色与面板同一格。 */
+.playerBar {
+  flex: none;
+  display: grid;
+  gap: var(--sp-1);
+  padding-top: var(--sp-2);
+  border-top: var(--bw-1) solid var(--line-1);
+  background: var(--surface-2);
 }
 
 /* ── 播放列表抽屉 ─────────────────────────────────────────────────────── */
@@ -465,6 +479,13 @@
   padding: var(--sp-4) 0;
 }
 
+/* v9:住在「账号」那一格的卡片列里时(不带自己的檐),与上面那张三步清单同宽、同一条左线。 */
+.wizard[data-bare] {
+  justify-self: stretch;
+  max-width: none;
+  padding: 0;
+}
+
 .wizardHead {
   display: grid;
   gap: var(--sp-2);
@@ -618,31 +639,7 @@
   gap: var(--sp-2);
 }
 
-/* ── 账号那颗钮(§6.4)──────────────────────────────────────────────────
- * 一枚圆点,**不是头像占位图** —— 这台机器上没有头像这件事实(判词在 AccountMenu)。
- */
-.account {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--r-full);
-}
-
-.account:hover .accountMark {
-  background: var(--text-2);
-}
-
-.accountMark {
-  width: 10px;
-  height: 10px;
-  border-radius: var(--r-full);
-  background: var(--text-3);
-  transition: background var(--dur) var(--ease);
-}
-
-/* ── 播放列表抽屉的檐:关台 + 账号 + 关闭(音乐面 v8)──────────────────────── */
+/* ── 播放列表抽屉的檐:关台 + 关闭(音乐面 v8;v9 起账号挪到面板的檐上)──────────────────────── */
 .drawerTools {
   display: flex;
   align-items: center;

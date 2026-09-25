@@ -5,6 +5,7 @@ import type {
   MusicProgrammeEntryDTO,
   MusicRadioState,
   MusicRuntimeState,
+  MusicSearchRecordDTO,
 } from '@shared/ipc/music'
 import type { ResourceOutcomeView, ResourceReadView } from '@shared/ipc/resources'
 import { createMutation, createQuery } from './kernel'
@@ -365,6 +366,52 @@ export const musicTellOp = createMutation<{ text: string }, true>('music.tell', 
   },
 })
 
+/* ── 搜索与「从搜索里点一首」(音乐面 v9,2026-09-25;正本 §10.5)──────────────── */
+
+/**
+ * 搜索是一条**带参数的读法**(`music:provider` · `search { query }`),可它不进那五格 query:
+ * 查询键是人打的那句话,一格 query 装不下「每一句话一份答案」,而这块面也只要**最近那一次**
+ * 的答案。所以它是一只 mutation —— 人按回车那一下才发,`pending` 让搜索钮自己转(律③),
+ * 答案由调用方留在自己那一格里(旧结果在新结果回来之前一行不动,律②)。
+ */
+export const musicSearchOp = createMutation<{ query: string }, MusicSearchRecordDTO[]>('music.search', {
+  run: async ({ query }) => {
+    const answer = await readResource<{ records?: MusicSearchRecordDTO[] }>(MUSIC_PROVIDER_REF, 'search', { query })
+    return answer.records ?? []
+  },
+})
+
+/** 搜索结果里的一行被点了。`song` 是「歌名 歌手」,`radioOn` 决定走哪条做法。 */
+export interface MusicPickInput {
+  song: string
+  radioOn: boolean
+}
+
+/**
+ * **从搜索结果里放一首**。两条路,都是既有的做法,不新开:
+ *  · 电台开着 → `request { song }`:插到下一首(自述原话:电台开着时**绝不**手动放);
+ *  · 电台关着 → `open { intent }`:以「先放这首,再接相似的」开台 —— 这台机器上放歌的唯一正路
+ *    就是电台,手动放单曲是模型经 bash 的事,不是面板的。
+ * 按 `song` 分格(`key`),于是点了第三行只有第三行的钮在转(律③,病型 B 的疫苗)。
+ */
+export const musicPickOp = createMutation<MusicPickInput & { intent: string }, void>('music.pick', {
+  key: ({ song }) => song,
+  run: ({ song, radioOn, intent }) =>
+    radioOn ? sendMusicOp(MUSIC_RADIO_REF, 'request', { song }) : sendMusicOp(MUSIC_RADIO_REF, 'open', { intent }),
+  settle: () => {
+    for (const query of OPS.request.affects) query.invalidate()
+    for (const query of OPS.open.affects) query.invalidate()
+  },
+})
+
+/**
+ * 「重试」:五条读数全标脏,后台重问。状态条上那颗「重新连接」钮走这里 —— 后端刚刚没答上,
+ * 人按一下就该再问一遍,而不是等下一条事实路过。
+ */
+export function refreshMusicSource(): void {
+  for (const query of ALL_QUERIES) query.invalidate()
+}
+
 /* ── 接入向导那八步(2026-09-18,正本 §6.3)──────────────────────────────── */
 
 /**
@@ -509,6 +556,8 @@ export function resetMusicSource(): void {
   // 界面还拿着引用(`musicSetupOp` 认 cell 不认次数),归零而不是丢掉。
   for (const mutation of setupMutations.values()) mutation.reset()
   musicTellOp.reset()
+  musicSearchOp.reset()
+  musicPickOp.reset()
   resetInstallLog()
   resetHostReply()
 }

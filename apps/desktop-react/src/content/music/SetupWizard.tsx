@@ -91,15 +91,27 @@ export function useSetupWizardVisible(stage: MusicSetupStage | undefined): boole
   return stage !== 'ready'
 }
 
-export function SetupWizard({ state }: { state: MusicRuntimeState }) {
+export function SetupWizard({
+  state,
+  withHeader = true,
+}: {
+  state: MusicRuntimeState
+  /**
+   * 画不画自己的标题与三格进度记号。音乐面 v9 的「账号」那一格上面已经有一张带名字的三步清单
+   * (`AccountSection`),同一件事画两遍就是两个产地 —— 那里传 `false`。
+   */
+  withHeader?: boolean
+}) {
   const t = useT()
   const step: WizardStep = state.setupStage
   return (
-    <section className={s.wizard} data-testid="music-setup" data-step={step}>
-      <header className={s.wizardHead}>
-        <h2 className={s.wizardTitle}>{t('music.setup.title')}</h2>
-        <Steps step={step} />
-      </header>
+    <section className={s.wizard} data-testid="music-setup" data-step={step} data-bare={withHeader ? undefined : ''}>
+      {withHeader && (
+        <header className={s.wizardHead}>
+          <h2 className={s.wizardTitle}>{t('music.setup.title')}</h2>
+          <Steps step={step} />
+        </header>
+      )}
       {step === 'env' && <EnvStep t={t} state={state} />}
       {step === 'credentials' && <CredentialsStep t={t} />}
       {step === 'login' && <LoginStep t={t} state={state} />}

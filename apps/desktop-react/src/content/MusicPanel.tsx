@@ -16,17 +16,38 @@ import type { PetStageHandle } from '../pets/PetStage'
 import type { PetMenu } from '../pets/types'
 import { enterSessionInWorkbench } from './session-open'
 import { DeckRow } from './music/DeckRow'
+import { LoginGate, MusicHeader, NowLine, StatusBanner, useStatusAnnouncer } from './music/MusicFrame'
 import { PlaylistDrawer } from './music/PlaylistDrawer'
-import { RecordDeck } from './music/RecordDeck'
+import type { RecordDeckProps } from './music/RecordDeck'
 import { stationRefilling } from './music/pet-activity'
 import { recordSideOf, SIDE_CAP } from './music/record-geometry'
-import { SetupWizard, useSetupWizardVisible } from './music/SetupWizard'
+import { MUSIC_DEFAULT_SECTION, MUSIC_SECTIONS, MUSIC_SETUP_SECTION } from './music/sections'
+import type { MusicSectionContext } from './music/sections'
+import { deriveMusicStatus } from './music/status'
 import { useMusicPanelForm } from './music/panel-width'
 import { useHostTalk } from './music/useHostTalk'
 import { usePlaybackPosition } from './music/usePlaybackPosition'
 import s from './MusicPanel.module.css'
 
 /**
+ * **音乐面 v9 · 成熟的音乐 App**(2026-09-25;正本 `docs/music-panel-2026-09.md` §10)。用户:「把它设计为一个
+ * 成熟的音乐 app,风格、交互你自己定。要求只有一个:状态有反馈、用户能够知道状态;有操作指引,没登录引导
+ * 用户登录,支持后续的扩展。」四句话各有一个产地:
+ *
+ *  · **状态** —— `music/status.ts`:一张状态表 + 一条优先序,吐出**一个**状态;播放条上的状态丸、分区上方
+ *    的状态条、读屏播报都读它(`MusicFrame`);
+ *  · **指引** —— 状态表每一行带一句「接下来怎么办」和一颗钮;每个分区自己的灰字说「按下去会发生什么」;
+ *  · **登录** —— 没登上时面板自动落到「账号」那一格(三步清单 + 接入向导),檐右端一颗「登录」主钮,
+ *    其余分区画登录引导卡而不是空白;
+ *  · **扩展** —— `music/sections.tsx` 分区表:导航、身子、登录闸都读它,这只文件里**一个分区名都没有**。
+ *
+ * 整面:檐(分区导航 + 账号)→ 状态条(有才画)→ 分区身子(唱机 / 电台 / 搜索 / 账号)→ 播放条
+ * (`NowLine` + `DeckRow`,任何分区下都在)。播放列表仍是播放条上那颗钮后面的抽屉。v8 的唱机、黑豆、
+ * 歌词、抽屉一个字没改,整块成了「正在放」那一格。分区**保挂载**(去过就留着,切走只是 `hidden`):
+ * 搜索词、打了一半的意图、唱机的转盘都不因为切一下分区而丢(树/面常驻铁律)。
+ *
+ * 下面是 v8 的原文(唱机那一格的判词,仍然成立)。
+ *
  * **音乐面 v8 · 唱针读歌词**(2026-09-18;样例「黑豆电台」v7 —— 用户:「ok,就按照这个去实现,100%」)。
  *
  * 面板只有两部分:**上面一整块是唱片和黑豆**(`music/RecordDeck`),**下面一行是进度和按钮**
@@ -78,9 +99,12 @@ import s from './MusicPanel.module.css'
  */
 export function MusicPanel({
   initialPlaylistOpen = false,
+  initialSection,
 }: {
   /** 只给实验台用:一开就要量「抽屉开着」那一态。产品里不传。 */
   initialPlaylistOpen?: boolean
+  /** 只给实验台与测试用:一开就停在哪一格。产品里不传(缺省 = 按登录与否自动选)。 */
+  initialSection?: string
 } = {}) {
   const t = useT()
   useMusicLive()
@@ -104,8 +128,23 @@ export function MusicPanel({
   const [rowError, setRowError] = useState<string | undefined>(undefined)
 
   const state = runtime.data
-  const wizard = useSetupWizardVisible(state?.setupStage)
+  // 没登上(后端说了、而且不是 ready)。读不到 `state` 时不算 —— 那是「连不上」,不是「没登录」。
+  const needsSetup = state !== undefined && state.setupStage !== 'ready'
   const unreachable = state === undefined && (runtime.error !== undefined || runtime.phase === 'ready')
+
+  // ── 分区:人点过就听人的;没点过 = 自动(没登上落到账号那一格,登上了落到缺省那一格)──────────
+  const [chosen, setChosen] = useState<string | null>(initialSection ?? null)
+  const section = chosen ?? (needsSetup ? MUSIC_SETUP_SECTION : MUSIC_DEFAULT_SECTION)
+  // 刚登上:人若停在向导那一格,带他去听歌(「登上了」由唱机出现自己说,09-18 用户原话)。
+  const wasSetup = useRef(needsSetup)
+  useEffect(() => {
+    if (wasSetup.current && !needsSetup && state !== undefined) setChosen((cur) => (cur === MUSIC_SETUP_SECTION ? null : cur))
+    wasSetup.current = needsSetup
+  }, [needsSetup, state])
+  const navigate = useCallback((id: string) => setChosen(id), [])
+  // 去过的分区留着(保挂载)。在渲染里记账是幂等的(Set.add),StrictMode 的双跑不会多记。
+  const visited = useRef<Set<string>>(new Set())
+  visited.current.add(section)
   const title = shown?.title
   const radioOn = brief.data?.active === true
 
@@ -179,7 +218,50 @@ export function MusicPanel({
   })
   const sideRoom = side ? SIDE_CAP - side.current - 1 : undefined
 
-  const notice = unreachable ? t('music.backendNotReady') : state?.lastError ? t('music.backendError', { message: state.lastError }) : (now.error ?? rowError ?? talk.error)
+  const error = state?.lastError ? t('music.backendError', { message: state.lastError }) : (now.error ?? rowError ?? talk.error)
+  const status = deriveMusicStatus({
+    runtime: state,
+    runtimeUnreachable: unreachable,
+    brief: brief.data,
+    nowPlaying: shown,
+    restored: restored !== undefined,
+    opening,
+    refilling,
+    error,
+  })
+  useStatusAnnouncer(status)
+
+  const deck: RecordDeckProps = {
+    runtime: state,
+    brief: brief.data,
+    nowPlaying: shown,
+    restored: restored !== undefined,
+    nowError: now.error,
+    programme: programme.data,
+    position,
+    wide: form.wide,
+    onSeek: seek,
+    onPlayEntry: playEntry,
+    onOpen: openStation,
+    opening,
+    petRef,
+    listening: radioOn && talk.typing,
+    awaitingHost: radioOn && talk.waiting,
+    petMenu,
+  }
+  const ctx: MusicSectionContext = {
+    runtime: state,
+    brief: brief.data,
+    programme: programme.data,
+    nowPlaying: shown,
+    position,
+    radioOn,
+    loggedIn: state?.setupStage === 'ready',
+    status,
+    talk,
+    navigate,
+    deck,
+  }
 
   return (
     <FocusScope
@@ -188,67 +270,66 @@ export function MusicPanel({
       restingTarget={() => playRef.current}
     >
       {({ scopeProps }) => (
-        <div {...scopeProps} className={s.panel} data-testid="music-panel">
+        <div {...scopeProps} className={s.panel} data-testid="music-panel" data-section={section}>
+          <MusicHeader
+            sections={MUSIC_SECTIONS}
+            current={section}
+            onNavigate={navigate}
+            runtime={state}
+            setupSection={MUSIC_SETUP_SECTION}
+          />
+          <StatusBanner status={status} onNavigate={navigate} />
           <div className={s.scroller}>
             <div className={s.layout}>
-              <section className={s.deck} data-testid="music-player">
-                {notice && (
-                  <p className={`${s.notice} ${s.deckNotice}`} data-testid={unreachable ? 'music-not-ready' : 'music-backend-error'}>
-                    {notice}
-                  </p>
-                )}
-                {wizard && state ? (
-                  <SetupWizard state={state} />
-                ) : (
-                  <>
-                    <RecordDeck
-                      runtime={state}
-                      brief={brief.data}
-                      nowPlaying={shown}
-                      restored={restored !== undefined}
-                      nowError={now.error}
-                      programme={programme.data}
-                      position={position}
-                      wide={form.wide}
-                      onSeek={seek}
-                      onPlayEntry={playEntry}
-                      onOpen={openStation}
-                      opening={opening}
-                      petRef={petRef}
-                      listening={radioOn && talk.typing}
-                      awaitingHost={radioOn && talk.waiting}
-                      petMenu={petMenu}
-                    />
-                    <DeckRow
-                      title={title}
-                      playing={shown?.playing ?? false}
-                      restored={restored !== undefined}
-                      everPlayed={shown?.title !== undefined || (radioOn && brief.data?.canResume === true)}
-                      volume={brief.data?.volume}
-                      position={position}
-                      duration={shown?.duration}
-                      playRef={playRef}
-                      playlistRef={playlistRef}
-                      playlistOpen={playlistOpen}
-                      onTogglePlaylist={() => setPlaylistOpen((open) => !open)}
-                      onLiked={onLiked}
-                      refilling={refilling}
-                      onWaitForDj={onWaitForDj}
-                      onError={setRowError}
-                    />
-                  </>
-                )}
-              </section>
+              {MUSIC_SECTIONS.filter((row) => visited.current.has(row.id)).map((row) => (
+                <section
+                  key={row.id}
+                  className={s.section}
+                  data-layout={row.layout}
+                  data-testid={row.layout === 'fill' ? 'music-player' : undefined}
+                  data-music-section={row.id}
+                  aria-label={t(row.labelKey)}
+                  hidden={row.id !== section}
+                >
+                  {row.requiresLogin && needsSetup && state ? (
+                    <LoginGate runtime={state} sectionLabel={t(row.labelKey)} onLogin={() => navigate(MUSIC_SETUP_SECTION)} />
+                  ) : (
+                    row.render(ctx)
+                  )}
+                </section>
+              ))}
             </div>
           </div>
 
-          {!wizard && playlistOpen && (
+          {!needsSetup && (
+            <footer className={s.playerBar} data-testid="music-player-bar">
+              <NowLine title={title} status={status} onNavigate={navigate} />
+              <DeckRow
+                title={title}
+                playing={shown?.playing ?? false}
+                restored={restored !== undefined}
+                everPlayed={shown?.title !== undefined || (radioOn && brief.data?.canResume === true)}
+                volume={brief.data?.volume}
+                position={position}
+                duration={shown?.duration}
+                playRef={playRef}
+                playlistRef={playlistRef}
+                playlistOpen={playlistOpen}
+                onTogglePlaylist={() => setPlaylistOpen((open) => !open)}
+                onLiked={onLiked}
+                refilling={refilling}
+                onWaitForDj={onWaitForDj}
+                onError={setRowError}
+              />
+            </footer>
+          )}
+
+          {!needsSetup && playlistOpen && (
             <PlaylistDrawer
               form={form.drawer}
               onClose={closePlaylist}
               nowPlaying={now.data}
               position={position}
-              runtime={state}
               radioOn={radioOn}
               sideRoom={sideRoom}
             />

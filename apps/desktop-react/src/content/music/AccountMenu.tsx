@@ -1,18 +1,19 @@
 import { useRef, useState } from 'react'
 import type { MusicPlayerBackend, MusicRuntimeState } from '@shared/ipc/music'
-import { ButtonBase } from '../../ui/ButtonBase'
+import { CircleUserRound } from '../../components/icons'
+import { IconButton } from '../../ui/IconButton'
 import { Menu, MenuItem, MenuSeparator } from '../../ui/Menu'
 import { useConfirm } from '../../ui/Dialog'
 import { musicSetupOp } from '../../data/music-source'
 import { useT } from '../../i18n'
-import s from '../MusicPanel.module.css'
 
 /**
  * **账号那颗钮**(2026-09-18;正本 `apps/desktop-react/docs/music-panel-2026-09.md` §6.4)。
  *
- * 电台条右端一枚圆点 —— **不是头像的占位图**:这台机器上根本没有头像这件事实
- * (ncm-cli 不交出用户资料),画一张灰方块会被读成「头像还没加载出来」,而它永远
- * 不会来(与唱片标签不画封面同一条判据,写在 `MusicPanel` 文件头)。
+ * 檐右端一颗账号**图标**钮(音乐面 v9 起;从前是一枚圆点,第一次打开的人认不出它是什么)。
+ * 仍然**不是头像的占位图**:这台机器上根本没有头像这件事实(ncm-cli 不交出用户资料),
+ * 画一张灰方块会被读成「头像还没加载出来」,而它永远不会来 —— 一枚通用的「账号」图标说的是
+ * 「这里是账号」,不冒充任何人的脸。
  *
  * ── 一张表,两个入口(动作单产地)──────────────────────────────────────
  * 点这颗钮开的,与在电台条上右键开的,是**同一张** `<AccountMenuItems>`。壳规
@@ -32,24 +33,22 @@ import s from '../MusicPanel.module.css'
  * ③ UI 交互状态:项随 `ui/MenuItem`(rest / hover / active / disabled);打勾那两项
  *    是 `menuitemradio`,由 `checked` 自己推出来;退出登录是 `danger`,先弹确认。
  */
-export function AccountMenu({ state }: { state: MusicRuntimeState }) {
+export function AccountMenu({ state, onOpenAccount }: { state: MusicRuntimeState; onOpenAccount?: () => void }) {
   const t = useT()
   const [open, setOpen] = useState(false)
   const anchor = useRef<HTMLButtonElement | null>(null)
 
   return (
     <>
-      <ButtonBase
+      <IconButton
         ref={anchor}
-        className={s.account}
+        icon={CircleUserRound}
+        label={t('music.account.menu')}
+        testId="music-account"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={t('music.account.menu')}
-        data-testid="music-account"
         onClick={() => setOpen((on) => !on)}
-      >
-        <span className={s.accountMark} aria-hidden="true" />
-      </ButtonBase>
+      />
       {open && (
         <Menu
           x={0}
@@ -59,7 +58,7 @@ export function AccountMenu({ state }: { state: MusicRuntimeState }) {
           label={t('music.account.menu')}
           onClose={() => setOpen(false)}
         >
-          <AccountMenuItems state={state} onDone={() => setOpen(false)} />
+          <AccountMenuItems state={state} onDone={() => setOpen(false)} onOpenAccount={onOpenAccount} />
         </Menu>
       )}
     </>
@@ -70,7 +69,16 @@ export function AccountMenu({ state }: { state: MusicRuntimeState }) {
  * 表本身。抽出来是因为它有**两个入口**(这颗钮,与电台条上的右键)—— 表只有一份,
  * 开表的地方可以有两处。
  */
-export function AccountMenuItems({ state, onDone }: { state: MusicRuntimeState; onDone: () => void }) {
+export function AccountMenuItems({
+  state,
+  onDone,
+  onOpenAccount,
+}: {
+  state: MusicRuntimeState
+  onDone: () => void
+  /** 音乐面 v9:有「账号」那一格时,菜单头上多一项「账号与出声方式…」直达那一格。 */
+  onOpenAccount?: () => void
+}) {
   const t = useT()
   const confirm = useConfirm()
 
@@ -82,6 +90,19 @@ export function AccountMenuItems({ state, onDone }: { state: MusicRuntimeState; 
 
   return (
     <>
+      {onOpenAccount && (
+        <>
+          <MenuItem
+            onClick={() => {
+              onDone()
+              onOpenAccount()
+            }}
+          >
+            {t('music.account.open')}
+          </MenuItem>
+          <MenuSeparator />
+        </>
+      )}
       <MenuItem checked={state.playerBackend === 'mpv'} onClick={() => pick('mpv')}>
         {t('music.account.playHere')}
       </MenuItem>

@@ -3,11 +3,9 @@ import { X } from '../../components/icons'
 import { FocusScope } from '../../focus/FocusScope'
 import { IconButton } from '../../ui/IconButton'
 import { useT } from '../../i18n'
-import type { MusicRuntimeState } from '@shared/ipc/music'
 import type { MusicNowPlayingView } from '../../data/music-source'
 import { musicOps } from '../../data/music-source'
 import { AsyncButton } from '../../ui/AsyncButton'
-import { AccountMenu } from './AccountMenu'
 import { ProgrammeSheet } from './ProgrammeSheet'
 import s from '../MusicPanel.module.css'
 
@@ -43,7 +41,6 @@ export function PlaylistDrawer({
   onClose,
   nowPlaying,
   position,
-  runtime,
   radioOn = false,
   sideRoom,
 }: {
@@ -56,8 +53,6 @@ export function PlaylistDrawer({
    */
   nowPlaying?: MusicNowPlayingView
   position?: number
-  /** 账号那颗钮要的那份后端状态(音乐面 v8:电台条并掉之后,账号住在这一檐上)。 */
-  runtime?: MusicRuntimeState
   /** 电台开着 → 檐上一颗「关台」(v8:关台从电台条挪到这里,与样例同位)。 */
   radioOn?: boolean
   /** 这一面还能再排几首(`ProgrammeSheet` 在那之后画「翻面以后」)。 */
@@ -105,7 +100,6 @@ export function PlaylistDrawer({
                     {t('music.deckClose')}
                   </AsyncButton>
                 )}
-                {runtime && <AccountMenu state={runtime} />}
                 <IconButton
                   ref={closeRef}
                   icon={X}

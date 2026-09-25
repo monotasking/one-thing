@@ -90,6 +90,10 @@ import {
   // 「这一行在一列里上下挪」,横排的 `GripHorizontal` 说的是左右挪 —— 两枚形近
   // 而意不同,拿错一枚等于在屏幕上说反了方向。
   GripVertical,
+  // 音乐面 v9(09-25):檐上导航「电台」一格、账号那颗钮、没登录时的「登录」。
+  Radio,
+  CircleUserRound,
+  LogIn,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -271,5 +275,8 @@ export {
   MicVocal,
   Trash2,
   GripVertical,
+  Radio,
+  CircleUserRound,
+  LogIn,
 }
 export type { LucideIcon }
