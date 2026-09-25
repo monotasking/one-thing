@@ -1,6 +1,6 @@
 # ACP 统一接入方案(2026-09):任何会说 ACP 的 agent CLI 都是一等同事
 
-> 状态:方案,待拍板。起因:用户 2026-09-25「我想要完整的对接 ACP 方案,对接各种各样的 agent cli;例如 claude code」。
+> 状态:**A0–A6 全部入库(2026-09-25 → 09-26,24 笔,末 A6-b `c2ff02292`)**。起因:用户 2026-09-25「我想要完整的对接 ACP 方案,对接各种各样的 agent cli;例如 claude code」。三拍点按推荐拍定;各期施工记在 §11;全线留账收在 §12。
 > 前作:`external-agents-integration.md`(2026-07,ACP 通道 + Claude SDK 连接器)、`claude-code-integration-v2.md`(2026-08,外部 agent 变一等同事:执行器 / 宿主工具面 / 交互协议)、`coding-agents-ledger-2026-08.md`(2026-08-29,「Codex / pi 走 ACP,SDK 要升 1.x」的定案)。本文把三篇的结论收成**一条路**,并把 2026-09-24 那笔「ACP 会话恢复」(`431b38dfd`)之后仍然缺的东西全部列出来。
 > 协议与生态的逐条出处(spec 页、SDK d.ts、注册表 JSON、各适配器 dist 代码)在同日的参考稿 `acp-integration-reference-2026-09.md`,本文只引结论。
 
@@ -634,3 +634,21 @@ A0-2 已把十种状态更新折进 `AcpSessionState`;A2 剩下的是**回合流
 - `scripts/gate-acp.mjs`(node,bun 无 `node:sqlite` 的口径同 `gate:search-index`):`server:build` 产物起 `dist/server` 于临时 store(`ONETHING_STORE_PATH`),`settings.json` 里写一条 agent 指向 `fake-agent.mjs`(`command: process.execPath, args: [fixture]`,env `FAKE_AGENT_CAPS=load`),全程 `POST /api/rpc` + `GET /api/events`;步骤 ①–④ 按 §7 表,③ 含协议外请求 `cursor/whatever` 得 `-32601` 且流照常收场(假 agent 加剧本 `FAKE_AGENT_ROGUE_METHOD=1`)。
 - 根 `package.json` `"gate:acp": "node scripts/gate-acp.mjs"`;不进 `verify`(与 `gate:search-index` 同口径,单独跑)。
 - 反证:注释掉 A0-2 的「prompt 外通知也折状态」→ ④ 红。
+
+## 12. 全线留账(2026-09-26 收口时)
+
+| 项 | 归属 | 说明 |
+| --- | --- | --- |
+| 插话投递 | 后端 | 只验了握手自报 `_meta.steering.supported`,没有把 steering 链路接到 `_session/steering` 通知的 RPC / 引擎路;执行器表 acp `steer` 仍 false |
+| 壳 `gate:acp-shell` ⑩ | 壳 | 真 Claude 的药丸 / 思考档 / 模式粒认领未做真机门(后端 ㉒ 已证 category) |
+| `gate:packaged` | 打包 | `acp-mcp-bridge.cjs` 的 asarUnpack 与 `resources/acp-agents` 的 extraResources 未在打包壳上证 |
+| prod 档 `gate:acp-shell` ② | 壳门 | prod 产物里名册找不到门种下的临时 agent,dev 档绿;原因未查 |
+| 流中 `status` | 后端 | 引擎流中不转发 metadata 的 `status`,壳的「等待 / 进行中」备好了没数据 |
+| `compaction-summary` | 引擎 | `provider-data` 未转发到渲染层,压缩折痕未画 |
+| agent 通知 | 壳 | 只存内存,重开壳会话里的系统行没了(通知中心存档在) |
+| `sessions.createBranch` | 会话 | 分出来的会话投影 0 条消息(继承消息没进账本),已 spawn_task |
+| 无生产调用方 | 清理 | `askExternalAgentPermission` / `askExternalAgentInteraction` / `ExternalAgentObserver` / `recordExternalAgentTurn|Tool` / `mcpInjection: 'in-process'` |
+| CLI daemon 宿主工具 | 装配 | daemon 不服务 HTTP,`serversFor` 组不出 `onething` 那条 |
+| 探测 | 名册 | `claude-code` 种子无 `versionArgs` 从不取版本;多台并发探测时 `gemini --version` 超 3s 被杀 |
+| `selectedModels` 旧 id | 设置 | `codex-cli` / `kimi-code` 不改写,靠别名认回,选择器不自动勾新行 |
+| 「已导入 N 条」 | 壳 | 是 toast 不是就地(窗已关) |
