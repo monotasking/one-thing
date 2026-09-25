@@ -352,6 +352,8 @@ export interface ResponsesDialectSpec {
 	 * `tool_choice`」,grok 两条通路用它换成「有工具才发」。
 	 */
 	toolChoice?: ToolChoicePolicy;
+	/** 被动配额源(批 5):成功响应头 → 配额。不给 = 这家的头上没有限额。 */
+	quotaFromHeaders?: Dialect["quotaFromHeaders"];
 	/** 完成的 output item → 额外事件(xAI 的引文 annotations)。 */
 	decodeOutputItem?(
 		item: Record<string, unknown>,
@@ -393,6 +395,7 @@ export function responsesDialect(spec: ResponsesDialectSpec): ResponsesDialect {
 		...(spec.toolChoice ? { toolChoice: spec.toolChoice } : {}),
 		...(spec.nativeTools ? { nativeTools: spec.nativeTools } : {}),
 		...(spec.decodeOutputItem ? { decodeOutputItem: spec.decodeOutputItem } : {}),
+		...(spec.quotaFromHeaders ? { quotaFromHeaders: spec.quotaFromHeaders } : {}),
 		request: {
 			// Responses 的上限字段叫 `max_output_tokens`,不在这个二选一的枚举里
 			// —— 而且今天压根不发,所以这个值没有读者。

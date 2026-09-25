@@ -5,14 +5,11 @@ import {
   buildOnethingCodexModelsUrl,
   codexModelInfoToOnethingOpenRouterModel,
   fetchOnethingCodexModels,
-  fetchOnethingCodexUsage,
   getOnethingCodexFallbackModel,
   getOnethingCodexFallbackModels,
   normalizeOnethingCodexReasoningEffort,
-  normalizeOnethingCodexUsagePayload,
   ONETHING_CODEX_CLIENT_VERSION,
   ONETHING_CODEX_DEFAULT_MODEL,
-  ONETHING_CODEX_USAGE_URL,
 } from '../codex.js'
 
 function codexMetadata(model: { providerMetadata?: object | null } | null | undefined): JsonObject {
@@ -181,77 +178,4 @@ describe('onething Codex provider helpers', () => {
     expect(normalizeOnethingCodexReasoningEffort('nonsense')).toBe('medium')
   })
 
-  it('normalizes Codex usage payload variants', () => {
-    expect(normalizeOnethingCodexUsagePayload({
-      planType: 'team',
-      credits: { hasCredits: true, unlimited: true },
-      rateLimitReachedType: { type: 'workspace_owner_usage_limit_reached' },
-      rateLimit: {
-        primaryWindow: { usedPercent: '75', limitWindowSeconds: '3600' },
-      },
-    })).toEqual({
-      planType: 'team',
-      credits: { hasCredits: true, unlimited: true },
-      limits: [{
-        id: 'codex',
-        primary: { usedPercent: 75, windowSeconds: 3600 },
-        rateLimitReachedType: 'workspace_owner_usage_limit_reached',
-      }],
-    })
-  })
-
-  it('fetches official Codex usage through injected fetch', async () => {
-    const calls: Array<{ url: string; headers?: Record<string, string> }> = []
-    const fetchImpl = async (input: Parameters<typeof globalThis.fetch>[0], init?: RequestInit) => {
-      calls.push({ url: requestUrl(input), headers: headersRecord(init?.headers) })
-      return new Response(JSON.stringify({
-        plan_type: 'pro',
-        credits: {
-          has_credits: true,
-          unlimited: false,
-          balance: '12.50',
-        },
-        rate_limit: {
-          primary_window: {
-            used_percent: 25,
-            limit_window_seconds: 18000,
-            reset_after_seconds: 300,
-            reset_at: 1770000000,
-          },
-        },
-      }), { status: 200 })
-    }
-
-    const usage = await fetchOnethingCodexUsage({
-      accessToken: 'access-token',
-      accountId: 'acct_123',
-      isFedrampAccount: true,
-    }, fetchImpl, { timeoutMs: 0 })
-
-    expect(calls[0].url).toBe(ONETHING_CODEX_USAGE_URL)
-    expect(calls[0].url).toContain('/backend-api/wham/usage')
-    expect(calls[0].url).not.toContain('/backend-api/codex')
-    expect(calls[0].headers?.Authorization).toBe('Bearer access-token')
-    expect(calls[0].headers?.originator).toBe('codex_cli_rs')
-    expect(usage.planType).toBe('pro')
-    expect(usage.credits).toEqual({ hasCredits: true, unlimited: false, balance: '12.50' })
-    expect(usage.limits[0]).toMatchObject({
-      id: 'codex',
-      primary: { usedPercent: 25, windowSeconds: 18000, resetAfterSeconds: 300, resetAt: 1770000000 },
-    })
-  })
-
-  it('surfaces Codex usage errors without leaking request secrets in runtime', async () => {
-    const fetchImpl = async () => new Response(JSON.stringify({
-      detail: 'usage unavailable',
-    }), { status: 403 })
-
-    await expect(fetchOnethingCodexUsage({
-      accessToken: 'secret-token',
-    }, fetchImpl, { timeoutMs: 0 })).rejects.toThrow('Codex usage request failed: 403: usage unavailable')
-
-    await expect(fetchOnethingCodexUsage({
-      accessToken: 'secret-token',
-    }, fetchImpl, { timeoutMs: 0 })).rejects.not.toThrow('secret-token')
-  })
 })

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { create } from 'zustand'
 import type { SessionTokenUsageReadout } from '@shared/ipc/sessions'
 import type { GetSessionUsageResponse } from '@shared/ipc/usage'
@@ -9,6 +9,9 @@ import { chatPort } from './chat-port'
 import { meterPort } from './meter-port'
 import { whenFirstScreen } from './first-screen'
 import { useCurrentModelSelection, useModelWindow } from './models-source'
+import type { GetUsageSummaryResponse } from '@shared/ipc/usage'
+import type { ProviderQuota, ProviderQuotaPushPayload } from '@shared/contracts/quota'
+import { useCurrentSpaceId } from '../workspace/current'
 
 /**
  * 读数的**真数据源**(D2 波一):context 环与它悬停出来的四行明细,数从这里来。
@@ -229,6 +232,84 @@ export const meterQuery = createQueryFamily<MeterFacts>('meter.facts', async (ct
   return { sessionId: ctx.key, tokens, usage }
 })
 
+/* ── 配额与余额(批 5 §8.4):一族 query,键 = (空间, provider) ──────────────── */
+
+/**
+ * 读数卡上的配额那几行的事实。**「这一发会用哪条凭证」由后端答**(密钥策略的只读
+ * `decide`),所以键里只有空间与 provider,凭证 id 在答案里(推送据它认领)。
+ *
+ * 取数时机(与后端 `QuotaService` 同一张表,这边只做壳那一半):
+ *  - 这一块面板挂上、首屏让过之后 `ensure()` 一次(圆环的警示色要有数可判);
+ *  - 悬停开卡 `invalidate()` —— **不是** force:后端 60 秒缓存说了算,卡片开一次不白问一次;
+ *  - 之后全靠推送(`provider:quota`):run 结束后的去抖重问、响应头被动源,后端取到就推;
+ *  - **空闲不轮询**;取数中照显上次的值(kernel 律②,不闪「加载中」)。
+ */
+export interface QuotaFacts {
+  providerId: string
+  quota: ProviderQuota
+  credentialId?: string
+  /**
+   * 服务商不支持配额时卡上画的那一行:本月这一家的本地估算花费(USD,账本月桶按 provider
+   * 过滤)。支持配额时恒 null(不问账本);问账本失败也是 null(那一行不出)。
+   */
+  localMonthUsd: number | null
+}
+
+export function quotaQueryKey(spaceId: string, providerId: string): string {
+  return `${spaceId}\u0000${providerId}`
+}
+
+function splitQuotaKey(key: string): { spaceId: string; providerId: string } {
+  const at = key.indexOf('\u0000')
+  return at < 0 ? { spaceId: '', providerId: key } : { spaceId: key.slice(0, at), providerId: key.slice(at + 1) }
+}
+
+/**
+ * 本月桶里这一家的本地估算(USD)。挑「此刻落在哪一段」的那个桶;这一家本月没有记录 =
+ * 真的一分没花(0,不是不知道);账本压根没有这个月的桶 = null。
+ */
+export function monthlyProviderCostOf(
+  summary: GetUsageSummaryResponse | null,
+  providerId: string,
+  now: number = Date.now(),
+): number | null {
+  const buckets = summary?.buckets ?? []
+  const bucket = buckets.find((b) => b.startTs <= now && now < b.endTs) ?? buckets[buckets.length - 1]
+  if (!bucket) return null
+  const entry = bucket.byProvider.find((row) => row.key === providerId)
+  const cost = entry?.apiCostUSD ?? 0
+  return Number.isFinite(cost) && cost >= 0 ? cost : null
+}
+
+export const quotaQuery = createQueryFamily<QuotaFacts>('meter.quota', async (ctx) => {
+  const { spaceId, providerId } = splitQuotaKey(ctx.key)
+  const port = await meterPort()
+  const { quota, credentialId } = await port.getQuota({
+    providerId,
+    ...(spaceId ? { spaceId } : {}),
+    ...(ctx.force ? { force: true } : {}),
+  })
+  const localMonthUsd = quota.kind === 'unsupported'
+    ? await port.getMonthlyUsage().then((summary) => monthlyProviderCostOf(summary, providerId)).catch(() => null)
+    : null
+  return { providerId, quota, ...(credentialId ? { credentialId } : {}), localMonthUsd }
+})
+
+/**
+ * 推送 → 就地换数。**只认问过的那几格**,并且凭证对得上才换:同一家两把钥匙,推来的是
+ * 别的那一把的余额,就不是这张卡要画的数。429 那一种不换(静默,拍点 5)。
+ */
+export function applyQuotaPush(push: ProviderQuotaPushPayload): void {
+  if (push.quota.kind === 'error' && push.quota.reason === 'rate-limited') return
+  for (const key of quotaQuery.keys()) {
+    if (splitQuotaKey(key).providerId !== push.providerId) continue
+    const query = quotaQuery.get(key)
+    const data = query.get().data
+    if (!data || (data.credentialId ?? '') !== (push.credentialId ?? '')) continue
+    query.patch({ ...data, quota: push.quota })
+  }
+}
+
 /* ── store:一张「谁在看哪一条」的引用账 + 一条订阅 ──────────────────────── */
 
 /**
@@ -272,6 +353,8 @@ export interface MeterSourceState {
 
 /** 那条账本订阅。整台一条 —— 处理函数按事件自己说的会话标脏,与谁开着无关。 */
 let unsubscribe: (() => void) | undefined
+/** `provider:quota` 那条推送订阅。与账本那条同开同关。 */
+let unsubscribeQuota: (() => void) | undefined
 
 export const useMeterSource = create<MeterSourceState>()((set, get) => {
   /**
@@ -317,6 +400,11 @@ export const useMeterSource = create<MeterSourceState>()((set, get) => {
       // 先订上再拉:拉的那一刻起的 run/end 不能漏(与 chat-source 同一条理由)。
       // **整台一条**,已经订着就不再订(同一条会话的第二块面板、别的会话都一样)。
       if (!unsubscribe) unsubscribe = port.onSessionEvent(onEvent)
+      if (!unsubscribeQuota) {
+        const quotaPort = await meterPort()
+        // 等端口的这一拍里别的面板可能已经订上了 —— 再判一次,整台只要一条。
+        if (!unsubscribeQuota) unsubscribeQuota = quotaPort.onQuotaPush(applyQuotaPush)
+      }
       /*
        * **让首屏那一页先走**(工单 6 ①,判据在 `data/first-screen.ts` 头上)。
        *
@@ -356,6 +444,8 @@ export const useMeterSource = create<MeterSourceState>()((set, get) => {
       if (Object.keys(get().watching).some((id) => id !== '')) return
       unsubscribe?.()
       unsubscribe = undefined
+      unsubscribeQuota?.()
+      unsubscribeQuota = undefined
     },
 
     refresh: async (sessionId) => {
@@ -367,7 +457,10 @@ export const useMeterSource = create<MeterSourceState>()((set, get) => {
     reset: () => {
       unsubscribe?.()
       unsubscribe = undefined
+      unsubscribeQuota?.()
+      unsubscribeQuota = undefined
       meterQuery.reset()
+      quotaQuery.reset()
       set({ watching: {} })
     },
   }
@@ -421,4 +514,29 @@ export function useMeterView(sessionId: string): MeterView {
    */
   const windowTokens = useModelWindow(selection)
   return useMemo(() => meterViewOf(facts, windowTokens), [facts, windowTokens])
+}
+
+/**
+ * 这块面板那一家此刻的配额事实(批 5 §8.4)。键 = (当前空间, 这条会话选的 provider);
+ * 没选 provider(草稿态)= 空键,那一格永远没人 `ensure()`,恒为 null。
+ *
+ * 挂上时 `ensure()` 一次,**让首屏先走**(与读数同一条纪律,判据在 `first-screen.ts`)。
+ */
+export function useQuotaFacts(sessionId: string): { key: string; facts: QuotaFacts | null } {
+  const selection = useCurrentModelSelection(sessionId)
+  const spaceId = useCurrentSpaceId()
+  const key = selection?.provider ? quotaQueryKey(spaceId, selection.provider) : ''
+  const facts = useQuery(quotaQuery.get(key)).data ?? null
+  useEffect(() => {
+    if (!key) return
+    let live = true
+    void whenFirstScreen(sessionId).then(() => {
+      if (live) return quotaQuery.get(key).ensure()
+      return undefined
+    })
+    return () => {
+      live = false
+    }
+  }, [key, sessionId])
+  return { key, facts: key ? facts : null }
 }

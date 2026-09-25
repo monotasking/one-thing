@@ -3,46 +3,47 @@ import { Card } from '../../ui/Card'
 import { Spinner } from '../../ui/Spinner'
 import { useT } from '../../i18n'
 import type { TFn } from '../../i18n'
-import { formatMoment } from '../auth'
-import type { CodexUsageLimit, CodexUsageWindow, ProviderUsageResponse } from '@shared/ipc/providers'
+import type { ProviderQuota, ProviderQuotaWindow } from '@shared/contracts/quota'
 import type { SourceStatus } from '../store'
+import { quotaAmountText, quotaBalanceOf, quotaResetText, quotaWindowName, quotaWindowsOf } from '../quota'
 import s from './UsageCard.module.css'
 
 /**
- * 订阅用量。**今天只有 Codex 真有数** —— 别家后端直接回 `unsupported: true`,
- * 那时这块整个不画(`usage[providerId] === null`)。「这家没有用量卡」是后端
- * 说的,不是这块面猜的,所以别家不会看到一张全是「—」的空卡。
+ * 订阅用量(批 5 §8.5 起读通用的 `ProviderQuota`)。**有配额源的家才有这张卡** ——
+ * 后端答 `unsupported` 时那一格是 `null`,卡整块不画;「这家没有用量卡」是后端说的,
+ * 不是这块面猜的。窗口按时长命名(「5 小时」「本周」),不再是 Primary / Secondary ——
+ * 同一个位置在不同套餐里装的是不同的窗。
  *
  * ── 一条纪律:拿不到的读数如实缺席 ────────────────────────────────────────
- * 百分比缺席就不画那根条,**不画 0%**。0% 是「一点没用」,缺席是「不知道」——
- * 在屏幕上长得像,在事实上差得远(设计稿第 8 帧脚注说的就是这件事)。
+ * 没有窗口就不画条,**不画 0%**。0% 是「一点没用」,缺席是「不知道」。
  *
- * 这块信息将来还要出现在输入框区域(交接稿 §6),所以它只吃一个
- * `ProviderUsageResponse`,不认识 store、不认识哪一坑 —— 换个地方挂就能用。
+ * 多账号时每个账号一张(`account` 给标题);卡只吃一份 `ProviderQuota`,不认 store。
  */
-
 export function UsageCard({
-  usage,
+  quota,
+  account,
   status,
   error,
   onRefresh,
 }: {
-  usage: ProviderUsageResponse
+  quota: ProviderQuota
+  /** 多账号时这一张属于哪个账号(标题里说);单账号不给。 */
+  account?: string
   status: SourceStatus
   error?: string
   onRefresh: () => void
 }) {
   const t = useT()
   const loading = status === 'loading'
-  const limits = usage.usage?.limits ?? []
-  // 主限额 = 第一条:后端归一时把账号级那一条排在最前(`normalizeOnethingCodexUsagePayload`),
-  // 附加限额跟在后面。壳不认任何一家的限额 id(批 M)。
-  const main = limits[0]
-  const extras = main ? limits.filter((limit) => limit.id !== main.id) : limits
+  const windows = quotaWindowsOf(quota)
+  const balance = quotaBalanceOf(quota)
+  const plan = quota.kind === 'windows' ? quota.plan : undefined
+  const failed = status === 'error' || quota.kind === 'error'
+  const failure = error || (quota.kind === 'error' ? quota.message : '')
 
   return (
     <Card
-      title={t('providers.usage')}
+      title={account ? t('providers.usageFor', { account }) : t('providers.usage')}
       actions={
         /* ui-consume-allow: spinner-placement — 它在这颗「刷新」钮的 children 里:
            忙时整颗钮换成转圈 + disabled(律③)。允许位「按钮内」。 */
@@ -51,49 +52,28 @@ export function UsageCard({
         </Button>
       }
     >
-      {status === 'error' && (
+      {failed && (
         <p className={s.error}>
           {t('providers.usageFailed')}
-          {error ? ` · ${error}` : ''}
+          {failure ? ` · ${failure}` : ''}
         </p>
       )}
 
-      <div className={s.facts}>
-        <Fact label={t('providers.usagePlan')} value={planOf(t, usage)} />
-        <Fact label={t('providers.usageCredits')} value={creditsOf(t, usage)} />
-      </div>
-
-      {main?.primary && (
-        <Meter
-          t={t}
-          label={t('providers.usageWindow', {
-            name: t('providers.usagePrimary'),
-            window: windowNameOf(main.primary),
-          })}
-          window={main.primary}
-        />
-      )}
-      {main?.secondary && (
-        <Meter
-          t={t}
-          label={t('providers.usageWindow', {
-            name: t('providers.usageSecondary'),
-            window: windowNameOf(main.secondary),
-          })}
-          window={main.secondary}
-        />
+      {(plan || balance) && (
+        <div className={s.facts}>
+          {plan && <Fact label={t('providers.usagePlan')} value={plan} />}
+          {balance && (
+            <Fact
+              label={balance.currency === 'credits' ? t('providers.usageCredits') : t('providers.usageBalance')}
+              value={quotaAmountText(t, balance)}
+            />
+          )}
+        </div>
       )}
 
-      {extras.length > 0 && (
-        <details className={s.more}>
-          <summary className={s.summary}>
-            {t('providers.usageMore', { count: extras.length })}
-          </summary>
-          {extras.map((limit) => (
-            <ExtraLimit key={limit.id} t={t} limit={limit} />
-          ))}
-        </details>
-      )}
+      {windows.map((window) => (
+        <Meter key={window.id} t={t} window={window} />
+      ))}
     </Card>
   )
 }
@@ -107,75 +87,17 @@ function Fact({ label, value }: { label: string; value: string }) {
   )
 }
 
-/**
- * 一根用量条。**没有 `usedPercent` 就不画条** —— 一根 0 宽的条看起来是
- * 「用了 0%」,而事实是「不知道用了多少」。
- */
-function Meter({ t, label, window }: { t: TFn; label: string; window: CodexUsageWindow }) {
-  const percent = Number.isFinite(window.usedPercent) ? window.usedPercent : null
-  const reset = resetMomentOf(window)
+/** 一根用量条:名(「5 小时」)/ 轨 / 百分比 / 重置时刻(给了才有)。 */
+function Meter({ t, window }: { t: TFn; window: ProviderQuotaWindow }) {
+  const reset = window.resetsAt !== undefined ? quotaResetText(t, window.resetsAt) : null
   return (
     <div className={s.meterRow}>
-      <span className={s.meterLabel}>{label}</span>
-      {percent === null ? (
-        <span className={s.meterUnknown}>{t('providers.usageUnavailable')}</span>
-      ) : (
-        <>
-          <span className={s.meterTrack}>
-            <span
-              className={s.meterFill}
-              style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
-            />
-          </span>
-          <span className={s.meterValue}>{`${Math.round(percent)}%`}</span>
-        </>
-      )}
+      <span className={s.meterLabel}>{quotaWindowName(t, window)}</span>
+      <span className={s.meterTrack}>
+        <span className={s.meterFill} style={{ width: `${Math.min(100, Math.max(0, window.usedPercent))}%` }} />
+      </span>
+      <span className={s.meterValue}>{`${Math.round(window.usedPercent)}%`}</span>
       {reset && <span className={s.meterReset}>{t('providers.usageReset', { time: reset })}</span>}
     </div>
   )
-}
-
-function ExtraLimit({ t, limit }: { t: TFn; limit: CodexUsageLimit }) {
-  return (
-    <div className={s.extra}>
-      <span className={s.meterLabel}>{limit.name || limit.id}</span>
-      {limit.primary && <Meter t={t} label={windowNameOf(limit.primary)} window={limit.primary} />}
-    </div>
-  )
-}
-
-/** 「5h」「7d」。窗口长度是数据,秒数换成人读得动的那一档。 */
-function windowNameOf(window: CodexUsageWindow): string {
-  const seconds = window.windowSeconds
-  if (!seconds || !Number.isFinite(seconds)) return '—'
-  if (seconds % 86_400 === 0) return `${seconds / 86_400}d`
-  if (seconds % 3600 === 0) return `${seconds / 3600}h`
-  return `${Math.round(seconds / 60)}m`
-}
-
-/**
- * 重置时刻。后端给绝对时间戳就用它,只给「还有多少秒」就现算 ——
- * 两格都没有就没有这句话,不编一个。
- */
-function resetMomentOf(window: CodexUsageWindow): string | null {
-  if (typeof window.resetAt === 'number') return formatMoment(window.resetAt)
-  if (typeof window.resetAfterSeconds === 'number') {
-    return formatMoment(Date.now() + window.resetAfterSeconds * 1000)
-  }
-  return null
-}
-
-/** 套餐。usage 上没有就退到 account 上那一份,都没有才说「未给数」。 */
-function planOf(t: TFn, usage: ProviderUsageResponse): string {
-  const plan = usage.usage?.planType || usage.account?.planType
-  return plan ? plan : t('providers.usageUnavailable')
-}
-
-/** Credits 四态:没这一格 / 无限 / 有余额数 / 有没有额度。 */
-function creditsOf(t: TFn, usage: ProviderUsageResponse): string {
-  const credits = usage.usage?.credits
-  if (!credits) return t('providers.usageUnavailable')
-  if (credits.unlimited) return t('providers.usageUnlimited')
-  if (credits.balance) return credits.balance
-  return credits.hasCredits ? t('providers.usageHasCredits') : t('providers.usageNoCredits')
 }

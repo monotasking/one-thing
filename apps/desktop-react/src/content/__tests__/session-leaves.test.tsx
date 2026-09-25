@@ -179,6 +179,9 @@ function silencePanelPorts(): void {
     ready: async () => undefined,
     getSessionUsage: async () => ({ apiCostUSD: 0, subscriptionCostUSD: 0, turnCount: 0 }) as never,
     getTokenUsage: async () => ({ success: false, error: '这一族不量读数' }) as never,
+    getQuota: async () => ({ quota: { kind: 'unsupported' } }),
+    getMonthlyUsage: async () => ({ granularity: 'month', buckets: [], totalApiCostUSD: 0, totalSubscriptionCostUSD: 0 }) as never,
+    onQuotaPush: () => () => {},
   })
   configureModelsPort({
     ready: async () => undefined,

@@ -111,6 +111,13 @@ export interface SpaceCredentialEntry {
   /** 配额耗尽冷却的到期时间戳(ms)。批 D 消费;本切片只持久化与判「还在冷却」。 */
   cooldownUntil?: number
   /**
+   * 这一格冷却**为什么**坐的(批 5 §8.3)。`'quota'` = 配额服务读到窗口满 / 余额见底时
+   * 写的(批 6 `pickRoute` 据它把「额度用完」与「报错冷却」分开说);缺席 = 报错冷却
+   * (今天轮转器写的那一种)。随 `cooldownUntil` 同生同灭:冷却被更长的另一种盖掉时
+   * 原因跟着换,冷却被抹掉(换 key / 重登)时它也一起没。
+   */
+  cooldownReason?: SpaceCredentialCooldownReason
+  /**
    * 端点覆盖。**§3 表外的扩展字段**(勘误记在设计文档批 B3):池里两条 key 完全
    * 可以指向不同端点,把 baseUrl 提到 provider 级就表达不了这件事。
    */
@@ -125,6 +132,8 @@ export interface SpaceCredentialEntry {
    */
   region?: string
 }
+
+export type SpaceCredentialCooldownReason = 'quota'
 
 export interface SpaceProviderCredentials {
   entries: SpaceCredentialEntry[]
@@ -172,6 +181,7 @@ export function parseSpaceCredentialEntry(value: unknown): SpaceCredentialEntry 
   if (value.oauthToken !== undefined) entry.oauthToken = value.oauthToken
   if (typeof value.cooldownUntil === 'number' && Number.isFinite(value.cooldownUntil)) {
     entry.cooldownUntil = value.cooldownUntil
+    if (value.cooldownReason === 'quota') entry.cooldownReason = 'quota'
   }
   const baseUrl = trimmedString(value.baseUrl)
   if (baseUrl) entry.baseUrl = baseUrl
@@ -553,6 +563,11 @@ export interface SelectSpaceCredentialEntryOptions {
    */
   spaceId?: string
   providerId?: string
+  /**
+   * round-robin 选完要不要把游标往前拨(批 5 §8.3)。缺省 = 拨(发送路)。只读的
+   * `decide` 传 `false`:它问的是「下一发会用哪条」,问一次不该让真正的下一发换人。
+   */
+  advanceCursor?: boolean
 }
 
 /**
@@ -614,7 +629,9 @@ export function selectSpaceCredentialEntryDetailed(
     const cursor = roundRobinCursors.get(options.cursorKey) ?? 0
     // 游标走在**可用集**上而不是全集:冷却掉的 entry 不该占着一个轮次让整池空转。
     const entry = available[cursor % available.length]
-    roundRobinCursors.set(options.cursorKey, (cursor + 1) % available.length)
+    if (options.advanceCursor !== false) {
+      roundRobinCursors.set(options.cursorKey, (cursor + 1) % available.length)
+    }
     return { entry }
   }
 
@@ -810,6 +827,7 @@ export function markSpaceCredentialCooldown(
   providerId: string,
   entryId: string,
   cooldownUntil: number,
+  reason?: SpaceCredentialCooldownReason,
 ): SpaceCredentialsFile {
   if (!Number.isFinite(cooldownUntil)) return readSpaceCredentials(spaceId)
   return updateProviderSection(spaceId, providerId, current => {
@@ -819,7 +837,9 @@ export function markSpaceCredentialCooldown(
     const until = Math.max(cooldownUntil, previous.cooldownUntil ?? 0)
     if (until === previous.cooldownUntil) return null
     const entries = [...current.entries]
-    entries[index] = { ...previous, cooldownUntil: until }
+    // 原因跟着「赢了的那一格」走:这一次真的把冷却延长了,原因就是这一次的原因。
+    const { cooldownReason: _previousReason, ...rest } = previous
+    entries[index] = { ...rest, cooldownUntil: until, ...(reason ? { cooldownReason: reason } : {}) }
     return { ...current, entries }
   })
 }

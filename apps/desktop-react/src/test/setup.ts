@@ -256,12 +256,9 @@ configureProviderSettingsPort({
   oauthCancel: async () => ({ success: true, cancelled: false }),
   // 推送面默认是哑的:没有流在跑,也就没有相位要推。
   onOAuthPush: () => () => {},
-  // 用量默认 `unsupported` —— 那正是绝大多数 provider 在真机上的答案。
-  getProviderUsage: async (providerId: string) => ({
-    success: true,
-    providerId,
-    unsupported: true,
-  }),
+  // 配额默认 `unsupported` —— 那正是绝大多数 provider 在真机上的答案。推送面同样是哑的。
+  getProviderQuota: async () => ({ quota: { kind: 'unsupported' } }),
+  onQuotaPush: () => () => {},
 })
 
 /**
@@ -277,6 +274,15 @@ configureMeterPort({
     throw new Error('no meter port in tests')
   },
   getTokenUsage: async () => ({ success: false, error: 'no meter port in tests' }),
+  // 配额:默认 unsupported,账本月桶答空 —— 卡上不出配额行。
+  getQuota: async () => ({ quota: { kind: 'unsupported' } }),
+  getMonthlyUsage: async () => ({
+    granularity: 'month',
+    buckets: [],
+    totalApiCostUSD: 0,
+    totalSubscriptionCostUSD: 0,
+  }) as never,
+  onQuotaPush: () => () => {},
 })
 
 /**

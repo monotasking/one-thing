@@ -13,9 +13,15 @@ import {
   isMeterInvalidation,
   meterQuery,
   meterViewOf,
+  monthlyProviderCostOf,
+  quotaQuery,
+  quotaQueryKey,
   useMeterSource,
   useMeterView,
 } from './meter-source'
+import type { ProviderQuotaPushPayload } from '@shared/contracts/quota'
+import type { ProviderQuotaResponse } from '@shared/ipc/providers'
+import type { GetUsageSummaryResponse } from '@shared/ipc/usage'
 import { prefsQuery, useModelsSource } from './models-source'
 import { providerModelPrefs, servedByBackend } from './__fixtures__/models'
 import { catalogKey, catalogQuery } from '../providers/catalog-query'
@@ -49,6 +55,9 @@ function usageResponse(over: Partial<GetSessionUsageResponse['usage']> = {}): Ge
 let fetches: { usage: number; tokens: number }
 let emit: ((envelope: SessionEventEnvelope) => void) | undefined
 let usageThrows = false
+let quotaAnswer: () => ProviderQuotaResponse = () => ({ quota: { kind: 'unsupported' } })
+let monthly: () => GetUsageSummaryResponse = () => ({ granularity: 'month', buckets: [], totalApiCostUSD: 0, totalSubscriptionCostUSD: 0 }) as unknown as GetUsageSummaryResponse
+let quotaPush: ((push: ProviderQuotaPushPayload) => void) | undefined
 
 /**
  * 一道可控的闸:关上之后账本那一口停在半空,直到 `openGate()` 放行。
@@ -88,6 +97,8 @@ function ledger(sessionId: string, type: string): SessionEventEnvelope {
 }
 
 beforeEach(() => {
+  quotaAnswer = () => ({ quota: { kind: 'unsupported' } })
+  quotaPush = undefined
   fetches = { usage: 0, tokens: 0 }
   usageThrows = false
   emit = undefined
@@ -141,6 +152,14 @@ beforeEach(() => {
           lastInputTokens: 110_000,
           contextSize: 124_000,
         },
+      }
+    },
+    getQuota: async () => quotaAnswer(),
+    getMonthlyUsage: async () => monthly(),
+    onQuotaPush: (callback) => {
+      quotaPush = callback
+      return () => {
+        quotaPush = undefined
       }
     },
   })
@@ -494,5 +513,47 @@ describe('刷新时机', () => {
       isMeterInvalidation({ type: SESSION_EVENT_TYPES.SESSION_LEDGER_EVENT, record: { type: 'run/end' } }),
     ).toBe(true)
     expect(isMeterInvalidation(null)).toBe(false)
+  })
+})
+
+describe('配额(批 5 §8.4)', () => {
+  const NOW = new Date(2026, 8, 26, 12).getTime()
+  const bucket = {
+    bucketKey: '2026-09',
+    startTs: new Date(2026, 8, 1).getTime(),
+    endTs: new Date(2026, 9, 1).getTime(),
+    byProvider: [{ key: 'zhipu', apiCostUSD: 4.12 }],
+  }
+
+  it('本月本地估算:落在此刻那个桶、按 provider 过滤;这家没记录 = 0;没有桶 = null', () => {
+    const summary = { buckets: [bucket] } as unknown as GetUsageSummaryResponse
+    expect(monthlyProviderCostOf(summary, 'zhipu', NOW)).toBe(4.12)
+    expect(monthlyProviderCostOf(summary, 'gemini', NOW)).toBe(0)
+    expect(monthlyProviderCostOf({ buckets: [] } as unknown as GetUsageSummaryResponse, 'zhipu', NOW)).toBeNull()
+  })
+
+  it('unsupported 时才问账本;支持时不问', async () => {
+    monthly = () => ({ buckets: [{ ...bucket, startTs: 0, endTs: Number.MAX_SAFE_INTEGER }] }) as unknown as GetUsageSummaryResponse
+    await quotaQuery.get(quotaQueryKey('default', 'zhipu')).ensure()
+    expect(quotaQuery.get(quotaQueryKey('default', 'zhipu')).get().data?.localMonthUsd).toBe(4.12)
+    quotaAnswer = () => ({ quota: { kind: 'balance', currency: 'CNY', available: 5, fetchedAt: 1 }, credentialId: 'k1' })
+    await quotaQuery.get(quotaQueryKey('default', 'deepseek')).ensure()
+    expect(quotaQuery.get(quotaQueryKey('default', 'deepseek')).get().data).toMatchObject({ credentialId: 'k1', localMonthUsd: null })
+  })
+
+  it('推送:凭证对得上才换那一格;429 不换', async () => {
+    quotaAnswer = () => ({ quota: { kind: 'balance', currency: 'CNY', available: 5, fetchedAt: 1 }, credentialId: 'k1' })
+    await useMeterSource.getState().open('s1')
+    const key = quotaQueryKey('default', 'deepseek')
+    await quotaQuery.get(key).ensure()
+    const next = { kind: 'balance' as const, currency: 'CNY' as const, available: 3, fetchedAt: 2 }
+    quotaPush?.({ providerId: 'deepseek', credentialId: 'k2', quota: next })
+    expect(quotaQuery.get(key).get().data?.quota).toMatchObject({ available: 5 })
+    quotaPush?.({ providerId: 'deepseek', credentialId: 'k1', quota: { kind: 'error', reason: 'rate-limited', message: '429', fetchedAt: 3 } })
+    expect(quotaQuery.get(key).get().data?.quota).toMatchObject({ available: 5 })
+    quotaPush?.({ providerId: 'deepseek', credentialId: 'k1', quota: next })
+    expect(quotaQuery.get(key).get().data?.quota).toEqual(next)
+    useMeterSource.getState().close('s1')
+    expect(quotaPush, '最后一块面板下场 → 配额推送也退订').toBeUndefined()
   })
 })

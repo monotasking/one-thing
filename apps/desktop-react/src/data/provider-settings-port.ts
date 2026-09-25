@@ -6,8 +6,10 @@ import {
   type ModelManualEditRequest,
   type ModelManualEditResponse,
   type ModelsListResponse,
-  type ProviderUsageResponse,
+  type ProviderQuotaRequest,
+  type ProviderQuotaResponse,
 } from '@shared/ipc/providers'
+import type { ProviderQuota, ProviderQuotaPushPayload } from '@shared/contracts/quota'
 import { oauthRouter } from '@shared/ipc/oauth'
 import type {
   OAuthCallbackRequest,
@@ -179,8 +181,31 @@ export interface ProviderSettingsPort {
   /** `oauth:flow` / `oauth:token-expired` 两种全局事件的推送面。返回退订函数。 */
   onOAuthPush(callback: (push: OAuthPush) => void): () => void
 
-  /** 订阅用量。`spaceId` 缺席 = 默认空间。 */
-  getProviderUsage(providerId: string, spaceId?: string): Promise<ProviderUsageResponse>
+  /**
+   * 配额与余额(批 5)。`spaceId` 缺席 = 默认空间;`credentialId` 缺席 = 「下一发会用哪条」;
+   * `force` = 刷新钮(绕过后端 60 秒缓存,429 静默期不绕)。
+   */
+  getProviderQuota(request: ProviderQuotaRequest): Promise<ProviderQuotaResponse>
+  /** `provider:quota` 全局事件的推送面。返回退订函数。 */
+  onQuotaPush(callback: (push: ProviderQuotaPushPayload) => void): () => void
+}
+
+const QUOTA_KINDS: ReadonlySet<ProviderQuota['kind']> = new Set(['balance', 'windows', 'unsupported', 'error'])
+
+/** 一帧 `provider:quota` 认不认。形不对就丢(推送面是不可信输入)。 */
+export function quotaPushOfFrame(name: string, data: unknown): ProviderQuotaPushPayload | null {
+  if (name !== 'provider:quota' || !data || typeof data !== 'object') return null
+  const record = data as Record<string, unknown>
+  if (typeof record.providerId !== 'string') return null
+  const quota = record.quota as ProviderQuota | undefined
+  if (!quota || typeof quota !== 'object' || !QUOTA_KINDS.has(quota.kind)) return null
+  if (quota.kind === 'windows' && !Array.isArray(quota.windows)) return null
+  if (quota.kind === 'balance' && typeof quota.available !== 'number') return null
+  return {
+    providerId: record.providerId,
+    ...(typeof record.credentialId === 'string' ? { credentialId: record.credentialId } : {}),
+    quota,
+  }
 }
 
 /** 登录相关的两种推送,认过形之后的样子。 */
@@ -265,8 +290,12 @@ async function realPort(): Promise<ProviderSettingsPort> {
         const push = oauthPushOfFrame(frame.name, frame.data)
         if (push) callback(push)
       }),
-    getProviderUsage: (providerId, spaceId) =>
-      providersApi.usage({ providerId, ...(spaceId ? { spaceId } : {}) }),
+    getProviderQuota: (request) => providersApi.quota(request),
+    onQuotaPush: (callback) =>
+      client.events.onAny((frame) => {
+        const push = quotaPushOfFrame(frame.name, frame.data)
+        if (push) callback(push)
+      }),
   }
 }
 

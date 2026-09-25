@@ -129,6 +129,11 @@ export interface ResolveSpaceProviderCredentialOptions {
   /** 空间展示名。同上。 */
   spaceLabel?: string
   now?: number
+  /**
+   * 只读地问「下一发会用哪条」(批 5 §8.3 的 `decide`):round-robin 的游标不拨。
+   * 缺省 = 发送路的语义(拨)。
+   */
+  peek?: boolean
 }
 
 /**
@@ -218,6 +223,7 @@ export function resolveSpaceProviderCredential(
       spaceId,
       providerId: options.providerId,
       ...(oauth ? { authType: 'oauth' as const } : {}),
+      ...(options.peek ? { advanceCursor: false } : {}),
     },
   )
 

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { toJsonObject, type JsonObject, type JsonValue } from '@shared/json.js'
 import {
   buildCodexHeaders,
@@ -6,11 +6,8 @@ import {
   CODEX_DEFAULT_MODEL,
   codexModelInfoToOpenRouterModel,
   CODEX_CLIENT_VERSION,
-  CODEX_USAGE_URL,
-  fetchCodexUsage,
   getCodexFallbackModel,
   getCodexFallbackModels,
-  normalizeCodexUsagePayload,
   prepareCodexCallOptions,
 } from '../codex.js'
 
@@ -25,25 +22,6 @@ function jsonArrayField(object: JsonObject, key: string): JsonValue[] {
 
 function fieldValues(items: JsonValue[], key: string): JsonValue[] {
   return items.map(item => toJsonObject(item)[key] ?? null)
-}
-
-function requestUrl(input: Parameters<typeof globalThis.fetch>[0]): string {
-  if (typeof input === 'string') return input
-  if (input instanceof URL) return input.toString()
-  return input.url
-}
-
-function headersRecord(headers: HeadersInit | undefined): Record<string, string> {
-  if (!headers) return {}
-  if (headers instanceof Headers) {
-    const record: Record<string, string> = {}
-    headers.forEach((value, key) => {
-      record[key] = value
-    })
-    return record
-  }
-  if (Array.isArray(headers)) return Object.fromEntries(headers)
-  return { ...headers }
 }
 
 describe('codex provider helpers', () => {
@@ -68,112 +46,6 @@ describe('codex provider helpers', () => {
 
     expect(url.pathname).toBe('/backend-api/codex/models')
     expect(url.searchParams.get('client_version')).toBe(CODEX_CLIENT_VERSION)
-  })
-
-  it('fetches official Codex usage from the ChatGPT WHAM endpoint', async () => {
-    const calls: Array<{ url: string; headers?: Record<string, string> }> = []
-    const fetchImpl = vi.fn<typeof globalThis.fetch>(async (input, init) => {
-      calls.push({ url: requestUrl(input), headers: headersRecord(init?.headers) })
-      return new Response(JSON.stringify({
-        plan_type: 'pro',
-        credits: {
-          has_credits: true,
-          unlimited: false,
-          balance: '12.50',
-        },
-        rate_limit: {
-          primary_window: {
-            used_percent: 25,
-            limit_window_seconds: 18000,
-            reset_after_seconds: 300,
-            reset_at: 1770000000,
-          },
-          secondary_window: {
-            used_percent: 50,
-            limit_window_seconds: 604800,
-            reset_after_seconds: 86400,
-            reset_at: 1770600000,
-          },
-        },
-        additional_rate_limits: [{
-          limit_name: 'Cloud tasks',
-          metered_feature: 'codex_cloud',
-          rate_limit: {
-            primary_window: {
-              used_percent: 10,
-              limit_window_seconds: 3600,
-              reset_after_seconds: 120,
-              reset_at: 1770000100,
-            },
-          },
-        }],
-      }), { status: 200 })
-    })
-
-    const usage = await fetchCodexUsage({
-      accessToken: 'access-token',
-      expiresAt: Date.now() + 60_000,
-      tokenType: 'Bearer',
-      accountId: 'acct_123',
-      isFedrampAccount: true,
-    }, fetchImpl)
-
-    expect(calls[0].url).toBe(CODEX_USAGE_URL)
-    expect(calls[0].url).toContain('/backend-api/wham/usage')
-    expect(calls[0].url).not.toContain('/backend-api/codex')
-    expect(calls[0].headers?.Authorization).toBe('Bearer access-token')
-    expect(calls[0].headers?.originator).toBe('codex_cli_rs')
-    expect(calls[0].headers?.['ChatGPT-Account-ID']).toBe('acct_123')
-    expect(calls[0].headers?.['X-OpenAI-Fedramp']).toBe('true')
-    expect(usage.planType).toBe('pro')
-    expect(usage.credits).toEqual({ hasCredits: true, unlimited: false, balance: '12.50' })
-    expect(usage.limits[0]).toMatchObject({
-      id: 'codex',
-      primary: { usedPercent: 25, windowSeconds: 18000, resetAfterSeconds: 300, resetAt: 1770000000 },
-      secondary: { usedPercent: 50, windowSeconds: 604800, resetAfterSeconds: 86400, resetAt: 1770600000 },
-    })
-    expect(usage.limits[1]).toMatchObject({
-      id: 'codex_cloud',
-      name: 'Cloud tasks',
-      primary: { usedPercent: 10 },
-    })
-  })
-
-  it('normalizes Codex usage payload variants', () => {
-    expect(normalizeCodexUsagePayload({
-      planType: 'team',
-      credits: { hasCredits: true, unlimited: true },
-      rateLimitReachedType: { type: 'workspace_owner_usage_limit_reached' },
-      rateLimit: {
-        primaryWindow: { usedPercent: '75', limitWindowSeconds: '3600' },
-      },
-    })).toEqual({
-      planType: 'team',
-      credits: { hasCredits: true, unlimited: true },
-      limits: [{
-        id: 'codex',
-        primary: { usedPercent: 75, windowSeconds: 3600 },
-        rateLimitReachedType: 'workspace_owner_usage_limit_reached',
-      }],
-    })
-  })
-
-  it('surfaces Codex usage errors without leaking request secrets', async () => {
-    const fetchImpl = vi.fn<typeof globalThis.fetch>(async () => new Response(JSON.stringify({
-      detail: 'usage unavailable',
-    }), { status: 403 }))
-
-    await expect(fetchCodexUsage({
-      accessToken: 'secret-token',
-      expiresAt: Date.now() + 60_000,
-      tokenType: 'Bearer',
-    }, fetchImpl)).rejects.toThrow('Codex usage request failed: 403: usage unavailable')
-
-    await expect(fetchCodexUsage({
-      accessToken: 'secret-token',
-      expiresAt: Date.now() + 60_000,
-      tokenType: 'Bearer',
-    }, fetchImpl)).rejects.not.toThrow('secret-token')
   })
 
   it('provides a usable fallback model', () => {

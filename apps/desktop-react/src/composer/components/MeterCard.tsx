@@ -1,9 +1,20 @@
 import { useShallow } from 'zustand/react/shallow'
 import { useT } from '../../i18n'
 import type { TFn } from '../../i18n'
-import { useMeterView } from '../../data/meter-source'
+import { useEffect } from 'react'
+import { quotaQuery, useMeterView, useQuotaFacts } from '../../data/meter-source'
 import { useComposerSessionId } from '../session-context'
-import type { MeterView } from '../../data/meter-source'
+import type { MeterView, QuotaFacts } from '../../data/meter-source'
+import { Tooltip } from '../../ui/Tooltip'
+import {
+  quotaAmountText,
+  quotaBalanceOf,
+  quotaPercentText,
+  quotaResetText,
+  quotaWarns,
+  quotaWindowName,
+  quotaWindowsOf,
+} from '../../providers/quota'
 import { useChatSourceOf } from '../../data/chat-source'
 import { selectCompactingReadout } from '../../content/compact/marker'
 import type { CompactingReadout } from '../../content/compact/marker'
@@ -72,14 +83,19 @@ export function ContextRing({ onEnter, onLeave }: { onEnter: () => void; onLeave
   const agentUsage = agentUsageOf(useAcpSessionState(sessionId))
   const view = withAgentUsage(useMeterView(sessionId), agentUsage)
   const compacting = useCompacting(sessionId)
+  const { facts: quotaFacts } = useQuotaFacts(sessionId)
   const pct =
     view.contextUsed === null || view.contextMax === null
       ? null
       : percent(view.contextUsed, view.contextMax)
+  /* 批 5 §8.4:圆环仍只画上下文;配额快用完(最紧的窗 ≥ 80% / 余额低于 ¥10·$2)
+   * 只换**底圈**的颜色,悬停即见原因。判据在 `providers/quota.ts` 一处。 */
+  const quotaWarn = quotaWarns(quotaFacts?.quota)
 
   return (
     <span
       className={s.ctxRing}
+      data-quota-warn={quotaWarn ? '' : undefined}
       /* 压缩中:弧脉动(皮肤在 CSS 里,这里只说事实)。压完 / 失败这一格自己消失 ——
        * 判据是账本上那条 marker 的 status,不需要谁来「关掉」它。 */
       data-compacting={compacting.on ? '' : undefined}
@@ -119,6 +135,7 @@ export function ContextRing({ onEnter, onLeave }: { onEnter: () => void; onLeave
           cy={RING_BOX / 2}
           r={RING_R}
           fill="none"
+          className={s.ctxTrack}
           stroke="var(--line-1)"
           strokeWidth={RING_W}
           /* 缺席态:底圈画成点线。有读数时给 undefined = 实线整圈。 */
@@ -150,6 +167,56 @@ interface MeterRow {
   value: string
   ok?: boolean
   dim?: boolean
+  /** React 键(同一个 `key` 标签出现多行时用,缺席 = 用 `key`)。 */
+  id?: string
+  /**
+   * 整行一句话(配额那几行):§8.4 表里每一行本身就是一整句(「5 小时 已用 62% · 14:30 重置」),
+   * 拆成「键 / 值」两格反而要在句子中间断开。
+   */
+  wide?: boolean
+}
+
+/**
+ * 配额那几行(批 5 §8.4 表,逐格):
+ *  - 订阅有窗口 → 一窗一行,只画有数的;
+ *  - API 有余额 → 「余额 ¥123.45」;有余额也有窗口(Codex credits)→ 两种都出;
+ *  - 服务商不支持 → 「本月已用 $4.12(本地估算)」(账本也答不上来就不出);
+ *  - 取数失败 → **不出行**,由卡底那一行灰字说(见 `quotaFailureOf`);
+ *  - 429 → 静默:不出行、也不出那行灰字(拍点 5);
+ *  - 正在取 → 上次的值照画(这里拿到的就是上次的 facts)。
+ */
+export function quotaRowsOf(facts: QuotaFacts | null, t: TFn, now: number = Date.now()): MeterRow[] {
+  if (!facts) return []
+  const { quota } = facts
+  if (quota.kind === 'unsupported') {
+    return facts.localMonthUsd === null
+      ? []
+      : [{ key: t('meter.month'), id: 'quota:month', wide: true, value: t('meter.quotaLocalMonth', { amount: `$${formatUsd(facts.localMonthUsd)}` }) }]
+  }
+  const rows: MeterRow[] = quotaWindowsOf(quota).map((window) => {
+    const label = quotaWindowName(t, window)
+    const pct = quotaPercentText(window)
+    return {
+      key: t('meter.quota'),
+      id: `quota:${window.id}`,
+      wide: true,
+      value: window.resetsAt !== undefined
+        ? t('meter.quotaWindow', { label, pct, reset: quotaResetText(t, window.resetsAt, now) })
+        : t('meter.quotaWindowNoReset', { label, pct }),
+    }
+  })
+  const balance = quotaBalanceOf(quota)
+  if (balance) {
+    rows.push({ key: t('meter.balance'), id: 'quota:balance', wide: true, value: t('meter.quotaBalance', { amount: quotaAmountText(t, balance) }) })
+  }
+  return rows
+}
+
+/** 取数失败时卡底那一行灰字的原话(Tooltip 里给)。429 静默 = null;没失败 = null。 */
+export function quotaFailureOf(facts: QuotaFacts | null): string | null {
+  const quota = facts?.quota
+  if (quota?.kind !== 'error' || quota.reason === 'rate-limited') return null
+  return quota.message
 }
 
 /**
@@ -166,6 +233,7 @@ export function meterRowsOf(
   t: TFn,
   compacting?: CompactingReadout,
   agentUsage?: AgentUsage | null,
+  quota?: QuotaFacts | null,
 ): MeterRow[] {
   const compactRow: MeterRow[] = compacting?.on
     ? [{
@@ -178,7 +246,7 @@ export function meterRowsOf(
     : []
 
   if (!view.present) {
-    return [...compactRow, { key: t('meter.context'), value: t('meter.empty'), dim: true }]
+    return [...compactRow, { key: t('meter.context'), value: t('meter.empty'), dim: true }, ...quotaRowsOf(quota ?? null, t)]
   }
 
   const rows: MeterRow[] = [...compactRow]
@@ -227,6 +295,9 @@ export function meterRowsOf(
     )
   }
 
+  // 配额插在「上下文」行之后(§8.4)。
+  rows.push(...quotaRowsOf(quota ?? null, t))
+
   if (view.tokensIn !== null || view.tokensOut !== null) {
     rows.push({
       key: t('meter.tokens'),
@@ -266,26 +337,44 @@ export function MeterCard({ open }: { open: boolean }) {
   const sessionId = useComposerSessionId()
   const agentUsage = agentUsageOf(useAcpSessionState(sessionId))
   const view = withAgentUsage(useMeterView(sessionId), agentUsage)
-  const rows = meterRowsOf(view, t, useCompacting(sessionId), agentUsage)
+  const { key: quotaKey, facts: quotaFacts } = useQuotaFacts(sessionId)
+  const rows = meterRowsOf(view, t, useCompacting(sessionId), agentUsage, quotaFacts)
+  const failure = quotaFailureOf(quotaFacts)
+
+  /* 卡打开的那一眼问一次配额 —— 标脏而不是强制:后端 60 秒缓存说了算(§8.3)。 */
+  useEffect(() => {
+    if (open && quotaKey) quotaQuery.get(quotaKey).invalidate()
+  }, [open, quotaKey])
 
   return (
     <div className={open ? `${s.meterCard} ${s.meterOn}` : s.meterCard}>
-      {rows.map((r) => (
-        <div key={r.key} className={s.meterRow}>
-          <span className={s.meterKey}>{r.key}</span>
-          <span
-            className={
-              r.dim
-                ? `${s.meterVal} ${s.meterDim}`
-                : r.ok
-                  ? `${s.meterVal} ${s.meterOk}`
-                  : s.meterVal
-            }
-          >
-            {r.value}
-          </span>
-        </div>
-      ))}
+      {rows.map((r) =>
+        r.wide ? (
+          <div key={r.id ?? r.key} className={s.meterRow}>
+            <span className={s.meterVal}>{r.value}</span>
+          </div>
+        ) : (
+          <div key={r.id ?? r.key} className={s.meterRow}>
+            <span className={s.meterKey}>{r.key}</span>
+            <span
+              className={
+                r.dim
+                  ? `${s.meterVal} ${s.meterDim}`
+                  : r.ok
+                    ? `${s.meterVal} ${s.meterOk}`
+                    : s.meterVal
+              }
+            >
+              {r.value}
+            </span>
+          </div>
+        ),
+      )}
+      {failure !== null && (
+        <Tooltip content={failure}>
+          <span className={s.quotaFoot}>{t('meter.quotaFailed')}</span>
+        </Tooltip>
+      )}
     </div>
   )
 }

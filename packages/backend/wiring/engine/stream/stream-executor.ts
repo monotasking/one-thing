@@ -39,6 +39,7 @@ import {
 } from '@onething/core/engine'
 import type { CoreInitialToolChoice } from '@onething/core/engine'
 import { consolePort, getLogger } from '../../logging/index.js'
+import { noteQuotaRunEnd } from '../../quota/engine-hooks.js'
 import type { CoreStreamControllerRegistry, PendingMessageQueue, ExecuteCoreMessageStreamOptions } from '@onething/core/engine'
 
 const log = getLogger('engine.stream')
@@ -375,6 +376,13 @@ export async function executeMessageStream(
   } finally {
     // 幂等:catch 已经收过就是 no-op(见 `endSessionRun`)。
     if (started) await endSessionRun(params.sessionId, run.runId, { outcome: 'completed' })
+    // 批 5:这一轮用过的那条凭证,配额 30 秒去抖后重问一次(永不抛)。
+    noteQuotaRunEnd({
+      sessionId: params.sessionId,
+      providerId: params.providerId,
+      // 运行期的凭证标记(`applySessionSpaceCredentials` 盖上去的),静态形状里没有这一格。
+      credentialId: (params.configWithApiKey as { spaceCredential?: { entryId?: string } }).spaceCredential?.entryId,
+    })
   }
 }
 

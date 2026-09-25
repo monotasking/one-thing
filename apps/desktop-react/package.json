@@ -53,6 +53,7 @@
     "gate:credentials": "node scripts/gate-credentials.mjs",
     "gate:credential-pool": "node scripts/gate-credential-pool.mjs",
     "gate:providers-auth": "node scripts/gate-providers-auth.mjs",
+    "gate:quota": "node scripts/gate-quota.mjs",
     "gate:workspace": "node scripts/gate-workspace.mjs",
     "gate:a11y": "node scripts/gate-a11y.mjs",
     "gate:dock": "node scripts/gate-dock.mjs",

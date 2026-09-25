@@ -3,15 +3,15 @@
  *
  * Uses ChatGPT subscription OAuth credentials against the Codex backend.
  *
- * 这里只剩**非请求路径**的那一半:模型列表、ChatGPT 用量拉取、原生工具元数据、
- * `prepareCallOptions`。`createCodexModel`(`doStream`/`doGenerate`)与
+ * 这里只剩**非请求路径**的那一半:模型列表、原生工具元数据、`prepareCallOptions`。
+ * ChatGPT 用量(`wham/usage`)批 5 起是配额源(`runtime/providers/quota/codex.ts`),
+ * 经 `backend.quota` 取,这里不再有它的包装。`createCodexModel`(`doStream`/`doGenerate`)与
  * `createCodexFetch` 那条自带 SSE / usage / 错误 / effort 的请求路径在 P1-d2 整条
  * 删除 —— 生产零调用方,codex 的真实通路是 `agent-loop/providers/wires/`
  * 上的 `OpenAIResponsesWire` × `CODEX_DIALECT`(设计稿 §9 P1「第二套 codex」)。
  */
 
 import type {
-  CodexProviderUsage,
   OAuthToken,
   OpenRouterModel,
 } from '@shared/ipc.js'
@@ -23,30 +23,25 @@ import {
   codexBuiltinProvider,
   codexModelInfoToOnethingOpenRouterModel,
   fetchOnethingCodexModels,
-  fetchOnethingCodexUsage,
   getOnethingCodexFallbackModel,
   getOnethingCodexFallbackModels,
-  normalizeOnethingCodexUsagePayload,
   ONETHING_CODEX_BASE_URL,
   ONETHING_CODEX_CLIENT_VERSION,
   ONETHING_CODEX_DEFAULT_MODEL,
   ONETHING_CODEX_FALLBACK_INSTRUCTIONS,
   ONETHING_CODEX_PROVIDER_ID,
-  ONETHING_CODEX_USAGE_URL,
   prepareOnethingCodexCallOptions,
   type OnethingCodexRawValue,
 } from '@onething/runtime/providers'
 
 export const CODEX_PROVIDER_ID = ONETHING_CODEX_PROVIDER_ID
 export const CODEX_BASE_URL = ONETHING_CODEX_BASE_URL
-export const CODEX_USAGE_URL = ONETHING_CODEX_USAGE_URL
 export const CODEX_DEFAULT_MODEL = ONETHING_CODEX_DEFAULT_MODEL
 export const CODEX_CLIENT_VERSION = ONETHING_CODEX_CLIENT_VERSION
 export const CODEX_FALLBACK_INSTRUCTIONS = ONETHING_CODEX_FALLBACK_INSTRUCTIONS
 
 type CodexRawValue = OnethingCodexRawValue
 
-type FetchFn = typeof globalThis.fetch
 
 export function buildCodexHeaders(token: OAuthToken): Record<string, string> {
   return buildOnethingCodexHeaders(token)
@@ -77,17 +72,6 @@ export function codexModelInfoToOpenRouterModel(raw: CodexRawValue): OpenRouterM
 
 export async function fetchCodexModels(token: OAuthToken): Promise<OpenRouterModel[]> {
   return fetchOnethingCodexModels(token, createRequiredAppFetch({ policy: 'default' })) as Promise<OpenRouterModel[]>
-}
-
-export function normalizeCodexUsagePayload(payload: CodexRawValue): CodexProviderUsage {
-  return normalizeOnethingCodexUsagePayload(payload) as CodexProviderUsage
-}
-
-export async function fetchCodexUsage(
-  token: OAuthToken,
-  fetchImpl: FetchFn = createRequiredAppFetch({ policy: 'default' }),
-): Promise<CodexProviderUsage> {
-  return fetchOnethingCodexUsage(token, fetchImpl) as Promise<CodexProviderUsage>
 }
 
 const codexProvider: ProviderDefinition = {

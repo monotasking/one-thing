@@ -239,6 +239,8 @@ export interface SpaceCredentialEntrySummary {
   region?: string
   source: string
   cooldownUntil?: number
+  /** `'quota'` = 配额服务写的冷却(窗口满 / 余额见底);缺席 = 报错冷却(批 5)。 */
+  cooldownReason?: 'quota'
   /**
    * OAuth 型条目的登录态(批 B6)。**同样不含 token 原文** —— 只有「登没登、
    * 什么时候过期、哪个账号」这三样,与 apiKey 那边给预览不给原文是同一条纪律。

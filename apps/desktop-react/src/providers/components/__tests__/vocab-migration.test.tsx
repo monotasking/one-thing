@@ -329,7 +329,7 @@ describe('Card 收编:详情栏那几张卡', () => {
       '订阅用量',
       <UsageCard
         key="usage"
-        usage={{ usage: { limits: [] } } as never}
+        quota={{ kind: 'windows', windows: [], fetchedAt: 1 }}
         status="ready"
         onRefresh={() => {}}
       />,
@@ -359,9 +359,9 @@ describe('Card 收编:详情栏那几张卡', () => {
         onCancelAuth={() => {}}
         onOpenAuthPage={() => {}}
         onSignOut={() => {}}
-        usage={undefined}
-        usageStatus="idle"
-        onRefreshUsage={() => {}}
+        quotaOf={() => ({ response: undefined, status: 'idle' as const })}
+        onRefreshQuota={() => {}}
+        balanceOf={() => null}
       />,
     ],
     [
@@ -483,7 +483,7 @@ describe('Card 檐三件收编(批 8b)', () => {
   it('订阅用量的檐三件:标题 / 缓存读数 / 刷新钮 全在 Card 自己的檐里', () => {
     const { container } = render(
       <UsageCard
-        usage={{ usage: { limits: [] } } as never}
+        quota={{ kind: 'windows', windows: [], fetchedAt: 1 }}
         status="ready"
         onRefresh={() => {}}
       />,

@@ -15,6 +15,7 @@
  *  - **构造即校验**:一个 access token 都拿不到时当场抛「没登录」,而不是拖到
  *    第一回合才炸 —— 这是今天的行为,原样保留。
  */
+import { codexQuotaFromHeaders } from "../../providers/quota/codex.js";
 import type { AgentProvider } from "@onething/core/agent-loop";
 import {
 	CODEX_BASE_URL,
@@ -68,6 +69,7 @@ export function createCodexAgentProvider(
 	const dialect = responsesDialect({
 		id: CODEX_PROVIDER_ID,
 		...CODEX_DIALECT_SPEC,
+		quotaFromHeaders: (headers) => codexQuotaFromHeaders(headers),
 	});
 	return createResponsesProvider(dialect, {
 		providerId: CODEX_PROVIDER_ID,

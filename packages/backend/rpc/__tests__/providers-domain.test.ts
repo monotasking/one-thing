@@ -1,43 +1,26 @@
 /**
  * providers 域(主线 T1 第二批),搬自 `apps/electron/src/main/ipc/__tests__/providers.test.ts`。
  *
- * 钉的是与被删掉那条线的等价:非 Codex provider 报 unsupported、Codex 先刷新
- * token 再取官方用量、登录失效时把原话回上去、env status 永远不回显真钥匙。
+ * 批 5:`usage` 改名 `quota`,handler 只把请求递给 `backend.quota`(判据全在
+ * `wiring/quota`,那边有自己的测试);这里钉的是递什么、缺省是什么、没有活实例时答什么。
+ * env status 永远不回显真钥匙那一条照旧。
  *
- * mock 的路径必须解析到 handler **自己 import 的那个模块**(`../../auth/...`、
- * `../../providers/...`)——差一层就什么也没 mock 到,测试会拿用户真 store 跑。
+ * mock 的路径必须解析到 handler **自己 import 的那个模块** —— 差一层就什么也没 mock 到。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  refreshTokenIfNeeded: vi.fn(),
-  fetchCodexUsage: vi.fn(),
+  quotaGet: vi.fn(),
+  backend: { current: null as null | { quota?: { get: (...args: unknown[]) => unknown } } },
   getAvailableProviders: vi.fn(() => []),
-  resolveSpaceCredential: vi.fn((spaceId: string) => ({
-    kind: 'oauth-entry' as const,
-    spaceId,
-    entry: { id: 'entry-1', label: 'l', authType: 'oauth' as const, source: 'user' },
-  })),
 }))
 
-vi.mock('../../wiring/auth/auth-service.js', () => ({
-  authService: { refreshTokenIfNeeded: mocks.refreshTokenIfNeeded },
-}))
-
-vi.mock('../../wiring/providers/builtin/codex.js', () => ({
-  fetchCodexUsage: mocks.fetchCodexUsage,
+vi.mock('../../current.js', () => ({
+  getCurrentBackendInstance: () => mocks.backend.current,
 }))
 
 vi.mock('../../wiring/providers/index.js', () => ({
   getAvailableProviders: mocks.getAvailableProviders,
-}))
-
-// C1:用量按**哪个空间的 codex 账号**查。这里只 mock 解析那一格 —— 真实模块会
-// 顺着 registry 把整棵 provider 树拖进来(builtin/codex 的默认导出正是那样漏进
-// 这条测试的)。
-vi.mock('../../wiring/providers/space-credentials.js', () => ({
-  resolveSpaceProviderCredentialForSpace: mocks.resolveSpaceCredential,
-  credentialTargetFromMarker: (marker: unknown) => marker,
 }))
 
 const { providersRpcHandlers } = await import('../domains/providers.js')
@@ -45,6 +28,7 @@ const { providersRpcHandlers } = await import('../domains/providers.js')
 describe('providers RPC domain', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.backend.current = { quota: { get: mocks.quotaGet } }
     delete process.env.OPENAI_API_KEY
   })
 
@@ -52,66 +36,35 @@ describe('providers RPC domain', () => {
     delete process.env.OPENAI_API_KEY
   })
 
-  it('returns unsupported for non-Codex providers', async () => {
-    const response = await providersRpcHandlers.usage({ providerId: 'openai' })
-
-    expect(response).toEqual({ success: true, providerId: 'openai', unsupported: true })
-    expect(mocks.refreshTokenIfNeeded).not.toHaveBeenCalled()
-    expect(mocks.fetchCodexUsage).not.toHaveBeenCalled()
+  it('quota:缺省空间 = default,不带 force / credentialId 就不递', async () => {
+    mocks.quotaGet.mockResolvedValue({ quota: { kind: 'unsupported' } })
+    const response = await providersRpcHandlers.quota({ providerId: 'openai' })
+    expect(response).toEqual({ quota: { kind: 'unsupported' } })
+    expect(mocks.quotaGet).toHaveBeenCalledWith({ providerId: 'openai', spaceId: 'default' })
   })
 
-  it('refreshes Codex auth and returns official usage', async () => {
-    const token = {
-      accessToken: 'secret-token',
-      expiresAt: Date.now() + 60_000,
-      tokenType: 'Bearer',
-      accountId: 'acct_123',
-      email: 'user@example.com',
-      planType: 'pro',
-      isFedrampAccount: false,
+  it('quota:空间 / 凭证 / force 原样递给配额服务,答案原样回', async () => {
+    const answer = {
+      quota: { kind: 'windows', windows: [{ id: '5h', seconds: 18000, usedPercent: 62 }], fetchedAt: 1 },
+      credentialId: 'entry-1',
     }
-    const usage = {
-      planType: 'pro',
-      credits: { hasCredits: true, unlimited: false, balance: '10' },
-      limits: [{ id: 'codex', primary: { usedPercent: 15 } }],
-    }
-    mocks.refreshTokenIfNeeded.mockResolvedValue(token)
-    mocks.fetchCodexUsage.mockResolvedValue(usage)
-
-    const response = await providersRpcHandlers.usage({ providerId: 'codex' })
-
-    // C1:第二个参数是**这个空间的那条 codex entry**(批 B10 移交项 2)。
-    expect(mocks.refreshTokenIfNeeded).toHaveBeenCalledWith('codex', {
-      spaceId: 'default',
-      entryId: 'entry-1',
-      authType: 'oauth',
-    })
-    expect(mocks.fetchCodexUsage).toHaveBeenCalledWith(token)
-    expect(response).toMatchObject({
-      success: true,
+    mocks.quotaGet.mockResolvedValue(answer)
+    const response = await providersRpcHandlers.quota({
       providerId: 'codex',
-      account: {
-        id: 'acct_123',
-        email: 'user@example.com',
-        planType: 'pro',
-        isFedramp: false,
-      },
-      usage,
+      spaceId: 's2',
+      credentialId: 'entry-1',
+      force: true,
     })
-    expect(response.capturedAt).toEqual(expect.any(Number))
+    expect(mocks.quotaGet).toHaveBeenCalledWith({ providerId: 'codex', spaceId: 's2', credentialId: 'entry-1', force: true })
+    expect(response).toEqual(answer)
   })
 
-  it('returns a clear error when Codex is not logged in', async () => {
-    mocks.refreshTokenIfNeeded.mockRejectedValue(new Error('Not logged in'))
-
-    const response = await providersRpcHandlers.usage({ providerId: 'codex' })
-
-    expect(response).toEqual({
-      success: false,
-      providerId: 'codex',
-      error: 'Not logged in',
-    })
-    expect(mocks.fetchCodexUsage).not.toHaveBeenCalled()
+  it('quota:没有活实例(或空 providerId)答 unsupported,不抛', async () => {
+    mocks.backend.current = null
+    await expect(providersRpcHandlers.quota({ providerId: 'codex' })).resolves.toEqual({ quota: { kind: 'unsupported' } })
+    mocks.backend.current = { quota: { get: mocks.quotaGet } }
+    await expect(providersRpcHandlers.quota({ providerId: '' })).resolves.toEqual({ quota: { kind: 'unsupported' } })
+    expect(mocks.quotaGet).not.toHaveBeenCalled()
   })
 
   it('reports provider env status without returning the API key value', async () => {

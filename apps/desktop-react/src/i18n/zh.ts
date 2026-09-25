@@ -167,6 +167,29 @@ export const zh = {
   'meter.costAgent': 'agent 报价',
   'meter.costAgentValue': '{amount} {currency}',
 
+  /* ── 配额与余额(批 5 §8.4):插在「上下文」行之后,一窗一行,只画有数的 ─────── */
+  'meter.quotaWindow': '{label} 已用 {pct}% · {reset} 重置',
+  /* 窗口没给重置时刻:不编「重置」那半句。 */
+  'meter.quotaWindowNoReset': '{label} 已用 {pct}%',
+  'meter.quotaWindow5h': '5 小时',
+  'meter.quotaWindow7d': '本周',
+  'meter.quotaWindowDays': '{n} 天',
+  'meter.quotaBalance': '余额 {amount}',
+  'meter.quotaCredits': '{amount} 点',
+  'meter.quotaLocalMonth': '本月已用 {amount}(本地估算)',
+  'meter.quotaFailed': '余额获取失败',
+  /* 行的键:配额 / 余额 / 本月 —— 值那一格才是 8.4 表里那句话。 */
+  'meter.quota': '配额',
+  'meter.balance': '余额',
+  'meter.month': '本月',
+  'meter.weekday0': '周日',
+  'meter.weekday1': '周一',
+  'meter.weekday2': '周二',
+  'meter.weekday3': '周三',
+  'meter.weekday4': '周四',
+  'meter.weekday5': '周五',
+  'meter.weekday6': '周六',
+
   /* ── 状态条 / 执行抽屉 ────────────────────────────────────────────── */
   'status.toggle': '执行状态',
   'agentStrip.toggle': 'agent 状态',
@@ -1787,11 +1810,9 @@ export const zh = {
   'providers.usageNoCredits': '无额度',
   'providers.usageHasCredits': '可用',
   'providers.usageUnavailable': '服务商未提供',
-  'providers.usagePrimary': 'Primary',
-  'providers.usageSecondary': 'Secondary',
-  'providers.usageWindow': '{name} · {window} 窗口',
   'providers.usageReset': '{time} 重置',
-  'providers.usageMore': '其他限额({count})',
+  'providers.usageFor': '订阅用量 · {account}',
+  'providers.usageBalance': '余额',
 
   /* 本地模式 */
   'providers.localIntro': '使用本机安装的命令行工具,不需要密钥。',

@@ -785,62 +785,62 @@ describe('OAuthCard', () => {
 /* ── 用量卡 ──────────────────────────────────────────────────────────────── */
 
 describe('UsageCard', () => {
-  it('套餐 / Credits / 主次窗口 % 与重置时刻', () => {
-    render(
-      <UsageCard
-        status="ready"
-        onRefresh={vi.fn()}
-        usage={{
-          success: true,
-          providerId: 'codex',
-          usage: {
-            planType: 'Plus',
-            credits: { hasCredits: true, unlimited: true },
-            limits: [
-              {
-                id: 'codex',
-                primary: { usedPercent: 34, windowSeconds: 5 * 3600, resetAt: new Date(2026, 7, 31, 16, 0).getTime() },
-                secondary: { usedPercent: 12, windowSeconds: 7 * 86_400 },
-              },
+  it('套餐 / Credits / 窗口按时长命名(5 小时 / 本周),% 与重置时刻', () => {
+    const now = new Date(2026, 7, 31, 12, 0).getTime()
+    vi.useFakeTimers({ now, toFake: ['Date'] })
+    try {
+      render(
+        <UsageCard
+          status="ready"
+          onRefresh={vi.fn()}
+          quota={{
+            kind: 'windows',
+            plan: 'Plus',
+            balance: { currency: 'credits', available: 12.5 },
+            windows: [
+              { id: '5h', seconds: 5 * 3600, usedPercent: 34, resetsAt: new Date(2026, 7, 31, 16, 0).getTime() },
+              { id: '7d', seconds: 7 * 86_400, usedPercent: 12 },
             ],
-          },
-        }}
-      />,
-    )
+            fetchedAt: now,
+          }}
+        />,
+      )
+    } finally {
+      vi.useRealTimers()
+    }
     expect(screen.getByText('Plus')).toBeTruthy()
-    expect(screen.getByText('Unlimited')).toBeTruthy()
-    expect(screen.getByText('Primary · 5h 窗口')).toBeTruthy()
+    expect(screen.getByText('12.50 点')).toBeTruthy()
+    expect(screen.getByText('5 小时')).toBeTruthy()
     expect(screen.getByText('34%')).toBeTruthy()
-    expect(screen.getByText('08-31 16:00 重置')).toBeTruthy()
-    expect(screen.getByText('Secondary · 7d 窗口')).toBeTruthy()
+    expect(screen.getByText('16:00 重置')).toBeTruthy()
+    expect(screen.getByText('本周')).toBeTruthy()
+    expect(screen.queryByText(/Primary|Secondary/)).toBeNull()
   })
 
   /** 0% 是「一点没用」,缺席是「不知道」—— 在屏幕上长得像,在事实上差得远。 */
-  it('拿不到百分比:说「服务商未给数」,**不画一根 0 宽的条**', () => {
+  it('没有窗口:一根条都不画(不是一根 0 宽的条)', () => {
     const { container } = render(
-      <UsageCard
-        status="ready"
-        onRefresh={vi.fn()}
-        usage={{
-          success: true,
-          providerId: 'codex',
-          usage: { limits: [{ id: 'codex', primary: { usedPercent: Number.NaN } }] },
-        }}
-      />,
+      <UsageCard status="ready" onRefresh={vi.fn()} quota={{ kind: 'windows', windows: [], fetchedAt: 1 }} />,
     )
-    expect(screen.getAllByText('服务商未提供').length).toBeGreaterThan(0)
     expect(container.querySelectorAll('[class*="meterFill"]')).toHaveLength(0)
   })
 
-  it('刷新那颗钮绕过缓存', () => {
-    const onRefresh = vi.fn()
+  it('多账号:标题说是哪个号;失败说原话', () => {
     render(
       <UsageCard
-        status="ready"
-        onRefresh={onRefresh}
-        usage={{ success: true, providerId: 'codex', usage: { limits: [] } }}
+        status="error"
+        account="me@example.com"
+        onRefresh={vi.fn()}
+        quota={{ kind: 'error', reason: 'auth', message: 'Codex usage request failed: 401', fetchedAt: 1 }}
       />,
     )
+    expect(screen.getByText('订阅用量 · me@example.com')).toBeTruthy()
+    expect(screen.getByText(/获取失败 · Codex usage request failed: 401/)).toBeTruthy()
+  })
+
+  it('刷新那颗钮', () => {
+    const onRefresh = vi.fn()
+    render(<UsageCard status="ready" onRefresh={onRefresh} quota={{ kind: 'windows', windows: [], fetchedAt: 1 }} />)
     fireEvent.click(screen.getByRole('button', { name: '刷新' }))
     expect(onRefresh).toHaveBeenCalled()
     // 缓存寿命不上屏(设计正本 provider-settings-rework §2.1:施工笔记不上屏)。
@@ -959,9 +959,9 @@ describe('ModeCard · 计费档位', () => {
         onCancelAuth={vi.fn()}
         onOpenAuthPage={vi.fn()}
         onSignOut={vi.fn()}
-        usage={undefined}
-        usageStatus="idle"
-        onRefreshUsage={vi.fn()}
+        quotaOf={() => ({ response: undefined, status: 'idle' as const })}
+        onRefreshQuota={() => {}}
+        balanceOf={() => null}
       />
     )
   }
@@ -1013,9 +1013,9 @@ describe('ModeCard · 计费档位', () => {
         onCancelAuth={vi.fn()}
         onOpenAuthPage={vi.fn()}
         onSignOut={vi.fn()}
-        usage={undefined}
-        usageStatus="idle"
-        onRefreshUsage={vi.fn()}
+        quotaOf={() => ({ response: undefined, status: 'idle' as const })}
+        onRefreshQuota={() => {}}
+        balanceOf={() => null}
       />,
     )
     // Select 是自绘的 combobox 而不是原生 <select>:先点开触发器,再点那一格。

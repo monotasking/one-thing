@@ -116,6 +116,7 @@ export function CredentialPool({
   onRemove,
   onMove,
   onRotation,
+  balanceOf,
 }: {
   providerId: string
   pool: PoolView
@@ -128,6 +129,11 @@ export function CredentialPool({
   onRemove: (entryId: string) => void
   onMove: (entryId: string, delta: -1 | 1) => void
   onRotation: (policy: string) => void
+  /**
+   * 这条密钥的余额(批 5 §8.5):「¥123.45」,画在备注位右侧。有配额源的家、问到了数才有;
+   * 缺席 = 不画(不是 0)。不加钮 —— 取数时机归设置页那一口(开面问一次)与后端推送。
+   */
+  balanceOf?: (entryId: string) => string | null
 }) {
   const t = useT()
   const [edit, setEdit] = useState<PoolEdit | null>(null)
@@ -279,6 +285,7 @@ export function CredentialPool({
             onCommit={commit}
             onCancel={close}
             onMove={onMove}
+            balance={balanceOf?.(row.id) ?? null}
           />
         ))}
       </ul>
@@ -423,6 +430,7 @@ function PoolEntry({
   onCommit,
   onCancel,
   onMove,
+  balance,
 }: {
   t: TFn
   row: PoolRow
@@ -441,6 +449,8 @@ function PoolEntry({
   onCommit: () => void
   onCancel: () => void
   onMove: (entryId: string, delta: -1 | 1) => void
+  /** 这条密钥的余额(已格式化);null = 不画。 */
+  balance: string | null
 }) {
   const [menu, setMenu] = useState(false)
   const moreRef = useRef<HTMLButtonElement>(null)
@@ -527,6 +537,12 @@ function PoolEntry({
               <span className={s.cooling}>
                 {row.label ? ' · ' : ''}
                 {t('providers.cooling')} {t(cooldown.key, cooldown.vars)}
+              </span>
+            )}
+            {balance && (
+              <span className={s.balance}>
+                {row.label || (row.cooling && cooldown) ? ' · ' : ''}
+                {balance}
               </span>
             )}
           </span>

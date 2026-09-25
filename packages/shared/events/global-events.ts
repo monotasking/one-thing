@@ -8,6 +8,7 @@ import type { PluginNotifySound } from '@onething/core/plugins/notify-sound'
 import type { TerminalDataEvent, TerminalExitEvent } from '../ipc/terminal.js'
 import type { ACPAgentState, AcpSessionState } from '../contracts/acp.js'
 import type { OAuthFlowEventPayload } from '../ipc/oauth.js'
+import type { ProviderQuotaPushPayload } from '../contracts/quota.js'
 
 // ── App lifecycle ───────────────────────────────
 
@@ -302,6 +303,16 @@ export interface OAuthTokenExpiredGlobalEvent {
   error?: string
 }
 
+// ── 配额与余额(批 5,`docs/design/provider-settings-rework-2026-09.md` §8.3)──────────
+
+/**
+ * 某家服务商(池里某一条凭证)的配额 / 余额刚被更新了 —— 主动取数的结果,或
+ * 一条响应头(被动源)带回来的。壳的 composer 读数卡与设置页据它就地换数,不必再问。
+ */
+export interface ProviderQuotaGlobalEvent extends ProviderQuotaPushPayload {
+  type: 'provider:quota'
+}
+
 // ── Union ───────────────────────────────────────
 
 export type GlobalEvent =
@@ -327,6 +338,7 @@ export type GlobalEvent =
   | AgentNotificationEvent
   | OAuthFlowGlobalEvent
   | OAuthTokenExpiredGlobalEvent
+  | ProviderQuotaGlobalEvent
 
 // ── 出网名单(原子 K2a')────────────────────────────
 
@@ -420,4 +432,11 @@ export const GLOBAL_EVENT_LEAVES_PROCESS: Readonly<Record<GlobalEvent['type'], b
   'oauth:flow': true,
   /** **出网 —— 同上**。载荷 `{providerId, error?}`,`error` 是刷新失败的那句话。 */
   'oauth:token-expired': true,
+  /**
+   * **出网 —— 壳要画它**(批 5)。载荷 `{providerId, credentialId?, quota}`:百分比、重置时刻、
+   * 余额数与币种,以及取数失败时服务商回的那句话(`error.message`,同一道 Bearer 门后面
+   * `providers.quota` 交出去的是同一句)。**没有令牌、没有密钥**:`credentialId` 是池里那条
+   * 凭证的稳定 id(与 `spaces.getCredentials` 摘要里的 id 同一格),不是凭证本身。
+   */
+  'provider:quota': true,
 })

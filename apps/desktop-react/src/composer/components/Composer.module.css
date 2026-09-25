@@ -1119,6 +1119,12 @@
   transition: stroke-dasharray var(--dur-release) var(--ease-out);
 }
 
+/* 配额快用完(批 5 §8.4):底圈换警示色。判据在 `providers/quota.ts` 的 `quotaWarns`。
+ * CSS 的 `stroke` 压过 SVG 的 stroke 属性,所以不必在 JSX 里分支。 */
+.ctxRing[data-quota-warn] .ctxTrack {
+  stroke: var(--ring-warn);
+}
+
 .ctxRing[data-compacting] .ctxArc {
   animation: var(--kf-tool-pulse) var(--dur-tool-pulse) var(--ease) infinite alternate;
 }
@@ -1183,6 +1189,12 @@
 
 .meterOk {
   color: var(--ok);
+}
+
+/* 配额取数失败(批 5):卡底一行灰字,原话在 Tooltip 里。它不是读数,不抢眼。 */
+.quotaFoot {
+  font-size: var(--fs-nano);
+  color: var(--text-3);
 }
 
 /* 缺席态:这一行说的是「不知道」。灰置到与键同色 —— 它不是一个读数,

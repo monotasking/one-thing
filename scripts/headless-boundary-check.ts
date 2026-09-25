@@ -3006,7 +3006,8 @@ function checkProvidersDomainRidesTheRpcChannel(): void {
   const registryIndexContent = fs.existsSync(registryIndexFile) ? fs.readFileSync(registryIndexFile, 'utf-8') : ''
   const requiredDomainSymbols = [
     'listOnethingProvidersForIpc',
-    'getOnethingProviderUsage',
+    // 批 5:配额经 `backend.quota`(`wiring/quota`)取,域里不再有取数流程。
+    'getCurrentBackendInstance()?.quota',
     'inspectOnethingProviderEnvStatusForIpc',
   ]
   const lines = [
@@ -4277,18 +4278,27 @@ function checkRuntimeOwnsImageStreamEntryPoint(): void {
 }
 
 function checkRuntimeOwnsProvidersIpcUsageFlow(): void {
-  const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-usage.ts')
-  // 域迁到通用 RPC 通道后(主线 T1 第二批),宿主适配器换了地址:守的还是
-  // 同一件事 —— 适配器不许把 runtime 拥有的那套流程再抄一遍。
+  // 批 5(docs/design/provider-settings-rework-2026-09.md §8):用量流程换成了配额源注册表。
+  // 取数入口是产品层的 `fetchProviderQuota`(manifest 的 quotaSource → 注册表 → 源);
+  // 适配器(RPC 域)与装配层的配额服务都**只读表**,一个 provider 名都不许出现 ——
+  // 从前那张 `codexProviderIds` 枚举正是这条要防回来的东西。
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/quota/index.ts')
   const adapterFile = path.join(root, 'packages/backend/rpc/domains/providers.ts')
+  const quotaWiringDir = path.join(root, 'packages/backend/wiring/quota')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const quotaWiringFiles = fs.existsSync(quotaWiringDir)
+    ? fs.readdirSync(quotaWiringDir).filter(name => name.endsWith('.ts')).map(name => path.join(quotaWiringDir, name))
+    : []
+  const PROVIDER_NAME_LITERAL = [/['"](?:codex|claude-code|deepseek|kimi|openrouter)['"]/]
   const lines = [
-    ...(!runtimeContent.includes('getOnethingProviderUsage')
-      ? [`${rel(runtimeFile)}: missing runtime-owned provider usage flow`]
+    ...(!runtimeContent.includes('fetchProviderQuota')
+      ? [`${rel(runtimeFile)}: missing runtime-owned provider quota flow`]
       : []),
     ...(fs.existsSync(adapterFile)
-      ? matchingLines(adapterFile, MAIN_PROVIDERS_IPC_USAGE_FORBIDDEN_PATTERNS)
+      ? matchingLines(adapterFile, [...MAIN_PROVIDERS_IPC_USAGE_FORBIDDEN_PATTERNS, ...PROVIDER_NAME_LITERAL])
       : [`${rel(adapterFile)}: missing providers RPC domain`]),
+    ...(quotaWiringFiles.length === 0 ? [`${rel(quotaWiringDir)}: missing quota service wiring`] : []),
+    ...quotaWiringFiles.flatMap(file => matchingLines(file, PROVIDER_NAME_LITERAL)),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider usage flow', lines)

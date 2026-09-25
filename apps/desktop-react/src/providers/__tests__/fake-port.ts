@@ -39,11 +39,8 @@ export function fakeProviderPort(overrides: Partial<ProviderSettingsPort> = {}):
     oauthLogout: vi.fn(async () => ({ success: true })),
     oauthCancel: vi.fn(async () => ({ success: true, cancelled: true })),
     onOAuthPush: vi.fn(() => () => {}),
-    getProviderUsage: vi.fn(async (providerId: string) => ({
-      success: true,
-      providerId,
-      unsupported: true,
-    })),
+    getProviderQuota: vi.fn(async () => ({ quota: { kind: 'unsupported' as const } })),
+    onQuotaPush: vi.fn(() => () => {}),
     ...overrides,
   }
 }

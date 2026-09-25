@@ -5,7 +5,9 @@ import {
   type CoreHistoryContentPart,
   type CoreOrderedPartLike,
 } from '@onething/core/engine'
-import { providerDataTagPolicy } from './provider-data-policy.js'
+import { ONETHING_QUOTA_PROVIDER_DATA_TYPE, providerDataTagPolicy } from './provider-data-policy.js'
+
+export { ONETHING_QUOTA_PROVIDER_DATA_TYPE }
 // 方言在加载时登记各自的 provider-data 落法(`provider-data-policy.ts`);这里只保证它们加载过。
 import './dialects/index.js'
 
@@ -92,6 +94,8 @@ function generatedImagePayload(
 }
 
 export function planOnethingProviderDataPart(providerData: AgentProviderData): OnethingProviderDataPartPlan {
+  // 配额(批 5 被动源):只给装配层的配额缓存,消息上、账本上都不留(任何 provider)。
+  if (providerData.type === ONETHING_QUOTA_PROVIDER_DATA_TYPE) return 'none'
   // 生图开始只是一张瞬态卡(任何 provider)。
   if (providerData.type === 'image-generation-start') return 'none'
   // 生图结果落成一段正文(任何 provider)。
@@ -185,6 +189,9 @@ export async function applyOnethingAgentLoopProviderData<TContentPart extends Co
   options: ApplyOnethingAgentLoopProviderDataOptions<TContentPart>,
 ): Promise<boolean | undefined> {
   const providerData = options.providerData
+
+  // ---- 配额(批 5):不上消息。答 false = 「处理过了、什么都没落」,不交回 core 的缺省计划 --
+  if (providerData.type === ONETHING_QUOTA_PROVIDER_DATA_TYPE) return false
 
   // ---- 图像输出:按 type 判,任何 provider 同一处理(P3-2)----------------
   if (providerData.type === 'image-generation-start') {

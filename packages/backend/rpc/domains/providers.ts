@@ -9,48 +9,31 @@
  *    而 desktop 走 `getAvailableProviders()` 读注册表。注册表由
  *    `configureAppProviderRegistry()` 在 `createOnethingBackend` 里装配,**每个
  *    宿主都跑**,所以 server 迁完拿到的是真注册表,不是降级。
- * 2. `usage` —— server 原本无条件抛 "Provider usage requires OAuth in the
- *    desktop host."。那句话在 auth 主机端口未注入时是实话,但 headless 宿主的
- *    token store 有 plaintext 回退(见 `runtime/auth/host-ports.ts` 的契约),
- *    凭证在同一个 store 里。所以这里不再假装不支持,照 desktop 走真链路 ——
- *    与第一批 `goal` 补齐 web 桩同类:顺带补齐,不是等价搬迁。
+ * 2. `quota`(批 5 从 `usage` 改名)—— 读 `backend.quota`(`wiring/quota`):manifest 的
+ *    `quotaSource` → 配额源注册表,这里一个 provider 名都不认。凭证按请求带的空间(缺席 =
+ *    默认空间)与凭证 id(缺席 = 密钥策略的只读 `decide`)取,headless 宿主的 token store
+ *    有 plaintext 回退(见 `runtime/auth/host-ports.ts` 的契约),所以 server 照走真链路。
  */
 import type { RouteHandlers } from '@onething/core/ipc'
 import type { ProviderInfo, ProvidersRoutes } from '@shared/ipc/providers.js'
-import { AIProvider } from '@shared/ipc/providers.js'
 import {
-  getOnethingProviderUsage,
   inspectOnethingProviderEnvStatusForIpc,
   listOnethingProvidersForIpc,
 } from '@onething/runtime/providers'
-import { authService } from '../../wiring/auth/auth-service.js'
-import {
-  credentialTargetFromMarker,
-  resolveSpaceProviderCredentialForSpace,
-} from '../../wiring/providers/space-credentials.js'
-import { toSpaceCredentialMarker } from '@onething/runtime/spaces/provider-credentials'
 import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
-import { fetchCodexUsage } from '../../wiring/providers/builtin/codex.js'
 import { getAvailableProviders } from '../../wiring/providers/index.js'
 import { getProviderEnvStatus } from '@onething/runtime/providers/env.wiring'
 import { listLabeledDialectsForIpc } from '@onething/runtime/agent-loop/providers/dialect-options'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingProviderPresentationIpcLogger } from '@onething/runtime/providers/provider-presentation'
-import type { OAuthToken, CodexProviderUsage } from '@shared/ipc.js'
-import type { GetOnethingProviderUsageOptions } from '@onething/runtime/providers/provider-usage'
+import { getCurrentBackendInstance } from '../../current.js'
 import type { ListOnethingProvidersOptions } from '@onething/runtime/providers/provider-presentation'
 
 const log = getLogger('ipc.providers')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
 const consoleLog: ConsoleLikePort & OnethingProviderPresentationIpcLogger = consolePort(log)
 
-
-/** 「这个空间的这个 provider 的 OAuth 账号」→ auth 层的读写目标。 */
-function providerUsageCredentialTarget(spaceId: string | undefined, providerId: string) {
-  const resolution = resolveSpaceProviderCredentialForSpace(spaceId || DEFAULT_SPACE_ID, providerId)
-  return credentialTargetFromMarker(toSpaceCredentialMarker(resolution))
-}
 
 export const providersRpcHandlers: RouteHandlers<ProvidersRoutes> = {
   async list() {
@@ -61,22 +44,16 @@ export const providersRpcHandlers: RouteHandlers<ProvidersRoutes> = {
   async listDialects() {
     return listLabeledDialectsForIpc()
   },
-  async usage(request) {
-    const getOnethingProviderUsageOptions: GetOnethingProviderUsageOptions<OAuthToken, CodexProviderUsage> = {
-      providerId: request?.providerId ?? '',
-      codexProviderIds: ['codex', AIProvider.Codex],
-      canonicalCodexProviderId: AIProvider.Codex,
-      refreshTokenIfNeeded: providerId =>
-        authService.refreshTokenIfNeeded(
-          providerId,
-          // C1:token 住在空间的凭证池里,不再有「settings 那一把」。请求带哪个
-          // 空间就查哪个空间的账号 —— 用量卡因此在每个空间都说得出话,而不是
-          // 在非默认空间静默消失(批 B10 移交项 2)。
-          providerUsageCredentialTarget(request?.spaceId, providerId),
-        ),
-      fetchCodexUsage,
-    };
-    return getOnethingProviderUsage(getOnethingProviderUsageOptions)
+  async quota(request) {
+    const providerId = request?.providerId ?? ''
+    const service = getCurrentBackendInstance()?.quota
+    if (!providerId || !service) return { quota: { kind: 'unsupported' } }
+    return service.get({
+      providerId,
+      spaceId: request?.spaceId || DEFAULT_SPACE_ID,
+      ...(request?.credentialId ? { credentialId: request.credentialId } : {}),
+      ...(request?.force ? { force: true } : {}),
+    })
   },
   async envStatus(request) {
     return inspectOnethingProviderEnvStatusForIpc({

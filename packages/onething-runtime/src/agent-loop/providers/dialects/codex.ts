@@ -26,6 +26,7 @@
  * `if (providerId === 'codex')`。
  */
 import { registerProviderDataTagPolicy } from "../provider-data-policy.js";
+import { codexQuotaFromHeaders } from "../../../providers/quota/codex.js";
 import {
 	CODEX_DIALECT_SPEC,
 	defineResponsesDialect, type ResponsesDialectSpec,
@@ -34,6 +35,9 @@ import {
 const responsesDialectSpec: ResponsesDialectSpec = {
 	id: "codex",
 	...CODEX_DIALECT_SPEC,
+	// 每条响应头上都带着两窗的用量(批 5 被动源)—— 发一条消息就顺手刷新配额缓存。
+	// 只挂在 codex 这一份上:grok 两条通路共用 `CODEX_DIALECT_SPEC`,它们的头上没有这一族。
+	quotaFromHeaders: (headers) => codexQuotaFromHeaders(headers),
 };
 export const CODEX_DIALECT = defineResponsesDialect(responsesDialectSpec);
 

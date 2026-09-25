@@ -21,6 +21,9 @@ import type { AgentProviderRequestDumpValue } from "../request-dump.js";
 import { BaseAgentProvider } from "./base-agent-provider.js";
 import type { ProviderContext } from "./provider-context.js";
 import type { Dialect } from "./dialect.js";
+import type { ProviderQuota } from "@shared/contracts/quota.js";
+import { toJsonObject } from "@onething/core";
+import { ONETHING_QUOTA_PROVIDER_DATA_TYPE } from "../provider-data-policy.js";
 import { DefaultErrorMapper, ProviderHttpError, type ErrorMapper } from "./errors.js";
 import type { FinishReasonMapper } from "./finish-reason.js";
 import type { PartCodec } from "./part-codec.js";
@@ -167,6 +170,18 @@ export abstract class HttpAgentProvider<
 				throw this.errors.fromResponse(response, bodyText, turn);
 			}
 
+			// 7½ 被动配额源(批 5 §8.2):头在手,方言认得就上抛一条 quota。
+			//     不写消息、不进账本(`planOnethingProviderDataPart` 对 `quota` 答 none),
+			//     只给装配层的配额缓存。方言读头出错不许拖垮这一轮。
+			const quota = this.quotaOfHeaders(response.headers, turn);
+			if (quota) {
+				yield {
+					type: "provider-data",
+					turn: request.turn,
+					providerData: { provider: this.id, type: ONETHING_QUOTA_PROVIDER_DATA_TYPE, quota: toJsonObject(quota) },
+				};
+			}
+
 			// 8 stream + finish
 			const raw = yield* this.parseStream(this.watchIdle(response), turn);
 			yield this.finishEvent(raw, turn);
@@ -175,6 +190,16 @@ export abstract class HttpAgentProvider<
 			// 之后 body 已被 wire 的 reader 锁住,`cancel()` 会抛 —— 那时候是 wire
 			// 自己收尾,所以这里吞掉即可,不能因为回收失败盖掉真正的错误。
 			await response?.body?.cancel().catch(() => undefined);
+		}
+	}
+
+	private quotaOfHeaders(headers: Headers, turn: TurnContext): ProviderQuota | null {
+		if (!this.dialect.quotaFromHeaders) return null;
+		try {
+			return this.dialect.quotaFromHeaders(headers);
+		} catch (error) {
+			turn.logger.debug("quota headers unreadable", { error: error instanceof Error ? error.message : String(error) });
+			return null;
 		}
 	}
 

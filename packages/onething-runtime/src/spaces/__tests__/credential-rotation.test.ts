@@ -321,3 +321,43 @@ describe('多条目写入', () => {
     expect(getSpaceProviderCredentials('work', 'deepseek')?.policy).toBe('single')
   })
 })
+
+describe('批 5:只读 decide 与配额冷却原因', () => {
+  it('advanceCursor:false(peek)不拨 round-robin 游标 —— 问几次都是同一条,真发一次才换人', () => {
+    const credentials = pool('round-robin', [entry('a'), entry('b')])
+    const key = 'default:openai'
+    const peek = () => selectSpaceCredentialEntryDetailed(credentials, { now: NOW, cursorKey: key, advanceCursor: false }).entry?.id
+    expect(peek()).toBe('a')
+    expect(peek()).toBe('a')
+    expect(selectSpaceCredentialEntryDetailed(credentials, { now: NOW, cursorKey: key }).entry?.id).toBe('a')
+    expect(peek()).toBe('b')
+  })
+
+  it('resolveSpaceProviderCredential({peek}) 走同一条解析但不拨游标', () => {
+    writeSpaceCredentials('work', { providers: { openai: pool('round-robin', [entry('a'), entry('b')]) } })
+    const resolve = (peek: boolean) => {
+      const resolution = resolveSpaceProviderCredential({ spaceId: 'work', providerId: 'openai', now: NOW, peek })
+      return resolution.kind === 'entry' ? resolution.entry.id : resolution.kind
+    }
+    expect(resolve(true)).toBe('a')
+    expect(resolve(true)).toBe('a')
+    expect(resolve(false)).toBe('a')
+    expect(resolve(true)).toBe('b')
+  })
+
+  it('配额冷却带 cooldownReason:quota,落盘读回;被更长的报错冷却盖掉时原因跟着没', () => {
+    writeSpaceCredentials('work', { providers: { deepseek: pool('priority-failover', [entry('a')]) } })
+    markSpaceCredentialCooldown('work', 'deepseek', 'a', NOW + 60_000, 'quota')
+    resetSpaceCredentialsCacheForTests()
+    let stored = getSpaceProviderCredentials('work', 'deepseek')?.entries[0]
+    expect(stored).toMatchObject({ cooldownUntil: NOW + 60_000, cooldownReason: 'quota' })
+    // 更短的一格不改(只延长不缩短),原因也不动。
+    markSpaceCredentialCooldown('work', 'deepseek', 'a', NOW + 1_000)
+    stored = getSpaceProviderCredentials('work', 'deepseek')?.entries[0]
+    expect(stored?.cooldownReason).toBe('quota')
+    markSpaceCredentialCooldown('work', 'deepseek', 'a', NOW + 120_000)
+    stored = getSpaceProviderCredentials('work', 'deepseek')?.entries[0]
+    expect(stored).toMatchObject({ cooldownUntil: NOW + 120_000 })
+    expect(stored?.cooldownReason).toBeUndefined()
+  })
+})

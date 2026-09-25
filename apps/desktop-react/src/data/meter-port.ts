@@ -1,5 +1,8 @@
 import { sessionsRouter, type GetSessionTokenUsageResponse } from '@shared/ipc/sessions'
-import { usageRouter, type GetSessionUsageResponse } from '@shared/ipc/usage'
+import { usageRouter, type GetSessionUsageResponse, type GetUsageSummaryResponse } from '@shared/ipc/usage'
+import { providersRouter, type ProviderQuotaRequest, type ProviderQuotaResponse } from '@shared/ipc/providers'
+import type { ProviderQuotaPushPayload } from '@shared/contracts/quota'
+import { quotaPushOfFrame } from './provider-settings-port'
 
 /**
  * 读数(context / tokens / 费用 / 缓存)与 core 的客户端(`@onething/client`)
@@ -33,6 +36,15 @@ export interface MeterPort {
   getSessionUsage(sessionId: string): Promise<GetSessionUsageResponse>
   /** 这条会话的 token 读数。 */
   getTokenUsage(sessionId: string): Promise<GetSessionTokenUsageResponse>
+  /**
+   * 配额与余额(批 5 §8.4):「这一发会用哪条凭证」的那一份(不带 credentialId =
+   * 后端用密钥策略的只读 `decide` 选)。60 秒缓存在后端。
+   */
+  getQuota(request: ProviderQuotaRequest): Promise<ProviderQuotaResponse>
+  /** 按月的本地计费账(`usage.getSummary`)。配额源答 unsupported 时卡上改画「本月已用」。 */
+  getMonthlyUsage(): Promise<GetUsageSummaryResponse>
+  /** `provider:quota` 全局事件。返回退订函数。 */
+  onQuotaPush(callback: (push: ProviderQuotaPushPayload) => void): () => void
 }
 
 let port: MeterPort | undefined
@@ -48,10 +60,18 @@ async function realPort(): Promise<MeterPort> {
   const client = await onethingClient()
   const usageApi = client.api(usageRouter)
   const sessionsApi = client.api(sessionsRouter)
+  const providersApi = client.api(providersRouter)
   return {
     ready: () => whenConnected(),
     getSessionUsage: (sessionId) => usageApi.getSession({ sessionId }),
     getTokenUsage: (sessionId) => sessionsApi.getTokenUsage({ sessionId }),
+    getQuota: (request) => providersApi.quota(request),
+    getMonthlyUsage: () => usageApi.getSummary({ granularity: 'month', count: 1 }),
+    onQuotaPush: (callback) =>
+      client.events.onAny((frame) => {
+        const push = quotaPushOfFrame(frame.name, frame.data)
+        if (push) callback(push)
+      }),
   }
 }
 

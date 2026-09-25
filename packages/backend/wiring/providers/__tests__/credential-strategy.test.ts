@@ -7,7 +7,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   CORE_PLUGIN_FAILURE_THRESHOLD,
   PLUGIN_CREDENTIAL_ENTRY_FIELDS,
@@ -53,6 +53,15 @@ async function load() {
   ledgerRecords.length = 0
   return { api, registry, health, logging }
 }
+
+/*
+ * 冷缓存下第一次 `load()` 要把插件 api 那棵树整个转译一遍(实测 8.8s),落在第一条用例
+ * 头上就撞 5s 超时 —— 一条与被测行为无关的假红。所以先在这里热一次、给足 30s;之后每条
+ * 用例照旧自己 `load()`(`resetModules` 之后重新求值,转译缓存已热,毫秒级)。
+ */
+beforeAll(async () => {
+  await load()
+}, 30_000)
 
 function makeApi(
   mods: Awaited<ReturnType<typeof load>>,

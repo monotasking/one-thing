@@ -16,7 +16,7 @@ import type { PoolView } from '../projection'
 import type { AuthFlowState } from '../auth'
 import type { ProviderMode } from '../types'
 import type { OAuthStatusResponse } from '@shared/ipc/oauth'
-import type { ProviderConfig, ProviderUsageResponse } from '@shared/ipc/providers'
+import type { ProviderConfig, ProviderQuotaResponse } from '@shared/ipc/providers'
 import type { SourceStatus } from '../store'
 import s from './ModeCard.module.css'
 
@@ -64,10 +64,18 @@ export function ModeCard(props: {
   onOpenAuthPage: () => void
   onSignOut: () => void
 
-  usage: ProviderUsageResponse | null | undefined
-  usageStatus: SourceStatus
-  usageError?: string
-  onRefreshUsage: () => void
+  /**
+   * 一条凭证的配额(批 5)。`response === null` = 后端说这家没有配额源;`undefined` =
+   * 还没问过。两者都不画东西。
+   */
+  quotaOf: (credentialId: string) => {
+    response: ProviderQuotaResponse | null | undefined
+    status: SourceStatus
+    error?: string
+  }
+  onRefreshQuota: (credentialId: string) => void
+  /** API 模式每行余额的读法(「¥123.45」);没数答 null。 */
+  balanceOf: (credentialId: string) => string | null
 }) {
   const t = useT()
   const { mode } = props
@@ -86,6 +94,7 @@ export function ModeCard(props: {
           onRemove={props.onRemoveKey}
           onMove={props.onMoveKey}
           onRotation={props.onRotation}
+          balanceOf={props.balanceOf}
         />
         <DialsCard
           providerId={mode.providerId}
@@ -107,12 +116,13 @@ export function ModeCard(props: {
   }
 
   if (mode.kind === 'subscription') {
+    const oauthRows = props.pool.rows.filter((row) => row.authType === 'oauth')
     return (
       <>
         <OAuthCard
           status={props.authStatus}
           flow={props.authFlow}
-          accounts={props.pool.rows.filter((row) => row.authType === 'oauth').length}
+          accounts={oauthRows.length}
           onSignIn={props.onSignIn}
           onCode={props.onAuthCode}
           onSubmitCode={props.onSubmitAuthCode}
@@ -121,17 +131,23 @@ export function ModeCard(props: {
           onSignOut={props.onSignOut}
         />
         {/*
-          用量卡:`usage === null` = **后端说这家没有用量**(unsupported),
-          那时整块不画。`undefined` = 还没问过。两者都不画一张空卡。
+          用量卡:每个登录过的账号一张(多账号时标题里写是哪个号)。`response === null`
+          = **后端说这家没有配额源**(unsupported),那时整块不画;`undefined` = 还没问过。
         */}
-        {props.usage && (
-          <UsageCard
-            usage={props.usage}
-            status={props.usageStatus}
-            error={props.usageError}
-            onRefresh={props.onRefreshUsage}
-          />
-        )}
+        {oauthRows.map((row) => {
+          const { response, status, error } = props.quotaOf(row.id)
+          if (!response) return null
+          return (
+            <UsageCard
+              key={row.id}
+              quota={response.quota}
+              {...(oauthRows.length > 1 ? { account: row.oauthAccount || row.label } : {})}
+              status={status}
+              error={error}
+              onRefresh={() => props.onRefreshQuota(row.id)}
+            />
+          )
+        })}
       </>
     )
   }

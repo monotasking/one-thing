@@ -6,9 +6,11 @@ import {
   useProviderSettings,
   authFlowOf,
   customProviderFormOf,
+  quotaKeyOf,
   settingsKey,
   settingsMutation,
 } from '../store'
+import { quotaAmountText, quotaBalanceOf } from '../quota'
 import { buildFamilies, findFamily, resolveMode } from '../families'
 import {
   buildCatalogRows,
@@ -72,9 +74,9 @@ export function ProviderSettingsPanel() {
   const authStatus = useProviderSettings((st) => st.authStatus)
   // `authFlow` 那张表不在这里订 —— 只有当下这一坑的那一条要画,读法在下面的
   // `authFlowOf` 选择器里(订整张表会让别家的登录流也把这块面重渲一遍)。
-  const usage = useProviderSettings((st) => st.usage)
-  const usageStatus = useProviderSettings((st) => st.usageStatus)
-  const usageError = useProviderSettings((st) => st.usageError)
+  const quota = useProviderSettings((st) => st.quota)
+  const quotaStatus = useProviderSettings((st) => st.quotaStatus)
+  const quotaError = useProviderSettings((st) => st.quotaError)
 
   const start = useProviderSettings((st) => st.start)
   const refresh = useProviderSettings((st) => st.refresh)
@@ -104,7 +106,7 @@ export function ProviderSettingsPanel() {
   const cancelAuth = useProviderSettings((st) => st.cancelAuth)
   const openAuthPage = useProviderSettings((st) => st.openAuthPage)
   const signOut = useProviderSettings((st) => st.signOut)
-  const loadUsage = useProviderSettings((st) => st.loadUsage)
+  const loadQuota = useProviderSettings((st) => st.loadQuota)
   const saveCustomProvider = useProviderSettings((st) => st.saveCustomProvider)
   const deleteCustomProvider = useProviderSettings((st) => st.deleteCustomProvider)
   const applySuggestions = useProviderSettings((st) => st.applySuggestions)
@@ -233,12 +235,7 @@ export function ProviderSettingsPanel() {
     void checkAuth(activeProviderId)
   }, [activeProviderId, subscription, checkAuth])
 
-  // 登上了才问用量:没登录时那一口必然答不出东西,问它只是白等一轮。
   const signedIn = authStatus[activeProviderId]?.isLoggedIn === true
-  useEffect(() => {
-    if (!activeProviderId || !subscription || !signedIn) return
-    void loadUsage(activeProviderId)
-  }, [activeProviderId, subscription, signedIn, loadUsage])
 
   /*
    * 目录不再来自 store 的四张表(K1 样板迁移):它是一族 kernel query,
@@ -274,6 +271,26 @@ export function ProviderSettingsPanel() {
   const credentialSummary = useProviderSettings((st) => st.credentials[activeProviderId])
   const pool = useMemo(() => poolViewOf(credentialSummary), [credentialSummary])
   const flow = useProviderSettings((st) => authFlowOf(st, activeProviderId))
+
+  /*
+   * 配额(批 5 §8.5):开面问一次,之后靠后端推送(`provider:quota`)换数 —— 不轮询。
+   * 订阅坑问**每个登录过的账号**(登上了才问:没登录时那一口必然答不出东西);API 坑问
+   * **每把填了密钥的**。没有配额源的家后端答 unsupported、零网络请求,这边据它什么都不画。
+   * 依赖写成一串 id:池视图每次都是新对象,拿它当依赖会每帧重问。
+   */
+  const quotaEntryIds = useMemo(
+    () =>
+      pool.rows
+        .filter((row) => (subscription ? row.authType === 'oauth' : row.authType === 'apiKey' && Boolean(row.preview)))
+        .map((row) => row.id)
+        .join('\n'),
+    [pool, subscription],
+  )
+  useEffect(() => {
+    if (!activeProviderId || !quotaEntryIds) return
+    if (subscription && !signedIn) return
+    for (const credentialId of quotaEntryIds.split('\n')) void loadQuota(activeProviderId, { credentialId })
+  }, [activeProviderId, quotaEntryIds, subscription, signedIn, loadQuota])
 
   /** 改一家自定义 provider 时的底本。找不到 = 新建。 */
   const editingCustom = useMemo(() => {
@@ -372,10 +389,19 @@ export function ProviderSettingsPanel() {
             onCancelAuth={() => cancelAuth(mode.providerId)}
             onOpenAuthPage={() => void openAuthPage(mode.providerId)}
             onSignOut={() => void signOut(mode.providerId)}
-            usage={usage[mode.providerId]}
-            usageStatus={usageStatus[mode.providerId] ?? 'idle'}
-            usageError={usageError[mode.providerId] || undefined}
-            onRefreshUsage={() => void loadUsage(mode.providerId, true)}
+            quotaOf={(credentialId) => {
+              const key = quotaKeyOf(mode.providerId, credentialId)
+              return {
+                response: quota[key],
+                status: quotaStatus[key] ?? 'idle',
+                error: quotaError[key] || undefined,
+              }
+            }}
+            onRefreshQuota={(credentialId) => void loadQuota(mode.providerId, { credentialId, force: true })}
+            balanceOf={(credentialId) => {
+              const balance = quotaBalanceOf(quota[quotaKeyOf(mode.providerId, credentialId)]?.quota)
+              return balance ? quotaAmountText(t, balance) : null
+            }}
           />
           {/* 订阅没登录时目录区只说一句「登录后显示模型列表」—— 那是这张表的空态。 */}
           <ModelCatalog

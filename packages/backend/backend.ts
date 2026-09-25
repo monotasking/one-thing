@@ -71,6 +71,7 @@ import { createEventSystem } from './events/index.js'
 import { createReplayBufferMemoryHolder } from './events/memory.js'
 import { createSessionMemoryHolders } from './session/memory.js'
 import { createMemorySubsystem, type MemorySubsystem } from './wiring/memory/index.js'
+import { createQuotaService, type QuotaService } from './wiring/quota/index.js'
 import { createSessionLayer, type SessionLayer } from './session/index.js'
 import {
   installSessionPermissionEventRecorders,
@@ -306,6 +307,8 @@ export class OnethingBackend implements BackendHandle {
   private memorySubsystem: MemorySubsystem | undefined
   /** 自定义服务商的 manifest 同步(批 M)。实例字段,由 `own()` 收尾。 */
   private providerManifestSync: CustomProviderManifestSync | undefined
+  /** 配额与余额(批 5 §8.3)。缓存与去抖计时器全在它身上,由 `own()` 收尾。 */
+  private quotaService: QuotaService | undefined
 
   readonly options: Readonly<OnethingBackendOptions>
 
@@ -367,6 +370,14 @@ export class OnethingBackend implements BackendHandle {
    */
   get providerManifests(): CustomProviderManifestSync | undefined {
     return this.providerManifestSync
+  }
+
+  /**
+   * 配额服务 —— `providers.quota` 域、引擎的 `run/end` 与被动源(响应头)都经它。
+   * 不抛:装配没走到那一步 / 已经收尾时答 `undefined`,喊的那一方(引擎收尾)本来就是「顺手」。
+   */
+  get quota(): QuotaService | undefined {
+    return this.quotaService
   }
 
   get memory(): MemorySubsystem {
@@ -691,6 +702,14 @@ export class OnethingBackend implements BackendHandle {
       providerManifests.dispose()
       this.providerManifestSync = undefined
     }, 'customProviderManifests')
+    // 配额服务(批 5)。紧跟 manifest 同步:它读 manifest 的 `quotaSource` 判「这家有没有源」。
+    // 空闲不轮询 —— 构造本身零请求、零计时器。
+    const quota = createQuotaService()
+    this.quotaService = quota
+    this.own(() => {
+      quota.dispose()
+      this.quotaService = undefined
+    }, 'quota')
     /*
      * 笔记库的**播种**(P1,§3.4)。同一处、同一条纪律:刚读完 settings、
      * 任何人问「有哪些笔记库」之前;幂等靠 `settings.notes.migratedAt`;

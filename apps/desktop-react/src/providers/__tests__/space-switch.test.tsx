@@ -191,13 +191,13 @@ describe('取数打在当前空间上', () => {
     expect(mid.settings).toBeUndefined()
   })
 
-  it('订阅用量问的是当前空间', async () => {
+  it('配额问的是当前空间', async () => {
     await loadSpaces()
     useWorkspaceStore.getState().switchTo('ws-work')
     const port = installPort()
     await useProviderSettings.getState().start()
-    await useProviderSettings.getState().loadUsage('claude')
-    expect(port.getProviderUsage).toHaveBeenCalledWith('claude', 'ws-work')
+    await useProviderSettings.getState().loadQuota('claude')
+    expect(port.getProviderQuota).toHaveBeenCalledWith({ providerId: 'claude', spaceId: 'ws-work' })
   })
 })
 

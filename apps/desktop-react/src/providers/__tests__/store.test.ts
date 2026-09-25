@@ -7,11 +7,13 @@ import { useNotifyStore } from '../../services/notify-store'
 import {
   customDialectOf,
   customProviderFormOf,
+  quotaKeyOf,
   settingsKey,
   settingsMutation,
   useProviderSettings,
 } from '../store'
 import { suggestionPatchOf } from '../projection'
+import type { ProviderQuotaPushPayload } from '@shared/contracts/quota'
 import { defaultSelectionOf, prefsQuery, toProviderPrefs } from '../../data/models-source'
 import { DEFAULT_SPACE_ID } from '../../workspace/types'
 import { buildFamilies, findFamily } from '../families'
@@ -1214,45 +1216,77 @@ describe('登录流 · 桌面自动打开授权页', () => {
   })
 })
 
-/* ── 批二:用量 ──────────────────────────────────────────────────────────── */
+/* ── 批 5:配额与余额 ─────────────────────────────────────────────────────── */
 
-describe('订阅用量', () => {
-  const USAGE = {
-    success: true as const,
-    providerId: 'codex',
-    usage: { planType: 'Plus', limits: [{ id: 'codex', primary: { usedPercent: 34 } }] },
+describe('配额与余额', () => {
+  const WINDOWS = {
+    quota: {
+      kind: 'windows' as const,
+      windows: [{ id: '5h', seconds: 18_000, usedPercent: 34 }],
+      plan: 'Plus',
+      fetchedAt: 1,
+    },
+    credentialId: 'acct-1',
   }
 
-  it('60s 内吃缓存,force 绕过它', async () => {
-    const port = installPort({ getProviderUsage: vi.fn(async () => USAGE) })
+  it('按 (provider, 凭证) 一格问;60s 缓存在后端,force 原样递下去', async () => {
+    const port = installPort({ getProviderQuota: vi.fn(async () => WINDOWS) })
     await useProviderSettings.getState().start()
-    await useProviderSettings.getState().loadUsage('codex')
-    await useProviderSettings.getState().loadUsage('codex')
-    expect(port.getProviderUsage).toHaveBeenCalledTimes(1)
-
-    await useProviderSettings.getState().loadUsage('codex', true)
-    expect(port.getProviderUsage).toHaveBeenCalledTimes(2)
+    await useProviderSettings.getState().loadQuota('codex', { credentialId: 'acct-1' })
+    expect(port.getProviderQuota).toHaveBeenLastCalledWith({ providerId: 'codex', spaceId: 'default', credentialId: 'acct-1' })
+    await useProviderSettings.getState().loadQuota('codex', { credentialId: 'acct-1', force: true })
+    expect(port.getProviderQuota).toHaveBeenLastCalledWith({
+      providerId: 'codex',
+      spaceId: 'default',
+      credentialId: 'acct-1',
+      force: true,
+    })
+    expect(useProviderSettings.getState().quota[quotaKeyOf('codex', 'acct-1')]).toEqual(WINDOWS)
   })
 
-  it('后端说 unsupported = 这家没有用量卡(存 null,组件据它整块不画)', async () => {
+  it('后端说 unsupported = 这家没有配额卡(存 null,组件据它整块不画)', async () => {
+    installPort()
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().loadQuota('claude', { credentialId: 'k1' })
+    expect(useProviderSettings.getState().quota[quotaKeyOf('claude', 'k1')]).toBeNull()
+    expect(useProviderSettings.getState().quotaStatus[quotaKeyOf('claude', 'k1')]).toBe('ready')
+  })
+
+  it('取数失败:记原话;429 静默(存 null,不记错)', async () => {
     installPort({
-      getProviderUsage: vi.fn(async () => ({ success: true, providerId: 'claude', unsupported: true })),
+      getProviderQuota: vi.fn(async ({ credentialId }) => ({
+        quota: credentialId === 'a'
+          ? { kind: 'error' as const, reason: 'auth' as const, message: 'Codex usage request failed: 401', fetchedAt: 1 }
+          : { kind: 'error' as const, reason: 'rate-limited' as const, message: '429', fetchedAt: 1 },
+      })),
     })
     await useProviderSettings.getState().start()
-    await useProviderSettings.getState().loadUsage('claude')
-    expect(useProviderSettings.getState().usage.claude).toBeNull()
-    expect(useProviderSettings.getState().usageStatus.claude).toBe('ready')
+    await useProviderSettings.getState().loadQuota('codex', { credentialId: 'a' })
+    await useProviderSettings.getState().loadQuota('codex', { credentialId: 'b' })
+    const st = useProviderSettings.getState()
+    expect(st.quotaStatus[quotaKeyOf('codex', 'a')]).toBe('error')
+    expect(st.quotaError[quotaKeyOf('codex', 'a')]).toBe('Codex usage request failed: 401')
+    expect(st.quota[quotaKeyOf('codex', 'b')]).toBeNull()
+    expect(st.quotaError[quotaKeyOf('codex', 'b')]).toBe('')
   })
 
-  it('拿不到:记原话,不缓存(下一次还要真去问)', async () => {
-    const port = installPort({
-      getProviderUsage: vi.fn(async () => ({ success: false, providerId: 'codex', error: '429' })),
+  it('推送只换问过的那一格', async () => {
+    let push: ((payload: ProviderQuotaPushPayload) => void) | undefined
+    installPort({
+      getProviderQuota: vi.fn(async () => WINDOWS),
+      onQuotaPush: vi.fn((callback) => {
+        push = callback
+        return () => {}
+      }),
     })
     await useProviderSettings.getState().start()
-    await useProviderSettings.getState().loadUsage('codex')
-    expect(useProviderSettings.getState().usageError.codex).toBe('429')
-    await useProviderSettings.getState().loadUsage('codex')
-    expect(port.getProviderUsage).toHaveBeenCalledTimes(2)
+    await useProviderSettings.getState().loadQuota('codex', { credentialId: 'acct-1' })
+    const next = { kind: 'windows' as const, windows: [{ id: '5h', seconds: 18_000, usedPercent: 90 }], fetchedAt: 2 }
+    push?.({ providerId: 'codex', credentialId: 'acct-1', quota: next })
+    push?.({ providerId: 'codex', credentialId: 'acct-2', quota: next })
+    const st = useProviderSettings.getState()
+    expect(st.quota[quotaKeyOf('codex', 'acct-1')]?.quota).toEqual(next)
+    expect(Object.prototype.hasOwnProperty.call(st.quota, quotaKeyOf('codex', 'acct-2'))).toBe(false)
   })
 })
 

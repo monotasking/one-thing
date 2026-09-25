@@ -42,6 +42,7 @@ import {
 	type BuildAgentLoopStreamRuntimeResult,
 } from "./agent-loop-runtime.js";
 import { createSessionCredentialRotator } from "../../providers/credential-rotation.js";
+import { observeQuotaProviderData } from "../../quota/engine-hooks.js";
 import { resolveAgentProfileForSession } from "../../agents/profile.js";
 import { saveMediaImage } from "@onething/runtime/media/save-image";
 import { applyOnethingAgentLoopProviderData } from "@onething/runtime/agent-loop/providers";
@@ -774,6 +775,17 @@ export async function applyAgentLoopStreamChunk(
 				placement,
 			),
 		applyProviderData: (options) => {
+			// 批 5 被动源:响应头带回来的配额只进配额缓存,不落消息。
+			if (
+				observeQuotaProviderData({
+					sessionId: state.ctx.sessionId,
+					providerId: state.ctx.providerId,
+					credentialId: state.ctx.providerConfig.spaceCredential?.entryId,
+					providerData: options.providerData,
+				})
+			) {
+				return Promise.resolve(false);
+			}
 			const providerDataOptions: ApplyOnethingAgentLoopProviderDataOptions<ContentPart> = {
 				...options,
 				saveMediaImage,

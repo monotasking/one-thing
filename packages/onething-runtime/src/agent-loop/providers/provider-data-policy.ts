@@ -32,3 +32,11 @@ export function registerProviderDataTagPolicy(
 export function providerDataTagPolicy(tag: unknown): OnethingProviderDataTagPolicy | undefined {
   return typeof tag === 'string' ? policies.get(tag) : undefined
 }
+
+/**
+ * 被动配额源的那一种 provider-data(批 5 §8.2):`{ provider, type: 'quota', quota: ProviderQuota }`。
+ * 由 `HttpAgentProvider` 在方言实现了 `quotaFromHeaders` 时上抛;消费者只有装配层的配额服务,
+ * 消息与账本上都不留(`planOnethingProviderDataPart` 答 `'none'`)。住在这个零依赖叶子里,
+ * 是因为 `base/` 也要读它,而 `provider-data.ts` 会拉进整张方言表。
+ */
+export const ONETHING_QUOTA_PROVIDER_DATA_TYPE = 'quota'

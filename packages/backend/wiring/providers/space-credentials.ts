@@ -112,6 +112,7 @@ export function resolveSessionProviderCredential(
 export function resolveSpaceProviderCredentialForSpace(
   spaceId: string,
   providerId: string,
+  options: { peek?: boolean } = {},
 ): SpaceProviderCredentialResolution {
   const resolveSpaceProviderCredentialOptions: ResolveSpaceProviderCredentialOptions = {
     spaceId,
@@ -121,8 +122,29 @@ export function resolveSpaceProviderCredentialForSpace(
     hasEnvApiKey: hasProviderEnvApiKey,
     providerLabel: providerLabel(providerId),
     spaceLabel: spaceLabel(spaceId),
+    ...(options.peek ? { peek: true } : {}),
   };
   return resolveSpaceProviderCredential(resolveSpaceProviderCredentialOptions)
+}
+
+/**
+ * **密钥策略的只读裁决**(批 5 §8.3;批 6 的 `pickRoute` 也读它):「这个空间的这家
+ * provider,下一发会用哪一条凭证」。与发送路同一条解析、同一个策略分叉点,但**不写、
+ * 不拨 round-robin 游标** —— composer 读数卡悬停一次不该让真正的下一发换人。
+ *
+ * 答整份解析(配额服务要 entry 本身去取令牌 / 密钥);只要 id 的读 `decideSpaceCredentialId`。
+ */
+export function decideSpaceProviderCredential(
+  providerId: string,
+  spaceId: string,
+): SpaceProviderCredentialResolution {
+  return resolveSpaceProviderCredentialForSpace(spaceId || DEFAULT_SPACE_ID, providerId, { peek: true })
+}
+
+/** 同上,只要那条凭证的 id。env 兜底 / 未配置 / 不问凭证的家答 `undefined`。 */
+export function decideSpaceCredentialId(providerId: string, spaceId: string): string | undefined {
+  const resolution = decideSpaceProviderCredential(providerId, spaceId)
+  return resolution.kind === 'entry' || resolution.kind === 'oauth-entry' ? resolution.entry.id : undefined
 }
 
 /**
@@ -317,6 +339,7 @@ export function getSpaceCredentialsSummary(spaceId: string): SpaceCredentialsSum
           ...(entry.region ? { region: entry.region } : {}),
           source: entry.source,
           ...(entry.cooldownUntil ? { cooldownUntil: entry.cooldownUntil } : {}),
+          ...(entry.cooldownUntil && entry.cooldownReason ? { cooldownReason: entry.cooldownReason } : {}),
           ...(entry.authType === 'oauth'
             ? {
                 hasOAuthToken: Boolean(token),

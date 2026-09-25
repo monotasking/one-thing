@@ -6,7 +6,7 @@ import type {
   ModelParameterSuggestion,
   ProviderConfig,
   ProviderInfo,
-  ProviderUsageResponse,
+  ProviderQuotaResponse,
   SpaceProviderSettings,
   ThinkingEffort,
 } from '@shared/ipc/providers'
@@ -15,6 +15,7 @@ import type { AppSettings } from '@shared/ipc/settings'
 import type { SpaceCredentialsSummary, SpaceProviderCredentialSummary } from '@shared/ipc/spaces'
 import { providerSettingsPort } from '../data/provider-settings-port'
 import type { OAuthPush, ProviderSettingsPort } from '../data/provider-settings-port'
+import type { ProviderQuotaPushPayload } from '@shared/contracts/quota'
 import { hasDesktopHost, openExternal } from '../platform/open-external'
 import { createMutation } from '../data/kernel'
 // 聊天那边的名册读的是这一格;设置写完必须作废它(理由写在 `settle` 里)。
@@ -221,10 +222,14 @@ export interface ProviderSettingsState {
   /** providerId → 正在跑的登录流。`kind: null` = 没在登录。 */
   authFlow: Record<string, AuthFlowState>
 
-  /** providerId → 订阅用量。`null` = 后端说这家没有用量(unsupported)。 */
-  usage: Record<string, ProviderUsageResponse | null>
-  usageStatus: Record<string, SourceStatus>
-  usageError: Record<string, string>
+  /**
+   * 配额与余额(批 5),键 = `quotaKeyOf(providerId, credentialId)` —— 池里每条凭证一格
+   * (订阅多账号每号一组条、API 每把密钥一个余额)。`null` = 后端说这家没有配额源
+   * (unsupported);缺席 = 还没问过。
+   */
+  quota: Record<string, ProviderQuotaResponse | null>
+  quotaStatus: Record<string, SourceStatus>
+  quotaError: Record<string, string>
 
   /**
    * 「接口类型」下拉的选项(批 3 §6.1,`providers.listDialects`)。`undefined` = 还没问过;
@@ -360,9 +365,12 @@ export interface ProviderSettingsState {
   /** 退出登录。带 entryId 时只退那一个账号。 */
   signOut: (providerId: string, entryId?: string) => Promise<void>
 
-  /* ── 订阅用量 ───────────────────────────────────────────────────────── */
-  /** 拉用量。`force` 绕过 60s 缓存 —— 「刷新」那颗钮走的就是它。 */
-  loadUsage: (providerId: string, force?: boolean) => Promise<void>
+  /* ── 配额与余额 ─────────────────────────────────────────────────────── */
+  /**
+   * 拉一条凭证的配额。60 秒缓存在**后端**(`QuotaService`),这边每问一次就是一次 RPC;
+   * `force` 绕过它 —— 「刷新」那颗钮走的就是它。
+   */
+  loadQuota: (providerId: string, options?: { credentialId?: string; force?: boolean }) => Promise<void>
 
   /* ── 自定义家 / 计费档位 ─────────────────────────────────────────────── */
   /**
@@ -386,15 +394,9 @@ export interface ProviderSettingsState {
 
 const EMPTY_CONFIG: ProviderConfig = { model: '', selectedModels: [] }
 
-/**
- * 用量的缓存寿命。与 Vue 壳 `useProviderUsage.ts:6` 同值 —— 这一口是**真去问
- * 服务商**的,开一次面、切一次坑就问一遍会被限流。「刷新」那颗钮绕过它。
- */
-const USAGE_CACHE_TTL_MS = 60_000
-
-interface CachedUsage {
-  expiresAt: number
-  response: ProviderUsageResponse
+/** 配额那一格的键:(provider, 凭证)。凭证缺席 = 「下一发会用哪条」那一格。 */
+export function quotaKeyOf(providerId: string, credentialId?: string): string {
+  return `${providerId}\u0000${credentialId ?? ''}`
 }
 
 /** 模块级启动闸 —— 「这一个进程启动过没有」不是可渲染状态。 */
@@ -409,6 +411,8 @@ let started = false
 let unsubscribeSpace: (() => void) | undefined
 /** `oauth:flow` / `oauth:token-expired` 那条推送订阅的句柄。同理。 */
 let unsubscribeOAuth: (() => void) | undefined
+/** `provider:quota` 那条订阅的句柄。同理:进程的事实,不是屏幕上的一格。 */
+let unsubscribeQuota: (() => void) | undefined
 
 /* ── 设置写路:一发 mutation,逐格记账(09-01 批 1)──────────────────────────
  *
@@ -729,12 +733,6 @@ export const settingsMutation = createMutation<SettingsCommit, SpaceProviderSett
 
 export const useProviderSettings = create<ProviderSettingsState>()((set, get) => {
   /**
-   * providerId → 上一次用量答案。**不放进可渲染状态**:它是「这一口多久之内
-   * 不必再问」这件事,不是屏幕上的任何一格(屏幕读的是 `usage`)。
-   */
-  const usageCache = new Map<string, CachedUsage>()
-
-  /**
    * @param options.skipRoster 换空间那一发传 true —— 见下面那一段。
    */
   async function load(options?: { skipRoster?: boolean }): Promise<void> {
@@ -999,6 +997,34 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     }
   }
 
+  /**
+   * 配额推送(批 5):后端每拿到一份新数(主动取 / 响应头 / run 结束后的去抖重问)都推一帧。
+   * **只更新问过的那几格** —— 没人问过的凭证,屏幕上本来就没有它的位置。
+   */
+  function onQuotaPush(push: ProviderQuotaPushPayload): void {
+    const key = quotaKeyOf(push.providerId, push.credentialId)
+    set((st) => {
+      if (!Object.prototype.hasOwnProperty.call(st.quota, key)) return st
+      // 429 静默(拍点 5):推送面本来就不会推它,这里再挡一次。
+      if (push.quota.kind === 'error' && push.quota.reason === 'rate-limited') return st
+      return {
+        quota: {
+          ...st.quota,
+          [key]: push.quota.kind === 'unsupported'
+            ? null
+            : { quota: push.quota, ...(push.credentialId ? { credentialId: push.credentialId } : {}) },
+        },
+        quotaStatus: { ...st.quotaStatus, [key]: 'ready' },
+        quotaError: { ...st.quotaError, [key]: '' },
+      }
+    })
+  }
+
+  function ensureQuotaPush(port: ProviderSettingsPort): void {
+    if (unsubscribeQuota) return
+    unsubscribeQuota = port.onQuotaPush(onQuotaPush)
+  }
+
   /** 订上登录推送。幂等:`start()` 与 `startAuth()` 都会调(设置页没开面也能登录)。 */
   function ensureOAuthPush(port: ProviderSettingsPort): void {
     if (unsubscribeOAuth) return
@@ -1051,9 +1077,9 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     authStatus: {},
     authFlow: {},
     dialects: undefined,
-    usage: {},
-    usageStatus: {},
-    usageError: {},
+    quota: {},
+    quotaStatus: {},
+    quotaError: {},
 
     start: async () => {
       if (started) return
@@ -1067,13 +1093,14 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
         // 的私产**,让它们在新空间的首屏上多留一帧,就是在屏幕上串一次空间的账。
         // (与列表面「旧内容留到新世界首屏」相反,那里旧内容是同一本账的另一投影,
         //  这里旧内容是**别人的密钥尾号**。)
-        set({ spaceAi: undefined, settings: undefined, credentials: {}, credentialsKnown: false })
-        usageCache.clear()
+        // 配额也是这个空间的私产(池里的凭证换了一批):整张表清掉,新空间自己问。
+        set({ spaceAi: undefined, settings: undefined, credentials: {}, credentialsKnown: false, quota: {}, quotaStatus: {}, quotaError: {} })
         void load({ skipRoster: true })
       })
       const port = await providerSettingsPort()
       await port.ready()
       ensureOAuthPush(port)
+      ensureQuotaPush(port)
       await load()
     },
 
@@ -1620,48 +1647,40 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
 
     /* ── 订阅用量 ─────────────────────────────────────────────────────── */
 
-    loadUsage: async (providerId, force = false) => {
-      const cached = usageCache.get(providerId)
-      if (!force && cached && cached.expiresAt > Date.now()) {
-        set((st) => ({
-          usage: { ...st.usage, [providerId]: cached.response },
-          usageStatus: { ...st.usageStatus, [providerId]: 'ready' },
-          usageError: { ...st.usageError, [providerId]: '' },
-        }))
-        return
-      }
-      set((st) => ({ usageStatus: { ...st.usageStatus, [providerId]: 'loading' } }))
+    loadQuota: async (providerId, options = {}) => {
+      const key = quotaKeyOf(providerId, options.credentialId)
+      // 取数中:上次的值照显示(律②),只翻状态。
+      set((st) => ({ quotaStatus: { ...st.quotaStatus, [key]: 'loading' } }))
       try {
         const port = await providerSettingsPort()
-        const response = await port.getProviderUsage(providerId, currentSpaceId())
-        if (response.unsupported) {
-          // 「这家没有用量」是**后端说的**。存 null,组件据它整块不画。
+        const response = await port.getProviderQuota({
+          providerId,
+          spaceId: currentSpaceId(),
+          ...(options.credentialId ? { credentialId: options.credentialId } : {}),
+          ...(options.force ? { force: true } : {}),
+        })
+        const quota = response.quota
+        if (quota.kind === 'error' && quota.reason !== 'rate-limited') {
           set((st) => ({
-            usage: { ...st.usage, [providerId]: null },
-            usageStatus: { ...st.usageStatus, [providerId]: 'ready' },
-            usageError: { ...st.usageError, [providerId]: '' },
+            quota: { ...st.quota, [key]: st.quota[key] ?? response },
+            quotaStatus: { ...st.quotaStatus, [key]: 'error' },
+            quotaError: { ...st.quotaError, [key]: quota.message },
           }))
           return
         }
-        if (!response.success) {
-          set((st) => ({
-            usageStatus: { ...st.usageStatus, [providerId]: 'error' },
-            usageError: { ...st.usageError, [providerId]: response.error ?? '' },
-          }))
-          return
-        }
-        usageCache.set(providerId, { expiresAt: Date.now() + USAGE_CACHE_TTL_MS, response })
         set((st) => ({
-          usage: { ...st.usage, [providerId]: response },
-          usageStatus: { ...st.usageStatus, [providerId]: 'ready' },
-          usageError: { ...st.usageError, [providerId]: '' },
+          // 「这家没有配额」是**后端说的**。存 null,组件据它整块不画。
+          // 429 且从没有过好数:也存 null —— 静默,不画一张说「不知道」的卡。
+          quota: { ...st.quota, [key]: quota.kind === 'unsupported' || quota.kind === 'error' ? null : response },
+          quotaStatus: { ...st.quotaStatus, [key]: 'ready' },
+          quotaError: { ...st.quotaError, [key]: '' },
         }))
       } catch (error) {
         set((st) => ({
-          usageStatus: { ...st.usageStatus, [providerId]: 'error' },
-          usageError: {
-            ...st.usageError,
-            [providerId]: error instanceof Error ? error.message : String(error),
+          quotaStatus: { ...st.quotaStatus, [key]: 'error' },
+          quotaError: {
+            ...st.quotaError,
+            [key]: error instanceof Error ? error.message : String(error),
           },
         }))
       }
@@ -1879,7 +1898,8 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       unsubscribeSpace = undefined
       unsubscribeOAuth?.()
       unsubscribeOAuth = undefined
-      usageCache.clear()
+      unsubscribeQuota?.()
+      unsubscribeQuota = undefined
       // 目录不在这个 store 里了(K1 样板迁移),写路也不在了(批 1),
       // 但 reset 仍然管它们 —— 「这块面回到出厂」是一件事,
       // 不该因为搬了家就漏掉半边。这也是本模块**唯一的那一口拆卸**:
@@ -1903,9 +1923,9 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
         poolError: {},
         authStatus: {},
         authFlow: {},
-        usage: {},
-        usageStatus: {},
-        usageError: {},
+        quota: {},
+        quotaStatus: {},
+        quotaError: {},
       })
     },
   }

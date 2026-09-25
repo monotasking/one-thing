@@ -5,6 +5,7 @@
 
 import type { JsonObject } from '../json.js'
 import { defineRouter } from './router.js'
+import type { ProviderQuota } from '../contracts/quota.js'
 
 // Provider IDs - can be extended by adding new providers
 export type AIProviderId = 'openai' | 'claude' | 'deepseek' | 'kimi' | 'kimi-code' | 'zhipu' | 'qwen' | 'gemini' | 'codex' | 'acp' | 'custom' | string
@@ -470,58 +471,26 @@ export interface GetProvidersResponse {
   error?: string
 }
 
-export interface CodexUsageWindow {
-  usedPercent: number
-  windowSeconds?: number
-  resetAfterSeconds?: number
-  resetAt?: number
-}
-
-export interface CodexUsageCredits {
-  hasCredits: boolean
-  unlimited: boolean
-  balance?: string
-}
-
-export interface CodexUsageLimit {
-  id: string
-  name?: string
-  primary?: CodexUsageWindow
-  secondary?: CodexUsageWindow
-  rateLimitReachedType?: string
-}
-
-export interface CodexProviderUsage {
-  planType?: string
-  credits?: CodexUsageCredits
-  limits: CodexUsageLimit[]
-}
-
-export interface ProviderUsageRequest {
+export interface ProviderQuotaRequest {
   providerId: string
   /**
-   * 用量按**哪个空间的凭证**查(C1 接批 B10 移交)。
-   *
-   * 凭证迁进空间池之后,后端已经没有「settings 里那一把 codex token」可用;而
-   * 「当前空间」是 window 级状态,后端不持有 —— 所以由渲染层把它带上。缺席 =
-   * 默认空间(旧调用方与 web 端降级路径)。
+   * 按**哪个空间的凭证池**查。「当前空间」是 window 级状态,后端不持有 —— 所以由
+   * 渲染层带上。缺席 = 默认空间。
    */
   spaceId?: string
+  /**
+   * 查池里**哪一条**凭证(设置页的每行余额 / 多账号每号一组条)。缺席 = 「这一发会用
+   * 哪条」—— 密钥策略的只读 `decide`,composer 读数卡问的就是它。
+   */
+  credentialId?: string
+  /** 设置页「刷新」:绕过 60 秒缓存。429 之后的 10 分钟静默期**不**被它绕过。 */
+  force?: boolean
 }
 
-export interface ProviderUsageResponse {
-  success: boolean
-  providerId: string
-  capturedAt?: number
-  account?: {
-    id?: string
-    email?: string
-    planType?: string
-    isFedramp?: boolean
-  }
-  usage?: CodexProviderUsage
-  unsupported?: boolean
-  error?: string
+export interface ProviderQuotaResponse {
+  quota: ProviderQuota
+  /** 这份配额属于哪一条凭证(env 兜底 / 未配置时缺席)。 */
+  credentialId?: string
 }
 
 export interface ProviderEnvVarCandidate {
@@ -686,14 +655,15 @@ export type ProvidersRoutes = {
   list: { input: Record<string, never>; output: GetProvidersResponse }
   /** 有人话名的已登记方言(批 3 §6.1:自定义服务商的「接口类型」下拉)。只读。 */
   listDialects: { input: Record<string, never>; output: ListDialectsResponse }
-  usage: { input: ProviderUsageRequest; output: ProviderUsageResponse }
+  /** 配额与余额(批 5,§8.3)。从前叫 `usage`,只答得出 Codex。 */
+  quota: { input: ProviderQuotaRequest; output: ProviderQuotaResponse }
   envStatus: { input: GetProviderEnvStatusRequest; output: GetProviderEnvStatusResponse }
 }
 
 export const providersRouter = defineRouter<ProvidersRoutes>('providers', [
   'list',
   'listDialects',
-  'usage',
+  'quota',
   'envStatus',
 ])
 

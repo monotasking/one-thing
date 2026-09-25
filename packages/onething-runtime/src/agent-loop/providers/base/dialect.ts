@@ -16,6 +16,7 @@ import type { ThinkingWire } from "./thinking-wire.js";
 import type { ToolChoicePolicy } from "./tool-choice-policy.js";
 import type { TurnContext } from "./turn-context.js";
 import type { UsageNormalizer } from "./usage.js";
+import type { ProviderQuota } from "@shared/contracts/quota.js";
 
 /** 线协议四条 —— 一条一个类,管线写死在模板方法里。 */
 export type WireId =
@@ -112,6 +113,14 @@ export interface Dialect<W = unknown> {
 		config: DialectThinkingConfig,
 		model: string,
 	): DialectThinkingIntent;
+	/**
+	 * **被动配额源**(批 5 §8.2):这一家在成功响应的头上带限额(Codex 的
+	 * `x-codex-primary-used-percent` 一族)。给了就由模板方法在拿到响应、读流之前
+	 * 问一句;答非 null 就上抛一条 `provider-data { type: 'quota', quota }` —— 装配层的
+	 * `QuotaService` 收到即更新缓存,**零额外请求**。答 null = 这条响应不带限额信息。
+	 * 不给 = 这家没有被动源(今天只有 codex 实现;Claude 订阅的头名待核)。
+	 */
+	quotaFromHeaders?(headers: Headers): ProviderQuota | null;
 }
 
 const dialects = new Map<string, Dialect>();

@@ -1,6 +1,7 @@
 /**
- * Codex(ChatGPT 订阅)**非请求路径**的那一半:模型列表、ChatGPT 用量拉取、
- * 原生工具元数据,以及 `prepareCallOptions`。
+ * Codex(ChatGPT 订阅)**非请求路径**的那一半:模型列表、原生工具元数据,以及
+ * `prepareCallOptions`。用量拉取(`wham/usage`)批 5 起住在 `quota/codex.ts`,
+ * 产出通用的 `ProviderQuota`。
  *
  * `doStream` / `doGenerate` 那条自带 SSE / usage / 错误 / effort 的请求路径在
  * P1-d2 整条删除(生产零调用方 —— codex 的真实通路是
@@ -13,7 +14,6 @@ import type { OnethingOAuthToken } from '../auth/types.js'
 
 export const ONETHING_CODEX_PROVIDER_ID = 'codex'
 export const ONETHING_CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex'
-export const ONETHING_CODEX_USAGE_URL = 'https://chatgpt.com/backend-api/wham/usage'
 export const ONETHING_CODEX_DEFAULT_MODEL = 'gpt-5.3-codex'
 export const ONETHING_CODEX_CLIENT_VERSION = process.env.npm_package_version || '1.1.0'
 export const ONETHING_CODEX_FALLBACK_INSTRUCTIONS = 'You are Codex, a helpful AI coding assistant.'
@@ -56,33 +56,6 @@ export interface OnethingCodexModelProviderMetadata {
   supportsReasoningSummaries: boolean
   serviceTiers: OnethingCodexServiceTier[]
   nativeTools: OnethingCodexNativeToolName[]
-}
-
-export interface OnethingCodexUsageWindow {
-  usedPercent: number
-  windowSeconds?: number
-  resetAfterSeconds?: number
-  resetAt?: number
-}
-
-export interface OnethingCodexUsageCredits {
-  hasCredits: boolean
-  unlimited: boolean
-  balance?: string
-}
-
-export interface OnethingCodexUsageLimit {
-  id: string
-  name?: string
-  primary?: OnethingCodexUsageWindow
-  secondary?: OnethingCodexUsageWindow
-  rateLimitReachedType?: string
-}
-
-export interface OnethingCodexProviderUsage {
-  planType?: string
-  credits?: OnethingCodexUsageCredits
-  limits: OnethingCodexUsageLimit[]
 }
 
 export type OnethingCodexOAuthToken = Pick<
@@ -605,116 +578,3 @@ export function prepareOnethingCodexCallOptions<TOptions extends {
   return options
 }
 
-function normalizeOnethingCodexUsageWindow(
-  raw: OnethingCodexRawValue,
-): OnethingCodexUsageWindow | undefined {
-  const record = onethingCodexRecordFromValue(raw)
-  const usedPercent = asNumber(record.used_percent ?? record.usedPercent)
-  if (usedPercent === undefined) return undefined
-  const window: OnethingCodexUsageWindow = { usedPercent }
-  const windowSeconds = asNumber(record.limit_window_seconds ?? record.limitWindowSeconds ?? record.window_seconds ?? record.windowSeconds)
-  const resetAfterSeconds = asNumber(record.reset_after_seconds ?? record.resetAfterSeconds)
-  const resetAt = asNumber(record.reset_at ?? record.resetAt)
-  if (windowSeconds !== undefined) window.windowSeconds = windowSeconds
-  if (resetAfterSeconds !== undefined) window.resetAfterSeconds = resetAfterSeconds
-  if (resetAt !== undefined) window.resetAt = resetAt
-  return window
-}
-
-function normalizeOnethingCodexUsageCredits(
-  raw: OnethingCodexRawValue,
-): OnethingCodexUsageCredits | undefined {
-  const record = onethingCodexRecordFromValue(raw)
-  const hasCredits = record.has_credits ?? record.hasCredits
-  const unlimited = record.unlimited
-  const balance = asString(record.balance)
-  if (hasCredits === undefined && unlimited === undefined && !balance) return undefined
-  return {
-    hasCredits: Boolean(hasCredits),
-    unlimited: Boolean(unlimited),
-    ...(balance ? { balance } : {}),
-  }
-}
-
-function normalizeOnethingCodexRateLimitReachedType(raw: OnethingCodexRawValue): string | undefined {
-  if (typeof raw === 'string') return asString(raw)
-  const record = onethingCodexRecordFromValue(raw)
-  return asString(record.type ?? record.kind)
-}
-
-function normalizeOnethingCodexUsageLimit(
-  id: string,
-  name: string | undefined,
-  rawRateLimit: OnethingCodexRawValue,
-  rateLimitReachedType?: string,
-): OnethingCodexUsageLimit {
-  const rateLimit = onethingCodexRecordFromValue(rawRateLimit)
-  const primary = normalizeOnethingCodexUsageWindow(rateLimit.primary_window ?? rateLimit.primaryWindow)
-  const secondary = normalizeOnethingCodexUsageWindow(rateLimit.secondary_window ?? rateLimit.secondaryWindow)
-  return {
-    id,
-    ...(name ? { name } : {}),
-    ...(primary ? { primary } : {}),
-    ...(secondary ? { secondary } : {}),
-    ...(rateLimitReachedType ? { rateLimitReachedType } : {}),
-  }
-}
-
-export function normalizeOnethingCodexUsagePayload(
-  payload: OnethingCodexRawValue,
-): OnethingCodexProviderUsage {
-  const record = onethingCodexRecordFromValue(payload)
-  const planType = asString(record.plan_type ?? record.planType)
-  const credits = normalizeOnethingCodexUsageCredits(record.credits)
-  const rateLimitReachedType = normalizeOnethingCodexRateLimitReachedType(
-    record.rate_limit_reached_type ?? record.rateLimitReachedType,
-  )
-
-  const limits: OnethingCodexUsageLimit[] = [
-    normalizeOnethingCodexUsageLimit('codex', undefined, record.rate_limit ?? record.rateLimit, rateLimitReachedType),
-  ]
-
-  const additional = record.additional_rate_limits ?? record.additionalRateLimits
-  if (Array.isArray(additional)) {
-    for (const detail of additional) {
-      const detailRecord = onethingCodexRecordFromValue(detail)
-      const id = asString(detailRecord.metered_feature ?? detailRecord.meteredFeature ?? detailRecord.id)
-      if (!id) continue
-      limits.push(normalizeOnethingCodexUsageLimit(
-        id,
-        asString(detailRecord.limit_name ?? detailRecord.limitName ?? detailRecord.name),
-        detailRecord.rate_limit ?? detailRecord.rateLimit,
-        normalizeOnethingCodexRateLimitReachedType(detailRecord.rate_limit_reached_type ?? detailRecord.rateLimitReachedType),
-      ))
-    }
-  }
-
-  return {
-    ...(planType ? { planType } : {}),
-    ...(credits ? { credits } : {}),
-    limits,
-  }
-}
-
-export async function fetchOnethingCodexUsage(
-  token: OnethingCodexOAuthToken,
-  fetchImpl: OnethingCodexFetchFn,
-  options?: OnethingCodexFetchOptions,
-): Promise<OnethingCodexProviderUsage> {
-  const response = await fetchImpl(ONETHING_CODEX_USAGE_URL, {
-    method: 'GET',
-    headers: {
-      'Accept': 'application/json',
-      ...buildOnethingCodexHeaders(token),
-    },
-    signal: codexFetchSignal(options),
-  })
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => '')
-    const detail = summarizeOnethingCodexErrorBody(body)
-    throw new Error(`Codex usage request failed: ${response.status}${detail ? `: ${detail}` : ''}`)
-  }
-
-  return normalizeOnethingCodexUsagePayload(await response.json())
-}
