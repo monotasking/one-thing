@@ -65,6 +65,7 @@ bun run gate:search-index  # real-machine gate (12 steps + 1 opt-in): boots dist
 
 # Logs
 bun run log:tail           # pretty-print + follow <store>/log/app.jsonl ([--ns engine.*] [--level warn] [--session id])
+bun run memory:report      # ask the live core for its memory table: per process + per holder ([--json] [--trim [soft]])
 bun run log:smoke          # real-machine gate: boots dist/server on a temp store, asserts server.jsonl
 
 # Evals
@@ -555,6 +556,21 @@ Notes:
   over the `notes` RPC domain (`list` / `refresh` / `openInApp` — the only call that may launch
   the app). Gate: `bun run gate:notes` (read-only, only open vaults, skipped when the socket is
   not there).
+- **Process memory has one table** (2026-09-25, 起因:用户「程序跑起来接近 2G」). Mechanism
+  `packages/core/memory/` (`MemoryRegistry` + `MemoryGovernor`, zero deps), assembly
+  `packages/backend/wiring/memory/` → `backend.memory`. Whatever holds reconstructible memory
+  describes itself as a `MemoryHolder` (`usage()` must be cheap; `trim('soft'|'hard')` may only drop
+  what can be rebuilt, never the only copy, never a live run) and is registered **with one line** at
+  its assembly site — today `events.replay-buffers` (`backend/events/memory.ts`; those per-session
+  rings used to be freed only on session delete), `sessions.projections` + `sessions.cache`
+  (`backend/session/memory.ts`; they are released together, because the LRU session object holds
+  the messages materialized from the projection). Hosts add a `MemoryProcessProbe`: core registers
+  its own RSS, the React shell adds `app.getAppMetrics()` (`electron/memory-probe.ts` — renderer /
+  GPU / each built-in browser tab). The governor samples every 30s and trims over budget
+  (`ONETHING_MEMORY_SOFT_MB` / `_HARD_MB`, default 1024 / 1536, 2 min cooldown, one `warn` line in
+  `app.memory`). Read it with `bun run memory:report` (`memory` RPC domain: `report` for anyone,
+  `trim` for locally trusted callers only; `--trim [soft]`). The table never names a holder:
+  adding one = its own module + one `registerHolder` line.
 - There is no memory subsystem. The soul-memory plugin (SOUL/MEMORY.md + daily notes,
   panel, settings tab, `/api/memory/*`) was retired 2026-08-06 — see
   `docs/audit/soul-memory-retirement-2026-08-06.md`. Nothing reads or writes those files;

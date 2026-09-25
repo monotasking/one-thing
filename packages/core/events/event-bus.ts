@@ -272,6 +272,51 @@ export class EventBus<
     return buffer.replay(fromSequence)
   }
 
+  // ── Memory (内存预算表的一行) ──────────────────
+
+  /**
+   * 重放缓冲攒了多少。只读计数,不扫载荷。
+   *
+   * 这些缓冲从前**只有删会话时才释放**:进程里碰过的每一条会话都各自留着最多
+   * `bufferCapacity` 条信封,条数没有总上限 —— 长跑的桌面进程就一直涨。
+   */
+  bufferUsage(): { sessions: number; entries: number; capacityPerSession: number; subscribed: number } {
+    let entries = 0
+    let subscribed = 0
+    for (const [sessionId, buffer] of this.buffers) {
+      entries += buffer.size
+      if (this.hasSessionSubscribers(sessionId)) subscribed++
+    }
+    return { sessions: this.buffers.size, entries, capacityPerSession: this.bufferCapacity, subscribed }
+  }
+
+  /**
+   * 丢掉**空闲**会话的重放缓冲:此刻没有任何订阅者,且最近一条早于 `idleMs`。
+   *
+   * 能丢的理由:缓冲只服务 `?after=` 断线重放,它本来就是有损的(满了覆盖最旧的);
+   * 没人订阅又好一阵没动的会话,不会有人拿着一个缓冲里才有的序号回来。
+   * **序号不动**(`sequences` 留着)—— 之后的事件照旧从下一个号接着发,不会回绕。
+   */
+  releaseIdleBuffers(idleMs: number, now = Date.now()): { releasedSessions: number; releasedEntries: number } {
+    let releasedSessions = 0
+    let releasedEntries = 0
+    for (const [sessionId, buffer] of [...this.buffers]) {
+      if (this.hasSessionSubscribers(sessionId)) continue
+      const newest = buffer.newestTimestamp
+      if (newest !== undefined && now - newest < idleMs) continue
+      releasedEntries += buffer.size
+      releasedSessions++
+      buffer.clear()
+      this.buffers.delete(sessionId)
+    }
+    return { releasedSessions, releasedEntries }
+  }
+
+  private hasSessionSubscribers(sessionId: string): boolean {
+    return (this.typedHandlers.get(sessionId)?.size ?? 0) > 0
+      || (this.wildcardHandlers.get(sessionId)?.size ?? 0) > 0
+  }
+
   // ── Destroy session ────────────────────────────
 
   /**

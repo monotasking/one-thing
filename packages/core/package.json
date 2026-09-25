@@ -23,6 +23,7 @@
     "./lifecycle": "./lifecycle/index.ts",
     "./logging": "./logging/index.ts",
     "./mcp": "./mcp/index.ts",
+    "./memory": "./memory/index.ts",
     "./plugins": "./plugins/index.ts",
     "./plugins/deep-link": "./plugins/deep-link.ts",
     "./plugins/notify-sound": "./plugins/notify-sound.ts",

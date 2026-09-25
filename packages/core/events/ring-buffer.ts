@@ -70,6 +70,13 @@ export class RingBuffer<TEvent extends EventBase = EventBase> {
     this.count = 0
   }
 
+  /** 最新一条的时间戳(空缓冲 = `undefined`)。内存调度器判「多久没动过」用。 */
+  get newestTimestamp(): number | undefined {
+    if (this.count === 0) return undefined
+    const idx = (this.head - 1 + this.capacity) % this.capacity
+    return this.buffer[idx]?.timestamp
+  }
+
   /**
    * Current number of items in the buffer.
    */

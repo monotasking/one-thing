@@ -33,6 +33,7 @@ import { evalsRouter } from '@shared/ipc/evals.js'
 import { evalsWorkbenchRouter } from '@shared/ipc/evals-workbench.js'
 import { goalRouter } from '@shared/ipc/goal.js'
 import { logsRouter } from '@shared/ipc/logs.js'
+import { memoryRouter } from '@shared/ipc/memory.js'
 import { markdownRouter } from '@shared/ipc/markdown.js'
 import { mcpRouter } from '@shared/ipc/mcp.js'
 import { mediaRouter } from '@shared/ipc/media.js'
@@ -84,6 +85,7 @@ import { interactionRpcHandlers } from './domains/interaction.js'
 import { musicRpcHandlers } from './domains/music.js'
 import { toolsRpcHandlers } from './domains/tools.js'
 import { logsRpcHandlers } from './domains/logs.js'
+import { memoryRpcHandlers } from './domains/memory.js'
 import { markdownRpcHandlers } from './domains/markdown.js'
 import { mcpRpcHandlers } from './domains/mcp.js'
 import { mediaRpcHandlers } from './domains/media.js'
@@ -127,6 +129,8 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // L3:渲染侧日志上行。排在最前 —— 它一个依赖也没有(只喂根 logger,
   // 而根 logger 在模块求值时就存在),而它接住的是**别人出问题时**的那条上行路。
   { id: 'rpc:logs', mount: ctx => { ctx.registerRpcDomain(logsRouter, logsRpcHandlers) } },
+  // 内存预算表的读面与手动松手(2026-09-25)。同样零依赖于别的域。
+  { id: 'rpc:memory', mount: ctx => { ctx.registerRpcDomain(memoryRouter, memoryRpcHandlers) } },
   { id: 'rpc:usage', mount: ctx => { ctx.registerRpcDomain(usageRouter, usageRpcHandlers) } },
   { id: 'rpc:prompts', mount: ctx => { ctx.registerRpcDomain(promptsRouter, promptsRpcHandlers) } },
   { id: 'rpc:goal', mount: ctx => { ctx.registerRpcDomain(goalRouter, goalRpcHandlers) } },

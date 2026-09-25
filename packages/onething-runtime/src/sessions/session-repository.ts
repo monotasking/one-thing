@@ -401,6 +401,27 @@ export class OnethingSessionRepository<
     this.sessionCache.delete(sessionId)
   }
 
+  /**
+   * 内存调度器松手的那一口(2026-09-25 内存预算表):挤掉 LRU 里**空闲**的会话。
+   *
+   * 永远不挤:有挂起写的(`pendingSessionValues` 自己另握一份强引用,但留着它的
+   * 活对象才是「写的就是缓存里这一份」的最短路径)、调用方说受保护的(在跑的 run、
+   * 还在流式的)。挤掉的只是缓存 —— 下一次 `getSession` 从账本重新读回来;
+   * 「这个进程接手过谁」那张表**不动**,所以冷加载回来不会被当成崩溃残留再修一遍。
+   */
+  releaseIdleCachedSessions(options: {
+    idleMs: number
+    now?: number
+    isProtected?(sessionId: string, session: TSession): boolean
+  }): string[] {
+    const now = options.now ?? Date.now()
+    return this.sessionCache.pruneWhere((sessionId, session, accessedAt) => {
+      if (now - accessedAt < options.idleMs) return false
+      if (this.pendingSessionValues.has(sessionId) || this.pendingWritePlans.has(sessionId)) return false
+      return !options.isProtected?.(sessionId, session)
+    })
+  }
+
   getSessionCacheStats(): OnethingSessionCacheStats {
     const stats = this.sessionCache.getStats()
     return {

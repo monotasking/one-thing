@@ -443,6 +443,11 @@ function peekSessionProjection(sessionId: string): SessionProjectionState | unde
   return {
     getMemoryStats,
     releaseIdle,
+    /** 这条会话的活投影此刻为什么不能丢(没有活投影 / 不受保护 = `undefined`)。 */
+    protectionOf(sessionId: string): SessionProjectionProtection | undefined {
+      const live = projections.get(sessionId)
+      return live ? protection(sessionId, live) : undefined
+    },
     getLiveSessionProjection,
     foldLiveSessionLogicalDelta,
     liveSessionProjectionAheadDeltas,

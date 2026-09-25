@@ -99,6 +99,26 @@ describe('onething session repository', () => {
     await f.repository.flushAllPendingSaves()
   })
 
+  it('releases idle cached sessions under memory pressure, but never a protected one or one with a pending write', async () => {
+    const f = deletionRepository()
+    f.repository.createSession('idle', 'idle')
+    f.repository.createSession('keep', 'keep')
+    f.repository.createSession('dirty', 'dirty')
+    await f.repository.flushAllPendingSaves()
+    const dirty = f.repository.getCachedSession('dirty')!
+    f.repository.saveSessionToFile('dirty', { ...dirty, name: 'dirty 2' })
+    // 保鲜期没过:一条都不挤。
+    expect(f.repository.releaseIdleCachedSessions({ idleMs: 60_000 })).toEqual([])
+    const released = f.repository.releaseIdleCachedSessions({ idleMs: 0, isProtected: id => id === 'keep' })
+    expect(released).toEqual(['idle'])
+    expect(f.repository.getCachedSession('idle')).toBeUndefined()
+    expect(f.repository.getCachedSession('keep')).toBeDefined()
+    expect(f.repository.getCachedSession('dirty')).toBeDefined()
+    await f.repository.flushAllPendingSaves()
+    // 挤掉的只是缓存:从盘上照样读得回来。
+    expect(f.repository.getSession('idle')?.id).toBe('idle')
+  })
+
   it('does not publish a generation whose initial file barrier failed', () => {
     const f = deletionRepository()
     vi.spyOn(fs, 'fsyncSync').mockImplementationOnce(() => { throw new Error('initial save failed') })

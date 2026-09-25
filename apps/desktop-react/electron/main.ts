@@ -34,7 +34,7 @@
  * 文件让位,不靠互斥量。
  * ──────────────────────────────────────────────────────────────────────
  */
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, webContents } from 'electron'
 import { EventEmitter } from 'node:events'
 import { readFileSync } from 'node:fs'
 import { connect } from 'node:net'
@@ -69,6 +69,7 @@ import { installTerminalReloadDetach } from './terminal-reload.js'
  * 的 `backend.resources`)。
  */
 import { installBrowserHost } from './browser/index.js'
+import { createShellMemoryProbe } from './memory-probe.js'
 import { applyChromiumFlags } from './browser/user-agent.js'
 import { applyCdpFlag, readCdpLaunchFlag } from './browser/cdp-flag.js'
 import { cdpDiscoveryExtras } from './browser/cdp-settings.js'
@@ -395,6 +396,22 @@ function startPostWindowServices(): void {
       } catch (error: unknown) {
         log.error('subsystem startup failed', { subsystem: 'browser', blocking: false }, error)
       }
+    }
+    /*
+     * 内存预算表的壳探针(2026-09-25):把渲染 / GPU / 内置浏览器那些进程报上表,
+     * 调度器与 `memory.report` 从此看得到整个 Electron,而不只是 core 这一个进程。
+     * 类型 `window` 的是壳自己的窗;其余(`WebContentsView` 的 tab)算内置浏览器。
+     */
+    try {
+      b.own(b.memory.registry.registerProbe(createShellMemoryProbe({
+        getAppMetrics: () => app.getAppMetrics(),
+        listWebContents: () => webContents.getAllWebContents()
+          .filter(wc => !wc.isDestroyed())
+          .map(wc => ({ pid: wc.getOSProcessId(), role: wc.getType() === 'window' ? 'shell' as const : 'browser' as const, title: wc.getTitle() })),
+        selfPid: process.pid,
+      })), 'memoryProbe:electron')
+    } catch (error: unknown) {
+      log.error('subsystem startup failed', { subsystem: 'memory-probe', blocking: false }, error)
     }
     const refreshController = new AbortController()
     b.own(() => refreshController.abort(), 'modelRegistryRefresh', 'quiesce')
