@@ -132,10 +132,23 @@ export function sequenceOf(
     }
   }
 
+  /*
+   * **序列里的 id 唯一,是结构保证不是纪律**(09-26)。项的 id 就是 React key;
+   * 同一条动作从块级与页级各来一次(总览回执两格都带它)时,两项 id 逐字相同,
+   * React 同 key 的行为未定义 —— 真机上是旧动作行成了孤儿节点,再也卸不掉。
+   * 数据层已经把两个产地收成一个(`fetchListing` 的总览分支),这里再按 id 去一次重:
+   * 先到的留下,后到的丢;哪天又多一个产地,屏上仍然只有一条。
+   */
+  const seen = new Set<string>()
+  const pushAction = (item: SearchItem): void => {
+    if (seen.has(item.id)) return
+    seen.add(item.id)
+    items.push(item)
+  }
   for (const block of listing.blocks) {
     for (const action of block.actions ?? []) {
       if (isNotice(action)) continue
-      items.push({
+      pushAction({
         id: actionItemId(block.capability, action.id),
         kind: SEARCH_ITEM_KINDS.action,
         block: block.capability,
@@ -145,7 +158,7 @@ export function sequenceOf(
   }
   for (const action of listing.actions ?? []) {
     if (isNotice(action)) continue
-    items.push({
+    pushAction({
       id: actionItemId(action.capability ?? PAGE_LEVEL, action.id),
       kind: SEARCH_ITEM_KINDS.action,
       ...(action.capability === undefined ? {} : { block: action.capability }),

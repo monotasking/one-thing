@@ -101,12 +101,21 @@ describe('多选', () => {
 /* ── 对账 ──────────────────────────────────────────────────────────────── */
 
 describe('reconcile(唯一那条落位规则)', () => {
-  it('活动项还在 = 一个字不改(只校准 at 那个记号)', () => {
+  it('活动项还在 = id 不动,只校准 at;而且这一下记成 reconcile(不滚)', () => {
     const before = state({ selection: { id: 'b', by: 'keyboard', at: 0 } })
     const after = T.reconcile(before, seq('a', 'b', 'c'))
     expect(after.selection.id).toBe('b')
-    expect(after.selection.by).toBe('keyboard')
+    // 09-26:从前这里留 `keyboard`,于是 selection 换了引用、滚动 effect 再跑一遍 ——
+    // 「加载更多」落地后把已经在 20 行之下的那条项滚进视野,上一页末行就丢了。
+    expect(after.selection.by).toBe('reconcile')
     expect(after.selection.at).toBe(1)
+  })
+
+  it('翻页那一幕:活动项停在块尾项上、序列长了 20 行 → 只校准 at,by 是 reconcile', () => {
+    const before = state({ selection: { id: 'more:chats', by: 'pointer', at: 20 } })
+    const grown = seq(...Array.from({ length: 40 }, (_, i) => `r${i}`), 'more:chats')
+    const after = T.reconcile(before, grown)
+    expect(after.selection).toEqual({ id: 'more:chats', by: 'reconcile', at: 40 })
   })
 
   it('at 已经对了就连引用都不换', () => {

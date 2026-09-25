@@ -317,6 +317,37 @@ describe('全部档:一张清单,块相邻不混排(R1 / R2)', () => {
     expect(rows()).toHaveLength(2)
   })
 
+  it('总览回执两格都带同一条动作 → 屏上只画一条,换词后旧那条不留尸体', async () => {
+    // 真机回执的形:后端把各组动作按组序拼成页级 `actions`,组里也各带一份。
+    const create = {
+      id: 'create-note:%2Fv%2Fh.md',
+      labelKey: 'search.action.createNote',
+      capability: 'notes',
+      params: { title: 'h' },
+    }
+    serveRows({
+      results: [],
+      groups: [
+        { capability: 'chats', label: 'search.capability.chats', total: 0, results: [] },
+        { capability: 'notes', label: 'search.capability.notes', total: 0, results: [], actions: [create] },
+      ],
+      actions: [create],
+    })
+    render(<SearchPanel />)
+    type('h')
+    await waitFor(() => expect(actionRows()).toHaveLength(1))
+    expect(actionRows()[0].textContent).toContain('新建笔记')
+    // 同 key 的病根:动作行的 data-item-id 必须两两不同。
+    const itemIds = actionRows().map(el => el.getAttribute('data-item-id'))
+    expect(new Set(itemIds).size).toBe(itemIds.length)
+
+    // 换一个词:上一条动作跟着答案走,屏上不该再有「h」那一条。
+    serveRows({ results: [], groups: [], actions: [] })
+    type('zz')
+    await waitFor(() => expect(actionRows()).toHaveLength(0))
+    expect(document.body.textContent).not.toContain('新建笔记')
+  })
+
   it('后端多答一组(陌生能力)→ 屏上多一块,它的行走「缺渲染器画标题行」那条路', async () => {
     serveRows({
       results: [hit()],

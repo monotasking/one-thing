@@ -90,6 +90,17 @@ describe('sequenceOf(一次 flatten)', () => {
     expect(seq[seq.length - 1].kind).toBe('action')
   })
 
+  it('同一条动作从块级与页级各来一次 → 序列里只有一项(id 就是 React key,必须唯一)', () => {
+    // 总览回执两格都带它(`groups[].actions` + 页级 `actions`)时的形。
+    const create = { id: 'create-note:x', labelKey: 'k', capability: 'notes' }
+    const seq = sequenceOf(listing(
+      [block('notes', [], { cursor: undefined, actions: [create] })],
+      { actions: [create] },
+    ))
+    expect(ids(seq)).toEqual([actionItemId('notes', 'create-note:x')])
+    expect(new Set(ids(seq)).size).toBe(seq.length)
+  })
+
   it('块尾项的四态由外面注入 —— `end` / `none` 不进序列,`loading` / `error` 进', () => {
     const one = listing([block('chats', ['a'])])
     expect(ids(sequenceOf(one, () => ({ kind: 'loading' })))).toContain(moreItemId('chats'))

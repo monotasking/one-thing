@@ -158,6 +158,65 @@ describe('SearchList:滚动只随选中变,而且 reconcile 那一下不滚', ()
     expect(scrollIntoView).toHaveBeenCalledTimes(0)
   })
 
+  it('指针点了块尾项、页落地序列变长:落位那一下**不再下第二条滚动指令**', () => {
+    // 09-26 报障「加载更多之后列表跳走」:点击那一下滚一次是对的(恰一次),
+    // 页落地后 reconcile 只校准 at,不许再把已经落到新行之下的那条项滚进视野。
+    const data = listingOf(['a', 'b', 'c'])
+    const dataGrown = listingOf(['a', 'b', 'c', 'd', 'e', 'f'])
+    const more = (one: SearchBlock) => moreStateOf({ ...one, cursor: 'c1', exhausted: false }, false, false)
+    const sequence = sequenceOf(data, more)
+    const sequenceGrown = sequenceOf(dataGrown, more)
+    const moreItem = sequence[sequence.length - 1]
+    expect(moreItem.kind).toBe('more')
+    const view: SearchListingView = {
+      key: 'k1',
+      held: held(data),
+      blocks: data.blocks,
+      sequence,
+      moreStateOf: () => ({ kind: 'more', shown: 3, total: 6 }),
+      canLoadMore: () => true,
+    }
+    // 块尾项画不画由 `itemView.moreStateOf` 答(`items/more.tsx`),不是 listing 那一格。
+    const itemView: SearchItemView = { ...itemViewOf(), moreStateOf: () => ({ kind: 'more', shown: 3, total: 6 }) }
+    const { rerender } = render(
+      <SearchList
+        listing={view}
+        itemView={itemView}
+        query=""
+        typed=""
+        t={t}
+        labelOf={(capability: string) => capability}
+        indexReadout={undefined}
+        onRetryBlock={() => undefined}
+      />,
+    )
+
+    act(() => {
+      useSearchStore.getState().setActive(moreItem.id, 'pointer')
+    })
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+
+    rerender(
+      <SearchList
+        listing={{ ...view, held: held(dataGrown), blocks: dataGrown.blocks, sequence: sequenceGrown }}
+        itemView={itemView}
+        query=""
+        typed=""
+        t={t}
+        labelOf={(capability: string) => capability}
+        indexReadout={undefined}
+        onRetryBlock={() => undefined}
+      />,
+    )
+    act(() => {
+      useSearchStore.getState().reconcile(sequenceGrown)
+    })
+    const selection = useSearchStore.getState().selection
+    expect(selection.id).toBe(moreItem.id)
+    expect(selection.at).toBe(sequenceGrown.length - 1)
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+  })
+
   it('键盘走位:恰一次,落在那一项自己的 [data-item-id] 上', () => {
     const view = viewOf()
     const { container } = renderList(view)

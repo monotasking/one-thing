@@ -289,6 +289,19 @@ async function fetchOne(
    * 那样壳里就多一个档位名的枚举点。
    */
   if (response.groups !== undefined) {
+    /*
+     * **动作归组,页级只装无主的**(09-26 报障:「新建笔记 “h”」两条、而且换词换档
+     * 都不走)。后端的总览回执把各组的动作既挂在 `groups[].actions` 上、又按组序拼
+     * 成页级 `actions`(给不读 `groups` 的消费者一个扁平口)。两格都收下来,
+     * `sequenceOf` 就按块级、页级各产一项 —— 两项 id 逐字相同,React 同 key,
+     * 而 React 明说同 key 的行为未定义:真机上旧动作行成了没人管的孤儿节点,词换了、
+     * 档换了、清空了都不会被卸载。所以这里与单类分支对称:组里已经有的,页级不再收;
+     * 页级只留**任何一组都没带**的那几条(今天等于空,于是缺席)。
+     */
+    const carried = new Set(
+      response.groups.flatMap(group => (group.actions ?? []).map(action => action.id)),
+    )
+    const pageActions = (response.actions ?? []).filter(action => !carried.has(action.id))
     return {
       mode: 'overview',
       query,
@@ -318,7 +331,7 @@ async function fetchOne(
       ...(response.total === undefined ? {} : { total: response.total }),
       ...(response.relaxed === undefined ? {} : { relaxed: response.relaxed }),
       ...(response.index === undefined ? {} : { index: response.index }),
-      ...(response.actions === undefined ? {} : { actions: response.actions }),
+      ...(pageActions.length === 0 ? {} : { actions: pageActions }),
     }
   }
 

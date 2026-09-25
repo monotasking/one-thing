@@ -197,7 +197,7 @@ export function scrollOf(state: SearchState, key: string): number {
  * **新序列到了,活动项落在哪**(§5.4 ③ 的唯一落位规则)。
  *
  * 三条,按次序:
- *  1. 活动项还在 → **一个字不改**(只校准 `at` 那个记号);
+ *  1. 活动项还在 → id 不动,只校准 `at` 那个记号(`by` 记成 reconcile);
  *  2. 它没了 → 按**旧下标**夹进新序列 —— 块尾那条项消失时,同一位置恰好就是
  *     本次追加的第一行(行排在块尾项前面);行消失时,同一位置就是最近的幸存项;
  *  3. 序列空了 → `id: null`。
@@ -214,9 +214,16 @@ export function reconcile(state: SearchState, sequence: readonly SearchItem[]): 
   }
   const at = indexOfItem(sequence, state.selection.id)
   if (at >= 0) {
+    /*
+     * 活动项还在、只是下标变了 —— 这一下也必须记成 `by: 'reconcile'`(09-26 报障:
+     * 按「加载更多」之后列表跳走,上一页最后一条看不见)。从前这一支只改 `at`、
+     * `by` 原样留着(`pointer` / `keyboard`),于是 selection 换了引用、滚动那条 effect
+     * 再跑一遍,把已经落到 20 行之下的那条「加载更多」滚进视野 —— 正是「行集增长
+     * 触发了滚动」。校准下标是落位,不是一次新的选中;`by` 的唯一读者就是那条 effect。
+     */
     return state.selection.at === at
       ? state
-      : { ...state, selection: { ...state.selection, at } }
+      : { ...state, selection: { id: state.selection.id, by: 'reconcile', at } }
   }
   const fallback = Math.max(0, Math.min(
     state.selection.at < 0 ? 0 : state.selection.at,
