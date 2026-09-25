@@ -16,6 +16,10 @@
  * 不再手抄第二份。一个进程里已有活实例时再装配一次,`assemble` 第一行就抛
  * `BackendAlreadyAssembledError`。
  */
+// 执行器注册表在模块加载时把「哪些 provider 是外部执行体、上下文归它自己管」登记进
+// core(A0-3 起 core 不再内置任何 provider 名字)。静态 import 在这里,是为了保证任何
+// 一个宿主装配、引擎做第一次压缩判定之前它已经跑过 —— 不靠别的模块碰巧 import 到它。
+import '@onething/runtime/agents/executor/registry'
 import { initializeStores, flushAllPendingSaves, getSession } from './store.js'
 import { acquireSessionEventLogStore, type SessionEventLogStoreHandle } from './session/event-log.js'
 import { createStoreLease, getOnethingMediaIndexPath, getOnethingMediaImagesDir, getOnethingMediaFilesDir, getOnethingPetsDir, type StoreLease, type StoreLockOwner } from '@onething/runtime/storage'

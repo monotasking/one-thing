@@ -1,6 +1,3 @@
-export { createACPAgentProvider } from '@onething/runtime/agent-loop/providers/acp-manager-bound'
-export type { ACPAgentProviderOptions } from '@onething/runtime/agent-loop/providers/acp-manager-bound'
-
 export { createClaudeAgentProvider } from './providers/claude.js'
 export type { ClaudeAgentProviderOptions } from './providers/claude.js'
 

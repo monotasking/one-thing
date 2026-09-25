@@ -309,6 +309,8 @@ export class ACPClient {
   private connection: ClientConnection | null = null
   private connectionGeneration = {}
   private initResponse: InitializeResponse | null = null
+  /** 最近一次握手的答复;断开时**不清**——连接器在下一次连上之前也要答得出这台 agent 能做什么。 */
+  private lastInitResponse: InitializeResponse | null = null
   private statusValue: ACPConnectionStatus = 'disconnected'
   private errorValue: string | undefined
   /** agent 自己报的「没登录」原话(`_auth/status_update`);登录了就是 undefined。 */
@@ -374,6 +376,11 @@ export class ACPClient {
       sessionCount: this.sessions.size,
       activePromptCount: this.activePromptCountValue,
     }
+  }
+
+  /** 这台 agent 最近一次 `initialize` 的答复(未连过 = null)。连接器据它填能力表。 */
+  get lastHandshake(): InitializeResponse | null {
+    return this.lastInitResponse
   }
 
   updateConfig(config: ACPAgentConfig): void {
@@ -490,6 +497,7 @@ export class ACPClient {
       } finally {
         if (childSpawnErrorHandler) child.off('error', childSpawnErrorHandler)
       }
+      this.lastInitResponse = this.initResponse
 
       child.once('error', (error) => {
         if (this.child !== child) return
@@ -564,6 +572,13 @@ export class ACPClient {
     await this.connection.agent.notify(acp.methods.agent.session.cancel, { sessionId: session.acpSessionId })
   }
 
+  /** 连上并开(或恢复)这条会话,只答对应关系 —— 连接器据此落「本地会话 ↔ agent 会话」那条链接。 */
+  async openLocalSession(localSessionId: string, cwd: string | undefined): Promise<{ acpSessionId: string; cwd: string }> {
+    await this.connect()
+    const session = await this.ensureSession(localSessionId, cwd)
+    return { acpSessionId: session.acpSessionId, cwd: session.cwd }
+  }
+
   async *streamPrompt(options: ACPPromptStreamOptions): AsyncGenerator<ACPPromptStreamEvent, void, unknown> {
     await this.connect()
     if (!this.connection) throw new Error('ACP connection is not available')
@@ -600,7 +615,10 @@ export class ACPClient {
     const promptPromise = withTimeout(
       connection.agent.request(acp.methods.agent.session.prompt, {
         sessionId: session.acpSessionId,
-        prompt: [{ type: 'text', text: options.prompt }],
+        prompt: [
+          ...(options.prompt || !options.extraContent?.length ? [{ type: 'text' as const, text: options.prompt }] : []),
+          ...(options.extraContent ?? []),
+        ],
       }),
       this.config.promptTimeoutMs ?? DEFAULT_PROMPT_TIMEOUT_MS,
       `ACP prompt timed out for agent "${this.config.name}"`,

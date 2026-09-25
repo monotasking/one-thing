@@ -8,6 +8,7 @@ import type {
   ACPSessionOptionsSnapshot,
   ACPSettings,
 } from './types.js'
+import type { InitializeResponse } from '@agentclientprotocol/sdk'
 import { ACPClient } from './client.js'
 import { FileACPSessionLinkStore, type ACPSessionLinkStore } from './session-links.js'
 
@@ -45,6 +46,28 @@ class ACPManagerClass {
 
   setSessionLinkStore(store: ACPSessionLinkStore): void {
     this.sessionLinks = store
+  }
+
+  /**
+   * 链接表只能有**一个实例**:文件那只读一次进内存,两个实例各写各的就会互相覆盖。
+   * 外部 agent 的装配层(Claude 路的链接)从这里拿同一只,而不是自己再 new 一只。
+   */
+  getSessionLinkStore(): ACPSessionLinkStore {
+    return this.sessionLinks
+  }
+
+  /** 这台 agent 最近一次握手的答复;没连过为 undefined。只读,不起进程。 */
+  getAgentHandshake(agentId: string): InitializeResponse | undefined {
+    return this.clients.get(agentId)?.lastHandshake ?? undefined
+  }
+
+  /** 连上 agent 并开(或恢复)这条会话,答 agent 侧的会话 id。 */
+  async openSession(
+    agentId: string,
+    localSessionId: string,
+    cwd: string | undefined,
+  ): Promise<{ acpSessionId: string; cwd: string }> {
+    return this.usableClient(agentId).openLocalSession(localSessionId, cwd)
   }
 
   /**
@@ -176,6 +199,11 @@ class ACPManagerClass {
   }
 
   async *streamPrompt(agentId: string, options: ACPPromptStreamOptions): AsyncGenerator<ACPPromptStreamEvent, void, unknown> {
+    yield* this.usableClient(agentId).streamPrompt(options)
+  }
+
+  /** 总开关与单台开关都开着才给出客户端;开会话与发 prompt 走同一道判断。 */
+  private usableClient(agentId: string): ACPClient {
     if (this.settings.enabled === false) {
       throw new Error('ACP is disabled in settings')
     }
@@ -183,7 +211,7 @@ class ACPManagerClass {
     if (client.state.config.enabled === false) {
       throw new Error(`ACP agent "${agentId}" is disabled`)
     }
-    yield* client.streamPrompt(options)
+    return client
   }
 
   async shutdown(): Promise<void> {

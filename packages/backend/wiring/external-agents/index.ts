@@ -1,8 +1,11 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
+import { ACPManager } from '@onething/runtime/acp'
 import {
+  ACP_CONNECTOR_ID,
+  createAcpConnector,
   createClaudeCodeConnector,
   describeExternalToolPermission,
   CLAUDE_CODE_AGENT_CONNECTOR_ID,
@@ -23,9 +26,6 @@ import {
 } from '../collab/external-observability.js'
 import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '../interaction/no-human.js'
 import { resolvePermissionMessageAnchor } from '../permission/message-anchor.js'
-import {
-  getOnethingStorePath,
-} from '@onething/runtime/storage'
 import { AbortScope, Intent } from '@onething/core/toolkit'
 import type { Effect, Invocation } from '@onething/core/toolkit'
 import { createPermissionAuthorizer } from '../toolkit/authorizer.js'
@@ -74,44 +74,23 @@ export function findClaudeExecutable(): string | undefined {
 }
 
 // ---------------------------------------------------------------------------
-// Session link persistence (module-owned; survives app restarts)
+// Session link persistence (survives app restarts)
 // ---------------------------------------------------------------------------
 
-type SessionLinkStore = Record<string, ExternalAgentSessionLink>
-
-function sessionLinksPath(): string {
-  return join(getOnethingStorePath(), 'external-agents', 'session-links.json')
-}
-
-function linkKey(connectorId: string, localSessionId: string): string {
-  return `${connectorId}:${localSessionId}`
-}
-
-function readSessionLinks(): SessionLinkStore {
-  try {
-    return JSON.parse(readFileSync(sessionLinksPath(), 'utf8')) as SessionLinkStore
-  } catch {
-    return {}
-  }
-}
-
-function writeSessionLinks(store: SessionLinkStore): void {
-  const path = sessionLinksPath()
-  mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, JSON.stringify(store, null, 2), 'utf8')
-}
-
+/**
+ * 会话链接只有一张表:`<store>/acp/session-links.json`(A0-3)。ACP 与 Claude 两条路
+ * 读写的是 `ACPManager` 手上**同一只**表对象 —— 文件那只读一次进内存,各 new 一只就会
+ * 互相覆盖。旧的 `<store>/external-agents/session-links.json` 在表第一次读时并进来,不删。
+ */
 export function resolveExternalAgentSessionLink(
   connectorId: string,
   localSessionId: string,
 ): ExternalAgentSessionLink | undefined {
-  return readSessionLinks()[linkKey(connectorId, localSessionId)]
+  return ACPManager.getSessionLinkStore().getExternalLink(connectorId, localSessionId)
 }
 
 export function persistExternalAgentSessionLink(link: ExternalAgentSessionLink): void {
-  const store = readSessionLinks()
-  store[linkKey(link.connectorId, link.localSessionId)] = link
-  writeSessionLinks(store)
+  ACPManager.getSessionLinkStore().putExternalLink(link)
 }
 
 // ---------------------------------------------------------------------------
@@ -393,6 +372,9 @@ function createExternalAgentConnectors(): ConnectorMap {
   };
   return {
     [CLAUDE_CODE_AGENT_CONNECTOR_ID]: createClaudeCodeConnector(claudeCodeConnectorOptions),
+    // ACP 的连接与会话归 `backend.acp` 子系统(ACPManager);连接器只是一层薄转接,
+    // 权限桥也已由 `registerACPPermissionBridge` 装在 ACPManager 上。
+    [ACP_CONNECTOR_ID]: createAcpConnector(),
   }
 }
 
@@ -402,9 +384,9 @@ function createExternalAgentConnectors(): ConnectorMap {
  * `engine.abort` 只掐得断**我们这一侧**的流:请求还在飞,SDK 那边的 CLI 进程照跑
  * 不误(工具还会继续执行、账还会继续记)。`connector.interrupt` 才是把那一侧也停下。
  *
- * **能力位说了算**(E0 能力表,原则 5):acp 声明的 `interrupt: false` 是实测结论
- * (它依赖一个可选的 `cancelSession` 回调,缺席时是空操作)—— 对它调等于以为停住了
- * 其实没停,比不调更坏。表里翻一行,这里的行为就跟着变。
+ * **能力位说了算**(E0 能力表,原则 5):声明 `interrupt: false` 的执行器不调 —— 对一个
+ * 空操作调等于以为停住了其实没停,比不调更坏。表里翻一行,这里的行为就跟着变
+ * (acp 在 A0-3 翻真:连接器的 interrupt 直连 `session/cancel`)。
  *
  * 失败不冒泡:这是停止链上的一步加强,不是它的前提。
  */

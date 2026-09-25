@@ -1,10 +1,3 @@
-export { createACPAgentProvider } from './acp.js'
-export type {
-  CoreACPAgentProviderOptions,
-  CoreACPContentPart,
-  CoreACPPromptStreamEvent,
-  CoreACPPromptStreamOptions,
-} from './acp.js'
 export { createClaudeAgentProvider } from './claude.js'
 export type { ClaudeAgentProviderOptions } from './claude.js'
 export {

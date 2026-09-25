@@ -1,35 +1,19 @@
 import type {
+  ContentBlock,
   SessionNotification,
   StopReason,
 } from '@agentclientprotocol/sdk'
-import type { JsonObject } from '@onething/core'
+import type {
+  ACPAgentConfig,
+  ACPPermissionMode,
+  ACPSessionOption,
+  ACPSessionOptionChoice,
+} from '@shared/contracts/acp.js'
+
+// agent 配置与会话选项的形状住在 `@shared/contracts/acp.ts`,契约层与产品层共用这一份。
+export type { ACPAgentConfig, ACPPermissionMode, ACPSessionOption, ACPSessionOptionChoice }
 
 export type ACPConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
-
-export type ACPPermissionMode = 'allow' | 'reject'
-
-export interface ACPAgentConfig {
-  id: string
-  name: string
-  description?: string
-  enabled: boolean
-  command: string
-  args?: string[]
-  env?: Record<string, string>
-  cwd?: string
-  model?: string
-  permissionMode?: ACPPermissionMode
-  allowFileSystemAccess?: boolean
-  allowTerminalAccess?: boolean
-  mcpServers?: JsonObject[]
-  connectTimeoutMs?: number
-  promptTimeoutMs?: number
-  idleTimeoutMs?: number
-  maxBufferedUpdates?: number
-  maxSessionRecords?: number
-  maxTerminals?: number
-  maxTerminalOutputBytes?: number
-}
 
 export interface ACPAgentState {
   config: ACPAgentConfig
@@ -52,29 +36,6 @@ export interface ACPSettings {
   agents: ACPAgentConfig[]
 }
 
-/**
- * 一台 agent 在**它自己的会话里**自述的一格可调选项(ACP `configOptions`:模型 / 模式 /
- * 思考档……)。onething 不认识「模型」这件事 —— agent 列什么就画什么,选中后原样经
- * `session/set_config_option` 交回去。只收 `select` 那一种;分组的选项在投影时拍平,
- * 组名落进 `group`。
- */
-export interface ACPSessionOptionChoice {
-  value: string
-  name: string
-  description?: string
-  group?: string
-}
-
-export interface ACPSessionOption {
-  id: string
-  name: string
-  description?: string
-  /** ACP 的 `category`:`model` / `mode` / `thought_level` / 扩展值。只是提示,不是判据。 */
-  category?: string
-  currentValue: string
-  choices: ACPSessionOptionChoice[]
-}
-
 /** `getSessionOptions` 的答案:`live` = 来自一个真开着的 agent 会话;否则是上次记下的目录。 */
 export interface ACPSessionOptionsSnapshot {
   options: ACPSessionOption[]
@@ -88,6 +49,8 @@ export interface ACPPromptStreamOptions {
   abortSignal?: AbortSignal
   /** Assistant message the prompt streams into; threads through to permission asks. */
   messageId?: string
+  /** 跟在文本后面的内容块(图片等);只有握手声明接得住的 agent 才会收到。 */
+  extraContent?: ContentBlock[]
 }
 
 export interface ACPPermissionOptionInfo {

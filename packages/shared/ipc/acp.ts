@@ -2,35 +2,18 @@
  * ACP (Agent Client Protocol) settings and IPC types.
  */
 
-import type { JsonObject } from '../json.js'
+import type {
+  ACPAgentConfig,
+  ACPPermissionMode,
+  ACPSessionOption,
+  ACPSessionOptionChoice,
+} from '../contracts/acp.js'
 import { defineRouter } from './router.js'
 
+// agent 配置与会话选项的形状只有一份,住 `@shared/contracts/acp.ts`(A0-3),产品层也读它。
+export type { ACPAgentConfig, ACPPermissionMode, ACPSessionOption, ACPSessionOptionChoice }
+
 export type ACPConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
-
-export type ACPPermissionMode = 'allow' | 'reject'
-
-export interface ACPAgentConfig {
-  id: string
-  name: string
-  description?: string
-  enabled: boolean
-  command: string
-  args?: string[]
-  env?: Record<string, string>
-  cwd?: string
-  model?: string
-  permissionMode?: ACPPermissionMode
-  allowFileSystemAccess?: boolean
-  allowTerminalAccess?: boolean
-  mcpServers?: JsonObject[]
-  connectTimeoutMs?: number
-  promptTimeoutMs?: number
-  idleTimeoutMs?: number
-  maxBufferedUpdates?: number
-  maxSessionRecords?: number
-  maxTerminals?: number
-  maxTerminalOutputBytes?: number
-}
 
 export interface ACPAgentState {
   config: ACPAgentConfig
@@ -125,27 +108,6 @@ export interface ACPCancelSessionRequest {
 export interface ACPCancelSessionResponse {
   success: boolean
   error?: string
-}
-
-/**
- * agent 在它自己的会话里自述的一格可调选项(ACP `configOptions` 的投影:模型 / 模式 /
- * 思考档……,只收 `select`,分组拍平)。形状与 `@onething/runtime/acp` 的同名类型逐字
- * 相同 —— 产品层不许 import `@shared/ipc`,于是两边各写一份,由结构类型对上。
- */
-export interface ACPSessionOptionChoice {
-  value: string
-  name: string
-  description?: string
-  group?: string
-}
-
-export interface ACPSessionOption {
-  id: string
-  name: string
-  description?: string
-  category?: string
-  currentValue: string
-  choices: ACPSessionOptionChoice[]
 }
 
 /**

@@ -176,11 +176,11 @@ class Bad extends HttpAgentProvider {
 	});
 
 	/**
-	 * 非 HTTP 的两家(acp / external-agents)直接继承 `BaseAgentProvider`:
-	 * 它们的传输是一条 JSON-RPC 会话 / 一个子进程,没有 fetch 可言(§2.9)。
+	 * 非 HTTP 的那一家(external-agents;A0-3 起 acp 也走它)直接继承 `BaseAgentProvider`:
+	 * 它的传输是一条 JSON-RPC 会话 / 一个子进程,没有 fetch 可言(§2.9)。
 	 * `streamTurn` 是它们**必须**实现的抽象方法,所以这一条只守「实例无状态」。
 	 *
-	 * 断言里点名两个类,是因为"扫到 0 个"也会绿 —— 门必须先证明自己扫得到东西。
+	 * 断言里点名那个类,是因为"扫到 0 个"也会绿 —— 门必须先证明自己扫得到东西。
 	 */
 	it("BaseAgentProvider 的直接子类没有可写实例字段", () => {
 		const offenders: string[] = [];
@@ -195,7 +195,7 @@ class Bad extends HttpAgentProvider {
 			}
 		}
 		expect(offenders).toEqual([]);
-		expect(found.sort()).toEqual(["ACPAgentProvider", "ExternalAgentProvider"]);
+		expect(found.sort()).toEqual(["ExternalAgentProvider"]);
 	});
 
 	it("base/ 里没有对方言字段的字符串分支", () => {

@@ -195,6 +195,7 @@ const mocks = vi.hoisted(() => ({
 	getMCPToolDefinitionsForModel: vi.fn<() => ToolDefinition[]>(() => []),
 	executeToolDirectly: vi.fn(),
 	acpStreamPrompt: vi.fn(),
+	acpOpenSession: vi.fn(async (_agentId: string, _localSessionId: string, cwd: string) => ({ acpSessionId: "acp-s1", cwd })),
 	buildProjectDirsPromptVars: vi.fn(() => ({ active: undefined, known: [] })),
 	getContextCompactReason: vi.fn(() => null),
 	shouldSkipAutoCompactForProviderUsageMismatch: vi.fn(() => false),
@@ -340,11 +341,21 @@ vi.mock("@onething/runtime/prompts/resolver.wiring", () => ({
 	})),
 }));
 
-vi.mock("@onething/runtime/acp", () => ({
-	ACPManager: {
-		streamPrompt: mocks.acpStreamPrompt,
-	},
-}));
+// A0-3:ACP 走外部 agent 连接器,连接器在 runtime 里相对引用 `acp/manager.ts`,
+// 所以桩打在具体模块上(barrel 的再导出同样落到这一只)。
+vi.mock("@onething/runtime/acp/manager", async () => {
+	const { MemoryACPSessionLinkStore } = await import("@onething/runtime/acp/session-links");
+	const links = new MemoryACPSessionLinkStore();
+	return {
+		ACPManager: {
+			streamPrompt: mocks.acpStreamPrompt,
+			openSession: mocks.acpOpenSession,
+			cancelSession: vi.fn(async () => {}),
+			getAgentHandshake: () => undefined,
+			getSessionLinkStore: () => links,
+		},
+	};
+});
 
 const { registerAgentProviderRuntime } = await import(
 	"../../../agent-loop/index.js"
@@ -643,6 +654,8 @@ describe("agent-loop stream entry integration", () => {
 	});
 
 	it("routes built-in ACP providers through the agent-loop stream entry", async () => {
+		// 外部 agent 包装器拒绝不存在的工作目录;会话桩给的是这一条。
+		fs.mkdirSync("/tmp/project", { recursive: true });
 		const abortController = new AbortController();
 		mocks.acpStreamPrompt.mockImplementationOnce(async function* () {
 			yield {
@@ -687,6 +700,7 @@ describe("agent-loop stream entry integration", () => {
 			isImageGeneration: false,
 			pausedForConfirmation: false,
 		});
+		expect(mocks.acpOpenSession).toHaveBeenCalledWith("codex-acp", "s1", "/tmp/project");
 		expect(mocks.acpStreamPrompt).toHaveBeenCalledWith("codex-acp", {
 			localSessionId: "s1",
 			prompt: "hello",

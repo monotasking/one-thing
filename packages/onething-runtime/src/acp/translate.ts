@@ -1,25 +1,23 @@
-import { agentContentToText } from '@onething/core/agent-loop'
 import type {
   AgentFinishReason,
-  AgentModelCapabilities,
-  AgentProvider,
   AgentToolCall,
   AgentToolResult,
   AgentToolResultContentPart,
-  AgentTurnRequest,
   AgentTurnStreamEvent,
 } from '@onething/core/agent-loop'
-import { getLogger } from '../../logging/index.js'
-import { BaseAgentProvider } from './base/base-agent-provider.js'
 
-export interface CoreACPPromptStreamOptions {
-  localSessionId: string
-  prompt: string
-  cwd: string
-  abortSignal?: AbortSignal
-}
+/**
+ * ACP 流事件 → 引擎回合事件的翻译(A0-3 从 `agent-loop/providers/acp.ts` 搬来)。
+ *
+ * 这里只收「一条 `session/prompt` 的在飞事件怎么变成 `AgentTurnStreamEvent`」这一件事:
+ * 纯函数、不认识 `ACPManager`、不认识连接。连接器(`external-agents/acp-connector.ts`)
+ * 负责把会话开起来、把事件流递进来。翻译的**输出**本单一字不改,改它是 A2 的事。
+ *
+ * 入参用结构化子集而不是 SDK 的类型:测试夹具与回放文件可以直接写字面量,
+ * SDK 的判别联合换版时这一层也不跟着抖。
+ */
 
-export interface CoreACPContentPart {
+export interface ACPWireContentPart {
   type: string
   text?: string
 }
@@ -29,9 +27,9 @@ export interface CoreACPContentPart {
  * block (`type: 'content'`) or a diff (`type: 'diff'`). Terminal refs are
  * ignored.
  */
-export interface CoreACPToolCallContentPart {
+export interface ACPWireToolCallContentPart {
   type: string
-  content?: CoreACPContentPart | null
+  content?: ACPWireContentPart | null
   text?: string
   path?: string | null
   oldText?: string | null
@@ -42,13 +40,13 @@ export interface CoreACPToolCallContentPart {
  * Structural subset of the ACP `tool_call` / `tool_call_update` session
  * update payloads (@agentclientprotocol/sdk ToolCall / ToolCallUpdate).
  */
-export interface CoreACPSessionUpdate {
+export interface ACPWireSessionUpdate {
   sessionUpdate: string
   /**
    * Message/thought chunks carry a single content block; tool_call and
    * tool_call_update carry an array of ToolCallContent — same wire field.
    */
-  content?: CoreACPContentPart | CoreACPToolCallContentPart[] | null
+  content?: ACPWireContentPart | ACPWireToolCallContentPart[] | null
   toolCallId?: string
   title?: string | null
   kind?: string | null
@@ -57,45 +55,25 @@ export interface CoreACPSessionUpdate {
   rawOutput?: unknown
 }
 
-export type CoreACPPromptStreamEvent =
+export type ACPWireStreamEvent =
   | { type: 'warning'; message: string }
   | { type: 'finish'; stopReason: string; usage?: { inputTokens: number; outputTokens: number; totalTokens: number } }
   | {
       type: 'update'
       notification: {
-        update: CoreACPSessionUpdate
+        update: ACPWireSessionUpdate
       }
     }
 
-export interface CoreACPAgentProviderOptions {
-  workingDirectory?: string
-  localSessionId?: string
-  cwd?: () => string
-  streamPrompt: (
-    model: string,
-    options: CoreACPPromptStreamOptions,
-  ) => AsyncIterable<CoreACPPromptStreamEvent>
-}
-
-function mapACPFinishReason(stopReason: string): AgentFinishReason {
+export function mapACPFinishReason(stopReason: string): AgentFinishReason {
   if (stopReason === 'end_turn') return 'stop'
   if (stopReason === 'max_tokens') return 'length'
   if (stopReason === 'refusal') return 'content_filter'
   return 'unknown'
 }
 
-function latestUserPrompt(request: AgentTurnRequest): string {
-  for (let index = request.messages.length - 1; index >= 0; index--) {
-    const message = request.messages[index]
-    if (message.role !== 'user') continue
-    const text = agentContentToText(message.content).trim()
-    if (text) return text
-  }
-  return ''
-}
-
 function textFromACPContent(
-  content: CoreACPContentPart | CoreACPToolCallContentPart[] | null | undefined,
+  content: ACPWireContentPart | ACPWireToolCallContentPart[] | null | undefined,
 ): string | undefined {
   if (!content || Array.isArray(content)) return undefined
   return content.type === 'text' ? content.text : undefined
@@ -112,7 +90,7 @@ function safeStringify(value: unknown): string {
 }
 
 function acpToolContentToParts(
-  content: CoreACPToolCallContentPart[] | null | undefined,
+  content: ACPWireToolCallContentPart[] | null | undefined,
 ): AgentToolResultContentPart[] {
   const parts: AgentToolResultContentPart[] = []
   for (const item of content ?? []) {
@@ -140,7 +118,7 @@ interface ACPToolCallState {
 function createACPToolCallTracker(turn: number) {
   const states = new Map<string, ACPToolCallState>()
 
-  const start = (update: CoreACPSessionUpdate): AgentTurnStreamEvent[] => {
+  const start = (update: ACPWireSessionUpdate): AgentTurnStreamEvent[] => {
     const id = update.toolCallId
     if (!id) return []
     const existing = states.get(id)
@@ -164,7 +142,7 @@ function createACPToolCallTracker(turn: number) {
     return events
   }
 
-  const progress = (update: CoreACPSessionUpdate): AgentTurnStreamEvent[] => {
+  const progress = (update: ACPWireSessionUpdate): AgentTurnStreamEvent[] => {
     const id = update.toolCallId
     if (!id) return []
     const state = states.get(id)
@@ -186,7 +164,7 @@ function createACPToolCallTracker(turn: number) {
 
   const progressEvents = (
     state: ACPToolCallState,
-    update: CoreACPSessionUpdate,
+    update: ACPWireSessionUpdate,
   ): AgentTurnStreamEvent[] => {
     const events: AgentTurnStreamEvent[] = []
     const parts = acpToolContentToParts(Array.isArray(update.content) ? update.content : undefined)
@@ -238,103 +216,57 @@ function createACPToolCallTracker(turn: number) {
 }
 
 /**
- * ACP 的传输声明 —— **能力来自连上的那个 agent,不来自模型账本**
- * (`capabilitiesAreSelfDeclared`)。所以这份表就是最终答案:`BaseAgentProvider`
- * 在没有账本解析器时原样交出它,一个布尔都不翻。
+ * 一条 prompt 的事件流 → 引擎回合事件。工具调用跟踪器是这一轮的局部量,
+ * 流收场时把没收尾的调用一律结算掉,下游的步骤状态机才不会永远挂在「运行中」。
  */
-const ACP_TRANSPORT_CAPABILITIES: AgentModelCapabilities = {
-  capabilities: ['text-input', 'text-output', 'streaming', 'reasoning'],
-  inputModalities: ['text'],
-  outputModalities: ['text'],
-  supportsStreaming: true,
-  supportsReasoning: true,
-  supportsTools: false,
-}
+export async function* translateACPPromptStream(
+  events: AsyncIterable<ACPWireStreamEvent>,
+  turn: number,
+): AsyncGenerator<AgentTurnStreamEvent, void, void> {
+  const tracker = createACPToolCallTracker(turn)
 
-/**
- * ACP provider(P1-d1:从对象字面量改成 `BaseAgentProvider` 的子类)。
- *
- * 继承来的是身份、能力投影、`runTurn = collect(streamTurn)` 与 logger —— 与它
- * 从前手写的那份 `runTurn` 逐字等价。**不**继承 `HttpAgentProvider`:ACP 的传输
- * 是一条 JSON-RPC 会话,不是一次 fetch(设计稿 §2.9)。
- *
- * 实例无可写字段:每回合的可变量(工具调用跟踪器)活在 `streamTurn` 的局部里,
- * `options` 是构造时闭起来的只读依赖。
- */
-class ACPAgentProvider extends BaseAgentProvider {
-  constructor(private readonly options: CoreACPAgentProviderOptions) {
-    super({ providerId: 'acp', logger: getLogger('providers.acp') })
-  }
+  for await (const event of events) {
+    if (event.type === 'warning') {
+      yield { type: 'reasoning-delta', turn, delta: event.message }
+      continue
+    }
 
-  /** 能力来自连接的 agent,不是账本 —— 宿主的账本覆盖层看这一位跳过自己。 */
-  get capabilitiesAreSelfDeclared(): boolean {
-    return true
-  }
-
-  protected get transportCapabilities(): AgentModelCapabilities {
-    return ACP_TRANSPORT_CAPABILITIES
-  }
-
-  async *streamTurn(request: AgentTurnRequest): AsyncGenerator<AgentTurnStreamEvent, void, void> {
-    const { options } = this
-    const prompt = latestUserPrompt(request)
-    if (!prompt) throw new Error('ACP prompt is empty')
-
-    const tracker = createACPToolCallTracker(request.turn)
-
-    for await (const event of options.streamPrompt(request.model, {
-      localSessionId: options.localSessionId ?? `acp-${request.model}`,
-      prompt,
-      cwd: options.workingDirectory ?? options.cwd?.() ?? '.',
-      abortSignal: request.abortSignal,
-    })) {
-      if (event.type === 'warning') {
-        yield { type: 'reasoning-delta', turn: request.turn, delta: event.message }
-        continue
+    if (event.type === 'finish') {
+      yield* tracker.settleRemaining({ aborted: event.stopReason === 'cancelled' })
+      yield {
+        type: 'finish',
+        turn,
+        finishReason: mapACPFinishReason(event.stopReason),
+        usage: event.usage,
       }
+      continue
+    }
 
-      if (event.type === 'finish') {
-        yield* tracker.settleRemaining({ aborted: event.stopReason === 'cancelled' })
-        yield {
-          type: 'finish',
-          turn: request.turn,
-          finishReason: mapACPFinishReason(event.stopReason),
-          usage: event.usage,
+    const update = event.notification.update
+    switch (update.sessionUpdate) {
+      case 'agent_message_chunk':
+        {
+          const text = textFromACPContent(update.content)
+          if (text) yield { type: 'text-delta', turn, delta: text }
         }
-        continue
-      }
-
-      const update = event.notification.update
-      switch (update.sessionUpdate) {
-        case 'agent_message_chunk':
-          {
-            const text = textFromACPContent(update.content)
-            if (text) yield { type: 'text-delta', turn: request.turn, delta: text }
-          }
-          break
-        case 'agent_thought_chunk':
-          {
-            const text = textFromACPContent(update.content)
-            if (text) yield { type: 'reasoning-delta', turn: request.turn, delta: text }
-          }
-          break
-        case 'plan':
-          yield { type: 'reasoning-delta', turn: request.turn, delta: 'ACP plan updated.' }
-          break
-        case 'tool_call':
-          yield* tracker.start(update)
-          break
-        case 'tool_call_update':
-          yield* tracker.progress(update)
-          break
-        default:
-          break
-      }
+        break
+      case 'agent_thought_chunk':
+        {
+          const text = textFromACPContent(update.content)
+          if (text) yield { type: 'reasoning-delta', turn, delta: text }
+        }
+        break
+      case 'plan':
+        yield { type: 'reasoning-delta', turn, delta: 'ACP plan updated.' }
+        break
+      case 'tool_call':
+        yield* tracker.start(update)
+        break
+      case 'tool_call_update':
+        yield* tracker.progress(update)
+        break
+      default:
+        break
     }
   }
-}
-
-/** 工厂函数签名与导出名一字不变 —— 调用方看不出里面换成了一个类。 */
-export function createACPAgentProvider(options: CoreACPAgentProviderOptions): AgentProvider {
-  return new ACPAgentProvider(options)
 }

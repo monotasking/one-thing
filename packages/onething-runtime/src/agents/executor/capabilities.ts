@@ -99,12 +99,12 @@ const EXTERNAL_DESCRIPTORS: AgentExecutorDescriptor[] = [
        * 发言权,而它其实一句话都发不出去。
        */
       hostTools: false,
-      // connector 的 ACP_CAPABILITIES.steer = false。
+      // 连接器还没有 steer();握手自述的 `_meta.steering` 只填进连接器能力表,
+      // 真接上投递之前这里维持 false,宿主就不会把追话交给它。
       steer: false,
-      // 保守 false:acp-connector.interrupt 依赖可选的 cancelSession 回调,
-      // 缺席时是空操作——声明成真会让 E5 以为撤牌停住了其实没停。
-      // 等 cancelSession 变成必接的装配项再翻真。
-      interrupt: false,
+      // A0-3 起连接器的 interrupt 直连 ACPManager.cancelSession(`session/cancel`),
+      // 不再依赖可选回调,所以翻真。
+      interrupt: true,
       // ACP agent 自己维护会话上下文,与 claude-code 同理。
       contextWindow: 'theirs',
       // 保守 prepend:ACP 的 prompt 协议里没有 system 位,persona 只能拼在

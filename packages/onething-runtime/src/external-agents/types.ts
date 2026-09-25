@@ -50,6 +50,11 @@ export interface ExternalAgentSessionLink {
   cwd: string
   createdAt: number
   lastUsedAt: number
+  /**
+   * 一台连接器背后不止一个 agent 时(ACP:一个连接器、按 agent id 分多台),这条链接
+   * 对的是哪一台。单 agent 的连接器不填。
+   */
+  agentId?: string
 }
 
 /**
@@ -253,7 +258,13 @@ export type ExternalAgentSteerOutcome = 'steered' | 'queued' | 'unavailable'
 
 export interface ExternalAgentConnector {
   readonly id: string
+  /** 连接器的通用能力;一台连接器多个 agent 时是「还不知道是哪一台」时的保守答案。 */
   readonly capabilities: ExternalAgentCapabilities
+  /**
+   * 按本轮选中的 agent(`model`)答能力。**只有一个连接器背后多台 agent、能力由握手
+   * 自述的连接器才实现它**(ACP);缺席 = 读 `capabilities`。
+   */
+  capabilitiesFor?(model: string | undefined): ExternalAgentCapabilities
   streamTurn(request: ExternalAgentTurnRequest): AsyncIterable<ExternalAgentEvent>
   interrupt(localSessionId: string): Promise<void>
   /**

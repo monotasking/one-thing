@@ -9,7 +9,6 @@ import {
 } from '@onething/runtime/agent-loop/providers'
 import type { OAuthToken } from '@shared/ipc.js'
 import { credentialTargetFromSpaceMarker } from '@onething/runtime/auth'
-import { ACPManager } from '@onething/runtime/acp'
 import {
   getExternalAgentConnectors,
   persistExternalAgentSessionLink,
@@ -86,8 +85,6 @@ export function createAgentProviderFromRuntime(
   const createAgentProviderFromRuntimeOptions: CreateAgentProviderFromRuntimeOptions = {
     ...options,
     fetchImpl: options.fetchImpl ?? createRequiredAppFetch({ policy: 'streaming' }),
-    acpStreamPrompt: options.acpStreamPrompt ?? ((model, promptOptions) => ACPManager.streamPrompt(model, promptOptions)),
-    acpCwd: options.acpCwd ?? (() => process.cwd()),
     externalAgentConnectors: options.externalAgentConnectors ?? getExternalAgentConnectors(),
     resolveExternalAgentSessionLink:
       options.resolveExternalAgentSessionLink ?? resolveExternalAgentSessionLink,

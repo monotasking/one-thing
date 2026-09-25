@@ -45,10 +45,6 @@ import type { ProviderMediaReader } from "./base/index.js";
 import { OpenAIChatPartCodec } from "./wires/index.js";
 import type { AnthropicDialect, GeminiDialect, OpenAIChatDialect, ResponsesDialect } from "./wires/index.js";
 import type { AgentProviderRequestDumper } from "./request-dump.js";
-import {
-	createACPAgentProvider,
-	type CoreACPAgentProviderOptions,
-} from "./acp.js";
 import { createExternalAgentProvider } from "../../external-agents/provider.js";
 import type {
 	ExternalAgentConnector,
@@ -131,8 +127,6 @@ export interface CreateAgentProviderFromRuntimeOptions {
 	workingDirectory?: string;
 	localSessionId?: string;
 	fetchImpl?: typeof globalThis.fetch;
-	acpStreamPrompt?: CoreACPAgentProviderOptions["streamPrompt"];
-	acpCwd?: CoreACPAgentProviderOptions["cwd"];
 	/**
 	 * Refreshes an OAuth-backed provider's access token. Keyed by provider id
 	 * rather than one field per provider: codex is simply the only builtin that
@@ -448,43 +442,35 @@ registerAgentProviderRuntime(
 	{ replace: true },
 );
 
-registerAgentProviderRuntime(
-	"acp",
-	(_config, options) => {
-		if (!options.acpStreamPrompt) return undefined;
+/**
+ * 外部 agent 的 provider 都走同一个包装器(A0-3 单路合流):未绑目录拒绝、图片送不出去
+ * 说话、会话链接落盘,这些检查只写一份。连接器由宿主按 provider id 注入,没注入就没有
+ * 这个 provider。
+ */
+function registerExternalAgentProviderRuntime(providerId: string): void {
+	registerAgentProviderRuntime(
+		providerId,
+		(_config, options) => {
+			const connector = options.externalAgentConnectors?.[providerId];
+			if (!connector) return undefined;
 
-		return createACPAgentProvider({
-			workingDirectory: options.workingDirectory,
-			localSessionId: options.localSessionId,
-			cwd: options.acpCwd,
-			streamPrompt: options.acpStreamPrompt,
-		});
-	},
-	{ replace: true },
-);
+			return createExternalAgentProvider({
+				providerId,
+				connector,
+				localSessionId: options.localSessionId,
+				executionContext: options.executionContext,
+				workingDirectory: options.workingDirectory,
+				resolveSessionLink: (localSessionId) =>
+					options.resolveExternalAgentSessionLink?.(providerId, localSessionId),
+				onSessionLink: options.onExternalAgentSessionLink,
+			});
+		},
+		{ replace: true },
+	);
+}
 
-registerAgentProviderRuntime(
-	"claude-code-agent",
-	(_config, options) => {
-		const connector = options.externalAgentConnectors?.["claude-code-agent"];
-		if (!connector) return undefined;
-
-		return createExternalAgentProvider({
-			providerId: "claude-code-agent",
-			connector,
-			localSessionId: options.localSessionId,
-			executionContext: options.executionContext,
-			workingDirectory: options.workingDirectory,
-			resolveSessionLink: (localSessionId) =>
-				options.resolveExternalAgentSessionLink?.(
-					"claude-code-agent",
-					localSessionId,
-				),
-			onSessionLink: options.onExternalAgentSessionLink,
-		});
-	},
-	{ replace: true },
-);
+registerExternalAgentProviderRuntime("acp");
+registerExternalAgentProviderRuntime("claude-code-agent");
 
 registerAgentProviderRuntime(
 	"codex",

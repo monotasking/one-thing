@@ -61,7 +61,7 @@ describe('执行器解析单点(§3)', () => {
     expect(executor.capabilities).toEqual({
       hostTools: false,
       steer: false,
-      interrupt: false,
+      interrupt: true,
       contextWindow: 'theirs',
       persona: 'prepend',
     })

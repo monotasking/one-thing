@@ -525,6 +525,8 @@ interface ACPAgentState {
 - `core/engine/external-agent-providers.ts:41-44` `PROVIDER_EXECUTION_FACTS` 清空;确认 `agents/executor/registry.ts` 的 `syncAgentExecutorsToCore()` 在装配前已执行(它是模块加载时跑的,查 import 链确保 `backend.ts` 装配前已 import 过执行器注册表;没有就在 `backend.ts` 加一条静态 import,与工具 barrel 那三条同理由)。
 - 反证:清空 `PROVIDER_EXECUTION_FACTS` 后不接登记 → 压缩门对 acp 会话开始压缩 → `core-stream-engine` 现有测试至少 1 红。
 
+A0-3 施工记(2026-09-25):翻译搬进 `runtime/src/acp/translate.ts`(`translateACPPromptStream(events, turn)`,产出逐字未变);`ACPAgentConfig` 两份合一的落点是**第三个家 `packages/shared/contracts/acp.ts`**——契约层不许依赖产品层,产品层非 wiring 文件不许 import `@shared/ipc`,两边都够得着又不反向的只有 `@shared/contracts`(`usage.ts` 是先例);链接表一只对象由 `ACPManager.getSessionLinkStore()` 持有,`ExternalAgentSessionLink` 加可选 `agentId`,旧 `<store>/external-agents/session-links.json` 首次读时并入不删;连接器契约加可选 `capabilitiesFor(model)`(一台连接器多台 agent);执行器表 acp `interrupt` 翻真(直连 `session/cancel`),`steer` 仍 false 等投递接上。`backend.ts` 的静态 import 只是护栏——`wiring/external-agents` 已间接 import 到注册表,反证靠新测试 `backend/__tests__/provider-execution-facts.test.ts`(挖掉 `syncAgentExecutorsToCore()` 即红)。**可感知变化**:ACP 会话未绑目录改为结构化拒发(从前静默用 `process.cwd()`)。顺手做了图片:握手说收图就以 `image` / `resource_link` 块跟在文本后面发。留账:persona / system prompt 仍不送(要先让 composer 按执行器只给 persona 片段,不给本地工具说明——挪到 A2);首轮握手前能力是保守缺省,第一条带图的消息会被提示「送不出」,下一条起正常(A2 里让 `capabilitiesFor` 在 `ensureSession` 之后再问一次)。
+
 **A0-2 会话状态与回合事件分家。**
 
 - 新 `runtime/src/acp/session-state.ts`:`AcpSessionState`(§3.3 形状)+ `applySessionUpdate(state, update): AcpSessionState`(纯 reducer,十六个 case 本单只落 `available_commands_update` / `current_mode_update` / `config_option_update` / `session_info_update` / `usage_update` / `notice` / `plan` / `plan_update` / `plan_removed` / `compaction_update` 的**状态半边**,渲染与投影归 A2)+ 测试。

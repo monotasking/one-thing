@@ -210,9 +210,11 @@ class ExternalAgentProvider extends BaseAgentProvider {
      *
      * 这一位就是 `imagesIn` 的第二个读者:翻它会改行为,不只是改声明。
      */
-    const deliverableImages = options.connector.capabilities.imagesIn ? images : []
+    // 多 agent 的连接器(ACP)按本轮选中的那一台答能力;其余连接器就是 `capabilities`。
+    const capabilities = options.connector.capabilitiesFor?.(request.model) ?? options.connector.capabilities
+    const deliverableImages = capabilities.imagesIn ? images : []
     const undeliverableImageNotice =
-      !options.connector.capabilities.imagesIn && images.length > 0
+      !capabilities.imagesIn && images.length > 0
         ? externalAgentImagesUnsupportedNotice(images.length)
         : undefined
 
@@ -261,7 +263,7 @@ class ExternalAgentProvider extends BaseAgentProvider {
 
     const system = systemPrompt(request)
     const localSessionId = options.localSessionId ?? `${options.providerId}-${request.model}`
-    const resume = options.connector.capabilities.resume
+    const resume = capabilities.resume
       ? options.resolveSessionLink?.(localSessionId)
       : undefined
 
