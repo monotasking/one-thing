@@ -1,0 +1,177 @@
+/* 内存监视器:头(标题 + 总量 + 释放钮)、预算条、两节表(进程 / 缓存)。
+ * 三种形态(舞台 / 浮窗 / 架子)共用这一份,所以不写与形态有关的尺寸。 */
+.panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+}
+
+.head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-bottom: 1px solid var(--line-1);
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  color: var(--text-1);
+  white-space: nowrap;
+}
+
+.total {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  font-size: var(--fs-label);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spacer {
+  flex: 1;
+  min-width: 0;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-3);
+}
+
+.budget {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin-bottom: var(--sp-4);
+}
+
+.meta {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.error {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-meta);
+  color: var(--danger);
+}
+
+.none {
+  margin: 0;
+  padding: var(--sp-5) var(--sp-3);
+  text-align: center;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+.section {
+  margin-bottom: var(--sp-4);
+}
+
+.sectionLabel {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+/* 表头与数据行 grid 模板单产地(挤压纪律):名字吃剩下的、种类与读数按内容宽。 */
+.row,
+.headRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: var(--sp-3);
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-label);
+}
+
+.headRow {
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+.row {
+  border-radius: var(--r-1);
+  color: var(--text-1);
+}
+
+.row:hover {
+  background: var(--st-hover);
+}
+
+.name {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.nameText {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 行尾那条细槽:这一行占最大那一行的几成。颜色只上槽,不换行底。 */
+.share {
+  height: 2px;
+  border-radius: var(--r-full);
+  background: var(--line-1);
+  overflow: hidden;
+}
+
+.shareFill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.kind {
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.bytes {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.holder {
+  padding: var(--sp-2);
+  border-radius: var(--r-1);
+}
+
+.holder:hover {
+  background: var(--st-hover);
+}
+
+.holderLine {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--sp-3);
+  font-size: var(--fs-label);
+  color: var(--text-1);
+}
+
+.holderReadout {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+  white-space: nowrap;
+}

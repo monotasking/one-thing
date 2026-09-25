@@ -1071,6 +1071,24 @@ async function main() {
     )
 
     /*
+     * 内存监视器(2026-09-25)。读的是 core 的 `memory.report`,server 宿主上照样有 ——
+     * 所以它的 axe 住在这道门里。要扫的三样:进程表(`role="table"` 的行 / 列头 / 格)、
+     * 预算那条 `role="progressbar"`(要说得出「什么的占用」)、「释放缓存」那颗钮。
+     * 等的是**第一行进程**上屏,不是面板出现 —— 首载那一拍只有一句「正在读取…」。
+     */
+    console.log('\n[7c/14] 内存监视器:开一块面再扫一次')
+    await clickSelector(page, '[data-testid="dock-tile-memory"]')
+    await waitFor('内存监视器就位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="memory-panel"] [data-testid="memory-process-row"]'))),
+    )
+    await settle(page, '内存监视器')
+    await scanAxe(page, '内存监视器', '[data-testid="memory-panel"]')
+    await clickSelector(page, '[data-testid="dock-tile-memory"]')
+    await waitFor('内存监视器已收回', () =>
+      page.evaluate(() => !document.querySelector('[data-testid="memory-panel"]')),
+    )
+
+    /*
      * 「所有应用」面(08-31 Dock/形态批)。进这道门的理由与模型服务面逐字相同 ——
      * **外壳那一屏看不见它**,而它是一整列 `role="switch"` 加一整列打开钮:
      * 每一枚开关都得说得出「什么的开关」(Switch 的 `label`),每一颗打开钮都得
