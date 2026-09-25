@@ -208,6 +208,19 @@ export interface AcpAuthMethod {
   type: 'terminal' | 'agent'
 }
 
+/**
+ * 崩溃后自动重连的退避(A5,方案 §3.7):agent 进程意外没了之后,下一次要用它时自动重连;
+ * 30s 窗内至多 3 次,第 4 次被拒并锁上(`latched`),直到用户在 Agent 页点「重新连接」
+ * (`acp.reconnectAgent`,或手动 `connectAgent` / `refreshAgent`)。
+ * `attempts` = 窗内已经重连过几次;`until` = 窗内最早那一次过期的时刻(ms),锁上时缺席。
+ * 没重连过、也没锁 = 整格缺席。
+ */
+export interface AcpReconnectBackoff {
+  attempts: number
+  until?: number
+  latched: boolean
+}
+
 export interface AcpAgentAuth {
   methods: AcpAuthMethod[]
   required: boolean
@@ -240,6 +253,8 @@ export interface ACPAgentState {
   capabilities?: JsonObject
   sessionCount: number
   activePromptCount: number
+  /** 崩溃重连的退避(A5);没重连过也没锁 = 缺席。 */
+  backoff?: AcpReconnectBackoff
   /**
    * 登录(A3-c,方案 §3.5 / §3.9 ②):agent 在 `initialize` 里自报的 `authMethods`,加上
    * 「此刻要不要登录」。`required` 由 agent 以 `-32000 auth_required` 拒掉开会话 / 一轮,或
@@ -297,6 +312,20 @@ export interface AcpSessionProcess {
   status: ACPConnectionStatus
   error?: string
   pid?: number
+  /** 同 `ACPAgentState.backoff`(A5):承载这条会话的进程此刻的重连退避。 */
+  backoff?: AcpReconnectBackoff
+}
+
+/**
+ * agent 那边的一条会话(A5,协议 `session/list` 的 `SessionInfo`)。`adoptedSessionId` =
+ * 它已经对应着的本地会话(链接表里有、本地会话也还在);没有 = 还没认领过。
+ */
+export interface AcpRemoteSessionInfo {
+  acpSessionId: string
+  cwd: string
+  title?: string
+  updatedAt?: string
+  adoptedSessionId?: string
 }
 
 /**

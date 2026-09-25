@@ -73,6 +73,21 @@
  *      (删会话 → `session:` 资源 `deleted` → `AcpSubsystem` 作废那条会话名下的凭据)。
  *   反证:`serversFor` 答空表 → ⑰ 红;删会话不作废 → ⑱ 的 401 红。
  *
+ * A5(方案 §3.7 / §7 ⑲–㉑ / §11.6;会话生命):
+ *   ⑲ 崩溃重连 + 退避:第四台 `fake-crash`。发一条 → `kill -9` 它的进程(pid 取自 `acp.getAgents`)→
+ *      `acp:agent-state` 推来 `error` → 下一条消息自动重连并 `session/load` 回原会话(calls.log);
+ *      30s 内再崩再发两轮照样重连;第 4 次崩之后那一条被拒(`errorDetails` 里是退避那句话),
+ *      行上 `backoff.latched === true`,假 agent 那边**没有**新的 `init`(没起新进程);
+ *      `acp.reconnectAgent` 清锁,再发一条照常走通。
+ *   ⑳ 认领:第五台 `fake-remote`(`FAKE_AGENT_CAPS=list,fork,load`,每页 1 条)目录里预置两条带历史的
+ *      会话 → `acp.listRemoteSessions` 翻页列出这两条 → `acp.adoptSession` 建本地会话,账本上
+ *      `message/imported` ≥ 4 条、`imported` 与之相符,本地会话绑了那条的目录、模型指到这台 agent;
+ *      再认领一次答同一个 sessionId、`alreadyAdopted: true`;列表上那一条带 `adoptedSessionId`;
+ *      在认领来的会话上发一条,agent 在**那条**会话上答(不 `session/new`)。
+ *   ㉑ 分叉:`acp.forkSession` → 新本地会话(带着本地历史),假 agent 收到 `session/fork`(源 = 认领的
+ *      那条),链接表里新会话的 agent 会话 id ≠ 源的;在分叉上发一条,agent 在 fork 出来的那条上答。
+ *   反证:挖掉退避 → ⑲「第 4 次仍在重连」红;挖掉认领查重 → ⑳「再认领答同一条」红。
+ *
  * **必须用 node 起**(同 gate:search-index):server 的检索 Worker 要 `node:sqlite`,bun 没有。
  * 不构建:缺 `dist/server/main.js` 就叫你先 `bun run server:build`。
  * 绝不碰真 `~/.onething` —— 全程 `ONETHING_STORE_PATH` 指向 mkdtemp 出来的临时目录。
@@ -91,6 +106,12 @@ const AGENT_ID = 'fake'
 const A3_AGENT_ID = 'fake-a3'
 /** ⑯b 用的第三台:自报终端型登录,没登录就拒开会话。 */
 const AUTH_AGENT_ID = 'fake-auth'
+/** ⑲ 用的第四台:只为被 kill -9。 */
+const CRASH_AGENT_ID = 'fake-crash'
+/** ⑳㉑ 用的第五台:自报 list / fork / load,目录里预置两条带历史的会话。 */
+const REMOTE_AGENT_ID = 'fake-remote'
+/** 退避那句话里一定有的几个字(`runtime/src/acp/reconnect-backoff.ts` 的 `acpReconnectRefusal`)。 */
+const BACKOFF_REFUSAL = 'automatic reconnect is paused'
 /** ⑯ 的无人应答超时(毫秒);⑪–⑭ 门答卡远快于它。 */
 const UNANSWERED_TIMEOUT_MS = 2000
 /** 假 agent 在 `initialize` 里自报的两样(与夹具逐字对齐;夹具改了这里跟着改)。 */
@@ -300,6 +321,8 @@ const workDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onething-
 const agentDir = path.join(storePath, 'fake-agent')
 const a3AgentDir = path.join(storePath, 'fake-agent-a3')
 const authAgentDir = path.join(storePath, 'fake-agent-auth')
+const crashAgentDir = path.join(storePath, 'fake-agent-crash')
+const remoteAgentDir = path.join(storePath, 'fake-agent-remote')
 /** ⑬ 的「根外敏感文件」:一份假的私钥,放在会话目录之外的临时目录里 —— 门绝不去碰真的 `~/.ssh`。 */
 const lonelyDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onething-acp-gate-lonely-')))
 const outsideDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onething-acp-gate-outside-')))
@@ -310,7 +333,7 @@ try {
   fs.writeFileSync(path.join(storePath, 'settings.json'), JSON.stringify({
     ai: {
       provider: 'acp',
-      providers: { acp: { model: AGENT_ID, selectedModels: [AGENT_ID, A3_AGENT_ID, AUTH_AGENT_ID], enabled: true } },
+      providers: { acp: { model: AGENT_ID, selectedModels: [AGENT_ID, A3_AGENT_ID, AUTH_AGENT_ID, CRASH_AGENT_ID, REMOTE_AGENT_ID], enabled: true } },
       customProviders: [],
       modelCatalog: {},
     },
@@ -363,12 +386,52 @@ try {
           FAKE_AGENT_AUTH: 'terminal',
         },
         unattended: 'allow',
+      }, {
+        id: CRASH_AGENT_ID,
+        name: 'Fake Crash',
+        enabled: true,
+        command: process.execPath,
+        args: [fakeAgent],
+        env: { FAKE_AGENT_CAPS: 'load', FAKE_AGENT_DIR: crashAgentDir },
+        unattended: 'allow',
+      }, {
+        id: REMOTE_AGENT_ID,
+        name: 'Fake Remote',
+        enabled: true,
+        command: process.execPath,
+        args: [fakeAgent],
+        env: { FAKE_AGENT_CAPS: 'list,fork,load', FAKE_AGENT_DIR: remoteAgentDir, FAKE_AGENT_LIST_PAGE: '1' },
+        unattended: 'allow',
       }],
     },
     // 正常模式:A3-b 的卡要真的上屏(`dangerously-allow-all` 会让许可核一张都不问)。
     tools: { enableToolCalls: false, permissionMode: 'normal', tools: {} },
     diagnostics: { enabled: false },
   }, null, 2))
+
+  // ⑳:fake-remote 自己那边已经有两条会话(onething 从没见过),带着要回放的历史。
+  fs.mkdirSync(remoteAgentDir, { recursive: true })
+  const REMOTE_SESSIONS = [
+    {
+      id: 'remote-one', cwd: workDir, model: 'alpha', turns: 2, title: 'Remote one', updatedAt: '2026-09-20T10:00:00Z',
+      history: [
+        { kind: 'user', text: 'remote question one' },
+        { kind: 'thought', text: 'remote thinking' },
+        { kind: 'agent', text: 'remote answer one' },
+        { kind: 'tool', id: 'remote-tool-1', title: 'Read notes.md', input: { path: 'notes.md' } },
+        { kind: 'user', text: 'remote question two' },
+        { kind: 'agent', text: 'remote answer two' },
+        { kind: 'title', text: 'Remote one' },
+      ],
+    },
+    {
+      id: 'remote-two', cwd: workDir, model: 'alpha', turns: 1, title: 'Remote two',
+      history: [{ kind: 'user', text: 'second session' }, { kind: 'agent', text: 'second answer' }],
+    },
+  ]
+  for (const session of REMOTE_SESSIONS) {
+    fs.writeFileSync(path.join(remoteAgentDir, `${session.id}.json`), JSON.stringify(session))
+  }
 
   child = spawn(process.execPath, [serverEntry], {
     cwd: repoRoot,
@@ -803,9 +866,139 @@ try {
   }, 3_000) ?? await bridgeListTools() : 'no token'
   check(revokedStatus === 401, `⑱ 删掉会话之后,同一枚桥凭据 → 401(读到 ${revokedStatus})`)
 
+
+  // ── ⑲ 崩溃重连 + 退避(A5)──────────────────────────────────────
+  const agentRow = async agentId => (await rpc('acp', 'getAgents', {}))?.agents?.find(agent => agent.config?.id === agentId)
+  const completions = sessionId => sse.frames.filter(frame => frame.event === 'session:event'
+    && frame.data?.sessionId === sessionId && frame.data?.event?.type === 'stream:complete').length
+  const sendAndWait = async (sessionId, content) => {
+    const before = completions(sessionId)
+    await sendMessage(rpc, sessionId, content)
+    return waitFor(() => completions(sessionId) > before, 20_000)
+  }
+  const replyText = async sessionId => {
+    const message = await lastAssistant(rpc, sessionId)
+    return `${message?.content ?? ''} ${message?.errorDetails ?? ''}`
+  }
+  const killAgent = async () => {
+    const row = await agentRow(CRASH_AGENT_ID)
+    if (typeof row?.pid !== 'number') return { pid: undefined, errored: false }
+    process.kill(row.pid, 'SIGKILL')
+    const errored = await waitFor(async () => (await agentRow(CRASH_AGENT_ID))?.status === 'error', 5_000)
+    return { pid: row.pid, errored: Boolean(errored) }
+  }
+  const crashCalls = method => readCalls(crashAgentDir).filter(call => call.method === method)
+
+  const crashId = await createAcpSession(rpc, 'acp 门 · 崩溃', workDir, CRASH_AGENT_ID)
+  const crashFirst = await sendAndWait(crashId, 'hello crash')
+  const crashAcpId = crashCalls('new')[0]?.id
+  check(Boolean(crashFirst) && Boolean(crashAcpId), `⑲ 第一轮走通(agent 会话 ${crashAcpId ?? '缺席'})`)
+  const firstKill = await killAgent()
+  check(firstKill.errored, `⑲ kill -9 进程 ${firstKill.pid ?? '?'} 之后行上 status = error`)
+  check(sse.frames.some(frame => frame.event === 'acp:agent-state' && frame.data?.state?.config?.id === CRASH_AGENT_ID
+    && frame.data.state.status === 'error'), '⑲ SSE 上见到这台的 acp:agent-state status = error')
+  let reconnects = 0
+  for (let round = 1; round <= 3; round += 1) {
+    if (round > 1) {
+      const again = await killAgent()
+      if (!again.errored) break
+    }
+    const done = await sendAndWait(crashId, `after crash ${round}`)
+    const loads = crashCalls('load').filter(call => call.id === crashAcpId).length
+    const text = await replyText(crashId)
+    const row = await agentRow(CRASH_AGENT_ID)
+    if (done && loads === round && text.includes(`session=${crashAcpId}`) && row?.status === 'connected') reconnects += 1
+    check(row?.backoff?.attempts === round && row.backoff.latched === false,
+      `⑲ 第 ${round} 次崩后重连:backoff.attempts = ${round}、未锁(读到 ${JSON.stringify(row?.backoff ?? null)})`)
+  }
+  check(reconnects === 3, `⑲ 30s 内崩三次,三次都自动重连并 session/load 回同一条会话(做到 ${reconnects} 次)`)
+  const fourthKill = await killAgent()
+  const initsBeforeRefusal = crashCalls('init').length
+  await sendMessage(rpc, crashId, 'fourth time')
+  const refusal = await waitFor(async () => {
+    const text = await replyText(crashId)
+    return text.includes(BACKOFF_REFUSAL) ? text : undefined
+  }, 10_000)
+  check(fourthKill.errored && Boolean(refusal),
+    `⑲ 第 4 次崩之后那一条被拒,那句话落进助手消息(读到 ${JSON.stringify((await replyText(crashId)).slice(0, 200))})`)
+  const latchedRow = await agentRow(CRASH_AGENT_ID)
+  check(latchedRow?.backoff?.latched === true, `⑲ 行上 backoff.latched = true(读到 ${JSON.stringify(latchedRow?.backoff ?? null)})`)
+  check(sse.frames.some(frame => frame.event === 'acp:agent-state' && frame.data?.state?.config?.id === CRASH_AGENT_ID
+    && frame.data.state.backoff?.latched === true), '⑲ SSE 上见到带 backoff.latched 的 acp:agent-state')
+  await sleep(300)
+  check(crashCalls('init').length === initsBeforeRefusal,
+    `⑲ 被拒的那一次没有起新进程(init ${initsBeforeRefusal} → ${crashCalls('init').length})`)
+  const reconnected = await rpc('acp', 'reconnectAgent', { agentId: CRASH_AGENT_ID })
+  check(reconnected?.ok === true && reconnected.state?.status === 'connected' && !reconnected.state?.backoff?.latched,
+    `⑲ acp.reconnectAgent 清锁并连上(读到 ${JSON.stringify(reconnected?.ok ? { status: reconnected.state?.status, backoff: reconnected.state?.backoff ?? null } : reconnected)})`)
+  const afterReconnect = await sendAndWait(crashId, 'after reconnect')
+  check(Boolean(afterReconnect) && (await replyText(crashId)).includes(`session=${crashAcpId}`),
+    '⑲ 重新连接之后再发一条,照常走通(同一条 agent 会话)')
+
+  // ── ⑳ 认领(A5)────────────────────────────────────────────────
+  const remoteCalls = method => readCalls(remoteAgentDir).filter(call => call.method === method)
+  const remoteListed = await rpc('acp', 'listRemoteSessions', { agentId: REMOTE_AGENT_ID, cwd: workDir })
+  const listedIds = remoteListed?.ok ? remoteListed.sessions.map(session => session.acpSessionId).sort() : []
+  check(remoteListed?.ok === true && sameJson(listedIds, ['remote-one', 'remote-two']),
+    `⑳ listRemoteSessions 列出假 agent 自己那两条(读到 ${JSON.stringify(remoteListed?.ok ? listedIds : remoteListed)})`)
+  check(remoteCalls('list').length >= 2, `⑳ 翻页到底(每页 1 条,session/list 调了 ${remoteCalls('list').length} 次)`)
+  check(remoteListed?.ok && remoteListed.sessions.find(session => session.acpSessionId === 'remote-one')?.title === 'Remote one',
+    '⑳ 列表带 agent 自报的标题')
+  const unsupportedList = await rpc('acp', 'listRemoteSessions', { agentId: CRASH_AGENT_ID })
+  check(unsupportedList?.ok === false && unsupportedList.code === 'unsupported',
+    `⑳ 没自报 sessionCapabilities.list 的那台答 unsupported(读到 ${JSON.stringify(unsupportedList)})`)
+  const adopted = await rpc('acp', 'adoptSession', { agentId: REMOTE_AGENT_ID, acpSessionId: 'remote-one', cwd: workDir })
+  const adoptedId = adopted?.ok ? adopted.sessionId : undefined
+  const adoptedLedgerFile = adoptedId ? path.join(storePath, 'sessions', adoptedId, 'events.jsonl') : undefined
+  const adoptedLedger = adoptedLedgerFile && fs.existsSync(adoptedLedgerFile)
+    ? fs.readFileSync(adoptedLedgerFile, 'utf-8').split('\n').filter(Boolean).map(line => JSON.parse(line))
+    : []
+  const importedEvents = adoptedLedger.filter(record => record.type === 'message/imported')
+  check(adopted?.ok === true && adopted.alreadyAdopted === false && importedEvents.length >= 4 && adopted.imported === importedEvents.length,
+    `⑳ adoptSession 建了本地会话,账本上 message/imported ${importedEvents.length} 条、imported = ${adopted?.imported}(读到 ${JSON.stringify(adopted)})`)
+  check(importedEvents.every(record => record.data?.message?.origin?.source === 'acp-import'),
+    '⑳ 认领来的每一条都带 origin.source = acp-import')
+  check(remoteCalls('load').some(call => call.id === 'remote-one'), '⑳ 假 agent 收到 session/load remote-one')
+  const adoptedMessages = adoptedId ? ((await rpc('sessions', 'getMessages', { sessionId: adoptedId }))?.messages ?? []) : []
+  check(adoptedMessages.length >= 4 && adoptedMessages[0]?.role === 'user' && adoptedMessages[0]?.content === 'remote question one'
+    && adoptedMessages.some(message => message.role === 'assistant' && message.content === 'remote answer one'),
+    `⑳ 投影读得到回放的历史(${adoptedMessages.length} 条,首条 ${JSON.stringify(adoptedMessages[0]?.content ?? null)})`)
+  const adoptedSession = adoptedId ? (await rpc('sessions', 'get', { sessionId: adoptedId }))?.session : undefined
+  check(adoptedSession?.workingDirectory === workDir && adoptedSession?.lastProvider === 'acp' && adoptedSession?.lastModel === REMOTE_AGENT_ID,
+    `⑳ 本地会话绑了那条的目录、模型指到 ${REMOTE_AGENT_ID}(读到 ${JSON.stringify(adoptedSession
+      ? { wd: adoptedSession.workingDirectory, provider: adoptedSession.lastProvider, model: adoptedSession.lastModel, name: adoptedSession.name } : null)})`)
+  const adoptedAgain = await rpc('acp', 'adoptSession', { agentId: REMOTE_AGENT_ID, acpSessionId: 'remote-one', cwd: workDir })
+  check(adoptedAgain?.ok === true && adoptedAgain.sessionId === adoptedId && adoptedAgain.alreadyAdopted === true && adoptedAgain.imported === 0,
+    `⑳ 再认领一次答同一个 sessionId、alreadyAdopted = true(读到 ${JSON.stringify(adoptedAgain)})`)
+  const relisted = await rpc('acp', 'listRemoteSessions', { agentId: REMOTE_AGENT_ID, cwd: workDir })
+  check(relisted?.ok && relisted.sessions.find(session => session.acpSessionId === 'remote-one')?.adoptedSessionId === adoptedId
+    && !relisted.sessions.find(session => session.acpSessionId === 'remote-two')?.adoptedSessionId,
+    '⑳ 列表上认领过的那条带 adoptedSessionId,没认领的不带')
+  const adoptedReply = adoptedId ? await sendAndWait(adoptedId, 'continue remote') : undefined
+  check(Boolean(adoptedReply) && (await replyText(adoptedId)).includes('session=remote-one') && remoteCalls('new').length === 0,
+    `⑳ 在认领来的会话上发一条,agent 在 remote-one 上答、没有 session/new(读到 ${JSON.stringify((await replyText(adoptedId)).slice(0, 120))})`)
+
+  // ── ㉑ 分叉(A5)────────────────────────────────────────────────
+  const forked = adoptedId ? await rpc('acp', 'forkSession', { sessionId: adoptedId }) : undefined
+  const forkId = forked?.ok ? forked.sessionId : undefined
+  const forkCall = remoteCalls('fork')[0]
+  check(Boolean(forkId) && forkId !== adoptedId && forkCall?.from === 'remote-one' && forkCall?.cwd === workDir,
+    `㉑ forkSession 建了新本地会话,假 agent 收到 session/fork(源 remote-one;读到 ${JSON.stringify({ forked, forkCall })})`)
+  const linksFile = path.join(storePath, 'acp', 'session-links.json')
+  const linkTable = fs.existsSync(linksFile) ? JSON.parse(fs.readFileSync(linksFile, 'utf-8')) : { links: {} }
+  const forkLink = forkId ? linkTable.links?.[`${REMOTE_AGENT_ID}:${forkId}`] : undefined
+  const sourceLink = adoptedId ? linkTable.links?.[`${REMOTE_AGENT_ID}:${adoptedId}`] : undefined
+  check(Boolean(forkLink) && forkLink.acpSessionId === forkCall?.id && forkLink.acpSessionId !== sourceLink?.acpSessionId,
+    `㉑ 链接表里分叉的 agent 会话 id ≠ 源的(分叉 ${forkLink?.acpSessionId ?? '缺席'} / 源 ${sourceLink?.acpSessionId ?? '缺席'})`)
+  const forkMessages = forkId ? ((await rpc('sessions', 'getMessages', { sessionId: forkId }))?.messages ?? []) : []
+  check(forkMessages.length >= adoptedMessages.length, `㉑ 分叉带着本地这边的历史(${forkMessages.length} 条)`)
+  const forkReply = forkId ? await sendAndWait(forkId, 'on the fork') : undefined
+  check(Boolean(forkReply) && (await replyText(forkId)).includes(`session=${forkCall?.id}`),
+    `㉑ 在分叉上发一条,agent 在 fork 出来的那条上答(读到 ${JSON.stringify(forkId ? (await replyText(forkId)).slice(0, 120) : null)})`)
+
   // 名册刷新走一趟(RPC `acp.refreshRegistry` = 强制重拉 + 探测):开关关着就只重读种子与探测,
-  // 不联网 —— 收尾那一步从日志上核「一次拉取都没有」。server 宿主不调 `acp.start()`,
-  // 不走这一趟的话那条核对永远是空转。
+  // 不联网 —— 收尾那一步从日志上核「一次拉取都没有」。A5 起 server 装配后调 `acp.start()`
+  // (后台那趟 refresh 也在开关前止步),这一趟再显式强拉一次。
   const refreshed = await rpc('acp', 'refreshRegistry', {})
   check(refreshed?.success === true && refreshed.agents?.some(agent => agent.config?.id === AGENT_ID),
     `名册刷新成功,假 agent 仍在名册里(success = ${refreshed?.success})`)
@@ -850,4 +1043,4 @@ if (failures.length > 0) {
   console.error(`[gate:acp] ${failures.length} check(s) failed`)
   process.exit(1)
 }
-console.log('[gate:acp] ok —— ① 握手 / ② 会话目录 / ③ 流与协议外请求 / ④ prompt 之外的状态 / ⑥ diff / ⑦ terminal / ⑧ 计划 / ⑨ 用量 / ⑩ 切模式 / ⑪ 四选项 / ⑫ 始终允许 / ⑬ fs / ⑭ terminal / ⑮ 提问 / ⑯ 无人应答 / ⑯b 登录 / ⑰ 桥 / ⑱ 归因 全绿')
+console.log('[gate:acp] ok —— ① 握手 / ② 会话目录 / ③ 流与协议外请求 / ④ prompt 之外的状态 / ⑥ diff / ⑦ terminal / ⑧ 计划 / ⑨ 用量 / ⑩ 切模式 / ⑪ 四选项 / ⑫ 始终允许 / ⑬ fs / ⑭ terminal / ⑮ 提问 / ⑯ 无人应答 / ⑯b 登录 / ⑰ 桥 / ⑱ 归因 / ⑲ 崩溃退避 / ⑳ 认领 / ㉑ 分叉 全绿')

@@ -15,6 +15,8 @@ import type {
   AcpAgentAuth,
   AcpAgentSource,
   AcpAuthMethod,
+  AcpReconnectBackoff,
+  AcpRemoteSessionInfo,
   AcpSessionState,
 } from '../contracts/acp.js'
 import { defineRouter } from './router.js'
@@ -33,6 +35,8 @@ export type {
   AcpAgentAuth,
   AcpAgentSource,
   AcpAuthMethod,
+  AcpReconnectBackoff,
+  AcpRemoteSessionInfo,
   AcpSessionState,
 }
 
@@ -199,6 +203,65 @@ export type ACPAuthenticateResponse =
   | { ok: true; terminalId?: string }
   | { ok: false; code: 'unavailable' | 'no-terminal' | 'unknown-agent' | 'unknown-method' | 'failed'; error: string }
 
+/**
+ * 会话生命(A5,方案 §3.7 / §11.6)的四条。失败的 `code` 是稳定的机器码(壳按它查文案表),
+ * `error` 是一句给排障看的原话:`unsupported` = 这台 agent 在握手里没自报那项能力
+ * (`sessionCapabilities.list` / `fork`,或认领要的 `loadSession`);`unavailable` = 连不上 / 停用 /
+ * 名册里没有 / 崩溃退避锁着;`failed` = agent 拒了或本地落不下。
+ */
+export type AcpSessionLifecycleFailure = {
+  ok: false
+  code: 'unsupported' | 'unavailable' | 'failed'
+  error: string
+}
+
+/** 列 agent 那边的会话(协议 `session/list`,翻页直到没有 cursor,上限 500 条)。 */
+export interface ACPListRemoteSessionsRequest {
+  agentId: string
+  cwd?: string
+}
+
+export type ACPListRemoteSessionsResponse =
+  | { ok: true; sessions: AcpRemoteSessionInfo[] }
+  | AcpSessionLifecycleFailure
+
+/**
+ * 认领 agent 那边的一条会话:建本地会话 + 链接 + `session/load`,回放的历史折成
+ * `message/imported` 进账本。幂等:同一台 agent 的同一条会话认领过(本地会话还在)就答那一条,
+ * `alreadyAdopted: true`、`imported: 0`。
+ */
+export interface ACPAdoptSessionRequest {
+  agentId: string
+  acpSessionId: string
+  cwd: string
+}
+
+export type ACPAdoptSessionResponse =
+  | { ok: true; sessionId: string; imported: number; alreadyAdopted: boolean }
+  | AcpSessionLifecycleFailure
+
+/**
+ * 分叉(协议 `session/fork`):新本地会话(同目录、带着本地这边的历史)绑到 agent fork 出来的那条。
+ * `agentId` 缺席 = 这条会话选着的那台 agent。
+ */
+export interface ACPForkSessionRequest {
+  sessionId: string
+  agentId?: string
+}
+
+export type ACPForkSessionResponse =
+  | { ok: true; sessionId: string }
+  | AcpSessionLifecycleFailure
+
+/** 「重新连接」:清掉崩溃退避的锁,再连一次。 */
+export interface ACPReconnectAgentRequest {
+  agentId: string
+}
+
+export type ACPReconnectAgentResponse =
+  | { ok: true; state: ACPAgentState }
+  | { ok: false; error: string }
+
 // ============================================================================
 // acp 域的 router —— 结构债 P4c 第六批
 // ============================================================================
@@ -239,6 +302,10 @@ export type AcpRoutes = {
   detect: { input: ACPDetectRequest; output: ACPDetectResponse }
   refreshRegistry: { input: Record<string, never>; output: ACPRefreshRegistryResponse }
   authenticate: { input: ACPAuthenticateRequest; output: ACPAuthenticateResponse }
+  listRemoteSessions: { input: ACPListRemoteSessionsRequest; output: ACPListRemoteSessionsResponse }
+  adoptSession: { input: ACPAdoptSessionRequest; output: ACPAdoptSessionResponse }
+  forkSession: { input: ACPForkSessionRequest; output: ACPForkSessionResponse }
+  reconnectAgent: { input: ACPReconnectAgentRequest; output: ACPReconnectAgentResponse }
 }
 
 export const acpRouter = defineRouter<AcpRoutes>('acp', [
@@ -257,4 +324,8 @@ export const acpRouter = defineRouter<AcpRoutes>('acp', [
   'detect',
   'refreshRegistry',
   'authenticate',
+  'listRemoteSessions',
+  'adoptSession',
+  'forkSession',
+  'reconnectAgent',
 ])

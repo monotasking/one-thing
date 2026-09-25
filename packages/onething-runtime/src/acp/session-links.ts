@@ -54,6 +54,11 @@ export interface ACPSessionLinkStore {
   putExternalLink(link: ExternalAgentSessionLink): void
   getProfile(agentId: string): ACPAgentProfile | undefined
   putProfile(profile: ACPAgentProfile): void
+  /**
+   * 这台 ACP agent 的这条 agent 会话对应着哪些本地会话(A5 认领查重),新的在前。
+   * 只看 ACP 连接器的链接。
+   */
+  findByAcpSession(agentId: string, acpSessionId: string): ACPSessionLink[]
 }
 
 interface LinkFile {
@@ -159,6 +164,12 @@ export class MemoryACPSessionLinkStore implements ACPSessionLinkStore {
 
   getProfile(agentId: string): ACPAgentProfile | undefined {
     return this.read().profiles[agentId]
+  }
+
+  findByAcpSession(agentId: string, acpSessionId: string): ACPSessionLink[] {
+    return Object.values(this.read().links)
+      .filter(link => connectorOf(link) === ACP_CONNECTOR_ID && link.agentId === agentId && link.acpSessionId === acpSessionId)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
   }
 
   putProfile(profile: ACPAgentProfile): void {

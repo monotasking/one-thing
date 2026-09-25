@@ -34,6 +34,12 @@ const manager = vi.hoisted(() => ({
   getSessionState: vi.fn((_sessionId: string, _agentId?: string) => undefined as unknown),
   setSessionMode: vi.fn(async (_sessionId: string, _cwd: string | undefined, _modeId: string, _agentId?: string) => undefined as unknown),
   getAuthBridge: vi.fn(() => undefined as unknown),
+  reconnectAgent: vi.fn(async (_agentId: string) => ({}) as unknown),
+  listRemoteSessions: vi.fn(async (_agentId: string, _cwd?: string) => [] as unknown[]),
+  adoptRemoteSession: vi.fn(async () => ({}) as unknown),
+  forkSession: vi.fn(async () => ({}) as unknown),
+  linkedLocalSessions: vi.fn((_agentId: string, _acpSessionId: string) => [] as string[]),
+  canonicalAgentId: vi.fn((agentId: string) => agentId),
 }))
 
 const settings = vi.hoisted(() => ({
@@ -88,6 +94,10 @@ describe('acp RPC domain', () => {
     manager.getSessionState.mockReturnValue(undefined)
     manager.setSessionMode.mockResolvedValue(undefined)
     manager.getAuthBridge.mockReturnValue(undefined)
+    manager.reconnectAgent.mockResolvedValue({ config: AGENT, status: 'connected' })
+    manager.listRemoteSessions.mockResolvedValue([])
+    manager.linkedLocalSessions.mockReturnValue([])
+    manager.canonicalAgentId.mockImplementation((agentId: string) => agentId)
     settings.getSettings.mockReset().mockReturnValue({
       acp: { enabled: true, agents: [AGENT] },
     })
@@ -101,7 +111,7 @@ describe('acp RPC domain', () => {
     vi.resetModules()
   })
 
-  it('exposes exactly the fifteen acp methods and refuses anything else', async () => {
+  it('exposes exactly the nineteen acp methods and refuses anything else', async () => {
     const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
     dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
@@ -126,8 +136,12 @@ describe('acp RPC domain', () => {
       'detect',
       'refreshRegistry',
       'authenticate',
+      'listRemoteSessions',
+      'adoptSession',
+      'forkSession',
+      'reconnectAgent',
     ]
-    expect(expected).toHaveLength(15)
+    expect(expected).toHaveLength(19)
     expect([...acpRouter.methods].sort()).toEqual([...expected].sort())
     for (const method of expected) {
       const response = await dispatchRpc({
@@ -410,6 +424,43 @@ describe('acp RPC domain', () => {
     expect(authenticate).toHaveBeenCalledWith(AGENT.id, 'login')
   })
 
+  it('A5:listRemoteSessions 把「没自报能力」答成 unsupported;reconnectAgent 答 { ok, state }', async () => {
+    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
+    resetRpcRegistryForTests()
+    dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
+
+    manager.listRemoteSessions.mockResolvedValueOnce([{ acpSessionId: 'r1', cwd: '/w' }])
+    manager.linkedLocalSessions.mockReturnValueOnce(['s1'])
+    const listed = await dispatchRpc({ domain: 'acp', method: 'listRemoteSessions', payload: { agentId: AGENT.id } })
+    expect(listed.ok && listed.data).toEqual({ ok: true, sessions: [{ acpSessionId: 'r1', cwd: '/w', adoptedSessionId: 's1' }] })
+
+    manager.listRemoteSessions.mockRejectedValueOnce(Object.assign(new Error('no list'), { code: 'unsupported' }))
+    const unsupported = await dispatchRpc({ domain: 'acp', method: 'listRemoteSessions', payload: { agentId: AGENT.id } })
+    expect(unsupported.ok && unsupported.data).toEqual({ ok: false, code: 'unsupported', error: 'no list' })
+
+    const reconnected = await dispatchRpc({ domain: 'acp', method: 'reconnectAgent', payload: { agentId: AGENT.id } })
+    expect(manager.reconnectAgent).toHaveBeenCalledWith(AGENT.id)
+    expect(reconnected.ok && reconnected.data).toEqual({ ok: true, state: { config: AGENT, status: 'connected' } })
+
+    manager.reconnectAgent.mockRejectedValueOnce(new Error('ACP agent "ghost" not found'))
+    const failed = await dispatchRpc({ domain: 'acp', method: 'reconnectAgent', payload: { agentId: 'ghost' } })
+    expect(failed.ok && failed.data).toEqual({ ok: false, error: 'ACP agent "ghost" not found' })
+  })
+
+  it('A5:认领已认领过的会话直接答那一条,不再 load', async () => {
+    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
+    resetRpcRegistryForTests()
+    dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
+    manager.linkedLocalSessions.mockReturnValue(['s1'])
+    const adopted = await dispatchRpc({
+      domain: 'acp',
+      method: 'adoptSession',
+      payload: { agentId: AGENT.id, acpSessionId: 'r1', cwd: '/work/s1' },
+    })
+    expect(adopted.ok && adopted.data).toEqual({ ok: true, sessionId: 's1', imported: 0, alreadyAdopted: true })
+    expect(manager.adoptRemoteSession).not.toHaveBeenCalled()
+  })
+
   it('reports a manager failure as a structured error, not a thrown dispatch', async () => {
     const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
@@ -428,6 +479,16 @@ describe('acp RPC domain', () => {
     })
   })
 })
+// A5 的认领 / 分叉按需取 `sessions` 域建本地会话;这组用例不验那条路(`wiring/acp/__tests__/
+// session-lifecycle.test.ts` 与 gate:acp ⑳㉑ 验),给一只轻的替身,免得把整个 sessions 模块图装进来。
+vi.mock('../domains/sessions.js', () => ({
+  sessionsRpcHandlers: {
+    create: vi.fn(async () => ({ success: false, error: 'sessions domain stubbed' })),
+    delete: vi.fn(async () => ({ success: true, deletedCount: 0 })),
+    updateWorkingDirectory: vi.fn(async () => ({ success: true })),
+    updateModel: vi.fn(async () => ({ success: true })),
+  },
+}))
 // Adapter fixtures explicitly belong to the local operator on both transports.
 vi.mock('../../session/access.js', async importOriginal => {
   const actual = await importOriginal<typeof import('../../session/access.js')>()

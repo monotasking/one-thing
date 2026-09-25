@@ -21,6 +21,8 @@ import type {
   AcpAgentAuth,
   AcpAgentSource,
   AcpAuthMethod,
+  AcpReconnectBackoff,
+  AcpRemoteSessionInfo,
   AcpSessionState,
 } from '@shared/contracts/acp.js'
 
@@ -40,6 +42,8 @@ export type {
   AcpAgentAuth,
   AcpAgentSource,
   AcpAuthMethod,
+  AcpReconnectBackoff,
+  AcpRemoteSessionInfo,
   AcpSessionState,
 }
 

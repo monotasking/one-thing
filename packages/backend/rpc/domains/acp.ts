@@ -53,6 +53,11 @@ import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingACPIpcLogger } from '@onething/runtime/acp/ipc-operations'
 import type { OnethingACPIpcAdapters } from '@onething/runtime/acp/ipc-operations'
+import type { ChatMessage } from '@shared/ipc/chat.js'
+import type { ACPAdoptSessionResponse } from '@shared/ipc/acp.js'
+import { sessionCommands } from '../../session/commands.js'
+import { flushSessionEventLog } from '../../session/event-log.js'
+import { AcpSessionLifecycle, type AcpSessionLifecyclePorts } from '../../wiring/acp/session-lifecycle.js'
 
 const log = getLogger('rpc.acp')
 /** 投影层收的是鸭子 logger;`@main` 那份原来直接递 `console`,这里递受管的那只。 */
@@ -164,6 +169,76 @@ function optionsFailure(error: unknown): AcpRoutes['sessionOptions']['output'] {
   const message = error instanceof Error ? error.message : String(error)
   log.warn('acp session options failed', { error: message })
   return { success: false, options: [], live: false, error: message }
+}
+
+/** 认领在飞表(A5):按调用方造的 `AcpSessionLifecycle` 共用这一张,连点两下只认领一次。 */
+const adoptionsInFlight = new Map<string, Promise<ACPAdoptSessionResponse>>()
+
+function envelopeError(result: { success?: boolean; error?: string } | undefined, fallback: string): string {
+  return result?.error || fallback
+}
+
+/**
+ * 会话生命(A5)的端口:本地会话走 `sessions` 域**同一组**处理器(建 / 分支 / 绑目录 / 指模型 /
+ * 删),带着这一次的调用方身份 —— 归属印、沙箱夹持、事件与 `sessions.create` 逐字同一条路;
+ * 消息进账本走命令面 `replaceAll({ reason: 'replaced' })`(一条消息一条 `message/imported`)。
+ */
+function lifecyclePorts(context: RpcDispatchContext): AcpSessionLifecyclePorts {
+  /*
+   * `sessions` 域按需取(调用时才 import):它的模块图很重(资源面、协作、分支…),而认领 / 分叉
+   * 是少见的动作 —— 静态 import 会让每个只想读 agent 列表的宿主与单测都先把它整个装一遍。
+   * 调用时早已装配完,动态 import 拿到的就是注册表里那一份模块。
+   */
+  const sessions = async () => (await import('./sessions.js')).sessionsRpcHandlers
+  return {
+    manager: {
+      listRemoteSessions: (agentId, cwd) => ACPManager.listRemoteSessions(agentId, cwd),
+      adoptRemoteSession: (agentId, localSessionId, acpSessionId, cwd) =>
+        ACPManager.adoptRemoteSession(agentId, localSessionId, acpSessionId, cwd),
+      forkSession: (agentId, source, target, cwd) => ACPManager.forkSession(agentId, source, target, cwd),
+      linkedLocalSessions: (agentId, acpSessionId) => ACPManager.linkedLocalSessions(agentId, acpSessionId),
+      canonicalAgentId: agentId => ACPManager.canonicalAgentId(agentId),
+    },
+    getSession: sessionId => {
+      if (!sessionAccess.resolveOptional(context, sessionId, 'read')) return undefined
+      const session = sessionReads.getSession(sessionId)
+      return session
+        ? {
+            workingDirectory: session.workingDirectory,
+            lastProvider: session.lastProvider,
+            lastModel: session.lastModel,
+            name: session.name,
+          }
+        : undefined
+    },
+    createSession: async ({ sessionId, name, cwd, agentId }) => {
+      const sessionsRpcHandlers = await sessions()
+      const made = await sessionsRpcHandlers.create({ name, sessionId }, context)
+      if (!made.success || !made.session?.id) return { ok: false, error: envelopeError(made, 'Failed to create session') }
+      const id = made.session.id
+      const workdir = await sessionsRpcHandlers.updateWorkingDirectory({ sessionId: id, workingDirectory: cwd }, context)
+      if (!workdir.success) return { ok: false, error: envelopeError(workdir, 'Failed to bind the working directory') }
+      const model = await sessionsRpcHandlers.updateModel({ sessionId: id, provider: 'acp', model: agentId }, context)
+      if (!model.success) return { ok: false, error: envelopeError(model, 'Failed to select the ACP agent') }
+      return { ok: true, sessionId: id }
+    },
+    listMessages: sessionId => {
+      if (!sessionAccess.resolveOptional(context, sessionId, 'read')) return []
+      return sessionReads.listMessages(sessionId).messages
+    },
+    importMessages: async (sessionId, messages: ChatMessage[]) => {
+      await sessionCommands.replaceAll(sessionId, { messages, reason: 'replaced' })
+      // 语义检查点:认领 / 分叉答「成了」的那一刻,这些消息必须已经在盘上。
+      await flushSessionEventLog(sessionId)
+    },
+    discardSession: async sessionId => {
+      await (await sessions()).delete({ sessionId }, context)
+    },
+  }
+}
+
+function lifecycle(context: RpcDispatchContext): AcpSessionLifecycle {
+  return new AcpSessionLifecycle(lifecyclePorts(context), adoptionsInFlight)
 }
 
 export const acpRpcHandlers: RpcRouteHandlers<AcpRoutes> = {
@@ -288,6 +363,44 @@ export const acpRpcHandlers: RpcRouteHandlers<AcpRoutes> = {
       return { ok: false, code: 'unknown-method', error: 'agentId and methodId are required' }
     }
     return bridge.authenticate(request.agentId, request.methodId)
+  },
+  /** agent 那边的会话(A5,`session/list`)。要这台 agent 自报 `sessionCapabilities.list`。 */
+  async listRemoteSessions(request, context = DESKTOP_RPC_CONTEXT) {
+    return lifecycle(context).listRemoteSessions({ agentId: request?.agentId, cwd: request?.cwd })
+  },
+  /**
+   * 认领(A5):建本地会话(与 `sessions.create` 同一条路)+ 链接 + `session/load`,回放折成
+   * `message/imported` 进账本。同一台 agent 的同一条会话认领过(本地会话还在)= 答那一条。
+   */
+  async adoptSession(request, context = DESKTOP_RPC_CONTEXT) {
+    return lifecycle(context).adoptSession({
+      agentId: request?.agentId,
+      acpSessionId: request?.acpSessionId,
+      cwd: request?.cwd,
+    })
+  },
+  /** 分叉(A5,`session/fork`):新本地会话(带着本地历史、同目录)绑到 fork 出来的那条。 */
+  async forkSession(request, context = DESKTOP_RPC_CONTEXT) {
+    if (!request?.sessionId) return { ok: false, code: 'failed', error: 'sessionId is required' }
+    try {
+      sessionAccess.resolve(context, request.sessionId, 'read')
+    } catch (error) {
+      return { ok: false, code: 'failed', error: error instanceof Error ? error.message : String(error) }
+    }
+    return lifecycle(context).forkSession({ sessionId: request.sessionId, agentId: request.agentId })
+  },
+  /** 「重新连接」(A5):清掉崩溃退避的锁,再连一次。答带名册那一半的行。 */
+  async reconnectAgent(request) {
+    if (!request?.agentId) return { ok: false, error: 'agentId is required' }
+    try {
+      const live = await ACPManager.reconnectAgent(request.agentId)
+      const state = getCurrentBackendInstance()?.acp.agentState(live.config.id) ?? live
+      return { ok: true, state }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      log.warn('acp reconnect failed', { agentId: request.agentId, error: message })
+      return { ok: false, error: message }
+    }
   },
   async cancelSession(request, context = DESKTOP_RPC_CONTEXT) {
     sessionAccess.resolve(context, request.sessionId, 'abort')

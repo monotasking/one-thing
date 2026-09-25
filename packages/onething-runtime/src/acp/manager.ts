@@ -12,9 +12,10 @@ import type {
   ACPSessionOption,
   ACPSessionOptionsSnapshot,
   ACPSettings,
+  AcpRemoteSessionInfo,
   AcpSessionState,
 } from './types.js'
-import type { InitializeResponse } from '@agentclientprotocol/sdk'
+import type { InitializeResponse, SessionUpdate } from '@agentclientprotocol/sdk'
 import { ACPClient } from './client.js'
 import { FileACPSessionLinkStore, type ACPSessionLinkStore } from './session-links.js'
 
@@ -341,10 +342,49 @@ class ACPManagerClass {
     }
   }
 
+  /** 用户点的「连接」:手动那一档,顺带清掉崩溃退避(A5)。 */
   async connectAgent(agentId: string): Promise<ACPAgentState> {
     const client = this.getOrCreateClient(agentId)
-    await client.connect()
+    await client.connect({ manual: true })
     return client.state
+  }
+
+  /** 「重新连接」(A5):清掉崩溃退避的锁,再连一次。与开会话同一道开关判断。 */
+  async reconnectAgent(agentId: string): Promise<ACPAgentState> {
+    const client = this.usableClient(agentId)
+    await client.reconnect()
+    return client.state
+  }
+
+  /** agent 那边的会话(A5,`session/list`)。 */
+  async listRemoteSessions(agentId: string, cwd?: string): Promise<AcpRemoteSessionInfo[]> {
+    return this.usableClient(agentId).listRemoteSessions(cwd)
+  }
+
+  /** 认领(A5):`session/load` 那条 agent 会话到这条本地会话上,答回放。 */
+  async adoptRemoteSession(
+    agentId: string,
+    localSessionId: string,
+    acpSessionId: string,
+    cwd: string,
+  ): Promise<{ acpSessionId: string; cwd: string; replay: SessionUpdate[] }> {
+    return this.usableClient(agentId).adoptRemoteSession(localSessionId, acpSessionId, cwd)
+  }
+
+  /** 分叉(A5,`session/fork`)。 */
+  async forkSession(
+    agentId: string,
+    sourceLocalSessionId: string,
+    targetLocalSessionId: string,
+    cwd?: string,
+  ): Promise<{ acpSessionId: string; cwd: string }> {
+    return this.usableClient(agentId).forkSession(sourceLocalSessionId, targetLocalSessionId, cwd)
+  }
+
+  /** 这条 agent 会话已经对应着哪些本地会话(链接表里的,新的在前;本地会话还在不在由调用方判)。 */
+  linkedLocalSessions(agentId: string, acpSessionId: string): string[] {
+    return this.sessionLinks.findByAcpSession(this.resolveAgentId(agentId), acpSessionId)
+      .map(link => link.localSessionId)
   }
 
   async disconnectAgent(agentId: string): Promise<void> {

@@ -1,4 +1,17 @@
-export { ACPClient, authMethodsOf, projectACPConfigOptions, resolveACPSessionCwd } from './client.js'
+export {
+  ACPClient,
+  AcpCapabilityMissingError,
+  AcpReconnectPausedError,
+  authMethodsOf,
+  projectACPConfigOptions,
+  resolveACPSessionCwd,
+} from './client.js'
+export {
+  ACP_RECONNECT_MAX_ATTEMPTS,
+  ACP_RECONNECT_WINDOW_MS,
+  AcpReconnectBackoffGate,
+  acpReconnectRefusal,
+} from './reconnect-backoff.js'
 export { ACP_CONNECTOR_ID, FileACPSessionLinkStore, MemoryACPSessionLinkStore } from './session-links.js'
 export { mapACPFinishReason, translateACPPromptStream } from './translate.js'
 export {
@@ -58,6 +71,8 @@ export type {
   AcpElicitationRequest,
   AcpElicitationResponse,
   AcpFsBridge,
+  AcpReconnectBackoff,
+  AcpRemoteSessionInfo,
   AcpSessionState,
   AcpTerminalBridge,
   AcpTerminalExitStatus,

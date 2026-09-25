@@ -49,6 +49,7 @@ import type {
   AcpClientRequestContext,
   AcpElicitationBridge,
   AcpFsBridge,
+  AcpRemoteSessionInfo,
   AcpSessionState,
   AcpTerminalBridge,
 } from './types.js'
@@ -60,6 +61,7 @@ import {
   withAcpSessionProcess,
 } from './session-state.js'
 import { acpAgentUsage, acpTurnCost } from './usage.js'
+import { ACP_RECONNECT_MAX_ATTEMPTS, AcpReconnectBackoffGate, acpReconnectRefusal } from './reconnect-backoff.js'
 
 import { getLogger } from '../logging/index.js'
 
@@ -82,6 +84,31 @@ const CONNECTION_CLOSED_EXIT_GRACE_MS = 250
  */
 const MAX_PARKED_UPDATES_PER_SESSION = 64
 const MAX_PARKED_SESSIONS = 8
+/** `session/list` 翻页的总上限(A5):一台 agent 攒了上千条会话时,列表只给最近的这么多。 */
+const MAX_REMOTE_SESSIONS = 500
+/** 翻页轮数的硬上限:agent 答的 cursor 永远不收敛时也停得下来。 */
+const MAX_REMOTE_SESSION_PAGES = 100
+
+/**
+ * 这台 agent 没自报这项能力(A5:`sessionCapabilities.list` / `fork`,认领要的 `loadSession`)。
+ * 装配层据它答 `code: 'unsupported'`,而不是把它当成一次失败。
+ */
+export class AcpCapabilityMissingError extends Error {
+  readonly code = 'unsupported' as const
+  constructor(agentName: string, capability: string) {
+    super(`ACP agent "${agentName}" does not advertise ${capability}`)
+    this.name = 'AcpCapabilityMissingError'
+  }
+}
+
+/** 崩溃退避锁着,自动重连被拒(A5)。装配层据它答 `code: 'unavailable'`。 */
+export class AcpReconnectPausedError extends Error {
+  readonly code = 'unavailable' as const
+  constructor(message: string) {
+    super(message)
+    this.name = 'AcpReconnectPausedError'
+  }
+}
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
@@ -409,6 +436,13 @@ export class ACPClient {
   private stderrTail = ''
   private unexpectedExit = false
   private connectPromise: Promise<void> | null = null
+  /** 崩后自动重连的退避(A5)。手动连(`connect({ manual: true })` / `refresh` / `reconnect`)清它。 */
+  private readonly backoff: AcpReconnectBackoffGate
+  /**
+   * 认领(A5)时 `session/load` 回放的接收处:agent 会话 id → 收集函数。只有认领装它,普通的
+   * 恢复不装 —— 那条路上回放照旧不进任何地方(onething 自己有历史,不需要第二份)。
+   */
+  private replaySinks = new Map<string, (update: SessionUpdate) => void>()
 
   constructor(
     private config: ACPAgentConfig,
@@ -433,8 +467,12 @@ export class ACPClient {
       getAuthBridge?: () => AcpAuthBridge | undefined
       /** 提问(A3-c)。注入了才声明 `elicitation` 并挂 `elicitation/*`;缺席 = 不声明、不挂。 */
       getElicitationBridge?: () => AcpElicitationBridge | undefined
+      /** 崩溃退避(A5);缺席 = 按真钟、30s / 3 次造一只。单测递一只假钟的。 */
+      reconnectBackoff?: AcpReconnectBackoffGate
     } = {},
-  ) {}
+  ) {
+    this.backoff = runtimeOptions.reconnectBackoff ?? new AcpReconnectBackoffGate()
+  }
 
   get id(): string {
     return this.config.id
@@ -471,8 +509,13 @@ export class ACPClient {
         : undefined,
       sessionCount: this.sessions.size,
       activePromptCount: this.activePromptCountValue,
+      ...(this.backoffState ? { backoff: this.backoffState } : {}),
       ...(this.authState ? { auth: this.authState } : {}),
     }
+  }
+
+  private get backoffState(): ACPAgentState['backoff'] {
+    return this.backoff.snapshot()
   }
 
   /** 登录那一格:握手自报了方法,或者被拒过 / 被推过「没登录」,才有。 */
@@ -556,10 +599,12 @@ export class ACPClient {
   }
 
   private get processState(): AcpSessionState['process'] {
+    const backoff = this.backoffState
     return {
       status: this.statusValue,
       ...(this.errorValue ? { error: this.errorValue } : {}),
       ...(this.child?.pid !== undefined ? { pid: this.child.pid } : {}),
+      ...(backoff ? { backoff } : {}),
     }
   }
 
@@ -569,7 +614,8 @@ export class ACPClient {
    */
   private syncProcess(): void {
     const process = this.processState
-    const key = `${process.status}|${process.pid ?? ''}|${process.error ?? ''}`
+    const backoff = process.backoff
+    const key = `${process.status}|${process.pid ?? ''}|${process.error ?? ''}|${backoff ? `${backoff.attempts}/${backoff.latched}` : ''}`
     const auth = this.authState
     const agentKey = `${key}|${auth ? `${auth.required}|${auth.label ?? ''}|${auth.methods.map(method => method.id).join(',')}` : ''}`
     if (agentKey !== this.lastAgentKey) {
@@ -674,9 +720,30 @@ export class ACPClient {
     }
   }
 
-  async connect(): Promise<void> {
+  /**
+   * 连上这台 agent。`manual` = 用户亲手点的(连接 / 刷新 / 重新连接):先清掉崩溃退避。
+   * 其余的调用(发消息、开会话、选项面板)都是**自动**的:上一次连接是意外收尾的(`status ===
+   * 'error'`:崩了、被杀、握手没过)就算一次崩后重连,过退避那道闸(A5,30s 窗内至多 3 次;
+   * 超了就锁上,抛 {@link AcpReconnectPausedError},那句话经 provider 的失败路落进这一轮的
+   * `errorDetails`)。
+   */
+  async connect(options: { manual?: boolean } = {}): Promise<void> {
+    if (options.manual) this.clearBackoff('manual connect')
     if (this.statusValue === 'connected' && this.connection) return
     if (this.connectPromise) return this.connectPromise
+    if (!options.manual && this.statusValue === 'error') {
+      if (!this.backoff.admit()) {
+        this.syncProcess()
+        const refusal = acpReconnectRefusal(this.config.name, ACP_RECONNECT_MAX_ATTEMPTS, this.backoff.windowSeconds, this.errorValue)
+        log.warn('agent reconnect refused: backoff latched', { agentId: this.id })
+        throw new AcpReconnectPausedError(refusal.message)
+      }
+      log.info('agent reconnecting after an unexpected end', {
+        agentId: this.id,
+        attempts: this.backoff.attemptCount,
+        previousError: this.errorValue,
+      })
+    }
 
     this.connectPromise = this.openConnection().finally(() => {
       this.connectPromise = null
@@ -858,8 +925,21 @@ export class ACPClient {
   }
 
   async refresh(): Promise<void> {
+    this.clearBackoff('refresh')
     await this.disconnect()
-    await this.connect()
+    await this.connect({ manual: true })
+  }
+
+  /** 「重新连接」(A5):清掉崩溃退避的锁,再连一次(连着就不动)。 */
+  async reconnect(): Promise<void> {
+    await this.connect({ manual: true })
+  }
+
+  private clearBackoff(why: string): void {
+    if (!this.backoff.snapshot()) return
+    this.backoff.reset()
+    log.info('agent reconnect backoff cleared', { agentId: this.id, why })
+    this.syncProcess()
   }
 
   async cancelLocalSession(localSessionId: string): Promise<void> {
@@ -877,6 +957,157 @@ export class ACPClient {
     await this.connect()
     const session = await this.ensureSession(localSessionId, cwd, open)
     return { acpSessionId: session.acpSessionId, cwd: session.cwd }
+  }
+
+  /**
+   * agent 那边的会话(A5,协议 `session/list`,能力位 `sessionCapabilities.list`)。翻页直到没有
+   * cursor,至多 {@link MAX_REMOTE_SESSIONS} 条。会连上 agent(自动那一档,过崩溃退避)。
+   */
+  async listRemoteSessions(cwd?: string): Promise<AcpRemoteSessionInfo[]> {
+    await this.connect()
+    const connection = this.connection
+    if (!connection) throw new Error('ACP connection is not available')
+    if (!this.initResponse?.agentCapabilities?.sessionCapabilities?.list) {
+      throw new AcpCapabilityMissingError(this.config.name, 'sessionCapabilities.list')
+    }
+    const out: AcpRemoteSessionInfo[] = []
+    const seenCursors = new Set<string>()
+    let cursor: string | undefined
+    for (let page = 0; page < MAX_REMOTE_SESSION_PAGES && out.length < MAX_REMOTE_SESSIONS; page += 1) {
+      const response = await connection.agent.request(acp.methods.agent.session.list, {
+        ...(cwd ? { cwd: resolveACPSessionCwd(cwd) } : {}),
+        ...(cursor ? { cursor } : {}),
+      })
+      for (const info of response.sessions ?? []) {
+        if (!info || typeof info.sessionId !== 'string') continue
+        out.push({
+          acpSessionId: info.sessionId,
+          cwd: info.cwd,
+          ...(info.title ? { title: info.title } : {}),
+          ...(info.updatedAt ? { updatedAt: info.updatedAt } : {}),
+        })
+        if (out.length >= MAX_REMOTE_SESSIONS) break
+      }
+      const next = response.nextCursor ?? undefined
+      if (!next || seenCursors.has(next)) break
+      seenCursors.add(next)
+      cursor = next
+    }
+    return out
+  }
+
+  /**
+   * 认领(A5):把 agent 那边的一条会话接到一条(新的)本地会话上 —— `session/load`,回放的
+   * `session/update` 按到达顺序交回调用方(它折成 `message/imported`),链接落盘。
+   * 要 `loadSession` 能力;没有就抛 {@link AcpCapabilityMissingError}。
+   */
+  async adoptRemoteSession(
+    localSessionId: string,
+    acpSessionId: string,
+    rawCwd: string,
+  ): Promise<{ acpSessionId: string; cwd: string; replay: SessionUpdate[] }> {
+    await this.connect()
+    if (!this.connection) throw new Error('ACP connection is not available')
+    const cwd = resolveACPSessionCwd(rawCwd)
+    const replay: SessionUpdate[] = []
+    const inflight = this.sessionOpenings.get(localSessionId)
+    if (inflight) await inflight.catch(() => undefined)
+    const opening = (async (): Promise<ACPSessionRecord> => {
+      const restored = await this.restoreSession(localSessionId, acpSessionId, cwd, [], update => replay.push(update))
+      if (!restored) throw new Error('ACP connection is not available')
+      return this.registerOpenedSession(localSessionId, restored, cwd, {})
+    })()
+    this.sessionOpenings.set(localSessionId, opening)
+    try {
+      await opening
+    } finally {
+      if (this.sessionOpenings.get(localSessionId) === opening) this.sessionOpenings.delete(localSessionId)
+    }
+    return { acpSessionId, cwd, replay }
+  }
+
+  /**
+   * 分叉(A5,协议 `session/fork`,能力位 `sessionCapabilities.fork`):源本地会话对应的那条 agent
+   * 会话 fork 出一条新的,记到 `targetLocalSessionId` 名下并落链接。目录缺席 = 沿用源那条的。
+   */
+  async forkSession(
+    sourceLocalSessionId: string,
+    targetLocalSessionId: string,
+    rawCwd?: string,
+  ): Promise<{ acpSessionId: string; cwd: string }> {
+    await this.connect()
+    const connection = this.connection
+    if (!connection) throw new Error('ACP connection is not available')
+    if (!this.initResponse?.agentCapabilities?.sessionCapabilities?.fork) {
+      throw new AcpCapabilityMissingError(this.config.name, 'sessionCapabilities.fork')
+    }
+    const links = this.runtimeOptions.getSessionLinks?.()
+    const live = this.sessions.get(sourceLocalSessionId)
+    const link = links?.getLink(this.id, sourceLocalSessionId)
+    const sourceAcpSessionId = live?.acpSessionId ?? link?.acpSessionId
+    if (!sourceAcpSessionId) {
+      throw new Error(`Session "${sourceLocalSessionId}" has no ACP session on agent "${this.config.name}" to fork`)
+    }
+    const cwd = resolveACPSessionCwd(rawCwd ?? live?.cwd ?? link?.cwd)
+    const opening = (async (): Promise<ACPSessionRecord> => {
+      const response = await connection.agent.request(acp.methods.agent.session.fork, {
+        sessionId: sourceAcpSessionId,
+        cwd,
+        mcpServers: [],
+      }).catch(error => {
+        throw this.noteAuthFailure(error, 'session/fork')
+      })
+      log.info('session forked', { agentId: this.id, from: sourceAcpSessionId, to: response.sessionId })
+      this.bindSessionState(targetLocalSessionId, response.sessionId)
+      this.seedSessionState(targetLocalSessionId, response)
+      return this.registerOpenedSession(
+        targetLocalSessionId,
+        { acpSessionId: response.sessionId, options: projectACPConfigOptions(response.configOptions) },
+        cwd,
+        link?.options ?? {},
+      )
+    })()
+    this.sessionOpenings.set(targetLocalSessionId, opening)
+    try {
+      const record = await opening
+      return { acpSessionId: record.acpSessionId, cwd: record.cwd }
+    } finally {
+      if (this.sessionOpenings.get(targetLocalSessionId) === opening) this.sessionOpenings.delete(targetLocalSessionId)
+    }
+  }
+
+  /**
+   * 认领 / 分叉开出来的会话记进表并落链接。agent 那边自己有历史(persona 当初已送过或根本不是
+   * 我们开的)→ 不再欠;开的时候没递名册 → 下一轮带名册来时经 `load` 重开一次(与选项面板先开的
+   * 那种同一条路)。
+   */
+  private registerOpenedSession(
+    localSessionId: string,
+    opened: { acpSessionId: string; options: ACPSessionOption[] },
+    cwd: string,
+    chosen: Record<string, string>,
+  ): ACPSessionRecord {
+    const existing = this.sessions.get(localSessionId)
+    if (existing && existing.acpSessionId !== opened.acpSessionId) {
+      this.connection?.agent
+        .notify(acp.methods.agent.session.cancel, { sessionId: existing.acpSessionId })
+        .catch(() => undefined)
+    }
+    const session: ACPSessionRecord = {
+      localSessionId,
+      acpSessionId: opened.acpSessionId,
+      cwd,
+      prompts: 0,
+      lastUsedAt: Date.now(),
+      options: opened.options,
+      persona: 'delivered',
+      mcpServersGiven: false,
+      costBaseline: undefined,
+    }
+    this.sessions.set(localSessionId, session)
+    this.trimSessionRecords(localSessionId)
+    this.persistLink(session, chosen)
+    return session
   }
 
   async *streamPrompt(options: ACPPromptStreamOptions): AsyncGenerator<ACPPromptStreamEvent, void, unknown> {
@@ -1075,16 +1306,41 @@ export class ACPClient {
     return session
   }
 
-  /** 按 agent 声明的能力回到原会话;任何一步失败都返回 undefined,由调用方新开。 */
+  /**
+   * 按 agent 声明的能力回到原会话;任何一步失败都返回 undefined,由调用方新开。
+   *
+   * `replay`(A5,只有认领传):只走 `session/load`(`resume` 不回放),装上回放的接收处,
+   * 失败**抛**而不是退到新开 —— 认领要的就是那一条的历史,新开一条空的等于没认领。
+   */
   private async restoreSession(
     localSessionId: string,
     acpSessionId: string,
     cwd: string,
     mcpServers: acp.McpServer[],
+    replay?: (update: SessionUpdate) => void,
   ): Promise<{ acpSessionId: string; options: ACPSessionOption[] } | undefined> {
     const connection = this.connection
     if (!connection) return undefined
     const capabilities = this.initResponse?.agentCapabilities
+    if (replay) {
+      if (!capabilities?.loadSession) throw new AcpCapabilityMissingError(this.config.name, 'loadSession')
+      this.bindSessionState(localSessionId, acpSessionId)
+      this.replaySinks.set(acpSessionId, replay)
+      try {
+        const response = await connection.agent.request(acp.methods.agent.session.load, {
+          sessionId: acpSessionId,
+          cwd,
+          mcpServers,
+        })
+        log.info('session loaded for adoption', { agentId: this.id, acpSessionId })
+        this.seedSessionState(localSessionId, response)
+        return { acpSessionId, options: projectACPConfigOptions(response.configOptions) }
+      } catch (error) {
+        throw this.noteAuthFailure(error, 'session/load (adoption)')
+      } finally {
+        if (this.replaySinks.get(acpSessionId) === replay) this.replaySinks.delete(acpSessionId)
+      }
+    }
     // 恢复前就记下对应关系:`load` 期间 agent 推来的命令表 / 模式要折得进来(回放的正文照旧不进回合)。
     if (capabilities?.sessionCapabilities?.resume || capabilities?.loadSession) {
       this.bindSessionState(localSessionId, acpSessionId)
@@ -1418,6 +1674,15 @@ export class ACPClient {
    */
   private async sessionUpdate(params: SessionNotification): Promise<void> {
     this.foldSessionUpdate(params.sessionId, params.update)
+    // 认领期间的回放(A5):交给认领那一路收集,不进任何一轮。
+    const replay = this.replaySinks.get(params.sessionId)
+    if (replay) {
+      try {
+        replay(params.update)
+      } catch (error) {
+        log.warn('replay sink failed', { agentId: this.id, acpSessionId: params.sessionId }, error)
+      }
+    }
     const queue = this.updateQueues.get(params.sessionId)
     if (!queue) return
     queue.push({ type: 'update', notification: params })

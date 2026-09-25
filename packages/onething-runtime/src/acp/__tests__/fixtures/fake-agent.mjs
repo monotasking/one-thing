@@ -1,7 +1,17 @@
 // 一台最小的 ACP agent(测试夹具):真子进程、真 ndjson JSON-RPC。
 // 会话存在 FAKE_AGENT_DIR 下的 JSON 里,所以进程重启之后还能 load 回来 ——
 // 这正是「会话在 agent 自己那里」那件事的缩影。
-// FAKE_AGENT_CAPS = 'load' | 'resume' | 'none' 决定它声明哪种恢复能力。
+// FAKE_AGENT_CAPS = 'load' | 'resume' | 'none',或逗号列表(A5:`list,fork,load`)决定它声明哪些会话能力:
+//   load → `loadSession`;resume / list / fork → `sessionCapabilities.{resume,list,fork}`。旧的三个单值照旧。
+//
+// A5(gate:acp ⑲⑳㉑ / 单测):
+// `session/list`(caps 含 list):列 FAKE_AGENT_DIR 里所有会话文件(按 cwd 过滤),每页
+//   FAKE_AGENT_LIST_PAGE 条(缺省 50),`nextCursor` 是下一页的起点;记一行 `list`。
+// `session/load`:会话文件里有 `history`(`[{ kind: 'user' | 'agent' | 'thought' | 'tool', … }]`)就按序
+//   回放成 `user_message_chunk` / `agent_message_chunk` / `agent_thought_chunk` / `tool_call` + `tool_call_update`;
+//   没有就照旧回放一句 `REPLAYED`(普通恢复应当丢掉它)。
+// `session/fork`(caps 含 fork):复制源会话文件为一条新会话(cwd 换成请求里的),记一行 `fork`。
+// 会话文件里的 `title` / `updatedAt` 进 `session/list` 的答复。
 // FAKE_AGENT_CLOSE_ON_PROMPT=1:收到 prompt 就关掉自己的 stdout(连接断),进程却再活一阵 ——
 // 用来证明客户端不等进程退出、凭连接关闭就收尾。
 // FAKE_AGENT_PUSH_COMMANDS=1:`session/new` 一答完就推一条 `available_commands_update`(与
@@ -54,12 +64,12 @@
 // `session/set_mode`(无条件):记一行 `set-mode`,再推 `current_mode_update`。
 import { AgentSideConnection, PROTOCOL_VERSION, RequestError, ndJsonStream } from '@agentclientprotocol/sdk'
 import { Readable, Writable } from 'node:stream'
-import { closeSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
 const dir = process.env.FAKE_AGENT_DIR
-const caps = process.env.FAKE_AGENT_CAPS ?? 'load'
+const caps = new Set((process.env.FAKE_AGENT_CAPS ?? 'load').split(',').map(cap => cap.trim()).filter(Boolean))
 mkdirSync(dir, { recursive: true })
 const credentials = join(dir, 'credentials')
 const authMode = process.env.FAKE_AGENT_AUTH
@@ -116,6 +126,36 @@ async function hostMcpScript(s) {
   } finally {
     await client.close().catch(() => {})
   }
+}
+
+/** FAKE_AGENT_DIR 里所有会话文件(有 id 的 JSON;`client-caps.json` 之类不算),按文件名排序。 */
+function listStoredSessions() {
+  return readdirSync(dir)
+    .filter(name => name.endsWith('.json'))
+    .sort()
+    .map(name => {
+      try {
+        return JSON.parse(readFileSync(join(dir, name), 'utf8'))
+      } catch {
+        return undefined
+      }
+    })
+    .filter(s => s && typeof s.id === 'string' && typeof s.cwd === 'string')
+}
+
+/** 会话文件里的 `history` → 回放的 `session/update` 序列。 */
+function historyUpdates(history) {
+  const out = []
+  for (const entry of history) {
+    if (entry.kind === 'user') out.push({ sessionUpdate: 'user_message_chunk', content: { type: 'text', text: entry.text } })
+    else if (entry.kind === 'agent') out.push({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: entry.text } })
+    else if (entry.kind === 'thought') out.push({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: entry.text } })
+    else if (entry.kind === 'tool') {
+      out.push({ sessionUpdate: 'tool_call', toolCallId: entry.id, title: entry.title, kind: entry.toolKind ?? 'read', status: 'pending', rawInput: entry.input ?? {} })
+      out.push({ sessionUpdate: 'tool_call_update', toolCallId: entry.id, status: 'completed', rawOutput: entry.output ?? { ok: true } })
+    } else if (entry.kind === 'title') out.push({ sessionUpdate: 'session_info_update', title: entry.text })
+  }
+  return out
 }
 
 const MODELS = [{ value: 'alpha', name: 'Alpha' }, { value: 'beta', name: 'Beta' }]
@@ -307,9 +347,13 @@ new AgentSideConnection(conn => ({
     return {
       protocolVersion: PROTOCOL_VERSION,
       agentCapabilities: {
-        loadSession: caps === 'load',
+        loadSession: caps.has('load'),
         ...(process.env.FAKE_AGENT_IMAGE === '1' ? { promptCapabilities: { image: true } } : {}),
-        sessionCapabilities: caps === 'resume' ? { resume: {} } : {},
+        sessionCapabilities: {
+          ...(caps.has('resume') ? { resume: {} } : {}),
+          ...(caps.has('list') ? { list: {} } : {}),
+          ...(caps.has('fork') ? { fork: {} } : {}),
+        },
       },
       // 自报身份:gate:acp ① 拿它与 `acp.getAgents` 那一行逐字比对。
       agentInfo: { name: 'fake-agent', version: '0.0.1' },
@@ -345,12 +389,41 @@ new AgentSideConnection(conn => ({
     const s = readSession(params.sessionId)
     if (!s) throw new Error(`Unknown sessionId: ${params.sessionId}`)
     logCall({ method: 'load', id: s.id, ...noteMcpServers(s.id, params.mcpServers) })
-    // 真 agent 会回放历史;onething 此刻没有队列接,应当丢掉。
-    await conn.sessionUpdate({
-      sessionId: s.id,
-      update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'REPLAYED' } },
-    })
+    if (Array.isArray(s.history) && s.history.length > 0) {
+      // 认领(A5)要的就是这份回放;普通恢复应当丢掉它。
+      for (const update of historyUpdates(s.history)) await conn.sessionUpdate({ sessionId: s.id, update })
+    } else {
+      // 真 agent 会回放历史;onething 此刻没有队列接,应当丢掉。
+      await conn.sessionUpdate({
+        sessionId: s.id,
+        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'REPLAYED' } },
+      })
+    }
     return { configOptions: configOptions({ ...s, model: 'alpha' }) }
+  },
+  async listSessions(params) {
+    const all = listStoredSessions().filter(s => !params?.cwd || s.cwd === params.cwd)
+    const pageSize = Math.max(1, Number(process.env.FAKE_AGENT_LIST_PAGE ?? 50))
+    const start = params?.cursor ? Number(params.cursor) : 0
+    const page = all.slice(start, start + pageSize)
+    logCall({ method: 'list', cwd: params?.cwd ?? null, cursor: params?.cursor ?? null, count: page.length })
+    return {
+      sessions: page.map(s => ({
+        sessionId: s.id,
+        cwd: s.cwd,
+        ...(s.title ? { title: s.title } : {}),
+        ...(s.updatedAt ? { updatedAt: s.updatedAt } : {}),
+      })),
+      ...(start + pageSize < all.length ? { nextCursor: String(start + pageSize) } : {}),
+    }
+  },
+  async unstable_forkSession(params) {
+    const source = readSession(params.sessionId)
+    if (!source) throw new Error(`Unknown sessionId: ${params.sessionId}`)
+    const s = { ...source, id: randomUUID(), cwd: params.cwd, forkedFrom: source.id }
+    writeSession(s)
+    logCall({ method: 'fork', from: source.id, id: s.id, cwd: params.cwd, ...noteMcpServers(s.id, params.mcpServers) })
+    return { sessionId: s.id, configOptions: configOptions(s) }
   },
   async resumeSession(params) {
     const s = readSession(params.sessionId)

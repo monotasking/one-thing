@@ -938,6 +938,17 @@ async function createRealServerBackend(storePath: string, logging?: ConfigureLog
 	 * 收场(`unanswered: 'reject'`,`UNATTENDED_ASK_TIMEOUT_MS`)—— 与「无桥缺省拒」同一个结论。
 	 */
 	backend.own(registerACPPermissionBridge({ unanswered: "reject" }), "acpPermissionBridge");
+	/*
+	 * A5(方案 §11.6;A1-a 留账):独立 server 也在装配后起 ACP 子系统,与 React 壳
+	 * (`electron/main.ts` 的 `void b.acp.start()`)、daemon(`mcpAcp: true`)同口径。
+	 * `start()` 只读种子 / 缓存进名册、把生效配置喂给管家,不起任何 agent 进程(适配器在
+	 * 第一次要用时才 spawn);注册表联网在后台跑,开关关着就不联网。从前 server 不调它,
+	 * 名册靠第一次 RPC 惰性装进管家 —— 崩溃重连 / 认领这类不经名册读面的动作会读到空表。
+	 * 收尾在装配时已经 `own()` 了(`AcpSubsystem` 构造即登记)。
+	 */
+	void backend.acp.start().catch((error: unknown) => {
+		log.error("subsystem startup failed", { subsystem: "acp", blocking: false }, error);
+	});
 	return backend;
 }
 
