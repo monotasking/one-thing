@@ -1,11 +1,17 @@
-/* 内存监视器:头(标题 + 释放钮)、领头数字 + 预算表、趋势、去向、进程表、缓存。
- * 三种形态(舞台 / 浮窗 / 架子)共用这一份,所以不写与形态有关的尺寸;
- * 颜色只上标记(色块 / 条 / 线),文字永远是文字色(数据图族的法,见 tokens.css「数据图族」)。 */
+/* 内存监视器 v3(2026-09-25,用户:「好好设计一下,现在有点丑」)。
+ *
+ * 版式:一张退后一档的底(--surface-1)上摆三张卡(总览 / 走势 / 进程 / 缓存),层级靠
+ * 「底 vs 卡」而不是靠一条条分隔线 —— v2 的病是满屏横线:每行一条长轨道、每组一条底线、
+ * 每只缓存一条通栏条,线比数据还多。v3 的规矩:
+ *  · 卡里不画分隔线,分组靠留白;
+ *  · 行内的「占多少」一律是**定宽小条**(--viz-mini-w),排成一列,不是一行一条长线;
+ *  · 颜色只上标记(色点 / 条 / 线),文字永远是文字色(数据图族的法,见 tokens.css)。
+ * 三种形态(舞台 / 浮窗 / 架子)共用这一份,不写与形态有关的尺寸。 */
 .panel {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--surface-2);
+  background: var(--surface-1);
 }
 
 .head {
@@ -14,7 +20,6 @@
   align-items: center;
   gap: var(--sp-3);
   padding: var(--sp-3) var(--sp-4);
-  border-bottom: 1px solid var(--line-1);
   min-width: 0;
 }
 
@@ -36,16 +41,22 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: var(--sp-4);
+  padding: 0 var(--sp-4) var(--sp-4);
   display: flex;
   flex-direction: column;
-  gap: var(--sp-5);
+  gap: var(--sp-3);
+}
+
+/* 一节(ui/Card 的皮肤)只改两格 —— 卡与卡之间的节奏(内部间距)与刻线那圈缝的底色。 */
+.section {
+  gap: var(--sp-3);
+  --meter-ground: var(--surface-2);
 }
 
 .none,
 .trendEmpty {
   margin: 0;
-  padding: var(--sp-4) 0;
+  padding: var(--sp-3) 0;
   font-size: var(--fs-meta);
   color: var(--text-3);
 }
@@ -62,39 +73,26 @@
   color: var(--text-3);
 }
 
-.section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  min-width: 0;
-}
-
-.sectionLabel {
-  margin: 0;
-  font-size: var(--fs-label);
-  font-weight: 600;
-  color: var(--text-2);
-}
-
-.sectionHint {
-  margin: 0;
-  font-size: var(--fs-meta);
-  color: var(--text-3);
-}
-
-/* ── ① 领头数字 + 预算表 ─────────────────────────────────────────────── */
-
-.overview {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-}
+/* ── 总览卡:领头数字 + 预算表 + 去向 ─────────────────────────────────── */
 
 .heroRow {
   display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
   gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.heroBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.heroLabel {
+  font-size: var(--fs-meta);
+  color: var(--text-3);
 }
 
 .hero {
@@ -123,30 +121,117 @@
   color: var(--text-3);
 }
 
+/* 状态:点 + 字(状态色只上点,永不换底)。与数字底边对齐。 */
 .pressure {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-1);
+  gap: var(--sp-2);
+  padding-bottom: var(--sp-1);
   font-size: var(--fs-label);
   color: var(--text-2);
   white-space: nowrap;
 }
 
 .budgetMeter {
+  margin-top: var(--sp-1);
+}
+
+.composition {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
   margin-top: var(--sp-2);
 }
 
-/* ── ② 趋势 ──────────────────────────────────────────────────────────── */
+/* 段与段之间是 2px 底色缝(不是描边);整条两端圆角。 */
+.stack {
+  display: flex;
+  gap: var(--viz-gap);
+  height: var(--viz-bar);
+  border-radius: var(--r-full);
+  overflow: hidden;
+}
+
+.stackSegment {
+  flex-basis: 0;
+  min-width: var(--viz-gap);
+  height: 100%;
+}
+
+.stackSegment:hover {
+  opacity: var(--viz-hover-opacity);
+}
+
+/* 图例两列:每一格「色点 · 名字 ········ 值 占比」,值与占比各自对齐成列。 */
+.legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(calc(var(--viz-mini-w) * 3.5), 1fr));
+  column-gap: var(--sp-5);
+  row-gap: var(--sp-1);
+}
+
+.legendItem {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: var(--sp-2);
+  min-width: 0;
+}
+
+.swatch {
+  flex: none;
+  width: var(--sp-2);
+  height: var(--sp-2);
+  border-radius: var(--r-full);
+}
+
+.legendName {
+  min-width: 0;
+  font-size: var(--fs-label);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.legendValue,
+.legendShare {
+  font-size: var(--fs-label);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.legendValue {
+  color: var(--text-1);
+}
+
+.legendShare {
+  min-width: var(--sp-7);
+  color: var(--text-3);
+}
+
+/* ── 走势卡 ─────────────────────────────────────────────────────────── */
 
 .trend {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
+  gap: var(--sp-2);
+}
+
+/* 绘图区 + 右边一条定宽的槽:参照线的名字住在槽里,永远不压在线上。 */
+.trendFrame {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--viz-gutter);
+  height: var(--viz-spark-h);
 }
 
 .trendPlot {
   position: relative;
-  height: var(--viz-spark-h);
+  min-width: 0;
 }
 
 .trendSvg {
@@ -165,7 +250,7 @@
   stroke-linecap: round;
 }
 
-/* 参照线是发丝线、实线、退后一档;hard 比 soft 深一档。 */
+/* 参照线:发丝线、实线、退后一档;hard 比 soft 深一档。 */
 .trendRuleSoft,
 .trendRuleHard,
 .trendCrosshair {
@@ -181,23 +266,33 @@
 }
 
 .trendCrosshair {
-  stroke: var(--text-3);
+  stroke: var(--text-4);
+}
+
+.trendGutter {
+  position: relative;
 }
 
 .trendRuleLabel {
   position: absolute;
-  left: 0;
-  transform: translateY(-100%);
-  padding: 0 var(--sp-1);
+  left: var(--sp-2);
+  transform: translateY(-50%);
   font-size: var(--fs-micro);
   color: var(--text-3);
+  white-space: nowrap;
   pointer-events: none;
 }
 
+.trendRuleLabel b {
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+/* 末端点(「现在」)与悬停点同一枚:系列色实心 + 一圈卡底色的缝。 */
 .trendDot {
   position: absolute;
-  width: var(--sp-2);
-  height: var(--sp-2);
+  width: var(--viz-dot);
+  height: var(--viz-dot);
   border-radius: var(--r-full);
   background: var(--viz-1);
   box-shadow: 0 0 0 var(--viz-gap) var(--surface-2);
@@ -205,7 +300,7 @@
   pointer-events: none;
 }
 
-/* 读数:值在前(强),时间在后(弱)。靠右那三成翻到指针左边,不出格。 */
+/* 读数:值在前(强),时间在后(弱)。靠右那四成翻到指针左边,不出格。 */
 .trendReadout {
   position: absolute;
   top: 0;
@@ -214,7 +309,7 @@
   flex-direction: column;
   padding: var(--sp-1) var(--sp-2);
   border-radius: var(--r-1);
-  background: var(--surface-3, var(--surface-2));
+  background: var(--surface-3);
   box-shadow: var(--sh-2);
   font-size: var(--fs-meta);
   color: var(--text-3);
@@ -238,91 +333,24 @@
   color: var(--text-3);
 }
 
-/* ── ③ 去向:比例条 + 图例 ─────────────────────────────────────────────── */
+/* ── 进程卡 ─────────────────────────────────────────────────────────── */
 
-/* 段与段之间是 2px 底色缝(不是描边);两端 4px 圆角,中间方角。 */
-.stack {
+.groups {
   display: flex;
-  gap: var(--viz-gap);
-  height: var(--viz-bar);
-  border-radius: var(--r-1);
-  overflow: hidden;
+  flex-direction: column;
+  gap: var(--sp-3);
 }
 
-.stackSegment {
-  flex-basis: 0;
-  min-width: var(--viz-gap);
-  height: 100%;
+/* 行的悬停底色左右各探出一格,文字因此落回卡标题那条起笔线上(不是往里缩一格)。 */
+.groups,
+.holders {
+  margin-inline: calc(var(--sp-3) * -1);
 }
-
-.stackSegment:hover {
-  opacity: var(--viz-hover-opacity);
-}
-
-.legend {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  column-gap: var(--sp-2);
-  row-gap: var(--sp-1);
-  align-items: center;
-}
-
-.legendRow {
-  display: contents;
-}
-
-.swatch {
-  flex: none;
-  width: var(--sp-2);
-  height: var(--sp-2);
-  border-radius: var(--r-full);
-}
-
-.legendName {
-  min-width: 0;
-  font-size: var(--fs-label);
-  color: var(--text-1);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.legendValue,
-.legendShare {
-  font-size: var(--fs-label);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  white-space: nowrap;
-}
-
-.legendValue {
-  color: var(--text-1);
-}
-
-.legendShare {
-  min-width: var(--sp-7);
-  color: var(--text-3);
-}
-
-/* ── ④ 进程表 ─────────────────────────────────────────────────────────── */
 
 .group {
   display: flex;
   flex-direction: column;
-}
-
-/* 组头的皮肤归落点(GroupHead 的约定):一条发丝底线。 */
-.groupRule {
-  border-bottom: 1px solid var(--line-1);
-}
-
-.rows {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+  gap: var(--sp-1);
 }
 
 .groupName {
@@ -332,9 +360,16 @@
   gap: var(--sp-2);
 }
 
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* 行:名字吃剩下的 · 定宽小条 · 读数。三列在所有组里对齐成同一张表。 */
 .row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) var(--viz-mini-w) calc(var(--viz-mini-w) + var(--sp-3));
   align-items: center;
   column-gap: var(--sp-3);
   padding: var(--sp-1) var(--sp-3);
@@ -347,13 +382,6 @@
   background: var(--st-hover);
 }
 
-.name {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-1);
-}
-
 .nameText {
   min-width: 0;
   white-space: nowrap;
@@ -361,15 +389,14 @@
   text-overflow: ellipsis;
 }
 
-/* 行下那条细条:这一行占最大那一个进程的几成,染它所属那一类的色。 */
-.rowBar {
-  height: var(--viz-gap);
+.mini {
+  height: var(--viz-mini-h);
   border-radius: var(--r-full);
   background: var(--line-1);
   overflow: hidden;
 }
 
-.rowBarFill {
+.miniFill {
   display: block;
   height: 100%;
   border-radius: var(--r-full);
@@ -382,7 +409,7 @@
   color: var(--text-2);
 }
 
-/* ── ④ 缓存 ───────────────────────────────────────────────────────────── */
+/* ── 缓存卡 ─────────────────────────────────────────────────────────── */
 
 .holders {
   list-style: none;
@@ -393,11 +420,13 @@
   gap: var(--sp-1);
 }
 
+/* 行:左边两行字(名字 / 细节),右边读数叠在一根定宽小表上。 */
 .holder {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-1);
-  padding: var(--sp-2);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--sp-4);
+  padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-1);
 }
 
@@ -405,27 +434,49 @@
   background: var(--st-hover);
 }
 
-.holderLine {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: var(--sp-3);
+.holderText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.holderName {
+  min-width: 0;
   font-size: var(--fs-label);
   color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.holderDetail,
+.holderError {
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.holderError {
+  color: var(--danger);
+}
+
+.holderSide {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-1);
 }
 
 .holderReadout {
+  font-size: var(--fs-label);
   font-variant-numeric: tabular-nums;
   color: var(--text-2);
   white-space: nowrap;
 }
 
-.holderDetail,
-.holderError {
-  margin: 0;
-  font-size: var(--fs-meta);
-  color: var(--text-3);
-}
-
-.holderError {
-  color: var(--danger);
+.holderMeter {
+  width: calc(var(--viz-mini-w) * 1.5);
 }

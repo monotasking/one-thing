@@ -4,6 +4,9 @@
  */
 .meter {
   --meter-color: var(--accent);
+  /* 它压在什么底上:轨道的浅一档与刻线那圈缝都兑这一格。落在别的面上(卡里是
+   * --surface-1)时由落点改写,件里不猜。 */
+  --meter-ground: var(--surface-2);
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
@@ -22,7 +25,7 @@
   position: relative;
   height: var(--viz-meter);
   border-radius: var(--r-full);
-  background: color-mix(in srgb, var(--meter-color) var(--viz-track-mix), var(--surface-2));
+  background: color-mix(in srgb, var(--meter-color) var(--viz-track-mix), var(--meter-ground));
 }
 
 .sm .track {
@@ -42,9 +45,10 @@
   top: calc(var(--viz-tick-h) / -2);
   bottom: calc(var(--viz-tick-h) / -2);
   width: var(--viz-gap);
+  border-radius: var(--r-full);
   transform: translateX(-50%);
-  background: var(--text-2);
-  box-shadow: 0 0 0 1px var(--surface-2);
+  background: var(--text-3);
+  box-shadow: 0 0 0 var(--viz-gap) var(--meter-ground);
 }
 
 .scale {

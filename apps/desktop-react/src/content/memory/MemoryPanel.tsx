@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AsyncButton } from '../../ui/AsyncButton'
+import { Card } from '../../ui/Card'
 import { GroupHead } from '../../ui/GroupHead'
 import { Meter, type MeterTone } from '../../ui/Meter'
 import { StatusDot, type StatusDotTone } from '../../ui/StatusDot'
@@ -116,22 +117,22 @@ export function MemoryPanel() {
           <>
             <Overview t={t} data={data} lastTrim={lastTrim} />
 
-            <section className={s.section} aria-labelledby="memory-trend-title">
-              <h3 id="memory-trend-title" className={s.sectionLabel}>{t('memory.trend')}</h3>
+            <Card
+              className={s.section}
+              pad="lg"
+              title={t('memory.trend')}
+              note={t('memory.trendWindow')}
+            >
               <MemoryTrend history={history} budget={data.budget} />
-            </section>
-
-            <Composition t={t} groups={groupByCategory(data.processes)} />
+            </Card>
 
             <Processes t={t} groups={groupByCategory(data.processes)} />
 
-            <section className={s.section} aria-labelledby="memory-holders-title">
-              <h3 id="memory-holders-title" className={s.sectionLabel}>{t('memory.holders')}</h3>
-              <p className={s.sectionHint}>{t('memory.holdersHint')}</p>
+            <Card className={s.section} pad="lg" title={t('memory.holders')} note={t('memory.holdersHint')} notePlacement="below">
               <ul className={s.holders}>
                 {data.holders.map(holder => <HolderRow key={holder.id} t={t} holder={holder} />)}
               </ul>
-            </section>
+            </Card>
           </>
         )}
       </div>
@@ -145,19 +146,23 @@ function Overview({ t, data, lastTrim }: { t: TFn; data: MemoryReportResponse; l
   const tone = pressureTone(data)
   const scale = meterScale(data)
   const [value, unit] = splitBytes(data.totalBytes)
+  const groups = groupByCategory(data.processes)
   return (
-    <div className={s.overview}>
+    <Card className={s.section} pad="lg" aria-label={t('memory.overview')}>
       <div className={s.heroRow}>
-        <p className={s.hero} data-testid="memory-total">
-          {data.totalBytes === null ? (
-            <span className={s.heroUnknown}>{t('memory.totalUnknown')}</span>
-          ) : (
-            <>
-              <span className={s.heroValue}>{value}</span>
-              <span className={s.heroUnit}>{unit}</span>
-            </>
-          )}
-        </p>
+        <div className={s.heroBlock}>
+          <span className={s.heroLabel}>{t('memory.totalLabel')}</span>
+          <p className={s.hero} data-testid="memory-total">
+            {data.totalBytes === null ? (
+              <span className={s.heroUnknown}>{t('memory.totalUnknown')}</span>
+            ) : (
+              <>
+                <span className={s.heroValue}>{value}</span>
+                <span className={s.heroUnit}>{unit}</span>
+              </>
+            )}
+          </p>
+        </div>
         <span className={s.pressure} data-tone={tone}>
           <StatusDot tone={tone} />
           {t(pressureLabelKey(tone))}
@@ -180,23 +185,24 @@ function Overview({ t, data, lastTrim }: { t: TFn; data: MemoryReportResponse; l
         ]}
       />
 
+      {groups.length > 0 ? <Composition t={t} groups={groups} /> : null}
+
       <p className={s.meta}>
         {t('memory.heapLine', { heap: formatBytes(data.heap.usedBytes), total: formatBytes(data.heap.totalBytes) })}
         {data.partial ? ` · ${t('memory.partial')}` : ''}
+        {lastTrim ? <span data-testid="memory-last-trim">{` · ${trimLine(t, lastTrim)}`}</span> : null}
       </p>
-      {lastTrim ? <p className={s.meta} data-testid="memory-last-trim">{trimLine(t, lastTrim)}</p> : null}
-    </div>
+    </Card>
   )
 }
 
-// ── ③ 花在哪儿 ──────────────────────────────────────────────────────────────
+// ── ③ 花在哪儿(总览卡里的第二段)────────────────────────────────────────
 
 function Composition({ t, groups }: { t: TFn; groups: CategoryGroup[] }) {
-  if (groups.length === 0) return null
   return (
-    <section className={s.section} aria-labelledby="memory-composition-title">
-      <h3 id="memory-composition-title" className={s.sectionLabel}>{t('memory.composition')}</h3>
-      {/* 比例条是图例的图形投影;数值全在下面那张图例表里,条本身对读屏隐藏。 */}
+    <div className={s.composition}>
+      <span className={s.heroLabel} id="memory-composition-title">{t('memory.composition')}</span>
+      {/* 比例条是图例的图形投影;数值全在下面那张图例里,条本身对读屏隐藏。 */}
       <div className={s.stack} aria-hidden="true">
         {groups.map(group => (
           <Tooltip key={group.category} content={`${t(categoryLabelKey(group.category))} · ${formatBytes(group.bytes)} · ${formatShare(group.share)}`}>
@@ -207,9 +213,9 @@ function Composition({ t, groups }: { t: TFn; groups: CategoryGroup[] }) {
           </Tooltip>
         ))}
       </div>
-      <ul className={s.legend}>
+      <ul className={s.legend} aria-labelledby="memory-composition-title">
         {groups.map(group => (
-          <li key={group.category} className={s.legendRow}>
+          <li key={group.category} className={s.legendItem}>
             <span className={s.swatch} style={{ background: categoryColorVar(group.category) }} aria-hidden="true" />
             <Tooltip content={t(categoryHintKey(group.category))}>
               <span className={s.legendName}>{t(categoryLabelKey(group.category))}</span>
@@ -219,7 +225,7 @@ function Composition({ t, groups }: { t: TFn; groups: CategoryGroup[] }) {
           </li>
         ))}
       </ul>
-    </section>
+    </div>
   )
 }
 
@@ -227,83 +233,82 @@ function Composition({ t, groups }: { t: TFn; groups: CategoryGroup[] }) {
 
 function Processes({ t, groups }: { t: TFn; groups: CategoryGroup[] }) {
   const largest = groups.reduce((max, group) => Math.max(max, ...group.processes.map(row => row.bytes ?? 0)), 0)
+  const count = groups.reduce((sum, group) => sum + group.processes.length, 0)
   return (
-    <section className={s.section} aria-labelledby="memory-processes-title">
-      <h3 id="memory-processes-title" className={s.sectionLabel}>{t('memory.processes')}</h3>
+    <Card className={s.section} pad="lg" title={t('memory.processes')} note={t('memory.processCount', { count })}>
       {groups.length === 0 ? (
         <p className={s.none}>{t('memory.noProcesses')}</p>
       ) : (
-        groups.map(group => (
-          <div key={group.category} className={s.group}>
-            <GroupHead
-              className={s.groupRule}
-              label={(
-                <span className={s.groupName}>
-                  <span className={s.swatch} style={{ background: categoryColorVar(group.category) }} aria-hidden="true" />
-                  {t(categoryLabelKey(group.category))}
-                </span>
-              )}
-              note={formatBytes(group.bytes)}
-            />
-            <ul className={s.rows} aria-label={t(categoryLabelKey(group.category))}>
-              {group.processes.map(row => (
-                <li key={row.pid} className={s.row} data-testid="memory-process-row">
-                  <span className={s.name}>
+        <div className={s.groups}>
+          {groups.map(group => (
+            <div key={group.category} className={s.group}>
+              <GroupHead
+                label={(
+                  <span className={s.groupName}>
+                    <span className={s.swatch} style={{ background: categoryColorVar(group.category) }} aria-hidden="true" />
+                    {t(categoryLabelKey(group.category))}
+                  </span>
+                )}
+                note={formatBytes(group.bytes)}
+              />
+              <ul className={s.rows} aria-label={t(categoryLabelKey(group.category))}>
+                {group.processes.map(row => (
+                  <li key={row.pid} className={s.row} data-testid="memory-process-row">
                     <Tooltip content={`${row.name} · pid ${row.pid}`}>
                       <span className={s.nameText} data-testid="memory-process-name">{displayName(t, row.name)}</span>
                     </Tooltip>
-                    <span className={s.rowBar} aria-hidden="true">
+                    {/* 定宽小条:这一行占最大那个进程的几成,排成整齐的一列。 */}
+                    <span className={s.mini} aria-hidden="true">
                       <span
-                        className={s.rowBarFill}
+                        className={s.miniFill}
                         style={{
                           width: `${largest > 0 && row.bytes !== null ? (row.bytes / largest) * 100 : 0}%`,
                           background: categoryColorVar(group.category),
                         }}
                       />
                     </span>
-                  </span>
-                  <span className={s.bytes}>
-                    {row.bytes === null ? t('memory.unmeasured') : formatBytes(row.bytes)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))
+                    <span className={s.bytes}>
+                      {row.bytes === null ? t('memory.unmeasured') : formatBytes(row.bytes)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
       )}
-    </section>
+    </Card>
   )
 }
 
 function HolderRow({ t, holder }: { t: TFn; holder: MemoryHolderReport }) {
   const fill = holderFill(holder)
   const parts = holderDetailParts(holder)
+  const detail = holder.error
+    ?? (parts.length > 0 ? parts.map(part => (part.key ? t(part.key, { count: part.value }) : `${part.raw} ${part.value}`)).join(' · ') : undefined)
   return (
     <li className={s.holder} data-testid="memory-holder-row">
-      <div className={s.holderLine}>
+      <div className={s.holderText}>
         <Tooltip content={holder.id}>
-          <span className={s.nameText}>{holder.label}</span>
+          <span className={s.holderName}>{holder.label}</span>
         </Tooltip>
-        <span className={s.holderReadout}>{holderReadout(t, holder)}</span>
+        {detail ? <span className={holder.error ? s.holderError : s.holderDetail}>{detail}</span> : null}
       </div>
-      {fill === undefined || holder.limit?.entries === undefined ? null : (
-        <Meter
-          size="sm"
-          label={t('memory.holderFill', { name: holder.label })}
-          value={holder.entries}
-          max={holder.limit.entries}
-          valueText={holderReadout(t, holder)}
-          // **顶到上限不换色**:缓存满了就按自己的规矩淘汰,那是它的正常工作状态,
-          // 染成警告色会让人以为出了事(真机看过一版黄条,读起来像故障)。
-        />
-      )}
-      {holder.error ? (
-        <p className={s.holderError}>{holder.error}</p>
-      ) : parts.length > 0 ? (
-        <p className={s.holderDetail}>
-          {parts.map(part => (part.key ? t(part.key, { count: part.value }) : `${part.raw} ${part.value}`)).join(' · ')}
-        </p>
-      ) : null}
+      <div className={s.holderSide}>
+        <span className={s.holderReadout}>{holderReadout(t, holder)}</span>
+        {fill === undefined || holder.limit?.entries === undefined ? null : (
+          <Meter
+            className={s.holderMeter}
+            size="sm"
+            label={t('memory.holderFill', { name: holder.label })}
+            value={holder.entries}
+            max={holder.limit.entries}
+            valueText={holderReadout(t, holder)}
+            // **顶到上限不换色**:缓存满了就按自己的规矩淘汰,那是它的正常工作状态,
+            // 染成警告色会让人以为出了事(真机看过一版黄条,读起来像故障)。
+          />
+        )}
+      </div>
     </li>
   )
 }

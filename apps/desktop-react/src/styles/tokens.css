@@ -909,16 +909,23 @@
   --viz-3: light-dark(#1baf7a, #199e70);
   --viz-4: light-dark(#eda100, #c98500);
   /* 条形标记的粗细上限(≤24)、段与段之间的底色缝(2px)、线宽(2px)。 */
-  --viz-bar: 12px;
-  --viz-meter: 10px;
+  --viz-bar: 8px;
+  --viz-meter: 6px;
   --viz-gap: 2px;
   --viz-line: 2px;
   /* 表(meter)的轨道 = 填充色兑进底色的这一成(同一色的浅一档,不是一条灰槽)。 */
   --viz-track-mix: 18%;
   /* 悬停中的那一段略退一点,看得出「它在响应」。 */
   --viz-hover-opacity: 0.8;
-  --viz-spark-h: 64px;
+  /* 走势图:绘图区高度、右侧留给参照线名字的槽宽、末端点直径。 */
+  --viz-spark-h: 88px;
+  --viz-gutter: 72px;
+  --viz-dot: 8px;
+  /* 刻线伸出轨道的那一截(上下各一半)。 */
   --viz-tick-h: 6px;
+  /* 行内小条(表格里那一列):定宽,排成整齐的一列而不是一行一条长线。 */
+  --viz-mini-w: 56px;
+  --viz-mini-h: 4px;
   /* 一屏只许一个的领头数字(≥48px,与正文同一个无衬线)。 */
   --fs-hero: 48px;
 
