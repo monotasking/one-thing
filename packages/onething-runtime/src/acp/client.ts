@@ -1,7 +1,5 @@
-import { spawn, type ChildProcessByStdio, type ChildProcessWithoutNullStreams } from 'child_process'
-import { randomUUID } from 'crypto'
-import { promises as fs } from 'fs'
-import { dirname, isAbsolute, resolve } from 'path'
+import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
+import { resolve } from 'path'
 import { Readable, Writable } from 'stream'
 import * as acp from '@agentclientprotocol/sdk'
 import type {
@@ -40,7 +38,10 @@ import type {
   ACPPromptStreamOptions,
   ACPSessionOption,
   ACPSessionOptionChoice,
+  AcpClientRequestContext,
+  AcpFsBridge,
   AcpSessionState,
+  AcpTerminalBridge,
 } from './types.js'
 import type { ACPSessionLink, ACPSessionLinkStore } from './session-links.js'
 import {
@@ -59,9 +60,6 @@ const DEFAULT_PROMPT_TIMEOUT_MS = 30 * 60 * 1000
 const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60 * 1000
 const DEFAULT_MAX_BUFFERED_UPDATES = 1000
 const DEFAULT_MAX_SESSION_RECORDS = 100
-const DEFAULT_MAX_TERMINALS = 32
-const DEFAULT_MAX_TERMINAL_OUTPUT_BYTES = 1024 * 1024
-const MAX_FILE_READ_BYTES = 1024 * 1024
 /**
  * 连接先断、进程还没报 exit 时,给 exit 留的一小段时间:agent 崩掉时 stdout 的 EOF 常比
  * `exit` 事件早到,等一下就能把退出码写进那句报错;真是「连接断了、进程还活着」才由连接这头收尾。
@@ -309,17 +307,6 @@ function withCurrentValue(options: ACPSessionOption[], optionId: string, value: 
   return options.map(option => (option.id === optionId ? { ...option, currentValue: value } : option))
 }
 
-interface TerminalRecord {
-  child: ChildProcessByStdio<null, Readable, Readable>
-  output: string
-  truncated: boolean
-  outputLimit: number
-  createdAt: number
-  lastUsedAt: number
-  exitStatus?: { exitCode?: number | null; signal?: string | null }
-  exitPromise: Promise<{ exitCode?: number | null; signal?: string | null }>
-}
-
 export class ACPClient {
   private child: ChildProcessWithoutNullStreams | null = null
   private connection: ClientConnection | null = null
@@ -338,7 +325,6 @@ export class ACPClient {
   private updateQueues = new Map<string, BoundedAsyncQueue<ACPPromptStreamEvent>>()
   /** acpSessionId → context of the currently streaming prompt (for permission attribution). */
   private promptContexts = new Map<string, { localSessionId: string; messageId?: string; cwd: string; abortSignal?: AbortSignal }>()
-  private terminals = new Map<string, TerminalRecord>()
   private activePromptCountValue = 0
   /** 本地会话 id → 它在 agent 那边的会话状态(§3.3)。断开时不清:壳还要看得到「断了」。 */
   private sessionStates = new Map<string, AcpSessionState>()
@@ -365,6 +351,13 @@ export class ACPClient {
       getSessionLinks?: () => ACPSessionLinkStore | undefined
       /** 子进程环境的底(宿主注入代理等);缺席 = `process.env`。 */
       getSpawnEnv?: () => Record<string, string | undefined> | undefined
+      /**
+       * agent 要文件时的落点(A3-b):读写走 onething 的沙箱与许可。缺席 = `fs/*` 答
+       * method-not-found —— 从前那份不问沙箱、不问许可的裸实现已删,不再有「没桥就裸读」这一档。
+       */
+      getFsBridge?: () => AcpFsBridge | undefined
+      /** agent 要终端时的落点(A3-b):命令跑在 `TerminalService` 里。缺席 = 不声明终端能力。 */
+      getTerminalBridge?: () => AcpTerminalBridge | undefined
     } = {},
   ) {}
 
@@ -605,7 +598,6 @@ export class ACPClient {
         this.connection = null
         this.connectedAtValue = undefined
         this.failAllQueues(new Error(this.errorValue || 'ACP agent disconnected'))
-        this.releaseAllTerminals()
         this.syncProcess()
       }
       const stderrSuffix = () => (this.stderrTail ? ` stderr: ${this.stderrTail.slice(-1000)}` : '')
@@ -621,7 +613,9 @@ export class ACPClient {
       const input = Writable.toWeb(child.stdin)
       const output = Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>
       const stream = acp.ndJsonStream(input, output)
-      const connection = this.connection = this.createClientApp().connect(stream)
+      // 终端能力在握手那一刻定:宿主有终端输出通道才声明、才挂方法(方案 §11.3 A3-b)。
+      const terminalAvailable = this.terminalAvailable()
+      const connection = this.connection = this.createClientApp(terminalAvailable).connect(stream)
 
       // 连接断了而进程没退(对端关了 stdout、或流出错):不等 exit,先给 exit 一小段时间说清退出码,
       // 过了还没来就由这头收尾,并把那个已经说不上话的进程收掉。
@@ -650,10 +644,7 @@ export class ACPClient {
                 name: 'onething',
                 version: process.env.npm_package_version || '1.0.0',
               },
-              clientCapabilities: {
-                ...(this.config.allowFileSystemAccess ? { fs: { readTextFile: true, writeTextFile: true } } : {}),
-                ...(this.config.allowTerminalAccess ? { terminal: true } : {}),
-              },
+              clientCapabilities: clientCapabilitiesFor(terminalAvailable),
             }),
             childSpawnError,
           ]),
@@ -703,7 +694,6 @@ export class ACPClient {
   async disconnect(): Promise<void> {
     this.unexpectedExit = false
     this.failAllQueues(new Error('ACP agent disconnected'))
-    this.releaseAllTerminals()
     this.sessions.clear()
     // 状态表留着(壳要看到「断了」),但 agent 会话 id 随连接作废:索引与暂存一起清。
     this.stateIndex.clear()
@@ -1035,10 +1025,12 @@ export class ACPClient {
   }
 
   /**
-   * 这一侧答得了的方法表。文件与终端仍按这台 agent 的 allow* 开关挂(能力何时固定是后面一单的事);
-   * 没挂的方法 SDK 自己回 `Method not found`。扩展通知只接认得的那一条,别的 SDK 直接放过。
+   * 这一侧答得了的方法表(A3-b 起固定,不再按每台 agent 的开关挂):文件两条无条件挂 ——
+   * 没注入文件桥的宿主(只有测试)答 method-not-found;终端五条只在宿主有终端输出通道时挂,
+   * 与握手里的 `terminal` 能力同一个判据。没挂的方法 SDK 自己回 `Method not found`。
+   * 扩展通知只接认得的那一条,别的 SDK 直接放过。
    */
-  private createClientApp(): acp.ClientApp {
+  private createClientApp(terminalAvailable: boolean): acp.ClientApp {
     const app = acp.client({ name: 'onething' })
       .onRequest(acp.methods.client.session.requestPermission, ({ params }) => this.requestPermission(params))
       .onNotification(acp.methods.client.session.update, ({ params }) => this.sessionUpdate(params))
@@ -1047,12 +1039,9 @@ export class ACPClient {
         (raw: unknown) => (raw && typeof raw === 'object' ? raw as Record<string, unknown> : {}),
         ({ params }) => this.extNotification(AUTH_STATUS_UPDATE_METHOD, params),
       )
-    if (this.config.allowFileSystemAccess) {
-      app
-        .onRequest(acp.methods.client.fs.readTextFile, ({ params }) => this.readTextFile(params))
-        .onRequest(acp.methods.client.fs.writeTextFile, ({ params }) => this.writeTextFile(params))
-    }
-    if (this.config.allowTerminalAccess) {
+      .onRequest(acp.methods.client.fs.readTextFile, ({ params }) => this.readTextFile(params))
+      .onRequest(acp.methods.client.fs.writeTextFile, ({ params }) => this.writeTextFile(params))
+    if (terminalAvailable) {
       app
         .onRequest(acp.methods.client.terminal.create, ({ params }) => this.createTerminal(params))
         .onRequest(acp.methods.client.terminal.output, ({ params }) => this.terminalOutput(params))
@@ -1061,6 +1050,15 @@ export class ACPClient {
         .onRequest(acp.methods.client.terminal.release, ({ params }) => this.releaseTerminal(params))
     }
     return app
+  }
+
+  private terminalAvailable(): boolean {
+    try {
+      return this.runtimeOptions.getTerminalBridge?.()?.available() === true
+    } catch (error) {
+      log.warn('terminal bridge availability check failed', { agentId: this.id }, error)
+      return false
+    }
   }
 
   private async requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
@@ -1127,6 +1125,7 @@ export class ACPClient {
     return {
       agentId: this.config.id,
       agentName: this.config.name,
+      ...(this.config.unattended ? { unattended: this.config.unattended } : {}),
       localSessionId: promptContext?.localSessionId ?? sessionRecord?.localSessionId,
       messageId: promptContext?.messageId,
       cwd: promptContext?.cwd ?? sessionRecord?.cwd,
@@ -1176,106 +1175,114 @@ export class ACPClient {
     queue.push({ type: 'update', notification: params })
   }
 
-  private async readTextFile(params: ReadTextFileRequest): Promise<ReadTextFileResponse> {
-    const filePath = this.resolveClientPath(params.path)
-    const stat = await fs.stat(filePath)
-    if (stat.size > MAX_FILE_READ_BYTES) {
-      throw new Error(`Refusing to read file larger than ${MAX_FILE_READ_BYTES} bytes`)
+  /**
+   * `fs/*` / `terminal/*` 请求的归属:在飞 prompt 的那条本地会话,没有就找开着的会话记录。
+   * 两处都找不到 = 这条请求归不到任何一条会话,没人看得见那张卡 —— 当场拒,不交给桥。
+   */
+  private requestContext(acpSessionId: string, method: string): AcpClientRequestContext {
+    const promptContext = this.promptContexts.get(acpSessionId)
+    const sessionRecord = promptContext
+      ? undefined
+      : Array.from(this.sessions.values()).find(record => record.acpSessionId === acpSessionId)
+    const localSessionId = promptContext?.localSessionId ?? sessionRecord?.localSessionId
+    const cwd = promptContext?.cwd ?? sessionRecord?.cwd
+    if (!localSessionId || !cwd) {
+      throw new acp.RequestError(-32603, `onething refused ${method}: session ${acpSessionId} is not attached to any onething session.`)
     }
+    return {
+      agentId: this.config.id,
+      agentName: this.config.name,
+      localSessionId,
+      ...(promptContext?.messageId ? { messageId: promptContext.messageId } : {}),
+      cwd: resolveACPSessionCwd(cwd),
+      ...(this.config.unattended ? { unattended: this.config.unattended } : {}),
+    }
+  }
 
-    const content = await fs.readFile(filePath, 'utf8')
-    const lines = content.split(/\r?\n/)
-    const start = Math.max(0, (params.line ?? 1) - 1)
-    const end = params.limit ? start + params.limit : lines.length
-    return { content: lines.slice(start, end).join('\n') }
+  private async readTextFile(params: ReadTextFileRequest): Promise<ReadTextFileResponse> {
+    const bridge = this.runtimeOptions.getFsBridge?.()
+    if (!bridge) throw acp.RequestError.methodNotFound(acp.methods.client.fs.readTextFile)
+    const context = this.requestContext(params.sessionId, 'fs/read_text_file')
+    return this.throughBridge('fs/read_text_file', () => bridge.readTextFile(context, {
+      path: params.path,
+      line: params.line ?? null,
+      limit: params.limit ?? null,
+    }))
   }
 
   private async writeTextFile(params: WriteTextFileRequest): Promise<WriteTextFileResponse> {
-    const filePath = this.resolveClientPath(params.path)
-    await fs.mkdir(dirname(filePath), { recursive: true })
-    await fs.writeFile(filePath, params.content, 'utf8')
+    const bridge = this.runtimeOptions.getFsBridge?.()
+    if (!bridge) throw acp.RequestError.methodNotFound(acp.methods.client.fs.writeTextFile)
+    const context = this.requestContext(params.sessionId, 'fs/write_text_file')
+    await this.throughBridge('fs/write_text_file', () => bridge.writeTextFile(context, {
+      path: params.path,
+      content: params.content,
+    }))
     return {}
   }
 
+  private terminalBridge(method: string): AcpTerminalBridge {
+    const bridge = this.runtimeOptions.getTerminalBridge?.()
+    if (!bridge) throw acp.RequestError.methodNotFound(method)
+    return bridge
+  }
+
   private async createTerminal(params: CreateTerminalRequest): Promise<CreateTerminalResponse> {
-    const terminalId = randomUUID()
-    const outputLimit = Math.min(
-      params.outputByteLimit ?? this.config.maxTerminalOutputBytes ?? DEFAULT_MAX_TERMINAL_OUTPUT_BYTES,
-      DEFAULT_MAX_TERMINAL_OUTPUT_BYTES,
-    )
+    const bridge = this.terminalBridge(acp.methods.client.terminal.create)
+    const context = this.requestContext(params.sessionId, 'terminal/create')
     const env = Object.fromEntries((params.env ?? []).map(item => [item.name, item.value]))
-    const child = spawn(params.command, params.args ?? [], {
-      cwd: params.cwd || this.config.cwd || undefined,
-      env: mergeEnv(env),
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-
-    const record: TerminalRecord = {
-      child,
-      output: '',
-      truncated: false,
-      outputLimit,
-      createdAt: Date.now(),
-      lastUsedAt: Date.now(),
-      exitPromise: new Promise(resolveExit => {
-        child.once('exit', (exitCode, signal) => {
-          record.exitStatus = { exitCode, signal }
-          resolveExit(record.exitStatus)
-        })
-      }),
-    }
-
-    const appendOutput = (chunk: Buffer) => {
-      const trimmed = trimToBytes(record.output + chunk.toString('utf8'), outputLimit)
-      record.output = trimmed.text
-      record.truncated = record.truncated || trimmed.truncated
-    }
-    child.stdout.on('data', appendOutput)
-    child.stderr.on('data', appendOutput)
-    this.terminals.set(terminalId, record)
-    this.trimTerminalRecords(terminalId)
-    return { terminalId }
+    return this.throughBridge('terminal/create', () => bridge.create(context, {
+      command: params.command,
+      ...(params.args ? { args: params.args } : {}),
+      ...(Object.keys(env).length > 0 ? { env } : {}),
+      cwd: params.cwd ?? null,
+      outputByteLimit: params.outputByteLimit ?? null,
+    }))
   }
 
   private async terminalOutput(params: TerminalOutputRequest): Promise<TerminalOutputResponse> {
-    const terminal = this.getTerminal(params.terminalId)
-    terminal.lastUsedAt = Date.now()
-    return {
-      output: terminal.output,
-      truncated: terminal.truncated,
-      exitStatus: terminal.exitStatus ?? null,
-    }
+    const bridge = this.terminalBridge(acp.methods.client.terminal.output)
+    const context = this.requestContext(params.sessionId, 'terminal/output')
+    const answer = await this.throughBridge('terminal/output', () => bridge.output(context, { terminalId: params.terminalId }))
+    return { output: answer.output, truncated: answer.truncated, exitStatus: answer.exitStatus ?? null }
   }
 
   private async waitForTerminalExit(params: WaitForTerminalExitRequest): Promise<WaitForTerminalExitResponse> {
-    const terminal = this.getTerminal(params.terminalId)
-    terminal.lastUsedAt = Date.now()
-    return terminal.exitPromise
+    const bridge = this.terminalBridge(acp.methods.client.terminal.waitForExit)
+    const context = this.requestContext(params.sessionId, 'terminal/wait_for_exit')
+    return this.throughBridge('terminal/wait_for_exit', () => bridge.waitForExit(context, { terminalId: params.terminalId }))
   }
 
   private async killTerminal(params: KillTerminalRequest): Promise<KillTerminalResponse> {
-    const terminal = this.getTerminal(params.terminalId)
-    terminal.lastUsedAt = Date.now()
-    if (!terminal.child.killed) terminal.child.kill()
+    const bridge = this.terminalBridge(acp.methods.client.terminal.kill)
+    const context = this.requestContext(params.sessionId, 'terminal/kill')
+    await this.throughBridge('terminal/kill', () => bridge.kill(context, { terminalId: params.terminalId }))
     return {}
   }
 
   private async releaseTerminal(params: ReleaseTerminalRequest): Promise<ReleaseTerminalResponse> {
-    const terminal = this.getTerminal(params.terminalId)
-    if (!terminal.child.killed && !terminal.exitStatus) terminal.child.kill()
-    this.terminals.delete(params.terminalId)
+    const bridge = this.terminalBridge(acp.methods.client.terminal.release)
+    const context = this.requestContext(params.sessionId, 'terminal/release')
+    await this.throughBridge('terminal/release', () => bridge.release(context, { terminalId: params.terminalId }))
     return {}
   }
 
-  private getTerminal(terminalId: string): TerminalRecord {
-    const terminal = this.terminals.get(terminalId)
-    if (!terminal) throw new Error(`ACP terminal "${terminalId}" not found`)
-    return terminal
-  }
-
-  private resolveClientPath(filePath: string): string {
-    if (!isAbsolute(filePath)) throw new Error('ACP file paths must be absolute')
-    return resolve(filePath)
+  /**
+   * 桥抛的错 → JSON-RPC 错误。文件不存在答 `-32002 resource_not_found`(协议给的那一格);
+   * 其余(拒绝、越限、找不到终端)答 `-32603`,message 就是桥写给 agent 的那句人话。
+   * 不用 `-32000`:那是 ACP 的 `auth_required`,agent 会把一次拒绝读成「要重新登录」。
+   */
+  private async throughBridge<T>(method: string, run: () => Promise<T>): Promise<T> {
+    try {
+      return await run()
+    } catch (error) {
+      if (error instanceof acp.RequestError) throw error
+      const code = (error as NodeJS.ErrnoException | undefined)?.code
+      const message = error instanceof Error ? error.message : String(error)
+      log.info('client request refused', { agentId: this.id, method, code, message })
+      if (code === 'ENOENT') throw new acp.RequestError(-32002, message)
+      throw new acp.RequestError(-32603, message)
+    }
   }
 
   private trimSessionRecords(currentLocalSessionId: string): void {
@@ -1290,23 +1297,6 @@ export class ACPClient {
     this.trimSessionStates(currentLocalSessionId)
   }
 
-  private trimTerminalRecords(currentTerminalId: string): void {
-    const maxRecords = Math.max(1, this.config.maxTerminals ?? DEFAULT_MAX_TERMINALS)
-    while (this.terminals.size > maxRecords) {
-      const removable = Array.from(this.terminals.entries())
-        .filter(([terminalId]) => terminalId !== currentTerminalId)
-        .sort(([, a], [, b]) => {
-          if (a.exitStatus && !b.exitStatus) return -1
-          if (!a.exitStatus && b.exitStatus) return 1
-          return a.lastUsedAt - b.lastUsedAt
-        })[0]
-      if (!removable) break
-      const [terminalId, terminal] = removable
-      if (!terminal.child.killed && !terminal.exitStatus) terminal.child.kill()
-      this.terminals.delete(terminalId)
-    }
-  }
-
   private failAllQueues(error: Error): void {
     for (const queue of this.updateQueues.values()) {
       queue.error(error)
@@ -1314,13 +1304,6 @@ export class ACPClient {
     this.updateQueues.clear()
     this.promptContexts.clear()
     this.activePromptCountValue = 0
-  }
-
-  private releaseAllTerminals(): void {
-    for (const terminal of this.terminals.values()) {
-      if (!terminal.child.killed && !terminal.exitStatus) terminal.child.kill()
-    }
-    this.terminals.clear()
   }
 }
 
@@ -1339,4 +1322,18 @@ function raceAbort(
       error => { signal.removeEventListener('abort', onAbort); reject(error) },
     )
   })
+}
+
+/**
+ * 我们对 agent 声明的客户端能力(A3-b 起固定:能力是 onething 有什么,不是每台 agent 一个开关)。
+ * 文件两条恒声明;终端只在宿主有终端输出通道时声明;`auth` / `elicitation` 与它们的处理器
+ * 同批落(A3-c),这里不先声明 —— 声明了却答 method-not-found 比不声明更糟。
+ */
+export function clientCapabilitiesFor(terminalAvailable: boolean): acp.ClientCapabilities {
+  return {
+    fs: { readTextFile: true, writeTextFile: true },
+    ...(terminalAvailable ? { terminal: true } : {}),
+    session: { configOptions: {}, notices: {}, compaction: {} },
+    plan: {},
+  }
 }

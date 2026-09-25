@@ -1,7 +1,8 @@
 /**
  * Terminal Module
- * Wire contracts for the real PTY terminal (user-driven shells; NOT the ACP
- * protocol "terminal", which is a pipes-based registry inside the ACP client).
+ * Wire contracts for the real PTY terminal. Since ACP A3-b the ACP protocol
+ * "terminal" rides the same service (owner = { kind: 'acp' }), so an agent's
+ * terminal shows up in the shell's terminal list like any other.
  * See docs/design/terminal-system.md.
  */
 import { defineRouter } from "./router.js";
@@ -18,6 +19,22 @@ export interface TerminalCreateRequest {
 	rows?: number
 	/** Seeds the initial cwd only — terminals are app-scoped, not session-scoped. */
 	sessionId?: string
+	/**
+	 * 给了就直接起这个程序(node-pty 本就能起任意可执行),不给照旧起登录 shell。
+	 * A3-b:ACP agent 的 `terminal/create` 要的是「跑这条命令」,不是「开一个 shell」。
+	 */
+	command?: string
+	args?: string[]
+	/** 叠在登录 shell 环境之上的变量(后者胜不了它)。 */
+	env?: Record<string, string>
+	/** 谁开的这一格:用户自己,或某台 ACP agent(壳据此按 owner 分组、写「<agent> 开的」)。 */
+	owner?: TerminalOwner
+}
+
+export interface TerminalOwner {
+	kind: 'user' | 'acp'
+	agentId?: string
+	sessionId?: string
 }
 
 export interface TerminalInfo {
@@ -29,6 +46,7 @@ export interface TerminalInfo {
 	rows: number
 	createdAt: number
 	exited?: { code: number | null }
+	owner?: TerminalOwner
 }
 
 export interface TerminalCreateResponse {

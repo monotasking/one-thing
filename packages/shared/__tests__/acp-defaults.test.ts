@@ -90,4 +90,14 @@ describe('ACP 设置归一', () => {
     expect(agents.some(agent => 'permissionMode' in agent)).toBe(false)
     expect('unattended' in agents[4]!).toBe(false)
   })
+
+  it('A3-b 退役的四格(文件 / 终端开关与终端上限)从老盘上摘掉,不再写回', () => {
+    const [agent] = normalizeACPSettings({
+      enabled: true,
+      agents: [{
+        id: 'a', command: 'x', allowFileSystemAccess: true, allowTerminalAccess: true, maxTerminals: 3, maxTerminalOutputBytes: 9,
+      }] as never,
+    }).agents as unknown as Array<Record<string, unknown>>
+    expect(Object.keys(agent!).sort()).toEqual(['command', 'id'])
+  })
 })

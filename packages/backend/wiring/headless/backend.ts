@@ -59,6 +59,7 @@ import { getStreamEngine } from '../engine/index.js'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import { localUserPrincipal } from '@onething/core/permission'
 import { markHostUnattended } from '@onething/runtime/permissions/unattended'
+import { registerACPPermissionBridge } from '../acp/permission-bridge.js'
 import type { Principal } from '@onething/core/permission'
 import {
   serializeOutcome,
@@ -182,6 +183,13 @@ export class HeadlessBackend {
       throw error
     }
     this.backend.own(releaseUnattendedHost, 'unattendedHost')
+    /*
+     * ACP 的审批 / 文件 / 终端桥(A3-b 裁定「桥在三个宿主上都注册」)。这台进程上没人能答卡,
+     * 所以 `unanswered: 'reject'`:agent 的请求照样进许可系统(grant、白名单照常放行),
+     * 要问人的那一格由无人应答兜底按拒绝收场 —— 与从前「无桥缺省拒」同一个结论。
+     * 终端桥在这里声明不了能力(daemon 没有终端输出通道,`terminal: null`)。
+     */
+    this.backend.own(registerACPPermissionBridge({ unanswered: 'reject' }), 'acpPermissionBridge')
     this.started = true
   }
 

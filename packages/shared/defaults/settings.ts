@@ -30,6 +30,7 @@ import type { MusicRadioSource, MusicSettings } from '../ipc/music.js'
 import type { ProviderConfig, EffectiveAISettings } from '../ipc/providers.js'
 import type { ToolSettings } from '../ipc/tools.js'
 import type { ACPSettings } from '../ipc/acp.js'
+import { RETIRED_ACP_AGENT_FIELDS } from '../contracts/acp.js'
 
 type ProviderConfigWithLocalAddress = ProviderConfig & { localAddress?: string }
 
@@ -840,6 +841,8 @@ export function normalizeACPSettings(settings?: ACPSettings): ACPSettings {
     // 不替用户收回);两个都在时以新名为准。缺席 = 缺席(= 拒),不在这里合成。
     const legacyMode = (agent as { permissionMode?: unknown }).permissionMode
     delete next.permissionMode
+    // A3-b 退役的四格:文件 / 终端不再按 agent 开关,终端上限变成终端桥的常量。老盘上的值摘掉,不再写回。
+    for (const retired of RETIRED_ACP_AGENT_FIELDS) delete next[retired]
     const unattended = 'unattended' in agent ? agent.unattended : legacyMode
     if ('unattended' in agent || legacyMode !== undefined) {
       next.unattended = unattended === 'allow' ? 'allow' : 'reject'

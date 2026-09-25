@@ -1,6 +1,7 @@
 /**
- * Real PTY terminal service (user-driven shells; unrelated to the ACP
- * protocol "terminal" in acp/client.ts, which is a pipes-based registry).
+ * Real PTY terminal service. Users' shells and — since ACP A3-b — the commands
+ * an ACP agent asks for (`terminal/create`, owner `{ kind: 'acp' }`) both live
+ * here, so an agent's terminal can be watched and entered from the shell.
  *
  * Owns the whole output pipeline so every transport shares it:
  *   PTY onData → 16ms coalescing flush → seq stamp → bounded ring buffer
@@ -28,6 +29,20 @@ import type {
   TerminalInfo,
   TerminalOutputChunk,
 } from '@shared/ipc.js'
+
+/** 一格终端的结局。`signal` 是 PTY 报的信号号(没有 = 自己退的)。 */
+export interface TerminalExitStatus {
+  exitCode: number | null
+  signal?: number
+}
+
+/** `readOutput` 的答案:回放环里此刻的全部输出(不动流控账)。 */
+export interface TerminalOutputSnapshot {
+  output: string
+  /** 环绕过一圈(最早的输出已被挤掉)。 */
+  truncated: boolean
+  exit?: TerminalExitStatus
+}
 import { createNodePtyBackend, type PtyBackend, type PtyHandle } from './pty-backend.js'
 import { buildSpawnProfile } from './spawn-profile.wiring.js'
 
@@ -100,6 +115,9 @@ interface TerminalRecord {
   exit: Promise<void>
   resolveExit(): void
   killTimer: ReturnType<typeof setTimeout> | null
+  exitStatus?: TerminalExitStatus
+  /** 结局的听众(A3-b:ACP 的 `terminal/wait_for_exit`)。退出那一刻各叫一次,随后清空。 */
+  exitListeners: Set<(status: TerminalExitStatus) => void>
 }
 
 export class TerminalService {
@@ -126,6 +144,7 @@ export class TerminalService {
       cols: profile.cols,
       rows: profile.rows,
       createdAt: Date.now(),
+      ...(request.owner ? { owner: { ...request.owner } } : {}),
     }
     let resolveExit!: () => void
     const exit = new Promise<void>(resolve => { resolveExit = resolve })
@@ -149,16 +168,70 @@ export class TerminalService {
       exit,
       resolveExit,
       killTimer: null,
+      exitListeners: new Set(),
     }
     this.terminals.set(info.id, record)
     this.pendingExits.set(info.id, exit)
     pty.onData(data => this.handleData(record, data))
-    pty.onExit(event => this.handleExit(record, event.exitCode))
-    return { ...info }
+    pty.onExit(event => this.handleExit(record, event.exitCode, event.signal))
+    return { ...info, ...(info.owner ? { owner: { ...info.owner } } : {}) }
   }
 
   list(): TerminalInfo[] {
-    return [...this.terminals.values()].map(record => ({ ...record.info }))
+    return [...this.terminals.values()].map(record => ({
+      ...record.info,
+      ...(record.info.owner ? { owner: { ...record.info.owner } } : {}),
+    }))
+  }
+
+  /**
+   * 回放环里此刻的全部输出,**不动流控**(A3-b:ACP 的 `terminal/output`)。
+   *
+   * 不能借 `attach`:attach 会开一个新世代并把这一格记成「有人在看」,于是往后每批输出都要
+   * 等 ack —— 而 agent 从不 ack,输出攒到高水位就把 PTY 停住。这里只把还没 flush 的尾巴
+   * 并进环,再把环原样读出来。
+   */
+  readOutput(terminalId: string): TerminalOutputSnapshot | undefined {
+    const record = this.terminals.get(terminalId)
+    if (!record) return undefined
+    this.flushNow(record)
+    return {
+      output: record.ring.map(chunk => chunk.data).join(''),
+      truncated: record.ringTruncated,
+      ...(record.exitStatus ? { exit: { ...record.exitStatus } } : {}),
+    }
+  }
+
+  /**
+   * 这一格死了叫一次 `listener`。已经死了 = 下一拍就叫(不同步叫,调用方拿到退订函数之前
+   * 不该先收到回调)。不认识的 id 答 `undefined`,由调用方决定怎么说。
+   */
+  onExit(terminalId: string, listener: (status: TerminalExitStatus) => void): (() => void) | undefined {
+    const record = this.terminals.get(terminalId)
+    if (!record) return undefined
+    if (record.exitStatus) {
+      const status = { ...record.exitStatus }
+      queueMicrotask(() => listener(status))
+      return () => {}
+    }
+    record.exitListeners.add(listener)
+    return () => { record.exitListeners.delete(listener) }
+  }
+
+  /**
+   * 结束进程,**留下这一格**(A3-b:ACP 的 `terminal/kill` —— 协议要求杀掉之后仍读得到输出、
+   * 等得到结局)。与 `kill()` 的差别就在这里:`kill()` 是「关掉这一格」,当场从列表摘掉。
+   * 先 SIGHUP 整个进程组,宽限期过了还活着再 SIGKILL;输出照常 flush,死讯照常发。
+   */
+  terminate(terminalId: string): void {
+    const record = this.terminals.get(terminalId)
+    if (!record || record.exited || record.disposing) return
+    this.resumeIfPaused(record)
+    record.pty.kill('SIGHUP')
+    const escalate = setTimeout(() => {
+      if (!record.exited) record.pty.kill('SIGKILL')
+    }, this.options.killGraceMs)
+    escalate.unref?.()
   }
 
   write(terminalId: string, data: string): void {
@@ -294,13 +367,23 @@ export class TerminalService {
     }
   }
 
-  private handleExit(record: TerminalRecord, exitCode: number | null): void {
+  private handleExit(record: TerminalRecord, exitCode: number | null, signal?: number): void {
     if (record.exited) return
     // Flush BEFORE the exit event so exit can never overtake tail output
     // (same flush-before-event rule as the stream coalescer).
     if (!record.disposing) this.flushNow(record)
     record.exited = true
     record.info.exited = { code: exitCode }
+    record.exitStatus = { exitCode, ...(signal ? { signal } : {}) }
+    const listeners = [...record.exitListeners]
+    record.exitListeners.clear()
+    for (const listener of listeners) {
+      try {
+        listener({ ...record.exitStatus })
+      } catch {
+        // 听众自己的错不该挡住死讯与收尾。
+      }
+    }
     this.clearStallTimer(record)
     this.finishExit(record)
     /*

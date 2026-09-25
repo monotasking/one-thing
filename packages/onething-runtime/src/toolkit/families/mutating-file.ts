@@ -105,16 +105,7 @@ export abstract class MutatingFileTool<In, Detail> extends FileTool<In, FileMuta
     resolved: ResolvedFilePath,
     metadata: JsonObject,
   ): Effect {
-    return makeEffect(kind, [filePermissionPattern(resolved.absolute)], {
-      barrier: true,
-      external: resolved.external,
-      metadata: {
-        path: resolved.absolute,
-        ...metadata,
-        isExternal: resolved.external,
-        boundary: resolved.external ? resolved.boundary : undefined,
-      },
-    })
+    return fileMutationEffect(kind, resolved, metadata)
   }
 
   protected diffPreview(title: string, resolved: ResolvedFilePath, diff: FileMutationDiff): Preview {
@@ -175,4 +166,29 @@ export abstract class MutatingFileTool<In, Detail> extends FileTool<In, FileMuta
       metadata: input.metadata,
     })
   }
+}
+
+/**
+ * 一条写效果,不依附任何一只工具。资源粒度是**所在目录**(`filePermissionPattern`),
+ * 不是那一个文件 —— 一次「总是允许」覆盖的是这个目录下的写;越界不是另一行效果,而是
+ * 这一条上的 `external` 位(权限核据它决定 `auto-accept-edits` 豁不豁免)。
+ *
+ * 抽出来的理由同 `resolveFileToolPath`:ACP 的 `fs/write_text_file`(A3-b)要与本地
+ * write / edit 报**同一种**写效果,授权、grant 与卡片才长一个样。
+ */
+export function fileMutationEffect(
+  kind: Extract<EffectClass, 'file_edit' | 'file_write' | 'file_destructive_edit'>,
+  resolved: ResolvedFilePath,
+  metadata: JsonObject,
+): Effect {
+  return makeEffect(kind, [filePermissionPattern(resolved.absolute)], {
+    barrier: true,
+    external: resolved.external,
+    metadata: {
+      path: resolved.absolute,
+      ...metadata,
+      isExternal: resolved.external,
+      boundary: resolved.external ? resolved.boundary : undefined,
+    },
+  })
 }

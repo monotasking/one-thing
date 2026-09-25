@@ -113,48 +113,14 @@ export abstract class FileTool<In, Payload> extends Tool<In, Payload> {
   /**
    * 路径解析 + 定性。`mode` 决定拿哪一组根:写只认工作目录根 + 接入目录,读还额外
    * 认默认读根(笔记/下载)。两套根列表本来就在旧树里分开,这里只是把"哪个工具该
-   * 用哪一套"从工具里提到家族。
+   * 用哪一套"从工具里提到家族。判据本体在 {@link resolveFileToolPath}。
    */
   protected resolvePath(
     rawPath: string,
     ctx: FileToolContextLike,
     mode: 'read' | 'write',
   ): ResolvedFilePath {
-    const scope = fileScopeOf(ctx)
-    const defaultWorkingDirectory = this.adapters.getDefaultWorkingDirectory?.()
-    const absolute = resolveCoreToolPath(rawPath, {
-      workingDirectory: scope.workingDirectory,
-      defaultWorkingDirectory,
-    })
-    const boundary = getCoreSandboxBoundary({
-      workingDirectory: scope.workingDirectory,
-      defaultWorkingDirectory,
-    })
-    const root = mode === 'read'
-      ? findCoreReadSandboxRootForPath(absolute, {
-          workingDirectory: scope.workingDirectory,
-          workingDirectoryRoots: scope.workingDirectoryRoots,
-          defaultWorkingDirectory,
-          defaultReadRoots: this.adapters.getDefaultReadRoots?.(scope.sessionId),
-        })
-      : findCoreSandboxRootForPath(absolute, {
-          workingDirectory: scope.workingDirectory,
-          workingDirectoryRoots: scope.workingDirectoryRoots,
-          connectedDirectories: this.adapters.getConnectedDirectories?.(scope.sessionId),
-          defaultWorkingDirectory,
-        })
-    const sensitivity = classifySensitiveFile(absolute)
-
-    return {
-      input: rawPath,
-      absolute,
-      root,
-      boundary,
-      external: !root,
-      sensitive: sensitivity.sensitive,
-      sensitiveCategory: sensitivity.category,
-      sensitiveReason: sensitivity.reason,
-    }
+    return resolveFileToolPath(rawPath, fileScopeOf(ctx), this.adapters, mode)
   }
 
   /** 可写沙箱的全部根 —— `ProcessTool` 之外还需要它的只有诊断用途。 */
@@ -174,45 +140,103 @@ export abstract class FileTool<In, Payload> extends Tool<In, Payload> {
     return resolved
   }
 
-  /**
-   * 读一个路径的效果面。与旧 `read.ts` 的 `analyze` 逐字同口径:越界时先一条
-   * `external_directory`(资源粒度是所在目录),再一条 `read` 或
-   * `sensitive_file_read`。
-   */
+  /** 读一个路径的效果面;判据本体在 {@link fileReadEffects}。 */
   protected readEffects(resolved: ResolvedFilePath, operation = 'Read file'): Effect[] {
-    const effects: Effect[] = []
-    if (resolved.external) {
-      effects.push(makeEffect('external_directory', [joinPaths(dirnamePath(resolved.absolute), '*')], {
-        barrier: true,
-        external: true,
-        metadata: {
-          path: resolved.absolute,
-          boundary: resolved.boundary,
-          operation,
-          targetType: 'file',
-        },
-      }))
-    }
-    effects.push(makeEffect(
-      resolved.sensitive ? 'sensitive_file_read' : 'read',
-      [resolved.absolute],
-      {
-        barrier: resolved.sensitive,
-        sensitive: resolved.sensitive,
-        metadata: resolved.sensitive
-          ? { path: resolved.absolute, category: resolved.sensitiveCategory, reason: resolved.sensitiveReason }
-          : { path: resolved.absolute },
-      },
-    ))
-    return effects
+    return fileReadEffects(resolved, operation)
   }
 
   protected readPreview(resolved: ResolvedFilePath): Preview {
-    return {
-      title: resolved.sensitive
-        ? `Read sensitive file: ${basenamePath(resolved.absolute)}`
-        : `Read ${basenamePath(resolved.absolute)}`,
-      path: resolved.absolute,
-    }
+    return fileReadPreview(resolved)
+  }
+}
+
+/**
+ * 路径解析 + 定性,不依附任何一只工具。
+ *
+ * 为什么抽出来(A3-b):ACP agent 经 `fs/read_text_file` / `fs/write_text_file` 要读写文件,
+ * 那两条请求不是一次工具调用,却必须与本地 read / write 用**同一套**沙箱判据 —— 同一个
+ * 路径谁来问长一个样(`backend/wiring/acp/fs-bridge.ts`)。再抄一份就是两套判据。
+ */
+export function resolveFileToolPath(
+  rawPath: string,
+  scope: FileScope,
+  adapters: FileToolAdapters,
+  mode: 'read' | 'write',
+): ResolvedFilePath {
+  const defaultWorkingDirectory = adapters.getDefaultWorkingDirectory?.()
+  const absolute = resolveCoreToolPath(rawPath, {
+    workingDirectory: scope.workingDirectory,
+    defaultWorkingDirectory,
+  })
+  const boundary = getCoreSandboxBoundary({
+    workingDirectory: scope.workingDirectory,
+    defaultWorkingDirectory,
+  })
+  const root = mode === 'read'
+    ? findCoreReadSandboxRootForPath(absolute, {
+        workingDirectory: scope.workingDirectory,
+        workingDirectoryRoots: scope.workingDirectoryRoots,
+        defaultWorkingDirectory,
+        defaultReadRoots: adapters.getDefaultReadRoots?.(scope.sessionId),
+      })
+    : findCoreSandboxRootForPath(absolute, {
+        workingDirectory: scope.workingDirectory,
+        workingDirectoryRoots: scope.workingDirectoryRoots,
+        connectedDirectories: adapters.getConnectedDirectories?.(scope.sessionId),
+        defaultWorkingDirectory,
+      })
+  const sensitivity = classifySensitiveFile(absolute)
+
+  return {
+    input: rawPath,
+    absolute,
+    root,
+    boundary,
+    external: !root,
+    sensitive: sensitivity.sensitive,
+    sensitiveCategory: sensitivity.category,
+    sensitiveReason: sensitivity.reason,
+  }
+}
+
+/**
+ * 读一个路径的效果面。与旧 `read.ts` 的 `analyze` 逐字同口径:越界时先一条
+ * `external_directory`(资源粒度是所在目录),再一条 `read` 或
+ * `sensitive_file_read`。
+ */
+export function fileReadEffects(resolved: ResolvedFilePath, operation = 'Read file'): Effect[] {
+  const effects: Effect[] = []
+  if (resolved.external) {
+    effects.push(makeEffect('external_directory', [joinPaths(dirnamePath(resolved.absolute), '*')], {
+      barrier: true,
+      external: true,
+      metadata: {
+        path: resolved.absolute,
+        boundary: resolved.boundary,
+        operation,
+        targetType: 'file',
+      },
+    }))
+  }
+  effects.push(makeEffect(
+    resolved.sensitive ? 'sensitive_file_read' : 'read',
+    [resolved.absolute],
+    {
+      barrier: resolved.sensitive,
+      sensitive: resolved.sensitive,
+      metadata: resolved.sensitive
+        ? { path: resolved.absolute, category: resolved.sensitiveCategory, reason: resolved.sensitiveReason }
+        : { path: resolved.absolute },
+    },
+  ))
+  return effects
+}
+
+export function fileReadPreview(resolved: ResolvedFilePath): Preview {
+  return {
+    title: resolved.sensitive
+      ? `Read sensitive file: ${basenamePath(resolved.absolute)}`
+      : `Read ${basenamePath(resolved.absolute)}`,
+    path: resolved.absolute,
   }
 }

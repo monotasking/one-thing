@@ -71,7 +71,16 @@ function isSystemDrivenTurn(sessionId: string): boolean {
   return Boolean(origin && isSystemInternalOrigin(origin))
 }
 
-const UNATTENDED_ASK_TIMEOUT_MS = 120_000
+/**
+ * 「问了没人答」等多久按拒绝收场。缺省 120s;`ONETHING_UNATTENDED_ASK_TIMEOUT_MS` 只为真机门
+ * 把它压短(`gate:acp` ⑯ 用 2000),**全仓只有这一处读它**,缺省不变。
+ */
+const UNATTENDED_ASK_TIMEOUT_MS = readUnattendedAskTimeoutMs()
+
+function readUnattendedAskTimeoutMs(): number {
+  const raw = Number(process.env.ONETHING_UNATTENDED_ASK_TIMEOUT_MS)
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 120_000
+}
 
 /**
  * 「问了,但过了这么久还没人答,就按拒绝收场」的那一类桥。
@@ -225,6 +234,32 @@ export async function enforcePermissionPolicy(input: EnforcePermissionPolicyInpu
     return permissionRuntime.enforce({ ...enriched, permissionBridge: unattendedHostBridge })
   }
   return permissionRuntime.enforce(enriched)
+}
+
+/**
+ * 与 {@link enforcePermissionPolicy} 同一条判定链,只差最后一格:**普通回合的卡没人答,
+ * {@link UNATTENDED_ASK_TIMEOUT_MS} 后按拒绝收场**(走的是 respond 路,卡被答掉而不是被遗弃)。
+ *
+ * 谁用它:没有人一定守着卡的宿主(server / CLI daemon)上,ACP agent 发来的审批 / 文件 / 终端
+ * 请求(方案 `docs/design/acp-integration-2026-09.md` §11.3 A3-b「桥在三个宿主上都注册」)。
+ * 从前这两台宿主根本不挂桥,agent 的请求到不了许可系统,由客户端按 `unattended` 直接答;
+ * 挂了桥之后卡能上屏(连着 server 的浏览器壳看得见、答得了),但没人看的时候不能让 agent
+ * 永远挂在那里 —— 这一格就是「无桥缺省拒」改口成「无人应答缺省拒」之后的同一个结论。
+ *
+ * 前三格一字不动:无人值守回合照旧当场拒,群房照旧无限等,系统驱动回合本来就是这个超时。
+ * 桌面壳不用它(那里有人看卡,今天的卡怎么等,A3-b 之后还怎么等)。
+ */
+export async function enforcePermissionPolicyRejectingUnanswered(
+  input: EnforcePermissionPolicyInput,
+): Promise<Permission.Response[]> {
+  const enriched = enrichPermissionInput(input)
+  if (isUnattendedTurn(input.sessionId)) {
+    return permissionRuntime.enforce({ ...enriched, permissionBridge: unattendedBridge })
+  }
+  if (isCollabTurn(input.sessionId)) {
+    return permissionRuntime.enforce({ ...enriched, permissionBridge: collabReminderBridge })
+  }
+  return permissionRuntime.enforce({ ...enriched, permissionBridge: timeoutAskBridge })
 }
 
 function enrichPermissionInput(input: EnforcePermissionPolicyInput): EnforcePermissionPolicyInput {

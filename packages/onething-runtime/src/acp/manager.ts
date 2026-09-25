@@ -2,6 +2,8 @@ import type {
   ACPAgentConfig,
   ACPAgentState,
   ACPPermissionBridge,
+  AcpFsBridge,
+  AcpTerminalBridge,
   ACPPromptStreamEvent,
   ACPPromptStreamOptions,
   ACPSessionOption,
@@ -22,6 +24,8 @@ class ACPManagerClass {
   private settings: ACPSettings = { enabled: true, agents: [] }
   private cleanupTimer: NodeJS.Timeout | null = null
   private permissionBridge: ACPPermissionBridge | undefined
+  private fsBridge: AcpFsBridge | undefined
+  private terminalBridge: AcpTerminalBridge | undefined
   /** 会话对应关系落盘处(缺省 `<store>/acp/session-links.json`);测试换成内存那只。 */
   private sessionLinks: ACPSessionLinkStore = new FileACPSessionLinkStore()
   private spawnEnv: (() => Record<string, string | undefined>) | undefined
@@ -103,6 +107,27 @@ class ACPManagerClass {
    */
   setSpawnEnvProvider(provider: (() => Record<string, string | undefined>) | undefined): void {
     this.spawnEnv = provider
+  }
+
+  /**
+   * agent 要文件 / 要终端时的落点(A3-b)。与权限桥同一种晚绑定:已有的客户端下一次请求就用上;
+   * 缺席 = 那几个方法答 method-not-found(文件能力照样声明;终端能力只在终端桥在、且宿主有
+   * 终端输出通道时声明,见 `ACPClient.createClientApp`)。
+   */
+  setFsBridge(bridge: AcpFsBridge | undefined): void {
+    this.fsBridge = bridge
+  }
+
+  getFsBridge(): AcpFsBridge | undefined {
+    return this.fsBridge
+  }
+
+  setTerminalBridge(bridge: AcpTerminalBridge | undefined): void {
+    this.terminalBridge = bridge
+  }
+
+  getTerminalBridge(): AcpTerminalBridge | undefined {
+    return this.terminalBridge
   }
 
   setSessionLinkStore(store: ACPSessionLinkStore): void {
@@ -327,6 +352,8 @@ class ACPManagerClass {
       getPermissionBridge: () => this.permissionBridge,
       getSessionLinks: () => this.sessionLinks,
       getSpawnEnv: () => this.spawnEnv?.(),
+      getFsBridge: () => this.fsBridge,
+      getTerminalBridge: () => this.terminalBridge,
     })
     const offSession = client.onSessionStateChanged(state => this.fanOut(this.sessionStateListeners, state))
     const offAgent = client.onAgentStateChanged(state => this.fanOut(this.agentStateListeners, state))

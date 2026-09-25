@@ -10,6 +10,16 @@
 // `cursor/whatever`(Cursor 这类 agent 真会发私有方法),把拿到的 JSON-RPC 错误码记进
 // calls.log —— 客户端该答 -32601 而不是断连;随后照常说完这一轮:正文、思考、一次 `read`
 // 工具从 pending 走到 completed,最后 `end_turn`。只有第一轮这样,后面的轮次回到原剧本。
+//
+// A3-b 三条剧本(gate:acp ⑪–⑭ / ⑯;每条都要**两样**同时在:环境变量打开 + 那一轮的正文以
+// 对应口令开头,所以一台 agent 可以一轮一个剧本):
+// FAKE_AGENT_PERMISSION=1 + 正文 `@perm`:工具之前发 `session/request_permission`(execute、四个选项),
+//   同一件事连问两次;正文 `@perm1` 只问一次。每次把选中的 optionId 记进 calls.log。
+// FAKE_AGENT_FS=1 + 正文 `@fs`:读 `<cwd>/hello.txt`(应当成功)、读 FAKE_AGENT_FS_OUTSIDE(根外的
+//   敏感文件,应当被拒;**只记成败与长度,从不记内容**)、写 `<cwd>/written-by-agent.txt`。
+// FAKE_AGENT_TERMINAL=1 + 正文 `@term`:起 `/bin/sh -c 'sleep 1; echo hi'`,等它退出、读输出、release;
+//   再起一条 `sleep 30`,kill 之后等结局、release。
+// 握手时收到的 clientCapabilities 写进 FAKE_AGENT_DIR/client-caps.json(不进 calls.log)。
 import { AgentSideConnection, PROTOCOL_VERSION, RequestError, ndJsonStream } from '@agentclientprotocol/sdk'
 import { Readable, Writable } from 'node:stream'
 import { closeSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -29,10 +39,80 @@ const configOptions = s => [
   { id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: s.model, options: MODELS },
 ]
 
+const PERMISSION_OPTIONS = [
+  { optionId: 'opt-allow-once', name: 'Allow', kind: 'allow_once' },
+  { optionId: 'opt-allow-always', name: 'Always Allow', kind: 'allow_always' },
+  { optionId: 'opt-reject-once', name: 'Reject', kind: 'reject_once' },
+  { optionId: 'opt-reject-always', name: 'Always Reject', kind: 'reject_always' },
+]
+
+async function permissionScript(conn, s, times) {
+  for (let ask = 1; ask <= times; ask += 1) {
+    const toolCallId = `perm-${s.turns}-${ask}`
+    await conn.sessionUpdate({
+      sessionId: s.id,
+      update: { sessionUpdate: 'tool_call', toolCallId, title: 'npm run build', kind: 'execute', status: 'pending', rawInput: { command: 'npm run build' } },
+    })
+    const startedAt = Date.now()
+    const answer = await conn.requestPermission({
+      sessionId: s.id,
+      toolCall: { toolCallId, title: 'npm run build', kind: 'execute', rawInput: { command: 'npm run build' } },
+      options: PERMISSION_OPTIONS,
+    })
+    logCall({ method: 'permission', turn: s.turns, ask, outcome: answer.outcome, ms: Date.now() - startedAt })
+    await conn.sessionUpdate({
+      sessionId: s.id,
+      update: { sessionUpdate: 'tool_call_update', toolCallId, status: 'completed', rawOutput: { ok: true } },
+    })
+  }
+}
+
+async function fsScript(conn, s) {
+  try {
+    const read = await conn.readTextFile({ sessionId: s.id, path: join(s.cwd, 'hello.txt') })
+    logCall({ method: 'fs-read', ok: true, content: read.content })
+  } catch (error) {
+    logCall({ method: 'fs-read', ok: false, code: error?.code ?? null, message: String(error?.message ?? error) })
+  }
+  try {
+    const read = await conn.readTextFile({ sessionId: s.id, path: process.env.FAKE_AGENT_FS_OUTSIDE })
+    logCall({ method: 'fs-read-outside', ok: true, length: read.content.length })
+  } catch (error) {
+    logCall({ method: 'fs-read-outside', ok: false, code: error?.code ?? null, message: String(error?.message ?? error) })
+  }
+  try {
+    await conn.writeTextFile({ sessionId: s.id, path: join(s.cwd, 'written-by-agent.txt'), content: 'written by agent\n' })
+    logCall({ method: 'fs-write', ok: true })
+  } catch (error) {
+    logCall({ method: 'fs-write', ok: false, code: error?.code ?? null, message: String(error?.message ?? error) })
+  }
+}
+
+async function terminalScript(conn, s) {
+  try {
+    const terminal = await conn.createTerminal({ sessionId: s.id, command: '/bin/sh', args: ['-c', 'sleep 1; echo hi'], cwd: s.cwd })
+    logCall({ method: 'term-created', terminalId: terminal.id })
+    const exit = await terminal.waitForExit()
+    const output = await terminal.currentOutput()
+    logCall({ method: 'term-output', terminalId: terminal.id, output: output.output, truncated: output.truncated, exit, exitStatus: output.exitStatus ?? null })
+    await terminal.release()
+    const sleeper = await conn.createTerminal({ sessionId: s.id, command: '/bin/sh', args: ['-c', 'sleep 30'], cwd: s.cwd })
+    logCall({ method: 'term-sleeper', terminalId: sleeper.id })
+    await sleeper.kill()
+    const killed = await sleeper.waitForExit()
+    logCall({ method: 'term-killed', terminalId: sleeper.id, exit: killed })
+    await sleeper.release()
+  } catch (error) {
+    logCall({ method: 'term-error', code: error?.code ?? null, message: String(error?.message ?? error) })
+  }
+}
+
 const stream = ndJsonStream(Writable.toWeb(process.stdout), Readable.toWeb(process.stdin))
 new AgentSideConnection(conn => ({
-  async initialize() {
+  async initialize(params) {
     logCall({ method: 'init', proxy: process.env.HTTPS_PROXY ?? null })
+    // 另写一个文件,不进 calls.log(别的用例逐条比对那张表)。
+    writeFileSync(join(dir, 'client-caps.json'), JSON.stringify(params?.clientCapabilities ?? null))
     return {
       protocolVersion: PROTOCOL_VERSION,
       agentCapabilities: {
@@ -107,6 +187,10 @@ new AgentSideConnection(conn => ({
     const s = readSession(params.sessionId)
     s.turns += 1
     writeSession(s)
+    const text = params.prompt?.find(block => block.type === 'text')?.text ?? ''
+    if (process.env.FAKE_AGENT_PERMISSION === '1' && text.startsWith('@perm')) await permissionScript(conn, s, text.startsWith('@perm1') ? 1 : 2)
+    if (process.env.FAKE_AGENT_FS === '1' && text.startsWith('@fs')) await fsScript(conn, s)
+    if (process.env.FAKE_AGENT_TERMINAL === '1' && text.startsWith('@term')) await terminalScript(conn, s)
     const rogue = process.env.FAKE_AGENT_ROGUE_METHOD === '1' && s.turns === 1
     if (rogue) {
       // 协议外请求:客户端没挂这个方法,SDK 该以 -32601 回绝;回绝不该掐断连接。

@@ -8,10 +8,9 @@
  *  · `ACPManager.initialize` / `updateSettings` 是**同步**的(只是 syncClients + 起清理
  *    定时器),这里仍然包成 `Promise<void>` 并且 `await` 端口 —— 宿主面前两只子系统的
  *    形状一样,谁也不必记得"ACP 那只不用 await"。
- *  · **权限桥不在这里接**。今天接它的是 Vue 宿主自己的 `initializeACP()`
- *    (`apps/electron/src/main/ipc/acp.ts`),装配层这条路(daemon 的 `mcpAcp: true`)从来
- *    没接过。搬进来等于给 daemon 新开一条今天没有的行为,而"接不接"是产品决定,不是
- *    这一期的机械搬运。留账在方案 §2.2。
+ *  · **桥不在这里接**。审批 / 文件 / 终端三只桥由宿主各自 `own(registerACPPermissionBridge(…))`
+ *    (A3-b 起三个宿主都挂:React 壳等人答,server 与 daemon 没人答就拒)—— 「没人答怎么办」
+ *    是宿主的事实,子系统不替它猜。
  */
 import type { ACPAgentConfig, ACPAgentState, ACPSettings, AcpSessionState } from '@onething/runtime/acp'
 import { getLogger } from '../logging/index.js'

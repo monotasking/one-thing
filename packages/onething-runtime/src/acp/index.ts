@@ -48,5 +48,9 @@ export type {
   AcpAgentDetect,
   AcpAgentManifest,
   AcpAgentSource,
+  AcpClientRequestContext,
+  AcpFsBridge,
   AcpSessionState,
+  AcpTerminalBridge,
+  AcpTerminalExitStatus,
 } from './types.js'

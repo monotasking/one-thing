@@ -75,4 +75,16 @@ describe('TerminalService real-pty smoke', () => {
     expect(exited.has(pids[0])).toBe(true)
     expect(() => process.kill(pids[0], 0)).toThrow()
   }, 20000)
+
+  it('A3-b:给了 command 就直接起那个程序 —— 真 echo 经 node-pty 跑完,输出进环、结局可等', async () => {
+    const info = service.create({ command: '/bin/echo', args: ['acp-says-hi'], cwd: process.cwd(), owner: { kind: 'acp', agentId: 'smoke' } })
+    expect(info.owner).toEqual({ kind: 'acp', agentId: 'smoke' })
+    const exit = await new Promise(resolve => service.onExit(info.id, resolve))
+    expect(exit).toMatchObject({ exitCode: 0 })
+    const snapshot = service.readOutput(info.id)
+    expect(snapshot?.output).toContain('acp-says-hi')
+    expect(snapshot?.exit?.exitCode).toBe(0)
+    await service.kill(info.id)
+    expect(service.list().some(terminal => terminal.id === info.id)).toBe(false)
+  }, 20000)
 })

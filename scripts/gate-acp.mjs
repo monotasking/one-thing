@@ -22,6 +22,21 @@
  *      假 agent 在 `session/new` 答完后立刻推 `available_commands_update` —— 此刻没有任何
  *      prompt 在飞 —— `acp.sessionState` 里要有那条命令,SSE 上要见到带它的 `acp:session-state`。
  *
+ *
+ * A3-b(方案 §7 ⑪–⑭ / ⑯;server 从这一单起也挂审批 / 文件 / 终端三只桥,门自己当应答者:订
+ * SSE 上的 `permission:request`,按步发 `command:permission-respond`)。用第二台假 agent
+ * `fake-a3`(不设 `unattended`,卡照常上),一轮一个剧本:
+ *   ⑪ 四选项:`request_permission` 带四个选项 → 事件的 `choices` 四条;答 once → agent 收到 allow_once。
+ *   ⑫ 始终允许:同一轮第二问答 always → agent 收到 allow_always,grant 落盘;下一轮同一件事
+ *      两问都不上卡,agent 直接拿到 allow_once。
+ *   ⑬ fs:cwd 内读成功;根外敏感文件上卡、门答 reject → agent 收到拒绝;写文件上卡(带 diff)、
+ *      答 once → 落盘,账本上一条 `tool/audit`(acp-fs-write)。
+ *   ⑭ terminal:`terminal/create` → `terminal.list` 里 owner 为这台 agent;`terminal/output` 与
+ *      `terminal:data` 全局事件逐字一致且含 hi;kill 之后见到 `terminal:exit`。server 缺省没有
+ *      终端输出通道,门以 `ONETHING_SERVER_TERMINAL=1` 打开那一格。
+ *   ⑯ 无人应答:门不答那张卡 → `ONETHING_UNATTENDED_ASK_TIMEOUT_MS=2000` 后按拒绝收场,agent
+ *      收到 reject_once,不是自动放行。
+ *
  * **必须用 node 起**(同 gate:search-index):server 的检索 Worker 要 `node:sqlite`,bun 没有。
  * 不构建:缺 `dist/server/main.js` 就叫你先 `bun run server:build`。
  * 绝不碰真 `~/.onething` —— 全程 `ONETHING_STORE_PATH` 指向 mkdtemp 出来的临时目录。
@@ -36,6 +51,10 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const serverEntry = path.join(repoRoot, 'dist/server/main.js')
 const fakeAgent = path.join(repoRoot, 'packages/onething-runtime/src/acp/__tests__/fixtures/fake-agent.mjs')
 const AGENT_ID = 'fake'
+/** A3-b 那几步用的第二台:同一只夹具,打开审批 / 文件 / 终端三条剧本,不设 `unattended`。 */
+const A3_AGENT_ID = 'fake-a3'
+/** ⑯ 的无人应答超时(毫秒);⑪–⑭ 门答卡远快于它。 */
+const UNANSWERED_TIMEOUT_MS = 2000
 /** 假 agent 在 `initialize` 里自报的两样(与夹具逐字对齐;夹具改了这里跟着改)。 */
 const EXPECTED_CAPABILITIES = { loadSession: true, sessionCapabilities: {} }
 const EXPECTED_AGENT_INFO = { name: 'fake-agent', version: '0.0.1' }
@@ -166,13 +185,49 @@ const readCalls = agentDir => {
 }
 
 /** 一条会话:建、绑目录(可选)、模型指到 acp / 假 agent。 */
-async function createAcpSession(rpc, name, workingDirectory) {
+async function createAcpSession(rpc, name, workingDirectory, agentId = AGENT_ID) {
   const made = await rpc('sessions', 'create', { name })
   const sessionId = made?.session?.id
   if (!sessionId) throw new Error(`sessions.create 没给出会话 id:${JSON.stringify(made)}`)
   if (workingDirectory) await rpc('sessions', 'updateWorkingDirectory', { sessionId, workingDirectory })
-  await rpc('sessions', 'updateModel', { sessionId, provider: 'acp', model: AGENT_ID })
+  await rpc('sessions', 'updateModel', { sessionId, provider: 'acp', model: agentId })
   return sessionId
+}
+
+/** SSE 上这条会话的 `permission:request` 帧(按到达先后)。 */
+const permissionRequests = (frames, sessionId) => frames
+  .filter(frame => frame.event === 'session:event' && frame.data?.sessionId === sessionId
+    && frame.data?.event?.type === 'permission:request')
+  .map(frame => frame.data.event)
+
+/**
+ * 门当应答者:每 50ms 扫一遍新到的 `permission:request`,问 `decide(event)` 要答案(返回
+ * `undefined` = 这张不答),经通用 RPC 发 `command:permission-respond`。
+ */
+function startAnswerer(rpc, frames) {
+  const answered = new Set()
+  const answers = []
+  let decide = () => undefined
+  const timer = setInterval(() => {
+    for (const frame of frames) {
+      if (frame.event !== 'session:event' || frame.data?.event?.type !== 'permission:request') continue
+      const event = frame.data.event
+      if (answered.has(event.requestId)) continue
+      const decision = decide(event, frame.data.sessionId)
+      if (!decision) continue
+      answered.add(event.requestId)
+      answers.push({ requestId: event.requestId, type: event.permissionType, decision })
+      rpc('session-command', 'emit', {
+        sessionId: frame.data.sessionId,
+        command: { type: 'command:permission-respond', requestId: event.requestId, toolCallId: event.toolCallId, decision },
+      }).catch(error => console.error(`[gate:acp] permission-respond failed: ${error}`))
+    }
+  }, 50)
+  return {
+    answers,
+    setDecider(next) { decide = next },
+    stop() { clearInterval(timer) },
+  }
 }
 
 async function sendMessage(rpc, sessionId, content) {
@@ -205,13 +260,18 @@ function toolCallsOf(message) {
 const storePath = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-acp-gate-'))
 const workDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onething-acp-gate-work-')))
 const agentDir = path.join(storePath, 'fake-agent')
+const a3AgentDir = path.join(storePath, 'fake-agent-a3')
+/** ⑬ 的「根外敏感文件」:一份假的私钥,放在会话目录之外的临时目录里 —— 门绝不去碰真的 `~/.ssh`。 */
+const lonelyDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onething-acp-gate-lonely-')))
+const outsideDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onething-acp-gate-outside-')))
+const outsideSecret = path.join(outsideDir, '.ssh', 'id_rsa')
 
 try {
   console.log(`[gate:acp] temp store: ${storePath}`)
   fs.writeFileSync(path.join(storePath, 'settings.json'), JSON.stringify({
     ai: {
       provider: 'acp',
-      providers: { acp: { model: AGENT_ID, selectedModels: [AGENT_ID], enabled: true } },
+      providers: { acp: { model: AGENT_ID, selectedModels: [AGENT_ID, A3_AGENT_ID], enabled: true } },
       customProviders: [],
       modelCatalog: {},
     },
@@ -231,11 +291,26 @@ try {
           FAKE_AGENT_PUSH_COMMANDS: '1',
           FAKE_AGENT_ROGUE_METHOD: '1',
         },
-        // A3-a:无桥宿主缺省拒;①–④ 不验审批,显式打开无人值守放行,门步才不被拒卡住。
+        // ①–④ 不验审批:显式打开无人应答放行(A3-b 起桥里前置放行,不上卡)。
         unattended: 'allow',
+      }, {
+        id: A3_AGENT_ID,
+        name: 'Fake A3',
+        enabled: true,
+        command: process.execPath,
+        args: [fakeAgent],
+        env: {
+          FAKE_AGENT_CAPS: 'load',
+          FAKE_AGENT_DIR: a3AgentDir,
+          FAKE_AGENT_PERMISSION: '1',
+          FAKE_AGENT_FS: '1',
+          FAKE_AGENT_FS_OUTSIDE: outsideSecret,
+          FAKE_AGENT_TERMINAL: '1',
+        },
       }],
     },
-    tools: { enableToolCalls: false, permissionMode: 'dangerously-allow-all', tools: {} },
+    // 正常模式:A3-b 的卡要真的上屏(`dangerously-allow-all` 会让许可核一张都不问)。
+    tools: { enableToolCalls: false, permissionMode: 'normal', tools: {} },
     diagnostics: { enabled: false },
   }, null, 2))
 
@@ -247,6 +322,9 @@ try {
       ONETHING_SERVER_DATA_ROOT: storePath,
       ONETHING_SERVER_HOST: '127.0.0.1',
       ONETHING_SERVER_PORT: '',
+      // ⑭:给这台 server 接上终端输出通道(缺省没有);⑯:无人应答兜底压到 2s。
+      ONETHING_SERVER_TERMINAL: '1',
+      ONETHING_UNATTENDED_ASK_TIMEOUT_MS: String(UNANSWERED_TIMEOUT_MS),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -349,6 +427,126 @@ try {
     && item.data?.state?.localSessionId === idleId && hasReview(item.data.state))
   check(Boolean(frame), '④ GET /api/events 上见到带这条命令的 acp:session-state 帧')
 
+  // ── A3-b ⑪–⑭ / ⑯:门当应答者 ────────────────────────────────────
+  const answerer = startAnswerer(rpc, sse.frames)
+  const readA3Calls = () => readCalls(a3AgentDir)
+  const a3Id = await createAcpSession(rpc, 'acp 门 · A3', workDir, A3_AGENT_ID)
+  const turnDone = async (sessionId, count) => waitFor(() => sse.frames.filter(frame => frame.event === 'session:event'
+    && frame.data?.sessionId === sessionId && frame.data?.event?.type === 'stream:complete').length >= count, 20_000)
+
+  // ⑪ 第一问答 once,⑫ 第二问答 always。
+  answerer.setDecider((event, sessionId) => {
+    if (sessionId !== a3Id) return undefined
+    return permissionRequests(sse.frames, a3Id).findIndex(item => item.requestId === event.requestId) === 0 ? 'once' : 'always'
+  })
+  await sendMessage(rpc, a3Id, '@perm 跑一下构建')
+  check(Boolean(await turnDone(a3Id, 1)), '⑪ @perm 这一轮收场了')
+  const firstCards = permissionRequests(sse.frames, a3Id)
+  const choiceKinds = (firstCards[0]?.choices ?? []).map(choice => choice.kind).sort()
+  check(sameJson(choiceKinds, ['always', 'once', 'reject', 'reject-always']),
+    `⑪ permission:request 的 choices 四条(读到 ${JSON.stringify(firstCards[0]?.choices ?? null)})`)
+  const permCalls = readA3Calls().filter(call => call.method === 'permission')
+  check(permCalls[0]?.outcome?.optionId === 'opt-allow-once',
+    `⑪ 答 once → agent 收到 allow_once 的 optionId(读到 ${JSON.stringify(permCalls[0]?.outcome ?? null)})`)
+  check(permCalls[1]?.outcome?.optionId === 'opt-allow-always',
+    `⑫ 答 always → agent 收到 allow_always 的 optionId(读到 ${JSON.stringify(permCalls[1]?.outcome ?? null)})`)
+  const grantsFile = path.join(storePath, 'permissions', 'workspace-grants.json')
+  const grantsText = fs.existsSync(grantsFile) ? fs.readFileSync(grantsFile, 'utf-8') : ''
+  check(grantsText.includes('bash') && grantsText.includes(workDir),
+    `⑫ grant 落盘(${fs.existsSync(grantsFile) ? `${grantsText.length} 字节` : 'workspace-grants.json 不在'})`)
+
+  // ⑫ 下一轮同一件事:不上卡,agent 直接拿到 allow_once。
+  const cardsBefore = permissionRequests(sse.frames, a3Id).length
+  answerer.setDecider(() => undefined)
+  await sendMessage(rpc, a3Id, '@perm 再跑一次')
+  check(Boolean(await turnDone(a3Id, 2)), '⑫ 第二轮 @perm 收场了(没有卡挂住它)')
+  const secondRound = readA3Calls().filter(call => call.method === 'permission' && call.turn === 2)
+  check(permissionRequests(sse.frames, a3Id).length === cardsBefore,
+    `⑫ 第二轮一张卡都没上(新增 ${permissionRequests(sse.frames, a3Id).length - cardsBefore} 张)`)
+  check(secondRound.length === 2 && secondRound.every(call => call.outcome?.optionId === 'opt-allow-once'),
+    `⑫ 第二轮两问都由 grant 放行,答 allow_once(读到 ${JSON.stringify(secondRound.map(call => call.outcome))})`)
+
+  // ⑬ fs:根内读成功;根外敏感文件上卡 → 答 reject;写文件上卡 → 答 once。
+  fs.writeFileSync(path.join(workDir, 'hello.txt'), 'hello from gate\n')
+  fs.mkdirSync(path.dirname(outsideSecret), { recursive: true })
+  fs.writeFileSync(outsideSecret, 'NOT A REAL KEY\n')
+  const fsCardsBefore = permissionRequests(sse.frames, a3Id).length
+  answerer.setDecider((event, sessionId) => {
+    if (sessionId !== a3Id) return undefined
+    if (event.permissionType === 'file_write' || event.permissionType === 'file_edit') return 'once'
+    return 'reject'
+  })
+  await sendMessage(rpc, a3Id, '@fs 读写文件')
+  check(Boolean(await turnDone(a3Id, 3)), '⑬ @fs 这一轮收场了')
+  const fsCalls = readA3Calls()
+  const insideRead = fsCalls.find(call => call.method === 'fs-read')
+  check(insideRead?.ok === true && insideRead.content === 'hello from gate\n',
+    `⑬ cwd 内的 hello.txt 读成功(读到 ${JSON.stringify(insideRead ?? null)})`)
+  const fsCards = permissionRequests(sse.frames, a3Id).slice(fsCardsBefore)
+  const outsideCard = fsCards.find(card => card.permissionType === 'external_directory' || card.permissionType === 'sensitive_file_read')
+  const outsideRead = fsCalls.find(call => call.method === 'fs-read-outside')
+  check(Boolean(outsideCard) && outsideRead?.ok === false,
+    `⑬ 根外敏感文件上卡(${outsideCard?.permissionType ?? '没见到卡'}),答 reject 后 agent 被拒(读到 ${JSON.stringify(outsideRead ?? null)})`)
+  const writeCard = fsCards.find(card => card.permissionType === 'file_write')
+  const written = path.join(workDir, 'written-by-agent.txt')
+  check(Boolean(writeCard?.metadata?.diff) && fs.existsSync(written) && fs.readFileSync(written, 'utf-8') === 'written by agent\n',
+    `⑬ 写文件上卡带 diff、答 once 后落盘(卡 ${writeCard ? '在' : '缺'},diff ${writeCard?.metadata?.diff ? '在' : '缺'},文件 ${fs.existsSync(written) ? '在' : '缺'})`)
+  const a3Ledger = path.join(storePath, 'sessions', a3Id, 'events.jsonl')
+  const auditRow = fs.existsSync(a3Ledger)
+    ? fs.readFileSync(a3Ledger, 'utf-8').split('\n').filter(Boolean).map(line => JSON.parse(line))
+      .find(record => record.type === 'tool/audit' && record.data?.toolId === 'acp-fs-write')
+    : undefined
+  check(auditRow?.data?.outcome === 'ok', `⑬ 账本上一条 tool/audit(acp-fs-write,读到 ${JSON.stringify(auditRow?.data ?? null)})`)
+
+  // ⑭ terminal:起命令的卡答 once;门从 terminal.list 里找到那一格、attach 上去看 terminal:data。
+  answerer.setDecider((event, sessionId) => (sessionId === a3Id ? 'once' : undefined))
+  await sendMessage(rpc, a3Id, '@term 起个终端')
+  const listed = await waitFor(async () => {
+    const list = await rpc('terminal', 'list', {})
+    return list?.terminals?.find(terminal => terminal.owner?.kind === 'acp' && terminal.owner?.agentId === A3_AGENT_ID)
+  }, 15_000, 50)
+  check(listed?.owner?.sessionId === a3Id,
+    `⑭ terminal.list 里出现 owner = { kind: 'acp', agentId: ${A3_AGENT_ID} } 的一格(读到 ${JSON.stringify(listed?.owner ?? null)})`)
+  const attached = listed ? await rpc('terminal', 'attach', { terminalId: listed.id }) : undefined
+  check(Boolean(await turnDone(a3Id, 4)), '⑭ @term 这一轮收场了')
+  const termCalls = readA3Calls()
+  const termOutput = termCalls.find(call => call.method === 'term-output')
+  const bySeq = new Map()
+  for (const chunk of attached?.chunks ?? []) bySeq.set(chunk.seq, chunk.data)
+  const dataFrames = sse.frames.filter(frame => frame.event === 'terminal:data' && frame.data?.terminalId === listed?.id)
+  for (const frame of dataFrames) bySeq.set(frame.data.seq, frame.data.data)
+  const streamed = [...bySeq.entries()].sort((a, b) => a[0] - b[0]).map(entry => entry[1]).join('')
+  check(Boolean(termOutput) && termOutput.output.includes('hi') && termOutput.output === streamed && dataFrames.length > 0,
+    `⑭ terminal/output 含 hi,且与 terminal:data 事件(${dataFrames.length} 帧)逐字一致(output ${JSON.stringify(termOutput?.output ?? null)} / 事件 ${JSON.stringify(streamed)})`)
+  check(termOutput?.exit?.exitCode === 0, `⑭ wait_for_exit 答退出码 0(读到 ${JSON.stringify(termOutput?.exit ?? null)})`)
+  const killed = termCalls.find(call => call.method === 'term-killed')
+  const exitFrame = killed
+    ? sse.frames.find(frame => frame.event === 'terminal:exit' && frame.data?.terminalId === killed.terminalId)
+    : undefined
+  check(Boolean(killed?.exit?.signal || killed?.exit?.exitCode !== 0) && Boolean(exitFrame),
+    `⑭ kill 之后 agent 等到结局,SSE 上见到 terminal:exit(结局 ${JSON.stringify(killed?.exit ?? null)},事件 ${exitFrame ? '在' : '缺'})`)
+  const capsFile = path.join(a3AgentDir, 'client-caps.json')
+  const a3Caps = fs.existsSync(capsFile) ? JSON.parse(fs.readFileSync(capsFile, 'utf-8')) : null
+  check(a3Caps?.terminal === true && a3Caps?.fs?.readTextFile === true && a3Caps?.fs?.writeTextFile === true,
+    `⑭ 握手声明了 fs 两条与 terminal(读到 ${JSON.stringify(a3Caps)})`)
+  check(!termCalls.some(call => call.method === 'term-error'),
+    `⑭ 终端剧本没有报错(${JSON.stringify(termCalls.find(call => call.method === 'term-error') ?? null)})`)
+
+  // ⑯ 无人应答:这一张门不答 → 超时按拒绝收场,agent 收到 reject_once。换一个目录开新会话:
+  // ⑫ 在 workDir 上落的 grant 会把同一条命令直接放行,那就证不到「没人答」这一支了。
+  const lonelyId = await createAcpSession(rpc, 'acp 门 · 无人应答', lonelyDir, A3_AGENT_ID)
+  answerer.setDecider(() => undefined)
+  await sendMessage(rpc, lonelyId, '@perm1 没人会答这张')
+  check(Boolean(await turnDone(lonelyId, 1)), '⑯ @perm1 这一轮收场了(没有永远挂着)')
+  // 这一问是假 agent 记下的最后一条审批(之前几轮的都早于它)。
+  const lonely = readA3Calls().filter(call => call.method === 'permission').slice(-1)
+  check(permissionRequests(sse.frames, lonelyId).length > 0,
+    '⑯ 那张卡真的上了(桥在 server 上注册了,请求进了许可系统)')
+  check(lonely[0]?.outcome?.optionId === 'opt-reject-once'
+    && lonely[0].ms >= UNANSWERED_TIMEOUT_MS - 200 && lonely[0].ms < UNANSWERED_TIMEOUT_MS + 5000,
+    `⑯ 无人应答 ${UNANSWERED_TIMEOUT_MS}ms 后按拒绝收场,agent 收到 reject_once、不是自动放行(读到 ${JSON.stringify(lonely[0] ?? null)})`)
+  answerer.stop()
+
   // 名册刷新走一趟(RPC `acp.refreshRegistry` = 强制重拉 + 探测):开关关着就只重读种子与探测,
   // 不联网 —— 收尾那一步从日志上核「一次拉取都没有」。server 宿主不调 `acp.start()`,
   // 不走这一趟的话那条核对永远是空转。
@@ -388,10 +586,12 @@ try {
   }
   fs.rmSync(storePath, { recursive: true, force: true })
   fs.rmSync(workDir, { recursive: true, force: true })
+  fs.rmSync(outsideDir, { recursive: true, force: true })
+  fs.rmSync(lonelyDir, { recursive: true, force: true })
 }
 
 if (failures.length > 0) {
   console.error(`[gate:acp] ${failures.length} check(s) failed`)
   process.exit(1)
 }
-console.log('[gate:acp] ok —— ① 握手 / ② 会话目录 / ③ 流与协议外请求 / ④ prompt 之外的状态 全绿')
+console.log('[gate:acp] ok —— ① 握手 / ② 会话目录 / ③ 流与协议外请求 / ④ prompt 之外的状态 / ⑪ 四选项 / ⑫ 始终允许 / ⑬ fs / ⑭ terminal / ⑯ 无人应答 全绿')

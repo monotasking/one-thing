@@ -24,10 +24,13 @@ export { ReadOnlyTool } from './families/read-only.js'
 export {
   FileTool,
   SandboxViolationError,
+  fileReadEffects,
+  fileReadPreview,
   fileScopeOf,
+  resolveFileToolPath,
 } from './families/file.js'
 export type { FileScope, FileToolAdapters, FileToolContextLike, ResolvedFilePath } from './families/file.js'
-export { MAX_REVALIDATION_ATTEMPTS, MutatingFileTool } from './families/mutating-file.js'
+export { MAX_REVALIDATION_ATTEMPTS, MutatingFileTool, fileMutationEffect } from './families/mutating-file.js'
 export type {
   FileMutationDiff,
   FileMutationPlan,

@@ -11,7 +11,7 @@ class FakePty implements PtyHandle {
   pauseCount = 0
   resumeCount = 0
   private dataCallback: ((data: string) => void) | null = null
-  private exitCallback: ((event: PtyExitEvent) => void) | null = null
+  exitCallback: ((event: PtyExitEvent) => void) | null = null
 
   write(data: string): void {
     this.written.push(data)
@@ -410,5 +410,78 @@ describe('TerminalService', () => {
     expect(pty.pauseCount).toBe(1)
     service.ack(info.id, cjk.length, generation)
     expect(pty.resumeCount).toBe(1)
+  })
+})
+
+/**
+ * A3-b:ACP agent 的命令也跑在这里 —— 给了 `command` 就直接起它、`env` 叠在最上、`owner` 随行;
+ * `readOutput` 不动流控、`onExit` 报结局、`terminate` 杀进程但留下这一格。
+ */
+describe('TerminalService × ACP(A3-b)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('command / args / env / owner:直接起那个程序,不经登录 shell', () => {
+    const { backend, service } = createHarness()
+    const info = service.create({
+      command: '/bin/echo',
+      args: ['hi'],
+      env: { FOO: 'bar' },
+      owner: { kind: 'acp', agentId: 'kimi', sessionId: 's-1' },
+    })
+    const request = backend.spawned[0].request
+    expect(request.shell).toBe('/bin/echo')
+    expect(request.args).toEqual(['hi'])
+    expect(request.env.FOO).toBe('bar')
+    expect(request.env.TERM).toBe('xterm-256color')
+    expect(info.owner).toEqual({ kind: 'acp', agentId: 'kimi', sessionId: 's-1' })
+    expect(service.list()[0].owner).toEqual({ kind: 'acp', agentId: 'kimi', sessionId: 's-1' })
+    // 不给 command 仍是登录 shell。
+    service.create({})
+    expect(backend.spawned[1].request.args).toEqual(['-l'])
+  })
+
+  it('readOutput 把没 flush 的尾巴并进来,且不开世代、不算未 ack', () => {
+    const { backend, broadcaster, service } = createHarness()
+    const info = service.create({ command: '/bin/echo' })
+    backend.spawned[0].pty.emitData('hel')
+    backend.spawned[0].pty.emitData('lo')
+    expect(service.readOutput(info.id)).toEqual({ output: 'hello', truncated: false })
+    // 没人 attach:输出只进环,不外发;readOutput 也没把它记成「有人在看」。
+    expect(broadcaster.data).toEqual([])
+    const attach = service.attach(info.id)
+    expect(attach.generation).toBe(1)
+    expect(service.readOutput('nope')).toBeUndefined()
+  })
+
+  it('onExit 报结局(含信号);已经死了的下一拍就报', async () => {
+    const { backend, service } = createHarness()
+    const info = service.create({ command: '/bin/sleep' })
+    const seen: unknown[] = []
+    service.onExit(info.id, status => seen.push(status))
+    backend.spawned[0].pty.exitCallback?.({ exitCode: 0, signal: 1 })
+    expect(seen).toEqual([{ exitCode: 0, signal: 1 }])
+    expect(service.readOutput(info.id)?.exit).toEqual({ exitCode: 0, signal: 1 })
+    const late: unknown[] = []
+    service.onExit(info.id, status => late.push(status))
+    expect(late).toEqual([])
+    await Promise.resolve()
+    expect(late).toEqual([{ exitCode: 0, signal: 1 }])
+  })
+
+  it('terminate 杀进程组、留下这一格;宽限期后还活着就 SIGKILL', () => {
+    const { backend, broadcaster, service } = createHarness({ killGraceMs: 100 })
+    const info = service.create({ command: '/bin/sleep' })
+    service.terminate(info.id)
+    expect(backend.spawned[0].pty.signals).toEqual(['SIGHUP'])
+    vi.advanceTimersByTime(100)
+    expect(backend.spawned[0].pty.signals).toEqual(['SIGHUP', 'SIGKILL'])
+    backend.spawned[0].pty.emitExit(0)
+    expect(service.list().map(terminal => terminal.id)).toEqual([info.id])
+    expect(broadcaster.exits).toEqual([{ terminalId: info.id, exitCode: 0 }])
   })
 })

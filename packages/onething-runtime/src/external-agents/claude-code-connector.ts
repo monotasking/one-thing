@@ -5,12 +5,10 @@ import type {
   AgentTurnStreamEvent,
   AgentUsage,
 } from '@onething/core/agent-loop'
-import { createTwoFilesPatch } from 'diff'
 import { findAgentExecutorDescriptor } from '../agents/executor/capabilities.js'
 import { anthropicUsageBuckets } from '../agent-loop/providers/wires/anthropic-usage.js'
 import { onethingClaudeModelFamily } from '../providers/model-capability.js'
-import { countLineChanges } from '../tools/file-snapshot.js'
-import { trimDiff, truncateDiffForDisplay } from '../tools/replacers.js'
+import { buildTextDiffChange } from './diff-changes.js'
 import {
   isHostMcpToolName,
   stripHostMcpToolPrefix,
@@ -756,10 +754,7 @@ function fileChangeMetadata(
     return null
   }
 
-  if (before === after) return null
-  const diff = truncateDiffForDisplay(trimDiff(createTwoFilesPatch(path, path, before, after)))
-  const { additions, deletions } = countLineChanges(before, after)
-  return { path, diff, additions, deletions }
+  return buildTextDiffChange(path, before, after)
 }
 
 /* ── 提问(E4 / G6+G7) ─────────────────────────────────────────────────── */

@@ -56,11 +56,8 @@ import {
 } from '@onething/runtime/toolkit'
 import { getSettings } from '../../stores/settings.js'
 import { getConnectedDirectoriesForSession } from '../../stores/connected-directories.js'
-import {
-  getOnethingFileMutationsDir,
-  getOnethingToolOutputsDir,
-} from '@onething/runtime/storage'
-import { getDefaultReadRoots } from '../tools/core/sandbox.js'
+import { getOnethingToolOutputsDir } from '@onething/runtime/storage'
+import { defaultToolWorkingDirectory, mutatingFileAdapters, readAdapters } from './file-adapters.js'
 import { createLocalBashOperations } from '@onething/runtime/tools/bash-executor'
 import { getGuardedVariableRegistryForTools, VariableError } from '../variables/index.js'
 import {
@@ -81,9 +78,7 @@ import { createFeatureMountTool } from './builtin/feature-mount.js'
 import { createFeatureUnmountTool } from './builtin/feature-unmount.js'
 import { FeatureToolRuntime } from './builtin/feature-runtime.js'
 
-function defaultWorkingDirectory(): string | undefined {
-  return getSettings().tools?.bash?.defaultWorkingDirectory
-}
+const defaultWorkingDirectory = defaultToolWorkingDirectory
 
 /** 每次现取:用户可以在应用跑着的时候收紧它,下一条命令就该照新的来。 */
 function configuredEnvAllowlist(): string[] | null {
@@ -96,27 +91,8 @@ function configuredShellPath(): string | undefined {
   return bash && 'shellPath' in bash && typeof bash.shellPath === 'string' ? bash.shellPath : undefined
 }
 
-export function readAdapters(): ReadToolAdapters {
-  return {
-    getDefaultWorkingDirectory: defaultWorkingDirectory,
-    /**
-     * 读根里的接入目录按**会话归属的 space** 解析(批 B2)。走这里而不是全局适配器:
-     * 那份适配器服务的是没有会话语境的调用面,退回全局层对它是对的。
-     */
-    getDefaultReadRoots: sessionId => getDefaultReadRoots({
-      getConnectedDirectories: () => getConnectedDirectoriesForSession(sessionId),
-    }),
-  }
-}
-
-export function mutatingFileAdapters(): MutatingFileToolAdapters {
-  return {
-    getDefaultWorkingDirectory: defaultWorkingDirectory,
-    getFileMutationsDir: getOnethingFileMutationsDir,
-    // per-space:按**会话归属**取,不是当前空间(批 B2 / 设计盲点 1)。
-    getConnectedDirectories: sessionId => getConnectedDirectoriesForSession(sessionId),
-  }
-}
+// read / write / edit 的沙箱面住在 `file-adapters.ts`(A3-b:ACP 文件桥与它们共用同一份),这里转出。
+export { mutatingFileAdapters, readAdapters }
 
 export function bashAdapters(): BashToolAdapters {
   return {

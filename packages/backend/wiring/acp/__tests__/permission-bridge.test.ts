@@ -152,4 +152,19 @@ describe('registerACPPermissionBridge', () => {
     decide.mockRejectedValueOnce(new Error('hard deny'))
     await expect(bridge(context())).resolves.toEqual({ behavior: 'reject' })
   })
+
+  it("A3-b:unattended: 'allow' 的 agent 在桥里前置放行,不进 ask", async () => {
+    await expect(bridge(context({ unattended: 'allow' }))).resolves.toEqual({ behavior: 'allow' })
+    expect(decide).not.toHaveBeenCalled()
+  })
+
+  it('A3-b:文件桥与终端桥同批挂上、同批摘掉(只摘自己挂的那几只)', () => {
+    expect(ACPManager.getFsBridge()).toBeDefined()
+    expect(ACPManager.getTerminalBridge()).toBeDefined()
+    dispose()
+    expect(ACPManager.getPermissionBridge()).toBeUndefined()
+    expect(ACPManager.getFsBridge()).toBeUndefined()
+    expect(ACPManager.getTerminalBridge()).toBeUndefined()
+    dispose = () => {}
+  })
 })

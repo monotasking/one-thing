@@ -1,8 +1,5 @@
-import { AbortScope, Intent } from '@onething/core/toolkit'
-import type { Decision, Effect, Invocation } from '@onething/core/toolkit'
+import type { Decision, Effect } from '@onething/core/toolkit'
 import type { Permission } from '@onething/core/permission'
-import { resolvePermissionMessageAnchor } from '../permission/message-anchor.js'
-import { createPermissionAuthorizer } from '../toolkit/authorizer.js'
 import { ACPManager } from '@onething/runtime/acp'
 import { describeAcpToolPermission } from '@onething/runtime/external-agents'
 import type {
@@ -13,6 +10,9 @@ import type {
 } from '@onething/runtime/acp'
 import type { Authorizer } from '@onething/core/toolkit'
 import { getLogger } from '../logging/index.js'
+import { createAcpFsBridge } from './fs-bridge.js'
+import { acpAuthorizerFor, authorizeAcpRequest, type AcpUnansweredPolicy } from './request-authorize.js'
+import { createAcpTerminalBridge, type AcpTerminalServicePort } from './terminal-bridge.js'
 
 const log = getLogger('acp.permission')
 
@@ -85,6 +85,14 @@ function rejectSignature(agentId: string, effects: readonly Effect[]): string {
 export interface ACPPermissionBridgeOptions {
   /** 测试用;缺省 = 桌面 / 服务端的成品授权者(真权限核 + 用户 per-tool 设置)。 */
   authorizer?: () => Authorizer
+  /**
+   * 卡没人答时怎么办(A3-b)。缺省 `'wait'` = 一直等(桌面壳:有人守着卡,行为不变);
+   * server 与 CLI daemon 传 `'reject'` —— 许可系统的无人应答兜底,超时按拒绝收场。
+   * 文件桥与终端桥用同一个授权者,三种请求在一台宿主上等法一样。
+   */
+  unanswered?: AcpUnansweredPolicy
+  /** 测试用:终端桥的服务与「有没有终端输出通道」。 */
+  terminal?: { service?: () => AcpTerminalServicePort; available?: () => boolean }
 }
 
 /**
@@ -102,7 +110,7 @@ export interface ACPPermissionBridgeOptions {
  *    直接答拒。
  */
 export function registerACPPermissionBridge(options: ACPPermissionBridgeOptions = {}): () => void {
-  const authorizerOf = options.authorizer ?? (() => createPermissionAuthorizer())
+  const authorizerOf = options.authorizer ?? acpAuthorizerFor(options.unanswered ?? 'wait')
   const rejectedForSession = new Map<string, Set<string>>()
 
   const bridge: ACPPermissionBridge = async context => {
@@ -111,10 +119,10 @@ export function registerACPPermissionBridge(options: ACPPermissionBridgeOptions 
       // Unattributable request: nobody could see or answer the card.
       return { behavior: 'reject' }
     }
+    // 用户对这一台显式打开了「无人应答时自动放行」:前置放行,不进 ask(A3-b 裁定;
+    // 客户端据 `allow` 只答 `allow_once`,永不自动选 `allow_always`)。
+    if (context.unattended === 'allow') return { behavior: 'allow' }
 
-    // 锚:连接器把回合的 assistant 消息号经 `promptContexts` 递到这里(A0-3 起);
-    // 渲染侧找不到的锚 = 卡永远不上屏,判据与 SDK 那条通路共用同一个所有者。
-    const messageId = resolvePermissionMessageAnchor(sessionId, context.messageId)
     const toolKind = context.toolCall?.kind ?? 'tool'
     const shape = describeAcpToolPermission({
       kind: context.toolCall?.kind,
@@ -132,34 +140,31 @@ export function registerACPPermissionBridge(options: ACPPermissionBridgeOptions 
     }
 
     const choices = choicesFromAcpOptions(context.options)
-    const intent = Intent.of({
-      payload: undefined,
-      effects: shape.effects,
-      preview: {
-        ...(shape.preview ?? {}),
-        title: permissionTitle(context),
-        metadata: {
-          // 卡片长得和本地一样之后,这两格就是唯一的出处标记。
-          agentId: context.agentId,
-          agentName: context.agentName,
-          toolKind: context.toolCall?.kind ?? null,
-          toolTitle: context.toolCall?.title ?? null,
-          ...(shape.preview?.metadata ?? {}),
-        },
-        ...(choices.length > 0 ? { choices } : {}),
-      },
-    })
-    const invocation: Invocation = {
-      callId: context.toolCall?.toolCallId ?? '',
-      toolId: toolKind,
-      input: context.toolCall?.rawInput,
-      sessionId,
-      ...(messageId ? { messageId } : {}),
-      principal: undefined as never,
-      ...(context.cwd ? { cwd: context.cwd, workspaceRoot: context.cwd } : {}),
-    }
     try {
-      const decision = await authorizerOf().decide(intent, invocation, new AbortScope())
+      // 锚与调用坐标由三只桥共用的那一步摆(连接器把回合的 assistant 消息号经
+      // `promptContexts` 递到这里;渲染侧找不到的锚由锚的唯一所有者兜底)。
+      const decision = await authorizeAcpRequest(authorizerOf(), {
+        localSessionId: sessionId,
+        messageId: context.messageId,
+        cwd: context.cwd,
+        callId: context.toolCall?.toolCallId ?? '',
+        toolId: toolKind,
+        input: context.toolCall?.rawInput,
+        effects: shape.effects,
+        preview: {
+          ...(shape.preview ?? {}),
+          title: permissionTitle(context),
+          metadata: {
+            // 卡片长得和本地一样之后,这两格就是唯一的出处标记。
+            agentId: context.agentId,
+            agentName: context.agentName,
+            toolKind: context.toolCall?.kind ?? null,
+            toolTitle: context.toolCall?.title ?? null,
+            ...(shape.preview?.metadata ?? {}),
+          },
+          ...(choices.length > 0 ? { choices } : {}),
+        },
+      })
       if (decision.kind === 'deny' && decision.rejectAlways) {
         let rejected = rejectedForSession.get(sessionId)
         if (!rejected) rejectedForSession.set(sessionId, rejected = new Set())
@@ -172,10 +177,24 @@ export function registerACPPermissionBridge(options: ACPPermissionBridgeOptions 
     }
   }
 
+  /*
+   * 文件桥与终端桥与审批桥同批挂(A3-b):三者是同一件事 ——「这台宿主怎么答 agent 的请求」——
+   * 用同一个授权者、同一种无人应答策略。宿主调一次这里就全有,壳那一行不用改。
+   */
+  const fsBridge = createAcpFsBridge({ authorizer: authorizerOf })
+  const terminalBridge = createAcpTerminalBridge({
+    authorizer: authorizerOf,
+    ...(options.terminal?.service ? { service: options.terminal.service } : {}),
+    ...(options.terminal?.available ? { available: options.terminal.available } : {}),
+  })
   ACPManager.setPermissionBridge(bridge)
-  // 只摘自己挂上的那一只:别的宿主后来换过桥,这里不去拆它。
+  ACPManager.setFsBridge(fsBridge)
+  ACPManager.setTerminalBridge(terminalBridge)
+  // 只摘自己挂上的那几只:别的宿主后来换过桥,这里不去拆它。
   return () => {
     rejectedForSession.clear()
     if (ACPManager.getPermissionBridge() === bridge) ACPManager.setPermissionBridge(undefined)
+    if (ACPManager.getFsBridge() === fsBridge) ACPManager.setFsBridge(undefined)
+    if (ACPManager.getTerminalBridge() === terminalBridge) ACPManager.setTerminalBridge(undefined)
   }
 }

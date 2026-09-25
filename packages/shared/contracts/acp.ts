@@ -30,16 +30,15 @@ export interface ACPAgentConfig {
    * 老值由 `normalizeACPSettings` 一次性照搬过来。
    */
   unattended?: ACPUnattendedPolicy
-  allowFileSystemAccess?: boolean
-  allowTerminalAccess?: boolean
+  // A3-b 删了 `allowFileSystemAccess` / `allowTerminalAccess`(文件与终端改走 onething 的沙箱、
+  // 许可与 TerminalService,能力固定声明)与 `maxTerminals` / `maxTerminalOutputBytes`(变成终端桥
+  // 里的常量);老盘上的这四格由 `normalizeACPSettings` 摘掉。
   mcpServers?: JsonObject[]
   connectTimeoutMs?: number
   promptTimeoutMs?: number
   idleTimeoutMs?: number
   maxBufferedUpdates?: number
   maxSessionRecords?: number
-  maxTerminals?: number
-  maxTerminalOutputBytes?: number
   /**
    * 自定义条目「复制自」哪一台(种子 / 注册表 id,A1-a,方案 §3.9)。有它时 manifest 从那一台
    * 继承,本条只写改过的格;id 仍是自己的。只收 `[a-z0-9-]`。
@@ -51,6 +50,17 @@ export interface ACPAgentConfig {
    */
   secretEnv?: string[]
 }
+
+/**
+ * A3-b 退役的四格。老盘上 / 壳回显里还可能带着,读的一方(`normalizeACPSettings`、稀疏覆盖)
+ * 见到就摘,不再写回。
+ */
+export const RETIRED_ACP_AGENT_FIELDS = [
+  'allowFileSystemAccess',
+  'allowTerminalAccess',
+  'maxTerminals',
+  'maxTerminalOutputBytes',
+] as const
 
 /**
  * 整个 ACP 设置段(`settings.acp`)。A1-a 从 runtime / `@shared/ipc` 两份合到这里。

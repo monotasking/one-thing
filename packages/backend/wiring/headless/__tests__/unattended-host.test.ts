@@ -62,4 +62,20 @@ describe('HeadlessBackend 的无人值守声明', () => {
       .rejects.toThrow(/assembly blew up/)
     expect(isHostUnattended()).toBe(false)
   })
+
+  it('A3-b:守护进程挂 ACP 的审批 / 文件 / 终端三只桥,关机时一并摘掉', async () => {
+    const { ACPManager } = await import('@onething/runtime/acp')
+    const { HeadlessBackend } = await import('../backend.js')
+    const backend = new HeadlessBackend()
+    await backend.start({ storePath: '/tmp/onething-unattended-host-test' })
+    expect(disposers.map(entry => entry.label)).toContain('acpPermissionBridge')
+    expect(ACPManager.getPermissionBridge()).toBeTypeOf('function')
+    expect(ACPManager.getFsBridge()).toBeDefined()
+    // daemon 没有终端输出通道:终端桥挂着,但它答「没有」,客户端就不声明终端能力。
+    expect(ACPManager.getTerminalBridge()?.available()).toBe(false)
+    await backend.shutdown('test over')
+    expect(ACPManager.getPermissionBridge()).toBeUndefined()
+    expect(ACPManager.getFsBridge()).toBeUndefined()
+    expect(ACPManager.getTerminalBridge()).toBeUndefined()
+  })
 })

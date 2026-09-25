@@ -30,11 +30,6 @@ function augmentedPath(): string {
 }
 
 export function buildSpawnProfile(request: TerminalCreateRequest): PtySpawnRequest {
-  const shell =
-    request.shell?.trim() ||
-    process.env.SHELL ||
-    (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash')
-
   const requestedCwd = request.cwd?.trim()
   const cwd = requestedCwd && existsSync(requestedCwd) ? requestedCwd : os.homedir()
 
@@ -45,13 +40,23 @@ export function buildSpawnProfile(request: TerminalCreateRequest): PtySpawnReque
   env.PATH = augmentedPath()
   env.TERM = 'xterm-256color'
   env.COLORTERM = 'truecolor'
-
-  return {
-    shell,
-    args: ['-l'],
-    cwd,
-    env,
-    cols: request.cols && request.cols > 0 ? Math.floor(request.cols) : DEFAULT_TERMINAL_COLS,
-    rows: request.rows && request.rows > 0 ? Math.floor(request.rows) : DEFAULT_TERMINAL_ROWS,
+  // 请求自带的变量叠在最上面(A3-b:ACP agent 递来的 env + 应用代理);PATH 若在其中也由它说了算。
+  for (const [key, value] of Object.entries(request.env ?? {})) {
+    if (typeof value === 'string') env[key] = value
   }
+
+  const cols = request.cols && request.cols > 0 ? Math.floor(request.cols) : DEFAULT_TERMINAL_COLS
+  const rows = request.rows && request.rows > 0 ? Math.floor(request.rows) : DEFAULT_TERMINAL_ROWS
+
+  // 给了命令就直接起它(不经 shell 转一道:参数原样到 argv,没有引号与注入的问题)。
+  const command = request.command?.trim()
+  if (command) {
+    return { shell: command, args: [...(request.args ?? [])], cwd, env, cols, rows }
+  }
+
+  const shell =
+    request.shell?.trim() ||
+    process.env.SHELL ||
+    (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash')
+  return { shell, args: ['-l'], cwd, env, cols, rows }
 }

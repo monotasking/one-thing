@@ -16,6 +16,8 @@ export type {
   ClaudeCodeSdkMessage,
 } from './claude-code-connector.js'
 export { describeAcpToolPermission, describeExternalToolPermission } from './permission-effects.js'
+export { buildTextDiffChange } from './diff-changes.js'
+export type { TextDiffChange } from './diff-changes.js'
 export type {
   AcpToolPermissionInput,
   AcpToolPermissionShape,

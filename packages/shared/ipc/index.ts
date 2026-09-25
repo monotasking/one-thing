@@ -1081,6 +1081,7 @@ export type {
 	TerminalKillRequest,
 	TerminalListResponse,
 	TerminalOutputChunk,
+	TerminalOwner,
 	TerminalResizeRequest,
 	TerminalSimpleResponse,
 	TerminalWriteRequest,

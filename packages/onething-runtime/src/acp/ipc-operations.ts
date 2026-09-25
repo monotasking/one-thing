@@ -1,6 +1,6 @@
 import { createCoreId } from '@onething/core/engine'
 import { describeAcpAgentConfigProblem, effectiveAgentConfig } from './manifest.js'
-import type { ACPAgentConfig, AcpAgentManifest } from '@shared/contracts/acp.js'
+import { RETIRED_ACP_AGENT_FIELDS, type ACPAgentConfig, type AcpAgentManifest } from '@shared/contracts/acp.js'
 
 type MaybePromise<T> = T | Promise<T>
 
@@ -280,6 +280,8 @@ export function sparseOnethingACPRosterOverride<TConfig extends OnethingACPAgent
   const out: Record<string, unknown> = { id: manifest.id }
   for (const [key, raw] of Object.entries(migrateLegacyUnattended(config))) {
     if (key === 'id' || raw === undefined) continue
+    // A3-b 退役的四格(壳可能还回显着):不存。
+    if ((RETIRED_ACP_AGENT_FIELDS as readonly string[]).includes(key)) continue
     if (key === 'enabled') {
       if (typeof raw === 'boolean') out.enabled = raw
       continue

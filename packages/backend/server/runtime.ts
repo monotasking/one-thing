@@ -152,6 +152,8 @@ import { getPluginManager } from "../wiring/plugins/index.js";
 import { isHostLocallyTrusted } from "./host-trust.js";
 import { hasShellHost } from "@onething/runtime/shell/host-ports";
 import { hasTerminalHost } from "@onething/runtime/terminal/service.wiring";
+import { registerACPPermissionBridge } from "../wiring/acp/permission-bridge.js";
+import { createEventBusTerminalBroadcaster } from "../wiring/terminal/index.js";
 import {
 	createOnethingSearchService,
 	type OnethingSearchProvidersAdapters,
@@ -864,7 +866,7 @@ async function createRealServerBackend(storePath: string, logging?: ConfigureLog
 	}
 	// No `owner`: 2026-08-24 ruling — apps/server takes no store lock. It defers
 	// through `<store>/run/http.json` (see apps/server/src/main.ts) instead.
-	return createOnethingBackend({
+	const backend = await createOnethingBackend({
 		storePath,
 		logging,
 		/*
@@ -892,7 +894,17 @@ async function createRealServerBackend(storePath: string, logging?: ConfigureLog
 			logging: null,
 			shell: null,
 			voice: null,
-			terminal: null,
+			/*
+			 * 终端缺省没有(`terminal` 域结构化拒,不 load node-pty)。
+			 * `ONETHING_SERVER_TERMINAL=1` 是运维显式打开的那一格:接上与 React 壳同一只
+			 * 总线广播器,PTY 输出骑 `GET /api/events` 出网 —— 这正是 `rpc/domains/terminal.ts`
+			 * 头注里「将来放开 = 给 server 接广播器」那一步,只是今天只开给显式要它的人
+			 * (`gate:acp` ⑭ 靠它证 ACP 终端进 TerminalService)。拿到 Bearer 的人因此能在这台机器上
+			 * 开 shell —— 所以缺省关,只认 `'1'`。
+			 */
+			terminal: process.env.ONETHING_SERVER_TERMINAL === "1"
+				? { broadcaster: createEventBusTerminalBroadcaster() }
+				: null,
 			skillsEnvironment: null,
 			todoPlan: null,
 			scratchpad: null,
@@ -919,6 +931,14 @@ async function createRealServerBackend(storePath: string, logging?: ConfigureLog
 		pets: true,
 		sender: new ServerNoopSender() as never,
 	});
+	/*
+	 * ACP 的审批 / 文件 / 终端桥(A3-b 裁定「桥在三个宿主上都注册」)。从前 server 不挂桥,
+	 * agent 的请求根本到不了许可系统,由客户端按 `unattended` 直接答。挂上之后卡照常上屏
+	 * (连着这台 server 的浏览器壳看得见、答得了);没人答就由许可系统的无人应答兜底按拒绝
+	 * 收场(`unanswered: 'reject'`,`UNATTENDED_ASK_TIMEOUT_MS`)—— 与「无桥缺省拒」同一个结论。
+	 */
+	backend.own(registerACPPermissionBridge({ unanswered: "reject" }), "acpPermissionBridge");
+	return backend;
 }
 
 /**
