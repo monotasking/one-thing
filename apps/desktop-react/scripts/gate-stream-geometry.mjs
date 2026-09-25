@@ -83,6 +83,7 @@ import { _electron as electron } from 'playwright'
 import electronBinary from 'electron'
 import { fakeProviderAiSettings, FAKE_PROVIDER_ENV } from '../../../scripts/lib/gate-fake-provider.mjs'
 import { seedLargeLedger } from './lib/seed-large-ledger.mjs'
+import { geometryLogCollector } from './lib/geometry-log-collector.mjs'
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(appRoot, '../..')
@@ -1531,6 +1532,7 @@ async function main() {
   const userDataDir = await mkdtemp(path.join(tmpdir(), 'geo-udd-'))
   const providerState = {}
   let provider; let server; let app; let vite
+  const geometryLog = geometryLogCollector('stream-geometry', PROD ? 'prod' : 'dev')
   const readings = { lane: LANE, viewport: VIEWPORT, scenarios: {}, jump: {} }
 
   const startCore = async () => {
@@ -1619,6 +1621,8 @@ async function main() {
       },
     })
     const page = await app.firstWindow()
+    // 几何断言那几行(只在 `ONETHING_GATE_GEOMETRY_LOG` 在场时收;判词在 lib 那只文件头)。
+    geometryLog.attach(page)
     const cdp = await app.context().newCDPSession(page)
     await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
     await cdp.send('Emulation.setDeviceMetricsOverride', {
@@ -1960,9 +1964,11 @@ async function main() {
     ].filter((l) => !ONLY_LANE || l.id === ONLY_LANE)
     for (const lane of lanes) {
       console.log(`\n—— ${lane.name} ——`)
+      geometryLog.mark(`${lane.id}:open`)
       await openSession(lane.sessionId, lane.expect)
       /* 热身一轮,**不量**(判词整段在 `MARKS.warm` 上)。 */
       console.log(`  · ${lane.name} / 热身(不量)`)
+      geometryLog.mark(`${lane.id}:warm`)
       const warm = await runOnce(
         `${lane.id}/warm`,
         `几何门 热身 ${markFor(MARKS.warm, lane.id)}`,
@@ -1973,6 +1979,7 @@ async function main() {
       readings.warm = { ...(readings.warm ?? {}), [lane.id]: { openMs: warm.openMs, longFrames: warm.longFrames, longestFrameMs: warm.longestFrameMs } }
       for (const sc of SCENARIOS) {
         console.log(`  · ${lane.name} / ${sc.name}`)
+        geometryLog.mark(`${lane.id}:${sc.id}`)
         readings.scenarios[`${lane.id}:${sc.id}`] = await runOnce(
           `${lane.id}/${sc.id}`,
           `几何门 ${sc.name} ${markFor(sc.mark, lane.id)}`,
@@ -1981,6 +1988,7 @@ async function main() {
       }
       /* ⑭ 跳转那一段排在场景之后 —— 那时这条会话已经有足够多的键可点。 */
       console.log(`  · ${lane.name} / 跳转落位(⑭)`)
+      geometryLog.mark(`${lane.id}:jump`)
       readings.jump[lane.id] = await probeJump(lane.id)
       console.log(`      ${JSON.stringify(readings.jump[lane.id])}`)
     }
@@ -2237,6 +2245,7 @@ async function main() {
       }
     }
   } finally {
+    await geometryLog.flush().catch(() => undefined)
     if (app) await app.close().catch(() => undefined)
     if (vite) await vite.close().catch(() => undefined)
     if (server) server.kill('SIGTERM')

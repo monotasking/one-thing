@@ -110,6 +110,7 @@ import { _electron as electron } from 'playwright'
 import electronBinary from 'electron'
 import { fakeProviderAiSettings, FAKE_PROVIDER_ENV } from '../../../scripts/lib/gate-fake-provider.mjs'
 import { seedLargeLedger } from './lib/seed-large-ledger.mjs'
+import { geometryLogCollector } from './lib/geometry-log-collector.mjs'
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(appRoot, '../..')
@@ -961,6 +962,7 @@ async function main() {
   const store = await mkdtemp(path.join(tmpdir(), 'fold-store-'))
   const userDataDir = await mkdtemp(path.join(tmpdir(), 'fold-udd-'))
   let provider; let server; let app; let vite
+  const geometryLog = geometryLogCollector('fold-collapse', LANE)
 
   try {
     console.log(`\n[fold-collapse] 档位:${LANE}${MOTION_NONE ? ' · 动效档「无」' : ''} · dpr 钉 ${DPR}`)
@@ -1040,6 +1042,8 @@ async function main() {
       },
     })
     const page = await app.firstWindow()
+    // 几何断言那几行(只在 `ONETHING_GATE_GEOMETRY_LOG` 在场时收;判词在 lib 那只文件头)。
+    geometryLog.attach(page)
     const cdp = await app.context().newCDPSession(page)
     await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
     await cdp.send('Emulation.setDeviceMetricsOverride', {
@@ -1116,6 +1120,7 @@ async function main() {
     for (const tg of targets) {
       const sessionId = sessions.get(tg.id)
       console.log(`\n[fold-collapse] ${tg.label}(${tg.id})`)
+      geometryLog.mark(`${tg.id}:open`)
       await openSession(sessionId)
       if (tg.send) {
         await sendViaComposer(page, '折叠门 · 起一轮')
@@ -1130,6 +1135,7 @@ async function main() {
       for (const where of ['bottom', 'scrolledUp']) {
         const key = `${tg.id}:${where}`
         console.log(`  ── ${where === 'bottom' ? '贴底' : '上翻半屏后'} ──`)
+        geometryLog.mark(key)
         /* ① 先展开(它出厂是收着的),这一下同样量 —— ⑤ 判的就是它。 */
         await scrollToBottom(page)
         await delay(400)
@@ -1518,6 +1524,7 @@ async function main() {
       JSON.stringify(readings, null, 2))
     console.log(`  读数留在 ${path.join(tmpdir(), `fold-collapse-${LANE}${MOTION_NONE ? '-none' : ''}.json`)}`)
   } finally {
+    await geometryLog.flush().catch(() => undefined)
     /* 收尸:自己起的一个不留。 */
     await app?.close().catch(() => undefined)
     await vite?.close().catch(() => undefined)

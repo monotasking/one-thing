@@ -162,6 +162,122 @@ describe('接进 `ViewportAnchor` 之后', () => {
   })
 })
 
+/* ── 冻结线(G 线 P4-b ②,正本 §22.3)──────────────────────────────────── */
+
+describe('账本:冻结线上的一行(`noteFrozen`)', () => {
+  it('不在线上(cause 缺席)只记基准,一条都不报', () => {
+    const { ledger, heard } = ledgerOf()
+    ledger.noteFrozen('r', 100, 700, undefined)
+    ledger.noteFrozen('r', 40, 700, undefined)
+    ledger.noteFrozen('r', 300, 700, undefined)
+    expect(heard).toEqual([])
+  })
+
+  it('在线上**变高**也报 —— 冻结的行长高与变矮同为违例', () => {
+    const { ledger, heard } = ledgerOf()
+    ledger.noteFrozen('r', 100, 700, undefined)
+    ledger.noteFrozen('r', 130, 700, 'tail-growth')
+    expect(heard).toHaveLength(1)
+    expect(heard[0].msg).toContain('长高')
+    expect(heard[0].fields).toMatchObject({ sourceId: 'r', cause: 'tail-growth', before: 100, after: 130, deltaPx: 30 })
+  })
+
+  it('在线上变矮 → 报,方向写进报文', () => {
+    const { ledger, heard } = ledgerOf()
+    ledger.noteFrozen('r', 100, 700, 'tail-growth')
+    ledger.noteFrozen('r', 70, 700, 'tail-growth')
+    expect(heard[0].msg).toContain('变矮')
+    expect(heard[0].fields).toMatchObject({ deltaPx: -30 })
+  })
+
+  it('人正开合着东西 → 不报;亚像素 → 不报;列宽变了 → 只换基准不报', () => {
+    const { ledger, heard } = ledgerOf()
+    ledger.noteFrozen('r', 100, 700, 'tail-growth')
+    ledger.noteFrozen('r', 180, 700, 'user-toggle')
+    ledger.noteFrozen('r', 180.4, 700, 'tail-growth')
+    ledger.noteFrozen('r', 260, 520, 'tail-growth')
+    expect(heard).toEqual([])
+    // 基准已经换成新宽下的那一格:之后在同宽下再变照报
+    ledger.noteFrozen('r', 250, 520, 'tail-growth')
+    expect(heard).toHaveLength(1)
+  })
+
+  it('每一行只报一次;别的行照报;换会话清账', () => {
+    const { ledger, heard } = ledgerOf()
+    for (let h = 100; h < 200; h += 10) ledger.noteFrozen('r', h, 700, 'tail-growth')
+    ledger.noteFrozen('q', 50, 700, 'tail-growth')
+    ledger.noteFrozen('q', 60, 700, 'tail-growth')
+    expect(ledger.warned).toEqual(['r:frozen', 'q:frozen'])
+    ledger.reset()
+    ledger.noteFrozen('z', 50, 700, 'tail-growth')
+    ledger.noteFrozen('z', 50, 700, 'tail-growth')
+    expect(heard).toHaveLength(2)
+  })
+})
+
+describe('接进 `ViewportAnchor` 之后:谁在冻结线上', () => {
+  /** 一轮在跑:活的是 a2(也是列尾);m1 / a1 是冻结线上的旧行。 */
+  function running() {
+    const ctx = setup()
+    ctx.anchor.setRowFacts('a2', 'a2', true)
+    return ctx
+  }
+
+  it('一轮在跑、不是活的也不是列尾的那一行变了 → 报', () => {
+    const { anchor, heard } = running()
+    anchor.noteRowHeight('a1', 400, 700)
+    anchor.noteRowHeight('a1', 420, 700)
+    expect(heard).toHaveLength(1)
+    expect(heard[0].fields).toMatchObject({ sourceId: 'a1', cause: 'tail-growth' })
+  })
+
+  it('活的那一行、列尾那一行随便长;没有一轮在跑时谁变都不报', () => {
+    const { anchor, heard } = running()
+    anchor.noteRowHeight('a2', 10, 700)
+    anchor.noteRowHeight('a2', 900, 700)
+    anchor.setRowFacts(undefined, 'a2', false)
+    anchor.noteRowHeight('a1', 400, 700)
+    anchor.noteRowHeight('a1', 380, 700)
+    expect(heard).toEqual([])
+  })
+
+  it('重试那一发在飞也算一轮在跑(活消息还没有)', () => {
+    const { anchor, heard } = setup()
+    anchor.setRowFacts(undefined, 'a2', true)
+    anchor.noteRowHeight('m1', 60, 700)
+    anchor.noteRowHeight('m1', 90, 700)
+    expect(heard).toHaveLength(1)
+  })
+
+  it('人开合的窗在场 → cause 是 `user-toggle`,不报', () => {
+    const { anchor, heard } = running()
+    anchor.noteRowHeight('a1', 400, 700)
+    anchor.reportUserToggle({ open: true, durationMs: 180, block: { height: 40, top: 10, anchor: EL } })
+    anchor.noteRowHeight('a1', 900, 700)
+    expect(heard).toEqual([])
+  })
+
+  it('问窗不替 `onResize` 挪「刚过期」那一格(只读)', () => {
+    let now = 1000
+    const port = new FakeScrollPort({ scrollHeight: 1000, clientHeight: 300, scrollTop: 700, columnHeight: 1000 })
+    const heard: unknown[] = []
+    const anchor = new ViewportAnchor(port, {
+      onFollowChange: () => {},
+      expandHoldMs: 220,
+      foldSlackMs: 40,
+      slideDurationOf: () => 0,
+      now: () => now,
+      ledger: new GeometryLedger((msg) => heard.push(msg)),
+    })
+    anchor.setRowFacts('a2', 'a2', true)
+    anchor.reportUserToggle({ open: true, durationMs: 0, block: { height: 40, top: 10, anchor: EL } })
+    now = 5000
+    anchor.noteRowHeight('a1', 400, 700)
+    anchor.noteRowHeight('a1', 410, 700)
+    expect(heard).toHaveLength(1)
+  })
+})
+
 describe('prod 零开销', () => {
   /**
    * 判据是**建不建那只对象**:`ledger` 缺席时裁决层每个报点都是一句 `?.` 的空跳,

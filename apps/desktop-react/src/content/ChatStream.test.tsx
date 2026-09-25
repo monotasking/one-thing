@@ -12,6 +12,7 @@ import {
   type ScrollAnchor,
 } from '../data/session-view-state'
 import { CHAT_TAIL_WINDOW, CHAT_WINDOW_STEP, resetChatWindows } from './chat-window'
+import { resetRowHeights, rowHeightsOf } from './row-heights'
 import { PanelVisibilityContext } from './visibility'
 
 import { useExposeStore } from '../expose/store'
@@ -265,6 +266,28 @@ describe('消息树:画的就是折叠器的输出', () => {
     expect(rows.map((row) => row.getAttribute('data-role'))).toEqual(['user', 'assistant'])
     expect(screen.getByText('你好')).toBeTruthy()
     expect(screen.getByText('好的')).toBeTruthy()
+  })
+
+  it('行高账(G 线 P4-b ①):记着的真高在挂载那一刻写成行上的 `--msg-intrinsic-h`,没账的行不带 style', async () => {
+    resetRowHeights()
+    try {
+      rowHeightsOf(SESSION).record('a1', 333.456, 700)
+      rowHeightsOf(SESSION).record('m1', 58, 700)
+      const { container } = await mount([
+        created(1),
+        userMessage(2, 'm1', '你好'),
+        runStart(3, 'r1', 'a1'),
+        chunks(4, 'r1', 'a1', ['好的']),
+        userMessage(5, 'm2', '再来'),
+      ])
+      const row = (id: string) => container.querySelector(`[data-message-id="${id}"]`) as HTMLElement
+      expect(row('a1').style.getPropertyValue('--msg-intrinsic-h')).toBe('333.46px')
+      expect(row('m1').style.getPropertyValue('--msg-intrinsic-h')).toBe('58px')
+      // 没账 = 行上不出现 style 属性,CSS 缺省那 240px 一字不改
+      expect(row('m2').hasAttribute('style')).toBe(false)
+    } finally {
+      resetRowHeights()
+    }
   })
 
   it('正文按纯文本画,换行照实保留(富渲染是后批)', async () => {

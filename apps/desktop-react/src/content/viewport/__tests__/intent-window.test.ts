@@ -34,6 +34,17 @@ describe('一格窗:开 / 在场 / 过期', () => {
     expect(w.current(1100)).toBeUndefined()
   })
 
+  it('`inWindow` 只读:过期了答 false,但**不**替 `current` 把那一格挪去「刚过期」(G 线 P4-b)', () => {
+    const w = new IntentWindow()
+    w.open(1000, 220, { rejudge: true })
+    expect(w.inWindow(1220)).toBe(true)
+    expect(w.inWindow(1221)).toBe(false)
+    // 问过之后「刚过期」那一格还没人挪 —— 那一挪是 `current` 的事
+    expect(w.takeExpired()).toBeUndefined()
+    expect(w.current(1221)).toBeUndefined()
+    expect(w.takeExpired()?.rejudge).toBe(true)
+  })
+
   it('再开一次按新的起点重新算(不是取两者大的)—— **后到的说了算**', () => {
     const w = new IntentWindow()
     w.open(1000, 220)

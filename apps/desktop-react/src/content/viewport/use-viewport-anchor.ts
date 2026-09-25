@@ -39,6 +39,8 @@ export function useViewportAnchor(options: {
   lastDeltaAt: number | undefined
   activeMessageId: string | undefined
   retryingId: string | undefined
+  /** 列尾那条消息的 id(冻结线的第二格;G 线 P4-b ②)。 */
+  tailMessageId: string | undefined
   onScroll: (() => void) | undefined
 }): {
   follow: FollowState
@@ -47,9 +49,15 @@ export function useViewportAnchor(options: {
   /** 流里报几何意图的那唯一一只对象(身份恒定;判词在 `content/geometry-report.ts`)。 */
   report: GeometryReport
   seatActive: boolean
+  /**
+   * 一行渲着的消息报来一格高(身份恒定;喂它的是 `content/row-heights.ts` 那只观察者)。
+   * 冻结线的 dev 断言走这里,prod 下是一句 `?.` 的空跳(判词在 `ViewportAnchor.noteRowHeight`)。
+   */
+  noteRowHeight: (rowId: string, height: number, width: number) => void
 } {
-  const { scrollRef, port, sessionId, messageCount, sentTick, lastDeltaAt, activeMessageId, retryingId, onScroll } =
-    options
+  const {
+    scrollRef, port, sessionId, messageCount, sentTick, lastDeltaAt, activeMessageId, retryingId, tailMessageId, onScroll,
+  } = options
 
   const [follow, setFollow] = useState<FollowState>(FOLLOW_PINNED)
 
@@ -99,6 +107,8 @@ export function useViewportAnchor(options: {
   const seatActive = sentTick !== sentBaseRef.current.tick
   // 渲染期事实,推给锚定器(不进依赖表,理由同 `messageCountRef`)。
   anchor.seatActive = seatActive
+  // 冻结线那三格(G 线 P4-b ②)同一手:「一轮在跑」与尾槽那一格 `tailRunning` 同一句判据。
+  anchor.setRowFacts(activeMessageId, tailMessageId, activeMessageId !== undefined || retryingId !== undefined)
 
   /* 垫块随会话卸载 / 座位退役时,那格「已写的数」也要归零 —— 不然下一条会话
    * 的第一次写会被一个属于上一棵树的数短路掉。 */
@@ -251,6 +261,11 @@ export function useViewportAnchor(options: {
   })
 
   const jumpToBottom = useCallback(() => anchor.jumpToBottom(), [anchor])
+  /* 身份恒定:它被那只行高观察者在构造时捕获,换一只就得重建观察者。 */
+  const noteRowHeight = useCallback(
+    (rowId: string, height: number, width: number) => anchor.noteRowHeight(rowId, height, width),
+    [anchor],
+  )
   /*
    * ── 人亲手开合了一块东西(G 线 P2-b,`content/geometry-report.ts`)─────────
    *
@@ -351,5 +366,6 @@ export function useViewportAnchor(options: {
     onScrollWithFollow,
     report,
     seatActive,
+    noteRowHeight,
   }
 }

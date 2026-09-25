@@ -19,6 +19,7 @@ import { IntentWindow } from './intent-window'
 import { Slide } from './slide'
 import { TailPad } from './tail-pad'
 import type { AnchoredElement, ResizeBatch, ScrollPort } from './scroll-port'
+import type { GeometryCause } from './types'
 
 /**
  * **视口锚定器**(G 线 P2-a,正本 `docs/stream-geometry-2026-09.md` §13.2.3)——
@@ -143,6 +144,23 @@ export class ViewportAnchor {
   /** 这条会话此刻有没有座位(= 这次进场之后自己发过话)。 */
   set seatActive(next: boolean) {
     this.#pad.active = next
+  }
+
+  /*
+   * ── 冻结线的三格渲染期事实(G 线 P4-b ②;唯一读者是 `noteRowHeight`)──────
+   * 哪一行是活的(`activeMessageId`)、列尾是谁(`messages` 末位)、此刻有没有一轮在跑
+   * (活消息在场或重试那一发在飞)。三格由薄 hook 每次渲染写一次 —— 与 `seatActive`
+   * 同一手。prod 下它们只是三次赋值:读它们的那一句挂在 `this.#ledger?.` 后面,
+   * 参数整段不求值。
+   */
+  #activeRowId: string | undefined = undefined
+  #tailRowId: string | undefined = undefined
+  #turnRunning = false
+
+  setRowFacts(activeRowId: string | undefined, tailRowId: string | undefined, turnRunning: boolean): void {
+    this.#activeRowId = activeRowId
+    this.#tailRowId = tailRowId
+    this.#turnRunning = turnRunning
   }
 
   /* ── 跟随状态机 ──────────────────────────────────────────────────────── */
@@ -791,6 +809,30 @@ export class ViewportAnchor {
   noteSettle(): void {
     if (!this.#ledger) return
     this.#ledger.settle(COLUMN_SOURCE, this.#port.columnHeight() - this.#lastColumnHeight)
+  }
+
+  /**
+   * **一行渲着的消息报来一格高**(G 线 P4-b ②,dev 断言;喂它的是 `content/row-heights.ts`
+   * 那只观察者,与行高账同一格读数)。
+   *
+   * 判词在 `GeometryLedger.noteFrozen`;这里只答「这一行此刻在不在冻结线上、在的话按
+   * 哪一格 cause 判」(`#frozenCause`)。**prod 零开销**:`this.#ledger?.` 一短路,后面那句
+   * 参数连同 `#frozenCause` 一起不求值。
+   */
+  noteRowHeight(rowId: string, height: number, width: number): void {
+    this.#ledger?.noteFrozen(rowId, height, width, this.#frozenCause(rowId))
+  }
+
+  /**
+   * `undefined` = 此刻不在冻结线上,只记基准:没有一轮在跑,或它就是活的那一行,或它是
+   * 列尾。在线上的话,人正开合着东西(意图窗在场)就是 `user-toggle`,否则 `tail-growth`
+   * —— 与 `onResize` 给整列那两格 cause 同一条分法。问窗用的是只读的 `inWindow`,
+   * 不替 `onResize` 挪「刚过期」那一格(判词在 `IntentWindow.inWindow`)。
+   */
+  #frozenCause(rowId: string): GeometryCause | undefined {
+    if (!this.#turnRunning) return undefined
+    if (rowId === this.#activeRowId || rowId === this.#tailRowId) return undefined
+    return this.#intents.inWindow(this.#now()) ? 'user-toggle' : 'tail-growth'
   }
 
   syncSeatOnSettle(): void {

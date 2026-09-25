@@ -115,6 +115,18 @@ describe('账本:不指名就用共享那一本,指名就各记各的', () => {
     expect(heightBook.size).toBe(0)
   })
 
+  it('构造时给一只回调:每记一格就把同一格读数(高与宽)转告一声;0 不转告(G 线 P4-b)', () => {
+    const heard: [Element, number, number][] = []
+    const book = new HeightBook((el, h, w) => heard.push([el, h, w]))
+    const el = document.createElement('div')
+    book.observe(el)
+    report(el, 0)
+    report(el, 64)
+    expect(book.heightOf(el)).toBe(64)
+    expect(heard).toEqual([[el, 64, 0]])
+    book.reset()
+  })
+
   it('指名一本就不碰共享那一本(两族的 `size` 各说各的)', () => {
     const own = new HeightBook()
     const view = render(<Box structure="a" book={own} />)

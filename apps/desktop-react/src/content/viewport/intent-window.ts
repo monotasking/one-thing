@@ -105,6 +105,18 @@ export class IntentWindow {
   }
 
   /**
+   * **此刻窗在不在场** —— 只读,不动任何一格(G 线 P4-b,冻结线 dev 断言的读者)。
+   *
+   * 与 `current` 同一条「过期」判据(`>`),但**不**把过期的那一格挪去 `#justExpired`:
+   * 那一挪是 `onResize` 的事(过期那一次要重判跟随档),一个只想问「人此刻动没动手」的
+   * 读者替它挪了,重判就会落在另一只观察者的回调里、时刻跟着变。所以读者只问,不挪。
+   */
+  inWindow(now: number): boolean {
+    const hold = this.#hold
+    return hold !== undefined && now <= hold.until
+  }
+
+  /**
    * **刚过期的那一个窗口,只交出一次**(P2-b 审查裁定 2)。
    *
    * 起因:窗口整段是**早退**的 —— 不判跟底、不判丸。窗口一过要是什么都不做,

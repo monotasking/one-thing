@@ -6,7 +6,9 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  type CSSProperties,
   type ReactElement,
+  type RefCallback,
   type RefObject,
 } from 'react'
 import { chatSources, loadOlderChatMessages, useChatSourceOf } from '../data/chat-source'
@@ -22,6 +24,7 @@ import { CARD_FLIP_MS, currentMotionTier } from '../components/motion'
 import { ButtonBase } from '../ui/ButtonBase'
 import { assembleMessage, segmentKey } from './assemble'
 import { RowElementBook } from './row-elements'
+import { RowHeightObserver, rowHeightsOf } from './row-heights'
 import { ContextDeltaSeam, hasContextDelta } from './ContextDeltaSeam'
 import { DomScrollPort, type ScrollPort } from './viewport/scroll-port'
 import { useViewportAnchor } from './viewport/use-viewport-anchor'
@@ -260,12 +263,19 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
    */
   const retryingId = useChatSourceOf(sessionId, (st) => st.retryPending?.messageId)
 
+  /*
+   * **取的是列尾那一条,不是 `find`**:活消息按定义是账本最后一条(这一轮的回复),
+   * 流式期间这一句每帧都要跑,`find` 就是每帧扫一遍整篇抄本。
+   */
+  const tailMessage = messages[messages.length - 1]
+
   const {
     follow,
     jumpToBottom,
     onScrollWithFollow,
     report: geometryReport,
     seatActive,
+    noteRowHeight,
   } = useViewportAnchor({
     scrollRef,
     port,
@@ -275,14 +285,10 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
     lastDeltaAt,
     activeMessageId,
     retryingId,
+    // 冻结线的第二格(G 线 P4-b ②):列尾那一行由 `messages` 末位说。
+    tailMessageId: tailMessage?.id,
     onScroll: onScrollOutward,
   })
-
-  /*
-   * **取的是列尾那一条,不是 `find`**:活消息按定义是账本最后一条(这一轮的回复),
-   * 流式期间这一句每帧都要跑,`find` 就是每帧扫一遍整篇抄本。
-   */
-  const tailMessage = messages[messages.length - 1]
   /** 这一轮那条活消息(= 账本最后一条,且它就是在跑的那一条)。 */
   const activeMessage = tailMessage !== undefined && tailMessage.id === activeMessageId
     ? tailMessage
@@ -311,11 +317,44 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
    * 相撞;分两本,这件事不用证。
    * 账挂在这一次挂载上、换会话换一本新的 —— 与上面 `entryRef` 同一个手法。
    */
-  const rowBooksRef = useRef<{ sid: string; ledger: RowElementBook; overlay: RowElementBook } | undefined>(undefined)
+  /*
+   * ── 行高账(G 线 P4-b ①,正本 §22.2;机理、时序与寿命判词在 `row-heights.ts`)──────
+   * 第三格 `heights` 是这一次挂载(这一条会话)的那只观察者:行靠 `refFor(id)` 登记,
+   * 渲过的行把真高记进**按会话**的那本账(模块级,活得比这片叶长);行挂载那一刻由
+   * `heightAtMount(id)` 从账上取上一次的真高,写成行上的 `--msg-intrinsic-h`。
+   * 同一格读数还转告锚定器(冻结线的 dev 断言,§22.3)。
+   * 它与两本行元素账**同寿**:换会话一起换 —— 所以 `refFor` / `heightAtMount` 交出来的
+   * 东西在一本行元素账的寿命里恒定,进那张输入清单也不会让命中率掉一格。
+   * 空会话(`sessionId === ''`)没有账可记。
+   */
+  const rowBooksRef = useRef<{
+    sid: string
+    ledger: RowElementBook
+    overlay: RowElementBook
+    heights: RowHeightObserver | undefined
+  } | undefined>(undefined)
   if (!rowBooksRef.current || rowBooksRef.current.sid !== sessionId) {
-    rowBooksRef.current = { sid: sessionId, ledger: new RowElementBook(), overlay: new RowElementBook() }
+    rowBooksRef.current = {
+      sid: sessionId,
+      ledger: new RowElementBook(),
+      overlay: new RowElementBook(),
+      heights: sessionId ? new RowHeightObserver(rowHeightsOf(sessionId), noteRowHeight) : undefined,
+    }
   }
   const rowBooks = rowBooksRef.current
+  const rowHeights = rowBooks.heights
+
+  /*
+   * 观察者接上滚动容器(跳渲状态的事件在那儿用一只捕获监听收)、卸载 / 换会话时退役。
+   * 行的 ref 回调(孩子)先于这一句挂上 —— 观察从 ref 那一刻就开始了,这里只补那只监听:
+   * 事件最早也要等下一次渲染更新才发,同一次提交里接上不会漏。
+   */
+  useLayoutEffect(() => {
+    if (!rowHeights) return
+    const root = scrollRef?.current
+    if (root) rowHeights.attach(root)
+    return () => rowHeights.dispose()
+  }, [rowHeights, scrollRef])
 
   /*
    * **key 与顺序与从前 `flatMap` 那一版逐字相同**:用户消息一行(有上下文更新时
@@ -332,7 +371,20 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
        * 算出来的,列进来是把「这一格的形状」写成一目了然的一格,而不是靠读者去推。
        */
       const seam = hasContextDelta(message.turnContext)
-      const rows = rowBooks.ledger.take(message.id, [message, flash, seam, t, sessionId], () => {
+      /*
+       * 行高账那四格(G 线 P4-b ①):气泡一行、折痕一行,各有各的 ref 与挂载时的估计。
+       * 折痕那一行按 `<消息 id>#context` 记 —— 与它的 React key 同一个字符串。
+       * 它们在这一本行元素账的寿命里恒定(判词在上面 `rowBooksRef` 那段)。
+       */
+      const rowRef = rowHeights?.refFor(message.id)
+      const intrinsic = rowHeights?.heightAtMount(message.id)
+      const seamId = `${message.id}#context`
+      const seamRef = seam ? rowHeights?.refFor(seamId) : undefined
+      const seamIntrinsic = seam ? rowHeights?.heightAtMount(seamId) : undefined
+      const rows = rowBooks.ledger.take(
+        message.id,
+        [message, flash, seam, t, sessionId, rowRef, intrinsic, seamRef, seamIntrinsic],
+        () => {
         const row = (
           <UserBubble
             key={message.id}
@@ -344,6 +396,8 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
             status="landed"
             attachments={messageAttachmentMetadata(message)}
             flash={flash}
+            rowRef={rowRef}
+            intrinsicHeight={intrinsic}
           />
         )
         /*
@@ -362,8 +416,9 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
          * MessageRow 挪进一层新的键空间,而这一行的整篇 memo 短路(60 万 token 会话
          * 3–4fps 那笔账)全靠它的 key 与位置一格不动。
          */
-        return seam ? [row, contextSeamRow(message)] : [row]
-      })
+        return seam ? [row, contextSeamRow(message, seamRef, seamIntrinsic)] : [row]
+        },
+      )
       for (const row of rows) ledgerRowElements.push(row)
       continue
     }
@@ -373,9 +428,12 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
      * 所以其余每一行拿到的都是 `false` —— 输入逐格不变,账照旧命中。
      */
     const retiring = message.id === retryingId
+    /* 行高账那两格(G 线 P4-b ①;判词同用户那一行)。 */
+    const rowRef = rowHeights?.refFor(message.id)
+    const intrinsic = rowHeights?.heightAtMount(message.id)
     const rows = rowBooks.ledger.take(
       message.id,
-      [message, streaming, flash, retiring, t, sessionId],
+      [message, streaming, flash, retiring, t, sessionId, rowRef, intrinsic],
       () => [
         <MessageRow
           key={message.id}
@@ -385,6 +443,8 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
           streaming={streaming}
           flash={flash}
           retiring={retiring}
+          rowRef={rowRef}
+          intrinsicHeight={intrinsic}
         />,
       ],
     )
@@ -819,6 +879,22 @@ type IdleWindow = Window & {
  * (`__tests__/scroll-writes.test.tsx`)与五道真机门的逐格对照(正本 §14)。
  */
 
+/**
+ * **行上那一格 `--msg-intrinsic-h`**(G 线 P4-b ①,判词在 `row-heights.ts`)。
+ *
+ * 有账才写,没账给 `undefined` —— 行上不出现 `style` 属性,CSS 缺省那 240px 一字不改。
+ * 取整到 1/100px:它只是跳渲时的占位,四舍五入不会让任何画出来的东西动一格。
+ */
+function intrinsicStyleOf(height: number | undefined): CSSProperties | undefined {
+  if (height === undefined) return undefined
+  return { '--msg-intrinsic-h': `${Math.round(height * 100) / 100}px` } as CSSProperties
+}
+
+/** 同上,按那个数 memo —— 活的那一行每帧重渲,不必每帧交出一只新对象给 React 逐键比。 */
+function useIntrinsicStyle(height: number | undefined): CSSProperties | undefined {
+  return useMemo(() => intrinsicStyleOf(height), [height])
+}
+
 /** 不装配的那两种角色共用同一个空数组 —— 每次新造一个会让下游的浅比全部落空。 */
 const EMPTY_SEGMENTS: SegmentModel[] = []
 
@@ -844,6 +920,13 @@ interface RowProps {
    * 不等账本把它删掉 —— 「按下即开槽」说的就是这段真空里屏幕也要有回音。
    */
   retiring?: boolean
+  /** 行高账登记这一行的 ref(G 线 P4-b ①;身份按行恒定,判词在 `row-heights.ts`)。 */
+  rowRef?: RefCallback<HTMLElement>
+  /**
+   * 这一行**上一次渲出来**多高(行高账在挂载那一刻给的;没记过 = 缺席)。写成行上的
+   * `--msg-intrinsic-h`,只在这一行跳渲时当占位 —— 渲出来之后浏览器用它自己记的那一份。
+   */
+  intrinsicHeight?: number
 }
 
 /**
@@ -883,8 +966,11 @@ const MessageRow = memo(function MessageRow({
   streaming,
   flash,
   retiring = false,
+  rowRef,
+  intrinsicHeight,
 }: RowProps) {
   const role = message.role
+  const intrinsicStyle = useIntrinsicStyle(intrinsicHeight)
   const className = [s.row, flash && s.flash, retiring && s.rowRetiring]
     .filter(Boolean)
     .join(' ')
@@ -922,7 +1008,13 @@ const MessageRow = memo(function MessageRow({
   )
 
   return (
-    <article className={className} data-message-id={message.id} data-role={role}>
+    <article
+      ref={rowRef}
+      className={className}
+      style={intrinsicStyle}
+      data-message-id={message.id}
+      data-role={role}
+    >
       {/* 用户那一条**不走这一行**了(09-14):它与在飞那几格同为 `UserBubble`,
           否则落账那一拍元素类型一换,同 key 也保不住那个 DOM 节点。 */}
 
@@ -1071,6 +1163,8 @@ const UserBubble = memo(function UserBubble({
   error,
   entryId,
   flash,
+  rowRef,
+  intrinsicHeight,
 }: {
   t: TFn
   sessionId: string
@@ -1086,7 +1180,12 @@ const UserBubble = memo(function UserBubble({
   /** overlay 那一格的号(两口动作按它认)。落账之后缺席。 */
   entryId?: string
   flash?: boolean
+  /** 行高账登记这一行的 ref(落账之后才有 —— 在飞那一格没有 id 可记)。判词同 `MessageRow`。 */
+  rowRef?: RefCallback<HTMLElement>
+  /** 这一行上一次渲出来多高(判词同 `MessageRow` 的同名 prop)。 */
+  intrinsicHeight?: number
 }) {
+  const intrinsicStyle = useIntrinsicStyle(intrinsicHeight)
   // 两口动作也跟着这条会话走 —— overlay 是「这条会话的屏幕」上的车道。
   const retry = useChatSourceOf(sessionId, (st) => st.retry)
   const dismiss = useChatSourceOf(sessionId, (st) => st.dismiss)
@@ -1142,7 +1241,9 @@ const UserBubble = memo(function UserBubble({
      * 那个节点。`data-pending` 是「此刻是哪一档」的产地(落账之后它就不在了)。
      */
     <article
+      ref={rowRef}
       className={[s.row, flash && s.flash].filter(Boolean).join(' ')}
+      style={intrinsicStyle}
       data-message-id={messageId}
       data-role="user"
       data-pending={landed ? undefined : status}
@@ -1197,11 +1298,18 @@ function NoticeRow({ t }: { t: TFn }) {
  * 那一半,与折痕画在哪无关。
  */
 
-function contextSeamRow(message: ProjectedMessage) {
+function contextSeamRow(
+  message: ProjectedMessage,
+  /** 行高账那两格(G 线 P4-b ①):这一行也挂着 `content-visibility: auto`,跳渲时同样只占估计。 */
+  rowRef: RefCallback<HTMLElement> | undefined,
+  intrinsicHeight: number | undefined,
+) {
   return (
     <article
       key={`${message.id}#context`}
+      ref={rowRef}
       className={`${s.row} ${s.rowLate}`}
+      style={intrinsicStyleOf(intrinsicHeight)}
       data-context-of={message.id}
     >
       {/*

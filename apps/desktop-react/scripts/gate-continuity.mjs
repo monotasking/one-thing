@@ -75,6 +75,12 @@ const mainEntry = path.join(appRoot, 'dist-electron/main.cjs')
 const FIXTURE_A = { messages: 400 }
 /** B 小一档就行,它只是「切走去哪儿」。 */
 const FIXTURE_B = { messages: 120, targetBytes: 0, targetToolCalls: 0, largeResults: 2, images: 2 }
+/**
+ * ④ 要把甲**挤出视图池**才算「关掉」(判词在 ④ 那一段):池子一片叶三格
+ * (`SESSION_VIEW_PARK_LIMIT`),甲之后再进四条会话它才被逐出。乙之外再种三条
+ * 最小的 —— 它们只是「切走去哪儿」,几条消息就够。
+ */
+const FIXTURE_TINY = { messages: 6, targetBytes: 0, targetToolCalls: 0, largeResults: 0, images: 0 }
 const REPLY_TEXT = 'C1 连续性门 · 假 provider 的流式回答。'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -341,6 +347,180 @@ async function enterSession(page, sessionId, lastMessageId) {
   })
 }
 
+/* ══ ④ 关掉再打开(G 线 P4-b,正本 `docs/stream-geometry-2026-09.md` §22.4)════════════
+ *
+ * ── 它量的是什么 ──────────────────────────────────────────────────────────
+ * 前面三条证的是「切走再切回」—— 甲那棵 React 树一直**挂着**(视图停靠池,
+ * `content/session-park.ts`),浏览器替每一行记着渲过的真高。这一条证的是树**真的
+ * 卸载了**再回来:行全部重新建,`content-visibility: auto` 的「记住真高」随旧元素
+ * 一起没了,新行占的是 `--msg-intrinsic-h` 那 240px 的估计(正本 §22.1)。
+ *
+ * ── 「关掉」怎么做 ────────────────────────────────────────────────────────
+ * 缺省打开方式是原位替换(`sessions.openMode = replace`),一条会话在这片叶上**没有
+ * 自己的标签**可关;它被换走时停进视图池,池满从队尾逐出 —— 那一下就是真卸载
+ * (`parkSessionSwap` 那一句 `next.length = …`)。所以这里连进乙丙丁戊四条,把甲挤出
+ * 三格的池子,再从总览点回甲。卸没卸由**节点身份**判:离开前记下甲那只滚动容器,
+ * 回来之后它必须已经不在文档上 —— 不然这一条量的其实还是「切回」。
+ * 数据机器仍在 `chat-source` 那个 8 格池里,回来是「池命中冷渲」,不重拉账本。
+ *
+ * ── 读三格(改前做基线,改后与它对照)──────────────────────────────────────
+ *  · **进场之后又对了几轮**:落锚点那一写之后,**行数没变**时还写了几次 `scrollTop`
+ *    (= 跳渲的行渲出真高、锚点漂了、`EntryRestore` 再对一次)。行数变了的那几写是
+ *    扩窗保位(`late-insert`),分开数。门跑的是 prod 产物,拿不到模块,所以数的是
+ *    DOM 上那一句 `scrollTop =` —— 全仓唯一那一句(`ScrollPort.#write`)。
+ *    记录器只记「写成了几」与当时的行数,**不在写之前读 `scrollTop`**(读一次就逼一次
+ *    排版,正本 §21.3 Q2 末条)。
+ *  · **落点差**:回来之后视口最上面那一行(与 ② 同一把尺)与离开时的锚点行、行内偏移之差。
+ *  · **`scrollHeight` 差**:窗口补回离开前那么多行之后,内容总高与离开前之差。
+ */
+async function readRows(page) {
+  return page.evaluate(() => {
+    const scroll =
+      document.querySelector('[data-pane-on] [data-testid="chat-stream"]')
+      ?? document.querySelector('[data-testid="chat-stream"]')
+    return scroll ? scroll.querySelectorAll('[data-message-id]').length : 0
+  })
+}
+
+async function reopenAfterEviction(page, { idA, others, seeded }) {
+  console.log('\n[5/5] ④ 关掉再打开:真店档上翻五屏 → 挤出视图池 → 再打开')
+  /* 先回到底(与人刚打开一条长会话同一个起点),等窗口补完、贴底落定。 */
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-pane-on] [data-testid="chat-stream"]')
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+    el.dispatchEvent(new Event('scroll', { bubbles: false }))
+  })
+  await delay(600)
+  /* 上翻五屏:每一屏停一会儿,让经过的那几行真的渲出来(浏览器才有真高可记)。 */
+  for (let i = 0; i < 5; i += 1) {
+    await page.evaluate(() => {
+      const el = document.querySelector('[data-pane-on] [data-testid="chat-stream"]')
+      if (!el) return
+      el.scrollTop = Math.max(0, el.scrollTop - el.clientHeight)
+      el.dispatchEvent(new Event('scroll', { bubbles: false }))
+    })
+    await delay(250)
+  }
+  // 停稳之后锚点记一笔(`SCROLL_ANCHOR_SETTLE_MS` = 120ms),多等一截。
+  await delay(500)
+  const before = await readView(page)
+  console.log(
+    `      离开前:锚点 ${before.anchor?.id}@${before.anchor?.offset}px · 树高 ${before.scrollHeight}px`
+    + ` · ${before.rowCount} 行 · scrollTop ${before.scrollTop}`,
+  )
+  await page.evaluate(() => {
+    window.__c4node = document.querySelector('[data-pane-on] [data-testid="chat-stream"]')
+  })
+
+  const lastIdOf = { [others[0]]: seeded.B.lastMessageId, [others[1]]: seeded.C.lastMessageId,
+    [others[2]]: seeded.D.lastMessageId, [others[3]]: seeded.E.lastMessageId }
+  for (const id of others) {
+    await enterSession(page, id, lastIdOf[id])
+    await delay(200)
+  }
+  const evicted = await page.evaluate(() => window.__c4node ? !window.__c4node.isConnected : false)
+  assert(evicted, '④ 甲那棵树真的卸载了(离开前那只滚动容器已不在文档上)')
+
+  /* 写手记录器:只记写进去的数、那一刻的行数与时刻。 */
+  await page.evaluate(() => {
+    window.__c4writes = []
+    if (window.__c4patched) return
+    window.__c4patched = true
+    const desc = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop')
+    Object.defineProperty(Element.prototype, 'scrollTop', {
+      configurable: true,
+      get: desc.get,
+      set(value) {
+        try {
+          if (window.__c4writes && this.getAttribute?.('data-testid') === 'chat-stream') {
+            window.__c4writes.push({
+              t: performance.now(),
+              to: value,
+              rows: this.querySelectorAll('[data-message-id]').length,
+            })
+          }
+        } catch {
+          /* 旁听者不许影响真写。 */
+        }
+        desc.set.call(this, value)
+      },
+    })
+  })
+  const t0 = await page.evaluate(() => performance.now())
+  await enterSession(page, idA, seeded.A.lastMessageId)
+  await delay(800)
+  const landed = await readView(page)
+  /* 等窗口补回离开前那么多行(空闲扩窗,一批 24 条)。 */
+  await waitFor(`甲的窗口补回 ${before.rowCount} 行`, async () => (await readRows(page)) >= before.rowCount, 30_000)
+  await delay(600)
+  const after = await readView(page)
+  const writes = await page.evaluate(() => window.__c4writes ?? [])
+  await page.evaluate(() => { window.__c4writes = undefined })
+
+  const rel = writes.map((w) => ({ t: Math.round(w.t - t0), to: Math.round(w.to * 10) / 10, rows: w.rows }))
+  /*
+   * 「再对」分两种:**挪了位置的**(锚点真的漂了,那一写之前画出去的一帧是错的)与
+   * **原地确认的**(`EntryRestore.consume` 那一轮量到没动,写回同一个数就收手 —— 那是
+   * 「落稳了」的那一次,不是一次纠正)。判据是两写之差超过半个像素。
+   */
+  let resettle = 0
+  let resettleMoved = 0
+  let lateInsert = 0
+  /* 再对那几轮里**最大的一跳**:两写之间隔着一帧以上时,中间那一帧画的就是没对准的那一份。 */
+  let resettleJump = 0
+  for (let i = 1; i < rel.length; i += 1) {
+    if (rel[i].rows === rel[i - 1].rows) {
+      resettle += 1
+      const jump = Math.abs(rel[i].to - rel[i - 1].to)
+      if (jump > 0.5) resettleMoved += 1
+      resettleJump = Math.max(resettleJump, jump)
+    } else lateInsert += 1
+  }
+  console.log(`      回来之后的 scrollTop 写(相对点击 ms / 值 / 行数):${JSON.stringify(rel.slice(0, 16))}${rel.length > 16 ? ` …共 ${rel.length} 次` : ''}`)
+  const sameAnchor = (a, b) => a?.id !== undefined && a?.id === b?.id
+  const landDiff = sameAnchor(before.anchor, landed.anchor)
+    ? Math.abs(landed.anchor.offset - before.anchor.offset) : Number.POSITIVE_INFINITY
+  const finalDiff = sameAnchor(before.anchor, after.anchor)
+    ? Math.abs(after.anchor.offset - before.anchor.offset) : Number.POSITIVE_INFINITY
+  const heightDiff = (after.scrollHeight ?? 0) - (before.scrollHeight ?? 0)
+  console.log(
+    `      落定(+800ms):锚点 ${landed.anchor?.id}@${landed.anchor?.offset}px · 树高 ${landed.scrollHeight}px · ${landed.rowCount} 行`,
+  )
+  console.log(
+    `      补齐之后:锚点 ${after.anchor?.id}@${after.anchor?.offset}px · 树高 ${after.scrollHeight}px · ${after.rowCount} 行`
+    + ` · 一行高 ${after.rowHeight?.toFixed?.(1)}px`,
+  )
+  console.log(
+    `      ④ 读数:进场再对 ${resettle} 轮、其中挪了位置 ${resettleMoved} 轮(最大一跳 ${resettleJump.toFixed(1)}px;另有扩窗保位 ${lateInsert} 写)· 落点差 ${Number.isFinite(landDiff) ? landDiff.toFixed(1) : '∞(换了行)'}px`
+    + `(补齐之后 ${Number.isFinite(finalDiff) ? finalDiff.toFixed(1) : '∞'}px)· scrollHeight 差 ${heightDiff}px`,
+  )
+  /*
+   * ── 判据三格(正本 §22.4 / §22.5;改前基线 → 改后,各跑三趟逐字相同)────────────
+   *  · **挪了位置的再对 = 0 轮**:改前 1 轮、一跳 552.5px —— 两写隔 ~21ms,中间那几帧
+   *    画的是没对准的那一份。「原地确认」那一轮(写回同一个数就收手)不算:它是
+   *    `EntryRestore.consume` 说「落稳了」的那一次,不是一次纠正;
+   *  · **落点差 ≤ 1px**:改前也是 0 —— 再对那几轮最后把它拉回来了,病在中间那一跳,
+   *    不在终点;
+   *  · **`scrollHeight` 差 ≤ 一行估高**(`--msg-intrinsic-h` 那 240px):改前 −5,368px,
+   *    即「往上翻时内容列一路长高」的那一截。
+   * 读的是一棵同一份账本、同一个窗口的树,三趟读数逐字相同 —— 它们不是随负载起伏的量。
+   */
+  assert(
+    resettleMoved === 0,
+    `④ 关掉再打开:进场之后没有一轮「再对」挪过位置(挪了 ${resettleMoved} 轮,最大一跳 ${resettleJump.toFixed(1)}px)`,
+  )
+  assert(
+    Number.isFinite(landDiff) && landDiff <= 1,
+    `④ 关掉再打开:落回离开时那一行(${before.anchor?.id}),行内偏移差 ${Number.isFinite(landDiff) ? landDiff.toFixed(1) : '∞'}px ≤ 1px`,
+  )
+  const ROW_ESTIMATE_PX = 240
+  assert(
+    Math.abs(heightDiff) <= ROW_ESTIMATE_PX,
+    `④ 关掉再打开:内容总高与离开前之差 ${heightDiff}px,绝对值 ≤ 一行估高 ${ROW_ESTIMATE_PX}px`,
+  )
+}
+
 async function main() {
   if (!existsSync(serverEntry)) {
     console.error(
@@ -359,7 +539,7 @@ async function main() {
   let server
   let app
   try {
-    console.log('\n[1/4] 起假 provider + 一台 core,建两条会话并写真店规模的账本')
+    console.log('\n[1/5] 起假 provider + 一台 core,建两条会话并写真店规模的账本')
     mockProvider = await startFakeProvider(0, REPLY_TEXT)
     const mockPort = mockProvider.address().port
     writeFileSync(
@@ -405,10 +585,19 @@ async function main() {
     server = core.child
     const idA = await createSession(core.record, 'C1 门 · 会话甲')
     const idB = await createSession(core.record, 'C1 门 · 会话乙')
+    const idC = await createSession(core.record, 'C1 门 · 会话丙')
+    const idD = await createSession(core.record, 'C1 门 · 会话丁')
+    const idE = await createSession(core.record, 'C1 门 · 会话戊')
 
     // 趁 core 停着写账本:冷启一次全读,不碰「外来写手」那道闸。
     await stopCore(server)
-    const seeded = seedLedgers(store, [['A', idA, FIXTURE_A], ['B', idB, FIXTURE_B]])
+    const seeded = seedLedgers(store, [
+      ['A', idA, FIXTURE_A],
+      ['B', idB, FIXTURE_B],
+      ['C', idC, FIXTURE_TINY],
+      ['D', idD, FIXTURE_TINY],
+      ['E', idE, FIXTURE_TINY],
+    ])
     for (const [name, stat] of Object.entries(seeded)) {
       console.log(
         `      ${name}:${(stat.bytes / 1024 / 1024).toFixed(1)}MB / ${stat.messages} 条 / `
@@ -418,7 +607,7 @@ async function main() {
     core = await startCore()
     server = core.child
 
-    console.log('[2/4] 拉起应用(离屏 · 独立 --user-data-dir),进会话甲')
+    console.log('[2/5] 拉起应用(离屏 · 独立 --user-data-dir),进会话甲')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -453,7 +642,7 @@ async function main() {
     await enterSession(page, idA, seeded.A.lastMessageId)
     await delay(400)
 
-    console.log('\n[3/4] 在甲里滚到中间,记下此刻的位置')
+    console.log('\n[3/5] 在甲里滚到中间,记下此刻的位置')
     /*
      * 滚到**中间**而不是顶:顶那一格与「贴底」一样是个特殊值,而这道门要证的
      * 恰恰是「任意一个位置都留得住」。赋 scrollTop 并发一次 scroll —— 与人拖
@@ -472,7 +661,7 @@ async function main() {
       `甲停在中间(scrollTop=${before.scrollTop}, 离底 ${before.gap?.toFixed?.(1)}px)`,
     )
 
-    console.log('\n[4/4] 切到乙,再切回甲 —— ①零重载 ②位置一致 ③焦点在输入框')
+    console.log('\n[4/5] 切到乙,再切回甲 —— ①零重载 ②位置一致 ③焦点在输入框')
     const mark = await rpcMark(page)
     await enterSession(page, idB, seeded.B.lastMessageId)
     await delay(300)
@@ -516,6 +705,8 @@ async function main() {
       after.activeTestId === 'composer-input',
       `③ 焦点在输入框(此刻在 ${after.activeTestId ?? after.activeTag ?? '没有东西'} 上)`,
     )
+
+    await reopenAfterEviction(page, { idA, others: [idB, idC, idD, idE], seeded })
   } finally {
     if (app) await app.close().catch(() => undefined)
     if (server) server.kill('SIGTERM')

@@ -642,6 +642,8 @@ async function startPaintSampler(page) {
           anchor,
           st: scroll.scrollTop,
           sh: scroll.scrollHeight,
+          /* 滚动口自己多高 —— 「贴底」那一格粗筛要它(判词在 `NEAR_BOTTOM_SLACK_PX`)。 */
+          ch: scroll.clientHeight,
           seatH: seat && seat.isConnected ? seat.getBoundingClientRect().height : null,
           /*
            * 上下文更新那一行(`.rowLate`)此刻多高 —— 它**在变**的那几帧就是
@@ -796,6 +798,17 @@ async function measureOverlap(page, cdp) {
   await delay(500)
   return out
 }
+
+/**
+ * 「贴底」那一格粗筛的余量:离底不超过这么多就算贴着(px)。
+ *
+ * 从前三处写的是 `st + 2 >= sh − 700`,旁注「容器高 670 上下」—— 把滚动口的高**写死**在
+ * 判据里,折出来的余量是 702 − 670 = 32px。09-25 Dock 改成悬浮之后外壳不再为它让位,
+ * 这道门的滚动口长到 756px(P4-b 施工时量的),那条式子从此恒假:① 一个贴底样本都采不到,
+ * ① 的窗等到流收场才放行,④ 的像素段轮到时停止钮已经不在了 —— 三条红全是这一个数。
+ * 改成读每一帧自己的 `clientHeight`,余量照旧 32px,判据的意思一个字没变。
+ */
+const NEAR_BOTTOM_SLACK_PX = 32
 
 const PIXEL_SEGMENT_MS = 14_000
 /** 「换了一个值」的判据,以设备像素计。小于半个设备像素的差不算跳。 */
@@ -1302,7 +1315,7 @@ function analyze(frames, devicePx) {
  *  · `switches` —— 驱动打了记号的那两处切换,取记号前后各自**稳定下来**的值相减。
  */
 function judge(paint, devicePx, jumpRead) {
-  const bottom = (r) => r.st + 2 >= r.sh - 700 // 粗筛:贴底(容器高 670 上下)
+  const bottom = (r) => r.sh - r.st - r.ch <= NEAR_BOTTOM_SLACK_PX // 粗筛:贴底
   const isPinned = (r) => r.running && (r.seatH === null || r.seatH <= 0.5)
     && r.phase === '' && bottom(r)
   const pinned = paint.filter(isPinned)
@@ -1841,17 +1854,17 @@ async function main() {
       {
         const until = Date.now() + PINNED_WINDOW_CAP_MS
         for (;;) {
-          const enough = await page.evaluate((need) => {
+          const enough = await page.evaluate(([need, slack]) => {
             const rows = window.__jPaint ?? []
             let n = 0
             for (let i = rows.length - 1; i >= 0; i -= 1) {
               const r = rows[i]
               if (r.phase !== '') break
               if (r.running && (r.seatH === null || r.seatH <= 0.5)
-                && r.st + 2 >= r.sh - 700) n += 1
+                && r.sh - r.st - r.ch <= slack) n += 1
             }
             return n >= need
-          }, PINNED_WINDOW_SAMPLES)
+          }, [PINNED_WINDOW_SAMPLES, NEAR_BOTTOM_SLACK_PX])
           if (enough) break
           if (Date.now() > until) break
           if (!(await stopShown(page))) break
@@ -1929,7 +1942,7 @@ async function main() {
          * 那只 `isPinned` 逐字同源。
          */
         const seg = paint.filter((r) => r.running && (r.seatH === null || r.seatH <= 0.5)
-          && r.phase === '' && r.st + 2 >= r.sh - 700)
+          && r.phase === '' && r.sh - r.st - r.ch <= NEAR_BOTTOM_SLACK_PX)
         m.paint = {
           samples: seg.length,
           ...jitterOf(seg.map((r) => r.top), seg.map((r) => r.t), devicePx),

@@ -36,6 +36,8 @@ export class GeometryLedger {
   readonly #warn: GeometryViolationSink
   /** 上过屏的每一件最后一次量到的高。 */
   readonly #seen = new Map<string, number>()
+  /** 冻结线上每一行最后一次量到的高与宽(`noteFrozen`;宽用来认「整列重排」)。 */
+  readonly #rows = new Map<string, { height: number; width: number }>()
   /** 已经报过的那几件 —— 一段过渡逐帧都会报,不去重就刷屏。 */
   readonly #warned = new Set<string>()
 
@@ -77,9 +79,44 @@ export class GeometryLedger {
     })
   }
 
+  /**
+   * **冻结线上的一行**(G 线 P4-b ②,正本 §22.3):一轮进行中,不是活的那一行、也不是
+   * 列尾那一行,高度**不许变** —— 变矮变高同为违例,每行只报一次。
+   *
+   * `cause` 由锚定器给:`undefined` = 这一行此刻**不在冻结线上**(没有一轮在跑 / 它就是
+   * 活的那一行 / 它是列尾),**只记基准不判**;`user-toggle` = 人正开合着东西,允许变
+   * (与 `note` 同一格例外);其余 cause 下任何变化都报。
+   *
+   * ── 为什么不拿 `note` 判变矮、这里只判变高(§22.3 原写法)────────────────
+   * 两条理由,都是量出来之前就能看见的:① `note` 没有「只记不判」那一档 —— 冻结线
+   * 之外的那段时间(轮与轮之间、改窗宽)行高会合法地变,基准要跟着记,而经 `note` 记
+   * 就会被它判;② 同一次变矮会在 `note` 与这里各报一条、键不同去不了重。所以两个方向
+   * 在这一个口里判,方向写进报文。
+   *
+   * ── 列宽变了不判 ─────────────────────────────────────────────────────────
+   * 行高是列宽的函数:人拖窄了窗,每一行都会变 —— 那是整列重排,不是「这一行偷偷变」。
+   * 宽变了(超过亚像素那一格)就只换基准。
+   */
+  noteFrozen(rowId: string, height: number, width: number, cause: GeometryCause | undefined): void {
+    if (!Number.isFinite(height) || !Number.isFinite(width)) return
+    const before = this.#rows.get(rowId)
+    this.#rows.set(rowId, { height, width })
+    if (before === undefined || cause === undefined || cause === 'user-toggle') return
+    if (Math.abs(width - before.width) > 0.5) return
+    const delta = height - before.height
+    // 亚像素的来回不是「变了」—— 与这一线其余判据同一把尺子(0.5px)。
+    if (Math.abs(delta) <= 0.5) return
+    this.#flag(`${rowId}:frozen`, delta < 0
+      ? '冻结线上的一行变矮了,而这一下不是人点的'
+      : '冻结线上的一行长高了,而这一下不是人点的', {
+      sourceId: rowId, cause, before: before.height, after: height, deltaPx: Number(delta.toFixed(2)),
+    })
+  }
+
   /** 换会话 / 卸载:这张表说的是**那边**的事。 */
   reset(): void {
     this.#seen.clear()
+    this.#rows.clear()
     this.#warned.clear()
   }
 

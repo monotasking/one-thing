@@ -42,10 +42,30 @@ import { currentMotionTier } from '../components/motion'
  * 纪律就说不清了。
  */
 
+/**
+ * 记下一格读数之后**转告一声**(G 线 P4-b 立,消费者是 `content/row-heights.ts`)。
+ *
+ * 为什么是一只回调而不是让那一边再开一只 RO:消息行的「此刻多高」这本账,
+ * 观察、取 border box、0 不算读数这三件事与这里逐字相同 —— 正本 §22.2 那一句
+ * 「别写第三份记账逻辑」。那一边要的只是**同一格读数**再加一个它自己的判断
+ * (这一行此刻是不是跳渲着),所以这里只把读数递过去,判断留在那边。
+ *
+ * **纪律与这只类同一条**:回调里只许记账,不许读几何、不许写会改尺寸的东西 ——
+ * 它跑在观察器的派发循环里,写一下就是「ResizeObserver loop」。
+ * `width` 是同一只 border box 的横向那一格(行高按列宽作废要用它)。
+ */
+export type HeightReport = (el: Element, height: number, width: number) => void
+
 /** 记一格高就够了 —— 谁在观察由 `#heights` 的键说了算。 */
 export class HeightBook {
   #observer: ResizeObserver | undefined
   readonly #heights = new Map<Element, number>()
+  /** 记完之后转告谁(缺席 = 只记账,三本既有的账全是这一档)。 */
+  readonly #onReport: HeightReport | undefined
+
+  constructor(onReport?: HeightReport) {
+    this.#onReport = onReport
+  }
 
   /** 此刻盯着几只盒子。测试口,产品代码不读。 */
   get size(): number {
@@ -81,8 +101,9 @@ export class HeightBook {
   }
 
   /**
-   * 只记账,不读、不报、不推 React 更新 —— 所以它不可能与自己形成
+   * 只记账,不读、不推 React 更新 —— 所以它不可能与自己形成
    * 「ResizeObserver loop」(那条报错的成因是回调里写了会改尺寸的东西)。
+   * 唯一的「报」是把同一格读数转告 `#onReport`,那一边守的是同一条纪律。
    */
   #record(entries: readonly ResizeObserverEntry[]): void {
     for (const entry of entries) {
@@ -95,10 +116,12 @@ export class HeightBook {
        * 那些手写的假 RO —— 不是为了某个真的宿主。
        */
       const boxes = entry.borderBoxSize as readonly ResizeObserverSize[] | undefined
-      const height = boxes && boxes.length > 0 ? boxes[0].blockSize : entry.contentRect.height
+      const box = boxes && boxes.length > 0 ? boxes[0] : undefined
+      const height = box ? box.blockSize : entry.contentRect.height
       // 0 说的是「此刻没有排版」,不是「高度是 0」—— 判据与理由见文件头。
       if (height <= 0) continue
       this.#heights.set(entry.target, height)
+      this.#onReport?.(entry.target, height, box ? box.inlineSize : entry.contentRect.width)
     }
   }
 }

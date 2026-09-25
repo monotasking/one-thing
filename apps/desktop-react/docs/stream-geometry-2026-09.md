@@ -3131,6 +3131,11 @@ coalescer 写 0、`scrollHeight` 缩掉那一截,而 `scrollTop` 恰好等于新
    自述跳过;同一条路的真机证据在 `gate:search-messages`。要让 ⑭ 活起来,得先让
    那道门的夹具产出章 —— 那是另一件事。
 3. **dev 断言的第一批违例还没归类**(§19.7 末)。
+   **结案(2026-09-25,P4-b,§22.5 ③)**:第一批读到了 —— 没读到的真因是 React 壳的渲染日志
+   根本不落盘(只有内存环 + dev 档 console),门改收 console。归类四族:判官自己量纲不一
+   (border-box 比 content-box,恒差 32px,出在 `noteSettle` 与意图窗那一支)、座位滑行期
+   晚一帧吸收事后插入的行、冷进场跳渲行由 240 估高渲成真高、末段 delta 与收场同帧。
+   产品一行未改;量纲那一条连带一处产品侧行为,留账待拍(§22.6)。
 4. **⑬ 在 `big:text` 那一格挂着过渡值 4.5px**(§19.5.1),退场判据写在门里那一行上:
    真店档上「列补历史」与「座位交接」不再同帧。
 5. **`gate:stream-geometry` ⑦ 长帧在这台机器上照旧抖**:基线那一趟 1 条红
@@ -3726,4 +3731,159 @@ v2 改前 5.8,改后 6.0 / 6.4 / 7.3。
   `log/app.jsonl` 里 `ns = renderer.chat.geometry` 的 warn(渲染日志经 RPC 落到 store 文件),
   **只报不改**,逐条归类进 §22.5,§19.8 第 3 条按此结。
 
-### 22.5 读数(交卷后填)
+### 22.5 读数(P4-b,2026-09-25)
+
+dev 档真机门走屏外窗、临时 store;`gate:continuity` 是 prod 产物(本 worktree 现 build)。主检出上
+用户的桌面开着没动。每一格后面写开跑时的 `uptime` 负载。
+
+#### ① 行高账 —— `gate:continuity` ④「关掉再打开」
+
+量法(`scripts/gate-continuity.mjs` 的 `reopenAfterEviction`):甲回到底 → 逐屏上翻五屏(每屏停
+250ms,让经过的行真渲出来)→ 记锚点行 / 行内偏移 / `scrollHeight` → 连进乙丙丁戊四条会话,把甲挤出
+三格的视图停靠池(**节点身份判卸载**:离开前那只滚动容器必须已不在文档上)→ 从总览点回甲。
+`scrollTop` 写手由 `Element.prototype.scrollTop` 的 setter 桩记(prod 拿不到模块,全仓写口只有
+`ScrollPort.#write` 那一句,记「写成几 + 当时行数」,不在写前读 `scrollTop`)。
+
+| | 改前(HEAD,3 趟 + 首趟) | 改后(4 趟) |
+|---|---|---|
+| 进场之后再对的轮数 | 2 轮,其中**挪了位置 1 轮** | 1 轮,挪了位置 **0 轮** |
+| 那一轮的一跳 | **552.5px**(落锚 5562.7 → 6115.2,两写隔 21–23ms) | 0px(写回同一个数) |
+| 落点差(+800ms / 补齐后) | 0px / 0px | 0px / 0px |
+| `scrollHeight` 与离开前之差 | **−5,368px**(16,379 → 11,011) | **0px**(16,379 → 16,379) |
+| 负载 | 4.62 / 5.24 / 4.88 / 5.02 | 4.79 / 4.26 / 4.21 / 4.88 |
+
+四趟改前逐字相同、四趟改后逐字相同(读数不随负载动:同一份账本、同一个窗口)。三条硬判据进了门:
+「挪了位置的再对 = 0」「落点差 ≤ 1px」「`scrollHeight` 差 ≤ 一行估高 240px」;**反证**:只把
+`ChatStream.tsx` 换回 HEAD 重 build,前后两条当场红(挪了 1 轮 / 552.5px;−5,368px),换回来再 build。
+
+读法:改前那一跳不在终点 —— `EntryRestore` 两轮之内就把锚点拉回去了,所以落点差改前也是 0;
+病在**中间那几帧**:两写隔 21ms(120Hz 下约两帧半),中间画出去的是按 240px 估高摆的那一份
+(这一句是按写的时刻推的,没有用 trace 逐帧证「画过」)。改后第一写就落在真位置上,之后那一轮
+`consume` 量到没动就收手 —— 「再对 1 轮、挪了 0 轮」就是施工单写的「改后 0」。
+
+**A/B:用户气泡那一行不记会怎样**(§22.2 写的是「不记」,见 §22.6 ①):只把用户行的 `rowRef` /
+`intrinsic` 置空重 build,同一场景 `scrollHeight` 差 **+1,004px**、再对挪了 1 轮一跳 **104px**。
+所以用户行与上下文折痕行(按 `<消息 id>#context` 记)一起进账。
+
+#### ② 冻结线的 dev 断言
+
+- 喂法:同一只 RO(`RowHeightObserver` 里那本 `HeightBook`)的读数 → `ViewportAnchor.noteRowHeight`
+  → `GeometryLedger.noteFrozen`;`anchor.ts` 里 `this.#ledger?.` 那一句一短路,参数(连同判「在不在
+  冻结线上」的 `#frozenCause`)整段不求值。`import.meta.env` 那条单测(裸用法恰好三处)照旧绿。
+- **真机反证**(临时门副本,跑完删):一轮在跑时往倒数第三行(冻结线上的旧助手行)里塞一个 13px 的块 →
+  `冻结线上的一行长高了,而这一下不是人点的 {sourceId: <那一行>, cause: tail-growth, before 58.19,
+  after 80.98, deltaPx 22.8}`。第一次反证拿 `padding-bottom` 撑,**没报** —— 查下去是 RO 缺省量
+  content box,改 padding 它压根不报;换成往行里塞内容就报了。写在这儿免得下一个人再踩。
+- 三趟 `gate:stream-geometry` + `gate:fold-collapse` 短 / 超量各一趟:**冻结线一条都没报**。
+
+#### ③ 第一批 `chat.geometry` warn(只报不改)
+
+**§22.4 那句「渲染日志经 RPC 落到 store 文件」对 React 壳不成立**:`src/services/log.ts` 是一只 200 条
+的内存环(所有 ns 共用)+ dev 档把同一句说给 console,没有任何一条路进 `app.jsonl` / `server.jsonl` ——
+第一批「从来没人读到过」的真因就在这儿。所以门改收 dev 档那一句 console:
+`scripts/lib/geometry-log-collector.mjs`,`ONETHING_GATE_GEOMETRY_LOG=<目录>` 在场才挂
+(`page.on('console')` 连同 `fields` 收下,每行带「门此刻在跑哪一段」),不在场是空跳,门的缺省
+跑法逐字不变;`gate:stream-geometry` 与 `gate:fold-collapse` 接了它。
+
+读数(**每件每条会话只报一次**,`enter` 才清账 —— 下面是每条会话里每一件的**第一次**,后面同一件
+再违例看不见;这是 §19.7 的纪律,不是漏):
+
+| 门 · 段 | warn | 归类 |
+|---|---|---|
+| stream-geometry `short:warm`(三趟逐字同) | 内容列变矮 24.5(`tail-growth`) | **乙** |
+| stream-geometry `short:warm` | 落定帧 `deltaH` +32.01 | **甲**(真变化 0.01) |
+| stream-geometry `big:open` | 内容列变矮 81.64 | **丙** |
+| stream-geometry `big:warm` | 落定帧 `deltaH` +44.30 | **甲** 32 + **丁** 12.29 |
+| fold-collapse 短 `think3k:bottom` / `think60k:bottom` / `tool:bottom` | 内容列变矮 31.81 / 31.80 / 32.51 | **甲**(意图窗那一支) |
+| fold-collapse 短 `think3k:scrolledUp`、`ctxseam:open` | 落定帧 +33.23、+34.82 | **甲** + 1.2 / 2.8 |
+| fold-collapse 短 / 超量 `ctxseam:open` | 内容列变矮 24.5 | **乙** |
+| fold-collapse 超量 `think3k` / `think60k` / `tool:open` | 内容列变矮 81.64 ×3 | **丙** |
+| fold-collapse 超量 `ctxseam:open` | 落定帧 +34.29 | **甲** + 2.3 |
+
+归因用的是一只临时探针(门副本,跑完删):列的每个孩子挂 border-box RO + 挂 `console.warn`,
+warn 前 1.2s 的尺寸变化逐帧排出来。
+
+- **甲 · 判官自己量纲不一(32px = 列的 `padding-block-start: var(--sp-6)`)**。`ScrollPort.columnHeight()`
+  读 `getBoundingClientRect().height`(border box),`summarizeResize` 交出来的是
+  `entry.contentRect.height`(content box)。`noteSettle` 拿前者减后者记的基准,**每一次落定都差 32**;
+  `onResize` 的意图窗那一支也是 `grown = port.columnHeight()` 然后 `#lastColumnHeight = grown`,
+  于是窗口一过,下一批 content box 读数对着 border box 基准「矮了 32」—— fold-collapse 那三条就是它。
+  **它连着一处产品行为**(不只是断言):窗后第一批 `contentChanged` 为真、`contentGrew` 为假,
+  浏览档下那一批真长出来的 <32px 点不亮「回到最新」;窗里第一批 `grown > last + 0.5` 恒真,
+  窗口多续一次命。量级小、没有门红,**不改**,留账(§22.6 ③)。
+- **乙 · 座位在滑行期晚一帧吸收事后插入的行**。`short:warm`:3806ms 上下文折痕(`.rowLate`,24.5px)
+  挂上,列 +24.5;3808ms 座位 76.39 → 51.89(−24.5),列回落 —— 判官读到「列矮了 24.5」。
+  座位是「量在这一帧、写在下一帧」,同帧补那一手(`syncSeatSameFrame`)在**发送落位还在滑**时被
+  第三道闸挡住(那 170ms 里座位 134 → 20 逐帧在缩)。屏上:折痕与座位都在视口内容之下,
+  `gate:stream-geometry` / `gate:send-flow` 的位移读数全 0,**看不见**;判据按列高算所以报。
+- **丙 · 冷进场,跳渲行由 240 估高渲成真高**。`big:open`:最后一条用户行(`…-u-199`)第一批报 240
+  (估高),8ms 后渲出 158.39,列 −81.61。这正是 §22.1 那条病的**冷路**:第一次打开这条会话,账上
+  还没有它 —— 行高账只治「回来」,治不了「第一次」。它发生在进场落锚那一段里,`EntryRestore` 接着对。
+- **丁 · 末段 delta 与收场同一次提交**。`big:warm`:落定那一拍助手行 26 → 58.19(+32.19)、座位
+  19.89 → 0,净 +12.29 —— 假 provider 的最后一段正文与 `run/end` 在超量档上攒进了同一帧。字面上是
+  G4 的违例(落定帧高度变了),但变的是**内容到了**,不是收尾换形;短会话档两件分在两帧,就只剩甲那 32。
+
+§19.8 第 3 条按此结(结案行写在那一条下面)。
+
+#### 其余验收(读数原样)
+
+- `npx vitest run src/content src/toc src/ui`:210 个文件 / 2,863 条全过。新单测:
+  `content/__tests__/row-heights.test.ts` 11 条(拆掉「只记渲过的行」那一句即 4 条红,拆掉挂载估计
+  的缓存即 1 条红)、`geometry-ledger.test.ts` 冻结线 10 条、`intent-window.test.ts` 1 条
+  (`inWindow` 只读、不替 `current` 挪「刚过期」)、`flip-height.test.tsx` 1 条(转告读数)、
+  `ChatStream.test.tsx` 1 条(有账写 `--msg-intrinsic-h`,没账行上**没有 style 属性**)。
+- `npm run typecheck` 过;`ui:consume` 31 / 基线 31、`motion-gate` 0 / 0、`squeeze-gate` 2 / 3。
+- eslint 改动文件(含四只门脚本与收集器):2 条,都是存量 —— `ChatStream.tsx` 的 `seatActive`
+  (§19.8 第 7 条)与 `gate-fold-collapse.mjs` 的 `body`(HEAD 上同一行就有,§21.6 记过)。
+- `gate:stream-geometry` 六趟:前三趟(13:52 / 13:55 / 13:58,负载 4.30 / 9.06 / 7.15)第一趟
+  ⑦ 两条红(`short:tools` 75ms、`big:tools` 133ms —— §19.8 第 5 条那一族,每趟红的场景不同),
+  后两趟绿;后三趟(14:03 / 14:06 / 14:09,负载 5.24 / 6.36 / 6.77)全绿。⑦ 只有 `short:code` 两个
+  (226–243ms,在过渡值 ≤ 2 / ≤ 260 里);①② 各场景尾槽位移 30 格全 0px;⑬ `big:text` 4.5px
+  (§19.8 第 4 条那格过渡值,存量)。
+- `gate:fold-collapse` 短(负载 5.52)85 ✓ 全绿;`--big`(5.38)81 ✓ 全绿;⑤ 各格展开位移 0px。
+- `gate:chat-follow`(4.80)绿;`gate:send-flow`(4.54)绿,座位窗内气泡位移 0.0px、收尾锚点位移 0.0px。
+- `gate:tail-jitter` **起初三趟红,不是这一单、也不在 §19.8**:A/B 把六个产品文件全换回 HEAD 照样同三条红
+  (`big:burst` ① 贴底跟随采到 0 次、④ 停止钮不在屏上)。真因在门:三处贴底粗筛写死
+  `st + 2 >= sh − 700`(旁注「容器高 670 上下」),09-25 Dock 改成悬浮、外壳不再让位之后这道门的
+  滚动口是 **756px**,那条式子恒假 —— ① 采不到样,① 的窗一直等到流收场,④ 轮到时停止钮已经走了。
+  改成读每帧自己的 `clientHeight`、余量照旧 32px(`NEAR_BOTTOM_SLACK_PX`,判据的意思一字不变)之后:
+  dev 超量(5.87)绿,贴底跟随 401 样本 / 1 个取值 / 峰峰 0 设备像素、两处切换 0;dev 短会话(4.96)绿,
+  409 样本同形;prod 超量(4.77)414 样本、prod 短会话 411 样本,四档全绿、全是 1 个取值 / 峰峰 0。
+- `node scripts/probe-stream-cost.mjs`(负载 6.28;同一时段 HEAD 对照 5.95),p95 / 整轮Σ:
+
+  | | 改后 | HEAD |
+  |---|---|---|
+  | RO 回调 短 | 0.00 / 1.6 | 0.00 / 3.4 |
+  | RO 回调 超量 | 0.30 / 18.6 | 0.30 / 18.8 |
+  | **RO 回调 差** | **+0.30 / +17.0** | **+0.30 / +15.4** |
+  | React render 差 | +0.49 | +0.45 |
+  | 其余 JS 差 | +0.54 | +0.57 |
+  | 主线程忙 差 | +3.97 | +3.91 |
+
+  RO 那一格的 p95 差与 HEAD 相同(+0.00,判据 ≤ +0.2),整轮多 1.6ms —— 行高账那只 RO 在流式期间
+  只有活的那一行每帧报一次。
+
+### 22.6 §22 写错 / 没写的地方,与留账
+
+1. **「用户气泡那一行不记——它短,估计与真高之差进不了判据」不对**。短恰恰是问题:用户行真高
+   50–160px,估计 240px,一行差 80–190px;④ 的 A/B 量出 +1,004px 与一跳 104px。上下文折痕行同理
+   (真高 24.5px)。两种都进了账,`UserBubble` 收同样两格(`rowRef` / `intrinsicHeight`),折痕按
+   `<消息 id>#context`(与它的 React key 同一个字符串)。在飞那一格没有 id,不记。
+2. **「渲染日志经 RPC 落到 store 文件」不对**(③ 开头)。
+3. **「关掉这条会话的标签」在缺省打开方式下没有这个动作**:原位替换档里一条会话没有自己的标签,
+   它被换走时停进视图池、池满才真卸载。④ 走的就是这条路,并用节点身份证明真卸载了。
+4. **「变矮由 `note` 抓、变高由 `noteFrozen` 抓」改成了两个方向都在 `noteFrozen` 里判**:
+   `note` 没有「只记不判」那一档,而冻结线之外那段时间(轮与轮之间、拖窄窗)行高会合法地变,
+   基准要跟着记;同一次变矮还会在两处各报一条、去不了重。两处例外:人正开合着东西(意图窗在场,
+   用只读的 `IntentWindow.inWindow` 问,不替 `onResize` 挪「刚过期」那一格)不报;列宽变了只换基准不报。
+5. **§22.1 的基线数**(「190 轮漂 188px」)是旧读数;这一单的基线是「2 轮、中间一跳 552.5px、终点 0」。
+   「改后 0 轮」读作「挪了位置的 0 轮」—— `consume` 至少要吃一批尺寸变化才说得出「落稳了」。
+6. ④ 这棵树只有 **24 行**(真店账本 400 条,冷载拉尾页 24 条,更早的要上翻到顶才取)——
+   五屏上翻全在这 24 行里。它量得到「回来」这件事,量不到「补历史补回 400 行」那一段。
+
+留账:
+- **③ 甲那条量纲**连着产品行为(窗后第一批的 `contentChanged` / `contentGrew`、窗里多续一次命),
+  修是一行,但它改「丸亮不亮」的时机 —— 行为裁定,先问。
+- 同一条会话在两片叶里以**不同列宽**同时开着时,两只观察者轮流把那本账按宽作废,账等于没有 ——
+  代价是退回 240px 估计,不比今天差;真要治得按宽分本。
+- 冻结线今天**只在一轮进行中**判;轮与轮之间的「旧行偷偷变」(异步高亮、图解码)仍只由整列那一格看。
