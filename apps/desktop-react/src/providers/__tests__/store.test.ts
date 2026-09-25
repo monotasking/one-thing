@@ -346,12 +346,18 @@ describe('setCurrentModel / addManualModel / removeManualModel', () => {
     expect(sent.ai.providers.claude.selectedModels).toEqual(['claude-opus-5', 'claude-sonnet-4'])
   })
 
-  it('手填一个目录没有的 id:进 selectedModels', async () => {
+  it('手填一个目录没有的 id:走后端 models.addManual(目录条目 + 勾选一发写完),乐观值先勾上', async () => {
     const port = installPort()
     await useProviderSettings.getState().start()
     expect(useProviderSettings.getState().addManualModel('claude', ' qwen3-max ')).toBeUndefined()
-    await vi.waitFor(() => expect(port.writeProviderSettings).toHaveBeenCalledTimes(1))
-    expect(vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.providers.claude.selectedModels).toEqual([
+    await vi.waitFor(() => expect(port.addManualModel).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(port.addManualModel).mock.calls[0][0]).toMatchObject({
+      providerId: 'claude',
+      modelId: 'qwen3-max',
+    })
+    // 壳不再整层写回这一发 —— 目录是全空间共享的,那一半只有后端写得了。
+    expect(port.writeProviderSettings).not.toHaveBeenCalled()
+    expect(useProviderSettings.getState().settings?.ai?.providers?.claude?.selectedModels).toEqual([
       'claude-opus-5',
       'qwen3-max',
     ])
@@ -363,6 +369,7 @@ describe('setCurrentModel / addManualModel / removeManualModel', () => {
     const problem = useProviderSettings.getState().addManualModel('claude', 'claude-opus-5')
     expect(problem).toBeTruthy()
     expect(port.writeProviderSettings).not.toHaveBeenCalled()
+    expect(port.addManualModel).not.toHaveBeenCalled()
   })
 
   it('删手填模型:**最后一条不删**(与生产 toggleSpaceModelSelection 同一守则)', async () => {
@@ -371,6 +378,7 @@ describe('setCurrentModel / addManualModel / removeManualModel', () => {
     // 池里只有 claude-opus-5 一条,删它 = 把这一家清空。
     await useProviderSettings.getState().removeManualModel('claude', 'claude-opus-5')
     expect(port.writeProviderSettings).not.toHaveBeenCalled()
+    expect(port.removeManualModel).not.toHaveBeenCalled()
   })
 
   it('删掉的正好是当前模型时,当前顺位落到剩下的第一个', async () => {
@@ -386,10 +394,38 @@ describe('setCurrentModel / addManualModel / removeManualModel', () => {
     })
     await useProviderSettings.getState().start()
     await useProviderSettings.getState().removeManualModel('claude', 'ghost')
-    const sent = vi.mocked(port.writeProviderSettings).mock.calls[0][0]
-    expect(sent.ai.providers.claude.selectedModels).toEqual(['claude-opus-5'])
+    expect(vi.mocked(port.removeManualModel).mock.calls[0][0]).toMatchObject({
+      providerId: 'claude',
+      modelId: 'ghost',
+    })
+    const shown = useProviderSettings.getState().settings?.ai?.providers?.claude
+    expect(shown?.selectedModels).toEqual(['claude-opus-5'])
     // 留一个指向已删 id 的 model = 让聊天那边挑到一个不存在的模型。
-    expect(sent.ai.providers.claude.model).toBe('claude-opus-5')
+    expect(shown?.model).toBe('claude-opus-5')
+  })
+
+  it('批 2:没勾着的手填行也能 ✕(不是「最后一个」)', async () => {
+    const port = installPort({
+      readProviderSettings: vi.fn(async () => ({
+        success: true,
+        ai: {
+          provider: 'claude',
+          providers: { claude: { model: 'claude-opus-5', selectedModels: ['claude-opus-5'] } },
+          customProviders: [],
+        } as unknown as SpaceProviderSettings,
+      })),
+    })
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().removeManualModel('claude', 'foo-1')
+    expect(port.removeManualModel).toHaveBeenCalledTimes(1)
+  })
+
+  it('批 2:取消勾选只动勾选 —— 走整层写回,不碰手填两口', async () => {
+    const port = installPort()
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().toggleModel('claude', 'claude-opus-5', false)
+    expect(port.writeProviderSettings).toHaveBeenCalledTimes(1)
+    expect(port.removeManualModel).not.toHaveBeenCalled()
   })
 })
 

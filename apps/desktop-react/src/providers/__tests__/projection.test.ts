@@ -305,9 +305,11 @@ describe('capsOf / priceOf / format', () => {
 
 describe('buildCatalogRows', () => {
   const models = [model('a'), model('b')]
+  /** 批 2:手填 = 目录里的一条 `source:'manual'` 条目(后端交下来的形状:只有 id 与名字)。 */
+  const ghost = { id: 'ghost', name: 'ghost', source: 'manual' } as OpenRouterModel
 
-  it('后端补齐的已配置项仍是手填模型,未知目录事实不变且不会重复', () => {
-    const configured = { id: 'ghost', name: 'ghost', configuredOnly: true,
+  it('手填目录条目(source:manual)是手填行,未知目录事实不变且不会重复', () => {
+    const configured = { id: 'ghost', name: 'ghost', source: 'manual',
       thinkingLevels: ['low', 'high'], thinkingDefaultLevel: 'low',
     } as OpenRouterModel
     const rows = buildCatalogRows([...models, configured], config({
@@ -332,9 +334,15 @@ describe('buildCatalogRows', () => {
     ])
   })
 
-  it('勾过但目录里没有的照样出现,并且排在最前', () => {
+  it('批 2:壳不再拼孤儿 —— 勾了但目录里没有的 id 不长行(老孤儿由后端折成手填条目交下来)', () => {
     const rows = buildCatalogRows(models, config({ selectedModels: ['ghost'] }))
-    expect(rows[0]).toMatchObject({ id: 'ghost', selected: true, contextLength: null, caps: [] })
+    expect(rows.map((r) => r.id)).toEqual(['a', 'b'])
+  })
+
+  it('批 2:手填行取消勾选之后行还在,只是不再勾着', () => {
+    const manual = { id: 'foo-1', name: 'foo-1', source: 'manual' } as OpenRouterModel
+    const rows = buildCatalogRows([...models, manual], config({ selectedModels: ['a'], model: 'a' }))
+    expect(rows[0]).toMatchObject({ id: 'foo-1', manual: true, selected: false, current: false })
   })
 
   it('检索按 id 与显示名', () => {
@@ -346,7 +354,7 @@ describe('buildCatalogRows', () => {
 
   it('手填行也读那两张表 —— 覆盖恰恰是给「目录没填」准备的', () => {
     const rows = buildCatalogRows(
-      models,
+      [...models, ghost],
       config({
         selectedModels: ['ghost'],
         contextLengthByModel: { ghost: 200_000 },
@@ -387,7 +395,7 @@ describe('buildCatalogRows', () => {
 
   it('手填行的最大输出也能人填 —— 目录那一格仍是「什么都没说过」', () => {
     const rows = buildCatalogRows(
-      models,
+      [...models, ghost],
       config({ selectedModels: ['ghost'], maxOutputByModel: { ghost: 16_384 } }),
     )
     expect(rows[0]).toMatchObject({
@@ -510,7 +518,7 @@ describe('buildCatalogRows', () => {
 
   it('`catalog.caps` 三态:目录说支持 / 目录没列 / 手填行整张没填', () => {
     const rows = buildCatalogRows(
-      [model('a', { supported_parameters: ['tools'] })],
+      [model('a', { supported_parameters: ['tools'] }), ghost],
       config({ selectedModels: ['ghost'] }),
     )
     const listed = rows.find((r) => r.id === 'a')!

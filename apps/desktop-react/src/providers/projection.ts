@@ -510,8 +510,10 @@ function catalogCapsOf(base: readonly ModelCap[]): Record<CapabilityKey, boolean
 /**
  * 目录 → 行。
  *
- * **勾过但目录里没有的模型照样出现**(排在最前):它正在被聊天用着,列表里找不到
- * 它会让人以为自己看错了 —— 与 `models-source.modelIdsOf` 同一手。
+ * 手填的行是**目录里的一条** `source: 'manual'` 条目(批 2,`docs/design/
+ * provider-settings-rework-2026-09.md` §4),排在最前;这里不再拼「勾了但目录不认识」
+ * 的孤儿 —— 老数据的孤儿后端读时已经折成手填条目交下来了。取消勾选只动勾选,
+ * 行留着;只有 ✕(`removeManual`)删条目。
  */
 export function buildCatalogRows(
   models: readonly OpenRouterModel[],
@@ -522,7 +524,8 @@ export function buildCatalogRows(
   const current = (config?.model ?? '').trim()
   const rows: CatalogRow[] = models.map((model) => {
     const override = overrideOf(config, model.id)
-    const manual = model.configuredOnly === true
+    // 手填的行:目录里有这一条,但它**什么参数都没说过**(不是「都不支持」)。
+    const manual = model.source === 'manual'
     const baseCaps = manual ? [] : capsOf(model)
     return {
       id: model.id,
@@ -553,31 +556,7 @@ export function buildCatalogRows(
     }
   })
 
-  const known = new Set(rows.map((r) => r.id))
-  const orphans: CatalogRow[] = [...selected]
-    .filter((id) => !known.has(id))
-    .map((id) => {
-      // 手填的行也读这三张表 —— 覆盖恰恰是给「目录没填」准备的,把它写死成
-      // null/[] 等于说「手填的永远不知道」,而用户刚刚才亲手告诉过我们。
-      const override = overrideOf(config, id)
-      return {
-        id,
-        name: id,
-        selected: true,
-        current: current === id,
-        contextLength: override.contextLength ?? null,
-        maxOutput: override.maxOutput ?? null,
-        caps: capsWithOverride([], override),
-        price: null,
-        // 「勾了但目录不认识」= 手填。这不是另一份存储,是同一个事实的名字。
-        manual: true,
-        override,
-        // 目录不认识它,所以目录**什么都没说过** —— 每一格都是 null,不是 0/false。
-        catalog: NO_CATALOG_FACTS,
-      }
-    })
-
-  const all = [...orphans, ...rows.filter(row => row.manual), ...rows.filter(row => !row.manual)]
+  const all = [...rows.filter(row => row.manual), ...rows.filter(row => !row.manual)]
   const needle = query.trim().toLowerCase()
   if (!needle) return all
   return all.filter(

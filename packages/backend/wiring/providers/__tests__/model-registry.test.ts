@@ -83,10 +83,12 @@ describe('model registry metadata lookups', () => {
   })
 
   it('uses provider-scoped capability metadata when model ids collide', async () => {
-    state.settings.ai.providers.openai.models!['shared-model'].supportsReasoning = true
-    state.settings.ai.providers.openai.models!['shared-model'].supportsImageOutput = true
-    state.settings.ai.providers.custom.models!['shared-model'].supportsReasoning = false
-    state.settings.ai.providers.custom.models!['shared-model'].supportsImageOutput = false
+    const openaiEntry = state.settings.ai.providers.openai.models!['shared-model'] as ModelCapabilityEntry
+    const customEntry = state.settings.ai.providers.custom.models!['shared-model'] as ModelCapabilityEntry
+    openaiEntry.supportsReasoning = true
+    openaiEntry.supportsImageOutput = true
+    customEntry.supportsReasoning = false
+    customEntry.supportsImageOutput = false
 
     // Reasoning scoping moved to model-capability.test.ts (runtime package).
     await expect(modelSupportsImageGeneration('shared-model', 'custom')).resolves.toBe(false)

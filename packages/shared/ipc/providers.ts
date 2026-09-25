@@ -74,9 +74,13 @@ export interface OAuthToken {
 export interface OpenRouterModel {
   id: string
   name: string
-  /** Configured locally but absent from the provider's catalog. Metadata may be
-   * absent; consumers must preserve manual-model actions and unknown readings. */
-  configuredOnly?: boolean
+  /**
+   * 这一行的目录条目从哪来(批 2,`docs/design/provider-settings-rework-2026-09.md` §4)。
+   * 缺席读作 `'models.dev'`。`'manual'` = 用户手填的那一条:目录只知道它的 id,
+   * 下面的容量 / 价格 / 能力**一格都没有**(形状上仍按旧信封声明成必填,读的人
+   * 必须把缺席当「不知道」,而不是 0 / 不支持)。
+   */
+  source?: ModelEntrySource
   description?: string
   context_length: number
   architecture: {
@@ -200,9 +204,9 @@ export interface ProviderConfig {
   serviceTierByModel?: Record<string, string>
   // Per-model capability overrides. Keys are model IDs.
   modelCapabilitiesByModel?: Record<string, ModelCapabilityOverride>
-  // Model metadata from models.dev. Keyed by modelId.
-  // Populated when user refreshes models for this provider.
-  models?: Record<string, ModelCapabilityEntry>
+  // 这一家的目录,按 modelId 键。models.dev / 服务商接口刷新时整体替换**非手填**
+  // 的那一半;手填条目(`source: 'manual'`)只由 `models.addManual/removeManual` 写。
+  models?: Record<string, CatalogModelEntry>
   // Timestamp of last model fetch for this provider
   modelsLastFetched?: number
 }
@@ -226,6 +230,14 @@ export interface CustomProviderConfig extends ProviderConfig {
 }
 
 /**
+ * 一条目录条目的出处(批 2)。缺席读作 `'models.dev'`,老数据不迁移。
+ *  - `'models.dev'` —— models.dev 目录刷新写的;
+ *  - `'endpoint'`   —— 服务商自己的模型列表接口写的(Codex / Copilot 那一口);
+ *  - `'manual'`     —— 用户手填。只有 id,**没有任何参数**(见 `ManualModelEntry`)。
+ */
+export type ModelEntrySource = 'models.dev' | 'endpoint' | 'manual'
+
+/**
  * Per-model capability & pricing info stored in settings.json.
  * Populated from models.dev API when user refreshes model registry.
  */
@@ -233,6 +245,8 @@ export interface ModelCapabilityEntry {
   id: string
   name: string
   provider: string
+  /** 缺席 = `'models.dev'`。手填条目不是这个形状,见 `ManualModelEntry`。 */
+  source?: 'models.dev' | 'endpoint'
   /** Max context window (input tokens) */
   contextLength: number
   /** Max output tokens per request */
@@ -258,13 +272,29 @@ export interface ModelCapabilityEntry {
 }
 
 /**
+ * 手填模型的目录条目(批 2)。**参数全空**:没有上下文、没有价格、能力一格都没有 ——
+ * 不是「都不支持」,是「没人说过」。用户要补参数走逐模型覆盖表
+ * (`contextLengthByModel` / `modelCapabilitiesByModel` …),不写进这一条。
+ */
+export interface ManualModelEntry {
+  id: string
+  /** = id。 */
+  name: string
+  provider: string
+  source: 'manual'
+}
+
+/** 目录里的一条:有参数的(models.dev / 接口)或手填的。 */
+export type CatalogModelEntry = ModelCapabilityEntry | ManualModelEntry
+
+/**
  * models.dev 目录缓存的一格。**缓存不是设置** —— 它是「这个 provider 有哪些模型」
  * 的机器级快照(~500KB),刷新一次就该所有空间同时看见,复制 N 份纯属浪费。
  * C2 把它从 `ProviderConfig` 里抬出来,单独挂在全局 `AISettings.modelCatalog`。
  */
 export interface ProviderModelCatalog {
-  /** Model metadata from models.dev. Keyed by modelId. */
-  models?: Record<string, ModelCapabilityEntry>
+  /** Model metadata from models.dev (+ 手填条目). Keyed by modelId. */
+  models?: Record<string, CatalogModelEntry>
   /** Timestamp of last model fetch for this provider. */
   modelsLastFetched?: number
 }
@@ -431,6 +461,43 @@ export interface ModelsListResponse {
   error?: string
 }
 
+/**
+ * 手填模型的两个写动词(批 2 · 手填模型 = 目录条目)。
+ *
+ * 手填是**目录里的一条** `source: 'manual'` 条目(参数全空)+ 这个空间里勾上;目录全空间
+ * 共享(`ai.modelCatalog`),勾选是这个空间的(`workspaces/<id>/providers.json`)。
+ * 两半一发写完,所以写面在后端 —— 壳不直接写 `config.models`。
+ */
+export interface ModelManualEditRequest {
+  providerId: string
+  modelId: string
+  /** 勾选写进哪个空间。缺席 = 默认空间。 */
+  spaceId?: string
+}
+
+/**
+ * 失败原因码(壳查自己的字典,后端不写句子):
+ *  - `empty`         —— id 是空的;
+ *  - `duplicate`     —— 这个空间里已经勾着;
+ *  - `not-manual`    —— 要删的不是手填条目(目录条目只能取消勾选);
+ *  - `last-selected` —— 它是勾着的最后一个,删了就一个都不剩;
+ *  - `unknown-space` —— 空间不存在。
+ */
+export type ModelManualEditFailure =
+  | 'empty'
+  | 'duplicate'
+  | 'not-manual'
+  | 'last-selected'
+  | 'unknown-space'
+
+export interface ModelManualEditResponse {
+  success: boolean
+  reason?: ModelManualEditFailure
+  error?: string
+  /** 写完之后这个空间那一份 provider 设置(与 `spaces.setProviderSettings` 回的同形)。 */
+  ai?: SpaceProviderSettings
+}
+
 export interface ModelsWithCapabilitiesRequest {
   providerId: string
   forceRefresh?: boolean
@@ -531,6 +598,10 @@ export type ModelsRoutes = {
   getNameAliases: { input: Record<string, never>; output: ModelNameAliasesResponse }
   getDisplayName: { input: ModelDisplayNameRequest; output: ModelDisplayNameResponse }
   getModelCapabilities: { input: ModelCapabilitiesRequest; output: ModelCapabilitiesResponse }
+  /** 手填一个模型:写一条手填目录条目 + 在这个空间勾上。 */
+  addManual: { input: ModelManualEditRequest; output: ModelManualEditResponse }
+  /** 删一条手填目录条目(行尾 ✕)并从这个空间的勾选里去掉;是当前模型时换到第一个勾选的。 */
+  removeManual: { input: ModelManualEditRequest; output: ModelManualEditResponse }
 }
 
 export const modelsRouter = defineRouter<ModelsRoutes>('models', [
@@ -541,4 +612,6 @@ export const modelsRouter = defineRouter<ModelsRoutes>('models', [
   'getNameAliases',
   'getDisplayName',
   'getModelCapabilities',
+  'addManual',
+  'removeManual',
 ])

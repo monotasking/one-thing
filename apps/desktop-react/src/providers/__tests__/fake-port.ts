@@ -17,6 +17,9 @@ export function fakeProviderPort(overrides: Partial<ProviderSettingsPort> = {}):
     ready: async () => undefined,
     listProviders: vi.fn(async () => ({ success: true, providers: [] })),
     listModels: vi.fn(async () => ({ success: true, models: [] })),
+    // 手填两口:缺省「写成了、没回那一份」—— 设置面照乐观值对账,与后端没回 `ai` 时同一档。
+    addManualModel: vi.fn(async () => ({ success: true })),
+    removeManualModel: vi.fn(async () => ({ success: true })),
     readSettings: vi.fn(async () => ({ success: false, error: 'not stubbed' })),
     saveSettings: vi.fn(async (next) => ({ success: true, settings: next })),
     // 「这个空间还是空的」是真机上最常见的答案 —— 与凭证池默认答空池同一手。

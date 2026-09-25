@@ -108,6 +108,11 @@ export interface AgentProviderRuntimeConfig {
 	models?: Record<
 		string,
 		{
+			/**
+			 * 目录条目出处(批 2)。`'manual'` = 手填,**一格参数都没有**;读的人
+			 * 一律当「目录里没有这一型」(`catalogEntryFacts`)。
+			 */
+			source?: string;
 			supportsTools?: boolean;
 			supportsVision?: boolean;
 			supportsReasoning?: boolean;

@@ -383,6 +383,17 @@ export interface SettingsCommit {
    * `settle` 里那句 `prefsQuery.invalidate` 照旧,后台补拉落地即接管。
    */
   prefsPatch?: (prev: ProviderPrefsFacts | undefined) => ProviderPrefsFacts | undefined
+  /**
+   * 这一发**不走**整层写回,改走一口后端写动词(批 2 的手填模型:目录全空间共享、
+   * 勾选是这个空间的,两半由后端一发写完)。乐观 / 忙态 / 回滚 / 对账照旧走这条原语,
+   * 只把「怎么写」换掉;回的 `ai` 与 `writeProviderSettings` 同形。
+   */
+  write?: (
+    port: Awaited<ReturnType<typeof providerSettingsPort>>,
+    input: SettingsCommit,
+  ) => Promise<{ success: boolean; ai?: SpaceProviderSettings; error?: string }>
+  /** 这一发动了哪一家的**目录**(不只是勾选)—— 写完作废那一家的目录缓存。 */
+  catalogProviderId?: string
 }
 
 /**
@@ -496,11 +507,14 @@ export const settingsMutation = createMutation<SettingsCommit, SpaceProviderSett
     run: async (input) => {
       const port = await providerSettingsPort()
       // 写的是**这个空间那一份**,不是整份应用设置 —— 理由(以及 default 为什么
-      // 不是特例)写在 `data/provider-settings-port.ts` 的 ③′。
-      const response = await port.writeProviderSettings({
-        id: input.spaceId,
-        ai: splitSpaceProviderSettings(input.next, input.baseSpaceAi),
-      })
+      // 不是特例)写在 `data/provider-settings-port.ts` 的 ③′。递了 `write` 的那一发
+      // 走它自己的后端动词(见 SettingsCommit.write)。
+      const response = input.write
+        ? await input.write(port, input)
+        : await port.writeProviderSettings({
+            id: input.spaceId,
+            ai: splitSpaceProviderSettings(input.next, input.baseSpaceAi),
+          })
       // 「后端说没成」与「这一发抛了」在这条原语里是同一件事:都得回滚。
       if (!response.success) throw new Error(response.error || t('providers.saveFailed'))
       return response.ai
@@ -538,6 +552,8 @@ export const settingsMutation = createMutation<SettingsCommit, SpaceProviderSett
           catalogQuery.invalidate(providerId)
         }
       }
+      // 目录本身动了(手填条目加 / 删):勾选没变也得重取 —— 删一条没勾的手填行就是这一档。
+      if (input.catalogProviderId) catalogQuery.invalidate(input.catalogProviderId)
       // 后端没回那一份就保持乐观值 —— 它已经被后端认下了,只是没把结果说回来。
       if (!ai) return
       // 底本永远是后端认下的最后一份 —— 连 `settings` 那一格也照它重合一次,
@@ -647,7 +663,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
   async function writeProviders(
     patch: Readonly<Record<string, Partial<ProviderConfig>>>,
     key: string,
-    extra: Pick<SettingsCommit, 'prefsPatch'> & {
+    extra: Pick<SettingsCommit, 'prefsPatch' | 'write' | 'catalogProviderId'> & {
       /**
        * 顺带把这个空间的**默认那一家**换成它(`ai.provider`)。缺席 = 这一格不动
        * —— 绝大多数设置写(勾选、改端点、填覆盖)都不该碰默认。
@@ -699,7 +715,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     base: AppSettings,
     next: AppSettings,
     key: string,
-    extra: Pick<SettingsCommit, 'prefsPatch'> = {},
+    extra: Pick<SettingsCommit, 'prefsPatch' | 'write' | 'catalogProviderId'> = {},
   ): Promise<void> {
     await settingsMutation.run({
       base,
@@ -1066,20 +1082,31 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       // 重复是**用户看得见的事实**,不是错误 —— 当场说清,不发请求。
       if (selected.includes(id)) return t('providers.addModelDuplicate', { model: id })
       // 手填这一发挂在**提交钮**那一格上:它写的 id 此刻还不在表里,挂不到行上。
+      // 乐观值只画勾选那一半;目录条目(`source:'manual'`)由后端写,写完目录重取。
+      const spaceId = currentSpaceId()
       void writeProviders(
         { [providerId]: { selectedModels: [...selected, id] } },
         settingsKey.manual(providerId),
+        {
+          write: (port) => port.addManualModel({ providerId, modelId: id, spaceId }),
+          catalogProviderId: providerId,
+        },
       )
       return undefined
     },
 
+    /**
+     * 行尾 ✕:删这一条手填目录条目(批 2)。与取消勾选不同 —— 取消勾选行留着,
+     * ✕ 之后行没了。守卫与后端 `applyRemoveManualModel` 同一条(这里先判一次,
+     * 免得发一发注定被拒的请求):勾着的最后一个不许删。
+     */
     removeManualModel: async (providerId, modelId) => {
-      const selected = get().settings?.ai?.providers?.[providerId]?.selectedModels ?? []
-      if (!selected.includes(modelId)) return
-      // 与生产 `toggleSpaceModelSelection` 同一条守则:不许摘掉最后一个。
-      if (selected.length <= 1) return
-      const next = selected.filter((id) => id !== modelId)
       const config = get().settings?.ai?.providers?.[providerId]
+      const selected = config?.selectedModels ?? []
+      // 与生产 `toggleSpaceModelSelection` 同一条守则:不许摘掉最后一个。
+      if (selected.includes(modelId) && selected.length <= 1) return
+      const next = selected.filter((id) => id !== modelId)
+      const spaceId = currentSpaceId()
       await writeProviders(
         {
           [providerId]: {
@@ -1090,6 +1117,10 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
           },
         },
         settingsKey.model(providerId, modelId),
+        {
+          write: (port) => port.removeManualModel({ providerId, modelId, spaceId }),
+          catalogProviderId: providerId,
+        },
       )
     },
 
@@ -1134,7 +1165,21 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
         // `false` = 这张表里没有旧键 → **一个字不动它**(既不重写也不删)。
         if (moved !== false) bag[table] = moved
       }
-      void writeProviders({ [providerId]: delta }, settingsKey.model(providerId, oldId))
+      // 手填是目录里的一条(批 2):改名 = 先把新名字写进这个空间(后端随手把它折成
+      // 手填条目),再删掉旧名字那一条 —— 否则旧 id 会作为一条没勾的手填行留在表里。
+      void writeProviders({ [providerId]: delta }, settingsKey.model(providerId, oldId), {
+        write: async (port, input) => {
+          const written = await port.writeProviderSettings({
+            id: input.spaceId,
+            ai: splitSpaceProviderSettings(input.next, input.baseSpaceAi),
+          })
+          if (!written.success) return written
+          const removed = await port.removeManualModel({ providerId, modelId: oldId, spaceId: input.spaceId })
+          // 旧名字那一条不是手填条目(老数据没落盘又没被别处勾着)= 没有可删的,不算失败。
+          return removed.success || removed.reason === 'not-manual' ? { ...written, ...removed, success: true } : removed
+        },
+        catalogProviderId: providerId,
+      })
       return undefined
     },
 

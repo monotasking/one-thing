@@ -24,11 +24,16 @@
  * 于是改一格 token 而忘了改 @container 字面量,这道门与那条单测会一起红,
  * 而不是这道门跟着一起变得宽容(写死期望值就是那样烂掉的)。
  *
- * 另外两步不在六档里:
+ * 另外四步不在六档里(后两步是批 2「手填模型 = 目录条目」的真机半边,
+ * `docs/design/provider-settings-rework-2026-09.md` §4):
  *   [7] **面板地板**:把面板拖到 `--pv-panel-min`,律四要的就是这一句话 ——
  *       「你说你能活到 502,那就在 502 上零溢出」。
  *   [8] **临时展开左栏**:这是 `@container providers-detail` 那两条规则唯一到得了
  *       的路(详情列 = 面板 − 268)。不量它,那两条规则就是没人验过的声明。
+ *   [9] **手填后取消勾选,行还在**:经界面手填 `foo-1` → 取消勾选 → 行仍在表里、
+ *       这个空间的 `selectedModels` 不含它、目录口仍交出 `source:'manual'` 那一条。
+ *   [10] **✕ 删手填,当前模型换人**:把 `foo-1` 勾上并设为当前 → 点 ✕ → 行没了、
+ *       目录口不再有它、`model` 落到剩下的第一个勾选的。
  *
  * 跑法:`node scripts/gate-providers-squeeze.mjs`(先 `npm run app:build`)。
  * 可重复:每次一个全新的临时 store + 全新的 `--user-data-dir`,跑完删干净;
@@ -447,6 +452,102 @@ function bandLine(want, m) {
   )
 }
 
+/* ── [9][10] 批 2:手填模型 = 目录条目 ─────────────────────────────────────── */
+
+const MANUAL = 'foo-1'
+
+async function spaceConfig(record) {
+  const read = await rpc(record, 'spaces', 'getProviderSettings', { id: 'default' })
+  return read?.ai?.providers?.[PROVIDER] ?? {}
+}
+
+async function catalogRow(record, id) {
+  const listed = await rpc(record, 'models', 'getWithCapabilities', { providerId: PROVIDER })
+  return (listed?.models ?? []).find((row) => row.id === id)
+}
+
+const rowShown = (page, id) =>
+  page.evaluate((tid) => Boolean(document.querySelector(`[data-testid="model-row-${tid}"]`)), id)
+
+/** 行里那颗勾选框 —— 原生 input 视觉上藏着(盒子是画出来的),点它等于点盒。 */
+const clickRowCheckbox = (page, id) =>
+  page.evaluate((tid) => {
+    const box = document.querySelector(`[data-testid="model-row-${tid}"] input[type="checkbox"]`)
+    if (!box) return false
+    box.click()
+    return true
+  }, id)
+
+const clickTestId = (page, tid) =>
+  page.evaluate((t) => {
+    const el = document.querySelector(`[data-testid="${t}"]`)
+    if (!el) return false
+    el.click()
+    return true
+  }, tid)
+
+async function manualModelSteps(page, record, failures) {
+  // 回到宽档再点:窄档里「设为当前」那一格也在,但宽档是这两步的常态。
+  await setPanelWidthTo(page, BANDS[0])
+  await delay(300)
+
+  console.log(`[9] 手填 ${MANUAL} → 取消勾选:行还在、selectedModels 不含它`)
+  await page.getByRole('button', { name: '＋ Add id' }).click()
+  const input = page.getByPlaceholder('Model id, e.g. qwen3-max')
+  await input.fill(MANUAL)
+  await input.press('Enter')
+  await waitFor(`${MANUAL} 那一行画出来`, () => rowShown(page, MANUAL))
+  await waitFor(`${MANUAL} 进了这个空间的勾选`, async () =>
+    (await spaceConfig(record)).selectedModels?.includes(MANUAL),
+  )
+  const added = await catalogRow(record, MANUAL)
+  if (added?.source !== 'manual') failures.push(`[9] 手填之后目录口没有 source:'manual' 的 ${MANUAL}(读到 ${JSON.stringify(added)})`)
+
+  if (!(await clickRowCheckbox(page, MANUAL))) failures.push(`[9] ${MANUAL} 那一行找不到勾选框`)
+  await waitFor(`${MANUAL} 从勾选里去掉`, async () =>
+    !(await spaceConfig(record)).selectedModels?.includes(MANUAL),
+  )
+  await delay(500)
+  if (!(await rowShown(page, MANUAL))) failures.push(`[9] 取消勾选之后 ${MANUAL} 那一行没了(病根:手填只活在勾选里)`)
+  const unticked = await catalogRow(record, MANUAL)
+  if (unticked?.source !== 'manual') failures.push(`[9] 取消勾选之后目录口不再交出 ${MANUAL}`)
+  const after9 = await spaceConfig(record)
+  console.log(`  行在 ${await rowShown(page, MANUAL)} / selectedModels ${JSON.stringify(after9.selectedModels)} / 目录 ${unticked?.source}`)
+
+  console.log(`[10] 勾上 ${MANUAL} 并设为当前 → 点 ✕:行没了、model 换人`)
+  // ✕ 的守卫是「勾着的最后一个不许删」—— 先保证除它之外至少还勾着一个(第一个别的行)。
+  const other = await page.evaluate((manual) => {
+    const rows = [...document.querySelectorAll('[data-testid^="model-row-"]')]
+    const row = rows.find((el) => el.getAttribute('data-testid') !== `model-row-${manual}`)
+    return row?.getAttribute('data-testid')?.slice('model-row-'.length)
+  }, MANUAL)
+  if (!other) throw new Error('[10] 表里除手填那一行之外一行都没有')
+  if (!(await spaceConfig(record)).selectedModels?.includes(other)) {
+    await clickRowCheckbox(page, other)
+    await waitFor(`${other} 勾上`, async () => (await spaceConfig(record)).selectedModels?.includes(other))
+  }
+  await clickRowCheckbox(page, MANUAL)
+  await waitFor(`${MANUAL} 重新勾上`, async () => (await spaceConfig(record)).selectedModels?.includes(MANUAL))
+  await waitFor(`「设为当前」钮就位`, () =>
+    page.evaluate((t) => Boolean(document.querySelector(`[data-testid="set-current-${t}"]`)), MANUAL),
+  )
+  await clickTestId(page, `set-current-${MANUAL}`)
+  await waitFor(`${MANUAL} 成了当前模型`, async () => (await spaceConfig(record)).model === MANUAL)
+  await delay(300)
+  const beforeRemove = await spaceConfig(record)
+  const wantModel = (beforeRemove.selectedModels ?? []).filter((id) => id !== MANUAL)[0]
+  if (!(await clickTestId(page, `remove-${MANUAL}`))) failures.push(`[10] ${MANUAL} 那一行没有 ✕`)
+  await waitFor(`${MANUAL} 那一行消失`, async () => !(await rowShown(page, MANUAL)))
+  const after10 = await waitFor('当前模型换人', async () => {
+    const config = await spaceConfig(record)
+    return config.model && config.model !== MANUAL ? config : undefined
+  })
+  if (after10.model !== wantModel) failures.push(`[10] ✕ 之后 model 是 ${after10.model},该落到剩下第一个勾选的 ${wantModel}`)
+  if (after10.selectedModels?.includes(MANUAL)) failures.push(`[10] ✕ 之后 selectedModels 仍含 ${MANUAL}`)
+  if (await catalogRow(record, MANUAL)) failures.push(`[10] ✕ 之后目录口仍交出 ${MANUAL}`)
+  console.log(`  行在 ${await rowShown(page, MANUAL)} / model ${after10.model} / selectedModels ${JSON.stringify(after10.selectedModels)}`)
+}
+
 async function main() {
   if (!existsSync(mainEntry) || !existsSync(path.join(appRoot, 'dist/index.html'))) {
     console.error('[providers-squeeze] 找不到构建产物 —— 先跑 `npm run app:build`')
@@ -543,10 +644,16 @@ async function main() {
     }
 
     console.log('[3/4] 开成浮窗、选中 deepseek、把窗贴到视口左缘')
-    await waitFor('Dock 上的 providers 瓦就位', () =>
-      page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-providers"]'))),
+    // 模型服务不再是一块单独的瓦(`stage/items.ts` 的 PROVIDERS_ITEM_ID 判词):
+    // 点设置那块瓦 → 点导航里的模型服务,与 `gate:credential-pool` 同一条路。
+    await waitFor('Dock 上的设置瓦就位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-settings"]'))),
     )
-    await page.evaluate(() => document.querySelector('[data-testid="dock-tile-providers"]').click())
+    await page.evaluate(() => document.querySelector('[data-testid="dock-tile-settings"]').click())
+    await waitFor('设置页就位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="settings-nav-models"]'))),
+    )
+    await page.evaluate(() => document.querySelector('[data-testid="settings-nav-models"]').click())
     await waitFor('名册画出 deepseek 行', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="provider-row-deepseek"]'))),
     )
@@ -636,6 +743,8 @@ async function main() {
     await delay(300)
     const back = await page.evaluate(MEASURE)
     if (back.railExpanded) failures.push('展开态:再点一次没有收回去')
+
+    await manualModelSteps(page, record, failures)
   } finally {
     if (app) await app.close().catch(() => {})
     await delay(500)

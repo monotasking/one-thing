@@ -2,6 +2,8 @@ import {
   modelsRouter,
   providersRouter,
   type GetProvidersResponse,
+  type ModelManualEditRequest,
+  type ModelManualEditResponse,
   type ModelsListResponse,
   type ProviderUsageResponse,
 } from '@shared/ipc/providers'
@@ -102,6 +104,13 @@ export interface ProviderSettingsPort {
    * 不传就吃后端缓存,开一次面不该把 models.dev 问一遍。
    */
   listModels(providerId: string, forceRefresh?: boolean): Promise<ModelsListResponse>
+  /**
+   * 手填模型(批 2):手填 = 目录里的一条 `source:'manual'` 条目 + 这个空间里勾上。
+   * 目录全空间共享、勾选是这个空间的,两半由后端一发写完 —— 所以这两口不走
+   * `writeProviderSettings`。回的 `ai` 与那一口同形,用来对账。
+   */
+  addManualModel(request: ModelManualEditRequest): Promise<ModelManualEditResponse>
+  removeManualModel(request: ModelManualEditRequest): Promise<ModelManualEditResponse>
   /**
    * 整份应用设置。**provider 那一半不再从这里读**(见 ③′)—— 留着它是因为这块面
    * 还要 `ai.modelCatalog`(models.dev 目录快照,全空间共享)与非 ai 的那些段,
@@ -225,6 +234,8 @@ async function realPort(): Promise<ProviderSettingsPort> {
     listProviders: () => providersApi.list({}),
     listModels: (providerId, forceRefresh) =>
       modelsApi.getWithCapabilities({ providerId, ...(forceRefresh ? { forceRefresh } : {}) }),
+    addManualModel: (request) => modelsApi.addManual(request),
+    removeManualModel: (request) => modelsApi.removeManual(request),
     readSettings: () => settingsApi.getSettings({}),
     saveSettings: (settings) => settingsApi.saveSettings(settings),
     readProviderSettings: (spaceId) => spacesApi.getProviderSettings({ id: spaceId }),

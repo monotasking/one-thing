@@ -15,6 +15,7 @@
  * 干什么」的一张名片,per-model 的真话由 `getModelCapabilities()` 现算。
  */
 import type { AgentCapability, AgentModelCapabilities } from "@onething/core/agent-loop";
+import { catalogEntryFacts } from "../../../providers/manual-models.js";
 
 /**
  * `AgentProviderRuntimeConfig` 里这三个函数真正会读的那几个字段。故意写成
@@ -30,6 +31,8 @@ export interface RuntimeTransportConfig {
 	models?: Record<
 		string,
 		{
+			/** `'manual'` = 手填,读作「目录里没有」(批 2)。 */
+			source?: string;
 			supportsTools?: boolean;
 			supportsVision?: boolean;
 			supportsReasoning?: boolean;
@@ -52,7 +55,7 @@ export function runtimeCapabilityFlags(
 ): RuntimeCapabilityFlags {
 	const model = config.model;
 	const override = model ? config.modelCapabilitiesByModel?.[model] : undefined;
-	const metadata = model ? config.models?.[model] : undefined;
+	const metadata = model ? catalogEntryFacts(config.models?.[model]) : undefined;
 
 	return {
 		tools: override?.tools ?? metadata?.supportsTools ?? defaults.tools,
@@ -114,7 +117,7 @@ function positiveInteger(value: number | undefined): number | undefined {
 export function capabilityLimitsFromRuntimeConfig(
 	config: RuntimeTransportConfig,
 ): Pick<AgentModelCapabilities, "maxInputTokens" | "maxOutputTokens"> {
-	const metadata = config.model ? config.models?.[config.model] : undefined;
+	const metadata = config.model ? catalogEntryFacts(config.models?.[config.model]) : undefined;
 	return {
 		maxInputTokens: positiveInteger(metadata?.contextLength),
 		maxOutputTokens: positiveInteger(metadata?.maxOutputTokens),

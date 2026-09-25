@@ -8,6 +8,7 @@
 
 import type { OpenRouterModel } from "@shared/ipc.js";
 import {
+	catalogFactsOf,
 	fetchOnethingModelsDevData,
 	getAllOnethingModels,
 	getOnethingModelById,
@@ -242,7 +243,8 @@ function getProviderDirectFallbackModel(
 	}
 
 	if (providerId === "claude-code-agent") {
-		const entry = getProviderConfigs()?.claude?.models?.[modelId];
+		// 手填条目没有参数,不拿它盖掉下面那张兜底表(批 2)。
+		const entry = catalogFactsOf(getProviderConfigs()?.claude?.models?.[modelId]);
 		if (entry) {
 			return onethingCapabilityEntryToOpenRouterModel(
 				entry,

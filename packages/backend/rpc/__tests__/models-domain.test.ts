@@ -76,6 +76,17 @@ vi.mock('../../wiring/providers/builtin/github-copilot.js', () => ({
 
 vi.mock('../../stores/settings.js', () => ({
   getSettings: () => mocks.settings,
+  getSpaceSettings: () => mocks.settings,
+  saveSettings: vi.fn(),
+}))
+
+// 手填折叠会按全机器的空间收孤儿;这一组只有「默认空间的生效设置」那一份。
+vi.mock('@onething/runtime/spaces/store', () => ({
+  getSpacesStore: () => ({ list: () => [] }),
+}))
+vi.mock('@onething/runtime/spaces/provider-settings', () => ({
+  readSpaceProviderSettings: () => null,
+  createEmptySpaceProviderSettings: () => ({ provider: '', providers: {}, customProviders: [] }),
 }))
 
 const { modelsRpcHandlers } = await import('../domains/models.js')
@@ -315,9 +326,9 @@ describe('models RPC domain — 手填模型思考投影', () => {
     expect(response.success).toBe(true)
     expect(response.models?.map(row => row.id)).toEqual(['listed', 'my-grok', 'current-only'])
     expect(response.models?.[0]).toMatchObject(listed)
-    expect(response.models?.[0].configuredOnly).toBeUndefined()
-    expect(response.models?.[1]).toMatchObject({ configuredOnly: true, thinkingLevels: ['low', 'high'], thinkingDefaultLevel: 'low', thinkingLevelLabels: { low: '快速' } })
-    expect(response.models?.[2]).toMatchObject({ configuredOnly: true, thinkingLevels: ['medium'], thinkingDefaultLevel: 'medium' })
+    expect(response.models?.[0].source).toBeUndefined()
+    expect(response.models?.[1]).toMatchObject({ source: 'manual', thinkingLevels: ['low', 'high'], thinkingDefaultLevel: 'low', thinkingLevelLabels: { low: '快速' } })
+    expect(response.models?.[2]).toMatchObject({ source: 'manual', thinkingLevels: ['medium'], thinkingDefaultLevel: 'medium' })
     for (const row of response.models!.slice(1)) {
       for (const field of ['pricing', 'architecture', 'context_length', 'top_provider', 'supported_parameters']) {
         expect(row).not.toHaveProperty(field)
@@ -336,7 +347,7 @@ describe('models RPC domain — 手填模型思考投影', () => {
     mocks.getModelsForProvider.mockResolvedValue([])
     const response = await modelsRpcHandlers.getWithCapabilities({ providerId: 'custom-local' })
     expect(response.models).toEqual([expect.objectContaining({
-      id: 'local-model', configuredOnly: true, thinkingLevels: ['low', 'high'], thinkingDefaultLevel: 'high',
+      id: 'local-model', source: 'manual', thinkingLevels: ['low', 'high'], thinkingDefaultLevel: 'high',
     })])
   })
 
@@ -345,7 +356,7 @@ describe('models RPC domain — 手填模型思考投影', () => {
     mocks.getModelsForProvider.mockResolvedValue([model('new-model')])
     const response = await modelsRpcHandlers.getWithCapabilities({ providerId: 'grok' })
     expect(response.models).toHaveLength(1)
-    expect(response.models?.[0].configuredOnly).toBeUndefined()
+    expect(response.models?.[0].source).toBeUndefined()
     expect(response.models?.[0].context_length).toBe(192000)
   })
 })

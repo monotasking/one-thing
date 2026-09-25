@@ -230,6 +230,8 @@ configureProviderSettingsPort({
   ready: async () => undefined,
   listProviders: async () => ({ success: true, providers: [] }),
   listModels: async () => ({ success: true, models: [] }),
+  addManualModel: async () => ({ success: false, error: 'no provider settings port in tests' }),
+  removeManualModel: async () => ({ success: false, error: 'no provider settings port in tests' }),
   readSettings: async () => ({ success: false, error: 'no provider settings port in tests' }),
   saveSettings: async () => ({ success: false, error: 'no provider settings port in tests' }),
   readProviderSettings: async () => ({

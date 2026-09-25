@@ -18,6 +18,9 @@ import type { OpenRouterModel, ProviderConfig } from '@shared/ipc/providers.js'
 import { createAgentProviderFromRuntime } from '../../wiring/agent-loop/providers/factory.js'
 import type { OnethingProviderOptions } from '@onething/runtime/providers/provider-options'
 import {
+  catalogFactsOf,
+  isOnethingManualModelEntry,
+  onethingCapabilityEntryToOpenRouterModel,
   fetchOnethingGitHubCopilotModelsWithAuth,
   getAllOnethingModelRegistryModelsForIpc,
   getOnethingModelsWithCapabilities,
@@ -34,6 +37,11 @@ import { authService } from '../../wiring/auth/auth-service.js'
 import { fetchCopilotModels } from '../../wiring/providers/builtin/github-copilot.js'
 import { fetchCodexModels, getCodexFallbackModels } from '../../wiring/providers/builtin/codex.js'
 import * as modelRegistry from '../../wiring/providers/model-registry.js'
+import {
+  addManualModel,
+  foldedCatalogFor,
+  removeManualModel,
+} from '../../wiring/providers/manual-models.js'
 import { getSettings } from '../../stores/settings.js'
 import { getCurrentBackendInstance } from '../../current.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
@@ -81,8 +89,11 @@ function modelProviderConfig(providerId: string) {
     | undefined
 }
 
-function thinkingProjectionOf(providerId: string, modelId: string) {
-  const providerConfig = modelProviderConfig(providerId)
+function thinkingProjectionOf(
+  providerId: string,
+  modelId: string,
+  providerConfig = modelProviderConfig(providerId),
+) {
   const apiType = providerConfig?.apiType
   const caps = resolveOnethingModelCapabilities({
     providerId,
@@ -92,30 +103,34 @@ function thinkingProjectionOf(providerId: string, modelId: string) {
     ...(providerConfig?.modelCapabilitiesByModel?.[modelId]
       ? { override: providerConfig.modelCapabilitiesByModel[modelId] }
       : {}),
-    ...(providerConfig?.models?.[modelId] ? { registryEntry: providerConfig.models[modelId] } : {}),
+    // 手填条目什么都没说过(批 2):`catalogFactsOf` 对它答 undefined,与「目录里没有」同读法。
+    ...(catalogFactsOf(providerConfig?.models?.[modelId])
+      ? { registryEntry: catalogFactsOf(providerConfig?.models?.[modelId]) }
+      : {}),
   })
   return projectOnethingThinkingLevels(caps.reasoningProfile)
 }
 
-/** 目录一整家逐行盖上那四格。**加性**:原对象一格不改,只多四个键。 */
+/**
+ * 目录一整家逐行盖上那四格。**加性**:原对象一格不改,只多四个键。
+ *
+ * 批 2 起这里不再拼「勾了但目录不认识」的孤儿 —— 手填是目录里的一条 `source:'manual'`
+ * 条目。只补一种行:**目录里有、但这一家的列表口没交出来**的手填条目 —— 盘上还没落的
+ * 老孤儿(`foldedCatalogFor` 在内存里折的),以及列表不读目录的那几家(Copilot 现取、
+ * ACP 读名册)上用户手填的 id。
+ */
 function withThinkingLevels(
   providerId: string,
   models: readonly OpenRouterModel[],
 ): OpenRouterModel[] {
   const config = modelProviderConfig(providerId)
-  const configuredIds = new Set([
-    ...(config?.selectedModels ?? []),
-    config?.model,
-  ].filter((id): id is string => typeof id === 'string' && id.trim().length > 0).map(id => id.trim()))
-  const known = new Set(models.map(model => model.id))
+  const listed = new Set(models.map(model => model.id))
   const all = [...models]
-  for (const id of configuredIds) {
-    if (known.has(id)) continue
-    // The legacy envelope overstates which metadata fields are required. Keep
-    // absent prices/context/capabilities absent instead of inventing catalog data.
-    all.push({ id, name: id, configuredOnly: true } as OpenRouterModel)
+  for (const entry of Object.values(foldedCatalogFor(providerId))) {
+    if (!isOnethingManualModelEntry(entry) || listed.has(entry.id)) continue
+    all.push(onethingCapabilityEntryToOpenRouterModel(entry) as OpenRouterModel)
   }
-  return all.map((model) => ({ ...model, ...thinkingProjectionOf(providerId, model.id) }))
+  return all.map((model) => ({ ...model, ...thinkingProjectionOf(providerId, model.id, config) }))
 }
 
 export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
@@ -228,6 +243,13 @@ export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
       ...result,
       capabilities: { ...result.capabilities, ...thinkingProjectionOf(providerId, model) },
     }
+  },
+  /** 手填 = 一条 `source:'manual'` 的目录条目 + 这个空间里勾上(批 2)。判据在产品层纯函数里。 */
+  async addManual(request) {
+    return addManualModel(request)
+  },
+  async removeManual(request) {
+    return removeManualModel(request)
   },
   async getDisplayName(request) {
     return getOnethingModelRegistryDisplayNameForIpc({

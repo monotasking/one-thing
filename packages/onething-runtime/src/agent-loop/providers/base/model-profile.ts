@@ -31,6 +31,7 @@ import {
 	type OnethingReasoningWire,
 	type OnethingResolvedModelCapabilities,
 } from "../../../providers/model-capability.js";
+import { catalogEntryFacts } from "../../../providers/manual-models.js";
 
 /**
  * 采样类参数。P0a 账本只记 `temperature` 一项,其余一律 `true`
@@ -287,7 +288,8 @@ export interface LedgerModelProfileConfig {
 	model?: string;
 	apiType?: "openai" | "anthropic";
 	modelCapabilitiesByModel?: Record<string, OnethingCapabilityOverrideLike>;
-	models?: Record<string, OnethingCapabilityEntryLike & ModelProfileLimits>;
+	/** `source: "manual"` = 手填条目,读作「目录里没有」(批 2)。 */
+	models?: Record<string, OnethingCapabilityEntryLike & ModelProfileLimits & { source?: string }>;
 }
 
 export class LedgerModelProfileResolver implements ModelProfileResolver {
@@ -299,7 +301,8 @@ export class LedgerModelProfileResolver implements ModelProfileResolver {
 
 	/** 同步档:静态 capabilities 与测试要用,`resolve()` 只是它的 Promise 皮。 */
 	resolveSync(providerId: string, model: string): ModelProfile {
-		const entry = this.config.models?.[model];
+		// 手填条目什么都没说过:与「目录里没有」同一读法(批 2)。
+		const entry = catalogEntryFacts(this.config.models?.[model]);
 		const resolved = resolveOnethingModelCapabilities({
 			providerId,
 			modelId: model,

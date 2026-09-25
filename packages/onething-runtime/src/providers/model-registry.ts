@@ -2,6 +2,11 @@ import type { JsonObject } from "@onething/core";
 import { detectCopilotModelCapabilities as detectCopilotLikeModelCapabilities } from "./github-copilot.js";
 import { resolveOnethingModelCapabilities } from "./model-capability.js";
 import { getOnethingModelsDevProviderId } from "./models-dev-catalog.js";
+import {
+	catalogFactsOf,
+	isOnethingManualModelEntry,
+	mergeRefreshedCatalog,
+} from "./manual-models.js";
 import type { OnethingKimiEndpointConfig } from "./kimi.js";
 import {
 	ONETHING_QWEN_PROVIDER_ID,
@@ -87,7 +92,12 @@ export interface OnethingOpenRouterModel {
 	supported_parameters: string[];
 	last_updated?: string;
 	providerMetadata?: JsonObject;
+	/** 目录条目出处;缺席 = models.dev。`'manual'` 行没有任何参数(见 manual-models.ts)。 */
+	source?: OnethingModelEntrySource;
 }
+
+/** 目录条目出处(批 2)。缺席读作 `'models.dev'`。 */
+export type OnethingModelEntrySource = "models.dev" | "endpoint" | "manual";
 
 export interface OnethingModelCapabilityOverride {
 	tools?: boolean;
@@ -103,6 +113,8 @@ export interface OnethingModelCapabilityEntry {
 	id: string;
 	name: string;
 	provider: string;
+	/** 缺席 = `'models.dev'`。手填条目是另一个形状:`OnethingManualModelEntry`。 */
+	source?: "models.dev" | "endpoint";
 	contextLength: number;
 	maxOutputTokens: number;
 	supportsTools: boolean;
@@ -122,8 +134,24 @@ export interface OnethingModelCapabilityEntry {
 	providerMetadata?: JsonObject;
 }
 
+/**
+ * 手填模型的目录条目:**参数全空**。能力读者一律把它当「目录里没有这一型」
+ * (`catalogFactsOf` 返回 undefined),与批 2 之前「勾了但目录不认识」的读法逐字相同。
+ */
+export interface OnethingManualModelEntry {
+	id: string;
+	name: string;
+	provider: string;
+	source: "manual";
+}
+
+/** 目录里的一条:有参数的,或手填的。 */
+export type OnethingCatalogModelEntry =
+	| OnethingModelCapabilityEntry
+	| OnethingManualModelEntry;
+
 export interface OnethingProviderModelConfig extends OnethingQwenEndpointConfig {
-	models?: Record<string, OnethingModelCapabilityEntry>;
+	models?: Record<string, OnethingCatalogModelEntry>;
 	modelsLastFetched?: number;
 	modelCapabilitiesByModel?: Record<string, OnethingModelCapabilityOverride>;
 	/** Per-model context-window override, keyed by model id. */
@@ -605,9 +633,10 @@ export function saveOnethingProviderModels<
 ): void {
 	const settings = adapters.getSettings();
 	const providerConfig = settings.ai.providers[providerId] || {};
-	providerConfig.models = createOnethingModelEntriesFromOpenRouterModels(
-		providerId,
-		models,
+	// 只替换非手填的那一半(批 2):手填条目是用户亲手写的,刷新不替人删。
+	providerConfig.models = mergeRefreshedCatalog(
+		providerConfig.models,
+		createOnethingModelEntriesFromOpenRouterModels(providerId, models),
 	);
 	providerConfig.modelsLastFetched = adapters.now?.() ?? Date.now();
 	settings.ai.providers[providerId] = providerConfig;
@@ -650,7 +679,7 @@ export async function refreshOnethingProviderModels<
 		return;
 	}
 
-	providerConfig.models = models;
+	providerConfig.models = mergeRefreshedCatalog(providerConfig.models, models);
 	providerConfig.modelsLastFetched = adapters.now?.() ?? Date.now();
 	settings.ai.providers[providerId] = providerConfig;
 
@@ -690,7 +719,7 @@ export async function refreshAllOnethingProviderModels<
 			continue;
 		}
 
-		providerConfig.models = models;
+		providerConfig.models = mergeRefreshedCatalog(providerConfig.models, models);
 		providerConfig.modelsLastFetched = adapters.now?.() ?? Date.now();
 		settings.ai.providers[providerId] = providerConfig;
 
@@ -747,6 +776,7 @@ export function openRouterModelToOnethingCapabilityEntry(
 		id: model.id,
 		name: model.name || model.id,
 		provider: providerId,
+		source: "endpoint",
 		contextLength:
 			model.context_length || model.top_provider?.context_length || 128000,
 		maxOutputTokens: model.top_provider?.max_completion_tokens || 0,
@@ -769,8 +799,17 @@ export function openRouterModelToOnethingCapabilityEntry(
 }
 
 export function onethingCapabilityEntryToOpenRouterModel(
-	entry: OnethingModelCapabilityEntry,
+	entry: OnethingCatalogModelEntry,
 ): OnethingOpenRouterModel {
+	// 手填条目**一格参数都不编**:旧信封把容量 / 价格 / 能力声明成必填,但读的人
+	// (壳的目录行、抽屉)把缺席读作「不知道」—— 编一个 0 / 128000 就是撒谎。
+	if (isOnethingManualModelEntry(entry)) {
+		return {
+			id: entry.id,
+			name: entry.name || entry.id,
+			source: "manual",
+		} as OnethingOpenRouterModel;
+	}
 	const supportedParams: string[] = [];
 	if (entry.supportsTemperature) supportedParams.push("temperature");
 	if (entry.supportsTools) supportedParams.push("tools");
@@ -800,6 +839,7 @@ export function onethingCapabilityEntryToOpenRouterModel(
 		supported_parameters: supportedParams,
 		last_updated: entry.lastUpdated,
 		providerMetadata: entry.providerMetadata,
+		...(entry.source ? { source: entry.source } : {}),
 	};
 }
 
@@ -1184,7 +1224,7 @@ export function getOnethingModelNameAliases(): Record<string, string> {
 function getProviderModels(
 	providers: OnethingProviderModelConfigs | undefined,
 	providerId: string,
-): Record<string, OnethingModelCapabilityEntry> | undefined {
+): Record<string, OnethingCatalogModelEntry> | undefined {
 	return providers?.[providerId]?.models;
 }
 
@@ -1192,7 +1232,7 @@ function getProviderModelEntry(
 	providers: OnethingProviderModelConfigs | undefined,
 	modelId: string,
 	providerId: string,
-): OnethingModelCapabilityEntry | undefined {
+): OnethingCatalogModelEntry | undefined {
 	return providers?.[providerId]?.models?.[modelId];
 }
 
@@ -1202,18 +1242,22 @@ function getAnyModelEntry(
 ): OnethingModelCapabilityEntry | undefined {
 	if (!providers) return undefined;
 	for (const providerId of Object.keys(providers)) {
-		const models = providers[providerId]?.models;
-		if (models?.[modelId]) return models[modelId];
+		const facts = catalogFactsOf(providers[providerId]?.models?.[modelId]);
+		if (facts) return facts;
 	}
 	return undefined;
 }
 
+/**
+ * 能力 / 容量 / 价格读者的**唯一入口**。手填条目什么都没说过,这里一律答 undefined
+ * (`catalogFactsOf`)—— 与批 2 之前「目录里没有这一型」的读法逐字相同。
+ */
 function getModelEntry(
 	providers: OnethingProviderModelConfigs | undefined,
 	modelId: string,
 	providerId?: string,
 ): OnethingModelCapabilityEntry | undefined {
-	if (providerId) return getProviderModelEntry(providers, modelId, providerId);
+	if (providerId) return catalogFactsOf(getProviderModelEntry(providers, modelId, providerId));
 	return getAnyModelEntry(providers, modelId);
 }
 

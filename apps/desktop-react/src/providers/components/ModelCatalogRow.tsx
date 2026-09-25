@@ -332,7 +332,8 @@ export function ModelCatalogRow({
           />
         )}
         {/*
-          ✕ 只有手填行才有,但它的**位置**每一行都占着:09-09 报障「手填那一行的
+          ✕ 只有手填行才有(批 2 起它删的是那一条手填目录条目,行随之消失;取消勾选
+          只动勾选、行留着),悬停 / 焦点落进这一行才亮出来(`.remove`)。它的**位置**每一行都占着:09-09 报障「手填那一行的
           Set current 与滑杆钮比别的行靠左」—— 右对齐的 flex 里多一件就把前面两件
           整体推左。没有 ✕ 的行摆一个同宽的空位(`.slot`),滑杆钮就在每一行落在
           同一个 x 上。同批把 ✕ 从 `ui/Button iconOnly`(28 方)换成 `ui/IconButton`
@@ -345,6 +346,7 @@ export function ModelCatalogRow({
             label={t('providers.removeModel', { model: row.id })}
             disabled={pending}
             onClick={() => onRemoveManual(row.id)}
+            className={s.remove}
             testId={`remove-${row.id}`}
           />
         ) : (
