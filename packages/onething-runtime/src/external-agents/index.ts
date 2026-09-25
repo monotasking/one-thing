@@ -34,6 +34,7 @@ export {
   HOST_MCP_TOOL_CANDIDATES,
   HOST_MCP_TOOL_PREFIX,
   HOST_MCP_TURN_GONE,
+  hostMcpToolDefinitionWith,
   hostMcpToolName,
   isHostMcpToolName,
   resolveHostToolContext,

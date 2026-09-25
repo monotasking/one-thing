@@ -78,6 +78,8 @@ const EXPECTED_DOMAIN_FEATURES = [
   // P4c 第六批第一个域:acp(八条外部 agent 面;一条推送都没有,旧的手写 IPC
   // 工厂整只删掉,`@main/ipc/acp.ts` 只剩 initialize/shutdown 两件生命周期)。
   ['rpc:acp', 'acp'],
+  // ACP A4-a:宿主工具面的跨进程出口,只认桥凭据;紧跟在 acp 后面装。
+  ['rpc:host-mcp', 'host-mcp'],
   // P4c 第六批第二个域:mcp(十六条;本批唯一带 context 分叉的域 —— 私密字段脱敏 /
   // 合并回真值 / readConfigFile 在 http 上不读本机文件 / stdio 探测默认关闭)。
   ['rpc:mcp', 'mcp'],

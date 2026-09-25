@@ -19,6 +19,7 @@ import { RPC_ERROR_CODES, type RpcDispatchContext, type RpcRequest, type RpcResp
 import { createServerRpcDispatchContext, createServerRpcDispatchPorts } from './runtime.js'
 import type { RpcDispatchPorts } from '../rpc/registry.js'
 import { getLogger } from '../wiring/logging/index.js'
+import { serveBridgeRequest } from './mcp-face.js'
 
 /**
  * 访问日志(logging L1 §2.2 的 `server.http`)。在它之前这个 1900 行的文件里
@@ -102,6 +103,8 @@ export function createOnethingServerRequestHandler(
     response.on('close', logRequest)
 
     const corsOrigin = resolveCorsOrigin(readHeader(request, 'origin'), options.corsOrigin)
+    // ACP A4-a:`/api/mcp` 与持活桥凭据的 `host-mcp` RPC 归 mcp-face;用户 token 那道闸不动。
+    if (serveBridgeRequest(request, response, url, options.runRequest)) return
     const identity = identifyRequest(request)
     if (identity.error !== undefined) {
       sendJson(response, 401, { success: false, error: identity.error }, corsOrigin)
@@ -299,9 +302,6 @@ async function handleReadMediaFile(context: RouteContext): Promise<void> {
   })
   createReadStream(result.path).pipe(context.response)
 }
-
-
-
 
 async function handleSearchAction(context: RouteContext): Promise<void> {
   const adapter = context.runtime.search

@@ -20,6 +20,7 @@ export {
   filterHostToolSurface,
   HOST_MCP_TOOL_CANDIDATES,
   HOST_MCP_TURN_GONE,
+  hostMcpToolDefinitionWith,
   resolveHostToolSurface,
   toHostMcpToolDefinition,
   type HostMcpCallResult,

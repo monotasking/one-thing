@@ -41,7 +41,7 @@ const log = getLogger('external-agents')
 const consoleLog = consolePort(log)
 
 
-export { resolveClaudeCodeHostToolSurface } from './host-tools.js'
+export { resolveClaudeCodeHostToolSurface, resolveHostToolSurface, type HostToolSurface } from './host-tools.js'
 
 // ---------------------------------------------------------------------------
 // CLI detection

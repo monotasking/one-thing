@@ -75,6 +75,8 @@ function toolkitHostTool(toolId: string): HostMcpHostTool | undefined {
     id: tool.spec.id,
     description: tool.spec.description,
     parameters: contractForSchema(tool.spec.input)?.zod,
+    // 跨进程出口序列化给 agent 的那一份(A4-a);就是目录里的 JSON Schema,不另生成。
+    inputSchema: tool.spec.input,
     async execute(args, ctx) {
       // 动态 import:装配层那棵树不进这个文件的静态图(注入这一轮才需要它)。
       const { runToolkitToolDirectly } = await import('../toolkit/wiring.js')
@@ -93,15 +95,39 @@ function toolkitHostTool(toolId: string): HostMcpHostTool | undefined {
 }
 
 /**
- * 一次解析。返回 `undefined` = 这一轮不注入。
+ * 一条会话此刻的**宿主工具面**:工具对象 + 它们该在哪条语境里跑。与传输无关 ——
+ * 进程内 SDK 服务器(Claude 路)与跨进程的桥(ACP 路,`wiring/acp/host-mcp-bridge.ts`)
+ * 吃的都是这一份。
+ */
+export interface HostToolSurface {
+  /** 会话上的 agent 身份(profile 用的那一个)。 */
+  agentId: string
+  execSessionId: string
+  /** 这一轮在答的那间房(v3 登记簿 → 会话上记的房 → 自己)。 */
+  roomSessionId: string
+  /** 手里那张牌;不是 v3 持牌回合就缺席。 */
+  leaseId?: string
+  executionContext: ReturnType<typeof fixedExecutionContext>
+  tools: HostMcpHostTool[]
+}
+
+/**
+ * 一次解析(A4-a 从 `resolveClaudeCodeHostToolSurface` 里抽出来的那一半,名字去掉了
+ * 「ClaudeCode」—— 它本来就不认 Claude)。返回 `undefined` = 这条会话没有宿主工具面。
  *
- * 三种 `undefined`,含义不同但结局相同(退回 E3 之前的形状:只有 SDK 自带工具、
+ * 三种 `undefined`,含义不同但结局相同(退回 E3 之前的形状:只有 agent 自带工具、
  * 发言靠收养兜底):
  *  - 会话查不到 / 没有 agent 身份 —— 这不是一条协作会话;
  *  - 场子门全关(普通对话)—— 协作工具在那里一个都不成立;
  *  - 目录里一个都取不到 —— 内建工具还没装(装配顺序问题,日志会说)。
+ *
+ * 它**不绑语境、不起服务器**:绑在哪(按回合还是按桥凭据)、以什么形态交出去(进程内
+ * 实例还是 stdio / http)是调用方的事。牌与房每次现问 —— 同一条会话下一轮的牌不是这一张。
  */
-export const resolveClaudeCodeHostToolSurface: HostMcpSurfaceResolver = async (request) => {
+export async function resolveHostToolSurface(request: {
+  localSessionId: string
+  executionContext?: unknown
+}): Promise<HostToolSurface | undefined> {
   const execSessionId = request.localSessionId
   const executionContext = fixedExecutionContext(request.executionContext)
   sessionAccess.resolveOptional(executionContext, execSessionId, 'read')
@@ -133,7 +159,7 @@ export const resolveClaudeCodeHostToolSurface: HostMcpSurfaceResolver = async (r
   }
 
   /**
-   * 语境绑定。牌从 v3 的回合登记簿取 —— 那张表在 `beginCollabV3Turn` 里已经登记
+   * 牌从 v3 的回合登记簿取 —— 那张表在 `beginCollabV3Turn` 里已经登记
    * 好了(引擎回合开跑之前,`engine-mind-port` 的注释写明「登记必须在 emit 之前」),
    * 而外部 agent 的这一轮正是那条 drive 驱动出来的。
    *
@@ -142,15 +168,34 @@ export const resolveClaudeCodeHostToolSurface: HostMcpSurfaceResolver = async (r
    * 记下来的事实,验票在房间那侧。
    */
   const turn = findCollabV3Turn(execSessionId)
-  const roomSessionId = turn?.roomSessionId
-    ?? session.collab?.roomSessionId
-    ?? execSessionId
-  const release = bindHostToolContext({
+  return {
     agentId,
-    executionContext,
-    roomSessionId,
     execSessionId,
+    roomSessionId: turn?.roomSessionId ?? session.collab?.roomSessionId ?? execSessionId,
     ...(turn?.leaseId ? { leaseId: turn.leaseId } : {}),
+    executionContext,
+    tools,
+  }
+}
+
+/**
+ * Claude SDK 那条路的注入口:上面那一份工具面 + 按回合绑语境 + 一台进程内 MCP 服务器。
+ *
+ * 名字保留到 A6(Claude Code 迁 ACP 之后这条进程内出口整只退役)。它不是
+ * `resolveHostToolSurface` 的纯别名:进程内实例只有 SDK 吃得下,跨进程的桥不能也不该
+ * 起这台服务器,所以两者共用的是「工具面」那一半,不是整个函数。
+ */
+export const resolveClaudeCodeHostToolSurface: HostMcpSurfaceResolver = async (request) => {
+  const surface = await resolveHostToolSurface(request)
+  if (!surface) return undefined
+  const { execSessionId, tools } = surface
+
+  const release = bindHostToolContext({
+    agentId: surface.agentId,
+    executionContext: surface.executionContext,
+    roomSessionId: surface.roomSessionId,
+    execSessionId,
+    ...(surface.leaseId ? { leaseId: surface.leaseId } : {}),
     ...(request.messageId ? { messageId: request.messageId } : {}),
     ...(request.cwd ? { workingDirectory: request.cwd } : {}),
   })

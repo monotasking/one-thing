@@ -94,6 +94,16 @@ export interface RpcDispatchContext {
 	 * 所以不占 `transport:gate` 那本账。
 	 */
 	signal?: AbortSignal;
+	/**
+	 * **这一发是拿桥凭据进来的**(ACP A4-a,`docs/design/acp-integration-2026-09.md` §3.6)。
+	 *
+	 * 桥凭据不是用户 token:它是宿主为「某台 agent × 某条会话」签的一把一次性钥匙,只打得开
+	 * `host-mcp` 这一个域。同一条规矩:**由宿主在它自己那道闸验过之后铸**(HTTP 面
+	 * `server/mcp-face.ts` 查过凭据表才把它放进来),信封上没有可以放它的地方。域处理者
+	 * 拿它**再查一次**表 —— 查不到(作废了 / 从没签过)一律拒。用户 token 的 context
+	 * 永远没有这一格,所以用户 token 进不了 `host-mcp`。
+	 */
+	bridgeCredential?: string;
 }
 
 /**

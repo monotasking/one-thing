@@ -16,6 +16,7 @@ import type { ACPAgentConfig, ACPAgentState, ACPSettings, AcpSessionState } from
 import { getLogger } from '../logging/index.js'
 import { installAcpStateBroadcaster, type AcpStateSource } from './events.js'
 import type { AcpAgentRosterEntry, AcpRegistryRefreshOptions } from './registry.js'
+import { HostMcpBridge } from './host-mcp-bridge.js'
 
 const log = getLogger('app.acp.subsystem')
 
@@ -62,6 +63,8 @@ export interface AcpSubsystemDeps {
    * 起得来的),不再是 `settings.acp.agents` 原样;缺席 = 旧行为(只用于不关心名册的单测)。
    */
   registry?: AcpSubsystemRegistryPort
+  /** 宿主工具面的桥(A4-a)。缺席 = 用真依赖造一只;单测可以递一只假的。 */
+  hostMcpBridge?: HostMcpBridge
 }
 
 /**
@@ -96,9 +99,16 @@ export class AcpSubsystem {
   private stopRegistryWatch: (() => void) | undefined
   /** 后台那趟联网刷新的中止器;`dispose()` 拉闸。 */
   private readonly backgroundAbort = new AbortController()
+  /**
+   * 宿主工具面的桥与凭据表(A4-a,`host-mcp-bridge.ts`)。**实例字段**,不是模块级槽:
+   * 凭据的寿命不长于签发它的这台 backend —— `dispose()` 全部作废,第二台 backend 不会
+   * 认第一台签的钥匙。`host-mcp` 域与 `/api/mcp` 都从这里查。
+   */
+  readonly hostMcpBridge: HostMcpBridge
 
   constructor(deps: AcpSubsystemDeps) {
     this.deps = deps
+    this.hostMcpBridge = deps.hostMcpBridge ?? new HostMcpBridge()
     if (isStateSource(deps.manager)) this.stopStateBroadcast = installAcpStateBroadcaster(this.decoratedSource(deps.manager))
     // 名册变了(探测 / 注册表刷新 / 种子重读)就按当下设置重喂管家。dispose 之后的迟到通知不理。
     this.stopRegistryWatch = deps.registry?.onChanged(() => {
@@ -254,6 +264,8 @@ export class AcpSubsystem {
     if (this.disposing) return this.disposing
     this.disposing = (async () => {
       this.backgroundAbort.abort()
+      // 钥匙先作废:关机途中还在跑的桥子进程再来调,一律 401 / 拒,而不是打进一台半拆的核。
+      this.hostMcpBridge.revokeAll()
       this.stopRegistryWatch?.()
       this.stopRegistryWatch = undefined
       const startedAt = Date.now()

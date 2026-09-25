@@ -47,6 +47,15 @@
  *      `acp.authenticate` 立刻答 terminalId,那一格终端(owner = 这台 agent)跑「起法 + `--login`」、
  *      退出码 0 → 行上 `auth.required === false` → 再发一条,这一轮走通。
  *
+ * TODO(A4-b):⑰ 桥 / ⑱ 归因(方案 §7、§11.5)在这里还没有步骤 —— 它们要的是「假 agent 在
+ * `session/new` 里**收到** `mcpServers`」,而把 `mintCredential` 的结果递进 `session/new` 是
+ * A4-b 的 connector 接线。门外面没有、也不许有签凭据的 RPC,所以 A4-a 不在门里造一条假路;
+ * 同一条链在单测级已经证了(真 backend + 真 `http.ts` + 真配方打出的 `acp-mcp-bridge.cjs` +
+ * 真 MCP 客户端):`packages/backend/server/__tests__/host-mcp-face.test.ts`。A4-b 落地时
+ * 在这里补:假 agent 拿到 stdio 那一条 → 起桥 → `tools/list` 有 `send_notification` →
+ * `tools/call` 让 `agent:notification` 落在发起会话 → 关会话后同一把钥匙 401;
+ * 反证:凭据换常量 → ⑱ 红。
+ *
  * **必须用 node 起**(同 gate:search-index):server 的检索 Worker 要 `node:sqlite`,bun 没有。
  * 不构建:缺 `dist/server/main.js` 就叫你先 `bun run server:build`。
  * 绝不碰真 `~/.onething` —— 全程 `ONETHING_STORE_PATH` 指向 mkdtemp 出来的临时目录。

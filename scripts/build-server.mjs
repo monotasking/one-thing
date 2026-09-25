@@ -4,6 +4,7 @@
  *
  *   ① `dist/server/main.js`   vite SSR 单文件包(`apps/server/vite.config.ts`)
  *   ② `dist/server/search-worker.cjs`  检索索引 Worker(检索重建 S3b,§3 末行)
+ *   ③ `dist/server/acp-mcp-bridge.cjs` ACP 宿主工具面的 stdio 桥(ACP A4-a,与 ② 同一条规矩)
  *
  * ## 为什么 ② 是**第二次构建**而不是 vite 的第二个入口
  *
@@ -26,7 +27,7 @@ import { build as esbuild } from 'esbuild'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import { searchWorkerEsbuildOptions } from '../apps/desktop-react/scripts/build-electron.mjs'
+import { acpMcpBridgeEsbuildOptions, searchWorkerEsbuildOptions } from '../apps/desktop-react/scripts/build-electron.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
@@ -50,4 +51,6 @@ if (ssr.status !== 0) {
 
 process.stdout.write(`[server:build] ② esbuild → ${path.join(outdir, 'search-worker.cjs')}\n`)
 await esbuild(searchWorkerEsbuildOptions({ outdir, repoRoot }))
+process.stdout.write(`[server:build] ③ esbuild → ${path.join(outdir, 'acp-mcp-bridge.cjs')}\n`)
+await esbuild(acpMcpBridgeEsbuildOptions({ outdir, repoRoot }))
 process.stdout.write('[server:build] 完成\n')

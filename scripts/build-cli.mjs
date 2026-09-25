@@ -21,6 +21,7 @@ import { build } from 'esbuild'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import {
+  acpMcpBridgeEsbuildOptions,
   searchWorkerEsbuildOptions,
   shellEsbuildOptions,
 } from '../apps/desktop-react/scripts/build-electron.mjs'
@@ -36,3 +37,7 @@ await build(shellEsbuildOptions({
 // 第二个入口:检索索引 Worker(检索重建 S3b,§3 末行)。产物 `dist/cli/search-worker.cjs`
 // 与 `main.cjs` 同目录 —— 装配层按宿主 bundle 的位置往旁边找,三个宿主同一条纪律。
 await build(searchWorkerEsbuildOptions({ outdir, repoRoot }))
+
+// 第三个入口:ACP 宿主工具面的 stdio 桥(ACP A4-a)。产物 `dist/cli/acp-mcp-bridge.cjs`,
+// 与 `main.cjs` 同目录 —— 同一条「落在宿主入口旁边」的纪律。
+await build(acpMcpBridgeEsbuildOptions({ outdir, repoRoot }))

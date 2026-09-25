@@ -24,6 +24,7 @@
  * 了半格 —— 改它要动 `backend.ts`，留给 C5 收口一起做。）
  */
 import { acpRouter } from '@shared/ipc/acp.js'
+import { hostMcpRouter } from '@shared/ipc/host-mcp.js'
 import { agentsRouter } from '@shared/ipc/agents.js'
 import { appStateRouter } from '@shared/ipc/app-state.js'
 import { channelIdentityRouter } from '@shared/ipc/channel-identity.js'
@@ -72,6 +73,7 @@ import { selfEvolutionFeature } from '../features/builtin/self-evolution.js'
 import { trajectoryFeature } from '../features/builtin/trajectory.js'
 import { mountFeature, type FeatureDefinition, type FeatureUnmount } from '../features/index.js'
 import { acpRpcHandlers } from './domains/acp.js'
+import { hostMcpRpcHandlers } from './domains/host-mcp.js'
 import { agentsRpcHandlers } from './domains/agents.js'
 import { appStateRpcHandlers } from './domains/app-state.js'
 import { channelIdentityRpcHandlers } from './domains/channel-identity.js'
@@ -232,6 +234,8 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // 自进化之前:它只要 `ACPManager` 的进程内单例与设置缓存,两者在装配到这一步时
   // 都早已就位;硬约束仍只有一条 —— 必须在自进化之前(卸载要逆序)。
   { id: 'rpc:acp', mount: ctx => { ctx.registerRpcDomain(acpRouter, acpRpcHandlers) } },
+  // ACP A4-a:宿主工具面的跨进程出口。只认桥凭据(`context.bridgeCredential`),用户 token 进不来。
+  { id: 'rpc:host-mcp', mount: ctx => { ctx.registerRpcDomain(hostMcpRouter, hostMcpRpcHandlers) } },
   // P4c 第六批第二个域(mcp)—— 十六条:服务器增删改 / 连接生命周期 / 能力面 /
   // 配置导入。它与 acp 一样零推送(server 推来的 list-changed 由客户端就地回灌,
   // 再经 `configureMCPCapabilitiesChangedHandler` 重生成模型面目录,不过传输面)。

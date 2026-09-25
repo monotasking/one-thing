@@ -130,6 +130,13 @@ export interface HostMcpHostTool {
   id: string
   description: string
   parameters: unknown
+  /**
+   * 入参的 **JSON Schema**(A4-a)。进程内 SDK 那条路只吃 zod raw shape(`parameters`),
+   * 用不到它;跨进程那两条出口(stdio 桥 / `/api/mcp`)的 `tools/list` 要把模式**序列化**
+   * 给 agent,zod 过不了线,所以由装配层把目录里现成的那份(`ToolSpec.input`)一起递过来。
+   * 缺席 = 空对象模式,与 `rawShapeOf` 取不到时同一条兜底。
+   */
+  inputSchema?: unknown
   execute(args: Record<string, unknown>, ctx: HostMcpToolContext): Promise<{ output: string }>
 }
 
@@ -187,16 +194,37 @@ export function toHostMcpToolDefinition(
 ): HostMcpToolDefinition {
   // A server belongs to one binding, not whichever turn later reuses its session ID.
   const boundContext = resolveHostToolContext(execSessionId)
+  return hostMcpToolDefinitionWith(tool, () => {
+    const context = resolveHostToolContext(execSessionId)
+    return boundContext && context === boundContext ? context : undefined
+  })
+}
+
+/**
+ * 同一只包装,语境由调用方给(A4-a)。
+ *
+ * 进程内 SDK 那条路的语境按**执行会话**绑(上面那只);跨进程的桥按**桥凭据**找语境
+ * (`backend/wiring/acp/host-mcp-bridge.ts`)。两条路找语境的办法不同,但「语境不在就答
+ * `HOST_MCP_TURN_GONE`」「执行器抛了才是 `isError`」「门拒不翻成错误」这三条必须是
+ * **同一段代码** —— 抄一份,两条通路上同一件事就会长成两个样子(原则 1)。所以把
+ * handler 的身体抽到这里,两边各递一个 `resolveContext`。
+ *
+ * `resolveContext` 每次调用现问:答 `undefined` = 这把钥匙已经作废 / 这一轮已经收了。
+ */
+export function hostMcpToolDefinitionWith(
+  tool: HostMcpHostTool,
+  resolveContext: () => HostToolTurnContext | undefined,
+): HostMcpToolDefinition {
   return {
     name: tool.id,
     description: tool.description,
     inputSchema: rawShapeOf(tool.parameters),
 
     async handler(args) {
-      const context = resolveHostToolContext(execSessionId)
+      const context = resolveContext()
       // 绑定不在 = 这一轮的宿主工具面已经收了。不落库、不报红,给模型一句它能
       // 据以行动的话。
-      if (!boundContext || context !== boundContext) return textResult(HOST_MCP_TURN_GONE, true)
+      if (!context) return textResult(HOST_MCP_TURN_GONE, true)
 
       try {
         const result = await tool.execute(args, hostToolContext(context))

@@ -133,6 +133,28 @@ export function searchWorkerEsbuildOptions({ outdir, repoRoot: root }) {
   })
 }
 
+/**
+ * ACP 宿主工具面的 stdio 桥(ACP A4-a,`docs/design/acp-integration-2026-09.md` §3.6)。
+ *
+ * 与 `search-worker.cjs` **同一条规矩**:三份配方各出一份 `acp-mcp-bridge.cjs`,永远落在
+ * 宿主入口旁边(装配层按 `import.meta.url` 往旁边找,`packages/backend/wiring/acp/
+ * mcp-bridge-path.ts`),打包时 asarUnpack(它是被 agent 当子进程起的一个**真文件**,
+ * `ELECTRON_RUN_AS_NODE=1` 起出来的 node 环境没有 asar 补丁)。
+ *
+ * 同一份 `shellEsbuildOptions`:node 平台、CJS。它只吃 `@modelcontextprotocol/server`
+ * 与 node 内建,一个原生模块都不碰 —— 所以同一份产物在系统 Node 与 Electron-as-node 下
+ * 都跑得起来(N-API 那条法在这里无从咬起)。
+ */
+export const ACP_MCP_BRIDGE_ENTRY = 'packages/onething-runtime/src/acp/mcp-bridge/entry.ts'
+export const ACP_MCP_BRIDGE_NAME = 'acp-mcp-bridge'
+
+export function acpMcpBridgeEsbuildOptions({ outdir, repoRoot: root }) {
+  return shellEsbuildOptions({
+    entryPoints: { [ACP_MCP_BRIDGE_NAME]: path.join(root, ACP_MCP_BRIDGE_ENTRY) },
+    outdir,
+  })
+}
+
 if (invokedDirectly) {
   // 三次调用而不是一个 entryPoints 表:main 与 preload 跑在**两种不同的运行时**里
   // (node 上下文 vs Electron sandbox),而 banner/define 是整份配置级的开关,
@@ -149,4 +171,6 @@ if (invokedDirectly) {
   }))
   // 第三个入口:检索索引 Worker(见上面那段注释)。
   await build(searchWorkerEsbuildOptions({ outdir, repoRoot }))
+  // 第四个入口:ACP 宿主工具面的 stdio 桥(见上面那段注释)。
+  await build(acpMcpBridgeEsbuildOptions({ outdir, repoRoot }))
 }

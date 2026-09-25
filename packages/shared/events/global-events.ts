@@ -260,6 +260,27 @@ export interface AcpAgentStateEvent {
   state: ACPAgentState
 }
 
+// ── 宿主工具面的通知(ACP A4-a,方案 `docs/design/acp-integration-2026-09.md` §3.6)──
+
+/**
+ * **一台外部 agent 经宿主工具面的 `send_notification` 给人发了一条通知。**
+ *
+ * 「落在发起会话」靠 `sessionId`:它是桥凭据背后那条本地会话,不是 agent 自己报的 ——
+ * agent 传不了它,所以也冒充不了别的会话。它不进聊天正文(那是 `send_message` 的事),
+ * 只是一条给人看的提醒;壳按 `sessionId` 归位、按 `level` 上色。
+ */
+export interface AgentNotificationEvent {
+  type: 'agent:notification'
+  sessionId: string
+  /** 发起的那台 agent(ACP 名册 id)。 */
+  agentId: string
+  message: string
+  title?: string
+  level: 'info' | 'success' | 'warn' | 'error'
+  /** epoch ms,发的一方盖。 */
+  at: number
+}
+
 // ── 订阅登录(批 1,`docs/design/provider-settings-rework-2026-09.md` §3.1)──────────
 
 /**
@@ -303,6 +324,7 @@ export type GlobalEvent =
   | SpeechActivityEvent
   | AcpSessionStateEvent
   | AcpAgentStateEvent
+  | AgentNotificationEvent
   | OAuthFlowGlobalEvent
   | OAuthTokenExpiredGlobalEvent
 
@@ -385,6 +407,11 @@ export const GLOBAL_EVENT_LEAVES_PROCESS: Readonly<Record<GlobalEvent['type'], b
    * 原样交出同一份配置,这里不新增一类暴露;真要脱敏,该在两处一起做。
    */
   'acp:agent-state': true,
+  /**
+   * **出网 —— 它整条命就是为了出网**:唯一的读者是壳的通知中心。载荷是 agent 写给人看
+   * 的一句话 + 会话 id,没有本机路径也没有凭证(凭证是签发它的那把钥匙,不在载荷里)。
+   */
+  'agent:notification': true,
   /**
    * **出网 —— 壳要画它**(批 1)。载荷是 `{providerId, flowId, phase, error?}`:没有令牌、
    * 没有授权码、没有本机路径;`error` 是 token 端点的错误码或报错句(`access_denied`、
