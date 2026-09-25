@@ -363,6 +363,12 @@ export function EdgeShelf({ side }: Props) {
        * 卸载树身**,那条判据当场说谎。形态是形态,挂载是挂载,所以它自己一格。
        */
       data-shelf-collapsed={shelf.collapsed || undefined}
+      /*
+       * 收起时这条架子**展开后有多厚**(09-25)。拖拽落点要在收起的架子那条边上
+       * 预示「展开并落进去」占的地方(`workbench/drop-geometry`),而收起那一形的
+       * DOM 只有细梁那么宽,量不出来 —— 所以自述一格。展开时不挂:那时量盒子就是。
+       */
+      data-shelf-thickness={shelf.collapsed ? Math.round(shelf.thickness) : undefined}
     >
       {/*
         ── 收起 ≠ 关闭(2026-09-12 用户拍)────────────────────────────────────

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { liveRegionText } from '../../ui/a11y/live-region'
 import { act, render, screen } from '@testing-library/react'
 import { DragLayer, DropOverlay, resetDragSession } from '../../ui/drag'
 import { useContentDrag } from '../useContentDrag'
@@ -95,7 +96,7 @@ function up(el: Element, x: number, y: number): void {
 }
 
 describe('接缝 a:全屏期间不许起拖', () => {
-  it('全屏开着 —— 走过阈值也不起拖:没有浮影、树没被闸住、松手不落定', () => {
+  it('全屏开着 —— 走过阈值也不起拖:没有浮影、树没被闸住、松手不落定', async () => {
     useWorkbenchStore.getState().enterFull(B)
     expect(useWorkbenchStore.getState().full).not.toBeNull()
 
@@ -114,6 +115,9 @@ describe('接缝 a:全屏期间不许起拖', () => {
     expect(onDrop).not.toHaveBeenCalled()
     // 这一下不是「取消全屏」,是「什么都没发生」。
     expect(refId(useWorkbenchStore.getState().full!.ref)).toBe(refId(B))
+    // ……但不是静默的(09-25):读屏那一侧念出为什么。播报排在下一拍。
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(liveRegionText('polite')).toMatch(/全屏|full screen/i)
   })
 
   it('全屏关着 —— 同一串手势照旧起得来(闸只在全屏那一形上合)', () => {

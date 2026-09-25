@@ -34,10 +34,20 @@ import type { SplitSide } from './tree'
  * (30% 拖拽区域),如果有铺满只能通过放在 tab 上」,随后补「主区域也能分屏」。
  *   ① **拒绝区**(红绿灯 / 顶栏尾格 / Dock)。
  *   ② **标签条** = 插到第 n 格。**要「铺满」(并进一片叶)只有这一条路。**
+ *      上下容差:拖的这一格**自己那条条**是 `TEAR_OFF_DISTANCE`(24,撕下阈值 —— 与
+ *      条内换序的带同一个数);**别人的条**只有 `NEAR_STRIP_PX`(8),不然它会吃掉
+ *      紧挨着的那片叶的上 / 下分屏带(09-25)。
  *   ③ **浮窗里的叶**:浮窗盖在一切之上,它身上的分屏带先于身子底下那条边的架子带。
- *   ④ **新架子带**:还没有架子的左 / 右 / 下三条边,各占窗口那条轴的 30%
- *      (`NEW_SHELF_ZONE`)。它先于中央区的叶 —— 没有架子时中央区铺满整扇窗,它的
- *      左右下 30% 与架子带完全重合,让叶先问就再也拖不出一条架子。
+ *   ④ **边带**:贴着窗口左 / 右 / 下三条边的一条**窄带**(`edgeBandOf`:
+ *      `min(EDGE_BAND_MAX_PX, 那条轴 × EDGE_BAND_RATIO)`)。那一边没有架子 = 新建一条
+ *      (松手后厚度仍是窗口的 30%,`NEW_SHELF_ZONE`);那一边的架子是**收起**的 =
+ *      展开它并落进去(`DropGeometry.collapsed`)。
+ *      **09-25 外窄内宽**(用户报「只有右架子,chat 区没办法分屏到右侧」):这条带
+ *      从前就是那 30% 本身,而它排在叶之前 —— 贴着空边的那片叶,那一侧的分屏带整块
+ *      落在架子带里面,永远判不到。扫点读数:无架子时中央叶左 / 右 / 下三向分屏
+ *      0%,左右都有架子时三片叶都分不出下。判定区收窄之后四向都够得着,边带也还在
+ *      (`__tests__/drop-reach.test.ts` 钉着这张可达表)。「判定区多宽」与「新架子
+ *      长多厚」从此是两个数。
  *   ⑤ **任意一片叶的四边 30%**(`SPLIT_BAND`,按叶自己的宽高算)= 在那一侧分屏。
  *   ⑥ **自己那片叶**(拖的就是它唯一那格,或指针在它中间)= 放回,空动作。
  *   ⑦ 其余一切(叶的中间、出了窗、什么都没碰到)= 撕成浮窗。
@@ -68,7 +78,7 @@ import type { SplitSide } from './tree'
  *    「一拖整窗变色」:所有能放的地方各铺 6% 的主题色,屏幕上同时亮五六块,读成
  *    的不是「这些地方能放」而是「出问题了」。今天只画**这一帧真的会落进去的
  *    那一处**。
- *  · `SNAP_BAND`(24)不再是这只文件的读者 —— 边带的宽换成了 `NEW_SHELF_BAND`。
+ *  · `SNAP_BAND`(24)不再是这只文件的读者 —— 边带的宽换成了 `edgeBandOf`。
  */
 
 export interface Rect {
@@ -148,6 +158,13 @@ export interface DropGeometry {
    * 加一格属性,这只文件一个字都不改(CLAUDE.md 那条「按能力枚举 → 能力自述」)。
    */
   nodrop?: readonly Rect[]
+  /**
+   * **这几条边上的架子是收起的**,各自展开后有多厚(09-25)。收起的架子仍站在
+   * `shelves` 里(那条边上不生新架子),但它的叶量不出矩形 —— 于是从前那条边等于
+   * 没有:指针贴过去落的是旁边那片叶的分屏,东西永远放不进一条收起的架子。
+   * 列在这里 = 边带对它成立,落点仍是 `edge`,落定那条路本来就会把它展开。
+   */
+  collapsed?: readonly { side: ShelfSide; thickness: number }[]
 }
 
 export type DropTarget =
@@ -178,6 +195,23 @@ export const NEW_SHELF_ZONE = 0.3
  * 从一扇 320px 的浮窗到一整块中央区都有,固定像素在两头各错一次。
  */
 export const SPLIT_BAND = 0.3
+
+/**
+ * **边带的判定宽度**(09-25 外窄内宽):`min(EDGE_BAND_MAX_PX, 那条轴 × EDGE_BAND_RATIO)`。
+ * 比例管小窗(窗宽 800 时是 48px,不至于吃掉一片窄叶的整条分屏带),上限管大屏
+ * (27 寸满屏下 6% 是 150px,已经是「手往边上甩」之外的地方了)。
+ */
+export const EDGE_BAND_RATIO = 0.06
+export const EDGE_BAND_MAX_PX = 64
+
+/** 别人那条标签条的上下容差(自己那条条是 `TEAR_OFF_DISTANCE`)。 */
+export const NEAR_STRIP_PX = 8
+
+/**
+ * **落点换人的迟滞**(09-25):指针要离开上一个落点的地盘这么远,预示才换人。
+ * 从前两个落点的分界线上一像素的抖动就是一次换预示(薄膜 ↔ 实心板 ↔ 轮廓来回闪)。
+ */
+export const DROP_HYSTERESIS_PX = 6
 
 /** 这次拖拽自己的规矩。全缺席 = 「什么都能落」。 */
 export interface DropRules {
@@ -247,13 +281,13 @@ function rawTargetAt(
     if (within(pointer, rect)) return { kind: 'refuse', reasonKey: REFUSE_HERE }
   }
   // ② 标签条(插到第几格)—— 「铺满」唯一的路。
-  const strip = stripAt(pointer, geometry.strips, live)
+  const strip = stripAt(pointer, geometry.strips, live, rules.dragged?.id ?? null)
   if (strip) return strip
   // ③ 浮窗里的叶:盖在架子带之上。
   const floating = leafAt(pointer, geometry, rules, (box) => isFloatRegion(box.region))
   if (floating) return leafTargetAt(pointer, floating, geometry, rules)
-  // ④ 新架子带 —— 只对**还没有架子**的那一边成立。
-  const side = newShelfSideIn(pointer, geometry)
+  // ④ 边带 —— 只对**还没有架子**或**架子收着**的那一边成立。
+  const side = edgeSideIn(pointer, geometry)
   if (side) return { kind: 'edge', side }
   // ⑤⑥⑦ 其余的叶(中央区、架子)。
   const box = leafAt(pointer, geometry, rules, (b) => !isFloatRegion(b.region))
@@ -352,6 +386,7 @@ function stripAt(
   pointer: { x: number; y: number },
   strips: readonly StripBox[] | undefined,
   live: DropLive,
+  draggedId: string | null,
 ): DropTarget | null {
   if (!strips) return null
   /*
@@ -366,7 +401,9 @@ function stripAt(
    * 先找真的含住这一点的,没有再找够得着的。两遍都按 DOM 逆序(条重叠时靠后的
    * 盖在上面 —— 那条纪律一个字没变)。
    */
-  const box = scanStrips(pointer, strips, 0) ?? scanStrips(pointer, strips, TEAR_OFF_DISTANCE)
+  const box = scanStrips(pointer, strips, () => 0)
+    ?? scanStrips(pointer, strips, (b) =>
+      draggedId !== null && b.tabs.some((tab) => tab.id === draggedId) ? TEAR_OFF_DISTANCE : NEAR_STRIP_PX)
   if (!box) return null
   // 空位只在它自己那条条上算数(别的条上那几格一个像素都没动过)。
   const gap = live.gap && live.gap.leafId === box.leafId ? live.gap : undefined
@@ -380,11 +417,12 @@ function stripAt(
 function scanStrips(
   pointer: { x: number; y: number },
   strips: readonly StripBox[],
-  slack: number,
+  slackOf: (box: StripBox) => number,
 ): StripBox | null {
   for (let i = strips.length - 1; i >= 0; i -= 1) {
     const box = strips[i]
     const r = box.rect
+    const slack = slackOf(box)
     if (pointer.x < r.left || pointer.x > r.left + r.width) continue
     if (pointer.y < r.top - slack || pointer.y > r.top + r.height + slack) continue
     return box
@@ -434,23 +472,23 @@ export function stripIndexAt(
 }
 
 /**
- * 「在这条边上生一条新架子」的那一边,没有就答 null。
- *
- * 两条判据缺一不可(见文件头 ④):**离边不到那条轴的 `NEW_SHELF_ZONE`**,而且**那条边上
- * 此刻还没有架子**。角上两条带重叠时取归一距离更近的那条(平手优先左右)。它按**视口**
- * 算,而门与用例里窗口矩形未必从 0 起,所以先把指针折回视口坐标系再问。
+ * 指针落在哪条边的**边带**里(没有 = null)。三条判据缺一不可:离窗口那条边不到
+ * `edgeBandOf`,而且那条边上**没有架子**或**架子收着**。角上两条带重叠时取归一距离
+ * 更近的那条(平手优先左右)。按**视口**算:门与用例里窗口矩形未必从 0 起,所以先把
+ * 指针折回视口坐标系再问。
  */
-function newShelfSideIn(pointer: { x: number; y: number }, geometry: DropGeometry): ShelfSide | null {
+function edgeSideIn(pointer: { x: number; y: number }, geometry: DropGeometry): ShelfSide | null {
   const win = geometry.window
   const local = { x: pointer.x - win.left, y: pointer.y - win.top }
   if (local.x < 0 || local.y < 0 || local.x > win.width || local.y > win.height) return null
   let best: ShelfSide | null = null
   let bestDistance = Number.POSITIVE_INFINITY
   for (const side of SHELF_SIDES) {
-    if (geometry.shelves.includes(side)) continue
-    const zone = newShelfZoneOf(side, win)
-    if (zone <= 0) continue
-    const d = edgeDistance(side, local, win) / zone
+    const folded = geometry.collapsed?.some((c) => c.side === side) ?? false
+    if (geometry.shelves.includes(side) && !folded) continue
+    const band = edgeBandOf(side, win)
+    if (band <= 0) continue
+    const d = edgeDistance(side, local, win) / band
     if (d > 1) continue
     if (d < bestDistance) {
       best = side
@@ -460,9 +498,70 @@ function newShelfSideIn(pointer: { x: number; y: number }, geometry: DropGeometr
   return best
 }
 
-/** 新架子带在这条边上有多厚(px)。 */
+/** 边带在这条边上的**判定**宽度(px)。与新架子的厚度(`newShelfZoneOf`)是两个数。 */
+export function edgeBandOf(side: ShelfSide, win: Rect): number {
+  const axis = side === 'bottom' ? win.height : win.width
+  return Math.min(EDGE_BAND_MAX_PX, axis * EDGE_BAND_RATIO)
+}
+
+/** 新架子**落下之后**有多厚(px):那条轴的 `NEW_SHELF_ZONE`。预示画的就是它。 */
 export function newShelfZoneOf(side: ShelfSide, win: Rect): number {
   return (side === 'bottom' ? win.height : win.width) * NEW_SHELF_ZONE
+}
+
+/**
+ * **带迟滞的落点**(09-25)。判据本身是无记忆的纯函数,分界线上一像素的抖动就是一次
+ * 换预示;这一只在它外面包一层记忆:新落点与上一个不同时,只要指针四周
+ * `margin` 以内还有一点判得回上一个,就留着上一个。
+ *
+ * 同一条标签条上只是「插到第几格」变了 —— 不算换人,那一格的下标有它自己的稳定
+ * 性(`stripIndexAt` 的自稳判词),照新值交。
+ */
+export function stickyDropTargetAt(
+  pointer: { x: number; y: number },
+  prev: DropTarget | null,
+  geometry: DropGeometry,
+  rules: DropRules = {},
+  live: DropLive = {},
+  margin: number = DROP_HYSTERESIS_PX,
+): DropTarget {
+  const next = dropTargetAt(pointer, geometry, rules, live)
+  if (!prev || sameDropTarget(prev, next) || margin <= 0) return next
+  const probes = [
+    { x: pointer.x - margin, y: pointer.y },
+    { x: pointer.x + margin, y: pointer.y },
+    { x: pointer.x, y: pointer.y - margin },
+    { x: pointer.x, y: pointer.y + margin },
+  ]
+  for (const p of probes) {
+    if (sameDropTarget(prev, dropTargetAt(p, geometry, rules, live))) return prev
+  }
+  return next
+}
+
+/** 两个落点是不是「同一个」—— 同一条条上的不同下标也算同一个(见上)。 */
+export function sameDropTarget(a: DropTarget, b: DropTarget): boolean {
+  if (a.kind !== b.kind) return false
+  switch (a.kind) {
+    case 'strip':
+      return a.leafId === (b as typeof a).leafId
+    case 'edge':
+      return a.side === (b as typeof a).side
+    case 'split': {
+      const o = b as typeof a
+      return a.leafId === o.leafId && a.side === o.side && a.region === o.region
+    }
+    case 'pair': {
+      const o = b as typeof a
+      return a.leafId === o.leafId && a.side === o.side && a.region === o.region
+    }
+    case 'open':
+      return a.leafId === (b as typeof a).leafId && a.region === (b as typeof a).region
+    case 'refuse':
+      return a.reasonKey === (b as typeof a).reasonKey
+    default:
+      return true
+  }
 }
 
 function edgeDistance(side: ShelfSide, p: { x: number; y: number }, win: Rect): number {
@@ -524,7 +623,9 @@ export function edgeRectOf(win: Rect, side: ShelfSide, band: number): Rect {
  */
 export function targetRectOf(target: DropTarget, geometry: DropGeometry): Rect | null {
   if (target.kind === 'edge') {
-    return edgeRectOf(geometry.window, target.side, newShelfZoneOf(target.side, geometry.window))
+    const folded = geometry.collapsed?.find((c) => c.side === target.side)
+    const band = folded ? folded.thickness : newShelfZoneOf(target.side, geometry.window)
+    return edgeRectOf(geometry.window, target.side, band)
   }
   if (target.kind === 'split') {
     const rect = leafRectOf(target.leafId, target.region, geometry)

@@ -1488,6 +1488,17 @@ describe('snapSideAt(拖到边缘要不要吸)', () => {
     expect(snapSideAt({ x: 40, y: 400 }, VIEWPORT)).toBeNull()
     expect(snapSideAt({ x: 40, y: 400 }, VIEWPORT, 60)).toBe('left')
   })
+
+  it('带宽可以按边给(09-25 拖窗改用拖拽的边带),角上按**各自的带归一**比远近', () => {
+    const band = (side: string) => (side === 'bottom' ? 40 : 60)
+    expect(snapSideAt({ x: 55, y: 400 }, VIEWPORT, band)).toBe('left')
+    expect(snapSideAt({ x: 500, y: 765 }, VIEWPORT, band)).toBe('bottom')
+    expect(snapSideAt({ x: 500, y: 755 }, VIEWPORT, band)).toBeNull()
+    // 左 30/60 = .5,底 15/40 ≈ .38:按像素左远、按归一也是底近 → 底。
+    expect(snapSideAt({ x: 30, y: 785 }, VIEWPORT, band)).toBe('bottom')
+    // 左 18/60 = .3,底 15/40 ≈ .38:按像素底近,按归一左近 → 左。
+    expect(snapSideAt({ x: 18, y: 785 }, VIEWPORT, band)).toBe('left')
+  })
 })
 
 describe('tab 从架子上撕下来的阈值', () => {

@@ -1,4 +1,7 @@
+import type { CSSProperties } from 'react'
 import { useSnapSide } from './snap-hint'
+import { useStageStore } from '../stage/store'
+import { edgeExtentAfterDrop } from '../workbench/drop-commit'
 import type { ShelfSide } from '../stage/types'
 import s from './SnapHint.module.css'
 
@@ -16,6 +19,20 @@ const SIDE_CLASS: Record<ShelfSide, string> = {
  */
 export function SnapHint() {
   const side = useSnapSide()
+  /*
+   * **膜画的是那条架子将来占的地方**(09-25):已有的架子是它自己的厚度,空边是新架子的
+   * 30% —— 与拖一格标签到边带时那层膜同一个数(`edgeExtentAfterDrop`)。订阅架子那一格
+   * 只为在它变化时重画;读数本身走那只函数,不在这里再算一遍。
+   */
+  useStageStore((st) => (side ? st.shelves[side] : null))
   if (!side) return null
-  return <div className={`${s.film} ${SIDE_CLASS[side]}`} data-snap-hint={side} aria-hidden="true" />
+  const extent = Math.round(edgeExtentAfterDrop(side))
+  return (
+    <div
+      className={`${s.film} ${SIDE_CLASS[side]}`}
+      style={{ '--snap-film': `${extent}px` } as CSSProperties}
+      data-snap-hint={side}
+      aria-hidden="true"
+    />
+  )
 }

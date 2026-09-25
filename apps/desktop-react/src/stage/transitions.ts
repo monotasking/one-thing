@@ -1451,12 +1451,23 @@ const EDGE_DISTANCE: Record<ShelfSide, (p: Point, v: Viewport) => number> = {
  * 角落归最近的那条边;**平手优先左右**,理由是竖架子是主力形态(右栏是出厂默认),
  * 判据写死在这张表的次序里(left/right 排在前,严格小于才换人)。
  */
-export function snapSideAt(pointer: Point, viewport: Viewport, band: number = SNAP_BAND): ShelfSide | null {
+export function snapSideAt(
+  pointer: Point,
+  viewport: Viewport,
+  band: number | ((side: ShelfSide) => number) = SNAP_BAND,
+): ShelfSide | null {
   let best: ShelfSide | null = null
   let bestDistance = Number.POSITIVE_INFINITY
   for (const side of SHELF_SIDES) {
-    const d = EDGE_DISTANCE[side](pointer, viewport)
-    if (d > band) continue
+    /*
+     * 带宽可以按边给(09-25:拖窗标题栏改用拖拽落点的边带 `drop.edgeBandOf`,左右按
+     * 窗宽、底边按窗高),所以比远近按**各自那条带归一**—— 同一个带宽时归一不改次序。
+     */
+    const width = typeof band === 'number' ? band : band(side)
+    if (width <= 0) continue
+    const raw = EDGE_DISTANCE[side](pointer, viewport)
+    if (raw > width) continue
+    const d = raw / width
     if (d < bestDistance) {
       best = side
       bestDistance = d

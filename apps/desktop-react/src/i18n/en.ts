@@ -1201,6 +1201,7 @@ export const en: Record<MessageKey, string> = {
   'drag.refuseHere': "This can't go here",
   'drag.refusePairNest': 'A paired tab cannot be paired again',
   'drag.refuseResidentLeave': 'The center must keep one tab, so this one cannot move out',
+  'drag.refuseFull': 'Exit full screen before dragging',
   'drag.sideLeft': 'the left',
   'drag.sideRight': 'the right',
   'drag.sideBottom': 'the bottom',

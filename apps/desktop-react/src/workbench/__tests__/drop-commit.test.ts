@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { dropRef, pairIntoIndex, reorderTab } from '../drop-commit'
+import { dropRef, edgeExtentAfterDrop, pairIntoIndex, placeOnEdge, reorderTab } from '../drop-commit'
 import { refIdsOf, leavesOf, makeLeaf } from '../tree'
 import { CENTER_REGION, edgeRegion } from '../regions'
 import { partsOfContent, refId } from '../kinds'
@@ -172,6 +172,30 @@ describe('落到边 / 撕成浮窗', () => {
   })
 
   /*
+   * **整扇浮窗拖到空边与拖一格标签过去同一条厚度规则**(09-25)。从前拖窗标题栏落进
+   * 空边,新架子用的是那条边记着的旧厚度;拖一格标签过去却是窗口的 30%。
+   */
+  it('整扇浮窗落进空边:新架子与拖一格标签过去一样厚;预示读的是同一个数', () => {
+    dropRef(A, { kind: 'float' })
+    const [win] = Object.keys(useWorkbenchStore.getState().regions).filter((r) => r.startsWith('float:'))
+    const winId = win.slice('float:'.length)
+    useStageStore.getState().setShelfThickness('right', 260)
+    const before = useStageStore.getState().shelves.right.thickness
+    const predicted = edgeExtentAfterDrop('right')
+
+    placeOnEdge('right', () => useStageStore.getState().floatWindowToEdge(winId, 'right'))
+
+    expect(refIdsOf(useWorkbenchStore.getState().regions[edgeRegion('right')])).toEqual([refId(A)])
+    const after = useStageStore.getState().shelves.right.thickness
+    expect(after).not.toBe(before)
+    // 预示 = 结果(架子自己的钳可能再收一点,所以比「钳过的 30%」—— 与 dropRef edge 同一只)。
+    useStageStore.getState().setShelfThickness('right', predicted)
+    expect(useStageStore.getState().shelves.right.thickness).toBe(after)
+    // 已经有东西的架子:预示就是它自己的厚度,再放一扇窗不改几何。
+    expect(edgeExtentAfterDrop('right')).toBe(after)
+  })
+
+  /*
    * **W4 留账 2 的了结**:从前只有瓦撕得出去(浮窗三张表都按瓦 id 记)。
    * 现在窗号由 `nextFloatId` 铸,所以一格**文件**(这里是 `test-a`)也撕得出来。
    */
@@ -185,6 +209,26 @@ describe('落到边 / 撕成浮窗', () => {
     // 这扇窗一帧都不画,而树已经建好了(屏幕上就是「点了没反应」)。
     const winId = floats[0].slice('float:'.length)
     expect(useStageStore.getState().floats[winId]).toBeTruthy()
+  })
+
+  it('从一扇**有别的格**的浮窗里撕一格到空处 = 开一扇新窗,原窗不动(09-25)', () => {
+    dropRef(A, { kind: 'float' })
+    const [home] = Object.keys(useWorkbenchStore.getState().regions).filter((r) => r.startsWith('float:'))
+    const homeLeaf = leavesOf(useWorkbenchStore.getState().regions[home])[0]
+    dropRef(B, { kind: 'strip', leafId: homeLeaf.id, at: 1 })
+    expect(refIdsOf(useWorkbenchStore.getState().regions[home])).toEqual([refId(A), refId(B)])
+    const homeRect = useStageStore.getState().floats[home.slice('float:'.length)]
+
+    dropRef(B, { kind: 'float' }, { pointer: { x: 900, y: 600 } })
+
+    const regions = useWorkbenchStore.getState().regions
+    const floats = Object.keys(regions).filter((r) => r.startsWith('float:'))
+    expect(floats).toHaveLength(2)
+    expect(refIdsOf(regions[home])).toEqual([refId(A)])
+    const fresh = floats.find((r) => r !== home)!
+    expect(refIdsOf(regions[fresh])).toEqual([refId(B)])
+    // 原窗一个像素没挪。
+    expect(useStageStore.getState().floats[home.slice('float:'.length)]).toEqual(homeRect)
   })
 
   it('同一格再撕一次 = 回原来那扇窗,不开第二扇', () => {

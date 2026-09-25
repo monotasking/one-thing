@@ -2,12 +2,13 @@ import { useCallback, useRef } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { setDragPresentation, setDropFeedback, useDragSource } from '../ui/drag'
 import { useT } from '../i18n'
+import { announce } from '../ui/a11y/live-region'
 import { floatMinOfItem } from '../stage/items'
 import { useLiveTitleStore } from '../stage/live-title'
 import { panelIdOf } from '../stage/panel-ref'
 import { defaultFloatRect, floatRectForGrab, FALLBACK_VIEWPORT } from '../stage/transitions'
 import { dropRef } from './drop-commit'
-import { dropTargetAt, targetRectOf } from './drop'
+import { stickyDropTargetAt, targetRectOf } from './drop'
 import { measureDropGeometry } from './drop-geometry'
 import { tabStripChoreo } from '../ui/tab-reorder'
 import { contentKindOf, parseRefId, partsOfContent, refId } from './kinds'
@@ -151,6 +152,8 @@ interface DragHeld {
    */
   rules: DropRules
   target: DropTarget
+  /** `target` 是判据交出来的,还是起拖时填的占位(占位不参与迟滞)。 */
+  judged: boolean
   /**
    * 此刻是不是正走在「带内」那一形上。**存在这一格 payload 里而不是一个 ref**:
    * 它是这一场手势的一部分,与 `DragSession` 那条会话同生共死 —— 存在组件的 ref
@@ -201,8 +204,15 @@ export function useContentDrag(spec: ContentDragSpec): (e: ReactPointerEvent<Ele
        * 作废,与「`ref()` 答 null」逐字同一条路(整场不成立,不是中途取消)。
        *
        * 读 store 一格、不订阅:起拖是个事件,不是渲染。
+       *
+       * **作废要说出口**(09-25):从前这一下是静默的 —— 手走过了阈值,什么都没发生,
+       * 读屏那一侧更是一个字都没有。起拖只作废一次(`onStart` 答 null 之后整场拆掉),
+       * 所以这一句每次手势至多念一遍。
        */
-      if (useWorkbenchStore.getState().full !== null) return null
+      if (useWorkbenchStore.getState().full !== null) {
+        announce(t('drag.refuseFull'))
+        return null
+      }
       const ref = specRef.current.ref()
       if (!ref) return null
       const geometry = measureDropGeometry()
@@ -211,6 +221,7 @@ export function useContentDrag(spec: ContentDragSpec): (e: ReactPointerEvent<Ele
         geometry,
         rules: rulesFor(ref, specRef.current.rules, geometry, source),
         target: { kind: 'float' },
+        judged: false,
         inBand: false,
         strip: null,
         cleanup: () => {},
@@ -225,7 +236,7 @@ export function useContentDrag(spec: ContentDragSpec): (e: ReactPointerEvent<Ele
       held.cleanup = () => window.removeEventListener('resize', onResize)
       return { payload: held, ghost: specRef.current.ghost?.(ref) ?? ghostOf(ref) }
     },
-    [],
+    [t],
   )
 
   const onMove = useCallback(
@@ -293,7 +304,18 @@ export function useContentDrag(spec: ContentDragSpec): (e: ReactPointerEvent<Ele
        * 读到的是它自己这一帧刚造出来的位移,那才是真会自激的一环。
        * `stripIndexAt` 是个幂等的夹取算子,所以这条环在同一个 x 上收敛,不来回。
        */
-      const target = dropTargetAt(pointer, held.geometry, held.rules, liveOf(held))
+      /*
+       * **带迟滞**(09-25,`drop.stickyDropTargetAt`):分界线上的一像素抖动不再换预示。
+       * 第一帧(`judged === false`)没有「上一个」可留,照判据交。
+       */
+      const target = stickyDropTargetAt(
+        pointer,
+        held.judged ? held.target : null,
+        held.geometry,
+        held.rules,
+        liveOf(held),
+      )
+      held.judged = true
       held.target = target
       setDropFeedback(feedbackOf(target, held.geometry, pointer, held.ref, t))
       paintStrip(held, target)

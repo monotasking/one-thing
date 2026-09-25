@@ -21,7 +21,7 @@ import { newShelfZoneOf } from './drop'
 import type { DropTarget } from './drop'
 import type { ContentRef } from './kinds'
 import type { PaneNode } from './tree'
-import type { FloatRect, Viewport } from '../stage/types'
+import type { FloatRect, ShelfSide, Viewport } from '../stage/types'
 
 /**
  * **落定 —— 一个事务动作,菜单与拖拽共用**(W3 裁定 5 + W4 合入后的修正)。
@@ -138,22 +138,14 @@ export function dropRef(ref: ContentRef, target: DropTarget, opts: DropCommitOpt
      * 而用户拖过把手的厚度也不该被一次拖拽抹掉。其余建架子的路(菜单「移到架子」、打开
      * 方式)照旧用那条边记着的厚度 —— 规则只管拖拽这一条手势,它说的就是这一条。
      */
-    const stage = useStageStore.getState()
-    const fresh = (stage.shelves[target.side]?.tabs ?? []).length === 0
-    stage.placeRef(ref, edgeRegion(target.side))
-    if (fresh && (useStageStore.getState().shelves[target.side]?.tabs ?? []).length > 0) {
-      const v = viewport()
-      const win = { left: 0, top: 0, width: v.w, height: v.h }
-      useStageStore.getState().setShelfThickness(target.side, newShelfZoneOf(target.side, win))
-    }
+    placeOnEdge(target.side, () => useStageStore.getState().placeRef(ref, edgeRegion(target.side)))
     land(ref)
     return
   }
 
   // 撕成浮窗。**窗 id 由 `nextFloatId` 铸**(W4 留账 2 的了结:从前只有瓦撕得
   // 出去,因为浮窗的三张表按瓦 id 记;现在窗号自己铸,任何一种 ref 都撕得出来)。
-  const already = regionOfRefIn(useWorkbenchStore.getState().regions, refId(ref))
-  const winId = already?.startsWith('float:') ? already.slice('float:'.length) : nextFloatId()
+  const winId = soleFloatOf(ref) ?? nextFloatId()
   /* 身量:窗子已有的记忆优先,没有就按默认 —— 而**默认要读一次表**(W7-d 裁定 1):
    * 这一格装的要是一块自述了浮窗下限的瓦,撕出来的窗照样得有那么大,否则「撕成
    * 浮窗」这条路会绕过自述,同一块面从菜单开是 800、从拖拽撕是 640。 */
@@ -162,6 +154,61 @@ export function dropRef(ref: ContentRef, target: DropTarget, opts: DropCommitOpt
   const rect: FloatRect = opts.pointer ? floatRectForGrab(opts.pointer, size, viewport()) : size
   useStageStore.getState().placeRef(ref, floatRegion(winId), { rect })
   land(ref)
+}
+
+/**
+ * **往一条边上放东西,这条边原本空着就长出 30% 厚的新架子**(判词在 `dropRef` 的 edge
+ * 那一支上)。`place` 是真正的放法 —— 一格内容(`placeRef`)与一整扇浮窗
+ * (`floatWindowToEdge`,09-25 拖窗标题栏也走这条手势规则)各有各的,厚度规则只有一份。
+ * 放完这条边仍是空的(预算拒绝之类)就什么都不定。
+ */
+export function placeOnEdge(side: ShelfSide, place: () => void): void {
+  const fresh = tabsOnEdge(side) === 0
+  const tabsOn = () => tabsOnEdge(side)
+  place()
+  if (fresh && tabsOn() > 0) useStageStore.getState().setShelfThickness(side, newShelfZoneOf(side, windowRect()))
+}
+
+/**
+ * **拖到这条边上松手,那条架子会有多厚**(09-25)—— 预示画的就是它。已经有东西的架子
+ * (展开或收着)是它自己记着的厚度;空边是新架子的 30%(`placeOnEdge`)。
+ */
+export function edgeExtentAfterDrop(side: ShelfSide): number {
+  const shelf = useStageStore.getState().shelves[side]
+  if (shelf && tabsOnEdge(side) > 0) return shelf.thickness
+  return newShelfZoneOf(side, windowRect())
+}
+
+/**
+ * 这条边上此刻有几格。读**树**(`workbench.regions['edge:<side>']`),不读
+ * `stage.shelves[side].tabs` —— 那一格是订阅写的投影(`ShelfState.tabs` 的判词),
+ * 放下去的那一拍它还没跟上,拿它判「放完是不是有东西了」会答错。
+ */
+function tabsOnEdge(side: ShelfSide): number {
+  const tree = useWorkbenchStore.getState().regions[edgeRegion(side)]
+  return tree ? leavesOf(tree).reduce((n, leaf) => n + leaf.tabs.length, 0) : 0
+}
+
+function windowRect() {
+  const v = viewport()
+  return { left: 0, top: 0, width: v.w, height: v.h }
+}
+
+/**
+ * **它是哪一扇浮窗里唯一的内容**(09-25)。是 = 拖到浮窗区只是挪那扇窗(窗号不变,
+ * 身量记忆照旧);不是 = 撕出去开一扇新窗。
+ *
+ * 从前的判据是「它住在一扇浮窗里就复用那扇窗」,不问那扇窗里还有没有别的:从一扇有
+ * 三格标签的浮窗里拖一格到空处,树一个字没变(那一格回到了它原来的窗),整扇窗却
+ * 跟着跳到了指针底下 —— 用户想撕出一扇新窗,得到的是「挪窗」。
+ */
+function soleFloatOf(ref: ContentRef): string | null {
+  const regions = useWorkbenchStore.getState().regions
+  const region = regionOfRefIn(regions, refId(ref))
+  if (!region?.startsWith('float:')) return null
+  const tree = regions[region]
+  const count = tree ? leavesOf(tree).reduce((n, leaf) => n + leaf.tabs.length, 0) : 0
+  return count === 1 ? region.slice('float:'.length) : null
 }
 
 /**

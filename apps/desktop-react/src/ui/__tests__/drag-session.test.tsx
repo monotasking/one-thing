@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
-import { DragLayer, DropOverlay, resetDragSession, setDropFeedback, useDragSource } from '../drag'
+import { DragLayer, DropOverlay, resetDragSession, setDropFeedback, useDragSource, useDragState } from '../drag'
 import { focusTree } from '../../focus/registry'
 import { installWindowFocusSource, reportWindowBlur, resetWindowFocus } from '../../focus/window-focus'
 import type { DragSourceSpec } from '../drag'
@@ -154,6 +154,114 @@ describe('取消', () => {
       move(src, 101, 100)
     })
     expect(focusTree.transientEscapeHandlers().length).toBe(before)
+  })
+})
+
+/**
+ * **取消 = 卡片回家,不飞进落点**(09-25)。从前 Esc / 失焦两条路问的是 `landingRect`,
+ * 而消费方答的是落点矩形(分屏板 / 新架子膜),于是按 Esc 之后卡片飞进那块板再消失 ——
+ * 看着像落进去了,树却一个字没变。
+ */
+describe('取消:卡片飞回来源', () => {
+  const HOME = { left: 10, top: 20, width: 80, height: 30 }
+  const TARGET = { left: 500, top: 400, width: 300, height: 200 }
+
+  /*
+   * 前面几条用例起了拖却没松手(「走过阈值 = 起拖」那一条就是),那几场会话的 window
+   * 监听还活着 —— 它们会和这里的新会话一起收到 pointercancel,先一步把共享的那一格
+   * 清空。产品里同一时刻只有一场;这里先替它们松手收尸。
+   */
+  beforeEach(() => {
+    act(() => {
+      window.dispatchEvent(new MouseEvent('pointercancel', { bubbles: true }))
+      resetDragSession()
+    })
+  })
+
+  function Probe() {
+    const drag = useDragState()
+    return <output data-testid="probe">{drag?.landing ? JSON.stringify(drag.landing) : ''}</output>
+  }
+
+  function placeSource(el: Element, rect: typeof HOME | null): void {
+    Object.assign(el, {
+      getBoundingClientRect: () => {
+        const r = rect ?? { left: 0, top: 0, width: 0, height: 0 }
+        return { ...r, right: r.left + r.width, bottom: r.top + r.height, x: r.left, y: r.top, toJSON: () => r }
+      },
+    })
+  }
+
+  function start(): HTMLElement {
+    render(
+      <>
+        <Source spec={{ landingRect: () => TARGET }} />
+        <Probe />
+      </>,
+    )
+    const src = screen.getByTestId('src')
+    placeSource(src, HOME)
+    act(() => {
+      down(src, 100, 100)
+      move(src, 400, 300)
+    })
+    return src
+  }
+
+  const landing = () => screen.getByTestId('probe').textContent
+
+  it('Esc:飞回来源的矩形,不是 landingRect 答的落点', () => {
+    start()
+    const handlers = focusTree.transientEscapeHandlers()
+    act(() => {
+      handlers[handlers.length - 1]()
+    })
+    expect(landing()).toBe(JSON.stringify(HOME))
+  })
+
+  it('窗口失焦 / pointercancel:同样飞回来源', () => {
+    const src = start()
+    act(() => {
+      src.dispatchEvent(new MouseEvent('pointercancel', { bubbles: true }))
+    })
+    expect(landing()).toBe(JSON.stringify(HOME))
+  })
+
+  it('来源此刻量不到(撕出条的标签折成 0 宽):飞回它起拖时站的地方', () => {
+    const src = start()
+    placeSource(src, null)
+    const handlers = focusTree.transientEscapeHandlers()
+    act(() => {
+      handlers[handlers.length - 1]()
+    })
+    expect(landing()).toBe(JSON.stringify(HOME))
+  })
+
+  it('松手落定照旧飞向落点(这一条没被带走)', () => {
+    const src = start()
+    act(() => {
+      up(src, 400, 300)
+    })
+    expect(landing()).toBe(JSON.stringify(TARGET))
+  })
+
+  it('Esc 之后罩子与根上那格属性当场摘掉,不等松手;松手那一发 click 仍被吃掉', () => {
+    const src = start()
+    expect(document.querySelector('[data-drag-shield]')).not.toBeNull()
+    expect(document.documentElement.hasAttribute('data-drag-active')).toBe(true)
+    const handlers = focusTree.transientEscapeHandlers()
+    act(() => {
+      handlers[handlers.length - 1]()
+    })
+    expect(document.querySelector('[data-drag-shield]')).toBeNull()
+    expect(document.documentElement.hasAttribute('data-drag-active')).toBe(false)
+    const clicked = vi.fn()
+    src.addEventListener('click', clicked)
+    act(() => {
+      up(src, 400, 300)
+      src.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(clicked).not.toHaveBeenCalled()
   })
 })
 
