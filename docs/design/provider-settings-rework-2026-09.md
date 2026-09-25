@@ -399,7 +399,7 @@ API 模式:密钥池每条密钥行备注位右侧出「¥123.45」(有源的家
 
 ## 11. 留账
 
-**入库记录(09-26):** 批 0 4f2c3c478 · 批 1 e38e5660c · 批 2 3509eb188 · 批 M-b 5361cef8c · 批 M-a bcf4eb916 · 批 3 a5dde18c1 · 批 5 8d8d070cc · 批 4 fcd20cbc9;批 6 施工中。
+**入库记录(09-26):** 批 0 4f2c3c478 · 批 1 e38e5660c · 批 2 3509eb188 · 批 M-b 5361cef8c · 批 M-a bcf4eb916 · 批 3 a5dde18c1 · 批 5 8d8d070cc · 批 4 fcd20cbc9 · 批 6 c41e41055。**全期九批完工。**
 
 **施工中挖出的新账:**
 
@@ -410,6 +410,8 @@ API 模式:密钥池每条密钥行备注位右侧出「¥123.45」(有源的家
 - 批 M-a:`sibling` 仍产自 `@shared/provider-families`(边界门不许 `@shared` 反向依赖 runtime,manifest 读它);三家有计费档位的 provider(`zhipu.ts` `resolveOnethingProviderBaseUrl`、`provider-options.ts`、`spaces/provider-credentials.ts` 的字段表)仍按 id 分支,要让 `DialSpec` 长出地址解析器才能收;`agent-runtime-route.ts` 的 `isOnethingACPProviderRuntime` 仍比较常量 `'acp'`。
 - 批 M-b:引擎自己的上下文 / 最大输出读法仍只读默认空间(覆盖表是 per-space 的);目录条目已改「0 = 未知」,盘上老条目的 128000 到下次刷新才换。
 - 批 1:壳的 `oauthStart` 仍不带 `spaceId`(照旧)。
+- 批 6:**发送前**就切到同家 API 的那一轮没有提示(账本上没有对应事实;要做需 `run/start` 带 `route` 事实 + reducer / 物化 / 壳折叠 + `ChatStream` 一行,另排一单);运行中途从订阅换到 API 之后,请求参数旋钮仍挂在首次解析那一家的键下、`noteQuotaRunEnd` 仍按首次解析的凭证触发刷新(要把轮转器的当前状态接进 core 的旋钮表与运行收尾);旧的 `session:stream` 文字流通道仍会把失败那次的半句发出去(dev 下 `sessions.validation` 一条 warn,老订阅方如网关会看到半句,账本 / 刷新后显示 / 壳实时显示都已正确);引擎起流时判「这一家存不存在」读的是默认空间那份设置,非默认空间会话若默认空间没这家会被改走全局默认(既有问题);「跑过工具后不再换凭证」的闸只管同一次请求里已动过手的工具,配额类失败在下一轮本来就能换,**不放开**是对的。
+- 开关的落点:`providers[<订阅家>].subscriptionFallback`(缺席 = 开),不在 `SpaceProviderSettings` 顶层。
 - 测试基线红(与本方案无关,三个 worktree 都在干净 HEAD 上核过):`sessions-domain` 25 条(mock 缺 `getTodoPlanStore`)、music 域 2 条、`thinking-wire` grok-effort 1 条、`owned-labels-snapshot`(别的会话的 `memory` / `acpSpawnEnv` 标签没进快照);`credential-strategy.test.ts` 冷缓存首次转译 8.8s 撞 5s 超时是假红,批 5 加了 `beforeAll` 热身。
 
 
