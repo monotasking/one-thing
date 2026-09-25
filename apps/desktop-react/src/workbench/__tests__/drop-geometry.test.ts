@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { measureDropGeometry } from '../drop-geometry'
+import { measureDropGeometry, stripBandOf } from '../drop-geometry'
 import type { StripBox } from '../drop'
 
 /**
@@ -85,5 +85,29 @@ describe('架子:哪几条边有、哪几条是收着的', () => {
   it('收着却说不出厚度 → 不报(宁可那条边没有边带,也不画一块猜出来的预示)', () => {
     document.body.innerHTML = '<aside data-shelf="bottom" data-shelf-collapsed="true"></aside>'
     expect(measureDropGeometry().collapsed).toEqual([])
+  })
+})
+
+describe('stripBandOf:自己那条条收东西的地与落点判据同一块', () => {
+  it('顶栏那条条铺到顶栏右缘(末格右边那片空白也在带里)', () => {
+    document.body.innerHTML = `
+      <div data-testid="topbar-tabs">
+        <div data-pane-chrome="leaf-1"><div role="tablist"></div></div>
+      </div>`
+    place(document.querySelector('[data-testid="topbar-tabs"]')!, { left: 80, top: 0, width: 900, height: 40 })
+    place(document.querySelector('[role="tablist"]')!, { left: 80, top: 4, width: 300, height: 32 })
+    const list = document.querySelector('[role="tablist"]')!
+    expect(stripBandOf(list)).toEqual({ left: 80, top: 4, width: 900, height: 32 })
+  })
+
+  it('不在顶栏里的条:就是 tablist 自己', () => {
+    document.body.innerHTML = '<div data-pane-chrome="leaf-2"><div role="tablist"></div></div>'
+    place(document.querySelector('[role="tablist"]')!, { left: 10, top: 100, width: 200, height: 30 })
+    expect(stripBandOf(document.querySelector('[role="tablist"]')!)).toEqual({
+      left: 10,
+      top: 100,
+      width: 200,
+      height: 30,
+    })
   })
 })

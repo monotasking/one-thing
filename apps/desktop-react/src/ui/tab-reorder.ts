@@ -441,7 +441,18 @@ export function tabStripChoreo(list: HTMLElement): TabStripChoreo {
         lifted = null
       }
       if (torn) {
-        delete torn.dataset.torn
+        /*
+         * **展回来是瞬时的,不跑那 120ms 的宽度过渡**(09-25)。reset 之后紧跟着的
+         * 两个读者都要**停稳之后**的位置:①拖回自己那条条时 `lift()` 当场量每一格
+         * 的矩形 —— 量在过渡中途,换序的插入点与被抬起那格的起点都偏一截;②取消时
+         * `settle()` 的 FLIP 下一帧量「它回到了哪」—— 量在中途,滑入的终点是错的。
+         * 看得见的那一程由上面两者自己的动画负责(跟手 / 滑入),折叠格不必再演一遍。
+         */
+        const el = torn
+        el.style.transition = 'none'
+        delete el.dataset.torn
+        void el.offsetWidth
+        el.style.transition = ''
         torn = null
       }
       delete list.dataset.reorder

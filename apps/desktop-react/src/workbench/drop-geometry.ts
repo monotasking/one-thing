@@ -150,6 +150,19 @@ export function measureDropGeometry(): DropGeometry {
  * `data-nodrop`、排在条前面。判据那一头也一个字不用改:「插到第几格」问的是越过了
  * 几条中线,末格右边没有中线,所以整片空白答的都是同一个数 = 格数。
  */
+/**
+ * **一条标签条收东西的那块地**,给「拖的就是这条条上的一格」那一头用(09-25)。
+ *
+ * 条内换序的带(`useTabDrag` 的 `band`)与落点判据里的条必须是**同一块地**:从前
+ * 前者只量 tablist 自己,后者铺到了顶栏右缘 —— 于是手从末格往右挪进那片空白,就从
+ * 「标签跟手、邻居让位」切成「浮影 + 原格折叠 + 插一格空位」,同一条条上两种表现
+ * 来回闪。这里与 `measureDropGeometry` 走同一只 `stripRectOf`。
+ */
+export function stripBandOf(list: Element): Rect {
+  const chrome = list.closest('[data-pane-chrome]')
+  return chrome ? stripRectOf(chrome, list) : rectOf(list)
+}
+
 function stripRectOf(chrome: Element, list: Element): Rect {
   const rect = rectOf(list)
   const band = chrome.closest('[data-testid="topbar-tabs"]')

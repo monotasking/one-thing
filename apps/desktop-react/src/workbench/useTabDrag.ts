@@ -5,6 +5,7 @@ import { DRAG_START_X } from '../ui/drag'
 import { tabStripChoreo } from '../ui/tab-reorder'
 import { regionOfTarget, useContentDrag } from './useContentDrag'
 import { reorderTab } from './drop-commit'
+import { stripBandOf } from './drop-geometry'
 import { parseRefId, refId } from './kinds'
 import { canDetachTab, regionOfLeafIn, useWorkbenchStore } from './store'
 import type { MessageKey } from '../i18n'
@@ -92,6 +93,8 @@ export function useTabDrag(leaf: PaneLeafNode): (id: string, e: ReactPointerEven
   const own = useRef<TabStripChoreo | null>(null)
   /** 换序此刻算出来的落点下标(每帧由 `track` 交回来)。 */
   const at = useRef<number | null>(null)
+  /** 自己那条条的 tablist(`band` 按它量那块地)。与 `own` 同生同死。 */
+  const ownList = useRef<HTMLElement | null>(null)
 
   /**
    * **这一场留下的一切**。幂等,三条结束路径都走它;`reason` 决定那一格 tab
@@ -117,6 +120,7 @@ export function useTabDrag(leaf: PaneLeafNode): (id: string, e: ReactPointerEven
       choreo?.reset()
     }
     own.current = null
+    ownList.current = null
     at.current = null
   }, [])
 
@@ -138,6 +142,7 @@ export function useTabDrag(leaf: PaneLeafNode): (id: string, e: ReactPointerEven
       const el = document.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(held.id)}"]`)
       const list = el?.closest<HTMLElement>('[role="tablist"]') ?? null
       own.current = list ? tabStripChoreo(list) : null
+      ownList.current = list
       at.current = null
       return found
     },
@@ -150,9 +155,19 @@ export function useTabDrag(leaf: PaneLeafNode): (id: string, e: ReactPointerEven
     threshold: { x: DRAG_START_X, y: TEAR_OFF_DISTANCE },
 
     /**
-     * 带 = 这条条自己此刻的矩形(每帧问一次 —— 条会横滚、会因让位重排)。
+     * 带 = 这条条此刻收东西的那块地(每帧问一次 —— 条会横滚、会因让位重排)。
+     *
+     * **与落点判据量的是同一块地**(09-25,`drop-geometry.stripBandOf`):顶栏那条条
+     * 一直铺到顶栏右缘。从前这里只量 tablist 自己,末格右边那片空白于是出了带 ——
+     * 手一挪过去就从跟手换序切成浮影 + 插空位,同一条条上两种表现来回闪。现在那片
+     * 空白也在带里:被抬起那格顶在条的右端(`lift` 的夹取),松手 = 挪到末位。
      */
-    band: () => own.current?.rect() ?? null,
+    band: () => {
+      const list = own.current ? ownList.current : null
+      if (!list?.isConnected) return null
+      const r = stripBandOf(list)
+      return { left: r.left, top: r.top, right: r.left + r.width, bottom: r.top + r.height }
+    },
     /**
      * 带的上下外扩 24 = `TEAR_OFF_DISTANCE`:越过它就是出带 = 撕下。
      *
