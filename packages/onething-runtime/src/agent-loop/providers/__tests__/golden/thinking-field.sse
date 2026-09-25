@@ -1,0 +1,6 @@
+data: {"id":"relay-001","object":"chat.completion.chunk","created":1758844805,"model":"relay-think-1","choices":[{"index":0,"delta":{"thinking":"先想一想。"},"finish_reason":null}]}
+
+data: {"id":"relay-001","object":"chat.completion.chunk","created":1758844805,"model":"relay-think-1","choices":[{"index":0,"delta":{"content":"好的。"},"finish_reason":null}]}
+
+data: {"id":"relay-001","object":"chat.completion.chunk","created":1758844805,"model":"relay-think-1","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"input_tokens":17,"output_tokens":6,"cache_read_tokens":4}}
+

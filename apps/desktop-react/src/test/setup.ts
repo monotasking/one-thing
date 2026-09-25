@@ -230,6 +230,7 @@ configureProviderSettingsPort({
   ready: async () => undefined,
   listProviders: async () => ({ success: true, providers: [] }),
   listDialects: async () => ({ success: true, dialects: [] }),
+  probeCustom: async () => ({ ok: false, reasonKind: 'unreachable' as const, error: 'test port' }),
   listModels: async () => ({ success: true, models: [] }),
   addManualModel: async () => ({ success: false, error: 'no provider settings port in tests' }),
   removeManualModel: async () => ({ success: false, error: 'no provider settings port in tests' }),

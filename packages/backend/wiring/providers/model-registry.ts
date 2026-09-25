@@ -43,7 +43,7 @@ import {
 } from "@onething/runtime/providers/models-dev-cache";
 import { getOnethingCachePath } from "@onething/runtime/storage/paths";
 import { getSettings, getSpaceSettings, saveSettings } from "../../stores/settings.js";
-import { fetchProviderDirectModels } from "@onething/runtime/providers/models-endpoint";
+import { fetchProviderDirectModels, type ModelsListMapping } from "@onething/runtime/providers/models-endpoint";
 import { DEFAULT_SPACE_ID } from "@onething/runtime/spaces/types";
 import { resolveSpaceProviderCredentialForSpace } from "./space-credentials.js";
 import { createRequiredAppFetch } from "../../provider-binding/bound-fetch.js";
@@ -466,6 +466,7 @@ function directModelsConfigOf(providerId: string, spaceId: string) {
 		baseUrl?: string;
 		modelsUrl?: string;
 		headers?: Record<string, string>;
+		adapter?: { modelsList?: ModelsListMapping };
 	};
 	const resolution = resolveSpaceProviderCredentialForSpace(spaceId, providerId);
 	const apiKey = resolution.kind === "entry" ? resolution.entry.apiKey : undefined;
@@ -474,6 +475,8 @@ function directModelsConfigOf(providerId: string, spaceId: string) {
 		...(merged.modelsUrl?.trim() ? { modelsUrl: merged.modelsUrl.trim() } : {}),
 		...(merged.headers ? { headers: merged.headers } : {}),
 		...(apiKey ? { apiKey } : {}),
+		// 批 4:应用过的适配表带着模型列表映射 —— 解析器多一档「按 spec 映射」。
+		...(merged.adapter?.modelsList ? { modelsList: merged.adapter.modelsList } : {}),
 	};
 }
 

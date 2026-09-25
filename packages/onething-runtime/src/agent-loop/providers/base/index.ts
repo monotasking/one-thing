@@ -30,6 +30,7 @@ export {
 export { TurnContext, type TurnTransport } from "./turn-context.js";
 export type { AttachmentChannel } from "./attachment-channel.js";
 export { RequestBodyBuilder } from "./request-body-builder.js";
+export { getPath, parsePath } from "./path.js";
 export { ProviderWarning, type ProviderWarningKind } from "./warnings.js";
 
 export {

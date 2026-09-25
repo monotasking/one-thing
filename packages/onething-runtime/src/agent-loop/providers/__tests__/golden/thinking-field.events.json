@@ -1,0 +1,17 @@
+[
+  {
+    "type": "text-delta",
+    "turn": 1,
+    "delta": "好的。"
+  },
+  {
+    "type": "finish",
+    "turn": 1,
+    "finishReason": "stop",
+    "usage": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "totalTokens": 0
+    }
+  }
+]

@@ -13,6 +13,11 @@
  *
  * 状态住在实例上(`OnethingBackend.providerManifests`),`dispose()` 卸干净 ——
  * 与 `assembly:gate` 同一句话:装配期的状态不住模块槽。
+ *
+ * 批 4(§7.2):带 `adapter`(「自动识别」产出、用户应用过的适配表)的条目,额外把
+ * `dialectFromSpec` 的编译结果登记成方言 `custom:<id>`,manifest 的 `dialect` 指它;
+ * 方言的卸载函数与 manifest 的挂在同一条记录上,同进同退。落不进策略格的那几格
+ * (`unsupportedAdapterSpecFields`)登记照常,记一行 warn —— 那几格在运行期不生效。
  */
 import {
   getProviderManifestRegistry,
@@ -20,6 +25,12 @@ import {
   type CustomProviderManifestSource,
   type ProviderManifest,
 } from '@onething/runtime/providers/manifest'
+import {
+  dialectFromSpec,
+  unsupportedAdapterSpecFields,
+} from '@onething/runtime/agent-loop/providers/dialects/custom-from-spec'
+import { registerDialect } from '@onething/runtime/agent-loop/providers/base/dialect'
+import type { CustomAdapterSpec } from '@shared/contracts/adapter-spec'
 import { readSpaceProviderSettings } from '@onething/runtime/spaces/provider-settings'
 import { getSpacesStore } from '@onething/runtime/spaces/store'
 import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
@@ -38,6 +49,21 @@ interface RegisteredCustom {
   unregister: () => void
 }
 
+const ADAPTER_WIRES = new Set<CustomAdapterSpec['wire']>([
+  'openai-chat',
+  'openai-responses',
+  'anthropic-messages',
+  'gemini-generateContent',
+])
+
+/** 盘上的 `adapter` 只认 `version: 1` + 已知线;别的形状当没有(老路,不报错)。 */
+function adapterOf(raw: unknown): CustomAdapterSpec | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const record = raw as Partial<CustomAdapterSpec>
+  if (record.version !== 1 || !record.wire || !ADAPTER_WIRES.has(record.wire)) return undefined
+  return raw as CustomAdapterSpec
+}
+
 function sourceOf(raw: unknown): CustomProviderManifestSource | null {
   if (!raw || typeof raw !== 'object') return null
   const record = raw as Record<string, unknown>
@@ -54,6 +80,7 @@ function sourceOf(raw: unknown): CustomProviderManifestSource | null {
     ...(text('dialect') ? { dialect: text('dialect') } : {}),
     ...(text('baseUrl') !== undefined ? { baseUrl: text('baseUrl') } : {}),
     ...(text('model') !== undefined ? { model: text('model') } : {}),
+    ...(adapterOf(record.adapter) ? { adapter: adapterOf(record.adapter) } : {}),
   }
 }
 
@@ -77,8 +104,8 @@ function collectCustomProviders(): CustomProviderManifestSource[] {
   return [...seen.values()]
 }
 
-function fingerprintOf(manifest: ProviderManifest): string {
-  return JSON.stringify(manifest)
+function fingerprintOf(entry: { manifest: ProviderManifest; adapter?: CustomAdapterSpec }): string {
+  return JSON.stringify(entry)
 }
 
 export class CustomProviderManifestSync {
@@ -89,7 +116,7 @@ export class CustomProviderManifestSync {
   sync(): void {
     if (this.disposed) return
     const registry = getProviderManifestRegistry()
-    const next = new Map<string, ProviderManifest>()
+    const next = new Map<string, { manifest: ProviderManifest; adapter?: CustomAdapterSpec }>()
     let sources: CustomProviderManifestSource[]
     try {
       sources = collectCustomProviders()
@@ -103,26 +130,49 @@ export class CustomProviderManifestSync {
         log.warn('custom provider id collides with a builtin provider; skipped', { providerId: source.id })
         continue
       }
-      next.set(source.id, manifestOfCustomProvider(source))
+      next.set(source.id, {
+        manifest: manifestOfCustomProvider(source),
+        ...(source.adapter ? { adapter: source.adapter } : {}),
+      })
     }
 
     for (const [id, entry] of this.registered) {
-      const manifest = next.get(id)
-      if (manifest && fingerprintOf(manifest) === entry.fingerprint) continue
+      const wanted = next.get(id)
+      if (wanted && fingerprintOf(wanted) === entry.fingerprint) continue
       entry.unregister()
       this.registered.delete(id)
     }
-    for (const [id, manifest] of next) {
+    for (const [id, wanted] of next) {
       if (this.registered.has(id)) continue
       try {
+        // 方言先登、manifest 后登:manifest 一出现,工厂就可能按它去取那份方言。
+        const unregisterDialect = wanted.adapter ? this.registerAdapterDialect(id, wanted.adapter) : undefined
+        let unregisterManifest: () => void
+        try {
+          unregisterManifest = registry.register(wanted.manifest)
+        } catch (error) {
+          unregisterDialect?.()
+          throw error
+        }
         this.registered.set(id, {
-          fingerprint: fingerprintOf(manifest),
-          unregister: registry.register(manifest),
+          fingerprint: fingerprintOf(wanted),
+          unregister: () => {
+            unregisterManifest()
+            unregisterDialect?.()
+          },
         })
       } catch (error) {
         log.warn('registering a custom provider manifest failed', { providerId: id }, error)
       }
     }
+  }
+
+  private registerAdapterDialect(providerId: string, adapter: CustomAdapterSpec): () => void {
+    const unsupported = unsupportedAdapterSpecFields(adapter)
+    if (unsupported.length > 0) {
+      log.warn('adapter spec fields have no strategy slot and are ignored at runtime', { providerId, fields: unsupported })
+    }
+    return registerDialect(dialectFromSpec(providerId, adapter))
   }
 
   /** 订「设置刚保存过」。串联进单槽广播端口,还原带身份守卫(与 pets / search 同一判例)。 */

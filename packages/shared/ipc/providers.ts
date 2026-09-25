@@ -6,6 +6,9 @@
 import type { JsonObject } from '../json.js'
 import { defineRouter } from './router.js'
 import type { ProviderQuota } from '../contracts/quota.js'
+import type { CustomAdapterSpec, CustomReasoningMapping } from '../contracts/adapter-spec.js'
+
+export type { CustomAdapterSpec, CustomReasoningMapping } from '../contracts/adapter-spec.js'
 
 // Provider IDs - can be extended by adding new providers
 export type AIProviderId = 'openai' | 'claude' | 'deepseek' | 'kimi' | 'kimi-code' | 'zhipu' | 'qwen' | 'gemini' | 'codex' | 'acp' | 'custom' | string
@@ -21,13 +24,8 @@ export interface ReasoningProfileOverride {
   disabledEffort?: ThinkingEffort
   wire?: 'anthropic-adaptive' | 'anthropic-budget' | 'anthropic-always' | 'openai-effort' | 'gemini-level' | 'gemini-budget' | 'thinking-type' | 'zhipu-thinking' | 'qwen-thinking' | 'grok-effort' | 'openrouter-reasoning' | 'codex' | 'custom' | 'none'
   effortLabels?: Partial<Record<ThinkingEffort, string>>
-  custom?: {
-    effortPath: string
-    effortValues?: Partial<Record<ThinkingEffort, string | number>>
-    disabledValue?: string | number | boolean | null
-    enabledBody?: JsonObject
-    disabledBody?: JsonObject
-  } | null
+  /** 声明式思考映射(形状住在 `@shared/contracts/adapter-spec`,批 4 的适配表复用同一份)。 */
+  custom?: CustomReasoningMapping | null
 }
 
 // Legacy enum for backwards compatibility
@@ -311,6 +309,56 @@ export interface CustomProviderConfig extends ProviderConfig {
    * `anthropic` → `custom-anthropic`,其余 → `custom-openai`。新写的条目写 `dialect`。
    */
   apiType?: 'openai' | 'anthropic'
+  /**
+   * 「自动识别」产出、用户点了「应用」才写进来的适配表(批 4 §7)。有它 = 这一家的方言是
+   * 由它编译出来的 `custom:<id>`;没有 = 与批 4 之前逐字一致。
+   */
+  adapter?: CustomAdapterSpec
+}
+
+/** `providers.probeCustom` 的入参(批 4 §7.3)。`spaceId` 决定分析模型从哪个空间找。 */
+export interface ProbeCustomProviderRequest {
+  baseUrl: string
+  apiKey?: string
+  headers?: Record<string, string>
+  modelsUrl?: string
+  hintModel?: string
+  spaceId?: string
+}
+
+/**
+ * 失败 / 旁注的原因码(R12:后端答码不答句子,壳查自己的字典)。
+ *  - `unreachable`:两发探测都没拿到能认的响应;
+ *  - `unrecognized`:响应来了,但四条线一条都对不上;
+ *  - `verify-failed`:生成的适配表重放样本不过;
+ *  - `analysis-failed`:分析模型没答出一张能用的表;
+ *  - `no-analyst`:需要分析但没有能用的模型,只走了规则(可以与 `ok: true` 同在)。
+ */
+export type ProbeCustomReasonKind =
+  | 'unreachable'
+  | 'unrecognized'
+  | 'verify-failed'
+  | 'analysis-failed'
+  | 'no-analyst'
+
+/** 一句人话的**键 + 变量**,壳拼句子。`wireLabelKey` 是壳字典里的键(`providers.dialect.<id>`)。 */
+export interface ProbeCustomSummary {
+  wireLabelKey: string
+  /** 这条线对应的方言(应用时写进表单的「接口类型」)。 */
+  dialect: string
+  reasoningPath?: string
+  modelCount: number
+}
+
+export interface ProbeCustomProviderResponse {
+  ok: boolean
+  spec?: CustomAdapterSpec
+  summary?: ProbeCustomSummary
+  /** 接口 / 回验的原话(壳放 Tooltip)。 */
+  error?: string
+  reasonKind?: ProbeCustomReasonKind
+  /** 这一次有没有请分析模型(门 ③ 读它:规则判满时必须是 false)。 */
+  analyzed?: boolean
 }
 
 /** 自定义服务商对话框「接口类型」下拉的一项(`providers.listDialects`)。 */
@@ -657,6 +705,7 @@ export type ProvidersRoutes = {
   listDialects: { input: Record<string, never>; output: ListDialectsResponse }
   /** 配额与余额(批 5,§8.3)。从前叫 `usage`,只答得出 Codex。 */
   quota: { input: ProviderQuotaRequest; output: ProviderQuotaResponse }
+  probeCustom: { input: ProbeCustomProviderRequest; output: ProbeCustomProviderResponse }
   envStatus: { input: GetProviderEnvStatusRequest; output: GetProviderEnvStatusResponse }
 }
 
@@ -664,6 +713,7 @@ export const providersRouter = defineRouter<ProvidersRoutes>('providers', [
   'list',
   'listDialects',
   'quota',
+  'probeCustom',
   'envStatus',
 ])
 

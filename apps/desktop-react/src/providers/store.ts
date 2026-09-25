@@ -1,7 +1,10 @@
 import { create } from 'zustand'
 import type {
+  CustomAdapterSpec,
   CustomProviderConfig,
   DialectOption,
+  ProbeCustomProviderRequest,
+  ProbeCustomProviderResponse,
   ModelCapabilityOverride,
   ModelParameterSuggestion,
   ProviderConfig,
@@ -80,6 +83,11 @@ export interface CustomProviderForm {
   model: string
   modelsUrl: string
   headers: CustomHeaderRow[]
+  /**
+   * 「自动识别」产出、用户点了「应用」的适配表(批 4 §7)。缺席 = 没有(保存时从那一家
+   * 身上摘掉)。手改「接口类型」会把它清掉 —— 这张表是对着那条线探出来的。
+   */
+  adapter?: CustomAdapterSpec
 }
 
 /** 一家自定义服务商的方言:`dialect` 优先;没有就按旧的 `apiType` 读(老数据不迁移)。 */
@@ -99,6 +107,7 @@ export function customProviderFormOf(config: CustomProviderConfig): CustomProvid
     model: config.model ?? '',
     modelsUrl: config.modelsUrl ?? '',
     headers: Object.entries(config.headers ?? {}).map(([name, value]) => ({ name, value })),
+    ...(config.adapter ? { adapter: config.adapter } : {}),
   }
 }
 
@@ -380,6 +389,11 @@ export interface ProviderSettingsState {
   saveCustomProvider: (form: CustomProviderForm, editingId?: string) => Promise<boolean>
   /** 拉一次「接口类型」下拉的选项。已经有了就不再问(它是进程级的事实)。 */
   loadDialects: () => Promise<void>
+  /**
+   * 「自动识别」(批 4 §7.3):探测 + 规则 + 分析 + 回验。**不写盘**,答回来的适配表由对话框的
+   * 「应用」放进表单。分析模型从当前空间找。传输层炸了也答一个结构化失败,不抛。
+   */
+  probeCustom: (request: Omit<ProbeCustomProviderRequest, 'spaceId'>) => Promise<ProbeCustomProviderResponse>
   deleteCustomProvider: (providerId: string) => Promise<void>
   /** 拨一次计费档位。**档位与 baseUrl 一起写**(理由见 dials.ts)。 */
   setDials: (providerId: string, apiMode: string, region: string) => Promise<void>
@@ -1720,6 +1734,9 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       // 空的两格就是没有这两格(与覆盖表「空表删整表」同一条:盘上不留一句假话)。
       if (!headers) delete provider.headers
       if (!modelsUrl) delete provider.modelsUrl
+      // 适配表只写定义那一份(它是 manifest 的一部分);表单里没有 = 摘掉。
+      if (form.adapter) provider.adapter = form.adapter
+      else delete provider.adapter
 
       const list = base.ai?.customProviders ?? []
       const nextList = list.some((item) => item.id === id)
@@ -1773,6 +1790,19 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       // 「保存后目录区自动拉一次,结果就是反馈」(§6.1):没有测试连接钮。
       void catalogQuery.get(catalogKey(id)).refetch().catch(() => undefined)
       return true
+    },
+
+    probeCustom: async (request) => {
+      try {
+        const port = await providerSettingsPort()
+        return await port.probeCustom({ ...request, spaceId: currentSpaceId() })
+      } catch (error) {
+        return {
+          ok: false,
+          reasonKind: 'unreachable',
+          error: error instanceof Error ? error.message : String(error),
+        }
+      }
     },
 
     loadDialects: async () => {

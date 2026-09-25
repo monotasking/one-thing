@@ -1,0 +1,14 @@
+data: {"id":"8f1c2a3b-4d5e-6f70-8192-a3b4c5d6e7f8","object":"chat.completion.chunk","created":1758844800,"model":"deepseek-reasoner","system_fingerprint":"fp_ffc7281d48_prod0820_fp8_kvcache","choices":[{"index":0,"delta":{"role":"assistant","content":null,"reasoning_content":""},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"8f1c2a3b-4d5e-6f70-8192-a3b4c5d6e7f8","object":"chat.completion.chunk","created":1758844800,"model":"deepseek-reasoner","system_fingerprint":"fp_ffc7281d48_prod0820_fp8_kvcache","choices":[{"index":0,"delta":{"content":null,"reasoning_content":"用户只是打招呼"},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"8f1c2a3b-4d5e-6f70-8192-a3b4c5d6e7f8","object":"chat.completion.chunk","created":1758844800,"model":"deepseek-reasoner","system_fingerprint":"fp_ffc7281d48_prod0820_fp8_kvcache","choices":[{"index":0,"delta":{"content":null,"reasoning_content":",简短回应即可。"},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"8f1c2a3b-4d5e-6f70-8192-a3b4c5d6e7f8","object":"chat.completion.chunk","created":1758844800,"model":"deepseek-reasoner","system_fingerprint":"fp_ffc7281d48_prod0820_fp8_kvcache","choices":[{"index":0,"delta":{"content":"你好","reasoning_content":null},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"8f1c2a3b-4d5e-6f70-8192-a3b4c5d6e7f8","object":"chat.completion.chunk","created":1758844800,"model":"deepseek-reasoner","system_fingerprint":"fp_ffc7281d48_prod0820_fp8_kvcache","choices":[{"index":0,"delta":{"content":"!有什么可以帮你?","reasoning_content":null},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"8f1c2a3b-4d5e-6f70-8192-a3b4c5d6e7f8","object":"chat.completion.chunk","created":1758844800,"model":"deepseek-reasoner","system_fingerprint":"fp_ffc7281d48_prod0820_fp8_kvcache","choices":[{"index":0,"delta":{"content":"","reasoning_content":null},"logprobs":null,"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":31,"total_tokens":43,"prompt_tokens_details":{"cached_tokens":0},"completion_tokens_details":{"reasoning_tokens":22},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":12}}
+
+data: [DONE]
+

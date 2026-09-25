@@ -1,0 +1,33 @@
+[
+  {
+    "type": "reasoning-delta",
+    "turn": 1,
+    "delta": "用户只是打招呼"
+  },
+  {
+    "type": "reasoning-delta",
+    "turn": 1,
+    "delta": ",简短回应即可。"
+  },
+  {
+    "type": "text-delta",
+    "turn": 1,
+    "delta": "你好"
+  },
+  {
+    "type": "text-delta",
+    "turn": 1,
+    "delta": "!有什么可以帮你?"
+  },
+  {
+    "type": "finish",
+    "turn": 1,
+    "finishReason": "stop",
+    "usage": {
+      "inputTokens": 12,
+      "outputTokens": 31,
+      "totalTokens": 43,
+      "reasoningTokens": 22
+    }
+  }
+]

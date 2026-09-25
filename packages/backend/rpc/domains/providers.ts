@@ -24,6 +24,7 @@ import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
 import { getAvailableProviders } from '../../wiring/providers/index.js'
 import { getProviderEnvStatus } from '@onething/runtime/providers/env.wiring'
 import { listLabeledDialectsForIpc } from '@onething/runtime/agent-loop/providers/dialect-options'
+import { probeCustomProvider } from '../../wiring/providers/custom-probe.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingProviderPresentationIpcLogger } from '@onething/runtime/providers/provider-presentation'
@@ -54,6 +55,23 @@ export const providersRpcHandlers: RouteHandlers<ProvidersRoutes> = {
       ...(request?.credentialId ? { credentialId: request.credentialId } : {}),
       ...(request?.force ? { force: true } : {}),
     })
+  },
+  /**
+   * 自定义服务商对话框「自动识别」(批 4 §7.3):探两发 + 规则先判 + 分析模型只填偏差 +
+   * 真响应回验。**不写盘** —— 对话框里点「应用」才把适配表写进那一家。
+   */
+  async probeCustom(request) {
+    try {
+      return await probeCustomProvider(request)
+    } catch (error) {
+      log.warn('probeCustom failed', {}, error)
+      return {
+        ok: false,
+        reasonKind: 'unreachable' as const,
+        error: error instanceof Error ? error.message : String(error),
+        analyzed: false,
+      }
+    }
   },
   async envStatus(request) {
     return inspectOnethingProviderEnvStatusForIpc({

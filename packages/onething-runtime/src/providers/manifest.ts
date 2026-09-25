@@ -13,6 +13,7 @@
  */
 import type { OnethingProviderKind } from './model-capability.js'
 import type { DialSpec } from './dials.js'
+import type { CustomAdapterSpec } from '@shared/contracts/adapter-spec'
 import { BUILTIN_PROVIDER_MANIFESTS, EXTERNAL_AGENT_DIALECT_ID } from './builtin-manifests.js'
 
 export { EXTERNAL_AGENT_DIALECT_ID }
@@ -110,9 +111,23 @@ export interface CustomProviderManifestSource {
   dialect?: string
   baseUrl?: string
   model?: string
+  /** 批 4:「自动识别」产出、用户应用过的适配表。有它 = manifest 的方言指向它编译出来的那一份。 */
+  adapter?: CustomAdapterSpec
 }
 
 export const CUSTOM_OPENAI_DIALECT_ID = 'custom-openai'
+
+/**
+ * 适配表编译出来的方言 id(批 4 §7.2)。装配层按这个 id 登记 `dialectFromSpec` 的产物,
+ * manifest 指它,工厂认它 —— 三处读同一个函数,约定只写一次。
+ */
+export function customAdapterDialectId(providerId: string): string {
+  return `custom:${providerId}`
+}
+
+export function isCustomAdapterDialectOf(providerId: string, dialectId: string | undefined): boolean {
+  return dialectId === customAdapterDialectId(providerId)
+}
 export const CUSTOM_ANTHROPIC_DIALECT_ID = 'custom-anthropic'
 
 /**
@@ -122,9 +137,10 @@ export const CUSTOM_ANTHROPIC_DIALECT_ID = 'custom-anthropic'
  * 选了 `openrouter` 方言,型号规则也该是 openrouter 那张);否则按 `apiType`。
  */
 export function manifestOfCustomProvider(custom: CustomProviderManifestSource): ProviderManifest {
-  const dialect =
+  const baseDialect =
     custom.dialect ||
     (custom.apiType === 'anthropic' ? CUSTOM_ANTHROPIC_DIALECT_ID : CUSTOM_OPENAI_DIALECT_ID)
+  const dialect = custom.adapter ? customAdapterDialectId(custom.id) : baseDialect
   const borrowed = custom.dialect
     ? BUILTIN_PROVIDER_MANIFESTS.find((manifest) => manifest.dialect === custom.dialect)?.modelRules
     : undefined
@@ -138,7 +154,7 @@ export function manifestOfCustomProvider(custom: CustomProviderManifestSource): 
     auth: { kind: 'apiKey' },
     models: { kind: 'endpoint' },
     billing: 'api',
-    modelRules: borrowed ?? (dialect === CUSTOM_ANTHROPIC_DIALECT_ID ? 'claude' : 'openai'),
+    modelRules: borrowed ?? (baseDialect === CUSTOM_ANTHROPIC_DIALECT_ID ? 'claude' : 'openai'),
     defaultBaseUrl: custom.baseUrl ?? '',
     supportsCustomBaseUrl: true,
     defaultModel: custom.model ?? '',

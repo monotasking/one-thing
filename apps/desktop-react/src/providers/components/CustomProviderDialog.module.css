@@ -85,6 +85,37 @@
   line-height: 1.5;
 }
 
+/*
+ * ── 自动识别(批 4 §7.3)─────────────────────────────────────────────────
+ * 一行:钮 / 结果一句 / [应用]。结果那一句是会伸的件,解开收缩下界(律一),长了就省略,
+ * 原话在失败时进 Tooltip。窄下来折到下一行,钮永远不被压没。
+ */
+.probe {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.probeRun {
+  flex: none;
+}
+
+.probeResult {
+  flex: 1 1 12em;
+  min-width: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.probeFailed {
+  color: var(--danger);
+}
+
 /* `.field` / `.label` / `.hint` 已收进 `ui/Field`(09-01 批 2b)——
  * 那件的配方就是从这三条逐字抄过去的(见 ui/Field.module.css 头),所以零漂移。
  *

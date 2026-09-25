@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ComponentProps } from 'react'
-import type { DialectOption } from '@shared/ipc/providers'
+import type {
+  DialectOption,
+  ProbeCustomProviderRequest,
+  ProbeCustomProviderResponse,
+} from '@shared/ipc/providers'
 import { Button } from '../../ui/Button'
 import { Dialog } from '../../ui/Dialog'
 import { Field, useFieldControlProps } from '../../ui/Field'
@@ -8,10 +12,17 @@ import { Fold, FoldBody, FoldTrigger } from '../../ui/Fold'
 import { IconButton } from '../../ui/IconButton'
 import { Input } from '../../ui/Input'
 import { Select } from '../../ui/Select'
+import { Spinner } from '../../ui/Spinner'
+import { Tooltip } from '../../ui/Tooltip'
 import { ChevronRight, X } from '../../components/icons'
 import { isMessageKey, useT } from '../../i18n'
 import type { TFn } from '../../i18n'
-import { DEFAULT_CUSTOM_DIALECT, type CustomHeaderRow, type CustomProviderForm } from '../store'
+import {
+  DEFAULT_CUSTOM_DIALECT,
+  customHeadersOf,
+  type CustomHeaderRow,
+  type CustomProviderForm,
+} from '../store'
 import s from './CustomProviderDialog.module.css'
 
 /**
@@ -39,7 +50,27 @@ import s from './CustomProviderDialog.module.css'
  * ② 请求头是**有序的行**,不是一张表:末尾永远留一条空行(在空行里打字就长出下一条),
  *    名字空的行落盘时不算。行身份用本地序号,不用下标 —— 删中间一行时下面几行的
  *    输入框不该换人(换人 = 光标跳走)。
+ *
+ * ── 「自动识别」(批 4 §7.3)───────────────────────────────────────────────
+ * 接口地址填了就可按(密钥可空:本地推理框架不要密钥)。跑时钮自己变忙态;结果一句话 +
+ * [应用]。**应用 = 把适配表放进表单**(并把「接口类型」对到它探出来的那条线),保存才落盘 ——
+ * 不点应用,盘上一格都不动。手改「接口类型」会清掉已应用的表(它是对着那条线探出来的)。
+ * 结果随表单一起在每次打开时清空。
  */
+
+type ProbeView =
+  | { phase: 'idle' }
+  | { phase: 'running' }
+  | { phase: 'done'; result: ProbeCustomProviderResponse; applied: boolean }
+
+/** 结果那一句:后端给键 + 变量,这里拼(R12:后端答码不答句子)。 */
+export function probeResultText(t: TFn, result: ProbeCustomProviderResponse): string {
+  const summary = result.summary
+  if (!result.ok || !summary) return t('providers.probeFailed')
+  const wire = isMessageKey(summary.wireLabelKey) ? t(summary.wireLabelKey) : summary.dialect
+  const detail = summary.reasoningPath ? t('providers.probeReasoningAt', { path: summary.reasoningPath }) : ''
+  return t('providers.probeResult', { wire, detail, count: summary.modelCount })
+}
 
 /** 注册表没回来时的两项缺省:旧的两种兼容形,永远可选。 */
 const FALLBACK_DIALECTS: readonly DialectOption[] = [
@@ -93,6 +124,7 @@ export function CustomProviderDialog({
   dialects,
   onClose,
   onSave,
+  onProbe,
 }: {
   open: boolean
   /** 改一家时的底本。缺席 = 新建。 */
@@ -103,6 +135,8 @@ export function CustomProviderDialog({
   onClose: () => void
   /** 答「写成了没有」。写成 = 调用方关掉对话框;没成 = 留在屏上。 */
   onSave: (form: CustomProviderForm) => Promise<boolean> | boolean
+  /** 「自动识别」。缺席 = 不画那颗钮。 */
+  onProbe?: (request: Omit<ProbeCustomProviderRequest, 'spaceId'>) => Promise<ProbeCustomProviderResponse>
 }) {
   const t = useT()
   const [form, setForm] = useState<CustomProviderForm>(EMPTY_FORM)
@@ -110,7 +144,10 @@ export function CustomProviderDialog({
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [problem, setProblem] = useState<string | undefined>(undefined)
   const [saving, setSaving] = useState(false)
+  const [probe, setProbe] = useState<ProbeView>({ phase: 'idle' })
   const nextKey = useRef(0)
+  /** 每次打开换一代:上一次没回来的探测结果不许落到这一次的表单上。 */
+  const probeGeneration = useRef(0)
 
   function line(row: CustomHeaderRow): HeaderLine {
     nextKey.current += 1
@@ -126,6 +163,8 @@ export function CustomProviderDialog({
     setAdvancedOpen(base.headers.length > 0 || base.modelsUrl.trim().length > 0)
     setProblem(undefined)
     setSaving(false)
+    setProbe({ phase: 'idle' })
+    probeGeneration.current += 1
   }, [open, initial])
 
   const options = useMemo(
@@ -155,6 +194,29 @@ export function CustomProviderDialog({
       const last = next[next.length - 1]
       return !last || last.name || last.value ? [...next, line({ name: '', value: '' })] : next
     })
+  }
+
+  async function runProbe() {
+    if (!onProbe || probe.phase === 'running' || !form.baseUrl.trim()) return
+    const generation = probeGeneration.current
+    setProbe({ phase: 'running' })
+    const headers = customHeadersOf(lines)
+    const result = await onProbe({
+      baseUrl: form.baseUrl.trim(),
+      ...(form.apiKey.trim() ? { apiKey: form.apiKey.trim() } : {}),
+      ...(headers ? { headers } : {}),
+      ...(form.modelsUrl.trim() ? { modelsUrl: form.modelsUrl.trim() } : {}),
+      ...(form.model.trim() ? { hintModel: form.model.trim() } : {}),
+    })
+    if (generation !== probeGeneration.current) return
+    setProbe({ phase: 'done', result, applied: false })
+  }
+
+  function applyProbe() {
+    if (probe.phase !== 'done' || !probe.result.ok || !probe.result.spec) return
+    const { spec, summary } = probe.result
+    setForm((prev) => ({ ...prev, adapter: spec, ...(summary?.dialect ? { dialect: summary.dialect } : {}) }))
+    setProbe({ ...probe, applied: true })
   }
 
   async function submit() {
@@ -226,7 +288,7 @@ export function CustomProviderDialog({
             size="sm"
             options={options}
             value={form.dialect}
-            onChange={(dialect) => patch({ dialect })}
+            onChange={(dialect) => patch({ dialect, adapter: undefined })}
             label={t('providers.customDialect')}
           />
         </Field>
@@ -250,6 +312,53 @@ export function CustomProviderDialog({
             aria-label={t('providers.customKey')}
           />
         </Field>
+
+        {onProbe && (
+          <div className={s.probe} data-testid="custom-provider-probe">
+            <Tooltip content={t('providers.probeHint')}>
+              <Button
+                size="sm"
+                className={s.probeRun}
+                disabled={probe.phase === 'running' || !form.baseUrl.trim()}
+                aria-busy={probe.phase === 'running' || undefined}
+                onClick={() => void runProbe()}
+                data-testid="custom-provider-probe-run"
+              >
+                {/* ui-consume-allow: spinner-placement — 钮内:识别跑着时钮自己转,钮外没有第二处说「在忙」 */}
+                {probe.phase === 'running' ? <Spinner label={t('providers.probeRun')} /> : t('providers.probeRun')}
+              </Button>
+            </Tooltip>
+            {probe.phase === 'done' && probe.result.ok && (
+              <>
+                <span className={s.probeResult} role="status" data-testid="custom-provider-probe-result">
+                  {probeResultText(t, probe.result)}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={s.probeRun}
+                  disabled={probe.applied}
+                  onClick={applyProbe}
+                  data-testid="custom-provider-probe-apply"
+                >
+                  {probe.applied ? t('providers.probeApplied') : t('providers.probeApply')}
+                </Button>
+              </>
+            )}
+            {probe.phase === 'done' && !probe.result.ok && (
+              <Tooltip content={probe.result.error || t('providers.probeFailed')}>
+                <span
+                  className={`${s.probeResult} ${s.probeFailed}`}
+                  role="status"
+                  tabIndex={0}
+                  data-testid="custom-provider-probe-result"
+                >
+                  {t('providers.probeFailed')}
+                </span>
+              </Tooltip>
+            )}
+          </div>
+        )}
 
         <Fold open={advancedOpen} onOpenChange={setAdvancedOpen}>
           <FoldTrigger className={s.advancedHead} data-testid="custom-provider-advanced">

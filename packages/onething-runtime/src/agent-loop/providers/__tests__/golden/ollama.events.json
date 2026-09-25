@@ -1,0 +1,27 @@
+[
+  {
+    "type": "reasoning-delta",
+    "turn": 1,
+    "delta": "The user says hi."
+  },
+  {
+    "type": "text-delta",
+    "turn": 1,
+    "delta": "Hello"
+  },
+  {
+    "type": "text-delta",
+    "turn": 1,
+    "delta": "! How can I help?"
+  },
+  {
+    "type": "finish",
+    "turn": 1,
+    "finishReason": "stop",
+    "usage": {
+      "inputTokens": 11,
+      "outputTokens": 14,
+      "totalTokens": 25
+    }
+  }
+]

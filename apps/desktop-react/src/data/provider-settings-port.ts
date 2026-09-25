@@ -3,6 +3,8 @@ import {
   providersRouter,
   type GetProvidersResponse,
   type ListDialectsResponse,
+  type ProbeCustomProviderRequest,
+  type ProbeCustomProviderResponse,
   type ModelManualEditRequest,
   type ModelManualEditResponse,
   type ModelsListResponse,
@@ -107,6 +109,11 @@ export interface ProviderSettingsPort {
    * 只读、不碰网;壳按 `providers.dialect.<id>` 查自己的字典。
    */
   listDialects(): Promise<ListDialectsResponse>
+  /**
+   * 自定义服务商对话框的「自动识别」(批 4 §7.3):向那个地址发一条测试请求,必要时请一家
+   * 已配好的模型分析响应。**不写盘** —— 用户点「应用」才进表单、保存才落设置。
+   */
+  probeCustom(request: ProbeCustomProviderRequest): Promise<ProbeCustomProviderResponse>
   /**
    * 一家的模型明细。`forceRefresh` 才是「刷新目录」那颗钮 ——
    * 不传就吃后端缓存,开一次面不该把 models.dev 问一遍。
@@ -264,6 +271,7 @@ async function realPort(): Promise<ProviderSettingsPort> {
     ready: () => whenConnected(),
     listProviders: () => providersApi.list({}),
     listDialects: () => providersApi.listDialects({}),
+    probeCustom: (request) => providersApi.probeCustom(request),
     listModels: (providerId, forceRefresh, spaceId) =>
       modelsApi.getWithCapabilities({
         providerId,

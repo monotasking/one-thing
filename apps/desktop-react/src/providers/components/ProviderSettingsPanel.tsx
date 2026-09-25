@@ -108,6 +108,7 @@ export function ProviderSettingsPanel() {
   const signOut = useProviderSettings((st) => st.signOut)
   const loadQuota = useProviderSettings((st) => st.loadQuota)
   const saveCustomProvider = useProviderSettings((st) => st.saveCustomProvider)
+  const probeCustom = useProviderSettings((st) => st.probeCustom)
   const deleteCustomProvider = useProviderSettings((st) => st.deleteCustomProvider)
   const applySuggestions = useProviderSettings((st) => st.applySuggestions)
   const dialects = useProviderSettings((st) => st.dialects)
@@ -447,6 +448,7 @@ export function ProviderSettingsPanel() {
         initial={editingCustom}
         editingId={customDialog.editingId}
         dialects={dialects}
+        onProbe={probeCustom}
         onClose={() => setCustomDialog({ open: false })}
         onSave={async (form) => {
           // 写成才关;没成留在屏上,表单一格不丢(对话框自己说那一句)。

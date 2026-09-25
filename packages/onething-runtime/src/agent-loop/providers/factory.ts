@@ -57,7 +57,11 @@ import {
 } from "../../providers/kimi.js";
 import { resolveOnethingZhipuBaseUrl } from "../../providers/zhipu.js";
 import { resolveOnethingQwenBaseUrl } from "../../providers/qwen.js";
-import { EXTERNAL_AGENT_DIALECT_ID, getProviderManifest } from "../../providers/manifest.js";
+import {
+	EXTERNAL_AGENT_DIALECT_ID,
+	getProviderManifest,
+	isCustomAdapterDialectOf,
+} from "../../providers/manifest.js";
 import {
 	readOnethingKimiOptions,
 	readOnethingQwenOptions,
@@ -388,6 +392,54 @@ function isManifestAgentProviderRuntime(providerId: string): boolean {
 	return Boolean(manifest && manifest.dialect !== EXTERNAL_AGENT_DIALECT_ID);
 }
 
+/**
+ * 适配表编译出来的方言(批 4 §7.2)。openai-chat / anthropic 两条与两份通用配方同一套
+ * 构造(传输声明随这一家的能力旋钮),只是配方换成编译结果;另两条走通用出口。
+ */
+function createAdapterProvider(
+	dialect: Dialect,
+	providerId: string,
+	config: AgentProviderRuntimeConfig,
+	options: CreateAgentProviderFromRuntimeOptions,
+	headers: Record<string, string> | undefined,
+): AgentProvider {
+	const capabilities = runtimeCapabilityFlags(config, {
+		tools: true,
+		vision: true,
+		reasoning: true,
+	});
+	switch (dialect.wire) {
+		case "openai-chat": {
+			const codec = dialect.parts;
+			return createOpenAIChatProvider(dialect as OpenAIChatDialect, {
+				providerId,
+				baseUrl: config.baseUrl,
+				auth: new BearerApiKeyAuth(config.apiKey, headers ? { headers } : {}),
+				fetchImpl: options.fetchImpl,
+				requestDumper: resolveRequestDumper(options),
+				transport: openAIChatTransportCapabilities(capabilities),
+				parts: new OpenAIChatPartCodec({
+					includeAssistantReasoning: capabilities.reasoning,
+					...(codec?.decodeExtras ? { decodeExtras: codec.decodeExtras.bind(codec) } : {}),
+				}),
+				profiles: ledgerProfiles(config),
+			});
+		}
+		case "anthropic-messages":
+			return createAnthropicProvider(dialect as AnthropicDialect, {
+				providerId,
+				baseUrl: config.baseUrl,
+				auth: anthropicAuth({ apiKey: config.apiKey, ...(headers ? { headers } : {}) }),
+				fetchImpl: options.fetchImpl,
+				requestDumper: resolveRequestDumper(options),
+				transport: capabilitiesFromFlags({ ...capabilities, file: true }),
+				profiles: ledgerProfiles(config),
+			});
+		default:
+			return createProviderForDialect(dialect, providerId, config, options, headers);
+	}
+}
+
 function createManifestAgentProviderFromRuntime(
 	providerId: string,
 	rawConfig: AgentProviderRuntimeConfig,
@@ -399,6 +451,19 @@ function createManifestAgentProviderFromRuntime(
 	const config =
 		rawConfig.baseUrl || !defaultBaseUrl ? rawConfig : { ...rawConfig, baseUrl: defaultBaseUrl };
 
+	const headers = expandHeaderTemplates(config.headers, config.apiKey);
+
+	// 批 4:这一家有一张生效的适配表(manifest 指着它编译出来的 `custom:<id>`)。它是在
+	// 「接口类型」那份配方之上编译的,所以优先于 `config.dialect`;没有适配表的家走下面的老路,
+	// 一个字节不变(`__tests__/golden` 钉死)。
+	const manifestDialectId = getProviderManifest(providerId)?.dialect;
+	const adapterDialect = isCustomAdapterDialectOf(providerId, manifestDialectId)
+		? getDialect(manifestDialectId!)
+		: undefined;
+	if (adapterDialect) {
+		return createAdapterProvider(adapterDialect, providerId, config, options, headers);
+	}
+
 	// 方言:配置点名的优先(`dialect`,或老形状的 `apiType` —— 它就是只有两档的方言),
 	// 其次 manifest 自述的(设置里那条自定义服务商映射来的)。
 	const dialectId =
@@ -408,7 +473,6 @@ function createManifestAgentProviderFromRuntime(
 			: config.apiType === "openai"
 				? CUSTOM_OPENAI_DIALECT.id
 				: getProviderManifest(providerId)?.dialect);
-	const headers = expandHeaderTemplates(config.headers, config.apiKey);
 
 	// 点名了别家的配方就用那一家的整套线材(usage 表 / 线型 / maxTokensField /
 	// 端点形状 / 传输声明),只换地址与凭据。认不出 = 明确错误:静默退回

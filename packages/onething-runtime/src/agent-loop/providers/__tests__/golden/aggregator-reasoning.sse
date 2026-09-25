@@ -1,0 +1,14 @@
+: OPENROUTER PROCESSING
+
+data: {"id":"gen-1758844801-AbCdEfGhIjKlMnOp","provider":"Chutes","model":"deepseek/deepseek-r1-0528","object":"chat.completion.chunk","created":1758844801,"choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning":"Greeting"},"finish_reason":null,"native_finish_reason":null,"logprobs":null}]}
+
+data: {"id":"gen-1758844801-AbCdEfGhIjKlMnOp","provider":"Chutes","model":"deepseek/deepseek-r1-0528","object":"chat.completion.chunk","created":1758844801,"choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning":" — reply briefly."},"finish_reason":null,"native_finish_reason":null,"logprobs":null}]}
+
+data: {"id":"gen-1758844801-AbCdEfGhIjKlMnOp","provider":"Chutes","model":"deepseek/deepseek-r1-0528","object":"chat.completion.chunk","created":1758844801,"choices":[{"index":0,"delta":{"role":"assistant","content":"Hi there!","reasoning":null},"finish_reason":null,"native_finish_reason":null,"logprobs":null}]}
+
+data: {"id":"gen-1758844801-AbCdEfGhIjKlMnOp","provider":"Chutes","model":"deepseek/deepseek-r1-0528","object":"chat.completion.chunk","created":1758844801,"choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning":null},"finish_reason":"stop","native_finish_reason":"stop","logprobs":null}]}
+
+data: {"id":"gen-1758844801-AbCdEfGhIjKlMnOp","provider":"Chutes","model":"deepseek/deepseek-r1-0528","object":"chat.completion.chunk","created":1758844801,"choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null,"native_finish_reason":null,"logprobs":null}],"usage":{"prompt_tokens":9,"completion_tokens":18,"total_tokens":27,"cost":0.0000423,"is_byok":false,"prompt_tokens_details":{"cached_tokens":0},"completion_tokens_details":{"reasoning_tokens":12}}}
+
+data: [DONE]
+

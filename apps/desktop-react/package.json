@@ -41,6 +41,7 @@
     "gate:chat-layout": "node scripts/gate-chat-layout.mjs",
     "gate:squeeze": "node scripts/gate-squeeze.mjs",
     "gate:providers-squeeze": "node scripts/gate-providers-squeeze.mjs",
+    "gate:custom-adapter": "node scripts/gate-custom-adapter.mjs",
     "gate:motion": "node scripts/gate-motion.mjs",
     "squeeze-check": "node scripts/squeeze-check.mjs",
     "squeeze-gate": "node scripts/squeeze-gate.mjs",

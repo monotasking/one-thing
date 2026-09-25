@@ -20,6 +20,8 @@
  * 纯函数 + 注入 fetch:不碰 node / electron,单测直接喂假响应。
  */
 import { expandHeaderTemplates } from "../agent-loop/providers/base/auth-strategy.js";
+import { getPath } from "../agent-loop/providers/base/path.js";
+import type { CustomAdapterSpec } from "@shared/contracts/adapter-spec";
 import type {
 	OnethingOpenRouterModel,
 	OnethingUnreportedFact,
@@ -38,9 +40,14 @@ export interface FetchProviderDirectModelsOptions {
 	/** 用户的自定义头(明文模板,值里 `{{apiKey}}` 换成密钥)。 */
 	headers?: Record<string, string>;
 	apiKey?: string;
+	/** 批 4 适配表的模型列表映射。给了就**先**按它读,读不出再退回四种常见形状。 */
+	modelsList?: ModelsListMapping;
 	fetchImpl: ProviderDirectModelsFetch;
 	signal?: AbortSignal;
 }
+
+/** 「按 spec 映射」那一档(批 4 §7.1 `modelsList`):路径是点号 + 下标。 */
+export type ModelsListMapping = NonNullable<CustomAdapterSpec["modelsList"]>;
 
 /** 原话截多长进错误信息 —— 够认出是哪种错,又不至于把一整页 HTML 塞进 Tooltip。 */
 const RAW_SNIPPET_LIMIT = 200;
@@ -195,16 +202,46 @@ function envelope({ id, raw }: { id: string; raw?: JsonRecord }): OnethingOpenRo
 	};
 }
 
+/**
+ * 按映射读一条:`idField` / `nameField` / `contextField` 是相对列表项的路径。读出来的
+ * 几格折成常见形状的字段名(`id` / `display_name` / `context_length`)再交给同一个
+ * `directModelOf` —— 能力位的「没报」判法只有一份。
+ */
+function mappedModelOf(item: unknown, mapping: ModelsListMapping): OnethingOpenRouterModel | undefined {
+	const id = text(getPath(item, mapping.idField));
+	if (!id) return undefined;
+	const name = mapping.nameField ? text(getPath(item, mapping.nameField)) : undefined;
+	const context = mapping.contextField ? positiveInt(getPath(item, mapping.contextField)) : undefined;
+	return directModelOf({
+		...(isRecord(item) ? item : {}),
+		id,
+		...(name ? { display_name: name } : {}),
+		...(context ? { context_length: context } : {}),
+	});
+}
+
+/** 映射那一档:列表在 `itemsPath`。读不出列表 = undefined(调用方退回常见形状)。 */
+function mappedListOf(body: unknown, mapping: ModelsListMapping | undefined): unknown[] | undefined {
+	if (!mapping?.itemsPath?.trim() || !mapping.idField?.trim()) return undefined;
+	const list = getPath(body, mapping.itemsPath);
+	return Array.isArray(list) ? list : undefined;
+}
+
 /** 响应体 → 目录信封。形状认不出就抛(带原话)。重复 id 只留第一条。 */
-export function parseProviderDirectModels(body: unknown, rawText: string): OnethingOpenRouterModel[] {
-	const list = listOf(body);
+export function parseProviderDirectModels(
+	body: unknown,
+	rawText: string,
+	mapping?: ModelsListMapping,
+): OnethingOpenRouterModel[] {
+	const mapped = mappedListOf(body, mapping);
+	const list = mapped ?? listOf(body);
 	if (!list) {
 		throw new Error(`Unrecognized model list response: ${snippet(rawText)}`);
 	}
 	const seen = new Set<string>();
 	const out: OnethingOpenRouterModel[] = [];
 	for (const item of list) {
-		const model = directModelOf(item);
+		const model = mapped && mapping ? mappedModelOf(item, mapping) : directModelOf(item);
 		if (!model || seen.has(model.id)) continue;
 		seen.add(model.id);
 		out.push(model);
@@ -234,5 +271,5 @@ export async function fetchProviderDirectModels(
 	} catch {
 		throw new Error(`Model list is not JSON: ${snippet(rawText) || "(empty body)"}`);
 	}
-	return parseProviderDirectModels(body, rawText);
+	return parseProviderDirectModels(body, rawText, options.modelsList);
 }

@@ -1,0 +1,46 @@
+[
+  {
+    "type": "reasoning-delta",
+    "turn": 1,
+    "delta": "Need to read a.txt first."
+  },
+  {
+    "type": "tool-call-start",
+    "turn": 1,
+    "toolCallId": "chatcmpl-tool-9f8e7d6c",
+    "toolName": "read"
+  },
+  {
+    "type": "tool-call-delta",
+    "turn": 1,
+    "toolCallId": "chatcmpl-tool-9f8e7d6c",
+    "toolName": "read",
+    "argumentsDelta": "{\"path\": \""
+  },
+  {
+    "type": "tool-call-delta",
+    "turn": 1,
+    "toolCallId": "chatcmpl-tool-9f8e7d6c",
+    "toolName": "read",
+    "argumentsDelta": "a.txt\"}"
+  },
+  {
+    "type": "tool-call-done",
+    "turn": 1,
+    "toolCall": {
+      "id": "chatcmpl-tool-9f8e7d6c",
+      "name": "read",
+      "arguments": "{\"path\": \"a.txt\"}"
+    }
+  },
+  {
+    "type": "finish",
+    "turn": 1,
+    "finishReason": "tool_calls",
+    "usage": {
+      "inputTokens": 231,
+      "outputTokens": 39,
+      "totalTokens": 270
+    }
+  }
+]

@@ -23,6 +23,7 @@ vi.mock('@onething/runtime/spaces/provider-settings', () => ({
 
 import { getProviderManifest, resetProviderManifestRegistryForTests } from '@onething/runtime/providers/manifest'
 import { CustomProviderManifestSync } from '../custom-manifests.js'
+import { getDialect } from '@onething/runtime/agent-loop/providers/base/dialect'
 import {
   broadcastSettingsChanged,
   configureSettingsEventBroadcaster,
@@ -86,6 +87,49 @@ describe('CustomProviderManifestSync', () => {
     expect(getProviderManifest('custom-live')).toBeDefined()
     unwatch()
     expect(getSettingsEventBroadcaster()).toBe(host)
+    sync.dispose()
+  })
+
+  it('batch 4: an applied adapter registers custom:<id> and the manifest points at it', () => {
+    const adapter = {
+      version: 1,
+      wire: 'openai-chat',
+      response: { reasoningDeltaPath: 'choices[0].delta.reasoning' },
+    }
+    state.global = [{ id: 'custom-relay', name: 'Relay', dialect: 'custom-openai', adapter }]
+    const sync = new CustomProviderManifestSync()
+    sync.sync()
+    expect(getProviderManifest('custom-relay')).toMatchObject({ dialect: 'custom:custom-relay', modelRules: 'openai' })
+    const first = getDialect('custom:custom-relay')
+    expect(first?.wire).toBe('openai-chat')
+
+    // 同一张表:不动
+    sync.sync()
+    expect(getDialect('custom:custom-relay')).toBe(first)
+
+    // 表变了:换一份
+    state.global = [{ id: 'custom-relay', name: 'Relay', dialect: 'custom-openai', adapter: { ...adapter, response: { reasoningDeltaPath: 'choices[0].delta.thinking' } } }]
+    sync.sync()
+    expect(getDialect('custom:custom-relay')).not.toBe(first)
+
+    // 表撤了:方言跟着撤,manifest 回到接口类型那一份
+    state.global = [{ id: 'custom-relay', name: 'Relay', dialect: 'custom-openai' }]
+    sync.sync()
+    expect(getDialect('custom:custom-relay')).toBeUndefined()
+    expect(getProviderManifest('custom-relay')).toMatchObject({ dialect: 'custom-openai' })
+
+    state.global = [{ id: 'custom-relay', name: 'Relay', adapter }]
+    sync.sync()
+    sync.dispose()
+    expect(getDialect('custom:custom-relay')).toBeUndefined()
+  })
+
+  it('batch 4: a malformed adapter is ignored (old path, no error)', () => {
+    state.global = [{ id: 'custom-x', name: 'X', adapter: { version: 2, wire: 'openai-chat' } }]
+    const sync = new CustomProviderManifestSync()
+    sync.sync()
+    expect(getProviderManifest('custom-x')).toMatchObject({ dialect: 'custom-openai' })
+    expect(getDialect('custom:custom-x')).toBeUndefined()
     sync.dispose()
   })
 })
