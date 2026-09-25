@@ -400,14 +400,28 @@ function startPostWindowServices(): void {
     /*
      * 内存预算表的壳探针(2026-09-25):把渲染 / GPU / 内置浏览器那些进程报上表,
      * 调度器与 `memory.report` 从此看得到整个 Electron,而不只是 core 这一个进程。
-     * 类型 `window` 的是壳自己的窗;其余(`WebContentsView` 的 tab)算内置浏览器。
+     * 壳自己的窗 = 某扇 `BrowserWindow` 的 `webContents`;其余(`WebContentsView` 的 tab)
+     * 算内置浏览器。(第一版按 `getType() === 'window'` 判,真机上 tab 也答 `window`,
+     * 于是 tab 全被报成了 renderer。)页里的跨站 iframe 是**另一个进程**(站点隔离),
+     * 所以每一帧的 `osProcessId` 都认回它所在的那一格 tab。
      */
     try {
       b.own(b.memory.registry.registerProbe(createShellMemoryProbe({
         getAppMetrics: () => app.getAppMetrics(),
-        listWebContents: () => webContents.getAllWebContents()
-          .filter(wc => !wc.isDestroyed())
-          .map(wc => ({ pid: wc.getOSProcessId(), role: wc.getType() === 'window' ? 'shell' as const : 'browser' as const, title: wc.getTitle() })),
+        listWebContents: () => {
+          const shellContents = new Set(BrowserWindow.getAllWindows().map(win => win.webContents))
+          return webContents.getAllWebContents().filter(wc => !wc.isDestroyed()).flatMap(wc => {
+            const role = shellContents.has(wc) ? 'shell' as const : 'browser' as const
+            const title = wc.getTitle()
+            const main = { pid: wc.getOSProcessId(), role, title }
+            let frames: { pid: number; role: typeof role; title: string; subframe: true }[] = []
+            try {
+              frames = wc.mainFrame.framesInSubtree
+                .map(frame => ({ pid: frame.osProcessId, role, title, subframe: true as const }))
+            } catch { /* 页面正在换 —— 这一轮只报主进程 */ }
+            return [main, ...frames]
+          })
+        },
         selfPid: process.pid,
       })), 'memoryProbe:electron')
     } catch (error: unknown) {

@@ -26,6 +26,8 @@ export interface ShellWebContentsInfo {
   pid: number
   role: 'shell' | 'browser'
   title: string
+  /** 这一行来自页里的子框架(跨站 iframe 被站点隔离进了自己的进程)。 */
+  subframe?: boolean
 }
 
 export interface ShellMemoryProbeDeps {
@@ -48,7 +50,8 @@ function kindOf(metric: ShellProcessMetric, contents: ShellWebContentsInfo | und
 }
 
 function nameOf(metric: ShellProcessMetric, contents: ShellWebContentsInfo | undefined): string {
-  const raw = contents?.title || metric.serviceName || metric.name || metric.type
+  const base = contents?.title || metric.serviceName || metric.name || metric.type
+  const raw = contents?.subframe ? `${base} · 子框架` : base
   return raw.length > TITLE_MAX ? `${raw.slice(0, TITLE_MAX)}…` : raw
 }
 
@@ -58,7 +61,12 @@ export function toMemoryProcessSamples(
   webContents: readonly ShellWebContentsInfo[],
   selfPid: number,
 ): MemoryProcessSample[] {
-  const byPid = new Map(webContents.map(info => [info.pid, info]))
+  // 同一个 pid 可能既是某页的主进程又被别页的 iframe 复用:主框架那一行说了算。
+  const byPid = new Map<number, ShellWebContentsInfo>()
+  for (const info of webContents) {
+    const known = byPid.get(info.pid)
+    if (!known || (known.subframe && !info.subframe)) byPid.set(info.pid, info)
+  }
   const rows: MemoryProcessSample[] = []
   for (const metric of metrics) {
     if (metric.pid === selfPid) continue

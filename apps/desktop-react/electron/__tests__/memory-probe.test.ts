@@ -22,4 +22,16 @@ describe('shell memory probe', () => {
     expect(rows[1].name.length).toBeLessThanOrEqual(81)
     expect(rows[3].name).toBe('network.mojom.NetworkService')
   })
+
+  it('names a site-isolated iframe process after the tab it lives in, main frame winning a shared pid', () => {
+    const rows = toMemoryProcessSamples([
+      { pid: 20, type: 'Tab', memory: { workingSetSize: 10 } },
+      { pid: 21, type: 'Tab', memory: { workingSetSize: 10 } },
+    ], [
+      { pid: 20, role: 'browser', title: 'bilibili', subframe: true },
+      { pid: 20, role: 'browser', title: 'google' },
+      { pid: 21, role: 'browser', title: 'bilibili', subframe: true },
+    ], 1)
+    expect(rows.map(row => [row.kind, row.name])).toEqual([['browser', 'google'], ['browser', 'bilibili · 子框架']])
+  })
 })
