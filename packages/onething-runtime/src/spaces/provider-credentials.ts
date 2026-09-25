@@ -48,6 +48,16 @@ const PROVIDER_REGION_FIELD: Record<string, string> = {
 }
 
 /**
+ * 这家 provider 的档位落在配置的哪两格(批 M:settings → entry 那个方向也读这同一张
+ * 表,不再各写一串按名字的 if)。没有档位 = 两格都缺席。
+ */
+export function providerDialFieldsOf(providerId: string): { apiMode?: string; region?: string } {
+  const apiMode = PROVIDER_API_MODE_FIELD[providerId]
+  const region = PROVIDER_REGION_FIELD[providerId]
+  return { ...(apiMode ? { apiMode } : {}), ...(region ? { region } : {}) }
+}
+
+/**
  * 「这个 provider 的端点由本空间那条 entry 说了算」的名单(批 B10)。
  *
  * 有档位的三家(zhipu / qwen / kimi)——它们的 baseUrl **是从档位派生出来的**,

@@ -8,6 +8,10 @@ import {
 import { builtinProviders } from "../../providers/builtin/index.js";
 import type { AgentTurnStreamEvent } from "@onething/core/agent-loop";
 import { resolveAgentModelCapabilities } from "@onething/core/agent-loop";
+import { registerCustomProvidersForTest } from '@onething/runtime/providers/__tests__/custom-manifest-fixture'
+// 批 M:自定义服务商按 manifest 注册表认(不再看 id 前缀),单测不装配,这里直接登记。
+registerCustomProvidersForTest(["custom-local-openai", "custom-local-anthropic"])
+
 
 describe("agent provider runtime factory", () => {
 	const emptyFetch: typeof globalThis.fetch = async () => new Response("");

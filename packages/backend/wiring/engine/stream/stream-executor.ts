@@ -6,6 +6,7 @@
  * Uses StreamEngine for AbortController lifecycle management.
  */
 
+import { getProviderManifest } from '@onething/runtime/providers/manifest'
 import type { AppSettings, ChatMessage, ProviderConfig, ToolSettings } from '@shared/ipc.js'
 import type { Principal } from '@onething/core/permission'
 import type { SessionRunKind } from '@onething/core/session'
@@ -176,7 +177,8 @@ async function resolveRequestedOutputModalities(
       supportsTools,
     })
     if (nativeTools.includes(CODEX_NATIVE_IMAGE_GENERATION_TOOL)) return ['image']
-    if (params.providerId === 'codex') return undefined
+    // 出图只经原生工具的那一家(manifest 自述,批 M):原生工具没开就是不出图,不再问回合内出图。
+    if (getProviderManifest(params.providerId)?.behaviors?.imageOutputViaNativeToolOnly) return undefined
 
     if (!params.toolSettings?.enableToolCalls || !supportsTools) return undefined
     return modelRegistry.modelServesImageOutputInLoop(

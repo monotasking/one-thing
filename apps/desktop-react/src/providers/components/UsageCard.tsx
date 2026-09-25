@@ -35,8 +35,9 @@ export function UsageCard({
   const t = useT()
   const loading = status === 'loading'
   const limits = usage.usage?.limits ?? []
-  // 主限额:codex 那一条,没有就取第一条(与 Vue 壳 ProviderUsageCard.vue:135 同一手)。
-  const main = limits.find((limit) => limit.id === 'codex') ?? limits[0]
+  // 主限额 = 第一条:后端归一时把账号级那一条排在最前(`normalizeOnethingCodexUsagePayload`),
+  // 附加限额跟在后面。壳不认任何一家的限额 id(批 M)。
+  const main = limits[0]
   const extras = main ? limits.filter((limit) => limit.id !== main.id) : limits
 
   return (

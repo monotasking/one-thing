@@ -1,3 +1,5 @@
+import { isCustomProvider } from './manifest.js'
+
 export interface OnethingProviderRegistryInfo {
   requiresOAuth?: boolean
 }
@@ -77,7 +79,8 @@ export function createProviderRegistry<
     },
 
     isProviderSupported(providerId: string): boolean {
-      return providers.has(providerId) || providerId.startsWith('custom-')
+      // 自定义服务商不进这张 info 表,它们在 manifest 注册表里自述 `origin: 'custom'`(批 M)。
+      return providers.has(providerId) || isCustomProvider(providerId)
     },
 
     requiresSystemMerge(providerId: string): boolean {

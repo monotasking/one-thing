@@ -61,6 +61,9 @@ export function createOnethingUtilityAgentProvider(
     authContext: config.authContext,
     modelCapabilitiesByModel: config.modelCapabilitiesByModel,
     models: config.models,
+    headers: config.headers,
+    modelsUrl: config.modelsUrl,
+    dialect: config.dialect,
   })
 }
 

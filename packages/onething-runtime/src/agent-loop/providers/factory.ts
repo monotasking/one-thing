@@ -3,6 +3,7 @@ import type { OnethingCapabilityOverrideLike } from "../../providers/model-capab
 import {
 	BaseAgentProvider,
 	BearerApiKeyAuth,
+	expandHeaderTemplates,
 	LedgerModelProfileResolver,
 	ResolveAuth,
 	getDialect,
@@ -56,6 +57,7 @@ import {
 } from "../../providers/kimi.js";
 import { resolveOnethingZhipuBaseUrl } from "../../providers/zhipu.js";
 import { resolveOnethingQwenBaseUrl } from "../../providers/qwen.js";
+import { EXTERNAL_AGENT_DIALECT_ID, getProviderManifest } from "../../providers/manifest.js";
 import {
 	readOnethingKimiOptions,
 	readOnethingQwenOptions,
@@ -85,13 +87,20 @@ export interface AgentProviderRuntimeConfig {
 	model?: string;
 	apiType?: "openai" | "anthropic";
 	/**
-	 * `custom-*` 专用:直接点名一份已登记的方言配方(`openrouter` / `zhipu` /
+	 * 自定义服务商:直接点名一份已登记的方言配方(`openrouter` / `zhipu` /
 	 * `gemini` …),于是自建端点能拿到那一家的 usage 表、线型、`maxTokensField`
-	 * 与端点形状,只把地址与凭据换成自己的。不给 = 按 `apiType` 走
-	 * `custom-openai` / `custom-anthropic` 两份通用配方(今天的行为)。
-	 * 认不出的 id 是**明确错误**,不静默回退。
+	 * 与端点形状,只把地址与凭据换成自己的。不给 = 读 manifest 的 `dialect`(由
+	 * `apiType` 映射成 `custom-openai` / `custom-anthropic`,今天的行为)。
+	 * 认不出的 id 是**明确错误**,不静默回退。批 M 起 core 的复制表抄这一格,它才真生效。
 	 */
 	dialect?: string;
+	/**
+	 * 每个请求都带的头(批 M §5.3)。值里的 `{{apiKey}}` 发送时换成当前凭证;有
+	 * `Authorization` 头时不再加默认 Bearer。今天只有自定义服务商的工厂读它。
+	 */
+	headers?: Record<string, string>;
+	/** 模型列表地址(批 M §5.3)。这一批只贯通类型,拉取由批 3 做。 */
+	modelsUrl?: string;
 	oauthToken?: AgentProviderRuntimeOAuthToken;
 	authContext?: AgentProviderRuntimeAuthContext;
 	/**
@@ -270,7 +279,7 @@ export function getSupportedAgentProviderRuntimeIds(): string[] {
 export function isAgentProviderRuntimeSupported(providerId: string): boolean {
 	return (
 		agentProviderRuntimeFactories.has(providerId) ||
-		isCustomAgentProviderRuntime(providerId)
+		isManifestAgentProviderRuntime(providerId)
 	);
 }
 
@@ -303,7 +312,7 @@ export function createAgentProviderFromRuntime(
 ): AgentProvider | undefined {
 	const provider =
 		agentProviderRuntimeFactories.get(providerId)?.(config, options) ??
-		createCustomAgentProviderFromRuntime(providerId, config, options);
+		createManifestAgentProviderFromRuntime(providerId, config, options);
 	if (!provider) return undefined;
 	// Capabilities that the provider declares as its own bypass the ledger
 	// entirely. Asking the provider beats keeping a list of provider ids here:
@@ -329,6 +338,7 @@ function createProviderForDialect(
 	providerId: string,
 	config: AgentProviderRuntimeConfig,
 	options: CreateAgentProviderFromRuntimeOptions,
+	headers?: Record<string, string>,
 ): AgentProvider {
 	const shared = {
 		providerId,
@@ -341,53 +351,82 @@ function createProviderForDialect(
 		case "anthropic-messages":
 			return createAnthropicProvider(dialect as AnthropicDialect, {
 				...shared,
-				auth: anthropicAuth({ apiKey: config.apiKey }),
+				auth: anthropicAuth({ apiKey: config.apiKey, ...(headers ? { headers } : {}) }),
 			});
 		case "gemini-generateContent":
 			return createGeminiProvider(dialect as GeminiDialect, {
 				...shared,
-				auth: geminiAuth({ apiKey: config.apiKey }),
+				auth: geminiAuth({ apiKey: config.apiKey, ...(headers ? { headers } : {}) }),
 				// 多轮改图的只读媒体端口(P4-2)—— 只有这条线读它。
 				media: options.media,
 			});
 		case "openai-responses":
 			return createResponsesProvider(dialect as ResponsesDialect, {
 				...shared,
-				auth: codexAuth({ apiKey: config.apiKey }),
+				// 带自定义头时走普通 Bearer(头能让位);不带时保持今天的凭据解析。
+				auth: headers
+					? new BearerApiKeyAuth(config.apiKey, { headers })
+					: codexAuth({ apiKey: config.apiKey }),
 			});
 		case "openai-chat":
 			return createOpenAIChatProvider(dialect as OpenAIChatDialect, {
 				...shared,
-				auth: new BearerApiKeyAuth(config.apiKey),
+				auth: new BearerApiKeyAuth(config.apiKey, headers ? { headers } : {}),
 			});
 	}
 }
 
-function isCustomAgentProviderRuntime(providerId: string): boolean {
-	return providerId.startsWith("custom-");
+/**
+ * 没有专属工厂、但在 manifest 注册表里自述了线协议方言的一家 —— 自定义服务商,以及
+ * 「只要一份已登记方言就够」的内置家(批 M §5.6:加一家 = 一个 manifest 字面量)。
+ * 不再看 id 前缀;外部执行体没有线协议,不走这里。
+ */
+function isManifestAgentProviderRuntime(providerId: string): boolean {
+	const manifest = getProviderManifest(providerId);
+	return Boolean(manifest && manifest.dialect !== EXTERNAL_AGENT_DIALECT_ID);
 }
 
-function createCustomAgentProviderFromRuntime(
+function createManifestAgentProviderFromRuntime(
 	providerId: string,
-	config: AgentProviderRuntimeConfig,
+	rawConfig: AgentProviderRuntimeConfig,
 	options: CreateAgentProviderFromRuntimeOptions,
 ): AgentProvider | undefined {
-	if (!isCustomAgentProviderRuntime(providerId)) return undefined;
+	if (!isManifestAgentProviderRuntime(providerId)) return undefined;
+	// 地址:配置里的优先,其次 manifest 自述的缺省(内置家不一定把缺省地址写进设置)。
+	const defaultBaseUrl = getProviderManifest(providerId)?.defaultBaseUrl;
+	const config =
+		rawConfig.baseUrl || !defaultBaseUrl ? rawConfig : { ...rawConfig, baseUrl: defaultBaseUrl };
 
-	// 点名了配方就用那一家的整套线材(usage 表 / 线型 / maxTokensField /
+	// 方言:配置点名的优先(`dialect`,或老形状的 `apiType` —— 它就是只有两档的方言),
+	// 其次 manifest 自述的(设置里那条自定义服务商映射来的)。
+	const dialectId =
+		config.dialect ||
+		(config.apiType === "anthropic"
+			? CUSTOM_ANTHROPIC_DIALECT.id
+			: config.apiType === "openai"
+				? CUSTOM_OPENAI_DIALECT.id
+				: getProviderManifest(providerId)?.dialect);
+	const headers = expandHeaderTemplates(config.headers, config.apiKey);
+
+	// 点名了别家的配方就用那一家的整套线材(usage 表 / 线型 / maxTokensField /
 	// 端点形状 / 传输声明),只换地址与凭据。认不出 = 明确错误:静默退回
-	// custom-openai 会让请求体悄悄变成另一家的形状。
-	if (config.dialect) {
-		const dialect = getDialect(config.dialect);
+	// custom-openai 会让请求体悄悄变成另一家的形状。两份通用配方走下面那条
+	// 带自定义传输声明的老路(今天的行为)。
+	if (
+		dialectId &&
+		dialectId !== CUSTOM_OPENAI_DIALECT.id &&
+		dialectId !== CUSTOM_ANTHROPIC_DIALECT.id
+	) {
+		const dialect = getDialect(dialectId);
 		if (!dialect) {
 			throw new Error(
-				`Unknown provider dialect: ${config.dialect}. Registered: ${listDialects()
+				`Unknown provider dialect: ${dialectId}. Registered: ${listDialects()
 					.map((entry) => entry.id)
 					.sort()
 					.join(", ")}`,
 			);
 		}
-		return createProviderForDialect(dialect, providerId, config, options);
+		return createProviderForDialect(dialect, providerId, config, options, headers);
 	}
 
 	const capabilities = runtimeCapabilityFlags(config, {
@@ -396,11 +435,11 @@ function createCustomAgentProviderFromRuntime(
 		reasoning: true,
 	});
 
-	if (config.apiType === "anthropic") {
+	if (dialectId === CUSTOM_ANTHROPIC_DIALECT.id) {
 		return createAnthropicProvider(CUSTOM_ANTHROPIC_DIALECT, {
 			providerId,
 			baseUrl: config.baseUrl,
-			auth: anthropicAuth({ apiKey: config.apiKey }),
+			auth: anthropicAuth({ apiKey: config.apiKey, ...(headers ? { headers } : {}) }),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
 			// anthropic 线真发得出 `document` 块 —— 文件输入这一半由线路认领
@@ -413,7 +452,7 @@ function createCustomAgentProviderFromRuntime(
 	return createOpenAIChatProvider(CUSTOM_OPENAI_DIALECT, {
 		providerId,
 		baseUrl: config.baseUrl,
-		auth: new BearerApiKeyAuth(config.apiKey),
+		auth: new BearerApiKeyAuth(config.apiKey, headers ? { headers } : {}),
 		fetchImpl: options.fetchImpl,
 		requestDumper: resolveRequestDumper(options),
 		transport: openAIChatTransportCapabilities(capabilities),

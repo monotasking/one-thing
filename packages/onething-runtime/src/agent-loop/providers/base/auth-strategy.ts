@@ -39,7 +39,37 @@ function withContentType(
 	return contentType ? { "Content-Type": contentType } : {};
 }
 
-/** `Authorization: Bearer <key>` —— OpenAI 系的默认。 */
+/** 静态附加头里有没有这一格(头名不分大小写)。 */
+function hasHeader(
+	headers: Record<string, string> | undefined,
+	name: string,
+): boolean {
+	if (!headers) return false;
+	const lower = name.toLowerCase();
+	return Object.keys(headers).some((key) => key.toLowerCase() === lower);
+}
+
+/**
+ * 自定义头里的 `{{apiKey}}` 换成当前凭证(批 M §5.3)。头存的是明文模板,密钥只在
+ * 密钥池;没有凭证时换成空串(与「不带 key」同读法),不留字面的 `{{apiKey}}` 出网。
+ */
+export function expandHeaderTemplates(
+	headers: Record<string, string> | undefined,
+	apiKey: string | undefined,
+): Record<string, string> | undefined {
+	if (!headers) return undefined;
+	const out: Record<string, string> = {};
+	for (const [name, value] of Object.entries(headers)) {
+		if (!name.trim()) continue;
+		out[name] = String(value).split("{{apiKey}}").join(apiKey ?? "");
+	}
+	return out;
+}
+
+/**
+ * `Authorization: Bearer <key>` —— OpenAI 系的默认。静态附加头里已经有
+ * `Authorization`(不分大小写)时让位:那是用户自己写的认证头(批 M §5.3)。
+ */
 export class BearerApiKeyAuth implements AuthStrategy {
 	constructor(
 		private readonly apiKey: string | undefined | (() => string | undefined),
@@ -48,9 +78,10 @@ export class BearerApiKeyAuth implements AuthStrategy {
 
 	async headers(): Promise<Record<string, string>> {
 		const key = typeof this.apiKey === "function" ? this.apiKey() : this.apiKey;
+		const yields = hasHeader(this.options.headers, "Authorization");
 		return {
 			...withContentType(this.options),
-			...(key ? { Authorization: `Bearer ${key}` } : {}),
+			...(key && !yields ? { Authorization: `Bearer ${key}` } : {}),
 			...this.options.headers,
 		};
 	}
@@ -66,9 +97,11 @@ export class HeaderApiKeyAuth implements AuthStrategy {
 
 	async headers(): Promise<Record<string, string>> {
 		const key = typeof this.apiKey === "function" ? this.apiKey() : this.apiKey;
+		// 静态附加头里已经写了这一格(不分大小写)= 用户自己的认证头,让位。
+		const yields = hasHeader(this.options.headers, this.headerName);
 		return {
 			...withContentType(this.options),
-			...(key ? { [this.headerName]: key } : {}),
+			...(key && !yields ? { [this.headerName]: key } : {}),
 			...this.options.headers,
 		};
 	}

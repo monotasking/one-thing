@@ -36,6 +36,7 @@
  * This module must stay pure (no Node/Electron imports) — the renderer and the
  * web build import it directly.
  */
+import { getProviderManifest } from './manifest.js'
 
 export type OnethingReasoningEffortLevel =
   | 'minimal'
@@ -439,26 +440,19 @@ export type OnethingProviderKind =
   | 'acp'
   | 'unknown'
 
+/**
+ * 这家的模型按哪张型号规则表判 —— 读 manifest 的 `modelRules`(批 M),不点名。
+ * 未登记的 id = `unknown`。
+ *
+ * 第二个参数是旧签名留下的:自定义服务商的 `apiType` 已经在它的 manifest 里
+ * (`manifestOfCustomProvider` 按它算 `modelRules`),这里不再读 —— 从前它只在
+ * id 带 `custom-` 前缀时才生效,拿它给任意未登记 id 兜底会把别家的型号按 openai 表判。
+ */
 export function resolveOnethingProviderKind(
   providerId: string,
-  customApiType?: 'openai' | 'anthropic',
+  _customApiType?: 'openai' | 'anthropic',
 ): OnethingProviderKind {
-  if (providerId === 'claude' || providerId === 'claude-code' || providerId === 'claude-code-agent') return 'claude'
-  if (providerId === 'openai') return 'openai'
-  if (providerId === 'gemini') return 'gemini'
-  if (providerId === 'zhipu') return 'zhipu'
-  if (providerId === 'qwen') return 'qwen'
-  if (providerId === 'grok' || providerId === 'grok-oauth') return 'grok'
-  if (providerId === 'openrouter') return 'openrouter'
-  if (providerId === 'deepseek') return 'deepseek'
-  if (providerId === 'kimi' || providerId === 'kimi-code') return 'kimi'
-  if (providerId === 'codex') return 'codex'
-  if (providerId === 'github-copilot') return 'copilot'
-  if (providerId === 'acp') return 'acp'
-  if (providerId.startsWith('custom-')) {
-    return customApiType === 'anthropic' ? 'claude' : 'openai'
-  }
-  return 'unknown'
+  return getProviderManifest(providerId)?.modelRules ?? 'unknown'
 }
 
 // ---------------------------------------------------------------------------

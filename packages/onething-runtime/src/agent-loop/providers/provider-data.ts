@@ -5,6 +5,9 @@ import {
   type CoreHistoryContentPart,
   type CoreOrderedPartLike,
 } from '@onething/core/engine'
+import { providerDataTagPolicy } from './provider-data-policy.js'
+// 方言在加载时登记各自的 provider-data 落法(`provider-data-policy.ts`);这里只保证它们加载过。
+import './dialects/index.js'
 
 type MaybePromise<T> = T | Promise<T>
 
@@ -95,7 +98,7 @@ export function planOnethingProviderDataPart(providerData: AgentProviderData): O
   if (providerData.type === 'image-generation-result') {
     return generatedImagePayload(providerData) ? 'text' : 'none'
   }
-  if (providerData.provider !== 'codex') return 'provider-data'
+  if (!providerDataTagPolicy(providerData.provider)?.persistOnlyEncryptedReasoning) return 'provider-data'
   if (
     providerData.type === 'encrypted-reasoning'
     && typeof providerData.encryptedContent === 'string'
@@ -110,12 +113,12 @@ export function providerDataFromOnethingContentPart(part: CoreHistoryContentPart
   if (part.providerData) return part.providerData
 
   if (
-    part.provider === 'codex' &&
+    providerDataTagPolicy(part.provider)?.legacyEncryptedReasoningField &&
     typeof part.encryptedReasoning === 'string' &&
     part.encryptedReasoning.length > 0
   ) {
     return {
-      provider: 'codex',
+      provider: part.provider as string,
       type: 'encrypted-reasoning',
       encryptedContent: part.encryptedReasoning,
     }
@@ -201,8 +204,8 @@ export async function applyOnethingAgentLoopProviderData<TContentPart extends Co
     return true
   }
 
-  // ---- 其余类型:非 codex 交回 core 的缺省计划(它落的正是那一格)--------
-  if (providerData.provider !== 'codex') return undefined
+  // ---- 其余类型:没登记「只留加密思维链」的标签交回 core 的缺省计划(它落的正是那一格)--
+  if (!providerDataTagPolicy(providerData.provider)?.persistOnlyEncryptedReasoning) return undefined
 
   if (planOnethingProviderDataPart(providerData) === 'provider-data') {
     appendOrderedPart(options.orderedParts, {

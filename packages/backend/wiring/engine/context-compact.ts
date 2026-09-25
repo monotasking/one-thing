@@ -1,3 +1,4 @@
+import { getProviderManifest } from '@onething/runtime/providers/manifest'
 import type { AppSettings, ChatMessage, ChatSession } from '@shared/ipc.js'
 import type { ProviderConfigWithKey } from './stream/stream-executor.js'
 import { generateChatResponse } from '../providers/index.js'
@@ -56,7 +57,8 @@ export function shouldSkipAutoCompactForProviderUsageMismatch(options: {
   modelContextLength: number
   inputTokens?: number
 }): boolean {
-  if (options.providerId !== 'codex') return false
+  // 服务商回报的 usage 口径与本地估算对不上时跳过 —— 哪家是这种口径由 manifest 自述(批 M)。
+  if (getProviderManifest(options.providerId)?.behaviors?.skipCompactOnUsageMismatch !== true) return false
   return shouldSkipAutoCompactForProviderUsageMismatchByUsage(options)
 }
 

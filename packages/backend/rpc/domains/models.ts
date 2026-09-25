@@ -34,6 +34,8 @@ import {
   onethingCapabilityEntryToOpenRouterModel,
   fetchOnethingGitHubCopilotModelsWithAuth,
   getAllOnethingModelRegistryModelsForIpc,
+  createOnethingCodexModelsFetcher,
+  createOnethingCopilotModelsFetcher,
   getOnethingModelsWithCapabilities,
   getOnethingModelCapabilitiesForIpc,
   getOnethingModelRegistryDisplayNameForIpc,
@@ -205,28 +207,36 @@ function withProjections(
 
 export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
   async getWithCapabilities(request) {
+    const getModelsForProvider = (providerId: string) =>
+      modelRegistry.getModelsForProvider(providerId) as Promise<OpenRouterModel[]>
     const getOnethingModelsWithCapabilitiesAdapters: GetOnethingModelsWithCapabilitiesAdapters = {
-      getModelsForProvider: providerId =>
-        modelRegistry.getModelsForProvider(providerId) as Promise<OpenRouterModel[]>,
-      fetchCopilotModels: fetchGitHubCopilotModelsRaw,
-      fetchCodexModels: fetchCodexModelsRaw,
-      saveProviderModels: (providerId, models) =>
-        modelRegistry.saveProviderModels(providerId, models as OpenRouterModel[]),
-      getCodexFallbackModels: modelIds => getCodexFallbackModels(modelIds) as OpenRouterModel[],
-      getConfiguredCodexModelSelection: () =>
-        getSettings()?.ai?.providers?.codex as OnethingConfiguredModelSelection | undefined,
+      getModelsForProvider,
+      // 调度按 manifest 的 `models.kind`(批 M):`endpoint` 查这张按 id 登记的拉取器表,
+      // `roster` 读名册,其余走通用路。加一家带列表口的服务商 = 表里一行。
+      endpointFetchers: {
+        [AIProvider.GitHubCopilot]: createOnethingCopilotModelsFetcher({
+          fetchCopilotModels: fetchGitHubCopilotModelsRaw,
+          getModelsForProvider,
+          logger: consoleLog,
+        }),
+        [AIProvider.Codex]: createOnethingCodexModelsFetcher({
+          fetchCodexModels: fetchCodexModelsRaw,
+          getModelsForProvider,
+          saveProviderModels: (providerId, models) =>
+            modelRegistry.saveProviderModels(providerId, models as OpenRouterModel[]),
+          getCodexFallbackModels: modelIds => getCodexFallbackModels(modelIds) as OpenRouterModel[],
+          getConfiguredCodexModelSelection: () =>
+            getSettings()?.ai?.providers?.[AIProvider.Codex] as OnethingConfiguredModelSelection | undefined,
+          logger: consoleLog,
+        }),
+      },
       // A1-a:ACP 的「模型」= 名册的生效配置(种子 ⊕ 注册表 ⊕ 用户覆盖),不是设置原样 ——
       // 否则种子来的 agent 永远不出现在选择器里。没有装配好的 backend(单测)退回设置。
-      getACPAgents: () => getCurrentBackendInstance()?.acp.modelAgents() ?? getSettings()?.acp?.agents,
+      getRoster: () => getCurrentBackendInstance()?.acp.modelAgents() ?? getSettings()?.acp?.agents,
       // 刷新钮对通用厂商的真动作(2026-09-11):重拉 models.dev 落盘,随后
       // `getModelsForProvider` 读到的是新表。挂在这里而不是壳里 —— 壳那一头
       // (`forceRefresh: true`)本来就对,断的是后端这一截。
       refreshProviderModels: providerId => modelRegistry.refreshProviderModels(providerId),
-      providerIds: {
-        githubCopilot: [AIProvider.GitHubCopilot],
-        codex: [AIProvider.Codex],
-        acp: [AIProvider.ACP],
-      },
       logger: consoleLog,
     };
     const providerId = request?.providerId ?? ''

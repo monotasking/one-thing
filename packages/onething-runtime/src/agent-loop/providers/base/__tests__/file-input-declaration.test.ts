@@ -32,6 +32,10 @@ import {
 	createAgentProviderFromRuntime,
 	type AgentProviderRuntimeConfig,
 } from "../../factory.js";
+import { registerCustomProvidersForTest } from '../../../../providers/__tests__/custom-manifest-fixture.js'
+// 批 M:自定义服务商按 manifest 注册表认(不再看 id 前缀),单测不装配,这里直接登记。
+registerCustomProvidersForTest(["custom-file-input-probe"])
+
 
 /** 凭据只为让工厂肯造 —— 这份用例一个字节都不发出去。 */
 const KEY: AgentProviderRuntimeConfig = { apiKey: "file-input-declaration-fixture" };

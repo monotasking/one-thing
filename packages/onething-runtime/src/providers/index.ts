@@ -1,4 +1,7 @@
 export * from './builtin-providers.js'
+export * from './manifest.js'
+export * from './builtin-manifests.js'
+export type { DialField, DialOption, DialSpec } from './dials.js'
 export * from './agent-turn.js'
 export * from './agent-runtime-route.js'
 export * from './bound-fetch.js'

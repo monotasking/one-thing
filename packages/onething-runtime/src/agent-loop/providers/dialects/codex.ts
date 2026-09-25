@@ -25,6 +25,7 @@
  * 这些字段一个都不是分支 —— `OpenAIResponsesWire` 里没有一处
  * `if (providerId === 'codex')`。
  */
+import { registerProviderDataTagPolicy } from "../provider-data-policy.js";
 import {
 	CODEX_DIALECT_SPEC,
 	defineResponsesDialect, type ResponsesDialectSpec,
@@ -35,3 +36,10 @@ const responsesDialectSpec: ResponsesDialectSpec = {
 	...CODEX_DIALECT_SPEC,
 };
 export const CODEX_DIALECT = defineResponsesDialect(responsesDialectSpec);
+
+// 这家的 provider-data 生图之外只留加密思维链;老消息上散装的 `encryptedReasoning`
+// 也按这个标签还原(批 M:从前是 `provider-data.ts` 里三处点名)。
+registerProviderDataTagPolicy(CODEX_DIALECT.providerDataTag, {
+	persistOnlyEncryptedReasoning: true,
+	legacyEncryptedReasoningField: true,
+});

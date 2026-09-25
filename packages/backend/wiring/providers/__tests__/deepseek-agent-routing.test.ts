@@ -47,6 +47,10 @@ vi.mock('../../../provider-binding/bound-fetch.js', () => ({
 import { generateChatResponse } from '../index.js'
 import { registerAgentProviderRuntime } from '../../agent-loop/index.js'
 import type { AgentTurn, AgentTurnRequest } from '@onething/core/agent-loop'
+import { registerCustomProvidersForTest } from '@onething/runtime/providers/__tests__/custom-manifest-fixture'
+// 批 M:自定义服务商按 manifest 注册表认(不再看 id 前缀),单测不装配,这里直接登记。
+registerCustomProvidersForTest(["custom-anthropic-key", "custom-chat", "custom-claude", "custom-key", "custom-local-anthropic", "custom-local-openai"])
+
 
 function streamResponse(chunks: string[]): Response {
   const encoder = new TextEncoder()

@@ -57,6 +57,7 @@ import {
 } from '../../wiring/providers/space-credentials.js'
 import { countSessionsInWorkspace } from '../../stores/sessions.js'
 import { persistManualOrphans } from '../../wiring/providers/manual-models.js'
+import { getCurrentBackendInstance } from '../../current.js'
 
 /** 已登记判定。每个带 id 的方法都过这一关 —— 见文件头。 */
 function hasSpace(id: string): boolean {
@@ -129,6 +130,8 @@ export const spacesRpcHandlers: RouteHandlers<SpacesRoutes> = {
       writeProviderSettings: (id, ai) => writeSpaceProviderSettings(id, ai),
     })
     if (result.success) persistManualOrphans(previous, request.ai as unknown as RuntimeSpaceProviderSettings)
+    // 自定义服务商的增删改在这条写路上,不发 `settings:changed` —— manifest 注册表在这里对齐(批 M)。
+    if (result.success) getCurrentBackendInstance()?.providerManifests?.sync()
     return result as SpacesRoutes['setProviderSettings']['output']
   },
   // provider 凭证池(批 B3;C1 起 default 也走这条)。唯一还挡着默认空间的

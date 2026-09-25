@@ -98,6 +98,12 @@ export interface CoreProviderConfigLike {
   model?: string
   selectedModels?: string[]
   baseUrl?: string
+  /** 批 M §5.3:每个请求都带的头;值里 `{{apiKey}}` 发送时换成当前凭证。 */
+  headers?: Record<string, string>
+  /** 批 M §5.3:覆盖 manifest.models 的端点;空 = baseUrl + '/models'。 */
+  modelsUrl?: string
+  /** 批 M §5.3:覆盖 manifest.dialect(内置家指向中转站时也可能要换)。 */
+  dialect?: string
   /** Runtime-only: stamped by per-space credential resolution, never persisted. */
   spaceCredential?: CoreSpaceCredentialMarker
   /** Stored, user-editable dials. The settings UI owns these names. */
@@ -115,6 +121,7 @@ export interface CoreProviderConfigLike {
 export interface CoreCustomProviderConfigLike extends CoreProviderConfigLike {
   id: string
   name?: string
+  description?: string
   apiType?: 'openai' | 'anthropic'
 }
 
@@ -527,11 +534,9 @@ export function getProviderApiType(
   settings: CoreAppSettingsWithAI,
   providerId: string,
 ): 'openai' | 'anthropic' | undefined {
-  if (providerId.startsWith('custom-')) {
-    const customProvider = getCustomProviderConfig(settings, providerId)
-    return customProvider?.apiType
-  }
-  return undefined
+  // 自定义服务商就是设置里 `customProviders[]` 有这一条的那一家 —— 按 id 查到即是,
+  // 不再看 id 前缀(批 M)。
+  return getCustomProviderConfig(settings, providerId)?.apiType
 }
 
 export async function resolveProviderConfigForChat<

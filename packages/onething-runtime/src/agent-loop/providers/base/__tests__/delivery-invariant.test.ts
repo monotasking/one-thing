@@ -55,6 +55,10 @@ import {
 	geminiParts,
 	responsesParts,
 } from "../../wires/index.js";
+import { registerCustomProvidersForTest } from '../../../../providers/__tests__/custom-manifest-fixture.js'
+// 批 M:自定义服务商按 manifest 注册表认(不再看 id 前缀),单测不装配,这里直接登记。
+registerCustomProvidersForTest(["custom-delivery-anthropic", "custom-delivery-openai", "custom-anthropic", "custom-openai"])
+
 
 /** 方言不给 codec 时,那条 wire 的默认 codec —— 与 `HttpAgentProvider.parts` 同源。 */
 const DEFAULT_CODEC: Record<WireId, PartCodec> = {

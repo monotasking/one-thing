@@ -21,6 +21,10 @@ import {
 } from "../factory.js";
 import type { AgentProviderRequestDumper } from "../request-dump.js";
 import { drain, sseResponse, SYSTEM_MESSAGE, TOOLS, USER_MESSAGE } from "./wire-snapshots/snapshot-harness.js";
+import { registerCustomProvidersForTest } from '../../../providers/__tests__/custom-manifest-fixture.js'
+// 批 M:自定义服务商按 manifest 注册表认(不再看 id 前缀),单测不装配,这里直接登记。
+registerCustomProvidersForTest(["custom-acme-anthropic-named", "custom-acme-nope", "custom-acme-plain", "custom-acme-router", "custom-anthropic", "custom-openai"])
+
 
 const MODEL = "anthropic/claude-sonnet-5";
 

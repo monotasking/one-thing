@@ -1,7 +1,8 @@
-import { readFileSync, readdirSync } from 'node:fs'
+import { readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { PROVIDER_FAMILIES } from '@shared/provider-families'
+import { BUILTIN_PROVIDER_MANIFESTS } from '@onething/runtime/providers/builtin-manifests'
 import { PROVIDER_ICONS, providerIconOf } from '../provider-icons'
 
 /**
@@ -12,21 +13,14 @@ import { PROVIDER_ICONS, providerIconOf } from '../provider-icons'
  * 供应商 id 读 runtime 那张内置表 —— 抄第二份名单就是又开一个会漂的产地
  * (这块面从 09-01 起反复立的同一条)。
  *
- * 内置表是**读源文本**而不是 import 进来的:`builtin-providers.ts` 经 `codex.ts`
- * 吃整只 `@onething/core` 桶,那条链一路拉到 `core/engine/content/*.md?raw` ——
- * 为了一张 id 名单把引擎的提示词素材拖进壳的单测,既慢又把这条门绑在了别人的
- * 打包细节上(worktree 里它当场是 vite 的 “Denied ID”)。名单本身是平铺字面量,
- * 读它就够;`ONETHING_*_PROVIDER_ID` 那几家是常量引用、读不出来,而它们
- * (qwen / codex / acp)一家都不在这张图标表上,所以这条门只会**偏严**。
+ * 内置表 import 的是 `builtin-manifests.ts`(批 M):它是**纯**模块(不经 `codex.ts`,
+ * 不吃 `@onething/core` 桶),壳本来就读它拿档位与家族,所以这里不再读源文本 ——
+ * 常量引用的那几家(qwen / codex / acp)也一起进了名单,这条门不再偏严。
  */
 
 const appRoot = process.cwd()
 const assetsDir = resolve(appRoot, 'src/assets/providers')
-const builtinSource = readFileSync(
-  resolve(appRoot, '../../packages/onething-runtime/src/providers/builtin-providers.ts'),
-  'utf8',
-)
-const builtinIds = [...builtinSource.matchAll(/\bid:\s*"([^"]+)"/g)].map((hit) => hit[1])
+const builtinIds = BUILTIN_PROVIDER_MANIFESTS.map((manifest) => manifest.id)
 
 const knownIds = new Set([...PROVIDER_FAMILIES.map((family) => family.id), ...builtinIds])
 

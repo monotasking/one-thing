@@ -7,7 +7,9 @@ import {
   fetchOnethingModelsDevData,
   getConfiguredOnethingFallbackModels,
   getConfiguredOnethingModelIds,
-  getOnethingModelsWithCapabilities,
+  createOnethingCodexModelsFetcher,
+  createOnethingCopilotModelsFetcher,
+  getOnethingModelsWithCapabilities as getOnethingModelsWithCapabilitiesRaw,
   getRefreshableOnethingProviderIds,
   getOnethingModelById,
   getOnethingModelContextLength,
@@ -25,6 +27,49 @@ import {
   type OnethingOpenRouterModel,
   type OnethingProviderModelConfigs,
 } from '../model-registry.js'
+
+/**
+ * 批 M:目录口的调度改成按 manifest `models.kind` 分派,Codex / Copilot 的列表口变成
+ * 按 id 登记的拉取器。这些用例原样保留旧的「一张平铺适配器」写法,由这里拼成新形状。
+ */
+interface LegacyModelsAdapters {
+  getModelsForProvider(providerId: string): Promise<OnethingOpenRouterModel[]>
+  fetchCopilotModels(): Promise<Array<{ id: string; name?: string; description?: string }>>
+  fetchCodexModels(): Promise<OnethingOpenRouterModel[]>
+  saveProviderModels(providerId: string, models: OnethingOpenRouterModel[]): Promise<void> | void
+  getCodexFallbackModels(modelIds?: string[]): OnethingOpenRouterModel[]
+  getConfiguredCodexModelSelection(): { model?: string; selectedModels?: string[] } | undefined
+  getACPAgents(): Array<{ id: string; command?: string; enabled?: boolean }> | undefined
+  refreshProviderModels?(providerId: string): Promise<void> | void
+  logger?: { warn?: (...args: unknown[]) => void }
+}
+
+function getOnethingModelsWithCapabilities(
+  request: { providerId: string; forceRefresh?: boolean },
+  legacy: LegacyModelsAdapters,
+) {
+  return getOnethingModelsWithCapabilitiesRaw(request, {
+    getModelsForProvider: legacy.getModelsForProvider,
+    endpointFetchers: {
+      'github-copilot': createOnethingCopilotModelsFetcher({
+        fetchCopilotModels: legacy.fetchCopilotModels,
+        getModelsForProvider: legacy.getModelsForProvider,
+        logger: legacy.logger,
+      }),
+      codex: createOnethingCodexModelsFetcher({
+        fetchCodexModels: legacy.fetchCodexModels,
+        getModelsForProvider: legacy.getModelsForProvider,
+        saveProviderModels: legacy.saveProviderModels,
+        getCodexFallbackModels: legacy.getCodexFallbackModels,
+        getConfiguredCodexModelSelection: legacy.getConfiguredCodexModelSelection,
+        logger: legacy.logger,
+      }),
+    },
+    getRoster: () => legacy.getACPAgents(),
+    ...(legacy.refreshProviderModels ? { refreshProviderModels: legacy.refreshProviderModels } : {}),
+    logger: legacy.logger,
+  })
+}
 
 function entry(
   id: string,
@@ -699,6 +744,21 @@ describe('onething model registry helpers', () => {
 
     expect(settings.ai.providers['custom-relay']?.models).toBe(existing)
     expect(settings.ai.providers['custom-relay']?.modelsLastFetched).toBe(111)
+    expect(saved).toEqual([])
+    // 批 M:没有 models.dev 来源的一家(未登记 / endpoint)根本不去读目录,跳过不算告警。
+    expect(warnings).toHaveLength(0)
+
+    // 有 models.dev 来源、但这一回目录里恰好没它:同样不动缓存,记一条告警。
+    const deepseekExisting = { 'deepseek-chat': entry('deepseek-chat', 'deepseek', 128000, 4096) }
+    settings.ai.providers.deepseek = { models: deepseekExisting, modelsLastFetched: 222 }
+    await refreshOnethingProviderModels('deepseek', {
+      getSettings: () => settings,
+      saveSettings: next => saved.push(next),
+      fetchModelsDevData: async () => ({}),
+      now: () => 999,
+      logger: { log: () => {}, warn: (...args) => warnings.push(args) },
+    })
+    expect(settings.ai.providers.deepseek?.models).toBe(deepseekExisting)
     expect(saved).toEqual([])
     expect(warnings).toHaveLength(1)
   })

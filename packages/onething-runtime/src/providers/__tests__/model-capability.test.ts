@@ -3,6 +3,7 @@ import {
   resolveOnethingModelCapabilities,
   resolveOnethingProviderKind,
 } from '../model-capability.js'
+import { registerCustomProvidersForTest } from './custom-manifest-fixture.js'
 
 function resolve(providerId: string, modelId: string, extra: Record<string, unknown> = {}) {
   return resolveOnethingModelCapabilities({ providerId, modelId, ...extra })
@@ -14,9 +15,18 @@ describe('resolveOnethingProviderKind', () => {
     expect(resolveOnethingProviderKind('claude-code')).toBe('claude')
     expect(resolveOnethingProviderKind('grok-oauth')).toBe('grok')
     expect(resolveOnethingProviderKind('github-copilot')).toBe('copilot')
-    expect(resolveOnethingProviderKind('custom-abc', 'anthropic')).toBe('claude')
-    expect(resolveOnethingProviderKind('custom-abc', 'openai')).toBe('openai')
+    // 自定义服务商的型号规则表来自它的 manifest(批 M):apiType → modelRules。
+    const undo = registerCustomProvidersForTest([
+      { id: 'custom-abc-anthropic', apiType: 'anthropic' },
+      { id: 'custom-abc-openai', apiType: 'openai' },
+      'custom-abc',
+    ])
+    expect(resolveOnethingProviderKind('custom-abc-anthropic')).toBe('claude')
+    expect(resolveOnethingProviderKind('custom-abc-openai')).toBe('openai')
     expect(resolveOnethingProviderKind('custom-abc')).toBe('openai')
+    undo()
+    // 没登记就不认 —— 不再看 id 前缀。
+    expect(resolveOnethingProviderKind('custom-abc', 'openai')).toBe('unknown')
     expect(resolveOnethingProviderKind('something-else')).toBe('unknown')
   })
 })

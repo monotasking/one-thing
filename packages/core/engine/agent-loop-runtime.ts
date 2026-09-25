@@ -70,6 +70,13 @@ export interface CoreAgentLoopProviderRuntimeConfigLike extends CoreAgentLoopPro
    * the field silently (the Pick is a whitelist; typecheck stays green).
    */
   providerOptions?: unknown
+  /**
+   * 批 M §5.3 三格:自定义请求头 / 模型列表地址 / 方言覆盖。core 只抄,不解释 ——
+   * 从前这张复制表没抄 `dialect`,于是自定义服务商点名方言从来没生效过。
+   */
+  headers?: unknown
+  modelsUrl?: unknown
+  dialect?: unknown
 }
 
 export type CoreAgentLoopProviderRuntimeConfigFor<TProviderConfig extends CoreAgentLoopProviderRuntimeConfigLike> =
@@ -84,6 +91,9 @@ export type CoreAgentLoopProviderRuntimeConfigFor<TProviderConfig extends CoreAg
     | 'spaceCredential'
     | 'modelCapabilitiesByModel'
     | 'models'
+    | 'headers'
+    | 'modelsUrl'
+    | 'dialect'
   >
 
 export interface CoreAgentLoopRuntimeSessionLike {
@@ -659,6 +669,9 @@ export function planAgentLoopRuntimePreparation<
       spaceCredential: input.ctx.providerConfig.spaceCredential,
       modelCapabilitiesByModel: input.ctx.providerConfig.modelCapabilitiesByModel,
       models: input.ctx.providerConfig.models,
+      headers: input.ctx.providerConfig.headers,
+      modelsUrl: input.ctx.providerConfig.modelsUrl,
+      dialect: input.ctx.providerConfig.dialect,
     } as CoreAgentLoopProviderRuntimeConfigFor<TProviderConfig>,
     providerHostContext: {
       workingDirectory: sessionWorkingDir,

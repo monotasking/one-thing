@@ -81,6 +81,10 @@ import {
 	snapshotJson,
 	sseResponse,
 } from "./snapshot-harness.js";
+import { registerCustomProvidersForTest } from '../../../../providers/__tests__/custom-manifest-fixture.js'
+// 批 M:自定义服务商按 manifest 注册表认(不再看 id 前缀),单测不装配,这里直接登记。
+registerCustomProvidersForTest(["custom-acme-anthropic"])
+
 
 const FIXTURE_ROOT = fileURLToPath(
 	new URL("./__fixtures__/anthropic", import.meta.url),

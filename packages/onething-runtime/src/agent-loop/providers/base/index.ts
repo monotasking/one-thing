@@ -66,6 +66,7 @@ export { noCachePolicy, NoCachePolicy, type CachePolicy } from "./cache-policy.j
 
 export {
 	BearerApiKeyAuth,
+	expandHeaderTemplates,
 	HeaderApiKeyAuth,
 	ResolveAuth,
 	type AuthStrategy,

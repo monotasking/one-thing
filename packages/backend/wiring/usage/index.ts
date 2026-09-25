@@ -13,7 +13,6 @@ import {
 	OnethingUsageLedger,
 	getOnethingSessionUsageTotal,
 	getOnethingUsageSummary,
-	resolveOnethingUsageBillingMode,
 	type OnethingUsageBillingMode,
 	type OnethingUsageLedgerRecord,
 	type OnethingUsageSummaryRequest,
@@ -23,22 +22,9 @@ import { DEFAULT_SPACE_ID } from "@onething/runtime/spaces/types";
 import type { MessageOrigin } from "@shared/ipc/channel-identity.js";
 import { getModelCapabilityEntry } from "../providers/model-registry.js";
 import { resolveSessionCredentialId } from "../providers/space-credentials.js";
+import { isSubscriptionProvider } from "@onething/runtime/providers/manifest";
 import * as store from "../../store.js";
 import { sessionReads } from "../../session/reads.js";
-
-/**
- * Providers billed as a fixed-price subscription (no per-token invoice).
- * Their usage is recorded at the same-model official API rate as a cost
- * *estimate*, tagged billing: 'subscription' so it is never summed into
- * real spend.
- */
-const SUBSCRIPTION_PROVIDER_IDS = [
-	"codex",
-	"claude-code",
-	"github-copilot",
-	// Kimi 编程套餐:月费买的额度,按 token 记进真实开销会凭空多出一笔账。
-	"kimi-code",
-] as const;
 
 export interface RecordUsageInput {
 	sessionId?: string;
@@ -118,8 +104,15 @@ export function captureUsageRecorder(): (input: RecordUsageInput) => OnethingUsa
   return input => recordUsageIn(ledger, input)
 }
 
+/**
+ * Providers billed as a fixed-price subscription (no per-token invoice) have
+ * their usage recorded at the same-model official API rate as a cost
+ * *estimate*, tagged billing: 'subscription' so it is never summed into real
+ * spend. Which providers those are is each provider's own manifest
+ * (`billing: 'subscription'`, 批 M) — not a list kept here.
+ */
 export function resolveUsageBillingMode(providerId: string): OnethingUsageBillingMode {
-	return resolveOnethingUsageBillingMode(providerId, SUBSCRIPTION_PROVIDER_IDS);
+	return isSubscriptionProvider(providerId) ? "subscription" : "api";
 }
 
 /**

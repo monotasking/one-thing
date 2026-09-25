@@ -71,6 +71,7 @@ import type {
   CoreSpaceCredentialMarker,
 } from '@onething/runtime/providers'
 import { getSpacesStore } from '@onething/runtime/spaces/store'
+import { getProviderManifest } from '@onething/runtime/providers/manifest'
 import { authService } from '../auth/auth-service.js'
 import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
 import { resolveSessionSpaceId } from '../../stores/sessions.js'
@@ -140,7 +141,8 @@ export function hasProviderEnvApiKey(providerId: string): { envVar?: string } | 
  * 判据与渲染层 `useSpaceProviderView.isCredentialFreeProvider` 同一句。
  */
 export function isCredentialFreeProvider(providerId: string): boolean {
-  if (providerId === 'acp') return true
+  // manifest 自述「不登录」的一家(ACP 名册、外部执行体)—— 批 M,不点名。
+  if (getProviderManifest(providerId)?.auth.kind === 'none') return true
   if (isExternalAgentExecutorProvider(providerId)) return true
   const info = getProviderInfo(providerId)
   return Boolean(info && info.requiresApiKey === false && !info.requiresOAuth)

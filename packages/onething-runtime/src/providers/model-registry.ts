@@ -2,6 +2,7 @@ import type { JsonObject } from "@onething/core";
 import { detectCopilotModelCapabilities as detectCopilotLikeModelCapabilities } from "./github-copilot.js";
 import { resolveOnethingModelCapabilities } from "./model-capability.js";
 import { getOnethingModelsDevProviderId } from "./models-dev-catalog.js";
+import { getProviderManifest, type ProviderModelsSource } from "./manifest.js";
 import {
 	effectiveModelFactsOf,
 	onethingModelOverrideFactsOf,
@@ -31,15 +32,6 @@ export {
 
 export const ONETHING_MODELS_DEV_API = MODELS_DEV_API_URL;
 
-const CLAUDE_CODE_MODEL_PATTERNS = [
-	"claude-sonnet",
-	"claude-haiku",
-	"claude-opus",
-	"claude-3-5",
-	"claude-3.5",
-	"claude-3.7",
-	"claude-4",
-];
 
 const MODEL_NAME_ALIASES: Record<string, string> = {
 	"gemini-2.5-flash-image": "Nano-Banana",
@@ -243,38 +235,35 @@ export interface GetOnethingModelsWithCapabilitiesResult {
 	error?: string;
 }
 
-export interface GetOnethingModelsWithCapabilitiesProviderIds {
-	githubCopilot?: readonly string[];
-	codex?: readonly string[];
-	acp?: readonly string[];
+/**
+ * 服务商自己的模型列表口(manifest `models.kind === 'endpoint'`)。每家一只,**按
+ * provider id 登记**在 `endpointFetchers` 里;列表口的形状差异、失败怎么兜(退缓存 /
+ * 兜底表)都是它自己的事,调度那一层只认「这家是 endpoint、表里有它的拉取器」。
+ */
+export interface OnethingEndpointModelsFetcher {
+	list(
+		request: GetOnethingModelsWithCapabilitiesRequest,
+	): Promise<GetOnethingModelsWithCapabilitiesResult>;
 }
 
 export interface GetOnethingModelsWithCapabilitiesAdapters {
 	getModelsForProvider(providerId: string): Promise<OnethingOpenRouterModel[]>;
-	fetchCopilotModels(): Promise<
-		Array<{ id: string; name?: string; description?: string }>
+	/** 这一家的模型来源。缺省 = 进程注册表里它的 manifest(批 M)。 */
+	modelsSourceOf?(providerId: string): ProviderModelsSource | undefined;
+	/** `endpoint` 来源的拉取器,按 provider id 登记。表里没有 = 退回通用路(读缓存)。 */
+	endpointFetchers?: Readonly<
+		Record<string, OnethingEndpointModelsFetcher | undefined>
 	>;
-	fetchCodexModels(): Promise<OnethingOpenRouterModel[]>;
-	saveProviderModels(
-		providerId: string,
-		models: OnethingOpenRouterModel[],
-	): Promise<void> | void;
-	getCodexFallbackModels(modelIds?: string[]): OnethingOpenRouterModel[];
-	getConfiguredCodexModelSelection():
-		| OnethingConfiguredModelSelection
-		| undefined;
-	getACPAgents(): OnethingACPAgentModelLike[] | undefined;
+	/** `roster` 来源那一家的名册(ACP 的生效 agent 表)。 */
+	getRoster?(providerId: string): OnethingACPAgentModelLike[] | undefined;
 	/**
 	 * 刷新钮对**通用厂商**的真动作:重拉目录(models.dev)并落盘,之后
-	 * `getModelsForProvider` 读到的就是新表。`forceRefresh` 之前只有 Codex /
-	 * Copilot 两支认得,其余厂商一路落到「只读 settings 缓存」——「刷新模型也不
-	 * 更新」就是这么来的(2026-09-11)。
+	 * `getModelsForProvider` 读到的就是新表(2026-09-11「刷新模型也不更新」)。
 	 *
 	 * **可选**:缺席 = 这个宿主没有重拉能力,行为退回旧口径(只读缓存),而不是
 	 * 报错。
 	 */
 	refreshProviderModels?(providerId: string): Promise<void> | void;
-	providerIds?: GetOnethingModelsWithCapabilitiesProviderIds;
 	logger?: OnethingModelRegistryRefreshLogger;
 }
 
@@ -330,11 +319,18 @@ export function getRefreshableOnethingProviderIds(
 	providers: OnethingProviderModelConfigs | undefined,
 ): string[] {
 	if (!providers) return [];
-	return Object.keys(providers).filter((providerId) => {
-		if (providerId === "custom") return false;
-		if (providerId === "codex") return false;
-		return true;
-	});
+	return Object.keys(providers).filter(providerReadsModelsDevCatalog);
+}
+
+/**
+ * 这一家有没有一本 models.dev 目录可重拉:`models.dev` 来源,或 `endpoint` 来源但声明了
+ * `catalogKey`(列表现取、能力事实靠目录补的那种)。读 manifest,不点名(批 M)。
+ * 未登记的 id(设置里残留的旧键)没有目录可拉。
+ */
+export function providerReadsModelsDevCatalog(providerId: string): boolean {
+	const source = getProviderManifest(providerId)?.models;
+	if (!source) return false;
+	return source.kind === "models.dev" || (source.kind === "endpoint" && Boolean(source.catalogKey));
 }
 
 export function mergeOnethingModelsById<TModel extends { id: string }>(
@@ -458,82 +454,22 @@ export function acpAgentsToOnethingOpenRouterModels(
 	return (agents ?? []).map(acpAgentToOnethingOpenRouterModel);
 }
 
-function providerIdMatches(
-	providerId: string,
-	values: readonly string[] | undefined,
-	defaults: readonly string[],
-): boolean {
-	return [...defaults, ...(values ?? [])].includes(providerId);
+export interface OnethingCopilotModelsFetcherOptions {
+	fetchCopilotModels(): Promise<
+		Array<{ id: string; name?: string; description?: string }>
+	>;
+	getModelsForProvider(providerId: string): Promise<OnethingOpenRouterModel[]>;
+	logger?: OnethingModelRegistryRefreshLogger;
 }
 
-function isOnethingGitHubCopilotProviderId(
-	providerId: string,
-	aliases?: GetOnethingModelsWithCapabilitiesProviderIds,
-): boolean {
-	return providerIdMatches(providerId, aliases?.githubCopilot, [
-		"github-copilot",
-	]);
-}
-
-function isOnethingCodexProviderId(
-	providerId: string,
-	aliases?: GetOnethingModelsWithCapabilitiesProviderIds,
-): boolean {
-	return providerIdMatches(providerId, aliases?.codex, ["codex"]);
-}
-
-function isOnethingACPProviderId(
-	providerId: string,
-	aliases?: GetOnethingModelsWithCapabilitiesProviderIds,
-): boolean {
-	return providerIdMatches(providerId, aliases?.acp, ["acp"]);
-}
-
-function getConfiguredCodexFallbackModelsWithAdapters(
-	adapters: Pick<
-		GetOnethingModelsWithCapabilitiesAdapters,
-		"getConfiguredCodexModelSelection" | "getCodexFallbackModels"
-	>,
-): OnethingOpenRouterModel[] {
-	return getConfiguredOnethingFallbackModels(
-		adapters.getConfiguredCodexModelSelection(),
-		adapters.getCodexFallbackModels,
-	);
-}
-
-async function getCachedCodexModelsWithFallbacks(
-	adapters: Pick<
-		GetOnethingModelsWithCapabilitiesAdapters,
-		| "getModelsForProvider"
-		| "getConfiguredCodexModelSelection"
-		| "getCodexFallbackModels"
-	>,
-	includeDefaultFallback = false,
-): Promise<OnethingOpenRouterModel[]> {
-	const registryModels = await adapters.getModelsForProvider("codex");
-	const groups = [
-		registryModels,
-		getConfiguredCodexFallbackModelsWithAdapters(adapters),
-	];
-	if (includeDefaultFallback) {
-		groups.push(adapters.getCodexFallbackModels());
-	}
-	return mergeOnethingModelsById(...groups);
-}
-
-export async function getOnethingModelsWithCapabilities(
-	request: GetOnethingModelsWithCapabilitiesRequest,
-	adapters: GetOnethingModelsWithCapabilitiesAdapters,
-): Promise<GetOnethingModelsWithCapabilitiesResult> {
-	try {
-		if (
-			isOnethingGitHubCopilotProviderId(
-				request.providerId,
-				adapters.providerIds,
-			)
-		) {
+/** Copilot 的列表口:每次现取;取不到退回设置里的缓存目录。 */
+export function createOnethingCopilotModelsFetcher(
+	options: OnethingCopilotModelsFetcherOptions,
+): OnethingEndpointModelsFetcher {
+	return {
+		async list(request) {
 			try {
-				const copilotModels = await adapters.fetchCopilotModels();
+				const copilotModels = await options.fetchCopilotModels();
 				return {
 					success: true,
 					models: copilotModels.map((model) =>
@@ -541,12 +477,13 @@ export async function getOnethingModelsWithCapabilities(
 					),
 				};
 			} catch (error) {
-				adapters.logger?.warn?.(
+				options.logger?.warn?.(
 					"[Models] Failed to fetch Copilot models:",
 					error instanceof Error ? error.message : String(error),
 				);
-				const registryModels =
-					await adapters.getModelsForProvider("github-copilot");
+				const registryModels = await options.getModelsForProvider(
+					request.providerId,
+				);
 				if (registryModels.length > 0) {
 					return { success: true, models: registryModels };
 				}
@@ -555,47 +492,108 @@ export async function getOnethingModelsWithCapabilities(
 					error: "No models available. Please refresh the model registry.",
 				};
 			}
-		}
+		},
+	};
+}
 
-		if (isOnethingCodexProviderId(request.providerId, adapters.providerIds)) {
+export interface OnethingCodexModelsFetcherOptions {
+	fetchCodexModels(): Promise<OnethingOpenRouterModel[]>;
+	getModelsForProvider(providerId: string): Promise<OnethingOpenRouterModel[]>;
+	saveProviderModels(
+		providerId: string,
+		models: OnethingOpenRouterModel[],
+	): Promise<void> | void;
+	getCodexFallbackModels(modelIds?: string[]): OnethingOpenRouterModel[];
+	getConfiguredCodexModelSelection():
+		| OnethingConfiguredModelSelection
+		| undefined;
+	logger?: OnethingModelRegistryRefreshLogger;
+}
+
+/**
+ * Codex 的列表口:不点刷新 = 读缓存 ∪ 用户勾过的兜底;点了刷新 = 拿登录态现取、落盘,
+ * 取不到退回缓存 ∪ 整张兜底表。
+ */
+export function createOnethingCodexModelsFetcher(
+	options: OnethingCodexModelsFetcherOptions,
+): OnethingEndpointModelsFetcher {
+	const configuredFallbacks = (): OnethingOpenRouterModel[] =>
+		getConfiguredOnethingFallbackModels(
+			options.getConfiguredCodexModelSelection(),
+			options.getCodexFallbackModels,
+		);
+	const cachedWithFallbacks = async (
+		providerId: string,
+		includeDefaultFallback = false,
+	): Promise<OnethingOpenRouterModel[]> => {
+		const groups = [
+			await options.getModelsForProvider(providerId),
+			configuredFallbacks(),
+		];
+		if (includeDefaultFallback) groups.push(options.getCodexFallbackModels());
+		return mergeOnethingModelsById(...groups);
+	};
+	return {
+		async list(request) {
 			if (!request.forceRefresh) {
 				return {
 					success: true,
-					models: await getCachedCodexModelsWithFallbacks(adapters),
+					models: await cachedWithFallbacks(request.providerId),
 				};
 			}
-
 			try {
-				const models = await adapters.fetchCodexModels();
-				await adapters.saveProviderModels("codex", models);
+				const models = await options.fetchCodexModels();
+				await options.saveProviderModels(request.providerId, models);
 				return {
 					success: true,
-					models: mergeOnethingModelsById(
-						models,
-						getConfiguredCodexFallbackModelsWithAdapters(adapters),
-					),
+					models: mergeOnethingModelsById(models, configuredFallbacks()),
 				};
 			} catch (error) {
-				adapters.logger?.warn?.(
+				options.logger?.warn?.(
 					"[Models] Failed to fetch Codex models, using fallback:",
 					error instanceof Error ? error.message : String(error),
 				);
 				return {
 					success: true,
-					models: await getCachedCodexModelsWithFallbacks(adapters, true),
+					models: await cachedWithFallbacks(request.providerId, true),
 				};
 			}
+		},
+	};
+}
+
+/**
+ * 目录口的调度:按 manifest 的 `models.kind` 分派(批 M),不点任何一家的名字。
+ *  - `endpoint` + 表里有它的拉取器 → 拉取器;
+ *  - `roster` → 名册;
+ *  - 其余(`models.dev` / `none` / 没登记拉取器的 `endpoint`)→ 通用路:点了刷新先重拉
+ *    目录落盘,再读缓存。
+ */
+export async function getOnethingModelsWithCapabilities(
+	request: GetOnethingModelsWithCapabilitiesRequest,
+	adapters: GetOnethingModelsWithCapabilitiesAdapters,
+): Promise<GetOnethingModelsWithCapabilitiesResult> {
+	try {
+		const source =
+			adapters.modelsSourceOf?.(request.providerId) ??
+			getProviderManifest(request.providerId)?.models;
+
+		if (source?.kind === "endpoint") {
+			const fetcher = adapters.endpointFetchers?.[request.providerId];
+			if (fetcher) return await fetcher.list(request);
 		}
 
-		if (isOnethingACPProviderId(request.providerId, adapters.providerIds)) {
+		if (source?.kind === "roster") {
 			return {
 				success: true,
-				models: acpAgentsToOnethingOpenRouterModels(adapters.getACPAgents()),
+				models: acpAgentsToOnethingOpenRouterModels(
+					adapters.getRoster?.(request.providerId),
+				),
 			};
 		}
 
 		// 通用厂商的刷新:先重拉目录落盘,再照旧读缓存。
-		// 重拉失败不让整发失败 —— 与上面 Codex 分支「拉不到退缓存」同一口径。
+		// 重拉失败不让整发失败 —— 与 endpoint 拉取器「拉不到退缓存」同一口径。
 		// 退缓存这件事今天**只落在日志上**:`ModelsListResponse` 没有 stale /
 		// warning 的格,加一格要连壳一起改,不在这一单的范围里。
 		if (request.forceRefresh && adapters.refreshProviderModels) {
@@ -658,9 +656,9 @@ export async function refreshOnethingProviderModels<
 		`[ModelRegistry] Refreshing models for provider: ${providerId}`,
 	);
 
-	if (providerId === "codex") {
+	if (!providerReadsModelsDevCatalog(providerId)) {
 		adapters.logger?.log?.(
-			"[ModelRegistry] Codex models are loaded from the authenticated Codex backend",
+			`[ModelRegistry] ${providerId} has no models.dev catalog (models come from ${getProviderManifest(providerId)?.models.kind ?? "nowhere"}); skipping`,
 		);
 		return;
 	}
@@ -916,12 +914,13 @@ export function getOnethingModelsForProvider(
 	}
 
 	let entries = Object.values(models);
-	if (providerId === "claude-code") {
+	// manifest 的 `models.include`:这一家的列表只留型号 id 含这些子串的(Claude Code 只列 Claude)。
+	const source = getProviderManifest(providerId)?.models;
+	const include = source?.kind === "models.dev" ? source.include : undefined;
+	if (include) {
 		entries = entries.filter((entry) => {
 			const lower = entry.id.toLowerCase();
-			return CLAUDE_CODE_MODEL_PATTERNS.some((pattern) =>
-				lower.includes(pattern),
-			);
+			return include.some((pattern) => lower.includes(pattern));
 		});
 	}
 
@@ -1044,12 +1043,17 @@ export function getOnethingKnownModelMaxOutputTokens(
 	return known && known > 0 ? known : undefined;
 }
 
+/** 名册来源的一家(ACP):条目是 agent 不是模型,不认工具、不认温度。 */
+function isRosterProvider(providerId: string | undefined): boolean {
+	return getProviderManifest(providerId)?.models.kind === "roster";
+}
+
 export function onethingModelSupportsTools(
 	providers: OnethingProviderModelConfigs | undefined,
 	modelId: string,
 	providerId?: string,
 ): boolean {
-	if (providerId === "acp") return false;
+	if (isRosterProvider(providerId)) return false;
 
 	// 覆盖 > 目录:`effectiveModelFactsOf` 一处判(§5.5)。
 	const known = effectiveModelFactsOf({
@@ -1083,7 +1087,7 @@ export function onethingModelSupportsTemperature(
 	modelId: string,
 	providerId?: string,
 ): boolean {
-	if (providerId === "acp") return false;
+	if (isRosterProvider(providerId)) return false;
 
 	const entry = getModelEntry(providers, modelId, providerId);
 	if (entry) return entry.supportsTemperature;

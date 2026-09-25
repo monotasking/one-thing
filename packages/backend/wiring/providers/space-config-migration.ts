@@ -61,6 +61,7 @@ import {
 } from '@onething/runtime/storage'
 import { getPersistedSettings, savePersistedSettings } from '../../stores/settings.js'
 import { getProviderInfo } from './registry.js'
+import { providerDialFieldsOf } from '@onething/runtime/spaces/provider-credentials'
 import { getLogger } from '../logging/index.js'
 
 const log = getLogger('providers')
@@ -69,9 +70,8 @@ const log = getLogger('providers')
 /**
  * settings 里那三家的档位字段 → entry 的 `{apiMode, region}`(批 B10)。
  *
- * 名字对照表只此一份:`spaces/provider-credentials.ts` 是**反方向**的同一张表
- * (entry → config 字段)。两张表都很短,合并成一张要么让产品层认识 settings 的
- * 字段名,要么让装配层认识 entry 的形状 —— 各留一张比拧在一起清楚。
+ * 字段名读 `spaces/provider-credentials.ts` 的那一张表(`providerDialFieldsOf`,
+ * entry → config 方向用的同一张);这里只管「从 settings 记录里读出来」。
  */
 export function pickProviderDials(
   providerId: string,
@@ -81,21 +81,11 @@ export function pickProviderDials(
     const value = record[key]
     return typeof value === 'string' && value.trim() ? value.trim() : undefined
   }
-  if (providerId === 'zhipu') {
-    const apiMode = read('zhipuApiMode')
-    return apiMode ? { apiMode } : {}
-  }
-  if (providerId === 'qwen') {
-    const apiMode = read('qwenApiMode')
-    const region = read('qwenRegion')
-    return { ...(apiMode ? { apiMode } : {}), ...(region ? { region } : {}) }
-  }
-  if (providerId === 'kimi' || providerId === 'kimi-code') {
-    const apiMode = read('kimiApiMode')
-    const region = read('kimiRegion')
-    return { ...(apiMode ? { apiMode } : {}), ...(region ? { region } : {}) }
-  }
-  return {}
+  // 格名只此一份:`spaces/provider-credentials.ts` 的档位字段表(反方向用的同一张,批 M)。
+  const fields = providerDialFieldsOf(providerId)
+  const apiMode = fields.apiMode ? read(fields.apiMode) : undefined
+  const region = fields.region ? read(fields.region) : undefined
+  return { ...(apiMode ? { apiMode } : {}), ...(region ? { region } : {}) }
 }
 
 /**

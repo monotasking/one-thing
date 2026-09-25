@@ -6,17 +6,9 @@
  * model-registry.ts 那一整套抓取/落盘。规则本身与 model-registry 同一份,
  * 那边只是 re-export。
  */
-import {
-	ONETHING_KIMI_CODE_MODELS_DEV_ID,
-	ONETHING_KIMI_PROVIDER_ID,
-	resolveOnethingKimiModelsDevProviderId,
-	type OnethingKimiEndpointConfig,
-} from "./kimi.js";
-import {
-	ONETHING_QWEN_PROVIDER_ID,
-	resolveOnethingQwenModelsDevProviderId,
-	type OnethingQwenEndpointConfig,
-} from "./qwen.js";
+import type { OnethingKimiEndpointConfig } from "./kimi.js";
+import type { OnethingQwenEndpointConfig } from "./qwen.js";
+import { getProviderManifest } from "./manifest.js";
 
 export const ONETHING_PROVIDER_MAPPING: Record<string, string> = {
 	openai: "openai",
@@ -34,26 +26,20 @@ export const ONETHING_PROVIDER_MAPPING: Record<string, string> = {
 	xai: "grok",
 };
 
+/**
+ * 目录键由各家 manifest 的 `models` 自己说(批 M):`models.dev` 读 `keyOf(config)` 或
+ * `key`(千问 / Kimi 按地区与档位选目录,那一半在各自的 `keyOf` 里);`endpoint` 读
+ * `catalogKey`(能力事实仍从哪本目录补)。没有 manifest 的 id 走反查表,再不中就是它自己。
+ */
 export function getOnethingModelsDevProviderId(
 	providerId: string,
 	config?: OnethingQwenEndpointConfig & OnethingKimiEndpointConfig,
 ): string {
-	// grok-oauth shares the same xAI models as grok
-	if (providerId === "grok-oauth") return "xai";
-	// claude-code-agent drives the same Claude models the CLI ships with
-	if (providerId === "claude-code-agent") return "anthropic";
-	// kimi-code(订阅)读**套餐自己那本**目录:型号名与按量那本一个都不重名
-	// (`k3` / `k3-256k` vs `kimi-k3` / `kimi-k2.7-code-*`),接错了症状就是
-	// "拉过来的模型里没有 k3-256k"。
-	if (providerId === "kimi-code") return ONETHING_KIMI_CODE_MODELS_DEV_ID;
-	// kimi(按量/套餐 x 国内/海外)同样按地址选目录 —— 三个地址三本。
-	if (providerId === ONETHING_KIMI_PROVIDER_ID) {
-		return resolveOnethingKimiModelsDevProviderId(config);
+	const source = getProviderManifest(providerId)?.models;
+	if (source?.kind === "models.dev") {
+		return source.keyOf?.(config as Record<string, unknown> | undefined) ?? source.key;
 	}
-	// 千问 splits its catalog four ways (国内/海外 x 按量/Token Plan).
-	if (providerId === ONETHING_QWEN_PROVIDER_ID) {
-		return resolveOnethingQwenModelsDevProviderId(config);
-	}
+	if (source?.kind === "endpoint" && source.catalogKey) return source.catalogKey;
 	return (
 		Object.entries(ONETHING_PROVIDER_MAPPING).find(
 			([, mappedId]) => mappedId === providerId,

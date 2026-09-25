@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { getProviderManifest } from "../providers/manifest.js";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -126,7 +127,9 @@ export async function buildOnethingPrompt(
 		providerId: options.providerId,
 		historyMessages: options.historyMessages,
 		separateDeveloperMessages:
-			options.separateDeveloperMessages ?? options.providerId === "codex",
+			options.separateDeveloperMessages ??
+			// 这家要不要把系统提示词拆成多条 developer 消息 —— manifest 自述(批 M)。
+			getProviderManifest(options.providerId)?.behaviors?.separateDeveloperMessages === true,
 	});
 	const persona = onethingPersonaPrompt(options, result.sections);
 	return persona ? { ...result, persona } : result;

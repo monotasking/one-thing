@@ -48,6 +48,7 @@ import path from 'node:path'
 import { scheduleSessionBlobGcOnStartup } from './session/blob-gc.js'
 import { scheduleSessionListProjectionBackfillOnStartup } from './session/list-projection-backfill.js'
 import { getSettings, initializeSettings, invalidateSettingsCache } from './stores/settings.js'
+import { CustomProviderManifestSync } from './wiring/providers/custom-manifests.js'
 import { applyDiagnosticsMode } from './wiring/logging/diagnostics.js'
 import { initializeAgents } from './wiring/agents/index.js'
 import { configureAppToolSandbox } from './wiring/tools/core/sandbox.js'
@@ -302,6 +303,8 @@ export class OnethingBackend implements BackendHandle {
    * 内存超过预算时统一释放;Electron 宿主另外注册一个报告其他进程的探针。
    */
   private memorySubsystem: MemorySubsystem | undefined
+  /** 自定义服务商的 manifest 同步(批 M)。实例字段,由 `own()` 收尾。 */
+  private providerManifestSync: CustomProviderManifestSync | undefined
 
   readonly options: Readonly<OnethingBackendOptions>
 
@@ -357,6 +360,14 @@ export class OnethingBackend implements BackendHandle {
    * `mountShell` 挂到内核上,是因为「一扇壳的连接」这个寿命概念内核不该知道 ——
    * 内核只认 provider(§2 不变量 3)。
    */
+  /**
+   * 自定义服务商的 manifest 同步 —— 写空间 provider 设置的域处理者写完喊一声 `sync()`。
+   * 不抛:装配没走到那一步 / 已经收尾时答 `undefined`,喊的那一方本来就是「顺手对齐」。
+   */
+  get providerManifests(): CustomProviderManifestSync | undefined {
+    return this.providerManifestSync
+  }
+
   get memory(): MemorySubsystem {
     if (!this.memorySubsystem) throw new BackendNotAssembledError()
     return this.memorySubsystem
@@ -669,6 +680,16 @@ export class OnethingBackend implements BackendHandle {
     } catch (error) {
       log.error('provider config migration failed, will retry next boot', {}, error)
     }
+    // 自定义服务商进 manifest 注册表(批 M §5.2)。排在迁移之后:它读的是迁完的空间层。
+    // 之后每次保存设置 / 写空间 provider 设置都重同步;关机卸干净。
+    const providerManifests = new CustomProviderManifestSync()
+    this.providerManifestSync = providerManifests
+    providerManifests.sync()
+    this.own(providerManifests.watchSettingsChanged(), 'customProviderManifestsWatch')
+    this.own(() => {
+      providerManifests.dispose()
+      this.providerManifestSync = undefined
+    }, 'customProviderManifests')
     /*
      * 笔记库的**播种**(P1,§3.4)。同一处、同一条纪律:刚读完 settings、
      * 任何人问「有哪些笔记库」之前;幂等靠 `settings.notes.migratedAt`;

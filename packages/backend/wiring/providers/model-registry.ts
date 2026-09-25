@@ -241,64 +241,83 @@ function getProviderConfigs(): OnethingProviderModelConfigs | undefined {
 		| undefined;
 }
 
+function claudeCodeAgentFallbackModelById(modelId: string): OpenRouterModel | undefined {
+	// 手填条目没有参数,不拿它盖掉下面那张兜底表(批 2)。
+	const entry = catalogFactsOf(getProviderConfigs()?.claude?.models?.[modelId]);
+	if (entry) {
+		return onethingCapabilityEntryToOpenRouterModel(entry) as OpenRouterModel;
+	}
+	return getClaudeCodeAgentFallbackModels().find((model) => model.id === modelId);
+}
+
+function copilotFallbackModel(modelId: string): OpenRouterModel {
+	const caps = detectModelCapabilities(modelId);
+	const inputModalities = ["text"];
+	const outputModalities = ["text"];
+	const supportedParams: string[] = [];
+	if (caps.hasVision) inputModalities.push("image");
+	if (caps.hasImageGeneration) outputModalities.push("image");
+	if (caps.hasTools) supportedParams.push("tools");
+	if (caps.hasReasoning) supportedParams.push("reasoning");
+
+	return {
+		id: modelId,
+		name: modelId,
+		description: "",
+		context_length: caps.contextLength,
+		architecture: {
+			modality: caps.hasImageGeneration ? "image" : "text",
+			input_modalities: inputModalities,
+			output_modalities: outputModalities,
+			tokenizer: "unknown",
+		},
+		pricing: { prompt: "0", completion: "0", request: "0", image: "0" },
+		top_provider: {
+			context_length: caps.contextLength,
+			max_completion_tokens: 16384,
+			is_moderated: false,
+		},
+		supported_parameters: supportedParams,
+	};
+}
+
+/**
+ * 目录里没有时的兜底表,**按 provider id 登记**(批 M:从前是一串按名字的 if)。
+ * `model` 答单个型号,`all` 答「这家的目录整个是空的」时列什么。没登记 = 没有兜底。
+ */
+interface ProviderFallbackCatalog {
+	model(modelId: string): OpenRouterModel | undefined;
+	all(): OpenRouterModel[];
+}
+
+const GROK_FALLBACK_CATALOG: ProviderFallbackCatalog = {
+	model: (modelId) => GROK_FALLBACK_MODELS[modelId],
+	all: () => Object.values(GROK_FALLBACK_MODELS),
+};
+
+const PROVIDER_FALLBACK_CATALOGS: Readonly<Record<string, ProviderFallbackCatalog>> = {
+	codex: {
+		model: (modelId) => getCodexFallbackModel(modelId),
+		all: () => getCodexFallbackModels(),
+	},
+	"claude-code-agent": {
+		model: claudeCodeAgentFallbackModelById,
+		all: () => getClaudeCodeAgentFallbackModels(),
+	},
+	"github-copilot": {
+		model: copilotFallbackModel,
+		all: () => [],
+	},
+	// grok / grok-oauth 读同一本 xAI 目录,兜底也是同一张。
+	grok: GROK_FALLBACK_CATALOG,
+	"grok-oauth": GROK_FALLBACK_CATALOG,
+};
+
 function getProviderDirectFallbackModel(
 	modelId: string,
 	providerId?: string,
 ): OpenRouterModel | undefined {
-	if (providerId === "codex") {
-		return getCodexFallbackModel(modelId);
-	}
-
-	if (providerId === "claude-code-agent") {
-		// 手填条目没有参数,不拿它盖掉下面那张兜底表(批 2)。
-		const entry = catalogFactsOf(getProviderConfigs()?.claude?.models?.[modelId]);
-		if (entry) {
-			return onethingCapabilityEntryToOpenRouterModel(
-				entry,
-			) as OpenRouterModel;
-		}
-		return getClaudeCodeAgentFallbackModels().find(
-			(model) => model.id === modelId,
-		);
-	}
-
-	if (providerId === "github-copilot") {
-		const caps = detectModelCapabilities(modelId);
-		const inputModalities = ["text"];
-		const outputModalities = ["text"];
-		const supportedParams: string[] = [];
-		if (caps.hasVision) inputModalities.push("image");
-		if (caps.hasImageGeneration) outputModalities.push("image");
-		if (caps.hasTools) supportedParams.push("tools");
-		if (caps.hasReasoning) supportedParams.push("reasoning");
-
-		return {
-			id: modelId,
-			name: modelId,
-			description: "",
-			context_length: caps.contextLength,
-			architecture: {
-				modality: caps.hasImageGeneration ? "image" : "text",
-				input_modalities: inputModalities,
-				output_modalities: outputModalities,
-				tokenizer: "unknown",
-			},
-			pricing: { prompt: "0", completion: "0", request: "0", image: "0" },
-			top_provider: {
-				context_length: caps.contextLength,
-				max_completion_tokens: 16384,
-				is_moderated: false,
-			},
-			supported_parameters: supportedParams,
-		};
-	}
-
-	// grok / grok-oauth share the same xAI model catalog
-	if (providerId === "grok" || providerId === "grok-oauth") {
-		return GROK_FALLBACK_MODELS[modelId];
-	}
-
-	return undefined;
+	return providerId ? PROVIDER_FALLBACK_CATALOGS[providerId]?.model(modelId) : undefined;
 }
 
 function claudeCodeAgentFallbackModel(
@@ -364,12 +383,7 @@ function getClaudeCodeAgentFallbackModels(): OpenRouterModel[] {
 }
 
 function getProviderFallbackModels(providerId: string): OpenRouterModel[] {
-	if (providerId === "codex") return getCodexFallbackModels();
-	if (providerId === "grok" || providerId === "grok-oauth")
-		return Object.values(GROK_FALLBACK_MODELS);
-	if (providerId === "claude-code-agent")
-		return getClaudeCodeAgentFallbackModels();
-	return [];
+	return PROVIDER_FALLBACK_CATALOGS[providerId]?.all() ?? [];
 }
 
 function queryOptions(): OnethingModelRegistryQueryOptions {
