@@ -277,7 +277,7 @@ describe('§8.2 色块上那颗三角', () => {
     await mountSheet()
     const row = document.querySelector('[data-music-entry="a"]') as HTMLElement
     fireEvent.contextMenu(row)
-    expect(await screen.findByText('提到下一首')).toBeTruthy()
+    expect(await screen.findByText('下一首播放')).toBeTruthy()
   })
 })
 

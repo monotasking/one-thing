@@ -77,7 +77,7 @@ export function AccountSection({ runtime, navigate }: { runtime?: MusicRuntimeSt
                 <li key={step.stage} className={s.step} data-state={state} aria-current={state === 'current' ? 'step' : undefined}>
                   <StatusDot tone={STEP_TONE[state]} size="sm" />
                   <span className={s.stepText}>
-                    <span className={s.stepTitle}>{t('music.onboard.stepN', { n: index + 1, title: t(step.titleKey) })}</span>
+                    <span className={s.stepTitle}>{t(step.titleKey)}</span>
                     <span className={s.stepBody}>{t(step.bodyKey)}</span>
                   </span>
                   <span className={s.stepState}>{t(STEP_LABEL[state])}</span>
@@ -135,8 +135,6 @@ function AccountReady({ runtime, navigate }: { runtime: MusicRuntimeState; navig
       </Card>
 
       <Card
-        titleAs="h2"
-        title={t('music.account.logout')}
         note={t('music.account.logoutConfirmBody')}
         notePlacement="below"
         actions={

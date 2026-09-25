@@ -343,7 +343,7 @@ describe('歌词三态(09-18 报障:「歌曲开始播放了,然后显示没歌�
     const table = fullTable()
     table['music:player#lyrics'] = { title: '上一首 - 谁', lines: [] }
     await mount(table)
-    expect(screen.getByTestId('music-lyrics-loading').textContent).toBe('正在取歌词')
+    expect(screen.getByTestId('music-lyrics-loading').textContent).toBe('正在加载歌词')
     expect(screen.queryByTestId('music-lyrics-empty')).toBeNull()
 
     fake.table['music:player#lyrics'] = { title: NOW_PLAYING.title, lines }
@@ -361,14 +361,14 @@ describe('歌词三态(09-18 报障:「歌曲开始播放了,然后显示没歌�
     const empty = fullTable()
     empty['music:player#lyrics'] = { title: NOW_PLAYING.title, lines: [] }
     await mount(empty)
-    expect(screen.getByTestId('music-lyrics-empty').textContent).toBe('这首没有歌词。')
+    expect(screen.getByTestId('music-lyrics-empty').textContent).toBe('暂无歌词')
     cleanup()
     resetMusicSource()
 
     const failed = fullTable()
     failed['music:player#lyrics'] = { title: NOW_PLAYING.title, lines: [], failed: true }
     await mount(failed)
-    expect(screen.getByTestId('music-lyrics-failed').textContent).toBe('歌词没取到。')
+    expect(screen.getByTestId('music-lyrics-failed').textContent).toBe('歌词加载失败')
   })
 })
 
@@ -455,8 +455,8 @@ describe('关着 / 没歌:唱片与那一行照样在,只换里面的字', () =>
   it('从没放过(09-19):标签「黑豆电台 · 关着」、问话 + 四枚心情块;时间 0:00;除了音量与播放列表都按不了', async () => {
     await mount(offTable())
     expect(screen.getByTestId('music-label').textContent).toContain('黑豆电台')
-    expect(screen.getByTestId('music-label').textContent).toContain('关着')
-    expect(screen.getByTestId('music-invite').textContent).toContain('今晚想听点什么？')
+    expect(screen.getByTestId('music-label').textContent).toContain('未开启')
+    expect(screen.getByTestId('music-invite').textContent).toContain('想听什么？')
     expect(screen.getAllByRole('button').filter((b) => b.dataset.testid?.startsWith('music-mood-'))).toHaveLength(4)
     const clocks = screen.getByTestId('music-row').textContent ?? ''
     expect(clocks.match(/0:00/g)?.length).toBe(2)
@@ -478,7 +478,7 @@ describe('关着 / 没歌:唱片与那一行照样在,只换里面的字', () =>
     expect(row).toContain('3:15')
     const play = screen.getByTestId('music-play') as HTMLButtonElement
     expect(play.disabled).toBe(false)
-    expect(play.getAttribute('aria-label')).toBe('接着放')
+    expect(play.getAttribute('aria-label')).toBe('继续播放')
     expect((screen.getByTestId('music-next') as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByTestId('music-like') as HTMLButtonElement).disabled).toBe(true)
     // 没人在取歌词:不说「正在取歌词」。
@@ -553,7 +553,7 @@ describe('关着 / 没歌:唱片与那一行照样在,只换里面的字', () =>
       for (const listener of [...fake.listeners]) listener({ ref: 'music:radio', event: 'radioClosed', payload: {} })
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
-    await waitFor(() => expect(screen.getByTestId('music-play').getAttribute('aria-label')).toBe('开台'))
+    await waitFor(() => expect(screen.getByTestId('music-play').getAttribute('aria-label')).toBe('开启电台'))
     expect(screen.getByTestId('music-deck')).toBe(deck)
     expect(screen.getByTestId('music-row')).toBe(row)
   })
@@ -573,7 +573,7 @@ describe('拆卸', () => {
 describe('按钮那一行:操作不许有两个意思', () => {
   it('电台开着时 ⏭ 说出后端真做的事', async () => {
     await mount()
-    expect((await screen.findByTestId('music-next')).getAttribute('aria-label')).toBe('跳过(以后少排这类)')
+    expect((await screen.findByTestId('music-next')).getAttribute('aria-label')).toBe('跳过')
   })
 
   it('♥ 一次性:成功后停用并改名「已收藏到网易云」', async () => {
@@ -583,7 +583,7 @@ describe('按钮那一行:操作不许有两个意思', () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
     const like = screen.getByTestId('music-like')
-    expect(like.getAttribute('aria-label')).toBe('已收藏到网易云')
+    expect(like.getAttribute('aria-label')).toBe('已收藏')
     expect((like as HTMLButtonElement).disabled).toBe(true)
   })
 
@@ -593,7 +593,7 @@ describe('按钮那一行:操作不许有两个意思', () => {
     fireEvent.click(await screen.findByTestId('music-entry-more:a'))
     fake.hold = { release: () => undefined }
     await act(async () => {
-      fireEvent.click(await screen.findByText('拿掉(以后少排这类)'))
+      fireEvent.click(await screen.findByText('移除'))
     })
     expect(fake.dos).toEqual([
       { ref: 'music:radio', op: 'programmeAction', params: { action: { encryptedId: 'a', kind: 'remove' } } },
@@ -613,7 +613,7 @@ describe('按钮那一行:操作不许有两个意思', () => {
     const row = (await screen.findByText('第一首')).closest('li')
     expect(row).toBeTruthy()
     fireEvent.contextMenu(row as HTMLElement)
-    const promote = await screen.findByText('提到下一首')
+    const promote = await screen.findByText('下一首播放')
     expect((promote.closest('button') as HTMLButtonElement).disabled).toBe(true)
   })
 })
@@ -957,8 +957,8 @@ describe('v8 整面:一块唱片 + 一行按钮', () => {
     })
     const history = screen.getByTestId('music-history')
     expect(history.querySelectorAll('li')).toHaveLength(3)
-    expect(history.textContent).toContain('跳过')
-    expect(history.textContent).toContain('♥ 喜欢')
+    expect(history.textContent).toContain('已跳过')
+    expect(history.textContent).toContain('♥ 已收藏')
     // 正在放的那一首已经在顶上那一段了,这里不重复。
     expect(history.textContent).not.toContain('可惜没如果')
   })
@@ -1080,7 +1080,7 @@ describe('⏯:屏幕按人的意图走,后端追上来', () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
     expect(label()).toBe('暂停')
-    expect(screen.getByTestId('music-backend-error').textContent).toBe('播放器没有照做,已按它现在的样子显示。')
+    expect(screen.getByTestId('music-backend-error').textContent).toBe('操作未生效，已恢复为当前播放状态。')
     // 下一次按 ⏯,那句话撤掉。
     fake.table['music:player#nowPlaying'] = PAUSED_NOW
     await clickPlay()

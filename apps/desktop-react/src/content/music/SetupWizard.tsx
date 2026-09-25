@@ -164,7 +164,7 @@ function EnvStep({ t, state }: { t: TFn; state: MusicRuntimeState }) {
   const tools = env ? Object.keys(env.tools) : ['', '']
   return (
     <>
-      <p className={s.wizardHint}>{t('music.setup.envHint')}</p>
+      <p className={s.wizardHint} data-step-hint>{t('music.setup.envHint')}</p>
       <div className={s.wizardBox}>
         {tools.map((tool, index) => (
           <ToolRow key={tool || index} t={t} tool={tool} state={state} />
@@ -273,7 +273,7 @@ function CredentialsStep({ t }: { t: TFn }) {
         void saveOp.run({ appId: appId.trim(), privateKey: privateKey.trim() })
       }}
     >
-      <p className={s.wizardHint}>{t('music.setup.credentialsHint')}</p>
+      <p className={s.wizardHint} data-step-hint>{t('music.setup.credentialsHint')}</p>
       <div className={s.wizardBox}>
         <Field label={t('music.setup.appId')}>
           <AppIdInput value={appId} onChange={setAppId} />
@@ -349,7 +349,7 @@ function LoginStep({ t, state }: { t: TFn; state: MusicRuntimeState }) {
   const failed = login.status === 'failed' || login.status === 'quota'
   return (
     <>
-      <p className={s.wizardHint}>{t('music.setup.loginHint')}</p>
+      <p className={s.wizardHint} data-step-hint>{t('music.setup.loginHint')}</p>
       {failed && (
         <p className={s.bad} data-testid="music-login-error">
           {login.message ?? t('music.setup.loginFailed')}

@@ -122,11 +122,12 @@ export const MUSIC_STATUS_TABLE: Readonly<Record<MusicStatusKind, MusicStatusRow
     banner: false,
     action: { kind: 'resume', labelKey: 'music.deckContinue' },
   },
+  // 电台开着、播放器停了:不是故障,按 ▶ 就接着放 —— 不上状态条(09-25 用户:「这是啥啊」)。
   stationIdle: {
-    tone: 'warn',
+    tone: 'idle',
     labelKey: 'music.status.stationIdle',
     hintKey: 'music.status.stationIdleHint',
-    banner: true,
+    banner: false,
     action: { kind: 'resume', labelKey: 'music.radioResume' },
   },
   off: {

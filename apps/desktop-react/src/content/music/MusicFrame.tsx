@@ -252,9 +252,9 @@ export function NowLine({
           </span>
         </>
       ) : (
+        // 没歌时左边只说一句该做什么(有指引就只说指引),状态丸在右边 —— 不把同一件事说两遍。
         <span className={s.nowText}>
-          <span className={s.nowIdle}>{t('music.nowIdle')}</span>
-          {row.hintKey && !row.banner ? <span className={s.nowArtist}>{t(row.hintKey)}</span> : null}
+          <span className={s.nowIdle}>{row.hintKey && !row.banner ? t(row.hintKey) : t('music.nowIdle')}</span>
         </span>
       )}
       {guide ? <StatusActionButton action={guide} onNavigate={onNavigate} /> : null}

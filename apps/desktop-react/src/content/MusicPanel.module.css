@@ -486,6 +486,11 @@
   padding: 0;
 }
 
+/* 同上:每一步的那句说明已经写在上面的清单里,这里不再重复一遍。 */
+.wizard[data-bare] [data-step-hint] {
+  display: none;
+}
+
 .wizardHead {
   display: grid;
   gap: var(--sp-2);

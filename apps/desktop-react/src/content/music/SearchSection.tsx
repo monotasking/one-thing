@@ -82,7 +82,8 @@ export function SearchSection({ radioOn, navigate }: { radioOn: boolean; navigat
           {t('music.search.submit')}
         </AsyncButton>
       </form>
-      <p className={s.hint}>{t(radioOn ? 'music.search.hintOn' : 'music.search.hintOff')}</p>
+      {/* 电台开着时钮上的字(「下一首播放」)已经说清了;只有关着时点「播放」会开启电台,才需要先说一句。 */}
+      {radioOn ? null : <p className={s.hint}>{t('music.search.hintOff')}</p>}
 
       {search.error ? <p className={s.bad} data-testid="music-search-error">{search.error}</p> : null}
       {pick.error ? (

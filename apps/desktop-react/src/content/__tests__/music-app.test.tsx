@@ -199,15 +199,16 @@ describe('① 状态有反馈', () => {
 
   it('后端报错:状态条是那句话(原话套一层),状态丸说「出错了」', async () => {
     await mount(table({ 'music:provider#state': { ...READY_STATE, lastError: 'ncm-cli 超时' } }))
-    expect(screen.getByTestId('music-backend-error').textContent).toBe('音乐后端报了一句:ncm-cli 超时')
+    expect(screen.getByTestId('music-backend-error').textContent).toBe('音乐服务出错：ncm-cli 超时')
     expect(screen.getByTestId('music-status-pill').dataset.kind).toBe('error')
   })
 
-  it('电台开着但播放器停了:状态条带「继续这一台」→ do(music:radio, radioResume)', async () => {
+  it('电台开着但播放器停了:不上状态条(不是故障),状态丸说「已停止」,按 ⏯ 继续 → do(music:radio, radioResume)', async () => {
     await mount(table({ 'music:player#nowPlaying': NOTHING }))
-    const banner = screen.getByTestId('music-status-banner')
-    expect(banner.dataset.kind).toBe('stationIdle')
-    await click(within(banner).getByTestId('music-status-action'))
+    expect(screen.queryByTestId('music-status-banner')).toBeNull()
+    expect(screen.getByTestId('music-status-pill').textContent).toBe('已停止')
+    expect(screen.getByTestId('music-now-line').textContent).toContain('点击播放继续收听。')
+    await click(screen.getByTestId('music-play'))
     expect(fake.dos.at(-1)).toMatchObject({ ref: 'music:radio', op: 'radioResume' })
   })
 })
@@ -216,8 +217,7 @@ describe('② 操作指引', () => {
   it('电台关着、什么都没放:播放条那一行说「没在放」+ 去哪 + 一颗「去开台」,按下去到电台那一格', async () => {
     await mount(table({ 'music:radio#brief': BRIEF_OFF, 'music:player#nowPlaying': NOTHING }))
     const line = screen.getByTestId('music-now-line')
-    expect(line.textContent).toContain('没在放')
-    expect(line.textContent).toContain('去「电台」选个心情就能开台')
+    expect(line.textContent).toContain('在「电台」中选择一种心情即可开始。')
     await click(within(line).getByTestId('music-status-action'))
     expect(screen.getByTestId('music-panel').dataset.section).toBe('radio')
     expect(sectionBody('radio').hidden).toBe(false)
@@ -250,8 +250,8 @@ describe('③ 没登录引导登录', () => {
     await mount(table({ 'music:provider#state': NOT_LOGGED_IN }))
     await go('radio')
     const gate = within(sectionBody('radio')).getByTestId('music-login-gate')
-    expect(gate.textContent).toContain('登录后就能听歌')
-    expect(gate.textContent).toContain('第 3 步')
+    expect(gate.textContent).toContain('登录后即可使用')
+    expect(gate.textContent).toContain('第 3/3 步')
     expect(screen.queryByTestId('music-section-radio')).toBeNull()
     await click(within(gate).getByTestId('music-gate-login'))
     expect(screen.getByTestId('music-panel').dataset.section).toBe('account')
@@ -261,7 +261,7 @@ describe('③ 没登录引导登录', () => {
     await mount()
     expect(screen.queryByTestId('music-login')).toBeNull()
     await click(screen.getByTestId('music-account'))
-    await click(screen.getByRole('menuitem', { name: '账号与出声方式…' }))
+    await click(screen.getByRole('menuitem', { name: '账号设置' }))
     expect(screen.getByTestId('music-panel').dataset.section).toBe('account')
     expect(screen.getByTestId('music-section-account').textContent).toContain('已登录')
   })
@@ -269,9 +269,9 @@ describe('③ 没登录引导登录', () => {
   it('账号那一格:换出声方式 → setup set-player', async () => {
     await mount()
     await click(screen.getByTestId('music-account'))
-    await click(screen.getByRole('menuitem', { name: '账号与出声方式…' }))
+    await click(screen.getByRole('menuitem', { name: '账号设置' }))
     const player = screen.getByTestId('music-account-player')
-    await click(within(player).getByRole('radio', { name: '交给网易云音乐 App' }))
+    await click(within(player).getByRole('radio', { name: '网易云音乐 App' }))
     expect(fake.dos.at(-1)).toMatchObject({ ref: 'music:provider', op: 'setup', params: { action: 'set-player', player: 'orpheus' } })
   })
 })
@@ -280,7 +280,7 @@ describe('④ 分区:导航读表,切走不丢', () => {
   it('导航三段:正在放 / 电台 / 搜索(账号不在导航里,它的入口在檐右端)', async () => {
     await mount()
     const segs = within(screen.getByTestId('music-nav')).getAllByRole('radio')
-    expect(segs.map((el) => el.textContent)).toEqual(['正在放', '电台', '搜索'])
+    expect(segs.map((el) => el.textContent)).toEqual(['正在播放', '电台', '搜索'])
     expect(segs[0].getAttribute('aria-checked')).toBe('true')
   })
 
@@ -310,7 +310,7 @@ describe('电台那一格', () => {
   it('关着:点一枚心情块 = 以整句意图开台', async () => {
     await mount(table({ 'music:radio#brief': BRIEF_OFF, 'music:player#nowPlaying': NOTHING }))
     await go('radio')
-    expect(screen.getByTestId('music-station-state').textContent).toBe('关着')
+    expect(screen.getByTestId('music-station-state').textContent).toBe('未开启')
     await click(screen.getByTestId('music-station-mood-rain'))
     expect(fake.dos.at(-1)).toEqual({ ref: 'music:radio', op: 'open', params: { intent: '下雨天,安静点的' } })
   })
@@ -318,7 +318,7 @@ describe('电台那一格', () => {
   it('开着:状态行带剩几首;心情块变换台;点歌与说话两块在', async () => {
     await mount()
     await go('radio')
-    expect(screen.getByTestId('music-station-state').textContent).toBe('开着 · 还剩 2 首')
+    expect(screen.getByTestId('music-station-state').textContent).toBe('已开启 · 剩余 2 首')
     await click(screen.getByTestId('music-station-mood-focus'))
     expect(fake.dos.at(-1)).toEqual({ ref: 'music:radio', op: 'retune', params: { intent: '写代码,少点人声' } })
 
@@ -353,7 +353,7 @@ describe('搜索那一格', () => {
     const rows = within(screen.getByTestId('music-search-results')).getAllByRole('listitem')
     expect(rows).toHaveLength(2)
     expect(within(rows[1]).queryByTestId('music-search-pick')).toBeNull()
-    expect(rows[1].textContent).toContain('没有版权')
+    expect(rows[1].textContent).toContain('暂无版权')
   })
 
   it('电台开着:「插到下一首」→ request { song: 歌名 歌手 }', async () => {
@@ -362,7 +362,7 @@ describe('搜索那一格', () => {
     fireEvent.change(screen.getByTestId('music-search-input'), { target: { value: '晴天' } })
     await click(screen.getByTestId('music-search-submit'))
     const pick = screen.getByTestId('music-search-pick')
-    expect(pick.textContent).toBe('插到下一首')
+    expect(pick.textContent).toBe('下一首播放')
     await click(pick)
     expect(fake.dos.at(-1)).toEqual({ ref: 'music:radio', op: 'request', params: { song: '晴天 周杰伦' } })
   })
@@ -386,6 +386,6 @@ describe('搜索那一格', () => {
     await go('search')
     fireEvent.change(screen.getByTestId('music-search-input'), { target: { value: 'zzzz' } })
     await click(screen.getByTestId('music-search-submit'))
-    expect(screen.getByTestId('music-search-empty').textContent).toBe('没搜到「zzzz」,换个说法试试。')
+    expect(screen.getByTestId('music-search-empty').textContent).toBe('未找到「zzzz」相关的歌曲。')
   })
 })

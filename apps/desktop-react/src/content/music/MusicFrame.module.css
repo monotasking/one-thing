@@ -417,10 +417,12 @@
   margin: 0;
   padding: 0;
   list-style: none;
+  counter-reset: music-step;
 }
 
 /* 点 / 名字 + 一句 / 状态字。当前那一步字深一档,做完的与待办的都灰。 */
 .step {
+  counter-increment: music-step;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: baseline;
@@ -436,6 +438,11 @@
 .stepTitle {
   font-size: var(--fs-label);
   color: var(--text-2);
+}
+
+/* 序号由 <ol> 的计数画(文字里不再写「1.」,否则复制出来是「1. 1.」)。 */
+.stepTitle::before {
+  content: counter(music-step) '. ';
 }
 
 .step[data-state='current'] .stepTitle {
