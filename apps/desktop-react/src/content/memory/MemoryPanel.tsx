@@ -180,8 +180,8 @@ function Overview({ t, data, lastTrim }: { t: TFn; data: MemoryReportResponse; l
         {...(data.totalBytes === null ? {} : { value: data.totalBytes, valueText: formatBytes(data.totalBytes) })}
         tone={meterTone(tone)}
         ticks={[
-          { at: data.budget.softBytes, label: `soft ${formatBytes(data.budget.softBytes)}` },
-          { at: data.budget.hardBytes, label: `hard ${formatBytes(data.budget.hardBytes)}` },
+          { at: data.budget.softBytes, label: `${t('memory.softLine')} ${formatBytes(data.budget.softBytes)}` },
+          { at: data.budget.hardBytes, label: `${t('memory.hardLine')} ${formatBytes(data.budget.hardBytes)}` },
         ]}
       />
 

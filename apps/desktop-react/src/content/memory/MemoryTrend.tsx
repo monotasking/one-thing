@@ -89,10 +89,10 @@ export function MemoryTrend({ history, budget }: { history: readonly MemorySampl
         {/* 参照线的名字住在右边那条槽里,与线同高;它们不是系列,所以不进图例。 */}
         <div className={s.trendGutter} aria-hidden="true">
           <span className={s.trendRuleLabel} style={{ top: pct(geometry.hardY) }}>
-            hard <b>{formatBytes(budget.hardBytes)}</b>
+            {t('memory.hardLine')} <b>{formatBytes(budget.hardBytes)}</b>
           </span>
           <span className={s.trendRuleLabel} style={{ top: pct(geometry.softY) }}>
-            soft <b>{formatBytes(budget.softBytes)}</b>
+            {t('memory.softLine')} <b>{formatBytes(budget.softBytes)}</b>
           </span>
         </div>
       </div>

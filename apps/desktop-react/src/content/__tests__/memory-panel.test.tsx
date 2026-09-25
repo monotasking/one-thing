@@ -26,7 +26,7 @@ function report(over: Partial<MemoryReportResponse> = {}): MemoryReportResponse 
       { pid: 4, kind: 'gpu', name: 'GPU', bytes: null },
     ],
     holders: [
-      { id: 'sessions.projections', label: '会话活投影', entries: 8, unit: 'sessions', bytes: 27 * MB, limit: { entries: 8, bytes: 64 * MB }, detail: { idle: 7 }, trimmable: true },
+      { id: 'sessions.projections', label: '会话消息缓存', entries: 8, unit: 'sessions', bytes: 27 * MB, limit: { entries: 8, bytes: 64 * MB }, detail: { idle: 7 }, trimmable: true },
     ],
     budget: { softBytes: 1024 * MB, hardBytes: 1536 * MB },
     heap: { usedBytes: 157 * MB, totalBytes: 160 * MB, externalBytes: 16 * MB, arrayBuffersBytes: 1 * MB },
@@ -118,11 +118,11 @@ describe('MemoryPanel', () => {
     const rows = await screen.findAllByTestId('memory-process-row')
     // 分组次序固定(核心 / 界面 / 网页 / 系统),core 的内部名念成人话。
     expect(rows.map(row => within(row).getByTestId('memory-process-name').textContent)).toEqual(['主进程', 'onething', '哔哩哔哩', 'GPU'])
-    expect(within(rows[3]).getByText('量不到')).toBeTruthy()
+    expect(within(rows[3]).getByText('无数据')).toBeTruthy()
     expect(screen.getByTestId('memory-total').textContent).toBe('1.7GB')
-    expect(screen.getByText('超过 hard 线')).toBeTruthy()
-    expect(screen.getByRole('meter', { name: '内存占用与预算' }).getAttribute('aria-valuetext')).toBe('1.7 GB')
-    expect(screen.getByRole('meter', { name: '会话活投影:已用 / 上限' }).getAttribute('data-tone')).toBe('accent')
+    expect(screen.getByText('超过硬上限')).toBeTruthy()
+    expect(screen.getByRole('meter', { name: '内存占用' }).getAttribute('aria-valuetext')).toBe('1.7 GB')
+    expect(screen.getByRole('meter', { name: '会话消息缓存用量' }).getAttribute('data-tone')).toBe('accent')
     const holder = screen.getByTestId('memory-holder-row')
     expect(holder.textContent).toContain('8 / 8 个会话')
     expect(holder.textContent).toContain('空闲 7')
@@ -139,6 +139,6 @@ describe('MemoryPanel', () => {
     await screen.findAllByTestId('memory-process-row')
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '释放缓存' })) })
     expect(port.trim).toHaveBeenCalledWith('hard')
-    expect(await screen.findByText(/刚才释放了 3 项/)).toBeTruthy()
+    expect(await screen.findByText(/已释放 3 项/)).toBeTruthy()
   })
 })

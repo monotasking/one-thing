@@ -16,7 +16,7 @@ const LRU_IDLE_MS = { soft: 10 * 60_000, hard: 0 } as const
 export function createSessionMemoryHolders(projections: SessionProjectionCache): MemoryHolder[] {
   const projectionHolder: MemoryHolder = {
     id: 'sessions.projections',
-    label: '会话活投影(消息折叠状态)',
+    label: '会话消息缓存',
     usage() {
       const stats = projections.getMemoryStats()
       return {
@@ -35,7 +35,7 @@ export function createSessionMemoryHolders(projections: SessionProjectionCache):
   }
   const cacheHolder: MemoryHolder = {
     id: 'sessions.cache',
-    label: '会话对象 LRU(含物化出来的消息)',
+    label: '会话对象缓存',
     usage() {
       const stats = getSessionCacheStats()
       return { entries: stats.size, unit: 'sessions', limit: { entries: stats.maxSize } }

@@ -39,7 +39,7 @@ export interface BrowserMemoryDeps {
 export function createBrowserMemoryHolder(deps: BrowserMemoryDeps): MemoryHolder {
   return {
     id: 'browser.tabs',
-    label: '内置浏览器的标签页(每格一个渲染进程)',
+    label: '内置浏览器标签页',
     usage() {
       const tabs = deps.tabs()
       const live = tabs.filter(tab => tab.materialized)

@@ -13,7 +13,7 @@ const IDLE_MS = { soft: 10 * 60_000, hard: 60_000 } as const
 export function createReplayBufferMemoryHolder(bus: EventBus): MemoryHolder {
   return {
     id: 'events.replay-buffers',
-    label: '事件总线每会话的断线重放缓冲',
+    label: '会话事件缓冲',
     usage() {
       const usage = bus.bufferUsage()
       return {
