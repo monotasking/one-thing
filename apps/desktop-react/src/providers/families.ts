@@ -1,5 +1,7 @@
 import { PROVIDER_FAMILIES, providerFamilyOf } from '@shared/provider-families'
 import type { CustomProviderConfig, ProviderInfo } from '@shared/ipc/providers'
+import { isMessageKey } from '../i18n'
+import type { TFn } from '../i18n'
 import type { ProviderFamilyView, ProviderMode, ProviderModeKind, RailGroup } from './types'
 
 /**
@@ -110,6 +112,19 @@ function labelOfFamily(familyId: string, modes: ProviderMode[]): string {
 function descriptionOf(familyId: string, infos: ProviderInfo[]): string {
   const primary = infos.find((i) => i.id === familyId) ?? infos[0]
   return (primary?.description ?? '').trim()
+}
+
+/**
+ * 详情头那句副语**显示成什么字**。两种来源,两种读法:
+ * - 内置服务商:名册给的是字典键(`providers.desc.<id>`,见 runtime
+ *   `builtin-providers.ts` 文件头),按当前语言翻译;
+ * - 自定义服务商:用户自己写的原文,是数据,一个字都不翻译。
+ * 名册给的不是键(插件注册的 / 旧后端)时原样显示 —— 不猜、不吞。
+ */
+export function familyDescriptionText(t: TFn, family: ProviderFamilyView): string {
+  const { description } = family
+  if (!description || family.custom) return description
+  return isMessageKey(description) ? t(description) : description
 }
 
 /**

@@ -3,6 +3,7 @@ import { Segmented } from '../../ui/Segmented'
 import { Switch } from '../../ui/Switch'
 import { Tooltip } from '../../ui/Tooltip'
 import { useT } from '../../i18n'
+import { familyDescriptionText } from '../families'
 import type { ModeTab, ProviderFamilyView, ProviderMode } from '../types'
 import { ProviderGlyph } from './ProviderGlyph'
 import s from './ProviderDetail.module.css'
@@ -55,6 +56,7 @@ export function ProviderDetail({
   children?: React.ReactNode
 }) {
   const t = useT()
+  const description = familyDescriptionText(t, family)
 
   return (
     /*
@@ -80,7 +82,7 @@ export function ProviderDetail({
           <Tooltip content={family.label}>
             <h2 className={s.name}>{family.label}</h2>
           </Tooltip>
-          {family.description && <p className={s.desc}>{family.description}</p>}
+          {description && <p className={s.desc}>{description}</p>}
         </div>
         {family.custom && (
           <Button size="sm" onClick={onEditCustom} disabled={customPending}>

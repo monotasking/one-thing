@@ -11,6 +11,19 @@ import s from './ModelOverridePopover.module.css'
 
 const LEVELS: ThinkingEffort[] = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 const UNSAFE_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
+/*
+ * 自定义映射的五个字段名住在占位符里(设计正本 provider-settings-rework §2.1):
+ * 说明句只说「可以自定义请求参数」,字段名是给要填的人看的,就放在要填的那一格。
+ * 字段名是 JSON 键,不翻译。
+ */
+const REASONING_MAPPING_PLACEHOLDER = [
+  '{',
+  '  "effortPath": "reasoning.effort",',
+  '  "effortValues": { "low": "low", "high": "high" },',
+  '  "disabledValue": "none",',
+  '  "enabledBody": {}, "disabledBody": {}',
+  '}',
+].join('\n')
 
 function safeJson(value: unknown, depth = 0): boolean {
   if (depth > 12) return false
@@ -132,7 +145,7 @@ export function ReasoningProfileEditor({ value, inherited, disabled, onWrite }: 
         <textarea className={s.reasoningJson} rows={6} value={custom} disabled={disabled}
           aria-label={t('providers.reasoningMapping')} aria-invalid={invalid || undefined}
           aria-describedby={invalid ? errorId : undefined} spellCheck={false}
-          placeholder={'{"effortPath":"reasoning.effort","effortValues":{"low":"low","high":"high"}}'}
+          placeholder={REASONING_MAPPING_PLACEHOLDER}
           onChange={(event) => { setCustom(event.target.value); setMappingMode('custom'); setInvalid(false) }} />
       </details>
       {invalid && <p id={errorId} role="alert" className={s.reasoningError}>{t('providers.reasoningInvalid')}</p>}

@@ -119,6 +119,12 @@ describe('空态那句话:三层三元的四个分支各指一次', () => {
     ).toBeUndefined()
   })
 
+  it('锁着(订阅没登录):说「登录后显示模型列表」,压过首载那一档 —— 锁着的目录从不请求', () => {
+    expect(
+      catalogEmptyLine(t, { locked: true, firstLoad: true, rowCount: 0, searching: false }),
+    ).toBe(t('providers.subCatalogLocked'))
+  })
+
   it('反证:首载那一档**不看行数** —— 这正是「空是拿到过才说得出口」的分界', () => {
     // 首载时 rows 恰好非空(上一坑留下的引用之类)也仍然说「在拿」。
     expect(catalogEmptyLine(t, { firstLoad: true, rowCount: 9, searching: false })).toBe(

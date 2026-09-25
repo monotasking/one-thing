@@ -110,8 +110,15 @@ function seedPool(policy: string, entries: SpaceCredentialEntry[]): void {
   writeSpaceCredentials('work', { providers: { deepseek: { entries, policy } } })
 }
 
+function paymentRequiredError(): Error {
+  return Object.assign(
+    new Error('deepseek agent loop API error: 402 {"error":{"message":"Insufficient Balance"}}'),
+    { data: { statusCode: 402 } },
+  )
+}
+
 describe('挂不挂钩子:没有可换的就根本不挂', () => {
-  it('默认空间(凭证源是 settings.ai,无池)', () => {
+  it('默认空间没有池 —— 与别的空间同一条判据,不是按空间早退', () => {
     const rotator = createSessionCredentialRotator({
       sessionId: 's-default',
       providerId: 'deepseek',
@@ -138,6 +145,35 @@ describe('挂不挂钩子:没有可换的就根本不挂', () => {
       currentEntryId: 'a',
       reprovision: trackingReprovision().fn,
     })).toBeUndefined()
+  })
+})
+
+describe('默认空间也轮换(它早已并入同一份密钥池)', () => {
+  it('两把密钥,第一把 402 之后选中第二把', async () => {
+    writeSpaceCredentials('default', {
+      providers: { deepseek: { entries: [entry('a'), entry('b')], policy: 'priority-failover' } },
+    })
+    const reprovision = trackingReprovision()
+    const rotator = createSessionCredentialRotator({
+      sessionId: 's-default',
+      providerId: 'deepseek',
+      currentEntryId: 'a',
+      reprovision: reprovision.fn,
+    })
+    expect(rotator).toBeDefined()
+
+    const rotation = await rotator!(paymentRequiredError(), 1)
+    expect(rotation?.reason).toContain('配额耗尽')
+    expect(reprovision.seen).toEqual([{
+      apiKey: 'sk-b',
+      baseUrl: undefined,
+      spaceCredential: { spaceId: 'default', entryId: 'b', authType: 'apiKey' },
+    }])
+    // 402 的冷却落在第一把上,第二把干净。
+    resetSpaceCredentialsCacheForTests()
+    const entries = getSpaceProviderCredentials('default', 'deepseek')?.entries ?? []
+    expect(entries[0].cooldownUntil).toBeGreaterThan(Date.now())
+    expect(entries[1].cooldownUntil).toBeUndefined()
   })
 })
 

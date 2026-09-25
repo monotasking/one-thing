@@ -107,7 +107,7 @@ const QWEN_DIALS: ProviderDialSpec = {
     ],
     normalize: (value) => normalizeOnethingQwenRegion(value),
   },
-  note: '订阅用户必须选对档位。用通用 Key 和地址调用会走按量计费，在订阅之外额外扣钱。',
+  note: '订阅用户请选对档位,否则会按量计费。',
   baseUrlOf: (apiMode, region) =>
     getOnethingQwenBaseUrl(
       normalizeOnethingQwenApiMode(apiMode),
@@ -137,7 +137,7 @@ const KIMI_DIALS: ProviderDialSpec = {
     // 编程套餐(Kimi Code)只有一个全球地址,那一格在这时没有意义。
     appliesTo: (apiMode) => onethingKimiRegionApplies(normalizeOnethingKimiApiMode(apiMode)),
   },
-  note: '编程套餐的 Key 与地址(api.kimi.com)和开放平台不通用：留着按量的那一套调用，会在订阅之外再按量扣一次钱。',
+  note: '编程套餐的密钥和地址与开放平台不通用,用错会额外扣费。',
   baseUrlOf: (apiMode, region) =>
     getOnethingKimiBaseUrl(
       normalizeOnethingKimiApiMode(apiMode),

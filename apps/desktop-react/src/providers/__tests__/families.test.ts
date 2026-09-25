@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { CustomProviderConfig, ProviderInfo } from '@shared/ipc/providers'
-import { buildFamilies, findFamily, modeKindOf, providerIdsOf, resolveMode } from '../families'
+import {
+  buildFamilies,
+  familyDescriptionText,
+  findFamily,
+  modeKindOf,
+  providerIdsOf,
+  resolveMode,
+} from '../families'
+import { translate } from '../../i18n'
+import type { MessageKey } from '../../i18n'
 
 /**
  * 家族折叠。这一组守的是**「一家两模式」不许退化成两家**,以及三组的归属 ——
@@ -102,5 +111,31 @@ describe('resolveMode', () => {
 
   it('点过的那一格已经不在这一家里了(名册变了),退回现算', () => {
     expect(resolveMode(claude, 'grok', () => false).providerId).toBe('claude')
+  })
+})
+
+describe('familyDescriptionText:副语的两种来源', () => {
+  const t = (key: MessageKey) => translate('zh', key)
+
+  it('内置服务商:名册给的是字典键,按当前语言翻译', () => {
+    const [claude] = buildFamilies([info('claude', { description: 'providers.desc.claude' })])
+    expect(familyDescriptionText(t, claude)).toBe('Anthropic 官方接口')
+  })
+
+  it('自定义服务商:用户写的原文,哪怕长得像一个键也不翻译', () => {
+    const custom: CustomProviderConfig = {
+      id: 'my-proxy',
+      name: 'My Proxy',
+      description: 'providers.desc.claude',
+      apiType: 'openai',
+      baseUrl: 'https://proxy.test/v1',
+    } as CustomProviderConfig
+    const [family] = buildFamilies([], [custom])
+    expect(familyDescriptionText(t, family)).toBe('providers.desc.claude')
+  })
+
+  it('名册给的不是键(插件 / 旧后端):原样显示,不吞', () => {
+    const [deepseek] = buildFamilies([info('deepseek', { description: 'Some plugin text' })])
+    expect(familyDescriptionText(t, deepseek)).toBe('Some plugin text')
   })
 })

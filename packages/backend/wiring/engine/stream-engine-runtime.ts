@@ -23,7 +23,7 @@ import {
 } from "../providers/index.js";
 import { resolveProviderApiKey } from "@onething/runtime/providers/env.wiring";
 import {
-	applySessionSpaceCredentials,
+	applySessionProviderGates,
 	resolveSessionSpaceOAuthAuth,
 } from "../providers/space-credentials.js";
 import { resolveSessionSpaceDefaultSelection } from "../providers/space-defaults.js";
@@ -87,8 +87,9 @@ export function createMainStreamEngineRuntime(): MainStreamEngineRuntime {
 	const providerPort: OnethingStreamProviderAdapterOptions<ProviderConfig, AppSettings, ProviderAuthContext, ChatSession> = {
 		getSession: (sessionId) => store.getSession(sessionId),
 		// per-space 凭证(批 B3):非 default 空间用它自己的凭证池,没配就是
-		// 「未配置」——起流前置拦截,绝不悄悄用默认空间的 key。
-		applySpaceCredentials: applySessionSpaceCredentials,
+		// 「未配置」——起流前置拦截,绝不悄悄用默认空间的 key。停用的 provider
+		// 走同一条失败路(「{name} 已停用」,设计正本 provider-settings-rework §2.3)。
+		applySpaceCredentials: applySessionProviderGates,
 		// per-space 默认 provider/model(批 B9)。与上一行同源:两条解析链各自
 		// 构造一次适配器,少挂的那一条就是会话悄悄用回全局默认的那一条。
 		resolveSpaceDefaultSelection: resolveSessionSpaceDefaultSelection,

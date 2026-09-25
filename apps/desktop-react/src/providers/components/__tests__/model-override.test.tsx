@@ -279,7 +279,7 @@ describe('上下文窗口那一格', () => {
     // 目录没填 → 引擎按 128k 算(model-registry.ts:914),占位符照实说。
     expect(contextBox().getAttribute('placeholder')).toBe('128k(默认)')
     expect(
-      screen.getByText('目录没填这一型;不填按 128k 算,压缩阈值也按它算。'),
+      screen.getByText('留空按 128k 计算。'),
     ).toBeTruthy()
   })
 })
@@ -362,7 +362,7 @@ describe('最大输出那一格', () => {
     await openOverride('ghost')
     expect(outBox().getAttribute('placeholder')).toBe('由服务商决定')
     expect(
-      screen.getByText('目录没填这一型;不填就不带上限,由服务商用它自己的默认值。'),
+      screen.getByText('留空则不限制。'),
     ).toBeTruthy()
     // 那个编出来的数不许以任何形式回到屏幕上。
     expect(screen.queryByText(/4,096|2,048/)).toBeNull()
@@ -430,7 +430,7 @@ describe('能力那一组', () => {
     expect(document.getElementById(labelId!)?.textContent).toBe('能力')
     const describedId = group.getAttribute('aria-describedby')
     expect(document.getElementById(describedId!)?.textContent).toBe(
-      '关 = 这一型的请求不再带这项能力;开 = 目录说不支持也照发。',
+      '覆盖模型列表里的能力标记。',
     )
     // 全场**没有**第二个带同一个 id 的元素(五只分段器各自只有 aria-label)。
     // 不用 `#id` 选择器:`useId` 造出来的 id 带冒号,jsdom 这一档没有 CSS.escape。

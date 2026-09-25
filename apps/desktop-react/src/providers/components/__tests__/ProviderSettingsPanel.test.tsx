@@ -229,7 +229,7 @@ describe('模式切换换目录', () => {
     await screen.findByTestId('model-row-claude-sonnet-4')
 
     fireEvent.click(screen.getByRole('radio', { name: '订阅 · 未登录' }))
-    await waitFor(() => expect(screen.getByText(/登录后才有模型目录/)).toBeTruthy())
+    await waitFor(() => expect(screen.getByText(/登录后显示模型列表/)).toBeTruthy())
     expect(vi.mocked(port.listModels).mock.calls.map((c) => c[0])).not.toContain('claude-code')
   })
 
@@ -304,7 +304,7 @@ describe('写与缺席态', () => {
     expect(screen.getByTestId('set-current-claude-haiku-4-5')).toBeTruthy()
     // 当前的那一行画的是读数不是钮 —— 「设为当前」点了不会变的钮是噪音。
     expect(screen.queryByTestId('set-current-claude-sonnet-4')).toBeNull()
-    expect(screen.getByRole('button', { name: '＋ 手填 ID' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '＋ 添加模型' })).toBeTruthy()
 
     // ⑤ 订阅登录:钮不再是禁用的。
     fireEvent.click(screen.getByRole('radio', { name: '订阅 · 未登录' }))
@@ -358,7 +358,7 @@ describe('忙态逐格', () => {
     expect((screen.getByRole('switch', { name: '启用 Claude' }) as HTMLInputElement).disabled).toBe(
       false,
     )
-    expect((screen.getByRole('button', { name: '＋ 手填 ID' }) as HTMLButtonElement).disabled).toBe(
+    expect((screen.getByRole('button', { name: '＋ 添加模型' }) as HTMLButtonElement).disabled).toBe(
       false,
     )
 

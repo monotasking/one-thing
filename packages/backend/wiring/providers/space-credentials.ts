@@ -12,8 +12,10 @@
  */
 
 import { getAuthHostPorts } from '@onething/runtime/auth/host-ports'
+import { isProviderEnabledIn } from '@shared/provider-families'
 import {
   applySpaceProviderCredential,
+  describeProviderDisabled,
   resolveSpaceProviderCredential,
   type SpaceProviderCredentialResolution, type ResolveSpaceProviderCredentialOptions,
 } from '@onething/runtime/spaces/provider-credentials'
@@ -74,6 +76,7 @@ import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
 import { resolveSessionSpaceId } from '../../stores/sessions.js'
 import { getProviderInfo, requiresOAuth } from './registry.js'
 import { getProviderEnvStatus } from '@onething/runtime/providers/env.wiring'
+import { getSessionSettings } from './space-ai-settings.js'
 
 function providerLabel(providerId: string): string {
   try {
@@ -155,6 +158,43 @@ export function applySessionSpaceCredentials<TProvider extends CoreProviderConfi
 ): TProvider | undefined {
   const resolution = resolveSessionProviderCredential(sessionId, providerId)
   return applySpaceProviderCredential(providerConfig, resolution, providerId)
+}
+
+/**
+ * **发送路**的注入函数:先问这个 provider 开没开,再走凭证池(设计正本
+ * provider-settings-rework §2.3)。
+ *
+ * 停用 = 与「未配置」**同一条失败路**:抹掉钥匙、盖 `unavailable` 标记,鉴权点
+ * 见标记必败,引擎经 `describeMissingCredentials` 报「{name} 已停用」。不另起一种
+ * 错误 —— 起流前置拦截只有一道闸。
+ *
+ * 开没开问的是 `isProviderEnabledIn`(`@shared/provider-families`,与设置页、
+ * 模型选择器同一个判据,含家族派生),读的是**这条会话所在空间**的 providers。
+ * 从不问凭证的那几只(ACP / 本地 CLI agent / 外部 agent)不在模型服务名册上、
+ * 没有开关可拨,所以不过这道闸。
+ *
+ * 只挂在发送路的两条解析链上(core 引擎的 provider 适配器 + `provider-helpers`);
+ * 工具模型(`utility-provider.ts`)仍直接用 `applySessionSpaceCredentials`。
+ */
+export function applySessionProviderGates<TProvider extends CoreProviderConfigLike>(
+  sessionId: string,
+  providerId: string,
+  providerConfig: TProvider | undefined,
+): TProvider | undefined {
+  if (providerConfig && !isCredentialFreeProvider(providerId)) {
+    const providers = getSessionSettings(sessionId).ai?.providers
+    if (!isProviderEnabledIn(providers, providerId)) {
+      const next = { ...providerConfig } as Record<string, unknown>
+      delete next.apiKey
+      delete next.oauthToken
+      next.spaceCredential = {
+        spaceId: resolveSessionSpaceId(sessionId),
+        unavailable: { reason: 'disabled', message: describeProviderDisabled(providerLabel(providerId)) },
+      }
+      return next as TProvider
+    }
+  }
+  return applySessionSpaceCredentials(sessionId, providerId, providerConfig)
 }
 
 /**

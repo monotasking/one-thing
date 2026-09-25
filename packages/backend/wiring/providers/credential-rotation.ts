@@ -20,11 +20,11 @@
  * 拿到另一条 entry → 用它**重建 provider**(`prepared.reprovision`)。
  * 这就是 B3 留下的接口所说的那个「最窄处」。
  *
- * ## 默认空间不参与
+ * ## 默认空间与别的空间同路
  *
- * default space 的凭证源是 `settings.ai`,没有池、没有 entry id。
- * `currentEntryId` 为空 = 这条会话没有池 → 整个钩子**返回 undefined 不挂载**,
- * core 的重试逻辑一行都不会变。
+ * 默认空间早已并入同一份密钥池(`space-credentials.ts` 的 C1:default 不再是特例),
+ * 所以这里不再按空间分叉。`currentEntryId` 为空 = 这条会话没命中池里的任何一条
+ * → 整个钩子**返回 undefined 不挂载**,core 的重试逻辑一行都不会变。
  */
 
 import type { AgentCredentialRotation, AgentProvider } from '@onething/core/agent-loop'
@@ -39,7 +39,6 @@ import {
   isSpaceCredentialEntryCooling,
   isSpaceCredentialEntryUsable,
 } from '@onething/runtime/spaces/credentials'
-import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
 import { authService } from '../auth/auth-service.js'
 import { resolveSessionSpaceId } from '../../stores/sessions.js'
 import {
@@ -75,16 +74,14 @@ export type SessionCredentialRotator = (
  * 造一个轮换钩子。**没有可换的就返回 `undefined`** —— 让 core 那边连这个字段
  * 都不存在,而不是挂一个每次都答"不换"的函数。行为不变要看得见,不是靠推理。
  *
- * 三种「没有可换的」:
- *  1. 默认空间(凭证源是 settings.ai,无池);
- *  2. 本次没有命中任何 entry(未配置 —— 那是起流前置拦截的事);
- *  3. 池里只有一条 —— 换来换去还是它。
+ * 两种「没有可换的」:
+ *  1. 本次没有命中任何 entry(未配置 —— 那是起流前置拦截的事);
+ *  2. 池里不到两条 —— 换来换去还是它。
  */
 export function createSessionCredentialRotator(
   input: SessionCredentialRotatorInput,
 ): SessionCredentialRotator | undefined {
   const spaceId = resolveSessionSpaceId(input.sessionId)
-  if (spaceId === DEFAULT_SPACE_ID) return undefined
   if (!input.currentEntryId) return undefined
   const pool = getSpaceProviderCredentials(spaceId, input.providerId)
   if (!pool || pool.entries.length < 2) return undefined

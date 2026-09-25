@@ -11,9 +11,9 @@ import type { OAuthStatusResponse } from '@shared/ipc/oauth'
 import s from './OAuthCard.module.css'
 
 /**
- * 订阅坑的登录卡。三屏,由**当下的事实**决定画哪一屏 —— 不是由一个 step 计数器:
+ * 订阅模式的登录卡。三屏,由**当下的事实**决定画哪一屏 —— 不是由一个 step 计数器:
  *
- *   没在登录 + 没登上   → 说明这是什么 + 一颗「登录」
+ *   没在登录 + 没登上   → 说明这是什么 + 一颗「登录」(那句说明**只在这一屏**)
  *   在登录              → 那一条流的现场(设备码 / 贴码 / 浏览器等待)+ 取消
  *   已登上              → 账号 / 套餐 / 令牌状态 / 有效期 + 重新授权 + 退出
  *
@@ -33,7 +33,7 @@ export function OAuthCard({
 }: {
   status: OAuthStatusResponse | undefined
   flow: AuthFlowState
-  /** 这一坑现有几个订阅账号(凭证池里 oauth 型的条数)。 */
+  /** 这个模式现有几个订阅账号(凭证池里 oauth 型的条数)。 */
   accounts: number
   onSignIn: () => void
   onCode: (code: string) => void
@@ -115,14 +115,13 @@ export function OAuthCard({
         </Button>
       </div>
 
-      {/* 多账号:说得出「支持几个、现在有几个」,加账号就是再走一次同一条登录流。 */}
+      {/* 多账号:现在有几个,加账号就是再走一次同一条登录流。 */}
       <div className={s.row}>
         <span className={s.meta}>{t('providers.subAccounts', { count: accounts })}</span>
         <Button size="sm" variant="ghost" disabled={flow.busy} onClick={onSignIn}>
           {t('providers.subAddAccount')}
         </Button>
       </div>
-      <p className={s.note}>{t('providers.subIntro')}</p>
     </Card>
   )
 }

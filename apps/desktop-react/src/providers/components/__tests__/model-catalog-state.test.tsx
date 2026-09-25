@@ -305,7 +305,7 @@ describe('超量形 · 削量三层', () => {
     render(catalog({ rows: bigCatalog(), query: 'model' }))
     const drawn = document.querySelectorAll('[data-testid^="model-row-"]')
     expect(drawn.length).toBe(SEARCH_ROW_CAP)
-    expect(screen.getByText(/还有 950 型没画/)).toBeTruthy()
+    expect(screen.getByText(/还有 950 个,输入关键词筛选/)).toBeTruthy()
   })
 
   it('反证:同一份 1000 行,若判据说「不分组」就是平铺 —— 那正是卡顿的产地', () => {

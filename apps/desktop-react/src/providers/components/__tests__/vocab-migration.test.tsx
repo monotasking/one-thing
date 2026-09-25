@@ -496,7 +496,8 @@ describe('Card 檐三件收编(批 8b)', () => {
     const title = head!.querySelector(`.${cardCss.title}`)
     expect(title?.tagName).toBe('H3')
     expect(title?.textContent).toBe('订阅用量')
-    expect(head!.querySelector(`.${cardCss.note}`)?.textContent).toBe('60s 缓存')
+    // 檐上不再有缓存读数(provider-settings-rework §2.1:施工笔记不上屏)。
+    expect(head!.querySelector(`.${cardCss.note}`)).toBeNull()
     // 刷新钮在檐右那一撮里,不是散在檐上。
     const actions = head!.querySelector(`.${cardCss.actions}`)
     expect(actions?.querySelector('button')?.textContent).toBe('刷新')

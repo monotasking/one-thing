@@ -100,7 +100,6 @@ export function ModeCard(props: {
             fallback={mode.defaultBaseUrl}
             onSave={props.onBaseUrl}
           />
-          {mode.kind === 'custom' && <p className={s.note}>{t('providers.customIntro')}</p>}
         </Card>
       </>
     )
@@ -242,20 +241,21 @@ function BaseUrlRow({
   const empty = custom && !trimmed
   const dirty = trimmed !== stored.trim()
 
-  const parts: string[] = []
-  if (custom) {
-    parts.push(t('providers.customBaseUrlHint'))
-  } else {
-    if (!stored) parts.push(t('providers.baseUrlDefault'))
-    if (fallback) parts.push(t('providers.baseUrlDefaultIs', { url: fallback }))
-    if (providerDialsOf(providerId)) parts.push(t('providers.baseUrlDialOwned'))
-  }
+  // 一格说明最多一句(设计正本 provider-settings-rework §2):默认地址已经是输入框的
+  // 占位符,这里只说「留空怎样」;档位算地址的三家说档位那一句 —— 它更要紧(钱)。
+  const hint = custom
+    ? t('providers.customBaseUrlHint')
+    : providerDialsOf(providerId)
+      ? t('providers.baseUrlDialOwned')
+      : fallback
+        ? t('providers.baseUrlDefaultIs')
+        : undefined
 
   return (
     <Field
       layout="inline"
       label={t('providers.baseUrl')}
-      hint={parts.length ? parts.join(' ') : undefined}
+      hint={hint}
       error={empty ? t('providers.customBaseUrlRequired') : undefined}
     >
       <BaseUrlInput

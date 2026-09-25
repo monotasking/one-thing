@@ -20,11 +20,15 @@ import { ProviderRowMenu } from './ProviderRowMenu'
 import { ProviderDetail } from './ProviderDetail'
 import { ModeCard } from './ModeCard'
 import { ModelCatalog } from './ModelCatalog'
+import type { CatalogRow } from '../types'
 import { catalogQuery } from '../catalog-query'
 import { useAsyncPending, useMutation, useQuery } from '../../data/kernel'
 import { CustomProviderDialog } from './CustomProviderDialog'
 import { isProviderEnabledIn } from '@onething/client/model/provider-model'
 import s from './ProviderSettingsPanel.module.css'
+
+/** 订阅未登录时目录区的行:没有目录就没有行(手填的也不画 —— 锁着的表不列内容)。 */
+const NO_ROWS: readonly CatalogRow[] = []
 
 /**
  * 「模型服务」= 一块**普通的 Dock 内容**(id 'providers'),所以它能上舞台 /
@@ -361,35 +365,33 @@ export function ProviderSettingsPanel() {
             usageError={usageError[mode.providerId] || undefined}
             onRefreshUsage={() => void loadUsage(mode.providerId, true)}
           />
-          {catalogAvailable ? (
-            <ModelCatalog
-              providerId={mode.providerId}
-              rows={catalogRows}
-              phase={catalog.phase}
-              error={catalog.error}
-              fetchedAt={catalog.updatedAt || undefined}
-              dataRev={catalog.dataRev}
-              refresh={catalogQuery.get(mode.providerId)}
-              kind={mode.kind}
-              query={modelQuery[mode.providerId] ?? ''}
-              pendingModelIds={pendingModelIds}
-              write={settingsMutation}
-              onQuery={(value) => setModelQuery(mode.providerId, value)}
-              onRefresh={() => void catalogQuery.get(mode.providerId).refetch()}
-              onToggle={(modelId, selected) => void toggleModel(mode.providerId, modelId, selected)}
-              onSetCurrent={(modelId) => void setCurrentModel(mode.providerId, modelId)}
-              onAddManual={(modelId) => addManualModel(mode.providerId, modelId)}
-              onRemoveManual={(modelId) => void removeManualModel(mode.providerId, modelId)}
-              onRenameManual={(oldId, newId) =>
-                renameManualModel(mode.providerId, oldId, newId)
-              }
-              onWriteOverride={(modelId, patch) =>
-                void setModelOverride(mode.providerId, modelId, patch)
-              }
-            />
-          ) : (
-            <p className={s.locked}>{t('providers.subCatalogLocked')}</p>
-          )}
+          {/* 订阅没登录时目录区只说一句「登录后显示模型列表」—— 那是这张表的空态。 */}
+          <ModelCatalog
+            locked={!catalogAvailable}
+            providerId={mode.providerId}
+            rows={catalogAvailable ? catalogRows : NO_ROWS}
+            phase={catalog.phase}
+            error={catalogAvailable ? catalog.error : undefined}
+            fetchedAt={catalog.updatedAt || undefined}
+            dataRev={catalog.dataRev}
+            refresh={catalogQuery.get(mode.providerId)}
+            kind={mode.kind}
+            query={modelQuery[mode.providerId] ?? ''}
+            pendingModelIds={pendingModelIds}
+            write={settingsMutation}
+            onQuery={(value) => setModelQuery(mode.providerId, value)}
+            onRefresh={() => void catalogQuery.get(mode.providerId).refetch()}
+            onToggle={(modelId, selected) => void toggleModel(mode.providerId, modelId, selected)}
+            onSetCurrent={(modelId) => void setCurrentModel(mode.providerId, modelId)}
+            onAddManual={(modelId) => addManualModel(mode.providerId, modelId)}
+            onRemoveManual={(modelId) => void removeManualModel(mode.providerId, modelId)}
+            onRenameManual={(oldId, newId) =>
+              renameManualModel(mode.providerId, oldId, newId)
+            }
+            onWriteOverride={(modelId, patch) =>
+              void setModelOverride(mode.providerId, modelId, patch)
+            }
+          />
         </ProviderDetail>
       ) : (
         <p className={s.detailState}>{t('providers.pickOne')}</p>

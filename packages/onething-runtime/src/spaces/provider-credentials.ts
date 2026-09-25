@@ -65,7 +65,7 @@ const PROVIDER_ENDPOINT_OWNED_BY_ENTRY = new Set(['zhipu', 'qwen', 'kimi', 'kimi
  * 眼下全在冷却里。给用户的出路是「等」而不是「去配一把」—— 两句话说反了,
  * 用户会去 settings 里再加一把同样耗尽的 key。
  */
-export type SpaceCredentialUnavailableReason = 'no-entry' | 'oauth' | 'exhausted'
+export type SpaceCredentialUnavailableReason = 'no-entry' | 'oauth' | 'exhausted' | 'disabled'
 
 export type SpaceProviderCredentialResolution =
   /** 本空间配了 key:用这条 entry 覆盖。 */
@@ -119,6 +119,15 @@ export interface ResolveSpaceProviderCredentialOptions {
   /** 空间展示名。同上。 */
   spaceLabel?: string
   now?: number
+}
+
+/**
+ * 这个 provider 在设置里被停用了(设计正本 provider-settings-rework §2.3)。
+ * 与「未配置」走同一条失败路(`unavailable` 标记 → 鉴权必败 → 引擎报这句),
+ * 只是出路不同:不是去配一把钥匙,是去把开关打开。
+ */
+export function describeProviderDisabled(providerLabel: string): string {
+  return `${providerLabel} 已停用`
 }
 
 /** 这个空间还没为这个 provider 配 key。 */

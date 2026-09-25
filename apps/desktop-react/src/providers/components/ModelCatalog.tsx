@@ -74,6 +74,7 @@ import s from './ModelCatalog.module.css'
  * 钉死;真机那一半是逐帧截图 diff(汇报里有读数)。
  */
 export function ModelCatalog({
+  locked = false,
   providerId,
   rows,
   phase,
@@ -94,6 +95,12 @@ export function ModelCatalog({
   onRenameManual,
   onWriteOverride,
 }: {
+  /**
+   * 订阅模式还没登录 —— 目录不存在。这时只画标题与一句空态「登录后显示模型列表」,
+   * 检索 / 刷新 / 添加 / 表头都不在场:它们对一张不存在的表没有意义,刷新还会
+   * 发出一次注定落空的请求。
+   */
+  locked?: boolean
   /** 这一坑是谁。换一坑要把「展开了哪些组」忘掉 —— 那是上一坑的事。 */
   providerId: string
   rows: readonly CatalogRow[]
@@ -201,6 +208,7 @@ export function ModelCatalog({
   }, [providerId])
 
   const emptyLine = catalogEmptyLine(t, {
+    locked,
     firstLoad: phase === 'initial',
     error,
     rowCount: rows.length,
@@ -217,41 +225,48 @@ export function ModelCatalog({
             这里的「上次拉取」也会往前走,并淡一下让人知道「真的问过了」。
             淡入的名字与时长都是 token(见 styles/motion.css 的名字表)。
           */}
-          <span
-            className={`${s.hint} ${stamp.on ? s.settled : ''}`}
-            onAnimationEnd={stamp.end}
-            data-testid="catalog-stamp"
-          >
-            {fetched
-              ? `${t('providers.catalogFetched', { time: fetched })} · ${t('providers.catalogHint')}`
-              : t('providers.catalogHint')}
-          </span>
+          {!locked && (
+            <span
+              className={`${s.hint} ${stamp.on ? s.settled : ''}`}
+              onAnimationEnd={stamp.end}
+              data-testid="catalog-stamp"
+            >
+              {fetched
+                ? `${t('providers.catalogFetched', { time: fetched })} · ${t('providers.catalogHint')}`
+                : t('providers.catalogHint')}
+            </span>
+          )}
         </div>
-        <div className={s.search}>
-          <Input
-            size="sm"
-            value={query}
-            onValueChange={onQuery}
-            placeholder={t('providers.catalogSearch')}
-            aria-label={t('providers.catalogSearch')}
-          />
-        </div>
-        {/*
-          进行中反馈:**钮自己变文字 + 禁用**(08-31 报障:点了没动静)。
-          `AsyncButton` 吃这一坑的 query —— 忙态是读来的,不是这里记的一份;
-          防闪的 150ms 闸在库件里。失败不弹 toast:错误就地画在表头下面那一行。
-        */}
-        <AsyncButton
-          size="sm"
-          action={refresh}
-          pendingLabel={t('providers.catalogLoading')}
-          onClick={onRefresh}
-        >
-          {t('providers.catalogRefresh')}
-        </AsyncButton>
-        <Button size="sm" onClick={() => setAdding((open) => !open)} aria-expanded={adding}>
-          {t('providers.addModel')}
-        </Button>
+        {/* 锁着(订阅未登录)时这三件都不在场 —— 理由见 `locked` 那一格的注释。 */}
+        {!locked && (
+          <>
+            <div className={s.search}>
+              <Input
+                size="sm"
+                value={query}
+                onValueChange={onQuery}
+                placeholder={t('providers.catalogSearch')}
+                aria-label={t('providers.catalogSearch')}
+              />
+            </div>
+            {/*
+              进行中反馈:**钮自己变文字 + 禁用**(08-31 报障:点了没动静)。
+              `AsyncButton` 吃这一坑的 query —— 忙态是读来的,不是这里记的一份;
+              防闪的 150ms 闸在库件里。失败不弹 toast:错误就地画在表头下面那一行。
+            */}
+            <AsyncButton
+              size="sm"
+              action={refresh}
+              pendingLabel={t('providers.catalogLoading')}
+              onClick={onRefresh}
+            >
+              {t('providers.catalogRefresh')}
+            </AsyncButton>
+            <Button size="sm" onClick={() => setAdding((open) => !open)} aria-expanded={adding}>
+              {t('providers.addModel')}
+            </Button>
+          </>
+        )}
       </div>
 
       {/* 「头还在视野里吗」的哨兵。零高度、不占位、不进无障碍树。 */}
@@ -265,26 +280,28 @@ export function ModelCatalog({
       */}
       <AddModelRow
         key={providerId}
-        open={adding}
+        open={adding && !locked}
         providerId={providerId}
         write={write}
         onAddManual={onAddManual}
       />
 
 
-      <div className={`${s.grid} ${s.columns}`}>
-        <span />
-        <span>{t('providers.colModel')}</span>
-        {/* 窄容器里这一格与行上的 `.caps` 一起退场 —— 类名是它俩的共同开关。 */}
-        <span className={s.colCaps}>{t('providers.colCaps')}</span>
-        {/* 同上,配的是行上那格 `.num`(全表只有上下文用它)。 */}
-        <span className={s.colCtx}>{t('providers.colCtx')}</span>
-        {/* 窄容器里这一格与行上的最大输出一起退场 —— 类名是它俩的共同开关。 */}
-        <span className={s.colOut}>{t('providers.colOut')}</span>
-        {/* 窄容器里这一格与行上的价格一起退场 —— 类名是它俩的共同开关。 */}
-        <span className={s.colPrice}>{t('providers.colPrice')}</span>
-        <span />
-      </div>
+      {!locked && (
+        <div className={`${s.grid} ${s.columns}`}>
+          <span />
+          <span>{t('providers.colModel')}</span>
+          {/* 窄容器里这一格与行上的 `.caps` 一起退场 —— 类名是它俩的共同开关。 */}
+          <span className={s.colCaps}>{t('providers.colCaps')}</span>
+          {/* 同上,配的是行上那格 `.num`(全表只有上下文用它)。 */}
+          <span className={s.colCtx}>{t('providers.colCtx')}</span>
+          {/* 窄容器里这一格与行上的最大输出一起退场 —— 类名是它俩的共同开关。 */}
+          <span className={s.colOut}>{t('providers.colOut')}</span>
+          {/* 窄容器里这一格与行上的价格一起退场 —— 类名是它俩的共同开关。 */}
+          <span className={s.colPrice}>{t('providers.colPrice')}</span>
+          <span />
+        </div>
+      )}
 
       {/*
         错误**与旧行并存**(律②的另一半):这一行只说「这次没拿到,原话是这句」,

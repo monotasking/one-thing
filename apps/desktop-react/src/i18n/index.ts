@@ -57,6 +57,15 @@ export function translate(lang: Lang, key: MessageKey, vars?: MessageVars): stri
 }
 
 /**
+ * 一段来自后端的字符串是不是字典里的键。后端名册有时交的是键(内置服务商的
+ * `description`),有时交的是人话(插件 / 旧后端)—— 先问它是不是键,再决定
+ * 翻译还是原样显示,而不是拿 `as MessageKey` 去骗类型检查。
+ */
+export function isMessageKey(key: string): key is MessageKey {
+  return Object.prototype.hasOwnProperty.call(zh, key)
+}
+
+/**
  * 非组件上下文用的 t:当场读一次 store。
  * 组件里别用它 —— 它不订阅,切语言不会重渲染;组件用 useT()。
  */

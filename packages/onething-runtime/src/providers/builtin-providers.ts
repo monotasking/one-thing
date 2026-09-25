@@ -19,6 +19,11 @@ import {
 	ONETHING_QWEN_PROVIDER_ID,
 } from "./qwen.js";
 
+/**
+ * 内置服务商的 `description` 是**字典键**(`providers.desc.<id>`),不是人话:
+ * 壳按键查 zh / en 字典显示(apps/desktop-react/src/i18n)。自定义服务商的描述是
+ * 用户自己写的原文,不走这条路。
+ */
 export type OnethingBuiltinOAuthFlowType = OnethingProviderOAuthFlowType;
 export type OnethingBuiltinProviderInfo = OnethingProviderInfo;
 export type OnethingBuiltinProviderDefinition =
@@ -29,7 +34,7 @@ export const openaiBuiltinProvider: OnethingBuiltinProviderDefinition = {
 	info: {
 		id: "openai",
 		name: "OpenAI",
-		description: "GPT-4, GPT-3.5 and other OpenAI models",
+		description: "providers.desc.openai",
 		defaultBaseUrl: "https://api.openai.com/v1",
 		defaultModel: "gpt-4o-mini",
 		icon: "openai",
@@ -43,7 +48,7 @@ export const claudeBuiltinProvider: OnethingBuiltinProviderDefinition = {
 	info: {
 		id: "claude",
 		name: "Claude",
-		description: "Claude 3.5, Claude 3 and other Anthropic models",
+		description: "providers.desc.claude",
 		defaultBaseUrl: "https://api.anthropic.com/v1",
 		defaultModel: "claude-sonnet-4-20250514",
 		icon: "claude",
@@ -57,8 +62,7 @@ export const deepseekBuiltinProvider: OnethingBuiltinProviderDefinition = {
 	info: {
 		id: "deepseek",
 		name: "DeepSeek",
-		description:
-			"DeepSeek-V3, DeepSeek-R1, DeepSeek-V4 and other DeepSeek models",
+		description: "providers.desc.deepseek",
 		defaultBaseUrl: "https://api.deepseek.com",
 		defaultModel: "deepseek-chat",
 		icon: "deepseek",
@@ -72,7 +76,7 @@ export const kimiBuiltinProvider: OnethingBuiltinProviderDefinition = {
 	info: {
 		id: "kimi",
 		name: "Kimi",
-		description: "Moonshot AI Kimi models with long context support",
+		description: "providers.desc.kimi",
 		defaultBaseUrl: ONETHING_KIMI_DEFAULT_BASE_URL,
 		defaultModel: "moonshot-v1-128k",
 		icon: "kimi",
@@ -86,7 +90,7 @@ export const zhipuBuiltinProvider: OnethingBuiltinProviderDefinition = {
 	info: {
 		id: "zhipu",
 		name: "智谱 GLM",
-		description: "GLM-5.2 and other Zhipu AI models",
+		description: "providers.desc.zhipu",
 		defaultBaseUrl: "https://open.bigmodel.cn/api/paas/v4",
 		defaultModel: "glm-5.2",
 		icon: "zhipu",
@@ -100,8 +104,7 @@ export const qwenBuiltinProvider: OnethingBuiltinProviderDefinition = {
 	info: {
 		id: ONETHING_QWEN_PROVIDER_ID,
 		name: "千问",
-		description:
-			"千问 AI 平台 / QwenCloud — Qwen3.x 系列，支持国内版与海外版、按量付费与 Token Plan 订阅",
+		description: "providers.desc.qwen",
 		defaultBaseUrl: ONETHING_QWEN_DEFAULT_BASE_URL,
 		defaultModel: ONETHING_QWEN_DEFAULT_MODEL,
 		icon: "qwen",
@@ -115,7 +118,7 @@ export const openrouterBuiltinProvider: OnethingBuiltinProviderDefinition = {
 	info: {
 		id: "openrouter",
 		name: "OpenRouter",
-		description: "Access multiple AI models through OpenRouter",
+		description: "providers.desc.openrouter",
 		defaultBaseUrl: "https://openrouter.ai/api/v1",
 		defaultModel: "openai/gpt-4o",
 		icon: "openrouter",
@@ -129,7 +132,7 @@ export const geminiBuiltinProvider: OnethingBuiltinProviderDefinition = {
 	info: {
 		id: "gemini",
 		name: "Google Gemini",
-		description: "Gemini 2.0, Gemini 1.5 Pro/Flash and other Google AI models",
+		description: "providers.desc.gemini",
 		defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
 		defaultModel: "gemini-2.0-flash-exp",
 		icon: "gemini",
@@ -143,7 +146,7 @@ export const claudeCodeBuiltinProvider: OnethingBuiltinProviderDefinition = {
 	info: {
 		id: "claude-code",
 		name: "Claude Code",
-		description: "Use Claude with your Claude Pro/Max subscription via OAuth",
+		description: "providers.desc.claude-code",
 		defaultBaseUrl: "https://api.anthropic.com/v1",
 		defaultModel: "claude-sonnet-4-20250514",
 		icon: "claude-code",
@@ -159,7 +162,7 @@ export const grokBuiltinProvider: OnethingBuiltinProviderDefinition = {
 	info: {
 		id: "grok",
 		name: "Grok",
-		description: "xAI Grok models with reasoning, vision, and tool support",
+		description: "providers.desc.grok",
 		defaultBaseUrl: "https://api.x.ai/v1",
 		defaultModel: "grok-3-latest",
 		icon: "grok",
@@ -173,8 +176,7 @@ export const grokOAuthBuiltinProvider: OnethingBuiltinProviderDefinition = {
 	info: {
 		id: "grok-oauth",
 		name: "Grok (Subscription)",
-		description:
-			"Use Grok with your SuperGrok or X Premium+ subscription via OAuth",
+		description: "providers.desc.grok-oauth",
 		defaultBaseUrl: "https://api.x.ai/v1",
 		defaultModel: "grok-3-latest",
 		icon: "grok",
@@ -201,7 +203,7 @@ export const kimiCodeBuiltinProvider: OnethingBuiltinProviderDefinition = {
 	info: {
 		id: "kimi-code",
 		name: "Kimi Code (订阅)",
-		description: "Use Kimi Code with your Kimi membership via OAuth",
+		description: "providers.desc.kimi-code",
 		defaultBaseUrl: ONETHING_KIMI_CODING_PLAN_BASE_URL,
 		// 套餐目录里真有的 id。写按量那本的名字(kimi-k2.7-code-highspeed)会 404:
 		// 两本目录一个 id 都不重名。
@@ -219,8 +221,7 @@ export const githubCopilotBuiltinProvider: OnethingBuiltinProviderDefinition = {
 	info: {
 		id: "github-copilot",
 		name: "GitHub Copilot",
-		description:
-			"Use GitHub Copilot with your subscription via OAuth Device Flow",
+		description: "providers.desc.github-copilot",
 		defaultBaseUrl: "https://api.individual.githubcopilot.com",
 		defaultModel: "gpt-4o",
 		icon: "github",
@@ -236,7 +237,7 @@ export const codexBuiltinProvider: OnethingBuiltinProviderDefinition = {
 	info: {
 		id: ONETHING_CODEX_PROVIDER_ID,
 		name: "Codex",
-		description: "Use Codex with your ChatGPT subscription via OAuth",
+		description: "providers.desc.codex",
 		defaultBaseUrl: ONETHING_CODEX_BASE_URL,
 		defaultModel: ONETHING_CODEX_DEFAULT_MODEL,
 		icon: "codex",
@@ -254,8 +255,7 @@ export const acpBuiltinProvider: OnethingBuiltinProviderDefinition = {
 	info: {
 		id: ONETHING_ACP_PROVIDER_ID,
 		name: "ACP Agents",
-		description:
-			"Connect to local Agent Client Protocol agents such as Claude Code, Codex CLI, and Pi.",
+		description: "providers.desc.acp",
 		defaultBaseUrl: "",
 		defaultModel: "claude-code",
 		icon: "acp",
@@ -270,8 +270,7 @@ export const claudeCodeAgentBuiltinProvider: OnethingBuiltinProviderDefinition =
 		info: {
 			id: "claude-code-agent",
 			name: "Claude Code Agent",
-			description:
-				"Drive your locally installed Claude Code CLI as an in-app agent (uses your existing subscription login)",
+			description: "providers.desc.claude-code-agent",
 			defaultBaseUrl: "",
 			defaultModel: "claude-code-agent",
 			icon: "claude-code",

@@ -61,21 +61,3 @@
   color: var(--text-2);
 }
 
-/* 登录后才有目录 —— 这块占的是模型目录的位子。
- * 08-31:**不再撑满**。详情列改成页级滚动之后(理由写在 ModelCatalog.module.css
- * 的 `.catalog` 头上),目录本身是自然高度的,这块占位再「撑满」就会凭空多出
- * 一屏空白;它跟着一起按自然高度画,与那张表同一条纪律。 */
-.locked {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--sp-5);
-  border: var(--bw-1) solid var(--line-1);
-  border-radius: var(--r-2);
-  background: var(--surface-2);
-  text-align: center;
-  font-size: var(--fs-meta);
-  color: var(--text-2);
-  line-height: 1.6;
-}

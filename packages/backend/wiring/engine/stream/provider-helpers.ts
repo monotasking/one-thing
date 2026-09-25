@@ -10,7 +10,7 @@ import { oauthManager } from '../../providers/auth/oauth-manager.js'
 import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
 import { resolveProviderApiKey } from '@onething/runtime/providers/env.wiring'
 import {
-  applySessionSpaceCredentials,
+  applySessionProviderGates,
   credentialTargetFromMarker,
   resolveSessionSpaceOAuthAuth,
 } from '../../providers/space-credentials.js'
@@ -109,8 +109,9 @@ export function getEffectiveProviderConfig(
   return getEffectiveOnethingProviderConfig(scoped, sessionId, {
     getSession: id => store.getSession(id),
     // per-space 凭证(批 B3):这一处与 core 引擎的 provider 适配器是**同一个**
-    // 注入口 —— 两条解析链共用的那一处,别在别处再判一次。
-    applySpaceCredentials: applySessionSpaceCredentials,
+    // 注入口 —— 两条解析链共用的那一处,别在别处再判一次。停用的 provider 在这里
+    // 按「未配置」同路失败(`applySessionProviderGates`,provider-settings-rework §2.3)。
+    applySpaceCredentials: applySessionProviderGates,
     // per-space 默认 provider/model(批 B9):同一个注入口的第二格。会话没表达过
     // 选择时,先问所在空间的默认,再落全局 —— 默认空间恒无,那一支零变化。
     resolveSpaceDefaultSelection: resolveSessionSpaceDefaultSelection,
@@ -163,7 +164,7 @@ export async function getProviderConfigForChat(
     settings,
     adapters: {
       getSession: id => store.getSession(id),
-      applySpaceCredentials: applySessionSpaceCredentials,
+      applySpaceCredentials: applySessionProviderGates,
       isOAuthProvider: requiresOAuth,
       resolveApiKey: (id, config) => resolveProviderApiKey(id, config),
       resolveOAuthAuth: (id, apiKey, credential) => resolveSessionSpaceOAuthAuth(id, apiKey, credential),

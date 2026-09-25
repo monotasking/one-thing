@@ -523,7 +523,7 @@ describe('renameManualModel', () => {
     })
     await useProviderSettings.getState().start()
     const problem = useProviderSettings.getState().renameManualModel('claude', 'ghost', 'zzz')
-    expect(problem).toBe('zzz is already in this mode’s list')
+    expect(problem).toBe('zzz is already in the list')
     expect(port.writeProviderSettings).not.toHaveBeenCalled()
   })
 

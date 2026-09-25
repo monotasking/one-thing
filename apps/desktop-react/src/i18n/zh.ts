@@ -1576,12 +1576,12 @@ export const zh = {
   'viewer.discard': '不保存',
   'viewer.saveAndClose': '保存并关闭',
 
-  /* ── 模型服务(providers/:左栏家名册 + 右面模式分坑)─────────────────────
+  /* ── 模型服务(providers/:左栏家名册 + 右面按接入模式分块)─────────────────────
    * 面板标题不另起键:它就是 'item.providers' 那四个字(与文件面复用
    * 'item.files' 同一条)。
    * **provider 名、模型 id、账号邮箱、后端原话一个字都不在字典里** —— 它们是
    * 数据,换一门语言不该变(判据见 i18n/index.ts 顶部)。这里只有「这一家此刻
-   * 处在哪种状态」的那几句人话,以及缺席态里那句「这件事在下一批」。
+   * 处在哪种状态」的那几句人话。
    *
    * `providers.factRaw` 是**透传格**:副行里要嵌一段真数据(账号、尾号)时用它,
    * 这样副行那串事实仍然是同构的一串 Fact,组件不必为「有一段不用翻译」分叉。 */
@@ -1601,6 +1601,25 @@ export const zh = {
   'providers.retry': '重新读取',
   'providers.pickOne': '在左边选一家',
 
+  /* 内置服务商的一句副语(详情头)。后端名册里的 `description` 就是这里的键名;
+   * 自定义服务商的描述是用户自己写的,是数据,不走字典。不点模型名 —— 模型名会过时。 */
+  'providers.desc.openai': 'OpenAI 官方接口',
+  'providers.desc.claude': 'Anthropic 官方接口',
+  'providers.desc.claude-code': '用 Claude 订阅',
+  'providers.desc.codex': '用 ChatGPT 订阅',
+  'providers.desc.kimi-code': '用 Kimi 会员',
+  'providers.desc.github-copilot': '用 GitHub Copilot 订阅',
+  'providers.desc.deepseek': 'DeepSeek 官方接口',
+  'providers.desc.kimi': 'Moonshot 官方接口',
+  'providers.desc.zhipu': '智谱官方接口',
+  'providers.desc.qwen': '阿里云百炼',
+  'providers.desc.gemini': 'Google AI 接口',
+  'providers.desc.openrouter': '聚合多家模型',
+  'providers.desc.grok': 'xAI 官方接口',
+  'providers.desc.grok-oauth': '用 X Premium 订阅',
+  'providers.desc.acp': '本机 Agent',
+  'providers.desc.claude-code-agent': '用本机的 Claude Code',
+
   /* 副行 / 分段器上的事实句。每一句都对应一条真读数,没有一句是凑数的。 */
   'providers.factRaw': '{text}',
   'providers.factConfigured': '已配置',
@@ -1616,7 +1635,7 @@ export const zh = {
   'providers.factLocal': '本地',
   'providers.factCustom': '自定义',
 
-  /* 模式名。同一家的两坑各带一份凭证与一份模型目录,不混用。 */
+  /* 模式名。同一家的每种模式各带一份凭证与一份模型目录,不混用。 */
   'providers.modeApi': 'API 密钥',
   'providers.modeSub': '订阅',
   'providers.modeLocalCli': '本地 CLI',
@@ -1628,9 +1647,9 @@ export const zh = {
   'providers.enable': '启用',
   'providers.enableFamily': '启用 {name}',
 
-  /* API 坑 */
+  /* API 模式 */
   'providers.keySection': 'API 密钥',
-  'providers.keyNeverRead': '密钥原文永不回读,只看得到尾号。',
+  'providers.keyNeverRead': '只显示密钥尾号。',
   'providers.keyStored': '已存 {tail},输入新的可替换',
   'providers.keyEmpty': '粘贴 API 密钥',
   'providers.keyLabel': '{name} 的 API 密钥',
@@ -1638,10 +1657,9 @@ export const zh = {
   'providers.keySaved': '已保存',
   'providers.keySaveFailed': '密钥没保存上',
   'providers.baseUrl': '高级 · Base URL',
-  'providers.baseUrlDefault': '(默认)',
   'providers.baseUrlSave': '保存 Base URL',
-  'providers.baseUrlDefaultIs': '默认地址 {url} —— 清空这一格就回到它。',
-  'providers.baseUrlDialOwned': '这一家的地址由上面的计费档位算出来:手改之后再拨一次档位会把它覆盖掉。',
+  'providers.baseUrlDefaultIs': '留空使用默认地址。',
+  'providers.baseUrlDialOwned': '切换计费档位会重置这个地址。',
 
   /* 凭证池:多把密钥 / 顺序 / 轮换策略 / 冷却
    * 「顺序即优先级」不是一句提示,是这张表的**读法** —— 第 1 条就是最先用的那条。
@@ -1664,7 +1682,7 @@ export const zh = {
   'providers.keyReplacedFrom': '{preview} →',
   'providers.keyLabelFor': '改第 {ordinal} 条的备注名',
   'providers.keyDelete': '删除',
-  'providers.keyDeleteAsk': '删掉这一条?已经记在它名下的用量仍留在账本里。',
+  'providers.keyDeleteAsk': '删除这个密钥?用量记录会保留。',
   'providers.keyDeleteFor': '删除第 {ordinal} 条',
   'providers.keyMoveUp': '上移',
   'providers.keyMoveDown': '下移',
@@ -1676,71 +1694,69 @@ export const zh = {
   'providers.rotationSingle': '只用第一条',
   'providers.rotationFailover': '按序接力',
   'providers.rotationRoundRobin': '轮流使用',
-  'providers.rotationSingleHint': '始终用最上面那条,不自动换 —— 它冷却时这个 provider 就停用。',
-  'providers.rotationFailoverHint': '从上往下取第一条可用的;配额耗尽或被限流会自动换下一条。顺序即优先级。',
-  'providers.rotationRoundRobinHint': '每次请求轮换到下一条,把用量摊开;冷却中的条目自动跳过。',
+  'providers.rotationSingleHint': '只用第一个密钥。',
+  'providers.rotationFailoverHint': '按顺序使用,失效时自动换下一个。',
+  'providers.rotationRoundRobinHint': '每次请求轮流使用。',
   'providers.rotationUnknown': '{policy}(不可用)',
-  'providers.rotationUnavailable': '这条策略此刻不可用,正在用内置的「按序接力」。你的选择保留着,插件回来它自动生效。',
+  'providers.rotationUnavailable': '这个策略暂不可用,先按顺序使用。',
   'providers.coolSoon': '即将恢复',
   'providers.coolMinutes': '剩 {count} 分钟',
   'providers.coolHours': '剩 {count} 小时',
   'providers.coolDays': '剩 {count} 天',
   'providers.cooling': '冷却中',
 
-  /* 订阅坑 */
-  'providers.subIntro': '用你已有的订阅跑模型,不产生额外 API 费用。这一坑的模型不按 token 计价。密码只在浏览器里输入,应用不经手。',
+  /* 订阅模式 */
+  'providers.subIntro': '用你的订阅额度跑模型,不另收 API 费。',
   'providers.subAccount': '账号',
   'providers.subSignIn': '登录',
-  'providers.subCatalogLocked': '登录后才有模型目录 —— 没登录时这一坑有哪些模型,应用并不知道。',
+  'providers.subCatalogLocked': '登录后显示模型列表。',
   /* 登录流三形。**画哪一形由后端这一次的答案定**(判据在 auth.ts 文件头)。 */
-  'providers.subDeviceCode': '在网页里输入这串码',
-  'providers.subDeviceUrl': '验证网址',
-  'providers.subWaiting': '等待确认…确认后本页自动接续,不用手动回来。',
-  'providers.subPasteHint': '浏览器里完成授权;若没有自动跳回,把授权码粘回来。',
+  'providers.subDeviceCode': '在授权页输入这串码',
+  'providers.subDeviceUrl': '授权页',
+  'providers.subWaiting': '等你在授权页确认,完成后这里自动更新。',
+  'providers.subPasteHint': '授权完成后,把页面给的授权码贴到这里。',
   'providers.subCodeLabel': '授权码',
   'providers.subCodeSubmit': '提交',
-  'providers.subBrowserWaiting': '已在浏览器里打开授权页,完成后这边自动接续。',
+  'providers.subBrowserWaiting': '已打开授权页,完成后这里自动更新。',
   'providers.subCancel': '取消登录',
   'providers.subFailed': '登录失败',
-  'providers.subTimedOut': '等太久了 —— 这一次登录已经作废,重新来一次。',
+  'providers.subTimedOut': '登录已超时,请重新登录。',
   'providers.subReauth': '重新授权',
   'providers.subSignOut': '退出登录',
   'providers.subSignOutFor': '退出 {account}',
   'providers.signOutFailed': '退不出去',
   'providers.subTokenValid': '令牌有效',
-  'providers.subTokenExpired': '令牌已过期,需要重新授权',
+  'providers.subTokenExpired': '登录已过期',
   'providers.subExpires': '有效期至 {time}',
   'providers.subPlan': '套餐 {plan}',
-  'providers.subAccounts': '这一坑支持多账号 · 现有 {count} 个',
+  'providers.subAccounts': '{count} 个账号',
   'providers.subAddAccount': '＋ 添加账号',
 
   /* 订阅用量。**拿不到的读数如实缺席,不显示 0%** —— 0% 是「一点没用」,
    * 而缺席是「不知道」,这两件事在屏幕上长得像、在事实上差得远。 */
   'providers.usage': '订阅用量',
-  'providers.usageCache': '60s 缓存',
   'providers.usageRefresh': '刷新',
-  'providers.usageLoading': '正在问用量…',
-  'providers.usageFailed': '用量拿不到',
+  'providers.usageLoading': '正在获取…',
+  'providers.usageFailed': '获取失败',
   'providers.usagePlan': '套餐',
   'providers.usageCredits': 'Credits',
   'providers.usageUnlimited': 'Unlimited',
   'providers.usageNoCredits': '无额度',
   'providers.usageHasCredits': '可用',
-  'providers.usageUnavailable': '服务商未给数',
+  'providers.usageUnavailable': '服务商未提供',
   'providers.usagePrimary': 'Primary',
   'providers.usageSecondary': 'Secondary',
   'providers.usageWindow': '{name} · {window} 窗口',
   'providers.usageReset': '{time} 重置',
   'providers.usageMore': '其他限额({count})',
 
-  /* 本地坑 */
-  'providers.localIntro': '本机进程,零凭证。探测、连接与启动配置在下一批。',
+  /* 本地模式 */
+  'providers.localIntro': '使用本机安装的命令行工具,不需要密钥。',
 
   /* 自定义家 */
-  'providers.customIntro': '自定义端点。改这一家的名称、地址与默认模型走下面那颗「编辑」。',
   'providers.customEdit': '编辑这一家',
   'providers.customAdd': '添加自定义服务商',
-  'providers.customAddIntro': 'OpenAI 兼容或 Anthropic 兼容端点:本地 Ollama / vLLM / 第三方聚合。',
+  'providers.customAddIntro': '支持 OpenAI 兼容和 Anthropic 兼容的接口。',
   'providers.customName': '名称 · 必填',
   'providers.customDesc': '描述',
   'providers.customCompat': '兼容形 · 必填',
@@ -1750,43 +1766,43 @@ export const zh = {
   'providers.customBaseUrlHint': '端点地址,不带 /chat/completions',
   'providers.customKey': 'API 密钥 · 可空',
   'providers.customModel': '默认模型',
-  'providers.customModelHint': '端点常常不报目录,也不报能力。拉不到就手填 ID,能力项留空 —— 不猜、不预填。',
+  'providers.customModelHint': '拉不到模型列表时可以手动添加。',
   'providers.customSubmit': '添加',
   'providers.customSave': '保存',
   'providers.customDelete': '删除这一家…',
   /* 后果说全:模型勾选 + 这个空间里它那把钥匙。会话不动 —— 老会话还绑着它的话,
      发消息时会诚实地失败(与「配错家的模型选得中、发消息才失败」同一条口径)。 */
-  'providers.customDeleteConfirm': '真删 —— 模型勾选与这个空间里它的密钥一起没',
+  'providers.customDeleteConfirm': '删除后,它的模型选择和密钥一起清除。',
   'providers.customDeleteMenu': '删除这一家…',
   'providers.rowMenu': '{name} 的动作',
   'providers.rowEnable': '启用这一家',
   'providers.rowDisable': '停用这一家',
   'providers.customDeleteKeyLeft': '这一家删掉了,但它的密钥没清干净',
-  'providers.builtinNoDelete': '内置的这一家删不掉 —— 用上面的开关停用它',
+  'providers.builtinNoDelete': '内置服务商不能删除,可以停用。',
   'providers.customNameRequired': '名称必填',
   'providers.customBaseUrlRequired': 'Base URL 必填',
 
   /* 模型目录 */
   'providers.catalog': '模型目录',
-  'providers.catalogHint': '勾选后出现在聊天的模型选择器里',
+  'providers.catalogHint': '勾选的模型会出现在聊天里。',
   'providers.catalogFetched': '上次拉取 {time}',
   'providers.catalogNeverFetched': '还没拉过',
   'providers.catalogRefresh': '刷新目录',
   'providers.catalogSearch': '检索模型',
   'providers.catalogLoading': '正在拉目录…',
   'providers.catalogFailed': '目录拉不到',
-  'providers.catalogEmpty': '这一坑还没有模型',
+  'providers.catalogEmpty': '还没有模型',
   'providers.catalogNoHit': '没有匹配的模型',
   /* 长目录滚过一屏之后出现的回顶钮(08-31:1000 型的后果)。 */
   'providers.catalogToTop': '回到顶部',
   /* 手填模型 ID:目录没有的型也能用。「手填」= 在 selectedModels 里、目录里没有,
    * 与 Vue 壳 model-list-entry.ts:18 的 isCustom 同一个判据。 */
-  'providers.addModel': '＋ 手填 ID',
+  'providers.addModel': '＋ 添加模型',
   'providers.addModelPlaceholder': '模型 ID,例如 qwen3-max',
   'providers.addModelLabel': '手填模型 ID',
   'providers.addModelSubmit': '添加',
-  'providers.addModelDuplicate': '{model} 已经在这一坑的列表里了',
-  'providers.manualModel': '手填',
+  'providers.addModelDuplicate': '{model} 已在列表里',
+  'providers.manualModel': '手动添加',
   'providers.removeModel': '删除 {model}',
   /* 手填模型改 id(09-11 报障「手写的不能改模型 id」)。入口在覆盖浮层的头部:
    * 手填行的 id 那一行旁一颗笔,点下去换成一条行内输入条。目录里有的行不给改
@@ -1795,11 +1811,11 @@ export const zh = {
   'providers.renameModelSave': '保存',
   'providers.renameModelEmpty': '模型 ID 不能为空',
   /* 厂牌折叠(OpenRouter 300+ 型):已选置顶 + 按 id 前缀分组 + 检索截断。 */
-  'providers.groupPicked': '已选 · {count}(始终置顶)',
+  'providers.groupPicked': '已选 · {count}',
   'providers.groupOther': '其他',
   'providers.groupCount': '{count} 型',
   'providers.groupVendors': '{count} 个厂牌',
-  'providers.catalogTruncated': '还有 {count} 型没画出来 —— 把检索词收窄一点。',
+  'providers.catalogTruncated': '还有 {count} 个,输入关键词筛选。',
   'providers.colModel': '模型',
   'providers.colCaps': '能力',
   'providers.colCtx': '上下文',
@@ -1832,14 +1848,14 @@ export const zh = {
   'providers.configureModel': '配置 {model}',
   'providers.overrideContextLabel': '上下文窗口',
   'providers.reasoningConfigure': '自定义思考配置',
-  'providers.reasoningHint': '选择模型支持的等级和默认档位，留空名称则沿用通用名称。保存后用于下一次请求。',
+  'providers.reasoningHint': '设置这个模型的思考档位。',
   'providers.reasoningLevels': '可选等级与名称',
   'providers.reasoningLevelName': '{level}档的显示名称',
   'providers.reasoningDefault': '默认思考等级',
   'providers.reasoningToggleable': '此模型支持关闭思考',
   'providers.reasoningDefaultOn': '默认开启思考',
   'providers.reasoningMapping': '高级：请求参数映射',
-  'providers.reasoningMappingHint': '继承服务商配置，或改用内置适配、自定义 API 映射。自定义支持 effortPath、effortValues、disabledValue、enabledBody、disabledBody。',
+  'providers.reasoningMappingHint': '按服务商默认,或自定义请求参数。',
   'providers.reasoningMappingMode': '参数映射方式',
   'providers.reasoningMappingInherit': '继承服务商配置',
   'providers.reasoningMappingNative': '使用内置适配',
@@ -1852,7 +1868,7 @@ export const zh = {
   'providers.overrideContextPlaceholderCatalog': '{n}(目录)',
   'providers.overrideContextPlaceholderDefault': '{n}(默认)',
   'providers.overrideContextHintCatalog': '目录给的是 {n}。',
-  'providers.overrideContextHintDefault': '目录没填这一型;不填按 {n} 算,压缩阈值也按它算。',
+  'providers.overrideContextHintDefault': '留空按 {n} 计算。',
   'providers.overrideContextHintCustom': '自定 {value}。清空回到目录 {fallback}。',
   'providers.overrideContextHintCustomDefault': '自定 {value}。清空回到默认 {fallback}。',
   /* 例子就写在句子里 —— 「格式不对」这种话谁都改不对自己那一行。 */
@@ -1870,8 +1886,7 @@ export const zh = {
   'providers.overrideOutputPlaceholderCatalog': '{n}(目录 {catalog} 的一半)',
   'providers.overrideOutputPlaceholderNoCatalog': '由服务商决定',
   'providers.overrideOutputHintCatalog': '目录上限 {n};不填按它的一半发。',
-  'providers.overrideOutputHintNoCatalog':
-    '目录没填这一型;不填就不带上限,由服务商用它自己的默认值。',
+  'providers.overrideOutputHintNoCatalog': '留空则不限制。',
   'providers.overrideOutputHintCustom': '自定 {value};不再对半砍,只受模型上限夹。',
   /* 能力五行(09-10。从前这里只有「工具调用」一格,连同它那五句随状态换的
    * 提示语一起退役:五格照抄就是二十五句,而那五句真正在说的「目录说了什么」
@@ -1880,7 +1895,7 @@ export const zh = {
    * 规则表(`runtime/src/providers/model-capability.ts`),而「跟目录」这三个字
    * 至少没有把「有个数在」这件事说死。 */
   'providers.overrideCapsLabel': '能力',
-  'providers.overrideCapsHint': '关 = 这一型的请求不再带这项能力;开 = 目录说不支持也照发。',
+  'providers.overrideCapsHint': '覆盖模型列表里的能力标记。',
   'providers.overrideCapInherit': '跟目录',
   'providers.overrideCapOn': '开',
   'providers.overrideCapOff': '关',

@@ -89,7 +89,7 @@ describe('ModelCatalog · 设为当前 / 手填 ID', () => {
 
   it('手填的行标出来,并且只有它有删除钮', () => {
     render(catalog({ rows: [row('a'), row('ghost', { manual: true, selected: true })] }))
-    expect(screen.getByText('手填')).toBeTruthy()
+    expect(screen.getByText('手动添加')).toBeTruthy()
     expect(screen.getByRole('button', { name: '删除 ghost' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: '删除 a' })).toBeNull()
   })
@@ -98,7 +98,7 @@ describe('ModelCatalog · 设为当前 / 手填 ID', () => {
     const onAddManual = vi.fn(() => 'a 已经在这一坑的列表里了')
     render(catalog({ onAddManual }))
 
-    fireEvent.click(screen.getByRole('button', { name: '＋ 手填 ID' }))
+    fireEvent.click(screen.getByRole('button', { name: '＋ 添加模型' }))
     const field = screen.getByLabelText('手填模型 ID') as HTMLInputElement
     fireEvent.change(field, { target: { value: 'a' } })
     fireEvent.click(screen.getByRole('button', { name: '添加' }))
@@ -109,7 +109,7 @@ describe('ModelCatalog · 设为当前 / 手填 ID', () => {
 
   it('手填成功就清空,好接着填下一个', () => {
     render(catalog({ onAddManual: vi.fn(() => undefined) }))
-    fireEvent.click(screen.getByRole('button', { name: '＋ 手填 ID' }))
+    fireEvent.click(screen.getByRole('button', { name: '＋ 添加模型' }))
     const field = screen.getByLabelText('手填模型 ID') as HTMLInputElement
     fireEvent.change(field, { target: { value: 'qwen3-max' } })
     fireEvent.click(screen.getByRole('button', { name: '添加' }))
@@ -126,7 +126,7 @@ describe('ModelCatalog · 设为当前 / 手填 ID', () => {
    */
   it('手填被拒:错误经 Field 的 error 槽关联到输入框(aria-describedby + aria-invalid)', () => {
     render(catalog({ onAddManual: vi.fn(() => 'a 已经在这一坑的列表里了') }))
-    fireEvent.click(screen.getByRole('button', { name: '＋ 手填 ID' }))
+    fireEvent.click(screen.getByRole('button', { name: '＋ 添加模型' }))
     const field = screen.getByLabelText('手填模型 ID') as HTMLInputElement
     fireEvent.change(field, { target: { value: 'a' } })
     fireEvent.click(screen.getByRole('button', { name: '添加' }))
@@ -183,7 +183,7 @@ describe('ModelCatalog · 厂牌折叠', () => {
   it('截断了就如实报剩余,不默默少画', () => {
     const huge = Array.from({ length: 200 }, (_, i) => row(`openai/m${i}`))
     render(catalog({ rows: huge, query: 'm' }))
-    expect(screen.getByText(/还有 150 型没画出来/)).toBeTruthy()
+    expect(screen.getByText(/还有 150 个,输入关键词筛选/)).toBeTruthy()
   })
 
   it('行数不够就不折叠 —— 十几行折起来只是多两次点击', () => {
@@ -495,12 +495,12 @@ describe('CredentialPool', () => {
     render(credentialPool({ onRemove }))
     fireEvent.click(screen.getByRole('button', { name: '第 2 条的更多动作' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '删除…' }))
-    expect(screen.getByText(/已经记在它名下的用量仍留在账本里/)).toBeTruthy()
+    expect(screen.getByText(/用量记录会保留/)).toBeTruthy()
     // 第 1、2 行不动。
     expect(screen.getByText('…44f0')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '取消' }))
     expect(onRemove).not.toHaveBeenCalled()
-    expect(screen.queryByText(/已经记在它名下的用量/)).toBeNull()
+    expect(screen.queryByText(/用量记录会保留/)).toBeNull()
   })
 
   it('删除:确认条上那颗危险钮才真删', () => {
@@ -569,7 +569,7 @@ describe('CredentialPool', () => {
     fireEvent.click(screen.getByRole('button', { name: '删除' }))
     expect(onRemove).toHaveBeenCalledWith('e0')
     // 条收掉了(确认那句后果不在了),而且没有任何一颗钮卡在忙态。
-    expect(screen.queryByText(/已经记在它名下的用量/)).toBeNull()
+    expect(screen.queryByText(/用量记录会保留/)).toBeNull()
     expect(screen.queryByRole('button', { name: /正在保存/ })).toBeNull()
     // 别的行没被那次「永不落地的写」禁住。
     expect(
@@ -643,16 +643,16 @@ describe('CredentialPool', () => {
 
   it('每一档策略都带一句语义说明 —— 三个名字单看字面分不出来', () => {
     render(credentialPool())
-    expect(screen.getByText(/从上往下取第一条可用的/)).toBeTruthy()
+    expect(screen.getByText(/按顺序使用,失效时自动换下一个/)).toBeTruthy()
   })
 
   it('插件策略不可用:仍然显示它、并说清正在用什么顶着', () => {
     render(credentialPool({ pool: pool({ policy: 'plugin:x:round', policyUnavailable: true }) }))
     // 选择器里必须有一格能显示它,否则会画成空白、看起来像没设过。
     expect(screen.getByLabelText('轮换策略').textContent).toContain('plugin:x:round(不可用)')
-    expect(screen.getByText(/正在用内置的「按序接力」/)).toBeTruthy()
+    expect(screen.getByText(/这个策略暂不可用,先按顺序使用/)).toBeTruthy()
     // 认不出的策略没有语义句可说 —— 不编一句。
-    expect(screen.queryByText(/从上往下取第一条可用的/)).toBeNull()
+    expect(screen.queryByText(/按顺序使用,失效时自动换下一个/)).toBeNull()
   })
 
   it('② OAuth 行只有一个动作 → **常驻一颗钮**,不收菜单也不画铅笔', () => {
@@ -681,7 +681,7 @@ describe('CredentialPool', () => {
     expect(screen.queryByRole('button', { name: '第 1 条的更多动作' })).toBeNull()
     // 那一颗钮走的是与 API key 行**同一条**确认条。
     fireEvent.click(screen.getByRole('button', { name: '删除第 1 条' }))
-    expect(screen.getByText(/已经记在它名下的用量仍留在账本里/)).toBeTruthy()
+    expect(screen.getByText(/用量记录会保留/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '删除' }))
     expect(onRemove).toHaveBeenCalledWith('o0')
   })
@@ -709,7 +709,7 @@ describe('OAuthCard', () => {
   it('没登录:一颗真的登录钮 + 说明这是什么', () => {
     render(oauth())
     expect((screen.getByRole('button', { name: '登录' }) as HTMLButtonElement).disabled).toBe(false)
-    expect(screen.getByText(/不产生额外 API 费用/)).toBeTruthy()
+    expect(screen.getByText(/不另收 API 费/)).toBeTruthy()
   })
 
   it('设备码流:大字码 + 验证网址 + 等待句 + 取消', () => {
@@ -724,7 +724,7 @@ describe('OAuthCard', () => {
     )
     expect(screen.getByText('XKCD-2048')).toBeTruthy()
     expect(screen.getByText('https://x.ai/device')).toBeTruthy()
-    expect(screen.getByText(/本页自动接续/)).toBeTruthy()
+    expect(screen.getByText(/完成后这里自动更新/)).toBeTruthy()
     expect(screen.getByRole('button', { name: '取消登录' })).toBeTruthy()
   })
 
@@ -767,13 +767,15 @@ describe('OAuthCard', () => {
     expect(screen.getByText('套餐 Max')).toBeTruthy()
     expect(screen.getByText(/令牌有效 · 有效期至 08-31 09:12/)).toBeTruthy()
     expect(screen.getByRole('button', { name: '退出 me@example.com' })).toBeTruthy()
-    expect(screen.getByText('这一坑支持多账号 · 现有 1 个')).toBeTruthy()
+    expect(screen.getByText('1 个账号')).toBeTruthy()
+    // 那句「这是什么」只在未登录时出现;登上之后这一格是账号行。
+    expect(screen.queryByText(/不另收 API 费/)).toBeNull()
   })
 
   /** 「登过但过期」说成「未登录」= 让人再走一遍完整登录流。 */
   it('过期:说的是「需要重新授权」,不是「未登录」', () => {
     render(oauth({ status: { success: true, isLoggedIn: true, isExpired: true } }))
-    expect(screen.getByText(/令牌已过期,需要重新授权/)).toBeTruthy()
+    expect(screen.getByText(/登录已过期/)).toBeTruthy()
     expect(screen.getByRole('button', { name: '重新授权' })).toBeTruthy()
   })
 })
@@ -824,7 +826,7 @@ describe('UsageCard', () => {
         }}
       />,
     )
-    expect(screen.getAllByText('服务商未给数').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('服务商未提供').length).toBeGreaterThan(0)
     expect(container.querySelectorAll('[class*="meterFill"]')).toHaveLength(0)
   })
 
@@ -839,7 +841,8 @@ describe('UsageCard', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: '刷新' }))
     expect(onRefresh).toHaveBeenCalled()
-    expect(screen.getByText('60s 缓存')).toBeTruthy()
+    // 缓存寿命不上屏(设计正本 provider-settings-rework §2.1:施工笔记不上屏)。
+    expect(screen.queryByText('60s 缓存')).toBeNull()
   })
 })
 
@@ -905,7 +908,7 @@ describe('CustomProviderDialog', () => {
       }),
     )
     expect(screen.queryByRole('button', { name: /删除这一家/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /真删/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /删除后/ })).toBeNull()
   })
 
   it('新建时没有删除钮 —— 还不存在的东西删不了', () => {
@@ -968,7 +971,7 @@ describe('ModeCard · 计费档位', () => {
     expect(screen.getByLabelText('Qwen API mode')).toBeTruthy()
     expect(screen.getByLabelText('Qwen region')).toBeTruthy()
     expect(
-      screen.getByText('订阅用户必须选对档位。用通用 Key 和地址调用会走按量计费，在订阅之外额外扣钱。'),
+      screen.getByText('订阅用户请选对档位,否则会按量计费。'),
     ).toBeTruthy()
   })
 

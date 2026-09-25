@@ -91,7 +91,7 @@ export interface CoreSpaceCredentialMarker {
    * 「这个 provider 在这个空间未配置」——一等状态,不是错误的近似。
    * 存在即表示鉴权必须失败,且失败文案用这里的 `message`(说清去哪儿配)。
    */
-  unavailable?: { reason: 'no-entry' | 'oauth' | 'exhausted'; message: string }
+  unavailable?: { reason: 'no-entry' | 'oauth' | 'exhausted' | 'disabled'; message: string }
 }
 
 export interface CoreProviderConfigLike {

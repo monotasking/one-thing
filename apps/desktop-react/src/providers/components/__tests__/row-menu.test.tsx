@@ -42,15 +42,15 @@ describe('自定义家', () => {
     const props = menu()
     fireEvent.click(screen.getByRole('menuitem', { name: /删除这一家/ }))
     expect(props.onDelete).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('menuitem', { name: /真删/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /删除后/ }))
     expect(props.onDelete).toHaveBeenCalledTimes(1)
   })
 
   it('③ 确认那句话把级联说全:模型勾选 + 这个空间里的密钥', () => {
     menu()
     fireEvent.click(screen.getByRole('menuitem', { name: /删除这一家/ }))
-    const confirm = screen.getByRole('menuitem', { name: /真删/ }).textContent ?? ''
-    expect(confirm).toMatch(/模型勾选/)
+    const confirm = screen.getByRole('menuitem', { name: /删除后/ }).textContent ?? ''
+    expect(confirm).toMatch(/模型选择/)
     expect(confirm).toMatch(/密钥/)
   })
 
@@ -73,7 +73,7 @@ describe('内置家', () => {
     const props = menu({ custom: false, familyId: 'claude', label: 'Claude' })
     fireEvent.click(screen.getByRole('menuitem', { name: '停用这一家' }))
     expect(props.onToggleEnabled).toHaveBeenCalledTimes(1)
-    expect(screen.getByText(/内置的这一家删不掉/)).toBeTruthy()
+    expect(screen.getByText(/内置服务商不能删除/)).toBeTruthy()
   })
 })
 
