@@ -4,8 +4,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useT } from '../../i18n'
 import { FILES_ROW_H } from '../../data/files-source'
 import { ButtonBase } from '../../ui/ButtonBase'
-import { anchorBelow, useFileFloats } from '../file-floats'
-import { DETAIL_POPOVER_GAP } from '../FileDetailPopover'
+import { anchorBeside } from '../file-floats'
+import type { BesideAnchor } from '../file-floats'
 import { useRowWindow } from '../files/useRowWindow'
 import { TreeEntryRow } from '../files/TreeEntryRow'
 import type { EntryRow } from '../files/TreeEntryRow'
@@ -101,7 +101,7 @@ describe('切线 A · useRowWindow:量测那一半出文件之后还是同一件
   })
 })
 
-/* ── 切线 C + D 合验:一行交出**来源**,锚点算式只跑一遍 ──────────────────── */
+/* ── 切线 C + D 合验:一行交出**行矩的 getter**,锚在面板旁边合成 ──────────────── */
 
 const ROW: EntryRow = {
   kind: 'entry',
@@ -113,25 +113,29 @@ const ROW: EntryRow = {
 }
 
 /**
- * 夹具照**面板那一侧的真接法**接:行交出来源 → `useFileFloats` 算锚点。
+ * 夹具照**面板那一侧的真接法**接:行交出行矩的 getter → `anchorBeside(面板, 行)`
+ * 合成一块矩形(横向是面板两条边、纵向是那一行),`right-start` 落在面板旁边。
  *
- * 这一层是刻意的:批 9d 的真机前后对照量出过一处 4px 漂移 —— 行上先
- * `anchorBelow(rect)` 算一遍、`openDetailAt` 又算一遍,浮层多隔了一条缝。
- * 只断言「onMenu 被调用了」是抓不到那种事的,**得断言最后那一点落在哪儿**。
+ * 09-24 用户:「不要挡着文件 list」—— 从前右键锚光标、⋯ 锚行下,菜单一开就压住
+ * 底下十几行。今天两条路交的是**同一只 getter**,所以落点只有一个;这一组守的
+ * 就是「两条路同源」与「合成矩形的四条边各来自谁」。jsdom 量不出矩,所以给面板
+ * 与行各 mock 一份 `getBoundingClientRect`。
  */
-function RowFloatsHarness({ detailFromMenu = false }: { detailFromMenu?: boolean }) {
+function rectOf(left: number, top: number, right: number, bottom: number): DOMRect {
+  return {
+    left, top, right, bottom, x: left, y: top, width: right - left, height: bottom - top,
+    toJSON: () => ({}),
+  } as DOMRect
+}
+
+function RowBesideHarness() {
   const t = useT()
-  const { menuAt, detailAt, openMenuAt, openDetailAt } = useFileFloats()
-  /*
-   * ── R2:⌘I 的落点搬到了**面板那一格作用域**上 ────────────────────────────
-   * 行不再自己接键,它只**报到**(`onCurrent`)。所以这只夹具照面板那一处的样子
-   * 记一格「当前是哪一行、它的外框是谁」,再由下面那颗 `keys-detail` 钮代替
-   * `keyHandlers.detail` 按下去 —— 锚点算式(交出去的是**来源**不是坐标)
-   * 一个字没动,这一组守的正是那件事。
-   */
+  const [menu, setMenu] = useState<BesideAnchor | null>(null)
   const [current, setCurrent] = useState<HTMLElement | null>(null)
+  const [detail, setDetail] = useState<BesideAnchor | null>(null)
+  const panel = (): HTMLElement | null => document.querySelector('[data-testid="panel"]')
   return (
-    <div>
+    <div data-testid="panel">
       <TreeEntryRow
         row={ROW}
         t={t}
@@ -139,40 +143,33 @@ function RowFloatsHarness({ detailFromMenu = false }: { detailFromMenu?: boolean
         openState={null}
         onActivate={() => undefined}
         onCurrent={(_row, el) => setCurrent(el)}
-        onMenu={openMenuAt}
+        onMenu={(rowRect) => setMenu(anchorBeside(panel, rowRect))}
       />
       <ButtonBase
         data-testid="keys-detail"
-        onClick={() => openDetailAt(current?.getBoundingClientRect())}
+        onClick={() =>
+          setDetail(anchorBeside(panel, () => current?.getBoundingClientRect() ?? null))
+        }
       >
         detail-by-key
       </ButtonBase>
-      {/* 从菜单里开详情那一路(树面传 gap:false —— 菜单自己已经隔过一条缝了)。 */}
-      {detailFromMenu && menuAt && (
-        <ButtonBase
-          data-testid="menu-detail"
-          onClick={() => openDetailAt(menuAt, { gap: false })}
-        >
-          detail
-        </ButtonBase>
-      )}
-      <div
-        data-testid="menu-at"
-        data-x={menuAt?.x ?? ''}
-        data-y={menuAt?.y ?? ''}
-      />
-      <div
-        data-testid="detail-at"
-        data-x={detailAt?.x ?? ''}
-        data-y={detailAt?.y ?? ''}
-      />
+      <div data-testid="menu-at" data-rect={JSON.stringify(menu?.get() ?? null)} />
+      <div data-testid="detail-at" data-rect={JSON.stringify(detail?.get() ?? null)} />
     </div>
   )
 }
 
-function at(testId: string): { x: string; y: string } {
-  const el = screen.getByTestId(testId)
-  return { x: el.getAttribute('data-x') ?? '', y: el.getAttribute('data-y') ?? '' }
+function rectAt(testId: string): Record<string, number> | null {
+  return JSON.parse(screen.getByTestId(testId).getAttribute('data-rect') ?? 'null')
+}
+
+/** 面板 0–300、行 top 120 / bottom 147 —— 与 1200×800 真机上那一格同量级。 */
+function mockRects() {
+  const panel = screen.getByTestId('panel')
+  panel.getBoundingClientRect = () => rectOf(0, 78, 300, 800)
+  const wrap = document.querySelector('[data-file-path="/w/a.ts"]')!.parentElement as HTMLElement
+  wrap.getBoundingClientRect = () => rectOf(8, 120, 292, 147)
+  return wrap
 }
 
 describe('切线 C · TreeEntryRow:搬了家,三条回调一格不少', () => {
@@ -228,61 +225,54 @@ describe('切线 C · TreeEntryRow:搬了家,三条回调一格不少', () => {
   })
 })
 
-describe('切线 C+D · 锚点只算一遍:一行交的是**来源**,不是算好的坐标', () => {
-  it('右键 = 点锚:菜单就落在光标那一点上,一条缝都不加', () => {
-    render(<RowFloatsHarness />)
-    const wrap = document.querySelector('[data-file-path="/w/a.ts"]')!.parentElement!
+describe('切线 C+D · 行菜单开在面板旁边:两条路同一块锚,四条边各有出处', () => {
+  it('右键 = 交行矩 getter:合成矩形横向是面板两条边、纵向是这一行', () => {
+    render(<RowBesideHarness />)
+    const wrap = mockRects()
     fireEvent.contextMenu(wrap, { clientX: 120, clientY: 200 })
-    expect(at('menu-at')).toEqual({ x: '120', y: '200' })
+    const r = rectAt('menu-at')!
+    expect(r.left).toBe(0)
+    expect(r.right).toBe(300)
+    expect(r.top).toBe(120)
+    expect(r.bottom).toBe(147)
   })
 
-  /*
-   * 反证(这一条是那 4px 漂移的守卫):把行上那句改回「先自己 anchorBelow 一遍
-   * 再交出去」,菜单会落在 204 —— 真机前后对照量到的正是这个数。
-   */
-  it('行尾 ⋯ = 矩锚:贴着行矩左下角**只隔一条缝**(不是两条)', () => {
-    render(<RowFloatsHarness />)
+  it('行尾 ⋯ 与右键交的是**同一只 getter**:落点逐字相同,光标在哪儿无关', () => {
+    render(<RowBesideHarness />)
+    const wrap = mockRects()
+    fireEvent.contextMenu(wrap, { clientX: 120, clientY: 200 })
+    const byContext = rectAt('menu-at')
     fireEvent.click(screen.getByTestId('files-more:/w/a.ts'))
-    // jsdom 量不出矩(全 0),所以读数是「取不到矩」那一档:(0, GAP)——
-    // 与迁移前 `rect?.left ?? 0` / `(rect?.bottom ?? 0) + GAP` 逐字相同。
-    expect(at('menu-at')).toEqual({ x: '0', y: String(DETAIL_POPOVER_GAP) })
+    expect(rectAt('menu-at')).toEqual(byContext)
   })
 
-  it('⌘I = 矩锚:详情同样只隔一条缝(R2:落点在面板,来源仍是那一行的外框)', () => {
-    render(<RowFloatsHarness />)
+  it('⌘I 那条路(面板作用域按当前行开详情)同一块锚', () => {
+    render(<RowBesideHarness />)
+    mockRects()
     const button = document.querySelector('[data-file-path="/w/a.ts"]') as HTMLElement
     fireEvent.focus(button)
     fireEvent.click(screen.getByTestId('keys-detail'))
-    expect(at('detail-at')).toEqual({ x: '0', y: String(DETAIL_POPOVER_GAP) })
+    const r = rectAt('detail-at')!
+    expect([r.left, r.right, r.top, r.bottom]).toEqual([0, 300, 120, 147])
   })
 
-  it('从菜单里开详情:**落在菜单那一点上**(gap:false —— 树面那一档,零缝)', () => {
-    render(<RowFloatsHarness detailFromMenu />)
-    const wrap = document.querySelector('[data-file-path="/w/a.ts"]')!.parentElement!
-    fireEvent.contextMenu(wrap, { clientX: 120, clientY: 200 })
-    fireEvent.click(screen.getByTestId('menu-detail'))
-    expect(at('detail-at')).toEqual(at('menu-at'))
-    expect(at('detail-at')).toEqual({ x: '120', y: '200' })
+  it('锚是活的:行矩变了,同一只 getter 读到新的行、面板不变', () => {
+    render(<RowBesideHarness />)
+    const wrap = mockRects()
+    fireEvent.contextMenu(wrap, { clientX: 0, clientY: 0 })
+    wrap.getBoundingClientRect = () => rectOf(8, 300, 292, 327)
+    // 重新读一次 getter(组件里 data-rect 只在渲染时算,这里直接问锚本身)
+    fireEvent.click(screen.getByTestId('files-more:/w/a.ts'))
+    const r = rectAt('menu-at')!
+    expect([r.top, r.bottom, r.left, r.right]).toEqual([300, 327, 0, 300])
   })
 
-  it('缺省那一档仍然隔一条缝 —— 查看器那一面一个字节没动', () => {
-    render(<RowFloatsHarness />)
-    const wrap = document.querySelector('[data-file-path="/w/a.ts"]')!.parentElement!
-    fireEvent.contextMenu(wrap, { clientX: 120, clientY: 200 })
-    // 同一个点走缺省档:比点锚低一条缝(那正是查看器右键→详情的算法)。
-    expect(anchorBelow({ x: 120, y: 200 })).toEqual({ x: 120, y: 200 + DETAIL_POPOVER_GAP })
-  })
-
-  it('gap 是一格**长度**不是布尔:传 0 与不传的差恰好是那一条缝', () => {
-    expect(anchorBelow({ x: 5, y: 7 }, 0)).toEqual({ x: 5, y: 7 })
-    expect(anchorBelow({ x: 5, y: 7 })).toEqual({ x: 5, y: 7 + DETAIL_POPOVER_GAP })
-    // 取不到锚时也照这条规矩:0 缝落在原点,缺省落在一条缝下面。
-    expect(anchorBelow(null, 0)).toEqual({ x: 0, y: 0 })
-    expect(anchorBelow(null)).toEqual({ x: 0, y: DETAIL_POPOVER_GAP })
+  it('面板或行还没挂上 → 锚答 null,首帧兜底落在 (0,0)', () => {
+    const anchor = anchorBeside(() => null, () => null)
+    expect(anchor.get()).toBeNull()
+    expect(anchor.at).toEqual({ x: 0, y: 0 })
   })
 })
-
-/* ── 切线 B:NoWorkdirNotice —— 绑定成败与律③两半 ──────────────────────── */
 
 const SESSION = 'os-provider'
 

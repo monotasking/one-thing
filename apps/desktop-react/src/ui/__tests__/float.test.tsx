@@ -274,6 +274,31 @@ describe('useFloatPosition:rect 档跟着锚点走', () => {
     expect(readPos()).toEqual({ left: '130', top: '15', flipped: 'true' })
   })
 
+  /*
+   * `right-start`(09-24,文件面板的行菜单):贴锚右缘、顶对齐。**放不下先翻不夹**——
+   * 从前右边放不下只会往左夹回来,夹回来就压住锚(锚是那块「不许被盖住」的面板,
+   * 那正是用户报的「挡着文件 list」)。jsdom 身量恒 0,所以「放不下」只在锚自己
+   * 越过视口边时成立:三段各取一个越界的锚来证。
+   */
+  it('right-start:贴右缘顶对齐;右边放不下翻到左缘之外并报 flipped;两边都放不下才夹', () => {
+    setViewport(1000, 800)
+    const beside = liveRect(rectOf(120, 60, 90, 24))
+    const first = render(<PositionHarness anchor={beside.anchor('right-start')} />)
+    expect(readPos()).toEqual({ left: '210', top: '60', flipped: 'false' })
+    first.unmount()
+
+    // 右缘 1040 越过 vw(1000)→ 翻:left = r.left − w(w=0)= 950。
+    const nearRight = liveRect(rectOf(950, 60, 90, 24))
+    const second = render(<PositionHarness anchor={nearRight.anchor('right-start')} />)
+    expect(readPos()).toEqual({ left: '950', top: '60', flipped: 'true' })
+    second.unmount()
+
+    // 锚横跨整个视口:右边放不下、左边(−5)也放不下 → 退回夹,不报 flipped。
+    const wide = liveRect(rectOf(-5, 60, 1010, 24))
+    render(<PositionHarness anchor={wide.anchor('right-start')} />)
+    expect(readPos()).toEqual({ left: '1000', top: '60', flipped: 'false' })
+  })
+
   it('卸载即拆监听:走了之后再滚,getter 一次都不该被问', async () => {
     setViewport(1000, 800)
     const get = vi.fn(() => rectOf(10, 10, 10, 10))

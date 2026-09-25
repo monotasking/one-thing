@@ -91,13 +91,23 @@ export function FileActionsMenu({
   y,
   onClose,
   onDetail,
+  anchor,
+  anchorPlace,
 }: {
   target: FileActionTarget
+  /** 光标那一点(查看区右键);给了 `anchor` 时只当首帧兜底。 */
   x: number
   y: number
   onClose: () => void
   /** 详情由**宿主**开(浮层要贴着宿主自己那个锚点长)。 */
   onDetail: () => void
+  /**
+   * 活矩形锚,原样交给 `ui/Menu`(两格与它同名同义)。文件面板给的是「面板旁边、
+   * 这一行的高度」那块合成矩形 + `right-start`(09-24,算式在 `content/file-floats`
+   * 的 `anchorBeside`);查看区不给,照旧开在光标处。
+   */
+  anchor?: () => DOMRect | null
+  anchorPlace?: 'below-start' | 'below-end' | 'right-start'
 }) {
   const t = useT()
   const mode = useFileOpenMode((st) => st.mode)
@@ -159,6 +169,8 @@ export function FileActionsMenu({
     <Menu
       x={x}
       y={y}
+      anchor={anchor}
+      anchorPlace={anchorPlace}
       onClose={onClose}
       label={t('files.rowMenu')}
       minWidth="var(--files-menu-w)"

@@ -18,38 +18,29 @@ import { DETAIL_POPOVER_GAP } from './FileDetailPopover'
  *    (09-01 库自审立法:浮层行为单产地)。这件一个字都不碰那三件事,
  *    它只回答「开在哪一点」。
  *
- * ── 两档锚(与 `ui/float` 的定位两档同名同义)──────────────────────────
- *   指针事件  → **点锚**:光标那一点就是落点,不加缝。右键菜单走这一档
- *              (点锚不跟滚 —— 那条裁定在 `ui/float`,这里只是把落点算对)。
- *   元素矩    → **矩锚**:贴着那块矩的左下角,隔一条 `DETAIL_POPOVER_GAP`。
- *              行尾 ⋯、以及从一层浮层里长出下一层时走这一档。
- *   已算好的点 → 当作一块零高的矩:同样隔一条缝往下长。
+ * ── 两个宿主,两种落法(09-24 起分家)───────────────────────────────────
+ *   查看区  → **点锚**:右键那一下光标在哪,菜单就开在哪(点锚不跟滚 —— 那条裁定
+ *            在 `ui/float`);从菜单里开详情,隔一条 `DETAIL_POPOVER_GAP` 往下长。
+ *            这两格状态就是下面的 `useFileFloats`。
+ *   文件面板 → **开在面板旁边**(`anchorBeside`):锚是那一行,落点是面板左右缘之外。
+ *            ⋯ 与右键同一个落点 —— 右键不再锚光标,那一下点在列表上,菜单就还在
+ *            列表上。它是活矩形(跟滚),状态由面板自己记(它还要记「哪一行」)。
  *
  * ── 三张状态表(状态先行)────────────────────────────────────────────────
- *  ① 生命周期:纯 `useState`,无订阅、无计时器、无模块级副作用 —— 所以
+ *  ① 生命周期:纯 `useState` / 纯函数,无订阅、无计时器、无模块级副作用 —— 所以
  *     **不需要 HMR dispose**(判据:这东西的寿命是不是「这个模块实例」——
  *     不是,它的寿命是调用它的那个组件)。宿主换落点导致组件重挂时,
- *     两格锚点归零 = 浮层收起,这是对的:那两块浮层贴的是**屏幕坐标**,
- *     换了宿主之后原来那一点已经不指向任何东西了。
- *  ② UI 生命状态:两格各自只有 **关(null) / 开(一个点)** 两态。没有
- *     loading —— 详情那块内容自己有它的载入态(`useFileDetail`),
- *     而「开在哪儿」这件事是同步算出来的。
+ *     锚点归零 = 浮层收起,这是对的:查看区那两格贴的是**屏幕坐标**,文件面板
+ *     那一格的 getter 指着旧宿主里的元素,换了宿主都不再指向任何东西。
+ *  ② UI 生命状态:每一格只有 **关(null) / 开** 两态。没有 loading —— 详情那块
+ *     内容自己有它的载入态(`useFileDetail`),而「开在哪儿」这件事是同步算出来的。
  *  ③ UI 交互状态:无。它不画任何东西,所以没有 rest/hover/focus/disabled。
  *
- * ── 那一格已经拍了:**承认两种用法**(09-02 批 9d)────────────────────────
- * 9b 留的板是:从右键菜单里点「详情」时,查看器把详情往下挪一条缝
- * (`menuAt.y + DETAIL_POPOVER_GAP`),而树面直接落在菜单那一点上(不加缝)。
- * 两条路都跑了很久,谁都不是抄漏 —— 它们回答的是**两个不同的问题**:
- *
- *  · 查看器那一档:菜单是从**光标那一点**开出来的(点锚),详情要贴在
- *    「刚才那一下」的下面,不隔缝就会压住光标本身;
- *  · 树面那一档:菜单已经贴在**那一行的矩**下面了(它自己就是隔着一条缝
- *    长出来的),详情再隔一条就是隔了两条 —— 那一格空白说不出任何事实。
- *
- * 所以本批**不统一**,而是把这件事写进口子:`openDetailAt` 多一格 `gap`
- * (缺省 `true` = 查看器今天的行为,一个字节没动),树面传 `gap: false`
- * 落在给定的那一点上 —— 两面各自逐像素与迁移前相同,零像素。
- * 不替用户把树面详情下移 4px:那是用户可感知的位置变化,得他自己拍。
+ * ── 09-02 批 9d 那一格(「承认两种用法」)随 09-24 作废 ────────────────────
+ * 9d 拍的是:树面从菜单开详情不隔缝(菜单自己已经贴着行矩隔过一条),查看区隔一条,
+ * 口子是 `openDetailAt` 的 `gap` 格。09-24 文件面板的两层浮层改成「开在面板旁边」,
+ * 两层同锚、同一个 `right-start`,「隔几条缝」这个问题在树面上不存在了 ——
+ * `gap` 格连同它唯一的非缺省调用点一起删掉,查看区那一档一个字节没动。
  */
 
 /** 一处浮层的落点(视口坐标)。菜单与详情浮层共用这一个形状。 */
@@ -58,57 +49,89 @@ export interface Anchor {
   y: number
 }
 
-/**
- * 浮层从哪儿长出来。三种来源各自的算法写在 `anchorAtPointer` / `anchorBelow`,
- * 判别靠形状而不是靠调用方多传一个 `kind` —— 多一格入参就是多一处可以填错的地方。
- */
+/** 一次指针事件里「光标在哪」的那两个数(右键菜单的点锚只要这两个)。 */
 export interface PointerLike {
   readonly clientX: number
   readonly clientY: number
 }
 
-export type FloatOrigin = PointerLike | DOMRect | Anchor | null | undefined
-
-function isPointerLike(origin: NonNullable<FloatOrigin>): origin is PointerLike {
-  return 'clientX' in origin
-}
-
-function isRectLike(origin: NonNullable<FloatOrigin>): origin is DOMRect {
-  return 'bottom' in origin
-}
-
-/** 点锚:光标那一点**就是**落点,不加缝(右键菜单)。 */
-export function anchorAtPointer(event: { clientX: number; clientY: number }): Anchor {
+/** 点锚:光标那一点**就是**落点,不加缝(查看区的右键菜单)。 */
+export function anchorAtPointer(event: PointerLike): Anchor {
   return { x: event.clientX, y: event.clientY }
 }
 
 /**
- * 矩锚:贴着这块矩的左下角,隔一条 `DETAIL_POPOVER_GAP` 长出来 ——
- * 浮层是那个元素的**附属**,不是屏幕中央的一块东西。
- *
- * 取不到矩时落在 `(0, GAP)`:与迁移前那两面逐字相同(`rect?.left ?? 0`)。
- * 这不是兜底策略而是**如实**——元素不在文档里的时候没有「它下面」这个位置,
+ * 从一层浮层长出下一层:贴着那一点往下隔一条 `DETAIL_POPOVER_GAP`(查看区从右键菜单
+ * 里开详情)。取不到锚时落在 `(0, GAP)` —— **如实**:没有「它下面」这个位置的时候,
  * 编个屏幕中央出来只会让人以为浮层是随机弹的。
  *
- * `gap` 是**一格数**而不是一个布尔:它本来就是一段长度,传 0 就是「贴着长」。
- * 唯一的非缺省调用点是树面从菜单里开详情那一档(理由见文件头最后一节)。
+ * 09-24 之前它还收一块元素矩 / 一次指针事件、还有一格 `gap`(树面从菜单开详情传 0)。
+ * 那三样的消费者全是文件面板,而文件面板的两层浮层改成了「开在面板旁边」
+ * (见下面 `anchorBeside`),于是它们一起删了 —— 不留没人走的支。
  */
-export function anchorBelow(origin: FloatOrigin, gap: number = DETAIL_POPOVER_GAP): Anchor {
-  if (!origin) return { x: 0, y: gap }
-  if (isRectLike(origin)) return { x: origin.left, y: origin.bottom + gap }
-  if (isPointerLike(origin)) return { x: origin.clientX, y: origin.clientY + gap }
-  return { x: origin.x, y: origin.y + gap }
+export function anchorBelow(origin: Anchor | null | undefined): Anchor {
+  if (!origin) return { x: 0, y: DETAIL_POPOVER_GAP }
+  return { x: origin.x, y: origin.y + DETAIL_POPOVER_GAP }
 }
 
-/** `openDetailAt` 的第二格。今天只有一格,所以它是个对象而不是位置参数 —— 调用点读得出自己在说哪件事。 */
-export interface OpenDetailOptions {
-  /**
-   * 隔不隔那条缝。缺省 `true`(贴着开它的那件东西下面长出来)。
-   *
-   * `false` 的唯一正当理由:**开它的那件东西自己已经隔过一条缝了** ——
-   * 树面的行菜单贴在行矩下方,详情再隔一条就是两条(判例见文件头最后一节)。
-   */
-  gap?: boolean
+/**
+ * **开在面板旁边**(09-24 报障「不要挡着文件 list,我说了没?」)。
+ *
+ * 文件面板的行菜单与详情从前贴在行下方 / 光标处,整块压在文件列表上;把「打开方式」
+ * 折进二级菜单只是把它变矮,没有让开。裁定是**锚是这一行、落点是面板之外**:
+ * 交给 `ui/float` 的 `right-start` 一块**合成矩形** —— 左右缘是面板的(各外扩一格
+ * `--sp-1`,浮层与面板之间留一条缝,翻到左边时同样留一条),上下缘是那一行的。
+ * 于是 `right-start` 那一支的「右边放不下先翻、两边都放不下才夹」原样作用在面板上,
+ * 这里一个坐标都不判(浮层摆哪儿只有 `ui/float` 一个产地)。
+ *
+ * 交出去的是**活的** getter,不是一次快照:列表滚动时那一行的 `top` 跟着变,
+ * `useFloatPosition` 的 rect 档跟滚,浮层随那一行上下走、始终在面板外面;
+ * 那一行滚出窗口化的可视窗被卸载时 getter 答 null,浮层**原地不动**(ui/float 纪律③)。
+ * `at` 是开那一刻量的一次,只当首帧兜底(`x/y` 那两格)。
+ *
+ * 缝的读法与 `ui/float` 读安全区同一条:现读根上的 token,jsdom 里读出空串 → 按 0 走。
+ *
+ *  落点           | 面板右缘之外    | 面板左缘之外     | 结果
+ *  ---------------|-----------------|------------------|-------------------------------
+ *  左架子         | 放得下          | —                | 右侧(压到中央舞台,不压列表)
+ *  中央舞台       | 右边有架子 / 空 | —                | 右侧;右边贴窗时翻左
+ *  右架子(钉右) | 放不下(贴窗)  | 放得下           | **翻到左侧**
+ *  浮窗贴右       | 放不下          | 放得下           | **翻到左侧**
+ *  面板占满全窗   | 放不下          | 放不下           | 退回夹:贴窗右内沿、行的高度
+ */
+export interface BesideAnchor {
+  /** 合成矩形的 getter,交给 `Menu` / `Popover` 的 `anchor`(配 `anchorPlace="right-start"`)。 */
+  get: () => DOMRect | null
+  /** 开那一刻的落点,只当首帧兜底。 */
+  at: Anchor
+}
+
+export function anchorBeside(
+  panel: () => HTMLElement | null,
+  row: () => DOMRect | null,
+): BesideAnchor {
+  const get = (): DOMRect | null => {
+    const el = panel()
+    const r = row()
+    if (!el || !r) return null
+    const p = el.getBoundingClientRect()
+    const gap = Number.parseFloat(getComputedStyle(el).getPropertyValue('--sp-1')) || 0
+    const left = p.left - gap
+    const right = p.right + gap
+    const rect = {
+      left,
+      right,
+      top: r.top,
+      bottom: r.bottom,
+      width: right - left,
+      height: r.bottom - r.top,
+      x: left,
+      y: r.top,
+    }
+    return { ...rect, toJSON: () => rect }
+  }
+  const first = get()
+  return { get, at: { x: first?.right ?? 0, y: first?.top ?? 0 } }
 }
 
 export interface FileFloats {
@@ -116,10 +139,10 @@ export interface FileFloats {
   menuAt: Anchor | null
   /** 详情浮层贴在哪儿(null = 没开)。 */
   detailAt: Anchor | null
-  /** 指针事件 → 点锚;元素矩 / 一个点 → 矩锚(左下角隔一条缝)。 */
-  openMenuAt: (origin: FloatOrigin) => void
-  /** 详情缺省隔一条缝长在开它的那件东西下面;`{ gap: false }` 就落在给定的那一点上。 */
-  openDetailAt: (origin: FloatOrigin, options?: OpenDetailOptions) => void
+  /** 指针事件 → 点锚(光标那一点)。 */
+  openMenuAt: (event: PointerLike) => void
+  /** 详情隔一条缝长在开它的那一点下面。 */
+  openDetailAt: (origin: Anchor | null) => void
   closeMenu: () => void
   closeDetail: () => void
 }
@@ -128,11 +151,11 @@ export function useFileFloats(): FileFloats {
   const [menuAt, setMenuAt] = useState<Anchor | null>(null)
   const [detailAt, setDetailAt] = useState<Anchor | null>(null)
 
-  const openMenuAt = useCallback((origin: FloatOrigin) => {
-    setMenuAt(origin && isPointerLike(origin) ? anchorAtPointer(origin) : anchorBelow(origin))
+  const openMenuAt = useCallback((event: PointerLike) => {
+    setMenuAt(anchorAtPointer(event))
   }, [])
-  const openDetailAt = useCallback((origin: FloatOrigin, options?: OpenDetailOptions) => {
-    setDetailAt(anchorBelow(origin, options?.gap === false ? 0 : DETAIL_POPOVER_GAP))
+  const openDetailAt = useCallback((origin: Anchor | null) => {
+    setDetailAt(anchorBelow(origin))
   }, [])
   const closeMenu = useCallback(() => setMenuAt(null), [])
   const closeDetail = useCallback(() => setDetailAt(null), [])

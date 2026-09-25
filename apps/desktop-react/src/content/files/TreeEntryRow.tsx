@@ -12,7 +12,6 @@ import type { TFn } from '../../i18n'
 import { glyphOf, isHiddenName } from '../../data/file-icons'
 import type { TreeRow } from '../../data/files-source'
 import { FileGlyphMark } from '../FileGlyph'
-import type { FloatOrigin } from '../file-floats'
 import s from '../FilesPanel.module.css'
 
 /** 树上真正的一行(骨架行 / 注行是另外两形,它们不是条目)。 */
@@ -120,7 +119,12 @@ export function TreeEntryRow({
    * 同一处锚点算式);交出 null = 焦点离开了这一行。
    */
   onCurrent: (row: EntryRow, el: HTMLElement | null) => void
-  onMenu: (origin: FloatOrigin) => void
+  /**
+   * 开这一行的动作菜单。交出去的是**这一行外框的矩形 getter**(活的,跟滚),
+   * ⋯ 与右键交的是**同一个** —— 菜单开在面板旁边、与这一行顶对齐,
+   * 落点算式在 `content/file-floats` 的 `anchorBeside`(09-24)。
+   */
+  onMenu: (rowRect: () => DOMRect | null) => void
   /** 点空心那颗点 = 把这一份请回它藏起来时那个位置。没开 / 显示中时用不着。 */
   onRestore?: () => void
   /**
@@ -147,13 +151,17 @@ export function TreeEntryRow({
   const wrapRef = useRef<HTMLDivElement>(null)
 
   /*
-   * 这一行交出去的是**来源**(一块矩 / 一次指针事件),不是算好的坐标。
+   * 这一行交出去的是**来源**(一个量自己外框的 getter),不是算好的坐标 ——
+   * **锚点算式只有一处产地**(`content/file-floats`;09-02 批 9d 的真机对照量出过
+   * 「行上先算一遍、那边再算一遍」多出来的那条缝)。
    *
-   * 09-02 批 9d 的真机前后对照当场量出过这条:先在这里 `anchorBelow(rect)` 算一遍、
-   * 再交给 `openDetailAt` 又算一遍,详情就多隔了一条缝(右键那一路同样多隔一条)。
-   * **锚点算式只有一处产地**(`content/file-floats`),这一行只负责说清楚
-   * 「浮层是从哪儿长出来的」——矩锚还是点锚由那件按形状判,不由这里预先拍板。
+   * **⋯ 与右键交的是同一个**(09-24 报障「不要挡着文件 list,我说了没?」):
+   * 右键从前交出的是指针事件、菜单开在光标处 —— 那一下点在列表上,菜单就压在列表上。
+   * 现在两条路都说「是这一行」,菜单开在面板旁边、与这一行顶对齐。
+   * 它是 getter 而不是一次快照:列表滚动时浮层跟着这一行走(ui/float 的 rect 档);
+   * 这一行被窗口化卸载后它答 null,浮层原地不动。
    */
+  const rowRect = (): DOMRect | null => wrapRef.current?.getBoundingClientRect() ?? null
   const cls = [s.rowWrap, selected && s.rowSel, hidden && s.rowHidden].filter(Boolean).join(' ')
 
   return (
@@ -163,8 +171,8 @@ export function TreeEntryRow({
       style={depthVar(row.depth)}
       onContextMenu={(e: ReactMouseEvent) => {
         e.preventDefault()
-        // 指针事件原样交出去 → 点锚(光标那一点就是落点,不加缝)。
-        onMenu(e)
+        // 交的是这一行,不是光标那一点(与行尾 ⋯ 同一个落点,理由见上面 rowRect)。
+        onMenu(rowRect)
       }}
       /*
        * 焦点进 / 出**这一行**(含行尾那颗 ⋯:它也在这一行里,⌘I 该作用在同一行)。
@@ -262,7 +270,7 @@ export function TreeEntryRow({
          * 换库件之后走库件那一格 `testId`,值仍然带着路径 —— 门与单测要的是
          * 「按这一行取它的 ⋯」,那一格叫什么名字不是它们关心的事。 */
         testId={`files-more:${row.path}`}
-        onClick={() => onMenu(wrapRef.current?.getBoundingClientRect())}
+        onClick={() => onMenu(rowRect)}
       />
     </div>
   )

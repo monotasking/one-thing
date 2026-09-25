@@ -139,10 +139,6 @@ describe('file-floats —— 两档锚各是一条算式', () => {
     expect(anchorAtPointer({ clientX: 40, clientY: 90 })).toEqual({ x: 40, y: 90 })
   })
 
-  it('矩锚:贴左下角,隔一条 DETAIL_POPOVER_GAP', () => {
-    const rect = { left: 12, bottom: 200 } as DOMRect
-    expect(anchorBelow(rect)).toEqual({ x: 12, y: 200 + DETAIL_POPOVER_GAP })
-  })
 
   it('从一层浮层长出下一层:同样隔一条缝(查看器今天的行为,逐像素保住)', () => {
     expect(anchorBelow({ x: 7, y: 33 })).toEqual({ x: 7, y: 33 + DETAIL_POPOVER_GAP })

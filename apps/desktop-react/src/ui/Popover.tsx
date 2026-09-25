@@ -55,8 +55,10 @@ interface PopoverProps {
    * `anchor` 档的对齐边。缺省 `below-start`(贴锚点下缘左对齐)。
    * **锚点自己贴着右边线时给 `below-end`** —— 一行尾巴上的钮左对齐开出去,
    * 浮层整个探到那块面外面(判例:密钥池的行菜单,09-02 批 12)。
+   * `right-start` = 开在锚的旁边、右边放不下翻到左边(与 `ui/Menu` 逐字同一格;
+   * 09-24 文件面板从行菜单开出来的详情用它,判词在 ui/float)。
    */
-  anchorPlace?: 'below-start' | 'below-end'
+  anchorPlace?: 'below-start' | 'below-end' | 'right-start'
   /**
    * 开出来之后焦点落在哪一件上(响应链的落点)。缺省 = 浮层根。浮层里第一件就是输入框时给它
    * (宠物那一格「跟黑豆说」,09-19)—— 开了还得再点一下才能打字,是一步白做的手势。

@@ -30,8 +30,8 @@ import { FileActionsMenu } from './FileActionsMenu'
 import { FileDetailPopover } from './FileDetailPopover'
 import { FocusScope } from '../focus/FocusScope'
 import { focusTree } from '../focus/registry'
-import { useFileFloats } from './file-floats'
-import type { FloatOrigin, OpenDetailOptions } from './file-floats'
+import { anchorBeside } from './file-floats'
+import type { BesideAnchor } from './file-floats'
 import { NoWorkdirNotice } from './files/NoWorkdirNotice'
 import { RootCrumbs } from './files/RootCrumbs'
 import { TreeEntryRow, depthVar } from './files/TreeEntryRow'
@@ -290,8 +290,17 @@ export function FilesPanel({ root }: { root: string }) {
    * 这里只多留一格:菜单开在**哪一行**上 —— 那是这块面自己的事(锚点件管坐标,
    * 不管坐标底下站着谁),而菜单收起时两者必须一起清。
    */
-  const { menuAt, detailAt, openMenuAt, openDetailAt, closeMenu, closeDetail: closeDetailAt } =
-    useFileFloats()
+  /*
+   * ── 行菜单开在面板**旁边**,不压列表(09-24 用户:「不要挡着文件 list」)────────
+   * 从前菜单锚在行的下方 / 光标处,一开就盖住底下十几行 —— 上一单把「打开方式」
+   * 折进二级菜单只是把它变矮,没有让开列表。今天的锚是一块**合成矩形**:横向取
+   * 面板的两条边、纵向取那一行(`anchorBeside`),`right-start` 落在面板右缘之外、
+   * 顶缘与行对齐;面板贴着窗口右边放不下就翻到左缘之外(判词在 `ui/float`)。
+   * ⋯ 钮与右键交的是同一只行矩 getter,所以两条路一个落点 —— 右键不再锚光标:
+   * 那一下点在列表上,菜单就还在列表上。详情弹层同一块锚,理由相同。
+   */
+  const [menuAnchor, setMenuAnchor] = useState<BesideAnchor | null>(null)
+  const [detailAnchor, setDetailAnchor] = useState<BesideAnchor | null>(null)
   const [menuRow, setMenuRow] = useState<EntryRow | null>(null)
   /** 「重新读取」按了几次 —— 那枚图标每按一次多转一圈(单调递增,见下面的注)。 */
   const [spins, setSpins] = useState(0)
@@ -320,13 +329,13 @@ export function FilesPanel({ root }: { root: string }) {
    */
   const panelRef = useRef<HTMLDivElement>(null)
   const onEscape = useCallback(() => {
-    if (menuAt || detail) return false
+    if (menuAnchor || detail) return false
     // 查看器不在这条分栏里(摆去了舞台 / 浮窗 / 钉栏)时**不接**:那一下 Esc
     // 属于摆着它的那一层,不属于这块面。
     if (!splitOpen) return false
     closeViewer()
     return true
-  }, [menuAt, detail, splitOpen, closeViewer])
+  }, [menuAnchor, detail, splitOpen, closeViewer])
 
   /*
    * **根不再跟着会话走**(W6-a):它是这一格内容的身份(`dir:<路径>`),
@@ -371,32 +380,25 @@ export function FilesPanel({ root }: { root: string }) {
     },
   })
 
-  const openMenuFor = useCallback(
-    (row: EntryRow, origin: FloatOrigin) => {
-      setSelected(row.path)
-      setMenuRow(row)
-      openMenuAt(origin)
-    },
-    [openMenuAt],
-  )
+  const openMenuFor = useCallback((row: EntryRow, rowRect: () => DOMRect | null) => {
+    setSelected(row.path)
+    setMenuRow(row)
+    setMenuAnchor(anchorBeside(() => panelRef.current, rowRect))
+  }, [])
 
-  /** 关菜单 = 那一格坐标与「开在哪一行」一起清:留下任何一半都是一张半开的菜单。 */
+  /** 关菜单 = 锚与「开在哪一行」一起清:留下任何一半都是一张半开的菜单。 */
   const dismissMenu = useCallback(() => {
     setMenuRow(null)
-    closeMenu()
-  }, [closeMenu])
+    setMenuAnchor(null)
+  }, [])
 
   const openDetailFor = useCallback(
-    (
-      row: { path: string; name: string; type: 'file' | 'directory' },
-      origin: FloatOrigin,
-      options?: OpenDetailOptions,
-    ) => {
+    (row: { path: string; name: string; type: 'file' | 'directory' }, anchor: BesideAnchor) => {
       setSelected(row.path)
-      openDetailAt(origin, options)
+      setDetailAnchor(anchor)
       void openDetail({ path: row.path, name: row.name, type: row.type })
     },
-    [openDetailAt, openDetail],
+    [openDetail],
   )
 
   /*
@@ -464,8 +466,11 @@ export function FilesPanel({ root }: { root: string }) {
       ? () =>
           openDetailFor(
             current.row,
-            // 那一行的矩交出去 → 矩锚(贴着左下角隔一条缝),与行上那一手同源。
-            current.el.isConnected ? current.el.getBoundingClientRect() : undefined,
+            // 与行菜单同一块锚:面板旁边、顶缘对齐这一行。
+            anchorBeside(
+              () => panelRef.current,
+              () => (current.el.isConnected ? current.el.getBoundingClientRect() : null),
+            ),
           )
       : undefined,
   }
@@ -744,7 +749,7 @@ export function FilesPanel({ root }: { root: string }) {
            * 行的右键 / ⋯ 菜单 —— **动作单产地**(09-01 裁定):这张表与查看区右键
            * 弹出来的是同一件组件,所以「一个文件能做什么」全仓只有一份定义。
            */}
-          {menuRow && menuAt && (
+          {menuRow && menuAnchor && (
             <FileActionsMenu
               target={{
                 path: menuRow.path,
@@ -752,26 +757,25 @@ export function FilesPanel({ root }: { root: string }) {
                 type: menuRow.type,
                 expanded: menuRow.expanded,
               }}
-              x={menuAt.x}
-              y={menuAt.y}
+              x={menuAnchor.at.x}
+              y={menuAnchor.at.y}
+              anchor={menuAnchor.get}
+              anchorPlace="right-start"
               onClose={dismissMenu}
-              /*
-               * 从菜单里开详情:**落在菜单那一点上,不再隔一条缝**(9b 留给 9d 的
-               * 那格拍板,已裁:承认两种用法)。理由是这张菜单自己已经贴在行矩下方
-               * 隔过一条缝了,详情再隔一条就是两条 —— 那格空白说不出任何事实。
-               * 查看器那一面的菜单是从光标点开出来的,所以它照旧隔一条(缺省档)。
-               */
-              onDetail={() => openDetailFor(menuRow, menuAt, { gap: false })}
+              // 从菜单里开详情:接过菜单那一块锚 —— 详情落在菜单刚才站的地方,同样不压列表。
+              onDetail={() => openDetailFor(menuRow, menuAnchor)}
             />
           )}
 
-          {detail && detailAt && (
+          {detail && detailAnchor && (
             <FileDetailPopover
               detail={detail}
-              x={detailAt.x}
-              y={detailAt.y}
+              x={detailAnchor.at.x}
+              y={detailAnchor.at.y}
+              anchor={detailAnchor.get}
+              anchorPlace="right-start"
               onClose={() => {
-                closeDetailAt()
+                setDetailAnchor(null)
                 closeDetail()
               }}
             />

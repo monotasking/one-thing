@@ -61,11 +61,21 @@ export function FileDetailPopover({
   x,
   y,
   onClose,
+  anchor,
+  anchorPlace,
 }: {
   detail: FileDetailState
+  /** 一处落点;给了 `anchor` 时只当首帧兜底。 */
   x: number
   y: number
   onClose: () => void
+  /**
+   * 活矩形锚,原样交给 `ui/Popover`(与 `FileActionsMenu` 那两格逐字同形)。文件面板
+   * 给的是开菜单的同一块「面板旁边」合成矩形 + `right-start`(09-24):菜单挪到面板
+   * 外面了,从它长出来的详情也跟着出去,不压列表。查看区不给,照旧贴那一点往下长。
+   */
+  anchor?: () => DOMRect | null
+  anchorPlace?: 'below-start' | 'below-end' | 'right-start'
 }) {
   const t = useT()
   const lang: Lang = resolveLang(useStageStore((st) => st.locale))
@@ -99,7 +109,15 @@ export function FileDetailPopover({
      * `data-file-path` 留在里面那层(它是这块**内容**的事实,不是浮层的属性),
      * 门按后代取:`[data-testid="files-detail"] [data-file-path]`。
      */
-    <Popover x={x} y={y} onClose={onClose} label={detail.name} testId="files-detail">
+    <Popover
+      x={x}
+      y={y}
+      anchor={anchor}
+      anchorPlace={anchorPlace}
+      onClose={onClose}
+      label={detail.name}
+      testId="files-detail"
+    >
       <div className={s.detail} data-file-path={detail.path}>
         <div className={s.detailHead}>
           <FileGlyphMark glyph={glyph} className={s.detailGlyph} size="lg" />

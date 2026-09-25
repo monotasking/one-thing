@@ -115,6 +115,8 @@ export type FloatPlace = 'below-start' | 'below-end' | 'above-center' | 'cover' 
  * 而**子菜单**要的是第三个方向:贴着锚点这一行的**右缘**、顶缘对齐。它与
  * `below-start` 是同一句话换一根轴,所以是这张表的一行,不是子菜单自己算坐标
  * (「浮层摆哪儿」全仓只有这一个产地 —— 这是 `ui/float` 存在的全部理由)。
+ * 09-24 它有了第二个消费者:文件面板的行菜单开在**面板旁边**(锚 = 面板左右缘 ×
+ * 那一行的上下缘),于是「右边放不下」从夹改成翻 —— 判词写在 `place()` 那一支上。
  */
 
 /**
@@ -132,7 +134,10 @@ export type FloatAnchor =
 export interface FloatPosition {
   left: number
   top: number
-  /** 只有 `above-center` 会翻:上方摆不下就翻到锚点下缘。 */
+  /**
+   * 翻了没有。两档会翻:`above-center`(上方摆不下 → 翻到锚点下缘)与
+   * `right-start`(右边摆不下 → 翻到锚点左缘之外)。
+   */
   flipped: boolean
   /**
    * 身量。**只有 `cover` 档答得出**(它的身量就是锚);别的三档恒 null ——
@@ -201,11 +206,28 @@ function place(anchor: FloatAnchor, w: number, h: number): FloatPosition | null 
   if (anchor.place === 'cover') {
     return { left: r.left, top: r.top, flipped: false, width: r.width, height: r.height }
   }
-  // 贴右缘、顶对齐(子菜单那一档)。视口右边放不下就往左夹 —— 夹到贴着安全区内沿为止。
+  /*
+   * 贴右缘、顶对齐(子菜单 / 文件面板行菜单那一档)。**右边放不下先翻,不先夹**
+   * (09-24 报障「不要挡着文件 list,我说了没?」):从前这一支放不下就往左夹,
+   * 可这一档的锚恰恰是**不许盖住的那块东西**(父菜单那一行 / 整块文件面板)——
+   * 夹回来的每一个像素都压在锚上,等于把「开在旁边」白说一遍。所以顺序是:
+   *  ① 右缘之外放得下 → 贴右缘;
+   *  ② 放不下 → **翻到左缘之外**(右边线对齐锚的左缘),报 `flipped`;
+   *  ③ 左边也放不下 → 才退回夹(两头都没有地方,只能压;夹到安全区内沿为止)。
+   * 「放得下」的两条线都是安全区内沿(`insetEdge`),与夹的上下界同一把尺。
+   * 竖直方向不翻:顶对齐是这一档的全部意义,摆不下就照旧往上夹。
+   */
   if (anchor.place === 'right-start') {
+    const top = Math.max(insetTop, Math.min(r.top, vh - h - insetEdge))
+    if (r.right + w <= vw - insetEdge) {
+      return { left: r.right, top, flipped: false, width: null, height: null }
+    }
+    if (r.left - w >= insetEdge) {
+      return { left: r.left - w, top, flipped: true, width: null, height: null }
+    }
     return {
       left: Math.max(insetEdge, Math.min(r.right, vw - w - insetEdge)),
-      top: Math.max(insetTop, Math.min(r.top, vh - h - insetEdge)),
+      top,
       flipped: false,
       width: null,
       height: null,
