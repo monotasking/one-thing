@@ -134,6 +134,8 @@ describe('② 注册表', () => {
       'command',
       'skill',
       'plugin',
+      // A2-c:agent 自报的命令。`/` 下的第四组,落稿归命令那一家。
+      'agent-command',
       'prompt',
       'page',
       'attachment',

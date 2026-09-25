@@ -19,8 +19,18 @@
  *     agent(确定性:它一定探测不到)→ 那一行置灰(`data-agent-missing` + 不透明度真的比
  *     普通行低)且悬停出装法提示。
  *
+ *  ③ agent 会话(A2-c):一条会话绑到一台说 ACP 的假 agent(仓里的 `fake-agent.mjs`,与根
+ *     `gate:acp` 同一只夹具),经 `acp.sessionOptions` 叫醒它 → 会话状态经 `acp:session-state`
+ *     推到壳 → 模型药丸写的是 agent 报的 `category: 'model'` 那一格的名字(Alpha),模式粒写
+ *     `modes` 的当前模式(Ask,只读 —— 夹具没有 `category: 'mode'` 的选项);点药丸在右卡把
+ *     模型换成 Beta → 假 agent 的调用账里有一条 `set beta`(= `acp.setSessionOption` 真到了
+ *     agent)且药丸换成 Beta。
+ *  ④ 同一条会话里打 `/`:抽屉有「Agent 命令」一组,列着假 agent `session/new` 之后推来的
+ *     `/review`。
+ *
  * 反证:把 `composer/components/DrawerModelPicker.tsx` 里 `missing ? s.pickRowMissing : null`
- * 那一支挖掉 → ② 的「不透明度更低」当场红。
+ * 那一支挖掉 → ② 的「不透明度更低」当场红;把 `composer/agent-claims.ts` 认领 `model` 的那一支
+ * 挖掉 → ③ 的药丸退回写 agent id,当场红。
  *
  * ── 纪律(照 gate-terminal)─────────────────────────────────────────────
  * 临时 store(`settings.json` 里注册表开关关着 —— 不联网)+ 独立 `--user-data-dir` +
@@ -32,7 +42,7 @@
  *   `npm run gate:acp-shell -- --prod`  —— prod 渲染层(吃 `npm run app:build` 的 dist)
  * (两档都要 `npm run electron:build` 产出的 `dist-electron/main.cjs`。)
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -52,6 +62,9 @@ const DEV_PORT = Number(process.env.ONETHING_GATE_VITE_PORT ?? 5194)
 
 /** 种下的那一台:命令一定不存在,所以它一定探测不到。 */
 const TEMP_AGENT = 'gate-missing-agent'
+/** ③④ 那一台:真说 ACP 的假 agent(`packages/onething-runtime/src/acp/__tests__/fixtures/fake-agent.mjs`)。 */
+const FAKE_AGENT = 'gate-fake-agent'
+const fakeAgentScript = path.join(repoRoot, 'packages/onething-runtime/src/acp/__tests__/fixtures/fake-agent.mjs')
 const SEED_IDS = ['claude-code', 'gemini', 'codex']
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -103,6 +116,30 @@ const click = (page, selector) =>
     el.click()
   }, selector)
 
+/**
+ * **屏上看得见的那块输入面板**。一片会话叶一块面板,而停靠池会留着刚离开的那几片(藏着、
+ * 不卸载)—— `querySelector` 拿到的第一块未必是人正看着的那一块。③④ 的读与点都经它。
+ */
+const PANEL = '[data-testid="composer-panel"]'
+
+const liveText = (page, sub) =>
+  page.evaluate(
+    ({ panelSel, sub }) =>
+      [...document.querySelectorAll(panelSel)].find((el) => el.checkVisibility())?.querySelector(sub)?.textContent ??
+      undefined,
+    { panelSel: PANEL, sub },
+  )
+
+const clickLive = (page, sub) =>
+  page.evaluate(
+    ({ panelSel, sub }) => {
+      const el = [...document.querySelectorAll(panelSel)].find((p) => p.checkVisibility())?.querySelector(sub)
+      if (!el) throw new Error(`看得见的面板里找不到 ${sub}`)
+      el.click()
+    },
+    { panelSel: PANEL, sub },
+  )
+
 /** 模型抽屉的行用 mousedown 选中(抽屉判例);门只要点开药丸,不选行。 */
 async function openModelDrawer(page) {
   await waitFor('模型药丸就位', () =>
@@ -122,10 +159,36 @@ async function main() {
 
   const store = await mkdtemp(path.join(tmpdir(), 'acp-shell-gate-store-'))
   const userDataDir = await mkdtemp(path.join(tmpdir(), 'acp-shell-gate-userdata-'))
-  // 注册表不联网(门要确定性);名册只剩种子 + 种下的那一台。
+  const workDir = realpathSync(await mkdtemp(path.join(tmpdir(), 'acp-shell-gate-work-')))
+  const fakeAgentDir = path.join(store, 'fake-agent')
+  /*
+   * 注册表不联网(门要确定性);名册 = 种子 + ③④ 那一台假 agent(env 与根 `gate:acp` 同一份形:
+   * `FAKE_AGENT_PUSH_COMMANDS=1` 让它 `session/new` 一答完就推命令表;`unattended: 'allow'` 是
+   * A3-a 之后的字段名,③④ 不验审批)+ ② 里经 RPC 现种的那一台。
+   */
   writeFileSync(
     path.join(store, 'settings.json'),
-    JSON.stringify({ acp: { enabled: true, agents: [], registry: { enabled: false } } }, null, 2),
+    JSON.stringify(
+      {
+        acp: {
+          enabled: true,
+          registry: { enabled: false },
+          agents: [
+            {
+              id: FAKE_AGENT,
+              name: 'Gate Fake',
+              enabled: true,
+              command: process.execPath,
+              args: [fakeAgentScript],
+              env: { FAKE_AGENT_CAPS: 'load', FAKE_AGENT_DIR: fakeAgentDir, FAKE_AGENT_PUSH_COMMANDS: '1' },
+              unattended: 'allow',
+            },
+          ],
+        },
+      },
+      null,
+      2,
+    ),
   )
   let app
   let vite
@@ -336,6 +399,104 @@ async function main() {
       5_000,
     ).catch(() => '')
     step(Boolean(tip), `② 悬停未安装那一行出提示:「${tip}」`)
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 })
+    // 收起抽屉(药丸是开合钮),③ 从一块干净的面板起。
+    await click(page, '[data-testid="composer-model-pill"]')
+
+    // ── ③ agent 会话:药丸 / 模式粒按 category 认领 ─────────────────────
+    const agentMade = await rpc(record, 'sessions', 'create', { name: 'acp shell gate · agent' })
+    const agentSessionId = agentMade?.session?.id
+    if (!agentSessionId) throw new Error('sessions.create 没给出 agent 会话 id')
+    await rpc(record, 'sessions', 'updateWorkingDirectory', { sessionId: agentSessionId, workingDirectory: workDir })
+    const agentRowShown = () =>
+      page.evaluate((id) => Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)), agentSessionId)
+    for (let attempt = 0; attempt < 3 && !(await agentRowShown()); attempt += 1) {
+      await click(page, '[data-testid="dock-tile-sessions"]')
+      await delay(500)
+    }
+    await waitFor('总览画出 agent 会话那一行', agentRowShown)
+    await click(page, `[data-testid="session-row-${agentSessionId}"]`)
+    /*
+     * 选 agent 走**人手那条路**:开药丸抽屉、按下 Agent 组里那一行(抽屉判例:行用 mousedown 选中)。
+     * 不走 `sessions.updateModel` 直写 —— 那一发不推会话摘要,壳上的药丸不会跟着换(量出来的)。
+     */
+    await clickLive(page, '[data-testid="composer-model-pill"]')
+    await waitFor('Agent 组里有假 agent 那一行', () => liveText(page, `[data-testid="picker-agent-${FAKE_AGENT}"]`))
+    await page.evaluate(
+      ({ panelSel, sub }) => {
+        const panel = [...document.querySelectorAll(panelSel)].find((el) => el.checkVisibility())
+        panel.querySelector(sub).dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+      },
+      { panelSel: PANEL, sub: `[data-testid="picker-agent-${FAKE_AGENT}"]` },
+    )
+    await waitFor('药丸写着 agent id(还没叫醒它)', async () =>
+      (await liveText(page, '[data-testid="composer-model-pill"]'))?.includes(FAKE_AGENT) || undefined,
+    )
+    // 叫醒:这一发让后端连上假 agent、开会话;之后的状态全走 `acp:session-state` 推到壳。
+    const woke = await rpc(record, 'acp', 'sessionOptions', { agentId: FAKE_AGENT, sessionId: agentSessionId })
+    if (!woke?.success) throw new Error(`acp.sessionOptions 没成:${JSON.stringify(woke)}`)
+    const claimed = await waitFor('药丸与模式粒换成 agent 报的值', async () => {
+      const pill = await liveText(page, '[data-testid="composer-model-pill"]')
+      const mode = await liveText(page, '[data-testid="composer-mode-pill"]')
+      const settable = await page.evaluate(
+        ({ panelSel }) =>
+          [...document.querySelectorAll(panelSel)]
+            .find((el) => el.checkVisibility())
+            ?.querySelector('[data-testid="composer-mode-pill"]')
+            ?.getAttribute('data-mode-settable'),
+        { panelSel: PANEL },
+      )
+      return pill?.includes('Alpha') && mode ? { pill, mode, settable } : undefined
+    }).catch(async (error) => {
+      throw new Error(`${error.message}\n此刻药丸:${await liveText(page, '[data-testid="composer-model-pill"]')}`)
+    })
+    step(
+      claimed.pill.includes('Alpha') && claimed.mode === 'Ask' && claimed.settable === 'false',
+      `③ 药丸认领 category=model → 「${claimed.pill}」;模式粒 → 「${claimed.mode}」(只读=${claimed.settable === 'false'})`,
+    )
+
+    await clickLive(page, '[data-testid="composer-model-pill"]')
+    const COMBO = '[data-testid="agent-options-card"] [data-agent-option="model"] [role="combobox"]'
+    await waitFor('右卡的模型下拉就位', () => liveText(page, COMBO))
+    await clickLive(page, COMBO)
+    await waitFor('模型下拉展开', () =>
+      page.evaluate(() => [...document.querySelectorAll('[role="option"]')].some((el) => el.textContent?.includes('Beta'))),
+    )
+    await page.evaluate(() => {
+      const option = [...document.querySelectorAll('[role="option"]')].find((el) => el.textContent?.includes('Beta'))
+      option.click()
+    })
+    const setCall = await waitFor('假 agent 收到 set_config_option = beta', () => {
+      const file = path.join(fakeAgentDir, 'calls.log')
+      if (!existsSync(file)) return undefined
+      return readFileSync(file, 'utf-8')
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line))
+        .find((entry) => entry.method === 'set' && entry.value === 'beta')
+    }).catch(() => undefined)
+    const pillAfter = await waitFor('药丸换成 Beta', async () => {
+      const text = (await liveText(page, '[data-testid="composer-model-pill"]')) ?? ''
+      return text.includes('Beta') ? text : undefined
+    }).catch(() => '')
+    step(Boolean(setCall) && Boolean(pillAfter), `③ 右卡把模型换成 Beta:agent 收到 set=${setCall ? 'beta' : '无'};药丸「${pillAfter}」`)
+    await clickLive(page, '[data-testid="composer-model-pill"]')
+
+    // ── ④ `/` 抽屉并入 agent 推来的命令 ────────────────────────────────
+    await page.evaluate(({ panelSel }) => {
+      const panel = [...document.querySelectorAll(panelSel)].find((el) => el.checkVisibility())
+      panel.querySelector('[contenteditable="true"]').focus()
+    }, { panelSel: PANEL })
+    await page.keyboard.type('/')
+    const commandsSeen = await waitFor('「Agent 命令」一组列出 /review', async () => {
+      const text = (await liveText(page, '[data-testid="composer-drawer"]')) ?? ''
+      return text.includes('/review') && /Agent 命令|Agent commands/.test(text) ? text : undefined
+    }).catch(async () => `(没等到)${(await liveText(page, '[data-testid="composer-drawer"]')) ?? ''}`)
+    step(
+      commandsSeen.includes('/review') && !commandsSeen.startsWith('(没等到)'),
+      `④ 斜杠抽屉:Agent 命令一组在场,列着 agent 推来的 /review(抽屉字面前 120 字:${commandsSeen.slice(0, 120)})`,
+    )
+    await page.keyboard.press('Backspace')
   } finally {
     if (record) await rpc(record, 'acp', 'removeAgent', { agentId: TEMP_AGENT }).catch(() => {})
     if (app) await app.close().catch(() => {})
@@ -343,6 +504,7 @@ async function main() {
     await delay(600)
     await rm(store, { recursive: true, force: true })
     await rm(userDataDir, { recursive: true, force: true })
+    await rm(workDir, { recursive: true, force: true })
   }
   if (failed) {
     console.error('[acp-shell-gate] FAIL')

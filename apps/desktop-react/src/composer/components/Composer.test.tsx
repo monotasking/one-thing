@@ -37,6 +37,12 @@ import { prefsQuery, providersQuery, useModelsSource } from '../../data/models-s
 import { configureModelsPort } from '../../data/models-port'
 import { catalogQuery } from '../../providers/catalog-query'
 import { acpOptionsQuery, configureAcpOptionsPort } from '../../data/acp-options-source'
+import {
+  configureAcpSessionStatePort,
+  resetAcpSessionStateSource,
+} from '../../data/acp-session-state-source'
+import type { AcpSessionState } from '@shared/contracts/acp'
+import type { ACPSessionOption } from '@shared/ipc/acp'
 import { openRouterModel, providerModelPrefs } from '../../data/__fixtures__/models'
 
 /**
@@ -2271,5 +2277,205 @@ describe('B2:一条会话一份草稿', () => {
     switchTo('B')
     expect(composerDraftKeys()).toEqual([])
     expect(readComposerDraft('A').html).toBe('')
+  })
+})
+
+/**
+ * **A2-c:composer 上本来就有的控件按 `category` 认领 agent 自报的选项**(正本
+ * `docs/design/acp-integration-2026-09.md` §3.8 那张表;判据在 `composer/agent-claims.ts`)。
+ *
+ * 会话状态走真数据源(`data/acp-session-state-source.ts`),这里换的是它的**端口**:
+ * 冷读答一张假表,推送面记下回调好让用例推新的一帧。
+ *
+ * **反证**:把 `agent-claims.ts` 里认领 `model` 的那一支删掉 → 第一条的药丸名当场红
+ * (药丸退回写 agent id `fake`)。
+ */
+describe('A2-c:agent 会话的药丸 / 思考档 / 模式粒 / 命令抽屉', () => {
+  const stateCalls: unknown[] = []
+  let push: ((state: AcpSessionState) => void) | undefined
+  let answer: AcpSessionState | null = null
+
+  const option = (
+    id: string,
+    category: string | undefined,
+    currentValue: string,
+    choices: [string, string][],
+    type?: 'select' | 'boolean',
+  ): ACPSessionOption => ({
+    id,
+    name: id[0]!.toUpperCase() + id.slice(1),
+    ...(category ? { category } : {}),
+    ...(type ? { type } : {}),
+    currentValue,
+    choices: choices.map(([value, name]) => ({ value, name })),
+  })
+
+  const stateOf = (partial: Partial<AcpSessionState>): AcpSessionState => ({
+    localSessionId: 's-agent',
+    agentId: 'fake',
+    configOptions: [],
+    commands: [],
+    notices: [],
+    process: { status: 'connected' },
+    ...partial,
+  })
+
+  beforeEach(() => {
+    stateCalls.length = 0
+    push = undefined
+    answer = null
+    resetAcpSessionStateSource()
+    configureAcpSessionStatePort({
+      ready: async () => undefined,
+      sessionState: async (request) => {
+        stateCalls.push(request)
+        return answer
+      },
+      onSessionState: (callback) => {
+        push = callback
+        return () => {
+          push = undefined
+        }
+      },
+    })
+    acpOptionsQuery.reset()
+    configureAcpOptionsPort({
+      sessionOptions: async () => ({ success: true, options: answer?.configOptions ?? [], live: true }),
+      setSessionOption: async () => ({ success: true, options: answer?.configOptions ?? [], live: true }),
+    })
+  })
+
+  afterEach(() => {
+    configureAcpSessionStatePort(undefined)
+    configureAcpOptionsPort(undefined)
+    act(() => resetAcpSessionStateSource())
+  })
+
+  /** 把这条会话的选中指到 acp / fake(药丸读的三层事实里最底那一层:缺省选中)。 */
+  function selectAgent() {
+    providersQuery.patch([{ id: 'acp', name: 'ACP' }])
+    prefsQuery.get('default').patch({
+      prefs: {
+        defaultProvider: 'acp',
+        configs: { acp: providerModelPrefs({ selectedModels: ['fake'], model: 'fake' }) },
+      },
+      custom: [],
+    })
+    catalogQuery.get('acp').patch([])
+  }
+
+  async function settle() {
+    await act(async () => {
+      for (let i = 0; i < 6; i += 1) await Promise.resolve()
+    })
+  }
+
+  const modelPill = () => screen.getByTestId('composer-model-pill')
+
+  it('model / thought_level / mode 三格各自认领:药丸写模型名 · 档名,旁边一粒模式', async () => {
+    selectAgent()
+    answer = stateOf({
+      configOptions: [
+        option('mode', 'mode', 'plan', [['default', 'Default'], ['plan', 'Plan']]),
+        option('model', 'model', 'beta', [['alpha', 'Alpha'], ['beta', 'Beta']]),
+        option('effort', 'thought_level', 'high', [['low', 'Low'], ['high', 'High']]),
+        option('fast', 'model_config', 'false', [['true', 'On'], ['false', 'Off']], 'boolean'),
+      ],
+    })
+    renderComposer('s-agent')
+    await settle()
+    expect(stateCalls).toEqual([{ sessionId: 's-agent', agentId: 'fake' }])
+    expect(modelPill().textContent).toContain('Beta')
+    expect(modelPill().textContent).toContain('High')
+    expect(modelPill().getAttribute('aria-label')).toBe('选择模型:Beta,思考 High')
+    const mode = screen.getByTestId('composer-mode-pill')
+    expect(mode.textContent).toBe('Plan')
+    expect(mode.getAttribute('data-mode-settable')).toBe('true')
+
+    // 右卡:模式第一行、模型第二行、思考档一只阶梯、boolean 一只开关 —— 按认领表的顺序。
+    fireEvent.click(modelPill())
+    await settle()
+    const card = await screen.findByTestId('agent-options-card')
+    const order = Array.from(card.querySelectorAll('[data-agent-option]')).map((el) =>
+      el.getAttribute('data-agent-option'),
+    )
+    expect(order).toEqual(['mode', 'model', 'effort', 'fast'])
+    expect(within(card).getByRole('radiogroup', { name: 'Effort' })).toBeTruthy()
+    expect(within(card).getByRole('switch', { name: 'Fast' })).toBeTruthy()
+  })
+
+  it('agent 推来新的一帧:药丸就地换名(整张替换,不等重拉)', async () => {
+    selectAgent()
+    answer = stateOf({ configOptions: [option('model', 'model', 'alpha', [['alpha', 'Alpha'], ['beta', 'Beta']])] })
+    renderComposer('s-agent')
+    await settle()
+    expect(modelPill().textContent).toContain('Alpha')
+    act(() =>
+      push?.(stateOf({ configOptions: [option('model', 'model', 'beta', [['alpha', 'Alpha'], ['beta', 'Beta']])] })),
+    )
+    expect(modelPill().textContent).toContain('Beta')
+    expect(stateCalls).toHaveLength(1)
+  })
+
+  it('没报 thought_level:档位那半截不画;只报了 modes:模式粒只读', async () => {
+    selectAgent()
+    answer = stateOf({
+      configOptions: [option('model', 'model', 'alpha', [['alpha', 'Alpha']])],
+      modes: { current: 'ask', available: [{ id: 'ask', name: 'Ask' }, { id: 'code', name: 'Code' }] },
+    })
+    renderComposer('s-agent')
+    await settle()
+    expect(modelPill().textContent).toBe('Alpha')
+    expect(modelPill().getAttribute('aria-label')).toBe('选择模型:Alpha')
+    const mode = screen.getByTestId('composer-mode-pill')
+    expect(mode.textContent).toBe('Ask')
+    expect(mode.getAttribute('data-mode-settable')).toBe('false')
+    fireEvent.click(mode)
+    await settle()
+    expect(await screen.findByTestId('agent-mode-readonly')).toBeTruthy()
+  })
+
+  it('非 agent 会话一格不动:没有模式粒、药丸写模型 id、一发会话状态都不问', async () => {
+    prefsQuery.get('default').patch({
+      prefs: {
+        defaultProvider: 'xai',
+        configs: { xai: providerModelPrefs({ selectedModels: ['grok-4'], model: 'grok-4' }) },
+      },
+      custom: [],
+    })
+    renderComposer('s-plain')
+    await settle()
+    expect(screen.queryByTestId('composer-mode-pill')).toBeNull()
+    expect(modelPill().textContent).toBe('grok-4')
+    expect(stateCalls).toEqual([])
+  })
+
+  it('命令抽屉并入 agent 推来的命令;选中落 `/name` 记号 + inputHint 占位,发出去原样', async () => {
+    selectAgent()
+    answer = stateOf({
+      commands: [
+        { name: 'review', description: 'Review the diff', inputHint: 'path' },
+        // 撞内置的不进抽屉:发送时本地那一条先认领,列出来按下去会跑错东西。
+        { name: 'compact', description: 'agent 自己的压缩' },
+      ],
+    })
+    renderComposer('s-agent')
+    await settle()
+    type(inputBox(), '/')
+    await settle()
+    const heads = Array.from(document.querySelectorAll('[data-testid="composer-panel"] div'))
+      .map((el) => el.textContent)
+      .filter((text) => text === 'Agent 命令')
+    expect(heads).toEqual(['Agent 命令'])
+    expect(screen.getByText('/review')).toBeTruthy()
+    expect(screen.queryByText('agent 自己的压缩')).toBeNull()
+    // 本地命令照旧在。
+    expect(screen.getByText('/compact')).toBeTruthy()
+
+    fireEvent.mouseDown(screen.getByText('/review'))
+    const box = inputBox()
+    expect(box.textContent).toContain('/review')
+    expect(box.querySelector('[data-arg-ghost]')?.textContent).toBe('path')
+    expect(handed).toHaveLength(0)
   })
 })

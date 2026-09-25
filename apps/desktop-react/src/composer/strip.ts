@@ -29,6 +29,8 @@ export type StripIndicator =
   | { readonly kind: 'done' }
   /** 0–1。说得出走到哪儿才用它。 */
   | { readonly kind: 'progress'; readonly value: number }
+  /** 一条通知的级别记号(A2-c,agent 会话横条):图标 + 状态色,状态色只上图标不换底。 */
+  | { readonly kind: 'notice'; readonly severity: 'info' | 'warning' | 'error' }
 
 export interface StripBarModel {
   readonly indicator: StripIndicator
@@ -39,4 +41,6 @@ export interface StripBarModel {
   readonly tone?: 'normal' | 'accent' | 'muted'
   /** 无障碍名(开合这条抽屉的那颗钮)。 */
   readonly label: string
+  /** 悬停在条上时的补充说明(可缺)。条上那句话之外的全文 —— 走 `ui/Tooltip`,不是 `title=`。 */
+  readonly tip?: string
 }

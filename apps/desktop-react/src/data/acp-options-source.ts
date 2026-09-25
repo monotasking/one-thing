@@ -6,6 +6,7 @@ import {
   type ACPSetSessionOptionRequest,
 } from '@shared/ipc/acp'
 import { createMutation, createQueryFamily, type Mutation } from './kernel'
+import { acpSessionStateKey, acpSessionStateQuery } from './acp-session-state-source'
 import { notify } from '../services/notify'
 import { t } from '../i18n'
 
@@ -93,17 +94,29 @@ export const setAcpOptionMutation: Mutation<SetAcpOptionInput, void> = createMut
   'acp.setSessionOption',
   {
     key: (input) => acpOptionPendingKey(input.agentId, input.sessionId, input.optionId),
-    optimistic: (input) =>
-      acpOptionsQuery.get(acpOptionsKey(input.agentId, input.sessionId)).patch((prev) =>
-        prev
-          ? {
-              ...prev,
-              options: prev.options.map((option) =>
-                option.id === input.optionId ? { ...option, currentValue: input.value } : option,
-              ),
-            }
-          : prev,
-      ),
+    /*
+     * 乐观换值要换**两格**(A2-c):选项那一格(草稿与冷启动读它)与会话状态那一格(药丸 /
+     * 模式粒 / 右卡在会话开着时读它)。只换一格的话,药丸会在后端那一帧推回来之前说旧名字。
+     * 会话状态那一格**只在已经建过时**换 —— 没人问过的格不为一次乐观写凭空建出来。
+     */
+    optimistic: (input) => {
+      const withValue = (options: ACPSessionOption[]) =>
+        options.map((option) => (option.id === input.optionId ? { ...option, currentValue: input.value } : option))
+      const rollbackOptions = acpOptionsQuery
+        .get(acpOptionsKey(input.agentId, input.sessionId))
+        .patch((prev) => (prev ? { ...prev, options: withValue(prev.options) } : prev))
+      const stateKey = input.sessionId ? acpSessionStateKey(input.sessionId, input.agentId) : null
+      const rollbackState =
+        stateKey && acpSessionStateQuery.keys().includes(stateKey)
+          ? acpSessionStateQuery
+              .get(stateKey)
+              .patch((prev) => (prev ? { ...prev, configOptions: withValue(prev.configOptions) } : prev))
+          : () => undefined
+      return () => {
+        rollbackOptions()
+        rollbackState()
+      }
+    },
     run: async (input) => {
       viewOf(
         await (await acpOptionsPort()).setSessionOption({

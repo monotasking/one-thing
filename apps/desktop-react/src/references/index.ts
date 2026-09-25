@@ -31,6 +31,8 @@ import './kinds/dir'
 import './kinds/command'
 import './kinds/skill'
 import './kinds/plugin'
+/* agent 自报的命令(A2-c):`/` 下的第四组,只在 agent 会话里有行,落稿归命令那一家。 */
+import './kinds/agent-command'
 /* 提示词:只从引擎那边来(`contentParts` 的 `prompt-ref`),壳里没有落稿口。 */
 import './kinds/prompt'
 /* 网页:只有落稿与呈现两半(它不从抽屉进,也不在正文里 —— 判词在它文件头)。 */

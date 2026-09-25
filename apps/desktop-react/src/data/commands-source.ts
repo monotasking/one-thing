@@ -38,7 +38,11 @@ import type { CommandSpec } from '../composer/types'
 
 /* ── 形状 ──────────────────────────────────────────────────────────────── */
 
-export type CommandKind = 'builtin' | 'skill' | 'plugin' | 'dev'
+/**
+ * `agent`(A2-c):ACP agent 在会话里自报的命令(`references/kinds/agent-command.ts`)。它们
+ * 只在抽屉里出现、不进本地命令表,发送时是一句原样交给 agent 的话 —— ACP 里命令就是 prompt 文本。
+ */
+export type CommandKind = 'builtin' | 'skill' | 'plugin' | 'dev' | 'agent'
 
 /**
  * 表里的一行。`CommandSpec`(抽屉画一行所需要的全部)是它的**显示半边**,
@@ -281,6 +285,8 @@ export async function executeCommand(
    * 引用它就会变成一次改工作目录。判据必须是它自报的 `kind`。
    */
   if (entry.kind === 'skill') return { kind: 'sendAsText' }
+  // agent 命令同理:它是给 agent 的一句话,本地没有一件事可执行(判据同样是自报的 `kind`)。
+  if (entry.kind === 'agent') return { kind: 'sendAsText' }
 
   if (entry.kind === 'plugin') {
     if (!ctx.sessionId) return needsSession()

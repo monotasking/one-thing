@@ -5,6 +5,8 @@ import { ChevronDown, resolveIcon } from '../../components/icons'
 import { DEV_COMMANDS } from '../data'
 import { BUILTIN_COMMANDS, mergeCommands, useCommandsSource } from '../../data/commands-source'
 import { useMeterSource } from '../../data/meter-source'
+import { useAcpSessionState } from '../../data/acp-session-state-source'
+import { choiceNameOf, claimsOfState } from '../agent-claims'
 import { useSkillsSource } from '../../data/skills-source'
 import {
   ensureCatalog,
@@ -91,7 +93,9 @@ const StopIcon = resolveIcon('Square')
  *   `ensureSkills(cwd)` —— **都不在这里**,它们懒在命令抽屉第一次开的时候
  *   (`usePickDrawer`);
  *   ④ `configureComposerReferenceSink(sessionId, …)` 登记「从外面落一枚引用」
- *   那一口(**按会话分格**,W5-c-2)。
+ *   那一口(**按会话分格**,W5-c-2);
+ *   ⑤ agent 会话才有:`useAcpSessionState(sessionId)` 冷读一次会话状态并订
+ *   `acp:session-state`(模块级一条订阅,卸载不退 —— 它的寿命是那个数据模块)。
  *   卸载:① `revokeAllAttachments(sessionId)`(只销自己那一份);
  *   ② 那一口引用缝的撤销;③ `closeMeter(sessionId)` 还回读数那一格引用;
  *   ④ Esc 预备态那只计时器(在 `useEscStop` 里收)。另有两个跟着 hook 走的
@@ -106,6 +110,10 @@ const StopIcon = resolveIcon('Square')
  *     `useComposerSend` 的两把闸上);
  *   · error —— 候选拉失败:旧候选留屏 + 一行弱色错误文字(不换底)。命令失败仍旧
  *     走 `notify` 的通知面、不落在这块面上。
+ *   · agent 会话(A2-c):药丸名 / 档位 / 模式粒读会话状态那一格(`useAcpSessionState`)。
+ *     它还没答上来(冷读在飞 / agent 还没开过这条会话)= 缺席态:药丸照旧写 agent id、
+ *     没有档位、没有模式粒 —— 不画骨架,答上来那一帧就地换字;非 agent 会话恒为缺席
+ *     且零往返。
  *   判据整张表在 `DrawerPickList` 的文件头;那一行说哪句话由 `references/drawer`
  *   的 `buildPickView` 算,取数态是**每一种引用自述的一格**(`PickResult.status`)。
  *
@@ -117,6 +125,9 @@ const StopIcon = resolveIcon('Square')
  *   · 发送键:一颗按钮两副面孔,`data-mode` 是「此刻是哪副面孔」的产地,
  *     `data-testid` 恒定(门按位置找它,不按状态找);
  *   · 输入框:占位符在 Esc 预备期换成「再按一次停止」—— 两段式的第一段是静默的;
+ *   · **模式粒**(A2-c):rest / hover / focus 与药丸同一套(`ButtonBase` + `.modePill`);
+ *     没有 pending —— 它只是一个入口,改模式的那一发在右卡那一格上挂忙态;只读的模式
+ *     (agent 只报了 `modes`)照样可点,`data-mode-settable="false"`,右卡说为什么改不了;
  *   · **`disabled` 全文件 0 处,是刻意的**:没有一个控件会因为「在飞」而变灰。
  *     空话不禁发送键(按下去什么都不发,话还在框里),忙时它换的是脸不是可用性。
  */
@@ -208,6 +219,25 @@ function ComposerBody({ sessionId, owner }: ComposerProps) {
    */
   const thinking = useThinkingState(selection)
   const thinkingRung = thinkingRungOf(thinking)
+  /*
+   * **agent 会话:药丸与模式粒按 `category` 认领 agent 自报的选项**(A2-c,判词整张表在
+   * `composer/agent-claims.ts`)。非 agent 会话 `agentState` 恒为 null(那只 hook 连 RPC
+   * 都不发),于是下面三格全落回原路 —— 药丸写模型 id、档位走本地思考态、没有模式粒。
+   *
+   * agent 会话里本地思考态是空的(它不是一型模型),所以档位那半截只有 agent 报了
+   * `thought_level` 才出现;模型名换成 agent 报的那一格的**名字**,没报就照旧写 agent id。
+   */
+  const agentState = useAcpSessionState(sessionId)
+  const agentClaims = useMemo(() => claimsOfState(agentState), [agentState])
+  const pillName = agentClaims?.model ? choiceNameOf(agentClaims.model) : selection?.model
+  const pillLevel = agentClaims
+    ? agentClaims.thought
+      ? choiceNameOf(agentClaims.thought)
+      : null
+    : thinkingRung
+      ? thinkingLabel(t, thinkingRung, thinking.levelLabels)
+      : null
+  const agentMode = agentClaims?.mode ?? null
   const openMeter = useMeterSource((st) => st.open)
   const closeMeter = useMeterSource((st) => st.close)
   const refreshMeter = useMeterSource((st) => st.refresh)
@@ -660,12 +690,9 @@ function ComposerBody({ sessionId, owner }: ComposerProps) {
                        */
                       aria-label={
                         selection
-                          ? thinkingRung
-                            ? t('composer.modelWithThinking', {
-                                name: selection.model,
-                                level: thinkingLabel(t, thinkingRung, thinking.levelLabels),
-                              })
-                            : t('composer.model', { name: selection.model })
+                          ? pillLevel
+                            ? t('composer.modelWithThinking', { name: pillName ?? '', level: pillLevel })
+                            : t('composer.model', { name: pillName ?? '' })
                           : t('composer.modelUnset')
                       }
                       aria-expanded={drawerKind === 'model'}
@@ -677,7 +704,7 @@ function ComposerBody({ sessionId, owner }: ComposerProps) {
                         * 行内文本**,写在这枚 inline-flex 钮身上是空话。截断的产地因此是
                         * `.modelPillLabel`,药丸自己只负责「永不折行」那一半。 */}
                       <span className={s.modelPillLabel}>
-                        {selection ? selection.model : t('composer.modelUnset')}
+                        {selection ? pillName : t('composer.modelUnset')}
                       </span>
                       {/*
                         * 「GPT-5.5 · 高」的后半截。它是**不弯腰的那一件**:名字长了截断
@@ -685,13 +712,36 @@ function ComposerBody({ sessionId, owner }: ComposerProps) {
                         * 否则「此刻想得多深」会先于模型名消失。这一型不思考就整块不画,
                         * 不留一个孤零零的间隔点。
                         */}
-                      {thinkingRung && (
-                        <span className={s.modelPillLevel}>
-                          {thinkingLabel(t, thinkingRung, thinking.levelLabels)}
-                        </span>
-                      )}
+                      {pillLevel && <span className={s.modelPillLevel}>{pillLevel}</span>}
                       <ChevronDown className={s.pillChev} strokeWidth={2} aria-hidden="true" />
                     </ButtonBase>
+
+                    {/*
+                      * **模式粒**(A2-c):agent 会话里、agent 报了模式才出现。它是药丸的
+                      * 兄弟,不是药丸的一截 —— 模型会截断,模式这一两个字要一直看得见,
+                      * 所以它不弯腰(`flex: none`,名字过长在粒里截断,全名在 Tooltip)。
+                      * 点它开的是**同一只**模型抽屉:改模式那一格在右卡第一行,这块面板
+                      * 仍然只有一个抽屉槽、零浮层菜单(文件头那条形态学)。改不了的模式
+                      * (agent 只报了 `modes`)照样可点 —— 右卡那一行说清楚为什么改不了。
+                      */}
+                    {agentMode && (
+                      <Tooltip
+                        content={t(agentMode.settable ? 'composer.agentModeTip' : 'composer.agentModeReadonlyTip', {
+                          name: agentMode.name,
+                        })}
+                      >
+                        <ButtonBase
+                          className={s.modePill}
+                          aria-label={t('composer.agentMode', { name: agentMode.name })}
+                          aria-expanded={drawerKind === 'model'}
+                          data-mode-settable={agentMode.settable ? 'true' : 'false'}
+                          data-testid="composer-mode-pill"
+                          onClick={toggleModelDrawer}
+                        >
+                          <span className={s.modelPillLabel}>{agentMode.name}</span>
+                        </ButtonBase>
+                      </Tooltip>
+                    )}
                   </div>
 
                   <div className={s.toolsRight}>

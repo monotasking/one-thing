@@ -163,6 +163,25 @@
   color: var(--text-3);
 }
 
+/* 通知记号(A2-c 会话横条):占 spinner 那一格的位置,状态色只上图标。 */
+.noticeGlyph {
+  flex: none;
+  width: var(--att-icon);
+  height: var(--att-icon);
+}
+
+.noticeInfo {
+  color: var(--text-3);
+}
+
+.noticeWarn {
+  color: var(--warn);
+}
+
+.noticeError {
+  color: var(--danger);
+}
+
 /* 说得出走到哪儿的那枚记号:一截短槽,占 spinner 那一格的位置。 */
 .stripProgress {
   flex: none;
@@ -448,6 +467,13 @@
   flex-direction: column;
   gap: var(--composer-think-head-gap);
   margin-top: var(--sp-1);
+}
+
+/* agent 的 boolean 选项(A2-c):组头与开关同一行,开关贴右 —— 一个开关不值得独占一行。 */
+.agentOptionSwitchRow {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
 }
 
 /* 同一道气口的**字与块**那一份:组头的字下缘到它自己盒底那点呼吸。 */
@@ -1042,6 +1068,31 @@
 }
 
 .modelPill:hover {
+  border-color: var(--line-accent);
+}
+
+/*
+ * **模式粒**(A2-c):agent 会话里药丸旁边那一粒。皮与药丸同一套语汇(描边丸形),
+ * 但它是**不弯腰**的那一类(律一:这一行唯一的弯腰件仍是模型药丸):`flex: none`,
+ * 名字长了在粒里截断(`--composer-mode-max` 封顶,截断产地同样是 `.modelPillLabel`),
+ * 全名在 Tooltip 与读屏名里。
+ */
+.modePill {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  max-width: var(--composer-mode-max);
+  white-space: nowrap;
+  padding: var(--sp-1) var(--sp-3);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  font-size: var(--fs-pill);
+  color: var(--text-2);
+  transition: border-color var(--dur) var(--ease);
+}
+
+.modePill:hover {
   border-color: var(--line-accent);
 }
 

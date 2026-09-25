@@ -9,6 +9,8 @@ import { selectCompactingReadout } from '../../content/compact/marker'
 import type { CompactingReadout } from '../../content/compact/marker'
 import { formatQuantity } from '../../format/quantity'
 import { formatUsd, percent, ringDash, ringUnknownDash } from '../transitions'
+import { useAcpSessionState } from '../../data/acp-session-state-source'
+import type { AcpSessionState } from '@shared/contracts/acp'
 import s from './Composer.module.css'
 
 /** 圆环的几何:与 --ctx-ring / --ctx-ring-w 是同一份事实(SVG 的 r 算不了 var())。 */
@@ -31,6 +33,28 @@ function useCompacting(sessionId: string): CompactingReadout {
   return useChatSourceOf(sessionId, useShallow(selectCompactingReadout))
 }
 
+/** agent 自报的用量(`usage_update`)。缺席 / 形不对 = null,读数回到本地估算。 */
+export type AgentUsage = NonNullable<AcpSessionState['usage']>
+
+function agentUsageOf(state: AcpSessionState | null): AgentUsage | null {
+  const usage = state?.usage
+  if (!usage) return null
+  if (!Number.isFinite(usage.used) || usage.used < 0 || !Number.isFinite(usage.size) || usage.size <= 0) return null
+  return usage
+}
+
+/**
+ * **agent 自报的用量优先**(A2-c,§3.3「`usage_update` 投进 MeterCard」)。
+ *
+ * agent 会话里本地那份估算量的是 onething 这一侧看得见的 token,而上下文真正装着什么只有
+ * agent 知道 —— 所以它报了,环与卡的「上下文」那一行就用它的数,并在卡上写明来源「agent 自报」;
+ * 没报(非 agent 会话 / agent 不发 `usage_update`)就一个字不改,仍是本地估算。
+ */
+export function withAgentUsage(view: MeterView, usage: AgentUsage | null): MeterView {
+  if (!usage) return view
+  return { ...view, present: true, contextUsed: usage.used, contextMax: usage.size }
+}
+
 /**
  * context 圆环 + 悬停出来的读数明细卡。
  *
@@ -45,7 +69,8 @@ export function ContextRing({ onEnter, onLeave }: { onEnter: () => void; onLeave
   const t = useT()
   /* 这块面板对着哪条会话 —— 由 `Composer` 下发(W5-c-2/3)。 */
   const sessionId = useComposerSessionId()
-  const view = useMeterView(sessionId)
+  const agentUsage = agentUsageOf(useAcpSessionState(sessionId))
+  const view = withAgentUsage(useMeterView(sessionId), agentUsage)
   const compacting = useCompacting(sessionId)
   const pct =
     view.contextUsed === null || view.contextMax === null
@@ -136,7 +161,12 @@ interface MeterRow {
  * 是一件正在发生的事,不是第七格读数。不在压缩时这一行连同它的判据一起不存在
  * (`compacting` 缺省 = 没人问过压缩这件事,例如 `meterRowsOf` 的既有调用方)。
  */
-export function meterRowsOf(view: MeterView, t: TFn, compacting?: CompactingReadout): MeterRow[] {
+export function meterRowsOf(
+  view: MeterView,
+  t: TFn,
+  compacting?: CompactingReadout,
+  agentUsage?: AgentUsage | null,
+): MeterRow[] {
   const compactRow: MeterRow[] = compacting?.on
     ? [{
         key: t('meter.compact'),
@@ -153,7 +183,31 @@ export function meterRowsOf(view: MeterView, t: TFn, compacting?: CompactingRead
 
   const rows: MeterRow[] = [...compactRow]
 
-  if (view.contextUsed !== null) {
+  /*
+   * agent 自报的那一份排在最前,整行写明来源(A2-c):它与下面那几行本地账不是同一个人说的,
+   * 混着写会让人以为「上下文 12k / 200k」是 onething 量出来的。自报了花费就跟一行,币种照它说的写。
+   */
+  if (agentUsage) {
+    rows.push({
+      key: t('meter.contextAgent'),
+      value: t('meter.contextValue', {
+        used: formatQuantity(agentUsage.used),
+        max: formatQuantity(agentUsage.size),
+        pct: percent(agentUsage.used, agentUsage.size) ?? 0,
+      }),
+    })
+    if (agentUsage.cost && Number.isFinite(agentUsage.cost.amount)) {
+      rows.push({
+        key: t('meter.costAgent'),
+        value: t('meter.costAgentValue', {
+          amount: agentUsage.cost.amount.toFixed(agentUsage.cost.amount < 1 ? 4 : 2),
+          currency: agentUsage.cost.currency,
+        }),
+      })
+    }
+  }
+
+  if (view.contextUsed !== null && !agentUsage) {
     const pct = view.contextMax === null ? null : percent(view.contextUsed, view.contextMax)
     rows.push(
       pct === null
@@ -210,8 +264,9 @@ export function MeterCard({ open }: { open: boolean }) {
   const t = useT()
   /* 与环同一条会话(W5-c-3):卡是环悬停出来的那一张,分子分母必须同源。 */
   const sessionId = useComposerSessionId()
-  const view = useMeterView(sessionId)
-  const rows = meterRowsOf(view, t, useCompacting(sessionId))
+  const agentUsage = agentUsageOf(useAcpSessionState(sessionId))
+  const view = withAgentUsage(useMeterView(sessionId), agentUsage)
+  const rows = meterRowsOf(view, t, useCompacting(sessionId), agentUsage)
 
   return (
     <div className={open ? `${s.meterCard} ${s.meterOn}` : s.meterCard}>

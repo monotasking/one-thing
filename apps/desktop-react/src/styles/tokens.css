@@ -1274,6 +1274,8 @@
   --composer-send-icon: var(--icon-xs);
   /* 工作目录那枚丸的封顶宽:它不随行缩(一行只有模型药丸弯腰),名字长了在丸里截断。 */
   --composer-dir-max: 160px;
+  /* 模式粒(A2-c)的封顶宽:模式名是一两个词,封得比目录丸窄一档。 */
+  --composer-mode-max: 120px;
   --ctx-ring: 18px;
   /* 不入 --bw-* 梯:环径 18 配 2.6 是这枚读数环自己的画法比例 */
   --ctx-ring-w: 2.6px;

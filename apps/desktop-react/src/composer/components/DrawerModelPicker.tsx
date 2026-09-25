@@ -30,6 +30,7 @@ import { ButtonBase } from '../../ui/ButtonBase'
 import { Card } from '../../ui/Card'
 import { Radio, RadioGroup } from '../../ui/Radio'
 import { Select } from '../../ui/Select'
+import { Switch } from '../../ui/Switch'
 import { Button } from '../../ui/Button'
 import { LOCAL_MODE_KINDS } from '../../providers/families'
 import {
@@ -41,6 +42,8 @@ import {
 import { useQuery } from '../../data/kernel'
 import { acpAgentsQuery, sourceOf, startAcpAgentsSource } from '../../data/acp-agents-source'
 import { acpProviderIdOf, splitPickerSections } from '../agent-rows'
+import { claimAgentOptions } from '../agent-claims'
+import { useAcpSessionState } from '../../data/acp-session-state-source'
 import type { AgentRowStatus } from '../agent-rows'
 import { ProviderGlyph } from '../../providers/components/ProviderGlyph'
 import { Tooltip } from '../../ui/Tooltip'
@@ -454,19 +457,31 @@ function ProviderModelCard({ selection }: { selection: ModelSelection | null }) 
 }
 
 /**
- * **一台 ACP agent 的卡**:它在这条会话里自述的选项,一格一只 `Select`。
+ * **一台 ACP agent 的卡**:它在这条会话里自述的选项。
  *
- * onething 不认识其中任何一格(不按 `category` 分支、不认 id)—— agent 列什么就画什么,
- * 选中的值原样交回它(`acp.setSessionOption` → ACP `session/set_config_option`)。
+ * onething 不认识其中任何一格的**名字**(不认 agent、不认 id)—— 只认协议的 `category`
+ * (A2-c,判词整张表在 `composer/agent-claims.ts`):`mode` 排第一行(模式粒点开看到的就是它),
+ * `model` 第二行(药丸点开看到的就是它),`thought_level` 画成与本地模型同一只竖排阶梯,
+ * 其余照 agent 给的顺序一格一行 —— select 画 `Select`,boolean 画 `Switch`。选中的值原样
+ * 交回它(`acp.setSessionOption` → ACP `session/set_config_option`)。
  *
- * 三张状态表的要点(交卷时整表另报):
- *  · 生命周期:抽屉开 + 选中 agent 才挂;挂上就 `ensure()` 这一格(有会话 → 后端会
- *    连上 agent、开或恢复那条会话,冷启动一两秒;草稿 → 只读盘上的目录,不起进程)。
- *  · 生命状态:首载 → 一句「正在连接」(不画骨架、不画 spinner:卡里只有几格);
- *    失败 → 后端原话 + 重试;没有可调项 → 一句实话;草稿 → 目录照画,附一句「发出
- *    第一条消息后生效」,目录也没有 → 只说那一句。
- *  · 交互状态:改一格 → 乐观换值,那一只 `Select` 自己禁用 + `aria-busy`(律③逐格);
- *    重拉期间旧值留在屏(律②)。
+ * **两个来处,一份画法**:会话已经在 agent 那边开着 → 读会话状态(`acp:session-state`,
+ * 它带 boolean 型与 `modes`,推来就换);还没开 / 草稿 → 读 `acp.sessionOptions`(有会话时
+ * 这一发会连上 agent、开或恢复那条会话,之后状态就推过来了)。
+ *
+ * ── 三张状态表 ──────────────────────────────────────────────────────────
+ * **① 生命周期**:抽屉开 + 选中 agent 才挂;挂上就 `ensure()` 选项那一格(有会话 → 后端会
+ *   连上 agent,冷启动一两秒;草稿 → 只读盘上的目录,不起进程),同时订这条会话的状态格
+ *   (`useAcpSessionState`,非 agent 会话零往返)。卸载只退订,不发任何东西。
+ * **② UI 生命状态**:
+ *   · loading —— 两处都还没有答案:一句「正在连接」(不画骨架、不画 spinner:卡里只有几格);
+ *   · error —— 选项那一发失败且没有会话状态可画:后端原话 + 重试;有状态就画状态,错不上屏;
+ *   · empty —— 一格选项都没有、也没有模式:一句实话(草稿另一句);
+ *   · ready —— 按上面那张认领表的顺序一行一件;草稿态末尾一句「发出第一条消息后生效」;
+ *   · 超量 —— agent 报十几格选项:卡在抽屉那一格里自己滚(`.modelCard` 的 overflow),列表不动。
+ * **③ UI 交互状态**:改一格 → 乐观换值(选项格与会话状态格一起换),那一件自己禁用 +
+ *   `aria-busy`(律③逐格,忙态键 = agent × 会话 × 选项);重拉期间旧值留在屏(律②);
+ *   只读的模式行没有交互态,只有一句为什么。
  */
 function AgentOptionsCard({ agentId }: { agentId: string }) {
   const t = useT()
@@ -476,15 +491,25 @@ function AgentOptionsCard({ agentId }: { agentId: string }) {
   useEffect(() => {
     void query.ensure()
   }, [query])
+  const liveState = useAcpSessionState(sessionId ?? '')
+  const state = liveState && liveState.agentId === agentId ? liveState : null
 
   const view = snapshot.data
+  const options = state ? state.configOptions : view?.options
+  const claims = useMemo(
+    () => (options ? claimAgentOptions(options, state?.modes) : null),
+    [options, state?.modes],
+  )
+  const live = state ? true : Boolean(view?.live)
+  const nothing = claims !== null && !claims.mode && !claims.model && !claims.thought && claims.rest.length === 0
+
   return (
     <Card className={s.modelCard} pad="md" bordered={false} data-testid="agent-options-card">
       <div className={s.modelCardName}>{agentId}</div>
-      {!view && snapshot.phase === 'initial' && !snapshot.error && (
+      {!claims && snapshot.phase === 'initial' && !snapshot.error && (
         <div className={s.modelCardNote}>{t('composer.agentOptionsLoading')}</div>
       )}
-      {snapshot.error && (
+      {snapshot.error && !state && (
         <>
           <div className={s.modelCardNote} role="alert">
             {t('composer.agentOptionsFailed', { error: snapshot.error })}
@@ -494,19 +519,45 @@ function AgentOptionsCard({ agentId }: { agentId: string }) {
           </Button>
         </>
       )}
-      {view && view.options.length === 0 && (
+      {nothing && (
         <div className={s.modelCardNote}>
-          {view.live ? t('composer.agentOptionsNone') : t('composer.agentOptionsDraftEmpty')}
+          {live ? t('composer.agentOptionsNone') : t('composer.agentOptionsDraftEmpty')}
         </div>
       )}
-      {view?.options.map((option) => (
-        <AgentOptionSelect key={option.id} agentId={agentId} sessionId={sessionId} option={option} />
-      ))}
-      {view && !view.live && view.options.length > 0 && (
-        <div className={s.modelCardNote}>{t('composer.agentOptionsDraft')}</div>
+      {claims?.mode?.kind === 'option' && (
+        <AgentOptionSelect agentId={agentId} sessionId={sessionId} option={claims.mode.option} />
       )}
+      {claims?.mode?.kind === 'modes' && (
+        <div className={s.thinkBlock} data-testid="agent-mode-readonly">
+          <div className={s.thinkHead}>{t('composer.agentModeLabel')}</div>
+          <div className={s.modelCardRow}>
+            <b>{claims.mode.name}</b>
+          </div>
+          <div className={s.modelCardNote}>{t('composer.agentModeReadonly')}</div>
+        </div>
+      )}
+      {claims?.model && <AgentOptionSelect agentId={agentId} sessionId={sessionId} option={claims.model} />}
+      {claims?.thought && <AgentThoughtLadder agentId={agentId} sessionId={sessionId} option={claims.thought} />}
+      {claims?.rest.map((option) =>
+        option.type === 'boolean' ? (
+          <AgentOptionSwitch key={option.id} agentId={agentId} sessionId={sessionId} option={option} />
+        ) : (
+          <AgentOptionSelect key={option.id} agentId={agentId} sessionId={sessionId} option={option} />
+        ),
+      )}
+      {claims && !live && !nothing && <div className={s.modelCardNote}>{t('composer.agentOptionsDraft')}</div>}
     </Card>
   )
+}
+
+/** 一格选项的一次写:三件共用(下拉 / 阶梯 / 开关),忙态逐格。 */
+function useAgentOptionWrite(agentId: string, sessionId: string | null, option: ACPSessionOption) {
+  const saving = useAsyncPending(setAcpOptionMutation, acpOptionPendingKey(agentId, sessionId, option.id))
+  const write = (value: string) => {
+    if (value === option.currentValue) return
+    void setAcpOptionMutation.run({ agentId, sessionId, optionId: option.id, value })
+  }
+  return { saving, write }
 }
 
 function AgentOptionSelect({
@@ -518,7 +569,7 @@ function AgentOptionSelect({
   sessionId: string | null
   option: ACPSessionOption
 }) {
-  const saving = useAsyncPending(setAcpOptionMutation, acpOptionPendingKey(agentId, sessionId, option.id))
+  const { saving, write } = useAgentOptionWrite(agentId, sessionId, option)
   const choices = useMemo(
     () =>
       option.choices.map((choice) => ({
@@ -528,7 +579,7 @@ function AgentOptionSelect({
     [option.choices],
   )
   return (
-    <div className={s.thinkBlock} aria-busy={saving}>
+    <div className={s.thinkBlock} aria-busy={saving} data-agent-option={option.id}>
       <div className={s.thinkHead}>{option.name}</div>
       <Select
         size="sm"
@@ -537,10 +588,68 @@ function AgentOptionSelect({
         options={choices}
         value={option.currentValue}
         disabled={saving}
-        onChange={(value) => {
-          if (value === option.currentValue) return
-          void setAcpOptionMutation.run({ agentId, sessionId, optionId: option.id, value })
-        }}
+        onChange={write}
+      />
+    </div>
+  )
+}
+
+/**
+ * **`thought_level` 那一格 = 本地模型那只竖排阶梯,只是表是活的**(§3.8)。档名与说明都是
+ * agent 报的(Claude 按模型不同是 low / medium / high / max),一个字都不由壳翻译 ——
+ * 翻了就是替它编一个它没说过的档。
+ */
+function AgentThoughtLadder({
+  agentId,
+  sessionId,
+  option,
+}: {
+  agentId: string
+  sessionId: string | null
+  option: ACPSessionOption
+}) {
+  const { saving, write } = useAgentOptionWrite(agentId, sessionId, option)
+  return (
+    <div className={s.thinkBlock} data-agent-option={option.id}>
+      <div className={s.thinkHead}>{option.name}</div>
+      <RadioGroup
+        className={s.thinkLadder}
+        label={option.name}
+        value={option.currentValue}
+        onChange={write}
+        disabled={saving}
+        aria-busy={saving}
+      >
+        {option.choices.map((choice) => (
+          <Radio key={choice.value} value={choice.value} className={s.thinkRung}>
+            <span className={s.thinkRungName}>{choice.name}</span>
+            {choice.description && <span className={s.thinkRungNote}>{choice.description}</span>}
+          </Radio>
+        ))}
+      </RadioGroup>
+    </div>
+  )
+}
+
+/** boolean 型(协议里 `currentValue` 是 `'true'` / `'false'`,写回同样是字符串)。 */
+function AgentOptionSwitch({
+  agentId,
+  sessionId,
+  option,
+}: {
+  agentId: string
+  sessionId: string | null
+  option: ACPSessionOption
+}) {
+  const { saving, write } = useAgentOptionWrite(agentId, sessionId, option)
+  return (
+    <div className={`${s.thinkBlock} ${s.agentOptionSwitchRow}`} aria-busy={saving} data-agent-option={option.id}>
+      <div className={s.thinkHead}>{option.name}</div>
+      <Switch
+        checked={option.currentValue === 'true'}
+        label={option.name}
+        disabled={saving}
+        onChange={(next) => write(next ? 'true' : 'false')}
       />
     </div>
   )
