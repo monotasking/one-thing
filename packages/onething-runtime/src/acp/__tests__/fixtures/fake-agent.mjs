@@ -20,6 +20,13 @@
 // FAKE_AGENT_TERMINAL=1 + 正文 `@term`:起 `/bin/sh -c 'sleep 1; echo hi'`,等它退出、读输出、release;
 //   再起一条 `sleep 30`,kill 之后等结局、release。
 // 握手时收到的 clientCapabilities 写进 FAKE_AGENT_DIR/client-caps.json(不进 calls.log)。
+//
+// A3-c 两条剧本(gate:acp ⑮ / ⑯b):
+// FAKE_AGENT_AUTH=terminal|agent:握手自报一种登录方法;没登录(FAKE_AGENT_DIR/credentials 不在)时
+//   `session/new` 与 prompt 以 `auth_required` 拒。terminal 型 = 客户端拿同一份起法追加 `--login`
+//   再起一次本脚本:打印一行、写下 credentials、退出码 0;agent 型 = `authenticate` 直接写下 credentials。
+// FAKE_AGENT_ELICIT=1 + 正文 `@elicit`:发一张 `elicitation/create` 表单(一道单选 + 一道自由输入),
+//   把客户端的答复(或错误码)记进 calls.log,然后照常说完这一轮。
 import { AgentSideConnection, PROTOCOL_VERSION, RequestError, ndJsonStream } from '@agentclientprotocol/sdk'
 import { Readable, Writable } from 'node:stream'
 import { closeSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -29,6 +36,21 @@ import { randomUUID } from 'node:crypto'
 const dir = process.env.FAKE_AGENT_DIR
 const caps = process.env.FAKE_AGENT_CAPS ?? 'load'
 mkdirSync(dir, { recursive: true })
+const credentials = join(dir, 'credentials')
+const authMode = process.env.FAKE_AGENT_AUTH
+
+// 终端型登录:客户端把方法给的 args 追加在起法后面再起一次本脚本 —— 这一次不是 agent,是登录程序。
+if (process.argv.includes('--login')) {
+  process.stdout.write(`fake-agent login ok (${process.env.FAKE_AGENT_LOGIN_MARK ?? 'no-mark'})\n`)
+  writeFileSync(credentials, 'terminal')
+  writeFileSync(join(dir, 'calls.log'), `${JSON.stringify({ method: 'terminal-login', mark: process.env.FAKE_AGENT_LOGIN_MARK ?? null })}\n`, { flag: 'a' })
+  process.exit(0)
+}
+const loggedIn = () => !authMode || existsSync(credentials)
+const AUTH_METHODS = {
+  terminal: [{ id: 'fake-terminal-login', name: 'Fake terminal login', type: 'terminal', args: ['--login'], env: { FAKE_AGENT_LOGIN_MARK: 'from-method' } }],
+  agent: [{ id: 'fake-agent-login', name: 'Fake agent login', description: 'authenticate in-band' }],
+}
 const file = id => join(dir, `${id}.json`)
 const readSession = id => (existsSync(file(id)) ? JSON.parse(readFileSync(file(id), 'utf8')) : undefined)
 const writeSession = s => writeFileSync(file(s.id), JSON.stringify(s))
@@ -88,6 +110,35 @@ async function fsScript(conn, s) {
   }
 }
 
+async function elicitScript(conn, s) {
+  try {
+    const response = await conn.createElicitation({
+      sessionId: s.id,
+      mode: 'form',
+      message: 'Fake agent needs two answers',
+      requestedSchema: {
+        type: 'object',
+        properties: {
+          color: {
+            type: 'string',
+            title: 'Color',
+            description: 'Which color?',
+            oneOf: [
+              { const: 'r', title: 'Red' },
+              { const: 'b', title: 'Blue', _meta: { '_claude/askUserQuestionOption': { description: 'the blue one' } } },
+            ],
+          },
+          note: { type: 'string', title: 'Note', description: 'Anything else?' },
+        },
+        required: ['color'],
+      },
+    })
+    logCall({ method: 'elicit', response })
+  } catch (error) {
+    logCall({ method: 'elicit', code: error?.code ?? null, message: String(error?.message ?? error) })
+  }
+}
+
 async function terminalScript(conn, s) {
   try {
     const terminal = await conn.createTerminal({ sessionId: s.id, command: '/bin/sh', args: ['-c', 'sleep 1; echo hi'], cwd: s.cwd })
@@ -121,9 +172,14 @@ new AgentSideConnection(conn => ({
       },
       // 自报身份:gate:acp ① 拿它与 `acp.getAgents` 那一行逐字比对。
       agentInfo: { name: 'fake-agent', version: '0.0.1' },
+      ...(authMode ? { authMethods: AUTH_METHODS[authMode] ?? [] } : {}),
     }
   },
   async newSession(params) {
+    if (!loggedIn()) {
+      logCall({ method: 'new-refused', reason: 'auth' })
+      throw RequestError.authRequired()
+    }
     const s = { id: randomUUID(), cwd: params.cwd, model: 'alpha', turns: 0 }
     writeSession(s)
     logCall({ method: 'new', id: s.id, cwd: params.cwd })
@@ -184,6 +240,7 @@ new AgentSideConnection(conn => ({
       throw RequestError.authRequired()
     }
     if (process.env.FAKE_AGENT_FAIL === 'internal') throw new Error('boom from agent')
+    if (!loggedIn()) throw RequestError.authRequired()
     const s = readSession(params.sessionId)
     s.turns += 1
     writeSession(s)
@@ -191,6 +248,7 @@ new AgentSideConnection(conn => ({
     if (process.env.FAKE_AGENT_PERMISSION === '1' && text.startsWith('@perm')) await permissionScript(conn, s, text.startsWith('@perm1') ? 1 : 2)
     if (process.env.FAKE_AGENT_FS === '1' && text.startsWith('@fs')) await fsScript(conn, s)
     if (process.env.FAKE_AGENT_TERMINAL === '1' && text.startsWith('@term')) await terminalScript(conn, s)
+    if (process.env.FAKE_AGENT_ELICIT === '1' && text.startsWith('@elicit')) await elicitScript(conn, s)
     const rogue = process.env.FAKE_AGENT_ROGUE_METHOD === '1' && s.turns === 1
     if (rogue) {
       // 协议外请求:客户端没挂这个方法,SDK 该以 -32601 回绝;回绝不该掐断连接。
@@ -240,5 +298,9 @@ new AgentSideConnection(conn => ({
     return { stopReason: 'end_turn' }
   },
   async cancel() {},
-  async authenticate() {},
+  async authenticate(params) {
+    logCall({ method: 'authenticate', methodId: params?.methodId ?? null })
+    if (authMode === 'agent' && params?.methodId === 'fake-agent-login') writeFileSync(credentials, 'agent')
+    return {}
+  },
 }), stream)

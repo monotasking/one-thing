@@ -37,6 +37,16 @@
  *   ⑯ 无人应答:门不答那张卡 → `ONETHING_UNATTENDED_ASK_TIMEOUT_MS=2000` 后按拒绝收场,agent
  *      收到 reject_once,不是自动放行。
  *
+ * A3-c(方案 §3.5 / §11.3;server 从这一单起也挂登录 / 提问两只桥):
+ *   ⑮ 提问:`fake-a3` 的 `@elicit` 发一张 `elicitation/create` 表单(一道单选 + 一道自由输入)→
+ *      SSE 上见到 `interaction:requested`,两道题的形状对;门经 `command:interaction-respond` 答
+ *      Blue + 一句话 → agent 收到 `accept`,content 里是值 `b`(不是 label)与那句话。握手声明了
+ *      `elicitation.form`。
+ *   ⑯b 登录:第三台假 agent `fake-auth` 自报终端型登录;没登录时开会话被 `auth_required` 拒 →
+ *      `acp.getAgents` 那一行 `auth.required === true`(SSE 上也有那一帧 `acp:agent-state`)→
+ *      `acp.authenticate` 立刻答 terminalId,那一格终端(owner = 这台 agent)跑「起法 + `--login`」、
+ *      退出码 0 → 行上 `auth.required === false` → 再发一条,这一轮走通。
+ *
  * **必须用 node 起**(同 gate:search-index):server 的检索 Worker 要 `node:sqlite`,bun 没有。
  * 不构建:缺 `dist/server/main.js` 就叫你先 `bun run server:build`。
  * 绝不碰真 `~/.onething` —— 全程 `ONETHING_STORE_PATH` 指向 mkdtemp 出来的临时目录。
@@ -53,6 +63,8 @@ const fakeAgent = path.join(repoRoot, 'packages/onething-runtime/src/acp/__tests
 const AGENT_ID = 'fake'
 /** A3-b 那几步用的第二台:同一只夹具,打开审批 / 文件 / 终端三条剧本,不设 `unattended`。 */
 const A3_AGENT_ID = 'fake-a3'
+/** ⑯b 用的第三台:自报终端型登录,没登录就拒开会话。 */
+const AUTH_AGENT_ID = 'fake-auth'
 /** ⑯ 的无人应答超时(毫秒);⑪–⑭ 门答卡远快于它。 */
 const UNANSWERED_TIMEOUT_MS = 2000
 /** 假 agent 在 `initialize` 里自报的两样(与夹具逐字对齐;夹具改了这里跟着改)。 */
@@ -261,6 +273,7 @@ const storePath = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-acp-gate-'))
 const workDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onething-acp-gate-work-')))
 const agentDir = path.join(storePath, 'fake-agent')
 const a3AgentDir = path.join(storePath, 'fake-agent-a3')
+const authAgentDir = path.join(storePath, 'fake-agent-auth')
 /** ⑬ 的「根外敏感文件」:一份假的私钥,放在会话目录之外的临时目录里 —— 门绝不去碰真的 `~/.ssh`。 */
 const lonelyDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onething-acp-gate-lonely-')))
 const outsideDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onething-acp-gate-outside-')))
@@ -271,7 +284,7 @@ try {
   fs.writeFileSync(path.join(storePath, 'settings.json'), JSON.stringify({
     ai: {
       provider: 'acp',
-      providers: { acp: { model: AGENT_ID, selectedModels: [AGENT_ID, A3_AGENT_ID], enabled: true } },
+      providers: { acp: { model: AGENT_ID, selectedModels: [AGENT_ID, A3_AGENT_ID, AUTH_AGENT_ID], enabled: true } },
       customProviders: [],
       modelCatalog: {},
     },
@@ -306,7 +319,20 @@ try {
           FAKE_AGENT_FS: '1',
           FAKE_AGENT_FS_OUTSIDE: outsideSecret,
           FAKE_AGENT_TERMINAL: '1',
+          FAKE_AGENT_ELICIT: '1',
         },
+      }, {
+        id: AUTH_AGENT_ID,
+        name: 'Fake Auth',
+        enabled: true,
+        command: process.execPath,
+        args: [fakeAgent],
+        env: {
+          FAKE_AGENT_CAPS: 'none',
+          FAKE_AGENT_DIR: authAgentDir,
+          FAKE_AGENT_AUTH: 'terminal',
+        },
+        unattended: 'allow',
       }],
     },
     // 正常模式:A3-b 的卡要真的上屏(`dangerously-allow-all` 会让许可核一张都不问)。
@@ -532,6 +558,40 @@ try {
   check(!termCalls.some(call => call.method === 'term-error'),
     `⑭ 终端剧本没有报错(${JSON.stringify(termCalls.find(call => call.method === 'term-error') ?? null)})`)
 
+  // ⑮ 提问:门从 SSE 上接 `interaction:requested`,按题 id 作答。
+  const interactionRequests = sessionId => sse.frames
+    .filter(frame => frame.event === 'session:event' && frame.data?.sessionId === sessionId
+      && frame.data?.event?.type === 'interaction:requested')
+    .map(frame => frame.data.event.request)
+  answerer.setDecider(() => undefined)
+  await sendMessage(rpc, a3Id, '@elicit 问两句')
+  const elicitCard = await waitFor(() => interactionRequests(a3Id)[0], 15_000, 50)
+  const colorQuestion = elicitCard?.questions?.find(question => question.id === 'color')
+  const noteQuestion = elicitCard?.questions?.find(question => question.id === 'note')
+  check(colorQuestion?.options?.map(option => option.label).join('/') === 'Red/Blue'
+    && colorQuestion.options[1]?.description === 'the blue one'
+    && noteQuestion?.allowFreeText === true && (noteQuestion.options ?? []).length === 0
+    && elicitCard.origin === 'external-agent',
+    `⑮ elicitation/create → interaction:requested:一道单选(Red / Blue,claude 扩展格的说明上卡)+ 一道自由输入(读到 ${JSON.stringify(elicitCard?.questions ?? null)})`)
+  if (elicitCard) {
+    await rpc('session-command', 'emit', {
+      sessionId: a3Id,
+      command: {
+        type: 'command:interaction-respond',
+        interactionId: elicitCard.id,
+        ...(elicitCard.targetChannel ? { channel: elicitCard.targetChannel } : {}),
+        answers: { color: { selected: ['Blue'] }, note: { selected: [], freeText: 'from gate' } },
+      },
+    })
+  }
+  check(Boolean(await turnDone(a3Id, 5)), '⑮ @elicit 这一轮收场了')
+  const elicitCall = readA3Calls().find(call => call.method === 'elicit')
+  check(sameJson(elicitCall?.response, { action: 'accept', content: { color: 'b', note: 'from gate' } }),
+    `⑮ agent 收到 accept,content 是值 b(不是 label)与那句话(读到 ${JSON.stringify(elicitCall ?? null)})`)
+  const a3CapsNow = fs.existsSync(capsFile) ? JSON.parse(fs.readFileSync(capsFile, 'utf-8')) : null
+  check(sameJson(a3CapsNow?.elicitation, { form: {}, url: {} }) && a3CapsNow?.auth?.terminal === true,
+    `⑮ 握手声明了 elicitation { form, url } 与 auth.terminal(读到 ${JSON.stringify({ elicitation: a3CapsNow?.elicitation, auth: a3CapsNow?.auth })})`)
+
   // ⑯ 无人应答:这一张门不答 → 超时按拒绝收场,agent 收到 reject_once。换一个目录开新会话:
   // ⑫ 在 workDir 上落的 grant 会把同一条命令直接放行,那就证不到「没人答」这一支了。
   const lonelyId = await createAcpSession(rpc, 'acp 门 · 无人应答', lonelyDir, A3_AGENT_ID)
@@ -546,6 +606,36 @@ try {
     && lonely[0].ms >= UNANSWERED_TIMEOUT_MS - 200 && lonely[0].ms < UNANSWERED_TIMEOUT_MS + 5000,
     `⑯ 无人应答 ${UNANSWERED_TIMEOUT_MS}ms 后按拒绝收场,agent 收到 reject_once、不是自动放行(读到 ${JSON.stringify(lonely[0] ?? null)})`)
   answerer.stop()
+
+  // ⑯b 登录:没登录 → 开会话被拒 → required;去登录(终端型)→ 退出码 0 → 不再 required → 这一轮走通。
+  const authRow = async () => (await rpc('acp', 'getAgents', {}))?.agents?.find(agent => agent.config?.id === AUTH_AGENT_ID)
+  const authId = await createAcpSession(rpc, 'acp 门 · 登录', workDir, AUTH_AGENT_ID)
+  await sendMessage(rpc, authId, '没登录的这一轮')
+  const required = await waitFor(async () => ((await authRow())?.auth?.required === true ? authRow() : undefined), 15_000)
+  check(Boolean(required) && required.auth.methods?.[0]?.id === 'fake-terminal-login' && required.auth.methods[0].type === 'terminal',
+    `⑯b 开会话被 auth_required 拒 → 行上 auth.required = true,方法表是 agent 自报的那一条(读到 ${JSON.stringify((await authRow())?.auth ?? null)})`)
+  check(sse.frames.some(frame => frame.event === 'acp:agent-state' && frame.data?.state?.config?.id === AUTH_AGENT_ID
+    && frame.data.state.auth?.required === true),
+    '⑯b SSE 上见到 auth.required = true 的 acp:agent-state(壳就是这样知道的)')
+  check(!readCalls(authAgentDir).some(call => call.method === 'new'),
+    `⑯b 没登录时 agent 那边一条会话都没开成(new-refused ${readCalls(authAgentDir).filter(call => call.method === 'new-refused').length} 次)`)
+  const login = await rpc('acp', 'authenticate', { agentId: AUTH_AGENT_ID, methodId: 'fake-terminal-login' })
+  check(login?.ok === true && typeof login.terminalId === 'string',
+    `⑯b acp.authenticate 立刻答 terminalId(读到 ${JSON.stringify(login)})`)
+  const loginExit = login?.terminalId
+    ? await waitFor(() => sse.frames.find(frame => frame.event === 'terminal:exit' && frame.data?.terminalId === login.terminalId), 15_000, 50)
+    : undefined
+  check(loginExit?.data?.exitCode === 0
+    && readCalls(authAgentDir).some(call => call.method === 'terminal-login' && call.mark === 'from-method'),
+    `⑯b 那一格终端跑「起法 + --login」(方法的 env 也到了),退出码 0(结局 ${JSON.stringify(loginExit?.data ?? null)})`)
+  const cleared = await waitFor(async () => ((await authRow())?.auth?.required === false ? true : undefined), 10_000)
+  check(Boolean(cleared), `⑯b 退出码 0 → 行上 auth.required = false(读到 ${JSON.stringify((await authRow())?.auth ?? null)})`)
+  await sendMessage(rpc, authId, '登录之后的这一轮')
+  const authReply = await waitFor(async () => {
+    const message = await lastAssistant(rpc, authId)
+    return typeof message?.content === 'string' && message.content.includes('turns=1') ? message : undefined
+  }, 20_000)
+  check(Boolean(authReply), `⑯b 登录之后这一轮走通(读到 ${JSON.stringify((await lastAssistant(rpc, authId))?.content ?? null)})`)
 
   // 名册刷新走一趟(RPC `acp.refreshRegistry` = 强制重拉 + 探测):开关关着就只重读种子与探测,
   // 不联网 —— 收尾那一步从日志上核「一次拉取都没有」。server 宿主不调 `acp.start()`,
@@ -594,4 +684,4 @@ if (failures.length > 0) {
   console.error(`[gate:acp] ${failures.length} check(s) failed`)
   process.exit(1)
 }
-console.log('[gate:acp] ok —— ① 握手 / ② 会话目录 / ③ 流与协议外请求 / ④ prompt 之外的状态 / ⑪ 四选项 / ⑫ 始终允许 / ⑬ fs / ⑭ terminal / ⑯ 无人应答 全绿')
+console.log('[gate:acp] ok —— ① 握手 / ② 会话目录 / ③ 流与协议外请求 / ④ prompt 之外的状态 / ⑪ 四选项 / ⑫ 始终允许 / ⑬ fs / ⑭ terminal / ⑮ 提问 / ⑯ 无人应答 / ⑯b 登录 全绿')

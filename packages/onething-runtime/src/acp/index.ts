@@ -1,4 +1,4 @@
-export { ACPClient, projectACPConfigOptions, resolveACPSessionCwd } from './client.js'
+export { ACPClient, authMethodsOf, projectACPConfigOptions, resolveACPSessionCwd } from './client.js'
 export { ACP_CONNECTOR_ID, FileACPSessionLinkStore, MemoryACPSessionLinkStore } from './session-links.js'
 export { mapACPFinishReason, translateACPPromptStream } from './translate.js'
 export {
@@ -47,8 +47,16 @@ export type {
   ACPSettings,
   AcpAgentDetect,
   AcpAgentManifest,
+  AcpAgentAuth,
   AcpAgentSource,
+  AcpAuthBridge,
+  AcpAuthenticateOutcome,
+  AcpAuthMethod,
   AcpClientRequestContext,
+  AcpElicitationBridge,
+  AcpElicitationContext,
+  AcpElicitationRequest,
+  AcpElicitationResponse,
   AcpFsBridge,
   AcpSessionState,
   AcpTerminalBridge,

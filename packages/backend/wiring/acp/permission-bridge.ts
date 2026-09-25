@@ -10,6 +10,8 @@ import type {
 } from '@onething/runtime/acp'
 import type { Authorizer } from '@onething/core/toolkit'
 import { getLogger } from '../logging/index.js'
+import { createAcpAuthBridge, type AcpAuthBridgeDeps } from './auth-bridge.js'
+import { createAcpElicitationBridge, type AcpElicitationBridgeDeps } from './elicitation-bridge.js'
 import { createAcpFsBridge } from './fs-bridge.js'
 import { acpAuthorizerFor, authorizeAcpRequest, type AcpUnansweredPolicy } from './request-authorize.js'
 import { createAcpTerminalBridge, type AcpTerminalServicePort } from './terminal-bridge.js'
@@ -93,6 +95,9 @@ export interface ACPPermissionBridgeOptions {
   unanswered?: AcpUnansweredPolicy
   /** 测试用:终端桥的服务与「有没有终端输出通道」。 */
   terminal?: { service?: () => AcpTerminalServicePort; available?: () => boolean }
+  /** 测试用:登录桥 / 提问桥的外部件(A3-c)。 */
+  auth?: AcpAuthBridgeDeps
+  elicitation?: AcpElicitationBridgeDeps
 }
 
 /**
@@ -187,14 +192,28 @@ export function registerACPPermissionBridge(options: ACPPermissionBridgeOptions 
     ...(options.terminal?.service ? { service: options.terminal.service } : {}),
     ...(options.terminal?.available ? { available: options.terminal.available } : {}),
   })
+  /*
+   * 登录桥与提问桥(A3-c)同批挂:它们也是「这台宿主怎么答 agent」—— 提问落交互卡(没人答由
+   * 交互内核自己的 deadline 收场),登录跑在同一个终端服务里。挂上了,握手才声明
+   * `auth.terminal` / `elicitation`。
+   */
+  const authBridge = createAcpAuthBridge({
+    ...(options.terminal?.available ? { terminalAvailable: options.terminal.available } : {}),
+    ...(options.auth ?? {}),
+  })
+  const elicitationBridge = createAcpElicitationBridge(options.elicitation)
   ACPManager.setPermissionBridge(bridge)
   ACPManager.setFsBridge(fsBridge)
   ACPManager.setTerminalBridge(terminalBridge)
+  ACPManager.setAuthBridge(authBridge)
+  ACPManager.setElicitationBridge(elicitationBridge)
   // 只摘自己挂上的那几只:别的宿主后来换过桥,这里不去拆它。
   return () => {
     rejectedForSession.clear()
     if (ACPManager.getPermissionBridge() === bridge) ACPManager.setPermissionBridge(undefined)
     if (ACPManager.getFsBridge() === fsBridge) ACPManager.setFsBridge(undefined)
     if (ACPManager.getTerminalBridge() === terminalBridge) ACPManager.setTerminalBridge(undefined)
+    if (ACPManager.getAuthBridge() === authBridge) ACPManager.setAuthBridge(undefined)
+    if (ACPManager.getElicitationBridge() === elicitationBridge) ACPManager.setElicitationBridge(undefined)
   }
 }

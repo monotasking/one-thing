@@ -12,7 +12,9 @@ import type {
   ACPSettings,
   AcpAgentDetect,
   AcpAgentManifest,
+  AcpAgentAuth,
   AcpAgentSource,
+  AcpAuthMethod,
   AcpSessionState,
 } from '../contracts/acp.js'
 import { defineRouter } from './router.js'
@@ -28,7 +30,9 @@ export type {
   ACPSettings,
   AcpAgentDetect,
   AcpAgentManifest,
+  AcpAgentAuth,
   AcpAgentSource,
+  AcpAuthMethod,
   AcpSessionState,
 }
 
@@ -158,6 +162,27 @@ export interface ACPSessionStateRequest {
 
 export type ACPSessionStateResponse = AcpSessionState | null
 
+/**
+ * 「去登录」(A3-c,方案 §3.5 / §3.9 ②):按 agent 自报的一种方法登录。
+ *  - 终端型:onething 开一格终端跑那台 agent 自己的登录程序,**立刻**答 `terminalId`(壳开终端瓦
+ *    让人在里面走完流程);程序退出码 0 = 登录成功,后端清掉 `auth.required` 并断开那台 agent,
+ *    下一轮自然带着新凭据重连。结局经 `acp:agent-state` 推给壳。
+ *  - agent 型:调 agent 的 `authenticate({ methodId })`,等它答完;成功即清 `auth.required`。
+ */
+export interface ACPAuthenticateRequest {
+  agentId: string
+  methodId: string
+}
+
+/**
+ * 失败的 `code` 是稳定的机器码(壳按它查自己的文案表),`error` 是一句给排障看的原话:
+ * `unavailable` = 这台宿主没装登录桥;`no-terminal` = 终端型方法但这台机器上没有终端可用;
+ * `unknown-agent` / `unknown-method` = 名册里没有这台 / 它没自报这种方法;`failed` = agent 拒了或起不来。
+ */
+export type ACPAuthenticateResponse =
+  | { ok: true; terminalId?: string }
+  | { ok: false; code: 'unavailable' | 'no-terminal' | 'unknown-agent' | 'unknown-method' | 'failed'; error: string }
+
 // ============================================================================
 // acp 域的 router —— 结构债 P4c 第六批
 // ============================================================================
@@ -196,6 +221,7 @@ export type AcpRoutes = {
   sessionState: { input: ACPSessionStateRequest; output: ACPSessionStateResponse }
   detect: { input: ACPDetectRequest; output: ACPDetectResponse }
   refreshRegistry: { input: Record<string, never>; output: ACPRefreshRegistryResponse }
+  authenticate: { input: ACPAuthenticateRequest; output: ACPAuthenticateResponse }
 }
 
 export const acpRouter = defineRouter<AcpRoutes>('acp', [
@@ -212,4 +238,5 @@ export const acpRouter = defineRouter<AcpRoutes>('acp', [
   'sessionState',
   'detect',
   'refreshRegistry',
+  'authenticate',
 ])

@@ -257,6 +257,18 @@ export const acpRpcHandlers: RpcRouteHandlers<AcpRoutes> = {
     sessionAccess.resolveOptional(context, request.sessionId, 'read')
     return ACPManager.getSessionState(request.sessionId, request.agentId) ?? null
   },
+  /**
+   * 「去登录」(A3-c):交给宿主挂上的登录桥。终端型立刻答 terminalId(壳开终端瓦),结局经
+   * `acp:agent-state` 推;agent 型等 agent 答完。没挂桥的宿主(不装 backend 的单测)答 `unavailable`。
+   */
+  async authenticate(request) {
+    const bridge = ACPManager.getAuthBridge()
+    if (!bridge) return { ok: false, code: 'unavailable', error: 'ACP login is not available on this host' }
+    if (!request?.agentId || !request?.methodId) {
+      return { ok: false, code: 'unknown-method', error: 'agentId and methodId are required' }
+    }
+    return bridge.authenticate(request.agentId, request.methodId)
+  },
   async cancelSession(request, context = DESKTOP_RPC_CONTEXT) {
     sessionAccess.resolve(context, request.sessionId, 'abort')
     return cancelOnethingACPSessionForIpc({

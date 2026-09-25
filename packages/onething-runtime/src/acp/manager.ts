@@ -2,6 +2,8 @@ import type {
   ACPAgentConfig,
   ACPAgentState,
   ACPPermissionBridge,
+  AcpAuthBridge,
+  AcpElicitationBridge,
   AcpFsBridge,
   AcpTerminalBridge,
   ACPPromptStreamEvent,
@@ -26,6 +28,8 @@ class ACPManagerClass {
   private permissionBridge: ACPPermissionBridge | undefined
   private fsBridge: AcpFsBridge | undefined
   private terminalBridge: AcpTerminalBridge | undefined
+  private authBridge: AcpAuthBridge | undefined
+  private elicitationBridge: AcpElicitationBridge | undefined
   /** 会话对应关系落盘处(缺省 `<store>/acp/session-links.json`);测试换成内存那只。 */
   private sessionLinks: ACPSessionLinkStore = new FileACPSessionLinkStore()
   private spawnEnv: (() => Record<string, string | undefined>) | undefined
@@ -128,6 +132,38 @@ class ACPManagerClass {
 
   getTerminalBridge(): AcpTerminalBridge | undefined {
     return this.terminalBridge
+  }
+
+  /**
+   * 登录与提问的落点(A3-c)。同一种晚绑定;但它们改的是**握手里的声明**,所以只对下一次连上
+   * 的那一台生效(已连着的 agent 在握手时没看见它们)。
+   */
+  setAuthBridge(bridge: AcpAuthBridge | undefined): void {
+    this.authBridge = bridge
+  }
+
+  getAuthBridge(): AcpAuthBridge | undefined {
+    return this.authBridge
+  }
+
+  setElicitationBridge(bridge: AcpElicitationBridge | undefined): void {
+    this.elicitationBridge = bridge
+  }
+
+  getElicitationBridge(): AcpElicitationBridge | undefined {
+    return this.elicitationBridge
+  }
+
+  /** agent 型登录:连上那一台、调它的 `authenticate`。 */
+  async authenticateAgent(agentId: string, methodId: string): Promise<ACPAgentState> {
+    const client = this.usableClient(agentId)
+    await client.authenticate(methodId)
+    return client.state
+  }
+
+  /** 终端型登录程序退出码 0:清掉那一台的「要登录」(连接由调用方断开)。 */
+  markAgentAuthenticated(agentId: string): void {
+    this.clients.get(this.resolveAgentId(agentId))?.markAuthenticated()
   }
 
   setSessionLinkStore(store: ACPSessionLinkStore): void {
@@ -354,6 +390,8 @@ class ACPManagerClass {
       getSpawnEnv: () => this.spawnEnv?.(),
       getFsBridge: () => this.fsBridge,
       getTerminalBridge: () => this.terminalBridge,
+      getAuthBridge: () => this.authBridge,
+      getElicitationBridge: () => this.elicitationBridge,
     })
     const offSession = client.onSessionStateChanged(state => this.fanOut(this.sessionStateListeners, state))
     const offAgent = client.onAgentStateChanged(state => this.fanOut(this.agentStateListeners, state))

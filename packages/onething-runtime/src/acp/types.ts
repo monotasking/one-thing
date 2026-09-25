@@ -1,5 +1,7 @@
 import type {
   ContentBlock,
+  CreateElicitationRequest,
+  CreateElicitationResponse,
   SessionNotification,
   StopReason,
 } from '@agentclientprotocol/sdk'
@@ -14,7 +16,9 @@ import type {
   ACPSettings,
   AcpAgentDetect,
   AcpAgentManifest,
+  AcpAgentAuth,
   AcpAgentSource,
+  AcpAuthMethod,
   AcpSessionState,
 } from '@shared/contracts/acp.js'
 
@@ -31,7 +35,9 @@ export type {
   ACPSettings,
   AcpAgentDetect,
   AcpAgentManifest,
+  AcpAgentAuth,
   AcpAgentSource,
+  AcpAuthMethod,
   AcpSessionState,
 }
 
@@ -169,4 +175,41 @@ export interface AcpTerminalBridge {
   waitForExit(context: AcpClientRequestContext, params: { terminalId: string }): Promise<AcpTerminalExitStatus>
   kill(context: AcpClientRequestContext, params: { terminalId: string }): Promise<void>
   release(context: AcpClientRequestContext, params: { terminalId: string }): Promise<void>
+}
+
+// ── 登录与提问(A3-c,方案 §3.5 / §11.3)──────────────────────────────────────────
+
+/**
+ * 宿主注入的登录桥。客户端只用它决定握手里声明不声明 `auth.terminal`:注入了、且这台宿主
+ * 有终端可用(`terminalAvailable()`)才声明 —— agent 只在客户端声明了终端登录时才自报终端型
+ * 方法(协议原话:Agents MUST advertise this method only when the client enabled it)。
+ * 「去登录」本身由装配层的 `acp.authenticate` 调它,不经客户端。
+ */
+export interface AcpAuthBridge {
+  terminalAvailable(): boolean
+  authenticate(agentId: string, methodId: string): Promise<AcpAuthenticateOutcome>
+}
+
+export type AcpAuthenticateOutcome =
+  | { ok: true; terminalId?: string }
+  | { ok: false; code: 'unavailable' | 'no-terminal' | 'unknown-agent' | 'unknown-method' | 'failed'; error: string }
+
+/** SDK 的 `elicitation/create` 形状原样交给桥(产品层与装配层共用这一份,不另抄)。 */
+export type AcpElicitationRequest = CreateElicitationRequest
+export type AcpElicitationResponse = CreateElicitationResponse
+
+/** 提问的归属:同 {@link AcpClientRequestContext},外加这一轮的中止信号(回合停了,卡跟着收)。 */
+export interface AcpElicitationContext extends AcpClientRequestContext {
+  abortSignal?: AbortSignal
+}
+
+/**
+ * 宿主注入的提问桥:agent 的 `elicitation/create` 落成 onething 的交互卡(`Interaction.ask`)。
+ * 注入了才声明 `elicitation: { form: {}, url: {} }`、才挂这两个方法 —— 声明了却答
+ * method-not-found 比不声明更糟。`complete` 是 agent 发来的 `elicitation/complete`
+ * 通知(url 型那一格在 agent 那边走完了)。
+ */
+export interface AcpElicitationBridge {
+  create(context: AcpElicitationContext, request: AcpElicitationRequest): Promise<AcpElicitationResponse>
+  complete(agentId: string, elicitationId: string): void
 }

@@ -182,6 +182,21 @@ export interface ACPSessionOption {
 
 export type ACPConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
+/** agent 自报的一种登录方法。`terminal` = onething 开一格终端跑那台 agent 自己的登录程序;`agent` = 调 `authenticate`。 */
+export interface AcpAuthMethod {
+  id: string
+  name: string
+  description?: string
+  type: 'terminal' | 'agent'
+}
+
+export interface AcpAgentAuth {
+  methods: AcpAuthMethod[]
+  required: boolean
+  /** agent 经 `_auth/status_update` 推来的原话(例如「not logged in」);没推过为缺席。 */
+  label?: string
+}
+
 /**
  * 一台 agent 的连接状态投影(`acp.getAgents` 的行,也是全局事件 `acp:agent-state` 的载荷)。
  * A0-2 从 runtime / `@shared/ipc` 两份合到这里,理由同上:全局事件的类型住 `@shared/events`,
@@ -207,6 +222,13 @@ export interface ACPAgentState {
   capabilities?: JsonObject
   sessionCount: number
   activePromptCount: number
+  /**
+   * 登录(A3-c,方案 §3.5 / §3.9 ②):agent 在 `initialize` 里自报的 `authMethods`,加上
+   * 「此刻要不要登录」。`required` 由 agent 以 `-32000 auth_required` 拒掉开会话 / 一轮,或
+   * `_auth/status_update` 推「没登录」置上;一轮成功、`acp.authenticate` 成功(终端型 = 那条
+   * 登录程序退出码 0)时清掉。没连过、也没被拒过 = 缺席。
+   */
+  auth?: AcpAgentAuth
   /**
    * 名册那一半(A1-a):这台 agent 的自述、来处与探测结果。进程管家(`ACPManager` / `ACPClient`)
    * 不认识名册,它产出的状态没有这三格;由装配层(`AcpSubsystem`)在 RPC 与全局事件出口处补上,

@@ -3,12 +3,17 @@ import { resolve } from 'path'
 import { Readable, Writable } from 'stream'
 import * as acp from '@agentclientprotocol/sdk'
 import type {
+  AuthMethod,
   ClientConnection,
+  CompleteElicitationNotification,
+  CreateElicitationRequest,
+  CreateElicitationResponse,
   CreateTerminalRequest,
   CreateTerminalResponse,
   InitializeResponse,
   KillTerminalRequest,
   KillTerminalResponse,
+  NewSessionResponse,
   ReadTextFileRequest,
   ReadTextFileResponse,
   ReleaseTerminalRequest,
@@ -38,7 +43,10 @@ import type {
   ACPPromptStreamOptions,
   ACPSessionOption,
   ACPSessionOptionChoice,
+  AcpAuthBridge,
+  AcpAuthMethod,
   AcpClientRequestContext,
+  AcpElicitationBridge,
   AcpFsBridge,
   AcpSessionState,
   AcpTerminalBridge,
@@ -95,6 +103,34 @@ function rpcErrorShape(error: unknown): { code?: number; message: string; data?:
   const { code, message, data } = error as { code?: unknown; message?: unknown; data?: unknown }
   if (typeof message !== 'string') return undefined
   return { ...(typeof code === 'number' ? { code } : {}), message, ...(data === undefined ? {} : { data }) }
+}
+
+/** 对端答的是不是 `-32000 auth_required`(那台 agent 自己没登录)。 */
+export function isAcpAuthRequired(error: unknown): boolean {
+  if (error instanceof Error && error.cause !== undefined && rpcErrorShape(error) === undefined) {
+    return isAcpAuthRequired(error.cause)
+  }
+  return rpcErrorShape(error)?.code === ACP_AUTH_REQUIRED_CODE
+}
+
+/**
+ * 握手里 agent 自报的登录方法 → 契约形状。`type` 缺席按协议即 `agent`;认不出的 `type`
+ * (将来的新型)不上屏 —— 我们不知道怎么跑它,画一枚按不动的钮比不画更糟。
+ */
+export function authMethodsOf(handshake: Pick<InitializeResponse, 'authMethods'> | null | undefined): AcpAuthMethod[] {
+  const out: AcpAuthMethod[] = []
+  for (const method of (handshake?.authMethods ?? []) as Array<AuthMethod & { type?: string }>) {
+    if (!method || typeof method.id !== 'string' || typeof method.name !== 'string') continue
+    const type = method.type === undefined || method.type === 'agent' ? 'agent' : method.type === 'terminal' ? 'terminal' : undefined
+    if (!type) continue
+    out.push({
+      id: method.id,
+      name: method.name,
+      ...(method.description ? { description: method.description } : {}),
+      type,
+    })
+  }
+  return out
 }
 
 function describeRpcData(data: unknown): string {
@@ -318,6 +354,12 @@ export class ACPClient {
   private errorValue: string | undefined
   /** agent 自己报的「没登录」原话(`_auth/status_update`);登录了就是 undefined。 */
   private authLabel: string | undefined
+  /**
+   * 此刻要不要登录(A3-c):agent 以 `-32000` 拒掉开会话 / 一轮、或 `_auth/status_update` 推「没登录」
+   * 时置上;一轮成功、`authenticate` 成功、终端登录程序退出码 0 时清掉。断开不清 —— 凭据在 agent
+   * 自己那里,断开重连不会让它变成登录了。
+   */
+  private authRequiredValue = false
   private connectedAtValue: number | undefined
   private lastUsedAtValue: number | undefined
   private sessions = new Map<string, ACPSessionRecord>()
@@ -333,8 +375,10 @@ export class ACPClient {
   private parkedUpdates = new Map<string, SessionUpdate[]>()
   private sessionStateListeners = new Set<(state: AcpSessionState) => void>()
   private agentStateListeners = new Set<(state: ACPAgentState) => void>()
-  /** 上一次广播出去的进程三格;只有它变了才发 `agent-state`。 */
+  /** 上一次折进会话状态的进程三格;只有它变了才折。 */
   private lastProcessKey = ''
+  /** 上一次广播出去的 agent 状态指纹(进程三格 + 登录);只有它变了才发 `agent-state`。 */
+  private lastAgentKey = ''
   private stderrTail = ''
   private unexpectedExit = false
   private connectPromise: Promise<void> | null = null
@@ -358,6 +402,10 @@ export class ACPClient {
       getFsBridge?: () => AcpFsBridge | undefined
       /** agent 要终端时的落点(A3-b):命令跑在 `TerminalService` 里。缺席 = 不声明终端能力。 */
       getTerminalBridge?: () => AcpTerminalBridge | undefined
+      /** 登录(A3-c)。注入了且宿主有终端才声明 `auth.terminal`;缺席 = 不声明。 */
+      getAuthBridge?: () => AcpAuthBridge | undefined
+      /** 提问(A3-c)。注入了才声明 `elicitation` 并挂 `elicitation/*`;缺席 = 不声明、不挂。 */
+      getElicitationBridge?: () => AcpElicitationBridge | undefined
     } = {},
   ) {}
 
@@ -396,7 +444,59 @@ export class ACPClient {
         : undefined,
       sessionCount: this.sessions.size,
       activePromptCount: this.activePromptCountValue,
+      ...(this.authState ? { auth: this.authState } : {}),
     }
+  }
+
+  /** 登录那一格:握手自报了方法,或者被拒过 / 被推过「没登录」,才有。 */
+  private get authState(): ACPAgentState['auth'] {
+    const methods = authMethodsOf(this.lastInitResponse)
+    if (methods.length === 0 && !this.authRequiredValue && !this.authLabel) return undefined
+    return {
+      methods,
+      required: this.authRequiredValue,
+      ...(this.authLabel ? { label: this.authLabel } : {}),
+    }
+  }
+
+  get authRequired(): boolean {
+    return this.authRequiredValue
+  }
+
+  /** 改「要不要登录」只走这一处:变了就发一条 agent 状态。 */
+  private setAuthRequired(required: boolean, why: string): void {
+    if (this.authRequiredValue === required) return
+    this.authRequiredValue = required
+    if (!required) this.authLabel = undefined
+    log.info('agent auth requirement changed', { agentId: this.id, required, why })
+    this.syncProcess()
+  }
+
+  /**
+   * 终端型登录程序退出码 0(装配层看着那一格终端):我们这边清掉「要登录」。
+   * 连接由调用方断开 —— agent 进程要重读凭据,下一轮自然重连。
+   */
+  markAuthenticated(): void {
+    this.setAuthRequired(false, 'terminal login exited 0')
+  }
+
+  /** agent 型登录:连上(握手不需要凭据),调 `authenticate({ methodId })`;成功即清「要登录」。 */
+  async authenticate(methodId: string): Promise<void> {
+    await this.connect()
+    if (!this.connection) throw new Error('ACP connection is not available')
+    try {
+      await this.connection.agent.request(acp.methods.agent.authenticate, { methodId })
+    } catch (error) {
+      throw toAcpPromptError(error, this.config.name, this.authLabel)
+    }
+    this.setAuthRequired(false, `authenticate(${methodId})`)
+  }
+
+  /** 开会话 / 一轮失败:是 `auth_required` 就记下「要登录」,并换成那句人话。 */
+  private noteAuthFailure(error: unknown, where: string): unknown {
+    if (!isAcpAuthRequired(error)) return error
+    this.setAuthRequired(true, where)
+    return toAcpPromptError(error, this.config.name, this.authLabel)
   }
 
   /** 这台 agent 最近一次 `initialize` 的答复(未连过 = null)。连接器据它填能力表。 */
@@ -443,16 +543,21 @@ export class ACPClient {
   private syncProcess(): void {
     const process = this.processState
     const key = `${process.status}|${process.pid ?? ''}|${process.error ?? ''}`
-    if (key === this.lastProcessKey) return
-    this.lastProcessKey = key
-    const agentState = this.state
-    for (const listener of this.agentStateListeners) {
-      try {
-        listener(agentState)
-      } catch (error) {
-        log.warn('agent state listener failed', { agentId: this.id }, error)
+    const auth = this.authState
+    const agentKey = `${key}|${auth ? `${auth.required}|${auth.label ?? ''}|${auth.methods.map(method => method.id).join(',')}` : ''}`
+    if (agentKey !== this.lastAgentKey) {
+      this.lastAgentKey = agentKey
+      const agentState = this.state
+      for (const listener of this.agentStateListeners) {
+        try {
+          listener(agentState)
+        } catch (error) {
+          log.warn('agent state listener failed', { agentId: this.id }, error)
+        }
       }
     }
+    if (key === this.lastProcessKey) return
+    this.lastProcessKey = key
     for (const [localSessionId, state] of this.sessionStates) {
       this.commitSessionState(localSessionId, state, withAcpSessionProcess(state, process))
     }
@@ -613,9 +718,10 @@ export class ACPClient {
       const input = Writable.toWeb(child.stdin)
       const output = Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>
       const stream = acp.ndJsonStream(input, output)
-      // 终端能力在握手那一刻定:宿主有终端输出通道才声明、才挂方法(方案 §11.3 A3-b)。
-      const terminalAvailable = this.terminalAvailable()
-      const connection = this.connection = this.createClientApp(terminalAvailable).connect(stream)
+      // 能力在握手那一刻定:终端 / 终端登录要宿主有终端输出通道,提问要注入了提问桥
+      // (方案 §11.3 A3-b / A3-c);声明了什么就挂什么。
+      const plan = this.capabilityPlan()
+      const connection = this.connection = this.createClientApp(plan).connect(stream)
 
       // 连接断了而进程没退(对端关了 stdout、或流出错):不等 exit,先给 exit 一小段时间说清退出码,
       // 过了还没来就由这头收尾,并把那个已经说不上话的进程收掉。
@@ -644,7 +750,7 @@ export class ACPClient {
                 name: 'onething',
                 version: process.env.npm_package_version || '1.0.0',
               },
-              clientCapabilities: clientCapabilitiesFor(terminalAvailable),
+              clientCapabilities: clientCapabilitiesFor(plan),
             }),
             childSpawnError,
           ]),
@@ -790,6 +896,8 @@ export class ACPClient {
 
     promptPromise
       .then((response) => {
+        // 一轮走通 = agent 手里的凭据是好的。
+        this.setAuthRequired(false, 'prompt succeeded')
         queue.push({
           type: 'finish',
           stopReason: response.stopReason,
@@ -807,6 +915,7 @@ export class ACPClient {
         connection.agent.notify(acp.methods.agent.session.cancel, { sessionId: session.acpSessionId }).catch(cancelError => {
           log.warn('cancel after prompt failure failed', { agentId: this.id }, cancelError)
         })
+        if (isAcpAuthRequired(error)) this.setAuthRequired(true, 'session/prompt')
         queue.error(toAcpPromptError(error, this.config.name, this.authLabel))
       })
       .finally(() => {
@@ -872,10 +981,15 @@ export class ACPClient {
     const link = links?.getLink(this.id, localSessionId)
     let opened = link && link.cwd === cwd ? await this.restoreSession(localSessionId, link.acpSessionId, cwd) : undefined
     if (!opened) {
-      const response = await this.connection.agent.request(acp.methods.agent.session.new, {
-        cwd,
-        mcpServers: (this.config.mcpServers ?? []) as unknown as acp.McpServer[],
-      })
+      let response: NewSessionResponse
+      try {
+        response = await this.connection.agent.request(acp.methods.agent.session.new, {
+          cwd,
+          mcpServers: (this.config.mcpServers ?? []) as unknown as acp.McpServer[],
+        })
+      } catch (error) {
+        throw this.noteAuthFailure(error, 'session/new')
+      }
       opened = { acpSessionId: response.sessionId, options: projectACPConfigOptions(response.configOptions) }
       this.bindSessionState(localSessionId, response.sessionId)
       this.seedSessionState(localSessionId, response)
@@ -934,6 +1048,8 @@ export class ACPClient {
         return { acpSessionId, options: projectACPConfigOptions(response.configOptions) }
       }
     } catch (error) {
+      // 没登录也照旧退到新开:那一发会以同一个 `auth_required` 失败,由它把人话交给调用方。
+      if (isAcpAuthRequired(error)) this.setAuthRequired(true, 'session restore')
       log.warn('session restore failed; opening a new one', { agentId: this.id, acpSessionId }, error)
     }
     return undefined
@@ -1030,7 +1146,7 @@ export class ACPClient {
    * 与握手里的 `terminal` 能力同一个判据。没挂的方法 SDK 自己回 `Method not found`。
    * 扩展通知只接认得的那一条,别的 SDK 直接放过。
    */
-  private createClientApp(terminalAvailable: boolean): acp.ClientApp {
+  private createClientApp(plan: AcpClientCapabilityPlan): acp.ClientApp {
     const app = acp.client({ name: 'onething' })
       .onRequest(acp.methods.client.session.requestPermission, ({ params }) => this.requestPermission(params))
       .onNotification(acp.methods.client.session.update, ({ params }) => this.sessionUpdate(params))
@@ -1041,7 +1157,12 @@ export class ACPClient {
       )
       .onRequest(acp.methods.client.fs.readTextFile, ({ params }) => this.readTextFile(params))
       .onRequest(acp.methods.client.fs.writeTextFile, ({ params }) => this.writeTextFile(params))
-    if (terminalAvailable) {
+    if (plan.elicitation) {
+      app
+        .onRequest(acp.methods.client.elicitation.create, ({ params }) => this.createElicitation(params))
+        .onNotification(acp.methods.client.elicitation.complete, ({ params }) => this.completeElicitation(params))
+    }
+    if (plan.terminal) {
       app
         .onRequest(acp.methods.client.terminal.create, ({ params }) => this.createTerminal(params))
         .onRequest(acp.methods.client.terminal.output, ({ params }) => this.terminalOutput(params))
@@ -1059,6 +1180,50 @@ export class ACPClient {
       log.warn('terminal bridge availability check failed', { agentId: this.id }, error)
       return false
     }
+  }
+
+  private authTerminalAvailable(): boolean {
+    try {
+      return this.runtimeOptions.getAuthBridge?.()?.terminalAvailable() === true
+    } catch (error) {
+      log.warn('auth bridge availability check failed', { agentId: this.id }, error)
+      return false
+    }
+  }
+
+  private capabilityPlan(): AcpClientCapabilityPlan {
+    return {
+      terminal: this.terminalAvailable(),
+      authTerminal: this.authTerminalAvailable(),
+      elicitation: Boolean(this.runtimeOptions.getElicitationBridge?.()),
+    }
+  }
+
+  /**
+   * agent 要问人(A3-c):交给提问桥落成交互卡。归属与 `fs/*` 同一个判据(在飞的 prompt,
+   * 否则开着的会话);只带 `requestId`、没有会话的那种(协议里「挂在某个请求上」的一档)归不到
+   * 任何一条会话,没人看得见那张卡 —— 答 `cancel`,不挂着。
+   */
+  private async createElicitation(params: CreateElicitationRequest): Promise<CreateElicitationResponse> {
+    const bridge = this.runtimeOptions.getElicitationBridge?.()
+    if (!bridge) throw acp.RequestError.methodNotFound(acp.methods.client.elicitation.create)
+    const acpSessionId = typeof (params as { sessionId?: unknown }).sessionId === 'string'
+      ? (params as { sessionId: string }).sessionId
+      : undefined
+    if (!acpSessionId) {
+      log.info('elicitation without a session cancelled', { agentId: this.id, mode: params.mode })
+      return { action: 'cancel' }
+    }
+    const context = this.requestContext(acpSessionId, 'elicitation/create')
+    const abortSignal = this.promptContexts.get(acpSessionId)?.abortSignal
+    return this.throughBridge('elicitation/create', () => bridge.create(
+      { ...context, ...(abortSignal ? { abortSignal } : {}) },
+      params,
+    ))
+  }
+
+  private async completeElicitation(params: CompleteElicitationNotification): Promise<void> {
+    this.runtimeOptions.getElicitationBridge?.()?.complete(this.id, params.elicitationId)
   }
 
   private async requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
@@ -1159,6 +1324,9 @@ export class ACPClient {
       const label = typeof status?.label === 'string' ? status.label : undefined
       this.authLabel = kind === 'none' ? (label ?? 'not logged in') : undefined
       log.info('agent auth status', { agentId: this.id, kind, label })
+      // agent 自己说了算:推「没登录」就要登录,推别的(已登录的身份)就不要。
+      if (kind) this.setAuthRequired(kind === 'none', '_auth/status_update')
+      else this.syncProcess()
       return
     }
     log.debug('agent extension notification ignored', { agentId: this.id, method })
@@ -1324,15 +1492,28 @@ function raceAbort(
   })
 }
 
+/** 握手那一刻「这台宿主有什么」:三格各自一个判据,声明与挂方法读的是同一份。 */
+export interface AcpClientCapabilityPlan {
+  /** 终端桥在且宿主有终端输出通道。 */
+  terminal: boolean
+  /** 登录桥在且宿主有终端可跑登录程序。 */
+  authTerminal: boolean
+  /** 提问桥在。 */
+  elicitation: boolean
+}
+
 /**
  * 我们对 agent 声明的客户端能力(A3-b 起固定:能力是 onething 有什么,不是每台 agent 一个开关)。
- * 文件两条恒声明;终端只在宿主有终端输出通道时声明;`auth` / `elicitation` 与它们的处理器
- * 同批落(A3-c),这里不先声明 —— 声明了却答 method-not-found 比不声明更糟。
+ * 文件两条恒声明;终端只在宿主有终端输出通道时声明;`auth.terminal` 只在登录桥在且有终端时声明;
+ * `elicitation` 只在提问桥在时声明(A3-c)—— 声明了却答 method-not-found 比不声明更糟。
+ * claude-agent-acp 只在看到 `elicitation.form` 时才把 AskUserQuestion 发成表单,否则退化成一次审批。
  */
-export function clientCapabilitiesFor(terminalAvailable: boolean): acp.ClientCapabilities {
+export function clientCapabilitiesFor(plan: AcpClientCapabilityPlan): acp.ClientCapabilities {
   return {
     fs: { readTextFile: true, writeTextFile: true },
-    ...(terminalAvailable ? { terminal: true } : {}),
+    ...(plan.terminal ? { terminal: true } : {}),
+    ...(plan.authTerminal ? { auth: { terminal: true } } : {}),
+    ...(plan.elicitation ? { elicitation: { form: {}, url: {} } } : {}),
     session: { configOptions: {}, notices: {}, compaction: {} },
     plan: {},
   }

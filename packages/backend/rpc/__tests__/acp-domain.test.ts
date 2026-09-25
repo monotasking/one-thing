@@ -32,6 +32,7 @@ const manager = vi.hoisted(() => ({
   getSessionOptions: vi.fn(async () => ({ options: [] as unknown[], live: false })),
   setSessionOption: vi.fn(async () => ({ options: [] as unknown[], live: false })),
   getSessionState: vi.fn((_sessionId: string, _agentId?: string) => undefined as unknown),
+  getAuthBridge: vi.fn(() => undefined as unknown),
 }))
 
 const settings = vi.hoisted(() => ({
@@ -84,6 +85,7 @@ describe('acp RPC domain', () => {
     manager.getSessionOptions.mockResolvedValue({ options: [], live: false })
     manager.setSessionOption.mockResolvedValue({ options: [], live: false })
     manager.getSessionState.mockReturnValue(undefined)
+    manager.getAuthBridge.mockReturnValue(undefined)
     settings.getSettings.mockReset().mockReturnValue({
       acp: { enabled: true, agents: [AGENT] },
     })
@@ -97,7 +99,7 @@ describe('acp RPC domain', () => {
     vi.resetModules()
   })
 
-  it('exposes exactly the thirteen acp methods and refuses anything else', async () => {
+  it('exposes exactly the fourteen acp methods and refuses anything else', async () => {
     const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
     dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
@@ -120,14 +122,15 @@ describe('acp RPC domain', () => {
       'sessionState',
       'detect',
       'refreshRegistry',
+      'authenticate',
     ]
-    expect(expected).toHaveLength(13)
+    expect(expected).toHaveLength(14)
     expect([...acpRouter.methods].sort()).toEqual([...expected].sort())
     for (const method of expected) {
       const response = await dispatchRpc({
         domain: 'acp',
         method,
-        payload: { agentId: AGENT.id, sessionId: 's1', config: AGENT },
+        payload: { agentId: AGENT.id, sessionId: 's1', config: AGENT, methodId: 'm1' },
       })
       expect(response.ok, method).toBe(true)
     }
@@ -360,6 +363,21 @@ describe('acp RPC domain', () => {
       })
       expect(missingBase.ok && missingBase.data).toEqual({ success: false, error: 'ACP agent "ghost" not found' })
     })
+  })
+
+  it('authenticate 交给登录桥;没挂桥答 unavailable(A3-c)', async () => {
+    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
+    resetRpcRegistryForTests()
+    dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
+
+    const none = await dispatchRpc({ domain: 'acp', method: 'authenticate', payload: { agentId: AGENT.id, methodId: 'login' } })
+    expect(none.ok && none.data).toMatchObject({ ok: false, code: 'unavailable' })
+
+    const authenticate = vi.fn(async () => ({ ok: true, terminalId: 't-1' }))
+    manager.getAuthBridge.mockReturnValue({ terminalAvailable: () => true, authenticate })
+    const started = await dispatchRpc({ domain: 'acp', method: 'authenticate', payload: { agentId: AGENT.id, methodId: 'login' } })
+    expect(started.ok && started.data).toEqual({ ok: true, terminalId: 't-1' })
+    expect(authenticate).toHaveBeenCalledWith(AGENT.id, 'login')
   })
 
   it('reports a manager failure as a structured error, not a thrown dispatch', async () => {

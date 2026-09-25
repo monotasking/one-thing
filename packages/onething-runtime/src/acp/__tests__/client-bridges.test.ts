@@ -64,13 +64,17 @@ afterEach(() => {
 })
 
 describe('clientCapabilitiesFor', () => {
-  it('fs 两条恒声明;terminal 只在有通道时声明;auth / elicitation 留给 A3-c', () => {
-    expect(clientCapabilitiesFor(false)).toEqual({
+  const none = { terminal: false, authTerminal: false, elicitation: false }
+  it('fs 两条恒声明;terminal / auth.terminal / elicitation 各按自己的判据声明', () => {
+    expect(clientCapabilitiesFor(none)).toEqual({
       fs: { readTextFile: true, writeTextFile: true },
       session: { configOptions: {}, notices: {}, compaction: {} },
       plan: {},
     })
-    expect(clientCapabilitiesFor(true)).toMatchObject({ terminal: true })
+    expect(clientCapabilitiesFor({ ...none, terminal: true })).toMatchObject({ terminal: true })
+    expect(clientCapabilitiesFor({ ...none, authTerminal: true })).toMatchObject({ auth: { terminal: true } })
+    expect(clientCapabilitiesFor({ ...none, elicitation: true })).toMatchObject({ elicitation: { form: {}, url: {} } })
+    expect(clientCapabilitiesFor({ ...none, elicitation: true })).not.toHaveProperty('auth')
   })
 })
 
