@@ -3,13 +3,9 @@ import { randomUUID } from 'crypto'
 import { promises as fs } from 'fs'
 import { dirname, isAbsolute, resolve } from 'path'
 import { Readable, Writable } from 'stream'
-import {
-  ClientSideConnection,
-  PROTOCOL_VERSION,
-  ndJsonStream,
-} from '@agentclientprotocol/sdk'
+import * as acp from '@agentclientprotocol/sdk'
 import type {
-  Client,
+  ClientConnection,
   CreateTerminalRequest,
   CreateTerminalResponse,
   InitializeResponse,
@@ -23,7 +19,6 @@ import type {
   RequestPermissionResponse,
   SessionConfigOption,
   SessionNotification,
-  StopReason,
   TerminalOutputRequest,
   TerminalOutputResponse,
   WaitForTerminalExitRequest,
@@ -58,6 +53,11 @@ const DEFAULT_MAX_SESSION_RECORDS = 100
 const DEFAULT_MAX_TERMINALS = 32
 const DEFAULT_MAX_TERMINAL_OUTPUT_BYTES = 1024 * 1024
 const MAX_FILE_READ_BYTES = 1024 * 1024
+/**
+ * 连接先断、进程还没报 exit 时,给 exit 留的一小段时间:agent 崩掉时 stdout 的 EOF 常比
+ * `exit` 事件早到,等一下就能把退出码写进那句报错;真是「连接断了、进程还活着」才由连接这头收尾。
+ */
+const CONNECTION_CLOSED_EXIT_GRACE_MS = 250
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
@@ -65,12 +65,19 @@ function errorMessage(error: unknown): string {
   return rpc ? rpc.message : String(error)
 }
 
+/** claude-agent-acp 推登录状态用的扩展通知。 */
+const AUTH_STATUS_UPDATE_METHOD = '_auth/status_update'
+
 /** ACP 规范给 `authRequired` 的 JSON-RPC 错误码。 */
 const ACP_AUTH_REQUIRED_CODE = -32000
 
-/** 对端回来的 JSON-RPC 错误是**普通对象**(`{code, message, data}`),不是 `Error`。 */
+/**
+ * 对端回来的 JSON-RPC 错误:0.x 的 SDK 原样 reject 成**普通对象**(`{code, message, data}`),
+ * 1.x 包成 `RequestError`(是 `Error`,但 agent 的原话在 `data` 里)—— 两种都认。
+ */
 function rpcErrorShape(error: unknown): { code?: number; message: string; data?: unknown } | undefined {
-  if (!error || typeof error !== 'object' || error instanceof Error) return undefined
+  if (!error || typeof error !== 'object') return undefined
+  if (error instanceof Error && !(error instanceof acp.RequestError)) return undefined
   const { code, message, data } = error as { code?: unknown; message?: unknown; data?: unknown }
   if (typeof message !== 'string') return undefined
   return { ...(typeof code === 'number' ? { code } : {}), message, ...(data === undefined ? {} : { data }) }
@@ -95,9 +102,8 @@ function describeRpcData(data: unknown): string {
  * 要去**它自己的** CLI 里登录;`authLabel` 是 agent 经 `_auth/status_update` 推来的原话。
  */
 export function toAcpPromptError(error: unknown, agentName: string, authLabel?: string): Error {
-  if (error instanceof Error) return error
   const rpc = rpcErrorShape(error)
-  if (!rpc) return new Error(String(error))
+  if (!rpc) return error instanceof Error ? error : new Error(String(error))
   const detail = describeRpcData(rpc.data)
   if (rpc.code === ACP_AUTH_REQUIRED_CODE) {
     const why = authLabel || detail || rpc.message
@@ -300,7 +306,7 @@ interface TerminalRecord {
 
 export class ACPClient {
   private child: ChildProcessWithoutNullStreams | null = null
-  private connection: ClientSideConnection | null = null
+  private connection: ClientConnection | null = null
   private connectionGeneration = {}
   private initResponse: InitializeResponse | null = null
   private statusValue: ACPConnectionStatus = 'disconnected'
@@ -393,6 +399,8 @@ export class ACPClient {
     this.stderrTail = ''
     this.unexpectedExit = true
     const generation = this.connectionGeneration = {}
+    // 这一代连接收过尾没有;握手失败走 catch 自己收,也要把它置上,免得迟到的关闭把 error 改回 disconnected。
+    let ended = false
 
     try {
       const child = spawn(this.config.command, this.config.args ?? [], {
@@ -412,32 +420,59 @@ export class ACPClient {
         this.stderrTail = trimToBytes(next, 16 * 1024).text
       })
 
-      child.once('exit', (code, signal) => {
-        if (this.connectionGeneration !== generation) return
-        const suffix = this.stderrTail ? ` stderr: ${this.stderrTail.slice(-1000)}` : ''
+      // 连接的收尾只有一条:进程退出与连接关闭(stdout 到头、对端关流)都走这里,
+      // 谁先到谁收,第二次进来什么都不做 —— 否则后到的那个会把先到的原因盖掉。
+      const endConnection = (reason: string) => {
+        if (ended || this.connectionGeneration !== generation) return
+        ended = true
         if (this.unexpectedExit) {
           this.statusValue = 'error'
-          this.errorValue = `ACP agent exited${code !== null ? ` with code ${code}` : ''}${signal ? ` by signal ${signal}` : ''}.${suffix}`
+          this.errorValue = reason
         } else {
           this.statusValue = 'disconnected'
         }
         this.connection = null
-        this.child = null
         this.connectedAtValue = undefined
         this.failAllQueues(new Error(this.errorValue || 'ACP agent disconnected'))
         this.releaseAllTerminals()
+      }
+      const stderrSuffix = () => (this.stderrTail ? ` stderr: ${this.stderrTail.slice(-1000)}` : '')
+
+      child.once('exit', (code, signal) => {
+        if (this.connectionGeneration !== generation) return
+        if (this.child === child) this.child = null
+        endConnection(
+          `ACP agent exited${code !== null ? ` with code ${code}` : ''}${signal ? ` by signal ${signal}` : ''}.${stderrSuffix()}`,
+        )
       })
 
       const input = Writable.toWeb(child.stdin)
       const output = Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>
-      const stream = ndJsonStream(input, output)
-      this.connection = new ClientSideConnection(() => this.createClientHandlers(), stream)
+      const stream = acp.ndJsonStream(input, output)
+      const connection = this.connection = this.createClientApp().connect(stream)
+
+      // 连接断了而进程没退(对端关了 stdout、或流出错):不等 exit,先给 exit 一小段时间说清退出码,
+      // 过了还没来就由这头收尾,并把那个已经说不上话的进程收掉。
+      // `closed` 按 d.ts 只 resolve;但它是一条 promise,流出错真 reject 的话没人接就是 unhandledRejection,
+      // 会被崩溃钩子记成 fatal —— 两个分支都收进同一个收尾。
+      const onConnectionClosed = () => {
+        if (ended || this.connectionGeneration !== generation) return
+        setTimeout(() => {
+          if (ended || this.connectionGeneration !== generation) return
+          endConnection(`ACP agent "${this.config.name}" closed its connection.${stderrSuffix()}`)
+          if (this.child === child) {
+            this.child = null
+            if (child.exitCode === null && child.signalCode === null) child.kill()
+          }
+        }, CONNECTION_CLOSED_EXIT_GRACE_MS)
+      }
+      connection.closed.then(onConnectionClosed, onConnectionClosed)
 
       try {
         this.initResponse = await withTimeout(
           Promise.race([
-            this.connection.initialize({
-              protocolVersion: PROTOCOL_VERSION,
+            connection.agent.request(acp.methods.agent.initialize, {
+              protocolVersion: acp.PROTOCOL_VERSION,
               clientInfo: {
                 name: 'onething',
                 version: process.env.npm_package_version || '1.0.0',
@@ -473,6 +508,7 @@ export class ACPClient {
         agent: this.initResponse.agentInfo?.name,
       })
     } catch (error) {
+      ended = true
       const failure = describeConnectFailure(this.config.command, error, this.stderrTail)
       log.error('agent connect failed', {
         agentId: this.id,
@@ -493,7 +529,9 @@ export class ACPClient {
     this.releaseAllTerminals()
     this.sessions.clear()
     this.initResponse = null
+    const connection = this.connection
     this.connection = null
+    connection?.close()
 
     const child = this.child
     this.child = null
@@ -523,7 +561,7 @@ export class ACPClient {
   async cancelLocalSession(localSessionId: string): Promise<void> {
     const session = this.sessions.get(localSessionId)
     if (!session || !this.connection) return
-    await this.connection.cancel({ sessionId: session.acpSessionId })
+    await this.connection.agent.notify(acp.methods.agent.session.cancel, { sessionId: session.acpSessionId })
   }
 
   async *streamPrompt(options: ACPPromptStreamOptions): AsyncGenerator<ACPPromptStreamEvent, void, unknown> {
@@ -548,7 +586,7 @@ export class ACPClient {
     let abortListener: (() => void) | undefined
     if (options.abortSignal) {
       abortListener = () => {
-        connection.cancel({ sessionId: session.acpSessionId }).catch(error => {
+        connection.agent.notify(acp.methods.agent.session.cancel, { sessionId: session.acpSessionId }).catch(error => {
           log.warn('cancel failed', { agentId: this.id }, error)
         })
       }
@@ -560,9 +598,8 @@ export class ACPClient {
     }
 
     const promptPromise = withTimeout(
-      connection.prompt({
+      connection.agent.request(acp.methods.agent.session.prompt, {
         sessionId: session.acpSessionId,
-        messageId: randomUUID(),
         prompt: [{ type: 'text', text: options.prompt }],
       }),
       this.config.promptTimeoutMs ?? DEFAULT_PROMPT_TIMEOUT_MS,
@@ -585,7 +622,7 @@ export class ACPClient {
         queue.end()
       })
       .catch((error) => {
-        connection.cancel({ sessionId: session.acpSessionId }).catch(cancelError => {
+        connection.agent.notify(acp.methods.agent.session.cancel, { sessionId: session.acpSessionId }).catch(cancelError => {
           log.warn('cancel after prompt failure failed', { agentId: this.id }, cancelError)
         })
         queue.error(toAcpPromptError(error, this.config.name, this.authLabel))
@@ -643,7 +680,9 @@ export class ACPClient {
   ): Promise<ACPSessionRecord> {
     if (!this.connection) throw new Error('ACP connection is not available')
     if (existing) {
-      await this.connection.cancel({ sessionId: existing.acpSessionId }).catch(() => undefined)
+      await this.connection.agent
+        .notify(acp.methods.agent.session.cancel, { sessionId: existing.acpSessionId })
+        .catch(() => undefined)
       this.sessions.delete(localSessionId)
     }
 
@@ -651,9 +690,9 @@ export class ACPClient {
     const link = links?.getLink(this.id, localSessionId)
     let opened = link && link.cwd === cwd ? await this.restoreSession(link.acpSessionId, cwd) : undefined
     if (!opened) {
-      const response = await this.connection.newSession({
+      const response = await this.connection.agent.request(acp.methods.agent.session.new, {
         cwd,
-        mcpServers: (this.config.mcpServers ?? []) as any,
+        mcpServers: (this.config.mcpServers ?? []) as unknown as acp.McpServer[],
       })
       opened = { acpSessionId: response.sessionId, options: projectACPConfigOptions(response.configOptions) }
     }
@@ -683,15 +722,23 @@ export class ACPClient {
     const connection = this.connection
     if (!connection) return undefined
     const capabilities = this.initResponse?.agentCapabilities
-    const mcpServers = (this.config.mcpServers ?? []) as any
+    const mcpServers = (this.config.mcpServers ?? []) as unknown as acp.McpServer[]
     try {
       if (capabilities?.sessionCapabilities?.resume) {
-        const response = await connection.unstable_resumeSession({ sessionId: acpSessionId, cwd, mcpServers })
+        const response = await connection.agent.request(acp.methods.agent.session.resume, {
+          sessionId: acpSessionId,
+          cwd,
+          mcpServers,
+        })
         log.info('session resumed', { agentId: this.id, acpSessionId })
         return { acpSessionId, options: projectACPConfigOptions(response.configOptions) }
       }
       if (capabilities?.loadSession) {
-        const response = await connection.loadSession({ sessionId: acpSessionId, cwd, mcpServers })
+        const response = await connection.agent.request(acp.methods.agent.session.load, {
+          sessionId: acpSessionId,
+          cwd,
+          mcpServers,
+        })
         log.info('session loaded', { agentId: this.id, acpSessionId })
         return { acpSessionId, options: projectACPConfigOptions(response.configOptions) }
       }
@@ -717,7 +764,7 @@ export class ACPClient {
 
   private async writeOption(session: ACPSessionRecord, optionId: string, value: string): Promise<void> {
     if (!this.connection) throw new Error('ACP connection is not available')
-    const response = await this.connection.setSessionConfigOption({
+    const response = await this.connection.agent.request(acp.methods.agent.session.setConfigOption, {
       sessionId: session.acpSessionId,
       configId: optionId,
       value,
@@ -785,19 +832,33 @@ export class ACPClient {
     return session.options
   }
 
-  private createClientHandlers(): Client {
-    return {
-      requestPermission: (params) => this.requestPermission(params),
-      sessionUpdate: (params) => this.sessionUpdate(params),
-      readTextFile: this.config.allowFileSystemAccess ? (params) => this.readTextFile(params) : undefined,
-      writeTextFile: this.config.allowFileSystemAccess ? (params) => this.writeTextFile(params) : undefined,
-      createTerminal: this.config.allowTerminalAccess ? (params) => this.createTerminal(params) : undefined,
-      terminalOutput: this.config.allowTerminalAccess ? (params) => this.terminalOutput(params) : undefined,
-      waitForTerminalExit: this.config.allowTerminalAccess ? (params) => this.waitForTerminalExit(params) : undefined,
-      killTerminal: this.config.allowTerminalAccess ? (params) => this.killTerminal(params) : undefined,
-      releaseTerminal: this.config.allowTerminalAccess ? (params) => this.releaseTerminal(params) : undefined,
-      extNotification: (method, params) => this.extNotification(method, params),
+  /**
+   * 这一侧答得了的方法表。文件与终端仍按这台 agent 的 allow* 开关挂(能力何时固定是后面一单的事);
+   * 没挂的方法 SDK 自己回 `Method not found`。扩展通知只接认得的那一条,别的 SDK 直接放过。
+   */
+  private createClientApp(): acp.ClientApp {
+    const app = acp.client({ name: 'onething' })
+      .onRequest(acp.methods.client.session.requestPermission, ({ params }) => this.requestPermission(params))
+      .onNotification(acp.methods.client.session.update, ({ params }) => this.sessionUpdate(params))
+      .onNotification(
+        AUTH_STATUS_UPDATE_METHOD,
+        (raw: unknown) => (raw && typeof raw === 'object' ? raw as Record<string, unknown> : {}),
+        ({ params }) => this.extNotification(AUTH_STATUS_UPDATE_METHOD, params),
+      )
+    if (this.config.allowFileSystemAccess) {
+      app
+        .onRequest(acp.methods.client.fs.readTextFile, ({ params }) => this.readTextFile(params))
+        .onRequest(acp.methods.client.fs.writeTextFile, ({ params }) => this.writeTextFile(params))
     }
+    if (this.config.allowTerminalAccess) {
+      app
+        .onRequest(acp.methods.client.terminal.create, ({ params }) => this.createTerminal(params))
+        .onRequest(acp.methods.client.terminal.output, ({ params }) => this.terminalOutput(params))
+        .onRequest(acp.methods.client.terminal.waitForExit, ({ params }) => this.waitForTerminalExit(params))
+        .onRequest(acp.methods.client.terminal.kill, ({ params }) => this.killTerminal(params))
+        .onRequest(acp.methods.client.terminal.release, ({ params }) => this.releaseTerminal(params))
+    }
+    return app
   }
 
   private async requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
@@ -876,12 +937,11 @@ export class ACPClient {
   }
 
   /**
-   * ACP 的扩展通知(方法名以 `_` 起头)。不接的话 SDK 回 `Method not found` 并往 stderr
-   * 打一整段对象 —— claude-agent-acp 连上就推一条 `_auth/status_update`。扩展按规范是
-   * 可选的,认得的记下来、不认得的记一行 debug 就放过。
+   * ACP 的扩展通知(方法名以 `_` 起头)。claude-agent-acp 连上就推一条 `_auth/status_update`,
+   * 它是「没登录」那句人话的来源;1.x 的 SDK 对没登记的通知静默放过,所以这里只登记认得的。
    */
   private async extNotification(method: string, params: Record<string, unknown>): Promise<void> {
-    if (method === '_auth/status_update') {
+    if (method === AUTH_STATUS_UPDATE_METHOD) {
       const status = params.authStatus as { kind?: unknown; label?: unknown } | undefined
       const kind = typeof status?.kind === 'string' ? status.kind : undefined
       const label = typeof status?.label === 'string' ? status.label : undefined

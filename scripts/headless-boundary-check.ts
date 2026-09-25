@@ -4120,7 +4120,8 @@ function checkRuntimeOwnsAcpClientRuntime(): void {
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const requiredClientSymbols = [
     'ACPClient',
-    'ClientSideConnection',
+    // A0-1(SDK 1.x):连接对象由 `acp.client(...).connect(stream)` 建,旧的 ClientSideConnection 已弃用。
+    'acp.client(',
     'ndJsonStream',
     'streamPrompt',
     'createTerminal',

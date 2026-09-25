@@ -2,9 +2,11 @@
 // 会话存在 FAKE_AGENT_DIR 下的 JSON 里,所以进程重启之后还能 load 回来 ——
 // 这正是「会话在 agent 自己那里」那件事的缩影。
 // FAKE_AGENT_CAPS = 'load' | 'resume' | 'none' 决定它声明哪种恢复能力。
+// FAKE_AGENT_CLOSE_ON_PROMPT=1:收到 prompt 就关掉自己的 stdout(连接断),进程却再活一阵 ——
+// 用来证明客户端不等进程退出、凭连接关闭就收尾。
 import { AgentSideConnection, PROTOCOL_VERSION, RequestError, ndJsonStream } from '@agentclientprotocol/sdk'
 import { Readable, Writable } from 'node:stream'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
@@ -50,7 +52,7 @@ new AgentSideConnection(conn => ({
     })
     return { configOptions: configOptions({ ...s, model: 'alpha' }) }
   },
-  async unstable_resumeSession(params) {
+  async resumeSession(params) {
     const s = readSession(params.sessionId)
     if (!s) throw new Error(`Unknown sessionId: ${params.sessionId}`)
     logCall({ method: 'resume', id: s.id })
@@ -64,6 +66,12 @@ new AgentSideConnection(conn => ({
     return { configOptions: configOptions(s) }
   },
   async prompt(params) {
+    if (process.env.FAKE_AGENT_CLOSE_ON_PROMPT === '1') {
+      logCall({ method: 'close-on-prompt', pid: process.pid })
+      closeSync(1)
+      setTimeout(() => process.exit(0), 10_000)
+      return new Promise(() => {})
+    }
     // 模拟 claude-agent-acp 登录过期:先吐一句正文,再以 authRequired 拒掉这一轮。
     if (process.env.FAKE_AGENT_FAIL === 'auth') {
       await conn.sessionUpdate({

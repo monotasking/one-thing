@@ -5,7 +5,7 @@
     "": {
       "name": "onething",
       "dependencies": {
-        "@agentclientprotocol/sdk": "^0.17.1",
+        "@agentclientprotocol/sdk": "^1.5.0",
         "@ant-design/colors": "^8.0.1",
         "@anthropic-ai/claude-agent-sdk": "^0.3.214",
         "@deepseek-ai/cordis": "4.0.1",
@@ -99,7 +99,7 @@
   "packages": {
     "7zip-bin": ["7zip-bin@5.2.0", "", {}, ""],
 
-    "@agentclientprotocol/sdk": ["@agentclientprotocol/sdk@0.17.1", "", { "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" } }, ""],
+    "@agentclientprotocol/sdk": ["@agentclientprotocol/sdk@1.5.0", "", { "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" } }, "sha512-524jwbB2iYWA+kWWyv9fhKbhU89dH/lu9u5EXwVNmfYzopV8BujCDxByBDZhxRUkB7RWIJzISCnwivdDk+bdVg=="],
 
     "@ant-design/colors": ["@ant-design/colors@8.0.1", "", { "dependencies": { "@ant-design/fast-color": "^3.0.0" } }, "sha512-foPVl0+SWIslGUtD/xBr1p9U4AKzPhNYEseXYRRo5QSzGACYZrQbe11AYJbYfAWnWSpGBx6JjBmSeugUsD9vqQ=="],
 
