@@ -3513,3 +3513,69 @@ P4-b 里今天就能站住的两件,先记着不派:
    `shrink: 'never'` 的型任何变矮都是违例、`liveForm: 'fixed'` 的型流式期间任何变高都是
    违例 —— 判据从段表读,不在账本里再写一遍型的名字。
 「首次上屏时刻」那一格(§3.5)P4-0 没有消费者,不立。
+
+### 21.5 P4-a 施工单(2026-09-25,按 §21.3 读数定)
+
+§21.4 那两件留给 P4-b。P4-a 治的是 Q1 量出来与历史长度同量级、而且**产品侧有把手**的
+三格,外加 Q2 的结论落地。**用户可感知行为零变化**:这一单只改「谁在每帧被重新算」,
+屏幕上一个像素都不该变;判据是探针读数与既有门。
+
+#### ① 行元素冻结 —— `ChatStream.tsx` 那张行表(§21.3:React render 一格的一半)
+
+病:每一帧 `compose` 换一次 `messages` 数组,行表那句 `visible.flatMap(...)` 就把 412 行的
+React 元素**重新造一遍**;`MessageRow` 的 memo 只省了它的渲染,省不了父层为每一行**新造元素
++ 调一次浅比**这一段(超量档 490ms 一轮,短会话排不进前八)。
+
+治:一本**行元素账**(`content/row-elements.ts`,纯函数 + 一张按消息 id 的 Map,零 DOM):
+每条消息记 `{ inputs, element }`,`inputs` = 这一行元素依赖的全部输入(消息对象引用、
+`streaming` / `flash` / `retiring` 三个布尔、`t`、`sessionId`、有没有上下文更新折痕);
+下一帧输入逐格 `===` 就交回**同一个元素对象**。React 对同一个元素引用直接走
+`bailoutOnAlreadyFinishedWork`(连 memo 的比较函数都不调),412 行里只有活的那一两行真造元素。
+在飞那几格(overlay)按 `entry` 引用同法。账的寿命 = 这片 `ChatStream` 挂载(实例持有,
+换会话清空;不是模块级,所以不必配 HMR)。**key 与顺序一格不动** —— 那张表「账本行与在飞行
+是一张有序表」的判词(09-14)原样成立,只是元素从账里取而不是现造。
+
+判据:`probe-stream-cost` 的 React render 格 big − short 的 p95 差从 +8.8ms 降到 **≤ 2ms**,
+`flatMap` 那只回调从该格的产品函数榜上消失;`gate:stream-geometry` ⑦ 超量档长帧数不升
+(它本来就抖,只要求不升,读三趟)。
+
+#### ② TOC 锚点扫描 —— `toc/useChatToc.ts` 的 `anchorNodes`(§21.3:其余 JS 一格过半)
+
+病:`measureAnchors` 每次都 `querySelectorAll('[data-message-id]')` 扫整列再建一张 Map;
+超量档一轮 67 + 38 + 19ms。
+
+治:锚点节点表按**结构版本**缓存,不按帧:`anchorIds` 数组身份没变、窗口起点没变、
+容器没换,就复用上一张 Map;变了才重扫。测量(`getBoundingClientRect`)照旧每次做 ——
+它是坐标不是结构。**不许**用 MutationObserver 之类再长一只观察者。
+必须有一条单测钉「新消息落账之后下一次调用能找到它」(缓存不许陈旧)。
+
+判据:其余 JS 格 big − short 的 p95 差 ≤ 0.3ms(从 +1.34),`anchorNodes` 出榜。
+
+#### ③ Q2 落地 —— `gate:fold-collapse` ⑤ 改读「画出来的那一份」
+
+§21.3 Q2 的结论:那 11,454px 是浏览器滚动锚定推的,同一帧被 `ViewportAnchor.onResize` 写回,
+**从未画出来**;⑤ 的红是取样器自己那次强制排版读到的瞬间。裁定:**产品不改**(`.seat` 那段
+注释的规矩:一条证明不了自己的规则不留;`overflow-anchor: none` 只治一个没人看得见的数),
+§21.1 表第二行那个「先问」的拍点因此不立 —— 没有可感知行为可拍。
+改的是门:⑤ 的取样口换成 `gate:tail-jitter` 那一只(`requestAnimationFrame` 里 `postMessage`
+出去的宏任务,§10.2 ①),与这一线其余门同一把尺。改完 `gate:fold-collapse --big` 跑 3 趟应绿,
+**进 `npm run verify`**;§19.8 第 1 条结案(结论写进 §19.8 那一行,不删原文)。
+`--trace-writes` / `--trace-paint` / `--no-overflow-anchor` 三个开关留着当排障口。
+
+#### 不动的,记在这儿
+
+- **每行订阅选择器**(chat.compose 格 +0.79ms p95):`PermissionSlot` 按工具调用一只、
+  `MessageActions` 每行三只,zustand 每次 `set` 同步跑全部。把手是合选择器或上提订阅,
+  收益 < 1ms p95,这一单不动,留 P4-b 一起看。
+- **原生可见性判定与 PrePaint**(其余原生 +582ms 一轮):跟着 417 行 `content-visibility: auto`
+  的数量走,产品侧没有比「减少 DOM 里的行数」更近的把手,而那是虚拟化,本线技术栈裁定不做。
+  记在留账,不立单。
+
+#### 验收
+
+- ①②各自的判据读数(`probe-stream-cost` 三趟中位,前后对照贴表);
+- `npx vitest run src/content src/toc`、`npm run typecheck`、eslint 改动文件、`ui:consume` /
+  `motion-gate` / `squeeze-gate`;
+- 真机门:`gate:stream-geometry`(三趟,⑦ 不升)、`gate:tail-jitter`、`gate:fold-collapse`
+  (短会话档 + `--big` 各 3 趟,全绿)、`gate:chat-follow`、`gate:send-flow`;
+- 屏幕零变化的证词:`gate:stream-geometry` 与 `gate:send-flow` 的几何读数与 §19 终局同量级。
