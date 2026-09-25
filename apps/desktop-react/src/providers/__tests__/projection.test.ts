@@ -147,8 +147,10 @@ describe('modeStateFact', () => {
 
 describe('isModeConfigured', () => {
   it('本地坑与自定义坑零凭证 —— 说它们「未配置」没有意义', () => {
-    const local = buildFamilies([info('acp', { requiresApiKey: false })])
-    expect(isModeConfigured(local[0].modes[0], UNKNOWN)).toBe(true)
+    // acp 那一坑不再进名册(agent 不画成模型服务,2026-09-26),判据本身仍按模式种类答。
+    expect(buildFamilies([info('acp', { requiresApiKey: false })])).toEqual([])
+    const mode = { providerId: 'acp', kind: 'acp', name: 'ACP', requiresApiKey: false, requiresOAuth: false, defaultBaseUrl: '' } as const
+    expect(isModeConfigured(mode, UNKNOWN)).toBe(true)
   })
 })
 

@@ -1,4 +1,11 @@
-/* 左栏:头(标题 + 读数 + 搜索)/ 身(三组可滚)/ 脚(新建钮)。
+/* **名册左栏**(`ui/Rail`)。头(标题 + 读数 + 搜索)/ 身(分组可滚)/ 脚(新建钮)。
+ *
+ * 09-26 从 `providers/components/ProviderRail.module.css` 原样搬来(A1-b:设置页
+ * 「Agent」那一页要同一条左栏,而复制一份就是两个会漂的产地)。像素零改动,
+ * 改的只有收起档的容器名:`providers-panel` → `rail-host` —— 这条栏不再只属于
+ * 模型服务那一块面,**谁摆它,谁在自己的面板上声明 `container-name: rail-host`**
+ * (今天两处:`ProviderSettingsPanel.module.css` 与 `AgentsSettings.module.css`)。
+ *
  * 三种形态(舞台 / 浮窗 / 架子)共用这一份,所以这里不写任何与形态有关的尺寸。
  *
  * 不另铺衬面,与所在面板同底(`ProviderSettingsPanel` / `ProviderDetail` 都铺
@@ -211,8 +218,8 @@
 /*
  * ── 收起档:一条 44px 的图标条(09-11,报障「模型配置页面没有响应式布局」)────
  *
- * 判据是**面板的宽**,不是窗口、不是宿主:`@container providers-panel`,容器声明在
- * ProviderSettingsPanel.module.css 的 `.panel` 上。阈值 726 与它的账在 tokens.css
+ * 判据是**面板的宽**,不是窗口、不是宿主:`@container rail-host`,容器声明在
+ * 摆它的那块面板的根上(模型服务 / Agent 两页各一处)。阈值 726 与它的账在 tokens.css
  * 的 `--pv-panel-rail-collapse`:左栏 268 + 详情内衬 58 + 目录**地板** 400 = 726 ——
  * 也就是「让开左栏之后目录连地板三列都保不住」的那条线(09-14 用户裁定;
  * 09-11 那条「还保得住五列」的账 894/899 作废,理由与重算写在 token 那一格上)。
@@ -225,7 +232,7 @@
  * 切档不换 DOM、不重挂、不 FLIP(挤压四律「切档必须是布局连续的」第 1 条):
  * 同一棵树,只改宽与几个 display —— 选中态与滚动位天然保住,因为它们从来没被销毁过。
  */
-@container providers-panel (max-width: 726px) {
+@container rail-host (max-width: 726px) {
   .rail:not([data-expanded='true']) {
     width: var(--pv-rail-collapsed-w);
   }

@@ -240,6 +240,8 @@ export interface AcpSessionState {
 
 模型选择器:agent 行带来源徽标与探测状态(未安装的置灰,悬停给装法);右卡 `AgentOptionsCard` 维持,**模式作为第一行 select 并进去**(`modes` 折成一个 `mode` 选项,`setSessionOption('mode')` 走 `session/set_mode`),boolean 型 config option 画成 `Switch`。
 
+**agent 不是模型(用户 2026-09-26 裁定)**:今天 `acpAgentToOnethingOpenRouterModel` 把每台 agent 伪装成一个模型(`context_length: 128000` 是编的),选择器把它列在 provider「ACP」组下带上下文格,模型设置页把它当一家普通厂商列在「本地」组里勾模型——三处都不对。改法:①目录投影不再编上下文长度(空),`providerMetadata.acp` 带 `agent: true` / `source` / `installed`,壳的 `ModelCatalog` 据此推出 `kind: 'agent' | 'model'`,**渲染一律按 kind 分支,不按 provider id 字符串**;②composer 选择器里 agent 自成一组「Agent」(图标 / 名字 / 状态词「未安装 · 未登录 · 就绪 · 运行中」/ 来源丸),没有上下文格、没有能力图标,选中仍走原路(`provider: 'acp'`, `model: agentId`,数据模型不动),右卡是 `AgentOptionsCard`;③模型设置页的「本地」组里不再有 ACP 与 `claude-code-agent` 两家,agent 的管理只在「Agent」页,`[AIProvider.ACP].selectedModels` 不再决定谁上榜——上榜的是名册里启用的 agent(未安装的置灰给装法);④上下文用量不在选择器里显示,它来自 agent 自报的 `usage_update`,落在 composer 的 MeterCard(A2-c)。A1-b 承接①②③。
+
 **composer 上本来就有的三个控件,按协议的 `category` 认领 agent 的选项,不按 agent 名字**(`SessionConfigOptionCategory = 'mode' | 'model' | 'model_config' | 'thought_level' | string`,协议正文里的四个值;claude-agent-acp 的 `model` / `effort` / `mode` / `fast` 四个选项分别标着 `model` / `thought_level` / `mode` / `model_config`,核过 `dist/session-{model,effort,mode}.js`):
 
 | composer 控件 | 认领 category | 行为 |

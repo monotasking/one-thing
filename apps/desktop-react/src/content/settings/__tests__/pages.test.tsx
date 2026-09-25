@@ -38,9 +38,9 @@ describe('设置页表', () => {
     for (const page of SETTINGS_PAGES) expect(settingsPageOf(page.id)).toBe(page)
   })
 
-  it('`layout` 只有两档,而 `fill` 今天只有模型服务那一页', () => {
+  it('`layout` 只有两档,而 `fill` 今天是模型服务与 Agent 两页(两块 `ui/Rail` + 详情的两栏面)', () => {
     for (const page of SETTINGS_PAGES) expect(['form', 'fill']).toContain(page.layout)
-    expect(SETTINGS_PAGES.filter((p) => p.layout === 'fill').map((p) => p.id)).toEqual(['models'])
+    expect(SETTINGS_PAGES.filter((p) => p.layout === 'fill').map((p) => p.id)).toEqual(['models', 'agents'])
   })
 
   it('导航行与页标题共用的那个键,zh / en 都译过(不是拿 key 当文案画)', () => {

@@ -38,6 +38,28 @@ export function modeKindOf(info: ProviderInfo): ProviderModeKind {
   return 'api'
 }
 
+/**
+ * **这一种模式是一台本机 agent,不是一个模型服务**(2026-09-26 用户裁定:「ACP agent
+ * 不许被画成普通模型 —— 选择器里不许,模型设置页里也不许」)。
+ *
+ * 判据读的是**模式种类**,不是 provider id 字串:哪几个 id 是本地那两种,只在上面
+ * `LOCAL_MODE_KINDS` 那一处点名。两个读者:
+ *  · `buildFamilies` —— 这两种不进「模型服务」那张名册(它们的家是设置页「Agent」那一页);
+ *  · 模型选择器 —— 这两种的行不排在模型的组里,另起一组「Agent」。
+ */
+export function isAgentKind(kind: ProviderModeKind): boolean {
+  return kind === 'acp' || kind === 'localCli'
+}
+
+/**
+ * 只凭 provider id 答「它是不是 agent 那一种」。给手上只有 id 的读者(选择器的组表只有
+ * id + 名);答案仍由 `LOCAL_MODE_KINDS` 那一张表说了算,不在读者那里再点一次名。
+ */
+export function isAgentProviderId(providerId: string): boolean {
+  const kind = LOCAL_MODE_KINDS[providerId]
+  return kind !== undefined && isAgentKind(kind)
+}
+
 export function groupOfKind(kind: ProviderModeKind): RailGroup {
   if (kind === 'custom') return 'custom'
   if (kind === 'acp' || kind === 'localCli') return 'local'
@@ -108,6 +130,8 @@ export function buildFamilies(
     if (!info?.id) continue
     // 自定义 provider 不该同时从两条路进来(名册里通常没有它们,但真有也不重复)。
     if (customProviders.some((c) => c.id === info.id)) continue
+    // agent 那两种不是模型服务,不进这张名册(判据与出处见 `isAgentKind`)。
+    if (isAgentKind(modeKindOf(info))) continue
     const familyId = providerFamilyOf(info.id)?.id ?? info.id
     let bucket = byFamily.get(familyId)
     if (!bucket) {

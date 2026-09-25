@@ -377,8 +377,11 @@ describe('onething model registry helpers', () => {
       id: 'agent-1',
       name: 'agent-1',
       description: 'ACP agent command: codex --fast',
+      // agent 不是一型模型:窗口不编(0 = 不知道),`agent: true` 是壳侧判 kind 的唯一判据。
+      context_length: 0,
       providerMetadata: {
         acp: {
+          agent: true,
           command: 'codex',
           enabled: true,
           status: 'local-agent',

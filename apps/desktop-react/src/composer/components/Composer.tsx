@@ -671,6 +671,7 @@ function ComposerBody({ sessionId, owner }: ComposerProps) {
                       aria-expanded={drawerKind === 'model'}
                       aria-busy={switchingModel}
                       onClick={toggleModelDrawer}
+                      data-testid="composer-model-pill"
                     >
                       {/* 文字必须自成一块:`text-overflow: ellipsis` 只作用于**块级容器里的
                         * 行内文本**,写在这枚 inline-flex 钮身上是空话。截断的产地因此是

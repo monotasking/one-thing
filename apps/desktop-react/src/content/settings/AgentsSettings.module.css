@@ -1,0 +1,251 @@
+/* 设置页「Agent」那一页(ACP A1-b)。
+ *
+ * 两栏:左 `ui/Rail` 定宽,右详情吃剩下的 —— 与模型服务那一页同一个形,所以根上
+ * 同样声明 `container-name: rail-host`:左栏读它决定自己是 268 还是 44 的图标条
+ * (判据与账在 tokens.css 的 `--pv-panel-rail-collapse`)。
+ * 三种形态(舞台 / 浮窗 / 架子)共用这一份,这里不写任何与形态有关的尺寸;
+ * `min-width` 是那句「我能活到多窄」的自述(与模型服务同一格)。 */
+.panel {
+  height: 100%;
+  display: flex;
+  min-width: var(--pv-panel-min);
+  background: var(--surface-0);
+  container-type: inline-size;
+  container-name: rail-host;
+}
+
+/* 整面的非常态(首载 / 读不到 / 没选中):居中一段灰字(+ 一颗重试钮)。 */
+.state {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding: var(--sp-5);
+  text-align: center;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+
+/* 右栏:自己滚。头部那条工具行不随滚动走 —— 它是整页的动作,不是某一台的。 */
+.detail {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* 一行:读数(弯腰件,只截断)+ 两颗钮(不弯腰)。律一:一行恰有一个弯腰件。 */
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--surface-0);
+  border-bottom: var(--bw-1) solid var(--line-1);
+}
+
+.toolbarNote {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 出错那句话本身要被看见(与名册副行变红同一条例外)。 */
+.toolbarNoteBad {
+  color: var(--danger);
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-5) var(--sp-4);
+}
+
+.emptyTitle {
+  margin: 0;
+  font-size: var(--fs-label);
+  color: var(--text-1);
+}
+
+/* 详情头:36 方图标 / 名 + 来处 + 一句说明。 */
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.headText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.headLine {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* 名是这一行唯一的弯腰件;来处与「实验」两枚小字不弯腰。 */
+.name {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 来处 / 实验:一段**字**,不是徽(没有底色、不是数字)—— 计数禁令管不着它,
+ * 但它也不该抢眼:与副行同一档小字灰。 */
+.tag {
+  flex: none;
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+}
+
+.desc {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+
+/* 状态行右边那一格:一句读数 + (没装时)一颗「装上」。 */
+.value {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.valueText {
+  min-width: 0;
+  font-size: var(--fs-label);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.valueBad {
+  color: var(--danger);
+}
+
+/* 名册行尾那两颗点(装没装 / 登录态)。收起档里行是竖排的,这一对横着站在图标下面。 */
+.dots {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* 「高级」的把手:一枚小三角 + 节标那一档小字。整行可点(FoldTrigger 自带 role/键盘)。 */
+.foldHead {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  cursor: pointer;
+}
+
+/* 与节标同一档小字(`Settings.module.css` 的 `.sectionTitle`),但不画那条底线 ——
+ * 收着的时候下面什么都没有,一条线只会隔出一段空白。 */
+.foldLabel {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--ls-section);
+  color: var(--text-3);
+}
+
+.foldIcon {
+  flex: none;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--text-3);
+}
+
+.advanced {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding-top: var(--sp-3);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* 环境变量一行:名 / 值 / 锁(恒占位)/ 删 —— grid 模板单产地。 */
+.envRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) var(--icon-md) auto;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.lockSlot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lock {
+  display: inline-flex;
+  color: var(--text-2);
+}
+
+.lockIcon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.timeouts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+}
+
+.path {
+  min-width: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+
+.inlineForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  max-width: var(--pv-catalog-floor);
+}

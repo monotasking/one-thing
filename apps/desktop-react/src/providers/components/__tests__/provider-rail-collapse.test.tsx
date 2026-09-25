@@ -11,7 +11,7 @@ import type { RailRow } from '../../types'
  * 268 的名册 / 44 的图标条。
  *
  * 门分两半,理由与 `model-catalog-layout.test.tsx` 头上那条逐字相同:
- *   · **哪一种形**是排版,判据在 `@container providers-panel` 里,而 CSS Modules
+ *   · **哪一种形**是排版,判据在 `@container rail-host` 里,而 CSS Modules
  *     那份样式表从来没有进过 jsdom —— 所以这一半读**样式表源文件**,
  *     并且真机那一半在 `scripts/gate-providers-squeeze.mjs` 六档里量宽;
  *   · **两种形里各画了什么、点下去发生什么**是 DOM,那一半在这里真渲染。
@@ -25,7 +25,7 @@ function stripComments(source: string): string {
 
 const root = process.cwd()
 const railCss = stripComments(
-  readFileSync(resolve(root, 'src/providers/components/ProviderRail.module.css'), 'utf8'),
+  readFileSync(resolve(root, 'src/ui/Rail.module.css'), 'utf8'),
 )
 const panelCss = stripComments(
   readFileSync(resolve(root, 'src/providers/components/ProviderSettingsPanel.module.css'), 'utf8'),
@@ -106,11 +106,11 @@ describe('收起档的判据与几何(样式表源文本 + token 算术)', () =>
   })
 
   it('@container 的字面量与 token 是同一事实的两处', () => {
-    // 面板是容器,名字叫 providers-panel;查询判「≤」,所以字面量就是那个 token。
-    expect(panelCss).toMatch(/container-name:\s*providers-panel/)
+    // 面板是容器,名字叫 rail-host;查询判「≤」,所以字面量就是那个 token。
+    expect(panelCss).toMatch(/container-name:\s*rail-host/)
     expect(panelCss).toMatch(/container-type:\s*inline-size/)
     const railQueries = [
-      ...railCss.matchAll(/@container providers-panel \(max-width:\s*(\d+)px\)/g),
+      ...railCss.matchAll(/@container rail-host \(max-width:\s*(\d+)px\)/g),
     ].map((m) => Number(m[1]))
     expect(railQueries).toEqual([px('--pv-panel-rail-collapse')])
 
@@ -124,7 +124,7 @@ describe('收起档的判据与几何(样式表源文本 + token 算术)', () =>
   })
 
   it('收起档只收宽与几个 display —— 不换组件、不重挂(切档必须布局连续)', () => {
-    const at = railCss.indexOf('@container providers-panel')
+    const at = railCss.indexOf('@container rail-host')
     const block = railCss.slice(at)
     expect(block).toMatch(/\.rail:not\(\[data-expanded='true'\]\)\s*\{[^}]*width:\s*var\(--pv-rail-collapsed-w\)/)
     // 这一段里不许出现 JS 驱动的形变或过渡以外的东西:只有宽、display、内衬与对齐。
@@ -134,7 +134,7 @@ describe('收起档的判据与几何(样式表源文本 + token 算术)', () =>
 
   it('宽档里那枚方图标不吃指针 —— 提示只在收起档触发', () => {
     expect(railCss).toMatch(/\.icon\s*\{[^}]*pointer-events:\s*none/)
-    const at = railCss.indexOf('@container providers-panel')
+    const at = railCss.indexOf('@container rail-host')
     expect(railCss.slice(at)).toMatch(
       /\.rail:not\(\[data-expanded='true'\]\) \.icon\s*\{[^}]*pointer-events:\s*auto/,
     )

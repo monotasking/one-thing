@@ -943,6 +943,9 @@ async function main() {
     for (const id of [
       'general',
       'models',
+      // Agent(ACP A1-b)。server 宿主上名册来自懒加载的种子(A1-a 施工记:独立 server
+      // 不调 `acp.start()`,种子照样上榜),所以扫到的是左栏三组 + 详情那一台。
+      'agents',
       'appearance',
       'dock',
       'open',
@@ -968,6 +971,15 @@ async function main() {
         // 那块面自己要一趟取数才画得出名册 —— 扫一屏还没画完的面等于什么都没扫。
         await waitFor('模型服务面就位', () =>
           page.evaluate(() => Boolean(document.querySelector('[data-testid^="provider-row-"]'))),
+        )
+      }
+      if (id === 'agents') {
+        // 名册一趟取数:画出一行(或空态 / 读不到那一句)才算这块面就位。
+        await waitFor('Agent 面就位', () =>
+          page.evaluate(() => {
+            const panel = document.querySelector('[data-testid="agents-panel"]')
+            return Boolean(panel && (panel.querySelector('[data-testid^="agent-row-"]') || panel.querySelector('nav')))
+          }),
         )
       }
       await settle(page, `设置·${id}`)

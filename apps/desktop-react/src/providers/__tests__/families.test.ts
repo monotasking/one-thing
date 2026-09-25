@@ -64,18 +64,14 @@ describe('buildFamilies', () => {
     expect(copilot?.modes[0].kind).toBe('subscription')
   })
 
-  it('云 / 本地 / 自定义三组各归各的,且顺序是云→本地→自定义', () => {
+  it('云 / 自定义各归各的,顺序是云→自定义;本地两只 agent 不进这张名册', () => {
     const withCustom = buildFamilies(ROSTER, [
       { id: 'my-vllm', name: '我的 vLLM', apiType: 'openai', model: 'q', selectedModels: [] } as CustomProviderConfig,
     ])
-    expect(withCustom.map((f) => f.group)).toEqual([
-      'cloud',
-      'cloud',
-      'cloud',
-      'local',
-      'local',
-      'custom',
-    ])
+    // 2026-09-26 用户裁定:agent 不许被画成普通模型。acp / claude-code-agent 的家是设置页
+    // 「Agent」那一页,模型服务的名册里没有它们 —— 于是「本地」那一组空了,整组不画。
+    expect(withCustom.map((f) => f.group)).toEqual(['cloud', 'cloud', 'cloud', 'custom'])
+    expect(withCustom.some((f) => f.modes.some((m) => m.kind === 'acp' || m.kind === 'localCli'))).toBe(false)
     const custom = findFamily(withCustom, 'my-vllm')
     expect(custom?.custom).toBe(true)
     expect(custom?.modes[0].kind).toBe('custom')

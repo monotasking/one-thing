@@ -179,6 +179,12 @@ export interface CatalogModel {
   thinkingDefaultLevel: ThinkingEffort | null
   thinkingDisabledLevel?: ThinkingEffort | null
   thinkingLevelLabels?: Partial<Record<ThinkingEffort, string>>
+  /**
+   * 这一行是一型**模型**还是一台**本机 agent**(2026-09-26 用户裁定:agent 不许被画成
+   * 普通模型)。判据只有后端那一格 `providerMetadata.acp.agent`,**不读 provider id**;
+   * 缺席 = 模型(旧缓存、测试夹具、别的产地都是模型)。
+   */
+  kind?: 'agent' | 'model'
 }
 
 /** 抽屉里的一行 = 目录那条的全部读数 + 它的 id。`contextLength` 为 null = 不画那一格。 */
@@ -285,6 +291,12 @@ function toThinking(model: OpenRouterModel): Omit<CatalogModel, 'id' | 'contextL
   }
 }
 
+/** 目录那一行是不是一台 agent。判据只看后端投的 `providerMetadata.acp.agent`(见 `CatalogModel.kind`)。 */
+export function catalogKindOf(model: OpenRouterModel): 'agent' | 'model' {
+  const acp = (model.providerMetadata as { acp?: { agent?: unknown } } | undefined)?.acp
+  return acp?.agent === true ? 'agent' : 'model'
+}
+
 export function toCatalogModels(models: readonly OpenRouterModel[]): CatalogModel[] {
   return models.map((model) => ({
     id: model.id,
@@ -293,6 +305,7 @@ export function toCatalogModels(models: readonly OpenRouterModel[]): CatalogMode
     // 这一层不抄一份「Number(pricing.prompt)」出来。
     pricing: priceOf(model),
     ...toThinking(model),
+    ...(catalogKindOf(model) === 'agent' ? { kind: 'agent' as const } : {}),
   }))
 }
 
@@ -460,6 +473,7 @@ export function readingsOf(
     thinkingDefaultLevel: entry.thinkingDefaultLevel,
     thinkingDisabledLevel: entry.thinkingDisabledLevel,
     thinkingLevelLabels: entry.thinkingLevelLabels,
+    ...(entry.kind === 'agent' ? { kind: 'agent' as const } : {}),
   }
 }
 

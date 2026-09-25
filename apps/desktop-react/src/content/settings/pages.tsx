@@ -9,6 +9,7 @@ import { SearchStorage } from './SearchStorage'
 import { NotesSettings } from './NotesSettings'
 import { PermissionGrants } from './PermissionGrants'
 import { PetSettings } from './PetSettings'
+import { AgentsSettings } from './AgentsSettings'
 import { Section } from './Section'
 import { KeymapSettings } from '../KeymapSettings'
 import { ProviderSettingsPanel } from '../../providers/components/ProviderSettingsPanel'
@@ -33,13 +34,14 @@ import type { MessageKey } from '../../i18n'
  * ── `layout` 这一格答的是「这一页的内容自己管不管滚动」 ────────────────────
  *  · `'form'` —— 单列表单,外面那层给内边距、给 `overflow: auto` (今天八页);
  *  · `'fill'` —— 内容吃满整页、自己管滚动,页这一层不加内边距也不滚
- *    (今天只有模型服务:`ProviderSettingsPanel` 的 `.panel` 是 `height: 100%`)。
+ *    (今天两页:模型服务与 Agent,两块都是 `ui/Rail` + 详情的两栏面,根是 `height: 100%`)。
  * 它是**页自述的一格数据**,不是外壳里的一句 `if (id === 'models')`。
  */
 export type SettingsPageId =
   | 'general'
   | 'pet'
   | 'models'
+  | 'agents'
   | 'appearance'
   | 'dock'
   | 'open'
@@ -61,7 +63,7 @@ export interface SettingsPageSpec {
 
 /**
  * 次序判据照旧是「**用户想改的是哪件事**」,从最常改的往最少改的排:
- * 通用 → 宠物 → 模型服务 → 外观 → Dock → 打开方式 → 搜索 → 内置浏览器 → 网络代理 → 已授权 → 快捷键。
+ * 通用 → 宠物 → 模型服务 → Agent → 外观 → Dock → 打开方式 → 搜索 → 内置浏览器 → 网络代理 → 已授权 → 快捷键。
  *
  * 模型服务排第二而不是最后:它是这台产品里改得最勤的一页(换家、换模型、
  * 贴一把新密钥),而「已授权」与「快捷键」是**看一眼就走**的两页。
@@ -80,6 +82,14 @@ export const SETTINGS_PAGES: readonly SettingsPageSpec[] = [
    * 它是今天唯一的 `fill` 页,理由写在 `layout` 那一格上。
    */
   { id: 'models', titleKey: 'item.providers', layout: 'fill', render: () => <ProviderSettingsPanel /> },
+  /*
+   * Agent(ACP A1-b,`docs/design/acp-integration-2026-09.md` §3.8)。**紧跟模型服务**:
+   * 模型选择器里「ACP」那一组的行就是这一页的名册,两页说的是「这台产品用谁回答你」
+   * 的两半 —— 一半是云上的模型,一半是本机的 agent 命令行。它是名册不是凭证
+   * (登录归各家 CLI 自己),所以不塞进模型服务那一页。与它同一个形(左栏 + 详情),
+   * 所以同样是 `fill`。
+   */
+  { id: 'agents', titleKey: 'settings.pageAgents', layout: 'fill', render: () => <AgentsSettings /> },
   { id: 'appearance', titleKey: 'settings.pageAppearance', layout: 'form', render: () => <AppearancePage /> },
   { id: 'dock', titleKey: 'settings.sectionDock', layout: 'form', render: () => <DockPage /> },
   { id: 'open', titleKey: 'dock.openWith', layout: 'form', render: () => <OpenPage /> },

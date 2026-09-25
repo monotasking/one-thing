@@ -184,6 +184,13 @@ export interface OnethingACPAgentModelLike {
 	command?: string;
 	args?: string[];
 	enabled?: boolean;
+	/**
+	 * 名册那一半(A1-b):来处与探测结果。调用方有就带上,原样落进
+	 * `providerMetadata.acp`;没有(今天 `AcpSubsystem.modelAgents()` 交的是生效配置,
+	 * 不带这两格)就缺席 —— 壳侧真正的来处 / 装没装读的是 `acp.getAgents`。
+	 */
+	source?: "builtin" | "registry" | "user";
+	installed?: boolean;
 }
 
 export interface FetchOnethingModelsDevDataOptions {
@@ -368,16 +375,36 @@ export function copilotModelInfoToOnethingOpenRouterModel(
 	};
 }
 
+/**
+ * 一台 ACP agent 在模型目录里的那一行。
+ *
+ * **它不是一型模型**(2026-09-26 用户裁定:agent 不许被画成普通模型)。所以:
+ *  · 窗口两格写 0 —— 契约类型要一个数,而 0 在两头都读作「不知道」:壳的
+ *    `contextLengthOf` 只认 > 0,后端 `getOnethingModelContextLength` 的 `||` 链
+ *    把 0 落到它自己的缺省上(与从前编 128000 时的预算行为逐字相同)。从前那个
+ *    128000 是编的,在选择器里画成了一格「128k」;
+ *  · `providerMetadata.acp.agent: true` 是壳侧投影判「这一行是 agent 不是模型」
+ *    的**唯一判据**(渲染分支读 `kind`,不读 provider id 字串);
+ *  · `source` / `installed` 调用方给了就带上,没给就缺席(不编)。
+ */
 export function acpAgentToOnethingOpenRouterModel(
 	agent: OnethingACPAgentModelLike,
 ): OnethingOpenRouterModel {
+	const acp: JsonObject = {
+		agent: true,
+		command: agent.command ?? null,
+		enabled: agent.enabled ?? null,
+		status: "local-agent",
+	};
+	if (agent.source) acp.source = agent.source;
+	if (typeof agent.installed === "boolean") acp.installed = agent.installed;
 	return {
 		id: agent.id,
 		name: agent.name || agent.id,
 		description:
 			agent.description ||
 			`ACP agent command: ${[agent.command, ...(agent.args ?? [])].filter(Boolean).join(" ")}`,
-		context_length: 128000,
+		context_length: 0,
 		architecture: {
 			modality: "text",
 			input_modalities: ["text"],
@@ -386,18 +413,12 @@ export function acpAgentToOnethingOpenRouterModel(
 		},
 		pricing: { prompt: "0", completion: "0", request: "0", image: "0" },
 		top_provider: {
-			context_length: 128000,
+			context_length: 0,
 			max_completion_tokens: 16384,
 			is_moderated: false,
 		},
 		supported_parameters: [],
-		providerMetadata: {
-			acp: {
-				command: agent.command,
-				enabled: agent.enabled,
-				status: "local-agent",
-			},
-		},
+		providerMetadata: { acp },
 	};
 }
 

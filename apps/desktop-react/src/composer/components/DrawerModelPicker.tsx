@@ -39,7 +39,13 @@ import {
   setAcpOptionMutation,
 } from '../../data/acp-options-source'
 import { useQuery } from '../../data/kernel'
-import type { ACPSessionOption } from '@shared/ipc/acp'
+import { acpAgentsQuery, sourceOf, startAcpAgentsSource } from '../../data/acp-agents-source'
+import { acpProviderIdOf, splitPickerSections } from '../agent-rows'
+import type { AgentRowStatus } from '../agent-rows'
+import { ProviderGlyph } from '../../providers/components/ProviderGlyph'
+import { Tooltip } from '../../ui/Tooltip'
+import type { MessageKey } from '../../i18n'
+import type { ACPAgentState, ACPSessionOption } from '@shared/ipc/acp'
 import s from './Composer.module.css'
 
 /**
@@ -119,13 +125,33 @@ export function DrawerModelPicker() {
     [providers, prefs, catalog, current, query],
   )
 
+  /*
+   * **Agent 一组**(2026-09-26 用户裁定:agent 不许被画成普通模型)。ACP 那一半的行来自名册
+   * `acpAgentsQuery` —— 与设置页「Agent」那一页读的是同一格,这里说「未安装」、那里说「已安装」
+   * 的两份缓存不会出现。拆组的判据在 `composer/agent-rows.ts`。
+   */
+  useEffect(() => {
+    void acpAgentsQuery.ensure()
+    void startAcpAgentsSource()
+  }, [])
+  const { data: agentRoster } = useQuery(acpAgentsQuery)
+  const acpProviderId = useMemo(() => acpProviderIdOf(providers), [providers])
+  const { modelGroups, agentRows } = useMemo(
+    () => splitPickerSections({ groups, acpProviderId, agents: agentRoster, current, query }),
+    [groups, acpProviderId, agentRoster, current, query],
+  )
+
   /**
    * 拍平之后的那条序 = 键盘位走的序。它与屏幕上从上往下读到的次序逐字相同
-   * (组按 groups 的次序、组内按 models 的次序),所以「第 n 位」在两边说的是同一行。
+   * (模型的组按 groups 的次序、组内按 models 的次序,Agent 那一组排在最后),
+   * 所以「第 n 位」在两边说的是同一行。
    */
   const rows = useMemo(
-    () => groups.flatMap((g) => g.models.map((m) => ({ providerId: g.id, model: m.model }))),
-    [groups],
+    () => [
+      ...modelGroups.flatMap((g) => g.models.map((m) => ({ providerId: g.id, model: m.model }))),
+      ...agentRows.map((row) => ({ providerId: row.providerId, model: row.model })),
+    ],
+    [modelGroups, agentRows],
   )
 
   const currentIndex = rows.findIndex((row) =>
@@ -177,12 +203,14 @@ export function DrawerModelPicker() {
   const offsets = useMemo(() => {
     const out = new Map<string, number>()
     let at = 0
-    for (const g of groups) {
+    for (const g of modelGroups) {
       out.set(g.id, at)
       at += g.models.length
     }
     return out
-  }, [groups])
+  }, [modelGroups])
+  /** Agent 那一组在拍平序里的起点 = 模型的组全部排完之后。 */
+  const agentOffset = rows.length - agentRows.length
 
   /*
    * ── 抽屉一开焦点就在搜索行 —— 一句**声明**(09-03 R2)────────────────────
@@ -241,10 +269,10 @@ export function DrawerModelPicker() {
                 {/* 限高与滚入视野是同一件事的两半(抽屉判例):十几家 × 上百条不封顶会把
                     聊天顶出屏外,封了顶就必须把键盘位滚回视野 —— 后者在 rowRef 里。 */}
                 <div className={s.pickScroll}>
-                  {groups.length === 0 && (
+                  {rows.length === 0 && (
                     <div className={s.pickEmpty}>{t('composer.noMatch')}</div>
                   )}
-                  {groups.map((g) => (
+                  {modelGroups.map((g) => (
                     <div key={g.id}>
                       <div className={s.provHead}>{g.provider}</div>
                       {g.models.map((m, index) => {
@@ -267,6 +295,46 @@ export function DrawerModelPicker() {
                       })}
                     </div>
                   ))}
+                  {agentRows.length > 0 && (
+                    <div data-testid="picker-agent-group">
+                      <div className={s.provHead}>{t('agents.pickerGroup')}</div>
+                      {agentRows.map((row, index) => {
+                        const i = agentOffset + index
+                        const missing = row.status === 'missing'
+                        const button = (
+                          <ButtonBase
+                            key={`${row.providerId}:${row.model}`}
+                            ref={rowRef(i)}
+                            className={[s.pickRow, i === active ? s.pickSel : null, missing ? s.pickRowMissing : null]
+                              .filter(Boolean)
+                              .join(' ')}
+                            onMouseDown={pick(i)}
+                            data-testid={`picker-agent-${row.model}`}
+                            data-agent-missing={missing ? 'true' : undefined}
+                          >
+                            {/* 一台 agent 的一行:图标 · 名字 · 来处 · 一个状态字。**没有窗口那一格**
+                                —— 它不是一型模型,没有窗口可说。 */}
+                            <ProviderGlyph familyId={row.glyphKey} label={row.label} custom={row.custom} />
+                            <span className={s.pickAgentName}>{row.label}</span>
+                            {row.agent && (
+                              <span className={s.pickSource} data-testid="picker-agent-source">
+                                {t(AGENT_SOURCE_KEY[sourceOf(row.agent)])}
+                              </span>
+                            )}
+                            {row.status && <span className={s.pickStatus}>{t(AGENT_STATUS_KEY[row.status])}</span>}
+                          </ButtonBase>
+                        )
+                        // 没装的那一行**照样能选**(装好之后不必回来重选),只是置灰,悬停给装法。
+                        return missing && row.agent ? (
+                          <Tooltip key={`${row.providerId}:${row.model}`} content={installHowOf(t, row.agent)}>
+                            {button}
+                          </Tooltip>
+                        ) : (
+                          button
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -276,6 +344,28 @@ export function DrawerModelPicker() {
       )}
     </FocusScope>
   )
+}
+
+/** 来处 → 一个字(与设置页「Agent」那一页的组名同一组键)。 */
+const AGENT_SOURCE_KEY: Record<'builtin' | 'registry' | 'user', MessageKey> = {
+  builtin: 'agents.groupBuiltin',
+  registry: 'agents.groupRegistry',
+  user: 'agents.groupUser',
+}
+
+/** 状态 → 一个字。登录态(「未登录」)归 A3-c,今天这张表里没有它。 */
+const AGENT_STATUS_KEY: Record<AgentRowStatus, MessageKey> = {
+  missing: 'agents.statusMissing',
+  ready: 'agents.statusReady',
+  running: 'agents.statusRunning',
+}
+
+/** 悬停在一行没装的 agent 上时说的那句:npm 包就给命令,没有就给自述里那句装法。 */
+function installHowOf(t: TFn, agent: ACPAgentState): string {
+  const npm = agent.manifest?.install?.npm
+  if (npm) return t('agents.pickerMissingNpm', { command: `npm i -g ${npm}` })
+  const hint = agent.manifest?.install?.hint
+  return hint ? t('agents.pickerMissingHint', { hint }) : t('agents.pickerMissing')
 }
 
 /**

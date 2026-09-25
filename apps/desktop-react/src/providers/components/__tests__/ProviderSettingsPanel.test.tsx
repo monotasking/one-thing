@@ -40,6 +40,9 @@ const ROSTER: ProviderInfo[] = [
     requiresOAuth: true,
     oauthFlow: 'authorization-code',
   }),
+  // 一坑的家(分段器那条用例要它)。
+  info('deepseek', { name: 'DeepSeek' }),
+  // agent 那一种:**不该**出现在这张名册里(2026-09-26 用户裁定),留在夹具里就是为了证这一句。
   info('acp', { name: 'ACP Agents', requiresApiKey: false }),
 ]
 
@@ -65,6 +68,7 @@ const CATALOGS: Record<string, OpenRouterModel[]> = {
   // 非当前的行上,所以目录里必须有一行不是当前的,否则那颗钮无从断言。
   claude: [model('claude-sonnet-4', 'Claude Sonnet 4'), model('claude-haiku-4-5', 'Claude Haiku 4.5')],
   'claude-code': [model('claude-opus-5', 'Claude Opus 5')],
+  deepseek: [],
   acp: [],
 }
 
@@ -162,13 +166,14 @@ describe('骨架', () => {
     render(<ProviderSettingsPanel />)
 
     expect(await screen.findByTestId('provider-row-claude')).toBeTruthy()
-    expect(screen.getByTestId('provider-row-acp')).toBeTruthy()
+    // agent 不是模型服务:acp 那一家不在这张名册里,「本地」那一组空了就整组不画。
+    expect(screen.queryByTestId('provider-row-acp')).toBeNull()
     // claude-code 折进了 Claude 那一行,不另占一行。
     expect(screen.queryByTestId('provider-row-claude-code')).toBeNull()
     expect(screen.getByText('云服务')).toBeTruthy()
-    expect(screen.getByText('本地')).toBeTruthy()
-    // 「N 家已接入」数的是配好了的:claude 有 key、acp 是本地坑 = 2。
-    expect(screen.getByText('2 家已接入')).toBeTruthy()
+    expect(screen.queryByText('本地')).toBeNull()
+    // 「N 家已接入」数的是配好了的:claude 有 key = 1(deepseek 没配)。
+    expect(screen.getByText('1 家已接入')).toBeTruthy()
   })
 
   it('副行是算出来的事实句,不是写死的字', async () => {
@@ -231,7 +236,7 @@ describe('模式切换换目录', () => {
   it('一坑的家不画分段器 —— 只有一格的分段器是噪音', async () => {
     installPort()
     render(<ProviderSettingsPanel />)
-    fireEvent.click(await screen.findByTestId('provider-row-acp'))
+    fireEvent.click(await screen.findByTestId('provider-row-deepseek'))
     await waitFor(() => expect(screen.queryByRole('radiogroup', { name: '接入模式' })).toBeNull())
   })
 })
