@@ -293,9 +293,15 @@ class LivePort implements MusicPort {
         this.push({ ref: 'music:provider', event: 'setupOutput', payload: { tool, chunk: `${line}\n` } })
       }
     }
+    // `?latency=800`:模拟真后端那一趟(spawn `ncm-cli <命令>` + 回读 `state`)要花的时间,
+    // 量「按下去第一帧有没有反馈、钮被按住多久」用。缺省 0 = 立刻回。
+    if (this.latencyMs > 0) await new Promise((resolve) => setTimeout(resolve, this.latencyMs))
     this.onOp(op, params)
     return { kind: 'ok', text: 'done' }
   }
+
+  /** 每一发 `do` 在回话前等多久(地址栏 `latency=`)。 */
+  latencyMs = typeof window === 'undefined' ? 0 : Number(new URLSearchParams(window.location.search).get('latency')) || 0
 
   onResourceEvent = (_prefix: string, callback: (event: MusicResourceEvent) => void): (() => void) => {
     this.listeners.add(callback)
