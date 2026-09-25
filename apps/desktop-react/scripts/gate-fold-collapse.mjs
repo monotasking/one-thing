@@ -62,8 +62,22 @@
  * dpr 钉 2;临时 store + 临时 `--user-data-dir`,**绝不连 `~/.onething`**;
  * 输入只走 `page.evaluate` / CDP;`finally` 里逐个收尸并自查残留。
  *
- * 跑法:`npm run gate:fold-collapse`([`--prod`] [`--big`] [`--only <场景>`] [`--motion-none`])
+ * 跑法:`npm run gate:fold-collapse`([`--prod`] [`--big`] [`--only <场景>`] [`--motion-none`]
+ *       [`--trace-writes`] [`--no-overflow-anchor`])
  * (仓根先 `bun run server:build`;先 `npm run electron:build`。)
+ *
+ * ══ G 线 P4-0 的两格取样口(正本 §21.1 Q2,**只报不判**)══════════════════
+ * 真店档 `think60k` 展开那 11,454px 的 `scrollTop` 是谁写的:
+ *  · `--trace-writes`:在页面里给 `Element.prototype.scrollTop` 的 setter 打桩
+ *    (连同 `scrollTo` / `scrollBy` / `scrollIntoView` / `focus`),每一次写都记
+ *    `{t, api, from, to, behavior, 调用栈}`;再经 dev 模块图拿到**同一份**
+ *    `content/viewport/scroll-port.ts`,把 `DomScrollPort.prototype.setTop` /
+ *    `stickToBottom` 包一层,把 `cause` 挂到它里面那一次 DOM 写上。两层都**只在门
+ *    脚本里**,产品代码一个字不改。报告按画出来的那一帧对齐:每帧 `Δst`、这一帧里
+ *    JS 写了多少(Σ to−from)、剩下没人认领的那一截(= 浏览器自己动的)。
+ *  · `--no-overflow-anchor`:往页面里注一条 `[data-testid="chat-stream"]
+ *    { overflow-anchor: none !important }`,同一场景 A/B 报位移。
+ * 两格都不进判据:门照旧判 ⑤,报告另起一段打出来。
  */
 import { spawn } from 'node:child_process'
 import http from 'node:http'
@@ -91,7 +105,19 @@ const BIG = process.argv.includes('--big')
  */
 const PROD = process.argv.includes('--prod')
 const MOTION_NONE = process.argv.includes('--motion-none')
-const LANE = `${BIG ? 'big' : 'short'}${PROD ? '-prod' : ''}`
+/** 正本 §21.1 Q2 ①:逐帧记 `scrollTop` 的每一次写(判词在文件头)。 */
+const TRACE_WRITES = process.argv.includes('--trace-writes')
+/** 正本 §21.1 Q2 ②:滚动容器关掉浏览器自己的滚动锚定,做 A/B。 */
+const NO_ANCHOR = process.argv.includes('--no-overflow-anchor')
+/**
+ * 正本 §21.3 Q2 的反证那一格:**不装 rAF 环**(还原取样器本来的时序),改由一段 CDP
+ * trace 判「这一格取样之前、上一次点击之后,主线程有没有过一次绘制」。rAF 环本身
+ * 会挪动取样那一发宏任务与点击那一发宏任务的先后,所以要证「那一格没画出来过」就
+ * 不能靠它 —— 判词在 `paintedByTrace` 上。
+ */
+const TRACE_PAINT = process.argv.includes('--trace-paint')
+const LANE = `${BIG ? 'big' : 'short'}${PROD ? '-prod' : ''}${TRACE_WRITES ? '-writes' : ''}`
+  + `${TRACE_PAINT ? '-paint' : ''}${NO_ANCHOR ? '-noanchor' : ''}`
 const ONLY = (() => {
   const at = process.argv.indexOf('--only')
   return at >= 0 ? process.argv[at + 1] : undefined
@@ -238,11 +264,384 @@ window.__fReadAnchor = function (scroll) {
 }
 `
 
+/* ══ 写手取样口(G 线 P4-0,正本 §21.1 Q2 ①;只在 `--trace-writes` 下装)══════════
+ *
+ * **两层,各答一半**:
+ *  ① DOM 层 —— 给 `Element.prototype.scrollTop` 的 setter 与几只会滚的 API 打桩。
+ *     `DomScrollPort.#write` 是 JS 侧唯一的那一句 `el.scrollTop = …`,但「唯一」是
+ *     源码里的一句话;桩打在原型上,**谁写都跑不掉**(包括不经 ScrollPort 的那一种)。
+ *  ② 语义层 —— `cause` 只活在 `setTop(top, cause)` 的实参里,DOM 层看不见。经 dev 的
+ *     模块图拿到**与页面同一份**模块记录(同一个 URL = 同一个模块实例),把原型上的
+ *     `setTop` / `stickToBottom` 包一层,进门时把 `cause` 压栈 —— 于是它里面那一次
+ *     DOM 写能认领到自己的 `cause`。拿不到那份模块(prod 档)就只剩①,报告里照说。
+ *
+ * **读 `from` 会逼一次排版**(写之前读一次 `scrollTop`)。产品自己在写之后也读一次
+ * (`#lastTop`),而且写之前多半刚 `measure()` 过,所以这一读多半是白拿的;但它不是
+ * 零扰动,判词记在正本 §21.3。A/B 两边都装着它,扰动两边相同。
+ */
+const WRITE_TRACER = `
+(function () {
+  if (window.__fTracer) return
+  var chatOf = function () {
+    var leaf = window.__fLeaf ? window.__fLeaf() : document
+    return leaf.querySelector('[data-testid="chat-stream"]')
+  }
+  var isChat = function (el) {
+    return Boolean(el && el.getAttribute && el.getAttribute('data-testid') === 'chat-stream')
+  }
+  var describe = function (el) {
+    if (!el || !el.tagName) return String(el)
+    var id = el.getAttribute('data-testid')
+    var cls = typeof el.className === 'string' ? el.className.split(' ')[0] : ''
+    return el.tagName.toLowerCase() + (id ? '[' + id + ']' : '') + (cls ? '.' + cls : '')
+  }
+  /* 调用栈只留有名有姓的几帧,扔掉桩自己。 */
+  var stackOf = function () {
+    var raw = String(new Error().stack || '').split('\\n').slice(1)
+    var out = []
+    for (var i = 0; i < raw.length && out.length < 10; i += 1) {
+      var line = raw[i].trim()
+      if (line.indexOf('__fProbe') >= 0) continue
+      out.push(line.replace(/^at /, '').replace(/https?:\\/\\/[^/]+\\//, '/').replace(/\\?[^:)]*/, ''))
+    }
+    return out
+  }
+  var T = {
+    on: false,
+    writes: [],
+    portCalls: [],
+    focus: [],
+    scrolls: [],
+    causeStack: [],
+    portPatched: false,
+    portUrl: null,
+    others: {},
+  }
+  window.__fTracer = T
+  var cause = function () { return T.causeStack.length ? T.causeStack[T.causeStack.length - 1] : null }
+
+  var desc = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop')
+  Object.defineProperty(Element.prototype, 'scrollTop', {
+    configurable: true,
+    enumerable: desc.enumerable,
+    get: desc.get,
+    set: function __fProbeScrollTopSet(v) {
+      if (!T.on) { desc.set.call(this, v); return }
+      if (!isChat(this)) {
+        var k = describe(this)
+        T.others[k] = (T.others[k] || 0) + 1
+        desc.set.call(this, v)
+        return
+      }
+      var from = desc.get.call(this)
+      desc.set.call(this, v)
+      var to = desc.get.call(this)
+      if (window.__fMarkSamples) performance.mark('fold:w')
+      var c = cause()
+      T.writes.push({ t: performance.now(), api: 'scrollTop=', arg: v, from: from, to: to,
+        cause: c ? c.cause : null, via: c ? c.api : null, behavior: null, stack: stackOf() })
+    },
+  })
+  var wrapScroll = function (name) {
+    var orig = Element.prototype[name]
+    if (typeof orig !== 'function') return
+    Element.prototype[name] = function __fProbeScrollApi() {
+      if (!T.on) return orig.apply(this, arguments)
+      var chat = chatOf()
+      var from = chat ? desc.get.call(chat) : null
+      var out = orig.apply(this, arguments)
+      var to = chat ? desc.get.call(chat) : null
+      var c = cause()
+      var arg = arguments[0]
+      T.writes.push({ t: performance.now(), api: name, target: describe(this), onChat: isChat(this),
+        arg: arg && typeof arg === 'object' ? JSON.stringify(arg) : arg, from: from, to: to,
+        cause: c ? c.cause : null, via: c ? c.api : null,
+        behavior: arg && typeof arg === 'object' ? (arg.behavior || null) : null, stack: stackOf() })
+      return out
+    }
+  }
+  ;['scrollTo', 'scrollBy', 'scrollIntoView', 'scrollIntoViewIfNeeded'].forEach(wrapScroll)
+  var origFocus = HTMLElement.prototype.focus
+  HTMLElement.prototype.focus = function __fProbeFocus(opts) {
+    if (T.on) T.focus.push({ t: performance.now(), api: 'focus()', el: describe(this),
+      preventScroll: Boolean(opts && opts.preventScroll), stack: stackOf().slice(0, 4) })
+    return origFocus.apply(this, arguments)
+  }
+  document.addEventListener('focusin', function (e) {
+    if (T.on) T.focus.push({ t: performance.now(), api: 'focusin', el: describe(e.target) })
+  }, true)
+  document.addEventListener('scroll', function (e) {
+    if (T.on && isChat(e.target)) T.scrolls.push({ t: performance.now(), st: desc.get.call(e.target) })
+  }, true)
+
+  /* ② 语义层:dev 的模块图里那一份 scroll-port.ts。 */
+  T.patchPort = async function () {
+    if (T.portPatched) return true
+    var urls = performance.getEntriesByType('resource').map(function (e) { return e.name })
+      .filter(function (n) { return /\\/content\\/viewport\\/scroll-port\\.ts(\\?|$)/.test(n) })
+    var candidates = urls.length ? [urls[urls.length - 1]] : []
+    candidates.push(location.origin + '/src/content/viewport/scroll-port.ts')
+    for (var i = 0; i < candidates.length; i += 1) {
+      try {
+        var mod = await import(candidates[i])
+        var P = mod && mod.DomScrollPort && mod.DomScrollPort.prototype
+        if (!P) continue
+        var setTop = P.setTop
+        var stick = P.stickToBottom
+        P.setTop = function __fProbeSetTop(top, c, options) {
+          if (!T.on) return setTop.call(this, top, c, options)
+          var b = options && options.behavior ? options.behavior : null
+          T.portCalls.push({ t: performance.now(), api: 'setTop', cause: c, top: top, behavior: b })
+          T.causeStack.push({ cause: c, api: 'setTop' })
+          try { return setTop.call(this, top, c, options) } finally { T.causeStack.pop() }
+        }
+        P.stickToBottom = function __fProbeStick(c) {
+          if (!T.on) return stick.call(this, c)
+          T.portCalls.push({ t: performance.now(), api: 'stickToBottom', cause: c, top: null, behavior: null })
+          T.causeStack.push({ cause: c, api: 'stickToBottom' })
+          try { return stick.call(this, c) } finally { T.causeStack.pop() }
+        }
+        T.portPatched = true
+        T.portUrl = candidates[i].replace(location.origin, '')
+        return true
+      } catch (e) { /* 下一个候选 */ }
+    }
+    return false
+  }
+  T.start = function () {
+    T.writes = []; T.portCalls = []; T.focus = []; T.scrolls = []; T.others = {}; T.on = true
+  }
+  T.stop = function () {
+    T.on = false
+    return { writes: T.writes, portCalls: T.portCalls, focus: T.focus, scrolls: T.scrolls,
+      others: T.others, portPatched: T.portPatched, portUrl: T.portUrl }
+  }
+})()
+`
+
+/** 正本 §21.1 Q2 ②:关掉滚动容器上浏览器自己的滚动锚定(注一条样式,不碰产品 CSS)。 */
+const NO_ANCHOR_STYLE = `
+(function () {
+  if (document.getElementById('__f-no-anchor')) return
+  var style = document.createElement('style')
+  style.id = '__f-no-anchor'
+  style.textContent = '[data-testid="chat-stream"] { overflow-anchor: none !important; }'
+  ;(document.head || document.documentElement).appendChild(style)
+})()
+`
+
+/**
+ * 把写手记录按**画出来的那一帧**对齐(帧 i = 上一帧取样之后、这一帧取样之前发生的写)。
+ * `jsNet` = 这一帧里 JS 对滚动口的写一共挪了多少(Σ to − from);`unexplained` =
+ * 这一帧 `scrollTop` 的实际变化减去 JS 认领的那一截 —— 它只剩浏览器自己能动
+ * (滚动锚定 / 平滑滚动的余程 / 被钳)。
+ */
+function alignWrites(frames, trace, rafs = [], paintedMap = null) {
+  const rows = []
+  /*
+   * **这一格画出来过没有**:取样时刻之前最近那一次点击,与取样时刻之间有没有过一次
+   * 渲染更新(rAF 环记的那张表)。没有 = 这一格读到的是点击改了 DOM、浏览器还没来得及
+   * 走一遍「样式 → 排版 → RO → 绘制」的那个瞬间 —— 屏幕上从没出现过它。
+   */
+  const unpaintedAt = (f) => (paintedMap
+    ? paintedMap.get(f.i)?.painted === false
+    : f.inputT !== null && f.inputT !== undefined && f.inputT < f.t
+      && !rafs.some((r) => r > f.inputT && r < f.t))
+  let prevT = -Infinity
+  let prevSt = frames[0]?.st ?? 0
+  const within = (list, lo, hi) => list.filter((x) => x.t > lo && x.t <= hi)
+  frames.forEach((f, i) => {
+    const writes = within(trace.writes, prevT, f.t)
+    const chatWrites = writes.filter((w) => w.api === 'scrollTop=' || w.onChat || w.api === 'scrollIntoView'
+      || w.api === 'scrollIntoViewIfNeeded')
+    const jsNet = chatWrites.reduce((sum, w) => sum + ((w.to ?? 0) - (w.from ?? 0)), 0)
+    const dSt = i === 0 ? 0 : f.st - prevSt
+    rows.push({
+      frame: i,
+      t: Number(f.t.toFixed(1)),
+      st: Number(f.st.toFixed(2)),
+      dSt: Number(dSt.toFixed(2)),
+      jsNet: Number(jsNet.toFixed(2)),
+      unexplained: Number((dSt - jsNet).toFixed(2)),
+      target: f.target === null ? null : Number(f.target.toFixed(2)),
+      sh: f.sh,
+      unpainted: unpaintedAt(f),
+      writes,
+      portCalls: within(trace.portCalls, prevT, f.t),
+      focus: within(trace.focus, prevT, f.t),
+      scrolls: within(trace.scrolls, prevT, f.t).length,
+      ae: f.ae ?? null,
+    })
+    prevT = f.t
+    prevSt = f.st
+  })
+  const sum = (key) => Number(rows.reduce((s, r) => s + r[key], 0).toFixed(2))
+  const byCause = {}
+  for (const w of trace.writes) {
+    const key = `${w.api}${w.via ? `←${w.via}` : ''}:${w.cause ?? '(无 cause)'}`
+    const slot = byCause[key] ?? (byCause[key] = { n: 0, netPx: 0 })
+    slot.n += 1
+    slot.netPx = Number((slot.netPx + ((w.to ?? 0) - (w.from ?? 0))).toFixed(2))
+  }
+  const portByCause = {}
+  for (const c of trace.portCalls) {
+    const key = `${c.api}:${c.cause}`
+    portByCause[key] = (portByCause[key] ?? 0) + 1
+  }
+  /* 只算**画出来过**的那几格:逐帧 Δst 的最大绝对值,与首尾净位移。 */
+  const painted = rows.filter((r) => !r.unpainted)
+  let paintedSpan = 0
+  for (const r of painted) paintedSpan = Math.max(paintedSpan, Math.abs(r.st - (painted[0]?.st ?? r.st)))
+  let paintedTargetSpan = 0
+  const firstTarget = painted.find((r) => r.target !== null)?.target
+  for (const r of painted) {
+    if (r.target !== null && firstTarget !== undefined) {
+      paintedTargetSpan = Math.max(paintedTargetSpan, Math.abs(r.target - firstTarget))
+    }
+  }
+  return {
+    frames: rows.length,
+    unpaintedFrames: rows.filter((r) => r.unpainted).map((r) => r.frame),
+    paintedStSpanPx: Number(paintedSpan.toFixed(2)),
+    paintedTargetSpanPx: Number(paintedTargetSpan.toFixed(2)),
+    netStPx: rows.length ? Number((rows[rows.length - 1].st - rows[0].st).toFixed(2)) : 0,
+    rafs: rafs.length,
+    paintJudge: paintedMap ? 'trace' : 'raf',
+    totalDSt: sum('dSt'),
+    totalJsNet: sum('jsNet'),
+    totalUnexplained: sum('unexplained'),
+    writes: trace.writes.length,
+    portCalls: trace.portCalls.length,
+    byCause,
+    portByCause,
+    focusEvents: trace.focus.length,
+    otherElementWrites: trace.others,
+    portPatched: trace.portPatched,
+    portUrl: trace.portUrl,
+    rows,
+  }
+}
+
+/**
+ * **这一格取样读到的,画出来过没有**(`--trace-paint`)。
+ *
+ * 取样器每一格打一枚 `fold:s:<i>`,驱动每点一下打一枚 `fold:click`。对每一格:
+ * 上一次点击到这一格之间,渲染主线程上有没有一次 `Paint` / `Commit`(提交给合成器)。
+ * 没有 = 这一格读到的是「点击改了 DOM、它自己的读又逼了一次排版」之后的瞬间,
+ * 屏幕上从没出现过它。两枚记号与事件在同一条时钟上,不必换算。
+ */
+async function startCdpTrace(cdp) {
+  const events = []
+  const onData = (params) => { for (const e of params.value ?? []) events.push(e) }
+  cdp.on('Tracing.dataCollected', onData)
+  await cdp.send('Tracing.start', {
+    transferMode: 'ReportEvents',
+    categories: 'devtools.timeline,disabled-by-default-devtools.timeline,toplevel,blink.user_timing,'
+      + 'disabled-by-default-devtools.timeline.stack',
+  })
+  return async () => {
+    const complete = new Promise((resolve) => cdp.once('Tracing.tracingComplete', resolve))
+    await cdp.send('Tracing.end')
+    await complete
+    cdp.off('Tracing.dataCollected', onData)
+    return events
+  }
+}
+
+function paintedByTrace(events) {
+  const marks = events.filter((e) => e.cat?.includes('user_timing') && typeof e.name === 'string'
+    && e.name.startsWith('fold:'))
+  if (marks.length === 0) return { map: null, paints: 0, note: 'trace 里没有 fold:* 记号' }
+  const thread = `${marks[0].pid}:${marks[0].tid}`
+  const onMain = (e) => `${e.pid}:${e.tid}` === thread
+  const PAINTISH = new Set(['Paint', 'Commit'])
+  const paints = events.filter((e) => onMain(e) && e.ph === 'X' && PAINTISH.has(e.name)).map((e) => e.ts)
+    .sort((a, b) => a - b)
+  const layouts = events.filter((e) => onMain(e) && e.ph === 'X' && e.name === 'Layout')
+  const clicks = marks.filter((m) => m.name === 'fold:click').map((m) => m.ts).sort((a, b) => a - b)
+  const writes = marks.filter((m) => m.name === 'fold:w').map((m) => m.ts).sort((a, b) => a - b)
+  const map = new Map()
+  for (const m of marks) {
+    if (!m.name.startsWith('fold:s:')) continue
+    const i = Number(m.name.slice('fold:s:'.length))
+    const lastClick = clicks.filter((c) => c < m.ts).pop()
+    /* 这一格的读有没有自己逼出一次排版(Layout 事件的开始落在记号之后 2ms 以内)。 */
+    const forced = layouts.some((l) => l.ts >= m.ts && l.ts - m.ts < 2000 && Array.isArray(l.args?.beginData?.stackTrace))
+    /*
+     * **这一格读到的状态,在被下一次 JS 写盖掉之前画出来过几次**:从这一格的记号到它之后
+     * 第一次 `scrollTop` 写之间,主线程上的 Paint / Commit 次数。一格没人认领的 Δst 如果
+     * 这个数是 0,它就是「出现 → 被写回」都落在两次绘制之间的一个瞬态,屏幕上看不见。
+     */
+    const nextWrite = writes.find((w) => w > m.ts)
+    const exposures = paints.filter((p) => p > m.ts && (nextWrite === undefined || p < nextWrite)).length
+    /*
+     * **没画出来过** = 这一格读到的状态是它自己那一读逼排版时才成形的(`forced`),而且
+     * 在下一次 JS 写把它改掉之前一次绘制都没有。只看「点击之后有没有过绘制」是错的判据
+     * (09-25 第一版就这么写,点击之后 70ms 里早画过好几帧,于是那一格被判成画过)。
+     */
+    const painted = !(forced && nextWrite !== undefined && exposures === 0)
+    map.set(i, {
+      painted,
+      exposuresBeforeNextWrite: nextWrite === undefined ? null : exposures,
+      msToNextWrite: nextWrite === undefined ? null : Number(((nextWrite - m.ts) / 1000).toFixed(2)),
+      msSinceClick: lastClick === undefined ? null : Number(((m.ts - lastClick) / 1000).toFixed(2)),
+      forcedLayout: forced,
+    })
+  }
+  return { map, paints: paints.length, clicks: clicks.length }
+}
+
+function printWriteReport(key, phase, report) {
+  console.log(`     ── 写手取样(${key} · ${phase},${report.frames} 帧;ScrollPort 语义层`
+    + `${report.portPatched ? `已接上 ${report.portUrl}` : '没接上,只剩 DOM 层'})──`)
+  console.log(`        没画出来过的取样格:${JSON.stringify(report.unpaintedFrames)}`
+    + ` · 只算画出来过的:scrollTop 峰峰 ${report.paintedStSpanPx}px / 被点那一块顶边峰峰`
+    + ` ${report.paintedTargetSpanPx}px · 首尾净位移 ${report.netStPx}px · rAF ${report.rafs} 次`)
+  console.log(`        Σ实际 Δst ${report.totalDSt}px = Σ JS 写 ${report.totalJsNet}px`
+    + ` + 没人认领 ${report.totalUnexplained}px · DOM 写 ${report.writes} 次`
+    + ` · ScrollPort 调用 ${report.portCalls} 次 · focus 事件 ${report.focusEvents}`)
+  console.log(`        DOM 写按 cause:${JSON.stringify(report.byCause)}`)
+  console.log(`        ScrollPort 调用按 cause:${JSON.stringify(report.portByCause)}`)
+  if (Object.keys(report.otherElementWrites).length) {
+    console.log(`        别的元素上的 scrollTop 写:${JSON.stringify(report.otherElementWrites)}`)
+  }
+  for (const r of report.rows) {
+    const busy = Math.abs(r.dSt) > 0.5 || r.writes.length || r.portCalls.length || r.focus.length
+    if (!busy) continue
+    console.log(`        帧 ${String(r.frame).padStart(3)} t=${r.t} st=${r.st} Δst=${r.dSt}`
+      + ` JS=${r.jsNet} 没人认领=${r.unexplained} 顶边=${r.target} sh=${r.sh}`
+      + (r.unpainted ? ' 【没画出来过】' : '')
+      + (r.paintInfo ? ` 距点击 ${r.paintInfo.msSinceClick}ms${r.paintInfo.forcedLayout ? ' 这一读逼了排版' : ''}`
+        + (r.paintInfo.exposuresBeforeNextWrite === null ? ''
+          : ` · 到下一次 JS 写 ${r.paintInfo.msToNextWrite}ms、其间绘制 ${r.paintInfo.exposuresBeforeNextWrite} 次`) : '')
+      + (r.ae ? ` ae=${r.ae}` : ''))
+    for (const c of r.portCalls) {
+      console.log(`            port.${c.api}(${c.top === null ? '' : `${Number(c.top).toFixed(1)}, `}${c.cause}`
+        + `${c.behavior ? `, ${c.behavior}` : ''})`)
+    }
+    for (const w of r.writes) {
+      console.log(`            ${w.api}${w.target ? `@${w.target}` : ''} ${w.from} → ${w.to}`
+        + ` (arg ${w.arg}) cause=${w.cause ?? '—'} behavior=${w.behavior ?? '—'}`)
+      console.log(`              ${(w.stack ?? []).slice(0, 5).join(' < ')}`)
+    }
+    for (const fe of r.focus) console.log(`            ${fe.api} ${fe.el}${fe.preventScroll ? ' preventScroll' : ''}`)
+  }
+}
+
 /* ══ 取样:画出来的那一份 ══════════════════════════════════════════════════ */
 
 async function startPaintSampler(page) {
   await page.evaluate(() => {
     window.__fPaint = []
+    /*
+     * **每一次渲染更新的起点**(G 线 P4-0 补,正本 §21.3 Q2):一只常驻的 rAF 环,
+     * 每帧记一笔。取样那一格是「rAF 里排一发宏任务」,它**假定**这一发宏任务跑在
+     * 这一帧画完之后、下一次改 DOM 之前 —— 而驱动那一侧的 `el.click()` 也是一发
+     * 宏任务,可以插在两者之间。插进来时,那一格读到的是**点击之后、还没过一次渲染
+     * 更新**的 DOM:它从没被画出来过。拿这张表就判得出来(点击时刻与取样时刻之间
+     * 有没有一次 rAF),判词在 `alignWrites` 的 `unpainted` 上。
+     */
+    window.__fRafLog = []
     let stopped = false
     let scroll = null
     let column = null
@@ -258,7 +657,10 @@ async function startPaintSampler(page) {
         const target = window.__fTarget && window.__fTarget.isConnected ? window.__fTarget : null
         /* **钉死的那一块**(瞄准那一刻选的),不是每帧现选 —— 现选会换人,做差没有意义。 */
         const above = window.__fAbove && window.__fAbove.isConnected ? window.__fAbove : null
+        const index = window.__fPaint.length
+        if (window.__fMarkSamples) performance.mark(`fold:s:${index}`)
         window.__fPaint.push({
+          i: index,
           t: performance.now(),
           /** 被点的那一块此刻的顶边(视口坐标)。 */
           target: target ? target.getBoundingClientRect().top : null,
@@ -288,6 +690,12 @@ async function startPaintSampler(page) {
           /** 卷尾垫块此刻多高(没有那一格 = 0)。 */
           padH: alive(pad) ? pad.getBoundingClientRect().height : 0,
           phase: window.__fPhase ?? '',
+          /** 驱动最近一次点把手的时刻(`clickTarget` 写)。 */
+          inputT: window.__fInputT ?? null,
+          /* `--trace-writes` 那一档才读(正本 §21.1 表第三行要的「逐帧 activeElement」)。 */
+          ae: window.__fTracer?.on
+            ? (document.activeElement?.getAttribute?.('data-testid') ?? document.activeElement?.tagName ?? null)
+            : undefined,
         })
       }
       requestAnimationFrame(tick)
@@ -296,7 +704,24 @@ async function startPaintSampler(page) {
     channel.port1.onmessage = sampleAfterPaint
     const tick = () => { if (!stopped) channel.port2.postMessage(0) }
     requestAnimationFrame(tick)
-    window.__fPaintStop = () => { stopped = true; channel.port1.onmessage = null }
+    const rafLoop = () => {
+      if (stopped) return
+      window.__fRafLog.push(performance.now())
+      requestAnimationFrame(rafLoop)
+    }
+    /*
+     * **只在 `--trace-writes` 下装,而且 `--trace-paint` 下不装**:多挂一只 rAF 回调会挪动
+     * 取样那一发宏任务与页面里其它宏任务的先后(09-25 实测:装上它,同一场景的 ⑤ 从
+     * 11,454px 变成 0px —— 读数变的是取样时刻,不是产品),缺省档必须与这道门从前的
+     * 时序逐字相同。
+     */
+    if (window.__fTracer && !window.__fNoRafLog) requestAnimationFrame(rafLoop)
+    window.__fPaintStop = () => {
+      stopped = true
+      channel.port1.onmessage = null
+      window.__fRafLogLast = window.__fRafLog
+      window.__fRafLog = []
+    }
   })
 }
 
@@ -397,6 +822,8 @@ async function clickTarget(page, handle) {
     if (!(target instanceof HTMLElement)) return 'no-target'
     const el = sel ? target.querySelector(sel) : target
     if (!(el instanceof HTMLElement)) return 'no-handle'
+    window.__fInputT = performance.now()
+    if (window.__fMarkSamples) performance.mark('fold:click')
     el.click()
     return 'ok'
   }, handle)
@@ -578,6 +1005,33 @@ async function main() {
       const v = await page.evaluate(() => window.__d0 ?? null)
       return v && v.rpcOk ? v : undefined
     })
+    /* ── G 线 P4-0 的两格取样口(正本 §21.1 Q2;判词在 `WRITE_TRACER` / `NO_ANCHOR_STYLE` 上)── */
+    if (NO_ANCHOR) {
+      await page.addInitScript(NO_ANCHOR_STYLE)
+      await page.evaluate(NO_ANCHOR_STYLE)
+      const applied = await page.evaluate(() => {
+        const probe = document.createElement('div')
+        probe.setAttribute('data-testid', 'chat-stream')
+        document.body.appendChild(probe)
+        const v = getComputedStyle(probe).overflowAnchor
+        probe.remove()
+        return v
+      })
+      console.log(`[fold-collapse] --no-overflow-anchor:滚动容器 overflow-anchor = ${applied}`)
+    }
+    if (TRACE_WRITES) {
+      await page.addInitScript(WRITE_TRACER)
+      await page.evaluate(WRITE_TRACER)
+      const patched = await page.evaluate(() => window.__fTracer.patchPort())
+      console.log(`[fold-collapse] --trace-writes:DOM 层已装;ScrollPort 语义层`
+        + `${patched ? `已接上 ${await page.evaluate(() => window.__fTracer.portUrl)}` : '没接上(只剩 DOM 层)'}`)
+    }
+    if (TRACE_PAINT) {
+      await page.evaluate(() => { window.__fNoRafLog = true; window.__fMarkSamples = true })
+      console.log('[fold-collapse] --trace-paint:取样器不装 rAF 环(还原本来的时序),绘制与否由 CDP trace 判')
+    }
+    const traceStart = () => (TRACE_WRITES ? page.evaluate(() => window.__fTracer.start()) : undefined)
+    const traceStop = () => (TRACE_WRITES ? page.evaluate(() => window.__fTracer.stop()) : undefined)
     const realDpr = await page.evaluate(() => window.devicePixelRatio)
     if (realDpr !== DPR) throw new Error(`dpr 钉不住(要 ${DPR},实得 ${realDpr})—— 读数不成立`)
     /*
@@ -630,8 +1084,10 @@ async function main() {
         await scrollToBottom(page)
         await delay(400)
         await aimAt(page, tg.selector, tg.which)
+        const stopCdp = TRACE_PAINT ? await startCdpTrace(cdp) : null
         await startPaintSampler(page)
         await mark(page, 'expand')
+        await traceStart()
         await delay(200)
         await clickTarget(page, tg.handle)
         if (tg.also) {
@@ -639,7 +1095,10 @@ async function main() {
           await clickTarget(page, tg.also)
         }
         await delay(700)
+        const expandTrace = await traceStop()
         const expandFrames = (await stopPaintSampler(page)).filter((f) => f.phase === 'expand')
+        const expandRafs = TRACE_WRITES ? await page.evaluate(() => window.__fRafLogLast ?? []) : []
+        const expandPaint = stopCdp ? paintedByTrace(await stopCdp()) : null
 
         /* ② 摆姿势:贴底 / 上翻半屏。 */
         await scrollToBottom(page)
@@ -669,6 +1128,7 @@ async function main() {
         })
         await startPaintSampler(page)
         await mark(page, 'collapse')
+        await traceStart()
         await delay(160)
         if (tg.also) {
           await clickTarget(page, tg.also)
@@ -676,7 +1136,9 @@ async function main() {
         }
         await clickTarget(page, tg.handle)
         await delay(800)
+        const collapseTrace = await traceStop()
         const collapseFrames = (await stopPaintSampler(page)).filter((f) => f.phase === 'collapse')
+        const collapseRafs = TRACE_WRITES ? await page.evaluate(() => window.__fRafLogLast ?? []) : []
 
         readings[tg.id][where] = {
           beforeTop,
@@ -800,6 +1262,19 @@ async function main() {
           + ` · scrollTop 位移 ${readings[tg.id][where].expand.stSpanPx}px`)
         console.log(`     展开(只报)上方那一整段:`
           + JSON.stringify(readings[tg.id][where].expand.aboveH))
+        if (TRACE_WRITES) {
+          const ex = alignWrites(expandFrames, expandTrace, expandRafs, expandPaint?.map ?? null)
+          if (expandPaint) {
+            ex.paintTrace = { paints: expandPaint.paints, clicks: expandPaint.clicks }
+            ex.rows.forEach((r) => { r.paintInfo = expandPaint.map?.get(expandFrames[r.frame]?.i) ?? null })
+            console.log(`     trace:主线程 Paint/Commit ${expandPaint.paints} 次 · 点击 ${expandPaint.clicks} 次`)
+          }
+          const co = alignWrites(collapseFrames, collapseTrace, collapseRafs)
+          readings[tg.id][where].writes = { expand: ex, collapse: co }
+          printWriteReport(key, '展开', ex)
+          console.log(`     ── 写手取样(${key} · 收起)Σ实际 Δst ${co.totalDSt}px = Σ JS 写 ${co.totalJsNet}px`
+            + ` + 没人认领 ${co.totalUnexplained}px · DOM 写 ${co.writes} 次 · ${JSON.stringify(co.byCause)}`)
+        }
 
         /* 把它收回原样,下一档从同一个姿势起。 */
         if (where === 'bottom') {
