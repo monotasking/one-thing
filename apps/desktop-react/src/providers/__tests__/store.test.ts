@@ -2,13 +2,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSettings } from '@shared/ipc/settings'
 import type { ProviderInfo, SpaceProviderSettings } from '@shared/ipc/providers'
 import { configureProviderSettingsPort } from '../../data/provider-settings-port'
-import type { ProviderSettingsPort } from '../../data/provider-settings-port'
+import type { OAuthPush, ProviderSettingsPort } from '../../data/provider-settings-port'
 import { useNotifyStore } from '../../services/notify-store'
 import { settingsKey, settingsMutation, useProviderSettings } from '../store'
 import { defaultSelectionOf, prefsQuery, toProviderPrefs } from '../../data/models-source'
 import { DEFAULT_SPACE_ID } from '../../workspace/types'
 import { buildFamilies, findFamily } from '../families'
 import { fakeProviderPort } from './fake-port'
+
+/** 外链帮手换成可数的一只:`desktop` 决定「有没有桌面宿主」(自动打开只在桌面上发生)。 */
+const external = vi.hoisted(() => ({ open: vi.fn<(url: string) => Promise<undefined>>(async () => undefined), desktop: false }))
+vi.mock('../../platform/open-external', () => ({
+  openExternal: (url: string) => external.open(url),
+  hasDesktopHost: () => external.desktop,
+}))
 
 /**
  * 写口三条。这一组守的是**写打在哪条口上**,以及失败之后屏幕不许留说谎的牌:
@@ -972,60 +979,91 @@ describe('凭证池的写', () => {
 /* ── 批二:订阅登录 ──────────────────────────────────────────────────────── */
 
 describe('登录流', () => {
-  it('设备码流:起步后把码摆出来,轮到 completed 就收尾并重问登录态', async () => {
-    let polls = 0
+  /**
+   * 批 1:流住在后端。壳只订 `oauth:flow` —— 这里用一只能手推的假推送面代替 SSE。
+   * 每条用例起一台自己的推送面,`push()` 就是「后端发了一帧」。
+   */
+  function pushPort(overrides: Partial<ProviderSettingsPort> = {}) {
+    const listeners = new Set<(push: OAuthPush) => void>()
     const port = installPort({
+      onOAuthPush: vi.fn((callback: (push: OAuthPush) => void) => {
+        listeners.add(callback)
+        return () => listeners.delete(callback)
+      }),
+      ...overrides,
+    })
+    const push = (value: OAuthPush) => {
+      for (const listener of listeners) listener(value)
+    }
+    return { port, push, listeners }
+  }
+  const flow = (pid = 'claude-code') => useProviderSettings.getState().authFlow[pid]
+
+  it('设备码流:起步后把码与授权页摆出来;不再轮询,等 completed 推过来才收尾并重问登录态', async () => {
+    let loggedIn = false
+    const { port, push } = pushPort({
       oauthStart: vi.fn(async () => ({
         success: true,
         flowId: 'f1',
         userCode: 'XKCD-2048',
-        verificationUri: 'https://x.ai/device',
-        pollIntervalMs: 1,
+        verificationUri: 'https://x.ai/device?code=XKCD-2048',
       })),
-      oauthDevicePoll: vi.fn(async () => {
-        polls += 1
-        return polls < 2
-          ? { success: true, completed: false, pollStatus: 'authorization_pending' }
-          : { success: true, completed: true }
-      }),
-      oauthStatus: vi.fn(async () => ({ success: true, isLoggedIn: polls >= 2 })),
+      oauthStatus: vi.fn(async () => ({ success: true, isLoggedIn: loggedIn })),
     })
     await useProviderSettings.getState().start()
     await useProviderSettings.getState().startAuth('claude-code')
 
-    expect(polls).toBe(2)
-    expect(useProviderSettings.getState().authStatus['claude-code']?.isLoggedIn).toBe(true)
+    expect(flow()?.kind).toBe('device')
+    expect(flow()?.flowId).toBe('f1')
+    expect(flow()?.device).toEqual({ userCode: 'XKCD-2048', verificationUri: 'https://x.ai/device?code=XKCD-2048' })
+    // jsdom 里没有桌面宿主:不自动开,状态句该说「点『打开』」。
+    expect(flow()?.opened).toBe(false)
+    expect(Object.keys(port)).not.toContain('oauthDevicePoll')
+
+    // 别人那条流的终局不认。
+    push({ type: 'flow', event: { providerId: 'claude-code', flowId: 'other', phase: 'completed' } })
+    expect(flow()?.kind).toBe('device')
+
+    loggedIn = true
+    push({ type: 'flow', event: { providerId: 'claude-code', flowId: 'f1', phase: 'completed' } })
+    await vi.waitFor(() => expect(useProviderSettings.getState().authStatus['claude-code']?.isLoggedIn).toBe(true))
     // 收尾后流被收掉 —— 屏幕不该还停在设备码那一屏。
-    expect(useProviderSettings.getState().authFlow['claude-code']?.kind).toBeNull()
-    expect(port.oauthDevicePoll).toHaveBeenCalledWith({ providerId: 'claude-code', flowId: 'f1' })
+    expect(flow()?.kind).toBeNull()
   })
 
-  it('设备码流失败:显示**服务商原话**,不换成一句「登录失败」', async () => {
-    installPort({
-      oauthStart: vi.fn(async () => ({
-        success: true,
-        userCode: 'A-1',
-        verificationUri: 'https://a',
-        pollIntervalMs: 1,
-      })),
-      oauthDevicePoll: vi.fn(async () => ({
-        success: false,
-        completed: false,
-        error: 'expired_token',
-      })),
+  it('failed:屏留着给**服务商原话**与重试(ended = failed)', async () => {
+    const { push } = pushPort({
+      oauthStart: vi.fn(async () => ({ success: true, flowId: 'f2', userCode: 'A-1', verificationUri: 'https://a' })),
     })
-    await useProviderSettings.getState().start()
     await useProviderSettings.getState().startAuth('claude-code')
-    expect(useProviderSettings.getState().authFlow['claude-code']?.error).toBe('expired_token')
+    push({ type: 'flow', event: { providerId: 'claude-code', flowId: 'f2', phase: 'failed', error: 'access_denied' } })
+    expect(flow()?.kind).toBe('device')
+    expect(flow()?.ended).toBe('failed')
+    expect(flow()?.error).toBe('access_denied')
   })
 
-  it('贴码流:起步后不锁面,提交码走 callback', async () => {
-    const port = installPort({
+  it('expired:ended = expired;之后再来的推送不再改它', async () => {
+    const { push } = pushPort({
+      oauthStart: vi.fn(async () => ({ success: true, flowId: 'f3', authUrl: 'https://auth/x' })),
+    })
+    await useProviderSettings.getState().startAuth('codex')
+    expect(flow('codex')?.kind).toBe('browser')
+    expect(flow('codex')?.browser?.authUrl).toBe('https://auth/x')
+    push({ type: 'flow', event: { providerId: 'codex', flowId: 'f3', phase: 'expired', error: 'expired_token' } })
+    expect(flow('codex')?.ended).toBe('expired')
+    push({ type: 'flow', event: { providerId: 'codex', flowId: 'f3', phase: 'cancelled' } })
+    expect(flow('codex')?.ended).toBe('expired')
+  })
+
+  it('贴码流:起步后不锁面,授权页网址带进来;提交码走 callback', async () => {
+    const { port } = pushPort({
       oauthStart: vi.fn(async () => ({
         success: true,
+        flowId: 'f4',
         requiresCodeEntry: true,
         state: 'st-1',
         instructions: '去浏览器里拿码',
+        authUrl: 'https://claude.ai/oauth/authorize?x=1',
       })),
       oauthCallback: vi.fn(async () => ({ success: true })),
       oauthStatus: vi.fn(async () => ({ success: true, isLoggedIn: true })),
@@ -1033,11 +1071,14 @@ describe('登录流', () => {
     await useProviderSettings.getState().start()
     await useProviderSettings.getState().startAuth('claude-code')
 
-    const flow = useProviderSettings.getState().authFlow['claude-code']
-    expect(flow?.kind).toBe('paste')
+    expect(flow()?.kind).toBe('paste')
     // 接下来要用户去浏览器里拿码,这边转个圈没有意义。
-    expect(flow?.busy).toBe(false)
-    expect(flow?.paste?.instructions).toBe('去浏览器里拿码')
+    expect(flow()?.busy).toBe(false)
+    expect(flow()?.paste).toEqual({
+      state: 'st-1',
+      instructions: '去浏览器里拿码',
+      authUrl: 'https://claude.ai/oauth/authorize?x=1',
+    })
 
     useProviderSettings.getState().setAuthCode('claude-code', ' code-9 ')
     await useProviderSettings.getState().submitAuthCode('claude-code')
@@ -1046,41 +1087,87 @@ describe('登录流', () => {
       code: 'code-9',
       state: 'st-1',
     })
+    expect(flow()?.kind).toBeNull()
   })
 
   it('起步就失败 = 画错误,不画一个空流程', async () => {
-    installPort({ oauthStart: vi.fn(async () => ({ success: false, error: '起不来' })) })
+    pushPort({ oauthStart: vi.fn(async () => ({ success: false, error: '起不来' })) })
     await useProviderSettings.getState().start()
     await useProviderSettings.getState().startAuth('claude-code')
-    const flow = useProviderSettings.getState().authFlow['claude-code']
-    expect(flow?.kind).toBeNull()
-    expect(flow?.error).toBe('起不来')
+    expect(flow()?.kind).toBeNull()
+    expect(flow()?.error).toBe('起不来')
   })
 
-  /**
-   * 后端没有 cancel 这一口,取消 = 世代号 +1,让还在飞的轮询循环自己退出。
-   * 这一条守的是**取消之后轮询真的停了** —— 停不下来就会在用户重开一条流时
-   * 用上一条的答案把它顶掉。
-   */
-  it('取消:流收掉,并且还在飞的轮询不再问下去', async () => {
-    let polls = 0
-    installPort({
-      oauthStart: vi.fn(async () => ({
-        success: true,
-        userCode: 'A-1',
-        verificationUri: 'https://a',
-        pollIntervalMs: 1,
-      })),
-      oauthDevicePoll: vi.fn(async () => {
-        polls += 1
-        useProviderSettings.getState().cancelAuth('claude-code')
-        return { success: true, completed: false, pollStatus: 'authorization_pending' }
-      }),
+  it('取消:当场收屏,并把 flowId 交给后端 oauth.cancel;终局之后的取消只收屏', async () => {
+    const { port, push } = pushPort({
+      oauthStart: vi.fn(async () => ({ success: true, flowId: 'f5', userCode: 'A-1', verificationUri: 'https://a' })),
+    })
+    await useProviderSettings.getState().startAuth('claude-code')
+    useProviderSettings.getState().cancelAuth('claude-code')
+    expect(flow()?.kind).toBeNull()
+    await vi.waitFor(() => expect(port.oauthCancel).toHaveBeenCalledWith({ flowId: 'f5' }))
+
+    await useProviderSettings.getState().startAuth('claude-code')
+    push({ type: 'flow', event: { providerId: 'claude-code', flowId: 'f5', phase: 'expired' } })
+    ;(port.oauthCancel as ReturnType<typeof vi.fn>).mockClear()
+    useProviderSettings.getState().cancelAuth('claude-code')
+    await Promise.resolve()
+    expect(port.oauthCancel).not.toHaveBeenCalled()
+  })
+
+  it('token-expired 推送:登着的那一格当场翻成「已过期」,再去问一次真话', async () => {
+    const { port, push } = pushPort({
+      oauthStatus: vi.fn(async () => ({ success: true, isLoggedIn: true })),
     })
     await useProviderSettings.getState().start()
-    await useProviderSettings.getState().startAuth('claude-code')
-    expect(polls).toBe(1)
-    expect(useProviderSettings.getState().authFlow['claude-code']?.kind).toBeNull()
+    await useProviderSettings.getState().checkAuth('codex')
+    ;(port.oauthStatus as ReturnType<typeof vi.fn>).mockClear()
+    ;(port.oauthStatus as ReturnType<typeof vi.fn>).mockImplementation(async () => ({
+      success: true,
+      isLoggedIn: true,
+      isExpired: true,
+    }))
+    push({ type: 'token-expired', providerId: 'codex', error: 'Token refresh failed: 401' })
+    expect(useProviderSettings.getState().authStatus.codex?.isExpired).toBe(true)
+    expect(useProviderSettings.getState().authStatus.codex?.lastError).toBe('Token refresh failed: 401')
+    await vi.waitFor(() => expect(port.oauthStatus).toHaveBeenCalledWith({ providerId: 'codex' }))
+  })
+
+  it('推送面只订一次(start 与 startAuth 都会要它)', async () => {
+    const { port } = pushPort({
+      oauthStart: vi.fn(async () => ({ success: true, flowId: 'f6', authUrl: 'https://a' })),
+    })
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().startAuth('codex')
+    await useProviderSettings.getState().startAuth('codex')
+    expect(port.onOAuthPush).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('登录流 · 桌面自动打开授权页', () => {
+  it('桌面上起流即 openExternal(url) 一次,参数是后端返回的网址;成功记 opened', async () => {
+    external.desktop = true
+    external.open.mockReset().mockResolvedValue(undefined)
+    installPort({
+      oauthStart: vi.fn(async () => ({ success: true, flowId: 'g1', authUrl: 'https://auth.openai.com/authorize?s=1' })),
+    })
+    await useProviderSettings.getState().startAuth('codex')
+    expect(external.open).toHaveBeenCalledTimes(1)
+    expect(external.open).toHaveBeenCalledWith('https://auth.openai.com/authorize?s=1')
+    expect(useProviderSettings.getState().authFlow.codex?.opened).toBe(true)
+    external.desktop = false
+  })
+
+  it('打开失败:opened = false(状态句改说「点『打开』」)', async () => {
+    external.desktop = true
+    external.open.mockReset().mockRejectedValue(new Error('scheme not allowed'))
+    installPort({
+      oauthStart: vi.fn(async () => ({ success: true, flowId: 'g2', userCode: 'Q', verificationUri: 'https://v' })),
+    })
+    await useProviderSettings.getState().startAuth('grok-oauth')
+    expect(external.open).toHaveBeenCalledWith('https://v')
+    expect(useProviderSettings.getState().authFlow['grok-oauth']?.opened).toBe(false)
+    external.desktop = false
   })
 })
 

@@ -31,9 +31,10 @@ export function fakeProviderPort(overrides: Partial<ProviderSettingsPort> = {}):
     clearCredential: vi.fn(async () => ({ success: true, credentials: { providers: {} } })),
     oauthStatus: vi.fn(async () => ({ success: true, isLoggedIn: false })),
     oauthStart: vi.fn(async () => ({ success: false, error: 'not stubbed' })),
-    oauthDevicePoll: vi.fn(async () => ({ success: false, completed: false, error: 'not stubbed' })),
     oauthCallback: vi.fn(async () => ({ success: false, error: 'not stubbed' })),
     oauthLogout: vi.fn(async () => ({ success: true })),
+    oauthCancel: vi.fn(async () => ({ success: true, cancelled: true })),
+    onOAuthPush: vi.fn(() => () => {}),
     getProviderUsage: vi.fn(async (providerId: string) => ({
       success: true,
       providerId,

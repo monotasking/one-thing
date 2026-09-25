@@ -65,6 +65,8 @@ const OWNED_LABELS = [
   'flushAllPendingSaves',
   'eventSystem',
   'musicSpeechActivity',
+  'oauthBusBroadcaster',
+  'oauthFlows',
   'collabInspectorBinding',
   'collabInspectorAdmission',
   'collabInspectorDrain',

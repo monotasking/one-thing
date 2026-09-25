@@ -1,5 +1,6 @@
 import { resolveIcon } from '../../components/icons'
 import { registerReferenceKind } from '../registry'
+import { openExternal } from '../../platform/open-external'
 import s from '../ReferenceChip.module.css'
 import type { ReferenceKind } from '../kind'
 
@@ -97,12 +98,9 @@ export const linkReferenceKind: ReferenceKind<never, LinkRef> = {
    * 预先知道的事 —— 它只能**问过才知道**:`openBrowser` 答 false = 后端没有
    * `browser:` 那位提供者(浏览器壳 / 单测 / 将来别的宿主),那时退到最后一条。
    *
-   * 最后那一条是 `window.open`,而且**只在没有 Electron 宿主的时候走**:桌面壳里
-   * 一句 `window.open` 会开出一扇没人管的 Electron 窗(没有导航策略、没有会话
-   * 隔离、关不掉),那比什么都不做坏。桌面上退到这一步就答 false,由 chip 说一句
-   * 人话 —— 今天这只会发生在「非 http(s) 的 scheme」上(壳这一侧没有
-   * `shell.openExternal` 那个面,判词在 `content/files/open-dir-hub.ts`:
-   * `configureShellHost` 是一格闩,声明它是别批的拍板)。留账见交卷。
+   * 最后那一条交给 `platform/open-external`:桌面走主进程的 `shell.openExternal`
+   * (系统默认浏览器,批 1 注入了 `shell` 宿主口),网页壳走 `window.open`。开不成
+   * (比如 scheme 不在 http(s)/mailto 之列)就答 false,由 chip 说一句人话。
    */
   open: async (ref) => {
     if (isWebHref(ref.href)) {
@@ -114,17 +112,18 @@ export const linkReferenceKind: ReferenceKind<never, LinkRef> = {
 }
 
 /**
- * 交给这台宿主之外的东西去开。
+ * 交给这台宿主之外的东西去开 —— 唯一的帮手是 `platform/open-external`。
  *
- * 有 Electron 宿主(`window.onethingHost`,判据与 `platform/connection` 同源)
- * 就**什么都不做**:壳这一侧今天没有 `openExternal`,而 `window.open` 在
- * Electron 里开出来的是一扇壳自己的窗,不是系统默认浏览器。
+ * 从前这里「有 Electron 宿主就什么都不做」(壳这一侧没有 `openExternal`),网页壳又拿
+ * `window.open(…, 'noopener')` 的回值判成败 —— 而带 `noopener` 它恒回 `null`。两个洞一起补。
  */
-function openOutsideApp(href: string): boolean {
-  if (typeof window === 'undefined') return false
-  if ((window as { onethingHost?: unknown }).onethingHost) return false
-  // `noopener` 是硬性的:新开的页面不该拿得到这台壳的 `window.opener`。
-  return window.open(href, '_blank', 'noopener') !== null
+async function openOutsideApp(href: string): Promise<boolean> {
+  try {
+    await openExternal(href)
+    return true
+  } catch {
+    return false
+  }
 }
 
 registerReferenceKind(linkReferenceKind, import.meta.hot)

@@ -22,25 +22,18 @@
  * 是被丢掉的(它只转发 `providerId`);走 router 之后它真的传到 `authService` 了 ——
  * 浏览器里往空间凭证池登录从此是真的。
  *
- * ## 唯一的宿主闸:`start` 开不开浏览器
+ * ## 后端不开浏览器,壳开(批 1,`docs/design/provider-settings-rework-2026-09.md` §3.1)
  *
- * 「把授权页拉起来」要宿主的默认浏览器。旧 server 路由的做法是**根本不递
- * `openExternal`**(投影里那是可选项),于是响应里带着 `authUrl` 回给调用方,
- * 由调用方自己开。
+ * B1 / C0 R7 那几轮这里问的是「宿主有没有外壳能力」,有就在后端顺手把授权页拉起来。
+ * React 壳注入 `shell` 口之后那一支会与壳自己的打开撞成两扇窗,而网页壳根本不该由
+ * 后端(可能是别人的机器)开浏览器。于是 `start` **只返回** `authUrl` / `verificationUri`:
+ * 桌面壳拿到后调 `openExternal` 自动开并记下开没开成,网页壳把链接放在屏上由用户点。
  *
- * B1(方案 `docs/design/backend-transport-forks-2026-09.md` §2.2)之前这里问的是
- * `transport === 'http'` —— 而它真正想问的是「这台宿主有没有默认浏览器」。现在
- * 直接问 `hasShellHost()`(`configureShellHost` 那个端口注没注入,P4c 第二批立的)。
- * 效果:没接外壳的宿主(server / daemon / 今天的 React 壳)拿到的响应形状与从前的
- * http 支逐字相同;接了外壳的 Vue 桌面从此在自己的内嵌 HTTP 面上也会真的开浏览器。
+ * ## 流的生命周期在 authService 里
  *
- * 顺带修掉一处**沉默的降级**:从前 ipc 支无条件递 `openExternal`,宿主没接时那个
- * 闭包会走进 `getShellHost()` 的结构化失败并被 `.then(() => undefined)` 吞掉 ——
- * 于是「浏览器没开」看上去和「开了」一模一样。现在没接就不递,调用方拿得到 `authUrl`。
- *
- * C0 R7 补完另一半:`hasShellHost()` 改成"宿主声明过"的闩(与 `hasVoiceHost()` /
- * `hasTerminalHost()` 同口径)之后,声明了空表的宿主会走进递 `openExternal` 那一支,
- * 于是那句吞错的 `.then(() => undefined)` 必须一起去掉 —— 见 `start` 里的说明。
+ * 设备码轮询、回调等待、到点超时与 `cancel` 都在 `OnethingAuthService`;每次相位变化
+ * 经全局事件 `oauth:flow` 出网(`wiring/auth/oauth-events.ts` 的 `installOAuthBusBroadcaster`)。
+ * `devicePoll` 这条动词保留给还在自己轮询的调用方,它与服务自己的轮询走同一口、同一条收尾。
  *
  * ## 两条推送不在这里
  *
@@ -58,13 +51,12 @@ import {
   refreshOnethingOAuthForIpc,
   startOnethingOAuthForIpc,
 } from '@onething/runtime/auth'
-import { getShellHost, hasShellHost } from '@onething/runtime/shell/host-ports'
 import type { OAuthRoutes } from '@shared/ipc/oauth.js'
 import { authService } from '../../wiring/auth/auth-service.js'
 import { notifyOAuthTokenExpired } from '../../wiring/auth/oauth-events.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
-import type { StartOnethingOAuthForIpcOptions, RefreshOnethingOAuthForIpcOptions, OnethingOAuthIpcLogger } from '@onething/runtime/auth/ipc-operations'
+import type { RefreshOnethingOAuthForIpcOptions, OnethingOAuthIpcLogger } from '@onething/runtime/auth/ipc-operations'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 
 const log = getLogger('rpc.oauth')
@@ -87,32 +79,12 @@ function targetOf(request: {
 export const oauthRpcHandlers: RpcRouteHandlers<OAuthRoutes> = {
   async start(request) {
     const target = targetOf(request)
-    const startOnethingOAuthForIpcOptions: StartOnethingOAuthForIpcOptions = {
+    // 不递 `openExternal`:后端不开浏览器(见文件头)。
+    return startOnethingOAuthForIpc({
       providerId: request.providerId,
       start: providerId => authService.start(providerId, target),
-      /*
-       * 没有外壳能力就不开浏览器:调用方拿 `authUrl` 自己开(旧 server 路由的形状)。
-       *
-       * C0 R7:开不成时**不再静默**。`hasShellHost()` 自这一批起是"宿主声明过"的闩,
-       * 于是一台声明了 `shell: {}`(表里没有 `openExternal`)的宿主会走进这条分支,
-       * 而 `getShellHost().openExternal` 对未注入的那件返回的是结构化失败
-       * `{success:false}` —— 从前那句 `.then(() => undefined)` 把它折成 resolve,
-       * `startOnethingOAuthForIpc` 里那条 `.catch(… logger.error …)` 于是永远等不到,
-       * 「浏览器没开」看上去和「开了」一模一样。
-       *
-       * 改法是让失败**沿既有的那条路**回去:把结构化失败抛出来,`startOnethingOAuthForIpc`
-       * 现成的 catch 记一行 `[OAuth] Open external URL failed:`。响应形状一个字没变 ——
-       * 它本来就带着 `authUrl`,调用方照样能自己开(这就是"交回 authUrl")。
-       */
-      openExternal: hasShellHost()
-        ? async (url: string) => {
-            const result = await getShellHost().openExternal(url)
-            if (!result.success) throw new Error(result.error || 'shell host could not open the URL')
-          }
-        : undefined,
       logger: consoleLog,
-    };
-    return startOnethingOAuthForIpc(startOnethingOAuthForIpcOptions)
+    })
   },
   async callback(request) {
     const target = targetOf(request)
@@ -161,6 +133,11 @@ export const oauthRpcHandlers: RpcRouteHandlers<OAuthRoutes> = {
       deleteToken: providerId => authService.deleteToken(providerId, target),
       logger: consoleLog,
     })
+  },
+  async cancel(request) {
+    const flowId = typeof request?.flowId === 'string' ? request.flowId : ''
+    if (!flowId) return { success: false, cancelled: false, error: 'flowId is required' }
+    return { success: true, cancelled: authService.cancel(flowId) }
   },
 }
 

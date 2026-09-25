@@ -91,6 +91,8 @@ import { bootstrapVariableSystem } from './wiring/variables/index.js'
 import { bootstrapGoalStreamBreakers } from './wiring/goals/runtime-hooks.js'
 import { flushGoalRuntimeUsage, disposeGoalRuntimeState } from './wiring/goals/index.js'
 import { bootstrapProjectDirs } from './wiring/project-dirs/index.js'
+import { authService } from './wiring/auth/auth-service.js'
+import { installOAuthBusBroadcaster } from './wiring/auth/oauth-events.js'
 import { bootstrapNotes } from './wiring/notes/index.js'
 import { bootstrapNoteVaultSkillRoots } from './wiring/skills/note-vault-roots.js'
 import { migrateNotesSettings } from './wiring/notes/migration.js'
@@ -717,6 +719,17 @@ export class OnethingBackend implements BackendHandle {
      * 所以不挂在 `pets` 那一格下面。登记在事件系统之后,关机时先解绑、再关总线。
      */
     this.own(music.attachSpeechActivity(eventBus), 'musicSpeechActivity')
+    /*
+     * 订阅登录(批 1,`docs/design/provider-settings-rework-2026-09.md` §3.1):登录流的计时器
+     * (设备码轮询、到点超时)住在 `authService` 里,相位变化经 `oauth:flow` 全局事件出网。
+     * 广播器登记在事件系统之后;流的收尾与它同一处 own —— 关机时先收流(不发事件)、
+     * 再解监听,残留的计时器一只都不留。
+     */
+    this.own(installOAuthBusBroadcaster(authService), 'oauthBusBroadcaster')
+    this.own(() => {
+      const flows = authService.dispose()
+      log.info('oauth flows disposed', { flows, timers: authService.pendingTimerCount() })
+    }, 'oauthFlows')
 
     /**
      * 删一条会话之前要排空的**生产者表** —— 每一台在自己造出来的那一行登记自己

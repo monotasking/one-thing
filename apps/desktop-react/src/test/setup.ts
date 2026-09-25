@@ -248,13 +248,11 @@ configureProviderSettingsPort({
   // 未登录时要画的正是登录入口。抛出去会让每个用例都得先按住一个错误。
   oauthStatus: async () => ({ success: true, isLoggedIn: false }),
   oauthStart: async () => ({ success: false, error: 'no provider settings port in tests' }),
-  oauthDevicePoll: async () => ({
-    success: false,
-    completed: false,
-    error: 'no provider settings port in tests',
-  }),
   oauthCallback: async () => ({ success: false, error: 'no provider settings port in tests' }),
   oauthLogout: async () => ({ success: false, error: 'no provider settings port in tests' }),
+  oauthCancel: async () => ({ success: true, cancelled: false }),
+  // 推送面默认是哑的:没有流在跑,也就没有相位要推。
+  onOAuthPush: () => () => {},
   // 用量默认 `unsupported` —— 那正是绝大多数 provider 在真机上的答案。
   getProviderUsage: async (providerId: string) => ({
     success: true,

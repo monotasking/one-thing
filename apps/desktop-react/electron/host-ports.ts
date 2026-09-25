@@ -19,9 +19,10 @@
  * 这个壳真的交出来的:auth(凭证解密的唯一口)、sandbox(下载目录)、
  * storePath(打包资源目录)、terminal(T0:PTY 输出的出网口)、settings
  * (深浅色 + **代理重套**,2026-09-12)、localTrust(`desktop-embedded`,B3)、
- * speechOutput(宠物 P3:主进程起子进程出声)与 dialog(原生打开对话框);其余十项是 `null`。
+ * speechOutput(宠物 P3:主进程起子进程出声)、dialog(原生打开对话框)与 shell
+ * (批 1:系统浏览器 / 默认程序打开 / 在访达里定位);其余九项是 `null`。
  */
-import { app, BrowserWindow, dialog, nativeTheme, net, safeStorage, session } from 'electron'
+import { app, BrowserWindow, dialog, nativeTheme, net, safeStorage, session, shell } from 'electron'
 import type { OnethingTokenCryptoAdapter } from '@onething/runtime/auth'
 import type { OnethingHostPorts } from '@onething/backend/host-ports.js'
 import {
@@ -71,6 +72,35 @@ function createShellAuthFetch(): typeof fetch {
 }
 
 /**
+ * `shell.openExternal` 只放行 http(s) 与 mailto。`file:` 与自定义 scheme 会拉起本机程序 ——
+ * 那是 `openPath` 的事,不该借这扇门进来。`shell` 域处理者也拒一遍(两层各守各的)。
+ */
+const EXTERNAL_SCHEMES = new Set(['http:', 'https:', 'mailto:'])
+
+function createShellHostShellPorts(): NonNullable<OnethingHostPorts['shell']> {
+  return {
+    async openExternal(url) {
+      let protocol: string
+      try {
+        protocol = new URL(url).protocol
+      } catch {
+        return { success: false, error: 'url is not a valid absolute URL' }
+      }
+      if (!EXTERNAL_SCHEMES.has(protocol)) return { success: false, error: `scheme ${protocol} is not allowed` }
+      try {
+        await shell.openExternal(url)
+        return { success: true }
+      } catch (error) {
+        log.warn('shell.openExternal failed', { protocol }, error)
+        return { success: false, error: error instanceof Error ? error.message : String(error) }
+      }
+    },
+    openPath: filePath => shell.openPath(filePath),
+    revealPath: filePath => shell.showItemInFolder(filePath),
+  }
+}
+
+/**
  * 这个进程的**代理策略**(2026-09-12)。一个对象,不是散在各处的 `if` —— 判词整段
  * 在 `network-proxy.ts` 的文件头上,一句话的版本:**谁要出网谁来登记,配置变了策略
  * 挨个重套**。从前这里只对 `session.defaultSession` 一个人 `setProxy`,而内嵌浏览器
@@ -114,7 +144,7 @@ export async function applyShellNetworkProxySettings(
  *
  * 从前这里是三次 `configure*Host` 调用,「这个壳没接什么」是看不见的 —— 留账②
  * (打包态找不到内建 skills 目录)正是漏了 `skillsEnvironment` 那一项,而它在
- * 代码里没有留下任何痕迹。现在每一项都要写,没接的写 `null`:下面这十个
+ * 代码里没有留下任何痕迹。现在每一项都要写,没接的写 `null`:下面这九个
  * `null` 就是这个壳的能力缺口清单,一眼可数。
  *
  * 接与不接是**产品决定**,不是这一批的事:A 只负责让"没接"从静默变成一行代码。
@@ -148,11 +178,17 @@ export function createShellHostPorts(): OnethingHostPorts {
      * IPC(`host:connection`),渲染层与 core 之间只有 HTTP/SSE。
      */
     terminal: { broadcaster: createEventBusTerminalBroadcaster() },
+    /**
+     * 系统浏览器 / 默认程序打开 / 在访达里定位(批 1,`docs/design/provider-settings-rework-2026-09.md`
+     * §3.1)。09-03 迁壳时这一格没接,于是订阅登录「已在浏览器里打开授权页」是一句假话、
+     * 聊天里的外链在桌面上点了没反应。注入之后 `hasShellHost()` / `capabilities.shellTools`
+     * 为真 —— AI 的工具从此能在桌面打开文件和网址(用户已拍,方案 §10)。
+     */
+    shell: createShellHostShellPorts(),
     // ── 以下是这个壳还没有的能力。每一行都是一笔待办,不是一次省略。 ──
     // 日志目录与 renderer console 兜底采集:壳走 `configureLogging` 自己开
     // `shell.jsonl`,那两件宿主采集能力还没接。
     logging: null,
-    shell: null,
     voice: null,
     // 留账②:打包态的内建 skills 目录靠这一项指路,这个壳还没注入。
     skillsEnvironment: null,

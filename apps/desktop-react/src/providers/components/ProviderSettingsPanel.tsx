@@ -96,6 +96,7 @@ export function ProviderSettingsPanel() {
   const setAuthCode = useProviderSettings((st) => st.setAuthCode)
   const submitAuthCode = useProviderSettings((st) => st.submitAuthCode)
   const cancelAuth = useProviderSettings((st) => st.cancelAuth)
+  const openAuthPage = useProviderSettings((st) => st.openAuthPage)
   const signOut = useProviderSettings((st) => st.signOut)
   const loadUsage = useProviderSettings((st) => st.loadUsage)
   const saveCustomProvider = useProviderSettings((st) => st.saveCustomProvider)
@@ -359,6 +360,7 @@ export function ProviderSettingsPanel() {
             onAuthCode={(code) => setAuthCode(mode.providerId, code)}
             onSubmitAuthCode={() => void submitAuthCode(mode.providerId)}
             onCancelAuth={() => cancelAuth(mode.providerId)}
+            onOpenAuthPage={() => void openAuthPage(mode.providerId)}
             onSignOut={() => void signOut(mode.providerId)}
             usage={usage[mode.providerId]}
             usageStatus={usageStatus[mode.providerId] ?? 'idle'}

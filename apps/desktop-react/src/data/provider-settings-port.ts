@@ -9,8 +9,10 @@ import { oauthRouter } from '@shared/ipc/oauth'
 import type {
   OAuthCallbackRequest,
   OAuthCallbackResponse,
-  OAuthDevicePollRequest,
-  OAuthDevicePollResponse,
+  OAuthCancelRequest,
+  OAuthCancelResponse,
+  OAuthFlowEventPayload,
+  OAuthFlowPhase,
   OAuthLogoutRequest,
   OAuthLogoutResponse,
   OAuthStartRequest,
@@ -137,9 +139,10 @@ export interface ProviderSettingsPort {
    *    (:241-249:带 entryId = 改这一条;不带 = 追加一条)—— 用量账按条目归因,
    *    换 key 新建条目就等于把这一条的历史账断了。
    *
-   * ⑤ **OAuth 登录**→ `oauth` 域(`packages/shared/ipc/oauth.ts:144-160`)。
-   *    **没有 cancel 这一口** —— 取消是渲染层自己停掉轮询,后端那边没有可撤的东西
-   *    (Vue 壳的 `useProviderAuth.ts` 也是这么做的,它连这口都没找)。
+   * ⑤ **OAuth 登录**→ `oauth` 域(`packages/shared/ipc/oauth.ts`)。**流住在后端**
+   *    (批 1):设备码轮询 / 回调等待 / 超时都在 `OnethingAuthService`,相位经全局事件
+   *    `oauth:flow` 推过来(`onOAuthPush`),取消是 `oauth.cancel`。这边不再轮询,
+   *    所以 `devicePoll` 这条动词不在这张表上(它留给别的宿主)。
    *
    * ⑥ **订阅用量**→ `providers.usage`。今天只有 codex 真有数,其余家后端直接回
    *    `unsupported: true`(`onething-runtime/src/providers/provider-usage.ts:69-73`)——
@@ -155,12 +158,46 @@ export interface ProviderSettingsPort {
 
   oauthStatus(request: OAuthStatusRequest): Promise<OAuthStatusResponse>
   oauthStart(request: OAuthStartRequest): Promise<OAuthStartResponse>
-  oauthDevicePoll(request: OAuthDevicePollRequest): Promise<OAuthDevicePollResponse>
   oauthCallback(request: OAuthCallbackRequest): Promise<OAuthCallbackResponse>
   oauthLogout(request: OAuthLogoutRequest): Promise<OAuthLogoutResponse>
+  oauthCancel(request: OAuthCancelRequest): Promise<OAuthCancelResponse>
+  /** `oauth:flow` / `oauth:token-expired` 两种全局事件的推送面。返回退订函数。 */
+  onOAuthPush(callback: (push: OAuthPush) => void): () => void
 
   /** 订阅用量。`spaceId` 缺席 = 默认空间。 */
   getProviderUsage(providerId: string, spaceId?: string): Promise<ProviderUsageResponse>
+}
+
+/** 登录相关的两种推送,认过形之后的样子。 */
+export type OAuthPush =
+  | { type: 'flow'; event: OAuthFlowEventPayload }
+  | { type: 'token-expired'; providerId: string; error?: string }
+
+const FLOW_PHASES: ReadonlySet<OAuthFlowPhase> = new Set(['pending', 'completed', 'failed', 'expired', 'cancelled'])
+
+/** 一帧推送认不认。形不对就丢(推送面是不可信输入)。 */
+export function oauthPushOfFrame(name: string, data: unknown): OAuthPush | null {
+  if (!data || typeof data !== 'object') return null
+  const record = data as Record<string, unknown>
+  if (typeof record.providerId !== 'string') return null
+  const error = typeof record.error === 'string' ? record.error : undefined
+  if (name === 'oauth:flow') {
+    if (typeof record.flowId !== 'string') return null
+    if (!FLOW_PHASES.has(record.phase as OAuthFlowPhase)) return null
+    return {
+      type: 'flow',
+      event: {
+        providerId: record.providerId,
+        flowId: record.flowId,
+        phase: record.phase as OAuthFlowPhase,
+        ...(error ? { error } : {}),
+      },
+    }
+  }
+  if (name === 'oauth:token-expired') {
+    return { type: 'token-expired', providerId: record.providerId, ...(error ? { error } : {}) }
+  }
+  return null
 }
 
 let port: ProviderSettingsPort | undefined
@@ -198,9 +235,14 @@ async function realPort(): Promise<ProviderSettingsPort> {
     clearCredential: (request) => spacesApi.clearCredential(request),
     oauthStatus: (request) => oauthApi.status(request),
     oauthStart: (request) => oauthApi.start(request),
-    oauthDevicePoll: (request) => oauthApi.devicePoll(request),
     oauthCallback: (request) => oauthApi.callback(request),
     oauthLogout: (request) => oauthApi.logout(request),
+    oauthCancel: (request) => oauthApi.cancel(request),
+    onOAuthPush: (callback) =>
+      client.events.onAny((frame) => {
+        const push = oauthPushOfFrame(frame.name, frame.data)
+        if (push) callback(push)
+      }),
     getProviderUsage: (providerId, spaceId) =>
       providersApi.usage({ providerId, ...(spaceId ? { spaceId } : {}) }),
   }

@@ -59,6 +59,8 @@ export type {
 export type {
   OnethingAuthBodyFormat,
   OnethingAuthAccount,
+  OnethingAuthFlowEvent,
+  OnethingAuthFlowPhase,
   OnethingAuthFlowState,
   OnethingAuthFlowKind,
   OnethingAuthProviderDefinition,

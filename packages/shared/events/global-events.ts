@@ -7,6 +7,7 @@
 import type { PluginNotifySound } from '@onething/core/plugins/notify-sound'
 import type { TerminalDataEvent, TerminalExitEvent } from '../ipc/terminal.js'
 import type { ACPAgentState, AcpSessionState } from '../contracts/acp.js'
+import type { OAuthFlowEventPayload } from '../ipc/oauth.js'
 
 // ── App lifecycle ───────────────────────────────
 
@@ -259,6 +260,27 @@ export interface AcpAgentStateEvent {
   state: ACPAgentState
 }
 
+// ── 订阅登录(批 1,`docs/design/provider-settings-rework-2026-09.md` §3.1)──────────
+
+/**
+ * 一条登录流的相位变了。流住在后端(`OnethingAuthService`:设备码轮询、回调等待、
+ * 到点超时、取消都在那里),壳只订这一条,不再自己轮询。`pending` 只在起流时发一次。
+ */
+export interface OAuthFlowGlobalEvent extends OAuthFlowEventPayload {
+  type: 'oauth:flow'
+}
+
+/**
+ * 一台订阅账号的令牌过期了(刷新被拒)。载荷与 `/api/oauth/events` 那条旧 SSE 上
+ * 同名帧逐字相同 —— 那条是旧 web 壳的出口;React 壳只订 `GET /api/events`,
+ * 于是这里挂同一件事的总线版本,让「登录已过期」即时上屏。
+ */
+export interface OAuthTokenExpiredGlobalEvent {
+  type: 'oauth:token-expired'
+  providerId: string
+  error?: string
+}
+
 // ── Union ───────────────────────────────────────
 
 export type GlobalEvent =
@@ -281,6 +303,8 @@ export type GlobalEvent =
   | SpeechActivityEvent
   | AcpSessionStateEvent
   | AcpAgentStateEvent
+  | OAuthFlowGlobalEvent
+  | OAuthTokenExpiredGlobalEvent
 
 // ── 出网名单(原子 K2a')────────────────────────────
 
@@ -361,4 +385,12 @@ export const GLOBAL_EVENT_LEAVES_PROCESS: Readonly<Record<GlobalEvent['type'], b
    * 原样交出同一份配置,这里不新增一类暴露;真要脱敏,该在两处一起做。
    */
   'acp:agent-state': true,
+  /**
+   * **出网 —— 壳要画它**(批 1)。载荷是 `{providerId, flowId, phase, error?}`:没有令牌、
+   * 没有授权码、没有本机路径;`error` 是 token 端点的错误码或报错句(`access_denied`、
+   * `Token exchange failed: 400`),同一道 Bearer 门后面 `oauth.status.lastError` 交出去的是同一句。
+   */
+  'oauth:flow': true,
+  /** **出网 —— 同上**。载荷 `{providerId, error?}`,`error` 是刷新失败的那句话。 */
+  'oauth:token-expired': true,
 })

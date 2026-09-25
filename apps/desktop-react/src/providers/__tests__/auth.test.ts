@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { OAuthStartResponse } from '@shared/ipc/oauth'
 import {
-  devicePollIsFatal,
-  devicePollShouldContinue,
-  devicePollShouldSlowDown,
+  IDLE_AUTH_FLOW,
+  authPageUrlOf,
   flowKindOf,
+  isAccessDenied,
   formatMoment,
   standingOf,
 } from '../auth'
@@ -50,24 +50,20 @@ describe('flowKindOf', () => {
   })
 })
 
-describe('设备码轮询的三种答复', () => {
-  it('authorization_pending:接着问,不算失败', () => {
-    expect(devicePollShouldContinue('authorization_pending', undefined)).toBe(true)
-    // 有的服务商把它放在 error 里而不是 pollStatus 里 —— 两处都认。
-    expect(devicePollShouldContinue(undefined, 'authorization_pending')).toBe(true)
-    expect(devicePollShouldContinue(undefined, undefined)).toBe(false)
+describe('授权页网址:三流都有', () => {
+  it('设备码流取 verificationUri,贴码流与回调流取 authUrl', () => {
+    expect(authPageUrlOf({ ...IDLE_AUTH_FLOW, kind: 'device', device: { userCode: 'A', verificationUri: 'https://v' } }))
+      .toBe('https://v')
+    expect(authPageUrlOf({ ...IDLE_AUTH_FLOW, kind: 'paste', paste: { state: 's', instructions: '', authUrl: 'https://p' } }))
+      .toBe('https://p')
+    expect(authPageUrlOf({ ...IDLE_AUTH_FLOW, kind: 'browser', browser: { authUrl: 'https://b' } })).toBe('https://b')
+    expect(authPageUrlOf(IDLE_AUTH_FLOW)).toBe('')
   })
 
-  it('slow_down:加长间隔', () => {
-    expect(devicePollShouldSlowDown('slow_down', undefined)).toBe(true)
-    expect(devicePollShouldSlowDown(undefined, 'slow_down')).toBe(true)
-  })
-
-  it('过期与被拒是终局 —— 不该再问下去', () => {
-    expect(devicePollIsFatal('expired_token')).toBe(true)
-    expect(devicePollIsFatal('access_denied')).toBe(true)
-    expect(devicePollIsFatal('authorization_pending')).toBe(false)
-    expect(devicePollIsFatal(undefined)).toBe(false)
+  it('access_denied 是「你在授权页拒绝了」,别的错误不是', () => {
+    expect(isAccessDenied('access_denied')).toBe(true)
+    expect(isAccessDenied('expired_token')).toBe(false)
+    expect(isAccessDenied(undefined)).toBe(false)
   })
 })
 

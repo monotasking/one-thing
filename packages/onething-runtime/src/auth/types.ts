@@ -129,3 +129,20 @@ export interface OnethingOAuthDevicePollResponse {
   error?: string
   pollStatus?: string
 }
+
+/**
+ * 一条登录流的相位(批 1,`docs/design/provider-settings-rework-2026-09.md` §3.1)。
+ *
+ * `pending` 只在 `start` 时发一次;其余四档是终局 —— 发过之后这条流就不在了。
+ * 轮询中间的 `authorization_pending` / `slow_down` 不是相位,不发。
+ */
+export type OnethingAuthFlowPhase = 'pending' | 'completed' | 'failed' | 'expired' | 'cancelled'
+
+/** `OnethingAuthService` 的 `'flow'` 事件载荷。`error` 是服务商原话(`access_denied` 等)。 */
+export interface OnethingAuthFlowEvent {
+  providerId: string
+  flowId: string
+  phase: OnethingAuthFlowPhase
+  error?: string
+  target?: OnethingAuthFlowState['target']
+}

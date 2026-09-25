@@ -82,6 +82,8 @@ describe('onething runtime auth service', () => {
 
     expect(completed).toEqual({ success: true })
     expect(fetchImpl).toHaveBeenCalledOnce()
+    // 完成即出表:这条流的超时计时器跟着收掉。
+    expect(service.pendingTimerCount()).toBe(0)
     await expect(tokenStore.getToken('claude-code')).resolves.toMatchObject({
       accessToken: 'access',
       refreshToken: 'refresh',
@@ -147,5 +149,7 @@ describe('onething runtime auth service', () => {
       accessToken: 'device-access',
       tokenType: 'Bearer',
     })
+    // 公开的 `pollDeviceFlow` 与服务自己的轮询走同一条收尾:完成即收掉两只计时器。
+    expect(service.pendingTimerCount()).toBe(0)
   })
 })

@@ -1,20 +1,19 @@
 import { Button } from '../../ui/Button'
 import { Card } from '../../ui/Card'
-import { Input } from '../../ui/Input'
 import { Spinner } from '../../ui/Spinner'
 import { StatusDot } from '../../ui/StatusDot'
 import { useT } from '../../i18n'
-import type { TFn } from '../../i18n'
 import { formatMoment, standingOf } from '../auth'
 import type { AuthFlowState } from '../auth'
 import type { OAuthStatusResponse } from '@shared/ipc/oauth'
+import { AuthFlowScreen } from './AuthFlowScreen'
 import s from './OAuthCard.module.css'
 
 /**
  * 订阅模式的登录卡。三屏,由**当下的事实**决定画哪一屏 —— 不是由一个 step 计数器:
  *
  *   没在登录 + 没登上   → 说明这是什么 + 一颗「登录」(那句说明**只在这一屏**)
- *   在登录              → 那一条流的现场(设备码 / 贴码 / 浏览器等待)+ 取消
+ *   在登录              → 那一条流的现场(`AuthFlowScreen`:一屏三流,行按事实显隐)
  *   已登上              → 账号 / 套餐 / 令牌状态 / 有效期 + 重新授权 + 退出
  *
  * 「登过但过期了」是**第三屏的一种**,不是第一屏:说「未登录」会让人以为要
@@ -29,6 +28,7 @@ export function OAuthCard({
   onCode,
   onSubmitCode,
   onCancel,
+  onOpenAuthPage,
   onSignOut,
 }: {
   status: OAuthStatusResponse | undefined
@@ -39,6 +39,8 @@ export function OAuthCard({
   onCode: (code: string) => void
   onSubmitCode: () => void
   onCancel: () => void
+  /** 把这条流的授权页交给系统浏览器(`platform/open-external`)。 */
+  onOpenAuthPage: () => void
   onSignOut: () => void
 }) {
   const t = useT()
@@ -47,14 +49,14 @@ export function OAuthCard({
   if (flow.kind) {
     return (
       <Card>
-        <FlowScreen t={t} flow={flow} onCode={onCode} onSubmitCode={onSubmitCode} />
-        {/* 失败要显示**服务商原话**(交接稿 §4b)—— 不换成一句「登录失败」。 */}
-        {flow.error && <p className={s.error}>{flow.error}</p>}
-        <div className={s.row}>
-          <Button size="sm" onClick={onCancel}>
-            {t('providers.subCancel')}
-          </Button>
-        </div>
+        <AuthFlowScreen
+          flow={flow}
+          onOpen={onOpenAuthPage}
+          onCode={onCode}
+          onSubmitCode={onSubmitCode}
+          onCancel={onCancel}
+          onRetry={onSignIn}
+        />
       </Card>
     )
   }
@@ -123,80 +125,5 @@ export function OAuthCard({
         </Button>
       </div>
     </Card>
-  )
-}
-
-/** 流程中的那一屏。三种流各画各的 —— 不合并成一句「正在登录」。 */
-function FlowScreen({
-  t,
-  flow,
-  onCode,
-  onSubmitCode,
-}: {
-  t: TFn
-  flow: AuthFlowState
-  onCode: (code: string) => void
-  onSubmitCode: () => void
-}) {
-  if (flow.kind === 'device' && flow.device) {
-    return (
-      <>
-        <p className={s.note}>{t('providers.subDeviceCode')}</p>
-        {/* 设备码是要**照着念、照着打**的,所以它是这一屏最大的那个东西。 */}
-        <p className={s.deviceCode}>{flow.device.userCode}</p>
-        <p className={s.meta}>
-          {t('providers.subDeviceUrl')} <span className={s.mono}>{flow.device.verificationUri}</span>
-        </p>
-        <p className={s.meta}>{t('providers.subWaiting')}</p>
-      </>
-    )
-  }
-
-  if (flow.kind === 'paste' && flow.paste) {
-    return (
-      <>
-        {/* 后端给的说明原样显示;它没给才退到我们自己那句。 */}
-        <p className={s.note}>{flow.paste.instructions || t('providers.subPasteHint')}</p>
-        <div className={s.row}>
-          <div className={s.codeField}>
-            <Input
-              size="sm"
-              value={flow.code}
-              onValueChange={onCode}
-              disabled={flow.busy}
-              placeholder={t('providers.subCodeLabel')}
-              aria-label={t('providers.subCodeLabel')}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  onSubmitCode()
-                }
-              }}
-            />
-          </div>
-          <Button
-            size="sm"
-            variant="primary"
-            disabled={flow.busy || !flow.code.trim()}
-            onClick={onSubmitCode}
-          >
-            {/* ui-consume-allow: spinner-placement — 同上,在这颗「提交授权码」钮的
-                children 里:忙时换成转圈 + disabled。允许位「按钮内」。 */}
-            {flow.busy ? (
-              <Spinner label={t('providers.subCodeSubmit')} />
-            ) : (
-              t('providers.subCodeSubmit')
-            )}
-          </Button>
-        </div>
-      </>
-    )
-  }
-
-  return (
-    <>
-      <p className={s.note}>{t('providers.subBrowserWaiting')}</p>
-      <p className={s.meta}>{t('providers.subWaiting')}</p>
-    </>
   )
 }

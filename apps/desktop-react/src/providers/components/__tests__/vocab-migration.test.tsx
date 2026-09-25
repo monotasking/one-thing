@@ -129,6 +129,7 @@ describe('StatusDot 收编:五档全部由库件画', () => {
         onCode={() => {}}
         onSubmitCode={() => {}}
         onCancel={() => {}}
+        onOpenAuthPage={() => {}}
         onSignOut={() => {}}
       />,
     )
@@ -355,6 +356,7 @@ describe('Card 收编:详情栏那几张卡', () => {
         onAuthCode={() => {}}
         onSubmitAuthCode={() => {}}
         onCancelAuth={() => {}}
+        onOpenAuthPage={() => {}}
         onSignOut={() => {}}
         usage={undefined}
         usageStatus="idle"
@@ -372,6 +374,7 @@ describe('Card 收编:详情栏那几张卡', () => {
         onCode={() => {}}
         onSubmitCode={() => {}}
         onCancel={() => {}}
+        onOpenAuthPage={() => {}}
         onSignOut={() => {}}
       />,
     ],

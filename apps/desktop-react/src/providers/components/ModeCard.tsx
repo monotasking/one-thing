@@ -61,6 +61,7 @@ export function ModeCard(props: {
   onAuthCode: (code: string) => void
   onSubmitAuthCode: () => void
   onCancelAuth: () => void
+  onOpenAuthPage: () => void
   onSignOut: () => void
 
   usage: ProviderUsageResponse | null | undefined
@@ -116,6 +117,7 @@ export function ModeCard(props: {
           onCode={props.onAuthCode}
           onSubmitCode={props.onSubmitAuthCode}
           onCancel={props.onCancelAuth}
+          onOpenAuthPage={props.onOpenAuthPage}
           onSignOut={props.onSignOut}
         />
         {/*

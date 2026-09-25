@@ -119,6 +119,32 @@ export interface OAuthRefreshResponse {
   error?: string
 }
 
+// OAuth cancel request / response(批 1,`docs/design/provider-settings-rework-2026-09.md` §3.1)
+export interface OAuthCancelRequest {
+  flowId: string
+}
+
+export interface OAuthCancelResponse {
+  success: boolean
+  /** 真的取消了一条还在跑的流。`false` = 这条流早已不在(完成 / 超时 / 取消过)。 */
+  cancelled: boolean
+  error?: string
+}
+
+/**
+ * 登录流的相位 —— 全局事件 `oauth:flow` 的载荷(`@shared/events` 的 `OAuthFlowGlobalEvent`)。
+ * `pending` 只在起流时发一次;其余四档是终局。
+ */
+export type OAuthFlowPhase = 'pending' | 'completed' | 'failed' | 'expired' | 'cancelled'
+
+export interface OAuthFlowEventPayload {
+  providerId: string
+  flowId: string
+  phase: OAuthFlowPhase
+  /** 服务商原话(`access_denied` / `expired_token` / token 端点的报错)。 */
+  error?: string
+}
+
 // ============================================
 // Router
 // ============================================
@@ -148,6 +174,8 @@ export type OAuthRoutes = {
   refresh: { input: OAuthRefreshRequest; output: OAuthRefreshResponse }
   status: { input: OAuthStatusRequest; output: OAuthStatusResponse }
   logout: { input: OAuthLogoutRequest; output: OAuthLogoutResponse }
+  /** 取消一条登录流(批 1)。后端持有流的计时器,取消就是它收尾并发 `oauth:flow cancelled`。 */
+  cancel: { input: OAuthCancelRequest; output: OAuthCancelResponse }
 }
 
 export const oauthRouter = defineRouter<OAuthRoutes>('oauth', [
@@ -157,4 +185,5 @@ export const oauthRouter = defineRouter<OAuthRoutes>('oauth', [
   'refresh',
   'status',
   'logout',
+  'cancel',
 ])

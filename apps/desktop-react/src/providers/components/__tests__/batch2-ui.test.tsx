@@ -699,6 +699,7 @@ function oauth(over: Partial<Parameters<typeof OAuthCard>[0]> = {}) {
       onCode={vi.fn()}
       onSubmitCode={vi.fn()}
       onCancel={vi.fn()}
+      onOpenAuthPage={vi.fn()}
       onSignOut={vi.fn()}
       {...over}
     />
@@ -736,7 +737,7 @@ describe('OAuthCard', () => {
           ...IDLE_AUTH_FLOW,
           kind: 'paste',
           code: 'abc',
-          paste: { state: 's', instructions: '去浏览器里把码抄回来' },
+          paste: { state: "s", instructions: "去浏览器里把码抄回来", authUrl: "" },
         },
         onSubmitCode,
       }),
@@ -953,6 +954,7 @@ describe('ModeCard · 计费档位', () => {
         onAuthCode={vi.fn()}
         onSubmitAuthCode={vi.fn()}
         onCancelAuth={vi.fn()}
+        onOpenAuthPage={vi.fn()}
         onSignOut={vi.fn()}
         usage={undefined}
         usageStatus="idle"
@@ -1006,6 +1008,7 @@ describe('ModeCard · 计费档位', () => {
         onAuthCode={vi.fn()}
         onSubmitAuthCode={vi.fn()}
         onCancelAuth={vi.fn()}
+        onOpenAuthPage={vi.fn()}
         onSignOut={vi.fn()}
         usage={undefined}
         usageStatus="idle"

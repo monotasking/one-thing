@@ -19,6 +19,11 @@
  * 从没注入过的进程(CLI 守护)因此连监听都不装。
  */
 import { authService } from './auth-service.js'
+import type { OnethingAuthFlowEvent } from '@onething/runtime/auth'
+import { getEventBus, isEventSystemInitialized } from '../../events/index.js'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('app.oauth.events')
 
 export type OAuthTokenEvent =
   | { type: 'oauth:token-refreshed'; providerId: string }
@@ -68,4 +73,52 @@ export function getOAuthEventBroadcaster(): OAuthEventBroadcaster | null {
  */
 export function notifyOAuthTokenExpired(providerId: string, error?: string): void {
   authService.emit('token-expired', { providerId, error })
+}
+
+/**
+ * 登录流与令牌过期的**总线广播器**(批 1,`docs/design/provider-settings-rework-2026-09.md` §3.1)。
+ *
+ * 上面那个单槽端口服务的是旧的 `/api/oauth/events` SSE;React 壳只订 `GET /api/events`,
+ * 所以这里把 `authService` 的两条事件接成两种全局事件 `oauth:flow` / `oauth:token-expired`
+ * (`GLOBAL_EVENT_LEAVES_PROCESS` 里登记为出网),壳零通道代码。
+ *
+ * 写法照 `wiring/acp/events.ts`:**发送时才取总线**;装配还没造出总线就 warn 一行丢掉 ——
+ * 装配完成之前不会有人起登录流,真到了那一步,壳的 `oauth.status` 重问会补齐。
+ *
+ * 装配层在事件系统之后调它一次,返回的退订函数 `backend.own()` 掉 —— 于是两次 assemble
+ * 之间监听不会叠。
+ */
+export function installOAuthBusBroadcaster(
+  source: Pick<typeof authService, 'on' | 'off'> = authService,
+): () => void {
+  const onFlow = (event: OnethingAuthFlowEvent): void => {
+    if (!isEventSystemInitialized()) {
+      log.warn('oauth flow event dropped before assembly', { providerId: event.providerId, phase: event.phase })
+      return
+    }
+    getEventBus().emitGlobal({
+      type: 'oauth:flow',
+      providerId: event.providerId,
+      flowId: event.flowId,
+      phase: event.phase,
+      ...(event.error ? { error: event.error } : {}),
+    })
+  }
+  const onExpired = (event: { providerId: string; error?: string }): void => {
+    if (!isEventSystemInitialized()) {
+      log.warn('oauth token-expired event dropped before assembly', { providerId: event.providerId })
+      return
+    }
+    getEventBus().emitGlobal({
+      type: 'oauth:token-expired',
+      providerId: event.providerId,
+      ...(event.error ? { error: event.error } : {}),
+    })
+  }
+  source.on('flow', onFlow)
+  source.on('token-expired', onExpired)
+  return () => {
+    source.off('flow', onFlow)
+    source.off('token-expired', onExpired)
+  }
 }

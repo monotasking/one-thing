@@ -492,6 +492,10 @@ export type {
 	OAuthLogoutResponse,
 	OAuthDevicePollRequest,
 	OAuthDevicePollResponse,
+	OAuthCancelRequest,
+	OAuthCancelResponse,
+	OAuthFlowPhase,
+	OAuthFlowEventPayload,
 } from "./oauth.js";
 
 // Skills types

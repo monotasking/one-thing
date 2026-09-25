@@ -17,6 +17,8 @@ import type { OnethingSpaceAuthTokenStore } from './space-token-store.js'
 import type {
   OnethingAuthAccount,
   OnethingAuthBodyFormat,
+  OnethingAuthFlowEvent,
+  OnethingAuthFlowPhase,
   OnethingAuthFlowState,
   OnethingAuthProviderDefinition,
   OnethingOAuthCallbackResponse,
@@ -83,6 +85,27 @@ export interface OnethingAuthTokenEvent {
   error?: string
 }
 
+/**
+ * 一条登录流的两只计时器:设备码的下一次轮询、整条流的到点超时。
+ * 流在表里就有它们,流一出表(完成 / 失败 / 超时 / 取消 / dispose)它们就一起收掉。
+ */
+interface FlowTimers {
+  poll?: ReturnType<typeof setTimeout>
+  expire?: ReturnType<typeof setTimeout>
+}
+
+/**
+ * 订阅登录的服务。
+ *
+ * **登录流的生命周期在这里**(批 1,`docs/design/provider-settings-rework-2026-09.md` §3.1):
+ * `start` 之后由它自己起设备码轮询、等回调、到 `expiresAt` 判超时,`cancel(flowId)`
+ * 收尾。每一次相位变化发一条 `'flow'` 事件(`OnethingAuthFlowEvent`)——
+ * `pending` 只在 `start` 时发一次,其余四档是终局。装配层把它接成全局事件
+ * `oauth:flow`,于是壳只订阅、不轮询;CLI / 网页壳要登录也不必各写一遍轮询。
+ *
+ * 计时器都是这台服务自己的:`dispose()` 把它们连同在飞的流一起收掉,装配层在
+ * `backend.own()` 上登记这一口(不 `unref` —— 漏收一只就该让进程退不干净,而不是被藏起来)。
+ */
 export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAuthToken> extends EventEmitter {
   private readonly tokenStore: OnethingAuthTokenStore<TToken>
   private readonly spaceTokenStore?: OnethingSpaceAuthTokenStore<TToken>
@@ -93,6 +116,8 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
   private readonly now: () => number
   private readonly logger: Pick<Console, 'warn'>
   private flows = new Map<string, OnethingAuthFlowState>()
+  /** flowId → 这条流的计时器。与 `flows` 同进同出(`clearFlow` 一处收)。 */
+  private flowTimers = new Map<string, FlowTimers>()
   /** key = `providerId::<target>` —— 同一个 provider 在两个空间是两条独立的登录流。 */
   private providerFlowIds = new Map<string, string>()
   private providerErrors = new Map<string, string>()
@@ -174,6 +199,7 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
   ): Promise<OnethingOAuthStartResponse> {
     const definition = this.requireDefinition(providerId)
     const resolvedTarget = this.resolveTarget(target)
+    // 同一个 (provider, 目标) 上重开一次登录 = 上一条作废。它的订阅者会收到 `cancelled`。
     this.clearProviderFlow(providerId, resolvedTarget)
 
     if (definition.flowKind === 'device-code') {
@@ -215,9 +241,11 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
           try {
             await this.completeAuthorizationCodeFlow(providerId, code, returnedState, flowId)
           } catch (error) {
+            // 回调流只有这一次回调:失败就是终局。从前这里发的是 `token-expired`
+            // (壳上读作「登录已过期」)—— 那是一句错话,登录失败不是令牌过期。
             const message = this.toPublicError(error, 'OAuth callback failed')
             this.providerErrors.set(this.flowKey(providerId, resolvedTarget), message)
-            this.emit('token-expired', { providerId, target: resolvedTarget, error: message })
+            this.finishFlow(flowId, 'failed', message)
           }
         },
       })
@@ -229,14 +257,22 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     this.providerFlowIds.set(this.flowKey(providerId, resolvedTarget), flowId)
     this.providerErrors.delete(this.flowKey(providerId, resolvedTarget))
 
-    const authUrl = this.buildAuthorizationUrl(definition, {
-      providerId,
-      flowId,
-      codeVerifier,
-      codeChallenge,
-      state,
-      redirectUri,
-    })
+    let authUrl: string
+    try {
+      authUrl = this.buildAuthorizationUrl(definition, {
+        providerId,
+        flowId,
+        codeVerifier,
+        codeChallenge,
+        state,
+        redirectUri,
+      })
+    } catch (error) {
+      // 起不来的流不该留在表里(也不该留一只回调端口开着)。
+      this.clearFlow(flowId)
+      throw error
+    }
+    this.armFlow(flow)
 
     return {
       success: true,
@@ -283,8 +319,21 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     if (!flow?.deviceCode || flow.kind !== 'device-code') {
       return { success: false, completed: false, error: 'expired_token' }
     }
+    return this.pollDeviceOnce(definition, flow)
+  }
+
+  /**
+   * 问一次 token 端点。公开的 `pollDeviceFlow`(RPC `devicePoll`,别的宿主还在用)与
+   * 服务自己的轮询计时器走的是这同一口,于是谁先问到都走同一条收尾、发同一条事件。
+   */
+  private async pollDeviceOnce(
+    definition: OnethingAuthProviderDefinition,
+    flow: OnethingAuthFlowState,
+  ): Promise<OnethingOAuthDevicePollResponse> {
+    const providerId = flow.providerId
+    if (!flow.deviceCode) return { success: false, completed: false, error: 'expired_token' }
     if (this.now() > flow.expiresAt) {
-      this.clearFlow(flow.flowId)
+      this.finishFlow(flow.flowId, 'expired', 'expired_token')
       return { success: false, completed: false, error: 'expired_token' }
     }
 
@@ -302,6 +351,10 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     })
 
     const data = await response.json()
+    // 问的路上流没了(取消 / 超时 / 另一路先问到了):这一份答案不再算数,更不落盘。
+    if (!this.flows.has(flow.flowId)) {
+      return { success: false, completed: false, error: 'expired_token' }
+    }
     if (data.error) {
       if (data.error === 'authorization_pending') {
         return { success: true, completed: false, pollStatus: 'authorization_pending' }
@@ -310,17 +363,26 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
         flow.intervalMs = (flow.intervalMs || 5000) + 5000
         return { success: true, completed: false, pollStatus: 'slow_down' }
       }
-      this.clearFlow(flow.flowId)
-      return { success: false, completed: false, error: data.error, pollStatus: data.error }
+      const error = String(data.error)
+      this.finishFlow(flow.flowId, error === 'expired_token' ? 'expired' : 'failed', error)
+      return { success: false, completed: false, error, pollStatus: error }
     }
 
     const token = this.normalizeToken(definition, data)
     const flowTarget = this.resolveTarget(flow.target as OnethingCredentialTarget | undefined)
     const savedTarget = await this.writeToken(providerId, token, flowTarget)
-    this.clearFlow(flow.flowId)
     this.providerErrors.delete(this.flowKey(providerId, flowTarget))
     this.emit('token-refreshed', { providerId, target: savedTarget })
+    this.finishFlow(flow.flowId, 'completed')
     return { success: true, completed: true }
+  }
+
+  /**
+   * 取消一条登录流。流还在 → 收掉计时器与回调注册、发 `cancelled`,答 `true`;
+   * 流已经不在(早就完成 / 超时 / 取消过)→ 答 `false`,什么都不发。
+   */
+  cancel(flowId: string): boolean {
+    return this.finishFlow(flowId, 'cancelled')
   }
 
   /**
@@ -486,10 +548,33 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
   }
 
   cleanup(): void {
+    for (const flowId of [...this.flowTimers.keys()]) this.clearFlowTimers(flowId)
     this.callbackServer?.cleanup()
     this.flows.clear()
     this.providerFlowIds.clear()
     this.refreshInFlight.clear()
+  }
+
+  /**
+   * 收掉这台服务起的一切:在飞的登录流、它们的计时器、回调端口。**不发事件** ——
+   * dispose 发生在关机链上,那时事件总线可能已经不在,而进程马上就没了。
+   * 收完服务仍可再用(装配层那台是进程单例,下一次 assemble 还是它)。
+   * 返回收掉了几条流(装配层记一行日志用)。
+   */
+  dispose(): number {
+    const flows = this.flows.size
+    this.cleanup()
+    return flows
+  }
+
+  /** 此刻还挂着的计时器数。测试与门用:dispose 之后它必须是 0。 */
+  pendingTimerCount(): number {
+    let count = 0
+    for (const timers of this.flowTimers.values()) {
+      if (timers.poll) count += 1
+      if (timers.expire) count += 1
+    }
+    return count
   }
 
   private async startDeviceFlow(
@@ -541,6 +626,7 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     this.flows.set(flowId, flow)
     this.providerFlowIds.set(this.flowKey(definition.providerId, target), flowId)
     this.providerErrors.delete(this.flowKey(definition.providerId, target))
+    this.armFlow(flow)
 
     return {
       success: true,
@@ -618,12 +704,16 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     }
 
     const data = await response.json()
+    // 换 token 的路上流被取消 / 超时了:不落盘。
+    if (!this.flows.has(flow.flowId)) {
+      throw new Error('OAuth flow has expired. Please try logging in again.')
+    }
     const token = this.normalizeToken(definition, data)
     const flowTarget = this.resolveTarget(flow.target as OnethingCredentialTarget | undefined)
     const savedTarget = await this.writeToken(providerId, token, flowTarget)
-    this.clearFlow(flow.flowId)
     this.providerErrors.delete(this.flowKey(providerId, flowTarget))
     this.emit('token-refreshed', { providerId, target: savedTarget })
+    this.finishFlow(flow.flowId, 'completed')
     return token
   }
 
@@ -688,12 +778,106 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     return flow
   }
 
+  /** 被新一次登录顶掉 / 被登出收掉的那条流 —— 对它的订阅者而言就是取消。 */
   private clearProviderFlow(providerId: string, target?: OnethingCredentialTarget): void {
     const flowId = this.providerFlowIds.get(this.flowKey(providerId, this.resolveTarget(target)))
-    if (flowId) this.clearFlow(flowId)
+    if (flowId) this.finishFlow(flowId, 'cancelled')
+  }
+
+  /**
+   * 起流之后挂上它的计时器:到点超时(三种流都有),设备码流再挂第一次轮询。
+   * 然后发唯一的一条 `pending`。
+   */
+  private armFlow(flow: OnethingAuthFlowState): void {
+    const timers = this.timersOf(flow.flowId)
+    timers.expire = setTimeout(() => {
+      timers.expire = undefined
+      this.finishFlow(flow.flowId, 'expired', 'expired_token')
+    }, Math.max(0, flow.expiresAt - this.now()))
+    if (flow.kind === 'device-code') this.scheduleDevicePoll(flow)
+    this.emitFlow({ providerId: flow.providerId, flowId: flow.flowId, phase: 'pending', target: flow.target })
+  }
+
+  private timersOf(flowId: string): FlowTimers {
+    let timers = this.flowTimers.get(flowId)
+    if (!timers) {
+      timers = {}
+      this.flowTimers.set(flowId, timers)
+    }
+    return timers
+  }
+
+  private scheduleDevicePoll(flow: OnethingAuthFlowState): void {
+    if (!this.flows.has(flow.flowId)) return
+    const timers = this.timersOf(flow.flowId)
+    timers.poll = setTimeout(() => {
+      timers.poll = undefined
+      void this.devicePollTick(flow.flowId)
+    }, flow.intervalMs ?? 5000)
+  }
+
+  /**
+   * 计时器上的一次轮询。**问不到不判死**:网络抖一下、token 端点 5xx 一次,下一拍
+   * 再问 —— 终局由 token 端点自己说(`access_denied` / `expired_token`)或到点超时说。
+   */
+  private async devicePollTick(flowId: string): Promise<void> {
+    const flow = this.flows.get(flowId)
+    if (!flow) return
+    const definition = this.getDefinition(flow.providerId)
+    if (!definition) {
+      this.finishFlow(flowId, 'failed', `Unknown OAuth provider: ${flow.providerId}`)
+      return
+    }
+    try {
+      const result = await this.pollDeviceOnce(definition, flow)
+      if (result.completed || !result.success) return
+    } catch (error) {
+      if (!this.flows.has(flowId)) return
+      this.logger.warn('[Auth] device-code poll failed; retrying', error)
+    }
+    this.scheduleDevicePoll(flow)
+  }
+
+  /**
+   * 一条流的终局:出表、收计时器与回调注册、发事件。流已经不在就什么都不做 ——
+   * 一条流只有一个终局,先到的那一路说了算。
+   */
+  private finishFlow(flowId: string, phase: Exclude<OnethingAuthFlowPhase, 'pending'>, error?: string): boolean {
+    const flow = this.flows.get(flowId)
+    if (!flow) return false
+    this.clearFlow(flowId)
+    if (phase === 'failed' && error) {
+      this.providerErrors.set(this.flowKey(flow.providerId, flow.target as OnethingCredentialTarget | undefined), error)
+    }
+    this.emitFlow({
+      providerId: flow.providerId,
+      flowId,
+      phase,
+      ...(error ? { error } : {}),
+      target: flow.target,
+    })
+    return true
+  }
+
+  private emitFlow(event: OnethingAuthFlowEvent): void {
+    try {
+      this.emit('flow', event)
+    } catch (error) {
+      // 一只订阅者抛错不该把登录流的收尾打断。
+      this.logger.warn('[Auth] flow listener failed', error)
+    }
+  }
+
+  private clearFlowTimers(flowId: string): void {
+    const timers = this.flowTimers.get(flowId)
+    if (!timers) return
+    if (timers.poll) clearTimeout(timers.poll)
+    if (timers.expire) clearTimeout(timers.expire)
+    this.flowTimers.delete(flowId)
   }
 
   private clearFlow(flowId: string): void {
+    this.clearFlowTimers(flowId)
     const flow = this.flows.get(flowId)
     if (!flow) return
     this.flows.delete(flowId)

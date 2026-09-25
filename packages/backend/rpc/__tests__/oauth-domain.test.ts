@@ -9,11 +9,10 @@
  *    `configureOAuthEventBroadcaster` 注入端口 —— router 今天没有推送面);
  *  - 凭证写回目标(批 B6 的 spaceId / entryId / label)真的传到 authService 了
  *    —— 从前 web 壳把它收下即丢;
- *  - **`start` 只在宿主有外壳能力时开浏览器**(B1,方案
- *    `docs/design/backend-transport-forks-2026-09.md` §2.2):从前的判据是
- *    `transport === 'http'`,现在是 `hasShellHost()` —— 没接外壳的宿主拿到的响应
- *    形状与旧 server 路由逐字相同(带 `authUrl` 回去,由调用方自己开),接了外壳的
- *    宿主在两种 transport 上都真的开;
+ *  - **后端从不开浏览器**(批 1,`docs/design/provider-settings-rework-2026-09.md` §3.1):
+ *    `start` 只交回 `authUrl` / `verificationUri`,壳拿到后自己开 —— 宿主有外壳也不开
+ *    (React 壳注入 `shell` 之后,后端再开一次就是两扇窗);
+ *  - `cancel` 把 flowId 交给 authService,答它说的「真取消了没有」;
  *  - `refresh` 失败时把「令牌过期」经**事件源**通知出去(而不是像从前桌面那样
  *    直接调 Electron 广播),于是桌面窗口与 web 的 SSE 收到的是同一次事件。
  */
@@ -27,6 +26,7 @@ const authService = vi.hoisted(() => ({
   refreshToken: vi.fn(),
   getStatus: vi.fn(),
   deleteToken: vi.fn(),
+  cancel: vi.fn(),
 }))
 
 const shell = vi.hoisted(() => ({
@@ -97,6 +97,7 @@ describe('oauth RPC domain', () => {
       isLoggedIn: true,
     })
     authService.deleteToken.mockReset().mockResolvedValue({ success: true })
+    authService.cancel.mockReset().mockReturnValue(true)
     shellHostPresent = true
     shell.openExternal.mockReset().mockResolvedValue({ success: true })
     events.notifyOAuthTokenExpired.mockReset()
@@ -112,14 +113,14 @@ describe('oauth RPC domain', () => {
     dispose = undefined
   })
 
-  it('binds the six data methods — the two token pushes are deliberately not among them', async () => {
+  it('binds the seven data methods — the two token pushes are deliberately not among them', async () => {
     const { dispatchRpc } = await loadDomain()
 
-    for (const method of ['start', 'callback', 'devicePoll', 'refresh', 'status', 'logout']) {
+    for (const method of ['start', 'callback', 'devicePoll', 'refresh', 'status', 'logout', 'cancel']) {
       const response = await dispatchRpc({
         domain: 'oauth',
         method,
-        payload: { providerId: 'github-copilot', code: 'c', state: 's' },
+        payload: { providerId: 'github-copilot', code: 'c', state: 's', flowId: 'f' },
       })
       expect(response.ok, `${method} should dispatch`).toBe(true)
     }
@@ -130,78 +131,36 @@ describe('oauth RPC domain', () => {
     }
   })
 
-  it('start opens the browser whenever the host has a shell — on http too (B1)', async () => {
+  it('start never opens the browser — shell or not, either transport: authUrl goes back to the caller (批 1)', async () => {
     const { dispatchRpc } = await loadDomain()
 
-    await expect(dispatchRpc({ domain: 'oauth', method: 'start', payload: { providerId: 'claude-code' } }))
-      .resolves.toMatchObject({ ok: true, data: { success: true, authUrl: 'https://example.test/authorize' } })
-    // `openExternal` 是投影里 fire-and-forget 的一次调用,让它跑完这一轮微任务。
-    await Promise.resolve()
-    expect(shell.openExternal).toHaveBeenCalledWith('https://example.test/authorize')
-
-    shell.openExternal.mockClear()
-    const remote = await dispatchRpc(
-      { domain: 'oauth', method: 'start', payload: { providerId: 'claude-code' } },
-      HTTP_CONTEXT,
-    )
-    await Promise.resolve()
-    expect(remote).toMatchObject({ ok: true, data: { authUrl: 'https://example.test/authorize' } })
-    // B1:判据是宿主有没有默认浏览器,不是问的人从哪条总线来。
-    expect(shell.openExternal).toHaveBeenCalledWith('https://example.test/authorize')
-  })
-
-  it('start never opens the browser when the host has no shell — authUrl goes back instead', async () => {
-    shellHostPresent = false
-    const { dispatchRpc } = await loadDomain()
-
-    for (const context of [undefined, HTTP_CONTEXT]) {
-      const answer = await dispatchRpc(
-        { domain: 'oauth', method: 'start', payload: { providerId: 'claude-code' } },
-        context,
-      )
-      await Promise.resolve()
-      // 与 B1 之前的 http 支逐字相同的形状:响应带着 authUrl 回给调用方。
-      expect(answer).toMatchObject({ ok: true, data: { success: true, authUrl: 'https://example.test/authorize' } })
+    for (const present of [true, false]) {
+      shellHostPresent = present
+      for (const context of [undefined, HTTP_CONTEXT]) {
+        const answer = await dispatchRpc(
+          { domain: 'oauth', method: 'start', payload: { providerId: 'claude-code' } },
+          context,
+        )
+        await Promise.resolve()
+        expect(answer).toMatchObject({ ok: true, data: { success: true, authUrl: 'https://example.test/authorize' } })
+      }
     }
     expect(shell.openExternal).not.toHaveBeenCalled()
   })
 
-  /**
-   * C0 R7(方案 `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.3)。
-   *
-   * `hasShellHost()` 改成闩之后,一台声明了 `shell: {}` 的宿主会走进「递
-   * openExternal」那一支,而门面对没给的那一件返回的是结构化失败 —— 从前那句
-   * `.then(() => undefined)` 把它折成 resolve,于是**一行日志都没有**,
-   * 「浏览器没开」与「开了」在外面看来一模一样。
-   *
-   * 现在失败沿投影层现成的那条路回去:记一行 `[OAuth] Open external URL failed:`,
-   * 而响应形状一个字没变(仍然带着 `authUrl`,调用方自己开)。
-   *
-   * 反证(实跑过):把 `oauth.ts` 里那句 `if (!result.success) throw …` 换回
-   * `.then(() => undefined)` → 这条的日志断言红(`expected "error" to be called`)。
-   */
-  it('C0 R7:声明了外壳却开不成时记一行错,不再静默(响应仍交回 authUrl)', async () => {
-    shell.openExternal.mockResolvedValue({ success: false, error: 'shell host not available' })
+  it('cancel hands the flowId to authService and reports whether a live flow was cancelled', async () => {
     const { dispatchRpc } = await loadDomain()
 
-    const answer = await dispatchRpc({
-      domain: 'oauth',
-      method: 'start',
-      payload: { providerId: 'claude-code' },
-    })
-    // fire-and-forget 的那一发要跑完 await + catch 两轮微任务。
-    await Promise.resolve()
-    await Promise.resolve()
-    await Promise.resolve()
+    await expect(dispatchRpc({ domain: 'oauth', method: 'cancel', payload: { flowId: 'flow-9' } }))
+      .resolves.toMatchObject({ ok: true, data: { success: true, cancelled: true } })
+    expect(authService.cancel).toHaveBeenCalledWith('flow-9')
 
-    expect(answer).toMatchObject({
-      ok: true,
-      data: { success: true, authUrl: 'https://example.test/authorize' },
-    })
-    expect(oauthLog.error).toHaveBeenCalledWith(
-      '[OAuth] Open external URL failed:',
-      expect.objectContaining({ message: 'shell host not available' }),
-    )
+    authService.cancel.mockReturnValue(false)
+    await expect(dispatchRpc({ domain: 'oauth', method: 'cancel', payload: { flowId: 'gone' } }))
+      .resolves.toMatchObject({ ok: true, data: { success: true, cancelled: false } })
+
+    await expect(dispatchRpc({ domain: 'oauth', method: 'cancel', payload: {} }))
+      .resolves.toMatchObject({ ok: true, data: { success: false, cancelled: false } })
   })
 
   it('carries the credential target through to the auth service on every method', async () => {

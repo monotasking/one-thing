@@ -12,6 +12,8 @@ import type { OAuthStatusResponse } from '@shared/ipc/oauth'
 import type { AppSettings } from '@shared/ipc/settings'
 import type { SpaceCredentialsSummary, SpaceProviderCredentialSummary } from '@shared/ipc/spaces'
 import { providerSettingsPort } from '../data/provider-settings-port'
+import type { OAuthPush, ProviderSettingsPort } from '../data/provider-settings-port'
+import { hasDesktopHost, openExternal } from '../platform/open-external'
 import { createMutation } from '../data/kernel'
 // 聊天那边的名册读的是这一格;设置写完必须作废它(理由写在 `settle` 里)。
 import { prefsQuery } from '../data/models-source'
@@ -29,18 +31,7 @@ import { t } from '../i18n'
 import { buildFamilies, providerIdsOf, resolveMode } from './families'
 import { credentialFactsOf, isModeConfigured, poolViewOf, reorderPool } from './projection'
 import { MODEL_KEYED_TABLES, moveModelKey } from './model-maps'
-import {
-  BROWSER_POLL_INTERVAL_MS,
-  BROWSER_POLL_TIMEOUT_MS,
-  DEVICE_POLL_INTERVAL_MS,
-  DEVICE_POLL_MAX_ATTEMPTS,
-  DEVICE_POLL_SLOW_DOWN_MS,
-  IDLE_AUTH_FLOW,
-  devicePollIsFatal,
-  devicePollShouldContinue,
-  devicePollShouldSlowDown,
-  flowKindOf,
-} from './auth'
+import { IDLE_AUTH_FLOW, authPageUrlOf, flowKindOf } from './auth'
 import type { AuthFlowState } from './auth'
 import { dialPatchOf, providerDialsOf } from './dials'
 import {
@@ -282,11 +273,16 @@ export interface ProviderSettingsState {
   checkAuth: (providerId: string) => Promise<void>
   /** 起一次登录。流形由后端的答案定(见 auth.ts 文件头)。 */
   startAuth: (providerId: string) => Promise<void>
+  /** 用户点「打开」:把这条流的授权页交给系统浏览器(网页壳 = 新标签)。 */
+  openAuthPage: (providerId: string) => Promise<void>
   /** 贴码框里改字。 */
   setAuthCode: (providerId: string, code: string) => void
   /** 提交贴回来的授权码。 */
   submitAuthCode: (providerId: string) => Promise<void>
-  /** 取消登录。**后端没有这口** —— 取消就是这边不再问下去。 */
+  /**
+   * 取消登录。流还在后端跑 → `oauth.cancel`(后端收掉计时器,推 `cancelled`);
+   * 流已经终局(失败 / 超时那一屏)→ 只把这一屏收回空闲。
+   */
   cancelAuth: (providerId: string) => void
   /** 退出登录。带 entryId 时只退那一个账号。 */
   signOut: (providerId: string, entryId?: string) => Promise<void>
@@ -332,6 +328,8 @@ let settingsBoot: Promise<void> | undefined
 let started = false
 /** 换空间那条订阅的句柄。同理:它是这一个进程的事实,不是屏幕上的一格。 */
 let unsubscribeSpace: (() => void) | undefined
+/** `oauth:flow` / `oauth:token-expired` 那条推送订阅的句柄。同理。 */
+let unsubscribeOAuth: (() => void) | undefined
 
 /* ── 设置写路:一发 mutation,逐格记账(09-01 批 1)──────────────────────────
  *
@@ -787,95 +785,72 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
   }
 
   /**
-   * 「这一次登录还算不算数」。取消 / 换坑 / 重开都会让上一条流作废,而
-   * 轮询是个跑在 await 里的循环 —— 它必须能问一句「我还是当下那一条吗」。
-   * 用一个逐坑的世代号答:每起一次流 +1,循环每轮比一次。
+   * 登录流的推送(批 1)。**流住在后端**:设备码轮询、回调等待、超时都在
+   * `OnethingAuthService`,相位变化经 `oauth:flow` 推过来 —— 这边只按 `flowId`
+   * 认领自己那一坑当下那条流。别的 flowId(被新一次登录顶掉的、别的窗口起的)一律不理:
+   * 那不是这一屏在等的东西。
    */
-  const authEpoch = new Map<string, number>()
-  function bumpEpoch(providerId: string): number {
-    const next = (authEpoch.get(providerId) ?? 0) + 1
-    authEpoch.set(providerId, next)
-    return next
-  }
-  function epochIsStale(providerId: string, epoch: number): boolean {
-    return authEpoch.get(providerId) !== epoch
-  }
-
-  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-
-  /**
-   * 设备码轮询。60 次 × 5s,服务商喊 `slow_down` 就每次多等 5s ——
-   * 节奏与 Vue 壳 `useProviderAuth.ts:161-205` 逐条相同(常量在 auth.ts)。
-   *
-   * 每一轮先问「我还是当下那条流吗」:取消 / 换坑 / 重开都会让世代号变,
-   * 而这个循环可能还挂在一个 5 秒的 await 上。
-   */
-  async function pollDevice(
-    providerId: string,
-    epoch: number,
-    flowId: string | undefined,
-    intervalMs: number | undefined,
-  ): Promise<void> {
-    let wait = intervalMs ?? DEVICE_POLL_INTERVAL_MS
-    const port = await providerSettingsPort()
-    for (let attempt = 0; attempt < DEVICE_POLL_MAX_ATTEMPTS; attempt += 1) {
-      await sleep(wait)
-      if (epochIsStale(providerId, epoch)) return
-      let response: Awaited<ReturnType<typeof port.oauthDevicePoll>>
-      try {
-        response = await port.oauthDevicePoll({ providerId, ...(flowId ? { flowId } : {}) })
-      } catch (error) {
-        patchFlow(providerId, { error: error instanceof Error ? error.message : String(error) })
-        return
-      }
-      if (epochIsStale(providerId, epoch)) return
-
-      if (response.completed && response.success) {
-        await settleAuth(providerId)
-        return
-      }
-      if (devicePollShouldSlowDown(response.pollStatus, response.error)) {
-        wait += DEVICE_POLL_SLOW_DOWN_MS
-        continue
-      }
-      if (devicePollShouldContinue(response.pollStatus, response.error)) continue
-      if (!response.success || devicePollIsFatal(response.error)) {
-        // 失败要显示**错误原文**(交接稿 §4b)。没给原文才退到那句通用的。
-        patchFlow(providerId, { error: response.error || t('providers.subFailed') })
-        return
-      }
-    }
-    patchFlow(providerId, { error: t('providers.subTimedOut') })
-  }
-
-  /**
-   * 浏览器回调流。这一支后端不给可轮询的流 id,所以问的是**登录态本身** ——
-   * 2s 一次,最多 5 分钟(与 Vue 壳 `pollBrowserCallback` 同一手)。
-   */
-  async function pollBrowser(providerId: string, epoch: number): Promise<void> {
-    const deadline = Date.now() + BROWSER_POLL_TIMEOUT_MS
-    const port = await providerSettingsPort()
-    while (Date.now() < deadline) {
-      await sleep(BROWSER_POLL_INTERVAL_MS)
-      if (epochIsStale(providerId, epoch)) return
-      try {
-        const status = await port.oauthStatus({ providerId })
-        if (epochIsStale(providerId, epoch)) return
-        set((st) => ({ authStatus: { ...st.authStatus, [providerId]: status } }))
-        if (status.isLoggedIn) {
-          await settleAuth(providerId)
-          return
+  function onOAuthPush(push: OAuthPush): void {
+    if (push.type === 'token-expired') {
+      // 令牌过期即时上屏:不等下一次开面重问,先把这一格翻成「已过期」,再去问一次真话。
+      set((st) => {
+        const prev = st.authStatus[push.providerId]
+        if (!prev?.isLoggedIn) return st
+        return {
+          authStatus: {
+            ...st.authStatus,
+            [push.providerId]: { ...prev, isExpired: true, ...(push.error ? { lastError: push.error } : {}) },
+          },
         }
-      } catch {
-        // 问不到就下一轮再问 —— 浏览器还开着,一次网络抖动不该把流程判死。
-      }
+      })
+      void get().checkAuth(push.providerId)
+      return
     }
-    if (!epochIsStale(providerId, epoch)) patchFlow(providerId, { error: t('providers.subTimedOut') })
+    const { providerId, flowId, phase, error } = push.event
+    const flow = get().authFlow[providerId]
+    if (!flow?.kind || flow.flowId !== flowId || flow.ended) return
+    switch (phase) {
+      case 'pending':
+        return
+      case 'completed':
+        void settleAuth(providerId)
+        return
+      case 'cancelled':
+        set((st) => ({ authFlow: { ...st.authFlow, [providerId]: IDLE_AUTH_FLOW } }))
+        return
+      case 'expired':
+        patchFlow(providerId, { busy: false, ended: 'expired', error: error ?? 'expired_token' })
+        return
+      case 'failed':
+        patchFlow(providerId, { busy: false, ended: 'failed', error: error || t('providers.subFailed') })
+        // 失败也可能已经动了登录态(比如回调换 token 成功一半)—— 问一次真话。
+        void get().checkAuth(providerId)
+    }
+  }
+
+  /** 订上登录推送。幂等:`start()` 与 `startAuth()` 都会调(设置页没开面也能登录)。 */
+  function ensureOAuthPush(port: ProviderSettingsPort): void {
+    if (unsubscribeOAuth) return
+    unsubscribeOAuth = port.onOAuthPush(onOAuthPush)
+  }
+
+  /**
+   * 把授权页交给系统浏览器。**只有桌面自动开**:网页壳里这一下发生在一次 RPC 的
+   * await 之后,不是用户手势,浏览器会当弹窗拦掉 —— 那边链接在屏上,用户自己点。
+   * 回 true = 真的开了(状态句据此二选一)。
+   */
+  async function autoOpen(url: string): Promise<boolean> {
+    if (!url || !hasDesktopHost()) return false
+    try {
+      await openExternal(url)
+      return true
+    } catch {
+      return false
+    }
   }
 
   /** 登录成功的收尾:重问登录态、重拉凭证摘要、把流收掉。 */
   async function settleAuth(providerId: string): Promise<void> {
-    authEpoch.set(providerId, (authEpoch.get(providerId) ?? 0) + 1)
     set((st) => ({ authFlow: { ...st.authFlow, [providerId]: IDLE_AUTH_FLOW } }))
     await get().checkAuth(providerId)
     const port = await providerSettingsPort()
@@ -926,6 +901,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       })
       const port = await providerSettingsPort()
       await port.ready()
+      ensureOAuthPush(port)
       await load()
     },
 
@@ -1352,11 +1328,13 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     },
 
     startAuth: async (providerId) => {
-      const epoch = bumpEpoch(providerId)
-      patchFlow(providerId, { kind: null, busy: true, error: undefined, code: '' })
+      // 同一坑上一条还在跑的流:后端 `start` 会把它顶掉(推 `cancelled`,它的 flowId
+      // 已经不是这一屏在等的那条,推送被认领表挡掉)。这边只管把屏换成新的一条。
+      patchFlow(providerId, { ...IDLE_AUTH_FLOW, busy: true })
 
-      let started: Awaited<ReturnType<typeof port.oauthStart>>
+      let started: Awaited<ReturnType<ProviderSettingsPort['oauthStart']>>
       const port = await providerSettingsPort()
+      ensureOAuthPush(port)
       try {
         started = await port.oauthStart({ providerId })
       } catch (error) {
@@ -1366,7 +1344,6 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
         })
         return
       }
-      if (epochIsStale(providerId, epoch)) return
 
       const kind = flowKindOf(started)
       if (!kind) {
@@ -1375,37 +1352,51 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
         return
       }
 
+      const flowId = started.flowId
       if (kind === 'device') {
         patchFlow(providerId, {
           kind: 'device',
+          flowId,
           busy: false,
           device: {
-            flowId: started.flowId,
             userCode: started.userCode ?? '',
             verificationUri: started.verificationUri ?? '',
-            pollIntervalMs: started.pollIntervalMs,
           },
         })
-        await pollDevice(providerId, epoch, started.flowId, started.pollIntervalMs)
-        return
-      }
-
-      if (kind === 'paste') {
+      } else if (kind === 'paste') {
         // 贴码流**不锁面**:接下来要用户去浏览器里拿码,这边转个圈没有意义。
         patchFlow(providerId, {
           kind: 'paste',
+          flowId,
           busy: false,
           paste: {
-            flowId: started.flowId,
             state: started.state ?? '',
             instructions: started.instructions ?? '',
+            authUrl: started.authUrl ?? '',
           },
         })
-        return
+      } else {
+        patchFlow(providerId, { kind: 'browser', flowId, busy: false, browser: { authUrl: started.authUrl ?? '' } })
       }
 
-      patchFlow(providerId, { kind: 'browser', busy: false })
-      await pollBrowser(providerId, epoch)
+      // 后端不开浏览器,壳开(方案 §3.1):桌面立刻开,开没开成记下来。
+      const opened = await autoOpen(kind === 'device' ? started.verificationUri ?? '' : started.authUrl ?? '')
+      if (get().authFlow[providerId]?.flowId === flowId) patchFlow(providerId, { opened })
+    },
+
+    openAuthPage: async (providerId) => {
+      const flow = get().authFlow[providerId]
+      const url = flow ? authPageUrlOf(flow) : ''
+      if (!url) return
+      try {
+        await openExternal(url)
+        if (get().authFlow[providerId]?.flowId === flow?.flowId) patchFlow(providerId, { opened: true })
+      } catch (error) {
+        // 打不开就把宿主那句原话放在这一屏上;链接与「复制」还在,用户照样走得通。
+        if (get().authFlow[providerId]?.flowId === flow?.flowId) {
+          patchFlow(providerId, { opened: false, error: error instanceof Error ? error.message : String(error) })
+        }
+      }
     },
 
     setAuthCode: (providerId, code) => patchFlow(providerId, { code, error: undefined }),
@@ -1437,14 +1428,18 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     },
 
     cancelAuth: (providerId) => {
-      // 后端没有 cancel 这一口(端口文件头 ⑤)。取消 = 世代号 +1,
-      // 于是还在飞的那个轮询循环下一轮自己认出「我过期了」并退出。
-      bumpEpoch(providerId)
+      const flow = get().authFlow[providerId]
+      // 先收屏:取消是用户说的,不等后端那一帧 `cancelled` 回来才动。
       set((st) => ({ authFlow: { ...st.authFlow, [providerId]: IDLE_AUTH_FLOW } }))
+      if (!flow?.flowId || flow.ended) return
+      void providerSettingsPort()
+        .then((port) => port.oauthCancel({ flowId: flow.flowId! }))
+        .catch(() => {
+          // 取消没送到:后端那条流会自己到点超时,这一屏已经收了 —— 没有一句话是用户此刻在等的。
+        })
     },
 
     signOut: async (providerId, entryId) => {
-      bumpEpoch(providerId)
       const ok = await writePool(
         providerId,
         (port) =>
@@ -1675,7 +1670,8 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       settingsBoot = undefined
       unsubscribeSpace?.()
       unsubscribeSpace = undefined
-      authEpoch.clear()
+      unsubscribeOAuth?.()
+      unsubscribeOAuth = undefined
       usageCache.clear()
       // 目录不在这个 store 里了(K1 样板迁移),写路也不在了(批 1),
       // 但 reset 仍然管它们 —— 「这块面回到出厂」是一件事,

@@ -50,6 +50,9 @@
   letter-spacing: var(--pv-code-ls);
   color: var(--text-1);
   user-select: text;
+  /* 批 1:它现在是一颗钮(点码本身 = 复制)。字左对齐,指针说「点了会复制」。 */
+  text-align: start;
+  cursor: copy;
 }
 
 .mono {
@@ -80,3 +83,40 @@
 
 /* 状态点收进 `ui/StatusDot`(09-01 批 2b):登着 = tone 'ok',
  * 登着但过期了 = tone 'warn'(「要你动手」而不是「坏了」)。 */
+
+/* ── 登录流那一屏(`AuthFlowScreen`,批 1)─────────────────────────────── */
+
+.flow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* 授权页一行:标签 · 网址(可点)· 打开 / 复制。窄列里网址自己换行,钮组整组换到下一行。 */
+.urlRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.url {
+  flex: 1 1 var(--pv-key-w);
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--accent);
+  text-decoration: underline;
+  /* 授权页网址带一长串查询参数 —— 零断行机会,给它最后的断法。 */
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+/* 状态句 + 重试 / 取消:句子占满,钮组靠右;窄列里整组换行。 */
+.statusRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}

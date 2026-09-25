@@ -60,6 +60,7 @@ import { sessionsRouter } from '@shared/ipc/sessions.js'
 import { settingsRouter } from '@shared/ipc/settings.js'
 import { skillsRouter } from '@shared/ipc/skills.js'
 import { dialogRouter } from '@shared/ipc/dialog.js'
+import { shellRouter } from '@shared/ipc/shell.js'
 import { spacesRouter } from '@shared/ipc/spaces.js'
 import { terminalRouter } from '@shared/ipc/terminal.js'
 import { themesRouter } from '@shared/ipc/themes.js'
@@ -107,6 +108,7 @@ import { sessionCommandRpcHandlers } from './domains/session-command.js'
 import { sessionsRpcHandlers } from './domains/sessions.js'
 import { skillsRpcHandlers } from './domains/skills.js'
 import { dialogRpcHandlers } from './domains/dialog.js'
+import { shellRpcHandlers } from './domains/shell.js'
 import { settingsRpcHandlers } from './domains/settings.js'
 import { spacesRpcHandlers } from './domains/spaces.js'
 import { terminalRpcHandlers } from './domains/terminal.js'
@@ -190,6 +192,9 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // 原生打开对话框(选目录 / 选文件)。拉起对话框的那一下是宿主的 `dialog` 端口,
   // 未注入即答 `unavailable: true`,客户端退到路径输入框。
   { id: 'rpc:dialog', mount: ctx => { ctx.registerRpcDomain(dialogRouter, dialogRpcHandlers) } },
+  // 系统浏览器 / 默认程序打开 / store 根(批 1)。契约 A1-b 就立着,Vue 宿主退役后没有处理者;
+  // 真正的那一下是宿主的 `shell` 端口,只对本机可信的宿主面开。
+  { id: 'rpc:shell', mount: ctx => { ctx.registerRpcDomain(shellRouter, shellRpcHandlers) } },
   // P4c 第三批唯一的域(media)。旧线上除了六条契约通道,还挂着**五条写死的字面量
   // 通道**(`media:save-image` / `media:load-all` / `media:delete` / `media:clear-all` /
   // `media:read-image-base64`)—— 不在 `IPC_CHANNELS` 里,transport 门连数都数不到。
