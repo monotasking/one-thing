@@ -61,6 +61,7 @@ function fakePort(rows: ACPAgentState[]): Fake {
       return { success: true }
     },
     removeAgent: async () => ({ success: true }),
+    authenticate: async () => ({ ok: true }),
     onAgentState: (callback) => {
       listener = callback
       return () => {

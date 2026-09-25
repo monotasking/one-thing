@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AsyncButton } from '../../ui/AsyncButton'
 import { Button } from '../../ui/Button'
 import { Field } from '../../ui/Field'
 import { Fold, FoldBody, FoldTrigger } from '../../ui/Fold'
 import { IconButton } from '../../ui/IconButton'
+import { Menu, MenuItem } from '../../ui/Menu'
 import { Input } from '../../ui/Input'
 import { PathText } from '../../ui/PathText'
 import { Rail } from '../../ui/Rail'
@@ -21,6 +22,7 @@ import {
   acpAgentsQuery,
   addAgentMutation,
   agentIdFromName,
+  authenticateAgentMutation,
   argsFromLine,
   argsToLine,
   detectAgentsMutation,
@@ -32,10 +34,11 @@ import {
   updatePendingKey,
 } from '../../data/acp-agents-source'
 import { runScriptInTerminal } from '../terminal/run-script'
+import { revealTerminal } from '../terminal-launcher'
 import { getLogger } from '../../services/log'
 import { useT } from '../../i18n'
 import type { MessageKey, TFn } from '../../i18n'
-import type { ACPAgentConfig, ACPAgentState } from '@shared/ipc/acp'
+import type { ACPAgentConfig, ACPAgentState, ACPAuthenticateResponse, AcpAuthMethod } from '@shared/ipc/acp'
 import shared from './Settings.module.css'
 import s from './AgentsSettings.module.css'
 
@@ -84,6 +87,18 @@ const log = getLogger('settings.agents')
  * | 「装上」 | AsyncButton(`installAgentMutation`)| 没有 npm 包名时不画这颗钮,画装法那句话 |
  * | 「添加」/「复制」 | AsyncButton(`addAgentMutation`)| 命令空着(添加)/ 名字空着(复制)|
  * | 「删除」 | 乐观摘掉那一行 + 一次确认(本壳唯一允许的 confirm)| 只在自定义那一台上出现 |
+ * | 「去登录」(A3-d) | AsyncButton(`authenticateAgentMutation`,按 agent id 分)| 没有自报的登录方式时不画;几种方式 → 点开一张小菜单 |
+ * | 「没人回应时自动允许」(A3-d) | 乐观翻过去 + 自己禁着(`updatePendingKey(id,'unattended')`)| 同左 |
+ *
+ * **登录那一节的四态**(A3-d,读 `state.auth`,后端 A3-c 给):
+ *
+ * | 态 | 判据 | 屏幕上 |
+ * | --- | --- | --- |
+ * | 不知道 | `auth` 缺席(没连过、也没被拒过) | 「连上之后才知道」,不画钮 |
+ * | 不用登录 | `auth.methods` 空且没被拒 | 「不需要登录」 |
+ * | 已登录 | 有方式、`required` 为假 | 「已登录」+「去登录」(换账号也走这里) |
+ * | 未登录 | `required` 为真 | 「未登录」(agent 推来的原话在括号里)+「去登录」;rail 那颗点变 warn |
+ * | 登录中 / 结果 | 那一发在飞 / 回来了 | 钮上「正在登录…」;回来后钮旁一行:终端型「在终端里走完登录」、agent 型「登录好了」、失败按机器码查字典 |
  *
  * ── 焦点三件 ─────────────────────────────────────────────────────────────
  * 这一页**不新开作用域**:住在设置页那块面里,`settings` 那一格已经声明过。
@@ -201,8 +216,8 @@ export function AgentsSettings() {
               status: (
                 <span className={s.dots}>
                   <StatusDot tone={installToneOf(row)} />
-                  {/* 登录态归 A3-c(握手 `authMethods` + 上次 `auth_required`);今天一律「不知道」。 */}
-                  <StatusDot tone="idle" />
+                  {/* 登录态(A3-c 的 `auth`):没登录 = warn,登着 = ok,不知道 = idle。 */}
+                  <StatusDot tone={loginToneOf(row)} />
                 </span>
               ),
             }
@@ -403,10 +418,11 @@ function AgentDetail({
         <p className={shared.settingRowNote}>{t('agents.enableHint')}</p>
       </section>
 
-      {/* A3-d:「登录」一节落在这里(状态行「已登录 / 未登录」+「去登录」钮,§3.9 ②)。 */}
+      <LoginSection t={t} state={state} />
       {/* A2-c:「缺省选项」一节落在这里(`AgentOptionsCard` 同一个组件画 agent 自报的选项,§3.9 ③)。 */}
-      {/* A3:「权限」一节落在这里(「无人值守时自动放行」开关 + 「查看已授权」链接,§3.9 ④)。 */}
-      {/* A4:「工具」一节落在这里(宿主工具面 / 转发 MCP 两个开关,§3.9 ⑤)。 */}
+      <PermissionSection t={t} state={state} />
+      {/* A4:「工具」一节落在这里(宿主工具面 / 转发 MCP 两个开关,§3.9 ⑤)。契约里还没有
+          `hostTools` / `forwardMcpServers` 两格(A4 加),先不画 —— 画一个存不下的开关是造事实。 */}
 
       <AdvancedSection t={t} state={state} />
 
@@ -422,6 +438,183 @@ function AgentDetail({
         )}
       </section>
     </div>
+  )
+}
+
+/* ── 登录(A3-d,§3.9 ②)──────────────────────────────────────────────── */
+
+function loginToneOf(state: ACPAgentState): StatusDotTone {
+  const auth = state.auth
+  if (!auth) return 'idle'
+  if (auth.required) return 'warn'
+  return auth.methods.length > 0 ? 'ok' : 'idle'
+}
+
+function loginFactOf(t: TFn, state: ACPAgentState): string {
+  const auth = state.auth
+  if (!auth) return t('agents.loginUnknown')
+  if (auth.required) {
+    return auth.label ? t('agents.loginRequiredSaid', { said: auth.label }) : t('agents.loginRequired')
+  }
+  return auth.methods.length > 0 ? t('agents.loginOk') : t('agents.loginNotNeeded')
+}
+
+const LOGIN_ERROR_KEY: Record<Extract<ACPAuthenticateResponse, { ok: false }>['code'], MessageKey> = {
+  unavailable: 'agents.loginErrUnavailable',
+  'no-terminal': 'agents.loginErrNoTerminal',
+  'unknown-agent': 'agents.loginErrUnknownAgent',
+  'unknown-method': 'agents.loginErrUnknownMethod',
+  failed: 'agents.loginErrFailed',
+}
+
+/** 一次「去登录」回来之后,钮旁那一行说什么。 */
+type LoginOutcome =
+  | { kind: 'terminal' }
+  | { kind: 'done' }
+  | { kind: 'failed'; text: string }
+
+/**
+ * 「登录」一节。登录归各家 CLI 自己(onething 不存凭据、不替谁走 OAuth),这一节只做两件事:
+ * 说出此刻登没登上,以及把 agent 自报的登录方式摆成一颗钮。
+ *
+ * 终端型:后端开一格终端跑那家 CLI 自己的登录程序、立刻交回 `terminalId`,这里把那一格摆出来
+ * (与「装上」同一种落法:终端瓦,焦点进去)—— 人在里面走完,退出码 0 之后后端清掉
+ * `required`,名册经推送自己换。agent 型:一次往返,结果就地一行。
+ */
+function LoginSection({ t, state }: { t: TFn; state: ACPAgentState }) {
+  const id = state.config.id
+  const methods = state.auth?.methods ?? []
+  const [outcome, setOutcome] = useState<LoginOutcome | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const anchor = useRef<HTMLSpanElement | null>(null)
+
+  const login = async (method: AcpAuthMethod) => {
+    setMenuOpen(false)
+    setOutcome(null)
+    const answer = await authenticateAgentMutation.run({ agentId: id, methodId: method.id })
+    if (!answer) {
+      setOutcome({ kind: 'failed', text: t('agents.loginErrFailed') })
+      return
+    }
+    if (!answer.ok) {
+      setOutcome({ kind: 'failed', text: t(LOGIN_ERROR_KEY[answer.code] ?? 'agents.loginErrFailed') })
+      log.info('agent login refused', { agentId: id, methodId: method.id, code: answer.code, err: answer.error })
+      return
+    }
+    if (answer.terminalId) {
+      revealTerminal(answer.terminalId)
+      setOutcome({ kind: 'terminal' })
+      return
+    }
+    setOutcome({ kind: 'done' })
+  }
+
+  return (
+    <section className={shared.section} data-testid="agent-login">
+      <h4 className={shared.sectionTitle}>{t('agents.sectionLogin')}</h4>
+      <div className={shared.settingRow}>
+        <span className={shared.settingRowLabel}>{t('agents.labelLogin')}</span>
+        <span className={s.value}>
+          <span
+            className={`${s.valueText} ${state.auth?.required ? s.valueBad : ''}`}
+            data-testid="agent-login-state"
+            data-login-required={state.auth?.required ? 'true' : 'false'}
+          >
+            {loginFactOf(t, state)}
+          </span>
+          {methods.length > 0 && (
+            <span ref={anchor}>
+              <AsyncButton
+                size="sm"
+                action={authenticateAgentMutation}
+                pendingKey={id}
+                pendingLabel={t('agents.loggingIn')}
+                aria-haspopup={methods.length > 1 ? 'menu' : undefined}
+                aria-expanded={methods.length > 1 ? menuOpen : undefined}
+                onClick={() => (methods.length === 1 ? void login(methods[0]) : setMenuOpen((on) => !on))}
+                data-testid="agent-login-button"
+              >
+                {t('agents.login')}
+              </AsyncButton>
+            </span>
+          )}
+        </span>
+      </div>
+      {menuOpen && (
+        <Menu
+          x={0}
+          y={0}
+          anchor={() => anchor.current?.getBoundingClientRect() ?? null}
+          anchorPlace="below-end"
+          label={t('agents.loginMenu')}
+          onClose={() => setMenuOpen(false)}
+        >
+          {methods.map((method) => (
+            <MenuItem key={method.id} onClick={() => void login(method)}>
+              {method.name}
+            </MenuItem>
+          ))}
+        </Menu>
+      )}
+      {outcome && (
+        <p
+          className={`${shared.settingRowNote} ${outcome.kind === 'failed' ? s.valueBad : ''}`}
+          data-testid="agent-login-outcome"
+          data-outcome={outcome.kind}
+          role="status"
+        >
+          {outcome.kind === 'terminal'
+            ? t('agents.loginInTerminal')
+            : outcome.kind === 'done'
+              ? t('agents.loginDone')
+              : outcome.text}
+        </p>
+      )}
+    </section>
+  )
+}
+
+/* ── 权限(A3-d,§3.9 ④)──────────────────────────────────────────────── */
+
+/**
+ * 「权限」一节:一个开关 + 一条链接。
+ *
+ * 开关写的是 `unattended`(缺省 `'reject'`):没人回应时 agent 的审批怎么答。发出去的是
+ * **只改这一格**的补丁,由 `updateAgentMutation` 合成生效配置、后端剥成稀疏覆盖
+ * (判词在 `acp-agents-source.ts` 文件头第二段)。警告那一句是用户读的,不是实现说明。
+ * 「查看已授权」跳权限页;那一页今天还不会按 agent 过滤(方案 §3.9 ④ 写的是「按 agent
+ * 过滤」),先只跳过去 —— 过滤参数等权限页有这一格再补。
+ */
+function PermissionSection({ t, state }: { t: TFn; state: ACPAgentState }) {
+  const id = state.config.id
+  const saving = useAsyncPending(updateAgentMutation, updatePendingKey(id, 'unattended'))
+  const allow = state.config.unattended === 'allow'
+  return (
+    <section className={shared.section} data-testid="agent-permissions">
+      <h4 className={shared.sectionTitle}>{t('agents.sectionPermission')}</h4>
+      <div className={shared.settingRow}>
+        <span className={shared.settingRowLabel}>{t('agents.unattended')}</span>
+        <Switch
+          checked={allow}
+          disabled={saving}
+          label={t('agents.unattended')}
+          onChange={(next) =>
+            void updateAgentMutation.run({ state, patch: { unattended: next ? 'allow' : 'reject' } })
+          }
+        />
+      </div>
+      <p className={shared.settingRowNote}>{t('agents.unattendedHint')}</p>
+      <div className={s.actions}>
+        {/* 动态 import:`./store` 读 `pages.tsx` 的页表,而页表静态 import 这一页 —— 静态边会
+            成环,真机上 `DEFAULT_SETTINGS_PAGE` 在初始化之前被读(gate:acp-shell 首屏量出来的)。 */}
+        <Button
+          onClick={() => void import('./store').then((m) => m.openSettingsPage('permissions'))}
+          data-testid="agent-view-grants"
+        >
+          {t('agents.viewGrants')}
+        </Button>
+      </div>
+    </section>
   )
 }
 

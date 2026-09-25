@@ -12,6 +12,7 @@ import {
   type RefObject,
 } from 'react'
 import { chatSources, loadOlderChatMessages, useChatSourceOf } from '../data/chat-source'
+import { OrphanPermissions } from './permission/PermissionSlot'
 import { readSessionScrollAnchor, type ScrollAnchor } from '../data/session-view-state'
 import { CHAT_WINDOW_STEP, growChatWindow, useChatWindowStart } from './chat-window'
 import { sessionRefIdOf } from './session-ref'
@@ -649,6 +650,12 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
                * `key` 恒为 `'seat'` 那条判词照旧成立,而且从此更强:同一个 DOM 节点
                * 从会话进场活到离场,上一轮的座位由下一轮原位接管。
                */
+              /*
+               * 没有工具卡可挂的审批(agent 要读写文件 / 起终端)排在消息列末尾、座位之前
+               * —— 判词在 `permission/PermissionSlot.tsx` 的 `OrphanPermissions` 上。
+               * 没有这种审批时它画 `null`,一个 DOM 节点都不多。
+               */
+              ...(sessionId ? [<OrphanPermissions key="orphan-permissions" sessionId={sessionId} messages={messages} />] : []),
               <div key="seat" ref={seatRef} className={s.seat} data-seat="" aria-hidden="true" />,
               /*
                * ── 尾槽在列里剩下的那一半:一格**空位**(G 线 P1h,正本 §12)──────

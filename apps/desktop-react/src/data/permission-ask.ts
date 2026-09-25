@@ -1,6 +1,7 @@
 import { effectPolicyFor } from '@onething/core/toolkit'
 import type { PermissionInfo, PermissionResponse } from '@shared/ipc/permissions'
-import type { PermissionRequestEvent } from '@shared/events/session-events'
+import type { PermissionChoice, PermissionRequestEvent } from '@shared/events/session-events'
+import type { JsonObject } from '@shared/json'
 
 /**
  * **一张权限卡的事实**(应用级许可 · 壳半边,2026-09-10)。
@@ -56,6 +57,53 @@ export interface PermissionAsk {
    * 超时自结算这两条路上壳一下都没点过)。
    */
   answered?: PermissionResponse
+  /**
+   * **发问方自带的选项表**(A3-a;ACP agent 的 `options` 走这一格)。
+   *
+   * 缺席 = 今天那五只钮,一个像素都不变(本地工具零回归)。在场时卡按它画「允许一次 /
+   * 始终允许 / 拒绝 / 始终拒绝」,钮上的字用 agent 给的原话;`session` / `workdir` 两钮照画
+   * —— 它们是 onething 自己的记忆,不是 agent 的选项。应答 `decision` 用的是 `kind` 那个词。
+   */
+  choices?: readonly PermissionChoice[]
+  /**
+   * **这次要写下去的改动**(A3-b 起 agent 的写文件、本来就有的本地 edit / write 都带;
+   * 后端 `permission-policy` 把 preview 的 `diff` / `path` / `additions` / `deletions`
+   * 镜像进事件的 `metadata`)。统一 diff 原文,卡上交给 diff 块去画。
+   */
+  diff?: string
+  /** 改的是哪个文件(与 `diff` 同进同出;diff 块檐上那格路径)。 */
+  path?: string
+  additions?: number
+  deletions?: number
+}
+
+/**
+ * 从 ask 的 `metadata` 里取 diff 那四格。形不对的整格丢 —— metadata 是 `JsonObject`,
+ * 任何一台后端都可能往里塞别的东西,壳只认它自己读得懂的形。
+ */
+export function previewFromMetadata(
+  metadata: JsonObject | undefined,
+): Pick<PermissionAsk, 'diff' | 'path' | 'additions' | 'deletions'> {
+  if (!metadata) return {}
+  const { diff, path, additions, deletions } = metadata
+  return {
+    ...(typeof diff === 'string' && diff.trim() ? { diff } : {}),
+    ...(typeof path === 'string' && path ? { path } : {}),
+    ...(typeof additions === 'number' ? { additions } : {}),
+    ...(typeof deletions === 'number' ? { deletions } : {}),
+  }
+}
+
+/** 选项表认不认:只收四种 kind、带 id 与字的那几格;一格都不剩 = 当它缺席(五钮)。 */
+function choicesOf(raw: readonly PermissionChoice[] | undefined): readonly PermissionChoice[] | undefined {
+  if (!raw || raw.length === 0) return undefined
+  const known = raw.filter(
+    (choice) =>
+      typeof choice?.id === 'string' &&
+      typeof choice.label === 'string' &&
+      (choice.kind === 'once' || choice.kind === 'always' || choice.kind === 'reject' || choice.kind === 'reject-always'),
+  )
+  return known.length > 0 ? known : undefined
 }
 
 /** 空车道的恒等引用 —— 免得每次都换一张新空表(律④)。 */
@@ -79,6 +127,11 @@ export function isGrantablePermissionType(type: string): boolean {
   return effectPolicyFor(type).policy !== 'never-grantable'
 }
 
+function withChoices(raw: readonly PermissionChoice[] | undefined): Pick<PermissionAsk, 'choices'> {
+  const choices = choicesOf(raw)
+  return choices ? { choices } : {}
+}
+
 /** 活事件(`permission:request`)→ 一张能答的卡。 */
 export function askFromRequestEvent(event: PermissionRequestEvent): PermissionAsk {
   return {
@@ -88,6 +141,8 @@ export function askFromRequestEvent(event: PermissionRequestEvent): PermissionAs
     type: event.permissionType,
     ...(event.pattern !== undefined ? { pattern: event.pattern } : {}),
     ...(event.alwaysScope ? { alwaysScope: event.alwaysScope } : {}),
+    ...withChoices(event.choices),
+    ...previewFromMetadata(event.metadata),
     permissionQueued: false,
     canRespond: true,
   }
@@ -111,6 +166,8 @@ export function askFromPendingInfo(info: PermissionInfo): PermissionAsk | undefi
     type: info.type,
     ...(info.pattern !== undefined ? { pattern: info.pattern } : {}),
     ...(info.alwaysScope ? { alwaysScope: info.alwaysScope } : {}),
+    ...withChoices(info.choices),
+    ...previewFromMetadata(info.metadata),
     permissionQueued: queued,
     canRespond: !queued,
   }

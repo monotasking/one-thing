@@ -84,3 +84,57 @@
   font-size: var(--fs-micro);
   color: var(--text-3);
 }
+
+/*
+ * 改动预览(A3-d):收着时只有一行摘要「改动 · 路径 · +a −d」,与资源行同一档小字;
+ * 点开下面挂的是工具卡抽屉里同一只 diff 块(块自己的檐、限高与横滚归块)。
+ * 摘要行是结构行:只截断不换行,路径那一格吃剩下的宽。
+ */
+.diffHead {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.diffIcon {
+  flex: none;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--text-3);
+}
+
+.diffLabel {
+  flex: none;
+  font-weight: 600;
+}
+
+.diffStat {
+  flex: none;
+  font-family: var(--font-mono);
+  color: var(--text-3);
+}
+
+.diffBody {
+  min-width: 0;
+}
+
+/*
+ * 没有工具卡可挂的那几张(`OrphanPermissions`,A3-d):它们直接站在消息列里,没有一张
+ * 工具卡替它们画外框 —— 这里补一圈与工具卡同一副的边与圆角,卡自己那一格顶边被外框
+ * 吃掉(第一张),张与张之间仍是那一道线。
+ */
+.orphans {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-2);
+  overflow: hidden;
+}
+
+.orphans > .permCard:first-child {
+  border-top: none;
+}

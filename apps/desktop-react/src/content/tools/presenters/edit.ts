@@ -75,22 +75,14 @@ export const editPresenter: ToolPresenter = {
     const blocks: BlockModel[] = []
 
     if (changes?.diff) {
-      const parsed = parseUnifiedDiff(changes.diff)
-      if (parsed) {
-        const file = path ?? parsed.file
-        blocks.push({
-          kind: 'diff',
-          ...parsed,
-          ...(file ? { file } : {}),
-          stat: {
-            add: changes.additions ?? parsed.stat.add,
-            del: changes.deletions ?? parsed.stat.del,
-          },
-        })
-        return blocks
-      }
-      // 解析不动(引擎给了个我们看不出结构的方言)→ 原文按 diff 语言的代码块摆出来。
-      blocks.push({ kind: 'code', lang: 'diff', source: changes.diff, ...(path ? { file: path } : {}), closed: true })
+      blocks.push(
+        diffBlockOf({
+          diff: changes.diff,
+          path,
+          additions: changes.additions,
+          deletions: changes.deletions,
+        }),
+      )
       return blocks
     }
 
@@ -111,6 +103,38 @@ export const editPresenter: ToolPresenter = {
 }
 
 const EDIT_TOOLS = new Set(['edit', 'write'])
+
+/**
+ * **一段统一 diff → 一个块**(唯一产地)。
+ *
+ * A3-d 从上面的 `detail` 里抽出来:权限卡上那段「准了就会写下去的改动」
+ * (`content/permission/PermissionCard.tsx`)与工具卡抽屉里那段「已经写下去的改动」
+ * 是同一件事,必须长成同一个块 —— 抄一份就是两处各自决定「解析不动时怎么办、
+ * ±统计信谁」,迟早分叉。统计仍然优先用调用方给的(引擎 / 后端算的),
+ * 拿不到才退到解析出来的那份,判词见文件头。
+ */
+export function diffBlockOf(input: {
+  diff: string
+  path?: string
+  additions?: number
+  deletions?: number
+}): BlockModel {
+  const parsed = parseUnifiedDiff(input.diff)
+  if (parsed) {
+    const file = input.path ?? parsed.file
+    return {
+      kind: 'diff',
+      ...parsed,
+      ...(file ? { file } : {}),
+      stat: {
+        add: input.additions ?? parsed.stat.add,
+        del: input.deletions ?? parsed.stat.del,
+      },
+    }
+  }
+  // 解析不动(给了个我们看不出结构的方言)→ 原文按 diff 语言的代码块摆出来。
+  return { kind: 'code', lang: 'diff', source: input.diff, ...(input.path ? { file: input.path } : {}), closed: true }
+}
 
 /** 路径:参数优先,退到 changes 里那一份(参数名写错时它是唯一的真相)。 */
 function filePath(call: ProjectedToolCall): string | undefined {

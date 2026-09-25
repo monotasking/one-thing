@@ -3,6 +3,7 @@ import { MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
 import { t } from '../i18n'
 import { useQuery } from '../data/kernel'
 import { terminalListQuery } from '../data/terminal-source'
+import { acpAgentsQuery } from '../data/acp-agents-source'
 import { sessionDirOf } from './dir-open'
 import { findItem } from '../stage/items'
 import { registerStageLauncher } from '../stage/launchers'
@@ -15,6 +16,8 @@ import { regionOfLeafIn, regionOfRefIn, useWorkbenchStore } from '../workbench/s
 import { createTerminal, requestTerminalFocus } from './terminal/registry'
 import { TERMINAL_KIND, terminalRef } from './terminal/terminal-ref'
 import { requestDirectory } from './files/open-dir-hub'
+import { agentNameOf, splitTerminalsByOwner } from './terminal/terminal-owner'
+import type { TerminalInfo } from '@shared/ipc/terminal'
 import type { PlacementMemory } from '../stage/types'
 import type { ContentRef } from '../workbench/kinds'
 import type { RegionId } from '../workbench/regions'
@@ -136,37 +139,84 @@ export async function openTerminal(cwd?: string): Promise<void> {
   useStageStore.getState().placeRef(ref, terminalLauncherRegion(ref))
 }
 
-/** 活着的那几格 + 新建两条。 */
+/**
+ * **把一格已经存在的终端摆出来**(菜单里点一行、设置页「去登录」开出来的那一格共用)。
+ *
+ * 已经在屏幕上就走四态(展开架子 / 点名 tab / 送焦点),不在就按启动瓦的落点摆出来 ——
+ * 与 `stage/open-item` 那条判例同源。「打开什么,焦点进什么」:先点名再摆(判词在
+ * `openTerminal` 上)。
+ */
+export function revealTerminal(id: string): void {
+  const ref = terminalRef(id)
+  if (useStageStore.getState().summonRef(ref) === null) {
+    requestTerminalFocus(id)
+    useStageStore.getState().placeRef(ref, terminalLauncherRegion(ref))
+  }
+}
+
+/**
+ * 活着的那几格 + 新建两条。
+ *
+ * ── 人自己的一组,agent 开的一组(ACP A3-d)──────────────────────────────
+ * agent 的 `terminal/create` 也落进这张名单(同一个 `TerminalService`)。它们单独
+ * 一组「Agent」,每行写「<agent 名> 开的 · <标题>」:关掉那一格会让 agent 那一轮读不到
+ * 输出,人得一眼分得出。名字来自名册(`acpAgentsQuery`);名册只在真有 agent 那一组时
+ * 才去拉(一张右键菜单不值得为没有的那一组多一次往返)。
+ *
+ * ── 打开菜单 = 标脏一次(A3-d 补的口)──────────────────────────────────
+ * 这条读数从前只在壳自己开 / 杀一格时标脏 —— 那是「终端只有壳会开」的年代的假设。
+ * agent 开的终端壳一下都没碰过,于是菜单会一直画开机时那张旧名单。改成菜单挂载时
+ * `invalidate()`:有订阅者就**后台**补拉,旧行留在屏上(律②),新行随后长出来。
+ */
 function TerminalLauncherMenuRows({ onDone }: { onDone: () => void }) {
   const list = useQuery(terminalListQuery)
   // 菜单开着的这一段就是这条读数要新鲜的那一段(判词在 `terminal-source.ts`:
   // 它没有常驻订阅 —— 一张只在右键那一下出现的菜单不值得让全壳挂一条订阅)。
   useEffect(() => {
+    terminalListQuery.invalidate()
     void terminalListQuery.ensure()
   }, [])
   const alive = (list.data ?? []).filter((row) => !row.exited)
+  const { mine, agents } = splitTerminalsByOwner(alive)
+  const roster = useQuery(acpAgentsQuery)
+  const wantsRoster = agents.length > 0
+  useEffect(() => {
+    if (wantsRoster) void acpAgentsQuery.ensure()
+  }, [wantsRoster])
+  const row = (info: TerminalInfo, label: string) => (
+    <MenuItem
+      key={info.id}
+      onClick={() => {
+        revealTerminal(info.id)
+        onDone()
+      }}
+    >
+      <span data-terminal-row={info.id} data-terminal-owner={info.owner?.kind ?? 'user'}>
+        {label}
+      </span>
+    </MenuItem>
+  )
   return (
     <>
-      {alive.length > 0 && (
+      {mine.length > 0 && (
         <>
           <MenuSection>{t('terminal.aliveSection')}</MenuSection>
-          {alive.map((row) => (
-            <MenuItem
-              key={row.id}
-              onClick={() => {
-                const ref = terminalRef(row.id)
-                // 已经在屏幕上就走四态(展开架子 / 点名 tab / 送焦点),
-                // 不在就摆出来 —— 与 `stage/open-item` 那条判例同源。
-                if (useStageStore.getState().summonRef(ref) === null) {
-                  requestTerminalFocus(row.id)
-                  useStageStore.getState().placeRef(ref, terminalLauncherRegion(ref))
-                }
-                onDone()
-              }}
-            >
-              {row.title || row.cwd}
-            </MenuItem>
-          ))}
+          {mine.map((info) => row(info, info.title || info.cwd))}
+          <MenuSeparator />
+        </>
+      )}
+      {agents.length > 0 && (
+        <>
+          <MenuSection>{t('terminal.agentSection')}</MenuSection>
+          {agents.map((info) =>
+            row(
+              info,
+              t('terminal.openedBy', {
+                agent: agentNameOf(info.owner?.agentId, roster.data) || t('terminal.agentSection'),
+                title: info.title || info.cwd,
+              }),
+            ),
+          )}
           <MenuSeparator />
         </>
       )}

@@ -1,7 +1,10 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { respondChatPermission, useChatSourceOf } from '../../data/chat-source'
+import type { ProjectedMessage } from '../../data/chat-fold'
+import type { PermissionAsk } from '../../data/permission-ask'
 import type { PermissionResponse } from '@shared/ipc/permissions'
 import { PermissionCard } from './PermissionCard'
+import cardStyles from './PermissionCard.module.css'
 
 /**
  * **一次调用的审批槽** —— 工具卡里那一格,九成的时间什么都不画。
@@ -35,4 +38,68 @@ export function PermissionSlot({
   )
   if (!ask) return null
   return <PermissionCard ask={ask} onRespond={respond} />
+}
+
+/**
+ * **没有工具卡可挂的审批**(ACP A3-d,`gate:acp-shell` ⑥ 真机量出来的缺口)。
+ *
+ * 上面那只槽长在工具卡里,判据是「一次审批问的是这一次调用能不能做」。可 agent 的
+ * 文件读写与起终端(A3-b 的 `acp-fs-*` / `acp-terminal-*`)是 agent 向**客户端**要
+ * 东西,不是一次它报过的工具调用 —— 账本上没有那一步,屏上就没有那张工具卡,于是
+ * 那张卡在壳里**无处可画**:人看不见,agent 那一轮永远停在那儿等。
+ *
+ * 所以:审批车道里那些 `toolCallId` 在这条会话的消息里**找不到调用**的,排在消息列
+ * 末尾(座位垫块之前)各画一张。它们仍是同一只 `PermissionCard`、同一个应答口 ——
+ * 与工具卡里那张只差「住在哪」。一旦那次调用出现在账本上(先问后记的那一族),
+ * 这一格自己退场、工具卡里那只槽接手:判据每次都现算,两处不会同时画同一张。
+ *
+ * 订阅粒度:没有审批的那九成时间,车道是那张恒等的空表,`useMemo` 直接交回空数组
+ * 常量 —— 不遍历消息。
+ */
+export function OrphanPermissions({
+  sessionId,
+  messages,
+}: {
+  sessionId: string
+  messages: readonly ProjectedMessage[]
+}) {
+  const lane = useChatSourceOf(sessionId, (state) => state.permissions)
+  const orphans = useMemo(() => orphanAsksOf(lane, messages), [lane, messages])
+  const respond = useCallback(
+    (id: string, decision: PermissionResponse) => respondChatPermission(id, decision, sessionId),
+    [sessionId],
+  )
+  if (orphans.length === 0) return null
+  return (
+    <div className={cardStyles.orphans} data-permission-orphans="">
+      {orphans.map((ask) => (
+        <PermissionCard key={ask.toolCallId} ask={ask} onRespond={respond} />
+      ))}
+    </div>
+  )
+}
+
+const NONE: readonly PermissionAsk[] = Object.freeze([])
+
+/** 车道里找不到调用的那几张(纯函数;判词在 `OrphanPermissions` 上)。 */
+export function orphanAsksOf(
+  lane: Readonly<Record<string, PermissionAsk>>,
+  messages: readonly ProjectedMessage[],
+): readonly PermissionAsk[] {
+  const asks = Object.values(lane)
+  if (asks.length === 0) return NONE
+  const known = new Set<string>()
+  const walkSteps = (steps: ProjectedMessage['steps']) => {
+    for (const step of steps ?? []) {
+      if (step.toolCallId) known.add(step.toolCallId)
+      if (step.toolCall?.id) known.add(step.toolCall.id)
+      walkSteps(step.childSteps)
+    }
+  }
+  for (const message of messages) {
+    for (const call of message.toolCalls ?? []) known.add(call.id)
+    walkSteps(message.steps)
+  }
+  const orphans = asks.filter((ask) => !known.has(ask.toolCallId))
+  return orphans.length === 0 ? NONE : orphans
 }

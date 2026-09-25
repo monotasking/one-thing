@@ -28,7 +28,18 @@
  *  ④ 同一条会话里打 `/`:抽屉有「Agent 命令」一组,列着假 agent `session/new` 之后推来的
  *     `/review`。
  *
- * 反证:把 `composer/components/DrawerModelPicker.tsx` 里 `missing ? s.pickRowMissing : null`
+ *  ⑤ 权限卡按 agent 的选项画(A3-d):另一台假 agent(`FAKE_AGENT_PERMISSION=1`,缺省
+ *     `unattended` = 拒 —— 卡真的要上屏)收到 `@perm1` 就在工具之前发一次四选项审批;
+ *     屏上那张卡有四颗带 `data-permission-choice` 的钮,字是 agent 的原话
+ *     (Allow / Always Allow / Reject / Always Reject);**人手**按下 `once` 那一颗 →
+ *     假 agent 的调用账里那一问的结局是 `opt-allow-once`。
+ *  ⑥ agent 开的终端(A3-d):同一台(`FAKE_AGENT_TERMINAL=1`)收到 `@term` 先问一次起命令的
+ *     许可(人手答「允许一次」),然后起 `sh -c 'sleep 1; echo hi'`;它活着的那一秒里右键
+ *     Dock 的终端瓦,菜单里「Agent」那一组有一行「Gate Perm 开的 · …」。这一步要桌面宿主
+ *     (终端要 `hasTerminalHost()`),所以住在这只门里,不在 `gate:acp`。
+ *
+ * 反证:把 `content/permission/PermissionCard.tsx` 里 `if (ask.choices)` 那一支挖掉 → ⑤ 的
+ * 「四颗 agent 的钮」当场红(卡退回五钮);把 `composer/components/DrawerModelPicker.tsx` 里 `missing ? s.pickRowMissing : null`
  * 那一支挖掉 → ② 的「不透明度更低」当场红;把 `composer/agent-claims.ts` 认领 `model` 的那一支
  * 挖掉 → ③ 的药丸退回写 agent id,当场红。
  *
@@ -66,6 +77,9 @@ const TEMP_AGENT = 'gate-missing-agent'
 const FAKE_AGENT = 'gate-fake-agent'
 const fakeAgentScript = path.join(repoRoot, 'packages/onething-runtime/src/acp/__tests__/fixtures/fake-agent.mjs')
 const SEED_IDS = ['claude-code', 'gemini', 'codex']
+/** ⑤⑥ 那一台:同一只假 agent,打开审批与终端两条剧本;`unattended` 不写 = 缺省拒,卡真的上屏。 */
+const PERM_AGENT = 'gate-perm-agent'
+const PERM_AGENT_NAME = 'Gate Perm'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -161,6 +175,7 @@ async function main() {
   const userDataDir = await mkdtemp(path.join(tmpdir(), 'acp-shell-gate-userdata-'))
   const workDir = realpathSync(await mkdtemp(path.join(tmpdir(), 'acp-shell-gate-work-')))
   const fakeAgentDir = path.join(store, 'fake-agent')
+  const permAgentDir = path.join(store, 'fake-agent-perm')
   /*
    * 注册表不联网(门要确定性);名册 = 种子 + ③④ 那一台假 agent(env 与根 `gate:acp` 同一份形:
    * `FAKE_AGENT_PUSH_COMMANDS=1` 让它 `session/new` 一答完就推命令表;`unattended: 'allow'` 是
@@ -183,8 +198,18 @@ async function main() {
               env: { FAKE_AGENT_CAPS: 'load', FAKE_AGENT_DIR: fakeAgentDir, FAKE_AGENT_PUSH_COMMANDS: '1' },
               unattended: 'allow',
             },
+            {
+              id: PERM_AGENT,
+              name: PERM_AGENT_NAME,
+              enabled: true,
+              command: process.execPath,
+              args: [fakeAgentScript],
+              env: { FAKE_AGENT_CAPS: 'load', FAKE_AGENT_DIR: permAgentDir, FAKE_AGENT_PERMISSION: '1', FAKE_AGENT_TERMINAL: '1' },
+            },
           ],
         },
+        // 正常模式:⑤⑥ 的卡要真的上屏(`dangerously-allow-all` 会让许可核一张都不问;与 `gate:acp` 同一格)。
+        tools: { enableToolCalls: false, permissionMode: 'normal', tools: {} },
       },
       null,
       2,
@@ -225,6 +250,12 @@ async function main() {
       },
     })
     const page = await app.firstWindow()
+    // 渲染层的错话攒着:首屏等不到时一并报出来(否则只有一句「超时」)。
+    const consoleErrors = []
+    page.on('console', (message) => {
+      if (message.type() === 'error') consoleErrors.push(message.text().slice(0, 300))
+    })
+    page.on('pageerror', (error) => consoleErrors.push(String(error?.message ?? error).slice(0, 300)))
     const cdp = await app.context().newCDPSession(page)
     await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
 
@@ -235,6 +266,8 @@ async function main() {
     await waitFor('渲染层完成一次 RPC 往返', async () => {
       const value = await page.evaluate(() => window.__d0 ?? null)
       return value && value.rpcOk ? value : undefined
+    }).catch((error) => {
+      throw new Error(`${error.message}\n渲染层错话:${consoleErrors.slice(0, 6).join('\n') || '(无)'}`)
     })
 
     // 种一台命令不存在的自定义 agent,并让 core 探测一遍(它一定探测不到)。
@@ -497,6 +530,153 @@ async function main() {
       `④ 斜杠抽屉:Agent 命令一组在场,列着 agent 推来的 /review(抽屉字面前 120 字:${commandsSeen.slice(0, 120)})`,
     )
     await page.keyboard.press('Backspace')
+
+    // ── ⑤ 权限卡按 agent 的选项画,人手按 once ───────────────────────────
+    const permMade = await rpc(record, 'sessions', 'create', { name: 'acp shell gate · perm' })
+    const permSessionId = permMade?.session?.id
+    if (!permSessionId) throw new Error('sessions.create 没给出 perm 会话 id')
+    await rpc(record, 'sessions', 'updateWorkingDirectory', { sessionId: permSessionId, workingDirectory: workDir })
+    await rpc(record, 'sessions', 'updateModel', { sessionId: permSessionId, provider: 'acp', model: PERM_AGENT })
+    const permRowShown = () =>
+      page.evaluate((id) => Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)), permSessionId)
+    for (let attempt = 0; attempt < 3 && !(await permRowShown()); attempt += 1) {
+      await click(page, '[data-testid="dock-tile-sessions"]')
+      await delay(500)
+    }
+    await waitFor('总览画出 perm 会话那一行', permRowShown)
+    await click(page, `[data-testid="session-row-${permSessionId}"]`)
+    await delay(300)
+    const sendToPerm = (content) =>
+      rpc(record, 'session-command', 'emit', {
+        sessionId: permSessionId,
+        command: { type: 'command:send-message', content, suppressTitleGeneration: true },
+      })
+    /** 屏上看得见的、还能答的那几张卡(已答 / 排队的不算)。 */
+    const liveCards = () =>
+      page.evaluate(() =>
+        [...document.querySelectorAll('[data-permission-card]')]
+          .filter((el) => el.checkVisibility() && !el.hasAttribute('data-answered') && !el.hasAttribute('data-queued'))
+          .map((el) => ({
+            id: el.getAttribute('data-permission-card'),
+            choices: [...el.querySelectorAll('[data-permission-choice]')].map((b) => ({
+              kind: b.getAttribute('data-permission-choice'),
+              label: b.textContent,
+            })),
+            decisions: [...el.querySelectorAll('[data-permission-decision]')].map((b) => b.getAttribute('data-permission-decision')),
+          })),
+      )
+    /** 人手按一颗钮:那张卡上 `data-permission-decision` = decision 的那一颗(CDP 指针,只进这扇窗)。 */
+    const pressOnCard = async (cardId, decision) => {
+      const box = await page.evaluate(
+        ({ cardId, decision }) => {
+          const card = [...document.querySelectorAll('[data-permission-card]')].find(
+            (el) => el.getAttribute('data-permission-card') === cardId && el.checkVisibility(),
+          )
+          const button = card?.querySelector(`[data-permission-decision="${decision}"]`)
+          if (!button) return null
+          button.scrollIntoView({ block: 'center' })
+          const r = button.getBoundingClientRect()
+          return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+        },
+        { cardId, decision },
+      )
+      if (!box) throw new Error(`卡 ${cardId} 上找不到 ${decision} 那一颗`)
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', clickCount: 1 })
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', clickCount: 1 })
+    }
+    const permCalls = () => {
+      const file = path.join(permAgentDir, 'calls.log')
+      if (!existsSync(file)) return []
+      return readFileSync(file, 'utf-8').split('\n').filter(Boolean).map((line) => JSON.parse(line))
+    }
+
+    await sendToPerm('@perm1 跑一下构建')
+    const card = await waitFor(
+      '带 agent 选项的权限卡上屏',
+      async () => (await liveCards()).find((c) => c.choices.length > 0 || c.decisions.length > 0),
+      30_000,
+    ).catch(async (error) => {
+      const text = await page.evaluate(() => document.querySelector('[data-testid="composer-panel"]')?.closest('[data-pane-leaf]')?.textContent ?? '')
+      throw new Error(`${error.message}\n会话叶此刻:${text.slice(0, 500)}`)
+    })
+    const kinds = card.choices.map((c) => c.kind)
+    const wantKinds = ['once', 'always', 'reject', 'reject-always']
+    const labelsOk = card.choices.map((c) => c.label).join('|') === 'Allow|Always Allow|Reject|Always Reject'
+    step(
+      kinds.length === 4 && wantKinds.every((k) => kinds.includes(k)) && labelsOk,
+      `⑤ 权限卡按 agent 的选项画:${card.choices.map((c) => `${c.kind}=「${c.label}」`).join(' · ') || '(一颗 agent 的钮都没有)'};整排 ${card.decisions.join(',')}`,
+    )
+    if (kinds.includes('once')) await pressOnCard(card.id, 'once')
+    const permOutcome = await waitFor('假 agent 记下那一问的结局', () =>
+      permCalls().find((call) => call.method === 'permission'),
+    ).catch(() => undefined)
+    step(
+      permOutcome?.outcome?.optionId === 'opt-allow-once',
+      `⑤ 人手按 once → agent 收到 ${JSON.stringify(permOutcome?.outcome ?? null)}`,
+    )
+
+    // ── ⑥ agent 开的终端出现在「Agent」那一组 ─────────────────────────────
+    await sendToPerm('@term 起个终端')
+    // 起命令之前先问一次许可(bash 效果,本地那五钮):人手答「允许一次」。
+    const termCard = await waitFor(
+      '起命令的许可卡上屏',
+      async () => (await liveCards()).find((c) => c.decisions.includes('once') && c.id !== card.id),
+      30_000,
+    )
+    await pressOnCard(termCard.id, 'once')
+    const agentTerminal = await waitFor(
+      'terminal.list 里出现 agent 开的那一格',
+      async () =>
+        ((await rpc(record, 'terminal', 'list', {}))?.terminals ?? []).find(
+          (row) => row.owner?.kind === 'acp' && row.owner?.agentId === PERM_AGENT && !row.exited,
+        ),
+      15_000,
+    )
+    // 它只活一秒(`sleep 1; echo hi` 之后 agent 就 release)—— 立刻右键终端瓦。菜单一旦画出来就不再
+    // 跟着名单变(没有常驻订阅),所以只要补拉那一发赶在 release 之前回来就读得到。
+    await page.evaluate(() => {
+      const tile = document.querySelector('[data-testid="dock-tile-terminal"]')
+      if (!(tile instanceof HTMLElement)) throw new Error('找不到终端瓦')
+      const rect = tile.getBoundingClientRect()
+      tile.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 }),
+      )
+    })
+    const menuRow = await waitFor(
+      '菜单里「Agent」那一组有那一行',
+      () =>
+        page.evaluate((terminalId) => {
+          const label = document.querySelector(`[data-terminal-row="${terminalId}"]`)
+          if (!label) return undefined
+          const item = label.closest('[role="menuitem"]')
+          // 往上找这一行所在的组头:同一张菜单里它前面最近的那一个 section。
+          let heading = ''
+          for (let el = item?.previousElementSibling; el; el = el.previousElementSibling) {
+            if (el.getAttribute('role') === 'presentation' && !el.matches('hr, [role="separator"]') && el.textContent) {
+              heading = el.textContent
+              break
+            }
+          }
+          return { text: label.textContent, owner: label.getAttribute('data-terminal-owner'), heading }
+        }, agentTerminal.id),
+      5_000,
+    ).catch(async () => ({
+      text: `(没画出来)菜单此刻:${await page.evaluate(() => [...document.querySelectorAll('[role="menu"]')].map((m) => m.textContent).join(' / '))}`,
+      owner: null,
+      heading: '',
+    }))
+    step(
+      menuRow.owner === 'acp' && menuRow.heading === 'Agent' && (menuRow.text ?? '').includes(PERM_AGENT_NAME),
+      `⑥ agent 开的终端 ${agentTerminal.id}:组头「${menuRow.heading}」,那一行「${menuRow.text}」`,
+    )
+    await page.keyboard.press('Escape')
+    // 第二张卡(`sleep 30` 那一格)也答掉,让这一轮收场,不留一个挂着的 agent 给收尸。
+    const sleeperCard = await waitFor(
+      '第二张起命令的卡',
+      async () => (await liveCards()).find((c) => c.decisions.includes('once') && c.id !== termCard.id && c.id !== card.id),
+      10_000,
+    ).catch(() => undefined)
+    if (sleeperCard) await pressOnCard(sleeperCard.id, 'once')
   } finally {
     if (record) await rpc(record, 'acp', 'removeAgent', { agentId: TEMP_AGENT }).catch(() => {})
     if (app) await app.close().catch(() => {})

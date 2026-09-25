@@ -4,6 +4,13 @@ import type { ACPAgentConfig, ACPAgentState } from '@shared/ipc/acp'
 
 const runScript = vi.fn(async () => undefined)
 vi.mock('../../terminal/run-script', () => ({ runScriptInTerminal: (...args: unknown[]) => runScript(...(args as [])) }))
+const reveal = vi.fn()
+vi.mock('../../terminal-launcher', () => ({ revealTerminal: (id: string) => reveal(id) }))
+const openPage = vi.fn()
+vi.mock('../store', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../store')>()),
+  openSettingsPage: (id: string) => openPage(id),
+}))
 
 import { AgentsSettings } from '../AgentsSettings'
 import { configureAcpAgentsPort, resetAcpAgentsSource, type AcpAgentsPort } from '../../../data/acp-agents-source'
@@ -59,6 +66,7 @@ function fakePort(rows: ACPAgentState[], fail = false): Fake {
       return { success: true }
     },
     removeAgent: async () => ({ success: true }),
+    authenticate: async () => ({ ok: true }),
     onAgentState: () => () => undefined,
   }
   return fake
@@ -162,5 +170,99 @@ describe('AgentsSettings', () => {
     fireEvent.click(await screen.findByTestId('agent-add-submit'))
     expect(await screen.findByText(t('agents.commandRequired'))).toBeTruthy()
     expect(add).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * A3-d:登录与权限两节。
+ *  ① 登录四态由 `auth` 推出来(不知道 / 未登录带原话 / 已登录),rail 那颗点跟着变;
+ *  ② 一种方式 = 一颗钮:终端型答回 terminalId → 把那一格终端摆出来 + 就地一句;
+ *     agent 型答 ok → 就地「登录好了」;失败按机器码查字典;
+ *  ③ 几种方式 = 点开一张小菜单,选哪种发哪种;
+ *  ④ 「没人回应时自动允许」发出去的是生效配置 ⊕ { unattended },一句警告在旁边;
+ *  ⑤ 「查看已授权」跳权限页。
+ */
+describe('AgentsSettings · 登录与权限(A3-d)', () => {
+  const TERMINAL = { id: 'claude-ai-login', name: 'Claude 订阅', type: 'terminal' as const }
+  const AGENT = { id: 'claude-login', name: 'Claude 自己登录', type: 'agent' as const }
+
+  it('① 登录态:缺席 = 连上之后才知道,不画钮;required = 未登录 + 原话', async () => {
+    configureAcpAgentsPort(fakePort([row('gemini')]))
+    const view = render(<AgentsSettings />)
+    expect((await screen.findByTestId('agent-login-state')).textContent).toBe(t('agents.loginUnknown'))
+    expect(screen.queryByTestId('agent-login-button')).toBeNull()
+    view.unmount()
+    resetAcpAgentsSource()
+    configureAcpAgentsPort(fakePort([row('gemini', { auth: { methods: [TERMINAL], required: true, label: 'not logged in' } })]))
+    render(<AgentsSettings />)
+    const fact = await screen.findByTestId('agent-login-state')
+    expect(fact.textContent).toBe(t('agents.loginRequiredSaid', { said: 'not logged in' }))
+    expect(fact.getAttribute('data-login-required')).toBe('true')
+    expect(screen.getByTestId('agent-login-button').textContent).toBe(t('agents.login'))
+  })
+
+  it('② 终端型:答回 terminalId → 那一格终端摆出来,旁边一句「在终端里走完」', async () => {
+    const fake = fakePort([row('gemini', { auth: { methods: [TERMINAL], required: true } })])
+    const asked: unknown[] = []
+    fake.authenticate = async (request) => {
+      asked.push(request)
+      return { ok: true, terminalId: 'term-9' }
+    }
+    configureAcpAgentsPort(fake)
+    render(<AgentsSettings />)
+    fireEvent.click(await screen.findByTestId('agent-login-button'))
+    await waitFor(() => expect(reveal).toHaveBeenCalledWith('term-9'))
+    expect(asked).toEqual([{ agentId: 'gemini', methodId: 'claude-ai-login' }])
+    expect((await screen.findByTestId('agent-login-outcome')).getAttribute('data-outcome')).toBe('terminal')
+  })
+
+  it('② agent 型成功就地「登录好了」;失败按机器码说人话', async () => {
+    const fake = fakePort([row('gemini', { auth: { methods: [AGENT], required: true } })])
+    let answer: import('@shared/ipc/acp').ACPAuthenticateResponse = { ok: true }
+    fake.authenticate = async () => answer
+    configureAcpAgentsPort(fake)
+    render(<AgentsSettings />)
+    fireEvent.click(await screen.findByTestId('agent-login-button'))
+    expect((await screen.findByTestId('agent-login-outcome')).textContent).toBe(t('agents.loginDone'))
+    answer = { ok: false, code: 'no-terminal', error: 'x' }
+    fireEvent.click(screen.getByTestId('agent-login-button'))
+    await waitFor(() => expect(screen.getByTestId('agent-login-outcome').textContent).toBe(t('agents.loginErrNoTerminal')))
+    expect(screen.getByTestId('agent-login-outcome').getAttribute('data-outcome')).toBe('failed')
+  })
+
+  it('③ 几种方式 = 一张小菜单,选哪种发哪种', async () => {
+    const fake = fakePort([row('gemini', { auth: { methods: [TERMINAL, AGENT], required: false } })])
+    const asked: string[] = []
+    fake.authenticate = async (request) => {
+      asked.push(request.methodId)
+      return { ok: true }
+    }
+    configureAcpAgentsPort(fake)
+    render(<AgentsSettings />)
+    expect((await screen.findByTestId('agent-login-state')).textContent).toBe(t('agents.loginOk'))
+    fireEvent.click(screen.getByTestId('agent-login-button'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: AGENT.name }))
+    await waitFor(() => expect(asked).toEqual(['claude-login']))
+  })
+
+  it('④ 无人值守开关:发出去的是生效配置 ⊕ { unattended: allow },旁边一句警告', async () => {
+    const fake = fakePort([row('gemini')])
+    configureAcpAgentsPort(fake)
+    render(<AgentsSettings />)
+    const toggle = await screen.findByRole('switch', { name: t('agents.unattended') })
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+    expect(screen.getByText(t('agents.unattendedHint'))).toBeTruthy()
+    fireEvent.click(toggle)
+    await waitFor(() => expect(fake.updates).toHaveLength(1))
+    expect(fake.updates[0]).toMatchObject({ id: 'gemini', unattended: 'allow', command: 'gemini-bin' })
+    // 只改了这一格:启用开关不因它禁着(忙态按格分)。
+    expect(screen.getByRole('switch', { name: t('agents.enable') }).hasAttribute('disabled')).toBe(false)
+  })
+
+  it('⑤ 「查看已授权」跳权限页', async () => {
+    configureAcpAgentsPort(fakePort([row('gemini')]))
+    render(<AgentsSettings />)
+    fireEvent.click(await screen.findByTestId('agent-view-grants'))
+    await waitFor(() => expect(openPage).toHaveBeenCalledWith('permissions'))
   })
 })

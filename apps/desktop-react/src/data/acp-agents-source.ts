@@ -3,6 +3,8 @@ import {
   type ACPAddAgentResponse,
   type ACPAgentConfig,
   type ACPAgentState,
+  type ACPAuthenticateRequest,
+  type ACPAuthenticateResponse,
   type ACPDetectResponse,
   type ACPGetAgentsResponse,
   type ACPRemoveAgentResponse,
@@ -27,6 +29,7 @@ import { t } from '../i18n'
  * | 某一台的进程状态变了 | 全局事件 `acp:agent-state` → **就地替换那一行**(按 `config.id`) |
  * | 重新探测 / 刷新注册表 | `detectAgentsMutation` / `refreshRegistryMutation`:回答就是整张名册,直接落格 |
  * | 加 / 改 / 删 | `addAgentMutation` / `updateAgentMutation` / `removeAgentMutation`,写完 `invalidate()` 对账 |
+ * | 去登录(A3-d) | `authenticateAgentMutation`(`acp.authenticate`):回答原样交回;登上之后的名册变化走推送 |
  *
  * ── 改一台种子 / 注册表 agent 时,发出去的是什么 ───────────────────────────
  * 后端把这类 agent 的覆盖存成**稀疏**的(`sparseOnethingACPRosterOverride`:与
@@ -46,6 +49,8 @@ export interface AcpAgentsPort {
   addAgent(config: ACPAgentConfig): Promise<ACPAddAgentResponse>
   updateAgent(config: ACPAgentConfig): Promise<ACPUpdateAgentResponse>
   removeAgent(agentId: string): Promise<ACPRemoveAgentResponse>
+  /** 「去登录」(A3-c 的 `acp.authenticate`;A3-d 壳半边)。 */
+  authenticate(request: ACPAuthenticateRequest): Promise<ACPAuthenticateResponse>
   /** `acp:agent-state` 的推送面。返回退订函数。 */
   onAgentState(callback: (state: ACPAgentState) => void): () => void
 }
@@ -81,6 +86,7 @@ async function realPort(): Promise<AcpAgentsPort> {
     addAgent: (config) => acp.addAgent({ config }),
     updateAgent: (config) => acp.updateAgent({ config }),
     removeAgent: (agentId) => acp.removeAgent({ agentId }),
+    authenticate: (request) => acp.authenticate(request),
     onAgentState: (callback) =>
       client.events.onAny((frame) => {
         if (frame.name !== 'acp:agent-state') return
@@ -206,14 +212,26 @@ export interface UpdateAgentInput {
  * 改一台。忙态按 **agent id + 改的那几格** 分(律③:拨启用开关不该把高级区的「保存」一起禁掉)。
  * 乐观补丁先把那几格翻过去,失败由 kernel 回滚 + 一条通知。
  */
-export function updatePendingKey(agentId: string, part: 'enabled' | 'advanced'): string {
+export function updatePendingKey(agentId: string, part: UpdatePart): string {
   return `${agentId}\u0000${part}`
+}
+
+/**
+ * 这一次改的是哪一格。三格各自一把忙态(律③):拨「无人值守」不该把启用开关与
+ * 高级区的「保存」一起禁掉。
+ */
+export type UpdatePart = 'enabled' | 'unattended' | 'advanced'
+
+function updatePartOf(patch: Partial<ACPAgentConfig>): UpdatePart {
+  if ('enabled' in patch) return 'enabled'
+  if ('unattended' in patch) return 'unattended'
+  return 'advanced'
 }
 
 export const updateAgentMutation: Mutation<UpdateAgentInput, void> = createMutation<UpdateAgentInput, void>(
   'acp.updateAgent',
   {
-    key: (input) => updatePendingKey(input.state.config.id, 'enabled' in input.patch ? 'enabled' : 'advanced'),
+    key: (input) => updatePendingKey(input.state.config.id, updatePartOf(input.patch)),
     optimistic: (input) =>
       acpAgentsQuery.patch((prev) =>
         prev
@@ -257,6 +275,22 @@ export const removeAgentMutation: Mutation<string, void> = createMutation<string
   settle: () => acpAgentsQuery.invalidate(),
 })
 
+/**
+ * 「去登录」(A3-d)。忙态按 agent id 分 —— 两台可以同时各登各的。
+ *
+ * **回答原样交回**,`ok: false` 也不当失败抛:那是一句「为什么没登上」的机器码
+ * (`unavailable` / `no-terminal` / …),归调用方就地查字典说成人话;只有传输层
+ * 断了才走 kernel 的失败路(返回 undefined)。不弹通知:结果就在按钮旁边一行字里。
+ * 成功不必手动改名册:后端清掉 `auth.required` 之后经 `acp:agent-state` 推过来。
+ */
+export const authenticateAgentMutation: Mutation<ACPAuthenticateRequest, ACPAuthenticateResponse> = createMutation<
+  ACPAuthenticateRequest,
+  ACPAuthenticateResponse
+>('acp.authenticate', {
+  key: (request) => request.agentId,
+  run: async (request) => (await acpAgentsPort()).authenticate(request),
+})
+
 /* ── 推送 ──────────────────────────────────────────────────────────────── */
 
 /**
@@ -296,6 +330,7 @@ export function resetAcpAgentsSource(): void {
   updateAgentMutation.reset()
   addAgentMutation.reset()
   removeAgentMutation.reset()
+  authenticateAgentMutation.reset()
 }
 
 /*
