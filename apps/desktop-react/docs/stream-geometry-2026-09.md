@@ -3955,3 +3955,85 @@ scheme 白名单只有 `data: / http: / https: / file:` —— `media:` 落 `unr
   (静态门:`media-delivery.ts` 里不再有 basename 匹配那段)。
 - `npx vitest run src/content src/data`、仓根 `packages/backend` 相关测试、typecheck、eslint、
   `ui:consume` / `motion-gate` / `squeeze-gate`;`gate:tool-md-flicker`(图块的换装门)不许变红。
+
+### 23.6 施工账:读数与结论(2026-09-25)
+
+**落了什么**
+
+- 后端:`packages/backend/wiring/media/resolve-file.ts`(新)= `mediaFileNameOf` + `resolveMediaFileByName`,
+  就是原 `resolveFile` 那段(名字归一 / 资产表匹配 / 同名每条过 `assertMediaAccess` / 落在 images、files 两根)
+  逐字搬出来;`server/media-delivery.ts` 只剩「查哪几本库、按什么顺序」;`rpc/domains/media.ts` 新 `readFile`
+  调同一只,字节经 `readOnethingImageFileDataUrl`,资产表记了 mime 就换头。`@shared/ipc/media.ts` 加
+  `readFile` 一行 + `MediaReadFileResponse`。
+- 壳:`data/media-image.ts`(新,缓存与释放同 `acquireBlob`,外加一只同步 `peekMediaImage` 给「放大」取件口)、
+  `asset/resolve.ts` 加 `media:` 一支、`kinds/image/alt.ts`(新,`displayAlt`)、`Image.tsx` / `index.ts` 接这一档,
+  `inline/InlineImage.tsx` 的芯片名也经 `displayAlt`。
+- 门:`scripts/gate-media-image.mjs`(新,`npm run gate:media-image`),进 `verify.mjs`(dev 一档)。
+
+**施工单没写死、这里定的**
+
+1. 尺寸表:媒体库图按 `ref.url` 记,**远程 / 本地照旧按解析后的 src** —— `asset/dimensions.ts` 文件头那条
+   「两份文档用不同相对路径指同一个文件,按 src 记才合得上」对它们仍然成立,统一成 `ref.url` 会丢这一格。
+   `LoadedImage` 多一个 `sizeKey` 入参,两档各自传。
+2. 取的路上**不另画占位件**:`LoadedImage` 的 `src` 可缺席 —— 缺席时占位盒照画、`<img>` 不挂;媒体库图的
+   `key` 用 `ref.url`,于是「取的路上 → 取到」是同一次挂载,`<img>` 在同一个框里长出来。组件化,不新建组件。
+3. `useMediaImage(undefined)` 回 `unavailable` 且什么都不读:hook 不许条件调用,`BlockImage` 无条件调它。
+4. RPC 这一路只查装配好的那一本库(`[library]`);HTTP 那一路照旧「共享库 → 旧租户库」。旧租户库是
+   `server:start` 那条 HTTP 路的历史包袱,RPC 从来没读过它 —— 查哪几本是调用方的事实,判据只有一份。
+5. 资产表还在、盘上文件没了(手删 / 备份恢复不全):`readFile` 回 `null` + 一条 warn,不抛 RPC 故障 ——
+   对壳就是「这张图没加载出来」。
+6. `readFile` 对非图片资产照样出 data URL(头换成资产表的 mime),没加大小上限:今天 `media://` 的唯一产地
+   是生图流(几百 KB 到几 MB,与 `readBlob` 同量级)。将来 `video` 块真用上这一支时,上限与流式要重新拍。
+7. `displayAlt` 也用在行内芯片上(施工单点的是三处):同一个机器标记,芯片上显出来是同一个病,一行的事。
+8. `packages/backend/package.json` 的 exports **没加**:`resolve-file.ts` 只被包内两处相对导入,那张表的规矩是
+   「只登记显式的公开子路径」(文件头 `//exports`),加一个没人按包名导入的键反而违规。
+9. 门 ⑤ 不用备份文件法,改在**门自己那台 vite** 上挂 transform 插件摘白名单:`verify` 跑在主检出,用户的
+   `electron:dev`(5175)盯着同一棵 `src/`,改盘会把用户的窗热更成「不支持的地址」。网络层两条拦法试过都不行
+   (Playwright `page.route` 在 Electron 下把不相干的模块请求一起弄成 `ERR_FAILED`;裸 CDP `Fetch` 连导航都失败)。
+   备份文件法那一趟由施工者手跑(见下)。
+10. 门 ④ 比施工单多一格:**第二次挂载一帧 blank 都没有**。「sized 出现过」不够 —— 反证(下)实测键错了时
+    序列是 `blank → sized → none`,sized 也出现过;行高差的样本也改成「凡带 `data-reserve` 的帧」,只取 sized
+    帧会让 blank 那 112px 从尺子底下溜过去。
+
+**读数**(全部在 worktree `g-line-p5-a` 上,`bun run server:build` + `npm run electron:build` 之后)
+
+| 验收 | 读数 |
+| --- | --- |
+| `npx vitest run src/content src/data` | 195 files / 3150 tests 全绿 |
+| 仓根 media 四件(`wiring/media` + `media-domain` + `media-rpc-http` + `store-backup-activation`) | 4 files / 22 tests 全绿 |
+| 仓根 `npx vitest run packages/shared` | 12 files / 101 tests 全绿 |
+| 仓根 `npx vitest run packages/backend` | 408 files:400 过 / 8 红(55 条),**与 HEAD 逐字相同**(同七个文件在干净的 HEAD worktree 上跑出 55 failed / 25 passed):prompt 快照 5、sessions-domain 25(`getTodoPlanStore` mock 缺口)、music 21 + resource-music 1(`onSetupEvent` / `onPlayerFact` 不是函数)、owned-labels 82≠81、resource-kernel 15≠14、plugins event-routing 1 —— 都不碰 media |
+| `npm run typecheck`(壳)/ 仓根 `bun run typecheck` | 0 错(本 worktree 没出 AbortScope 双重声明) |
+| eslint 改动文件(壳 12 个 + 仓根 6 个) | 0 |
+| `ui:consume` / `motion-gate` / `squeeze-gate` | 31 条在基线内(响应链 / 焦点环硬闸 0)/ 0 / 2 条在基线内(基线 3) |
+| `bun run transport:gate` / `bun run boundary:gate` | ok(IPC_CHANNELS 39、RPC 域 transport 读法 5 处 / 5 文件、新壳 ipcMain 2 条,无上升)/ ok(0 failures) |
+| `npm run gate:tool-md-flicker` | 11 格场景 / 135 条断言全绿 |
+| `npm run gate:media-image` ×3 | 三趟全绿、残留自查干净 |
+
+门 ③④⑤ 的读数(三趟逐字相同,只有取样帧数随机器起伏):
+
+- ① `media.readFile` 按名取回 134 字符的 `data:image/png;base64,…`,mime `image/png`;② 引擎写的地址 =
+  `media://<落库文件名>`(产品自己的 `buildOnethingGeneratedImageMarkdown` 现打一份出来调)。
+- ③ `data-state="ready"`、`naturalWidth 8`、图块里 0 条诚实行、`alt="Generated Image"`、檐上 meta = `<id>.png`。
+  第一次加载(只报不判,§23.4 那条留账):占位 `blank → none`,行高 277.2 → 165.2px(一次 112px 的位移,
+  占位最小高比 8px 的图高)。
+- ④ 甲那棵树真的卸载了;第二次挂载占位 `sized → none`,占位期行高 [165.2]、上屏后 [165.2],**差 0px**,
+  一帧 blank 都没有(取样 42 / 42 / 54 帧)。
+- ⑤ vite 出的 `resolve.ts` 改了 1 次;摘掉之后 ③ 五格全红(state=null / naturalWidth=null / 诚实行
+  「Unsupported address media://…」/ alt=null / meta=null —— 檐上 meta 也读资产层那一档,一起红是对的)。
+
+**反证(备份文件法,施工者手跑,盘上改完即回滚)**
+
+- 摘 `KNOWN_SCHEMES` 里的 `'media:'` → ③ 五格全红、④ 三格红(没有 sized、行高差 ∞)、⑤「插件改到了」那格也红
+  (白名单里已经没有那一格可摘)。
+- 把媒体库图的 `sizeKey` 换成 data URL(即「尺寸表按 src 记」)→ ④ 红两格:序列 `blank → sized → none`、
+  行高差 112px。上面第 10 条那一格正是这一趟逼出来的 —— 改之前门在这一刀下是**绿的**。
+
+**没做到 / 存疑**
+
+- `--prod` 档没跑(worktree 里没有 `dist/index.html`,`app:build` 没跑);prod 档只有 ①–④,⑤ 跳过。
+- 门里的界面语言是英文(隔离的 user-data-dir 没有语言偏好,诚实行读作「Unsupported address」)。
+  门的判据因此一律不看字面 —— 诚实行按 `[role="note"]` 判;头一版按中文字面「不支持的地址」判,⑤ 当场假红过一次。
+- `access.ts` 的 `previewSource`(`getPreview` 用)仍自己按 basename 匹配资产表 —— 那是「这个预览源看不看得见」
+  的授权问,不是「文件在哪」;而它要是改调 `resolveMediaFileByName`,`resolve-file.ts` 与 `access.ts` 就成了
+  互相导入。预览窗是 Vue 宿主的遗产、React 壳没有消费者,本单没动,留账。

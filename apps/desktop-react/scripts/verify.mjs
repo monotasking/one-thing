@@ -484,6 +484,18 @@ run('gate:fold-collapse(dev·真店)', 'npm', ['run', '--silent', 'gate:fold-col
  */
 run('gate:tool-md-flicker(dev)', 'npm', ['run', '--silent', 'gate:tool-md-flicker'])
 /*
+ * **生成的图上屏**(G 线 P5-a,正本 `docs/stream-geometry-2026-09.md` §23)。生图流写进账本的
+ * `![…|mediaId:<id>](media://<id><ext>)` 经 `media.readFile` 取字节上屏;关掉再打开按尺寸表
+ * (按 `ref.url` 记)占 sized、行高零位移;反证在门自己那台 vite 上摘掉白名单那一格。
+ *
+ * **它凭什么进得来**:判据全是结构与像素位置 —— `data-state` / `naturalWidth` / alt 与檐的字 /
+ * 「sized 出现过没有」/ 行高差几像素,零毫秒读数,同一份代码跑一百遍是同一个答案。
+ * **只进 dev 一档**:⑤ 反证要门自己起的 vite 出一份改过的模块,prod 档没有 vite
+ * (`--prod` 照样能跑 ①–④);用户跑的也是 `electron:dev`。屏外档、vite 5313、
+ * 不连 5175、不碰 `~/.onething`,自己收尸。
+ */
+run('gate:media-image(dev)', 'npm', ['run', '--silent', 'gate:media-image'])
+/*
  * gate:credentials 不在这里,理由与 gate:perf 不同:它**读的是这台机器上真实的
  * 生产 store**(要一份真的 safeStorage 密文才有得比),而 verify 必须在任何一台
  * checkout 上都能跑。它自己跑:`npm run gate:credentials`。
@@ -495,5 +507,5 @@ process.stdout.write(
     + ' / 真机门(connect·data·theme·chat·files·search·monotone·squeeze·motion·a11y·focus·layout·fold-collapse[短 dev+prod · 真店 dev]'
     + '·chat-follow·continuity·terminal[dev+prod]·browser[dev+prod]·chat-layout[dev+prod]'
     + '·send-flow[dev+prod]·stream-geometry[dev+prod]·tail-jitter[dev+prod × 短/真店]'
-    + '·tool-md-flicker[dev])全绿\n',
+    + '·tool-md-flicker[dev]·media-image[dev])全绿\n',
 )

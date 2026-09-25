@@ -2,6 +2,8 @@ import type { BlockModel } from '../../../model/blocks'
 import { registerBlock } from '../../registry'
 import { resolveAssetRef } from '../../asset/resolve'
 import { knownSize } from '../../asset/dimensions'
+import { peekMediaImage } from '../../../../data/media-image'
+import { displayAlt } from './alt'
 import { BlockImage } from './Image'
 
 type ImageModel = Extract<BlockModel, { kind: 'image' }>
@@ -24,7 +26,7 @@ type ImageModel = Extract<BlockModel, { kind: 'image' }>
  *    由块自己的 aspect-ratio 盒完成(尺寸表,blocks/asset/dimensions.ts)。
  *
  * ── 檐上那两格与 `download` 为什么不在 ────────────────────────────────
- * `id` 是身份词 `image`;`meta` 是**宿主名(远程)或文件名(本地)** —— 一眼看得出
+ * `id` 是身份词 `image`;`meta` 是**宿主名(远程)或文件名(本地 / 媒体库)** —— 一眼看得出
  * 这张图从哪儿来,而这两样都从地址本身读得出,不必等加载。`download` 本批不接:
  * 执行器只认 SVG→PNG(shell/export-png.ts),位图下载要给它一个 href 取件口,
  * 那是正本 §6 的 P4。
@@ -47,9 +49,18 @@ registerBlock({
        */
       image: () => {
         const resolution = resolveAssetRef(model.ref, { baseDir: ctx.baseDir })
+        /*
+         * 媒体库图:字节在 `data/media-image.ts` 的缓存里,同步取(不发请求);
+         * 「到过屏幕上」的凭据照旧是尺寸表 —— 那张表对它按 `ref.url` 记。
+         */
+        if (resolution.status === 'media') {
+          const src = peekMediaImage(resolution.fileName)
+          if (!src || !knownSize(model.ref.url)) return undefined
+          return { src, alt: displayAlt(model.alt) }
+        }
         if (resolution.status !== 'ready') return undefined
         if (!knownSize(resolution.src)) return undefined
-        return { src: resolution.src, alt: model.alt }
+        return { src: resolution.src, alt: displayAlt(model.alt) }
       },
     },
     { verb: 'view-source' },
@@ -62,6 +73,9 @@ registerBlock({
  */
 function imageMeta(model: ImageModel): string | undefined {
   const url = model.ref.url
+  // 媒体库图显文件名(`<id><ext>`)—— 与本地图同一格口径;名字由资产层认,不在这里再切一遍。
+  const resolution = resolveAssetRef(model.ref, {})
+  if (resolution.status === 'media') return resolution.fileName
   if (/^https?:/i.test(url)) {
     try {
       return new URL(url).host || undefined

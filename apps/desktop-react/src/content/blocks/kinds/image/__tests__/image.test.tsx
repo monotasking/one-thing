@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { BlockView } from '../../../BlockView'
 import type { BlockCtx } from '../../../registry'
 import { blockSourceText } from '../../../shell/source'
@@ -8,6 +8,7 @@ import { resetAssetDimensionsForTest, knownSize } from '../../../asset/dimension
 import { useStageStore } from '../../../../../stage/store'
 import { focusTree } from '../../../../../focus/registry'
 import { MarkdownCanvas } from '../../../../viewer/kinds/markdown'
+import { configureMediaImagePort, resetMediaImageCacheForTest } from '../../../../../data/media-image'
 
 /**
  * 图片块上屏 —— 六种状态里在 jsdom 里证得出的那几种。
@@ -155,5 +156,78 @@ describe('查看器把文档位置递进来', () => {
   it('反过来说:同一段 markdown 在聊天里(没有文档位置)落诚实态', () => {
     render(<BlockView block={{ kind: 'image', ref: { kind: 'url', url: '../img/cat.png' }, alt: '' }} ctx={ctx} />)
     expect(screen.getByText('相对路径,这里没有文档位置')).toBeTruthy()
+  })
+})
+
+/**
+ * **媒体库图**(G 线 P5-a,正本 `docs/stream-geometry-2026-09.md` §23)。生图流写进账本的是
+ * `![Generated Image|mediaId:<id>](media://<id>.png)`;字节经 RPC `media.readFile` 取。
+ * 端口在这里换成假的:RPC 到底取不取得到是后端的事(`resolve-file.test.ts` 与真机门),
+ * 这里证的是壳拿到答复之后画什么。
+ */
+describe('media://:经 RPC 取字节', () => {
+  const GENERATED = { kind: 'url', url: 'media://media_1.png' } as const
+  const PNG = 'data:image/png;base64,iVBORw0KGgo='
+  const drawMedia = (alt = 'Generated Image|mediaId:media_1') =>
+    render(<BlockView block={{ kind: 'image', ref: GENERATED, alt }} ctx={ctx} />)
+
+  beforeEach(() => {
+    resetMediaImageCacheForTest()
+  })
+
+  it('取的路上占位盒在、`<img>` 未挂;取到之后 img 挂上,alt 剥掉 `|mediaId:`,檐上 meta = 文件名', async () => {
+    let answer!: (value: { dataUrl: string | null }) => void
+    const readFile = vi.fn(() => new Promise<{ dataUrl: string | null }>((resolve) => { answer = resolve }))
+    configureMediaImagePort({ readFile })
+    drawMedia()
+    expect(screen.getByTestId('block-image-frame').getAttribute('data-reserve')).toBe('blank')
+    expect(screen.queryByTestId('block-image')).toBeNull()
+    await waitFor(() => expect(readFile).toHaveBeenCalledWith('media_1.png'))
+    answer({ dataUrl: PNG })
+    const img = await screen.findByTestId('block-image')
+    expect(img.getAttribute('src')).toBe(PNG)
+    expect(img.getAttribute('alt')).toBe('Generated Image')
+    expect(screen.getByText('media_1.png')).toBeTruthy()
+    // 没有「不支持的地址」那一行 —— 这正是 P5-a 之前屏幕上的样子。
+    expect(screen.queryByText('不支持的地址')).toBeNull()
+    configureMediaImagePort(undefined)
+  })
+
+  it('取不到(null)→「这张图没加载出来」+ 作者写的地址,alt 同样剥标记', async () => {
+    configureMediaImagePort({ readFile: async () => ({ dataUrl: null }) })
+    drawMedia()
+    await waitFor(() => expect(screen.getByRole('note').textContent).toContain('这张图没加载出来'))
+    const line = screen.getByRole('note').textContent ?? ''
+    expect(line).toContain('media://media_1.png')
+    expect(line).toContain('Generated Image')
+    expect(line).not.toContain('mediaId:')
+    expect(screen.queryByTestId('block-image')).toBeNull()
+    configureMediaImagePort(undefined)
+  })
+
+  it('尺寸表按 `ref.url` 记(不按几 MB 的 data URL):第二次挂载在字节到之前就占 sized', async () => {
+    configureMediaImagePort({ readFile: async () => ({ dataUrl: PNG }) })
+    const first = drawMedia()
+    const img = await screen.findByTestId('block-image')
+    Object.defineProperty(img, 'naturalWidth', { value: 8, configurable: true })
+    Object.defineProperty(img, 'naturalHeight', { value: 8, configurable: true })
+    fireEvent.load(img)
+    expect(knownSize('media://media_1.png')).toEqual({ w: 8, h: 8 })
+    expect(knownSize(PNG)).toBeUndefined()
+    first.unmount()
+    resetMediaImageCacheForTest()
+
+    configureMediaImagePort({ readFile: () => new Promise(() => undefined) })
+    drawMedia()
+    const frame = screen.getByTestId('block-image-frame')
+    expect(frame.getAttribute('data-reserve')).toBe('sized')
+    expect(frame.style.getPropertyValue('--img-ratio')).toBe('8 / 8')
+    configureMediaImagePort(undefined)
+  })
+
+  it('「查看源码」仍是引擎写的原行 —— 机器标记只在显示时剥', () => {
+    expect(blockSourceText({ kind: 'image', ref: GENERATED, alt: 'Generated Image|mediaId:media_1' })).toBe(
+      '![Generated Image|mediaId:media_1](media://media_1.png)',
+    )
   })
 })

@@ -47,8 +47,23 @@ describe('media RPC authorization with the actual library', () => {
     fs.rmSync(dir, { recursive: true, force: true })
   })
 
-  it('retains all eleven data methods and excludes native window actions', () => {
-    expect([...mediaRouter.methods]).toEqual(['listAssets', 'ingestFiles', 'hideAsset', 'rebuildLibrary', 'getGallery', 'saveImage', 'loadAll', 'delete', 'clearAll', 'readImageBase64', 'getPreview'])
+  it('retains the twelve data methods and excludes native window actions', () => {
+    expect([...mediaRouter.methods]).toEqual(['listAssets', 'ingestFiles', 'hideAsset', 'rebuildLibrary', 'getGallery', 'saveImage', 'loadAll', 'delete', 'clearAll', 'readImageBase64', 'getPreview', 'readFile'])
+  })
+
+  // G 线 P5-a:`readFile` 按文件名取字节 —— 判据与 HTTP `/api/media/file/<name>` 是同一只函数。
+  it('reads a library file by name as a data URL and answers null for foreign, unknown or vanished files', async () => {
+    const own = await image('alice-a'), foreign = await image('bob-a')
+    const name = (asset: OnethingMediaAsset) => path.basename(asset.filePath!)
+    const result = await rpc('readFile', { fileName: name(own) }, actor())
+    expect(result).toEqual({ ok: true, data: { dataUrl: `data:image/png;base64,${Buffer.from('alice-a').toString('base64')}`, mimeType: 'image/png' } })
+    // 无权与不存在同答 null,不区分(区分就泄露「别人有这个名字」)。
+    expect(await rpc('readFile', { fileName: name(foreign) }, actor())).toEqual({ ok: true, data: { dataUrl: null } })
+    expect(await rpc('readFile', { fileName: 'nope.png' }, actor())).toEqual({ ok: true, data: { dataUrl: null } })
+    expect(await rpc('readFile', { fileName: `media://${encodeURIComponent('../' + name(own))}` }, actor())).toEqual({ ok: true, data: { dataUrl: null } })
+    // 资产表还在、盘上文件没了:同答 null,不抛 RPC 故障。
+    fs.rmSync(own.filePath!)
+    expect(await rpc('readFile', { fileName: name(own) }, actor())).toEqual({ ok: true, data: { dataUrl: null } })
   })
 
   it('checks source metadata before searching prompts or projecting legacy images', async () => {

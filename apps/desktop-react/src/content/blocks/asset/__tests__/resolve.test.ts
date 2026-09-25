@@ -57,6 +57,22 @@ describe('scheme 分派', () => {
     expect(resolveAssetRef(url('blob:http://x/y'), {})).toMatchObject({ reason: 'scheme' })
   })
 
+  it('media: 回「媒体库的哪个名字」—— 同步、纯,不给 src(字节要经 RPC 取,G 线 §23)', () => {
+    expect(resolveAssetRef(url('media://media_1.png'), {})).toEqual({ status: 'media', fileName: 'media_1.png' })
+    // 与相对路径同一条纪律:百分号先解一次(后端按原名对资产表)。
+    expect(resolveAssetRef(url('media://a%20b.png'), {})).toEqual({ status: 'media', fileName: 'a b.png' })
+    // query / hash 不是名字的一部分。
+    expect(resolveAssetRef(url('media://m.png?x=1#y'), {})).toEqual({ status: 'media', fileName: 'm.png' })
+    // 不依赖文档位置:聊天里没有 baseDir 也解得开。
+    expect(resolveAssetRef(url('MEDIA://m.png'), {})).toMatchObject({ status: 'media' })
+  })
+
+  it('media: 名字里带路径段 / 空名 → 当不认识的地址,不白发一次请求', () => {
+    expect(resolveAssetRef(url('media://../secret.png'), {})).toEqual({ status: 'unresolvable', reason: 'scheme' })
+    expect(resolveAssetRef(url('media://a%2Fb.png'), {})).toEqual({ status: 'unresolvable', reason: 'scheme' })
+    expect(resolveAssetRef(url('media://'), {})).toEqual({ status: 'unresolvable', reason: 'scheme' })
+  })
+
   it('说不出宿主的 http 地址也拒 —— 按宿主放行的前提是有个宿主', () => {
     expect(resolveAssetRef(url('http://'), {})).toMatchObject({ status: 'unresolvable', reason: 'scheme' })
   })

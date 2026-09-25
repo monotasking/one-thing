@@ -35,7 +35,7 @@
  * 上面那些判例一条没作废 —— 换的是「谁看得见」,不是「货从哪来」。
  */
 import {
-  ingestOnethingMediaFilesForIpc, readOnethingImageFileDataUrlForIpc,
+  ingestOnethingMediaFilesForIpc, readOnethingImageFileDataUrl, readOnethingImageFileDataUrlForIpc,
   type OnethingMediaLibraryService, type OnethingMediaSession, type OnethingImagePreviewRegistry,
 } from '@onething/runtime/media'
 import { imagePreviewRegistry } from '@onething/runtime/media/image-preview-registry-bound'
@@ -45,10 +45,12 @@ import type { MediaRoutes } from '@shared/ipc/media.js'
 import { getSession, getSessionsList } from '../../stores/sessions.js'
 import { DEFAULT_SESSION_OWNER, SessionAccessError, ownerMatchesContext, requestSessionOwner, sessionAccess, type SessionAccess } from '../../session/access.js'
 import { assertMediaAccess, assertMediaPathSources, createMediaPathAccess, mediaVisible, resolveMediaInputPath } from '../../wiring/media/access.js'
+import { resolveMediaFileByName } from '../../wiring/media/resolve-file.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
 
-const consoleLog = consolePort(getLogger('rpc.media'))
+const log = getLogger('rpc.media')
+const consoleLog = consolePort(log)
 
 export interface MediaRpcPorts {
   library: OnethingMediaLibraryService
@@ -130,6 +132,24 @@ export function createMediaRpcHandlers(ports: MediaRpcPorts): RpcRouteHandlers<M
       const preview = ports.previews.get(request.previewId)
       if (preview.success) previewSource(context, preview.src)
       return preview
+    },
+    async readFile(request, context = DESKTOP_RPC_CONTEXT) {
+      // 按名找路径只走 `resolveMediaFileByName` 这一只(HTTP 的 `/api/media/file/<name>` 调的是同一只)。
+      // 这里只查装配好的那本库:旧租户库是 `server:start` 那条 HTTP 路的历史包袱,RPC 从没读过它。
+      const found = resolveMediaFileByName([library], access, context, request?.fileName ?? '')
+      if (!found) return { dataUrl: null }
+      let dataUrl: string
+      try { dataUrl = readOnethingImageFileDataUrl(found.path) }
+      catch (error) {
+        // 资产表还在、盘上文件没了(手删 / 备份恢复不全):对壳就是「这张图没加载出来」,
+        // 与「没有这个文件」同答;记一条 warn 给排障,不把 ENOENT 当 RPC 故障抛上去。
+        log.warn('media file unreadable', { fileName: request?.fileName }, error)
+        return { dataUrl: null }
+      }
+      // 字节 → data URL 用媒体库自己那把尺(按扩展名定 mime);资产表记了 mime 就换成它 ——
+      // 表比扩展名准,且非图片资产(files/ 根里的)也不该被扩展名兜底成 image/png。
+      const mimeType = found.mimeType
+      return { dataUrl: mimeType ? dataUrl.replace(/^data:[^;,]*/, `data:${mimeType}`) : dataUrl, mimeType }
     },
   }
 }

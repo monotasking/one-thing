@@ -4,7 +4,7 @@
 
 ## 0. 现状与真店读数
 
-今天 `![alt](url)` 在正文里**原样当文字摆出来**(`markdown/to-inline.ts` 的 default 支:词汇表里没有 image,P1 时记为拍板件)。另一路,账本里的图片 part(附件 / 生图流)在装配管线里已经产出 `image` 段,但 `SegmentView` 的 `image` 支返回 `null` —— 生成的图在 React 壳上一张都不显示。
+今天 `![alt](url)` 在正文里**原样当文字摆出来**(`markdown/to-inline.ts` 的 default 支:词汇表里没有 image,P1 时记为拍板件)。另一路,账本里的图片 part(附件 / 生图流)在装配管线里已经产出 `image` 段,但 `SegmentView` 的 `image` 支返回 `null` —— 生成的图在 React 壳上一张都不显示。**(09-25 更正:这句把病根安错了地方。)** 只读扫真店 556 条会话,`kind:'image'` 的 part **0 条**、`onething-blob://` 占位 **0 条** —— 账本图片 part 这条路今天**没有产地**。生图流真正落进账本的是一段**正文** `![Generated Image|mediaId:<id>](media://<id><ext>)`(`provider-data.ts` 的 `buildOnethingGeneratedImageMarkdown`,字节进媒体库),它走的是本文这条 markdown → 图块的路,卡在 `asset/resolve.ts` 的白名单没有 `media:` —— 屏幕上是一行「不支持的地址」。那一支由 G 线 P5-a 接上(`stream-geometry-2026-09.md` §23)。
 
 真店(`~/.onething/sessions`,493 会话,只读扫描 2026-09-13):
 
@@ -101,7 +101,7 @@ UI 生命状态:
 | 期 | 内容 | 状态 |
 | --- | --- | --- |
 | P1 | 本文 §1–§4:词汇 + 翻译 + `asset/` 三件 + 图块 + 行内芯片 + zoom 扩格 + 查看器传 `baseDir` | 本批 |
-| P2 | 账本图片走同一个块:`ImageRef.blob` + 异步解析 + `SegmentView.image` 通电(生图流、附件缩略) | 待派 |
+| P2 | **生成的图 = `media://` 一支**(G 线 P5-a,`stream-geometry-2026-09.md` §23):`asset/resolve.ts` 认 `media:` 回 `{status:'media', fileName}`,字节经通用 RPC `media.readFile`(`data/media-image.ts`),alt 剥 `\|mediaId:` 机器标记。原先写在这一行的「账本图片 part 走 `ImageRef.blob` + `SegmentView.image` 通电」**无产地**(真店 0 条 image part),不做;哪天真有产地再立一行 | G 线 P5-a 本批 |
 | P3 | 聊天里的相对路径:`baseDir` 取会话 workdir(`ctx.sessionId` → 会话档);Obsidian `![[x.png]]` 作**新生产者**接进翻译(micromark 扩展一格,不进核心) | 待拍 |
 | P4 | 位图下载(`download` 执行器加 `href` 取件口)、行内芯片点击放大、多图一段的画法 | 待拍 |
 | P5 | `video` / `file` 块(§5 演练路径)、远程放行落盘为设置(若用户要「永远加载」) | 待拍 |

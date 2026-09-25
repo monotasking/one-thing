@@ -1,9 +1,7 @@
-import { basename, isAbsolute, relative } from 'node:path'
 import { MediaLibraryService, type OnethingMediaLibraryPaths } from '@onething/runtime/media'
-import { canonicalizeStorePath } from '@onething/runtime/storage'
 import type { RuntimeMediaAdapter, RuntimeRequestContext } from '@onething/core/runtime-facade'
-import { SessionAccessError, type SessionAccess } from '../session/access.js'
-import { assertMediaAccess } from '../wiring/media/access.js'
+import type { SessionAccess } from '../session/access.js'
+import { mediaFileNameOf, resolveMediaFileByName } from '../wiring/media/resolve-file.js'
 
 export interface ServerMediaDeliveryPorts {
   defaultContext(): RuntimeRequestContext
@@ -21,33 +19,17 @@ export function createServerMediaDelivery(ports: ServerMediaDeliveryPorts) {
   const adapter: RuntimeMediaAdapter = {
     async resolveFile(input, context = ports.defaultContext()) {
       if (disposed) return { success: false, error: 'Media delivery has been disposed' }
-      const trimmed = input.trim()
-      const encoded = trimmed.startsWith('/api/media/file/') ? trimmed.slice('/api/media/file/'.length)
-        : trimmed.startsWith('media://') ? trimmed.slice('media://'.length) : undefined
       const missing = { success: false, error: 'Media file not found' }
-      let fileName: string
-      try {
-        const decoded = encoded === undefined ? trimmed : decodeURIComponent(encoded)
-        fileName = basename(decoded)
-        if (encoded !== undefined && decoded !== fileName) return missing
-      } catch { return missing }
-      if (!fileName || fileName === '.' || fileName === '..') return missing
+      // 名字能不能取出来先判:取不出就不必为这个 owner 建一本租户库。
+      if (!mediaFileNameOf(input)) return missing
       const key = ports.ownerKey(context)
-      const paths = ports.libraryPaths(context)
       let service = services.get(key)
-      if (!service) { service = new MediaLibraryService(paths); services.set(key, service) }
-      for (const library of [ports.sharedLibrary, service].filter((value): value is MediaLibraryService => !!value)) {
-        const roots = library.storagePaths()
-        const matches = library.listAssetAccess().filter(asset => asset.filePath && basename(asset.filePath) === fileName)
-        try { for (const asset of matches) assertMediaAccess(ports.access, context, asset) }
-        catch (error) { if (error instanceof SessionAccessError) return missing; throw error }
-        for (const asset of matches) {
-          const path = canonicalizeStorePath(asset.filePath!)
-          if (![roots.imagesDir, roots.filesDir].some(root => isInside(path, canonicalizeStorePath(root)))) return missing
-          return { success: true, path, mimeType: library.getAsset(asset.id)?.mimeType }
-        }
-      }
-      return missing
+      if (!service) { service = new MediaLibraryService(ports.libraryPaths(context)); services.set(key, service) }
+      // 按名找路径的判据只在 `wiring/media/resolve-file.ts` 一处(G 线 §23.2),RPC 的
+      // `media.readFile` 调的是同一只函数;这里只负责「查哪几本库、按什么顺序」。
+      const libraries = [ports.sharedLibrary, service].filter((value): value is MediaLibraryService => !!value)
+      const found = resolveMediaFileByName(libraries, ports.access, context, input)
+      return found ? { success: true, path: found.path, mimeType: found.mimeType } : missing
     },
     subscribeImageGenerated(handler, context = ports.defaultContext()) {
       if (disposed) return () => {}
@@ -59,9 +41,4 @@ export function createServerMediaDelivery(ports: ServerMediaDeliveryPorts) {
     },
   }
   return { adapter, dispose(): void { disposed = true; listeners.clear(); services.clear() } }
-}
-
-function isInside(candidate: string, root: string): boolean {
-  const path = relative(root, candidate)
-  return path === '' || (!path.startsWith('..') && !isAbsolute(path))
 }

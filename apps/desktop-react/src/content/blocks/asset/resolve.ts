@@ -12,15 +12,23 @@ import { isHostAllowed } from './remote-policy'
  * 加一个 `video` 块时这个文件一个字不改 —— 那是骨架抽到位的判据(正本 §5)。
  *
  * ── 同步、纯 ──────────────────────────────────────────────────────────
- * 今天的 `ImageRef` 只有 `url` 一员,答案当场算得出来。P2 的 `blob` 一员要读账本,
- * 那时这里多**一支**异步的路(objectURL + 缓存,与 figure 的渲染缓存同手),
- * 这一支不动。
+ * 今天的 `ImageRef` 只有 `url` 一员,答案当场算得出来。要读字节的那一档(`media:`,
+ * G 线 §23)也只在这里**认出名字**,取字节交给消费者(`data/media-image.ts`)——
+ * 这个函数因此仍然同步、纯。
  */
 export type AssetResolution =
   /** 能直接喂给 `<img src>` 的那个字符串。 */
   | { status: 'ready'; src: string }
   /** 远程且这台还没放行这个宿主 —— 等人点一下(见 remote-policy.ts 的判词)。 */
   | { status: 'gated'; host: string }
+  /**
+   * 媒体库里的一个文件(`media://<name>`,生图流写进账本的就是这一种,G 线 §23)。
+   * 这一档**不给 src**:字节要经通用 RPC 取(`data/media-image.ts`),`<img>` 直接打
+   * core 带不了 Bearer。解析本身仍同步、纯 —— 这里只认出「是媒体库的哪个名字」,
+   * 一字不读网络;取字节是消费者的事。它是资产层的一档,与图片无关:将来 `video`
+   * 块的 `media://` 走的是同一支。
+   */
+  | { status: 'media'; fileName: string }
   /**
    * 解不出来。`reason` 是**机器口径的一个词**,不是界面文案(与块的 `reason` 同一条
    * 判据:换一门语言它不该跟着变),界面上说哪句话由组件查字典。
@@ -33,7 +41,7 @@ export interface AssetResolveCtx {
 }
 
 /** 认得的 scheme —— 白名单,不是黑名单(§六 11:`javascript:` 这类一律挡在外面)。 */
-const KNOWN_SCHEMES = new Set(['data:', 'http:', 'https:', 'file:'])
+const KNOWN_SCHEMES = new Set(['data:', 'http:', 'https:', 'file:', 'media:'])
 
 /** `scheme:` 的形状(RFC 3986)。`./a:b.png` 命不中它 —— 冒号前面得是一串合法的 scheme 字。 */
 const SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/
@@ -45,6 +53,7 @@ export function resolveAssetRef(ref: ImageRef, ctx: AssetResolveCtx): AssetResol
   if (scheme) {
     if (!KNOWN_SCHEMES.has(scheme)) return { status: 'unresolvable', reason: 'scheme' }
     if (scheme === 'http:' || scheme === 'https:') return resolveRemote(url)
+    if (scheme === 'media:') return resolveMedia(url)
     // data: 与 file: 原样 —— 前者字节就在地址里,后者已经是一条本机 URL。
     // file: 只在 file:// 起源的页面(打包壳)取得到,dev / 浏览器面上会落 onError
     // 的诚实态 —— 那是宿主的事实,与查看器 image 型同一条限制。
@@ -68,6 +77,18 @@ function resolveRemote(url: string): AssetResolution {
   const host = hostOf(url)
   if (!host) return { status: 'unresolvable', reason: 'scheme' }
   return isHostAllowed(host) ? { status: 'ready', src: url } : { status: 'gated', host }
+}
+
+/**
+ * `media://<name>` → 媒体库里的那个文件名。名字按百分号解一次(markdown 地址是编码过的,
+ * 后端按原名对资产表)。解出来是空的、或里面还带路径段 —— 那不是媒体库那一种地址
+ * (媒体库的名字是 `<id><ext>`,没有目录),当「不认识的地址」落诚实态;后端同样会拒,
+ * 这里先拦下是为了不白发一次请求,不是第二份判据。
+ */
+function resolveMedia(url: string): AssetResolution {
+  const name = decodePath(url.slice('media:'.length).replace(/^\/\//, '').split(/[?#]/)[0] ?? '')
+  if (!name || name.includes('/') || name.includes('\\')) return { status: 'unresolvable', reason: 'scheme' }
+  return { status: 'media', fileName: name }
 }
 
 function hostOf(url: string): string | undefined {

@@ -178,6 +178,20 @@ export type MediaRoutes = {
   clearAll: { input: Record<string, never>; output: void }
   readImageBase64: { input: { filePath: string }; output: string }
   getPreview: { input: { previewId: string }; output: MediaPreviewLookupResponse }
+  /**
+   * 按**文件名**取媒体库里一张图的字节(G 线 P5-a,§23.2)。账本上生成图的正文是
+   * `![…](media://<id><ext>)`,壳只知道那个名字;`<img src>` 带不了 Bearer,
+   * 桌面壳渲染进程直连 core,`GET /api/media/file/<name>` 那条路对它是 401 —— 所以
+   * 字节走通用 RPC,与会话 blob 的 `readBlob` 同一手,不开第二条通道。
+   * `dataUrl: null` = 没有这个文件**或**没有访问权(故意不区分,区分就泄露「别人有这个名字」)。
+   */
+  readFile: { input: { fileName: string }; output: MediaReadFileResponse }
+}
+
+/** `media.readFile` 的答复。`mimeType` 取资产表的记录(比按扩展名猜的准),没有就缺省。 */
+export interface MediaReadFileResponse {
+  dataUrl: string | null
+  mimeType?: string
 }
 
 export const mediaRouter = defineRouter<MediaRoutes>('media', [
@@ -192,6 +206,7 @@ export const mediaRouter = defineRouter<MediaRoutes>('media', [
   'clearAll',
   'readImageBase64',
   'getPreview',
+  'readFile',
 ])
 
 /**

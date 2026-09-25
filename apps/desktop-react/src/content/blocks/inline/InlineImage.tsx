@@ -2,6 +2,7 @@ import { useT } from '../../../i18n'
 import { Tooltip } from '../../../ui/Tooltip'
 import { Image as ImageGlyph } from '../../../components/icons'
 import type { InlineNode } from '../../model/inline'
+import { displayAlt } from '../kinds/image/alt'
 import s from './InlineRun.module.css'
 
 /**
@@ -24,7 +25,8 @@ import s from './InlineRun.module.css'
 export function InlineImage({ node }: { node: Extract<InlineNode, { type: 'image' }> }) {
   const t = useT()
   // alt 空就退到地址末段:芯片上永远有一个说得出口的名字,不画一颗空芯片。
-  const label = node.alt || lastSegment(node.ref.url)
+  // 引擎塞进 alt 的 `|mediaId:` 机器标记剥掉(与图块同一只 `displayAlt`,G 线 §23.3)。
+  const label = displayAlt(node.alt) || lastSegment(node.ref.url)
 
   return (
     <Tooltip content={node.ref.url}>
