@@ -3669,3 +3669,61 @@ v2 改前 5.8,改后 6.0 / 6.4 / 7.3。
 - 屏幕零变化的证词:`gate:stream-geometry` 三趟各场景 ①② 尾槽位移 0px;⑬ 除 `big:text` 外 0px,
   `big:text` 三趟都是 4.5px(= §19.8 第 4 条挂着的那格过渡值,存量);`gate:send-flow` 座位期全 0
   —— 与 §19 终局同一组数。
+
+## 22. P4-b · 行高按身份记 + 冻结线的 dev 断言(2026-09-25,施工单)
+
+§21.4 记的两件。P4-a 之后,流式期间每帧真做的活已经只剩活的那一行;P4-b 治的是**离开再回来**
+那一场景,以及把「上过屏的东西不许偷偷变」从整列一格细到**每一行**。
+
+### 22.1 现场:关掉再打开,每一行都回到 240px 的估计
+
+`ChatStream` 卸载(关掉这条会话的标签、换叶)再挂载时,消息行全部重新建;`content-visibility: auto`
+让浏览器**记住**渲过的真高只在元素活着时成立,新行占的是 `--msg-intrinsic-h` 那 240px。后果两条,
+都量过:进场落回锚点要再对好几轮(`entry-restore.ts` 文件头:190 轮的会话漂掉整整一条消息,188px;
+`ANCHOR_RESETTLE_ROUNDS = 6` 就是给它兜底的);往上翻时内容列一路长高、滚动条一路变短。
+停靠池(`chat-source` 的 8 台)留住的是**数据**,留不住 DOM —— 这一格正是 G5「上过屏的位置固定」
+在「回来」这一场景上还没兑现的那一半。
+
+### 22.2 ① 行高账(`content/row-heights.ts`)
+
+- **一条会话一本**,按消息 id 记 `{ height }`,连同**量它时的列宽**(整本一个 `width`)。
+  住在模块级 `Map<sessionId, RowHeightBook>`,自己封顶(与停靠池同一条理由:LRU,32 本),
+  配 HMR 退役;**不落盘**——它是「这次进程里见过」的记忆,重启就该忘。
+- **喂**:`ChatStream` 一只 `ResizeObserver` 盯每一行 `article[data-message-id]`(挂载即 observe,
+  卸载即 unobserve,与 `ui/flip-height` 的 `HeightBook` 同一手;可以直接复用那只类的观察部分,
+  别再写第三只 RO 的记账逻辑)。**只记渲过的行**:跳渲中的行 RO 报的是那 240px 的占位,
+  记进去就把估计当真高。判据用 `contentvisibilityautostatechange` 事件(Chromium 原生,
+  Electron 41 有;`skipped` 为假的行才记)——不用 `checkVisibility` 逐行问,那是一次布局读。
+  0 不是读数(与 `flip-height` 同判据)。
+- **列宽变了整本作废**:RO 报来的宽与本上的 `width` 不同,清空、记新宽。跳渲中的行此时
+  还挂着旧宽下的内联值 —— 那不比 240px 的固定估计更差,而且它一渲出来就被真高覆盖;写在文件头。
+- **还**:行的 `style` 上一格 `--msg-intrinsic-h: <h>px`(有账才写,没账不写,CSS 缺省 240px
+  一字不改)。它只在**行挂载那一刻**从账上读:回来时新建的 412 行各自带着上次的真高,
+  `contain-intrinsic-block-size: auto var(--msg-intrinsic-h)` 于是一开始就是真的。
+  memo 过的行不因账变而重渲(账不是 React 状态)——账的读者是「下一次挂载」,不是这一次。
+- `MessageRow` 收一格 `intrinsicHeight?: number`,由 `ChatStream` 造元素时从账上取,进行元素账的
+  输入清单(P4-a);用户气泡那一行**不记**——它短,估计与真高之差进不了判据。
+
+### 22.3 ② 冻结线的 dev 断言(行级)
+
+上面那只 RO 的读数同时喂 `GeometryLedger`(P2-c,今天只记整列):**一轮进行中,不是活的那一行、
+也不是列尾那一行,高度不许变** —— 变矮由 `note(rowId, cause, h)` 现有判据抓(cause 由锚定器按
+「用户开合窗口在不在场」定:在场 `user-toggle`,否则 `tail-growth`);**变高同样报**(冻结的行
+长高与变矮同为违例,`GeometryLedger` 加一格 `noteFrozen(rowId, h)`:与上次不同即 warn,
+每行只报一次)。哪一行是活的由 `activeMessageId` 说,列尾由 `messages` 末位说,两格都是
+锚定器已经拿得到的事实。**只 warn 不抛、prod 零开销**,三条纪律同 §19.7。
+
+**几何三问仍然没有段级读者**,如实记:段的根元素在既有组件里,P3 的适配函数不产 DOM,挂不上
+`data-segment-kind`;行级断言是型无关的。要到段级得让四个组件各自在根上报一格 kind,那是另一单。
+
+### 22.4 量法(先量后改,读数进 §22.5)
+
+- 新门步:`gate:continuity` 加 ④「关掉再打开」:真店档打开 → 往上翻五屏(让行渲出真高)→ 记
+  `scrollHeight` 与锚点 → 关掉这条会话的标签 → 再打开 → 读:进场再对了几轮(`EntryRestore`
+  报的轮数;改前预期 >0,改后 0)、落点与离开时锚点行的差(改前 §19 记过 188px 量级,改后 ≤ 1px)、
+  `scrollHeight` 与关掉前的差(改后 ≤ 一行)。**改前先跑一遍**,读数做基线。
+- 断言的第一批违例:在 `gate:stream-geometry` 与 `gate:fold-collapse` 跑完之后读隔离 store 的
+  `log/app.jsonl` 里 `ns = renderer.chat.geometry` 的 warn(渲染日志经 RPC 落到 store 文件),
+  **只报不改**,逐条归类进 §22.5,§19.8 第 3 条按此结。
+
+### 22.5 读数(交卷后填)
