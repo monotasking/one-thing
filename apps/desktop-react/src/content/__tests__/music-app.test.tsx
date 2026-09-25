@@ -458,3 +458,101 @@ describe('衔接(09-25):切分区回来歌词不乱、暂停不倒退', () => {
     await settle()
   })
 })
+
+describe('重新打开(09-25):关着的时候错过的事,打开那一刻要补上', () => {
+  const NEXT = { ...NOW_PLAYING, title: '晴天 - 周杰伦', position: 12, duration: 269 }
+  const NEXT_LYRICS = { title: NEXT.title, lines: [{ at: 10, text: '故事的小黄花' }, { at: 14, text: '从出生那年就飘着' }] }
+
+  it('关掉期间换了歌:重新打开时是新歌、新歌词、新进度,不是关掉时的那份', async () => {
+    const view = await mount()
+    expect(screen.getByTestId('music-now-line').textContent).toContain('可惜没如果')
+    view.unmount()
+
+    // 面板关着(没人订事件),后端换了歌、推了歌词。
+    fake.table['music:player#nowPlaying'] = NEXT
+    fake.table['music:player#lyrics'] = NEXT_LYRICS
+
+    render(
+      <>
+        <FocusDispatchHarness />
+        <MusicPanel />
+      </>,
+    )
+    await settle()
+    await settle()
+    expect(screen.getByTestId('music-now-line').textContent).toContain('晴天')
+    expect(screen.getByTestId('music-lyrics').textContent).toContain('故事的小黄花')
+    const seek = Number(screen.getByTestId('music-seek').getAttribute('aria-valuenow'))
+    expect(seek).toBeGreaterThanOrEqual(12)
+    expect(seek).toBeLessThan(14)
+  })
+})
+
+describe('暂停 → 继续(09-25):进度与歌词接得上', () => {
+  /** 一台会走的假播放器:暂停就停在那一秒,继续就从那一秒接着走;读数按「此刻」算(与后端 current() 同一条)。 */
+  function livePlayer(start: number) {
+    let position = start
+    let playing = true
+    let at = Date.now()
+    const now = () => (playing ? position + (Date.now() - at) / 1000 : position)
+    Object.defineProperty(fake.table, 'music:player#nowPlaying', {
+      configurable: true,
+      enumerable: true,
+      get: () => ({ ...NOW_PLAYING, playing, status: playing ? 'playing' : 'paused', position: now() }),
+    })
+    const original = fake.port.do
+    fake.port.do = async (ref, op, params) => {
+      if (op === 'pause') {
+        position = now()
+        playing = false
+        at = Date.now()
+      }
+      if (op === 'resume') {
+        at = Date.now()
+        playing = true
+      }
+      return original(ref, op, params)
+    }
+  }
+  const seekValue = () => Number(screen.getByTestId('music-seek').getAttribute('aria-valuenow'))
+  const wait = (ms: number) =>
+    act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, ms))
+    })
+
+  it('暂停后进度停住、不倒退;继续后从停住那一秒接着走;一路单调', async () => {
+    await mount()
+    livePlayer(NOW_PLAYING.position)
+    await pushNowPlaying()
+    await wait(600)
+    const beforePause = seekValue()
+
+    act(() => {
+      fireEvent.click(screen.getByTestId('music-play'))
+    })
+    const atPause = seekValue()
+    expect(atPause).toBeGreaterThanOrEqual(beforePause)
+    await wait(600)
+    // 停着:600ms 后还是那一秒(后端确认、权威读数都已经回来过了),钮也还是「播放」。
+    expect(screen.getByTestId('music-play').getAttribute('aria-label')).toBe('播放')
+    expect(Math.abs(seekValue() - atPause)).toBeLessThan(0.15)
+    expect(screen.queryByTestId('music-backend-error')).toBeNull()
+
+    act(() => {
+      fireEvent.click(screen.getByTestId('music-play'))
+    })
+    const atResume = seekValue()
+    expect(Math.abs(atResume - atPause)).toBeLessThan(0.15)
+    await wait(600)
+    expect(screen.getByTestId('music-play').getAttribute('aria-label')).toBe('暂停')
+    expect(seekValue()).toBeGreaterThan(atResume + 0.3)
+    expect(screen.queryByTestId('music-backend-error')).toBeNull()
+  })
+
+  async function pushNowPlaying() {
+    await act(async () => {
+      for (const listener of [...fake.listeners]) listener({ ref: 'music:player', event: 'nowPlayingChanged', payload: {} } as never)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  }
+})

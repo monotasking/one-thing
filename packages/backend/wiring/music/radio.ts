@@ -1395,7 +1395,23 @@ function setCurrentLyrics(next: MusicLyrics): void {
 
 function getMusicLyrics(): MusicLyrics | null {
   owner.assertActive()
+  if (currentLyrics === null) fetchLastPlaybackLyrics()
   return currentLyrics
+}
+
+/**
+ * 重新打开应用时,播放器还没起、这台进程手上没有任何歌词 —— 而面板画的是「上次放到哪」那首、停在那一秒
+ * (09-19)。歌词也该是那一首的(09-25「重新打开的时候,歌词、进度等是否正常」):只要上次那首是电台起的
+ * (手上有它的 id),就照起播时同一条路去取、取到了照样推一声,读者据那一声重读。
+ * 播放器此刻在放别的歌就不取 —— 那时该有歌词的是正在放的那首,由它自己的起播 / 采样去推。
+ * 只取一次不靠额外的记号:取到(或确认取不到)之后手上就有了一份歌词,不再是 `null`;取的路上再问,
+ * `getLyricLines` 按 id 合并成同一发。
+ */
+function fetchLastPlaybackLyrics(): void {
+  if (getMusicNowPlaying()?.title) return
+  const last = getRadioStore().readBrief().lastPlayback
+  if (!last?.encryptedId) return
+  void pushLyricsFor({ encryptedId: last.encryptedId, originalId: '', title: last.title }, last.title)
 }
 
 /**

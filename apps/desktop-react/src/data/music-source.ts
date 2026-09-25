@@ -642,7 +642,10 @@ export async function openMusicSource(): Promise<void> {
   unsubscribe?.()
   unsubscribe = port.onResourceEvent(MUSIC_SCHEME_PREFIX, onMusicFact)
   // 先订后拉(见文件头)。五发并行,一发失败不拦住别的四发。
-  await Promise.all(ALL_QUERIES.map((query) => query.ensure()))
+  // **手上有读数的也要重问一次**(09-25「重新打开的时候歌词、进度是否正常」):面板关着的那段时间没订事件,
+  // 换歌、暂停、歌词到了都没人标脏 —— `ensure()` 只会拿那份过期的读数当真。重问是后台对账,旧读数留在屏上
+  // 直到新的到(律②),所以打开那一刻不闪。
+  await Promise.all(ALL_QUERIES.map((query) => (query.get().data === undefined ? query.ensure() : query.refetch())))
 }
 
 export function closeMusicSource(): void {

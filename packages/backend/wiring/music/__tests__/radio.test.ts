@@ -567,6 +567,35 @@ describe('main radio playback (legacy starter)', () => {
     refresh.mockResolvedValue(undefined)
   })
 
+  it('09-25 重新打开应用:没在放、手上没歌词 → 取「上次放到哪」那首的歌词并推一声(只取一次)', async () => {
+    vi.useFakeTimers()
+    announceLyrics.mockClear()
+    mocks.lyric = '[00:10.00]第一句\n[00:20.00]第二句'
+    const radio = await loadRadio()
+    const store = radio.getRadioStore()
+    store.writeBrief({
+      active: true,
+      intent: 'x',
+      played: [],
+      skipped: [],
+      loved: [],
+      lastPlayback: { title: '上次那首 - 歌手', encryptedId: 'a'.repeat(32), position: 95, duration: 240, at: new Date().toISOString() },
+    })
+    const previous = mocks.nowPlaying
+    mocks.nowPlaying = null
+
+    expect(radio.getMusicLyrics()).toBeNull()
+    await vi.advanceTimersByTimeAsync(10)
+    expect(announceLyrics).toHaveBeenCalledTimes(1)
+    expect(announceLyrics.mock.calls[0]?.[0]).toMatchObject({ title: '上次那首 - 歌手' })
+    expect((announceLyrics.mock.calls[0]?.[0] as { lines: unknown[] }).lines).toHaveLength(2)
+    expect(radio.getMusicLyrics()?.title).toBe('上次那首 - 歌手')
+    radio.getMusicLyrics()
+    await vi.advanceTimersByTimeAsync(10)
+    expect(announceLyrics).toHaveBeenCalledTimes(1)
+    mocks.nowPlaying = previous
+  })
+
   it('09-18 歌词两种「没有」:空 LRC = 这首没有歌词;那一发失败 = failed(面板说两句不同的话,也不会一直等)', async () => {
     vi.useFakeTimers()
     const radio = await loadRadio()

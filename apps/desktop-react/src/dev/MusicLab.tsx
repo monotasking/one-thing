@@ -89,7 +89,19 @@ interface LabState {
   /** 节目单的当下顺序(按 encryptedId)。`undefined` = 还没动过,按生成序。 */
   order?: readonly string[]
   position: number
+  /**
+   * `position` 是哪一刻的(墙钟 ms)。在放时读数按它往前推 —— 与后端 `NowPlayingWatcher.current()` 同一条,
+   * 于是 lab 里也看得见「暂停停住、继续接着走、关了再开接得上」(09-25)。缺席 = 模块加载那一刻。
+   */
+  positionAt?: number
 }
+
+/** 此刻的位置:在放就从 `positionAt` 往前推(推到 197 秒为止),停着就停在那一秒。 */
+function livePosition(state: LabState, at: number = Date.now()): number {
+  if (state.player !== 'playing') return state.position
+  return Math.min(197, state.position + Math.max(0, at - (state.positionAt ?? LAB_LOADED_AT)) / 1000)
+}
+const LAB_LOADED_AT = Date.now()
 
 const INITIAL: LabState = {
   song: 0,
@@ -242,12 +254,14 @@ function setupState(state: LabState): Record<string, unknown> {
 /** 一只活的假端口:读数跟着 lab 的开关走,改一格就推一次 `providerChanged`(五条读数全标脏)。 */
 class LivePort implements MusicPort {
   private data: Record<string, ResourceReadView> = {}
+  private state: LabState | undefined
   private listeners = new Set<(event: MusicResourceEvent) => void>()
   /** 这几条读数**挂着不回**(lab 里演「还在读」那一档)。 */
   private held = new Set<string>()
   onOp: (op: string, params: Record<string, unknown> | undefined) => void = () => undefined
 
   update(state: LabState): void {
+    this.state = state
     this.data = table(state)
     this.held = state.lyrics === 'loading' ? new Set(['music:player#lyrics']) : new Set()
     for (const listener of this.listeners) listener({ ref: 'music:provider', event: 'providerChanged', payload: {} })
@@ -259,7 +273,13 @@ class LivePort implements MusicPort {
     const key = `${ref}#${name}`
     // 挂着不回 = 这一格永远停在「从来没有过内容」,骨架的判据就是它。
     if (this.held.has(key)) return new Promise<ResourceReadView>(() => undefined)
-    return this.data[key] ?? { kind: 'denied', reason: `no ${key}` }
+    const answer = this.data[key] ?? { kind: 'denied', reason: `no ${key}` }
+    // 在放的那首:位置按读的这一刻算(真后端也是这么交的)。
+    if (key === 'music:player#nowPlaying' && answer.kind === 'ok' && this.state) {
+      const value = answer.value as { title?: string; playing?: boolean }
+      if (value.title && value.playing) return { ...answer, value: { ...value, position: livePosition(this.state) } }
+    }
+    return answer
   }
 
   /** 一条资源事实(lab 里只用来演安装输出)。 */
@@ -413,15 +433,15 @@ function applyOp(state: LabState, op: string, params: Record<string, unknown> | 
   if (op === 'setup') return applySetup(state, params)
   switch (op) {
     case 'pause':
-      return { ...state, player: 'paused' }
+      return { ...state, player: 'paused', position: livePosition(state), positionAt: Date.now() }
     case 'resume':
-      return { ...state, player: 'playing' }
+      return { ...state, player: 'playing', position: livePosition(state), positionAt: Date.now() }
     case 'next':
-      return { ...state, song: (Math.max(0, state.song) + 1) % SONGS.length, position: 0, player: 'playing' }
+      return { ...state, song: (Math.max(0, state.song) + 1) % SONGS.length, position: 0, positionAt: Date.now(), player: 'playing' }
     case 'prev':
-      return { ...state, position: 0 }
+      return { ...state, position: 0, positionAt: Date.now() }
     case 'seek':
-      return typeof params?.position === 'number' ? { ...state, position: params.position } : state
+      return typeof params?.position === 'number' ? { ...state, position: params.position, positionAt: Date.now() } : state
     case 'close':
     case 'radioStop':
       return { ...state, radio: 'off' }
