@@ -774,8 +774,8 @@ describe('poolViewOf', () => {
     expect(view.rows.map((r) => r.cooling)).toEqual([true, false])
   })
 
-  it('策略缺席落 single;插件策略不可用时字段本身不改写', () => {
-    expect(poolViewOf(summary([], ''), NOW).policy).toBe('single')
+  it('策略缺席落「按顺序接力」(批 6 新池缺省);插件策略不可用时字段本身不改写', () => {
+    expect(poolViewOf(summary([], ''), NOW).policy).toBe('priority-failover')
     const plugged = poolViewOf(summary([], 'plugin:x:round', true), NOW)
     expect(plugged.policy).toBe('plugin:x:round')
     expect(plugged.policyUnavailable).toBe(true)
@@ -784,7 +784,7 @@ describe('poolViewOf', () => {
   it('摘要整个缺席 = 空池,不炸', () => {
     const view = poolViewOf(undefined, NOW)
     expect(view.rows).toEqual([])
-    expect(view.policy).toBe('single')
+    expect(view.policy).toBe('priority-failover')
   })
 })
 

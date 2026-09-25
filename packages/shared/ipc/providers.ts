@@ -247,6 +247,11 @@ export interface ProviderConfig {
   model: string             // Currently active model
   selectedModels: string[]  // List of models user has selected/enabled for quick switching
   enabled?: boolean         // Whether this provider is shown in the chat model selector
+  /**
+   * 订阅那一家的「订阅额度用完时切到 API 密钥」(批 6 §9.2,拍点 7)。缺席 = 开;只有
+   * `false` 是关。只在订阅那一家的格上有意义 —— 它说的是「这一家用完了接给同家 API」。
+   */
+  subscriptionFallback?: boolean
   // OAuth-specific fields (used when provider.requiresOAuth = true)
   authType?: 'apiKey' | 'oauth'  // Authentication method
   oauthToken?: OAuthToken        // Stored OAuth token (encrypted in storage)

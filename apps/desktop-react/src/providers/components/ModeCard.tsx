@@ -4,6 +4,7 @@ import { Card } from '../../ui/Card'
 import { Field, useFieldControlProps } from '../../ui/Field'
 import { Input } from '../../ui/Input'
 import { Select } from '../../ui/Select'
+import { Switch } from '../../ui/Switch'
 import { useInlineEdit } from '../../ui/inline-edit'
 import { useT } from '../../i18n'
 import { providerDialsOf, regionRowApplies, storedDialsOf } from '../dials'
@@ -76,6 +77,15 @@ export function ModeCard(props: {
   onRefreshQuota: (credentialId: string) => void
   /** API 模式每行余额的读法(「¥123.45」);没数答 null。 */
   balanceOf: (credentialId: string) => string | null
+  /**
+   * 订阅坑那颗「订阅额度用完时切到 API 密钥」(批 6 §9.2)。缺席 = 不画:这家没有同家的
+   * API 半边,或那一半还一把密钥都没配 —— 开关拨了也接不到任何东西。
+   */
+  subscriptionFallback?: {
+    checked: boolean
+    pending: boolean
+    onChange: (next: boolean) => void
+  }
 }) {
   const t = useT()
   const { mode } = props
@@ -148,6 +158,19 @@ export function ModeCard(props: {
             />
           )
         })}
+        {props.subscriptionFallback && (
+          <Card>
+            <div className={s.switchRow}>
+              <span className={s.switchLabel}>{t('providers.subFallbackApi')}</span>
+              <Switch
+                checked={props.subscriptionFallback.checked}
+                onChange={props.subscriptionFallback.onChange}
+                disabled={props.subscriptionFallback.pending}
+                label={t('providers.subFallbackApi')}
+              />
+            </div>
+          </Card>
+        )}
       </>
     )
   }

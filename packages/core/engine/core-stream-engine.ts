@@ -1923,6 +1923,8 @@ export class CoreStreamEngine<
 
       if (this.runtime.compaction.shouldSkipAutoCompactForProviderUsageMismatch({
         providerId,
+        // 宿主据这份 config 判「这一发真正发给谁」(core 只转交,不读)。
+        providerConfig: configWithApiKey,
         session: latestSession,
         modelContextLength,
         inputTokens: usage.visibleInputTokens,

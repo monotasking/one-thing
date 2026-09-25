@@ -1025,6 +1025,61 @@ describe('ModeCard · 计费档位', () => {
   })
 })
 
+describe('ModeCard · 订阅用完切 API(批 6 §9.2)', () => {
+  function subscriptionCard(fallback?: { checked: boolean; pending: boolean; onChange: (next: boolean) => void }) {
+    return (
+      <ModeCard
+        mode={{
+          providerId: 'codex',
+          kind: 'subscription',
+          name: 'Codex',
+          requiresApiKey: false,
+          requiresOAuth: true,
+          defaultBaseUrl: '',
+        }}
+        config={undefined}
+        dialsPending={false}
+        pool={pool({ rows: [] })}
+        poolBusy={false}
+        onAddKey={vi.fn()}
+        onReplaceKey={vi.fn()}
+        onRelabelKey={vi.fn()}
+        onRemoveKey={vi.fn()}
+        onMoveKey={vi.fn()}
+        onRotation={vi.fn()}
+        onDials={vi.fn()}
+        onBaseUrl={vi.fn()}
+        authStatus={undefined}
+        authFlow={IDLE_AUTH_FLOW}
+        onSignIn={vi.fn()}
+        onAuthCode={vi.fn()}
+        onSubmitAuthCode={vi.fn()}
+        onCancelAuth={vi.fn()}
+        onOpenAuthPage={vi.fn()}
+        onSignOut={vi.fn()}
+        quotaOf={() => ({ response: undefined, status: 'idle' as const })}
+        onRefreshQuota={() => {}}
+        balanceOf={() => null}
+        {...(fallback ? { subscriptionFallback: fallback } : {})}
+      />
+    )
+  }
+
+  it('同家 API 那一半没配密钥(面板不递这一格)= 不画开关', () => {
+    render(subscriptionCard())
+    expect(screen.queryByRole('switch', { name: '订阅额度用完时切到 API 密钥' })).toBeNull()
+  })
+
+  it('递了就画:缺省开着,点一下交出 false', () => {
+    const onChange = vi.fn()
+    render(subscriptionCard({ checked: true, pending: false, onChange }))
+    const toggle = screen.getByRole('switch', { name: '订阅额度用完时切到 API 密钥' })
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
+    fireEvent.click(toggle)
+    expect(onChange).toHaveBeenCalledWith(false)
+  })
+})
+
 /* ── 批 3:自定义服务商对话框 = manifest 编辑器(§6.1)──────────────────────── */
 
 describe('CustomProviderDialog · 批 3', () => {

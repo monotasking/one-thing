@@ -529,6 +529,8 @@ export interface CoreAgentLoopCompactionAdapters<
   rebuildMessages(): Promise<TMessage[]>
   shouldSkipProviderUsageMismatch?: (input: {
     providerId: string
+    /** 这一发的 config(宿主据它判「这一发真正发给谁」,core 只转交)。 */
+    providerConfig?: unknown
     session: TSession
     modelContextLength: number
     inputTokens?: number
@@ -1089,6 +1091,7 @@ export async function maybeCompactAgentLoopContextWithAdapters<
     const providerUsageMismatch = session
       ? adapters.shouldSkipProviderUsageMismatch?.({
           providerId: ctx.providerId,
+          providerConfig: ctx.providerConfig,
           session,
           modelContextLength: options.budget.modelContextLength,
           inputTokens: usage?.visibleInputTokens,

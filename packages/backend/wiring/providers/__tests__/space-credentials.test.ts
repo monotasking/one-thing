@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../../stores/settings.js', () => ({
   getSettings: () => mocks.settings,
+  getSpaceSettings: () => mocks.settings,
 }))
 
 // Pool behavior must not depend on credentials present in the test host's environment.
@@ -351,5 +352,62 @@ describe('per-space OAuth(批 B6)', () => {
     })
     const summary = removeSpaceProviderOAuthEntry('work', 'codex', 'a')
     expect(summary.providers.codex.entries.map(entry => entry.id)).toEqual(['b'])
+  })
+})
+
+describe('发送路读候选序列(批 6 §9.1)', () => {
+  const account = (id: string, over: Record<string, unknown> = {}) => ({
+    id, label: id, authType: 'oauth' as const, oauthToken: { accessToken: `at-${id}` }, source: 'user', ...over,
+  })
+  const key = (id: string) => ({ id, label: id, authType: 'apiKey' as const, apiKey: `sk-${id}`, source: 'user' })
+
+  it('订阅账号全在冷却、开关开 → 这一发整份交给同家 API:端点换那一家的,盖 route 标记,模型留原样', () => {
+    mocks.sessions.set('s-work', { workspaceId: 'work' })
+    mocks.settings = { ai: { providers: { openai: { model: 'x', selectedModels: [], baseUrl: 'https://api.example/v1' } } } }
+    writeSpaceCredentials('work', {
+      providers: {
+        codex: { policy: 'single', entries: [account('A', { cooldownUntil: Date.now() + 3_600_000, cooldownReason: 'quota' })] },
+        openai: { policy: 'priority-failover', entries: [key('k1')] },
+      },
+    })
+    const next = applySessionSpaceCredentials('s-work', 'codex', {
+      model: 'gpt-5.5',
+      baseUrl: 'https://chatgpt.example/codex',
+      headers: { 'x-codex': '1' },
+    }) as Record<string, unknown>
+    expect(next.model).toBe('gpt-5.5')
+    expect(next.apiKey).toBe('sk-k1')
+    expect(next.baseUrl).toBe('https://api.example/v1')
+    expect(next.headers).toBeUndefined()
+    expect(next.spaceCredential).toMatchObject({
+      spaceId: 'work', entryId: 'k1', authType: 'apiKey', route: { providerId: 'openai', reason: 'sibling-api' },
+    })
+  })
+
+  it('开关关 → 仍是今天那句「全部冷却中」', () => {
+    mocks.sessions.set('s-work', { workspaceId: 'work' })
+    mocks.settings = { ai: { providers: { codex: { model: 'm', selectedModels: [], subscriptionFallback: false } } } }
+    writeSpaceCredentials('work', {
+      providers: {
+        codex: { policy: 'single', entries: [account('A', { cooldownUntil: Date.now() + 3_600_000 })] },
+        openai: { policy: 'priority-failover', entries: [key('k1')] },
+      },
+    })
+    const next = applySessionSpaceCredentials('s-work', 'codex', { model: 'gpt-5.5' }) as Record<string, unknown>
+    expect((next.spaceCredential as { unavailable?: { reason: string } }).unavailable?.reason).toBe('exhausted')
+    expect(next.apiKey).toBeUndefined()
+  })
+
+  it('还有可用账号时按剩余量挑,不接 API', () => {
+    mocks.sessions.set('s-work', { workspaceId: 'work' })
+    writeSpaceCredentials('work', {
+      providers: {
+        codex: { policy: 'single', entries: [account('A', { cooldownUntil: Date.now() + 60_000 }), account('B')] },
+        openai: { policy: 'priority-failover', entries: [key('k1')] },
+      },
+    })
+    const next = applySessionSpaceCredentials('s-work', 'codex', { model: 'gpt-5.5' }) as Record<string, unknown>
+    expect(next.spaceCredential).toMatchObject({ entryId: 'B', authType: 'oauth' })
+    expect((next.spaceCredential as { route?: unknown }).route).toBeUndefined()
   })
 })

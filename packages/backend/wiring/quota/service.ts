@@ -165,6 +165,15 @@ export class QuotaService {
     return answer(await this.refresh(providerId, spaceId, credentialId, cell))
   }
 
+  /**
+   * 缓存里这条凭证最近一份**好数**(windows / balance)—— 只读,零请求,不动计时器。
+   * 批 6 的 `pickRoute` 按它给订阅账号排序:没问过 / 只拿到过错误 = `undefined`(= 不知道,
+   * 排在有数据的后面)。
+   */
+  peek(providerId: string, credentialId: string | undefined): ProviderQuota | undefined {
+    return this.cells.get(this.keyOf(providerId, credentialId))?.good
+  }
+
   /** 真去问一次(单飞:同一格同时只有一发在路上)。 */
   private refresh(providerId: string, spaceId: string, credentialId: string | undefined, cell: CacheCell): Promise<ProviderQuota> {
     if (cell.inflight) return cell.inflight

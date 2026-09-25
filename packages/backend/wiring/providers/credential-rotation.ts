@@ -20,6 +20,14 @@
  * 拿到另一条 entry → 用它**重建 provider**(`prepared.reprovision`)。
  * 这就是 B3 留下的接口所说的那个「最窄处」。
  *
+ * ## 轮转 v2:沿候选序列走(批 6,`docs/design/provider-settings-rework-2026-09.md` §9.1)
+ *
+ * 「下一条是谁」不再只在一家的池里找:失败的那条写上冷却之后,重新问一遍
+ * `routeSpaceProvider`(= `pickRoute`)要整条候选序列,取当前这条之后的那一条。序列可能
+ * 跨到同家的另一半(订阅额度全用完 → 同家 API),那时 `reprovision` 连「造谁」一起换
+ * (`providerId` + 那一家的端点一族),core 只把新 provider 接过去 —— 它不知道换了家。
+ * 冷却 = 报错冷却 ∪ 配额冷却,同一格;序列头在窗口重置之后自然回到订阅账号。
+ *
  * ## 默认空间与别的空间同路
  *
  * 默认空间早已并入同一份密钥池(`space-credentials.ts` 的 C1:default 不再是特例),
@@ -33,18 +41,26 @@ import {
   providerErrorCooldownUntil,
 } from '@onething/runtime/agent-loop/provider-error-classification'
 import {
-  markSpaceCredentialCooldown,
+  getSpaceCredentialEntry,
   getSpaceProviderCredentials,
   isPluginSpaceCredentialPolicy,
   isSpaceCredentialEntryCooling,
   isSpaceCredentialEntryUsable,
+  markSpaceCredentialCooldown,
 } from '@onething/runtime/spaces/credentials'
+import { getProviderManifest } from '@onething/runtime/providers/manifest'
+import { ROUTE_FALLBACK_API_REASON, type RouteCandidate } from '@onething/runtime/providers/route'
+import type { CoreProviderConfigLike, CoreSpaceCredentialMarker } from '@onething/runtime/providers'
 import { authService } from '../auth/auth-service.js'
 import { resolveSessionSpaceId } from '../../stores/sessions.js'
 import {
+  buildRoutedProviderConfig,
+  isSubscriptionFallbackOn,
   markSpaceOAuthRefreshFailure,
-  resolveSessionProviderCredential,
+  noteRouteCandidateUsed,
+  routeSpaceProvider,
 } from './space-credentials.js'
+import { getSpaceSettings } from './space-ai-settings.js'
 import {
   notePluginCredentialFailure,
   refreshCredentialStrategyDecision,
@@ -52,16 +68,28 @@ import {
 
 export interface SessionCredentialRotatorInput {
   sessionId: string
+  /** 用户选的那一家(会话的 provider)。 */
   providerId: string
   /** 本次流首次解析命中的 entry id(`providerConfig.spaceCredential?.entryId`)。 */
   currentEntryId?: string
-  /** 用另一份凭证重建 provider —— 由 runtime 的 `buildOnething…` 结果提供。 */
+  /**
+   * 本次流首次解析**真正在用**的那一家(`providerConfig.spaceCredential?.route?.providerId`):
+   * 发送前就被接力给同家另一半时是那一家。缺席 = `providerId`。
+   */
+  currentProviderId?: string
+  /** 首次解析那份 config。换家时从它取模型一族(型号、各型覆盖表、目录)。 */
+  providerConfig?: CoreProviderConfigLike
+  /** 用另一份凭证(必要时另一家)重建 provider —— 由 runtime 的 `buildOnething…` 结果提供。 */
   reprovision: (override: {
     apiKey?: string
     baseUrl?: string
     oauthToken?: { accessToken: string }
     spaceCredential?: { spaceId?: string; entryId?: string; authType?: string }
+    providerId?: string
+    config?: Record<string, unknown>
   }) => AgentProvider | undefined
+  /** 换手成功之后报一声新的标记(批 6):账本与配额回调据它记「这一发真用了谁」。 */
+  onRotated?: (marker: CoreSpaceCredentialMarker) => void
   logger?: Pick<Console, 'warn'>
 }
 
@@ -71,22 +99,40 @@ export type SessionCredentialRotator = (
 ) => Promise<AgentCredentialRotation | undefined>
 
 /**
+ * 候选序列**可能**走到的全部条目数:目标家的池,加上接力开着时同家另一半的池。不到两条
+ * = 换来换去还是它,钩子不挂。
+ */
+function rotationUniverseSize(spaceId: string, providerId: string): number {
+  const sizeOf = (id: string): number => getSpaceProviderCredentials(spaceId, id)?.entries.length ?? 0
+  const manifest = getProviderManifest(providerId)
+  let size = sizeOf(providerId)
+  if (manifest?.billing === 'subscription' && manifest.sibling) {
+    const providers = getSpaceSettings(spaceId).ai?.providers as
+      | Record<string, { subscriptionFallback?: boolean } | undefined>
+      | undefined
+    if (isSubscriptionFallbackOn(providers, providerId)) size += sizeOf(manifest.sibling)
+  }
+  return size
+}
+
+/**
  * 造一个轮换钩子。**没有可换的就返回 `undefined`** —— 让 core 那边连这个字段
  * 都不存在,而不是挂一个每次都答"不换"的函数。行为不变要看得见,不是靠推理。
  *
  * 两种「没有可换的」:
  *  1. 本次没有命中任何 entry(未配置 —— 那是起流前置拦截的事);
- *  2. 池里不到两条 —— 换来换去还是它。
+ *  2. 序列可能走到的条目不到两条 —— 换来换去还是它。
  */
 export function createSessionCredentialRotator(
   input: SessionCredentialRotatorInput,
 ): SessionCredentialRotator | undefined {
   const spaceId = resolveSessionSpaceId(input.sessionId)
   if (!input.currentEntryId) return undefined
-  const pool = getSpaceProviderCredentials(spaceId, input.providerId)
-  if (!pool || pool.entries.length < 2) return undefined
+  if (rotationUniverseSize(spaceId, input.providerId) < 2) return undefined
 
-  let activeEntryId = input.currentEntryId
+  // provider 实例是按「首次解析那一家」造的;换家 = 相对它换。
+  const builtFor = input.currentProviderId || input.providerId
+  let active: { providerId: string; entryId: string } = { providerId: builtFor, entryId: input.currentEntryId }
 
   return async (error: unknown, attempt = 1): Promise<AgentCredentialRotation | undefined> => {
     const classification = classifyProviderError(error)
@@ -98,15 +144,15 @@ export function createSessionCredentialRotator(
     const cooldownUntil = providerErrorCooldownUntil(classification)
     if (cooldownUntil > 0) {
       // 写盘 —— 重启不忘。配额窗口按小时算,只记在进程内存等于每次重启重烧一遍池。
-      markSpaceCredentialCooldown(spaceId, input.providerId, activeEntryId, cooldownUntil)
+      markSpaceCredentialCooldown(spaceId, active.providerId, active.entryId, cooldownUntil)
     }
 
     // 插件策略(批 E):**这条路是 await 的、恒新鲜**。它是「这个用完用另一个」
     // 的主场 —— 冷却刚写进去、失败分类刚算出来,正是策略最该说话的时刻。
     // 算好的裁决落进装配层的裁决槽,紧接着的那次同步解析就会取到它;
     // 策略缺席/超时/返回非法 id 一律什么都不做,解析照常回落内置 failover。
-    notePluginCredentialFailure(activeEntryId, classification.kind)
-    const livePool = getSpaceProviderCredentials(spaceId, input.providerId)
+    notePluginCredentialFailure(active.entryId, classification.kind)
+    const livePool = getSpaceProviderCredentials(spaceId, active.providerId)
     if (livePool && isPluginSpaceCredentialPolicy(livePool.policy)) {
       const now = Date.now()
       // 候选集与分叉点用的是**同一条规则**:剔掉没有凭证材料的、正在冷却的。
@@ -118,11 +164,11 @@ export function createSessionCredentialRotator(
         await refreshCredentialStrategyDecision({
           policy: livePool.policy,
           spaceId,
-          providerId: input.providerId,
+          providerId: active.providerId,
           candidates,
           attempt: attempt + 1,
           lastFailure: {
-            entryId: activeEntryId,
+            entryId: active.entryId,
             kind: classification.kind,
             ...(classification.status !== undefined ? { status: classification.status } : {}),
           },
@@ -131,63 +177,77 @@ export function createSessionCredentialRotator(
       }
     }
 
-    // 重新走一遍解析:冷却刚写进去,选择器这次会跳过它。这一句就是"重试路径
-    // 重新走凭证解析"的落点。
-    const resolution = resolveSessionProviderCredential(input.sessionId, input.providerId)
-    // 全池冷却 / 未配置:轮换无能为力,把原错误交回去 —— core 会按它自己的
-    // 规则决定要不要原地重试,下一次起流则会撞上 `exhausted` 那个一等状态。
-    if (resolution.kind !== 'entry' && resolution.kind !== 'oauth-entry') return undefined
-    if (resolution.entry.id === activeEntryId) return undefined
+    // 重新要一遍整条序列:冷却刚写进去,失败的那条已经不在里面了。取当前这条之后的那一条
+    // (它若还在序列里 —— 冷却没写成的边角 —— 就越过它)。序列空 / 走到头:轮换无能为力,
+    // 把原错误交回去,下一次起流会撞上 `exhausted` 那个一等状态。
+    const route = routeSpaceProvider(spaceId, input.providerId)
+    const at = route.findIndex(c => c.providerId === active.providerId && c.entryId === active.entryId)
+    const next: RouteCandidate | undefined = at >= 0 ? route[at + 1] : route[0]
+    if (!next) return undefined
+    const entry = getSpaceCredentialEntry(spaceId, next.providerId, next.entryId)
+    if (!entry) return undefined
 
-    const marker = {
+    // 真要发出去的这一发:它那一池是 round-robin 就拨一格。
+    noteRouteCandidateUsed(spaceId, route, next)
+
+    const marker: CoreSpaceCredentialMarker = {
       spaceId,
-      entryId: resolution.entry.id,
-      authType: resolution.kind === 'oauth-entry' ? 'oauth' : 'apiKey',
+      entryId: entry.id,
+      authType: entry.authType === 'oauth' ? 'oauth' : 'apiKey',
+      ...(next.providerId !== input.providerId
+        ? { route: { providerId: next.providerId, reason: next.reason } }
+        : {}),
     }
 
     // OAuth 型:换手前先把那条 entry 的 token 刷到可用(过期就刷新,单飞锁在
     // authService 里)。刷不出来就当这条也不能用 —— 顺手记上 auth-invalid 冷却,
     // 下一轮解析会继续往后找。
     let oauthToken: { accessToken: string } | undefined
-    if (resolution.kind === 'oauth-entry') {
+    if (entry.authType === 'oauth') {
       try {
-        oauthToken = await authService.refreshTokenIfNeeded(input.providerId, {
+        oauthToken = await authService.refreshTokenIfNeeded(next.providerId, {
           kind: 'space',
           spaceId,
-          entryId: resolution.entry.id,
+          entryId: entry.id,
         })
       } catch (refreshError) {
-        markSpaceOAuthRefreshFailure(
-          input.providerId,
-          spaceId,
-          resolution.entry.id,
-          refreshError,
-        )
+        markSpaceOAuthRefreshFailure(next.providerId, spaceId, entry.id, refreshError)
         return undefined
       }
     }
 
+    // 换家(相对 provider 实例造时的那一家):连端点一族一起换 —— 那一家在这个空间的设置
+    // + 池里这一条,模型一族留用户选的那一家的。
+    const crossing = next.providerId !== builtFor
+    const routedConfig = crossing
+      ? buildRoutedProviderConfig(spaceId, input.providerId, next, input.providerConfig)
+      : undefined
+    if (crossing && !routedConfig) return undefined
+
     const provider = input.reprovision({
-      ...(resolution.kind === 'oauth-entry'
-        ? { oauthToken }
-        : { apiKey: resolution.entry.apiKey }),
-      baseUrl: resolution.entry.baseUrl,
+      ...(entry.authType === 'oauth' ? { oauthToken } : { apiKey: entry.apiKey }),
+      baseUrl: entry.baseUrl,
       spaceCredential: marker,
+      ...(crossing ? { providerId: next.providerId, config: routedConfig as Record<string, unknown> } : {}),
     })
     if (!provider) {
       input.logger?.warn?.(
-        `[spaces] credential rotation could not rebuild provider ${input.providerId}`,
+        `[spaces] credential rotation could not rebuild provider ${next.providerId}`,
       )
       return undefined
     }
 
-    const from = activeEntryId
-    activeEntryId = resolution.entry.id
+    const from = active
+    active = { providerId: next.providerId, entryId: entry.id }
+    input.onRotated?.(marker)
     return {
       provider,
       // 换的是**另一把** key,没有理由退避 —— 退避是给"同一把钥匙等它凉下来"的。
       delayMs: 0,
-      reason: `凭证 ${from} ${describeRotationCause(classification.kind)},换用「${resolution.entry.label}」重试`,
+      // 从订阅接力到同家 API 的那一轮说「按 API 计费」(拍点 7);其余沿用今天的话。
+      reason: next.reason === 'sibling-api' && from.providerId !== next.providerId
+        ? ROUTE_FALLBACK_API_REASON
+        : `凭证 ${from.entryId} ${describeRotationCause(classification.kind)},换用「${entry.label}」重试`,
     }
   }
 }

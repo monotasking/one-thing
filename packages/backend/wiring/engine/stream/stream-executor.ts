@@ -40,6 +40,7 @@ import {
 import type { CoreInitialToolChoice } from '@onething/core/engine'
 import { consolePort, getLogger } from '../../logging/index.js'
 import { noteQuotaRunEnd } from '../../quota/engine-hooks.js'
+import { routedProviderIdOf, type CoreSpaceCredentialMarker } from '@onething/runtime/providers/provider-config'
 import type { CoreStreamControllerRegistry, PendingMessageQueue, ExecuteCoreMessageStreamOptions } from '@onething/core/engine'
 
 const log = getLogger('engine.stream')
@@ -162,29 +163,37 @@ export interface StreamExecutionResult {
  * 工具闸门对第 2 条同样有效:`enableToolCalls` 关掉 / 模型不支持工具时不要图
  * —— 原生出图是**工具表里的一项**,工具都关了还要图是自相矛盾的。
  */
+/** 运行期的凭证标记(`applySessionSpaceCredentials` 盖上去的,静态形状里没有这一格)。 */
+function routedMarkerOf(params: Pick<StreamExecutionParams, 'configWithApiKey'>): { spaceCredential?: CoreSpaceCredentialMarker } {
+  return params.configWithApiKey as { spaceCredential?: CoreSpaceCredentialMarker }
+}
+
 async function resolveRequestedOutputModalities(
   params: StreamExecutionParams,
 ): Promise<AgentOutputModality[] | undefined> {
   if (params.requestedOutputModalities) return params.requestedOutputModalities
+  // 「这一发要不要图」问的是**这一发真正发给谁**(批 6):被接力给同家另一半时,原生工具、
+  // 出图行为与型号能力都按那一家读 —— 订阅家的原生出图工具不会跟着一把 API 密钥过去。
+  const sendTo = routedProviderIdOf(params.providerId, routedMarkerOf(params))
   try {
     const supportsTools = await modelRegistry.modelSupportsTools(
       params.configWithApiKey.model,
-      params.providerId,
+      sendTo,
     )
     const nativeTools = await getCodexNativeToolsForConfig({
-      providerId: params.providerId,
+      providerId: sendTo,
       providerConfig: params.configWithApiKey,
       toolSettings: params.toolSettings,
       supportsTools,
     })
     if (nativeTools.includes(CODEX_NATIVE_IMAGE_GENERATION_TOOL)) return ['image']
     // 出图只经原生工具的那一家(manifest 自述,批 M):原生工具没开就是不出图,不再问回合内出图。
-    if (getProviderManifest(params.providerId)?.behaviors?.imageOutputViaNativeToolOnly) return undefined
+    if (getProviderManifest(sendTo)?.behaviors?.imageOutputViaNativeToolOnly) return undefined
 
     if (!params.toolSettings?.enableToolCalls || !supportsTools) return undefined
     return modelRegistry.modelServesImageOutputInLoop(
       params.configWithApiKey.model,
-      params.providerId,
+      sendTo,
     )
       ? ['image']
       : undefined
@@ -377,11 +386,13 @@ export async function executeMessageStream(
     // 幂等:catch 已经收过就是 no-op(见 `endSessionRun`)。
     if (started) await endSessionRun(params.sessionId, run.runId, { outcome: 'completed' })
     // 批 5:这一轮用过的那条凭证,配额 30 秒去抖后重问一次(永不抛)。
+    // 运行期的凭证标记(`applySessionSpaceCredentials` 盖上去的),静态形状里没有这一格。
+    // 被接力给同家另一半的那一轮(批 6),那条凭证属于真正在用的那一家。
+    const marked = routedMarkerOf(params)
     noteQuotaRunEnd({
       sessionId: params.sessionId,
-      providerId: params.providerId,
-      // 运行期的凭证标记(`applySessionSpaceCredentials` 盖上去的),静态形状里没有这一格。
-      credentialId: (params.configWithApiKey as { spaceCredential?: { entryId?: string } }).spaceCredential?.entryId,
+      providerId: routedProviderIdOf(params.providerId, marked),
+      credentialId: marked.spaceCredential?.entryId,
     })
   }
 }
@@ -423,9 +434,12 @@ async function runMessageStream(
     controller: abortController,
     createController: () => new AbortController(),
     registry: streamControllerRegistry,
+    // 专用出图那条流(批 6):型号能力与发请求的那一家都按**这一发真正发给谁**判 ——
+    // 被接力给同家 API 时,钥匙与端点已经是那一家的(`configWithApiKey`)。
     supportsSpecialStream: (model, providerId) =>
-      modelRegistry.modelSupportsImageGeneration(model, providerId),
-    processSpecialStream: input => processImageGenerationStream(input),
+      modelRegistry.modelSupportsImageGeneration(model, routedProviderIdOf(providerId, routedMarkerOf(params))),
+    processSpecialStream: input =>
+      processImageGenerationStream({ ...input, providerId: routedProviderIdOf(input.providerId, routedMarkerOf(params)) }),
     executeTextStream: (ctx, historyMessages, sessionName): Promise<AgentLoopStreamGenerationResult> =>
       executeAgentLoopStreamGeneration(ctx as StreamContext, historyMessages, sessionName),
     logger: consoleLog,

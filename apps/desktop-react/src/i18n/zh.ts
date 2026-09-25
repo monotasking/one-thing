@@ -1753,6 +1753,7 @@ export const zh = {
   'providers.rotationFailover': '按序接力',
   'providers.rotationRoundRobin': '轮流使用',
   'providers.rotationSingleHint': '只用第一个密钥。',
+  'providers.subFallbackApi': '订阅额度用完时切到 API 密钥',
   'providers.rotationFailoverHint': '按顺序使用,失效时自动换下一个。',
   'providers.rotationRoundRobinHint': '每次请求轮流使用。',
   'providers.rotationUnknown': '{policy}(不可用)',

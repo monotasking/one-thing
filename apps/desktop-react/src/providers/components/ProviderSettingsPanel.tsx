@@ -99,6 +99,7 @@ export function ProviderSettingsPanel() {
   const setRotation = useProviderSettings((st) => st.setRotation)
   const setDials = useProviderSettings((st) => st.setDials)
   const setBaseUrl = useProviderSettings((st) => st.setBaseUrl)
+  const setSubscriptionFallback = useProviderSettings((st) => st.setSubscriptionFallback)
   const checkAuth = useProviderSettings((st) => st.checkAuth)
   const startAuth = useProviderSettings((st) => st.startAuth)
   const setAuthCode = useProviderSettings((st) => st.setAuthCode)
@@ -219,6 +220,7 @@ export function ProviderSettingsPanel() {
   )
   const customPending = useAsyncPending(settingsMutation, settingsKey.custom(family?.id ?? ''))
   const dialsPending = useAsyncPending(settingsMutation, settingsKey.dials(activeProviderId))
+  const fallbackPending = useAsyncPending(settingsMutation, settingsKey.fallback(activeProviderId))
 
   // 目录格按 (空间, provider) 认:每行的 `effective` 折着这个空间的覆盖(§5.5)。
   const spaceId = useCurrentSpaceId()
@@ -259,6 +261,18 @@ export function ProviderSettingsPanel() {
   )
 
   const tabs = useMemo(() => (family ? modeTabsOf(family, credsOf) : []), [family, credsOf])
+
+  /*
+   * 「订阅额度用完时切到 API 密钥」只在**订阅坑**、且同家的 API 那一坑已经配了至少一把密钥时
+   * 才画(批 6 §9.2):那一半一把钥匙都没有时开关拨了也接不到任何东西。同家的另一半就是
+   * 这一家里 kind 为 api 的那一坑 —— 家族表已经把两半并成了一家,这里不再查名字。
+   */
+  const apiSiblingId = subscription ? family?.modes.find((item) => item.kind === 'api')?.providerId : undefined
+  const fallbackSiblingReady = useProviderSettings((st) =>
+    apiSiblingId
+      ? (st.credentials[apiSiblingId]?.entries ?? []).some((entry) => entry.authType === 'apiKey' && entry.hasApiKey)
+      : false,
+  )
 
   /*
    * 池视图**必须先选原料、再在外面算**,不能把 `poolViewOf` 写进选择器里:
@@ -403,6 +417,15 @@ export function ProviderSettingsPanel() {
               const balance = quotaBalanceOf(quota[quotaKeyOf(mode.providerId, credentialId)]?.quota)
               return balance ? quotaAmountText(t, balance) : null
             }}
+            {...(fallbackSiblingReady
+              ? {
+                  subscriptionFallback: {
+                    checked: configs[mode.providerId]?.subscriptionFallback !== false,
+                    pending: fallbackPending,
+                    onChange: (next: boolean) => void setSubscriptionFallback(mode.providerId, next),
+                  },
+                }
+              : {})}
           />
           {/* 订阅没登录时目录区只说一句「登录后显示模型列表」—— 那是这张表的空态。 */}
           <ModelCatalog

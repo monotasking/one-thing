@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { getProviderManifest } from "../providers/manifest.js";
+import { routedProviderIdOf, type CoreSpaceCredentialMarker } from "../providers/provider-config.js";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -128,8 +129,14 @@ export async function buildOnethingPrompt(
 		historyMessages: options.historyMessages,
 		separateDeveloperMessages:
 			options.separateDeveloperMessages ??
-			// 这家要不要把系统提示词拆成多条 developer 消息 —— manifest 自述(批 M)。
-			getProviderManifest(options.providerId)?.behaviors?.separateDeveloperMessages === true,
+			// 这家要不要把系统提示词拆成多条 developer 消息 —— manifest 自述(批 M)。问的是
+			// **这一发真正发给谁**(批 6):被接力给同家 API 时按那一家的线协议拼消息。
+			getProviderManifest(
+				routedProviderIdOf(
+					options.providerId ?? "",
+					options.providerConfig as { spaceCredential?: CoreSpaceCredentialMarker } | undefined,
+				),
+			)?.behaviors?.separateDeveloperMessages === true,
 	});
 	const persona = onethingPersonaPrompt(options, result.sections);
 	return persona ? { ...result, persona } : result;

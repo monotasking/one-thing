@@ -30,6 +30,7 @@ vi.mock('../space-ai-settings.js', async () => {
       const spaceId = (id && mocks.sessions.get(id)?.workspaceId) || DEFAULT_SPACE_ID
       return { ai: { providers: mocks.providersBySpace[spaceId] ?? {} } }
     },
+    getSpaceSettings: (spaceId: string) => ({ ai: { providers: mocks.providersBySpace[spaceId] ?? {} } }),
   }
 })
 

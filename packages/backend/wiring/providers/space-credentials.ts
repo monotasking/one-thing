@@ -16,24 +16,36 @@ import { isProviderEnabledIn } from '@shared/provider-families'
 import {
   applySpaceProviderCredential,
   describeProviderDisabled,
+  providerDialFieldsOf,
   resolveSpaceProviderCredential,
   type SpaceProviderCredentialResolution, type ResolveSpaceProviderCredentialOptions,
 } from '@onething/runtime/spaces/provider-credentials'
 import {
   addSpaceProviderCredentialEntry,
+  advanceSpaceCredentialCursor,
   buildImportedSpaceCredentials,
   clearSpaceProviderCredentials,
   configureSpaceCredentialsCrypto,
+  getSpaceCredentialEntry,
+  getSpaceCredentialPluginStrategyHost,
+  getSpaceProviderCredentials,
   isPluginSpaceCredentialPolicy,
   markSpaceCredentialCooldown,
+  normalizeSpaceCredentialPolicy,
+  peekSpaceCredentialCursor,
   previewSpaceCredentialApiKey,
   readSpaceCredentials,
   removeSpaceProviderCredentialEntry,
   setSpaceProviderCredentialPool,
+  spaceCredentialCursorKey,
   upsertSpaceProviderApiKey,
   writeSpaceCredentials,
   type ImportableProviderCredential,
+  type SpaceCredentialEntry,
 } from '@onething/runtime/spaces/credentials'
+import { pickRoute, type RouteCandidate } from '@onething/runtime/providers/route'
+import { withResolvedProviderBaseUrl } from '@onething/runtime/providers/provider-config'
+import { getCurrentBackendInstance } from '../../current.js'
 import {
   isPluginCredentialStrategyAvailable,
   listPluginCredentialStrategies,
@@ -77,7 +89,7 @@ import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
 import { resolveSessionSpaceId } from '../../stores/sessions.js'
 import { getProviderInfo, requiresOAuth } from './registry.js'
 import { getProviderEnvStatus } from '@onething/runtime/providers/env.wiring'
-import { getSessionSettings } from './space-ai-settings.js'
+import { getSessionSettings, getSpaceSettings } from './space-ai-settings.js'
 
 function providerLabel(providerId: string): string {
   try {
@@ -114,6 +126,15 @@ export function resolveSpaceProviderCredentialForSpace(
   providerId: string,
   options: { peek?: boolean } = {},
 ): SpaceProviderCredentialResolution {
+  return resolveRoutedSpaceCredential(spaceId, providerId, options).resolution
+}
+
+/**
+ * 今天那条单池解析(`resolveSpaceProviderCredential`)—— 候选序列为空、或序列头是另一家时
+ * 用它说**这一家**的状态:env 兜底 / 从不问凭证 / 未配置 / 全池冷却 / 未登录,文案一字未改。
+ * 恒 `peek`:游标只在 `pickRoute` 真选中那一发时拨(`resolveRoutedSpaceCredential`)。
+ */
+function resolveSinglePoolCredential(spaceId: string, providerId: string): SpaceProviderCredentialResolution {
   const resolveSpaceProviderCredentialOptions: ResolveSpaceProviderCredentialOptions = {
     spaceId,
     providerId,
@@ -122,9 +143,160 @@ export function resolveSpaceProviderCredentialForSpace(
     hasEnvApiKey: hasProviderEnvApiKey,
     providerLabel: providerLabel(providerId),
     spaceLabel: spaceLabel(spaceId),
-    ...(options.peek ? { peek: true } : {}),
+    peek: true,
   };
   return resolveSpaceProviderCredential(resolveSpaceProviderCredentialOptions)
+}
+
+/* ── 轮转 v2:候选序列(批 6 §9.1)────────────────────────────────────────── */
+
+/**
+ * 「订阅额度用完时切到 API 密钥」开着吗(§9.2,拍点 7:缺席 = 开)。开关住在订阅那一家
+ * 自己的配置格上(`providers[<订阅家>].subscriptionFallback`)—— 它说的就是「这一家用完了
+ * 接给谁」,而那一格走的是现成的整份写回路,不必为一个布尔另开一层存储。
+ */
+export function isSubscriptionFallbackOn(
+  providers: Record<string, { subscriptionFallback?: boolean } | undefined> | undefined | null,
+  providerId: string,
+): boolean {
+  return providers?.[providerId]?.subscriptionFallback !== false
+}
+
+/**
+ * 这个空间的这一家,此刻的整条候选序列(`pickRoute`,纯函数;这里只把脊柱上的事实喂进去)。
+ * 只读:不写盘、不拨游标。
+ */
+export function routeSpaceProvider(
+  spaceId: string,
+  providerId: string,
+  now = Date.now(),
+): RouteCandidate[] {
+  const providers = getSpaceSettings(spaceId).ai?.providers as
+    | Record<string, { enabled?: boolean; subscriptionFallback?: boolean } | undefined>
+    | undefined
+  return pickRoute({
+    providerId,
+    spaceId,
+    now,
+    manifests: getProviderManifest,
+    pools: id => getSpaceProviderCredentials(spaceId, id),
+    quotas: (id, entryId) => getCurrentBackendInstance()?.quota?.peek(id, entryId),
+    enabled: id => isProviderEnabledIn(providers, id),
+    subscriptionFallback: isSubscriptionFallbackOn(providers, providerId),
+    roundRobinCursor: id => peekSpaceCredentialCursor(spaceCredentialCursorKey(spaceId, id)),
+    pluginDecide: ({ policy, providerId: id, candidates }) =>
+      getSpaceCredentialPluginStrategyHost()?.decide({ policy, spaceId, providerId: id, candidates, now }),
+  })
+}
+
+/**
+ * 真发出去的那一发选中了 `chosen`:它那一池是 round-robin 就拨一格(对「这一池此刻可用的条数」
+ * 取模,与单池分叉点那一行同式)。peek / decide 永远不走到这里。
+ */
+export function noteRouteCandidateUsed(spaceId: string, route: readonly RouteCandidate[], chosen: RouteCandidate): void {
+  const pool = getSpaceProviderCredentials(spaceId, chosen.providerId)
+  if (normalizeSpaceCredentialPolicy(pool?.policy) !== 'round-robin') return
+  const size = route.filter(candidate => candidate.providerId === chosen.providerId).length
+  advanceSpaceCredentialCursor(spaceCredentialCursorKey(spaceId, chosen.providerId), size)
+}
+
+function resolutionOfEntry(spaceId: string, entry: SpaceCredentialEntry): SpaceProviderCredentialResolution {
+  return entry.authType === 'oauth' ? { kind: 'oauth-entry', spaceId, entry } : { kind: 'entry', spaceId, entry }
+}
+
+/**
+ * 候选序列 → 「这一家这一发用哪条」。序列头是**这一家自己**的一条 → 用它(发送路拨游标);
+ * 序列空、或序列头是同家另一半(接力)→ 这一家自己的状态照今天那条单池解析说
+ * (未配置 / 全池冷却 / env…),接力由 `applySessionSpaceCredentials` 另行处理。
+ */
+export function resolveRoutedSpaceCredential(
+  spaceId: string,
+  providerId: string,
+  options: { peek?: boolean } = {},
+): { route: RouteCandidate[]; resolution: SpaceProviderCredentialResolution } {
+  if (isCredentialFreeProvider(providerId)) {
+    return { route: [], resolution: resolveSinglePoolCredential(spaceId, providerId) }
+  }
+  const route = routeSpaceProvider(spaceId, providerId)
+  const first = route[0]
+  if (first && first.providerId === providerId) {
+    const entry = getSpaceCredentialEntry(spaceId, providerId, first.entryId)
+    if (entry) {
+      if (!options.peek) noteRouteCandidateUsed(spaceId, route, first)
+      return { route, resolution: resolutionOfEntry(spaceId, entry) }
+    }
+  }
+  return { route, resolution: resolveSinglePoolCredential(spaceId, providerId) }
+}
+
+/**
+ * 被接力的那一家的 config(批 6):**模型一族**(型号、各型覆盖表、目录)留用户选的那一家的 ——
+ * 同家两半卖的是同一批模型;**端点一族与凭证一族**整族换成那一家的(它在这个空间的设置 +
+ * 池里那一条),再按那一家解一遍 baseUrl。盖上 `route` 标记,鉴权点与造 provider 那一处据它换家。
+ *
+ * `candidate.providerId === requestedProviderId` 时(轮转器沿序列走回请求的那一家)不盖 `route`。
+ */
+export function buildRoutedProviderConfig<TProvider extends CoreProviderConfigLike>(
+  spaceId: string,
+  requestedProviderId: string,
+  candidate: RouteCandidate,
+  modelSource: TProvider | undefined,
+): TProvider | undefined {
+  const entry = getSpaceCredentialEntry(spaceId, candidate.providerId, candidate.entryId)
+  if (!entry) return undefined
+  const settingsProviders = getSpaceSettings(spaceId).ai?.providers as unknown as Record<string, Record<string, unknown> | undefined> | undefined
+  const own = settingsProviders?.[candidate.providerId] ?? {}
+
+  const endpointFields = new Set<string>([
+    ...ROUTED_ENDPOINT_FIELDS,
+    ...Object.values(providerDialFieldsOf(requestedProviderId)),
+    ...Object.values(providerDialFieldsOf(candidate.providerId)),
+  ])
+  const next: Record<string, unknown> = { ...(modelSource as Record<string, unknown> | undefined) }
+  for (const field of endpointFields) delete next[field]
+  for (const field of endpointFields) {
+    if (field === 'apiKey' || field === 'oauthToken' || field === 'authType' || field === 'spaceCredential') continue
+    if (own[field] !== undefined) next[field] = own[field]
+  }
+
+  const applied = applySpaceProviderCredential(
+    next as unknown as TProvider,
+    resolutionOfEntry(spaceId, entry),
+    candidate.providerId,
+  )
+  const resolved = withResolvedProviderBaseUrl(candidate.providerId, applied) as Record<string, unknown> | undefined
+  if (!resolved) return undefined
+  if (candidate.providerId !== requestedProviderId) {
+    resolved.spaceCredential = {
+      ...(resolved.spaceCredential as CoreSpaceCredentialMarker | undefined),
+      spaceId,
+      route: { providerId: candidate.providerId, reason: candidate.reason },
+    }
+  }
+  return resolved as unknown as TProvider
+}
+
+/** 换家时整族换掉的端点 / 凭证格(档位 / 地区那几格另按两家各自的表补上)。 */
+const ROUTED_ENDPOINT_FIELDS = [
+  'apiKey',
+  'oauthToken',
+  'authType',
+  'baseUrl',
+  'headers',
+  'dialect',
+  'modelsUrl',
+  'apiType',
+  'providerOptions',
+  'spaceCredential',
+] as const
+
+/**
+ * 只读的「下一发走哪条路」(序列头,可能是同家另一半)。与 `decideSpaceProviderCredential`
+ * 的区别:那一口只答**这一家**的凭证(配额卡问的是这一家的余额),这一口连接力也答。
+ */
+export function decideSpaceProviderRoute(providerId: string, spaceId: string): RouteCandidate | undefined {
+  if (isCredentialFreeProvider(providerId)) return undefined
+  return routeSpaceProvider(spaceId || DEFAULT_SPACE_ID, providerId)[0]
 }
 
 /**
@@ -180,7 +352,18 @@ export function applySessionSpaceCredentials<TProvider extends CoreProviderConfi
   providerId: string,
   providerConfig: TProvider | undefined,
 ): TProvider | undefined {
-  const resolution = resolveSessionProviderCredential(sessionId, providerId)
+  const spaceId = resolveSessionSpaceId(sessionId)
+  const { route, resolution } = resolveRoutedSpaceCredential(spaceId, providerId)
+  // 轮转 v2(批 6):这一家自己一条可用的都没有,序列头是同家另一半(订阅额度全用完 → 同家
+  // API)。这一发就交给那一家 —— 整份 config 换成那一家的,盖 `route` 标记。
+  const first = route[0]
+  if (providerConfig && first && first.providerId !== providerId) {
+    const routed = buildRoutedProviderConfig(spaceId, providerId, first, providerConfig)
+    if (routed) {
+      noteRouteCandidateUsed(spaceId, route, first)
+      return routed
+    }
+  }
   return applySpaceProviderCredential(providerConfig, resolution, providerId)
 }
 

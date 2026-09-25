@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   refreshCalls: [] as Array<{ providerId: string; target: unknown }>,
   refreshImpl: (async () => ({ accessToken: 'refreshed', expiresAt: 0, tokenType: 'Bearer' })) as
     (providerId: string, target: unknown) => Promise<unknown>,
+  /** 空间那一份生效设置(批 6 读 `providers[<订阅家>].subscriptionFallback` 与开关)。 */
+  spaceSettings: {} as Record<string, unknown>,
 }))
 
 vi.mock('../../auth/auth-service.js', () => ({
@@ -22,7 +24,7 @@ vi.mock('../../auth/auth-service.js', () => ({
   },
 }))
 
-vi.mock('../../../stores/settings.js', () => ({ getSettings: () => ({}) }))
+vi.mock('../../../stores/settings.js', () => ({ getSettings: () => ({}), getSpaceSettings: () => mocks.spaceSettings }))
 
 vi.mock('../../../stores/sessions.js', async () => {
   const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/runtime/spaces/types')
@@ -96,6 +98,7 @@ beforeEach(() => {
     { id: 'work', name: '工作', createdAt: 1 },
   ]
   mocks.refreshCalls = []
+  mocks.spaceSettings = {}
   mocks.refreshImpl = async () => ({ accessToken: 'refreshed', expiresAt: 0, tokenType: 'Bearer' })
 })
 
@@ -468,5 +471,96 @@ describe('批 E:轮换边界上的插件策略', () => {
 
     await expect(rotator(quotaError(), 1)).resolves.toBeTruthy()
     expect(reprovision.seen[0].spaceCredential?.entryId).toBe('b')
+  })
+})
+
+describe('轮转 v2:沿候选序列走,订阅用完接同家 API(批 6 §9.1)', () => {
+  // 真的内置两家:codex(订阅,oauth)↔ openai(API)。manifest 自述 sibling,这里一个名字都不判。
+  function seedFamily(oauthEntries: SpaceCredentialEntry[], apiEntries: SpaceCredentialEntry[]): void {
+    writeSpaceCredentials('work', {
+      providers: {
+        codex: { entries: oauthEntries, policy: 'single' },
+        openai: { entries: apiEntries, policy: 'priority-failover' },
+      },
+    })
+  }
+  const account = (id: string, over: Partial<SpaceCredentialEntry> = {}) =>
+    entry(id, { authType: 'oauth', apiKey: undefined, oauthToken: { accessToken: `at-${id}` }, ...over })
+
+  it('A 配额耗尽 → B;B 也耗尽 → 同家 API 第一把,换家并说「按 API 计费」', async () => {
+    seedFamily([account('A'), account('B')], [entry('k1', { baseUrl: 'https://api.example/v1' })])
+    const reprovision = trackingReprovision()
+    const rotator = createSessionCredentialRotator({
+      sessionId: 's1',
+      providerId: 'codex',
+      currentEntryId: 'A',
+      providerConfig: { model: 'gpt-5.5', baseUrl: 'https://chatgpt.example/codex', headers: { 'x-codex': '1' } },
+      reprovision: reprovision.fn as never,
+    })!
+    expect(rotator).toBeDefined()
+
+    const first = await rotator(quotaError(), 1)
+    expect(first?.reason).toContain('配额耗尽')
+    expect(reprovision.seen[0]).toMatchObject({
+      oauthToken: { accessToken: 'refreshed' },
+      spaceCredential: { spaceId: 'work', entryId: 'B', authType: 'oauth' },
+    })
+    expect((reprovision.seen[0] as { providerId?: string }).providerId).toBeUndefined()
+
+    const second = await rotator(quotaError(), 2)
+    expect(second?.reason).toBe('订阅额度已用完,这一轮按 API 计费')
+    const crossed = reprovision.seen[1] as ReprovisionOverride & { providerId?: string; config?: Record<string, unknown> }
+    expect(crossed.providerId).toBe('openai')
+    expect(crossed.apiKey).toBe('sk-k1')
+    expect(crossed.spaceCredential).toMatchObject({
+      spaceId: 'work', entryId: 'k1', authType: 'apiKey', route: { providerId: 'openai', reason: 'sibling-api' },
+    })
+    // 端点一族整族换成那一家的;模型一族留用户选的那一家的。
+    expect(crossed.config).toMatchObject({ model: 'gpt-5.5', apiKey: 'sk-k1', baseUrl: 'https://api.example/v1' })
+    expect(crossed.config?.headers).toBeUndefined()
+
+    // 两个账号都写上了冷却;API 那把干净。
+    resetSpaceCredentialsCacheForTests()
+    const accounts = getSpaceProviderCredentials('work', 'codex')?.entries ?? []
+    expect(accounts.every(item => (item.cooldownUntil ?? 0) > Date.now())).toBe(true)
+    expect(getSpaceProviderCredentials('work', 'openai')?.entries[0].cooldownUntil).toBeUndefined()
+  })
+
+  it('开关关(providers.codex.subscriptionFallback = false)→ 订阅用完就停手,不接 API', () => {
+    seedFamily([account('A')], [entry('k1')])
+    mocks.spaceSettings = { ai: { providers: { codex: { model: 'm', selectedModels: [], subscriptionFallback: false } } } }
+    // 只有 A 一条 + 开关关 = 序列最多走到一条 → 钩子不挂。
+    expect(createSessionCredentialRotator({
+      sessionId: 's1',
+      providerId: 'codex',
+      currentEntryId: 'A',
+      reprovision: trackingReprovision().fn as never,
+    })).toBeUndefined()
+    // 同一个池、开关开(缺席 = 开)→ 挂。
+    mocks.spaceSettings = {}
+    expect(createSessionCredentialRotator({
+      sessionId: 's1',
+      providerId: 'codex',
+      currentEntryId: 'A',
+      reprovision: trackingReprovision().fn as never,
+    })).toBeDefined()
+  })
+
+  it('发送前就已接力到 API(currentProviderId = openai):下一把仍在 API 那一池里换,不再换家', async () => {
+    seedFamily([account('A', { cooldownUntil: Date.now() + 3_600_000, cooldownReason: 'quota' })], [entry('k1'), entry('k2')])
+    const reprovision = trackingReprovision()
+    const rotator = createSessionCredentialRotator({
+      sessionId: 's1',
+      providerId: 'codex',
+      currentProviderId: 'openai',
+      currentEntryId: 'k1',
+      reprovision: reprovision.fn as never,
+    })!
+    const rotation = await rotator(paymentRequiredError(), 1)
+    expect(rotation?.reason).toContain('配额耗尽')
+    const seen = reprovision.seen[0] as ReprovisionOverride & { providerId?: string }
+    expect(seen.providerId).toBeUndefined()
+    expect(seen.apiKey).toBe('sk-k2')
+    expect(seen.spaceCredential).toMatchObject({ entryId: 'k2', route: { providerId: 'openai' } })
   })
 })

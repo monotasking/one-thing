@@ -91,11 +91,11 @@ describe('credentials.json schema parsing', () => {
     expect(parsed?.providers.openai.policy).toBe('round-robin')
   })
 
-  it('defaults a missing policy to single and a missing label to the id', () => {
+  it('defaults a missing policy to priority-failover (批 6) and a missing label to the id', () => {
     const parsed = parseSpaceCredentialsFile({
       providers: { qwen: { entries: [{ id: 'x', authType: 'apiKey', source: 'user' }] } },
     })
-    expect(parsed?.providers.qwen.policy).toBe('single')
+    expect(parsed?.providers.qwen.policy).toBe('priority-failover')
     expect(parsed?.providers.qwen.entries[0].label).toBe('x')
   })
 

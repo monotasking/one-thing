@@ -413,6 +413,18 @@ export function selectEngineBusy(state: ChatSourceState): boolean {
   return state.activeMessageId !== undefined
 }
 
+/**
+ * `request/error` 上点名作废的段号(批 6:流到一半失败、换凭证重试时,失败那一次已经流出来
+ * 的段)。不是这一类 / 没点名 = `undefined`。
+ */
+function discardedPartsOf(record: unknown): ReadonlySet<number> | undefined {
+  const event = record as { type?: unknown; data?: { willRetry?: unknown; discardParts?: unknown } }
+  if (event?.type !== 'request/error' || event.data?.willRetry !== true) return undefined
+  const parts = event.data.discardParts
+  if (!Array.isArray(parts) || parts.length === 0) return undefined
+  return new Set(parts.filter((part): part is number => typeof part === 'number'))
+}
+
 /** 攒的上限 —— 一次重折的在飞窗口里攒过这个数属病态,清掉靠下一次重折兜底。 */
 const PENDING_LEDGER_CAP = 1024
 
@@ -1323,6 +1335,10 @@ export function createChatSource(sessionId: string): ChatSource {
           markActivity(activeRun.messageId)
         }
       }
+      // 批 6:失败后重试的那一次尝试,账本点名作废了它流出来的段 —— 水位里同号的格子
+      // 一起退役(折叠那一侧归约器已经摘了)。
+      const discarded = discardedPartsOf(record)
+      if (STREAM_R2 && discarded) water?.discardParts(discarded)
       // R2 第六不变式:**打包行到达那一帧只清格,不画画**。账本对这一段画得出来的
       // 长度追平水位,那一格就退役 —— 清格不改 `max` 的结果,所以屏幕零像素变化。
       if (STREAM_R2) settleWater(mine.state, mine)

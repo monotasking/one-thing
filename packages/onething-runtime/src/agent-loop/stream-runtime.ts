@@ -63,6 +63,27 @@ import {
 	type CreateAgentProviderFromRuntimeOptions,
 } from "./providers/index.js";
 import { readOnethingRequestProviderOptions } from "../providers/provider-options.js";
+import {
+	routedProviderIdOf,
+	type CoreSpaceCredentialMarker,
+} from "../providers/provider-config.js";
+
+/**
+ * 换家时(批 6 轮转 v2)首次解析那份里**必须清掉**的端点一族与凭证一族。模型本身、
+ * 型号能力表、目录这些「模型的事实」留着 —— 同家两半卖的是同一批模型。
+ */
+const CLEARED_ON_PROVIDER_SWITCH = {
+	apiKey: undefined,
+	baseUrl: undefined,
+	headers: undefined,
+	dialect: undefined,
+	modelsUrl: undefined,
+	apiType: undefined,
+	providerOptions: undefined,
+	oauthToken: undefined,
+	authContext: undefined,
+	spaceCredential: undefined,
+} as const;
 import { createTurnTraceRecorder } from "../evals/trace-store.js";
 import {
 	DEFAULT_AGENT_MAX_TURNS,
@@ -317,6 +338,7 @@ export interface OnethingAgentLoopRuntimeAdapters<
 	emitEvent(sessionId: string, event: unknown): Promise<void>;
 	shouldSkipProviderUsageMismatch?(input: {
 		providerId: string;
+		providerConfig?: unknown;
 		session: TSession;
 		modelContextLength: number;
 	}): boolean;
@@ -439,6 +461,7 @@ export interface OnethingAgentLoopRuntimeHostAdapters<
 	emitEvent(sessionId: string, event: unknown): Promise<void>;
 	shouldSkipProviderUsageMismatch?(input: {
 		providerId: string;
+		providerConfig?: unknown;
 		session: TSession;
 		modelContextLength: number;
 	}): boolean;
@@ -575,7 +598,13 @@ export type BuildOnethingAgentLoopStreamRuntimeResult<
 				oauthToken?: AgentProviderRuntimeConfig["oauthToken"];
 				/** 换过之后的归属标记 —— 后续的中途刷新要写回新的那条 entry。 */
 				spaceCredential?: AgentProviderRuntimeConfig["spaceCredential"];
+				/** 换家(批 6):候选序列走到了同家的另一半。缺席 = 同一家换凭证。 */
+				providerId?: string;
+				/** 换家时那一家的端点一族(见 `reprovision` 的实现注释)。 */
+				config?: Record<string, unknown>;
 			}) => AgentProvider | undefined;
+			/** 这一轮真正在用的那一家(被轮转接力过就是接力的那一家)。 */
+			routedProviderId?: string;
 			systemPrompt: string;
 			/** Named prompt sections built for this turn (for hash-based versioning and snapshots). */
 			sections: PromptSection[];
@@ -623,6 +652,7 @@ export async function maybeCompactOnethingAgentLoopContext<
 		emitEvent(sessionId: string, event: unknown): Promise<void>;
 		shouldSkipProviderUsageMismatch?: (input: {
 			providerId: string;
+			providerConfig?: unknown;
 			session: TSession;
 			modelContextLength: number;
 			inputTokens?: number;
@@ -721,8 +751,14 @@ export async function buildOnethingAgentLoopStreamRuntime<
 				config,
 				hostContext as CreateAgentProviderFromRuntimeOptions,
 			));
-	const provider = createProvider(
+	// 轮转 v2(批 6):config 被接力给同家另一半时(订阅额度全用完 → 同家 API),造的是那一家。
+	// 端点 / 头 / 方言 / 密钥已经是那一家的(装配层按那一家算好的),这里只换「造谁」。
+	const routedProviderId = routedProviderIdOf(
 		ctx.providerId,
+		preparation.providerRuntimeConfig as { spaceCredential?: CoreSpaceCredentialMarker },
+	);
+	const provider = createProvider(
+		routedProviderId,
 		preparation.providerRuntimeConfig as AgentProviderRuntimeConfig,
 		preparation.providerHostContext,
 	);
@@ -741,12 +777,24 @@ export async function buildOnethingAgentLoopStreamRuntime<
 			baseUrl?: string;
 			oauthToken?: AgentProviderRuntimeConfig["oauthToken"];
 			spaceCredential?: AgentProviderRuntimeConfig["spaceCredential"];
+			/** 换家(批 6):沿候选序列走到了另一家(订阅 → 同家 API)。缺席 = 同一家换凭证。 */
+			providerId?: string;
+			/**
+			 * 换家时那一家的端点一族(baseUrl / headers / dialect / modelsUrl / providerOptions…),
+			 * 装配层按那一家的设置算好。换家时首次解析那份的端点一族**整族清掉**再盖这一份 ——
+			 * 留一格就是把 A 家的头发给 B 家。
+			 */
+			config?: Record<string, unknown>;
 		},
-	): AgentProvider | undefined =>
-		createProvider(
-			ctx.providerId,
+	): AgentProvider | undefined => {
+		const nextProviderId = override.providerId || routedProviderId;
+		const crossing = nextProviderId !== routedProviderId;
+		return createProvider(
+			nextProviderId,
 			{
 				...(preparation.providerRuntimeConfig as AgentProviderRuntimeConfig),
+				...(crossing ? CLEARED_ON_PROVIDER_SWITCH : {}),
+				...(override.config ?? {}),
 				...(override.apiKey ? { apiKey: override.apiKey } : {}),
 				...(override.baseUrl ? { baseUrl: override.baseUrl } : {}),
 				// OAuth 换手要把 authContext 一并顶掉:它是首次解析烤进去的那一个,
@@ -763,6 +811,7 @@ export async function buildOnethingAgentLoopStreamRuntime<
 			} as AgentProviderRuntimeConfig,
 			preparation.providerHostContext,
 		);
+	};
 
 	if (!provider) {
 		return {
@@ -1028,8 +1077,13 @@ export async function buildOnethingAgentLoopStreamRuntime<
 		// 故意没有设置 UI:这一格装的是实验性 / 家专属的请求参数
 		// (OpenAI 的 `verbosity`、`image_url.detail`),用户手改 settings.json
 		// 就能开,形状见 `providers/provider-options.ts`。
+		// 请求旋钮按**这一发真正发给谁**挂键(批 6):被接力给同家另一半时,provider 实例读的是
+		// 它自己那一格,config 里的旋钮也是那一家的。
 		providerOptions: {
-			[ctx.providerId]: readOnethingRequestProviderOptions(
+			[routedProviderIdOf(
+				ctx.providerId,
+				ctx.providerConfig as { spaceCredential?: CoreSpaceCredentialMarker },
+			)]: readOnethingRequestProviderOptions(
 				ctx.providerConfig.providerOptions as
 					| Record<string, unknown>
 					| undefined,
@@ -1156,6 +1210,7 @@ export async function buildOnethingAgentLoopStreamRuntime<
 		supported: true,
 		runtime,
 		reprovision,
+		routedProviderId,
 		systemPrompt: requestMessages.systemPrompt,
 		sections: requestMessages.sections ?? [],
 		enabledSkills,

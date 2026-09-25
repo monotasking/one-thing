@@ -92,6 +92,21 @@ export interface CoreSpaceCredentialMarker {
    * 存在即表示鉴权必须失败,且失败文案用这里的 `message`(说清去哪儿配)。
    */
   unavailable?: { reason: 'no-entry' | 'oauth' | 'exhausted' | 'disabled'; message: string }
+  /**
+   * 这份 config **属于另一家**(批 6 轮转 v2,§9.1):用户选的是订阅那一家,它的账号额度
+   * 全用完了,`pickRoute` 把这一发接力给了同家的 API 半边。config 里的端点 / 头 / 方言与
+   * `entryId` 都是那一家的;鉴权点与造 provider 的那一处据它换家,其余一切(会话、模型、账本
+   * 归属)仍记在用户选的那一家名下。缺席 = config 就是请求那一家的(今天的一切路径)。
+   */
+  route?: { providerId: string; reason: 'subscription' | 'sibling-api' | 'api' }
+}
+
+/** 这份 config 真正要去的那一家:被轮转接力过就是接力的那一家,否则就是请求的那一家。 */
+export function routedProviderIdOf(
+  providerId: string,
+  providerConfig: { spaceCredential?: CoreSpaceCredentialMarker } | undefined | null,
+): string {
+  return providerConfig?.spaceCredential?.route?.providerId || providerId
 }
 
 export interface CoreProviderConfigLike {
@@ -311,30 +326,32 @@ export async function getProviderApiKeyWithAdapters<TProvider extends CoreProvid
   // 严格隔离闸(批 B3):非 default 空间没有这个 provider 的 entry,就是未配置。
   // 挡在最前面 —— 后面每一条路(OAuth 刷新、env 兜底)都会绕过隔离。
   if (options.providerConfig?.spaceCredential?.unavailable) return null
+  // 轮转 v2(批 6):config 被接力给同家另一半时,鉴权按那一家来(它是 API 密钥,不是登录)。
+  const providerId = routedProviderIdOf(options.providerId, options.providerConfig)
 
   // External agent providers authenticate through their own CLI login;
   // the engine-side credential is deliberately empty.
   if (
-    options.providerId === (options.acpProviderId ?? 'acp')
-    || isExternalAgentExecutorProvider(options.providerId)
+    providerId === (options.acpProviderId ?? 'acp')
+    || isExternalAgentExecutorProvider(providerId)
   ) {
     return ''
   }
 
-  if (options.isOAuthProvider(options.providerId)) {
+  if (options.isOAuthProvider(providerId)) {
     try {
       const token = await options.refreshOAuthToken(
-        options.providerId,
+        providerId,
         options.providerConfig?.spaceCredential,
       )
       return token.accessToken
     } catch (error) {
-      options.logger?.error?.(`Failed to get OAuth token for ${options.providerId}:`, error)
+      options.logger?.error?.(`Failed to get OAuth token for ${providerId}:`, error)
       return null
     }
   }
 
-  return options.resolveApiKey(options.providerId, options.providerConfig) ?? null
+  return options.resolveApiKey(providerId, options.providerConfig) ?? null
 }
 
 export async function resolveProviderAuthWithAdapters<
@@ -362,28 +379,30 @@ export async function resolveProviderAuthWithAdapters<
   // 严格隔离闸(批 B3):见 getProviderApiKeyWithAdapters 的同一句。这里是**唯一**
   // 让「未配置」变成「起不了流」的地方 —— 上游只负责判定,不负责阻断。
   if (options.providerConfig?.spaceCredential?.unavailable) return null
+  // 同上一句(批 6):被接力的 config 按接力的那一家鉴权。
+  const providerId = routedProviderIdOf(options.providerId, options.providerConfig)
 
   if (
-    options.providerId === (options.acpProviderId ?? 'acp')
-    || isExternalAgentExecutorProvider(options.providerId)
+    providerId === (options.acpProviderId ?? 'acp')
+    || isExternalAgentExecutorProvider(providerId)
   ) {
     return createApiKeyAuth('')
   }
 
-  if (options.isOAuthProvider(options.providerId)) {
+  if (options.isOAuthProvider(providerId)) {
     try {
       return await options.resolveOAuthAuth(
-        options.providerId,
-        options.resolveApiKey(options.providerId, options.providerConfig) ?? undefined,
+        providerId,
+        options.resolveApiKey(providerId, options.providerConfig) ?? undefined,
         options.providerConfig?.spaceCredential,
       )
     } catch (error) {
-      options.logger?.error?.(`Failed to resolve OAuth credentials for ${options.providerId}:`, error)
+      options.logger?.error?.(`Failed to resolve OAuth credentials for ${providerId}:`, error)
       return null
     }
   }
 
-  const apiKey = options.resolveApiKey(options.providerId, options.providerConfig) || ''
+  const apiKey = options.resolveApiKey(providerId, options.providerConfig) || ''
   return apiKey ? createApiKeyAuth(apiKey) : null
 }
 
@@ -564,7 +583,7 @@ export async function resolveProviderConfigForChat<
     const authContext = await options.resolveAuth(providerId, providerConfig)
 
     if (authContext) {
-      const effectiveConfig = withResolvedProviderBaseUrl(providerId, providerConfig)
+      const effectiveConfig = withResolvedProviderBaseUrl(routedProviderIdOf(providerId, providerConfig), providerConfig)
       return {
         providerId,
         model: options.session.lastModel,
@@ -582,7 +601,7 @@ export async function resolveProviderConfigForChat<
   const authContext = await options.resolveAuth(providerId, providerConfig)
 
   if (!authContext) return null
-  const effectiveConfig = withResolvedProviderBaseUrl(providerId, providerConfig)
+  const effectiveConfig = withResolvedProviderBaseUrl(routedProviderIdOf(providerId, providerConfig), providerConfig)
 
   return {
     providerId,

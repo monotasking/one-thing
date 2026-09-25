@@ -363,6 +363,12 @@ interface RecorderState {
   openParts: Map<number, PartState>
   /** 这次请求收齐的 part(request/response 的 parts 指纹表)。 */
   finishedParts: Array<{ partIndex: number; kind: SessionAssistantPartKind; len: number; hash: string }>
+  /**
+   * 这一次**尝试**里开过的段(批 6)。`turn-start` 清零、每次 `auto-retry` 清零:重试把同一个
+   * 请求从头再发,失败那一次已经落账的段要在 `request/error.discardParts` 里点名作废,否则
+   * 「半截」与重试那一遍的开头连成一段(`gate:route` ⑥ 实测)。
+   */
+  attemptParts: number[]
   /** 这次请求产出的工具调用 id。 */
   toolCallIds: string[]
   /** provider 自报的响应 id / 模型(有些 provider 在 provider-data 里带)。 */
@@ -448,6 +454,7 @@ export function createSessionEventRecorder(
     annotatedResultByCallId: new Map(),
     openParts: new Map(),
     finishedParts: [],
+    attemptParts: [],
     toolCallIds: [],
     attempt: 0,
   }
@@ -566,6 +573,7 @@ export function createSessionEventRecorder(
     const id = runId()
     // allocate 刚刚同步答应过这两格都在,这里只是把类型收窄。
     if (requestIndex === undefined || !id) return
+    state.attemptParts.push(ref.partIndex)
     state.openParts.set(ref.partIndex, {
       runId: id,
       partIndex: ref.partIndex,
@@ -781,6 +789,7 @@ export function createSessionEventRecorder(
     const partIndex = encoder.reservePart()
     if (partIndex === undefined) return
     const hash = hashSessionEventContent(text)
+    state.attemptParts.push(partIndex)
     state.finishedParts.push({ partIndex, kind: 'provider-data', len: text.length, hash })
     writeSessionEvent(ctx.sessionId, 'assistant/part-end', {
       runId: id,
@@ -838,6 +847,7 @@ export function createSessionEventRecorder(
         state.usageTurnIndex = undefined
         state.firstTokenWritten = false
         state.finishedParts = []
+        state.attemptParts = []
         state.toolCallIds = []
         state.attempt = 0
         state.providerResponseId = undefined
@@ -1016,12 +1026,22 @@ export function createSessionEventRecorder(
         state.attempt = event.attempt
         const id = runId()
         if (!id || state.requestIndex === undefined) return
+        // 批 6:失败这一次已经流出来的段先收齐落账(攒着的打包行刷掉、开着的段收尾),
+        // 再在 `request/error` 上点名作废 —— 重试那一遍开新段,不接着往旧段里写。
+        endAllOpenParts()
+        const discard = state.attemptParts
+        state.attemptParts = []
+        if (discard.length > 0) {
+          const dropped = new Set(discard)
+          state.finishedParts = state.finishedParts.filter(part => !dropped.has(part.partIndex))
+        }
         writeSessionEvent(ctx.sessionId, 'request/error', {
           runId: id,
           requestIndex: state.requestIndex,
           error: { message: event.error },
           willRetry: true,
           attempt: event.attempt,
+          ...(discard.length > 0 ? { discardParts: discard } : {}),
         })
         return
       }

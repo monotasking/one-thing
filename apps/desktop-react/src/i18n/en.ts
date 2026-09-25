@@ -1505,6 +1505,7 @@ export const en: Record<MessageKey, string> = {
   'providers.rotationFailover': 'Failover in order',
   'providers.rotationRoundRobin': 'Round robin',
   'providers.rotationSingleHint': 'Only the first key is used.',
+  'providers.subFallbackApi': 'Switch to API keys when the subscription runs out',
   'providers.rotationFailoverHint': 'Used in order; switches to the next when one fails.',
   'providers.rotationRoundRobinHint': 'Takes turns on every request.',
   'providers.rotationUnknown': '{policy} (unavailable)',

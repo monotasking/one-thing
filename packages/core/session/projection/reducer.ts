@@ -596,6 +596,10 @@ export function reduceSessionProjection(
       const run = forWrite(state.runs.get(event.data.runId))
       if (!run) break
       turnOf(run, event.data.requestIndex)
+      // 批 6:要重试的那一次尝试已经流出来的段,作废(重试会把这一轮从头再说一遍)。
+      if (event.type === 'request/error' && event.data.willRetry && event.data.discardParts?.length) {
+        discardAttemptParts(run, event.data.discardParts)
+      }
       // 配方里那一格是这次请求**定稿后**的 maxTokens(执行器的 `getRequestParams`)。
       // 只收有限正数:0 / 负数 / NaN 说不出「上限是多少」这句话。
       if (event.type === 'request/recipe') {
@@ -1037,6 +1041,28 @@ function sanitizePatch(node: ProjectionNode, patch: Record<string, unknown>): Re
     next[key] = value
   }
   return next
+}
+
+/**
+ * 摘掉一次失败尝试的输出段(`request/error.discardParts`,批 6)。参数流段带出来的工具卡
+ * 只在**还没有结果**时一起摘 —— 有结果的工具真的跑过,那不是这一次尝试能收回的事
+ * (runner 在工具动过手之后本来就不会重试,这一句只是不让折叠替它撒谎)。
+ */
+function discardAttemptParts(run: AssistantNode, partIndexes: readonly number[]): void {
+  const drop = new Set(partIndexes)
+  for (const partIndex of drop) {
+    const part = run.parts.get(partIndex)
+    if (!part) continue
+    run.parts.delete(partIndex)
+    if (part.kind === 'tool-input' && part.toolCallId) {
+      const tool = run.tools.get(part.toolCallId)
+      if (tool && tool.resultTime === undefined) {
+        run.tools.delete(part.toolCallId)
+        run.toolOrder = run.toolOrder.filter(callId => callId !== part.toolCallId)
+      }
+    }
+  }
+  run.partOrder = run.partOrder.filter(partIndex => !drop.has(partIndex))
 }
 
 function ensurePart(

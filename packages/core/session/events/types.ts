@@ -653,6 +653,15 @@ export interface SessionRequestErrorEventData {
   error: { name?: string; message: string; status?: number }
   willRetry: boolean
   attempt: number
+  /**
+   * 这一次尝试**已经落账的输出段**(`assistant/chunks` 的 partIndex),重试时作废(批 6)。
+   *
+   * 重试是把同一个请求**从头再发一遍**:模型会把这一轮重新说一遍,于是失败那一次流到
+   * 一半的字(「半截」)如果留着,就与重试那一遍的开头连成「半截……完整回答」。只在
+   * `willRetry` 时出现;折叠据它把这几段从这条执行上摘掉。缺席 = 老文件 / 失败前一个字都
+   * 没出 = 什么都不摘(修复前的行为)。
+   */
+  discardParts?: number[]
 }
 
 // ============ 助手 ============

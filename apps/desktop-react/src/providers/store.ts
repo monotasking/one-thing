@@ -402,6 +402,11 @@ export interface ProviderSettingsState {
    * 自定义家**两处一起写**,与 `saveCustomProvider` 同一条理由。
    */
   setBaseUrl: (providerId: string, baseUrl: string) => Promise<void>
+  /**
+   * 订阅那一家的「订阅额度用完时切到 API 密钥」(批 6 §9.2)。写在订阅那一家自己的格上;
+   * 缺席 = 开(拍点 7),所以打开 = 删掉那一格,关掉 = 写 `false`。
+   */
+  setSubscriptionFallback: (providerId: string, next: boolean) => Promise<void>
 
   reset: () => void
 }
@@ -576,6 +581,8 @@ export const settingsKey = {
   dials: (providerId: string) => `dials:${providerId}`,
   /** 手改端点一坑一格 —— 它与档位是两颗旋钮,忙态不该互相禁。 */
   baseUrl: (providerId: string) => `baseUrl:${providerId}`,
+  /** 订阅坑那颗「额度用完切 API」(批 6)一坑一格。 */
+  fallback: (providerId: string) => `fallback:${providerId}`,
   /** 自定义家的新建 / 保存 / 删除。 */
   custom: (providerId: string) => `custom:${providerId}`,
   /** 目录头「全部应用」参数建议那颗钮(批 3 §6.3)—— 一发写好几型,挂不到任何一行上。 */
@@ -1863,6 +1870,16 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
 
       // 删掉的正好是选中的那一家:选择落空,右面回到「在左边选一家」。
       if (get().selectedFamilyId === providerId) set({ selectedFamilyId: null })
+    },
+
+    setSubscriptionFallback: async (providerId, next) => {
+      const current = get().settings?.ai?.providers?.[providerId]?.subscriptionFallback !== false
+      if (current === next) return
+      // 显式 `undefined` = 删键(`writeProviders` 那条约定):开着就是没写过。
+      await writeProviders(
+        { [providerId]: { subscriptionFallback: next ? undefined : false } },
+        settingsKey.fallback(providerId),
+      )
     },
 
     setDials: async (providerId, apiMode, region) => {

@@ -81,6 +81,7 @@ export type AgentLoopContextBudget = OnethingAgentLoopContextBudget
 
 function shouldSkipAutoCompactForProviderUsageMismatchSafe(input: {
   providerId: string
+  providerConfig?: unknown
   session: ChatSession
   modelContextLength: number
   inputTokens?: number
@@ -89,6 +90,7 @@ function shouldSkipAutoCompactForProviderUsageMismatchSafe(input: {
     const fn = (contextCompact as {
       shouldSkipAutoCompactForProviderUsageMismatch?: (input: {
         providerId: string
+        providerConfig?: unknown
         session: ChatSession
         modelContextLength: number
         inputTokens?: number
@@ -230,6 +232,7 @@ function createAgentLoopRuntimeAdapters(
     emitEvent,
     shouldSkipProviderUsageMismatch: (input: {
       providerId: string
+      providerConfig?: unknown
       session: ChatSession
       modelContextLength: number
       inputTokens?: number

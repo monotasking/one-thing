@@ -243,3 +243,21 @@ describe('进度那张表(C2-b)', () => {
     expect(water.tools('a1')[0].lastDeltaAt).toBeGreaterThanOrEqual(before)
   })
 })
+
+describe('作废失败尝试的段(批 6)', () => {
+  it('点名的段号退役,重试那一遍的新段不受影响', () => {
+    const water = new StreamWater()
+    water.feed(stamp({ partIndex: 0, charOffset: 0 }), '半截回答')
+    water.feed(stamp({ partIndex: 1, charOffset: 0 }), '完整')
+    water.discardParts(new Set([0]))
+    expect(textOf(water, 'a1', 0)).toBeUndefined()
+    expect(textOf(water, 'a1', 1)).toBe('完整')
+  })
+
+  it('一条消息的格子全被作废 = 整条消息退出水位表', () => {
+    const water = new StreamWater()
+    water.feed(stamp({ partIndex: 3, charOffset: 0 }), '半截')
+    water.discardParts(new Set([3]))
+    expect(water.parts('a1')).toEqual([])
+  })
+})

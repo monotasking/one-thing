@@ -380,6 +380,9 @@ const QUOTA_PATTERNS: RegExp[] = [
   /allocated quota exceeded/i,
   /\barrearage\b/i,
   /billing[_\s-]?(?:hard[_\s-]?)?limit[_\s-]?reached/i,
+  // 订阅的用量窗口用完(Codex:429 + `usage_limit_reached`)。它不是「歇一分钟就好」的限流,
+  // 是这个账号到窗口重置前都用不了 —— 批 6 的候选序列据此接下一个账号 / 同家 API。
+  /usage[_\s-]?limit[_\s-]?reached/i,
   /"code"\s*:\s*"?1113"?/,
   /余额不足/,
   /额度不足/,

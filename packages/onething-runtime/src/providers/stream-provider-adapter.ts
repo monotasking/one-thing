@@ -13,6 +13,7 @@ import {
   getOnethingProviderApiType,
   resolveOnethingProviderAuth,
 } from './provider-runtime.js'
+import { routedProviderIdOf } from './provider-config.js'
 
 export interface OnethingStreamProviderAdapterOptions<
   TProvider extends CoreProviderConfigLike = CoreProviderConfigLike,
@@ -104,7 +105,14 @@ export function createOnethingStreamProviderAdapter<
       return options.isOAuthProvider(providerId)
     },
     generateTitle(providerId, providerConfig, content, titleOptions) {
-      return options.generateTitle(providerId, providerConfig as TProvider | undefined, content, titleOptions)
+      // 轮转 v2(批 6):config 被接力给同家另一半时,鉴权拿到的是那一家的钥匙 —— 标题也要
+      // 用那一家去生成,不然是拿 A 家的钥匙打 B 家的口。
+      return options.generateTitle(
+        routedProviderIdOf(providerId, providerConfig as TProvider | undefined),
+        providerConfig as TProvider | undefined,
+        content,
+        titleOptions,
+      )
     },
   }
 }

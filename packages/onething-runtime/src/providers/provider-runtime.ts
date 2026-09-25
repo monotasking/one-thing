@@ -8,6 +8,7 @@ import {
   getProviderConfig as getCoreProviderConfig,
   resolveProviderAuthWithAdapters,
   resolveProviderConfigForChat as resolveCoreProviderConfigForChat,
+  routedProviderIdOf,
   withResolvedProviderBaseUrl,
   type CoreAppSettingsWithAI,
   type CoreAppSettingsWithTitleModel,
@@ -251,7 +252,8 @@ export function getEffectiveOnethingProviderConfig<
   const spaceScoped = adapters.applySpaceCredentials
     ? adapters.applySpaceCredentials(sessionId, resolved.providerId, resolved.providerConfig)
     : resolved.providerConfig
-  let providerConfig = withResolvedProviderBaseUrl(resolved.providerId, spaceScoped)
+  // 轮转 v2(批 6):被接力给同家另一半的 config 按那一家派生端点(装配层已按那一家解过)。
+  let providerConfig = withResolvedProviderBaseUrl(routedProviderIdOf(resolved.providerId, spaceScoped), spaceScoped)
   // This is the single chokepoint both resolution chains share (see the
   // deepseek-goes-codex incident), so a pinned think mode applied HERE is the
   // one place it cannot diverge: the turn's thinking is read off
@@ -316,7 +318,10 @@ export async function resolveOnethingProviderConfigForChat<
       resolveOnethingProviderAuth(providerId, providerConfig, options.adapters),
   })
   if (!resolved) return null
-  const providerConfig = withResolvedProviderBaseUrl(resolved.providerId, resolved.providerConfig)
+  const providerConfig = withResolvedProviderBaseUrl(
+    routedProviderIdOf(resolved.providerId, resolved.providerConfig),
+    resolved.providerConfig,
+  )
   return {
     ...resolved,
     providerConfig,

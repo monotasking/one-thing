@@ -1,3 +1,4 @@
+import { routedProviderIdOf, type CoreSpaceCredentialMarker } from '@onething/runtime/providers/provider-config'
 import { getProviderManifest } from '@onething/runtime/providers/manifest'
 import type { AppSettings, ChatMessage, ChatSession } from '@shared/ipc.js'
 import type { ProviderConfigWithKey } from './stream/stream-executor.js'
@@ -53,12 +54,18 @@ export {
 
 export function shouldSkipAutoCompactForProviderUsageMismatch(options: {
   providerId: string
+  /** 这一发的 config:被接力给同家另一半时,usage 口径按真正回话的那一家判(批 6)。 */
+  providerConfig?: unknown
   session: Pick<ChatSession, 'contextSize' | 'lastInputTokens'>
   modelContextLength: number
   inputTokens?: number
 }): boolean {
   // 服务商回报的 usage 口径与本地估算对不上时跳过 —— 哪家是这种口径由 manifest 自述(批 M)。
-  if (getProviderManifest(options.providerId)?.behaviors?.skipCompactOnUsageMismatch !== true) return false
+  const answeredBy = routedProviderIdOf(
+    options.providerId,
+    options.providerConfig as { spaceCredential?: CoreSpaceCredentialMarker } | undefined,
+  )
+  if (getProviderManifest(answeredBy)?.behaviors?.skipCompactOnUsageMismatch !== true) return false
   return shouldSkipAutoCompactForProviderUsageMismatchByUsage(options)
 }
 

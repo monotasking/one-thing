@@ -567,6 +567,12 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
   // walk an arbitrarily large pool while the user waits on a spinner.
   const maxRotations = Math.max(0, options.maxCredentialRotations ?? MAX_CREDENTIAL_ROTATIONS)
   let rotationsUsed = 0
+  // The provider is a `let` only so the credential-rotation hook can swap it
+  // BETWEEN attempts. Nothing reassigns it while a stream is open. It lives at
+  // RUN scope, like the rotation budget: once a credential has been swapped out
+  // (cooled, quota spent) the next turn of the same run must not walk back to it
+  // and burn another rotation re-learning the same failure.
+  let activeProvider = options.provider
 
   for (let turn = 1; turn <= maxTurns; turn++) {
     throwIfAgentAborted(options.abortSignal)
@@ -617,9 +623,6 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
 
     const resultsByToolCallId = new Map<string, AgentToolResult>()
     let toolExecutionStarted = false
-    // The provider is a `let` only so the credential-rotation hook can swap it
-    // BETWEEN attempts. Nothing reassigns it while a stream is open.
-    let activeProvider = options.provider
     const runProviderTurn = () => runWithAgentAbort(options.abortSignal, () =>
       executeProviderTurn({
         request: {

@@ -100,6 +100,9 @@ export function isModeConfigured(mode: ProviderMode, creds: CredentialFacts): bo
 export const ROTATION_POLICIES = ['single', 'priority-failover', 'round-robin'] as const
 export type RotationPolicy = (typeof ROTATION_POLICIES)[number]
 
+/** 池还没有策略时选择器显示的那一项 —— 与后端新池的缺省同一个(批 6 §9.2)。 */
+export const DEFAULT_ROTATION_POLICY: RotationPolicy = 'priority-failover'
+
 const POLICY_LABEL: Record<RotationPolicy, Fact['key']> = {
   single: 'providers.rotationSingle',
   'priority-failover': 'providers.rotationFailover',
@@ -175,7 +178,8 @@ export function poolViewOf(
       cooldownUntil: entry.cooldownUntil,
       cooling: isCooling(entry, now),
     })),
-    policy: summary?.policy || 'single',
+    // 新池的缺省是「按顺序接力」(批 6 §9.2,与后端 `DEFAULT_SPACE_CREDENTIAL_POLICY` 同一格)。
+    policy: summary?.policy || DEFAULT_ROTATION_POLICY,
     policyUnavailable: summary?.policyUnavailable === true,
   }
 }

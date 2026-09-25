@@ -81,3 +81,46 @@ describe('recordUsage —— 厂商报价', () => {
     expect(record.costUSD).toBeCloseTo((100 * 3 + 50 * 15) / 1_000_000, 10)
   })
 })
+
+describe('recordUsage —— 轮转 v2 接力到同家 API 的那一发(批 6)', () => {
+  beforeEach(() => {
+    vi.resetModules()
+  })
+
+  afterEach(async () => {
+    await ledger?.close()
+    release?.()
+    fs.rmSync(path.join(storeDir, 'usage'), { recursive: true, force: true })
+  })
+
+  it('用户选的是订阅家,这一发被 route 到 sibling-api:账记在 API 家、billing 是 api、凭证是那一把', async () => {
+    const recordUsage = await loadRecordUsage()
+    const { usageAttributionOf } = await import('../index.js')
+    const attribution = usageAttributionOf('codex', {
+      spaceCredential: { spaceId: 'work', entryId: 'k1', authType: 'apiKey', route: { providerId: 'openai', reason: 'sibling-api' } },
+    })
+    const record = recordUsage({
+      ...BASE,
+      ...attribution,
+      modelId: 'gpt-5.5',
+      usage: { inputTokens: 100, outputTokens: 50 },
+    })
+    expect(record.providerId).toBe('openai')
+    expect(record.billing).toBe('api')
+    expect(record.credentialId).toBe('k1')
+  })
+
+  it('没被接力:照旧记在用户选的那一家(订阅 = 估算)', async () => {
+    const recordUsage = await loadRecordUsage()
+    const { usageAttributionOf } = await import('../index.js')
+    const record = recordUsage({
+      ...BASE,
+      ...usageAttributionOf('codex', { spaceCredential: { spaceId: 'work', entryId: 'A', authType: 'oauth' } }),
+      modelId: 'gpt-5.5',
+      usage: { inputTokens: 100, outputTokens: 50 },
+    })
+    expect(record.providerId).toBe('codex')
+    expect(record.billing).toBe('subscription')
+    expect(record.credentialId).toBe('A')
+  })
+})

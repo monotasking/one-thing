@@ -56,3 +56,20 @@
   color: var(--text-1);
   line-height: 1.6;
 }
+
+/*
+ * 订阅坑那颗「额度用完切 API」(批 6)。抗挤压律一:这一行恰有一个弯腰件 —— 文字;
+ * 开关不缩。
+ */
+.switchRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.switchLabel {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-1);
+}

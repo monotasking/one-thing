@@ -157,3 +157,23 @@ describe('title generation gets the same scoping', () => {
     expect(bare.applySpaceCredentials?.('s1', 'deepseek', config)).toBe(config)
   })
 })
+
+describe('route marker(批 6):被接力给同家另一半的 config 按那一家鉴权', () => {
+  it('订阅家的 config 被接力到 API 家:不走登录,取那把 API 密钥', async () => {
+    const resolveApiKey = vi.fn((_id: string, config: TestProvider | undefined) => config?.apiKey)
+    const resolveOAuthAuth = vi.fn(async () => ({ kind: 'oauth' }))
+    const auth = await resolveProviderAuthWithAdapters<TestProvider, { kind: string; apiKey?: string }>({
+      providerId: 'sub-home',
+      providerConfig: {
+        apiKey: 'sk-api-half',
+        spaceCredential: { spaceId: 'work', entryId: 'k1', authType: 'apiKey', route: { providerId: 'api-half', reason: 'sibling-api' } },
+      },
+      isOAuthProvider: id => id === 'sub-home',
+      resolveApiKey,
+      resolveOAuthAuth,
+    })
+    expect(auth).toEqual({ kind: 'api-key', apiKey: 'sk-api-half' })
+    expect(resolveOAuthAuth).not.toHaveBeenCalled()
+    expect(resolveApiKey).toHaveBeenCalledWith('api-half', expect.anything())
+  })
+})

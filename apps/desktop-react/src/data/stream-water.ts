@@ -359,6 +359,21 @@ export class StreamWater {
     return { diverged }
   }
 
+  /**
+   * **作废**:账本说这几段属于一次失败后重试的尝试(`request/error.discardParts`,批 6),
+   * 折叠已经把它们摘了,水位里同号的格子也一起退役 —— 不然账本还没追平的那一截会以
+   * 「水位领先」的名义继续画在屏上,与重试那一遍连成「半截……完整回答」。段号在一次执行里
+   * 唯一,重试那一遍开的是新号,所以按号清不会误伤。
+   */
+  discardParts(partIndexes: ReadonlySet<number>): void {
+    for (const [messageId, message] of this.messages) {
+      for (const key of [...message.parts.keys()]) {
+        if (partIndexes.has(partIndexOf(key))) message.parts.delete(key)
+      }
+      this.dropIfEmpty(messageId, message)
+    }
+  }
+
   /** 这一轮收尾 / 这条消息换代:整条丢。 */
   clearMessage(messageId: string): void {
     this.messages.delete(messageId)

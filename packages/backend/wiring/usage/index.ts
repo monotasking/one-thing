@@ -9,6 +9,7 @@
  * as 'chat'. Side-line calls run on the tool-call model in the background —
  * `source` is the only thing that makes that spend visible in the usage panel.
  */
+import { routedProviderIdOf, type CoreSpaceCredentialMarker } from '@onething/runtime/providers/provider-config';
 import {
 	OnethingUsageLedger,
 	getOnethingSessionUsageTotal,
@@ -50,6 +51,26 @@ export interface RecordUsageInput {
 	/** The assistant message this usage was recorded for, used to resolve platform from its origin. */
 	assistantMessageId?: string;
 	partial?: boolean;
+	/**
+	 * 这一发**真正用的**那条凭证(批 6)。键在(哪怕值是 `undefined`)= 调用方已经知道,
+	 * 账本照收、不再去 `resolveSessionCredentialId` 重解 —— 重解会拨 round-robin 游标,
+	 * 而且答的是「用户选的那一家下一发用谁」,不是「这一发用了谁」。键缺席 = 旧行为。
+	 */
+	credentialId?: string;
+}
+
+/**
+ * 一发请求的账该记在谁名下(批 6 轮转 v2):被接力给同家另一半时(订阅额度用完 → 同家 API),
+ * 账记在**真正发请求的那一家**与那一条凭证上 —— 花的是 API 的钱,就按 `billing: 'api'` 进真实开销。
+ */
+export function usageAttributionOf(
+	providerId: string,
+	providerConfig: { spaceCredential?: CoreSpaceCredentialMarker } | undefined | null,
+): { providerId: string; credentialId: string | undefined } {
+	return {
+		providerId: routedProviderIdOf(providerId, providerConfig),
+		credentialId: providerConfig?.spaceCredential?.entryId,
+	};
 }
 
 function platformForOrigin(origin: MessageOrigin | undefined): string {
@@ -179,7 +200,7 @@ function recordUsageIn(ledger: OnethingUsageLedger, input: RecordUsageInput): On
 		workspaceId: resolveWorkspaceId(input.sessionId),
 		// 默认空间不写 credentialId(诚实缺席):它的凭证源是 settings.ai,
 		// 那里没有 entry id —— 造一个假值只会污染将来的按 key 出账。
-		credentialId: resolveSessionCredentialId(input.sessionId, input.providerId),
+		credentialId: 'credentialId' in input ? input.credentialId : resolveSessionCredentialId(input.sessionId, input.providerId),
 		providerId: input.providerId,
 		modelId: input.modelId,
 		platform: resolvePlatform(input),

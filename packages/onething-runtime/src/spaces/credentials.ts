@@ -144,7 +144,12 @@ export interface SpaceCredentialsFile {
   providers: Record<string, SpaceProviderCredentials>
 }
 
-export const DEFAULT_SPACE_CREDENTIAL_POLICY: SpaceCredentialPolicy = 'single'
+/**
+ * 新池的策略(批 6 §9.2 起 = `priority-failover`「按顺序接力」)。从前是 `single`:加第二把
+ * 密钥什么都不发生,第一把用完就报错 —— 那不是用户加第二把时想要的。**只管新写下去的池**:
+ * 盘上已经写着 `single` 的池照读 `single`(用户选过的不替他改)。
+ */
+export const DEFAULT_SPACE_CREDENTIAL_POLICY: SpaceCredentialPolicy = 'priority-failover'
 export const SPACE_CREDENTIAL_SOURCE_USER = 'user'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -475,6 +480,21 @@ const roundRobinCursors = new Map<string, number>()
 
 export function resetSpaceCredentialRotationForTests(): void {
   roundRobinCursors.clear()
+}
+
+/**
+ * 游标的读与拨(批 6)。`pickRoute` 是纯函数,只读游标;真正发出去的那一发由调用方拨 ——
+ * 与 `selectSpaceCredentialEntryDetailed` 的 `advanceCursor` 同一条纪律。
+ */
+export function peekSpaceCredentialCursor(cursorKey: string): number {
+  return roundRobinCursors.get(cursorKey) ?? 0
+}
+
+/** 拨一格(对可用条数取模,与分叉点里那一行同式)。`size <= 0` 什么都不做。 */
+export function advanceSpaceCredentialCursor(cursorKey: string, size: number): void {
+  if (size <= 0) return
+  const cursor = roundRobinCursors.get(cursorKey) ?? 0
+  roundRobinCursors.set(cursorKey, (cursor + 1) % size)
 }
 
 /** 轮转游标键:一个空间的一个 provider 一条游标。 */

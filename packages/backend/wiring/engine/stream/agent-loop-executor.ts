@@ -42,13 +42,14 @@ import {
 	type BuildAgentLoopStreamRuntimeResult,
 } from "./agent-loop-runtime.js";
 import { createSessionCredentialRotator } from "../../providers/credential-rotation.js";
+import { routedProviderIdOf, type CoreSpaceCredentialMarker } from "@onething/runtime/providers/provider-config";
 import { observeQuotaProviderData } from "../../quota/engine-hooks.js";
 import { resolveAgentProfileForSession } from "../../agents/profile.js";
 import { saveMediaImage } from "@onething/runtime/media/save-image";
 import { applyOnethingAgentLoopProviderData } from "@onething/runtime/agent-loop/providers";
 import type { ApplyOnethingAgentLoopProviderDataOptions } from "@onething/runtime/agent-loop/providers/provider-data";
 import { updateSessionUsage } from "../../../session/usage.js";
-import { recordUsage } from "../../usage/index.js";
+import { recordUsage, usageAttributionOf } from "../../usage/index.js";
 import { triggerManager } from "../triggers/index.js";
 import { runAfterAssistantResponseHooks } from "@onething/runtime/plugins/lifecycle.wiring";
 import type { ChatMessage, ChatSession } from "@shared/ipc.js";
@@ -117,8 +118,21 @@ export interface AgentLoopExecutorTurnState {
 	hasSentToolParts: boolean;
 }
 
+/** 账本 / 配额回调读的那份标记:换过手就是换手后的那一条,没换过就是首次解析那一条。 */
+function activeCredentialConfigOf(state: AgentLoopExecutorState): { spaceCredential?: CoreSpaceCredentialMarker } {
+	return state.activeCredential
+		? { spaceCredential: state.activeCredential }
+		: (state.ctx.providerConfig as { spaceCredential?: CoreSpaceCredentialMarker });
+}
+
 export interface AgentLoopExecutorState {
 	ctx: StreamContext;
+	/**
+	 * 这一发**此刻**用着的凭证标记(批 6)。首次解析那份在 `ctx.providerConfig.spaceCredential`;
+	 * 轮换器换过手(同家下一把 / 接力到同家另一半)之后改记在这里 —— 账本与配额回调要的是
+	 * 「这一发真用了谁」,首次解析那份在换手之后就过期了。缺席 = 没换过手。
+	 */
+	activeCredential?: CoreSpaceCredentialMarker;
 	processor: StreamProcessor;
 	emitter: IPCEmitter;
 	turnIndex: number;
@@ -483,7 +497,9 @@ export function runAgentLoopPostResponseHooks(options: {
 		assistantMessageId: options.state.ctx.assistantMessageId,
 		lastAssistantMessage: options.state.processor.accumulatedContent,
 		historyMessages: options.historyMessages,
-		providerId: options.state.ctx.providerId,
+		// 批 6:这一格与下一格(config)必须是同一家 —— 接力到同家 API 时 config 里是那一家的
+		// 钥匙与端点,钩子里再发的辅助请求要按那一家发。
+		providerId: routedProviderIdOf(options.state.ctx.providerId, options.state.ctx.providerConfig as { spaceCredential?: CoreSpaceCredentialMarker }),
 		providerConfig: options.state.ctx.providerConfig,
 		settings: options.state.ctx.settings,
 		toolIterations: options.state.toolIterations,
@@ -779,8 +795,8 @@ export async function applyAgentLoopStreamChunk(
 			if (
 				observeQuotaProviderData({
 					sessionId: state.ctx.sessionId,
-					providerId: state.ctx.providerId,
-					credentialId: state.ctx.providerConfig.spaceCredential?.entryId,
+					// 被接力给同家另一半的那一发,配额算在真正在用的那一家那一条上(批 6)。
+					...usageAttributionOf(state.ctx.providerId, activeCredentialConfigOf(state)),
 					providerData: options.providerData,
 				})
 			) {
@@ -837,7 +853,8 @@ export async function applyAgentLoopStreamChunk(
 				recordUsage({
 					sessionId: state.ctx.sessionId,
 					assistantMessageId: state.ctx.assistantMessageId,
-					providerId: state.ctx.providerId,
+					// 批 6:账记在**真正发请求的那一家**与那一条凭证上(接力到同家 API 的那一发是 API 钱)。
+					...usageAttributionOf(state.ctx.providerId, activeCredentialConfigOf(state)),
 					modelId: state.ctx.providerConfig.model,
 					// W13.3: the drive that started this stream may have labelled
 					// itself ('collab-room' / 'collab-work'); everything else is chat.
@@ -975,7 +992,8 @@ export async function executeAgentLoopStreamGeneration(
 		streamChunks: (prepared) => {
 			const recorded = attachSessionEventRecorder(prepared.runtime, {
 				sessionId: ctx.sessionId,
-				providerId: ctx.providerId,
+				// 请求信封(`request/header.provider`)记的是**这一次请求发给了谁**(批 6)。
+				providerId: prepared.routedProviderId ?? ctx.providerId,
 				model: ctx.providerConfig.model,
 				systemPrompt: prepared.systemPrompt,
 				// U0:采集点读的是**同步点**那一格 —— 换锚点之后它立刻是新号,而
@@ -1051,6 +1069,12 @@ export async function executeAgentLoopStreamGeneration(
 							sessionId: ctx.sessionId,
 							providerId: ctx.providerId,
 							currentEntryId: ctx.providerConfig.spaceCredential?.entryId,
+							// 轮转 v2(批 6):发送前就被接力给同家另一半时,实例是按那一家造的。
+							currentProviderId: prepared.routedProviderId,
+							providerConfig: ctx.providerConfig,
+							onRotated: (marker) => {
+								state.activeCredential = marker;
+							},
 							reprovision: prepared.reprovision,
 							logger: consoleLog,
 						})
