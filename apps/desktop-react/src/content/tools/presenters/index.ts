@@ -1,6 +1,7 @@
 import { registerToolPresenter } from '../presenter'
 import { bashPresenter } from './bash'
 import { editPresenter } from './edit'
+import { kindPresenter } from './kind'
 import { readPresenter } from './read'
 import { webPresenter } from './web'
 
@@ -15,6 +16,12 @@ import { webPresenter } from './web'
  * 兜底不在这里注册:它不是表里的一格,是 `resolveToolPresenter` 查不到时的归宿
  * (§5.1「兜底是合同的一部分」)。
  */
+/*
+ * 类别表排第一(ACP A2-c):**结局里自报了类别**的调用按类别选画法,不按名字 ——
+ * 它是唯一按「结果形状」认领的,所以必须排在按名字认的那几个前面(上面那条
+ * 「更窄的排前面」)。内置工具的结局里没有 `kind`,它对它们一个都不认。
+ */
+registerToolPresenter(kindPresenter)
 registerToolPresenter(readPresenter)
 registerToolPresenter(editPresenter)
 registerToolPresenter(bashPresenter)

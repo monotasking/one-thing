@@ -884,6 +884,16 @@ export const zh = {
   'chat.tool.failed': '失败',
   'chat.tool.cancelled': '已取消',
   'chat.tool.inputStreaming': '参数生成中',
+  /* ACP A2-c:外部 agent 自报的「跑到哪一步」(替状态词,不替耗时)与卡脚的终端钮。 */
+  'chat.tool.phasePending': '等待',
+  'chat.tool.phaseInProgress': '进行中',
+  'chat.tool.openTerminal': '打开终端',
+  'chat.tool.terminalGone': '这格终端已经关了',
+  /* ACP A4-a / A2-c:agent 经宿主工具面 `send_notification` 发来的一条提醒 ——
+   * 会话里一行系统行,会话不在屏上时再进通知中心。`agent` 是名册上的名字。 */
+  'chat.agentNotice.label': '{agent} 的通知',
+  'chat.agentNotice.title': '{agent}:{title}',
+  'chat.agentNotice.untitled': '{agent} 发来通知',
 
   /* ── 工具卡(C2-a:一种卡 / 头行 / 三段流中态)──────────────────────────
    * 成果词是**事实的复述**,不是打卡词:「N 行」「+a −d」「退出 0」都在说这次

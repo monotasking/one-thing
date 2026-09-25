@@ -3,7 +3,7 @@ import { CARD_FLIP_MS, currentMotionTier } from '../../components/motion'
 import { useLiveClock } from '../../components/useLiveClock'
 import { resolveIcon } from '../../components/icons'
 import { formatDuration } from '../../format/quantity'
-import { useT, type TFn } from '../../i18n'
+import { useT, type MessageKey, type TFn } from '../../i18n'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { useFlipHeight } from '../../ui/flip-height'
 import { Tooltip } from '../../ui/Tooltip'
@@ -34,6 +34,7 @@ import {
 import { cardHeights } from './card-heights'
 import { PermissionSlot } from '../permission/PermissionSlot'
 import { ToolDrawer } from './ToolDrawer'
+import { ToolStepFoot } from './ToolStepFoot'
 import { EXPANDABLE_STATUSES, toolStatusLabel, toolTone, type ToolTone } from './status'
 import s from './ToolCard.module.css'
 // 路径形提示由 presenter 自述,这一侧只读表(09-13)。
@@ -598,6 +599,9 @@ const ToolStepRow = memo(function ToolStepRow({
       {drawerOpen && !hidden && (
         <ToolDrawer call={call} ctx={ctx} live={live} progress={progress} />
       )}
+      {/* 卡脚(ACP A2-c):工具自报的位置与终端。跟着行的可见性走 —— 收起的多步卡里
+        * 只有活槽位那一行有脚;两格都缺席时它画 null。判词与三张状态表在组件头上。 */}
+      {!hidden && <ToolStepFoot row={row} />}
     </>
   )
 })
@@ -694,13 +698,26 @@ function ToolRightText({
 }) {
   if (row.status === 'input-streaming') return null
 
+  /*
+   * 工具自报的「跑到哪一步」(ACP A2-c:`pending` / `in_progress` → 「等待 / 进行中」)。
+   * 只在调用还在跑时说;它**替**状态词,不替耗时 —— 耗时是这一台量的事实,那一句是
+   * 工具说的话,两件并排。收场之后 `row.phase` 自然没了(结局不带它)。
+   */
+  const phase = tone === 'busy' && row.phase ? (
+    <span className={s.toolOutcome} data-tool-phase={row.phase}>{t(TOOL_PHASE_KEYS[row.phase])}</span>
+  ) : null
+
   if (row.status === 'executing') {
     // 算不出起点就不画:一个从 0 开始重新跑的读数比没有读数更误导人。
     const elapsed = startedAt !== undefined && now > 0 ? now - startedAt : undefined
-    return elapsed === undefined ? null : (
-      <span className={s.toolDuration}>{formatDuration(elapsed)}</span>
+    return (
+      <>
+        {phase}
+        {elapsed !== undefined && <span className={s.toolDuration}>{formatDuration(elapsed)}</span>}
+      </>
     )
   }
+  if (phase) return phase
 
   if (tone === 'ok') {
     return (
@@ -716,6 +733,12 @@ function ToolRightText({
   const text = row.outcome ? outcomeText(t, row.outcome) : toolStatusLabel(t, row.status)
   return <span className={s.toolOutcome}>{text}</span>
 }
+
+/** 工具自报的两档 → 字典键。一张明表,理由与 `status.ts` 的 `TOOL_STATUS_KEYS` 同一条(不拼键)。 */
+const TOOL_PHASE_KEYS = {
+  pending: 'chat.tool.phasePending',
+  in_progress: 'chat.tool.phaseInProgress',
+} as const satisfies Record<NonNullable<ToolRowModel['phase']>, MessageKey>
 
 /** 模型说的是「哪一句 + 变量」;翻译发生在这里,所以切语言当场生效。 */
 export function outcomeText(t: TFn, outcome: ToolOutcomeModel): string {

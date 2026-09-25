@@ -1,0 +1,45 @@
+/*
+ * agent 提醒那一行(ACP A2-c)。与「拒绝也进流」那一行(`.declined`)同一族:
+ * 系统在会话里说的一句话,**说得轻一点** —— 小一号字、三级字色、无底无框。
+ * 级别色只上图标(状态色只上图标 / 点,永不换底)。
+ */
+.line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+  min-width: 0;
+}
+
+.icon {
+  flex: none;
+  width: var(--fs-meta);
+  height: var(--fs-meta);
+  align-self: center;
+  color: var(--text-3);
+}
+
+.line[data-level='success'] > .icon {
+  color: var(--ok);
+}
+
+.line[data-level='warn'] > .icon {
+  color: var(--warn);
+}
+
+.line[data-level='error'] > .icon {
+  color: var(--danger);
+}
+
+.who {
+  flex: none;
+  color: var(--text-2);
+}
+
+/* 正文是 agent 的原话:可以很长,换行铺开(它就是这一行要说的事),不截。 */
+.message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

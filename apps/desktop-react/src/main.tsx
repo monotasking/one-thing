@@ -38,7 +38,9 @@ import './content/terminal-launcher'
 import './content/browser-launcher'
 /* 「改动」面:那块瓦也是启动瓦(正本 `docs/changes-panel-2026-09.md` §3.2)。 */
 import './content/diff-launcher'
-import { startWorkbench } from './workbench/store'
+import { startWorkbench, useWorkbenchStore } from './workbench/store'
+import { sessionShownIn } from './content/session-ref'
+import { startAgentNotices } from './data/agent-notices-source'
 import { startStage } from './stage/store'
 import { startSessionProjection } from './content/session-projection'
 import { installCrashHandlers } from './services/crash'
@@ -125,6 +127,15 @@ void whenConnected().finally(() => {
    * 一切照旧)。拆卸(含 HMR)在 `resources/shell-host.ts` 自己那一段。
    */
   startShellResources()
+  /*
+   * agent 发给人的提醒(`agent:notification`,ACP A2-c)。连通之后起一条订阅,理由同上;
+   * 「会话在不在屏上」由这里递进去 —— 数据层不认识拼贴树。窗口整个不可见(最小化 / 在
+   * 别的桌面)也算不在屏上:那时只落一行系统行,人是看不见的。
+   */
+  void startAgentNotices({
+    isSessionOnScreen: (sessionId) =>
+      document.visibilityState === 'visible' && sessionShownIn(useWorkbenchStore.getState().regions, sessionId),
+  })
   // 工作区列表同理:连通之后拉一次。拉不到不挡任何事 —— 瓦面退成兜底图标,
   // 总览上一句「读不到」加后端原话(与 agent 名册那条同一口径)。
   // **当前是哪个工作区**不在这一步:它读的是 localStorage,上面 startWorkspaceApply()

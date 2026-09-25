@@ -261,6 +261,12 @@ describe('AgentsSettings · 登录与权限(A3-d)', () => {
 
   it('⑤ 「查看已授权」跳权限页', async () => {
     configureAcpAgentsPort(fakePort([row('gemini')]))
+    /*
+     * 先把 `../store` 那张模块图热起来:组件点击时 `import('./store')` 是动态的,第一次要现编
+     * (mock 的 importOriginal 会把页表整张拖进来),单跑这个文件时那一下能超过 `waitFor` 的
+     * 1000ms 缺省 —— 量到过 1018ms 的红。热过之后组件那一发命中模块缓存,断言只等一个微任务。
+     */
+    await import('../store')
     render(<AgentsSettings />)
     fireEvent.click(await screen.findByTestId('agent-view-grants'))
     await waitFor(() => expect(openPage).toHaveBeenCalledWith('permissions'))

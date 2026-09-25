@@ -35,6 +35,8 @@ import { resolveSegment } from './segments/registry'
 import { MessageActions } from './message/MessageActions'
 import { MessageChrome } from './message/MessageChrome'
 import { StopNotice } from './message/StopNotice'
+import { AgentNoticeLine } from './message/AgentNoticeRow'
+import { useSessionAgentNotices, type AgentNotice } from '../data/agent-notices-source'
 import { TailSlot, TailSpacer } from './message/TailSlot'
 import { MessageSourceFoot } from './research/SourceFoot'
 import { SegmentView } from './SegmentView'
@@ -109,6 +111,8 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
   const hasMoreBefore = useChatSourceOf(sessionId, (st) => st.hasMoreBefore)
   const loadingOlder = useChatSourceOf(sessionId, (st) => st.loadingOlder)
   const olderTick = useChatSourceOf(sessionId, (st) => st.olderTick)
+  /* agent 经宿主工具面发来的提醒(ACP A2-c)—— 不进账本,按 `at` 插进消息之间。 */
+  const agentNotices = useSessionAgentNotices(sessionId)
 
   /*
    * ── 进场那一格窗口的两个入参(2026-09-10「响应先行」)────────────────────
@@ -362,8 +366,28 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
    * 后面跟一道折痕),其余每条一行 `MessageRow`。
    */
   const ledgerRowElements: ReactElement[] = []
+  /*
+   * ── agent 的提醒按时间插进来(ACP A2-c)──────────────────────────────────
+   * 一条提醒排在**第一条比它晚的消息之前**。窗口 / 页不是从头开始时(上面还有没摆的),
+   * 比这一屏第一条还早的那些**不画** —— 它们属于上面那段,画在窗口顶端就是摆错了地方;
+   * 滚上去摆出那一段时它们自己会回到该在的位置。不进行元素账:一条会话至多 50 条,
+   * 而 `AgentNoticeRow` 按 notice 引用 memo,前后帧同一只就不重渲。
+   */
+  let noticeIndex = 0
+  const windowIsPartial = windowStart > 0 || hasMoreBefore
+  const firstAt = visible[0]?.timestamp
+  if (windowIsPartial && firstAt !== undefined) {
+    while (noticeIndex < agentNotices.length && agentNotices[noticeIndex].at < firstAt) noticeIndex += 1
+  }
+  const flushNotices = (before: number | undefined) => {
+    while (noticeIndex < agentNotices.length && (before === undefined || agentNotices[noticeIndex].at < before)) {
+      ledgerRowElements.push(agentNoticeRow(agentNotices[noticeIndex]))
+      noticeIndex += 1
+    }
+  }
   rowBooks.ledger.begin()
   for (const message of visible) {
+    flushNotices(message.timestamp)
     const flash = message.id === flashMessageId
     if (message.role === 'user') {
       /*
@@ -452,6 +476,7 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
     for (const row of rows) ledgerRowElements.push(row)
   }
   rowBooks.ledger.end()
+  flushNotices(undefined)
 
   const overlayRowElements: ReactElement[] = []
   rowBooks.overlay.begin()
@@ -1270,6 +1295,18 @@ const UserBubble = memo(function UserBubble({
     </article>
   )
 })
+
+/**
+ * agent 提醒那一行的壳(ACP A2-c):事后出现的行(`.rowLate`,软着陆),不带
+ * `data-message-id`(它不是消息)。那一句话本身在 `message/AgentNoticeRow.tsx`。
+ */
+function agentNoticeRow(notice: AgentNotice): ReactElement {
+  return (
+    <article key={notice.id} className={`${s.row} ${s.rowLate}`} data-agent-notice={notice.id}>
+      <AgentNoticeLine notice={notice} />
+    </article>
+  )
+}
 
 /** 拒绝也进流:一次没回答**也是一次回答**,不该在记录里消失,只是说得轻一点。 */
 function NoticeRow({ t }: { t: TFn }) {

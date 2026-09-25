@@ -1,7 +1,7 @@
 import { formatBytes } from '../../format/quantity'
 import type { ProjectedToolCall, ToolRowModel } from '../model/segments'
 import { parsePartialJson, partialString, type PartialJson } from './partial-json'
-import { toolResultReference } from './result'
+import { toolLocations, toolPhase, toolResultReference, toolTerminalId } from './result'
 
 /**
  * 每个 presenter 都要的那几格,算一次。
@@ -32,7 +32,22 @@ export function baseToolRow(
     // 失败时右端默认摆**后端说的那句原话**。presenter 可以覆盖,但覆盖不掉的是
     // 「失败必须说出理由」这条:成功的行没有话说可以空着,失败的不行。
     ...(failureOutcome(call) ?? {}),
+    // 工具自报的三格(ACP A2-c)。放在这里而不是某个 presenter 里,理由与耗时那格
+    // 同一条:它们与「这是哪个工具」无关,结局里写了就是事实 —— 逐个 presenter 加
+    // 就是按能力枚举,第七个一定会忘。
+    ...factsOf(call),
     ...patch,
+  }
+}
+
+function factsOf(call: ProjectedToolCall): Pick<ToolRowModel, 'phase' | 'locations' | 'terminalId'> {
+  const phase = toolPhase(call)
+  const locations = toolLocations(call)
+  const terminalId = toolTerminalId(call)
+  return {
+    ...(phase ? { phase } : {}),
+    ...(locations ? { locations } : {}),
+    ...(terminalId ? { terminalId } : {}),
   }
 }
 

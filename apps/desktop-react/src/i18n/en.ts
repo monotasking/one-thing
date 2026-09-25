@@ -755,6 +755,18 @@ export const en: Record<MessageKey, string> = {
   'chat.tool.failed': 'failed',
   'chat.tool.cancelled': 'cancelled',
   'chat.tool.inputStreaming': 'streaming args',
+  /* ACP A2-c: the step an external agent reports it is on (replaces the status word,
+   * not the duration), and the card-foot terminal button. */
+  'chat.tool.phasePending': 'waiting',
+  'chat.tool.phaseInProgress': 'in progress',
+  'chat.tool.openTerminal': 'Open terminal',
+  'chat.tool.terminalGone': 'This terminal has been closed',
+  /* ACP A4-a / A2-c: a reminder an agent sent through the host tool surface
+   * (`send_notification`) — a system row in the session, plus the notification
+   * center when the session is not on screen. `agent` is the roster name. */
+  'chat.agentNotice.label': 'Notification from {agent}',
+  'chat.agentNotice.title': '{agent}: {title}',
+  'chat.agentNotice.untitled': '{agent} sent a notification',
 
   /* ── tool card (C2-a: one card, head row, three streaming stages) ───── */
   'chat.tool.lines': '{n} lines',

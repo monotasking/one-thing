@@ -136,6 +136,25 @@ export function diffBlockOf(input: {
   return { kind: 'code', lang: 'diff', source: input.diff, ...(input.path ? { file: input.path } : {}), closed: true }
 }
 
+/**
+ * **这次调用带着一段改动吗 —— 带着就是那一块 diff**(ACP A2-c)。
+ *
+ * `changes` 在调用自己身上(投影放的,见 `result.toolChanges`),与工具是谁、画法是哪一
+ * 个无关:agent 的 `execute` 顺手改了文件、一个没人认领的工具带着 diff,都该看到同一块。
+ * 所以它是一只独立的口,兜底 presenter 与类别表(`presenters/kind.ts`)各调一次,
+ * 画出来的仍是 `diffBlockOf` 那**一个**产地。
+ */
+export function changesDiffBlock(call: ProjectedToolCall): BlockModel | undefined {
+  const changes = toolChanges(call)
+  if (!changes?.diff) return undefined
+  return diffBlockOf({
+    diff: changes.diff,
+    path: filePath(call),
+    additions: changes.additions,
+    deletions: changes.deletions,
+  })
+}
+
 /** 路径:参数优先,退到 changes 里那一份(参数名写错时它是唯一的真相)。 */
 function filePath(call: ProjectedToolCall): string | undefined {
   return argString(call, 'path', 'filePath', 'file_path') ?? toolChanges(call)?.filePath

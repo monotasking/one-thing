@@ -38,10 +38,19 @@
  *     Dock 的终端瓦,菜单里「Agent」那一组有一行「Gate Perm 开的 · …」。这一步要桌面宿主
  *     (终端要 `hasTerminalHost()`),所以住在这只门里,不在 `gate:acp`。
  *
+ *  ⑦ 工具卡保真(A2-c):第三台假 agent(`FAKE_AGENT_RICH_TOOLS=1`,`unattended: 'allow'` —— 终端桥
+ *     不问就起)收到 `@rich` 跑一遍 A2-a 的剧本:`edit_file`(kind edit,带 locations 与 diff)+
+ *     一次 `execute`(内容块是一格真终端)。屏上:那一行的工具名是 `edit_file`(不是文件名、不是
+ *     `edit`);拉开抽屉有一块 diff,两侧是 `beta` / `BETA`;卡脚列着 `rich.txt:3`;execute 那一步的
+ *     卡脚有「打开终端」。也要桌面宿主(终端桥要 `hasTerminalHost()`)。
+ *
  * 反证:把 `content/permission/PermissionCard.tsx` 里 `if (ask.choices)` 那一支挖掉 → ⑤ 的
  * 「四颗 agent 的钮」当场红(卡退回五钮);把 `composer/components/DrawerModelPicker.tsx` 里 `missing ? s.pickRowMissing : null`
  * 那一支挖掉 → ② 的「不透明度更低」当场红;把 `composer/agent-claims.ts` 认领 `model` 的那一支
- * 挖掉 → ③ 的药丸退回写 agent id,当场红。
+ * 挖掉 → ③ 的药丸退回写 agent id,当场红;把 `content/tools/presenters/index.ts` 里类别表那一行
+ * (`registerToolPresenter(kindPresenter)`)注掉 → ⑦ 的第一条当场红:没有类别表,`edit_file` 落兜底,
+ * 名字还是它,但文件名摘要没了、图标退成扳手(diff 块兜底照样画 —— `changes` 在场就画是另一条法,
+ * 所以反证判的是「行按类别借了 edit 的画法」那一格,不是 diff)。
  *
  * ── 纪律(照 gate-terminal)─────────────────────────────────────────────
  * 临时 store(`settings.json` 里注册表开关关着 —— 不联网)+ 独立 `--user-data-dir` +
@@ -80,6 +89,8 @@ const SEED_IDS = ['claude-code', 'gemini', 'codex']
 /** ⑤⑥ 那一台:同一只假 agent,打开审批与终端两条剧本;`unattended` 不写 = 缺省拒,卡真的上屏。 */
 const PERM_AGENT = 'gate-perm-agent'
 const PERM_AGENT_NAME = 'Gate Perm'
+/** ⑦ 那一台:同一只假 agent,打开 A2-a 的 `@rich` 剧本;无人应答放行,终端桥不问就起。 */
+const RICH_AGENT = 'gate-rich-agent'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -176,6 +187,7 @@ async function main() {
   const workDir = realpathSync(await mkdtemp(path.join(tmpdir(), 'acp-shell-gate-work-')))
   const fakeAgentDir = path.join(store, 'fake-agent')
   const permAgentDir = path.join(store, 'fake-agent-perm')
+  const richAgentDir = path.join(store, 'fake-agent-rich')
   /*
    * 注册表不联网(门要确定性);名册 = 种子 + ③④ 那一台假 agent(env 与根 `gate:acp` 同一份形:
    * `FAKE_AGENT_PUSH_COMMANDS=1` 让它 `session/new` 一答完就推命令表;`unattended: 'allow'` 是
@@ -205,6 +217,15 @@ async function main() {
               command: process.execPath,
               args: [fakeAgentScript],
               env: { FAKE_AGENT_CAPS: 'load', FAKE_AGENT_DIR: permAgentDir, FAKE_AGENT_PERMISSION: '1', FAKE_AGENT_TERMINAL: '1' },
+            },
+            {
+              id: RICH_AGENT,
+              name: 'Gate Rich',
+              enabled: true,
+              command: process.execPath,
+              args: [fakeAgentScript],
+              env: { FAKE_AGENT_CAPS: 'load', FAKE_AGENT_DIR: richAgentDir, FAKE_AGENT_RICH_TOOLS: '1' },
+              unattended: 'allow',
             },
           ],
         },
@@ -420,9 +441,13 @@ async function main() {
       `② 未安装的 ${TEMP_AGENT} 置灰:flag=${picker.missingFlag},不透明度 ${picker.missingOpacity} vs 对照 ${compareTo}`,
     )
 
-    // 悬停给装法(CDP 指针,只进这个窗口)。
+    // 悬停给装法(CDP 指针,只进这个窗口)。先把那一行滚进抽屉的可视段:⑦ 多种了一台假 agent 之后
+    // Agent 组 9 行,最后那一行(种的这一台)落在抽屉滚动口之外,取它的矩形中心会打在输入框上
+    // (探针读数:elementFromPoint = composer-input,没有任何 tooltip 节点)—— 指针根本没到那一行。
     const box = await page.evaluate((tempId) => {
-      const r = document.querySelector(`[data-testid="picker-agent-${tempId}"]`).getBoundingClientRect()
+      const row = document.querySelector(`[data-testid="picker-agent-${tempId}"]`)
+      row.scrollIntoView({ block: 'center' })
+      const r = row.getBoundingClientRect()
       return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
     }, TEMP_AGENT)
     await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y })
@@ -430,8 +455,17 @@ async function main() {
       '悬停出装法提示',
       () => page.evaluate(() => document.querySelector('[role="tooltip"]')?.textContent || undefined),
       5_000,
-    ).catch(() => '')
-    step(Boolean(tip), `② 悬停未安装那一行出提示:「${tip}」`)
+    ).catch(async () => {
+      const probe = await page.evaluate(({ x, y }) => {
+        const hit = document.elementFromPoint(x, y)
+        return {
+          tips: [...document.querySelectorAll('[role="tooltip"]')].map((el) => el.textContent),
+          hit: hit ? `${hit.tagName}.${hit.className} ${hit.closest('[data-testid]')?.getAttribute('data-testid') ?? ''}` : null,
+        }
+      }, box)
+      return `(没等到)${JSON.stringify(probe)}`
+    })
+    step(Boolean(tip) && !tip.startsWith('(没等到)'), `② 悬停未安装那一行出提示:「${tip}」`)
     await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 })
     // 收起抽屉(药丸是开合钮),③ 从一块干净的面板起。
     await click(page, '[data-testid="composer-model-pill"]')
@@ -677,6 +711,103 @@ async function main() {
       10_000,
     ).catch(() => undefined)
     if (sleeperCard) await pressOnCard(sleeperCard.id, 'once')
+
+    // ── ⑦ 工具卡保真:类别表 / diff / 卡脚位置 / 打开终端 ─────────────────
+    const richMade = await rpc(record, 'sessions', 'create', { name: 'acp shell gate · rich' })
+    const richSessionId = richMade?.session?.id
+    if (!richSessionId) throw new Error('sessions.create 没给出 rich 会话 id')
+    await rpc(record, 'sessions', 'updateWorkingDirectory', { sessionId: richSessionId, workingDirectory: workDir })
+    await rpc(record, 'sessions', 'updateModel', { sessionId: richSessionId, provider: 'acp', model: RICH_AGENT })
+    const richRowShown = () =>
+      page.evaluate((id) => Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)), richSessionId)
+    for (let attempt = 0; attempt < 3 && !(await richRowShown()); attempt += 1) {
+      await click(page, '[data-testid="dock-tile-sessions"]')
+      await delay(500)
+    }
+    await waitFor('总览画出 rich 会话那一行', richRowShown)
+    await click(page, `[data-testid="session-row-${richSessionId}"]`)
+    await delay(300)
+    await rpc(record, 'session-command', 'emit', {
+      sessionId: richSessionId,
+      command: { type: 'command:send-message', content: '@rich 改一下 rich.txt 再跑个 echo', suppressTitleGeneration: true },
+    })
+    /** 看得见的那张装着 `rich-edit-*` 的卡(停靠池里藏着的叶不算)。 */
+    const RICH_CARD = `[data-tool-card]:has([data-call-id^="rich-edit-"])`
+    await waitFor(
+      'edit_file 那一步收场(结局带着类别)',
+      () =>
+        page.evaluate((sel) => {
+          const card = [...document.querySelectorAll(sel)].find((el) => el.checkVisibility())
+          return card?.querySelector('[data-call-id^="rich-edit-"]')?.getAttribute('data-tool-status') === 'completed' &&
+            card?.querySelector('[data-call-id^="rich-exec-"]')?.getAttribute('data-tool-status') === 'completed'
+            ? true
+            : undefined
+        }, RICH_CARD),
+      30_000,
+    ).catch(async (error) => {
+      const text = await page.evaluate(() => document.querySelector('[data-testid="chat-stream"]')?.textContent ?? '')
+      throw new Error(`${error.message}\n会话此刻:${text.slice(0, 500)}`)
+    })
+    // 多步卡收起时只露活槽位那一行:先展开整张卡,再拉开 edit_file 那一行的抽屉。
+    await page.evaluate((sel) => {
+      const card = [...document.querySelectorAll(sel)].find((el) => el.checkVisibility())
+      const head = card?.querySelector('[data-tool-head]')
+      if (head && head.getAttribute('aria-expanded') !== 'true') head.click()
+    }, RICH_CARD)
+    await delay(250)
+    await page.evaluate((sel) => {
+      const card = [...document.querySelectorAll(sel)].find((el) => el.checkVisibility())
+      const row = card?.querySelector('[data-call-id^="rich-edit-"]')
+      if (!(row instanceof HTMLElement)) throw new Error('找不到 edit_file 那一行')
+      if (row.getAttribute('aria-expanded') !== 'true') row.click()
+    }, RICH_CARD)
+    const rich = await waitFor(
+      '抽屉里的 diff 块画出来',
+      () =>
+        page.evaluate((sel) => {
+          const card = [...document.querySelectorAll(sel)].find((el) => el.checkVisibility())
+          if (!card) return undefined
+          const row = card.querySelector('[data-call-id^="rich-edit-"]')
+          const diff = card.querySelector('[data-block-kind="diff"]')
+          if (!row || !diff) return undefined
+          const editFoot = card.querySelector(`[data-tool-foot="${row.getAttribute('data-call-id')}"]`)
+          const execRow = card.querySelector('[data-call-id^="rich-exec-"]')
+          const execFoot = execRow ? card.querySelector(`[data-tool-foot="${execRow.getAttribute('data-call-id')}"]`) : null
+          const terminal = execFoot?.querySelector('[data-tool-terminal]')
+          return {
+            name: row.querySelector('[class*="toolName"]')?.textContent ?? '',
+            summary: row.querySelector('[class*="toolSummary"]')?.textContent ?? '',
+            diffText: diff.textContent ?? '',
+            locations: [...(editFoot?.querySelectorAll('[data-tool-location]') ?? [])].map((el) => el.getAttribute('data-tool-location')),
+            terminal: terminal
+              ? { id: terminal.getAttribute('data-tool-terminal'), text: terminal.textContent, disabled: terminal.getAttribute('aria-disabled') === 'true' }
+              : null,
+          }
+        }, RICH_CARD),
+      10_000,
+    ).catch(async (error) => {
+      const text = await page.evaluate(
+        (sel) => [...document.querySelectorAll(sel)].find((el) => el.checkVisibility())?.textContent ?? '(卡不在)',
+        RICH_CARD,
+      )
+      return { name: '', summary: '', diffText: '', locations: [], terminal: null, error: `${error.message} · 卡此刻:${text.slice(0, 300)}` }
+    })
+    step(
+      rich.name === 'edit_file' && rich.summary === 'rich.txt',
+      `⑦ 工具名 = agent 起的那个:「${rich.name}」,文件名进摘要「${rich.summary}」${rich.error ? `(${rich.error})` : ''}`,
+    )
+    step(
+      rich.diffText.includes('beta') && rich.diffText.includes('BETA'),
+      `⑦ 抽屉里一块 diff,两侧 beta / BETA(diff 字面前 80 字:${rich.diffText.slice(0, 80).replace(/\s+/g, ' ')})`,
+    )
+    step(
+      rich.locations.some((loc) => /rich\.txt:3$/.test(loc ?? '')),
+      `⑦ 卡脚列出位置:${rich.locations.join(' · ') || '(没有)'}`,
+    )
+    step(
+      Boolean(rich.terminal) && /打开终端|Open terminal/.test(rich.terminal?.text ?? ''),
+      `⑦ execute 那一步卡脚有「打开终端」:${rich.terminal ? `${rich.terminal.id}(${rich.terminal.disabled ? '已关,灰' : '可点'})` : '(没有)'}`,
+    )
   } finally {
     if (record) await rpc(record, 'acp', 'removeAgent', { agentId: TEMP_AGENT }).catch(() => {})
     if (app) await app.close().catch(() => {})

@@ -97,6 +97,19 @@ export interface ToolRowModel {
   outcome?: ToolOutcomeModel
   /** 耗时(ms)。折叠器算得出就有,算不出就缺席 —— 渲染层不猜一个。 */
   durationMs?: number
+  /**
+   * **工具自报的三格事实**(ACP A2-c;产地 `tools/result.ts`,由 `baseToolRow` 统一读,
+   * 所以哪个 presenter 都自动带上 —— 不是「ACP 的 presenter 才有」,是「结局里写了就有」):
+   *
+   *  · `phase` —— 还在跑时跑到哪一步(`pending` / `in_progress`),右端画「等待 / 进行中」;
+   *  · `locations` —— 碰过的那几处,卡脚一行可点的 `path:line`;
+   *  · `terminalId` —— 嵌着的那一格终端,卡脚一颗「打开终端」。
+   *
+   * 缺席是常态(本地工具一格都不写),渲染层见不到就一个节点都不多画。
+   */
+  phase?: 'pending' | 'in_progress'
+  locations?: ReadonlyArray<{ path: string; line?: number }>
+  terminalId?: string
 }
 
 /**

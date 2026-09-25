@@ -348,3 +348,29 @@ button.row:not([aria-disabled]):hover {
     transition: background var(--dur) var(--ease);
   }
 }
+
+/*
+ * ── 卡脚(ACP A2-c):工具自报的位置与终端 ───────────────────────────────
+ * 在那一行下面、与行名同一条起笔线(左内边距 = 行内边距 + 图标 + 一格 gap),
+ * 所以它读起来是「这一行的下一句」,不是一行新的东西。位置是事实,**换行铺开不截**
+ * (截掉哪一处都是在替人挑);终端钮排在最后。
+ */
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-4) var(--sp-3) calc(var(--sp-4) + var(--fs-body) + var(--sp-3));
+}
+
+.footLocation {
+  display: inline-flex;
+  min-width: 0;
+}
+
+/* 灰着的「打开终端」:用的是 `aria-disabled`(要留在 Tab 序里让提示够得着),库件只认
+ * `:disabled`,所以同一格淡度在这里再说一次 —— 值读的是库件那一格 token,不另起一个数。 */
+.footGone {
+  opacity: var(--btn-disabled-o);
+  cursor: default;
+}

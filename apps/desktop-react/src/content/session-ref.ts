@@ -148,6 +148,27 @@ export function currentSessionOf(
 }
 
 /**
+ * 这条会话此刻**亮在屏上**吗:树里某一片叶的**活动格**装着它(两格标签看进去)。
+ *
+ * 与下面 `openSessionIdsIn` 问的不是一件事:那一句答「谁的机器该活着」(隐藏的、叶里
+ * 没亮着的都算),这一句答「人此刻看不看得见它」—— agent 的提醒(`data/agent-notices-source`)
+ * 据此决定要不要再进通知中心。叶里第二格、隐藏表里的都不算:人看不见。
+ */
+export function sessionShownIn(
+  regions: Readonly<Record<string, PaneNode>>,
+  sessionId: string,
+): boolean {
+  if (!sessionId) return false
+  for (const tree of Object.values(regions)) {
+    for (const leaf of leavesOf(tree)) {
+      const tab = activeSessionTabOf(leaf)
+      if (tab !== null && sessionIdOfRef(tab) === sessionId) return true
+    }
+  }
+  return false
+}
+
+/**
  * 全壳此刻**摆着**哪些会话(树里的 + 藏起来的)。
  *
  * 它是聊天数据机器那本引用账的输入(`content/session-projection.ts`):

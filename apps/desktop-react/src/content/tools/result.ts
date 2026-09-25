@@ -112,6 +112,52 @@ export function toolChanges(call: ProjectedToolCall): ToolChanges | undefined {
   }
 }
 
+/**
+ * **工具自报的「类别」**(ACP `kind`:read / edit / delete / move / execute / search / fetch /
+ * think / switch_mode / other,A2-a 起落在结局的 `metadata.kind` 上)。
+ *
+ * presenter 表按它选画法(`presenters/kind.ts`),**不按 agent 是谁** —— 同一台 agent
+ * 的 `edit_file` 与另一台的 `apply_patch` 是同一类事,画法由类别说。
+ * 读的是 `toolDetails`(规范形 `details` 与工具那份 `metadata` 两个名字都认)。
+ */
+export function toolKind(call: ProjectedToolCall): string | undefined {
+  return detailString(call, 'kind')
+}
+
+/** 工具碰过的那几处(ACP `locations`)。形不对的那一条丢掉,不猜。 */
+export interface ToolLocation {
+  path: string
+  line?: number
+}
+
+export function toolLocations(call: ProjectedToolCall): ToolLocation[] | undefined {
+  const raw = toolDetails(call)?.locations
+  if (!Array.isArray(raw)) return undefined
+  const out: ToolLocation[] = []
+  for (const item of raw) {
+    if (!isRecord(item) || typeof item.path !== 'string' || !item.path) continue
+    const line = typeof item.line === 'number' && Number.isInteger(item.line) && item.line > 0 ? item.line : undefined
+    out.push(line === undefined ? { path: item.path } : { path: item.path, line })
+  }
+  return out.length > 0 ? out : undefined
+}
+
+/** 这次调用里嵌着的那一格终端(ACP 内容块 `terminal`,A3-b 起它就是 onething 的终端)。 */
+export function toolTerminalId(call: ProjectedToolCall): string | undefined {
+  return detailString(call, 'terminalId')
+}
+
+/**
+ * 工具自报的**跑到哪一步**(ACP `status` 的 `pending` / `in_progress`)。只认这两档:
+ * 收场由调用自己的状态说,这一格只在它还在跑时有意义。
+ */
+export type ToolPhase = 'pending' | 'in_progress'
+
+export function toolPhase(call: ProjectedToolCall): ToolPhase | undefined {
+  const value = detailString(call, 'status')
+  return value === 'pending' || value === 'in_progress' ? value : undefined
+}
+
 /** 参数里的一格字符串。工具的参数名由**工具**说了算,所以取哪个键是 presenter 的事。 */
 export function argString(call: ProjectedToolCall, ...keys: string[]): string | undefined {
   const args = call.arguments as Record<string, unknown> | undefined

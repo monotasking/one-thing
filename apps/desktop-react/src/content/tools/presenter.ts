@@ -1,6 +1,7 @@
 import type { BlockModel } from '../model/blocks'
 import type { ProjectedToolCall, ToolRowModel } from '../model/segments'
 import { baseToolRow } from './row'
+import { changesDiffBlock } from './presenters/edit'
 
 /**
  * 「不同工具的结果怎么展示」的那张表(§5.1)。
@@ -88,13 +89,33 @@ export function resolveToolPresenter(call: ProjectedToolCall): ToolPresenter {
 export const defaultToolPresenter: ToolPresenter = {
   match: () => true,
   row: (call) => baseToolRow(call),
-  detail: (call) => [
-    {
-      kind: 'source-fallback',
-      reason: 'tool-default',
-      source: stringifyToolPayload(call),
-    },
-  ],
+  detail: (call) => {
+    /*
+     * ── 两格事实先于 JSON(ACP A2-c)────────────────────────────────────────
+     * ① 调用带着 `changes` → 先是那一块 diff(与 edit 抽屉同一个块,`changesDiffBlock`);
+     * ② 结局是工具自己那份 `{ output, … }` → 画 `output` 那段正文,不画整份 JSON。
+     *    ACP 工具的 `toolCall.result` 从 A2-a 起就是这个形(`{ output, metadata: { kind … } }`),
+     *    本地工具也常是它;JSON 原样只留给**真说不出正文**的那些 —— `metadata` 里的
+     *    kind / locations / terminalId 在卡脚上已经各有落点,再摊一遍是噪音。
+     *    `output` 是空串 = 工具明说「没有正文」,那一节就空着(抽屉自己说「没有留下结果」)。
+     */
+    const diff = changesDiffBlock(call)
+    const output = objectOutputOf(call.result)
+    const body: BlockModel[] =
+      output === undefined
+        ? [{ kind: 'source-fallback', reason: 'tool-default', source: stringifyToolPayload(call) }]
+        : output === ''
+          ? []
+          : [{ kind: 'code', lang: null, source: output, closed: true }]
+    return diff ? [diff, ...body] : body
+  },
+}
+
+/** 结局是 `{ output: string, … }` 那一形时的正文;别的形一律 undefined(裸字符串归 JSON 那一支,与从前逐字相同)。 */
+function objectOutputOf(result: unknown): string | undefined {
+  if (typeof result !== 'object' || result === null || Array.isArray(result)) return undefined
+  const output = (result as { output?: unknown }).output
+  return typeof output === 'string' ? output : undefined
 }
 
 /**
