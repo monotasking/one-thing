@@ -49,6 +49,12 @@ export interface ACPAgentConfig {
    * 只收 `[A-Za-z_][A-Za-z0-9_]*`。
    */
   secretEnv?: string[]
+  /**
+   * 从 manifest 带下来的怪癖里,**连接**要读的那几格(A2-a)。它不是用户能改的覆盖 —— 只由
+   * `effectiveAgentConfig` 从种子 / 注册表那一条抄过来,于是 `ACPManager` / 客户端(只见得到
+   * 配置、见不到名册)也知道「这台 agent 的 persona 走 `session/new._meta`」。
+   */
+  quirks?: { systemPromptMeta?: 'claude-agent-acp' }
 }
 
 /**

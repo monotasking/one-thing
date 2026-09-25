@@ -326,6 +326,8 @@ export function effectiveAgentConfig(
     args: Array.isArray(override?.args) ? [...override.args] : [...(launch?.args ?? [])],
     env: Object.keys(env).length > 0 ? env : undefined,
     promptTimeoutMs: manifest.quirks?.promptTimeoutMs,
+    // 连接要读的怪癖(A2-a):客户端据此决定 persona 走 `session/new._meta` 还是首条 prompt 头块。
+    quirks: manifest.quirks?.systemPromptMeta ? { systemPromptMeta: manifest.quirks.systemPromptMeta } : undefined,
   }
   if (override) {
     for (const field of PASSTHROUGH_OVERRIDE_FIELDS) {

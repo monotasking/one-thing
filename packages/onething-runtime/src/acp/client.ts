@@ -35,6 +35,7 @@ import type {
   ACPAgentConfig,
   ACPAgentState,
   ACPConnectionStatus,
+  ACPOpenSessionOptions,
   ACPPermissionBridge,
   ACPPermissionDecision,
   ACPUnattendedPolicy,
@@ -287,6 +288,20 @@ interface ACPSessionRecord {
   lastUsedAt: number
   /** agent 在这条会话里自述的可调选项(新开 / 恢复 / 改选项时的答复)。 */
   options: ACPSessionOption[]
+  /**
+   * persona 还欠不欠这条 agent 会话(A2-a)。`session/new` 出来、`_meta` 里也没带过 → `'owed'`,
+   * 第一条 prompt 把它折成头块后翻 `'delivered'`;恢复出来的会话 agent 自己有历史 → 生来就是
+   * `'delivered'`。记在会话上而不是回合上:选项面板可能先把会话开出来,第一条消息才到。
+   */
+  persona: 'owed' | 'delivered'
+}
+
+/**
+ * persona 头块(A2-a)。标签是给 agent 读的分隔符 —— 它知道这段是「你是谁」,不是用户这一轮的话。
+ * 导出给测试逐字比对。
+ */
+export function acpPersonaBlock(persona: string): string {
+  return `<persona>\n${persona.trim()}\n</persona>`
 }
 
 /**
@@ -842,9 +857,13 @@ export class ACPClient {
   }
 
   /** 连上并开(或恢复)这条会话,只答对应关系 —— 连接器据此落「本地会话 ↔ agent 会话」那条链接。 */
-  async openLocalSession(localSessionId: string, cwd: string | undefined): Promise<{ acpSessionId: string; cwd: string }> {
+  async openLocalSession(
+    localSessionId: string,
+    cwd: string | undefined,
+    open: ACPOpenSessionOptions = {},
+  ): Promise<{ acpSessionId: string; cwd: string }> {
     await this.connect()
-    const session = await this.ensureSession(localSessionId, cwd)
+    const session = await this.ensureSession(localSessionId, cwd, open)
     return { acpSessionId: session.acpSessionId, cwd: session.cwd }
   }
 
@@ -852,8 +871,11 @@ export class ACPClient {
     await this.connect()
     if (!this.connection) throw new Error('ACP connection is not available')
 
-    const session = await this.ensureSession(options.localSessionId, options.cwd)
+    const session = await this.ensureSession(options.localSessionId, options.cwd, { persona: options.persona })
     if (this.updateQueues.has(session.acpSessionId)) throw new Error('An ACP prompt is already active for this session')
+    // persona 只欠一次:这条 agent 会话的第一条 prompt 还它,之后(以及恢复出来的会话)不再送。
+    const personaText = session.persona === 'owed' ? options.persona?.trim() : undefined
+    session.persona = 'delivered'
     const queue = new BoundedAsyncQueue<ACPPromptStreamEvent>(
       Math.max(1, this.config.maxBufferedUpdates ?? DEFAULT_MAX_BUFFERED_UPDATES)
     )
@@ -886,6 +908,7 @@ export class ACPClient {
       connection.agent.request(acp.methods.agent.session.prompt, {
         sessionId: session.acpSessionId,
         prompt: [
+          ...(personaText ? [{ type: 'text' as const, text: acpPersonaBlock(personaText) }] : []),
           ...(options.prompt || !options.extraContent?.length ? [{ type: 'text' as const, text: options.prompt }] : []),
           ...(options.extraContent ?? []),
         ],
@@ -947,7 +970,11 @@ export class ACPClient {
    * 开出来之后按「这台 agent 上次的选择 ⊕ 这条会话里的选择」调一遍选项,再落盘。
    * 同一条会话并发来两次(选项面板 + 发送)只开一次:在飞的那一发被复用。
    */
-  private async ensureSession(localSessionId: string, rawCwd: string | undefined): Promise<ACPSessionRecord> {
+  private async ensureSession(
+    localSessionId: string,
+    rawCwd: string | undefined,
+    open: ACPOpenSessionOptions = {},
+  ): Promise<ACPSessionRecord> {
     const cwd = resolveACPSessionCwd(rawCwd)
     const existing = this.sessions.get(localSessionId)
     if (existing && existing.cwd === cwd) {
@@ -957,7 +984,7 @@ export class ACPClient {
     }
     const inflight = this.sessionOpenings.get(localSessionId)
     if (inflight) return inflight
-    const opening = this.openSession(localSessionId, cwd, existing).finally(() => {
+    const opening = this.openSession(localSessionId, cwd, existing, open).finally(() => {
       if (this.sessionOpenings.get(localSessionId) === opening) this.sessionOpenings.delete(localSessionId)
     })
     this.sessionOpenings.set(localSessionId, opening)
@@ -968,6 +995,7 @@ export class ACPClient {
     localSessionId: string,
     cwd: string,
     existing: ACPSessionRecord | undefined,
+    open: ACPOpenSessionOptions = {},
   ): Promise<ACPSessionRecord> {
     if (!this.connection) throw new Error('ACP connection is not available')
     if (existing) {
@@ -980,12 +1008,24 @@ export class ACPClient {
     const links = this.runtimeOptions.getSessionLinks?.()
     const link = links?.getLink(this.id, localSessionId)
     let opened = link && link.cwd === cwd ? await this.restoreSession(localSessionId, link.acpSessionId, cwd) : undefined
+    // 恢复出来的会话 agent 自己有历史(persona 当初已经送过),不再欠。
+    let persona: ACPSessionRecord['persona'] = 'delivered'
     if (!opened) {
+      /**
+       * `claude-agent-acp` 的怪癖(manifest `quirks.systemPromptMeta`,实测 0.81
+       * `dist/acp-agent.js:6240-6252`):`session/new` 的 `_meta.systemPrompt` 给**字符串**会整个
+       * 替换 Claude Code 自己的操作指令,给 `{ append }` 才是追加 —— 只用对象形。走了这一格,
+       * 第一条 prompt 就不再带头块(同一段话不送两遍)。
+       */
+      const personaText = open.persona?.trim()
+      const viaMeta = Boolean(personaText) && this.config.quirks?.systemPromptMeta === 'claude-agent-acp'
+      persona = viaMeta ? 'delivered' : 'owed'
       let response: NewSessionResponse
       try {
         response = await this.connection.agent.request(acp.methods.agent.session.new, {
           cwd,
           mcpServers: (this.config.mcpServers ?? []) as unknown as acp.McpServer[],
+          ...(viaMeta ? { _meta: { systemPrompt: { append: personaText } } } : {}),
         })
       } catch (error) {
         throw this.noteAuthFailure(error, 'session/new')
@@ -1002,6 +1042,7 @@ export class ACPClient {
       prompts: 1,
       lastUsedAt: Date.now(),
       options: opened.options,
+      persona,
     }
     this.sessions.set(localSessionId, session)
     this.trimSessionRecords(localSessionId)

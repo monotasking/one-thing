@@ -47,6 +47,8 @@ export interface BuildAgentLoopRuntimeOptions extends Pick<AgentLoopOptions,
   cacheKey?: string
   /** Per-provider request knob bag (see `AgentTurnRequest.providerOptions`). */
   providerOptions?: Record<string, Record<string, unknown>>
+  /** persona-only system text (see `AgentTurnRequest.persona`). */
+  persona?: string
   /** Forced tool choice for the run's FIRST model call only (see AgentLoopOptions). */
   initialToolChoice?: AgentToolChoice
   maxTurns?: number
@@ -86,6 +88,7 @@ export async function buildAgentLoopRuntime(
     reasoningEffort: options.reasoningEffort,
     cacheKey: options.cacheKey,
     providerOptions: options.providerOptions,
+    persona: options.persona,
     initialToolChoice: options.initialToolChoice,
     maxTurns: options.maxTurns,
     beforeTurn: options.beforeTurn,

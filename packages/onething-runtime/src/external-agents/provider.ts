@@ -9,6 +9,7 @@ import type {
 } from '@onething/core/agent-loop'
 import { BaseAgentProvider } from '../agent-loop/providers/base/base-agent-provider.js'
 import { getLogger } from '../logging/index.js'
+import { findAgentExecutorDescriptor } from '../agents/executor/capabilities.js'
 import type {
   ExternalAgentConnector,
   ExternalAgentImageInput,
@@ -210,14 +211,6 @@ class ExternalAgentProvider extends BaseAgentProvider {
      *
      * 这一位就是 `imagesIn` 的第二个读者:翻它会改行为,不只是改声明。
      */
-    // 多 agent 的连接器(ACP)按本轮选中的那一台答能力;其余连接器就是 `capabilities`。
-    const capabilities = options.connector.capabilitiesFor?.(request.model) ?? options.connector.capabilities
-    const deliverableImages = capabilities.imagesIn ? images : []
-    const undeliverableImageNotice =
-      !capabilities.imagesIn && images.length > 0
-        ? externalAgentImagesUnsupportedNotice(images.length)
-        : undefined
-
     /**
      * **未绑工作目录 = 不开跑**(2026-08-11 止血,审计「四堵墙」之二)。
      *
@@ -249,6 +242,20 @@ class ExternalAgentProvider extends BaseAgentProvider {
       return
     }
 
+    /**
+     * 多 agent 的连接器(ACP)按本轮选中的那一台答能力;其余连接器就是 `capabilities`。
+     * 先 `prepare`(ACP = 连上并握手)再问(A2-a,A0-3 留账):否则第一条消息读到的是握手前的
+     * 保守答案,带图的首轮会被说成「送不出」。放在工作目录检查之后:目录不对这一轮不跑,
+     * 也就不该为它拉起一个 agent 进程。
+     */
+    await options.connector.prepare?.(request.model)
+    const capabilities = options.connector.capabilitiesFor?.(request.model) ?? options.connector.capabilities
+    const deliverableImages = capabilities.imagesIn ? images : []
+    const undeliverableImageNotice =
+      !capabilities.imagesIn && images.length > 0
+        ? externalAgentImagesUnsupportedNotice(images.length)
+        : undefined
+
     // 图片送不出去的那句话排在工作目录之后:没绑目录时这一轮压根不会跑,
     // 用户该看到的是「去绑个目录」,而不是先被告知一件不相干的事。
     if (undeliverableImageNotice) {
@@ -262,6 +269,13 @@ class ExternalAgentProvider extends BaseAgentProvider {
     }
 
     const system = systemPrompt(request)
+    /**
+     * persona 的第二档(A2-a,方案 §3.4):执行器表说 `persona: 'prepend'` 的(ACP),协议上没有
+     * system 位,只收引擎单独交来的 persona 段(`request.persona`:agent 描述 / 群房 persona,
+     * 不含工具说明)。表里是 `'system'` 的(claude-code)照旧吃整份 system prompt。
+     */
+    const personaMode = findAgentExecutorDescriptor(options.connector.id)?.capabilities.persona
+    const persona = personaMode === 'prepend' ? request.persona?.trim() || undefined : undefined
     const localSessionId = options.localSessionId ?? `${options.providerId}-${request.model}`
     const resume = capabilities.resume
       ? options.resolveSessionLink?.(localSessionId)
@@ -274,6 +288,7 @@ class ExternalAgentProvider extends BaseAgentProvider {
       prompt,
       ...(deliverableImages.length > 0 ? { images: deliverableImages } : {}),
       ...(system ? { systemPrompt: system } : {}),
+      ...(persona ? { persona } : {}),
       // `||`: unbound sessions arrive with an empty-string working dir.
       cwd,
       // The provider id doubles as the picker's pseudo-model; only a real

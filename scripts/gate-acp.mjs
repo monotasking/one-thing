@@ -22,6 +22,12 @@
  *      假 agent 在 `session/new` 答完后立刻推 `available_commands_update` —— 此刻没有任何
  *      prompt 在飞 —— `acp.sessionState` 里要有那条命令,SSE 上要见到带它的 `acp:session-state`。
  *
+ * A2-a(方案 §7 ⑥⑦;同一台 `fake` 的第二轮走 `@rich` 剧本,读投影与账本):
+ *   ⑥ diff:`tool_call_update` 带 `diff` → 工具卡 `changes` 有 `-beta` / `+BETA` / `+delta`、增 2 删 1,
+ *      账本 `tool/result` 上有 `changes`;agent 自报的 `name`(edit_file)是工具名,`kind` 与
+ *      `locations` 留在结局的 `metadata` 上。
+ *   ⑦ terminal:假 agent 经终端桥真起一条终端,`terminal` 内容块里的 id = 工具卡结局 `metadata.terminalId`。
+ *
  *
  * A3-b(方案 §7 ⑪–⑭ / ⑯;server 从这一单起也挂审批 / 文件 / 终端三只桥,门自己当应答者:订
  * SSE 上的 `permission:request`,按步发 `command:permission-respond`)。用第二台假 agent
@@ -312,6 +318,7 @@ try {
           FAKE_AGENT_DIR: agentDir,
           FAKE_AGENT_PUSH_COMMANDS: '1',
           FAKE_AGENT_ROGUE_METHOD: '1',
+          FAKE_AGENT_RICH_TOOLS: '1',
         },
         // ①–④ 不验审批:显式打开无人应答放行(A3-b 起桥里前置放行,不上卡)。
         unattended: 'allow',
@@ -417,7 +424,10 @@ try {
    * 所以这里验它的**后果**:工具卡的结果恰是假 agent 自己给的 `rawOutput`。本地的 `read` 若真跑了,
    * 临时目录里没有 README.md,结果只会是一条「文件不存在」,不可能是 `{"ok":true}`。
    */
-  check(toolCall?.status === 'completed' && toolCall?.result === JSON.stringify(AGENT_TOOL_OUTPUT),
+  // A2-a 起 ACP 工具的结局是 `{ output, metadata: { kind, … } }`(与内置工具同形,kind 供壳选 presenter),
+  // agent 给的 `rawOutput` 在 `output` 里。
+  const toolResultText = result => (typeof result === 'string' ? result : result?.output)
+  check(toolCall?.status === 'completed' && toolResultText(toolCall?.result) === JSON.stringify(AGENT_TOOL_OUTPUT),
     `③ 工具调用走到终态 completed,结果是 agent 给的而非本地执行(externallyExecuted 生效;读到 ${JSON.stringify(toolCall
       ? { status: toolCall.status, result: toolCall.result } : null)})`)
 
@@ -461,6 +471,37 @@ try {
   const frame = sse.frames.find(item => item.event === 'acp:session-state'
     && item.data?.state?.localSessionId === idleId && hasReview(item.data.state))
   check(Boolean(frame), '④ GET /api/events 上见到带这条命令的 acp:session-state 帧')
+
+  // ── A2-a ⑥ diff / ⑦ terminal:同一台 `fake`(无人应答放行),第二轮走 `@rich` 剧本 ──────
+  await sendMessage(rpc, boundId, '@rich 改一下 rich.txt 再跑个 echo')
+  const richDone = await waitFor(() => sse.frames.filter(item => item.event === 'session:event'
+    && item.data?.sessionId === boundId && item.data?.event?.type === 'stream:complete').length >= 2, 20_000)
+  check(Boolean(richDone), '⑥ @rich 这一轮收场了')
+  const richReply = await waitFor(async () => {
+    const message = await lastAssistant(rpc, boundId)
+    return toolCallsOf(message).some(call => call.id === 'rich-exec-2') ? message : undefined
+  }, 5_000)
+  const richCalls = toolCallsOf(richReply ?? await lastAssistant(rpc, boundId))
+  const editCall = richCalls.find(call => call.id === 'rich-edit-2')
+  const diffText = String(editCall?.changes?.diff ?? '')
+  check(editCall?.toolName === 'edit_file' || editCall?.name === 'edit_file' || editCall?.toolId === 'edit_file',
+    `⑥ agent 自报的 name 成了工具名(读到 ${JSON.stringify(editCall ? { toolName: editCall.toolName, toolId: editCall.toolId } : null)})`)
+  check(diffText.includes('-beta') && diffText.includes('+BETA') && diffText.includes('+delta')
+    && editCall?.changes?.additions === 2 && editCall?.changes?.deletions === 1,
+    `⑥ tool_call_update 带 diff → 工具卡 changes 有旧 / 新两侧的行(读到 ${JSON.stringify(editCall?.changes ?? null)})`)
+  check(sameJson(editCall?.result?.metadata?.locations, [{ path: path.join(workDir, 'rich.txt'), line: 3 }])
+    && editCall?.result?.metadata?.kind === 'edit',
+    `⑥ locations 与 kind 留在结局上(读到 ${JSON.stringify(editCall?.result?.metadata ?? null)})`)
+  const richLedgerFile = path.join(storePath, 'sessions', boundId, 'events.jsonl')
+  const richLedger = fs.existsSync(richLedgerFile)
+    ? fs.readFileSync(richLedgerFile, 'utf-8').split('\n').filter(Boolean).map(line => JSON.parse(line))
+    : []
+  const editResult = richLedger.find(record => record.type === 'tool/result' && record.data?.callId === 'rich-edit-2')
+  check(Boolean(editResult?.data?.changes), `⑥ 账本 tool/result 上有 changes 一格(读到 ${JSON.stringify(editResult?.data?.changes ?? null)})`)
+  const agentTerminal = readCalls(agentDir).find(call => call.method === 'rich-term')?.terminalId
+  const execCall = richCalls.find(call => call.id === 'rich-exec-2')
+  check(Boolean(agentTerminal) && agentTerminal !== 'fake-term' && execCall?.result?.metadata?.terminalId === agentTerminal,
+    `⑦ terminal 内容块 → 工具卡带 terminalId(agent 经终端桥起的 ${agentTerminal ?? '缺席'};卡上 ${JSON.stringify(execCall?.result?.metadata ?? null)})`)
 
   // ── A3-b ⑪–⑭ / ⑯:门当应答者 ────────────────────────────────────
   const answerer = startAnswerer(rpc, sse.frames)
@@ -693,4 +734,4 @@ if (failures.length > 0) {
   console.error(`[gate:acp] ${failures.length} check(s) failed`)
   process.exit(1)
 }
-console.log('[gate:acp] ok —— ① 握手 / ② 会话目录 / ③ 流与协议外请求 / ④ prompt 之外的状态 / ⑪ 四选项 / ⑫ 始终允许 / ⑬ fs / ⑭ terminal / ⑮ 提问 / ⑯ 无人应答 / ⑯b 登录 全绿')
+console.log('[gate:acp] ok —— ① 握手 / ② 会话目录 / ③ 流与协议外请求 / ④ prompt 之外的状态 / ⑥ diff / ⑦ terminal / ⑪ 四选项 / ⑫ 始终允许 / ⑬ fs / ⑭ terminal / ⑮ 提问 / ⑯ 无人应答 / ⑯b 登录 全绿')

@@ -1035,6 +1035,9 @@ export async function buildOnethingAgentLoopStreamRuntime<
 					| undefined,
 			),
 		},
+		// system 前缀里「你是谁」那一段,单独再交一份(ACP A2-a):没有 system 位的外部执行器
+		// 只收它,不收本地工具说明。普通 provider 不读这一格。
+		persona: requestMessages.persona,
 		// First model call only — see AgentLoopOptions.initialToolChoice. A
 		// standing 'required' would make every round owe another tool call and
 		// the run could never end on its own.

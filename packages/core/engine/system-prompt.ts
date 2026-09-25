@@ -93,4 +93,10 @@ export interface CoreBuildPromptResult {
 	 * also what persists them so the next rebuild replays identical bytes.
 	 */
 	turn?: TurnBlock[];
+	/**
+	 * system 前缀里「你是谁」的那一段(agent 描述 / 群房 persona),单独再给一份(ACP A2-a)。
+	 * 它已经在 `systemPrompt` 里了;这一格给没有 system 位的外部执行器 —— 它们只该收 persona,
+	 * 不该收本地工具说明,而从拼好的整串里切不出来。哪几段算 persona 由产品层的 builder 说。
+	 */
+	persona?: string;
 }

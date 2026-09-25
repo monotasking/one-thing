@@ -401,6 +401,13 @@ export interface AgentTurnRequest extends AgentExecutionCheckpoints {
    * the opaque-bag rule exists to prevent.
    */
   providerOptions?: Record<string, Record<string, unknown>>
+  /**
+   * 只含「你是谁」的那一段 system 文本(agent 描述 / 群房 persona),**不含**工具说明与产品内置段
+   * (ACP A2-a)。它已经在 `messages` 的 system 位里了 —— 这一格是给**没有 system 位**的执行器
+   * (外部 agent 的 `persona: 'prepend'`)单独取用的:从拼好的整串里切不出哪段是 persona。
+   * 普通 provider 不读它。宿主不给 = 没有 persona 可单独送。
+   */
+  persona?: string
   abortSignal?: AbortSignal
   onEvent?: (event: AgentStreamEvent) => void
   turn: number
@@ -497,6 +504,8 @@ export interface AgentLoopOptions extends AgentExecutionCheckpoints {
   cacheKey?: string
   /** Forwarded onto every `AgentTurnRequest` of this run (see there). */
   providerOptions?: Record<string, Record<string, unknown>>
+  /** Forwarded onto every `AgentTurnRequest` of this run (see `AgentTurnRequest.persona`). */
+  persona?: string
   sessionId: string
   messageId: string
   workingDirectory?: string

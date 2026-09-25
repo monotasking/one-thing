@@ -352,6 +352,7 @@ vi.mock("@onething/runtime/acp/manager", async () => {
 			openSession: mocks.acpOpenSession,
 			cancelSession: vi.fn(async () => {}),
 			getAgentHandshake: () => undefined,
+			prepareAgent: vi.fn(async () => {}),
 			getSessionLinkStore: () => links,
 		},
 	};
@@ -700,7 +701,8 @@ describe("agent-loop stream entry integration", () => {
 			isImageGeneration: false,
 			pausedForConfirmation: false,
 		});
-		expect(mocks.acpOpenSession).toHaveBeenCalledWith("codex-acp", "s1", "/tmp/project");
+		// 第四格是开会话的附带项(A2-a:persona);这条用例的 buildPrompt 替身没有 persona。
+		expect(mocks.acpOpenSession).toHaveBeenCalledWith("codex-acp", "s1", "/tmp/project", {});
 		expect(mocks.acpStreamPrompt).toHaveBeenCalledWith("codex-acp", {
 			localSessionId: "s1",
 			prompt: "hello",

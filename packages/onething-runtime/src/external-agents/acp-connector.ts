@@ -2,7 +2,8 @@ import type { ContentBlock, InitializeResponse } from '@agentclientprotocol/sdk'
 import { ACPManager } from '../acp/manager.js'
 import { ACP_CONNECTOR_ID } from '../acp/session-links.js'
 import { translateACPPromptStream, type ACPWireStreamEvent } from '../acp/translate.js'
-import type { ACPPromptStreamOptions } from '../acp/types.js'
+import type { ACPOpenSessionOptions, ACPPromptStreamOptions } from '../acp/types.js'
+import { getLogger } from '../logging/index.js'
 import type {
   ExternalAgentCapabilities,
   ExternalAgentConnector,
@@ -18,20 +19,30 @@ export { ACP_CONNECTOR_ID }
  * 连接器本身不持有任何连接或会话 —— 生命周期归 `ACPManager`(闲置回收 + 关机)。
  */
 export interface AcpConnectorDeps {
-  openSession(agentId: string, localSessionId: string, cwd: string): Promise<{ acpSessionId: string; cwd: string }>
+  openSession(
+    agentId: string,
+    localSessionId: string,
+    cwd: string,
+    open?: ACPOpenSessionOptions,
+  ): Promise<{ acpSessionId: string; cwd: string }>
   streamPrompt(agentId: string, options: ACPPromptStreamOptions): AsyncIterable<ACPWireStreamEvent>
   cancelSession(localSessionId: string): Promise<void>
   handshake(agentId: string): InitializeResponse | undefined
+  /** 连上并握手、不开会话(A2-a):让 `capabilitiesFor` 在第一条消息上就答真话。 */
+  prepare(agentId: string): Promise<void>
 }
 
 export type AcpConnectorOptions = Partial<AcpConnectorDeps>
 
 const managerDeps: AcpConnectorDeps = {
-  openSession: (agentId, localSessionId, cwd) => ACPManager.openSession(agentId, localSessionId, cwd),
+  openSession: (agentId, localSessionId, cwd, open) => ACPManager.openSession(agentId, localSessionId, cwd, open),
   streamPrompt: (agentId, options) => ACPManager.streamPrompt(agentId, options) as AsyncIterable<ACPWireStreamEvent>,
   cancelSession: localSessionId => ACPManager.cancelSession(localSessionId),
   handshake: agentId => ACPManager.getAgentHandshake(agentId),
+  prepare: agentId => ACPManager.prepareAgent(agentId),
 }
+
+const log = getLogger('acp.connector')
 
 /**
  * 还没握过手时的答案:只说协议保证的那几条,自述才有的一律 false。
@@ -83,8 +94,10 @@ function imageToContentBlock(input: ExternalAgentImageInput): ContentBlock {
  * 本轮的 `model` 就是 agent id。
  *
  * 一轮 = 先开(或恢复)会话并交出链接(`session-established`),再把 prompt 的事件流
- * 交给 `acp/translate.ts` 翻成引擎回合事件。system prompt 不送:ACP 没有 system 位,
- * 整份拼进用户消息会把本地工具说明灌给一个根本没有这些工具的 agent。
+ * 交给 `acp/translate.ts` 翻成引擎回合事件。整份 system prompt 不送:ACP 没有 system 位,
+ * 整份拼进用户消息会把本地工具说明灌给一个根本没有这些工具的 agent。只送 persona
+ * (`request.persona`,A2-a):怎么送(`_meta` 还是首条 prompt 头块)、送不送(恢复的会话不送)
+ * 由 `ACPClient` 按这条 agent 会话的实情定。
  */
 export function createAcpConnector(options: AcpConnectorOptions = {}): ExternalAgentConnector {
   const deps: AcpConnectorDeps = { ...managerDeps, ...options }
@@ -96,11 +109,25 @@ export function createAcpConnector(options: AcpConnectorOptions = {}): ExternalA
       return model ? capabilitiesFromHandshake(deps.handshake(model)) : ACP_BASELINE_CAPABILITIES
     },
 
+    /**
+     * A0-3 留账:包装器在 `streamTurn` 之前就问能力,那时还没握过手,首轮带图被说成「送不出」。
+     * 这里先连上握手;失败不抛 —— 同一个错误会在 `streamTurn` 开会话时以正常的方式交给用户。
+     */
+    async prepare(model: string | undefined): Promise<void> {
+      if (!model || deps.handshake(model)) return
+      try {
+        await deps.prepare(model)
+      } catch (error) {
+        log.warn('prepare (connect before capabilities) failed', { agentId: model }, error)
+      }
+    },
+
     async *streamTurn(request: ExternalAgentTurnRequest): AsyncIterable<ExternalAgentEvent> {
       const agentId = request.model
       if (!agentId) throw new Error('ACP agent id is missing (the turn model names the agent)')
 
-      const opened = await deps.openSession(agentId, request.localSessionId, request.cwd)
+      const persona = request.persona?.trim() || undefined
+      const opened = await deps.openSession(agentId, request.localSessionId, request.cwd, persona ? { persona } : {})
       const now = Date.now()
       yield {
         type: 'session-established',
@@ -124,6 +151,7 @@ export function createAcpConnector(options: AcpConnectorOptions = {}): ExternalA
           abortSignal: request.abortSignal,
           ...(request.messageId ? { messageId: request.messageId } : {}),
           ...(extraContent.length > 0 ? { extraContent } : {}),
+          ...(persona ? { persona } : {}),
         }),
         request.turn,
       )

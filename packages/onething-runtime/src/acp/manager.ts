@@ -8,6 +8,7 @@ import type {
   AcpTerminalBridge,
   ACPPromptStreamEvent,
   ACPPromptStreamOptions,
+  ACPOpenSessionOptions,
   ACPSessionOption,
   ACPSessionOptionsSnapshot,
   ACPSettings,
@@ -188,8 +189,18 @@ class ACPManagerClass {
     agentId: string,
     localSessionId: string,
     cwd: string | undefined,
+    open: ACPOpenSessionOptions = {},
   ): Promise<{ acpSessionId: string; cwd: string }> {
-    return this.usableClient(agentId).openLocalSession(localSessionId, cwd)
+    return this.usableClient(agentId).openLocalSession(localSessionId, cwd, open)
+  }
+
+  /**
+   * 连上并握手,不开会话(A2-a)。连接器在读 `capabilitiesFor` 之前调它 —— 否则第一条消息
+   * 读到的是握手前的保守能力,带图的首轮会被说成「送不出」。与开会话同一道开关判断:
+   * 被停用的 agent 不会因为这一步被拉起来。
+   */
+  async prepareAgent(agentId: string): Promise<void> {
+    await this.usableClient(agentId).connect()
   }
 
   /**

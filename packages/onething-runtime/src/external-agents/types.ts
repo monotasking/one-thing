@@ -96,6 +96,13 @@ export interface ExternalAgentTurnRequest {
    * 的只能拼在用户消息前面(ACP 没有 system 位)。
    */
   systemPrompt?: string
+  /**
+   * 只含「你是谁」的那一段(A2-a,方案 §3.4 / §11.4):agent 描述、群房 persona。**不含**工具说明、
+   * 工作区规则与产品内置段 —— 那些讲的是本地工具,对一台自带工具的外部 agent 是噪音甚至误导。
+   * 只有执行器表里 `persona: 'prepend'` 的执行器收到它(`provider.ts` 按表判);怎么送、送几次
+   * 是 connector 的事(ACP:会话首条 prompt 的头块,或 manifest 怪癖下的 `session/new._meta`)。
+   */
+  persona?: string
   cwd: string
   /** Connector-specific model/agent selector (ACP agent id, claude model, …). */
   model?: string
@@ -265,6 +272,12 @@ export interface ExternalAgentConnector {
    * 自述的连接器才实现它**(ACP);缺席 = 读 `capabilities`。
    */
   capabilitiesFor?(model: string | undefined): ExternalAgentCapabilities
+  /**
+   * 在读 `capabilitiesFor` 之前把「能力的来源」备好(A2-a):ACP = 连上那台 agent 并握手。
+   * 缺席 = 能力不靠握手(`capabilities` 是常量)。**绝不抛**:备不好就按保守能力走,
+   * 真正的失败留给 `streamTurn` 以正常的方式说。
+   */
+  prepare?(model: string | undefined): Promise<void>
   streamTurn(request: ExternalAgentTurnRequest): AsyncIterable<ExternalAgentEvent>
   interrupt(localSessionId: string): Promise<void>
   /**

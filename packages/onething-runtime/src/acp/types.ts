@@ -56,6 +56,18 @@ export interface ACPPromptStreamOptions {
   messageId?: string
   /** 跟在文本后面的内容块(图片等);只有握手声明接得住的 agent 才会收到。 */
   extraContent?: ContentBlock[]
+  /**
+   * 这条会话的 persona(A2-a,方案 §3.4)。ACP 协议正文没有 system 位,所以它只送一次:
+   * 客户端在「这条 agent 会话是刚 `session/new` 出来、还一轮都没跑过」时把它折成第一个
+   * `text` 块 `<persona>…</persona>`;恢复(load / resume)的会话 agent 自己有历史,不再送;
+   * manifest 标了 `quirks.systemPromptMeta` 的 agent 已在 `session/new` 的 `_meta` 里收过,也不再送。
+   */
+  persona?: string
+}
+
+/** 开会话时顺带递进去的东西(A2-a)。今天只有 persona:走 `_meta` 的那一档要在 `session/new` 时就给。 */
+export interface ACPOpenSessionOptions {
+  persona?: string
 }
 
 export interface ACPPermissionOptionInfo {

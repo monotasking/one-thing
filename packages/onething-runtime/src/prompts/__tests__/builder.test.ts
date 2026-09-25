@@ -199,3 +199,36 @@ describe('onething prompt builder', () => {
     })
   })
 })
+
+describe('persona 单独交出(ACP A2-a)', () => {
+  it('只含 agent 段,不含工具说明 / 产品默认身份 / 内置段', async () => {
+    const prompt = await buildOnethingPrompt({
+      providerId: 'acp',
+      model: 'pi',
+      hasTools: true,
+      toolNames: ['read', 'edit', 'write', 'bash'],
+      skills: [],
+      host,
+      historyMessages: [{ role: 'user', content: 'hello' }],
+    }, testPromptComposer)
+    expect(prompt.persona).toBe('# Agent: Review Agent\n\nKeep answers concise.')
+    // 整份 system 里有工具说明,persona 里没有。
+    expect(prompt.systemPrompt).toContain('Tool Guidelines:')
+    expect(prompt.persona).not.toContain(ONETHING_DEFAULT_SYSTEM_PROMPT)
+  })
+
+  it('群房回合:显式给的 base(房间 persona)在前;agent 段禁用时只剩它', async () => {
+    const prompt = await buildOnethingPrompt({
+      providerId: 'acp',
+      model: 'pi',
+      hasTools: true,
+      toolNames: ['read', 'edit'],
+      skills: [],
+      host,
+      baseSystemPrompt: 'You are Iris in room Studio.',
+      disabledSections: ['agent', 'tool-guidelines'],
+      historyMessages: [{ role: 'user', content: 'hello' }],
+    }, testPromptComposer)
+    expect(prompt.persona).toBe('You are Iris in room Studio.')
+  })
+})

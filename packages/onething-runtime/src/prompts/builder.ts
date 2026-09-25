@@ -121,13 +121,44 @@ export async function buildOnethingPrompt(
 	options: BuildOnethingPromptOptions,
 	composer: PromptComposer = defaultOnethingPromptComposer,
 ): Promise<BuildOnethingPromptResult> {
-	return composer.build({
+	const result = await composer.build({
 		...resolveOnethingPromptContext(options),
 		providerId: options.providerId,
 		historyMessages: options.historyMessages,
 		separateDeveloperMessages:
 			options.separateDeveloperMessages ?? options.providerId === "codex",
 	});
+	const persona = onethingPersonaPrompt(options, result.sections);
+	return persona ? { ...result, persona } : result;
+}
+
+/**
+ * 内置表里「说你是谁」的段(ACP A2-a)。今天只有 `agent`(agent 自己的 persona / 描述);
+ * 表归这个文件,所以名单也归这里,composer 与 core 不认识任何一段的名字。
+ */
+const PERSONA_SECTION_IDS: ReadonlySet<string> = new Set(["agent"]);
+
+/**
+ * 这一轮 system 前缀里的 persona 部分,给没有 system 位的外部执行器(`persona: 'prepend'`)
+ * 单独取用 —— 它们只该收「你是谁」,不该收本地工具说明、工作区规则与产品内置段(那些讲的是
+ * 它根本没有的工具)。两个来处,按 system 前缀里的先后:
+ *
+ *  1. **调用方显式给的** `baseSystemPrompt`(群房回合:persona + 花名册 + 情况说明,由宿主的
+ *     房间覆盖换进来)。没给就是产品默认的助理身份 —— 那不是 persona,不送;而且只取 base 本身,
+ *     它后面拼的 `Tool Guidelines:` 条目不在其中。
+ *  2. 已经过滤、渲染好的 `agent` 段(禁用了就不在 `sections` 里,这里也就没有)。
+ */
+function onethingPersonaPrompt(
+	options: BuildOnethingPromptOptions,
+	sections: CoreBuildPromptResult["sections"],
+): string | undefined {
+	const parts = [
+		options.baseSystemPrompt?.trim(),
+		...(sections ?? [])
+			.filter((section) => PERSONA_SECTION_IDS.has(section.name))
+			.map((section) => section.content.trim()),
+	].filter((part): part is string => Boolean(part));
+	return parts.length > 0 ? parts.join("\n\n") : undefined;
 }
 
 /**

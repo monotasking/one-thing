@@ -27,6 +27,15 @@
 //   再起一次本脚本:打印一行、写下 credentials、退出码 0;agent 型 = `authenticate` 直接写下 credentials。
 // FAKE_AGENT_ELICIT=1 + 正文 `@elicit`:发一张 `elicitation/create` 表单(一道单选 + 一道自由输入),
 //   把客户端的答复(或错误码)记进 calls.log,然后照常说完这一轮。
+//
+// A2-a 三条(gate:acp ⑥⑦ / 单测):
+// FAKE_AGENT_RICH_TOOLS=1 + 正文 `@rich`:一次带 `name: 'edit_file'`、`kind: 'edit'`、`locations` 的工具
+//   从 pending → in_progress → completed,收尾内容是一块 `diff`(改 `<cwd>/rich.txt` 第 2 行、加第 4 行);
+//   再一次 `kind: 'execute'` 的工具,内容是一块 `terminal`(经客户端的终端桥真起一条;桥不在就用
+//   假 id `fake-term`);最后两段 `compaction_summary_chunk`(同一个 compactionId)。
+// FAKE_AGENT_RECORD_PROMPT=1:每轮把收到的 prompt 内容块(type + 文本前 400 字)记进 calls.log。
+// FAKE_AGENT_IMAGE=1:握手自报 `promptCapabilities.image`。
+// `session/new` 带了 `_meta` 就把它记进那一行的 `meta` 格(不带就没有这一格,别的用例逐条比对不受影响)。
 import { AgentSideConnection, PROTOCOL_VERSION, RequestError, ndJsonStream } from '@agentclientprotocol/sdk'
 import { Readable, Writable } from 'node:stream'
 import { closeSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -158,6 +167,50 @@ async function terminalScript(conn, s) {
   }
 }
 
+async function richToolsScript(conn, s) {
+  const path = join(s.cwd, 'rich.txt')
+  const editId = `rich-edit-${s.turns}`
+  await conn.sessionUpdate({
+    sessionId: s.id,
+    update: {
+      sessionUpdate: 'tool_call', toolCallId: editId, title: 'Edit rich.txt', name: 'edit_file', kind: 'edit',
+      status: 'pending', locations: [{ path, line: 3 }], rawInput: { path },
+    },
+  })
+  await conn.sessionUpdate({ sessionId: s.id, update: { sessionUpdate: 'tool_call_update', toolCallId: editId, status: 'in_progress' } })
+  await conn.sessionUpdate({
+    sessionId: s.id,
+    update: {
+      sessionUpdate: 'tool_call_update', toolCallId: editId, status: 'completed',
+      content: [{ type: 'diff', path, oldText: 'alpha\nbeta\ngamma\n', newText: 'alpha\nBETA\ngamma\ndelta\n' }],
+    },
+  })
+  let terminalId = 'fake-term'
+  try {
+    const terminal = await conn.createTerminal({ sessionId: s.id, command: '/bin/sh', args: ['-c', 'echo rich'], cwd: s.cwd })
+    terminalId = terminal.id
+    await terminal.waitForExit()
+  } catch (error) {
+    logCall({ method: 'rich-term-fallback', message: String(error?.message ?? error) })
+  }
+  logCall({ method: 'rich-term', terminalId })
+  const execId = `rich-exec-${s.turns}`
+  await conn.sessionUpdate({
+    sessionId: s.id,
+    update: {
+      sessionUpdate: 'tool_call', toolCallId: execId, title: 'Run echo rich', kind: 'execute', status: 'in_progress',
+      content: [{ type: 'terminal', terminalId }],
+    },
+  })
+  await conn.sessionUpdate({ sessionId: s.id, update: { sessionUpdate: 'tool_call_update', toolCallId: execId, status: 'completed' } })
+  for (const text of ['Earlier we edited rich.txt. ', 'Then ran echo.']) {
+    await conn.sessionUpdate({
+      sessionId: s.id,
+      update: { sessionUpdate: 'compaction_summary_chunk', compactionId: 'cmp-1', content: { type: 'text', text } },
+    })
+  }
+}
+
 const stream = ndJsonStream(Writable.toWeb(process.stdout), Readable.toWeb(process.stdin))
 new AgentSideConnection(conn => ({
   async initialize(params) {
@@ -168,6 +221,7 @@ new AgentSideConnection(conn => ({
       protocolVersion: PROTOCOL_VERSION,
       agentCapabilities: {
         loadSession: caps === 'load',
+        ...(process.env.FAKE_AGENT_IMAGE === '1' ? { promptCapabilities: { image: true } } : {}),
         sessionCapabilities: caps === 'resume' ? { resume: {} } : {},
       },
       // 自报身份:gate:acp ① 拿它与 `acp.getAgents` 那一行逐字比对。
@@ -182,7 +236,7 @@ new AgentSideConnection(conn => ({
     }
     const s = { id: randomUUID(), cwd: params.cwd, model: 'alpha', turns: 0 }
     writeSession(s)
-    logCall({ method: 'new', id: s.id, cwd: params.cwd })
+    logCall({ method: 'new', id: s.id, cwd: params.cwd, ...(params._meta ? { meta: params._meta } : {}) })
     if (process.env.FAKE_AGENT_PUSH_COMMANDS === '1') {
       setImmediate(() => {
         conn.sessionUpdate({
@@ -244,11 +298,20 @@ new AgentSideConnection(conn => ({
     const s = readSession(params.sessionId)
     s.turns += 1
     writeSession(s)
-    const text = params.prompt?.find(block => block.type === 'text')?.text ?? ''
+    if (process.env.FAKE_AGENT_RECORD_PROMPT === '1') {
+      logCall({
+        method: 'prompt-blocks',
+        turn: s.turns,
+        blocks: (params.prompt ?? []).map(block => ({ type: block.type, ...(block.type === 'text' ? { text: block.text.slice(0, 400) } : {}) })),
+      })
+    }
+    // 剧本口令看的是**用户那一段**:persona 头块(`<persona>`)排在它前面时跳过去。
+    const text = params.prompt?.filter(block => block.type === 'text').map(block => block.text).find(t => !t.startsWith('<persona>')) ?? ''
     if (process.env.FAKE_AGENT_PERMISSION === '1' && text.startsWith('@perm')) await permissionScript(conn, s, text.startsWith('@perm1') ? 1 : 2)
     if (process.env.FAKE_AGENT_FS === '1' && text.startsWith('@fs')) await fsScript(conn, s)
     if (process.env.FAKE_AGENT_TERMINAL === '1' && text.startsWith('@term')) await terminalScript(conn, s)
     if (process.env.FAKE_AGENT_ELICIT === '1' && text.startsWith('@elicit')) await elicitScript(conn, s)
+    if (process.env.FAKE_AGENT_RICH_TOOLS === '1' && text.startsWith('@rich')) await richToolsScript(conn, s)
     const rogue = process.env.FAKE_AGENT_ROGUE_METHOD === '1' && s.turns === 1
     if (rogue) {
       // 协议外请求:客户端没挂这个方法,SDK 该以 -32601 回绝;回绝不该掐断连接。
