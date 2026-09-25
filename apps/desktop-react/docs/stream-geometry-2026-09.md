@@ -3887,3 +3887,71 @@ warn 前 1.2s 的尺寸变化逐帧排出来。
 - 同一条会话在两片叶里以**不同列宽**同时开着时,两只观察者轮流把那本账按宽作废,账等于没有 ——
   代价是退回 240px 估计,不比今天差;真要治得按宽分本。
 - 冻结线今天**只在一轮进行中**判;轮与轮之间的「旧行偷偷变」(异步高亮、图解码)仍只由整列那一格看。
+
+## 23. P5-a · 生成的图在 React 壳上显出来(`media://` 一支)(2026-09-25,施工单)
+
+### 23.1 病根不在图片段
+
+§4 把「图片」排在 P5,`markdown-image` 正本 §0 说「账本里的图片 part……生成的图在 React 壳上
+一张都不显示」。09-25 只读扫真店(556 条会话):`kind:'image'` 的 part **0 条**、
+`onething-blob://` 占位 **0 条**。图片段今天**没有产地**——生图流早已不走它:
+`provider-data.ts` 的 `planOnethingProviderDataPart` 把 `image-generation-result` 落成**一段正文**
+`![Generated Image|mediaId:<id>](media://<id><ext>)`(字节进媒体库,`saveMediaImage`),任何
+provider 同一条路。这段 markdown 在壳里走 markdown → `image` 块 → `blocks/asset/resolve.ts`,而那张
+scheme 白名单只有 `data: / http: / https: / file:` —— `media:` 落 `unresolvable/scheme`,屏幕上是一行
+「地址不认识」的诚实态。**这才是「生成的图一张不显示」的产地。**
+
+图片段(`segments/kinds/image.ts`)照旧 `View` 回 null,不动:没有产地的东西不通电。
+`markdown-image` 正本 §6 的 P2 那一行改写成本节(账本 part 那条路记为「无产地」)。
+
+### 23.2 取字节的口:通用 RPC,不是第二条通道
+
+浏览器面上 `<img src>` 带不了 Bearer,`GET /api/media/file/<name>` 那条路只有 dev 代理替它补头时
+才走得通;桌面壳的渲染进程直连 core,`<img>` 打过去就是 401。所以字节走**通用 RPC**
+(仓法:请求/响应永不开新通道),与会话 blob 的 `readBlob` 同一手:
+- `@shared/ipc/media.ts` 加 `readFile: { input: { fileName: string }; output: { dataUrl: string | null; mimeType?: string } }`;
+  `null` = 没有这个文件 / 没有访问权(与 `resolveFile` 的 `missing` 同义,不区分)。
+- `rpc/domains/media.ts` 实现它。**按文件名找路径这一份判据只许有一处**:今天它在
+  `server/media-delivery.ts` 的 `resolveFile` 里(basename 归一、按资产表匹配、`assertMediaAccess`、
+  路径必须落在 images / files 两个根里)。抽成 `wiring/media/resolve-file.ts` 的一只纯函数
+  `resolveMediaFileByName(libraries, access, context, name)`,HTTP 那条路与 RPC 这条路**都调它**。
+  字节 → data URL 用既有的 `readOnethingImageFileDataUrl`。
+- 大小:生成的图几百 KB 到几 MB,base64 进 JSON 与 `readBlob` 同量级,可接受;不做流式。
+
+### 23.3 壳侧
+
+- `data/media-image.ts`:按 `fileName` 缓存的读取(`acquire/release` 与 `attachment-image.ts` 的
+  `acquireBlob` 逐字同形:同名只读一次、最后一个读者离开释放、HMR 退役),对外一只 hook
+  `useMediaImage(fileName) → { status: 'loading' | 'ready' | 'unavailable'; src? }`。
+- `blocks/asset/resolve.ts`:`KNOWN_SCHEMES` 加 `media:`;`media:` 一支回**新一档**
+  `{ status: 'media'; fileName }`(同步、纯,一字不读网络)。它是资产层的事,与图片无关:
+  将来 `video` 块的 `media://` 走的是同一支。
+- `kinds/image/Image.tsx`:`media` 档由 `useMediaImage` 接:loading 占位(尺寸表**按 `ref.url` 记**,
+  不按 data URL —— 那串几 MB 长的字符串当 Map 键是自找的;远程/本地那几支照旧按 src 记,
+  一次统一成 `ref.url` 也行,由你定)、ready 走 `LoadedImage`(`key` 用 `ref.url`)、unavailable 落
+  「这张图没加载出来」那一行(既有文案)。
+- `kinds/image/index.ts`:檐上 `meta` 对 `media:` 显文件名;`zoom` 取件口从缓存拿 src。
+- **alt 里的 `|mediaId:<id>` 是引擎的机器标记**(`buildOnethingGeneratedImageMarkdown`),不是给人读的:
+  显示时剥掉(`kinds/image/alt.ts` 一只纯函数,`<img alt>`、诚实行、gated 卡三处都经它)。
+  `view-source` 看到的仍是作者/引擎写的原行(不改 `blockSourceText`)。
+
+### 23.4 几何(G 线的份)
+
+与远程图同一条留账:第一次加载有一次位移(没有尺寸元数据),第二次起零位移(尺寸表)。
+这一单**不**给生成图补尺寸元数据 —— 媒体库的条目上没有宽高,补它是媒体库的事。
+
+### 23.5 验收
+
+- 新真机门 `scripts/gate-media-image.mjs`(隔离 store、离屏窗、CDP,照既有门的写法):
+  ① 经 RPC `media.saveImage` 存一张 8×8 的真 PNG(base64 手写在脚本里),拿到 `filePath`;
+  ② 往一条会话里种一条 assistant 消息,正文 = `buildOnethingGeneratedImageMarkdown(mediaId, '一句
+  prompt', ext)` 那一行(种法照 `gate-stream-geometry` 的夹具);③ 打开会话:
+  `[data-testid="block-image"][data-state="ready"]` 在场、`naturalWidth === 8`、没有诚实行;
+  `<img alt>` 不含 `mediaId:`;檐上 meta = 文件名;④ 关掉再打开(挤出视图池,照 `gate:continuity` ④):
+  第二次挂载 `data-reserve="sized"` 出现过、图上屏前后消息行高度差 0px;⑤ 反证:把 `media:` 从
+  白名单摘掉(备份文件法)③ 当场红。进 `verify`(dev)。
+- 单测:`resolve.ts` 的 `media:` 一支;`alt.ts`;`media-image.ts` 的缓存与释放;
+  `resolveMediaFileByName` 的三条拒绝(越界路径 / 无权 / 不存在)与 HTTP、RPC 两处共用同一只函数
+  (静态门:`media-delivery.ts` 里不再有 basename 匹配那段)。
+- `npx vitest run src/content src/data`、仓根 `packages/backend` 相关测试、typecheck、eslint、
+  `ui:consume` / `motion-gate` / `squeeze-gate`;`gate:tool-md-flicker`(图块的换装门)不许变红。
