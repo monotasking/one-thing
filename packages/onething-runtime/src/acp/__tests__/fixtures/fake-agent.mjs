@@ -6,6 +6,10 @@
 // 用来证明客户端不等进程退出、凭连接关闭就收尾。
 // FAKE_AGENT_PUSH_COMMANDS=1:`session/new` 一答完就推一条 `available_commands_update`(与
 // claude-agent-acp 同形),此刻没有任何 prompt 在飞 —— 用来证明会话状态不靠 prompt 队列。
+// FAKE_AGENT_ROGUE_METHOD=1(gate:acp ③):第一轮 prompt 先向客户端发一条协议外的**请求**
+// `cursor/whatever`(Cursor 这类 agent 真会发私有方法),把拿到的 JSON-RPC 错误码记进
+// calls.log —— 客户端该答 -32601 而不是断连;随后照常说完这一轮:正文、思考、一次 `read`
+// 工具从 pending 走到 completed,最后 `end_turn`。只有第一轮这样,后面的轮次回到原剧本。
 import { AgentSideConnection, PROTOCOL_VERSION, RequestError, ndJsonStream } from '@agentclientprotocol/sdk'
 import { Readable, Writable } from 'node:stream'
 import { closeSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -35,6 +39,8 @@ new AgentSideConnection(conn => ({
         loadSession: caps === 'load',
         sessionCapabilities: caps === 'resume' ? { resume: {} } : {},
       },
+      // 自报身份:gate:acp ① 拿它与 `acp.getAgents` 那一行逐字比对。
+      agentInfo: { name: 'fake-agent', version: '0.0.1' },
     }
   },
   async newSession(params) {
@@ -101,6 +107,16 @@ new AgentSideConnection(conn => ({
     const s = readSession(params.sessionId)
     s.turns += 1
     writeSession(s)
+    const rogue = process.env.FAKE_AGENT_ROGUE_METHOD === '1' && s.turns === 1
+    if (rogue) {
+      // 协议外请求:客户端没挂这个方法,SDK 该以 -32601 回绝;回绝不该掐断连接。
+      try {
+        const answer = await conn.extMethod('cursor/whatever', { probe: true })
+        logCall({ method: 'rogue', id: s.id, answered: answer ?? null })
+      } catch (error) {
+        logCall({ method: 'rogue', id: s.id, code: error?.code ?? null, message: String(error?.message ?? error) })
+      }
+    }
     await conn.sessionUpdate({
       sessionId: s.id,
       update: {
@@ -108,6 +124,35 @@ new AgentSideConnection(conn => ({
         content: { type: 'text', text: `session=${s.id} model=${s.model} turns=${s.turns}` },
       },
     })
+    if (rogue) {
+      await conn.sessionUpdate({
+        sessionId: s.id,
+        update: { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'thinking about the file' } },
+      })
+      const toolCallId = `read-${s.turns}`
+      await conn.sessionUpdate({
+        sessionId: s.id,
+        update: {
+          sessionUpdate: 'tool_call',
+          toolCallId,
+          title: 'Read README.md',
+          kind: 'read',
+          status: 'pending',
+          rawInput: { path: 'README.md' },
+        },
+      })
+      await conn.sessionUpdate({
+        sessionId: s.id,
+        update: {
+          sessionUpdate: 'tool_call_update',
+          toolCallId,
+          status: 'completed',
+          content: [{ type: 'content', content: { type: 'text', text: 'readme body' } }],
+          rawOutput: { ok: true },
+        },
+      })
+      logCall({ method: 'rogue-turn-done', id: s.id })
+    }
     return { stopReason: 'end_turn' }
   },
   async cancel() {},

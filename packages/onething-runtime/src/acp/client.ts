@@ -398,6 +398,9 @@ export class ACPClient {
       pid: this.child?.pid,
       protocolVersion: this.initResponse?.protocolVersion,
       agentInfo: this.initResponse?.agentInfo ?? undefined,
+      capabilities: this.initResponse?.agentCapabilities
+        ? this.initResponse.agentCapabilities as unknown as NonNullable<ACPAgentState['capabilities']>
+        : undefined,
       sessionCount: this.sessions.size,
       activePromptCount: this.activePromptCountValue,
     }

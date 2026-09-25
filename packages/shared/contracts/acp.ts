@@ -79,6 +79,12 @@ export interface ACPAgentState {
     name?: string
     version?: string
   }
+  /**
+   * agent 在 `initialize` 里自报的 `agentCapabilities`,原样交出(A0-4,方案 §6)。
+   * 契约层不 import ACP SDK,于是按 JSON 收;读的人要逐字比对或按键取值,不需要 SDK 的类型。
+   * 未连过 = 缺席。
+   */
+  capabilities?: JsonObject
   sessionCount: number
   activePromptCount: number
 }

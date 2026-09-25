@@ -535,6 +535,27 @@ A0-3 施工记(2026-09-25):翻译搬进 `runtime/src/acp/translate.ts`(`translat
 - RPC `acp.sessionState(sessionId)`(`shared/ipc/acp.ts` + `backend/rpc/domains/acp.ts`),测试文件 `acp-domain.test.ts` 的「exactly N methods」断言随之更新(今天它还停在 8,实际 10,一并修)。
 - 反证:reducer 里 `available_commands_update` 的 case 挖掉 → 新测试 1 红。
 
+### 11.2 A1 拆两单(名册数据化)
+
+A1-a 是后端,A1-b 是壳;A1-b 依赖 A1-a 的 RPC 形状。与 A2 / A3 / A4 不冲突文件(它们碰 `client.ts` / `translate.ts` / 桥,A1 碰名册与设置),可与其中一单并行派。
+
+**A1-a manifest + 种子 + 注册表 + 探测 + 设置。**
+
+- `runtime/src/acp/manifest.ts`:`AcpAgentManifest`(§3.2 形状,含 `configPaths`)+ `parseAcpAgentManifest(raw: unknown): { ok: true; manifest } | { ok: false; reason }`(id 只收 `[a-z0-9-]`,`launch.command` 必填,不认识的字段丢)+ `manifestFromRegistryEntry(entry)`:注册表 `distribution.npx` → `launch = { command: 'npx', args: ['-y', package, ...args], env }` + `install.npm = package 去 @version`;`binary` / `uvx` → 不给 `launch`(A1 不自动下载二进制),只给 `install.hint = repository ?? website` 与 `detect.bins = [id 推的可执行名]`,这种条目只能靠用户装到 PATH 上后被探测认领。类型住 `packages/shared/contracts/acp.ts`(壳要画它,与 A0-2/A0-3 同理)。
+- 种子 `resources/acp-agents/<id>.json` 九个:`claude-code`(`claude-agent-acp`,detect bins `claude-agent-acp`,install npm `@agentclientprotocol/claude-agent-acp`,auth hint「用 Claude 订阅或 API 控制台登录」,configPaths `~/.claude`,quirks `systemPromptMeta: 'claude-agent-acp'`)、`codex`(`codex-acp`,npm `@agentclientprotocol/codex-acp`,configPaths `~/.codex`)、`gemini`(`gemini --acp`,bins `gemini`,hint `npm i -g @google/gemini-cli`,configPaths `~/.gemini`)、`copilot`(`copilot --acp`,npm `@github/copilot`)、`kimi`(`kimi acp`,hint = kimi-cli release 页)、`opencode`(`opencode acp`)、`qwen-code`(`qwen --acp --experimental-skills`,npm `@qwen-code/qwen-code`)、`goose`(`goose acp`)、`pi`(`pi-acp`,npm `pi-acp`,`experimental: true`)。种子目录解析照技能:`packages/onething-runtime/src/skills/loader.ts` `getBuiltinSkillsPath()` 那套 dev = 仓根 / 打包 = `process.resourcesPath`,抽一个共用的 `getBuiltinResourcePath(name)` 两处同用;`electron-builder.yml` `extraResources` 加 `resources/acp-agents` 一行(与 skills 同形)。
+- `backend/wiring/acp/registry.ts`:`AcpAgentRegistry { roster(): AcpAgentRosterEntry[]; refresh(opts?: { network?: boolean }): Promise<void>; onChanged(listener): () => void }`,`AcpAgentRosterEntry = { manifest, source: 'builtin' | 'registry' | 'user', override?: ACPAgentConfig, effective: ACPAgentConfig }`。三源合并同 id 用户 > 种子 > 注册表;`effective` = manifest.launch ⊕ override(只覆盖 override 里写了的字段);`enabled` 缺省 = 探测到已安装。注册表:`https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json`,用 `backend/provider-binding/bound-fetch.ts` 的 `createAppFetch()`(走 `network.proxy`,与 provider 请求同一实现),落 `<store>/acp/registry-cache.json` `{ fetchedAt, entries }`,TTL 24h,失败用缓存、无缓存只用种子,一行 warn;`settings.acp.registry.enabled` 缺省 true,false 就不联网。**`ACPManager.updateSettings` 吃的是 `effective` 数组**,不再直接吃 `settings.acp.agents`——`AcpSubsystem` 持有 registry,`applySettings` = 重算 roster 再喂 manager;`settings:changed` 与 `registry.onChanged` 都触发。
+- `backend/wiring/acp/detect.ts`:`detectAgent(manifest): Promise<AcpAgentDetect>`(`{ installed, path?, version?, belowMin?, checkedAt }`):在 `process.env.PATH`(登录 shell 已灌)上找 `detect.bins` 任一个可执行(`access X_OK`),找到再 `execFile(path, versionArgs, { timeout: 3000 })` 取首行里第一个 `\d+\.\d+(\.\d+)?`;`launch.command === 'npx'` 的条目 installed = 找得到 `npx`。结果缓存在 registry 里,`acp.detect` 与设置页打开时刷新,不轮询。
+- 设置:`DEFAULT_ACP_SETTINGS.agents = []`,删四条字面量与 `migrateLegacyDefaultACPAgent`;`normalizeACPSettings` 加一步「与种子逐字相等的条目(id 同、command 同、args 同)丢掉」——老盘上那四条是当年 defaults 写回去的拷贝,不是用户的意思;加 `registry?: { enabled?: boolean }`。`ACPAgentConfig` 加 `basedOn?` / `secretEnv?`(本单只加字段与校验,凭证池接入归 A3)。
+- RPC:`acp.getAgents` 返回值加 `manifest` / `source` / `detect`(`ACPAgentState` 在 contracts 里扩);新 `acp.detect({ agentId? })`、`acp.refreshRegistry()`;`addAgent` 收 `basedOn`。`acp-domain.test.ts` 方法表随之 13。
+- 反证:种子目录里放一个 `launch.command` 缺失的坏文件 → `parseAcpAgentManifest` 拒、一行 warn、其余照常上榜(测试);把「与种子相等的条目丢掉」挖掉 → 老盘夹具里 `claude-code` 出现两次红。
+
+**A1-b 设置「Agent」页 + 选择器徽标。**
+
+- `apps/desktop-react/src/content/settings/AgentsSettings.tsx`(+ `.module.css`),`pages.tsx` 加一行 `{ id: 'agents', titleKey: 'settings.pageAgents', layout: 'fill' }`,排在 `models` 之后。形状照 §3.9:左栏 rail(复用 `providers/components/ProviderRail` 的基础件,不复制)一行一 agent(图标 / 名 / 探测·登录两粒状态点),右栏本单只做四段——状态行(已安装 x.y.z / 未安装 + 「装上」钮 = 在终端瓦里跑 `npm i -g <install.npm>` 或显示 `install.hint`;进程 空闲 / 运行中 pid / 出错一句)、启用开关、高级折叠(命令 / 参数 / 环境变量键值行 / 超时;「打开配置目录」走 `shell` 域 `revealInFolder`)、底部「添加自定义 agent」(名字 / 命令 / 参数三格)与「复制为自定义」。登录 / 缺省选项 / 权限 / 工具四段归 A3 / A2。数据层 `data/acp-agents-source.ts`:`acpAgentsQuery`(`acp.getAgents`)+ `acp:agent-state` 全局事件就地更新 + `detect` / `refreshRegistry` / `addAgent` / `updateAgent` / `removeAgent` 五只 mutation;三张状态表(initial / ready / error;empty = 「一个都没探测到」+ 一句怎么装)。
+- 选择器:`DrawerModelPicker` 的 acp 行带来源徽标(内置 / 注册表 / 自定义)与探测状态,未安装置灰、悬停给装法;`providers/families.ts` 不动。
+- i18n zh + en 成对;`gate:acp-shell` ①②(真机 CDP,同 `gate:terminal` 口径);壳 `npm run ui:consume` / `squeeze-gate` / `motion-gate` 无新增。
+- 反证:把「未安装置灰」挖掉 → 壳门 ② 红。
+
 **A0-4 `gate:acp` 骨架 ①–④。**
 
 - `scripts/gate-acp.mjs`(node,bun 无 `node:sqlite` 的口径同 `gate:search-index`):`server:build` 产物起 `dist/server` 于临时 store(`ONETHING_STORE_PATH`),`settings.json` 里写一条 agent 指向 `fake-agent.mjs`(`command: process.execPath, args: [fixture]`,env `FAKE_AGENT_CAPS=load`),全程 `POST /api/rpc` + `GET /api/events`;步骤 ①–④ 按 §7 表,③ 含协议外请求 `cursor/whatever` 得 `-32601` 且流照常收场(假 agent 加剧本 `FAKE_AGENT_ROGUE_METHOD=1`)。
