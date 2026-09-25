@@ -37,7 +37,26 @@ export function getBuiltinResourcePath(name: string, env: BuiltinResourceEnviron
 export function findBuiltinResourcePath(name: string, env: BuiltinResourceEnvironment = {}): string {
   const resolved = getBuiltinResourcePath(name, env)
   if (existsSync(resolved)) return resolved
+  // 没打包而 cwd 不是仓根(`electron:dev` 把 Electron 起在 `apps/desktop-react`,A1-b 真机实测
+  // 一台种子 agent 都找不到):沿 cwd 往上找,仓根就在两三层之上。打包态 cwd 是 `/`,往上没得走。
+  if (!env.isPackaged?.()) {
+    const ancestor = findInAncestors(env.getCwd?.() ?? process.cwd(), name)
+    if (ancestor) return ancestor
+  }
   const electronResources = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
   const fallback = electronResources ? path.join(electronResources, name) : undefined
   return fallback && existsSync(fallback) ? fallback : resolved
+}
+
+/** 从 `start` 的父目录起逐级向上(最多 6 层)找 `resources/<name>`;找不到答 undefined。 */
+function findInAncestors(start: string, name: string): string | undefined {
+  let dir = path.resolve(start)
+  for (let depth = 0; depth < 6; depth += 1) {
+    const parent = path.dirname(dir)
+    if (parent === dir) return undefined
+    dir = parent
+    const candidate = path.join(dir, 'resources', name)
+    if (existsSync(candidate)) return candidate
+  }
+  return undefined
 }
