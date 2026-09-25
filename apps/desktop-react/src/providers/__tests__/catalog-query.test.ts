@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { OpenRouterModel } from '@shared/ipc/providers'
 import { configureProviderSettingsPort } from '../../data/provider-settings-port'
 import { useNotifyStore } from '../../services/notify-store'
-import { catalogQuery } from '../catalog-query'
+import { catalogKey, catalogQuery, invalidateCatalogProvider, providerOfCatalogKey } from '../catalog-query'
+import { DEFAULT_SPACE_ID } from '../../workspace/types'
 import { fakeProviderPort } from './fake-port'
 
 /**
@@ -38,15 +39,15 @@ describe('目录 query', () => {
     })
     configureProviderSettingsPort(port)
 
-    const q = catalogQuery.get('claude')
+    const q = catalogQuery.get(catalogKey('claude'))
     await q.ensure()
     await q.ensure()
     expect(port.listModels).toHaveBeenCalledTimes(1)
-    expect(port.listModels).toHaveBeenLastCalledWith('claude', false)
+    expect(port.listModels).toHaveBeenLastCalledWith('claude', false, DEFAULT_SPACE_ID)
 
     await q.refetch()
     expect(port.listModels).toHaveBeenCalledTimes(2)
-    expect(port.listModels).toHaveBeenLastCalledWith('claude', true)
+    expect(port.listModels).toHaveBeenLastCalledWith('claude', true, DEFAULT_SPACE_ID)
     expect(q.get().updatedAt).toBeGreaterThan(0)
   })
 
@@ -56,7 +57,7 @@ describe('目录 query', () => {
         listModels: vi.fn(async () => ({ success: false, error: '402 Insufficient Balance' })),
       }),
     )
-    const q = catalogQuery.get('claude')
+    const q = catalogQuery.get(catalogKey('claude'))
     await q.ensure()
     expect(q.get().error).toBe('402 Insufficient Balance')
     expect(q.get().phase).toBe('initial')
@@ -74,7 +75,7 @@ describe('目录 query', () => {
         }),
       }),
     )
-    const q = catalogQuery.get('claude')
+    const q = catalogQuery.get(catalogKey('claude'))
     await q.ensure()
     await q.refetch()
 
@@ -90,7 +91,7 @@ describe('目录 query', () => {
         listModels: vi.fn(async () => ({ success: true, models: [model('a'), model('b')] })),
       }),
     )
-    const q = catalogQuery.get('claude')
+    const q = catalogQuery.get(catalogKey('claude'))
     await q.ensure()
     const before = q.get()
     await q.refetch()
@@ -107,8 +108,38 @@ describe('目录 query', () => {
         listModels: vi.fn(async (pid: string) => ({ success: true, models: [model(`${pid}-1`)] })),
       }),
     )
-    await Promise.all([catalogQuery.get('a').ensure(), catalogQuery.get('b').ensure()])
-    expect(catalogQuery.get('a').get().data?.[0].id).toBe('a-1')
-    expect(catalogQuery.get('b').get().data?.[0].id).toBe('b-1')
+    await Promise.all([catalogQuery.get(catalogKey('a')).ensure(), catalogQuery.get(catalogKey('b')).ensure()])
+    expect(catalogQuery.get(catalogKey('a')).get().data?.[0].id).toBe('a-1')
+    expect(catalogQuery.get(catalogKey('b')).get().data?.[0].id).toBe('b-1')
+  })
+
+  it('键 = (空间, provider):同一家两个空间各一格、各带自己的空间去问(§5.5 覆盖是 per-space 的)', async () => {
+    const port = fakeProviderPort({
+      listModels: vi.fn(async (providerId: string, _force?: boolean, spaceId?: string) => ({
+        success: true,
+        models: [model(`${spaceId}:${providerId}`)],
+      })),
+    })
+    configureProviderSettingsPort(port)
+    await catalogQuery.get(catalogKey('claude', 'home')).ensure()
+    await catalogQuery.get(catalogKey('claude', 'work')).ensure()
+    expect(catalogQuery.get(catalogKey('claude', 'home')).get().data?.[0].id).toBe('home:claude')
+    expect(catalogQuery.get(catalogKey('claude', 'work')).get().data?.[0].id).toBe('work:claude')
+    expect(providerOfCatalogKey(catalogKey('claude', 'work'))).toBe('claude')
+  })
+
+  it('invalidateCatalogProvider:这一家每个空间的格都作废,别家不动,except 那一格不动', async () => {
+    const port = fakeProviderPort({
+      listModels: vi.fn(async (providerId: string) => ({ success: true, models: [model(providerId)] })),
+    })
+    configureProviderSettingsPort(port)
+    const keys = [catalogKey('claude', 'home'), catalogKey('claude', 'work'), catalogKey('deepseek', 'home')]
+    for (const key of keys) await catalogQuery.get(key).ensure()
+    expect(port.listModels).toHaveBeenCalledTimes(3)
+
+    invalidateCatalogProvider('claude', { except: keys[1] })
+    for (const key of keys) await catalogQuery.get(key).ensure()
+    // 只有 home:claude 重问了一次(没人订阅 → 记脏,下一次 ensure 才问)。
+    expect(port.listModels).toHaveBeenCalledTimes(4)
   })
 })

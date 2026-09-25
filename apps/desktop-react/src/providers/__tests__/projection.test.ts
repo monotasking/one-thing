@@ -25,6 +25,7 @@ import {
 } from '../projection'
 import type { CredentialFacts } from '../types'
 import { NO_CATALOG_FACTS, NO_MODEL_OVERRIDE, OTHER_GROUP } from '../types'
+import { servedByBackend } from '../../data/__fixtures__/models'
 
 /**
  * 名册投影。这一组守的是这块面**最容易说谎的那一格**:
@@ -304,6 +305,14 @@ describe('capsOf / priceOf / format', () => {
 })
 
 describe('buildCatalogRows', () => {
+  /**
+   * 覆盖由后端折进每行的 `effective`(§5.5):用例先按这份设置「过一遍后端」
+   * (`servedByBackend` 用的是产品层那一个判据),再交给壳的投影。
+   */
+  function rowsOf(list: readonly OpenRouterModel[], cfg: ProviderConfig | undefined, query?: string) {
+    return buildCatalogRows(servedByBackend(list, cfg), cfg, query)
+  }
+
   const models = [model('a'), model('b')]
   /** 批 2:手填 = 目录里的一条 `source:'manual'` 条目(后端交下来的形状:只有 id 与名字)。 */
   const ghost = { id: 'ghost', name: 'ghost', source: 'manual' } as OpenRouterModel
@@ -312,7 +321,7 @@ describe('buildCatalogRows', () => {
     const configured = { id: 'ghost', name: 'ghost', source: 'manual',
       thinkingLevels: ['low', 'high'], thinkingDefaultLevel: 'low',
     } as OpenRouterModel
-    const rows = buildCatalogRows([...models, configured], config({
+    const rows = rowsOf([...models, configured], config({
       selectedModels: ['ghost'], model: 'ghost', contextLengthByModel: { ghost: 96000 },
       modelCapabilitiesByModel: { ghost: { tools: true, reasoningProfile: { efforts: ['low', 'high'] } } },
     }))
@@ -327,7 +336,7 @@ describe('buildCatalogRows', () => {
   })
 
   it('勾选态与当前模型都从设置来', () => {
-    const rows = buildCatalogRows(models, config({ selectedModels: ['b'], model: 'b' }))
+    const rows = rowsOf(models, config({ selectedModels: ['b'], model: 'b' }))
     expect(rows.map((r) => [r.id, r.selected, r.current])).toEqual([
       ['a', false, false],
       ['b', true, true],
@@ -335,25 +344,25 @@ describe('buildCatalogRows', () => {
   })
 
   it('批 2:壳不再拼孤儿 —— 勾了但目录里没有的 id 不长行(老孤儿由后端折成手填条目交下来)', () => {
-    const rows = buildCatalogRows(models, config({ selectedModels: ['ghost'] }))
+    const rows = rowsOf(models, config({ selectedModels: ['ghost'] }))
     expect(rows.map((r) => r.id)).toEqual(['a', 'b'])
   })
 
   it('批 2:手填行取消勾选之后行还在,只是不再勾着', () => {
     const manual = { id: 'foo-1', name: 'foo-1', source: 'manual' } as OpenRouterModel
-    const rows = buildCatalogRows([...models, manual], config({ selectedModels: ['a'], model: 'a' }))
+    const rows = rowsOf([...models, manual], config({ selectedModels: ['a'], model: 'a' }))
     expect(rows[0]).toMatchObject({ id: 'foo-1', manual: true, selected: false, current: false })
   })
 
   it('检索按 id 与显示名', () => {
-    expect(buildCatalogRows(models, config(), 'a').map((r) => r.id)).toEqual(['a'])
-    expect(buildCatalogRows(models, config(), 'zzz')).toHaveLength(0)
+    expect(rowsOf(models, config(), 'a').map((r) => r.id)).toEqual(['a'])
+    expect(rowsOf(models, config(), 'zzz')).toHaveLength(0)
   })
 
   /* ── 逐型覆盖(09-09)—— 交出去的是**生效值**,`override` 只答「谁说的」── */
 
   it('手填行也读那两张表 —— 覆盖恰恰是给「目录没填」准备的', () => {
-    const rows = buildCatalogRows(
+    const rows = rowsOf(
       [...models, ghost],
       config({
         selectedModels: ['ghost'],
@@ -373,7 +382,7 @@ describe('buildCatalogRows', () => {
   })
 
   it('目录行:覆盖优先,而目录原本说的那一份仍然读得回来', () => {
-    const rows = buildCatalogRows(models, config({ contextLengthByModel: { a: 1_048_576 } }))
+    const rows = rowsOf(models, config({ contextLengthByModel: { a: 1_048_576 } }))
     const row = rows.find((r) => r.id === 'a')!
     expect(row.contextLength).toBe(1_048_576)
     expect(row.override.contextLength).toBe(1_048_576)
@@ -382,7 +391,7 @@ describe('buildCatalogRows', () => {
   })
 
   it('最大输出也读那张表 —— 交生效值,目录原话仍读得回来', () => {
-    const rows = buildCatalogRows(models, config({ maxOutputByModel: { a: 8_192 } }))
+    const rows = rowsOf(models, config({ maxOutputByModel: { a: 8_192 } }))
     const row = rows.find((r) => r.id === 'a')!
     expect(row.maxOutput).toBe(8_192)
     expect(row.override.maxOutput).toBe(8_192)
@@ -394,7 +403,7 @@ describe('buildCatalogRows', () => {
   })
 
   it('手填行的最大输出也能人填 —— 目录那一格仍是「什么都没说过」', () => {
-    const rows = buildCatalogRows(
+    const rows = rowsOf(
       [...models, ghost],
       config({ selectedModels: ['ghost'], maxOutputByModel: { ghost: 16_384 } }),
     )
@@ -409,7 +418,7 @@ describe('buildCatalogRows', () => {
 
   it('最大输出的 0 / 负数 / 非数一律视为没覆盖(与上下文同一把尺)', () => {
     for (const bad of [0, -1, Number.NaN, '8192' as unknown as number]) {
-      const rows = buildCatalogRows(models, config({ maxOutputByModel: { a: bad } }))
+      const rows = rowsOf(models, config({ maxOutputByModel: { a: bad } }))
       const row = rows.find((r) => r.id === 'a')!
       expect(row.override.maxOutput).toBeUndefined()
       // 没覆盖 = 照目录画。
@@ -418,7 +427,7 @@ describe('buildCatalogRows', () => {
   })
 
   it('三格互不干涉:只写最大输出时,另外两格照旧「没说过」', () => {
-    const row = buildCatalogRows(models, config({ maxOutputByModel: { a: 8_192 } })).find(
+    const row = rowsOf(models, config({ maxOutputByModel: { a: 8_192 } })).find(
       (r) => r.id === 'a',
     )!
     expect(row.override.contextLength).toBeUndefined()
@@ -428,11 +437,11 @@ describe('buildCatalogRows', () => {
 
   it('tools:false —— caps 里没有它(真的不支持),而 override 记着「人说不」', () => {
     const withTools = [model('a', { supported_parameters: ['tools'] })]
-    const on = buildCatalogRows(withTools, config())
+    const on = rowsOf(withTools, config())
     expect(on[0].caps).toContain('tools')
     expect(on[0].catalog.caps.tools).toBe(true)
 
-    const off = buildCatalogRows(
+    const off = rowsOf(
       withTools,
       config({ modelCapabilitiesByModel: { a: { tools: false } } }),
     )
@@ -443,7 +452,7 @@ describe('buildCatalogRows', () => {
   })
 
   it('tools:true 能给目录没列 tools 的那一型补上', () => {
-    const rows = buildCatalogRows(
+    const rows = rowsOf(
       models,
       config({ modelCapabilitiesByModel: { a: { tools: true } } }),
     )
@@ -466,7 +475,7 @@ describe('buildCatalogRows', () => {
       }),
     ]
     // 目录说这五项全支持。
-    expect(buildCatalogRows(rich, config())[0].catalog.caps).toEqual({
+    expect(rowsOf(rich, config())[0].catalog.caps).toEqual({
       vision: true,
       tools: true,
       reasoning: true,
@@ -481,7 +490,7 @@ describe('buildCatalogRows', () => {
       ['imageOutput', 'imageOut'],
       ['fileInput', 'fileIn'],
     ] as const) {
-      const off = buildCatalogRows(rich, config({ modelCapabilitiesByModel: { a: { [key]: false } } }))
+      const off = rowsOf(rich, config({ modelCapabilitiesByModel: { a: { [key]: false } } }))
       expect(off[0].caps, key).not.toContain(cap)
       expect(off[0].override.caps[key], key).toBe(false)
       // 覆盖不吃掉目录原话 —— 屏幕上要说「自定:关闭 X(目录:支持)」。
@@ -492,7 +501,7 @@ describe('buildCatalogRows', () => {
   })
 
   it('能力串的顺序照 MODEL_CAPS —— 覆盖开出来的那一位也归位,不追加在末尾', () => {
-    const rows = buildCatalogRows(
+    const rows = rowsOf(
       [model('a', { architecture: { modality: 'text', input_modalities: ['text', 'audio'], output_modalities: ['text'], tokenizer: 'x' } })],
       config({ modelCapabilitiesByModel: { a: { vision: true, tools: true } } }),
     )
@@ -517,7 +526,7 @@ describe('buildCatalogRows', () => {
   })
 
   it('`catalog.caps` 三态:目录说支持 / 目录没列 / 手填行整张没填', () => {
-    const rows = buildCatalogRows(
+    const rows = rowsOf(
       [model('a', { supported_parameters: ['tools'] }), ghost],
       config({ selectedModels: ['ghost'] }),
     )
@@ -536,7 +545,7 @@ describe('buildCatalogRows', () => {
   })
 
   it('那张表里第六个键 `audio` 壳不读 —— 读了就得在屏幕上答一句,而没有那一格', () => {
-    const rows = buildCatalogRows(
+    const rows = rowsOf(
       models,
       config({ modelCapabilitiesByModel: { a: { audio: true } } }),
     )
@@ -547,7 +556,7 @@ describe('buildCatalogRows', () => {
 
   it('0 / 负数 / 非数一律视为没覆盖(与引擎那条 `> 0` 同一把尺)', () => {
     for (const bad of [0, -1, Number.NaN, '200000' as unknown as number]) {
-      const rows = buildCatalogRows(models, config({ contextLengthByModel: { a: bad } }))
+      const rows = rowsOf(models, config({ contextLengthByModel: { a: bad } }))
       const row = rows.find((r) => r.id === 'a')!
       expect(row.override.contextLength).toBeUndefined()
       // 没覆盖 = 照目录画。
@@ -556,7 +565,7 @@ describe('buildCatalogRows', () => {
   })
 
   it('能力**只认布尔** —— 缺席是「没说过」,不是「不支持」', () => {
-    const rows = buildCatalogRows(models, config({ modelCapabilitiesByModel: { a: {} } }))
+    const rows = rowsOf(models, config({ modelCapabilitiesByModel: { a: {} } }))
     expect(rows.find((r) => r.id === 'a')!.override.caps.tools).toBeUndefined()
     expect(rows.find((r) => r.id === 'a')!.override).toBe(NO_MODEL_OVERRIDE)
   })

@@ -3,11 +3,20 @@ import { detectCopilotModelCapabilities as detectCopilotLikeModelCapabilities } 
 import { resolveOnethingModelCapabilities } from "./model-capability.js";
 import { getOnethingModelsDevProviderId } from "./models-dev-catalog.js";
 import {
+	effectiveModelFactsOf,
+	onethingModelOverrideFactsOf,
+} from "./effective-model.js";
+import {
 	catalogFactsOf,
 	isOnethingManualModelEntry,
 	mergeRefreshedCatalog,
 } from "./manual-models.js";
 import type { OnethingKimiEndpointConfig } from "./kimi.js";
+import {
+	MODELS_DEV_API_URL,
+	type GetModelsDevDataOptions,
+	type ModelsDevCache,
+} from "./models-dev-cache.js";
 import {
 	ONETHING_QWEN_PROVIDER_ID,
 	onethingQwenBackfillModels,
@@ -20,7 +29,7 @@ export {
 	ONETHING_PROVIDER_MAPPING,
 } from "./models-dev-catalog.js";
 
-export const ONETHING_MODELS_DEV_API = "https://models.dev/api.json";
+export const ONETHING_MODELS_DEV_API = MODELS_DEV_API_URL;
 
 const CLAUDE_CODE_MODEL_PATTERNS = [
 	"claude-sonnet",
@@ -221,10 +230,7 @@ export interface OnethingACPAgentModelLike {
 	installed?: boolean;
 }
 
-export interface FetchOnethingModelsDevDataOptions {
-	headers?: Record<string, string>;
-	signal?: AbortSignal;
-}
+export type FetchOnethingModelsDevDataOptions = GetModelsDevDataOptions;
 
 export interface GetOnethingModelsWithCapabilitiesRequest {
 	providerId: string;
@@ -307,21 +313,17 @@ export async function fetchOnethingGitHubCopilotModelsWithAuth<
 }
 
 
+/**
+ * models.dev 目录。**经单份磁盘缓存**(`models-dev-cache.ts`,§5.4):24 小时内读文件,
+ * 过期或 `force` 时发条件请求(304 只推 `fetchedAt`),网络失败有缓存就交缓存。
+ * 网络、文件、时钟都在缓存里注入,这里只把「要一份目录」接上去。
+ */
 export async function fetchOnethingModelsDevData(
-	fetchImpl: typeof globalThis.fetch,
+	cache: Pick<ModelsDevCache, "get">,
 	options: FetchOnethingModelsDevDataOptions = {},
 ): Promise<OnethingModelsDevResponse> {
-	const response = await fetchImpl(ONETHING_MODELS_DEV_API, {
-		headers: {
-			Accept: "application/json",
-			...options.headers,
-		},
-		signal: options.signal,
-	});
-
-	if (!response.ok) throw new Error(`models.dev API error: ${response.status}`);
-
-	return response.json() as Promise<OnethingModelsDevResponse>;
+	const result = await cache.get(options);
+	return result.data;
 }
 
 export function getRefreshableOnethingProviderIds(
@@ -743,7 +745,9 @@ export function modelsDevModelToOnethingCapabilityEntry(
 		id: model.id,
 		name: MODEL_NAME_ALIASES[model.id] || model.name,
 		provider: providerId,
-		contextLength: model.limit?.context || 128000,
+		// 0 = unknown(§5.5):从前这里编 128000,`effective` 就没法说「目录没填」——
+		// 128k 兜底只在引擎的第四层(`getOnethingModelContextLength`)。
+		contextLength: model.limit?.context || 0,
 		// 0 = unknown. Never invent 4096 here: a made-up ceiling later reads as
 		// "the model's max" and nobody can tell it apart from a real one.
 		maxOutputTokens: model.limit?.output || 0,
@@ -777,8 +781,9 @@ export function openRouterModelToOnethingCapabilityEntry(
 		name: model.name || model.id,
 		provider: providerId,
 		source: "endpoint",
+		// 0 = 接口没报(§5.5:不编 128000,兜底只在引擎第四层)。
 		contextLength:
-			model.context_length || model.top_provider?.context_length || 128000,
+			model.context_length || model.top_provider?.context_length || 0,
 		maxOutputTokens: model.top_provider?.max_completion_tokens || 0,
 		supportsTools: supportedParameters.includes("tools"),
 		supportsVision: inputModalities.includes("image"),
@@ -984,23 +989,29 @@ export function getOnethingModelCapabilityEntry(
 	return getModelEntry(providers, modelId, providerId);
 }
 
+/**
+ * 这一型此刻按多大的窗口算。前三层(覆盖 > 接口 / 目录 > 不知道)是
+ * `effectiveModelFactsOf` 的判据,与 `models.getWithCapabilities` 每行的 `effective`
+ * 同一处算(§5.5,09-10 圆环 unknown 事故的根治)。
+ *
+ * **128000 兜底只在这里、只在第四层**:引擎要一个数去算压缩预算,「不知道」对它
+ * 不是一个可用答案;但这个数不进 `effective`,屏幕上照样画「不知道」。
+ */
 export function getOnethingModelContextLength(
 	providers: OnethingProviderModelConfigs | undefined,
 	modelId: string,
 	providerId?: string,
 	options: OnethingModelRegistryQueryOptions = {},
 ): number {
-	// User override wins: a hand-added or self-hosted model has no registry
-	// entry, and the 128000 fallback below would silently mis-budget context
-	// compaction for anything with a different window.
-	const override = providerId
-		? providers?.[providerId]?.contextLengthByModel?.[modelId]
-		: undefined;
-	if (typeof override === "number" && override > 0) return override;
+	const facts = effectiveModelFactsOf({
+		override: providerId
+			? onethingModelOverrideFactsOf(providers?.[providerId], modelId)
+			: undefined,
+		entry: getModelEntry(providers, modelId, providerId),
+	});
+	if (facts.contextLength !== null) return facts.contextLength;
 
-	const entry = getModelEntry(providers, modelId, providerId);
-	if (entry?.contextLength) return entry.contextLength;
-
+	// 第四层:provider 直连的兜底表,再不行按 128k 算(只给引擎用,见上)。
 	const fallback = options.getFallbackModel?.(modelId, providerId);
 	return (
 		fallback?.context_length || fallback?.top_provider?.context_length || 128000
@@ -1011,6 +1022,9 @@ export function getOnethingModelContextLength(
  * Strict variant: the model's real max output, or undefined when nobody knows.
  * No 4096 fallback (2026-08-15 ruling): a caller that needs "no artificial
  * cap" passes this straight through, and passes nothing when it is unknown.
+ *
+ * 覆盖优先(用户在浮层里填的「最大输出」就是「知道」)—— 判据在
+ * `effectiveModelFactsOf`,与目录行的 `effective.maxOutput` 同一处。
  */
 export function getOnethingKnownModelMaxOutputTokens(
 	providers: OnethingProviderModelConfigs | undefined,
@@ -1018,18 +1032,13 @@ export function getOnethingKnownModelMaxOutputTokens(
 	providerId?: string,
 	options: OnethingModelRegistryQueryOptions = {},
 ): number | undefined {
-	// User override wins, exactly as `getOnethingModelContextLength` does it for
-	// the window: 2026-09-08 的模型覆盖浮层给「最大输出」开了一格,用户写了就是
-	// 「知道」—— 目录里没有的自建 / 临时模型全靠这一格,而下游把「不知道」译成
-	// 「不传 max_tokens」,读漏这里就等于把用户填的数扔了。
-	const override = providerId
-		? providers?.[providerId]?.maxOutputByModel?.[modelId]
-		: undefined;
-	if (typeof override === "number" && Number.isFinite(override) && override > 0)
-		return Math.floor(override);
-
-	const entry = getModelEntry(providers, modelId, providerId);
-	if (entry?.maxOutputTokens) return entry.maxOutputTokens;
+	const facts = effectiveModelFactsOf({
+		override: providerId
+			? onethingModelOverrideFactsOf(providers?.[providerId], modelId)
+			: undefined,
+		entry: getModelEntry(providers, modelId, providerId),
+	});
+	if (facts.maxOutput !== null) return facts.maxOutput;
 	const fallback = options.getFallbackModel?.(modelId, providerId);
 	const known = fallback?.top_provider?.max_completion_tokens;
 	return known && known > 0 ? known : undefined;
@@ -1042,17 +1051,16 @@ export function onethingModelSupportsTools(
 ): boolean {
 	if (providerId === "acp") return false;
 
-	const override = getCapabilityOverride(
-		providers,
-		modelId,
-		providerId,
-		"tools",
-	);
-	if (override !== undefined) return override;
+	// 覆盖 > 目录:`effectiveModelFactsOf` 一处判(§5.5)。
+	const known = effectiveModelFactsOf({
+		override: providerId
+			? onethingModelOverrideFactsOf(providers?.[providerId], modelId)
+			: undefined,
+		entry: getModelEntry(providers, modelId, providerId),
+	}).capabilities.tools;
+	if (known !== null) return known;
 
-	const entry = getModelEntry(providers, modelId, providerId);
-	if (entry) return entry.supportsTools;
-
+	// 第四层(只给引擎用):谁都没说时按名字猜。
 	const lower = modelId.toLowerCase();
 	if (
 		[

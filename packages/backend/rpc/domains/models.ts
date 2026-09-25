@@ -14,12 +14,23 @@
 import type { RouteHandlers } from '@onething/core/ipc'
 import type { ModelsRoutes } from '@shared/ipc/providers.js'
 import { AIProvider } from '@shared/ipc/providers.js'
-import type { OpenRouterModel, ProviderConfig } from '@shared/ipc/providers.js'
+import type {
+  ModelEffectiveFacts,
+  OpenRouterModel,
+  ProviderConfig,
+  ReasoningProfileOverride,
+} from '@shared/ipc/providers.js'
 import { createAgentProviderFromRuntime } from '../../wiring/agent-loop/providers/factory.js'
 import type { OnethingProviderOptions } from '@onething/runtime/providers/provider-options'
 import {
   catalogFactsOf,
+  createOnethingManualModelEntry,
+  effectiveModelFactsOf,
   isOnethingManualModelEntry,
+  onethingModelOverrideFactsOf,
+  openRouterModelToOnethingCapabilityEntry,
+  type OnethingCatalogModelEntry,
+  type OnethingOpenRouterModel,
   onethingCapabilityEntryToOpenRouterModel,
   fetchOnethingGitHubCopilotModelsWithAuth,
   getAllOnethingModelRegistryModelsForIpc,
@@ -42,7 +53,7 @@ import {
   foldedCatalogFor,
   removeManualModel,
 } from '../../wiring/providers/manual-models.js'
-import { getSettings } from '../../stores/settings.js'
+import { getSettings, getSpaceSettings } from '../../stores/settings.js'
 import { getCurrentBackendInstance } from '../../current.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { GetOnethingModelsWithCapabilitiesAdapters } from '@onething/runtime/providers/model-registry'
@@ -80,8 +91,9 @@ async function fetchCodexModelsRaw(): Promise<OpenRouterModel[]> {
  * 的那一件事 —— 把设置里的 override / 目录条目喂给能力裁定,与
  * `getModelCapabilities` 下面那段「不解析凭据」同一手:**一次网络都不打**。
  */
-function modelProviderConfig(providerId: string) {
-  const ai = getSettings()?.ai
+function modelProviderConfig(providerId: string, spaceId?: string) {
+  // 覆盖表住在 per-space 的 providers.json:缺席 = 默认空间(与 `getSettings()` 同一份)。
+  const ai = (spaceId ? getSpaceSettings(spaceId) : getSettings())?.ai
   const custom = ai?.customProviders?.find(provider => provider.id === providerId)
   const configured = ai?.providers?.[providerId]
   return (custom ? { ...custom, ...configured } : configured) as
@@ -89,13 +101,13 @@ function modelProviderConfig(providerId: string) {
     | undefined
 }
 
-function thinkingProjectionOf(
+function resolvedCapabilitiesOf(
   providerId: string,
   modelId: string,
-  providerConfig = modelProviderConfig(providerId),
+  providerConfig: ReturnType<typeof modelProviderConfig>,
 ) {
   const apiType = providerConfig?.apiType
-  const caps = resolveOnethingModelCapabilities({
+  return resolveOnethingModelCapabilities({
     providerId,
     modelId,
     providerReasoningProfile: (providerConfig as ProviderConfig & { providerOptions?: OnethingProviderOptions })?.providerOptions?.reasoningProfile,
@@ -108,29 +120,87 @@ function thinkingProjectionOf(
       ? { registryEntry: catalogFactsOf(providerConfig?.models?.[modelId]) }
       : {}),
   })
-  return projectOnethingThinkingLevels(caps.reasoningProfile)
+}
+
+function thinkingProjectionOf(
+  providerId: string,
+  modelId: string,
+  providerConfig = modelProviderConfig(providerId),
+) {
+  return projectOnethingThinkingLevels(resolvedCapabilitiesOf(providerId, modelId, providerConfig).reasoningProfile)
 }
 
 /**
- * 目录一整家逐行盖上那四格。**加性**:原对象一格不改,只多四个键。
+ * 目录行 → 它的目录条目。目录里存着的那一条优先(它带着真的出处);列表口现取、
+ * 不落目录的那几家(Copilot 现取、兜底表)从行本身反推一条 —— 出处照行上声明的:
+ * `'endpoint'` 就是 endpoint,`'manual'` 是手填,缺席读作 models.dev(与信封同一口径)。
+ */
+function catalogEntryOfRow(
+  providerId: string,
+  model: OpenRouterModel,
+  catalog: Readonly<Record<string, OnethingCatalogModelEntry>>,
+): OnethingCatalogModelEntry {
+  const stored = catalog[model.id]
+  // 折孤儿只在内存里把「勾了但目录不认识」认作手填;列表口却交出了一条有参数的行
+  // (Copilot 现取、兜底表)时,信那一行。
+  if (stored && (!isOnethingManualModelEntry(stored) || model.source === 'manual')) return stored
+  if (model.source === 'manual') return createOnethingManualModelEntry(providerId, model.id)
+  const derived = openRouterModelToOnethingCapabilityEntry(model as OnethingOpenRouterModel, providerId)
+  if (model.source === 'endpoint') return derived
+  const { source: _endpoint, ...rest } = derived
+  return rest
+}
+
+/**
+ * 一行的 `effective`(§5.5):「覆盖 > 接口 / 目录 > 不知道」只在这里、经
+ * `effectiveModelFactsOf` 算一次 —— 引擎的 `getOnethingModelContextLength` 读的是同一个
+ * 判据。壳只读结果,不再自己折(09-10 圆环 unknown 事故)。
+ */
+function effectiveOfRow(
+  providerId: string,
+  model: OpenRouterModel,
+  config: ReturnType<typeof modelProviderConfig>,
+  catalog: Readonly<Record<string, OnethingCatalogModelEntry>>,
+  reasoningProfile: ReturnType<typeof resolvedCapabilitiesOf>['reasoningProfile'],
+): ModelEffectiveFacts {
+  return effectiveModelFactsOf<ReasoningProfileOverride>({
+    override: onethingModelOverrideFactsOf(config, model.id),
+    entry: catalogEntryOfRow(providerId, model, catalog),
+    reasoningProfile: (reasoningProfile ?? null) as ReasoningProfileOverride | null,
+  })
+}
+
+/**
+ * 目录一整家逐行盖上思考那四格与 `effective`。**加性**:原对象一格不改,只多几个键
+ * —— 旧信封那几格(`context_length` …)仍是目录自己说的那一份,行上「目录原值」读它。
  *
  * 批 2 起这里不再拼「勾了但目录不认识」的孤儿 —— 手填是目录里的一条 `source:'manual'`
  * 条目。只补一种行:**目录里有、但这一家的列表口没交出来**的手填条目 —— 盘上还没落的
  * 老孤儿(`foldedCatalogFor` 在内存里折的),以及列表不读目录的那几家(Copilot 现取、
  * ACP 读名册)上用户手填的 id。
  */
-function withThinkingLevels(
+function withProjections(
   providerId: string,
   models: readonly OpenRouterModel[],
+  spaceId?: string,
 ): OpenRouterModel[] {
-  const config = modelProviderConfig(providerId)
+  const config = modelProviderConfig(providerId, spaceId)
+  const catalog = foldedCatalogFor(providerId)
   const listed = new Set(models.map(model => model.id))
   const all = [...models]
-  for (const entry of Object.values(foldedCatalogFor(providerId))) {
+  for (const entry of Object.values(catalog)) {
     if (!isOnethingManualModelEntry(entry) || listed.has(entry.id)) continue
     all.push(onethingCapabilityEntryToOpenRouterModel(entry) as OpenRouterModel)
   }
-  return all.map((model) => ({ ...model, ...thinkingProjectionOf(providerId, model.id, config) }))
+  return all.map((model) => {
+    // 思考四格与 `effective.reasoningProfile` 是同一次能力裁定的两种读法 —— 裁一次。
+    const { reasoningProfile } = resolvedCapabilitiesOf(providerId, model.id, config)
+    return {
+      ...model,
+      ...projectOnethingThinkingLevels(reasoningProfile),
+      effective: effectiveOfRow(providerId, model, config, catalog, reasoningProfile),
+    }
+  })
 }
 
 export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
@@ -167,7 +237,7 @@ export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
     // 这一口是抽屉的目录口:思考档位随行走(逐 (provider, model) 再发一次
     // `getModelCapabilities` 对一张几十上百行的表不成立)。失败那一支原样交回。
     if (!result.success) return result
-    return { ...result, models: withThinkingLevels(providerId, result.models ?? []) }
+    return { ...result, models: withProjections(providerId, result.models ?? [], request?.spaceId) }
   },
   async getAll() {
     const getAllOnethingModelRegistryModelsOptions: GetAllOnethingModelRegistryModelsOptions<OpenRouterModel> & { logger?: OnethingModelQueryIpcLogger | undefined; } = {

@@ -8,6 +8,7 @@ import { useProviderSettings } from '../../store'
 import { fakeProviderPort } from '../../__tests__/fake-port'
 import { useNotifyStore } from '../../../services/notify-store'
 import { useStageStore } from '../../../stage/store'
+import { DEFAULT_SPACE_ID } from '../../../workspace/types'
 import { ProviderSettingsPanel } from '../ProviderSettingsPanel'
 
 /**
@@ -207,7 +208,7 @@ describe('模式切换换目录', () => {
     const port = installPort()
     render(<ProviderSettingsPanel />)
     await screen.findByTestId('model-row-claude-sonnet-4')
-    expect(port.listModels).toHaveBeenCalledWith('claude', false)
+    expect(port.listModels).toHaveBeenCalledWith('claude', false, DEFAULT_SPACE_ID)
     expect(screen.queryByTestId('model-row-claude-opus-5')).toBeNull()
   })
 
@@ -218,7 +219,7 @@ describe('模式切换换目录', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: '订阅 · 已登录' }))
     expect(await screen.findByTestId('model-row-claude-opus-5')).toBeTruthy()
-    expect(port.listModels).toHaveBeenCalledWith('claude-code', false)
+    expect(port.listModels).toHaveBeenCalledWith('claude-code', false, DEFAULT_SPACE_ID)
     // 两坑各一份,不合并。
     expect(screen.queryByTestId('model-row-claude-sonnet-4')).toBeNull()
   })

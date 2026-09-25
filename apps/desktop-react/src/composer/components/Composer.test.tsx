@@ -35,7 +35,7 @@ import { useProviderSettings } from '../../providers/store'
 import type { OpenRouterModel } from '@shared/ipc/providers'
 import { prefsQuery, providersQuery, useModelsSource } from '../../data/models-source'
 import { configureModelsPort } from '../../data/models-port'
-import { catalogQuery } from '../../providers/catalog-query'
+import { catalogKey, catalogQuery } from '../../providers/catalog-query'
 import { acpOptionsQuery, configureAcpOptionsPort } from '../../data/acp-options-source'
 import {
   configureAcpSessionStatePort,
@@ -163,7 +163,7 @@ beforeEach(() => {
     },
     custom: [],
   })
-  catalogQuery.get('xai').patch([openRouterModel('grok-4', 500_000)])
+  catalogQuery.get(catalogKey('xai')).patch([openRouterModel('grok-4', 500_000)])
 })
 
 afterEach(() => {
@@ -1227,8 +1227,8 @@ describe('模型抽屉打开时对准当前模型', () => {
       },
       custom: [],
     })
-    catalogQuery.get('deepseek').patch([openRouterModel('deepseek-v4-flash', 1_000_000)])
-    catalogQuery.get('xai').patch([openRouterModel('grok-4.5', 500_000), openRouterModel('grok-4.6', 500_000)])
+    catalogQuery.get(catalogKey('deepseek')).patch([openRouterModel('deepseek-v4-flash', 1_000_000)])
+    catalogQuery.get(catalogKey('xai')).patch([openRouterModel('grok-4.5', 500_000), openRouterModel('grok-4.6', 500_000)])
   }
 
   it('跨服务商的末项为当前模型时，首次高亮并滚到该项，直接回车不切到首项', () => {
@@ -1256,7 +1256,7 @@ describe('模型抽屉打开时对准当前模型', () => {
     fireEvent.click(modelPill())
     fireEvent.keyDown(search(), { key: 'ArrowUp' })
     expect(activeRow().textContent).toContain('grok-4.5')
-    act(() => catalogQuery.get('xai').patch([
+    act(() => catalogQuery.get(catalogKey('xai')).patch([
       openRouterModel('grok-4.5', 1_000_000), openRouterModel('grok-4.6', 1_000_000),
     ]))
     expect(activeRow().textContent).toContain('grok-4.5')
@@ -1809,7 +1809,7 @@ describe('庚:模型选择器带思考档位', () => {
       custom: [],
     })
     catalogQuery.reset()
-    catalogQuery.get('xai').patch([openRouterModel(modelId, 200_000, caps)])
+    catalogQuery.get(catalogKey('xai')).patch([openRouterModel(modelId, 200_000, caps)])
   }
 
   const THINKS_4 = {
@@ -1985,7 +1985,7 @@ describe('庚:模型选择器带思考档位', () => {
     })
     catalogQuery.reset()
     catalogQuery
-      .get('xai')
+      .get(catalogKey('xai'))
       .patch([
         openRouterModel('grok-4', 200_000, THINKS_4),
         openRouterModel('grok-4-fast', 128_000, THINKS_4),
@@ -2023,7 +2023,7 @@ describe('庚:模型选择器带思考档位', () => {
       custom: [],
     })
     catalogQuery.reset()
-    catalogQuery.get('acp').patch([])
+    catalogQuery.get(catalogKey('acp')).patch([])
     acpOptionsQuery.reset()
     const requests: unknown[] = []
     const writes: unknown[] = []
@@ -2361,7 +2361,7 @@ describe('A2-c:agent 会话的药丸 / 思考档 / 模式粒 / 命令抽屉', ()
       },
       custom: [],
     })
-    catalogQuery.get('acp').patch([])
+    catalogQuery.get(catalogKey('acp')).patch([])
   }
 
   async function settle() {

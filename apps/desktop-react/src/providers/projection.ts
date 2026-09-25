@@ -445,29 +445,30 @@ export function formatPrice(value: number): string {
 }
 
 /**
- * 一个模型上的用户覆盖。**唯一产地**:settings 那三张按模型的表。
+ * 一个模型上的用户覆盖 —— **读后端折好的 `effective`**(§5.5),不读覆盖表。
  *
- *  · `contextLengthByModel[id]` —— `positive()` 那条同一把尺(0 / 负数 / 非有限数
- *    = 这一格没填 = 没覆盖),与引擎 `model-registry.ts:905` 的 `> 0` 判据同义;
- *  · `maxOutputByModel[id]` —— 同一把尺。引擎
- *    `packages/core/engine/agent-loop-runtime.ts:819` 读它,**填了就直接当请求的
- *    max_tokens**(不再对半砍,只受模型物理上限夹);
- *  · `modelCapabilitiesByModel[id]` 的**五个能力键**(`CAPABILITY_KEYS`)——
- *    每一键**只认布尔**。`undefined` 是「没说过」,`false` 是「人说不支持」,
- *    两者在屏幕上差得远(消失 vs 划掉)。那张表里第六个键 `audio` 壳不开面,
- *    所以这里连读都不读 —— 读了就得在屏幕上答一句,而今天没有那一格。
+ *  · 上下文 / 最大输出:`effective.source.* === 'override'` 时那个生效值就是用户填的数;
+ *  · 五项能力:逐项 `effective.source.capabilities[key] === 'override'` 时取那一格布尔。
+ *    `false` 是「人说不支持」(行上划掉),与「目录说不支持」(不画)在屏幕上差得远,
+ *    所以出处必须逐项;
+ *  · 思考档位(`reasoningProfile`)不在 `effective.source` 里 —— 那一格是能力账本的
+ *    裁定结果,不是一张覆盖表的读数;人填过的那一份仍从 `modelCapabilitiesByModel`
+ *    读(浮层要把它原样放回编辑框)。
  *
+ * `effective` 缺席(测试夹具、别的产地的信封)= 这一发没投影过 = 没有可说的覆盖。
  * 都没有就交回同一个冻结常量:每行现造一个 `{}` 会让行的引用每帧都变。
  */
-export function overrideOf(config: ProviderConfig | undefined, id: string): ModelOverride {
-  const context = positive(config?.contextLengthByModel?.[id])
-  const maxOutput = positive(config?.maxOutputByModel?.[id])
-  const entry = config?.modelCapabilitiesByModel?.[id]
-  const reasoningProfile = entry?.reasoningProfile
+export function overrideOf(model: OpenRouterModel, config: ProviderConfig | undefined): ModelOverride {
+  const effective = model.effective
+  const context = effective?.source.contextLength === 'override' ? positive(effective.contextLength) : null
+  const maxOutput = effective?.source.maxOutput === 'override' ? positive(effective.maxOutput) : null
+  const reasoningProfile = config?.modelCapabilitiesByModel?.[model.id]?.reasoningProfile
   const caps: Partial<Record<CapabilityKey, boolean>> = {}
-  for (const key of CAPABILITY_KEYS) {
-    const value = entry?.[key]
-    if (typeof value === 'boolean') caps[key] = value
+  if (effective) {
+    for (const key of CAPABILITY_KEYS) {
+      const value = effective.capabilities[key]
+      if (effective.source.capabilities[key] === 'override' && typeof value === 'boolean') caps[key] = value
+    }
   }
   const hasCaps = Object.keys(caps).length > 0
   if (context === null && maxOutput === null && !hasCaps && !reasoningProfile) return NO_MODEL_OVERRIDE
@@ -480,24 +481,20 @@ export function overrideOf(config: ProviderConfig | undefined, id: string): Mode
 }
 
 /**
- * 能力串的**生效值**:逐键 `override.caps[key] ?? 目录说的`。
+ * 能力串的**生效值** = 后端折好的 `effective.capabilities`(五项),`audioIn` 没有覆盖键,
+ * 永远只听目录的。`effective` 缺席时就是目录自己那一串。
  *
- * 覆盖成 `false` 时这一串里**不含**那一位 —— `caps` 是「这一型此刻支持什么」,
- * 关掉了就是不支持。行上那枚划掉的图标不从这里来,它从 `override.caps[key] === false`
- * 来(「不知道」画不出来,「人说不」才画得出来)。两件事分开,是因为它们回答的
- * 是两个问题:能力串答「支持吗」,覆盖答「谁说的」。
+ * 覆盖成 `false` 时这一串里**不含**那一位 —— `caps` 是「这一型此刻支持什么」。
+ * 行上那枚划掉的图标不从这里来,它从 `override.caps[key] === false` 来。
  *
- * 交出去的顺序照 `MODEL_CAPS`(不是「原样保留再往末尾追加」):同一串在两处
- * 被读,顺序漂开就是两份事实。`audioIn` 没有覆盖键,所以它永远只听目录的。
+ * 交出去的顺序照 `MODEL_CAPS`:同一串在两处被读,顺序漂开就是两份事实。
  */
-function capsWithOverride(base: readonly ModelCap[], override: ModelOverride): ModelCap[] {
-  const forced = new Map<ModelCap, boolean>()
-  for (const key of CAPABILITY_KEYS) {
-    const value = override.caps[key]
-    if (typeof value === 'boolean') forced.set(CAP_OF_KEY[key], value)
-  }
-  if (forced.size === 0) return MODEL_CAPS.filter((cap) => base.includes(cap))
-  return MODEL_CAPS.filter((cap) => forced.get(cap) ?? base.includes(cap))
+function effectiveCapsOf(base: readonly ModelCap[], model: OpenRouterModel): ModelCap[] {
+  const effective = model.effective
+  if (!effective) return MODEL_CAPS.filter((cap) => base.includes(cap))
+  const known = new Map<ModelCap, boolean>()
+  for (const key of CAPABILITY_KEYS) known.set(CAP_OF_KEY[key], effective.capabilities[key] === true)
+  return MODEL_CAPS.filter((cap) => known.get(cap) ?? base.includes(cap))
 }
 
 /** 目录自己那五句(未经覆盖)。目录行一律是布尔;手填行走 `NO_CATALOG_FACTS`。 */
@@ -523,19 +520,21 @@ export function buildCatalogRows(
   const selected = new Set(config?.selectedModels ?? [])
   const current = (config?.model ?? '').trim()
   const rows: CatalogRow[] = models.map((model) => {
-    const override = overrideOf(config, model.id)
+    const override = overrideOf(model, config)
     // 手填的行:目录里有这一条,但它**什么参数都没说过**(不是「都不支持」)。
     const manual = model.source === 'manual'
     const baseCaps = manual ? [] : capsOf(model)
+    const effective = model.effective
     return {
       id: model.id,
       name: (model.name ?? '').trim() || model.id,
       selected: selected.has(model.id),
       current: current === model.id,
-      // **交生效值**:覆盖优先,与引擎 `getOnethingModelContextLength` 同一条读法。
-      contextLength: override.contextLength ?? (manual ? null : contextOf(model)),
-      maxOutput: override.maxOutput ?? (manual ? null : maxOutputOf(model)),
-      caps: capsWithOverride(baseCaps, override),
+      // **交生效值** = 后端折好的 `effective`(覆盖 > 接口 / 目录 > 不知道,§5.5;引擎读
+      // 同一个判据)。缺席 = 这一发没投影过,读目录自己那一份。
+      contextLength: effective ? effective.contextLength : manual ? null : contextOf(model),
+      maxOutput: effective ? effective.maxOutput : manual ? null : maxOutputOf(model),
+      caps: effectiveCapsOf(baseCaps, model),
       price: manual ? null : priceOf(model),
       manual,
       override,

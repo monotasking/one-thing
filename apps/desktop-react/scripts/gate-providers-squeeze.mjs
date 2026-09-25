@@ -34,6 +34,10 @@
  *       这个空间的 `selectedModels` 不含它、目录口仍交出 `source:'manual'` 那一条。
  *   [10] **✕ 删手填,当前模型换人**:把 `foo-1` 勾上并设为当前 → 点 ✕ → 行没了、
  *       目录口不再有它、`model` 落到剩下的第一个勾选的。
+ *   [11] **`effective` 只在后端折**(§5.5,09-10「设了上下文圆环仍 unknown」的回归):
+ *       再手填 `foo-1` → 覆盖上下文 200000 → 目录口那一行 `effective.contextLength === 200000`
+ *       且 `source.contextLength === 'override'`;再开一条跑 deepseek/foo-1 的会话,
+ *       composer 读数环不再说「未知」,悬停卡上的窗口同为 200k —— 壳读的就是后端那一个数。
  *
  * 跑法:`node scripts/gate-providers-squeeze.mjs`(先 `npm run app:build`)。
  * 可重复:每次一个全新的临时 store + 全新的 `--user-data-dir`,跑完删干净;
@@ -492,7 +496,7 @@ async function manualModelSteps(page, record, failures) {
   await delay(300)
 
   console.log(`[9] 手填 ${MANUAL} → 取消勾选:行还在、selectedModels 不含它`)
-  await page.getByRole('button', { name: '＋ Add id' }).click()
+  await page.getByRole('button', { name: '＋ Add model' }).click()
   const input = page.getByPlaceholder('Model id, e.g. qwen3-max')
   await input.fill(MANUAL)
   await input.press('Enter')
@@ -546,6 +550,119 @@ async function manualModelSteps(page, record, failures) {
   if (after10.selectedModels?.includes(MANUAL)) failures.push(`[10] ✕ 之后 selectedModels 仍含 ${MANUAL}`)
   if (await catalogRow(record, MANUAL)) failures.push(`[10] ✕ 之后目录口仍交出 ${MANUAL}`)
   console.log(`  行在 ${await rowShown(page, MANUAL)} / model ${after10.model} / selectedModels ${JSON.stringify(after10.selectedModels)}`)
+}
+
+/* ── [11] §5.5:effective 只在后端折 ──────────────────────────────────────── */
+
+const OVERRIDE_WINDOW = 200_000
+
+async function effectiveOverrideStep(page, record, failures) {
+  console.log(`[11] 手填 ${MANUAL} → 覆盖上下文 ${OVERRIDE_WINDOW}:目录口 effective 与读数环同一个数`)
+  const added = await rpc(record, 'models', 'addManual', { providerId: PROVIDER, modelId: MANUAL, spaceId: 'default' })
+  if (added?.success === false) throw new Error(`[11] 手填 ${MANUAL} 失败:${added.error}`)
+  const cur = await rpc(record, 'spaces', 'getProviderSettings', { id: 'default' })
+  const ai = cur?.ai
+  const config = ai?.providers?.[PROVIDER] ?? {}
+  const wrote = await rpc(record, 'spaces', 'setProviderSettings', {
+    id: 'default',
+    ai: {
+      ...ai,
+      providers: {
+        ...ai.providers,
+        [PROVIDER]: {
+          ...config,
+          contextLengthByModel: { ...(config.contextLengthByModel ?? {}), [MANUAL]: OVERRIDE_WINDOW },
+        },
+      },
+    },
+  })
+  if (wrote?.success === false) throw new Error(`[11] 写覆盖失败:${wrote.error}`)
+
+  for (const spaceId of [undefined, 'default']) {
+    const listed = await rpc(record, 'models', 'getWithCapabilities', {
+      providerId: PROVIDER,
+      ...(spaceId ? { spaceId } : {}),
+    })
+    const row = (listed?.models ?? []).find((m) => m.id === MANUAL)
+    const label = spaceId ? `spaceId=${spaceId}` : '缺省空间'
+    if (row?.effective?.contextLength !== OVERRIDE_WINDOW) {
+      failures.push(`[11] 目录口(${label})${MANUAL} 的 effective.contextLength 是 ${row?.effective?.contextLength},该是 ${OVERRIDE_WINDOW}`)
+    }
+    if (row?.effective?.source?.contextLength !== 'override') {
+      failures.push(`[11] 目录口(${label})${MANUAL} 的 effective.source.contextLength 是 ${row?.effective?.source?.contextLength},该是 override`)
+    }
+    // 目录别的行也都带 effective(壳不再有别的读法)。
+    const bare = (listed?.models ?? []).filter((m) => !m.effective).map((m) => m.id)
+    if (bare.length > 0) failures.push(`[11] 目录口(${label})有 ${bare.length} 行没带 effective:${bare.slice(0, 3).join(', ')}`)
+    console.log(`  目录口(${label}):effective ${JSON.stringify({ contextLength: row?.effective?.contextLength, source: row?.effective?.source?.contextLength })}`)
+  }
+
+  // 一条跑 deepseek/foo-1 的会话,进它的 composer 读圆环。
+  const made = await rpc(record, 'sessions', 'create', { name: 'providers 门 · effective' })
+  const sessionId = made?.session?.id
+  if (!sessionId) throw new Error('[11] sessions.create 没给出会话 id')
+  await rpc(record, 'sessions', 'updateModel', { sessionId, provider: PROVIDER, model: MANUAL })
+  await waitFor('Dock 上的「会话总览」瓦就位', () =>
+    page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-sessions"]'))),
+  )
+  await clickTestId(page, 'dock-tile-sessions')
+  await waitFor('总览画出这一条会话', () =>
+    page.evaluate((id) => Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)), sessionId),
+  )
+  await clickTestId(page, `session-row-${sessionId}`)
+
+  /** 这条会话那块 composer 里的读数环(role=img、aria-label 以 Context usage 开头)。 */
+  const ringLabel = () =>
+    page.evaluate(() => {
+      const panels = [...document.querySelectorAll('[data-testid="composer-panel"]')]
+      for (const panel of panels) {
+        const ring = [...panel.querySelectorAll('[role="img"][aria-label]')].find((el) =>
+          (el.getAttribute('aria-label') ?? '').startsWith('Context usage'),
+        )
+        if (ring && ring.getClientRects().length > 0) return ring.getAttribute('aria-label')
+      }
+      return null
+    })
+  let label
+  try {
+    label = await waitFor('读数环说「知道」(Context usage,不是 … unknown)', async () => {
+      const value = await ringLabel()
+      return value === 'Context usage' ? value : undefined
+    }, 15_000)
+  } catch {
+    label = await ringLabel()
+    failures.push(`[11] 读数环的 aria-label 是 ${JSON.stringify(label)} —— 窗口没到壳上(09-10 事故形状)`)
+  }
+
+  // 悬停卡:聚焦圆环 = 开卡(onFocus 与 onMouseEnter 一一对应),读「上下文」那一行。
+  await page.evaluate(() => {
+    const panels = [...document.querySelectorAll('[data-testid="composer-panel"]')]
+    for (const panel of panels) {
+      const ring = [...panel.querySelectorAll('[role="img"][aria-label]')].find((el) =>
+        (el.getAttribute('aria-label') ?? '').startsWith('Context usage') && el.getClientRects().length > 0,
+      )
+      if (ring) {
+        ring.focus()
+        return
+      }
+    }
+  })
+  const want = '200k'
+  let cardText = ''
+  try {
+    cardText = await waitFor(`悬停卡上的窗口写 ${want}`, async () => {
+      const text = await page.evaluate(() =>
+        [...document.querySelectorAll('[data-testid="composer-panel"], [class*="meterCard"]')]
+          .map((el) => el.textContent ?? '')
+          .join('\n'),
+      )
+      return text.includes(`/ ${want}`) ? text : undefined
+    }, 10_000)
+  } catch {
+    failures.push(`[11] 读数环悬停卡上找不到「/ ${want}」—— 卡上的窗口不是后端 effective 那个数`)
+  }
+  const line = cardText.split('\n').find((t) => t.includes(`/ ${want}`)) ?? ''
+  console.log(`  读数环 aria-label=${JSON.stringify(label)} / 卡上「${line.match(/Context[^\n]*?%/)?.[0] ?? line.slice(0, 60)}」`)
 }
 
 async function main() {
@@ -745,6 +862,7 @@ async function main() {
     if (back.railExpanded) failures.push('展开态:再点一次没有收回去')
 
     await manualModelSteps(page, record, failures)
+    await effectiveOverrideStep(page, record, failures)
   } finally {
     if (app) await app.close().catch(() => {})
     await delay(500)

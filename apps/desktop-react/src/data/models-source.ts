@@ -13,12 +13,11 @@ import { createMutation, createQuery, createQueryFamily, useQuery } from './kern
 import type { Mutation } from './kernel'
 import { modelsPort } from './models-port'
 import { useSessionsSource } from './sessions-source'
-import { catalogQuery } from '../providers/catalog-query'
+import { catalogKey, catalogQuery } from '../providers/catalog-query'
 import { findSession } from '../expose/projection'
 import { notify } from '../services/notify'
 import { t } from '../i18n'
-import { currentSpaceId, subscribeCurrentSpace } from '../workspace/current'
-import { useWorkspaceStore } from '../workspace/store'
+import { currentSpaceId, subscribeCurrentSpace, useCurrentSpaceId } from '../workspace/current'
 import { resolveSpaceProviderSettings } from '../providers/space-settings'
 
 /**
@@ -75,21 +74,18 @@ import { resolveSpaceProviderSettings } from '../providers/space-settings'
  * 只在读的时候投影一次。`models-port` 上那一口 `listModels` 因此零消费者,已删。
  *
  * ══════════════════════════════════════════════════════════════════════════
- * 窗口有**两个**产地:用户覆盖优先、目录其次(09-10 改口)
+ * 窗口只读后端折好的 `effective`(§5.5,09-26 改口)
  * ══════════════════════════════════════════════════════════════════════════
- * 这一段从前写的是「窗口的产地只有 provider 目录一个」。那句话在 09-09
- * 模型覆盖 UI 落地的那一天就不再成立,而壳里三处读数(读数环 / 抽屉分组列表 /
- * 右栏模型卡)一直照旧只查目录 —— 于是用户在浮层里给一个手填模型填了
- * context window,环上仍写「上下文用量未知」。那是 09-10 的报障。
+ * 09-10 报障「设了 context window 圆环仍 unknown」的病根是:「用户覆盖 > 目录 > 不知道」
+ * 这条折叠有三份(引擎一份、这里的 `contextWindowOf` / `readingsOf` 一份、设置面的
+ * `projection.ts` 一份),壳这一份漏读了覆盖表。当天的修法是让壳也读覆盖 —— 那是把
+ * 第三份判据补齐,不是把判据收成一份。
  *
- * 今天的话:**窗口 = `contextLengthByModel[模型]` ?? 目录的 `contextLength`**,
- * 与引擎 `getOnethingModelContextLength` 同序(它从第一天就是覆盖优先,理由写在
- * 那儿:手填 / 自建的模型根本没有目录条目,128k 兜底会把压缩预算算错)。
- *
- * 两个产地不等于两份缓存:覆盖那一半住在**这个文件已经订着的那一格设置**里
- * (`prefsQuery`,键 = 空间 id),不多一发往返、不多一条订阅。而「哪一半优先」
- * 这条判据在壳里只折两处 —— `contextWindowOf`(一个数)与 `readingsOf`(一整份
- * 读数);`meter-source.ts` / `DrawerModelPicker.tsx` / `MeterCard.tsx` 一律只消费。
+ * 今天的话:**窗口 = 目录那一行的 `effective.contextLength`**。后端
+ * (`models.getWithCapabilities`)用 `effectiveModelFactsOf` 一处折好覆盖(引擎读的也是
+ * 它),壳一格都不折,这个文件也不再订覆盖表(`ProviderModelPrefs` 里那两张表已删;
+ * 静态守卫 `src/__tests__/override-tables-read-only-in-backend.test.ts` 钉着)。覆盖是
+ * per-space 的,所以目录那一族按 (空间, provider) 认格(`providers/catalog-query.ts`)。
  *
  * ══════════════════════════════════════════════════════════════════════════
  * 状态先行:三张表(09-01 用户令,施工纪律第一条)
@@ -221,18 +217,8 @@ export interface ProviderModelPrefs {
   thinking: Record<string, boolean>
   /** 逐模型的思考档(`thinkingEffortByModel`)。缺席 = 没设过,读 profile 的 defaultEffort。 */
   thinkingEffort: Record<string, ThinkingEffort>
-  /**
-   * 逐模型的**上下文窗口覆盖**(`contextLengthByModel`)。缺席 = 没设过 → 读目录。
-   * 09-10 报障「设了 context window 仍显示 unknown」的那一格:手填 / 自建的模型
-   * 目录里根本没有,用户在设置里填的那个数**就是**它的窗口。
-   */
-  contextLength: Record<string, number>
-  /**
-   * 逐模型的**最大输出覆盖**(`maxOutputByModel`)。屏幕上今天**没有一处画它** ——
-   * 一次投影带齐两张「按模型的数字表」是因为它们同源同尺、同一发设置里回来的,
-   * 分两次投等于让第二张表将来再开一单。**不画的不消费**:今天零读者。
-   */
-  maxOutput: Record<string, number>
+  // 两张覆盖表(`contextLengthByModel` / `maxOutputByModel`)**不在这里**(§5.5):
+  // 覆盖由后端折进目录每行的 `effective`,壳只读结果。
 }
 
 export interface ProviderPrefs {
@@ -263,11 +249,13 @@ export function toProviderOption(info: ProviderInfo): ProviderOption {
 }
 
 /**
- * 窗口大小的单一产地。`context_length` 优先,缺席回落 `top_provider.context_length`
- * (勘察记的口径),两处都没有(0 / 非有限数)= null = **不知道**。
- * 0 不是一个窗口大小,它是「这一格没填」。
+ * 窗口大小的单一产地:**后端折好的 `effective.contextLength`**(覆盖 > 接口 / 目录 >
+ * 不知道,§5.5)。`effective` 缺席(测试夹具、别的产地的信封)时读目录原值 ——
+ * `context_length` 优先,缺席回落 `top_provider.context_length`,两处都没有 = null =
+ * **不知道**。那一支不是折覆盖,它只是「这一发没投影过」时的目录读法。
  */
 export function contextLengthOf(model: OpenRouterModel): number | null {
+  if (model.effective) return model.effective.contextLength
   const direct = model.context_length
   if (typeof direct === 'number' && Number.isFinite(direct) && direct > 0) return direct
   const fallback = model.top_provider?.context_length
@@ -327,8 +315,6 @@ export function toProviderPrefs(ai: SpaceProviderSettings | undefined): Provider
       model: (config?.model ?? '').trim(),
       thinking: config?.thinkingByModel ?? {},
       thinkingEffort: config?.thinkingEffortByModel ?? {},
-      contextLength: config?.contextLengthByModel ?? {},
-      maxOutput: config?.maxOutputByModel ?? {},
     }
   }
   for (const custom of ai?.customProviders ?? []) {
@@ -345,8 +331,6 @@ export function toProviderPrefs(ai: SpaceProviderSettings | undefined): Provider
       model,
       thinking: custom.thinkingByModel ?? existing?.thinking ?? {},
       thinkingEffort: custom.thinkingEffortByModel ?? existing?.thinkingEffort ?? {},
-      contextLength: custom.contextLengthByModel ?? existing?.contextLength ?? {},
-      maxOutput: custom.maxOutputByModel ?? existing?.maxOutput ?? {},
     }
   }
   return { defaultProvider: (ai?.provider ?? '').trim(), configs }
@@ -424,13 +408,10 @@ export function buildProviderGroups(
       provider: provider.name,
       models: ids.map((id) => {
         // 目录还没到 / 这条不在目录里 = **一格读数都不知道**(窗口、价格、档位)。
-        // 不知道就不画,不编 —— 与 `contextLength` 从第一天起的口径逐字相同。
-        //
-        // 唯一的例外是窗口:**用户自己说过的那个数不是「不知道」**。手填 / 自建的
-        // 模型永远不在目录里,而它的窗口就写在这个空间的设置里 —— 所以覆盖优先,
-        // 其余各格照旧空着(判据在 `overrideContextLengthOf` + `readingsOf` 两处折)。
+        // 不知道就不画,不编。手填模型是目录里的一条(批 2),它的窗口覆盖由后端折进
+        // 那一行的 `effective`(§5.5),这里不再另折。
         const entry = models.find((model) => model.id === id)
-        return { model: id, ...readingsOf(entry, overrideContextLengthOf(prefs, provider.id, id)) }
+        return { model: id, ...readingsOf(entry) }
       }),
     })
   }
@@ -450,22 +431,14 @@ export const UNKNOWN_MODEL_READINGS: Omit<CatalogModel, 'id'> = {
 /**
  * 目录条目 → 屏幕上那几格读数。`id` 不在读数里(它是身份,不是读数)。
  *
- * `override` = 用户在设置里给这一型填过的窗口(`overrideContextLengthOf` 的答案)。
- * **在场就盖过目录**,与引擎 `getOnethingModelContextLength` 同序;其余格一格不动。
- * 目录条目缺席而覆盖在场(手填模型的常态)= 只有窗口有值,别的仍是不知道 ——
- * 「有人说过窗口」不等于「有人说过价格和思考档」。
+ * 窗口那一格已经是后端折好的生效值(`toCatalogModels` 读 `effective`,§5.5),
+ * 这里一格都不再折。
  */
-export function readingsOf(
-  entry: CatalogModel | undefined,
-  override: number | null = null,
-): Omit<CatalogModel, 'id'> {
-  if (!entry) {
-    // 覆盖也没有 → 交回那个恒等常量(身份不换,照它 memo 的下游不白重渲,律④)。
-    if (override === null) return UNKNOWN_MODEL_READINGS
-    return { ...UNKNOWN_MODEL_READINGS, contextLength: override }
-  }
+export function readingsOf(entry: CatalogModel | undefined): Omit<CatalogModel, 'id'> {
+  // 缺席 → 交回那个恒等常量(身份不换,照它 memo 的下游不白重渲,律④)。
+  if (!entry) return UNKNOWN_MODEL_READINGS
   return {
-    contextLength: override ?? entry.contextLength,
+    contextLength: entry.contextLength,
     pricing: entry.pricing,
     thinkingLevels: entry.thinkingLevels,
     thinkingToggleable: entry.thinkingToggleable,
@@ -584,38 +557,14 @@ export function thinkingStateOf(
 }
 
 /**
- * **用户在这个空间给这一型填过的窗口**(`contextLengthByModel[model]`)。
- * 没填过 / 填的不是一个正有限数 = null = 没覆盖。
- *
- * 那把尺与 `providers/projection.ts` 的 `positive()` **同义**(0 / 负数 / 非有限数
- * = 这一格没填),就地写两行而不跨目录 import 它:那只是设置面自己的私有小工具,
- * 为一句同义判据把两块面拴在一起不划算。引擎那头的判据是
- * `getOnethingModelContextLength` 的 `typeof override === 'number' && override > 0`,
- * 三处同尺。
- */
-export function overrideContextLengthOf(
-  prefs: ProviderPrefs,
-  provider: string,
-  model: string,
-): number | null {
-  if (!provider || !model) return null
-  const value = prefs.configs[provider]?.contextLength?.[model]
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
-}
-
-/**
- * 这个选择的上下文窗口 —— **两个产地,用户覆盖优先、目录其次**(09-10;引擎
- * `getOnethingModelContextLength` 从第一天起就是这个序,壳的三处读数到这一天才跟上)。
- * 两处都没有(目录没拉到 / 这条不在目录里 / 目录没填 / 没覆盖)= null = 不知道。
+ * 这个选择的上下文窗口 = 目录那一行的生效值(`effective.contextLength`,后端折好覆盖,
+ * §5.5)。目录没拉到 / 这条不在目录里 / 谁都没说 = null = 不知道。
  */
 export function contextWindowOf(
   catalog: Readonly<Record<string, CatalogModel[]>>,
   selection: ModelSelection | null,
-  prefs: ProviderPrefs,
 ): number | null {
   if (!selection?.provider || !selection.model) return null
-  const override = overrideContextLengthOf(prefs, selection.provider, selection.model)
-  if (override !== null) return override
   return catalog[selection.provider]?.find((m) => m.id === selection.model)?.contextLength ?? null
 }
 
@@ -623,8 +572,7 @@ export function contextWindowOf(
 
 /**
  * 「一格设置都没有」的那一份。恒等常量:缺席时交同一个引用(律④)。
- * **导出是给用例用的** —— `contextWindowOf` 自 09-10 起要一份 prefs,而多数用例
- * 验的是目录那一半,手写一个 `{defaultProvider:'',configs:{}}` 就是第二份口径。
+ * **导出是给用例用的** —— 用例手写一个 `{defaultProvider:'',configs:{}}` 就是第二份口径。
  */
 export const EMPTY_PREFS: ProviderPrefs = { defaultProvider: '', configs: {} }
 /** 恒等的空表 —— 缺席时交同一个引用,照它 memo 的下游不白重渲(律④)。 */
@@ -704,7 +652,7 @@ function providerOptions(): readonly ProviderOption[] {
  */
 export async function ensureCatalog(providerId: string): Promise<void> {
   if (!providerId) return
-  await catalogQuery.get(providerId).ensure()
+  await catalogQuery.get(catalogKey(providerId)).ensure()
 }
 
 /**
@@ -714,7 +662,7 @@ export async function ensureCatalog(providerId: string): Promise<void> {
 export async function ensureVisibleCatalogs(current: ModelSelection | null): Promise<void> {
   await providersQuery.ensure()
   const groups = buildProviderGroups(providerOptions(), prefsFacts().prefs, EMPTY_CATALOG, current)
-  await Promise.all(groups.map((group) => catalogQuery.get(group.id).ensure()))
+  await Promise.all(groups.map((group) => catalogQuery.get(catalogKey(group.id)).ensure()))
 }
 
 /* ── 写:一只 mutation,一个格 ──────────────────────────────────────────── */
@@ -962,7 +910,7 @@ if (import.meta.hot) {
  * 这里只是把它接到 store 的订阅上 —— 换空间时组件要跟着换那一格 query。
  */
 function useSpaceId(): string {
-  return useWorkspaceStore(() => currentSpaceId())
+  return useCurrentSpaceId()
 }
 
 /** 当前空间的窄投影。缺席(还没拉 / 这个空间没配过)= 恒等的空投影。 */
@@ -1001,6 +949,8 @@ export function useCatalogRecord(
   /** 订阅面与快照都按这一串认身份 —— 数组每次渲染都是新的,字符串不是。 */
   const key = providerIds.join('\n')
   const ids = useMemo(() => (key ? key.split('\n') : []), [key])
+  /** 目录格按 (空间, provider) 认(每行 `effective` 折着这个空间的覆盖,§5.5)。 */
+  const spaceId = useSpaceId()
   /*
    * 「从来没算过」用 `key: null` 表达,不用一个「不可能的字符串」当哨兵:
    * `join` 出来的键**可以是空串**(一家都不列的那一屏),所以任何字符串哨兵
@@ -1014,26 +964,29 @@ export function useCatalogRecord(
 
   const subscribe = useCallback(
     (listener: () => void) => {
-      const offs = ids.map((id) => catalogQuery.get(id).subscribe(listener))
+      const offs = ids.map((id) => catalogQuery.get(catalogKey(id, spaceId)).subscribe(listener))
       return () => {
         for (const off of offs) off()
       }
     },
-    [ids],
+    [ids, spaceId],
   )
 
   const snapshot = useCallback(() => {
-    const revs = ids.map((id) => `${id}:${catalogQuery.get(id).get().dataRev}`).join('\n')
+    const revs = ids
+      .map((id) => `${id}:${catalogQuery.get(catalogKey(id, spaceId)).get().dataRev}`)
+      .join('\n')
     const held = cache.current
-    if (held.key === key && held.revs === revs) return held.value
+    const identity = `${spaceId}\n${key}`
+    if (held.key === identity && held.revs === revs) return held.value
     const value: Record<string, CatalogModel[]> = {}
     for (const id of ids) {
-      const models = catalogQuery.get(id).get().data
+      const models = catalogQuery.get(catalogKey(id, spaceId)).get().data
       if (models) value[id] = toCatalogModels(models)
     }
-    cache.current = { key, revs, value }
+    cache.current = { key: identity, revs, value }
     return value
-  }, [ids, key])
+  }, [ids, key, spaceId])
 
   return useSyncExternalStore(subscribe, snapshot, snapshot)
 }
@@ -1044,23 +997,20 @@ export function useCatalogRecord(
  * 只订**当前这一家**那一格,不订整族:环要的是一个数,拿整张表来算等于让它
  * 跟着别人家的目录一起重渲。判据仍是 `contextWindowOf` 一处产地。
  *
- * 09-10 起多订**一格**设置(`useProviderPrefs` = 当前空间那一格,不是整份 settings):
- * 窗口有两个产地,覆盖那一半住在设置里。作废不用另接事件 —— 设置面写完盘
- * (`providers/store.ts` 的 `settingsMutation.settle`)会 `prefsQuery.invalidate(空间 id)`,
- * 这一格有人在看,kernel 自己后台补拉,环与抽屉跟着换数。
+ * 覆盖已经由后端折进那一行的 `effective`(§5.5):设置面写完覆盖表会作废这一格目录
+ * (`providers/store.ts` 的 `settingsMutation.settle`),有人在看就后台补拉,环跟着换数。
  */
 export function useModelWindow(selection: ModelSelection | null): number | null {
   const providerId = selection?.provider ?? ''
   const ids = useMemo(() => (providerId ? [providerId] : []), [providerId])
   const catalog = useCatalogRecord(ids)
-  const prefs = useProviderPrefs()
-  return useMemo(() => contextWindowOf(catalog, selection, prefs), [catalog, selection, prefs])
+  return useMemo(() => contextWindowOf(catalog, selection), [catalog, selection])
 }
 
 /**
  * 这个选择的**读数一份**(窗口 / 价格 / 思考四格)。药丸与右栏那张卡共用。
  *
- * 与 `useModelWindow` 逐条同构:只订当前这一家那一格 + 当前空间那一格设置,
+ * 与 `useModelWindow` 逐条同构:只订当前这一家那一格(当前空间的),
  * 不订整族、不订整份 settings。两只并存不是重复 —— 环只要一个数,而卡要一整份;
  * 让环跟着卡的对象身份重渲是白重渲。
  */
@@ -1068,14 +1018,10 @@ export function useModelReadings(selection: ModelSelection | null): Omit<Catalog
   const providerId = selection?.provider ?? ''
   const ids = useMemo(() => (providerId ? [providerId] : []), [providerId])
   const catalog = useCatalogRecord(ids)
-  const prefs = useProviderPrefs()
   return useMemo(() => {
     if (!selection?.provider || !selection.model) return UNKNOWN_MODEL_READINGS
-    return readingsOf(
-      catalog[selection.provider]?.find((m) => m.id === selection.model),
-      overrideContextLengthOf(prefs, selection.provider, selection.model),
-    )
-  }, [catalog, selection, prefs])
+    return readingsOf(catalog[selection.provider]?.find((m) => m.id === selection.model))
+  }, [catalog, selection])
 }
 
 /**

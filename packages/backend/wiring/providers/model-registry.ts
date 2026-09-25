@@ -34,6 +34,13 @@ import {
 	type OnethingOpenRouterModel,
 	type OnethingProviderModelConfigs,
 } from "@onething/runtime/providers";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+import {
+	createModelsDevCache,
+	MODELS_DEV_CACHE_FILE_NAME,
+} from "@onething/runtime/providers/models-dev-cache";
+import { getOnethingCachePath } from "@onething/runtime/storage/paths";
 import { getSettings, saveSettings } from "../../stores/settings.js";
 import { createRequiredAppFetch } from "../../provider-binding/bound-fetch.js";
 import {
@@ -385,23 +392,28 @@ export function saveProviderModels(
 	});
 }
 
-async function fetchModelsDevData(signal?: AbortSignal): Promise<OnethingModelsDevResponse> {
-	log.debug("fetching models.dev catalog");
+/**
+ * models.dev 目录的单份缓存(§5.4):`<store>/cache/models-dev.json`。进程里一个实例
+ * (它只有一份内存里的解析结果与一发在飞的请求,没有计时器,不需要拆卸);文件路径
+ * 每次现算,store 根换了(测试)就是另一份文件。
+ */
+const modelsDevCache = createModelsDevCache({
+	filePath: () => path.join(getOnethingCachePath(), MODELS_DEV_CACHE_FILE_NAME),
+	fs: { readFile, writeFile, rename, mkdir, rm },
+	fetch: (input, init) => createRequiredAppFetch({ policy: "default" })(input, init),
+	headers: { "User-Agent": "onething-electron/1.0" },
+	requestSignal: () => AbortSignal.timeout(15000),
+});
 
-	const data = await fetchOnethingModelsDevData(
-		createRequiredAppFetch({ policy: "default" }),
-		{
-			headers: { "User-Agent": "onething-electron/1.0" },
-			signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000),
-		},
-	);
-
-	const providerCount = Object.keys(data).length;
-	const modelCount = Object.values(data).reduce(
-		(sum, provider) => sum + Object.keys(provider.models).length,
-		0,
-	);
-	log.info("models.dev catalog fetched", { modelCount, providerCount });
+/**
+ * `force` = 刷新钮:不看 24 小时新鲜度,发一次**条件请求**(304 = 没变,不重下)。
+ * 缺省 = 新鲜就读文件,一发网络都不打。
+ */
+async function fetchModelsDevData(
+	options: { signal?: AbortSignal; force?: boolean } = {},
+): Promise<OnethingModelsDevResponse> {
+	const data = await fetchOnethingModelsDevData(modelsDevCache, options);
+	log.debug("models.dev catalog ready", { providerCount: Object.keys(data).length, force: !!options.force });
 	return data;
 }
 
@@ -413,7 +425,8 @@ export async function refreshProviderModels(providerId: string): Promise<void> {
 	const modelRegistryRefreshAdapters: OnethingModelRegistryRefreshAdapters<AppSettings> = {
 		getSettings,
 		saveSettings,
-		fetchModelsDevData,
+		// 这一口是设置页的「刷新」钮:force = 条件请求,不是无条件重拉。
+		fetchModelsDevData: () => fetchModelsDevData({ force: true }),
 		logger: consoleLog,
 	};
 	await refreshOnethingProviderModels(providerId, modelRegistryRefreshAdapters);
@@ -439,7 +452,7 @@ export async function refreshAllProviders(options: { signal?: AbortSignal } = {}
 		getSettings: () => settings,
 		saveSettings: (s) => saveSettings(s as any),
 		fetchModelsDevData: async () => {
-			const data = await fetchModelsDevData(options.signal);
+			const data = await fetchModelsDevData({ signal: options.signal });
 			options.signal?.throwIfAborted();
 			return data;
 		},

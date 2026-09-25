@@ -25,7 +25,7 @@ import type { ProviderPrefsFacts } from '../data/models-source'
  * 而不是 import 输入框那一层:设置的写口不该反过来认识某一块面。
  */
 export type ThinkingRung = ThinkingEffort | 'on' | 'off'
-import { catalogQuery } from './catalog-query'
+import { catalogKey, catalogQuery, invalidateCatalogProvider } from './catalog-query'
 import { notify } from '../services/notify'
 import { t } from '../i18n'
 import { buildFamilies, providerIdsOf, resolveMode } from './families'
@@ -458,8 +458,6 @@ function patchDefaultPrefs(
           model: modelId,
           thinking: config?.thinking ?? {},
           thinkingEffort: config?.thinkingEffort ?? {},
-          contextLength: config?.contextLength ?? {},
-          maxOutput: config?.maxOutput ?? {},
         },
       },
     },
@@ -543,17 +541,21 @@ export const settingsMutation = createMutation<SettingsCommit, SpaceProviderSett
        * 会静静地留下一个过期的抽屉。
        */
       prefsQuery.invalidate(input.spaceId)
-      // 思考能力也投影在目录中；覆盖改动后让已打开的模型抽屉重新取数。
+      // 思考能力与每行的 `effective`(覆盖折好的生效值,§5.5)都投影在目录里;
+      // 三张覆盖表任何一张动了,已打开的目录与抽屉都要重新取数 —— 壳自己不再折覆盖。
       for (const [providerId, config] of Object.entries(input.next.ai?.providers ?? {})) {
         const before = input.base.ai?.providers?.[providerId]
         if (config.modelCapabilitiesByModel !== before?.modelCapabilitiesByModel ||
+            config.contextLengthByModel !== before?.contextLengthByModel ||
+            config.maxOutputByModel !== before?.maxOutputByModel ||
             config.providerOptions !== before?.providerOptions ||
             config.selectedModels !== before?.selectedModels || config.model !== before?.model) {
-          catalogQuery.invalidate(providerId)
+          catalogQuery.invalidate(catalogKey(providerId, input.spaceId))
         }
       }
       // 目录本身动了(手填条目加 / 删):勾选没变也得重取 —— 删一条没勾的手填行就是这一档。
-      if (input.catalogProviderId) catalogQuery.invalidate(input.catalogProviderId)
+      // 目录全空间共享,所以每个空间的那一格都作废。
+      if (input.catalogProviderId) invalidateCatalogProvider(input.catalogProviderId)
       // 后端没回那一份就保持乐观值 —— 它已经被后端认下了,只是没把结果说回来。
       if (!ai) return
       // 底本永远是后端认下的最后一份 —— 连 `settings` 那一格也照它重合一次,

@@ -21,7 +21,8 @@ import { ProviderDetail } from './ProviderDetail'
 import { ModeCard } from './ModeCard'
 import { ModelCatalog } from './ModelCatalog'
 import type { CatalogRow } from '../types'
-import { catalogQuery } from '../catalog-query'
+import { catalogKey, catalogQuery, invalidateCatalogProvider } from '../catalog-query'
+import { useCurrentSpaceId } from '../../workspace/current'
 import { useAsyncPending, useMutation, useQuery } from '../../data/kernel'
 import { CustomProviderDialog } from './CustomProviderDialog'
 import { isProviderEnabledIn } from '@onething/client/model/provider-model'
@@ -203,10 +204,14 @@ export function ProviderSettingsPanel() {
   const customPending = useAsyncPending(settingsMutation, settingsKey.custom(family?.id ?? ''))
   const dialsPending = useAsyncPending(settingsMutation, settingsKey.dials(activeProviderId))
 
+  // 目录格按 (空间, provider) 认:每行的 `effective` 折着这个空间的覆盖(§5.5)。
+  const spaceId = useCurrentSpaceId()
+  const activeCatalogKey = catalogKey(activeProviderId, spaceId)
+
   useEffect(() => {
     if (!activeProviderId || !catalogAvailable) return
-    void catalogQuery.get(activeProviderId).ensure()
-  }, [activeProviderId, catalogAvailable])
+    void catalogQuery.get(activeCatalogKey).ensure()
+  }, [activeProviderId, activeCatalogKey, catalogAvailable])
 
   // 订阅坑一露面就问一次登录态。**「登没登」是后端说了算**,凭证摘要里那一格
   // 只说得出「池子里有没有一条 oauth」,说不出令牌过没过期。
@@ -228,7 +233,7 @@ export function ProviderSettingsPanel() {
    * 那一格永远不会被 ensure,所以不会发出一次空请求;这么写只是为了让
    * hook 无条件地调(hooks 不许有条件)。
    */
-  const catalog = useQuery(catalogQuery.get(activeProviderId))
+  const catalog = useQuery(catalogQuery.get(activeCatalogKey))
 
   const catalogRows = useMemo(
     () =>
@@ -376,13 +381,19 @@ export function ProviderSettingsPanel() {
             error={catalogAvailable ? catalog.error : undefined}
             fetchedAt={catalog.updatedAt || undefined}
             dataRev={catalog.dataRev}
-            refresh={catalogQuery.get(mode.providerId)}
+            refresh={catalogQuery.get(catalogKey(mode.providerId, spaceId))}
             kind={mode.kind}
             query={modelQuery[mode.providerId] ?? ''}
             pendingModelIds={pendingModelIds}
             write={settingsMutation}
             onQuery={(value) => setModelQuery(mode.providerId, value)}
-            onRefresh={() => void catalogQuery.get(mode.providerId).refetch()}
+            onRefresh={() => {
+              // 刷新的是全空间共享的目录:这一格重拉,别的空间那几格记脏(有人看就后台补拉)。
+              const key = catalogKey(mode.providerId, spaceId)
+              void catalogQuery.get(key).refetch().then(() =>
+                invalidateCatalogProvider(mode.providerId, { except: key }),
+              )
+            }}
             onToggle={(modelId, selected) => void toggleModel(mode.providerId, modelId, selected)}
             onSetCurrent={(modelId) => void setCurrentModel(mode.providerId, modelId)}
             onAddManual={(modelId) => addManualModel(mode.providerId, modelId)}

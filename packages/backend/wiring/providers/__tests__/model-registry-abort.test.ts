@@ -1,4 +1,7 @@
-import { beforeEach, expect, it, vi } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 
 const ports = vi.hoisted(() => ({ settings: {} as ReturnType<typeof createDefaultSettings>, save: vi.fn(), fetch: vi.fn() }))
@@ -6,7 +9,18 @@ vi.mock('../../../stores/settings.js', () => ({ getSettings: () => ports.setting
 vi.mock('../../../provider-binding/bound-fetch.js', () => ({ createRequiredAppFetch: () => ports.fetch }))
 
 const { refreshAllProviders } = await import('../model-registry.js')
-beforeEach(() => { ports.settings = createDefaultSettings(); ports.save.mockReset(); ports.fetch.mockReset() })
+// 目录走单份磁盘缓存(`<store>/cache/models-dev.json`):每条用例一个新 store,
+// 上一条迟到的应答落进缓存不该让下一条读到「新鲜缓存」而不打网络。
+let store = ''
+beforeEach(() => {
+  store = mkdtempSync(path.join(tmpdir(), 'model-registry-abort-'))
+  vi.stubEnv('ONETHING_STORE_PATH', store)
+  ports.settings = createDefaultSettings(); ports.save.mockReset(); ports.fetch.mockReset()
+})
+afterEach(() => {
+  vi.unstubAllEnvs()
+  rmSync(store, { recursive: true, force: true })
+})
 
 it('cancels an in-flight catalog fetch and never saves its late result', async () => {
   const controller = new AbortController()
@@ -16,7 +30,8 @@ it('cancels an in-flight catalog fetch and never saves its late result', async (
     return new Promise(resolve => { respond = resolve })
   })
   const refresh = refreshAllProviders({ signal: controller.signal })
-  expect(ports.fetch).toHaveBeenCalledOnce()
+  // 缓存先读盘(没有文件)再打网络,所以这一发不再是同步发出的。
+  await vi.waitFor(() => expect(ports.fetch).toHaveBeenCalledOnce())
   expect(ports.save).toHaveBeenCalledOnce()
   controller.abort(new Error('desktop shutdown'))
   // Even a non-cooperative network adapter cannot commit after cancellation.

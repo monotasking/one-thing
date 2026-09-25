@@ -124,6 +124,58 @@ export interface OpenRouterModel {
   thinkingDefaultLevel?: ThinkingEffort | null
   thinkingDisabledLevel?: ThinkingEffort | null
   thinkingLevelLabels?: Partial<Record<ThinkingEffort, string>>
+  /**
+   * **这一型此刻按多少算**(§5.5,`docs/design/provider-settings-rework-2026-09.md`)——
+   * 「用户覆盖 > 接口报的 / 目录 > 不知道」在后端一处折好(`runtime/providers/
+   * effective-model.ts` 的 `effectiveModelFactsOf`,引擎读的也是它),壳只读不折。
+   * 上面那几格旧信封字段(`context_length` / `supported_parameters` …)仍是**目录自己
+   * 说的**那一份(未经覆盖),行上「目录原值」从那里读。
+   *
+   * 可选:这个信封有别的产地(测试夹具、旧缓存),缺席 = 这一发没投影过。
+   * `models.getWithCapabilities` 每行都填。
+   */
+  effective?: ModelEffectiveFacts
+  /**
+   * 批 3 预留(§6.3「参数建议」):接口不报参数时从目录里认亲算出的建议。
+   * **今天没有任何产地填它**;形状先立在这里,好让它与 `effective` 并排:
+   * 建议只在 `effective.source.* === 'unknown'` 的那几格上出现,点了才写进覆盖表。
+   */
+  suggestion?: ModelParameterSuggestion
+}
+
+/** 能覆盖、会上屏的五项能力(`ModelCapabilityOverride` 里除 `audio` 之外的那五键)。 */
+export type ModelCapabilityKey = 'tools' | 'vision' | 'reasoning' | 'imageOutput' | 'fileInput'
+
+/**
+ * 一格事实是谁说的:`override` 用户覆盖表 / `endpoint` 那家自己的 `/models` 真报了 /
+ * `catalog` models.dev / `unknown` 谁都没说(值为 null,**不编**)。
+ */
+export type ModelFactSource = 'override' | 'endpoint' | 'catalog' | 'unknown'
+
+export interface ModelEffectiveFacts {
+  /** null = 不知道。引擎的 128k 兜底只在引擎里,不在这里。 */
+  contextLength: number | null
+  /** null = 不知道(请求里不带 max_tokens)。 */
+  maxOutput: number | null
+  capabilities: Record<ModelCapabilityKey, boolean | null>
+  /** 能力账本裁定的思考档位;null = 不思考 / 没裁定。 */
+  reasoningProfile: ReasoningProfileOverride | null
+  source: {
+    contextLength: ModelFactSource
+    maxOutput: ModelFactSource
+    /** 逐项:行上「人说不支持」(划掉)与「目录说不支持」(不画)要分得开。 */
+    capabilities: Record<ModelCapabilityKey, ModelFactSource>
+  }
+}
+
+/** 批 3 预留:从目录里认出的「这一型大概是谁」给的参数建议(§6.3)。今天不填。 */
+export interface ModelParameterSuggestion {
+  /** 认的是哪一家的哪一型(models.dev 的 provider 键 + 模型 id)。 */
+  from: { provider: string; id: string }
+  contextLength?: number
+  maxOutput?: number
+  capabilities?: Partial<Record<ModelCapabilityKey, boolean>>
+  reasoningProfile?: ReasoningProfileOverride
 }
 
 // Provider metadata for UI display
@@ -501,6 +553,11 @@ export interface ModelManualEditResponse {
 export interface ModelsWithCapabilitiesRequest {
   providerId: string
   forceRefresh?: boolean
+  /**
+   * 每行 `effective` 里的**用户覆盖**读哪个空间的(覆盖表住在 per-space 的
+   * `workspaces/<id>/providers.json`)。缺席 = 默认空间。目录本身全空间共享,与它无关。
+   */
+  spaceId?: string
 }
 
 export interface ModelsSearchRequest {

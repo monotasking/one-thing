@@ -31,6 +31,14 @@ export function currentSpaceId(): string {
 }
 
 /**
+ * `currentSpaceId()` 的组件侧读法:换空间时组件跟着换那一格 query(键里带空间的那几族)。
+ * 判据仍只有 `currentSpaceId()` 一处。
+ */
+export function useCurrentSpaceId(): string {
+  return useWorkspaceStore(() => currentSpaceId())
+}
+
+/**
  * 换世界的订阅口。**只在解析过的 id 真的变了才叫**回调 —— store 每一次写
  * (改名、换色之后的列表重读、load 的状态翻转)都会推一次订阅,不去重的话
  * 「改个色」会让会话列表、凭证池、模型表各重来一遍。

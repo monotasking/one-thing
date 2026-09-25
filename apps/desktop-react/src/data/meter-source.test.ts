@@ -17,7 +17,9 @@ import {
   useMeterView,
 } from './meter-source'
 import { prefsQuery, useModelsSource } from './models-source'
-import { providerModelPrefs } from './__fixtures__/models'
+import { providerModelPrefs, servedByBackend } from './__fixtures__/models'
+import { catalogKey, catalogQuery } from '../providers/catalog-query'
+import type { OpenRouterModel } from '@shared/ipc/providers'
 import { currentSpaceId } from '../workspace/current'
 
 /**
@@ -216,7 +218,7 @@ describe('四行的缺席态', () => {
  * 09-10 报障:用户在模型覆盖浮层里给一个**手填模型**填了 context window,
  * 读数环仍写「上下文用量未知」。上面那几条钉的是纯函数 `meterViewOf`,而病根
  * 不在它 —— 它拿到的 `windowTokens` 一直是 null,因为窗口那一句只查了目录。
- * 所以这一条必须**从 hook 那一头量**:整条链路(设置窄投影 → 覆盖优先 →
+ * 所以这一条必须**从 hook 那一头量**:整条链路(后端那一行的 `effective` →
  * `useModelWindow` → `useMeterView`)接上了没有。
  */
 describe('窗口:手填模型的用户覆盖', () => {
@@ -226,15 +228,16 @@ describe('窗口:手填模型的用户覆盖', () => {
       prefs: {
         defaultProvider: 'my-llm',
         configs: {
-          'my-llm': providerModelPrefs({
-            model: 'qwen-max',
-            selectedModels: ['qwen-max'],
-            contextLength: { 'qwen-max': 200_000 },
-          }),
+          'my-llm': providerModelPrefs({ model: 'qwen-max', selectedModels: ['qwen-max'] }),
         },
       },
       custom: [{ id: 'my-llm', name: '自建' }],
     })
+    // 覆盖由后端折进目录那一行的 `effective`(§5.5):摆的是后端交下来的那一行。
+    const manual = { id: 'qwen-max', name: 'qwen-max', source: 'manual' } as OpenRouterModel
+    catalogQuery
+      .get(catalogKey('my-llm'))
+      .patch(servedByBackend([manual], { contextLengthByModel: { 'qwen-max': 200_000 } }))
     meterQuery.get('s1').patch({
       sessionId: 's1',
       tokens: {
@@ -255,6 +258,7 @@ describe('窗口:手填模型的用户覆盖', () => {
     unmount()
     act(() => {
       useModelsSource.getState().reset()
+      catalogQuery.reset()
     })
   })
 })

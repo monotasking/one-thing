@@ -585,32 +585,17 @@ describe('onething model registry helpers', () => {
     ]])
   })
 
-  it('fetches models.dev data through an injected fetch adapter', async () => {
-    const fetchCalls: unknown[] = []
-    const data = {
-      openai: {
-        id: 'openai',
-        name: 'OpenAI',
-        models: {},
+  it('reads models.dev data through the single cache (§5.4)', async () => {
+    const data = { openai: { id: 'openai', name: 'OpenAI', models: {} } }
+    const calls: unknown[] = []
+    const cache = {
+      get: async (options?: unknown) => {
+        calls.push(options)
+        return { data, fetchedAt: 1, stale: false, from: 'cache' as const }
       },
     }
-    const fetchImpl = async (...args: Parameters<typeof globalThis.fetch>) => {
-      fetchCalls.push(args)
-      return {
-        ok: true,
-        status: 200,
-        json: async () => data,
-      } as Response
-    }
-
-    await expect(fetchOnethingModelsDevData(fetchImpl, {
-      headers: { 'User-Agent': 'test-agent' },
-      signal: undefined,
-    })).resolves.toBe(data)
-    expect(fetchCalls[0]).toMatchObject([
-      'https://models.dev/api.json',
-      { headers: { 'Accept': 'application/json', 'User-Agent': 'test-agent' } },
-    ])
+    await expect(fetchOnethingModelsDevData(cache, { force: true })).resolves.toBe(data)
+    expect(calls).toEqual([{ force: true }])
   })
 
   it('owns provider model save orchestration with injected settings adapters', () => {

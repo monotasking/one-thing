@@ -312,6 +312,19 @@ export function getOnethingRunDir(
 	return path.join(getOnethingStorePath(options), "run");
 }
 
+/**
+ * 可重建的下载缓存目录:`<store>/cache/`。今天住着 `models-dev.json`(models.dev
+ * 目录的单份缓存,`providers/models-dev-cache.ts`)。
+ *
+ * 缓存**不是日志**:`log/` 归 `LogDirJanitor` 管,它会按保留期删东西;这里的文件
+ * 删了只是下一次多打一发网络,所以不放进 `log/`,也不归那个清道夫。
+ */
+export function getOnethingCachePath(
+	options: OnethingStorePathOptions = {},
+): string {
+	return path.join(getOnethingStorePath(options), "cache");
+}
+
 /** 宠物系统的目录:`<store>/pets/<id>/ledger.jsonl` 与 `current.json` 住这里。 */
 export function getOnethingPetsDir(
 	options: OnethingStorePathOptions = {},

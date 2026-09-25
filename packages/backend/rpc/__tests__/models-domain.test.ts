@@ -37,6 +37,8 @@ const mocks = vi.hoisted(() => {
     refreshTokenIfNeeded: vi.fn(),
     saveProviderModels: vi.fn(),
     settings: {} as AppSettings,
+    /** 按空间 id 的生效设置(覆盖表 per-space);缺席回落 `settings`。 */
+    spaceSettings: {} as Record<string, AppSettings>,
   }
 })
 
@@ -76,7 +78,7 @@ vi.mock('../../wiring/providers/builtin/github-copilot.js', () => ({
 
 vi.mock('../../stores/settings.js', () => ({
   getSettings: () => mocks.settings,
-  getSpaceSettings: () => mocks.settings,
+  getSpaceSettings: (id: string) => mocks.spaceSettings[id] ?? mocks.settings,
   saveSettings: vi.fn(),
 }))
 
@@ -457,5 +459,74 @@ describe('models RPC domain — 目录行带上思考档位', () => {
       thinkingLevels: ['high', 'max'],
       thinkingToggleable: true,
     })
+  })
+})
+
+/**
+ * §5.5:「覆盖 > 接口 / 目录 > 不知道」只在后端折一次,每行带 `effective`。
+ * 09-10 事故的形状:手填模型只在覆盖表里有窗口 —— 壳从前自己折、漏读就是 unknown。
+ */
+describe('models RPC domain — 每行的 effective(§5.5)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.spaceSettings = {}
+  })
+
+  it('手填 foo-1 + 覆盖上下文 200000 → effective 200000,出处 override;其余不知道', async () => {
+    mocks.settings = { ai: { providers: { deepseek: {
+      selectedModels: ['foo-1'], model: 'foo-1',
+      models: { 'foo-1': { id: 'foo-1', name: 'foo-1', provider: 'deepseek', source: 'manual' } },
+      contextLengthByModel: { 'foo-1': 200_000 },
+    } } } } as unknown as AppSettings
+    mocks.getModelsForProvider.mockResolvedValue([{ id: 'foo-1', name: 'foo-1', source: 'manual' } as OpenRouterModel])
+    const response = await modelsRpcHandlers.getWithCapabilities({ providerId: 'deepseek' })
+    const row = response.models?.find(m => m.id === 'foo-1')
+    expect(row?.effective).toMatchObject({
+      contextLength: 200_000,
+      maxOutput: null,
+      capabilities: { tools: null, vision: null, reasoning: null, imageOutput: null, fileInput: null },
+      source: { contextLength: 'override', maxOutput: 'unknown' },
+    })
+    // 批 3 的建议格今天没有产地。
+    expect(row?.suggestion).toBeUndefined()
+  })
+
+  it('目录行:目录说的就是 catalog;覆盖逐格盖上并标 override;旧信封仍是目录原值', async () => {
+    mocks.settings = { ai: { providers: { deepseek: {
+      selectedModels: ['listed'],
+      contextLengthByModel: { listed: 64_000 },
+      modelCapabilitiesByModel: { listed: { tools: false } },
+    } } } } as unknown as AppSettings
+    mocks.getModelsForProvider.mockResolvedValue([model('listed')])
+    const response = await modelsRpcHandlers.getWithCapabilities({ providerId: 'deepseek' })
+    const row = response.models?.[0]
+    expect(row?.context_length).toBe(192000)
+    expect(row?.effective).toMatchObject({
+      contextLength: 64_000,
+      maxOutput: 65536,
+      capabilities: { tools: false, vision: true, reasoning: true, imageOutput: false, fileInput: false },
+      source: {
+        contextLength: 'override',
+        maxOutput: 'catalog',
+        capabilities: { tools: 'override', vision: 'catalog' },
+      },
+    })
+  })
+
+  it('接口拉来的行(source endpoint)标 endpoint', async () => {
+    mocks.settings = { ai: { providers: { codex: {} } } } as unknown as AppSettings
+    mocks.getModelsForProvider.mockResolvedValue([{ ...model('ep'), source: 'endpoint' } as OpenRouterModel])
+    const response = await modelsRpcHandlers.getWithCapabilities({ providerId: 'grok' })
+    expect(response.models?.[0].effective?.source.contextLength).toBe('endpoint')
+  })
+
+  it('覆盖读请求里那个空间的;缺席 = 默认空间', async () => {
+    mocks.settings = { ai: { providers: { deepseek: { contextLengthByModel: { listed: 1_000 } } } } } as unknown as AppSettings
+    mocks.spaceSettings.work = { ai: { providers: { deepseek: { contextLengthByModel: { listed: 2_000 } } } } } as unknown as AppSettings
+    mocks.getModelsForProvider.mockResolvedValue([model('listed')])
+    const byDefault = await modelsRpcHandlers.getWithCapabilities({ providerId: 'deepseek' })
+    const bySpace = await modelsRpcHandlers.getWithCapabilities({ providerId: 'deepseek', spaceId: 'work' })
+    expect(byDefault.models?.[0].effective?.contextLength).toBe(1_000)
+    expect(bySpace.models?.[0].effective?.contextLength).toBe(2_000)
   })
 })

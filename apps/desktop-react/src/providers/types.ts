@@ -175,19 +175,14 @@ export interface CatalogRow {
    */
   manual: boolean
   /**
-   * 用户覆盖(settings 那三张按模型的表:`contextLengthByModel[id]`、
-   * `maxOutputByModel[id]` 与 `modelCapabilitiesByModel[id]` 的五个能力键)。
+   * 用户覆盖 —— **谁说的**,不是「值是多少」。读后端折好的 `effective.source`
+   * (§5.5):某一格出处是 `'override'`,这一格就在这里(上下文 / 最大输出取生效值,
+   * 能力逐项取那一格布尔);思考档位那一份仍读 `modelCapabilitiesByModel`(浮层要原样放回)。
    * **缺席 = 没覆盖**;行上按它画虚线下划与划掉的扳手。
    *
-   * 它与上面几格的关系是「**谁说的**」而不是「值是多少」:`contextLength` /
-   * `caps` 交出去的一律是**生效值**(覆盖优先,与引擎
-   * `model-registry.ts:895/949` 同一条读法),这一格只回答「这个数是人填的吗」。
-   * 两件事合成一格的话,屏幕就没法把「目录说 1M」和「我说 1M」画成两样。
-   *
-   * **判据只读 settings 这三张表**(单产地):后端交出来的目录条目
-   * (`onethingCapabilityEntryToOpenRouterModel`)读的是注册表 entry,压根没有
-   * 把覆盖折进 `supported_parameters` / `context_length` —— 就算哪天折了,
-   * 从目录条目反推「有没有被覆盖」也是猜,不是事实。
+   * 上面几格(`contextLength` / `maxOutput` / `caps`)交的一律是**生效值**(同一份
+   * `effective`,引擎读的是同一个判据)。两件事合成一格的话,屏幕就没法把「目录说 1M」
+   * 和「我说 1M」画成两样。壳不读覆盖表去猜 —— 09-10 圆环 unknown 事故就是壳自己折的那一份漏了。
    */
   override: ModelOverride
   /**

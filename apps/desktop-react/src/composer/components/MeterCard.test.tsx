@@ -6,8 +6,9 @@ import { meterQuery, useMeterSource } from '../../data/meter-source'
 import { ComposerSessionContext } from '../session-context'
 import type { MeterFacts } from '../../data/meter-source'
 import { prefsQuery, useModelsSource } from '../../data/models-source'
-import { catalogQuery } from '../../providers/catalog-query'
-import { openRouterModel, providerModelPrefs } from '../../data/__fixtures__/models'
+import { catalogKey, catalogQuery } from '../../providers/catalog-query'
+import { openRouterModel, providerModelPrefs, servedByBackend } from '../../data/__fixtures__/models'
+import type { OpenRouterModel } from '@shared/ipc/providers'
 import { currentSpaceId } from '../../workspace/current'
 import { useSessionsSource } from '../../data/sessions-source'
 import { chatSources } from '../../data/chat-source'
@@ -101,34 +102,36 @@ function stage(window: number | null): void {
   })
   // 窗口那一格的产地是目录那一族(批 7b 合并后与设置面共用一格)。
   // `window === null` = 那一格**从没拉过** —— 那正是「目录还没到」的真形状。
-  if (window !== null) catalogQuery.get('xai').patch([openRouterModel('grok-4', window)])
+  if (window !== null) catalogQuery.get(catalogKey('xai')).patch([openRouterModel('grok-4', window)])
   shown = 's1'
   seedFacts({ sessionId: 's1', tokens: TOKENS, usage: USAGE })
 }
 
 /**
- * 09-10 报障的那个现场:一台只配了**手填 / 自建**模型的机器 —— 目录里一条都没有,
- * 窗口只写在设置的 `contextLengthByModel` 里。从前这一屏与 `stage(null)` 长得一样
- * (环画点线、卡上写「窗口未知」),而用户明明已经填过那个数。
+ * 09-10 报障的那个现场:一台只配了**手填 / 自建**模型的机器 —— 目录里只有一条
+ * `source:'manual'`(参数全空),窗口只写在设置的覆盖表里。从前这一屏与 `stage(null)`
+ * 长得一样(环画点线、卡上写「窗口未知」),而用户明明已经填过那个数。
+ *
+ * §5.5 起覆盖由后端折进那一行的 `effective`:这里摆的正是后端交下来的那一行
+ * (`servedByBackend` 用产品层那一个判据),壳自己不再读覆盖表。
  */
 function stageOverride(window: number): void {
   useSessionsSource.setState({
     sessions: [session({ id: 's1', model: 'qwen-max', provider: 'my-llm' })],
   })
-  // 目录那一格**一发都不 patch** —— 手填模型永远不在目录里,那正是这一屏的形状。
   prefsQuery.get(currentSpaceId()).patch({
     prefs: {
       defaultProvider: '',
       configs: {
-        'my-llm': providerModelPrefs({
-          model: 'qwen-max',
-          selectedModels: ['qwen-max'],
-          contextLength: { 'qwen-max': window },
-        }),
+        'my-llm': providerModelPrefs({ model: 'qwen-max', selectedModels: ['qwen-max'] }),
       },
     },
     custom: [{ id: 'my-llm', name: '自建' }],
   })
+  const manual = { id: 'qwen-max', name: 'qwen-max', source: 'manual' } as OpenRouterModel
+  catalogQuery
+    .get(catalogKey('my-llm'))
+    .patch(servedByBackend([manual], { contextLengthByModel: { 'qwen-max': window } }))
   shown = 's1'
   seedFacts({ sessionId: 's1', tokens: TOKENS, usage: USAGE })
 }

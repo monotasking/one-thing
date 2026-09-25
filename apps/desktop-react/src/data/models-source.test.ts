@@ -13,10 +13,12 @@ import {
   catalogModel,
   modelOption,
   openRouterModel as model,
+  openRouterModel,
   providerModelPrefs,
+  servedByBackend,
 } from './__fixtures__/models'
 import { fakeProviderPort } from '../providers/__tests__/fake-port'
-import { catalogQuery } from '../providers/catalog-query'
+import { catalogKey, catalogQuery } from '../providers/catalog-query'
 import { useNotifyStore } from '../services/notify-store'
 import { useWorkspaceStore } from '../workspace/store'
 import type { ModelsPort } from './models-port'
@@ -26,13 +28,11 @@ import {
   contextWindowOf,
   customProviderOptionsOf,
   defaultSelectionOf,
-  EMPTY_PREFS,
   ensureCatalog,
   ensureVisibleCatalogs,
   mergeProviderOptions,
   modelIdsOf,
   modelMutation,
-  overrideContextLengthOf,
   prefsQuery,
   readingsOf,
   providersQuery,
@@ -228,11 +228,11 @@ describe('设置的窄投影', () => {
   })
 
   /*
-   * 09-10:两张**按模型的数字表**一起投进来。窗口那张有三个消费者(读数环 /
-   * 分组列表 / 右栏卡);最大输出那张今天**零消费者** —— 一次投影带齐是因为
-   * 它们同源同尺、同一发设置里回来的,不画的不消费。
+   * §5.5(09-26):两张覆盖表(`contextLengthByModel` / `maxOutputByModel`)**不再投进来**。
+   * 覆盖由后端折进目录每行的 `effective`,壳只读结果 —— 窄投影里多一张表,就多一处
+   * 能自己折的地方(09-10 圆环 unknown 事故正是壳自己折的那一份漏了)。
    */
-  it('两张按模型的数字表都投进来;自定义家同手(自己的优先,退回既有,再退空表)', () => {
+  it('窄投影不带两张覆盖表(覆盖只由后端折进 effective)', () => {
     const prefs = toProviderPrefs(
       settingsWith({
         xai: {
@@ -240,43 +240,13 @@ describe('设置的窄投影', () => {
           contextLengthByModel: { 'grok-4': 200_000 },
           maxOutputByModel: { 'grok-4': 32_000 },
         },
-        deepseek: { selectedModels: ['deepseek-chat'] },
       }),
     )
-    expect(prefs.configs.xai.contextLength).toEqual({ 'grok-4': 200_000 })
-    expect(prefs.configs.xai.maxOutput).toEqual({ 'grok-4': 32_000 })
-    // 没设过 = 空表,不是 undefined(消费者不必先判一次在不在)。
-    expect(prefs.configs.deepseek.contextLength).toEqual({})
-    expect(prefs.configs.deepseek.maxOutput).toEqual({})
-
-    const withCustom = {
-      provider: '',
-      providers: {
-        'my-llm': {
-          model: '',
-          selectedModels: [],
-          contextLengthByModel: { 'qwen-max': 111 },
-          maxOutputByModel: { 'qwen-max': 222 },
-        },
-      },
-      customProviders: [
-        { id: 'my-llm', name: '自建', model: 'qwen-max', selectedModels: [] },
-        {
-          id: 'my-other',
-          name: '另一台',
-          model: 'yi-max',
-          selectedModels: [],
-          contextLengthByModel: { 'yi-max': 262_144 },
-        },
-      ],
-    } as unknown as SpaceProviderSettings
-    const custom = toProviderPrefs(withCustom)
-    // 自定义那一半自己没带表 → 退回 `providers[id]` 里已经投好的那一份。
-    expect(custom.configs['my-llm'].contextLength).toEqual({ 'qwen-max': 111 })
-    expect(custom.configs['my-llm'].maxOutput).toEqual({ 'qwen-max': 222 })
-    // 自己带了就用自己的;另一张没带、也没有既有的 → 空表。
-    expect(custom.configs['my-other'].contextLength).toEqual({ 'yi-max': 262_144 })
-    expect(custom.configs['my-other'].maxOutput).toEqual({})
+    expect(prefs.configs.xai).not.toHaveProperty('contextLength')
+    expect(prefs.configs.xai).not.toHaveProperty('maxOutput')
+    expect(Object.keys(prefs.configs.xai).sort()).toEqual(
+      ['enabled', 'model', 'selectedModels', 'thinking', 'thinkingEffort'],
+    )
   })
 })
 
@@ -407,73 +377,80 @@ describe('窗口大小', () => {
 
   it('查不到的选择读作不知道(不知道是哪家 / 目录里没有这一条)', () => {
     const catalog = { xai: [catalogModel('grok-4', 500_000)] }
-    expect(contextWindowOf(catalog, { provider: 'xai', model: 'grok-4' }, EMPTY_PREFS)).toBe(500_000)
-    expect(contextWindowOf(catalog, { provider: '', model: 'grok-4' }, EMPTY_PREFS)).toBeNull()
-    expect(contextWindowOf(catalog, { provider: 'xai', model: '别的' }, EMPTY_PREFS)).toBeNull()
-    expect(contextWindowOf(catalog, null, EMPTY_PREFS)).toBeNull()
+    expect(contextWindowOf(catalog, { provider: 'xai', model: 'grok-4' })).toBe(500_000)
+    expect(contextWindowOf(catalog, { provider: '', model: 'grok-4' })).toBeNull()
+    expect(contextWindowOf(catalog, { provider: 'xai', model: '别的' })).toBeNull()
+    expect(contextWindowOf(catalog, null)).toBeNull()
   })
 
   /*
    * 09-10 报障:用户在模型覆盖浮层里填了 context window,读数环仍写「未知」。
-   * 病根是壳里三处读数只查目录,而引擎 `getOnethingModelContextLength` 从第一天
-   * 就是「覆盖优先」。这两条钉的正是那个序。
+   * 病根是「覆盖 > 目录」在壳里另折了一份而漏读覆盖表。§5.5 起壳一格都不折:
+   * 窗口就是后端那一行的 `effective.contextLength`。下面三条「过一遍后端」
+   * (`servedByBackend` 用的是产品层那一个判据)再读,钉的是壳读的就是那个数。
    */
-  it('用户覆盖压过目录 —— 与引擎 getOnethingModelContextLength 同序', () => {
-    const catalog = { xai: [catalogModel('grok-4', 500_000)] }
-    const prefs = toProviderPrefs(
-      settingsWith({ xai: { selectedModels: ['grok-4'], contextLengthByModel: { 'grok-4': 200_000 } } }),
-    )
-    expect(contextWindowOf(catalog, { provider: 'xai', model: 'grok-4' }, prefs)).toBe(200_000)
-    // 覆盖只管被点名的那一型;同一家的别的型照旧读目录。
-    const other = { xai: [catalogModel('grok-4-fast', 128_000)] }
-    expect(contextWindowOf(other, { provider: 'xai', model: 'grok-4-fast' }, prefs)).toBe(128_000)
-  })
-
-  it('目录里根本没有这一条,但用户说过窗口 → 就是那个数(手填模型的常态)', () => {
-    const prefs = toProviderPrefs(
-      settingsWith({ 'my-llm': { selectedModels: ['qwen-max'], contextLengthByModel: { 'qwen-max': 262_144 } } }),
-    )
-    expect(contextWindowOf({}, { provider: 'my-llm', model: 'qwen-max' }, prefs)).toBe(262_144)
-  })
-
-  it('覆盖那把尺:0 / 负数 / 非有限数 = 这一格没填(与 projection.positive 同义)', () => {
-    for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
-      const prefs = toProviderPrefs(
-        settingsWith({ xai: { selectedModels: ['grok-4'], contextLengthByModel: { 'grok-4': bad } } }),
-      )
-      expect(overrideContextLengthOf(prefs, 'xai', 'grok-4')).toBeNull()
-      // 尺不合格 = 没覆盖 → 照旧读目录,不是「盖成不知道」。
-      expect(
-        contextWindowOf({ xai: [catalogModel('grok-4', 500_000)] }, { provider: 'xai', model: 'grok-4' }, prefs),
-      ).toBe(500_000)
+  it('用户覆盖压过目录 —— 窗口是后端折好的 effective,壳不再另折', () => {
+    const catalog = {
+      xai: toCatalogModels(
+        servedByBackend([openRouterModel('grok-4', 500_000), openRouterModel('grok-4-fast', 128_000)], {
+          contextLengthByModel: { 'grok-4': 200_000 },
+        }),
+      ),
     }
+    expect(contextWindowOf(catalog, { provider: 'xai', model: 'grok-4' })).toBe(200_000)
+    // 覆盖只管被点名的那一型;同一家的别的型照旧读目录。
+    expect(contextWindowOf(catalog, { provider: 'xai', model: 'grok-4-fast' })).toBe(128_000)
+  })
+
+  it('手填条目(目录只知道 id),但用户说过窗口 → 就是那个数(09-10 事故形状)', () => {
+    const manual = { id: 'qwen-max', name: 'qwen-max', source: 'manual' } as OpenRouterModel
+    const catalog = {
+      'my-llm': toCatalogModels(
+        servedByBackend([manual], { contextLengthByModel: { 'qwen-max': 262_144 } }),
+      ),
+    }
+    expect(contextWindowOf(catalog, { provider: 'my-llm', model: 'qwen-max' })).toBe(262_144)
+  })
+
+  it('覆盖那把尺:0 / 负数 / 非有限数 = 这一格没填 → 照旧读目录,不是「盖成不知道」', () => {
+    for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const catalog = {
+        xai: toCatalogModels(
+          servedByBackend([openRouterModel('grok-4', 500_000)], {
+            contextLengthByModel: { 'grok-4': bad },
+          }),
+        ),
+      }
+      expect(contextWindowOf(catalog, { provider: 'xai', model: 'grok-4' })).toBe(500_000)
+    }
+  })
+
+  it('`effective` 在场时一律读它 —— 哪怕旧信封上的目录原值不同', () => {
+    const [served] = servedByBackend([openRouterModel('grok-4', 500_000)], {
+      contextLengthByModel: { 'grok-4': 64_000 },
+    })
+    expect(served.context_length).toBe(500_000)
+    expect(contextLengthOf(served)).toBe(64_000)
   })
 })
 
 /*
- * 读数一份(窗口 / 价格 / 思考四格)。覆盖只碰窗口那一格 —— 「有人说过窗口」
- * 不等于「有人说过价格和思考档」,别的格照旧是不知道。
+ * 读数一份(窗口 / 价格 / 思考四格)。窗口那一格已是后端的生效值,这里一格不折。
  */
-describe('一份读数与窗口覆盖', () => {
-  it('目录条目缺席 + 有覆盖 → 只有窗口有值,别的格仍是不知道', () => {
-    expect(readingsOf(undefined, 262_144)).toEqual({
-      ...UNKNOWN_MODEL_READINGS,
-      contextLength: 262_144,
-    })
-    // 覆盖也没有 → **交回那个恒等常量本体**(身份不换,律④)。
+describe('一份读数', () => {
+  it('目录条目缺席 → 交回那个恒等常量本体(身份不换,律④)', () => {
     expect(readingsOf(undefined)).toBe(UNKNOWN_MODEL_READINGS)
-    expect(readingsOf(undefined, null)).toBe(UNKNOWN_MODEL_READINGS)
   })
 
-  it('目录条目在场 + 有覆盖 → 窗口换成覆盖,价格与思考四格一格不动', () => {
-    const entry = catalogModel('grok-4', 500_000, {
+  it('目录条目在场 → 逐格照搬,窗口就是那一行的生效值', () => {
+    const entry = catalogModel('grok-4', 200_000, {
       pricing: { input: 3, output: 15 },
       thinkingLevels: ['low', 'high'],
       thinkingToggleable: true,
       thinkingDefaultOn: true,
       thinkingDefaultLevel: 'low',
     })
-    expect(readingsOf(entry, 200_000)).toEqual({
+    expect(readingsOf(entry)).toEqual({
       contextLength: 200_000,
       pricing: { input: 3, output: 15 },
       thinkingLevels: ['low', 'high'],
@@ -481,18 +458,17 @@ describe('一份读数与窗口覆盖', () => {
       thinkingDefaultOn: true,
       thinkingDefaultLevel: 'low',
     })
-    // 没覆盖时逐字还是目录那一份。
-    expect(readingsOf(entry).contextLength).toBe(500_000)
   })
 
-  it('抽屉分组列表:手填 id 带覆盖时,行尾那一格「窗口」有数', () => {
-    const prefs = toProviderPrefs(
-      settingsWith({
-        'my-llm': { selectedModels: ['qwen-max'], contextLengthByModel: { 'qwen-max': 262_144 } },
-      }),
-    )
-    // 目录是空的(手填模型永远不在目录里)—— 从前这一行的窗口是 null。
-    const models = buildProviderGroups([{ id: 'my-llm', name: '自建' }], prefs, {}, null)[0].models
+  it('抽屉分组列表:手填 id 带覆盖时,行尾那一格「窗口」有数(来自后端那一行的 effective)', () => {
+    const prefs = toProviderPrefs(settingsWith({ 'my-llm': { selectedModels: ['qwen-max'] } }))
+    const manual = { id: 'qwen-max', name: 'qwen-max', source: 'manual' } as OpenRouterModel
+    const catalog = {
+      'my-llm': toCatalogModels(
+        servedByBackend([manual], { contextLengthByModel: { 'qwen-max': 262_144 } }),
+      ),
+    }
+    const models = buildProviderGroups([{ id: 'my-llm', name: '自建' }], prefs, catalog, null)[0].models
     expect(models).toEqual([modelOption('qwen-max', 262_144)])
   })
 })
@@ -553,7 +529,7 @@ describe('取数:设置热,名册与目录都冷', () => {
     await Promise.all([ensureCatalog('xai'), ensureCatalog('xai')])
     await ensureCatalog('xai')
     expect(calls.models).toEqual(['xai'])
-    expect(toCatalogModels(catalogQuery.get('xai').get().data ?? [])).toEqual([
+    expect(toCatalogModels(catalogQuery.get(catalogKey('xai')).get().data ?? [])).toEqual([
       catalogModel('grok-4', 500_000),
     ])
   })
@@ -565,7 +541,7 @@ describe('取数:设置热,名册与目录都冷', () => {
       calls.models.push(providerId)
       return hold.promise
     })
-    const q = catalogQuery.get('xai')
+    const q = catalogQuery.get(catalogKey('xai'))
     const running = q.refetch()
     expect(q.get().inflight).toBe(true)
     expect(q.get().phase).toBe('ready')
@@ -748,7 +724,7 @@ describe('目录只有一个产地', () => {
       thinkingToggleable: false, thinkingDefaultOn: true, thinkingDefaultLevel: 'high',
       thinkingLevelLabels: { low: '快速' }, thinkingDisabledLevel: 'low',
     }] }))
-    const q = catalogQuery.get('xai')
+    const q = catalogQuery.get(catalogKey('xai'))
     await q.ensure()
     const rev = q.get().dataRev
     levels = ['low', 'high']
@@ -761,14 +737,14 @@ describe('目录只有一个产地', () => {
 
   it('设置面拉过之后,模型侧**不再发第二发**;两边读到的 id 集合逐字相同', async () => {
     // 设置面那一路(ProviderSettingsPanel 走的就是这一句)。
-    await catalogQuery.get('xai').ensure()
+    await catalogQuery.get(catalogKey('xai')).ensure()
     expect(calls.models).toEqual(['xai'])
 
     // 模型侧那一路。两族各一份的话这里会多出一发。
     await ensureCatalog('xai')
     expect(calls.models).toEqual(['xai'])
 
-    const raw = catalogQuery.get('xai').get().data ?? []
+    const raw = catalogQuery.get(catalogKey('xai')).get().data ?? []
     expect(toCatalogModels(raw).map((m) => m.id)).toEqual(raw.map((m) => m.id))
     expect(raw.map((m) => m.id)).toEqual(['grok-4'])
   })

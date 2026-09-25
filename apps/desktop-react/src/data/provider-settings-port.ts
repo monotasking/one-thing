@@ -103,7 +103,7 @@ export interface ProviderSettingsPort {
    * 一家的模型明细。`forceRefresh` 才是「刷新目录」那颗钮 ——
    * 不传就吃后端缓存,开一次面不该把 models.dev 问一遍。
    */
-  listModels(providerId: string, forceRefresh?: boolean): Promise<ModelsListResponse>
+  listModels(providerId: string, forceRefresh?: boolean, spaceId?: string): Promise<ModelsListResponse>
   /**
    * 手填模型(批 2):手填 = 目录里的一条 `source:'manual'` 条目 + 这个空间里勾上。
    * 目录全空间共享、勾选是这个空间的,两半由后端一发写完 —— 所以这两口不走
@@ -232,8 +232,12 @@ async function realPort(): Promise<ProviderSettingsPort> {
   return {
     ready: () => whenConnected(),
     listProviders: () => providersApi.list({}),
-    listModels: (providerId, forceRefresh) =>
-      modelsApi.getWithCapabilities({ providerId, ...(forceRefresh ? { forceRefresh } : {}) }),
+    listModels: (providerId, forceRefresh, spaceId) =>
+      modelsApi.getWithCapabilities({
+        providerId,
+        ...(forceRefresh ? { forceRefresh } : {}),
+        ...(spaceId ? { spaceId } : {}),
+      }),
     addManualModel: (request) => modelsApi.addManual(request),
     removeManualModel: (request) => modelsApi.removeManual(request),
     readSettings: () => settingsApi.getSettings({}),

@@ -1,6 +1,7 @@
 import type { OpenRouterModel } from '@shared/ipc/providers'
 import { createQueryFamily } from '../data/kernel'
 import { providerSettingsPort } from '../data/provider-settings-port'
+import { currentSpaceId } from '../workspace/current'
 
 /**
  * 模型目录的取数 —— **K1 的样板格**(数据层双原语的第一处真消费者)。
@@ -36,11 +37,40 @@ import { providerSettingsPort } from '../data/provider-settings-port'
  * 一个在 data,搬家会动到不属于那一批的文件(`providers/store.ts` 与
  * `ProviderSettingsPanel.tsx` 的 import),而位置本身不影响「只有一格」这件事。
  */
+/*
+ * ── 键 = (空间, provider)(§5.5,2026-09-26)──────────────────────────────────
+ * 目录本身全空间共享,但每行的 `effective`(「这一型此刻按多少算」)里折着**用户覆盖**,
+ * 而覆盖表是 per-space 的(`workspaces/<id>/providers.json`)。同一家在两个空间里的
+ * 生效窗口可以不一样,所以一格答案认两个坐标;只按 provider 认,换空间那一帧就会把
+ * 上一个空间的覆盖画在这一个空间里。
+ *
+ * 键的拼法只在这里:`catalogKey` 拼、`providerOfCatalogKey` 拆。换空间不用手写作废 ——
+ * 新空间是新的一格,旧的那格留着,回去时还在。
+ */
+const CATALOG_KEY_SEPARATOR = '\u0000'
+
+/** 一格目录的键。`spaceId` 缺省 = 此刻的当前空间。 */
+export function catalogKey(providerId: string, spaceId: string = currentSpaceId()): string {
+  return `${spaceId}${CATALOG_KEY_SEPARATOR}${providerId}`
+}
+
+function parseCatalogKey(key: string): { spaceId: string; providerId: string } {
+  const at = key.indexOf(CATALOG_KEY_SEPARATOR)
+  return at < 0
+    ? { spaceId: '', providerId: key }
+    : { spaceId: key.slice(0, at), providerId: key.slice(at + CATALOG_KEY_SEPARATOR.length) }
+}
+
+export function providerOfCatalogKey(key: string): string {
+  return parseCatalogKey(key).providerId
+}
+
 export const catalogQuery = createQueryFamily<readonly OpenRouterModel[]>(
   'providers.catalog',
   async (ctx) => {
     const port = await providerSettingsPort()
-    const response = await port.listModels(ctx.key, ctx.force)
+    const { spaceId, providerId } = parseCatalogKey(ctx.key)
+    const response = await port.listModels(providerId, ctx.force, spaceId || undefined)
     if (!response.success) throw new Error(response.error ?? '')
     return response.models ?? []
   },
@@ -67,3 +97,15 @@ export const catalogQuery = createQueryFamily<readonly OpenRouterModel[]>(
       }),
   },
 )
+
+/**
+ * 这一家在**所有空间**里的目录格一起作废:目录是全空间共享的(刷新、手填、改名都改它),
+ * 覆盖是这一个空间的 —— 写的那一刻分不清改的是哪一半,就一起作废。没人看的格只记脏,
+ * 下次 ensure 再问(kernel 的口径),不白打网络。
+ */
+export function invalidateCatalogProvider(providerId: string, options: { except?: string } = {}): void {
+  for (const key of catalogQuery.keys()) {
+    if (key === options.except) continue
+    if (providerOfCatalogKey(key) === providerId) catalogQuery.invalidate(key)
+  }
+}
