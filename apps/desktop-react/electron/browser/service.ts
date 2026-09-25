@@ -206,6 +206,17 @@ export class BrowserService {
     this.schedulePersist()
   }
 
+  /**
+   * 后台释放一格(内存预算表)。先让窗口系统摘掉视图(`onDematerialized`,与
+   * `close` 同一条路),再关进程;tab、地址、活动位、落盘一概不动。答释放了没有。
+   */
+  hibernate(tabId: string): boolean {
+    const tab = this.tabs.get(tabId)
+    if (!tab?.materialized) return false
+    this.options.observer.onDematerialized(tabId)
+    return tab.hibernate()
+  }
+
   /** 壳报来第一个 `visible` 时调:惰性视图在这一刻落地。 */
   materialize(tabId: string): void {
     this.tabs.get(tabId)?.materialize()
@@ -269,9 +280,10 @@ export class BrowserService {
       ready: profile => this.options.sessionPolicy.ready(profile),
       observer: {
         onState: (tab, patch) => { this.onTabState(tab, patch) },
-        onOpened: tab => {
+        onOpened: (tab, info) => {
           this.options.observer.onMaterialized(tab)
-          this.options.observer.onOpened(tab)
+          // 释放过又建回来的那一格:窗口系统要重新登记视图,但「开了一格」只说一次。
+          if (!info?.reopened) this.options.observer.onOpened(tab)
         },
         onWindowOpen: (tab, decision) => { this.onWindowOpen(tab, decision) },
         onFind: (tab, readout) => { this.options.observer.onFind(tab, readout) },

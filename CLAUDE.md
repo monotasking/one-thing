@@ -564,9 +564,15 @@ Notes:
   its assembly site — today `events.replay-buffers` (`backend/events/memory.ts`; those per-session
   rings used to be freed only on session delete), `sessions.projections` + `sessions.cache`
   (`backend/session/memory.ts`; they are released together, because the LRU session object holds
-  the messages materialized from the projection). Hosts add a `MemoryProcessProbe`: core registers
-  its own RSS, the React shell adds `app.getAppMetrics()` (`electron/memory-probe.ts` — renderer /
-  GPU / each built-in browser tab). The governor samples every 30s and trims over budget
+  the messages materialized from the projection), and on the React shell `browser.tabs`
+  (`electron/browser/memory-holder.ts`: **background tab release** — a tab the shell has reported
+  hidden for ≥10 min (soft) / ≥1 min (hard) and that is not playing sound loses its renderer
+  process via `BrowserService.hibernate`; the tab, its address and title stay, and the next
+  visible frame re-materializes it and reloads the address — scroll position, unsaved form input
+  and back/forward history are the price; an occluded tab counts as seen). Hosts add a
+  `MemoryProcessProbe`: core registers its own RSS, the React shell adds `app.getAppMetrics()`
+  (`electron/memory-probe.ts` — renderer / GPU / each built-in browser tab, whose site-isolated
+  iframe processes are named after the tab). The governor samples every 30s and trims over budget
   (`ONETHING_MEMORY_SOFT_MB` / `_HARD_MB`, default 1024 / 1536, 2 min cooldown, one `warn` line in
   `app.memory`). Read it with `bun run memory:report` (`memory` RPC domain: `report` for anyone,
   `trim` for locally trusted callers only; `--trim [soft]`). The table never names a holder:
