@@ -399,6 +399,20 @@ API 模式:密钥池每条密钥行备注位右侧出「¥123.45」(有源的家
 
 ## 11. 留账
 
+**入库记录(09-26):** 批 0 4f2c3c478 · 批 1 e38e5660c · 批 2 3509eb188 · 批 M-b 5361cef8c · 批 M-a bcf4eb916 · 批 3 a5dde18c1 · 批 5 8d8d070cc · 批 4 fcd20cbc9;批 6 施工中。
+
+**施工中挖出的新账:**
+
+- 目录刷新拿旧 settings 快照整份写回,把中间别人写的字段盖掉(批 2 真机门上 1.5 秒内复现,与本方案无关,已开独立任务查根因,修法按 settings-single-authority「写入 API 换形」)。
+- 批 4:适配表里 `toolCallsPath` / `finishReasonPath` / `finishReasonMap` / `doneMarker` 四格编译照常但**运行期不生效**(线把这几处读死了),由 `unsupportedAdapterSpecFields` 如实列出;§7.5 演练「转发站把工具调用塞在 `delta.function_call`」按「线一行不改」的红线答不出 —— 要给 openai-chat 线开一格可替换的工具调用策略,**待拍**。
+- 批 5:Claude 订阅的响应头被动源字段名待真机核;默认空间同一家多个 OAuth 账号问到的是同一份令牌(默认空间的令牌仍住 settings 层 `oauth-tokens.json`,池里的 oauth 条目只是「登没登」标记,既有结构);composer 卡片底部「余额获取失败」的原话 Tooltip 因卡片是圆环悬停出现、指针一离开就关而碰不到;`resolveSessionCredentialId` 等发送路之外的解析仍会拨 round-robin 游标。
+- 批 3:`ensureCatalog` 不重取「过期但没标脏」的目录;`gate-providers-squeeze` 不离线(models.dev 缓存启动时仍会走网刷新);新对话框未进 `gate:a11y`。
+- 批 M-a:`sibling` 仍产自 `@shared/provider-families`(边界门不许 `@shared` 反向依赖 runtime,manifest 读它);三家有计费档位的 provider(`zhipu.ts` `resolveOnethingProviderBaseUrl`、`provider-options.ts`、`spaces/provider-credentials.ts` 的字段表)仍按 id 分支,要让 `DialSpec` 长出地址解析器才能收;`agent-runtime-route.ts` 的 `isOnethingACPProviderRuntime` 仍比较常量 `'acp'`。
+- 批 M-b:引擎自己的上下文 / 最大输出读法仍只读默认空间(覆盖表是 per-space 的);目录条目已改「0 = 未知」,盘上老条目的 128000 到下次刷新才换。
+- 批 1:壳的 `oauthStart` 仍不带 `spaceId`(照旧)。
+- 测试基线红(与本方案无关,三个 worktree 都在干净 HEAD 上核过):`sessions-domain` 25 条(mock 缺 `getTodoPlanStore`)、music 域 2 条、`thinking-wire` grok-effort 1 条、`owned-labels-snapshot`(别的会话的 `memory` / `acpSpawnEnv` 标签没进快照);`credential-strategy.test.ts` 冷缓存首次转译 8.8s 撞 5s 超时是假红,批 5 加了 `beforeAll` 热身。
+
+
 - Kimi `.cn` 站余额接口、xAI `/v1/billing/credits`、OpenRouter `/credits` 对普通密钥是否可用、Copilot 高级请求配额、Claude 订阅响应头字段名:五条待真机核。
 - 批 4 只让 openai-chat 一条线接受 spec 编译;另外三条线的偏差没见过真实案例。
 - `copy:gate` 棘轮、密钥保存后静默探测当状态点:可选,未排。
