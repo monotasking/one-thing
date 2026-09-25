@@ -273,6 +273,26 @@ async function refreshMusicNowPlaying(): Promise<void> {
 }
 
 /**
+ * A transport command is about to go out: every `state` read already in flight
+ * is stale from here on (it would land after the command and announce the old
+ * world). See `NowPlayingWatcher.beginCommand`.
+ */
+function beginMusicCommand(): void {
+  nowPlayingWatcher?.beginCommand()
+}
+
+/**
+ * The command was accepted: announce its effect now instead of after a
+ * `state` round trip. Not a sample (the conductor never sees it); the next
+ * poll corrects it if the player disagrees. See `NowPlayingWatcher.assume`.
+ */
+function assumeMusicNowPlaying(
+  next: (previous: OnethingMusicNowPlaying | null) => OnethingMusicNowPlaying | null,
+): void {
+  nowPlayingWatcher?.assume(next)
+}
+
+/**
  * Re-broadcast the current snapshot even though nothing about IT changed.
  * The renderer re-pulls the radio state on every now-playing push, and some
  * radio-side facts (a start going in flight) change while the player is
@@ -332,6 +352,8 @@ async function drain(): Promise<void> {
     startMusicNowPlayingWatch: owner.wrap(startMusicNowPlayingWatch),
     getMusicNowPlaying: owner.wrap(getMusicNowPlaying),
     refreshMusicNowPlaying: owner.wrap(refreshMusicNowPlaying),
+    beginMusicCommand: owner.wrap(beginMusicCommand),
+    assumeMusicNowPlaying: owner.wrap(assumeMusicNowPlaying),
     nudgeMusicClients: owner.wrap(nudgeMusicClients),
     resetMusicServiceForProviderSwitch: owner.wrap(resetMusicServiceForProviderSwitch),
   }
@@ -345,6 +367,8 @@ export const stopMusicPlayerKeepalive: MusicServiceScope['stopMusicPlayerKeepali
 export const startMusicNowPlayingWatch: MusicServiceScope['startMusicNowPlayingWatch'] = (...args) => getCurrentBackend('music').music.service.startMusicNowPlayingWatch(...args)
 export const getMusicNowPlaying: MusicServiceScope['getMusicNowPlaying'] = (...args) => getCurrentBackend('music').music.service.getMusicNowPlaying(...args)
 export const refreshMusicNowPlaying: MusicServiceScope['refreshMusicNowPlaying'] = (...args) => getCurrentBackend('music').music.service.refreshMusicNowPlaying(...args)
+export const beginMusicCommand: MusicServiceScope['beginMusicCommand'] = (...args) => getCurrentBackend('music').music.service.beginMusicCommand(...args)
+export const assumeMusicNowPlaying: MusicServiceScope['assumeMusicNowPlaying'] = (...args) => getCurrentBackend('music').music.service.assumeMusicNowPlaying(...args)
 export const nudgeMusicClients: MusicServiceScope['nudgeMusicClients'] = (...args) => getCurrentBackend('music').music.service.nudgeMusicClients(...args)
 export const resetMusicServiceForProviderSwitch: MusicServiceScope['resetMusicServiceForProviderSwitch'] = (...args) => getCurrentBackend('music').music.service.resetMusicServiceForProviderSwitch(...args)
 export function disposeMusicService(): Promise<void> { return getCurrentBackend('music').music.service.drain() }

@@ -209,3 +209,146 @@ describe('createNowPlayingWatcher', () => {
     expect(h.watcher.current()).toBeNull()
   })
 })
+
+/**
+ * 2026-09-25「点击及时响应 / 前后端一致」:按了暂停的那一刻,5 秒一拍的 `state` 可能正在路上 ——
+ * 它是暂停之前起的,落地时带的是「还在放」。从前它照样被公布,于是每一个客户端都被打回「在放」,
+ * 等暂停的回读到了再翻回来(屏幕上 播放 → 暂停 → 播放 跳一下)。
+ */
+describe('createNowPlayingWatcher · commands', () => {
+  function heldWatcher() {
+    const replies: Array<{ release: (stdout: string) => void }> = []
+    const emit = vi.fn()
+    const onSample = vi.fn()
+    const run = vi.fn(
+      () =>
+        new Promise<{ code: number; stdout: string; stderr: string }>(resolve => {
+          replies.push({ release: stdout => resolve({ code: 0, stdout, stderr: '' }) })
+        }),
+    )
+    const watcher = createNowPlayingWatcher({ runner: { run, spawn: vi.fn() }, isPlayerRunning: () => true, emit, onSample })
+    return { watcher, replies, emit, onSample, run }
+  }
+
+  it('drops a read that started before the command, even though it lands after it', async () => {
+    const h = heldWatcher()
+    const stale = h.watcher.refresh() // the 5s tick, spawned just before the click
+    await Promise.resolve()
+    h.watcher.beginCommand() // the pause goes out
+    h.replies[0].release(PLAYING) // …and the old read lands saying "playing"
+    await stale
+    expect(h.emit).not.toHaveBeenCalled()
+    expect(h.onSample).not.toHaveBeenCalled()
+  })
+
+  it('refresh() after a command starts a fresh read instead of reusing the stale one in flight', async () => {
+    const h = heldWatcher()
+    void h.watcher.refresh()
+    await Promise.resolve()
+    h.watcher.beginCommand()
+    const fresh = h.watcher.refresh()
+    await Promise.resolve()
+    expect(h.run).toHaveBeenCalledTimes(2)
+    h.replies[0].release(PLAYING)
+    h.replies[1].release(PAUSED)
+    await fresh
+    expect(h.emit).toHaveBeenCalledTimes(1)
+    expect(h.watcher.current()?.status).toBe('paused')
+  })
+
+  it('assume() announces the effect at once, and is not a sample', async () => {
+    const h = heldWatcher()
+    const first = h.watcher.refresh()
+    await Promise.resolve()
+    h.replies[0].release(PLAYING)
+    await first
+    h.emit.mockClear()
+    h.onSample.mockClear()
+
+    h.watcher.assume(previous => (previous ? { ...previous, status: 'paused' } : previous))
+    expect(h.emit).toHaveBeenCalledTimes(1)
+    expect(h.emit.mock.calls[0][0].status).toBe('paused')
+    expect(h.onSample).not.toHaveBeenCalled()
+    expect(h.watcher.current()?.status).toBe('paused')
+  })
+
+  it('the read-back that agrees with the assumption announces nothing more; one that disagrees corrects it', async () => {
+    const h = heldWatcher()
+    const first = h.watcher.refresh()
+    await Promise.resolve()
+    h.replies[0].release(PLAYING)
+    await first
+    h.watcher.beginCommand()
+    h.watcher.assume(previous => (previous ? { ...previous, status: 'paused' } : previous))
+    h.emit.mockClear()
+
+    const agree = h.watcher.refresh()
+    await Promise.resolve()
+    h.replies[1].release(JSON.stringify({ success: true, state: { status: 'stopped', title: '可惜没如果 - 林俊杰', position: 241.2, duration: 298.293333, volume: null, currentIndex: 0, queueLength: 1 } }))
+    await agree
+    expect(h.emit).not.toHaveBeenCalled()
+
+    const disagree = h.watcher.refresh()
+    await Promise.resolve()
+    h.replies[2].release(PLAYING) // the daemon never took it
+    await disagree
+    expect(h.emit).toHaveBeenCalledTimes(1)
+    expect(h.watcher.current()?.status).toBe('playing')
+  })
+})
+
+/** 2026-09-25「暂停播放时的状态衔接」。 */
+describe('createNowPlayingWatcher · position and cadence', () => {
+  it('current() carries the position forward from the moment it was read, while playing', async () => {
+    let clock = 1_000_000
+    const run = vi.fn(async () => ({ code: 0, stdout: PLAYING, stderr: '' }))
+    const watcher = createNowPlayingWatcher({
+      runner: { run, spawn: vi.fn() },
+      isPlayerRunning: () => true,
+      emit: vi.fn(),
+      now: () => clock,
+    })
+    await watcher.refresh()
+    expect(watcher.current()?.position).toBeCloseTo(241.162071)
+    clock += 4_000
+    expect(watcher.current()?.position).toBeCloseTo(245.162071)
+    // 推到总长为止。
+    clock += 600_000
+    expect(watcher.current()?.position).toBeCloseTo(298.293333)
+  })
+
+  it('a pause assumed 4s after the read freezes at the carried-forward second, not the stale one', async () => {
+    let clock = 1_000_000
+    const run = vi.fn(async () => ({ code: 0, stdout: PLAYING, stderr: '' }))
+    const watcher = createNowPlayingWatcher({ runner: { run, spawn: vi.fn() }, isPlayerRunning: () => true, emit: vi.fn(), now: () => clock })
+    await watcher.refresh()
+    clock += 4_000
+    watcher.assume(previous => (previous ? { ...previous, status: 'paused' } : previous))
+    clock += 10_000
+    expect(watcher.current()?.status).toBe('paused')
+    expect(watcher.current()?.position).toBeCloseTo(245.162071)
+  })
+
+  it('paused → playing re-arms the poll at the playing cadence (a resumed song is not watched at the idle pace)', async () => {
+    vi.useFakeTimers()
+    try {
+      const run = vi.fn(async () => ({ code: 0, stdout: PAUSED, stderr: '' }))
+      const watcher = createNowPlayingWatcher({
+        runner: { run, spawn: vi.fn() },
+        isPlayerRunning: () => true,
+        emit: vi.fn(),
+        playingIntervalMs: 1_000,
+        idleIntervalMs: 60_000,
+      })
+      watcher.start()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(run).toHaveBeenCalledTimes(1) // paused: next tick 60s out
+      watcher.assume(previous => (previous ? { ...previous, status: 'playing' } : previous))
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(run).toHaveBeenCalledTimes(2) // re-armed at 1s, not 60s
+      watcher.stop()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

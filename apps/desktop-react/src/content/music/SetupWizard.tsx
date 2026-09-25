@@ -91,15 +91,27 @@ export function useSetupWizardVisible(stage: MusicSetupStage | undefined): boole
   return stage !== 'ready'
 }
 
-export function SetupWizard({ state }: { state: MusicRuntimeState }) {
+export function SetupWizard({
+  state,
+  withHeader = true,
+}: {
+  state: MusicRuntimeState
+  /**
+   * 画不画自己的标题与三格进度记号。音乐面 v9 的「账号」那一格上面已经有一张带名字的三步清单
+   * (`AccountSection`),同一件事画两遍就是两个产地 —— 那里传 `false`。
+   */
+  withHeader?: boolean
+}) {
   const t = useT()
   const step: WizardStep = state.setupStage
   return (
-    <section className={s.wizard} data-testid="music-setup" data-step={step}>
-      <header className={s.wizardHead}>
-        <h2 className={s.wizardTitle}>{t('music.setup.title')}</h2>
-        <Steps step={step} />
-      </header>
+    <section className={s.wizard} data-testid="music-setup" data-step={step} data-bare={withHeader ? undefined : ''}>
+      {withHeader && (
+        <header className={s.wizardHead}>
+          <h2 className={s.wizardTitle}>{t('music.setup.title')}</h2>
+          <Steps step={step} />
+        </header>
+      )}
       {step === 'env' && <EnvStep t={t} state={state} />}
       {step === 'credentials' && <CredentialsStep t={t} />}
       {step === 'login' && <LoginStep t={t} state={state} />}
@@ -152,7 +164,7 @@ function EnvStep({ t, state }: { t: TFn; state: MusicRuntimeState }) {
   const tools = env ? Object.keys(env.tools) : ['', '']
   return (
     <>
-      <p className={s.wizardHint}>{t('music.setup.envHint')}</p>
+      <p className={s.wizardHint} data-step-hint>{t('music.setup.envHint')}</p>
       <div className={s.wizardBox}>
         {tools.map((tool, index) => (
           <ToolRow key={tool || index} t={t} tool={tool} state={state} />
@@ -261,7 +273,7 @@ function CredentialsStep({ t }: { t: TFn }) {
         void saveOp.run({ appId: appId.trim(), privateKey: privateKey.trim() })
       }}
     >
-      <p className={s.wizardHint}>{t('music.setup.credentialsHint')}</p>
+      <p className={s.wizardHint} data-step-hint>{t('music.setup.credentialsHint')}</p>
       <div className={s.wizardBox}>
         <Field label={t('music.setup.appId')}>
           <AppIdInput value={appId} onChange={setAppId} />
@@ -337,7 +349,7 @@ function LoginStep({ t, state }: { t: TFn; state: MusicRuntimeState }) {
   const failed = login.status === 'failed' || login.status === 'quota'
   return (
     <>
-      <p className={s.wizardHint}>{t('music.setup.loginHint')}</p>
+      <p className={s.wizardHint} data-step-hint>{t('music.setup.loginHint')}</p>
       {failed && (
         <p className={s.bad} data-testid="music-login-error">
           {login.message ?? t('music.setup.loginFailed')}

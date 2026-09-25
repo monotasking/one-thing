@@ -19,6 +19,7 @@ import type {
   MusicCommandResponse,
   MusicRadioState,
 } from '@shared/ipc/music.js'
+import type { OnethingMusicNowPlaying } from '@onething/runtime/music'
 import { recentSpins } from './recent-spins.js'
 import type { MusicServiceScope } from './service.js'
 import type { RadioScope } from './radio.js'
@@ -31,7 +32,7 @@ import { getSettings } from '../../stores/settings.js'
 
 export function createMusicOperationsScope(options: { service: MusicServiceScope; radio: RadioScope; assertOwned?: () => void }) {
   const owner = new MusicWorkOwner(options.assertOwned)
-  const { getActiveMusicProvider, getMusicNowPlaying, refreshMusicNowPlaying } = options.service
+  const { getActiveMusicProvider, getMusicNowPlaying, refreshMusicNowPlaying, beginMusicCommand, assumeMusicNowPlaying } = options.service
   const { getRadioStartingTitle, getRadioStore, isRadioActive, likeCurrentSong, markRadioGesture,
     radioToolClose, recordRadioSkip, replayCurrentRadioSong, resumeRadioPlayback, skipToNextRadioSong } = options.radio
 /**
@@ -84,6 +85,21 @@ const COMMAND_ARGS: Partial<Record<MusicCommand, string[]>> = {
   resume: ['resume'],
   next: ['next'],
   prev: ['prev'],
+}
+
+/**
+ * What an accepted transport command did to the now-playing snapshot, when that
+ * is knowable without asking (2026-09-25,「点击及时响应」). These three change
+ * one field the command itself names; `next` / `prev` pick a song, so they
+ * still read back before answering.
+ */
+const ASSUMED_EFFECT: Partial<Record<MusicCommand, (previous: OnethingMusicNowPlaying, request: MusicCommandRequest) => OnethingMusicNowPlaying>> = {
+  pause: previous => ({ ...previous, status: 'paused' }),
+  resume: previous => ({ ...previous, status: 'playing' }),
+  seek: (previous, request) =>
+    typeof request.value === 'number' && Number.isFinite(request.value)
+      ? { ...previous, position: Math.max(0, Math.round(request.value)) }
+      : previous,
 }
 
 /** seek/volume carry a number; build their argv or explain why not. */
@@ -176,6 +192,9 @@ async function runMusicCommand(
       : { success: false, error: '没有可重播的歌' }
   }
 
+  // Any `state` read already in flight started before this command and would
+  // land after it with the old world — drop it (the 09-25 pause flicker).
+  beginMusicCommand()
   try {
     const result = await options.service.runner.run({
       command: getActiveMusicProvider().descriptor.binary,
@@ -193,8 +212,19 @@ async function runMusicCommand(
       return { success: false, error: result.stderr.trim() || `${args.join(' ')} 失败` }
     }
 
-    // Read back rather than assume: `next` picks the song, and pause/resume can
-    // be refused by a daemon that quietly went away.
+    // pause / resume / seek: the player took the command, and what it did is
+    // named in the command itself — answer now (one ~200ms process start-up
+    // instead of two) and announce the effect to every client. The read-back
+    // still happens, in the background: a daemon that quietly went away is
+    // caught there and its truth announced as a correction.
+    const assumed = ASSUMED_EFFECT[request.command]
+    if (assumed) {
+      assumeMusicNowPlaying(previous => (previous ? assumed(previous, request) : previous))
+      void owner.track(refreshMusicNowPlaying()).catch(() => undefined)
+      return { success: true, nowPlaying: getMusicNowPlaying() }
+    }
+
+    // Read back rather than assume: `next` picks the song.
     await refreshMusicNowPlaying()
     return { success: true, nowPlaying: getMusicNowPlaying() }
   } catch (error) {

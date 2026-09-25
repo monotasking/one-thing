@@ -1771,6 +1771,24 @@
    * apps/desktop-react/docs/music-panel-2026-09.md §6)──────────────────────── */
   /* 三步卡那一栏的最大宽:一格表单读起来最舒服的行长,再宽就该分两列了。 */
   --music-wizard-w: 400px;
+
+  /* ── 音乐面 v9「成熟的音乐 App」(2026-09-25;正本 apps/desktop-react/docs/music-panel-2026-09.md §10)──
+   * 檐(分区导航 + 账号)/ 状态条 / 分区身子 / 播放条四层。分区身子里「一列卡片」那一档的行宽封顶
+   * --music-page-w(表单的行长过宽读不动);心情块是**画面里的物件色**(与 --music-scene-* / --pet-* 同一条
+   * 例外,不从主题色里混):一格一对颜色的斜向渐变,块上的字恒为浅色。 */
+  --music-page-w: 560px;
+  --music-mood-min: 120px;
+  --music-mood-h: 76px;
+  --music-mood-ink: #ffffff;
+  --music-mood-sub: rgba(255, 255, 255, 0.78);
+  --music-mood-rain: linear-gradient(135deg, #4a6c8c, #26384d);
+  --music-mood-focus: linear-gradient(135deg, #3f7a6a, #1f3f37);
+  --music-mood-friday: linear-gradient(135deg, #b0654a, #5c2e2a);
+  --music-mood-drive: linear-gradient(135deg, #4b4a86, #1f1f3f);
+  --music-gate-w: 360px;
+  --music-mood-hover: brightness(1.08);
+  --music-mood-press: scale(0.98);
+  --music-echo-max: 80%;
   /* 安装输出那一块最多露几行(§6.3「最多 12 行、自动跟到底」)。 */
   --music-log-lines: 12;
   /* 二维码画多大。它是这一步的主角,但不该把另外两颗钮挤下去。 */
@@ -1826,6 +1844,9 @@
   --music-deck-row-h: 88px;
   --music-deck-keys-h: 44px;
   --music-deck-volume-w: 120px;
+  /* v9:音量杆随面板收(容器查询单位,面板是 `music` 容器),最窄不小于 --music-deck-volume-min。 */
+  --music-deck-volume-min: 56px;
+  --music-deck-volume-fluid: 18cqi;
   /* 宠物那一格(点它开出来的输入框 + 动作)的宽。 */
   --pet-menu-w: 300px;
   --music-deck-bg: linear-gradient(#231f1c, #1a1715);

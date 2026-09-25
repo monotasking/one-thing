@@ -373,7 +373,7 @@ describe('③ 登录', () => {
     await mount(tableWith(login({ status, message })))
     expect(screen.queryByTestId('music-login-qr')).toBeNull()
     expect(screen.getByTestId('music-login-error').textContent).toBe(message)
-    expect(screen.getByTestId('music-login-start').textContent).toBe('再试一次')
+    expect(screen.getByTestId('music-login-start').textContent).toBe('重试')
   })
 
   it('waiting 期间每 2.5s 问一次;取消之后停', async () => {
@@ -446,8 +446,8 @@ describe('账号菜单(在播放列表抽屉的檐上)', () => {
     await mount(tableWith(READY))
     await openAccount()
 
-    const here = screen.getByRole('menuitemradio', { name: '在这台电脑上出声' })
-    const inApp = screen.getByRole('menuitemradio', { name: '交给网易云音乐 App' })
+    const here = screen.getByRole('menuitemradio', { name: '本机播放' })
+    const inApp = screen.getByRole('menuitemradio', { name: '网易云音乐 App' })
     expect(here.getAttribute('aria-checked')).toBe('true')
     expect(inApp.getAttribute('aria-checked')).toBe('false')
 
@@ -464,7 +464,7 @@ describe('账号菜单(在播放列表抽屉的檐上)', () => {
     await mount(tableWith(READY))
     await openAccount()
     await act(async () => {
-      fireEvent.click(screen.getByRole('menuitemradio', { name: '在这台电脑上出声' }))
+      fireEvent.click(screen.getByRole('menuitemradio', { name: '本机播放' }))
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
     expect(setupCalls()).toEqual([])

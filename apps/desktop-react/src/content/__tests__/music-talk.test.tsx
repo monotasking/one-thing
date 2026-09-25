@@ -193,13 +193,13 @@ describe('跟黑豆说话(09-19:点黑豆开出一格输入框,不在控制栏�
   it('关着也有「说话」:占位问今晚想听什么', async () => {
     await mount(tableWith(BRIEF_OFF))
     await openTalk()
-    expect(screen.getByTestId('pet-menu-input').getAttribute('placeholder')).toBe('今晚想听点什么')
+    expect(screen.getByTestId('pet-menu-input').getAttribute('placeholder')).toBe('想听什么？')
   })
 
   it('开着:占位是跟黑豆说点什么', async () => {
     await mount()
     await openTalk()
-    expect(screen.getByTestId('pet-menu-input').getAttribute('placeholder')).toBe('跟黑豆说点什么')
+    expect(screen.getByTestId('pet-menu-input').getAttribute('placeholder')).toBe('和黑豆说点什么')
   })
 
   it('开着:回车发一次且只发一次(music:radio 上的 tell),那一格收起', async () => {

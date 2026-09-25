@@ -1030,6 +1030,22 @@ async function main() {
     )
     await settle(page, '音乐面')
     await scanAxe(page, '音乐面', '[data-testid="music-panel"]')
+    /*
+     * 音乐面 v9(09-25):檐上的导航读分区表,每一段是一格身子(唱机 / 电台 / 搜索)。临时 store
+     * 上没登录,所以缺省落在「账号」那一格(三步清单 + 向导)—— 上面那一扫扫的就是它;这里逐段点过去,
+     * 扫的是没登录时每一格的「登录引导卡」。段是读表点的(`[data-value]`),加一格分区这里不用改。
+     */
+    const musicSections = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('[data-testid="music-nav"] [data-value]')).map((el) => el.getAttribute('data-value')),
+    )
+    for (const id of musicSections) {
+      await clickSelector(page, `[data-testid="music-nav"] [data-value="${id}"]`)
+      await waitFor(`音乐面 · ${id} 就位`, () =>
+        page.evaluate((sid) => document.querySelector('[data-testid="music-panel"]')?.getAttribute('data-section') === sid, id),
+      )
+      await settle(page, `音乐面 · ${id}`)
+      await scanAxe(page, `音乐面 · ${id}`, '[data-testid="music-panel"]')
+    }
     // 扫完把它收回去,别把它留给下一屏(Dock 上那颗瓦是开关)。
     await clickSelector(page, '[data-testid="dock-tile-music"]')
     await waitFor('音乐面已收回', () =>

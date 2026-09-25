@@ -108,7 +108,7 @@ export function createRadioScope(options: {
 }) {
   const owner = new MusicWorkOwner(options.assertOwned)
   const { getActiveMusicProvider, getMusicNowPlaying, getMusicService, nudgeMusicClients,
-    refreshMusicNowPlaying, setMusicSampleListener } = options.service
+    refreshMusicNowPlaying, setMusicSampleListener, beginMusicCommand, assumeMusicNowPlaying } = options.service
   const prefetchDjPatter = (text: string, title: string): void => options.hostVoice().prefetch(text, title)
   /**
    * 报一件听歌的事实(§11.1)。**不抛**:一个坏掉的订阅者不该让起播 / 跳过 / 红心那条正事失败。
@@ -757,6 +757,9 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
   }
 
   const timer = createRadioStartTimer(entry.title)
+  // Start the lyric fetch with the load, not after it (cached / in flight = no
+  // second call): the lyrics should be in hand the moment the song is heard.
+  void getLyricLines(entry).catch(() => {})
   const start = (async () => {
     // Known-unplayable at curation time: refuse before ANY ceremony — a
     // spoken intro for a song that cannot come is the worst version of this
@@ -924,8 +927,15 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
     // instead: we KNOW which song this is — we just started it. The player's
     // own title (stable machine format) rides the pushes so the renderer's
     // display always agrees with the bar.
+    // Announce the song FIRST, from the read that just confirmed it (2026-09-25:
+    // the lyrics used to go out ~200ms before now-playing — a fresh `state`
+    // read away — so every client briefly held song B's lyrics against song A
+    // and dropped them; and that refresh could reuse a poll started before
+    // the song, leaving the old title up until the next 5–20s tick).
+    beginMusicCommand()
+    assumeMusicNowPlaying(() => confirmedState)
     onSongStarted(entry, confirmedState?.title ?? entry.title)
-    await refreshMusicNowPlaying()
+    void owner.track(refreshMusicNowPlaying()).catch(() => undefined)
   })()
 
   playStartingEntry = entry
@@ -1385,7 +1395,23 @@ function setCurrentLyrics(next: MusicLyrics): void {
 
 function getMusicLyrics(): MusicLyrics | null {
   owner.assertActive()
+  if (currentLyrics === null) fetchLastPlaybackLyrics()
   return currentLyrics
+}
+
+/**
+ * 重新打开应用时,播放器还没起、这台进程手上没有任何歌词 —— 而面板画的是「上次放到哪」那首、停在那一秒
+ * (09-19)。歌词也该是那一首的(09-25「重新打开的时候,歌词、进度等是否正常」):只要上次那首是电台起的
+ * (手上有它的 id),就照起播时同一条路去取、取到了照样推一声,读者据那一声重读。
+ * 播放器此刻在放别的歌就不取 —— 那时该有歌词的是正在放的那首,由它自己的起播 / 采样去推。
+ * 只取一次不靠额外的记号:取到(或确认取不到)之后手上就有了一份歌词,不再是 `null`;取的路上再问,
+ * `getLyricLines` 按 id 合并成同一发。
+ */
+function fetchLastPlaybackLyrics(): void {
+  if (getMusicNowPlaying()?.title) return
+  const last = getRadioStore().readBrief().lastPlayback
+  if (!last?.encryptedId) return
+  void pushLyricsFor({ encryptedId: last.encryptedId, originalId: '', title: last.title }, last.title)
 }
 
 /**

@@ -86,6 +86,8 @@ vi.mock('../service.js', async () => {
     }),
     nudgeMusicClients: vi.fn(),
     refreshMusicNowPlaying: vi.fn().mockResolvedValue(undefined),
+    beginMusicCommand: vi.fn(),
+    assumeMusicNowPlaying: vi.fn(),
     setMusicSampleListener: vi.fn(),
   }
 })
@@ -527,6 +529,71 @@ describe('main radio playback (legacy starter)', () => {
     expect(announced.lines).toHaveLength(2)
     expect(announced.failed).toBeUndefined()
     expect(radio.getMusicLyrics()).toBe(announced)
+  })
+
+  it('09-25 换歌衔接:先公布「在放哪首」(用起播确认的那份读数),再推歌词 —— 读者不会拿新歌的歌词对旧歌', async () => {
+    vi.useFakeTimers()
+    const service = await import('../service.js')
+    const assume = service.assumeMusicNowPlaying as unknown as ReturnType<typeof vi.fn>
+    const begin = service.beginMusicCommand as unknown as ReturnType<typeof vi.fn>
+    assume.mockClear()
+    begin.mockClear()
+    announceLyrics.mockClear()
+    const order: string[] = []
+    begin.mockImplementation(() => void order.push('begin'))
+    // 起播确认之后的那次回读像真机一样慢(一次 ncm-cli 起跑):公布「在放哪首」不许等它。
+    const refresh = service.refreshMusicNowPlaying as unknown as ReturnType<typeof vi.fn>
+    refresh.mockImplementation(() => new Promise<void>((resolve) => setTimeout(resolve, 5_000)))
+    assume.mockImplementation(() => void order.push('nowPlaying'))
+    announceLyrics.mockImplementation(() => void order.push('lyrics'))
+    mocks.lyric = '[00:10.00]第一句'
+    const radio = await loadRadio()
+    const store = radio.getRadioStore()
+    store.writeBrief({ active: true, intent: 'x', played: [], skipped: [], loved: [] })
+    store.writeProgramme({ entries: [entry(1)] })
+    mocks.stateReplies = ['playing']
+
+    const resume = radio.resumeRadioPlayback()
+    await vi.advanceTimersByTimeAsync(3_000)
+    // 回读还在路上(5s):「在放哪首」已经公布,歌词跟在它后面。
+    expect(order.slice(0, 3)).toEqual(['begin', 'nowPlaying', 'lyrics'])
+    await vi.advanceTimersByTimeAsync(20_000)
+    await expect(resume).resolves.toBe(true)
+    // 公布的就是确认起播的那份读数:它说「在放」。
+    const effect = assume.mock.calls[0]?.[0] as () => { status: string } | null
+    expect(effect()?.status).toBe('playing')
+    announceLyrics.mockReset()
+    refresh.mockReset()
+    refresh.mockResolvedValue(undefined)
+  })
+
+  it('09-25 重新打开应用:没在放、手上没歌词 → 取「上次放到哪」那首的歌词并推一声(只取一次)', async () => {
+    vi.useFakeTimers()
+    announceLyrics.mockClear()
+    mocks.lyric = '[00:10.00]第一句\n[00:20.00]第二句'
+    const radio = await loadRadio()
+    const store = radio.getRadioStore()
+    store.writeBrief({
+      active: true,
+      intent: 'x',
+      played: [],
+      skipped: [],
+      loved: [],
+      lastPlayback: { title: '上次那首 - 歌手', encryptedId: 'a'.repeat(32), position: 95, duration: 240, at: new Date().toISOString() },
+    })
+    const previous = mocks.nowPlaying
+    mocks.nowPlaying = null
+
+    expect(radio.getMusicLyrics()).toBeNull()
+    await vi.advanceTimersByTimeAsync(10)
+    expect(announceLyrics).toHaveBeenCalledTimes(1)
+    expect(announceLyrics.mock.calls[0]?.[0]).toMatchObject({ title: '上次那首 - 歌手' })
+    expect((announceLyrics.mock.calls[0]?.[0] as { lines: unknown[] }).lines).toHaveLength(2)
+    expect(radio.getMusicLyrics()?.title).toBe('上次那首 - 歌手')
+    radio.getMusicLyrics()
+    await vi.advanceTimersByTimeAsync(10)
+    expect(announceLyrics).toHaveBeenCalledTimes(1)
+    mocks.nowPlaying = previous
   })
 
   it('09-18 歌词两种「没有」:空 LRC = 这首没有歌词;那一发失败 = failed(面板说两句不同的话,也不会一直等)', async () => {

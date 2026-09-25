@@ -40,7 +40,7 @@ interface PlayNow {
  * **它不是封面占位图**:封面这件事后端没有(判词在 `MusicPanel.tsx` 文件头),
  * 一块灰方块会被读成「还没加载出来」,而它永远不会来。
  */
-function discStyle(title: string | undefined): CSSProperties {
+export function discStyle(title: string | undefined): CSSProperties {
   const colors = labelColorsFor(title ?? '')
   return { '--sleeve-light': colors.paper, '--sleeve-dark': colors.ink } as CSSProperties
 }

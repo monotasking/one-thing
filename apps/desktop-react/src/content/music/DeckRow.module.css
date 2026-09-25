@@ -54,7 +54,8 @@
   display: flex;
   gap: var(--sp-1);
   align-items: center;
-  width: var(--music-deck-volume-w);
+  /* v9(09-25):窄面板上跟着面板的宽收(360 那一档它曾压到 ⏭ 上);宽了回到 --music-deck-volume-w。 */
+  width: clamp(var(--music-deck-volume-min), var(--music-deck-volume-fluid), var(--music-deck-volume-w));
   margin-right: var(--sp-2);
 }
 
