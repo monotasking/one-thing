@@ -23,6 +23,7 @@ import { ToastHost } from '../ui/Toast'
 import { ConfirmHost } from '../ui/Dialog'
 import { WorkspacePalette } from '../workspace/components/WorkspacePalette'
 import { OpenDirDialog } from '../content/files/OpenDirDialog'
+import { AcpImportDialog } from '../content/acp-import/AcpImportDialog'
 import { CenterRegion } from '../workbench/CenterRegion'
 import { useWorkbenchStore } from '../workbench/store'
 import { useHostFullScreen } from './useHostFullScreen'
@@ -631,6 +632,10 @@ export function AppShell() {
             * 判词与「今天为什么是输入框不是系统对话框」写在
             * `content/files/open-dir-hub.ts` 上。 */}
           <OpenDirDialog />
+
+          {/* 「从 Agent 导入…」那扇窗(A5-b)。同一条理由:会话侧栏那一行只按开关,
+            * 判词在 `content/acp-import/import-hub.ts`。 */}
+          <AcpImportDialog />
 
           {/*
             useConfirm 的落点。挂一次,`ui/Dialog` 的那个单槽 hub 才有地方渲染 ——

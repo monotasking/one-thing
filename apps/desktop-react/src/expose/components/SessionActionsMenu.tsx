@@ -6,7 +6,7 @@ import { focusSessionSeat } from '../../content/session-open'
 import { dropRef } from '../../workbench/drop-commit'
 import { useExposeStore } from '../store'
 import { togglePinAndAnnounce } from './pin-announce'
-import { closeSessionAndAnnounce, deleteSessionAndAnnounce } from './session-actions'
+import { closeSessionAndAnnounce, deleteSessionAndAnnounce, forkSessionAndOpen } from './session-actions'
 import type { RegionId } from '../../workbench/regions'
 
 /**
@@ -85,6 +85,7 @@ export function SessionActionsMenu({
   title,
   isPinned,
   openState,
+  forkAgentId,
   x,
   y,
   onClose,
@@ -98,6 +99,12 @@ export function SessionActionsMenu({
    * 同一只纯函数)。`null` = 哪儿都没开 → 「关闭」那一行**整格不在场**。
    */
   openState: 'shown' | 'hidden' | null
+  /**
+   * 能分叉时那台 agent 的 id(A5-b;快照,判据 `data/acp-sessions-source.forkAgentOf`:ACP 会话 ∧
+   * 那台 agent **明确**报了 `sessionCapabilities.fork`)。缺席 =「分叉」那一行**整格不在场** ——
+   * 普通会话没有分叉这回事,与「关闭」同一条「没有对象就不在」的判词,不是禁灰。
+   */
+  forkAgentId?: string
   x: number
   y: number
   onClose: () => void
@@ -187,6 +194,20 @@ export function SessionActionsMenu({
       >
         {t(isPinned ? 'expose.unpin' : 'expose.pin')}
       </MenuItem>
+      {forkAgentId && (
+        /*
+         * 分叉(A5-b,方案 §3.7)。新会话建成后直接进去 —— 结果在屏上,失败才说话
+         * (判词在 `session-actions.forkSessionAndOpen`)。
+         */
+        <MenuItem
+          onClick={() => {
+            onClose()
+            void forkSessionAndOpen(sessionId, forkAgentId)
+          }}
+        >
+          {t('expose.menuFork')}
+        </MenuItem>
+      )}
       {/*
        * 重命名…:这一行**只翻形态**(store 的 `startRename`),真正改名发生在
        * 那一行长出来的输入框里(↵ 落定 / Esc 收回)。所以它不是一次写,

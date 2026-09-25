@@ -21,6 +21,7 @@ import { projectScope, scopeId, scopeSpecOf, visibleScopes } from '../scopes'
 import { useExposeStore } from '../store'
 import { sessionRowIdsOf } from '../transitions'
 import type { ProjectScope } from '../types'
+import { AcpImportRow } from './AcpImportRow'
 import s from './NavRows.module.css'
 
 /**
@@ -228,6 +229,9 @@ export function NavRows() {
         <Plus className={s.glyph} strokeWidth={1.75} aria-hidden="true" />
         <span className={s.label}>{newLabel}</span>
       </ButtonBase>
+
+      {/* 「从 Agent 导入…」(A5-b):只在有 agent 可导时在场,判词在它自己的文件头。 */}
+      <AcpImportRow />
 
       {searching ? (
         /*

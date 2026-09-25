@@ -13,6 +13,8 @@ import { useContentDrag } from '../../workbench/useContentDrag'
 import { openStateOf, useWorkbenchStore } from '../../workbench/store'
 import { sessionRefOf } from '../../content/session-ref'
 import { SessionActionsMenu } from './SessionActionsMenu'
+import { acpAgentsQuery } from '../../data/acp-agents-source'
+import { forkAgentOf } from '../../data/acp-sessions-source'
 import { commitRenameAndAnnounce } from './session-actions'
 import s from './SessionTree.module.css'
 
@@ -97,6 +99,8 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
     title: string
     isPinned: boolean
     openState: 'shown' | 'hidden' | null
+    /** 能分叉时那台 agent 的 id(A5-b,判据 `forkAgentOf`);不能 = 缺席,菜单里那一行不在场。 */
+    forkAgentId?: string
     x: number
     y: number
   } | null>(null)
@@ -208,6 +212,8 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
           { regions: tree.regions, hidden: tree.hidden, panelPath: tree.panelPath },
           sessionRefOf(sessionId),
         ),
+        // 名册也是**现读**的快照(与上面两格同一条理由:菜单不订阅)。
+        forkAgentId: forkAgentOf(row, acpAgentsQuery.get().data),
         x: point.x,
         y: point.y,
       })
@@ -379,6 +385,7 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
           title={menu.title}
           isPinned={menu.isPinned}
           openState={menu.openState}
+          forkAgentId={menu.forkAgentId}
           x={menu.x}
           y={menu.y}
           onClose={closeMenu}

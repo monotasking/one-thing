@@ -44,6 +44,15 @@
  *     `edit`);拉开抽屉有一块 diff,两侧是 `beta` / `BETA`;卡脚列着 `rich.txt:3`;execute 那一步的
  *     卡脚有「打开终端」。也要桌面宿主(终端桥要 `hasTerminalHost()`)。
  *
+ *  ⑧ 从 Agent 导入(A5-b):第四台假 agent(`FAKE_AGENT_CAPS=list,fork,load`)的目录里预先放两条存着的
+ *     会话(带 `history`,与根 `gate:acp` ⑳ 同一只夹具)。会话侧栏「从 Agent 导入…」→ 挑这一台 → 目录
+ *     (主进程的 `dialog.showOpenDialog` 被门换成直接答临时工作目录 —— 系统对话框 CDP 够不着)→ 名单
+ *     两行;axe 扫这扇窗;点第一行 → 本地多一条会话、正文里有夹具回放的那句话、一条「已导入 N 条」;
+ *     再开一次 → 那一行写「已导入」,点它不多建一条。
+ *  ⑨ 崩溃退避(A5-b):同一台 agent 连着 kill -9 并各发一条消息让它自动重连,直到 `backoff.latched`;
+ *     设置页「Agent」那一台的进程行写「连不上,已停止重试」并有「重新连接」;点下去 → 闩撤掉。
+ *     ⑧⑨ 都要 A5-a 的四条 RPC:先探一发 `acp.listRemoteSessions`,答不上来就整步 SKIP 并说「等 A5-a」。
+ *
  * 反证:把 `content/permission/PermissionCard.tsx` 里 `if (ask.choices)` 那一支挖掉 → ⑤ 的
  * 「四颗 agent 的钮」当场红(卡退回五钮);把 `composer/components/DrawerModelPicker.tsx` 里 `missing ? s.pickRowMissing : null`
  * 那一支挖掉 → ② 的「不透明度更低」当场红;把 `composer/agent-claims.ts` 认领 `model` 的那一支
@@ -62,12 +71,13 @@
  *   `npm run gate:acp-shell -- --prod`  —— prod 渲染层(吃 `npm run app:build` 的 dist)
  * (两档都要 `npm run electron:build` 产出的 `dist-electron/main.cjs`。)
  */
-import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { _electron as electron } from 'playwright'
+import { AxeBuilder } from '@axe-core/playwright'
 import electronBinary from 'electron'
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -91,6 +101,9 @@ const PERM_AGENT = 'gate-perm-agent'
 const PERM_AGENT_NAME = 'Gate Perm'
 /** ⑦ 那一台:同一只假 agent,打开 A2-a 的 `@rich` 剧本;无人应答放行,终端桥不问就起。 */
 const RICH_AGENT = 'gate-rich-agent'
+/** ⑧⑨ 那一台:同一只假 agent,声明 list / fork / load;目录里预先放两条存着的会话。 */
+const LIFE_AGENT = 'gate-life-agent'
+const LIFE_AGENT_NAME = 'Gate Life'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -188,6 +201,33 @@ async function main() {
   const fakeAgentDir = path.join(store, 'fake-agent')
   const permAgentDir = path.join(store, 'fake-agent-perm')
   const richAgentDir = path.join(store, 'fake-agent-rich')
+  const lifeAgentDir = path.join(store, 'fake-agent-life')
+  /*
+   * ⑧ 的两条存着的会话(夹具的会话文件形:`<dir>/<id>.json`;`history` 在 `session/load` 时按序回放,
+   * `title` / `updatedAt` 进 `session/list` 的答复)。cwd = 临时工作目录 —— 门挑的就是它。
+   */
+  mkdirSync(lifeAgentDir, { recursive: true })
+  const storedNow = Date.now()
+  for (const [id, title, reply, ago] of [
+    ['stored-a', 'Stored alpha', 'imported reply alpha', 60_000],
+    ['stored-b', 'Stored beta', 'imported reply beta', 3_600_000],
+  ]) {
+    writeFileSync(
+      path.join(lifeAgentDir, `${id}.json`),
+      JSON.stringify({
+        id,
+        cwd: workDir,
+        model: 'alpha',
+        turns: 0,
+        title,
+        updatedAt: new Date(storedNow - ago).toISOString(),
+        history: [
+          { kind: 'user', text: `hello ${id}` },
+          { kind: 'agent', text: reply },
+        ],
+      }),
+    )
+  }
   /*
    * 注册表不联网(门要确定性);名册 = 种子 + ③④ 那一台假 agent(env 与根 `gate:acp` 同一份形:
    * `FAKE_AGENT_PUSH_COMMANDS=1` 让它 `session/new` 一答完就推命令表;`unattended: 'allow'` 是
@@ -225,6 +265,15 @@ async function main() {
               command: process.execPath,
               args: [fakeAgentScript],
               env: { FAKE_AGENT_CAPS: 'load', FAKE_AGENT_DIR: richAgentDir, FAKE_AGENT_RICH_TOOLS: '1' },
+              unattended: 'allow',
+            },
+            {
+              id: LIFE_AGENT,
+              name: LIFE_AGENT_NAME,
+              enabled: true,
+              command: process.execPath,
+              args: [fakeAgentScript],
+              env: { FAKE_AGENT_CAPS: 'list,fork,load', FAKE_AGENT_DIR: lifeAgentDir },
               unattended: 'allow',
             },
           ],
@@ -808,6 +857,206 @@ async function main() {
       Boolean(rich.terminal) && /打开终端|Open terminal/.test(rich.terminal?.text ?? ''),
       `⑦ execute 那一步卡脚有「打开终端」:${rich.terminal ? `${rich.terminal.id}(${rich.terminal.disabled ? '已关,灰' : '可点'})` : '(没有)'}`,
     )
+
+    // ── ⑧ 从 Agent 导入(A5-b)───────────────────────────────────────────
+    /*
+     * 先探一发:A5-a 的四条 RPC 在不在这份构建里。不在 = 整步 SKIP(说清等谁),⑨ 同理。
+     * 在就顺手拿到「core 眼里的名单」,屏上对它。
+     */
+    let lifeReady = true
+    let probe
+    try {
+      probe = await rpc(record, 'acp', 'listRemoteSessions', { agentId: LIFE_AGENT, cwd: workDir })
+    } catch (error) {
+      lifeReady = false
+      console.log(`SKIP ⑧⑨ 等 A5-a:acp.listRemoteSessions 在这份构建里答不上来(${String(error?.message ?? error).slice(0, 160)})`)
+    }
+    if (lifeReady) {
+      const coreIds = (probe?.ok ? probe.sessions : []).map((row) => row.acpSessionId).sort()
+      /*
+       * 系统对话框 CDP 够不着 —— 换掉主进程那一口:`electron/host-ports.ts` 的 dialog 端口在调用时才去
+       * `dialog.showOpenDialog`,所以在这里把它换成「直接答临时工作目录」就是那一次挑选。只在这扇窗里、
+       * 这一次 electron 进程里生效,门收尸时整个进程一起走。
+       */
+      await app.evaluate(({ dialog }, dir) => {
+        dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] })
+      }, workDir)
+      const sessionsBefore = ((await rpc(record, 'sessions', 'listMeta', {}))?.sessions ?? []).length
+      const importRowShown = () =>
+        page.evaluate(() => {
+          const el = document.querySelector('[data-testid="expose-acp-import"]')
+          return el instanceof HTMLElement && el.checkVisibility() ? el.textContent : undefined
+        })
+      for (let attempt = 0; attempt < 3 && !(await importRowShown()); attempt += 1) {
+        await click(page, '[data-testid="dock-tile-sessions"]')
+        await delay(500)
+      }
+      const importLabel = await waitFor('会话侧栏里「从 Agent 导入…」那一行', importRowShown)
+      const openPicker = async () => {
+        await click(page, '[data-testid="expose-acp-import"]')
+        await waitFor('挑 agent 那一步', () =>
+          page.evaluate((id) => Boolean(document.querySelector(`[data-testid="acp-import-agent-${id}"]`)), LIFE_AGENT),
+        )
+        await click(page, `[data-testid="acp-import-agent-${LIFE_AGENT}"]`)
+      }
+      await openPicker()
+      const listed = await waitFor(
+        '名单两行上屏',
+        () =>
+          page.evaluate(() => {
+            const rows = [...document.querySelectorAll('[data-testid^="acp-import-session-"]')]
+            if (rows.length === 0) {
+              const refused = document.querySelector('[data-testid="acp-import-refused"], [data-testid="acp-import-empty"], [data-testid="acp-import-error"]')
+              return refused ? { refused: refused.textContent } : undefined
+            }
+            return {
+              ids: rows.map((el) => el.getAttribute('data-testid').slice('acp-import-session-'.length)).sort(),
+              texts: rows.map((el) => el.textContent),
+              cwd: document.querySelector('[data-testid="acp-import-cwd"]')?.textContent ?? '',
+            }
+          }),
+        20_000,
+      )
+      step(
+        !listed.refused && listed.ids.join(',') === 'stored-a,stored-b' && coreIds.join(',') === 'stored-a,stored-b',
+        `⑧ 入口「${importLabel}」→ 挑 ${LIFE_AGENT} → 目录 ${listed.cwd || '(无)'} → 名单 ${listed.refused ? `(拒:${listed.refused})` : listed.ids.join(' / ')}(core:${coreIds.join(' / ') || '无'});行字 ${(listed.texts ?? []).join(' | ')}`,
+      )
+      const axe = await new AxeBuilder({ page })
+        .setLegacyMode(true)
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'])
+        .include('[role="dialog"]')
+        .analyze()
+      for (const v of axe.violations) {
+        console.log(`      [${v.impact}] ${v.id} —— ${v.help}`)
+        for (const node of v.nodes.slice(0, 4)) console.log(`        ${node.target.join(' ')}`)
+      }
+      step(axe.violations.length === 0, `⑧ 导入窗 axe 零违例(过了 ${axe.passes.length} 条规则)`)
+
+      await click(page, '[data-testid="acp-import-session-stored-a"]')
+      await waitFor('窗关掉', () => page.evaluate(() => !document.querySelector('[data-testid="acp-import-sessions"]')), 20_000)
+      const afterAdopt = (await rpc(record, 'sessions', 'listMeta', {}))?.sessions ?? []
+      const adopted = await waitFor(
+        '会话正文里有回放的那句话',
+        () =>
+          page.evaluate(() => {
+            const stream = [...document.querySelectorAll('[data-testid="chat-stream"]')].find((el) => el.checkVisibility())
+            const text = stream?.textContent ?? ''
+            return text.includes('imported reply alpha') ? { text: text.slice(0, 120) } : undefined
+          }),
+        20_000,
+      ).catch(async () => ({
+        text: `(没等到)${await page.evaluate(() => [...document.querySelectorAll('[data-testid="chat-stream"]')].find((el) => el.checkVisibility())?.textContent?.slice(0, 200) ?? '(没有可见会话)')}`,
+      }))
+      const toast = await waitFor('「已导入 N 条」', () =>
+        page.evaluate(() => {
+          const hit = [...document.querySelectorAll('[role="status"], [role="alert"], [data-testid^="toast"]')]
+            .map((el) => el.textContent ?? '')
+            .find((text) => /已导入|Imported/.test(text))
+          return hit
+        }),
+        8_000,
+      ).catch(() => '(没见到)')
+      step(
+        afterAdopt.length === sessionsBefore + 1 && !adopted.text.startsWith('(没等到)') && toast !== '(没见到)',
+        `⑧ 点 stored-a → 本地会话 ${sessionsBefore}→${afterAdopt.length} 条,正文见回放「imported reply alpha」,提示「${toast}」`,
+      )
+      // 再开一次:那一行写「已导入」,点它进同一条(不多建)。
+      await openPicker()
+      const again = await waitFor('第二次打开名单上屏,stored-a 标着已导入', () =>
+        page.evaluate(() => {
+          const el = document.querySelector('[data-testid="acp-import-session-stored-a"]')
+          return el?.getAttribute('data-adopted') === 'true' ? el.textContent : undefined
+        }),
+      ).catch(() => '(没标)')
+      await click(page, '[data-testid="acp-import-session-stored-a"]')
+      await waitFor('窗关掉', () => page.evaluate(() => !document.querySelector('[data-testid="acp-import-sessions"]')), 20_000)
+      await delay(500)
+      const afterSecond = ((await rpc(record, 'sessions', 'listMeta', {}))?.sessions ?? []).length
+      step(
+        again !== '(没标)' && afterSecond === afterAdopt.length,
+        `⑧ 再开一次:stored-a 那一行「${again}」,点它不多建(${afterAdopt.length}→${afterSecond})`,
+      )
+
+      // ── ⑨ 崩溃退避:连 kill 四次,闩上;设置页「重新连接」撤闩 ────────────
+      const lifeSessionId = (await rpc(record, 'acp', 'listRemoteSessions', { agentId: LIFE_AGENT, cwd: workDir }))
+        ?.sessions?.find((row) => row.acpSessionId === 'stored-a')?.adoptedSessionId
+      const lifeRow = async () =>
+        ((await rpc(record, 'acp', 'getAgents', {}))?.agents ?? []).find((row) => row.config.id === LIFE_AGENT)
+      const trail = []
+      let latchedRow
+      for (let round = 1; round <= 5 && lifeSessionId && !latchedRow; round += 1) {
+        const before = await waitFor(`第 ${round} 轮:${LIFE_AGENT} 有活进程`, async () => {
+          const row = await lifeRow()
+          if (row?.backoff?.latched) return row
+          return row?.status === 'connected' && row.pid ? row : undefined
+        }, 20_000).catch(() => undefined)
+        if (before?.backoff?.latched) {
+          latchedRow = before
+          break
+        }
+        if (!before?.pid) {
+          // 这一轮还没进程:发一条消息把它拉起来(第一轮的 load 之后它本来就活着)。
+          await rpc(record, 'session-command', 'emit', {
+            sessionId: lifeSessionId,
+            command: { type: 'command:send-message', content: `ping ${round}`, suppressTitleGeneration: true },
+          })
+          continue
+        }
+        try {
+          process.kill(before.pid, 'SIGKILL')
+        } catch {
+          // 已经没了就算了。
+        }
+        trail.push(`kill#${round}(pid ${before.pid})`)
+        await waitFor('那一行不再是 connected', async () => ((await lifeRow())?.status !== 'connected' ? true : undefined), 10_000).catch(() => undefined)
+        await rpc(record, 'session-command', 'emit', {
+          sessionId: lifeSessionId,
+          command: { type: 'command:send-message', content: `ping after kill ${round}`, suppressTitleGeneration: true },
+        })
+        const settled = await waitFor(`第 ${round} 次 kill 之后:重连或闩上`, async () => {
+          const row = await lifeRow()
+          if (row?.backoff?.latched) return row
+          return row?.status === 'connected' && row.pid && row.pid !== before.pid ? row : undefined
+        }, 20_000).catch(() => undefined)
+        trail.push(settled?.backoff?.latched ? '闩上' : settled ? `重连(pid ${settled.pid})` : '(没等到)')
+        if (settled?.backoff?.latched) latchedRow = settled
+      }
+      step(Boolean(latchedRow), `⑨ 连 kill 之后闩上:${trail.join(' → ') || '(没开始)'};backoff=${JSON.stringify(latchedRow?.backoff ?? null)}`)
+
+      await click(page, '[data-testid="dock-tile-settings"]')
+      await waitFor('设置页就位', () =>
+        page.evaluate(() => Boolean(document.querySelector('[data-testid="settings-nav-agents"]'))),
+      )
+      await click(page, '[data-testid="settings-nav-agents"]')
+      await waitFor('名册里有这一台', () =>
+        page.evaluate((id) => Boolean(document.querySelector(`[data-testid="agent-row-${id}"]`)), LIFE_AGENT),
+      )
+      await click(page, `[data-testid="agent-row-${LIFE_AGENT}"]`)
+      const gaveUp = await waitFor('进程行写「已停止重试」且有「重新连接」', () =>
+        page.evaluate((id) => {
+          const cell = document.querySelector(`[data-testid="agent-detail-${id}"] [data-testid="agent-process"]`)
+          const button = cell?.querySelector('[data-testid="agent-reconnect"]')
+          return cell?.getAttribute('data-backoff-latched') === 'true' && button ? { text: cell.textContent } : undefined
+        }, LIFE_AGENT),
+        15_000,
+      ).catch(() => undefined)
+      step(Boolean(gaveUp), `⑨ Agent 页:进程行「${gaveUp?.text ?? '(没闩上 / 没画钮)'}」`)
+      if (gaveUp) {
+        await click(page, `[data-testid="agent-detail-${LIFE_AGENT}"] [data-testid="agent-reconnect"]`)
+        const cleared = await waitFor('闩撤掉', () =>
+          page.evaluate((id) => {
+            const cell = document.querySelector(`[data-testid="agent-detail-${id}"] [data-testid="agent-process"]`)
+            return cell?.getAttribute('data-backoff-latched') === 'false' ? cell.textContent : undefined
+          }, LIFE_AGENT),
+          20_000,
+        ).catch(() => undefined)
+        const row = await lifeRow()
+        step(
+          Boolean(cleared) && !row?.backoff?.latched,
+          `⑨ 点「重新连接」→ 进程行「${cleared ?? '(没撤)'}」,core 那一行 backoff=${JSON.stringify(row?.backoff ?? null)} status=${row?.status}`,
+        )
+      }
+    }
   } finally {
     if (record) await rpc(record, 'acp', 'removeAgent', { agentId: TEMP_AGENT }).catch(() => {})
     if (app) await app.close().catch(() => {})

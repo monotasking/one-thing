@@ -197,3 +197,34 @@ describe('删除:唯一允许的确认(数据会没)', () => {
     expect(deleteSession).toHaveBeenCalledWith('os-provider')
   })
 })
+
+describe('分叉(A5-b):只在 ACP 会话且 agent 报了 fork 时在场', () => {
+  it('没给 forkAgentId → 那一行整格不在(不是禁灰)', () => {
+    menu()
+    expect(screen.queryByRole('menuitem', { name: '分叉' })).toBeNull()
+  })
+
+  it('给了 → 在场;点下去先关菜单,再按那台 agent 发 forkSession、成了进新会话', async () => {
+    const { configureAcpSessionsPort, resetAcpSessionsSource } = await import('../../data/acp-sessions-source')
+    const forkSession = vi.fn(async () => ({ ok: true as const, sessionId: 'forked-1' }))
+    configureAcpSessionsPort({
+      ready: async () => undefined,
+      listRemoteSessions: async () => ({ ok: true, sessions: [] }),
+      adoptSession: async () => ({ ok: false, code: 'failed', error: 'x' }),
+      forkSession,
+      reconnectAgent: async () => ({ ok: false, error: 'x' }),
+    })
+    const enterSession = vi.fn()
+    useExposeStore.setState({ enterSession })
+    const props = menu({ forkAgentId: 'gemini' })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: '分叉' }))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(props.onClose).toHaveBeenCalled()
+    expect(forkSession).toHaveBeenCalledWith({ sessionId: 'os-provider', agentId: 'gemini' })
+    expect(enterSession).toHaveBeenCalledWith('forked-1')
+    configureAcpSessionsPort(undefined)
+    resetAcpSessionsSource()
+  })
+})

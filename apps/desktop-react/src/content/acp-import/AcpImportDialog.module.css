@@ -1,0 +1,95 @@
+/* 「从 Agent 导入…」(A5-b)。行的皮照 `todo/TodoSwitcher.module.css`:hover 只走 `:hover`,
+ * 键盘位是真焦点(全局 `:focus-visible` 画环,这里不写环)。 */
+
+.lead {
+  margin: 0;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.note {
+  margin: 0;
+  color: var(--text-2);
+}
+
+.error {
+  margin: 0;
+  color: var(--danger);
+}
+
+.stateRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: var(--acp-import-list-max-h);
+  overflow-y: auto;
+}
+
+.item {
+  min-width: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-1);
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: var(--fs-label);
+  text-align: start;
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--st-hover);
+}
+
+.row[aria-busy='true'] {
+  cursor: progress;
+}
+
+/* 这一行唯一的弯腰件:标题(与目录那一格)只截断不换行。 */
+.text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meta {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+.time,
+.tag {
+  flex: none;
+  white-space: nowrap;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}

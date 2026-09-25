@@ -33,6 +33,7 @@ import {
   updateAgentMutation,
   updatePendingKey,
 } from '../../data/acp-agents-source'
+import { backoffLatched, reconnectAgentMutation } from '../../data/acp-sessions-source'
 import { runScriptInTerminal } from '../terminal/run-script'
 import { revealTerminal } from '../terminal-launcher'
 import { getLogger } from '../../services/log'
@@ -88,6 +89,7 @@ const log = getLogger('settings.agents')
  * | 「添加」/「复制」 | AsyncButton(`addAgentMutation`)| 命令空着(添加)/ 名字空着(复制)|
  * | 「删除」 | 乐观摘掉那一行 + 一次确认(本壳唯一允许的 confirm)| 只在自定义那一台上出现 |
  * | 「去登录」(A3-d) | AsyncButton(`authenticateAgentMutation`,按 agent id 分)| 没有自报的登录方式时不画;几种方式 → 点开一张小菜单 |
+ * | 「重新连接」(A5-b,只在退避闩上时在场) | AsyncButton(`reconnectAgentMutation`,按 agent id 分)| — |
  * | 「没人回应时自动允许」(A3-d) | 乐观翻过去 + 自己禁着(`updatePendingKey(id,'unattended')`)| 同左 |
  *
  * **登录那一节的四态**(A3-d,读 `state.auth`,后端 A3-c 给):
@@ -400,12 +402,7 @@ function AgentDetail({
         {!detect?.installed && !manifest?.install?.npm && manifest?.install?.hint && (
           <p className={shared.settingRowNote}>{t('agents.installHint', { hint: manifest.install.hint })}</p>
         )}
-        <div className={shared.settingRow}>
-          <span className={shared.settingRowLabel}>{t('agents.labelProcess')}</span>
-          <span className={`${s.valueText} ${state.status === 'error' ? s.valueBad : ''}`}>
-            {processFactOf(t, state)}
-          </span>
-        </div>
+        <ProcessRow t={t} state={state} />
         <div className={shared.settingRow}>
           <span className={shared.settingRowLabel}>{t('agents.enable')}</span>
           <Switch
@@ -438,6 +435,61 @@ function AgentDetail({
         )}
       </section>
     </div>
+  )
+}
+
+/* ── 进程(A5-b,§3.7 退避)─────────────────────────────────────────────── */
+
+/**
+ * 进程那一行。平时一句话(`processFactOf`);**退避闩上**(连崩三次、30s 窗内自动重连已停,
+ * `backoff.latched`)时换成「连不上,已停止重试」+「重新连接」(`acp.reconnectAgent`,忙态按
+ * agent id 分)。成了不用手改名册:回答里的新状态当场换进那一行,推送随后对账;没成就在钮旁
+ * 一行原话 —— 退避的账归后端,壳不自己把闩翻回去。
+ */
+function ProcessRow({ t, state }: { t: TFn; state: ACPAgentState }) {
+  const id = state.config.id
+  const latched = backoffLatched(state)
+  const [failure, setFailure] = useState<string | null>(null)
+  useEffect(() => {
+    if (!latched) setFailure(null)
+  }, [latched])
+
+  const reconnect = async () => {
+    setFailure(null)
+    const answer = await reconnectAgentMutation.run(id)
+    if (!answer) setFailure(t('agents.reconnectFailed', { error: reconnectAgentMutation.get().error ?? '' }))
+    else if (!answer.ok) setFailure(t('agents.reconnectFailed', { error: answer.error }))
+  }
+
+  return (
+    <>
+      <div className={shared.settingRow}>
+        <span className={shared.settingRowLabel}>{t('agents.labelProcess')}</span>
+        <span className={s.value} data-testid="agent-process" data-backoff-latched={latched ? 'true' : 'false'}>
+          <span className={`${s.valueText} ${latched || state.status === 'error' ? s.valueBad : ''}`}>
+            {latched ? t('agents.processGaveUp') : processFactOf(t, state)}
+          </span>
+          {latched && (
+            <AsyncButton
+              size="sm"
+              action={reconnectAgentMutation}
+              pendingKey={id}
+              pendingLabel={t('agents.reconnecting')}
+              onClick={() => void reconnect()}
+              data-testid="agent-reconnect"
+            >
+              {t('agents.reconnect')}
+            </AsyncButton>
+          )}
+        </span>
+      </div>
+      {latched && state.error && <p className={shared.settingRowNote}>{t('agents.gaveUpLast', { error: state.error })}</p>}
+      {failure && (
+        <p className={shared.settingRowNote} role="status" data-testid="agent-reconnect-failed">
+          {failure}
+        </p>
+      )}
+    </>
   )
 }
 

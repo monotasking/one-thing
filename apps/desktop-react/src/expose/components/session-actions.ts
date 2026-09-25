@@ -3,6 +3,9 @@ import { t } from '../../i18n'
 import { sessionRefOf } from '../../content/session-ref'
 import { useWorkbenchStore } from '../../workbench/store'
 import { useExposeStore } from '../store'
+import { forkSessionMutation } from '../../data/acp-sessions-source'
+import { useSessionsSource } from '../../data/sessions-source'
+import { notify } from '../../services/notify'
 
 /**
  * 会话行三个**有可感知收场**的动作,各配一句话(A2)。
@@ -73,4 +76,22 @@ export function deleteSessionAndAnnounce(sessionId: string): Promise<void> {
       if (outcome.ok) return
       announce(t('expose.deleteFailed', { error: outcome.error }))
     })
+}
+
+/**
+ * **分叉**(A5-b,方案 §3.7:能力位 `sessionCapabilities.fork` 在场时菜单多一项)= 新本地会话 +
+ * agent fork 出来的远端 id。成了就进那一条(与建会话同一条链:列表先对账,`enterSession` 要拿它
+ * 夹焦点序列);没成走一条错误通知 —— 与「新建会话没成」同一档(`notify.createSessionFailed`
+ * 那一路):屏幕上什么都没发生,而那句原话是人要去做点什么的依据,不是一句只给读屏的播报。
+ */
+export function forkSessionAndOpen(sessionId: string, agentId: string): Promise<void> {
+  return forkSessionMutation.run({ sessionId, agentId }).then(async (result) => {
+    if (result?.ok) {
+      await useSessionsSource.getState().refresh()
+      useExposeStore.getState().enterSession(result.sessionId)
+      return
+    }
+    const error = result ? result.error : (forkSessionMutation.get().error ?? '')
+    notify({ level: 'error', source: 'acp.fork', title: t('expose.forkFailed'), body: error, detail: error })
+  })
 }

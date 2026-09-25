@@ -272,3 +272,65 @@ describe('AgentsSettings · 登录与权限(A3-d)', () => {
     await waitFor(() => expect(openPage).toHaveBeenCalledWith('permissions'))
   })
 })
+
+describe('AgentsSettings · 崩溃退避(A5-b)', () => {
+  afterEach(async () => {
+    const { configureAcpSessionsPort, resetAcpSessionsSource } = await import('../../../data/acp-sessions-source')
+    configureAcpSessionsPort(undefined)
+    resetAcpSessionsSource()
+  })
+
+  it('没闩上:进程一行照旧一句话,没有「重新连接」', async () => {
+    configureAcpAgentsPort(fakePort([row('gemini', { backoff: { attempts: 2, until: Date.now() + 1000, latched: false } })]))
+    render(<AgentsSettings />)
+    const fact = await screen.findByTestId('agent-process')
+    expect(fact.getAttribute('data-backoff-latched')).toBe('false')
+    expect(fact.textContent).toBe(t('agents.processIdle'))
+    expect(screen.queryByTestId('agent-reconnect')).toBeNull()
+  })
+
+  it('闩上:「连不上,已停止重试」+「重新连接」→ acp.reconnectAgent;回答的新状态当场换进那一行', async () => {
+    const { configureAcpSessionsPort } = await import('../../../data/acp-sessions-source')
+    const latched = row('gemini', { status: 'error', error: 'agent exited', backoff: { attempts: 3, latched: true } })
+    const fake = fakePort([latched])
+    configureAcpAgentsPort(fake)
+    const reconnect = vi.fn(async () => {
+      fake.rows = [row('gemini', { status: 'connected', pid: 42 })]
+      return { ok: true as const, state: fake.rows[0]! }
+    })
+    configureAcpSessionsPort({
+      ready: async () => undefined,
+      listRemoteSessions: async () => ({ ok: true, sessions: [] }),
+      adoptSession: async () => ({ ok: false, code: 'failed', error: '' }),
+      forkSession: async () => ({ ok: false, code: 'failed', error: '' }),
+      reconnectAgent: reconnect,
+    })
+    render(<AgentsSettings />)
+    const fact = await screen.findByTestId('agent-process')
+    expect(fact.getAttribute('data-backoff-latched')).toBe('true')
+    expect(fact.textContent).toContain(t('agents.processGaveUp'))
+    expect(screen.getByText(t('agents.gaveUpLast', { error: 'agent exited' }))).toBeTruthy()
+    fireEvent.click(screen.getByTestId('agent-reconnect'))
+    await waitFor(() => expect(reconnect).toHaveBeenCalledWith('gemini'))
+    await waitFor(() => expect(screen.getByTestId('agent-process').getAttribute('data-backoff-latched')).toBe('false'))
+    expect(screen.getByTestId('agent-process').textContent).toBe(t('agents.processRunning', { pid: 42 }))
+  })
+
+  it('重新连接没成 → 钮旁一行原话,闩照旧', async () => {
+    const { configureAcpSessionsPort } = await import('../../../data/acp-sessions-source')
+    configureAcpAgentsPort(fakePort([row('gemini', { status: 'error', backoff: { attempts: 3, latched: true } })]))
+    configureAcpSessionsPort({
+      ready: async () => undefined,
+      listRemoteSessions: async () => ({ ok: true, sessions: [] }),
+      adoptSession: async () => ({ ok: false, code: 'failed', error: '' }),
+      forkSession: async () => ({ ok: false, code: 'failed', error: '' }),
+      reconnectAgent: async () => ({ ok: false, error: 'spawn ENOENT' }),
+    })
+    render(<AgentsSettings />)
+    fireEvent.click(await screen.findByTestId('agent-reconnect'))
+    expect((await screen.findByTestId('agent-reconnect-failed')).textContent).toBe(
+      t('agents.reconnectFailed', { error: 'spawn ENOENT' }),
+    )
+    expect(screen.getByTestId('agent-process').getAttribute('data-backoff-latched')).toBe('true')
+  })
+})

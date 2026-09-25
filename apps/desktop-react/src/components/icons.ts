@@ -96,6 +96,8 @@ import {
   Radio,
   CircleUserRound,
   LogIn,
+  // A5-b:会话侧栏「从 Agent 导入…」那一行(一只箭头进一格盒:把外面存着的东西收进来)。
+  Import,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -283,5 +285,6 @@ export {
   Radio,
   CircleUserRound,
   LogIn,
+  Import,
 }
 export type { LucideIcon }
